@@ -1,0 +1,57 @@
+category,name,type,authority,url,why
+标准/规范,BPMN 2.0.2 Specification - OMG,官方标准,A,https://www.omg.org/spec/BPMN/2.0.2/,业务流程建模事实标准；可借鉴任务、事件、网关、泳道、子流程、人工任务。
+标准/规范,CMMN 1.1 Specification - OMG,官方标准,A,https://www.omg.org/spec/CMMN/1.1/,面向知识工作与非固定流程的 Case Management；更接近动态工作流和人工判断。
+标准/规范,W3C PROV Data Model,W3C Recommendation,A,https://www.w3.org/TR/prov-dm/,资产来源、生成、修改、责任人、活动记录的基础模型。
+标准/规范,W3C PROV Overview,W3C Note,A,https://www.w3.org/TR/prov-overview/,快速理解 Entity / Activity / Agent 三元模型。
+论文/模式,Workflow Patterns - van der Aalst 等,论文/模式库,B,https://www.workflowpatterns.com/,控制流、数据、资源、异常等工作流模式经典来源。
+论文/科学工作流,Provenance and Scientific Workflows: Challenges and Opportunities,论文,B,https://dl.acm.org/doi/10.1145/1376616.1376772,科学工作流领域关于追溯、再现、演化的经典讨论。
+论文/科学工作流,VisTrails,论文/系统,B,https://www.vistrails.org/,强调工作流版本、执行过程、可视化探索和 provenance。
+论文/科学工作流,Kepler Scientific Workflow System,论文/系统,B,https://kepler-project.org/,老牌科学工作流系统，可参考可视化组合、执行和复用。
+论文/科学工作流,Taverna Workflow System,论文/系统,B,https://taverna.incubator.apache.org/,可复用科学工作流系统，可参考服务调用和 provenance。
+数据血缘,OpenLineage,开放标准/项目,A/B,https://openlineage.io/,可借鉴 run/event/job/dataset 模型做资产依赖与影响分析。
+工作流引擎,Apache Airflow Documentation,官方文档/开源项目,A/C,https://airflow.apache.org/docs/,DAG、Task、Operator、Scheduler、Task Instance 概念成熟。
+工作流引擎,Argo Workflows Documentation,官方文档/开源项目,A/C,https://argo-workflows.readthedocs.io/,Kubernetes 原生工作流，支持 steps、DAG、artifact、模板化。
+工作流引擎,Prefect Documentation,官方文档/开源项目,A/C,https://docs.prefect.io/,Flow/Task/State/Deployment 设计适合参考执行状态、重试、失败。
+工作流引擎,Temporal Documentation,官方文档/开源项目,A/C,https://docs.temporal.io/,Durable Execution、Signals、Updates、versioning 适合长流程和人类介入。
+工作流引擎,Camunda Documentation,官方文档/商业开源生态,A/C,https://docs.camunda.io/,BPMN 执行、人工任务、流程实例修改、决策表。
+工作流引擎,Flowable Documentation,官方文档/开源项目,A/C,https://www.flowable.com/open-source/docs/,BPMN/CMMN/DMN 实现，可参考动态 Case 与人工任务。
+工作流引擎,Netflix Conductor Documentation,官方文档/开源项目,A/C,https://conductor-oss.github.io/conductor/documentation/,微服务编排、任务类型、动态 fork/join。
+数据/资产工作流,Dagster Documentation,官方文档/开源项目,A/C,https://docs.dagster.io/,Asset Graph 思想贴近“工作流加工资产”。
+数据/资产工作流,Kubeflow Pipelines Documentation,官方文档/开源项目,A/C,https://www.kubeflow.org/docs/components/pipelines/,ML pipeline 组件、DAG、artifact、metadata。
+数据/资产工作流,ML Metadata Guide - TensorFlow,官方文档/开源项目,A/C,https://www.tensorflow.org/tfx/guide/mlmd,Artifacts、Executions、Contexts 可启发资产/节点/运行记录模型。
+数据流/可追溯,Apache NiFi Documentation,官方文档/开源项目,A/C,https://nifi.apache.org/docs.html,可视化流程和数据 provenance 成熟。
+知识/资产,DataHub Documentation,官方文档/开源项目,A/C,https://datahubproject.io/docs/,元数据平台、血缘、搜索、治理。
+知识/资产,Marquez Documentation,官方文档/开源项目,A/C,https://marquezproject.github.io/marquez/,OpenLineage 元数据服务实现。
+知识/资产,OpenMetadata Documentation,官方文档/开源项目,A/C,https://docs.open-metadata.org/,数据资产目录、血缘、治理。
+可视化节点工具,Node-RED Documentation,官方文档/开源项目,A/C,https://nodered.org/docs/,典型 flow-based programming；节点、连线、上下文、节点库。
+可视化节点工具,Node-RED Library,官方生态,A/C,https://flows.nodered.org/,可参考节点包、示例 Flow、复用方式。
+可视化节点工具,n8n Documentation,官方文档/开源项目,A/C,https://docs.n8n.io/,自动化工作流、节点、触发器、执行记录、社区节点。
+可视化节点工具,n8n Community Nodes,官方文档/生态,A/C,https://docs.n8n.io/integrations/community-nodes/,可参考插件/节点扩展、安装、风险提示。
+AI工作流平台,Dify Documentation,官方文档/开源项目,A/C,https://docs.dify.ai/,LLM 应用、Agent、Workflow、知识库、多模型接入。
+AI工作流平台,Flowise Documentation,官方文档/开源项目,A/C,https://docs.flowiseai.com/,低代码 LLM 应用构建，Chatflow、Agentflow、节点化组件。
+AI工作流平台,Langflow Documentation,官方文档/开源项目,A/C,https://docs.langflow.org/,可视化构建 AI 应用、组件、playground、API 发布。
+多模态节点工具,ComfyUI GitHub,官方仓库/开源项目,C,https://github.com/comfyanonymous/ComfyUI,图像生成领域节点式工作流代表。
+多模态节点工具,ComfyUI Docs,官方/社区文档,C,https://docs.comfy.org/,观察多模态 AI 工作流如何组织模型、图像、视频、音频和参数。
+多模态节点工具,ComfyUI Manager,开源生态工具,C/D,https://github.com/ltdrdata/ComfyUI-Manager,自定义节点管理器，可参考节点安装、启用、禁用、更新。
+节点编辑器库,React Flow / XYFlow Documentation,官方文档/开源库,A/C,https://reactflow.dev/,实现节点画布、边、拖拽、布局、子流、交互。
+节点编辑器库,Rete.js Documentation,官方文档/开源库,A/C,https://retejs.org/docs/,可视化编程框架，可参考节点编辑器、插件系统、数据流执行。
+Agent工作流,LangGraph Documentation,官方文档/开源项目,A/C,https://langchain-ai.github.io/langgraph/,StateGraph、持久化、human-in-the-loop、checkpoint、time travel、分支回放。
+Agent工作流,LangGraph Platform Docs,官方文档/平台,A/C,https://docs.langchain.com/langgraph-platform/,部署、线程、运行、状态、可观察性。
+Agent工作流,LlamaIndex Workflows,官方文档/开源项目,A/C,https://docs.llamaindex.ai/en/stable/module_guides/workflow/,事件驱动步骤、上下文、状态管理。
+Agent工作流,Microsoft AutoGen Documentation,官方文档/开源项目,A/C,https://microsoft.github.io/autogen/,多 Agent 协作、工具调用、人类参与。
+Agent工作流,CrewAI Documentation,官方文档/开源项目,A/C,https://docs.crewai.com/,Crew/Agent/Task/Flow 概念。
+Agent工作流,Haystack Pipelines,官方文档/开源项目,A/C,https://docs.haystack.deepset.ai/docs/pipelines,组件管道、RAG、文档处理。
+MCP/工具接入,Model Context Protocol Documentation,官方文档/开放协议,A,https://modelcontextprotocol.io/,工具、资源、提示词、Server/Client 等协议核心。
+MCP/工具接入,MCP Specification,官方规范,A,https://modelcontextprotocol.io/specification/,Tool、Resource、Prompt、Transport、Authorization 等具体边界。
+MCP/工具接入,MCP Servers Repository,官方/社区仓库,A/C,https://github.com/modelcontextprotocol/servers,观察官方与社区 MCP Server 如何组织、暴露能力。
+MCP/工具接入,Docker MCP Catalog / Toolkit,官方文档/生态,A/C,https://docs.docker.com/ai/mcp-catalog-and-toolkit/,MCP Server 本地/容器化部署与管理。
+MCP/工具接入,MCPHub GitHub,开源项目,C,https://github.com/samanhappy/mcphub,多 MCP Server 管理与聚合。
+版本/协作,Git Documentation,官方文档,A,https://git-scm.com/doc,代码和文档快照版本管理基础。
+版本/协作,GitHub Docs Pull Requests,官方文档,A,https://docs.github.com/en/pull-requests,PR、review、讨论、合并是工作流变更提案参考模型。
+版本/协作,GitHub Docs Issues and Projects,官方文档,A,https://docs.github.com/en/issues,Issue、Project、任务跟踪可作为工作流节点与任务资产。
+版本/协作,GitHub Flow,官方指南,A,https://docs.github.com/en/get-started/using-github/github-flow,轻量分支协作模型，可借鉴“变更提案→评审→合并”。
+版本/协作,DVC Documentation,官方文档/开源项目,A/C,https://dvc.org/doc,数据、模型、实验、pipeline 版本管理。
+版本/协作,lakeFS Documentation,官方文档/开源项目,A/C,https://docs.lakefs.io/,Git-like 数据版本管理。
+实时协作,Yjs Documentation,官方文档/开源项目,A/C,https://docs.yjs.dev/,CRDT 实时协作基础。
+实时协作,Automerge Documentation,官方文档/开源项目,A/C,https://automerge.org/docs/,本地优先协作和 CRDT。
+本地优先,Local-first software - Ink & Switch,研究文章,B/D,https://www.inkandswitch.com/local-first/,本地优先、用户拥有数据、同步协作理念。
