@@ -225,6 +225,7 @@ pnpm test:live:github
 | `docs/` | 工程文档目录，包含运行手册、V1 覆盖矩阵和完成审计报告。 |
 | `doc/` | 早期核心想法、问题记录和方案草稿，用于保留设计演进过程。 |
 | `docker/` | 可选基础设施配置，目前提供 Postgres 和 Redis 的 Docker Compose 文件。 |
+| `config/` | 本地公开配置示例，目前保存 GitHub App 的公开 Client ID；不要在此目录提交 Client Secret 或 Private Key。 |
 | `prisma/` | Prisma schema 草案，描述未来替换到 PostgreSQL 时的数据模型边界。 |
 | `探索/` | 前期调研资料目录，用于保存毕业设计探索阶段材料。 |
 | `探索-1/` | 记忆机制、Context Pack、Codex 工作空间等方向的进一步调研和头脑风暴材料。 |

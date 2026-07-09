@@ -1,4 +1,5 @@
 import { makeRoute, send } from '../http.mjs';
+import { readLocalGithubAppConfig } from '../config.mjs';
 import { addTrace, mutate, owner } from '../state.mjs';
 import { hashString, now } from '../../../../packages/shared/index.mjs';
 
@@ -8,7 +9,7 @@ export const githubOauthV11Routes = [
 ];
 
 async function startDeviceFlow({ res, body }) {
-  const clientId = process.env.GITHUB_OAUTH_CLIENT_ID || body.client_id || '';
+  const clientId = githubClientId(body);
   if (!clientId && body.mock !== true) return send(res, 400, {
     error: 'configuration_required',
     message: '请先设置 GITHUB_OAUTH_CLIENT_ID，或在演示中传入 mock:true。'
@@ -31,7 +32,7 @@ async function startDeviceFlow({ res, body }) {
 async function pollDeviceFlow({ res, body }) {
   if (body.mock_status === 'pending') return send(res, 202, { error: 'authorization_pending', interval: 5 });
   if (body.mock_status === 'error') return send(res, 400, { error: body.error || 'access_denied' });
-  const clientId = process.env.GITHUB_OAUTH_CLIENT_ID || body.client_id || '';
+  const clientId = githubClientId(body);
   if (clientId && body.mock !== true && !body.access_token) {
     const polled = await githubPollToken(clientId, body.device_code);
     if (!polled.ok) return send(res, polled.status, polled.payload);
@@ -75,6 +76,10 @@ async function pollDeviceFlow({ res, body }) {
     return { connected: true, account, credential_ref: { ...credential, encrypted_value: '***MASKED***' } };
   });
   return send(res, 200, result);
+}
+
+function githubClientId(body = {}) {
+  return process.env.GITHUB_OAUTH_CLIENT_ID || body.client_id || readLocalGithubAppConfig().oauth_client_id || '';
 }
 
 async function githubDeviceCode(clientId, scope) {

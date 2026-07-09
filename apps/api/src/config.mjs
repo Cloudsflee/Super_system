@@ -1,4 +1,5 @@
 import path from 'node:path';
+import fs from 'node:fs';
 
 export const ROOT = path.resolve(process.cwd());
 export const AIWS_HOME = process.env.AIWS_HOME ? path.resolve(process.env.AIWS_HOME) : path.join(ROOT, '.ai-workspace');
@@ -7,6 +8,7 @@ export const ARTIFACT_DIR = path.join(AIWS_HOME, 'artifacts');
 export const STATE_FILE = path.join(DATA_DIR, 'state.json');
 export const WEB_DIR = path.join(ROOT, 'apps', 'web');
 export const PORT = Number(process.env.PORT || process.env.AIWS_PORT || 4317);
+export const LOCAL_GITHUB_APP_CONFIG = process.env.AIWS_GITHUB_APP_CONFIG ? path.resolve(process.env.AIWS_GITHUB_APP_CONFIG) : path.join(ROOT, 'config', 'github-app.local.example.json');
 
 export const collections = [
   'users', 'sessions', 'connected_accounts', 'credential_refs', 'github_repositories',
@@ -17,3 +19,9 @@ export const collections = [
   'human_reviews', 'runner_memory_candidates', 'test_results',
   'change_proposals', 'submissions', 'codex_profiles', 'integration_statuses'
 ];
+
+export function readLocalGithubAppConfig() {
+  if (!fs.existsSync(LOCAL_GITHUB_APP_CONFIG)) return {};
+  try { return JSON.parse(fs.readFileSync(LOCAL_GITHUB_APP_CONFIG, 'utf8')).github || {}; }
+  catch { return {}; }
+}

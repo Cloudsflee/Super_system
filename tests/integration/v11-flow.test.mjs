@@ -6,7 +6,9 @@ import path from 'node:path';
 
 const port = 4573;
 const testHome = fs.mkdtempSync(path.join(os.tmpdir(), 'aiws-v11-home-'));
-const child = spawn(process.execPath, ['apps/api/server.mjs'], { env: { ...process.env, AIWS_PORT: String(port), AIWS_HOME: testHome, NODE_ENV: 'test', GITHUB_OAUTH_CLIENT_ID: '' }, stdio: ['ignore', 'pipe', 'pipe'] });
+const emptyGithubConfig = path.join(testHome, 'empty-github-app.json');
+fs.writeFileSync(emptyGithubConfig, '{"github":{}}', 'utf8');
+const child = spawn(process.execPath, ['apps/api/server.mjs'], { env: { ...process.env, AIWS_PORT: String(port), AIWS_HOME: testHome, AIWS_GITHUB_APP_CONFIG: emptyGithubConfig, NODE_ENV: 'test', GITHUB_OAUTH_CLIENT_ID: '' }, stdio: ['ignore', 'pipe', 'pipe'] });
 await waitForServer(port);
 try {
   const missingOauth = await api('/integrations/github/oauth/device/start', { method: 'POST', body: {} }, 400);
