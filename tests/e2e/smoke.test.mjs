@@ -1,0 +1,20 @@
+import assert from 'node:assert/strict';
+import fs from 'node:fs';
+
+for (const file of ['apps/web/index.html', 'apps/web/app.js', 'apps/web/styles.css', 'apps/web/src/assist-ui.js']) assert.ok(fs.existsSync(file), `${file} exists`);
+const html = fs.readFileSync('apps/web/index.html', 'utf8');
+assert.ok(html.includes('Codex Assist'), 'assist panel exists');
+assert.ok(html.includes('busy-overlay'), 'busy overlay exists');
+assert.ok(html.includes('shortcut-panel'), 'shortcut help exists');
+assert.ok(html.includes('Workflow Canvas'), 'workflow nav exists');
+const app = fs.readFileSync('apps/web/app.js', 'utf8');
+for (const keyword of ['Project Wizard', 'previewContext', 'startRun', 'cancelRun', 'githubPr', 'Tool Registry', 'renderAssist', 'Sufficiency', 'bindShortcuts', 'withBusy']) assert.ok(app.includes(keyword), `${keyword} wired`);
+const nodeView = fs.readFileSync('apps/web/src/views/node.js', 'utf8');
+assert.ok(nodeView.includes('Node Contract 编辑器'));
+assert.ok(nodeView.includes('contract-criteria'));
+const contextView = fs.readFileSync('apps/web/src/views/context.js', 'utf8');
+assert.ok(contextView.includes('充分性 Gate'));
+const runnerView = fs.readFileSync('apps/web/src/views/runner.js', 'utf8');
+assert.ok(runnerView.includes('CodexRunner'));
+assert.ok(runnerView.includes('cancel-run'));
+console.log('e2e smoke tests passed');

@@ -1,0 +1,27 @@
+import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
+import { parseRemoteUrl } from '../../packages/git-tools/src/index.mjs';
+import { mockHealthCheck } from '../../packages/mcp-bridge/src/index.mjs';
+import { CodexRunner, ensureAgentsBlock, MockRunner } from '../../packages/runner-adapters/src/index.mjs';
+import { providerOrder } from '../../packages/context-pack/src/index.mjs';
+import { authorityOrder } from '../../packages/memory-policy/src/index.mjs';
+
+assert.equal(parseRemoteUrl('git@github.com:owner/repo.git').owner, 'owner');
+assert.equal(mockHealthCheck({ name: 'demo' }).status, 'healthy');
+assert.equal(new MockRunner().name, 'MockRunner');
+assert.ok(new CodexRunner().buildArgs({ cwd: '.', promptFile: 'prompt.md', outputSchemaFile: 'schema.json' }).includes('--json'));
+assert.ok(providerOrder().includes('node_contract'));
+assert.ok(authorityOrder.includes('confirmed_asset_or_decision'));
+
+const repo = fs.mkdtempSync(path.join(os.tmpdir(), 'aiws-agents-'));
+fs.writeFileSync(path.join(repo, 'AGENTS.md'), '# User Rules\n\nKeep this.\n', 'utf8');
+const result = ensureAgentsBlock(repo);
+assert.equal(result.changed, true);
+const agents = fs.readFileSync(path.join(repo, 'AGENTS.md'), 'utf8');
+assert.ok(agents.includes('Keep this.'));
+assert.ok(agents.includes('AIWS:BEGIN'));
+assert.ok(agents.includes('Confirmed Asset'));
+fs.rmSync(repo, { recursive: true, force: true });
+console.log('package facade tests passed');

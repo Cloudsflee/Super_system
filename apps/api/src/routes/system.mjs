@@ -1,0 +1,45 @@
+import { command, makeRoute, send } from '../http.mjs';
+import { ROOT, STATE_FILE } from '../config.mjs';
+import { addTrace, mutate, owner, readState } from '../state.mjs';
+import { createLocalOwner, now, pick } from '../../../../packages/shared/index.mjs';
+
+export const systemRoutes = [
+  makeRoute('GET', '/health', async ({ res }) => {
+    const state = await readState();
+    const git = command('git', ['--version'], ROOT, 3000);
+    const codex = command('codex', ['--version'], ROOT, 3000);
+    const docker = command('docker', ['--version'], ROOT, 3000);
+    return send(res, 200, {
+      status: 'ok', api: { healthy: true }, db: { healthy: true, mode: 'json-local', state_file: STATE_FILE }, redis: { healthy: true, mode: 'in-process-noop' },
+      git: { healthy: git.ok, version: git.stdout.trim() || git.error },
+      codex: { healthy: codex.ok, version: codex.stdout.trim() || codex.error, degraded_ok: true },
+      docker: { healthy: docker.ok, version: docker.stdout.trim() || docker.error, degraded_ok: true },
+      local_owner: state.users[0] ? pick(state.users[0], ['id', 'display_name', 'role', 'auth_mode']) : null
+    });
+  }),
+  makeRoute('GET', '/api/state', async ({ res }) => send(res, 200, await readState())),
+  makeRoute('GET', '/account/me', async ({ res }) => {
+    const state = await readState();
+    const user = owner(state);
+    return send(res, 200, { user, session: state.sessions.find((s) => s.user_id === user.id), connected_accounts: state.connected_accounts.filter((a) => a.user_id === user.id), github: state.connected_accounts.find((a) => a.user_id === user.id && a.provider === 'github') || null });
+  }),
+  makeRoute('POST', '/account/setup-local-owner', async ({ res, body }) => {
+    const result = await mutate((state) => {
+      let user = owner(state);
+      if (!user) {
+        const created = createLocalOwner(body.display_name || 'Local Owner');
+        state.users.push(created.user); state.sessions.push(created.session); user = created.user;
+      }
+      user.display_name = body.display_name || user.display_name;
+      user.email = body.email || user.email;
+      user.updated_at = now();
+      addTrace(state, 'human.reviewed', { summary: 'Local Owner Account 已创建/更新。' }, user.id);
+      return { user, session: state.sessions.find((s) => s.user_id === user.id) };
+    });
+    return send(res, 200, result);
+  }),
+  makeRoute('GET', '/review', async ({ res }) => {
+    const state = await readState();
+    return send(res, 200, { projects: state.projects, workflows: state.workflows, nodes: state.workflow_nodes, runs: state.node_runs, traces: state.traces.slice(-500), assets: state.assets, decisions: state.decisions, digests: state.digests, code_changes: state.code_changes, open_questions: state.workspaces.flatMap((w) => (w.open_questions || []).map((q) => ({ workspace_id: w.id, question: q }))) });
+  })
+];

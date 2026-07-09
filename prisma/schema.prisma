@@ -1,0 +1,380 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id          String   @id
+  displayName String   @map("display_name")
+  email       String   @default("")
+  role        String   @default("owner")
+  authMode    String   @map("auth_mode")
+  createdAt   DateTime @map("created_at")
+  updatedAt   DateTime @map("updated_at")
+  projects    Project[]
+
+  @@map("users")
+}
+
+model Project {
+  id                 String   @id
+  title              String
+  goal               String
+  role               String   @default("")
+  background         String   @default("")
+  status             String
+  workspaceRoot      String   @map("workspace_root")
+  repoPath           String   @map("repo_path")
+  currentWorkspaceId String   @map("current_workspace_id")
+  settings           Json
+  createdByUserId    String   @map("created_by_user_id")
+  createdBy          User     @relation(fields: [createdByUserId], references: [id])
+  createdAt          DateTime @map("created_at")
+  updatedAt          DateTime @map("updated_at")
+  workspaces         Workspace[]
+  workflows          Workflow[]
+
+  @@map("projects")
+}
+
+model Workspace {
+  id             String   @id
+  projectId      String   @map("project_id")
+  project        Project  @relation(fields: [projectId], references: [id])
+  parentId       String?  @map("parent_workspace_id")
+  workflowNodeId String?  @map("workflow_node_id")
+  type           String
+  title          String
+  goal           String
+  status         String
+  currentDigestId String? @map("current_digest_id")
+  openQuestions  Json    @map("open_questions")
+  createdAt       DateTime @map("created_at")
+  updatedAt       DateTime @map("updated_at")
+
+  @@map("workspaces")
+}
+
+model Workflow {
+  id          String   @id
+  projectId   String   @map("project_id")
+  project     Project  @relation(fields: [projectId], references: [id])
+  workspaceId String   @map("workspace_id")
+  title       String
+  version     Int
+  status      String
+  graphJson   Json     @map("graph_json")
+  generatedBy String   @map("generated_by")
+  confirmedByUserId String? @map("confirmed_by_user_id")
+  createdAt   DateTime @map("created_at")
+  updatedAt   DateTime @map("updated_at")
+
+  @@map("workflows")
+}
+
+model NodeContract {
+  id                 String   @id
+  nodeId             String   @map("node_id")
+  version            Int
+  nodeGoal           String   @map("node_goal")
+  expectedInputs     Json     @map("expected_inputs")
+  expectedOutputs    Json     @map("expected_outputs")
+  acceptanceCriteria Json     @map("acceptance_criteria")
+  requiredContext    Json     @map("required_context")
+  allowedTools       Json     @map("allowed_tools")
+  assetOutputTypes   String[] @map("asset_output_types")
+  failurePolicy      Json     @map("failure_policy")
+  reviewPolicy       Json     @map("review_policy")
+  status             String
+  confirmedByUserId  String?  @map("confirmed_by_user_id")
+  createdAt          DateTime @map("created_at")
+  updatedAt          DateTime @map("updated_at")
+
+  @@map("node_contracts")
+}
+
+model TraceEvent {
+  id          String   @id
+  eventType   String   @map("event_type")
+  actorType   String   @map("actor_type")
+  actorId     String?  @map("actor_id")
+  projectId   String?  @map("project_id")
+  workspaceId String?  @map("workspace_id")
+  nodeId      String?  @map("node_id")
+  runId       String?  @map("run_id")
+  summary     String
+  data        Json
+  occurredAt  DateTime @map("occurred_at")
+
+  @@map("trace_events")
+}
+
+model Asset {
+  id          String   @id
+  projectId   String   @map("project_id")
+  workspaceId String?  @map("workspace_id")
+  nodeId      String?  @map("node_id")
+  runId       String?  @map("run_id")
+  assetType   String   @map("asset_type")
+  title       String
+  summary     String
+  status      String
+  evidenceRefs Json    @map("evidence_refs")
+  currentVersionId String? @map("current_version_id")
+  createdAt   DateTime @map("created_at")
+  updatedAt   DateTime @map("updated_at")
+
+  @@map("assets")
+}
+
+
+model ConnectedAccount {
+  id                 String   @id
+  userId             String   @map("user_id")
+  provider           String
+  providerAccountId  String   @map("provider_account_id")
+  login              String
+  displayName        String   @map("display_name")
+  credentialRefId    String?  @map("credential_ref_id")
+  scopes             String[]
+  permissionsSummary Json     @map("permissions_summary")
+  status             String
+  createdAt          DateTime @map("created_at")
+  updatedAt          DateTime @map("updated_at")
+
+  @@map("connected_accounts")
+}
+
+model CredentialRef {
+  id            String   @id
+  ownerUserId   String   @map("owner_user_id")
+  kind          String
+  provider      String
+  refName       String   @map("ref_name")
+  encryptedValue String  @map("encrypted_value")
+  scopes        String[]
+  createdAt     DateTime @map("created_at")
+  updatedAt     DateTime @map("updated_at")
+
+  @@map("credential_refs")
+}
+
+model WorkflowNode {
+  id                String   @id
+  workflowId        String   @map("workflow_id")
+  workspaceId       String?  @map("workspace_id")
+  type              String
+  title             String
+  goal              String
+  status            String
+  orderIndex        Int      @map("order_index")
+  dependencies      Json
+  currentContractId String?  @map("current_contract_id")
+  templateOutputs   String[] @map("template_outputs")
+  position          Json
+
+  @@map("workflow_nodes")
+}
+
+model ContextPack {
+  id                    String   @id
+  sourceWorkspaceId     String   @map("source_workspace_id")
+  receiverType          String   @map("receiver_type")
+  receiverName          String   @map("receiver_name")
+  purpose               String
+  version               Int
+  status                String
+  contentJson           Json     @map("content_json")
+  memoryManifest        Json     @map("memory_manifest")
+  sufficiencyCheckId    String?  @map("sufficiency_check_id")
+  contentFileRefId      String?  @map("content_file_ref_id")
+  markdownFileRefId     String?  @map("markdown_file_ref_id")
+  includedAssetVersions Json     @map("included_asset_versions")
+  tokenEstimate         Int      @map("token_estimate")
+  qualityCheck          Json     @map("quality_check")
+  confirmedByUserId     String?  @map("confirmed_by_user_id")
+  createdAt             DateTime @map("created_at")
+  updatedAt             DateTime @map("updated_at")
+
+  @@map("context_packs")
+}
+
+model ContextSufficiencyCheck {
+  id                 String   @id
+  projectId          String   @map("project_id")
+  workspaceId        String?  @map("workspace_id")
+  nodeId             String?  @map("node_id")
+  targetType         String   @map("target_type")
+  targetId           String?  @map("target_id")
+  status             String
+  missingSlots       Json     @map("missing_slots")
+  conflicts          Json
+  staleRefs          Json     @map("stale_refs")
+  includedMemoryRefs Json     @map("included_memory_refs")
+  excludedMemoryRefs Json     @map("excluded_memory_refs")
+  tokenEstimate      Int      @map("token_estimate")
+  tokenBudget        Int      @map("token_budget")
+  createdAt          DateTime @map("created_at")
+
+  @@map("context_sufficiency_checks")
+}
+
+model AssistSession {
+  id              String   @id
+  targetType      String   @map("target_type")
+  targetId        String?  @map("target_id")
+  fieldKey        String?  @map("field_key")
+  userPrompt      String   @map("user_prompt")
+  status          String
+  result          Json
+  assistContextPack Json   @map("assist_context_pack")
+  createdByUserId String   @map("created_by_user_id")
+  appliedAt       DateTime? @map("applied_at")
+  rejectedAt      DateTime? @map("rejected_at")
+  createdAt       DateTime @map("created_at")
+  updatedAt       DateTime @map("updated_at")
+
+  @@map("assist_sessions")
+}
+
+model NodeRun {
+  id                String   @id
+  projectId         String   @map("project_id")
+  workspaceId       String   @map("workspace_id")
+  nodeId            String   @map("node_id")
+  contextPackId     String   @map("context_pack_id")
+  runner            String
+  status            String
+  summary           String
+  resultJson        Json?    @map("result_json")
+  rawOutputFileRefId String? @map("raw_output_file_ref_id")
+  createdByUserId   String   @map("created_by_user_id")
+  startedAt         DateTime? @map("started_at")
+  completedAt       DateTime? @map("completed_at")
+  createdAt         DateTime @map("created_at")
+  updatedAt         DateTime @map("updated_at")
+
+  @@map("node_runs")
+}
+
+model FileRef {
+  id           String   @id
+  kind         String
+  absolutePath String   @map("absolute_path")
+  relativePath String   @map("relative_path")
+  sha256       String
+  sizeBytes    Int      @map("size_bytes")
+  contentType  String   @map("content_type")
+  meta         Json
+  createdAt    DateTime @map("created_at")
+
+  @@map("file_refs")
+}
+
+model AssetVersion {
+  id                String   @id
+  assetId           String   @map("asset_id")
+  version           Int
+  title             String
+  summary           String
+  body              String
+  evidenceRefs      Json     @map("evidence_refs")
+  confirmedByUserId String?  @map("confirmed_by_user_id")
+  createdAt         DateTime @map("created_at")
+
+  @@map("asset_versions")
+}
+
+model DecisionRecord {
+  id                String   @id
+  projectId         String   @map("project_id")
+  workspaceId       String?  @map("workspace_id")
+  title             String
+  summary           String
+  rationale         String
+  status            String
+  evidenceRefs      Json     @map("evidence_refs")
+  confirmedByUserId String?  @map("confirmed_by_user_id")
+  createdAt         DateTime @map("created_at")
+  updatedAt         DateTime @map("updated_at")
+
+  @@map("decision_records")
+}
+
+model WorkspaceDigest {
+  id                String   @id
+  projectId         String   @map("project_id")
+  workspaceId       String   @map("workspace_id")
+  version           Int
+  status            String
+  summary           String
+  body              String
+  evidenceRefs      Json     @map("evidence_refs")
+  previousDigestId  String?  @map("previous_digest_id")
+  confirmedByUserId String?  @map("confirmed_by_user_id")
+  createdAt         DateTime @map("created_at")
+  updatedAt         DateTime @map("updated_at")
+
+  @@map("workspace_digests")
+}
+
+model CodeChange {
+  id                 String   @id
+  projectId          String   @map("project_id")
+  workspaceId        String?  @map("workspace_id")
+  nodeId             String?  @map("node_id")
+  runId              String?  @map("run_id")
+  repoPath           String   @map("repo_path")
+  baseBranch         String   @map("base_branch")
+  workBranch         String   @map("work_branch")
+  baseCommit         String   @map("base_commit")
+  headCommit         String   @map("head_commit")
+  status             String
+  changedFiles       Json     @map("changed_files")
+  diffFileRefId      String?  @map("diff_file_ref_id")
+  testResults        Json     @map("test_results")
+  commitMessage      String   @map("commit_message")
+  prBodyFileRefId    String?  @map("pr_body_file_ref_id")
+  prUrl              String   @map("pr_url")
+  committedByUserId  String?  @map("committed_by_user_id")
+  createdByUserId    String   @map("created_by_user_id")
+  createdAt          DateTime @map("created_at")
+  updatedAt          DateTime @map("updated_at")
+
+  @@map("code_changes")
+}
+
+model ToolDefinition {
+  id              String   @id
+  name            String
+  type            String
+  description     String
+  config          Json
+  enabled         Boolean
+  capabilities    String[]
+  permissions     Json
+  usageBoundary   String   @map("usage_boundary")
+  healthStatus    String   @map("health_status")
+  discoveredTools Json     @map("discovered_tools")
+  createdByUserId String   @map("created_by_user_id")
+  createdAt       DateTime @map("created_at")
+  updatedAt       DateTime @map("updated_at")
+
+  @@map("tool_definitions")
+}
+
+model HumanReview {
+  id          String   @id
+  targetType  String   @map("target_type")
+  targetId    String   @map("target_id")
+  action      String
+  reviewerId  String   @map("reviewer_id")
+  patch       Json
+  createdAt   DateTime @map("created_at")
+
+  @@map("human_reviews")
+}

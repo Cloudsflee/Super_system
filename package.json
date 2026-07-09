@@ -1,0 +1,28 @@
+{
+  "name": "ai-workspace-system-v1",
+  "version": "0.1.0",
+  "private": true,
+  "description": "本地优先 AI 协作工作空间系统 V1 工程化原型",
+  "type": "module",
+  "packageManager": "pnpm@10.14.0",
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "dev": "node apps/api/server.mjs",
+    "dev:api": "node apps/api/server.mjs",
+    "start": "node apps/api/server.mjs",
+    "test": "node tests/unit/shared.test.mjs && node tests/unit/packages.test.mjs",
+    "test:integration": "node tests/integration/api-flow.test.mjs && node tests/integration/git-flow.test.mjs && node tests/integration/tools-flow.test.mjs && node tests/integration/github-flow.test.mjs && node tests/integration/demo-flow.test.mjs",
+    "test:e2e": "node tests/e2e/smoke.test.mjs",
+    "test:e2e:smoke": "node tests/e2e/smoke.test.mjs",
+    "test:live:codex": "node tests/integration/codex-live.test.mjs",
+    "test:live:github": "node tests/integration/github-live.test.mjs",
+    "lint": "node scripts/lint.mjs",
+    "typecheck": "node scripts/typecheck.mjs",
+    "prisma:migrate:check": "node scripts/migrate-check.mjs",
+    "verify": "node scripts/verify.mjs",
+    "audit:acceptance": "node scripts/acceptance-audit.mjs"
+  }
+}

@@ -1,0 +1,7 @@
+{
+  "name": "@aiws/worker",
+  "version": "0.1.0",
+  "type": "module",
+  "main": "src/index.mjs",
+  "scripts": { "start": "node src/index.mjs" }
+}

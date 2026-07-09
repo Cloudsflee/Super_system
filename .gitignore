@@ -1,0 +1,8 @@
+node_modules/
+.ai-workspace/
+.ai-workspace-test-integration/
+coverage/
+dist/
+.env
+*.log
+.DS_Store
