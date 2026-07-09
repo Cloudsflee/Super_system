@@ -31,6 +31,16 @@ const checks = [
   ['Demo full chain', 'tests/integration/demo-flow.test.mjs', 'demo full-chain tests passed'],
   ['Runner cancel', 'apps/api/src/handlers/runners.mjs', 'cancelRunInState'],
   ['Completion audit', 'docs/completion-audit.md', 'V1 Definition of Done 对照']
+  ,['V1.1 dev plan', '开发计划v1.1.md', 'V1.1 目标']
+  ,['V1.1 test plan', '测试计划v1.1.md', '测试目标']
+  ,['Codex Dockerfile', 'docker/codex-runner.Dockerfile', '@openai/codex']
+  ,['GitHub OAuth V1.1', 'apps/api/src/routes/github-oauth-v11.mjs', '/integrations/github/oauth/device/start']
+  ,['cc-switch V1.1', 'apps/api/src/routes/integrations-v11.mjs', '/integrations/cc-switch/sync']
+  ,['Agent Sessions V1.1', 'apps/api/src/routes/agent-sessions-v11.mjs', '/agent-sessions/:id/submissions']
+  ,['Change Proposals V1.1', 'apps/api/src/routes/change-proposals-v11.mjs', '/change-proposals/:id/apply']
+  ,['Light UI V1.1', 'apps/web/styles/base.css', '--bg: #f7f3ea']
+  ,['Workflow Canvas V1.1', 'apps/web/src/views/workflow.js', 'workflow-stage']
+  ,['Approval Drawer V1.1', 'apps/web/index.html', 'approval-panel']
 ];
 for (const [name, file, needle] of checks) {
   assert.ok(fs.existsSync(file), `${name}: ${file} exists`);

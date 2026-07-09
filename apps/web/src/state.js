@@ -9,8 +9,16 @@ export const state = {
   selectedNodeId: null,
   selectedRunId: null,
   selectedContextPackId: null,
+  workflowViewport: { x: 0, y: 0, scale: 1 },
+  selectedWorkflowNodeId: null,
   review: null,
-  tools: []
+  tools: [],
+  codexStatus: null,
+  ccSwitchStatus: null,
+  githubStatus: null,
+  codexProfiles: [],
+  changeProposals: [],
+  agentSessions: []
 };
 export function setState(patch) { Object.assign(state, patch); }
 export function currentNode() { return state.project?.nodes?.find((node) => node.id === state.selectedNodeId) || state.project?.nodes?.[0] || null; }

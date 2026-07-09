@@ -8,11 +8,17 @@ import {
   buildMemoryManifest,
   buildSufficiencyCheck,
   createLocalOwner,
+  createAgentSession,
+  createChangeProposal,
   createProject,
+  createSubSubmission,
   defaultContractForNode,
   defaultTools,
+  approveProposal,
   makeAssetFromCandidate,
+  markProposalApplied,
   mergeSufficiencyIntoAssistResult,
+  rejectProposal,
   recommendWorkflow,
   validateNodeContract
 } from '../../packages/shared/index.mjs';
@@ -40,6 +46,24 @@ assert.ok(manifest.excluded.some((item) => item.ref === `asset:${stale.id}`), 's
 const ctx = buildContextPack({ state, project: created.project, workspace: created.workspace, node, contract });
 assert.equal(ctx.quality_check.passed, true, 'context pack quality should pass');
 assert.ok(ctx.content_json.runner_instruction.includes('Confirmed Asset'), 'runner instruction should mention confirmed facts');
+
+const topSession = createAgentSession({ projectId: created.project.id, workspaceId: created.workspace.id, scopeType: 'project', scopeId: created.project.id, actorId: user.id });
+const nodeSession = createAgentSession({ projectId: created.project.id, workspaceId: 'wsp_node', scopeType: 'node', scopeId: node.id, parentSessionId: topSession.id, actorId: user.id });
+assert.equal(nodeSession.parent_session_id, topSession.id);
+const submission = createSubSubmission({ projectId: created.project.id, workspaceId: 'wsp_node', nodeId: node.id, fromSessionId: nodeSession.id, toSessionId: topSession.id, summary: '节点提交摘要', actorId: user.id });
+state.submissions = [submission];
+const ctxWithSubmission = buildContextPack({ state, project: created.project, workspace: created.workspace, node: wf.nodes[0], contract });
+assert.equal(ctxWithSubmission.content_json.submissions.length, 1);
+
+const proposal = createChangeProposal({ projectId: created.project.id, nodeId: node.id, changeType: 'node_contract_patch', title: '审批测试', actorId: user.id });
+assert.equal(proposal.status, 'pending');
+approveProposal(proposal, user.id);
+assert.equal(proposal.status, 'approved');
+markProposalApplied(proposal, user.id);
+assert.equal(proposal.status, 'applied');
+const rejected = createChangeProposal({ projectId: created.project.id, changeType: 'runner', actorId: user.id });
+rejectProposal(rejected, user.id, 'no');
+assert.equal(rejected.status, 'rejected');
 
 state.runner_memory_candidates.push({ id: 'rmc_conflict', project_id: created.project.id, workspace_id: created.workspace.id, title: '不要使用 Confirmed Fact 的旧冲突记忆', summary: 'conflict with confirmed decision', scope: 'project', status: 'draft', freshness: Freshness.Disputed, tags: asset.tags, created_at: new Date().toISOString(), updated_at: new Date().toISOString() });
 const conflicted = buildSufficiencyCheck({ state, project: created.project, workspace: created.workspace, node, contract });

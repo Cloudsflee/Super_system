@@ -40,6 +40,6 @@ export const systemRoutes = [
   }),
   makeRoute('GET', '/review', async ({ res }) => {
     const state = await readState();
-    return send(res, 200, { projects: state.projects, workflows: state.workflows, nodes: state.workflow_nodes, runs: state.node_runs, traces: state.traces.slice(-500), assets: state.assets, decisions: state.decisions, digests: state.digests, code_changes: state.code_changes, open_questions: state.workspaces.flatMap((w) => (w.open_questions || []).map((q) => ({ workspace_id: w.id, question: q }))) });
+    return send(res, 200, { projects: state.projects, workflows: state.workflows, nodes: state.workflow_nodes, runs: state.node_runs, traces: state.traces.slice(-500), assets: state.assets, decisions: state.decisions, digests: state.digests, code_changes: state.code_changes, agent_sessions: state.agent_sessions, submissions: state.submissions, change_proposals: state.change_proposals, codex_profiles: state.codex_profiles, integrations: state.integration_statuses, open_questions: state.workspaces.flatMap((w) => (w.open_questions || []).map((q) => ({ workspace_id: w.id, question: q }))) });
   })
 ];

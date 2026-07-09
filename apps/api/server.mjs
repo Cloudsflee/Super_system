@@ -14,6 +14,10 @@ import { gitRoutes } from './src/routes/git.mjs';
 import { githubRoutes } from './src/routes/github.mjs';
 import { toolRoutes } from './src/routes/tools.mjs';
 import { demoRoutes } from './src/routes/demo.mjs';
+import { agentSessionV11Routes } from './src/routes/agent-sessions-v11.mjs';
+import { changeProposalV11Routes } from './src/routes/change-proposals-v11.mjs';
+import { githubOauthV11Routes } from './src/routes/github-oauth-v11.mjs';
+import { integrationV11Routes } from './src/routes/integrations-v11.mjs';
 import { maskSecret } from '../../packages/shared/index.mjs';
 
 await ensureRuntime();
@@ -27,6 +31,10 @@ const routes = [
   ...gitRoutes,
   ...githubRoutes,
   ...toolRoutes,
+  ...githubOauthV11Routes,
+  ...integrationV11Routes,
+  ...agentSessionV11Routes,
+  ...changeProposalV11Routes,
   ...demoRoutes
 ];
 
@@ -48,6 +56,16 @@ const server = http.createServer(async (req, res) => {
   const parsed = url.parse(req.url, true);
   const pathname = decodeURIComponent(parsed.pathname || '/');
   try {
+    if (req.method === 'OPTIONS') {
+      res.writeHead(204, {
+        'access-control-allow-origin': '*',
+        'access-control-allow-methods': 'GET,POST,PUT,PATCH,DELETE,OPTIONS',
+        'access-control-allow-headers': 'content-type, authorization',
+        'access-control-max-age': '86400'
+      });
+      res.end();
+      return;
+    }
     if (await serveStatic(req, res, pathname)) return;
     const handled = await dispatch(routes, { req, res, pathname, query: parsed.query });
     if (!handled) notFound(res);

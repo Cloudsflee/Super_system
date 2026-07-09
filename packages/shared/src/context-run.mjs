@@ -11,6 +11,7 @@ export function buildContextPack({ state, project, workspace, node, contract, pu
   const latestDigest = [...state.digests].reverse().find((d) => d.workspace_id === workspace?.id && d.status === 'confirmed') || null;
   const confirmedAssets = state.assets.filter((a) => a.project_id === project.id && a.status === AssetStatus.Confirmed);
   const decisions = state.decisions.filter((d) => d.project_id === project.id && d.status !== 'superseded');
+  const submissions = (state.submissions || []).filter((item) => item.project_id === project.id && (!node || item.node_id !== node.id)).slice(-8);
   const availableTools = (state.tools || []).filter((t) => t.enabled !== false && (contract.allowed_tools || []).some((tool) => tool === t.id || tool === t.name || (t.capabilities || []).includes(tool)));
   const content = {
     schema_version: 'aiws.context_pack.v1', project: pick(project, ['id', 'title', 'goal', 'role', 'background', 'workspace_root', 'repo_path']),
@@ -20,6 +21,7 @@ export function buildContextPack({ state, project, workspace, node, contract, pu
     latest_digest: latestDigest ? pick(latestDigest, ['id', 'version', 'summary', 'body', 'evidence_refs']) : null,
     confirmed_assets: confirmedAssets.map((a) => pick(a, ['id', 'asset_type', 'title', 'summary', 'evidence_refs', 'tags', 'created_at'])),
     decisions: decisions.map((d) => pick(d, ['id', 'title', 'summary', 'rationale', 'evidence_refs'])),
+    submissions: submissions.map((s) => pick(s, ['id', 'title', 'summary', 'changes', 'evidence_refs', 'risks', 'from_session_id', 'to_session_id', 'created_at'])),
     available_tools: availableTools.map((t) => ({ id: t.id, name: t.name, type: t.type, health_status: t.health_status, permissions: t.permissions || {}, usage_boundary: t.usage_boundary || '仅在 Node Contract 允许范围内使用' })),
     git: { repo_path: project.repo_path || project.workspace_root || '', branch_strategy: 'aiws/{node_slug}-{short_run_id}', dirty_policy: 'commit 型节点默认阻塞 dirty repo；演示模式允许捕获 baseline。' },
     return_schema_ref: 'aiws.node_run_result.v1', result_schema: nodeRunResultSchema(), sufficiency_check: sufficiency, memory_manifest: manifest

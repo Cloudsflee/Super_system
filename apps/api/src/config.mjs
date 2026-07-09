@@ -14,5 +14,6 @@ export const collections = [
   'context_packs', 'context_sufficiency_checks', 'file_refs', 'traces',
   'assets', 'asset_versions', 'asset_relations', 'decisions', 'digests',
   'node_runs', 'agent_sessions', 'code_changes', 'tools', 'assist_sessions',
-  'human_reviews', 'runner_memory_candidates', 'test_results'
+  'human_reviews', 'runner_memory_candidates', 'test_results',
+  'change_proposals', 'submissions', 'codex_profiles', 'integration_statuses'
 ];

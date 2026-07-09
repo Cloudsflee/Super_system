@@ -4,10 +4,11 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>AI Workspace System V1</title>
-    <link rel="stylesheet" href="/styles.css" />
+    <link rel="stylesheet" href="./styles.css" />
   </head>
   <body>
     <div id="app-shell">
+      <button id="sidebar-toggle" class="sidebar-toggle" title="展开/收起侧边栏">☰</button>
       <aside class="sidebar">
         <div class="brand">
           <div class="logo">AI</div>
@@ -78,6 +79,18 @@
           <div id="assist-result" class="assist-result empty">Assist 结果会显示在这里；用户确认前不会写入正式对象。</div>
         </div>
       </aside>
+      <aside id="approval-panel" class="approval-panel">
+        <div class="assist-head">
+          <div>
+            <span class="eyebrow">Change Approval</span>
+            <h3>本质变更审批</h3>
+          </div>
+          <button id="approval-close-btn" class="icon">×</button>
+        </div>
+        <div id="approval-body" class="assist-body">
+          <div class="assist-result empty">待审批的 Node Contract、Runner、Codex 配置等本质变更会显示在这里。</div>
+        </div>
+      </aside>
       <div id="shortcut-panel" class="shortcut-panel">
         <h3>快捷键</h3>
         <p><span class="kbd">1-9/0</span> 快速切换左侧视图</p>
@@ -86,6 +99,6 @@
         <p><span class="kbd">?</span> 显示/隐藏本帮助</p>
       </div>
     </div>
-    <script type="module" src="/app.js"></script>
+    <script src="./boot.js"></script>
   </body>
 </html>

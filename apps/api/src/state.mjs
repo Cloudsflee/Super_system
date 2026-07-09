@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 import fsp from 'node:fs/promises';
 import path from 'node:path';
-import { createLocalOwner, defaultTools, hashString, id, makeTrace, maskSecretsDeep, now } from '../../../packages/shared/index.mjs';
+import { createLocalOwner, defaultCodexProfiles, defaultTools, hashString, id, makeTrace, maskSecretsDeep, now } from '../../../packages/shared/index.mjs';
 import { ARTIFACT_DIR, DATA_DIR, STATE_FILE, collections } from './config.mjs';
 
 export async function ensureRuntime() {
@@ -13,6 +13,7 @@ export async function ensureRuntime() {
   for (const key of collections) if (!Array.isArray(state[key])) { state[key] = []; changed = true; }
   if (!state.users.length) { const { user, session } = createLocalOwner(); state.users.push(user); state.sessions.push(session); changed = true; }
   if (!state.tools.length) { state.tools.push(...defaultTools(state.users[0].id)); changed = true; }
+  if (!state.codex_profiles.length) { state.codex_profiles.push(...defaultCodexProfiles(state.users[0]?.id)); changed = true; }
   if (changed) await writeState(state);
 }
 
@@ -24,6 +25,7 @@ function bootstrapState() {
   state.users.push(user);
   state.sessions.push(session);
   state.tools.push(...defaultTools(user.id));
+  state.codex_profiles.push(...defaultCodexProfiles(user.id));
   state.traces.push(makeTrace('human.reviewed', { summary: '首次启动：创建 Local Owner Account。' }, { type: 'system', id: user.id }));
   return state;
 }

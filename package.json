@@ -14,7 +14,7 @@
     "dev:api": "node apps/api/server.mjs",
     "start": "node apps/api/server.mjs",
     "test": "node tests/unit/shared.test.mjs && node tests/unit/packages.test.mjs",
-    "test:integration": "node tests/integration/api-flow.test.mjs && node tests/integration/git-flow.test.mjs && node tests/integration/tools-flow.test.mjs && node tests/integration/github-flow.test.mjs && node tests/integration/demo-flow.test.mjs",
+    "test:integration": "node tests/integration/api-flow.test.mjs && node tests/integration/git-flow.test.mjs && node tests/integration/tools-flow.test.mjs && node tests/integration/github-flow.test.mjs && node tests/integration/demo-flow.test.mjs && node tests/integration/v11-flow.test.mjs",
     "test:e2e": "node tests/e2e/smoke.test.mjs",
     "test:e2e:smoke": "node tests/e2e/smoke.test.mjs",
     "test:live:codex": "node tests/integration/codex-live.test.mjs",

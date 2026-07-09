@@ -16,5 +16,8 @@ export const TRACE_EVENTS = Object.freeze([
   'runner.completed', 'runner.failed', 'runner.cancelled', 'file.snapshot.before', 'file.snapshot.after', 'file.changed',
   'git.diff.captured', 'git.branch.created', 'git.commit.created', 'git.pr.created', 'test.started', 'test.completed',
   'asset_candidate.created', 'asset.confirmed', 'asset.rejected', 'decision.proposed', 'decision.accepted', 'digest.generated', 'digest.confirmed',
-  'node.completed', 'node.blocked', 'human.reviewed', 'tool.health.checked'
+  'node.completed', 'node.blocked', 'human.reviewed', 'tool.health.checked',
+  'integration.checked', 'integration.synced', 'integration.degraded',
+  'agent_session.created', 'agent_session.submission.created',
+  'change_proposal.created', 'change_proposal.approved', 'change_proposal.rejected', 'change_proposal.applied'
 ]);

@@ -48,6 +48,8 @@ corepack pnpm dev
 http://localhost:4317
 ```
 
+请优先从上面的地址打开页面，不要直接双击 `apps/web/index.html`。本项目的前端按钮依赖本地 API 与浏览器模块脚本；直接打开 HTML 或使用其他静态服务器时，如果 API 未连到 `localhost:4317`，会出现页面显示但按钮无响应或操作失败。
+
 服务会同时提供：
 
 - 本地 HTTP API
@@ -354,18 +356,38 @@ npm run dev
 $env:AIWS_PORT="4320"; pnpm dev
 ```
 
-### 14.3 页面没有旧数据或演示数据
+如果改了端口，请从对应端口打开页面，例如 `http://localhost:4320`。
+
+### 14.3 页面能打开，但按钮点了没反应
+
+优先检查打开方式：
+
+```text
+正确：http://localhost:4317
+不要：直接双击 apps/web/index.html
+不要：只用 Live Server 打开 apps/web
+```
+
+然后在浏览器里按 `F12` 打开 Console，看是否有 `Failed to fetch`、`Cannot find module` 或 404 报错。若后端没有启动，重新执行：
+
+```bash
+pnpm dev
+```
+
+如果你必须用 Live Server 预览前端，请先保证 API 已启动在 `http://localhost:4317`。
+
+### 14.4 页面没有旧数据或演示数据
 
 检查 `.ai-workspace/data/state.json` 是否存在。也可以在前端点击“生成演示链路”重新生成样例数据。
 
-### 14.4 Codex 不可用
+### 14.5 Codex 不可用
 
 不影响默认演示。使用 MockRunner 仍可完整走通 Project、Workflow、Context、Run、Asset、Digest、Git/PR 和 Review 链路。
 
-### 14.5 GitHub 未绑定
+### 14.6 GitHub 未绑定
 
 不影响默认演示。系统会降级生成 PR 草稿，并保留 Trace 与 CodeChange 证据。
 
-### 14.6 Docker 没有启动
+### 14.7 Docker 没有启动
 
 不影响默认启动。当前 V1 默认使用本地 JSON 文件持久化，Docker 只用于可选基础设施演示。

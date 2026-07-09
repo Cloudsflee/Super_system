@@ -1,5 +1,5 @@
-import { state } from '../state.js';
-import { esc } from '../ui.js';
+import { state } from './state.js';
+import { esc } from './ui.js';
 
 export const infoChip = (label, value) => `<div class="assist-chip"><span>${esc(label)}</span><b>${esc(value)}</b></div>`;
 

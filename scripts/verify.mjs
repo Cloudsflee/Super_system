@@ -10,6 +10,7 @@ const steps = [
   ['integration:tools', ['tests/integration/tools-flow.test.mjs']],
   ['integration:github', ['tests/integration/github-flow.test.mjs']],
   ['integration:demo', ['tests/integration/demo-flow.test.mjs']],
+  ['integration:v1.1', ['tests/integration/v11-flow.test.mjs']],
   ['prisma:migrate:check', ['scripts/migrate-check.mjs']],
   ['e2e:smoke', ['tests/e2e/smoke.test.mjs']],
   ['acceptance:audit', ['scripts/acceptance-audit.mjs']]

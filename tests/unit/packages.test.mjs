@@ -4,7 +4,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { parseRemoteUrl } from '../../packages/git-tools/src/index.mjs';
 import { mockHealthCheck } from '../../packages/mcp-bridge/src/index.mjs';
-import { CodexRunner, ensureAgentsBlock, MockRunner } from '../../packages/runner-adapters/src/index.mjs';
+import { CodexRunner, DockerCodexRunner, ensureAgentsBlock, MockRunner } from '../../packages/runner-adapters/src/index.mjs';
 import { providerOrder } from '../../packages/context-pack/src/index.mjs';
 import { authorityOrder } from '../../packages/memory-policy/src/index.mjs';
 
@@ -12,6 +12,10 @@ assert.equal(parseRemoteUrl('git@github.com:owner/repo.git').owner, 'owner');
 assert.equal(mockHealthCheck({ name: 'demo' }).status, 'healthy');
 assert.equal(new MockRunner().name, 'MockRunner');
 assert.ok(new CodexRunner().buildArgs({ cwd: '.', promptFile: 'prompt.md', outputSchemaFile: 'schema.json' }).includes('--json'));
+const dockerArgs = new DockerCodexRunner().buildDockerArgs({ cwd: '/repo', aiwsHome: '/home/aiws', outputSchemaFile: '/repo/schema.json' });
+assert.deepEqual(dockerArgs.slice(0, 2), ['run', '--rm']);
+assert.ok(dockerArgs.includes('aiws-codex-runner:local'));
+assert.ok(dockerArgs.includes('/workspace'));
 assert.ok(providerOrder().includes('node_contract'));
 assert.ok(authorityOrder.includes('confirmed_asset_or_decision'));
 

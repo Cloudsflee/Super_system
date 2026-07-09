@@ -44,6 +44,54 @@ export class CodexRunner extends AgentRunner {
   }
 }
 
+export class DockerCodexRunner extends AgentRunner {
+  constructor({ image = 'aiws-codex-runner:local', timeoutMs = 120000 } = {}) {
+    super('DockerCodexRunner');
+    this.image = image;
+    this.timeoutMs = timeoutMs;
+  }
+
+  buildDockerArgs({ cwd, aiwsHome = '.ai-workspace', outputSchemaFile, lastMessageFile, json = true }) {
+    const mountedCwd = '/workspace';
+    const mountedAiws = '/aiws-home';
+    const schemaPath = toContainerPath(outputSchemaFile, cwd, mountedCwd);
+    const lastPath = lastMessageFile ? toContainerPath(lastMessageFile, cwd, mountedCwd) : null;
+    return [
+      'run', '--rm',
+      '-v', `${cwd}:${mountedCwd}`,
+      '-v', `${aiwsHome}:${mountedAiws}`,
+      '-w', mountedCwd,
+      this.image,
+      'exec',
+      ...(json ? ['--json'] : []),
+      '--skip-git-repo-check',
+      '--cd', mountedCwd,
+      '--output-schema', schemaPath,
+      ...(lastPath ? ['--output-last-message', lastPath] : []),
+      '-'
+    ];
+  }
+
+  async run({ cwd, aiwsHome, promptFile, outputSchemaFile, fallback = {} }) {
+    try {
+      const lastMessageFile = `${outputSchemaFile}.last-message.json`;
+      const args = this.buildDockerArgs({ cwd, aiwsHome, outputSchemaFile, lastMessageFile });
+      const prompt = fs.readFileSync(promptFile, 'utf8');
+      const raw = await runProcess('docker', args, { cwd, timeoutMs: this.timeoutMs, stdin: prompt });
+      const last = fs.existsSync(lastMessageFile) ? fs.readFileSync(lastMessageFile, 'utf8') : '';
+      const normalized = normalizeRunnerOutput(last || extractJsonMessage(raw.stdout) || raw.stdout || raw.stderr, fallback);
+      return { ...normalized.result, status: normalized.status, _codex_process: { command: 'docker', code: raw.code, stderr: raw.stderr, stdout: raw.stdout.slice(-4000) } };
+    } catch (error) {
+      return partialCodexResult(fallback, error);
+    }
+  }
+}
+
+function toContainerPath(file, hostRoot, mountedRoot) {
+  const rel = path.relative(hostRoot, file).replaceAll('\\', '/');
+  return rel && !rel.startsWith('..') ? `${mountedRoot}/${rel}` : file;
+}
+
 export async function runMock({ run = { id: 'run_mock' }, contextPack, changedFiles = [] } = {}) {
   return buildNodeRunResult({ run, contextPack, changedFiles, raw: 'MockRunner deterministic output', status: RunnerStatus.Succeeded });
 }

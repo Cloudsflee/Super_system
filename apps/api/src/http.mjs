@@ -15,6 +15,7 @@ export function send(res, status, body, headers = {}) {
   res.writeHead(status, {
     'content-type': typeof body === 'string' ? 'text/plain; charset=utf-8' : 'application/json; charset=utf-8',
     'cache-control': 'no-store',
+    'access-control-allow-origin': '*',
     ...headers
   });
   res.end(text);
@@ -66,7 +67,13 @@ export function command(cmd, args = [], cwd = process.cwd(), timeout = 8000) {
 }
 
 export function safeReadStream(res, full, type) {
-  res.writeHead(200, { 'content-type': type });
+  res.writeHead(200, {
+    'content-type': type,
+    'cache-control': 'no-store, no-cache, must-revalidate, proxy-revalidate',
+    'pragma': 'no-cache',
+    'expires': '0',
+    'access-control-allow-origin': '*'
+  });
   fs.createReadStream(full).pipe(res);
   return true;
 }

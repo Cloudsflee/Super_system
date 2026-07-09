@@ -4,17 +4,28 @@ import path from 'node:path';
 import { HttpError } from '../http.mjs';
 import { ROOT } from '../config.mjs';
 import { addTrace, saveArtifact } from '../state.mjs';
-import { CodexRunner } from '../../../../packages/runner-adapters/src/index.mjs';
+import { CodexRunner, DockerCodexRunner } from '../../../../packages/runner-adapters/src/index.mjs';
 import { RunnerStatus, buildNodeRunResult, contextPackToMarkdown, nodeRunResultSchema, now } from '../../../../packages/shared/index.mjs';
 
 export async function executeRunner(state, { actor, run, project, workspace, node, ctx, body }) {
   const repoPath = project.repo_path || project.workspace_root || '';
   const changedFiles = [];
+  if (run.runner === 'codex_docker') return executeCodexDocker(state, { actor, run, project, workspace, node, ctx, repoPath });
   if (run.runner === 'codex' && body.force_mock === false) return executeCodex(state, { actor, run, project, workspace, node, ctx, repoPath });
   if (repoPath && fs.existsSync(repoPath) && body.mock_write !== false) await writeMockMarker(repoPath, run, node, changedFiles);
   else changedFiles.push({ path: 'virtual://mock-run-result.md', status: 'generated', source: 'mock_runner' });
   const raw = `MockRunner completed ${node.title}`;
   return persistRunnerResult(state, { actor, run, project, workspace, node, ctx, raw, resultJson: buildNodeRunResult({ run, contextPack: ctx, changedFiles, raw, status: RunnerStatus.Succeeded }) });
+}
+
+async function executeCodexDocker(state, payload) {
+  const { run, ctx, repoPath } = payload;
+  const cwd = repoPath && fs.existsSync(repoPath) ? repoPath : ROOT;
+  const files = await prepareCodexFiles(cwd, run, ctx);
+  const runner = new DockerCodexRunner({ image: process.env.AIWS_CODEX_DOCKER_IMAGE || 'aiws-codex-runner:local' });
+  const fallback = buildNodeRunResult({ run, contextPack: ctx, changedFiles: [], raw: 'DockerCodexRunner command prepared', status: RunnerStatus.Partial });
+  const resultJson = await runner.run({ cwd, aiwsHome: path.join(ROOT, '.ai-workspace'), promptFile: files.promptFile, outputSchemaFile: files.schemaFile, fallback });
+  return persistRunnerResult(state, { ...payload, raw: resultJson._codex_process?.stderr || resultJson.summary, resultJson: { ...fallback, ...resultJson, changed_files: resultJson.changed_files || [] } });
 }
 
 async function executeCodex(state, payload) {
