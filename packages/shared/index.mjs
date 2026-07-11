@@ -4,7 +4,7 @@ export * from './src/domain.mjs';
 export * from './src/tools.mjs';
 export * from './src/memory.mjs';
 export * from './src/context-run.mjs';
-export * from './src/assist-assets.mjs';
+export * from './src/assets.mjs';
 
 export * from './src/decisions.mjs';
-export * from './src/v11.mjs';
+export * from './src/collaboration.mjs';

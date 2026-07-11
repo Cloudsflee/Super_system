@@ -27,7 +27,6 @@ function defaultCapabilitiesForTool(name, type) {
   const lower = `${name} ${type}`.toLowerCase();
   if (lower.includes('git')) return ['git', 'diff', 'commit'];
   if (lower.includes('codex')) return ['codex_runner', 'assist'];
-  if (lower.includes('mock')) return ['mock_runner'];
   if (lower.includes('filesystem') || lower.includes('file')) return ['filesystem'];
   if (lower.includes('mcp')) return ['mcp'];
   return [slugify(name, 'tool')];
@@ -37,7 +36,6 @@ export function defaultTools(actorId) {
   return [
     createTool({ name: 'filesystem', type: ToolType.BuiltIn, description: '受 workspace root 白名单约束的本地文件系统访问。', capabilities: ['filesystem'], created_by_user_id: actorId }),
     createTool({ name: 'git', type: ToolType.BuiltIn, description: '本地 git diff / branch / commit。', capabilities: ['git', 'diff', 'commit'], created_by_user_id: actorId }),
-    createTool({ name: 'mock_runner', type: ToolType.BuiltIn, description: '确定性 MockRunner，用于稳定演示和测试。', capabilities: ['mock_runner'], created_by_user_id: actorId }),
     createTool({ name: 'codex_runner', type: ToolType.Cli, description: '宿主机 Codex CLI Adapter。', config: { command: 'codex' }, capabilities: ['codex_runner', 'assist'], created_by_user_id: actorId }),
     createTool({ name: 'github_pr_provider', type: ToolType.Api, description: 'GitHub PR 创建，可选绑定 token/env ref。', capabilities: ['github_pr'], created_by_user_id: actorId })
   ];

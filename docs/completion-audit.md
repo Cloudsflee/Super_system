@@ -1,45 +1,59 @@
-# V1 完成审计报告
+# V1.3 完成审计报告
 
-审计日期：2026-07-09（Asia/Shanghai）
+审计更新：2026-07-12（Asia/Shanghai）
 
 ## 结论
 
-`开发计划.md` 与 `测试计划.md` 中定义的 V1 必做闭环已实现为本地优先工程化原型，并已保留一条演示数据链路在 `.ai-workspace/`。前端已提供侧边导航、快捷键、忙状态遮罩、Always-on Codex Assist、字段级 Contract 编辑、Runner 控制、Trace/Asset/Digest/Git/Tool/Review 多视图。
+`开发计划v1.3.md` 与 `测试计划v1.3.md` 的默认离线完成标准已满足。V1.3 的 draft onboarding、受管导入、GitHub repository 状态机、Assist V3/worktree/Review、PTY/WebSocket Terminal、统一审批和 Config Revision 治理均有实现、正反路径自动化测试及根门禁证据。
 
-## 自动验证证据
+本结论限定于当前 JSON-local 架构和默认隔离测试环境。真实 Codex、GitHub 与 cc-switch live 套件本轮没有启用；它们是显式 opt-in 的环境验收，不在下文中记为通过。
 
-- `corepack pnpm verify`：通过。
-- `RUN_CODEX_LIVE_TESTS=1 CODEX_LIVE_TIMEOUT_MS=15000 corepack pnpm test:live:codex`：通过，结果为 `partial` 且可追溯。
-- `.ai-workspace/data/state.json` 演示数据：1 Project、1 Workflow、5 Nodes、1 NodeRun、1 Confirmed Asset、1 Decision、1 Digest、1 CodeChange、21 Trace events。
+## 交付证据
 
-## V1 Definition of Done 对照
+| 范围 | 实现与测试证据 | 结果 |
+|---|---|---|
+| 版本、Schema 与 migration | workspace `1.3.0`；44 个 Prisma 核心模型；legacy state fixture；V2 Session continue | 已验证 |
+| Project lifecycle | draft/Intake/Brief、brainstorm/existing、刷新恢复、confirm 幂等、trash/restore/purge | 已验证 |
+| 安全导入与写边界 | managed staging/repo、archive 结构化校验、realpath barrier、外部源快照、失败清理 | 已验证 |
+| GitHub repository | create/bind/import operation key、private 默认值、权限与 clone/remote/HEAD 故障注入、secret sentinel | 默认 test adapter 已验证 |
+| Assist V3 | Session 生命周期、附件、Context Pack、typed SSE/replay、queue/steer/interrupt/Stop/Retry、并发 worktree | 已验证 |
+| Review 与冲突保护 | changed files/diff、评论、request changes、target hash、apply/rollback、dirty baseline、重启恢复 | 已验证 |
+| Terminal | node-pty/WebSocket、input/resize/Ctrl-C/reconnect/stop/exit、输出截断脱敏、Artifact、Review | 已验证 |
+| Approval 与 Config | Proposal/Runtime 聚合、原子 decision、stale/幂等；默认 native Profile 及可选 cc-switch 的 rollback/reprobe/native fallback | 已验证 |
+| Frontend | onboarding redirect、即时审批、Assist 四形态、Inspector 共存、三视口布局与移动 toast/composer 防重叠 | 已验证 |
 
-| DoD | 证据 |
+## 里程碑审计
+
+| 里程碑 | 关键自动化证据 | 状态 |
+|---|---|---|
+| M1 迁移与 Codex capability | migration integration、capability/probe/app-server unit、exec fallback | 完成 |
+| M2 onboarding 与导入 | lifecycle/import-security integration、service unit、Playwright | 完成 |
+| M3 GitHub 与 managed workspace | repository state-machine integration、managed checkout guards | 完成（live 未运行） |
+| M4 Assist V3 与 Review | worktree/lifecycle integration、SSE replay、apply/rollback/conflict tests | 完成（Codex live 未运行） |
+| M5 CLI | Terminal PTY integration、xterm/capability UI、Review | 完成（Host/Docker Codex TUI live 未运行） |
+| M6 审批与配置治理 | governance integration、Web approval tests、隔离 cc-switch adapter | 完成（cc-switch live 未运行） |
+| M7 前端、文档与完整门禁 | Web tests、三视口 Playwright、acceptance audit、完整 `verify` | 完成 |
+
+## 最终门禁
+
+2026-07-12 在同一工作树上依次执行：
+
+| 命令 | 结果 |
 |---|---|
-| M0-M7 对应测试通过 | `scripts/verify.mjs` 串联 lint/typecheck/unit/integration/schema/e2e/audit。 |
-| `pnpm verify` 稳定通过 | `corepack pnpm verify` 通过。 |
-| 完整真实任务链路保留演示数据 | `/demo/full-chain` 与 `.ai-workspace/data/state.json`。 |
-| Codex live run 成功或 partial 可追溯 | `tests/integration/codex-live.test.mjs`，CodexRunner 保存 process/error/result。 |
-| Git branch + commit 成功 | `tests/integration/git-flow.test.mjs` 使用临时真实 git repo。 |
-| Local Owner 与 actor 追溯 | `state.mjs` bootstrap；`demo-flow.test.mjs` 校验 decision/asset/digest/code_change actor。 |
-| GitHub 可选绑定 / 未绑定降级 | `api-flow.test.mjs` 校验 PR 草稿；`github-flow.test.mjs` 校验 token/env ref mock PR。 |
-| confirmed Asset 有证据引用 | `confirmAsset` 与集成测试确认资产。 |
-| 新 Context Pack 读取上次 Digest / Asset | `demo-flow.test.mjs` 校验 latest_digest 与 confirmed_assets。 |
-| Project Wizard 与 Node Contract Assist | `api-flow.test.mjs` 覆盖追问/选项/草稿/apply/Trace。 |
-| Assist / NodeRun Sufficiency + Manifest | `buildAssistContextPack`、`buildContextPack` 与集成测试。 |
-| Codex Memory 冲突不静默覆盖 | `tests/unit/shared.test.mjs` 构造 CodexMemoryHint conflict。 |
-| 复盘页展示证据链 | `apps/web/src/views/review.js` 与 E2E smoke。 |
-| 安装运行文档 | `README.md`、`docs/runbook.md`。 |
+| `corepack pnpm lint` | 退出码 0 |
+| `corepack pnpm typecheck` | 退出码 0 |
+| `corepack pnpm test` | 退出码 0 |
+| `corepack pnpm test:integration` | 退出码 0，含 8 个 V1.3 integration suites |
+| `corepack pnpm test:e2e` | 退出码 0，含 build、smoke 与三视口 Playwright |
+| `corepack pnpm audit:acceptance` | 退出码 0 |
+| `corepack pnpm verify` | 退出码 0；再次覆盖 lint、typecheck、unit、integration、migration、build、E2E 与 acceptance |
 
-## 前端交互审计
+## Live 验收记录
 
-- 快捷键：`1-9/0` 导航、`A` 打开 Assist、`R` 刷新、`?` 帮助。
-- 忙状态：长操作显示全屏 busy overlay，失败 toast。
-- Assist：右侧常驻面板展示 sufficiency、included/excluded memory、questions、options、draft patch。
-- Node Workspace：可编辑 node goal、acceptance criteria、allowed tools，并用 Assist 应用草稿。
-- Runner：可选择 MockRunner/CodexRunner、Codex live、mock write、刷新 Trace、取消 Run。
-- Review：集中展示 Project、Node 状态、Trace、Asset/Digest/Decision、Git/PR 证据链。
+| 套件 | 本轮状态 | 说明 |
+|---|---|---|
+| `test:live:codex` | 未运行 | 未设置 `RUN_CODEX_LIVE_TESTS=1` |
+| `test:live:github` | 未运行 | 未设置 `RUN_GITHUB_LIVE_TESTS=1`，未创建或访问真实验收仓库 |
+| `test:live:cc-switch` | 未运行 | 未设置 `RUN_CC_SWITCH_LIVE_TESTS=1`；只验证了 opt-in 入口与默认隔离 adapter |
 
-## 范围说明
-
-V1 采用 JSON-local 持久化保证当前环境直接运行；Prisma/PostgreSQL schema、Docker Postgres/Redis、Worker task names、Codex/GitHub live hooks 均保留替换边界。该实现满足 V1 工程化原型与答辩演示要求，完整生产级 NestJS/Next.js/BullMQ/Octokit live provider 属于后续演进边界。
+默认测试均使用临时 `AIWS_HOME`、隔离配置和仅测试环境可用的故障注入。`capability_unavailable` 分支、adapter 结果或静态 acceptance audit 均未被冒充为外部 live 成功。

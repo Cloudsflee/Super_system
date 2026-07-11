@@ -3,7 +3,7 @@ import { addTrace, saveArtifact } from '../state.mjs';
 import { buildContextPack, contextPackToMarkdown, now } from '../../../../packages/shared/index.mjs';
 
 export function previewContextPack(state, { actor, node, project, workspace, contract, body }) {
-  const ctx = buildContextPack({ state, project, workspace, node, contract, purpose: body.purpose || 'node_run', receiver_name: body.receiver_name || 'MockRunner', pinnedRefs: body.pinned_refs || [] });
+  const ctx = buildContextPack({ state, project, workspace, node, contract, purpose: body.purpose || 'node_run', receiver_name: body.receiver_name || 'CodexRunner', pinnedRefs: body.pinned_refs || [] });
   state.context_packs.push(ctx);
   state.context_sufficiency_checks.push(ctx._sufficiency_check);
   addContextTraces(state, { actorId: actor.id, project, workspace, node, ctx, prefix: 'Context Pack' });
@@ -24,7 +24,7 @@ export async function confirmContextPack(state, { actor, contextPackId }) {
 export function ensureRunContextPack(state, { actor, node, project, workspace, contract, body }) {
   const existing = body.context_pack_id ? state.context_packs.find((ctx) => ctx.id === body.context_pack_id) : null;
   if (existing) return existing;
-  const ctx = buildContextPack({ state, project, workspace, node, contract, purpose: 'node_run', receiver_name: body.runner === 'codex' ? 'CodexRunner' : 'MockRunner' });
+  const ctx = buildContextPack({ state, project, workspace, node, contract, purpose: 'node_run', receiver_name: body.runner === 'codex' ? 'CodexRunner' : 'DockerCodexRunner' });
   state.context_packs.push(ctx);
   state.context_sufficiency_checks.push(ctx._sufficiency_check);
   addContextTraces(state, { actorId: actor.id, project, workspace, node, ctx, prefix: 'NodeRun 前' });

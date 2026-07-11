@@ -31,6 +31,12 @@ model Project {
   repoPath           String   @map("repo_path")
   currentWorkspaceId String   @map("current_workspace_id")
   settings           Json
+  onboardingState    String   @default("confirmed") @map("onboarding_state")
+  sourceMetadata     Json?    @map("source_metadata")
+  managedWorkspaceState String @default("empty") @map("managed_workspace_state")
+  githubAccountId    String?  @map("github_account_id")
+  deletedAt          DateTime? @map("deleted_at")
+  trashMetadata      Json?    @map("trash_metadata")
   createdByUserId    String   @map("created_by_user_id")
   createdBy          User     @relation(fields: [createdByUserId], references: [id])
   createdAt          DateTime @map("created_at")
@@ -224,19 +230,22 @@ model ContextSufficiencyCheck {
 }
 
 model AssistSession {
-  id              String   @id
-  targetType      String   @map("target_type")
-  targetId        String?  @map("target_id")
-  fieldKey        String?  @map("field_key")
-  userPrompt      String   @map("user_prompt")
-  status          String
-  result          Json
-  assistContextPack Json   @map("assist_context_pack")
-  createdByUserId String   @map("created_by_user_id")
-  appliedAt       DateTime? @map("applied_at")
-  rejectedAt      DateTime? @map("rejected_at")
-  createdAt       DateTime @map("created_at")
-  updatedAt       DateTime @map("updated_at")
+  id                String   @id
+  version           Int
+  projectId         String   @map("project_id")
+  workspaceId       String?  @map("workspace_id")
+  nodeId            String?  @map("node_id")
+  scopeType         String   @map("scope_type")
+  scopeId           String   @map("scope_id")
+  parentSessionId   String?  @map("parent_session_id")
+  agentSessionId    String?  @map("agent_session_id")
+  codexThreadId     String?  @map("codex_thread_id")
+  viewContext       Json     @map("view_context")
+  status            String
+  error             String?
+  createdByUserId   String   @map("created_by_user_id")
+  createdAt         DateTime @map("created_at")
+  updatedAt         DateTime @map("updated_at")
 
   @@map("assist_sessions")
 }
@@ -377,4 +386,451 @@ model HumanReview {
   createdAt   DateTime @map("created_at")
 
   @@map("human_reviews")
+}
+
+model SetupState {
+  id          String    @id
+  mode        String?
+  completedAt DateTime? @map("completed_at")
+  updatedAt   DateTime  @map("updated_at")
+
+  @@map("setup_states")
+}
+
+model GitHubAppConfig {
+  id         String   @id
+  mode       String
+  appId      String   @map("app_id")
+  clientId   String   @map("client_id")
+  slug       String
+  status     String
+  refs       Json
+  verifiedAt DateTime? @map("verified_at")
+  createdAt  DateTime @map("created_at")
+  updatedAt  DateTime @map("updated_at")
+
+  @@map("github_app_configs")
+}
+
+model GitHubInstallation {
+  id             String   @id
+  installationId String   @map("installation_id")
+  appId          String   @map("app_id")
+  account        Json
+  repositories   Json
+  status         String
+  createdAt      DateTime @map("created_at")
+  updatedAt      DateTime @map("updated_at")
+
+  @@map("github_installations")
+}
+
+model RepositoryBinding {
+  id             String   @id
+  projectId      String   @map("project_id")
+  installationId String   @map("installation_id")
+  repositoryId   String   @map("repository_id")
+  fullName       String   @map("full_name")
+  remoteName     String   @map("remote_name")
+  permissions    Json
+  createdByUserId String  @map("created_by_user_id")
+  createdAt      DateTime @map("created_at")
+  updatedAt      DateTime @map("updated_at")
+
+  @@map("repository_bindings")
+}
+
+model CodexProfile {
+  id           String   @id
+  name         String
+  kind         String
+  provider     String
+  providerName String?  @map("provider_name")
+  baseUrl      String?  @map("base_url")
+  wireApi      String   @default("responses") @map("wire_api")
+  requiresOpenaiAuth Boolean @default(false) @map("requires_openai_auth")
+  model        String
+  reasoning    String
+  webSearch    Boolean  @map("web_search")
+  mcpServers   Json     @map("mcp_servers")
+  timeoutMs    Int      @map("timeout_ms")
+  mounts       Json
+  codexHome    String   @map("codex_home")
+  configFile   String   @map("config_file")
+  ccSwitchRequired Boolean @default(false) @map("cc_switch_required")
+  ccSwitchProviderId String? @map("cc_switch_provider_id")
+  ccSwitchStatus String @default("not_required") @map("cc_switch_status")
+  ccSwitchSyncedAt DateTime? @map("cc_switch_synced_at")
+  ccSwitchBridgeRevision Int? @map("cc_switch_bridge_revision")
+  ccSwitchSourceCommit String? @map("cc_switch_source_commit")
+  ccSwitchLastSwitchedAt DateTime? @map("cc_switch_last_switched_at")
+  ccSwitchBindingType String? @map("cc_switch_binding_type")
+  ccSwitchDiscoveryRevision String? @map("cc_switch_discovery_revision")
+  discoverySource Json? @map("discovery_source")
+  credentialConfigured Boolean @default(false) @map("credential_configured")
+  status       String
+  isActive     Boolean  @map("is_active")
+  createdAt    DateTime @map("created_at")
+  updatedAt    DateTime @map("updated_at")
+
+  @@map("codex_profiles")
+}
+
+model AgentSession {
+  id              String   @id
+  projectId       String   @map("project_id")
+  workspaceId     String?  @map("workspace_id")
+  scopeType       String   @map("scope_type")
+  scopeId         String   @map("scope_id")
+  parentSessionId String?  @map("parent_session_id")
+  conversationKey String  @map("conversation_key")
+  title           String
+  status          String
+  createdByUserId String  @map("created_by_user_id")
+  createdAt       DateTime @map("created_at")
+  updatedAt       DateTime @map("updated_at")
+
+  @@map("agent_sessions")
+}
+
+model AssistMessage {
+  id        String   @id
+  sessionId String   @map("session_id")
+  role      String
+  content   String
+  status    String
+  createdAt DateTime @map("created_at")
+
+  @@map("assist_messages")
+}
+
+model AssistStreamEvent {
+  sessionId String   @map("session_id")
+  sequence  Int
+  type      String
+  data      Json
+  createdAt DateTime @map("created_at")
+
+  @@id([sessionId, sequence])
+  @@map("assist_events")
+}
+
+model UIActionIntent {
+  id              String   @id
+  sessionId       String   @map("session_id")
+  sourceMessageId String   @map("source_message_id")
+  projectId       String   @map("project_id")
+  workspaceId     String?  @map("workspace_id")
+  nodeId          String?  @map("node_id")
+  name            String
+  label           String
+  args            Json
+  risk            String
+  status          String
+  result          Json?
+  createdAt       DateTime @map("created_at")
+  updatedAt       DateTime @map("updated_at")
+
+  @@map("ui_action_intents")
+}
+
+model ChangeProposal {
+  id          String   @id
+  projectId   String?  @map("project_id")
+  workspaceId String?  @map("workspace_id")
+  nodeId      String?  @map("node_id")
+  changeType  String   @map("change_type")
+  title       String
+  summary     String
+  beforeJson  Json?    @map("before_json")
+  afterJson   Json?    @map("after_json")
+  impact      Json
+  risks       Json
+  status      String
+  attentionState String @default("queued") @map("attention_state")
+  revision    Int      @default(1)
+  targetHash  String?  @map("target_hash")
+  applyAction Json?    @map("apply_action")
+  createdAt   DateTime @map("created_at")
+  updatedAt   DateTime @map("updated_at")
+
+  @@map("change_proposals")
+}
+
+model FileChangeRecord {
+  id           String   @id
+  projectId    String   @map("project_id")
+  workspaceId  String?  @map("workspace_id")
+  nodeId       String?  @map("node_id")
+  path         String
+  beforeSha256 String   @map("before_sha256")
+  afterSha256  String   @map("after_sha256")
+  bytes        Int
+  diff         Json
+  source       String
+  createdByUserId String @map("created_by_user_id")
+  createdAt    DateTime @map("created_at")
+
+  @@map("file_changes")
+}
+
+model NodeWorkspaceData {
+  id          String   @id
+  projectId   String   @map("project_id")
+  workspaceId String   @map("workspace_id")
+  nodeId      String   @map("node_id")
+  data        Json
+  createdAt   DateTime @map("created_at")
+  updatedAt   DateTime @map("updated_at")
+
+  @@map("node_workspace_data")
+}
+
+model WebhookDelivery {
+  deliveryId String   @id @map("delivery_id")
+  event      String
+  receivedAt DateTime @map("received_at")
+
+  @@map("webhook_deliveries")
+}
+
+model TestTask {
+  id          String   @id
+  projectId   String   @map("project_id")
+  workspaceId String?  @map("workspace_id")
+  nodeId      String?  @map("node_id")
+  preset      String
+  command     String
+  status      String
+  stdout      String
+  stderr      String
+  durationMs  Int      @map("duration_ms")
+  createdAt   DateTime @map("created_at")
+  completedAt DateTime @map("completed_at")
+
+  @@map("test_tasks")
+}
+
+model ProjectIntake {
+  id              String   @id
+  projectId       String   @map("project_id")
+  mode            String?
+  status          String
+  answers         Json
+  codeSource      Json?    @map("code_source")
+  contextSources  Json     @map("context_sources")
+  operationKey    String?  @map("operation_key")
+  lastError       String?  @map("last_error")
+  revision        Int      @default(1)
+  createdByUserId String   @map("created_by_user_id")
+  createdAt       DateTime @map("created_at")
+  updatedAt       DateTime @map("updated_at")
+
+  @@index([projectId])
+  @@map("project_intakes")
+}
+
+model ProjectBrief {
+  id                String    @id
+  projectId         String    @map("project_id")
+  version           Int
+  status            String
+  content           Json
+  source            String
+  confirmedByUserId String?   @map("confirmed_by_user_id")
+  confirmedAt       DateTime? @map("confirmed_at")
+  createdByUserId   String    @map("created_by_user_id")
+  createdAt         DateTime  @map("created_at")
+  updatedAt         DateTime  @map("updated_at")
+
+  @@unique([projectId, version])
+  @@map("project_briefs")
+}
+
+model AssistTurn {
+  id                  String    @id
+  sessionId           String    @map("session_id")
+  projectId           String    @map("project_id")
+  mode                String
+  status              String
+  workspaceId         String?   @map("workspace_id")
+  nodeId              String?   @map("node_id")
+  parentTurnId        String?   @map("parent_turn_id")
+  retryOfTurnId       String?   @map("retry_of_turn_id")
+  followUpKind        String?   @map("follow_up_kind")
+  prompt              String
+  outputText          String    @map("output_text")
+  profileId           String?   @map("profile_id")
+  codexThreadId       String?   @map("codex_thread_id")
+  worktreeId          String?   @map("worktree_id")
+  contextPackId       String?   @map("context_pack_id")
+  attachmentIds       Json      @map("attachment_ids")
+  usage               Json?
+  reviewStatus        String    @map("review_status")
+  review              Json
+  waitingApprovalId   String?   @map("waiting_approval_id")
+  errorCode           String?   @map("error_code")
+  startedAt           DateTime? @map("started_at")
+  completedAt         DateTime? @map("completed_at")
+  createdByUserId     String    @map("created_by_user_id")
+  createdAt           DateTime  @map("created_at")
+  updatedAt           DateTime  @map("updated_at")
+
+  @@index([sessionId, createdAt])
+  @@index([projectId, status])
+  @@map("assist_turns")
+}
+
+model Attachment {
+  id              String    @id
+  projectId       String    @map("project_id")
+  sessionId       String?   @map("session_id")
+  turnId          String?   @map("turn_id")
+  kind            String
+  title           String?
+  label           String?
+  fileRefId       String?   @map("file_ref_id")
+  relativePath    String?   @map("relative_path")
+  managedPath     String?   @map("managed_path")
+  url             String?
+  contentType     String?   @map("content_type")
+  sizeBytes       Int       @default(0) @map("size_bytes")
+  sha256          String?
+  text            String?
+  selection       Json?
+  modelPolicy     String?   @map("model_policy")
+  modelInjectable Boolean?  @map("model_injectable")
+  status          String
+  createdByUserId String?   @map("created_by_user_id")
+  createdAt       DateTime  @map("created_at")
+  updatedAt       DateTime? @map("updated_at")
+
+  @@index([projectId, createdAt])
+  @@index([turnId])
+  @@map("attachments")
+}
+
+model Worktree {
+  id             String    @id
+  projectId      String    @map("project_id")
+  turnId         String?   @map("turn_id")
+  kind           String
+  repoPath       String    @map("repo_path")
+  path           String
+  baseCommit     String    @map("base_commit")
+  headCommit     String    @map("head_commit")
+  status         String
+  dirtyBaseline  Boolean   @default(false) @map("dirty_baseline")
+  targetHash     String?   @map("target_hash")
+  appliedTargetHash String? @map("applied_target_hash")
+  appliedAt      DateTime? @map("applied_at")
+  rolledBackAt   DateTime? @map("rolled_back_at")
+  createdAt      DateTime  @map("created_at")
+  updatedAt      DateTime  @map("updated_at")
+  removedAt      DateTime? @map("removed_at")
+
+  @@index([projectId, status])
+  @@unique([turnId])
+  @@map("worktrees")
+}
+
+model RuntimeApproval {
+  id              String    @id
+  projectId       String    @map("project_id")
+  sessionId       String    @map("session_id")
+  turnId          String    @map("turn_id")
+  approvalType    String    @map("approval_type")
+  attentionState  String    @default("interrupting") @map("attention_state")
+  status          String
+  revision        Int       @default(1)
+  targetHash      String    @map("target_hash")
+  request         Json
+  decision        Json?
+  externalId      String?   @map("external_id")
+  decisionReason  String?   @map("decision_reason")
+  decidedByUserId String?   @map("decided_by_user_id")
+  decidedAt       DateTime? @map("decided_at")
+  createdAt       DateTime  @map("created_at")
+  updatedAt       DateTime  @map("updated_at")
+
+  @@index([projectId, attentionState, status])
+  @@index([turnId])
+  @@map("runtime_approvals")
+}
+
+model TerminalSession {
+  id                String    @id
+  projectId         String    @map("project_id")
+  assistSessionId   String?   @map("assist_session_id")
+  turnId            String?   @map("turn_id")
+  worktreeId        String    @map("worktree_id")
+  profileId         String?   @map("profile_id")
+  runtime           String
+  status            String
+  cols              Int       @default(80)
+  rows              Int       @default(24)
+  reconnectTokenHash String   @map("reconnect_token_hash")
+  outputPreview     String    @map("output_preview")
+  outputTruncated   Boolean   @default(false) @map("output_truncated")
+  artifactFileRefId String?   @map("artifact_file_ref_id")
+  exitCode          Int?      @map("exit_code")
+  exitSignal        String?   @map("exit_signal")
+  errorCode         String?   @map("error_code")
+  pid               Int?
+  interruptedReason String?   @map("interrupted_reason")
+  startedAt         DateTime? @map("started_at")
+  completedAt       DateTime? @map("completed_at")
+  stoppedAt         DateTime? @map("stopped_at")
+  review            Json?
+  createdByUserId   String    @map("created_by_user_id")
+  createdAt         DateTime  @map("created_at")
+  updatedAt         DateTime  @map("updated_at")
+
+  @@index([projectId, status])
+  @@index([worktreeId])
+  @@map("terminal_sessions")
+}
+
+model ConfigRevision {
+  id                  String    @id
+  projectId           String?   @map("project_id")
+  profileId           String?   @map("profile_id")
+  proposalId          String?   @map("proposal_id")
+  kind                String
+  status              String
+  version             Int
+  patch               Json
+  nativeFallbackAllowed Boolean @default(false) @map("native_fallback_allowed")
+  reconciliation      Json
+  createdByUserId     String    @map("created_by_user_id")
+  activatedAt         DateTime? @map("activated_at")
+  createdAt           DateTime  @map("created_at")
+  updatedAt           DateTime  @map("updated_at")
+
+  @@index([projectId, status])
+  @@index([profileId, revision])
+  @@map("config_revisions")
+}
+
+model ImportJob {
+  id             String    @id
+  projectId      String?   @map("project_id")
+  ownerId        String?   @map("owner_id")
+  kind           String
+  operationKey   String    @map("operation_key")
+  status         String
+  attempt        Int       @default(0)
+  source         Json?
+  sourceHash     String?   @map("source_hash")
+  managedRepoPath String?  @map("managed_repo_path")
+  repository     Json?
+  repositoryId   String?   @map("repository_id")
+  installationId String?   @map("installation_id")
+  errorCode      String?   @map("error_code")
+  createdAt      DateTime  @map("created_at")
+  updatedAt      DateTime  @map("updated_at")
+
+  @@unique([projectId, ownerId, kind, operationKey])
+  @@index([projectId, status])
+  @@map("import_jobs")
 }

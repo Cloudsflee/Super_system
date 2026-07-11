@@ -18,16 +18,19 @@ export function maskSecret(text) {
   let out = String(text);
   if (process.env.GITHUB_TOKEN) out = out.split(process.env.GITHUB_TOKEN).join('***MASKED_GITHUB_TOKEN***');
   return out.replace(/gh[pousr]_[A-Za-z0-9_]{20,}/g, '***MASKED_GITHUB_TOKEN***')
+    .replace(/-----BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY-----[\s\S]*?-----END (?:RSA |EC |OPENSSH )?PRIVATE KEY-----/g, '***MASKED_PRIVATE_KEY***')
+    .replace(/\bsk-(?:proj-|svcacct-)?[A-Za-z0-9_-]{16,}\b/g, '***MASKED_API_KEY***')
     .replace(/(authorization|bearer|token)\s*[:=]\s*[^'"\s]+/gi, '$1=***MASKED***');
 }
 export function maskSecretsDeep(value) {
   if (typeof value === 'string') return maskSecret(value);
   if (Array.isArray(value)) return value.map(maskSecretsDeep);
   if (value && typeof value === 'object') {
-    return Object.fromEntries(Object.entries(value).map(([k, v]) => [k, /token|secret|password|authorization/i.test(k) ? '***MASKED***' : maskSecretsDeep(v)]));
+    return Object.fromEntries(Object.entries(value).map(([k, v]) => [k, secretField(k) ? '***MASKED***' : maskSecretsDeep(v)]));
   }
   return value;
 }
+function secretField(key) { return /^(authorization|password|api_key|private_key|client_secret|webhook_secret|access_token|refresh_token|id_token|session_token_hash)$/i.test(key) || /_(?:password|secret|access_token|refresh_token)$/i.test(key); }
 export function makeTrace(event_type, payload = {}, actor = {}) {
   if (!TRACE_EVENTS.includes(event_type)) throw new Error(`未知 TraceEvent 类型: ${event_type}`);
   return {

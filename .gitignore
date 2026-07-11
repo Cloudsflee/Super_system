@@ -1,8 +1,11 @@
 node_modules/
+.pnpm-store/
 .ai-workspace/
 .ai-workspace-test-integration/
 coverage/
 dist/
 .env
 *.log
+*.tsbuildinfo
+.tmp-*/
 .DS_Store

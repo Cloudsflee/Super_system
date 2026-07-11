@@ -10,6 +10,7 @@ import {
   createLocalOwner,
   createAgentSession,
   createChangeProposal,
+  createEmptyWorkflow,
   createProject,
   createSubSubmission,
   defaultContractForNode,
@@ -19,16 +20,16 @@ import {
   markProposalApplied,
   mergeSufficiencyIntoAssistResult,
   rejectProposal,
-  recommendWorkflow,
   validateNodeContract
 } from '../../packages/shared/index.mjs';
+import { authorizeRepositoryAction } from '../../apps/api/src/authorization.mjs';
 
 const { user } = createLocalOwner('Tester');
-const created = createProject({ title: 'Test Project', goal: '实现 AIWS V1 闭环', created_by_user_id: user.id });
-const wf = recommendWorkflow(created.project, user.id);
-assert.equal(wf.nodes.length, 5, 'workflow must contain 5 node templates');
+const created = createProject({ title: 'Test Project', goal: '实现可追溯协作工作流', created_by_user_id: user.id });
+const workflow = createEmptyWorkflow(created.project, user.id);
+assert.deepEqual(workflow.graph_json, { nodes: [], edges: [] }, 'new projects start from an empty workflow');
 
-const node = wf.nodes[3];
+const node = { id: 'node_execution', type: 'execution', title: '执行节点', goal: '完成验证', workflow_id: workflow.id };
 const contract = defaultContractForNode(node, created.project, user.id, 'confirmed');
 assert.equal(validateNodeContract(contract).ok, true, 'default contract should be valid');
 
@@ -52,7 +53,8 @@ const nodeSession = createAgentSession({ projectId: created.project.id, workspac
 assert.equal(nodeSession.parent_session_id, topSession.id);
 const submission = createSubSubmission({ projectId: created.project.id, workspaceId: 'wsp_node', nodeId: node.id, fromSessionId: nodeSession.id, toSessionId: topSession.id, summary: '节点提交摘要', actorId: user.id });
 state.submissions = [submission];
-const ctxWithSubmission = buildContextPack({ state, project: created.project, workspace: created.workspace, node: wf.nodes[0], contract });
+const consumerNode = { id: 'node_analysis', type: 'analysis', title: '分析节点', goal: '消费节点提交', workflow_id: workflow.id };
+const ctxWithSubmission = buildContextPack({ state, project: created.project, workspace: created.workspace, node: consumerNode, contract });
 assert.equal(ctxWithSubmission.content_json.submissions.length, 1);
 
 const proposal = createChangeProposal({ projectId: created.project.id, nodeId: node.id, changeType: 'node_contract_patch', title: '审批测试', actorId: user.id });
@@ -75,4 +77,7 @@ const merged = mergeSufficiencyIntoAssistResult({ status: 'draft_ready', summary
 assert.equal(merged.status, 'conflict');
 assert.ok(merged.questions.length >= 1, 'conflict assist should ask user');
 assert.ok(merged.memory_manifest.included.length >= 1, 'assist exposes memory manifest');
+assert.equal(authorizeRepositoryAction({ role: 'owner', permissions: { push: true }, operation: 'git_push' }).allowed, true);
+assert.equal(authorizeRepositoryAction({ role: 'collaborator', permissions: { push: true }, operation: 'configure' }).allowed, false);
+assert.equal(authorizeRepositoryAction({ role: 'reviewer', permissions: { pull: true }, operation: 'review' }).allowed, true);
 console.log('unit shared tests passed');

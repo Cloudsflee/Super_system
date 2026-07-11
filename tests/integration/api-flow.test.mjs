@@ -1,68 +1,47 @@
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
 import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
+import { createConfirmedProject } from './v13-test-helpers.mjs';
 
 const port = 4567;
-const testHome = `${process.cwd()}/.ai-workspace-test-integration`;
-fs.rmSync(testHome, { recursive: true, force: true });
-const env = { ...process.env, AIWS_PORT: String(port), AIWS_HOME: testHome, NODE_ENV: 'test' };
-const child = spawn(process.execPath, ['apps/api/server.mjs'], { env, stdio: ['ignore', 'pipe', 'pipe'] });
-await waitForServer(port);
+const home = fs.mkdtempSync(path.join(os.tmpdir(), 'aiws-api-home-'));
+const child = spawn(process.execPath, ['apps/api/server.mjs'], { env: { ...process.env, AIWS_PORT: String(port), AIWS_HOME: home, NODE_ENV: 'test', AIWS_BYPASS_SETUP: '1' }, stdio: ['ignore', 'pipe', 'pipe'] });
+await waitForServer();
 try {
-  const health = await api('/health');
-  assert.equal(health.status, 'ok');
-  const project = await api('/projects', { method: 'POST', body: { title: 'Integration Project', goal: '跑通 Project Workflow NodeRun Asset Digest Git PR', role: 'tester' } });
-  const assist = await api('/assist/sessions', { method: 'POST', body: { target_type: 'project_wizard', target_id: project.project.id, project_id: project.project.id, user_prompt: '帮我确认目标' } });
-  assert.ok(assist.result.memory_manifest, 'assist has memory manifest');
-  assert.ok(assist.result.sufficiency_check, 'assist has sufficiency check');
-  await api(`/assist/sessions/${assist.id}/apply`, { method: 'POST', body: {} });
-  const wf = await api('/workflows/recommend', { method: 'POST', body: { project_id: project.project.id } });
-  assert.equal(wf.nodes.length, 5);
-  const confirmed = await api(`/workflows/${wf.workflow.id}/confirm`, { method: 'POST', body: {} });
-  const node = confirmed.nodes[3];
-  const ctrAssist = await api('/assist/sessions', { method: 'POST', body: { target_type: 'node_contract', target_id: node.id, node_id: node.id, project_id: project.project.id, user_prompt: '生成验收标准' } });
-  assert.ok(ctrAssist.result.options.length >= 2);
-  await api(`/assist/sessions/${ctrAssist.id}/apply`, { method: 'POST', body: { node_id: node.id } });
-  const ctx = await api(`/nodes/${node.id}/context-pack/preview`, { method: 'POST', body: {} });
-  assert.equal(ctx.quality_check.passed, true);
-  assert.ok(ctx.memory_manifest.included.length >= 1);
-  await api(`/context-packs/${ctx.id}/confirm`, { method: 'POST', body: {} });
-  const workspace = await api(`/workspaces/${node.workspace_id}`);
-  assert.ok(workspace.context_packs.length >= 1);
-  const queued = await api(`/nodes/${node.id}/run`, { method: 'POST', body: { runner: 'mock', enqueue_only: true } });
-  assert.equal(queued.run.status, 'queued');
-  const cancelled = await api(`/runs/${queued.run.id}/cancel`, { method: 'POST', body: {} });
+  assert.equal((await api('/health')).status, 'ok');
+  const project = await createConfirmedProject({ baseUrl: `http://127.0.0.1:${port}`, title: 'API Integration', goal: '验证项目、上下文、队列与 Digest', workflowNodes: [{ type: 'analysis', title: '分析节点', goal: '形成可追溯分析' }] });
+  assert.equal(project.project.settings.token_budget, 12000);
+  const node = (await api(`/projects/${project.project.id}`)).nodes[0];
+  const context = await api(`/nodes/${node.id}/context-pack/preview`, { method: 'POST', body: {} });
+  assert.equal(context.quality_check.passed, true);
+  await api(`/context-packs/${context.id}/confirm`, { method: 'POST', body: {} });
+  await apiStatus(`/nodes/${node.id}/run`, { method: 'POST', body: { runner: 'codex_docker' } }, 409);
+  const approvalId = await approveNodeRun(project.project.id, node.id);
+  const started = await api(`/nodes/${node.id}/run/start`, { method: 'POST', body: { adapter: 'test', test_delay_ms: 300, runner: 'codex_docker', approval_id: approvalId } });
+  const visibleRun = started.run;
+  assert.equal(visibleRun.status, 'running');
+  const cancelled = await api(`/runs/${visibleRun.id}/cancel`, { method: 'POST', body: {} });
   assert.equal(cancelled.status, 'cancelled');
-  const run = await api(`/nodes/${node.id}/run`, { method: 'POST', body: { runner: 'mock', mock_write: false } });
-  assert.equal(run.run.status, 'succeeded');
-  assert.ok(run.assets.length >= 1);
-  await api(`/asset-candidates/${run.assets[0].id}/confirm`, { method: 'POST', body: {} });
+  assert.equal((await waitForRunStatus(visibleRun.id, 'cancelled')).status, 'cancelled');
+  await apiStatus(`/nodes/${node.id}/run`, { method: 'POST', body: { adapter: 'test', runner: 'codex_docker', approval_id: approvalId } }, 409);
+  await api(`/nodes/${node.id}/workspace-data`, { method: 'PUT', body: { data: { decision: '保持接口边界' } } });
+  const workspace = await api(`/nodes/${node.id}/workspace`);
+  assert.equal(workspace.data.decision, '保持接口边界');
   const digest = await api(`/workspaces/${node.workspace_id}/digests`, { method: 'POST', body: {} });
   assert.equal(digest.version, 1);
-  const diff = await api(`/runs/${run.run.id}/git/diff`, { method: 'POST', body: {} });
-  assert.ok(diff.file_ref.id);
-  const pr = await api(`/runs/${run.run.id}/github/pr`, { method: 'POST', body: {} });
-  assert.equal(pr.github_connected, false);
-  const trace = await api(`/runs/${run.run.id}/trace`);
-  for (const event of ['node_run.started', 'runner.invoked', 'runner.completed', 'asset_candidate.created']) assert.ok(trace.some((t) => t.event_type === event), `trace contains ${event}`);
-  const cancelledTrace = await api(`/runs/${queued.run.id}/trace`);
-  assert.ok(cancelledTrace.some((t) => t.event_type === 'runner.cancelled'));
+  const trace = await api(`/runs/${visibleRun.id}/trace`);
+  assert.ok(trace.some((item) => item.event_type === 'runner.cancelled'));
   console.log('integration api flow tests passed');
 } finally {
   child.kill();
   await new Promise((resolve) => setTimeout(resolve, 200));
-  fs.rmSync(testHome, { recursive: true, force: true });
+  fs.rmSync(home, { recursive: true, force: true });
 }
 
-async function api(path, options = {}) {
-  const res = await fetch(`http://127.0.0.1:${port}${path}`, { headers: { 'content-type': 'application/json' }, ...options, body: options.body ? JSON.stringify(options.body) : undefined });
-  const data = await res.json();
-  if (!res.ok) throw new Error(JSON.stringify(data));
-  return data;
-}
-async function waitForServer(port) {
-  for (let i = 0; i < 80; i++) {
-    try { await api('/health'); return; } catch { await new Promise((r) => setTimeout(r, 100)); }
-  }
-  throw new Error('server did not start');
-}
+async function api(pathname, options = {}) { const response = await fetch(`http://127.0.0.1:${port}${pathname}`, { headers: { 'content-type': 'application/json' }, ...options, body: options.body ? JSON.stringify(options.body) : undefined }); const data = await response.json(); assert.ok(response.ok, `${pathname}: ${JSON.stringify(data)}`); return data; }
+async function apiStatus(pathname, options, expected) { const response = await fetch(`http://127.0.0.1:${port}${pathname}`, { headers: { 'content-type': 'application/json' }, ...options, body: JSON.stringify(options.body || {}) }); const data = await response.json(); assert.equal(response.status, expected, `${pathname}: ${JSON.stringify(data)}`); return data; }
+async function approveNodeRun(projectId, nodeId) { const proposal = await api('/change-proposals', { method: 'POST', body: { project_id: projectId, node_id: nodeId, change_type: 'node_run_write', title: '批准测试运行', after: { runner: 'codex_docker' }, apply_action: { type: 'node_run_authorization', node_id: nodeId, runner: 'codex_docker' } } }); await api(`/change-proposals/${proposal.id}/approve`, { method: 'POST', body: {} }); await api(`/change-proposals/${proposal.id}/apply`, { method: 'POST', body: {} }); return proposal.id; }
+async function waitForRunStatus(runId, status) { for (let index = 0; index < 40; index++) { const result = await api(`/runs/${runId}`); if (result.run.status === status) return result.run; await new Promise((resolve) => setTimeout(resolve, 20)); } throw new Error(`run did not reach ${status}`); }
+async function waitForServer() { for (let index = 0; index < 80; index++) { try { await api('/health'); return; } catch { await new Promise((resolve) => setTimeout(resolve, 100)); } } throw new Error('server did not start'); }

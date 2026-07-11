@@ -1,71 +1,76 @@
 import { HttpError, send } from '../http.mjs';
-import { addTrace, mutate, owner, saveArtifact } from '../state.mjs';
+import { addTrace, mutate, owner, readState, saveArtifact } from '../state.mjs';
 import { ensureCodeChange } from '../helpers.mjs';
+import { connectedGithubAccount, createInstallationToken, githubJson, resolveGithubAppConfig } from '../github-service.mjs';
+import { testAdapter } from '../test-adapter.mjs';
 import { generatePrBody, now } from '../../../../packages/shared/index.mjs';
-import { githubAccount } from './github-account.mjs';
+import { git, isGitRepo } from '../git-utils.mjs';
+import { consumeGitActionApproval, GIT_PUBLISH_APPROVAL, requireGitActionApproval } from '../run-approval.mjs';
+import { assertManagedProjectWritable } from '../project-lifecycle.mjs';
 
-export async function createPr({ res, params, body }) {
-  const result = await mutate(async (state) => {
-    const actor = owner(state);
-    const run = state.node_runs.find((item) => item.id === params.id);
-    if (!run) throw new HttpError(404, 'run_not_found');
-
-    const node = state.workflow_nodes.find((item) => item.id === run.node_id);
-    const project = state.projects.find((item) => item.id === run.project_id);
-    const account = githubAccount(state, actor.id);
-    const change = ensureCodeChange(state, run, project, node, actor.id);
-    const prBody = buildPrBody({ state, project, node, run, change, body });
+export async function createPr({ res, params, body, query }) {
+  await mutate((data) => {
+    const run = data.node_runs.find((item) => item.id === params.id);
+    const node = data.workflow_nodes.find((item) => item.id === run?.node_id);
+    const project = data.projects.find((item) => item.id === run?.project_id);
+    if (!run) throw new HttpError(404, { error: 'run_not_found' });
+    if (!node || !project) throw new HttpError(404, { error: 'run_project_or_node_not_found' });
+    assertManagedProjectWritable(project);
+    const approval = requireGitActionApproval(data, { approvalId: body.approval_id, type: GIT_PUBLISH_APPROVAL, run, project, node });
+    consumeGitActionApproval(approval, `publish:${run.id}`);
+    return { run_id: run.id };
+  });
+  const state = await readState(), actor = owner(state);
+  const run = state.node_runs.find((item) => item.id === params.id);
+  if (!run) throw new HttpError(404, { error: 'run_not_found' });
+  const node = state.workflow_nodes.find((item) => item.id === run.node_id);
+  const project = state.projects.find((item) => item.id === run.project_id);
+  if (!node || !project) throw new HttpError(404, { error: 'run_project_or_node_not_found' });
+  const account = connectedGithubAccount(state, actor.id);
+  const binding = state.repository_bindings.find((item) => item.project_id === project.id);
+  if (binding && binding.permissions?.push !== true) throw new HttpError(403, { error: 'repository_push_permission_required' });
+  const change = ensureCodeChange(state, run, project, node, actor.id);
+  if (account && binding && (change.status !== 'committed' || !change.head_commit)) throw new HttpError(409, { error: 'git_commit_required_before_pr' });
+  const prBody = body.body || generatePrBody({ project, node, run, diff: change, assets: state.assets.filter((item) => item.run_id === run.id), tests: run.result_json?.test_results || [] });
+  let created = null;
+  if (account && binding) {
+    try {
+      created = testAdapter(body, query) ? { html_url: `https://github.com/${binding.full_name}/pull/1`, number: 1 } : await createLivePr(state, binding, change, body, prBody, (pushed) => recordPushAttempt(run, actor.id, pushed));
+    } catch (error) {
+      await mutate((data) => { addTrace(data, 'git.pr.created', { project_id: project.id, workspace_id: run.workspace_id, node_id: run.node_id, run_id: run.id, target_type: 'code_change', target_id: change.id, summary: 'GitHub PR 创建失败。', data: { error: error.message } }, actor.id); });
+      throw error;
+    }
+  }
+  const result = await mutate(async (data) => {
+    const currentRun = data.node_runs.find((item) => item.id === run.id), currentProject = data.projects.find((item) => item.id === project.id), currentNode = data.workflow_nodes.find((item) => item.id === node.id);
+    const currentChange = ensureCodeChange(data, currentRun, currentProject, currentNode, actor.id);
     const prRef = await saveArtifact('git', `${run.id}.pr-body.md`, prBody, { run_id: run.id });
-
-    state.file_refs.push(prRef);
-    change.pr_body_file_ref_id = prRef.id;
-    if (account && body.mock !== false) markPrCreated(state, { actor, run, node, project, change, account, body });
-    else markPrDraft(state, { actor, run, node, project, change, prRef });
-    change.updated_at = now();
-
-    return { code_change: change, pr_body: prBody, file_ref: prRef, github_connected: Boolean(account) };
+    data.file_refs.push(prRef);
+    Object.assign(currentChange, { pr_body_file_ref_id: prRef.id, pr_url: created?.html_url || '', status: created ? 'pr_created' : 'draft', pr_created_by_connected_account_id: created ? account.id : null, updated_at: now() });
+    addTrace(data, 'git.pr.created', { project_id: project.id, workspace_id: run.workspace_id, node_id: run.node_id, run_id: run.id, target_type: 'code_change', target_id: currentChange.id, summary: created ? `创建 GitHub PR：${created.html_url}` : '缺少有效 GitHub repository binding，已生成 PR 草稿。', raw_file_ref_id: prRef.id, data: created ? { pr_url: created.html_url, number: created.number } : {} }, actor.id);
+    return { code_change: currentChange, pr_body: prBody, file_ref: prRef, github_connected: Boolean(account), repository_bound: Boolean(binding) };
   });
   return send(res, 200, result);
 }
 
-function buildPrBody({ state, project, node, run, change, body }) {
-  return body.body || generatePrBody({
-    project,
-    node,
-    run,
-    diff: change,
-    assets: state.assets.filter((item) => item.run_id === run.id),
-    tests: run.result_json?.test_results || []
+async function createLivePr(state, binding, change, body, prBody, onPush) {
+  const config = resolveGithubAppConfig(state);
+  if (!config) throw new HttpError(409, { error: 'github_app_config_required' });
+  const token = await createInstallationToken(config, binding.installation_id);
+  const [ownerName, repoName] = binding.full_name.split('/');
+  const head = body.head || change.work_branch;
+  const base = body.base || change.base_branch || 'main';
+  if (!head) throw new HttpError(409, { error: 'git_work_branch_required' });
+  if (!/^[a-zA-Z0-9._\/-]+$/.test(head)) throw new HttpError(400, { error: 'invalid_git_work_branch' });
+  if (isGitRepo(change.repo_path)) {
+    const pushed = git(change.repo_path, ['push', binding.remote_name || 'origin', `HEAD:refs/heads/${head}`], 60000, { GIT_TERMINAL_PROMPT: '0', GIT_CONFIG_COUNT: '1', GIT_CONFIG_KEY_0: 'http.extraHeader', GIT_CONFIG_VALUE_0: `Authorization: Bearer ${token.token}` });
+    await onPush?.(pushed);
+    if (!pushed.ok) throw new HttpError(409, { error: 'git_push_failed', detail: pushed.stderr || pushed.error });
+  }
+  return githubJson(`https://api.github.com/repos/${ownerName}/${repoName}/pulls`, {
+    method: 'POST', headers: { authorization: `Bearer ${token.token}`, 'content-type': 'application/json' },
+    body: JSON.stringify({ title: body.title || change.commit_message || 'AI Workspace change', head, base, body: prBody, draft: body.draft !== false })
   });
 }
 
-function markPrCreated(state, { actor, run, node, project, change, account, body }) {
-  change.pr_url = body.pr_url || `https://github.com/mock/${project.title.replace(/\s+/g, '-').toLowerCase()}/pull/${state.code_changes.length + 1}`;
-  change.pr_created_by_connected_account_id = account.id;
-  change.status = 'pr_created';
-  addTrace(state, 'git.pr.created', {
-    project_id: project.id,
-    workspace_id: run.workspace_id,
-    node_id: run.node_id,
-    run_id: run.id,
-    target_type: 'code_change',
-    target_id: change.id,
-    summary: `创建 GitHub PR：${change.pr_url}`,
-    data: { pr_url: change.pr_url }
-  }, actor.id);
-}
-
-function markPrDraft(state, { actor, run, node, project, change, prRef }) {
-  change.pr_url = '';
-  change.status ||= 'draft';
-  addTrace(state, 'git.pr.created', {
-    project_id: project.id,
-    workspace_id: run.workspace_id,
-    node_id: run.node_id,
-    run_id: run.id,
-    target_type: 'code_change',
-    target_id: change.id,
-    summary: 'GitHub 未绑定或未启用 live，已生成 PR 草稿。',
-    raw_file_ref_id: prRef.id
-  }, actor.id);
-}
+function recordPushAttempt(run, actorId, result) { return mutate((state) => { addTrace(state, 'git.push.created', { project_id: run.project_id, workspace_id: run.workspace_id, node_id: run.node_id, run_id: run.id, summary: result.ok ? '确认后推送 Git ref。' : 'Git push 执行失败。', data: result }, actorId); }); }

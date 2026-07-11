@@ -87,7 +87,7 @@ function questionsForIssues(slots, conflicts) {
 }
 function sufficiencyStatus(slots, conflicts) { return conflicts.length ? 'conflict' : slots.some((s) => s.required) ? 'needs_user_input' : slots.length ? 'insufficient' : 'sufficient'; }
 function optionsForSufficiency(slots, conflicts) {
-  if (slots.length) return [{ id: id('opt'), label: '按 V1 默认方案继续', description: '使用系统推荐的最小可用契约补齐缺失项。', impact: '速度最快，但需要后续 Review。', recommended: true }, { id: id('opt'), label: '先完善信息', description: '停留在当前页面，逐项补齐缺失字段。', impact: '质量最高，适合正式节点运行。', recommended: false }];
+  if (slots.length) return [{ id: id('opt'), label: '按系统推荐方案继续', description: '使用系统推荐的最小可用契约补齐缺失项。', impact: '速度最快，但需要后续 Review。', recommended: true }, { id: id('opt'), label: '先完善信息', description: '停留在当前页面，逐项补齐缺失字段。', impact: '质量最高，适合正式节点运行。', recommended: false }];
   if (conflicts.length) return [{ id: id('opt'), label: '采用确认事实', description: '以 confirmed Asset/Decision/Contract 为准。', impact: '保持系统事实源一致。', recommended: true }, { id: id('opt'), label: '重新确认冲突', description: '让用户选择是否更新资产或决策。', impact: '适合旧事实可能过期的场景。', recommended: false }];
   return [];
 }

@@ -1,5 +1,5 @@
 import { hashString, id, now, slugify, unique } from './utils.mjs';
-import { NodeStatus, NodeType, ProjectStatus, WorkflowStatus, WorkspaceStatus } from './enums.mjs';
+import { NodeType, ProjectStatus, WorkflowStatus, WorkspaceStatus } from './enums.mjs';
 
 export const workflowTemplates = Object.freeze([
   { type: NodeType.GoalDefinition, title: '目标定义与成功标准', goal: '澄清项目目标、边界、角色、验收标准与阻塞风险。', outputs: ['项目目标卡', '成功标准', '待确认问题'] },
@@ -17,32 +17,29 @@ export function createLocalOwner(displayName = 'Local Owner') {
   };
 }
 
-export function createProject({ title, goal, role = '', background = '', workspace_root = '', repo_path = '', created_by_user_id }) {
+export function createProject({ title, goal, role = '', background = '', workspace_root = '', repo_path = '', created_by_user_id, status = ProjectStatus.Active, settings = {} }) {
   const projectId = id('prj');
   const workspaceId = id('wsp');
   const created = now();
   return {
     project: {
       id: projectId, title: title || goal?.slice(0, 40) || '未命名项目', goal: goal || '', role, background,
-      status: ProjectStatus.Active, workspace_root: workspace_root || repo_path || '', repo_path: repo_path || workspace_root || '',
-      current_workspace_id: workspaceId, settings: { token_budget: 12000, preferred_runner: 'mock', workspace_root_whitelist: workspace_root || repo_path ? [workspace_root || repo_path] : [] },
+      status, workspace_root: workspace_root || repo_path || '', repo_path: repo_path || workspace_root || '',
+      current_workspace_id: workspaceId, settings: { token_budget: 12000, preferred_runner: 'codex_docker', workspace_root_whitelist: workspace_root || repo_path ? [workspace_root || repo_path] : [], ...settings },
       created_by_user_id, created_at: created, updated_at: created
     },
     workspace: { id: workspaceId, project_id: projectId, parent_workspace_id: null, workflow_node_id: null, type: 'project', title: 'Project Workspace', goal: goal || '', status: WorkspaceStatus.Active, current_digest_id: null, active_agent_session_id: null, open_questions: [], created_at: created, updated_at: created }
   };
 }
 
-export function recommendWorkflow(project, actorId) {
-  const workflowId = id('wfl');
-  const nodes = workflowTemplates.map((template, index) => ({
-    id: id('wfn'), workflow_id: workflowId, workspace_id: null, type: template.type, title: template.title,
-    goal: `${template.goal}\n关联项目：${project.goal || project.title}`.trim(), status: NodeStatus.Draft, order_index: index,
-    dependencies: index === 0 ? [] : [{ node_order: index - 1, type: 'finish_to_start' }], current_contract_id: null,
-    template_outputs: template.outputs, position: { x: 80 + index * 240, y: index % 2 ? 220 : 80 }
-  }));
+export function createEmptyWorkflow(project, actorId) {
+  const created = now();
   return {
-    workflow: { id: workflowId, project_id: project.id, workspace_id: project.current_workspace_id, title: `${project.title} · V1 闭环工作流`, version: 1, status: WorkflowStatus.Proposed, generated_by: 'system', recommended_reason: ['覆盖目标、调研、分析、执行、复盘 5 类节点', '每个节点都有 Node Contract、Context Pack、Trace、Asset、Digest 入口', '优先保证可追溯、可接续、可人工确认'], confirmed_by: null, confirmed_by_user_id: null, created_by_user_id: actorId, graph_json: { nodes: nodes.map((node) => ({ id: node.id, type: node.type, label: node.title, position: node.position })), edges: nodes.slice(1).map((node, index) => ({ id: `edge_${index}_${node.id}`, source: nodes[index].id, target: node.id })) }, created_at: now(), updated_at: now() },
-    nodes
+    id: id('wfl'), project_id: project.id, workspace_id: project.current_workspace_id,
+    title: `${project.title} · 工作流`, version: 1, status: WorkflowStatus.Active,
+    generated_by: 'human', confirmed_by: 'human', confirmed_by_user_id: actorId,
+    created_by_user_id: actorId, graph_json: { nodes: [], edges: [] },
+    created_at: created, updated_at: created
   };
 }
 
@@ -60,7 +57,7 @@ export function defaultContractForNode(node, project, actorId, status = 'draft')
     expected_outputs: (outputs[node.type] || ['节点结果']).map((label) => ({ label, required: true })),
     acceptance_criteria: ['输出必须与项目目标直接相关，并说明证据来源。', '所有长期事实必须先作为资产候选，再由用户确认。', 'Context Pack 必须包含 Memory Manifest 和充分性检查结果。'],
     required_context: [{ type: 'project_goal', required: true }, { type: 'latest_digest', required: false }, { type: 'confirmed_assets', required: false }, { type: 'allowed_tools', required: true }],
-    allowed_tools: ['filesystem', 'git', 'mock_runner', node.type === NodeType.Execution ? 'codex_runner' : 'assist'],
+    allowed_tools: ['filesystem', 'git', node.type === NodeType.Execution ? 'codex_runner' : 'assist'],
     asset_output_types: node.type === NodeType.Execution ? ['CodeChangeAsset', 'DecisionAsset', 'ContextPackAsset'] : ['DecisionAsset', 'DigestAsset'],
     failure_policy: { on_missing_context: 'ask_user_or_generate_options', on_runner_error: 'record_trace_and_offer_retry', on_test_failure: 'mark_partial_and_keep_diff_reviewable' },
     review_policy: { human_required: true, asset_confirmation_required: true, commit_requires_review: true },

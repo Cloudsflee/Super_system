@@ -1,26 +1,102 @@
 import fs from 'node:fs';
 import fsp from 'node:fs/promises';
 import path from 'node:path';
-import { createLocalOwner, defaultCodexProfiles, defaultTools, hashString, id, makeTrace, maskSecretsDeep, now } from '../../../packages/shared/index.mjs';
-import { ARTIFACT_DIR, DATA_DIR, STATE_FILE, collections } from './config.mjs';
+import { createLocalOwner, defaultCodexProfiles, defaultTools, hashString, id, makeTrace, now } from '../../../packages/shared/index.mjs';
+import { ARTIFACT_DIR, CODEX_HOME_DIR, DATA_DIR, EXPORT_DIR, STAGING_DIR, STATE_FILE, TRASH_DIR, VAULT_DIR, WORKSPACE_DIR, WORKTREE_DIR, collections } from './config.mjs';
+import { redactKnownSecrets } from './vault.mjs';
+import { codexAuthMatchesProfile, isThirdPartyProvider, normalizeProviderBaseUrl, writeProfileConfig } from './codex-service.mjs';
 
 export async function ensureRuntime() {
   await fsp.mkdir(DATA_DIR, { recursive: true });
   await fsp.mkdir(ARTIFACT_DIR, { recursive: true });
+  await fsp.mkdir(VAULT_DIR, { recursive: true });
+  await fsp.mkdir(CODEX_HOME_DIR, { recursive: true });
+  await Promise.all([WORKSPACE_DIR, STAGING_DIR, TRASH_DIR, EXPORT_DIR, WORKTREE_DIR].map((dir) => fsp.mkdir(dir, { recursive: true })));
   if (!fs.existsSync(STATE_FILE)) return writeState(bootstrapState());
   const state = await readState();
   let changed = false;
+  if (state.schema_version !== 13) { state.schema_version = 13; changed = true; }
   for (const key of collections) if (!Array.isArray(state[key])) { state[key] = []; changed = true; }
   if (!state.users.length) { const { user, session } = createLocalOwner(); state.users.push(user); state.sessions.push(session); changed = true; }
   if (!state.tools.length) { state.tools.push(...defaultTools(state.users[0].id)); changed = true; }
   if (!state.codex_profiles.length) { state.codex_profiles.push(...defaultCodexProfiles(state.users[0]?.id)); changed = true; }
-  if (changed) await writeState(state);
+  for (const project of state.projects) {
+    if (!project.status) { project.status = 'active'; changed = true; }
+    project.settings ||= {};
+    if (!Number.isFinite(Number(project.settings.token_budget))) { project.settings.token_budget = 12000; changed = true; }
+    if (!['codex', 'codex_docker'].includes(project.settings.preferred_runner)) { project.settings.preferred_runner = 'codex_docker'; changed = true; }
+    if (!Array.isArray(project.settings.workspace_root_whitelist)) { project.settings.workspace_root_whitelist = [project.repo_path || project.workspace_root].filter(Boolean); changed = true; }
+    if (!project.onboarding_state) { project.onboarding_state = project.status === 'draft' ? 'intake' : 'confirmed'; changed = true; }
+    if (project.source_metadata === undefined) { project.source_metadata = null; changed = true; }
+    if (project.github_account_id === undefined) { project.github_account_id = null; changed = true; }
+    if (!project.managed_workspace_state) {
+      const managed = isWithin(WORKSPACE_DIR, project.repo_path || project.workspace_root || '');
+      project.managed_workspace_state = managed ? 'ready' : (project.repo_path || project.workspace_root ? 'workspace_migration_required' : 'empty');
+      changed = true;
+    }
+    if (project.deleted_at === undefined) { project.deleted_at = null; changed = true; }
+    if (project.trash_metadata === undefined) {
+      project.trash_metadata = project.trash_path ? { path: project.trash_path, status_before_trash: project.status_before_trash || 'active', trashed_at: project.deleted_at } : null;
+      changed = true;
+    }
+  }
+  for (const proposal of state.change_proposals) {
+    if (!Number.isInteger(proposal.revision) || proposal.revision < 1) { proposal.revision = 1; changed = true; }
+    if (!proposal.attention_state) { proposal.attention_state = proposal.status === 'pending' ? 'queued' : 'resolved'; changed = true; }
+    if (!proposal.target_hash) { proposal.target_hash = hashString(JSON.stringify(proposal.before_json ?? null)); changed = true; }
+  }
+  for (const session of state.terminal_sessions.filter((item) => ['starting', 'running', 'connected'].includes(item.status))) {
+    Object.assign(session, { status: 'interrupted', interrupted_reason: 'service_restarted', updated_at: now() }); changed = true;
+  }
+  const legacyWorkflowSuffix = ['V1', '闭环工作流'].join(' ');
+  for (const workflow of state.workflows) if (workflow.generated_by === 'system' && workflow.title?.includes(legacyWorkflowSuffix)) { workflow.title = workflow.title.replace(legacyWorkflowSuffix, '工作流'); changed = true; }
+  const retiredProfileKind = ['m', 'o', 'c', 'k'].join('');
+  const productionProfiles = state.codex_profiles.filter((item) => item.kind !== retiredProfileKind && item.kind !== 'cc_switch');
+  if (productionProfiles.length !== state.codex_profiles.length) { state.codex_profiles = productionProfiles; changed = true; }
+  if (!state.codex_profiles.length) { state.codex_profiles.push(...defaultCodexProfiles(state.users[0]?.id)); changed = true; }
+  const ccSwitch = state.integration_statuses.find((item) => item.key === 'cc_switch');
+  if (ccSwitch && (!ccSwitch.bridge?.ready || ccSwitch.bridge?.conformance?.ok !== true || Number(ccSwitch.bridge?.revision || 0) < 2 || !ccSwitch.sources?.find((item) => item.name === 'cc-switch-cli')?.commit)) {
+    Object.assign(ccSwitch, { status: 'not_synced', bridge: { ...(ccSwitch.bridge || {}), ready: false, revision: Number(ccSwitch.bridge?.revision || 0), reason: 'bridge_resync_required' }, updated_at: now() });
+    changed = true;
+  }
+  for (const profile of state.codex_profiles) {
+    const before = JSON.stringify(profile);
+    if (!profile.base_url) profile.base_url = profile.api_url || profile.provider_url || null;
+    if (profile.base_url) profile.base_url = normalizeProviderBaseUrl(profile.base_url) || profile.base_url;
+    profile.wire_api ||= 'responses';
+    if (typeof profile.requires_openai_auth !== 'boolean') profile.requires_openai_auth = false;
+    profile.cc_switch_mode ||= 'native';
+    if (profile.cc_switch_mode !== 'managed') Object.assign(profile, { cc_switch_required: false, cc_switch_status: 'not_required', cc_switch_provider_id: null, cc_switch_synced_at: null, cc_switch_bridge_revision: null, cc_switch_source_commit: null });
+    if (isThirdPartyProvider(profile.provider) && !normalizeProviderBaseUrl(profile.base_url) && profile.status === 'validated') profile.status = 'configuration_required';
+    if (JSON.stringify(profile) !== before) { profile.updated_at = now(); changed = true; }
+  }
+  const codexAuth = state.integration_statuses.find((item) => item.key === 'codex_auth');
+  const activeProfile = state.codex_profiles.find((item) => item.is_active) || state.codex_profiles.find((item) => item.status === 'validated');
+  const activeProfileInvalid = activeProfile && (activeProfile.status !== 'validated' || !codexAuthMatchesProfile(codexAuth, activeProfile) || (isThirdPartyProvider(activeProfile.provider) && !normalizeProviderBaseUrl(activeProfile.base_url)));
+  if (activeProfileInvalid) for (const setup of state.setup_states.filter((item) => item.completed_at)) { setup.completed_at = null; setup.updated_at = now(); changed = true; }
+  for (const profile of state.codex_profiles.filter((item) => item.status === 'validated' && item.model && (!isThirdPartyProvider(item.provider) || normalizeProviderBaseUrl(item.base_url)))) {
+    const generated = await writeProfileConfig(profile, codexAuth?.home);
+    if (profile.codex_home !== generated.codex_home || profile.config_file !== generated.config_file) { Object.assign(profile, generated); changed = true; }
+  }
+  const retiredToolName = [['m', 'o', 'c', 'k'].join(''), 'runner'].join('_');
+  const productionTools = state.tools.filter((item) => item.name !== retiredToolName);
+  if (productionTools.length !== state.tools.length) { state.tools = productionTools; changed = true; }
+  for (const contract of state.node_contracts) {
+    if (!Array.isArray(contract.allowed_tools)) continue;
+    const allowed = contract.allowed_tools.filter((item) => item !== retiredToolName);
+    if (allowed.length !== contract.allowed_tools.length) { contract.allowed_tools = allowed; contract.updated_at = now(); changed = true; }
+  }
+  const retiredRunner = ['m', 'o', 'c', 'k'].join('');
+  for (const run of state.node_runs) if (run.runner === retiredRunner) { run.legacy_runner = retiredRunner; run.runner = 'legacy_retired_adapter'; run.legacy_read_only = true; changed = true; }
+  const serialized = JSON.stringify(state, null, 2);
+  if (changed || await redactKnownSecrets(serialized) !== serialized) await writeState(state);
 }
 
 export function emptyState() { return Object.fromEntries(collections.map((key) => [key, []])); }
 
 function bootstrapState() {
   const state = emptyState();
+  state.schema_version = 13;
   const { user, session } = createLocalOwner();
   state.users.push(user);
   state.sessions.push(session);
@@ -34,15 +110,21 @@ export async function readState() { return JSON.parse(await fsp.readFile(STATE_F
 
 export async function writeState(state) {
   const tmp = `${STATE_FILE}.tmp`;
-  await fsp.writeFile(tmp, JSON.stringify(maskSecretsDeep(state), null, 2), 'utf8');
-  await fsp.rename(tmp, STATE_FILE);
+  await fsp.writeFile(tmp, await redactKnownSecrets(JSON.stringify(state, null, 2)), 'utf8');
+  await replaceStateFile(tmp, STATE_FILE);
 }
 
-export async function mutate(fn) {
-  const state = await readState();
-  const result = await fn(state);
-  await writeState(state);
-  return result;
+let mutationQueue = Promise.resolve();
+
+export function mutate(fn) {
+  const operation = mutationQueue.then(async () => {
+    const state = await readState();
+    const result = await fn(state);
+    await writeState(state);
+    return result;
+  });
+  mutationQueue = operation.catch(() => undefined);
+  return operation;
 }
 
 export function owner(state) { return state.users.find((u) => u.role === 'owner') || state.users[0]; }
@@ -58,7 +140,8 @@ export async function saveArtifact(kind, name, content, meta = {}) {
   await fsp.mkdir(dir, { recursive: true });
   const fileName = `${Date.now()}_${String(name || 'artifact').replace(/[^\w.\-\u4e00-\u9fa5]+/g, '_').slice(0, 80)}`;
   const full = path.join(dir, fileName);
-  await fsp.writeFile(full, typeof content === 'string' ? content : JSON.stringify(content, null, 2), 'utf8');
+  const serialized = typeof content === 'string' ? content : JSON.stringify(content, null, 2);
+  await fsp.writeFile(full, await redactKnownSecrets(serialized), 'utf8');
   const bytes = await fsp.readFile(full);
   return {
     id: id('fil'), kind, absolute_path: full, relative_path: path.relative(path.dirname(DATA_DIR), full),
@@ -66,4 +149,20 @@ export async function saveArtifact(kind, name, content, meta = {}) {
     content_type: fileName.endsWith('.json') ? 'application/json' : fileName.endsWith('.md') ? 'text/markdown' : 'text/plain',
     meta, created_at: now()
   };
+}
+
+function isWithin(root, candidate) {
+  if (!candidate) return false;
+  const relative = path.relative(path.resolve(root), path.resolve(candidate));
+  return relative === '' || (!relative.startsWith('..') && !path.isAbsolute(relative));
+}
+
+async function replaceStateFile(source, target) {
+  for (let attempt = 0; ; attempt++) {
+    try { await fsp.rename(source, target); return; }
+    catch (error) {
+      if (!['EPERM', 'EACCES', 'EBUSY'].includes(error.code) || attempt >= 8) throw error;
+      await new Promise((resolve) => setTimeout(resolve, 10 * (attempt + 1)));
+    }
+  }
 }

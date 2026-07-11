@@ -9,7 +9,8 @@ export function normalizeMcpConfig(config = {}) {
   };
 }
 
-export function mockHealthCheck(config = {}) {
+export function inspectMcpConfig(config = {}) {
   const normalized = normalizeMcpConfig(config);
-  return { status: 'healthy', discovered_tools: [{ name: `${normalized.name}.echo` }], config: normalized };
+  const configured = Boolean(normalized.url || normalized.command);
+  return { status: configured ? 'configured' : 'configuration_required', discovered_tools: [], config: normalized };
 }

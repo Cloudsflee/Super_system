@@ -1,4 +1,6 @@
 export const ProjectStatus = Object.freeze({ Draft: 'draft', Active: 'active', Blocked: 'blocked', Completed: 'completed', Archived: 'archived' });
+export const ApprovalAttention = Object.freeze({ Interrupting: 'interrupting', Queued: 'queued', Resolved: 'resolved' });
+export const AssistTurnMode = Object.freeze({ Ask: 'ask', Plan: 'plan', Agent: 'agent', Cli: 'cli' });
 export const WorkspaceStatus = Object.freeze({ Draft: 'draft', Active: 'active', Blocked: 'blocked', NeedsReview: 'needs_review', Completed: 'completed', Archived: 'archived' });
 export const WorkflowStatus = Object.freeze({ Draft: 'draft', Proposed: 'proposed', Confirmed: 'confirmed', Active: 'active', Completed: 'completed', Archived: 'archived' });
 export const NodeStatus = Object.freeze({ Draft: 'draft', Ready: 'ready', Running: 'running', Blocked: 'blocked', NeedsReview: 'needs_review', Completed: 'completed', Skipped: 'skipped' });
@@ -12,7 +14,7 @@ export const TRACE_EVENTS = Object.freeze([
   'project.created', 'workflow.recommended', 'workflow.confirmed', 'node_contract.created', 'node_contract.confirmed',
   'assist.requested', 'assist.context_pack.generated', 'assist.questions.generated', 'assist.options.generated', 'assist.option.selected', 'assist.draft.applied', 'assist.rejected',
   'memory.sufficiency.checked', 'memory.manifest.generated', 'memory.conflict.detected', 'runner_memory_candidate.created', 'runner_memory_candidate.applied',
-  'context_pack.generated', 'context_pack.confirmed', 'node_run.queued', 'node_run.started', 'runner.invoked', 'runner.output', 'runner.raw_event',
+  'context_pack.generated', 'context_pack.confirmed', 'node_run.queued', 'node_run.started', 'node_run.approval.consumed', 'runner.invoked', 'runner.output', 'runner.raw_event',
   'runner.completed', 'runner.failed', 'runner.cancelled', 'file.snapshot.before', 'file.snapshot.after', 'file.changed',
   'git.diff.captured', 'git.branch.created', 'git.commit.created', 'git.pr.created', 'test.started', 'test.completed',
   'asset_candidate.created', 'asset.confirmed', 'asset.rejected', 'decision.proposed', 'decision.accepted', 'digest.generated', 'digest.confirmed',
@@ -20,4 +22,13 @@ export const TRACE_EVENTS = Object.freeze([
   'integration.checked', 'integration.synced', 'integration.degraded',
   'agent_session.created', 'agent_session.submission.created',
   'change_proposal.created', 'change_proposal.approved', 'change_proposal.rejected', 'change_proposal.applied'
+  ,'setup.mode.updated', 'setup.completed', 'github.app.configured', 'github.account.connected',
+  'github.installation.synced', 'github.webhook.received', 'codex.authenticated', 'codex.profile.created',
+  'codex.probe.completed', 'workflow.layout.saved', 'node.workspace.updated', 'file.saved',
+  'assist.session.created', 'assist.message.created', 'assist.action.confirmed', 'assist.action.rejected', 'assist.action.failed'
+  ,'git.push.created', 'project.intake.updated', 'project.source.imported', 'project.activated', 'project.workspace.migrated',
+  'project.trashed', 'project.restored', 'change_proposal.deferred', 'runtime_approval.decided',
+  'github.repository.created',
+  'config_revision.activated',
+  'assist.turn.created', 'assist.turn.completed', 'assist.turn.interrupted', 'assist.review.updated', 'terminal.session.created', 'terminal.session.completed'
 ]);

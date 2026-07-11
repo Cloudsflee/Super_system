@@ -1,27 +1,21 @@
 import { buildContextPack } from '../../../packages/context-pack/src/index.mjs';
-import { runMock } from '../../../packages/runner-adapters/src/index.mjs';
+import { executeNodeRun } from '../../api/src/routes/runs.mjs';
+import { pathToFileURL } from 'node:url';
 
 export const taskNames = [
   'context-pack.build',
-  'memory.sufficiency-check',
-  'memory.manifest-build',
-  'assist.run',
-  'node-run.execute',
-  'codex.run',
-  'git.capture-diff',
-  'git.commit',
-  'github.verify-account',
-  'github.create-pr',
-  'mcp.health-check',
-  'digest.generate'
+  'node-run.execute'
 ];
 
 export async function executeTask(name, payload) {
   if (name === 'context-pack.build') return buildContextPack(payload);
-  if (name === 'node-run.execute') return runMock(payload);
-  return { status: 'queued-noop', name, payload_keys: Object.keys(payload || {}) };
+  if (name === 'node-run.execute') {
+    if (!payload?.node_id) throw new Error('node_id_required');
+    return executeNodeRun(payload.node_id, payload.run || payload);
+  }
+  throw new Error(`unsupported_worker_task:${name}`);
 }
 
-if (import.meta.url === `file://${process.argv[1]}`) {
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
   console.log(`AIWS worker ready: ${taskNames.join(', ')}`);
 }

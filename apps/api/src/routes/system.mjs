@@ -2,22 +2,23 @@ import { command, makeRoute, send } from '../http.mjs';
 import { ROOT, STATE_FILE } from '../config.mjs';
 import { addTrace, mutate, owner, readState } from '../state.mjs';
 import { createLocalOwner, now, pick } from '../../../../packages/shared/index.mjs';
+import { inspectCodexRuntimeLive } from '../codex-runtime-status.mjs';
 
 export const systemRoutes = [
   makeRoute('GET', '/health', async ({ res }) => {
     const state = await readState();
     const git = command('git', ['--version'], ROOT, 3000);
     const codex = command('codex', ['--version'], ROOT, 3000);
-    const docker = command('docker', ['--version'], ROOT, 3000);
+    const runtime = inspectCodexRuntimeLive();
     return send(res, 200, {
-      status: 'ok', api: { healthy: true }, db: { healthy: true, mode: 'json-local', state_file: STATE_FILE }, redis: { healthy: true, mode: 'in-process-noop' },
+      status: 'ok', api: { healthy: true }, db: { healthy: true, mode: 'json-local', state_file: STATE_FILE },
+      queue: { required: false, status: 'not_configured', mode: 'direct-execution' },
       git: { healthy: git.ok, version: git.stdout.trim() || git.error },
       codex: { healthy: codex.ok, version: codex.stdout.trim() || codex.error, degraded_ok: true },
-      docker: { healthy: docker.ok, version: docker.stdout.trim() || docker.error, degraded_ok: true },
+      docker: { healthy: runtime.docker.ok, version: runtime.docker.version || runtime.docker.summary, image_ready: runtime.image.ready, image: runtime.image.name, error_code: runtime.docker.error_code || runtime.image.error_code, degraded_ok: true },
       local_owner: state.users[0] ? pick(state.users[0], ['id', 'display_name', 'role', 'auth_mode']) : null
     });
   }),
-  makeRoute('GET', '/api/state', async ({ res }) => send(res, 200, await readState())),
   makeRoute('GET', '/account/me', async ({ res }) => {
     const state = await readState();
     const user = owner(state);

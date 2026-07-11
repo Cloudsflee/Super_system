@@ -1,43 +1,51 @@
 import { HttpError, makeRoute, send } from '../http.mjs';
 import { addTrace, mutate, owner, readState } from '../state.mjs';
 import { nodeBundle, projectBundle } from '../helpers.mjs';
-import { applyContractPatch, createNodeWorkspace, createProject, defaultContractForNode, recommendWorkflow, validateNodeContract, now } from '../../../../packages/shared/index.mjs';
+import { createDraftProjectRecords } from '../project-lifecycle.mjs';
 
 export const projectRoutes = [
-  makeRoute('GET', '/projects', async ({ res }) => {
+  makeRoute('GET', '/projects', async ({ res, query }) => {
     const state = await readState();
-    return send(res, 200, state.projects.map((project) => ({ ...project, workflow_count: state.workflows.filter((w) => w.project_id === project.id).length, asset_count: state.assets.filter((a) => a.project_id === project.id).length, run_count: state.node_runs.filter((r) => r.project_id === project.id).length })));
+    const projects = state.projects.filter((project) => query.deleted === 'only' ? Boolean(project.deleted_at) : query.deleted === 'include' ? true : !project.deleted_at).map((project) => ({ ...project, workflow_count: state.workflows.filter((w) => w.project_id === project.id).length, asset_count: state.assets.filter((a) => a.project_id === project.id).length, run_count: state.node_runs.filter((r) => r.project_id === project.id).length }));
+    return send(res, 200, projects.sort((a, b) => String(b.last_opened_at || b.updated_at).localeCompare(String(a.last_opened_at || a.updated_at))));
   }),
   makeRoute('POST', '/projects', async ({ res, body }) => {
-    const result = await mutate((state) => { const actor = owner(state); const created = createProject({ ...body, created_by_user_id: actor.id }); state.projects.push(created.project); state.workspaces.push(created.workspace); addTrace(state, 'project.created', { project_id: created.project.id, workspace_id: created.workspace.id, summary: `创建 Project：${created.project.title}`, data: created.project }, actor.id); return created; });
-    return send(res, 201, result);
-  }),
-  makeRoute('GET', '/projects/:id', async ({ res, params }) => { const bundle = projectBundle(await readState(), params.id); return bundle ? send(res, 200, bundle) : send(res, 404, { error: 'project_not_found' }); }),
-  makeRoute('POST', '/workflows/recommend', async ({ res, body }) => {
-    const result = await mutate((state) => { const actor = owner(state); const project = state.projects.find((p) => p.id === body.project_id); if (!project) throw new HttpError(404, 'project_not_found'); const wf = recommendWorkflow(project, actor.id); state.workflows.push(wf.workflow); state.workflow_nodes.push(...wf.nodes); addTrace(state, 'workflow.recommended', { project_id: project.id, workspace_id: project.current_workspace_id, target_type: 'workflow', target_id: wf.workflow.id, summary: `推荐工作流：${wf.workflow.title}` }, actor.id); return wf; });
-    return send(res, 201, result);
-  }),
-  makeRoute('POST', '/workflows/:id/confirm', async ({ res, params }) => {
     const result = await mutate((state) => {
-      const actor = owner(state); const workflow = state.workflows.find((w) => w.id === params.id); if (!workflow) throw new HttpError(404, 'workflow_not_found'); const project = state.projects.find((p) => p.id === workflow.project_id);
-      Object.assign(workflow, { status: 'confirmed', confirmed_by: 'human', confirmed_by_user_id: actor.id, updated_at: now() });
-      const nodes = state.workflow_nodes.filter((n) => n.workflow_id === workflow.id).sort((a, b) => a.order_index - b.order_index); const workspaces = [], contracts = [];
-      for (const node of nodes) { node.status = 'ready'; const ws = createNodeWorkspace(project, node, actor.id); node.workspace_id = ws.id; state.workspaces.push(ws); workspaces.push(ws); const contract = defaultContractForNode(node, project, actor.id, 'confirmed'); node.current_contract_id = contract.id; state.node_contracts.push(contract); contracts.push(contract); addTrace(state, 'node_contract.created', { project_id: project.id, workspace_id: ws.id, node_id: node.id, target_id: contract.id, summary: `创建节点契约：${node.title}` }, actor.id); addTrace(state, 'node_contract.confirmed', { project_id: project.id, workspace_id: ws.id, node_id: node.id, target_id: contract.id, summary: `确认节点契约：${node.title}` }, actor.id); }
-      addTrace(state, 'workflow.confirmed', { project_id: project.id, workspace_id: project.current_workspace_id, target_id: workflow.id, summary: `确认工作流：${workflow.title}` }, actor.id);
-      return { workflow, nodes, workspaces, contracts };
+      const actor = owner(state), operationKey = String(body.operation_key || '').trim().slice(0, 100);
+      if (operationKey) {
+        const intake = state.project_intakes.find((item) => item.operation_key === operationKey && item.created_by_user_id === actor.id);
+        const existing = intake && state.projects.find((item) => item.id === intake.project_id);
+        if (existing) return { project: existing, workspace: state.workspaces.find((item) => item.id === existing.current_workspace_id), intake, brief: state.project_briefs.filter((item) => item.project_id === existing.id).at(-1), assist_session: state.assist_sessions.find((item) => item.version === 3 && item.project_id === existing.id), onboarding_route: `/projects/${existing.id}/onboarding`, idempotent: true };
+      }
+      const created = createDraftProjectRecords(body, actor);
+      if (operationKey) created.intake.operation_key = operationKey;
+      state.projects.push(created.project); state.workspaces.push(created.workspace); state.project_intakes.push(created.intake); state.project_briefs.push(created.brief); state.assist_sessions.push(created.session);
+      addTrace(state, 'project.created', { project_id: created.project.id, workspace_id: created.workspace.id, target_id: created.intake.id, summary: `创建 draft Project：${created.project.title}`, data: { onboarding_route: created.onboarding_route } }, actor.id);
+      addTrace(state, 'assist.session.created', { project_id: created.project.id, workspace_id: created.workspace.id, target_id: created.session.id, summary: '创建项目引导 Assist V3 Session。' }, actor.id);
+      return { ...created, assist_session: created.session, idempotent: false };
     });
-    return send(res, 200, result);
+    return send(res, 201, result);
   }),
+  makeRoute('GET', '/projects/:id', async ({ res, params }) => { const state = await readState(); const bundle = projectBundle(state, params.id); if (!bundle) return send(res, 404, { error: 'project_not_found' }); bundle.nodes = bundle.nodes.map((node) => decorateNode(state, node)); return send(res, 200, bundle); }),
   makeRoute('GET', '/workflows/:id', async ({ res, params }) => { const state = await readState(); const workflow = state.workflows.find((w) => w.id === params.id); if (!workflow) return send(res, 404, { error: 'workflow_not_found' }); const nodes = state.workflow_nodes.filter((n) => n.workflow_id === workflow.id).sort((a, b) => a.order_index - b.order_index); return send(res, 200, { workflow, nodes, contracts: state.node_contracts.filter((c) => nodes.some((n) => n.id === c.node_id)) }); }),
   makeRoute('GET', '/workspaces/:id', async ({ res, params }) => {
     const state = await readState(); const workspace = state.workspaces.find((w) => w.id === params.id); if (!workspace) return send(res, 404, { error: 'workspace_not_found' }); const node = workspace.workflow_node_id ? state.workflow_nodes.find((n) => n.id === workspace.workflow_node_id) : null; const project = state.projects.find((p) => p.id === workspace.project_id); const contract = node ? state.node_contracts.find((c) => c.id === node.current_contract_id) : null;
     return send(res, 200, { workspace, project, node, contract, runs: state.node_runs.filter((r) => r.workspace_id === workspace.id), context_packs: state.context_packs.filter((c) => c.source_workspace_id === workspace.id), assets: state.assets.filter((a) => a.workspace_id === workspace.id || a.project_id === project?.id), digests: state.digests.filter((d) => d.workspace_id === workspace.id), traces: state.traces.filter((t) => t.workspace_id === workspace.id || t.project_id === project?.id).slice(-200) });
   }),
-  makeRoute('POST', '/nodes/:id/contract', upsertContract),
-  makeRoute('PUT', '/nodes/:id/contract', upsertContract)
+  makeRoute('GET', '/nodes/:id/workspace', nodeWorkspace),
+  makeRoute('PUT', '/nodes/:id/workspace-data', saveWorkspaceData)
 ];
 
-async function upsertContract({ res, params, body }) {
-  const result = await mutate((state) => { const actor = owner(state); const { node, project, workspace, contract: current } = nodeBundle(state, params.id); if (!node) throw new HttpError(404, 'node_not_found'); const patch = body.contract || body.patch || body; const next = current ? applyContractPatch(current, patch, actor.id) : { ...defaultContractForNode(node, project, actor.id), ...patch }; if (body.confirm === true || patch.status === 'confirmed') Object.assign(next, { status: 'confirmed', confirmed_by: 'human', confirmed_by_user_id: actor.id }); const validation = validateNodeContract(next); if (!validation.ok) throw new HttpError(400, { error: 'invalid_contract', details: validation.errors }); if (current) current.status = 'superseded'; state.node_contracts.push(next); node.current_contract_id = next.id; addTrace(state, 'node_contract.created', { project_id: project.id, workspace_id: workspace?.id, node_id: node.id, target_id: next.id, summary: `更新 Node Contract v${next.version}` }, actor.id); if (next.status === 'confirmed') addTrace(state, 'node_contract.confirmed', { project_id: project.id, workspace_id: workspace?.id, node_id: node.id, target_id: next.id, summary: `确认 Node Contract v${next.version}` }, actor.id); return { contract: next, validation }; });
+async function nodeWorkspace({ res, params }) {
+  const state = await readState(), bundle = nodeBundle(state, params.id);
+  if (!bundle.node) throw new HttpError(404, { error: 'node_not_found' });
+  const data = state.node_workspace_data.find((item) => item.node_id === bundle.node.id)?.data || {};
+  return send(res, 200, { ...bundle, node: decorateNode(state, bundle.node), data, runs: state.node_runs.filter((item) => item.node_id === bundle.node.id), code_changes: state.code_changes.filter((item) => item.node_id === bundle.node.id), assets: state.assets.filter((item) => item.node_id === bundle.node.id || item.project_id === bundle.project.id), traces: state.traces.filter((item) => item.node_id === bundle.node.id || item.project_id === bundle.project.id).slice(-300) });
+}
+
+async function saveWorkspaceData({ res, params, body }) {
+  const result = await mutate((state) => { const actor = owner(state), bundle = nodeBundle(state, params.id); if (!bundle.node) throw new HttpError(404, { error: 'node_not_found' }); let record = state.node_workspace_data.find((item) => item.node_id === bundle.node.id); if (!record) { record = { id: `nwd_${Date.now().toString(16)}`, node_id: bundle.node.id, project_id: bundle.project.id, workspace_id: bundle.workspace.id, data: {}, created_at: new Date().toISOString() }; state.node_workspace_data.push(record); } Object.assign(record, { data: body.data || {}, updated_at: new Date().toISOString(), updated_by_user_id: actor.id }); bundle.workspace.open_questions = Array.isArray(record.data.questions) ? record.data.questions : bundle.workspace.open_questions; addTrace(state, 'node.workspace.updated', { project_id: bundle.project.id, workspace_id: bundle.workspace.id, node_id: bundle.node.id, summary: `保存节点工作区：${bundle.node.title}` }, actor.id); return record; });
   return send(res, 200, result);
 }
+
+function decorateNode(state, node) { const runs = state.node_runs.filter((item) => item.node_id === node.id).sort((a, b) => String(b.created_at).localeCompare(String(a.created_at))); return { ...node, latest_run: runs[0] || null, output_count: state.assets.filter((item) => item.node_id === node.id).length, pending_approval_count: state.change_proposals.filter((item) => item.node_id === node.id && item.status === 'pending').length }; }

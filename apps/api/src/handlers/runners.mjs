@@ -2,39 +2,50 @@ import fs from 'node:fs';
 import fsp from 'node:fs/promises';
 import path from 'node:path';
 import { HttpError } from '../http.mjs';
-import { ROOT } from '../config.mjs';
 import { addTrace, saveArtifact } from '../state.mjs';
 import { CodexRunner, DockerCodexRunner } from '../../../../packages/runner-adapters/src/index.mjs';
 import { RunnerStatus, buildNodeRunResult, contextPackToMarkdown, nodeRunResultSchema, now } from '../../../../packages/shared/index.mjs';
+import { readSecret } from '../vault.mjs';
+import { codexAuthMatchesProfile, isThirdPartyProvider } from '../codex-service.mjs';
+import { materializeDeviceAuth } from '../codex-device-auth.mjs';
 
-export async function executeRunner(state, { actor, run, project, workspace, node, ctx, body }) {
+export async function invokeRunner(state, { actor, run, project, workspace, node, ctx, body }) {
   const repoPath = project.repo_path || project.workspace_root || '';
-  const changedFiles = [];
+  if (!repoPath || !fs.existsSync(repoPath)) throw new HttpError(409, { error: 'repository_root_required_for_node_run' });
   if (run.runner === 'codex_docker') return executeCodexDocker(state, { actor, run, project, workspace, node, ctx, repoPath });
-  if (run.runner === 'codex' && body.force_mock === false) return executeCodex(state, { actor, run, project, workspace, node, ctx, repoPath });
-  if (repoPath && fs.existsSync(repoPath) && body.mock_write !== false) await writeMockMarker(repoPath, run, node, changedFiles);
-  else changedFiles.push({ path: 'virtual://mock-run-result.md', status: 'generated', source: 'mock_runner' });
-  const raw = `MockRunner completed ${node.title}`;
-  return persistRunnerResult(state, { actor, run, project, workspace, node, ctx, raw, resultJson: buildNodeRunResult({ run, contextPack: ctx, changedFiles, raw, status: RunnerStatus.Succeeded }) });
+  if (run.runner === 'codex') return executeCodex(state, { actor, run, project, workspace, node, ctx, repoPath });
+  throw new HttpError(400, { error: 'unsupported_runner', allowed: ['codex_docker', 'codex'] });
 }
 
 async function executeCodexDocker(state, payload) {
   const { run, ctx, repoPath } = payload;
-  const cwd = repoPath && fs.existsSync(repoPath) ? repoPath : ROOT;
+  const cwd = repoPath;
+  const profile = state.codex_profiles.find((item) => item.is_active && item.status === 'validated');
+  if (!profile?.codex_home) throw new HttpError(409, { error: 'active_codex_profile_required' });
   const files = await prepareCodexFiles(cwd, run, ctx);
-  const runner = new DockerCodexRunner({ image: process.env.AIWS_CODEX_DOCKER_IMAGE || 'aiws-codex-runner:local' });
+  const auth = state.integration_statuses.find((item) => item.key === 'codex_auth');
+  if (!codexAuthMatchesProfile(auth, profile)) throw new HttpError(409, { error: 'codex_auth_profile_mismatch' });
+  if (auth.home && !isThirdPartyProvider(profile.provider)) await materializeDeviceAuth(auth.home, profile.codex_home);
+  const credential = await readSecret(auth?.refs?.credential);
+  const runner = new DockerCodexRunner({ image: process.env.AIWS_CODEX_DOCKER_IMAGE || 'aiws-codex-runner:local', timeoutMs: profile.timeout_ms });
   const fallback = buildNodeRunResult({ run, contextPack: ctx, changedFiles: [], raw: 'DockerCodexRunner command prepared', status: RunnerStatus.Partial });
-  const resultJson = await runner.run({ cwd, aiwsHome: path.join(ROOT, '.ai-workspace'), promptFile: files.promptFile, outputSchemaFile: files.schemaFile, fallback });
-  return persistRunnerResult(state, { ...payload, raw: resultJson._codex_process?.stderr || resultJson.summary, resultJson: { ...fallback, ...resultJson, changed_files: resultJson.changed_files || [] } });
+  const resultJson = await runner.run({ cwd, codexHome: profile.codex_home, mounts: profile.mounts || [], model: profile.model, env: { OPENAI_API_KEY: credential || undefined }, promptFile: files.promptFile, outputSchemaFile: files.schemaFile, fallback, signal: payload.body?.signal });
+  return { raw: resultJson._codex_process?.stderr || resultJson.summary, resultJson: { ...fallback, ...resultJson, changed_files: resultJson.changed_files || [] } };
 }
 
 async function executeCodex(state, payload) {
   const { run, project, node, ctx, repoPath } = payload;
-  const cwd = repoPath && fs.existsSync(repoPath) ? repoPath : ROOT;
+  const cwd = repoPath;
   const files = await prepareCodexFiles(cwd, run, ctx);
+  const profile = state.codex_profiles.find((item) => item.is_active && item.status === 'validated');
+  if (!profile?.codex_home) throw new HttpError(409, { error: 'active_codex_profile_required' });
+  const auth = state.integration_statuses.find((item) => item.key === 'codex_auth');
+  if (!codexAuthMatchesProfile(auth, profile)) throw new HttpError(409, { error: 'codex_auth_profile_mismatch' });
+  if (auth.home && !isThirdPartyProvider(profile.provider)) await materializeDeviceAuth(auth.home, profile.codex_home);
+  const credential = await readSecret(auth?.refs?.credential);
   const fallback = buildNodeRunResult({ run, contextPack: ctx, changedFiles: [], raw: 'CodexRunner fallback', status: RunnerStatus.Partial });
-  const resultJson = await new CodexRunner({ timeoutMs: Number(process.env.AIWS_CODEX_TIMEOUT_MS || 120000) }).run({ cwd, promptFile: files.promptFile, outputSchemaFile: files.schemaFile, fallback });
-  return persistRunnerResult(state, { ...payload, raw: resultJson._codex_process?.stderr || resultJson.summary, resultJson: { ...fallback, ...resultJson, changed_files: resultJson.changed_files || [] } });
+  const resultJson = await new CodexRunner({ timeoutMs: profile.timeout_ms }).run({ cwd, model: profile.model, env: { CODEX_HOME: profile.codex_home, OPENAI_API_KEY: credential || undefined }, promptFile: files.promptFile, outputSchemaFile: files.schemaFile, fallback, signal: payload.body?.signal });
+  return { raw: resultJson._codex_process?.stderr || resultJson.summary, resultJson: { ...fallback, ...resultJson, changed_files: resultJson.changed_files || [] } };
 }
 
 async function prepareCodexFiles(cwd, run, ctx) {
@@ -47,15 +58,7 @@ async function prepareCodexFiles(cwd, run, ctx) {
   return { promptFile, schemaFile };
 }
 
-async function writeMockMarker(repoPath, run, node, changedFiles) {
-  const markerDir = path.join(repoPath, '.aiws-demo');
-  await fsp.mkdir(markerDir, { recursive: true });
-  const marker = path.join(markerDir, `${run.id}.md`);
-  await fsp.writeFile(marker, `# AIWS MockRunner Output\n\n- run: ${run.id}\n- node: ${node.title}\n- time: ${now()}\n`, 'utf8');
-  changedFiles.push({ path: path.relative(repoPath, marker).replaceAll('\\', '/'), status: 'added', source: 'mock_runner' });
-}
-
-async function persistRunnerResult(state, { actor, run, project, workspace, node, raw, resultJson }) {
+export async function persistRunnerResult(state, { actor, run, project, workspace, node, raw, resultJson }) {
   const rawRef = await saveArtifact('runs', `${run.id}.raw.log`, JSON.stringify({ raw, result: resultJson }, null, 2), { run_id: run.id });
   state.file_refs.push(rawRef);
   Object.assign(run, { status: resultJson.status || RunnerStatus.Succeeded, summary: resultJson.summary, result_json: resultJson, raw_output_file_ref_id: rawRef.id, completed_at: now(), updated_at: now() });
