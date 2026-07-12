@@ -3,15 +3,16 @@ import fsp from 'node:fs/promises';
 import path from 'node:path';
 import { HttpError } from './http.mjs';
 import { mutate, readState } from './state.mjs';
-import { extractMessage, runCodexJson } from './codex-service.mjs';
+import { extractMessage, isThirdPartyProvider, runCodexJson } from './codex-service.mjs';
 import { runCodexAppServer } from './codex-app-server.mjs';
 import { probeCodexCapabilities } from './codex-capabilities.mjs';
 import { assistReviewSnapshot, createAssistWorktree, removeAssistWorktree } from './assist-v3-worktree.mjs';
 import { id, now } from '../../../packages/shared/index.mjs';
 import { persistV3CodexEvent, persistV3TypedEvent, pushV3Event } from './assist-v3-events.mjs';
 import { appServerUserInput, turnPrompt } from './assist-v3-context.mjs';
+import { materializeV3PageActions, parseV3AssistOutput } from './assist-v3-actions.mjs';
 import {
-  activeTurn, cleanText, hasActiveTurn, publicErrorCode, publicProfile, readableProjectCwd,
+  activeTurn, cancelPendingTurnApprovals, cleanText, hasActiveTurn, publicErrorCode, publicProfile, readableProjectCwd,
   requireProject, requireSession, requireTurn, safeRelativePath, TERMINAL_TURN_STATES
 } from './assist-v3-domain.mjs';
 
@@ -59,14 +60,18 @@ async function runV3Turn(turnId) {
     start = await mutate((state) => {
       const turn = requireTurn(state, turnId), session = requireSession(state, turn.session_id), project = requireProject(state, turn.project_id);
       if (turn.status !== 'preparing') return null;
-      const profile = turn.test_adapter ? { id: 'test_adapter', name: 'Test Adapter', kind: 'host', model: 'test', reasoning: 'none' } : turn.profile_id ? state.codex_profiles.find((item) => item.id === turn.profile_id && item.status === 'validated') : state.codex_profiles.find((item) => item.is_active && item.status === 'validated');
-      if (!profile) throw new HttpError(409, { error: 'active_codex_profile_required' });
-      turn.profile_id = profile.id; turn.status = 'running'; turn.updated_at = now();
+      const requestedProfile = turn.profile_id ? state.codex_profiles.find((item) => item.id === turn.profile_id && item.status === 'validated') : null;
+      const storedProfile = turn.test_adapter ? requestedProfile || { id: 'test_adapter', name: 'Test Adapter', kind: 'host', model: 'test', reasoning: 'high' } : requestedProfile || state.codex_profiles.find((item) => item.is_active && item.status === 'validated');
+      if (!storedProfile) throw new HttpError(409, { error: 'active_codex_profile_required' });
+      const profile = { ...storedProfile, model: turn.model || storedProfile.model, reasoning: turn.reasoning || storedProfile.reasoning };
+      if (storedProfile.id !== 'test_adapter') turn.profile_id = storedProfile.id;
+      turn.model = profile.model; turn.reasoning = profile.reasoning; turn.status = 'running'; turn.updated_at = now();
       pushV3Event(state, session.id, turn.id, 'started', { mode: turn.mode, profile: publicProfile(profile), worktree_id: turn.worktree_id });
       return { turn, session, project, profile, attachments: turn.attachment_ids.map((key) => state.attachments.find((item) => item.id === key)).filter(Boolean), contextPack: state.context_packs.find((item) => item.id === turn.context_pack_id) };
     });
     if (!start) return;
     const cwd = start.turn.mode === 'agent' ? worktree.path : readableProjectCwd(start.project);
+    if (start.turn.mode !== 'agent') await fsp.mkdir(cwd, { recursive: true, mode: 0o700 });
     let output = '', threadId = start.session.codex_thread_id || null, eventChain = Promise.resolve();
     if (start.turn.test_adapter) {
       const adapted = start.turn.test_response || {};
@@ -80,6 +85,7 @@ async function runV3Turn(turnId) {
         if (saved?.type === 'approval' && !await waitForRuntimeApproval(saved.data.approval_id, start.turn.id, controller.signal)) throw new HttpError(409, { error: 'runtime_approval_rejected' });
       }
       output = cleanText(adapted.message, 200_000) || '测试 Assist V3 Turn 已完成。';
+      if (adapted.actions?.length) output += `\n\n<aiws_actions>${JSON.stringify({ actions: adapted.actions })}</aiws_actions>`;
       const review = worktree ? await assistReviewSnapshot(start.project, worktree) : null;
       await mutate((state) => completeTurn(state, { turnId, output, threadId: null, review, worktree })); return;
     }
@@ -145,15 +151,18 @@ function completeTurn(state, { turnId, output, threadId, review, worktree }) {
   const turn = requireTurn(state, turnId), session = requireSession(state, turn.session_id, true);
   if (TERMINAL_TURN_STATES.has(turn.status)) return;
   if (threadId) { turn.codex_thread_id = threadId; session.codex_thread_id = threadId; }
-  const response = cleanText(output, 200_000) || 'Codex Turn 已完成。';
+  const parsed = parseV3AssistOutput(output), response = parsed.message;
   Object.assign(turn, { status: 'completed', output_text: response, completed_at: now(), updated_at: now(), review_status: review?.changed_files.length ? 'ready' : 'no_changes' });
-  state.assist_messages.push({ id: id('amsg'), session_id: session.id, turn_id: turn.id, role: 'assistant', content: response, status: 'completed', created_at: now() });
+  cancelPendingTurnApprovals(state, turn.id, 'turn_completed');
+  const message = { id: id('amsg'), session_id: session.id, turn_id: turn.id, role: 'assistant', content: response, status: 'completed', created_at: now() };
+  state.assist_messages.push(message);
+  const actions = materializeV3PageActions(state, { session, turn, sourceMessageId: message.id, inputs: parsed.actions });
   if (review && worktree) {
     const current = state.worktrees.find((item) => item.id === worktree.id);
     if (current) Object.assign(current, { status: review.changed_files.length ? 'review_ready' : 'active', target_hash: review.target_hash, head_commit: review.head_commit, updated_at: now() });
     turn.review = { status: review.changed_files.length ? 'ready' : 'no_changes', target_hash: review.target_hash, changed_file_count: review.changed_files.length, viewed_files: {} };
   }
-  pushV3Event(state, session.id, turn.id, 'completed', { output_text: response, review_status: turn.review_status, target_hash: review?.target_hash || null });
+  pushV3Event(state, session.id, turn.id, 'completed', { output_text: response, review_status: turn.review_status, target_hash: review?.target_hash || null, page_action_count: actions.length });
   if (!hasActiveTurn(state, session.id, turn.id)) Object.assign(session, { status: 'idle', updated_at: now() });
 }
 function failTurn(state, turnId, error, stopped) {
@@ -162,6 +171,12 @@ function failTurn(state, turnId, error, stopped) {
   const session = state.assist_sessions.find((item) => item.id === turn.session_id && item.version === 3);
   if (TERMINAL_TURN_STATES.has(turn.status)) { if (session && !hasActiveTurn(state, session.id, turn.id)) Object.assign(session, { status: 'idle', updated_at: now() }); return; }
   Object.assign(turn, { status: stopped ? 'interrupted' : 'failed', error_code: stopped ? 'turn_interrupted' : publicErrorCode(error), error: null, completed_at: now(), updated_at: now() });
+  cancelPendingTurnApprovals(state, turn.id, stopped ? 'turn_interrupted' : turn.error_code);
   if (session) { pushV3Event(state, session.id, turn.id, turn.status, { error: turn.error_code }); if (!hasActiveTurn(state, session.id, turn.id)) Object.assign(session, { status: 'idle', updated_at: now() }); }
 }
-function appServerAvailable(state, profile) { const cached = state.integration_statuses.find((item) => item.key === 'codex_capabilities')?.result; if (cached?.compatible && cached.selected_runtime === (profile.kind === 'docker' ? 'docker' : 'host')) return cached.guided_transport === 'app-server'; return probeCodexCapabilities({ profile }).guided_transport === 'app-server'; }
+function appServerAvailable(state, profile) {
+  const cached = state.integration_statuses.find((item) => item.key === 'codex_capabilities')?.result;
+  if (cached?.compatible && cached.selected_runtime === (profile.kind === 'docker' ? 'docker' : 'host')) return preferAssistAppServer(profile, cached);
+  return preferAssistAppServer(profile, probeCodexCapabilities({ profile }));
+}
+export function preferAssistAppServer(profile, capability) { return !isThirdPartyProvider(profile?.provider) && capability?.guided_transport === 'app-server'; }

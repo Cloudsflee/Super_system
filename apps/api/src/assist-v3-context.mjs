@@ -1,6 +1,7 @@
 import fsp from 'node:fs/promises';
 import { estimateTokens, id, now } from '../../../packages/shared/index.mjs';
 import { cleanText } from './assist-v3-domain.mjs';
+import { assistPageActionInstruction } from './assist-v3-actions.mjs';
 
 export function createTurnContext(state, { actor, project, session, turn, attachmentIds }) {
   const created = now();
@@ -33,6 +34,7 @@ export function turnPrompt({ turn, session, project, contextPack, attachments })
     ? 'You may edit files only inside the current isolated worktree. Do not push, publish, or modify repositories outside the current working directory. Leave all changes reviewable.'
     : 'This is a strictly read-only turn. Do not edit, create, delete, rename, or apply patches to files. Do not run mutating commands.';
   const plan = turn.mode === 'plan' ? 'Return a concrete implementation plan, risks, and verification steps without making changes.' : '';
+  const pageActions = assistPageActionInstruction(turn.view_context);
   const attachmentContext = attachments.map((item) => ({
     kind: item.kind, path: item.relative_path, url: item.url, content_type: item.content_type,
     model_policy: item.model_policy, selection: item.selection,
@@ -42,7 +44,7 @@ export function turnPrompt({ turn, session, project, contextPack, attachments })
     `You are Codex in AI Workspace Assist V3 ${turn.mode.toUpperCase()} mode.`, boundary, plan,
     `Project: ${project.title}. Goal: ${project.goal || ''}`, `Scope: ${session.scope_type}:${session.scope_id}.`,
     `Context Pack: ${JSON.stringify(contextPack?.content_json || {})}`,
-    `Attachments: ${JSON.stringify(attachmentContext)}`, `User request: ${turn.prompt}`
+    `Attachments: ${JSON.stringify(attachmentContext)}`, pageActions, `User request: ${turn.prompt}`
   ].filter(Boolean).join('\n\n');
 }
 

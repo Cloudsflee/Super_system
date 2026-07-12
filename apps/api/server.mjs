@@ -1,7 +1,6 @@
 import http from 'node:http';
 import fs from 'node:fs';
 import path from 'node:path';
-import url from 'node:url';
 import { PORT, WEB_DIR } from './src/config.mjs';
 import { dispatch, HttpError, notFound, safeReadStream, send } from './src/http.mjs';
 import { ensureRuntime } from './src/state.mjs';
@@ -88,10 +87,10 @@ async function serveStatic(req, res, pathname) {
 }
 
 const server = http.createServer(async (req, res) => {
-  const parsed = url.parse(req.url, true);
-  const pathname = decodeURIComponent(parsed.pathname || '/');
-  const routePath = pathname.startsWith('/api/') ? pathname.slice(4) : pathname;
   try {
+    const parsed = new URL(req.url || '/', 'http://aiws.local');
+    const pathname = decodeURIComponent(parsed.pathname || '/');
+    const routePath = pathname.startsWith('/api/') ? pathname.slice(4) : pathname;
     if (req.method === 'OPTIONS') {
       res.writeHead(204, {
         'access-control-allow-origin': '*',
@@ -108,7 +107,7 @@ const server = http.createServer(async (req, res) => {
       const status = computeSetupStatus(await readState());
       if (!status.complete) return send(res, 403, { error: 'setup_required', setup: status });
     }
-    const handled = await dispatch(routes, { req, res, pathname: routePath, query: parsed.query });
+    const handled = await dispatch(routes, { req, res, pathname: routePath, query: searchParamsObject(parsed.searchParams) });
     if (!handled && req.method === 'GET' && isSpaPath(pathname)) return serveStatic(req, res, '/');
     if (!handled) notFound(res);
   } catch (error) {
@@ -125,6 +124,16 @@ const server = http.createServer(async (req, res) => {
 });
 attachTerminalWebSocket(server);
 attachContainerShutdown(server);
+
+function searchParamsObject(params) {
+  const result = Object.create(null);
+  for (const [key, value] of params) {
+    if (!Object.hasOwn(result, key)) result[key] = value;
+    else if (Array.isArray(result[key])) result[key].push(value);
+    else result[key] = [result[key], value];
+  }
+  return result;
+}
 
 function isApiRequest(pathname, routePath) {
   if (pathname.startsWith('/api/')) return true;

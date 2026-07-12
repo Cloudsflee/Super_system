@@ -3,7 +3,8 @@ import { prepareCodexInvocation } from '../../../packages/runner-adapters/src/co
 import { buildCodexContainerInvocation, isContainerized } from './container-runtime-config.mjs';
 
 export function buildCodexExecInvocation({ profile, prompt, cwd, resumeId, sandbox, exposeApiKey = false, proxyKeys = [], runtimeKind = 'assist-exec' }) {
-  const execArgs = resumeId ? ['exec', 'resume', '--json', resumeId] : ['exec', '--json'];
+  const configArgs = profile.reasoning ? ['-c', `model_reasoning_effort=${JSON.stringify(profile.reasoning)}`] : [];
+  const execArgs = resumeId ? [...configArgs, 'exec', 'resume', '--json', resumeId] : [...configArgs, 'exec', '--json'];
   execArgs.push('--sandbox', sandbox, '--skip-git-repo-check');
   if (profile.model) execArgs.push('--model', profile.model);
   execArgs.push(prompt);
@@ -23,4 +24,3 @@ export function buildCodexExecInvocation({ profile, prompt, cwd, resumeId, sandb
 }
 
 function uniqueSession() { return `exec-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`; }
-

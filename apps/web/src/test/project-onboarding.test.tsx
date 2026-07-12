@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import type { ReactNode } from 'react';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -7,6 +7,7 @@ import { ProjectsPage } from '../features/projects/ProjectsPage';
 import { ProjectOnboardingPage } from '../features/projects/onboarding/ProjectOnboardingPage';
 import { WorkflowPage } from '../features/workflow/WorkflowPage';
 import { useUi } from '../state/ui';
+import { dispatchSemanticAction } from '../components/assist/semantic-actions';
 
 describe('V1.3 project onboarding', () => {
   beforeEach(() => useUi.getState().closeOverlay());
@@ -53,6 +54,15 @@ describe('V1.3 project onboarding', () => {
     vi.stubGlobal('fetch', vi.fn(async () => response({ project: project(), workflows: [], nodes: [], contracts: [], assets: [], runs: [] })));
     renderWithClient(<MemoryRouter initialEntries={['/projects/p1/workflow']}><Routes><Route path="/projects/:projectId/workflow" element={<WorkflowPage />} /><Route path="/projects/:projectId/onboarding" element={<div>Recover onboarding</div>} /></Routes></MemoryRouter>);
     expect(await screen.findByText('Recover onboarding')).toBeInTheDocument();
+  });
+
+  it('exposes brief fields to Assist and applies edits to the unsaved draft', async () => {
+    vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => String(input).includes('/projects/p1/onboarding') ? response(onboarding()) : response({})));
+    renderWithClient(<MemoryRouter initialEntries={['/projects/p1/onboarding']}><Routes><Route path="/projects/:projectId/onboarding" element={<ProjectOnboardingPage />} /></Routes></MemoryRouter>);
+    await screen.findByText('审查项目简报与初始工作流');
+    await act(async () => { expect((await dispatchSemanticAction({ id: 'a1', name: 'fill_field', label: '填写目标', status: 'ready', risk: 'reversible', args: { field_id: 'brief.goal', value: '由 Assist 填写的新目标' } })).handled).toBe(true); });
+    expect(await screen.findByRole('textbox', { name: '核心目标' })).toHaveValue('由 Assist 填写的新目标');
+    expect(screen.getByText('建立可验证的项目简报')).toBeInTheDocument();
   });
 });
 

@@ -27,7 +27,7 @@ export type CodexStatus = {
 export type CodexProfile = {
   id: string; name: string; provider?: string; provider_name?: string; base_url?: string | null;
   wire_api?: CodexWireApi; model?: string; reasoning?: string; kind?: 'host' | 'docker' | string;
-  status: string; is_active: boolean;
+  status: string; is_active: boolean; assist_configuration?: boolean; base_profile_id?: string | null;
 };
 export type CodexProbePhase = 'configuration' | 'runtime' | 'binding' | 'transport' | 'protocol' | 'model' | 'inference';
 export type CodexProbeCheck = {
@@ -179,7 +179,7 @@ export type AssistSession = {
 export type UiAction = {
   id: string; name: string; label: string; status: string;
   risk: 'reversible' | 'confirm' | 'proposal'; args: Record<string, unknown>;
-  result?: Record<string, unknown>;
+  result?: Record<string, unknown>; turn_id?: string; session_id?: string;
 };
 export type FileEntry = { name: string; path: string; type: 'file' | 'directory'; size?: number };
 export type NodeWorkspace = {

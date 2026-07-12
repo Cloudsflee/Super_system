@@ -12,6 +12,7 @@ import { readSecret, redactKnownSecretStream, redactKnownSecretsSync } from './v
 import { hashString, id, now } from '../../../packages/shared/index.mjs';
 import { createAssistWorktree } from './assist-v3-worktree.mjs';
 import { pushV3Event } from './assist-v3-events.mjs';
+import { resolveAssistTurnConfiguration } from './assist-v3-domain.mjs';
 import { prepareCodexInvocation } from '../../../packages/runner-adapters/src/codex-command.mjs';
 import { codexAuthMatchesProfile, isThirdPartyProvider } from './codex-service.mjs';
 import { materializeDeviceAuth } from './codex-device-auth.mjs';
@@ -35,10 +36,7 @@ export async function createTerminalSession(body) {
   if (body.assist_session_id && !assistSession) throw new HttpError(404, { error: 'assist_session_not_found' });
   const turn = body.turn_id ? snapshot.assist_turns.find((item) => item.id === body.turn_id && item.project_id === project.id) : null;
   if (body.turn_id && !turn) throw new HttpError(404, { error: 'assist_turn_not_found' });
-  const requestedProfile = body.profile_id ? snapshot.codex_profiles.find((item) => item.id === body.profile_id && item.status === 'validated') : null;
-  if (body.profile_id && !requestedProfile) throw new HttpError(404, { error: 'validated_profile_not_found' });
-  const profile = requestedProfile || snapshot.codex_profiles.find((item) => item.is_active && item.status === 'validated');
-  if (!profile) throw new HttpError(409, { error: 'active_codex_profile_required' });
+  const configuration = resolveAssistTurnConfiguration(snapshot, body), profile = configuration.profile;
   assertProfileAllowed(profile);
   const sessionId = id('tty');
   const prepared = body.worktree_id ? resolveExistingWorktree(snapshot, body.worktree_id, project.id) : { record: { ...await createAssistWorktree(project, { id: `cli-${sessionId}` }), turn_id: null, kind: 'cli' } };
@@ -47,6 +45,7 @@ export async function createTerminalSession(body) {
     if (!body.worktree_id) state.worktrees.push(prepared.record);
     const item = {
       id: sessionId, project_id: project.id, assist_session_id: assistSession?.id || turn?.session_id || null, turn_id: body.turn_id || null, worktree_id: prepared.record.id, profile_id: profile.id,
+      model: configuration.model, reasoning: configuration.reasoning,
       runtime: profile.kind === 'docker' ? 'docker' : 'host', status: 'ready', cols: clamp(body.cols, 40, 300, 120), rows: clamp(body.rows, 10, 120, 32),
       reconnect_token_hash: hashString(`${sessionId}:${Date.now()}`), output_preview: '', output_truncated: false, exit_code: null,
       created_by_user_id: actor.id, created_at: now(), updated_at: now()
@@ -113,8 +112,9 @@ async function connectSocket(ws, sessionId) {
 }
 
 async function startTerminal(session) {
-  const state = await readState(), worktree = state.worktrees.find((item) => item.id === session.worktree_id), profile = state.codex_profiles.find((item) => item.id === session.profile_id);
-  if (!worktree || !profile || !fs.existsSync(worktree.path)) throw new HttpError(409, { error: 'terminal_worktree_unavailable' });
+  const state = await readState(), worktree = state.worktrees.find((item) => item.id === session.worktree_id), storedProfile = state.codex_profiles.find((item) => item.id === session.profile_id);
+  if (!worktree || !storedProfile || !fs.existsSync(worktree.path)) throw new HttpError(409, { error: 'terminal_worktree_unavailable' });
+  const profile = { ...storedProfile, model: session.model || storedProfile.model, reasoning: session.reasoning || storedProfile.reasoning };
   assertProfileAllowed(profile);
   const auth = state.integration_statuses.find((item) => item.key === 'codex_auth');
   if (!codexAuthMatchesProfile(auth, profile)) throw new HttpError(409, { error: 'codex_auth_profile_mismatch' });
@@ -170,19 +170,24 @@ function terminalInvocation(profile, cwd, credential, sessionId) {
   const codexHome = profile.codex_home || path.join(AIWS_HOME, 'codex-homes', profile.id);
   const proxy = profile.kind === 'docker' ? codexContainerProxyEnv(process.env) : {};
   const env = { ...minimalTerminalEnv(), ...proxy, TERM: 'xterm-256color', COLORTERM: 'truecolor', CODEX_HOME: codexHome, ...(credential ? { OPENAI_API_KEY: credential } : {}) };
-  if (profile.kind !== 'docker') return { ...prepareCodexInvocation(process.env.AIWS_CODEX_BIN || 'codex'), env };
+  const requested = process.env.AIWS_CODEX_BIN || 'codex';
+  const commandArgs = profile.kind === 'docker' || isCodexCliExecutable(requested) ? terminalCodexArgs(profile) : [];
+  if (profile.kind !== 'docker') return { ...prepareCodexInvocation(requested, commandArgs), env };
   return {
     ...buildCodexContainerInvocation({
       kind: 'terminal', sessionId, profileId: profile.id, image: profile.image || profile.config?.image,
       interactive: true, codexHome, workspace: cwd, workspaceMode: 'rw', extraMounts: profile.mounts || [],
       containerEnv: { TERM: 'xterm-256color', COLORTERM: 'truecolor', CODEX_HOME: '/codex-home', ...(credential ? { OPENAI_API_KEY: null } : {}), ...Object.fromEntries(Object.keys(proxy).map((key) => [key, null])) },
-      commandArgs: []
+      commandArgs
     }), env
   };
 }
 
+export function terminalCodexArgs(profile) { return ['--model', profile.model, '-c', `model_reasoning_effort=${JSON.stringify(profile.reasoning || 'high')}`]; }
+function isCodexCliExecutable(value) { return /^codex(?:\.cmd|\.ps1|\.exe|\.js)?$/i.test(path.basename(String(value || ''))); }
+
 function resolveExistingWorktree(state, worktreeId, projectId) { const record = state.worktrees.find((item) => item.id === worktreeId && item.project_id === projectId), assistRoot = path.join(WORKSPACE_DIR, safe(projectId), 'worktrees'); if (!record || (!isWithin(WORKTREE_DIR, record.path) && !isWithin(assistRoot, record.path))) throw new HttpError(404, { error: 'worktree_not_found' }); return { record }; }
-function publicSession(value) { return { id: value.id, project_id: value.project_id, assist_session_id: value.assist_session_id || null, turn_id: value.turn_id, worktree_id: value.worktree_id, profile_id: value.profile_id, runtime: value.runtime, status: value.status, cols: value.cols, rows: value.rows, exit_code: value.exit_code, error_code: value.error_code || null, output_preview: value.output_preview || '', output_truncated: Boolean(value.output_truncated), artifact_file_ref_id: value.artifact_file_ref_id || null, created_at: value.created_at, updated_at: value.updated_at }; }
+function publicSession(value) { return { id: value.id, project_id: value.project_id, assist_session_id: value.assist_session_id || null, turn_id: value.turn_id, worktree_id: value.worktree_id, profile_id: value.profile_id, model: value.model, reasoning: value.reasoning, runtime: value.runtime, status: value.status, cols: value.cols, rows: value.rows, exit_code: value.exit_code, error_code: value.error_code || null, output_preview: value.output_preview || '', output_truncated: Boolean(value.output_truncated), artifact_file_ref_id: value.artifact_file_ref_id || null, created_at: value.created_at, updated_at: value.updated_at }; }
 function broadcast(runtime, message) { const encoded = JSON.stringify(message); for (const client of runtime.clients) if (client.readyState === 1) client.send(encoded); }
 function clamp(value, min, max, fallback) { const number = Number(value); return Number.isFinite(number) ? Math.max(min, Math.min(max, Math.trunc(number))) : fallback; }
 function safe(value) { return String(value || 'item').replace(/[^a-zA-Z0-9._-]/g, '_'); }

@@ -9,6 +9,8 @@ import { prepareCodexInvocation } from '../../../packages/runner-adapters/src/co
 import { assertProfileAllowed, buildCodexContainerInvocation } from './container-runtime-config.mjs';
 import { spawnContainerProcess } from './container-runtime.mjs';
 
+const APP_SERVER_ARGS = ['app-server', '--stdio', '--disable', 'code_mode_host', '--disable', 'plugins', '--disable', 'apps'];
+
 export async function runCodexAppServer({ state, profile, prompt, userInput, cwd, resumeId, sandbox, onEvent, onApproval, signal, spawnProcess = spawn }) {
   assertProfileAllowed(profile);
   const auth = state.integration_statuses.find((item) => item.key === 'codex_auth');
@@ -79,7 +81,7 @@ function appServerInvocation(profile, cwd, sandbox, credential) {
   const proxy = profile.kind === 'docker' ? codexContainerProxyEnv(process.env) : {}, env = { ...process.env, ...proxy, CODEX_HOME: profile.codex_home };
   if (credential) env.OPENAI_API_KEY = credential;
   else delete env.OPENAI_API_KEY;
-  if (profile.kind !== 'docker') return { ...prepareCodexInvocation(process.env.AIWS_CODEX_BIN || 'codex', ['app-server', '--stdio']), env };
+  if (profile.kind !== 'docker') return { ...prepareCodexInvocation(process.env.AIWS_CODEX_BIN || 'codex', APP_SERVER_ARGS), env };
   const home = profile.codex_home || path.join(AIWS_HOME, 'codex-homes', profile.id);
   return {
     ...buildCodexContainerInvocation({
@@ -87,7 +89,7 @@ function appServerInvocation(profile, cwd, sandbox, credential) {
       image: profile.image || profile.config?.image, stdin: true, codexHome: home,
       workspace: path.resolve(cwd), workspaceMode: sandbox === 'read-only' ? 'ro' : 'rw', extraMounts: profile.mounts || [],
       containerEnv: { CODEX_HOME: '/codex-home', ...(credential ? { OPENAI_API_KEY: null } : {}), ...Object.fromEntries(Object.keys(proxy).map((key) => [key, null])) },
-      commandArgs: ['app-server', '--stdio']
+      commandArgs: APP_SERVER_ARGS
     }), env
   };
 }
@@ -100,6 +102,7 @@ function approvalResponse(method, approved, params) {
   if (method === 'item/permissions/requestApproval') return { permissions: approved ? grantedPermissions(params.permissions) : {}, scope: 'turn' };
   if (method === 'mcpServer/elicitation/request') return { action: approved ? 'accept' : 'decline', content: null, _meta: null };
   if (method === 'item/tool/requestUserInput') return { answers: {} };
+  if (method === 'item/tool/call') return { success: false, contentItems: [{ type: 'inputText', text: 'This host tool is unavailable in AIWS.' }] };
   return { success: false, contentItems: [] };
 }
 function mapNotification(message, deltaItems) {

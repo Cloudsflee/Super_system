@@ -16,8 +16,10 @@ export function AppShell() {
   const location = useLocation();
   const navigate = useNavigate();
   const projects = useProjects();
-  const projectId = params.projectId || ui.activeProjectId || projects.data?.[0]?.id;
-  const current = projects.data?.find((item) => item.id === projectId);
+  const routeProject = projects.data?.find((item) => item.id === params.projectId);
+  const selectedProject = projects.data?.find((item) => item.id === ui.activeProjectId);
+  const current = routeProject || (!params.projectId ? selectedProject || projects.data?.[0] : undefined);
+  const projectId = current?.id;
   const section = sectionName(location.pathname);
   const assistNodeId = params.nodeId || (location.pathname.includes('/workflow') ? ui.contextNodeId || undefined : undefined);
   const overlayOpen = ui.navOpen || ui.assistOpen || ui.approvalCenterOpen || Boolean(ui.proposalId) || Boolean(ui.inspectorNodeId);
@@ -61,7 +63,7 @@ export function AppShell() {
       </header>
       <main className="route-stage"><Outlet /></main>
       <NavDrawer />
-      <AssistWorkbench projectId={projectId} nodeId={assistNodeId} />
+      <AssistWorkbench project={current} nodeId={assistNodeId} />
       <ApprovalCenter projectId={projectId} />
       <ApprovalPrompt projectId={projectId} />
       <ToastHost />

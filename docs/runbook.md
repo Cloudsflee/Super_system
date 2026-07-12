@@ -25,11 +25,13 @@ V1.3 默认离线门禁已于 2026-07-12 通过。新项目使用 draft onboardi
 
 1. Ask/Plan 强制只读；Agent/CLI 每个 Turn 使用独立 worktree。dirty baseline、并发 Turn 与 apply 冲突会被拒绝。
 2. typed stream 使用稳定 sequence，并支持 `Last-Event-ID` 重放、Stop、Retry、queue、steer 和 interrupt。
-3. Composer 可关联 project file、Monaco 文件/选区、图片和项目附件；未知二进制只作为 Artifact，不注入模型。
-4. Terminal 仅在 node-pty/WebSocket capability 可用时开放，支持 resize、Ctrl-C、重连、stop 和退出状态；完整脱敏输出写 Artifact，预览有长度上限。
-5. Turn 或 Terminal 完成后在统一 Review 中检查 changed-files、diff、viewed、行评论、request changes、rollback 与 apply target hash。
-6. Proposal 创建为 interrupting；关闭或 Escape 执行 defer 并进入 queued。`/approvals` 同时聚合 Proposal 和 Runtime Approval。
-7. `approve_apply` 校验 revision 与 target hash；stale 或冲突不得留下半应用状态。
+3. Composer 的 Profile 决定 Endpoint、凭据和运行时；模型与思考深度是当前 Turn 快照。可将组合保存为 Assist 配置后直接切换，不会修改原 Profile 或共享 Secret。
+4. Composer 可关联 project file、Monaco 文件/选区、图片和项目附件；未知二进制只作为 Artifact，不注入模型。
+5. 页面字段修改先显示预览，点击“应用到页面”后只更新当前页面草稿；例如简报仍需点击“保存并生成简报”才会持久化。
+6. Terminal 仅在 node-pty/WebSocket capability 可用时开放，支持 resize、Ctrl-C、重连、stop 和退出状态；完整脱敏输出写 Artifact，预览有长度上限。
+7. Turn 或 Terminal 完成后在统一 Review 中检查 changed-files、diff、viewed、行评论、request changes、rollback 与 apply target hash。
+8. Proposal 创建为 interrupting；关闭或 Escape 执行 defer 并进入 queued。`/approvals` 同时聚合 Proposal 和 Runtime Approval。
+9. `approve_apply` 校验 revision 与 target hash；stale 或冲突不得留下半应用状态。
 
 ## 配置治理
 

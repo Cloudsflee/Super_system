@@ -15,15 +15,18 @@ import {
   listV3Sessions,
   markV3ReviewViewed,
   requestV3ReviewChanges,
+  recordV3PageActionResult,
   restoreV3Session,
   retryV3Turn,
   rollbackV3Review,
   stopV3Turn,
   streamV3Events,
+  saveAssistConfiguration,
   updateV3Session
 } from '../assist-v3-service.mjs';
 
 export const assistV3Routes = [
+  makeRoute('POST', '/assist/v3/configurations', async ({ res, body }) => send(res, 201, await saveAssistConfiguration(body))),
   makeRoute('GET', '/assist/v3/sessions', async ({ res, query }) => send(res, 200, await listV3Sessions(query))),
   makeRoute('POST', '/assist/v3/sessions', async ({ res, body }) => send(res, 201, await createV3Session(body))),
   makeRoute('GET', '/assist/v3/sessions/:id', async ({ res, params }) => send(res, 200, await getV3Session(params.id))),
@@ -39,6 +42,7 @@ export const assistV3Routes = [
   makeRoute('GET', '/assist/v3/turns/:id', async ({ res, params }) => send(res, 200, await getV3Turn(params.id))),
   makeRoute('POST', '/assist/v3/turns/:id/retry', async ({ res, params, body }) => send(res, 202, await retryV3Turn(params.id, body))),
   makeRoute('POST', '/assist/v3/turns/:id/stop', async ({ res, params, body }) => send(res, 200, await stopV3Turn(params.id, body.reason))),
+  makeRoute('POST', '/assist/v3/turns/:id/actions/:actionId/result', async ({ res, params, body }) => send(res, 200, await recordV3PageActionResult(params.id, params.actionId, body))),
   makeRoute('POST', '/assist/v3/sessions/:id/turns/:turnId/retry', async ({ res, params, body }) => send(res, 202, await retryV3Turn(params.turnId, body))),
   makeRoute('POST', '/assist/v3/sessions/:id/turns/:turnId/stop', async ({ res, params, body }) => send(res, 200, await stopV3Turn(params.turnId, body.reason))),
 

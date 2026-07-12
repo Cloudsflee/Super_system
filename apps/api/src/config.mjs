@@ -13,6 +13,7 @@ export const TRASH_DIR = path.join(AIWS_HOME, 'trash');
 export const EXPORT_DIR = path.join(AIWS_HOME, 'exports');
 export const WORKTREE_DIR = path.join(AIWS_HOME, 'worktrees');
 export const PROBE_DIR = path.join(AIWS_HOME, 'probe-workspace');
+export const ASSIST_DIR = path.join(AIWS_HOME, 'assist-workspaces');
 export const STATE_FILE = path.join(DATA_DIR, 'state.json');
 export const WEB_SOURCE_DIR = path.join(ROOT, 'apps', 'web');
 export const WEB_DIST_DIR = path.join(WEB_SOURCE_DIR, 'dist');

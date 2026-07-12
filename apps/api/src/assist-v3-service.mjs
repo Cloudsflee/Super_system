@@ -7,6 +7,8 @@ export {
   retryV3Turn, stopV3Turn
 } from './assist-v3-turns.mjs';
 export { streamV3Events } from './assist-v3-events.mjs';
+export { recordV3PageActionResult } from './assist-v3-actions.mjs';
+export { saveAssistConfiguration } from './assist-v3-configurations.mjs';
 export {
   addV3ReviewComment, applyV3Review, getV3Review, markV3ReviewViewed,
   requestV3ReviewChanges, rollbackV3Review

@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import fsp from 'node:fs/promises';
 import path from 'node:path';
 import { createLocalOwner, defaultCodexProfiles, defaultTools, hashString, id, makeTrace, now } from '../../../packages/shared/index.mjs';
-import { ARTIFACT_DIR, CODEX_HOME_DIR, DATA_DIR, EXPORT_DIR, PROBE_DIR, STAGING_DIR, STATE_FILE, TRASH_DIR, VAULT_DIR, WORKSPACE_DIR, WORKTREE_DIR, collections } from './config.mjs';
+import { ARTIFACT_DIR, ASSIST_DIR, CODEX_HOME_DIR, DATA_DIR, EXPORT_DIR, PROBE_DIR, STAGING_DIR, STATE_FILE, TRASH_DIR, VAULT_DIR, WORKSPACE_DIR, WORKTREE_DIR, collections } from './config.mjs';
 import { redactKnownSecrets } from './vault.mjs';
 import { codexAuthMatchesProfile, isThirdPartyProvider, normalizeProviderBaseUrl, writeProfileConfig } from './codex-service.mjs';
 
@@ -11,7 +11,7 @@ export async function ensureRuntime() {
   await fsp.mkdir(ARTIFACT_DIR, { recursive: true });
   await fsp.mkdir(VAULT_DIR, { recursive: true });
   await fsp.mkdir(CODEX_HOME_DIR, { recursive: true });
-  await Promise.all([WORKSPACE_DIR, STAGING_DIR, TRASH_DIR, EXPORT_DIR, WORKTREE_DIR, PROBE_DIR].map((dir) => fsp.mkdir(dir, { recursive: true })));
+  await Promise.all([WORKSPACE_DIR, STAGING_DIR, TRASH_DIR, EXPORT_DIR, WORKTREE_DIR, PROBE_DIR, ASSIST_DIR].map((dir) => fsp.mkdir(dir, { recursive: true })));
   if (!fs.existsSync(STATE_FILE)) return writeState(bootstrapState());
   const state = await readState();
   let changed = false;
@@ -161,8 +161,8 @@ async function replaceStateFile(source, target) {
   for (let attempt = 0; ; attempt++) {
     try { await fsp.rename(source, target); return; }
     catch (error) {
-      if (!['EPERM', 'EACCES', 'EBUSY'].includes(error.code) || attempt >= 8) throw error;
-      await new Promise((resolve) => setTimeout(resolve, 10 * (attempt + 1)));
+      if (!['EPERM', 'EACCES', 'EBUSY'].includes(error.code) || attempt >= 20) throw error;
+      await new Promise((resolve) => setTimeout(resolve, Math.min(100, 10 * (attempt + 1))));
     }
   }
 }

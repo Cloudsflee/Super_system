@@ -147,8 +147,9 @@ http://localhost:4320
 3. 恢复或完成 Intake，审查版本化 Project Brief 和初始 workflow draft。
 4. 已有代码源先经 staging 与安全校验，再 clone/copy 到命名卷内受管 repo；宿主导入源保持只读。
 5. 确认后原子激活 Project，并只在受管 repo 或 Turn worktree 中执行写操作。
-6. 在 Assist V3 的 Ask、Plan、Agent 或 CLI 模式中工作；Agent/CLI 变更进入统一 Diff Review。
-7. 节点 Proposal、Runtime Approval 和配置提案通过统一审批中心决策。
+6. 在 Assist V3 选择 Profile、当前模型与思考深度；常用组合可保存后切换。Ask、Plan、Agent 和 CLI 均记录实际运行快照。
+7. Assist 提出的页面字段修改先进入预览，人工应用后只更新当前草稿；Agent/CLI 文件变更进入统一 Diff Review。
+8. 节点 Proposal、Runtime Approval 和配置提案通过统一审批中心决策。
 
 以上入口已纳入默认自动化门禁；外部服务与本机 CLI 的实际可用性仍由 Setup capability/probe 和可选 live 验收决定。完整证据见 `docs/completion-audit.md`。
 

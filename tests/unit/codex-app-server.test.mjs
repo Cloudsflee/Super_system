@@ -26,7 +26,7 @@ const result = await runCodexAppServer({
   onApproval: async (request) => { approvals.push(request); return true; }
 });
 
-assert.deepEqual(invocation.args.slice(-2), ['app-server', '--stdio']);
+assert.deepEqual(invocation.args.slice(-8), ['app-server', '--stdio', '--disable', 'code_mode_host', '--disable', 'plugins', '--disable', 'apps']);
 assert.equal(invocation.options.shell, false);
 assert.equal(result.ok, true);
 assert.equal(result.transport, 'app-server');
@@ -45,11 +45,14 @@ assert.equal(turnStart.params.input[1].type, 'image');
 assert.equal(turnStart.params.sandboxPolicy.type, 'workspaceWrite');
 assert.equal(turnStart.params.approvalsReviewer, 'user');
 assert.equal(turnStart.params.summary, 'concise');
+assert.equal(turnStart.params.model, 'gpt-test');
+assert.equal(turnStart.params.effort, 'high');
 
 assert.equal(approvals.length, 3);
 assert.equal(responses.get('approval-command').decision, 'accept');
 assert.equal(responses.get('approval-file').decision, 'accept');
 assert.deepEqual(responses.get('approval-permissions'), { permissions: { network: { enabled: true } }, scope: 'turn' });
+assert.deepEqual(responses.get('dynamic-tool'), { success: false, contentItems: [{ type: 'inputText', text: 'This host tool is unavailable in AIWS.' }] });
 assert.ok(events.some((item) => item.aiws_type === 'text' && item.output_text === 'Hello'));
 assert.ok(events.some((item) => item.aiws_type === 'plan' && item.data.status === 'updated'));
 assert.ok(events.some((item) => item.aiws_type === 'reasoning_summary' && item.data.summary === '公开摘要'));
@@ -78,12 +81,13 @@ function handleProtocol(message, child) {
       child.send({ id: 'approval-command', method: 'item/commandExecution/requestApproval', params: { threadId: 'thread-1', turnId: 'turn-1', itemId: 'cmd-1', command: 'pnpm test', cwd: process.cwd() } });
       child.send({ id: 'approval-file', method: 'item/fileChange/requestApproval', params: { threadId: 'thread-1', turnId: 'turn-1', itemId: 'file-1', grantRoot: process.cwd() } });
       child.send({ id: 'approval-permissions', method: 'item/permissions/requestApproval', params: { threadId: 'thread-1', turnId: 'turn-1', itemId: 'perm-1', permissions: { network: { enabled: true }, fileSystem: null } } });
+      child.send({ id: 'dynamic-tool', method: 'item/tool/call', params: { threadId: 'thread-1', turnId: 'turn-1', callId: 'call-1', namespace: null, tool: 'exec', arguments: {} } });
     });
     return;
   }
   if (message.id && !message.method) {
     responses.set(message.id, message.result);
-    if (responses.size === 3) setImmediate(() => {
+    if (responses.size === 4) setImmediate(() => {
       child.send({ method: 'item/completed', params: { threadId: 'thread-1', turnId: 'turn-1', item: { type: 'commandExecution', id: 'cmd-1', command: 'pnpm test', status: 'completed', exitCode: 0, aggregatedOutput: 'passed' } } });
       child.send({ method: 'item/completed', params: { threadId: 'thread-1', turnId: 'turn-1', item: { type: 'reasoning', id: 'reason-1', summary: ['公开摘要完成'], content: ['PRIVATE_REASONING'] } } });
       child.send({ method: 'turn/completed', params: { turn: { id: 'turn-1', status: 'completed' } } });

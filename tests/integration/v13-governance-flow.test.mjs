@@ -64,7 +64,7 @@ try {
     attention_state: 'interrupting',
     revision: 1,
     target_hash: 'runtime-target-v1',
-    request: { command: 'node --version' },
+    request: { command: 'node --version', api_key: 'sk-runtime-approval-secret' },
     created_at: new Date(0).toISOString(),
     updated_at: new Date(0).toISOString()
   });
@@ -72,6 +72,10 @@ try {
   const approvals = await api(port, `/approvals?project_id=${projectId}`);
   assert.equal(approvals.some((item) => item.type === 'proposal' && item.id === proposal.id), true);
   assert.equal(approvals.some((item) => item.type === 'runtime' && item.id === runtimeId), true);
+  const publicRuntime = approvals.find((item) => item.id === runtimeId);
+  assert.equal(publicRuntime.title, 'Codex 请求执行命令');
+  assert.match(publicRuntime.summary, /node --version/);
+  assert.equal(JSON.stringify(publicRuntime).includes('sk-runtime-approval-secret'), false);
   const runtimeDeferred = await api(port, `/approvals/runtime/${runtimeId}/decision`, 'POST', {
     decision: 'defer', revision: 1, target_hash: 'runtime-target-v1'
   });

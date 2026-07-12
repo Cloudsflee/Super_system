@@ -16,6 +16,7 @@ export type AssistWorktree = {
 export type AssistV3Turn = {
   id: string; session_id: string; project_id: string; parent_turn_id?: string | null; retry_of_turn_id?: string | null;
   follow_up_kind?: string | null; mode: AssistV3TurnMode; prompt: string; output_text: string; status: string; profile_id?: string | null;
+  model?: string; reasoning?: string; actions?: import('./types').UiAction[];
   attachment_ids: string[]; attachments?: AssistAttachment[]; worktree_id?: string | null; worktree?: AssistWorktree | null;
   usage?: Record<string, number> | null; review_status: string;
   review?: { status: string; target_hash?: string; viewed_files?: Record<string, string>; comment_count?: number };
@@ -35,7 +36,7 @@ export type AssistReview = {
   base_commit: string; head_commit: string; viewed_files: Record<string, string>; comments: AssistReviewComment[];
 };
 export type TerminalSession = {
-  id: string; project_id: string; assist_session_id?: string | null; turn_id?: string | null; worktree_id: string; profile_id: string; runtime: 'host' | 'docker'; status: string;
+  id: string; project_id: string; assist_session_id?: string | null; turn_id?: string | null; worktree_id: string; profile_id: string; model?: string; reasoning?: string; runtime: 'host' | 'docker'; status: string;
   cols: number; rows: number; exit_code?: number | null; output_preview: string; output_truncated: boolean;
   artifact_file_ref_id?: string | null; created_at: string; updated_at: string;
 };

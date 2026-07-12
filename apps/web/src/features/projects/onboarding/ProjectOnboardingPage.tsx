@@ -18,6 +18,7 @@ import {
   shortHash, sourcePlaceholder, toAnswerDraft,
   type AnswerDraft, type ContextDraft
 } from './onboarding-support';
+import { useProjectBriefAssistSurface } from './useProjectBriefAssistSurface';
 
 type Step = 'mode' | 'intake' | 'review';
 type IntakeUpdate = Pick<ProjectOnboarding, 'project' | 'intake' | 'brief' | 'workflow_draft'>;
@@ -58,6 +59,13 @@ export function ProjectOnboardingPage() {
   const relativeImports = Boolean(containerDeployment && deployment.data?.imports.projects_root);
   const localPathAvailable = !containerDeployment || relativeImports;
   const sourceEntries = Object.entries(sourceLabels).filter(([value]) => localPathAvailable || value !== 'local_git');
+
+  useProjectBriefAssistSurface(projectId, setBriefField);
+
+  function setBriefField(key: keyof AnswerDraft, value: unknown) {
+    setAnswers((current) => ({ ...current, [key]: String(value ?? '') }));
+    setStep('intake');
+  }
 
   useEffect(() => { if (!localPathAvailable && sourceType === 'local_git') { setSourceType('github'); setSourceValue(''); } }, [localPathAvailable, sourceType]);
 
@@ -172,8 +180,8 @@ export function ProjectOnboardingPage() {
           <div className="stage-heading"><span className="overline">PROJECT INTAKE</span><h2>{mode === 'existing' ? '描述项目并选择代码源' : '建立可验证的项目简报'}</h2><p>不知道的内容可先留在开放问题中，之后可以生成新版本。</p></div>
           <div className="intake-grid">
             <div className="answer-form">
-              <label>核心目标<textarea rows={5} value={answers.goal} onChange={(event) => setAnswers({ ...answers, goal: event.target.value })} placeholder="希望为谁解决什么问题，最终交付什么可验证结果？" /></label>
-              {listFields.map((field) => <label key={field.key}>{field.label}<textarea rows={field.key === 'features' || field.key === 'acceptance_criteria' ? 5 : 3} value={answers[field.key]} onChange={(event) => setAnswers({ ...answers, [field.key]: event.target.value })} placeholder={field.hint} /></label>)}
+              <label>核心目标<textarea id="brief-goal" rows={5} value={answers.goal} onChange={(event) => setAnswers({ ...answers, goal: event.target.value })} placeholder="希望为谁解决什么问题，最终交付什么可验证结果？" /></label>
+              {listFields.map((field) => <label key={field.key}>{field.label}<textarea id={`brief-${field.key.replaceAll('_', '-')}`} rows={field.key === 'features' || field.key === 'acceptance_criteria' ? 5 : 3} value={answers[field.key]} onChange={(event) => setAnswers({ ...answers, [field.key]: event.target.value })} placeholder={field.hint} /></label>)}
             </div>
             <aside className="intake-sources">
               {mode === 'existing' && <section className="source-card">

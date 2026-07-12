@@ -1,10 +1,10 @@
 import { HttpError, makeRoute, send } from '../http.mjs';
 import { addTrace, mutate, owner, readState } from '../state.mjs';
 import { applyProposalAtomically } from '../proposal-atomic.mjs';
-import { now } from '../../../../packages/shared/index.mjs';
+import { maskSecretsDeep, now } from '../../../../packages/shared/index.mjs';
 import { applyConfigRevision } from '../config-revision-service.mjs';
 import { pushV3Event } from '../assist-v3-events.mjs';
-import { hasActiveTurn } from '../assist-v3-domain.mjs';
+import { cancelPendingTurnApprovals, hasActiveTurn } from '../assist-v3-domain.mjs';
 
 export const approvalV13Routes = [
   makeRoute('GET', '/approvals', listApprovals),
@@ -74,6 +74,7 @@ function decideRuntime(state, actor, approvalId, body) {
   const turn = state.assist_turns.find((item) => item.id === approval.turn_id);
   if (turn && body.decision === 'reject') {
     Object.assign(turn, { status: 'failed', error_code: 'runtime_approval_rejected', waiting_approval_id: null, completed_at: now(), updated_at: now() });
+    cancelPendingTurnApprovals(state, turn.id, 'runtime_approval_rejected');
     pushV3Event(state, turn.session_id, turn.id, 'failed', { error: turn.error_code, approval_id: approval.id });
     const session = state.assist_sessions.find((item) => item.id === turn.session_id && item.version === 3);
     if (session && !hasActiveTurn(state, session.id, turn.id)) Object.assign(session, { status: 'idle', updated_at: now() });
@@ -88,7 +89,13 @@ function assertExpected(item, body) {
   if (body.target_hash !== item.target_hash) throw new HttpError(409, { error: 'proposal_stale', reason: 'target_hash_mismatch', revision: item.revision });
 }
 function proposalItem(item) { return { ...item, type: 'proposal', category: item.change_type, source_type: 'change_proposal', source_id: item.id }; }
-function runtimeItem(item) { return { ...item, type: 'runtime', category: item.approval_type || 'command', source_type: 'runtime_approval', source_id: item.id }; }
+function runtimeItem(item) {
+  const request = maskSecretsDeep(item.request && typeof item.request === 'object' ? item.request : {});
+  const type = String(item.approval_type || request.approval_type || 'runtime');
+  const detail = request.command ? `命令：${String(request.command).slice(0, 2000)}` : request.path ? `路径：${String(request.path).slice(0, 1000)}` : request.host ? `主机：${String(request.host).slice(0, 300)}` : request.tool ? `工具：${String(request.tool).slice(0, 300)}` : `权限类型：${type.slice(0, 200)}`;
+  const title = item.title || (/command/i.test(type) ? 'Codex 请求执行命令' : /file|patch|write/i.test(type) ? 'Codex 请求修改文件' : /network|host/i.test(type) ? 'Codex 请求访问网络' : 'Codex 请求运行时权限');
+  return { ...item, request, title, summary: item.summary || detail, type: 'runtime', category: type, source_type: 'runtime_approval', source_id: item.id };
+}
 function tracePayload(proposal, verb) { return { project_id: proposal.project_id, workspace_id: proposal.workspace_id, node_id: proposal.node_id, target_type: 'change_proposal', target_id: proposal.id, summary: `${verb}：${proposal.title}` }; }
 function repeatedProposalDecision(item, decision) { return (decision === 'approve_apply' && item.status === 'applied') || (decision === 'reject' && item.status === 'rejected') || (decision === 'defer' && item.status === 'pending' && item.attention_state === 'queued'); }
 function repeatedRuntimeDecision(item, decision) { return (decision === 'approve_apply' && item.status === 'approved') || (decision === 'reject' && item.status === 'rejected') || (decision === 'defer' && item.status === 'pending' && item.attention_state === 'queued'); }

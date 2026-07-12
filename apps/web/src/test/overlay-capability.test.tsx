@@ -116,6 +116,16 @@ describe('overlay and capability contracts', () => {
     await waitFor(() => expect(calls.some((item) => item.url.endsWith('/approvals/change_proposal/proposal-1/decision') && (item.body as { decision?: string })?.decision === 'defer')).toBe(true));
     await waitFor(() => expect(useUi.getState().proposalId).toBeNull());
   });
+
+  it('closes an open prompt when the approval is resolved elsewhere', async () => {
+    const fetch = vi.fn(async () => jsonResponse([{ ...approval(), status: 'cancelled', attention_state: 'resolved' }]));
+    vi.stubGlobal('fetch', fetch);
+    useUi.getState().showProposal('proposal-1');
+    renderWithClient(<MemoryRouter><ApprovalPrompt projectId="project-1" /></MemoryRouter>);
+    await waitFor(() => expect(useUi.getState().proposalId).toBeNull());
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    expect(fetch).toHaveBeenCalledTimes(1);
+  });
 });
 
 function openOverlays() {

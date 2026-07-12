@@ -15,6 +15,7 @@ export function ApprovalPrompt({ projectId }: { projectId?: string }) {
   const approvals = useApprovals(undefined, Boolean(proposalId));
   const ordered = approvals.data?.slice().sort((a, b) => String(b.created_at).localeCompare(String(a.created_at)));
   const item = proposalId === 'latest' ? ordered?.find((candidate) => candidate.attention_state !== 'resolved') : ordered?.find((candidate) => candidate.id === proposalId);
+  const resolved = item?.attention_state === 'resolved';
   const decision = useMutation({
     mutationFn: ({ value, target }: { value: ApprovalDecision; target: ApprovalItem }) => decideApproval(target, value, value === 'reject' ? '用户从即时审批弹窗拒绝' : undefined),
     onSuccess: async (result, variables) => {
@@ -37,8 +38,10 @@ export function ApprovalPrompt({ projectId }: { projectId?: string }) {
   });
 
   function decide(value: ApprovalDecision) {
-    if (item && !decision.isPending) decision.mutate({ value, target: item });
+    if (item && !resolved && !decision.isPending) decision.mutate({ value, target: item });
   }
+
+  useEffect(() => { if (proposalId && resolved) showProposal(null); }, [proposalId, resolved, showProposal]);
 
   useEffect(() => {
     if (!proposalId) return;
@@ -61,7 +64,7 @@ export function ApprovalPrompt({ projectId }: { projectId?: string }) {
           <strong>{approvals.isError ? '审批项目加载失败' : '正在加载审批项目'}</strong>
           {approvals.isError && <><small>{approvals.error.message}</small><button className="button secondary" onClick={() => approvals.refetch()}>重试</button></>}
         </div> : <>
-          <header><div className="approval-kind">{item.type === 'runtime_approval' ? <ShieldAlert size={17} /> : <GitPullRequest size={17} />}<span>{item.type === 'runtime_approval' ? 'RUNTIME APPROVAL' : 'CHANGE PROPOSAL'}</span></div><IconButton label="暂定并关闭" disabled={decision.isPending} onClick={() => decide('defer')}><X size={17} /></IconButton></header>
+          <header><div className="approval-kind">{item.type === 'runtime_approval' ? <ShieldAlert size={17} /> : <GitPullRequest size={17} />}<span>{item.type === 'runtime_approval' ? 'RUNTIME APPROVAL' : 'CHANGE PROPOSAL'}</span></div><IconButton label="暂定并关闭" disabled={resolved || decision.isPending} onClick={() => decide('defer')}><X size={17} /></IconButton></header>
           <div className="approval-prompt-body">
             <div className="approval-meta"><span className={`status ${item.status}`}>{item.status}</span><span>revision {item.revision}</span>{item.change_type && <span>{item.change_type}</span>}</div>
             <h2 id="approval-prompt-title">{item.title}</h2>
@@ -70,7 +73,7 @@ export function ApprovalPrompt({ projectId }: { projectId?: string }) {
             {item.impact?.length ? <div className="approval-chip-line"><strong>影响</strong>{item.impact.map((value) => <span key={value}>{value}</span>)}</div> : null}
             {item.risks?.length ? <div className="approval-risks"><strong>风险</strong><ul>{item.risks.map((value) => <li key={value}>{value}</li>)}</ul></div> : null}
           </div>
-          <footer><button className="button secondary" disabled={decision.isPending} onClick={() => decide('defer')}><Clock3 size={15} />暂定</button><button className="button danger" disabled={decision.isPending} onClick={() => decide('reject')}><X size={15} />拒绝</button><button className="button primary" disabled={decision.isPending} onClick={() => decide('approve_apply')}><Check size={15} />{decision.isPending ? '正在处理' : '批准并应用'}</button></footer>
+          <footer><button className="button secondary" disabled={resolved || decision.isPending} onClick={() => decide('defer')}><Clock3 size={15} />暂定</button><button className="button danger" disabled={resolved || decision.isPending} onClick={() => decide('reject')}><X size={15} />拒绝</button><button className="button primary" disabled={resolved || decision.isPending} onClick={() => decide('approve_apply')}><Check size={15} />{decision.isPending ? '正在处理' : '批准并应用'}</button></footer>
         </>}
       </section>
     </div>

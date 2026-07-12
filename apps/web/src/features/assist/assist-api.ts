@@ -34,7 +34,7 @@ export function useAssistSession(sessionId?: string, enabled = true) {
 }
 
 export function useCodexProfiles(enabled = true) {
-  return useQuery({ queryKey: ['codex-profiles'], queryFn: () => api<CodexProfile[]>('/codex/profiles'), enabled });
+  return useQuery({ queryKey: ['codex-profiles'], queryFn: () => api<CodexProfile[]>('/codex/profiles'), select: (items) => items.filter((item) => item.status === 'validated'), enabled });
 }
 
 const eventTypes: AssistV3EventType[] = ['queued', 'started', 'text', 'plan', 'command', 'file_change', 'test', 'mcp', 'search', 'usage', 'approval', 'reasoning_summary', 'status', 'terminal', 'completed', 'failed', 'stopped', 'interrupted', 'steered'];
