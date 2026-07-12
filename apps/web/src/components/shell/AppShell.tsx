@@ -1,5 +1,5 @@
 import { Bot, Menu, PanelLeftClose, ShieldCheck } from 'lucide-react';
-import { useEffect } from 'react';
+import { useEffect, type CSSProperties } from 'react';
 import { Outlet, useLocation, useNavigate, useParams } from 'react-router-dom';
 import { useProjects } from '../../api/queries';
 import { useUi } from '../../state/ui';
@@ -46,7 +46,7 @@ export function AppShell() {
   }
 
   return (
-    <div className={`app-shell${location.pathname.includes('/workflow') ? ' canvas-route' : ''}${ui.assistOpen && ui.assistSurface === 'docked' ? ' assist-docked' : ''}`}>
+    <div className={`app-shell${location.pathname.includes('/workflow') ? ' canvas-route' : ''}${ui.assistOpen && ui.assistSurface === 'docked' ? ' assist-docked' : ''}`} style={{ '--assist-dock-width': `${ui.assistDockWidth}px` } as CSSProperties}>
       <header className="app-bar">
         <IconButton label="打开导航" onClick={() => ui.setNav(true)}><Menu size={19} /></IconButton>
         <div className="brand-mark" aria-label="AI Workspace">AW</div>

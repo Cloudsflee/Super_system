@@ -17,7 +17,8 @@ vi.mock('@xterm/addon-fit', () => ({ FitAddon: class { fit() {} } }));
 describe('Assist V3 workbench', () => {
   beforeEach(() => {
     useUi.getState().closeOverlay();
-    useUi.setState({ assistOpen: true, assistSurface: 'docked', proposalId: null });
+    useUi.setState({ assistOpen: true, assistSurface: 'docked', assistDockWidth: 760, proposalId: null });
+    vi.stubGlobal('PointerEvent', MouseEvent);
     vi.stubGlobal('EventSource', FakeEventSource);
   });
   afterEach(() => { cleanup(); vi.unstubAllGlobals(); terminalWrites.length = 0; });
@@ -38,6 +39,21 @@ describe('Assist V3 workbench', () => {
     fireEvent.change(screen.getByRole('textbox', { name: 'Assist 消息' }), { target: { value: 'Implement feature' } });
     fireEvent.click(screen.getByRole('button', { name: '发送' }));
     await waitFor(() => expect(calls.some((item) => item.url.endsWith('/sessions/s1/turns') && item.body?.mode === 'agent' && item.body?.profile_id === 'profile-1')).toBe(true));
+  });
+
+  it('resizes the docked surface from its divider and supports keyboard adjustment', () => {
+    vi.stubGlobal('fetch', vi.fn(async () => response([])));
+    renderWithClient(<MemoryRouter><AssistWorkbench projectId="p1" /></MemoryRouter>);
+    const divider = screen.getByRole('separator', { name: '调整 Assist 宽度' });
+    fireEvent.pointerDown(divider, { button: 0, clientX: 700 });
+    fireEvent.pointerMove(window, { clientX: 600 });
+    fireEvent.pointerUp(window);
+    expect(useUi.getState().assistDockWidth).toBe(860);
+    expect(divider).toHaveAttribute('aria-valuenow', '860');
+    fireEvent.keyDown(divider, { key: 'ArrowRight' });
+    expect(useUi.getState().assistDockWidth).toBe(836);
+    fireEvent.doubleClick(divider);
+    expect(useUi.getState().assistDockWidth).toBe(760);
   });
 
   it('opens runtime approval events in the unified prompt store', () => {

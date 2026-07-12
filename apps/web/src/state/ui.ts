@@ -6,7 +6,7 @@ type Toast = { id: number; message: string; tone: 'info' | 'error' };
 export type AssistGeometry = { x: number; y: number; width: number; height: number };
 type UiState = {
   navOpen: boolean; assistOpen: boolean; inspectorNodeId: string | null;
-  assistSurface: AssistSurfaceMode; assistRestoreSurface: Exclude<AssistSurfaceMode, 'minimized'>; assistGeometry: AssistGeometry;
+  assistSurface: AssistSurfaceMode; assistRestoreSurface: Exclude<AssistSurfaceMode, 'minimized'>; assistGeometry: AssistGeometry; assistDockWidth: number;
   contextNodeId: string | null;
   /** Compatibility name: the proposal currently interrupting the canvas. */
   proposalId: string | null;
@@ -14,7 +14,7 @@ type UiState = {
   activeProjectId: string | null; toasts: Toast[];
   setNav: (value: boolean) => void; setAssist: (value: boolean) => void;
   setAssistSurface: (value: AssistSurfaceMode) => void; restoreAssist: () => void;
-  setAssistGeometry: (value: Partial<AssistGeometry>) => void;
+  setAssistGeometry: (value: Partial<AssistGeometry>) => void; setAssistDockWidth: (value: number) => void;
   inspect: (nodeId: string | null) => void;
   showProposal: (id: string | null) => void;
   openApprovalCenter: (value: boolean, id?: string | null) => void;
@@ -30,6 +30,7 @@ export const useUi = create<UiState>()(persist((set) => ({
   assistSurface: 'docked',
   assistRestoreSurface: 'docked',
   assistGeometry: { x: 70, y: 84, width: 760, height: 680 },
+  assistDockWidth: 760,
   inspectorNodeId: null,
   contextNodeId: null,
   proposalId: null,
@@ -47,6 +48,7 @@ export const useUi = create<UiState>()(persist((set) => ({
     : { assistSurface, assistRestoreSurface: assistSurface }),
   restoreAssist: () => set((state) => ({ assistSurface: state.assistRestoreSurface, assistOpen: true })),
   setAssistGeometry: (value) => set((state) => ({ assistGeometry: { ...state.assistGeometry, ...value } })),
+  setAssistDockWidth: (assistDockWidth) => set({ assistDockWidth }),
   inspect: (inspectorNodeId) => set(inspectorNodeId
     ? { inspectorNodeId, contextNodeId: inspectorNodeId, navOpen: false }
     : { inspectorNodeId: null }),
@@ -62,4 +64,4 @@ export const useUi = create<UiState>()(persist((set) => ({
     toasts: [...state.toasts, { id: Date.now() + Math.random(), message, tone }].slice(-4)
   })),
   dismissToast: (id) => set((state) => ({ toasts: state.toasts.filter((item) => item.id !== id) }))
-}), { name: 'aiws-v13-ui', partialize: ({ activeProjectId, assistSurface, assistRestoreSurface, assistGeometry }) => ({ activeProjectId, assistSurface, assistRestoreSurface, assistGeometry }) }));
+}), { name: 'aiws-v13-ui', partialize: ({ activeProjectId, assistSurface, assistRestoreSurface, assistGeometry, assistDockWidth }) => ({ activeProjectId, assistSurface, assistRestoreSurface, assistGeometry, assistDockWidth }) }));

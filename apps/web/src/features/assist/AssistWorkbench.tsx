@@ -10,6 +10,7 @@ import { TerminalPanel } from './TerminalPanel';
 import { ThreadSidebar } from './ThreadSidebar';
 import { TurnTimeline } from './TurnTimeline';
 import { useAssistController } from './useAssistController';
+import { useAssistDockResize } from './useAssistDockResize';
 import { useAssistFloating } from './useAssistFloating';
 
 export function AssistWorkbench({ projectId, nodeId }: { projectId?: string; nodeId?: string }) {
@@ -17,6 +18,7 @@ export function AssistWorkbench({ projectId, nodeId }: { projectId?: string; nod
   const location = useLocation();
   const controller = useAssistController({ projectId, nodeId, enabled: ui.assistOpen, route: location.pathname });
   const floating = useAssistFloating(ui.assistOpen && ui.assistSurface === 'floating');
+  const dockResize = useAssistDockResize(ui.assistOpen && ui.assistSurface === 'docked');
   const [threadsOpen, setThreadsOpen] = useState(() => !isMobileAssist());
   useEffect(() => {
     if (!ui.assistOpen || typeof window.matchMedia !== 'function') return;
@@ -29,6 +31,7 @@ export function AssistWorkbench({ projectId, nodeId }: { projectId?: string; nod
   const session = controller.session;
   const surfaceClass = `surface-${ui.assistSurface}`;
   return <section className={`assist-workbench ${surfaceClass}${threadsOpen ? ' threads-open' : ''}`} style={floating.style} aria-label="Codex Assist V3">
+    {ui.assistSurface === 'docked' && <div className={`assist-dock-resizer${dockResize.dragging ? ' dragging' : ''}`} role="separator" aria-label="调整 Assist 宽度" aria-orientation="vertical" aria-valuemin={dockResize.min} aria-valuemax={dockResize.max} aria-valuenow={dockResize.width} tabIndex={0} title="拖动调整宽度；双击复位" onPointerDown={dockResize.start} onKeyDown={dockResize.keyDown} onDoubleClick={dockResize.reset} />}
     <header className="assist-workbench-head" onPointerDown={ui.assistSurface === 'floating' ? floating.startMove : undefined}>
       <IconButton label={threadsOpen ? '隐藏线程列表' : '显示线程列表'} active={threadsOpen} onClick={() => setThreadsOpen(!threadsOpen)}><PanelLeft size={17} /></IconButton>
       <Bot size={18} /><div><strong>Assist</strong><small>{session?.title || '选择或创建线程'}{controller.stream.connected ? ' · live' : ''}</small></div>
