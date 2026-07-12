@@ -101,7 +101,7 @@ export function defaultCodexProfiles(actorId = null) {
       name: 'Codex Docker 隔离运行',
       kind: 'docker',
       description: '每次 NodeRun 通过 docker run --rm 启动独立 Codex 容器。',
-      config: { image: 'aiws-codex-runner:local', dockerfile: 'docker/codex-runner.Dockerfile' },
+      config: { image: 'aiws-codex-runner:1.4.0-codex-0.144.0', dockerfile: 'docker/codex-runner.Dockerfile' },
       status: 'needs_build',
       is_active: false,
       created_by_user_id: actorId,

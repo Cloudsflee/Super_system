@@ -1,9 +1,10 @@
 import { useQuery } from '@tanstack/react-query';
 import { api } from './client';
-import type { Project, ProjectBundle, ProjectOnboarding, SetupState } from './types';
+import type { DeploymentStatus, Project, ProjectBundle, ProjectOnboarding, SetupState } from './types';
 
 export const keys = {
   setup: ['setup'] as const,
+  deployment: ['deployment'] as const,
   projects: ['projects'] as const,
   project: (id: string) => ['project', id] as const,
   onboarding: (id: string) => ['project-onboarding', id] as const,
@@ -14,6 +15,10 @@ export const keys = {
 
 export function useSetup() {
   return useQuery({ queryKey: keys.setup, queryFn: () => api<SetupState>('/setup/status'), staleTime: 2_000 });
+}
+
+export function useDeployment() {
+  return useQuery({ queryKey: keys.deployment, queryFn: () => api<DeploymentStatus>('/system/deployment'), staleTime: 30_000 });
 }
 
 export function useProjects(enabled = true) {

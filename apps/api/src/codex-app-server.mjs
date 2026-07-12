@@ -6,15 +6,22 @@ import { codexContainerProxyEnv } from './codex-container-network.mjs';
 import { materializeDeviceAuth } from './codex-device-auth.mjs';
 import { readSecret, redactKnownSecretsSync } from './vault.mjs';
 import { prepareCodexInvocation } from '../../../packages/runner-adapters/src/codex-command.mjs';
+import { assertProfileAllowed, buildCodexContainerInvocation } from './container-runtime-config.mjs';
+import { spawnContainerProcess } from './container-runtime.mjs';
 
 export async function runCodexAppServer({ state, profile, prompt, userInput, cwd, resumeId, sandbox, onEvent, onApproval, signal, spawnProcess = spawn }) {
+  assertProfileAllowed(profile);
   const auth = state.integration_statuses.find((item) => item.key === 'codex_auth');
   if (!codexAuthMatchesProfile(auth, profile)) throw taggedError('codex_auth_profile_mismatch', 'app_server_start_failed');
   if (auth.home && !isThirdPartyProvider(profile.provider)) await materializeDeviceAuth(auth.home, profile.codex_home);
   const credential = await readSecret(auth?.refs?.credential), invocation = appServerInvocation(profile, cwd, sandbox, credential);
   return new Promise((resolve, reject) => {
     let child;
-    try { child = spawnProcess(invocation.command, invocation.args, { cwd, env: invocation.env, shell: false, windowsHide: true }); }
+    try {
+      child = invocation.runtime === 'docker'
+        ? spawnContainerProcess(invocation, { cwd, env: invocation.env, spawnProcess })
+        : spawnProcess(invocation.command, invocation.args, { cwd, env: invocation.env, shell: false, windowsHide: true });
+    }
     catch (error) { reject(taggedError(error.message, 'app_server_start_failed')); return; }
     let buffer = '', stderr = '', settled = false, requestId = 0, threadId = resumeId || null, turnId = null, turnStarted = false;
     const pending = new Map(), deltaItems = new Set();
@@ -28,14 +35,15 @@ export async function runCodexAppServer({ state, profile, prompt, userInput, cwd
     start().catch((error) => finish(error));
 
     async function start() {
-      await request('initialize', { clientInfo: { name: 'aiws', title: 'AI Workspace', version: '1.3.0' }, capabilities: { experimentalApi: false, requestAttestation: false } });
+      await request('initialize', { clientInfo: { name: 'aiws', title: 'AI Workspace', version: '1.4.0' }, capabilities: { experimentalApi: false, requestAttestation: false } });
       notify('initialized');
+      const runtimeCwd = invocation.cwd || cwd;
       const thread = resumeId
-        ? await request('thread/resume', { threadId: resumeId, cwd, approvalPolicy: 'on-request', approvalsReviewer: 'user', sandbox })
-        : await request('thread/start', { model: profile.model || null, cwd, approvalPolicy: 'on-request', approvalsReviewer: 'user', sandbox, ephemeral: false });
+        ? await request('thread/resume', { threadId: resumeId, cwd: runtimeCwd, approvalPolicy: 'on-request', approvalsReviewer: 'user', sandbox })
+        : await request('thread/start', { model: profile.model || null, cwd: runtimeCwd, approvalPolicy: 'on-request', approvalsReviewer: 'user', sandbox, ephemeral: false });
       threadId = thread.thread?.id || resumeId; if (!threadId) throw taggedError('app_server_thread_missing', 'app_server_start_failed');
       onEvent?.({ type: 'thread.started', thread_id: threadId });
-      const started = await request('turn/start', { threadId, input: userInput?.length ? userInput : [{ type: 'text', text: prompt, text_elements: [] }], cwd, approvalPolicy: 'on-request', approvalsReviewer: 'user', sandboxPolicy: sandboxPolicy(sandbox, cwd), model: profile.model || null, effort: profile.reasoning || null, summary: 'concise' });
+      const started = await request('turn/start', { threadId, input: userInput?.length ? userInput : [{ type: 'text', text: prompt, text_elements: [] }], cwd: runtimeCwd, approvalPolicy: 'on-request', approvalsReviewer: 'user', sandboxPolicy: sandboxPolicy(sandbox, runtimeCwd), model: profile.model || null, effort: profile.reasoning || null, summary: 'concise' });
       turnId = started.turn?.id; if (!turnId) throw taggedError('app_server_turn_missing', 'app_server_start_failed'); turnStarted = true;
     }
     function request(method, params) {
@@ -72,12 +80,16 @@ function appServerInvocation(profile, cwd, sandbox, credential) {
   if (credential) env.OPENAI_API_KEY = credential;
   else delete env.OPENAI_API_KEY;
   if (profile.kind !== 'docker') return { ...prepareCodexInvocation(process.env.AIWS_CODEX_BIN || 'codex', ['app-server', '--stdio']), env };
-  const mode = sandbox === 'read-only' ? 'ro' : 'rw', home = profile.codex_home || path.join(AIWS_HOME, 'codex-homes', profile.id);
-  const args = ['run', '--rm', '-i', '--add-host', 'host.docker.internal:host-gateway', '-e', 'CODEX_HOME=/codex-home'];
-  if (credential) args.push('-e', 'OPENAI_API_KEY'); for (const key of Object.keys(proxy)) args.push('-e', key);
-  args.push('-v', `${home}:/codex-home:rw`, '-v', `${path.resolve(cwd)}:/workspace:${mode}`, '-w', '/workspace');
-  for (const [index, mount] of (profile.mounts || []).entries()) args.push('-v', `${path.resolve(mount)}:/aiws-mounts/${index}:ro`);
-  args.push(profile.image || profile.config?.image || 'aiws-codex-runner:local', 'app-server', '--stdio'); return { command: 'docker', args, env };
+  const home = profile.codex_home || path.join(AIWS_HOME, 'codex-homes', profile.id);
+  return {
+    ...buildCodexContainerInvocation({
+      kind: 'assist-app-server', sessionId: `rpc-${Date.now().toString(36)}`, profileId: profile.id,
+      image: profile.image || profile.config?.image, stdin: true, codexHome: home,
+      workspace: path.resolve(cwd), workspaceMode: sandbox === 'read-only' ? 'ro' : 'rw', extraMounts: profile.mounts || [],
+      containerEnv: { CODEX_HOME: '/codex-home', ...(credential ? { OPENAI_API_KEY: null } : {}), ...Object.fromEntries(Object.keys(proxy).map((key) => [key, null])) },
+      commandArgs: ['app-server', '--stdio']
+    }), env
+  };
 }
 function sandboxPolicy(mode, cwd) { return mode === 'read-only' ? { type: 'readOnly', networkAccess: false } : { type: 'workspaceWrite', writableRoots: [cwd], networkAccess: false, excludeTmpdirEnvVar: false, excludeSlashTmp: false }; }
 function approvalRequest(message) { const params = message.params || {}; if (!/approval|elicitation|requestUserInput/i.test(message.method)) return null; return { external_id: String(params.approvalId || params.itemId || message.id), approval_type: message.method, status: 'pending', command: params.command || null, path: params.grantRoot || params.cwd || null, host: params.networkApprovalContext?.host || null, tool: params.tool || null, request: params }; }

@@ -2,10 +2,12 @@ import fs from 'node:fs';
 import fsp from 'node:fs/promises';
 import path from 'node:path';
 import { HttpError } from './http.mjs';
-import { EXPORT_DIR, TRASH_DIR, WORKSPACE_DIR } from './config.mjs';
+import { AIWS_HOME, EXPORT_DIR, TRASH_DIR, WORKSPACE_DIR } from './config.mjs';
 import { createEmptyWorkflow, createNodeWorkspace, createProject, defaultContractForNode, id, now } from '../../../packages/shared/index.mjs';
 import { assertWithin, isWithin, managedProjectRoot, managedRepoPath, safeSegment } from './managed-workspace.mjs';
 import { isGitRepo } from './git-utils.mjs';
+import { isContainerized } from './container-runtime-config.mjs';
+import { validateHostImportRelative } from './host-import-root.mjs';
 export { assertManagedProjectWritable, managedProjectRoot, managedRepoPath } from './managed-workspace.mjs';
 export { ensureManagedBaseline, ensureManagedRepository, materializeCodeSource, materializeContextSources } from './project-import-service.mjs';
 
@@ -140,7 +142,12 @@ export function validateContextSource(input) {
   if (!input || typeof input !== 'object') throw new HttpError(400, { error: 'invalid_context_source' });
   if (input.type === 'url') return { type: 'url', url: validateHttpsUrl(input.url), label: text(input.label || input.url, 200) };
   if (input.type === 'text') return { type: 'text', text: text(input.text, 100000), label: text(input.label || '文本材料', 200) };
-  if (input.path) return { type: input.type || 'file', path: path.resolve(input.path), label: text(input.label || path.basename(input.path), 200) };
+  if (input.path) {
+    if (input.path_scope === 'host_import_root') return { type: input.type || 'file', path: validateHostImportRelative(input.path), path_scope: 'host_import_root', label: text(input.label || path.posix.basename(input.path), 200) };
+    const resolved = path.resolve(input.path);
+    if (isContainerized() && !isWithin(AIWS_HOME, resolved)) throw new HttpError(400, { error: 'host_import_scope_required' });
+    return { type: input.type || 'file', path: resolved, label: text(input.label || path.basename(input.path), 200) };
+  }
   throw new HttpError(400, { error: 'invalid_context_source' });
 }
 

@@ -2,12 +2,14 @@ import fs from 'node:fs';
 import fsp from 'node:fs/promises';
 import path from 'node:path';
 import { spawn } from 'node:child_process';
-import { CODEX_HOME_DIR, AIWS_HOME, ROOT } from './config.mjs';
+import { CODEX_HOME_DIR, AIWS_HOME, PROBE_DIR, ROOT } from './config.mjs';
 import { readSecret } from './vault.mjs';
 import { materializeDeviceAuth } from './codex-device-auth.mjs';
 import { classifyCodexExecution, completeCodexProbe, createCodexPreflight, probeCheck, probeFailure } from './codex-probe.mjs';
 import { codexContainerProxyEnv, containerizeLoopbackUrl } from './codex-container-network.mjs';
-import { prepareCodexInvocation } from '../../../packages/runner-adapters/src/codex-command.mjs';
+import { assertProfileAllowed, isContainerized } from './container-runtime-config.mjs';
+import { spawnContainerProcess } from './container-runtime.mjs';
+import { buildCodexExecInvocation } from './codex-exec-invocation.mjs';
 export const OFFICIAL_CODEX_PROVIDERS = Object.freeze(['openai', 'chatgpt']);
 // Codex rejects `wire_api = "chat"`; cc-switch can translate Chat Completions only while its local proxy runs.
 // this profile-scoped bridge does not pretend that lifecycle exists.
@@ -44,6 +46,7 @@ export function codexAuthMatchesProfile(auth, profile) {
 
 export function validateProfileInput(state, input) {
   const errors = [];
+  if (isContainerized() && input.kind && input.kind !== 'docker') errors.push('host_profile_disabled_in_container');
   if (!input.name?.trim()) errors.push('name_required');
   else if (input.name.trim().length > 100) errors.push('invalid_name');
   if (!input.provider?.trim()) errors.push('provider_required');
@@ -82,19 +85,22 @@ export async function writeProfileConfig(profile, authHome = '') {
   return { codex_home: home, config_file: path.join(home, 'config.toml') };
 }
 
-export async function runCodexJson({ state, profile, prompt, cwd = ROOT, resumeId, sandbox = 'workspace-write', onEvent, signal, spawnProcess = spawn }) {
+export async function runCodexJson({ state, profile, prompt, cwd = ROOT, resumeId, sandbox = 'workspace-write', runtimeKind = 'assist-exec', onEvent, signal, spawnProcess = spawn }) {
+  assertProfileAllowed(profile);
   const auth = state.integration_statuses.find((item) => item.key === 'codex_auth');
   if (!codexAuthMatchesProfile(auth, profile)) throw new Error('codex_auth_profile_mismatch');
   const fileAuth = Boolean(auth.home && !isThirdPartyProvider(profile.provider));
   if (fileAuth) await materializeDeviceAuth(auth.home, profile.codex_home);
   const credential = await readSecret(auth?.refs?.credential);
   const proxyEnv = profile.kind === 'docker' ? codexContainerProxyEnv(process.env) : {};
-  const invocation = buildInvocation({ profile, prompt, cwd, resumeId, sandbox, exposeApiKey: Boolean(credential), proxyKeys: Object.keys(proxyEnv) });
+  const invocation = buildCodexExecInvocation({ profile, prompt, cwd, resumeId, sandbox, runtimeKind, exposeApiKey: Boolean(credential), proxyKeys: Object.keys(proxyEnv) });
   const env = { ...process.env, ...proxyEnv, CODEX_HOME: profile.codex_home };
   if (credential) env.OPENAI_API_KEY = credential;
   else delete env.OPENAI_API_KEY;
   return new Promise((resolve, reject) => {
-    const child = spawnProcess(invocation.command, invocation.args, { cwd, env, shell: false, windowsHide: true });
+    const child = invocation.runtime === 'docker'
+      ? spawnContainerProcess(invocation, { cwd, env, spawnProcess })
+      : spawnProcess(invocation.command, invocation.args, { cwd, env, shell: false, windowsHide: true });
     let stdout = '', stderr = '', buffer = '', timedOut = false, settled = false;
     const timeoutMs = Math.max(1000, Math.min(1800000, Number(profile.timeout_ms || 120000)));
     const timer = setTimeout(() => { timedOut = true; child.kill(); }, timeoutMs);
@@ -130,7 +136,7 @@ export async function probeCodex(state, profile, runtime = {}) {
   }
   const agentMessages = [];
   try {
-    const result = await runCodexJson({ state, profile, sandbox: 'read-only', prompt: 'Reply with exactly AIWS_PROBE_OK. Do not read or write files.', cwd: ROOT, onEvent: (event) => {
+    const result = await runCodexJson({ state, profile, sandbox: 'read-only', prompt: 'Reply with exactly AIWS_PROBE_OK. Do not read or write files.', cwd: isContainerized() ? PROBE_DIR : ROOT, runtimeKind: 'probe', onEvent: (event) => {
       if (event?.type === 'item.completed' && event.item?.type === 'agent_message' && typeof event.item.text === 'string') agentMessages.push(event.item.text);
     } });
     const markerFound = agentMessages.some((item) => item.trim() === 'AIWS_PROBE_OK');
@@ -152,30 +158,13 @@ export function extractMessage(event) {
   return '';
 }
 
-function buildInvocation({ profile, prompt, cwd, resumeId, sandbox, exposeApiKey = false, proxyKeys = [] }) {
-  const execArgs = resumeId ? ['exec', 'resume', '--json', resumeId] : ['exec', '--json'];
-  execArgs.push('--sandbox', sandbox, '--skip-git-repo-check');
-  if (profile.model) execArgs.push('--model', profile.model);
-  execArgs.push(prompt);
-  if (profile.kind !== 'docker') { const invocation = prepareCodexInvocation(process.env.AIWS_CODEX_BIN || 'codex'); return { command: invocation.command, args: [...invocation.args, ...execArgs], safeArgs: [...invocation.args, ...execArgs.slice(0, -1), '[PROMPT]'] }; }
-  const mountMode = sandbox === 'read-only' ? 'ro' : 'rw';
-  const args = ['run', '--rm', '-i', '--add-host', 'host.docker.internal:host-gateway', '--env', 'CODEX_HOME=/codex-home'];
-  if (exposeApiKey) args.push('--env', 'OPENAI_API_KEY');
-  for (const key of proxyKeys) args.push('--env', key);
-  args.push('-v', `${profile.codex_home}:/codex-home:rw`, '-v', `${path.resolve(cwd)}:/workspace:${mountMode}`, '-w', '/workspace');
-  for (const [index, mount] of (profile.mounts || []).entries()) args.push('-v', `${path.resolve(mount)}:/aiws-mounts/${index}:ro`);
-  args.push(profile.image || 'aiws-codex-runner:local', ...execArgs);
-  return { command: 'docker', args, safeArgs: args.slice(0, -1).concat('[PROMPT]') };
-}
-
 export function profileConfigToml(profile) {
   const lines = [`model = ${quote(profile.model)}`, `model_reasoning_effort = ${quote(profile.reasoning || 'high')}`, `web_search = ${quote(profile.web_search ? 'live' : 'disabled')}`, `sandbox_mode = "workspace-write"`];
   if (isThirdPartyProvider(profile.provider)) {
     const providerKey = codexProviderKey(profile.cc_switch_provider_id || profile.provider);
     const baseUrl = normalizeProviderBaseUrl(profile.base_url) || profile.base_url;
     const runtimeBaseUrl = profile.kind === 'docker' ? containerizeLoopbackUrl(baseUrl) : baseUrl;
-    lines.push(`model_provider = ${quote(providerKey)}`, '', `[model_providers.${providerKey}]`, `name = ${quote(profile.provider_name || profile.provider)}`, `base_url = ${quote(runtimeBaseUrl)}`, `wire_api = ${quote(profile.wire_api || 'responses')}`, `requires_openai_auth = ${Boolean(profile.requires_openai_auth)}`);
-    if (!profile.requires_openai_auth) lines.push('env_key = "OPENAI_API_KEY"');
+    lines.push(`model_provider = ${quote(providerKey)}`, '', `[model_providers.${providerKey}]`, `name = ${quote(profile.provider_name || profile.provider)}`, `base_url = ${quote(runtimeBaseUrl)}`, `wire_api = ${quote(profile.wire_api || 'responses')}`, `requires_openai_auth = ${Boolean(profile.requires_openai_auth)}`, 'env_key = "OPENAI_API_KEY"');
   }
   for (const server of profile.mcp_servers || []) {
     if (!server?.name || !server?.command) continue;

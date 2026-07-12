@@ -7,6 +7,7 @@ import { consumeNodeRunApproval, requireNodeRunApproval } from '../run-approval.
 import { testAdapter } from '../test-adapter.mjs';
 import { RunnerStatus, buildNodeRunResult, makeAssetFromCandidate, now } from '../../../../packages/shared/index.mjs';
 import { assertManagedProjectWritable } from '../project-lifecycle.mjs';
+import { isContainerized } from '../container-runtime-config.mjs';
 
 const runControllers = new Map();
 
@@ -118,6 +119,7 @@ async function failNodeRun(runId, error) {
 
 function createRun({ actor, project, workspace, node, ctx, body }) {
   const runner = body.runner || project.settings?.preferred_runner || 'codex_docker';
+  if (isContainerized() && runner === 'codex') throw new HttpError(409, { error: 'host_runner_disabled_in_container' });
   if (!['codex_docker', 'codex'].includes(runner)) throw new HttpError(400, { error: 'unsupported_runner', allowed: ['codex_docker', 'codex'] });
   return { id: `run_${Date.now().toString(16)}${Math.random().toString(16).slice(2, 8)}`, project_id: project.id, workspace_id: workspace.id, node_id: node.id, context_pack_id: ctx.id, runner, status: RunnerStatus.Queued, summary: '', result_json: null, raw_output_file_ref_id: null, started_at: null, completed_at: null, created_by_user_id: actor.id, created_at: now(), updated_at: now() };
 }

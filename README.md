@@ -1,10 +1,10 @@
-# AI Workspace System V1.3
+# AI Workspace System V1.4
 
-AI Workspace System V1.3 是一个本地优先、自托管、MCP-first 但不是 MCP-only 的 AI 协作工作空间。V1.3 在 V1.2 已验证闭环之上，治理 draft onboarding、受管 workspace、Assist V3/Codex IDE、真实 CLI、统一审批和版本化配置。
+AI Workspace System V1.4 是一个本地优先、自托管、MCP-first 但不是 MCP-only 的 AI 协作工作空间。V1.4 将 API、生产 Web 与 JSON-local 数据完全容器化，并通过 Docker socket 启动短生命周期 Codex sibling containers；V1.3 的 draft onboarding、受管 workspace、Assist V3/Codex IDE、真实 CLI、统一审批和版本化配置继续保留。
 
 当前版本默认采用 **JSON-local 本地持久化**，不依赖外部数据库即可启动；同时保留 Prisma/PostgreSQL、Redis、Worker、CodexRunner、GitHub PR 等后续替换边界。
 
-> **交付状态**：V1.3 默认离线门禁已于 2026-07-12 通过。draft onboarding、受管 workspace、Assist V3、PTY/WebSocket Terminal、统一审批与 Config Revision 治理均已接入 unit、integration、三视口 Playwright、acceptance audit 和完整 `verify`。Codex、GitHub 与 cc-switch live 套件本轮未启用，不能从默认 adapter 结果推断 live 已通过。
+> **交付状态**：V1.4 的宿主 `verify`、验证镜像 `verify`、隔离 Compose smoke、备份恢复和正式 `127.0.0.1:4317` 切换均已通过。生产使用固定应用/Runner 镜像和命名卷；真实 OpenAI 推理、GitHub 或 cc-switch live 测试仍为显式 opt-in，不能从 adapter 结果推断外部服务可用。
 
 ## 1. 项目能力概览
 
@@ -24,83 +24,94 @@ AI Workspace System V1.3 是一个本地优先、自托管、MCP-first 但不是
 
 ## 2. 环境要求
 
-推荐环境：
+生产部署要求：
 
-- Node.js：要求 Node.js 24+（本机 cc-switch 只读发现使用 `node:sqlite`）；当前工程已在 Node.js 24.14.0 下验证通过。
-- 包管理器：推荐使用 Corepack 启用的 pnpm，项目声明版本为 `pnpm@10.14.0`。
-- Git：Git 相关功能和集成测试需要本机可用的 `git` 命令。
-- Docker：首次配置必需，用于构建和运行隔离的 Codex 镜像。
+- Docker Desktop/Engine（Linux containers）。
+- Docker Compose plugin。
 - Codex 账号或 API Key：首次配置必需；可选官方 Device Login、直接填写第三方 Provider，或显式导入本机 cc-switch / `CODEX_HOME` 的脱敏发现结果。
 - GitHub App：可使用 Hosted 模式，或在 BYO 模式提供 App 配置。
 
-业务状态仍使用 JSON-local，不需要数据库或 Redis；前端依赖通过 pnpm workspace 安装。
+Node.js、pnpm、Git、SSH、tar 和生产 Web 都包含在镜像中。宿主开发模式另需 Node.js 24、Corepack/pnpm 与 Git。
+
+业务状态仍使用 JSON-local，不需要数据库或 Redis；生产数据保存在固定命名卷 `aiws-data-v14`。
 
 已使用过 Codex 的用户可直接导入本机 `CODEX_HOME` / `~/.codex` 中的 `config.toml` 与 `auth.json`；页面只返回脱敏摘要，确认后才复制 API Key 或官方 OAuth bundle，并重建 AIWS 托管 Profile。未使用过 Codex 的用户可在 Setup 选择官方 Device Login 或手动 API 配置。
 
-当 AIWS API 自身运行在容器中时，将宿主 Codex 目录只读挂载到容器内固定路径，并设置 `AIWS_HOST_CODEX_HOME`；可选 cc-switch 来源同理使用 `AIWS_HOST_CC_SWITCH_CONFIG_DIR`。这些挂载只用于发现和导入，Codex Runner 子容器只挂载 `.ai-workspace/codex-homes/<profileId>`，不会直接挂载或修改宿主 `~/.codex` / `~/.cc-switch`。
+V1.4 启动脚本会自动生成只读导入 override。Codex Runner 子容器只挂载命名卷内对应的 profile/workspace subpath，不会直接挂载或修改宿主 `~/.codex`、`~/.cc-switch` 或项目导入根。
 
 ## 3. 快速启动项目
 
-### 3.1 推荐方式：使用 Corepack + pnpm
+### 3.1 推荐方式：Docker Compose
 
 在项目根目录执行：
 
+```powershell
+.\scripts\aiws.ps1 up
+```
+
+macOS / Linux：
+
 ```bash
-corepack enable
-corepack pnpm --version
-corepack pnpm install
-corepack pnpm dev
+bash scripts/aiws.sh up
 ```
 
 启动成功后访问：
 
 ```text
-http://localhost:4317
+http://127.0.0.1:4317
 ```
 
-请优先从上面的地址打开页面，不要直接双击 `apps/web/index.html`。本项目的前端按钮依赖本地 API 与浏览器模块脚本；直接打开 HTML 或使用其他静态服务器时，如果 API 未连到 `localhost:4317`，会出现页面显示但按钮无响应或操作失败。
+默认构建 `aiws-app:1.4.0` 与 `aiws-codex-runner:1.4.0-codex-0.144.0`，并创建 `aiws-data-v14`。完整命令、只读导入、备份和恢复见 [`docs/docker-runbook-v1.4.md`](docs/docker-runbook-v1.4.md)。
 
-开发命令会同时提供：
+显式配置项目只读导入根：
+
+```powershell
+.\scripts\aiws.ps1 up -ProjectsRoot 'E:\projects'
+```
+
+```bash
+bash scripts/aiws.sh up --projects-root /home/user/projects
+```
+
+### 3.2 宿主开发热更新
+
+```bash
+corepack pnpm install
+corepack pnpm dev
+```
+
+开发模式继续提供：
 
 - `4318` 内部 API（由 Vite proxy 转发）
 - `4317` Vite React 前端
-- `.ai-workspace` 下的本地运行数据
+- 仓库 `.ai-workspace` 下的开发数据
 
-### 3.2 如果本机已经安装 pnpm
+开发数据与生产命名卷不自动迁移。
 
-```bash
-pnpm dev
-```
-
-然后打开：
-
-```text
-http://localhost:4317
-```
-
-### 3.3 生产构建
+### 3.3 手动构建镜像
 
 ```bash
-corepack pnpm build
-corepack pnpm start
+docker build --target production -t aiws-app:1.4.0 .
+docker build -f docker/codex-runner.Dockerfile -t aiws-codex-runner:1.4.0-codex-0.144.0 .
+docker compose up -d
 ```
 
-生产启动由 API 在 `4317` 提供 `apps/web/dist`。
+通常应使用启动脚本，因为脚本还执行端口、socket、volume-subpath 与 health 预检。
 
 ### 3.4 修改生产启动端口
 
-开发地址固定为 `4317`；生产 `pnpm start` 可以通过 `AIWS_PORT` 或 `PORT` 修改端口。
+生产 Compose 可以通过 `AIWS_PORT` 修改宿主 loopback 端口。
 
 macOS / Linux / Git Bash：
 
 ```bash
-AIWS_PORT=4320 pnpm start
+AIWS_PORT=4320 bash scripts/aiws.sh up
 ```
 
 Windows PowerShell：
 
 ```powershell
-$env:AIWS_PORT="4320"; pnpm start
+$env:AIWS_PORT="4320"; .\scripts\aiws.ps1 up
 ```
 
 访问地址相应改为：
@@ -109,21 +120,9 @@ $env:AIWS_PORT="4320"; pnpm start
 http://localhost:4320
 ```
 
-### 3.5 修改本地数据目录
+### 3.5 数据目录
 
-默认数据目录为根目录下的 `.ai-workspace/`。如需把运行数据放到其他位置，可以设置 `AIWS_HOME`。
-
-Windows PowerShell 示例：
-
-```powershell
-$env:AIWS_HOME="E:\tmp\aiws-home"; pnpm dev
-```
-
-macOS / Linux / Git Bash 示例：
-
-```bash
-AIWS_HOME=/tmp/aiws-home pnpm dev
-```
+生产数据固定使用 `aiws-data-v14`；`down` 默认保留该卷，只有 `reset --confirm` / `reset -Confirm` 会删除它。仓库内 V1.3 `.ai-workspace` 保留但不会导入或删除。
 
 ## 4. 使用流程与版本边界
 
@@ -141,14 +140,15 @@ AIWS_HOME=/tmp/aiws-home pnpm dev
 
 更详细的操作与验收脚本可见：`docs/runbook.md`。
 
-### 4.2 V1.3 使用流程
+### 4.2 V1.4 使用流程
 
-1. 创建 draft Project，选择“从 0 头脑风暴”或“基于已有项目”。
-2. 恢复或完成 Intake，审查版本化 Project Brief 和初始 workflow draft。
-3. 已有代码源先经 staging 与安全校验，再 clone/copy 到 `.ai-workspace/workspaces/<projectId>/repo`；外部源保持只读。
-4. 确认后原子激活 Project，并只在受管 repo 或 Turn worktree 中执行写操作。
-5. 在 Assist V3 的 Ask、Plan、Agent 或 CLI 模式中工作；Agent/CLI 变更进入统一 Diff Review。
-6. 节点 Proposal、Runtime Approval 和配置提案通过统一审批中心决策。
+1. 用 V1.4 Compose 启动全新 `aiws-data-v14`，完成 GitHub/Codex Setup；Host Profile 在容器部署中不可用。
+2. 创建 draft Project，选择“从 0 头脑风暴”或“基于已有项目”。
+3. 恢复或完成 Intake，审查版本化 Project Brief 和初始 workflow draft。
+4. 已有代码源先经 staging 与安全校验，再 clone/copy 到命名卷内受管 repo；宿主导入源保持只读。
+5. 确认后原子激活 Project，并只在受管 repo 或 Turn worktree 中执行写操作。
+6. 在 Assist V3 的 Ask、Plan、Agent 或 CLI 模式中工作；Agent/CLI 变更进入统一 Diff Review。
+7. 节点 Proposal、Runtime Approval 和配置提案通过统一审批中心决策。
 
 以上入口已纳入默认自动化门禁；外部服务与本机 CLI 的实际可用性仍由 Setup capability/probe 和可选 live 验收决定。完整证据见 `docs/completion-audit.md`。
 
@@ -156,16 +156,22 @@ AIWS_HOME=/tmp/aiws-home pnpm dev
 
 ### 5.1 启动
 
-```bash
-pnpm dev
+Windows：
+
+```powershell
+.\scripts\aiws.ps1 up
 ```
 
-等价脚本：
+macOS / Linux：
 
 ```bash
-pnpm dev:api
-pnpm start
-npm run dev
+bash scripts/aiws.sh up
+```
+
+宿主开发：
+
+```bash
+corepack pnpm dev
 ```
 
 ### 5.2 单元测试
@@ -204,7 +210,7 @@ pnpm verify
 npm run verify
 ```
 
-`verify` 会依次执行 lint、typecheck、unit、19 组 integration、Prisma schema 检查、Web build、E2E smoke、三视口 Playwright 和验收审计。V1.3 的 8 组新增 integration suite 已接入该门禁。
+`verify` 会依次执行 lint、typecheck、unit、20 组 integration、Prisma schema 检查、Web build、E2E smoke、三视口 Playwright 和验收审计。容器交付还应执行 `scripts/aiws.ps1 verify` 或 `scripts/aiws.sh verify`，在验证镜像中重复完整门禁。
 
 ### 5.6 Codex live 测试，可选
 
@@ -261,7 +267,7 @@ GitHub 集成最终采用“托管 GitHub App + 用户自带 GitHub App”双模
 
 | 路径 | 用途 |
 |---|---|
-| `.ai-workspace/` | 本地运行数据目录。保存 JSON state、vault、profile-scoped Codex homes、artifacts 和运行产物；已在 `.gitignore` 中忽略。 |
+| `.ai-workspace/` | 仅宿主开发模式的数据目录；V1.4 生产数据位于 `aiws-data-v14`，不会自动迁移此目录。 |
 | `.git/` | Git 版本库元数据，由 Git 自动维护。 |
 | `apps/` | 应用层代码，包含 API 服务、前端页面和 worker 入口。 |
 | `packages/` | 可复用模块与共享领域逻辑，供 API、Worker、测试和后续扩展复用。 |
@@ -269,7 +275,8 @@ GitHub 集成最终采用“托管 GitHub App + 用户自带 GitHub App”双模
 | `scripts/` | 工程脚本目录，包含 lint、typecheck、verify、迁移检查和验收审计。 |
 | `docs/` | 工程文档目录，包含运行手册、V1 覆盖矩阵、完成审计报告和 `docs/github/` 下的 GitHub SaaS/自托管教程。 |
 | `doc/` | 早期核心想法、问题记录和方案草稿，用于保留设计演进过程。 |
-| `docker/` | 可选基础设施配置，目前提供 Postgres 和 Redis 的 Docker Compose 文件。 |
+| `docker/` | Runner Dockerfile、导入 override/环境样例、备份归档校验器及 legacy infra Compose。 |
+| `Dockerfile` / `compose.yml` | V1.4 production/verify 镜像与默认完全容器化部署。 |
 | `config/` | 本地公开配置示例，目前保存 GitHub App 的公开 Client ID；不要在此目录提交 Client Secret 或 Private Key。 |
 | `prisma/` | Prisma schema 草案，描述未来替换到 PostgreSQL 时的数据模型边界。 |
 | `探索/` | 前期调研资料目录，用于保存毕业设计探索阶段材料。 |
@@ -284,7 +291,8 @@ GitHub 集成最终采用“托管 GitHub App + 用户自带 GitHub App”双模
 | `测试计划.md` | V1 测试计划、验证路径和验收要求。 |
 | `开发计划v1.1.md` / `测试计划v1.1.md` | V1.1 层级会话、Docker Runner 与审批增量。 |
 | `开发计划v1.2.md` / `测试计划v1.2.md` | V1.2 Setup、Canvas、Assist、文件与验收增量。 |
-| `开发计划v1.3.md` / `测试计划v1.3.md` | 当前 V1.3 onboarding、受管 workspace、IDE、CLI、审批和配置治理增量。 |
+| `开发计划v1.3.md` / `测试计划v1.3.md` | V1.3 onboarding、受管 workspace、IDE、CLI、审批和配置治理增量。 |
+| `开发计划v1.4.md` / `测试计划v1.4.md` | V1.4 完全容器化、Runner 生命周期、只读导入与 Docker 验收增量。 |
 | `tempmd.md` | V1.2 计划生成前的历史需求与决策备忘。 |
 
 ## 7. `apps/` 子目录说明
@@ -322,7 +330,7 @@ GitHub 集成最终采用“托管 GitHub App + 用户自带 GitHub App”双模
 
 ## 10. 数据与持久化
 
-默认运行时会自动创建：
+宿主开发模式会自动创建：
 
 ```text
 .ai-workspace/
@@ -336,11 +344,13 @@ GitHub 集成最终采用“托管 GitHub App + 用户自带 GitHub App”双模
 - `.ai-workspace/data/state.json`：保存本地用户、会话、项目、工作流、节点、Context Pack、Trace、Asset、Digest、Git/PR 等状态。
 - `.ai-workspace/artifacts/`：保存 raw trace、运行日志、候选资产等文件型产物。
 - `.ai-workspace/` 已被 `.gitignore` 忽略，适合保存本机运行和调试数据。
-- 删除 `.ai-workspace/` 后再次启动，会重新初始化本地运行状态。
+- 删除 `.ai-workspace/` 后再次启动，会重新初始化宿主开发状态；该操作不影响生产卷。
 
-## 11. 可选 Docker 基础设施
+V1.4 生产容器使用相同目录结构，但根位于命名卷 `aiws-data-v14` 的 `/var/lib/aiws`。`down` 保留卷；只允许通过带显式确认的运维脚本执行 reset。
 
-V1 默认不依赖 Docker。若需要提前启动后续演进可能使用的 Postgres 和 Redis，可以执行：
+## 11. Legacy 可选基础设施
+
+V1.4 默认部署依赖 Docker，但业务仍不依赖 PostgreSQL/Redis。若需要单独试验未来基础设施，可以执行：
 
 ```bash
 docker compose -f docker/compose.infra.yml up -d
@@ -354,7 +364,7 @@ docker compose -f docker/compose.infra.yml down
 
 当前默认服务仍使用 JSON-local；`docker/compose.infra.yml` 主要用于后续替换持久化和队列基础设施。
 
-## 12. 已验证基线与 V1.3 增量
+## 12. 已验证基线与 V1.4 增量
 
 默认离线门禁已覆盖以下 V1.2 回归基线：
 
@@ -382,6 +392,16 @@ V1.3 新增并已通过默认门禁：
 - Config Revision 默认写入 AIWS 托管 Profile；显式选择 cc-switch 模式时覆盖受管 CLI、rollback/reprobe 和 native fallback。
 - `1440x900`、`1024x768`、`390x844` Playwright 响应式验收。
 
+V1.4 新增容器门禁：
+
+- production/verify 多阶段镜像、固定 Codex Runner 版本、Compose health/init/restart/stop 策略。
+- Device Login、Probe、Assist app-server/exec、NodeRun 与 Terminal 统一容器名、label、资源限制、安全参数、volume-subpath 和停止清理。
+- `/system/deployment` 与新版 `/health` 脱敏能力状态；容器部署禁用 Host Profile。
+- Codex/cc-switch/项目根只读导入，项目与 Context Source 相对路径、symlink/realpath 越界防护。
+- PowerShell/POSIX `up/down/logs/status/verify/backup/restore/reset`，命名卷备份恢复和 reset 边界。
+- 隔离 Compose smoke 已覆盖 UI/health、重启持久化、sibling Runner、volume-subpath 和零遗留容器。
+- 验证镜像内完整 `corepack pnpm verify` 与正式 Compose 切换均已通过；原 V1.3 `.ai-workspace` 聚合摘要保持不变。
+
 真实 Codex、GitHub 与 cc-switch live 套件本轮未运行；其 opt-in 入口和边界见 `docs/runbook.md`。
 
 更完整的覆盖关系见：`docs/v1-coverage-matrix.md` 与 `docs/completion-audit.md`。
@@ -400,7 +420,7 @@ V1.3 新增并已通过默认门禁：
 
 ### 14.1 `pnpm` 命令不可用
 
-优先使用 Corepack：
+生产部署不需要宿主 pnpm，使用 Docker 启动脚本。只有宿主开发需要 Corepack：
 
 ```bash
 corepack enable
@@ -418,7 +438,7 @@ npm run dev
 改用其他端口：
 
 ```powershell
-$env:AIWS_PORT="4320"; pnpm dev
+$env:AIWS_PORT="4320"; .\scripts\aiws.ps1 up
 ```
 
 如果改了端口，请从对应端口打开页面，例如 `http://localhost:4320`。
@@ -428,7 +448,7 @@ $env:AIWS_PORT="4320"; pnpm dev
 优先检查打开方式：
 
 ```text
-正确：http://localhost:4317
+正确：http://127.0.0.1:4317
 不要：直接双击 apps/web/index.html
 不要：只用 Live Server 打开 apps/web
 ```
@@ -436,14 +456,14 @@ $env:AIWS_PORT="4320"; pnpm dev
 然后在浏览器里按 `F12` 打开 Console，看是否有 `Failed to fetch`、`Cannot find module` 或 404 报错。若后端没有启动，重新执行：
 
 ```bash
-pnpm dev
+.\scripts\aiws.ps1 up
 ```
 
 不要使用 Live Server；开发环境需要 Vite proxy，生产环境需要先执行 `pnpm build`。
 
 ### 14.4 页面没有旧数据
 
-检查 `.ai-workspace/data/state.json` 是否存在。V1.2 兼容项目从空画布开始；V1.3 draft 项目应恢复 onboarding，确认后才进入可写工作流。若行为与完成审计中的状态不一致，以当前已验证能力为准。
+生产部署检查 `docker volume inspect aiws-data-v14`。V1.4 使用全新命名卷，不读取 V1.3 `.ai-workspace`；宿主开发模式仍检查 `.ai-workspace/data/state.json`。
 
 ### 14.5 Codex 不可用
 

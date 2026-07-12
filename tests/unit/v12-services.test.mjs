@@ -51,6 +51,9 @@ try {
   const thirdToml = profileConfigToml(thirdParty);
   for (const expected of ['model_provider = "openrouter"', '[model_providers.openrouter]', 'name = "OpenRouter"', 'base_url = "https://openrouter.ai/api/v1"', 'wire_api = "responses"', 'requires_openai_auth = false', 'env_key = "OPENAI_API_KEY"']) assert.ok(thirdToml.includes(expected), expected);
   assert.doesNotMatch(thirdToml, /experimental_bearer_token|sk-unit/);
+  const importedBearerToml = profileConfigToml({ ...thirdParty, requires_openai_auth: true });
+  assert.match(importedBearerToml, /requires_openai_auth = true[\s\S]*env_key = "OPENAI_API_KEY"/);
+  assert.doesNotMatch(importedBearerToml, /experimental_bearer_token|sk-unit/);
   assert.equal(containerizeLoopbackUrl('http://localhost:4318/v1'), 'http://host.docker.internal:4318/v1');
   assert.equal(containerizeLoopbackUrl('http://127.4.3.2:4318/v1'), 'http://host.docker.internal:4318/v1');
   assert.equal(containerizeLoopbackUrl('http://[::1]:4318/v1'), 'http://host.docker.internal:4318/v1');

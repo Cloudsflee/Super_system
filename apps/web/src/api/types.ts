@@ -8,6 +8,13 @@ export type SetupState = {
   reasons: string[];
 };
 
+export type DeploymentStatus = {
+  mode: 'container' | 'host'; local_only: boolean;
+  storage: { type: 'docker_volume' | 'local_directory'; ready: boolean };
+  docker: { strategy: 'socket' | 'local_cli'; ready: boolean };
+  imports: { codex_home: boolean; cc_switch: boolean; projects_root: boolean; project_path_mode: 'relative' | 'absolute' };
+};
+
 export type CodexWireApi = 'responses';
 export type CodexAuthMetadata = {
   provider: string; base_url?: string | null; wire_api: CodexWireApi; auth_mode: 'device' | 'api_key' | 'discovery' | 'local_codex';
@@ -71,11 +78,12 @@ export type Project = {
 export type ProjectIntakeMode = 'brainstorm' | 'existing';
 export type ProjectCodeSource = {
   type: 'github' | 'git' | 'local_directory' | 'local_git' | 'archive';
-  url?: string; repository_url?: string; path?: string;
+  url?: string; repository_url?: string; path?: string; name?: string;
+  path_scope?: 'host_import_root' | 'host_path' | 'managed_upload';
 };
 export type ProjectContextSource = {
   type: 'url' | 'text' | 'file' | 'image' | 'pdf' | 'docx' | 'xlsx';
-  label?: string; url?: string; text?: string; path?: string;
+  label?: string; url?: string; text?: string; path?: string; path_scope?: 'host_import_root' | 'managed_import'; sha256?: string | null;
 };
 export type ProjectIntakeAnswers = {
   goal?: string; users?: string[]; target_users?: string[];

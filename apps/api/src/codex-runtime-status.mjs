@@ -1,7 +1,8 @@
 import { ROOT } from './config.mjs';
 import { command } from './http.mjs';
+import { DEFAULT_RUNNER_IMAGE } from './container-runtime-config.mjs';
 
-export const DEFAULT_CODEX_IMAGE = 'aiws-codex-runner:local';
+export const DEFAULT_CODEX_IMAGE = DEFAULT_RUNNER_IMAGE;
 
 export function inspectCodexRuntimeLive({ commandRunner = command, image = process.env.AIWS_CODEX_DOCKER_IMAGE || DEFAULT_CODEX_IMAGE } = {}) {
   const dockerResult = commandRunner('docker', ['info', '--format', '{{.ServerVersion}}'], ROOT, 5000);

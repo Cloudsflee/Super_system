@@ -6,7 +6,7 @@ import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { api, json, multipart } from '../../../api/client';
-import { keys, useProjectOnboarding } from '../../../api/queries';
+import { keys, useDeployment, useProjectOnboarding } from '../../../api/queries';
 import type {
   ProjectCodeSource, ProjectIntakeMode, ProjectOnboarding, Workflow, WorkflowDraftNode
 } from '../../../api/types';
@@ -44,6 +44,7 @@ export function ProjectOnboardingPage() {
   const client = useQueryClient();
   const ui = useUi();
   const query = useProjectOnboarding(projectId);
+  const deployment = useDeployment();
   const [step, setStep] = useState<Step>('mode');
   const [mode, setMode] = useState<ProjectIntakeMode | null>(null);
   const [answers, setAnswers] = useState<AnswerDraft>(emptyAnswers());
@@ -53,6 +54,12 @@ export function ProjectOnboardingPage() {
   const [contexts, setContexts] = useState<ContextDraft[]>([]);
   const [workflow, setWorkflow] = useState<WorkflowDraftNode[]>([]);
   const hydrated = useRef('');
+  const containerDeployment = deployment.data?.mode === 'container';
+  const relativeImports = Boolean(containerDeployment && deployment.data?.imports.projects_root);
+  const localPathAvailable = !containerDeployment || relativeImports;
+  const sourceEntries = Object.entries(sourceLabels).filter(([value]) => localPathAvailable || value !== 'local_git');
+
+  useEffect(() => { if (!localPathAvailable && sourceType === 'local_git') { setSourceType('github'); setSourceValue(''); } }, [localPathAvailable, sourceType]);
 
   useEffect(() => {
     const value = query.data;
@@ -89,7 +96,7 @@ export function ProjectOnboardingPage() {
   });
 
   const saveIntake = useMutation({
-    mutationFn: () => api<IntakeUpdate>(`/projects/${projectId}/intake`, json('PUT', intakePayload(mode, answers, sourceType, sourceValue || uploadFiles[0]?.name || '', contexts))),
+    mutationFn: () => api<IntakeUpdate>(`/projects/${projectId}/intake`, json('PUT', intakePayload(mode, answers, sourceType, sourceValue || uploadFiles[0]?.name || '', contexts, relativeImports))),
     onSuccess: (result) => { mergeUpdate(result); setWorkflow(result.workflow_draft); setStep('review'); ui.toast('项目简报与工作流草案已更新'); },
     onError: (error) => ui.toast(error.message, 'error')
   });
@@ -102,7 +109,7 @@ export function ProjectOnboardingPage() {
         for (const file of uploadFiles) form.append(sourceType === 'archive' ? 'code_archive' : 'code_file', file, file.webkitRelativePath || file.name);
         return api<{ job: { status: string }; project: ProjectOnboarding['project'] }>(`/projects/${projectId}/imports`, multipart('POST', form));
       }
-      return api<{ job: { status: string }; project: ProjectOnboarding['project'] }>(`/projects/${projectId}/imports`, json('POST', { code_source: codeSource(sourceType, sourceValue), operation_key: operationKey }));
+      return api<{ job: { status: string }; project: ProjectOnboarding['project'] }>(`/projects/${projectId}/imports`, json('POST', { code_source: codeSource(sourceType, sourceValue, relativeImports), operation_key: operationKey }));
     },
     onSuccess: async () => { await query.refetch(); await client.invalidateQueries({ queryKey: keys.projects }); ui.toast('代码源已导入受管 workspace'); },
     onError: (error) => { void query.refetch(); ui.toast(error.message, 'error'); }
@@ -171,12 +178,12 @@ export function ProjectOnboardingPage() {
             <aside className="intake-sources">
               {mode === 'existing' && <section className="source-card">
                 <header><FolderGit2 size={17} /><div><strong>代码源</strong><small>只读扫描后复制或 clone 到受管 workspace</small></div></header>
-                <label>来源类型<select value={sourceType} onChange={(event) => { setSourceType(event.target.value as ProjectCodeSource['type']); setSourceValue(''); setUploadFiles([]); }}>{Object.entries(sourceLabels).map(([value, label]) => <option value={value} key={value}>{label}</option>)}</select></label>
-                <label>{sourceType === 'github' || sourceType === 'git' ? 'Repository URL' : '本机绝对路径'}<input value={sourceValue} onChange={(event) => setSourceValue(event.target.value)} placeholder={sourcePlaceholder(sourceType)} /></label>
+                <label>来源类型<select value={sourceType} onChange={(event) => { setSourceType(event.target.value as ProjectCodeSource['type']); setSourceValue(''); setUploadFiles([]); }}>{sourceEntries.map(([value, label]) => <option value={value} key={value}>{label}</option>)}</select></label>
+                {(sourceType === 'github' || sourceType === 'git' || localPathAvailable) && <label>{sourceType === 'github' || sourceType === 'git' ? 'Repository URL' : relativeImports ? '导入根下的相对路径' : '本机绝对路径'}<input value={sourceValue} onChange={(event) => setSourceValue(event.target.value)} placeholder={sourcePlaceholder(sourceType, relativeImports)} /></label>}
                 {['local_directory', 'archive'].includes(sourceType) && <label>或从浏览器上传<input type="file" multiple={sourceType === 'local_directory'} accept={sourceType === 'archive' ? '.zip,.tar,.tgz,.gz' : undefined} {...(sourceType === 'local_directory' ? { webkitdirectory: '', directory: '' } : {})} onChange={(event) => { const files = [...(event.target.files || [])]; setUploadFiles(files); if (files[0]) setSourceValue(files[0].webkitRelativePath || files[0].name); }} /><small>{uploadFiles.length ? `已选择 ${uploadFiles.length} 个文件` : '上传内容同样先进入 staging 校验'}</small></label>}
                 <p><CheckCircle2 size={13} />不会原地修改或删除外部目录和远端 Repository。</p>
               </section>}
-              <ContextSources value={contexts} onChange={setContexts} />
+              <ContextSources value={contexts} onChange={setContexts} allowLocalPaths={localPathAvailable} relativePaths={relativeImports} />
             </aside>
           </div>
           <div className="stage-actions"><button className="button secondary" onClick={() => setStep('mode')}><ArrowLeft size={15} />返回</button><button className="button primary" disabled={!canSave || saveIntake.isPending} onClick={() => saveIntake.mutate()}>{saveIntake.isPending ? <LoaderCircle className="spin" size={15} /> : <FileStack size={15} />}保存并生成简报<ArrowRight size={15} /></button></div>

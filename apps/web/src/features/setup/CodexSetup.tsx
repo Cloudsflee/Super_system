@@ -1,7 +1,7 @@
 import { Box, Check, Cpu, LoaderCircle, Play } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import { api, ApiError, json } from '../../api/client';
-import type { CodexProbeReport, CodexProfile, CodexStatus, StepState } from '../../api/types';
+import type { CodexProbeReport, CodexProfile, CodexStatus, DeploymentStatus, StepState } from '../../api/types';
 import { validBaseUrl, type ProviderChoice, type WireApi } from './CodexProviderFields';
 import { CodexConnectionSetup, type ConnectionMode } from './CodexConnectionSetup';
 import { CodexProfileForm } from './CodexProfileForm';
@@ -10,7 +10,7 @@ import { useCodexDiscovery } from './useCodexDiscovery';
 
 const OPENROUTER_BASE_URL = 'https://openrouter.ai/api/v1';
 
-export function CodexSetup({ state, onChange }: { state: StepState; onChange: () => Promise<unknown> }) {
+export function CodexSetup({ state, onChange, deployment }: { state: StepState; onChange: () => Promise<unknown>; deployment?: DeploymentStatus }) {
   const [connectionMode, setConnectionMode] = useState<ConnectionMode>('codex_home');
   const [apiKey, setApiKey] = useState('');
   const [providerChoice, setProviderChoice] = useState<ProviderChoice>('openai');
@@ -39,6 +39,10 @@ export function CodexSetup({ state, onChange }: { state: StepState; onChange: ()
   const authMetadataReady = hydratedProfile === (state.profile_id || 'new');
 
   const discovery = useCodexDiscovery(async () => { await onChange(); });
+  useEffect(() => {
+    if (connectionMode === 'codex_home' && deployment?.mode === 'container' && !deployment.imports.codex_home) setConnectionMode('manual');
+    if (connectionMode === 'cc_switch' && deployment?.mode === 'container' && !deployment.imports.cc_switch) setConnectionMode('manual');
+  }, [connectionMode, deployment]);
   useEffect(() => {
     if (!checks.authenticated) { authHydrated.current = false; setHydratedProfile(null); return; }
     if (authHydrated.current) return;
@@ -133,9 +137,9 @@ export function CodexSetup({ state, onChange }: { state: StepState; onChange: ()
   return (
     <section className="setup-section">
       <div className="section-title"><Cpu size={18} /><div><h2>Codex</h2><p>{state.detail || '等待运行时验证'}</p></div><span className={`status ${state.ready ? 'ready' : 'pending'}`}>{state.ready && <Check size={12} />}{state.status}</span></div>
-      {!checks.docker_ready && <div className="setup-row"><div><strong>Docker Runtime</strong><span>隔离镜像 aiws-codex-runner:local</span></div><button className="button primary" disabled={busy} onClick={build}><Box size={15} />检测并构建</button></div>}
+      {!checks.docker_ready && <div className="setup-row"><div><strong>Docker Runtime</strong><span>{deployment?.mode === 'container' ? '预构建 Runner 镜像当前不可用' : '隔离镜像 aiws-codex-runner:1.4.0-codex-0.144.0'}</span></div>{deployment?.mode === 'container' ? <span className="status failed"><Box size={13} />需要重新部署</span> : <button className="button primary" disabled={busy} onClick={build}><Box size={15} />检测并构建</button>}</div>}
 
-      {(!checks.authenticated || needsProfileRepair) && <CodexConnectionSetup mode={connectionMode} runtimeReady={Boolean(checks.docker_ready)} repairing={needsProfileRepair} busy={busy} providerChoice={providerChoice} customProvider={customProvider} baseUrl={baseUrl} wireApi={wireApi} apiKey={apiKey} providerValid={providerValid} endpointValid={endpointValid} deviceAuth={deviceAuth} discovery={discovery} onMode={setConnectionMode} onProvider={selectProvider} onCustomProvider={setCustomProvider} onBaseUrl={setBaseUrl} onWireApi={setWireApi} onApiKey={setApiKey} onDevice={device} onAuthenticate={authenticate} onDiscoveryRefresh={discovery.refresh} onDiscoveryImport={discovery.importConfig} />}
+      {(!checks.authenticated || needsProfileRepair) && <CodexConnectionSetup mode={connectionMode} runtimeReady={Boolean(checks.docker_ready)} repairing={needsProfileRepair} busy={busy} sourceAvailability={{ codex_home: deployment?.mode !== 'container' || deployment.imports.codex_home, cc_switch: deployment?.mode !== 'container' || deployment.imports.cc_switch }} providerChoice={providerChoice} customProvider={customProvider} baseUrl={baseUrl} wireApi={wireApi} apiKey={apiKey} providerValid={providerValid} endpointValid={endpointValid} deviceAuth={deviceAuth} discovery={discovery} onMode={setConnectionMode} onProvider={selectProvider} onCustomProvider={setCustomProvider} onBaseUrl={setBaseUrl} onWireApi={setWireApi} onApiKey={setApiKey} onDevice={device} onAuthenticate={authenticate} onDiscoveryRefresh={discovery.refresh} onDiscoveryImport={discovery.importConfig} />}
 
       {checks.authenticated && !checks.profile_valid && (!state.profile_id || needsProfileRepair) && <CodexProfileForm repair={needsProfileRepair} thirdParty={thirdParty} busy={busy} valid={authMetadataReady && profileInputValid && (!repairNeedsKey || Boolean(repairApiKey))} providerChoice={providerChoice} customProvider={customProvider} baseUrl={baseUrl} wireApi={wireApi} model={model} repairNeedsKey={repairNeedsKey} repairApiKey={repairApiKey} onProvider={selectProvider} onCustomProvider={setCustomProvider} onBaseUrl={setBaseUrl} onWireApi={setWireApi} onModel={setModel} onRepairApiKey={setRepairApiKey} onCreate={createProfile} onRepair={repairProfile} />}
       {checks.docker_ready && checks.profile_valid && !checks.probe_ok && <div className="setup-row"><div><strong>非写入探针</strong><span>验证当前 profile、Endpoint 与隔离挂载</span></div><button className="button primary" disabled={busy} onClick={probe}><Play size={15} />运行 Probe</button></div>}

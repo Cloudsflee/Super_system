@@ -1,7 +1,6 @@
 import fs from 'node:fs';
 import fsp from 'node:fs/promises';
 import path from 'node:path';
-import { spawn } from 'node:child_process';
 import { HttpError, makeRoute, send } from '../http.mjs';
 import { CODEX_HOME_DIR } from '../config.mjs';
 import { addTrace, mutate, owner, readState } from '../state.mjs';
@@ -15,6 +14,8 @@ import { inspectCodexRuntimeLive } from '../codex-runtime-status.mjs';
 import { CODEX_PROBE_PHASES, classifyCodexExecution, completeCodexProbe, probeCheck, probeFailure } from '../codex-probe.mjs';
 import { codexProbeEvidenceMatches, createCodexProbeEvidence } from '../codex-probe-evidence.mjs';
 import { codexRuntimeV12Routes } from './codex-runtime-v12.mjs';
+import { assertProfileAllowed, buildCodexContainerInvocation, DEFAULT_RUNNER_IMAGE } from '../container-runtime-config.mjs';
+import { spawnContainerProcess } from '../container-runtime.mjs';
 
 const authProcesses = new Map();
 
@@ -42,8 +43,11 @@ async function deviceAuthStart({ res, body, query }) {
   const requestId = id('cdxauth'), home = path.join(CODEX_HOME_DIR, `device-${requestId}`);
   await fsp.mkdir(home, { recursive: true });
   const record = { id: requestId, status: 'running', public: { status: 'running' }, privateText: '', home };
-  const image = process.env.AIWS_CODEX_DOCKER_IMAGE || 'aiws-codex-runner:local';
-  const child = spawn('docker', ['run', '--rm', '-i', '-v', `${home}:/codex-home`, '-e', 'CODEX_HOME=/codex-home', image, 'login', '--device-auth'], { env: process.env, windowsHide: true, shell: false });
+  const invocation = buildCodexContainerInvocation({
+    kind: 'device-login', sessionId: requestId, stdin: true, codexHome: home,
+    containerEnv: { CODEX_HOME: '/codex-home' }, commandArgs: ['login', '--device-auth']
+  });
+  const child = spawnContainerProcess(invocation, { env: process.env });
   authProcesses.set(requestId, { child, record });
   for (const stream of [child.stdout, child.stderr]) stream.on('data', (chunk) => { record.privateText = `${record.privateText}${chunk}`.slice(-8192); record.public = extractDeviceAuthPublicState(record.privateText, record.public); });
   child.on('error', () => { record.status = 'failed'; record.public.status = 'failed'; });
@@ -104,7 +108,7 @@ async function createProfile({ res, body }) {
   const auth = state.integration_statuses.find((item) => item.key === 'codex_auth');
   if (auth?.status !== 'authenticated') throw new HttpError(409, { error: 'codex_auth_required' });
   const initialSetup = !state.setup_states[0]?.completed_at;
-  const profile = { id: id('cdxp'), kind: 'docker', ...profilePatch(body), image: 'aiws-codex-runner:local', status: 'validated', is_active: initialSetup, created_at: now(), updated_at: now() };
+  const profile = { id: id('cdxp'), kind: 'docker', ...profilePatch(body), image: DEFAULT_RUNNER_IMAGE, status: 'validated', is_active: initialSetup, created_at: now(), updated_at: now() };
   assertProfileAuth(auth, profile);
   const ccSwitch = state.integration_statuses.find((item) => item.key === 'cc_switch');
   Object.assign(profile, ccSwitchBinding(profile, ccSwitch));
@@ -117,7 +121,7 @@ async function updateProfile({ res, params, body }) { const state = await readSt
 async function deleteProfile({ res, params }) { const result = await mutate(async (state) => { const profile = state.codex_profiles.find((item) => item.id === params.id); if (!profile) throw new HttpError(404, { error: 'profile_not_found' }); if (state.setup_states[0]?.completed_at) throw new HttpError(409, { error: 'profile_change_proposal_required' }); if (profile.is_active) throw new HttpError(409, { error: 'active_profile_cannot_be_deleted' }); state.codex_profiles = state.codex_profiles.filter((item) => item.id !== params.id); await publishCcSwitchCatalog(state); return profile; }); const profileHome = path.resolve(result.codex_home || path.join(CODEX_HOME_DIR, result.id)); if (path.dirname(profileHome) === path.resolve(CODEX_HOME_DIR)) await fsp.rm(profileHome, { recursive: true, force: true }); return send(res, 200, result); }
 async function validateProfile({ res, params }) { const state = await readState(), profile = state.codex_profiles.find((item) => item.id === params.id); if (!profile) throw new HttpError(404, { error: 'profile_not_found' }); const validation = validateProfileInput(state, profile); return send(res, validation.ok ? 200 : 400, validation); }
 
-async function proposeProfile({ res, params }) { const result = await mutate((state) => { const actor = owner(state), profile = state.codex_profiles.find((item) => item.id === params.id); if (!profile) throw new HttpError(404, { error: 'profile_not_found' }); if (profile.status !== 'validated') throw new HttpError(409, { error: 'validated_profile_required' }); const auth = state.integration_statuses.find((item) => item.key === 'codex_auth'); assertProfileAuth(auth, profile); const probe = state.integration_statuses.find((item) => item.key === 'codex_probe' && item.profile_id === profile.id && item.status === 'ready'); if (!probe) throw new HttpError(409, { error: 'profile_probe_required' }); const proposal = createChangeProposal({ projectId: null, changeType: 'codex_profile_apply', title: `切换 Codex Profile：${profile.name}`, summary: '影响后续 Assist 与 NodeRun', before: state.codex_profiles.find((item) => item.is_active), after: profile, risks: ['模型与 Provider 行为可能变化'], applyAction: { type: 'codex_profile_apply', profile_id: profile.id }, actorId: actor.id }); state.change_proposals.push(proposal); addTrace(state, 'change_proposal.created', { target_id: proposal.id, summary: proposal.title }, actor.id); return proposal; }); return send(res, 201, result); }
+async function proposeProfile({ res, params }) { const result = await mutate((state) => { const actor = owner(state), profile = state.codex_profiles.find((item) => item.id === params.id); if (!profile) throw new HttpError(404, { error: 'profile_not_found' }); try { assertProfileAllowed(profile); } catch (error) { throw new HttpError(409, { error: error.message }); } if (profile.status !== 'validated') throw new HttpError(409, { error: 'validated_profile_required' }); const auth = state.integration_statuses.find((item) => item.key === 'codex_auth'); assertProfileAuth(auth, profile); const probe = state.integration_statuses.find((item) => item.key === 'codex_probe' && item.profile_id === profile.id && item.status === 'ready'); if (!probe) throw new HttpError(409, { error: 'profile_probe_required' }); const proposal = createChangeProposal({ projectId: null, changeType: 'codex_profile_apply', title: `切换 Codex Profile：${profile.name}`, summary: '影响后续 Assist 与 NodeRun', before: state.codex_profiles.find((item) => item.is_active), after: profile, risks: ['模型与 Provider 行为可能变化'], applyAction: { type: 'codex_profile_apply', profile_id: profile.id }, actorId: actor.id }); state.change_proposals.push(proposal); addTrace(state, 'change_proposal.created', { target_id: proposal.id, summary: proposal.title }, actor.id); return proposal; }); return send(res, 201, result); }
 
 async function getCcSwitchStatus({ res }) { return send(res, 200, await ccSwitchStatus()); }
 async function ccSwitchSync({ res, body, query }) { await requireConfigurationConfirmation(body); return send(res, 200, await syncCcSwitch({ adapted: testAdapter(body, query) })); }

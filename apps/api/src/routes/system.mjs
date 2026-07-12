@@ -1,8 +1,9 @@
 import { command, makeRoute, send } from '../http.mjs';
-import { ROOT, STATE_FILE } from '../config.mjs';
+import { ROOT } from '../config.mjs';
 import { addTrace, mutate, owner, readState } from '../state.mjs';
 import { createLocalOwner, now, pick } from '../../../../packages/shared/index.mjs';
 import { inspectCodexRuntimeLive } from '../codex-runtime-status.mjs';
+import { dataDirectoryReady, deploymentStatus } from '../deployment-status.mjs';
 
 export const systemRoutes = [
   makeRoute('GET', '/health', async ({ res }) => {
@@ -10,14 +11,21 @@ export const systemRoutes = [
     const git = command('git', ['--version'], ROOT, 3000);
     const codex = command('codex', ['--version'], ROOT, 3000);
     const runtime = inspectCodexRuntimeLive();
+    const storageReady = dataDirectoryReady();
+    const deployment = deploymentStatus({ dockerReady: runtime.docker.ok, storageReady });
     return send(res, 200, {
-      status: 'ok', api: { healthy: true }, db: { healthy: true, mode: 'json-local', state_file: STATE_FILE },
+      status: storageReady ? 'ok' : 'degraded', api: { healthy: true }, db: { healthy: storageReady, mode: 'json-local', writable: storageReady },
+      deployment: { mode: deployment.mode, local_only: deployment.local_only },
       queue: { required: false, status: 'not_configured', mode: 'direct-execution' },
       git: { healthy: git.ok, version: git.stdout.trim() || git.error },
       codex: { healthy: codex.ok, version: codex.stdout.trim() || codex.error, degraded_ok: true },
       docker: { healthy: runtime.docker.ok, version: runtime.docker.version || runtime.docker.summary, image_ready: runtime.image.ready, image: runtime.image.name, error_code: runtime.docker.error_code || runtime.image.error_code, degraded_ok: true },
       local_owner: state.users[0] ? pick(state.users[0], ['id', 'display_name', 'role', 'auth_mode']) : null
     });
+  }),
+  makeRoute('GET', '/system/deployment', async ({ res }) => {
+    const runtime = inspectCodexRuntimeLive();
+    return send(res, 200, deploymentStatus({ dockerReady: runtime.docker.ok }));
   }),
   makeRoute('GET', '/account/me', async ({ res }) => {
     const state = await readState();

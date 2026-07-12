@@ -7,6 +7,7 @@ import { resolveCodexInvocation } from '../../../packages/runner-adapters/src/co
 import { addTrace, mutate, owner, readState } from './state.mjs';
 import { codexProviderKey, isThirdPartyProvider, normalizeProviderBaseUrl, profileConfigToml, writeProfileConfig } from './codex-service.mjs';
 import { now } from '../../../packages/shared/index.mjs';
+import { buildCodexContainerInvocation, DEFAULT_RUNNER_IMAGE } from './container-runtime-config.mjs';
 
 export const ccSwitchSources = [
   { name: 'cc-switch-desktop', repo: 'https://github.com/farion1231/cc-switch.git' },
@@ -163,8 +164,9 @@ export async function validateBridgeConformance({ adapted = false, commandRunner
   let parsed = invocation ? commandRunner(invocation.command, [...invocation.args, 'features', 'list'], ROOT, 15000, { CODEX_HOME: home, OPENAI_API_KEY: 'cc-switch-conformance-placeholder' }) : { ok: false, error: 'codex_executable_not_found', stderr: '' };
   let parser = invocation?.source || null;
   if (!parsed.ok) {
-    const image = process.env.AIWS_CODEX_DOCKER_IMAGE || 'aiws-codex-runner:local';
-    parsed = commandRunner('docker', ['run', '--rm', '--env', 'CODEX_HOME=/codex-home', '--env', 'OPENAI_API_KEY=cc-switch-conformance-placeholder', '-v', `${home}:/codex-home:rw`, image, 'features', 'list'], ROOT, 30000);
+    const image = process.env.AIWS_CODEX_DOCKER_IMAGE || DEFAULT_RUNNER_IMAGE;
+    const docker = buildCodexContainerInvocation({ kind: 'cc-switch-conformance', sessionId: `bridge-${process.pid}`, image, codexHome: home, containerEnv: { CODEX_HOME: '/codex-home', OPENAI_API_KEY: null }, commandArgs: ['features', 'list'] });
+    parsed = commandRunner(docker.command, docker.args, ROOT, 30000, { OPENAI_API_KEY: 'cc-switch-conformance-placeholder' });
     parser = `docker:${image}`;
   }
   await fsp.rm(home, { recursive: true, force: true });

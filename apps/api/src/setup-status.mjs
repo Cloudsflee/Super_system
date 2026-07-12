@@ -27,11 +27,13 @@ export function computeSetupStatus(state, runtime = null) {
   const docker = state.integration_statuses.find((item) => item.key === 'codex_docker');
   const auth = state.integration_statuses.find((item) => item.key === 'codex_auth');
   const profile = state.codex_profiles.find((item) => item.is_active) || state.codex_profiles.find((item) => item.status === 'validated');
-  const probe = state.integration_statuses.find((item) => item.key === 'codex_probe' && item.profile_id === profile?.id);
+  const probe = state.integration_statuses
+    .filter((item) => item.key === 'codex_probe' && item.profile_id === profile?.id)
+    .sort((left, right) => String(right.updated_at || right.created_at || '').localeCompare(String(left.updated_at || left.created_at || '')))[0];
   const thirdParty = profile && isThirdPartyProvider(profile.provider);
   const endpointValid = !thirdParty || Boolean(normalizeProviderBaseUrl(profile.base_url));
   const authMatches = Boolean(profile && codexAuthMatchesProfile(auth, profile));
-  const dockerReady = runtime ? runtime.ready === true : docker?.status === 'ready';
+  const dockerReady = runtime ? runtime.ready === true : docker?.status === 'ready' || probe?.status === 'ready';
   const currentEvidence = runtime ? createCodexProbeEvidence({ profile, auth, runtime }) : null;
   const probeCurrent = probe?.status === 'ready' && (!runtime || codexProbeEvidenceMatches(probe.evidence, currentEvidence));
   const codexChecks = {
@@ -71,7 +73,7 @@ function githubStep({ githubReady, appConfigured, account, installations, select
 }
 
 export function isSetupExempt(pathname) {
-  if (pathname === '/health' || pathname === '/setup/status' || pathname === '/setup/mode' || pathname === '/setup/complete' || pathname === '/github/webhook') return true;
+  if (pathname === '/health' || pathname === '/system/deployment' || pathname === '/setup/status' || pathname === '/setup/mode' || pathname === '/setup/complete' || pathname === '/github/webhook') return true;
   if (/^\/github\/(status|app-config\/(defaults|validate|manual|reset)|manifest\/(start|callback)|device\/(start|poll)|disconnect|repositories\/sync)$/.test(pathname)) return true;
   if (/^\/github\/installations(?:\/start|\/discover|\/setup|\/[^/]+\/repositories(?:\/sync)?)?$/.test(pathname)) return true;
   if (/^\/codex\/(status|docker\/build|auth\/(?:device\/start|device\/[^/]+\/(?:events|cancel)|api-key|reset)|profiles(?:\/[^/]+(?:\/validate)?)?|cc-switch\/(?:status|sync|import)|probe)$/.test(pathname)) return true;

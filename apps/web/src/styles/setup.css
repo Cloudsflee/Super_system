@@ -16,6 +16,7 @@
 .setup-main > header h1 { margin: 7px 0; }
 .setup-main > header p, .section-title p { margin: 0; color: var(--muted); font-size: 13px; }
 .setup-section { padding: 24px 0; border-bottom: 1px solid var(--line); }
+.setup-section > .deployment-flags { margin: 14px 0 0 32px; padding: 0; }
 .section-title { min-height: 40px; display: grid; grid-template-columns: 24px 1fr auto; gap: 8px; align-items: start; }
 .section-title h2 { margin: 0 0 4px; }
 .section-title .status { display: flex; align-items: center; gap: 4px; }

@@ -1,4 +1,4 @@
-# V1.3 覆盖矩阵
+# V1.4 覆盖矩阵
 
 状态定义：`已验证` 表示实现与默认离线自动化证据均存在；`已验证（live 未运行）` 表示默认适配器、隔离 fixture 和失败路径已通过，但真实外部服务验收仍需显式 opt-in。计划条目、Schema 或静态字符串检查不能单独形成“已验证”结论。
 
@@ -31,8 +31,28 @@
 | IDE 四形态与响应式 | docked/floating/minimized/mobile fullscreen、Composer/Review/Terminal；无 scrim | Web tests；`1440x900`、`1024x768`、`390x844` Playwright 与截图 | 已验证 |
 | V1.3 完整门禁 | 根 scripts、8 个 V1.3 integration suites、acceptance audit、文档和 runbook | 2026-07-12 依次执行七条必跑命令及完整 `verify`，退出码均为 0 | 已验证 |
 
+## V1.4 完全容器化增量
+
+| 计划项 | 实现/治理边界 | 默认门禁证据 | 状态 |
+|---|---|---|---|
+| 版本与 schema | 根包、Web、Worker、共享包统一 `1.4.0`；state schema 保持 `13` | package unit、migration check、acceptance audit | 已验证 |
+| App / Verify / Runner 镜像 | Node 24 production/verify 多阶段镜像；Codex `0.144.0` Runner 和完整工具链 | 三个 target 实际构建；容器内 Codex 版本与完整 `verify` | 已验证 |
+| 单容器生产 Compose | Web/API 同容器；loopback、固定卷、socket、init、health、restart、30 秒停止 | `docker compose config`、inspect、正式切换 health | 已验证 |
+| 统一 Runner argv | 唯一 name、managed/instance/kind/session/profile labels、2 CPU/4g/512 PIDs、cap drop、NNP | `v14-container.test.mjs`、真实 sibling Runner smoke | 已验证 |
+| mount 与 Secret | container volume-subpath；host bind 回归；API Key/token 仅按 `env_key` 名称继承；TOML 不落 Secret | unit Secret sentinel、既有 19 组 integration、真实 volume-subpath 与自定义 Endpoint Probe | 已验证 |
+| 生命周期与清理 | timeout/abort/cancel/shutdown stop；同 instance 启动清理；正常退出 `--rm` | runtime unit、NodeRun/Terminal 回归、隔离与正式 smoke 零遗留 | 已验证 |
+| 五类 Codex 入口 | Device Login、Probe、Assist app-server/exec fallback、NodeRun、Terminal 全部接入 builder/runtime | capability/app-server unit、V1.2/V1.3 integrations、V1.4 unit | 已验证（推理 live 未运行） |
+| Host Profile 策略 | 容器部署拒绝 Host Profile/host runner；宿主开发保留兼容 | unit、V1.4 integration、Web disabled reason | 已验证 |
+| Deployment / Health | Setup 豁免、storage/docker/import capability、数据可写、响应脱敏 | V1.4 integration、Web tests、真实 API smoke | 已验证 |
+| 只读发现 | 启动脚本自动发现 Codex/cc-switch，项目根显式配置，override 只读 | Compose inspect、来源摘要、正式 deployment capability | 已验证 |
+| `host_import_root` | 仅相对路径；拒绝绝对/盘符/UNC/`..`/symlink/越界；导入前后 realpath/hash 复查 | unit、V1.4 integration、V1.3 import-security 回归 | 已验证 |
+| 来源最小化 state | 代码源只存 name/scope/hash；Context 导入后移除路径；无项目根时仅 URL/上传 | integration state sentinel、Project onboarding UI tests | 已验证 |
+| 运维脚本 | PowerShell/POSIX 八类命令；预检、保卷 down、确认 reset、安全 restore | Compose smoke、独立卷 backup/reset/restore、runbook | 已验证 |
+| 最终切换 | 新建 `aiws-data-v14`；停止旧 4317/4318；不迁移/删除 V1.3 数据 | 正式 UI/health/Runner/restart；V1.3 1,833 文件聚合摘要不变 | 已验证 |
+| V1.4 完整门禁 | 宿主 `verify`、验证镜像 `verify`、75 项 audit、隔离 smoke、正式切换 | 2026-07-12 最终工作树，全部退出码 0 | 已验证 |
+
 ## 外部验收边界
 
-本轮未设置 `RUN_CODEX_LIVE_TESTS`、`RUN_GITHUB_LIVE_TESTS` 或 `RUN_CC_SWITCH_LIVE_TESTS`，因此没有运行真实 Codex、GitHub repository 或 cc-switch 下载/Catalog 验收。这里只确认 opt-in 脚本存在且不属于默认 `verify`；不能把默认 adapter 结果解释为 live 结果。
+本轮未设置 `RUN_CODEX_LIVE_TESTS`、`RUN_GITHUB_LIVE_TESTS` 或 `RUN_CC_SWITCH_LIVE_TESTS`，因此没有运行真实推理、GitHub repository 或 cc-switch 下载/Catalog 验收。这里只确认 opt-in 脚本存在且不属于默认 `verify`；固定 Codex 版本 smoke 和默认 adapter 结果不能解释为外部 live 结果。
 
-默认持久化仍是 JSON-local；Prisma/PostgreSQL 模型是可替换持久化边界，不表示本轮已切换数据库。
+默认持久化仍是命名卷中的 JSON-local；Prisma/PostgreSQL 模型是可替换持久化边界，不表示本轮已切换数据库。

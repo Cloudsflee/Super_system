@@ -43,13 +43,16 @@ export class CodexRunner extends AgentRunner {
 }
 
 export class DockerCodexRunner extends AgentRunner {
-  constructor({ image = 'aiws-codex-runner:local', timeoutMs = 120000 } = {}) {
+  constructor({ image = 'aiws-codex-runner:1.4.0-codex-0.144.0', timeoutMs = 120000, invocationBuilder = null, processRunner = runProcess } = {}) {
     super('DockerCodexRunner');
     this.image = image;
     this.timeoutMs = timeoutMs;
+    this.invocationBuilder = invocationBuilder;
+    this.processRunner = processRunner;
   }
 
   buildDockerArgs({ cwd, codexHome = '.ai-workspace/codex-home', mounts = [], outputSchemaFile, lastMessageFile, model, json = true, exposeApiKey = false }) {
+    if (this.invocationBuilder) return this.invocationBuilder({ cwd, codexHome, mounts, outputSchemaFile, lastMessageFile, model, json, exposeApiKey }).args;
     const mountedCwd = '/workspace';
     const mountedCodex = '/codex-home';
     const schemaPath = toContainerPath(outputSchemaFile, cwd, mountedCwd);
@@ -78,9 +81,10 @@ export class DockerCodexRunner extends AgentRunner {
   async run({ cwd, codexHome, mounts, model, env, promptFile, outputSchemaFile, fallback = {}, signal }) {
     try {
       const lastMessageFile = `${outputSchemaFile}.last-message.json`;
-      const args = this.buildDockerArgs({ cwd, codexHome, mounts, model, outputSchemaFile, lastMessageFile, exposeApiKey: Boolean(env?.OPENAI_API_KEY) });
+      const input = { cwd, codexHome, mounts, model, json: true, outputSchemaFile, lastMessageFile, exposeApiKey: Boolean(env?.OPENAI_API_KEY) };
+      const invocation = this.invocationBuilder ? this.invocationBuilder(input) : { command: 'docker', args: this.buildDockerArgs(input) };
       const prompt = fs.readFileSync(promptFile, 'utf8');
-      const raw = await runProcess('docker', args, { cwd, timeoutMs: this.timeoutMs, stdin: prompt, env, signal });
+      const raw = await this.processRunner(invocation.command, invocation.args, { cwd, timeoutMs: this.timeoutMs, stdin: prompt, env, signal }, invocation);
       const last = fs.existsSync(lastMessageFile) ? fs.readFileSync(lastMessageFile, 'utf8') : '';
       const normalized = normalizeRunnerOutput(last || extractJsonMessage(raw.stdout) || raw.stdout || raw.stderr, fallback);
       return { ...normalized.result, status: normalized.status, _codex_process: { command: 'docker', code: raw.code, stderr: raw.stderr, stdout: raw.stdout.slice(-4000) } };

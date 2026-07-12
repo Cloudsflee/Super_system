@@ -1,15 +1,16 @@
-import { Check, Github, KeyRound, Layers3 } from 'lucide-react';
+import { Box, Check, KeyRound, Layers3 } from 'lucide-react';
 import { Navigate, useLocation, useNavigate } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
 import { useEffect, useRef, useState } from 'react';
 import { api, json } from '../../api/client';
-import { keys, useSetup } from '../../api/queries';
+import { keys, useDeployment, useSetup } from '../../api/queries';
 import { FullPageState } from '../../components/common/FullPageState';
 import { GithubSetup } from './GithubSetup';
 import { CodexSetup } from './CodexSetup';
 
 export function SetupPage() {
   const setup = useSetup();
+  const deployment = useDeployment();
   const client = useQueryClient();
   const navigate = useNavigate();
   const location = useLocation();
@@ -61,6 +62,10 @@ export function SetupPage() {
       <section className="setup-main">
         <header><span className="overline">WORKSPACE SETUP</span><h1>连接工作环境</h1><p>GitHub 与 Codex 验证完成后进入工作空间。</p></header>
         <section className="setup-section">
+          <div className="section-title"><Box size={18} /><div><h2>部署环境</h2><p>{deployment.data?.mode === 'container' ? 'Container · Docker volume · socket runner' : 'Host development · local directory'}</p></div><span className={`status ${deployment.data?.storage?.ready && deployment.data?.docker?.ready ? 'ready' : 'pending'}`}>{deployment.data?.storage?.ready && deployment.data?.docker?.ready ? 'ready' : 'checking'}</span></div>
+          {deployment.data?.mode === 'container' && <div className="deployment-flags"><span>Codex 导入 <b>{deployment.data.imports.codex_home ? '可用' : '未挂载'}</b></span><span>cc-switch <b>{deployment.data.imports.cc_switch ? '可用' : '未挂载'}</b></span><span>项目导入根 <b>{deployment.data.imports.projects_root ? '相对路径' : '未配置'}</b></span></div>}
+        </section>
+        <section className="setup-section">
           <div className="section-title"><Layers3 size={18} /><div><h2>运行模式</h2><p>选择 GitHub App 的所有权方式</p></div></div>
           <div className="segmented" role="group" aria-label="运行模式">
             <button disabled={busy} className={setup.data.mode === 'hosted' ? 'active' : ''} onClick={() => setMode('hosted')}>Hosted</button>
@@ -68,7 +73,7 @@ export function SetupPage() {
           </div>
         </section>
         {setup.data.mode && <GithubSetup mode={setup.data.mode} state={setup.data.steps.github} onChange={refresh} />}
-        {setup.data.steps.github.ready && <CodexSetup state={setup.data.steps.codex} onChange={refresh} />}
+        {setup.data.steps.github.ready && <CodexSetup state={setup.data.steps.codex} onChange={refresh} deployment={deployment.data} />}
         <footer className="setup-footer"><div>{callbackError && <span>{callbackError}</span>}{setup.data.reasons.map((reason) => <span key={reason}>{reason}</span>)}</div><button className="button primary" disabled={busy || !setup.data.can_complete} onClick={finish}><Check size={16} />完成配置</button></footer>
       </section>
     </main>

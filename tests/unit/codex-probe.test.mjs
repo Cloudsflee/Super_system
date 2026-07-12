@@ -44,6 +44,8 @@ assert.equal(inspectCodexConfig(profile, config).ok, true);
 assert.equal(inspectCodexConfig(profile, 'not = [toml').error_code, 'codex_probe_config_invalid');
 assert.equal(inspectCodexConfig(profile, config.replace('unit/model', 'wrong/model')).error_code, 'codex_probe_config_profile_mismatch');
 assert.equal(inspectCodexConfig(profile, config.replace('requires_openai_auth = false', 'requires_openai_auth = true')).error_code, 'codex_probe_config_profile_mismatch');
+assert.equal(inspectCodexConfig({ ...profile, requires_openai_auth: true }, config.replace('requires_openai_auth = false', 'requires_openai_auth = true')).ok, true);
+assert.equal(inspectCodexConfig({ ...profile, requires_openai_auth: true }, config.replace('requires_openai_auth = false\nenv_key = "OPENAI_API_KEY"', 'requires_openai_auth = true')).error_code, 'codex_probe_config_profile_mismatch');
 assert.equal(inspectCodexConfig({ provider: 'openai', model: 'unit/model' }, config).error_code, 'codex_probe_config_profile_mismatch');
 assert.equal(inspectCodexRuntime(profile, { ok: false }, { ok: true }).error_code, 'codex_probe_docker_unavailable');
 assert.equal(inspectCodexRuntime(profile, { ok: true }, { ok: false }).error_code, 'codex_probe_image_missing');

@@ -7,6 +7,13 @@ const checks = [
   ['V1.2 test plan', '测试计划v1.2.md', 'Setup 是前后端共同执行的硬门禁'],
   ['V1.3 dev plan', '开发计划v1.3.md', '相对 `开发计划v1.2.md`'],
   ['V1.3 test plan', '测试计划v1.3.md', 'Project Lifecycle'],
+  ['V1.4 dev plan', '开发计划v1.4.md', '完全容器化增量'],
+  ['V1.4 test plan', '测试计划v1.4.md', '真实容器 Smoke'],
+  ['Production Dockerfile', 'Dockerfile', 'FROM workspace-deps AS verify'],
+  ['V1.4 Compose', 'compose.yml', '127.0.0.1:${AIWS_PORT:-4317}:4317'],
+  ['Runner image', 'docker/codex-runner.Dockerfile', 'ARG CODEX_VERSION=0.144.0'],
+  ['PowerShell operations', 'scripts/aiws.ps1', "'backup'"],
+  ['POSIX operations', 'scripts/aiws.sh', 'restore_data'],
   ['React workspace', 'apps/web/package.json', '@xyflow/react'],
   ['Setup guard', 'apps/web/src/app/setup-guard.tsx', '<Navigate to="/setup"'],
   ['Setup API', 'apps/api/src/routes/setup-v12.mjs', '/setup/complete'],
@@ -47,6 +54,10 @@ const checks = [
   ['Assist V3 replay', 'apps/api/src/assist-v3-events.mjs', 'last-event-id'],
   ['Agent worktree', 'apps/api/src/assist-v3-worktree.mjs', "['worktree', 'add'"],
   ['Codex app-server', 'apps/api/src/codex-app-server.mjs', "request('turn/start'"],
+  ['Unified container runtime', 'apps/api/src/container-runtime-config.mjs', 'volume-subpath='],
+  ['Runner lifecycle cleanup', 'apps/api/src/container-runtime.mjs', 'cleanupStaleContainers'],
+  ['Deployment API', 'apps/api/src/routes/system.mjs', '/system/deployment'],
+  ['Host import root', 'apps/api/src/host-import-root.mjs', 'host_import_symlink_rejected'],
   ['Codex exec fallback', 'apps/api/src/assist-v3-runtime.mjs', 'transport_fallback'],
   ['Unified approvals', 'apps/api/src/routes/approvals-v13.mjs', 'approve_apply'],
   ['Managed cc-switch', 'apps/api/src/cc-switch-managed-cli.mjs', 'CC_SWITCH_VERSION'],
@@ -64,6 +75,9 @@ const checks = [
   ['Assist lifecycle integration', 'tests/integration/v13-assist-lifecycle-flow.test.mjs', 'Assist lifecycle integration tests passed'],
   ['App-server protocol unit', 'tests/unit/codex-app-server.test.mjs', 'experimentalApi'],
   ['Interaction audit', 'tests/e2e/smoke.test.mjs', 'auditButtons']
+  ,['V1.4 container unit', 'tests/unit/v14-container.test.mjs', 'container runtime unit tests passed']
+  ,['V1.4 container integration', 'tests/integration/v14-container-flow.test.mjs', 'container deployment/import integration tests passed']
+  ,['Deployment UI test', 'apps/web/src/test/v14-deployment.test.tsx', 'V1.4 deployment capabilities']
 ];
 for (const [name, file, needle] of checks) {
   assert.ok(fs.existsSync(file), `${name}: ${file} exists`);
@@ -78,7 +92,7 @@ assert.equal(runtime.includes('buildAssistResult'), false, 'production runtime e
 assert.equal(runtime.includes('codexProfileFromCcSwitch'), false, 'production runtime excludes checkout-only fake cc-switch Profiles');
 assert.ok(fs.existsSync('apps/web/dist/index.html'), 'production frontend build exists');
 const manifest = JSON.parse(fs.readFileSync('package.json', 'utf8'));
-assert.equal(manifest.version, '1.3.0', 'root package is V1.3');
+assert.equal(manifest.version, '1.4.0', 'root package is V1.4');
 for (const script of ['lint', 'typecheck', 'test', 'test:integration', 'test:e2e', 'audit:acceptance', 'verify']) assert.ok(manifest.scripts[script], `mandatory script ${script}`);
 for (const dependency of ['node-pty', 'ws']) assert.ok(manifest.dependencies[dependency], `runtime dependency ${dependency}`);
 assert.match(manifest.scripts['test:e2e'], /build-web/, 'standalone e2e builds the frontend');
@@ -94,12 +108,17 @@ for (const viewport of ['1440', '1024', '390', "keyboard.press('Escape')", 'work
 const integrationScript = manifest.scripts['test:integration'];
 for (const suite of ['v12-github-security-flow', 'v12-files-flow', 'v12-assist-flow', 'v12-codex-flow', 'v12-codex-discovery-flow']) assert.ok(integrationScript.includes(suite), `integration gate includes ${suite}`);
 for (const suite of ['v13-migration-flow', 'v13-project-lifecycle-flow', 'v13-import-security-flow', 'v13-github-repository-flow', 'v13-governance-flow', 'v13-assist-worktree-flow', 'v13-assist-lifecycle-flow', 'v13-terminal-flow']) assert.ok(integrationScript.includes(suite), `V1.3 integration gate includes ${suite}`);
+assert.ok(integrationScript.includes('v14-container-flow'), 'V1.4 integration gate includes container flow');
+assert.ok(manifest.scripts.test.includes('v14-container.test'), 'unit gate includes V1.4 container runtime');
 assert.ok(manifest.scripts.test.includes('codex-app-server.test'), 'unit gate includes app-server protocol');
 const webManifest = JSON.parse(fs.readFileSync('apps/web/package.json', 'utf8'));
-assert.equal(webManifest.version, '1.3.0', 'web package is V1.3');
+assert.equal(webManifest.version, '1.4.0', 'web package is V1.4');
 for (const dependency of ['@xterm/xterm', '@xterm/addon-fit']) assert.ok(webManifest.dependencies[dependency], `web dependency ${dependency}`);
 const managedCcSwitch = fs.readFileSync('apps/api/src/cc-switch-managed-cli.mjs', 'utf8');
 assert.equal(/sqlite|better-sqlite3/i.test(managedCcSwitch), false, 'managed cc-switch path never writes SQLite');
-console.log(`V1.3 acceptance audit passed (${checks.length} implementation checks)`);
+assert.equal(runtime.includes('aiws-codex-runner:local'), false, 'runtime excludes mutable local Runner tag');
+assert.match(fs.readFileSync('apps/api/src/state.mjs', 'utf8'), /schema_version = 13/, 'state schema remains 13');
+for (const file of ['apps/worker/package.json', 'packages/context-pack/package.json', 'packages/git-tools/package.json', 'packages/mcp-bridge/package.json', 'packages/memory-policy/package.json', 'packages/runner-adapters/package.json', 'packages/shared/package.json']) assert.equal(JSON.parse(fs.readFileSync(file, 'utf8')).version, '1.4.0', `${file} is V1.4`);
+console.log(`V1.4 acceptance audit passed (${checks.length} implementation checks)`);
 
 function walk(dir) { if (!fs.existsSync(dir)) return []; return fs.readdirSync(dir, { withFileTypes: true }).flatMap((entry) => { if (['node_modules', 'dist'].includes(entry.name)) return []; const full = path.join(dir, entry.name); return entry.isDirectory() ? walk(full) : [full]; }); }

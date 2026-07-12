@@ -29,7 +29,7 @@ const FAILURES = Object.freeze({
   codex_probe_unsupported_wire_api: ['configuration', '当前 Provider 不是 Responses 协议', '选择支持 Responses API 的 Endpoint，或启用完整的协议转换代理。', false],
   codex_probe_cc_switch_not_ready: ['configuration', 'cc-switch Runtime Bridge 未就绪', '先同步 cc-switch 并确认当前 Profile 的 Provider 映射为已同步。', true],
   codex_probe_docker_unavailable: ['runtime', 'Docker 引擎当前不可用', '启动 Docker Desktop，确认已切换到 Linux containers，然后重试。', true],
-  codex_probe_image_missing: ['runtime', 'Codex 隔离镜像不存在', '点击“检测并构建”重建 aiws-codex-runner:local。', true],
+  codex_probe_image_missing: ['runtime', 'Codex 隔离镜像不存在', '重新部署 aiws-codex-runner:1.4.0-codex-0.144.0。', true],
   codex_probe_image_inspection_failed: ['runtime', 'Codex 隔离镜像状态无法确认', '检查 Docker 权限与引擎状态，然后重新检测。', true],
   codex_probe_mount_unavailable: ['runtime', 'Profile 的隔离挂载不可用', '检查工作区路径和 Docker Desktop 文件共享权限。', false],
   codex_probe_cli_missing: ['runtime', 'Codex CLI 无法启动', '重建 Codex 镜像，或检查本机 codex 命令是否可用。', false],
@@ -99,7 +99,7 @@ export function inspectCodexConfig(profile, text) {
   const expectedBaseUrl = profile.kind === 'docker' ? containerizeLoopbackUrl(profile.base_url) : profile.base_url;
   if (normalizeUrl(configured.base_url) !== normalizeUrl(expectedBaseUrl)) return probeFailure('codex_probe_config_profile_mismatch');
   if (configured.requires_openai_auth !== (profile.requires_openai_auth === true)) return probeFailure('codex_probe_config_profile_mismatch');
-  if (profile.requires_openai_auth !== true && configured.env_key !== 'OPENAI_API_KEY') return probeFailure('codex_probe_config_profile_mismatch');
+  if (configured.env_key !== 'OPENAI_API_KEY') return probeFailure('codex_probe_config_profile_mismatch');
   return { ok: true, check: probeCheck('configuration') };
 }
 

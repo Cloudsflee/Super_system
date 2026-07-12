@@ -4,6 +4,7 @@ import { now } from '../../../../packages/shared/index.mjs';
 import { inspectCodexRuntimeLive } from '../codex-runtime-status.mjs';
 import { buildCodexDockerImage } from '../codex-docker-service.mjs';
 import { testAdapter } from '../test-adapter.mjs';
+import { DEFAULT_CODEX_IMAGE } from '../codex-runtime-status.mjs';
 
 export const codexRuntimeV12Routes = [
   makeRoute('GET', '/codex/status', codexStatus),
@@ -22,7 +23,7 @@ async function codexStatus({ res }) {
 async function dockerBuild({ res, body, query }) {
   const outcome = buildCodexDockerImage({ adapted: testAdapter(body, query) });
   const status = await mutate((state) => {
-    const actor = owner(state), item = upsert(state, 'codex_docker', { status: outcome.ready ? 'ready' : 'failed', image: 'aiws-codex-runner:local', updated_at: now() });
+    const actor = owner(state), item = upsert(state, 'codex_docker', { status: outcome.ready ? 'ready' : 'failed', image: DEFAULT_CODEX_IMAGE, updated_at: now() });
     if (outcome.ready) {
       for (const probe of state.integration_statuses.filter((entry) => entry.key === 'codex_probe')) probe.status = 'stale';
       state.setup_states.forEach((entry) => { entry.completed_at = null; entry.updated_at = now(); });

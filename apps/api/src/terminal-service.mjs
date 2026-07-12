@@ -15,6 +15,9 @@ import { pushV3Event } from './assist-v3-events.mjs';
 import { prepareCodexInvocation } from '../../../packages/runner-adapters/src/codex-command.mjs';
 import { codexAuthMatchesProfile, isThirdPartyProvider } from './codex-service.mjs';
 import { materializeDeviceAuth } from './codex-device-auth.mjs';
+import { codexContainerProxyEnv } from './codex-container-network.mjs';
+import { assertProfileAllowed, buildCodexContainerInvocation } from './container-runtime-config.mjs';
+import { registerManagedProcessHandle, releaseManagedProcessHandle } from './container-runtime.mjs';
 
 const runtimes = new Map();
 const runtimeStarts = new Map();
@@ -36,6 +39,7 @@ export async function createTerminalSession(body) {
   if (body.profile_id && !requestedProfile) throw new HttpError(404, { error: 'validated_profile_not_found' });
   const profile = requestedProfile || snapshot.codex_profiles.find((item) => item.is_active && item.status === 'validated');
   if (!profile) throw new HttpError(409, { error: 'active_codex_profile_required' });
+  assertProfileAllowed(profile);
   const sessionId = id('tty');
   const prepared = body.worktree_id ? resolveExistingWorktree(snapshot, body.worktree_id, project.id) : { record: { ...await createAssistWorktree(project, { id: `cli-${sessionId}` }), turn_id: null, kind: 'cli' } };
   const session = await mutate((state) => {
@@ -111,14 +115,16 @@ async function connectSocket(ws, sessionId) {
 async function startTerminal(session) {
   const state = await readState(), worktree = state.worktrees.find((item) => item.id === session.worktree_id), profile = state.codex_profiles.find((item) => item.id === session.profile_id);
   if (!worktree || !profile || !fs.existsSync(worktree.path)) throw new HttpError(409, { error: 'terminal_worktree_unavailable' });
+  assertProfileAllowed(profile);
   const auth = state.integration_statuses.find((item) => item.key === 'codex_auth');
   if (!codexAuthMatchesProfile(auth, profile)) throw new HttpError(409, { error: 'codex_auth_profile_mismatch' });
   if (auth.home && !isThirdPartyProvider(profile.provider)) await materializeDeviceAuth(auth.home, profile.codex_home);
   const credential = await readSecret(auth?.refs?.credential);
-  const invocation = terminalInvocation(profile, worktree.path, credential);
+  const invocation = terminalInvocation(profile, worktree.path, credential, session.id);
   let processHandle;
   try { processHandle = pty.spawn(invocation.command, invocation.args, { name: 'xterm-256color', cols: session.cols, rows: session.rows, cwd: worktree.path, env: invocation.env, useConpty: process.platform === 'win32' }); }
   catch (error) { await mutate((data) => { const current = data.terminal_sessions.find((item) => item.id === session.id); if (current) Object.assign(current, { status: 'failed', error_code: 'terminal_spawn_failed', updated_at: now() }); }); throw error; }
+  if (invocation.runtime === 'docker') registerManagedProcessHandle(invocation, processHandle);
   const artifactDir = path.join(ARTIFACT_DIR, 'terminal'); await fsp.mkdir(artifactDir, { recursive: true });
   const artifactPath = path.join(artifactDir, `${Date.now()}_${safe(session.id)}.log`), outputStream = fs.createWriteStream(artifactPath, { flags: 'wx', mode: 0o600 });
   let resolveDone; const done = new Promise((resolve) => { resolveDone = resolve; });
@@ -129,7 +135,7 @@ async function startTerminal(session) {
     const redacted = redactKnownSecretStream(chunk, runtime.redactionPending); runtime.redactionPending = redacted.pending;
     appendOutput(runtime, redacted.text);
   });
-  processHandle.onExit(({ exitCode, signal }) => { runtime.finalizing ||= finalizeTerminal(runtime, exitCode, signal).finally(resolveDone); });
+  processHandle.onExit(({ exitCode, signal }) => { if (invocation.containerName) releaseManagedProcessHandle(invocation.containerName, processHandle); runtime.finalizing ||= finalizeTerminal(runtime, exitCode, signal).finally(resolveDone); });
   await mutate((data) => { const current = data.terminal_sessions.find((item) => item.id === session.id); if (current) { Object.assign(current, { status: 'running', pid: processHandle.pid, started_at: now(), updated_at: now() }); if (current.assist_session_id) pushV3Event(data, current.assist_session_id, current.turn_id, 'terminal', { terminal_session_id: current.id, runtime: current.runtime, status: current.status }); } });
   return runtime;
 }
@@ -160,13 +166,19 @@ function handleClientMessage(runtime, raw) {
   else if (message.type === 'ping') broadcast(runtime, { type: 'pong', at: now() });
 }
 
-function terminalInvocation(profile, cwd, credential) {
+function terminalInvocation(profile, cwd, credential, sessionId) {
   const codexHome = profile.codex_home || path.join(AIWS_HOME, 'codex-homes', profile.id);
-  const env = { ...minimalTerminalEnv(), TERM: 'xterm-256color', COLORTERM: 'truecolor', CODEX_HOME: codexHome, ...(credential ? { OPENAI_API_KEY: credential } : {}) };
+  const proxy = profile.kind === 'docker' ? codexContainerProxyEnv(process.env) : {};
+  const env = { ...minimalTerminalEnv(), ...proxy, TERM: 'xterm-256color', COLORTERM: 'truecolor', CODEX_HOME: codexHome, ...(credential ? { OPENAI_API_KEY: credential } : {}) };
   if (profile.kind !== 'docker') return { ...prepareCodexInvocation(process.env.AIWS_CODEX_BIN || 'codex'), env };
-  const image = profile.config?.image || 'aiws-codex-runner:local';
-  const args = ['run', '--rm', '-it', '-e', 'TERM=xterm-256color']; if (credential) args.push('-e', 'OPENAI_API_KEY'); args.push('-v', `${cwd}:/workspace`, '-v', `${codexHome}:/root/.codex`, '-w', '/workspace', image);
-  return { command: 'docker', args, env };
+  return {
+    ...buildCodexContainerInvocation({
+      kind: 'terminal', sessionId, profileId: profile.id, image: profile.image || profile.config?.image,
+      interactive: true, codexHome, workspace: cwd, workspaceMode: 'rw', extraMounts: profile.mounts || [],
+      containerEnv: { TERM: 'xterm-256color', COLORTERM: 'truecolor', CODEX_HOME: '/codex-home', ...(credential ? { OPENAI_API_KEY: null } : {}), ...Object.fromEntries(Object.keys(proxy).map((key) => [key, null])) },
+      commandArgs: []
+    }), env
+  };
 }
 
 function resolveExistingWorktree(state, worktreeId, projectId) { const record = state.worktrees.find((item) => item.id === worktreeId && item.project_id === projectId), assistRoot = path.join(WORKSPACE_DIR, safe(projectId), 'worktrees'); if (!record || (!isWithin(WORKTREE_DIR, record.path) && !isWithin(assistRoot, record.path))) throw new HttpError(404, { error: 'worktree_not_found' }); return { record }; }

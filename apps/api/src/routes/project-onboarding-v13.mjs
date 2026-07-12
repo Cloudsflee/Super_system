@@ -6,6 +6,7 @@ import { id, now } from '../../../../packages/shared/index.mjs';
 import { managedProjectRoot } from '../managed-workspace.mjs';
 import { isGitRepo } from '../git-utils.mjs';
 import { stageMultipartSources } from '../project-upload-service.mjs';
+import { normalizeCodeSource } from '../project-import-service.mjs';
 
 export const projectOnboardingV13Routes = [
   makeRoute('GET', '/projects/:id/onboarding', getOnboarding),
@@ -41,7 +42,7 @@ async function updateIntake({ res, params, body }) {
     if (body.mode !== undefined && !['brainstorm', 'existing'].includes(body.mode)) throw new HttpError(400, { error: 'invalid_intake_mode' });
     if (body.mode) intake.mode = body.mode;
     if (body.answers && typeof body.answers === 'object') intake.answers = { ...(intake.answers || {}), ...body.answers };
-    if (body.code_source !== undefined) intake.code_source = body.code_source;
+    if (body.code_source !== undefined) intake.code_source = body.code_source ? normalizeCodeSource(body.code_source) : null;
     if (body.context_sources !== undefined) {
       if (!Array.isArray(body.context_sources) || body.context_sources.length > 50) throw new HttpError(400, { error: 'invalid_context_sources' });
       intake.context_sources = body.context_sources.map(validateContextSource);
@@ -84,7 +85,7 @@ async function importSources({ res, params, body }) {
     for (const attachment of attachments) Object.assign(attachment, { session_id: assistSession?.id || null, title: attachment.title || attachment.label, relative_path: attachment.relative_path || null, file_ref_id: null, model_policy: attachment.kind === 'url' || attachment.model_injectable ? (/^image\//.test(attachment.content_type || '') ? 'image' : 'injectable') : 'artifact_only', created_by_user_id: actor.id });
     state.attachments.push(...attachments);
     Object.assign(current, { repo_path: checkout.repo_path, workspace_root: checkout.repo_path.replace(/[\\/]repo$/, ''), managed_workspace_state: 'ready', source_metadata: checkout.source, source_hash: checkout.source_hash, updated_at: now() });
-    if (currentIntake) Object.assign(currentIntake, { code_source: uploaded ? checkout.source : source || null, status: 'ready_for_review', last_error: null, updated_at: now() });
+    if (currentIntake) Object.assign(currentIntake, { code_source: checkout.source, context_sources: sanitizeImportedContexts(currentIntake.context_sources, attachments), status: 'ready_for_review', last_error: null, updated_at: now() });
     addTrace(state, 'project.source.imported', { project_id: project.id, target_id: job.id, summary: '代码源已导入受管 workspace。', data: { source: checkout.source, source_hash: checkout.source_hash } }, actor.id);
     return { job, project: current, attachments, idempotent: false };
   });
@@ -156,3 +157,4 @@ async function purgeProject({ res, params, body }) {
 
 function findProject(state, idValue, includeDeleted = false) { const project = state.projects.find((item) => item.id === idValue && (includeDeleted || !item.deleted_at)); if (!project) throw new HttpError(404, { error: 'project_not_found' }); return project; }
 function isGitRepository(value) { try { return Boolean(value && isGitRepo(value)); } catch { return false; } }
+function sanitizeImportedContexts(sources = [], attachments = []) { return sources.map((source, index) => source.path ? { type: source.type, label: source.label || attachments[index]?.label || '本地材料', path_scope: source.path_scope || 'managed_import', sha256: attachments[index]?.sha256 || null } : source); }

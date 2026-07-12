@@ -6,6 +6,7 @@ import { addTrace, mutate, owner, readState } from './state.mjs';
 import { readSecret } from './vault.mjs';
 import { validateProfileInput, writeProfileConfig } from './codex-service.mjs';
 import { proposalTargetHash } from './proposal-target.mjs';
+import { assertProfileAllowed } from './container-runtime-config.mjs';
 
 export async function proposeConfigRevision(body) {
   return mutate((state) => {
@@ -26,6 +27,7 @@ export async function proposeConfigRevision(body) {
 export async function applyConfigRevision(proposalId, expected = {}) {
   const snapshot = await readState(), proposal = snapshot.change_proposals.find((item) => item.id === proposalId), revision = snapshot.config_revisions.find((item) => item.id === proposal?.apply_action?.config_revision_id), profile = snapshot.codex_profiles.find((item) => item.id === revision?.profile_id);
   if (!proposal || !revision || !profile) throw new HttpError(404, { error: 'config_revision_not_found' });
+  try { assertProfileAllowed(profile); } catch (error) { throw new HttpError(409, { error: error.message }); }
   if (proposal.status === 'applied') return { proposal, revision, idempotent: true };
   if (proposal.status !== 'pending') throw new HttpError(409, { error: 'proposal_not_pending' });
   if (expected.revision === undefined || !expected.target_hash) throw new HttpError(400, { error: 'approval_expectation_required', required: ['revision', 'target_hash'] });

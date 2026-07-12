@@ -6,6 +6,7 @@ import { publishCcSwitchCatalog } from '../cc-switch-service.mjs';
 import { putSecret, removeSecret } from '../vault.mjs';
 import { cleanupCodexAuthHomes, persistImportedDeviceAuth } from '../codex-device-auth.mjs';
 import { id, now } from '../../../../packages/shared/index.mjs';
+import { DEFAULT_RUNNER_IMAGE } from '../container-runtime-config.mjs';
 
 export const codexDiscoveryV12Routes = [
   makeRoute('GET', '/codex/discovery', async ({ res }) => send(res, 200, await discoverLocalCodex())),
@@ -31,7 +32,7 @@ async function importDiscovery({ res, body }) {
     provider: resolved.descriptor.provider, provider_name: resolved.descriptor.provider_name,
     base_url: resolved.descriptor.base_url, wire_api: 'responses', requires_openai_auth: resolved.descriptor.requires_openai_auth === true,
     model: resolved.descriptor.model, reasoning: 'high', web_search: false, mcp_servers: [], timeout_ms: 120000, mounts: [],
-    image: 'aiws-codex-runner:local', status: 'validated', is_active: true,
+    image: DEFAULT_RUNNER_IMAGE, status: 'validated', is_active: true,
     discovery_source: { source_id: resolved.source.source_id, source_provider_id: resolved.source.source_provider_id, type: resolved.source.type, revision: resolved.source.revision },
     credential_configured: true, created_at: now(), updated_at: now()
   };

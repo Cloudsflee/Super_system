@@ -36,7 +36,9 @@ import { maskSecret } from '../../packages/shared/index.mjs';
 import { computeSetupStatus, isSetupExempt } from './src/setup-status.mjs';
 import { readState } from './src/state.mjs';
 import { redactKnownSecretsSync } from './src/vault.mjs';
+import { attachContainerShutdown, cleanupStaleContainers } from './src/container-runtime.mjs';
 
+cleanupStaleContainers();
 await ensureRuntime();
 await recoverAssistV3Runtime();
 
@@ -122,6 +124,7 @@ const server = http.createServer(async (req, res) => {
   }
 });
 attachTerminalWebSocket(server);
+attachContainerShutdown(server);
 
 function isApiRequest(pathname, routePath) {
   if (pathname.startsWith('/api/')) return true;
@@ -134,5 +137,5 @@ function isSpaPath(pathname) {
 }
 
 server.listen(PORT, () => {
-  console.log(`AI Workspace System V1.3 running at http://localhost:${PORT}`);
+  console.log(`AI Workspace System V1.4 running at http://localhost:${PORT}`);
 });

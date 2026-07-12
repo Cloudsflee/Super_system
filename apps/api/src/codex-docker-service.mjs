@@ -3,11 +3,15 @@ import { ROOT } from './config.mjs';
 import { command } from './http.mjs';
 import { codexContainerProxyEnv } from './codex-container-network.mjs';
 import { inspectCodexRuntimeLive } from './codex-runtime-status.mjs';
+import { DEFAULT_RUNNER_IMAGE, isContainerized } from './container-runtime-config.mjs';
 
-export function buildCodexDockerImage({ adapted = false, image = process.env.AIWS_CODEX_DOCKER_IMAGE || 'aiws-codex-runner:local' } = {}) {
+export function buildCodexDockerImage({ adapted = false, image = process.env.AIWS_CODEX_DOCKER_IMAGE || DEFAULT_RUNNER_IMAGE } = {}) {
   if (adapted) return { ready: true, runtime: { ready: true, image: { error_code: null } }, output: 'test adapter: image ready' };
   const before = inspectCodexRuntimeLive({ image });
   if (!before.docker.ok) return failure(before.docker.error_code, before.docker.summary, before.docker.action);
+  if (isContainerized()) return before.ready
+    ? { ready: true, runtime: before, output: 'deployment image ready' }
+    : failure(before.image?.error_code || 'codex_probe_image_missing', '部署所需 Runner 镜像不可用', '在宿主重新执行 V1.4 up/verify 构建 Runner 镜像。', before);
   const proxyEnv = codexContainerProxyEnv(process.env);
   const args = ['build', '--progress=plain'];
   for (const key of Object.keys(proxyEnv)) args.push('--build-arg', key);

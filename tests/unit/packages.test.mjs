@@ -16,7 +16,7 @@ assert.ok(hostArgs.includes('--json'));
 assert.ok(hostArgs.includes('gpt-test'));
 const dockerArgs = new DockerCodexRunner().buildDockerArgs({ cwd: '/repo', codexHome: '/home/codex', mounts: ['/extra'], outputSchemaFile: '/repo/schema.json' });
 assert.deepEqual(dockerArgs.slice(0, 2), ['run', '--rm']);
-assert.ok(dockerArgs.includes('aiws-codex-runner:local'));
+assert.ok(dockerArgs.includes('aiws-codex-runner:1.4.0-codex-0.144.0'));
 assert.ok(dockerArgs.includes('/workspace'));
 assert.ok(dockerArgs.includes('CODEX_HOME=/codex-home'));
 assert.equal(dockerArgs.includes('OPENAI_API_KEY'), false);

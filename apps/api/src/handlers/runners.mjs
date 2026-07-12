@@ -8,6 +8,9 @@ import { RunnerStatus, buildNodeRunResult, contextPackToMarkdown, nodeRunResultS
 import { readSecret } from '../vault.mjs';
 import { codexAuthMatchesProfile, isThirdPartyProvider } from '../codex-service.mjs';
 import { materializeDeviceAuth } from '../codex-device-auth.mjs';
+import { codexContainerProxyEnv } from '../codex-container-network.mjs';
+import { assertProfileAllowed, buildCodexContainerInvocation, toRunnerPath } from '../container-runtime-config.mjs';
+import { runContainerProcess } from '../container-runtime.mjs';
 
 export async function invokeRunner(state, { actor, run, project, workspace, node, ctx, body }) {
   const repoPath = project.repo_path || project.workspace_root || '';
@@ -22,14 +25,20 @@ async function executeCodexDocker(state, payload) {
   const cwd = repoPath;
   const profile = state.codex_profiles.find((item) => item.is_active && item.status === 'validated');
   if (!profile?.codex_home) throw new HttpError(409, { error: 'active_codex_profile_required' });
+  assertProfileAllowed(profile);
   const files = await prepareCodexFiles(cwd, run, ctx);
   const auth = state.integration_statuses.find((item) => item.key === 'codex_auth');
   if (!codexAuthMatchesProfile(auth, profile)) throw new HttpError(409, { error: 'codex_auth_profile_mismatch' });
   if (auth.home && !isThirdPartyProvider(profile.provider)) await materializeDeviceAuth(auth.home, profile.codex_home);
   const credential = await readSecret(auth?.refs?.credential);
-  const runner = new DockerCodexRunner({ image: process.env.AIWS_CODEX_DOCKER_IMAGE || 'aiws-codex-runner:local', timeoutMs: profile.timeout_ms });
+  const proxyEnv = codexContainerProxyEnv(process.env);
+  const runner = new DockerCodexRunner({
+    image: process.env.AIWS_CODEX_DOCKER_IMAGE, timeoutMs: profile.timeout_ms,
+    invocationBuilder: (input) => buildNodeRunInvocation(profile, run.id, input, Object.keys(proxyEnv)),
+    processRunner: (_command, _args, options, invocation) => runContainerProcess(invocation, options)
+  });
   const fallback = buildNodeRunResult({ run, contextPack: ctx, changedFiles: [], raw: 'DockerCodexRunner command prepared', status: RunnerStatus.Partial });
-  const resultJson = await runner.run({ cwd, codexHome: profile.codex_home, mounts: profile.mounts || [], model: profile.model, env: { OPENAI_API_KEY: credential || undefined }, promptFile: files.promptFile, outputSchemaFile: files.schemaFile, fallback, signal: payload.body?.signal });
+  const resultJson = await runner.run({ cwd, codexHome: profile.codex_home, mounts: profile.mounts || [], model: profile.model, env: { ...proxyEnv, OPENAI_API_KEY: credential || undefined }, promptFile: files.promptFile, outputSchemaFile: files.schemaFile, fallback, signal: payload.body?.signal });
   return { raw: resultJson._codex_process?.stderr || resultJson.summary, resultJson: { ...fallback, ...resultJson, changed_files: resultJson.changed_files || [] } };
 }
 
@@ -39,6 +48,7 @@ async function executeCodex(state, payload) {
   const files = await prepareCodexFiles(cwd, run, ctx);
   const profile = state.codex_profiles.find((item) => item.is_active && item.status === 'validated');
   if (!profile?.codex_home) throw new HttpError(409, { error: 'active_codex_profile_required' });
+  assertProfileAllowed(profile);
   const auth = state.integration_statuses.find((item) => item.key === 'codex_auth');
   if (!codexAuthMatchesProfile(auth, profile)) throw new HttpError(409, { error: 'codex_auth_profile_mismatch' });
   if (auth.home && !isThirdPartyProvider(profile.provider)) await materializeDeviceAuth(auth.home, profile.codex_home);
@@ -46,6 +56,20 @@ async function executeCodex(state, payload) {
   const fallback = buildNodeRunResult({ run, contextPack: ctx, changedFiles: [], raw: 'CodexRunner fallback', status: RunnerStatus.Partial });
   const resultJson = await new CodexRunner({ timeoutMs: profile.timeout_ms }).run({ cwd, model: profile.model, env: { CODEX_HOME: profile.codex_home, OPENAI_API_KEY: credential || undefined }, promptFile: files.promptFile, outputSchemaFile: files.schemaFile, fallback, signal: payload.body?.signal });
   return { raw: resultJson._codex_process?.stderr || resultJson.summary, resultJson: { ...fallback, ...resultJson, changed_files: resultJson.changed_files || [] } };
+}
+
+function buildNodeRunInvocation(profile, runId, input, proxyKeys) {
+  const commandArgs = ['exec', ...(input.json ? ['--json'] : []), '--skip-git-repo-check', '--sandbox', 'workspace-write'];
+  if (input.model) commandArgs.push('--model', input.model);
+  commandArgs.push('--cd', '/workspace', '--output-schema', toRunnerPath(input.outputSchemaFile, input.cwd));
+  if (input.lastMessageFile) commandArgs.push('--output-last-message', toRunnerPath(input.lastMessageFile, input.cwd));
+  commandArgs.push('-');
+  return buildCodexContainerInvocation({
+    kind: 'node-run', sessionId: runId, profileId: profile.id, image: profile.image,
+    stdin: true, codexHome: input.codexHome, workspace: input.cwd, workspaceMode: 'rw', extraMounts: input.mounts,
+    containerEnv: { CODEX_HOME: '/codex-home', ...(input.exposeApiKey ? { OPENAI_API_KEY: null } : {}), ...Object.fromEntries(proxyKeys.map((key) => [key, null])) },
+    commandArgs
+  });
 }
 
 async function prepareCodexFiles(cwd, run, ctx) {
