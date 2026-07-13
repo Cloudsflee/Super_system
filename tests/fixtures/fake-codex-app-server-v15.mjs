@@ -31,6 +31,7 @@ function handle(message) {
     nextCursor: null
   });
   if (message.method === 'thread/start') return reply(message.id, { thread: { id: threadId } });
+  if (message.method === 'thread/resume' && message.params?.threadId === 'missing-native-thread') return replyError(message.id, 'no rollout found for thread id missing-native-thread');
   if (message.method === 'thread/resume') return reply(message.id, { thread: { id: message.params?.threadId || threadId } });
   if (message.method === 'thread/goal/set') {
     const previous = readGoal();
@@ -85,5 +86,6 @@ function finishTurn(text) {
 }
 function readGoal() { try { return JSON.parse(fs.readFileSync(goalFile, 'utf8')); } catch { return null; } }
 function reply(id, result) { send({ id, result }); }
+function replyError(id, message) { send({ id, error: { message } }); }
 function send(message) { append({ direction: 'to_aiws', message }); process.stdout.write(`${JSON.stringify(message)}\n`); }
 function append(value) { fs.appendFileSync(logFile, `${JSON.stringify(value)}\n`); }

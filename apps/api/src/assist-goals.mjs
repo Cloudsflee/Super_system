@@ -2,7 +2,7 @@ import path from 'node:path';
 import { HttpError } from './http.mjs';
 import { ASSIST_DIR } from './config.mjs';
 import { mutate, readState } from './state.mjs';
-import { runCodexAppServerRpc } from './codex-app-server.mjs';
+import { isCodexThreadUnavailable, runCodexAppServerRpc } from './codex-app-server.mjs';
 import { coordinateAssistSession } from './assist-session-coordinator.mjs';
 import { getSessionChangeBatch } from './assist-change-batches.mjs';
 import { bindSessionRuntimeProfile, cleanText, readableProjectCwd, requireProject, requireSession, resolveAssistTurnConfiguration } from './assist-v3-domain.mjs';
@@ -16,7 +16,7 @@ export function clearAssistGoal(sessionId, dependencies = {}) { return coordinat
 
 async function performGoalRpc(sessionId, operation, input = {}, { rpc = runCodexAppServerRpc } = {}) {
   let state = await readState(), session = requireSession(state, sessionId), project = requireProject(state, session.project_id);
-  if (operation !== 'set' && !session.codex_thread_id) return { goal: null };
+  if (operation !== 'set' && (!session.codex_thread_id || session.native_thread_generation === 1)) return { goal: null };
   const configuration = resolveGoalProfile(state, session, input);
   const profile = { ...configuration.profile, model: configuration.model, reasoning: configuration.reasoning };
   if (!profile?.id) throw new HttpError(409, { error: 'active_codex_profile_required' });
@@ -27,7 +27,16 @@ async function performGoalRpc(sessionId, operation, input = {}, { rpc = runCodex
   const resumeId = legacy ? null : session.codex_thread_id;
   const method = operation === 'get' ? 'thread/goal/get' : operation === 'clear' ? 'thread/goal/clear' : 'thread/goal/set';
   const params = operation === 'set' ? normalizeGoalInput(input, session.native_goal_snapshot) : {};
-  const response = await rpc({ state, profile, cwd, sandbox: 'read-only', resumeId, createThread: !resumeId, method, params });
+  let response;
+  try {
+    response = await rpc({ state, profile, cwd, sandbox: 'read-only', resumeId, createThread: !resumeId, method, params });
+  } catch (error) {
+    if (!resumeId || !isCodexThreadUnavailable(error)) throw error;
+    await clearUnavailableNativeThread(session.id, resumeId);
+    if (operation !== 'set') return { goal: null };
+    state = await readState();
+    response = await rpc({ state, profile, cwd, sandbox: 'read-only', resumeId: null, createThread: true, method, params: restoredGoalInput(params, session.native_goal_snapshot) });
+  }
   const threadId = response.thread_id || resumeId;
   if (operation === 'set' && !threadId) throw new HttpError(409, { error: 'native_goal_thread_missing' });
   const goal = operation === 'clear' ? null : normalizeGoalResponse(response.result);
@@ -56,5 +65,23 @@ function normalizeGoalInput(input, previous) {
 function normalizeGoalResponse(result) {
   const goal = result?.goal ?? result ?? null;
   if (!goal || typeof goal !== 'object') return null;
-  return { objective: String(goal.objective || ''), status: String(goal.status || 'active'), tokenBudget: goal.tokenBudget == null ? null : Number(goal.tokenBudget), tokensUsed: Number(goal.tokensUsed || 0), timeUsedSeconds: Number(goal.timeUsedSeconds || 0), createdAt: goal.createdAt ?? null, updatedAt: goal.updatedAt ?? null };
+  const objective = String(goal.objective || '');
+  if (!objective.trim()) return null;
+  return { objective, status: String(goal.status || 'active'), tokenBudget: goal.tokenBudget == null ? null : Number(goal.tokenBudget), tokensUsed: Number(goal.tokensUsed || 0), timeUsedSeconds: Number(goal.timeUsedSeconds || 0), createdAt: goal.createdAt ?? null, updatedAt: goal.updatedAt ?? null };
+}
+
+async function clearUnavailableNativeThread(sessionId, threadId) {
+  await mutate((state) => {
+    const session = requireSession(state, sessionId, true);
+    if (session.codex_thread_id !== threadId) return;
+    session.codex_thread_id = null; session.native_goal_snapshot = null; session.native_goal_synced_at = now(); session.updated_at = now();
+  });
+}
+
+function restoredGoalInput(input, snapshot) {
+  return {
+    ...(snapshot?.objective ? { objective: snapshot.objective } : {}),
+    ...(snapshot?.tokenBudget != null ? { tokenBudget: snapshot.tokenBudget } : {}),
+    ...input
+  };
 }

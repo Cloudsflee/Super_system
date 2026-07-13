@@ -85,6 +85,7 @@ function normalizeCodexEvent(event) {
   const usage = event.usage || item.usage;
   if (usage && typeof usage === 'object') return { type: 'usage', data: safeUsage(usage) };
   if (event.type === 'thread.started') return { type: 'status', data: { status: 'thread_started' } };
+  if (event.type === 'thread.recreated') return { type: 'status', data: { status: 'thread_recreated' } };
   return null;
 }
 function safeFileChanges(values) { return Array.isArray(values) ? values.slice(0, 500).map((item) => ({ path: safeViewPath(item?.path || item?.file), kind: cleanText(item?.kind || item?.type, 100) })).filter((item) => item.path) : []; }

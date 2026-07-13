@@ -51,6 +51,15 @@ try {
   assert.equal(planEvents.some((item) => item.type === 'plan'), true);
   assert.equal(planEvents.some((item) => item.type === 'reasoning_summary'), true);
 
+  const staleState = readState();
+  staleState.assist_sessions.find((item) => item.id === sessionId).codex_thread_id = 'missing-native-thread';
+  writeState(staleState);
+  const recoveredTurn = await api(port, `/assist/v3/sessions/${sessionId}/turns`, 'POST', { collaboration_mode: 'default', content: 'RECOVER_STALE_THREAD', configuration_id: configuration.id }, 202);
+  const recoveredDone = await waitForTurn(recoveredTurn.id, (item) => item.status === 'completed');
+  assert.equal(recoveredDone.codex_thread_id, 'fake-native-thread-v15');
+  const recoveryEvents = readState().assist_events.filter((item) => item.turn_id === recoveredTurn.id);
+  assert.equal(recoveryEvents.some((item) => item.type === 'status' && item.data.status === 'thread_recreated'), true);
+
   const pageTurn = await api(port, `/assist/v3/sessions/${sessionId}/turns`, 'POST', {
     collaboration_mode: 'default', content: 'PAGE_TOOL commit semantic field', configuration_id: configuration.id,
     view_context: { route: `/projects/${project.project.id}/brief`, browser_instance_id: 'browser-v15', surface: { id: 'brief-v15', revision: 'surface-v15-r1', fields: [{ id: 'brief.goal', label: 'Goal', risk: 'low' }] } }

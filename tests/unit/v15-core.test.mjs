@@ -110,6 +110,12 @@ try {
   assert.equal(fallback.models[0].model, 'custom-verified');
 
   const goals = await import('../../apps/api/src/assist-goals.mjs');
+  await stateApi.mutate((state) => {
+    Object.assign(state.assist_sessions[0], { codex_thread_id: 'legacy-native-thread', legacy_codex_thread_id: 'legacy-native-thread', native_thread_generation: 1 });
+  });
+  let legacyGoalRpcCalled = false;
+  assert.deepEqual(await goals.getAssistGoal('session-v15', { rpc: async () => { legacyGoalRpcCalled = true; throw new Error('must not run'); } }), { goal: null });
+  assert.equal(legacyGoalRpcCalled, false);
   const goalCalls = [];
   const rpc = async (request) => {
     goalCalls.push(request);
@@ -123,6 +129,27 @@ try {
   await goals.getAssistGoal('session-v15', { rpc });
   assert.equal(goalCalls[1].method, 'thread/goal/get'); assert.equal(goalCalls[1].resumeId, 'native-v15');
   assert.deepEqual(await goals.clearAssistGoal('session-v15', { rpc }), { goal: null });
+  assert.deepEqual(await goals.getAssistGoal('session-v15', { rpc: async () => ({ thread_id: 'native-v15', result: { goal: { objective: '', status: 'active', tokensUsed: 0, timeUsedSeconds: 0 } } }) }), { goal: null });
+
+  await stateApi.mutate((state) => {
+    Object.assign(state.assist_sessions[0], { codex_thread_id: 'missing-native-thread', native_thread_generation: 2, native_goal_snapshot: { objective: 'Recover goal', status: 'active', tokenBudget: 7000 } });
+  });
+  const missingGoal = await goals.getAssistGoal('session-v15', { rpc: async () => { throw new Error('thread not found: missing-native-thread'); } });
+  assert.deepEqual(missingGoal, { goal: null });
+  assert.equal((await stateApi.readState()).assist_sessions[0].codex_thread_id, null);
+
+  await stateApi.mutate((state) => {
+    Object.assign(state.assist_sessions[0], { codex_thread_id: 'missing-native-thread', native_goal_snapshot: { objective: 'Recover goal', status: 'active', tokenBudget: 7000 } });
+  });
+  const recoveryCalls = [];
+  const recoveredGoal = await goals.setAssistGoal('session-v15', { status: 'paused', profile_id: 'profile-base' }, { rpc: async (request) => {
+    recoveryCalls.push(request);
+    if (recoveryCalls.length === 1) throw new Error('no rollout found for thread id missing-native-thread');
+    return { thread_id: 'recovered-native-thread', result: { goal: { objective: request.params.objective, status: request.params.status, tokenBudget: request.params.tokenBudget, tokensUsed: 0, timeUsedSeconds: 0 } } };
+  } });
+  assert.equal(recoveredGoal.goal.objective, 'Recover goal'); assert.equal(recoveredGoal.goal.status, 'paused');
+  assert.equal(recoveryCalls[1].resumeId, null); assert.equal(recoveryCalls[1].createThread, true);
+  assert.deepEqual(recoveryCalls[1].params, { objective: 'Recover goal', tokenBudget: 7000, status: 'paused' });
 
   const inputs = await import('../../apps/api/src/assist-user-input.mjs');
   const waiting = inputs.waitForAssistUserInput('session-v15', 'turn-secret', { itemId: 'credential', questions: [{ id: 'token', header: 'Secret', question: 'Token?', isSecret: true }] });

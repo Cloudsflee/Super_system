@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { EventEmitter } from 'node:events';
-import { nativeCollaborationMode, runCodexAppServer } from '../../apps/api/src/codex-app-server.mjs';
+import { isCodexThreadUnavailable, nativeCollaborationMode, runCodexAppServer } from '../../apps/api/src/codex-app-server.mjs';
 
 class FakeProcess extends EventEmitter {
   constructor(handler) {
@@ -17,7 +17,7 @@ const events = [], approvals = [], protocol = [], responses = new Map();
 let invocation;
 
 const result = await runCodexAppServer({
-  state, profile, prompt: 'Plan the requested change.', userInput: [{ type: 'text', text: 'Plan the requested change.', text_elements: [] }, { type: 'image', detail: 'auto', url: 'data:image/png;base64,AA==' }], cwd: process.cwd(), sandbox: 'read-only', mode: 'plan',
+  state, profile, prompt: 'Plan the requested change.', userInput: [{ type: 'text', text: 'Plan the requested change.', text_elements: [] }, { type: 'image', detail: 'auto', url: 'data:image/png;base64,AA==' }], additionalContext: [{ kind: 'application', value: 'hidden application context' }], dynamicTools: [{ type: 'function', name: 'test_tool', description: 'Test', inputSchema: { type: 'object' } }], cwd: process.cwd(), sandbox: 'read-only', mode: 'plan',
   spawnProcess(command, args, options) {
     invocation = { command, args, options };
     return new FakeProcess((message, child) => handleProtocol(message, child));
@@ -39,6 +39,7 @@ assert.ok(protocol.some((item) => item.method === 'collaborationMode/list'));
 const threadStart = protocol.find((item) => item.method === 'thread/start');
 assert.equal(threadStart.params.approvalsReviewer, 'user');
 assert.equal(threadStart.params.sandbox, 'read-only');
+assert.equal(threadStart.params.dynamicTools[0].name, 'test_tool');
 assert.equal('runtimeWorkspaceRoots' in threadStart.params, false);
 const turnStart = protocol.find((item) => item.method === 'turn/start');
 assert.equal(turnStart.params.input[0].text_elements.length, 0);
@@ -48,6 +49,8 @@ assert.equal(turnStart.params.approvalsReviewer, 'user');
 assert.equal(turnStart.params.summary, 'concise');
 assert.equal('model' in turnStart.params, false);
 assert.equal('effort' in turnStart.params, false);
+assert.equal('dynamicTools' in turnStart.params, false);
+assert.deepEqual(turnStart.params.additionalContext, { 'aiws.application.1': { kind: 'application', value: 'hidden application context' } });
 assert.deepEqual(turnStart.params.collaborationMode, { mode: 'plan', settings: { model: 'gpt-test', reasoning_effort: 'high', developer_instructions: null } });
 assert.equal(nativeCollaborationMode('ask', profile).mode, 'default');
 
@@ -61,6 +64,36 @@ assert.ok(events.some((item) => item.aiws_type === 'plan' && item.data.status ==
 assert.ok(events.some((item) => item.aiws_type === 'reasoning_summary' && item.data.summary === '公开摘要'));
 assert.ok(events.some((item) => item.aiws_type === 'command' && item.data.exit_code === 0));
 assert.equal(JSON.stringify(events).includes('PRIVATE_REASONING'), false);
+
+const recoveryProtocol = [], recoveryEvents = [];
+const recovered = await runCodexAppServer({
+  state, profile, prompt: 'recover stale thread', resumeId: 'stale-thread', cwd: process.cwd(), sandbox: 'read-only',
+  spawnProcess: () => new FakeProcess((message, child) => {
+    recoveryProtocol.push(message);
+    if (message.method === 'initialize') return child.send({ id: message.id, result: { userAgent: 'fake' } });
+    if (message.method === 'thread/resume') return child.send({ id: message.id, error: { message: 'thread not found: stale-thread' } });
+    if (message.method === 'thread/start') return child.send({ id: message.id, result: { thread: { id: 'recovered-thread' } } });
+    if (message.method === 'turn/start') {
+      child.send({ id: message.id, result: { turn: { id: 'recovered-turn', status: 'inProgress' } } });
+      setImmediate(() => child.send({ method: 'turn/completed', params: { turn: { id: 'recovered-turn', status: 'completed' } } }));
+    }
+  }),
+  onEvent: (event) => recoveryEvents.push(event)
+});
+assert.equal(recovered.thread_id, 'recovered-thread');
+assert.deepEqual(recoveryProtocol.filter((item) => item.method?.startsWith('thread/')).map((item) => item.method), ['thread/resume', 'thread/start']);
+assert.equal(recoveryEvents.some((item) => item.type === 'thread.recreated'), true);
+assert.equal(isCodexThreadUnavailable(new Error('no rollout found for thread id stale-thread')), true);
+assert.equal(isCodexThreadUnavailable(new Error('endpoint unavailable')), false);
+
+await assert.rejects(
+  runCodexAppServer({ state, profile, prompt: 'invalid turn request', cwd: process.cwd(), sandbox: 'read-only', spawnProcess: () => new FakeProcess((message, child) => {
+    if (message.method === 'initialize') child.send({ id: message.id, result: { userAgent: 'fake' } });
+    if (message.method === 'thread/start') child.send({ id: message.id, result: { thread: { id: 'thread-invalid-turn' } } });
+    if (message.method === 'turn/start') child.send({ id: message.id, error: { message: 'Invalid request: invalid type' } });
+  }) }),
+  (error) => error.code === 'app_server_turn_failed' && /Invalid request/.test(error.message)
+);
 
 await assert.rejects(
   runCodexAppServer({ state, profile, prompt: 'fail', cwd: process.cwd(), sandbox: 'read-only', spawnProcess: () => new FakeProcess((message, child) => {

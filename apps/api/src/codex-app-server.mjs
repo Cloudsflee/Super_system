@@ -47,13 +47,22 @@ export async function runCodexAppServer({ state, profile, prompt, userInput, add
       }
       const runtimeCwd = invocation.cwd || cwd;
       const threadOptions = { cwd: runtimeCwd, approvalPolicy: 'on-request', approvalsReviewer: 'user', sandbox, dynamicTools };
-      const thread = resumeId
-        ? await request('thread/resume', { threadId: resumeId, ...threadOptions })
-        : await request('thread/start', { model: profile.model || null, ...threadOptions, ephemeral: false });
+      let thread;
+      if (resumeId) {
+        try { thread = await request('thread/resume', { threadId: resumeId, ...threadOptions }); }
+        catch (error) {
+          if (!isCodexThreadUnavailable(error)) throw error;
+          thread = await request('thread/start', { model: profile.model || null, ...threadOptions, ephemeral: false });
+          onEvent?.({ type: 'thread.recreated' });
+        }
+      } else {
+        thread = await request('thread/start', { model: profile.model || null, ...threadOptions, ephemeral: false });
+      }
       threadId = thread.thread?.id || resumeId; if (!threadId) throw taggedError('app_server_thread_missing', 'app_server_start_failed');
       onEvent?.({ type: 'thread.started', thread_id: threadId });
-      const started = await request('turn/start', { threadId, input: userInput?.length ? userInput : [{ type: 'text', text: prompt, text_elements: [] }], additionalContext, dynamicTools, cwd: runtimeCwd, approvalPolicy: 'on-request', approvalsReviewer: 'user', sandboxPolicy: sandboxPolicy(sandbox, runtimeCwd), collaborationMode: nativeCollaborationMode(mode, profile), summary: 'concise' });
-      turnId = started.turn?.id; if (!turnId) throw taggedError('app_server_turn_missing', 'app_server_start_failed'); turnStarted = true;
+      turnStarted = true;
+      const started = await request('turn/start', { threadId, input: userInput?.length ? userInput : [{ type: 'text', text: prompt, text_elements: [] }], additionalContext: nativeAdditionalContext(additionalContext), cwd: runtimeCwd, approvalPolicy: 'on-request', approvalsReviewer: 'user', sandboxPolicy: sandboxPolicy(sandbox, runtimeCwd), collaborationMode: nativeCollaborationMode(mode, profile), summary: 'concise' });
+      turnId = started.turn?.id; if (!turnId) throw taggedError('app_server_turn_missing', 'app_server_turn_failed');
     }
     function request(method, params) {
       const id = ++requestId;
@@ -189,6 +198,17 @@ export function nativeCollaborationMode(mode, profile) {
     mode: mode === 'plan' ? 'plan' : 'default',
     settings: { model: String(profile?.model || ''), reasoning_effort: profile?.reasoning || null, developer_instructions: null }
   };
+}
+export function isCodexThreadUnavailable(error) {
+  return /(?:thread not found|no rollout found for thread id)/i.test(String(error?.message || error || ''));
+}
+function nativeAdditionalContext(entries) {
+  const result = {};
+  for (const [index, entry] of (Array.isArray(entries) ? entries : []).entries()) {
+    if (!entry || !['application', 'untrusted'].includes(entry.kind) || typeof entry.value !== 'string') continue;
+    result[`aiws.${entry.kind}.${index + 1}`] = { kind: entry.kind, value: entry.value };
+  }
+  return result;
 }
 function grantedPermissions(value = {}) { const result = {}; if (value.network) result.network = value.network; if (value.fileSystem) result.fileSystem = value.fileSystem; return result; }
 function taggedError(message, code) { const error = new Error(message); error.code = code; return error; }
