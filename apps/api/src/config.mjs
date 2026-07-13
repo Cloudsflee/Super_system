@@ -33,7 +33,9 @@ export const collections = [
   'assist_messages', 'assist_events', 'ui_action_intents', 'file_changes',
   'webhook_deliveries', 'node_workspace_data', 'test_tasks'
   ,'project_intakes', 'project_briefs', 'assist_turns', 'attachments', 'worktrees',
-  'runtime_approvals', 'terminal_sessions', 'config_revisions', 'import_jobs'
+  'runtime_approvals', 'terminal_sessions', 'config_revisions', 'import_jobs',
+  'assist_configurations', 'assist_change_batches', 'assist_checkpoints',
+  'assist_operations', 'runtime_user_inputs', 'host_bridge_devices'
 ];
 
 export function readLocalGithubAppConfig() {

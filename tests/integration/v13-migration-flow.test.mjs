@@ -25,7 +25,7 @@ try {
   server = await startApi({ port, home: fixture.home, ccSwitch: fixture.ccSwitch });
   let migrated = readState();
   const project = migrated.projects.find((item) => item.id === 'prj_legacy_v12');
-  assert.equal(migrated.schema_version, 13);
+  assert.equal(migrated.schema_version, 14);
   assert.equal(project.status, 'active');
   assert.equal(project.onboarding_state, 'confirmed');
   assert.equal(project.managed_workspace_state, 'workspace_migration_required');
@@ -33,6 +33,7 @@ try {
   assert.equal(project.source_metadata, null);
   assert.equal(project.trash_metadata, null);
   for (const collection of ['project_intakes', 'project_briefs', 'assist_turns', 'attachments', 'worktrees', 'runtime_approvals', 'terminal_sessions', 'config_revisions', 'import_jobs']) assert.ok(Array.isArray(migrated[collection]), collection);
+  for (const collection of ['assist_configurations', 'assist_change_batches', 'assist_checkpoints', 'assist_operations', 'runtime_user_inputs', 'host_bridge_devices']) assert.ok(Array.isArray(migrated[collection]), collection);
 
   const proposal = migrated.change_proposals.find((item) => item.id === 'cpr_legacy_pending');
   assert.equal(proposal.attention_state, 'queued');
@@ -54,7 +55,7 @@ try {
   assert.ok(gitAction);
   await api(port, `/assist/v2/sessions/asst_legacy_v2/actions/${gitAction.id}/confirm`, 'POST', {}, 409, 'workspace_migration_required');
   await api(port, '/projects/prj_legacy_v12/files/content', 'PUT', { path: 'README.md', content: '# blocked\n' }, 409, 'workspace_migration_required');
-  await api(port, '/assist/v3/sessions/asst_legacy_v3/turns', 'POST', { adapter: 'test', mode: 'agent', content: 'must not write unmanaged source' }, 409, 'workspace_migration_required');
+  await api(port, '/assist/v3/sessions/asst_legacy_v3/turns', 'POST', { adapter: 'test', mode: 'agent', content: 'must not write unmanaged source' }, 410, 'assist_mode_removed');
   await api(port, '/assist/v3/terminal-sessions', 'POST', { project_id: 'prj_legacy_v12' }, 409, 'workspace_migration_required');
   assert.deepEqual(repositorySnapshot(external), externalBefore);
 

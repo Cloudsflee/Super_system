@@ -59,7 +59,7 @@ export function validateProfileInput(state, input) {
   else if (String(input.base_url ?? input.api_url ?? input.provider_url ?? '').trim() && !baseUrl) errors.push('invalid_base_url');
   if (!CODEX_WIRE_APIS.includes(input.wire_api || 'responses')) errors.push('unsupported_wire_api');
   if (input.requires_openai_auth !== undefined && typeof input.requires_openai_auth !== 'boolean') errors.push('invalid_requires_openai_auth');
-  if (!['low', 'medium', 'high', 'xhigh'].includes(input.reasoning || 'high')) errors.push('invalid_reasoning');
+  if (!/^[a-zA-Z][a-zA-Z0-9._-]{0,63}$/.test(String(input.reasoning || 'high'))) errors.push('invalid_reasoning');
   if (input.web_search !== undefined && typeof input.web_search !== 'boolean') errors.push('invalid_web_search');
   const timeout = Number(input.timeout_ms || 120000);
   if (!Number.isFinite(timeout) || timeout < 1000 || timeout > 1800000) errors.push('invalid_timeout');

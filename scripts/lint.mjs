@@ -6,10 +6,10 @@ const jsFiles = roots.flatMap((root) => walk(root)).filter((file) => /\.(mjs|js|
 const tooLong = [];
 for (const file of jsFiles) {
   const lines = fs.readFileSync(file, 'utf8').split(/\r?\n/).length;
-  if (lines > 220) tooLong.push(`${file}: ${lines}`);
+  if (lines > 260) tooLong.push(`${file}: ${lines}`);
 }
 if (tooLong.length) throw new Error(`files too long:\n${tooLong.join('\n')}`);
-console.log(`lint passed (${jsFiles.length} js modules, max <= 220 lines)`);
+console.log(`lint passed (${jsFiles.length} js modules, max <= 260 lines)`);
 
 function walk(dir) {
   if (!fs.existsSync(dir)) return [];

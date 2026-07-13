@@ -13,23 +13,38 @@ import { hashString, id, now } from '../../../packages/shared/index.mjs';
 import { createAssistWorktree } from './assist-v3-worktree.mjs';
 import { pushV3Event } from './assist-v3-events.mjs';
 import { resolveAssistTurnConfiguration } from './assist-v3-domain.mjs';
+import { bindSessionRuntimeProfile } from './assist-v3-domain.mjs';
+import { acquireBatchWriteLock, createBatchCheckpoint, ensureSessionChangeBatch } from './assist-change-batches.mjs';
 import { prepareCodexInvocation } from '../../../packages/runner-adapters/src/codex-command.mjs';
 import { codexAuthMatchesProfile, isThirdPartyProvider } from './codex-service.mjs';
 import { materializeDeviceAuth } from './codex-device-auth.mjs';
 import { codexContainerProxyEnv } from './codex-container-network.mjs';
 import { assertProfileAllowed, buildCodexContainerInvocation } from './container-runtime-config.mjs';
 import { registerManagedProcessHandle, releaseManagedProcessHandle } from './container-runtime.mjs';
+import { hostBridgeCapability } from './host-bridge-service.mjs';
+import { createWindowsBridgeProcess } from './terminal-windows-bridge.mjs';
 
 const runtimes = new Map();
 const runtimeStarts = new Map();
 const MAX_PREVIEW_CHARS = 30000;
 
 export function terminalCapability() {
-  return { available: typeof pty.spawn === 'function', transport: 'node-pty+websocket', protocols: ['input', 'resize', 'signal', 'reconnect'], max_preview_chars: MAX_PREVIEW_CHARS };
+  const linuxAvailable = typeof pty.spawn === 'function';
+  return {
+    available: linuxAvailable,
+    transport: 'node-pty+websocket',
+    protocols: ['input', 'resize', 'signal', 'reconnect'],
+    linux_container: { available: linuxAvailable, default: true, runtime: 'linux_container', transport: 'node-pty+websocket', protocols: ['input', 'resize', 'signal', 'reconnect'], reason: linuxAvailable ? null : 'pty_capability_unavailable' },
+    windows_bridge: { available: false, runtime: 'windows_bridge', reason: 'windows_bridge_not_paired' },
+    host_dev: { available: process.env.NODE_ENV !== 'production' && linuxAvailable, runtime: 'host_dev', reason: process.env.NODE_ENV === 'production' ? 'host_dev_disabled_in_production' : null },
+    max_preview_chars: MAX_PREVIEW_CHARS
+  };
 }
 
 export async function createTerminalSession(body) {
-  if (!terminalCapability().available) throw new HttpError(501, { error: 'pty_capability_unavailable' });
+  const requestedRuntime = body.runtime || 'linux_container';
+  if (!['linux_container', 'windows_bridge', 'host_dev'].includes(requestedRuntime)) throw new HttpError(400, { error: 'terminal_runtime_invalid' });
+  if (requestedRuntime !== 'windows_bridge' && !terminalCapability().linux_container.available) throw new HttpError(501, { error: 'pty_capability_unavailable' });
   const snapshot = await readState(), project = snapshot.projects.find((item) => item.id === body.project_id);
   assertManagedProjectWritable(project);
   const assistSession = body.assist_session_id ? snapshot.assist_sessions.find((item) => item.id === body.assist_session_id && item.version === 3 && item.project_id === project.id && !item.archived_at) : null;
@@ -38,15 +53,22 @@ export async function createTerminalSession(body) {
   if (body.turn_id && !turn) throw new HttpError(404, { error: 'assist_turn_not_found' });
   const configuration = resolveAssistTurnConfiguration(snapshot, body), profile = configuration.profile;
   assertProfileAllowed(profile);
+  let bridgeCapability = null;
+  if (requestedRuntime === 'windows_bridge') { if (!assistSession) throw new HttpError(409, { error: 'windows_bridge_assist_session_required' }); bridgeCapability = await hostBridgeCapability(); if (!bridgeCapability.available) throw new HttpError(409, { error: bridgeCapability.reason, action: bridgeCapability.reason === 'windows_bridge_not_paired' ? 'install_bridge' : 'check_bridge' }); }
+  if (requestedRuntime === 'host_dev' && process.env.NODE_ENV === 'production') throw new HttpError(409, { error: 'host_dev_disabled_in_production' });
   const sessionId = id('tty');
-  const prepared = body.worktree_id ? resolveExistingWorktree(snapshot, body.worktree_id, project.id) : { record: { ...await createAssistWorktree(project, { id: `cli-${sessionId}` }), turn_id: null, kind: 'cli' } };
+  const sharedBatch = assistSession ? await ensureSessionChangeBatch(assistSession.id) : null;
+  const prepared = sharedBatch ? { record: sharedBatch.worktree, batch: sharedBatch.batch } : body.worktree_id ? resolveExistingWorktree(snapshot, body.worktree_id, project.id) : { record: { ...await createAssistWorktree(project, { id: `cli-${sessionId}` }), turn_id: null, kind: 'cli' }, batch: null };
   const session = await mutate((state) => {
     const actor = owner(state);
-    if (!body.worktree_id) state.worktrees.push(prepared.record);
+    if (!sharedBatch && !body.worktree_id) state.worktrees.push(prepared.record);
+    if (assistSession) bindSessionRuntimeProfile(state.assist_sessions.find((item) => item.id === assistSession.id), state.codex_profiles.find((item) => item.id === profile.id));
     const item = {
       id: sessionId, project_id: project.id, assist_session_id: assistSession?.id || turn?.session_id || null, turn_id: body.turn_id || null, worktree_id: prepared.record.id, profile_id: profile.id,
+      change_batch_id: prepared.batch?.id || null,
+      host_bridge_device_id: bridgeCapability?.device_id || null,
       model: configuration.model, reasoning: configuration.reasoning,
-      runtime: profile.kind === 'docker' ? 'docker' : 'host', status: 'ready', cols: clamp(body.cols, 40, 300, 120), rows: clamp(body.rows, 10, 120, 32),
+      runtime: requestedRuntime, status: 'ready', cols: clamp(body.cols, 40, 300, 120), rows: clamp(body.rows, 10, 120, 32),
       reconnect_token_hash: hashString(`${sessionId}:${Date.now()}`), output_preview: '', output_truncated: false, exit_code: null,
       created_by_user_id: actor.id, created_at: now(), updated_at: now()
     };
@@ -116,45 +138,61 @@ async function startTerminal(session) {
   if (!worktree || !storedProfile || !fs.existsSync(worktree.path)) throw new HttpError(409, { error: 'terminal_worktree_unavailable' });
   const profile = { ...storedProfile, model: session.model || storedProfile.model, reasoning: session.reasoning || storedProfile.reasoning };
   assertProfileAllowed(profile);
-  const auth = state.integration_statuses.find((item) => item.key === 'codex_auth');
-  if (!codexAuthMatchesProfile(auth, profile)) throw new HttpError(409, { error: 'codex_auth_profile_mismatch' });
-  if (auth.home && !isThirdPartyProvider(profile.provider)) await materializeDeviceAuth(auth.home, profile.codex_home);
-  const credential = await readSecret(auth?.refs?.credential);
-  const invocation = terminalInvocation(profile, worktree.path, credential, session.id);
-  let processHandle;
-  try { processHandle = pty.spawn(invocation.command, invocation.args, { name: 'xterm-256color', cols: session.cols, rows: session.rows, cwd: worktree.path, env: invocation.env, useConpty: process.platform === 'win32' }); }
-  catch (error) { await mutate((data) => { const current = data.terminal_sessions.find((item) => item.id === session.id); if (current) Object.assign(current, { status: 'failed', error_code: 'terminal_spawn_failed', updated_at: now() }); }); throw error; }
-  if (invocation.runtime === 'docker') registerManagedProcessHandle(invocation, processHandle);
+  let releaseBatchLock = null;
+  if (session.change_batch_id) {
+    releaseBatchLock = await acquireBatchWriteLock(session.change_batch_id, { kind: session.runtime === 'windows_bridge' ? 'windows_cli' : 'linux_cli', id: session.id });
+    await createBatchCheckpoint(session.change_batch_id, { source: session.runtime === 'windows_bridge' ? 'windows_cli' : 'linux_cli', sourceId: session.id, phase: 'before' });
+  }
+  let processHandle, invocation = null;
+  try {
+    if (session.runtime === 'windows_bridge') processHandle = await createWindowsBridgeProcess({ session, worktree, profile });
+    else {
+      const auth = state.integration_statuses.find((item) => item.key === 'codex_auth');
+      if (!codexAuthMatchesProfile(auth, profile)) throw new HttpError(409, { error: 'codex_auth_profile_mismatch' });
+      if (auth.home && !isThirdPartyProvider(profile.provider)) await materializeDeviceAuth(auth.home, profile.codex_home);
+      const credential = await readSecret(auth?.refs?.credential), invocationProfile = session.runtime === 'host_dev' ? { ...profile, kind: 'host' } : { ...profile, kind: 'docker' };
+      invocation = terminalInvocation(invocationProfile, worktree.path, credential, session.id);
+      processHandle = pty.spawn(invocation.command, invocation.args, { name: 'xterm-256color', cols: session.cols, rows: session.rows, cwd: worktree.path, env: invocation.env, useConpty: process.platform === 'win32' });
+    }
+  }
+  catch (error) { await releaseBatchLock?.(); await mutate((data) => { const current = data.terminal_sessions.find((item) => item.id === session.id); if (current) Object.assign(current, { status: 'failed', error_code: session.runtime === 'windows_bridge' && /^[a-z0-9_.-]{1,120}$/i.test(String(error?.message || '')) ? error.message : 'terminal_spawn_failed', updated_at: now() }); }); throw error; }
+  if (invocation?.runtime === 'docker') registerManagedProcessHandle(invocation, processHandle);
   const artifactDir = path.join(ARTIFACT_DIR, 'terminal'); await fsp.mkdir(artifactDir, { recursive: true });
   const artifactPath = path.join(artifactDir, `${Date.now()}_${safe(session.id)}.log`), outputStream = fs.createWriteStream(artifactPath, { flags: 'wx', mode: 0o600 });
   let resolveDone; const done = new Promise((resolve) => { resolveDone = resolve; });
-  const runtime = { process: processHandle, clients: new Set(), preview: '', redactionPending: '', sessionId: session.id, artifactPath, outputStream, outputHash: crypto.createHash('sha256'), outputBytes: 0, outputError: null, done };
+  const runtime = { process: processHandle, clients: new Set(), preview: '', redactionPending: '', sessionId: session.id, source: session.runtime === 'windows_bridge' ? 'windows_cli' : 'linux_cli', changeBatchId: session.change_batch_id, releaseBatchLock, artifactPath, outputStream, outputHash: crypto.createHash('sha256'), outputBytes: 0, outputError: null, done };
   outputStream.on('error', (error) => { runtime.outputError = error; });
   runtimes.set(session.id, runtime);
   processHandle.onData((chunk) => {
     const redacted = redactKnownSecretStream(chunk, runtime.redactionPending); runtime.redactionPending = redacted.pending;
     appendOutput(runtime, redacted.text);
   });
-  processHandle.onExit(({ exitCode, signal }) => { if (invocation.containerName) releaseManagedProcessHandle(invocation.containerName, processHandle); runtime.finalizing ||= finalizeTerminal(runtime, exitCode, signal).finally(resolveDone); });
+  processHandle.onExit(({ exitCode, signal }) => { if (invocation?.containerName) releaseManagedProcessHandle(invocation.containerName, processHandle); runtime.finalizing ||= finalizeTerminal(runtime, exitCode, signal).finally(resolveDone); });
   await mutate((data) => { const current = data.terminal_sessions.find((item) => item.id === session.id); if (current) { Object.assign(current, { status: 'running', pid: processHandle.pid, started_at: now(), updated_at: now() }); if (current.assist_session_id) pushV3Event(data, current.assist_session_id, current.turn_id, 'terminal', { terminal_session_id: current.id, runtime: current.runtime, status: current.status }); } });
   return runtime;
 }
 
 async function finalizeTerminal(runtime, exitCode, signal) {
   runtimes.delete(runtime.sessionId);
-  if (runtime.redactionPending) { appendOutput(runtime, redactKnownSecretsSync(runtime.redactionPending)); runtime.redactionPending = ''; }
-  const artifact = await finishTerminalArtifact(runtime);
-  const session = await mutate((state) => {
-    const actor = owner(state), current = state.terminal_sessions.find((item) => item.id === runtime.sessionId);
-    if (!current) return null;
-    state.file_refs.push(artifact);
-    Object.assign(current, { status: current.status === 'stopped' ? 'stopped' : exitCode === 0 ? 'exited' : 'failed', exit_code: exitCode, exit_signal: signal || null, pid: null, output_preview: runtime.preview, output_truncated: runtime.outputBytes > Buffer.byteLength(runtime.preview), artifact_file_ref_id: artifact.id, completed_at: now(), updated_at: now() });
-    if (current.assist_session_id) pushV3Event(state, current.assist_session_id, current.turn_id, 'terminal', { terminal_session_id: current.id, runtime: current.runtime, status: current.status, exit_code: current.exit_code, artifact_file_ref_id: artifact.id });
-    addTrace(state, 'terminal.session.completed', { project_id: current.project_id, target_type: 'terminal_session', target_id: current.id, raw_file_ref_id: artifact.id, summary: `Codex CLI Session ${current.status} (${exitCode})。` }, actor.id);
-    return current;
-  });
-  broadcast(runtime, { type: 'exit', session: session ? publicSession(session) : null });
-  for (const client of runtime.clients) client.close(1000, 'terminal_exited');
+  try {
+    if (runtime.redactionPending) { appendOutput(runtime, redactKnownSecretsSync(runtime.redactionPending)); runtime.redactionPending = ''; }
+    const artifact = await finishTerminalArtifact(runtime);
+    if (runtime.changeBatchId) await createBatchCheckpoint(runtime.changeBatchId, { source: runtime.source, sourceId: runtime.sessionId, phase: 'after', status: exitCode === 0 ? 'completed' : 'interrupted' }).catch(() => undefined);
+    const session = await mutate((state) => {
+      const actor = owner(state), current = state.terminal_sessions.find((item) => item.id === runtime.sessionId);
+      if (!current) return null;
+      state.file_refs.push(artifact);
+      Object.assign(current, { status: current.status === 'stopped' ? 'stopped' : exitCode === 0 ? 'exited' : 'failed', exit_code: exitCode, exit_signal: signal || null, error_code: exitCode !== 0 && runtime.source === 'windows_cli' ? signal || 'windows_bridge_terminal_failed' : current.error_code || null, pid: null, output_preview: runtime.preview, output_truncated: runtime.outputBytes > Buffer.byteLength(runtime.preview), artifact_file_ref_id: artifact.id, completed_at: now(), updated_at: now() });
+      if (current.assist_session_id) pushV3Event(state, current.assist_session_id, current.turn_id, 'terminal', { terminal_session_id: current.id, runtime: current.runtime, status: current.status, exit_code: current.exit_code, artifact_file_ref_id: artifact.id });
+      addTrace(state, 'terminal.session.completed', { project_id: current.project_id, target_type: 'terminal_session', target_id: current.id, raw_file_ref_id: artifact.id, summary: `Codex CLI Session ${current.status} (${exitCode})。` }, actor.id);
+      return current;
+    });
+    if (runtime.releaseBatchLock) { const release = runtime.releaseBatchLock; runtime.releaseBatchLock = null; await release().catch(() => undefined); }
+    broadcast(runtime, { type: 'exit', session: session ? publicSession(session) : null });
+    for (const client of runtime.clients) client.close(1000, 'terminal_exited');
+  } finally {
+    if (runtime.releaseBatchLock) await runtime.releaseBatchLock().catch(() => undefined);
+  }
 }
 
 function handleClientMessage(runtime, raw) {
@@ -187,7 +225,7 @@ export function terminalCodexArgs(profile) { return ['--model', profile.model, '
 function isCodexCliExecutable(value) { return /^codex(?:\.cmd|\.ps1|\.exe|\.js)?$/i.test(path.basename(String(value || ''))); }
 
 function resolveExistingWorktree(state, worktreeId, projectId) { const record = state.worktrees.find((item) => item.id === worktreeId && item.project_id === projectId), assistRoot = path.join(WORKSPACE_DIR, safe(projectId), 'worktrees'); if (!record || (!isWithin(WORKTREE_DIR, record.path) && !isWithin(assistRoot, record.path))) throw new HttpError(404, { error: 'worktree_not_found' }); return { record }; }
-function publicSession(value) { return { id: value.id, project_id: value.project_id, assist_session_id: value.assist_session_id || null, turn_id: value.turn_id, worktree_id: value.worktree_id, profile_id: value.profile_id, model: value.model, reasoning: value.reasoning, runtime: value.runtime, status: value.status, cols: value.cols, rows: value.rows, exit_code: value.exit_code, error_code: value.error_code || null, output_preview: value.output_preview || '', output_truncated: Boolean(value.output_truncated), artifact_file_ref_id: value.artifact_file_ref_id || null, created_at: value.created_at, updated_at: value.updated_at }; }
+function publicSession(value) { return { id: value.id, project_id: value.project_id, assist_session_id: value.assist_session_id || null, turn_id: value.turn_id, worktree_id: value.worktree_id, change_batch_id: value.change_batch_id || null, profile_id: value.profile_id, model: value.model, reasoning: value.reasoning, runtime: value.runtime, status: value.status, cols: value.cols, rows: value.rows, exit_code: value.exit_code, error_code: value.error_code || null, output_preview: value.output_preview || '', output_truncated: Boolean(value.output_truncated), artifact_file_ref_id: value.artifact_file_ref_id || null, created_at: value.created_at, updated_at: value.updated_at }; }
 function broadcast(runtime, message) { const encoded = JSON.stringify(message); for (const client of runtime.clients) if (client.readyState === 1) client.send(encoded); }
 function clamp(value, min, max, fallback) { const number = Number(value); return Number.isFinite(number) ? Math.max(min, Math.min(max, Math.trunc(number))) : fallback; }
 function safe(value) { return String(value || 'item').replace(/[^a-zA-Z0-9._-]/g, '_'); }

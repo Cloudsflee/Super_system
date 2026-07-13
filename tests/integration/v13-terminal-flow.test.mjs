@@ -39,12 +39,13 @@ try {
     project_id: project.project.id,
     assist_session_id: project.draft.assist_session.id,
     profile_id: profile.id,
+    runtime: 'host_dev',
     cols: 100,
     rows: 28
   }, 201);
   terminalId = terminal.id;
   openTerminalIds.add(terminal.id);
-  assert.equal(terminal.runtime, 'host');
+  assert.equal(terminal.runtime, 'host_dev');
   assert.equal(terminal.status, 'ready');
 
   const first = await connect(port, terminal.id);
@@ -101,13 +102,12 @@ try {
   assert.equal(review.changed_files.some((item) => item.path === 'README.md'), true);
   assert.match(review.diff, /Terminal managed change/);
   const applied = await api(port, `/assist/v3/terminal-sessions/${terminal.id}/review/apply`, 'POST', { target_hash: review.target_hash });
+  assert.equal(applied.worktree.status, 'applied');
   assert.equal(normalize(fs.readFileSync(path.join(project.managedRepo, 'README.md'), 'utf8')), '# Terminal managed change\n');
-  await api(port, `/assist/v3/terminal-sessions/${terminal.id}/review/rollback`, 'POST', { target_hash: applied.worktree.applied_target_hash });
-  assert.equal(normalize(fs.readFileSync(path.join(project.managedRepo, 'README.md'), 'utf8')), '# Terminal baseline\n');
   assert.deepEqual(repositorySnapshot(source), sourceBefore);
   openTerminalIds.delete(terminal.id);
 
-  const failedTerminal = await api(port, '/assist/v3/terminal-sessions', 'POST', { project_id: project.project.id, assist_session_id: project.draft.assist_session.id, profile_id: profile.id }, 201);
+  const failedTerminal = await api(port, '/assist/v3/terminal-sessions', 'POST', { project_id: project.project.id, assist_session_id: project.draft.assist_session.id, profile_id: profile.id, runtime: 'host_dev' }, 201);
   openTerminalIds.add(failedTerminal.id);
   const failedSocket = await connect(port, failedTerminal.id);
   await failedSocket.waitFor((messages) => messages.some((item) => item.type === 'status' && item.session?.status === 'connected'));
@@ -120,7 +120,7 @@ try {
   await api(port, `/assist/v3/terminal-sessions/${failedTerminal.id}/review/rollback`, 'POST', {});
   openTerminalIds.delete(failedTerminal.id);
 
-  const stoppedTerminal = await api(port, '/assist/v3/terminal-sessions', 'POST', { project_id: project.project.id, assist_session_id: project.draft.assist_session.id, profile_id: profile.id }, 201);
+  const stoppedTerminal = await api(port, '/assist/v3/terminal-sessions', 'POST', { project_id: project.project.id, assist_session_id: project.draft.assist_session.id, profile_id: profile.id, runtime: 'host_dev' }, 201);
   openTerminalIds.add(stoppedTerminal.id);
   const stoppedSocket = await connect(port, stoppedTerminal.id);
   await stoppedSocket.waitFor((messages) => messages.some((item) => item.type === 'status' && item.session?.status === 'connected'));

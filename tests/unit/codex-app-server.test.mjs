@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { EventEmitter } from 'node:events';
-import { runCodexAppServer } from '../../apps/api/src/codex-app-server.mjs';
+import { nativeCollaborationMode, runCodexAppServer } from '../../apps/api/src/codex-app-server.mjs';
 
 class FakeProcess extends EventEmitter {
   constructor(handler) {
@@ -17,7 +17,7 @@ const events = [], approvals = [], protocol = [], responses = new Map();
 let invocation;
 
 const result = await runCodexAppServer({
-  state, profile, prompt: 'Implement the requested change.', userInput: [{ type: 'text', text: 'Implement the requested change.', text_elements: [] }, { type: 'image', detail: 'auto', url: 'data:image/png;base64,AA==' }], cwd: process.cwd(), sandbox: 'workspace-write',
+  state, profile, prompt: 'Plan the requested change.', userInput: [{ type: 'text', text: 'Plan the requested change.', text_elements: [] }, { type: 'image', detail: 'auto', url: 'data:image/png;base64,AA==' }], cwd: process.cwd(), sandbox: 'read-only', mode: 'plan',
   spawnProcess(command, args, options) {
     invocation = { command, args, options };
     return new FakeProcess((message, child) => handleProtocol(message, child));
@@ -33,26 +33,29 @@ assert.equal(result.transport, 'app-server');
 assert.equal(result.thread_id, 'thread-1');
 assert.equal(result.turn_id, 'turn-1');
 assert.equal(protocol[0].method, 'initialize');
-assert.equal(protocol[0].params.capabilities.experimentalApi, false);
+assert.equal(protocol[0].params.capabilities.experimentalApi, true);
 assert.ok(protocol.some((item) => item.method === 'initialized'));
+assert.ok(protocol.some((item) => item.method === 'collaborationMode/list'));
 const threadStart = protocol.find((item) => item.method === 'thread/start');
 assert.equal(threadStart.params.approvalsReviewer, 'user');
-assert.equal(threadStart.params.sandbox, 'workspace-write');
+assert.equal(threadStart.params.sandbox, 'read-only');
 assert.equal('runtimeWorkspaceRoots' in threadStart.params, false);
 const turnStart = protocol.find((item) => item.method === 'turn/start');
 assert.equal(turnStart.params.input[0].text_elements.length, 0);
 assert.equal(turnStart.params.input[1].type, 'image');
-assert.equal(turnStart.params.sandboxPolicy.type, 'workspaceWrite');
+assert.equal(turnStart.params.sandboxPolicy.type, 'readOnly');
 assert.equal(turnStart.params.approvalsReviewer, 'user');
 assert.equal(turnStart.params.summary, 'concise');
-assert.equal(turnStart.params.model, 'gpt-test');
-assert.equal(turnStart.params.effort, 'high');
+assert.equal('model' in turnStart.params, false);
+assert.equal('effort' in turnStart.params, false);
+assert.deepEqual(turnStart.params.collaborationMode, { mode: 'plan', settings: { model: 'gpt-test', reasoning_effort: 'high', developer_instructions: null } });
+assert.equal(nativeCollaborationMode('ask', profile).mode, 'default');
 
 assert.equal(approvals.length, 3);
 assert.equal(responses.get('approval-command').decision, 'accept');
 assert.equal(responses.get('approval-file').decision, 'accept');
 assert.deepEqual(responses.get('approval-permissions'), { permissions: { network: { enabled: true } }, scope: 'turn' });
-assert.deepEqual(responses.get('dynamic-tool'), { success: false, contentItems: [{ type: 'inputText', text: 'This host tool is unavailable in AIWS.' }] });
+assert.deepEqual(responses.get('dynamic-tool'), { success: false, contentItems: [{ type: 'inputText', text: 'AIWS semantic tool failed.' }] });
 assert.ok(events.some((item) => item.aiws_type === 'text' && item.output_text === 'Hello'));
 assert.ok(events.some((item) => item.aiws_type === 'plan' && item.data.status === 'updated'));
 assert.ok(events.some((item) => item.aiws_type === 'reasoning_summary' && item.data.summary === '公开摘要'));
@@ -65,11 +68,19 @@ await assert.rejects(
   }) }),
   (error) => error.code === 'app_server_start_failed' && /unsupported protocol/.test(error.message)
 );
+await assert.rejects(
+  runCodexAppServer({ state, profile, prompt: 'plan', cwd: process.cwd(), sandbox: 'read-only', mode: 'plan', spawnProcess: () => new FakeProcess((message, child) => {
+    if (message.method === 'initialize') child.send({ id: message.id, result: { userAgent: 'fake' } });
+    if (message.method === 'collaborationMode/list') child.send({ id: message.id, result: { data: [{ name: 'Default', mode: 'default' }] } });
+  }) }),
+  (error) => error.code === 'native_plan_unavailable'
+);
 console.log('Codex app-server protocol unit tests passed');
 
 function handleProtocol(message, child) {
   protocol.push(message);
   if (message.method === 'initialize') return child.send({ id: message.id, result: { userAgent: 'fake' } });
+  if (message.method === 'collaborationMode/list') return child.send({ id: message.id, result: { data: [{ name: 'Plan', mode: 'plan', model: null, reasoning_effort: 'medium' }] } });
   if (message.method === 'thread/start') return child.send({ id: message.id, result: { thread: { id: 'thread-1' } } });
   if (message.method === 'turn/start') {
     child.send({ id: message.id, result: { turn: { id: 'turn-1', status: 'inProgress' } } });

@@ -1,6 +1,7 @@
 FROM node:24-alpine AS workspace-deps
 RUN apk add --no-cache git python3 make g++
 RUN corepack enable
+ENV npm_config_nodedir=/usr/local
 WORKDIR /app
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 COPY apps/web/package.json apps/web/package.json
@@ -12,6 +13,16 @@ COPY packages/memory-policy/package.json packages/memory-policy/package.json
 COPY packages/runner-adapters/package.json packages/runner-adapters/package.json
 COPY packages/shared/package.json packages/shared/package.json
 RUN corepack pnpm install --frozen-lockfile
+
+FROM golang:1.24-alpine AS windows-bridge-build
+WORKDIR /src
+COPY bridge/go.mod bridge/go.sum* ./
+RUN go mod download
+COPY bridge/ ./
+RUN CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -trimpath -ldflags="-s -w" -o /out/aiws-bridge.exe .
+
+FROM scratch AS windows-bridge-export
+COPY --from=windows-bridge-build /out/aiws-bridge.exe /aiws-bridge.exe
 
 FROM workspace-deps AS build
 COPY . .
@@ -28,6 +39,7 @@ CMD ["corepack", "pnpm", "verify"]
 FROM node:24-alpine AS production-deps
 RUN apk add --no-cache python3 make g++
 RUN corepack enable
+ENV npm_config_nodedir=/usr/local
 WORKDIR /app
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 COPY apps/web/package.json apps/web/package.json
@@ -42,7 +54,7 @@ RUN corepack pnpm install --prod --frozen-lockfile --filter ai-workspace-system
 
 FROM node:24-alpine AS production
 LABEL org.opencontainers.image.title="AI Workspace System" \
-      org.opencontainers.image.version="1.4.0"
+      org.opencontainers.image.version="1.5.0"
 RUN apk add --no-cache bash ca-certificates docker-cli docker-cli-compose git openssh-client python3 tar
 WORKDIR /app
 ENV NODE_ENV=production \

@@ -34,7 +34,7 @@ export function AttachmentTray(props: Props) {
 
   return <div className="attachment-tray">
     <div className="attachment-actions">
-      <button type="button" title="添加附件" onClick={() => setOpen(!open)}><Paperclip size={14} />附件</button>
+      <button type="button" className="attachment-add-button" title="添加附件" onClick={() => setOpen(!open)}><Paperclip size={14} />附件</button>
       <button type="button" disabled={!ide.path || busy} onClick={() => attach({ kind: 'monaco_file', path: ide.path, title: ide.path })}><FileCode2 size={14} />当前文件</button>
       <button type="button" disabled={!ide.path || !ide.selection?.text || busy} onClick={() => attach({ kind: 'selection', path: ide.path, text: ide.selection?.text, title: `${ide.path} · 选区`, selection: ide.selection })}><Quote size={14} />当前选区</button>
     </div>

@@ -37,7 +37,7 @@ try {
   assert.equal((await api('/codex/status')).auth.base_url, 'https://openrouter.ai/api/v1');
 
   for (const body of [
-    { reasoning: 'extreme' }, { timeout_ms: 1 }, { web_search: 'yes' },
+    { reasoning: 'not valid' }, { timeout_ms: 1 }, { web_search: 'yes' },
     { mounts: [path.dirname(home)] }, { mcp_servers: [{ name: 'unsafe', command: 'powershell', args: [] }] }
   ]) await api('/codex/profiles', 'POST', { name: 'Invalid', provider: 'openrouter', base_url: 'https://openrouter.ai/api/v1', wire_api: 'responses', model: 'provider/model', reasoning: 'high', timeout_ms: 1000, mounts: [], ...body }, 400, 'invalid_codex_profile');
   await api('/codex/profiles', 'POST', { name: 'Missing URL', provider: 'openrouter', model: 'provider/model', reasoning: 'high', timeout_ms: 1000, mounts: [] }, 400, 'invalid_codex_profile');

@@ -24,7 +24,7 @@ try {
   const managedReadme = path.join(project.managedRepo, 'README.md');
   assert.equal(normalize(fs.readFileSync(managedReadme, 'utf8')), '# Assist V3 baseline\n');
   const turn = await api(port, `/assist/v3/sessions/${sessionId}/turns`, 'POST', {
-    mode: 'agent', content: '在 worktree 中更新 README 并等待审批', adapter: 'test',
+    collaboration_mode: 'default', content: '在 change batch 中更新 README 并等待审批', adapter: 'test',
     test_response: {
       message: 'Agent worktree ready for review.',
       files: [{ path: 'README.md', content: '# Assist V3 managed change\n' }],
@@ -70,9 +70,17 @@ try {
   const applied = await api(port, `/assist/v3/turns/${turn.id}/review/apply`, 'POST', { target_hash: review.target_hash });
   assert.equal(applied.worktree.status, 'applied');
   assert.equal(normalize(fs.readFileSync(managedReadme, 'utf8')), '# Assist V3 managed change\n');
-  const rolledBack = await api(port, `/assist/v3/turns/${turn.id}/review/rollback`, 'POST', { target_hash: applied.worktree.applied_target_hash });
+  assert.equal(run('git', ['status', '--porcelain=v1'], project.managedRepo).stdout.trim(), '');
+
+  const rollbackTurn = await api(port, `/assist/v3/sessions/${sessionId}/turns`, 'POST', {
+    collaboration_mode: 'default', content: '创建一个随后撤销的批次', adapter: 'test',
+    test_response: { message: 'rollback batch ready', files: [{ path: 'README.md', content: '# must be rolled back\n' }] }
+  }, 202);
+  await waitForTurn(rollbackTurn.id, 'completed');
+  const rollbackReview = await api(port, `/assist/v3/turns/${rollbackTurn.id}/review`);
+  const rolledBack = await api(port, `/assist/v3/turns/${rollbackTurn.id}/review/rollback`, 'POST', { target_hash: rollbackReview.target_hash });
   assert.equal(rolledBack.worktree.status, 'rolled_back');
-  assert.equal(normalize(fs.readFileSync(managedReadme, 'utf8')), '# Assist V3 baseline\n');
+  assert.equal(normalize(fs.readFileSync(managedReadme, 'utf8')), '# Assist V3 managed change\n');
   assert.deepEqual(repositorySnapshot(source), sourceBefore);
   console.log('V1.3 Assist worktree integration tests passed');
 } finally {
@@ -83,6 +91,6 @@ try {
 async function waitForApproval(projectId, turnId) { for (let index = 0; index < 100; index++) { const items = await api(port, `/approvals?project_id=${projectId}&type=runtime`); const item = items.find((entry) => entry.turn_id === turnId && entry.status === 'pending'); if (item) return item; await delay(25); } throw new Error('runtime approval not created'); }
 async function waitForTurn(turnId, status) { for (let index = 0; index < 120; index++) { const turn = await api(port, `/assist/v3/turns/${turnId}`); if (turn.status === status) return turn; if (['failed', 'stopped', 'interrupted'].includes(turn.status)) throw new Error(`turn ended as ${turn.status}: ${turn.error_code}`); await delay(25); } throw new Error(`turn did not reach ${status}`); }
 function parseSse(text) { return text.split(/\n\n+/).filter((block) => block.includes('data: ')).map((block) => JSON.parse(block.split('\n').find((line) => line.startsWith('data: ')).slice(6))); }
-function run(command, args, cwd) { const result = spawnSync(command, args, { cwd, encoding: 'utf8' }); assert.equal(result.status, 0, result.stderr); }
+function run(command, args, cwd) { const result = spawnSync(command, args, { cwd, encoding: 'utf8' }); assert.equal(result.status, 0, result.stderr); return result; }
 function normalize(value) { return value.replaceAll('\r\n', '\n'); }
 function delay(ms) { return new Promise((resolve) => setTimeout(resolve, ms)); }

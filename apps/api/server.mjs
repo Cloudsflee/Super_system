@@ -36,6 +36,8 @@ import { computeSetupStatus, isSetupExempt } from './src/setup-status.mjs';
 import { readState } from './src/state.mjs';
 import { redactKnownSecretsSync } from './src/vault.mjs';
 import { attachContainerShutdown, cleanupStaleContainers } from './src/container-runtime.mjs';
+import { hostBridgeV15Routes } from './src/routes/host-bridge-v15.mjs';
+import { attachHostBridgeWebSocket } from './src/host-bridge-service.mjs';
 
 cleanupStaleContainers();
 await ensureRuntime();
@@ -67,6 +69,7 @@ const routes = [
   ,...codexCapabilitiesV13Routes
   ,...githubRepositoriesV13Routes
   ,...configGovernanceV13Routes
+  ,...hostBridgeV15Routes
 ];
 
 async function serveStatic(req, res, pathname) {
@@ -123,6 +126,7 @@ const server = http.createServer(async (req, res) => {
   }
 });
 attachTerminalWebSocket(server);
+attachHostBridgeWebSocket(server);
 attachContainerShutdown(server);
 
 function searchParamsObject(params) {
@@ -146,5 +150,5 @@ function isSpaPath(pathname) {
 }
 
 server.listen(PORT, () => {
-  console.log(`AI Workspace System V1.4 running at http://localhost:${PORT}`);
+  console.log(`AI Workspace System V1.5 running at http://localhost:${PORT}`);
 });

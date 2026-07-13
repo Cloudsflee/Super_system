@@ -24,6 +24,18 @@ export function send(res, status, body, headers = {}) {
   return true;
 }
 
+export function sendOneTimeSecret(res, status, body) {
+  const text = JSON.stringify(body);
+  res.writeHead(status, {
+    'content-type': 'application/json; charset=utf-8',
+    'cache-control': 'no-store, max-age=0',
+    'pragma': 'no-cache',
+    'access-control-allow-origin': 'http://127.0.0.1'
+  });
+  res.end(text);
+  return true;
+}
+
 export function notFound(res) { return send(res, 404, { error: 'not_found' }); }
 
 export async function parseBody(req) {

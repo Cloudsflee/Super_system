@@ -3,12 +3,17 @@ import { mutate, owner, readState } from './state.mjs';
 import { id, now } from '../../../packages/shared/index.mjs';
 import { applyAssistWorktree, assistReviewSnapshot, publicWorktree, rollbackAssistWorktree } from './assist-v3-worktree.mjs';
 import { boundedInt, cleanText, persistedWorktreeFields, requireProject, requireTurn, safeRelativePath, TERMINAL_TURN_STATES } from './assist-v3-domain.mjs';
+import { applyChangeBatch, getChangeBatchReview, rollbackChangeBatch } from './assist-change-batches.mjs';
 
 const locks = new Map();
 
 export async function getV3Review(turnId) {
   const snapshot = await readState(), turn = requireTurn(snapshot, turnId), project = requireProject(snapshot, turn.project_id);
-  if (turn.mode !== 'agent') throw new HttpError(409, { error: 'assist_turn_has_no_review' });
+  if (turn.change_batch_id) {
+    const batchReview = await getChangeBatchReview(turn.change_batch_id), state = await readState(), currentTurn = requireTurn(state, turn.id);
+    return { turn_id: turn.id, change_batch_id: turn.change_batch_id, status: batchReview.status, worktree: batchReview.batch.worktree, changed_files: batchReview.changed_files, diff: batchReview.diff, target_hash: batchReview.target_hash, base_commit: batchReview.base_commit, head_commit: batchReview.head_commit, checkpoints: batchReview.checkpoints, viewed_files: currentTurn.review?.viewed_files || {}, comments: state.human_reviews.filter((item) => item.target_type === 'assist_turn' && item.target_id === turn.id) };
+  }
+  if (!turn.worktree_id) throw new HttpError(409, { error: 'assist_turn_has_no_review' });
   const worktree = snapshot.worktrees.find((item) => item.id === turn.worktree_id);
   if (!worktree) throw new HttpError(409, { error: 'assist_turn_worktree_not_ready' });
   const review = await assistReviewSnapshot(project, worktree);
@@ -57,6 +62,10 @@ export async function applyV3Review(turnId, input = {}) {
   return withLock(turnId, async () => {
     const snapshot = await readState(), turn = requireTurn(snapshot, turnId), project = requireProject(snapshot, turn.project_id);
     if (!TERMINAL_TURN_STATES.has(turn.status)) throw new HttpError(409, { error: 'assist_turn_not_terminal' });
+    if (turn.change_batch_id) {
+      const result = await applyChangeBatch(turn.change_batch_id, input.target_hash);
+      return { ...result, turn_id: turn.id, worktree: result.batch?.worktree };
+    }
     const worktree = snapshot.worktrees.find((item) => item.id === turn.worktree_id);
     if (!worktree) throw new HttpError(409, { error: 'assist_turn_worktree_not_ready' });
     const result = await applyAssistWorktree(project, worktree, input.target_hash);
@@ -67,6 +76,10 @@ export async function rollbackV3Review(turnId, input = {}) {
   return withLock(turnId, async () => {
     const snapshot = await readState(), turn = requireTurn(snapshot, turnId), project = requireProject(snapshot, turn.project_id), worktree = snapshot.worktrees.find((item) => item.id === turn.worktree_id);
     if (!TERMINAL_TURN_STATES.has(turn.status)) throw new HttpError(409, { error: 'assist_turn_not_terminal' });
+    if (turn.change_batch_id) {
+      const result = await rollbackChangeBatch(turn.change_batch_id, input.target_hash || null);
+      return { ...result, turn_id: turn.id, worktree: result.batch?.worktree };
+    }
     if (!worktree) throw new HttpError(409, { error: 'assist_turn_worktree_not_ready' });
     const result = await rollbackAssistWorktree(project, worktree, input.target_hash || null);
     return mutate((state) => persistDecision(state, turn.id, worktree, 'rolled_back', result));

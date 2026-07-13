@@ -11,7 +11,10 @@ const MAX_DIFF_BYTES = 5 * 1024 * 1024;
 export function reviewSnapshotForPath(repoPath, baseCommit) {
   if (!isGitRepo(repoPath)) throw new HttpError(409, { error: 'worktree_repository_unavailable' });
   const status = gitResult(repoPath, ['status', '--porcelain=v1', '-z', '--untracked-files=all'], 15_000);
-  const changedFiles = parsePorcelainZ(status.stdout);
+  const workingFiles = parsePorcelainZ(status.stdout);
+  const committedNames = gitResult(repoPath, ['diff', '--name-status', '-z', baseCommit, 'HEAD', '--'], 15_000, true);
+  if (!committedNames.ok) throw new HttpError(409, { error: 'review_file_list_failed', detail: detail(committedNames) });
+  const changedFiles = mergeChangedFiles(parseNameStatusZ(committedNames.stdout), workingFiles);
   const tracked = gitResult(repoPath, ['diff', '--binary', '--full-index', baseCommit, '--'], 30_000, true);
   if (!tracked.ok) throw new HttpError(409, { error: 'review_diff_failed', detail: detail(tracked) });
   let diffText = tracked.stdout;
@@ -64,6 +67,26 @@ function parsePorcelainZ(value) {
     files.push({ path: filePath.replaceAll('\\', '/'), previous_path: from?.replaceAll('\\', '/') || null, status: statusName(code), code });
   }
   return files.sort((a, b) => a.path.localeCompare(b.path));
+}
+function parseNameStatusZ(value) {
+  const tokens = String(value || '').split('\0'), files = [];
+  for (let index = 0; index < tokens.length;) {
+    const code = tokens[index++]; if (!code) continue;
+    if (/^[RC]/.test(code)) {
+      const previous = tokens[index++] || '', filePath = tokens[index++] || '';
+      assertRelativeGitPath(previous); assertRelativeGitPath(filePath);
+      files.push({ path: filePath.replaceAll('\\', '/'), previous_path: previous.replaceAll('\\', '/'), status: code.startsWith('R') ? 'renamed' : 'copied', code });
+      continue;
+    }
+    const filePath = tokens[index++] || ''; assertRelativeGitPath(filePath);
+    files.push({ path: filePath.replaceAll('\\', '/'), previous_path: null, status: statusName(code), code });
+  }
+  return files;
+}
+function mergeChangedFiles(...groups) {
+  const merged = new Map();
+  for (const item of groups.flat()) merged.set(item.path, { ...(merged.get(item.path) || {}), ...item });
+  return [...merged.values()].sort((a, b) => a.path.localeCompare(b.path));
 }
 function statusName(code) { if (code === '??') return 'untracked'; if (code.includes('R')) return 'renamed'; if (code.includes('C')) return 'copied'; if (code.includes('D')) return 'deleted'; if (code.includes('A')) return 'added'; if (code.includes('U')) return 'conflicted'; return 'modified'; }
 function assertRelativeGitPath(value) {

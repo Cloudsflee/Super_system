@@ -5,6 +5,9 @@ import { createLocalOwner, defaultCodexProfiles, defaultTools, hashString, id, m
 import { ARTIFACT_DIR, ASSIST_DIR, CODEX_HOME_DIR, DATA_DIR, EXPORT_DIR, PROBE_DIR, STAGING_DIR, STATE_FILE, TRASH_DIR, VAULT_DIR, WORKSPACE_DIR, WORKTREE_DIR, collections } from './config.mjs';
 import { redactKnownSecrets } from './vault.mjs';
 import { codexAuthMatchesProfile, isThirdPartyProvider, normalizeProviderBaseUrl, writeProfileConfig } from './codex-service.mjs';
+import { migrateStateFileToV14, STATE_SCHEMA_VERSION, validateState14 } from './state-migration-v14.mjs';
+
+let lastMigration = null;
 
 export async function ensureRuntime() {
   await fsp.mkdir(DATA_DIR, { recursive: true });
@@ -13,9 +16,10 @@ export async function ensureRuntime() {
   await fsp.mkdir(CODEX_HOME_DIR, { recursive: true });
   await Promise.all([WORKSPACE_DIR, STAGING_DIR, TRASH_DIR, EXPORT_DIR, WORKTREE_DIR, PROBE_DIR, ASSIST_DIR].map((dir) => fsp.mkdir(dir, { recursive: true })));
   if (!fs.existsSync(STATE_FILE)) return writeState(bootstrapState());
+  lastMigration = await migrateStateFileToV14(STATE_FILE);
   const state = await readState();
   let changed = false;
-  if (state.schema_version !== 13) { state.schema_version = 13; changed = true; }
+  if (state.schema_version !== STATE_SCHEMA_VERSION) throw new Error(`unsupported_state_schema_${state.schema_version}`);
   for (const key of collections) if (!Array.isArray(state[key])) { state[key] = []; changed = true; }
   if (!state.users.length) { const { user, session } = createLocalOwner(); state.users.push(user); state.sessions.push(session); changed = true; }
   if (!state.tools.length) { state.tools.push(...defaultTools(state.users[0].id)); changed = true; }
@@ -47,6 +51,13 @@ export async function ensureRuntime() {
   }
   for (const session of state.terminal_sessions.filter((item) => ['starting', 'running', 'connected'].includes(item.status))) {
     Object.assign(session, { status: 'interrupted', interrupted_reason: 'service_restarted', updated_at: now() }); changed = true;
+  }
+  for (const input of state.runtime_user_inputs.filter((item) => item.status === 'pending')) {
+    Object.assign(input, { status: 'cancelled', cancelled_reason: 'service_restarted', cancelled_at: now(), updated_at: now() }); changed = true;
+    const turn = state.assist_turns.find((item) => item.id === input.turn_id);
+    if (turn && ['preparing', 'running', 'waiting_user_input', 'waiting_approval', 'stopping'].includes(turn.status)) {
+      Object.assign(turn, { status: 'interrupted', error_code: 'service_restarted', completed_at: now(), updated_at: now() });
+    }
   }
   const legacyWorkflowSuffix = ['V1', '闭环工作流'].join(' ');
   for (const workflow of state.workflows) if (workflow.generated_by === 'system' && workflow.title?.includes(legacyWorkflowSuffix)) { workflow.title = workflow.title.replace(legacyWorkflowSuffix, '工作流'); changed = true; }
@@ -96,7 +107,7 @@ export function emptyState() { return Object.fromEntries(collections.map((key) =
 
 function bootstrapState() {
   const state = emptyState();
-  state.schema_version = 13;
+  state.schema_version = STATE_SCHEMA_VERSION;
   const { user, session } = createLocalOwner();
   state.users.push(user);
   state.sessions.push(session);
@@ -109,10 +120,16 @@ function bootstrapState() {
 export async function readState() { return JSON.parse(await fsp.readFile(STATE_FILE, 'utf8')); }
 
 export async function writeState(state) {
+  validateState14(state);
   const tmp = `${STATE_FILE}.tmp`;
-  await fsp.writeFile(tmp, await redactKnownSecrets(JSON.stringify(state, null, 2)), 'utf8');
+  const serialized = await redactKnownSecrets(JSON.stringify(state, null, 2));
+  const handle = await fsp.open(tmp, 'w', 0o600);
+  try { await handle.writeFile(serialized, 'utf8'); await handle.sync(); }
+  finally { await handle.close(); }
   await replaceStateFile(tmp, STATE_FILE);
 }
+
+export function lastStateMigration() { return lastMigration ? { ...lastMigration, state: undefined } : null; }
 
 let mutationQueue = Promise.resolve();
 

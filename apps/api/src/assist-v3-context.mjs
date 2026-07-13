@@ -1,7 +1,6 @@
 import fsp from 'node:fs/promises';
 import { estimateTokens, id, now } from '../../../packages/shared/index.mjs';
 import { cleanText } from './assist-v3-domain.mjs';
-import { assistPageActionInstruction } from './assist-v3-actions.mjs';
 
 export function createTurnContext(state, { actor, project, session, turn, attachmentIds }) {
   const created = now();
@@ -30,26 +29,37 @@ export function createTurnContext(state, { actor, project, session, turn, attach
 }
 
 export function turnPrompt({ turn, session, project, contextPack, attachments }) {
-  const boundary = turn.mode === 'agent'
-    ? 'You may edit files only inside the current isolated worktree. Do not push, publish, or modify repositories outside the current working directory. Leave all changes reviewable.'
-    : 'This is a strictly read-only turn. Do not edit, create, delete, rename, or apply patches to files. Do not run mutating commands.';
-  const plan = turn.mode === 'plan' ? 'Return a concrete implementation plan, risks, and verification steps without making changes.' : '';
-  const pageActions = assistPageActionInstruction(turn.view_context);
-  const attachmentContext = attachments.map((item) => ({
-    kind: item.kind, path: item.relative_path, url: item.url, content_type: item.content_type,
-    model_policy: item.model_policy, selection: item.selection,
-    text: item.model_policy === 'injectable' ? cleanText(item.text, 20_000) : null
-  }));
-  return [
-    `You are Codex in AI Workspace Assist V3 ${turn.mode.toUpperCase()} mode.`, boundary, plan,
-    `Project: ${project.title}. Goal: ${project.goal || ''}`, `Scope: ${session.scope_type}:${session.scope_id}.`,
-    `Context Pack: ${JSON.stringify(contextPack?.content_json || {})}`,
-    `Attachments: ${JSON.stringify(attachmentContext)}`, pageActions, `User request: ${turn.prompt}`
-  ].filter(Boolean).join('\n\n');
+  return cleanText(turn?.prompt, 100_000);
 }
 
-export async function appServerUserInput(prompt, attachments, state) {
-  const input = [{ type: 'text', text: prompt, text_elements: [] }];
+export function applicationAdditionalContext({ turn, session, project, contextPack, attachments }) {
+  const writable = turn.code_access === 'workspace_write';
+  const boundary = writable
+    ? 'Code access: workspaceWrite inside the current isolated thread change batch. Do not push, publish, or modify repositories outside the current working directory. Leave all changes reviewable.'
+    : `Code access: read-only (${turn.code_read_only_reason || 'read_only'}). Do not edit, create, delete, rename, apply patches, or run mutating commands.`;
+  const attachmentContext = attachments.map((item) => ({
+    kind: item.kind, path: item.relative_path, url: item.url, content_type: item.content_type,
+    model_policy: item.model_policy, selection: item.selection
+  }));
+  const value = {
+    schema: 'aiws.application-context.v1',
+    boundary,
+    project: { id: project.id, title: project.title, goal: project.goal || '', status: project.status, managed_workspace_state: project.managed_workspace_state || null },
+    scope: { type: session.scope_type, id: session.scope_id },
+    context_pack: contextPack?.content_json || {},
+    attachments: attachmentContext,
+    page: safePageContext(turn.view_context),
+    migrated_thread_history: session.native_thread_generation === 1 ? limitedLegacyHistory(session) : null
+  };
+  return [{ kind: 'application', value: JSON.stringify(value) }];
+}
+
+export async function appServerUserInput(userText, attachments, state) {
+  const input = [{ type: 'text', text: cleanText(userText, 100_000), text_elements: [] }];
+  for (const attachment of attachments.filter((item) => item.model_policy === 'injectable').slice(0, 12)) {
+    const text = cleanText(attachment.text, 100_000);
+    if (text) input.push({ type: 'text', text: `[Attachment: ${cleanText(attachment.title || attachment.relative_path || attachment.kind, 500)}]\n${text}`, text_elements: [] });
+  }
   for (const attachment of attachments.filter((item) => item.model_policy === 'image').slice(0, 8)) {
     const ref = state.file_refs.find((item) => item.id === attachment.file_ref_id);
     const sourcePath = ref?.absolute_path || attachment.managed_path;
@@ -59,4 +69,13 @@ export async function appServerUserInput(prompt, attachments, state) {
     input.push({ type: 'image', detail: 'auto', url: `data:${type};base64,${bytes.toString('base64')}` });
   }
   return input;
+}
+
+function safePageContext(value) {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
+  return { route: cleanText(value.route, 2_000), surface: value.surface && typeof value.surface === 'object' ? value.surface : null };
+}
+
+function limitedLegacyHistory(session) {
+  return { legacy_thread_id_present: Boolean(session.legacy_codex_thread_id || session.codex_thread_id), note: 'A V1.4 native thread was retained for audit. Continue in this V1.5 dynamic-tools generation without exposing the legacy identifier.' };
 }

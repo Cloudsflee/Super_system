@@ -25,8 +25,9 @@ try {
   const state = { projects: [{ repo_path: repo }], integration_statuses: [{ key: 'codex_auth', status: 'authenticated', provider: 'openai', refs: {} }] };
   const valid = { name: 'OpenAI', provider: 'openai', model: 'gpt-5.1', reasoning: 'high', web_search: true, timeout_ms: 1000, mounts: [repo], mcp_servers: [{ name: 'docs', command: 'node', args: ['server.mjs'] }] };
   assert.deepEqual(validateProfileInput(state, valid), { ok: true, errors: [] });
+  assert.deepEqual(validateProfileInput(state, { ...valid, reasoning: 'ultra' }), { ok: true, errors: [] });
   for (const [patch, error] of [
-    [{ reasoning: 'extreme' }, 'invalid_reasoning'], [{ web_search: 'yes' }, 'invalid_web_search'],
+    [{ reasoning: 'not valid' }, 'invalid_reasoning'], [{ web_search: 'yes' }, 'invalid_web_search'],
     [{ timeout_ms: 10 }, 'invalid_timeout'], [{ model: '--danger' }, 'invalid_model'],
     [{ mounts: [outside] }, `mount_not_allowed:${outside}`],
     [{ mcp_servers: [{ name: 'bad', command: 'powershell', args: [] }] }, 'mcp_command_not_allowed:powershell'],

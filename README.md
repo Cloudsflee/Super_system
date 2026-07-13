@@ -1,10 +1,10 @@
-# AI Workspace System V1.4
+# AI Workspace System V1.5
 
-AI Workspace System V1.4 是一个本地优先、自托管、MCP-first 但不是 MCP-only 的 AI 协作工作空间。V1.4 将 API、生产 Web 与 JSON-local 数据完全容器化，并通过 Docker socket 启动短生命周期 Codex sibling containers；V1.3 的 draft onboarding、受管 workspace、Assist V3/Codex IDE、真实 CLI、统一审批和版本化配置继续保留。
+AI Workspace System V1.5 是一个本地优先、自托管、MCP-first 但不是 MCP-only 的 AI 协作工作空间。V1.5 在 V1.4 完全容器化基线上接入 Codex 原生 Assist/Plan/Goal、线程级 change batch、可补偿网页操作账本，以及 Linux Container / Windows Native Bridge 双 CLI 运行时。
 
 当前版本默认采用 **JSON-local 本地持久化**，不依赖外部数据库即可启动；同时保留 Prisma/PostgreSQL、Redis、Worker、CodexRunner、GitHub PR 等后续替换边界。
 
-> **交付状态**：V1.4 的宿主 `verify`、验证镜像 `verify`、隔离 Compose smoke、备份恢复和正式 `127.0.0.1:4317` 切换均已通过。生产使用固定应用/Runner 镜像和命名卷；真实 OpenAI 推理、GitHub 或 cc-switch live 测试仍为显式 opt-in，不能从 adapter 结果推断外部服务可用。
+> **交付状态**：V1.5 的宿主/验证镜像完整 `verify`、四类镜像构建、隔离迁移与恢复演练、正式 schema 13→14 切换均已通过。生产 `aiws-v15` 继续复用原 `aiws-data-v14`，V1.4 容器保持停止；完整证据见 [`docs/completion-audit.md`](docs/completion-audit.md)。真实 OpenAI、GitHub、cc-switch 与可选 Windows 宿主 Codex 可用性仍由显式 live/probe 验收决定。
 
 ## 1. 项目能力概览
 
@@ -13,7 +13,11 @@ AI Workspace System V1.4 是一个本地优先、自托管、MCP-first 但不是
 - **项目生命周期**：新项目先创建为可恢复 draft，经 Intake、版本化 Project Brief 和 workflow draft 确认后激活；legacy Project 迁移为 active。
 - **Workflow Canvas**：React Flow 全屏画布，支持 proposal、布局持久化、撤销/重做和 Inspector。
 - **Node Contract**：每个节点都有目标、验收标准、允许工具等结构化契约。
-- **Codex Assist**：V2 JSONL/SSE 与白名单 UIAction 保持兼容；V3 提供 Session/Turn、typed stream、附件、独立 worktree、Diff Review 和 PTY/WebSocket CLI transport。
+- **Codex 原生 Assist**：普通 Turn 为 `default`，单次 Plan 使用原生 `collaborationMode: plan`；用户消息与 `additionalContext` 分离，只使用 app-server。
+- **Goal 与原生事件**：线程 Goal 直接透传 objective/status/budget/usage；Plan、tool、command/file/diff、reasoning summary 与 request-user-input 进入统一活动流。
+- **累计变更批次**：Assist、Linux CLI 与 Windows CLI 共享线程级 change batch、checkpoint、写锁和累计 Diff Review；Plan 严格只读。
+- **网页操作账本**：`aiws_page` dynamic tools 只操作页面声明的可逆语义控件，记录 before/after/hash，支持冲突阻止与二次确认强制 Undo。
+- **双 CLI 运行时**：Linux Runner Container 为默认；Windows Native Bridge 使用 DPAPI、ConPTY 与校验后的 Git bundle 往返，不共享宿主凭据。
 - **Context Pack**：在执行前生成上下文包，包含充分性检查、Memory Manifest、工具注入与历史摘要。
 - **五类节点工作区**：目标、调研、分析、执行、复盘分别维护结构化工作资料；执行节点内置 Monaco、diff 和受控任务。
 - **Runner 执行**：正式入口只提供 CodexRunner 与隔离的 DockerCodexRunner。
@@ -37,7 +41,7 @@ Node.js、pnpm、Git、SSH、tar 和生产 Web 都包含在镜像中。宿主开
 
 已使用过 Codex 的用户可直接导入本机 `CODEX_HOME` / `~/.codex` 中的 `config.toml` 与 `auth.json`；页面只返回脱敏摘要，确认后才复制 API Key 或官方 OAuth bundle，并重建 AIWS 托管 Profile。未使用过 Codex 的用户可在 Setup 选择官方 Device Login 或手动 API 配置。
 
-V1.4 启动脚本会自动生成只读导入 override。Codex Runner 子容器只挂载命名卷内对应的 profile/workspace subpath，不会直接挂载或修改宿主 `~/.codex`、`~/.cc-switch` 或项目导入根。
+V1.5 启动脚本会自动生成只读导入 override，并在首次切换前停止旧 app、备份现有卷、记录 SHA-256/canonical hash/镜像与容器清单；失败时恢复备份并保持 app 停止。Codex Runner 子容器只挂载对应的 profile 与 change-batch subpath。
 
 ## 3. 快速启动项目
 
@@ -61,7 +65,7 @@ bash scripts/aiws.sh up
 http://127.0.0.1:4317
 ```
 
-默认构建 `aiws-app:1.4.0` 与 `aiws-codex-runner:1.4.0-codex-0.144.0`，并创建 `aiws-data-v14`。完整命令、只读导入、备份和恢复见 [`docs/docker-runbook-v1.4.md`](docs/docker-runbook-v1.4.md)。
+默认构建 `aiws-app:1.5.0` 与 `aiws-codex-runner:1.5.0-codex-0.144.0`，并继续使用 `aiws-data-v14`。首次升级流程由启动脚本执行事务快照与失败恢复；通用备份/恢复命令见 [`docs/docker-runbook-v1.4.md`](docs/docker-runbook-v1.4.md)，V1.5 边界见 [`开发计划v1.5.md`](开发计划v1.5.md)。
 
 显式配置项目只读导入根：
 
@@ -91,8 +95,9 @@ corepack pnpm dev
 ### 3.3 手动构建镜像
 
 ```bash
-docker build --target production -t aiws-app:1.4.0 .
-docker build -f docker/codex-runner.Dockerfile -t aiws-codex-runner:1.4.0-codex-0.144.0 .
+docker build --target production -t aiws-app:1.5.0 .
+docker build -f docker/codex-runner.Dockerfile -t aiws-codex-runner:1.5.0-codex-0.144.0 .
+docker build --target windows-bridge-export --output type=local,dest=./dist/bridge .
 docker compose up -d
 ```
 
@@ -140,16 +145,17 @@ http://localhost:4320
 
 更详细的操作与验收脚本可见：`docs/runbook.md`。
 
-### 4.2 V1.4 使用流程
+### 4.2 V1.5 使用流程
 
-1. 用 V1.4 Compose 启动全新 `aiws-data-v14`，完成 GitHub/Codex Setup；Host Profile 在容器部署中不可用。
+1. 用 V1.5 Compose 在事务备份后迁移现有 `aiws-data-v14` 到 schema 14，完成 GitHub/Codex Setup；Host Profile 在容器部署中不可用。
 2. 创建 draft Project，选择“从 0 头脑风暴”或“基于已有项目”。
 3. 恢复或完成 Intake，审查版本化 Project Brief 和初始 workflow draft。
 4. 已有代码源先经 staging 与安全校验，再 clone/copy 到命名卷内受管 repo；宿主导入源保持只读。
-5. 确认后原子激活 Project，并只在受管 repo 或 Turn worktree 中执行写操作。
-6. 在 Assist V3 选择 Profile、当前模型与思考深度；常用组合可保存后切换。Ask、Plan、Agent 和 CLI 均记录实际运行快照。
-7. Assist 提出的页面字段修改先进入预览，人工应用后只更新当前草稿；Agent/CLI 文件变更进入统一 Diff Review。
-8. 节点 Proposal、Runtime Approval 和配置提案通过统一审批中心决策。
+5. 确认后原子激活 Project；第一个可写 Turn 创建 session change batch，后续普通 Turn 和 CLI 复用该批次。
+6. Composer 始终显示 Codex 返回的原始 model/reasoning；Plan toggle 只影响下一次 Turn，发送后复位且严格只读。
+7. 在线程头部设置原生 Goal；request-user-input、审批、工具回执和冲突处理都在对话内完成。
+8. Assist 网页写入通过语义工具自动记账；代码写入通过 checkpoint 和累计 Diff Review 审查，Apply/Rollback 后关闭批次。
+9. Terminal 默认启动 Linux Container；已安装 Windows Bridge 时可选择宿主 Codex TUI，并与同一 change batch 串行同步。
 
 以上入口已纳入默认自动化门禁；外部服务与本机 CLI 的实际可用性仍由 Setup capability/probe 和可选 live 验收决定。完整证据见 `docs/completion-audit.md`。
 
@@ -211,7 +217,7 @@ pnpm verify
 npm run verify
 ```
 
-`verify` 会依次执行 lint、typecheck、unit、20 组 integration、Prisma schema 检查、Web build、E2E smoke、三视口 Playwright 和验收审计。容器交付还应执行 `scripts/aiws.ps1 verify` 或 `scripts/aiws.sh verify`，在验证镜像中重复完整门禁。
+`verify` 会依次执行 lint、typecheck、unit、22 组 integration、Prisma schema 检查、Web build、E2E smoke、三视口 Playwright 和 V1.5 验收审计。容器交付还应执行 `scripts/aiws.ps1 verify` 或 `scripts/aiws.sh verify`，构建 production/verify/Runner/Bridge export 并在验证镜像中重复完整门禁。
 
 ### 5.6 Codex live 测试，可选
 
@@ -251,7 +257,26 @@ pnpm test:live:cc-switch
 
 该 hook 安装固定版本的受管 CLI 并读取 Catalog，只写临时 `AIWS_HOME`。如设置 `CC_SWITCH_CONFIG_DIR`，还会验证该目录前后的 hash/mtime 不变。
 
-### 5.9 GitHub SaaS / 自托管使用文档
+### 5.9 Windows Native Bridge
+
+Windows Bridge 是可选运行时；Linux Container 始终为默认。先在 AIWS 页面生成一次性 12 位配对码，再执行：
+
+```powershell
+.\scripts\aiws.ps1 bridge install -PairingCode '123456789012'
+.\scripts\aiws.ps1 bridge start
+.\scripts\aiws.ps1 bridge status
+```
+
+停止或卸载：
+
+```powershell
+.\scripts\aiws.ps1 bridge stop
+.\scripts\aiws.ps1 bridge uninstall
+```
+
+Bridge 只主动连接 `127.0.0.1:4317`；长期凭据由 Windows DPAPI CurrentUser 保存。卸载不会删除宿主 `CODEX_HOME`、Codex 登录态或 AIWS 项目。
+
+### 5.10 GitHub SaaS / 自托管使用文档
 
 GitHub 集成最终采用“托管 GitHub App + 用户自带 GitHub App”双模式。按身份阅读对应文档：
 
@@ -268,7 +293,7 @@ GitHub 集成最终采用“托管 GitHub App + 用户自带 GitHub App”双模
 
 | 路径 | 用途 |
 |---|---|
-| `.ai-workspace/` | 仅宿主开发模式的数据目录；V1.4 生产数据位于 `aiws-data-v14`，不会自动迁移此目录。 |
+| `.ai-workspace/` | 宿主开发数据及 V1.5 发布前备份清单；生产状态位于 `aiws-data-v14`，不会以宿主目录替换。 |
 | `.git/` | Git 版本库元数据，由 Git 自动维护。 |
 | `apps/` | 应用层代码，包含 API 服务、前端页面和 worker 入口。 |
 | `packages/` | 可复用模块与共享领域逻辑，供 API、Worker、测试和后续扩展复用。 |
@@ -277,7 +302,8 @@ GitHub 集成最终采用“托管 GitHub App + 用户自带 GitHub App”双模
 | `docs/` | 工程文档目录，包含运行手册、V1 覆盖矩阵、完成审计报告和 `docs/github/` 下的 GitHub SaaS/自托管教程。 |
 | `doc/` | 早期核心想法、问题记录和方案草稿，用于保留设计演进过程。 |
 | `docker/` | Runner Dockerfile、导入 override/环境样例、备份归档校验器及 legacy infra Compose。 |
-| `Dockerfile` / `compose.yml` | V1.4 production/verify 镜像与默认完全容器化部署。 |
+| `Dockerfile` / `compose.yml` | V1.5 production/verify/Windows Bridge export 镜像与默认完全容器化部署。 |
+| `bridge/` | Windows Native Bridge 的 Go/DPAPI/ConPTY 与 workspace bundle 客户端。 |
 | `config/` | 本地公开配置示例，目前保存 GitHub App 的公开 Client ID；不要在此目录提交 Client Secret 或 Private Key。 |
 | `prisma/` | Prisma schema 草案，描述未来替换到 PostgreSQL 时的数据模型边界。 |
 | `探索/` | 前期调研资料目录，用于保存毕业设计探索阶段材料。 |
@@ -294,6 +320,7 @@ GitHub 集成最终采用“托管 GitHub App + 用户自带 GitHub App”双模
 | `开发计划v1.2.md` / `测试计划v1.2.md` | V1.2 Setup、Canvas、Assist、文件与验收增量。 |
 | `开发计划v1.3.md` / `测试计划v1.3.md` | V1.3 onboarding、受管 workspace、IDE、CLI、审批和配置治理增量。 |
 | `开发计划v1.4.md` / `测试计划v1.4.md` | V1.4 完全容器化、Runner 生命周期、只读导入与 Docker 验收增量。 |
+| `开发计划v1.5.md` / `测试计划v1.5.md` | V1.5 原生 Assist/Goal/Plan、change batch、操作账本、双 CLI 与安全迁移。 |
 | `tempmd.md` | V1.2 计划生成前的历史需求与决策备忘。 |
 
 ## 7. `apps/` 子目录说明
@@ -347,11 +374,11 @@ GitHub 集成最终采用“托管 GitHub App + 用户自带 GitHub App”双模
 - `.ai-workspace/` 已被 `.gitignore` 忽略，适合保存本机运行和调试数据。
 - 删除 `.ai-workspace/` 后再次启动，会重新初始化宿主开发状态；该操作不影响生产卷。
 
-V1.4 生产容器使用相同目录结构，但根位于命名卷 `aiws-data-v14` 的 `/var/lib/aiws`。`down` 保留卷；只允许通过带显式确认的运维脚本执行 reset。
+V1.5 生产容器使用相同目录结构，根仍位于命名卷 `aiws-data-v14` 的 `/var/lib/aiws`，状态 schema 为 14。`down` 保留卷；只允许通过带显式确认的运维脚本执行 reset。
 
 ## 11. Legacy 可选基础设施
 
-V1.4 默认部署依赖 Docker，但业务仍不依赖 PostgreSQL/Redis。若需要单独试验未来基础设施，可以执行：
+V1.5 默认部署依赖 Docker，但业务仍不依赖 PostgreSQL/Redis。若需要单独试验未来基础设施，可以执行：
 
 ```bash
 docker compose -f docker/compose.infra.yml up -d
@@ -365,7 +392,7 @@ docker compose -f docker/compose.infra.yml down
 
 当前默认服务仍使用 JSON-local；`docker/compose.infra.yml` 主要用于后续替换持久化和队列基础设施。
 
-## 12. 已验证基线与 V1.4 增量
+## 12. 已验证基线与 V1.5 增量
 
 默认离线门禁已覆盖以下 V1.2 回归基线：
 
@@ -403,6 +430,17 @@ V1.4 新增容器门禁：
 - 隔离 Compose smoke 已覆盖 UI/health、重启持久化、sibling Runner、volume-subpath 和零遗留容器。
 - 验证镜像内完整 `corepack pnpm verify` 与正式 Compose 切换均已通过；原 V1.3 `.ai-workspace` 聚合摘要保持不变。
 
+V1.5 新增并已纳入默认源码门禁：
+
+- schema 13→14 原子迁移、历史配置/Turn/worktree/action 保留、失败恢复与幂等校验。
+- app-server-only 的 `default | plan`、`additionalContext` 隔离、原始 model/reasoning 目录和无 Secret 配置 CRUD。
+- 原生 Goal、Plan/tool/diff/reasoning/request-user-input 事件，Secret 回答只走内存通道。
+- session change batch、Turn/CLI checkpoint、单写锁、累计 Review 与 Apply/Rollback 生命周期。
+- `aiws_page` 白名单 dynamic tools、事务账本、普通/冲突/强制补偿 Undo。
+- Codex Desktop 风格 Composer、Goal/Activity 卡、可拖动停靠面板及原生问题/回执交互。
+- Linux Runner 与 Windows Go Bridge 共用代码批次；DPAPI、ConPTY、分块 Git bundle 和服务端严格导入校验。
+- V1.5 unit、integration、Web 和 acceptance audit；容器、Playwright 与生产迁移的最终结果记录在完成审计中。
+
 真实 Codex、GitHub 与 cc-switch live 套件本轮未运行；其 opt-in 入口和边界见 `docs/runbook.md`。
 
 更完整的覆盖关系见：`docs/v1-coverage-matrix.md` 与 `docs/completion-audit.md`。
@@ -415,7 +453,7 @@ V1.4 新增容器门禁：
 - 前端按 `src/features`、`components`、`api`、`state` 与 `styles` 拆分。
 - 共享能力沉淀到 `packages/*`，避免应用层重复实现领域规则。
 - 样式按 shell、setup、workflow、workspace 和 data surface 拆分。
-- `pnpm lint` 会检查 `apps`、`packages`、`tests`、`scripts` 下 JS/TS/TSX 手写模块不超过约 220 行。
+- `pnpm lint` 会检查 `apps`、`packages`、`tests`、`scripts` 下 JS/TS/TSX 手写模块不超过 260 行。
 
 ## 14. 常见问题
 
@@ -464,7 +502,7 @@ $env:AIWS_PORT="4320"; .\scripts\aiws.ps1 up
 
 ### 14.4 页面没有旧数据
 
-生产部署检查 `docker volume inspect aiws-data-v14`。V1.4 使用全新命名卷，不读取 V1.3 `.ai-workspace`；宿主开发模式仍检查 `.ai-workspace/data/state.json`。
+生产部署检查 `docker volume inspect aiws-data-v14`。V1.5 必须复用该卷并将 state 原位迁移为 schema 14，不会读取或删除 V1.3/V1.4 宿主 `.ai-workspace`；宿主开发模式仍检查 `.ai-workspace/data/state.json`。
 
 ### 14.5 Codex 不可用
 

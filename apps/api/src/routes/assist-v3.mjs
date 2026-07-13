@@ -21,12 +21,34 @@ import {
   rollbackV3Review,
   stopV3Turn,
   streamV3Events,
+  applyChangeBatch,
+  claimAssistOperation,
+  clearAssistGoal,
+  confirmAssistOperation,
+  deleteAssistConfiguration,
+  getAssistConfiguration,
+  getAssistGoal,
+  getChangeBatchReview,
+  listAssistConfigurations,
+  listAssistModels,
+  listAssistOperations,
+  respondToAssistUserInput,
+  rollbackChangeBatch,
   saveAssistConfiguration,
+  setAssistGoal,
+  submitAssistOperationResult,
+  undoAssistOperation,
+  updateAssistConfiguration,
   updateV3Session
 } from '../assist-v3-service.mjs';
 
 export const assistV3Routes = [
+  makeRoute('GET', '/assist/v3/models', async ({ res, query }) => send(res, 200, await listAssistModels(query.profile_id))),
+  makeRoute('GET', '/assist/v3/configurations', async ({ res, query }) => send(res, 200, await listAssistConfigurations(query))),
   makeRoute('POST', '/assist/v3/configurations', async ({ res, body }) => send(res, 201, await saveAssistConfiguration(body))),
+  makeRoute('GET', '/assist/v3/configurations/:id', async ({ res, params }) => send(res, 200, await getAssistConfiguration(params.id))),
+  makeRoute('PATCH', '/assist/v3/configurations/:id', async ({ res, params, body }) => send(res, 200, await updateAssistConfiguration(params.id, body))),
+  makeRoute('DELETE', '/assist/v3/configurations/:id', async ({ res, params }) => send(res, 200, await deleteAssistConfiguration(params.id))),
   makeRoute('GET', '/assist/v3/sessions', async ({ res, query }) => send(res, 200, await listV3Sessions(query))),
   makeRoute('POST', '/assist/v3/sessions', async ({ res, body }) => send(res, 201, await createV3Session(body))),
   makeRoute('GET', '/assist/v3/sessions/:id', async ({ res, params }) => send(res, 200, await getV3Session(params.id))),
@@ -37,12 +59,16 @@ export const assistV3Routes = [
   makeRoute('DELETE', '/assist/v3/sessions/:id', async ({ res, params }) => send(res, 200, await archiveV3Session(params.id))),
   makeRoute('POST', '/assist/v3/sessions/:id/restore', async ({ res, params }) => send(res, 200, await restoreV3Session(params.id))),
   makeRoute('POST', '/assist/v3/sessions/:id/fork', async ({ res, params, body }) => send(res, 201, await forkV3Session(params.id, body))),
+  makeRoute('GET', '/assist/v3/sessions/:id/goal', async ({ res, params }) => send(res, 200, await getAssistGoal(params.id))),
+  makeRoute('PUT', '/assist/v3/sessions/:id/goal', async ({ res, params, body }) => send(res, 200, await setAssistGoal(params.id, body))),
+  makeRoute('DELETE', '/assist/v3/sessions/:id/goal', async ({ res, params }) => send(res, 200, await clearAssistGoal(params.id))),
 
   makeRoute('POST', '/assist/v3/sessions/:id/turns', async ({ res, params, body }) => send(res, 202, await createV3Turn(params.id, body))),
   makeRoute('GET', '/assist/v3/turns/:id', async ({ res, params }) => send(res, 200, await getV3Turn(params.id))),
   makeRoute('POST', '/assist/v3/turns/:id/retry', async ({ res, params, body }) => send(res, 202, await retryV3Turn(params.id, body))),
   makeRoute('POST', '/assist/v3/turns/:id/stop', async ({ res, params, body }) => send(res, 200, await stopV3Turn(params.id, body.reason))),
   makeRoute('POST', '/assist/v3/turns/:id/actions/:actionId/result', async ({ res, params, body }) => send(res, 200, await recordV3PageActionResult(params.id, params.actionId, body))),
+  makeRoute('POST', '/assist/v3/turns/:id/user-input/:itemId/respond', async ({ res, params, body }) => send(res, 200, await respondToAssistUserInput(params.id, params.itemId, body))),
   makeRoute('POST', '/assist/v3/sessions/:id/turns/:turnId/retry', async ({ res, params, body }) => send(res, 202, await retryV3Turn(params.turnId, body))),
   makeRoute('POST', '/assist/v3/sessions/:id/turns/:turnId/stop', async ({ res, params, body }) => send(res, 200, await stopV3Turn(params.turnId, body.reason))),
 
@@ -72,4 +98,12 @@ export const assistV3Routes = [
   makeRoute('POST', '/assist/v3/turns/:id/review/request-changes', async ({ res, params, body }) => send(res, 200, await requestV3ReviewChanges(params.id, body))),
   makeRoute('POST', '/assist/v3/turns/:id/review/apply', async ({ res, params, body }) => send(res, 200, await applyV3Review(params.id, body))),
   makeRoute('POST', '/assist/v3/turns/:id/review/rollback', async ({ res, params, body }) => send(res, 200, await rollbackV3Review(params.id, body)))
+  ,makeRoute('GET', '/assist/v3/operations', async ({ res, query }) => send(res, 200, await listAssistOperations(query)))
+  ,makeRoute('POST', '/assist/v3/operations/:id/confirm', async ({ res, params, body }) => send(res, 200, await confirmAssistOperation(params.id, body)))
+  ,makeRoute('POST', '/assist/v3/operations/:id/claim', async ({ res, params, body }) => send(res, 200, await claimAssistOperation(params.id, body)))
+  ,makeRoute('POST', '/assist/v3/operations/:id/result', async ({ res, params, body }) => send(res, 200, await submitAssistOperationResult(params.id, body)))
+  ,makeRoute('POST', '/assist/v3/operations/:id/undo', async ({ res, params, body }) => send(res, 202, await undoAssistOperation(params.id, body)))
+  ,makeRoute('GET', '/assist/v3/change-batches/:id/review', async ({ res, params }) => send(res, 200, await getChangeBatchReview(params.id)))
+  ,makeRoute('POST', '/assist/v3/change-batches/:id/review/apply', async ({ res, params, body }) => send(res, 200, await applyChangeBatch(params.id, body.target_hash)))
+  ,makeRoute('POST', '/assist/v3/change-batches/:id/review/rollback', async ({ res, params, body }) => send(res, 200, await rollbackChangeBatch(params.id, body.target_hash || null)))
 ];

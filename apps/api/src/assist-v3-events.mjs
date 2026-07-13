@@ -72,7 +72,7 @@ function attachRuntimeApproval(state, turn, normalized) {
 
 function normalizeCodexEvent(event) {
   if (!event || typeof event !== 'object') return null;
-  if (['text', 'plan', 'command', 'file_change', 'test', 'mcp', 'search', 'usage', 'reasoning_summary', 'status', 'terminal'].includes(event.aiws_type) && event.data && typeof event.data === 'object') return { type: event.aiws_type, data: maskSecretsDeep(event.data) };
+  if (['text', 'plan', 'command', 'file_change', 'diff', 'test', 'mcp', 'search', 'usage', 'reasoning_summary', 'status', 'terminal', 'request_user_input', 'operation'].includes(event.aiws_type) && event.data && typeof event.data === 'object') return { type: event.aiws_type, data: maskSecretsDeep(event.data) };
   const item = event.item && typeof event.item === 'object' ? event.item : {}, kind = String(item.type || '').toLowerCase();
   if (kind === 'agent_message') return { type: 'text', data: { text: cleanText(item.text, 100_000) } };
   if (kind === 'plan' || event.type === 'plan.updated') return { type: 'plan', data: { text: cleanText(item.text || event.plan, 100_000), status: cleanText(item.status || event.status, 100) } };

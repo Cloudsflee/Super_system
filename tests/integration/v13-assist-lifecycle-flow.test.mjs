@@ -23,13 +23,19 @@ try {
 
   await api(port, '/codex/auth/device/start', 'POST', { adapter: 'test' });
   const baseProfile = await api(port, '/codex/profiles', 'POST', { name: 'Assist Base', provider: 'openai', model: 'gpt-base', reasoning: 'medium', mounts: [] }, 201);
+  const catalogState = readState();
+  catalogState.codex_profiles.find((item) => item.id === baseProfile.id).model_catalog = [
+    { id: 'gpt-base', model: 'gpt-base', supportedReasoningEfforts: [{ reasoningEffort: 'medium' }] },
+    { id: 'gpt-review', model: 'gpt-review', supportedReasoningEfforts: [{ reasoningEffort: 'low' }, { reasoningEffort: 'xhigh' }] },
+    { id: 'gpt-review-2', model: 'gpt-review-2', supportedReasoningEfforts: [{ reasoningEffort: 'xhigh' }] }
+  ];
+  fs.writeFileSync(path.join(fixture.home, 'data', 'state.json'), JSON.stringify(catalogState, null, 2), 'utf8');
   const savedConfiguration = await api(port, '/assist/v3/configurations', 'POST', { base_profile_id: baseProfile.id, name: 'Fast review', model: 'gpt-review', reasoning: 'low' }, 201);
   assert.equal(savedConfiguration.base_profile_id, baseProfile.id);
-  assert.equal(savedConfiguration.assist_configuration, true);
   assert.equal(savedConfiguration.model, 'gpt-review');
   await api(port, '/assist/v3/configurations', 'POST', { base_profile_id: baseProfile.id, name: 'Unsafe', model: 'gpt-review', reasoning: 'low', base_url: 'https://override.invalid' }, 400, 'unsupported_assist_configuration_field');
   await api(port, `/assist/v3/sessions/${mainSession}/turns`, 'POST', { adapter: 'test', mode: 'ask', content: 'invalid model', model: '../invalid model' }, 400, 'invalid_assist_model');
-  await api(port, `/assist/v3/sessions/${mainSession}/turns`, 'POST', { adapter: 'test', mode: 'ask', content: 'invalid reasoning', reasoning: 'maximum' }, 400, 'invalid_assist_reasoning');
+  await api(port, `/assist/v3/sessions/${mainSession}/turns`, 'POST', { adapter: 'test', mode: 'ask', content: 'invalid reasoning', reasoning: 'not valid' }, 400, 'invalid_assist_reasoning');
 
   const fileAttachment = await api(port, `/assist/v3/sessions/${mainSession}/attachments`, 'POST', { kind: 'monaco_file', path: 'README.md', title: 'Current Monaco file' }, 201);
   const selection = await api(port, `/assist/v3/sessions/${mainSession}/attachments`, 'POST', { kind: 'selection', path: 'README.md', text: 'Assist lifecycle baseline', title: 'Current selection', selection: { start_line: 1, start_column: 3, end_line: 1, end_column: 28 } }, 201);
@@ -52,18 +58,14 @@ try {
   assert.equal(JSON.stringify(await api(port, `/assist/v3/turns/${contextual.id}`)).includes('PRIVATE_REASONING_SENTINEL'), false);
   assert.equal(fs.readFileSync(path.join(fixture.home, 'data', 'state.json'), 'utf8').includes('PRIVATE_REASONING_SENTINEL'), false);
 
-  const pageEdit = await createTurn(mainSession, { mode: 'ask', content: '填写当前简报', profile_id: savedConfiguration.id, model: 'gpt-review-2', reasoning: 'xhigh', view_context: { route: `/projects/${project.project.id}/onboarding`, surface: { fields: [{ id: 'brief.goal', label: '核心目标' }] } }, test_response: { message: '已生成简报草稿，请审查。', actions: [{ name: 'fill_field', label: '填写核心目标', args: { field_id: 'brief.goal', value: '交付可验证的工作空间' } }, { name: 'fill_field', label: '越界字段', args: { field_id: 'brief.unknown', value: '不得保存' } }] } });
+  const pageEdit = await createTurn(mainSession, { mode: 'ask', content: '填写当前简报', configuration_id: savedConfiguration.id, model: 'gpt-review-2', reasoning: 'xhigh', view_context: { route: `/projects/${project.project.id}/onboarding`, surface: { revision: 'r1', fields: [{ id: 'brief.goal', label: '核心目标', risk: 'low' }] } }, test_response: { message: '已生成简报草稿，请审查。' } });
   const pageEditDone = await waitTurn(pageEdit.id, 'completed');
   assert.equal(pageEditDone.model, 'gpt-review-2');
   assert.equal(pageEditDone.reasoning, 'xhigh');
   assert.equal(pageEditDone.output_text, '已生成简报草稿，请审查。');
-  assert.equal(pageEditDone.actions.length, 1);
-  assert.equal(pageEditDone.actions[0].status, 'ready');
-  const appliedPageAction = await api(port, `/assist/v3/turns/${pageEdit.id}/actions/${pageEditDone.actions[0].id}/result`, 'POST', { ok: true, result: { handled: true, surface_id: 'project-onboarding', api_key: 'must-mask' } });
-  assert.equal(appliedPageAction.status, 'completed');
-  assert.notEqual(appliedPageAction.result.api_key, 'must-mask');
+  assert.equal(pageEditDone.actions.length, 0, 'legacy output-tag actions are not materialized');
 
-  const readOnly = await createTurn(mainSession, { mode: 'ask', content: 'Must remain read only', test_response: { message: 'invalid', files: [{ path: 'README.md', content: '# forbidden\n' }] } });
+  const readOnly = await createTurn(mainSession, { mode: 'plan', content: 'Must remain read only', test_response: { message: 'invalid', files: [{ path: 'README.md', content: '# forbidden\n' }] } });
   const readOnlyFailed = await waitTurn(readOnly.id, 'failed');
   assert.equal(readOnlyFailed.error_code, 'test_adapter_read_only_violation');
   assert.equal(normalize(fs.readFileSync(managedReadme, 'utf8')), '# Assist lifecycle baseline\n');
@@ -116,27 +118,31 @@ try {
 
   const sessionA = await newSession(project.project.id, 'Concurrent A');
   const sessionB = await newSession(project.project.id, 'Concurrent B');
-  const turnA = await createTurn(sessionA.id, { mode: 'agent', content: 'change A', test_response: { delay_ms: 300, message: 'A ready', files: [{ path: 'README.md', content: '# Concurrent A\n' }] } });
+  const turnA = await createTurn(sessionA.id, { collaboration_mode: 'default', content: 'change A', test_response: { delay_ms: 300, message: 'A ready', files: [{ path: 'README.md', content: '# Concurrent A\n' }] } });
   await waitTurn(turnA.id, 'running');
-  const turnB = await createTurn(sessionB.id, { mode: 'agent', content: 'change B', test_response: { delay_ms: 200, message: 'B ready', files: [{ path: 'README.md', content: '# Concurrent B\n' }] } });
+  const turnB = await createTurn(sessionB.id, { collaboration_mode: 'default', content: 'change B', test_response: { delay_ms: 200, message: 'B ready', files: [{ path: 'README.md', content: '# Concurrent B\n' }] } });
   const doneA = await waitTurn(turnA.id, 'completed'), doneB = await waitTurn(turnB.id, 'completed');
   assert.notEqual(doneA.worktree.id, doneB.worktree.id);
   const reviewA = await api(port, `/assist/v3/turns/${turnA.id}/review`), reviewB = await api(port, `/assist/v3/turns/${turnB.id}/review`);
   await api(port, `/assist/v3/turns/${turnB.id}/review/request-changes`, 'POST', { target_hash: reviewB.target_hash, summary: 'Verify conflict protection' });
-  const appliedA = await api(port, `/assist/v3/turns/${turnA.id}/review/apply`, 'POST', { target_hash: reviewA.target_hash });
-  await api(port, `/assist/v3/turns/${turnB.id}/review/apply`, 'POST', { target_hash: reviewB.target_hash }, 409, 'review_target_dirty');
-  await api(port, `/assist/v3/turns/${turnA.id}/review/rollback`, 'POST', { target_hash: appliedA.worktree.applied_target_hash });
+  await api(port, `/assist/v3/turns/${turnA.id}/review/apply`, 'POST', { target_hash: reviewA.target_hash });
+  await api(port, `/assist/v3/turns/${turnB.id}/review/apply`, 'POST', { target_hash: reviewB.target_hash }, 409, 'review_base_changed');
   await api(port, `/assist/v3/turns/${turnB.id}/review/rollback`, 'POST', { target_hash: reviewB.target_hash });
+  const restoreSession = await newSession(project.project.id, 'Restore baseline');
+  const restoreTurn = await createTurn(restoreSession.id, { collaboration_mode: 'default', content: 'restore baseline', test_response: { message: 'restore ready', files: [{ path: 'README.md', content: '# Assist lifecycle baseline\n' }] } });
+  await waitTurn(restoreTurn.id, 'completed');
+  const restoreReview = await api(port, `/assist/v3/turns/${restoreTurn.id}/review`);
+  await api(port, `/assist/v3/turns/${restoreTurn.id}/review/apply`, 'POST', { target_hash: restoreReview.target_hash });
   assert.equal(normalize(fs.readFileSync(managedReadme, 'utf8')), '# Assist lifecycle baseline\n');
 
   fs.appendFileSync(managedReadme, 'dirty baseline\n');
-  const dirty = await createTurn(sessionA.id, { mode: 'agent', content: 'must reject dirty baseline', test_response: { message: 'not reached' } });
+  const dirty = await createTurn(sessionA.id, { collaboration_mode: 'default', content: 'must reject dirty baseline', test_response: { message: 'not reached' } });
   const dirtyFailed = await waitTurn(dirty.id, 'failed');
   assert.equal(dirtyFailed.error_code, 'worktree_dirty_baseline');
   assert.equal(dirtyFailed.worktree, null);
   fs.writeFileSync(managedReadme, managedBaseline);
 
-  const restarting = await createTurn(sessionA.id, { mode: 'agent', content: 'survive service restart safely', test_response: { message: 'must be interrupted', delay_ms: 2000 } });
+  const restarting = await createTurn(sessionA.id, { collaboration_mode: 'default', content: 'survive service restart safely', test_response: { message: 'must be interrupted', delay_ms: 2000 } });
   const runningBeforeRestart = await waitTurn(restarting.id, 'running');
   assert.ok(runningBeforeRestart.worktree?.id);
   await server.stop();

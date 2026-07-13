@@ -21,7 +21,9 @@ const coreModels = [
   'AssistMessage', 'AssistStreamEvent', 'UIActionIntent', 'ChangeProposal',
   'FileChangeRecord', 'NodeWorkspaceData', 'WebhookDelivery', 'TestTask',
   'ProjectIntake', 'ProjectBrief', 'AssistTurn', 'Attachment', 'Worktree',
-  'RuntimeApproval', 'TerminalSession', 'ConfigRevision', 'ImportJob'
+  'RuntimeApproval', 'TerminalSession', 'ConfigRevision', 'ImportJob',
+  'AssistConfiguration', 'AssistChangeBatch', 'AssistCheckpoint', 'AssistOperation',
+  'RuntimeUserInput', 'HostBridgeDevice'
 ];
 for (const model of coreModels) assert.ok(schema.includes(`model ${model}`), `schema contains ${model}`);
 for (const mapped of ['users', 'projects', 'context_packs', 'node_runs', 'trace_events', 'assets', 'code_changes', 'tool_definitions']) assert.ok(schema.includes(`@@map("${mapped}")`), `schema maps ${mapped}`);
@@ -30,6 +32,7 @@ assert.equal(new Set(declaredModels).size, declaredModels.length, 'schema model 
 assert.equal((schema.match(/\{/g) || []).length, (schema.match(/\}/g) || []).length, 'schema braces are balanced');
 for (const mapped of ['setup_states', 'github_app_configs', 'github_installations', 'repository_bindings', 'assist_messages', 'assist_events', 'ui_action_intents', 'file_changes', 'webhook_deliveries']) assert.ok(schema.includes(`@@map("${mapped}")`), `schema maps V1.2 collection ${mapped}`);
 for (const mapped of ['project_intakes', 'project_briefs', 'assist_turns', 'attachments', 'worktrees', 'runtime_approvals', 'terminal_sessions', 'config_revisions', 'import_jobs']) assert.ok(schema.includes(`@@map("${mapped}")`), `schema maps V1.3 collection ${mapped}`);
+for (const mapped of ['assist_configurations', 'assist_change_batches', 'assist_checkpoints', 'assist_operations', 'runtime_user_inputs', 'host_bridge_devices']) assert.ok(schema.includes(`@@map("${mapped}")`), `schema maps V1.5 collection ${mapped}`);
 assert.match(schema, /model FileChangeRecord[\s\S]*?diff\s+Json[\s\S]*?createdByUserId/, 'file change schema keeps diff and actor');
 assert.match(schema, /model CodexProfile[\s\S]*?baseUrl\s+String\?[\s\S]*?wireApi\s+String[\s\S]*?requiresOpenaiAuth\s+Boolean[\s\S]*?ccSwitchProviderId/, 'Codex profile schema keeps third-party endpoint and cc-switch binding');
 assert.match(schema, /model CodexProfile[\s\S]*?discoverySource\s+Json\?[\s\S]*?credentialConfigured\s+Boolean/, 'Codex profile schema keeps sanitized discovery provenance');
@@ -42,4 +45,7 @@ assert.match(schema, /model Worktree[\s\S]*?path\s+String[\s\S]*?targetHash\s+St
 assert.match(schema, /model TerminalSession[\s\S]*?reconnectTokenHash\s+String[\s\S]*?artifactFileRefId\s+String\?/, 'terminal schema matches PTY recovery and artifact records');
 assert.match(schema, /model ConfigRevision[\s\S]*?patch\s+Json[\s\S]*?reconciliation\s+Json/, 'config revision schema matches reconciliation runtime');
 assert.match(schema, /model ImportJob[\s\S]*?kind\s+String[\s\S]*?managedRepoPath\s+String\?/, 'import job schema matches idempotent operation runtime');
+assert.match(schema, /model AssistSession[\s\S]*?runtimeProfileId[\s\S]*?activeChangeBatchId[\s\S]*?nativeGoalSnapshot/, 'Assist session schema keeps native affinity, batch, and Goal state');
+assert.match(schema, /model AssistTurn[\s\S]*?collaborationMode[\s\S]*?configurationId[\s\S]*?changeBatchId[\s\S]*?waitingUserInputId/, 'Assist Turn schema keeps V1.5 native runtime fields');
+assert.match(schema, /model AssistOperation[\s\S]*?beforeHash[\s\S]*?inverseOf[\s\S]*?expectedCurrentHash[\s\S]*?forced/, 'operation schema keeps append-only Undo fields');
 console.log(`migration/schema check passed (${coreModels.length} core models)`);

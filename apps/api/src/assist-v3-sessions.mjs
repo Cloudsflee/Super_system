@@ -64,7 +64,16 @@ export async function forkV3Session(sessionId, input = {}) {
     if (fromTurn && fromTurn.session_id !== source.id) throw new HttpError(409, { error: 'assist_fork_turn_scope_mismatch' });
     const scope = resolveScope(state, project, source.scope_type, source.scope_id);
     const forked = makeSession({ actor, project, scope, title: input.title || `${source.title} · Fork`, parentSessionId: source.parent_session_id, viewContext: source.view_context || {} });
-    Object.assign(forked, { forked_from_session_id: source.id, forked_from_turn_id: fromTurn?.id || null, codex_thread_id: input.resume_context === false ? null : source.codex_thread_id || null });
+    const resume = input.resume_context !== false;
+    Object.assign(forked, {
+      forked_from_session_id: source.id, forked_from_turn_id: fromTurn?.id || null,
+      codex_thread_id: resume ? source.codex_thread_id || null : null,
+      legacy_codex_thread_id: resume ? source.legacy_codex_thread_id || null : null,
+      native_thread_generation: resume ? source.native_thread_generation || 2 : 2,
+      runtime_profile_id: resume ? source.runtime_profile_id || null : null,
+      runtime_affinity_key: resume ? source.runtime_affinity_key || null : null,
+      active_change_batch_id: null
+    });
     state.assist_sessions.push(forked);
     addTrace(state, 'assist.session.created', { project_id: project.id, workspace_id: forked.workspace_id, node_id: forked.node_id, target_id: forked.id, summary: `Fork Assist V3 session: ${forked.title}` }, actor.id);
     return forked;

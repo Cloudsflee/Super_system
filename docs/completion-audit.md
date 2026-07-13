@@ -1,83 +1,101 @@
-# V1.4 完成审计报告
+# V1.5 完成审计报告
 
 审计更新：2026-07-13（Asia/Shanghai）
 
 ## 结论
 
-`开发计划v1.4.md` 与 `测试计划v1.4.md` 的默认离线及真实容器完成标准已满足。V1.4 已将生产 Web、API 和 JSON-local 数据放入单一长期 app 容器，并通过 Docker socket 创建短生命周期 Codex sibling containers；宿主开发模式和 V1.3 `.ai-workspace` 保持独立。
+`开发计划v1.5.md` 与 `测试计划v1.5.md` 的实现、默认自动化、容器构建、隔离迁移演练和正式切换门禁均已完成。正式实例已由 `aiws-v14` 切换为 `aiws-v15`，继续使用原 `aiws-data-v14`；state 已从 schema 13 原子迁移到 14，V1.4 容器保持停止，`127.0.0.1:4317` 上的 V1.5 app 为 healthy。
 
-本轮已完成宿主完整门禁、验证镜像完整门禁、隔离 Compose smoke、独立卷备份恢复以及正式 `127.0.0.1:4317` 切换。真实 OpenAI 推理、GitHub 和 cc-switch live 套件仍为显式 opt-in，本报告不把默认 adapter 或版本 smoke 解释为外部服务成功。
+真实 OpenAI/GitHub/cc-switch live 套件和可选 Windows 宿主 Bridge 安装仍由显式 opt-in/probe 决定。本报告只确认原生协议、隔离 fixture、真实容器、Windows 可执行文件和恢复演练，不把 adapter 结果解释为外部服务成功。
 
-Assist 增量已加入同一门禁：每个 Turn 固化 Profile、模型和思考深度；安全克隆常用配置；页面字段修改必须先预览再人工应用；Markdown/GFM 与连续 text delta 使用安全流式渲染。
+## 实现与测试证据
 
-## 交付证据
-
-| 范围 | 实现与测试证据 | 结果 |
+| 范围 | 证据 | 结果 |
 |---|---|---|
-| 版本与数据边界 | 全 workspace `1.4.0`；state schema 保持 `13`；JSON-local；全新固定卷 `aiws-data-v14` | 已验证 |
-| App / Verify 镜像 | Node 24 多阶段 Dockerfile；生产 Web/API；Git、SSH、tar、Python、Docker CLI/Compose；验证镜像含 Chromium 与 Codex `0.144.0` | 已验证 |
-| Runner 镜像 | `aiws-codex-runner:1.4.0-codex-0.144.0`；Git、bash、ripgrep、Python3、native build toolchain | 已验证 |
-| Compose | loopback `4317`、`init`、healthcheck、`unless-stopped`、30 秒停止窗口、固定卷和 Docker socket | 已验证 |
-| 统一 Runner runtime | Device Login、Probe、Assist app-server/exec、NodeRun、Terminal 和 conformance 共用名称、label、资源/安全参数及 mount builder | 已验证 |
-| 生命周期 | timeout、AbortSignal、Terminal stop、Device cancel、API shutdown 显式停止；启动清理同 instance 遗留容器 | 已验证 |
-| volume-subpath | 容器模式只挂载托管 profile/workspace 子目录；宿主开发继续 bind mount；RPC cwd 为 `/workspace` | 已验证 |
-| 自定义 Provider 凭据 | 托管 TOML 只保存 `env_key`，API Key 经环境继承；`requires_openai_auth` 导入配置经 unit 与真实脱敏 Probe 验证可发送 Bearer header | 已验证 |
-| Deployment / Health | Setup 前可访问的脱敏 deployment；health 区分数据可写、Docker 与 degraded Provider，不返回 state/socket/卷路径 | 已验证 |
-| 宿主只读导入 | Codex、cc-switch 自动只读挂载；可选 projects root；相对路径、symlink、realpath、前后 hash 复查 | 已验证 |
-| Web | Setup、Project onboarding、Settings 展示部署能力；无导入根时隐藏宿主路径入口；容器模式禁用 Host Profile | 已验证 |
-| Assist 配置与页面动作 | 逐 Turn `profile/model/reasoning` 快照；受限配置克隆；surface 字段白名单；人工应用页面草稿；Markdown/GFM 与 delta 合并 | 已验证 |
-| 运维 | PowerShell/POSIX `up/down/logs/status/verify/backup/restore/reset`；reset 仅删除固定卷且要求确认 | 已验证 |
+| 版本与部署 | 全 workspace `1.5.0`；Compose `aiws-v15`；app/Runner 固定标签；Node 24；Codex `0.144.0` | 通过 |
+| schema 14 | 六个新集合、13→14/12→14 幂等迁移、临时文件/fsync/checksum/atomic rename、失败注入恢复 | 通过 |
+| 历史兼容 | 旧 Profile 配置转为无 Secret configuration；历史 Turn/thread/worktree/UI action 保留且不伪造 Undo | 通过 |
+| 原生 Assist | app-server-only；`default | plan`；workspaceWrite/readOnly；用户消息与 application `additionalContext` 分离 | 通过 |
+| 模型与配置 | `model/list` 原始目录和任意 reasoning effort；自定义 Endpoint 保留已验证组合；配置 CRUD/affinity | 通过 |
+| Goal 与交互 | `thread/goal/set|get|clear`；串行 coordinator；原生 Plan/tool/diff/reasoning/request-user-input；Secret 回答不落盘 | 通过 |
+| change batch | session worktree、Turn/CLI checkpoint、单写锁、累计 Diff、Apply/Rollback 后关闭并创建新批次 | 通过 |
+| 网页操作账本 | `aiws_page` 白名单 dynamic tools、risk approval、SSE claim/commit、canonical hash、normal/conflict/forced Undo | 通过 |
+| Desktop UI | 无 Ask/Agent/CLI 模式栏；原始 model/reasoning；单次 Plan；Goal/Activity/问题/回执；拖拽/键盘/小屏 | 通过 |
+| Linux CLI | Runner、session model/reasoning、change batch、checkpoint/锁/Review、取消与退出清理 | 通过 |
+| Windows Bridge | Go 自包含 exe、DPAPI CurrentUser、ConPTY、loopback WebSocket、配对、分块 bundle、双向 workspace | 通过 |
+| Bundle 安全 | verify、`fsck --strict`、base/ref/path/size/object/case/symlink/submodule 拒绝 | 通过 |
+| 运维 | PowerShell/POSIX V1.5 镜像、事务快照、严格归档 create/validate、恢复 hash 复核、Bridge 管理命令 | 通过 |
 
-## 自动化门禁
+## 自动化与构建门禁
 
-2026-07-13 在最终工作树上执行：
-
-| 命令 / 门禁 | 结果 |
+| 门禁 | 最终结果 |
 |---|---|
-| `corepack pnpm verify` | 退出码 0；lint 231 个模块、typecheck、unit、20 组 integration、44 模型 migration check、Web build、E2E、Playwright、acceptance 全通过 |
-| Web unit | 9 files / 42 tests 全通过 |
-| V1.4 unit / integration | container 参数、Secret、路径和生命周期 unit；deployment/import integration 全通过 |
-| Acceptance audit | `V1.4 acceptance audit passed (75 implementation checks)` |
-| `docker compose config --quiet` | 退出码 0 |
-| Production target | `aiws-app:1.4.0` 构建成功，`node-pty`、Docker/Compose、Git/SSH/tar/Python 可用 |
-| Runner target | 固定输出 `codex-cli 0.144.0` |
-| Verify target | `aiws-verify:1.4.0` 构建成功；容器内 `corepack pnpm verify` 退出码 0 |
-| 独立卷恢复 | seed → backup → 删除测试卷 → validate → restore 后内容摘要一致 |
+| `corepack pnpm verify` | 退出码 0；lint、typecheck、unit、22 组 integration、50 模型 schema check、Web build、smoke、Playwright、acceptance 全通过 |
+| Web tests | 10 files / 48 tests 全通过；包含 V1.5 Plan、Goal、原生问题、Undo 冲突、Activity、SSE replay、runtime focus 与 resize |
+| V1.5 unit | core/migration/context/model/Goal/input、operation ledger、change batch/Bridge 全通过 |
+| V1.5 integration | native Assist 全流程与真实 WebSocket Host Bridge round-trip 全通过 |
+| Acceptance | `V1.5 acceptance audit passed (73 implementation checks)` |
+| Compose | `docker compose config --quiet` 退出码 0；loopback、卷、安全参数与镜像展开值正确 |
+| Production | `aiws-app:1.5.0` 构建成功；native `node-pty` 使用镜像自带 Node headers，不依赖在线 header 下载 |
+| Runner | `aiws-codex-runner:1.5.0-codex-0.144.0` 输出 `codex-cli 0.144.0` |
+| Verify image | `aiws-verify:1.5.0` 内再次执行完整 `corepack pnpm verify`，退出码 0 |
+| Bridge export | Docker cross-build 导出约 6.46 MB Windows exe；运行输出 `aiws-windows-bridge 1.5.0 protocol 1` |
 
-## 隔离真实容器 Smoke
+首次验证镜像运行曾发现 Linux 容器不能直接执行无 executable bit 的 `.mjs` Codex fixture；`resolveCodexInvocation` 已改为 Windows/Linux 都经当前 Node 启动绝对 JS fixture，宿主专项测试和验证镜像完整门禁随后均通过。
 
-使用唯一 Compose project、随机 loopback 端口和专用测试卷运行最终镜像，结果如下：
+## 隔离真实容器与恢复演练
 
-- UI 返回 200；health 为 `ok`；deployment 为 `container/docker_volume`，Docker ready。
-- sibling Runner 返回 `codex-cli 0.144.0`，使用 volume-subpath，结束后 managed Runner 为 0。
-- app restart 后 Owner、state 和卷内 sentinel 保留。
-- deployment 响应未出现卷名或 socket 路径。
-- 测试结束后专用容器、网络和卷均已清理，没有触碰生产卷或 V1.3 数据。
-- 正式 `4317` 页面在 `1440x900` 与 `390x844` 视口检查 Assist、Composer 和配置区，边界与横向溢出检查均通过。
+使用唯一 Compose project、随机 loopback 端口和专用卷完成以下流程，结束后容器、网络、卷和临时目录均已清理：
 
-## 正式切换验收
+1. seed schema 13 → 全卷备份 → V1.5 Compose start → schema 14/六集合/migration manifest 校验。
+2. app restart 前后 state SHA-256 一致。
+3. Runner 实际 mount 仅为 `/codex-home` 与 `/workspace`。
+4. 清空临时卷并恢复 schema 13 归档，恢复后 SHA-256 与 seed 完全一致。
+5. `aiws-app:1.4.0` 在恢复副本上启动至 healthy。
 
-切换前确认 `aiws-data-v14` 不存在，并只停止了仓库对应的旧 Vite `4317` 与 API `4318` 进程。随后通过 `scripts/aiws.ps1 up` 创建新卷并启动正式服务。
+Host Bridge integration 另覆盖配对、凭据 verifier、协议版本、断线、terminal stream、workspace 双向分块、统一写锁/Review，以及恶意 Git bundle/path/symlink/submodule/case collision 拒绝。
+
+## 正式迁移与备份证据
+
+### 切换前
+
+| 项目 | 值 |
+|---|---|
+| V1.4 app | `aiws-v14-app-1` healthy；旧 app image `sha256:4a2b9e9ecee02e113b4ba9b15c791279fceea06835c59694d2e57108487417dc` |
+| V1.4 Runner | `sha256:dc0871c2f1cbcdf2f07ebb0518f364a18fa7691444c58154dcefb2df9e42abde`；遗留 managed Runner 0 |
+| state | schema 13；128,918 bytes；SHA-256 `39e3f47920d4848d83faf9492730d9dab03808de7b516ee145734ff7eb33ff83` |
+| canonical hash | `58b29d41bd0626317a1a18b75d6f84fa081f83505f9f3bf115fbcc3049af129c` |
+| 历史 | Assist sessions 2、Turns 6、worktrees 0、UI action intents 0 |
+
+内部迁移 manifest `state-schema13-2026-07-13T14-57-38-641Z.manifest.json` 状态为 `committed`；其 original SHA/canonical hash 与上表完全一致，migrated canonical hash 为 `b9baac94c709019837b2333f7001168ae5715634acc6e0a8fc01fb61f1e5d387`。
+
+### 回滚归档
+
+- 原始全卷归档 SHA-256：`3aef3b7acfa5d2e5c7f27610bd806e17cf4a93fee0e5825baf81980d79e3111e`，原样保留审计。
+- 原始归档含 Codex `tmp/arg0` 的 4 个绝对 symlink，严格恢复器正确拒绝。备份器已改为创建时排除 `codex-homes/*/tmp`，并支持仅指向归档根内的相对 symlink。
+- 从原始归档生成的安全归档 `aiws-v14-before-v15-20260713-225722350.safe.tar.gz` SHA-256 为 `3fde334c2c8f82ae01a2004478ef3a444dd416a5722d65366f2227f4bc1852f8`；其中 schema 13 state 仍为 128,918 bytes 且 SHA-256 完全一致。
+- 安全归档已恢复到独立卷，并由 V1.4 镜像启动至 healthy。
+- 迁移后全卷备份 SHA-256：`042501adcf2b84e6ec07b4646b12a1121ece7e5e707fd540153ef37880076674`，已通过新版严格 validator。
+
+## 正式 V1.5 运行态
 
 | 项目 | 最终证据 |
 |---|---|
-| 服务 | `http://127.0.0.1:4317` UI 200，app healthy，Compose project 仅 1 个长期容器 |
-| Deployment | container、docker_volume、socket ready；Codex/cc-switch import ready；projects root=false |
-| 镜像 | app `sha256:3962444eee58a8dadd3ad4eb963faea3c8929eabd666f20c3b7de0563dd0326c`；Runner `sha256:943afb2004dce6a0c07757fb84c2d9bff35794c86bd750bac4ad4a840399c7d0` |
-| Runner | 正式 app 经 socket 启动 sibling Runner，版本 `0.144.0`，退出后遗留数 0 |
-| 持久化 | 完成启动规范化后再次 restart，Owner 与 state SHA-256 保持一致 |
-| 容器策略 | loopback、`init=true`、`unless-stopped`、`cap-drop=ALL`、`no-new-privileges`、只读宿主导入均经 inspect 验证 |
-| V1.3 数据 | `.ai-workspace` 共 1,833 个文件、116,964,697 bytes；切换前后包含路径、内容和 mtime 的聚合摘要一致 |
-| 本机导入 | Codex config/auth 内容与 mtime 一致；cc-switch mount 为只读，受控 AIWS restart 窗口内 DB 长度、mtime 与 SHA-256 一致 |
+| 服务 | `aiws-v15-app-1` healthy；`http://127.0.0.1:4317/api/health` 为 `ok`；V1.4 容器为 exited |
+| 镜像 | app `sha256:f0dc55415797b3ebb0eecf294c189ca731dffba2d87a7231a5ba8b909b8ed6fd`；Runner `sha256:f815fa666d213efca014a5e3b064619b07a0052c1a4677570899b65ef5ffac38` |
+| state | schema 14；129,455 bytes；SHA-256 `6369ccdfab99f2890ae3784b01512125028d91d38a407934cf736da00fab3ffe` |
+| 历史保持 | Assist sessions 2、Turns 6；六个新集合存在；旧记录计数未减少 |
+| 持久化 | 使用最终 production image recreate 后再 restart，state SHA-256 保持一致 |
+| 隐私 | `/system/deployment` 不包含卷名、宿主路径、`CODEX_HOME` 或 Docker socket |
+| 清理 | managed Runner 0；正式卷仍为原 `aiws-data-v14`；V1.3/V1.4 宿主资料未删除或改写 |
 
-cc-switch 桌面程序在较长观察窗口内会自行写入其已打开的 SQLite DB；这与 AIWS 无关。验收使用 Docker inspect 的 `RW=false`、隔离 fixture 前后摘要以及受控 AIWS restart 窗口共同确认 AIWS 未写宿主来源。
+## Live 与可选能力边界
 
-## Live 验收边界
-
-| 套件 | 本轮状态 |
+| 套件/能力 | 状态 |
 |---|---|
-| `test:live:codex` | 未启用；未进行真实 OpenAI/第三方推理 |
-| `test:live:github` | 未启用；未访问或创建真实验收仓库 |
-| `test:live:cc-switch` | 未启用；仅验证只读发现、固定 Runner 和隔离 conformance |
+| `test:live:codex` | 未启用；真实推理由 Setup/Profile probe 决定 |
+| `test:live:github` | 未启用；未创建真实远端 PR |
+| `test:live:cc-switch` | 未启用；默认测试只验证只读发现与隔离 conformance |
+| Windows Bridge 实机安装 | 可选，未在本机持久安装；cross-build、exe version、DPAPI/ConPTY 代码与协议集成已验证 |
 
-Vite 对大 chunk 的提示仍是非阻断构建提示，不影响本轮容器化验收。
+Vite 对大 chunk 的提示仍为非阻断构建提示，不影响本轮验收。

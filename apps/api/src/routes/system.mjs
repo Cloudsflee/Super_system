@@ -4,6 +4,7 @@ import { addTrace, mutate, owner, readState } from '../state.mjs';
 import { createLocalOwner, now, pick } from '../../../../packages/shared/index.mjs';
 import { inspectCodexRuntimeLive } from '../codex-runtime-status.mjs';
 import { dataDirectoryReady, deploymentStatus } from '../deployment-status.mjs';
+import { hostBridgeCapability } from '../host-bridge-service.mjs';
 
 export const systemRoutes = [
   makeRoute('GET', '/health', async ({ res }) => {
@@ -25,7 +26,13 @@ export const systemRoutes = [
   }),
   makeRoute('GET', '/system/deployment', async ({ res }) => {
     const runtime = inspectCodexRuntimeLive();
-    return send(res, 200, deploymentStatus({ dockerReady: runtime.docker.ok }));
+    const deployment = deploymentStatus({ dockerReady: runtime.docker.ok });
+    deployment.capabilities = {
+      native_assist: { available: runtime.compatible === true || runtime.host?.compatible === true || runtime.docker?.compatible === true, transport: 'app-server' },
+      linux_cli: { available: runtime.docker.ok && runtime.image.ready, runtime: 'linux_container' },
+      windows_cli: await hostBridgeCapability()
+    };
+    return send(res, 200, deployment);
   }),
   makeRoute('GET', '/account/me', async ({ res }) => {
     const state = await readState();

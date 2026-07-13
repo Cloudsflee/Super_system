@@ -8,7 +8,12 @@ export {
 } from './assist-v3-turns.mjs';
 export { streamV3Events } from './assist-v3-events.mjs';
 export { recordV3PageActionResult } from './assist-v3-actions.mjs';
-export { saveAssistConfiguration } from './assist-v3-configurations.mjs';
+export { deleteAssistConfiguration, getAssistConfiguration, listAssistConfigurations, saveAssistConfiguration, updateAssistConfiguration } from './assist-v3-configurations.mjs';
+export { listAssistModels } from './assist-models.mjs';
+export { clearAssistGoal, getAssistGoal, setAssistGoal } from './assist-goals.mjs';
+export { respondToAssistUserInput } from './assist-user-input.mjs';
+export { claimAssistOperation, confirmAssistOperation, listAssistOperations, submitAssistOperationResult, undoAssistOperation } from './assist-operations.mjs';
+export { applyChangeBatch, getChangeBatchReview, rollbackChangeBatch } from './assist-change-batches.mjs';
 export {
   addV3ReviewComment, applyV3Review, getV3Review, markV3ReviewViewed,
   requestV3ReviewChanges, rollbackV3Review

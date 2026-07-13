@@ -240,6 +240,13 @@ model AssistSession {
   parentSessionId   String?  @map("parent_session_id")
   agentSessionId    String?  @map("agent_session_id")
   codexThreadId     String?  @map("codex_thread_id")
+  legacyCodexThreadId String? @map("legacy_codex_thread_id")
+  nativeThreadGeneration Int? @map("native_thread_generation")
+  runtimeProfileId  String?  @map("runtime_profile_id")
+  runtimeAffinityKey String? @map("runtime_affinity_key")
+  activeChangeBatchId String? @map("active_change_batch_id")
+  nativeGoalSnapshot Json?    @map("native_goal_snapshot")
+  nativeGoalSyncedAt  DateTime? @map("native_goal_synced_at")
   viewContext       Json     @map("view_context")
   status            String
   error             String?
@@ -468,6 +475,11 @@ model CodexProfile {
   ccSwitchDiscoveryRevision String? @map("cc_switch_discovery_revision")
   discoverySource Json? @map("discovery_source")
   credentialConfigured Boolean @default(false) @map("credential_configured")
+  assistConfiguration Boolean @default(false) @map("assist_configuration")
+  baseProfileId String? @map("base_profile_id")
+  modelCatalog Json? @map("model_catalog")
+  modelCatalogUpdatedAt DateTime? @map("model_catalog_updated_at")
+  modelCatalogRequired Boolean @default(false) @map("model_catalog_required")
   status       String
   isActive     Boolean  @map("is_active")
   createdAt    DateTime @map("created_at")
@@ -652,6 +664,7 @@ model AssistTurn {
   sessionId           String    @map("session_id")
   projectId           String    @map("project_id")
   mode                String
+  collaborationMode   String?   @map("collaboration_mode")
   status              String
   workspaceId         String?   @map("workspace_id")
   nodeId              String?   @map("node_id")
@@ -661,14 +674,22 @@ model AssistTurn {
   prompt              String
   outputText          String    @map("output_text")
   profileId           String?   @map("profile_id")
+  configurationId     String?   @map("configuration_id")
+  model               String?
+  reasoning           String?
   codexThreadId       String?   @map("codex_thread_id")
   worktreeId          String?   @map("worktree_id")
+  changeBatchId       String?   @map("change_batch_id")
+  viewContext         Json?     @map("view_context")
+  codeAccess          String?   @map("code_access")
+  codeReadOnlyReason  String?   @map("code_read_only_reason")
   contextPackId       String?   @map("context_pack_id")
   attachmentIds       Json      @map("attachment_ids")
   usage               Json?
   reviewStatus        String    @map("review_status")
   review              Json
   waitingApprovalId   String?   @map("waiting_approval_id")
+  waitingUserInputId  String?   @map("waiting_user_input_id")
   errorCode           String?   @map("error_code")
   startedAt           DateTime? @map("started_at")
   completedAt         DateTime? @map("completed_at")
@@ -765,6 +786,10 @@ model TerminalSession {
   turnId            String?   @map("turn_id")
   worktreeId        String    @map("worktree_id")
   profileId         String?   @map("profile_id")
+  changeBatchId     String?   @map("change_batch_id")
+  hostBridgeDeviceId String?  @map("host_bridge_device_id")
+  model             String?
+  reasoning         String?
   runtime           String
   status            String
   cols              Int       @default(80)
@@ -833,4 +858,148 @@ model ImportJob {
   @@unique([projectId, ownerId, kind, operationKey])
   @@index([projectId, status])
   @@map("import_jobs")
+}
+
+model AssistConfiguration {
+  id              String   @id
+  name            String
+  baseProfileId   String   @map("base_profile_id")
+  model           String?
+  reasoning       String?
+  legacyProfileId String?  @map("legacy_profile_id")
+  migratedFrom    String?  @map("migrated_from")
+  createdByUserId String?  @map("created_by_user_id")
+  createdAt       DateTime @map("created_at")
+  updatedAt       DateTime @map("updated_at")
+
+  @@index([baseProfileId])
+  @@map("assist_configurations")
+}
+
+model AssistChangeBatch {
+  id              String    @id
+  sessionId       String    @map("session_id")
+  projectId       String    @map("project_id")
+  worktreeId      String    @map("worktree_id")
+  baseCommit      String    @map("base_commit")
+  headCommit      String    @map("head_commit")
+  targetHash      String?   @map("target_hash")
+  appliedProjectCommit String? @map("applied_project_commit")
+  status          String
+  writeLock       Json?     @map("write_lock")
+  appliedAt       DateTime? @map("applied_at")
+  rolledBackAt    DateTime? @map("rolled_back_at")
+  closedAt        DateTime? @map("closed_at")
+  createdByUserId String?   @map("created_by_user_id")
+  createdAt       DateTime  @map("created_at")
+  updatedAt       DateTime  @map("updated_at")
+
+  @@index([sessionId, status])
+  @@index([projectId, status])
+  @@map("assist_change_batches")
+}
+
+model AssistCheckpoint {
+  id            String   @id
+  batchId       String   @map("batch_id")
+  sessionId     String   @map("session_id")
+  turnId        String?  @map("turn_id")
+  terminalId    String?  @map("terminal_id")
+  source        String
+  sourceId      String?  @map("source_id")
+  phase         String
+  beforeCommit  String?  @map("before_commit")
+  afterCommit   String?  @map("after_commit")
+  targetHash    String?  @map("target_hash")
+  changedFiles  Json     @map("changed_files")
+  status        String
+  createdAt     DateTime @map("created_at")
+
+  @@index([batchId, createdAt])
+  @@map("assist_checkpoints")
+}
+
+model AssistOperation {
+  id              String    @id
+  sessionId       String    @map("session_id")
+  turnId          String    @map("turn_id")
+  toolCallId      String    @map("tool_call_id")
+  tool            String
+  route           String
+  surfaceId       String?   @map("surface_id")
+  surfaceRevision String    @map("surface_revision")
+  targetId        String    @map("target_id")
+  browserInstanceId String?  @map("browser_instance_id")
+  requestedValue  Json?      @map("requested_value")
+  allowedValues   Json?      @map("allowed_values")
+  beforeValue     Json?     @map("before_value")
+  afterValue      Json?     @map("after_value")
+  currentValue    Json?     @map("current_value")
+  beforeHash      String?   @map("before_hash")
+  afterHash       String?   @map("after_hash")
+  currentHash     String?   @map("current_hash")
+  status          String
+  risk            String
+  revision        Int       @default(1)
+  inverseOf       String?   @map("inverse_of")
+  expectedCurrentHash String? @map("expected_current_hash")
+  forced          Boolean   @default(false)
+  conflict        Json?
+  claimedBy       String?   @map("claimed_by")
+  claimedAt       DateTime? @map("claimed_at")
+  claimExpiresAt  DateTime? @map("claim_expires_at")
+  approvedAt      DateTime? @map("approved_at")
+  committedAt     DateTime? @map("committed_at")
+  failedAt        DateTime? @map("failed_at")
+  failureCode     String?   @map("failure_code")
+  undoneBy        String?   @map("undone_by")
+  undoneAt        DateTime? @map("undone_at")
+  failedAt        DateTime? @map("failed_at")
+  createdAt       DateTime  @map("created_at")
+  updatedAt       DateTime  @map("updated_at")
+
+  @@index([sessionId, createdAt])
+  @@index([turnId, status])
+  @@map("assist_operations")
+}
+
+model RuntimeUserInput {
+  id                 String    @id
+  sessionId          String    @map("session_id")
+  turnId             String    @map("turn_id")
+  itemId             String    @map("item_id")
+  externalRequestId  String?   @map("external_request_id")
+  questions          Json
+  status             String
+  containsSecret     Boolean   @default(false) @map("contains_secret")
+  autoResolutionMs   Int?      @map("auto_resolution_ms")
+  expiresAt          DateTime? @map("expires_at")
+  respondedAt        DateTime? @map("responded_at")
+  cancelledAt        DateTime? @map("cancelled_at")
+  cancelledReason    String?   @map("cancelled_reason")
+  createdAt          DateTime  @map("created_at")
+  updatedAt          DateTime  @map("updated_at")
+
+  @@unique([turnId, itemId])
+  @@index([sessionId, status])
+  @@map("runtime_user_inputs")
+}
+
+model HostBridgeDevice {
+  id                  String    @id
+  name                String
+  status              String
+  protocolVersion     Int       @map("protocol_version")
+  bridgeVersion       String?   @map("bridge_version")
+  credentialVerifier  String    @map("credential_verifier")
+  vaultRef             String?   @map("vault_ref")
+  capabilities         Json
+  lastSeenAt           DateTime? @map("last_seen_at")
+  pairedAt             DateTime  @map("paired_at")
+  revokedAt            DateTime? @map("revoked_at")
+  createdAt            DateTime  @map("created_at")
+  updatedAt            DateTime  @map("updated_at")
+
+  @@index([status, lastSeenAt])
+  @@map("host_bridge_devices")
 }

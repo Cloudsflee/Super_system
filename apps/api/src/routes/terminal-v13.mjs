@@ -1,9 +1,10 @@
 import { makeRoute, send } from '../http.mjs';
 import { createTerminalSession, getTerminalSession, listTerminalSessions, stopTerminalSession, terminalCapability } from '../terminal-service.mjs';
 import { applyTerminalReview, commentTerminalReview, getTerminalReview, markTerminalReviewViewed, requestTerminalChanges, rollbackTerminalReview } from '../terminal-review-service.mjs';
+import { hostBridgeCapability } from '../host-bridge-service.mjs';
 
 export const terminalV13Routes = [
-  makeRoute('GET', '/assist/v3/terminal-capabilities', async ({ res }) => send(res, 200, terminalCapability())),
+  makeRoute('GET', '/assist/v3/terminal-capabilities', async ({ res }) => { const capability = terminalCapability(); capability.windows_bridge = await hostBridgeCapability(); return send(res, 200, capability); }),
   makeRoute('GET', '/assist/v3/terminal-sessions', async ({ res, query }) => send(res, 200, await listTerminalSessions({ projectId: query.project_id, assistSessionId: query.assist_session_id }))),
   makeRoute('POST', '/assist/v3/terminal-sessions', async ({ res, body }) => send(res, 201, await createTerminalSession(body))),
   makeRoute('GET', '/assist/v3/terminal-sessions/:id', async ({ res, params }) => send(res, 200, await getTerminalSession(params.id))),

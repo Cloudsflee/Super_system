@@ -11,8 +11,9 @@ export function resolveCodexInvocation({
 } = {}) {
   const value = String(requested || '').trim();
   if (!value) return null;
+  const scriptAbsolute = platform === 'win32' ? path.win32.isAbsolute(value) : path.posix.isAbsolute(value);
+  if (/\.(?:mjs|js)$/i.test(value) && scriptAbsolute && exists(value)) return { command: nodeExecutable, args: [value], source: `node:${value}` };
   if (platform !== 'win32') return { command: value, args: [], source: value };
-  if (/\.js$/i.test(value) && path.win32.isAbsolute(value) && exists(value)) return { command: nodeExecutable, args: [value], source: `node:${value}` };
   if (/\.exe$/i.test(value)) return { command: value, args: [], source: value };
 
   const windowsPath = path.win32;
