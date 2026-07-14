@@ -1,18 +1,20 @@
 [CmdletBinding()]
 param(
-  [Parameter(Position = 0)][ValidateSet('up', 'down', 'logs', 'status', 'verify', 'backup', 'restore', 'reset', 'bridge')][string]$Command = 'status',
+  [Parameter(Position = 0)][ValidateSet('up', 'down', 'logs', 'status', 'verify', 'backup', 'restore', 'reset', 'purge-legacy', 'bridge')][string]$Command = 'status',
   [Parameter(Position = 1)][string]$Path,
   [string]$ProjectsRoot,
   [string]$CodexHome,
   [string]$CcSwitchRoot,
   [switch]$Confirm,
+  [switch]$DiscardUnmigratable,
   [string]$PairingCode
 )
 
 $ErrorActionPreference = 'Stop'
 $Root = Split-Path -Parent $PSScriptRoot
 $ComposeFile = Join-Path $Root 'compose.yml'
-$Volume = 'aiws-data-v14'
+$Volume = 'aiws-data-v16'
+$SourceVolume = 'aiws-data-v14'
 $AppImage = if ($env:AIWS_APP_IMAGE) { $env:AIWS_APP_IMAGE } else { 'aiws-app:1.6.0' }
 $RunnerImage = if ($env:AIWS_RUNNER_IMAGE) { $env:AIWS_RUNNER_IMAGE } else { 'aiws-codex-runner:1.6.0-codex-0.144.0' }
 $Port = if ($env:AIWS_PORT) { [int]$env:AIWS_PORT } else { 4317 }
@@ -33,12 +35,6 @@ function Assert-Docker {
   if ($LASTEXITCODE -ne 0) { throw 'docker_engine_unavailable' }
   & docker compose version *> $null
   if ($LASTEXITCODE -ne 0) { throw 'docker_compose_required' }
-}
-
-function Assert-PortFree {
-  $existing = & docker compose -f $ComposeFile ps --status running -q app 2>$null
-  if ($existing) { return }
-  if (Get-NetTCPConnection -State Listen -LocalPort $Port -ErrorAction SilentlyContinue) { throw "port_${Port}_in_use" }
 }
 
 function Resolve-Import([string]$Explicit, [string]$EnvironmentValue, [string]$Fallback) {
@@ -77,75 +73,45 @@ function Build-Images {
   if ($LASTEXITCODE -ne 0) { throw 'app_image_build_failed' }
 }
 
+function Build-VerifyImage {
+  $verifyImage = 'aiws-verify:1.6.0'
+  $compatible = $false
+  & docker image inspect $verifyImage *> $null
+  if ($LASTEXITCODE -eq 0) {
+    & docker run --rm --entrypoint sh --mount "type=bind,src=$Root,dst=/source,readonly" $verifyImage -c 'test -d /app/node_modules && test -d "$(corepack pnpm store path)" && cmp -s /app/pnpm-lock.yaml /source/pnpm-lock.yaml && test "$(codex --version)" = "codex-cli 0.144.0" && (command -v chromium-browser >/dev/null || command -v chromium >/dev/null)'
+    $compatible = $LASTEXITCODE -eq 0
+  }
+  if (-not $compatible) {
+    & docker build --target verify -t $verifyImage $Root
+    if ($LASTEXITCODE -ne 0) { throw 'verify_image_build_failed' }
+    return
+  }
+  $cacheImage = "aiws-verify-toolchain:$([guid]::NewGuid().ToString('N'))"
+  & docker tag $verifyImage $cacheImage
+  if ($LASTEXITCODE -ne 0) { throw 'verify_toolchain_tag_failed' }
+  try {
+    & docker build -f (Join-Path $Root 'docker\verify-refresh.Dockerfile') --build-arg "VERIFY_BASE_IMAGE=$cacheImage" -t $verifyImage $Root
+    if ($LASTEXITCODE -ne 0) { throw 'verify_image_refresh_failed' }
+  } finally {
+    & docker image rm $cacheImage *> $null
+  }
+}
+
 function Test-VolumeSubpath {
-  & docker volume create $Volume *> $null
-  & docker run --rm --entrypoint sh --mount "type=volume,src=$Volume,dst=/data" $RunnerImage -c 'mkdir -p /data/.aiws-preflight'
-  if ($LASTEXITCODE -ne 0) { throw 'volume_preflight_failed' }
-  & docker run --rm --entrypoint sh --mount "type=volume,src=$Volume,dst=/probe,volume-subpath=.aiws-preflight" $RunnerImage -c 'test -d /probe'
-  $subpathStatus = $LASTEXITCODE
-  & docker run --rm --entrypoint sh --mount "type=volume,src=$Volume,dst=/data" $RunnerImage -c 'rmdir /data/.aiws-preflight' *> $null
-  if ($subpathStatus -ne 0) { throw 'volume_subpath_unsupported' }
-  if ($LASTEXITCODE -ne 0) { throw 'volume_preflight_cleanup_failed' }
+  $preflight = "aiws-v16-preflight-$([guid]::NewGuid().ToString('N'))"
+  & docker volume create --label 'aiws.owner=aiws-v16-release' --label 'aiws.role=preflight' $preflight *> $null
+  if ($LASTEXITCODE -ne 0) { throw 'volume_preflight_create_failed' }
+  try {
+    & docker run --rm --entrypoint sh --mount "type=volume,src=$preflight,dst=/data" $RunnerImage -c 'mkdir -p /data/.aiws-preflight'
+    if ($LASTEXITCODE -ne 0) { throw 'volume_preflight_failed' }
+    & docker run --rm --entrypoint sh --mount "type=volume,src=$preflight,dst=/probe,volume-subpath=.aiws-preflight" $RunnerImage -c 'test -d /probe'
+    if ($LASTEXITCODE -ne 0) { throw 'volume_subpath_unsupported' }
+  } finally {
+    & docker volume rm -f $preflight *> $null
+    if ($LASTEXITCODE -ne 0) { throw 'volume_preflight_cleanup_failed' }
+  }
   & docker run --rm -v /var/run/docker.sock:/var/run/docker.sock $AppImage docker info --format '{{.ServerVersion}}' *> $null
   if ($LASTEXITCODE -ne 0) { throw 'docker_socket_unavailable_to_app' }
-}
-
-function Wait-Healthy {
-  for ($i = 0; $i -lt 60; $i++) {
-    $container = & docker compose -f $ComposeFile ps -q app 2>$null
-    if ($container) {
-      $health = & docker inspect --format '{{if .State.Health}}{{.State.Health.Status}}{{else}}{{.State.Status}}{{end}}' $container 2>$null
-      if ($health -eq 'healthy') { Write-Host "AIWS 已启动：http://127.0.0.1:$Port"; return }
-      if ($health -eq 'unhealthy' -or $health -eq 'exited') { throw "app_$health" }
-    }
-    Start-Sleep -Seconds 2
-  }
-  throw 'app_health_timeout'
-}
-
-function New-V16MigrationSnapshot {
-  $backupRoot = Join-Path $Root '.ai-workspace\backups'
-  New-Item -ItemType Directory -Path $backupRoot -Force | Out-Null
-  $stamp = Get-Date -Format 'yyyyMMdd-HHmmssfff'
-  $archive = Join-Path $backupRoot "aiws-v15-before-v16-$stamp.tar.gz"
-  $runningContainers = @(
-    & docker ps -q --filter 'label=com.docker.compose.project=aiws-v15' --filter 'label=com.docker.compose.service=app'
-    & docker ps -q --filter 'label=com.docker.compose.project=aiws-v16' --filter 'label=com.docker.compose.service=app'
-  ) | Where-Object { $_ } | Select-Object -Unique
-  foreach ($container in $runningContainers) { & docker stop --time 30 $container *> $null; if ($LASTEXITCODE -ne 0) { throw 'existing_app_stop_failed' } }
-  $temporary = ".aiws-v16-$([guid]::NewGuid().ToString('N')).tar.gz"
-  & docker run --rm --mount "type=volume,src=$Volume,dst=/data,readonly" --volume "${backupRoot}:/backup" $AppImage python3 /opt/aiws/backup_archive.py create /data "/backup/$temporary"
-  if ($LASTEXITCODE -ne 0) { throw 'v16_pre_migration_backup_failed' }
-  & docker run --rm --volume "${backupRoot}:/backup:ro" $AppImage python3 /opt/aiws/backup_archive.py validate "/backup/$temporary"
-  if ($LASTEXITCODE -ne 0) { throw 'v16_pre_migration_backup_invalid' }
-  Move-Item -LiteralPath (Join-Path $backupRoot $temporary) -Destination $archive
-  $stateSha = (& docker run --rm --entrypoint sh --mount "type=volume,src=$Volume,dst=/data,readonly" $AppImage -c 'test ! -f /data/data/state.json || sha256sum /data/data/state.json | cut -d" " -f1' | Out-String).Trim()
-  if ($LASTEXITCODE -ne 0) { throw 'v16_state_sha_failed' }
-  $stateCanonicalHash = (& docker run --rm --entrypoint node --mount "type=volume,src=$Volume,dst=/data,readonly" $AppImage --input-type=module -e 'import fs from "node:fs"; import { canonicalStateHash } from "./apps/api/src/state-migration-v15.mjs"; const file="/data/data/state.json"; if(fs.existsSync(file)) console.log(canonicalStateHash(JSON.parse(fs.readFileSync(file,"utf8"))));' | Out-String).Trim()
-  if ($LASTEXITCODE -ne 0) { throw 'v16_state_hash_failed' }
-  $stateFacts = & docker run --rm --entrypoint node --mount "type=volume,src=$Volume,dst=/data,readonly" $AppImage -e 'const fs=require("node:fs"),file="/data/data/state.json"; if(fs.existsSync(file)){const bytes=fs.readFileSync(file),state=JSON.parse(bytes); console.log(JSON.stringify({bytes:bytes.length,schema_version:state.schema_version??null}));}'
-  $manifest = [ordered]@{
-    version = '1.6.0'; created_at = (Get-Date).ToString('o'); source_project = 'aiws-v15'; target_project = 'aiws-v16'
-    archive = (Split-Path -Leaf $archive); archive_sha256 = (Get-FileHash -LiteralPath $archive -Algorithm SHA256).Hash.ToLowerInvariant()
-    state_sha256 = $(if ($stateSha) { $stateSha } else { $null }); state_canonical_hash = $(if ($stateCanonicalHash) { $stateCanonicalHash } else { $null })
-    app_image = (& docker image inspect aiws-app:1.5.0 --format '{{.Id}}' 2>$null); runner_image = (& docker image inspect aiws-codex-runner:1.5.0-codex-0.144.0 --format '{{.Id}}' 2>$null)
-    state_facts = @($stateFacts); stopped_app_containers = @($runningContainers); managed_runners = @(& docker ps -a --filter 'label=aiws.managed=true' --format '{{.ID}}|{{.Image}}|{{.Status}}')
-  }
-  $manifestPath = "$archive.manifest.json"
-  [IO.File]::WriteAllText($manifestPath, ($manifest | ConvertTo-Json -Depth 6), [Text.UTF8Encoding]::new($false))
-  [pscustomobject]@{ Archive = $archive; Manifest = $manifestPath; StateSha = $stateSha; WasRunning = $runningContainers.Count -gt 0 }
-}
-
-function Restore-V16MigrationSnapshot([string]$Archive, [string]$ExpectedStateSha) {
-  $full = (Resolve-Path -LiteralPath $Archive).Path; $parent = Split-Path -Parent $full; $leaf = Split-Path -Leaf $full
-  & docker run --rm --volume "${parent}:/backup:ro" $AppImage python3 /opt/aiws/backup_archive.py validate "/backup/$leaf"
-  if ($LASTEXITCODE -ne 0) { throw 'v16_restore_archive_invalid' }
-  & docker run --rm --entrypoint sh --mount "type=volume,src=$Volume,dst=/data" $AppImage -c 'case "$1" in /data) find /data -mindepth 1 -maxdepth 1 -exec rm -rf -- {} + ;; *) exit 90 ;; esac' sh /data
-  if ($LASTEXITCODE -ne 0) { throw 'v16_restore_clear_failed' }
-  & docker run --rm --volume "${parent}:/backup:ro" --mount "type=volume,src=$Volume,dst=/data" $AppImage python3 /opt/aiws/backup_archive.py extract "/backup/$leaf" /data
-  if ($LASTEXITCODE -ne 0) { throw 'v16_restore_failed' }
-  $restoredSha = (& docker run --rm --entrypoint sh --mount "type=volume,src=$Volume,dst=/data,readonly" $AppImage -c 'test ! -f /data/data/state.json || sha256sum /data/data/state.json | cut -d" " -f1' | Out-String).Trim()
-  if ($LASTEXITCODE -ne 0 -or ($ExpectedStateSha -and $restoredSha -ne $ExpectedStateSha)) { throw 'v16_restore_hash_mismatch' }
 }
 
 function Invoke-Bridge([string]$Action) {
@@ -233,16 +199,21 @@ switch ($Command) {
   'up' {
     Build-Images
     Test-VolumeSubpath
-    $snapshot = New-V16MigrationSnapshot
-    Assert-PortFree
     $override = New-ImportOverride
     try {
-      Invoke-Compose @('up', '-d', '--remove-orphans') $override
-      Wait-Healthy
-    } catch {
-      Invoke-Compose @('stop', 'app')
-      Restore-V16MigrationSnapshot $snapshot.Archive $snapshot.StateSha
-      throw
+      $releaseArgs = @(
+        (Join-Path $Root 'scripts\v16-release.mjs'), 'up',
+        '--compose-file', $ComposeFile,
+        '--source-volume', $SourceVolume,
+        '--target-volume', $Volume,
+        '--app-image', $AppImage,
+        '--runner-image', $RunnerImage,
+        '--port', [string]$Port
+      )
+      if ($override) { $releaseArgs += @('--override', $override) }
+      if ($DiscardUnmigratable) { $releaseArgs += '--discard-unmigratable' }
+      & node @releaseArgs
+      if ($LASTEXITCODE -ne 0) { throw 'v16_release_up_failed' }
     } finally { if ($override) { Remove-Item -LiteralPath $override -Force } }
   }
   'down' { Invoke-Compose @('down', '--remove-orphans'); Write-Host "数据卷 $Volume 已保留。" }
@@ -251,8 +222,7 @@ switch ($Command) {
   'verify' {
     Invoke-Compose @('config', '--quiet')
     Build-Images
-    & docker build --target verify -t aiws-verify:1.6.0 $Root
-    if ($LASTEXITCODE -ne 0) { throw 'verify_image_build_failed' }
+    Build-VerifyImage
     & docker run --rm $RunnerImage --version
     if ($LASTEXITCODE -ne 0) { throw 'runner_version_failed' }
     $bridgeVerify = Join-Path ([IO.Path]::GetTempPath()) 'aiws-bridge-verify'
@@ -273,6 +243,11 @@ switch ($Command) {
     & docker volume rm $Volume
     if ($LASTEXITCODE -ne 0) { throw 'reset_volume_remove_failed' }
     Write-Host "仅数据卷 $Volume 已删除。"
+  }
+  'purge-legacy' {
+    if (-not $Confirm) { throw 'purge_legacy_requires_confirm' }
+    & node (Join-Path $Root 'scripts\v16-release.mjs') purge-legacy --confirm --compose-file $ComposeFile --target-volume $Volume --app-image $AppImage --runner-image $RunnerImage --port ([string]$Port)
+    if ($LASTEXITCODE -ne 0) { throw 'purge_legacy_failed' }
   }
   'bridge' { Invoke-Bridge $Path }
 }

@@ -24,6 +24,28 @@ try {
   });
   assert.equal(migration.migrateState14To15(migrated.state).migrated, false);
 
+  const runnerState = legacyState();
+  runnerState.codex_profiles = [
+    { id: 'official-runner', image: 'aiws-codex-runner:1.5.0-codex-0.144.0', base_url: 'https://official.example/v1', credential_ref: 'vault-official' },
+    { id: 'official-config-runner', config: { image: 'aiws-codex-runner:1.0.0-codex-0.99.0' }, base_url: 'https://config.example/v1' },
+    { id: 'custom-runner', image: 'registry.example/custom-codex:1.5.0', base_url: 'https://custom.example/v1', credential_ref: 'vault-custom' }
+  ];
+  runnerState.integration_statuses = [
+    { key: 'codex_probe', profile_id: 'official-runner', status: 'ready', updated_at: 'old' },
+    { key: 'codex_probe', profile_id: 'official-config-runner', status: 'ready', updated_at: 'old' },
+    { key: 'codex_probe', profile_id: 'custom-runner', status: 'ready', updated_at: 'old' }
+  ];
+  const normalized = migration.migrateState14To15(runnerState, { timestamp: '2026-07-14T00:00:00.000Z' });
+  assert.equal(normalized.state.codex_profiles[0].image, 'aiws-codex-runner:1.6.0-codex-0.144.0');
+  assert.equal(normalized.state.codex_profiles[1].config.image, 'aiws-codex-runner:1.6.0-codex-0.144.0');
+  assert.equal(normalized.state.codex_profiles[2].image, 'registry.example/custom-codex:1.5.0');
+  assert.equal(normalized.state.codex_profiles[2].base_url, 'https://custom.example/v1');
+  assert.equal(normalized.state.codex_profiles[2].credential_ref, 'vault-custom');
+  assert.deepEqual(normalized.normalized_runner_profiles, ['official-config-runner', 'official-runner']);
+  assert.equal(normalized.staled_runner_probes, 2);
+  assert.deepEqual(normalized.state.integration_statuses.map((item) => item.status), ['stale', 'stale', 'ready']);
+  assert.equal(migration.normalizeOfficialRunnerImages(normalized.state).changed, false, 'Runner normalization is idempotent');
+
   const migrationDir = path.join(root, 'migration'), stateFile = path.join(migrationDir, 'state.json');
   fs.mkdirSync(migrationDir, { recursive: true });
   const original = `${JSON.stringify(legacy, null, 2)}\n`; fs.writeFileSync(stateFile, original);

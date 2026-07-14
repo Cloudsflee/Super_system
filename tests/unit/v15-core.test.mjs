@@ -10,14 +10,23 @@ process.env.AIWS_HOME = path.join(root, 'home');
 try {
   const powershellOps = fs.readFileSync(path.join(process.cwd(), 'scripts', 'aiws.ps1'), 'utf8');
   const posixOps = fs.readFileSync(path.join(process.cwd(), 'scripts', 'aiws.sh'), 'utf8');
+  const releaseOps = fs.readFileSync(path.join(process.cwd(), 'scripts', 'v16-release.mjs'), 'utf8');
+  const releaseOrchestrator = fs.readFileSync(path.join(process.cwd(), 'docker', 'release_orchestrator.mjs'), 'utf8');
+  const releaseVolume = fs.readFileSync(path.join(process.cwd(), 'docker', 'release_volume.mjs'), 'utf8');
   const backupTool = fs.readFileSync(path.join(process.cwd(), 'docker', 'backup_archive.py'), 'utf8');
   for (const script of [powershellOps, posixOps]) {
-    assert.ok(script.includes('aiws-app:1.5.0'));
-    assert.ok(script.includes('aiws-codex-runner:1.5.0-codex-0.144.0'));
-    assert.ok(script.includes('state_canonical_hash'));
-    assert.ok(script.includes('v16_restore_hash_mismatch'));
+    assert.ok(script.includes('aiws-app:1.6.0'));
+    assert.ok(script.includes('aiws-codex-runner:1.6.0-codex-0.144.0'));
+    assert.ok(script.includes('aiws-data-v16'));
+    assert.ok(script.includes('v16-release.mjs'));
+    assert.ok(script.includes('pnpm-lock.yaml'));
+    assert.ok(script.includes('codex-cli 0.144.0'));
     assert.ok(script.includes('windows-bridge-export'));
   }
+  assert.ok(releaseOps.includes('runReleaseCli'));
+  assert.ok(releaseVolume.includes('source_changed_after_clone'));
+  assert.ok(releaseOrchestrator.includes('discarded_unmigratable'));
+  assert.ok(releaseVolume.includes('purge_legacy_requires_confirm'));
   for (const boundary of ['def create_archive', 'def sanitize_archive', 'def transient_codex_path', 'archive_symlink_target_outside']) assert.ok(backupTool.includes(boundary));
   const { resolveCodexInvocation } = await import('../../packages/runner-adapters/src/codex-command.mjs');
   assert.deepEqual(resolveCodexInvocation({ requested: '/tmp/fake-codex.mjs', platform: 'linux', exists: () => true, nodeExecutable: '/usr/bin/node' }), { command: '/usr/bin/node', args: ['/tmp/fake-codex.mjs'], source: 'node:/tmp/fake-codex.mjs' });

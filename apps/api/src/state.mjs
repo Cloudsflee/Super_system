@@ -5,7 +5,7 @@ import { createLocalOwner, defaultCodexProfiles, defaultTools, hashString, id, m
 import { ARTIFACT_DIR, ASSIST_DIR, ATTACHMENT_DIR, ATTACHMENT_TEMP_DIR, CODEX_HOME_DIR, DATA_DIR, EXPORT_DIR, PROBE_DIR, STAGING_DIR, STATE_FILE, TRASH_DIR, VAULT_DIR, WORKSPACE_DIR, WORKTREE_DIR, collections } from './config.mjs';
 import { redactKnownSecrets } from './vault.mjs';
 import { codexAuthMatchesProfile, isThirdPartyProvider, normalizeProviderBaseUrl, writeProfileConfig } from './codex-service.mjs';
-import { migrateStateFileToV15, STATE_SCHEMA_VERSION, validateState15 } from './state-migration-v15.mjs';
+import { migrateStateFileToV15, normalizeOfficialRunnerImages, STATE_SCHEMA_VERSION, validateState15 } from './state-migration-v15.mjs';
 
 let lastMigration = null;
 
@@ -21,6 +21,7 @@ export async function ensureRuntime() {
   let changed = false;
   if (state.schema_version !== STATE_SCHEMA_VERSION) throw new Error(`unsupported_state_schema_${state.schema_version}`);
   for (const key of collections) if (!Array.isArray(state[key])) { state[key] = []; changed = true; }
+  if (normalizeOfficialRunnerImages(state, { timestamp: now() }).changed) changed = true;
   if (!state.users.length) { const { user, session } = createLocalOwner(); state.users.push(user); state.sessions.push(session); changed = true; }
   if (!state.tools.length) { state.tools.push(...defaultTools(state.users[0].id)); changed = true; }
   if (!state.codex_profiles.length) { state.codex_profiles.push(...defaultCodexProfiles(state.users[0]?.id)); changed = true; }

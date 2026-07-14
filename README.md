@@ -4,7 +4,7 @@ AI Workspace System V1.6 是一个本地优先、自托管、MCP-first 但不是
 
 当前版本默认采用 **JSON-local 本地持久化**，不依赖外部数据库即可启动；同时保留 Prisma/PostgreSQL、Redis、Worker、CodexRunner、GitHub PR 等后续替换边界。
 
-> **交付状态**：V1.6 源码使用 state schema 15、Compose project `aiws-v16`，继续复用 external `aiws-data-v14`；源码、容器和隔离 schema 14→15 回滚演练均已通过。正式数据切换仍由 V1.6 启动脚本先生成新快照再执行。V1.5 已验证基线证据保留在 [`docs/completion-audit.md`](docs/completion-audit.md)。
+> **交付状态**：V1.6 使用 state schema 15、Compose project `aiws-v16` 和独立 external volume `aiws-data-v16`。首次 `up` 从只读 `aiws-data-v14` 经带标签临时迁移卷克隆和验收；重复 `up` 不覆盖非空目标卷。正式切换与清理证据见 [`docs/v1.6-cutover.md`](docs/v1.6-cutover.md) 和 [`docs/completion-audit.md`](docs/completion-audit.md)。
 
 ## 1. 项目能力概览
 
@@ -37,11 +37,11 @@ AI Workspace System V1.6 是一个本地优先、自托管、MCP-first 但不是
 
 Node.js、pnpm、Git、SSH、tar 和生产 Web 都包含在镜像中。宿主开发模式另需 Node.js 24、Corepack/pnpm 与 Git。
 
-业务状态仍使用 JSON-local，不需要数据库或 Redis；生产数据保存在固定命名卷 `aiws-data-v14`。
+业务状态仍使用 JSON-local，不需要数据库或 Redis；V1.6 生产数据保存在固定命名卷 `aiws-data-v16`。
 
 已使用过 Codex 的用户可直接导入本机 `CODEX_HOME` / `~/.codex` 中的 `config.toml` 与 `auth.json`；页面只返回脱敏摘要，确认后才复制 API Key 或官方 OAuth bundle，并重建 AIWS 托管 Profile。未使用过 Codex 的用户可在 Setup 选择官方 Device Login 或手动 API 配置。
 
-V1.6 启动脚本会自动生成只读导入 override，并在首次切换前停止 V1.5 app、备份现有卷、记录 SHA-256/canonical hash/镜像与容器清单；失败时恢复 schema 14 备份并保持 app 停止。Codex Runner 只读挂载当前 Turn 实际引用的附件目录。
+V1.6 启动脚本会自动生成只读导入 override，并在首次切换前停止 V1.5 app 与 4318 preview。脚本从只读源卷创建、验证临时归档，再解压到空的 `aiws-data-v16`；源/目标 state 哈希、集合、记录 ID、文件和安全符号链接均进入迁移凭据。默认失败会保留两个卷并恢复原先运行的旧服务；只有 `-DiscardUnmigratable` / `--discard-unmigratable` 才会删除失败目标并启动全新 schema 15。Codex Runner 只读挂载当前 Turn 实际引用的附件目录。
 
 ## 3. 快速启动项目
 
@@ -65,7 +65,7 @@ bash scripts/aiws.sh up
 http://127.0.0.1:4317
 ```
 
-默认构建 `aiws-app:1.6.0` 与 `aiws-codex-runner:1.6.0-codex-0.144.0`，并继续使用 `aiws-data-v14`。首次升级流程由启动脚本执行事务快照与失败恢复；V1.6 边界见 [`开发计划v1.6.md`](开发计划v1.6.md)。
+默认构建 `aiws-app:1.6.0` 与 `aiws-codex-runner:1.6.0-codex-0.144.0`，正式挂载 `aiws-data-v16`。首次升级流程由启动脚本执行只读克隆、schema 迁移、健康检查和迁移验收；后续启动保持幂等。
 
 显式配置项目只读导入根：
 
@@ -127,7 +127,27 @@ http://localhost:4320
 
 ### 3.5 数据目录
 
-生产数据固定使用 `aiws-data-v14`；`down` 默认保留该卷，只有 `reset --confirm` / `reset -Confirm` 会删除它。仓库内 V1.3 `.ai-workspace` 保留但不会导入或删除。
+生产数据固定使用 `aiws-data-v16`；`down` 默认保留该卷，只有 `reset --confirm` / `reset -Confirm` 会删除它。升级成功后，旧源卷和历史备份仍会保留，直到显式执行 `purge-legacy --confirm` / `purge-legacy -Confirm`。该清理不可恢复，但不会删除仓库内旧迁移、兼容 API、回归测试或历史文档。
+
+迁移数据确实无法使用且已经接受空白启动时，显式执行：
+
+```powershell
+.\scripts\aiws.ps1 up -DiscardUnmigratable
+```
+
+```bash
+bash scripts/aiws.sh up --discard-unmigratable
+```
+
+完成 V1.6 验收后清理旧容器、网络、卷、镜像和全部历史备份：
+
+```powershell
+.\scripts\aiws.ps1 purge-legacy -Confirm
+```
+
+```bash
+bash scripts/aiws.sh purge-legacy --confirm
+```
 
 ## 4. 使用流程与版本边界
 
@@ -147,7 +167,7 @@ http://localhost:4320
 
 ### 4.2 V1.6 使用流程
 
-1. 用 V1.6 Compose 在事务备份后迁移现有 `aiws-data-v14` 的 schema 14 到 15，完成 GitHub/Codex Setup；Host Profile 在容器部署中不可用。
+1. 用 V1.6 启动脚本把只读 `aiws-data-v14` 克隆到 `aiws-data-v16`，迁移 schema 14 到 15 并完成验收；Host Profile 在容器部署中不可用。
 2. 创建 draft Project，选择“从 0 头脑风暴”或“基于已有项目”。
 3. 恢复或完成 Intake，审查版本化 Project Brief 和初始 workflow draft。
 4. 已有代码源先经 staging 与安全校验，再 clone/copy 到命名卷内受管 repo；宿主导入源保持只读。
@@ -293,7 +313,7 @@ GitHub 集成最终采用“托管 GitHub App + 用户自带 GitHub App”双模
 
 | 路径 | 用途 |
 |---|---|
-| `.ai-workspace/` | 宿主开发数据及 V1.6 发布前备份清单；生产状态位于 `aiws-data-v14`，不会以宿主目录替换。 |
+| `.ai-workspace/` | 宿主开发数据及临时发布记录；生产状态位于 `aiws-data-v16`，不会以宿主目录替换。`purge-legacy` 会清空其中的 `backups/`。 |
 | `.git/` | Git 版本库元数据，由 Git 自动维护。 |
 | `apps/` | 应用层代码，包含 API 服务、前端页面和 worker 入口。 |
 | `packages/` | 可复用模块与共享领域逻辑，供 API、Worker、测试和后续扩展复用。 |
@@ -301,7 +321,7 @@ GitHub 集成最终采用“托管 GitHub App + 用户自带 GitHub App”双模
 | `scripts/` | 工程脚本目录，包含 lint、typecheck、verify、迁移检查和验收审计。 |
 | `docs/` | 工程文档目录，包含运行手册、V1 覆盖矩阵、完成审计报告和 `docs/github/` 下的 GitHub SaaS/自托管教程。 |
 | `doc/` | 早期核心想法、问题记录和方案草稿，用于保留设计演进过程。 |
-| `docker/` | Runner Dockerfile、导入 override/环境样例、备份归档校验器及 legacy infra Compose。 |
+| `docker/` | Runner Dockerfile、导入 override/环境样例、归档/卷验收器、V1.6 发布编排及 legacy infra Compose。 |
 | `Dockerfile` / `compose.yml` | V1.6 production/verify/Windows Bridge export 镜像与默认完全容器化部署。 |
 | `bridge/` | Windows Native Bridge 的 Go/DPAPI/ConPTY 与 workspace bundle 客户端。 |
 | `config/` | 本地公开配置示例，目前保存 GitHub App 的公开 Client ID；不要在此目录提交 Client Secret 或 Private Key。 |
@@ -374,7 +394,7 @@ GitHub 集成最终采用“托管 GitHub App + 用户自带 GitHub App”双模
 - `.ai-workspace/` 已被 `.gitignore` 忽略，适合保存本机运行和调试数据。
 - 删除 `.ai-workspace/` 后再次启动，会重新初始化宿主开发状态；该操作不影响生产卷。
 
-V1.6 生产容器使用相同目录结构，根仍位于命名卷 `aiws-data-v14` 的 `/var/lib/aiws`，状态 schema 为 15。`down` 保留卷；只允许通过带显式确认的运维脚本执行 reset。
+V1.6 生产容器使用相同目录结构，根位于命名卷 `aiws-data-v16` 的 `/var/lib/aiws`，状态 schema 为 15。`down` 保留卷；只允许通过带显式确认的运维脚本执行 reset 或旧环境清理。
 
 ## 11. Legacy 可选基础设施
 
@@ -426,13 +446,14 @@ V1.4 新增容器门禁：
 - Device Login、Probe、Assist app-server/exec、NodeRun 与 Terminal 统一容器名、label、资源限制、安全参数、volume-subpath 和停止清理。
 - `/system/deployment` 与新版 `/health` 脱敏能力状态；容器部署禁用 Host Profile。
 - Codex/cc-switch/项目根只读导入，项目与 Context Source 相对路径、symlink/realpath 越界防护。
-- PowerShell/POSIX `up/down/logs/status/verify/backup/restore/reset`，命名卷备份恢复和 reset 边界。
+- PowerShell/POSIX `up/down/logs/status/verify/backup/restore/reset/purge-legacy`，命名卷备份恢复、显式丢弃和清理确认边界。
 - 隔离 Compose smoke 已覆盖 UI/health、重启持久化、sibling Runner、volume-subpath 和零遗留容器。
 - 验证镜像内完整 `corepack pnpm verify` 与正式 Compose 切换均已通过；原 V1.3 `.ai-workspace` 聚合摘要保持不变。
 
 V1.6 新增并已纳入默认源码门禁：
 
 - schema 13→14 原子迁移、历史配置/Turn/worktree/action 保留、失败恢复与幂等校验。
+- schema 14→15 独立卷克隆、全卷清单验收、旧官方 Runner 归一化和受影响 Probe 失效。
 - app-server-only 的 `default | plan`、`additionalContext` 隔离、原始 model/reasoning 目录和无 Secret 配置 CRUD。
 - 原生 Goal、Plan/tool/diff/reasoning/request-user-input 事件，Secret 回答只走内存通道。
 - session change batch、Turn/CLI checkpoint、单写锁、累计 Review 与 Apply/Rollback 生命周期。
@@ -502,7 +523,7 @@ $env:AIWS_PORT="4320"; .\scripts\aiws.ps1 up
 
 ### 14.4 页面没有旧数据
 
-生产部署检查 `docker volume inspect aiws-data-v14`。V1.6 必须复用该卷并将 state 原位迁移为 schema 15，不会读取或删除旧宿主 `.ai-workspace`；宿主开发模式仍检查 `.ai-workspace/data/state.json`。
+生产部署检查 `docker volume inspect aiws-data-v16`。首次切换时 V1.6 只读打开 `aiws-data-v14`，经临时迁移卷复制到新卷后才迁移 schema；非空 `aiws-data-v16` 不会被重复 `up` 覆盖。宿主开发模式仍检查 `.ai-workspace/data/state.json`。
 
 ### 14.5 Codex 不可用
 

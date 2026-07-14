@@ -4,9 +4,9 @@
 
 ## V1.6 结论
 
-`开发计划v1.6.md` 与 `测试计划v1.6.md` 的业务实现、默认自动化、三视口 Playwright、构建预算、容器交付和隔离迁移/回滚演练均已完成。V1.6 使用 state schema 15、Compose project `aiws-v16`、`aiws-app:1.6.0` 与 `aiws-codex-runner:1.6.0-codex-0.144.0`，继续以 external `aiws-data-v14` 为正式升级边界。
+`开发计划v1.6.md` 与 `测试计划v1.6.md` 的业务实现、默认自动化、三视口 Playwright、构建预算、容器交付、独立卷迁移和正式清理均已完成。V1.6 使用 state schema 15、Compose project `aiws-v16`、`aiws-app:1.6.0`、`aiws-codex-runner:1.6.0-codex-0.144.0` 与 external `aiws-data-v16`。
 
-本轮没有切换或写入正式 `aiws-data-v14`。当前 `127.0.0.1:4317` 上的 V1.5 app 保持 healthy；以下迁移和生产验收均在唯一临时容器、专用卷及随机 loopback 端口完成，结束后资源已清理。正式切换必须重新运行 V1.6 `up` 脚本生成切换时快照。
+正式切换已于 2026-07-14 18:03-18:05（Asia/Shanghai）完成。`127.0.0.1:4317` 上的 V1.6 app 为 healthy，Setup 与活动 Profile Probe 均 ready；V1.4/V1.5/preview 运行资源、旧源卷及全部历史备份已经确认门禁后删除。详细哈希和清单见 [`v1.6-cutover.md`](v1.6-cutover.md)。
 
 ## V1.6 实现证据
 
@@ -20,12 +20,13 @@
 | 附件与引用 | 流式 multipart、SHA-256、MIME sniff、配额、原子 rename、mention/localImage、按 Turn 只读挂载、内容墓碑 | 通过 |
 | 预览与安全 | inline/download/Range、文本/图片/PDF/音视频/DOCX/XLSX、未知格式降级、HTML/SVG 净化、Worker 隔离 | 通过 |
 | 构建债务 | 路由、Assist、Flow、Monaco、PDF、Office 动态 chunk；manifest/gzip 自动预算 | 通过 |
+| 发布运维 | 独立卷只读克隆、显式丢弃、幂等启动、迁移凭据、确认清理、离线 verify refresh | 通过 |
 
 ## V1.6 自动化与容器门禁
 
 | 门禁 | 最终结果 |
 |---|---|
-| Host `corepack pnpm verify` | 退出码 0；lint、typecheck、unit、23 组 integration、50 模型 schema check、Web build、Playwright、95 项 acceptance 全通过 |
+| Host `corepack pnpm verify` | 退出码 0；lint、typecheck、unit、23 组 integration、50 模型 schema check、Web build、Playwright、106 项 acceptance 全通过 |
 | Web tests | 11 files / 58 tests 全通过，包含 V1.6 Context Menu、Ask、Goal/Gauge、Tooltip 和结构化 Composer |
 | Visual | 1440×900、1024×768、390×844 全通过；移动 Ask 截图无 Tooltip 消退残影 |
 | Bundle | initial `130.8 KiB gzip`；Assist `+77.1 KiB gzip`；5 个预览资源、7 个 Worker 隔离 |
@@ -34,6 +35,7 @@
 | Runner | 固定标签 `aiws-codex-runner:1.6.0-codex-0.144.0` 可 inspect；输出 `codex-cli 0.144.0` |
 | Verify image | `aiws-verify:1.6.0` 内再次执行完整 `corepack pnpm verify`，退出码 0 |
 | Bridge export | 6,461,952 bytes；SHA-256 `4b36b8a60a0d85e85231652d3e3000bca4d0327467677a465d77afaff4eb1a60`；输出 `aiws-windows-bridge 1.6.0 protocol 1` |
+| Release volume flow | 随机命名卷完成 clone/validate、schema 14→15、失败保源、显式空白启动和重复启动不覆盖 |
 
 ## V1.6 隔离迁移与回滚演练
 
@@ -43,15 +45,28 @@
 4. 从迁移备份恢复 schema 14 后，SHA-256 恢复为 `16d6e3c1295070ace4b6a670ce341dc00e9039819f2ba1086091abc653a251f9`；V1.5 再次启动并返回 health `ok`。
 5. 演练容器、专用卷和随机端口均已清理；正式 V1.5 容器与 `aiws-data-v14` 未参与演练。
 
+## V1.6 正式迁移与清理
+
+| 范围 | 结果 |
+|---|---|
+| 源 state | schema 14；SHA-256 `5354c954928ebc642aca794fd65fd6e85104ad1b22c4df74ff60fc352a30deab`；canonical `941f7cd7b625a15f775722326124e9da5e0af44adf232e0e91823066ded8b096` |
+| 迁移归档 | SHA-256 `27810352c6abe6b36c5be57c17c375acce8571b2b1b262050e8e6b1b6f85f48f`；源/克隆 inventory hash 均为 `968b666a8fa0d76c747b5a976e42c04c27781634ac97b81862a99835b44cd2e1` |
+| schema 15 | manifest `committed`；3 个旧官方 Runner 标签更新；2 个 Probe stale；共享 Fork 修复 0 |
+| 数据验收 | Project 1、Assist Session 4、Turn 12、Profile 3；325 个源成员无缺失；Vault 6、Codex Home 307；旧 Runner 引用 0 |
+| Probe / Setup | 活动 Profile Probe HTTP 200/`ready`；Setup `complete=true`；页面/API 200 |
+| 清理门禁 | 迁移凭据 SHA-256 `bf3955015257e298dec096ce3c989dbed69b4c83ee14b52e0c988f78af2628fa`；清理前后均验证 schema 15/healthy |
+| 最终状态 | state SHA-256 `8a9968fe9585eb8acf71eaf4a64e5d8f38f4c7b0759b095c7beafce3d7e9711f`；canonical `d447e63e7fc6e8daee87558c8afcf8323c0d7c8108ab306748763d2a0928da10` |
+| 最终资源 | 仅 V1.6 正式 AIWS 容器、网络、卷和 3 个镜像标签；4318 未监听；宿主备份 0；旧 schema state 备份 0 |
+
 ## V1.6 Live 与切换边界
 
 | 套件/能力 | 状态 |
 |---|---|
-| `test:live:codex` | 未启用；真实推理由 Setup/Profile probe 决定 |
+| `test:live:codex` | 套件未启用；正式活动 Profile Probe 已返回 HTTP 200/`ready` |
 | `test:live:github` | 未启用；未创建真实远端 PR |
 | `test:live:cc-switch` | 未启用；默认门禁只验证只读发现与隔离 conformance |
 | Windows Bridge 持久安装 | 未执行；cross-build、版本、DPAPI/ConPTY 代码和协议集成已验证 |
-| 正式 V1.6 数据切换 | 未执行；由 V1.6 `up` 脚本在新的全卷快照后完成 |
+| 正式 V1.6 数据切换 | 已完成；独立 `aiws-data-v16`、schema 15、清理后重启均通过 |
 
 Vite 的单个 Monaco 页面 chunk 大小提示仍为非阻断提示；该 chunk 不在首屏或 Assist 初始依赖图内，自动预算已通过。
 

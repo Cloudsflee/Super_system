@@ -10,6 +10,7 @@ const checks = [
   ['V1.5 test plan', '测试计划v1.5.md', 'Windows Native Bridge 测试'],
   ['V1.6 dev plan', '开发计划v1.6.md', 'V1.6-14'],
   ['V1.6 test plan', '测试计划v1.6.md', 'P0/P1 用例必须 100%'],
+  ['V1.6 cutover appendix', 'docs/v1.6-cutover.md', '27810352c6abe6b36c5be57c17c375acce8571b2b1b262050e8e6b1b6f85f48f'],
   ['Production Dockerfile', 'Dockerfile', 'FROM workspace-deps AS verify'],
   ['Offline native Node headers', 'Dockerfile', 'npm_config_nodedir=/usr/local'],
   ['Windows Bridge export', 'Dockerfile', 'FROM scratch AS windows-bridge-export'],
@@ -17,11 +18,18 @@ const checks = [
   ['Safe archive sanitization', 'docker/backup_archive.py', 'def sanitize_archive'],
   ['Transient Codex backup exclusion', 'docker/backup_archive.py', 'def transient_codex_path'],
   ['Safe relative symlink restore', 'docker/backup_archive.py', 'target.symlink_to(member.linkname)'],
+  ['Release volume audit', 'docker/release_volume.mjs', 'source_changed_after_clone'],
+  ['Release clone orchestration', 'docker/release_orchestrator.mjs', 'initializeFromSource'],
+  ['Offline verify refresh', 'docker/verify-refresh.Dockerfile', 'pnpm install --offline --frozen-lockfile'],
+  ['Explicit discard fallback', 'docker/release_orchestrator.mjs', 'discarded_unmigratable'],
+  ['Legacy purge confirmation', 'docker/release_volume.mjs', 'purge_legacy_requires_confirm'],
   ['V1.6 Compose', 'compose.yml', 'name: aiws-v16'],
   ['Runner image', 'docker/codex-runner.Dockerfile', 'ARG CODEX_VERSION=0.144.0'],
   ['PowerShell bridge operations', 'scripts/aiws.ps1', "@('install','start','stop','status','uninstall')"],
   ['PowerShell backup validation', 'scripts/aiws.ps1', 'backup_validation_failed'],
-  ['POSIX V1.6 migration operations', 'scripts/aiws.sh', 'new_v16_migration_snapshot'],
+  ['PowerShell verify cache validation', 'scripts/aiws.ps1', 'cmp -s /app/pnpm-lock.yaml'],
+  ['POSIX V1.6 migration operations', 'scripts/aiws.sh', '--discard-unmigratable'],
+  ['PowerShell legacy purge', 'scripts/aiws.ps1', "'purge-legacy'"],
   ['Setup guard', 'apps/web/src/app/setup-guard.tsx', '<Navigate to="/setup"'],
   ['GitHub App JWT', 'apps/api/src/github-service.mjs', 'createAppJwt'],
   ['GitHub webhook', 'apps/api/src/routes/github-webhook-v12.mjs', 'timingSafeEqual'],
@@ -47,6 +55,7 @@ const checks = [
   ['Schema 14 collections', 'apps/api/src/state-migration-v14.mjs', 'host_bridge_devices'],
   ['Atomic migration backup', 'apps/api/src/state-migration-v14.mjs', 'migration_failed_and_backup_corrupt'],
   ['Schema 15 migration', 'apps/api/src/state-migration-v15.mjs', 'STATE_SCHEMA_VERSION = 15'],
+  ['Official Runner normalization', 'apps/api/src/state-migration-v15.mjs', 'LEGACY_OFFICIAL_RUNNER_PATTERN'],
   ['Shared Fork isolation', 'apps/api/src/state-migration-v15.mjs', 'historical_shared_codex_thread_id'],
   ['Native thread Fork', 'apps/api/src/assist-session-lifecycle.mjs', "method: 'thread/fork'"],
   ['Root delete protection', 'apps/api/src/assist-session-lifecycle.mjs', 'assist_root_session_not_deletable'],
@@ -95,6 +104,8 @@ const checks = [
   ['V1.5 Bridge integration', 'tests/integration/v15-host-bridge-flow.test.mjs', 'V1.5 Windows Host Bridge integration tests passed'],
   ['V1.5 Web interactions', 'apps/web/src/test/assist-v15-interactions.test.tsx', 'Assist V1.5 interactions'],
   ['V1.6 core unit', 'tests/unit/v16-core.test.mjs', 'V1.6 core unit tests passed'],
+  ['V1.6 release unit', 'tests/unit/v16-release.test.mjs', 'V1.6 release volume unit tests passed'],
+  ['V1.6 release Docker flow', 'tests/release/v16-volume-flow.test.mjs', 'V1.6 Docker release volume flow tests passed'],
   ['V1.6 Assist files integration', 'tests/integration/v16-assist-files-flow.test.mjs', 'V1.6 Assist files and native Fork integration tests passed'],
   ['V1.6 Web interactions', 'apps/web/src/test/assist-v16-interactions.test.tsx', 'Assist V1.6 interactions'],
   ['Interaction audit', 'tests/e2e/smoke.test.mjs', 'auditButtons']
@@ -115,18 +126,18 @@ assert.ok(fs.existsSync('apps/web/dist/index.html'), 'production frontend build 
 
 const manifest = JSON.parse(fs.readFileSync('package.json', 'utf8'));
 assert.equal(manifest.version, '1.6.0', 'root package is V1.6');
-for (const script of ['lint', 'typecheck', 'test', 'test:integration', 'test:e2e', 'audit:acceptance', 'verify']) assert.ok(manifest.scripts[script], `mandatory script ${script}`);
+for (const script of ['lint', 'typecheck', 'test', 'test:integration', 'test:e2e', 'test:release', 'audit:acceptance', 'verify']) assert.ok(manifest.scripts[script], `mandatory script ${script}`);
 for (const dependency of ['busboy', 'node-pty', 'ws']) assert.ok(manifest.dependencies[dependency], `runtime dependency ${dependency}`);
 assert.match(manifest.scripts['test:e2e'], /build-web/, 'standalone e2e builds the frontend');
 assert.match(manifest.scripts['audit:acceptance'], /build-web/, 'standalone acceptance builds the frontend');
 for (const suite of ['v13-terminal-flow', 'v14-container-flow', 'v15-native-assist-flow', 'v15-host-bridge-flow', 'v16-assist-files-flow']) assert.ok(manifest.scripts['test:integration'].includes(suite), `integration gate includes ${suite}`);
-for (const suite of ['v14-container.test', 'v15-core.test', 'v15-operations.test', 'v15-change-bridge.test', 'v16-core.test']) assert.ok(manifest.scripts.test.includes(suite), `unit gate includes ${suite}`);
+for (const suite of ['v14-container.test', 'v15-core.test', 'v15-operations.test', 'v15-change-bridge.test', 'v16-core.test', 'v16-release.test']) assert.ok(manifest.scripts.test.includes(suite), `unit gate includes ${suite}`);
 
 for (const file of workspaceManifests()) assert.equal(JSON.parse(fs.readFileSync(file, 'utf8')).version, '1.6.0', `${file} is V1.6`);
 const compose = fs.readFileSync('compose.yml', 'utf8');
-for (const value of ['name: aiws-v16', 'aiws-app:1.6.0', 'aiws-codex-runner:1.6.0-codex-0.144.0', 'aiws-data-v14']) assert.ok(compose.includes(value), `Compose pins ${value}`);
+for (const value of ['name: aiws-v16', 'aiws-app:1.6.0', 'aiws-codex-runner:1.6.0-codex-0.144.0', 'aiws-data-v16']) assert.ok(compose.includes(value), `Compose pins ${value}`);
 assert.match(compose, /aiws-data:\s+[\s\S]*external: true/, 'production data volume cannot be silently replaced by Compose');
-assert.equal(compose.includes('aiws-data-v16'), false, 'V1.6 reuses external aiws-data-v14');
+assert.equal(compose.includes('aiws-data-v14'), false, 'V1.6 Compose never mounts the legacy source volume');
 assert.equal(runtime.includes('aiws-codex-runner:local'), false, 'runtime excludes mutable local Runner tag');
 
 const verify = fs.readFileSync('scripts/verify.mjs', 'utf8');

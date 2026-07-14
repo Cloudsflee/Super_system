@@ -17,7 +17,7 @@ services:
       PORT: "4317"
       AIWS_HOME: /var/lib/aiws
       AIWS_CONTAINERIZED: "1"
-      AIWS_DOCKER_DATA_VOLUME: ${AIWS_DOCKER_DATA_VOLUME:-aiws-data-v14}
+      AIWS_DOCKER_DATA_VOLUME: ${AIWS_DOCKER_DATA_VOLUME:-aiws-data-v16}
       AIWS_DOCKER_INSTANCE: ${AIWS_DOCKER_INSTANCE:-aiws-v16}
       AIWS_CODEX_DOCKER_IMAGE: ${AIWS_RUNNER_IMAGE:-aiws-codex-runner:1.6.0-codex-0.144.0}
       AIWS_RUNNER_CPUS: ${AIWS_RUNNER_CPUS:-2}
@@ -45,5 +45,5 @@ services:
 
 volumes:
   aiws-data:
-    name: ${AIWS_DOCKER_DATA_VOLUME:-aiws-data-v14}
+    name: ${AIWS_DOCKER_DATA_VOLUME:-aiws-data-v16}
     external: true

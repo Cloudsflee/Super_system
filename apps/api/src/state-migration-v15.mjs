@@ -2,9 +2,11 @@ import fsp from 'node:fs/promises';
 import path from 'node:path';
 import { createHash } from 'node:crypto';
 import { migrateState13To14, V14_COLLECTIONS } from './state-migration-v14.mjs';
+import { AIWS_RUNNER_IMAGE } from '../../../packages/shared/src/version.mjs';
 
 export const STATE_SCHEMA_VERSION = 15;
 export const V15_COLLECTIONS = Object.freeze([...V14_COLLECTIONS]);
+export const LEGACY_OFFICIAL_RUNNER_PATTERN = /^aiws-codex-runner:1\.[0-5]\.0-codex-\d+\.\d+\.\d+$/;
 
 export function canonicalJson(value) {
   return JSON.stringify(canonicalValue(value));
@@ -75,9 +77,45 @@ export function migrateState14To15(source, { timestamp = new Date().toISOString(
     setDefault(attachment, 'deleted_at', null);
   }
 
+  const runnerNormalization = normalizeOfficialRunnerImages(state, { timestamp });
+
   state.schema_version = STATE_SCHEMA_VERSION;
   validateState15(state);
-  return { state, migrated: true, from_version: inputVersion, to_version: 15, repaired_shared_forks: repairedSharedForks };
+  return {
+    state,
+    migrated: true,
+    from_version: inputVersion,
+    to_version: 15,
+    repaired_shared_forks: repairedSharedForks,
+    normalized_runner_profiles: runnerNormalization.profile_ids,
+    staled_runner_probes: runnerNormalization.staled_probe_count
+  };
+}
+
+export function normalizeOfficialRunnerImages(state, { targetImage = AIWS_RUNNER_IMAGE, timestamp = new Date().toISOString() } = {}) {
+  const changedProfiles = new Set();
+  const changedFields = [];
+  for (const profile of Array.isArray(state?.codex_profiles) ? state.codex_profiles : []) {
+    for (const [container, field] of [[profile, 'image'], [profile?.config, 'image']]) {
+      if (!container || !LEGACY_OFFICIAL_RUNNER_PATTERN.test(String(container[field] || ''))) continue;
+      changedFields.push({ profile_id: profile.id || null, field: container === profile ? 'image' : 'config.image', from: container[field], to: targetImage });
+      container[field] = targetImage;
+      if (profile.id) changedProfiles.add(profile.id);
+    }
+  }
+  for (const integration of Array.isArray(state?.integration_statuses) ? state.integration_statuses : []) {
+    if (integration?.key !== 'codex_docker' || !LEGACY_OFFICIAL_RUNNER_PATTERN.test(String(integration.image || ''))) continue;
+    changedFields.push({ profile_id: null, field: 'integration_statuses.codex_docker.image', from: integration.image, to: targetImage });
+    integration.image = targetImage;
+  }
+  let staledProbeCount = 0;
+  for (const probe of Array.isArray(state?.integration_statuses) ? state.integration_statuses : []) {
+    if (probe?.key !== 'codex_probe' || !changedProfiles.has(probe.profile_id)) continue;
+    probe.status = 'stale';
+    probe.updated_at = timestamp;
+    staledProbeCount += 1;
+  }
+  return { changed: changedFields.length > 0, profile_ids: [...changedProfiles].sort(), changed_fields: changedFields, staled_probe_count: staledProbeCount };
 }
 
 export function validateState15(state) {
@@ -132,6 +170,8 @@ export async function migrateStateFileToV15(stateFile, {
     original_sha256: backupDigest, original_state_hash: canonicalStateHash(parsed),
     migrated_sha256: sha256(migratedBytes), migrated_state_hash: canonicalStateHash(result.state),
     repaired_shared_forks: result.repaired_shared_forks,
+    normalized_runner_profiles: result.normalized_runner_profiles,
+    staled_runner_probes: result.staled_runner_probes,
     backup_file: path.basename(backupPath), state_file: path.basename(stateFile)
   };
   await writeExclusiveAndSync(manifestPath, Buffer.from(`${JSON.stringify(manifest, null, 2)}\n`));

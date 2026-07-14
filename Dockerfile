@@ -68,6 +68,7 @@ COPY packages ./packages
 COPY config ./config
 COPY --from=build /app/apps/web/dist ./apps/web/dist
 COPY docker/backup_archive.py /opt/aiws/backup_archive.py
+COPY docker/release_volume.mjs ./docker/release_volume.mjs
 RUN mkdir -p /var/lib/aiws && chmod 0700 /var/lib/aiws
 EXPOSE 4317
 HEALTHCHECK --interval=10s --timeout=3s --start-period=20s --retries=6 \
