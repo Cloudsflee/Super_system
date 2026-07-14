@@ -54,7 +54,7 @@ RUN corepack pnpm install --prod --frozen-lockfile --filter ai-workspace-system
 
 FROM node:24-alpine AS production
 LABEL org.opencontainers.image.title="AI Workspace System" \
-      org.opencontainers.image.version="1.5.0"
+      org.opencontainers.image.version="1.6.0"
 RUN apk add --no-cache bash ca-certificates docker-cli docker-cli-compose git openssh-client python3 tar
 WORKDIR /app
 ENV NODE_ENV=production \

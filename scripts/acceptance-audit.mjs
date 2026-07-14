@@ -8,6 +8,8 @@ const checks = [
   ['V1.4 dev plan', '开发计划v1.4.md', '完全容器化增量'],
   ['V1.5 dev plan', '开发计划v1.5.md', 'state schema 14'],
   ['V1.5 test plan', '测试计划v1.5.md', 'Windows Native Bridge 测试'],
+  ['V1.6 dev plan', '开发计划v1.6.md', 'V1.6-14'],
+  ['V1.6 test plan', '测试计划v1.6.md', 'P0/P1 用例必须 100%'],
   ['Production Dockerfile', 'Dockerfile', 'FROM workspace-deps AS verify'],
   ['Offline native Node headers', 'Dockerfile', 'npm_config_nodedir=/usr/local'],
   ['Windows Bridge export', 'Dockerfile', 'FROM scratch AS windows-bridge-export'],
@@ -15,11 +17,11 @@ const checks = [
   ['Safe archive sanitization', 'docker/backup_archive.py', 'def sanitize_archive'],
   ['Transient Codex backup exclusion', 'docker/backup_archive.py', 'def transient_codex_path'],
   ['Safe relative symlink restore', 'docker/backup_archive.py', 'target.symlink_to(member.linkname)'],
-  ['V1.5 Compose', 'compose.yml', 'name: aiws-v15'],
+  ['V1.6 Compose', 'compose.yml', 'name: aiws-v16'],
   ['Runner image', 'docker/codex-runner.Dockerfile', 'ARG CODEX_VERSION=0.144.0'],
   ['PowerShell bridge operations', 'scripts/aiws.ps1', "@('install','start','stop','status','uninstall')"],
   ['PowerShell backup validation', 'scripts/aiws.ps1', 'backup_validation_failed'],
-  ['POSIX V1.5 migration operations', 'scripts/aiws.sh', 'new_v15_migration_snapshot'],
+  ['POSIX V1.6 migration operations', 'scripts/aiws.sh', 'new_v16_migration_snapshot'],
   ['Setup guard', 'apps/web/src/app/setup-guard.tsx', '<Navigate to="/setup"'],
   ['GitHub App JWT', 'apps/api/src/github-service.mjs', 'createAppJwt'],
   ['GitHub webhook', 'apps/api/src/routes/github-webhook-v12.mjs', 'timingSafeEqual'],
@@ -44,6 +46,23 @@ const checks = [
   ['Schema 14 migration', 'apps/api/src/state-migration-v14.mjs', 'STATE_SCHEMA_VERSION = 14'],
   ['Schema 14 collections', 'apps/api/src/state-migration-v14.mjs', 'host_bridge_devices'],
   ['Atomic migration backup', 'apps/api/src/state-migration-v14.mjs', 'migration_failed_and_backup_corrupt'],
+  ['Schema 15 migration', 'apps/api/src/state-migration-v15.mjs', 'STATE_SCHEMA_VERSION = 15'],
+  ['Shared Fork isolation', 'apps/api/src/state-migration-v15.mjs', 'historical_shared_codex_thread_id'],
+  ['Native thread Fork', 'apps/api/src/assist-session-lifecycle.mjs', "method: 'thread/fork'"],
+  ['Root delete protection', 'apps/api/src/assist-session-lifecycle.mjs', 'assist_root_session_not_deletable'],
+  ['Delete batch restore', 'apps/api/src/routes/assist-v3.mjs', '/restore-deleted'],
+  ['Ephemeral BTW', 'apps/api/src/codex-ephemeral-thread.mjs', "request('thread/fork'"],
+  ['BTW memory lifecycle', 'apps/api/src/assist-btw.mjs', 'BTW_GLOBAL_LIMIT = 4'],
+  ['Streaming upload', 'apps/api/src/assist-attachments.mjs', 'streamMultipartFile'],
+  ['Attachment Range', 'apps/api/src/assist-attachments.mjs', 'parseSingleRange'],
+  ['Reference candidates', 'apps/api/src/assist-references.mjs', 'listAssistReferences'],
+  ['Native mention input', 'apps/api/src/assist-v3-context.mjs', "type: 'mention'"],
+  ['Context menu registry', 'apps/web/src/components/common/ContextMenu.tsx', 'ContextMenuResolver'],
+  ['Unified Tooltip', 'apps/web/src/components/common/Tooltip.tsx', 'data-tooltip'],
+  ['Composer commands', 'apps/web/src/features/assist/composer-support.ts', "['btw'"],
+  ['Long paste boundary', 'apps/web/src/features/assist/useComposerFiles.ts', 'LONG_PASTE_THRESHOLD = 8000'],
+  ['Lazy preview engines', 'apps/web/src/features/assist/AttachmentPreview.tsx', "lazy(() => import('./PdfPreview'))"],
+  ['Bundle budgets', 'scripts/bundle-budget.mjs', '300 * 1024'],
   ['Change batches', 'apps/api/src/assist-change-batches.mjs', 'assist_change_batch_locked'],
   ['Batch checkpoints', 'apps/api/src/assist-change-batches.mjs', 'state.assist_checkpoints.push'],
   ['Batch review API', 'apps/api/src/routes/assist-v3.mjs', '/assist/v3/change-batches/:id/review/apply'],
@@ -75,6 +94,9 @@ const checks = [
   ['V1.5 Assist integration', 'tests/integration/v15-native-assist-flow.test.mjs', 'V1.5 native Assist integration tests passed'],
   ['V1.5 Bridge integration', 'tests/integration/v15-host-bridge-flow.test.mjs', 'V1.5 Windows Host Bridge integration tests passed'],
   ['V1.5 Web interactions', 'apps/web/src/test/assist-v15-interactions.test.tsx', 'Assist V1.5 interactions'],
+  ['V1.6 core unit', 'tests/unit/v16-core.test.mjs', 'V1.6 core unit tests passed'],
+  ['V1.6 Assist files integration', 'tests/integration/v16-assist-files-flow.test.mjs', 'V1.6 Assist files and native Fork integration tests passed'],
+  ['V1.6 Web interactions', 'apps/web/src/test/assist-v16-interactions.test.tsx', 'Assist V1.6 interactions'],
   ['Interaction audit', 'tests/e2e/smoke.test.mjs', 'auditButtons']
 ];
 
@@ -92,19 +114,19 @@ assert.equal(runtime.includes('codexProfileFromCcSwitch'), false, 'production ru
 assert.ok(fs.existsSync('apps/web/dist/index.html'), 'production frontend build exists');
 
 const manifest = JSON.parse(fs.readFileSync('package.json', 'utf8'));
-assert.equal(manifest.version, '1.5.0', 'root package is V1.5');
+assert.equal(manifest.version, '1.6.0', 'root package is V1.6');
 for (const script of ['lint', 'typecheck', 'test', 'test:integration', 'test:e2e', 'audit:acceptance', 'verify']) assert.ok(manifest.scripts[script], `mandatory script ${script}`);
-for (const dependency of ['node-pty', 'ws']) assert.ok(manifest.dependencies[dependency], `runtime dependency ${dependency}`);
+for (const dependency of ['busboy', 'node-pty', 'ws']) assert.ok(manifest.dependencies[dependency], `runtime dependency ${dependency}`);
 assert.match(manifest.scripts['test:e2e'], /build-web/, 'standalone e2e builds the frontend');
 assert.match(manifest.scripts['audit:acceptance'], /build-web/, 'standalone acceptance builds the frontend');
-for (const suite of ['v13-terminal-flow', 'v14-container-flow', 'v15-native-assist-flow', 'v15-host-bridge-flow']) assert.ok(manifest.scripts['test:integration'].includes(suite), `integration gate includes ${suite}`);
-for (const suite of ['v14-container.test', 'v15-core.test', 'v15-operations.test', 'v15-change-bridge.test']) assert.ok(manifest.scripts.test.includes(suite), `unit gate includes ${suite}`);
+for (const suite of ['v13-terminal-flow', 'v14-container-flow', 'v15-native-assist-flow', 'v15-host-bridge-flow', 'v16-assist-files-flow']) assert.ok(manifest.scripts['test:integration'].includes(suite), `integration gate includes ${suite}`);
+for (const suite of ['v14-container.test', 'v15-core.test', 'v15-operations.test', 'v15-change-bridge.test', 'v16-core.test']) assert.ok(manifest.scripts.test.includes(suite), `unit gate includes ${suite}`);
 
-for (const file of workspaceManifests()) assert.equal(JSON.parse(fs.readFileSync(file, 'utf8')).version, '1.5.0', `${file} is V1.5`);
+for (const file of workspaceManifests()) assert.equal(JSON.parse(fs.readFileSync(file, 'utf8')).version, '1.6.0', `${file} is V1.6`);
 const compose = fs.readFileSync('compose.yml', 'utf8');
-for (const value of ['name: aiws-v15', 'aiws-app:1.5.0', 'aiws-codex-runner:1.5.0-codex-0.144.0', 'aiws-data-v14']) assert.ok(compose.includes(value), `Compose pins ${value}`);
+for (const value of ['name: aiws-v16', 'aiws-app:1.6.0', 'aiws-codex-runner:1.6.0-codex-0.144.0', 'aiws-data-v14']) assert.ok(compose.includes(value), `Compose pins ${value}`);
 assert.match(compose, /aiws-data:\s+[\s\S]*external: true/, 'production data volume cannot be silently replaced by Compose');
-assert.equal(compose.includes('aiws-data-v15'), false, 'V1.5 reuses the V1.4 production volume');
+assert.equal(compose.includes('aiws-data-v16'), false, 'V1.6 reuses external aiws-data-v14');
 assert.equal(runtime.includes('aiws-codex-runner:local'), false, 'runtime excludes mutable local Runner tag');
 
 const verify = fs.readFileSync('scripts/verify.mjs', 'utf8');
@@ -115,7 +137,7 @@ const browser = fs.readFileSync('tests/e2e/playwright.test.mjs', 'utf8');
 for (const viewport of ['1440', '1024', '390', "keyboard.press('Escape')"]) assert.ok(browser.includes(viewport), `browser acceptance includes ${viewport}`);
 const managedCcSwitch = fs.readFileSync('apps/api/src/cc-switch-managed-cli.mjs', 'utf8');
 assert.equal(/sqlite|better-sqlite3/i.test(managedCcSwitch), false, 'managed cc-switch path never writes SQLite');
-console.log(`V1.5 acceptance audit passed (${checks.length} implementation checks)`);
+console.log(`V1.6 acceptance audit passed (${checks.length} implementation checks)`);
 
 function workspaceManifests() { return ['apps', 'packages'].flatMap((root) => fs.readdirSync(root, { withFileTypes: true }).filter((item) => item.isDirectory()).map((item) => path.join(root, item.name, 'package.json')).filter(fs.existsSync)); }
 function walk(dir) { if (!fs.existsSync(dir)) return []; return fs.readdirSync(dir, { withFileTypes: true }).flatMap((entry) => { if (['node_modules', 'dist'].includes(entry.name)) return []; const full = path.join(dir, entry.name); return entry.isDirectory() ? walk(full) : [full]; }); }

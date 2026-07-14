@@ -9,7 +9,7 @@ import { createConfirmedProject, repositorySnapshot } from '../integration/v13-t
 const port = 4592;
 const home = fs.mkdtempSync(path.join(os.tmpdir(), 'aiws-browser-home-'));
 const repo = path.join(home, 'repo');
-const output = path.resolve('.ai-workspace', 'e2e-v13');
+const output = path.resolve('.ai-workspace', 'e2e-v16');
 const viewports = [
   { name: 'desktop', width: 1440, height: 900 },
   { name: 'tablet', width: 1024, height: 768 },
@@ -72,7 +72,7 @@ try {
   for (const viewport of viewports) await verifyWorkspaceViewport(page, fixture, viewport);
   assert.deepEqual(repositorySnapshot(repo), sourceBefore);
   assert.deepEqual(errors.filter((item) => !item.includes('favicon')), [], `browser errors:\n${errors.join('\n')}`);
-  console.log(`Playwright V1.3 visual tests passed; screenshots: ${output}`);
+  console.log(`Playwright V1.6 visual tests passed; screenshots: ${output}`);
 } finally {
   await browser?.close();
   server.kill();
@@ -97,8 +97,20 @@ async function configureWorkspace() {
       { type: 'retrospective', title: '复盘', dependency_indexes: [3] }
     ]
   });
+  const assistSessionId = project.draft.assist_session.id;
+  const preview = await uploadAttachment(assistSessionId, 'preview-v16.md', '# Preview heading\n\nSafe **Markdown** content.\n');
+  const visualTurn = await api(`/assist/v3/sessions/${assistSessionId}/turns`, 'POST', {
+    adapter: 'test', collaboration_mode: 'plan', content: 'Short V1.6 prompt', attachment_ids: [preview.id],
+    test_response: { message: 'V1.6 visual reply', events: [{ type: 'usage', data: { input_tokens: 1000, output_tokens: 234, total_tokens: 1234 } }] }
+  });
+  await waitForTurn(visualTurn.id, 'completed');
+  const stateFile = path.join(home, 'data', 'state.json'), state = JSON.parse(fs.readFileSync(stateFile, 'utf8'));
+  const rootSession = state.assist_sessions.find((item) => item.id === assistSessionId);
+  rootSession.native_goal_snapshot = { objective: 'Ship V1.6', status: 'active', tokenBudget: 99999, tokensUsed: 42000, timeUsedSeconds: 3600 };
+  state.assist_sessions.push({ ...rootSession, id: 'asst_e2e_deleted_branch', title: 'Deleted visual branch', parent_session_id: assistSessionId, forked_from_session_id: assistSessionId, forked_from_turn_id: visualTurn.id, codex_thread_id: null, pinned: false, lifecycle: 'deleted', delete_batch_id: 'adel_e2e_visual', deleted_at: new Date(0).toISOString(), purge_after: new Date(Date.now() + 86400000).toISOString() });
+  fs.writeFileSync(stateFile, JSON.stringify(state, null, 2));
   const bundle = await api(`/projects/${project.project.id}`);
-  return { onboardingProjectId: draft.project.id, projectId: project.project.id, executionNodeId: bundle.nodes.find((item) => item.type === 'execution').id };
+  return { onboardingProjectId: draft.project.id, projectId: project.project.id, executionNodeId: bundle.nodes.find((item) => item.type === 'execution').id, previewTitle: preview.title };
 }
 async function configureGithubAndDocker() {
   await api('/setup/mode', 'PUT', { mode: 'byo' });
@@ -141,6 +153,7 @@ async function verifyWorkspaceViewport(page, fixture, viewport) {
   await page.locator('.approval-prompt').waitFor({ state: 'detached' });
   await page.getByRole('button', { name: '打开 Codex Assist' }).click();
   await page.locator('.assist-workbench').waitFor();
+  await page.locator('.assist-composer-v3').waitFor();
   await page.waitForTimeout(250);
   assert.equal(await page.locator('.node-inspector').count(), 1, 'V1.3 Assist 与 Inspector 可并存');
   await assertInsideViewport(page, '.assist-workbench');
@@ -152,6 +165,8 @@ async function verifyWorkspaceViewport(page, fixture, viewport) {
     await assertNoOverlap(page, '.toast', '.assist-composer-v3');
   }
   await page.screenshot({ path: path.join(output, `workflow-assist-${viewport.name}.png`) });
+  while (await page.getByRole('button', { name: '关闭通知' }).count()) await page.getByRole('button', { name: '关闭通知' }).first().click();
+  await verifyV16Assist(page, fixture, viewport);
   await page.keyboard.press('Escape');
   await page.waitForTimeout(100);
   assert.equal(await page.locator('.assist-workbench').count(), 1, 'docked Assist 不因 Escape 丢失线程');
@@ -165,9 +180,62 @@ async function verifyWorkspaceViewport(page, fixture, viewport) {
   await page.screenshot({ path: path.join(output, `execution-monaco-${viewport.name}.png`) });
   await assertViewport(page);
 }
+async function verifyV16Assist(page, fixture, viewport) {
+  await page.getByText('Ship V1.6', { exact: true }).waitFor();
+  await page.getByText('V1.6 visual reply', { exact: true }).waitFor();
+  assert.equal(await page.getByText('42,000', { exact: true }).count(), 0, 'Goal usage stays out of the compact card');
+  assert.equal(await page.locator('.turn-prompt .sr-only').textContent(), '用户消息');
+  assert.equal(await page.locator('.turn-output .sr-only').textContent(), '助手回复');
+  const [prompt, timeline] = await Promise.all([page.locator('.turn-prompt').boundingBox(), page.locator('.turn-timeline').boundingBox()]);
+  assert.ok(prompt && timeline && prompt.width < timeline.width * 0.9, `short prompt did not shrink: ${JSON.stringify({ prompt, timeline })}`);
+
+  const composerHandle = page.getByRole('separator', { name: '调整输入区高度' });
+  await composerHandle.hover(); await page.waitForTimeout(150);
+  assert.equal(await composerHandle.evaluate((element) => getComputedStyle(element, '::after').opacity), '1');
+  await page.screenshot({ path: path.join(output, `assist-tooltip-composer-${viewport.name}.png`) });
+  await composerHandle.focus();
+  const before = Number(await composerHandle.getAttribute('aria-valuenow')); await page.keyboard.press('ArrowDown');
+  const after = Number(await composerHandle.getAttribute('aria-valuenow')); assert.ok(after < before && after >= 84, `composer keyboard resize failed: ${before} -> ${after}`);
+  assert.ok(await page.evaluate(() => Number(localStorage.getItem('aiws-composer-height-v16')) >= 84));
+  await composerHandle.dispatchEvent('dblclick'); assert.equal(await page.evaluate(() => localStorage.getItem('aiws-composer-height-v16')), null);
+
+  const input = page.getByRole('textbox', { name: 'Assist 消息' }); await input.focus(); await page.keyboard.press('Shift+F10');
+  const keyboardMenu = page.getByRole('menu', { name: '上下文菜单' }); await keyboardMenu.waitFor();
+  assert.equal(await keyboardMenu.getByRole('menuitem', { name: '粘贴' }).count(), 1); await page.keyboard.press('ArrowDown');
+  await page.screenshot({ path: path.join(output, `assist-context-keyboard-${viewport.name}.png`) }); await page.keyboard.press('Escape');
+  assert.equal(await page.evaluate(() => { const event = new MouseEvent('contextmenu', { bubbles: true, cancelable: true, shiftKey: true }); document.body.dispatchEvent(event); return event.defaultPrevented; }), false, 'Shift+right-click must escape to the native menu');
+
+  const reply = page.locator('.turn-output p').filter({ hasText: 'V1.6 visual reply' });
+  await reply.evaluate((element) => { const range = document.createRange(), selection = window.getSelection(); range.selectNodeContents(element); selection?.removeAllRanges(); selection?.addRange(range); });
+  await reply.click({ button: 'right' }); const selectionMenu = page.getByRole('menu', { name: '上下文菜单' });
+  await selectionMenu.getByRole('menuitem', { name: 'Ask' }).waitFor();
+  await page.screenshot({ path: path.join(output, `assist-context-selection-${viewport.name}.png`) });
+  await selectionMenu.getByRole('menuitem', { name: 'Ask' }).click();
+  const btw = page.locator('.btw-popover[aria-label="问点什么"]'); await btw.waitFor(); await assertInsideViewport(page, '.btw-popover');
+  assert.match(await btw.locator('blockquote').textContent(), /V1\.6 visual reply/);
+  await page.screenshot({ path: path.join(output, `assist-btw-${viewport.name}.png`) }); await btw.getByRole('button', { name: '关闭临时问答' }).click();
+  await page.evaluate(() => window.getSelection()?.removeAllRanges());
+
+  const gauge = page.getByRole('button', { name: '查看本次回复用量' }); await gauge.click();
+  const usage = page.getByRole('dialog', { name: '本次回复用量' }); await usage.waitFor(); assert.match(await usage.textContent(), /总计1,234/);
+  await page.screenshot({ path: path.join(output, `assist-usage-${viewport.name}.png`) }); await usage.getByRole('button', { name: '关闭用量' }).click();
+
+  if (!await page.getByText('已删除分支', { exact: true }).count()) await page.getByRole('button', { name: '显示线程列表' }).click();
+  await page.getByText('已删除分支', { exact: true }).waitFor();
+  await page.screenshot({ path: path.join(output, `assist-deleted-branch-${viewport.name}.png`) });
+  if (viewport.width <= 700) await page.getByRole('button', { name: '隐藏线程列表' }).click();
+
+  await page.getByRole('button', { name: fixture.previewTitle, exact: true }).click();
+  const preview = page.getByRole('dialog', { name: `${fixture.previewTitle} 预览` }); await preview.waitFor();
+  await preview.getByRole('heading', { name: 'Preview heading' }).waitFor(); await assertInsideViewport(page, '.attachment-preview-modal');
+  await page.screenshot({ path: path.join(output, `assist-preview-${viewport.name}.png`) }); await preview.getByRole('button', { name: '关闭预览' }).click();
+  await assertViewport(page);
+}
 async function api(route, method = 'GET', body) { const response = await fetch(`http://127.0.0.1:${port}${route}`, { method, headers: { 'content-type': 'application/json' }, body: body === undefined ? undefined : JSON.stringify(body) }); const data = await response.json(); assert.ok(response.ok, `${route}: ${JSON.stringify(data)}`); return data; }
+async function uploadAttachment(sessionId, filename, content) { const form = new FormData(); form.set('file', new Blob([content], { type: 'text/markdown' }), filename); const response = await fetch(`http://127.0.0.1:${port}/assist/v3/sessions/${sessionId}/attachments/upload`, { method: 'POST', body: form }); const data = await response.json(); assert.equal(response.status, 201, JSON.stringify(data)); return data; }
+async function waitForTurn(id, status) { for (let index = 0; index < 200; index++) { const turn = await api(`/assist/v3/turns/${id}`); if (turn.status === status) return turn; if (['completed', 'failed', 'stopped', 'interrupted'].includes(turn.status)) throw new Error(`${id} reached ${turn.status}:${turn.error_code || ''}`); await new Promise((resolve) => setTimeout(resolve, 25)); } throw new Error(`${id} did not reach ${status}`); }
 async function waitForServer() { for (let index = 0; index < 100; index++) { try { await api('/health'); return; } catch { await new Promise((resolve) => setTimeout(resolve, 100)); } } throw new Error('server did not start'); }
-async function assertViewport(page) { const sizes = await page.evaluate(() => ({ scrollWidth: document.documentElement.scrollWidth, width: window.innerWidth, scrollHeight: document.documentElement.scrollHeight, height: window.innerHeight })); assert.ok(sizes.scrollWidth <= sizes.width + 1, `horizontal overflow ${sizes.scrollWidth} > ${sizes.width}`); assert.ok(sizes.scrollHeight >= sizes.height, 'document is rendered'); }
+async function assertViewport(page) { const sizes = await page.evaluate(() => { const rows = [...document.querySelectorAll('body *')].filter((element) => getComputedStyle(element).display !== 'none' && !element.closest('.monaco-editor,.react-flow__viewport') && !element.matches('.monaco-aria-container,.monaco-alert,.monaco-status,.react-flow__viewport')).map((element) => ({ element: `${element.tagName.toLowerCase()}.${element.getAttribute('class') || ''}`, rect: element.getBoundingClientRect().toJSON() })); return { scrollHeight: document.documentElement.scrollHeight, height: window.innerHeight, offenders: rows.filter((item) => item.rect.right > window.innerWidth + 1 || item.rect.left < -1).slice(0, 12) }; }); assert.deepEqual(sizes.offenders, [], `elements outside viewport: ${JSON.stringify(sizes.offenders)}`); assert.ok(sizes.scrollHeight >= sizes.height, 'document is rendered'); }
 async function assertCanvasBounds(page) { await assertViewport(page); const [bar, toolbar] = await Promise.all([page.locator('.app-bar').boundingBox(), page.locator('.canvas-toolbar').boundingBox()]); assert.ok(bar && toolbar && toolbar.y >= bar.y + bar.height, `canvas toolbar overlaps app bar: ${JSON.stringify({ bar, toolbar })}`); await assertInsideViewport(page, '.canvas-toolbar'); }
 async function assertInsideViewport(page, selector) { const box = await page.locator(selector).boundingBox(); const size = page.viewportSize(); assert.ok(box && size && box.x >= -1 && box.y >= -1 && box.x + box.width <= size.width + 1 && box.y + box.height <= size.height + 1, `${selector} outside viewport: ${JSON.stringify({ box, size })}`); }
 async function assertNoOverlap(page, firstSelector, secondSelector) { const [first, second] = await Promise.all([page.locator(firstSelector).first().boundingBox(), page.locator(secondSelector).first().boundingBox()]); assert.ok(first && second && (first.x + first.width <= second.x || second.x + second.width <= first.x || first.y + first.height <= second.y || second.y + second.height <= first.y), `${firstSelector} overlaps ${secondSelector}: ${JSON.stringify({ first, second })}`); }

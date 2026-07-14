@@ -2,8 +2,9 @@ import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 import { AIWS_HOME } from './config.mjs';
+import { AIWS_RUNNER_IMAGE } from '../../../packages/shared/index.mjs';
 
-export const DEFAULT_RUNNER_IMAGE = 'aiws-codex-runner:1.4.0-codex-0.144.0';
+export const DEFAULT_RUNNER_IMAGE = AIWS_RUNNER_IMAGE;
 
 export function isContainerized(env = process.env) { return env.AIWS_CONTAINERIZED === '1'; }
 

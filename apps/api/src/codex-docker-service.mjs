@@ -11,7 +11,7 @@ export function buildCodexDockerImage({ adapted = false, image = process.env.AIW
   if (!before.docker.ok) return failure(before.docker.error_code, before.docker.summary, before.docker.action);
   if (isContainerized()) return before.ready
     ? { ready: true, runtime: before, output: 'deployment image ready' }
-    : failure(before.image?.error_code || 'codex_probe_image_missing', '部署所需 Runner 镜像不可用', '在宿主重新执行 V1.4 up/verify 构建 Runner 镜像。', before);
+    : failure(before.image?.error_code || 'codex_probe_image_missing', '部署所需 Runner 镜像不可用', '在宿主重新执行当前版本的 up/verify 构建 Runner 镜像。', before);
   const proxyEnv = codexContainerProxyEnv(process.env);
   const args = ['build', '--progress=plain'];
   for (const key of Object.keys(proxyEnv)) args.push('--build-arg', key);

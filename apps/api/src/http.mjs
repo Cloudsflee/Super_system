@@ -83,7 +83,7 @@ export function route(pathname, pattern) {
   return match ? Object.fromEntries(names.map((name, i) => [name, decodeURIComponent(match[i + 1])])) : null;
 }
 
-export function makeRoute(method, pattern, handler) { return { method, pattern, handler }; }
+export function makeRoute(method, pattern, handler, options = {}) { return { method, pattern, handler, ...options }; }
 
 export async function dispatch(routes, ctx) {
   for (const item of routes) {
@@ -91,7 +91,7 @@ export async function dispatch(routes, ctx) {
     const params = route(ctx.pathname, item.pattern);
     if (!params) continue;
     ctx.params = params;
-    ctx.body = ['POST', 'PUT', 'PATCH'].includes(ctx.req.method) ? await parseBody(ctx.req) : {};
+    ctx.body = item.body === 'stream' ? {} : ['POST', 'PUT', 'PATCH'].includes(ctx.req.method) ? await parseBody(ctx.req) : {};
     await item.handler(ctx);
     return true;
   }

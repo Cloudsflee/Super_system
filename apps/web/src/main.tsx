@@ -3,6 +3,7 @@ import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import { RouterProvider } from 'react-router-dom';
 import { router } from './app/router';
+import { ContextMenuProvider } from './components/common/ContextMenu';
 import './styles/global.css';
 import './styles/shell.css';
 import './styles/approvals.css';
@@ -14,6 +15,7 @@ import './styles/onboarding.css';
 import './styles/workflow.css';
 import './styles/workspace.css';
 import './styles/data.css';
+import './styles/overlays.css';
 
 export const queryClient = new QueryClient({
   defaultOptions: {
@@ -25,7 +27,7 @@ export const queryClient = new QueryClient({
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
     <QueryClientProvider client={queryClient}>
-      <RouterProvider router={router} />
+      <ContextMenuProvider><RouterProvider router={router} /></ContextMenuProvider>
     </QueryClientProvider>
   </StrictMode>
 );

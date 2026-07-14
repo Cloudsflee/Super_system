@@ -15,7 +15,7 @@ try {
     assert.ok(script.includes('aiws-app:1.5.0'));
     assert.ok(script.includes('aiws-codex-runner:1.5.0-codex-0.144.0'));
     assert.ok(script.includes('state_canonical_hash'));
-    assert.ok(script.includes('v15_restore_hash_mismatch'));
+    assert.ok(script.includes('v16_restore_hash_mismatch'));
     assert.ok(script.includes('windows-bridge-export'));
   }
   for (const boundary of ['def create_archive', 'def sanitize_archive', 'def transient_codex_path', 'archive_symlink_target_outside']) assert.ok(backupTool.includes(boundary));

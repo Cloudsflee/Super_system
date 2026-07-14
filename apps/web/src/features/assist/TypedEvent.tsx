@@ -1,4 +1,4 @@
-import { CheckCircle2, CircleDot, FileDiff, Gauge, Globe2, ListTodo, Search, ShieldAlert, TerminalSquare, Wrench } from 'lucide-react';
+import { CheckCircle2, CircleDot, FileDiff, Globe2, ListTodo, Search, ShieldAlert, TerminalSquare, Wrench } from 'lucide-react';
 import type { AssistV3Event } from '../../api/types';
 import { useUi } from '../../state/ui';
 import { AssistMarkdown } from './AssistMarkdown';
@@ -14,7 +14,7 @@ export function TypedEvent({ event }: { event: AssistV3Event }) {
   if (event.type === 'test') return <EventCard icon={CheckCircle2} title={text(data.name) || '测试'} status={data.status}><p>{text(data.summary)}</p></EventCard>;
   if (event.type === 'mcp') return <EventCard icon={Wrench} title={`MCP · ${text(data.server)}`} status={data.status}><p>{text(data.tool)}</p></EventCard>;
   if (event.type === 'search') return <EventCard icon={Search} title="搜索" status={data.status}><p>{text(data.query)}</p></EventCard>;
-  if (event.type === 'usage') return <EventCard icon={Gauge} title="用量"><div className="usage-row">{Object.entries(data).map(([key, value]) => <span key={key}><strong>{Number(value).toLocaleString()}</strong>{key.replaceAll('_', ' ')}</span>)}</div></EventCard>;
+  if (event.type === 'usage') return null;
   if (event.type === 'approval') return <EventCard icon={ShieldAlert} title="需要 Runtime Approval" status={data.status}><p>{approvalSummary(data)}</p>{typeof data.approval_id === 'string' && <button className="button primary" onClick={() => showApproval(String(data.approval_id))}>立即审查</button>}</EventCard>;
   if (event.type === 'reasoning_summary') return <EventCard icon={CircleDot} title="Reasoning summary"><AssistMarkdown>{text(data.summary)}</AssistMarkdown></EventCard>;
   if (event.type === 'terminal') return <EventCard icon={TerminalSquare} title={`CLI · ${text(data.runtime) || 'terminal'}`} status={data.status}><p>{data.exit_code == null ? `Session ${text(data.terminal_session_id)}` : `exit ${text(data.exit_code)}`}</p></EventCard>;

@@ -2,10 +2,10 @@ import fs from 'node:fs';
 import fsp from 'node:fs/promises';
 import path from 'node:path';
 import { createLocalOwner, defaultCodexProfiles, defaultTools, hashString, id, makeTrace, now } from '../../../packages/shared/index.mjs';
-import { ARTIFACT_DIR, ASSIST_DIR, CODEX_HOME_DIR, DATA_DIR, EXPORT_DIR, PROBE_DIR, STAGING_DIR, STATE_FILE, TRASH_DIR, VAULT_DIR, WORKSPACE_DIR, WORKTREE_DIR, collections } from './config.mjs';
+import { ARTIFACT_DIR, ASSIST_DIR, ATTACHMENT_DIR, ATTACHMENT_TEMP_DIR, CODEX_HOME_DIR, DATA_DIR, EXPORT_DIR, PROBE_DIR, STAGING_DIR, STATE_FILE, TRASH_DIR, VAULT_DIR, WORKSPACE_DIR, WORKTREE_DIR, collections } from './config.mjs';
 import { redactKnownSecrets } from './vault.mjs';
 import { codexAuthMatchesProfile, isThirdPartyProvider, normalizeProviderBaseUrl, writeProfileConfig } from './codex-service.mjs';
-import { migrateStateFileToV14, STATE_SCHEMA_VERSION, validateState14 } from './state-migration-v14.mjs';
+import { migrateStateFileToV15, STATE_SCHEMA_VERSION, validateState15 } from './state-migration-v15.mjs';
 
 let lastMigration = null;
 
@@ -14,9 +14,9 @@ export async function ensureRuntime() {
   await fsp.mkdir(ARTIFACT_DIR, { recursive: true });
   await fsp.mkdir(VAULT_DIR, { recursive: true });
   await fsp.mkdir(CODEX_HOME_DIR, { recursive: true });
-  await Promise.all([WORKSPACE_DIR, STAGING_DIR, TRASH_DIR, EXPORT_DIR, WORKTREE_DIR, PROBE_DIR, ASSIST_DIR].map((dir) => fsp.mkdir(dir, { recursive: true })));
+  await Promise.all([WORKSPACE_DIR, STAGING_DIR, TRASH_DIR, EXPORT_DIR, WORKTREE_DIR, PROBE_DIR, ASSIST_DIR, ATTACHMENT_DIR, ATTACHMENT_TEMP_DIR].map((dir) => fsp.mkdir(dir, { recursive: true, mode: 0o700 })));
   if (!fs.existsSync(STATE_FILE)) return writeState(bootstrapState());
-  lastMigration = await migrateStateFileToV14(STATE_FILE);
+  lastMigration = await migrateStateFileToV15(STATE_FILE);
   const state = await readState();
   let changed = false;
   if (state.schema_version !== STATE_SCHEMA_VERSION) throw new Error(`unsupported_state_schema_${state.schema_version}`);
@@ -120,7 +120,7 @@ function bootstrapState() {
 export async function readState() { return JSON.parse(await fsp.readFile(STATE_FILE, 'utf8')); }
 
 export async function writeState(state) {
-  validateState14(state);
+  validateState15(state);
   const tmp = `${STATE_FILE}.tmp`;
   const serialized = await redactKnownSecrets(JSON.stringify(state, null, 2));
   const handle = await fsp.open(tmp, 'w', 0o600);

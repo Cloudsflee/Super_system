@@ -1,4 +1,4 @@
-import fsp from 'node:fs/promises';
+import path from 'node:path';
 import { estimateTokens, id, now } from '../../../packages/shared/index.mjs';
 import { cleanText } from './assist-v3-domain.mjs';
 
@@ -54,21 +54,27 @@ export function applicationAdditionalContext({ turn, session, project, contextPa
   return [{ kind: 'application', value: JSON.stringify(value) }];
 }
 
-export async function appServerUserInput(userText, attachments, state) {
+export async function appServerUserInput(userText, attachments, _state, options = {}) {
   const input = [{ type: 'text', text: cleanText(userText, 100_000), text_elements: [] }];
-  for (const attachment of attachments.filter((item) => item.model_policy === 'injectable').slice(0, 12)) {
+  for (const attachment of attachments.filter((item) => ['selection', 'text'].includes(item.kind) && item.model_policy === 'injectable').slice(0, 12)) {
     const text = cleanText(attachment.text, 100_000);
     if (text) input.push({ type: 'text', text: `[Attachment: ${cleanText(attachment.title || attachment.relative_path || attachment.kind, 500)}]\n${text}`, text_elements: [] });
   }
-  for (const attachment of attachments.filter((item) => item.model_policy === 'image').slice(0, 8)) {
-    const ref = state.file_refs.find((item) => item.id === attachment.file_ref_id);
-    const sourcePath = ref?.absolute_path || attachment.managed_path;
-    if (!sourcePath || Number(ref?.size_bytes || attachment.size_bytes) > 10 * 1024 * 1024) continue;
-    const bytes = await fsp.readFile(sourcePath).catch(() => null); if (!bytes) continue;
-    const type = /^image\/(?:png|jpeg|webp|gif)$/i.test(attachment.content_type) ? attachment.content_type : 'image/png';
-    input.push({ type: 'image', detail: 'auto', url: `data:${type};base64,${bytes.toString('base64')}` });
+  for (const attachment of attachments.filter((item) => !['selection', 'text'].includes(item.kind)).slice(0, 20)) {
+    const nativePath = options.nativePaths?.get(attachment.id) || projectMentionPath(attachment, options);
+    if (!nativePath) continue;
+    const name = cleanText(attachment.original_filename || attachment.title || path.basename(nativePath), 500);
+    if (attachment.model_policy === 'image' && options.imageCapable !== false) input.push({ type: 'localImage', path: nativePath });
+    else input.push({ type: 'mention', name, path: nativePath });
   }
   return input;
+}
+
+function projectMentionPath(attachment, options) {
+  const relative = String(attachment.relative_path || '').replaceAll('\\', '/');
+  if (!relative || relative.startsWith('/') || relative.split('/').includes('..')) return null;
+  if (options.containerized) return `/workspace/${relative}`;
+  return options.cwd ? path.join(options.cwd, ...relative.split('/')) : relative;
 }
 
 function safePageContext(value) {
@@ -77,5 +83,5 @@ function safePageContext(value) {
 }
 
 function limitedLegacyHistory(session) {
-  return { legacy_thread_id_present: Boolean(session.legacy_codex_thread_id || session.codex_thread_id), note: 'A V1.4 native thread was retained for audit. Continue in this V1.5 dynamic-tools generation without exposing the legacy identifier.' };
+  return { legacy_thread_id_present: Boolean(session.legacy_codex_thread_id || session.historical_shared_codex_thread_id), note: 'A legacy native thread is retained for audit only. Continue in an isolated V1.6 thread without exposing or resuming the shared identifier.' };
 }

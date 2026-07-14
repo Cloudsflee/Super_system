@@ -1,7 +1,9 @@
 import { HttpError } from './http.mjs';
 import { addTrace, mutate, owner, readState } from './state.mjs';
 import { id, now } from '../../../packages/shared/index.mjs';
-import { readProjectFile } from './file-service.mjs';
+import { inspectProjectFile } from './file-service.mjs';
+import { previewKind } from './assist-attachments.mjs';
+export { forkV3Session } from './assist-session-lifecycle.mjs';
 import {
   attachmentHash, boundedInt, cleanText, inferContentType, makeSession, modelPolicy,
   normalizeAttachmentKind, normalizeSelection, publicAttachment, requireProject, requireSession,
@@ -15,8 +17,10 @@ export async function listV3Sessions(query = {}) {
   if (query.scope_type) sessions = sessions.filter((item) => item.scope_type === query.scope_type);
   if (query.scope_id) sessions = sessions.filter((item) => item.scope_id === query.scope_id);
   if (query.pinned === 'true' || query.pinned === true) sessions = sessions.filter((item) => item.pinned === true);
-  if (query.archived === 'only') sessions = sessions.filter((item) => Boolean(item.archived_at));
-  else if (query.archived !== 'include') sessions = sessions.filter((item) => !item.archived_at);
+  if (query.archived === 'only') sessions = sessions.filter((item) => Boolean(item.archived_at) && !item.deleted_at);
+  else if (query.archived !== 'include') sessions = sessions.filter((item) => !item.archived_at || Boolean(item.deleted_at));
+  if (query.deleted === 'only') sessions = sessions.filter((item) => Boolean(item.deleted_at));
+  else if (query.deleted === 'exclude') sessions = sessions.filter((item) => !item.deleted_at);
   const search = cleanText(query.search || query.q, 200).toLowerCase();
   if (search) {
     const matching = new Set(state.assist_messages.filter((item) => String(item.content || '').toLowerCase().includes(search)).map((item) => item.session_id));
@@ -57,29 +61,6 @@ export async function archiveV3Session(sessionId) {
   });
 }
 export async function restoreV3Session(sessionId) { return mutate((state) => { const session = requireSession(state, sessionId, true); Object.assign(session, { archived_at: null, lifecycle: 'active', updated_at: now() }); return session; }); }
-export async function forkV3Session(sessionId, input = {}) {
-  return mutate((state) => {
-    const actor = owner(state), source = requireSession(state, sessionId, true), project = requireProject(state, source.project_id);
-    const fromTurn = input.from_turn_id ? requireTurn(state, input.from_turn_id) : state.assist_turns.filter((item) => item.session_id === source.id && ['completed', 'failed', 'stopped', 'interrupted'].includes(item.status)).at(-1);
-    if (fromTurn && fromTurn.session_id !== source.id) throw new HttpError(409, { error: 'assist_fork_turn_scope_mismatch' });
-    const scope = resolveScope(state, project, source.scope_type, source.scope_id);
-    const forked = makeSession({ actor, project, scope, title: input.title || `${source.title} · Fork`, parentSessionId: source.parent_session_id, viewContext: source.view_context || {} });
-    const resume = input.resume_context !== false;
-    Object.assign(forked, {
-      forked_from_session_id: source.id, forked_from_turn_id: fromTurn?.id || null,
-      codex_thread_id: resume ? source.codex_thread_id || null : null,
-      legacy_codex_thread_id: resume ? source.legacy_codex_thread_id || null : null,
-      native_thread_generation: resume ? source.native_thread_generation || 2 : 2,
-      runtime_profile_id: resume ? source.runtime_profile_id || null : null,
-      runtime_affinity_key: resume ? source.runtime_affinity_key || null : null,
-      active_change_batch_id: null
-    });
-    state.assist_sessions.push(forked);
-    addTrace(state, 'assist.session.created', { project_id: project.id, workspace_id: forked.workspace_id, node_id: forked.node_id, target_id: forked.id, summary: `Fork Assist V3 session: ${forked.title}` }, actor.id);
-    return forked;
-  });
-}
-
 export async function listV3Attachments(sessionId, query = {}) {
   const state = await readState(); requireSession(state, sessionId, true);
   let items = state.attachments.filter((item) => item.session_id === sessionId);
@@ -89,7 +70,7 @@ export async function listV3Attachments(sessionId, query = {}) {
 export async function createV3Attachment(sessionId, input = {}) {
   const snapshot = await readState(), sourceSession = requireSession(snapshot, sessionId), sourceProject = requireProject(snapshot, sourceSession.project_id);
   const sourceKind = normalizeAttachmentKind(input.kind), sourcePath = input.path === undefined ? null : safeRelativePath(input.path);
-  const projectFile = ['project_file', 'monaco_file'].includes(sourceKind) && sourcePath ? await readProjectFile(sourceProject.id, sourcePath) : null;
+  const projectFile = ['project_file', 'monaco_file'].includes(sourceKind) && sourcePath ? await inspectProjectFile(sourceProject.id, sourcePath) : null;
   return mutate((state) => {
     const actor = owner(state), session = requireSession(state, sessionId), project = requireProject(state, session.project_id);
     const kind = sourceKind, turn = input.turn_id ? requireTurn(state, input.turn_id) : null;
@@ -97,16 +78,19 @@ export async function createV3Attachment(sessionId, input = {}) {
     const fileRef = input.file_ref_id ? state.file_refs.find((item) => item.id === input.file_ref_id) : null;
     if (input.file_ref_id && !fileRef) throw new HttpError(404, { error: 'attachment_file_ref_not_found' });
     if (fileRef && !fileRefBelongsToProject(state, fileRef, project.id)) throw new HttpError(404, { error: 'attachment_file_ref_not_found' });
-    const relativePath = sourcePath;
-    const selectionText = kind === 'selection' || kind === 'text' ? cleanText(input.text || input.content, 100_000) : projectFile ? cleanText(projectFile.content, 100_000) : '';
+    const relativePath = projectFile?.path || sourcePath;
+    const selectionText = kind === 'selection' || kind === 'text' ? cleanText(input.text || input.content, 100_000) : '';
     const contentType = cleanText(input.content_type || input.mime_type || fileRef?.content_type || inferContentType(relativePath), 200) || 'application/octet-stream';
-    const size = Number(fileRef?.size_bytes ?? input.size_bytes ?? Buffer.byteLength(selectionText, 'utf8'));
+    const size = Number(fileRef?.size_bytes ?? projectFile?.size ?? input.size_bytes ?? Buffer.byteLength(selectionText, 'utf8'));
     if (!Number.isSafeInteger(size) || size < 0 || size > 25 * 1024 * 1024) throw new HttpError(413, { error: 'attachment_too_large', max_bytes: 25 * 1024 * 1024 });
     const attachment = {
       id: id('att'), project_id: project.id, session_id: session.id, turn_id: turn?.id || null, kind,
       title: cleanText(input.title || relativePath || kind, 200), file_ref_id: fileRef?.id || null,
-      relative_path: relativePath, content_type: contentType, size_bytes: size,
-      sha256: fileRef?.sha256 || attachmentHash(selectionText, input.sha256), selection: normalizeSelection(input.selection),
+      original_filename: cleanText(input.original_filename || relativePath || input.title || kind, 255),
+      relative_path: relativePath, content_type: contentType, client_mime_type: contentType, detected_mime_type: contentType,
+      preview_kind: previewKind(contentType, relativePath || input.title || ''), storage_status: ['selection', 'text'].includes(kind) ? 'inline' : 'external',
+      storage_error: null, content_deleted_at: null, deleted_at: null, size_bytes: size,
+      sha256: fileRef?.sha256 || projectFile?.sha256 || attachmentHash(selectionText, input.sha256), selection: normalizeSelection(input.selection),
       text: selectionText || null, model_policy: modelPolicy(kind, contentType), status: 'ready', created_by_user_id: actor.id,
       created_at: now(), updated_at: now()
     };

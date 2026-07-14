@@ -9,7 +9,10 @@ const home = process.env.CODEX_HOME || process.cwd();
 const goalFile = path.join(home, 'fake-goal.json');
 const logFile = path.join(home, 'fake-protocol.jsonl');
 const threadId = 'fake-native-thread-v15';
-const nativeTurnId = `fake-turn-${process.pid}`;
+let activeThreadId = threadId;
+let nativeTurnSequence = 0;
+let forkSequence = 0;
+let activeTurnId = null;
 const pendingServerRequests = new Map();
 fs.mkdirSync(home, { recursive: true });
 
@@ -30,9 +33,15 @@ function handle(message) {
     data: [{ id: 'gpt-v15-native', model: 'gpt-v15-native', displayName: 'V1.5 Native', description: 'integration fixture', hidden: false, isDefault: true, defaultReasoningEffort: 'max', supportedReasoningEfforts: [{ reasoningEffort: 'max', description: 'maximum' }, { reasoningEffort: 'ultra', description: 'ultra' }] }],
     nextCursor: null
   });
-  if (message.method === 'thread/start') return reply(message.id, { thread: { id: threadId } });
+  if (message.method === 'thread/start') { activeThreadId = threadId; return reply(message.id, { thread: { id: activeThreadId } }); }
   if (message.method === 'thread/resume' && message.params?.threadId === 'missing-native-thread') return replyError(message.id, 'no rollout found for thread id missing-native-thread');
-  if (message.method === 'thread/resume') return reply(message.id, { thread: { id: message.params?.threadId || threadId } });
+  if (message.method === 'thread/resume') { activeThreadId = message.params?.threadId || threadId; return reply(message.id, { thread: { id: activeThreadId } }); }
+  if (message.method === 'thread/fork') {
+    if (message.params?.turnId === 'fork-failure-turn') return replyError(message.id, 'fixture fork failure');
+    activeThreadId = `fake-native-fork-${process.pid}-${++forkSequence}`;
+    return reply(message.id, { thread: { id: activeThreadId }, ephemeral: message.params?.ephemeral === true });
+  }
+  if (message.method === 'thread/delete') return reply(message.id, { deleted: true, threadId: activeThreadId });
   if (message.method === 'thread/goal/set') {
     const previous = readGoal();
     const goal = {
@@ -47,22 +56,24 @@ function handle(message) {
   if (message.method === 'turn/interrupt') return reply(message.id, {});
   if (message.method !== 'turn/start') return reply(message.id, {});
 
-  reply(message.id, { turn: { id: nativeTurnId, status: 'inProgress' } });
+  activeTurnId = `fake-turn-${process.pid}-${++nativeTurnSequence}`;
+  reply(message.id, { turn: { id: activeTurnId, status: 'inProgress' } });
   const prompt = (message.params?.input || []).filter((item) => item.type === 'text').map((item) => item.text).join('\n');
   setTimeout(() => startTurnScenario(prompt), 15);
 }
 
 function startTurnScenario(prompt) {
+  if (prompt.includes('SLOW_TURN')) return setTimeout(() => finishTurn('native slow turn completed'), 1000);
   if (prompt.includes('ASK_INPUT')) {
     const id = `request-user-input-${process.pid}`; pendingServerRequests.set(id, 'user-input');
     return send({ id, method: 'item/tool/requestUserInput', params: {
-      threadId, turnId: nativeTurnId, itemId: 'native-question-v15', requestId: 'request-v15', autoResolutionMs: 120000,
+      threadId: activeThreadId, turnId: activeTurnId, itemId: 'native-question-v15', requestId: 'request-v15', autoResolutionMs: 120000,
       questions: [{ id: 'choice', header: 'Choice', question: 'Choose the integration answer', isOther: false, isSecret: false, options: [{ label: 'alpha', description: 'Use alpha' }, { label: 'beta', description: 'Use beta' }] }]
     } });
   }
   if (prompt.includes('PAGE_TOOL')) {
     const id = `dynamic-tool-${process.pid}`; pendingServerRequests.set(id, 'dynamic-tool');
-    return send({ id, method: 'item/tool/call', params: { threadId, turnId: nativeTurnId, callId: 'native-page-call-v15', namespace: 'aiws_page', tool: 'set_field', arguments: { target_id: 'brief.goal', value: 'native tool value' } } });
+    return send({ id, method: 'item/tool/call', params: { threadId: activeThreadId, turnId: activeTurnId, callId: 'native-page-call-v15', namespace: 'aiws_page', tool: 'set_field', arguments: { target_id: 'brief.goal', value: 'native tool value' } } });
   }
   finishTurn('native turn completed');
 }
@@ -80,9 +91,9 @@ function handleServerResponse(message) {
 }
 
 function finishTurn(text) {
-  send({ method: 'item/agentMessage/delta', params: { threadId, turnId: nativeTurnId, itemId: 'message-v15', delta: text } });
-  send({ method: 'item/reasoning/summaryTextDelta', params: { threadId, turnId: nativeTurnId, itemId: 'reason-v15', summaryIndex: 0, delta: 'public native summary' } });
-  send({ method: 'turn/completed', params: { threadId, turn: { id: nativeTurnId, status: 'completed' } } });
+  send({ method: 'item/agentMessage/delta', params: { threadId: activeThreadId, turnId: activeTurnId, itemId: 'message-v15', delta: text } });
+  send({ method: 'item/reasoning/summaryTextDelta', params: { threadId: activeThreadId, turnId: activeTurnId, itemId: 'reason-v15', summaryIndex: 0, delta: 'public native summary' } });
+  send({ method: 'turn/completed', params: { threadId: activeThreadId, turn: { id: activeTurnId, status: 'completed' } } });
 }
 function readGoal() { try { return JSON.parse(fs.readFileSync(goalFile, 'utf8')); } catch { return null; } }
 function reply(id, result) { send({ id, result }); }

@@ -24,6 +24,10 @@ export async function createV3Turn(sessionId, input = {}, options = {}) {
     const configuration = resolveAssistTurnConfiguration(state, input, { allowMissingProfile: adapted });
     if (configuration.profile) bindSessionRuntimeProfile(session, configuration.profile);
     const turn = makeTurn({ actor, session, mode, content, input, attachmentIds, options, configuration });
+    turn.attachment_manifest = attachmentIds.map((key) => {
+      const item = state.attachments.find((entry) => entry.id === key);
+      return { id: item.id, sha256: item.sha256 || null, size_bytes: Number(item.size_bytes || 0), detected_mime_type: item.detected_mime_type || item.content_type || 'application/octet-stream', storage_status: item.storage_status || 'external', relative_path: item.relative_path || null };
+    });
     const readOnlyReason = mode === 'plan' ? 'plan_mode' : projectWriteUnavailableReason(project);
     Object.assign(turn, { code_access: readOnlyReason ? 'read_only' : 'workspace_write', code_read_only_reason: readOnlyReason });
     if (adapted) Object.assign(turn, { test_adapter: true, test_response: normalizeTestResponse(input.test_response, input.test_delay_ms) });

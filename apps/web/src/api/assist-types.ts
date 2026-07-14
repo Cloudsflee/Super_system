@@ -5,7 +5,7 @@ export type AssistV3EventType = 'queued' | 'started' | 'text' | 'plan' | 'comman
 export type AssistV3Event = { id: number; sequence: number; session_id: string; turn_id: string | null; type: AssistV3EventType; data: Record<string, unknown>; created_at: string };
 export type AssistAttachment = {
   id: string; project_id: string; session_id: string; turn_id?: string | null; kind: string; title: string;
-  file_ref_id?: string | null; relative_path?: string | null; content_type: string; size_bytes: number; sha256?: string | null;
+  original_filename?: string | null; file_ref_id?: string | null; relative_path?: string | null; content_type: string; client_mime_type?: string; detected_mime_type?: string; preview_kind?: string; storage_status?: string; content_deleted_at?: string | null; size_bytes: number; sha256?: string | null;
   selection?: { start_line: number; start_column: number; end_line: number; end_column: number } | null;
   model_policy: 'injectable' | 'image' | 'artifact_only'; status: string; created_at: string; updated_at?: string;
 };
@@ -27,6 +27,7 @@ export type AssistV3Turn = {
 export type AssistV3Session = {
   id: string; version: 3; project_id: string; workspace_id?: string | null; node_id?: string | null; scope_type: 'project' | 'node';
   scope_id: string; title: string; status: string; lifecycle: string; pinned: boolean; archived_at?: string | null; parent_session_id?: string | null;
+  forked_from_session_id?: string | null; forked_from_turn_id?: string | null; deleted_at?: string | null; delete_batch_id?: string | null; purge_after?: string | null; deletable?: boolean; descendant_count?: number; deleted_descendant_count?: number;
   turn_count?: number; last_turn?: Pick<AssistV3Turn, 'id' | 'mode' | 'status' | 'updated_at'> | null;
   turns?: AssistV3Turn[]; attachments?: AssistAttachment[]; last_event_id?: number; created_at: string; updated_at: string;
   change_batch?: AssistChangeBatch | null; native_goal_snapshot?: AssistGoal | null;

@@ -3,7 +3,7 @@
 .workflow-page .react-flow__pane.dragging { cursor: grabbing; }
 .workflow-page .react-flow__edge-path { stroke: #879297; stroke-width: 1.7; }
 .workflow-page .react-flow__edge.selected .react-flow__edge-path { stroke: var(--green); }
-.workflow-page .react-flow__minimap { right: 14px; bottom: 14px; width: 145px; height: 94px; border: 1px solid var(--line); border-radius: 6px; background: rgba(255,255,255,.92); }
+.workflow-page .react-flow__minimap { right: 14px; bottom: 14px; width: 145px !important; height: 94px !important; border: 1px solid var(--line); border-radius: 6px; background: rgba(255,255,255,.92); }
 .canvas-caption { position: absolute; z-index: 6; top: 14px; left: 50%; transform: translateX(-50%); display: flex; gap: 8px; align-items: center; padding: 6px 9px; border: 1px solid var(--line); border-radius: 5px; background: rgba(255,255,255,.94); font-size: 11px; }
 .canvas-caption i { color: var(--muted); font-style: normal; }
 .workspace-node { width: 232px; min-height: 148px; padding: 13px; border: 1px solid #bfc5c8; border-radius: 7px; background: rgba(255,255,255,.98); box-shadow: 0 4px 12px rgba(28,35,39,.08); }

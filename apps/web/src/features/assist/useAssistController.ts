@@ -6,6 +6,8 @@ import { describeAssistSurface, executeAssistOperation } from '../../components/
 import { useUi } from '../../state/ui';
 import { activeTurn, assistKeys, useAssistConfigurations, useAssistEvents, useAssistGoal, useAssistModels, useAssistOperations, useAssistSession, useAssistSessions, useCodexProfiles, useTerminalCapabilities } from './assist-api';
 import type { ReviewTarget } from './DiffReviewPanel';
+import type { AssistCommand } from './composer-support';
+import { publishSelectionAsk } from '../../components/common/selection-ask';
 
 type FollowUp = 'queue' | 'steer' | 'interrupt';
 type TerminalRuntime = 'linux_container' | 'windows_bridge' | 'host_dev';
@@ -25,7 +27,7 @@ export function useAssistController({ projectId, nodeId, enabled, route }: { pro
 
   useEffect(() => { setSelectedId(undefined); setView('chat'); setTerminal(null); setReviewTarget(null); processedOperations.current.clear(); }, [projectId]);
   useEffect(() => { processedOperations.current.clear(); }, [selectedId]);
-  useEffect(() => { const rows = sessions.data || []; if (!rows.length) { if (!sessions.isLoading) setSelectedId(undefined); return; } if (!selectedId || !rows.some((item) => item.id === selectedId)) setSelectedId(rows[0].id); }, [sessions.data, sessions.isLoading, selectedId]);
+  useEffect(() => { const rows = (sessions.data || []).filter((item) => !item.deleted_at); if (!rows.length) { if (!sessions.isLoading) setSelectedId(undefined); return; } if (!selectedId || !rows.some((item) => item.id === selectedId)) setSelectedId(rows[0].id); }, [sessions.data, sessions.isLoading, selectedId]);
   useEffect(() => { const rows = profiles.data || [], active = rows.find((item) => item.is_active && !item.assist_configuration) || rows.find((item) => !item.assist_configuration); if (active && (!profileId || !rows.some((item) => item.id === profileId && !item.assist_configuration))) { setProfileId(active.id); setModelState(active.model || ''); setReasoning(active.reasoning || ''); } }, [profiles.data, profileId]);
   useEffect(() => { const catalog = models.data, entries = Array.isArray(catalog?.models) ? catalog.models : []; if (!entries.length) return; const selected = entries.find((item) => item.model === model) || entries.find((item) => item.model === catalog?.default_model) || entries[0]; if (!selected) return; if (!model) setModelState(selected.model); const efforts = selected.supportedReasoningEfforts.map((item) => item.reasoningEffort); if (!efforts.includes(reasoning)) setReasoning(selected.defaultReasoningEffort || efforts[0] || reasoning); }, [models.data, model, reasoning]);
   useEffect(() => { setAttachmentIds((ids) => ids.filter((item) => session?.attachments?.some((attachment) => attachment.id === item))); }, [session?.id, session?.attachments?.length]);
@@ -48,7 +50,9 @@ export function useAssistController({ projectId, nodeId, enabled, route }: { pro
   function rename(item: AssistV3Session) { const title = window.prompt('重命名线程', item.title)?.trim(); if (!title || title === item.title) return; void perform(async () => { await api(`/assist/v3/sessions/${item.id}/rename`, json('POST', { title })); await refresh(item.id); }); }
   function pin(item: AssistV3Session) { void perform(async () => { await api(`/assist/v3/sessions/${item.id}/pin`, json('POST', { pinned: !item.pinned })); await refresh(item.id); }); }
   function archive(item: AssistV3Session) { void perform(async () => { await api(`/assist/v3/sessions/${item.id}/${archived ? 'restore' : 'archive'}`, json('POST')); if (archived) { setArchived(false); setSelectedId(item.id); } else if (selectedId === item.id) setSelectedId(undefined); await refresh(item.id); }); }
-  function fork(item: AssistV3Session) { void perform(async () => { const created = await api<AssistV3Session>(`/assist/v3/sessions/${item.id}/fork`, json('POST', { from_turn_id: item.last_turn?.id, title: `${item.title} · Fork` })); setSelectedId(created.id); setView('chat'); await refresh(created.id); }); }
+  function fork(item: AssistV3Session) { void perform(async () => { const created = await api<AssistV3Session>(`/assist/v3/sessions/${item.id}/fork`, json('POST', { title: `${item.title} · Fork` })); setSelectedId(created.id); setView('chat'); await refresh(created.id); }); }
+  function deleteBranch(item: AssistV3Session) { void perform(async () => { await api(`/assist/v3/sessions/${item.id}`, { method: 'DELETE' }); if (selectedId === item.id) setSelectedId(undefined); await refresh(); }); }
+  function restoreDeleted(item: AssistV3Session) { void perform(async () => { await api(`/assist/v3/sessions/${item.id}/restore-deleted`, json('POST')); setSelectedId(item.id); await refresh(item.id); }); }
 
   function submit(behavior: FollowUp) { const collaborationMode = planNext ? 'plan' : 'default'; setPlanNext(false); void perform(async () => { if (!session || !projectId) return; const body = { content: prompt.trim(), collaboration_mode: collaborationMode, profile_id: profileId || undefined, configuration_id: configurationId || undefined, model, reasoning, attachment_ids: attachmentIds, view_context: { route, browser_instance_id: describeAssistSurface().browser_instance_id, surface: describeAssistSurface() } }; const endpoint = running ? `/assist/v3/sessions/${session.id}/follow-ups` : `/assist/v3/sessions/${session.id}/turns`; await api<AssistV3Turn>(endpoint, json('POST', running ? { ...body, behavior } : body)); setPrompt(''); await refresh(session.id); }); }
   function stop() { if (!running) return; void perform(async () => { await api(`/assist/v3/turns/${running.id}/stop`, json('POST', { reason: 'user_stop' })); await refresh(); }); }
@@ -66,7 +70,14 @@ export function useAssistController({ projectId, nodeId, enabled, route }: { pro
   function showTerminal() { if (terminal) setView('terminal'); else setTerminalSelectorOpen(true); }
   function showReview() { if (reviewTarget) setView('review'); }
   function addAttachment(item: AssistAttachment) { client.setQueryData<AssistV3Session>(assistKeys.session(session?.id), (current) => current ? { ...current, attachments: [...(current.attachments || []), item] } : current); }
+  function attachmentDeleted(item: AssistAttachment, tombstone: boolean) { setAttachmentIds((ids) => ids.filter((key) => key !== item.id)); client.setQueryData<AssistV3Session>(assistKeys.session(session?.id), (current) => current ? { ...current, attachments: tombstone ? (current.attachments || []).map((entry) => entry.id === item.id ? item : entry) : (current.attachments || []).filter((entry) => entry.id !== item.id) } : current); }
+  function composerCommand(command: AssistCommand) {
+    if (command === 'goal') window.dispatchEvent(new Event('aiws:edit-goal'));
+    else if (command === 'review') { const target = [...turns].reverse().find((turn) => turn.change_batch_id && ['ready', 'changes_requested', 'applied'].includes(turn.review_status)); if (target) openReview(target); else toast('当前线程没有可审查的变更'); }
+    else if (command === 'fork' && session) fork(session);
+    else if (command === 'btw') publishSelectionAsk({ selection: '', rect: null, pageUrl: window.location.href });
+  }
   function backToChat() { setView('chat'); setReviewTarget(null); }
 
-  return { search, setSearch, archived, setArchived, selectedId, setSelectedId, planNext, setPlanNext, profileId, model, setModel: selectModel, reasoning, setReasoning, configurationId, selectConfiguration, configurations, models, prompt, setPrompt, attachmentIds, setAttachmentIds, busy, view, session, sessions, profiles, stream, running, goal, operations, terminalCapabilities, terminalSelectorOpen, setTerminalSelectorOpen, reviewTarget, terminal, terminalRolledBack, setTerminal, createSession, rename, pin, archive, fork, submit, stop, retry, openReview, openTerminal, openTerminalReview, resolveReview, showTerminal, showReview, addAttachment, backToChat, toast, refresh, saveConfiguration, setGoal, clearGoal, respondUserInput, confirmOperation, undoOperation };
+  return { search, setSearch, archived, setArchived, selectedId, setSelectedId, planNext, setPlanNext, profileId, model, setModel: selectModel, reasoning, setReasoning, configurationId, selectConfiguration, configurations, models, prompt, setPrompt, attachmentIds, setAttachmentIds, busy, view, session, sessions, profiles, stream, running, goal, operations, terminalCapabilities, terminalSelectorOpen, setTerminalSelectorOpen, reviewTarget, terminal, terminalRolledBack, setTerminal, createSession, rename, pin, archive, fork, deleteBranch, restoreDeleted, submit, stop, retry, openReview, openTerminal, openTerminalReview, resolveReview, showTerminal, showReview, addAttachment, attachmentDeleted, composerCommand, backToChat, toast, refresh, saveConfiguration, setGoal, clearGoal, respondUserInput, confirmOperation, undoOperation };
 }

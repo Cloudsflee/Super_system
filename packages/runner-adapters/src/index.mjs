@@ -3,6 +3,7 @@ import path from 'node:path';
 import { spawn } from 'node:child_process';
 import { prepareCodexInvocation } from './codex-command.mjs';
 import {
+  AIWS_RUNNER_IMAGE,
   RunnerStatus,
   agentsAiwsBlock,
   buildNodeRunResult,
@@ -43,7 +44,7 @@ export class CodexRunner extends AgentRunner {
 }
 
 export class DockerCodexRunner extends AgentRunner {
-  constructor({ image = 'aiws-codex-runner:1.4.0-codex-0.144.0', timeoutMs = 120000, invocationBuilder = null, processRunner = runProcess } = {}) {
+  constructor({ image = AIWS_RUNNER_IMAGE, timeoutMs = 120000, invocationBuilder = null, processRunner = runProcess } = {}) {
     super('DockerCodexRunner');
     this.image = image;
     this.timeoutMs = timeoutMs;

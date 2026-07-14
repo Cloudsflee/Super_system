@@ -25,7 +25,8 @@ export const TRACE_EVENTS = Object.freeze([
   ,'setup.mode.updated', 'setup.completed', 'github.app.configured', 'github.account.connected',
   'github.installation.synced', 'github.webhook.received', 'codex.authenticated', 'codex.profile.created',
   'codex.probe.completed', 'workflow.layout.saved', 'node.workspace.updated', 'file.saved',
-  'assist.session.created', 'assist.message.created', 'assist.action.confirmed', 'assist.action.rejected', 'assist.action.failed'
+  'assist.session.created', 'assist.session.forked', 'assist.native_thread.orphaned', 'assist.session.deleted', 'assist.session.restored_deleted', 'assist.session.purged',
+  'assist.message.created', 'assist.action.confirmed', 'assist.action.rejected', 'assist.action.failed'
   ,'git.push.created', 'project.intake.updated', 'project.source.imported', 'project.activated', 'project.workspace.migrated',
   'project.trashed', 'project.restored', 'change_proposal.deferred', 'runtime_approval.decided',
   'github.repository.created',

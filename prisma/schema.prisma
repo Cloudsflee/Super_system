@@ -245,6 +245,16 @@ model AssistSession {
   runtimeProfileId  String?  @map("runtime_profile_id")
   runtimeAffinityKey String? @map("runtime_affinity_key")
   activeChangeBatchId String? @map("active_change_batch_id")
+  forkedFromSessionId String? @map("forked_from_session_id")
+  forkedFromTurnId String? @map("forked_from_turn_id")
+  forkedFromCodexTurnId String? @map("forked_from_codex_turn_id")
+  historicalSharedCodexThreadId String? @map("historical_shared_codex_thread_id")
+  nativeThreadRepairRequired Boolean @default(false) @map("native_thread_repair_required")
+  deleteBatchId String? @map("delete_batch_id")
+  deletedAt DateTime? @map("deleted_at")
+  purgeAfter DateTime? @map("purge_after")
+  purgeStage String? @map("purge_stage")
+  purgeRetryAt DateTime? @map("purge_retry_at")
   nativeGoalSnapshot Json?    @map("native_goal_snapshot")
   nativeGoalSyncedAt  DateTime? @map("native_goal_synced_at")
   viewContext       Json     @map("view_context")
@@ -678,6 +688,7 @@ model AssistTurn {
   model               String?
   reasoning           String?
   codexThreadId       String?   @map("codex_thread_id")
+  codexTurnId         String?   @map("codex_turn_id")
   worktreeId          String?   @map("worktree_id")
   changeBatchId       String?   @map("change_batch_id")
   viewContext         Json?     @map("view_context")
@@ -685,6 +696,7 @@ model AssistTurn {
   codeReadOnlyReason  String?   @map("code_read_only_reason")
   contextPackId       String?   @map("context_pack_id")
   attachmentIds       Json      @map("attachment_ids")
+  attachmentManifest  Json      @map("attachment_manifest")
   usage               Json?
   reviewStatus        String    @map("review_status")
   review              Json
@@ -715,6 +727,14 @@ model Attachment {
   managedPath     String?   @map("managed_path")
   url             String?
   contentType     String?   @map("content_type")
+  originalFilename String?  @map("original_filename")
+  clientMimeType  String?   @map("client_mime_type")
+  detectedMimeType String?  @map("detected_mime_type")
+  previewKind     String?   @map("preview_kind")
+  storageStatus   String?   @map("storage_status")
+  storageError    String?   @map("storage_error")
+  contentDeletedAt DateTime? @map("content_deleted_at")
+  deletedAt       DateTime? @map("deleted_at")
   sizeBytes       Int       @default(0) @map("size_bytes")
   sha256          String?
   text            String?
@@ -954,7 +974,6 @@ model AssistOperation {
   failureCode     String?   @map("failure_code")
   undoneBy        String?   @map("undone_by")
   undoneAt        DateTime? @map("undone_at")
-  failedAt        DateTime? @map("failed_at")
   createdAt       DateTime  @map("created_at")
   updatedAt       DateTime  @map("updated_at")
 

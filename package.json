@@ -1,8 +1,8 @@
 {
   "name": "ai-workspace-system",
-  "version": "1.5.0",
+  "version": "1.6.0",
   "private": true,
-  "description": "本地优先 AI 协作工作空间系统 V1.5",
+  "description": "本地优先 AI 协作工作空间系统 V1.6",
   "type": "module",
   "packageManager": "pnpm@10.14.0",
   "engines": {
@@ -16,9 +16,9 @@
     "dev": "node scripts/dev.mjs",
     "dev:api": "node apps/api/server.mjs",
     "start": "node apps/api/server.mjs",
-    "build": "corepack pnpm --filter @aiws/web build",
-    "test": "node tests/unit/shared.test.mjs && node tests/unit/packages.test.mjs && node tests/unit/v12-services.test.mjs && node tests/unit/codex-probe.test.mjs && node tests/unit/codex-runtime-status.test.mjs && node --disable-warning=ExperimentalWarning tests/unit/codex-discovery.test.mjs && node tests/unit/codex-app-server.test.mjs && node tests/unit/v13-services.test.mjs && node tests/unit/v14-container.test.mjs && node tests/unit/v15-core.test.mjs && node tests/unit/v15-operations.test.mjs && node tests/unit/v15-change-bridge.test.mjs && corepack pnpm --filter @aiws/web test",
-    "test:integration": "node tests/integration/api-flow.test.mjs && node tests/integration/git-flow.test.mjs && node tests/integration/tools-flow.test.mjs && node tests/integration/github-flow.test.mjs && node tests/integration/hierarchy-proposals-flow.test.mjs && node tests/integration/v12-flow.test.mjs && node tests/integration/v12-github-security-flow.test.mjs && node tests/integration/v12-files-flow.test.mjs && node tests/integration/v12-assist-flow.test.mjs && node tests/integration/v12-codex-flow.test.mjs && node --disable-warning=ExperimentalWarning tests/integration/v12-codex-discovery-flow.test.mjs && node tests/integration/v13-migration-flow.test.mjs && node tests/integration/v13-project-lifecycle-flow.test.mjs && node tests/integration/v13-import-security-flow.test.mjs && node tests/integration/v13-github-repository-flow.test.mjs && node tests/integration/v13-governance-flow.test.mjs && node tests/integration/v13-assist-worktree-flow.test.mjs && node tests/integration/v13-assist-lifecycle-flow.test.mjs && node tests/integration/v13-terminal-flow.test.mjs && node tests/integration/v14-container-flow.test.mjs && node tests/integration/v15-native-assist-flow.test.mjs && node tests/integration/v15-host-bridge-flow.test.mjs",
+    "build": "corepack pnpm --filter @aiws/web build && node scripts/bundle-budget.mjs",
+    "test": "node tests/unit/shared.test.mjs && node tests/unit/packages.test.mjs && node tests/unit/v12-services.test.mjs && node tests/unit/codex-probe.test.mjs && node tests/unit/codex-runtime-status.test.mjs && node --disable-warning=ExperimentalWarning tests/unit/codex-discovery.test.mjs && node tests/unit/codex-app-server.test.mjs && node tests/unit/v13-services.test.mjs && node tests/unit/v14-container.test.mjs && node tests/unit/v15-core.test.mjs && node tests/unit/v15-operations.test.mjs && node tests/unit/v15-change-bridge.test.mjs && node tests/unit/v16-core.test.mjs && corepack pnpm --filter @aiws/web test",
+    "test:integration": "node tests/integration/api-flow.test.mjs && node tests/integration/git-flow.test.mjs && node tests/integration/tools-flow.test.mjs && node tests/integration/github-flow.test.mjs && node tests/integration/hierarchy-proposals-flow.test.mjs && node tests/integration/v12-flow.test.mjs && node tests/integration/v12-github-security-flow.test.mjs && node tests/integration/v12-files-flow.test.mjs && node tests/integration/v12-assist-flow.test.mjs && node tests/integration/v12-codex-flow.test.mjs && node --disable-warning=ExperimentalWarning tests/integration/v12-codex-discovery-flow.test.mjs && node tests/integration/v13-migration-flow.test.mjs && node tests/integration/v13-project-lifecycle-flow.test.mjs && node tests/integration/v13-import-security-flow.test.mjs && node tests/integration/v13-github-repository-flow.test.mjs && node tests/integration/v13-governance-flow.test.mjs && node tests/integration/v13-assist-worktree-flow.test.mjs && node tests/integration/v13-assist-lifecycle-flow.test.mjs && node tests/integration/v13-terminal-flow.test.mjs && node tests/integration/v14-container-flow.test.mjs && node tests/integration/v15-native-assist-flow.test.mjs && node tests/integration/v15-host-bridge-flow.test.mjs && node tests/integration/v16-assist-files-flow.test.mjs",
     "test:e2e": "node scripts/build-web.mjs && node tests/e2e/smoke.test.mjs && node tests/e2e/playwright.test.mjs",
     "test:e2e:smoke": "node tests/e2e/smoke.test.mjs",
     "test:live:codex": "node tests/integration/codex-live.test.mjs",
@@ -34,6 +34,7 @@
     "@playwright/test": "^1.53.2"
   },
   "dependencies": {
+    "busboy": "1.6.0",
     "node-pty": "^1.1.0",
     "smol-toml": "1.3.4",
     "ws": "^8.21.0"

@@ -13,8 +13,8 @@ $ErrorActionPreference = 'Stop'
 $Root = Split-Path -Parent $PSScriptRoot
 $ComposeFile = Join-Path $Root 'compose.yml'
 $Volume = 'aiws-data-v14'
-$AppImage = if ($env:AIWS_APP_IMAGE) { $env:AIWS_APP_IMAGE } else { 'aiws-app:1.5.0' }
-$RunnerImage = if ($env:AIWS_RUNNER_IMAGE) { $env:AIWS_RUNNER_IMAGE } else { 'aiws-codex-runner:1.5.0-codex-0.144.0' }
+$AppImage = if ($env:AIWS_APP_IMAGE) { $env:AIWS_APP_IMAGE } else { 'aiws-app:1.6.0' }
+$RunnerImage = if ($env:AIWS_RUNNER_IMAGE) { $env:AIWS_RUNNER_IMAGE } else { 'aiws-codex-runner:1.6.0-codex-0.144.0' }
 $Port = if ($env:AIWS_PORT) { [int]$env:AIWS_PORT } else { 4317 }
 $env:AIWS_DOCKER_DATA_VOLUME = $Volume
 $env:AIWS_APP_IMAGE = $AppImage
@@ -103,32 +103,32 @@ function Wait-Healthy {
   throw 'app_health_timeout'
 }
 
-function New-V15MigrationSnapshot {
+function New-V16MigrationSnapshot {
   $backupRoot = Join-Path $Root '.ai-workspace\backups'
   New-Item -ItemType Directory -Path $backupRoot -Force | Out-Null
   $stamp = Get-Date -Format 'yyyyMMdd-HHmmssfff'
-  $archive = Join-Path $backupRoot "aiws-v14-before-v15-$stamp.tar.gz"
+  $archive = Join-Path $backupRoot "aiws-v15-before-v16-$stamp.tar.gz"
   $runningContainers = @(
-    & docker ps -q --filter 'label=com.docker.compose.project=aiws-v14' --filter 'label=com.docker.compose.service=app'
     & docker ps -q --filter 'label=com.docker.compose.project=aiws-v15' --filter 'label=com.docker.compose.service=app'
+    & docker ps -q --filter 'label=com.docker.compose.project=aiws-v16' --filter 'label=com.docker.compose.service=app'
   ) | Where-Object { $_ } | Select-Object -Unique
   foreach ($container in $runningContainers) { & docker stop --time 30 $container *> $null; if ($LASTEXITCODE -ne 0) { throw 'existing_app_stop_failed' } }
-  $temporary = ".aiws-v15-$([guid]::NewGuid().ToString('N')).tar.gz"
+  $temporary = ".aiws-v16-$([guid]::NewGuid().ToString('N')).tar.gz"
   & docker run --rm --mount "type=volume,src=$Volume,dst=/data,readonly" --volume "${backupRoot}:/backup" $AppImage python3 /opt/aiws/backup_archive.py create /data "/backup/$temporary"
-  if ($LASTEXITCODE -ne 0) { throw 'v15_pre_migration_backup_failed' }
+  if ($LASTEXITCODE -ne 0) { throw 'v16_pre_migration_backup_failed' }
   & docker run --rm --volume "${backupRoot}:/backup:ro" $AppImage python3 /opt/aiws/backup_archive.py validate "/backup/$temporary"
-  if ($LASTEXITCODE -ne 0) { throw 'v15_pre_migration_backup_invalid' }
+  if ($LASTEXITCODE -ne 0) { throw 'v16_pre_migration_backup_invalid' }
   Move-Item -LiteralPath (Join-Path $backupRoot $temporary) -Destination $archive
   $stateSha = (& docker run --rm --entrypoint sh --mount "type=volume,src=$Volume,dst=/data,readonly" $AppImage -c 'test ! -f /data/data/state.json || sha256sum /data/data/state.json | cut -d" " -f1' | Out-String).Trim()
-  if ($LASTEXITCODE -ne 0) { throw 'v15_state_sha_failed' }
-  $stateCanonicalHash = (& docker run --rm --entrypoint node --mount "type=volume,src=$Volume,dst=/data,readonly" $AppImage --input-type=module -e 'import fs from "node:fs"; import { canonicalStateHash } from "./apps/api/src/state-migration-v14.mjs"; const file="/data/data/state.json"; if(fs.existsSync(file)) console.log(canonicalStateHash(JSON.parse(fs.readFileSync(file,"utf8"))));' | Out-String).Trim()
-  if ($LASTEXITCODE -ne 0) { throw 'v15_state_hash_failed' }
+  if ($LASTEXITCODE -ne 0) { throw 'v16_state_sha_failed' }
+  $stateCanonicalHash = (& docker run --rm --entrypoint node --mount "type=volume,src=$Volume,dst=/data,readonly" $AppImage --input-type=module -e 'import fs from "node:fs"; import { canonicalStateHash } from "./apps/api/src/state-migration-v15.mjs"; const file="/data/data/state.json"; if(fs.existsSync(file)) console.log(canonicalStateHash(JSON.parse(fs.readFileSync(file,"utf8"))));' | Out-String).Trim()
+  if ($LASTEXITCODE -ne 0) { throw 'v16_state_hash_failed' }
   $stateFacts = & docker run --rm --entrypoint node --mount "type=volume,src=$Volume,dst=/data,readonly" $AppImage -e 'const fs=require("node:fs"),file="/data/data/state.json"; if(fs.existsSync(file)){const bytes=fs.readFileSync(file),state=JSON.parse(bytes); console.log(JSON.stringify({bytes:bytes.length,schema_version:state.schema_version??null}));}'
   $manifest = [ordered]@{
-    version = '1.5.0'; created_at = (Get-Date).ToString('o'); source_project = 'aiws-v14'; target_project = 'aiws-v15'
+    version = '1.6.0'; created_at = (Get-Date).ToString('o'); source_project = 'aiws-v15'; target_project = 'aiws-v16'
     archive = (Split-Path -Leaf $archive); archive_sha256 = (Get-FileHash -LiteralPath $archive -Algorithm SHA256).Hash.ToLowerInvariant()
     state_sha256 = $(if ($stateSha) { $stateSha } else { $null }); state_canonical_hash = $(if ($stateCanonicalHash) { $stateCanonicalHash } else { $null })
-    app_image = (& docker image inspect aiws-app:1.4.0 --format '{{.Id}}' 2>$null); runner_image = (& docker image inspect aiws-codex-runner:1.4.0-codex-0.144.0 --format '{{.Id}}' 2>$null)
+    app_image = (& docker image inspect aiws-app:1.5.0 --format '{{.Id}}' 2>$null); runner_image = (& docker image inspect aiws-codex-runner:1.5.0-codex-0.144.0 --format '{{.Id}}' 2>$null)
     state_facts = @($stateFacts); stopped_app_containers = @($runningContainers); managed_runners = @(& docker ps -a --filter 'label=aiws.managed=true' --format '{{.ID}}|{{.Image}}|{{.Status}}')
   }
   $manifestPath = "$archive.manifest.json"
@@ -136,16 +136,16 @@ function New-V15MigrationSnapshot {
   [pscustomobject]@{ Archive = $archive; Manifest = $manifestPath; StateSha = $stateSha; WasRunning = $runningContainers.Count -gt 0 }
 }
 
-function Restore-V15MigrationSnapshot([string]$Archive, [string]$ExpectedStateSha) {
+function Restore-V16MigrationSnapshot([string]$Archive, [string]$ExpectedStateSha) {
   $full = (Resolve-Path -LiteralPath $Archive).Path; $parent = Split-Path -Parent $full; $leaf = Split-Path -Leaf $full
   & docker run --rm --volume "${parent}:/backup:ro" $AppImage python3 /opt/aiws/backup_archive.py validate "/backup/$leaf"
-  if ($LASTEXITCODE -ne 0) { throw 'v15_restore_archive_invalid' }
+  if ($LASTEXITCODE -ne 0) { throw 'v16_restore_archive_invalid' }
   & docker run --rm --entrypoint sh --mount "type=volume,src=$Volume,dst=/data" $AppImage -c 'case "$1" in /data) find /data -mindepth 1 -maxdepth 1 -exec rm -rf -- {} + ;; *) exit 90 ;; esac' sh /data
-  if ($LASTEXITCODE -ne 0) { throw 'v15_restore_clear_failed' }
+  if ($LASTEXITCODE -ne 0) { throw 'v16_restore_clear_failed' }
   & docker run --rm --volume "${parent}:/backup:ro" --mount "type=volume,src=$Volume,dst=/data" $AppImage python3 /opt/aiws/backup_archive.py extract "/backup/$leaf" /data
-  if ($LASTEXITCODE -ne 0) { throw 'v15_restore_failed' }
+  if ($LASTEXITCODE -ne 0) { throw 'v16_restore_failed' }
   $restoredSha = (& docker run --rm --entrypoint sh --mount "type=volume,src=$Volume,dst=/data,readonly" $AppImage -c 'test ! -f /data/data/state.json || sha256sum /data/data/state.json | cut -d" " -f1' | Out-String).Trim()
-  if ($LASTEXITCODE -ne 0 -or ($ExpectedStateSha -and $restoredSha -ne $ExpectedStateSha)) { throw 'v15_restore_hash_mismatch' }
+  if ($LASTEXITCODE -ne 0 -or ($ExpectedStateSha -and $restoredSha -ne $ExpectedStateSha)) { throw 'v16_restore_hash_mismatch' }
 }
 
 function Invoke-Bridge([string]$Action) {
@@ -233,7 +233,7 @@ switch ($Command) {
   'up' {
     Build-Images
     Test-VolumeSubpath
-    $snapshot = New-V15MigrationSnapshot
+    $snapshot = New-V16MigrationSnapshot
     Assert-PortFree
     $override = New-ImportOverride
     try {
@@ -241,7 +241,7 @@ switch ($Command) {
       Wait-Healthy
     } catch {
       Invoke-Compose @('stop', 'app')
-      Restore-V15MigrationSnapshot $snapshot.Archive $snapshot.StateSha
+      Restore-V16MigrationSnapshot $snapshot.Archive $snapshot.StateSha
       throw
     } finally { if ($override) { Remove-Item -LiteralPath $override -Force } }
   }
@@ -251,7 +251,7 @@ switch ($Command) {
   'verify' {
     Invoke-Compose @('config', '--quiet')
     Build-Images
-    & docker build --target verify -t aiws-verify:1.5.0 $Root
+    & docker build --target verify -t aiws-verify:1.6.0 $Root
     if ($LASTEXITCODE -ne 0) { throw 'verify_image_build_failed' }
     & docker run --rm $RunnerImage --version
     if ($LASTEXITCODE -ne 0) { throw 'runner_version_failed' }
@@ -262,7 +262,7 @@ switch ($Command) {
       if ($LASTEXITCODE -ne 0) { throw 'windows_bridge_export_failed' }
       if (-not (Test-Path -LiteralPath (Join-Path $bridgeVerify 'aiws-bridge.exe') -PathType Leaf)) { throw 'windows_bridge_export_missing' }
     } finally { if (Test-Path -LiteralPath $bridgeVerify) { Remove-Item -LiteralPath $bridgeVerify -Recurse -Force } }
-    & docker run --rm aiws-verify:1.5.0 corepack pnpm verify
+    & docker run --rm aiws-verify:1.6.0 corepack pnpm verify
     if ($LASTEXITCODE -ne 0) { throw 'container_verify_failed' }
   }
   'backup' { Invoke-Backup $Path }

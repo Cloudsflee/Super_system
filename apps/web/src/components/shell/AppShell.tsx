@@ -1,14 +1,15 @@
 import { Bot, Menu, PanelLeftClose, ShieldCheck } from 'lucide-react';
-import { useEffect, type CSSProperties } from 'react';
+import { lazy, Suspense, useEffect, type CSSProperties } from 'react';
 import { Outlet, useLocation, useNavigate, useParams } from 'react-router-dom';
 import { useProjects } from '../../api/queries';
 import { useUi } from '../../state/ui';
 import { IconButton } from '../common/IconButton';
-import { AssistWorkbench } from '../../features/assist/AssistWorkbench';
 import { ApprovalCenter } from '../approvals/ApprovalCenter';
 import { ApprovalPrompt } from '../approvals/ApprovalPrompt';
 import { NavDrawer } from './NavDrawer';
 import { ToastHost } from './ToastHost';
+
+const AssistWorkbench = lazy(() => import('../../features/assist/AssistWorkbench').then((module) => ({ default: module.AssistWorkbench })));
 
 export function AppShell() {
   const ui = useUi();
@@ -27,7 +28,7 @@ export function AppShell() {
   useEffect(() => {
     if (!overlayOpen) return;
     const closeOnEscape = (event: KeyboardEvent) => {
-      if (event.key !== 'Escape') return;
+      if (event.key !== 'Escape' || event.defaultPrevented) return;
       // ApprovalPrompt owns Escape because closing it must persist a defer decision.
       if (ui.proposalId) return;
       event.preventDefault();
@@ -63,7 +64,7 @@ export function AppShell() {
       </header>
       <main className="route-stage"><Outlet /></main>
       <NavDrawer />
-      <AssistWorkbench project={current} nodeId={assistNodeId} />
+      {ui.assistOpen && <Suspense fallback={null}><AssistWorkbench project={current} nodeId={assistNodeId} /></Suspense>}
       <ApprovalCenter projectId={projectId} />
       <ApprovalPrompt projectId={projectId} />
       <ToastHost />

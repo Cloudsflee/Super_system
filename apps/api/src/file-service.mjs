@@ -1,12 +1,14 @@
 import fs from 'node:fs';
 import fsp from 'node:fs/promises';
 import path from 'node:path';
+import { createHash } from 'node:crypto';
 import { command, HttpError } from './http.mjs';
 import { addTrace, mutate, owner, readState } from './state.mjs';
 import { hashString, id, now } from '../../../packages/shared/index.mjs';
 import { assertManagedProjectWritable } from './project-lifecycle.mjs';
 
 const maxFileBytes = 2 * 1024 * 1024;
+const maxReferenceFileBytes = 25 * 1024 * 1024;
 const presets = new Set(['test', 'typecheck', 'lint', 'build']);
 
 export async function listProjectFiles(projectId, relative = '') {
@@ -22,8 +24,18 @@ export async function readProjectFile(projectId, relative) {
   const stat = await fsp.stat(target);
   if (!stat.isFile()) throw new HttpError(400, { error: 'path_not_file' });
   if (stat.size > maxFileBytes) throw new HttpError(413, { error: 'file_too_large', max_bytes: maxFileBytes });
-  const content = await fsp.readFile(target, 'utf8');
-  return { path: normalize(path.relative(root, target)), content, language: languageFor(target), size: stat.size, sha256: hashString(content) };
+  const bytes = await fsp.readFile(target), content = bytes.toString('utf8');
+  return { path: normalize(path.relative(root, target)), content, language: languageFor(target), size: stat.size, sha256: createHash('sha256').update(bytes).digest('hex') };
+}
+
+export async function inspectProjectFile(projectId, relative, maxBytes = maxReferenceFileBytes) {
+  const { root, target } = await resolveProjectPath(projectId, relative, true);
+  const stat = await fsp.stat(target);
+  if (!stat.isFile()) throw new HttpError(400, { error: 'path_not_file' });
+  if (!Number.isSafeInteger(maxBytes) || maxBytes < 1 || stat.size > maxBytes) throw new HttpError(413, { error: 'file_too_large', max_bytes: maxBytes });
+  const hash = createHash('sha256');
+  for await (const chunk of fs.createReadStream(target)) hash.update(chunk);
+  return { path: normalize(path.relative(root, target)), size: stat.size, sha256: hash.digest('hex') };
 }
 
 export async function saveProjectFile({ projectId, nodeId, relative, content, source = 'owner_editor' }) {

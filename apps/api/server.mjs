@@ -30,18 +30,20 @@ import { codexCapabilitiesV13Routes } from './src/routes/codex-capabilities-v13.
 import { githubRepositoriesV13Routes } from './src/routes/github-repositories-v13.mjs';
 import { configGovernanceV13Routes } from './src/routes/config-governance-v13.mjs';
 import { assistV3Routes } from './src/routes/assist-v3.mjs';
-import { recoverAssistV3Runtime } from './src/assist-v3-service.mjs';
-import { maskSecret } from '../../packages/shared/index.mjs';
+import { attachDeletedSessionSweeper, purgeExpiredDeletedSessions, recoverAssistV3Runtime } from './src/assist-v3-service.mjs';
+import { AIWS_VERSION, maskSecret } from '../../packages/shared/index.mjs';
 import { computeSetupStatus, isSetupExempt } from './src/setup-status.mjs';
 import { readState } from './src/state.mjs';
 import { redactKnownSecretsSync } from './src/vault.mjs';
 import { attachContainerShutdown, cleanupStaleContainers } from './src/container-runtime.mjs';
 import { hostBridgeV15Routes } from './src/routes/host-bridge-v15.mjs';
 import { attachHostBridgeWebSocket } from './src/host-bridge-service.mjs';
+import { attachBtwShutdown } from './src/assist-btw.mjs';
 
 cleanupStaleContainers();
 await ensureRuntime();
 await recoverAssistV3Runtime();
+await purgeExpiredDeletedSessions();
 
 const routes = [
   ...systemRoutes,
@@ -98,7 +100,7 @@ const server = http.createServer(async (req, res) => {
       res.writeHead(204, {
         'access-control-allow-origin': '*',
         'access-control-allow-methods': 'GET,POST,PUT,PATCH,DELETE,OPTIONS',
-        'access-control-allow-headers': 'content-type, authorization',
+        'access-control-allow-headers': 'content-type, authorization, range, if-none-match, x-aiws-browser-id, x-aiws-btw-token',
         'access-control-max-age': '86400'
       });
       res.end();
@@ -127,6 +129,8 @@ const server = http.createServer(async (req, res) => {
 });
 attachTerminalWebSocket(server);
 attachHostBridgeWebSocket(server);
+attachBtwShutdown(server);
+attachDeletedSessionSweeper(server);
 attachContainerShutdown(server);
 
 function searchParamsObject(params) {
@@ -150,5 +154,5 @@ function isSpaPath(pathname) {
 }
 
 server.listen(PORT, () => {
-  console.log(`AI Workspace System V1.5 running at http://localhost:${PORT}`);
+  console.log(`AI Workspace System V${AIWS_VERSION} running at http://localhost:${PORT}`);
 });

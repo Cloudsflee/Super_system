@@ -3,12 +3,14 @@ import { defineConfig } from 'vite';
 
 export default defineConfig({
   plugins: [react()],
+  worker: { format: 'es' },
   server: {
     proxy: {
       '/api': { target: 'http://127.0.0.1:4318', ws: true, rewrite: (value) => value.replace(/^\/api/, '') }
     }
   },
   build: {
+    manifest: true,
     rollupOptions: {
       output: {
         manualChunks: {

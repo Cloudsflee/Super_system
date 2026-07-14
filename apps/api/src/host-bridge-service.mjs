@@ -6,14 +6,14 @@ import { HttpError } from './http.mjs';
 import { STAGING_DIR } from './config.mjs';
 import { mutate, readState } from './state.mjs';
 import { putSecret, readSecret, removeSecret } from './vault.mjs';
-import { id, now } from '../../../packages/shared/index.mjs';
+import { AIWS_VERSION, id, now } from '../../../packages/shared/index.mjs';
 import {
   createHostBridgeWorkspaceBundle, HOST_BRIDGE_MAX_BUNDLE_BYTES, importHostBridgeWorkspaceBundle,
   validateHostBridgeBundle
 } from './host-bridge-workspace.mjs';
 
 export const HOST_BRIDGE_PROTOCOL_VERSION = 1;
-export const HOST_BRIDGE_VERSION = '1.5.0';
+export const HOST_BRIDGE_VERSION = AIWS_VERSION;
 export { validateHostBridgeBundle };
 const pairingCodes = new Map(), onlineDevices = new Map(), terminalChannels = new Map();
 const PAIRING_TTL_MS = 10 * 60 * 1000, READY_TIMEOUT_MS = 60_000, CHUNK_BYTES = 512 * 1024;

@@ -1,5 +1,6 @@
 import path from 'node:path';
 import { spawn } from 'node:child_process';
+import { AIWS_VERSION } from '../../../packages/shared/index.mjs';
 import { AIWS_HOME } from './config.mjs';
 import { codexAuthMatchesProfile, isThirdPartyProvider } from './codex-service.mjs';
 import { codexContainerProxyEnv } from './codex-container-network.mjs';
@@ -11,12 +12,12 @@ import { spawnContainerProcess } from './container-runtime.mjs';
 
 const APP_SERVER_ARGS = ['app-server', '--stdio', '--disable', 'code_mode_host', '--disable', 'plugins', '--disable', 'apps'];
 
-export async function runCodexAppServer({ state, profile, prompt, userInput, additionalContext = [], dynamicTools = [], cwd, resumeId, sandbox, mode = 'default', onEvent, onApproval, onUserInput, onDynamicTool, signal, spawnProcess = spawn }) {
+export async function runCodexAppServer({ state, profile, prompt, userInput, additionalContext = [], dynamicTools = [], attachmentMounts = [], cwd, resumeId, sandbox, mode = 'default', onEvent, onApproval, onUserInput, onDynamicTool, signal, spawnProcess = spawn }) {
   assertProfileAllowed(profile);
   const auth = state.integration_statuses.find((item) => item.key === 'codex_auth');
   if (!codexAuthMatchesProfile(auth, profile)) throw taggedError('codex_auth_profile_mismatch', 'app_server_start_failed');
   if (auth.home && !isThirdPartyProvider(profile.provider)) await materializeDeviceAuth(auth.home, profile.codex_home);
-  const credential = await readSecret(auth?.refs?.credential), invocation = appServerInvocation(profile, cwd, sandbox, credential);
+  const credential = await readSecret(auth?.refs?.credential), invocation = appServerInvocation(profile, cwd, sandbox, credential, attachmentMounts);
   return new Promise((resolve, reject) => {
     let child;
     try {
@@ -37,7 +38,7 @@ export async function runCodexAppServer({ state, profile, prompt, userInput, add
     start().catch((error) => finish(error));
 
     async function start() {
-      await request('initialize', { clientInfo: { name: 'aiws', title: 'AI Workspace', version: '1.5.0' }, capabilities: { experimentalApi: true, requestAttestation: false } });
+      await request('initialize', { clientInfo: { name: 'aiws', title: 'AI Workspace', version: AIWS_VERSION }, capabilities: { experimentalApi: true, requestAttestation: false } });
       notify('initialized');
       if (mode === 'plan') {
         let available;
@@ -128,7 +129,7 @@ export async function runCodexAppServerRpc({ state, profile, cwd, sandbox = 'rea
     start().catch(finish);
 
     async function start() {
-      await request('initialize', { clientInfo: { name: 'aiws', title: 'AI Workspace', version: '1.5.0' }, capabilities: { experimentalApi: true, requestAttestation: false } });
+      await request('initialize', { clientInfo: { name: 'aiws', title: 'AI Workspace', version: AIWS_VERSION }, capabilities: { experimentalApi: true, requestAttestation: false } });
       notify('initialized');
       if (createThread && !threadId) {
         const runtimeCwd = invocation.cwd || cwd;
@@ -147,7 +148,7 @@ export async function runCodexAppServerRpc({ state, profile, cwd, sandbox = 'rea
   });
 }
 
-function appServerInvocation(profile, cwd, sandbox, credential) {
+export function appServerInvocation(profile, cwd, sandbox, credential, attachmentMounts = []) {
   const proxy = profile.kind === 'docker' ? codexContainerProxyEnv(process.env) : {}, env = { ...process.env, ...proxy, CODEX_HOME: profile.codex_home };
   if (credential) env.OPENAI_API_KEY = credential;
   else delete env.OPENAI_API_KEY;
@@ -157,15 +158,15 @@ function appServerInvocation(profile, cwd, sandbox, credential) {
     ...buildCodexContainerInvocation({
       kind: 'assist-app-server', sessionId: `rpc-${Date.now().toString(36)}`, profileId: profile.id,
       image: profile.image || profile.config?.image, stdin: true, codexHome: home,
-      workspace: path.resolve(cwd), workspaceMode: sandbox === 'read-only' ? 'ro' : 'rw', extraMounts: profile.mounts || [],
+      workspace: path.resolve(cwd), workspaceMode: sandbox === 'read-only' ? 'ro' : 'rw', extraMounts: [...(profile.mounts || []), ...attachmentMounts],
       containerEnv: { CODEX_HOME: '/codex-home', ...(credential ? { OPENAI_API_KEY: null } : {}), ...Object.fromEntries(Object.keys(proxy).map((key) => [key, null])) },
       commandArgs: APP_SERVER_ARGS
     }), env
   };
 }
-function sandboxPolicy(mode, cwd) { return mode === 'read-only' ? { type: 'readOnly', networkAccess: false } : { type: 'workspaceWrite', writableRoots: [cwd], networkAccess: false, excludeTmpdirEnvVar: false, excludeSlashTmp: false }; }
+export function sandboxPolicy(mode, cwd) { return mode === 'read-only' ? { type: 'readOnly', networkAccess: false } : { type: 'workspaceWrite', writableRoots: [cwd], networkAccess: false, excludeTmpdirEnvVar: false, excludeSlashTmp: false }; }
 function approvalRequest(message) { const params = message.params || {}; if (!/approval|elicitation/i.test(message.method)) return null; return { external_id: String(params.approvalId || params.itemId || message.id), approval_type: message.method, status: 'pending', command: params.command || null, path: params.grantRoot || params.cwd || null, host: params.networkApprovalContext?.host || null, tool: params.tool || null, request: params }; }
-function approvalResponse(method, approved, params) {
+export function approvalResponse(method, approved, params) {
   if (method === 'item/commandExecution/requestApproval') return { decision: approved ? 'accept' : 'decline' };
   if (method === 'item/fileChange/requestApproval') return { decision: approved ? 'accept' : 'decline' };
   if (method === 'execCommandApproval' || method === 'applyPatchApproval') return { decision: approved ? 'approved' : 'denied' };
@@ -173,7 +174,7 @@ function approvalResponse(method, approved, params) {
   if (method === 'mcpServer/elicitation/request') return { action: approved ? 'accept' : 'decline', content: null, _meta: null };
   return { success: false, contentItems: [] };
 }
-function mapNotification(message, deltaItems) {
+export function mapNotification(message, deltaItems) {
   const params = message.params || {}, item = params.item || {};
   if (message.method === 'item/agentMessage/delta') { deltaItems.add(params.itemId); return { aiws_type: 'text', data: { text: params.delta || '' }, output_text: params.delta || '' }; }
   if (message.method === 'item/plan/delta') return { aiws_type: 'plan', data: { text: params.delta || '', status: 'streaming', source: 'codex-native' } };
@@ -202,7 +203,7 @@ export function nativeCollaborationMode(mode, profile) {
 export function isCodexThreadUnavailable(error) {
   return /(?:thread not found|no rollout found for thread id)/i.test(String(error?.message || error || ''));
 }
-function nativeAdditionalContext(entries) {
+export function nativeAdditionalContext(entries) {
   const result = {};
   for (const [index, entry] of (Array.isArray(entries) ? entries : []).entries()) {
     if (!entry || !['application', 'untrusted'].includes(entry.kind) || typeof entry.value !== 'string') continue;
@@ -211,8 +212,8 @@ function nativeAdditionalContext(entries) {
   return result;
 }
 function grantedPermissions(value = {}) { const result = {}; if (value.network) result.network = value.network; if (value.fileSystem) result.fileSystem = value.fileSystem; return result; }
-function taggedError(message, code) { const error = new Error(message); error.code = code; return error; }
-function dynamicToolResponse(value) {
+export function taggedError(message, code) { const error = new Error(message); error.code = code; return error; }
+export function dynamicToolResponse(value) {
   if (value?.success === true && Array.isArray(value.contentItems)) return { success: true, contentItems: value.contentItems };
   const text = String(value?.message || value?.error || 'AIWS semantic tool failed.').slice(0, 4000);
   return { success: false, contentItems: [{ type: 'inputText', text }] };

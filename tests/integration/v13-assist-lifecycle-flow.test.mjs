@@ -107,7 +107,8 @@ try {
   assert.equal((await api(port, `/approvals/runtime/${approval.id}/decision`, 'POST', { decision: 'reject', revision: rejected.item.revision, target_hash: rejected.item.target_hash })).idempotent, true);
   await waitTurn(approvalTurn.id, 'failed');
 
-  const forked = await api(port, `/assist/v3/sessions/${mainSession}/fork`, 'POST', { from_turn_id: contextual.id, title: 'Forked lifecycle thread' }, 201);
+  await api(port, `/assist/v3/sessions/${mainSession}/fork`, 'POST', { from_turn_id: contextual.id, title: 'Legacy fake Fork must fail' }, 409, 'assist_native_fork_source_required');
+  const forked = await newSession(project.project.id, 'Independent lifecycle thread');
   await api(port, `/assist/v3/sessions/${forked.id}/rename`, 'POST', { title: 'Renamed fork' });
   await api(port, `/assist/v3/sessions/${forked.id}/pin`, 'POST', { pinned: true });
   const searched = await api(port, '/assist/v3/sessions?search=Renamed%20fork&pinned=true');
@@ -165,7 +166,7 @@ try {
 
 function createTurn(sessionId, body) { return api(port, `/assist/v3/sessions/${sessionId}/turns`, 'POST', { adapter: 'test', ...body }, 202); }
 function newSession(projectId, title) { return api(port, '/assist/v3/sessions', 'POST', { project_id: projectId, scope_type: 'project', scope_id: projectId, title }, 201); }
-async function waitTurn(turnId, status) { for (let attempt = 0; attempt < 160; attempt++) { const turn = await api(port, `/assist/v3/turns/${turnId}`); if (turn.status === status) return turn; await delay(25); } throw new Error(`${turnId} did not reach ${status}`); }
+async function waitTurn(turnId, status) { for (let attempt = 0; attempt < 160; attempt++) { const turn = await api(port, `/assist/v3/turns/${turnId}`); if (turn.status === status) return turn; if (['completed', 'failed', 'stopped', 'interrupted'].includes(turn.status)) throw new Error(`${turnId} reached ${turn.status} (${turn.error_code || 'no_error_code'}) instead of ${status}`); await delay(25); } throw new Error(`${turnId} did not reach ${status}`); }
 async function waitApproval(turnId) { for (let attempt = 0; attempt < 120; attempt++) { const items = await api(port, '/approvals?type=runtime'); const item = items.find((entry) => entry.turn_id === turnId && entry.status === 'pending'); if (item) return item; await delay(25); } throw new Error('runtime approval did not appear'); }
 function readState() { return JSON.parse(fs.readFileSync(path.join(fixture.home, 'data', 'state.json'), 'utf8')); }
 function run(command, args, cwd) { const result = spawnSync(command, args, { cwd, encoding: 'utf8' }); assert.equal(result.status, 0, result.stderr); }

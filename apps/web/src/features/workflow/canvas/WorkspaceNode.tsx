@@ -13,9 +13,9 @@ export function WorkspaceNode({ data, selected }: NodeProps<CanvasNode>) {
       <h3>{node.title}</h3>
       <p>{node.goal || '尚未定义节点目标'}</p>
       <footer>
-        <span title="最近运行"><Clock3 size={12} />{node.latest_run?.status || '未运行'}</span>
-        <span title="输出"><FileOutput size={12} />{node.output_count || 0}</span>
-        <span title="待审批"><ShieldCheck size={12} />{node.pending_approval_count || 0}</span>
+        <span data-tooltip="最近运行"><Clock3 size={12} />{node.latest_run?.status || '未运行'}</span>
+        <span data-tooltip="输出"><FileOutput size={12} />{node.output_count || 0}</span>
+        <span data-tooltip="待审批"><ShieldCheck size={12} />{node.pending_approval_count || 0}</span>
       </footer>
       <Handle type="source" position={Position.Right} />
     </article>

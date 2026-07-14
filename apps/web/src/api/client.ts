@@ -42,4 +42,4 @@ export function websocketUrl(path: string) {
   return target.toString();
 }
 
-function apiUrl(path: string) { return path.startsWith('/api/') ? path : `/api${path.startsWith('/') ? path : `/${path}`}`; }
+export function apiUrl(path: string) { return path.startsWith('/api/') ? path : `/api${path.startsWith('/') ? path : `/${path}`}`; }

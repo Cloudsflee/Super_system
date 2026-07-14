@@ -20,6 +20,7 @@ import {
 import { coordinateAssistSession } from './assist-session-coordinator.mjs';
 import { dynamicPageToolSpec, handleDynamicPageTool } from './assist-operations.mjs';
 import { cancelTurnUserInputs, waitForAssistUserInput } from './assist-user-input.mjs';
+import { nativeAttachmentBindings, verifyTurnAttachmentManifest } from './assist-attachments.mjs';
 
 const controllers = new Map();
 const pumps = new Map();
@@ -84,7 +85,16 @@ async function runV3Turn(turnId) {
     const cwd = worktree?.path || readableProjectCwd(start.project);
     if (!worktree) await fsp.mkdir(cwd, { recursive: true, mode: 0o700 });
     const sandbox = start.turn.code_access === 'workspace_write' ? 'workspace-write' : 'read-only';
-    let output = '', nativePlanOutput = '';
+    const verifiedAttachmentPaths = await verifyTurnAttachmentManifest(start.turn, start.attachments, cwd);
+    const attachmentBindings = nativeAttachmentBindings(start.attachments, start.profile, verifiedAttachmentPaths);
+    const realCwd = await fsp.realpath(cwd);
+    for (const attachment of start.attachments.filter((item) => !item.managed_path)) {
+      const file = verifiedAttachmentPaths.get(attachment.id); if (!file) continue;
+      const relative = path.relative(realCwd, file);
+      if (!relative || relative.startsWith('..') || path.isAbsolute(relative)) throw new HttpError(409, { error: 'attachment_path_invalid', attachment_id: attachment.id });
+      attachmentBindings.nativePaths.set(attachment.id, start.profile.kind === 'docker' ? `/workspace/${relative.split(path.sep).join('/')}` : file);
+    }
+    let output = '', nativePlanOutput = '', nativeTurnId = null;
     let threadId = start.session.native_thread_generation === 1 ? null : start.session.codex_thread_id || null;
     let eventChain = Promise.resolve();
 
@@ -110,11 +120,12 @@ async function runV3Turn(turnId) {
         const message = extractMessage(event); if (message) output += message;
         eventChain = eventChain.then(() => persistV3CodexEvent(start.session.id, start.turn.id, event));
       };
-      const prompt = turnPrompt(start), userInput = await appServerUserInput(prompt, start.attachments, runtimeState);
+      const prompt = turnPrompt(start), userInput = await appServerUserInput(prompt, start.attachments, runtimeState, { nativePaths: attachmentBindings.nativePaths, containerized: start.profile.kind === 'docker', imageCapable: modelSupportsImages(start.profile, runtimeState), cwd });
       const result = await runCodexAppServer({
         state: runtimeState, profile: start.profile, prompt, userInput,
         additionalContext: applicationAdditionalContext(start),
         dynamicTools: dynamicPageToolSpec(start.turn.view_context, start.turn.collaboration_mode),
+        attachmentMounts: attachmentBindings.mounts,
         cwd, resumeId: threadId, sandbox, mode: start.turn.collaboration_mode,
         signal: controller.signal, onEvent: eventHandler,
         onApproval: async (request) => { const saved = await persistV3TypedEvent(start.session.id, start.turn.id, 'approval', request); return saved ? waitForRuntimeApproval(saved.data.approval_id, start.turn.id, controller.signal) : false; },
@@ -122,6 +133,7 @@ async function runV3Turn(turnId) {
         onDynamicTool: (request) => handleDynamicPageTool(start.session.id, start.turn.id, request, controller.signal)
       });
       await eventChain;
+      nativeTurnId = cleanText(result.turn_id, 300) || null;
       if (controller.signal.aborted) throw new HttpError(409, { error: 'turn_interrupted' });
       if (!result.ok) throw new Error(result.stderr || `codex_exit_${result.code}`);
     }
@@ -131,7 +143,7 @@ async function runV3Turn(turnId) {
       await createBatchCheckpoint(batchInfo.batch.id, { source: 'assist_turn', sourceId: turnId, phase: 'after' });
       review = await assistReviewSnapshot(start.project, batchInfo.worktree);
     }
-    await mutate((state) => completeTurn(state, { turnId, output: output || nativePlanOutput, threadId, review, worktree: batchInfo?.worktree || null }));
+    await mutate((state) => completeTurn(state, { turnId, output: output || nativePlanOutput, threadId, codexTurnId: nativeTurnId, review, worktree: batchInfo?.worktree || null }));
   } catch (error) {
     if (checkpointStarted && batchInfo) await createBatchCheckpoint(batchInfo.batch.id, { source: 'assist_turn', sourceId: turnId, phase: 'after', status: 'interrupted' }).catch(() => undefined);
     await cancelTurnUserInputs(turnId, 'turn_ended').catch(() => undefined);
@@ -177,12 +189,12 @@ async function waitForRuntimeApproval(approvalId, turnId, signal) {
   return false;
 }
 
-function completeTurn(state, { turnId, output, threadId, review, worktree }) {
+function completeTurn(state, { turnId, output, threadId, codexTurnId, review, worktree }) {
   const turn = requireTurn(state, turnId), session = requireSession(state, turn.session_id, true);
   if (TERMINAL_TURN_STATES.has(turn.status)) return;
   if (threadId) { turn.codex_thread_id = threadId; session.codex_thread_id = threadId; session.native_thread_generation = 2; }
   const response = cleanText(output, 200_000) || 'Codex Turn 已完成。';
-  Object.assign(turn, { status: 'completed', output_text: response, completed_at: now(), updated_at: now(), review_status: review?.changed_files.length ? 'ready' : turn.change_batch_id ? 'no_changes' : 'not_applicable' });
+  Object.assign(turn, { status: 'completed', output_text: response, codex_turn_id: codexTurnId || turn.codex_turn_id || null, completed_at: now(), updated_at: now(), review_status: review?.changed_files.length ? 'ready' : turn.change_batch_id ? 'no_changes' : 'not_applicable' });
   cancelPendingTurnApprovals(state, turn.id, 'turn_completed');
   state.assist_messages.push({ id: id('amsg'), session_id: session.id, turn_id: turn.id, role: 'assistant', content: response, status: 'completed', created_at: now() });
   if (review && worktree) {
@@ -209,3 +221,10 @@ function appServerAvailable(state, profile) {
   return preferAssistAppServer(profile, probeCodexCapabilities({ profile }));
 }
 export function preferAssistAppServer(_profile, capability) { return capability?.guided_transport === 'app-server'; }
+
+function modelSupportsImages(profile, state) {
+  const catalog = profile.model_catalog || state.integration_statuses.find((item) => item.key === `codex_model_catalog:${profile.id}`)?.result;
+  const model = (catalog?.models || catalog?.data || []).find((item) => (item.model || item.id) === profile.model);
+  const modalities = model?.inputModalities || model?.input_modalities;
+  return !Array.isArray(modalities) || modalities.includes('image');
+}
