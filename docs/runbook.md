@@ -2,15 +2,15 @@
 
 ## 当前状态
 
-V1.6 默认离线门禁、容器门禁和独立卷迁移专项均纳入发布流程。正式 Compose 使用 `aiws-data-v16`；`aiws-data-v14` 只在首次切换中作为只读源。真实 Codex、GitHub 与 cc-switch 验收仍需显式 opt-in，默认结果不能替代 live 结果。
+V1.7 默认离线门禁、容器门禁和独立卷迁移专项均纳入发布流程。正式 Compose 使用 `aiws-data-v17`；`aiws-data-v16` 只在首次切换中作为只读源。真实 Codex、GitHub 与 cc-switch 验收仍需显式 opt-in，默认结果不能替代 live 结果。
 
 ## 正式容器切换
 
-1. 执行 `scripts/aiws.ps1 verify` 或 `scripts/aiws.sh verify`，再执行 `up`。首次 `up` 会停止 V1.5 和 4318 preview，通过临时迁移卷克隆 `aiws-data-v14`，启动 V1.6 并验证 schema 15、记录 ID、文件清单和迁移 manifest。
+1. 执行 `scripts/aiws.ps1 verify` 或 `scripts/aiws.sh verify`，再执行 `up`。首次 `up` 会停止 V1.6 和 4318 preview，通过临时迁移卷克隆 `aiws-data-v16`，启动 V1.7 并验证 schema 16、记录 ID、文件清单和迁移 manifest。
 2. 迁移失败时，默认保留源卷和失败目标卷并恢复此前运行的旧容器。只有已经接受丢弃旧数据时，才使用 `-DiscardUnmigratable` / `--discard-unmigratable`。
 3. `up` 成功后会重新执行活动 Profile Probe。外部 Provider 失败只会让 Setup 降级，不会回滚已验收数据。
 4. 检查 `http://127.0.0.1:4317/api/health`、页面和核心数据，再执行 `purge-legacy -Confirm` / `purge-legacy --confirm`。
-5. 清理命令要求 4317 上的 `aiws-app:1.6.0` healthy、目标卷 schema 15、迁移凭据有效且无旧 Runner 引用。它只删除列明的 AIWS V1.4/V1.5/preview 资源与历史备份，不操作 Opsbot、DotAI、Langfuse 或匿名卷。
+5. 清理命令要求 4317 上的 `aiws-app:1.7.0` healthy、目标卷 schema 16、迁移凭据有效且无旧 Runner 引用。它只在独立确认后删除列明的旧 AIWS 资源与历史备份，不操作 Opsbot、DotAI、Langfuse 或匿名卷。
 
 清理后不再保留旧数据恢复点。完整边界和最终哈希见 [`v1.6-cutover.md`](v1.6-cutover.md)。
 
@@ -67,7 +67,7 @@ corepack pnpm verify
 
 `verify` 会再次运行 lint、typecheck、unit、23 组 integration、Prisma migration check、Web build、E2E smoke、三视口 Playwright 和 acceptance audit。默认套件使用临时 `AIWS_HOME`，不读取个人凭据执行外部写入。
 
-发布前还应在已构建 `aiws-app:1.6.0` 后执行 `corepack pnpm test:release`。该专项只创建随机命名卷，覆盖 schema 14 克隆、迁移、失败保源、显式空白启动和幂等验收。
+发布前还应在已构建 `aiws-app:1.7.0` 后执行 `corepack pnpm test:release`。该专项只创建随机命名卷，覆盖 schema 15 克隆、迁移、失败保源、显式空白启动和幂等验收。
 
 ## 可选 Live 验收
 

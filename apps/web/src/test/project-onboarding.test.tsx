@@ -1,7 +1,7 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import type { ReactNode } from 'react';
-import { MemoryRouter, Route, Routes } from 'react-router-dom';
+import { Link, MemoryRouter, Route, Routes } from 'react-router-dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { ProjectsPage } from '../features/projects/ProjectsPage';
 import { ProjectOnboardingPage } from '../features/projects/onboarding/ProjectOnboardingPage';
@@ -48,6 +48,8 @@ describe('V1.3 project onboarding', () => {
     const confirm = calls.find((item) => item.url.endsWith('/onboarding/confirm'));
     expect(confirm?.method).toBe('POST');
     expect(confirm?.body?.workflow_nodes).toHaveLength(3);
+    expect(confirm?.body?.expected_brief_revision).toBe(2);
+    expect(confirm?.body?.expected_workflow_revision).toBe(1);
   });
 
   it('redirects direct draft workflow access back to onboarding', async () => {
@@ -63,6 +65,25 @@ describe('V1.3 project onboarding', () => {
     await act(async () => { expect((await dispatchSemanticAction({ id: 'a1', name: 'fill_field', label: '填写目标', status: 'ready', risk: 'reversible', args: { field_id: 'brief.goal', value: '由 Assist 填写的新目标' } })).handled).toBe(true); });
     expect(await screen.findByRole('textbox', { name: '核心目标' })).toHaveValue('由 Assist 填写的新目标');
     expect(screen.getByText('建立可验证的项目简报')).toBeInTheDocument();
+  });
+
+  it('hydrates equal revisions per project and clears a missing source', async () => {
+    vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.includes('/projects/p1/onboarding')) return response(onboardingFor('p1', 'Alpha goal', { type: 'local_directory', path: 'C:/alpha' }));
+      if (url.includes('/projects/p2/onboarding')) return response(onboardingFor('p2', 'Beta goal', null));
+      if (url.endsWith('/brief-templates')) return response({ items: [] });
+      return response({});
+    }));
+    renderWithClient(<MemoryRouter initialEntries={['/projects/p1/onboarding']}><Link to="/projects/p2/onboarding">切换项目</Link><Routes><Route path="/projects/:projectId/onboarding" element={<ProjectOnboardingPage />} /></Routes></MemoryRouter>);
+    fireEvent.click(await screen.findByRole('button', { name: /补充简报/ }));
+    expect(screen.getByRole('textbox', { name: '核心目标' })).toHaveValue('Alpha goal');
+    expect(screen.getByRole('textbox', { name: '本机绝对路径' })).toHaveValue('C:/alpha');
+    fireEvent.click(screen.getByRole('link', { name: '切换项目' }));
+    await screen.findByRole('heading', { name: 'p2' });
+    fireEvent.click(screen.getByRole('button', { name: /补充简报/ }));
+    await waitFor(() => expect(screen.getByRole('textbox', { name: '核心目标' })).toHaveValue('Beta goal'));
+    expect(screen.getByRole('textbox', { name: 'Repository URL' })).toHaveValue('');
   });
 });
 
@@ -81,4 +102,11 @@ function onboarding() {
     { type: 'retrospective', title: '验证与交付审查', goal: 'Tests pass', dependency_indexes: [1] }
   ];
   return { project: project(), intake: { id: 'i1', project_id: 'p1', mode: 'brainstorm', status: 'ready_for_review', answers: { goal: 'Ship it' }, code_source: null, context_sources: [], revision: 2 }, brief: { id: 'b1', project_id: 'p1', version: 2, status: 'draft', source: 'brainstorm', content, created_at: new Date(0).toISOString() }, briefs: [], workflow_draft: workflow, imports: [], can_confirm: true, onboarding_route: '/projects/p1/onboarding', assist_session: null };
+}
+function onboardingFor(id: string, goal: string, source: { type: 'local_directory'; path: string } | null) {
+  const value = structuredClone(onboarding());
+  Object.assign(value.project, { id, title: id, goal });
+  Object.assign(value.intake, { project_id: id, mode: 'existing', answers: { goal }, code_source: source, revision: 2 });
+  Object.assign(value.brief, { id: `brief-${id}`, project_id: id, content: { ...value.brief.content, goal } });
+  return value;
 }

@@ -5,6 +5,7 @@ import { cleanText } from './assist-v3-domain.mjs';
 export function createTurnContext(state, { actor, project, session, turn, attachmentIds }) {
   const created = now();
   const brief = state.project_briefs.filter((item) => item.project_id === project.id && item.status !== 'superseded').sort((a, b) => b.version - a.version)[0] || null;
+  const workflowDraft = state.workflow_drafts.find((item) => item.project_id === project.id) || null;
   const assets = state.assets.filter((item) => item.project_id === project.id && item.status === 'confirmed').slice(-50);
   const digest = state.digests.filter((item) => item.project_id === project.id && item.status === 'confirmed').at(-1) || null;
   const missing = turn.prompt ? [] : ['prompt'];
@@ -18,7 +19,14 @@ export function createTurnContext(state, { actor, project, session, turn, attach
   const pack = {
     id: id('ctx'), source_workspace_id: session.workspace_id, receiver_type: 'assist_turn', receiver_name: `${turn.mode}:${turn.id}`,
     purpose: 'assist_v3_turn', version: 1, status: 'confirmed',
-    content_json: { project: { id: project.id, title: project.title, goal: project.goal }, brief: brief?.content || null, digest: digest ? { id: digest.id, summary: digest.summary } : null, attachment_ids: attachmentIds },
+    content_json: {
+      project: { id: project.id, title: project.title, goal: project.goal },
+      brief: brief?.content || null,
+      brief_ref: brief ? { id: brief.id, revision: brief.revision, version: brief.version } : null,
+      workflow_draft: workflowDraft ? { id: workflowDraft.id, revision: workflowDraft.revision, nodes: workflowDraft.nodes } : null,
+      digest: digest ? { id: digest.id, summary: digest.summary } : null, attachment_ids: attachmentIds,
+      operation_reference: publicOperationReference(state.assist_operations.find((item) => item.id === turn.operation_reference_id))
+    },
     memory_manifest: { included_asset_version_ids: assets.map((item) => item.current_version_id).filter(Boolean), digest_id: digest?.id || null, authority: 'confirmed_only' },
     sufficiency_check_id: check.id, content_file_ref_id: null, markdown_file_ref_id: null,
     included_asset_versions: assets.map((item) => item.current_version_id).filter(Boolean), token_estimate: check.token_estimate,
@@ -49,14 +57,31 @@ export function applicationAdditionalContext({ turn, session, project, contextPa
     context_pack: contextPack?.content_json || {},
     attachments: attachmentContext,
     page: safePageContext(turn.view_context),
+    clarification: clarificationContext(session.clarification_policy, turn.collaboration_mode),
+    operation_reference: operationReferenceContext(contextPack, turn.operation_reference_id),
     migrated_thread_history: session.native_thread_generation === 1 ? limitedLegacyHistory(session) : null
   };
   return [{ kind: 'application', value: JSON.stringify(value) }];
 }
 
+function clarificationContext(policy, mode) {
+  return {
+    policy: policy === 'auto_recommend' ? 'auto_recommend' : 'ask', collaboration_mode: mode === 'plan' ? 'plan' : 'default',
+    instruction: policy === 'auto_recommend'
+      ? 'When a material ambiguity has exactly one clearly marked safe recommendation, prefer it. Credentials, approvals, deletion, irreversible actions, conflicts, and questions without a recommendation must still use requestUserInput.'
+      : 'When a material ambiguity would change scope or outcome, use requestUserInput before proceeding. This preference does not change collaboration mode.'
+  };
+}
+
+function operationReferenceContext(contextPack, referenceId) {
+  if (!referenceId) return null;
+  return { ...(contextPack?.content_json?.operation_reference || {}), operation_reference_id: referenceId, instruction: 'Apply the requested follow-up to this exact prior operation target. Do not infer a different target.' };
+}
+function publicOperationReference(item) { return item ? { operation_reference_id: item.id, capability_id: item.capability_id || null, action: item.action || null, target_id: item.target_id, target_label: item.target_label || item.target_id, locator: item.locator || { route: item.route, surface_id: item.surface_id, surface_revision: item.surface_revision }, before_value: item.before_value, after_value: item.after_value, current_value: item.current_value } : null; }
+
 export async function appServerUserInput(userText, attachments, _state, options = {}) {
   const input = [{ type: 'text', text: cleanText(userText, 100_000), text_elements: [] }];
-  for (const attachment of attachments.filter((item) => ['selection', 'text'].includes(item.kind) && item.model_policy === 'injectable').slice(0, 12)) {
+  for (const attachment of attachments.filter((item) => ['selection', 'text', 'url'].includes(item.kind) && item.model_policy === 'injectable').slice(0, 12)) {
     const text = cleanText(attachment.text, 100_000);
     if (text) input.push({ type: 'text', text: `[Attachment: ${cleanText(attachment.title || attachment.relative_path || attachment.kind, 500)}]\n${text}`, text_elements: [] });
   }
@@ -79,7 +104,7 @@ function projectMentionPath(attachment, options) {
 
 function safePageContext(value) {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
-  return { route: cleanText(value.route, 2_000), surface: value.surface && typeof value.surface === 'object' ? value.surface : null };
+  return { route: cleanText(value.route, 2_000), browser_instance_id: cleanText(value.browser_instance_id || value.surface?.browser_instance_id, 200) || null, surface: value.surface && typeof value.surface === 'object' ? value.surface : null };
 }
 
 function limitedLegacyHistory(session) {

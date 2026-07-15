@@ -5,6 +5,7 @@ import { connectedGithubAccount, fetchInstallationRepositories, fetchUserInstall
 import { id, now } from '../../../../packages/shared/index.mjs';
 import { authorizeRepositoryAction } from '../authorization.mjs';
 import { ensureRepositoryCheckout } from '../repository-checkout.mjs';
+import { assertProjectLifecycleIdle, withProjectLifecycleLock } from '../project-lifecycle-operations.mjs';
 
 export const githubInstallationsV12Routes = [
   makeRoute('POST', '/github/installations/start', installationStart),
@@ -91,9 +92,11 @@ async function syncAll({ res, body, query }) {
 }
 
 async function bindRepository({ res, params, body }) {
+  return withProjectLifecycleLock(params.id, () => bindRepositoryLocked({ res, params, body }));
+}
+async function bindRepositoryLocked({ res, params, body }) {
   const snapshot = await readState();
-  const sourceProject = snapshot.projects.find((item) => item.id === params.id);
-  if (!sourceProject) throw new HttpError(404, { error: 'project_not_found' });
+  const sourceProject = assertProjectLifecycleIdle(snapshot.projects.find((item) => item.id === params.id));
   const actor = owner(snapshot), account = connectedGithubAccount(snapshot, actor.id);
   const operationKey = String(body.operation_key || `${sourceProject.id}:${body.installation_id}:${body.repository_id}`).trim().slice(0, 150);
   const prior = snapshot.import_jobs.find((item) => item.kind === 'github_repository_bind' && item.project_id === sourceProject.id && item.operation_key === operationKey && (!item.owner_id || item.owner_id === actor.id));
@@ -109,8 +112,7 @@ async function bindRepository({ res, params, body }) {
   try { checkout = await ensureRepositoryCheckout(snapshot, { project: sourceProject, installation: sourceInstallation, repository: sourceRepository, adapted, adaptedFailure: adapted ? body.test_checkout_failure : null }); }
   catch (error) { await persistBindOperation({ operationKey, projectId: sourceProject.id, actorId: actor.id, status: 'failed', errorCode: error?.payload?.error || 'repository_checkout_failed' }); throw error; }
   const result = await mutate((state) => {
-    const currentActor = owner(state), project = state.projects.find((item) => item.id === params.id);
-    if (!project) throw new HttpError(404, { error: 'project_not_found' });
+    const currentActor = owner(state), project = assertProjectLifecycleIdle(state.projects.find((item) => item.id === params.id));
     const installation = findInstallation(state, body.installation_id);
     const repository = (installation.repositories || []).find((item) => String(item.id) === String(body.repository_id) && item.selected !== false);
     if (!repository) throw new HttpError(404, { error: 'repository_not_available' });

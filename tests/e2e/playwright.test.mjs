@@ -5,11 +5,11 @@ import os from 'node:os';
 import path from 'node:path';
 import { chromium } from '@playwright/test';
 import { createConfirmedProject, repositorySnapshot } from '../integration/v13-test-helpers.mjs';
-
+import { captureBriefWorkspace, prepareDraftBrief, seedV17AssistVisualState } from './v17-visual-helpers.mjs';
 const port = 4592;
 const home = fs.mkdtempSync(path.join(os.tmpdir(), 'aiws-browser-home-'));
 const repo = path.join(home, 'repo');
-const output = path.resolve('.ai-workspace', 'e2e-v16');
+const output = path.resolve('.ai-workspace', 'e2e-v17');
 const viewports = [
   { name: 'desktop', width: 1440, height: 900 },
   { name: 'tablet', width: 1024, height: 768 },
@@ -72,20 +72,20 @@ try {
   for (const viewport of viewports) await verifyWorkspaceViewport(page, fixture, viewport);
   assert.deepEqual(repositorySnapshot(repo), sourceBefore);
   assert.deepEqual(errors.filter((item) => !item.includes('favicon')), [], `browser errors:\n${errors.join('\n')}`);
-  console.log(`Playwright V1.6 visual tests passed; screenshots: ${output}`);
+  console.log(`Playwright V1.7 visual tests passed; screenshots: ${output}`);
 } finally {
   await browser?.close();
   server.kill();
   await new Promise((resolve) => setTimeout(resolve, 200));
   fs.rmSync(home, { recursive: true, force: true });
 }
-
 async function configureWorkspace() {
   await api('/codex/auth/api-key', 'POST', { provider: 'openai', api_key: 'browser-api-key' });
   const profile = await api('/codex/profiles', 'POST', { name: 'Browser Profile', provider: 'openai', model: 'gpt-test', reasoning: 'high', mounts: [] });
   await api('/codex/probe', 'POST', { adapter: 'test', profile_id: profile.id });
   await api('/setup/complete', 'POST', {});
   const draft = await api('/projects', 'POST', { title: '待引导工作空间', goal: '通过项目引导确认范围' });
+  await prepareDraftBrief(api, draft.project.id);
   const project = await createConfirmedProject({
     baseUrl: `http://127.0.0.1:${port}`,
     title: '发布工作空间', goal: '实现并验证可发布的桌面工作空间', source: repo,
@@ -98,17 +98,13 @@ async function configureWorkspace() {
     ]
   });
   const assistSessionId = project.draft.assist_session.id;
-  const preview = await uploadAttachment(assistSessionId, 'preview-v16.md', '# Preview heading\n\nSafe **Markdown** content.\n');
+  const preview = await uploadAttachment(assistSessionId, 'preview-v17.md', '# Preview heading\n\nSafe **Markdown** content.\n');
   const visualTurn = await api(`/assist/v3/sessions/${assistSessionId}/turns`, 'POST', {
-    adapter: 'test', collaboration_mode: 'plan', content: 'Short V1.6 prompt', attachment_ids: [preview.id],
-    test_response: { message: 'V1.6 visual reply', events: [{ type: 'usage', data: { input_tokens: 1000, output_tokens: 234, total_tokens: 1234 } }] }
+    adapter: 'test', collaboration_mode: 'plan', content: 'Short V1.7 prompt', attachment_ids: [preview.id],
+    test_response: { message: '## V1.7 visual reply\n\n已完成本轮审查：\n\n- Brief V2 区块可编辑\n- 工作流草稿已持久化\n\n| 检查 | 结果 |\n| --- | --- |\n| 模式分离 | 通过 |\n| 页面写入 | 受控 |\n\n> 下一步：确认简报并激活项目。', events: [{ type: 'usage', data: { input_tokens: 1000, output_tokens: 234, total_tokens: 1234 } }] }
   });
   await waitForTurn(visualTurn.id, 'completed');
-  const stateFile = path.join(home, 'data', 'state.json'), state = JSON.parse(fs.readFileSync(stateFile, 'utf8'));
-  const rootSession = state.assist_sessions.find((item) => item.id === assistSessionId);
-  rootSession.native_goal_snapshot = { objective: 'Ship V1.6', status: 'active', tokenBudget: 99999, tokensUsed: 42000, timeUsedSeconds: 3600 };
-  state.assist_sessions.push({ ...rootSession, id: 'asst_e2e_deleted_branch', title: 'Deleted visual branch', parent_session_id: assistSessionId, forked_from_session_id: assistSessionId, forked_from_turn_id: visualTurn.id, codex_thread_id: null, pinned: false, lifecycle: 'deleted', delete_batch_id: 'adel_e2e_visual', deleted_at: new Date(0).toISOString(), purge_after: new Date(Date.now() + 86400000).toISOString() });
-  fs.writeFileSync(stateFile, JSON.stringify(state, null, 2));
+  seedV17AssistVisualState({ stateFile: path.join(home, 'data', 'state.json'), assistSessionId, visualTurnId: visualTurn.id });
   const bundle = await api(`/projects/${project.project.id}`);
   return { onboardingProjectId: draft.project.id, projectId: project.project.id, executionNodeId: bundle.nodes.find((item) => item.type === 'execution').id, previewTitle: preview.title };
 }
@@ -132,9 +128,7 @@ async function verifyWorkspaceViewport(page, fixture, viewport) {
   await page.goto(`http://127.0.0.1:${port}/projects/${fixture.onboardingProjectId}/workflow`);
   await page.waitForURL(`**/projects/${fixture.onboardingProjectId}/onboarding`);
   await page.locator('.onboarding-page').waitFor();
-  await assertInsideViewport(page, '.onboarding-page');
-  await page.screenshot({ path: path.join(output, `workflow-empty-onboarding-${viewport.name}.png`), fullPage: true });
-
+  await captureBriefWorkspace(page, { output, viewport, assertViewport });
   await page.goto(`http://127.0.0.1:${port}/projects/${fixture.projectId}/workflow`);
   await page.locator('.workspace-node').first().waitFor();
   assert.equal(await page.locator('.workspace-node').count(), 5);
@@ -157,6 +151,7 @@ async function verifyWorkspaceViewport(page, fixture, viewport) {
   await page.waitForTimeout(250);
   assert.equal(await page.locator('.node-inspector').count(), 1, 'V1.3 Assist 与 Inspector 可并存');
   await assertInsideViewport(page, '.assist-workbench');
+  await assertAssistHeader(page);
   if (viewport.width <= 700) {
     await page.waitForFunction(() => (document.querySelector('.assist-main')?.getBoundingClientRect().width || 0) >= window.innerWidth - 1);
     const main = await page.locator('.assist-main').boundingBox();
@@ -166,7 +161,7 @@ async function verifyWorkspaceViewport(page, fixture, viewport) {
   }
   await page.screenshot({ path: path.join(output, `workflow-assist-${viewport.name}.png`) });
   while (await page.getByRole('button', { name: '关闭通知' }).count()) await page.getByRole('button', { name: '关闭通知' }).first().click();
-  await verifyV16Assist(page, fixture, viewport);
+  await verifyV17Assist(page, fixture, viewport);
   await page.keyboard.press('Escape');
   await page.waitForTimeout(100);
   assert.equal(await page.locator('.assist-workbench').count(), 1, 'docked Assist 不因 Escape 丢失线程');
@@ -180,14 +175,26 @@ async function verifyWorkspaceViewport(page, fixture, viewport) {
   await page.screenshot({ path: path.join(output, `execution-monaco-${viewport.name}.png`) });
   await assertViewport(page);
 }
-async function verifyV16Assist(page, fixture, viewport) {
-  await page.getByText('Ship V1.6', { exact: true }).waitFor();
-  await page.getByText('V1.6 visual reply', { exact: true }).waitFor();
+async function verifyV17Assist(page, fixture, viewport) {
+  await page.getByText('Ship V1.7', { exact: true }).waitFor();
+  await page.getByText('V1.7 visual reply', { exact: true }).waitFor();
   assert.equal(await page.getByText('42,000', { exact: true }).count(), 0, 'Goal usage stays out of the compact card');
   assert.equal(await page.locator('.turn-prompt .sr-only').textContent(), '用户消息');
   assert.equal(await page.locator('.turn-output .sr-only').textContent(), '助手回复');
-  const [prompt, timeline] = await Promise.all([page.locator('.turn-prompt').boundingBox(), page.locator('.turn-timeline').boundingBox()]);
+  const timelineText = await page.locator('.turn-timeline').textContent();
+  assert.doesNotMatch(timelineText || '', /completed|gpt-test|reasoning|Browser Profile/i, 'history leaked runtime configuration or lifecycle state');
+  assert.equal(await page.locator('.assist-activity-ledger,.turn-configuration,.turn-usage').count(), 0, 'legacy Assist chrome must stay removed');
+  assert.equal(await page.getByText('实时事件已连接', { exact: true }).count(), 0, 'healthy stream stays quiet');
+  const [goal, prompt, timeline] = await Promise.all([page.locator('.assist-goal-card').boundingBox(), page.locator('.turn-prompt').boundingBox(), page.locator('.turn-timeline').boundingBox()]);
+  assert.ok(goal && goal.height >= 35 && goal.height <= 44, `Goal card must stay compact: ${JSON.stringify(goal)}`);
   assert.ok(prompt && timeline && prompt.width < timeline.width * 0.9, `short prompt did not shrink: ${JSON.stringify({ prompt, timeline })}`);
+  const question = page.locator('.native-input-card').first(); await question.waitFor(); assert.equal(await question.getByText('推荐', { exact: true }).count(), 1); assert.equal(await question.getByRole('textbox', { name: '范围确认 Note' }).count(), 1); await question.screenshot({ path: path.join(output, `assist-question-${viewport.name}.png`) });
+  const receipt = page.locator('.operation-receipt').first(); await receipt.waitFor(); assert.doesNotMatch(await receipt.textContent() || '', /aiws_page|set_field/); const receiptBox = await receipt.boundingBox(); assert.ok(receiptBox && receiptBox.width <= 522, `operation receipt too wide: ${JSON.stringify(receiptBox)}`); await receipt.screenshot({ path: path.join(output, `assist-operation-receipt-${viewport.name}.png`) });
+  await page.locator('.turn-output').filter({ hasText: 'V1.7 visual reply' }).screenshot({ path: path.join(output, `assist-reply-${viewport.name}.png`) });
+
+  const layoutButton = page.getByRole('button', { name: 'Assist 布局' }); await layoutButton.click();
+  const layoutMenu = page.getByRole('menu', { name: 'Assist 布局' }); await layoutMenu.waitFor();
+  assert.equal(await layoutMenu.getByRole('menuitemradio').count(), 3); await assertInsideViewport(page, '.assist-layout-menu [role="menu"]'); await layoutButton.click();
 
   const composerHandle = page.getByRole('separator', { name: '调整输入区高度' });
   await composerHandle.hover(); await page.waitForTimeout(150);
@@ -205,23 +212,24 @@ async function verifyV16Assist(page, fixture, viewport) {
   await page.screenshot({ path: path.join(output, `assist-context-keyboard-${viewport.name}.png`) }); await page.keyboard.press('Escape');
   assert.equal(await page.evaluate(() => { const event = new MouseEvent('contextmenu', { bubbles: true, cancelable: true, shiftKey: true }); document.body.dispatchEvent(event); return event.defaultPrevented; }), false, 'Shift+right-click must escape to the native menu');
 
-  const reply = page.locator('.turn-output p').filter({ hasText: 'V1.6 visual reply' });
+  const reply = page.locator('.turn-output h2').filter({ hasText: 'V1.7 visual reply' });
   await reply.evaluate((element) => { const range = document.createRange(), selection = window.getSelection(); range.selectNodeContents(element); selection?.removeAllRanges(); selection?.addRange(range); });
   await reply.click({ button: 'right' }); const selectionMenu = page.getByRole('menu', { name: '上下文菜单' });
   await selectionMenu.getByRole('menuitem', { name: 'Ask' }).waitFor();
   await page.screenshot({ path: path.join(output, `assist-context-selection-${viewport.name}.png`) });
   await selectionMenu.getByRole('menuitem', { name: 'Ask' }).click();
   const btw = page.locator('.btw-popover[aria-label="问点什么"]'); await btw.waitFor(); await assertInsideViewport(page, '.btw-popover');
-  assert.match(await btw.locator('blockquote').textContent(), /V1\.6 visual reply/);
+  assert.match(await btw.locator('blockquote').textContent(), /V1\.7 visual reply/);
   await page.screenshot({ path: path.join(output, `assist-btw-${viewport.name}.png`) }); await btw.getByRole('button', { name: '关闭临时问答' }).click();
   await page.evaluate(() => window.getSelection()?.removeAllRanges());
-
-  const gauge = page.getByRole('button', { name: '查看本次回复用量' }); await gauge.click();
-  const usage = page.getByRole('dialog', { name: '本次回复用量' }); await usage.waitFor(); assert.match(await usage.textContent(), /总计1,234/);
-  await page.screenshot({ path: path.join(output, `assist-usage-${viewport.name}.png`) }); await usage.getByRole('button', { name: '关闭用量' }).click();
+  assert.equal(await page.getByRole('button', { name: '查看本次回复用量' }).count(), 0, 'usage gauge must stay removed');
+  const runtimeDetails = page.locator('.turn-runtime-details').first(); await runtimeDetails.waitFor(); assert.equal(await runtimeDetails.getAttribute('open'), null, 'completed Turn details default to collapsed');
+  await runtimeDetails.locator('summary').click(); const usage = runtimeDetails.locator('[aria-label="Token 用量"]'); await usage.waitFor(); assert.match(await usage.textContent(), /输入\s*1,000.*输出\s*234.*总计\s*1,234/s);
+  await page.screenshot({ path: path.join(output, `assist-runtime-details-${viewport.name}.png`) }); await runtimeDetails.locator('summary').click();
 
   if (!await page.getByText('已删除分支', { exact: true }).count()) await page.getByRole('button', { name: '显示线程列表' }).click();
   await page.getByText('已删除分支', { exact: true }).waitFor();
+  const threadSummaries = await page.locator('.thread-main small').allTextContents(); assert.ok(threadSummaries.length > 0 && threadSummaries.every((value) => /^\d+ 轮$|^尚无对话$/.test(value)), `thread summaries leaked state: ${JSON.stringify(threadSummaries)}`);
   await page.screenshot({ path: path.join(output, `assist-deleted-branch-${viewport.name}.png`) });
   if (viewport.width <= 700) await page.getByRole('button', { name: '隐藏线程列表' }).click();
 
@@ -235,9 +243,10 @@ async function api(route, method = 'GET', body) { const response = await fetch(`
 async function uploadAttachment(sessionId, filename, content) { const form = new FormData(); form.set('file', new Blob([content], { type: 'text/markdown' }), filename); const response = await fetch(`http://127.0.0.1:${port}/assist/v3/sessions/${sessionId}/attachments/upload`, { method: 'POST', body: form }); const data = await response.json(); assert.equal(response.status, 201, JSON.stringify(data)); return data; }
 async function waitForTurn(id, status) { for (let index = 0; index < 200; index++) { const turn = await api(`/assist/v3/turns/${id}`); if (turn.status === status) return turn; if (['completed', 'failed', 'stopped', 'interrupted'].includes(turn.status)) throw new Error(`${id} reached ${turn.status}:${turn.error_code || ''}`); await new Promise((resolve) => setTimeout(resolve, 25)); } throw new Error(`${id} did not reach ${status}`); }
 async function waitForServer() { for (let index = 0; index < 100; index++) { try { await api('/health'); return; } catch { await new Promise((resolve) => setTimeout(resolve, 100)); } } throw new Error('server did not start'); }
-async function assertViewport(page) { const sizes = await page.evaluate(() => { const rows = [...document.querySelectorAll('body *')].filter((element) => getComputedStyle(element).display !== 'none' && !element.closest('.monaco-editor,.react-flow__viewport') && !element.matches('.monaco-aria-container,.monaco-alert,.monaco-status,.react-flow__viewport')).map((element) => ({ element: `${element.tagName.toLowerCase()}.${element.getAttribute('class') || ''}`, rect: element.getBoundingClientRect().toJSON() })); return { scrollHeight: document.documentElement.scrollHeight, height: window.innerHeight, offenders: rows.filter((item) => item.rect.right > window.innerWidth + 1 || item.rect.left < -1).slice(0, 12) }; }); assert.deepEqual(sizes.offenders, [], `elements outside viewport: ${JSON.stringify(sizes.offenders)}`); assert.ok(sizes.scrollHeight >= sizes.height, 'document is rendered'); }
+async function assertViewport(page) { const sizes = await page.evaluate(() => { const root = document.getElementById('root'), scrollX = window.scrollX, rows = [...document.querySelectorAll('body *')].filter((element) => getComputedStyle(element).display !== 'none' && !element.closest('.monaco-editor,.react-flow__viewport') && !element.matches('.monaco-aria-container,.monaco-alert,.monaco-status,.react-flow__viewport')).map((element) => ({ element: `${element.tagName.toLowerCase()}.${element.getAttribute('class') || ''}`, rect: element.getBoundingClientRect().toJSON() })); return { scrollX, rootScrollLeft: root?.scrollLeft || 0, rootScrollWidth: root?.scrollWidth || 0, scrollWidth: document.documentElement.scrollWidth, width: window.innerWidth, scrollHeight: document.documentElement.scrollHeight, height: window.innerHeight, offenders: rows.filter((item) => item.rect.right + scrollX > window.innerWidth + 1 || item.rect.left + scrollX < -1).slice(0, 20) }; }); assert.equal(sizes.rootScrollLeft, 0, `root horizontally scrolled: ${JSON.stringify(sizes)}`); assert.deepEqual(sizes.offenders, [], `elements outside viewport: ${JSON.stringify(sizes)}`); assert.ok(sizes.scrollHeight >= sizes.height, 'document is rendered'); }
 async function assertCanvasBounds(page) { await assertViewport(page); const [bar, toolbar] = await Promise.all([page.locator('.app-bar').boundingBox(), page.locator('.canvas-toolbar').boundingBox()]); assert.ok(bar && toolbar && toolbar.y >= bar.y + bar.height, `canvas toolbar overlaps app bar: ${JSON.stringify({ bar, toolbar })}`); await assertInsideViewport(page, '.canvas-toolbar'); }
 async function assertInsideViewport(page, selector) { const box = await page.locator(selector).boundingBox(); const size = page.viewportSize(); assert.ok(box && size && box.x >= -1 && box.y >= -1 && box.x + box.width <= size.width + 1 && box.y + box.height <= size.height + 1, `${selector} outside viewport: ${JSON.stringify({ box, size })}`); }
+async function assertAssistHeader(page) { const [workbench, header, text] = await Promise.all([page.locator('.assist-workbench').boundingBox(), page.locator('.assist-workbench-head').boundingBox(), page.locator('.assist-workbench-head').textContent()]); assert.ok(workbench && header && Math.abs(header.y - workbench.y) <= 1 && header.height >= 47 && header.height <= 49, `Assist header must stay in the 48px top track: ${JSON.stringify({ workbench, header })}`); assert.equal(await page.locator('.assist-workbench-head .lucide-bot').count(), 0, 'Assist header must not repeat the Bot icon'); assert.doesNotMatch(text || '', /live/i, 'Assist header must not repeat stream health'); }
 async function assertNoOverlap(page, firstSelector, secondSelector) { const [first, second] = await Promise.all([page.locator(firstSelector).first().boundingBox(), page.locator(secondSelector).first().boundingBox()]); assert.ok(first && second && (first.x + first.width <= second.x || second.x + second.width <= first.x || first.y + first.height <= second.y || second.y + second.height <= first.y), `${firstSelector} overlaps ${secondSelector}: ${JSON.stringify({ first, second })}`); }
 function browserExecutable() {
   if (fs.existsSync(chromium.executablePath())) return {};

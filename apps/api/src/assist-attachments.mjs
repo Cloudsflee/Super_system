@@ -12,17 +12,17 @@ import { cleanText, modelPolicy, publicAttachment, readableProjectCwd, requirePr
 import { id, now } from '../../../packages/shared/index.mjs';
 import { previewKind, sniffMime } from './attachment-mime.mjs';
 import { inspectOfficeArchive } from './office-archive.mjs';
+import { assertProjectLifecycleIdle, withProjectLifecycleLock } from './project-lifecycle-operations.mjs';
 export { previewKind, sniffMime } from './attachment-mime.mjs';
-
 export const NORMAL_ATTACHMENT_MAX_BYTES = 25 * 1024 * 1024;
 export const MEDIA_ATTACHMENT_MAX_BYTES = 250 * 1024 * 1024;
 export const DEFAULT_PROJECT_ATTACHMENT_QUOTA_BYTES = 5 * 1024 * 1024 * 1024;
 const HEAD_BYTES = 8192;
 const activeReservations = new Map();
 const attachmentLocks = new Map();
-
-export async function uploadV3Attachment(sessionId, req) {
-  const snapshot = await readState(), session = requireSession(snapshot, sessionId), project = requireProject(snapshot, session.project_id);
+export async function uploadV3Attachment(sessionId, req) { const snapshot = await readState(), session = requireSession(snapshot, sessionId), project = requireProject(snapshot, session.project_id); return withProjectLifecycleLock(project.id, () => uploadV3AttachmentLocked(sessionId, req)); }
+async function uploadV3AttachmentLocked(sessionId, req) {
+  const snapshot = await readState(), session = requireSession(snapshot, sessionId), project = assertProjectLifecycleIdle(requireProject(snapshot, session.project_id));
   const quota = projectAttachmentQuota(project), usedAtStart = projectAttachmentUsage(snapshot, project.id);
   if (usedAtStart >= quota) throw new HttpError(413, { error: 'attachment_quota_exceeded', quota_bytes: quota, used_bytes: usedAtStart });
   const attachmentId = id('att'), tempPath = path.join(ATTACHMENT_TEMP_DIR, `${attachmentId}-${Date.now()}.upload`);
@@ -46,7 +46,7 @@ export async function uploadV3Attachment(sessionId, req) {
     await fsp.rename(tempPath, finalPath);
     await syncDirectory(finalDir);
     const created = await mutate((state) => {
-      const actor = owner(state), currentSession = requireSession(state, session.id), currentProject = requireProject(state, project.id);
+      const actor = owner(state), currentSession = requireSession(state, session.id), currentProject = assertProjectLifecycleIdle(requireProject(state, project.id));
       const currentUsage = projectAttachmentUsage(state, currentProject.id), currentQuota = projectAttachmentQuota(currentProject);
       if (currentUsage + parsed.size > currentQuota) throw new HttpError(413, { error: 'attachment_quota_exceeded', quota_bytes: currentQuota, used_bytes: currentUsage });
       const preview = previewKind(detectedMime, filename);
@@ -72,7 +72,6 @@ export async function uploadV3Attachment(sessionId, req) {
     if (next) activeReservations.set(project.id, next); else activeReservations.delete(project.id);
   }
 }
-
 export async function serveAttachmentContent(req, res, attachmentId, { download = false } = {}) {
   const state = await readState(), attachment = requireAttachment(state, attachmentId);
   if (attachment.content_deleted_at || attachment.storage_status === 'deleted') throw new HttpError(410, { error: 'attachment_content_deleted', attachment: publicAttachment(attachment) });
@@ -94,10 +93,11 @@ export async function serveAttachmentContent(req, res, attachmentId, { download 
   if (!size || req.method === 'HEAD') { res.end(); return true; }
   fs.createReadStream(file, { start, end }).pipe(res); return true;
 }
-
-export async function deleteV3Attachment(attachmentId, { confirmReferenced = false } = {}) {
+export async function deleteV3Attachment(attachmentId, { confirmReferenced = false } = {}) { const snapshot = await readState(), attachment = requireAttachment(snapshot, attachmentId); return withProjectLifecycleLock(attachment.project_id, () => deleteV3AttachmentLocked(attachmentId, confirmReferenced)); }
+async function deleteV3AttachmentLocked(attachmentId, confirmReferenced) {
   return withAttachmentLock(attachmentId, async () => {
     const snapshot = await readState(), attachment = requireAttachment(snapshot, attachmentId);
+    assertProjectLifecycleIdle(requireProject(snapshot, attachment.project_id));
     const references = referencedTurns(snapshot, attachment);
     if (references.some((turn) => ['queued', 'preparing', 'running', 'waiting_user_input', 'waiting_approval', 'stopping'].includes(turn.status))) throw new HttpError(423, { error: 'attachment_in_use' });
     if (references.length && !confirmReferenced) throw new HttpError(409, { error: 'attachment_delete_confirmation_required', referenced_turn_count: references.length });
@@ -109,6 +109,7 @@ export async function deleteV3Attachment(attachmentId, { confirmReferenced = fal
     try {
       const result = await mutate((state) => {
         const current = requireAttachment(state, attachment.id), currentReferences = referencedTurns(state, current);
+        assertProjectLifecycleIdle(requireProject(state, current.project_id));
         if (currentReferences.some((turn) => ['queued', 'preparing', 'running', 'waiting_user_input', 'waiting_approval', 'stopping'].includes(turn.status))) throw new HttpError(423, { error: 'attachment_in_use' });
         if (currentReferences.length && !confirmReferenced) throw new HttpError(409, { error: 'attachment_delete_confirmation_required', referenced_turn_count: currentReferences.length });
         if (!currentReferences.length) {
@@ -127,7 +128,6 @@ export async function deleteV3Attachment(attachmentId, { confirmReferenced = fal
     }
   });
 }
-
 export async function verifyTurnAttachmentManifest(turn, attachments, cwd) {
   const manifest = new Map((turn.attachment_manifest || []).map((item) => [item.id, item]));
   if (manifest.size !== (turn.attachment_ids || []).length || attachments.length !== manifest.size) throw new HttpError(409, { error: 'attachment_manifest_mismatch' });
@@ -148,7 +148,6 @@ export async function verifyTurnAttachmentManifest(turn, attachments, cwd) {
   }
   return verifiedPaths;
 }
-
 export function nativeAttachmentBindings(attachments, profile, verifiedPaths = new Map()) {
   const stored = attachments.filter((item) => item.managed_path && item.storage_status === 'ready');
   const offset = Array.isArray(profile.mounts) ? profile.mounts.length : 0, nativePaths = new Map();
@@ -159,7 +158,6 @@ export function nativeAttachmentBindings(attachments, profile, verifiedPaths = n
   });
   return { mounts, nativePaths };
 }
-
 async function streamMultipartFile(req, tempPath, reserve) {
   const contentType = String(req.headers['content-type'] || '');
   if (!/^multipart\/form-data\b/i.test(contentType)) throw new HttpError(415, { error: 'attachment_multipart_required' });

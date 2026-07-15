@@ -5,6 +5,7 @@ import { readSecret } from '../vault.mjs';
 import { ensureRepositoryCheckout } from '../repository-checkout.mjs';
 import { testAdapter } from '../test-adapter.mjs';
 import { id, now } from '../../../../packages/shared/index.mjs';
+import { assertProjectLifecycleIdle, withProjectLifecycleLock } from '../project-lifecycle-operations.mjs';
 
 export const githubRepositoriesV13Routes = [
   makeRoute('POST', '/github/repositories', createRepository),
@@ -12,9 +13,13 @@ export const githubRepositoriesV13Routes = [
 ];
 
 async function createRepository({ res, params, body, query }) {
+  const projectId = params.id || body.project_id || null;
+  if (projectId) return withProjectLifecycleLock(projectId, () => createRepositoryLocked({ res, params, body, query }));
+  return createRepositoryLocked({ res, params, body, query });
+}
+async function createRepositoryLocked({ res, params, body, query }) {
   const snapshot = await readState(), actor = owner(snapshot), projectId = params.id || body.project_id || null;
-  const project = projectId ? snapshot.projects.find((item) => item.id === projectId && !item.deleted_at) : null;
-  if (projectId && !project) throw new HttpError(404, { error: 'project_not_found' });
+  const project = projectId ? assertProjectLifecycleIdle(snapshot.projects.find((item) => item.id === projectId)) : null;
   const operationKey = String(body.operation_key || `${projectId || actor.id}:${body.name || ''}`).trim().slice(0, 150);
   if (!operationKey) throw new HttpError(400, { error: 'operation_key_required' });
   const prior = snapshot.import_jobs.find((item) => item.kind === 'github_repository_create' && item.operation_key === operationKey && item.project_id === projectId && (!item.owner_id || item.owner_id === actor.id));
@@ -42,7 +47,7 @@ async function createRepository({ res, params, body, query }) {
     catch (error) { await persistOperation({ operationKey, projectId, actorId: actor.id, repository, status: 'failed', errorCode: publicErrorCode(error) }); throw error; }
   }
   const result = await mutate((state) => {
-    const currentActor = owner(state), currentProject = project ? state.projects.find((item) => item.id === project.id) : null;
+    const currentActor = owner(state), currentProject = project ? assertProjectLifecycleIdle(state.projects.find((item) => item.id === project.id)) : null;
     let operation = state.import_jobs.find((item) => item.kind === 'github_repository_create' && item.operation_key === operationKey);
     if (!operation) { operation = { id: id('imp'), kind: 'github_repository_create', operation_key: operationKey, project_id: projectId, created_at: now() }; state.import_jobs.push(operation); }
     Object.assign(operation, { owner_id: currentActor.id, status: 'succeeded', repository: publicRepository(repository), repository_id: String(repository.id), installation_id: installation.installation_id, error_code: null, updated_at: now() });

@@ -2,11 +2,11 @@ import fsp from 'node:fs/promises';
 import path from 'node:path';
 import { createHash } from 'node:crypto';
 import { migrateState13To14, V14_COLLECTIONS } from './state-migration-v14.mjs';
-import { AIWS_RUNNER_IMAGE } from '../../../packages/shared/src/version.mjs';
 
 export const STATE_SCHEMA_VERSION = 15;
 export const V15_COLLECTIONS = Object.freeze([...V14_COLLECTIONS]);
 export const LEGACY_OFFICIAL_RUNNER_PATTERN = /^aiws-codex-runner:1\.[0-5]\.0-codex-\d+\.\d+\.\d+$/;
+export const V15_OFFICIAL_RUNNER_IMAGE = 'aiws-codex-runner:1.6.0-codex-0.144.0';
 
 export function canonicalJson(value) {
   return JSON.stringify(canonicalValue(value));
@@ -92,7 +92,7 @@ export function migrateState14To15(source, { timestamp = new Date().toISOString(
   };
 }
 
-export function normalizeOfficialRunnerImages(state, { targetImage = AIWS_RUNNER_IMAGE, timestamp = new Date().toISOString() } = {}) {
+export function normalizeOfficialRunnerImages(state, { targetImage = V15_OFFICIAL_RUNNER_IMAGE, timestamp = new Date().toISOString() } = {}) {
   const changedProfiles = new Set();
   const changedFields = [];
   for (const profile of Array.isArray(state?.codex_profiles) ? state.codex_profiles : []) {

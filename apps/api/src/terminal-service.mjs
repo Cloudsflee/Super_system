@@ -5,7 +5,7 @@ import path from 'node:path';
 import * as pty from 'node-pty';
 import { WebSocketServer } from 'ws';
 import { AIWS_HOME, ARTIFACT_DIR, DATA_DIR, WORKSPACE_DIR, WORKTREE_DIR } from './config.mjs';
-import { HttpError } from './http.mjs';
+import { HttpError, isTrustedLocalOrigin } from './http.mjs';
 import { assertManagedProjectWritable } from './project-lifecycle.mjs';
 import { addTrace, mutate, owner, readState, saveArtifact } from './state.mjs';
 import { readSecret, redactKnownSecretStream, redactKnownSecretsSync } from './vault.mjs';
@@ -23,6 +23,7 @@ import { assertProfileAllowed, buildCodexContainerInvocation } from './container
 import { registerManagedProcessHandle, releaseManagedProcessHandle } from './container-runtime.mjs';
 import { hostBridgeCapability } from './host-bridge-service.mjs';
 import { createWindowsBridgeProcess } from './terminal-windows-bridge.mjs';
+import { withProjectLifecycleLock } from './project-lifecycle-operations.mjs';
 
 const runtimes = new Map();
 const runtimeStarts = new Map();
@@ -41,7 +42,8 @@ export function terminalCapability() {
   };
 }
 
-export async function createTerminalSession(body) {
+export function createTerminalSession(body) { return withProjectLifecycleLock(body.project_id, () => createTerminalSessionLocked(body)); }
+async function createTerminalSessionLocked(body) {
   const requestedRuntime = body.runtime || 'linux_container';
   if (!['linux_container', 'windows_bridge', 'host_dev'].includes(requestedRuntime)) throw new HttpError(400, { error: 'terminal_runtime_invalid' });
   if (requestedRuntime !== 'windows_bridge' && !terminalCapability().linux_container.available) throw new HttpError(501, { error: 'pty_capability_unavailable' });
@@ -60,7 +62,8 @@ export async function createTerminalSession(body) {
   const sharedBatch = assistSession ? await ensureSessionChangeBatch(assistSession.id) : null;
   const prepared = sharedBatch ? { record: sharedBatch.worktree, batch: sharedBatch.batch } : body.worktree_id ? resolveExistingWorktree(snapshot, body.worktree_id, project.id) : { record: { ...await createAssistWorktree(project, { id: `cli-${sessionId}` }), turn_id: null, kind: 'cli' }, batch: null };
   const session = await mutate((state) => {
-    const actor = owner(state);
+    const actor = owner(state), currentProject = state.projects.find((item) => item.id === project.id);
+    assertManagedProjectWritable(currentProject);
     if (!sharedBatch && !body.worktree_id) state.worktrees.push(prepared.record);
     if (assistSession) bindSessionRuntimeProfile(state.assist_sessions.find((item) => item.id === assistSession.id), state.codex_profiles.find((item) => item.id === profile.id));
     const item = {
@@ -111,6 +114,7 @@ export function attachTerminalWebSocket(server) {
     const pathname = new URL(request.url || '/', 'http://localhost').pathname.replace(/^\/api/, '');
     const match = pathname.match(/^\/assist\/v3\/terminal-sessions\/([^/]+)\/ws$/);
     if (!match) return;
+    if (request.headers.origin && !isTrustedLocalOrigin(request.headers.origin)) { rejectWebSocket(socket, 403, 'Forbidden'); return; }
     sockets.handleUpgrade(request, socket, head, (ws) => connectSocket(ws, decodeURIComponent(match[1])).catch(() => ws.close(1011, 'terminal_unavailable')));
   });
   return sockets;
@@ -227,6 +231,7 @@ function isCodexCliExecutable(value) { return /^codex(?:\.cmd|\.ps1|\.exe|\.js)?
 function resolveExistingWorktree(state, worktreeId, projectId) { const record = state.worktrees.find((item) => item.id === worktreeId && item.project_id === projectId), assistRoot = path.join(WORKSPACE_DIR, safe(projectId), 'worktrees'); if (!record || (!isWithin(WORKTREE_DIR, record.path) && !isWithin(assistRoot, record.path))) throw new HttpError(404, { error: 'worktree_not_found' }); return { record }; }
 function publicSession(value) { return { id: value.id, project_id: value.project_id, assist_session_id: value.assist_session_id || null, turn_id: value.turn_id, worktree_id: value.worktree_id, change_batch_id: value.change_batch_id || null, profile_id: value.profile_id, model: value.model, reasoning: value.reasoning, runtime: value.runtime, status: value.status, cols: value.cols, rows: value.rows, exit_code: value.exit_code, error_code: value.error_code || null, output_preview: value.output_preview || '', output_truncated: Boolean(value.output_truncated), artifact_file_ref_id: value.artifact_file_ref_id || null, created_at: value.created_at, updated_at: value.updated_at }; }
 function broadcast(runtime, message) { const encoded = JSON.stringify(message); for (const client of runtime.clients) if (client.readyState === 1) client.send(encoded); }
+function rejectWebSocket(socket, status, reason) { socket.end(`HTTP/1.1 ${status} ${reason}\r\nConnection: close\r\nContent-Length: 0\r\n\r\n`); }
 function clamp(value, min, max, fallback) { const number = Number(value); return Number.isFinite(number) ? Math.max(min, Math.min(max, Math.trunc(number))) : fallback; }
 function safe(value) { return String(value || 'item').replace(/[^a-zA-Z0-9._-]/g, '_'); }
 function isWithin(root, target) { const relative = path.relative(path.resolve(root), path.resolve(target)); return relative === '' || (!relative.startsWith('..') && !path.isAbsolute(relative)); }

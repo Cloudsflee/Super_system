@@ -9,6 +9,7 @@ process.env.AIWS_HOME = path.join(root, 'home');
 try {
   const stateApi = await import('../../apps/api/src/state.mjs');
   const operations = await import('../../apps/api/src/assist-operations.mjs');
+  const waiters = await import('../../apps/api/src/assist-operation-waiters.mjs');
   await stateApi.ensureRuntime();
   const viewContext = {
     route: '/projects/project-v15/brief', browser_instance_id: 'browser-one',
@@ -24,6 +25,7 @@ try {
       tabs: [{ id: 'brief.review', label: 'Review', risk: 'low' }]
     }
   };
+  const locator = { browser_instance_id: 'browser-one', route: viewContext.route, surface_id: viewContext.surface.id, surface_revision: viewContext.surface.revision };
   await stateApi.mutate((state) => {
     state.projects = [{ id: 'project-v15', status: 'active', managed_workspace_state: 'ready' }];
     state.assist_sessions = [{ id: 'session-v15', version: 3, project_id: 'project-v15', archived_at: null }];
@@ -44,10 +46,12 @@ try {
   });
   const first = await pendingOperation(stateApi, 'call-first');
   assert.equal(first.status, 'pending');
-  const claimed = await operations.claimAssistOperation(first.id, { browser_instance_id: 'browser-one' });
+  await assert.rejects(() => operations.claimAssistOperation(first.id, { ...locator, surface_id: 'wrong-surface' }), (error) => error.payload?.error === 'assist_operation_surface_changed');
+  assert.equal((await operations.listAssistOperations({ session_id: 'session-v15' })).find((item) => item.id === first.id).status, 'pending');
+  const claimed = await operations.claimAssistOperation(first.id, locator);
   assert.equal(claimed.value, 'after');
   await operations.submitAssistOperationResult(first.id, {
-    browser_instance_id: 'browser-one', route: viewContext.route, surface_revision: 'surface-r1', ok: true, persisted: true,
+    ...locator, ok: true, persisted: true,
     before: 'before', after: 'after', current: 'after'
   });
   const toolResult = await firstPromise;
@@ -56,12 +60,15 @@ try {
   assert.equal(committed.status, 'committed');
   assert.match(committed.before_hash, /^[a-f0-9]{64}$/);
   assert.match(committed.after_hash, /^[a-f0-9]{64}$/);
+  assert.equal(Object.hasOwn(committed, 'tool'), false, 'machine tool names stay out of public receipts');
+  await assert.rejects(() => operations.submitAssistOperationResult(first.id, { ...locator, surface_id: 'wrong-surface', ok: true, persisted: true, before: 'before', after: 'after' }), (error) => error.payload?.error === 'assist_operation_surface_changed');
+  await assert.rejects(() => operations.submitAssistOperationResult(first.id, { route: locator.route, surface_id: locator.surface_id, surface_revision: locator.surface_revision }), (error) => error.payload?.error === 'assist_browser_instance_required');
 
   const inverse = await operations.undoAssistOperation(first.id);
   assert.equal(inverse.inverse_of, first.id);
-  await operations.claimAssistOperation(inverse.id, { browser_instance_id: 'browser-one' });
+  await operations.claimAssistOperation(inverse.id, locator);
   const undone = await operations.submitAssistOperationResult(inverse.id, {
-    browser_instance_id: 'browser-one', route: viewContext.route, surface_revision: 'surface-r1', ok: true, persisted: true,
+    ...locator, ok: true, persisted: true,
     before: 'after', after: 'before', current: 'before'
   });
   assert.equal(undone.status, 'committed');
@@ -71,29 +78,49 @@ try {
     namespace: 'aiws_page', tool: 'set_field', callId: 'call-second', arguments: { target_id: 'brief.goal', value: 'after-two' }
   });
   const second = await pendingOperation(stateApi, 'call-second');
-  await operations.claimAssistOperation(second.id, { browser_instance_id: 'browser-one' });
+  await operations.claimAssistOperation(second.id, locator);
   await operations.submitAssistOperationResult(second.id, {
-    browser_instance_id: 'browser-one', route: viewContext.route, surface_revision: 'surface-r1', ok: true, persisted: true,
+    ...locator, ok: true, persisted: true,
     before: 'before-two', after: 'after-two'
   });
   await secondPromise;
   const conflictingInverse = await operations.undoAssistOperation(second.id);
-  await operations.claimAssistOperation(conflictingInverse.id, { browser_instance_id: 'browser-one' });
+  await operations.claimAssistOperation(conflictingInverse.id, locator);
   const conflict = await operations.submitAssistOperationResult(conflictingInverse.id, {
-    browser_instance_id: 'browser-one', route: viewContext.route, surface_revision: 'surface-r1', ok: true, persisted: true,
+    ...locator, ok: true, persisted: true,
     before: 'changed-elsewhere', after: 'before-two'
   });
   assert.equal(conflict.status, 'conflicted');
   assert.deepEqual(conflict.conflict, { before: 'before-two', after: 'after-two', current: 'changed-elsewhere' });
   const forced = await operations.undoAssistOperation(second.id, { force: true });
   assert.equal(forced.id, conflictingInverse.id); assert.equal(forced.forced, true); assert.equal(forced.status, 'pending');
-  await operations.claimAssistOperation(forced.id, { browser_instance_id: 'browser-one' });
+  await operations.claimAssistOperation(forced.id, locator);
   const forceResult = await operations.submitAssistOperationResult(forced.id, {
-    browser_instance_id: 'browser-one', route: viewContext.route, surface_revision: 'surface-r1', ok: true, persisted: true,
+    ...locator, ok: true, persisted: true,
     before: 'changed-elsewhere', after: 'before-two', current: 'before-two'
   });
   assert.equal(forceResult.status, 'committed'); assert.equal(forceResult.forced, true);
   assert.deepEqual(forceResult.conflict, { before: 'before-two', after: 'after-two', current: 'changed-elsewhere' });
+
+  await assert.rejects(() => operations.reviseAssistOperation(second.id, { ...locator, value: 'not-allowed' }), (error) => error.payload?.error === 'assist_dynamic_tool_value_not_allowed');
+  const committedSecond = (await operations.listAssistOperations({ session_id: 'session-v15' })).find((item) => item.id === second.id);
+  const revision = await operations.reviseAssistOperation(second.id, { ...locator, value: 'after' });
+  assert.equal(revision.operation_reference_id, second.id); assert.equal(revision.expected_current_hash, committedSecond.current_hash || committedSecond.after_hash);
+  await operations.claimAssistOperation(revision.id, locator);
+  const revisionConflict = await operations.submitAssistOperationResult(revision.id, { ...locator, ok: true, persisted: true, before: 'before-two', after: 'before-two', current: 'before-two' });
+  assert.equal(revisionConflict.status, 'conflicted'); assert.deepEqual(revisionConflict.conflict, { before: 'before-two', after: 'after-two', current: 'before-two' });
+  const retriedRevision = await operations.reviseAssistOperation(revision.id, { ...locator, value: 'after' });
+  assert.equal(retriedRevision.expected_current_hash, revisionConflict.current_hash);
+  await operations.claimAssistOperation(retriedRevision.id, locator);
+  assert.equal((await operations.submitAssistOperationResult(retriedRevision.id, { ...locator, ok: true, persisted: true, before: 'before-two', after: 'after', current: 'after' })).status, 'committed');
+
+  const persistencePromise = operations.handleDynamicPageTool('session-v15', 'turn-v15', {
+    namespace: 'aiws_page', tool: 'set_field', callId: 'call-persistence-mismatch', arguments: { target_id: 'brief.goal', value: 'after' }
+  });
+  const persistence = await pendingOperation(stateApi, 'call-persistence-mismatch'); await operations.claimAssistOperation(persistence.id, locator);
+  const persistenceFailure = await operations.submitAssistOperationResult(persistence.id, { ...locator, ok: true, persisted: true, before: 'before', after: 'after', current: 'before' });
+  assert.equal(persistenceFailure.status, 'failed'); assert.equal(persistenceFailure.failure_code, 'browser_persistence_mismatch');
+  await assert.rejects(persistencePromise, (error) => error.payload?.error === 'browser_persistence_mismatch');
 
   const approvalPromise = operations.handleDynamicPageTool('session-v15', 'turn-v15', {
     namespace: 'aiws_page', tool: 'set_field', callId: 'call-high-risk', arguments: { target_id: 'brief.admin', value: true }
@@ -102,9 +129,14 @@ try {
   assert.equal(approval.status, 'pending_confirmation');
   await operations.confirmAssistOperation(approval.id, { approved: false });
   await assert.rejects(approvalPromise, (error) => error.payload?.error === 'assist_operation_denied');
+  assert.equal((await waiters.waitForOperationResult(first.id, undefined, async () => undefined, 50)).success, true, 'a result committed before waiter registration is reconciled');
+  await assert.rejects(() => waiters.waitForOperationApproval(approval.id), (error) => error.payload?.error === 'assist_operation_denied');
 
   await assert.rejects(() => operations.handleDynamicPageTool('session-v15', 'turn-v15', {
     namespace: 'aiws_page', tool: 'set_field', callId: 'call-selector', arguments: { target_id: 'brief.goal', value: 'after', selector: '#root' }
+  }), (error) => error.payload?.error === 'assist_dynamic_tool_unsafe_argument');
+  await assert.rejects(() => operations.handleDynamicPageTool('session-v15', 'turn-v15', {
+    namespace: 'aiws_page', tool: 'set_field', callId: 'call-nested-script', arguments: { target_id: 'brief.admin', value: [{ nested: [{ script: 'forbidden' }] }] }
   }), (error) => error.payload?.error === 'assist_dynamic_tool_unsafe_argument');
   await assert.rejects(() => operations.handleDynamicPageTool('session-v15', 'turn-v15', {
     namespace: 'aiws_page', tool: 'set_field', callId: 'call-secret', arguments: { target_id: 'brief.secret', value: 'secret' }

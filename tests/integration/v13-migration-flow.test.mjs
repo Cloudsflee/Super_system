@@ -25,7 +25,7 @@ try {
   server = await startApi({ port, home: fixture.home, ccSwitch: fixture.ccSwitch });
   let migrated = readState();
   const project = migrated.projects.find((item) => item.id === 'prj_legacy_v12');
-  assert.equal(migrated.schema_version, 15);
+  assert.equal(migrated.schema_version, 16);
   assert.equal(project.status, 'active');
   assert.equal(project.onboarding_state, 'confirmed');
   assert.equal(project.managed_workspace_state, 'workspace_migration_required');
@@ -34,6 +34,7 @@ try {
   assert.equal(project.trash_metadata, null);
   for (const collection of ['project_intakes', 'project_briefs', 'assist_turns', 'attachments', 'worktrees', 'runtime_approvals', 'terminal_sessions', 'config_revisions', 'import_jobs']) assert.ok(Array.isArray(migrated[collection]), collection);
   for (const collection of ['assist_configurations', 'assist_change_batches', 'assist_checkpoints', 'assist_operations', 'runtime_user_inputs', 'host_bridge_devices']) assert.ok(Array.isArray(migrated[collection]), collection);
+  for (const collection of ['brief_templates', 'workflow_drafts']) assert.ok(Array.isArray(migrated[collection]), collection);
 
   const proposal = migrated.change_proposals.find((item) => item.id === 'cpr_legacy_pending');
   assert.equal(proposal.attention_state, 'queued');
@@ -44,9 +45,10 @@ try {
   assert.equal(migrated.assist_sessions.find((item) => item.id === 'asst_legacy_v2').version, 2);
   const migratedV3 = migrated.assist_sessions.find((item) => item.id === 'asst_legacy_v3');
   assert.equal(migratedV3.forked_from_session_id, null); assert.equal(migratedV3.delete_batch_id, null);
+  assert.equal(migratedV3.clarification_policy, 'ask');
   assert.equal(migrated.assist_turns.find((item) => item.id === 'atrn_legacy_running').codex_turn_id, null);
   const migrationManifest = JSON.parse(fs.readFileSync(path.join(fixture.home, 'data', 'migrations', fs.readdirSync(path.join(fixture.home, 'data', 'migrations')).find((item) => item.endsWith('.manifest.json'))), 'utf8'));
-  assert.equal(migrationManifest.from_schema, 12); assert.equal(migrationManifest.to_schema, 15); assert.equal(migrationManifest.status, 'committed');
+  assert.equal(migrationManifest.from_schema, 12); assert.equal(migrationManifest.to_schema, 16); assert.equal(migrationManifest.status, 'committed');
 
   const v2 = await api(port, '/assist/v2/sessions/asst_legacy_v2');
   assert.equal(v2.messages[0].content, 'legacy message is preserved');

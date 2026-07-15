@@ -7,12 +7,18 @@ import { coordinateAssistSession } from './assist-session-coordinator.mjs';
 import { getSessionChangeBatch } from './assist-change-batches.mjs';
 import { bindSessionRuntimeProfile, cleanText, readableProjectCwd, requireProject, requireSession, resolveAssistTurnConfiguration } from './assist-v3-domain.mjs';
 import { now } from '../../../packages/shared/index.mjs';
+import { withProjectLifecycleLock } from './project-lifecycle-operations.mjs';
 
 const GOAL_STATUSES = new Set(['active', 'paused', 'blocked', 'usageLimited', 'budgetLimited', 'complete']);
 
-export function getAssistGoal(sessionId, dependencies = {}) { return coordinateAssistSession(sessionId, () => performGoalRpc(sessionId, 'get', {}, dependencies)); }
-export function setAssistGoal(sessionId, input = {}, dependencies = {}) { return coordinateAssistSession(sessionId, () => performGoalRpc(sessionId, 'set', input, dependencies)); }
-export function clearAssistGoal(sessionId, dependencies = {}) { return coordinateAssistSession(sessionId, () => performGoalRpc(sessionId, 'clear', {}, dependencies)); }
+export function getAssistGoal(sessionId, dependencies = {}) { return coordinateAssistSession(sessionId, () => withGoalProjectLock(sessionId, () => performGoalRpc(sessionId, 'get', {}, dependencies))); }
+export function setAssistGoal(sessionId, input = {}, dependencies = {}) { return coordinateAssistSession(sessionId, () => withGoalProjectLock(sessionId, () => performGoalRpc(sessionId, 'set', input, dependencies))); }
+export function clearAssistGoal(sessionId, dependencies = {}) { return coordinateAssistSession(sessionId, () => withGoalProjectLock(sessionId, () => performGoalRpc(sessionId, 'clear', {}, dependencies))); }
+
+async function withGoalProjectLock(sessionId, operation) {
+  const state = await readState(), session = requireSession(state, sessionId), project = requireProject(state, session.project_id);
+  return withProjectLifecycleLock(project.id, operation);
+}
 
 async function performGoalRpc(sessionId, operation, input = {}, { rpc = runCodexAppServerRpc } = {}) {
   let state = await readState(), session = requireSession(state, sessionId), project = requireProject(state, session.project_id);

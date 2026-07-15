@@ -4,11 +4,17 @@ import { id, now } from '../../../packages/shared/index.mjs';
 import { applyAssistWorktree, assistReviewSnapshot, publicWorktree, rollbackAssistWorktree } from './assist-v3-worktree.mjs';
 import { boundedInt, cleanText, persistedWorktreeFields, requireProject, requireTurn, safeRelativePath, TERMINAL_TURN_STATES } from './assist-v3-domain.mjs';
 import { applyChangeBatch, getChangeBatchReview, rollbackChangeBatch } from './assist-change-batches.mjs';
+import { assertManagedProjectWritable } from './project-lifecycle.mjs';
+import { assertProjectLifecycleIdle, withProjectLifecycleLock } from './project-lifecycle-operations.mjs';
 
 const locks = new Map();
 
 export async function getV3Review(turnId) {
-  const snapshot = await readState(), turn = requireTurn(snapshot, turnId), project = requireProject(snapshot, turn.project_id);
+  const snapshot = await readState(), turn = requireTurn(snapshot, turnId), project = assertProjectLifecycleIdle(requireProject(snapshot, turn.project_id));
+  return withProjectLifecycleLock(project.id, () => getV3ReviewLocked(turnId));
+}
+async function getV3ReviewLocked(turnId) {
+  const snapshot = await readState(), turn = requireTurn(snapshot, turnId), project = assertProjectLifecycleIdle(requireProject(snapshot, turn.project_id));
   if (turn.change_batch_id) {
     const batchReview = await getChangeBatchReview(turn.change_batch_id), state = await readState(), currentTurn = requireTurn(state, turn.id);
     return { turn_id: turn.id, change_batch_id: turn.change_batch_id, status: batchReview.status, worktree: batchReview.batch.worktree, changed_files: batchReview.changed_files, diff: batchReview.diff, target_hash: batchReview.target_hash, base_commit: batchReview.base_commit, head_commit: batchReview.head_commit, checkpoints: batchReview.checkpoints, viewed_files: currentTurn.review?.viewed_files || {}, comments: state.human_reviews.filter((item) => item.target_type === 'assist_turn' && item.target_id === turn.id) };
@@ -18,6 +24,7 @@ export async function getV3Review(turnId) {
   if (!worktree) throw new HttpError(409, { error: 'assist_turn_worktree_not_ready' });
   const review = await assistReviewSnapshot(project, worktree);
   await mutate((state) => {
+    requireTurn(state, turn.id);
     const current = state.worktrees.find((item) => item.id === worktree.id);
     if (current && !['applied', 'rolled_back'].includes(current.status)) Object.assign(current, { target_hash: review.target_hash, head_commit: review.head_commit, status: review.changed_files.length ? 'review_ready' : 'active', updated_at: now() });
   });
@@ -66,10 +73,13 @@ export async function applyV3Review(turnId, input = {}) {
       const result = await applyChangeBatch(turn.change_batch_id, input.target_hash);
       return { ...result, turn_id: turn.id, worktree: result.batch?.worktree };
     }
-    const worktree = snapshot.worktrees.find((item) => item.id === turn.worktree_id);
-    if (!worktree) throw new HttpError(409, { error: 'assist_turn_worktree_not_ready' });
-    const result = await applyAssistWorktree(project, worktree, input.target_hash);
-    return mutate((state) => persistDecision(state, turn.id, worktree, 'applied', result));
+    return withProjectLifecycleLock(project.id, async () => {
+      const state = await readState(), currentTurn = requireTurn(state, turn.id), currentProject = requireProject(state, currentTurn.project_id), worktree = state.worktrees.find((item) => item.id === currentTurn.worktree_id);
+      assertManagedProjectWritable(currentProject);
+      if (!worktree) throw new HttpError(409, { error: 'assist_turn_worktree_not_ready' });
+      const result = await applyAssistWorktree(currentProject, worktree, input.target_hash);
+      return mutate((data) => persistDecision(data, currentTurn.id, worktree, 'applied', result));
+    });
   });
 }
 export async function rollbackV3Review(turnId, input = {}) {
@@ -81,13 +91,19 @@ export async function rollbackV3Review(turnId, input = {}) {
       return { ...result, turn_id: turn.id, worktree: result.batch?.worktree };
     }
     if (!worktree) throw new HttpError(409, { error: 'assist_turn_worktree_not_ready' });
-    const result = await rollbackAssistWorktree(project, worktree, input.target_hash || null);
-    return mutate((state) => persistDecision(state, turn.id, worktree, 'rolled_back', result));
+    return withProjectLifecycleLock(project.id, async () => {
+      const state = await readState(), currentTurn = requireTurn(state, turn.id), currentProject = requireProject(state, currentTurn.project_id), currentWorktree = state.worktrees.find((item) => item.id === currentTurn.worktree_id);
+      assertManagedProjectWritable(currentProject);
+      if (!currentWorktree) throw new HttpError(409, { error: 'assist_turn_worktree_not_ready' });
+      const result = await rollbackAssistWorktree(currentProject, currentWorktree, input.target_hash || null);
+      return mutate((data) => persistDecision(data, currentTurn.id, currentWorktree, 'rolled_back', result));
+    });
   });
 }
 
 function persistDecision(state, turnId, worktree, status, result) {
   const turn = requireTurn(state, turnId), current = state.worktrees.find((item) => item.id === worktree.id);
+  assertManagedProjectWritable(state.projects.find((item) => item.id === turn.project_id));
   if (!current) throw new HttpError(409, { error: 'worktree_not_found' });
   Object.assign(current, persistedWorktreeFields(worktree)); turn.review_status = status;
   turn.review = { ...(turn.review || {}), status, target_hash: worktree.target_hash, applied_at: worktree.applied_at, rolled_back_at: worktree.rolled_back_at }; turn.updated_at = now();

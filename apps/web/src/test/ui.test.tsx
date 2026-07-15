@@ -9,7 +9,7 @@ import { nodeRenderers } from '../features/nodes/registry';
 import { autoLayout, reconcileCanvasNodes, toCanvasNodes } from '../features/workflow/canvas/graph';
 import { GithubSetup } from '../features/setup/GithubSetup';
 import type { ProjectBundle } from '../api/types';
-import { dispatchSemanticAction, useAssistSurface } from '../components/assist/semantic-actions';
+import { describeAssistSurface, dispatchSemanticAction, executeAssistOperation, useAssistSurface } from '../components/assist/semantic-actions';
 
 describe('V1.2 UI contracts', () => {
   it('wires icon buttons to commands', () => {
@@ -43,6 +43,42 @@ describe('V1.2 UI contracts', () => {
     await act(async () => { expect((await dispatchSemanticAction(action('fill_field', { field_id: 'fixture.name', value: 'Codex' }))).handled).toBe(true); });
     expect(screen.getByDisplayValue('Codex')).toBeInTheDocument();
     expect((await dispatchSemanticAction(action('fill_field', { field_id: 'missing', value: 'x' }))).handled).toBe(false);
+  });
+
+  it('executes a control from a secondary surface against one composite page revision', async () => {
+    const calls: Array<{ url: string; body?: Record<string, unknown> }> = [];
+    render(<CompositeSurfaceFixture />);
+    const surface = describeAssistSurface();
+    expect(surface.revision).toMatch(/^page-/);
+    expect(surface.fields.map((item) => item.id).sort()).toEqual(['child.value', 'parent.value']);
+    vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input), body = init?.body ? JSON.parse(String(init.body)) : undefined;
+      calls.push({ url, body });
+      if (url.endsWith('/operations/composite-operation/claim')) return jsonResponse({ operation_id: 'composite-operation', tool: 'aiws_page.set_field', target_id: 'child.value', value: 'updated', route: '/', surface_id: surface.id, surface_revision: surface.revision, forced: false, revision: 1 });
+      return jsonResponse({ status: 'committed' });
+    }));
+    await act(async () => { await executeAssistOperation('composite-operation', '/'); });
+    expect(screen.getByLabelText('子字段')).toHaveValue('updated');
+    expect(calls.find((item) => item.url.endsWith('/operations/composite-operation/result'))?.body).toMatchObject({ surface_id: surface.id, surface_revision: surface.revision, before: 'child', after: 'updated' });
+    vi.unstubAllGlobals();
+  });
+
+  it('selects and undoes tabs using the requested ledger value', async () => {
+    render(<TabSurfaceFixture />);
+    const surface = describeAssistSurface(), results: Array<Record<string, unknown>> = [];
+    expect(surface.tabs.map((item) => item.id)).toEqual(['work', 'contract']);
+    vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input), body = init?.body ? JSON.parse(String(init.body)) : undefined;
+      if (url.endsWith('/claim')) return jsonResponse({ operation_id: url.includes('tab-undo') ? 'tab-undo' : 'tab-select', tool: 'aiws_page.select_tab', target_id: 'contract', value: url.includes('tab-undo') ? 'work' : 'contract', route: '/', surface_id: surface.id, surface_revision: surface.revision, forced: false, revision: 1 });
+      if (body) results.push(body);
+      return jsonResponse({ status: 'committed' });
+    }));
+    await act(async () => { await executeAssistOperation('tab-select', '/'); });
+    expect(screen.getByLabelText('当前标签')).toHaveTextContent('contract');
+    await act(async () => { await executeAssistOperation('tab-undo', '/'); });
+    expect(screen.getByLabelText('当前标签')).toHaveTextContent('work');
+    expect(results.map((item) => item.after)).toEqual(['contract', 'work']);
+    vi.unstubAllGlobals();
   });
 
   it('redirects business routes while setup is incomplete', async () => {
@@ -81,7 +117,26 @@ function SemanticFixture() {
   useAssistSurface({ id: 'fixture', fields: { 'fixture.name': { label: '名称', set: (input) => setValue(String(input)) } } });
   return <input aria-label="语义字段" value={value} readOnly />;
 }
+function CompositeSurfaceFixture() {
+  const [parent, setParent] = useState('parent');
+  useAssistSurface({ id: 'parent-surface', revision: 'parent-r1', fields: { 'parent.value': { label: '父字段', elementId: 'parent-value', set: (input) => setParent(String(input)) } } });
+  return <><input id="parent-value" aria-label="父字段" value={parent} readOnly /><ChildSurfaceFixture /></>;
+}
+function ChildSurfaceFixture() {
+  const [child, setChild] = useState('child');
+  useAssistSurface({ id: 'child-surface', revision: 'child-r1', fields: { 'child.value': { label: '子字段', elementId: 'child-value', set: (input) => setChild(String(input)) } } });
+  return <input id="child-value" aria-label="子字段" value={child} readOnly />;
+}
+function TabSurfaceFixture() {
+  const [tab, setTab] = useState('work');
+  useAssistSurface({ id: 'tab-surface', revision: 'tabs-r1', tabs: {
+    work: { label: '工作', read: () => tab, select: () => setTab('work') },
+    contract: { label: 'Contract', read: () => tab, select: () => setTab('contract') }
+  } });
+  return <output aria-label="当前标签">{tab}</output>;
+}
 function action(name: string, args: Record<string, unknown>) { return { id: 'a1', name, label: name, status: 'ready', risk: 'reversible' as const, args }; }
+function jsonResponse(value: unknown, status = 200) { return new Response(JSON.stringify(value), { status, headers: { 'content-type': 'application/json' } }); }
 
 function fixtureBundle(count: number): ProjectBundle {
   return {

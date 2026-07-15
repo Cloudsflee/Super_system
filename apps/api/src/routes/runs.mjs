@@ -8,6 +8,7 @@ import { testAdapter } from '../test-adapter.mjs';
 import { RunnerStatus, buildNodeRunResult, makeAssetFromCandidate, now } from '../../../../packages/shared/index.mjs';
 import { assertManagedProjectWritable } from '../project-lifecycle.mjs';
 import { isContainerized } from '../container-runtime-config.mjs';
+import { assertProjectLifecycleIdle } from '../project-lifecycle-operations.mjs';
 
 const runControllers = new Map();
 
@@ -26,13 +27,20 @@ async function previewRoute({ res, params, body }) {
   const result = await mutate((state) => {
     const actor = owner(state), bundle = nodeBundle(state, params.id);
     requireNodeBundle(bundle);
+    assertProjectLifecycleIdle(bundle.project);
     return previewContextPack(state, { actor, ...bundle, body });
   });
   return send(res, 201, result);
 }
 
 async function confirmContextRoute({ res, params }) {
-  const result = await mutate((state) => confirmContextPack(state, { actor: owner(state), contextPackId: params.id }));
+  const result = await mutate((state) => {
+    const contextPack = state.context_packs.find((item) => item.id === params.id);
+    if (!contextPack) throw new HttpError(404, 'context_pack_not_found');
+    const projectId = contextPack.content_json?.project?.id || state.workspaces.find((item) => item.id === contextPack.source_workspace_id)?.project_id;
+    assertProjectLifecycleIdle(state.projects.find((item) => item.id === projectId));
+    return confirmContextPack(state, { actor: owner(state), contextPackId: params.id });
+  });
   return send(res, 200, result);
 }
 

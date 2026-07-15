@@ -124,7 +124,7 @@ async function runV3Turn(turnId) {
       const result = await runCodexAppServer({
         state: runtimeState, profile: start.profile, prompt, userInput,
         additionalContext: applicationAdditionalContext(start),
-        dynamicTools: dynamicPageToolSpec(start.turn.view_context, start.turn.collaboration_mode),
+        dynamicTools: dynamicPageToolSpec(start.turn.view_context, start.turn.collaboration_mode, { state: runtimeState, projectId: start.project.id }),
         attachmentMounts: attachmentBindings.mounts,
         cwd, resumeId: threadId, sandbox, mode: start.turn.collaboration_mode,
         signal: controller.signal, onEvent: eventHandler,

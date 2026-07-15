@@ -2,9 +2,11 @@ import { approveProposal, markProposalApplied, now } from '../../../packages/sha
 import { HttpError } from './http.mjs';
 import { proposalTargetHash } from './proposal-target.mjs';
 import { applyAction } from './routes/change-proposals.mjs';
+import { assertProjectLifecycleIdle } from './project-lifecycle-operations.mjs';
 
 export function applyProposalAtomically(state, proposal, actor, expected = {}) {
   if (!proposal) throw new HttpError(404, { error: 'proposal_not_found' });
+  if (proposal.project_id) assertProjectLifecycleIdle(state.projects.find((item) => item.id === proposal.project_id));
   if (proposal.status === 'applied') return { proposal, applied: proposal.applied_result || null, idempotent: true };
   if (proposal.status !== 'pending' && proposal.status !== 'approved') throw new HttpError(409, { error: 'proposal_not_pending' });
   if (expected.revision === undefined || !expected.target_hash) throw new HttpError(400, { error: 'approval_expectation_required', required: ['revision', 'target_hash'] });

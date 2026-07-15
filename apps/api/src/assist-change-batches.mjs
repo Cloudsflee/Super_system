@@ -5,6 +5,8 @@ import { hashString, id, now } from '../../../packages/shared/index.mjs';
 import { createAssistWorktree, applyAssistWorktree, assistReviewSnapshot, publicWorktree, removeAssistWorktree, rollbackAssistWorktree } from './assist-v3-worktree.mjs';
 import { gitResult } from './assist-v3-git.mjs';
 import { requireProject, requireSession } from './assist-v3-domain.mjs';
+import { withProjectLifecycleLock } from './project-lifecycle-operations.mjs';
+import { assertManagedProjectWritable } from './project-lifecycle.mjs';
 
 const heldLocks = new Map();
 
@@ -114,12 +116,18 @@ export async function createBatchCheckpoint(batchId, { source, sourceId, phase, 
 }
 
 export async function getChangeBatchReview(batchId) {
+  const snapshot = await readState(), batch = snapshot.assist_change_batches.find((item) => item.id === batchId);
+  if (!batch) throw new HttpError(404, { error: 'assist_change_batch_not_found' });
+  return withProjectLifecycleLock(batch.project_id, () => getChangeBatchReviewLocked(batchId));
+}
+async function getChangeBatchReviewLocked(batchId) {
   const state = await readState(), batch = state.assist_change_batches.find((item) => item.id === batchId);
   if (!batch) throw new HttpError(404, { error: 'assist_change_batch_not_found' });
   const project = requireProject(state, batch.project_id), worktree = state.worktrees.find((item) => item.id === batch.worktree_id);
   if (!worktree) throw new HttpError(409, { error: 'assist_change_batch_unavailable' });
   const review = await assistReviewSnapshot(project, worktree);
   if (batch.status === 'open') await mutate((currentState) => {
+    requireProject(currentState, batch.project_id);
     const current = currentState.assist_change_batches.find((item) => item.id === batch.id);
     const currentWorktree = currentState.worktrees.find((item) => item.id === worktree.id);
     if (current) Object.assign(current, { target_hash: review.target_hash, head_commit: review.head_commit, updated_at: now() });
@@ -135,12 +143,18 @@ export async function getChangeBatchReview(batchId) {
 }
 
 export async function applyChangeBatch(batchId, expectedTargetHash) {
+  const state = await readState(), batch = state.assist_change_batches.find((item) => item.id === batchId);
+  if (!batch) throw new HttpError(404, { error: 'assist_change_batch_not_found' });
+  return withProjectLifecycleLock(batch.project_id, () => applyChangeBatchLocked(batchId, expectedTargetHash));
+}
+async function applyChangeBatchLocked(batchId, expectedTargetHash) {
   const existing = await closedBatchResult(batchId, 'applied');
   if (existing) return existing;
   const release = await acquireBatchWriteLock(batchId, { kind: 'review_apply', id: batchId });
   try {
     const state = await readState(), batch = state.assist_change_batches.find((item) => item.id === batchId), project = requireProject(state, batch?.project_id), worktree = state.worktrees.find((item) => item.id === batch?.worktree_id);
     if (!batch || !worktree) throw new HttpError(404, { error: 'assist_change_batch_not_found' });
+    assertManagedProjectWritable(project);
     if (batch.status === 'applied') return { idempotent: true, batch: publicBatch(batch, worktree) };
     if (batch.status !== 'open') throw new HttpError(409, { error: 'assist_change_batch_not_open', status: batch.status });
     const result = await applyAssistWorktree(project, worktree, expectedTargetHash);
@@ -154,12 +168,18 @@ export async function applyChangeBatch(batchId, expectedTargetHash) {
 }
 
 export async function rollbackChangeBatch(batchId, expectedTargetHash = null) {
+  const state = await readState(), batch = state.assist_change_batches.find((item) => item.id === batchId);
+  if (!batch) throw new HttpError(404, { error: 'assist_change_batch_not_found' });
+  return withProjectLifecycleLock(batch.project_id, () => rollbackChangeBatchLocked(batchId, expectedTargetHash));
+}
+async function rollbackChangeBatchLocked(batchId, expectedTargetHash = null) {
   const existing = await closedBatchResult(batchId, 'rolled_back');
   if (existing) return existing;
   const release = await acquireBatchWriteLock(batchId, { kind: 'review_rollback', id: batchId });
   try {
     const state = await readState(), batch = state.assist_change_batches.find((item) => item.id === batchId), project = requireProject(state, batch?.project_id), worktree = state.worktrees.find((item) => item.id === batch?.worktree_id);
     if (!batch || !worktree) throw new HttpError(404, { error: 'assist_change_batch_not_found' });
+    assertManagedProjectWritable(project);
     if (batch.status === 'rolled_back') return { idempotent: true, batch: publicBatch(batch, worktree) };
     if (batch.status !== 'open') throw new HttpError(409, { error: 'assist_change_batch_not_open', status: batch.status });
     const result = await rollbackAssistWorktree(project, worktree, expectedTargetHash);

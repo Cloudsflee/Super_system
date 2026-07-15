@@ -85,7 +85,7 @@ export async function streamAssistBtwEvents(req, res, btwId, { token, after = 0 
   touch(record);
   res.writeHead(200, {
     'content-type': 'text/event-stream; charset=utf-8', 'cache-control': 'no-store',
-    connection: 'keep-alive', 'x-accel-buffering': 'no', 'access-control-allow-origin': '*'
+    connection: 'keep-alive', 'x-accel-buffering': 'no'
   });
   for (const event of record.events.filter((item) => item.sequence > Number(after || 0))) writeEvent(res, event);
   const listener = (event) => { if (!res.writableEnded) { writeEvent(res, event); if (event.type === 'closed') res.end(); } };

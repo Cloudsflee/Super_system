@@ -22,8 +22,12 @@ export async function createV3Turn(sessionId, input = {}, options = {}) {
     if (session.archived_at) throw new HttpError(409, { error: 'assist_session_archived' });
     const attachmentIds = normalizeAttachmentIds(state, session, input.attachment_ids || []);
     const configuration = resolveAssistTurnConfiguration(state, input, { allowMissingProfile: adapted });
+    const operationReference = input.operation_reference_id ? state.assist_operations.find((item) => item.id === input.operation_reference_id) : null;
+    if (input.operation_reference_id && !operationReference) throw new HttpError(404, { error: 'assist_operation_reference_not_found' });
+    if (operationReference && (operationReference.session_id !== session.id || operationReference.project_id && operationReference.project_id !== project.id)) throw new HttpError(409, { error: 'assist_operation_reference_scope_mismatch' });
     if (configuration.profile) bindSessionRuntimeProfile(session, configuration.profile);
     const turn = makeTurn({ actor, session, mode, content, input, attachmentIds, options, configuration });
+    if (operationReference) assertOperationReferenceView(operationReference, turn.view_context);
     turn.attachment_manifest = attachmentIds.map((key) => {
       const item = state.attachments.find((entry) => entry.id === key);
       return { id: item.id, sha256: item.sha256 || null, size_bytes: Number(item.size_bytes || 0), detected_mime_type: item.detected_mime_type || item.content_type || 'application/octet-stream', storage_status: item.storage_status || 'external', relative_path: item.relative_path || null };
@@ -43,11 +47,19 @@ export async function createV3Turn(sessionId, input = {}, options = {}) {
   scheduleV3Session(sessionId); return result;
 }
 
+function assertOperationReferenceView(operation, viewContext) {
+  const route = cleanText(viewContext?.route, 2_000), surfaceId = cleanText(viewContext?.surface?.id || viewContext?.surface?.surface_id, 200);
+  const surfaceRevision = cleanText(viewContext?.surface?.revision, 200), browserId = cleanText(viewContext?.browser_instance_id || viewContext?.surface?.browser_instance_id, 200);
+  if (operation.route && route !== operation.route || operation.surface_id && surfaceId !== operation.surface_id
+    || operation.surface_revision && surfaceRevision !== operation.surface_revision
+    || operation.browser_instance_id && browserId !== operation.browser_instance_id) throw new HttpError(409, { error: 'assist_operation_reference_scope_mismatch' });
+}
+
 export async function retryV3Turn(turnId, input = {}) {
   const state = await readState(), source = requireTurn(state, turnId), session = requireSession(state, source.session_id, true);
   if (!TERMINAL_TURN_STATES.has(source.status)) throw new HttpError(409, { error: 'assist_turn_not_retryable', status: source.status });
   const adapter = source.test_adapter && process.env.NODE_ENV === 'test' ? { adapter: 'test', test_response: input.test_response || source.test_response } : {};
-  return createV3Turn(session.id, { ...adapter, ...input, content: input.content || source.prompt, collaboration_mode: input.collaboration_mode || source.collaboration_mode || (source.mode === 'plan' ? 'plan' : 'default'), attachment_ids: input.attachment_ids || source.attachment_ids || [], profile_id: input.profile_id || (source.profile_id === 'test_adapter' ? undefined : source.profile_id), configuration_id: input.configuration_id || source.configuration_id, model: input.model || source.model, reasoning: input.reasoning || source.reasoning, view_context: input.view_context || source.view_context }, { retryOfTurnId: source.id, followUpKind: 'retry' });
+  return createV3Turn(session.id, { ...adapter, ...input, content: input.content || source.prompt, collaboration_mode: input.collaboration_mode || source.collaboration_mode || (source.mode === 'plan' ? 'plan' : 'default'), attachment_ids: input.attachment_ids || source.attachment_ids || [], profile_id: input.profile_id || (source.profile_id === 'test_adapter' ? undefined : source.profile_id), configuration_id: input.configuration_id || source.configuration_id, model: input.model || source.model, reasoning: input.reasoning || source.reasoning, view_context: input.view_context || source.view_context, operation_reference_id: input.operation_reference_id || source.operation_reference_id || undefined }, { retryOfTurnId: source.id, followUpKind: 'retry' });
 }
 export async function stopV3Turn(turnId, reason = 'user_stop') {
   abortV3Turn(turnId);

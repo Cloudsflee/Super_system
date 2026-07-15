@@ -1,38 +1,44 @@
 import { randomBytes } from 'node:crypto';
 import { HttpError } from './http.mjs';
 import { addTrace, mutate, owner, readState } from './state.mjs';
-import { canonicalJson, sha256 } from './state-migration-v14.mjs';
-import { id, maskSecretsDeep, now } from '../../../packages/shared/index.mjs';
+import { id, now } from '../../../packages/shared/index.mjs';
 import { cleanText, requireSession, requireTurn } from './assist-v3-domain.mjs';
 import { pushV3Event } from './assist-v3-events.mjs';
+import { actionForTool, capabilityForTool, executionPayload, operationEvent, publicOperation, requiresConfirmation, semanticSummary, toolDefinition, toolMatchesKind, toolName, toolSuccess } from './assist-operation-metadata.mjs';
+import { PROJECT_TOOL_NAMESPACE, projectCapabilityToolSpec } from './assist-project-tools.mjs';
+import { handleProjectCapabilityTool, reviseProjectOperation, undoProjectOperation } from './assist-project-operation-ledger.mjs';
+import { assertLedgerValue, canonicalHash, exposedControls, pageIdentity, rejectDangerousArguments, sanitizeLedgerValue, validateToolValue } from './assist-operation-utils.mjs';
+import { settleOperationApproval, settleOperationResult, waitForOperationApproval, waitForOperationResult } from './assist-operation-waiters.mjs';
 
 const OPERATION_TIMEOUT_MS = 30_000;
-const MAX_LEDGER_VALUE_BYTES = 64 * 1024;
-const operationWaiters = new Map();
-const approvalWaiters = new Map();
 const TOOLS = new Set(['set_field', 'set_filter', 'select_tab']);
-
-export function dynamicPageToolSpec(viewContext, collaborationMode = 'default') {
+export function dynamicPageToolSpec(viewContext, collaborationMode = 'default', options = {}) {
   if (collaborationMode === 'plan') return [];
+  const namespaces = [];
   const controls = exposedControls(viewContext);
-  if (!controls.length) return [];
-  const targetIds = controls.map((item) => item.id);
-  return [{
-    type: 'namespace', name: 'aiws_page',
-    description: 'Reversible semantic operations on the currently registered AIWS page controls. Only declared target_id values are accepted.',
-    tools: [
-      toolDefinition('set_field', 'Set a declared reversible page field and wait for persistence.', targetIds.filter((idValue) => controls.some((item) => item.id === idValue && item.kind === 'field'))),
-      toolDefinition('set_filter', 'Set a declared reversible page filter and wait for persistence.', targetIds.filter((idValue) => controls.some((item) => item.id === idValue && item.kind === 'filter'))),
-      toolDefinition('select_tab', 'Select a declared reversible page tab.', targetIds.filter((idValue) => controls.some((item) => item.id === idValue && item.kind === 'tab')))
-    ].filter((item) => item.inputSchema.properties.target_id.enum.length)
-  }];
+  const page = pageIdentity(viewContext);
+  if (controls.length && page.route && page.surfaceId && page.revision && page.browserInstanceId) {
+    const targetIds = controls.map((item) => item.id);
+    namespaces.push({
+      type: 'namespace', name: 'aiws_page',
+      description: 'Reversible semantic operations on the currently registered AIWS page controls. Only declared target_id values are accepted.',
+      tools: [
+        toolDefinition('set_field', 'Set a declared reversible page field and wait for persistence.', targetIds.filter((idValue) => controls.some((item) => item.id === idValue && item.kind === 'field'))),
+        toolDefinition('set_filter', 'Set a declared reversible page filter and wait for persistence.', targetIds.filter((idValue) => controls.some((item) => item.id === idValue && item.kind === 'filter'))),
+        toolDefinition('select_tab', 'Select a declared reversible page tab.', targetIds.filter((idValue) => controls.some((item) => item.id === idValue && item.kind === 'tab')))
+      ].filter((item) => item.inputSchema.properties.target_id.enum.length)
+    });
+  }
+  const projectTools = options.state && options.projectId ? projectCapabilityToolSpec(options.state, options.projectId, viewContext) : null;
+  if (projectTools) namespaces.push(projectTools);
+  return namespaces;
 }
-
 export async function handleDynamicPageTool(sessionId, turnId, params = {}, signal) {
   const snapshot = await readState(), session = requireSession(snapshot, sessionId, true), turn = requireTurn(snapshot, turnId);
   if (turn.session_id !== session.id) throw new HttpError(409, { error: 'assist_turn_scope_mismatch' });
-  if (turn.collaboration_mode === 'plan' || turn.mode === 'plan') throw new HttpError(409, { error: 'assist_plan_page_write_forbidden' });
   const namespace = cleanText(params.namespace, 100), tool = cleanText(params.tool, 100);
+  if (namespace === PROJECT_TOOL_NAMESPACE) return handleProjectCapabilityTool(session.id, turn.id, params, signal, waitForOperationApproval);
+  if (turn.collaboration_mode === 'plan' || turn.mode === 'plan') throw new HttpError(409, { error: 'assist_plan_page_write_forbidden' });
   if (namespace !== 'aiws_page' || !TOOLS.has(tool)) throw new HttpError(400, { error: 'assist_dynamic_tool_not_allowed' });
   const args = params.arguments && typeof params.arguments === 'object' && !Array.isArray(params.arguments) ? params.arguments : {};
   rejectDangerousArguments(args);
@@ -41,7 +47,7 @@ export async function handleDynamicPageTool(sessionId, turnId, params = {}, sign
   const value = validateToolValue(tool, args.value, control);
   assertLedgerValue(value);
   const page = pageIdentity(turn.view_context);
-  if (!page.route || !page.revision) throw new HttpError(409, { error: 'assist_page_surface_revision_required' });
+  if (!page.route || !page.surfaceId || !page.revision || !page.browserInstanceId) throw new HttpError(409, { error: 'assist_page_surface_revision_required' });
   const callId = cleanText(params.callId, 300) || id('call');
   const at = now(), deadline = new Date(Date.now() + OPERATION_TIMEOUT_MS).toISOString();
   const operation = await mutate((state) => {
@@ -50,8 +56,11 @@ export async function handleDynamicPageTool(sessionId, turnId, params = {}, sign
     if (duplicate) return duplicate;
     const item = {
       id: id('aop'), session_id: session.id, turn_id: currentTurn.id, tool_call_id: callId, tool: `aiws_page.${tool}`,
+      project_id: currentTurn.project_id, capability_id: capabilityForTool(tool), action: actionForTool(tool),
       route: page.route, surface_id: page.surfaceId, surface_revision: page.revision, browser_instance_id: page.browserInstanceId,
       target_id: targetId, requested_value: value, allowed_values: control.allowedValues,
+      target_label: control.label || targetId, summary: semanticSummary(tool, control.label || targetId), input_schema: toolDefinition(tool, '', [targetId]).inputSchema,
+      locator: { route: page.route, project_id: currentTurn.project_id, surface_id: page.surfaceId, surface_revision: page.revision, target_id: targetId, target_label: control.label || targetId },
       before_value: null, after_value: null, current_value: null, before_hash: null, after_hash: null, current_hash: null,
       status: requiresConfirmation(control.risk) ? 'pending_confirmation' : 'pending', risk: control.risk,
       revision: 1, inverse_of: null, forced: false, conflict: null, claimed_by: null, claim_expires_at: deadline,
@@ -63,7 +72,7 @@ export async function handleDynamicPageTool(sessionId, turnId, params = {}, sign
   });
   if (['committed', 'undone'].includes(operation.status)) return toolSuccess(operation);
   if (operation.status === 'pending_confirmation') await waitForOperationApproval(operation.id, signal);
-  return waitForOperationResult(operation.id, signal);
+  return waitForOperationResult(operation.id, signal, expireOperation, OPERATION_TIMEOUT_MS);
 }
 
 export async function listAssistOperations(query = {}) {
@@ -89,8 +98,7 @@ export async function confirmAssistOperation(operationId, input = {}) {
     pushV3Event(state, operation.session_id, operation.turn_id, 'operation', operationEvent(operation));
     return operation;
   });
-  const waiter = approvalWaiters.get(operationId);
-  if (approved) waiter?.resolve(true); else waiter?.reject(new HttpError(409, { error: 'assist_operation_denied' }));
+  settleOperationApproval(operationId, approved);
   return publicOperation(result);
 }
 
@@ -99,6 +107,8 @@ export async function claimAssistOperation(operationId, input = {}) {
   if (!browserId) throw new HttpError(400, { error: 'assist_browser_instance_required' });
   return mutate((state) => {
     const operation = requireOperation(state, operationId);
+    assertBrowserLocator(operation, input);
+    if (operation.execution_layer === 'server') throw new HttpError(409, { error: 'assist_operation_server_executed' });
     if (operation.status === 'claimed' && operation.claimed_by === browserId) return executionPayload(operation);
     if (operation.status !== 'pending') throw new HttpError(409, { error: 'assist_operation_not_claimable', status: operation.status });
     if (operation.browser_instance_id && operation.browser_instance_id !== browserId) throw new HttpError(409, { error: 'assist_operation_wrong_browser' });
@@ -111,23 +121,26 @@ export async function claimAssistOperation(operationId, input = {}) {
 
 export async function submitAssistOperationResult(operationId, input = {}) {
   const browserId = cleanText(input.browser_instance_id, 200);
+  if (!browserId) throw new HttpError(400, { error: 'assist_browser_instance_required' });
   const result = await mutate((state) => {
     const operation = requireOperation(state, operationId);
-    if (operation.status === 'committed') return operation;
+    assertBrowserLocator(operation, input);
+    if (operation.status === 'committed') {
+      if (operation.claimed_by && operation.claimed_by !== browserId) throw new HttpError(409, { error: 'assist_operation_claim_mismatch' });
+      return operation;
+    }
     if (operation.status !== 'claimed' || operation.claimed_by !== browserId) throw new HttpError(409, { error: 'assist_operation_claim_mismatch' });
-    if (cleanText(input.route, 2_000) !== operation.route || cleanText(input.surface_revision, 200) !== operation.surface_revision) throw new HttpError(409, { error: 'assist_operation_surface_changed' });
     if (input.ok !== true || input.persisted !== true) return failOperation(state, operation, cleanText(input.error, 200) || 'browser_execution_failed');
     const before = sanitizeLedgerValue(input.before), after = sanitizeLedgerValue(input.after), current = input.current === undefined ? after : sanitizeLedgerValue(input.current);
     assertLedgerValue(before); assertLedgerValue(after); assertLedgerValue(current);
     const beforeHash = canonicalHash(before), afterHash = canonicalHash(after), currentHash = canonicalHash(current);
     if (input.before_hash && input.before_hash !== beforeHash || input.after_hash && input.after_hash !== afterHash) return failOperation(state, operation, 'browser_hash_mismatch');
-    if (operation.inverse_of) {
-      const original = state.assist_operations.find((item) => item.id === operation.inverse_of);
-      if (!original) return failOperation(state, operation, 'inverse_operation_missing');
-      if (!operation.forced && beforeHash !== original.after_hash) {
-        Object.assign(operation, { status: 'conflicted', before_value: before, current_value: before, current_hash: beforeHash, conflict: { before: original.before_value, after: original.after_value, current: before }, revision: operation.revision + 1, updated_at: now() });
-        pushV3Event(state, operation.session_id, operation.turn_id, 'operation', operationEvent(operation)); return operation;
-      }
+    if (afterHash !== currentHash) return failOperation(state, operation, 'browser_persistence_mismatch');
+    const referenceId = operation.inverse_of || operation.operation_reference_id, reference = referenceId ? state.assist_operations.find((item) => item.id === referenceId) : null;
+    if (operation.inverse_of && !reference) return failOperation(state, operation, 'inverse_operation_missing');
+    if (operation.expected_current_hash && !operation.forced && beforeHash !== operation.expected_current_hash) {
+      Object.assign(operation, { status: 'conflicted', before_value: before, current_value: before, current_hash: beforeHash, conflict: { before: reference?.before_value ?? null, after: reference?.after_value ?? operation.requested_value, current: before }, revision: operation.revision + 1, updated_at: now() });
+      pushV3Event(state, operation.session_id, operation.turn_id, 'operation', operationEvent(operation)); return operation;
     }
     const at = now(); Object.assign(operation, { before_value: before, after_value: after, current_value: current, before_hash: beforeHash, after_hash: afterHash, current_hash: currentHash, status: 'committed', committed_at: at, revision: operation.revision + 1, updated_at: at });
     if (operation.inverse_of) {
@@ -139,14 +152,13 @@ export async function submitAssistOperationResult(operationId, input = {}) {
     pushV3Event(state, operation.session_id, operation.turn_id, 'operation', operationEvent(operation));
     return operation;
   });
-  const waiter = operationWaiters.get(operationId);
-  if (result.status === 'committed') waiter?.resolve(toolSuccess(result));
-  else if (result.status === 'conflicted') waiter?.reject(new HttpError(409, { error: 'assist_operation_undo_conflict', operation: publicOperation(result) }));
-  else if (result.status === 'failed') waiter?.reject(new HttpError(409, { error: result.failure_code || 'assist_operation_failed' }));
+  settleOperationResult(operationId, result);
   return publicOperation(result);
 }
 
 export async function undoAssistOperation(operationId, input = {}) {
+  const snapshot = await readState(), selected = requireOperation(snapshot, operationId);
+  if (selected.execution_layer === 'server') return undoProjectOperation(operationId, input);
   const force = input.force === true;
   return mutate((state) => {
     const original = requireOperation(state, operationId);
@@ -160,8 +172,10 @@ export async function undoAssistOperation(operationId, input = {}) {
     }
     const at = now(), inverse = {
       id: id('aop'), session_id: original.session_id, turn_id: original.turn_id, tool_call_id: `undo:${original.id}:${randomBytes(6).toString('hex')}`,
+      project_id: original.project_id || null, capability_id: original.capability_id || capabilityForTool(toolName(original.tool)), action: 'undo',
       tool: original.tool, route: original.route, surface_id: original.surface_id, surface_revision: original.surface_revision, browser_instance_id: original.browser_instance_id,
       target_id: original.target_id, requested_value: original.before_value, allowed_values: original.allowed_values || null,
+      target_label: original.target_label || original.target_id, summary: `已撤销 · ${original.target_label || original.target_id}`, input_schema: original.input_schema || null, locator: original.locator || null,
       before_value: null, after_value: null, current_value: null, before_hash: null, after_hash: null, current_hash: null,
       status: 'pending', risk: original.risk, revision: 1, inverse_of: original.id, expected_current_hash: original.after_hash, forced: force, conflict: null,
       claimed_by: null, claim_expires_at: new Date(Date.now() + OPERATION_TIMEOUT_MS).toISOString(), approved_at: force ? at : null,
@@ -169,6 +183,42 @@ export async function undoAssistOperation(operationId, input = {}) {
     };
     state.assist_operations.push(inverse); pushV3Event(state, inverse.session_id, inverse.turn_id, 'operation', operationEvent(inverse));
     return publicOperation(inverse);
+  });
+}
+
+export async function reviseAssistOperation(operationId, input = {}) {
+  const snapshot = await readState(), selected = requireOperation(snapshot, operationId);
+  if (selected.execution_layer === 'server') return reviseProjectOperation(operationId, input);
+  return mutate((state) => {
+    const original = requireOperation(state, operationId);
+    const retryingConflict = original.status === 'conflicted' && original.operation_reference_id;
+    if (!['committed', 'undone'].includes(original.status) && !retryingConflict) throw new HttpError(409, { error: 'assist_operation_not_revisionable', status: original.status });
+    const session = requireSession(state, original.session_id, true), turn = input.turn_id ? requireTurn(state, input.turn_id) : requireTurn(state, original.turn_id);
+    if (turn.session_id !== session.id || turn.project_id !== original.project_id && original.project_id) throw new HttpError(409, { error: 'assist_operation_revision_scope_mismatch' });
+    if (input.session_id && input.session_id !== session.id) throw new HttpError(409, { error: 'assist_operation_revision_scope_mismatch' });
+    if (input.route && cleanText(input.route, 2_000) !== original.route) throw new HttpError(409, { error: 'assist_operation_revision_route_mismatch' });
+    if (input.surface_id && cleanText(input.surface_id, 200) !== original.surface_id) throw new HttpError(409, { error: 'assist_operation_revision_surface_mismatch' });
+    if (original.surface_revision && cleanText(input.surface_revision, 200) !== original.surface_revision) throw new HttpError(409, { error: 'assist_operation_revision_surface_revision_mismatch' });
+    if (original.browser_instance_id && cleanText(input.browser_instance_id, 200) !== original.browser_instance_id) throw new HttpError(409, { error: 'assist_operation_revision_browser_mismatch' });
+    if (!Object.hasOwn(input, 'value')) throw new HttpError(400, { error: 'assist_operation_revision_value_required' });
+    const value = sanitizeLedgerValue(input.value);
+    assertLedgerValue(value);
+    if (original.allowed_values?.length && !original.allowed_values.some((item) => canonicalHash(item) === canonicalHash(value))) throw new HttpError(400, { error: 'assist_dynamic_tool_value_not_allowed' });
+    const at = now(), revised = {
+      id: id('aop'), session_id: session.id, turn_id: turn.id, project_id: original.project_id || turn.project_id,
+      tool_call_id: `revision:${original.id}:${randomBytes(6).toString('hex')}`, tool: original.tool,
+      capability_id: original.capability_id || capabilityForTool(toolName(original.tool)), action: 'revise', operation_reference_id: original.operation_reference_id || original.id,
+      route: original.route, surface_id: original.surface_id, surface_revision: cleanText(input.surface_revision, 200) || original.surface_revision,
+      browser_instance_id: original.browser_instance_id, target_id: original.target_id, target_label: original.target_label || original.target_id,
+      summary: `继续修改 · ${original.target_label || original.target_id}`, input_schema: original.input_schema || null,
+      locator: { ...(original.locator || {}), surface_revision: cleanText(input.surface_revision, 200) || original.surface_revision },
+      requested_value: value, allowed_values: original.allowed_values || null, before_value: null, after_value: null, current_value: null,
+      before_hash: null, after_hash: null, current_hash: null, status: requiresConfirmation(original.risk) ? 'pending_confirmation' : 'pending',
+      risk: original.risk, revision: 1, inverse_of: null, expected_current_hash: retryingConflict ? original.current_hash : original.current_hash || original.after_hash, forced: false, conflict: null, claimed_by: null,
+      claim_expires_at: new Date(Date.now() + OPERATION_TIMEOUT_MS).toISOString(), approved_at: null, committed_at: null, failed_at: null, created_at: at, updated_at: at
+    };
+    state.assist_operations.push(revised); pushV3Event(state, revised.session_id, revised.turn_id, 'operation', operationEvent(revised));
+    return publicOperation(revised);
   });
 }
 
@@ -182,51 +232,11 @@ export async function recoverAssistOperations() {
   });
 }
 
-function waitForOperationApproval(operationId, signal) {
-  return new Promise((resolve, reject) => {
-    const cleanup = () => { signal?.removeEventListener('abort', abort); if (approvalWaiters.get(operationId)?.resolve === approve) approvalWaiters.delete(operationId); };
-    const approve = (value) => { cleanup(); resolve(value); }, fail = (error) => { cleanup(); reject(error); };
-    const abort = () => fail(new HttpError(409, { error: 'assist_operation_cancelled' }));
-    approvalWaiters.set(operationId, { resolve: approve, reject: fail }); signal?.addEventListener('abort', abort, { once: true }); if (signal?.aborted) abort();
-  });
-}
-
-function waitForOperationResult(operationId, signal) {
-  return new Promise((resolve, reject) => {
-    const timeout = setTimeout(() => { void expireOperation(operationId, 'browser_claim_timeout'); finish(new HttpError(504, { error: 'assist_operation_timeout' })); }, OPERATION_TIMEOUT_MS);
-    const cleanup = () => { clearTimeout(timeout); signal?.removeEventListener('abort', abort); operationWaiters.delete(operationId); };
-    const finish = (error, value) => { cleanup(); error ? reject(error) : resolve(value); };
-    const abort = () => { void expireOperation(operationId, 'turn_aborted'); finish(new HttpError(409, { error: 'assist_operation_cancelled' })); };
-    operationWaiters.set(operationId, { resolve: (value) => finish(null, value), reject: finish }); signal?.addEventListener('abort', abort, { once: true }); if (signal?.aborted) abort();
-  });
-}
-
 async function expireOperation(operationId, code) {
   return mutate((state) => { const operation = state.assist_operations.find((item) => item.id === operationId); if (operation && ['pending', 'claimed', 'pending_confirmation'].includes(operation.status)) failOperation(state, operation, code); });
 }
 
 function failOperation(state, operation, code) { const at = now(); Object.assign(operation, { status: 'failed', failure_code: code, failed_at: at, revision: operation.revision + 1, updated_at: at }); pushV3Event(state, operation.session_id, operation.turn_id, 'operation', operationEvent(operation)); return operation; }
+function assertBrowserLocator(operation, input) { const route = cleanText(input.route, 2_000), surfaceId = cleanText(input.surface_id, 200), revision = cleanText(input.surface_revision, 200); if (!route || !surfaceId || !revision) throw new HttpError(400, { error: 'assist_operation_locator_required' }); if (route !== operation.route || surfaceId !== operation.surface_id || revision !== operation.surface_revision) throw new HttpError(409, { error: 'assist_operation_surface_changed' }); }
 function requireOperation(state, operationId) { const item = state.assist_operations.find((entry) => entry.id === operationId); if (!item) throw new HttpError(404, { error: 'assist_operation_not_found' }); return item; }
-function requiresConfirmation(risk) { return !['low', 'reversible'].includes(risk); }
-function canonicalHash(value) { return sha256(Buffer.from(canonicalJson(value))); }
-function assertLedgerValue(value) { if (Buffer.byteLength(canonicalJson(value), 'utf8') > MAX_LEDGER_VALUE_BYTES) throw new HttpError(413, { error: 'assist_operation_value_too_large', max_bytes: MAX_LEDGER_VALUE_BYTES }); }
-function sanitizeLedgerValue(value) { const safe = maskSecretsDeep(value); if (JSON.stringify(safe).includes('***MASKED')) throw new HttpError(409, { error: 'assist_operation_secret_value_forbidden' }); return safe; }
-function publicOperation(item) { if (!item) return null; const result = { ...item }; delete result.browser_instance_id; delete result.requested_value; delete result.allowed_values; return result; }
-function operationEvent(item) { return { operation_id: item.id, tool: item.tool, target_id: item.target_id, route: item.route, surface_id: item.surface_id, surface_revision: item.surface_revision, status: item.status, risk: item.risk, revision: item.revision, inverse_of: item.inverse_of, forced: item.forced, conflict: item.conflict, claimable: item.status === 'pending', requires_confirmation: item.status === 'pending_confirmation' }; }
-function executionPayload(item) { return { operation_id: item.id, tool: item.tool, target_id: item.target_id, value: item.requested_value, route: item.route, surface_id: item.surface_id, surface_revision: item.surface_revision, inverse_of: item.inverse_of, expected_current_hash: item.expected_current_hash, forced: item.forced, revision: item.revision }; }
-function toolSuccess(item) { return { success: true, contentItems: [{ type: 'inputText', text: JSON.stringify({ operation_id: item.id, status: item.status, target_id: item.target_id, before_hash: item.before_hash, after_hash: item.after_hash }) }] }; }
-function validateToolValue(tool, value, control) { if (tool === 'select_tab') return control.id; if (value === undefined) throw new HttpError(400, { error: 'assist_dynamic_tool_value_required' }); const safe = sanitizeLedgerValue(value); if (control.allowedValues?.length && !control.allowedValues.some((item) => canonicalJson(item) === canonicalJson(safe))) throw new HttpError(400, { error: 'assist_dynamic_tool_value_not_allowed' }); return safe; }
-function toolMatchesKind(tool, kind) { return tool === 'set_field' ? kind === 'field' : tool === 'set_filter' ? kind === 'filter' : kind === 'tab'; }
-function toolDefinition(name, description, targetIds) { return { type: 'function', name, description, inputSchema: { type: 'object', additionalProperties: false, required: name === 'select_tab' ? ['target_id'] : ['target_id', 'value'], properties: { target_id: { type: 'string', enum: targetIds }, ...(name === 'select_tab' ? {} : { value: {} }) } } }; }
-function rejectDangerousArguments(value) { for (const [key, item] of Object.entries(value)) { if (/selector|xpath|script|javascript|html|dom|credential|secret|token/i.test(key)) throw new HttpError(400, { error: 'assist_dynamic_tool_unsafe_argument', field: key }); if (item && typeof item === 'object' && !Array.isArray(item)) rejectDangerousArguments(item); } }
-function pageIdentity(viewContext) { return { route: cleanText(viewContext?.route, 2_000), surfaceId: cleanText(viewContext?.surface?.id || viewContext?.surface?.surface_id, 200) || null, revision: cleanText(viewContext?.surface?.revision, 200), browserInstanceId: cleanText(viewContext?.browser_instance_id || viewContext?.surface?.browser_instance_id, 200) || null }; }
-function exposedControls(viewContext) {
-  const surface = viewContext?.surface && typeof viewContext.surface === 'object' ? viewContext.surface : {};
-  const values = [
-    ...normalizeControlList(surface.fields, 'field'), ...normalizeControlList(surface.filters, 'filter'), ...normalizeControlList(surface.tabs, 'tab'),
-    ...normalizeControlList(surface.controls, null)
-  ];
-  const seen = new Set(); return values.filter((item) => { if (seen.has(item.id) || item.sensitivity === 'secret' || item.readable === false || item.reversible === false) return false; seen.add(item.id); return true; });
-}
-function normalizeControlList(values, fallbackKind) { if (!Array.isArray(values)) return []; return values.slice(0, 200).flatMap((value) => { const controlId = cleanText(value?.id || value?.target_id, 128), kind = fallbackKind || cleanText(value?.kind, 20); if (!/^[a-zA-Z0-9][a-zA-Z0-9._:-]{0,127}$/.test(controlId) || !['field', 'filter', 'tab'].includes(kind)) return []; return [{ id: controlId, kind, label: cleanText(value.label, 200) || controlId, allowedValues: Array.isArray(value.allowedValues || value.values) ? (value.allowedValues || value.values).slice(0, 200).map(sanitizeLedgerValue) : null, risk: cleanText(value.risk, 30) || 'low', sensitivity: cleanText(value.sensitivity, 30) || 'public', readable: value.readable !== false, reversible: value.reversible !== false }]; }); }
 function clampInt(value, min, max, fallback) { const number = Number(value); return Number.isInteger(number) && number >= min && number <= max ? number : fallback; }

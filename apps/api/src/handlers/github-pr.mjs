@@ -7,8 +7,16 @@ import { generatePrBody, now } from '../../../../packages/shared/index.mjs';
 import { git, isGitRepo } from '../git-utils.mjs';
 import { consumeGitActionApproval, GIT_PUBLISH_APPROVAL, requireGitActionApproval } from '../run-approval.mjs';
 import { assertManagedProjectWritable } from '../project-lifecycle.mjs';
+import { assertProjectLifecycleIdle, withProjectLifecycleLock } from '../project-lifecycle-operations.mjs';
 
-export async function createPr({ res, params, body, query }) {
+export async function createPr(context) {
+  const state = await readState(), run = state.node_runs.find((item) => item.id === context.params.id);
+  if (!run) throw new HttpError(404, { error: 'run_not_found' });
+  const project = assertProjectLifecycleIdle(state.projects.find((item) => item.id === run.project_id));
+  return withProjectLifecycleLock(project.id, () => createPrLocked(context));
+}
+
+async function createPrLocked({ res, params, body, query }) {
   await mutate((data) => {
     const run = data.node_runs.find((item) => item.id === params.id);
     const node = data.workflow_nodes.find((item) => item.id === run?.node_id);
@@ -43,6 +51,7 @@ export async function createPr({ res, params, body, query }) {
   }
   const result = await mutate(async (data) => {
     const currentRun = data.node_runs.find((item) => item.id === run.id), currentProject = data.projects.find((item) => item.id === project.id), currentNode = data.workflow_nodes.find((item) => item.id === node.id);
+    assertManagedProjectWritable(currentProject);
     const currentChange = ensureCodeChange(data, currentRun, currentProject, currentNode, actor.id);
     const prRef = await saveArtifact('git', `${run.id}.pr-body.md`, prBody, { run_id: run.id });
     data.file_refs.push(prRef);

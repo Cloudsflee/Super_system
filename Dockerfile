@@ -1,5 +1,6 @@
 FROM node:24-alpine AS workspace-deps
-RUN apk add --no-cache git python3 make g++
+ARG ALPINE_FALLBACK_MIRROR=https://mirrors.aliyun.com/alpine
+RUN apk add --no-cache git python3 make g++ || (sed -i "s#https://dl-cdn.alpinelinux.org/alpine#${ALPINE_FALLBACK_MIRROR}#g" /etc/apk/repositories && apk add --no-cache git python3 make g++)
 RUN corepack enable
 ENV npm_config_nodedir=/usr/local
 WORKDIR /app
@@ -30,14 +31,16 @@ RUN corepack pnpm build
 
 FROM workspace-deps AS verify
 ARG CODEX_VERSION=0.144.0
-RUN apk add --no-cache chromium freetype harfbuzz nss ttf-freefont
+ARG ALPINE_FALLBACK_MIRROR=https://mirrors.aliyun.com/alpine
+RUN apk add --no-cache chromium freetype harfbuzz nss ttf-freefont || (sed -i "s#https://dl-cdn.alpinelinux.org/alpine#${ALPINE_FALLBACK_MIRROR}#g" /etc/apk/repositories && apk add --no-cache chromium freetype harfbuzz nss ttf-freefont)
 RUN npm install -g @openai/codex@${CODEX_VERSION} && npm cache clean --force
 ENV PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1
 COPY . .
 CMD ["corepack", "pnpm", "verify"]
 
 FROM node:24-alpine AS production-deps
-RUN apk add --no-cache python3 make g++
+ARG ALPINE_FALLBACK_MIRROR=https://mirrors.aliyun.com/alpine
+RUN apk add --no-cache python3 make g++ || (sed -i "s#https://dl-cdn.alpinelinux.org/alpine#${ALPINE_FALLBACK_MIRROR}#g" /etc/apk/repositories && apk add --no-cache python3 make g++)
 RUN corepack enable
 ENV npm_config_nodedir=/usr/local
 WORKDIR /app
@@ -54,12 +57,14 @@ RUN corepack pnpm install --prod --frozen-lockfile --filter ai-workspace-system
 
 FROM node:24-alpine AS production
 LABEL org.opencontainers.image.title="AI Workspace System" \
-      org.opencontainers.image.version="1.6.0"
-RUN apk add --no-cache bash ca-certificates docker-cli docker-cli-compose git openssh-client python3 tar
+      org.opencontainers.image.version="1.7.0"
+ARG ALPINE_FALLBACK_MIRROR=https://mirrors.aliyun.com/alpine
+RUN apk add --no-cache bash ca-certificates docker-cli docker-cli-compose git openssh-client python3 tar || (sed -i "s#https://dl-cdn.alpinelinux.org/alpine#${ALPINE_FALLBACK_MIRROR}#g" /etc/apk/repositories && apk add --no-cache bash ca-certificates docker-cli docker-cli-compose git openssh-client python3 tar)
 WORKDIR /app
 ENV NODE_ENV=production \
     AIWS_HOME=/var/lib/aiws \
     AIWS_CONTAINERIZED=1 \
+    AIWS_BIND_HOST=0.0.0.0 \
     PORT=4317
 COPY --from=production-deps /app/node_modules ./node_modules
 COPY package.json ./package.json

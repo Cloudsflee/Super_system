@@ -17,7 +17,6 @@ export function send(res, status, body, headers = {}) {
   res.writeHead(status, {
     'content-type': typeof body === 'string' ? 'text/plain; charset=utf-8' : 'application/json; charset=utf-8',
     'cache-control': 'no-store',
-    'access-control-allow-origin': '*',
     ...headers
   });
   res.end(text);
@@ -29,14 +28,30 @@ export function sendOneTimeSecret(res, status, body) {
   res.writeHead(status, {
     'content-type': 'application/json; charset=utf-8',
     'cache-control': 'no-store, max-age=0',
-    'pragma': 'no-cache',
-    'access-control-allow-origin': 'http://127.0.0.1'
+    'pragma': 'no-cache'
   });
   res.end(text);
   return true;
 }
 
 export function notFound(res) { return send(res, 404, { error: 'not_found' }); }
+
+export function allowLocalBrowserOrigin(req, res) {
+  const origin = String(req.headers.origin || '').trim();
+  if (!origin) return null;
+  if (!isTrustedLocalOrigin(origin)) throw new HttpError(403, { error: 'local_origin_required' });
+  res.setHeader('access-control-allow-origin', new URL(origin).origin);
+  res.setHeader('vary', 'Origin');
+  return origin;
+}
+
+export function isTrustedLocalOrigin(value) {
+  try {
+    const url = new URL(String(value));
+    const host = url.hostname.toLowerCase().replace(/^\[|\]$/g, '');
+    return ['http:', 'https:'].includes(url.protocol) && !url.username && !url.password && (host === 'localhost' || host === '::1' || host === '0.0.0.0' || /^127(?:\.\d{1,3}){3}$/.test(host));
+  } catch { return false; }
+}
 
 export async function parseBody(req) {
   const chunks = [];
@@ -80,8 +95,10 @@ export function route(pathname, pattern) {
     return '([^/]+)';
   })}$`);
   const match = pathname.match(regex);
-  return match ? Object.fromEntries(names.map((name, i) => [name, decodeURIComponent(match[i + 1])])) : null;
+  return match ? Object.fromEntries(names.map((name, i) => [name, decodeUrlPart(match[i + 1])])) : null;
 }
+
+export function decodeUrlPathname(value) { return decodeUrlPart(value); }
 
 export function makeRoute(method, pattern, handler, options = {}) { return { method, pattern, handler, ...options }; }
 
@@ -111,13 +128,17 @@ export function command(cmd, args = [], cwd = process.cwd(), timeout = 8000, env
 
 function minimalProcessEnv() { return Object.fromEntries(['PATH', 'Path', 'SystemRoot', 'ComSpec', 'PATHEXT', 'TEMP', 'TMP', 'HOME', 'USERPROFILE', 'LANG'].filter((key) => process.env[key] !== undefined).map((key) => [key, process.env[key]])); }
 
+function decodeUrlPart(value) {
+  try { return decodeURIComponent(String(value)); }
+  catch { throw new HttpError(400, { error: 'invalid_url_encoding' }); }
+}
+
 export function safeReadStream(res, full, type) {
   res.writeHead(200, {
     'content-type': type,
     'cache-control': 'no-store, no-cache, must-revalidate, proxy-revalidate',
     'pragma': 'no-cache',
-    'expires': '0',
-    'access-control-allow-origin': '*'
+    'expires': '0'
   });
   fs.createReadStream(full).pipe(res);
   return true;

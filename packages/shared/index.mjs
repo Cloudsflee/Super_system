@@ -9,3 +9,4 @@ export * from './src/assets.mjs';
 
 export * from './src/decisions.mjs';
 export * from './src/collaboration.mjs';
+export * from './src/assist-capabilities.mjs';

@@ -29,7 +29,7 @@ export function ThreadSidebar(props: Props) {
     return <div className="thread-tree-node" key={item.id}>{item.deleted_at
       ? <div className="thread-tombstone" style={style}><span>已删除分支</span><button onClick={() => props.onRestoreDeleted(item)}>撤销</button></div>
       : <article className={item.id === props.selectedId ? 'active' : ''} style={style} onContextMenu={(event) => { event.preventDefault(); event.stopPropagation(); menu.open(actions(item), { x: event.clientX, y: event.clientY }, event.currentTarget); }}>
-        <button className="thread-main" onClick={() => props.onSelect(item.id)} onDoubleClick={() => props.onRename(item)}><span><strong>{item.title}</strong>{item.pinned && <Pin size={11} />}</span><small>{item.last_turn ? item.last_turn.status : '尚无 Turn'} · {item.turn_count || 0}</small></button>
+        <button className="thread-main" onClick={() => props.onSelect(item.id)} onDoubleClick={() => props.onRename(item)}><span><strong>{item.title}</strong>{item.pinned && <Pin size={11} />}</span><small>{item.turn_count ? `${item.turn_count} 轮` : '尚无对话'}</small></button>
       </article>}{node.children.map(row)}</div>;
   };
   return <aside className="assist-threads">

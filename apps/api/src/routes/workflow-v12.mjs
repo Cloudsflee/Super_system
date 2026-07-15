@@ -4,6 +4,7 @@ import { runCodexJson, extractMessage } from '../codex-service.mjs';
 import { testAdapter } from '../test-adapter.mjs';
 import { createChangeProposal, workflowTemplates, now } from '../../../../packages/shared/index.mjs';
 import { AIWS_HOME } from '../config.mjs';
+import { assertProjectLifecycleIdle, withProjectLifecycleLock } from '../project-lifecycle-operations.mjs';
 
 const allowedTypes = new Set(['goal_definition', 'research', 'analysis', 'execution', 'retrospective']);
 
@@ -17,6 +18,7 @@ async function saveLayout({ res, params, body }) {
   const result = await mutate((state) => {
     const actor = owner(state), workflow = state.workflows.find((item) => item.id === params.id);
     if (!workflow) throw new HttpError(404, { error: 'workflow_not_found' });
+    assertProjectLifecycleIdle(state.projects.find((item) => item.id === workflow.project_id));
     const nodes = state.workflow_nodes.filter((item) => item.workflow_id === workflow.id);
     for (const node of nodes) if (positions.has(node.id)) node.position = validPosition(positions.get(node.id));
     workflow.graph_json = graphFor(nodes);
@@ -28,9 +30,14 @@ async function saveLayout({ res, params, body }) {
 }
 
 async function createWorkflowProposal({ res, params, body, query }) {
+  const snapshot = await readState(), source = snapshot.workflows.find((item) => item.id === params.id);
+  if (!source) throw new HttpError(404, { error: 'workflow_not_found' });
+  return withProjectLifecycleLock(source.project_id, () => createWorkflowProposalLocked({ res, params, body, query }));
+}
+async function createWorkflowProposalLocked({ res, params, body, query }) {
   const state = await readState(), workflow = state.workflows.find((item) => item.id === params.id);
   if (!workflow) throw new HttpError(404, { error: 'workflow_not_found' });
-  const project = state.projects.find((item) => item.id === workflow.project_id);
+  const project = assertProjectLifecycleIdle(state.projects.find((item) => item.id === workflow.project_id));
   let nodes = [], title, summary, after, applyAction;
   if (body.action === 'add_node') {
     nodes = [normalizeNode(body.node, 0)]; title = `添加${nodes[0].title}`; summary = '向当前工作流添加一个节点'; after = { nodes }; applyAction = { type: 'workflow_nodes_create', workflow_id: workflow.id };
@@ -54,7 +61,9 @@ async function createWorkflowProposal({ res, params, body, query }) {
     title = `连接 ${source.title} → ${target.title}`; summary = '添加 finish-to-start 依赖'; after = { source_id: source.id, target_id: target.id }; applyAction = { type: 'workflow_nodes_connect', workflow_id: workflow.id, source_id: source.id, target_id: target.id };
   } else throw new HttpError(400, { error: 'unsupported_workflow_action' });
   const result = await mutate((data) => {
-    const actor = owner(data);
+    const actor = owner(data), currentWorkflow = data.workflows.find((item) => item.id === workflow.id);
+    if (!currentWorkflow) throw new HttpError(404, { error: 'workflow_not_found' });
+    assertProjectLifecycleIdle(data.projects.find((item) => item.id === currentWorkflow.project_id));
     const proposal = createChangeProposal({ projectId: workflow.project_id, workspaceId: workflow.workspace_id, changeType: 'workflow_graph', title, summary, before: graphFor(data.workflow_nodes.filter((item) => item.workflow_id === workflow.id)), after, impact: ['工作流结构', '节点 Contract 与工作区'], risks: ['变更会影响后续执行顺序'], applyAction, actorId: actor.id });
     proposal.target_hash_mode = 'state';
     data.change_proposals.push(proposal);

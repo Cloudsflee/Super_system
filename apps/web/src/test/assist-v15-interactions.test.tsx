@@ -1,7 +1,6 @@
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { AssistOperation, RuntimeUserInput, TerminalCapabilities } from '../api/types';
-import { ActivityLedger } from '../features/assist/ActivityLedger';
 import { GoalCard } from '../features/assist/GoalCard';
 import { OperationReceipt } from '../features/assist/OperationReceipt';
 import { TerminalRuntimeSelector } from '../features/assist/TerminalRuntimeSelector';
@@ -16,11 +15,8 @@ describe('Assist V1.5 interactions', () => {
     expect(screen.getByRole('link', { name: '前往页面并撤回' })).toHaveAttribute('href', '/projects/p1');
     const original = operationFixture({ id: 'operation-original', undone_by: 'inverse-committed' });
     view.rerender(<OperationReceipt operation={original} busy={false} onConfirm={vi.fn()} onUndo={vi.fn()} />);
-    expect(screen.getByText('undone')).toBeInTheDocument();
+    expect(screen.getByText('已撤回')).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Undo' })).not.toBeInTheDocument();
-    view.unmount();
-    render(<ActivityLedger operations={[original]} />);
-    expect(screen.getByText('undone')).toBeInTheDocument();
   });
 
   it('submits custom native input and omits an empty Goal budget', () => {

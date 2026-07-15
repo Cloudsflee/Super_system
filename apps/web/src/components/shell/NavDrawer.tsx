@@ -25,7 +25,7 @@ export function NavDrawer() {
           </NavLink>
         ))}
       </nav>
-      <div className="drawer-foot"><span className="status-dot" /> JSON-local<br /><small>Owner workspace · V1.6</small></div>
+      <div className="drawer-foot"><span className="status-dot" /> JSON-local<br /><small>Owner workspace · V1.7</small></div>
     </aside>
   );
 }

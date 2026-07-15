@@ -5,7 +5,8 @@ import { createLocalOwner, defaultCodexProfiles, defaultTools, hashString, id, m
 import { ARTIFACT_DIR, ASSIST_DIR, ATTACHMENT_DIR, ATTACHMENT_TEMP_DIR, CODEX_HOME_DIR, DATA_DIR, EXPORT_DIR, PROBE_DIR, STAGING_DIR, STATE_FILE, TRASH_DIR, VAULT_DIR, WORKSPACE_DIR, WORKTREE_DIR, collections } from './config.mjs';
 import { redactKnownSecrets } from './vault.mjs';
 import { codexAuthMatchesProfile, isThirdPartyProvider, normalizeProviderBaseUrl, writeProfileConfig } from './codex-service.mjs';
-import { migrateStateFileToV15, normalizeOfficialRunnerImages, STATE_SCHEMA_VERSION, validateState15 } from './state-migration-v15.mjs';
+import { migrateStateFileToV16, normalizeOfficialRunnerImages, STATE_SCHEMA_VERSION, validateState16 } from './state-migration-v16.mjs';
+import { legacyBriefToV2 } from './brief-workflow-domain.mjs';
 
 let lastMigration = null;
 
@@ -15,8 +16,9 @@ export async function ensureRuntime() {
   await fsp.mkdir(VAULT_DIR, { recursive: true });
   await fsp.mkdir(CODEX_HOME_DIR, { recursive: true });
   await Promise.all([WORKSPACE_DIR, STAGING_DIR, TRASH_DIR, EXPORT_DIR, WORKTREE_DIR, PROBE_DIR, ASSIST_DIR, ATTACHMENT_DIR, ATTACHMENT_TEMP_DIR].map((dir) => fsp.mkdir(dir, { recursive: true, mode: 0o700 })));
+  await Promise.all([STAGING_DIR, ATTACHMENT_TEMP_DIR].map(clearEphemeralDirectory));
   if (!fs.existsSync(STATE_FILE)) return writeState(bootstrapState());
-  lastMigration = await migrateStateFileToV15(STATE_FILE);
+  lastMigration = await migrateStateFileToV16(STATE_FILE);
   const state = await readState();
   let changed = false;
   if (state.schema_version !== STATE_SCHEMA_VERSION) throw new Error(`unsupported_state_schema_${state.schema_version}`);
@@ -40,10 +42,15 @@ export async function ensureRuntime() {
       changed = true;
     }
     if (project.deleted_at === undefined) { project.deleted_at = null; changed = true; }
+    if (project.lifecycle_operation === undefined) { project.lifecycle_operation = null; changed = true; }
     if (project.trash_metadata === undefined) {
       project.trash_metadata = project.trash_path ? { path: project.trash_path, status_before_trash: project.status_before_trash || 'active', trashed_at: project.deleted_at } : null;
       changed = true;
     }
+  }
+  for (const draft of state.workflow_drafts) {
+    if (!draft.status) { draft.status = draft.workflow_id || draft.activated_at ? 'activated' : 'draft'; changed = true; }
+    if (draft.user_modified_at === undefined) { draft.user_modified_at = Number(draft.revision || 1) > 1 ? draft.updated_at || now() : null; changed = true; }
   }
   for (const proposal of state.change_proposals) {
     if (!Number.isInteger(proposal.revision) || proposal.revision < 1) { proposal.revision = 1; changed = true; }
@@ -52,6 +59,15 @@ export async function ensureRuntime() {
   }
   for (const session of state.terminal_sessions.filter((item) => ['starting', 'running', 'connected'].includes(item.status))) {
     Object.assign(session, { status: 'interrupted', interrupted_reason: 'service_restarted', updated_at: now() }); changed = true;
+  }
+  for (const run of state.node_runs.filter((item) => ['queued', 'running'].includes(item.status))) {
+    Object.assign(run, { status: 'failed', error_code: 'service_restarted', summary: run.summary || 'NodeRun interrupted by service restart.', completed_at: now(), updated_at: now() }); changed = true;
+  }
+  for (const job of state.import_jobs.filter((item) => ['queued', 'starting', 'running', 'processing', 'staging', 'stopping'].includes(item.status))) {
+    Object.assign(job, { status: 'failed', error_code: 'service_restarted', updated_at: now() }); changed = true;
+  }
+  for (const session of state.assist_sessions.filter((item) => item.version !== 3 && item.status === 'running')) {
+    Object.assign(session, { status: 'failed', error: 'service_restarted', updated_at: now() }); changed = true;
   }
   for (const input of state.runtime_user_inputs.filter((item) => item.status === 'pending')) {
     Object.assign(input, { status: 'cancelled', cancelled_reason: 'service_restarted', cancelled_at: now(), updated_at: now() }); changed = true;
@@ -121,7 +137,8 @@ function bootstrapState() {
 export async function readState() { return JSON.parse(await fsp.readFile(STATE_FILE, 'utf8')); }
 
 export async function writeState(state) {
-  validateState15(state);
+  normalizeState16Compatibility(state);
+  validateState16(state);
   const tmp = `${STATE_FILE}.tmp`;
   const serialized = await redactKnownSecrets(JSON.stringify(state, null, 2));
   const handle = await fsp.open(tmp, 'w', 0o600);
@@ -130,7 +147,28 @@ export async function writeState(state) {
   await replaceStateFile(tmp, STATE_FILE);
 }
 
+function normalizeState16Compatibility(state) {
+  for (const project of state.projects || []) if (project.lifecycle_operation === undefined) project.lifecycle_operation = null;
+  for (const draft of state.workflow_drafts || []) {
+    if (!draft.status) draft.status = draft.workflow_id || draft.activated_at ? 'activated' : 'draft';
+    if (draft.user_modified_at === undefined) draft.user_modified_at = Number(draft.revision || 1) > 1 ? draft.updated_at || now() : null;
+  }
+  for (const session of state.assist_sessions || []) if (session.version === 3 && !['ask', 'auto_recommend'].includes(session.clarification_policy)) session.clarification_policy = 'ask';
+  for (const brief of state.project_briefs || []) {
+    if (brief.content?.schema_version !== 2) {
+      const project = state.projects?.find((item) => item.id === brief.project_id);
+      brief.content = legacyBriefToV2(brief.content || {}, { briefId: brief.id, title: `${project?.title || '项目'}简报` });
+    }
+    if (!Number.isInteger(brief.revision) || brief.revision < 1) brief.revision = Math.max(1, Number(brief.version) || 1);
+  }
+}
+
 export function lastStateMigration() { return lastMigration ? { ...lastMigration, state: undefined } : null; }
+
+async function clearEphemeralDirectory(directory) {
+  const entries = await fsp.readdir(directory, { withFileTypes: true });
+  await Promise.all(entries.map((entry) => fsp.rm(path.join(directory, entry.name), { recursive: true, force: true })));
+}
 
 let mutationQueue = Promise.resolve();
 

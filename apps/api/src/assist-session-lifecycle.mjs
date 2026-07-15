@@ -6,6 +6,8 @@ import { addTrace, mutate, owner, readState } from './state.mjs';
 import { runCodexAppServerRpc } from './codex-app-server.mjs';
 import { coordinateAssistSession } from './assist-session-coordinator.mjs';
 import { getSessionChangeBatch, rollbackChangeBatch } from './assist-change-batches.mjs';
+import { purgeAssistSessionsInState } from './state-purge.mjs';
+import { withProjectLifecycleLock } from './project-lifecycle-operations.mjs';
 import {
   cleanText, makeSession, readableProjectCwd, requireProject, requireSession, requireTurn,
   resolveAssistTurnConfiguration, resolveScope, sessionSummary
@@ -53,7 +55,7 @@ async function performNativeFork(sessionId, input, { rpc = runCodexAppServerRpc 
       const currentTurn = fromTurn ? requireTurn(current, fromTurn.id) : null;
       if (currentTurn && currentTurn.session_id !== currentSource.id) throw new HttpError(409, { error: 'assist_fork_turn_scope_mismatch' });
       const scope = resolveScope(current, currentProject, currentSource.scope_type, currentSource.scope_id);
-      const forked = makeSession({ actor, project: currentProject, scope, title: input.title || `${currentSource.title} · Fork`, parentSessionId: currentSource.id, viewContext: currentSource.view_context || {} });
+      const forked = makeSession({ actor, project: currentProject, scope, title: input.title || `${currentSource.title} · Fork`, parentSessionId: currentSource.id, viewContext: currentSource.view_context || {}, clarificationPolicy: currentSource.clarification_policy || 'ask' });
       Object.assign(forked, {
         forked_from_session_id: currentSource.id, forked_from_turn_id: currentTurn?.id || null,
         forked_from_codex_turn_id: currentTurn?.codex_turn_id || null, codex_thread_id: forkedThreadId,
@@ -113,7 +115,14 @@ async function performExpiredSessionPurge({ clock = () => new Date(), rpc = runC
   const batches = [...new Set(expired.map((item) => item.delete_batch_id).filter(Boolean))];
   const results = [];
   for (const batchId of batches) {
-    try { results.push(await purgeDeleteBatch(batchId, { clock, rpc })); }
+    const projectId = expired.find((item) => item.delete_batch_id === batchId)?.project_id;
+    try {
+      const result = await withProjectLifecycleLock(projectId, async () => {
+        const current = await readState(), session = current.assist_sessions.find((item) => item.delete_batch_id === batchId && item.deleted_at), project = current.projects.find((item) => item.id === session?.project_id);
+        return !project || project.deleted_at || project.lifecycle_operation ? null : purgeDeleteBatch(batchId, { clock, rpc });
+      });
+      if (result) results.push(result);
+    }
     catch (error) { await recordPurgeFailure(batchId, error, clock); results.push({ delete_batch_id: batchId, purged: false, error: safeErrorCode(error) }); }
   }
   return results;
@@ -129,7 +138,7 @@ async function purgeDeleteBatch(batchId, { clock, rpc }) {
   let state = await readState();
   const sessions = state.assist_sessions.filter((item) => item.delete_batch_id === batchId && item.deleted_at);
   if (!sessions.length) return { delete_batch_id: batchId, purged: true, session_count: 0 };
-  assertSubtreeIdle(state, sessions);
+  assertSubtreeIdle(state, sessions, { allowOpenBatches: true });
   for (const session of sessions) {
     const batch = state.assist_change_batches.find((item) => item.session_id === session.id && item.status === 'open');
     if (batch) await rollbackChangeBatch(batch.id, batch.target_hash || null);
@@ -147,20 +156,7 @@ async function purgeDeleteBatch(batchId, { clock, rpc }) {
   return mutate((current) => {
     const currentSessions = current.assist_sessions.filter((item) => item.delete_batch_id === batchId && item.deleted_at);
     const currentIds = new Set(currentSessions.map((item) => item.id));
-    const currentTurnIds = new Set(current.assist_turns.filter((item) => currentIds.has(item.session_id)).map((item) => item.id));
-    filterCollection(current, 'assist_messages', (item) => !currentIds.has(item.session_id) && !currentTurnIds.has(item.turn_id));
-    filterCollection(current, 'assist_events', (item) => !currentIds.has(item.session_id) && !currentTurnIds.has(item.turn_id));
-    filterCollection(current, 'assist_operations', (item) => !currentIds.has(item.session_id) && !currentTurnIds.has(item.turn_id));
-    filterCollection(current, 'runtime_user_inputs', (item) => !currentIds.has(item.session_id) && !currentTurnIds.has(item.turn_id));
-    filterCollection(current, 'runtime_approvals', (item) => !currentIds.has(item.session_id) && !currentTurnIds.has(item.turn_id));
-    filterCollection(current, 'attachments', (item) => !currentIds.has(item.session_id) && !currentTurnIds.has(item.turn_id));
-    const changeBatchIds = new Set(current.assist_change_batches.filter((item) => currentIds.has(item.session_id)).map((item) => item.id));
-    const worktreeIds = new Set(current.assist_change_batches.filter((item) => changeBatchIds.has(item.id)).map((item) => item.worktree_id));
-    filterCollection(current, 'assist_checkpoints', (item) => !changeBatchIds.has(item.batch_id));
-    filterCollection(current, 'assist_change_batches', (item) => !changeBatchIds.has(item.id));
-    filterCollection(current, 'worktrees', (item) => !worktreeIds.has(item.id));
-    filterCollection(current, 'assist_turns', (item) => !currentIds.has(item.session_id));
-    filterCollection(current, 'assist_sessions', (item) => !currentIds.has(item.id));
+    purgeAssistSessionsInState(current, currentIds);
     addTrace(current, 'assist.session.purged', { delete_batch_id: batchId, session_count: currentIds.size, purged_at: purgedAt, summary: 'Purged expired Assist Fork subtree.' });
     return { delete_batch_id: batchId, purged: true, session_count: currentIds.size };
   });
@@ -199,13 +195,13 @@ function nativeForkThreadId(response) { return cleanText(response?.result?.threa
 function nativeForkError(error) { if (error instanceof HttpError) return error; return new HttpError(502, { error: 'assist_native_fork_failed', reason: safeErrorCode(error), retryable: true }); }
 async function deleteOrphanNativeThread({ rpc, state, profile, cwd, threadId }) { try { return await rpc({ state, profile, cwd, sandbox: 'read-only', resumeId: threadId, createThread: false, method: 'thread/delete', params: {} }); } catch (error) { if (!nativeThreadMissing(error)) throw error; } }
 async function recordOrphanNativeThread(source, threadId, error) { return mutate((state) => addTrace(state, 'assist.native_thread.orphaned', { project_id: source.project_id, target_id: source.id, data: { native_thread_id: threadId, cleanup_error: safeErrorCode(error) }, summary: 'Native Fork cleanup requires retry.' })); }
-function assertSubtreeIdle(state, sessions) {
+function assertSubtreeIdle(state, sessions, { allowOpenBatches = false } = {}) {
   const ids = new Set(sessions.map((item) => item.id));
   const turn = state.assist_turns.find((item) => ids.has(item.session_id) && ACTIVE_TURN_STATES.has(item.status));
   if (turn) throw new HttpError(409, { error: 'assist_session_busy', resource: 'turn', resource_id: turn.id, session_id: turn.session_id });
   const terminal = state.terminal_sessions.find((item) => ids.has(item.assist_session_id) && ACTIVE_TERMINAL_STATES.has(item.status));
   if (terminal) throw new HttpError(409, { error: 'assist_session_busy', resource: 'terminal', resource_id: terminal.id, session_id: terminal.assist_session_id });
-  const batch = state.assist_change_batches.find((item) => ids.has(item.session_id) && (item.status === 'open' || item.write_lock));
+  const batch = state.assist_change_batches.find((item) => ids.has(item.session_id) && (item.write_lock || !allowOpenBatches && item.status === 'open'));
   if (batch) throw new HttpError(409, { error: 'assist_session_busy', resource: batch.write_lock ? 'write_lock' : 'change_batch', resource_id: batch.id, session_id: batch.session_id });
 }
 async function deleteIndependentNativeThread(state, session, rpc) {
@@ -232,7 +228,6 @@ async function removeManagedAttachment(file) {
 async function markPurgeStage(batchId, stage, clock) { return mutate((state) => { const at = clock().toISOString(); for (const item of state.assist_sessions.filter((entry) => entry.delete_batch_id === batchId && entry.deleted_at)) Object.assign(item, { purge_stage: stage, purge_retry_at: null, updated_at: at }); }); }
 async function recordPurgeFailure(batchId, _error, clock) { return mutate((state) => { const date = clock(), retry = new Date(date.getTime() + PURGE_RETRY_MS).toISOString(); for (const item of state.assist_sessions.filter((entry) => entry.delete_batch_id === batchId && entry.deleted_at)) Object.assign(item, { purge_stage: 'retry_pending', purge_retry_at: retry, updated_at: date.toISOString() }); }); }
 function sessionDepth(state, sessionId) { let depth = 0, current = state.assist_sessions.find((item) => item.id === sessionId), seen = new Set(); while (current?.forked_from_session_id && !seen.has(current.id)) { seen.add(current.id); depth += 1; current = state.assist_sessions.find((item) => item.id === current.forked_from_session_id); } return depth; }
-function filterCollection(state, key, predicate) { state[key] = (state[key] || []).filter(predicate); }
 function safeErrorCode(error) { const value = String(error?.payload?.error || error?.code || error?.message || 'assist_cleanup_failed'); return /^[a-z0-9_.-]{1,160}$/i.test(value) ? value : 'assist_cleanup_failed'; }
 function nativeThreadMissing(error) { return /(?:thread.*(?:not[ _-]?found|does not exist)|unknown[ _-]?thread)/i.test(String(error?.message || error?.payload?.error || '')); }
 

@@ -32,6 +32,7 @@ export function reviewSnapshotForPath(repoPath, baseCommit) {
 
 export async function managedRepository(project) {
   if (!project || project.deleted_at) throw new HttpError(404, { error: 'project_not_found' });
+  if (project.lifecycle_operation) throw new HttpError(423, { error: 'project_lifecycle_operation_in_progress', operation: project.lifecycle_operation.type || null });
   if (project.status !== 'active') throw new HttpError(409, { error: 'project_not_active' });
   if (project.managed_workspace_state !== 'ready') throw new HttpError(409, { error: 'workspace_migration_required', state: project.managed_workspace_state || 'unknown' });
   const expected = path.join(WORKSPACE_DIR, safeSegment(project.id), 'repo'), configured = path.resolve(String(project.repo_path || ''));

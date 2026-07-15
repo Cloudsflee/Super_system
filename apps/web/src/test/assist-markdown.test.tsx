@@ -33,8 +33,19 @@ describe('Assist output rendering', () => {
       { ...base, id: 3, sequence: 3, data: { text: '1. 第一步\n2. 验证', status: 'completed', source: 'codex-native' } }
     ]);
     expect(merged).toHaveLength(1);
-    render(<TypedEvent event={merged[0]} />);
-    expect(screen.getByText('Codex 原生计划')).toBeInTheDocument();
+    const view = render(<TypedEvent event={merged[0]} />);
+    expect(view.container.querySelector('.turn-output')).toBeInTheDocument();
+    expect(screen.getByText('助手回复')).toHaveClass('sr-only');
     expect(screen.getByText(/第一步/)).toBeInTheDocument();
+  });
+
+  it('coalesces one command stream without merging the next command', () => {
+    const base = { id: 1, sequence: 1, session_id: 's1', turn_id: 't1', type: 'command' as const, created_at: new Date().toISOString() };
+    const merged = coalesceAssistEvents([
+      { ...base, data: { item_id: 'command-1', output: 'partial', status: 'running' } },
+      { ...base, id: 2, sequence: 2, data: { command: 'pnpm test', output: 'complete output', status: 'completed' } },
+      { ...base, id: 3, sequence: 3, data: { command: 'git status', output: 'clean', status: 'completed' } }
+    ]);
+    expect(merged).toHaveLength(2); expect(merged[0].data).toMatchObject({ command: 'pnpm test', output: 'complete output' }); expect(merged[1].data.command).toBe('git status');
   });
 });

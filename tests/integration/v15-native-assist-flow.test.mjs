@@ -65,18 +65,19 @@ try {
     view_context: { route: `/projects/${project.project.id}/brief`, browser_instance_id: 'browser-v15', surface: { id: 'brief-v15', revision: 'surface-v15-r1', fields: [{ id: 'brief.goal', label: 'Goal', risk: 'low' }] } }
   }, 202);
   const pendingOperation = await waitForOperation(sessionId, (item) => item.turn_id === pageTurn.id && item.status === 'pending');
-  const execution = await api(port, `/assist/v3/operations/${pendingOperation.id}/claim`, 'POST', { browser_instance_id: 'browser-v15' });
+  const operationLocator = { browser_instance_id: 'browser-v15', route: `/projects/${project.project.id}/brief`, surface_id: 'brief-v15', surface_revision: 'surface-v15-r1' };
+  const execution = await api(port, `/assist/v3/operations/${pendingOperation.id}/claim`, 'POST', operationLocator);
   assert.equal(execution.value, 'native tool value');
   await api(port, `/assist/v3/operations/${pendingOperation.id}/result`, 'POST', {
-    browser_instance_id: 'browser-v15', route: `/projects/${project.project.id}/brief`, surface_revision: 'surface-v15-r1', ok: true, persisted: true,
+    ...operationLocator, ok: true, persisted: true,
     before: 'old value', after: 'native tool value', current: 'native tool value'
   });
   const pageDone = await waitForTurn(pageTurn.id, (item) => item.status === 'completed');
   assert.match(pageDone.output_text, /native page tool committed/); assert.ok(pageDone.change_batch_id);
-  const inverse = await api(port, `/assist/v3/operations/${pendingOperation.id}/undo`, 'POST', { force: false }, 202);
-  await api(port, `/assist/v3/operations/${inverse.id}/claim`, 'POST', { browser_instance_id: 'browser-v15' });
+  const inverse = await api(port, `/assist/v3/operations/${pendingOperation.id}/undo`, 'POST', { ...operationLocator, force: false }, 202);
+  await api(port, `/assist/v3/operations/${inverse.id}/claim`, 'POST', operationLocator);
   const inverseDone = await api(port, `/assist/v3/operations/${inverse.id}/result`, 'POST', {
-    browser_instance_id: 'browser-v15', route: `/projects/${project.project.id}/brief`, surface_revision: 'surface-v15-r1', ok: true, persisted: true,
+    ...operationLocator, ok: true, persisted: true,
     before: 'native tool value', after: 'old value', current: 'old value'
   });
   assert.equal(inverseDone.status, 'committed'); assert.equal(inverseDone.inverse_of, pendingOperation.id);

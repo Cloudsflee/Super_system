@@ -7,11 +7,13 @@ import { readSecret } from './vault.mjs';
 import { validateProfileInput, writeProfileConfig } from './codex-service.mjs';
 import { proposalTargetHash } from './proposal-target.mjs';
 import { assertProfileAllowed } from './container-runtime-config.mjs';
+import { assertProjectLifecycleIdle } from './project-lifecycle-operations.mjs';
 
 export async function proposeConfigRevision(body) {
   return mutate((state) => {
     const actor = owner(state), profile = state.codex_profiles.find((item) => item.id === body.profile_id);
     if (!profile) throw new HttpError(404, { error: 'profile_not_found' });
+    if (body.project_id) assertProjectLifecycleIdle(state.projects.find((item) => item.id === body.project_id));
     const patch = normalizePatch(body.patch || {}), validation = validateProfileInput(state, { ...profile, ...patch });
     if (!validation.ok) throw new HttpError(400, { error: 'invalid_codex_profile', details: validation.errors });
     const applyMode = body.apply_mode === 'cc_switch' ? 'cc_switch' : 'native';
@@ -27,6 +29,7 @@ export async function proposeConfigRevision(body) {
 export async function applyConfigRevision(proposalId, expected = {}) {
   const snapshot = await readState(), proposal = snapshot.change_proposals.find((item) => item.id === proposalId), revision = snapshot.config_revisions.find((item) => item.id === proposal?.apply_action?.config_revision_id), profile = snapshot.codex_profiles.find((item) => item.id === revision?.profile_id);
   if (!proposal || !revision || !profile) throw new HttpError(404, { error: 'config_revision_not_found' });
+  if (proposal.project_id) assertProjectLifecycleIdle(snapshot.projects.find((item) => item.id === proposal.project_id));
   try { assertProfileAllowed(profile); } catch (error) { throw new HttpError(409, { error: error.message }); }
   if (proposal.status === 'applied') return { proposal, revision, idempotent: true };
   if (proposal.status !== 'pending') throw new HttpError(409, { error: 'proposal_not_pending' });
@@ -69,6 +72,7 @@ export async function applyConfigRevision(proposalId, expected = {}) {
 
 function activateRevision(state, proposalId, revisionId, merged, mode, capability) {
   const actor = owner(state), proposal = state.change_proposals.find((item) => item.id === proposalId), revision = state.config_revisions.find((item) => item.id === revisionId), profile = state.codex_profiles.find((item) => item.id === revision.profile_id);
+  if (proposal.project_id) assertProjectLifecycleIdle(state.projects.find((item) => item.id === proposal.project_id));
   if (proposal.status !== 'pending' || proposalTargetHash(state, proposal) !== proposal.target_hash) throw new HttpError(409, { error: 'proposal_stale', reason: 'target_changed' });
   Object.assign(profile, revision.patch, { status: 'validated', updated_at: now() }); for (const item of state.codex_profiles) item.is_active = item.id === profile.id;
   Object.assign(revision, { status: 'active', reconciliation: { status: 'reconciled', mode, capability }, activated_at: now(), updated_at: now() });

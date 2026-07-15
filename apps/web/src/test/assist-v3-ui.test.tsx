@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import type { ReactNode } from 'react';
 import { MemoryRouter } from 'react-router-dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -9,11 +9,10 @@ import { DiffReviewPanel } from '../features/assist/DiffReviewPanel';
 import { TerminalPanel } from '../features/assist/TerminalPanel';
 import { TypedEvent } from '../features/assist/TypedEvent';
 import { useUi } from '../state/ui';
-
+import { FakeEventSource, FakeWebSocket } from './fake-transports';
 const terminalWrites: string[] = [];
 vi.mock('@xterm/xterm', () => ({ Terminal: class { cols = 120; rows = 32; loadAddon() {} open() {} onData() {} attachCustomKeyEventHandler() {} write(value: string) { terminalWrites.push(value); } reset() { terminalWrites.length = 0; } dispose() {} } }));
 vi.mock('@xterm/addon-fit', () => ({ FitAddon: class { fit() {} } }));
-
 describe('Assist V3 workbench', () => {
   beforeEach(() => {
     useUi.getState().closeOverlay();
@@ -92,8 +91,9 @@ describe('Assist V3 workbench', () => {
       return response({});
     }));
     renderWithClient(<MemoryRouter><AssistWorkbench project={projectFixture()} /></MemoryRouter>);
-    expect(await screen.findByText('aiws_page.set_field')).toBeInTheDocument();
-    fireEvent.click(screen.getByRole('button', { name: 'Undo' }));
+    expect(await screen.findByText('已更新页面字段')).toBeInTheDocument();
+    expect(screen.queryByText('aiws_page.set_field')).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: '撤销' }));
     await waitFor(() => expect(calls.some((item) => item.url.endsWith('/operations/operation-1/undo') && item.body?.force === false)).toBe(true));
   });
 
@@ -143,6 +143,24 @@ describe('Assist V3 workbench', () => {
     expect(useUi.getState().assistDockWidth).toBe(836);
     fireEvent.doubleClick(divider);
     expect(useUi.getState().assistDockWidth).toBe(760);
+  });
+
+  it('combines surface choices into one layout menu and keeps minimize and close visible', () => {
+    vi.stubGlobal('fetch', vi.fn(async () => response([])));
+    const view = renderWithClient(<MemoryRouter><AssistWorkbench project={projectFixture()} /></MemoryRouter>), header = view.container.querySelector('.assist-workbench-head')!;
+    expect(header.querySelector('.lucide-bot')).toBeNull(); expect(header).not.toHaveTextContent('live');
+    expect(screen.queryByRole('button', { name: '停靠 Assist' })).not.toBeInTheDocument(); expect(screen.getByRole('button', { name: '最小化 Assist' })).toBeInTheDocument(); expect(screen.getByRole('button', { name: '关闭 Assist' })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Assist 布局' }));
+    const menu = screen.getByRole('menu', { name: 'Assist 布局' }); expect(within(menu).getAllByRole('menuitemradio')).toHaveLength(3); expect(within(menu).getByRole('menuitemradio', { name: '停靠' })).toHaveAttribute('aria-checked', 'true');
+    fireEvent.click(within(menu).getByRole('menuitemradio', { name: '浮动' })); expect(useUi.getState().assistSurface).toBe('floating'); expect(screen.queryByRole('menu')).not.toBeInTheDocument();
+  });
+
+  it('stays quiet while connected and shows a notice only during event-stream reconnection', async () => {
+    vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input); if (url.includes('/assist/v3/sessions?')) return response([sessionSummary()]); if (url.endsWith('/assist/v3/sessions/s1')) return response(sessionDetail()); if (url.endsWith('/codex/profiles')) return response([]); return response([]);
+    }));
+    renderWithClient(<MemoryRouter><AssistWorkbench project={projectFixture()} /></MemoryRouter>); await screen.findByText('Thread One'); await waitFor(() => expect(FakeEventSource.last).toBeTruthy()); await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(screen.queryByText('正在重新连接')).not.toBeInTheDocument(); FakeEventSource.last?.onerror?.(); expect(await screen.findByText('正在重新连接')).toBeInTheDocument(); FakeEventSource.last?.onopen?.(); await waitFor(() => expect(screen.queryByText('正在重新连接')).not.toBeInTheDocument());
   });
 
   it('explains that a project is required instead of silently failing thread creation', () => {
@@ -239,16 +257,3 @@ function reviewFixture(viewed: boolean) { return { turn_id: 't1', status: 'ready
 function terminalFixture(): TerminalSession { return { id: 'tty1', project_id: 'p1', worktree_id: 'w1', profile_id: 'profile-1', runtime: 'host', status: 'ready', cols: 120, rows: 32, output_preview: '', output_truncated: false, created_at: new Date(0).toISOString(), updated_at: new Date(0).toISOString() }; }
 function modelCatalog(base = 'gpt-codex') { const model = (value: string, isDefault = false) => ({ id: value, model: value, displayName: value, description: `${value} model`, hidden: false, isDefault, defaultReasoningEffort: 'high', supportedReasoningEfforts: ['low', 'medium', 'high', 'xhigh', 'max', 'ultra'].map((reasoningEffort) => ({ reasoningEffort, description: reasoningEffort })) }); return { profile_id: 'profile-1', default_model: base, source: 'codex_model_list', models: [model(base, true), model(base === 'gpt-base' ? 'gpt-saved' : 'gpt-codex-custom')] }; }
 function operationFixture(overrides: Partial<AssistOperation> = {}): AssistOperation { return { id: 'operation-1', session_id: 's1', turn_id: 'turn-1', tool: 'aiws_page.set_field', target_id: 'brief.goal', route: '/', surface_revision: 'r1', status: 'committed', risk: 'low', revision: 2, forced: false, before_value: 'before', after_value: 'after', conflict: null, created_at: new Date(0).toISOString(), updated_at: new Date(0).toISOString(), ...overrides }; }
-
-class FakeEventSource {
-  static last: FakeEventSource | null = null; onopen?: () => void; onerror?: () => void; listeners = new Map<string, (event: Event) => void>();
-  constructor(_url: string) { FakeEventSource.last = this; setTimeout(() => this.onopen?.(), 0); }
-  addEventListener(type: string, listener: EventListener) { this.listeners.set(type, listener); } close() {}
-  emit(type: string, value: unknown) { this.listeners.get(type)?.({ data: JSON.stringify(value) } as unknown as Event); }
-}
-class FakeWebSocket {
-  static OPEN = 1; static last: FakeWebSocket | null = null; readyState = 1; sent: string[] = []; onopen?: () => void; onmessage?: (event: { data: string }) => void; onclose?: (event: { code: number }) => void; onerror?: () => void;
-  constructor(public url: string) { FakeWebSocket.last = this; setTimeout(() => this.onopen?.(), 0); }
-  send(value: string) { this.sent.push(value); } close() { this.onclose?.({ code: 1000 }); }
-  emit(value: unknown) { this.onmessage?.({ data: JSON.stringify(value) }); }
-}

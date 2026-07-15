@@ -61,6 +61,18 @@ try {
   assert.equal(receipt.schema_migration.original_sha256, originalAudit.state_sha256);
   assert.equal((await validatePurgeTarget(target)).accepted, true);
 
+  const acceptedStateFile = path.join(target, 'data', 'state.json');
+  const acceptedState = JSON.parse(fs.readFileSync(acceptedStateFile, 'utf8'));
+  for (const [collection, id] of [['projects', 'project-post-migration'], ['assist_sessions', 'assist-post-migration'], ['assist_turns', 'turn-post-migration'], ['codex_profiles', 'profile-post-migration']]) {
+    acceptedState[collection].push({ ...acceptedState[collection].at(-1), id });
+  }
+  fs.writeFileSync(acceptedStateFile, `${JSON.stringify(acceptedState, null, 2)}\n`);
+  assert.equal((await validatePurgeTarget(target)).accepted, true, 'post-migration records do not invalidate the receipt');
+  const withoutMigratedSession = { ...acceptedState, assist_sessions: acceptedState.assist_sessions.filter((item) => item.id !== 'assist-one') };
+  fs.writeFileSync(acceptedStateFile, `${JSON.stringify(withoutMigratedSession, null, 2)}\n`);
+  await assert.rejects(() => validatePurgeTarget(target), /accepted_record_ids_missing/);
+  fs.writeFileSync(acceptedStateFile, `${JSON.stringify(acceptedState, null, 2)}\n`);
+
   fs.writeFileSync(path.join(target, 'idempotent-sentinel.txt'), 'keep');
   assert.equal(selectTargetVolume({ targetExists: true, targetEmpty: false, sourceExists: true, sourceEmpty: false }), 'reuse');
   assert.equal(fs.readFileSync(path.join(target, 'idempotent-sentinel.txt'), 'utf8'), 'keep');
@@ -85,7 +97,9 @@ try {
   const powershell = fs.readFileSync(path.join(process.cwd(), 'scripts', 'aiws.ps1'), 'utf8');
   const posix = fs.readFileSync(path.join(process.cwd(), 'scripts', 'aiws.sh'), 'utf8');
   for (const script of [powershell, posix]) {
-    assert.ok(script.includes('aiws-data-v16'));
+    assert.ok(script.includes('aiws-data-v16'), 'V1.6 remains the read-only V1.7 migration source');
+    assert.ok(script.includes('aiws-data-v17'), 'active scripts target the independent V1.7 volume');
+    assert.ok(script.includes('v17-release.mjs'));
     assert.ok(script.includes('purge-legacy'));
     assert.ok(script.toLowerCase().includes('discard-unmigratable'));
     assert.ok(script.includes('purge_legacy_requires_confirm'));

@@ -5,16 +5,16 @@ import net from 'node:net';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
-import { requireConfirmation, selectTargetVolume, SOURCE_VOLUME, TARGET_VOLUME } from './release_volume.mjs';
+import { requireConfirmation, selectTargetVolume, V17_SOURCE_VOLUME as SOURCE_VOLUME, V17_TARGET_VOLUME as TARGET_VOLUME } from './release_volume.mjs';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const RELEASE_DIR = path.join(ROOT, '.ai-workspace', 'release');
 const BACKUP_DIR = path.join(ROOT, '.ai-workspace', 'backups');
-const DEFAULT_APP_IMAGE = 'aiws-app:1.6.0';
-const DEFAULT_RUNNER_IMAGE = 'aiws-codex-runner:1.6.0-codex-0.144.0';
-const FORMAL_PROJECT = 'aiws-v16';
-const LEGACY_PROJECTS = Object.freeze(['aiws-v15', 'aiws-v16-preview']);
-const PURGE_PROJECTS = Object.freeze(['aiws-v14', 'aiws-v15', 'aiws-v16-preview']);
+const DEFAULT_APP_IMAGE = 'aiws-app:1.7.0';
+const DEFAULT_RUNNER_IMAGE = 'aiws-codex-runner:1.7.0-codex-0.144.0';
+const FORMAL_PROJECT = 'aiws-v17';
+const LEGACY_PROJECTS = Object.freeze(['aiws-v16', 'aiws-v17-preview']);
+const PURGE_PROJECTS = Object.freeze(['aiws-v14', 'aiws-v15', 'aiws-v16', 'aiws-v17-preview']);
 const LEGACY_IMAGES = Object.freeze([
   'aiws-app:1.4.0',
   'aiws-verify:1.4.0',
@@ -22,9 +22,12 @@ const LEGACY_IMAGES = Object.freeze([
   'aiws-app:1.5.0',
   'aiws-verify:1.5.0',
   'aiws-codex-runner:1.5.0-codex-0.144.0',
+  'aiws-app:1.6.0',
+  'aiws-verify:1.6.0',
+  'aiws-codex-runner:1.6.0-codex-0.144.0',
   'aiws-codex-runner:local'
 ]);
-const LEGACY_RUNNER_CONTAINER_PATTERN = /^aiws-codex-runner:(?:1\.[0-5]\.0-codex-\d+\.\d+\.\d+|local)$/;
+const LEGACY_RUNNER_CONTAINER_PATTERN = /^aiws-codex-runner:(?:1\.[0-6]\.0-codex-\d+\.\d+\.\d+|local)$/;
 
 export async function runReleaseUp(options = {}) {
   const config = releaseConfig(options);
@@ -35,7 +38,7 @@ export async function runReleaseUp(options = {}) {
   const sourceEmpty = !sourceExists || volumeEmpty(config.sourceVolume, config.appImage);
   const disposition = selectTargetVolume({ targetExists, targetEmpty, sourceExists, sourceEmpty });
   const context = {
-    version: '1.6.0',
+    version: '1.7.0',
     started_at: new Date().toISOString(),
     source_volume: config.sourceVolume,
     target_volume: config.targetVolume,
@@ -52,14 +55,12 @@ export async function runReleaseUp(options = {}) {
     probe: null,
     status: 'preparing'
   };
-  await writeTranscript('v16-cutover-latest.json', context);
+  await writeTranscript('v17-cutover-latest.json', context);
 
-  let initializationStarted = false;
   try {
     context.stopped_containers = stopLegacyApps();
     await waitForPortDisposition(config.port, config.projectName);
     if (disposition === 'clone') {
-      initializationStarted = true;
       const cloned = initializeFromSource(config);
       Object.assign(context, cloned);
     } else if (disposition === 'fresh') {
@@ -76,35 +77,16 @@ export async function runReleaseUp(options = {}) {
     context.probe = await reprobeActiveProfile(config.port);
     context.status = 'accepted';
     context.completed_at = new Date().toISOString();
-    await writeTranscript('v16-cutover-latest.json', context);
-    process.stdout.write(`AIWS V1.6 accepted at http://127.0.0.1:${config.port}\n`);
+    await writeTranscript('v17-cutover-latest.json', context);
+    process.stdout.write(`AIWS V1.7 accepted at http://127.0.0.1:${config.port}\n`);
     return context;
   } catch (error) {
-    context.failure = { code: error.code || 'v16_release_failed', message: String(error.message || error) };
+    context.failure = { code: error.code || 'v17_release_failed', message: String(error.message || error) };
     context.failed_at = new Date().toISOString();
-    if (config.discardUnmigratable && disposition === 'clone' && initializationStarted) {
-      try {
-        context.fallback = 'discarded_unmigratable';
-        compose(config, ['down', '--remove-orphans'], { allowFailure: true });
-        removeVolume(config.targetVolume);
-        createTargetVolume(config.targetVolume);
-        compose(config, ['up', '-d', '--remove-orphans']);
-        context.health = await waitForHealthy(config);
-        context.acceptance = acceptTarget(config, 'discarded_unmigratable', context);
-        context.probe = await reprobeActiveProfile(config.port);
-        context.status = 'accepted_fresh_after_discard';
-        context.completed_at = new Date().toISOString();
-        await writeTranscript('v16-cutover-latest.json', context);
-        process.stdout.write(`AIWS V1.6 started with fresh schema 15 at http://127.0.0.1:${config.port}\n`);
-        return context;
-      } catch (fallbackError) {
-        context.fallback_failure = { code: fallbackError.code || 'v16_fallback_failed', message: String(fallbackError.message || fallbackError) };
-      }
-    }
     compose(config, ['down', '--remove-orphans'], { allowFailure: true });
     restartContainers(context.stopped_containers);
     context.status = 'failed_source_preserved';
-    await writeTranscript('v16-cutover-latest.json', context);
+    await writeTranscript('v17-cutover-latest.json', context);
     throw error;
   }
 }
@@ -119,14 +101,14 @@ export async function purgeLegacy(options = {}) {
   assertNoLegacyRunnerContainers();
 
   const transcript = {
-    version: '1.6.0',
+    version: '1.7.0',
     started_at: new Date().toISOString(),
     pre_cleanup_health: beforeHealth,
     acceptance,
     removed: { containers: [], networks: [], volumes: [], images: [], host_backups: [], schema_backups: [] },
     status: 'cleaning'
   };
-  await writeTranscript('v16-purge-latest.json', transcript);
+  await writeTranscript('v17-purge-latest.json', transcript);
 
   transcript.removed.containers = removeProjectContainers(PURGE_PROJECTS);
   transcript.removed.networks = removeProjectNetworks(PURGE_PROJECTS);
@@ -142,8 +124,8 @@ export async function purgeLegacy(options = {}) {
   transcript.post_restart_acceptance = checkAcceptedTarget(config);
   transcript.status = 'complete';
   transcript.completed_at = new Date().toISOString();
-  await writeTranscript('v16-purge-latest.json', transcript);
-  process.stdout.write('Legacy AIWS resources and historical backups purged; V1.6 restart verified.\n');
+  await writeTranscript('v17-purge-latest.json', transcript);
+  process.stdout.write('Legacy AIWS resources and historical backups purged; V1.7 restart verified.\n');
   return transcript;
 }
 
@@ -177,8 +159,8 @@ function setComposeEnvironment(config) {
 function initializeFromSource(config) {
   createTargetVolume(config.targetVolume);
   const stamp = new Date().toISOString().replace(/[-:TZ.]/g, '').slice(0, 17);
-  const migrationVolume = `aiws-v16-migration-${stamp}-${process.pid}`.toLowerCase();
-  docker(['volume', 'create', '--label', 'aiws.owner=aiws-v16-release', '--label', 'aiws.role=migration', '--label', `aiws.source=${config.sourceVolume}`, '--label', `aiws.target=${config.targetVolume}`, migrationVolume]);
+  const migrationVolume = `aiws-v17-migration-${stamp}-${process.pid}`.toLowerCase();
+  docker(['volume', 'create', '--label', 'aiws.owner=aiws-v17-release', '--label', 'aiws.role=migration', '--label', `aiws.source=${config.sourceVolume}`, '--label', `aiws.target=${config.targetVolume}`, migrationVolume]);
   try {
     docker([
       'run', '--rm', '--entrypoint', 'python3',
@@ -199,7 +181,7 @@ function initializeFromSource(config) {
       '--mount', `type=volume,src=${config.sourceVolume},dst=/source,readonly`,
       '--mount', `type=volume,src=${config.targetVolume},dst=/target,readonly`,
       '--mount', `type=volume,src=${migrationVolume},dst=/migration`,
-      config.appImage, '/app/docker/release_volume.mjs', 'clone-verify', '/source', '/target', '/migration/clone.manifest.json', archiveSha256, config.sourceVolume, config.targetVolume
+      config.appImage, '/app/docker/release_volume.mjs', 'clone-verify-v17', '/source', '/target', '/migration/clone.manifest.json', archiveSha256, config.sourceVolume, config.targetVolume
     ]);
     return { migration_volume: migrationVolume, archive_sha256: archiveSha256 };
   } catch (error) {
@@ -215,7 +197,7 @@ function acceptTarget(config, mode, context) {
     ...(context.migration_volume ? ['--mount', `type=volume,src=${context.migration_volume},dst=/migration,readonly`] : []),
     ...(volumeExists(config.sourceVolume) ? ['--mount', `type=volume,src=${config.sourceVolume},dst=/source,readonly`] : []),
     config.appImage,
-    '/app/docker/release_volume.mjs', 'accept', mode, '/target',
+    '/app/docker/release_volume.mjs', 'accept-v17', mode, '/target',
     volumeExists(config.sourceVolume) ? '/source' : '-',
     context.migration_volume ? '/migration/clone.manifest.json' : '-',
     context.archive_sha256 || '-', context.migration_volume || '-', config.sourceVolume, config.targetVolume
@@ -228,7 +210,7 @@ function checkAcceptedTarget(config) {
   const output = docker([
     'run', '--rm', '--entrypoint', 'node',
     '--mount', `type=volume,src=${config.targetVolume},dst=/target,readonly`,
-    config.appImage, '/app/docker/release_volume.mjs', 'check-purge', '/target', config.targetVolume
+    config.appImage, '/app/docker/release_volume.mjs', 'check-v17', '/target', config.targetVolume
   ], { capture: true });
   return parseJsonOutput(output, 'release_acceptance_check_invalid');
 }
@@ -285,8 +267,8 @@ async function waitForHealthy(config, { attempts = 60, delayMs = 2000 } = {}) {
         if (!published.split(/\r?\n/).includes(`127.0.0.1:${config.port}`)) throw releaseError('formal_loopback_port_mismatch', { published });
         const response = await fetch(`http://127.0.0.1:${config.port}/api/health`, { signal: AbortSignal.timeout(5000) });
         const health = await response.json();
-        if (!response.ok || health.status !== 'ok' || health.api?.healthy !== true || health.db?.healthy !== true) throw releaseError('formal_health_api_invalid');
-        return { container_id: ids[0], image: detail.image, project: detail.project, health: detail.health, http_status: response.status, api_status: health.status };
+        if (!response.ok || health.status !== 'ok' || health.api?.healthy !== true || health.db?.healthy !== true || health.version !== '1.7.0' || health.schema_version !== 16) throw releaseError('formal_health_api_invalid', { version: health.version, schema_version: health.schema_version });
+        return { container_id: ids[0], image: detail.image, project: detail.project, health: detail.health, http_status: response.status, api_status: health.status, version: health.version, schema_version: health.schema_version };
       }
       if (detail.health === 'unhealthy' || detail.status === 'exited') throw releaseError(`app_${detail.health === 'unhealthy' ? 'unhealthy' : 'exited'}`);
     }
@@ -319,7 +301,7 @@ function createTargetVolume(volume) {
     if (!volumeEmpty(volume, process.env.AIWS_APP_IMAGE || DEFAULT_APP_IMAGE)) throw releaseError('target_volume_not_empty');
     return;
   }
-  docker(['volume', 'create', '--label', 'aiws.owner=aiws-v16', '--label', 'aiws.role=production-data', '--label', 'aiws.schema=15', volume]);
+  docker(['volume', 'create', '--label', 'aiws.owner=aiws-v17', '--label', 'aiws.role=production-data', '--label', 'aiws.schema=16', volume]);
 }
 
 function volumeExists(volume) {
@@ -331,11 +313,6 @@ function volumeEmpty(volume, appImage) {
   if (result.status === 0) return true;
   if (result.status === 1) return false;
   throw commandError('volume_empty_check_failed', result);
-}
-
-function removeVolume(volume) {
-  if (!volumeExists(volume)) return;
-  docker(['volume', 'rm', volume]);
 }
 
 function removeProjectContainers(projects) {
@@ -362,12 +339,12 @@ function removeProjectNetworks(projects) {
 }
 
 function removeLegacyVolumes(targetVolume) {
-  const candidates = new Set([SOURCE_VOLUME, 'aiws-v16-preview-data']);
+  const candidates = new Set([SOURCE_VOLUME, 'aiws-v17-preview-data']);
   for (const project of PURGE_PROJECTS) {
     const names = docker(['volume', 'ls', '-q', '--filter', `label=com.docker.compose.project=${project}`], { capture: true, allowFailure: true }).split(/\r?\n/).filter(Boolean);
     names.forEach((name) => candidates.add(name));
   }
-  const migrations = docker(['volume', 'ls', '-q', '--filter', 'label=aiws.owner=aiws-v16-release', '--filter', 'label=aiws.role=migration'], { capture: true, allowFailure: true }).split(/\r?\n/).filter(Boolean);
+  const migrations = docker(['volume', 'ls', '-q', '--filter', 'label=aiws.owner=aiws-v17-release', '--filter', 'label=aiws.role=migration'], { capture: true, allowFailure: true }).split(/\r?\n/).filter(Boolean);
   migrations.forEach((name) => candidates.add(name));
   candidates.delete(targetVolume);
   const removed = [];
@@ -408,7 +385,7 @@ function assertNoLegacyRunnerContainers() {
 
 function assertLegacyResourcesAbsent() {
   for (const project of PURGE_PROJECTS) if (containerIds(project).length) throw releaseError('legacy_container_cleanup_incomplete', { project });
-  for (const volume of [SOURCE_VOLUME, 'aiws-v16-preview-data']) if (volumeExists(volume)) throw releaseError('legacy_volume_cleanup_incomplete', { volume });
+  for (const volume of [SOURCE_VOLUME, 'aiws-v17-preview-data']) if (volumeExists(volume)) throw releaseError('legacy_volume_cleanup_incomplete', { volume });
   for (const image of LEGACY_IMAGES) if (raw('docker', ['image', 'inspect', image], { capture: true }).status === 0) throw releaseError('legacy_image_cleanup_incomplete', { image });
   const backupEntries = fs.existsSync(BACKUP_DIR) ? fs.readdirSync(BACKUP_DIR) : [];
   if (backupEntries.length) throw releaseError('host_backup_cleanup_incomplete');
@@ -513,5 +490,5 @@ export async function runReleaseCli(argv) {
   const { command, options } = parseCli(argv);
   if (command === 'up') await runReleaseUp(options);
   else if (command === 'purge-legacy') await purgeLegacy(options);
-  else throw releaseError('v16_release_usage');
+  else throw releaseError('v17_release_usage');
 }

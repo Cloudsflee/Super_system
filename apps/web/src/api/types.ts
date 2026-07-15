@@ -97,30 +97,40 @@ export type ProjectIntake = {
   answers: ProjectIntakeAnswers; revision: number; last_error?: string | null;
   updated_at?: string;
 };
+export type BriefMarkdownSection = { id: string; semantic_key?: string | null; title: string; type: 'markdown'; markdown: string };
+export type BriefListSection = { id: string; semantic_key?: string | null; title: string; type: 'list'; items: string[] };
+export type BriefKeyValueSection = { id: string; semantic_key?: string | null; title: string; type: 'key_value'; entries: Array<{ id: string; key: string; value: string }> };
+export type BriefTableSection = { id: string; semantic_key?: string | null; title: string; type: 'table'; columns: Array<{ id: string; label: string }>; rows: Array<{ id: string; cells: Record<string, string> }> };
+export type BriefSection = BriefMarkdownSection | BriefListSection | BriefKeyValueSection | BriefTableSection;
 export type ProjectBriefContent = {
+  schema_version: 2; title: string; summary: string; sections: BriefSection[];
+  template_ref?: { template_id: string; version: number } | null;
+  material_references?: Array<{ id: string; attachment_id?: string | null; url?: string | null; label: string; kind: string }>;
   goal: string; users: string[]; scope: { in: string[]; out: string[] };
   features: string[]; constraints: string[]; milestones: string[];
   acceptance_criteria: string[]; risks: string[]; open_questions: string[];
 };
 export type ProjectBrief = {
-  id: string; project_id: string; version: number; status: string;
+  id: string; project_id: string; version: number; revision: number; status: string;
   source: string; content: ProjectBriefContent; created_at: string; updated_at?: string;
 };
 export type WorkflowDraftNode = {
-  type: NodeKind; title: string; goal: string; dependency_indexes: number[];
-  position?: { x: number; y: number };
+  id: string; type: NodeKind; title: string; goal: string; dependency_ids: string[];
+  position: { x: number; y: number }; order: number; dependency_indexes?: number[];
 };
+export type WorkflowDraft = { id: string; project_id: string; revision: number; nodes: WorkflowDraftNode[]; source_brief_id?: string | null; source_brief_revision?: number | null; status?: string; user_modified_at?: string | null; updated_at?: string };
+export type BriefTemplate = { id: string; template_key: string; version: number; title: string; domain: string; content: ProjectBriefContent; sources: Array<{ url?: string | null; attachment_id?: string | null; label?: string | null }>; publisher?: string | null; retrieved_at: string; applicability?: string | null; limitations?: string | null; created_at: string; updated_at: string };
 export type ProjectImportJob = {
   id: string; project_id: string; operation_key: string; kind?: string; status: string;
   error_code?: string; source_hash?: string; created_at: string; updated_at?: string;
 };
 export type ProjectOnboarding = {
   project: Project; intake: ProjectIntake; brief: ProjectBrief | null;
-  briefs: ProjectBrief[]; workflow_draft: WorkflowDraftNode[]; imports: ProjectImportJob[];
+  briefs: ProjectBrief[]; workflow_draft: WorkflowDraft | null; imports: ProjectImportJob[];
   assist_session?: AssistSession | null; can_confirm: boolean; onboarding_route: string;
 };
 export type DraftProjectResult = {
-  project: Project; intake: ProjectIntake; brief?: ProjectBrief | null;
+  project: Project; intake: ProjectIntake; brief?: ProjectBrief | null; workflow_draft?: WorkflowDraft | null;
   assist_session?: AssistSession; onboarding_route?: string; idempotent?: boolean;
 };
 export type Workflow = {

@@ -1,7 +1,7 @@
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { useCallback, type ComponentProps } from 'react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import type { AssistAttachment, AssistGoal, AssistV3Session, AssistV3Turn } from '../api/types';
+import type { AssistAttachment, AssistGoal, AssistOperation, AssistV3Event, AssistV3Session, AssistV3Turn, RuntimeUserInput } from '../api/types';
 import { ContextMenuProvider, useContextMenuResolver } from '../components/common/ContextMenu';
 import { publishSelectionAsk, subscribeSelectionAsk } from '../components/common/selection-ask';
 import { IconButton } from '../components/common/IconButton';
@@ -51,11 +51,12 @@ describe('Assist V1.6 interactions', () => {
   });
 
   it('renders the real Fork tree, protects roots, and leaves deleted branches in place', () => {
-    const root = session('root', null, 'Root'), branch = session('branch', 'root', 'Branch'), deleted = { ...session('deleted', 'branch', 'Deleted'), deleted_at: new Date(0).toISOString(), delete_batch_id: 'batch-1' };
+    const root = session('root', null, 'Root'), branch = { ...session('branch', 'root', 'Branch'), turn_count: 1, last_turn: { id: 'turn-1', mode: 'default' as const, status: 'completed', updated_at: new Date(0).toISOString() } }, deleted = { ...session('deleted', 'branch', 'Deleted'), deleted_at: new Date(0).toISOString(), delete_batch_id: 'batch-1' };
     const tree = sessionTree([deleted, branch, root]);
     expect(tree[0].item.id).toBe('root'); expect(tree[0].children[0].item.id).toBe('branch'); expect(tree[0].children[0].children[0].depth).toBe(2);
     const onDelete = vi.fn(), onRestoreDeleted = vi.fn();
     render(<ContextMenuProvider><ThreadSidebar sessions={[root, branch, deleted]} selectedId="root" search="" archived={false} loading={false} onSearch={vi.fn()} onArchived={vi.fn()} onSelect={vi.fn()} onCreate={vi.fn()} onRename={vi.fn()} onPin={vi.fn()} onArchive={vi.fn()} onFork={vi.fn()} onDelete={onDelete} onRestoreDeleted={onRestoreDeleted} /></ContextMenuProvider>);
+    expect(screen.getByText('1 轮')).toBeInTheDocument(); expect(screen.getByText('尚无对话')).toBeInTheDocument(); expect(screen.queryByText('completed')).not.toBeInTheDocument();
     expect(screen.getByText('已删除分支')).toBeInTheDocument(); fireEvent.click(screen.getByRole('button', { name: '撤销' })); expect(onRestoreDeleted).toHaveBeenCalledWith(deleted);
     fireEvent.contextMenu(screen.getByText('Root').closest('article')!); expect(screen.queryByRole('menuitem', { name: '删除分支' })).not.toBeInTheDocument();
     fireEvent.keyDown(window, { key: 'Escape' }); fireEvent.contextMenu(screen.getByText('Branch').closest('article')!);
@@ -120,12 +121,45 @@ describe('Assist V1.6 interactions', () => {
     fireEvent.keyDown(window, { key: 'Escape' }); await waitFor(() => expect(screen.queryByRole('dialog', { name: '问点什么' })).not.toBeInTheDocument());
   });
 
-  it('keeps identity labels screen-reader-only and exposes usage from the reply tail', () => {
-    const turn = turnFixture(), view = render(<TurnTimeline turns={[turn]} events={[]} connected busy={false} onRetry={vi.fn()} onReview={vi.fn()} onRespondUserInput={vi.fn()} onConfirmOperation={vi.fn()} onUndoOperation={vi.fn()} />);
+  it('keeps history focused on the conversation and moves runtime data into collapsed details', () => {
+    const turn = { ...turnFixture(), collaboration_mode: 'plan' as const, model: 'MODEL_HISTORY_SENTINEL', reasoning: 'REASONING_HISTORY_SENTINEL' };
+    const events = [
+      assistEvent('queued', { queue_position: 1 }, 1),
+      assistEvent('started', { profile: { name: 'PROFILE_HISTORY_SENTINEL', model: 'MODEL_HISTORY_SENTINEL', reasoning: 'REASONING_HISTORY_SENTINEL' } }, 2),
+      assistEvent('status', { status: 'thread_started' }, 3),
+      assistEvent('plan', { text: 'Short reply', status: 'completed', source: 'codex-native' }, 4),
+      assistEvent('command', { command: 'pnpm test', output: 'passed', status: 'completed', exit_code: 0 }, 5),
+      assistEvent('reasoning_summary', { summary: 'Public concise summary', internal_reasoning: 'PRIVATE_REASONING_SENTINEL' }, 6),
+      assistEvent('usage', { input_tokens: 1000, output_tokens: 234, total_tokens: 1234 }, 7),
+      assistEvent('completed', { review_status: 'not_applicable' }, 8)
+    ];
+    const view = render(<TurnTimeline {...timelineProps({ turns: [turn], events })} />), timeline = view.container.querySelector('.turn-timeline')!;
     expect(screen.getByText('用户消息')).toHaveClass('sr-only'); expect(screen.getByText('助手回复')).toHaveClass('sr-only');
-    expect(view.container.querySelector('.turn-prompt')).not.toHaveTextContent('Codex'); expect(view.container.querySelector('.turn-output')).not.toHaveTextContent('Codex');
-    const gauge = screen.getByRole('button', { name: '查看本次回复用量' }); expect(gauge).toHaveAttribute('data-tooltip', '查看本次回复用量'); fireEvent.click(gauge);
-    expect(screen.getByRole('dialog', { name: '本次回复用量' })).toHaveTextContent('总计1,234');
+    expect(timeline).not.toHaveTextContent('completed'); expect(timeline).not.toHaveTextContent('MODEL_HISTORY_SENTINEL'); expect(timeline).not.toHaveTextContent('REASONING_HISTORY_SENTINEL'); expect(timeline).not.toHaveTextContent('PROFILE_HISTORY_SENTINEL'); expect(timeline).not.toHaveTextContent('PRIVATE_REASONING_SENTINEL');
+    expect(timeline.textContent?.toLowerCase()).not.toContain('reasoning'); expect(timeline.querySelectorAll('.turn-output')).toHaveLength(1);
+    const details = screen.getByText('运行详情').closest('details')!; expect(details).not.toHaveAttribute('open'); expect(details).toHaveTextContent('pnpm test'); expect(details).toHaveTextContent('Public concise summary');
+    expect(within(details).getByLabelText('Token 用量')).toHaveTextContent('输入 1,000'); expect(within(details).getByLabelText('Token 用量')).toHaveTextContent('输出 234'); expect(within(details).getByLabelText('Token 用量')).toHaveTextContent('总计 1,234');
+    expect(screen.queryByRole('button', { name: '查看本次回复用量' })).not.toBeInTheDocument(); expect(screen.queryByText('实时事件已连接')).not.toBeInTheDocument();
+  });
+
+  it('opens runtime details while processing and collapses them when the Turn finishes', async () => {
+    const running = { ...turnFixture(), status: 'running', output_text: '' }, events = [assistEvent('command', { command: 'pnpm test', output: '', status: 'running' }, 1), assistEvent('usage', { input_tokens: 10, output_tokens: 2, total_tokens: 12 }, 2)];
+    const view = render(<TurnTimeline {...timelineProps({ turns: [running], events })} />);
+    const details = screen.getByText('运行详情').closest('details')!; expect(details).toHaveAttribute('open'); expect(screen.getByRole('status')).toHaveTextContent('正在处理');
+    view.rerender(<TurnTimeline {...timelineProps({ turns: [{ ...running, status: 'completed', output_text: 'Done' }], events })} />);
+    await waitFor(() => expect(details).not.toHaveAttribute('open')); expect(screen.queryByText('正在处理')).not.toBeInTheDocument();
+    fireEvent.click(within(details).getByText('运行详情')); expect(details).toHaveAttribute('open');
+  });
+
+  it('keeps approvals, user input, errors, conflicts, Undo, Retry and Review outside runtime details', () => {
+    const input: RuntimeUserInput = { id: 'input-1', session_id: 'session-1', turn_id: 'turn-1', item_id: 'question-1', status: 'pending', contains_secret: false, questions: [{ id: 'answer', header: '确认', question: '继续吗？' }], created_at: new Date(0).toISOString(), updated_at: new Date(0).toISOString() };
+    const operation: AssistOperation = { id: 'operation-1', session_id: 'session-1', turn_id: 'turn-1', tool: 'aiws_page.set_field', target_id: 'brief.goal', route: '/', surface_revision: 'r1', status: 'conflicted', risk: 'low', revision: 2, inverse_of: 'operation-original', forced: false, conflict: { before: 'a', after: 'b', current: 'c' }, created_at: new Date(0).toISOString(), updated_at: new Date(0).toISOString() };
+    const turn = { ...turnFixture(), status: 'failed', output_text: '', error_code: 'assist_workspace_unavailable', change_batch_id: 'batch-1', review_status: 'ready', user_inputs: [input], operations: [operation] };
+    const events = [assistEvent('approval', { approval_id: 'approval-1', command: 'pnpm test' }, 1), assistEvent('failed', { error: 'assist_workspace_unavailable' }, 2)];
+    render(<TurnTimeline {...timelineProps({ turns: [turn], events })} />);
+    const approval = screen.getByRole('button', { name: '立即审查' }), retry = screen.getByRole('button', { name: 'Retry' }), review = screen.getByRole('button', { name: 'Review batch' });
+    expect(approval).toBeInTheDocument(); expect(screen.getByText('Codex 需要你的输入')).toBeInTheDocument(); expect(screen.getByText('Assist 工作目录不可用，请重新进入项目后重试。')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '强制撤回' })).toBeInTheDocument(); expect(retry).toBeInTheDocument(); expect(review).toBeInTheDocument(); expect(approval.closest('details')).toBeNull(); expect(retry.closest('details')).toBeNull(); expect(review.closest('details')).toBeNull();
   });
 
   it('shows only the Goal objective and icon actions', () => {
@@ -146,6 +180,8 @@ function RegisteredTarget({ onSpecial }: { onSpecial: () => void }) {
 function session(id: string, parent: string | null, title: string): AssistV3Session { return { id, version: 3, project_id: 'project-1', scope_type: 'project', scope_id: 'project-1', title, status: 'idle', lifecycle: 'active', pinned: false, forked_from_session_id: parent, turn_count: 0, last_turn: null, created_at: new Date(0).toISOString(), updated_at: new Date(0).toISOString() }; }
 function attachment(id = 'attachment-1'): AssistAttachment { return { id, project_id: 'project-1', session_id: 'session-1', kind: 'project_attachment', title: 'paste.txt', original_filename: 'paste.txt', content_type: 'text/plain', size_bytes: 8000, model_policy: 'injectable', status: 'ready', created_at: new Date(0).toISOString() }; }
 function turnFixture(): AssistV3Turn { return { id: 'turn-1', session_id: 'session-1', project_id: 'project-1', mode: 'default', collaboration_mode: 'default', prompt: 'Short prompt', output_text: 'Short reply', status: 'completed', model: 'gpt-v16', reasoning: 'high', attachment_ids: [], usage: { input_tokens: 1000, output_tokens: 234, total_tokens: 1234 }, review_status: 'not_applicable', user_inputs: [], operations: [], created_at: new Date(0).toISOString(), updated_at: new Date(0).toISOString() }; }
+function assistEvent(type: AssistV3Event['type'], data: Record<string, unknown>, sequence: number): AssistV3Event { return { id: sequence, sequence, session_id: 'session-1', turn_id: 'turn-1', type, data, created_at: new Date(0).toISOString() }; }
+function timelineProps(overrides: Partial<ComponentProps<typeof TurnTimeline>> = {}): ComponentProps<typeof TurnTimeline> { return { turns: [], events: [], reconnecting: false, busy: false, onRetry: vi.fn(), onReview: vi.fn(), onRespondUserInput: vi.fn(), onConfirmOperation: vi.fn(), onUndoOperation: vi.fn(), ...overrides }; }
 function composerProps(overrides: Partial<ComponentProps<typeof AssistComposer>> = {}): ComponentProps<typeof AssistComposer> {
   return { session: session('session-1', null, 'Root'), profileName: 'Profile', catalog: { profile_id: 'profile-1', default_model: 'gpt-v16', source: 'test', models: [{ id: 'gpt-v16', model: 'gpt-v16', displayName: 'gpt-v16', description: 'test', hidden: false, isDefault: true, defaultReasoningEffort: 'high', supportedReasoningEfforts: [{ reasoningEffort: 'high', description: 'high' }] }] }, configurations: [], model: 'gpt-v16', reasoning: 'high', configurationId: '', planNext: false, prompt: 'message', attachments: [], selectedAttachments: [], activeTurn: null, busy: false, writeModeUnavailableReason: null, onModel: vi.fn(), onReasoning: vi.fn(), onConfiguration: vi.fn(), onPlanNext: vi.fn(), onPrompt: vi.fn(), onAttachments: vi.fn(), onAttachmentCreated: vi.fn(), onAttachmentDeleted: vi.fn(), onSubmit: vi.fn(), onStop: vi.fn(), onTerminal: vi.fn(), onCommand: vi.fn(), onSaveConfiguration: vi.fn(async () => true), onError: vi.fn(), ...overrides };
 }

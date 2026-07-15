@@ -19,7 +19,7 @@ try {
   fs.writeFileSync(path.join(repo, 'README.md'), '# baseline\n'); git(repo, ['add', '.']); git(repo, ['commit', '-m', 'baseline']);
   const initialHead = git(repo, ['rev-parse', 'HEAD']).stdout.trim();
   await stateApi.mutate((state) => {
-    state.projects = [{ id: 'project-v15', title: 'V1.5', status: 'active', managed_workspace_state: 'ready', repo_path: repo, settings: {} }];
+    state.projects = [{ id: 'project-v15', title: 'V1.5', status: 'active', onboarding_state: 'confirmed', managed_workspace_state: 'ready', repo_path: repo, settings: {} }];
     state.assist_sessions = [{ id: 'session-v15', version: 3, project_id: 'project-v15', archived_at: null, active_change_batch_id: null }];
     state.assist_change_batches = []; state.assist_checkpoints = []; state.worktrees = [];
   });

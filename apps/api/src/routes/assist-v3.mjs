@@ -37,10 +37,12 @@ import {
   getAssistGoal,
   getChangeBatchReview,
   listAssistConfigurations,
+  listAssistCapabilities,
   listAssistModels,
   listAssistOperations,
   listAssistReferences,
   respondToAssistUserInput,
+  reviseAssistOperation,
   rollbackChangeBatch,
   saveAssistConfiguration,
   serveAttachmentContent,
@@ -53,6 +55,7 @@ import {
 } from '../assist-v3-service.mjs';
 
 export const assistV3Routes = [
+  makeRoute('GET', '/assist/v3/capabilities', async ({ res, query }) => send(res, 200, await listAssistCapabilities(query))),
   makeRoute('GET', '/assist/v3/models', async ({ res, query }) => send(res, 200, await listAssistModels(query.profile_id))),
   makeRoute('GET', '/assist/v3/configurations', async ({ res, query }) => send(res, 200, await listAssistConfigurations(query))),
   makeRoute('POST', '/assist/v3/configurations', async ({ res, body }) => send(res, 201, await saveAssistConfiguration(body))),
@@ -123,6 +126,7 @@ export const assistV3Routes = [
   ,makeRoute('POST', '/assist/v3/operations/:id/claim', async ({ res, params, body }) => send(res, 200, await claimAssistOperation(params.id, body)))
   ,makeRoute('POST', '/assist/v3/operations/:id/result', async ({ res, params, body }) => send(res, 200, await submitAssistOperationResult(params.id, body)))
   ,makeRoute('POST', '/assist/v3/operations/:id/undo', async ({ res, params, body }) => send(res, 202, await undoAssistOperation(params.id, body)))
+  ,makeRoute('POST', '/assist/v3/operations/:id/revisions', async ({ res, params, body }) => send(res, 202, await reviseAssistOperation(params.id, body)))
   ,makeRoute('GET', '/assist/v3/change-batches/:id/review', async ({ res, params }) => send(res, 200, await getChangeBatchReview(params.id)))
   ,makeRoute('POST', '/assist/v3/change-batches/:id/review/apply', async ({ res, params, body }) => send(res, 200, await applyChangeBatch(params.id, body.target_hash)))
   ,makeRoute('POST', '/assist/v3/change-batches/:id/review/rollback', async ({ res, params, body }) => send(res, 200, await rollbackChangeBatch(params.id, body.target_hash || null)))

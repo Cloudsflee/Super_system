@@ -4,6 +4,7 @@ import { HttpError } from './http.mjs';
 import { ASSIST_DIR } from './config.mjs';
 import { hashString, id, maskSecretsDeep, now } from '../../../packages/shared/index.mjs';
 import { publicWorktree } from './assist-v3-worktree.mjs';
+import { publicOperation } from './assist-operation-metadata.mjs';
 
 export const TERMINAL_TURN_STATES = new Set(['completed', 'failed', 'stopped', 'interrupted']);
 export const TURN_MODES = new Set(['default', 'plan']);
@@ -13,16 +14,19 @@ const REASONING_PATTERN = /^[a-zA-Z][a-zA-Z0-9._-]{0,63}$/;
 export function requireProject(state, projectId) {
   const project = state.projects.find((item) => item.id === projectId && !item.deleted_at);
   if (!project) throw new HttpError(404, { error: 'project_not_found' });
+  if (project.lifecycle_operation) throw new HttpError(423, { error: 'project_lifecycle_operation_in_progress', operation: project.lifecycle_operation.type || null });
   return project;
 }
 export function requireSession(state, sessionId, includeArchived = false, includeDeleted = false) {
   const session = state.assist_sessions.find((item) => item.id === sessionId && item.version === 3);
   if (!session || (!includeArchived && session.archived_at) || (!includeDeleted && session.deleted_at)) throw new HttpError(404, { error: 'assist_session_not_found' });
+  requireProject(state, session.project_id);
   return session;
 }
 export function requireTurn(state, turnId) {
   const turn = state.assist_turns.find((item) => item.id === turnId);
   if (!turn) throw new HttpError(404, { error: 'assist_turn_not_found' });
+  requireSession(state, turn.session_id, true);
   return turn;
 }
 export function activeTurn(state, sessionId) { return state.assist_turns.find((item) => item.session_id === sessionId && ['preparing', 'running', 'waiting_user_input', 'waiting_approval', 'stopping'].includes(item.status)) || null; }
@@ -45,7 +49,7 @@ export function resolveScope(state, project, type, scopeId) {
   return { type, id: node.id, workspaceId: node.workspace_id || state.workspaces.find((item) => item.workflow_node_id === node.id)?.id || null, nodeId: node.id, node };
 }
 
-export function makeSession({ actor, project, scope, title, parentSessionId, viewContext }) {
+export function makeSession({ actor, project, scope, title, parentSessionId, viewContext, clarificationPolicy = 'ask' }) {
   const created = now();
   return {
     id: id('asst'), version: 3, project_id: project.id, workspace_id: scope.workspaceId, node_id: scope.nodeId,
@@ -56,7 +60,7 @@ export function makeSession({ actor, project, scope, title, parentSessionId, vie
     forked_from_session_id: null, forked_from_turn_id: null, forked_from_codex_turn_id: null,
     historical_shared_codex_thread_id: null, delete_batch_id: null, deleted_at: null,
     purge_after: null, purge_stage: null, purge_retry_at: null,
-    active_change_batch_id: null, view_context: viewContext || {},
+    active_change_batch_id: null, view_context: viewContext || {}, clarification_policy: normalizeClarificationPolicy(clarificationPolicy),
     created_by_user_id: actor.id, created_at: created, updated_at: created
   };
 }
@@ -69,27 +73,30 @@ export function makeTurn({ actor, session, mode, content, input, attachmentIds, 
     configuration_id: configuration.configuration?.id || null,
     model: configuration.model, reasoning: configuration.reasoning, view_context: safeViewContext(input.view_context ?? session.view_context),
     context_pack_id: null, worktree_id: null, change_batch_id: null, attachment_ids: attachmentIds, attachment_manifest: [], codex_thread_id: null, codex_turn_id: null, usage: null,
-    code_access: null, code_read_only_reason: null,
+    code_access: null, code_read_only_reason: null, operation_reference_id: cleanText(input.operation_reference_id, 200) || null,
     review_status: 'pending', review: { status: 'pending', viewed_files: {}, comment_count: 0 },
     created_by_user_id: actor.id, started_at: null, completed_at: null, created_at: created, updated_at: created
   };
 }
 
 export function sessionSummary(state, session) {
+  const { runtime_affinity_key: _runtimeAffinityKey, ...visible } = session;
   const turns = state.assist_turns.filter((item) => item.session_id === session.id);
   const last = turns.sort((a, b) => String(b.updated_at).localeCompare(String(a.updated_at)))[0] || null;
   const descendants = sessionDescendantIds(state, session.id);
   const activeDescendants = descendants.filter((key) => !state.assist_sessions.find((item) => item.id === key)?.deleted_at).length;
-  return { ...session, deletable: Boolean(session.forked_from_session_id && !session.deleted_at), descendant_count: activeDescendants, deleted_descendant_count: descendants.length - activeDescendants, turn_count: turns.length, last_turn: last ? { id: last.id, mode: last.mode, status: last.status, updated_at: last.updated_at } : null };
+  return { ...visible, deletable: Boolean(session.forked_from_session_id && !session.deleted_at), descendant_count: activeDescendants, deleted_descendant_count: descendants.length - activeDescendants, turn_count: turns.length, last_turn: last ? { id: last.id, mode: last.mode, status: last.status, updated_at: last.updated_at } : null };
 }
 export function sessionDetail(state, session) {
+  const visible = sessionSummary(state, session);
   const turns = state.assist_turns.filter((item) => item.session_id === session.id).sort((a, b) => String(a.created_at).localeCompare(String(b.created_at)));
   const events = state.assist_events.filter((item) => item.session_id === session.id);
   const batch = state.assist_change_batches.find((item) => item.id === session.active_change_batch_id) || null;
-  return { ...session, change_batch: batch ? publicChangeBatch(batch, state.worktrees.find((item) => item.id === batch.worktree_id)) : null, turns: turns.map((turn) => turnDetail(state, turn, state.worktrees.find((item) => item.id === turn.worktree_id))), attachments: state.attachments.filter((item) => item.session_id === session.id).map(publicAttachment), last_event_id: Math.max(0, ...events.map((item) => Number(item.sequence) || 0)) };
+  return { ...visible, change_batch: batch ? publicChangeBatch(batch, state.worktrees.find((item) => item.id === batch.worktree_id)) : null, turns: turns.map((turn) => turnDetail(state, turn, state.worktrees.find((item) => item.id === turn.worktree_id))), attachments: state.attachments.filter((item) => item.session_id === session.id).map(publicAttachment), last_event_id: Math.max(0, ...events.map((item) => Number(item.sequence) || 0)) };
 }
 export function turnDetail(state, turn, worktree) {
-  return { ...turn, worktree: publicWorktree(worktree), attachments: (turn.attachment_ids || []).map((key) => state.attachments.find((item) => item.id === key)).filter(Boolean).map(publicAttachment), actions: state.ui_action_intents.filter((item) => item.turn_id === turn.id), operations: state.assist_operations.filter((item) => item.turn_id === turn.id), user_inputs: state.runtime_user_inputs.filter((item) => item.turn_id === turn.id).map(publicRuntimeUserInput), comments: state.human_reviews.filter((item) => item.target_type === 'assist_turn' && item.target_id === turn.id), last_event_id: Math.max(0, ...state.assist_events.filter((item) => item.turn_id === turn.id).map((item) => Number(item.sequence) || 0)) };
+  const { attachment_manifest: _attachmentManifest, test_adapter: _testAdapter, test_response: _testResponse, ...visible } = turn;
+  return { ...visible, worktree: publicWorktree(worktree), attachments: (turn.attachment_ids || []).map((key) => state.attachments.find((item) => item.id === key)).filter(Boolean).map(publicAttachment), actions: [], operations: state.assist_operations.filter((item) => item.turn_id === turn.id).map(publicOperation), user_inputs: state.runtime_user_inputs.filter((item) => item.turn_id === turn.id).map(publicRuntimeUserInput), comments: state.human_reviews.filter((item) => item.target_type === 'assist_turn' && item.target_id === turn.id), last_event_id: Math.max(0, ...state.assist_events.filter((item) => item.turn_id === turn.id).map((item) => Number(item.sequence) || 0)) };
 }
 export function publicAttachment(item) {
   return { id: item.id, project_id: item.project_id, session_id: item.session_id || null, turn_id: item.turn_id || null, kind: item.kind, title: item.title || item.label || item.kind, original_filename: item.original_filename || item.title || null, file_ref_id: item.file_ref_id || null, relative_path: item.relative_path || null, url: item.url || null, content_type: item.detected_mime_type || item.content_type || null, client_mime_type: item.client_mime_type || item.content_type || null, detected_mime_type: item.detected_mime_type || item.content_type || null, preview_kind: item.preview_kind || 'metadata', storage_status: item.storage_status || 'metadata_only', content_deleted_at: item.content_deleted_at || null, size_bytes: item.size_bytes || 0, sha256: item.sha256 || null, selection: item.selection || null, model_policy: item.model_policy || 'artifact_only', status: item.status, created_at: item.created_at, updated_at: item.updated_at };
@@ -103,13 +110,13 @@ export function normalizeAttachmentIds(state, session, values) {
 }
 export function normalizeAttachmentKind(value) {
   const kind = String(value || 'project_attachment');
-  if (!['project_file', 'monaco_file', 'selection', 'image', 'project_attachment', 'artifact', 'text'].includes(kind)) throw new HttpError(400, { error: 'unsupported_attachment_kind' });
+  if (!['project_file', 'monaco_file', 'selection', 'image', 'project_attachment', 'artifact', 'text', 'url'].includes(kind)) throw new HttpError(400, { error: 'unsupported_attachment_kind' });
   return kind;
 }
 export function modelPolicy(kind, type) {
   if (kind === 'artifact') return 'artifact_only';
   if (kind === 'image' || /^image\/(?:png|jpeg|webp|gif)$/i.test(type)) return 'image';
-  if (kind === 'selection' || kind === 'text' || /^text\//i.test(type) || /(?:json|javascript|typescript|xml|yaml|markdown)$/i.test(type)) return 'injectable';
+  if (kind === 'selection' || kind === 'text' || kind === 'url' || /^text\//i.test(type) || /(?:json|javascript|typescript|xml|yaml|markdown)$/i.test(type)) return 'injectable';
   return 'artifact_only';
 }
 export function safeRelativePath(value) {
@@ -151,6 +158,11 @@ export function normalizeTurnCollaborationMode(input = {}) {
   else if (legacy) throw removedOrUnsupportedMode(legacy);
   if (explicit && mapped && explicit !== mapped) throw new HttpError(400, { error: 'assist_collaboration_mode_conflict', collaboration_mode: explicit, mode: legacy });
   return explicit || mapped || 'default';
+}
+export function normalizeClarificationPolicy(value) {
+  const policy = String(value || 'ask').toLowerCase();
+  if (!['ask', 'auto_recommend'].includes(policy)) throw new HttpError(400, { error: 'assist_clarification_policy_invalid', clarification_policy: policy });
+  return policy;
 }
 export function safeViewContext(value) {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return {};

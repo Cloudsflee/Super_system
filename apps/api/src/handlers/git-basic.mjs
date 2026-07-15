@@ -5,6 +5,7 @@ import { ensureCodeChange } from '../helpers.mjs';
 import { git, gitSummary, isGitRepo, parseGitStatus } from '../git-utils.mjs';
 import { generateBranchName, now, unique } from '../../../../packages/shared/index.mjs';
 import { assertManagedProjectWritable, materializeCodeSource } from '../project-lifecycle.mjs';
+import { assertProjectLifecycleIdle, withProjectLifecycleLock } from '../project-lifecycle-operations.mjs';
 
 function runBundle(state, runId) {
   const run = state.node_runs.find((item) => item.id === runId);
@@ -17,16 +18,17 @@ function runBundle(state, runId) {
 }
 
 export async function bindRepo({ res, params, body }) {
+  return withProjectLifecycleLock(params.id, () => bindRepoLocked({ res, params, body }));
+}
+async function bindRepoLocked({ res, params, body }) {
   const snapshot = await import('../state.mjs').then((module) => module.readState());
-  const sourceProject = snapshot.projects.find((item) => item.id === params.id);
-  if (!sourceProject) throw new HttpError(404, 'project_not_found');
+  const sourceProject = assertProjectLifecycleIdle(snapshot.projects.find((item) => item.id === params.id));
   const requested = body.local_path || body.repo_path || sourceProject.repo_path || sourceProject.workspace_root;
   if (!requested) throw new HttpError(400, { error: 'repository_path_required' });
   const checkout = await materializeCodeSource(sourceProject, { type: isGitRepo(requested) ? 'local_git' : 'local_directory', path: requested }, body.operation_key || 'legacy-local-bind');
   const result = await mutate((state) => {
     const actor = owner(state);
-    const project = state.projects.find((item) => item.id === params.id);
-    if (!project) throw new HttpError(404, 'project_not_found');
+    const project = assertProjectLifecycleIdle(state.projects.find((item) => item.id === params.id));
 
     const repoPath = checkout.repo_path;
     if (!isGitRepo(repoPath)) throw new HttpError(409, { error: 'git_repository_required', repo_path: repoPath });
@@ -83,6 +85,7 @@ export async function captureDiff({ res, params }) {
   const result = await mutate(async (state) => {
     const actor = owner(state);
     const bundle = runBundle(state, params.id);
+    assertManagedProjectWritable(bundle.project);
     const diff = collectDiff(bundle);
     const diffRef = await saveArtifact('git', `${bundle.run.id}.diff.patch`, diff.text || '# no diff\n', { run_id: bundle.run.id });
     state.file_refs.push(diffRef);

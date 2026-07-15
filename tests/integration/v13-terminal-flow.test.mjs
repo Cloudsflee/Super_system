@@ -47,6 +47,7 @@ try {
   openTerminalIds.add(terminal.id);
   assert.equal(terminal.runtime, 'host_dev');
   assert.equal(terminal.status, 'ready');
+  await assertWebSocketRejected(port, terminal.id);
 
   const first = await connect(port, terminal.id);
   await first.waitFor((messages) => messages.some((item) => item.type === 'status' && item.session?.status === 'connected'));
@@ -168,6 +169,15 @@ function connect(port, id) {
     }); });
     ws.on('message', (raw) => { try { messages.push(JSON.parse(String(raw))); } catch {} });
     ws.on('error', reject);
+  });
+}
+function assertWebSocketRejected(port, id) {
+  return new Promise((resolve, reject) => {
+    const ws = new WebSocket(`ws://127.0.0.1:${port}/assist/v3/terminal-sessions/${id}/ws`, { headers: { Origin: 'https://cross-origin.example' } });
+    const timer = setTimeout(() => reject(new Error('cross-origin terminal websocket was not rejected')), 5000);
+    ws.once('unexpected-response', (_request, response) => { clearTimeout(timer); assert.equal(response.statusCode, 403); response.resume(); resolve(); });
+    ws.once('open', () => { clearTimeout(timer); ws.close(); reject(new Error('cross-origin terminal websocket opened')); });
+    ws.once('error', () => undefined);
   });
 }
 async function waitForMessages(messages, predicate) { for (let i = 0; i < 200; i++) { const result = predicate(messages); if (result) return result === true ? messages : result; await delay(25); } throw new Error(`terminal message timeout: ${JSON.stringify(messages.slice(-5))}`); }

@@ -1,8 +1,8 @@
 import http from 'node:http';
 import fs from 'node:fs';
 import path from 'node:path';
-import { PORT, WEB_DIR } from './src/config.mjs';
-import { dispatch, HttpError, notFound, safeReadStream, send } from './src/http.mjs';
+import { HOST, PORT, WEB_DIR } from './src/config.mjs';
+import { allowLocalBrowserOrigin, decodeUrlPathname, dispatch, HttpError, notFound, safeReadStream, send } from './src/http.mjs';
 import { ensureRuntime } from './src/state.mjs';
 import { systemRoutes } from './src/routes/system.mjs';
 import { projectRoutes } from './src/routes/projects.mjs';
@@ -94,11 +94,11 @@ async function serveStatic(req, res, pathname) {
 const server = http.createServer(async (req, res) => {
   try {
     const parsed = new URL(req.url || '/', 'http://aiws.local');
-    const pathname = decodeURIComponent(parsed.pathname || '/');
-    const routePath = pathname.startsWith('/api/') ? pathname.slice(4) : pathname;
+    const encodedPathname = parsed.pathname || '/', pathname = decodeUrlPathname(encodedPathname);
+    const routePath = encodedPathname.startsWith('/api/') ? encodedPathname.slice(4) : encodedPathname;
+    allowLocalBrowserOrigin(req, res);
     if (req.method === 'OPTIONS') {
       res.writeHead(204, {
-        'access-control-allow-origin': '*',
         'access-control-allow-methods': 'GET,POST,PUT,PATCH,DELETE,OPTIONS',
         'access-control-allow-headers': 'content-type, authorization, range, if-none-match, x-aiws-browser-id, x-aiws-btw-token',
         'access-control-max-age': '86400'
@@ -153,6 +153,6 @@ function isSpaPath(pathname) {
     || /^\/projects\/[^/]+\/(workflow|onboarding|ide|nodes\/[^/]+)$/.test(pathname);
 }
 
-server.listen(PORT, () => {
-  console.log(`AI Workspace System V${AIWS_VERSION} running at http://localhost:${PORT}`);
+server.listen(PORT, HOST, () => {
+  console.log(`AI Workspace System V${AIWS_VERSION} running at http://${HOST}:${PORT}`);
 });

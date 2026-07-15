@@ -5,6 +5,7 @@ import { maskSecretsDeep, now } from '../../../../packages/shared/index.mjs';
 import { applyConfigRevision } from '../config-revision-service.mjs';
 import { pushV3Event } from '../assist-v3-events.mjs';
 import { cancelPendingTurnApprovals, hasActiveTurn } from '../assist-v3-domain.mjs';
+import { assertProjectLifecycleIdle, withProjectLifecycleLock } from '../project-lifecycle-operations.mjs';
 
 export const approvalV13Routes = [
   makeRoute('GET', '/approvals', listApprovals),
@@ -30,13 +31,18 @@ async function decideApproval({ res, params, body }) {
   if (!['approve_apply', 'reject', 'defer'].includes(body.decision)) throw new HttpError(400, { error: 'invalid_approval_decision' });
   if (body.decision === 'approve_apply' && ['proposal', 'change_proposal'].includes(params.type)) {
     const snapshot = await readState(), proposal = snapshot.change_proposals.find((item) => item.id === params.id);
-    if (proposal?.apply_action?.type === 'config_revision_apply') return send(res, 200, await applyConfigRevision(proposal.id, body));
+    const project = proposal ? assertProjectReferenceIdle(snapshot, proposal.project_id) : null;
+    if (proposal?.apply_action?.type === 'config_revision_apply') {
+      const apply = () => applyConfigRevision(proposal.id, body);
+      return send(res, 200, await (project ? withProjectLifecycleLock(project.id, apply) : apply()));
+    }
   }
   const result = await mutate((state) => {
     const actor = owner(state);
     if (['proposal', 'change_proposal'].includes(params.type)) {
       const proposal = state.change_proposals.find((item) => item.id === params.id);
       if (!proposal) throw new HttpError(404, { error: 'proposal_not_found' });
+      assertProjectReferenceIdle(state, proposal.project_id);
       const repeated = repeatedProposalDecision(proposal, body.decision); if (repeated) return { item: proposalItem(proposal), decision: body.decision, idempotent: true };
       assertExpected(proposal, body);
       if (body.decision === 'defer') {
@@ -65,6 +71,7 @@ async function decideApproval({ res, params, body }) {
 function decideRuntime(state, actor, approvalId, body) {
   const approval = state.runtime_approvals.find((item) => item.id === approvalId);
   if (!approval) throw new HttpError(404, { error: 'runtime_approval_not_found' });
+  assertProjectReferenceIdle(state, approval.project_id);
   const repeated = repeatedRuntimeDecision(approval, body.decision); if (repeated) return { item: runtimeItem(approval), decision: body.decision, idempotent: true };
   assertExpected(approval, body);
   if (approval.status !== 'pending') throw new HttpError(409, { error: 'runtime_approval_resolved' });
@@ -99,3 +106,4 @@ function runtimeItem(item) {
 function tracePayload(proposal, verb) { return { project_id: proposal.project_id, workspace_id: proposal.workspace_id, node_id: proposal.node_id, target_type: 'change_proposal', target_id: proposal.id, summary: `${verb}：${proposal.title}` }; }
 function repeatedProposalDecision(item, decision) { return (decision === 'approve_apply' && item.status === 'applied') || (decision === 'reject' && item.status === 'rejected') || (decision === 'defer' && item.status === 'pending' && item.attention_state === 'queued'); }
 function repeatedRuntimeDecision(item, decision) { return (decision === 'approve_apply' && item.status === 'approved') || (decision === 'reject' && item.status === 'rejected') || (decision === 'defer' && item.status === 'pending' && item.attention_state === 'queued'); }
+function assertProjectReferenceIdle(state, projectId) { return projectId ? assertProjectLifecycleIdle(state.projects.find((item) => item.id === projectId)) : null; }

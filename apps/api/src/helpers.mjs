@@ -4,14 +4,14 @@ import { git, isGitRepo } from './git-utils.mjs';
 export function nodeBundle(state, nodeId) {
   const node = state.workflow_nodes.find((n) => n.id === nodeId);
   const workflow = node ? state.workflows.find((w) => w.id === node.workflow_id) : null;
-  const project = workflow ? state.projects.find((p) => p.id === workflow.project_id) : null;
+  const project = workflow ? state.projects.find((p) => p.id === workflow.project_id && !p.deleted_at) : null;
   const workspace = node ? (state.workspaces.find((w) => w.workflow_node_id === node.id) || state.workspaces.find((w) => w.id === node.workspace_id)) : null;
   const contract = node ? (state.node_contracts.find((c) => c.id === node.current_contract_id) || state.node_contracts.filter((c) => c.node_id === node.id).sort((a, b) => b.version - a.version)[0]) : null;
   return { node, workflow, project, workspace, contract };
 }
 
 export function projectBundle(state, projectId) {
-  const project = state.projects.find((p) => p.id === projectId);
+  const project = state.projects.find((p) => p.id === projectId && !p.deleted_at);
   if (!project) return null;
   const workflows = state.workflows.filter((w) => w.project_id === project.id);
   const workflowIds = new Set(workflows.map((w) => w.id));

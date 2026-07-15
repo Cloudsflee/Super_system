@@ -4,7 +4,7 @@ AI Workspace System V1.6 是一个本地优先、自托管、MCP-first 但不是
 
 当前版本默认采用 **JSON-local 本地持久化**，不依赖外部数据库即可启动；同时保留 Prisma/PostgreSQL、Redis、Worker、CodexRunner、GitHub PR 等后续替换边界。
 
-> **交付状态**：V1.6 使用 state schema 15、Compose project `aiws-v16` 和独立 external volume `aiws-data-v16`。首次 `up` 从只读 `aiws-data-v14` 经带标签临时迁移卷克隆和验收；重复 `up` 不覆盖非空目标卷。正式切换与清理证据见 [`docs/v1.6-cutover.md`](docs/v1.6-cutover.md) 和 [`docs/completion-audit.md`](docs/completion-audit.md)。
+> **交付状态**：V1.7 使用 state schema 16、Compose project `aiws-v17` 和独立 external volume `aiws-data-v17`。首次 `up` 从只读 `aiws-data-v16` 经带标签临时迁移卷克隆和验收；重复 `up` 不覆盖非空目标卷。正式切换见 [`docs/v1.7-cutover.md`](docs/v1.7-cutover.md)。
 
 ## 1. 项目能力概览
 
@@ -37,11 +37,11 @@ AI Workspace System V1.6 是一个本地优先、自托管、MCP-first 但不是
 
 Node.js、pnpm、Git、SSH、tar 和生产 Web 都包含在镜像中。宿主开发模式另需 Node.js 24、Corepack/pnpm 与 Git。
 
-业务状态仍使用 JSON-local，不需要数据库或 Redis；V1.6 生产数据保存在固定命名卷 `aiws-data-v16`。
+业务状态仍使用 JSON-local，不需要数据库或 Redis；V1.7 生产数据保存在固定命名卷 `aiws-data-v17`。
 
 已使用过 Codex 的用户可直接导入本机 `CODEX_HOME` / `~/.codex` 中的 `config.toml` 与 `auth.json`；页面只返回脱敏摘要，确认后才复制 API Key 或官方 OAuth bundle，并重建 AIWS 托管 Profile。未使用过 Codex 的用户可在 Setup 选择官方 Device Login 或手动 API 配置。
 
-V1.6 启动脚本会自动生成只读导入 override，并在首次切换前停止 V1.5 app 与 4318 preview。脚本从只读源卷创建、验证临时归档，再解压到空的 `aiws-data-v16`；源/目标 state 哈希、集合、记录 ID、文件和安全符号链接均进入迁移凭据。默认失败会保留两个卷并恢复原先运行的旧服务；只有 `-DiscardUnmigratable` / `--discard-unmigratable` 才会删除失败目标并启动全新 schema 15。Codex Runner 只读挂载当前 Turn 实际引用的附件目录。
+V1.7 启动脚本会自动生成只读导入 override，并在首次切换前停止 V1.6 app 与 4318 preview。脚本从只读 `aiws-data-v16` 创建并验证临时归档，再解压到空的 `aiws-data-v17`；源/目标 state 哈希、集合、记录 ID、文件和安全符号链接均进入迁移凭据。失败时停止 V1.7、保留两个卷并恢复原先运行的 V1.6 服务，不自动丢弃或重建目标数据。Codex Runner 只读挂载当前 Turn 实际引用的附件目录。
 
 ## 3. 快速启动项目
 
@@ -65,7 +65,7 @@ bash scripts/aiws.sh up
 http://127.0.0.1:4317
 ```
 
-默认构建 `aiws-app:1.6.0` 与 `aiws-codex-runner:1.6.0-codex-0.144.0`，正式挂载 `aiws-data-v16`。首次升级流程由启动脚本执行只读克隆、schema 迁移、健康检查和迁移验收；后续启动保持幂等。
+默认构建 `aiws-app:1.7.0`、`aiws-verify:1.7.0` 与 `aiws-codex-runner:1.7.0-codex-0.144.0`，正式挂载 `aiws-data-v17`。首次升级流程由启动脚本执行只读克隆、schema 15→16 迁移、健康检查和迁移验收；后续启动保持幂等。
 
 显式配置项目只读导入根：
 
@@ -95,8 +95,9 @@ corepack pnpm dev
 ### 3.3 手动构建镜像
 
 ```bash
-docker build --target production -t aiws-app:1.6.0 .
-docker build -f docker/codex-runner.Dockerfile -t aiws-codex-runner:1.6.0-codex-0.144.0 .
+docker build --target production -t aiws-app:1.7.0 .
+docker build --target verify -t aiws-verify:1.7.0 .
+docker build -f docker/codex-runner.Dockerfile -t aiws-codex-runner:1.7.0-codex-0.144.0 .
 docker build --target windows-bridge-export --output type=local,dest=./dist/bridge .
 docker compose up -d
 ```
@@ -127,7 +128,7 @@ http://localhost:4320
 
 ### 3.5 数据目录
 
-生产数据固定使用 `aiws-data-v16`；`down` 默认保留该卷，只有 `reset --confirm` / `reset -Confirm` 会删除它。升级成功后，旧源卷和历史备份仍会保留，直到显式执行 `purge-legacy --confirm` / `purge-legacy -Confirm`。该清理不可恢复，但不会删除仓库内旧迁移、兼容 API、回归测试或历史文档。
+生产数据固定使用 `aiws-data-v17`；`down` 默认保留该卷，只有 `reset --confirm` / `reset -Confirm` 会删除它。升级成功后，`aiws-data-v16` 和 V1.6 镜像继续保留，直到单独执行并确认 `purge-legacy`，且清理前会验证 V1.7 迁移凭据。该清理不会删除仓库内旧迁移、兼容 API、回归测试或历史文档。
 
 迁移数据确实无法使用且已经接受空白启动时，显式执行：
 
@@ -167,7 +168,7 @@ bash scripts/aiws.sh purge-legacy --confirm
 
 ### 4.2 V1.6 使用流程
 
-1. 用 V1.6 启动脚本把只读 `aiws-data-v14` 克隆到 `aiws-data-v16`，迁移 schema 14 到 15 并完成验收；Host Profile 在容器部署中不可用。
+1. 用 V1.7 启动脚本把只读 `aiws-data-v16` 克隆到 `aiws-data-v17`，迁移 schema 15 到 16 并完成验收；Host Profile 在容器部署中不可用。
 2. 创建 draft Project，选择“从 0 头脑风暴”或“基于已有项目”。
 3. 恢复或完成 Intake，审查版本化 Project Brief 和初始 workflow draft。
 4. 已有代码源先经 staging 与安全校验，再 clone/copy 到命名卷内受管 repo；宿主导入源保持只读。
@@ -313,7 +314,7 @@ GitHub 集成最终采用“托管 GitHub App + 用户自带 GitHub App”双模
 
 | 路径 | 用途 |
 |---|---|
-| `.ai-workspace/` | 宿主开发数据及临时发布记录；生产状态位于 `aiws-data-v16`，不会以宿主目录替换。`purge-legacy` 会清空其中的 `backups/`。 |
+| `.ai-workspace/` | 宿主开发数据及临时发布记录；生产状态位于 `aiws-data-v17`，不会以宿主目录替换。`purge-legacy` 会清空其中的 `backups/`。 |
 | `.git/` | Git 版本库元数据，由 Git 自动维护。 |
 | `apps/` | 应用层代码，包含 API 服务、前端页面和 worker 入口。 |
 | `packages/` | 可复用模块与共享领域逻辑，供 API、Worker、测试和后续扩展复用。 |
@@ -341,6 +342,7 @@ GitHub 集成最终采用“托管 GitHub App + 用户自带 GitHub App”双模
 | `开发计划v1.3.md` / `测试计划v1.3.md` | V1.3 onboarding、受管 workspace、IDE、CLI、审批和配置治理增量。 |
 | `开发计划v1.4.md` / `测试计划v1.4.md` | V1.4 完全容器化、Runner 生命周期、只读导入与 Docker 验收增量。 |
 | `开发计划v1.6.md` / `测试计划v1.6.md` | V1.6 真实 Fork、BTW、上下文菜单、文件引用/预览与 schema 15 安全迁移。 |
+| `开发计划v1.7.md` / `测试计划v1.7.md` | V1.7 澄清策略、Brief V2、持久工作流草稿、能力目录与 schema 16 独立卷迁移。 |
 | `tempmd.md` | V1.2 计划生成前的历史需求与决策备忘。 |
 
 ## 7. `apps/` 子目录说明
@@ -394,7 +396,7 @@ GitHub 集成最终采用“托管 GitHub App + 用户自带 GitHub App”双模
 - `.ai-workspace/` 已被 `.gitignore` 忽略，适合保存本机运行和调试数据。
 - 删除 `.ai-workspace/` 后再次启动，会重新初始化宿主开发状态；该操作不影响生产卷。
 
-V1.6 生产容器使用相同目录结构，根位于命名卷 `aiws-data-v16` 的 `/var/lib/aiws`，状态 schema 为 15。`down` 保留卷；只允许通过带显式确认的运维脚本执行 reset 或旧环境清理。
+V1.7 生产容器使用相同目录结构，根位于命名卷 `aiws-data-v17` 的 `/var/lib/aiws`，状态 schema 为 16。`down` 保留卷；只允许通过带显式确认的运维脚本执行 reset 或旧环境清理。
 
 ## 11. Legacy 可选基础设施
 
@@ -523,7 +525,7 @@ $env:AIWS_PORT="4320"; .\scripts\aiws.ps1 up
 
 ### 14.4 页面没有旧数据
 
-生产部署检查 `docker volume inspect aiws-data-v16`。首次切换时 V1.6 只读打开 `aiws-data-v14`，经临时迁移卷复制到新卷后才迁移 schema；非空 `aiws-data-v16` 不会被重复 `up` 覆盖。宿主开发模式仍检查 `.ai-workspace/data/state.json`。
+生产部署检查 `docker volume inspect aiws-data-v17`。首次切换时 V1.7 只读打开 `aiws-data-v16`，经临时迁移卷复制到新卷后才迁移 schema；非空 `aiws-data-v17` 不会被重复 `up` 覆盖。宿主开发模式仍检查 `.ai-workspace/data/state.json`。
 
 ### 14.5 Codex 不可用
 

@@ -8,6 +8,8 @@ const required = [
   'apps/web/src/features/nodes/renderers/ExecutionWorkspace.tsx', 'apps/web/src/components/assist/AssistDrawer.tsx',
   'apps/web/src/features/projects/onboarding/ProjectOnboardingPage.tsx',
   'apps/web/src/features/assist/AssistWorkbench.tsx', 'apps/web/src/features/assist/TerminalPanel.tsx',
+  'apps/web/src/features/assist/TurnTimeline.tsx', 'apps/web/src/features/assist/AssistComposer.tsx',
+  'apps/web/src/features/projects/onboarding/BriefWorkspace.tsx',
   'apps/web/src/features/assist/DiffReviewPanel.tsx', 'apps/web/src/components/approvals/ApprovalCenter.tsx'
 ];
 for (const file of required) assert.ok(fs.existsSync(file), `${file} exists`);
@@ -24,7 +26,14 @@ for (const capability of ['<Editor', '/files/content', '/files/diff', '/test-tas
 const assist = read('apps/web/src/components/assist/AssistDrawer.tsx');
 for (const capability of ['EventSource', 'view_context', 'executeAction', '/actions/']) assert.ok(assist.includes(capability), `${capability} connected`);
 const workbench = read('apps/web/src/features/assist/AssistWorkbench.tsx');
-for (const capability of ['surface-${ui.assistSurface}', 'surface="docked"', 'surface="floating"', 'surface="fullscreen"', "setAssistSurface('minimized')", 'ThreadSidebar', 'TerminalPanel', 'DiffReviewPanel']) assert.ok(workbench.includes(capability), `Assist V3 ${capability} connected`);
+for (const capability of ['surface-${ui.assistSurface}', 'SurfaceMenu', 'surfaceOptions', "setAssistSurface('minimized')", 'ThreadSidebar', 'TerminalPanel', 'DiffReviewPanel']) assert.ok(workbench.includes(capability), `Assist V3 ${capability} connected`);
+const timeline = read('apps/web/src/features/assist/TurnTimeline.tsx');
+for (const capability of ['reconnecting', '正在重新连接', 'TurnRuntimeDetails']) assert.ok(timeline.includes(capability), `Assist timeline ${capability} connected`);
+assert.equal(timeline.includes('实时事件已连接'), false, 'healthy Assist event stream stays quiet');
+const composer = read('apps/web/src/features/assist/AssistComposer.tsx');
+for (const capability of ['clarification-segment', 'composer-plan-toggle', '添加需求文档、设计稿或参考链接']) assert.ok(composer.includes(capability), `Assist composer ${capability} connected`);
+const brief = read('apps/web/src/features/projects/onboarding/BriefWorkspace.tsx');
+for (const capability of ['brief-mobile-tabs', 'brief-outline', 'workflow-draft-panel']) assert.ok(brief.includes(capability), `Brief workspace ${capability} connected`);
 const terminal = read('apps/web/src/features/assist/TerminalPanel.tsx');
 for (const capability of ['@xterm/xterm', 'WebSocket', "signal: 'SIGINT'", "type: 'resize'"]) assert.ok(terminal.includes(capability), `Terminal ${capability} connected`);
 const review = read('apps/web/src/features/assist/DiffReviewPanel.tsx');

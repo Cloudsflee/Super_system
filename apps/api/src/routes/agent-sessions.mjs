@@ -1,6 +1,7 @@
 import { HttpError, makeRoute, send } from '../http.mjs';
 import { addTrace, mutate, owner, readState } from '../state.mjs';
 import { createAgentSession, createSubSubmission } from '../../../../packages/shared/index.mjs';
+import { assertProjectLifecycleIdle } from '../project-lifecycle-operations.mjs';
 
 export const agentSessionRoutes = [
   makeRoute('GET', '/agent-sessions', listAgentSessions),
@@ -20,8 +21,7 @@ async function listAgentSessions({ res, query }) {
 async function createAgentSessionRoute({ res, body }) {
   const result = await mutate((state) => {
     const actor = owner(state);
-    const project = state.projects.find((item) => item.id === body.project_id);
-    if (!project) throw new HttpError(404, { error: 'project_not_found' });
+    const project = assertProjectLifecycleIdle(state.projects.find((item) => item.id === body.project_id));
     const scopeType = body.scope_type || 'project';
     if (!['project', 'node'].includes(scopeType)) throw new HttpError(400, { error: 'invalid_agent_session_scope' });
     if (scopeType === 'node' && !state.workflow_nodes.some((item) => item.id === body.scope_id && state.workflows.some((workflow) => workflow.id === item.workflow_id && workflow.project_id === project.id))) throw new HttpError(404, { error: 'node_not_found' });
@@ -55,6 +55,7 @@ async function createSubmissionRoute({ res, params, body }) {
     const actor = owner(state);
     const from = state.agent_sessions.find((item) => item.id === params.id);
     if (!from) return { error: 'agent_session_not_found' };
+    assertProjectLifecycleIdle(state.projects.find((item) => item.id === from.project_id));
     const to = state.agent_sessions.find((item) => item.id === (body.to_session_id || from.parent_session_id)) || null;
     if (!to || to.project_id !== from.project_id) throw new HttpError(409, { error: 'parent_agent_session_required' });
     const submission = createSubSubmission({
@@ -82,9 +83,10 @@ async function createNodeSubmissionRoute({ res, params, body }) {
   const result = await mutate((state) => {
     const actor = owner(state), node = state.workflow_nodes.find((item) => item.id === params.id);
     const workflow = state.workflows.find((item) => item.id === node?.workflow_id);
-    const project = state.projects.find((item) => item.id === workflow?.project_id);
+    if (!node || !workflow) throw new HttpError(404, { error: 'node_workspace_not_found' });
+    const project = assertProjectLifecycleIdle(state.projects.find((item) => item.id === workflow?.project_id));
     const workspace = state.workspaces.find((item) => item.id === node?.workspace_id);
-    if (!node || !project || !workspace) throw new HttpError(404, { error: 'node_workspace_not_found' });
+    if (!workspace) throw new HttpError(404, { error: 'node_workspace_not_found' });
     let top = state.agent_sessions.filter((item) => item.project_id === project.id && item.scope_type === 'project' && item.status === 'active').at(-1);
     if (!top) { top = createAgentSession({ projectId: project.id, workspaceId: project.current_workspace_id, scopeType: 'project', scopeId: project.id, title: `${project.title} Codex`, actorId: actor.id }); state.agent_sessions.push(top); addTrace(state, 'agent_session.created', { project_id: project.id, workspace_id: project.current_workspace_id, target_type: 'agent_session', target_id: top.id, summary: `创建 Codex 会话：${top.title}` }, actor.id); }
     let child = state.agent_sessions.filter((item) => item.project_id === project.id && item.scope_type === 'node' && item.scope_id === node.id && item.status === 'active').at(-1);

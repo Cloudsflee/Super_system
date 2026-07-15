@@ -4,6 +4,7 @@ import { applyContractPatch, approveProposal, createChangeProposal, createNodeWo
 import { codexAuthMatchesProfile, isThirdPartyProvider } from '../codex-service.mjs';
 import { proposalTargetHash } from '../proposal-target.mjs';
 import { applyProposalAtomically } from '../proposal-atomic.mjs';
+import { assertProjectLifecycleIdle } from '../project-lifecycle-operations.mjs';
 
 export const changeProposalRoutes = [
   makeRoute('GET', '/change-proposals', listProposals),
@@ -24,8 +25,7 @@ async function listProposals({ res, query }) {
 async function createProposalRoute({ res, body }) {
   const result = await mutate((state) => {
     const actor = owner(state);
-    const project = state.projects.find((item) => item.id === body.project_id);
-    if (!project) throw new HttpError(404, { error: 'project_not_found' });
+    const project = assertProjectLifecycleIdle(state.projects.find((item) => item.id === body.project_id));
     const proposal = createChangeProposal({
       projectId: project?.id || body.project_id,
       workspaceId: body.workspace_id || null,
@@ -54,6 +54,7 @@ async function approveProposalRoute({ res, params }) {
   const result = await mutate((state) => {
     const actor = owner(state), proposal = state.change_proposals.find((item) => item.id === params.id);
     if (!proposal) return { error: 'proposal_not_found' };
+    assertProposalProjectIdle(state, proposal);
     if (proposal.target_hash_mode === 'state' && proposalTargetHash(state, proposal) !== proposal.target_hash) return { error: 'proposal_stale' };
     try { approveProposal(proposal, actor.id); } catch (error) { return { error: error.message }; }
     proposal.revision = Number(proposal.revision || 1) + 1;
@@ -67,6 +68,7 @@ async function rejectProposalRoute({ res, params, body }) {
   const result = await mutate((state) => {
     const actor = owner(state), proposal = state.change_proposals.find((item) => item.id === params.id);
     if (!proposal) return { error: 'proposal_not_found' };
+    assertProposalProjectIdle(state, proposal);
     if (proposal.target_hash_mode === 'state' && proposalTargetHash(state, proposal) !== proposal.target_hash) return { error: 'proposal_stale' };
     try { rejectProposal(proposal, actor.id, body.reason || '用户拒绝'); } catch (error) { return { error: error.message }; }
     proposal.attention_state = 'resolved'; proposal.revision = Number(proposal.revision || 1) + 1;
@@ -80,6 +82,7 @@ async function applyProposalRoute({ res, params }) {
   const result = await mutate((state) => {
     const actor = owner(state), proposal = state.change_proposals.find((item) => item.id === params.id);
     if (!proposal) return { error: 'proposal_not_found' };
+    assertProposalProjectIdle(state, proposal);
     if (proposal.status !== 'approved' && proposal.status !== 'applied') return { error: 'proposal_not_approved' };
     let applied;
     try { applied = applyProposalAtomically(state, proposal, actor, { revision: proposal.revision, target_hash: proposal.target_hash }); }
@@ -215,3 +218,7 @@ function connectWorkflowNodes(state, proposal, action) {
 function dependsOn(state, node, targetId, visited = new Set()) { if (node.id === targetId) return true; if (visited.has(node.id)) return false; visited.add(node.id); return (node.dependencies || []).some((item) => { const parent = state.workflow_nodes.find((candidate) => candidate.id === item.node_id); return parent ? dependsOn(state, parent, targetId, visited) : false; }); }
 
 function refreshGraph(state, workflow) { const nodes = state.workflow_nodes.filter((item) => item.workflow_id === workflow.id); workflow.graph_json = { nodes: nodes.map((node) => ({ id: node.id, type: node.type, label: node.title, position: node.position })), edges: nodes.flatMap((node) => (node.dependencies || []).filter((item) => item.node_id).map((item, index) => ({ id: `${item.node_id}-${node.id}-${index}`, source: item.node_id, target: node.id }))) }; workflow.updated_at = now(); }
+
+function assertProposalProjectIdle(state, proposal) {
+  return proposal.project_id ? assertProjectLifecycleIdle(state.projects.find((item) => item.id === proposal.project_id)) : null;
+}

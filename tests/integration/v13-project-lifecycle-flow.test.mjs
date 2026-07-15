@@ -82,20 +82,42 @@ try {
   assert.equal(saved.path, 'README.md');
   assert.equal(fs.readFileSync(path.join(managedRepo, 'README.md'), 'utf8'), '# Managed copy\n');
   assert.deepEqual(sourceSnapshot(source), original);
+  const attachmentForm = new FormData(); attachmentForm.set('file', new Blob(['project attachment sentinel'], { type: 'text/plain' }), 'sentinel.txt');
+  const attachmentResponse = await fetch(`http://127.0.0.1:${port}/assist/v3/sessions/${created.assist_session.id}/attachments/upload`, { method: 'POST', body: attachmentForm });
+  const managedAttachment = await attachmentResponse.json(); assert.equal(attachmentResponse.status, 201, JSON.stringify(managedAttachment));
+  const managedAttachmentPath = path.join(fixture.home, 'attachments', projectId, managedAttachment.id, managedAttachment.sha256);
+  assert.equal(fs.existsSync(managedAttachmentPath), true);
+  await api(port, `/projects/${projectId}/purge`, 'POST', { confirm_title: 'V1.3 Managed Project' }, 409, 'project_not_trashed');
+  assert.equal(fs.existsSync(managedRepo), true, 'active project purge must not remove managed files');
+  await server.stop();
+  const seededArtifact = seedProjectPurgeDependents(path.join(fixture.home, 'data', 'state.json'), { projectId, workspaceId: confirmed.project.current_workspace_id });
+  const transientFiles = seedTransientFiles(fixture.home);
+  server = await startApi({ port, home: fixture.home, ccSwitch: fixture.ccSwitch });
+  const recoveredState = JSON.parse(fs.readFileSync(path.join(fixture.home, 'data', 'state.json'), 'utf8'));
+  assert.equal(recoveredState.node_runs.find((item) => item.id === 'run-purge-late').status, 'failed');
+  assert.equal(recoveredState.import_jobs.find((item) => item.id === 'import-purge-late').error_code, 'service_restarted');
+  for (const file of transientFiles) assert.equal(fs.existsSync(file), false, `startup removes stale staging file ${file}`);
 
   const trashed = await api(port, `/projects/${projectId}/trash`, 'POST', {});
   assert.ok(trashed.project.deleted_at);
   assert.equal(fs.existsSync(path.join(fixture.home, 'workspaces', projectId)), false);
   assert.equal((await api(port, '/projects?deleted=only')).some((item) => item.id === projectId), true);
+  await api(port, `/projects/${projectId}`, 'GET', undefined, 404, 'project_not_found');
   const restoredProject = await api(port, `/projects/${projectId}/restore`, 'POST', {});
   assert.equal(restoredProject.project.deleted_at, null);
   assert.equal(fs.existsSync(managedRepo), true);
   await api(port, `/projects/${projectId}/trash`, 'POST', {});
+  await server.stop(); seedInterruptedPurge(path.join(fixture.home, 'data', 'state.json'), projectId);
+  server = await startApi({ port, home: fixture.home, ccSwitch: fixture.ccSwitch });
+  await api(port, `/projects/${projectId}/restore`, 'POST', {}, 423, 'project_lifecycle_operation_in_progress');
   await api(port, `/projects/${projectId}/purge`, 'POST', { confirm_title: 'wrong title' }, 409, 'project_title_confirmation_mismatch');
   const purged = await api(port, `/projects/${projectId}/purge`, 'POST', { confirm_title: 'V1.3 Managed Project' });
   assert.equal(purged.purged, true);
+  assert.equal(fs.existsSync(managedAttachmentPath), false, 'project attachment content must be removed');
+  assert.equal(fs.existsSync(seededArtifact), false, 'project artifact content must be removed');
   await api(port, `/projects/${projectId}/onboarding`, 'GET', undefined, 404, 'project_not_found');
   assert.deepEqual(sourceSnapshot(source), original);
+  assertProjectPurgeComplete(path.join(fixture.home, 'data', 'state.json'), projectId);
 
   const missing = await api(port, '/projects', 'POST', { title: 'Existing source required' }, 201);
   await api(port, `/projects/${missing.project.id}/intake`, 'PUT', { mode: 'existing', answers: { goal: '不能创建空已有项目' } });
@@ -119,4 +141,46 @@ try {
 } finally {
   await server?.stop();
   cleanup(fixture.root);
+}
+
+function seedProjectPurgeDependents(stateFile, { projectId, workspaceId }) {
+  const state = JSON.parse(fs.readFileSync(stateFile, 'utf8')), at = new Date().toISOString();
+  const artifact = path.join(path.dirname(path.dirname(stateFile)), 'artifacts', 'purge-test', 'project-sentinel.log');
+  fs.mkdirSync(path.dirname(artifact), { recursive: true }); fs.writeFileSync(artifact, 'project artifact sentinel');
+  state.assist_sessions.push({ id: 'asst-purge-late', version: 3, project_id: projectId, workspace_id: workspaceId, clarification_policy: 'ask', status: 'idle', created_at: at, updated_at: at });
+  state.assist_turns.push({ id: 'turn-purge-late', session_id: 'asst-purge-late', project_id: projectId, status: 'completed', context_pack_id: 'ctx-purge-late', worktree_id: 'worktree-purge-late', created_at: at, updated_at: at });
+  state.assist_messages.push({ id: 'message-purge-late', session_id: 'asst-purge-late', turn_id: 'turn-purge-late' });
+  state.assist_events.push({ id: 'event-purge-late', sequence: 1, session_id: 'asst-purge-late', turn_id: 'turn-purge-late' });
+  state.ui_action_intents.push({ id: 'action-purge-late', session_id: 'asst-purge-late', turn_id: 'turn-purge-late', project_id: projectId });
+  state.assist_operations.push({ id: 'operation-purge-late', session_id: 'asst-purge-late', turn_id: 'turn-purge-late', project_id: projectId });
+  state.runtime_user_inputs.push({ id: 'input-purge-late', session_id: 'asst-purge-late', turn_id: 'turn-purge-late' });
+  state.context_packs.push({ id: 'ctx-purge-late', source_workspace_id: workspaceId, sufficiency_check_id: 'check-purge-late', content_file_ref_id: 'ref-context-purge' });
+  state.context_sufficiency_checks.push({ id: 'check-purge-late', project_id: projectId, target_type: 'assist_turn', target_id: 'turn-purge-late' });
+  state.worktrees.push({ id: 'worktree-purge-late', project_id: projectId });
+  state.assist_change_batches.push({ id: 'batch-purge-late', session_id: 'asst-purge-late', project_id: projectId, worktree_id: 'worktree-purge-late', status: 'closed' });
+  state.assist_checkpoints.push({ id: 'checkpoint-purge-late', batch_id: 'batch-purge-late', session_id: 'asst-purge-late', turn_id: 'turn-purge-late' });
+  state.terminal_sessions.push({ id: 'terminal-purge-late', project_id: projectId, assist_session_id: 'asst-purge-late', turn_id: 'turn-purge-late', worktree_id: 'worktree-purge-late', artifact_file_ref_id: 'ref-terminal-purge', status: 'exited' });
+  state.human_reviews.push({ id: 'review-purge-late', target_type: 'terminal_session', target_id: 'terminal-purge-late' });
+  state.node_runs.push({ id: 'run-purge-late', project_id: projectId, workspace_id: workspaceId, context_pack_id: 'ctx-purge-late', status: 'running' });
+  state.import_jobs.push({ id: 'import-purge-late', project_id: projectId, kind: 'code_source', operation_key: 'restart-recovery', status: 'processing', created_at: at, updated_at: at });
+  state.test_results.push({ id: 'test-result-purge-late', run_id: 'run-purge-late' });
+  state.assets.push({ id: 'asset-purge-late', project_id: projectId, workspace_id: workspaceId, run_id: 'run-purge-late' });
+  state.asset_versions.push({ id: 'asset-version-purge-late', asset_id: 'asset-purge-late' });
+  state.asset_relations.push({ id: 'asset-relation-purge-late', source_asset_id: 'asset-purge-late' });
+  state.runner_memory_candidates.push({ id: 'memory-purge-late', project_id: projectId, workspace_id: workspaceId });
+  state.file_refs.push({ id: 'ref-context-purge', absolute_path: artifact, meta: { context_pack_id: 'ctx-purge-late' } }, { id: 'ref-terminal-purge', meta: { terminal_session_id: 'terminal-purge-late' } });
+  fs.writeFileSync(stateFile, JSON.stringify(state, null, 2));
+  return artifact;
+}
+
+function seedInterruptedPurge(stateFile, projectId) { const state = JSON.parse(fs.readFileSync(stateFile, 'utf8')), project = state.projects.find((item) => item.id === projectId); project.lifecycle_operation = { id: 'plop-interrupted-test', type: 'purge', started_at: new Date().toISOString(), trash_path: project.trash_metadata?.path || project.trash_path, retain_managed_directory: false }; fs.writeFileSync(stateFile, JSON.stringify(state, null, 2)); }
+function seedTransientFiles(home) { const files = [path.join(home, 'staging', 'orphan-import', 'source.tmp'), path.join(home, 'attachment-staging', 'orphan.upload')]; for (const file of files) { fs.mkdirSync(path.dirname(file), { recursive: true }); fs.writeFileSync(file, 'stale'); } return files; }
+
+function assertProjectPurgeComplete(stateFile, projectId) {
+  const state = JSON.parse(fs.readFileSync(stateFile, 'utf8'));
+  const direct = Object.entries(state).filter(([, values]) => Array.isArray(values) && values.some((item) => item?.project_id === projectId)).map(([key]) => key);
+  assert.deepEqual(direct, [], `project-linked records remain: ${direct.join(', ')}`);
+  for (const [collection, idValue] of Object.entries({ context_packs: 'ctx-purge-late', context_sufficiency_checks: 'check-purge-late', asset_versions: 'asset-version-purge-late', asset_relations: 'asset-relation-purge-late', assist_messages: 'message-purge-late', assist_events: 'event-purge-late', runtime_user_inputs: 'input-purge-late', assist_checkpoints: 'checkpoint-purge-late', human_reviews: 'review-purge-late', file_refs: 'ref-context-purge', test_results: 'test-result-purge-late' })) {
+    assert.equal(state[collection].some((item) => item.id === idValue), false, `${collection} retains project data`);
+  }
 }

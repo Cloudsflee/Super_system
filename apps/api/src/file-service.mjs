@@ -6,6 +6,7 @@ import { command, HttpError } from './http.mjs';
 import { addTrace, mutate, owner, readState } from './state.mjs';
 import { hashString, id, now } from '../../../packages/shared/index.mjs';
 import { assertManagedProjectWritable } from './project-lifecycle.mjs';
+import { withProjectLifecycleLock } from './project-lifecycle-operations.mjs';
 
 const maxFileBytes = 2 * 1024 * 1024;
 const maxReferenceFileBytes = 25 * 1024 * 1024;
@@ -38,7 +39,8 @@ export async function inspectProjectFile(projectId, relative, maxBytes = maxRefe
   return { path: normalize(path.relative(root, target)), size: stat.size, sha256: hash.digest('hex') };
 }
 
-export async function saveProjectFile({ projectId, nodeId, relative, content, source = 'owner_editor' }) {
+export function saveProjectFile(input) { return withProjectLifecycleLock(input.projectId, () => saveProjectFileLocked(input)); }
+async function saveProjectFileLocked({ projectId, nodeId, relative, content, source = 'owner_editor' }) {
   if (typeof relative !== 'string' || !relative.trim()) throw new HttpError(400, { error: 'file_path_required' });
   if (typeof content !== 'string') throw new HttpError(400, { error: 'file_content_required' });
   if (Buffer.byteLength(String(content), 'utf8') > maxFileBytes) throw new HttpError(413, { error: 'file_too_large', max_bytes: maxFileBytes });
@@ -51,7 +53,8 @@ export async function saveProjectFile({ projectId, nodeId, relative, content, so
   const afterHash = hashString(String(content)), beforeHash = hashString(before);
   const diff = diffSummary(normalize(path.relative(root, target)), before, String(content));
   return mutate((state) => {
-    const actor = owner(state), node = state.workflow_nodes.find((item) => item.id === nodeId);
+    const actor = owner(state), currentProject = state.projects.find((item) => item.id === project.id), node = state.workflow_nodes.find((item) => item.id === nodeId);
+    assertManagedProjectWritable(currentProject);
     if (nodeId && !node) throw new HttpError(404, { error: 'node_not_found' });
     const change = { id: id('fch'), project_id: project.id, workspace_id: node?.workspace_id || project.current_workspace_id, node_id: node?.id || null, path: normalize(path.relative(root, target)), before_sha256: beforeHash, after_sha256: afterHash, bytes: Buffer.byteLength(String(content)), diff, source: normalizeSource(source), created_by_user_id: actor.id, created_at: now() };
     state.file_changes.push(change);
@@ -70,7 +73,8 @@ export async function projectDiff(projectId, relative = '') {
   return { path: relative || null, diff: result.stdout, stderr: result.stderr };
 }
 
-export async function runTestPreset({ projectId, nodeId, preset }) {
+export function runTestPreset(input) { return withProjectLifecycleLock(input.projectId, () => runTestPresetLocked(input)); }
+async function runTestPresetLocked({ projectId, nodeId, preset }) {
   if (!presets.has(preset)) throw new HttpError(400, { error: 'unsupported_test_preset', allowed: [...presets] });
   const { state: snapshot, root, project } = await resolveProjectPath(projectId, '', true);
   assertManagedProjectWritable(project);
@@ -79,7 +83,8 @@ export async function runTestPreset({ projectId, nodeId, preset }) {
   const invocation = taskInvocation(root, preset);
   const started = Date.now(), result = command(invocation.command, invocation.args, root, Number(process.env.AIWS_TEST_TASK_TIMEOUT_MS || 120000), {}, { inheritEnv: false });
   return mutate((state) => {
-    const actor = owner(state), node = state.workflow_nodes.find((item) => item.id === nodeId);
+    const actor = owner(state), currentProject = state.projects.find((item) => item.id === project.id), node = state.workflow_nodes.find((item) => item.id === nodeId);
+    assertManagedProjectWritable(currentProject);
     const task = { id: id('tsk'), project_id: project.id, workspace_id: node?.workspace_id || project.current_workspace_id, node_id: node?.id || null, preset, command: invocation.label, status: result.ok ? 'succeeded' : 'failed', stdout: result.stdout.slice(-30000), stderr: result.stderr.slice(-30000), duration_ms: Date.now() - started, created_by_user_id: actor.id, created_at: now(), completed_at: now() };
     state.test_tasks.push(task);
     addTrace(state, 'test.completed', { project_id: project.id, workspace_id: task.workspace_id, node_id: task.node_id, target_id: task.id, summary: `${preset}: ${task.status}`, data: { duration_ms: task.duration_ms, command: task.command } }, actor.id);

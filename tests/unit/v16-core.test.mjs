@@ -99,15 +99,21 @@ try {
   const childDelete = await lifecycle.deleteV3Session('fork-child', { clock: () => new Date('2026-07-14T02:00:00.000Z') });
   const parentDelete = await lifecycle.deleteV3Session(forked.id, { clock: () => new Date('2026-07-14T03:00:00.000Z') });
   assert.notEqual(childDelete.delete_batch_id, parentDelete.delete_batch_id);
+  const sessionService = await import('../../apps/api/src/assist-v3-sessions.mjs');
+  assert.equal((await sessionService.listV3Sessions({ project_id: 'project-v16' })).some((item) => item.id === forked.id), false, 'default session list excludes deleted branches');
+  assert.equal((await sessionService.listV3Sessions({ project_id: 'project-v16', deleted: 'include' })).some((item) => item.id === forked.id), true, 'deleted branches require an explicit include query');
+  assert.equal((await sessionService.listV3Sessions({ project_id: 'project-v16', deleted: 'only' })).every((item) => item.deleted_at), true);
   const parentRestore = await lifecycle.restoreDeletedV3Session(forked.id, { clock: () => new Date('2026-07-15T00:00:00.000Z') });
   assert.deepEqual(parentRestore.restored_session_ids, [forked.id]);
   assert.ok((await stateApi.readState()).assist_sessions.find((item) => item.id === 'fork-child').deleted_at, 'restore is limited to its deletion batch');
   assert.deepEqual((await lifecycle.restoreDeletedV3Session('fork-child', { clock: () => new Date('2026-07-15T00:00:00.000Z') })).restored_session_ids, ['fork-child']);
 
   const attachments = await import('../../apps/api/src/assist-attachments.mjs');
-  const sessions = await import('../../apps/api/src/assist-v3-sessions.mjs');
   const largeBytes = Buffer.alloc(2 * 1024 * 1024 + 1, 0xa5), largePath = path.join(repo, 'large.bin'); fs.writeFileSync(largePath, largeBytes);
-  const largeReference = await sessions.createV3Attachment('root-session', { kind: 'project_file', path: 'large.bin' });
+  await stateApi.mutate((state) => { state.projects[0].lifecycle_operation = { id: 'plop-attachment', type: 'trash' }; });
+  await assert.rejects(() => sessionService.createV3Attachment('root-session', { kind: 'project_file', path: 'large.bin' }), (error) => error.status === 423 && error.payload?.error === 'project_lifecycle_operation_in_progress');
+  await stateApi.mutate((state) => { state.projects[0].lifecycle_operation = null; });
+  const largeReference = await sessionService.createV3Attachment('root-session', { kind: 'project_file', path: 'large.bin' });
   assert.equal(largeReference.size_bytes, largeBytes.length); assert.equal(largeReference.sha256, cryptoHash(largeBytes));
   const outside = path.join(root, 'outside'), linked = path.join(repo, 'linked'); fs.mkdirSync(outside); fs.writeFileSync(path.join(outside, 'secret.txt'), 'outside');
   fs.symlinkSync(outside, linked, process.platform === 'win32' ? 'junction' : 'dir');
@@ -121,15 +127,38 @@ try {
   assert.equal(attachments.sniffMime(Buffer.from('<svg><script>alert(1)</script></svg>'), 'active.svg', 'image/svg+xml'), 'image/svg+xml');
   assert.equal(attachments.previewKind('image/svg+xml', 'active.svg'), 'text');
 
+  await stateApi.mutate((state) => {
+    const purgeAt = new Date().toISOString();
+    state.assist_turns.push({ id: 'purge-turn', session_id: forked.id, project_id: 'project-v16', status: 'completed', context_pack_id: 'purge-pack', worktree_id: 'purge-turn-worktree', created_at: purgeAt, updated_at: purgeAt });
+    state.assist_messages.push({ id: 'purge-message', session_id: forked.id, turn_id: 'purge-turn' });
+    state.assist_events.push({ id: 'purge-event', sequence: 1, session_id: forked.id, turn_id: 'purge-turn' });
+    state.ui_action_intents.push({ id: 'purge-action', session_id: forked.id, turn_id: 'purge-turn' });
+    state.assist_operations.push({ id: 'purge-operation', session_id: forked.id, turn_id: 'purge-turn' });
+    state.runtime_user_inputs.push({ id: 'purge-input', session_id: forked.id, turn_id: 'purge-turn' });
+    state.context_packs.push({ id: 'purge-pack', sufficiency_check_id: 'purge-check', content_file_ref_id: 'purge-context-ref' });
+    state.context_sufficiency_checks.push({ id: 'purge-check', target_type: 'assist_turn', target_id: 'purge-turn' });
+    state.worktrees.push({ id: 'purge-turn-worktree', project_id: 'project-v16' }, { id: 'purge-terminal-worktree', project_id: 'project-v16' });
+    state.terminal_sessions.push({ id: 'purge-terminal', project_id: 'project-v16', assist_session_id: forked.id, turn_id: 'purge-turn', worktree_id: 'purge-terminal-worktree', artifact_file_ref_id: 'purge-terminal-ref', status: 'exited' });
+    state.human_reviews.push({ id: 'purge-turn-review', target_type: 'assist_turn', target_id: 'purge-turn' }, { id: 'purge-terminal-review', target_type: 'terminal_session', target_id: 'purge-terminal' });
+    state.file_refs.push({ id: 'purge-context-ref', meta: { context_pack_id: 'purge-pack' } }, { id: 'purge-terminal-ref', meta: { terminal_session_id: 'purge-terminal' } });
+  });
   await lifecycle.deleteV3Session(forked.id, { clock: () => new Date('2026-07-16T00:00:00.000Z') });
   const purgeClock = () => new Date('2026-08-16T00:00:00.000Z');
+  await stateApi.mutate((state) => { state.projects[0].deleted_at = '2026-08-01T00:00:00.000Z'; });
+  assert.deepEqual(await lifecycle.purgeExpiredDeletedSessions({ clock: purgeClock, rpc: async () => ({}) }), [], 'session sweeper defers to a trashed project');
+  assert.equal((await stateApi.readState()).assist_sessions.some((item) => item.id === forked.id), true);
+  await stateApi.mutate((state) => { state.projects[0].deleted_at = null; });
   const failedPurge = await lifecycle.purgeExpiredDeletedSessions({ clock: purgeClock, rpc: async () => { throw new Error('native cleanup offline'); } });
   assert.equal(failedPurge[0].purged, false);
   const retryState = await stateApi.readState(), retrySession = retryState.assist_sessions.find((item) => item.id === forked.id);
   assert.equal(retrySession.purge_stage, 'retry_pending'); assert.equal(retrySession.purge_retry_at, '2026-08-16T00:05:00.000Z');
   assert.deepEqual(await lifecycle.purgeExpiredDeletedSessions({ clock: () => new Date('2026-08-16T00:04:59.000Z'), rpc: async () => ({}) }), []);
   const purged = await lifecycle.purgeExpiredDeletedSessions({ clock: () => new Date('2026-08-16T00:05:01.000Z'), rpc: async () => { throw new Error('thread not found'); } });
-  assert.equal(purged[0].purged, true); assert.equal((await stateApi.readState()).assist_sessions.some((item) => item.id === forked.id || item.id === 'fork-child'), false);
+  const purgedState = await stateApi.readState();
+  assert.equal(purged[0].purged, true); assert.equal(purgedState.assist_sessions.some((item) => item.id === forked.id || item.id === 'fork-child'), false);
+  for (const [collection, recordIds] of Object.entries({ assist_turns: ['purge-turn'], assist_messages: ['purge-message'], assist_events: ['purge-event'], ui_action_intents: ['purge-action'], assist_operations: ['purge-operation'], runtime_user_inputs: ['purge-input'], context_packs: ['purge-pack'], context_sufficiency_checks: ['purge-check'], worktrees: ['purge-turn-worktree', 'purge-terminal-worktree'], terminal_sessions: ['purge-terminal'], human_reviews: ['purge-turn-review', 'purge-terminal-review'], file_refs: ['purge-context-ref', 'purge-terminal-ref'] })) {
+    assert.equal(purgedState[collection].some((item) => recordIds.includes(item.id)), false, `${collection} retains deleted Assist resources`);
+  }
 
   btw = await import('../../apps/api/src/assist-btw.mjs');
   const closed = [], conversations = [];

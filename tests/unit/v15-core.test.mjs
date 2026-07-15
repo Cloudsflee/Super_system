@@ -10,22 +10,23 @@ process.env.AIWS_HOME = path.join(root, 'home');
 try {
   const powershellOps = fs.readFileSync(path.join(process.cwd(), 'scripts', 'aiws.ps1'), 'utf8');
   const posixOps = fs.readFileSync(path.join(process.cwd(), 'scripts', 'aiws.sh'), 'utf8');
-  const releaseOps = fs.readFileSync(path.join(process.cwd(), 'scripts', 'v16-release.mjs'), 'utf8');
+  const releaseOps = fs.readFileSync(path.join(process.cwd(), 'scripts', 'v17-release.mjs'), 'utf8');
   const releaseOrchestrator = fs.readFileSync(path.join(process.cwd(), 'docker', 'release_orchestrator.mjs'), 'utf8');
   const releaseVolume = fs.readFileSync(path.join(process.cwd(), 'docker', 'release_volume.mjs'), 'utf8');
   const backupTool = fs.readFileSync(path.join(process.cwd(), 'docker', 'backup_archive.py'), 'utf8');
   for (const script of [powershellOps, posixOps]) {
-    assert.ok(script.includes('aiws-app:1.6.0'));
-    assert.ok(script.includes('aiws-codex-runner:1.6.0-codex-0.144.0'));
-    assert.ok(script.includes('aiws-data-v16'));
-    assert.ok(script.includes('v16-release.mjs'));
+    assert.ok(script.includes('aiws-app:1.7.0'));
+    assert.ok(script.includes('aiws-codex-runner:1.7.0-codex-0.144.0'));
+    assert.ok(script.includes('aiws-data-v16'), 'V1.6 remains the read-only migration source');
+    assert.ok(script.includes('aiws-data-v17'));
+    assert.ok(script.includes('v17-release.mjs'));
     assert.ok(script.includes('pnpm-lock.yaml'));
     assert.ok(script.includes('codex-cli 0.144.0'));
     assert.ok(script.includes('windows-bridge-export'));
   }
   assert.ok(releaseOps.includes('runReleaseCli'));
   assert.ok(releaseVolume.includes('source_changed_after_clone'));
-  assert.ok(releaseOrchestrator.includes('discarded_unmigratable'));
+  assert.ok(releaseOrchestrator.includes('failed_source_preserved'));
   assert.ok(releaseVolume.includes('purge_legacy_requires_confirm'));
   for (const boundary of ['def create_archive', 'def sanitize_archive', 'def transient_codex_path', 'archive_symlink_target_outside']) assert.ok(backupTool.includes(boundary));
   const { resolveCodexInvocation } = await import('../../packages/runner-adapters/src/codex-command.mjs');
@@ -168,6 +169,24 @@ try {
   const persisted = await fsp.readFile(path.join(process.env.AIWS_HOME, 'data', 'state.json'), 'utf8');
   assert.equal(persisted.includes('SECRET_ANSWER_NEVER_PERSIST'), false);
   assert.equal((await stateApi.readState()).runtime_user_inputs[0].status, 'responded');
+
+  const choiceRequest = { itemId: 'validated-choice', questions: [{ id: 'scope', header: 'Scope', question: 'Choose scope', isOther: false, options: [{ label: 'safe', description: 'Safe scope' }] }] };
+  const firstChoiceWaiter = inputs.waitForAssistUserInput('session-v15', 'turn-secret', choiceRequest);
+  await waitUntil(async () => (await stateApi.readState()).runtime_user_inputs.length === 2);
+  assert.equal((await stateApi.readState()).runtime_user_inputs[1].questions[0].isOther, false);
+  const secondChoiceWaiter = inputs.waitForAssistUserInput('session-v15', 'turn-secret', choiceRequest);
+  await new Promise((resolve) => setTimeout(resolve, 20));
+  await assert.rejects(() => inputs.respondToAssistUserInput('turn-secret', 'validated-choice', { answers: {} }), (error) => error.payload?.error === 'runtime_user_input_answer_required');
+  await assert.rejects(() => inputs.respondToAssistUserInput('turn-secret', 'validated-choice', { answers: { scope: { answers: ['forged'] } } }), (error) => error.payload?.error === 'runtime_user_input_answer_not_allowed');
+  await inputs.respondToAssistUserInput('turn-secret', 'validated-choice', { answers: { scope: { answers: ['safe'], note: 'current request only' } } });
+  assert.deepEqual(await firstChoiceWaiter, { answers: { scope: { answers: ['safe'], note: 'current request only' } } });
+  assert.deepEqual(await secondChoiceWaiter, { answers: { scope: { answers: ['safe'], note: 'current request only' } } });
+  assert.equal((await fsp.readFile(path.join(process.env.AIWS_HOME, 'data', 'state.json'), 'utf8')).includes('current request only'), false);
+  const otherWaiter = inputs.waitForAssistUserInput('session-v15', 'turn-secret', { itemId: 'default-other', questions: [{ id: 'scope', header: 'Scope', question: 'Choose or customize', options: [{ label: 'safe', description: 'Safe scope' }] }] });
+  await waitUntil(async () => (await stateApi.readState()).runtime_user_inputs.length === 3);
+  assert.equal((await stateApi.readState()).runtime_user_inputs[2].questions[0].isOther, true);
+  await inputs.respondToAssistUserInput('turn-secret', 'default-other', { answers: { scope: { answers: ['custom scope'] } } });
+  assert.deepEqual(await otherWaiter, { answers: { scope: { answers: ['custom scope'] } } });
   console.log('V1.5 core unit tests passed');
 } finally {
   fs.rmSync(root, { recursive: true, force: true });

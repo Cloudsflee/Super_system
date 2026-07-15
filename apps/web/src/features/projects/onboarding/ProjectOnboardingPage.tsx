@@ -2,23 +2,24 @@ import {
   ArrowLeft, ArrowRight, BrainCircuit, CheckCircle2, FileStack, FolderGit2,
   LoaderCircle, RefreshCw, UploadCloud
 } from 'lucide-react';
-import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { api, json, multipart } from '../../../api/client';
 import { keys, useDeployment, useProjectOnboarding } from '../../../api/queries';
 import type {
-  ProjectCodeSource, ProjectIntakeMode, ProjectOnboarding, Workflow, WorkflowDraftNode
+  BriefSection, BriefTemplate, ProjectBrief, ProjectCodeSource, ProjectIntakeMode, ProjectOnboarding, Workflow, WorkflowDraft, WorkflowDraftNode
 } from '../../../api/types';
 import { FullPageState } from '../../../components/common/FullPageState';
 import { useUi } from '../../../state/ui';
 import {
-  BriefReview, CompletedOnboarding, ContextSources, StepButton, WorkflowReview,
+  CompletedOnboarding, StepButton,
   codeSource, contextFromRecord, emptyAnswers, hasSavedAnswers, intakePayload,
   shortHash, sourcePlaceholder, toAnswerDraft,
   type AnswerDraft, type ContextDraft
 } from './onboarding-support';
 import { useProjectBriefAssistSurface } from './useProjectBriefAssistSurface';
+import { BriefWorkspace } from './BriefWorkspace';
 
 type Step = 'mode' | 'intake' | 'review';
 type IntakeUpdate = Pick<ProjectOnboarding, 'project' | 'intake' | 'brief' | 'workflow_draft'>;
@@ -53,12 +54,12 @@ export function ProjectOnboardingPage() {
   const [sourceValue, setSourceValue] = useState('');
   const [uploadFiles, setUploadFiles] = useState<File[]>([]);
   const [contexts, setContexts] = useState<ContextDraft[]>([]);
-  const [workflow, setWorkflow] = useState<WorkflowDraftNode[]>([]);
   const hydrated = useRef('');
   const containerDeployment = deployment.data?.mode === 'container';
   const relativeImports = Boolean(containerDeployment && deployment.data?.imports.projects_root);
   const localPathAvailable = !containerDeployment || relativeImports;
   const sourceEntries = Object.entries(sourceLabels).filter(([value]) => localPathAvailable || value !== 'local_git');
+  const templates = useQuery({ queryKey: ['brief-templates'], queryFn: () => api<{ items: BriefTemplate[] }>('/brief-templates'), enabled: Boolean(projectId) });
 
   useProjectBriefAssistSurface(projectId, setBriefField);
 
@@ -72,7 +73,7 @@ export function ProjectOnboardingPage() {
   useEffect(() => {
     const value = query.data;
     if (!value) return;
-    const signature = `${value.intake?.revision || 0}:${value.brief?.version || 0}`;
+    const signature = `${value.project.id}:${value.intake?.revision || 0}`;
     if (hydrated.current === signature) return;
     hydrated.current = signature;
     const intakeMode = value.intake?.mode || null;
@@ -82,9 +83,9 @@ export function ProjectOnboardingPage() {
     if (source) {
       setSourceType(source.type);
       setSourceValue(source.path || source.url || source.repository_url || '');
-    }
+    } else { setSourceType('github'); setSourceValue(''); }
+    setUploadFiles([]);
     setContexts((value.intake?.context_sources || []).map((item, index) => contextFromRecord(item, index)));
-    setWorkflow(value.workflow_draft || []);
     setStep(intakeMode ? (value.brief && hasSavedAnswers(value.intake?.answers) ? 'review' : 'intake') : 'mode');
   }, [query.data]);
 
@@ -105,7 +106,7 @@ export function ProjectOnboardingPage() {
 
   const saveIntake = useMutation({
     mutationFn: () => api<IntakeUpdate>(`/projects/${projectId}/intake`, json('PUT', intakePayload(mode, answers, sourceType, sourceValue || uploadFiles[0]?.name || '', contexts, relativeImports))),
-    onSuccess: (result) => { mergeUpdate(result); setWorkflow(result.workflow_draft); setStep('review'); ui.toast('项目简报与工作流草案已更新'); },
+    onSuccess: (result) => { mergeUpdate(result); setStep('review'); ui.toast('项目简报与工作流草案已更新'); },
     onError: (error) => ui.toast(error.message, 'error')
   });
 
@@ -123,8 +124,32 @@ export function ProjectOnboardingPage() {
     onError: (error) => { void query.refetch(); ui.toast(error.message, 'error'); }
   });
 
+  const patchBrief = useMutation({
+    mutationFn: (operations: Array<Record<string, unknown> & { type: string }>) => api<ProjectBrief>(`/projects/${projectId}/briefs/${query.data?.brief?.id}`, json('PATCH', { expected_revision: query.data?.brief?.revision, operations })),
+    onSuccess: (brief) => client.setQueryData<ProjectOnboarding>(keys.onboarding(projectId || ''), (current) => current ? { ...current, brief, briefs: [brief, ...current.briefs.filter((item) => item.id !== brief.id)] } : current),
+    onError: (error) => { void query.refetch(); ui.toast(error.message, 'error'); }
+  });
+
+  const patchWorkflow = useMutation({
+    mutationFn: (operations: Array<Record<string, unknown> & { type: string }>) => api<WorkflowDraft>(`/projects/${projectId}/workflow-draft`, json('PATCH', { expected_revision: query.data?.workflow_draft?.revision, operations })),
+    onSuccess: (workflow_draft) => client.setQueryData<ProjectOnboarding>(keys.onboarding(projectId || ''), (current) => current ? { ...current, workflow_draft } : current),
+    onError: (error) => { void query.refetch(); ui.toast(error.message, 'error'); }
+  });
+
+  const saveTemplate = useMutation({
+    mutationFn: () => api<BriefTemplate>('/brief-templates', json('POST', { confirmed: true, title: `${query.data?.brief?.content.title || query.data?.project.title || '项目'}模板`, domain: 'general', sections: query.data?.brief?.content.sections || [], applicability: query.data?.brief?.content.summary || null })),
+    onSuccess: async () => { await client.invalidateQueries({ queryKey: ['brief-templates'] }); ui.toast('已保存到个人模板库'); },
+    onError: (error) => ui.toast(error.message, 'error')
+  });
+
+  const applyTemplate = useMutation({
+    mutationFn: (template: BriefTemplate) => api<ProjectBrief>(`/projects/${projectId}/briefs/${query.data?.brief?.id}/apply-template`, json('POST', { template_id: template.id, expected_revision: query.data?.brief?.revision })),
+    onSuccess: (brief) => { client.setQueryData<ProjectOnboarding>(keys.onboarding(projectId || ''), (current) => current ? { ...current, brief, briefs: [brief, ...current.briefs.filter((item) => item.id !== brief.id)] } : current); ui.toast('模板已无损合并到简报'); },
+    onError: (error) => { void query.refetch(); ui.toast(error.message, 'error'); }
+  });
+
   const confirm = useMutation({
-    mutationFn: () => api<{ project: ProjectOnboarding['project']; workflow: Workflow; route?: string }>(`/projects/${projectId}/onboarding/confirm`, json('POST', { workflow_nodes: workflow })),
+    mutationFn: () => { const workflow = normalizeWorkflowDraft(query.data?.workflow_draft, projectId || 'project'), currentBrief = query.data?.brief ? normalizeBrief(query.data.brief, query.data.project.title) : null; return api<{ project: ProjectOnboarding['project']; workflow: Workflow; route?: string }>(`/projects/${projectId}/onboarding/confirm`, json('POST', { workflow_nodes: workflow?.nodes || [], expected_brief_revision: currentBrief?.revision, expected_workflow_revision: workflow?.revision })); },
     onSuccess: async (result) => {
       await Promise.all([
         client.invalidateQueries({ queryKey: keys.projects }),
@@ -142,11 +167,13 @@ export function ProjectOnboardingPage() {
   if (query.isError || !query.data) return <FullPageState title="项目引导加载失败" detail={query.error?.message} retry={query.refetch} />;
   const data = query.data;
   if (data.project.status !== 'draft') return <CompletedOnboarding title={data.project.title} onOpen={() => navigate(`/projects/${data.project.id}/workflow`)} />;
+  const brief = data.brief ? normalizeBrief(data.brief, data.project.title) : null;
+  const workflowDraft = normalizeWorkflowDraft(data.workflow_draft, data.project.id);
   const sourceReady = mode !== 'existing' || data.project.managed_workspace_state === 'ready';
   const answersSaved = hasSavedAnswers(data.intake.answers);
   const latestImport = data.imports[0];
   const canSave = Boolean(mode && answers.goal.trim() && (mode !== 'existing' || sourceValue.trim() || uploadFiles.length));
-  const workflowReady = workflow.length > 0 && workflow.every((node) => node.title.trim() && node.goal.trim());
+  const workflowReady = Boolean(workflowDraft?.nodes.length && workflowDraft.nodes.every((node) => node.title.trim() && node.goal.trim()));
   const canConfirm = Boolean(data.can_confirm && answersSaved && workflowReady && sourceReady);
 
   return (
@@ -158,8 +185,8 @@ export function ProjectOnboardingPage() {
       </header>
       <nav className="onboarding-steps" aria-label="项目引导步骤">
         <StepButton index="1" label="选择起点" active={step === 'mode'} done={Boolean(mode)} onClick={() => setStep('mode')} />
-        <StepButton index="2" label="补充简报" active={step === 'intake'} done={Boolean(data.brief && mode)} disabled={!mode} onClick={() => setStep('intake')} />
-        <StepButton index="3" label="审查并激活" active={step === 'review'} done={false} disabled={!data.brief || !mode || !answersSaved} onClick={() => setStep('review')} />
+        <StepButton index="2" label="补充简报" active={step === 'intake'} done={Boolean(brief && mode)} disabled={!mode} onClick={() => setStep('intake')} />
+        <StepButton index="3" label="审查并激活" active={step === 'review'} done={false} disabled={!brief || !mode || !answersSaved} onClick={() => setStep('review')} />
       </nav>
 
       <div className="onboarding-content">
@@ -191,19 +218,15 @@ export function ProjectOnboardingPage() {
                 {['local_directory', 'archive'].includes(sourceType) && <label>或从浏览器上传<input type="file" multiple={sourceType === 'local_directory'} accept={sourceType === 'archive' ? '.zip,.tar,.tgz,.gz' : undefined} {...(sourceType === 'local_directory' ? { webkitdirectory: '', directory: '' } : {})} onChange={(event) => { const files = [...(event.target.files || [])]; setUploadFiles(files); if (files[0]) setSourceValue(files[0].webkitRelativePath || files[0].name); }} /><small>{uploadFiles.length ? `已选择 ${uploadFiles.length} 个文件` : '上传内容同样先进入 staging 校验'}</small></label>}
                 <p><CheckCircle2 size={13} />不会原地修改或删除外部目录和远端 Repository。</p>
               </section>}
-              <ContextSources value={contexts} onChange={setContexts} allowLocalPaths={localPathAvailable} relativePaths={relativeImports} />
             </aside>
           </div>
           <div className="stage-actions"><button className="button secondary" onClick={() => setStep('mode')}><ArrowLeft size={15} />返回</button><button className="button primary" disabled={!canSave || saveIntake.isPending} onClick={() => saveIntake.mutate()}>{saveIntake.isPending ? <LoaderCircle className="spin" size={15} /> : <FileStack size={15} />}保存并生成简报<ArrowRight size={15} /></button></div>
         </section>}
 
-        {step === 'review' && data.brief && <section className="onboarding-stage review-stage">
-          <div className="stage-heading"><span className="overline">BRIEF V{data.brief.version} · REVIEW</span><h2>审查项目简报与初始工作流</h2><p>确认后将原子创建节点并激活项目；工作流节点标题和目标可在此调整。</p></div>
+        {step === 'review' && brief && <section className="onboarding-stage review-stage">
+          <div className="stage-heading"><span className="overline">BRIEF V{brief.version} · REVIEW</span><h2>审查项目简报与初始工作流</h2><p>确认后将原子创建节点并激活项目；工作流节点标题和目标可在此调整。</p></div>
           {data.intake.last_error && <div className="onboarding-alert" role="alert"><strong>上次处理失败</strong><span>{data.intake.last_error}</span><button className="button secondary" onClick={() => setStep('intake')}><RefreshCw size={14} />修正输入</button></div>}
-          <div className="review-grid">
-            <BriefReview content={data.brief.content} />
-            <WorkflowReview value={workflow} onChange={setWorkflow} />
-          </div>
+          {workflowDraft && <BriefWorkspace brief={brief} workflow={workflowDraft} templates={templates.data?.items || []} busy={patchBrief.isPending || patchWorkflow.isPending || applyTemplate.isPending || saveTemplate.isPending} onBrief={async (operations) => { try { await patchBrief.mutateAsync(operations); return true; } catch { return false; } }} onWorkflow={async (operations) => { try { await patchWorkflow.mutateAsync(operations); return true; } catch { return false; } }} onSaveTemplate={() => saveTemplate.mutate()} onApplyTemplate={(template) => applyTemplate.mutate(template)} onSearchTemplates={() => { ui.setAssist(true); window.dispatchEvent(new CustomEvent('aiws:assist-prefill', { detail: { prompt: `请使用启用 Web Search 的 Profile，为“${brief.content.title}”检索 2-3 个权威简报模板，比较发布方、时效、适用性、局限、来源链接和推荐理由。` } })); }} />}
           {mode === 'existing' && <section className={`import-card ${sourceReady ? 'ready' : ''}`}>
             <div>{sourceReady ? <CheckCircle2 size={20} /> : <UploadCloud size={20} />}<span><strong>{sourceReady ? '受管代码副本已就绪' : '导入代码源到受管 workspace'}</strong><small>{sourceReady ? `源 hash ${shortHash(data.project.source_hash)}` : '确认外部源只读校验、clone/copy 和落盘结果后才能激活'}</small></span></div>
             {latestImport && <span className={`status ${latestImport.status === 'succeeded' ? 'ready' : latestImport.status === 'failed' ? 'failed' : 'pending'}`}>{latestImport.status}{latestImport.error_code ? ` · ${latestImport.error_code}` : ''}</span>}
@@ -214,4 +237,21 @@ export function ProjectOnboardingPage() {
       </div>
     </section>
   );
+}
+
+function normalizeWorkflowDraft(value: ProjectOnboarding['workflow_draft'] | unknown, projectId: string): WorkflowDraft | null {
+  if (!value) return null;
+  if (!Array.isArray(value)) return value as WorkflowDraft;
+  const ids = value.map((node, index) => String((node as Partial<WorkflowDraftNode>).id || `legacy-node-${index + 1}`));
+  const nodes = value.map((entry, index) => { const node = entry as Partial<WorkflowDraftNode> & { dependency_indexes?: number[] }; return { id: ids[index], type: node.type || 'execution', title: node.title || '新节点', goal: node.goal || node.title || '', dependency_ids: node.dependency_ids || (node.dependency_indexes || []).map((dependencyIndex) => ids[dependencyIndex]).filter(Boolean), position: node.position || { x: 80 + index * 310, y: 120 }, order: index }; });
+  return { id: `legacy-draft-${projectId}`, project_id: projectId, revision: 1, nodes };
+}
+
+function normalizeBrief(value: ProjectBrief, projectTitle: string): ProjectBrief {
+  if (Array.isArray(value.content?.sections)) return { ...value, revision: value.revision || value.version || 1 };
+  const content = value.content as ProjectBrief['content'] & Record<string, unknown>, definitions: Array<[string, string, 'markdown' | 'list', unknown]> = [
+    ['goal', '核心目标', 'markdown', content.goal], ['users', '目标用户', 'list', content.users], ['scope_in', '范围内', 'list', content.scope?.in], ['scope_out', '范围外', 'list', content.scope?.out], ['constraints', '约束', 'list', content.constraints], ['milestones', '里程碑', 'list', content.milestones], ['acceptance_criteria', '验收标准', 'list', content.acceptance_criteria], ['risks', '风险', 'list', content.risks], ['open_questions', '开放问题', 'list', content.open_questions]
+  ];
+  const sections = definitions.map(([key, title, type, raw]) => type === 'markdown' ? { id: `${value.id}-${key}`, semantic_key: key, title, type, markdown: String(raw || '') } : { id: `${value.id}-${key}`, semantic_key: key, title, type, items: Array.isArray(raw) ? raw.map(String) : [] }) as BriefSection[];
+  return { ...value, revision: value.revision || value.version || 1, content: { ...content, schema_version: 2, title: `${projectTitle}简报`, summary: String(content.goal || '尚未形成项目摘要'), sections, template_ref: null, material_references: [] } };
 }

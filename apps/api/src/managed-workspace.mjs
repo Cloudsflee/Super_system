@@ -7,6 +7,7 @@ export function managedProjectRoot(projectId) { return path.join(WORKSPACE_DIR, 
 export function managedRepoPath(projectId) { return path.join(managedProjectRoot(projectId), 'repo'); }
 export function assertManagedProjectWritable(project) {
   if (!project || project.deleted_at) throw new HttpError(404, { error: 'project_not_found' });
+  if (project.lifecycle_operation) throw new HttpError(423, { error: 'project_lifecycle_operation_in_progress', operation: project.lifecycle_operation.type || null });
   if (project.status !== 'active' || project.onboarding_state !== 'confirmed') throw new HttpError(409, { error: 'project_onboarding_required', onboarding_route: `/projects/${project.id}/onboarding` });
   const repo = project.repo_path || '', expected = managedRepoPath(project.id);
   const valid = project.managed_workspace_state === 'ready'

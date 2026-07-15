@@ -11,6 +11,9 @@ const checks = [
   ['V1.6 dev plan', '开发计划v1.6.md', 'V1.6-14'],
   ['V1.6 test plan', '测试计划v1.6.md', 'P0/P1 用例必须 100%'],
   ['V1.6 cutover appendix', 'docs/v1.6-cutover.md', '27810352c6abe6b36c5be57c17c375acce8571b2b1b262050e8e6b1b6f85f48f'],
+  ['V1.7 dev plan', '开发计划v1.7.md', 'state schema 16'],
+  ['V1.7 test plan', '测试计划v1.7.md', '四种组合'],
+  ['V1.7 cutover guide', 'docs/v1.7-cutover.md', 'aiws-data-v17'],
   ['Production Dockerfile', 'Dockerfile', 'FROM workspace-deps AS verify'],
   ['Offline native Node headers', 'Dockerfile', 'npm_config_nodedir=/usr/local'],
   ['Windows Bridge export', 'Dockerfile', 'FROM scratch AS windows-bridge-export'],
@@ -21,9 +24,9 @@ const checks = [
   ['Release volume audit', 'docker/release_volume.mjs', 'source_changed_after_clone'],
   ['Release clone orchestration', 'docker/release_orchestrator.mjs', 'initializeFromSource'],
   ['Offline verify refresh', 'docker/verify-refresh.Dockerfile', 'pnpm install --offline --frozen-lockfile'],
-  ['Explicit discard fallback', 'docker/release_orchestrator.mjs', 'discarded_unmigratable'],
+  ['Failed cutover preservation', 'docker/release_orchestrator.mjs', 'failed_source_preserved'],
   ['Legacy purge confirmation', 'docker/release_volume.mjs', 'purge_legacy_requires_confirm'],
-  ['V1.6 Compose', 'compose.yml', 'name: aiws-v16'],
+  ['V1.7 Compose', 'compose.yml', 'name: aiws-v17'],
   ['Runner image', 'docker/codex-runner.Dockerfile', 'ARG CODEX_VERSION=0.144.0'],
   ['PowerShell bridge operations', 'scripts/aiws.ps1', "@('install','start','stop','status','uninstall')"],
   ['PowerShell backup validation', 'scripts/aiws.ps1', 'backup_validation_failed'],
@@ -55,6 +58,19 @@ const checks = [
   ['Schema 14 collections', 'apps/api/src/state-migration-v14.mjs', 'host_bridge_devices'],
   ['Atomic migration backup', 'apps/api/src/state-migration-v14.mjs', 'migration_failed_and_backup_corrupt'],
   ['Schema 15 migration', 'apps/api/src/state-migration-v15.mjs', 'STATE_SCHEMA_VERSION = 15'],
+  ['Schema 16 migration', 'apps/api/src/state-migration-v16.mjs', 'STATE_SCHEMA_VERSION = 16'],
+  ['Brief V2 domain', 'apps/api/src/brief-workflow-domain.mjs', 'schema_version: 2'],
+  ['Brief revision operations', 'apps/api/src/project-brief-service.mjs', 'expected_revision'],
+  ['Workflow draft persistence', 'apps/api/src/workflow-draft-service.mjs', 'workflow_draft_revision_conflict'],
+  ['Assist capability manifest', 'packages/shared/src/assist-capabilities.mjs', 'ASSIST_CAPABILITY_MANIFEST'],
+  ['Manifest project tool generation', 'apps/api/src/assist-project-tool-spec.mjs', 'projectCapabilityToolSpec'],
+  ['Manifest project tool execution', 'apps/api/src/assist-project-operation-ledger.mjs', 'handleProjectCapabilityTool'],
+  ['Server capability operation isolation', 'apps/api/src/assist-operation-metadata.mjs', "item.execution_layer !== 'server'"],
+  ['Assist capability route', 'apps/api/src/routes/assist-v3.mjs', "'GET', '/assist/v3/capabilities'"],
+  ['Clarification policy route', 'apps/api/src/routes/assist-v3.mjs', "'PATCH', '/assist/v3/sessions/:id'"],
+  ['Targeted operation revisions', 'apps/api/src/routes/assist-v3.mjs', '/assist/v3/operations/:id/revisions'],
+  ['Brief template routes', 'apps/api/src/routes/project-onboarding-v13.mjs', '/brief-templates'],
+  ['Workflow draft routes', 'apps/api/src/routes/project-onboarding-v13.mjs', '/workflow-draft'],
   ['Official Runner normalization', 'apps/api/src/state-migration-v15.mjs', 'LEGACY_OFFICIAL_RUNNER_PATTERN'],
   ['Shared Fork isolation', 'apps/api/src/state-migration-v15.mjs', 'historical_shared_codex_thread_id'],
   ['Native thread Fork', 'apps/api/src/assist-session-lifecycle.mjs', "method: 'thread/fork'"],
@@ -76,7 +92,9 @@ const checks = [
   ['Batch checkpoints', 'apps/api/src/assist-change-batches.mjs', 'state.assist_checkpoints.push'],
   ['Batch review API', 'apps/api/src/routes/assist-v3.mjs', '/assist/v3/change-batches/:id/review/apply'],
   ['Dynamic page tools', 'apps/api/src/assist-operations.mjs', "name: 'aiws_page'"],
-  ['Operation conflict', 'apps/api/src/assist-operations.mjs', 'assist_operation_undo_conflict'],
+  ['Operation conflict response', 'apps/api/src/assist-operation-waiters.mjs', 'assist_operation_undo_conflict'],
+  ['Operation conflict values', 'apps/api/src/assist-operations.mjs', 'conflict: { before:'],
+  ['Operation conflict retry', 'apps/api/src/assist-operations.mjs', 'retryingConflict ? original.current_hash'],
   ['Compensating Undo', 'apps/api/src/assist-operations.mjs', 'inverse_of: original.id'],
   ['Terminal capabilities', 'apps/api/src/routes/terminal-v13.mjs', '/assist/v3/terminal-capabilities'],
   ['Host Bridge pairing', 'apps/api/src/routes/host-bridge-v15.mjs', '/assist/v3/host-bridge/pairing'],
@@ -91,7 +109,10 @@ const checks = [
   ['Desktop composer model', 'apps/web/src/features/assist/AssistComposer.tsx', 'composer-text-control'],
   ['One-shot Plan UI', 'apps/web/src/features/assist/AssistComposer.tsx', 'composer-plan-toggle'],
   ['Goal card', 'apps/web/src/features/assist/AssistWorkbench.tsx', '<GoalCard'],
-  ['Activity ledger', 'apps/web/src/features/assist/AssistWorkbench.tsx', '<ActivityLedger'],
+  ['Runtime details disclosure', 'apps/web/src/features/assist/TurnRuntimeDetails.tsx', '运行详情'],
+  ['Clarification control', 'apps/web/src/features/assist/AssistComposer.tsx', 'clarification-segment'],
+  ['Independent Plan control', 'apps/web/src/features/assist/AssistComposer.tsx', 'composer-plan-toggle'],
+  ['Brief V2 workspace', 'apps/web/src/features/projects/onboarding/BriefWorkspace.tsx', 'brief-mobile-tabs'],
   ['Runtime chooser', 'apps/web/src/features/assist/AssistWorkbench.tsx', '<TerminalRuntimeSelector'],
   ['Request user input UI', 'apps/web/src/features/assist/UserInputCard.tsx', 'Codex 需要你的输入'],
   ['Forced Undo confirmation', 'apps/web/src/features/assist/OperationReceipt.tsx', '确认强制撤回'],
@@ -108,6 +129,11 @@ const checks = [
   ['V1.6 release Docker flow', 'tests/release/v16-volume-flow.test.mjs', 'V1.6 Docker release volume flow tests passed'],
   ['V1.6 Assist files integration', 'tests/integration/v16-assist-files-flow.test.mjs', 'V1.6 Assist files and native Fork integration tests passed'],
   ['V1.6 Web interactions', 'apps/web/src/test/assist-v16-interactions.test.tsx', 'Assist V1.6 interactions'],
+  ['V1.7 core unit', 'tests/unit/v17-core.test.mjs', 'V1.7 core unit tests passed'],
+  ['V1.7 release unit', 'tests/unit/v17-release.test.mjs', 'V1.7 release volume unit tests passed'],
+  ['V1.7 Assist and Brief integration', 'tests/integration/v17-assist-brief-flow.test.mjs', 'V1.7 Assist, Brief, and Workflow integration tests passed'],
+  ['V1.7 Web interactions', 'apps/web/src/test/assist-v17-interactions.test.tsx', 'Assist V1.7 interactions'],
+  ['V1.7 Docker release volume flow', 'tests/release/v17-volume-flow.test.mjs', 'V1.7 Docker release volume flow tests passed'],
   ['Interaction audit', 'tests/e2e/smoke.test.mjs', 'auditButtons']
 ];
 
@@ -116,7 +142,7 @@ for (const [name, file, needle] of checks) {
   assert.ok(fs.readFileSync(file, 'utf8').includes(needle), `${name}: contains ${needle}`);
 }
 
-for (const removed of ['apps/api/src/routes/demo.mjs', 'tests/integration/demo-flow.test.mjs', 'apps/web/app.js', 'apps/web/boot.js']) assert.equal(fs.existsSync(removed), false, `${removed} removed`);
+for (const removed of ['apps/api/src/routes/demo.mjs', 'tests/integration/demo-flow.test.mjs', 'apps/web/app.js', 'apps/web/boot.js', 'apps/web/src/features/assist/ActivityLedger.tsx']) assert.equal(fs.existsSync(removed), false, `${removed} removed`);
 const runtimeFiles = [...walk('apps'), ...walk('packages')].filter((file) => /\.(mjs|js|ts|tsx|html|css|json)$/.test(file) && !file.includes(`${path.sep}dist${path.sep}`));
 const runtime = runtimeFiles.map((file) => fs.readFileSync(file, 'utf8')).join('\n');
 for (const forbidden of ['/demo/full-chain', 'MockRunner', 'mock_runner', '生成演示链路', '<aiws_actions>', 'transport_fallback']) assert.equal(runtime.includes(forbidden), false, `production runtime excludes ${forbidden}`);
@@ -125,19 +151,20 @@ assert.equal(runtime.includes('codexProfileFromCcSwitch'), false, 'production ru
 assert.ok(fs.existsSync('apps/web/dist/index.html'), 'production frontend build exists');
 
 const manifest = JSON.parse(fs.readFileSync('package.json', 'utf8'));
-assert.equal(manifest.version, '1.6.0', 'root package is V1.6');
+assert.equal(manifest.version, '1.7.0', 'root package is V1.7');
 for (const script of ['lint', 'typecheck', 'test', 'test:integration', 'test:e2e', 'test:release', 'audit:acceptance', 'verify']) assert.ok(manifest.scripts[script], `mandatory script ${script}`);
 for (const dependency of ['busboy', 'node-pty', 'ws']) assert.ok(manifest.dependencies[dependency], `runtime dependency ${dependency}`);
 assert.match(manifest.scripts['test:e2e'], /build-web/, 'standalone e2e builds the frontend');
 assert.match(manifest.scripts['audit:acceptance'], /build-web/, 'standalone acceptance builds the frontend');
-for (const suite of ['v13-terminal-flow', 'v14-container-flow', 'v15-native-assist-flow', 'v15-host-bridge-flow', 'v16-assist-files-flow']) assert.ok(manifest.scripts['test:integration'].includes(suite), `integration gate includes ${suite}`);
-for (const suite of ['v14-container.test', 'v15-core.test', 'v15-operations.test', 'v15-change-bridge.test', 'v16-core.test', 'v16-release.test']) assert.ok(manifest.scripts.test.includes(suite), `unit gate includes ${suite}`);
+for (const suite of ['v13-terminal-flow', 'v14-container-flow', 'v15-native-assist-flow', 'v15-host-bridge-flow', 'v16-assist-files-flow', 'v17-assist-brief-flow']) assert.ok(manifest.scripts['test:integration'].includes(suite), `integration gate includes ${suite}`);
+for (const suite of ['v14-container.test', 'v15-core.test', 'v15-operations.test', 'v15-change-bridge.test', 'v16-core.test', 'v16-release.test', 'v17-core.test', 'v17-capability-operations.test', 'v17-release.test']) assert.ok(manifest.scripts.test.includes(suite), `unit gate includes ${suite}`);
+assert.ok(manifest.scripts['test:release'].includes('v17-volume-flow'), 'release gate includes V1.7 volume migration');
 
-for (const file of workspaceManifests()) assert.equal(JSON.parse(fs.readFileSync(file, 'utf8')).version, '1.6.0', `${file} is V1.6`);
+for (const file of workspaceManifests()) assert.equal(JSON.parse(fs.readFileSync(file, 'utf8')).version, '1.7.0', `${file} is V1.7`);
 const compose = fs.readFileSync('compose.yml', 'utf8');
-for (const value of ['name: aiws-v16', 'aiws-app:1.6.0', 'aiws-codex-runner:1.6.0-codex-0.144.0', 'aiws-data-v16']) assert.ok(compose.includes(value), `Compose pins ${value}`);
+for (const value of ['name: aiws-v17', 'aiws-app:1.7.0', 'aiws-codex-runner:1.7.0-codex-0.144.0', 'aiws-data-v17']) assert.ok(compose.includes(value), `Compose pins ${value}`);
 assert.match(compose, /aiws-data:\s+[\s\S]*external: true/, 'production data volume cannot be silently replaced by Compose');
-assert.equal(compose.includes('aiws-data-v14'), false, 'V1.6 Compose never mounts the legacy source volume');
+assert.equal(compose.includes('aiws-data-v16'), false, 'V1.7 Compose never mounts the legacy source volume');
 assert.equal(runtime.includes('aiws-codex-runner:local'), false, 'runtime excludes mutable local Runner tag');
 
 const verify = fs.readFileSync('scripts/verify.mjs', 'utf8');
@@ -148,7 +175,8 @@ const browser = fs.readFileSync('tests/e2e/playwright.test.mjs', 'utf8');
 for (const viewport of ['1440', '1024', '390', "keyboard.press('Escape')"]) assert.ok(browser.includes(viewport), `browser acceptance includes ${viewport}`);
 const managedCcSwitch = fs.readFileSync('apps/api/src/cc-switch-managed-cli.mjs', 'utf8');
 assert.equal(/sqlite|better-sqlite3/i.test(managedCcSwitch), false, 'managed cc-switch path never writes SQLite');
-console.log(`V1.6 acceptance audit passed (${checks.length} implementation checks)`);
+assert.ok(fs.readFileSync('bridge/main.go', 'utf8').includes('bridgeVersion   = "1.7.0"'), 'Windows Bridge reports V1.7');
+console.log(`V1.7 acceptance audit passed (${checks.length} implementation checks)`);
 
 function workspaceManifests() { return ['apps', 'packages'].flatMap((root) => fs.readdirSync(root, { withFileTypes: true }).filter((item) => item.isDirectory()).map((item) => path.join(root, item.name, 'package.json')).filter(fs.existsSync)); }
 function walk(dir) { if (!fs.existsSync(dir)) return []; return fs.readdirSync(dir, { withFileTypes: true }).flatMap((entry) => { if (['node_modules', 'dist'].includes(entry.name)) return []; const full = path.join(dir, entry.name); return entry.isDirectory() ? walk(full) : [full]; }); }

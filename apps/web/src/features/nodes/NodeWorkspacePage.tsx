@@ -21,9 +21,9 @@ export function NodeWorkspacePage() {
   const [tab, setTab] = useState<Tab>('work');
   const setAssist = useUi((state) => state.setAssist);
   useAssistSurface({ id: 'node-workspace', tabs: {
-    work: { label: '工作内容', select: () => setTab('work') },
-    contract: { label: 'Contract', select: () => setTab('contract') },
-    activity: { label: '运行与 Trace', select: () => setTab('activity') }
+    work: { label: '工作内容', read: () => tab, select: () => setTab('work') },
+    contract: { label: 'Contract', read: () => tab, select: () => setTab('contract') },
+    activity: { label: '运行与 Trace', read: () => tab, select: () => setTab('activity') }
   } });
   const query = useQuery({ queryKey: keys.workspace(nodeId || ''), queryFn: () => api<NodeWorkspace>(`/nodes/${nodeId}/workspace`), enabled: Boolean(nodeId), refetchInterval: (current) => (current.state.data as NodeWorkspace | undefined)?.runs.some((run) => ['queued', 'running'].includes(run.status)) ? 1000 : false });
   if (query.isLoading) return <FullPageState title="正在打开节点工作区" />;

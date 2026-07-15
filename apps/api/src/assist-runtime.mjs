@@ -8,6 +8,7 @@ import { authorizeRepositoryAction, roleAllows } from './authorization.mjs';
 import { createInstallationToken, resolveGithubAppConfig } from './github-service.mjs';
 import { AIWS_HOME } from './config.mjs';
 import { assertManagedProjectWritable } from './project-lifecycle.mjs';
+import { assertProjectLifecycleIdle, withProjectLifecycleLock } from './project-lifecycle-operations.mjs';
 
 const controllers = new Map();
 const reversible = new Set(['navigate', 'select_node', 'switch_workspace_tab', 'focus_field', 'set_filter', 'fill_field']);
@@ -20,16 +21,16 @@ export async function startAssistRun(sessionId, adapterResponse) {
   try {
     await appendEvent(sessionId, 'started', { status: 'running' });
     const state = await readState(), session = findSession(state, sessionId);
+    const project = assertProjectLifecycleIdle(state.projects.find((item) => item.id === session.project_id));
     const userMessage = state.assist_messages.filter((item) => item.session_id === sessionId && item.role === 'user').at(-1);
     let result;
     if (adapterResponse) {
-      await delay(20);
+      await delay(Math.max(0, Math.min(Number(adapterResponse.delay_ms) || 20, 5000)));
       if (controller.signal.aborted) throw new Error('assist_cancelled');
       result = adapterResponse;
     } else {
       const profile = state.codex_profiles.find((item) => item.is_active && item.status === 'validated');
       if (!profile) throw new Error('active_codex_profile_required');
-      const project = state.projects.find((item) => item.id === session.project_id);
       let output = '', chain = Promise.resolve(), threadId = session.codex_thread_id;
       const prompt = assistPrompt(session, userMessage?.content || '', hierarchyContext(state, session));
       const runResult = await runCodexJson({ state, profile, prompt, cwd: project?.repo_path || project?.workspace_root || AIWS_HOME, resumeId: threadId, sandbox: 'read-only', signal: controller.signal, onEvent: (event) => {
@@ -70,6 +71,13 @@ export async function appendEvent(sessionId, type, data = {}) {
 }
 
 export async function decideAction(sessionId, actionId, decision) {
+  const snapshot = await readState(), action = snapshot.ui_action_intents.find((item) => item.id === actionId && item.session_id === sessionId);
+  if (!action) throw new HttpError(404, { error: 'assist_action_not_found' });
+  const project = assertActionProjectIdle(snapshot, action);
+  return withProjectLifecycleLock(project.id, () => decideActionLocked(sessionId, actionId, decision));
+}
+
+async function decideActionLocked(sessionId, actionId, decision) {
   if (decision === 'reject') {
     const action = await reserveAction(sessionId, actionId, 'rejected');
     return finishAction(action, 'rejected', null);
@@ -88,7 +96,7 @@ export async function decideAction(sessionId, actionId, decision) {
 }
 
 export async function recordActionResult(sessionId, actionId, body) {
-  const result = await mutate((state) => { const action = state.ui_action_intents.find((item) => item.id === actionId && item.session_id === sessionId); if (!action) throw new HttpError(404, { error: 'assist_action_not_found' }); if (action.risk !== 'reversible' || action.status !== 'ready') throw new HttpError(409, { error: 'assist_action_result_not_allowed' }); action.status = body.ok === false ? 'failed' : 'completed'; action.result = body.result || {}; action.updated_at = now(); return action; });
+  const result = await mutate((state) => { const action = state.ui_action_intents.find((item) => item.id === actionId && item.session_id === sessionId); if (!action) throw new HttpError(404, { error: 'assist_action_not_found' }); assertActionProjectIdle(state, action); if (action.risk !== 'reversible' || action.status !== 'ready') throw new HttpError(409, { error: 'assist_action_result_not_allowed' }); action.status = body.ok === false ? 'failed' : 'completed'; action.result = body.result || {}; action.updated_at = now(); return action; });
   await appendEvent(sessionId, 'action_result', { action: result });
   return result;
 }
@@ -123,7 +131,7 @@ function normalizeAction(state, session, message, input) {
 }
 
 function createActionProposal(action) {
-  return mutate((state) => { const actor = owner(state), node = state.workflow_nodes.find((item) => item.id === action.node_id && state.workflows.some((workflow) => workflow.id === item.workflow_id && workflow.project_id === action.project_id)), workflow = state.workflows.find((item) => item.id === action.args.workflow_id && item.project_id === action.project_id) || state.workflows.find((item) => item.id === node?.workflow_id && item.project_id === action.project_id) || state.workflows.find((item) => item.project_id === action.project_id); if (!workflow && ['add_node', 'remove_node', 'connect_nodes', 'update_node'].includes(action.name)) throw new HttpError(409, { error: 'assist_workflow_scope_invalid' }); const mapped = proposalAction(action, workflow, node); const proposal = createChangeProposal({ projectId: action.project_id, workspaceId: action.workspace_id, nodeId: action.node_id, changeType: mapped.changeType, title: action.label, summary: '由 Codex Assist 提议的本质变更', before: mapped.before, after: mapped.after, impact: ['当前工作流或节点'], risks: ['需要人工确认'], applyAction: mapped.applyAction, actorId: actor.id }); state.change_proposals.push(proposal); addTrace(state, 'change_proposal.created', { project_id: action.project_id, workspace_id: action.workspace_id, node_id: action.node_id, target_id: proposal.id, summary: proposal.title }, actor.id); return proposal; });
+  return mutate((state) => { assertActionProjectIdle(state, action); const actor = owner(state), node = state.workflow_nodes.find((item) => item.id === action.node_id && state.workflows.some((workflow) => workflow.id === item.workflow_id && workflow.project_id === action.project_id)), workflow = state.workflows.find((item) => item.id === action.args.workflow_id && item.project_id === action.project_id) || state.workflows.find((item) => item.id === node?.workflow_id && item.project_id === action.project_id) || state.workflows.find((item) => item.project_id === action.project_id); if (!workflow && ['add_node', 'remove_node', 'connect_nodes', 'update_node'].includes(action.name)) throw new HttpError(409, { error: 'assist_workflow_scope_invalid' }); const mapped = proposalAction(action, workflow, node); const proposal = createChangeProposal({ projectId: action.project_id, workspaceId: action.workspace_id, nodeId: action.node_id, changeType: mapped.changeType, title: action.label, summary: '由 Codex Assist 提议的本质变更', before: mapped.before, after: mapped.after, impact: ['当前工作流或节点'], risks: ['需要人工确认'], applyAction: mapped.applyAction, actorId: actor.id }); state.change_proposals.push(proposal); addTrace(state, 'change_proposal.created', { project_id: action.project_id, workspace_id: action.workspace_id, node_id: action.node_id, target_id: proposal.id, summary: proposal.title }, actor.id); return proposal; });
 }
 
 function proposalAction(action, workflow, node) {
@@ -168,6 +176,7 @@ function stateProfile(action) { return { id: action.args.profile_id, name: actio
 
 function createParentSubmission(action) {
   return mutate((state) => {
+    assertActionProjectIdle(state, action);
     if (!String(action.args.summary || '').trim()) throw new HttpError(400, { error: 'submission_summary_required' });
     const actor = owner(state), session = findSession(state, action.session_id);
     const from = state.agent_sessions.find((item) => item.id === session.agent_session_id);
@@ -180,8 +189,8 @@ function createParentSubmission(action) {
   });
 }
 
-async function reserveAction(sessionId, actionId, status) { return mutate((state) => { const item = state.ui_action_intents.find((entry) => entry.id === actionId && entry.session_id === sessionId); if (!item) throw new HttpError(404, { error: 'assist_action_not_found' }); if (item.status !== 'pending') throw new HttpError(409, { error: 'assist_action_already_decided' }); item.status = status; item.updated_at = now(); return item; }); }
-async function finishAction(source, status, result) { const action = await mutate((state) => { const item = state.ui_action_intents.find((entry) => entry.id === source.id); if (!item) throw new HttpError(404, { error: 'assist_action_not_found' }); item.status = status; item.result = result; item.updated_at = now(); const actor = owner(state); const event = status === 'rejected' ? 'assist.action.rejected' : status === 'failed' ? 'assist.action.failed' : 'assist.action.confirmed'; addTrace(state, event, { project_id: item.project_id, workspace_id: item.workspace_id, node_id: item.node_id, target_id: item.id, summary: `${status}: ${item.label}` }, actor.id); return item; }); await appendEvent(action.session_id, 'action', { action }); return action; }
+async function reserveAction(sessionId, actionId, status) { return mutate((state) => { const item = state.ui_action_intents.find((entry) => entry.id === actionId && entry.session_id === sessionId); if (!item) throw new HttpError(404, { error: 'assist_action_not_found' }); assertActionProjectIdle(state, item); if (item.status !== 'pending') throw new HttpError(409, { error: 'assist_action_already_decided' }); item.status = status; item.updated_at = now(); return item; }); }
+async function finishAction(source, status, result) { const action = await mutate((state) => { const item = state.ui_action_intents.find((entry) => entry.id === source.id); if (!item) throw new HttpError(404, { error: 'assist_action_not_found' }); assertActionProjectIdle(state, item); item.status = status; item.result = result; item.updated_at = now(); const actor = owner(state); const event = status === 'rejected' ? 'assist.action.rejected' : status === 'failed' ? 'assist.action.failed' : 'assist.action.confirmed'; addTrace(state, event, { project_id: item.project_id, workspace_id: item.workspace_id, node_id: item.node_id, target_id: item.id, summary: `${status}: ${item.label}` }, actor.id); return item; }); await appendEvent(action.session_id, 'action', { action }); return action; }
 function pushEvent(state, sessionId, type, data) { const sequence = Math.max(0, ...state.assist_events.filter((item) => item.session_id === sessionId).map((item) => item.sequence || 0)) + 1; state.assist_events.push({ id: sequence, sequence, session_id: sessionId, type, data, created_at: now() }); }
 function markTerminal(sessionId, status, error) { return mutate((state) => { const session = findSession(state, sessionId); const exists = state.assist_events.some((item) => item.session_id === sessionId && item.type === status); Object.assign(session, { status, error, updated_at: now() }); if (!exists) pushEvent(state, sessionId, status, { error }); return session; }); }
 function hierarchyContext(state, session) {
@@ -203,4 +212,5 @@ function semanticActionAllowed(state, session, name, args) {
   return name !== 'set_filter' || !Array.isArray(target.values) || target.values.includes(String(args.value));
 }
 function findSession(state, idValue) { const session = state.assist_sessions.find((item) => item.id === idValue && item.version === 2); if (!session) throw new HttpError(404, { error: 'assist_session_not_found' }); return session; }
+function assertActionProjectIdle(state, action) { return assertProjectLifecycleIdle(state.projects.find((item) => item.id === action.project_id)); }
 function delay(ms) { return new Promise((resolve) => setTimeout(resolve, ms)); }

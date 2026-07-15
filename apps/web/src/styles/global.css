@@ -21,6 +21,7 @@
 }
 * { box-sizing: border-box; }
 html, body, #root { width: 100%; min-width: 320px; height: 100%; margin: 0; overflow: hidden; }
+#root { overflow: clip; }
 body { background: var(--surface-subtle); color: var(--text); }
 button, input, textarea, select { font: inherit; letter-spacing: 0; }
 button { color: inherit; }

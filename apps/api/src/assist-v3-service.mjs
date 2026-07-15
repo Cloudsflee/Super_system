@@ -13,7 +13,8 @@ export { deleteAssistConfiguration, getAssistConfiguration, listAssistConfigurat
 export { listAssistModels } from './assist-models.mjs';
 export { clearAssistGoal, getAssistGoal, setAssistGoal } from './assist-goals.mjs';
 export { respondToAssistUserInput } from './assist-user-input.mjs';
-export { claimAssistOperation, confirmAssistOperation, listAssistOperations, submitAssistOperationResult, undoAssistOperation } from './assist-operations.mjs';
+export { claimAssistOperation, confirmAssistOperation, listAssistOperations, reviseAssistOperation, submitAssistOperationResult, undoAssistOperation } from './assist-operations.mjs';
+export { listAssistCapabilities } from './assist-capabilities-service.mjs';
 export { applyChangeBatch, getChangeBatchReview, rollbackChangeBatch } from './assist-change-batches.mjs';
 export { createAssistBtw, createAssistBtwTurn, deleteAssistBtw, streamAssistBtwEvents } from './assist-btw.mjs';
 export { deleteV3Attachment, serveAttachmentContent, uploadV3Attachment } from './assist-attachments.mjs';

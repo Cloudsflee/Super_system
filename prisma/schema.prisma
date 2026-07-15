@@ -37,6 +37,7 @@ model Project {
   githubAccountId    String?  @map("github_account_id")
   deletedAt          DateTime? @map("deleted_at")
   trashMetadata      Json?    @map("trash_metadata")
+  lifecycleOperation Json?    @map("lifecycle_operation")
   createdByUserId    String   @map("created_by_user_id")
   createdBy          User     @relation(fields: [createdByUserId], references: [id])
   createdAt          DateTime @map("created_at")
@@ -257,6 +258,7 @@ model AssistSession {
   purgeRetryAt DateTime? @map("purge_retry_at")
   nativeGoalSnapshot Json?    @map("native_goal_snapshot")
   nativeGoalSyncedAt  DateTime? @map("native_goal_synced_at")
+  clarificationPolicy String   @default("ask") @map("clarification_policy")
   viewContext       Json     @map("view_context")
   status            String
   error             String?
@@ -656,17 +658,59 @@ model ProjectBrief {
   id                String    @id
   projectId         String    @map("project_id")
   version           Int
+  revision          Int       @default(1)
   status            String
   content           Json
   source            String
   confirmedByUserId String?   @map("confirmed_by_user_id")
   confirmedAt       DateTime? @map("confirmed_at")
   createdByUserId   String    @map("created_by_user_id")
+  updatedByUserId   String?   @map("updated_by_user_id")
   createdAt         DateTime  @map("created_at")
   updatedAt         DateTime  @map("updated_at")
 
   @@unique([projectId, version])
   @@map("project_briefs")
+}
+
+model BriefTemplate {
+  id              String   @id
+  templateKey     String   @map("template_key")
+  version         Int
+  status          String
+  title           String
+  domain          String
+  content         Json
+  sources         Json
+  publisher       String?
+  retrievedAt     DateTime @map("retrieved_at")
+  applicability   String?
+  limitations     String?
+  createdByUserId String   @map("created_by_user_id")
+  createdAt       DateTime @map("created_at")
+  updatedAt       DateTime @map("updated_at")
+
+  @@unique([templateKey, version])
+  @@index([domain, status])
+  @@map("brief_templates")
+}
+
+model WorkflowDraft {
+  id                  String   @id
+  projectId           String   @unique @map("project_id")
+  revision            Int      @default(1)
+  nodes               Json
+  sourceBriefId       String?  @map("source_brief_id")
+  sourceBriefRevision Int?     @map("source_brief_revision")
+  status              String   @default("draft")
+  workflowId          String?  @map("workflow_id")
+  activatedAt         DateTime? @map("activated_at")
+  userModifiedAt      DateTime? @map("user_modified_at")
+  updatedByUserId     String?  @map("updated_by_user_id")
+  createdAt           DateTime @map("created_at")
+  updatedAt           DateTime @map("updated_at")
+
+  @@map("workflow_drafts")
 }
 
 model AssistTurn {
@@ -691,6 +735,7 @@ model AssistTurn {
   codexTurnId         String?   @map("codex_turn_id")
   worktreeId          String?   @map("worktree_id")
   changeBatchId       String?   @map("change_batch_id")
+  operationReferenceId String?  @map("operation_reference_id")
   viewContext         Json?     @map("view_context")
   codeAccess          String?   @map("code_access")
   codeReadOnlyReason  String?   @map("code_read_only_reason")
@@ -945,10 +990,18 @@ model AssistOperation {
   turnId          String    @map("turn_id")
   toolCallId      String    @map("tool_call_id")
   tool            String
+  projectId       String?   @map("project_id")
+  capabilityId    String?   @map("capability_id")
+  action          String?
+  operationReferenceId String? @map("operation_reference_id")
   route           String
   surfaceId       String?   @map("surface_id")
   surfaceRevision String    @map("surface_revision")
   targetId        String    @map("target_id")
+  targetLabel     String?   @map("target_label")
+  summary         String?
+  inputSchema     Json?     @map("input_schema")
+  locator         Json?
   browserInstanceId String?  @map("browser_instance_id")
   requestedValue  Json?      @map("requested_value")
   allowedValues   Json?      @map("allowed_values")

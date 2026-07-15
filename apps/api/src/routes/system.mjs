@@ -1,7 +1,7 @@
 import { command, makeRoute, send } from '../http.mjs';
 import { ROOT } from '../config.mjs';
 import { addTrace, mutate, owner, readState } from '../state.mjs';
-import { createLocalOwner, now, pick } from '../../../../packages/shared/index.mjs';
+import { AIWS_VERSION, createLocalOwner, now, pick } from '../../../../packages/shared/index.mjs';
 import { inspectCodexRuntimeLive } from '../codex-runtime-status.mjs';
 import { dataDirectoryReady, deploymentStatus } from '../deployment-status.mjs';
 import { hostBridgeCapability } from '../host-bridge-service.mjs';
@@ -15,7 +15,7 @@ export const systemRoutes = [
     const storageReady = dataDirectoryReady();
     const deployment = deploymentStatus({ dockerReady: runtime.docker.ok, storageReady });
     return send(res, 200, {
-      status: storageReady ? 'ok' : 'degraded', api: { healthy: true }, db: { healthy: storageReady, mode: 'json-local', writable: storageReady },
+      status: storageReady ? 'ok' : 'degraded', version: AIWS_VERSION, schema_version: state.schema_version, api: { healthy: true }, db: { healthy: storageReady, mode: 'json-local', writable: storageReady },
       deployment: { mode: deployment.mode, local_only: deployment.local_only },
       queue: { required: false, status: 'not_configured', mode: 'direct-execution' },
       git: { healthy: git.ok, version: git.stdout.trim() || git.error },
@@ -37,7 +37,8 @@ export const systemRoutes = [
   makeRoute('GET', '/account/me', async ({ res }) => {
     const state = await readState();
     const user = owner(state);
-    return send(res, 200, { user, session: state.sessions.find((s) => s.user_id === user.id), connected_accounts: state.connected_accounts.filter((a) => a.user_id === user.id), github: state.connected_accounts.find((a) => a.user_id === user.id && a.provider === 'github') || null });
+    const accounts = state.connected_accounts.filter((item) => item.user_id === user.id).map(publicAccount);
+    return send(res, 200, { user: pick(user, ['id', 'display_name', 'email', 'avatar_url', 'role', 'auth_mode', 'created_at', 'updated_at']), session: publicSession(state.sessions.find((item) => item.user_id === user.id)), connected_accounts: accounts, github: accounts.find((item) => item.provider === 'github') || null });
   }),
   makeRoute('POST', '/account/setup-local-owner', async ({ res, body }) => {
     const result = await mutate((state) => {
@@ -56,6 +57,9 @@ export const systemRoutes = [
   }),
   makeRoute('GET', '/review', async ({ res }) => {
     const state = await readState();
-    return send(res, 200, { projects: state.projects, workflows: state.workflows, nodes: state.workflow_nodes, runs: state.node_runs, traces: state.traces.slice(-500), assets: state.assets, decisions: state.decisions, digests: state.digests, code_changes: state.code_changes, agent_sessions: state.agent_sessions, submissions: state.submissions, change_proposals: state.change_proposals, codex_profiles: state.codex_profiles, integrations: state.integration_statuses, open_questions: state.workspaces.flatMap((w) => (w.open_questions || []).map((q) => ({ workspace_id: w.id, question: q }))) });
+    return send(res, 200, { projects: state.projects, workflows: state.workflows, nodes: state.workflow_nodes, runs: state.node_runs, traces: state.traces.slice(-500), assets: state.assets, decisions: state.decisions, digests: state.digests, code_changes: state.code_changes, agent_sessions: state.agent_sessions, submissions: state.submissions, change_proposals: state.change_proposals, open_questions: state.workspaces.flatMap((w) => (w.open_questions || []).map((q) => ({ workspace_id: w.id, question: q }))) });
   })
 ];
+
+function publicSession(item) { return item ? pick(item, ['id', 'user_id', 'mode', 'expires_at', 'created_at']) : null; }
+function publicAccount(item) { return pick(item, ['id', 'user_id', 'provider', 'provider_account_id', 'login', 'display_name', 'status', 'scopes', 'last_verified_at', 'created_at', 'updated_at']); }

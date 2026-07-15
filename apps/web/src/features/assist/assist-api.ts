@@ -16,6 +16,7 @@ export function useAssistSessions(projectId?: string, search = '', archived = fa
   if (projectId) query.set('project_id', projectId);
   if (search.trim()) query.set('search', search.trim());
   if (archived) query.set('archived', 'only');
+  else query.set('deleted', 'include');
   query.set('limit', '100');
   return useQuery({
     queryKey: assistKeys.sessions(projectId, search, archived),
@@ -48,14 +49,15 @@ const eventTypes: AssistV3EventType[] = ['queued', 'started', 'text', 'plan', 'c
 export function useAssistEvents(sessionId?: string, enabled = true) {
   const [events, setEvents] = useState<AssistV3Event[]>([]);
   const [connected, setConnected] = useState(false);
+  const [reconnecting, setReconnecting] = useState(false);
   const cursor = useRef(0);
   const client = useQueryClient();
   useEffect(() => {
-    setEvents([]); cursor.current = 0; setConnected(false);
+    setEvents([]); cursor.current = 0; setConnected(false); setReconnecting(false);
     if (!sessionId || !enabled) return;
     const source = new EventSource(assistV3StreamUrl(sessionId, 0));
-    source.onopen = () => setConnected(true);
-    source.onerror = () => setConnected(false);
+    source.onopen = () => { setConnected(true); setReconnecting(false); };
+    source.onerror = () => { setConnected(false); setReconnecting(true); };
     const consume = (raw: Event) => {
       const event = JSON.parse((raw as MessageEvent).data) as AssistV3Event;
       cursor.current = Math.max(cursor.current, Number(event.sequence || event.id || 0));
@@ -65,11 +67,12 @@ export function useAssistEvents(sessionId?: string, enabled = true) {
         void client.invalidateQueries({ queryKey: assistKeys.session(sessionId) });
         void client.invalidateQueries({ queryKey: ['assist-v3-sessions'] });
       }
+      if (event.type === 'operation') void client.invalidateQueries({ queryKey: ['assist-v3-operations', sessionId] });
     };
     for (const type of eventTypes) source.addEventListener(type, consume);
-    return () => { source.close(); setConnected(false); };
+    return () => { source.close(); setConnected(false); setReconnecting(false); };
   }, [sessionId, enabled, client]);
-  return { events, connected, cursor: cursor.current };
+  return { events, connected, reconnecting, cursor: cursor.current };
 }
 
 export function hasActiveTurn(turns?: AssistV3Turn[]) {
