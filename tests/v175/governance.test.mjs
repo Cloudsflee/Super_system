@@ -8,7 +8,18 @@ const catalog = JSON.parse(fs.readFileSync('tests/v175/catalog.json', 'utf8'));
 const impact = JSON.parse(fs.readFileSync('tests/v175/impact-map.json', 'utf8'));
 const statuses = ['PASS', 'FAIL', 'BLOCKED', 'SKIPPED', 'FLAKY'];
 
-assert.equal(pkg.version, '1.7.0');
+function versionAtLeast(value, baseline) {
+  const parse = (input) => String(input || '').match(/^(\d+)\.(\d+)\.(\d+)(?:-[0-9A-Za-z.-]+)?$/)?.slice(1).map(Number);
+  const current = parse(value), minimum = parse(baseline);
+  if (!current || !minimum) return false;
+  for (let index = 0; index < 3; index += 1) {
+    if (current[index] !== minimum[index]) return current[index] > minimum[index];
+  }
+  return true;
+}
+
+assert.equal(catalog.product_version, '1.7.0');
+assert.ok(versionAtLeast(pkg.version, catalog.product_version), `package version ${pkg.version} must not predate the V1.75 baseline ${catalog.product_version}`);
 assert.equal(catalog.state_schema, 16);
 for (const command of ['test:v175:plan', 'test:v175:impact', 'test:v175:pr', 'test:v175:full', 'test:v175:user-journey', 'test:v175:live', 'test:v175:soak']) assert.ok(pkg.scripts[command], `${command} exists`);
 assert.equal(new Set(catalog.tests.map((item) => item.id)).size, catalog.tests.length);

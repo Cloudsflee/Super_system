@@ -4,7 +4,7 @@ import path from 'node:path';
 import {
   callOperation, callTool, createMcpTestFixture, resultData, seedHostCodexProfile, waitFor
 } from '../v18/mcp-test-helpers.mjs';
-import { decide, readResource, writeJourneyProject } from './v18-mcp-journey-helpers.mjs';
+import { decide, journeyWorkflowHierarchy, readResource, writeJourneyProject } from './v18-mcp-journey-helpers.mjs';
 
 const fixture = await createMcpTestFixture('aiws-v18-journey-', {
   approver: {},
@@ -36,7 +36,7 @@ try {
   assert.equal(described.data.capability.mapping, 'resource');
   const setup = resultData(await callOperation(operator.client, 'aiws.admin.get.setup.status'));
   assert.equal(typeof setup.steps, 'object');
-  assert.equal(resultData(await callOperation(operator.client, 'aiws.system.get.health')).schema_version, 17);
+  const health = resultData(await callOperation(operator.client, 'aiws.system.get.health')); assert.ok(Number.isInteger(health.schema_version) && health.schema_version >= 17, `schema ${health.schema_version} must not predate the V1.8 baseline`);
 
   const draft = resultData(await callOperation(operator.client, 'aiws.projects.post.projects', {
     body: { title: 'V1.8 MCP Journey', goal: 'Deliver and verify a complete Node project through MCP', operation_key: 'v18-mcp-journey-project' }
@@ -66,28 +66,25 @@ try {
   assert.equal(intake.brief.content.sections.length, 9);
 
   const onboarding = resultData(await callOperation(operator.client, 'aiws.projects.get.projects.by-id.onboarding', { params: { id: projectId } }));
-  const baseNodes = onboarding.workflow_draft.nodes;
-  assert.equal(baseNodes.length, 1);
-  assert.equal(baseNodes[0].title, '编码');
   const workflowDraft = resultData(await callOperation(operator.client, 'aiws.workflow.patch.projects.by-id.workflow-draft', {
     params: { id: projectId },
     body: {
       expected_revision: onboarding.workflow_draft.revision,
-      operations: [
-        { type: 'add_node', node: { id: 'v18-research', type: 'research', title: 'Research constraints', goal: 'Validate MCP constraints', dependency_ids: [baseNodes[0].id], position: { x: 250, y: 340 } } },
-        { type: 'add_node', node: { id: 'v18-analysis', type: 'analysis', title: 'Analyze evidence', goal: 'Review deterministic evidence', dependency_ids: ['v18-research'], position: { x: 540, y: 340 } } }
-      ]
+      nodes: journeyWorkflowHierarchy()
     }
   }));
-  assert.equal(workflowDraft.nodes.length, 3);
+  assert.equal(workflowDraft.nodes.length, 4);
   const confirmed = resultData(await callOperation(operator.client, 'aiws.projects.post.projects.by-id.onboarding.confirm', {
     params: { id: projectId },
     body: { expected_brief_revision: intake.brief.revision, expected_workflow_revision: workflowDraft.revision }
   }));
   assert.equal(confirmed.project.status, 'active');
-  assert.equal(confirmed.nodes.length, 3);
+  assert.equal(confirmed.nodes.length, 4);
   const workflowId = confirmed.workflow.id;
-  const nodeId = confirmed.nodes.find((item) => item.type === 'execution')?.id || confirmed.nodes[0].id;
+  const workstream = confirmed.nodes.find((item) => item.role === 'workstream');
+  const executableTask = confirmed.nodes.find((item) => item.role === 'task' && item.task_kind === 'code');
+  assert.ok(workstream && executableTask, 'confirmed workflow includes the V1.8 workstream and executable task');
+  const nodeId = executableTask.id;
   evidence.workflow_id = workflowId;
   evidence.node_id = nodeId;
 
@@ -156,8 +153,13 @@ try {
   await callOperation(operator.client, 'aiws.terminal.post.assist.v3.terminal-sessions.by-id.review.rollback', { params: { id: terminalId }, body: {} });
   terminalId = null;
 
-  const workflowProposal = resultData(await callOperation(operator.client, 'aiws.workflow.post.workflows.by-id.proposals', {
-    params: { id: workflowId }, body: { action: 'update_node', node_id: nodeId, patch: { title: 'Implement verified Node project', goal: 'Ship tested source through MCP' } }
+  const workflowProposal = resultData(await callOperation(operator.client, 'aiws.workflow.post.workflows.by-id.graph-proposals', {
+    params: { id: workflowId }, body: {
+      parent_node_id: workstream.id,
+      expected_revision: workstream.plan_revision,
+      target_id: nodeId,
+      operations: [{ type: 'update_node', node_id: nodeId, patch: { title: 'Implement verified Node project', goal: 'Ship tested source through MCP' } }]
+    }
   }));
   const denied = await operator.client.callTool({
     name: 'aiws_governance',

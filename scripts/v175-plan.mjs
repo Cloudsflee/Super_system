@@ -58,7 +58,7 @@ function validateCatalog() {
   if (catalog.product_version !== '1.7.0') errors.push('catalog product_version must stay 1.7.0');
   if (catalog.state_schema !== 16) errors.push('catalog state_schema must stay 16');
   const packageVersion = JSON.parse(fs.readFileSync(path.join(ROOT, 'package.json'), 'utf8')).version;
-  if (packageVersion !== '1.7.0') errors.push(`package version drifted to ${packageVersion}`);
+  if (!versionAtLeast(packageVersion, catalog.product_version)) errors.push(`package version ${packageVersion} predates the V1.75 baseline ${catalog.product_version}`);
   const migration = fs.readFileSync(path.join(ROOT, 'apps/api/src/state-migration-v16.mjs'), 'utf8');
   if (!/STATE_SCHEMA_VERSION\s*=\s*16\b/.test(migration)) errors.push('state schema source is not 16');
   if (!Array.isArray(catalog.tests) || !catalog.tests.length) return errors.push('catalog tests must be non-empty');
@@ -85,6 +85,16 @@ function validateCatalog() {
   }
   for (const layer of layers) if (!catalog.tests.some((item) => item.layer === layer)) errors.push(`catalog missing ${layer}`);
   for (const domain of ['governance', 'static', 'state', 'runtime', 'setup', 'onboard', 'assist', 'action', 'workflow', 'change', 'files', 'git', 'diagnostics', 'web', 'e2e', 'release', 'live-codex', 'live-github', 'live-cc-switch', 'soak']) if (!domains.has(domain)) errors.push(`catalog missing domain ${domain}`);
+}
+
+function versionAtLeast(value, baseline) {
+  const parse = (input) => String(input || '').match(/^(\d+)\.(\d+)\.(\d+)(?:-[0-9A-Za-z.-]+)?$/)?.slice(1).map(Number);
+  const current = parse(value), minimum = parse(baseline);
+  if (!current || !minimum) return false;
+  for (let index = 0; index < 3; index += 1) {
+    if (current[index] !== minimum[index]) return current[index] > minimum[index];
+  }
+  return true;
 }
 
 function validateGroups() {

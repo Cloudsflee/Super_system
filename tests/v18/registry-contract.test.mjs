@@ -8,14 +8,16 @@ import { collections } from '../../apps/api/src/config.mjs';
 
 const coverage = JSON.parse(fs.readFileSync('tests/v18/coverage-map.json', 'utf8'));
 const registry = createApiRouteRegistry(apiRoutes);
+const baselineRegistry = registry.filter((item) => coverage.route_modules.includes(item.source_module));
 
-assert.equal(registry.length, coverage.expected_http_routes);
-assert.equal(registry.filter((item) => !item.source_module.includes('v18')).length, coverage.expected_legacy_http_routes);
+assert.equal(baselineRegistry.length, coverage.expected_http_routes);
+assert.equal(baselineRegistry.filter((item) => !item.source_module.includes('v18')).length, coverage.expected_legacy_http_routes);
+assert.ok(registry.length >= baselineRegistry.length);
 assert.equal(new Set(registry.map((item) => `${item.method} ${item.pattern}`)).size, apiRoutes.length);
 assert.equal(new Set(registry.map((item) => item.operation_id)).size, registry.length);
 assert.deepEqual([...MCP_MAPPINGS], coverage.mappings);
 assert.deepEqual([...MCP_TOOL_NAMES], coverage.tools);
-assert.deepEqual([...collections].sort(), [...coverage.state_collections].sort());
+for (const collection of coverage.state_collections) assert.ok(collections.includes(collection), `missing V1.8 collection: ${collection}`);
 
 const knownScopes = new Set(MCP_SCOPES);
 for (const operation of registry) {
@@ -47,4 +49,4 @@ for (const websocket of coverage.websockets) {
   else assert.equal(specialIds.has('aiws.external.host_bridge_ws'), true);
 }
 
-console.log(`V1.8 registry contract passed (${registry.length} routes, ${MCP_SPECIAL_CAPABILITIES.length} special capabilities)`);
+console.log(`V1.8 registry contract passed (${baselineRegistry.length} baseline/${registry.length} current routes, ${MCP_SPECIAL_CAPABILITIES.length} special capabilities)`);

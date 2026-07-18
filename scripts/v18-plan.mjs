@@ -56,16 +56,18 @@ function validateCoverage() {
   const routeDir = path.join(ROOT, 'apps/api/src/routes');
   const modules = fs.readdirSync(routeDir).filter((item) => item.endsWith('.mjs')).sort();
   const mapped = [...(coverage.route_modules || [])].sort();
-  if (JSON.stringify(modules) !== JSON.stringify(mapped)) errors.push('coverage-map route_modules do not exactly match apps/api/src/routes');
+  const missingModules = mapped.filter((file) => !modules.includes(file));
+  if (missingModules.length) errors.push(`coverage-map V1.8 route modules are missing: ${missingModules.join(', ')}`);
   let routeCount = 0;
-  for (const file of modules) routeCount += [...readText(`apps/api/src/routes/${file}`).matchAll(/makeRoute\(\s*['"](?:GET|POST|PUT|PATCH|DELETE)['"]\s*,\s*['"][^'"]+['"]/g)].length;
+  for (const file of mapped.filter((item) => modules.includes(item))) routeCount += [...readText(`apps/api/src/routes/${file}`).matchAll(/makeRoute\(\s*['"](?:GET|POST|PUT|PATCH|DELETE)['"]\s*,\s*['"][^'"]+['"]/g)].length;
   if (routeCount !== coverage.expected_http_routes) errors.push(`expected ${coverage.expected_http_routes} HTTP routes, discovered ${routeCount}`);
-  const legacyCount = modules.filter((file) => !file.includes('v18')).reduce((total, file) => total + [...readText(`apps/api/src/routes/${file}`).matchAll(/makeRoute\(\s*['"](?:GET|POST|PUT|PATCH|DELETE)['"]\s*,\s*['"][^'"]+['"]/g)].length, 0);
+  const legacyCount = mapped.filter((file) => modules.includes(file) && !file.includes('v18')).reduce((total, file) => total + [...readText(`apps/api/src/routes/${file}`).matchAll(/makeRoute\(\s*['"](?:GET|POST|PUT|PATCH|DELETE)['"]\s*,\s*['"][^'"]+['"]/g)].length, 0);
   if (legacyCount !== coverage.expected_legacy_http_routes) errors.push(`expected ${coverage.expected_legacy_http_routes} legacy HTTP routes, discovered ${legacyCount}`);
   for (const value of ['tool', 'resource', 'async_adapter', 'external_callback', 'frontend_only']) if (!coverage.mappings?.includes(value)) errors.push(`coverage-map missing mapping ${value}`);
   for (const tool of ['aiws_system', 'aiws_projects', 'aiws_workflow', 'aiws_assist', 'aiws_runs', 'aiws_files', 'aiws_terminal', 'aiws_git', 'aiws_github', 'aiws_assets', 'aiws_governance', 'aiws_admin', 'aiws_capabilities', 'aiws_operations', 'aiws_execute']) if (!coverage.tools?.includes(tool)) errors.push(`coverage-map missing tool ${tool}`);
-  const expectedCollections = [...collections].sort();
-  if (JSON.stringify([...(coverage.state_collections || [])].sort()) !== JSON.stringify(expectedCollections)) errors.push('coverage-map state collections must equal schema 16 collections plus mcp_clients');
+  const currentCollections = new Set(collections);
+  const missingCollections = (coverage.state_collections || []).filter((item) => !currentCollections.has(item));
+  if (missingCollections.length) errors.push(`schema 17 baseline collections are missing: ${missingCollections.join(', ')}`);
   if (coverage.websockets?.length !== 2) errors.push('coverage-map must classify both WebSocket endpoints');
 }
 

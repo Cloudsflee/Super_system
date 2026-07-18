@@ -15,13 +15,16 @@
     "tests/unit/codex-discovery.test.mjs",
     "tests/unit/codex-app-server.test.mjs",
     "tests/unit/v14-container.test.mjs",
-    "tests/unit/v15-operations.test.mjs"
+    "tests/unit/v15-operations.test.mjs",
+    "tests/unit/v18-codex-mcp-injection.test.mjs"
   ],
   "unit-state": [
     "tests/unit/v16-core.test.mjs",
     "tests/unit/v16-release.test.mjs",
     "tests/unit/v17-core.test.mjs",
-    "tests/unit/v17-release.test.mjs"
+    "tests/unit/v17-release.test.mjs",
+    "tests/unit/v18-release.test.mjs",
+    "tests/unit/v19-migration.test.mjs"
   ],
   "unit-capabilities": [
     "tests/unit/v17-capability-operations.test.mjs",
@@ -29,7 +32,13 @@
     "tests/unit/v17-workflow-assist.test.mjs",
     "tests/unit/v175-workflow-draft-layout.test.mjs",
     "tests/unit/v175-test-task-process.test.mjs",
-    "tests/unit/v175-assist-goal-adapter.test.mjs"
+    "tests/unit/v175-assist-goal-adapter.test.mjs",
+    "tests/unit/v18-mcp-auth.test.mjs",
+    "tests/unit/v18-mcp-gateway-auth.test.mjs",
+    "tests/unit/v18-mcp-registry.test.mjs",
+    "tests/unit/v19-core.test.mjs",
+    "tests/unit/v19-mcp-registry.test.mjs",
+    "tests/unit/v19-repository-delivery.test.mjs"
   ],
   "integration-core": [
     "tests/integration/api-flow.test.mjs",
@@ -37,7 +46,11 @@
     "tests/integration/v12-flow.test.mjs",
     "tests/integration/v13-migration-flow.test.mjs",
     "tests/integration/v13-project-lifecycle-flow.test.mjs",
-    "tests/integration/v13-governance-flow.test.mjs"
+    "tests/integration/v13-governance-flow.test.mjs",
+    "tests/integration/v18-mcp-gateway-flow.test.mjs",
+    "tests/integration/v18-mcp-http-flow.test.mjs",
+    "tests/integration/v18-mcp-operations-flow.test.mjs",
+    "tests/integration/v18-mcp-stdio-flow.test.mjs"
   ],
   "integration-runtime": [
     "tests/integration/v12-codex-flow.test.mjs",
@@ -52,10 +65,12 @@
     "tests/integration/v15-native-assist-flow.test.mjs"
   ],
   "integration-onboard": [
-    "tests/integration/v17-assist-brief-flow.test.mjs"
+    "tests/integration/v17-assist-brief-flow.test.mjs",
+    "tests/integration/v19-workflow-generation-flow.test.mjs"
   ],
   "integration-workflow": [
-    "tests/integration/v17-workflow-assist-flow.test.mjs"
+    "tests/integration/v17-workflow-assist-flow.test.mjs",
+    "tests/integration/v19-workflow-migration-orchestrator-flow.test.mjs"
   ],
   "integration-files": [
     "tests/integration/tools-flow.test.mjs",
@@ -67,10 +82,13 @@
     "tests/integration/git-flow.test.mjs",
     "tests/integration/github-flow.test.mjs",
     "tests/integration/v12-github-security-flow.test.mjs",
-    "tests/integration/v13-github-repository-flow.test.mjs"
+    "tests/integration/v13-github-repository-flow.test.mjs",
+    "tests/integration/v19-delivery-flow.test.mjs",
+    "tests/integration/v19-github-webhook-flow.test.mjs"
   ],
   "integration-change": [
     "tests/integration/v13-terminal-flow.test.mjs",
-    "tests/integration/v15-host-bridge-flow.test.mjs"
+    "tests/integration/v15-host-bridge-flow.test.mjs",
+    "tests/integration/v18-mcp-terminal-flow.test.mjs"
   ]
 }

@@ -13,6 +13,18 @@ export async function readResource(client, uri) {
   return JSON.parse(response.contents[0].text);
 }
 
+export function journeyWorkflowHierarchy() {
+  return [{
+    id: 'v18-delivery', role: 'workstream', title: 'Verified Node project', goal: 'Deliver a complete Node project through MCP',
+    outcome: 'A tested and reviewable Node project', category: 'deliverable', boundary: { deliverable: 'node-project' },
+    acceptance_criteria: ['Node tests pass', 'Git commit is recorded'], dependency_ids: [], tasks: [
+      { id: 'v18-execution', role: 'task', title: 'Implement Node project', goal: 'Create the deterministic implementation', task_kind: 'code', execution_mode: 'codex', dependency_ids: [] },
+      { id: 'v18-research', role: 'task', title: 'Research constraints', goal: 'Validate MCP constraints', task_kind: 'research', execution_mode: 'assist', dependency_ids: ['v18-execution'] },
+      { id: 'v18-analysis', role: 'task', title: 'Analyze evidence', goal: 'Review deterministic evidence', task_kind: 'analysis', execution_mode: 'assist', dependency_ids: ['v18-research'] }
+    ]
+  }];
+}
+
 export async function writeJourneyProject(client, { projectId, nodeId }) {
   const packageJson = `${JSON.stringify({ name: 'v18-mcp-journey', version: '1.0.0', private: true, scripts: { test: 'node --test' } }, null, 2)}\n`;
   const source = "function sum(a, b) { return a + b; }\nmodule.exports = { sum };\n";
