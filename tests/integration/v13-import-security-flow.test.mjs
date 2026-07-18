@@ -14,8 +14,8 @@ fs.mkdirSync(path.join(archiveSource, 'src'), { recursive: true });
 fs.writeFileSync(path.join(archiveSource, 'README.md'), '# Safe archive source\n', 'utf8');
 fs.writeFileSync(path.join(archiveSource, 'src', 'index.js'), 'export const safe = true;\n', 'utf8');
 fs.writeFileSync(binaryContext, Buffer.from([0, 1, 2, 3, 255]));
-run('tar', ['-cf', tarFile, '-C', archiveSource, '.']);
-run('tar', ['-a', '-cf', zipFile, '-C', archiveSource, '.']);
+run('tar', ['-cf', './source.tar', '-C', './archive-source', '.']);
+run('tar', ['-a', '-cf', './source.zip', '-C', './archive-source', '.']);
 const archiveBefore = new Map([[tarFile, fileSnapshot(tarFile)], [zipFile, fileSnapshot(zipFile)], [binaryContext, fileSnapshot(binaryContext)]]);
 
 const port = Number(process.env.AIWS_TEST_PORT || 4599);

@@ -5,19 +5,26 @@ import { createApiRouteRegistry, MCP_MAPPINGS } from '../../apps/api/src/api-rou
 import { MCP_SPECIAL_CAPABILITIES, MCP_TOOL_NAMES } from '../../apps/api/src/mcp-server-factory.mjs';
 import { MCP_SCOPES } from '../../apps/api/src/mcp-client-service.mjs';
 import { collections } from '../../apps/api/src/config.mjs';
+import { missingBaselineItems } from '../../scripts/legacy-baseline-policy.mjs';
 
 const coverage = JSON.parse(fs.readFileSync('tests/v18/coverage-map.json', 'utf8'));
+const routeBaseline = JSON.parse(fs.readFileSync(coverage.route_baseline_file, 'utf8'));
 const registry = createApiRouteRegistry(apiRoutes);
-const baselineRegistry = registry.filter((item) => coverage.route_modules.includes(item.source_module));
+const routeKeys = registry.map((item) => `${item.method} ${item.pattern}`);
+const baselineRouteCount = routeBaseline.routes.length;
 
-assert.equal(baselineRegistry.length, coverage.expected_http_routes);
-assert.equal(baselineRegistry.filter((item) => !item.source_module.includes('v18')).length, coverage.expected_legacy_http_routes);
-assert.ok(registry.length >= baselineRegistry.length);
-assert.equal(new Set(registry.map((item) => `${item.method} ${item.pattern}`)).size, apiRoutes.length);
+assert.equal(baselineRouteCount, coverage.expected_http_routes);
+assert.equal(baselineRouteCount - routeBaseline.v18_routes.length, coverage.expected_legacy_http_routes);
+assert.equal(new Set(routeBaseline.routes).size, baselineRouteCount);
+assert.equal(new Set(routeBaseline.v18_routes).size, routeBaseline.v18_routes.length);
+assert.deepEqual(missingBaselineItems(routeBaseline.routes, routeBaseline.v18_routes), []);
+assert.deepEqual(missingBaselineItems(routeKeys, routeBaseline.routes), []);
+assert.ok(registry.length >= baselineRouteCount);
+assert.equal(new Set(routeKeys).size, apiRoutes.length);
 assert.equal(new Set(registry.map((item) => item.operation_id)).size, registry.length);
-assert.deepEqual([...MCP_MAPPINGS], coverage.mappings);
-assert.deepEqual([...MCP_TOOL_NAMES], coverage.tools);
-for (const collection of coverage.state_collections) assert.ok(collections.includes(collection), `missing V1.8 collection: ${collection}`);
+assert.deepEqual(missingBaselineItems(MCP_MAPPINGS, coverage.mappings), []);
+assert.deepEqual(missingBaselineItems(MCP_TOOL_NAMES, coverage.tools), []);
+assert.deepEqual(missingBaselineItems(collections, coverage.state_collections), []);
 
 const knownScopes = new Set(MCP_SCOPES);
 for (const operation of registry) {
@@ -49,4 +56,4 @@ for (const websocket of coverage.websockets) {
   else assert.equal(specialIds.has('aiws.external.host_bridge_ws'), true);
 }
 
-console.log(`V1.8 registry contract passed (${baselineRegistry.length} baseline/${registry.length} current routes, ${MCP_SPECIAL_CAPABILITIES.length} special capabilities)`);
+console.log(`V1.8 registry contract passed (${baselineRouteCount} baseline/${registry.length} current routes, ${MCP_SPECIAL_CAPABILITIES.length} special capabilities)`);

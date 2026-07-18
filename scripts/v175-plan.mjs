@@ -3,6 +3,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { ASSIST_CAPABILITY_MANIFEST } from '../packages/shared/src/assist-capabilities.mjs';
 import { collections } from '../apps/api/src/config.mjs';
+import { versionAtLeast } from './legacy-baseline-policy.mjs';
 import { ROOT, matchesAny, matchesGlob, normalizePath, readJson, runCommandSync, walk } from './v175-lib.mjs';
 
 const errors = [], requiredFields = ['id', 'layer', 'domain', 'priority', 'command', 'timeout', 'dependencies', 'cleanup', 'external_effects', 'quadrants', 'covers', 'suites'];
@@ -85,16 +86,6 @@ function validateCatalog() {
   }
   for (const layer of layers) if (!catalog.tests.some((item) => item.layer === layer)) errors.push(`catalog missing ${layer}`);
   for (const domain of ['governance', 'static', 'state', 'runtime', 'setup', 'onboard', 'assist', 'action', 'workflow', 'change', 'files', 'git', 'diagnostics', 'web', 'e2e', 'release', 'live-codex', 'live-github', 'live-cc-switch', 'soak']) if (!domains.has(domain)) errors.push(`catalog missing domain ${domain}`);
-}
-
-function versionAtLeast(value, baseline) {
-  const parse = (input) => String(input || '').match(/^(\d+)\.(\d+)\.(\d+)(?:-[0-9A-Za-z.-]+)?$/)?.slice(1).map(Number);
-  const current = parse(value), minimum = parse(baseline);
-  if (!current || !minimum) return false;
-  for (let index = 0; index < 3; index += 1) {
-    if (current[index] !== minimum[index]) return current[index] > minimum[index];
-  }
-  return true;
 }
 
 function validateGroups() {

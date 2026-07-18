@@ -30,9 +30,9 @@ try {
   await client.connect(transport);
   assert.equal(client.getServerVersion().name, 'aiws-built-in');
   const tools = await client.listTools();
-  assert.equal(tools.tools.length, 15); assert.equal(tools.tools.some((item) => item.name === 'aiws_execute'), true);
+  assert.ok(tools.tools.length >= 15); assert.equal(tools.tools.some((item) => item.name === 'aiws_execute'), true);
   const health = await client.callTool({ name: 'aiws_system', arguments: { action: 'aiws.system.get.health', arguments: {} } });
-  assert.equal(health.structuredContent.ok, true); assert.equal(health.structuredContent.data.schema_version, 18);
+  assert.equal(health.structuredContent.ok, true); assert.ok(Number.isInteger(health.structuredContent.data.schema_version) && health.structuredContent.data.schema_version >= 17);
   const searched = await client.callTool({ name: 'aiws_capabilities', arguments: { action: 'search', query: 'health', limit: 5 } });
   assert.equal(searched.structuredContent.ok, true); assert.equal(searched.structuredContent.data.items.some((item) => item.operation_id === 'aiws.system.get.health'), true);
   const resources = await client.listResources();

@@ -20,7 +20,7 @@ try {
   operator = await fixture.connect(fixture.operator, 'v18-journey-operator');
   approver = await fixture.connect(fixture.approver, 'v18-journey-approver');
   assert.equal(operator.client.getServerVersion().name, 'aiws-built-in');
-  assert.equal((await operator.client.listTools()).tools.length, 15);
+  assert.ok((await operator.client.listTools()).tools.length >= 15);
   assert.equal(fixture.operator.client.scopes.includes('approval:decide'), false);
   assert.equal(fixture.operator.client.scopes.includes('setup:admin'), false);
   assert.equal(fixture.operator.client.scopes.includes('mcp:admin'), false);

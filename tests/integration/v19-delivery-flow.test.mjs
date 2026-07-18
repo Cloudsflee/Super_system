@@ -49,7 +49,7 @@ try {
     waitForDelivery(deliveryService, firstStart.delivery.id), waitForDelivery(deliveryService, secondStart.delivery.id)
   ]);
   for (const item of [first, second]) {
-    assert.equal(item.status, 'completed');
+    assert.equal(item.status, 'completed', JSON.stringify({ phase: item.phase, error_code: item.error_code, error_detail: item.error_detail }));
     assert.equal(item.pr_state, 'draft');
     assert.match(item.pr_url, /^https:\/\/github\.com\/acme\/multi-task\/pull\//);
     assert.ok(fs.existsSync(item.worktree_path));

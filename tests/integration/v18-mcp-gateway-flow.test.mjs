@@ -62,7 +62,7 @@ try {
   connections.push(connection, secondConnection);
   const { client } = connection;
   assert.equal(client.getServerVersion().name, 'aiws-mcp-gateway');
-  assert.equal((await client.listTools()).tools.length, 15);
+  assert.ok((await client.listTools()).tools.length >= 15);
   assert.equal((await client.listResources()).resources.some((item) => item.uri === 'aiws://health'), true);
 
   const response = await client.callTool({

@@ -12,7 +12,7 @@ import { assertDeliveryPath, requireApprovedDeliveryPolicy } from './repository-
 import { addTrace, mutate, owner, readState } from './state.mjs';
 import { reviewSnapshotForPath, safeSegment } from './assist-v3-git.mjs';
 const controllers = new Map();
-const taskLocks = new Set();
+const taskLocks = new Set(), repositoryPreparationLocks = new Set();
 const TERMINAL = new Set(['completed', 'failed', 'cancelled']);
 const REQUIRED_AUTOMATION_PERMISSIONS = ['codex_run', 'commit', 'push', 'draft_pr'];
 const SECRET_PATTERNS = [
@@ -71,22 +71,23 @@ export async function listDeliveries(query = {}) { const state = await readState
 export async function deliveryEvents(deliveryId, after = 0) { const state = await readState(), delivery = state.deliveries.find((item) => item.id === deliveryId); if (!delivery) throw new HttpError(404, { error: 'delivery_not_found' }); const events = state.delivery_events.filter((item) => item.delivery_id === delivery.id && item.sequence > Number(after || 0)).sort((a, b) => a.sequence - b.sequence); return { delivery: publicDelivery(delivery), events, terminal: TERMINAL.has(delivery.status), next_cursor: events.at(-1)?.sequence || Number(after || 0) }; }
 async function executeDelivery(deliveryId) {
   const controller = new AbortController(); controllers.set(deliveryId, controller);
-  let taskId = null, lockAcquired = false;
+  let releaseTaskLock = null;
   try {
     const initial = await readState(), delivery = initial.deliveries.find((item) => item.id === deliveryId);
     if (!delivery || TERMINAL.has(delivery.status)) return;
-    taskId = delivery.task_id;
-    await acquireTaskLock(taskId, controller.signal);
-    lockAcquired = true;
+    releaseTaskLock = await acquireLock(taskLocks, delivery.task_id, controller.signal);
     const context = deliveryContext(initial, delivery);
     assertNotCancelled(controller.signal);
-    await phase(deliveryId, 'fetch_base');
-    const base = await fetchAndVerifyBase(context, delivery, controller.signal);
-    await persistDelivery(deliveryId, { base_sha: base.sha });
-    assertNotCancelled(controller.signal);
-    await phase(deliveryId, 'worktree');
-    const worktree = await ensureDeliveryWorktree(context, delivery, base.sha);
-    await persistDelivery(deliveryId, { worktree_path: worktree });
+    let base, worktree; const releaseRepositoryLock = await acquireLock(repositoryPreparationLocks, repositoryLockKey(context.repo_path), controller.signal);
+    try {
+      await phase(deliveryId, 'fetch_base');
+      base = await fetchAndVerifyBase(context, delivery, controller.signal);
+      await persistDelivery(deliveryId, { base_sha: base.sha });
+      assertNotCancelled(controller.signal);
+      await phase(deliveryId, 'worktree');
+      worktree = await ensureDeliveryWorktree(context, delivery, base.sha);
+      await persistDelivery(deliveryId, { worktree_path: worktree });
+    } finally { releaseRepositoryLock(); }
     const startHead = git(worktree, ['rev-parse', 'HEAD'], 5_000).stdout.trim();
     assertNotCancelled(controller.signal);
     await phase(deliveryId, 'codex_run');
@@ -122,16 +123,14 @@ async function executeDelivery(deliveryId) {
     await completeDelivery(deliveryId, commitSha, pull, checked.changed_files, testResults);
   } catch (error) {
     if (!controller.signal.aborted) await failDelivery(deliveryId, error);
-  } finally { controllers.delete(deliveryId); if (taskId && lockAcquired) taskLocks.delete(taskId); }
+  } finally { controllers.delete(deliveryId); releaseTaskLock?.(); }
 }
-async function acquireTaskLock(taskId, signal) {
-  while (taskLocks.has(taskId)) {
-    assertNotCancelled(signal);
-    await new Promise((resolve) => setTimeout(resolve, 20));
-  }
-  assertNotCancelled(signal);
-  taskLocks.add(taskId);
+async function acquireLock(locks, key, signal) {
+  while (locks.has(key)) { assertNotCancelled(signal); await new Promise((resolve) => setTimeout(resolve, 20)); }
+  assertNotCancelled(signal); locks.add(key);
+  return () => locks.delete(key);
 }
+function repositoryLockKey(repoPath) { const resolved = path.resolve(repoPath); return process.platform === 'win32' ? resolved.toLowerCase() : resolved; }
 function assertNotCancelled(signal) {
   if (signal.aborted) throw deliveryError('delivery_cancelled');
 }

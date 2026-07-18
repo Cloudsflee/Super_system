@@ -8,6 +8,7 @@ if (!base || /^0+$/.test(base)) throw new Error('CI impact base SHA is unavailab
 let decision = 'tests-updated', reason = 'Push gate executes the affected V1.75 assertions and deterministic suites.';
 if (pull) {
   const body = String(pull.body || ''), decisionMatch = body.match(/^\s*V1\.75-Decision:\s*(\S+)\s*$/mi), reasonMatch = body.match(/^\s*V1\.75-Reason:\s*(.+?)\s*$/mi);
+  if (!decisionMatch || !reasonMatch) throw new Error('PR body must include V1.75-Decision and V1.75-Reason');
   decision = decisionMatch?.[1] || '';
   reason = reasonMatch?.[1] || '';
   if (/choose-one|explain|填写|TODO/i.test(`${decision} ${reason}`)) throw new Error('replace the V1.75 decision and reason placeholders in the PR body');

@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import { classifyWorkspaceDrift, normalizeCommandOutput } from '../../scripts/v175-baseline.mjs';
+import { missingBaselineItems, versionAtLeast } from '../../scripts/legacy-baseline-policy.mjs';
 import { classifyRunVerdict } from '../../scripts/v175-report.mjs';
 
 const pkg = JSON.parse(fs.readFileSync('package.json', 'utf8'));
@@ -8,24 +9,25 @@ const catalog = JSON.parse(fs.readFileSync('tests/v175/catalog.json', 'utf8'));
 const impact = JSON.parse(fs.readFileSync('tests/v175/impact-map.json', 'utf8'));
 const statuses = ['PASS', 'FAIL', 'BLOCKED', 'SKIPPED', 'FLAKY'];
 
-function versionAtLeast(value, baseline) {
-  const parse = (input) => String(input || '').match(/^(\d+)\.(\d+)\.(\d+)(?:-[0-9A-Za-z.-]+)?$/)?.slice(1).map(Number);
-  const current = parse(value), minimum = parse(baseline);
-  if (!current || !minimum) return false;
-  for (let index = 0; index < 3; index += 1) {
-    if (current[index] !== minimum[index]) return current[index] > minimum[index];
-  }
-  return true;
-}
-
 assert.equal(catalog.product_version, '1.7.0');
 assert.ok(versionAtLeast(pkg.version, catalog.product_version), `package version ${pkg.version} must not predate the V1.75 baseline ${catalog.product_version}`);
+assert.equal(versionAtLeast('1.10.0', '1.9.0'), true, 'minor versions compare numerically');
+assert.equal(versionAtLeast('2.0.0-beta.1', '1.9.0'), true, 'a newer release line may be prerelease');
+assert.equal(versionAtLeast('1.7.0-beta.1', '1.7.0'), false, 'a prerelease does not satisfy its stable baseline');
+assert.equal(versionAtLeast('1.6.99', '1.7.0'), false, 'older versions fail the baseline');
+assert.deepEqual(missingBaselineItems(['route:a', 'route:b', 'route:future'], ['route:a', 'route:b']), [], 'additive capabilities satisfy a frozen baseline');
+assert.deepEqual(missingBaselineItems(['route:a'], ['route:a', 'route:b']), ['route:b'], 'baseline removal remains a failure');
 assert.equal(catalog.state_schema, 16);
-for (const command of ['test:v175:plan', 'test:v175:impact', 'test:v175:pr', 'test:v175:full', 'test:v175:user-journey', 'test:v175:live', 'test:v175:soak']) assert.ok(pkg.scripts[command], `${command} exists`);
+for (const command of ['hooks:install', 'gate:pre-push', 'test:v175:plan', 'test:v175:impact', 'test:v175:pr', 'test:v175:full', 'test:v175:user-journey', 'test:v175:live', 'test:v175:soak']) assert.ok(pkg.scripts[command], `${command} exists`);
 assert.equal(new Set(catalog.tests.map((item) => item.id)).size, catalog.tests.length);
 assert.deepEqual(new Set(catalog.tests.map((item) => item.layer)), new Set(Array.from({ length: 9 }, (_, index) => `L${index}`)));
 assert.ok(impact.mappings.every((item) => item.patterns.length && item.domains.length));
-for (const file of ['测试计划v1.75.md', '.github/PULL_REQUEST_TEMPLATE.md', '.github/workflows/v175-pr.yml', '.github/workflows/v175-full.yml', '.github/workflows/v175-live.yml', '.github/workflows/v175-soak.yml']) assert.ok(fs.existsSync(file), `${file} exists`);
+for (const file of ['测试计划v1.75.md', '.gitattributes', '.githooks/pre-push', 'scripts/pre-push-gate.mjs', '.github/PULL_REQUEST_TEMPLATE.md', '.github/workflows/v175-pr.yml', '.github/workflows/v175-full.yml', '.github/workflows/v175-live.yml', '.github/workflows/v175-soak.yml']) assert.ok(fs.existsSync(file), `${file} exists`);
+assert.ok(fs.readFileSync('.gitattributes', 'utf8').includes('.githooks/* text eol=lf'), 'Git hooks keep LF line endings');
+const prePush = fs.readFileSync('scripts/pre-push-gate.mjs', 'utf8');
+for (const contract of ['refs/heads/main', 'refusing to delete', 'status', '--porcelain', 'AIWS_TEST_BASE_SHA', 'test:v175:pr', 'test:v18:pr']) assert.ok(prePush.includes(contract), `pre-push gate keeps ${contract}`);
+const ciImpact = fs.readFileSync('scripts/v175-ci-impact.mjs', 'utf8');
+for (const contract of ['V1.75-Decision', 'V1.75-Reason', '!decisionMatch || !reasonMatch']) assert.ok(ciImpact.includes(contract), `PR impact gate keeps ${contract}`);
 const runner = fs.readFileSync('scripts/v175-runner.mjs', 'utf8');
 for (const contract of ['15 * 60_000', '90 * 60_000', '120 * 60_000', 'AIWS_TEST_RUN_ID', '测试结果v1.75.md']) assert.ok(runner.includes(contract), `runner keeps ${contract}`);
 assert.ok(runner.includes("item.external_effects === 'codex' && !process.env.AIWS_TEST_LIVE_BASE_URL"), 'service-backed Codex Live bypasses the host CLI precondition');

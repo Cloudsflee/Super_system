@@ -46,7 +46,7 @@ export async function installManagedCcSwitch({ adapted = false } = {}) {
     const actual = crypto.createHash('sha256').update(bytes).digest('hex');
     if (actual !== expected) throw new HttpError(409, { error: 'cc_switch_checksum_mismatch', expected, actual });
     await fsp.writeFile(archive, bytes, { mode: 0o600 });
-    const unpacked = command('tar', ['-xf', archive, '-C', extracted], stage, 60000);
+    const unpacked = command('tar', ['-xf', `./${assetName}`, '-C', './extract'], stage, 60000);
     if (!unpacked.ok) throw new HttpError(409, { error: 'cc_switch_extract_failed', detail: unpacked.stderr || unpacked.error });
     const binary = await findBinary(extracted); if (!binary) throw new HttpError(409, { error: 'cc_switch_binary_missing' });
     const manifest = { version: CC_SWITCH_VERSION, asset: assetName, asset_sha256: expected, binary_path: path.relative(extracted, binary), binary_sha256: await hashFile(binary), installed_at: new Date().toISOString() };

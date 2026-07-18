@@ -73,6 +73,19 @@ V1.9 默认离线门禁、MCP contract、两级工作流、四层 Assist、Deliv
 
 完整架构与后续 OAuth/PostgreSQL/Redis 扩展边界见 `docs/mcp-collaboration-architecture.md`。
 
+## 提交与历史门禁
+
+首次克隆后执行 `corepack pnpm hooks:install`。向 `main` 推送时，仓库的 `pre-push` hook 要求工作树干净，并以远端 `main` SHA 为 impact base 顺序执行 `test:v175:pr` 与 `test:v18:pr`；也可随时手动执行 `corepack pnpm gate:pre-push`。不得使用 `--no-verify` 绕过正式交付门禁。
+
+V1.75 的 `1.7.0` / schema `16` 与 V1.8 的 `1.8.0` / schema `17` 是只读历史 catalog，不是当前产品必须保持的值。后续版本只能按以下规则扩展：
+
+1. 当前产品版本不得早于历史版本；历史 catalog 自身仍保持精确冻结。
+2. 历史 HTTP route identities、MCP mappings/tools 与 state collections 是最低基线；允许新增，不允许删除或替换基线能力。
+3. 新增 deterministic unit/integration test 必须登记到 `tests/v175/suite-files.json`，不得通过跳过或放宽 FLAKY verdict 使门禁变绿。
+4. 修改旧工作流和 E2E fixture 时必须使用当前正式数据契约，并保留对历史业务能力的断言。
+
+当前私有仓库套餐不提供 GitHub branch protection，因此正式变更应先推送功能分支并通过 Pull Request workflow；本地 hook 是直接推送 `main` 前的补充强制检查。
+
 ## 默认验收
 
 按以下顺序执行，任一步非零都不能关闭交付：

@@ -2,6 +2,8 @@ import { spawnSync } from 'node:child_process';
 import path from 'node:path';
 
 const steps = [
+  nodeStep('v1.75:plan', 'scripts/v175-plan.mjs'),
+  nodeStep('v1.75:governance', 'tests/v175/governance.test.mjs'),
   nodeStep('v1.8:plan', 'scripts/v18-plan.mjs'),
   nodeStep('v1.8:impact-audit', 'scripts/v18-impact.mjs', '--audit'),
   nodeStep('v1.8:mcp-contract', 'scripts/v18-contract.mjs'),

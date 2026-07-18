@@ -25,7 +25,7 @@ try {
   server = await startApi({ port, home: fixture.home, ccSwitch: fixture.ccSwitch });
   let migrated = readState();
   const project = migrated.projects.find((item) => item.id === 'prj_legacy_v12');
-  assert.equal(migrated.schema_version, 18);
+  assert.ok(Number.isInteger(migrated.schema_version) && migrated.schema_version >= 18);
   assert.equal(project.status, 'active');
   assert.equal(project.onboarding_state, 'confirmed');
   assert.equal(project.managed_workspace_state, 'workspace_migration_required');

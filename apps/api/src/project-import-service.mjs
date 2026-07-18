@@ -36,9 +36,13 @@ export async function materializeCodeSource(project, source, operationKey = 'def
       if (!result.ok) throw new HttpError(409, { error: 'repository_clone_failed', detail: result.stderr || result.error });
       sourceHash = crypto.createHash('sha256').update(url).digest('hex');
     } else if (normalized.type === 'archive') {
-      const archive = await resolveSourcePath(normalized); await assertSafeFile(archive); validateArchiveListing(archive);
+      const archive = await resolveSourcePath(normalized); await assertSafeFile(archive);
       sourceHash = await hashFile(archive);
-      await fsp.mkdir(stagedRepo, { recursive: true }); const result = command('tar', ['-xf', archive, '-C', stagedRepo], stage, 120000);
+      // Keep tar inputs inside controlled staging so every platform receives local, relative paths.
+      const stagedArchive = path.join(stage, stagedArchiveName(archive)); await fsp.copyFile(archive, stagedArchive);
+      if (await hashFile(stagedArchive) !== sourceHash) throw new HttpError(409, { error: 'host_import_source_changed' });
+      validateArchiveListing(stagedArchive);
+      await fsp.mkdir(stagedRepo, { recursive: true }); const result = command('tar', ['-xf', localArchiveName(stagedArchive), '-C', './repo'], stage, 120000);
       if (!result.ok) throw new HttpError(400, { error: 'archive_extract_failed', detail: safeImportDetail(normalized, result.stderr || result.error) });
       await scanTree(stagedRepo); await assertHostSourceStable(normalized, archive, sourceHash, 'file');
     } else throw new HttpError(400, { error: 'unsupported_code_source' });
@@ -140,7 +144,8 @@ async function scanTree(root) {
 }
 async function copyTree(source, target) { await fsp.mkdir(target, { recursive: true }); for (const entry of await fsp.readdir(source, { withFileTypes: true })) { const from = path.join(source, entry.name), to = path.join(target, entry.name), stat = await fsp.lstat(from); if (stat.isSymbolicLink()) throw new HttpError(400, { error: 'source_symlink_rejected', entry: entry.name }); if (stat.isDirectory()) await copyTree(from, to); else if (stat.isFile()) await fsp.copyFile(from, to); else throw new HttpError(400, { error: 'unsupported_source_entry' }); } }
 function validateArchiveListing(archive) {
-  const result = command('tar', ['-tf', archive], path.dirname(archive), 30000), verbose = command('tar', ['-tvf', archive], path.dirname(archive), 30000);
+  const localName = localArchiveName(archive), directory = path.dirname(archive);
+  const result = command('tar', ['-tf', localName], directory, 30000), verbose = command('tar', ['-tvf', localName], directory, 30000);
   if (!result.ok || !verbose.ok) throw new HttpError(400, { error: 'archive_invalid', detail: result.stderr || verbose.stderr || result.error });
   const entries = result.stdout.split(/\r?\n/).filter(Boolean), detail = verbose.stdout.split(/\r?\n/).filter(Boolean);
   if (detail.length < entries.length) throw new HttpError(400, { error: 'archive_listing_unreadable' });
@@ -163,6 +168,8 @@ export function validateArchiveRecords(records) {
   }
   return { entries: records.length, total_bytes: declaredTotal };
 }
+function localArchiveName(archive) { return `./${path.basename(archive)}`; }
+function stagedArchiveName(archive) { const extension = path.extname(archive); return `source${/^\.[a-z0-9]{1,10}$/i.test(extension) ? extension : '.archive'}`; }
 function archiveEntryType(line) { const prefix = String(line || '').trim()[0]?.toLowerCase(); return prefix === 'd' ? 'directory' : prefix === 'l' ? 'symlink' : prefix === 'h' ? 'hardlink' : 'file'; }
 function archiveEntrySize(line) {
   const value = line.trim();

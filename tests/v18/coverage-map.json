@@ -2,14 +2,7 @@
   "version": "1.8",
   "expected_legacy_http_routes": 214,
   "expected_http_routes": 220,
-  "route_modules": [
-    "agent-sessions.mjs", "approvals-v13.mjs", "assets.mjs", "assist-v12.mjs", "assist-v3.mjs",
-    "change-proposals.mjs", "codex-capabilities-v13.mjs", "codex-discovery-v12.mjs", "codex-runtime-v12.mjs",
-    "codex-v12.mjs", "config-governance-v13.mjs", "files-v12.mjs", "git.mjs", "github-config-v12.mjs",
-    "github-installations-v12.mjs", "github-repositories-v13.mjs", "github-webhook-v12.mjs", "github.mjs",
-    "host-bridge-v15.mjs", "project-onboarding-v13.mjs", "projects.mjs", "runs.mjs", "setup-v12.mjs",
-    "system.mjs", "terminal-v13.mjs", "tools.mjs", "workflow-v12.mjs", "mcp-clients-v18.mjs", "mcp-v18.mjs"
-  ],
+  "route_baseline_file": "tests/v18/route-baseline.json",
   "websockets": [
     { "id": "terminal-session-ws", "path": "/assist/v3/terminal-sessions/:id/ws", "mapping": "async_adapter" },
     { "id": "host-bridge-device-ws", "path": "/assist/v3/host-bridge/ws", "mapping": "external_callback" }

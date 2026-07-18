@@ -29,7 +29,7 @@
     { "patterns": ["tests/e2e/**"], "domains": ["e2e", "web"], "priority": "P1" },
     { "patterns": ["tests/release/**"], "domains": ["release"], "priority": "P0" },
     { "patterns": ["tests/**"], "domains": ["api-core", "state", "runtime", "assist", "action", "workflow", "change", "files", "git", "web"], "priority": "P1" },
-    { "patterns": ["scripts/v175-*.mjs", "tests/v175/**", "测试计划v1.75.md", ".github/**"], "domains": ["governance"], "priority": "P0" },
+    { "patterns": ["scripts/v175-*.mjs", "tests/v175/**", "测试计划v1.75.md", ".github/**", ".githooks/**", ".gitattributes"], "domains": ["governance"], "priority": "P0" },
     { "patterns": ["scripts/**", "package.json", "pnpm-lock.yaml", "pnpm-workspace.yaml"], "domains": ["governance", "static"], "priority": "P1" },
     { "patterns": ["README.md", "docs/**", "*.md"], "domains": ["governance"], "priority": "P2" }
   ]

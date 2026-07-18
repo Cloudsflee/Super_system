@@ -12,7 +12,7 @@
     { "patterns": ["compose.yml", "Dockerfile", "docker/**", "scripts/aiws.*", "scripts/v18-release.mjs"], "suites": ["release"] },
     { "patterns": ["package.json", "pnpm-lock.yaml", "packages/**"], "suites": ["contract", "full"] },
     { "patterns": ["apps/api/**", "apps/worker/**"], "suites": ["contract", "security", "full"] },
-    { "patterns": ["tests/**", "scripts/**", ".github/**"], "suites": ["plan", "full"] },
+    { "patterns": ["tests/**", "scripts/**", ".github/**", ".githooks/**", ".gitattributes"], "suites": ["plan", "full"] },
     { "patterns": ["README.md", "docs/**", "doc/**", "bridge/**", "config/**", "*.md", "*.yml", "*.yaml"], "suites": ["contract"] }
   ]
 }
