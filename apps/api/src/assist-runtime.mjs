@@ -48,8 +48,8 @@ export async function startAssistRun(sessionId, adapterResponse) {
   } catch (error) {
     const cancelled = controller.signal.aborted;
     const currentController = controllers.get(sessionId) === controller;
-    const latest = await readState().then((state) => findSession(state, sessionId));
-    if (currentController && (!cancelled || latest.status !== 'running')) await markTerminal(sessionId, cancelled ? 'cancelled' : 'failed', cancelled ? null : error.message);
+    // cancelAssistRun persists cancellation; a stale controller must not overwrite a restarted run.
+    if (currentController && !cancelled) await markTerminal(sessionId, 'failed', error.message);
   } finally { if (controllers.get(sessionId) === controller) controllers.delete(sessionId); }
 }
 

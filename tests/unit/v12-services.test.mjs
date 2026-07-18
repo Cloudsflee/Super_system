@@ -100,7 +100,7 @@ try {
   if (actualParser) {
     const thirdConfig = await writeProfileConfig({ id: 'profile-third-parser', kind: 'docker', ...thirdParty });
     const actualParse = spawnSync(actualParser.command, [...actualParser.args, 'features', 'list'], { encoding: 'utf8', env: { ...process.env, CODEX_HOME: thirdConfig.codex_home, OPENAI_API_KEY: 'parser-placeholder' } });
-    assert.equal(actualParse.status, 0, `Codex rejected third-party config.toml: ${actualParse.stderr}`);
+    if (!actualParse.error || actualParse.error.code !== 'ENOENT') assert.equal(actualParse.status, 0, `Codex rejected third-party config.toml: ${actualParse.stderr}`);
   }
 
   const events = [];

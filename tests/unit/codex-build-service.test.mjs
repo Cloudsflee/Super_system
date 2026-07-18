@@ -9,7 +9,7 @@ const ready = { ready: true, docker: { ok: true }, image: { ready: true, id: 'sh
 {
   let inspectCalls = 0, spawnCalls = 0;
   const manager = new CodexBuildManager({
-    inspectRuntime: async () => { inspectCalls += 1; await delay(5); return inspectCalls <= 2 ? missing : ready; },
+    inspectRuntime: async () => { const call = ++inspectCalls; await delay(5); return call <= 2 ? missing : ready; },
     invalidateRuntime: () => undefined,
     spawnProcess: () => {
       spawnCalls += 1;
