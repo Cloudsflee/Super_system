@@ -22,6 +22,7 @@
     { "patterns": ["prisma/**"], "domains": ["state", "release"], "priority": "P0" },
     { "patterns": ["Dockerfile", "compose.yml", "docker/**", "scripts/aiws.ps1", "scripts/aiws.sh", "scripts/v16-release.mjs", "scripts/v17-release.mjs"], "domains": ["runtime", "release"], "priority": "P0" },
     { "patterns": ["apps/web/src/test/**"], "domains": ["web"], "priority": "P1" },
+    { "patterns": ["scripts/v175-*.mjs", "tests/v175/**", "测试计划v1.75.md", ".github/**", ".githooks/**", ".gitattributes"], "domains": ["governance"], "priority": "P0" },
     { "patterns": ["tests/unit/*codex*.mjs", "tests/integration/*codex*.mjs"], "domains": ["runtime", "setup"], "priority": "P0" },
     { "patterns": ["tests/unit/*workflow*.mjs", "tests/integration/*workflow*.mjs"], "domains": ["workflow", "action"], "priority": "P0" },
     { "patterns": ["tests/integration/*assist*.mjs", "tests/unit/*capability*.mjs"], "domains": ["assist", "action"], "priority": "P0" },
@@ -29,7 +30,6 @@
     { "patterns": ["tests/e2e/**"], "domains": ["e2e", "web"], "priority": "P1" },
     { "patterns": ["tests/release/**"], "domains": ["release"], "priority": "P0" },
     { "patterns": ["tests/**"], "domains": ["api-core", "state", "runtime", "assist", "action", "workflow", "change", "files", "git", "web"], "priority": "P1" },
-    { "patterns": ["scripts/v175-*.mjs", "tests/v175/**", "测试计划v1.75.md", ".github/**", ".githooks/**", ".gitattributes"], "domains": ["governance"], "priority": "P0" },
     { "patterns": ["scripts/**", "package.json", "pnpm-lock.yaml", "pnpm-workspace.yaml"], "domains": ["governance", "static"], "priority": "P1" },
     { "patterns": ["README.md", "docs/**", "*.md"], "domains": ["governance"], "priority": "P2" }
   ]

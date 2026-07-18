@@ -22,7 +22,8 @@ for (const command of ['hooks:install', 'gate:pre-push', 'test:v175:plan', 'test
 assert.equal(new Set(catalog.tests.map((item) => item.id)).size, catalog.tests.length);
 assert.deepEqual(new Set(catalog.tests.map((item) => item.layer)), new Set(Array.from({ length: 9 }, (_, index) => `L${index}`)));
 assert.ok(impact.mappings.every((item) => item.patterns.length && item.domains.length));
-for (const file of ['测试计划v1.75.md', '.gitattributes', '.githooks/pre-push', 'scripts/pre-push-gate.mjs', '.github/PULL_REQUEST_TEMPLATE.md', '.github/workflows/v175-pr.yml', '.github/workflows/v175-full.yml', '.github/workflows/v175-live.yml', '.github/workflows/v175-soak.yml']) assert.ok(fs.existsSync(file), `${file} exists`);
+assert.ok(impact.mappings.findIndex((item) => item.patterns.includes('tests/v175/**')) < impact.mappings.findIndex((item) => item.patterns.includes('tests/**')), 'V1.75 governance files match before generic tests');
+for (const file of ['测试计划v1.75.md', '.gitattributes', '.githooks/pre-push', 'scripts/pre-push-gate.mjs', '.github/PULL_REQUEST_TEMPLATE.md']) assert.ok(fs.existsSync(file), `${file} exists`);
 assert.ok(fs.readFileSync('.gitattributes', 'utf8').includes('.githooks/* text eol=lf'), 'Git hooks keep LF line endings');
 const prePush = fs.readFileSync('scripts/pre-push-gate.mjs', 'utf8');
 for (const contract of ['refs/heads/main', 'refusing to delete', 'status', '--porcelain', 'AIWS_TEST_BASE_SHA', 'test:v175:pr', 'test:v18:pr']) assert.ok(prePush.includes(contract), `pre-push gate keeps ${contract}`);

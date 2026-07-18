@@ -84,7 +84,7 @@ V1.75 的 `1.7.0` / schema `16` 与 V1.8 的 `1.8.0` / schema `17` 是只读历�
 3. 新增 deterministic unit/integration test 必须登记到 `tests/v175/suite-files.json`，不得通过跳过或放宽 FLAKY verdict 使门禁变绿。
 4. 修改旧工作流和 E2E fixture 时必须使用当前正式数据契约，并保留对历史业务能力的断言。
 
-当前私有仓库套餐不提供 GitHub branch protection，因此正式变更应先推送功能分支并通过 Pull Request workflow；本地 hook 是直接推送 `main` 前的补充强制检查。
+当前单机初版不启用 GitHub Actions 或 branch protection；本地 `pre-push` hook 是推送 `main` 前的自动门禁。
 
 ## 默认验收
 
