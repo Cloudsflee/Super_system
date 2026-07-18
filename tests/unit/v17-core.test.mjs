@@ -121,22 +121,44 @@ try {
   assert.equal(reapplied.content.sections.length, appliedSectionCount, 'reapplying a template does not accumulate appendix sections');
   assert.equal(reapplied.content.sections.filter((section) => section.title === '附录').length, 1);
 
+  editable.workflow_drafts[0].nodes = [{
+    id: 'workstream-base', role: 'workstream', parent_node_id: null, type: 'workstream', title: '核心方案交付', goal: '形成可验收方案',
+    outcome: '形成可验收方案', category: 'deliverable', acceptance_criteria: ['方案通过评审'], boundary: { deliverable: '方案文档' },
+    dependency_ids: [], position: { x: 80, y: 120 }, order_index: 0, plan_revision: 1
+  }];
   const beforeWorkflowIds = editable.workflow_drafts[0].nodes.map((node) => node.id);
-  const workflow = workflowService.patchWorkflowDraftInState(editable, 'project-1', { expected_revision: 1, operations: [{ type: 'add_node', node: { id: 'node-extra', type: 'analysis', title: '方案评审', goal: '确认方案', dependency_ids: [beforeWorkflowIds[0]] } }] }, actorId);
-  assert.equal(workflow.revision, 2); assert.deepEqual(workflow.nodes.slice(0, 3).map((node) => node.id), beforeWorkflowIds);
-  assert.throws(() => workflowService.patchWorkflowDraftInState(editable, 'project-1', { expected_revision: 2, operations: [{ type: 'connect', node_id: beforeWorkflowIds[0], dependency_id: 'node-extra' }] }, actorId), (error) => error.status === 409 && error.payload.error === 'workflow_draft_cycle');
+  const workflow = workflowService.patchWorkflowDraftInState(editable, 'project-1', { expected_revision: 1, operations: [{ type: 'add_workstream', node: {
+    id: 'node-extra', title: '方案评审结论', goal: '确认方案', outcome: '形成评审结论', category: 'decision',
+    acceptance_criteria: ['结论已记录'], boundary: { owner: 'reviewer' }, dependency_ids: [beforeWorkflowIds[0]]
+  } }] }, actorId);
+  assert.equal(workflow.revision, 2); assert.deepEqual(workflow.nodes.slice(0, beforeWorkflowIds.length).map((node) => node.id), beforeWorkflowIds);
+  assert.throws(() => workflowService.patchWorkflowDraftInState(editable, 'project-1', { expected_revision: 2, operations: [{ type: 'connect', node_id: beforeWorkflowIds[0], dependency_id: 'node-extra' }] }, actorId), (error) => error.status === 409 && error.payload.error === 'workflow_top_level_cycle');
   assert.throws(() => workflowService.patchWorkflowDraftInState(editable, 'project-1', { expected_revision: 1, operations: [{ type: 'delete_node', node_id: 'node-extra' }] }, actorId), (error) => error.payload.error === 'workflow_draft_revision_conflict');
-  assert.throws(() => workflowService.patchWorkflowDraftInState(editable, 'project-1', { expected_revision: 2, nodes: [] }, actorId), (error) => error.payload.error === 'workflow_draft_requires_node');
-  assert.throws(() => workflowService.patchWorkflowDraftInState(editable, 'project-1', { expected_revision: 2, nodes: Array.from({ length: 51 }, (_, index) => ({ id: `too-many-${index}`, title: `节点 ${index}`, dependency_ids: [] })) }, actorId), (error) => error.payload.error === 'workflow_draft_node_limit');
+  const emptied = workflowService.patchWorkflowDraftInState(editable, 'project-1', { expected_revision: 2, nodes: [] }, actorId);
+  assert.equal(emptied.revision, 3); assert.deepEqual(emptied.nodes, []);
+  assert.throws(() => workflowService.patchWorkflowDraftInState(editable, 'project-1', { expected_revision: 3, nodes: Array.from({ length: 157 }, (_, index) => ({ id: `too-many-${index}`, title: `节点 ${index}`, dependency_ids: [] })) }, actorId), (error) => error.payload.error === 'workflow_draft_node_limit');
 
   const activationProject = { id: 'activation-project', title: 'Activation', goal: '保留全部节点', status: 'draft', onboarding_state: 'brief_review', current_workspace_id: 'activation-root' };
   const activationBrief = { id: 'activation-brief', version: 1, status: 'draft', content: domain.createBriefContentV2({ briefId: 'activation-brief', title: 'Activation Brief', projectGoal: activationProject.goal }) };
-  const legacyNodes = Array.from({ length: 21 }, (_, index) => ({ type: index ? 'execution' : 'goal_definition', title: `Legacy ${index}`, dependency_indexes: index ? [index - 1] : [] }));
+  const activationNodes = [10, 9].map((taskCount, workstreamIndex) => {
+    const workstreamId = `activation-workstream-${workstreamIndex}`;
+    return {
+      id: workstreamId, role: 'workstream', title: `成果包 ${workstreamIndex + 1}`, outcome: `完成成果包 ${workstreamIndex + 1}`,
+      category: 'deliverable', acceptance_criteria: ['成果通过验收'], boundary: { deliverable: `成果包 ${workstreamIndex + 1}` },
+      dependency_ids: workstreamIndex ? ['activation-workstream-0'] : [],
+      tasks: Array.from({ length: taskCount }, (_, taskIndex) => ({
+        id: `activation-task-${workstreamIndex}-${taskIndex}`, role: 'task', title: `执行任务 ${workstreamIndex + 1}.${taskIndex + 1}`,
+        task_kind: 'manual', execution_mode: 'manual',
+        dependency_ids: taskIndex ? [`activation-task-${workstreamIndex}-${taskIndex - 1}`] : []
+      }))
+    };
+  });
   const activationState = { workflows: [], workflow_nodes: [], workspaces: [], node_contracts: [] };
-  const activated = projectLifecycle.activateDraftInState(activationState, activationProject, activationBrief, legacyNodes, actorId);
+  const activated = projectLifecycle.activateDraftInState(activationState, activationProject, activationBrief, activationNodes, actorId);
   assert.equal(activated.nodes.length, 21, 'activation does not truncate a valid 21-node draft');
-  assert.equal(activated.nodes.at(-1).dependencies[0].node_id, activated.nodes.at(-2).id, 'legacy dependency indexes map to stable node ids');
-  assert.throws(() => projectLifecycle.activateDraftInState({ workflows: [], workflow_nodes: [], workspaces: [], node_contracts: [] }, { ...activationProject, id: 'empty-project', status: 'draft', onboarding_state: 'brief_review' }, { ...activationBrief, id: 'empty-brief', status: 'draft' }, [], actorId), (error) => error.payload.error === 'workflow_draft_requires_node');
+  assert.equal(activated.nodes.at(-1).dependencies[0].node_id, activated.nodes.at(-2).id, 'task dependencies remain within the local Workstream graph');
+  assert.equal(activated.nodes.at(-1).parent_node_id, 'activation-workstream-1');
+  assert.throws(() => projectLifecycle.activateDraftInState({ workflows: [], workflow_nodes: [], workspaces: [], node_contracts: [] }, { ...activationProject, id: 'empty-project', status: 'draft', onboarding_state: 'brief_review' }, { ...activationBrief, id: 'empty-brief', status: 'draft' }, [], actorId), (error) => error.payload.error === 'workflow_draft_requires_generation_or_manual_nodes');
 
   assert.equal(shared.validateAssistCapabilityManifest().length, shared.ASSIST_CAPABILITY_MANIFEST.length);
   assert.equal(new Set(shared.ASSIST_CAPABILITY_MANIFEST.map((item) => item.id)).size, shared.ASSIST_CAPABILITY_MANIFEST.length);

@@ -1,16 +1,15 @@
-import fs from 'node:fs';
 import path from 'node:path';
 import { HttpError } from './http.mjs';
-import { ASSIST_DIR } from './config.mjs';
 import { hashString, id, maskSecretsDeep, now } from '../../../packages/shared/index.mjs';
 import { publicWorktree } from './assist-v3-worktree.mjs';
 import { publicOperation } from './assist-operation-metadata.mjs';
-
+import { publicAttachment, safeRelativePath } from './assist-attachment-domain.mjs';
+export { modelPolicy, normalizeAttachmentIds, normalizeAttachmentKind, normalizeSelection, publicAttachment, safeRelativePath } from './assist-attachment-domain.mjs';
+export { assertAgentProjectReady, isWritableTurn, projectWriteUnavailableReason, readableProjectCwd } from './assist-project-readiness.mjs';
 export const TERMINAL_TURN_STATES = new Set(['completed', 'failed', 'stopped', 'interrupted']);
 export const TURN_MODES = new Set(['default', 'plan']);
 const CODEX_MODEL_PATTERN = /^[a-zA-Z0-9][a-zA-Z0-9._/+:@-]{0,199}$/;
 const REASONING_PATTERN = /^[a-zA-Z][a-zA-Z0-9._-]{0,63}$/;
-
 export function requireProject(state, projectId) {
   const project = state.projects.find((item) => item.id === projectId && !item.deleted_at);
   if (!project) throw new HttpError(404, { error: 'project_not_found' });
@@ -40,13 +39,21 @@ export function cancelPendingTurnApprovals(state, turnId, reason = 'turn_ended')
   }
   return count;
 }
-
 export function resolveScope(state, project, type, scopeId) {
-  if (!['project', 'node'].includes(type)) throw new HttpError(400, { error: 'invalid_assist_scope' });
-  if (type === 'project') return { type, id: project.id, workspaceId: project.current_workspace_id || null, nodeId: null, node: null };
-  const node = state.workflow_nodes.find((item) => item.id === scopeId && state.workflows.some((workflow) => workflow.id === item.workflow_id && workflow.project_id === project.id));
-  if (!node) throw new HttpError(404, { error: 'node_not_found' });
-  return { type, id: node.id, workspaceId: node.workspace_id || state.workspaces.find((item) => item.workflow_node_id === node.id)?.id || null, nodeId: node.id, node };
+  if (!['project', 'workflow', 'workstream', 'task'].includes(type)) throw new HttpError(400, { error: 'invalid_assist_scope', allowed: ['project', 'workflow', 'workstream', 'task'] });
+  if (type === 'project') {
+    if (scopeId && scopeId !== project.id) throw new HttpError(409, { error: 'assist_scope_project_mismatch' });
+    return scopeRecord(state, project, type, project.id, null, null);
+  }
+  if (type === 'workflow') {
+    const workflow = state.workflows.find((item) => item.id === scopeId && item.project_id === project.id && item.status !== 'archived');
+    if (!workflow) throw new HttpError(404, { error: 'workflow_not_found' });
+    return scopeRecord(state, project, type, workflow.id, workflow, null);
+  }
+  const node = state.workflow_nodes.find((item) => item.id === scopeId && item.role === type && !item.legacy_read_only && state.workflows.some((workflow) => workflow.id === item.workflow_id && workflow.project_id === project.id && workflow.status !== 'archived'));
+  if (!node) throw new HttpError(404, { error: type === 'workstream' ? 'workstream_not_found' : 'task_not_found' });
+  const workflow = state.workflows.find((item) => item.id === node.workflow_id);
+  return scopeRecord(state, project, type, node.id, workflow, node);
 }
 
 export function makeSession({ actor, project, scope, title, parentSessionId, viewContext, clarificationPolicy = 'ask' }) {
@@ -61,6 +68,7 @@ export function makeSession({ actor, project, scope, title, parentSessionId, vie
     historical_shared_codex_thread_id: null, delete_batch_id: null, deleted_at: null,
     purge_after: null, purge_stage: null, purge_retry_at: null,
     active_change_batch_id: null, view_context: viewContext || {}, clarification_policy: normalizeClarificationPolicy(clarificationPolicy),
+    scope_status: 'active', scope_snapshot: structuredClone(scope.snapshot), scope_breadcrumb: structuredClone(scope.breadcrumb), read_only: false,
     created_by_user_id: actor.id, created_at: created, updated_at: created
   };
 }
@@ -78,15 +86,57 @@ export function makeTurn({ actor, session, mode, content, input, attachmentIds, 
     created_by_user_id: actor.id, started_at: null, completed_at: null, created_at: created, updated_at: created
   };
 }
-
 export function sessionSummary(state, session) {
   const { runtime_affinity_key: _runtimeAffinityKey, ...visible } = session;
   const turns = state.assist_turns.filter((item) => item.session_id === session.id);
   const last = turns.sort((a, b) => String(b.updated_at).localeCompare(String(a.updated_at)))[0] || null;
   const descendants = sessionDescendantIds(state, session.id);
   const activeDescendants = descendants.filter((key) => !state.assist_sessions.find((item) => item.id === key)?.deleted_at).length;
-  return { ...visible, deletable: Boolean(session.forked_from_session_id && !session.deleted_at), descendant_count: activeDescendants, deleted_descendant_count: descendants.length - activeDescendants, turn_count: turns.length, last_turn: last ? { id: last.id, mode: last.mode, status: last.status, updated_at: last.updated_at } : null };
+  return { ...visible, scope_breadcrumb: currentScopeBreadcrumb(state, session), scope_label: scopeLabel(session.scope_type), deletable: Boolean(session.forked_from_session_id && !session.deleted_at), descendant_count: activeDescendants, deleted_descendant_count: descendants.length - activeDescendants, turn_count: turns.length, last_turn: last ? { id: last.id, mode: last.mode, status: last.status, updated_at: last.updated_at } : null };
 }
+
+export function assertSessionScope(state, session, input = {}) {
+  if (input.project_id && input.project_id !== session.project_id || input.scope_type && input.scope_type !== session.scope_type || input.scope_id && input.scope_id !== session.scope_id) throw new HttpError(409, { error: 'assist_session_scope_mismatch', expected: { project_id: session.project_id, scope_type: session.scope_type, scope_id: session.scope_id } });
+  if (session.scope_status !== 'active' || session.read_only) throw new HttpError(409, { error: 'assist_scope_read_only', scope_status: session.scope_status || 'invalidated', scope_snapshot: session.scope_snapshot || null });
+  const project = state.projects.find((item) => item.id === session.project_id && !item.deleted_at);
+  if (!project) throw new HttpError(409, { error: 'assist_scope_invalidated' });
+  try { resolveScope(state, project, session.scope_type, session.scope_id); }
+  catch (error) {
+    Object.assign(session, { scope_status: 'invalidated', read_only: true, invalidated_at: now(), invalidated_reason: error?.payload?.error || 'scope_missing', updated_at: now() });
+    throw new HttpError(409, { error: 'assist_scope_invalidated', scope_snapshot: session.scope_snapshot || null });
+  }
+  return session;
+}
+export function invalidateAssistScopesInState(state, scopeIds, reason = 'scope_removed') {
+  const ids = new Set(Array.isArray(scopeIds) ? scopeIds : [scopeIds]);
+  const invalidated = [];
+  for (const session of state.assist_sessions.filter((item) => item.version === 3 && ids.has(item.scope_id) && item.scope_status !== 'invalidated')) {
+    Object.assign(session, { scope_status: 'invalidated', read_only: true, invalidated_at: now(), invalidated_reason: reason, updated_at: now() }); invalidated.push(session.id);
+  }
+  return invalidated;
+}
+function scopeRecord(state, project, type, scopeId, workflow, node) {
+  const parent = node?.role === 'task' ? state.workflow_nodes.find((item) => item.id === node.parent_node_id && item.role === 'workstream') : null;
+  const breadcrumb = [{ type: 'project', id: project.id, label: project.title }];
+  if (workflow) breadcrumb.push({ type: 'workflow', id: workflow.id, label: workflow.title });
+  if (parent) breadcrumb.push({ type: 'workstream', id: parent.id, label: parent.title });
+  if (node) breadcrumb.push({ type: node.role, id: node.id, label: node.title });
+  return {
+    type, id: scopeId, workflow, node, nodeId: node?.id || null,
+    workspaceId: node?.workspace_id || workflow?.workspace_id || project.current_workspace_id || null,
+    breadcrumb,
+    snapshot: { project_id: project.id, project_title: project.title, scope_type: type, scope_id: scopeId, scope_title: node?.title || workflow?.title || project.title, workflow_id: workflow?.id || null, parent_workstream_id: parent?.id || (node?.role === 'workstream' ? node.id : null), breadcrumb, captured_at: now() }
+  };
+}
+function currentScopeBreadcrumb(state, session) {
+  if (session.scope_status !== 'active') return session.scope_snapshot?.breadcrumb || session.scope_breadcrumb || [];
+  const project = state.projects.find((item) => item.id === session.project_id && !item.deleted_at);
+  if (!project) return session.scope_snapshot?.breadcrumb || session.scope_breadcrumb || [];
+  try { return resolveScope(state, project, session.scope_type, session.scope_id).breadcrumb; }
+  catch { return session.scope_snapshot?.breadcrumb || session.scope_breadcrumb || []; }
+}
+
+function scopeLabel(type) { return ({ project: 'Project', workflow: 'Workflow', workstream: 'Workstream', task: 'Task', node: 'Legacy node' })[type] || String(type || 'Scope'); }
 export function sessionDetail(state, session) {
   const visible = sessionSummary(state, session);
   const turns = state.assist_turns.filter((item) => item.session_id === session.id).sort((a, b) => String(a.created_at).localeCompare(String(b.created_at)));
@@ -96,58 +146,8 @@ export function sessionDetail(state, session) {
 }
 export function turnDetail(state, turn, worktree) {
   const { attachment_manifest: _attachmentManifest, test_adapter: _testAdapter, test_response: _testResponse, ...visible } = turn;
-  return { ...visible, worktree: publicWorktree(worktree), attachments: (turn.attachment_ids || []).map((key) => state.attachments.find((item) => item.id === key)).filter(Boolean).map(publicAttachment), actions: [], operations: state.assist_operations.filter((item) => item.turn_id === turn.id).map(publicOperation), user_inputs: state.runtime_user_inputs.filter((item) => item.turn_id === turn.id).map(publicRuntimeUserInput), comments: state.human_reviews.filter((item) => item.target_type === 'assist_turn' && item.target_id === turn.id), last_event_id: Math.max(0, ...state.assist_events.filter((item) => item.turn_id === turn.id).map((item) => Number(item.sequence) || 0)) };
+  return { ...visible, worktree: publicWorktree(worktree), attachments: (turn.attachment_ids || []).map((key) => state.attachments.find((item) => item.id === key)).filter(Boolean).map(publicAttachment), actions: [], operations: state.assist_operations.filter((item) => item.turn_id === turn.id).map((item) => publicOperation(item, state)), user_inputs: state.runtime_user_inputs.filter((item) => item.turn_id === turn.id).map(publicRuntimeUserInput), comments: state.human_reviews.filter((item) => item.target_type === 'assist_turn' && item.target_id === turn.id), last_event_id: Math.max(0, ...state.assist_events.filter((item) => item.turn_id === turn.id).map((item) => Number(item.sequence) || 0)) };
 }
-export function publicAttachment(item) {
-  return { id: item.id, project_id: item.project_id, session_id: item.session_id || null, turn_id: item.turn_id || null, kind: item.kind, title: item.title || item.label || item.kind, original_filename: item.original_filename || item.title || null, file_ref_id: item.file_ref_id || null, relative_path: item.relative_path || null, url: item.url || null, content_type: item.detected_mime_type || item.content_type || null, client_mime_type: item.client_mime_type || item.content_type || null, detected_mime_type: item.detected_mime_type || item.content_type || null, preview_kind: item.preview_kind || 'metadata', storage_status: item.storage_status || 'metadata_only', content_deleted_at: item.content_deleted_at || null, size_bytes: item.size_bytes || 0, sha256: item.sha256 || null, selection: item.selection || null, model_policy: item.model_policy || 'artifact_only', status: item.status, created_at: item.created_at, updated_at: item.updated_at };
-}
-
-export function normalizeAttachmentIds(state, session, values) {
-  if (!Array.isArray(values) || values.length > 20) throw new HttpError(400, { error: 'invalid_attachment_ids' });
-  const unique = [...new Set(values.map(String))];
-  for (const key of unique) if (!state.attachments.some((item) => item.id === key && item.session_id === session.id && item.project_id === session.project_id && !item.deleted_at && !item.content_deleted_at && item.storage_status !== 'deleted')) throw new HttpError(404, { error: 'attachment_not_found', attachment_id: key });
-  return unique;
-}
-export function normalizeAttachmentKind(value) {
-  const kind = String(value || 'project_attachment');
-  if (!['project_file', 'monaco_file', 'selection', 'image', 'project_attachment', 'artifact', 'text', 'url'].includes(kind)) throw new HttpError(400, { error: 'unsupported_attachment_kind' });
-  return kind;
-}
-export function modelPolicy(kind, type) {
-  if (kind === 'artifact') return 'artifact_only';
-  if (kind === 'image' || /^image\/(?:png|jpeg|webp|gif)$/i.test(type)) return 'image';
-  if (kind === 'selection' || kind === 'text' || kind === 'url' || /^text\//i.test(type) || /(?:json|javascript|typescript|xml|yaml|markdown)$/i.test(type)) return 'injectable';
-  return 'artifact_only';
-}
-export function safeRelativePath(value) {
-  const raw = String(value || '').replaceAll('\\', '/').trim();
-  if (!raw || raw.length > 2000 || raw.startsWith('/') || /^[A-Za-z]:\//.test(raw) || raw.split('/').includes('..') || /[\0\r\n]/.test(raw)) throw new HttpError(400, { error: 'invalid_attachment_path' });
-  return raw.replace(/^\.\//, '');
-}
-export function normalizeSelection(value) {
-  if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
-  const start = boundedInt(value.start_line, 1, 10_000_000, 1);
-  return { start_line: start, start_column: boundedInt(value.start_column, 1, 1_000_000, 1), end_line: boundedInt(value.end_line, 1, 10_000_000, start), end_column: boundedInt(value.end_column, 1, 1_000_000, 1) };
-}
-
-export function readableProjectCwd(project) {
-  const configured = String(project.repo_path || '').trim();
-  if (configured && fs.existsSync(configured)) return path.resolve(configured);
-  const projectId = String(project.id || '');
-  if (!/^[a-zA-Z0-9][a-zA-Z0-9_.-]{0,127}$/.test(projectId)) throw new HttpError(409, { error: 'assist_workspace_unavailable' });
-  return path.join(ASSIST_DIR, projectId);
-}
-export function assertAgentProjectReady(project) {
-  if (project.status !== 'active') throw new HttpError(409, { error: 'project_not_active' });
-  if (project.managed_workspace_state !== 'ready') throw new HttpError(409, { error: 'workspace_migration_required', state: project.managed_workspace_state || 'unknown' });
-}
-export function projectWriteUnavailableReason(project) {
-  if (project?.status !== 'active') return 'project_not_active';
-  if (project?.managed_workspace_state !== 'ready') return 'workspace_migration_required';
-  return null;
-}
-export function isWritableTurn(turn, project) { return turn?.collaboration_mode !== 'plan' && turn?.mode !== 'plan' && !projectWriteUnavailableReason(project); }
-
 export function normalizeTurnCollaborationMode(input = {}) {
   const explicit = input.collaboration_mode == null ? null : String(input.collaboration_mode).toLowerCase();
   const legacy = input.mode == null ? null : String(input.mode).toLowerCase();
@@ -211,6 +211,7 @@ export function publicErrorCode(error) {
   if (error instanceof HttpError && typeof error.payload === 'object') return cleanText(error.payload.error, 200) || 'assist_turn_failed';
   const code = String(error?.code || '');
   const message = String(error?.message || '');
+  if (code === 'codex_state_runtime_incompatible' || /failed to initialize (?:sqlite )?state runtime/i.test(message)) return 'codex_runtime_state_incompatible';
   if (/timeout/i.test(message)) return 'codex_timeout';
   if (code === 'native_plan_unavailable') return 'codex_native_plan_unavailable';
   if (code === 'app_server_start_failed') return 'codex_runtime_start_failed';

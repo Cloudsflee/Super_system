@@ -1,7 +1,8 @@
-import { Check, ExternalLink, Github, KeyRound, LoaderCircle, RefreshCw } from 'lucide-react';
+import { Check, Copy, ExternalLink, Github, KeyRound, LoaderCircle, RefreshCw } from 'lucide-react';
 import { useCallback, useEffect, useState } from 'react';
 import { api, json } from '../../api/client';
 import type { StepState } from '../../api/types';
+import { IconButton } from '../../components/common/IconButton';
 
 type Device = { request_id: string; user_code: string; verification_uri: string };
 type Repository = { id: string; full_name: string; selected: boolean };
@@ -19,6 +20,7 @@ export function GithubSetup({ mode, state, onChange }: { mode: 'hosted' | 'byo';
   const [installationUrl, setInstallationUrl] = useState(() => sessionStorage.getItem(INSTALL_URL_KEY) || '');
   const [feedback, setFeedback] = useState('');
   const [error, setError] = useState('');
+  const [copied, setCopied] = useState(false);
   const checks = state.checks || {};
 
   const loadInstallations = useCallback(async () => {
@@ -40,7 +42,7 @@ export function GithubSetup({ mode, state, onChange }: { mode: 'hosted' | 'byo';
     setBusy(true);
     if (!silent) { setError(''); setFeedback('正在检查 GitHub installation…'); }
     try {
-      const result = await api<Discovery>('/github/installations/discover', json('POST'));
+      const result = await api<Discovery>('/github/installations/discover', json('POST', undefined, '发现 GitHub App 安装'));
       if (!result.installed) { if (!silent) setFeedback('尚未检测到安装，请先在 GitHub 完成安装。'); return false; }
       setInstallations(result.installations);
       setSelected(result.installations.flatMap((item) => item.repositories.filter((repo) => repo.selected).map((repo) => repo.id)));
@@ -67,33 +69,38 @@ export function GithubSetup({ mode, state, onChange }: { mode: 'hosted' | 'byo';
     setBusy(true); setError('');
     try { await task(); await onChange(); } catch (value) { setError(message(value)); } finally { setBusy(false); }
   }
-  async function saveManual() { await act(() => api('/github/app-config/validate', json('POST', form))); }
+  async function saveManual() { await act(() => api('/github/app-config/validate', json('POST', form, '验证 GitHub App 配置'))); }
   async function startManifest() {
     setBusy(true); setError('');
-    try { const result = await api<{ state: string; manifest: Record<string, unknown> }>('/github/manifest/start', json('POST')); localStorage.setItem('aiws-github-manifest-state', result.state); const manifestForm = document.createElement('form'); manifestForm.method = 'POST'; manifestForm.action = 'https://github.com/settings/apps/new'; for (const [name, value] of Object.entries({ state: result.state, manifest: JSON.stringify(result.manifest) })) { const input = document.createElement('input'); input.type = 'hidden'; input.name = name; input.value = value; manifestForm.append(input); } document.body.append(manifestForm); manifestForm.submit(); }
+    try { const result = await api<{ state: string; manifest: Record<string, unknown> }>('/github/manifest/start', json('POST', undefined, '创建 GitHub App Manifest')); localStorage.setItem('aiws-github-manifest-state', result.state); const manifestForm = document.createElement('form'); manifestForm.method = 'POST'; manifestForm.action = 'https://github.com/settings/apps/new'; for (const [name, value] of Object.entries({ state: result.state, manifest: JSON.stringify(result.manifest) })) { const input = document.createElement('input'); input.type = 'hidden'; input.name = name; input.value = value; manifestForm.append(input); } document.body.append(manifestForm); manifestForm.submit(); }
     catch (value) { setError(message(value)); setBusy(false); }
   }
   async function connect() {
     const popup = window.open('about:blank', 'aiws-github-device');
     if (popup) popup.opener = null;
     setBusy(true); setError('');
-    try { const result = await api<Device>('/github/device/start', json('POST', { mode })); setDevice(result); if (popup) popup.location.replace(result.verification_uri); else window.open(result.verification_uri, '_blank', 'noopener,noreferrer'); }
+    try { const result = await api<Device>('/github/device/start', json('POST', { mode }, '启动 GitHub Device Login')); setDevice(result); setCopied(false); if (popup) popup.location.replace(result.verification_uri); else window.open(result.verification_uri, '_blank', 'noopener,noreferrer'); }
     catch (value) { popup?.close(); setError(message(value)); }
     finally { setBusy(false); }
   }
   async function poll() {
     if (!device) return;
     setBusy(true); setError('');
-    try { const result = await api<{ connected?: boolean; error?: string }>('/github/device/poll', json('POST', { request_id: device.request_id })); if (result.connected) { setDevice(null); setFeedback('GitHub Owner 授权已完成。'); } else setFeedback(result.error === 'authorization_pending' ? 'GitHub 尚未确认授权，请完成后再次检查。' : result.error || '等待 GitHub 授权。'); await onChange(); }
+    try { const result = await api<{ connected?: boolean; error?: string }>('/github/device/poll', json('POST', { request_id: device.request_id }, '检查 GitHub 授权')); if (result.connected) { setDevice(null); setFeedback('GitHub Owner 授权已完成。'); } else setFeedback(result.error === 'authorization_pending' ? 'GitHub 尚未确认授权，请完成后再次检查。' : result.error || '等待 GitHub 授权。'); await onChange(); }
     catch (value) { setError(message(value)); }
     finally { setBusy(false); }
+  }
+  async function copyDeviceCode() {
+    if (!device) return;
+    try { await navigator.clipboard.writeText(device.user_code); setCopied(true); setFeedback('设备码已复制。'); }
+    catch { setError('无法复制设备码，请手动选择。'); }
   }
   async function openInstallation() {
     const popup = window.open('about:blank', 'aiws-github-install');
     if (popup) popup.opener = null;
     setBusy(true); setError('');
     try {
-      const result = await api<StartResult>('/github/installations/start', json('POST', { mode }));
+      const result = await api<StartResult>('/github/installations/start', json('POST', { mode }, '启动 GitHub App 安装'));
       if (result.installation) { popup?.close(); setInstallations([result.installation]); await onChange(); return; }
       if (!result.installation_url) throw new Error('未返回 GitHub installation 地址');
       sessionStorage.setItem(INSTALL_URL_KEY, result.installation_url);
@@ -104,10 +111,11 @@ export function GithubSetup({ mode, state, onChange }: { mode: 'hosted' | 'byo';
   }
   async function saveRepositories(item: Installation) {
     const repositoryIds = item.repositories.filter((repo) => selected.includes(repo.id)).map((repo) => repo.id);
-    await act(() => api(`/github/installations/${item.installation_id}/repositories`, json('PUT', { repository_ids: repositoryIds })));
+    await act(() => api(`/github/installations/${item.installation_id}/repositories`, json('PUT', { repository_ids: repositoryIds }, '保存 GitHub Repository 选择')));
   }
 
   const installed = Boolean(checks.installation_installed || state.installation_count || installations.length);
+  const ownerAuthorizationRequired = (mode === 'hosted' || checks.app_configured) && !checks.account_connected;
   return (
     <section className="setup-section">
       <div className="section-title"><Github size={18} /><div><h2>GitHub</h2><p>{state.detail || '等待连接'}</p></div><Status ready={state.ready} status={state.status} /></div>
@@ -122,7 +130,8 @@ export function GithubSetup({ mode, state, onChange }: { mode: 'hosted' | 'byo';
         </div>
         <div className="block-actions"><button className="button primary" disabled={busy || !form.app_id || !form.client_id || !form.client_secret || !form.private_key || !form.webhook_secret} onClick={saveManual}><KeyRound size={15} />验证并保存</button></div>
       </div>}
-      {(mode === 'hosted' || checks.app_configured) && !checks.account_connected && <div className="setup-row"><div><strong>Owner 授权</strong><span>{device ? `验证码 ${device.user_code}` : checks.app_configured ? 'GitHub OAuth Device Flow' : 'Hosted GitHub App 尚未配置'}</span></div>{device ? <button className="button primary" disabled={busy} onClick={poll}><RefreshCw size={15} />检查授权</button> : <button className="button primary" disabled={busy || !checks.app_configured} onClick={connect}><ExternalLink size={15} />连接 GitHub</button>}</div>}
+      {ownerAuthorizationRequired && !device && <div className="setup-row"><div><strong>Owner 授权</strong><span>{checks.app_configured ? 'GitHub OAuth Device Flow' : 'Hosted GitHub App 尚未配置'}</span></div><button className="button primary" disabled={busy || !checks.app_configured} onClick={connect}><ExternalLink size={15} />连接 GitHub</button></div>}
+      {ownerAuthorizationRequired && device && <div className="github-device-auth" role="status" aria-live="polite"><div className="github-device-code"><span>GitHub 设备码</span><div><code aria-label="GitHub 设备码">{device.user_code}</code><IconButton label={copied ? '设备码已复制' : '复制设备码'} active={copied} onClick={copyDeviceCode}>{copied ? <Check size={16} /> : <Copy size={16} />}</IconButton></div><small>等待 GitHub 授权</small></div><div className="github-device-actions"><a className="button secondary" href={device.verification_uri} target="_blank" rel="noreferrer"><ExternalLink size={15} />打开 GitHub</a><button className="button primary" disabled={busy} onClick={poll}><RefreshCw size={15} />检查授权</button></div></div>}
       {checks.account_connected && !installed && !installationUrl && <div className="setup-row"><div><strong>App Installation</strong><span>已经安装过可直接同步；否则在新标签页安装</span></div><div className="setup-actions"><button className="button secondary" disabled={busy} onClick={() => discover(false)}><RefreshCw size={15} />已安装，立即同步</button><button className="button primary" disabled={busy} onClick={openInstallation}><Github size={15} />打开安装页</button></div></div>}
       {checks.account_connected && !installed && installationUrl && <div className="setup-block installation-waiting"><div><strong>等待 GitHub 安装</strong><span>完成后返回此页面，系统会自动检查；也可以立即手动同步。</span></div><div className="block-actions"><a className="button secondary" href={installationUrl} target="_blank" rel="noreferrer"><ExternalLink size={15} />重新打开</a><button className="button primary" disabled={busy} onClick={() => discover(false)}><RefreshCw size={15} />我已安装，立即同步</button></div></div>}
       {!state.ready && installations.map((item) => <RepositoryPicker key={item.id} item={item} selected={selected} busy={busy} setSelected={setSelected} save={() => saveRepositories(item)} sync={() => discover(false)} />)}

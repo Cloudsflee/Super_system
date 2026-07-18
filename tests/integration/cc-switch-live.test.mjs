@@ -9,6 +9,8 @@ if (process.env.RUN_CC_SWITCH_LIVE_TESTS !== '1') {
   process.exit(0);
 }
 
+assert.equal(process.env.AIWS_TEST_CC_SWITCH_CONFIRM, 'isolated', 'isolated cc-switch confirmation is required');
+
 const home = fs.mkdtempSync(path.join(os.tmpdir(), 'aiws-cc-switch-live-'));
 const externalDir = process.env.CC_SWITCH_CONFIG_DIR ? path.resolve(process.env.CC_SWITCH_CONFIG_DIR) : null;
 const externalBefore = externalDir ? snapshotTree(externalDir) : null;

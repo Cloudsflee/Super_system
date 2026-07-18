@@ -1,5 +1,5 @@
 import fs from 'node:fs';
-import { spawnSync } from 'node:child_process';
+import { spawn, spawnSync } from 'node:child_process';
 import { maskSecret, maskSecretsDeep } from '../../../packages/shared/index.mjs';
 import { prepareCodexInvocation } from '../../../packages/runner-adapters/src/codex-command.mjs';
 import { redactKnownSecretsSync } from './vault.mjs';
@@ -13,7 +13,11 @@ export class HttpError extends Error {
 }
 
 export function send(res, status, body, headers = {}) {
-  const text = redactKnownSecretsSync(typeof body === 'string' ? body : JSON.stringify(maskSecretsDeep(body), null, 2));
+  const requestId = String(res.getHeader('x-aiws-request-id') || '');
+  const normalized = status >= 400 && body && typeof body === 'object' && !Array.isArray(body)
+    ? normalizeErrorPayload(body, requestId)
+    : body;
+  const text = redactKnownSecretsSync(typeof normalized === 'string' ? normalized : JSON.stringify(maskSecretsDeep(normalized), null, 2));
   res.writeHead(status, {
     'content-type': typeof body === 'string' ? 'text/plain; charset=utf-8' : 'application/json; charset=utf-8',
     'cache-control': 'no-store',
@@ -36,11 +40,25 @@ export function sendOneTimeSecret(res, status, body) {
 
 export function notFound(res) { return send(res, 404, { error: 'not_found' }); }
 
+export function normalizeErrorPayload(payload = {}, requestId = '') {
+  const error = String(payload.error || 'request_failed');
+  return {
+    ...payload,
+    error,
+    message: String(payload.message || payload.reason || error),
+    action: typeof payload.action === 'string' ? payload.action : null,
+    phase: typeof payload.phase === 'string' ? payload.phase : 'request',
+    retryable: payload.retryable === true,
+    request_id: String(payload.request_id || requestId || '') || null
+  };
+}
+
 export function allowLocalBrowserOrigin(req, res) {
   const origin = String(req.headers.origin || '').trim();
   if (!origin) return null;
   if (!isTrustedLocalOrigin(origin)) throw new HttpError(403, { error: 'local_origin_required' });
   res.setHeader('access-control-allow-origin', new URL(origin).origin);
+  res.setHeader('access-control-expose-headers', 'x-aiws-request-id, mcp-session-id');
   res.setHeader('vary', 'Origin');
   return origin;
 }
@@ -124,6 +142,49 @@ export function command(cmd, args = [], cwd = process.cwd(), timeout = 8000, env
   } catch (error) {
     return { ok: false, status: null, stdout: '', stderr: '', error: error.message };
   }
+}
+
+export function commandAsync(cmd, args = [], cwd = process.cwd(), timeout = 8000, env = {}, options = {}) {
+  return new Promise((resolve) => {
+    const baseEnv = options.inheritEnv === false ? minimalProcessEnv() : process.env;
+    const invocation = prepareCodexInvocation(cmd, args);
+    const maxOutputBytes = Number(options.maxOutputBytes || 2 * 1024 * 1024);
+    let stdout = '', stderr = '', settled = false, timedOut = false;
+    let child;
+    const finish = (status, error = null) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      resolve({
+        ok: status === 0 && !error && !timedOut,
+        status,
+        stdout: redactKnownSecretsSync(stdout),
+        stderr: redactKnownSecretsSync(stderr),
+        error: redactKnownSecretsSync(error?.message || '') || null,
+        timed_out: timedOut
+      });
+    };
+    try {
+      child = spawn(invocation.command, invocation.args, {
+        cwd, shell: false, windowsHide: true, env: { ...baseEnv, ...env }, stdio: ['ignore', 'pipe', 'pipe']
+      });
+    } catch (error) {
+      resolve({ ok: false, status: null, stdout: '', stderr: '', error: redactKnownSecretsSync(error.message), timed_out: false });
+      return;
+    }
+    const append = (current, chunk) => `${current}${String(chunk)}`.slice(-maxOutputBytes);
+    child.stdout?.on('data', (chunk) => { stdout = append(stdout, chunk); });
+    child.stderr?.on('data', (chunk) => { stderr = append(stderr, chunk); });
+    child.once('error', (error) => finish(null, error));
+    child.once('close', (code) => finish(code));
+    const timer = setTimeout(() => {
+      timedOut = true;
+      child.kill();
+      const force = setTimeout(() => { if (!settled) child.kill('SIGKILL'); }, 1000);
+      force.unref?.();
+    }, timeout);
+    timer.unref?.();
+  });
 }
 
 function minimalProcessEnv() { return Object.fromEntries(['PATH', 'Path', 'SystemRoot', 'ComSpec', 'PATHEXT', 'TEMP', 'TMP', 'HOME', 'USERPROFILE', 'LANG'].filter((key) => process.env[key] !== undefined).map((key) => [key, process.env[key]])); }

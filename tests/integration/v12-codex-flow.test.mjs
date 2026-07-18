@@ -4,9 +4,12 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 
-const port = 4586;
+const port = Number(process.env.AIWS_TEST_PORT || 4586);
 const home = fs.mkdtempSync(path.join(os.tmpdir(), 'aiws-v12-codex-'));
 const child = spawn(process.execPath, ['apps/api/server.mjs'], { env: { ...process.env, AIWS_PORT: String(port), AIWS_HOME: home, NODE_ENV: 'test' }, stdio: ['ignore', 'pipe', 'pipe'] });
+let serverLog = '';
+child.stdout.on('data', (chunk) => { serverLog += chunk; });
+child.stderr.on('data', (chunk) => { serverLog += chunk; });
 
 await waitForServer();
 try {
@@ -120,5 +123,5 @@ async function configureGithub() {
   await api('/github/installations/start', 'POST', { adapter: 'test' });
   await api('/github/installations/9001/repositories', 'PUT', { repository_ids: ['7001'] });
 }
-async function api(route, method = 'GET', body, status = 200, error) { const response = await fetch(`http://127.0.0.1:${port}${route}`, { method, headers: { 'content-type': 'application/json' }, body: body === undefined ? undefined : JSON.stringify(body) }); const data = await response.json(); assert.equal(response.status, status, `${route}: ${JSON.stringify(data)}`); if (error) assert.equal(data.error, error); return data; }
+async function api(route, method = 'GET', body, status = 200, error) { const response = await fetch(`http://127.0.0.1:${port}${route}`, { method, headers: { 'content-type': 'application/json' }, body: body === undefined ? undefined : JSON.stringify(body) }); const data = await response.json(); assert.equal(response.status, status, `${route}: ${JSON.stringify(data)}\n${serverLog.slice(-6000)}`); if (error) assert.equal(data.error, error); return data; }
 async function waitForServer() { for (let index = 0; index < 100; index++) { try { if ((await api('/health')).status === 'ok') return; } catch { await new Promise((resolve) => setTimeout(resolve, 50)); } } throw new Error('server did not start'); }

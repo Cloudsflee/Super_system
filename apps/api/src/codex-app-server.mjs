@@ -9,16 +9,22 @@ import { readSecret, redactKnownSecretsSync } from './vault.mjs';
 import { prepareCodexInvocation } from '../../../packages/runner-adapters/src/codex-command.mjs';
 import { assertProfileAllowed, buildCodexContainerInvocation } from './container-runtime-config.mjs';
 import { spawnContainerProcess } from './container-runtime.mjs';
+import { withCodexRuntimeStateRecovery } from './codex-home-recovery.mjs';
+import { codexMcpConfigArgs, issueCodexMcpAccess, withCodexMcpEnvironment } from './codex-mcp-runtime.mjs';
 
 const APP_SERVER_ARGS = ['app-server', '--stdio', '--disable', 'code_mode_host', '--disable', 'plugins', '--disable', 'apps'];
 
-export async function runCodexAppServer({ state, profile, prompt, userInput, additionalContext = [], dynamicTools = [], attachmentMounts = [], cwd, resumeId, sandbox, mode = 'default', onEvent, onApproval, onUserInput, onDynamicTool, signal, spawnProcess = spawn }) {
+export async function runCodexAppServer(options) {
+  return withCodexRuntimeStateRecovery(options.profile, () => runCodexAppServerOnce(options));
+}
+
+async function runCodexAppServerOnce({ state, profile, prompt, userInput, additionalContext = [], dynamicTools = [], attachmentMounts = [], cwd, resumeId, sandbox, mode = 'default', projectId = null, onEvent, onApproval, onUserInput, onDynamicTool, signal, spawnProcess = spawn }) {
   assertProfileAllowed(profile);
   const auth = state.integration_statuses.find((item) => item.key === 'codex_auth');
   if (!codexAuthMatchesProfile(auth, profile)) throw taggedError('codex_auth_profile_mismatch', 'app_server_start_failed');
   if (auth.home && !isThirdPartyProvider(profile.provider)) await materializeDeviceAuth(auth.home, profile.codex_home);
-  const credential = await readSecret(auth?.refs?.credential), invocation = appServerInvocation(profile, cwd, sandbox, credential, attachmentMounts);
-  return new Promise((resolve, reject) => {
+  const credential = await readSecret(auth?.refs?.credential), mcpAccess = await issueCodexMcpAccess(projectId, profile, { ttlSeconds: Math.ceil(Number(profile.timeout_ms || 120000) / 1000) + 300 }), invocation = appServerInvocation(profile, cwd, sandbox, credential, attachmentMounts, mcpAccess);
+  try { return await new Promise((resolve, reject) => {
     let child;
     try {
       child = invocation.runtime === 'docker'
@@ -74,7 +80,7 @@ export async function runCodexAppServer({ state, profile, prompt, userInput, add
     function consume(line) {
       let message; try { message = JSON.parse(line); } catch { return; }
       if (message.id !== undefined && !message.method) { const target = pending.get(message.id); if (!target) return; pending.delete(message.id); if (message.error) target.reject(taggedError(message.error.message || 'app_server_rpc_error', turnStarted ? 'app_server_turn_failed' : 'app_server_start_failed')); else target.resolve(message.result); return; }
-      if (message.id !== undefined && message.method) { void answerServerRequest(message); return; }
+      if (message.id !== undefined && message.method) { void answerServerRequest(message).catch((error) => { if (!settled) finish(error); }); return; }
       const mapped = mapNotification(message, deltaItems); if (mapped) onEvent?.(mapped);
       if (message.method === 'turn/completed' && (!turnId || message.params?.turn?.id === turnId)) {
         const status = message.params?.turn?.status;
@@ -96,6 +102,7 @@ export async function runCodexAppServer({ state, profile, prompt, userInput, add
         const approval = approvalRequest(message), approved = approval ? await onApproval?.(approval) : false;
         write({ id: message.id, result: approvalResponse(message.method, approved === true || approved?.approved === true, message.params) });
       } catch (error) {
+        if (settled) return;
         if (message.method === 'item/tool/requestUserInput') { finish(error); return; }
         if (message.method === 'item/tool/call') { write({ id: message.id, result: dynamicToolResponse({ success: false, message: publicToolError(error) }) }); return; }
         write({ id: message.id, result: approvalResponse(message.method, false, message.params) });
@@ -104,16 +111,20 @@ export async function runCodexAppServer({ state, profile, prompt, userInput, add
     function finish(error, result) {
       if (settled) return; settled = true; clearTimeout(timer); signal?.removeEventListener('abort', abort); for (const item of pending.values()) item.reject(error || taggedError('app_server_closed', 'app_server_turn_failed')); pending.clear(); if (child.exitCode === null) child.kill(); error ? reject(error) : resolve(result);
     }
-  });
+  }); } finally { await mcpAccess?.release(); }
 }
 
-export async function runCodexAppServerRpc({ state, profile, cwd, sandbox = 'read-only', resumeId = null, method, params = {}, createThread = false, signal, spawnProcess = spawn }) {
+export async function runCodexAppServerRpc(options) {
+  return withCodexRuntimeStateRecovery(options.profile, () => runCodexAppServerRpcOnce(options));
+}
+
+async function runCodexAppServerRpcOnce({ state, profile, cwd, sandbox = 'read-only', resumeId = null, method, params = {}, createThread = false, projectId = null, signal, spawnProcess = spawn }) {
   assertProfileAllowed(profile);
   const auth = state.integration_statuses.find((item) => item.key === 'codex_auth');
   if (!codexAuthMatchesProfile(auth, profile)) throw taggedError('codex_auth_profile_mismatch', 'app_server_start_failed');
   if (auth.home && !isThirdPartyProvider(profile.provider)) await materializeDeviceAuth(auth.home, profile.codex_home);
-  const credential = await readSecret(auth?.refs?.credential), invocation = appServerInvocation(profile, cwd, sandbox, credential);
-  return new Promise((resolve, reject) => {
+  const credential = await readSecret(auth?.refs?.credential), mcpAccess = await issueCodexMcpAccess(projectId, profile, { ttlSeconds: Math.ceil(Number(profile.timeout_ms || 120000) / 1000) + 300 }), invocation = appServerInvocation(profile, cwd, sandbox, credential, [], mcpAccess);
+  try { return await new Promise((resolve, reject) => {
     let child;
     try { child = invocation.runtime === 'docker' ? spawnContainerProcess(invocation, { cwd, env: invocation.env, spawnProcess }) : spawnProcess(invocation.command, invocation.args, { cwd, env: invocation.env, shell: false, windowsHide: true }); }
     catch (error) { reject(taggedError(error.message, 'app_server_start_failed')); return; }
@@ -145,22 +156,22 @@ export async function runCodexAppServerRpc({ state, profile, cwd, sandbox = 'rea
     function write(message) { if (!child.stdin?.writable) throw taggedError('app_server_stdin_closed', 'app_server_start_failed'); child.stdin.write(`${JSON.stringify(message)}\n`); }
     function consume(line) { let message; try { message = JSON.parse(line); } catch { return; } if (message.id === undefined || message.method) return; const target = pending.get(message.id); if (!target) return; pending.delete(message.id); if (message.error) target.reject(taggedError(message.error.message || 'app_server_rpc_error', 'app_server_turn_failed')); else target.resolve(message.result); }
     function finish(error, result) { if (settled) return; settled = true; clearTimeout(timer); signal?.removeEventListener('abort', abort); for (const item of pending.values()) item.reject(error || taggedError('app_server_closed', 'app_server_turn_failed')); pending.clear(); if (child.exitCode === null) child.kill(); error ? reject(error) : resolve(result); }
-  });
+  }); } finally { await mcpAccess?.release(); }
 }
 
-export function appServerInvocation(profile, cwd, sandbox, credential, attachmentMounts = []) {
-  const proxy = profile.kind === 'docker' ? codexContainerProxyEnv(process.env) : {}, env = { ...process.env, ...proxy, CODEX_HOME: profile.codex_home };
+export function appServerInvocation(profile, cwd, sandbox, credential, attachmentMounts = [], mcpAccess = null) {
+  const proxy = profile.kind === 'docker' ? codexContainerProxyEnv(process.env) : {}, env = withCodexMcpEnvironment({ ...process.env, ...proxy, CODEX_HOME: profile.codex_home }, mcpAccess), commandArgs = [...codexMcpConfigArgs(mcpAccess), ...APP_SERVER_ARGS];
   if (credential) env.OPENAI_API_KEY = credential;
   else delete env.OPENAI_API_KEY;
-  if (profile.kind !== 'docker') return { ...prepareCodexInvocation(process.env.AIWS_CODEX_BIN || 'codex', APP_SERVER_ARGS), env };
+  if (profile.kind !== 'docker') return { ...prepareCodexInvocation(process.env.AIWS_CODEX_BIN || 'codex', commandArgs), env };
   const home = profile.codex_home || path.join(AIWS_HOME, 'codex-homes', profile.id);
   return {
     ...buildCodexContainerInvocation({
       kind: 'assist-app-server', sessionId: `rpc-${Date.now().toString(36)}`, profileId: profile.id,
       image: profile.image || profile.config?.image, stdin: true, codexHome: home,
       workspace: path.resolve(cwd), workspaceMode: sandbox === 'read-only' ? 'ro' : 'rw', extraMounts: [...(profile.mounts || []), ...attachmentMounts],
-      containerEnv: { CODEX_HOME: '/codex-home', ...(credential ? { OPENAI_API_KEY: null } : {}), ...Object.fromEntries(Object.keys(proxy).map((key) => [key, null])) },
-      commandArgs: APP_SERVER_ARGS
+      containerEnv: { CODEX_HOME: '/codex-home', ...(credential ? { OPENAI_API_KEY: null } : {}), ...(mcpAccess?.containerEnv || {}), ...Object.fromEntries(Object.keys(proxy).map((key) => [key, null])) },
+      commandArgs
     }), env
   };
 }

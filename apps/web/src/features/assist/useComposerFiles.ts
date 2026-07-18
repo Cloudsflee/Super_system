@@ -18,7 +18,7 @@ export function useComposerFiles(sessionId: string, onCreated: (item: AssistAtta
         if (!window.confirm(`上传 ${file.name}（${formatBytes(file.size)}）？`)) { setUploads((items) => items.filter((entry) => entry.id !== uploadId)); return null; }
         form.set('media_confirmed', 'true');
       }
-      const item = await api<AssistAttachment>(`/assist/v3/sessions/${sessionId}/attachments/upload`, multipart('POST', form));
+      const item = await api<AssistAttachment>(`/assist/v3/sessions/${sessionId}/attachments/upload`, multipart('POST', form, { name: `上传附件 ${file.name}`, feedback: 'foreground', timeoutMs: 600_000 }));
       onCreated(item); onSelected(item.id); setUploads((items) => items.filter((entry) => entry.id !== uploadId)); return item;
     } catch (error) {
       const message = (error as Error).message; setUploads((items) => items.map((entry) => entry.id === uploadId ? { ...entry, status: 'failed', error: message } : entry)); onError(message); throw error;

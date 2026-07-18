@@ -5,12 +5,14 @@ import os from 'node:os';
 import path from 'node:path';
 import { chromium } from '@playwright/test';
 import { createConfirmedProject, repositorySnapshot } from '../integration/v13-test-helpers.mjs';
-import { captureBriefWorkspace, prepareDraftBrief, seedV17AssistVisualState } from './v17-visual-helpers.mjs';
-const port = 4592;
+import { assertA11y, assertAssistHeader, assertCanvasBounds, assertInsideViewport, assertNoOverlap, assertViewport, browserDiscovery, browserExecutable, verifyShellOverlayStacking } from './playwright-helpers.mjs';
+import { captureBriefWorkspace, captureOperationDiagnostics, configureGithubAndDocker, prepareDraftBrief, seedV17AssistVisualState, verifyBriefPersistence } from './v17-visual-helpers.mjs';
+const port = Number(process.env.AIWS_TEST_PORT || 4592);
 const home = fs.mkdtempSync(path.join(os.tmpdir(), 'aiws-browser-home-'));
 const repo = path.join(home, 'repo');
-const output = path.resolve('.ai-workspace', 'e2e-v17');
+const output = process.env.AIWS_TEST_REPORT_DIR ? path.resolve(process.env.AIWS_TEST_REPORT_DIR, 'e2e-v17') : path.resolve('.ai-workspace', 'e2e-v17');
 const viewports = [
+  { name: 'wide', width: 1728, height: 1117 },
   { name: 'desktop', width: 1440, height: 900 },
   { name: 'tablet', width: 1024, height: 768 },
   { name: 'mobile', width: 390, height: 844 }
@@ -30,20 +32,24 @@ let browser;
 try {
   await waitForServer();
   browser = await chromium.launch({ headless: true, ...browserExecutable() });
-  const page = await browser.newPage({ viewport: { width: 1440, height: 900 }, deviceScaleFactor: 1 });
+  const context = await browser.newContext({ viewport: { width: 1440, height: 900 }, deviceScaleFactor: 1 }), page = await context.newPage();
+  await page.emulateMedia({ reducedMotion: 'reduce' });
   const errors = [];
   page.on('console', (message) => { if (message.type() === 'error' && !message.text().startsWith('Failed to load resource')) errors.push(message.text()); });
   page.on('pageerror', (error) => errors.push(error.message));
   page.on('response', (response) => { if (response.status() >= 400) errors.push(`${response.status()} ${response.url()}`); });
   await page.goto(`http://127.0.0.1:${port}/projects`);
   await page.waitForURL('**/setup');
-  await page.getByRole('heading', { name: '连接工作环境' }).waitFor();
+  await page.getByRole('heading', { name: '连接工作环境' }).waitFor(); await assertA11y(page, 'setup');
+  const trailingRoute = await page.request.get(`http://127.0.0.1:${port}/projects/`);
+  assert.equal(trailingRoute.status(), 200, 'SPA routes with a trailing slash must refresh successfully');
   for (const viewport of viewports) {
     await page.setViewportSize(viewport);
     await page.screenshot({ path: path.join(output, `setup-${viewport.name}.png`), fullPage: true });
     await assertViewport(page);
   }
-  await configureGithubAndDocker();
+  await configureGithubAndDocker(api);
+  await captureOperationDiagnostics(page, { output, viewports, assertViewport, assertInsideViewport });
   await page.route('**/api/codex/discovery', (route) => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(browserDiscovery()) }));
   await page.goto(`http://127.0.0.1:${port}/setup`);
   await page.getByRole('button', { name: 'cc-switch' }).click();
@@ -68,7 +74,7 @@ try {
     await page.screenshot({ path: path.join(output, `setup-codex-third-party-${viewport.name}.png`), fullPage: true });
     await assertViewport(page);
   }
-  const fixture = await configureWorkspace();
+  const fixture = await configureWorkspace(); const reopenedContext = await browser.newContext({ viewport: { width: 1440, height: 900 } }), reopened = await reopenedContext.newPage(); await verifyBriefPersistence(reopened, `http://127.0.0.1:${port}`, fixture.onboardingProjectId); await reopenedContext.close();
   for (const viewport of viewports) await verifyWorkspaceViewport(page, fixture, viewport);
   assert.deepEqual(repositorySnapshot(repo), sourceBefore);
   assert.deepEqual(errors.filter((item) => !item.includes('favicon')), [], `browser errors:\n${errors.join('\n')}`);
@@ -77,7 +83,7 @@ try {
   await browser?.close();
   server.kill();
   await new Promise((resolve) => setTimeout(resolve, 200));
-  fs.rmSync(home, { recursive: true, force: true });
+  fs.rmSync(home, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 });
 }
 async function configureWorkspace() {
   await api('/codex/auth/api-key', 'POST', { provider: 'openai', api_key: 'browser-api-key' });
@@ -97,82 +103,88 @@ async function configureWorkspace() {
       { type: 'retrospective', title: '复盘', dependency_indexes: [3] }
     ]
   });
-  const assistSessionId = project.draft.assist_session.id;
+  const bundle = await api(`/projects/${project.project.id}`);
+  const assistNode = bundle.nodes.find((item) => item.role === 'workstream');
+  assert.ok(assistNode, 'confirmed project exposes a Workstream Assist scope');
+  const assistSession = await api('/assist/v3/sessions', 'POST', {
+    project_id: project.project.id, scope_type: 'workstream', scope_id: assistNode.id, title: 'V1.9 Workstream Assist'
+  });
+  const assistSessionId = assistSession.id;
   const preview = await uploadAttachment(assistSessionId, 'preview-v17.md', '# Preview heading\n\nSafe **Markdown** content.\n');
   const visualTurn = await api(`/assist/v3/sessions/${assistSessionId}/turns`, 'POST', {
-    adapter: 'test', collaboration_mode: 'plan', content: 'Short V1.7 prompt', attachment_ids: [preview.id],
+    adapter: 'test', project_id: project.project.id, scope_type: 'workstream', scope_id: assistNode.id,
+    collaboration_mode: 'plan', content: 'Short V1.7 prompt', attachment_ids: [preview.id],
     test_response: { message: '## V1.7 visual reply\n\n已完成本轮审查：\n\n- Brief V2 区块可编辑\n- 工作流草稿已持久化\n\n| 检查 | 结果 |\n| --- | --- |\n| 模式分离 | 通过 |\n| 页面写入 | 受控 |\n\n> 下一步：确认简报并激活项目。', events: [{ type: 'usage', data: { input_tokens: 1000, output_tokens: 234, total_tokens: 1234 } }] }
   });
   await waitForTurn(visualTurn.id, 'completed');
   seedV17AssistVisualState({ stateFile: path.join(home, 'data', 'state.json'), assistSessionId, visualTurnId: visualTurn.id });
-  const bundle = await api(`/projects/${project.project.id}`);
-  return { onboardingProjectId: draft.project.id, projectId: project.project.id, executionNodeId: bundle.nodes.find((item) => item.type === 'execution').id, previewTitle: preview.title };
-}
-async function configureGithubAndDocker() {
-  await api('/setup/mode', 'PUT', { mode: 'byo' });
-  await api('/github/app-config/validate', 'POST', { adapter: 'test', app_id: '101', client_id: 'Iv1.browser', client_secret: 'browser-client', private_key: 'browser-private', webhook_secret: 'browser-hook' });
-  const device = await api('/github/device/start', 'POST', { adapter: 'test' });
-  await api('/github/device/poll', 'POST', { adapter: 'test', request_id: device.request_id });
-  await api('/github/installations/start', 'POST', { adapter: 'test' });
-  await api('/github/installations/9001/repositories', 'PUT', { repository_ids: ['7001'] });
-  await api('/codex/docker/build', 'POST', { adapter: 'test' });
-}
-function browserDiscovery() {
-  return { updated_at: new Date(0).toISOString(), sources: [
-    { source_id: 'browser-cc', type: 'cc_switch', display_name: 'cc-switch local providers', status: 'available', path_hint: '~/.cc-switch/cc-switch.db', revision: 'browser-revision-cc', providers: [{ discovery_id: 'browser-cc-provider', source_revision: 'browser-revision-cc', name: 'Browser Relay', provider: 'browser-relay', base_url: 'https://relay.browser.test/v1', model: 'browser/codex', wire_api: 'responses', has_credential: true, credential_hint: 'stored', importable: true }] },
-    { source_id: 'browser-home', type: 'codex_home', display_name: 'Local ~/.codex', status: 'available', path_hint: '~/.codex/config.toml', revision: 'browser-revision-home', providers: [{ discovery_id: 'browser-home-provider', source_revision: 'browser-revision-home', name: 'Local Gateway', provider: 'local-gateway', base_url: 'http://127.0.0.1:8080/v1', model: 'local/codex', wire_api: 'responses', has_credential: false, credential_hint: 'required', importable: true }] }
-  ] };
+  return { onboardingProjectId: draft.project.id, projectId: project.project.id, assistNodeId: assistNode.id, executionNodeId: bundle.nodes.find((item) => item.type === 'execution').id, previewTitle: preview.title };
 }
 async function verifyWorkspaceViewport(page, fixture, viewport) {
   await page.setViewportSize(viewport);
   await page.goto(`http://127.0.0.1:${port}/projects/${fixture.onboardingProjectId}/workflow`);
   await page.waitForURL(`**/projects/${fixture.onboardingProjectId}/onboarding`);
   await page.locator('.onboarding-page').waitFor();
-  await captureBriefWorkspace(page, { output, viewport, assertViewport });
+  await captureBriefWorkspace(page, { output, viewport, assertViewport }); if (viewport.name === 'desktop') await assertA11y(page, 'onboarding');
   await page.goto(`http://127.0.0.1:${port}/projects/${fixture.projectId}/workflow`);
-  await page.locator('.workspace-node').first().waitFor();
+  await page.locator('.workspace-node').first().waitFor(); if (viewport.name === 'desktop') await assertA11y(page, 'workflow');
+  if (await page.locator('.node-inspector').count()) { await page.keyboard.press('Escape'); await page.locator('.node-inspector').waitFor({ state: 'detached' }); }
+  while (await page.getByRole('button', { name: '关闭通知' }).count()) await page.getByRole('button', { name: '关闭通知' }).first().click();
   assert.equal(await page.locator('.workspace-node').count(), 5);
   await assertCanvasBounds(page);
   await page.screenshot({ path: path.join(output, `workflow-${viewport.name}.png`) });
-  await page.locator('.workspace-node').first().click();
+  const canvasNode = page.locator(`.workspace-node[data-workflow-node-id="${fixture.assistNodeId}"]`);
+  if (viewport.width > 700) { await canvasNode.hover(); await page.screenshot({ path: path.join(output, `workflow-node-hover-${viewport.name}.png`) }); await canvasNode.click({ button: 'right' }); }
+  else await canvasNode.getByRole('button', { name: '更多节点操作' }).click();
+  const nodeMenu = page.getByRole('menu', { name: '上下文菜单' }); await nodeMenu.waitFor(); await assertInsideViewport(page, '.context-menu');
+  assert.equal(await nodeMenu.getByRole('menuitem', { name: '让 Assist 优化' }).count(), 1);
+  await page.screenshot({ path: path.join(output, `workflow-node-menu-${viewport.name}.png`) }); await page.keyboard.press('Escape');
+  await canvasNode.click();
   await page.locator('.node-inspector').waitFor();
   await assertInsideViewport(page, '.node-inspector');
   await page.screenshot({ path: path.join(output, `workflow-inspector-${viewport.name}.png`) });
-  await page.getByRole('button', { name: '移除' }).click();
+  await page.locator('.node-inspector').getByRole('button', { name: '更多节点操作' }).click();
+  await page.getByRole('menuitem', { name: '移除节点' }).click();
   await page.locator('.approval-prompt').waitFor();
   await assertInsideViewport(page, '.approval-prompt');
   assert.equal(await page.locator('.node-inspector').count(), 1, '即时审批与 Inspector 可并存');
   await page.screenshot({ path: path.join(output, `workflow-approval-${viewport.name}.png`) });
   await page.keyboard.press('Escape');
   await page.locator('.approval-prompt').waitFor({ state: 'detached' });
-  await page.getByRole('button', { name: '打开 Codex Assist' }).click();
+  if (viewport.width <= 700) {
+    await page.locator('.node-inspector').getByRole('button', { name: '更多节点操作' }).click();
+    await page.getByRole('menuitem', { name: '让 Assist 优化' }).click();
+  } else await page.getByRole('button', { name: '打开 Codex Assist' }).click();
   await page.locator('.assist-workbench').waitFor();
-  await page.locator('.assist-composer-v3').waitFor();
+  await page.locator('.assist-composer-v3').waitFor(); if (viewport.name === 'desktop') await assertA11y(page, 'assist');
   await page.waitForTimeout(250);
-  assert.equal(await page.locator('.node-inspector').count(), 1, 'V1.3 Assist 与 Inspector 可并存');
+  assert.equal(await page.locator('.node-inspector').count(), 0, 'Assist 展开时 Inspector 应收为 Peek');
+  assert.equal(await page.locator('.inspector-peek').isVisible(), viewport.width > 700, 'Inspector Peek 可见性应匹配单任务断点');
   await assertInsideViewport(page, '.assist-workbench');
   await assertAssistHeader(page);
   if (viewport.width <= 700) {
     await page.waitForFunction(() => (document.querySelector('.assist-main')?.getBoundingClientRect().width || 0) >= window.innerWidth - 1);
     const main = await page.locator('.assist-main').boundingBox();
     assert.ok(main && main.width >= viewport.width - 1, `mobile Assist main is not full width: ${JSON.stringify(main)}`);
-    await page.locator('.toast').waitFor();
-    await assertNoOverlap(page, '.toast', '.assist-composer-v3');
+    await page.locator('.operation-notice.succeeded').first().waitFor();
+    await assertNoOverlap(page, '.operation-notice.succeeded', '.assist-composer-v3');
   }
   await page.screenshot({ path: path.join(output, `workflow-assist-${viewport.name}.png`) });
   while (await page.getByRole('button', { name: '关闭通知' }).count()) await page.getByRole('button', { name: '关闭通知' }).first().click();
   await verifyV17Assist(page, fixture, viewport);
   await page.keyboard.press('Escape');
   await page.waitForTimeout(100);
-  assert.equal(await page.locator('.assist-workbench').count(), 1, 'docked Assist 不因 Escape 丢失线程');
-
+  assert.equal(await page.locator('.assist-workbench').count(), 0, 'Escape 应将 Assist 收回 Command Dock');
+  assert.equal(await page.locator('.command-dock').isVisible(), viewport.width > 700, 'Command Dock 可见性应避让移动端 Inspector');
+  assert.equal(await page.locator('.node-inspector').count(), 1, 'Inspector 状态应在 Assist 收起后恢复');
   await page.goto(`http://127.0.0.1:${port}/projects/${fixture.projectId}/nodes/${fixture.executionNodeId}`);
   await page.locator('.execution-workspace').waitFor();
   await page.locator('.file-list button').filter({ hasText: 'src' }).click();
   await page.locator('.file-list button').filter({ hasText: 'index.ts' }).click();
-  await page.locator('.monaco-editor').waitFor({ timeout: 20000 });
+  await page.locator('.monaco-editor').waitFor({ timeout: 20000 }); if (viewport.name === 'desktop') await assertA11y(page, 'execution');
   await assertInsideViewport(page, '.execution-workspace');
   await page.screenshot({ path: path.join(output, `execution-monaco-${viewport.name}.png`) });
+  await verifyShellOverlayStacking(page);
   await assertViewport(page);
 }
 async function verifyV17Assist(page, fixture, viewport) {
@@ -189,12 +201,13 @@ async function verifyV17Assist(page, fixture, viewport) {
   assert.ok(goal && goal.height >= 35 && goal.height <= 44, `Goal card must stay compact: ${JSON.stringify(goal)}`);
   assert.ok(prompt && timeline && prompt.width < timeline.width * 0.9, `short prompt did not shrink: ${JSON.stringify({ prompt, timeline })}`);
   const question = page.locator('.native-input-card').first(); await question.waitFor(); assert.equal(await question.getByText('推荐', { exact: true }).count(), 1); assert.equal(await question.getByRole('textbox', { name: '范围确认 Note' }).count(), 1); await question.screenshot({ path: path.join(output, `assist-question-${viewport.name}.png`) });
-  const receipt = page.locator('.operation-receipt').first(); await receipt.waitFor(); assert.doesNotMatch(await receipt.textContent() || '', /aiws_page|set_field/); const receiptBox = await receipt.boundingBox(); assert.ok(receiptBox && receiptBox.width <= 522, `operation receipt too wide: ${JSON.stringify(receiptBox)}`); await receipt.screenshot({ path: path.join(output, `assist-operation-receipt-${viewport.name}.png`) });
+  const receipt = page.locator('.operation-receipt').first(); await receipt.waitFor(); assert.doesNotMatch(await receipt.textContent() || '', /aiws_project|workflow_graph_patch/); assert.equal(await receipt.getByRole('button', { name: '撤销' }).count(), 0); assert.equal(await receipt.getByRole('button', { name: '直接编辑' }).count(), 0); assert.equal(await receipt.getByRole('button', { name: '审查提案' }).count(), 1); assert.equal(await receipt.getByRole('link', { name: '定位工作流' }).count(), 1); const receiptBox = await receipt.boundingBox(); assert.ok(receiptBox && receiptBox.width <= 522, `operation receipt too wide: ${JSON.stringify(receiptBox)}`); await receipt.screenshot({ path: path.join(output, `assist-operation-receipt-${viewport.name}.png`) });
   await page.locator('.turn-output').filter({ hasText: 'V1.7 visual reply' }).screenshot({ path: path.join(output, `assist-reply-${viewport.name}.png`) });
 
   const layoutButton = page.getByRole('button', { name: 'Assist 布局' }); await layoutButton.click();
   const layoutMenu = page.getByRole('menu', { name: 'Assist 布局' }); await layoutMenu.waitFor();
-  assert.equal(await layoutMenu.getByRole('menuitemradio').count(), 3); await assertInsideViewport(page, '.assist-layout-menu [role="menu"]'); await layoutButton.click();
+  assert.equal(await layoutMenu.getByRole('menuitemradio').count(), 3); await assertInsideViewport(page, '.assist-layout-menu [role="menu"]'); await page.keyboard.press('Escape');
+  assert.equal(await layoutMenu.count(), 0, 'Escape should close only the Assist layout menu'); assert.equal(await page.locator('.assist-workbench').count(), 1, 'closing a nested menu must keep Assist open');
 
   const composerHandle = page.getByRole('separator', { name: '调整输入区高度' });
   await composerHandle.hover(); await page.waitForTimeout(150);
@@ -229,9 +242,10 @@ async function verifyV17Assist(page, fixture, viewport) {
 
   if (!await page.getByText('已删除分支', { exact: true }).count()) await page.getByRole('button', { name: '显示线程列表' }).click();
   await page.getByText('已删除分支', { exact: true }).waitFor();
-  const threadSummaries = await page.locator('.thread-main small').allTextContents(); assert.ok(threadSummaries.length > 0 && threadSummaries.every((value) => /^\d+ 轮$|^尚无对话$/.test(value)), `thread summaries leaked state: ${JSON.stringify(threadSummaries)}`);
+  const scopeSummaries = await page.locator('.thread-main .thread-scope').allTextContents(); assert.ok(scopeSummaries.length > 0 && scopeSummaries.every((value) => /Workstream.*发布工作空间.*目标/.test(value)), `thread scope breadcrumb missing: ${JSON.stringify(scopeSummaries)}`);
+  const threadSummaries = await page.locator('.thread-main > small:not(.thread-scope)').allTextContents(); assert.ok(threadSummaries.length > 0 && threadSummaries.every((value) => /^\d+ 轮$|^尚无对话$/.test(value)), `thread summaries leaked state: ${JSON.stringify(threadSummaries)}`);
   await page.screenshot({ path: path.join(output, `assist-deleted-branch-${viewport.name}.png`) });
-  if (viewport.width <= 700) await page.getByRole('button', { name: '隐藏线程列表' }).click();
+  await page.getByRole('button', { name: '隐藏线程列表' }).click();
 
   await page.getByRole('button', { name: fixture.previewTitle, exact: true }).click();
   const preview = page.getByRole('dialog', { name: `${fixture.previewTitle} 预览` }); await preview.waitFor();
@@ -243,16 +257,3 @@ async function api(route, method = 'GET', body) { const response = await fetch(`
 async function uploadAttachment(sessionId, filename, content) { const form = new FormData(); form.set('file', new Blob([content], { type: 'text/markdown' }), filename); const response = await fetch(`http://127.0.0.1:${port}/assist/v3/sessions/${sessionId}/attachments/upload`, { method: 'POST', body: form }); const data = await response.json(); assert.equal(response.status, 201, JSON.stringify(data)); return data; }
 async function waitForTurn(id, status) { for (let index = 0; index < 200; index++) { const turn = await api(`/assist/v3/turns/${id}`); if (turn.status === status) return turn; if (['completed', 'failed', 'stopped', 'interrupted'].includes(turn.status)) throw new Error(`${id} reached ${turn.status}:${turn.error_code || ''}`); await new Promise((resolve) => setTimeout(resolve, 25)); } throw new Error(`${id} did not reach ${status}`); }
 async function waitForServer() { for (let index = 0; index < 100; index++) { try { await api('/health'); return; } catch { await new Promise((resolve) => setTimeout(resolve, 100)); } } throw new Error('server did not start'); }
-async function assertViewport(page) { const sizes = await page.evaluate(() => { const root = document.getElementById('root'), scrollX = window.scrollX, rows = [...document.querySelectorAll('body *')].filter((element) => getComputedStyle(element).display !== 'none' && !element.closest('.monaco-editor,.react-flow__viewport') && !element.matches('.monaco-aria-container,.monaco-alert,.monaco-status,.react-flow__viewport')).map((element) => ({ element: `${element.tagName.toLowerCase()}.${element.getAttribute('class') || ''}`, rect: element.getBoundingClientRect().toJSON() })); return { scrollX, rootScrollLeft: root?.scrollLeft || 0, rootScrollWidth: root?.scrollWidth || 0, scrollWidth: document.documentElement.scrollWidth, width: window.innerWidth, scrollHeight: document.documentElement.scrollHeight, height: window.innerHeight, offenders: rows.filter((item) => item.rect.right + scrollX > window.innerWidth + 1 || item.rect.left + scrollX < -1).slice(0, 20) }; }); assert.equal(sizes.rootScrollLeft, 0, `root horizontally scrolled: ${JSON.stringify(sizes)}`); assert.deepEqual(sizes.offenders, [], `elements outside viewport: ${JSON.stringify(sizes)}`); assert.ok(sizes.scrollHeight >= sizes.height, 'document is rendered'); }
-async function assertCanvasBounds(page) { await assertViewport(page); const [bar, toolbar] = await Promise.all([page.locator('.app-bar').boundingBox(), page.locator('.canvas-toolbar').boundingBox()]); assert.ok(bar && toolbar && toolbar.y >= bar.y + bar.height, `canvas toolbar overlaps app bar: ${JSON.stringify({ bar, toolbar })}`); await assertInsideViewport(page, '.canvas-toolbar'); }
-async function assertInsideViewport(page, selector) { const box = await page.locator(selector).boundingBox(); const size = page.viewportSize(); assert.ok(box && size && box.x >= -1 && box.y >= -1 && box.x + box.width <= size.width + 1 && box.y + box.height <= size.height + 1, `${selector} outside viewport: ${JSON.stringify({ box, size })}`); }
-async function assertAssistHeader(page) { const [workbench, header, text] = await Promise.all([page.locator('.assist-workbench').boundingBox(), page.locator('.assist-workbench-head').boundingBox(), page.locator('.assist-workbench-head').textContent()]); assert.ok(workbench && header && Math.abs(header.y - workbench.y) <= 1 && header.height >= 47 && header.height <= 49, `Assist header must stay in the 48px top track: ${JSON.stringify({ workbench, header })}`); assert.equal(await page.locator('.assist-workbench-head .lucide-bot').count(), 0, 'Assist header must not repeat the Bot icon'); assert.doesNotMatch(text || '', /live/i, 'Assist header must not repeat stream health'); }
-async function assertNoOverlap(page, firstSelector, secondSelector) { const [first, second] = await Promise.all([page.locator(firstSelector).first().boundingBox(), page.locator(secondSelector).first().boundingBox()]); assert.ok(first && second && (first.x + first.width <= second.x || second.x + second.width <= first.x || first.y + first.height <= second.y || second.y + second.height <= first.y), `${firstSelector} overlaps ${secondSelector}: ${JSON.stringify({ first, second })}`); }
-function browserExecutable() {
-  if (fs.existsSync(chromium.executablePath())) return {};
-  const candidates = process.platform === 'win32'
-    ? ['C:/Program Files/Google/Chrome/Application/chrome.exe', 'C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe', `${process.env.LOCALAPPDATA}/Google/Chrome/Application/chrome.exe`]
-    : process.platform === 'darwin' ? ['/Applications/Google Chrome.app/Contents/MacOS/Google Chrome'] : ['/usr/bin/google-chrome', '/usr/bin/chromium', '/usr/bin/chromium-browser'];
-  const executablePath = candidates.find((candidate) => candidate && fs.existsSync(candidate));
-  return executablePath ? { executablePath } : {};
-}

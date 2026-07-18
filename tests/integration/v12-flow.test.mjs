@@ -6,7 +6,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { createConfirmedProject, repositorySnapshot } from './v13-test-helpers.mjs';
 
-const port = 4582;
+const port = Number(process.env.AIWS_TEST_PORT || 4582);
 const home = fs.mkdtempSync(path.join(os.tmpdir(), 'aiws-v12-home-'));
 const repo = path.join(home, 'repo');
 fs.mkdirSync(repo);
@@ -76,39 +76,47 @@ try {
 
   const created = await createConfirmedProject({ baseUrl: `http://127.0.0.1:${port}`, title: 'V1.2 Project', goal: '验证真实工作空间', source: repo, workflowNodes: [{ type: 'execution', title: '实现功能', goal: '修改并验证代码' }] });
   let bundle = await api(`/projects/${created.project.id}`);
-  assert.equal(bundle.nodes.length, 1);
-  const node = bundle.nodes[0];
+  assert.equal(bundle.nodes.length, 2);
+  const initialWorkstream = bundle.nodes.find((item) => item.role === 'workstream');
+  let node = bundle.nodes.find((item) => item.role === 'task');
   const workspace = await api(`/nodes/${node.id}/workspace`);
   assert.equal(workspace.node.type, 'execution');
   await api(`/nodes/${node.id}/workspace-data`, { method: 'PUT', body: { data: { notes: 'real state' } } });
   await api(`/projects/${created.project.id}/files/content`, { method: 'PUT', body: { node_id: node.id, path: 'README.md', content: '# Updated\n' } });
   const file = await api(`/projects/${created.project.id}/files/content?path=README.md`);
   assert.equal(file.content, '# Updated\n');
-  const template = await api(`/workflows/${created.workflow.id}/proposals`, { method: 'POST', body: { action: 'apply_template' } });
-  await api(`/change-proposals/${template.id}/approve`, { method: 'POST', body: {} });
-  await api(`/change-proposals/${template.id}/apply`, { method: 'POST', body: {} });
+  const template = await api(`/workflows/${created.workflow.id}/proposals`, { method: 'POST', body: { action: 'apply_template' } }, 409);
+  assert.equal(template.error, 'legacy_workflow_template_removed');
+  const addition = await api(`/workflows/${created.workflow.id}/graph-proposals`, { method: 'POST', body: {
+    expected_revision: bundle.workflows[0].workflow_revision,
+    operations: [{ type: 'add_node', node: {
+      id: 'secondary-workstream', role: 'workstream', title: '验证成果包', outcome: '形成独立验证成果', category: 'deliverable',
+      acceptance_criteria: ['验证证据可审查'], boundary: { deliverable: '验证成果包' }, dependency_ids: [initialWorkstream.id],
+      tasks: [{ id: 'secondary-task', role: 'task', title: '整理验证证据', task_kind: 'review', execution_mode: 'assist', dependency_ids: [] }]
+    } }]
+  } });
+  await api(`/change-proposals/${addition.id}/approve`, { method: 'POST', body: {} });
+  await api(`/change-proposals/${addition.id}/apply`, { method: 'POST', body: {} });
   bundle = await api(`/projects/${created.project.id}`);
-  for (const type of ['goal_definition', 'research', 'analysis', 'execution', 'retrospective']) {
-    const typedNode = bundle.nodes.find((item) => item.type === type);
-    assert.ok(typedNode, `${type} renderer has a persisted node workspace`);
-    await api(`/nodes/${typedNode.id}/workspace-data`, { method: 'PUT', body: { data: { renderer_type: type, persisted: true } } });
-    const restoredWorkspace = await api(`/nodes/${typedNode.id}/workspace`);
-    assert.deepEqual(restoredWorkspace.data, { renderer_type: type, persisted: true });
+  assert.equal(bundle.nodes.length, 4);
+  node = bundle.nodes.find((item) => item.id === node.id);
+  for (const role of ['workstream', 'task']) {
+    const roleNode = bundle.nodes.find((item) => item.role === role);
+    assert.ok(roleNode, `${role} renderer has a persisted node workspace`);
+    await api(`/nodes/${roleNode.id}/workspace-data`, { method: 'PUT', body: { data: { renderer_role: role, persisted: true } } });
+    const restoredWorkspace = await api(`/nodes/${roleNode.id}/workspace`);
+    assert.deepEqual(restoredWorkspace.data, { renderer_role: role, persisted: true });
   }
-  const goalNode = bundle.nodes.find((item) => item.type === 'goal_definition');
-  const analysisNode = bundle.nodes.find((item) => item.type === 'analysis');
-  const connect = await api(`/workflows/${created.workflow.id}/proposals`, { method: 'POST', body: { action: 'connect_nodes', source_id: goalNode.id, target_id: analysisNode.id } });
-  await api(`/change-proposals/${connect.id}/approve`, { method: 'POST', body: {} });
-  await api(`/change-proposals/${connect.id}/apply`, { method: 'POST', body: {} });
-  assert.equal((await api(`/projects/${created.project.id}`)).nodes.find((item) => item.id === analysisNode.id).dependencies.some((item) => item.node_id === goalNode.id), true);
-  const positions = bundle.nodes.map((item, index) => ({ id: item.id, position: { x: index * 50, y: index * 25 } }));
+  const secondaryWorkstream = bundle.nodes.find((item) => item.id === 'secondary-workstream');
+  assert.equal(secondaryWorkstream.dependencies.some((item) => item.node_id === initialWorkstream.id), true);
+  const positions = bundle.nodes.filter((item) => item.role === 'workstream').map((item, index) => ({ id: item.id, position: { x: index * 50, y: index * 25 } }));
   await api(`/workflows/${created.workflow.id}/layout`, { method: 'PUT', body: { nodes: positions } });
-  assert.deepEqual((await api(`/projects/${created.project.id}`)).nodes.find((item) => item.id === goalNode.id).position, positions.find((item) => item.id === goalNode.id).position);
-  const removedNode = bundle.nodes.find((item) => item.type === 'retrospective');
-  const remove = await api(`/workflows/${created.workflow.id}/proposals`, { method: 'POST', body: { action: 'remove_node', node_id: removedNode.id } });
+  assert.deepEqual((await api(`/projects/${created.project.id}`)).nodes.find((item) => item.id === initialWorkstream.id).position, positions.find((item) => item.id === initialWorkstream.id).position);
+  const remove = await api(`/workflows/${created.workflow.id}/graph-proposals`, { method: 'POST', body: { expected_revision: bundle.workflows[0].workflow_revision, operations: [{ type: 'delete_node', node_id: secondaryWorkstream.id }] } });
   await api(`/change-proposals/${remove.id}/approve`, { method: 'POST', body: {} });
   await api(`/change-proposals/${remove.id}/apply`, { method: 'POST', body: {} });
-  assert.equal((await api(`/projects/${created.project.id}`)).nodes.some((item) => item.id === removedNode.id), false);
+  const afterRemoval = await api(`/projects/${created.project.id}`);
+  assert.equal(afterRemoval.nodes.some((item) => item.id === secondaryWorkstream.id || item.id === 'secondary-task'), false);
   await api(`/projects/${created.project.id}/files/content?path=..%2Foutside.txt`, {}, 403);
   await api(`/nodes/${node.id}/run`, { method: 'POST', body: { runner: 'mock' } }, 400);
 
@@ -130,6 +138,10 @@ try {
   assert.ok(decided.result.id.startsWith('cpr_'));
   const tools = await api('/tools');
   assert.equal(tools.some((item) => item.name === 'mock_runner'), false);
+
+  const simplified = await api(`/workflows/${created.workflow.id}/proposals`, { method: 'POST', body: { action: 'ai_generate', adapter: 'test' } }, 409);
+  assert.equal(simplified.error, 'workflow_generation_async_required');
+  assert.equal(simplified.endpoint, `/projects/${created.project.id}/workflow-draft/generations`);
 
   const payload = JSON.stringify({ action: 'removed', installation: { id: 9001 }, repositories_removed: [{ id: 7001 }] });
   const signature = `sha256=${createHmac('sha256', secrets.webhook_secret).update(payload).digest('hex')}`;

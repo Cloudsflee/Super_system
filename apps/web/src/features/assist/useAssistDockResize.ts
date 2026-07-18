@@ -1,9 +1,9 @@
 import { useEffect, useRef, useState } from 'react';
 import { useUi } from '../../state/ui';
 
-const DEFAULT_WIDTH = 760;
-const MIN_WIDTH = 440;
-const MIN_WORKSPACE_WIDTH = 360;
+const DEFAULT_WIDTH = 520;
+const MIN_WIDTH = 420;
+const MAX_WIDTH = 680;
 
 export function useAssistDockResize(active: boolean) {
   const width = useUi((state) => state.assistDockWidth);
@@ -19,6 +19,13 @@ export function useAssistDockResize(active: boolean) {
     clamp();
     return () => window.removeEventListener('resize', clamp);
   }, [active, setWidth]);
+
+  useEffect(() => {
+    const root = document.documentElement;
+    if (!active) { root.style.removeProperty('--assist-active-dock-width'); return; }
+    root.style.setProperty('--assist-active-dock-width', `${width}px`);
+    return () => { root.style.removeProperty('--assist-active-dock-width'); };
+  }, [active, width]);
 
   useEffect(() => () => stopRef.current(), []);
 
@@ -68,7 +75,7 @@ export function useAssistDockResize(active: boolean) {
 function dockWidthBounds() {
   const viewport = Math.max(1, window.innerWidth);
   const min = Math.min(MIN_WIDTH, viewport);
-  const max = viewport <= 1100 ? viewport : Math.max(min, viewport - MIN_WORKSPACE_WIDTH);
+  const max = Math.max(min, Math.min(MAX_WIDTH, viewport - 24));
   return { min, max };
 }
 

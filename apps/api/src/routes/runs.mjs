@@ -70,6 +70,7 @@ async function prepareNodeRun(nodeId, body) {
   return mutate((state) => {
     const actor = owner(state), bundle = nodeBundle(state, nodeId);
     requireNodeBundle(bundle);
+    assertTaskDependencies(state, bundle.node);
     assertManagedProjectWritable(bundle.project);
     const ctx = ensureRunContextPack(state, { actor, ...bundle, body });
     const run = createRun({ actor, ...bundle, ctx, body });
@@ -173,4 +174,12 @@ async function getRunRoute({ res, params }) {
 }
 
 function requireNodeBundle({ node, project, contract }) { if (!node || !project || !contract) throw new HttpError(404, 'node_or_contract_not_found'); }
+function assertTaskDependencies(state, node) {
+  if (node.role === 'workstream') throw new HttpError(409, { error: 'workstream_is_aggregate_not_executable', node_id: node.id });
+  if (node.role !== 'task') return;
+  const parent = state.workflow_nodes.find((item) => item.id === node.parent_node_id && item.role === 'workstream');
+  const incompleteUpstream = (parent?.dependencies || []).map((item) => typeof item === 'string' ? item : item.node_id).map((id) => state.workflow_nodes.find((item) => item.id === id)).filter((item) => item && item.status !== 'completed');
+  const incompleteTasks = (node.dependencies || []).map((item) => typeof item === 'string' ? item : item.node_id).map((id) => state.workflow_nodes.find((item) => item.id === id)).filter((item) => item && item.status !== 'completed');
+  if (incompleteUpstream.length || incompleteTasks.length) throw new HttpError(409, { error: 'task_dependency_blocked', node_id: node.id, workstream_dependencies: incompleteUpstream.map((item) => item.id), task_dependencies: incompleteTasks.map((item) => item.id), action: 'create_change_proposal' });
+}
 function delay(ms) { return new Promise((resolve) => setTimeout(resolve, Math.max(0, Math.min(ms, 5000)))); }

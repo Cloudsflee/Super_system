@@ -1,13 +1,15 @@
 import path from 'node:path';
 import { estimateTokens, id, now } from '../../../packages/shared/index.mjs';
 import { cleanText } from './assist-v3-domain.mjs';
+import { currentProjectWorkflow, workflowGraphSnapshot } from './workflow-graph-service.mjs';
 
 export function createTurnContext(state, { actor, project, session, turn, attachmentIds }) {
   const created = now();
   const brief = state.project_briefs.filter((item) => item.project_id === project.id && item.status !== 'superseded').sort((a, b) => b.version - a.version)[0] || null;
-  const workflowDraft = state.workflow_drafts.find((item) => item.project_id === project.id) || null;
-  const assets = state.assets.filter((item) => item.project_id === project.id && item.status === 'confirmed').slice(-50);
-  const digest = state.digests.filter((item) => item.project_id === project.id && item.status === 'confirmed').at(-1) || null;
+  const workflow = project.status !== 'draft' && project.onboarding_state === 'confirmed' ? currentProjectWorkflow(state, project.id) : null;
+  const workflowDraft = workflow ? null : state.workflow_drafts.find((item) => item.project_id === project.id && item.status !== 'activated') || null;
+  const scopeContext = minimalScopeContext(state, { project, session, brief, workflow, workflowDraft });
+  const assets = scopedMemoryAssets(state, session).slice(-50);
   const missing = turn.prompt ? [] : ['prompt'];
   const check = {
     id: id('csc'), project_id: project.id, workspace_id: session.workspace_id, node_id: session.node_id,
@@ -21,19 +23,58 @@ export function createTurnContext(state, { actor, project, session, turn, attach
     purpose: 'assist_v3_turn', version: 1, status: 'confirmed',
     content_json: {
       project: { id: project.id, title: project.title, goal: project.goal },
-      brief: brief?.content || null,
-      brief_ref: brief ? { id: brief.id, revision: brief.revision, version: brief.version } : null,
-      workflow_draft: workflowDraft ? { id: workflowDraft.id, revision: workflowDraft.revision, nodes: workflowDraft.nodes } : null,
-      digest: digest ? { id: digest.id, summary: digest.summary } : null, attachment_ids: attachmentIds,
-      operation_reference: publicOperationReference(state.assist_operations.find((item) => item.id === turn.operation_reference_id))
+      scope: { type: session.scope_type, id: session.scope_id, snapshot: session.scope_snapshot || null },
+      ...scopeContext, attachment_ids: attachmentIds,
+      operation_reference: publicOperationReference(state.assist_operations.find((item) => item.id === turn.operation_reference_id), state)
     },
-    memory_manifest: { included_asset_version_ids: assets.map((item) => item.current_version_id).filter(Boolean), digest_id: digest?.id || null, authority: 'confirmed_only' },
+    memory_manifest: { included_asset_version_ids: assets.map((item) => item.current_version_id).filter(Boolean), digest_id: null, authority: 'confirmed_only', scope_type: session.scope_type, scope_id: session.scope_id },
     sufficiency_check_id: check.id, content_file_ref_id: null, markdown_file_ref_id: null,
     included_asset_versions: assets.map((item) => item.current_version_id).filter(Boolean), token_estimate: check.token_estimate,
     quality_check: { sufficient: !missing.length, missing_slots: missing }, confirmed_by_user_id: actor.id,
     created_at: created, updated_at: created
   };
   return { check, pack };
+}
+
+function minimalScopeContext(state, { project, session, brief, workflow, workflowDraft }) {
+  if (session.scope_type === 'project') {
+    const decisions = state.decisions.filter((item) => item.project_id === project.id && ['accepted', 'confirmed'].includes(item.status)).slice(-50).map((item) => ({ id: item.id, title: item.title, summary: item.summary, status: item.status }));
+    return {
+      brief: brief?.content || null,
+      brief_ref: brief ? { id: brief.id, revision: brief.revision, version: brief.version } : null,
+      global_decisions: decisions,
+      ...(workflowDraft ? { workflow_draft: { id: workflowDraft.id, revision: workflowDraft.revision, nodes: workflowDraft.nodes, generation_status: workflowDraft.generation_status, route: `/projects/${project.id}/onboarding`, mutation_policy: 'direct_draft_edit', hierarchy: 'workstream_task' } } : {})
+    };
+  }
+  if (session.scope_type === 'workflow') {
+    const selected = state.workflows.find((item) => item.id === session.scope_id && item.project_id === project.id) || workflow;
+    const graph = selected ? workflowGraphSnapshot(state, selected, null) : null;
+    return selected && graph ? { workflow: { id: selected.id, title: selected.title, revision: graph.revision, graph, route: `/projects/${project.id}/workflow`, mutation_policy: 'change_proposal' } } : {};
+  }
+  const node = state.workflow_nodes.find((item) => item.id === session.scope_id), selectedWorkflow = state.workflows.find((item) => item.id === node?.workflow_id);
+  if (session.scope_type === 'workstream' && node) {
+    const contract = state.node_contracts.find((item) => item.id === node.current_contract_id), graph = selectedWorkflow ? workflowGraphSnapshot(state, selectedWorkflow, node.id) : null;
+    return { workstream: { id: node.id, title: node.title, outcome: node.outcome, category: node.category, boundary: node.boundary, contract, task_graph: graph, repository_targets: state.repository_targets.filter((item) => item.workstream_id === node.id) } };
+  }
+  if (session.scope_type === 'task' && node) {
+    const dependencyIds = (node.dependencies || []).map((item) => typeof item === 'string' ? item : item.node_id).filter(Boolean);
+    const dependencies = dependencyIds.map((dependencyId) => {
+      const dependency = state.workflow_nodes.find((item) => item.id === dependencyId);
+      return { id: dependencyId, title: dependency?.title || null, status: dependency?.status || null, outputs: state.assets.filter((item) => item.node_id === dependencyId && item.status === 'confirmed').map((item) => ({ id: item.id, title: item.title, summary: item.summary, current_version_id: item.current_version_id })) };
+    });
+    return { task: { id: node.id, title: node.title, goal: node.goal, task_kind: node.task_kind, execution_mode: node.execution_mode, required: node.required !== false, dependencies, repository_targets: state.repository_targets.filter((item) => item.task_id === node.id) } };
+  }
+  return {};
+}
+
+function scopedMemoryAssets(state, session) {
+  const confirmed = state.assets.filter((item) => item.project_id === session.project_id && item.status === 'confirmed');
+  if (session.scope_type === 'project') return confirmed.filter((item) => !item.node_id);
+  if (session.scope_type === 'task') {
+    const node = state.workflow_nodes.find((item) => item.id === session.scope_id), dependencies = new Set((node?.dependencies || []).map((item) => typeof item === 'string' ? item : item.node_id));
+    return confirmed.filter((item) => dependencies.has(item.node_id));
+  }
+  return [];
 }
 
 export function turnPrompt({ turn, session, project, contextPack, attachments }) {
@@ -77,7 +118,7 @@ function operationReferenceContext(contextPack, referenceId) {
   if (!referenceId) return null;
   return { ...(contextPack?.content_json?.operation_reference || {}), operation_reference_id: referenceId, instruction: 'Apply the requested follow-up to this exact prior operation target. Do not infer a different target.' };
 }
-function publicOperationReference(item) { return item ? { operation_reference_id: item.id, capability_id: item.capability_id || null, action: item.action || null, target_id: item.target_id, target_label: item.target_label || item.target_id, locator: item.locator || { route: item.route, surface_id: item.surface_id, surface_revision: item.surface_revision }, before_value: item.before_value, after_value: item.after_value, current_value: item.current_value } : null; }
+function publicOperationReference(item, state) { const proposal = item?.proposal_id ? state?.change_proposals?.find((entry) => entry.id === item.proposal_id) : null; return item ? { operation_reference_id: item.id, capability_id: item.capability_id || null, action: item.action || null, result_kind: item.result_kind || null, proposal_id: item.proposal_id || null, proposal_status: proposal?.status || item.proposal_status || null, target_id: item.target_id, target_label: item.target_label || item.target_id, locator: item.locator || { route: item.route, surface_id: item.surface_id, surface_revision: item.surface_revision }, before_value: item.before_value, after_value: item.after_value, current_value: item.current_value } : null; }
 
 export async function appServerUserInput(userText, attachments, _state, options = {}) {
   const input = [{ type: 'text', text: cleanText(userText, 100_000), text_elements: [] }];

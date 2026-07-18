@@ -8,6 +8,7 @@ dist/
 *.log
 *.tsbuildinfo
 .tmp-*/
+temp/v175-user-journey-*/
 .aiws-compose-*.yml
 aiws-backups/
 .DS_Store

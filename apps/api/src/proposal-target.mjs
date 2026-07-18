@@ -1,8 +1,11 @@
 import { hashString } from '../../../packages/shared/index.mjs';
+import { workflowGraphSnapshot } from './workflow-graph-service.mjs';
 
 export function proposalTargetHash(state, proposal) {
   const action = proposal.apply_action || {}; let snapshot = proposal.before_json ?? null;
-  if (['workflow_nodes_create', 'workflow_node_remove', 'workflow_node_update', 'workflow_nodes_connect'].includes(action.type)) {
+  if (action.type === 'workflow_graph_patch') {
+    snapshot = workflowGraphSnapshot(state, action.workflow_id, action.parent_node_id || null);
+  } else if (['workflow_nodes_create', 'workflow_node_remove', 'workflow_node_update', 'workflow_nodes_connect'].includes(action.type)) {
     const workflow = state.workflows.find((item) => item.id === action.workflow_id);
     if (workflow) snapshot = graphSnapshot(state.workflow_nodes.filter((item) => item.workflow_id === workflow.id));
   } else if (action.type === 'node_contract_patch' && proposal.node_id) {

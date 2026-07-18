@@ -26,7 +26,7 @@ export function TurnTimeline({ turns, events, reconnecting, busy, onRetry, onRev
     {turns.map((turn) => {
       const allTurnEvents = events.filter((event) => event.turn_id === turn.id), usage = [...allTurnEvents].reverse().find((event) => event.type === 'usage')?.data || turn.usage || null;
       const turnEvents = coalesceAssistEvents(allTurnEvents);
-      const retryable = ['failed', 'stopped', 'interrupted'].includes(turn.status), reviewable = Boolean(turn.change_batch_id && ['ready', 'changes_requested', 'applied'].includes(turn.review_status));
+      const retryable = ['failed', 'stopped', 'interrupted'].includes(turn.status), reviewable = Boolean(turn.change_batch_id && ['ready', 'no_changes', 'changes_requested', 'applied'].includes(turn.review_status));
       const phase = turnPhase(turn.status), directEvents = turnDirectEvents(turn, turnEvents, retryable), reply = assistantReply(turn, turnEvents);
       return <section className="assist-turn" key={turn.id}>
         <article className="turn-prompt"><span className="sr-only">用户消息</span>{turn.collaboration_mode === 'plan' && <div className="turn-prompt-meta"><span className="native-plan-label">Plan</span></div>}<p>{turn.prompt}</p>{turn.attachments?.length ? <footer><Paperclip size={12} />{turn.attachments.map((item) => <span key={item.id}>{item.title}</span>)}</footer> : null}</article>

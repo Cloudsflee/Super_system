@@ -117,6 +117,29 @@ describe('overlay and capability contracts', () => {
     await waitFor(() => expect(useUi.getState().proposalId).toBeNull());
   });
 
+  it('queues Escape while the immediate approval is still loading', async () => {
+    const calls: Array<{ url: string; body?: unknown }> = [];
+    let resolveApprovals: ((response: Response) => void) | undefined;
+    let firstApprovalRead = true;
+    const pendingApprovals = new Promise<Response>((resolve) => { resolveApprovals = resolve; });
+    vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      calls.push({ url, body: init?.body ? JSON.parse(String(init.body)) : undefined });
+      if (url.endsWith('/approvals') && firstApprovalRead) { firstApprovalRead = false; return pendingApprovals; }
+      if (url.endsWith('/approvals')) return jsonResponse([{ ...approval(), attention_state: 'queued' }]);
+      if (url.endsWith('/decision')) return jsonResponse({ item: { ...approval(), attention_state: 'queued' } });
+      return jsonResponse([]);
+    }));
+    useUi.getState().showProposal('proposal-1');
+    renderWithClient(<MemoryRouter><ApprovalPrompt projectId="project-1" /></MemoryRouter>);
+    expect(await screen.findByText('正在加载审批项目')).toBeInTheDocument();
+    fireEvent.keyDown(window, { key: 'Escape' });
+    expect(useUi.getState().proposalId).toBe('proposal-1');
+    await act(async () => { resolveApprovals?.(jsonResponse([approval()])); });
+    await waitFor(() => expect(calls.some((item) => item.url.endsWith('/approvals/change_proposal/proposal-1/decision') && (item.body as { decision?: string })?.decision === 'defer')).toBe(true));
+    await waitFor(() => expect(useUi.getState().proposalId).toBeNull());
+  });
+
   it('closes an open prompt when the approval is resolved elsewhere', async () => {
     const fetch = vi.fn(async () => jsonResponse([{ ...approval(), status: 'cancelled', attention_state: 'resolved' }]));
     vi.stubGlobal('fetch', fetch);

@@ -1,13 +1,13 @@
 import fsp from 'node:fs/promises';
 import path from 'node:path';
 import { canonicalStateHash, migrateState14To15, sha256, validateState15, V15_COLLECTIONS } from './state-migration-v15.mjs';
-import { createWorkflowDraft, legacyBriefToV2 } from './brief-workflow-domain.mjs';
-import { AIWS_RUNNER_IMAGE } from '../../../packages/shared/src/version.mjs';
+import { legacyBriefToV2, normalizeBriefContentV2, stableId } from './brief-workflow-domain.mjs';
 
 export const STATE_SCHEMA_VERSION = 16;
 export const V16_COLLECTIONS = Object.freeze([...V15_COLLECTIONS, 'brief_templates', 'workflow_drafts']);
 export { canonicalStateHash, sha256 };
 export const V16_LEGACY_OFFICIAL_RUNNER_PATTERN = /^aiws-codex-runner:1\.[0-6]\.0-codex-\d+\.\d+\.\d+$/;
+export const V16_RUNNER_IMAGE = 'aiws-codex-runner:1.7.0-codex-0.144.0';
 
 export function migrateState15To16(source, { timestamp = new Date().toISOString() } = {}) {
   if (!source || typeof source !== 'object' || Array.isArray(source)) throw migrationError('state_root_invalid');
@@ -63,7 +63,7 @@ export function migrateState15To16(source, { timestamp = new Date().toISOString(
   for (const project of state.projects || []) {
     if (project.status !== 'draft' || draftsByProject.has(project.id)) continue;
     const brief = state.project_briefs.filter((item) => item.project_id === project.id && item.status !== 'superseded').sort((a, b) => Number(b.version || 0) - Number(a.version || 0))[0];
-    state.workflow_drafts.push(createWorkflowDraft({ project, brief, timestamp, deterministic: true }));
+    state.workflow_drafts.push(createLegacyWorkflowDraftV16({ project, brief, timestamp }));
     draftsByProject.add(project.id); createdWorkflowDrafts += 1;
   }
 
@@ -72,7 +72,7 @@ export function migrateState15To16(source, { timestamp = new Date().toISOString(
   return { state, migrated: true, from_version: inputVersion, to_version: 16, migrated_briefs: migratedBriefs, created_workflow_drafts: createdWorkflowDrafts, normalized_runner_profiles: runnerNormalization.profile_ids, staled_runner_probes: runnerNormalization.staled_probe_count };
 }
 
-export function normalizeOfficialRunnerImages(state, { targetImage = AIWS_RUNNER_IMAGE, timestamp = new Date().toISOString() } = {}) {
+export function normalizeOfficialRunnerImages(state, { targetImage = V16_RUNNER_IMAGE, timestamp = new Date().toISOString() } = {}) {
   const changedProfiles = new Set(), changedFields = [];
   for (const profile of Array.isArray(state?.codex_profiles) ? state.codex_profiles : []) for (const [container, field] of [[profile, 'image'], [profile?.config, 'image']]) {
     if (!container || !V16_LEGACY_OFFICIAL_RUNNER_PATTERN.test(String(container[field] || ''))) continue;
@@ -174,6 +174,21 @@ function semanticOperation(operation) {
   if (operation.tool === 'set_filter') return { capability_id: 'surface.filter.set', action: 'set', summary: `已更新筛选 · ${operation.target_id || '页面'}` };
   if (operation.tool === 'select_tab') return { capability_id: 'surface.tab.select', action: 'select', summary: `已切换视图 · ${operation.target_id || '页面'}` };
   return { capability_id: 'surface.field.set', action: 'set', summary: `已更新 · ${operation.target_id || '页面字段'}` };
+}
+function createLegacyWorkflowDraftV16({ project, brief, timestamp }) {
+  const content = normalizeBriefContentV2(brief?.content || brief || {}, { briefId: brief?.id || 'brief', title: brief?.content?.title || '项目简报' });
+  const goal = content.goal || '澄清目标并完成可验证交付';
+  const nodeIds = ['goal', 'execution', 'review'].map((key) => stableId('wfdn', project.id, key));
+  return {
+    id: stableId('wfd', project.id, 'draft'), project_id: project.id, revision: 1, status: 'draft', user_modified_at: null,
+    nodes: [
+      { id: nodeIds[0], type: 'goal_definition', title: '确认项目简报', goal, dependency_ids: [], position: { x: 80, y: 120 }, order: 0 },
+      { id: nodeIds[1], type: 'execution', title: '实现核心交付', goal: content.features.join('；') || goal, dependency_ids: [nodeIds[0]], position: { x: 390, y: 120 }, order: 1 },
+      { id: nodeIds[2], type: 'retrospective', title: '验证与交付审查', goal: content.acceptance_criteria.join('；') || '验证交付结果', dependency_ids: [nodeIds[1]], position: { x: 700, y: 120 }, order: 2 }
+    ],
+    source_brief_id: brief?.id || null, source_brief_revision: brief?.revision || null,
+    created_at: timestamp, updated_at: timestamp
+  };
 }
 function normalizeV16RecordDefaults(state, timestamp) {
   for (const project of state.projects || []) if (project.lifecycle_operation === undefined) project.lifecycle_operation = null;

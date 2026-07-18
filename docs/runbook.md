@@ -1,16 +1,16 @@
-# V1.6 运行与验收手册
+# V1.9 运行与验收手册
 
 ## 当前状态
 
-V1.7 默认离线门禁、容器门禁和独立卷迁移专项均纳入发布流程。正式 Compose 使用 `aiws-data-v17`；`aiws-data-v16` 只在首次切换中作为只读源。真实 Codex、GitHub 与 cc-switch 验收仍需显式 opt-in，默认结果不能替代 live 结果。
+V1.9 默认离线门禁、MCP contract、两级工作流、四层 Assist、Delivery 和独立卷迁移专项均纳入发布流程。正式 Compose 使用 `aiws-data-v19`；`aiws-data-v18` 只在首次切换中作为只读源。V1.8 报告和 schema 17 状态保留为只读基线。真实 Codex、GitHub 与 cc-switch 验收仍需显式 opt-in，默认结果不能替代 live 结果。
 
 ## 正式容器切换
 
-1. 执行 `scripts/aiws.ps1 verify` 或 `scripts/aiws.sh verify`，再执行 `up`。首次 `up` 会停止 V1.6 和 4318 preview，通过临时迁移卷克隆 `aiws-data-v16`，启动 V1.7 并验证 schema 16、记录 ID、文件清单和迁移 manifest。
+1. 执行 `scripts/aiws.ps1 verify` 或 `scripts/aiws.sh verify`，再执行 `up`。首次 `up` 会停止 V1.8 和 4318 preview，通过临时迁移卷克隆只读 `aiws-data-v18`，启动 V1.9 并验证 schema 18、记录 ID、文件清单和迁移 manifest。
 2. 迁移失败时，默认保留源卷和失败目标卷并恢复此前运行的旧容器。只有已经接受丢弃旧数据时，才使用 `-DiscardUnmigratable` / `--discard-unmigratable`。
 3. `up` 成功后会重新执行活动 Profile Probe。外部 Provider 失败只会让 Setup 降级，不会回滚已验收数据。
 4. 检查 `http://127.0.0.1:4317/api/health`、页面和核心数据，再执行 `purge-legacy -Confirm` / `purge-legacy --confirm`。
-5. 清理命令要求 4317 上的 `aiws-app:1.7.0` healthy、目标卷 schema 16、迁移凭据有效且无旧 Runner 引用。它只在独立确认后删除列明的旧 AIWS 资源与历史备份，不操作 Opsbot、DotAI、Langfuse 或匿名卷。
+5. 清理命令要求 4317 上的 `aiws-app:1.9.0` healthy、目标卷 schema 18、迁移凭据有效且无旧 Runner 引用。它只在独立确认后删除列明的旧 AIWS 资源与历史备份，不操作 Opsbot、DotAI、Langfuse 或匿名卷。
 
 清理后不再保留旧数据恢复点。完整边界和最终哈希见 [`v1.6-cutover.md`](v1.6-cutover.md)。
 
@@ -24,12 +24,23 @@ V1.7 默认离线门禁、容器门禁和独立卷迁移专项均纳入发布流
 
 ## Project Lifecycle
 
-1. `POST /projects` 创建 draft Project、项目级 Assist V3 Session、Intake 与初始 Brief，随后导航到 `/projects/<id>/onboarding`。
-2. brainstorm 路径直接维护目标、用户、范围、约束、里程碑和 workflow draft；existing 路径还必须选择且只能选择一个代码源。
+1. `POST /projects` 创建 draft Project、项目级 Assist V3 Session、Intake、初始 Brief 与空白 workflow draft，随后导航到 `/projects/<id>/onboarding`。
+2. brainstorm 路径直接维护目标、用户、范围、约束和材料；existing 路径还必须选择且只能选择一个代码源。输入就绪后系统异步生成工作流候选，失败时草案保持空白。
 3. existing 可增加多个 context source。代码源和上传内容先进入 staging，经路径、链接、文件数、单文件及总大小校验后，才原子进入 `.ai-workspace/workspaces/<projectId>/repo`。
 4. 本地源、外部 Git checkout 和远端 repository 都不是写入目标。Agent、CLI、Runner 与确认后的文件编辑只允许写受管 repo/worktree。
 5. confirm 在单次 state mutation 中保存 confirmed Brief、workflow、nodes 与 contracts；重复 confirm 返回同一结果。
 6. trash/restore 使用结构化 metadata。purge 要求项目名，可删除受管内容或保留到 `.ai-workspace/exports`，不会删除外部源或远端。
+
+## V1.9 两级工作流与 Delivery
+
+1. 顶层只允许 1–12 个可独立验收的 Workstream；Task 只能属于一个 Workstream，依赖只能连接同层节点，最大深度固定为 2。
+2. 初始 Codex 候选限制为 1–6 个 Workstream、每个 1–12 个 Task，并必须提供分类、拆分依据、Brief 证据、置信度、DAG 和仓库意图。critic 任一失败会废弃整份候选。
+3. 顶层变更校验 workflow revision；局部任务图校验 parent `plan_revision`。跨 Workstream 协作使用 Contract、Submission、Asset 与顶层依赖。
+4. Task 产出先提交到 Workstream 并验收；必需 Task 全部完成后 Workstream 才能提交到 Workflow。越过未完成上游必须走 Change Proposal。
+5. Assist 线程按 `(project, scope_type, scope_id)` 精确恢复，`scope_type` 只允许 `project/workflow/workstream/task`。节点删除或换版后线程只读并保留 `scope_snapshot`。
+6. 项目可连接多个 GitHub 仓库；Workstream 可声明多个目标，Task 最多一个写目标并可有多个只读依赖。跨仓库交付拆成多个 Task 和 Draft PR。
+7. 编码 Workstream 首次执行前批准 Delivery Policy，限定 repository、base ref、path prefixes、测试命令与自动化权限。策略撤销、过期或变更后必须重新批准。
+8. Delivery 固定执行 fetch/base SHA、隔离 worktree/branch、Codex、路径与 secret 检查、测试、commit、push、Draft PR。测试失败或路径越界时保留 worktree，但不得 commit、push 或创建 PR。
 
 ## Assist、Terminal 与审批
 
@@ -51,6 +62,17 @@ V1.7 默认离线门禁、容器门禁和独立卷迁移专项均纳入发布流
 4. cc-switch 模式在写入后重新发现并 Probe，失败时回滚旧 Provider；native fallback 必须由用户显式选择。
 5. 默认测试使用隔离 `CC_SWITCH_CONFIG_DIR` 和 adapter，并比较外部 fixture 的 hash；不可从该结果推断真实 cc-switch live 已通过。
 
+## 团队 MCP Gateway
+
+1. Local 模式继续使用内嵌 `http://127.0.0.1:4317/api/mcp`；Team 模式组合 `compose.yml` 与 `compose.collaboration.yml`。
+2. 生成至少 32 bytes、仅部署用户可读的 secret file，并设置 `AIWS_MCP_GATEWAY_SECRET_FILE` 与 HTTPS `AIWS_PUBLIC_MCP_URL`。
+3. Gateway 宿主端口 `4319` 只绑定 loopback；Caddy/Nginx 只把 MCP domain 的 `/mcp` 转发到 Gateway，不把 Core `/api/mcp` 暴露到公网。
+4. 每个成员使用独立、user-bound、项目限权且会到期的 token。普通成员不能创建 all-project client，也不能获得 setup/MCP admin、destructive 或 approver 权限。
+5. Gateway 不得挂 `aiws-data`、Vault、Docker socket 或 workspace；Runner 只加入 `mcp-agents` network。
+6. 当前远程 Web 尚未完成团队登录与 project membership enforcement，只允许通过私有 VPN 试用；不得把 Local Owner Web API 直接暴露到公网。
+
+完整架构与后续 OAuth/PostgreSQL/Redis 扩展边界见 `docs/mcp-collaboration-architecture.md`。
+
 ## 默认验收
 
 按以下顺序执行，任一步非零都不能关闭交付：
@@ -65,30 +87,26 @@ corepack pnpm audit:acceptance
 corepack pnpm verify
 ```
 
-`verify` 会再次运行 lint、typecheck、unit、23 组 integration、Prisma migration check、Web build、E2E smoke、三视口 Playwright 和 acceptance audit。默认套件使用临时 `AIWS_HOME`，不读取个人凭据执行外部写入。
+`verify` 会再次运行 lint、typecheck、全部 integration、Prisma migration check、Web build、E2E smoke、三视口 Playwright 和 acceptance audit。默认套件使用临时 `AIWS_HOME`，不读取个人凭据执行外部写入。
 
-发布前还应在已构建 `aiws-app:1.7.0` 后执行 `corepack pnpm test:release`。该专项只创建随机命名卷，覆盖 schema 15 克隆、迁移、失败保源、显式空白启动和幂等验收。
+发布前还应执行 `corepack pnpm test:v19:release`。该专项覆盖 schema 17 只读克隆、17→18 原子迁移、runner 镜像升级、记录 ID/文件保全、回执复验和 V1.8 源字节不变。`corepack pnpm test:v18:release` 与 `docs/v1.8-cutover.md` 继续作为只读历史基线使用。
 
-## 可选 Live 验收
+## V1.9 Live 验收
 
-这些命令不属于默认 `verify`，必须在明确准备的临时资源上单独运行并记录结果。
+Live 只在专用 fixture 上创建 Draft PR；验证 webhook 回流后关闭 PR 并删除临时分支，不执行 Ready 或 merge。非编码项目和多仓库编码项目的最终业务旅程必须通过 MCP 完成，除 `/health` 与 `/api/mcp` 外不得由测试客户端直接调用业务 HTTP。
 
-```powershell
-$env:RUN_CODEX_LIVE_TESTS="1"
-$env:CODEX_LIVE_TIMEOUT_MS="45000"
-corepack pnpm test:live:codex
+## V1.8 Live 验收
 
-$env:RUN_GITHUB_LIVE_TESTS="1"
-$env:AIWS_TEST_GITHUB_REPO="owner/private-test-repo"
-$env:AIWS_TEST_GITHUB_TOKEN="..."
-corepack pnpm test:live:github
+Live 不属于默认 `verify`。它必须使用隔离的 AIWS state/Vault、临时端口与专用 GitHub fixture，不得直接修改正在运行的用户实例。网页 Setup 已保存且 Probe 为 ready 的 Codex/GitHub 凭据可以随 Vault reference 一起克隆到该隔离环境，无需再次输入明文；不得把 Vault token、MCP token 写入命令参数、配置文件、报告或日志。
 
-$env:RUN_CC_SWITCH_LIVE_TESTS="1"
-corepack pnpm test:live:cc-switch
-```
+1. 只读克隆待验证实例的 state 和 Vault 到临时 `AIWS_HOME`，记录源 workspace hash，并在独立端口启动 API/MCP。
+2. 通过 Owner MCP client 管理接口创建短期、项目限权的 operator 与独立 approver；token 只放入当前测试进程环境。
+3. 设置 `RUN_V18_MCP_LIVE_TESTS=1`、`AIWS_TEST_CODEX_CONFIRM=dedicated-read-only`、`AIWS_TEST_GITHUB_CONFIRM=dedicated-write-test` 及测试 harness 要求的隔离 URL、项目、Run 和短期 token 环境变量，然后执行 `corepack pnpm test:v18:live`。
+4. Codex 用例只允许访问 `/api/mcp`，并验证只读宿主 workspace 不变。GitHub 用例固定在 `Cloudsflee/---` 创建 draft PR，验证后关闭 PR 并删除临时分支。
+5. 无论结果如何，撤销短期 MCP clients，关闭 MCP session/API，删除隔离 state/Vault 与 Docker 临时资源，并复验 PR、branch、端口和源 workspace hash。
 
-GitHub 当前 live hook 是指定 repository 的只读权限探测；默认 state-machine suite 才覆盖 create/bind 故障注入。cc-switch live hook 只写临时 `AIWS_HOME`，如设置 `CC_SWITCH_CONFIG_DIR`，还会比较该目录前后的 hash/mtime 快照。
+正式 soak 另行执行 `corepack pnpm test:v18:soak`；固定 120 分钟，缩短运行不得计作发布通过。
 
 ## 本轮记录
 
-2026-07-12 的七条默认命令和完整 `verify` 均以退出码 0 完成。Codex、GitHub 与 cc-switch live 环境变量均未设置，因此三项 live 验收记录为“未运行”，不是“通过”或“失败”。详见 `completion-audit.md`。
+2026-07-17 的最新 Full `full-20260717T151414Z-42400` 与 Release `release-20260717T130854Z-36904` 均为 `PASS`。Full 已覆盖项目启动期单“编码”工作流、Codex 顶层节点约束和替换式工作流提案。受控 Live `live-20260717T073825Z-9880` 复用了网页 Vault 的隔离副本并为 `PASS`：Codex MCP 只读审计未改变宿主 workspace；GitHub draft PR `Cloudsflee/---#3` 已关闭且未合并，临时分支 `aiws/node-2b8c723f` 已删除，短期 MCP clients 和所有隔离资源已清理。正式 120 分钟 Soak 尚未执行。

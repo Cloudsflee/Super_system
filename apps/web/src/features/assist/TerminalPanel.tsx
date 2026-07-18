@@ -55,7 +55,7 @@ export function TerminalPanel({ session, reviewDisabled, onSession, onBack, onRe
   }
   function send(value: Record<string, unknown>) { if (socket.current?.readyState === WebSocket.OPEN) socket.current.send(JSON.stringify(value)); }
   function resize() { try { fit.current?.fit(); const term = terminal.current; if (term) send({ type: 'resize', cols: term.cols, rows: term.rows }); } catch { /* hidden panel */ } }
-  async function stop() { try { const value = await api<TerminalSession>(`/assist/v3/terminal-sessions/${session.id}/stop`, json('POST')); ended.current = true; onSession(value); socket.current?.close(); setConnection('closed'); } catch (error) { onError((error as Error).message); } }
+  async function stop() { try { const value = await api<TerminalSession>(`/assist/v3/terminal-sessions/${session.id}/stop`, json('POST', undefined, '停止终端 Session')); ended.current = true; onSession(value); socket.current?.close(); setConnection('closed'); } catch (error) { onError((error as Error).message); } }
   function reconnect() { ended.current = false; attempts.current = 0; connect(); }
   const reviewable = terminalState(session.status);
   return <section className="terminal-panel">

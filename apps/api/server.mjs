@@ -1,78 +1,34 @@
 import http from 'node:http';
 import fs from 'node:fs';
 import path from 'node:path';
+import { randomUUID } from 'node:crypto';
 import { HOST, PORT, WEB_DIR } from './src/config.mjs';
 import { allowLocalBrowserOrigin, decodeUrlPathname, dispatch, HttpError, notFound, safeReadStream, send } from './src/http.mjs';
 import { ensureRuntime } from './src/state.mjs';
-import { systemRoutes } from './src/routes/system.mjs';
-import { projectRoutes } from './src/routes/projects.mjs';
-import { runRoutes } from './src/routes/runs.mjs';
-import { assetRoutes } from './src/routes/assets.mjs';
-import { gitRoutes } from './src/routes/git.mjs';
-import { githubRoutes } from './src/routes/github.mjs';
-import { toolRoutes } from './src/routes/tools.mjs';
-import { setupV12Routes } from './src/routes/setup-v12.mjs';
-import { agentSessionRoutes } from './src/routes/agent-sessions.mjs';
-import { changeProposalRoutes } from './src/routes/change-proposals.mjs';
-import { githubConfigV12Routes } from './src/routes/github-config-v12.mjs';
-import { githubInstallationsV12Routes } from './src/routes/github-installations-v12.mjs';
-import { githubWebhookV12Routes } from './src/routes/github-webhook-v12.mjs';
-import { codexV12Routes } from './src/routes/codex-v12.mjs';
-import { codexDiscoveryV12Routes } from './src/routes/codex-discovery-v12.mjs';
-import { workflowV12Routes } from './src/routes/workflow-v12.mjs';
-import { fileV12Routes } from './src/routes/files-v12.mjs';
-import { assistV12Routes } from './src/routes/assist-v12.mjs';
-import { projectOnboardingV13Routes } from './src/routes/project-onboarding-v13.mjs';
-import { approvalV13Routes } from './src/routes/approvals-v13.mjs';
-import { terminalV13Routes } from './src/routes/terminal-v13.mjs';
 import { attachTerminalWebSocket } from './src/terminal-service.mjs';
-import { codexCapabilitiesV13Routes } from './src/routes/codex-capabilities-v13.mjs';
-import { githubRepositoriesV13Routes } from './src/routes/github-repositories-v13.mjs';
-import { configGovernanceV13Routes } from './src/routes/config-governance-v13.mjs';
-import { assistV3Routes } from './src/routes/assist-v3.mjs';
 import { attachDeletedSessionSweeper, purgeExpiredDeletedSessions, recoverAssistV3Runtime } from './src/assist-v3-service.mjs';
-import { AIWS_VERSION, maskSecret } from '../../packages/shared/index.mjs';
+import { AIWS_VERSION } from '../../packages/shared/index.mjs';
 import { computeSetupStatus, isSetupExempt } from './src/setup-status.mjs';
 import { readState } from './src/state.mjs';
 import { redactKnownSecretsSync } from './src/vault.mjs';
 import { attachContainerShutdown, cleanupStaleContainers } from './src/container-runtime.mjs';
-import { hostBridgeV15Routes } from './src/routes/host-bridge-v15.mjs';
 import { attachHostBridgeWebSocket } from './src/host-bridge-service.mjs';
 import { attachBtwShutdown } from './src/assist-btw.mjs';
+import { codexBuildManager } from './src/routes/codex-runtime-v12.mjs';
+import { apiRoutes } from './src/api-routes.mjs';
+import { createApiRouteRegistry } from './src/api-route-registry.mjs';
+import { resumeWorkflowMigrationOrchestrator } from './src/workflow-migration-service.mjs';
+import { closeMcpHttpRuntime, configureMcpHttpRuntime } from './src/mcp-http-runtime.mjs';
+import { closeGithubProxyDispatchers } from './src/outbound-proxy.mjs';
 
 cleanupStaleContainers();
 await ensureRuntime();
+await resumeWorkflowMigrationOrchestrator();
 await recoverAssistV3Runtime();
 await purgeExpiredDeletedSessions();
 
-const routes = [
-  ...systemRoutes,
-  ...setupV12Routes,
-  ...projectRoutes,
-  ...projectOnboardingV13Routes,
-  ...assistV12Routes,
-  ...assistV3Routes,
-  ...runRoutes,
-  ...assetRoutes,
-  ...gitRoutes,
-  ...githubRoutes,
-  ...toolRoutes,
-  ...githubConfigV12Routes,
-  ...githubInstallationsV12Routes,
-  ...githubWebhookV12Routes,
-  ...codexV12Routes,
-  ...codexDiscoveryV12Routes,
-  ...workflowV12Routes,
-  ...fileV12Routes,
-  ...agentSessionRoutes,
-  ...changeProposalRoutes
-  ,...approvalV13Routes
-  ,...terminalV13Routes
-  ,...codexCapabilitiesV13Routes
-  ,...githubRepositoriesV13Routes
-  ,...configGovernanceV13Routes
-  ,...hostBridgeV15Routes
-];
+const routes = createApiRouteRegistry(apiRoutes);
+configureMcpHttpRuntime(routes);
 
 async function serveStatic(req, res, pathname) {
   if (req.method !== 'GET') return false;
@@ -92,6 +48,8 @@ async function serveStatic(req, res, pathname) {
 }
 
 const server = http.createServer(async (req, res) => {
+  const requestId = requestIdFor(req.headers['x-aiws-request-id']);
+  res.setHeader('x-aiws-request-id', requestId);
   try {
     const parsed = new URL(req.url || '/', 'http://aiws.local');
     const encodedPathname = parsed.pathname || '/', pathname = decodeUrlPathname(encodedPathname);
@@ -100,7 +58,7 @@ const server = http.createServer(async (req, res) => {
     if (req.method === 'OPTIONS') {
       res.writeHead(204, {
         'access-control-allow-methods': 'GET,POST,PUT,PATCH,DELETE,OPTIONS',
-        'access-control-allow-headers': 'content-type, authorization, range, if-none-match, x-aiws-browser-id, x-aiws-btw-token',
+        'access-control-allow-headers': 'content-type, authorization, range, if-none-match, last-event-id, mcp-session-id, mcp-protocol-version, x-aiws-request-id, x-aiws-browser-id, x-aiws-btw-token, x-idempotency-key',
         'access-control-max-age': '86400'
       });
       res.end();
@@ -119,11 +77,13 @@ const server = http.createServer(async (req, res) => {
     if (error instanceof HttpError) {
       return send(res, error.status, typeof error.payload === 'string' ? { error: error.payload } : error.payload);
     }
-    console.error(redactKnownSecretsSync(error.stack || error.message || String(error)));
+    console.error(`[request ${requestId}] ${redactKnownSecretsSync(error.stack || error.message || String(error))}`);
     return send(res, 500, {
       error: 'internal_error',
-      message: maskSecret(error.message),
-      stack: process.env.NODE_ENV === 'test' ? error.stack : undefined
+      message: '服务端处理请求时发生内部错误',
+      action: '使用请求 ID 查看服务端日志；确认服务状态后重试。',
+      phase: 'server',
+      retryable: false
     });
   }
 });
@@ -131,7 +91,8 @@ attachTerminalWebSocket(server);
 attachHostBridgeWebSocket(server);
 attachBtwShutdown(server);
 attachDeletedSessionSweeper(server);
-attachContainerShutdown(server);
+attachContainerShutdown(server, { beforeClose: () => codexBuildManager.shutdown() });
+server.on('close', () => { void Promise.all([closeMcpHttpRuntime(), closeGithubProxyDispatchers()]); });
 
 function searchParamsObject(params) {
   const result = Object.create(null);
@@ -143,14 +104,20 @@ function searchParamsObject(params) {
   return result;
 }
 
+function requestIdFor(value) {
+  const candidate = Array.isArray(value) ? value[0] : String(value || '');
+  return /^[a-zA-Z0-9._:-]{8,128}$/.test(candidate) ? candidate : `req_${randomUUID().replaceAll('-', '')}`;
+}
+
 function isApiRequest(pathname, routePath) {
   if (pathname.startsWith('/api/')) return true;
   return routes.some((item) => routePath.match(new RegExp(`^${item.pattern.replace(/:[^/]+/g, '[^/]+')}$`)));
 }
 
 function isSpaPath(pathname) {
-  return pathname === '/setup' || pathname === '/integrations/github/install/setup' || pathname === '/projects' || pathname === '/assets' || pathname === '/audit' || pathname === '/settings'
-    || /^\/projects\/[^/]+\/(workflow|onboarding|ide|nodes\/[^/]+)$/.test(pathname);
+  return /^\/(?:setup|projects|assets|audit|settings)\/?$/.test(pathname)
+    || /^\/integrations\/github\/install\/setup\/?$/.test(pathname)
+    || /^\/projects\/[^/]+\/(?:workflow|onboarding|nodes\/[^/]+)\/?$/.test(pathname);
 }
 
 server.listen(PORT, HOST, () => {

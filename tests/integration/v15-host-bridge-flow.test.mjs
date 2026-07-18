@@ -9,7 +9,7 @@ import { api, cleanup, createConfirmedProject, makeFixture, startApi } from './v
 const fixture = makeFixture('aiws-v15-host-bridge-'), source = path.join(fixture.root, 'source'); fs.mkdirSync(source);
 git(source, ['init']); git(source, ['config', 'user.name', 'Bridge Flow']); git(source, ['config', 'user.email', 'bridge-flow@example.test']);
 fs.writeFileSync(path.join(source, 'README.md'), '# bridge baseline\n'); git(source, ['add', '.']); git(source, ['commit', '-m', 'baseline']);
-const port = 4616;
+const port = Number(process.env.AIWS_TEST_PORT || 4616);
 let server, bridgeSocket, terminalSocket;
 
 class FakeBridge {
@@ -48,14 +48,17 @@ try {
   await api(port, '/codex/auth/device/start', 'POST', { adapter: 'test' });
   const profile = await api(port, '/codex/profiles', 'POST', { name: 'Bridge profile', provider: 'openai', model: 'gpt-bridge', reasoning: 'high', mounts: [] }, 201);
   const pairing = await api(port, '/assist/v3/host-bridge/pairing', 'POST', {});
-  const exchanged = await api(port, '/assist/v3/host-bridge/pairing', 'POST', { action: 'exchange', pairing_code: pairing.pairing_code, protocol_version: 1, bridge_version: '1.7.0', device_name: 'Fake Windows' }, 201);
-  await api(port, '/assist/v3/host-bridge/pairing', 'POST', { action: 'exchange', pairing_code: pairing.pairing_code, protocol_version: 1, bridge_version: '1.7.0' }, 401, 'host_bridge_pairing_invalid_or_expired');
+  const exchanged = await api(port, '/assist/v3/host-bridge/pairing', 'POST', { action: 'exchange', pairing_code: pairing.pairing_code, protocol_version: 1, bridge_version: '1.9.0', device_name: 'Fake Windows' }, 201);
+  await api(port, '/assist/v3/host-bridge/pairing', 'POST', { action: 'exchange', pairing_code: pairing.pairing_code, protocol_version: 1, bridge_version: '1.9.0' }, 401, 'host_bridge_pairing_invalid_or_expired');
 
   const fake = new FakeBridge(fixture.root);
   bridgeSocket = new WebSocket(`ws://127.0.0.1:${port}/api/assist/v3/host-bridge/ws?device_id=${encodeURIComponent(exchanged.device.id)}`, { headers: { Authorization: `Bearer ${exchanged.credential}` } });
   fake.attach(bridgeSocket);
   await onceOpen(bridgeSocket);
-  bridgeSocket.send(JSON.stringify({ type: 'hello', protocol_version: 1, bridge_version: '1.7.0', capabilities: { os: 'windows', arch: 'amd64', conpty: true, codex_available: true, codex_version: 'codex-cli 0.144.0', code_page: 'utf-8' } }));
+  const preHelloCapability = await api(port, '/assist/v3/terminal-capabilities');
+  assert.equal(preHelloCapability.windows_bridge.available, false);
+  assert.equal(preHelloCapability.windows_bridge.reason, 'windows_bridge_offline');
+  bridgeSocket.send(JSON.stringify({ type: 'hello', protocol_version: 1, bridge_version: '1.9.0', capabilities: { os: 'windows', arch: 'amd64', conpty: true, codex_available: true, codex_version: 'codex-cli 0.144.0', code_page: 'utf-8' } }));
   await fake.waitFor((item) => item.type === 'hello_ack');
   const capability = await api(port, '/assist/v3/terminal-capabilities');
   assert.equal(capability.windows_bridge.available, true); assert.equal(capability.windows_bridge.device_id, exchanged.device.id);

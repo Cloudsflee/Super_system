@@ -13,7 +13,7 @@ import type {
 import { FullPageState } from '../../../components/common/FullPageState';
 import { useUi } from '../../../state/ui';
 import {
-  CompletedOnboarding, StepButton,
+  CompletedOnboarding, ContextSources, StepButton,
   codeSource, contextFromRecord, emptyAnswers, hasSavedAnswers, intakePayload,
   shortHash, sourcePlaceholder, toAnswerDraft,
   type AnswerDraft, type ContextDraft
@@ -23,7 +23,6 @@ import { BriefWorkspace } from './BriefWorkspace';
 
 type Step = 'mode' | 'intake' | 'review';
 type IntakeUpdate = Pick<ProjectOnboarding, 'project' | 'intake' | 'brief' | 'workflow_draft'>;
-
 const listFields: Array<{ key: Exclude<keyof AnswerDraft, 'goal'>; label: string; hint: string }> = [
   { key: 'users', label: '目标用户', hint: '每行一个用户群体' },
   { key: 'features', label: '范围内功能', hint: '每行一个核心功能或交付项' },
@@ -61,11 +60,13 @@ export function ProjectOnboardingPage() {
   const sourceEntries = Object.entries(sourceLabels).filter(([value]) => localPathAvailable || value !== 'local_git');
   const templates = useQuery({ queryKey: ['brief-templates'], queryFn: () => api<{ items: BriefTemplate[] }>('/brief-templates'), enabled: Boolean(projectId) });
 
-  useProjectBriefAssistSurface(projectId, setBriefField);
+  useProjectBriefAssistSurface(projectId, answers, setBriefField, persistBriefFields);
+  function setBriefField(key: keyof AnswerDraft, value: unknown) { setAnswers((current) => ({ ...current, [key]: String(value ?? '') })); setStep('intake'); }
 
-  function setBriefField(key: keyof AnswerDraft, value: unknown) {
-    setAnswers((current) => ({ ...current, [key]: String(value ?? '') }));
-    setStep('intake');
+  async function persistBriefFields(nextAnswers: AnswerDraft) {
+    if (!projectId || !mode) throw new Error('project_intake_not_ready');
+    const result = await api<IntakeUpdate>(`/projects/${projectId}/intake`, json('PUT', intakePayload(mode, nextAnswers, sourceType, sourceValue || uploadFiles[0]?.name || '', contexts, relativeImports), { name: '保存 Assist 简报字段', feedback: 'background', timeoutMs: 120_000 }));
+    hydrated.current = `${result.project.id}:${result.intake.revision || 0}`; mergeUpdate(result);
   }
 
   useEffect(() => { if (!localPathAvailable && sourceType === 'local_git') { setSourceType('github'); setSourceValue(''); } }, [localPathAvailable, sourceType]);
@@ -99,13 +100,13 @@ export function ProjectOnboardingPage() {
   }
 
   const chooseMode = useMutation({
-    mutationFn: (next: ProjectIntakeMode) => api<IntakeUpdate>(`/projects/${projectId}/intake`, json('PUT', { mode: next })),
+    mutationFn: (next: ProjectIntakeMode) => api<IntakeUpdate>(`/projects/${projectId}/intake`, json('PUT', { mode: next }, '选择项目引导模式')),
     onSuccess: (result, next) => { setMode(next); mergeUpdate(result); setStep('intake'); },
     onError: (error) => ui.toast(error.message, 'error')
   });
 
   const saveIntake = useMutation({
-    mutationFn: () => api<IntakeUpdate>(`/projects/${projectId}/intake`, json('PUT', intakePayload(mode, answers, sourceType, sourceValue || uploadFiles[0]?.name || '', contexts, relativeImports))),
+    mutationFn: () => api<IntakeUpdate>(`/projects/${projectId}/intake`, json('PUT', intakePayload(mode, answers, sourceType, sourceValue || uploadFiles[0]?.name || '', contexts, relativeImports), '保存项目引导信息')),
     onSuccess: (result) => { mergeUpdate(result); setStep('review'); ui.toast('项目简报与工作流草案已更新'); },
     onError: (error) => ui.toast(error.message, 'error')
   });
@@ -116,40 +117,40 @@ export function ProjectOnboardingPage() {
       if (uploadFiles.length) {
         const form = new FormData(); form.set('operation_key', operationKey);
         for (const file of uploadFiles) form.append(sourceType === 'archive' ? 'code_archive' : 'code_file', file, file.webkitRelativePath || file.name);
-        return api<{ job: { status: string }; project: ProjectOnboarding['project'] }>(`/projects/${projectId}/imports`, multipart('POST', form));
+        return api<{ job: { status: string }; project: ProjectOnboarding['project'] }>(`/projects/${projectId}/imports`, multipart('POST', form, { name: '上传并导入项目代码源', feedback: 'foreground', timeoutMs: 600_000 }));
       }
-      return api<{ job: { status: string }; project: ProjectOnboarding['project'] }>(`/projects/${projectId}/imports`, json('POST', { code_source: codeSource(sourceType, sourceValue, relativeImports), operation_key: operationKey }));
+      return api<{ job: { status: string }; project: ProjectOnboarding['project'] }>(`/projects/${projectId}/imports`, json('POST', { code_source: codeSource(sourceType, sourceValue, relativeImports), operation_key: operationKey }, { name: '导入项目代码源', feedback: 'foreground', timeoutMs: 600_000, safeRetry: true, idempotencyKey: operationKey }));
     },
     onSuccess: async () => { await query.refetch(); await client.invalidateQueries({ queryKey: keys.projects }); ui.toast('代码源已导入受管 workspace'); },
     onError: (error) => { void query.refetch(); ui.toast(error.message, 'error'); }
   });
 
   const patchBrief = useMutation({
-    mutationFn: (operations: Array<Record<string, unknown> & { type: string }>) => api<ProjectBrief>(`/projects/${projectId}/briefs/${query.data?.brief?.id}`, json('PATCH', { expected_revision: query.data?.brief?.revision, operations })),
+    mutationFn: (operations: Array<Record<string, unknown> & { type: string }>) => api<ProjectBrief>(`/projects/${projectId}/briefs/${query.data?.brief?.id}`, json('PATCH', { expected_revision: query.data?.brief?.revision, operations }, '更新项目简报')),
     onSuccess: (brief) => client.setQueryData<ProjectOnboarding>(keys.onboarding(projectId || ''), (current) => current ? { ...current, brief, briefs: [brief, ...current.briefs.filter((item) => item.id !== brief.id)] } : current),
     onError: (error) => { void query.refetch(); ui.toast(error.message, 'error'); }
   });
 
   const patchWorkflow = useMutation({
-    mutationFn: (operations: Array<Record<string, unknown> & { type: string }>) => api<WorkflowDraft>(`/projects/${projectId}/workflow-draft`, json('PATCH', { expected_revision: query.data?.workflow_draft?.revision, operations })),
+    mutationFn: (operations: Array<Record<string, unknown> & { type: string }>) => api<WorkflowDraft>(`/projects/${projectId}/workflow-draft`, json('PATCH', { expected_revision: query.data?.workflow_draft?.revision, operations }, '更新工作流草案')),
     onSuccess: (workflow_draft) => client.setQueryData<ProjectOnboarding>(keys.onboarding(projectId || ''), (current) => current ? { ...current, workflow_draft } : current),
     onError: (error) => { void query.refetch(); ui.toast(error.message, 'error'); }
   });
 
   const saveTemplate = useMutation({
-    mutationFn: () => api<BriefTemplate>('/brief-templates', json('POST', { confirmed: true, title: `${query.data?.brief?.content.title || query.data?.project.title || '项目'}模板`, domain: 'general', sections: query.data?.brief?.content.sections || [], applicability: query.data?.brief?.content.summary || null })),
+    mutationFn: () => api<BriefTemplate>('/brief-templates', json('POST', { confirmed: true, title: `${query.data?.brief?.content.title || query.data?.project.title || '项目'}模板`, domain: 'general', sections: query.data?.brief?.content.sections || [], applicability: query.data?.brief?.content.summary || null }, '保存个人简报模板')),
     onSuccess: async () => { await client.invalidateQueries({ queryKey: ['brief-templates'] }); ui.toast('已保存到个人模板库'); },
     onError: (error) => ui.toast(error.message, 'error')
   });
 
   const applyTemplate = useMutation({
-    mutationFn: (template: BriefTemplate) => api<ProjectBrief>(`/projects/${projectId}/briefs/${query.data?.brief?.id}/apply-template`, json('POST', { template_id: template.id, expected_revision: query.data?.brief?.revision })),
+    mutationFn: (template: BriefTemplate) => api<ProjectBrief>(`/projects/${projectId}/briefs/${query.data?.brief?.id}/apply-template`, json('POST', { template_id: template.id, expected_revision: query.data?.brief?.revision }, '应用简报模板')),
     onSuccess: (brief) => { client.setQueryData<ProjectOnboarding>(keys.onboarding(projectId || ''), (current) => current ? { ...current, brief, briefs: [brief, ...current.briefs.filter((item) => item.id !== brief.id)] } : current); ui.toast('模板已无损合并到简报'); },
     onError: (error) => { void query.refetch(); ui.toast(error.message, 'error'); }
   });
 
   const confirm = useMutation({
-    mutationFn: () => { const workflow = normalizeWorkflowDraft(query.data?.workflow_draft, projectId || 'project'), currentBrief = query.data?.brief ? normalizeBrief(query.data.brief, query.data.project.title) : null; return api<{ project: ProjectOnboarding['project']; workflow: Workflow; route?: string }>(`/projects/${projectId}/onboarding/confirm`, json('POST', { workflow_nodes: workflow?.nodes || [], expected_brief_revision: currentBrief?.revision, expected_workflow_revision: workflow?.revision })); },
+    mutationFn: () => { const workflow = normalizeWorkflowDraft(query.data?.workflow_draft, projectId || 'project'), currentBrief = query.data?.brief ? normalizeBrief(query.data.brief, query.data.project.title) : null; return api<{ project: ProjectOnboarding['project']; workflow: Workflow; route?: string }>(`/projects/${projectId}/onboarding/confirm`, json('POST', { workflow_nodes: workflow?.nodes || [], expected_brief_revision: currentBrief?.revision, expected_workflow_revision: workflow?.revision }, '确认项目简报与工作流')); },
     onSuccess: async (result) => {
       await Promise.all([
         client.invalidateQueries({ queryKey: keys.projects }),
@@ -218,13 +219,14 @@ export function ProjectOnboardingPage() {
                 {['local_directory', 'archive'].includes(sourceType) && <label>或从浏览器上传<input type="file" multiple={sourceType === 'local_directory'} accept={sourceType === 'archive' ? '.zip,.tar,.tgz,.gz' : undefined} {...(sourceType === 'local_directory' ? { webkitdirectory: '', directory: '' } : {})} onChange={(event) => { const files = [...(event.target.files || [])]; setUploadFiles(files); if (files[0]) setSourceValue(files[0].webkitRelativePath || files[0].name); }} /><small>{uploadFiles.length ? `已选择 ${uploadFiles.length} 个文件` : '上传内容同样先进入 staging 校验'}</small></label>}
                 <p><CheckCircle2 size={13} />不会原地修改或删除外部目录和远端 Repository。</p>
               </section>}
+              <ContextSources value={contexts} onChange={setContexts} allowLocalPaths={localPathAvailable} relativePaths={relativeImports} />
             </aside>
           </div>
           <div className="stage-actions"><button className="button secondary" onClick={() => setStep('mode')}><ArrowLeft size={15} />返回</button><button className="button primary" disabled={!canSave || saveIntake.isPending} onClick={() => saveIntake.mutate()}>{saveIntake.isPending ? <LoaderCircle className="spin" size={15} /> : <FileStack size={15} />}保存并生成简报<ArrowRight size={15} /></button></div>
         </section>}
 
         {step === 'review' && brief && <section className="onboarding-stage review-stage">
-          <div className="stage-heading"><span className="overline">BRIEF V{brief.version} · REVIEW</span><h2>审查项目简报与初始工作流</h2><p>确认后将原子创建节点并激活项目；工作流节点标题和目标可在此调整。</p></div>
+          <div className="stage-heading"><span className="overline">BRIEF V{brief.version} · REVIEW</span><h2>审查项目简报与初始工作流</h2><p>确认后将创建独立工作单元并激活项目；功能、里程碑和验收条件继续由 Brief 与 Contract 管理。</p></div>
           {data.intake.last_error && <div className="onboarding-alert" role="alert"><strong>上次处理失败</strong><span>{data.intake.last_error}</span><button className="button secondary" onClick={() => setStep('intake')}><RefreshCw size={14} />修正输入</button></div>}
           {workflowDraft && <BriefWorkspace brief={brief} workflow={workflowDraft} templates={templates.data?.items || []} busy={patchBrief.isPending || patchWorkflow.isPending || applyTemplate.isPending || saveTemplate.isPending} onBrief={async (operations) => { try { await patchBrief.mutateAsync(operations); return true; } catch { return false; } }} onWorkflow={async (operations) => { try { await patchWorkflow.mutateAsync(operations); return true; } catch { return false; } }} onSaveTemplate={() => saveTemplate.mutate()} onApplyTemplate={(template) => applyTemplate.mutate(template)} onSearchTemplates={() => { ui.setAssist(true); window.dispatchEvent(new CustomEvent('aiws:assist-prefill', { detail: { prompt: `请使用启用 Web Search 的 Profile，为“${brief.content.title}”检索 2-3 个权威简报模板，比较发布方、时效、适用性、局限、来源链接和推荐理由。` } })); }} />}
           {mode === 'existing' && <section className={`import-card ${sourceReady ? 'ready' : ''}`}>

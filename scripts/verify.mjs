@@ -2,10 +2,14 @@ import { spawnSync } from 'node:child_process';
 import path from 'node:path';
 
 const steps = [
+  nodeStep('v1.8:plan', 'scripts/v18-plan.mjs'),
+  nodeStep('v1.8:impact-audit', 'scripts/v18-impact.mjs', '--audit'),
+  nodeStep('v1.8:mcp-contract', 'scripts/v18-contract.mjs'),
   nodeStep('lint', 'scripts/lint.mjs'),
   nodeStep('typecheck', 'scripts/typecheck.mjs'),
   pnpmStep('test', 'test'),
   pnpmStep('test:integration', 'test:integration'),
+  pnpmStep('test:release', 'test:release'),
   nodeStep('prisma:migrate:check', 'scripts/migrate-check.mjs'),
   nodeStep('build:web', 'scripts/build-web.mjs'),
   nodeStep('e2e:smoke', 'tests/e2e/smoke.test.mjs'),

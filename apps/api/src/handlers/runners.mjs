@@ -11,6 +11,7 @@ import { materializeDeviceAuth } from '../codex-device-auth.mjs';
 import { codexContainerProxyEnv } from '../codex-container-network.mjs';
 import { assertProfileAllowed, buildCodexContainerInvocation, toRunnerPath } from '../container-runtime-config.mjs';
 import { runContainerProcess } from '../container-runtime.mjs';
+import { issueCodexMcpAccess, withCodexMcpEnvironment } from '../codex-mcp-runtime.mjs';
 
 export async function invokeRunner(state, { actor, run, project, workspace, node, ctx, body }) {
   const repoPath = project.repo_path || project.workspace_root || '';
@@ -21,7 +22,7 @@ export async function invokeRunner(state, { actor, run, project, workspace, node
 }
 
 async function executeCodexDocker(state, payload) {
-  const { run, ctx, repoPath } = payload;
+  const { run, ctx, repoPath, project } = payload;
   const cwd = repoPath;
   const profile = state.codex_profiles.find((item) => item.is_active && item.status === 'validated');
   if (!profile?.codex_home) throw new HttpError(409, { error: 'active_codex_profile_required' });
@@ -32,14 +33,17 @@ async function executeCodexDocker(state, payload) {
   if (auth.home && !isThirdPartyProvider(profile.provider)) await materializeDeviceAuth(auth.home, profile.codex_home);
   const credential = await readSecret(auth?.refs?.credential);
   const proxyEnv = codexContainerProxyEnv(process.env);
+  const mcpAccess = await issueCodexMcpAccess(project.id, profile, { ttlSeconds: Math.ceil(Number(profile.timeout_ms || 120000) / 1000) + 300 });
   const runner = new DockerCodexRunner({
     image: process.env.AIWS_CODEX_DOCKER_IMAGE, timeoutMs: profile.timeout_ms,
-    invocationBuilder: (input) => buildNodeRunInvocation(profile, run.id, input, Object.keys(proxyEnv)),
+    invocationBuilder: (input) => buildNodeRunInvocation(profile, run.id, input, Object.keys(proxyEnv), mcpAccess),
     processRunner: (_command, _args, options, invocation) => runContainerProcess(invocation, options)
   });
   const fallback = buildNodeRunResult({ run, contextPack: ctx, changedFiles: [], raw: 'DockerCodexRunner command prepared', status: RunnerStatus.Partial });
-  const resultJson = await runner.run({ cwd, codexHome: profile.codex_home, mounts: profile.mounts || [], model: profile.model, env: { ...proxyEnv, OPENAI_API_KEY: credential || undefined }, promptFile: files.promptFile, outputSchemaFile: files.schemaFile, fallback, signal: payload.body?.signal });
-  return { raw: resultJson._codex_process?.stderr || resultJson.summary, resultJson: { ...fallback, ...resultJson, changed_files: resultJson.changed_files || [] } };
+  try {
+    const resultJson = await runner.run({ cwd, codexHome: profile.codex_home, mounts: profile.mounts || [], model: profile.model, env: withCodexMcpEnvironment({ ...proxyEnv, OPENAI_API_KEY: credential || undefined }, mcpAccess), configArgs: mcpAccess.configArgs, promptFile: files.promptFile, outputSchemaFile: files.schemaFile, fallback, signal: payload.body?.signal });
+    return { raw: resultJson._codex_process?.stderr || resultJson.summary, resultJson: { ...fallback, ...resultJson, changed_files: resultJson.changed_files || [] } };
+  } finally { await mcpAccess.release(); }
 }
 
 async function executeCodex(state, payload) {
@@ -53,13 +57,16 @@ async function executeCodex(state, payload) {
   if (!codexAuthMatchesProfile(auth, profile)) throw new HttpError(409, { error: 'codex_auth_profile_mismatch' });
   if (auth.home && !isThirdPartyProvider(profile.provider)) await materializeDeviceAuth(auth.home, profile.codex_home);
   const credential = await readSecret(auth?.refs?.credential);
+  const mcpAccess = await issueCodexMcpAccess(project.id, profile, { ttlSeconds: Math.ceil(Number(profile.timeout_ms || 120000) / 1000) + 300 });
   const fallback = buildNodeRunResult({ run, contextPack: ctx, changedFiles: [], raw: 'CodexRunner fallback', status: RunnerStatus.Partial });
-  const resultJson = await new CodexRunner({ timeoutMs: profile.timeout_ms }).run({ cwd, model: profile.model, env: { CODEX_HOME: profile.codex_home, OPENAI_API_KEY: credential || undefined }, promptFile: files.promptFile, outputSchemaFile: files.schemaFile, fallback, signal: payload.body?.signal });
-  return { raw: resultJson._codex_process?.stderr || resultJson.summary, resultJson: { ...fallback, ...resultJson, changed_files: resultJson.changed_files || [] } };
+  try {
+    const resultJson = await new CodexRunner({ timeoutMs: profile.timeout_ms }).run({ cwd, model: profile.model, env: withCodexMcpEnvironment({ CODEX_HOME: profile.codex_home, OPENAI_API_KEY: credential || undefined }, mcpAccess), configArgs: mcpAccess.configArgs, promptFile: files.promptFile, outputSchemaFile: files.schemaFile, fallback, signal: payload.body?.signal });
+    return { raw: resultJson._codex_process?.stderr || resultJson.summary, resultJson: { ...fallback, ...resultJson, changed_files: resultJson.changed_files || [] } };
+  } finally { await mcpAccess.release(); }
 }
 
-function buildNodeRunInvocation(profile, runId, input, proxyKeys) {
-  const commandArgs = ['exec', ...(input.json ? ['--json'] : []), '--skip-git-repo-check', '--sandbox', 'workspace-write'];
+function buildNodeRunInvocation(profile, runId, input, proxyKeys, mcpAccess) {
+  const commandArgs = [...(input.configArgs || []), 'exec', ...(input.json ? ['--json'] : []), '--skip-git-repo-check', '--sandbox', 'workspace-write'];
   if (input.model) commandArgs.push('--model', input.model);
   commandArgs.push('--cd', '/workspace', '--output-schema', toRunnerPath(input.outputSchemaFile, input.cwd));
   if (input.lastMessageFile) commandArgs.push('--output-last-message', toRunnerPath(input.lastMessageFile, input.cwd));
@@ -67,7 +74,7 @@ function buildNodeRunInvocation(profile, runId, input, proxyKeys) {
   return buildCodexContainerInvocation({
     kind: 'node-run', sessionId: runId, profileId: profile.id, image: profile.image,
     stdin: true, codexHome: input.codexHome, workspace: input.cwd, workspaceMode: 'rw', extraMounts: input.mounts,
-    containerEnv: { CODEX_HOME: '/codex-home', ...(input.exposeApiKey ? { OPENAI_API_KEY: null } : {}), ...Object.fromEntries(proxyKeys.map((key) => [key, null])) },
+    containerEnv: { CODEX_HOME: '/codex-home', ...(input.exposeApiKey ? { OPENAI_API_KEY: null } : {}), ...(mcpAccess?.containerEnv || {}), ...Object.fromEntries(proxyKeys.map((key) => [key, null])) },
     commandArgs
   });
 }

@@ -85,6 +85,22 @@ describe('Assist V1.6 interactions', () => {
     expect(onAttachments).toHaveBeenCalledWith(['attachment-1']); expect(onPrompt).not.toHaveBeenCalled();
   });
 
+  it('keeps Stop available while a running Turn is finishing background refreshes', () => {
+    const onStop = vi.fn();
+    render(<AssistComposer {...composerProps({ activeTurn: { ...turnFixture(), status: 'running' }, busy: true, onStop })} />);
+    const stop = screen.getByRole('button', { name: 'Stop' });
+    expect(stop).toBeEnabled(); fireEvent.click(stop); expect(onStop).toHaveBeenCalledOnce();
+  });
+
+  it('exposes the selected follow-up action as the send button name', () => {
+    const onSubmit = vi.fn();
+    render(<AssistComposer {...composerProps({ activeTurn: { ...turnFixture(), status: 'running' }, busy: true, onSubmit })} />);
+    expect(screen.getByRole('button', { name: '加入队列' })).toBeEnabled();
+    fireEvent.change(screen.getByRole('combobox', { name: 'Follow-up 行为' }), { target: { value: 'steer' } });
+    const steer = screen.getByRole('button', { name: 'Steer' });
+    fireEvent.click(steer); expect(onSubmit).toHaveBeenCalledWith('steer');
+  });
+
   it('leaves a 7,999-character paste native and restores text when conversion fails', async () => {
     const fetchMock = vi.fn(async () => jsonResponse({ error: 'upload_failed' }, 500)); vi.stubGlobal('fetch', fetchMock);
     const shortPrompt = vi.fn(), first = render(<AssistComposer {...composerProps({ prompt: 'base', onPrompt: shortPrompt })} />);
@@ -142,10 +158,10 @@ describe('Assist V1.6 interactions', () => {
     expect(screen.queryByRole('button', { name: '查看本次回复用量' })).not.toBeInTheDocument(); expect(screen.queryByText('实时事件已连接')).not.toBeInTheDocument();
   });
 
-  it('opens runtime details while processing and collapses them when the Turn finishes', async () => {
+  it('keeps runtime details collapsed by default while preserving explicit expansion', async () => {
     const running = { ...turnFixture(), status: 'running', output_text: '' }, events = [assistEvent('command', { command: 'pnpm test', output: '', status: 'running' }, 1), assistEvent('usage', { input_tokens: 10, output_tokens: 2, total_tokens: 12 }, 2)];
     const view = render(<TurnTimeline {...timelineProps({ turns: [running], events })} />);
-    const details = screen.getByText('运行详情').closest('details')!; expect(details).toHaveAttribute('open'); expect(screen.getByRole('status')).toHaveTextContent('正在处理');
+    const details = screen.getByText('运行详情').closest('details')!; expect(details).not.toHaveAttribute('open'); expect(screen.getByRole('status')).toHaveTextContent('正在处理');
     view.rerender(<TurnTimeline {...timelineProps({ turns: [{ ...running, status: 'completed', output_text: 'Done' }], events })} />);
     await waitFor(() => expect(details).not.toHaveAttribute('open')); expect(screen.queryByText('正在处理')).not.toBeInTheDocument();
     fireEvent.click(within(details).getByText('运行详情')); expect(details).toHaveAttribute('open');
@@ -160,6 +176,13 @@ describe('Assist V1.6 interactions', () => {
     const approval = screen.getByRole('button', { name: '立即审查' }), retry = screen.getByRole('button', { name: 'Retry' }), review = screen.getByRole('button', { name: 'Review batch' });
     expect(approval).toBeInTheDocument(); expect(screen.getByText('Codex 需要你的输入')).toBeInTheDocument(); expect(screen.getByText('Assist 工作目录不可用，请重新进入项目后重试。')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: '强制撤回' })).toBeInTheDocument(); expect(retry).toBeInTheDocument(); expect(review).toBeInTheDocument(); expect(approval.closest('details')).toBeNull(); expect(retry.closest('details')).toBeNull(); expect(review.closest('details')).toBeNull();
+  });
+
+  it('keeps an open no-change batch reachable for explicit cleanup', () => {
+    const onReview = vi.fn(), turn = { ...turnFixture(), change_batch_id: 'batch-1', review_status: 'no_changes' as const };
+    render(<TurnTimeline {...timelineProps({ turns: [turn], onReview })} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Review batch' }));
+    expect(onReview).toHaveBeenCalledWith(turn);
   });
 
   it('shows only the Goal objective and icon actions', () => {

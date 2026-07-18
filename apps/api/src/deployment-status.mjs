@@ -9,9 +9,11 @@ export function dataDirectoryReady(directory = DATA_DIR) {
 
 export function deploymentStatus({ env = process.env, dockerReady = false, storageReady = dataDirectoryReady() } = {}) {
   const container = isContainerized(env);
+  const gateway = env.AIWS_MCP_REMOTE_MODE === 'gateway';
   return {
     mode: container ? 'container' : 'host',
-    local_only: true,
+    local_only: !gateway,
+    collaboration: { mode: gateway ? 'gateway' : 'local', mcp_gateway: gateway, public_endpoint_configured: Boolean(env.AIWS_PUBLIC_MCP_URL) },
     storage: { type: container ? 'docker_volume' : 'local_directory', ready: storageReady },
     docker: { strategy: container ? 'socket' : 'local_cli', ready: dockerReady },
     imports: {
@@ -28,4 +30,3 @@ function importReady(value) {
   try { const stat = fs.lstatSync(value); return stat.isDirectory() && !stat.isSymbolicLink(); }
   catch { return false; }
 }
-

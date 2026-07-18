@@ -18,6 +18,20 @@
   --red-soft: #fae9e9;
   --blue: #285e8e;
   --shadow: 0 12px 30px rgba(27, 34, 38, .14);
+  --document-bg: #f6f7f9;
+  --document-surface: #fbfcfd;
+  --document-raised: #eef1f4;
+  --workspace-bg: #111315;
+  --workspace-surface: #1a1d20;
+  --workspace-raised: #22262a;
+  --workspace-text: #f3f5f7;
+  --workspace-muted: #9aa3ab;
+  --workspace-line: rgba(255, 255, 255, 0.09);
+  --accent: #16805f;
+  --accent-bright: #63d6a6;
+  --radius-container: 8px;
+  --radius-control: 6px;
+  --shadow-ambient: 0 24px 72px rgba(0, 0, 0, 0.38);
 }
 * { box-sizing: border-box; }
 html, body, #root { width: 100%; min-width: 320px; height: 100%; margin: 0; overflow: hidden; }
@@ -67,3 +81,6 @@ pre { white-space: pre-wrap; overflow: auto; font: 12px/1.55 "Cascadia Code", Co
 .quiet-empty p { margin: 10px 0 0; }
 @keyframes spin { to { transform: rotate(360deg); } }
 :where(.sr-only) { position: absolute !important; width: 1px !important; height: 1px !important; padding: 0 !important; margin: -1px !important; overflow: hidden !important; clip: rect(0,0,0,0) !important; white-space: nowrap !important; border: 0 !important; }
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { scroll-behavior: auto !important; animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; }
+}

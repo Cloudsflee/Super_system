@@ -1,0 +1,93 @@
+import { Background, BackgroundVariant, Controls, ReactFlow, ReactFlowProvider, type Edge, type Node } from '@xyflow/react';
+import '@xyflow/react/dist/style.css';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { ArrowDown, ArrowLeft, ArrowUp, Bot, Boxes, ChevronRight, GitBranch, List, Plus, Rows3 } from 'lucide-react';
+import { useEffect, useMemo, useState } from 'react';
+import { Link, Navigate, useNavigate, useParams } from 'react-router-dom';
+import { api, json } from '../../api/client';
+import { keys, useProject } from '../../api/queries';
+import type { ChangeProposal, Project, TaskKind, Workflow, WorkflowNode } from '../../api/types';
+import { FullPageState } from '../../components/common/FullPageState';
+import { IconButton } from '../../components/common/IconButton';
+import { useAssistSurface } from '../../components/assist/semantic-actions';
+import { useUi } from '../../state/ui';
+
+type GraphResponse = { project: Project; workflow: Workflow; parent: WorkflowNode; parent_node_id: string; revision: number; nodes: WorkflowNode[]; graph: { nodes: Array<{ id: string; type: string; label: string; position: { x: number; y: number } }>; edges: Array<{ id: string; source: string; target: string }> } };
+type ViewMode = 'list' | 'board' | 'structure';
+
+export function WorkstreamPage() {
+  const { projectId, workstreamId } = useParams(), navigate = useNavigate(), ui = useUi(), client = useQueryClient();
+  const project = useProject(projectId);
+  const workflow = project.data?.workflows.filter((item) => item.status !== 'archived').sort((a, b) => Number(b.version || 0) - Number(a.version || 0))[0];
+  const graph = useQuery({ queryKey: ['workstream-graph', workflow?.id, workstreamId], queryFn: () => api<GraphResponse>(`/workflows/${workflow?.id}/graph?parent_node_id=${encodeURIComponent(workstreamId || '')}`), enabled: Boolean(workflow?.id && workstreamId) });
+  const [view, setView] = useState<ViewMode>('list');
+  useEffect(() => { if (workstreamId) ui.setContextNode(workstreamId); }, [workstreamId, ui.setContextNode]);
+  const proposal = useMutation({
+    mutationFn: (operations: unknown[]) => api<ChangeProposal>(`/workflows/${workflow?.id}/graph-proposals`, json('POST', { parent_node_id: workstreamId, expected_revision: graph.data?.revision, operations }, '创建任务图变更提案')),
+    onSuccess: (result) => { void client.invalidateQueries({ queryKey: keys.proposals(projectId) }); ui.showProposal(result.id); },
+    onError: (error) => ui.toast(error.message, 'error')
+  });
+  useAssistSurface({ id: `workstream-${workstreamId || 'unknown'}`, revision: `${workstreamId || 'unknown'}:v${graph.data?.revision || 1}` });
+
+  if (project.isLoading || graph.isLoading) return <FullPageState title="正在打开成果节点" />;
+  if (project.isError || graph.isError || !project.data || !graph.data) return <FullPageState title="成果节点加载失败" detail={(project.error || graph.error)?.message} retry={() => { void project.refetch(); void graph.refetch(); }} />;
+  if (project.data.project.status === 'draft') return <Navigate to={`/projects/${projectId}/onboarding`} replace />;
+  const { parent, nodes: tasks } = graph.data;
+
+  function selectTask(task: WorkflowNode) { ui.setContextNode(task.id); }
+  function assistTask(task: WorkflowNode) { selectTask(task); ui.setAssist(true); window.dispatchEvent(new CustomEvent('aiws:assist-prefill', { detail: { prompt: `协助任务“${task.title}”：` } })); }
+  function move(task: WorkflowNode, delta: number) { const ids = tasks.map((item) => item.id), index = ids.indexOf(task.id), next = Math.max(0, Math.min(ids.length - 1, index + delta)); if (index === next) return; ids.splice(index, 1); ids.splice(next, 0, task.id); proposal.mutate([{ type: 'reorder_nodes', ids }]); }
+  function addTask() { proposal.mutate([{ type: 'add_node', node: { role: 'task', parent_node_id: parent.id, title: '新执行任务', goal: '完成成果节点中的一项可验证工作', task_kind: 'manual', execution_mode: 'manual', required: true, dependency_ids: [] } }]); }
+
+  return <section className="workstream-page">
+    <nav className="workflow-breadcrumb" aria-label="层级导航">
+      <Link to="/projects">{project.data.project.title}</Link><ChevronRight size={14} />
+      <Link to={`/projects/${projectId}/workflow`}>{graph.data.workflow.title}</Link><ChevronRight size={14} />
+      <button type="button" onClick={() => ui.setContextNode(parent.id)}>{parent.title}</button>
+    </nav>
+    <header className="workstream-header">
+      <IconButton label="返回顶层工作流" onClick={() => navigate(`/projects/${projectId}/workflow`)}><ArrowLeft size={18} /></IconButton>
+      <div><span>{categoryLabel(parent.category)}</span><h1>{parent.title}</h1><p>{parent.outcome || parent.goal}</p></div>
+      <div className="workstream-metrics"><strong>{tasks.filter((item) => item.status === 'completed').length}/{tasks.length}</strong><span>任务</span><strong>{tasks.filter((item) => item.status === 'blocked').length}</strong><span>阻塞</span></div>
+      <IconButton label="添加任务" onClick={addTask}><Plus size={18} /></IconButton>
+    </header>
+    <div className="workstream-tabs" role="tablist" aria-label="任务视图">
+      <button role="tab" aria-selected={view === 'list'} onClick={() => setView('list')}><List size={16} />列表</button>
+      <button role="tab" aria-selected={view === 'board'} onClick={() => setView('board')}><Rows3 size={16} />看板</button>
+      <button role="tab" aria-selected={view === 'structure'} onClick={() => setView('structure')}><Boxes size={16} />结构</button>
+    </div>
+    <div className="workstream-content">
+      {view === 'list' && <TaskList tasks={tasks} onSelect={selectTask} onEnter={(task) => navigate(`/projects/${projectId}/nodes/${task.id}`)} onAssist={assistTask} onMove={move} />}
+      {view === 'board' && <TaskBoard tasks={tasks} onSelect={selectTask} onEnter={(task) => navigate(`/projects/${projectId}/nodes/${task.id}`)} />}
+      {view === 'structure' && <ReactFlowProvider><TaskStructure response={graph.data} onSelect={selectTask} onEnter={(task) => navigate(`/projects/${projectId}/nodes/${task.id}`)} /></ReactFlowProvider>}
+    </div>
+  </section>;
+}
+
+function TaskList({ tasks, onSelect, onEnter, onAssist, onMove }: { tasks: WorkflowNode[]; onSelect: (task: WorkflowNode) => void; onEnter: (task: WorkflowNode) => void; onAssist: (task: WorkflowNode) => void; onMove: (task: WorkflowNode, delta: number) => void }) {
+  if (!tasks.length) return <div className="task-empty">暂无任务</div>;
+  return <div className="task-list" role="list">{tasks.map((task, index) => <article key={task.id} role="listitem" className={task.status === 'blocked' ? 'blocked' : ''} onClick={() => onSelect(task)}>
+    <span className={`task-kind ${task.task_kind || 'manual'}`}>{taskKindLabel(task.task_kind)}</span>
+    <div><strong>{task.title}</strong><p>{task.goal}</p></div>
+    <span className={`task-status ${task.status}`}>{statusLabel(task.status)}</span>
+    <span className="task-target"><GitBranch size={14} />{task.repository_target_ids?.length || 0}</span>
+    <div className="task-actions" onClick={(event) => event.stopPropagation()}><IconButton label="上移" disabled={index === 0} onClick={() => onMove(task, -1)}><ArrowUp size={15} /></IconButton><IconButton label="下移" disabled={index === tasks.length - 1} onClick={() => onMove(task, 1)}><ArrowDown size={15} /></IconButton><IconButton label="Task Assist" onClick={() => onAssist(task)}><Bot size={15} /></IconButton><button className="button secondary" onClick={() => onEnter(task)}>打开</button></div>
+  </article>)}</div>;
+}
+
+function TaskBoard({ tasks, onSelect, onEnter }: { tasks: WorkflowNode[]; onSelect: (task: WorkflowNode) => void; onEnter: (task: WorkflowNode) => void }) {
+  const columns = [{ key: 'ready', label: '待执行' }, { key: 'running', label: '进行中' }, { key: 'needs_review', label: '待验收' }, { key: 'completed', label: '已完成' }, { key: 'blocked', label: '阻塞' }];
+  return <div className="task-board">{columns.map((column) => <section key={column.key}><header><strong>{column.label}</strong><span>{tasks.filter((task) => normalizeStatus(task.status) === column.key).length}</span></header>{tasks.filter((task) => normalizeStatus(task.status) === column.key).map((task) => <button key={task.id} onClick={() => { onSelect(task); onEnter(task); }}><span>{taskKindLabel(task.task_kind)}</span><strong>{task.title}</strong><small>{task.execution_mode || 'manual'}</small></button>)}</section>)}</div>;
+}
+
+function TaskStructure({ response, onSelect, onEnter }: { response: GraphResponse; onSelect: (task: WorkflowNode) => void; onEnter: (task: WorkflowNode) => void }) {
+  const records = new Map(response.nodes.map((item) => [item.id, item]));
+  const nodes = useMemo<Node[]>(() => response.graph.nodes.map((item) => ({ id: item.id, position: item.position, data: { label: records.get(item.id)?.title || item.label }, className: `task-graph-node ${records.get(item.id)?.status || 'ready'}` })), [response]);
+  const edges = useMemo<Edge[]>(() => response.graph.edges.map((item) => ({ ...item, animated: records.get(item.target)?.status === 'running' })), [response]);
+  return <div className="task-structure"><ReactFlow nodes={nodes} edges={edges} onNodeClick={(_, node) => { const task = records.get(node.id); if (task) onSelect(task); }} onNodeDoubleClick={(_, node) => { const task = records.get(node.id); if (task) onEnter(task); }} fitView minZoom={.35} maxZoom={1.8} proOptions={{ hideAttribution: true }}><Background variant={BackgroundVariant.Dots} gap={22} size={1} /><Controls showInteractive={false} /></ReactFlow></div>;
+}
+
+function categoryLabel(value?: string | null) { return ({ deliverable: '交付成果', decision: '关键决策', coordination: '协同成果', operation: '运营成果' } as Record<string, string>)[value || ''] || '成果节点'; }
+function taskKindLabel(value?: TaskKind | null) { return ({ research: '研究', analysis: '分析', design: '设计', content: '内容', code: '编码', test: '测试', review: '审查', deploy: '部署', manual: '人工', integration: '集成' } as Record<string, string>)[value || 'manual']; }
+function normalizeStatus(value: string) { return value === 'draft' ? 'ready' : value === 'queued' ? 'ready' : value === 'succeeded' ? 'completed' : value; }
+function statusLabel(value: string) { return ({ ready: '待执行', running: '进行中', needs_review: '待验收', completed: '已完成', blocked: '阻塞', draft: '草稿' } as Record<string, string>)[normalizeStatus(value)] || value; }

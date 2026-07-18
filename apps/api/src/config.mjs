@@ -39,7 +39,10 @@ export const collections = [
   'runtime_approvals', 'terminal_sessions', 'config_revisions', 'import_jobs',
   'assist_configurations', 'assist_change_batches', 'assist_checkpoints',
   'assist_operations', 'runtime_user_inputs', 'host_bridge_devices',
-  'brief_templates', 'workflow_drafts'
+  'brief_templates', 'workflow_drafts', 'mcp_clients',
+  'workflow_generations', 'workflow_generation_events',
+  'repository_connections', 'repository_targets', 'delivery_policies', 'deliveries', 'delivery_events',
+  'workflow_migration_batches', 'workflow_migration_jobs'
 ];
 
 export function readLocalGithubAppConfig() {

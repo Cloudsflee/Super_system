@@ -5,8 +5,9 @@ import { createLocalOwner, defaultCodexProfiles, defaultTools, hashString, id, m
 import { ARTIFACT_DIR, ASSIST_DIR, ATTACHMENT_DIR, ATTACHMENT_TEMP_DIR, CODEX_HOME_DIR, DATA_DIR, EXPORT_DIR, PROBE_DIR, STAGING_DIR, STATE_FILE, TRASH_DIR, VAULT_DIR, WORKSPACE_DIR, WORKTREE_DIR, collections } from './config.mjs';
 import { redactKnownSecrets } from './vault.mjs';
 import { codexAuthMatchesProfile, isThirdPartyProvider, normalizeProviderBaseUrl, writeProfileConfig } from './codex-service.mjs';
-import { migrateStateFileToV16, normalizeOfficialRunnerImages, STATE_SCHEMA_VERSION, validateState16 } from './state-migration-v16.mjs';
-import { legacyBriefToV2 } from './brief-workflow-domain.mjs';
+import { migrateStateFileToV18, normalizeOfficialRunnerImagesV19, STATE_SCHEMA_VERSION, validateState18 } from './state-migration-v18.mjs';
+import { normalizeState18Compatibility } from './state-compatibility.mjs';
+import { currentActorId } from './actor-context.mjs';
 
 let lastMigration = null;
 
@@ -18,12 +19,12 @@ export async function ensureRuntime() {
   await Promise.all([WORKSPACE_DIR, STAGING_DIR, TRASH_DIR, EXPORT_DIR, WORKTREE_DIR, PROBE_DIR, ASSIST_DIR, ATTACHMENT_DIR, ATTACHMENT_TEMP_DIR].map((dir) => fsp.mkdir(dir, { recursive: true, mode: 0o700 })));
   await Promise.all([STAGING_DIR, ATTACHMENT_TEMP_DIR].map(clearEphemeralDirectory));
   if (!fs.existsSync(STATE_FILE)) return writeState(bootstrapState());
-  lastMigration = await migrateStateFileToV16(STATE_FILE);
+  lastMigration = await migrateStateFileToV18(STATE_FILE);
   const state = await readState();
   let changed = false;
   if (state.schema_version !== STATE_SCHEMA_VERSION) throw new Error(`unsupported_state_schema_${state.schema_version}`);
   for (const key of collections) if (!Array.isArray(state[key])) { state[key] = []; changed = true; }
-  if (normalizeOfficialRunnerImages(state, { timestamp: now() }).changed) changed = true;
+  if (normalizeOfficialRunnerImagesV19(state, { timestamp: now() }).changed) changed = true;
   if (!state.users.length) { const { user, session } = createLocalOwner(); state.users.push(user); state.sessions.push(session); changed = true; }
   if (!state.tools.length) { state.tools.push(...defaultTools(state.users[0].id)); changed = true; }
   if (!state.codex_profiles.length) { state.codex_profiles.push(...defaultCodexProfiles(state.users[0]?.id)); changed = true; }
@@ -66,6 +67,16 @@ export async function ensureRuntime() {
   for (const job of state.import_jobs.filter((item) => ['queued', 'starting', 'running', 'processing', 'staging', 'stopping'].includes(item.status))) {
     Object.assign(job, { status: 'failed', error_code: 'service_restarted', updated_at: now() }); changed = true;
   }
+  for (const generation of state.workflow_generations.filter((item) => ['queued', 'running'].includes(item.status))) {
+    Object.assign(generation, { status: 'failed', phase: 'failed', error_code: 'service_restarted', retryable: true, completed_at: now(), updated_at: now() }); changed = true;
+    const draft = state.workflow_drafts.find((item) => item.id === generation.draft_id && item.generation_id === generation.id);
+    if (draft) { draft.generation_status = 'failed'; draft.updated_at = now(); }
+  }
+  for (const delivery of state.deliveries.filter((item) => ['queued', 'running'].includes(item.status))) {
+    Object.assign(delivery, { status: 'failed', phase: 'failed', error_code: 'service_restarted', retryable: true, completed_at: now(), updated_at: now() }); changed = true;
+    const target = state.repository_targets.find((item) => item.id === delivery.repository_target_id);
+    if (target) target.status = 'ready';
+  }
   for (const session of state.assist_sessions.filter((item) => item.version !== 3 && item.status === 'running')) {
     Object.assign(session, { status: 'failed', error: 'service_restarted', updated_at: now() }); changed = true;
   }
@@ -89,6 +100,14 @@ export async function ensureRuntime() {
   }
   for (const profile of state.codex_profiles) {
     const before = JSON.stringify(profile);
+    const usedMcpNames = new Set();
+    for (const server of Array.isArray(profile.mcp_servers) ? profile.mcp_servers : []) {
+      let name = String(server.name || 'external');
+      if (name === 'aiws-built-in') name = 'aiws-built-in-external';
+      let candidate = name, suffix = 2;
+      while (usedMcpNames.has(candidate)) candidate = `${name}-${suffix++}`;
+      server.name = candidate; usedMcpNames.add(candidate);
+    }
     if (!profile.base_url) profile.base_url = profile.api_url || profile.provider_url || null;
     if (profile.base_url) profile.base_url = normalizeProviderBaseUrl(profile.base_url) || profile.base_url;
     profile.wire_api ||= 'responses';
@@ -137,30 +156,14 @@ function bootstrapState() {
 export async function readState() { return JSON.parse(await fsp.readFile(STATE_FILE, 'utf8')); }
 
 export async function writeState(state) {
-  normalizeState16Compatibility(state);
-  validateState16(state);
+  normalizeState18Compatibility(state, collections);
+  validateState18(state);
   const tmp = `${STATE_FILE}.tmp`;
   const serialized = await redactKnownSecrets(JSON.stringify(state, null, 2));
   const handle = await fsp.open(tmp, 'w', 0o600);
   try { await handle.writeFile(serialized, 'utf8'); await handle.sync(); }
   finally { await handle.close(); }
   await replaceStateFile(tmp, STATE_FILE);
-}
-
-function normalizeState16Compatibility(state) {
-  for (const project of state.projects || []) if (project.lifecycle_operation === undefined) project.lifecycle_operation = null;
-  for (const draft of state.workflow_drafts || []) {
-    if (!draft.status) draft.status = draft.workflow_id || draft.activated_at ? 'activated' : 'draft';
-    if (draft.user_modified_at === undefined) draft.user_modified_at = Number(draft.revision || 1) > 1 ? draft.updated_at || now() : null;
-  }
-  for (const session of state.assist_sessions || []) if (session.version === 3 && !['ask', 'auto_recommend'].includes(session.clarification_policy)) session.clarification_policy = 'ask';
-  for (const brief of state.project_briefs || []) {
-    if (brief.content?.schema_version !== 2) {
-      const project = state.projects?.find((item) => item.id === brief.project_id);
-      brief.content = legacyBriefToV2(brief.content || {}, { briefId: brief.id, title: `${project?.title || '项目'}简报` });
-    }
-    if (!Number.isInteger(brief.revision) || brief.revision < 1) brief.revision = Math.max(1, Number(brief.version) || 1);
-  }
 }
 
 export function lastStateMigration() { return lastMigration ? { ...lastMigration, state: undefined } : null; }
@@ -183,7 +186,10 @@ export function mutate(fn) {
   return operation;
 }
 
-export function owner(state) { return state.users.find((u) => u.role === 'owner') || state.users[0]; }
+export function owner(state) {
+  const actorId = currentActorId();
+  return state.users.find((user) => user.id === actorId) || state.users.find((user) => user.role === 'owner') || state.users[0];
+}
 
 export function addTrace(state, event, payload = {}, actorId = null) {
   const trace = makeTrace(event, payload, { type: actorId ? 'user' : 'system', id: actorId });

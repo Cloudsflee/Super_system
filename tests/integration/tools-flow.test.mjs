@@ -5,7 +5,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { createConfirmedProject } from './v13-test-helpers.mjs';
 
-const port = 4569;
+const port = Number(process.env.AIWS_TEST_PORT || 4569);
 const testHome = fs.mkdtempSync(path.join(os.tmpdir(), 'aiws-tools-home-'));
 const child = spawn(process.execPath, ['apps/api/server.mjs'], { env: { ...process.env, AIWS_PORT: String(port), AIWS_HOME: testHome, NODE_ENV: 'test', AIWS_BYPASS_SETUP: '1' }, stdio: ['ignore', 'pipe', 'pipe'] });
 await waitForServer(port);

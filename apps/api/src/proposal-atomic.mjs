@@ -13,7 +13,7 @@ export function applyProposalAtomically(state, proposal, actor, expected = {}) {
   if (Number(expected.revision) !== Number(proposal.revision || 1)) throw new HttpError(409, { error: 'proposal_stale', reason: 'revision_mismatch', revision: proposal.revision });
   if (expected.target_hash !== proposal.target_hash) throw new HttpError(409, { error: 'proposal_stale', reason: 'client_target_hash_mismatch', revision: proposal.revision });
   const currentHash = proposalTargetHash(state, proposal);
-  if (proposal.target_hash_mode === 'state' && proposal.target_hash && currentHash !== proposal.target_hash) throw new HttpError(409, { error: 'proposal_stale', reason: 'target_changed', revision: proposal.revision, target_hash: currentHash });
+  if (['state', 'workflow_graph_v2'].includes(proposal.target_hash_mode) && proposal.target_hash && currentHash !== proposal.target_hash) throw new HttpError(409, { error: 'proposal_stale', reason: 'target_changed', revision: proposal.revision, target_hash: currentHash });
   if (proposal.status === 'pending') approveProposal(proposal, actor.id);
   const applied = applyAction(state, proposal);
   if (applied?.skipped) throw new HttpError(409, { error: 'proposal_apply_failed', detail: applied });

@@ -5,23 +5,25 @@ import type { AssistConfiguration, AssistGoal, AssistModelCatalog, AssistOperati
 import { useUi } from '../../state/ui';
 
 export const assistKeys = {
-  sessions: (projectId?: string, search = '', archived = false) => ['assist-v3-sessions', projectId || '', search, archived] as const,
+  sessions: (projectId?: string, scopeType?: string, scopeId?: string, search = '', archived = false) => ['assist-v3-sessions', projectId || '', scopeType || '', scopeId || '', search, archived] as const,
   session: (id?: string) => ['assist-v3-session', id || ''] as const,
   review: (turnId?: string) => ['assist-v3-review', turnId || ''] as const,
   terminal: (id?: string) => ['assist-v3-terminal', id || ''] as const
 };
 
-export function useAssistSessions(projectId?: string, search = '', archived = false, enabled = true) {
+export function useAssistSessions(projectId?: string, scopeType?: string, scopeId?: string, search = '', archived = false, enabled = true) {
   const query = new URLSearchParams();
   if (projectId) query.set('project_id', projectId);
+  if (scopeType) query.set('scope_type', scopeType);
+  if (scopeId) query.set('scope_id', scopeId);
   if (search.trim()) query.set('search', search.trim());
   if (archived) query.set('archived', 'only');
   else query.set('deleted', 'include');
   query.set('limit', '100');
   return useQuery({
-    queryKey: assistKeys.sessions(projectId, search, archived),
+    queryKey: assistKeys.sessions(projectId, scopeType, scopeId, search, archived),
     queryFn: () => api<AssistV3Session[]>(`/assist/v3/sessions?${query}`),
-    enabled: Boolean(projectId && enabled), refetchInterval: enabled ? 4_000 : false
+    enabled: Boolean(projectId && scopeType && scopeId && enabled), refetchInterval: enabled ? 4_000 : false
   });
 }
 

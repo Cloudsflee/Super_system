@@ -5,7 +5,9 @@ export const ChangeProposalStatus = Object.freeze({
   Pending: 'pending',
   Approved: 'approved',
   Rejected: 'rejected',
-  Applied: 'applied'
+  Applied: 'applied',
+  Stale: 'stale',
+  Superseded: 'superseded'
 });
 
 export function createAgentSession({ projectId, workspaceId = null, scopeType = 'project', scopeId, parentSessionId = null, title = '', actorId }) {

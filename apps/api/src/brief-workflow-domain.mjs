@@ -1,9 +1,10 @@
 import { createHash } from 'node:crypto';
 import { id } from '../../../packages/shared/index.mjs';
+import { normalizeWorkflowHierarchyNodes } from './workflow-hierarchy-domain.mjs';
 
 export const BRIEF_SECTION_TYPES = Object.freeze(['markdown', 'list', 'key_value', 'table']);
 export const WORKFLOW_NODE_TYPES = Object.freeze(['goal_definition', 'research', 'analysis', 'execution', 'retrospective']);
-export const MAX_WORKFLOW_DRAFT_NODES = 50;
+export const MAX_WORKFLOW_DRAFT_NODES = 156;
 
 const legacySections = Object.freeze([
   ['goal', '核心目标', 'markdown'],
@@ -145,37 +146,19 @@ export function createWorkflowDraft({ project, brief, timestamp = new Date().toI
   const makeId = (prefix, key) => deterministic ? stableId(prefix, project.id, key) : idFactory(prefix);
   return {
     id: makeId('wfd', 'draft'), project_id: project.id, revision: 1, status: 'draft', user_modified_at: null,
-    nodes: suggestedWorkflowNodes(brief, { makeId }),
+    nodes: [], generation_status: 'not_started', generation_id: null,
     source_brief_id: brief?.id || null, source_brief_revision: brief?.revision || null,
     created_at: timestamp, updated_at: timestamp
   };
 }
 
 export function suggestedWorkflowNodes(brief, { makeId = (prefix) => id(prefix) } = {}) {
-  const content = normalizeBriefContentV2(brief?.content || brief || {}, { briefId: brief?.id || 'brief', title: brief?.content?.title || '项目简报' });
-  const goal = content.goal || '澄清目标并完成可验证交付';
-  const nodeIds = [makeId('wfdn', 'goal'), makeId('wfdn', 'execution'), makeId('wfdn', 'review')];
-  return [
-    { id: nodeIds[0], type: 'goal_definition', title: '确认项目简报', goal, dependency_ids: [], position: { x: 80, y: 120 }, order: 0 },
-    { id: nodeIds[1], type: 'execution', title: '实现核心交付', goal: content.features.join('；') || goal, dependency_ids: [nodeIds[0]], position: { x: 390, y: 120 }, order: 1 },
-    { id: nodeIds[2], type: 'retrospective', title: '验证与交付审查', goal: content.acceptance_criteria.join('；') || '验证交付结果', dependency_ids: [nodeIds[1]], position: { x: 700, y: 120 }, order: 2 }
-  ];
+  void brief; void makeId;
+  return [];
 }
 
 export function normalizeWorkflowNodes(nodes, { idFactory = id } = {}) {
-  if (!Array.isArray(nodes)) return [];
-  const normalized = nodes.map((node, index) => ({
-    id: cleanText(node?.id, 120) || idFactory('wfdn'),
-    type: WORKFLOW_NODE_TYPES.includes(node?.type) ? node.type : 'execution',
-    title: cleanText(node?.title || '新节点', 100),
-    goal: cleanText(node?.goal || node?.title, 4000),
-    dependency_ids: cleanIdList(node?.dependency_ids),
-    position: validPosition(node?.position, index),
-    order: Number.isInteger(node?.order) ? node.order : index
-  }));
-  const ids = new Set(normalized.map((node) => node.id));
-  for (const node of normalized) node.dependency_ids = node.dependency_ids.filter((dependencyId) => dependencyId !== node.id && ids.has(dependencyId));
-  return normalized.sort((left, right) => left.order - right.order).map((node, index) => ({ ...node, order: index }));
+  return normalizeWorkflowHierarchyNodes(nodes, { idFactory }).map((node) => ({ ...node, order: node.order_index }));
 }
 
 export function assertWorkflowAcyclic(nodes) {

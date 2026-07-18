@@ -1,4 +1,4 @@
-import { BarChart3, BookOpenCheck, Crosshair, RefreshCw, TerminalSquare, type LucideIcon } from 'lucide-react';
+import { BarChart3, BookOpenCheck, Crosshair, Layers3, ListTodo, RefreshCw, TerminalSquare, type LucideIcon } from 'lucide-react';
 import type { ComponentType } from 'react';
 import { lazy } from 'react';
 import type { NodeKind, NodeWorkspace } from '../../api/types';
@@ -9,7 +9,7 @@ const AnalysisWorkspace = lazy(() => import('./renderers/AnalysisWorkspace').the
 const ExecutionWorkspace = lazy(() => import('./renderers/ExecutionWorkspace').then((item) => ({ default: item.ExecutionWorkspace })));
 const ReviewWorkspace = lazy(() => import('./renderers/ReviewWorkspace').then((item) => ({ default: item.ReviewWorkspace })));
 
-export type RendererProps = { value: NodeWorkspace; onSaved: () => Promise<unknown> };
+export type RendererProps = { value: NodeWorkspace; onSaved: () => Promise<unknown>; onRunNode?: () => void; runningNode?: boolean };
 export type NodeRendererDefinition = { type: NodeKind; label: string; icon: LucideIcon; component: ComponentType<RendererProps> };
 
 export const nodeRenderers: Record<NodeKind, NodeRendererDefinition> = {
@@ -17,7 +17,9 @@ export const nodeRenderers: Record<NodeKind, NodeRendererDefinition> = {
   research: { type: 'research', label: '调研工作区', icon: BookOpenCheck, component: ResearchWorkspace },
   analysis: { type: 'analysis', label: '分析工作区', icon: BarChart3, component: AnalysisWorkspace },
   execution: { type: 'execution', label: '执行工作区', icon: TerminalSquare, component: ExecutionWorkspace },
-  retrospective: { type: 'retrospective', label: '复盘工作区', icon: RefreshCw, component: ReviewWorkspace }
+  retrospective: { type: 'retrospective', label: '复盘工作区', icon: RefreshCw, component: ReviewWorkspace },
+  workstream: { type: 'workstream', label: '成果工作区', icon: Layers3, component: GoalWorkspace },
+  task: { type: 'task', label: '任务工作区', icon: ListTodo, component: ExecutionWorkspace }
 };
 
 export function rendererFor(type: NodeKind) { return nodeRenderers[type] || nodeRenderers.goal_definition; }

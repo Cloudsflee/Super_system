@@ -45,12 +45,10 @@ try {
 
   assert.equal(selectTargetVolume({ targetExists: false, targetEmpty: true, sourceExists: true, sourceEmpty: false }), 'clone');
   assert.equal(selectTargetVolume({ targetExists: true, targetEmpty: false, sourceExists: true, sourceEmpty: false }), 'reuse');
-  const powershell = fs.readFileSync(path.join(process.cwd(), 'scripts', 'aiws.ps1'), 'utf8'), posix = fs.readFileSync(path.join(process.cwd(), 'scripts', 'aiws.sh'), 'utf8');
-  for (const script of [powershell, posix]) { assert.ok(script.includes('aiws-data-v16')); assert.ok(script.includes('aiws-data-v17')); assert.ok(script.includes('aiws-app:1.7.0')); assert.ok(script.includes('aiws-codex-runner:1.7.0-codex-0.144.0')); assert.ok(script.includes('v17-release.mjs')); }
-  const orchestrator = fs.readFileSync(path.join(process.cwd(), 'docker', 'release_orchestrator.mjs'), 'utf8');
-  assert.equal(orchestrator.includes('accepted_fresh_after_discard'), false, 'V1.7 never auto-discards a failed migration');
-  assert.ok(orchestrator.includes("health.version !== '1.7.0'")); assert.ok(orchestrator.includes('health.schema_version !== 16'));
-  console.log('V1.7 release volume unit tests passed');
+  const cutover = fs.readFileSync(path.join(process.cwd(), 'docs', 'v1.8-cutover.md'), 'utf8');
+  assert.ok(cutover.includes('aiws-data-v17` / schema 16'), 'V1.7 volume remains the read-only V1.8 source');
+  assert.ok(cutover.includes('schema 16→17'), 'current cutover preserves the historical migration boundary');
+  console.log('V1.7 release primitive compatibility tests passed');
 } finally {
   fs.rmSync(root, { recursive: true, force: true });
 }

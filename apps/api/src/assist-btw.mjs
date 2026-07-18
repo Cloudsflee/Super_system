@@ -41,7 +41,7 @@ export async function createAssistBtw(sessionId, input = {}, request = {}, depen
     const batch = await getSessionChangeBatch(session.id), cwd = batch?.worktree?.path || readableProjectCwd(project);
     const createConversation = dependencies.createConversation || createCodexEphemeralThread;
     record.conversation = await createConversation({
-      state, profile, cwd, sourceThreadId: session.codex_thread_id, sourceTurnId: sourceTurn.codex_turn_id,
+      state, profile, cwd, sourceThreadId: session.codex_thread_id, sourceTurnId: sourceTurn.codex_turn_id, projectId: project.id,
       additionalContext: [{ kind: 'application', value: JSON.stringify({ schema: 'aiws.btw-context.v1', boundary: 'Read-only ephemeral BTW. Do not use tools, modify files, or delegate to sub-agents.', selection: selection || null, page_url: pageUrl }) }]
     });
     record.status = 'idle'; emit(record, 'ready', { source_turn_id: sourceTurn.id });

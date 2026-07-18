@@ -28,7 +28,10 @@ try {
   const locator = { browser_instance_id: 'browser-one', route: viewContext.route, surface_id: viewContext.surface.id, surface_revision: viewContext.surface.revision };
   await stateApi.mutate((state) => {
     state.projects = [{ id: 'project-v15', status: 'active', managed_workspace_state: 'ready' }];
-    state.assist_sessions = [{ id: 'session-v15', version: 3, project_id: 'project-v15', archived_at: null }];
+    state.assist_sessions = [{
+      id: 'session-v15', version: 3, project_id: 'project-v15', scope_type: 'project', scope_id: 'project-v15',
+      scope_status: 'active', archived_at: null
+    }];
     state.assist_turns = [{ id: 'turn-v15', session_id: 'session-v15', project_id: 'project-v15', status: 'running', mode: 'default', collaboration_mode: 'default', view_context: viewContext }];
     state.assist_operations = [];
   });
@@ -48,8 +51,10 @@ try {
   assert.equal(first.status, 'pending');
   await assert.rejects(() => operations.claimAssistOperation(first.id, { ...locator, surface_id: 'wrong-surface' }), (error) => error.payload?.error === 'assist_operation_surface_changed');
   assert.equal((await operations.listAssistOperations({ session_id: 'session-v15' })).find((item) => item.id === first.id).status, 'pending');
+  await new Promise((resolve) => setTimeout(resolve, 5));
   const claimed = await operations.claimAssistOperation(first.id, locator);
   assert.equal(claimed.value, 'after');
+  assert.ok(Date.parse((await stateApi.readState()).assist_operations.find((item) => item.id === first.id).claim_expires_at) > Date.parse(first.claim_expires_at), 'claim extends the browser execution deadline');
   await operations.submitAssistOperationResult(first.id, {
     ...locator, ok: true, persisted: true,
     before: 'before', after: 'after', current: 'after'
@@ -131,6 +136,11 @@ try {
   await assert.rejects(approvalPromise, (error) => error.payload?.error === 'assist_operation_denied');
   assert.equal((await waiters.waitForOperationResult(first.id, undefined, async () => undefined, 50)).success, true, 'a result committed before waiter registration is reconciled');
   await assert.rejects(() => waiters.waitForOperationApproval(approval.id), (error) => error.payload?.error === 'assist_operation_denied');
+  await stateApi.mutate((state) => { state.assist_operations.push({ id: 'claimed-extension', status: 'claimed', claim_expires_at: new Date(Date.now() + 200).toISOString() }); });
+  let extensionExpired = false;
+  const extendedWait = waiters.waitForOperationResult('claimed-extension', undefined, async () => { extensionExpired = true; }, 10);
+  setTimeout(() => waiters.settleOperationResult('claimed-extension', { id: 'claimed-extension', status: 'committed', target_id: 'brief.goal' }), 25);
+  assert.equal((await extendedWait).success, true); assert.equal(extensionExpired, false, 'claimed operations retain their extended execution window');
 
   await assert.rejects(() => operations.handleDynamicPageTool('session-v15', 'turn-v15', {
     namespace: 'aiws_page', tool: 'set_field', callId: 'call-selector', arguments: { target_id: 'brief.goal', value: 'after', selector: '#root' }
@@ -144,6 +154,15 @@ try {
   await assert.rejects(() => operations.handleDynamicPageTool('session-v15', 'turn-v15', {
     namespace: 'aiws_page', tool: 'set_field', callId: 'call-large', arguments: { target_id: 'brief.admin', value: 'x'.repeat(70_000) }
   }), (error) => error.payload?.error === 'assist_operation_value_too_large');
+
+  await stateApi.mutate((state) => { state.assist_operations.push({ id: 'browser-timeout', turn_id: 'turn-v15', execution_layer: 'browser', status: 'failed', failure_code: 'browser_claim_timeout' }); });
+  const countBeforeFastFailure = (await stateApi.readState()).assist_operations.length;
+  const fastFailureStarted = performance.now();
+  await assert.rejects(() => operations.handleDynamicPageTool('session-v15', 'turn-v15', {
+    namespace: 'aiws_page', tool: 'set_field', callId: 'call-browser-offline', arguments: { target_id: 'brief.goal', value: 'after' }
+  }), (error) => error.payload?.error === 'assist_browser_executor_unavailable' && error.payload?.retryable === true);
+  assert.ok(performance.now() - fastFailureStarted < 1_000, 'same-turn browser operations fail in under one second after the first timeout');
+  assert.equal((await stateApi.readState()).assist_operations.length, countBeforeFastFailure, 'offline browser failures do not append repeated timeout operations');
 
   await stateApi.mutate((state) => { const turn = state.assist_turns[0]; turn.mode = 'plan'; turn.collaboration_mode = 'plan'; });
   await assert.rejects(() => operations.handleDynamicPageTool('session-v15', 'turn-v15', {

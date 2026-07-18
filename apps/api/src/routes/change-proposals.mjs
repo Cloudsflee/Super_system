@@ -5,6 +5,9 @@ import { codexAuthMatchesProfile, isThirdPartyProvider } from '../codex-service.
 import { proposalTargetHash } from '../proposal-target.mjs';
 import { applyProposalAtomically } from '../proposal-atomic.mjs';
 import { assertProjectLifecycleIdle } from '../project-lifecycle-operations.mjs';
+import { applyWorkflowGraphPatchInState } from '../workflow-graph-service.mjs';
+import { operationEvent, syncProposalOperationState } from '../assist-operation-metadata.mjs';
+import { pushV3Event } from '../assist-v3-events.mjs';
 
 export const changeProposalRoutes = [
   makeRoute('GET', '/change-proposals', listProposals),
@@ -26,10 +29,15 @@ async function createProposalRoute({ res, body }) {
   const result = await mutate((state) => {
     const actor = owner(state);
     const project = assertProjectLifecycleIdle(state.projects.find((item) => item.id === body.project_id));
+    const workspace = body.workspace_id ? state.workspaces.find((item) => item.id === body.workspace_id && item.project_id === project.id) : null;
+    if (body.workspace_id && !workspace) throw new HttpError(404, { error: 'workspace_not_found' });
+    const node = body.node_id ? state.workflow_nodes.find((item) => item.id === body.node_id && state.workflows.some((workflow) => workflow.id === item.workflow_id && workflow.project_id === project.id)) : null;
+    if (body.node_id && !node) throw new HttpError(404, { error: 'node_not_found' });
+    if (workspace && node && workspace.id !== node.workspace_id && workspace.workflow_node_id !== node.id) throw new HttpError(409, { error: 'proposal_workspace_node_scope_mismatch' });
     const proposal = createChangeProposal({
-      projectId: project?.id || body.project_id,
-      workspaceId: body.workspace_id || null,
-      nodeId: body.node_id || null,
+      projectId: project.id,
+      workspaceId: workspace?.id || null,
+      nodeId: node?.id || null,
       changeType: body.change_type || 'general',
       title: body.title,
       summary: body.summary,
@@ -55,9 +63,10 @@ async function approveProposalRoute({ res, params }) {
     const actor = owner(state), proposal = state.change_proposals.find((item) => item.id === params.id);
     if (!proposal) return { error: 'proposal_not_found' };
     assertProposalProjectIdle(state, proposal);
-    if (proposal.target_hash_mode === 'state' && proposalTargetHash(state, proposal) !== proposal.target_hash) return { error: 'proposal_stale' };
+    if (['state', 'workflow_graph_v2'].includes(proposal.target_hash_mode) && proposalTargetHash(state, proposal) !== proposal.target_hash) return { error: 'proposal_stale' };
     try { approveProposal(proposal, actor.id); } catch (error) { return { error: error.message }; }
     proposal.revision = Number(proposal.revision || 1) + 1;
+    publishProposalOperations(state, proposal);
     addTrace(state, 'change_proposal.approved', { project_id: proposal.project_id, workspace_id: proposal.workspace_id, node_id: proposal.node_id, target_type: 'change_proposal', target_id: proposal.id, summary: `批准变更：${proposal.title}` }, actor.id);
     return proposal;
   });
@@ -69,9 +78,10 @@ async function rejectProposalRoute({ res, params, body }) {
     const actor = owner(state), proposal = state.change_proposals.find((item) => item.id === params.id);
     if (!proposal) return { error: 'proposal_not_found' };
     assertProposalProjectIdle(state, proposal);
-    if (proposal.target_hash_mode === 'state' && proposalTargetHash(state, proposal) !== proposal.target_hash) return { error: 'proposal_stale' };
+    if (['state', 'workflow_graph_v2'].includes(proposal.target_hash_mode) && proposalTargetHash(state, proposal) !== proposal.target_hash) return { error: 'proposal_stale' };
     try { rejectProposal(proposal, actor.id, body.reason || '用户拒绝'); } catch (error) { return { error: error.message }; }
     proposal.attention_state = 'resolved'; proposal.revision = Number(proposal.revision || 1) + 1;
+    publishProposalOperations(state, proposal);
     addTrace(state, 'change_proposal.rejected', { project_id: proposal.project_id, workspace_id: proposal.workspace_id, node_id: proposal.node_id, target_type: 'change_proposal', target_id: proposal.id, summary: `拒绝变更：${proposal.title}`, data: { reason: body.reason || '' } }, actor.id);
     return proposal;
   });
@@ -87,6 +97,7 @@ async function applyProposalRoute({ res, params }) {
     let applied;
     try { applied = applyProposalAtomically(state, proposal, actor, { revision: proposal.revision, target_hash: proposal.target_hash }); }
     catch (error) { return { error: error.payload?.error || error.message, detail: error.payload }; }
+    publishProposalOperations(state, proposal);
     addTrace(state, 'change_proposal.applied', { project_id: proposal.project_id, workspace_id: proposal.workspace_id, node_id: proposal.node_id, target_type: 'change_proposal', target_id: proposal.id, summary: `应用变更：${proposal.title}`, data: { applied } }, actor.id);
     return { proposal, applied: applied.applied, idempotent: applied.idempotent };
   });
@@ -95,6 +106,7 @@ async function applyProposalRoute({ res, params }) {
 
 export function applyAction(state, proposal) {
   const action = proposal.apply_action || {};
+  if (action.type === 'workflow_graph_patch') return applyWorkflowGraphPatchInState(state, proposal);
   if (action.type === 'node_contract_patch' && proposal.node_id) {
     const node = state.workflow_nodes.find((item) => item.id === proposal.node_id);
     const workflow = state.workflows.find((item) => item.id === node?.workflow_id && item.project_id === proposal.project_id);
@@ -217,8 +229,9 @@ function connectWorkflowNodes(state, proposal, action) {
 
 function dependsOn(state, node, targetId, visited = new Set()) { if (node.id === targetId) return true; if (visited.has(node.id)) return false; visited.add(node.id); return (node.dependencies || []).some((item) => { const parent = state.workflow_nodes.find((candidate) => candidate.id === item.node_id); return parent ? dependsOn(state, parent, targetId, visited) : false; }); }
 
-function refreshGraph(state, workflow) { const nodes = state.workflow_nodes.filter((item) => item.workflow_id === workflow.id); workflow.graph_json = { nodes: nodes.map((node) => ({ id: node.id, type: node.type, label: node.title, position: node.position })), edges: nodes.flatMap((node) => (node.dependencies || []).filter((item) => item.node_id).map((item, index) => ({ id: `${item.node_id}-${node.id}-${index}`, source: item.node_id, target: node.id }))) }; workflow.updated_at = now(); }
+function refreshGraph(state, workflow) { const nodes = state.workflow_nodes.filter((item) => item.workflow_id === workflow.id); workflow.graph_json = { nodes: nodes.map((node) => ({ id: node.id, type: node.type, label: node.title, position: node.position })), edges: nodes.flatMap((node) => (node.dependencies || []).filter((item) => item.node_id).map((item, index) => ({ id: `${item.node_id}-${node.id}-${index}`, source: item.node_id, target: node.id }))) }; workflow.version = Number(workflow.version || 1) + 1; workflow.updated_at = now(); }
 
 function assertProposalProjectIdle(state, proposal) {
   return proposal.project_id ? assertProjectLifecycleIdle(state.projects.find((item) => item.id === proposal.project_id)) : null;
 }
+function publishProposalOperations(state, proposal) { for (const operation of syncProposalOperationState(state, proposal)) pushV3Event(state, operation.session_id, operation.turn_id, 'operation', operationEvent(operation)); }

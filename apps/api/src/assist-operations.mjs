@@ -49,6 +49,8 @@ export async function handleDynamicPageTool(sessionId, turnId, params = {}, sign
   const page = pageIdentity(turn.view_context);
   if (!page.route || !page.surfaceId || !page.revision || !page.browserInstanceId) throw new HttpError(409, { error: 'assist_page_surface_revision_required' });
   const callId = cleanText(params.callId, 300) || id('call');
+  const duplicate = snapshot.assist_operations.some((item) => item.turn_id === turn.id && item.tool_call_id === callId);
+  if (!duplicate && snapshot.assist_operations.some((item) => item.turn_id === turn.id && item.execution_layer !== 'server' && item.failure_code === 'browser_claim_timeout')) throw new HttpError(409, { error: 'assist_browser_executor_unavailable', message: '当前页面没有可用的浏览器执行器', action: '保持目标页面打开后重试。', phase: 'browser_operation', retryable: true });
   const at = now(), deadline = new Date(Date.now() + OPERATION_TIMEOUT_MS).toISOString();
   const operation = await mutate((state) => {
     const currentTurn = requireTurn(state, turn.id);
@@ -81,7 +83,7 @@ export async function listAssistOperations(query = {}) {
   if (query.session_id) items = items.filter((item) => item.session_id === query.session_id);
   if (query.turn_id) items = items.filter((item) => item.turn_id === query.turn_id);
   if (query.status) items = items.filter((item) => item.status === query.status);
-  return items.slice().sort((a, b) => String(b.created_at).localeCompare(String(a.created_at))).slice(0, clampInt(query.limit, 1, 500, 100)).map(publicOperation);
+  return items.slice().sort((a, b) => String(b.created_at).localeCompare(String(a.created_at))).slice(0, clampInt(query.limit, 1, 500, 100)).map((item) => publicOperation(item, state));
 }
 
 export async function confirmAssistOperation(operationId, input = {}) {
@@ -113,7 +115,8 @@ export async function claimAssistOperation(operationId, input = {}) {
     if (operation.status !== 'pending') throw new HttpError(409, { error: 'assist_operation_not_claimable', status: operation.status });
     if (operation.browser_instance_id && operation.browser_instance_id !== browserId) throw new HttpError(409, { error: 'assist_operation_wrong_browser' });
     if (Date.parse(operation.claim_expires_at) <= Date.now()) throw new HttpError(410, { error: 'assist_operation_expired' });
-    Object.assign(operation, { status: 'claimed', claimed_by: browserId, claimed_at: now(), revision: operation.revision + 1, updated_at: now() });
+    const at = now();
+    Object.assign(operation, { status: 'claimed', claimed_by: browserId, claimed_at: at, claim_expires_at: new Date(Date.now() + OPERATION_TIMEOUT_MS).toISOString(), revision: operation.revision + 1, updated_at: at });
     pushV3Event(state, operation.session_id, operation.turn_id, 'operation', operationEvent(operation));
     return executionPayload(operation);
   });

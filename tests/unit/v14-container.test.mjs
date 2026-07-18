@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { EventEmitter } from 'node:events';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -62,6 +63,17 @@ try {
   });
   assert.equal(childEnvironment.AIWS_ENV_MERGE_TEST, 'ready');
   assert.equal(Object.hasOwn(childEnvironment, 'OPENAI_API_KEY'), false);
+  const managedChild = new EventEmitter(); let originalSignal = null, stoppedName = null;
+  managedChild.kill = (signal) => { originalSignal = signal; return true; };
+  lifecycle.registerManagedProcessHandle({ containerName: 'aiws-unit-managed' }, managedChild, { stopContainer: (name) => { stoppedName = name; return true; } });
+  assert.equal(managedChild.kill('SIGTERM'), true);
+  assert.equal(stoppedName, 'aiws-unit-managed'); assert.equal(originalSignal, 'SIGTERM');
+  managedChild.emit('close');
+  let asyncStopCall = null, unrefCalled = false;
+  const asyncStopChild = new EventEmitter(); asyncStopChild.unref = () => { unrefCalled = true; };
+  assert.equal(lifecycle.stopManagedContainerAsync('aiws-unit-managed', (command, args, options) => { asyncStopCall = { command, args, options }; return asyncStopChild; }), true);
+  assert.deepEqual(asyncStopCall.args, ['container', 'stop', '--time', '5', 'aiws-unit-managed']); assert.equal(asyncStopCall.options.stdio, 'ignore'); assert.equal(unrefCalled, true);
+  assert.equal(lifecycle.stopManagedContainerAsync('../invalid', () => { throw new Error('must not spawn'); }), false);
 
   assert.equal(validateHostImportRelative('team/repo'), 'team/repo');
   for (const invalid of ['/etc', '../repo', 'team/../repo', 'C:\\repo', '//server/share', 'team\\repo']) assert.throws(() => validateHostImportRelative(invalid));
@@ -72,7 +84,12 @@ try {
   try { fs.symlinkSync(path.join(imports, 'team'), symlink, 'junction'); await assert.rejects(() => resolveHostImportPath('linked/repo', { root: imports }), /host_import_symlink_rejected/); } catch (error) { if (fs.existsSync(symlink)) throw error; }
 
   const deployment = deploymentStatus({ env: { ...env, AIWS_HOST_PROJECTS_ROOT: imports, AIWS_DOCKER_DATA_VOLUME: 'volume-private' }, dockerReady: true, storageReady: true });
-  assert.deepEqual(deployment, { mode: 'container', local_only: true, storage: { type: 'docker_volume', ready: true }, docker: { strategy: 'socket', ready: true }, imports: { codex_home: false, cc_switch: false, projects_root: true, project_path_mode: 'relative' } });
+  assert.deepEqual(deployment, { mode: 'container', local_only: true, collaboration: { mode: 'local', mcp_gateway: false, public_endpoint_configured: false }, storage: { type: 'docker_volume', ready: true }, docker: { strategy: 'socket', ready: true }, imports: { codex_home: false, cc_switch: false, projects_root: true, project_path_mode: 'relative' } });
+  const teamDeployment = deploymentStatus({ env: { ...env, AIWS_MCP_REMOTE_MODE: 'gateway', AIWS_PUBLIC_MCP_URL: 'https://mcp.example.test/mcp' }, dockerReady: true, storageReady: true });
+  assert.equal(teamDeployment.local_only, false); assert.deepEqual(teamDeployment.collaboration, { mode: 'gateway', mcp_gateway: true, public_endpoint_configured: true });
+  assert.throws(() => config.validateDockerNetworkName('../host'), /invalid_docker_network/);
+  const networkInvocation = config.buildCodexContainerInvocation({ env: { ...env, AIWS_RUNNER_NETWORK: 'aiws-v18-mcp-agents' }, kind: 'network-test', sessionId: 'network', commandArgs: [] });
+  assert.equal(networkInvocation.args[networkInvocation.args.indexOf('--network') + 1], 'aiws-v18-mcp-agents');
   const serialized = JSON.stringify(deployment);
   assert.equal(serialized.includes(imports), false);
   assert.equal(serialized.includes('volume-private'), false);

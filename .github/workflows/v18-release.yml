@@ -1,0 +1,28 @@
+name: V1.8 Release
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  v18-release:
+    runs-on: ubuntu-latest
+    timeout-minutes: 95
+    steps:
+      - uses: actions/checkout@v4
+        with: { fetch-depth: 0 }
+      - uses: pnpm/action-setup@v4
+        with: { version: 10.14.0 }
+      - uses: actions/setup-node@v4
+        with: { node-version: 24, cache: pnpm }
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm test:v18:release
+      - if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: v18-release-${{ github.run_id }}
+          path: .ai-workspace/test-reports/v1.8/
+          if-no-files-found: error
+          retention-days: 30

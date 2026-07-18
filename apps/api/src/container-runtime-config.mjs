@@ -14,6 +14,12 @@ export function validateDockerVolumeName(value) {
   return name;
 }
 
+export function validateDockerNetworkName(value) {
+  const name = String(value || '');
+  if (!/^[a-zA-Z0-9][a-zA-Z0-9_.-]{0,127}$/.test(name)) throw new Error('invalid_docker_network');
+  return name;
+}
+
 export function runnerLimits(env = process.env) {
   const cpus = String(env.AIWS_RUNNER_CPUS || '2');
   const memory = String(env.AIWS_RUNNER_MEMORY || '4g').toLowerCase();
@@ -71,6 +77,7 @@ export function buildCodexContainerInvocation(options) {
   if (options.stdin || options.interactive) args.push('-i');
   if (options.interactive) args.push('-t');
   if (options.hostGateway !== false) args.push('--add-host', 'host.docker.internal:host-gateway');
+  if (env.AIWS_RUNNER_NETWORK) args.push('--network', validateDockerNetworkName(env.AIWS_RUNNER_NETWORK));
   for (const [key, value] of Object.entries(options.containerEnv || {})) appendEnvironment(args, key, value);
   if (options.codexHome) args.push(...runnerMount(options.codexHome, '/codex-home', options.codexHomeMode || 'rw', options));
   if (options.workspace) args.push(...runnerMount(options.workspace, '/workspace', options.workspaceMode || 'ro', options), '-w', '/workspace');

@@ -1,0 +1,40 @@
+name: V1.75 Controlled Live
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  v175-live:
+    runs-on: [self-hosted, v175-live]
+    environment: v175-live
+    timeout-minutes: 35
+    env:
+      AIWS_TEST_CODEX_CONFIRM: dedicated-read-only
+      AIWS_TEST_CODEX_HOME: ${{ secrets.AIWS_TEST_CODEX_HOME }}
+      AIWS_TEST_GITHUB_REPO: ${{ secrets.AIWS_TEST_GITHUB_REPO }}
+      AIWS_TEST_GITHUB_TOKEN: ${{ secrets.AIWS_TEST_GITHUB_TOKEN }}
+      AIWS_TEST_GITHUB_CONFIRM: dedicated-write-test
+      AIWS_TEST_CC_SWITCH_CONFIRM: isolated
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.14.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm test:v175:live
+      - if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: v175-live-${{ github.run_id }}
+          path: .ai-workspace/test-reports/v1.75/
+          if-no-files-found: error
+          retention-days: 14

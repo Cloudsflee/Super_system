@@ -19,8 +19,8 @@ describe('V1.2 UI contracts', () => {
     expect(action).toHaveBeenCalledOnce();
   });
 
-  it('registers all five node renderers', () => {
-    expect(Object.keys(nodeRenderers).sort()).toEqual(['analysis', 'execution', 'goal_definition', 'research', 'retrospective']);
+  it('registers legacy and two-level node renderers', () => {
+    expect(Object.keys(nodeRenderers).sort()).toEqual(['analysis', 'execution', 'goal_definition', 'research', 'retrospective', 'task', 'workstream']);
     for (const renderer of Object.values(nodeRenderers)) expect(renderer.component).toBeTruthy();
   });
 

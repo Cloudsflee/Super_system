@@ -68,7 +68,7 @@ function defaultActions(context: ContextMenuTarget) {
 function menuTarget(target: HTMLElement): ContextMenuTarget {
   const selection = window.getSelection(), text = selection?.toString().trim().slice(0, 20_000) || '', range = selection?.rangeCount ? selection.getRangeAt(0) : null;
   const sensitive = [target, nodeElement(selection?.anchorNode), nodeElement(selection?.focusNode), nodeElement(range?.commonAncestorContainer)].some((item) => item?.closest('input[type="password"], [data-sensitive="true"], [data-secret="true"]'));
-  return { target, selection: text, selectionRect: range ? range.getBoundingClientRect() : null, sensitive: Boolean(sensitive) };
+  return { target, selection: text, selectionRect: range && typeof range.getBoundingClientRect === 'function' ? range.getBoundingClientRect() : null, sensitive: Boolean(sensitive) };
 }
 function nodeElement(value: Node | null | undefined) { return value instanceof HTMLElement ? value : value?.parentElement || null; }
 function askSelection(context: ContextMenuTarget) { useUi.getState().setAssist(true); publishSelectionAsk({ selection: context.selection, rect: context.selectionRect ? { left: context.selectionRect.left, top: context.selectionRect.top, bottom: context.selectionRect.bottom, width: context.selectionRect.width } : null, pageUrl: window.location.href }); }

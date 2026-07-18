@@ -60,9 +60,9 @@ export function AssistDrawer({ projectId, nodeId }: { projectId?: string; nodeId
       const current = session || await api<AssistSession>('/assist/v2/sessions', json('POST', {
         project_id: projectId, scope_type: nodeId ? 'node' : 'project', scope_id: scopeId,
         view_context: viewContext
-      }));
+      }, '创建 Assist 会话'));
       setSession(current);
-      const result = await api<{ message: AssistMessage }>(`/assist/v2/sessions/${current.id}/messages`, json('POST', { content: prompt, view_context: viewContext }));
+      const result = await api<{ message: AssistMessage }>(`/assist/v2/sessions/${current.id}/messages`, json('POST', { content: prompt, view_context: viewContext }, '发送 Assist 消息'));
       setMessages((items) => upsert(items, result.message));
       setPrompt(''); setRunning(true);
     } catch (error) { toast((error as Error).message, 'error'); }
@@ -70,7 +70,7 @@ export function AssistDrawer({ projectId, nodeId }: { projectId?: string; nodeId
 
   async function cancel() {
     if (!session) return;
-    try { await api(`/assist/v2/sessions/${session.id}/cancel`, json('POST')); setRunning(false); }
+    try { await api(`/assist/v2/sessions/${session.id}/cancel`, json('POST', undefined, '停止 Assist 会话')); setRunning(false); }
     catch (error) { toast((error as Error).message, 'error'); }
   }
 
@@ -91,7 +91,7 @@ export function AssistDrawer({ projectId, nodeId }: { projectId?: string; nodeId
         ok = result.handled === true;
       }
     } catch (error) { ok = false; result = { error: (error as Error).message }; }
-    try { const next = await api<UiAction>(`/assist/v2/sessions/${targetSessionId}/actions/${action.id}/result`, json('POST', { ok, result })); setActions((items) => upsert(items, next)); } catch (error) { toast((error as Error).message, 'error'); }
+    try { const next = await api<UiAction>(`/assist/v2/sessions/${targetSessionId}/actions/${action.id}/result`, json('POST', { ok, result }, { name: '同步 Assist 操作结果', feedback: 'background', timeoutMs: 120_000 })); setActions((items) => upsert(items, next)); } catch (error) { toast((error as Error).message, 'error'); }
   }
 
   return (

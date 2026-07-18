@@ -5,7 +5,7 @@ import { HttpError } from './http.mjs';
 import { addTrace, mutate, owner, readState } from './state.mjs';
 import { git, isGitRepo } from './git-utils.mjs';
 import { authorizeRepositoryAction, roleAllows } from './authorization.mjs';
-import { createInstallationToken, resolveGithubAppConfig } from './github-service.mjs';
+import { createInstallationToken, githubGitAuthEnv, resolveGithubAppConfig } from './github-service.mjs';
 import { AIWS_HOME } from './config.mjs';
 import { assertManagedProjectWritable } from './project-lifecycle.mjs';
 import { assertProjectLifecycleIdle, withProjectLifecycleLock } from './project-lifecycle-operations.mjs';
@@ -33,7 +33,7 @@ export async function startAssistRun(sessionId, adapterResponse) {
       if (!profile) throw new Error('active_codex_profile_required');
       let output = '', chain = Promise.resolve(), threadId = session.codex_thread_id;
       const prompt = assistPrompt(session, userMessage?.content || '', hierarchyContext(state, session));
-      const runResult = await runCodexJson({ state, profile, prompt, cwd: project?.repo_path || project?.workspace_root || AIWS_HOME, resumeId: threadId, sandbox: 'read-only', signal: controller.signal, onEvent: (event) => {
+      const runResult = await runCodexJson({ state, profile, prompt, cwd: project?.repo_path || project?.workspace_root || AIWS_HOME, resumeId: threadId, sandbox: 'read-only', projectId: project.id, signal: controller.signal, onEvent: (event) => {
         if (event.type === 'thread.started' && event.thread_id) threadId = event.thread_id;
         const text = extractMessage(event); if (text) output += text;
         const safe = { kind: event.type, item_type: event.item?.type || null, text: text || undefined };
@@ -165,7 +165,7 @@ async function executeGitAction(action) {
     const config = resolveGithubAppConfig(state);
     if (!config || !binding?.installation_id) throw new HttpError(409, { error: 'github_installation_token_required' });
     const access = await createInstallationToken(config, binding.installation_id);
-    result = git(repo, ['push', remote, refspec], 60000, { GIT_TERMINAL_PROMPT: '0', GIT_CONFIG_COUNT: '1', GIT_CONFIG_KEY_0: 'http.extraHeader', GIT_CONFIG_VALUE_0: `Authorization: Bearer ${access.token}` });
+    result = git(repo, ['push', remote, refspec], 60000, githubGitAuthEnv(access.token));
   }
   await mutate((data) => { addTrace(data, action.name === 'git_commit' ? 'git.commit.created' : 'git.push.created', { project_id: project.id, node_id: action.node_id, summary: result.ok ? `Assist 确认后执行 ${action.name}。` : `Assist ${action.name} 执行失败。`, data: result }, actor.id); });
   if (!result.ok) throw new HttpError(409, { error: `${action.name}_failed`, detail: result.stderr || result.error });

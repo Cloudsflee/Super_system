@@ -1,0 +1,54 @@
+name: V1.8 PR Gate
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  v18-pr-linux:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      AIWS_TEST_BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
+    steps:
+      - uses: actions/checkout@v4
+        with: { fetch-depth: 0 }
+      - uses: pnpm/action-setup@v4
+        with: { version: 10.14.0 }
+      - uses: actions/setup-node@v4
+        with: { node-version: 24, cache: pnpm }
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm test:v18:pr
+      - if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: v18-pr-linux-${{ github.run_id }}
+          path: .ai-workspace/test-reports/v1.8/
+          if-no-files-found: error
+          retention-days: 14
+
+  v18-pr-windows:
+    runs-on: windows-latest
+    timeout-minutes: 15
+    env:
+      AIWS_TEST_BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
+    steps:
+      - uses: actions/checkout@v4
+        with: { fetch-depth: 0 }
+      - uses: pnpm/action-setup@v4
+        with: { version: 10.14.0 }
+      - uses: actions/setup-node@v4
+        with: { node-version: 24, cache: pnpm }
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm test:v18:pr
+      - if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: v18-pr-windows-${{ github.run_id }}
+          path: .ai-workspace/test-reports/v1.8/
+          if-no-files-found: error
+          retention-days: 14

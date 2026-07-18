@@ -12,7 +12,7 @@ fs.writeFileSync(path.join(source, 'README.md'), '# Assist lifecycle baseline\n'
 fs.writeFileSync(path.join(source, 'blob.bin'), Buffer.from([0, 1, 2, 255]));
 run('git', ['add', '.'], source); run('git', ['commit', '-m', 'baseline'], source);
 const sourceBefore = repositorySnapshot(source);
-const port = 4601;
+const port = Number(process.env.AIWS_TEST_PORT || 4601);
 let server;
 try {
   server = await startApi({ port, home: fixture.home, ccSwitch: fixture.ccSwitch });
@@ -116,6 +116,8 @@ try {
   await api(port, `/assist/v3/sessions/${forked.id}/archive`, 'POST', {});
   assert.equal((await api(port, '/assist/v3/sessions?archived=only')).some((item) => item.id === forked.id), true);
   await api(port, `/assist/v3/sessions/${forked.id}/restore`, 'POST', {});
+  await api(port, `/assist/v3/sessions/${forked.id}/turns/${contextual.id}/stop`, 'POST', {}, 409, 'assist_turn_scope_mismatch');
+  await api(port, `/assist/v3/sessions/${forked.id}/turns/${contextual.id}/retry`, 'POST', { adapter: 'test' }, 409, 'assist_turn_scope_mismatch');
 
   const sessionA = await newSession(project.project.id, 'Concurrent A');
   const sessionB = await newSession(project.project.id, 'Concurrent B');

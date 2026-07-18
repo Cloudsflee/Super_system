@@ -126,7 +126,7 @@ async function runV3Turn(turnId) {
         additionalContext: applicationAdditionalContext(start),
         dynamicTools: dynamicPageToolSpec(start.turn.view_context, start.turn.collaboration_mode, { state: runtimeState, projectId: start.project.id }),
         attachmentMounts: attachmentBindings.mounts,
-        cwd, resumeId: threadId, sandbox, mode: start.turn.collaboration_mode,
+        cwd, resumeId: threadId, sandbox, mode: start.turn.collaboration_mode, projectId: start.project.id,
         signal: controller.signal, onEvent: eventHandler,
         onApproval: async (request) => { const saved = await persistV3TypedEvent(start.session.id, start.turn.id, 'approval', request); return saved ? waitForRuntimeApproval(saved.data.approval_id, start.turn.id, controller.signal) : false; },
         onUserInput: (request) => waitForAssistUserInput(start.session.id, start.turn.id, request, controller.signal),

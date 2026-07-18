@@ -45,7 +45,7 @@ export async function revokeHostBridgeDevice(deviceId) {
 }
 
 export async function hostBridgeCapability() {
-  const state = await readState(), paired = state.host_bridge_devices.filter((item) => !item.revoked_at), online = paired.filter((item) => onlineDevices.has(item.id));
+  const state = await readState(), paired = state.host_bridge_devices.filter((item) => !item.revoked_at), online = paired.filter((item) => onlineDevices.get(item.id)?.readyState === 1);
   if (!paired.length) return unavailable('windows_bridge_not_paired');
   if (!online.length) return { ...unavailable('windows_bridge_offline'), paired_devices: paired.length };
   const protocol = online.filter((item) => item.protocol_version === HOST_BRIDGE_PROTOCOL_VERSION && item.bridge_version === HOST_BRIDGE_VERSION);
@@ -104,18 +104,20 @@ async function authenticateBridge(request, parsed) {
 }
 
 function connectDevice(ws, device) {
-  onlineDevices.get(device.id)?.close(1012, 'replaced'); onlineDevices.set(device.id, ws);
   let hello = false, heartbeat = setTimeout(() => ws.close(1008, 'hello_timeout'), 10_000), chain = Promise.resolve();
   ws.on('message', (raw) => { chain = chain.then(async () => {
     let message; try { message = JSON.parse(String(raw)); } catch { throw new Error('invalid_json'); }
     if (!hello) {
       if (message.type !== 'hello' || Number(message.protocol_version) !== HOST_BRIDGE_PROTOCOL_VERSION) throw new Error('protocol_incompatible');
-      hello = true; clearTimeout(heartbeat); await recordDeviceHello(device.id, message.capabilities || {}, message.bridge_version); return sendJson(ws, { type: 'hello_ack', protocol_version: HOST_BRIDGE_PROTOCOL_VERSION, app_version: HOST_BRIDGE_VERSION });
+      hello = true; clearTimeout(heartbeat);
+      if (!await recordDeviceHello(device.id, message.capabilities || {}, message.bridge_version)) throw new Error('device_revoked');
+      const previous = onlineDevices.get(device.id); onlineDevices.set(device.id, ws); if (previous && previous !== ws) previous.close(1012, 'replaced');
+      return sendJson(ws, { type: 'hello_ack', protocol_version: HOST_BRIDGE_PROTOCOL_VERSION, app_version: HOST_BRIDGE_VERSION });
     }
     if (message.type === 'heartbeat') { await touchDevice(device.id); return sendJson(ws, { type: 'heartbeat_ack', at: now() }); }
     await handleTerminalFrame(device.id, message);
   }).catch((error) => ws.close(1008, safeProtocolError(error))); });
-  ws.on('close', () => { clearTimeout(heartbeat); if (onlineDevices.get(device.id) === ws) onlineDevices.delete(device.id); for (const channel of terminalChannels.values()) if (channel.deviceId === device.id) void closeChannel(channel, new Error('windows_bridge_disconnected')); void markDeviceOffline(device.id); });
+  ws.on('close', () => { clearTimeout(heartbeat); const wasActive = onlineDevices.get(device.id) === ws; if (wasActive) onlineDevices.delete(device.id); for (const channel of terminalChannels.values()) if (channel.deviceId === device.id && channel.ws === ws) void closeChannel(channel, new Error('windows_bridge_disconnected')); if (wasActive) void markDeviceOffline(device.id); });
 }
 
 async function handleTerminalFrame(deviceId, message) {
@@ -169,12 +171,12 @@ async function closeChannel(channel, error) {
 async function sendFile(ws, file, transferId, sessionId) { const handle = await fsp.open(file, 'r'); try { let sequence = 0, position = 0; while (true) { const buffer = Buffer.allocUnsafe(CHUNK_BYTES), { bytesRead } = await handle.read(buffer, 0, buffer.length, position); if (!bytesRead) break; position += bytesRead; await sendJson(ws, { type: 'workspace_chunk', session_id: sessionId, transfer_id: transferId, sequence: sequence++, chunk: buffer.subarray(0, bytesRead).toString('base64') }); } } finally { await handle.close(); } }
 function sendJson(ws, value) { return new Promise((resolve, reject) => { if (ws.readyState !== 1) return reject(new Error('windows_bridge_offline')); ws.send(JSON.stringify(value), (error) => error ? reject(error) : resolve()); }); }
 function withTimeout(promise, ms, code) { return new Promise((resolve, reject) => { const timer = setTimeout(() => reject(new Error(code)), ms); promise.then((value) => { clearTimeout(timer); resolve(value); }, (error) => { clearTimeout(timer); reject(error); }); }); }
-async function recordDeviceHello(deviceId, capabilities, bridgeVersion) { await mutate((state) => { const item = state.host_bridge_devices.find((entry) => entry.id === deviceId); if (item) Object.assign(item, { status: 'online', bridge_version: safeVersion(bridgeVersion || item.bridge_version), capabilities: sanitizeCapabilities(capabilities), last_seen_at: now(), updated_at: now() }); }); }
-async function touchDevice(deviceId) { await mutate((state) => { const item = state.host_bridge_devices.find((entry) => entry.id === deviceId); if (item) Object.assign(item, { status: 'online', last_seen_at: now(), updated_at: now() }); }); }
+async function recordDeviceHello(deviceId, capabilities, bridgeVersion) { return mutate((state) => { const item = state.host_bridge_devices.find((entry) => entry.id === deviceId && !entry.revoked_at); if (!item) return false; Object.assign(item, { status: 'online', bridge_version: safeVersion(bridgeVersion || item.bridge_version), capabilities: sanitizeCapabilities(capabilities), last_seen_at: now(), updated_at: now() }); return true; }); }
+async function touchDevice(deviceId) { await mutate((state) => { const item = state.host_bridge_devices.find((entry) => entry.id === deviceId && !entry.revoked_at); if (item) Object.assign(item, { status: 'online', last_seen_at: now(), updated_at: now() }); }); }
 async function markDeviceOffline(deviceId) { await mutate((state) => { const item = state.host_bridge_devices.find((entry) => entry.id === deviceId); if (item && !item.revoked_at) Object.assign(item, { status: 'offline', updated_at: now() }); }); }
 function unavailable(reason) { return { available: false, runtime: 'windows_bridge', reason, protocol_version: HOST_BRIDGE_PROTOCOL_VERSION }; }
 function sanitizeCapabilities(value) { return { os: String(value.os || 'windows').slice(0, 40), arch: String(value.arch || '').slice(0, 40), conpty: value.conpty === true, codex_available: value.codex_available === true, codex_version: String(value.codex_version || '').slice(0, 100), code_page: String(value.code_page || '').slice(0, 40) }; }
-function publicDevice(item) { return { id: item.id, name: item.name, status: onlineDevices.has(item.id) ? 'online' : item.status, protocol_version: item.protocol_version, bridge_version: item.bridge_version || null, capabilities: item.capabilities || {}, last_seen_at: item.last_seen_at, paired_at: item.paired_at, revoked_at: item.revoked_at }; }
+function publicDevice(item) { return { id: item.id, name: item.name, status: item.revoked_at ? 'revoked' : onlineDevices.get(item.id)?.readyState === 1 ? 'online' : 'offline', protocol_version: item.protocol_version, bridge_version: item.bridge_version || null, capabilities: item.capabilities || {}, last_seen_at: item.last_seen_at, paired_at: item.paired_at, revoked_at: item.revoked_at }; }
 function safeName(value) { return String(value || 'Windows device').replace(/[\0\r\n]/g, '').slice(0, 100); }
 function safeVersion(value) { return String(value || HOST_BRIDGE_VERSION).replace(/[^a-zA-Z0-9.+_-]/g, '').slice(0, 50); }
 function safeToken(value) { const result = String(value || '').replace(/[^a-zA-Z0-9._-]/g, ''); if (!result || result.length > 200) throw new Error('bridge_token_invalid'); return result; }

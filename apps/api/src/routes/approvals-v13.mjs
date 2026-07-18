@@ -6,6 +6,7 @@ import { applyConfigRevision } from '../config-revision-service.mjs';
 import { pushV3Event } from '../assist-v3-events.mjs';
 import { cancelPendingTurnApprovals, hasActiveTurn } from '../assist-v3-domain.mjs';
 import { assertProjectLifecycleIdle, withProjectLifecycleLock } from '../project-lifecycle-operations.mjs';
+import { operationEvent, syncProposalOperationState } from '../assist-operation-metadata.mjs';
 
 export const approvalV13Routes = [
   makeRoute('GET', '/approvals', listApprovals),
@@ -37,7 +38,8 @@ async function decideApproval({ res, params, body }) {
       return send(res, 200, await (project ? withProjectLifecycleLock(project.id, apply) : apply()));
     }
   }
-  const result = await mutate((state) => {
+  let result;
+  try { result = await mutate((state) => {
     const actor = owner(state);
     if (['proposal', 'change_proposal'].includes(params.type)) {
       const proposal = state.change_proposals.find((item) => item.id === params.id);
@@ -48,6 +50,7 @@ async function decideApproval({ res, params, body }) {
       if (body.decision === 'defer') {
         if (proposal.status !== 'pending') throw new HttpError(409, { error: 'proposal_not_pending' });
         Object.assign(proposal, { attention_state: 'queued', revision: Number(proposal.revision || 1) + 1, updated_at: now() });
+        publishProposalOperations(state, proposal);
         addTrace(state, 'change_proposal.deferred', tracePayload(proposal, '暂定变更'), actor.id);
         return { item: proposalItem(proposal), decision: 'defer' };
       }
@@ -55,16 +58,21 @@ async function decideApproval({ res, params, body }) {
         if (proposal.status === 'rejected') return { item: proposalItem(proposal), decision: 'reject', idempotent: true };
         if (proposal.status !== 'pending') throw new HttpError(409, { error: 'proposal_not_pending' });
         Object.assign(proposal, { status: 'rejected', attention_state: 'resolved', rejected_by_user_id: actor.id, rejection_reason: String(body.reason || '用户拒绝').slice(0, 1000), revision: Number(proposal.revision || 1) + 1, updated_at: now() });
+        publishProposalOperations(state, proposal);
         addTrace(state, 'change_proposal.rejected', tracePayload(proposal, '拒绝变更'), actor.id);
         return { item: proposalItem(proposal), decision: 'reject' };
       }
       const applied = applyProposalAtomically(state, proposal, actor, body);
+      publishProposalOperations(state, proposal);
       addTrace(state, 'change_proposal.applied', { ...tracePayload(proposal, '批准并应用变更'), data: { applied: applied.applied } }, actor.id);
       return { item: proposalItem(proposal), decision: 'approve_apply', applied: applied.applied, idempotent: applied.idempotent };
     }
     if (['runtime', 'runtime_approval'].includes(params.type)) return decideRuntime(state, actor, params.id, body);
     throw new HttpError(400, { error: 'unsupported_approval_type' });
-  });
+  }); } catch (error) {
+    if (shouldMarkWorkflowProposalStale(error)) await markWorkflowProposalStale(params.id, error.payload?.reason || 'target_changed');
+    throw error;
+  }
   return send(res, 200, result);
 }
 
@@ -107,3 +115,13 @@ function tracePayload(proposal, verb) { return { project_id: proposal.project_id
 function repeatedProposalDecision(item, decision) { return (decision === 'approve_apply' && item.status === 'applied') || (decision === 'reject' && item.status === 'rejected') || (decision === 'defer' && item.status === 'pending' && item.attention_state === 'queued'); }
 function repeatedRuntimeDecision(item, decision) { return (decision === 'approve_apply' && item.status === 'approved') || (decision === 'reject' && item.status === 'rejected') || (decision === 'defer' && item.status === 'pending' && item.attention_state === 'queued'); }
 function assertProjectReferenceIdle(state, projectId) { return projectId ? assertProjectLifecycleIdle(state.projects.find((item) => item.id === projectId)) : null; }
+function publishProposalOperations(state, proposal) { for (const operation of syncProposalOperationState(state, proposal)) pushV3Event(state, operation.session_id, operation.turn_id, 'operation', operationEvent(operation)); }
+function shouldMarkWorkflowProposalStale(error) { return error instanceof HttpError && error.payload?.error === 'proposal_stale' && !['revision_mismatch', 'client_target_hash_mismatch', 'target_hash_mismatch'].includes(error.payload?.reason); }
+async function markWorkflowProposalStale(proposalId, reason) {
+  await mutate((state) => {
+    const proposal = state.change_proposals.find((item) => item.id === proposalId && item.apply_action?.type === 'workflow_graph_patch');
+    if (!proposal || !['pending', 'approved'].includes(proposal.status)) return null;
+    Object.assign(proposal, { status: 'stale', attention_state: 'resolved', stale_reason: reason, revision: Number(proposal.revision || 1) + 1, updated_at: now() });
+    publishProposalOperations(state, proposal); return proposal;
+  });
+}

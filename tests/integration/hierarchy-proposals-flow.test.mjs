@@ -5,29 +5,38 @@ import os from 'node:os';
 import path from 'node:path';
 import { createConfirmedProject } from './v13-test-helpers.mjs';
 
-const port = 4573;
+const port = Number(process.env.AIWS_TEST_PORT || 4573);
 const home = fs.mkdtempSync(path.join(os.tmpdir(), 'aiws-hierarchy-home-'));
 const child = spawn(process.execPath, ['apps/api/server.mjs'], { env: { ...process.env, AIWS_PORT: String(port), AIWS_HOME: home, NODE_ENV: 'test', AIWS_BYPASS_SETUP: '1' }, stdio: ['ignore', 'pipe', 'pipe'] });
 await waitForServer();
 try {
   const project = await createConfirmedProject({ baseUrl: `http://127.0.0.1:${port}`, title: 'Hierarchy Project', goal: '验证层级会话与审批', workflowNodes: [{ type: 'research', title: '调研节点', goal: '收集证据' }] });
-  const node = (await api(`/projects/${project.project.id}`)).nodes[0];
+  let bundle = await api(`/projects/${project.project.id}`);
+  const workstream = bundle.nodes.find((item) => item.role === 'workstream');
+  const node = bundle.nodes.find((item) => item.role === 'task' && item.parent_node_id === workstream.id);
   const top = await api('/agent-sessions', { method: 'POST', body: { project_id: project.project.id, scope_type: 'project', scope_id: project.project.id, title: 'Top Codex' } });
   const childSession = await api('/agent-sessions', { method: 'POST', body: { project_id: project.project.id, workspace_id: node.workspace_id, scope_type: 'node', scope_id: node.id, parent_session_id: top.id, title: 'Node Codex' } });
   assert.equal(childSession.parent_session_id, top.id);
   const submission = await api(`/agent-sessions/${childSession.id}/submissions`, { method: 'POST', body: { title: '节点提交', summary: '完成摘要', node_id: node.id, evidence_refs: ['trace:hierarchy'] } });
   const directSubmission = await api(`/nodes/${node.id}/submissions`, { method: 'POST', body: { title: '界面提交', summary: '从复盘工作区提交顶层', evidence_refs: ['trace:workspace'] } });
   assert.ok(directSubmission.to_session_id);
-  const nodeUpdate = await api(`/workflows/${project.workflow.id}/proposals`, { method: 'POST', body: { action: 'update_node', node_id: node.id, patch: { type: 'execution', title: '执行节点', goal: '实现调研结论' } } });
+  const nodeUpdate = await api(`/workflows/${project.workflow.id}/graph-proposals`, { method: 'POST', body: {
+    parent_node_id: workstream.id, expected_revision: workstream.plan_revision,
+    operations: [{ type: 'update_node', node_id: node.id, patch: { task_kind: 'code', execution_mode: 'codex', title: '执行任务', goal: '实现调研结论' } }]
+  } });
   await api(`/change-proposals/${nodeUpdate.id}/approve`, { method: 'POST', body: {} });
   await api(`/change-proposals/${nodeUpdate.id}/apply`, { method: 'POST', body: {} });
   const updatedWorkspace = await api(`/nodes/${node.id}/workspace`);
   assert.equal(updatedWorkspace.contract.version, 2);
   assert.ok(updatedWorkspace.contract.allowed_tools.includes('codex_runner'));
-  const nextGraph = await api(`/workflows/${project.workflow.id}/proposals`, { method: 'POST', body: { action: 'add_node', node: { type: 'analysis', title: '分析节点', goal: '消费调研提交' } } });
+  bundle = await api(`/projects/${project.project.id}`);
+  const nextGraph = await api(`/workflows/${project.workflow.id}/graph-proposals`, { method: 'POST', body: {
+    parent_node_id: workstream.id, expected_revision: bundle.nodes.find((item) => item.id === workstream.id).plan_revision,
+    operations: [{ type: 'add_node', node: { id: 'analysis-task', role: 'task', task_kind: 'analysis', execution_mode: 'assist', title: '分析任务', goal: '消费调研提交', dependency_ids: [] } }]
+  } });
   await api(`/change-proposals/${nextGraph.id}/approve`, { method: 'POST', body: {} });
   await api(`/change-proposals/${nextGraph.id}/apply`, { method: 'POST', body: {} });
-  const nextNode = (await api(`/projects/${project.project.id}`)).nodes.find((item) => item.type === 'analysis');
+  const nextNode = (await api(`/projects/${project.project.id}`)).nodes.find((item) => item.id === 'analysis-task');
   const context = await api(`/nodes/${nextNode.id}/context-pack/preview`, { method: 'POST', body: {} });
   assert.ok(context.content_json.submissions.some((item) => item.id === submission.id));
   assert.ok(context.content_json.submissions.some((item) => item.id === directSubmission.id));

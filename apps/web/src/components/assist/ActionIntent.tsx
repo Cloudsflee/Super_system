@@ -7,7 +7,7 @@ export function ActionIntent({ action, sessionId, onChange }: { action: UiAction
   const { toast, showProposal } = useUi();
   async function decide(decision: 'confirm' | 'reject') {
     try {
-      const next = await api<UiAction>(`/assist/v2/sessions/${sessionId}/actions/${action.id}/${decision}`, json('POST'));
+      const next = await api<UiAction>(`/assist/v2/sessions/${sessionId}/actions/${action.id}/${decision}`, json('POST', undefined, decision === 'confirm' ? '确认 Assist 操作' : '拒绝 Assist 操作'));
       onChange(next);
       if (decision === 'confirm' && next.risk === 'proposal' && typeof next.result?.id === 'string') showProposal(next.result.id);
     } catch (error) { toast((error as Error).message, 'error'); }

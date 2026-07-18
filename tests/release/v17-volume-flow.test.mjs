@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
 
 const image = process.env.AIWS_APP_IMAGE || 'aiws-app:1.7.0';
+const testRunId = String(process.env.AIWS_TEST_RUN_ID || `standalone-${process.pid}`).replace(/[^a-zA-Z0-9_.-]/g, '-');
 const suffix = `${process.pid}-${Date.now()}`;
 const source = `aiws-v17-release-source-${suffix}`;
 const target = `aiws-v17-release-target-${suffix}`;
@@ -13,7 +14,7 @@ const volumes = [source, target, migration, invalidSource, invalidTarget];
 try {
   docker(['info', '--format', '{{.ServerVersion}}']);
   docker(['image', 'inspect', image]);
-  for (const volume of volumes) docker(['volume', 'create', '--label', 'aiws.owner=aiws-v17-release-test', volume]);
+  for (const volume of volumes) docker(['volume', 'create', '--label', 'aiws.owner=aiws-v17-release-test', '--label', `aiws.test_run=${testRunId}`, volume]);
   seedSchema15(source);
   const sourceStateSha = stateSha(source);
 
@@ -165,5 +166,6 @@ function docker(args, { capture = false, allowFailure = false } = {}) {
 }
 
 function raw(args, capture = true) {
-  return spawnSync('docker', args, { encoding: 'utf8', stdio: capture ? 'pipe' : 'inherit', windowsHide: true });
+  const labeled = args[0] === 'run' ? ['run', '--label', `aiws.test_run=${testRunId}`, ...args.slice(1)] : args;
+  return spawnSync('docker', labeled, { encoding: 'utf8', stdio: capture ? 'pipe' : 'inherit', windowsHide: true });
 }

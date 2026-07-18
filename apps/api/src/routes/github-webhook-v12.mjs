@@ -2,7 +2,8 @@ import { createHmac, timingSafeEqual } from 'node:crypto';
 import { HttpError, makeRoute, send } from '../http.mjs';
 import { addTrace, mutate, owner, readState } from '../state.mjs';
 import { appCredentials, resolveGithubAppConfig } from '../github-service.mjs';
-import { now } from '../../../../packages/shared/index.mjs';
+import { id, now } from '../../../../packages/shared/index.mjs';
+import { pushV3Event } from '../assist-v3-events.mjs';
 
 export const githubWebhookV12Routes = [makeRoute('POST', '/github/webhook', webhook)];
 
@@ -42,11 +43,60 @@ function applyEvent(state, event, payload) {
     for (const repo of payload.repositories_added || []) if (!installation.repositories.some((item) => String(item.id) === String(repo.id))) installation.repositories.push({ id: String(repo.id), name: repo.name, full_name: repo.full_name, private: repo.private, selected: false, permissions: { pull: true, push: false, admin: false } });
     installation.updated_at = now();
   }
+  if (['pull_request', 'pull_request_review', 'check_run', 'check_suite', 'status', 'push'].includes(event)) applyDeliveryEvent(state, event, payload);
 }
 
 function removeBindings(state, installationId, repositoryIds = null) {
   state.repository_bindings = state.repository_bindings.filter((item) => String(item.installation_id) !== String(installationId) || (repositoryIds && !repositoryIds.has(String(item.repository_id))));
+  for (const connection of state.repository_connections.filter((item) => String(item.installation_id) === String(installationId) && (!repositoryIds || repositoryIds.has(String(item.repository_id))))) Object.assign(connection, { sync_status: 'disconnected', disconnected_at: now(), updated_at: now() });
 }
+
+function applyDeliveryEvent(state, event, payload) {
+  const repositoryId = String(payload.repository?.id || ''), fullName = String(payload.repository?.full_name || '');
+  const connections = state.repository_connections.filter((item) => repositoryId && String(item.repository_id) === repositoryId || fullName && item.full_name === fullName);
+  if (!connections.length) return;
+  const connectionIds = new Set(connections.map((item) => item.id));
+  const branch = String(payload.pull_request?.head?.ref || payload.ref || '').replace(/^refs\/heads\//, '');
+  const sha = String(payload.check_run?.head_sha || payload.check_suite?.head_sha || payload.sha || payload.after || '');
+  let deliveries = state.deliveries.filter((item) => connectionIds.has(item.connection_id));
+  if (payload.pull_request?.number) deliveries = deliveries.filter((item) => item.pr_number
+    ? Number(item.pr_number) === Number(payload.pull_request.number)
+    : Boolean(branch) && item.branch === branch);
+  else if (branch) deliveries = deliveries.filter((item) => item.branch === branch);
+  else if (sha) deliveries = deliveries.filter((item) => item.commit_sha === sha);
+  for (const delivery of deliveries) {
+    const update = { event, action: payload.action || null, received_at: now() };
+    if (event === 'pull_request') {
+      Object.assign(delivery, { pr_number: payload.pull_request.number, pr_url: payload.pull_request.html_url || delivery.pr_url, pr_state: payload.pull_request.merged ? 'merged' : payload.pull_request.state, pr_draft: Boolean(payload.pull_request.draft) });
+      update.pull_request = { number: payload.pull_request.number, state: delivery.pr_state, draft: delivery.pr_draft, merged: Boolean(payload.pull_request.merged) };
+    } else if (event === 'pull_request_review') {
+      delivery.review_state = payload.review?.state || payload.action || null; update.review_state = delivery.review_state;
+    } else if (event === 'check_run') {
+      delivery.check_run = { id: payload.check_run?.id, status: payload.check_run?.status, conclusion: payload.check_run?.conclusion }; update.check_run = delivery.check_run;
+    } else if (event === 'check_suite') {
+      delivery.check_suite = { id: payload.check_suite?.id, status: payload.check_suite?.status, conclusion: payload.check_suite?.conclusion }; update.check_suite = delivery.check_suite;
+    } else if (event === 'status') {
+      delivery.commit_status = { state: payload.state, context: payload.context, description: payload.description }; update.commit_status = delivery.commit_status;
+    } else if (event === 'push') {
+      delivery.remote_head_sha = payload.after || null; update.remote_head_sha = delivery.remote_head_sha;
+    }
+    delivery.updated_at = now(); appendDeliveryWebhookEvent(state, delivery, update);
+    const task = state.workflow_nodes.find((item) => item.id === delivery.task_id); if (task) { task.delivery_status = deliveryTaskStatus(event, delivery, payload) || task.delivery_status; task.updated_at = now(); }
+    for (const session of state.assist_sessions.filter((item) => item.version === 3 && item.scope_type === 'task' && item.scope_id === delivery.task_id && item.scope_status === 'active')) pushV3Event(state, session.id, null, 'delivery_webhook', { delivery_id: delivery.id, ...update });
+  }
+}
+
+function deliveryTaskStatus(event, delivery, payload) {
+  if (event === 'pull_request') return delivery.pr_draft ? 'draft' : delivery.pr_state;
+  if (event === 'pull_request_review') return delivery.review_state;
+  if (event === 'check_run') return delivery.check_run?.conclusion || delivery.check_run?.status;
+  if (event === 'check_suite') return delivery.check_suite?.conclusion || delivery.check_suite?.status;
+  if (event === 'status') return delivery.commit_status?.state;
+  if (event === 'push') return payload.after ? 'pushed' : null;
+  return null;
+}
+
+function appendDeliveryWebhookEvent(state, delivery, data) { const sequence = state.delivery_events.filter((item) => item.delivery_id === delivery.id).reduce((max, item) => Math.max(max, Number(item.sequence) || 0), 0) + 1; state.delivery_events.push({ id: id('dle'), delivery_id: delivery.id, project_id: delivery.project_id, task_id: delivery.task_id, sequence, type: 'github_webhook', data, created_at: now() }); }
 
 function verifySignature(raw, provided, secret) {
   if (!secret || !provided.startsWith('sha256=')) return false;

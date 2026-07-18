@@ -6,6 +6,13 @@ import { maskSecret } from '../../../packages/shared/index.mjs';
 
 const knownSecrets = new Map();
 
+export function rememberSecret(label, value) {
+  if (!value || String(value).length < 4) return null;
+  const ref = `memory:${safe(label)}:${randomBytes(6).toString('hex')}`;
+  knownSecrets.set(ref, String(value));
+  return ref;
+}
+
 export async function putSecret(label, value) {
   if (!value) return null;
   await fsp.mkdir(VAULT_DIR, { recursive: true });
@@ -51,9 +58,16 @@ export function redactKnownSecretsSync(value) {
   let text = maskSecret(String(value ?? ''));
   for (const secret of knownSecrets.values()) {
     if (secret.length < 4) continue;
-    text = text.split(secret).join('***MASKED***');
-    const encoded = JSON.stringify(secret).slice(1, -1);
-    if (encoded !== secret) text = text.split(encoded).join('***MASKED***');
+    const quoted = JSON.stringify(secret);
+    text = text.split(quoted).join(JSON.stringify('***MASKED***'));
+    const encoded = quoted.slice(1, -1);
+    if (secret.length >= 12) {
+      text = text.split(secret).join('***MASKED***');
+      if (encoded !== secret) text = text.split(encoded).join('***MASKED***');
+    } else {
+      text = text.replace(new RegExp(`(?<![A-Za-z0-9_])${escapeRegex(secret)}(?![A-Za-z0-9_])`, 'g'), '***MASKED***');
+      if (encoded !== secret) text = text.replace(new RegExp(`(?<![A-Za-z0-9_])${escapeRegex(encoded)}(?![A-Za-z0-9_])`, 'g'), '***MASKED***');
+    }
   }
   return text;
 }
@@ -71,3 +85,4 @@ export function redactKnownSecretStream(value, pending = '') {
 }
 
 function safe(value) { return String(value || '').replace(/[^a-zA-Z0-9_-]/g, ''); }
+function escapeRegex(value) { return String(value).replace(/[.*+?^${}()|[\]\\]/g, '\\$&'); }

@@ -5,7 +5,7 @@ import { api, cleanup, makeFixture, startApi } from './v13-test-helpers.mjs';
 
 const fixture = makeFixture('aiws-v13-github-repository-');
 const stateFile = path.join(fixture.home, 'data', 'state.json');
-const port = 4600;
+const port = Number(process.env.AIWS_TEST_PORT || 4600);
 const sentinels = ['v13-client-secret-sentinel', 'v13-private-key-sentinel', 'v13-webhook-secret-sentinel'];
 let server;
 try {

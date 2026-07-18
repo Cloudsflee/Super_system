@@ -5,7 +5,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { createConfirmedProject, repositorySnapshot } from './v13-test-helpers.mjs';
 
-const port = 4568;
+const port = Number(process.env.AIWS_TEST_PORT || 4568);
 const repo = fs.mkdtempSync(path.join(os.tmpdir(), 'aiws-git-repo-'));
 const testHome = fs.mkdtempSync(path.join(os.tmpdir(), 'aiws-git-home-'));
 run('git', ['init'], repo);
@@ -23,7 +23,7 @@ try {
   const managedRepo = project.managedRepo;
   run('git', ['config', 'user.email', 'aiws@example.test'], managedRepo);
   run('git', ['config', 'user.name', 'AIWS Tester'], managedRepo);
-  const node = (await api(`/projects/${project.project.id}`)).nodes[0];
+  const node = (await api(`/projects/${project.project.id}`)).nodes.find((item) => item.role === 'task');
   const approvalId = await approveNodeRun(project.project.id, node.id);
   await apiStatus(`/nodes/${node.id}/run`, { method: 'POST', body: { adapter: 'test', runner: 'codex', approval_id: approvalId } }, 409, 'node_run_approval_scope_mismatch');
   const runResult = await api(`/nodes/${node.id}/run`, { method: 'POST', body: { adapter: 'test', runner: 'codex_docker', approval_id: approvalId } });

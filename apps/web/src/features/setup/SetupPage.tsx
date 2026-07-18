@@ -7,6 +7,7 @@ import { keys, useDeployment, useSetup } from '../../api/queries';
 import { FullPageState } from '../../components/common/FullPageState';
 import { GithubSetup } from './GithubSetup';
 import { CodexSetup } from './CodexSetup';
+import { OperationDiagnosticsButton } from '../../operations/OperationFeedback';
 
 export function SetupPage() {
   const setup = useSetup();
@@ -23,12 +24,12 @@ export function SetupPage() {
     if (callbackKey && processedCallback.current === callbackKey) return;
     if (callbackKey) processedCallback.current = callbackKey;
     if (installationId) {
-      api('/github/installations/setup', json('POST', { installation_id: installationId })).then(async () => { await client.invalidateQueries({ queryKey: keys.setup }); navigate('/setup', { replace: true }); }).catch((error) => setCallbackError(error.message));
+      api('/github/installations/setup', json('POST', { installation_id: installationId }, '完成 GitHub App 安装回调')).then(async () => { await client.invalidateQueries({ queryKey: keys.setup }); navigate('/setup', { replace: true }); }).catch((error) => setCallbackError(error.message));
       return;
     }
     if (!code) return;
     const state = search.get('state') || localStorage.getItem('aiws-github-manifest-state');
-    api('/github/manifest/callback', json('POST', { code, state })).then(async () => { localStorage.removeItem('aiws-github-manifest-state'); await client.invalidateQueries({ queryKey: keys.setup }); navigate('/setup', { replace: true }); }).catch((error) => setCallbackError(error.message));
+    api('/github/manifest/callback', json('POST', { code, state }, '完成 GitHub Manifest 回调')).then(async () => { localStorage.removeItem('aiws-github-manifest-state'); await client.invalidateQueries({ queryKey: keys.setup }); navigate('/setup', { replace: true }); }).catch((error) => setCallbackError(error.message));
   }, [location.search, client, navigate]);
   if (setup.isLoading) return <FullPageState title="正在读取配置" />;
   if (setup.isError || !setup.data) return <FullPageState title="无法读取配置" detail={setup.error?.message} retry={setup.refetch} />;
@@ -37,13 +38,13 @@ export function SetupPage() {
 
   async function setMode(mode: 'hosted' | 'byo') {
     setBusy(true); setCallbackError('');
-    try { await api('/setup/mode', json('PUT', { mode })); await refresh(); }
+    try { await api('/setup/mode', json('PUT', { mode }, '更新运行模式')); await refresh(); }
     catch (error) { setCallbackError((error as Error).message); }
     finally { setBusy(false); }
   }
   async function finish() {
     setBusy(true); setCallbackError('');
-    try { await api('/setup/complete', json('POST')); await refresh(); navigate((location.state as { from?: string } | null)?.from || '/', { replace: true }); }
+    try { await api('/setup/complete', json('POST', undefined, '完成工作区配置')); await refresh(); navigate((location.state as { from?: string } | null)?.from || '/', { replace: true }); }
     catch (error) { setCallbackError((error as Error).message); }
     finally { setBusy(false); }
   }
@@ -60,7 +61,7 @@ export function SetupPage() {
         <div className="setup-security"><KeyRound size={16} /><span>凭据保存在本地 vault</span></div>
       </aside>
       <section className="setup-main">
-        <header><span className="overline">WORKSPACE SETUP</span><h1>连接工作环境</h1><p>GitHub 与 Codex 验证完成后进入工作空间。</p></header>
+        <header className="setup-header"><div><span className="overline">WORKSPACE SETUP</span><h1>连接工作环境</h1><p>GitHub 与 Codex 验证完成后进入工作空间。</p></div><OperationDiagnosticsButton /></header>
         <section className="setup-section">
           <div className="section-title"><Box size={18} /><div><h2>部署环境</h2><p>{deployment.data?.mode === 'container' ? 'Container · Docker volume · socket runner' : 'Host development · local directory'}</p></div><span className={`status ${deployment.data?.storage?.ready && deployment.data?.docker?.ready ? 'ready' : 'pending'}`}>{deployment.data?.storage?.ready && deployment.data?.docker?.ready ? 'ready' : 'checking'}</span></div>
           {deployment.data?.mode === 'container' && <div className="deployment-flags"><span>Codex 导入 <b>{deployment.data.imports.codex_home ? '可用' : '未挂载'}</b></span><span>cc-switch <b>{deployment.data.imports.cc_switch ? '可用' : '未挂载'}</b></span><span>项目导入根 <b>{deployment.data.imports.projects_root ? '相对路径' : '未配置'}</b></span></div>}

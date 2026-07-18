@@ -19,7 +19,7 @@ export function AssetsPage() {
   const rows = query.data?.filter((asset) => status === 'all' || asset.status === status) || [];
   async function decide(asset: AssetRecord, action: 'confirm' | 'reject') {
     setBusy(asset.id);
-    try { await api(`/asset-candidates/${asset.id}/${action}`, json('POST')); await query.refetch(); toast(action === 'confirm' ? '资产已确认' : '资产候选已拒绝'); } catch (error) { toast((error as Error).message, 'error'); } finally { setBusy(''); }
+    try { await api(`/asset-candidates/${asset.id}/${action}`, json('POST', undefined, action === 'confirm' ? '确认资产' : '拒绝资产候选')); await query.refetch(); toast(action === 'confirm' ? '资产已确认' : '资产候选已拒绝'); } catch (error) { toast((error as Error).message, 'error'); } finally { setBusy(''); }
   }
   return (
     <section className="data-page"><header className="page-heading"><div><span className="overline">CONFIRMED KNOWLEDGE</span><h1>资产</h1><p>{rows.length} 项可追溯结果</p></div><label className="compact-filter"><Filter size={14} /><select id="assets-status-filter" value={status} onChange={(e) => setStatus(e.target.value)}><option value="all">全部状态</option><option value="candidate">待确认</option><option value="confirmed">已确认</option><option value="rejected">已拒绝</option><option value="stale">已过期</option><option value="disputed">有争议</option><option value="superseded">已取代</option></select></label></header>

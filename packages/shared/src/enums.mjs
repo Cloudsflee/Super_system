@@ -5,6 +5,9 @@ export const WorkspaceStatus = Object.freeze({ Draft: 'draft', Active: 'active',
 export const WorkflowStatus = Object.freeze({ Draft: 'draft', Proposed: 'proposed', Confirmed: 'confirmed', Active: 'active', Completed: 'completed', Archived: 'archived' });
 export const NodeStatus = Object.freeze({ Draft: 'draft', Ready: 'ready', Running: 'running', Blocked: 'blocked', NeedsReview: 'needs_review', Completed: 'completed', Skipped: 'skipped' });
 export const NodeType = Object.freeze({ GoalDefinition: 'goal_definition', Research: 'research', Analysis: 'analysis', Execution: 'execution', Retrospective: 'retrospective' });
+export const WorkflowNodeRole = Object.freeze({ Workstream: 'workstream', Task: 'task' });
+export const WorkstreamCategory = Object.freeze({ Deliverable: 'deliverable', Decision: 'decision', Coordination: 'coordination', Operation: 'operation' });
+export const TaskKind = Object.freeze({ Research: 'research', Analysis: 'analysis', Design: 'design', Content: 'content', Code: 'code', Test: 'test', Review: 'review', Deploy: 'deploy', Manual: 'manual', Integration: 'integration' });
 export const AssetStatus = Object.freeze({ Candidate: 'candidate', Confirmed: 'confirmed', Rejected: 'rejected', Archived: 'archived', Stale: 'stale', Disputed: 'disputed', Superseded: 'superseded' });
 export const RunnerStatus = Object.freeze({ Queued: 'queued', Running: 'running', Succeeded: 'succeeded', Failed: 'failed', Cancelled: 'cancelled', Partial: 'partial' });
 export const MemoryAuthority = Object.freeze({ UserConfirmed: 'user_confirmed', SystemConfirmed: 'system_confirmed', AiDraft: 'ai_draft', Imported: 'imported', CodexMemoryHint: 'codex_memory_hint' });
@@ -31,5 +34,9 @@ export const TRACE_EVENTS = Object.freeze([
   'project.trashed', 'project.restored', 'change_proposal.deferred', 'runtime_approval.decided',
   'github.repository.created',
   'config_revision.activated',
-  'assist.turn.created', 'assist.turn.completed', 'assist.turn.interrupted', 'assist.review.updated', 'terminal.session.created', 'terminal.session.completed'
+  'assist.turn.created', 'assist.turn.completed', 'assist.turn.interrupted', 'assist.review.updated', 'terminal.session.created', 'terminal.session.completed',
+  'mcp.client.created', 'mcp.client.revoked',
+  'workflow.generation.queued', 'workflow.generation.completed', 'workflow.generation.failed', 'workflow.migration.completed',
+  'repository.connection.created', 'repository.target.updated', 'delivery.policy.approved', 'delivery.started', 'delivery.completed', 'delivery.failed',
+  'assist.scope.invalidated'
 ]);

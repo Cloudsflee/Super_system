@@ -12,7 +12,7 @@ const sourceBefore = repositorySnapshot(source);
 const fakeCodex = path.resolve('tests/fixtures/fake-codex-app-server-v15.mjs');
 const serverEnv = { AIWS_CODEX_BIN: fakeCodex, AIWS_CODEX_VERSION: '0.144.0' };
 const stateFile = path.join(fixture.home, 'data', 'state.json');
-const port = 4615;
+const port = Number(process.env.AIWS_TEST_PORT || 4615);
 let server;
 
 try {

@@ -32,7 +32,7 @@ export function BriefWorkspace(props: Props) {
       <div className="brief-section-list">{props.brief.content.sections.map((section, index) => <BriefSectionEditor key={section.id} section={section} index={index} selected={selected === section.id} busy={props.busy} onFocus={() => setSelected(section.id)} onSave={(next) => props.onBrief([{ type: 'update_section', section_id: section.id, section: next }])} />)}</div>
     </main>
     <aside className={`workflow-draft-panel${mobilePane === 'workflow' ? ' mobile-active' : ''}`}>
-      <header><div><span>初始工作流</span><small>Revision {props.workflow.revision}</small></div><IconButton label="添加工作流节点" disabled={props.busy} onClick={() => props.onWorkflow([{ type: 'add_node', node: { type: 'execution', title: '新节点', goal: '定义节点目标', dependency_ids: [] } }])}><Plus size={14} /></IconButton></header>
+      <header><div><span>初始工作流</span><small>{props.workflow.nodes.length} 个独立工作单元 · Revision {props.workflow.revision}</small></div><IconButton label="添加工作流节点" disabled={props.busy} onClick={() => props.onWorkflow([{ type: 'add_node', node: { type: 'execution', title: '独立工作流', goal: '定义独立负责人、权限边界或并行交付物', dependency_ids: [] } }])}><Plus size={14} /></IconButton></header>
       <div className="workflow-draft-nodes">{props.workflow.nodes.map((node, index) => <WorkflowNodeEditor key={node.id} node={node} nodes={props.workflow.nodes} index={index} busy={props.busy} onOperation={(operation) => props.onWorkflow([operation])} />)}</div>
     </aside>
   </section>;

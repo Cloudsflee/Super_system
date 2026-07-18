@@ -3,7 +3,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { api, cleanup, makeFixture, sourceSnapshot, startApi } from './v13-test-helpers.mjs';
 
-const port = 4595;
+const port = Number(process.env.AIWS_TEST_PORT || 4595);
 const fixture = makeFixture('aiws-v13-project-');
 const source = path.join(fixture.root, 'external-source');
 fs.mkdirSync(path.join(source, 'src'), { recursive: true });
@@ -66,17 +66,20 @@ try {
 
   await api(port, `/projects/${projectId}/files/content`, 'PUT', { path: 'README.md', content: '# blocked\n' }, 409, 'project_onboarding_required');
   assert.equal(fs.readFileSync(path.join(managedRepo, 'README.md'), 'utf8'), '# External source\n');
-  const confirmed = await api(port, `/projects/${projectId}/onboarding/confirm`, 'POST', {});
+  const confirmed = await api(port, `/projects/${projectId}/onboarding/confirm`, 'POST', { workflow_nodes: manualWorkflow('lifecycle', '受管项目成果', 'code', 'codex') });
   assert.equal(confirmed.project.status, 'active');
   assert.equal(confirmed.project.onboarding_state, 'confirmed');
   assert.equal(confirmed.idempotent, false);
-  assert.equal(confirmed.nodes.length, 3);
+  assert.equal(confirmed.nodes.length, 2);
+  assert.equal(confirmed.nodes.find((item) => item.role === 'workstream').title, '受管项目成果');
+  assert.equal(confirmed.route, `/projects/${projectId}/workflow`);
   const confirmedAgain = await api(port, `/projects/${projectId}/onboarding/confirm`, 'POST', {});
   assert.equal(confirmedAgain.idempotent, true);
   assert.equal(confirmedAgain.workflow.id, confirmed.workflow.id);
+  assert.equal(confirmedAgain.route, confirmed.route);
   const confirmedBundle = await api(port, `/projects/${projectId}`);
-  assert.equal(confirmedBundle.nodes.length, 3);
-  assert.equal(confirmedBundle.contracts.length, 3);
+  assert.equal(confirmedBundle.nodes.length, 2);
+  assert.equal(confirmedBundle.contracts.length, 2);
 
   const saved = await api(port, `/projects/${projectId}/files/content`, 'PUT', { path: 'README.md', content: '# Managed copy\n' });
   assert.equal(saved.path, 'README.md');
@@ -135,7 +138,7 @@ try {
   assert.equal(fs.readFileSync(path.join(uploaded.project.repo_path, 'src', 'index.js'), 'utf8'), 'export const uploaded = true;\n');
   const uploadedAttachments = await api(port, `/assist/v3/sessions/${uploadDraft.assist_session.id}/attachments`);
   assert.equal(uploadedAttachments.some((item) => item.title === 'spec.txt'), true);
-  const uploadConfirmed = await api(port, `/projects/${uploadDraft.project.id}/onboarding/confirm`, 'POST', {});
+  const uploadConfirmed = await api(port, `/projects/${uploadDraft.project.id}/onboarding/confirm`, 'POST', { workflow_nodes: manualWorkflow('upload', '上传目录成果', 'code', 'codex') });
   assert.equal(uploadConfirmed.project.status, 'active');
   console.log('V1.3 project lifecycle integration tests passed');
 } finally {
@@ -143,11 +146,20 @@ try {
   cleanup(fixture.root);
 }
 
+function manualWorkflow(prefix, title, taskKind, executionMode) {
+  const workstreamId = `${prefix}-workstream`;
+  return [{
+    id: workstreamId, role: 'workstream', title, outcome: title, category: 'deliverable',
+    acceptance_criteria: [`验收 ${title}`], boundary: { deliverable: title }, dependency_ids: [],
+    tasks: [{ id: `${prefix}-task`, role: 'task', title: `完成${title}`, task_kind: taskKind, execution_mode: executionMode, dependency_ids: [] }]
+  }];
+}
+
 function seedProjectPurgeDependents(stateFile, { projectId, workspaceId }) {
   const state = JSON.parse(fs.readFileSync(stateFile, 'utf8')), at = new Date().toISOString();
   const artifact = path.join(path.dirname(path.dirname(stateFile)), 'artifacts', 'purge-test', 'project-sentinel.log');
   fs.mkdirSync(path.dirname(artifact), { recursive: true }); fs.writeFileSync(artifact, 'project artifact sentinel');
-  state.assist_sessions.push({ id: 'asst-purge-late', version: 3, project_id: projectId, workspace_id: workspaceId, clarification_policy: 'ask', status: 'idle', created_at: at, updated_at: at });
+  state.assist_sessions.push({ id: 'asst-purge-late', version: 3, project_id: projectId, workspace_id: workspaceId, scope_type: 'project', scope_id: projectId, scope_status: 'active', clarification_policy: 'ask', status: 'idle', created_at: at, updated_at: at });
   state.assist_turns.push({ id: 'turn-purge-late', session_id: 'asst-purge-late', project_id: projectId, status: 'completed', context_pack_id: 'ctx-purge-late', worktree_id: 'worktree-purge-late', created_at: at, updated_at: at });
   state.assist_messages.push({ id: 'message-purge-late', session_id: 'asst-purge-late', turn_id: 'turn-purge-late' });
   state.assist_events.push({ id: 'event-purge-late', sequence: 1, session_id: 'asst-purge-late', turn_id: 'turn-purge-late' });

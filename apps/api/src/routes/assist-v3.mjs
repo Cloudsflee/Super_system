@@ -1,4 +1,4 @@
-import { makeRoute, send, sendOneTimeSecret } from '../http.mjs';
+import { HttpError, makeRoute, send, sendOneTimeSecret } from '../http.mjs';
 import {
   addV3ReviewComment,
   applyV3Review,
@@ -53,6 +53,7 @@ import {
   uploadV3Attachment,
   updateV3Session
 } from '../assist-v3-service.mjs';
+import { testAdapter } from '../test-adapter.mjs';
 
 export const assistV3Routes = [
   makeRoute('GET', '/assist/v3/capabilities', async ({ res, query }) => send(res, 200, await listAssistCapabilities(query))),
@@ -77,9 +78,9 @@ export const assistV3Routes = [
   makeRoute('POST', '/assist/v3/btw/:id/turns', async ({ req, res, params, body }) => send(res, 202, await createAssistBtwTurn(params.id, body, { accessToken: req.headers['x-aiws-btw-token'] }))),
   makeRoute('GET', '/assist/v3/btw/:id/events', async ({ req, res, params, query }) => streamAssistBtwEvents(req, res, params.id, { token: query.token, after: query.after })),
   makeRoute('DELETE', '/assist/v3/btw/:id', async ({ req, res, params, query }) => send(res, 200, await deleteAssistBtw(params.id, { access_token: query.token }, { accessToken: req.headers['x-aiws-btw-token'] }))),
-  makeRoute('GET', '/assist/v3/sessions/:id/goal', async ({ res, params }) => send(res, 200, await getAssistGoal(params.id))),
-  makeRoute('PUT', '/assist/v3/sessions/:id/goal', async ({ res, params, body }) => send(res, 200, await setAssistGoal(params.id, body))),
-  makeRoute('DELETE', '/assist/v3/sessions/:id/goal', async ({ res, params }) => send(res, 200, await clearAssistGoal(params.id))),
+  makeRoute('GET', '/assist/v3/sessions/:id/goal', async ({ res, params, query }) => send(res, 200, await getAssistGoal(params.id, { adapted: testAdapter({}, query) }))),
+  makeRoute('PUT', '/assist/v3/sessions/:id/goal', async ({ res, params, body, query }) => send(res, 200, await setAssistGoal(params.id, body, { adapted: testAdapter(body, query) }))),
+  makeRoute('DELETE', '/assist/v3/sessions/:id/goal', async ({ res, params, query }) => send(res, 200, await clearAssistGoal(params.id, { adapted: testAdapter({}, query) }))),
 
   makeRoute('POST', '/assist/v3/sessions/:id/turns', async ({ res, params, body }) => send(res, 202, await createV3Turn(params.id, body))),
   makeRoute('GET', '/assist/v3/turns/:id', async ({ res, params }) => send(res, 200, await getV3Turn(params.id))),
@@ -87,8 +88,8 @@ export const assistV3Routes = [
   makeRoute('POST', '/assist/v3/turns/:id/stop', async ({ res, params, body }) => send(res, 200, await stopV3Turn(params.id, body.reason))),
   makeRoute('POST', '/assist/v3/turns/:id/actions/:actionId/result', async ({ res, params, body }) => send(res, 200, await recordV3PageActionResult(params.id, params.actionId, body))),
   makeRoute('POST', '/assist/v3/turns/:id/user-input/:itemId/respond', async ({ res, params, body }) => send(res, 200, await respondToAssistUserInput(params.id, params.itemId, body))),
-  makeRoute('POST', '/assist/v3/sessions/:id/turns/:turnId/retry', async ({ res, params, body }) => send(res, 202, await retryV3Turn(params.turnId, body))),
-  makeRoute('POST', '/assist/v3/sessions/:id/turns/:turnId/stop', async ({ res, params, body }) => send(res, 200, await stopV3Turn(params.turnId, body.reason))),
+  makeRoute('POST', '/assist/v3/sessions/:id/turns/:turnId/retry', retrySessionTurn),
+  makeRoute('POST', '/assist/v3/sessions/:id/turns/:turnId/stop', stopSessionTurn),
 
   makeRoute('POST', '/assist/v3/sessions/:id/follow-ups', async ({ res, params, body }) => send(res, 202, await createV3FollowUp(params.id, body, body.behavior || 'queue'))),
   makeRoute('POST', '/assist/v3/sessions/:id/follow-up', async ({ res, params, body }) => send(res, 202, await createV3FollowUp(params.id, body, body.behavior || 'queue'))),
@@ -131,3 +132,16 @@ export const assistV3Routes = [
   ,makeRoute('POST', '/assist/v3/change-batches/:id/review/apply', async ({ res, params, body }) => send(res, 200, await applyChangeBatch(params.id, body.target_hash)))
   ,makeRoute('POST', '/assist/v3/change-batches/:id/review/rollback', async ({ res, params, body }) => send(res, 200, await rollbackChangeBatch(params.id, body.target_hash || null)))
 ];
+
+async function retrySessionTurn({ res, params, body }) {
+  await assertTurnSession(params.id, params.turnId);
+  return send(res, 202, await retryV3Turn(params.turnId, body));
+}
+async function stopSessionTurn({ res, params, body }) {
+  await assertTurnSession(params.id, params.turnId);
+  return send(res, 200, await stopV3Turn(params.turnId, body.reason));
+}
+async function assertTurnSession(sessionId, turnId) {
+  const turn = await getV3Turn(turnId);
+  if (turn.session_id !== sessionId) throw new HttpError(409, { error: 'assist_turn_scope_mismatch' });
+}

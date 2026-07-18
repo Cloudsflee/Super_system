@@ -10,10 +10,27 @@ export type SetupState = {
 
 export type DeploymentStatus = {
   mode: 'container' | 'host'; local_only: boolean;
+  collaboration: { mode: 'local' | 'gateway'; mcp_gateway: boolean; public_endpoint_configured: boolean };
   storage: { type: 'docker_volume' | 'local_directory'; ready: boolean };
   docker: { strategy: 'socket' | 'local_cli'; ready: boolean };
   imports: { codex_home: boolean; cc_switch: boolean; projects_root: boolean; project_path_mode: 'relative' | 'absolute' };
 };
+
+export type McpClientRecord = {
+  id: string; name: string; kind: 'external' | 'internal_codex' | string; token_prefix: string;
+  subject_user_id: string | null;
+  scopes: string[]; project_allowlist: string[]; expires_at: string | null; status: 'active' | 'revoked' | 'expired';
+  concurrent_limit: number; rate_limit_per_minute: number; created_at: string; updated_at: string;
+  last_used_at: string | null; revoked_at: string | null; usage_count: number;
+};
+export type McpClientSubject = { id: string; display_name: string; role: string };
+export type McpClientList = { clients: McpClientRecord[]; available_scopes: string[]; available_subjects: McpClientSubject[] };
+export type McpClientConfiguration = {
+  streamable_http: { url: string; headers: { Authorization: string } };
+  codex_toml: string;
+  stdio_json: { command: string; args: string[]; env: { AIWS_MCP_URL: string; AIWS_MCP_TOKEN: string } };
+};
+export type McpClientCreated = { client: McpClientRecord; token: string; token_visible_once: true; configuration: McpClientConfiguration };
 
 export type CodexWireApi = 'responses';
 export type CodexAuthMetadata = {
@@ -23,6 +40,17 @@ export type CodexStatus = {
   authenticated: boolean; auth?: CodexAuthMetadata | null;
   docker?: { available: boolean; version?: string }; image?: { ready: boolean; name: string };
   active_profile?: CodexProfile | null;
+};
+export type CodexBuildLog = { at: string; stream: 'stdout' | 'stderr' | string; text: string };
+export type CodexBuildOperation = {
+  operation_id: string; image: string; status: 'running' | 'completed' | 'failed' | 'cancelled';
+  phase: { key: string; label: string; index: number; total: number };
+  started_at: string; updated_at: string; completed_at?: string | null; elapsed_ms: number;
+  error_code?: string | null; message?: string; action?: string | null; retryable?: boolean;
+  latest_log?: string; logs: CodexBuildLog[]; last_event_id?: number;
+};
+export type CodexBuildStart = {
+  operation_id?: string; status?: string; attached?: boolean; events_url?: string; cancel_url?: string; operation?: CodexBuildOperation;
 };
 export type CodexProfile = {
   id: string; name: string; provider?: string; provider_name?: string; base_url?: string | null;
@@ -115,7 +143,9 @@ export type ProjectBrief = {
   source: string; content: ProjectBriefContent; created_at: string; updated_at?: string;
 };
 export type WorkflowDraftNode = {
-  id: string; type: NodeKind; title: string; goal: string; dependency_ids: string[];
+  id: string; type: NodeKind; role?: 'workstream' | 'task'; parent_node_id?: string | null; title: string; goal: string; dependency_ids: string[];
+  outcome?: string | null; category?: WorkstreamCategory | null; task_kind?: TaskKind | null; execution_mode?: ExecutionMode | null;
+  boundary?: Record<string, unknown> | null; acceptance_criteria?: string[]; required?: boolean;
   position: { x: number; y: number }; order: number; dependency_indexes?: number[];
 };
 export type WorkflowDraft = { id: string; project_id: string; revision: number; nodes: WorkflowDraftNode[]; source_brief_id?: string | null; source_brief_revision?: number | null; status?: string; user_modified_at?: string | null; updated_at?: string };
@@ -135,6 +165,8 @@ export type DraftProjectResult = {
 };
 export type Workflow = {
   id: string; project_id: string; title: string; status: string;
+  version?: number; workflow_revision?: number; hierarchy_mode?: 'two_level' | 'legacy'; legacy_read_only?: boolean; semantic_migration_status?: string;
+  created_at?: string; updated_at?: string;
   graph_json?: { nodes?: unknown[]; edges?: unknown[] };
 };
 export type WorkflowNode = {
@@ -142,10 +174,19 @@ export type WorkflowNode = {
   title: string; goal: string; status: string; order_index: number;
   dependencies: Array<{ node_id?: string; node_order?: number; type: string }>;
   position?: { x: number; y: number }; current_contract_id?: string;
+  role?: 'workstream' | 'task'; parent_node_id?: string | null; outcome?: string | null;
+  category?: WorkstreamCategory | null; task_kind?: TaskKind | null; execution_mode?: ExecutionMode | null;
+  boundary?: Record<string, unknown> | null; acceptance_criteria?: string[]; required?: boolean; plan_revision?: number | null;
+  repository_target_ids?: string[]; repository_intent?: Record<string, unknown> | null;
+  task_count?: number; completed_task_count?: number; progress?: number; blocked_count?: number; repository_status?: { target_count: number; ready_count: number } | null;
   latest_run?: { id: string; status: string; completed_at?: string };
   output_count?: number; pending_approval_count?: number;
 };
-export type NodeKind = 'goal_definition' | 'research' | 'analysis' | 'execution' | 'retrospective';
+export type NodeKind = 'goal_definition' | 'research' | 'analysis' | 'execution' | 'retrospective' | 'workstream' | 'task';
+export type WorkstreamCategory = 'deliverable' | 'decision' | 'coordination' | 'operation';
+export type TaskKind = 'research' | 'analysis' | 'design' | 'content' | 'code' | 'test' | 'review' | 'deploy' | 'manual' | 'integration';
+export type ExecutionMode = 'manual' | 'assist' | 'codex' | 'integration';
+export type AssistScopeType = 'project' | 'workflow' | 'workstream' | 'task';
 export type NodeContract = {
   id: string; node_id: string; version: number; node_goal: string;
   acceptance_criteria: string[]; allowed_tools: string[];
@@ -165,6 +206,7 @@ export type ChangeProposal = {
   change_type: string; status: string; before_json?: unknown; after_json?: unknown;
   risks?: string[]; impact?: string[]; evidence_refs?: string[]; created_at: string;
   attention_state?: 'interrupting' | 'queued' | 'resolved'; revision?: number; target_hash?: string;
+  workflow_id?: string; workflow_revision?: number; destructive?: boolean; operations_json?: unknown[];
 };
 export type ApprovalItemType = 'change_proposal' | 'runtime_approval';
 export type ApprovalItem = {

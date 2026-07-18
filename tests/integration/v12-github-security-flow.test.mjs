@@ -6,7 +6,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { createConfirmedProject, repositorySnapshot } from './v13-test-helpers.mjs';
 
-const port = 4583;
+const port = Number(process.env.AIWS_TEST_PORT || 4583);
 const home = fs.mkdtempSync(path.join(os.tmpdir(), 'aiws-v12-github-security-'));
 const repo = path.join(home, 'repo');
 fs.mkdirSync(repo);

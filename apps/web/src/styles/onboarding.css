@@ -1,17 +1,19 @@
 .onboarding-page { min-height: 100%; background: var(--surface-subtle); overflow: auto; }
-.onboarding-header { min-height: 86px; padding: 16px clamp(18px, 4vw, 52px); display: flex; align-items: center; gap: 14px; border-bottom: 1px solid var(--line); background: white; }
+.onboarding-header { min-height: 64px; padding: 10px clamp(18px, 4vw, 52px); display: flex; align-items: center; gap: 14px; border-bottom: 1px solid var(--line); background: white; }
 .onboarding-header > div { min-width: 0; flex: 1; }
-.onboarding-header h1 { margin: 3px 0; font-size: 21px; }
+.onboarding-header h1 { margin: 2px 0; font-size: 18px; }
 .onboarding-header p { margin: 0; color: var(--muted); font-size: 11px; }
-.onboarding-steps { min-height: 58px; padding: 0 clamp(18px, 4vw, 52px); display: flex; justify-content: center; border-bottom: 1px solid var(--line); background: white; }
-.onboarding-steps button { position: relative; min-width: 170px; padding: 0 24px; display: flex; align-items: center; justify-content: center; gap: 9px; border: 0; border-bottom: 2px solid transparent; background: transparent; color: var(--muted); cursor: pointer; }
-.onboarding-steps button + button::before { content: ''; position: absolute; left: -1px; width: 1px; height: 24px; background: var(--line); }
-.onboarding-steps button.active { color: var(--green); border-bottom-color: var(--green); font-weight: 700; }
+.onboarding-steps { position: relative; min-height: 36px; padding: 0 clamp(18px, 4vw, 52px); display: flex; justify-content: center; border-bottom: 1px solid var(--line); background: white; }
+.onboarding-steps button { position: relative; min-width: 150px; padding: 0 20px; display: flex; align-items: center; justify-content: center; gap: 7px; border: 0; background: transparent; color: var(--muted); cursor: pointer; }
+.onboarding-steps button::after { content: ''; position: absolute; right: 0; bottom: -1px; left: 0; height: 1px; background: transparent; }
+.onboarding-steps button + button::before { display: none; }
+.onboarding-steps button.active { color: var(--green); font-weight: 700; }
+.onboarding-steps button.active::after,.onboarding-steps button.done::after { background: var(--green); }
 .onboarding-steps button.done { color: var(--text); }
-.onboarding-steps button i { width: 22px; height: 22px; display: grid; place-items: center; border: 1px solid var(--line-strong); border-radius: 50%; font-size: 10px; font-style: normal; }
-.onboarding-steps button.active i, .onboarding-steps button.done i { border-color: var(--green); color: var(--green); background: var(--green-soft); }
-.onboarding-steps button span { font-size: 12px; }
-.onboarding-content { width: min(1360px, calc(100% - 36px)); margin: 0 auto; padding: 34px 0 60px; }
+.onboarding-steps button i { width: 15px; height: 15px; display: grid; place-items: center; border: 0; border-radius: 0; font-size: 9px; font-style: normal; }
+.onboarding-steps button.active i, .onboarding-steps button.done i { color: var(--green); background: transparent; }
+.onboarding-steps button span { font-size: 11px; }
+.onboarding-content { width: min(1360px, calc(100% - 36px)); margin: 0 auto; padding: 24px 0 60px; }
 .onboarding-stage { animation: onboarding-in .18s ease; }
 .stage-heading { max-width: 700px; margin-bottom: 24px; }
 .stage-heading h2 { margin: 5px 0 7px; font-size: 22px; }
@@ -117,7 +119,7 @@
 .brief-section-editor { padding: 25px 0 28px; border-bottom: 1px solid #e2e7e5; scroll-margin-top: 12px; }
 .brief-section-editor.selected { border-bottom-color: #9db9ae; }
 .brief-section-editor > header { min-height: 32px; display: grid; grid-template-columns: 25px minmax(0,1fr) auto auto; align-items: center; gap: 7px; }
-.brief-section-editor > header > span { color: #8a9590; font-size: 9px; }
+.brief-section-editor > header > span { color: var(--muted); font-size: 9px; }
 .brief-section-editor > header input { min-width: 0; padding: 2px 0; border: 0; background: transparent; color: #26332e; font-size: 15px; font-weight: 720; }
 .brief-section-editor > header small { color: var(--muted); font-size: 8px; }
 .brief-section-editor > textarea { width: 100%; min-height: 110px; margin-top: 8px; padding: 9px 0; border: 0; border-top: 1px solid transparent; background: transparent; color: #3d4944; font-size: 11px; line-height: 1.75; resize: vertical; }

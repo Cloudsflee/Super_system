@@ -18,7 +18,7 @@ run('tar', ['-cf', tarFile, '-C', archiveSource, '.']);
 run('tar', ['-a', '-cf', zipFile, '-C', archiveSource, '.']);
 const archiveBefore = new Map([[tarFile, fileSnapshot(tarFile)], [zipFile, fileSnapshot(zipFile)], [binaryContext, fileSnapshot(binaryContext)]]);
 
-const port = 4599;
+const port = Number(process.env.AIWS_TEST_PORT || 4599);
 let server;
 try {
   server = await startApi({ port, home: fixture.home, ccSwitch: fixture.ccSwitch });
@@ -89,7 +89,12 @@ async function importArchive(title, archive, contextSources = []) {
   const draft = await api(port, '/projects', 'POST', { title }, 201);
   await api(port, `/projects/${draft.project.id}/intake`, 'PUT', { mode: 'existing', code_source: { type: 'archive', path: archive }, context_sources: contextSources, answers: { goal: `Validate ${title}` } });
   const imported = await api(port, `/projects/${draft.project.id}/imports`, 'POST', { operation_key: `import-${draft.project.id}` }, 201);
-  const confirmed = await api(port, `/projects/${draft.project.id}/onboarding/confirm`, 'POST', {});
+  const workstreamId = `archive-workstream-${draft.project.id}`;
+  const confirmed = await api(port, `/projects/${draft.project.id}/onboarding/confirm`, 'POST', { workflow_nodes: [{
+    id: workstreamId, role: 'workstream', title: `${title}成果`, outcome: `完成 ${title}`, category: 'deliverable',
+    acceptance_criteria: ['归档内容已安全导入'], boundary: { deliverable: title }, dependency_ids: [],
+    tasks: [{ id: `archive-task-${draft.project.id}`, role: 'task', title: '验证归档内容', task_kind: 'review', execution_mode: 'assist', dependency_ids: [] }]
+  }] });
   assert.equal(confirmed.project.status, 'active');
   return { draft, imported, confirmed };
 }

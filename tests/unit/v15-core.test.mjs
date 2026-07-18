@@ -10,16 +10,16 @@ process.env.AIWS_HOME = path.join(root, 'home');
 try {
   const powershellOps = fs.readFileSync(path.join(process.cwd(), 'scripts', 'aiws.ps1'), 'utf8');
   const posixOps = fs.readFileSync(path.join(process.cwd(), 'scripts', 'aiws.sh'), 'utf8');
-  const releaseOps = fs.readFileSync(path.join(process.cwd(), 'scripts', 'v17-release.mjs'), 'utf8');
+  const releaseOps = fs.readFileSync(path.join(process.cwd(), 'scripts', 'v19-release.mjs'), 'utf8');
   const releaseOrchestrator = fs.readFileSync(path.join(process.cwd(), 'docker', 'release_orchestrator.mjs'), 'utf8');
   const releaseVolume = fs.readFileSync(path.join(process.cwd(), 'docker', 'release_volume.mjs'), 'utf8');
   const backupTool = fs.readFileSync(path.join(process.cwd(), 'docker', 'backup_archive.py'), 'utf8');
   for (const script of [powershellOps, posixOps]) {
-    assert.ok(script.includes('aiws-app:1.7.0'));
-    assert.ok(script.includes('aiws-codex-runner:1.7.0-codex-0.144.0'));
-    assert.ok(script.includes('aiws-data-v16'), 'V1.6 remains the read-only migration source');
-    assert.ok(script.includes('aiws-data-v17'));
-    assert.ok(script.includes('v17-release.mjs'));
+    assert.ok(script.includes('aiws-app:1.9.0'));
+    assert.ok(script.includes('aiws-codex-runner:1.9.0-codex-0.144.0'));
+    assert.ok(script.includes('aiws-data-v18'), 'V1.8 remains the read-only migration source');
+    assert.ok(script.includes('aiws-data-v19'));
+    assert.ok(script.includes('v19-release.mjs'));
     assert.ok(script.includes('pnpm-lock.yaml'));
     assert.ok(script.includes('codex-cli 0.144.0'));
     assert.ok(script.includes('windows-bridge-export'));

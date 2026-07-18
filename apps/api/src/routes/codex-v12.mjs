@@ -10,7 +10,7 @@ import { putSecret, removeSecret } from '../vault.mjs';
 import { createChangeProposal, id, now } from '../../../../packages/shared/index.mjs';
 import { ccSwitchBinding, ccSwitchStatus, publishCcSwitchCatalog, syncCcSwitch } from '../cc-switch-service.mjs';
 import { cleanupCodexAuthHomes, extractDeviceAuthPublicState, persistDeviceAuth, readDeviceAuthBundle } from '../codex-device-auth.mjs';
-import { inspectCodexRuntimeLive } from '../codex-runtime-status.mjs';
+import { inspectCodexRuntimeCached } from '../codex-runtime-status.mjs';
 import { CODEX_PROBE_PHASES, classifyCodexExecution, completeCodexProbe, probeCheck, probeFailure } from '../codex-probe.mjs';
 import { codexProbeEvidenceMatches, createCodexProbeEvidence } from '../codex-probe-evidence.mjs';
 import { codexRuntimeV12Routes } from './codex-runtime-v12.mjs';
@@ -150,7 +150,7 @@ async function runProbe({ res, body, query }) {
   let result, runtime = null, startedEvidence = null;
   if (adapted) result = adaptedProbeResult(body.test_result);
   else {
-    runtime = inspectCodexRuntimeLive({ image: profile.image || undefined });
+    runtime = await inspectCodexRuntimeCached({ image: profile.image || undefined, maxAgeMs: 1000 });
     const auth = state.integration_statuses.find((item) => item.key === 'codex_auth');
     startedEvidence = createCodexProbeEvidence({ profile, auth, runtime });
     result = await probeCodex(state, profile, runtime);

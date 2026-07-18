@@ -21,7 +21,7 @@ export function GoalWorkspace({ value, onSaved }: RendererProps) {
   return (
     <div className="structured-workspace">
       <section className="editor-main"><header><div><span className="overline">SCOPE</span><h2>范围与成功标准</h2></div><button className="button primary" disabled={busy || !scope.trim()} onClick={save}><Save size={15} />保存</button></header><label>目标范围<textarea id="goal-scope" rows={8} value={scope} onChange={(e) => setScope(e.target.value)} /></label><label>成功标准<textarea id="goal-success-criteria" rows={8} value={criteria} onChange={(e) => setCriteria(e.target.value)} placeholder="每行一项" /></label></section>
-      <aside className="editor-side"><span className="overline">OPEN QUESTIONS</span><h2>待确认问题</h2><textarea id="goal-questions" rows={18} value={questions} onChange={(e) => setQuestions(e.target.value)} placeholder="每行一个问题" /></aside>
+      <aside className="editor-side"><span className="overline">OPEN QUESTIONS</span><h2>待确认问题</h2><textarea id="goal-questions" aria-label="待确认问题" rows={18} value={questions} onChange={(e) => setQuestions(e.target.value)} placeholder="每行一个问题" /></aside>
     </div>
   );
 }

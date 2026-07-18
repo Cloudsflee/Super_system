@@ -4,7 +4,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { api, cleanup, makeFixture, startApi } from './v13-test-helpers.mjs';
 
-const port = 4596;
+const port = Number(process.env.AIWS_TEST_PORT || 4596);
 const fixture = makeFixture('aiws-v13-governance-');
 const realCcSwitchFixture = path.join(fixture.ccSwitch, 'cc-switch.db');
 fs.writeFileSync(realCcSwitchFixture, 'read-only-catalog-fixture', 'utf8');
@@ -17,7 +17,11 @@ try {
     title: 'V1.3 Governance', mode: 'brainstorm', answers: { goal: '验证统一审批与配置治理' }
   }, 201);
   const projectId = created.project.id;
-  await api(port, `/projects/${projectId}/onboarding/confirm`, 'POST', {});
+  await api(port, `/projects/${projectId}/onboarding/confirm`, 'POST', { workflow_nodes: [{
+    id: 'governance-workstream', role: 'workstream', title: '治理验证成果', outcome: '形成可审计治理结果', category: 'operation',
+    acceptance_criteria: ['审批与配置变更可追溯'], boundary: { permissions: ['owner'] }, dependency_ids: [],
+    tasks: [{ id: 'governance-task', role: 'task', title: '执行治理验证', task_kind: 'manual', execution_mode: 'manual', dependency_ids: [] }]
+  }] });
 
   const proposal = await api(port, '/change-proposals', 'POST', {
     project_id: projectId,

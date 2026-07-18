@@ -26,7 +26,7 @@ export function ProjectsPage() {
   const create = useMutation({
     mutationFn: () => api<DraftProjectResult>('/projects', json('POST', {
       title: form.title.trim(), goal: form.goal.trim(), operation_key: operationKey.current
-    })),
+    }, { name: '创建项目草稿', feedback: 'foreground', timeoutMs: 120_000, safeRetry: true, idempotencyKey: operationKey.current })),
     onSuccess: async (result) => {
       await client.invalidateQueries({ queryKey: keys.projects });
       ui.setProject(result.project.id);

@@ -38,6 +38,8 @@ model Project {
   deletedAt          DateTime? @map("deleted_at")
   trashMetadata      Json?    @map("trash_metadata")
   lifecycleOperation Json?    @map("lifecycle_operation")
+  workflowMigrationStatus String @default("not_required") @map("workflow_migration_status")
+  repositoryConnectionIds String[] @map("repository_connection_ids")
   createdByUserId    String   @map("created_by_user_id")
   createdBy          User     @relation(fields: [createdByUserId], references: [id])
   createdAt          DateTime @map("created_at")
@@ -77,6 +79,10 @@ model Workflow {
   graphJson   Json     @map("graph_json")
   generatedBy String   @map("generated_by")
   confirmedByUserId String? @map("confirmed_by_user_id")
+  hierarchyMode String @default("two_level") @map("hierarchy_mode")
+  workflowRevision Int @default(1) @map("workflow_revision")
+  semanticMigrationStatus String @default("not_required") @map("semantic_migration_status")
+  legacyReadOnly Boolean @default(false) @map("legacy_read_only")
   createdAt   DateTime @map("created_at")
   updatedAt   DateTime @map("updated_at")
 
@@ -183,6 +189,19 @@ model WorkflowNode {
   currentContractId String?  @map("current_contract_id")
   templateOutputs   String[] @map("template_outputs")
   position          Json
+  role              String
+  parentNodeId      String?  @map("parent_node_id")
+  outcome           String?
+  category          String?
+  taskKind          String?  @map("task_kind")
+  executionMode     String?  @map("execution_mode")
+  boundary          Json?
+  acceptanceCriteria Json    @map("acceptance_criteria")
+  required          Boolean  @default(true)
+  repositoryIntent  Json?    @map("repository_intent")
+  repositoryTargetIds String[] @map("repository_target_ids")
+  planRevision      Int?     @map("plan_revision")
+  legacyReadOnly    Boolean  @default(false) @map("legacy_read_only")
 
   @@map("workflow_nodes")
 }
@@ -261,6 +280,10 @@ model AssistSession {
   clarificationPolicy String   @default("ask") @map("clarification_policy")
   viewContext       Json     @map("view_context")
   status            String
+  scopeStatus       String   @default("active") @map("scope_status")
+  scopeSnapshot     Json?    @map("scope_snapshot")
+  scopeBreadcrumb   Json?    @map("scope_breadcrumb")
+  readOnly          Boolean  @default(false) @map("read_only")
   error             String?
   createdByUserId   String   @map("created_by_user_id")
   createdAt         DateTime @map("created_at")
@@ -706,6 +729,8 @@ model WorkflowDraft {
   workflowId          String?  @map("workflow_id")
   activatedAt         DateTime? @map("activated_at")
   userModifiedAt      DateTime? @map("user_modified_at")
+  generationStatus    String?  @map("generation_status")
+  generationId        String?  @map("generation_id")
   updatedByUserId     String?  @map("updated_by_user_id")
   createdAt           DateTime @map("created_at")
   updatedAt           DateTime @map("updated_at")
@@ -994,6 +1019,8 @@ model AssistOperation {
   capabilityId    String?   @map("capability_id")
   action          String?
   operationReferenceId String? @map("operation_reference_id")
+  proposalId      String?   @map("proposal_id")
+  resultKind      String?   @map("result_kind")
   route           String
   surfaceId       String?   @map("surface_id")
   surfaceRevision String    @map("surface_revision")
@@ -1074,4 +1101,206 @@ model HostBridgeDevice {
 
   @@index([status, lastSeenAt])
   @@map("host_bridge_devices")
+}
+
+model McpClient {
+  id                    String    @id
+  name                  String
+  kind                  String    @default("external")
+  tokenPrefix           String    @map("token_prefix")
+  tokenHash             String    @unique @map("token_hash")
+  scopes                String[]
+  projectAllowlist      String[]  @map("project_allowlist")
+  expiresAt             DateTime? @map("expires_at")
+  status                String
+  concurrentLimit       Int       @default(4) @map("concurrent_limit")
+  rateLimitPerMinute    Int       @default(120) @map("rate_limit_per_minute")
+  usageCount            Int       @default(0) @map("usage_count")
+  createdBy             String?   @map("created_by")
+  createdAt             DateTime  @map("created_at")
+  updatedAt             DateTime  @map("updated_at")
+  lastUsedAt            DateTime? @map("last_used_at")
+  revokedAt             DateTime? @map("revoked_at")
+  revokedBy             String?   @map("revoked_by")
+
+  @@index([status, expiresAt])
+  @@index([kind, status])
+  @@map("mcp_clients")
+}
+
+model WorkflowGeneration {
+  id                   String    @id
+  projectId            String    @map("project_id")
+  draftId              String    @map("draft_id")
+  status               String
+  phase                String
+  inputHash            String    @map("input_hash")
+  briefId              String    @map("brief_id")
+  briefRevision        Int       @map("brief_revision")
+  materialHash         String    @map("material_hash")
+  codeSourceHash       String    @map("code_source_hash")
+  draftRevisionAtStart Int       @map("draft_revision_at_start")
+  candidate            Json?
+  critic               Json?
+  resultMode           String?   @map("result_mode")
+  diff                 Json?
+  errorCode            String?   @map("error_code")
+  retryable            Boolean   @default(false)
+  createdAt            DateTime  @map("created_at")
+  updatedAt            DateTime  @map("updated_at")
+  completedAt          DateTime? @map("completed_at")
+
+  @@index([projectId, inputHash])
+  @@map("workflow_generations")
+}
+
+model WorkflowGenerationEvent {
+  id           String   @id
+  generationId String   @map("generation_id")
+  projectId    String   @map("project_id")
+  sequence     Int
+  type         String
+  data         Json
+  createdAt    DateTime @map("created_at")
+
+  @@unique([generationId, sequence])
+  @@map("workflow_generation_events")
+}
+
+model RepositoryConnection {
+  id              String   @id
+  projectId       String   @map("project_id")
+  provider        String
+  githubAccountId String?  @map("github_account_id")
+  installationId  String?  @map("installation_id")
+  repositoryId    String?  @map("repository_id")
+  fullName        String?  @map("full_name")
+  defaultBranch   String   @map("default_branch")
+  permissions     Json
+  syncStatus      String   @map("sync_status")
+  remoteName      String?  @map("remote_name")
+  localPath       String?  @map("local_path")
+  credentialRefId String?  @map("credential_ref_id")
+  createdAt       DateTime @map("created_at")
+  updatedAt       DateTime @map("updated_at")
+
+  @@unique([projectId, provider, repositoryId])
+  @@map("repository_connections")
+}
+
+model RepositoryTarget {
+  id           String   @id
+  projectId    String   @map("project_id")
+  workflowId   String   @map("workflow_id")
+  workstreamId String   @map("workstream_id")
+  taskId       String?  @map("task_id")
+  connectionId String   @map("connection_id")
+  access       String
+  status       String
+  createdAt    DateTime @map("created_at")
+  updatedAt    DateTime @map("updated_at")
+
+  @@index([workstreamId, taskId])
+  @@map("repository_targets")
+}
+
+model DeliveryPolicy {
+  id                    String    @id
+  projectId             String    @map("project_id")
+  workflowId            String    @map("workflow_id")
+  workstreamId          String    @map("workstream_id")
+  connectionId          String    @map("connection_id")
+  baseRef                String    @map("base_ref")
+  pathPrefixes           Json      @map("path_prefixes")
+  testCommands           Json      @map("test_commands")
+  automationPermissions Json      @map("automation_permissions")
+  policyHash             String    @map("policy_hash")
+  status                 String
+  approvedAt             DateTime  @map("approved_at")
+  expiresAt              DateTime? @map("expires_at")
+  revokedAt              DateTime? @map("revoked_at")
+  createdAt              DateTime  @map("created_at")
+  updatedAt              DateTime  @map("updated_at")
+
+  @@index([workstreamId, connectionId, status])
+  @@map("delivery_policies")
+}
+
+model Delivery {
+  id                 String    @id
+  projectId          String    @map("project_id")
+  workflowId         String    @map("workflow_id")
+  workstreamId       String    @map("workstream_id")
+  taskId             String    @map("task_id")
+  repositoryTargetId String    @map("repository_target_id")
+  connectionId       String    @map("connection_id")
+  policyId           String    @map("policy_id")
+  policyHash         String    @map("policy_hash")
+  status             String
+  phase              String
+  branch             String
+  baseRef            String    @map("base_ref")
+  baseSha            String?   @map("base_sha")
+  worktreePath       String?   @map("worktree_path")
+  commitSha          String?   @map("commit_sha")
+  changedFiles       Json      @map("changed_files")
+  testResults        Json      @map("test_results")
+  prNumber           Int?      @map("pr_number")
+  prUrl              String?   @map("pr_url")
+  prState            String?   @map("pr_state")
+  errorCode          String?   @map("error_code")
+  retryable          Boolean   @default(false)
+  createdAt          DateTime  @map("created_at")
+  updatedAt          DateTime  @map("updated_at")
+  completedAt        DateTime? @map("completed_at")
+
+  @@index([taskId, status])
+  @@map("deliveries")
+}
+
+model DeliveryEvent {
+  id         String   @id
+  deliveryId String   @map("delivery_id")
+  projectId  String   @map("project_id")
+  taskId     String   @map("task_id")
+  sequence   Int
+  type       String
+  data       Json
+  createdAt  DateTime @map("created_at")
+
+  @@unique([deliveryId, sequence])
+  @@map("delivery_events")
+}
+
+model WorkflowMigrationBatch {
+  id          String    @id
+  status      String
+  workflowIds Json       @map("workflow_ids")
+  projectIds  Json       @map("project_ids")
+  approvedAt  DateTime?  @map("approved_at")
+  completedAt DateTime?  @map("completed_at")
+  createdAt   DateTime   @map("created_at")
+  updatedAt   DateTime   @map("updated_at")
+
+  @@map("workflow_migration_batches")
+}
+
+model WorkflowMigrationJob {
+  id          String    @id
+  batchId     String    @map("batch_id")
+  projectId   String    @map("project_id")
+  workflowId  String    @map("workflow_id")
+  status      String
+  attempt     Int
+  snapshot    Json?
+  beforeHash  String?   @map("before_hash")
+  candidate   Json?
+  mapping     Json?
+  errorCode   String?   @map("error_code")
+  createdAt   DateTime  @map("created_at")
+  updatedAt   DateTime  @map("updated_at")
+  completedAt DateTime? @map("completed_at")
+
+  @@index([batchId, status])
+  @@map("workflow_migration_jobs")
 }

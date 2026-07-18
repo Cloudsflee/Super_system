@@ -1,7 +1,7 @@
 import { HttpError, send } from '../http.mjs';
 import { addTrace, mutate, owner, readState, saveArtifact } from '../state.mjs';
 import { ensureCodeChange } from '../helpers.mjs';
-import { connectedGithubAccount, createInstallationToken, githubJson, resolveGithubAppConfig } from '../github-service.mjs';
+import { connectedGithubAccount, createInstallationToken, githubGitAuthEnv, githubJson, resolveGithubAppConfig } from '../github-service.mjs';
 import { testAdapter } from '../test-adapter.mjs';
 import { generatePrBody, now } from '../../../../packages/shared/index.mjs';
 import { git, isGitRepo } from '../git-utils.mjs';
@@ -72,7 +72,7 @@ async function createLivePr(state, binding, change, body, prBody, onPush) {
   if (!head) throw new HttpError(409, { error: 'git_work_branch_required' });
   if (!/^[a-zA-Z0-9._\/-]+$/.test(head)) throw new HttpError(400, { error: 'invalid_git_work_branch' });
   if (isGitRepo(change.repo_path)) {
-    const pushed = git(change.repo_path, ['push', binding.remote_name || 'origin', `HEAD:refs/heads/${head}`], 60000, { GIT_TERMINAL_PROMPT: '0', GIT_CONFIG_COUNT: '1', GIT_CONFIG_KEY_0: 'http.extraHeader', GIT_CONFIG_VALUE_0: `Authorization: Bearer ${token.token}` });
+    const pushed = git(change.repo_path, ['push', binding.remote_name || 'origin', `HEAD:refs/heads/${head}`], 60000, githubGitAuthEnv(token.token));
     await onPush?.(pushed);
     if (!pushed.ok) throw new HttpError(409, { error: 'git_push_failed', detail: pushed.stderr || pushed.error });
   }

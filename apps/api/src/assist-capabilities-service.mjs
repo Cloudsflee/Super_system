@@ -2,7 +2,8 @@ import { ASSIST_CAPABILITY_MANIFEST, validateAssistCapabilityManifest } from '..
 import { cleanText } from './assist-v3-domain.mjs';
 import { exposedControls, pageIdentity } from './assist-operation-utils.mjs';
 import { readState } from './state.mjs';
-import { currentBrief, currentWorkflowDraft, routeProjectId } from './assist-project-tool-context.mjs';
+import { currentBrief, currentWorkflow, currentWorkflowDraft, routeProjectId } from './assist-project-tool-context.mjs';
+import { workflowAssistSurfaceId, workflowAssistSurfaceRevision } from './workflow-graph-service.mjs';
 
 validateAssistCapabilityManifest();
 
@@ -18,15 +19,17 @@ export async function listAssistCapabilities(query = {}) {
   const project = projectId ? state.projects.find((item) => item.id === projectId && !item.deleted_at) : null;
   const routeScope = route ? routeProjectId(route) : null;
   const controls = exposedControls(session?.view_context);
+  const brief = project ? currentBrief(state, projectId) : null, draft = project ? currentWorkflowDraft(state, projectId) : null, workflow = project ? currentWorkflow(state, projectId) : null;
   const current = ASSIST_CAPABILITY_MANIFEST.map((descriptor) => {
     const routeMatches = route ? matchesRoute(descriptor.route, route) : false;
     const requiresProject = descriptor.id.startsWith('project.');
     const surfaceKind = descriptor.id === 'surface.field.set' ? 'field' : descriptor.id === 'surface.filter.set' ? 'filter' : descriptor.id === 'surface.tab.select' ? 'tab' : null;
     const projectScopeMatches = !requiresProject || Boolean(project && routeScope === projectId);
-    const resourceAvailable = !requiresProject || (descriptor.id.startsWith('project.brief.') ? Boolean(currentBrief(state, projectId)) : Boolean(currentWorkflowDraft(state, projectId)));
+    const resourceAvailable = !requiresProject || (descriptor.id.startsWith('project.brief.') ? Boolean(brief) : descriptor.id.startsWith('project.workflow_draft.') ? Boolean(draft) : Boolean(workflow));
+    const workflowSurfaceMatches = !descriptor.id.startsWith('project.workflow.') || Boolean(workflow && surfaceId === workflowAssistSurfaceId(workflow.id) && surfaceRevision === workflowAssistSurfaceRevision(workflow));
     const surfaceContextMatches = !surfaceKind || Boolean(session && sessionPage.route === route && sessionPage.surfaceId === surfaceId && sessionPage.revision === surfaceRevision);
     const surfaceControlAvailable = !surfaceKind || controls.some((item) => item.kind === surfaceKind);
-    const reason = unavailableReason({ descriptor, mode, route, routeMatches, requiresProject, projectId, projectScopeMatches, resourceAvailable, surfaceId, surfaceRevision, surfaceKind, session, surfaceContextMatches, surfaceControlAvailable });
+    const reason = unavailableReason({ descriptor, mode, route, routeMatches, requiresProject, projectId, projectScopeMatches, resourceAvailable, workflowSurfaceMatches, surfaceId, surfaceRevision, surfaceKind, session, surfaceContextMatches, surfaceControlAvailable });
     const available = reason === null;
     return { capability_id: descriptor.id, available, reason, route: descriptor.route, project_id: projectId, surface_id: surfaceId, surface_revision: surfaceRevision };
   });
@@ -34,7 +37,7 @@ export async function listAssistCapabilities(query = {}) {
 }
 
 function unavailableReason(context) {
-  const { descriptor, mode, route, routeMatches, requiresProject, projectId, projectScopeMatches, resourceAvailable, surfaceId, surfaceRevision, surfaceKind, session, surfaceContextMatches, surfaceControlAvailable } = context;
+  const { descriptor, mode, route, routeMatches, requiresProject, projectId, projectScopeMatches, resourceAvailable, workflowSurfaceMatches, surfaceId, surfaceRevision, surfaceKind, session, surfaceContextMatches, surfaceControlAvailable } = context;
   if (mode === 'plan' && descriptor.mutation) return 'plan_read_only';
   if (!route) return 'route_required';
   if (!routeMatches) return 'different_route';
@@ -43,6 +46,7 @@ function unavailableReason(context) {
   if (!resourceAvailable) return 'resource_unavailable';
   if (!surfaceId) return 'surface_id_required';
   if (!surfaceRevision) return 'surface_revision_required';
+  if (!workflowSurfaceMatches) return 'workflow_surface_mismatch';
   if (surfaceKind && !session) return 'session_required';
   if (surfaceKind && !surfaceContextMatches) return 'session_surface_mismatch';
   if (surfaceKind && !surfaceControlAvailable) return 'surface_controls_unavailable';

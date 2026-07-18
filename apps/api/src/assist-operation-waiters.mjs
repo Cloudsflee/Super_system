@@ -26,14 +26,17 @@ export function waitForOperationResult(operationId, signal, expire, timeoutMs) {
   return registerWaiter(operationWaiters, operationId, signal, async (resolve, reject, waiter) => {
     const operation = await currentOperation(operationId);
     if (settleResultState(operation, resolve, reject)) return;
-    waiter.timeout = setTimeout(async () => {
+    const timeout = async () => {
       try {
         const latest = await currentOperation(operationId);
         if (settleResultState(latest, resolve, reject)) return;
+        const extension = latest.status === 'claimed' ? Date.parse(latest.claim_expires_at) - Date.now() : 0;
+        if (extension > 0) { waiter.timeout = setTimeout(timeout, extension); return; }
         await expire(operationId, 'browser_claim_timeout');
         reject(new HttpError(504, { error: 'assist_operation_timeout' }));
       } catch (error) { reject(error); }
-    }, timeoutMs);
+    };
+    waiter.timeout = setTimeout(timeout, timeoutMs);
   }, () => { void expire(operationId, 'turn_aborted'); });
 }
 

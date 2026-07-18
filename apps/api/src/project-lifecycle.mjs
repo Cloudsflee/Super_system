@@ -9,11 +9,11 @@ import { isGitRepo } from './git-utils.mjs';
 import { isContainerized } from './container-runtime-config.mjs';
 import { validateHostImportRelative } from './host-import-root.mjs';
 import { safeHttpsReferenceUrl } from './safe-reference-url.mjs';
-import { assertWorkflowAcyclic, createBriefContentV2, createWorkflowDraft, MAX_WORKFLOW_DRAFT_NODES, normalizeBriefContentV2, normalizeWorkflowNodes, suggestedWorkflowNodes, WORKFLOW_NODE_TYPES } from './brief-workflow-domain.mjs';
+import { createBriefContentV2, createWorkflowDraft, MAX_WORKFLOW_DRAFT_NODES, normalizeBriefContentV2, suggestedWorkflowNodes } from './brief-workflow-domain.mjs';
+import { assertWorkflowHierarchy, normalizeWorkflowHierarchyNodes } from './workflow-hierarchy-domain.mjs';
+import { makeSession } from './assist-v3-domain.mjs';
 export { assertManagedProjectWritable, managedProjectRoot, managedRepoPath } from './managed-workspace.mjs';
 export { ensureManagedBaseline, ensureManagedRepository, materializeCodeSource, materializeContextSources } from './project-import-service.mjs';
-
-const nodeTypes = new Set(WORKFLOW_NODE_TYPES);
 
 export function createDraftProjectRecords(body, actor) {
   const created = createProject({
@@ -44,12 +44,13 @@ export function createDraftProjectRecords(body, actor) {
   };
   const brief = buildProjectBrief(created.project, intake, actor.id, 1);
   const workflowDraft = createWorkflowDraft({ project: created.project, brief });
-  const session = {
-    id: id('asst'), version: 3, project_id: created.project.id, workspace_id: created.workspace.id, node_id: null,
-    scope_type: 'project', scope_id: created.project.id, parent_session_id: null, title: `${created.project.title} · 项目引导`,
-    status: 'idle', lifecycle: 'active', pinned: true, archived_at: null, codex_thread_id: null, clarification_policy: 'ask',
-    created_by_user_id: actor.id, created_at: now(), updated_at: now()
+  const breadcrumb = [{ type: 'project', id: created.project.id, label: created.project.title }];
+  const scope = {
+    type: 'project', id: created.project.id, workflow: null, node: null, nodeId: null, workspaceId: created.workspace.id, breadcrumb,
+    snapshot: { project_id: created.project.id, project_title: created.project.title, scope_type: 'project', scope_id: created.project.id, scope_title: created.project.title, workflow_id: null, parent_workstream_id: null, breadcrumb, captured_at: now() }
   };
+  const session = makeSession({ actor, project: created.project, scope, title: `${created.project.title} · 项目引导`, parentSessionId: null, viewContext: {}, clarificationPolicy: 'ask' });
+  session.pinned = true;
   return { ...created, intake, brief, workflowDraft, session, onboarding_route: `/projects/${created.project.id}/onboarding` };
 }
 
@@ -74,31 +75,35 @@ export function activateDraftInState(state, project, brief, workflowInput, actor
   if (project.status !== 'draft') throw new HttpError(409, { error: 'project_not_draft' });
   if (!brief || brief.status === 'superseded') throw new HttpError(409, { error: 'project_brief_required' });
   const workflow = createEmptyWorkflow(project, actorId);
-  Object.assign(workflow, { status: 'active', generated_by: 'onboarding', confirmed_by: 'human', brief_version: brief.version });
+  Object.assign(workflow, { status: 'active', generated_by: 'onboarding', confirmed_by: 'human', brief_version: brief.version, hierarchy_mode: 'two_level', workflow_revision: 1, semantic_migration_status: 'not_required', legacy_read_only: false });
   state.workflows.push(workflow);
   const supplied = Array.isArray(workflowInput) ? workflowInput : Array.isArray(workflowInput?.nodes) ? workflowInput.nodes : null;
-  if (supplied && !supplied.length) throw new HttpError(409, { error: 'workflow_draft_requires_node' });
+  if (!supplied?.length) throw new HttpError(409, { error: 'workflow_draft_requires_generation_or_manual_nodes' });
   if (supplied?.length > MAX_WORKFLOW_DRAFT_NODES) throw new HttpError(409, { error: 'workflow_draft_node_limit', max_nodes: MAX_WORKFLOW_DRAFT_NODES });
-  const rawInputs = supplied || suggestedWorkflow(brief), sourceIds = rawInputs.map((input) => text(input?.id, 120) || id('wfdn'));
-  if (new Set(sourceIds).size !== sourceIds.length) throw new HttpError(409, { error: 'workflow_draft_node_id_duplicate' });
-  const prepared = rawInputs.map((input, index) => ({ ...input, id: sourceIds[index], dependency_ids: Array.isArray(input?.dependency_ids) ? input.dependency_ids : listIndexes(input?.dependency_indexes, index).map((dependencyIndex) => sourceIds[dependencyIndex]) }));
-  const preparedIds = new Set(sourceIds);
-  for (const input of prepared) for (const value of input.dependency_ids) { const dependencyId = text(value, 120); if (dependencyId && !preparedIds.has(dependencyId)) throw new HttpError(409, { error: 'workflow_draft_dependency_not_found', node_id: input.id, dependency_id: dependencyId }); if (dependencyId === input.id) throw new HttpError(409, { error: 'workflow_draft_self_dependency', node_id: input.id }); }
-  const inputs = normalizeWorkflowNodes(prepared), inputIds = new Set(inputs.map((input) => input.id));
-  for (const input of inputs) for (const dependencyId of input.dependency_ids) if (!inputIds.has(dependencyId)) throw new HttpError(409, { error: 'workflow_draft_dependency_not_found', node_id: input.id, dependency_id: dependencyId });
-  try { assertWorkflowAcyclic(inputs); } catch (error) { if (error?.code === 'workflow_draft_cycle') throw new HttpError(409, { error: 'workflow_draft_cycle' }); throw error; }
+  const inputs = normalizeWorkflowHierarchyNodes(supplied);
+  assertWorkflowHierarchy(inputs, { mode: 'formal', requireTasks: true });
   const created = inputs.map((input, index) => ({
-    id: input.id || id('wfn'), workflow_id: workflow.id, workspace_id: null, type: nodeTypes.has(input.type) ? input.type : 'execution',
-    title: text(input.title || '新节点', 100), goal: text(input.goal || input.title || '', 2000), status: 'ready', order_index: index,
-    dependencies: [], current_contract_id: null, position: validPosition(input.position, index), created_at: now(), updated_at: now()
+    id: input.id || id(input.role === 'workstream' ? 'wfs' : 'tsk'), workflow_id: workflow.id, workspace_id: null,
+    role: input.role, parent_node_id: input.parent_node_id, type: input.type,
+    title: text(input.title || '新节点', 160), goal: text(input.goal || input.outcome || input.title || '', 4000), outcome: input.outcome,
+    category: input.category, task_kind: input.task_kind, execution_mode: input.execution_mode, boundary: input.boundary,
+    acceptance_criteria: input.acceptance_criteria, required: input.required !== false, repository_intent: input.repository_intent || null,
+    repository_target_ids: [], plan_revision: input.role === 'workstream' ? 1 : null,
+    status: input.dependency_ids.length ? 'blocked' : 'ready', order_index: input.order_index,
+    dependencies: input.dependency_ids.map((nodeId) => ({ node_id: nodeId, type: 'finish_to_start' })), current_contract_id: null,
+    position: validPosition(input.position, index), legacy_read_only: false, created_at: now(), updated_at: now()
   }));
-  const createdIds = new Set(created.map((node) => node.id));
-  for (let index = 0; index < created.length; index++) {
-    const dependencyIds = inputs[index].dependency_ids.filter((dependencyId) => createdIds.has(dependencyId) && dependencyId !== created[index].id);
-    created[index].dependencies = dependencyIds.map((nodeId) => ({ node_id: nodeId, type: 'finish_to_start' }));
-    const workspace = createNodeWorkspace(project, created[index], actorId);
-    const contract = defaultContractForNode(created[index], project, actorId, 'confirmed');
-    created[index].workspace_id = workspace.id; created[index].current_contract_id = contract.id;
+  const workspaceByNode = new Map();
+  for (const node of created.filter((item) => item.role === 'workstream')) {
+    const workspace = createNodeWorkspace(project, node, actorId); workspace.type = 'workstream';
+    const contract = hierarchyContract(node, project, actorId);
+    node.workspace_id = workspace.id; node.current_contract_id = contract.id; workspaceByNode.set(node.id, workspace);
+    state.workspaces.push(workspace); state.node_contracts.push(contract);
+  }
+  for (const node of created.filter((item) => item.role === 'task')) {
+    const workspace = createNodeWorkspace(project, node, actorId); workspace.type = 'task'; workspace.parent_workspace_id = workspaceByNode.get(node.parent_node_id)?.id || project.current_workspace_id;
+    const contract = hierarchyContract(node, project, actorId);
+    node.workspace_id = workspace.id; node.current_contract_id = contract.id; workspaceByNode.set(node.id, workspace);
     state.workspaces.push(workspace); state.node_contracts.push(contract);
   }
   state.workflow_nodes.push(...created);
@@ -173,9 +178,19 @@ function normalizeAnswers(value) { return value && typeof value === 'object' && 
 function normalizeContextSources(value) { return Array.isArray(value) ? value.slice(0, 50) : []; }
 function text(value, max) { return String(value || '').trim().slice(0, max); }
 function list(value) { return (Array.isArray(value) ? value : value ? [value] : []).map((item) => text(item, 1000)).filter(Boolean).slice(0, 100); }
-function listIndexes(value, max) { return (Array.isArray(value) ? value : []).filter((item) => Number.isInteger(item) && item >= 0 && item < max); }
 function validPosition(value, index) { return { x: Math.max(-10000, Math.min(10000, Number(value?.x) || 80 + index * 310)), y: Math.max(-10000, Math.min(10000, Number(value?.y) || 120)) }; }
-function graphFor(nodes) { return { nodes: nodes.map((node) => ({ id: node.id, type: node.type, label: node.title, position: node.position })), edges: nodes.flatMap((node) => node.dependencies.map((dependency, index) => ({ id: `${dependency.node_id}-${node.id}-${index}`, source: dependency.node_id, target: node.id }))) }; }
+function hierarchyContract(node, project, actorId) {
+  const contract = defaultContractForNode(node, project, actorId, 'confirmed');
+  contract.node_goal = node.role === 'workstream' ? node.outcome : node.goal;
+  if (node.acceptance_criteria?.length) contract.acceptance_criteria = [...node.acceptance_criteria];
+  if (node.role === 'workstream') {
+    contract.expected_outputs = [{ label: node.outcome, required: true }];
+    contract.allowed_tools = ['assist'];
+    contract.boundary = structuredClone(node.boundary || {});
+  }
+  return contract;
+}
+function graphFor(nodes) { const top = nodes.filter((node) => node.role === 'workstream'); const ids = new Set(top.map((node) => node.id)); return { nodes: top.map((node) => ({ id: node.id, type: 'workstream', label: node.title, position: node.position })), edges: top.flatMap((node) => node.dependencies.filter((dependency) => ids.has(dependency.node_id)).map((dependency, index) => ({ id: `${dependency.node_id}-${node.id}-${index}`, source: dependency.node_id, target: node.id }))) }; }
 function validateHttpsUrl(value) {
   return safeHttpsReferenceUrl(value, 'unsafe_context_url');
 }

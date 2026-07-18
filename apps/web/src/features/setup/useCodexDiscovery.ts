@@ -25,7 +25,7 @@ export function useCodexDiscovery(afterImport?: (result: CodexDiscoveryImportRes
     setBusy(true);
     setActionError('');
     try {
-      const result = await api<CodexDiscoveryImportResult>('/codex/discovery/import', json('POST', { ...input, ...(options.reconfigure ? { reconfigure: true } : {}) }));
+      const result = await api<CodexDiscoveryImportResult>('/codex/discovery/import', json('POST', { ...input, ...(options.reconfigure ? { reconfigure: true } : {}) }, '导入 Codex 配置'));
       await Promise.all([refresh(), afterImportRef.current?.(result)]);
       return result;
     } catch (value) { setActionError(message(value)); return undefined; }

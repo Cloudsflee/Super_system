@@ -1,7 +1,9 @@
+import { useRef } from 'react';
 import { useAssistSurface } from '../../../components/assist/semantic-actions';
 import type { AnswerDraft } from './onboarding-support';
 
-export function useProjectBriefAssistSurface(projectId: string | undefined, setField: (key: keyof AnswerDraft, value: unknown) => void) {
+export function useProjectBriefAssistSurface(projectId: string | undefined, answers: AnswerDraft, setField: (key: keyof AnswerDraft, value: unknown) => void, persist: (value: AnswerDraft) => void | Promise<void>) {
+  const current = useRef(answers); current.current = answers;
   useAssistSurface({ id: `project-onboarding-${projectId || 'unknown'}`, fields: {
     'brief.goal': control('核心目标', 'brief-goal', 'goal'),
     'brief.users': control('目标用户', 'brief-users', 'users'),
@@ -15,5 +17,5 @@ export function useProjectBriefAssistSurface(projectId: string | undefined, setF
     'brief.open_questions': control('开放问题', 'brief-open-questions', 'open_questions')
   } });
 
-  function control(label: string, elementId: string, key: keyof AnswerDraft) { return { label, elementId, set: (value: unknown) => setField(key, value) }; }
+  function control(label: string, elementId: string, key: keyof AnswerDraft) { return { label, elementId, set: (value: unknown) => { const text = Array.isArray(value) ? value.map(String).join('\n') : String(value ?? ''); current.current = { ...current.current, [key]: text }; setField(key, text); }, persist: () => persist(current.current) }; }
 }

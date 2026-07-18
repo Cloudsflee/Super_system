@@ -4,7 +4,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { api, cleanup, createConfirmedProject, makeFixture, repositorySnapshot, startApi } from './v13-test-helpers.mjs';
 
-const port = 4597;
+const port = Number(process.env.AIWS_TEST_PORT || 4597);
 const fixture = makeFixture('aiws-v13-assist-');
 const source = path.join(fixture.root, 'external-repo');
 fs.mkdirSync(source);
@@ -20,7 +20,10 @@ try {
     baseUrl: `http://127.0.0.1:${port}`, title: 'Assist V3 Worktree', goal: '验证 Agent review', source,
     workflowNodes: [{ type: 'execution', title: 'Agent execution', goal: '在独立 worktree 中修改文件' }]
   });
-  const sessionId = project.draft.assist_session.id;
+  const onboardingSession = await api(port, `/assist/v3/sessions/${project.draft.assist_session.id}`);
+  assert.equal(onboardingSession.scope_status, 'active');
+  assert.equal(onboardingSession.scope_type, 'project');
+  const sessionId = onboardingSession.id;
   const managedReadme = path.join(project.managedRepo, 'README.md');
   assert.equal(normalize(fs.readFileSync(managedReadme, 'utf8')), '# Assist V3 baseline\n');
   const turn = await api(port, `/assist/v3/sessions/${sessionId}/turns`, 'POST', {

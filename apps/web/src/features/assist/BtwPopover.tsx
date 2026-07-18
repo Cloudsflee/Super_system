@@ -31,10 +31,10 @@ export function BtwPopover({ sessionId }: { sessionId?: string }) {
       if (!sessionId) throw new Error('当前项目还没有可用的 Assist 线程');
       let current = session;
       if (!current) {
-        current = await api<BtwSession>(`/assist/v3/sessions/${sessionId}/btw`, json('POST', { browser_id: browserId(), selection: detail?.selection, page_url: detail?.pageUrl }));
+        current = await api<BtwSession>(`/assist/v3/sessions/${sessionId}/btw`, json('POST', { browser_id: browserId(), selection: detail?.selection, page_url: detail?.pageUrl }, '创建临时问答'));
         sessionRef.current = current; setSession(current); connect(current);
       }
-      await api(`/assist/v3/btw/${current.id}/turns`, json('POST', { access_token: current.access_token, content }));
+      await api(`/assist/v3/btw/${current.id}/turns`, json('POST', { access_token: current.access_token, content }, '发送临时问题'));
       setQuestion('');
     } catch (reason) { setError((reason as Error).message); } finally { setBusy(false); }
   }
@@ -69,5 +69,5 @@ function btwMessages(events: BtwEvent[]) {
   return result;
 }
 function browserId() { const key = 'aiws-browser-instance-v16', stored = localStorage.getItem(key); if (stored) return stored; const random = crypto.randomUUID?.() || `${Date.now()}-${Math.random().toString(16).slice(2)}`, value = `browser-${random}`; localStorage.setItem(key, value); return value; }
-function destroyBtw(current: BtwSession) { return fetch(apiUrl(`/assist/v3/btw/${current.id}?token=${encodeURIComponent(current.access_token)}`), { method: 'DELETE', keepalive: true }).then(() => undefined, () => undefined); }
+function destroyBtw(current: BtwSession) { return api(`/assist/v3/btw/${current.id}?token=${encodeURIComponent(current.access_token)}`, { ...json('DELETE', undefined, '关闭临时问答'), keepalive: true }).then(() => undefined, () => undefined); }
 function popoverPosition(anchor: Anchor | null) { const width = Math.min(420, window.innerWidth - 16), left = Math.max(8, Math.min(anchor?.left || window.innerWidth / 2 - width / 2, window.innerWidth - width - 8)), top = Math.max(8, Math.min((anchor?.bottom || 80) + 8, window.innerHeight - 360)); return { left, top, width }; }

@@ -1,0 +1,31 @@
+name: V1.8 Full
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '30 17 * * 1-5'
+
+permissions:
+  contents: read
+
+jobs:
+  v18-full:
+    runs-on: ubuntu-latest
+    timeout-minutes: 95
+    steps:
+      - uses: actions/checkout@v4
+        with: { fetch-depth: 0 }
+      - uses: pnpm/action-setup@v4
+        with: { version: 10.14.0 }
+      - uses: actions/setup-node@v4
+        with: { node-version: 24, cache: pnpm }
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm exec playwright install --with-deps chromium
+      - run: pnpm test:v18:full
+      - if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: v18-full-${{ github.run_id }}
+          path: .ai-workspace/test-reports/v1.8/
+          if-no-files-found: error
+          retention-days: 14

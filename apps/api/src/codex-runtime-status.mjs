@@ -1,12 +1,56 @@
 import { createHash } from 'node:crypto';
 import { ROOT } from './config.mjs';
-import { command } from './http.mjs';
+import { command, commandAsync } from './http.mjs';
 import { DEFAULT_RUNNER_IMAGE } from './container-runtime-config.mjs';
 
 export const DEFAULT_CODEX_IMAGE = DEFAULT_RUNNER_IMAGE;
 
+const runtimeCache = new Map();
+
+export function selectedCodexRuntimeImage(state) {
+  const profiles = Array.isArray(state?.codex_profiles) ? state.codex_profiles : [];
+  const profile = profiles.find((item) => item?.is_active) || profiles.find((item) => item?.status === 'validated');
+  return String(profile?.image || profile?.config?.image || '').trim() || undefined;
+}
+
 export function inspectCodexRuntimeLive({ commandRunner = command, image = process.env.AIWS_CODEX_DOCKER_IMAGE || DEFAULT_CODEX_IMAGE } = {}) {
   const dockerResult = commandRunner('docker', ['info', '--format', '{{.ServerVersion}}'], ROOT, 5000);
+  const imageResult = dockerResult.ok
+    ? commandRunner('docker', ['image', 'inspect', image], ROOT, 5000)
+    : { ok: false, status: null, stdout: '', stderr: '', error: 'docker_unavailable' };
+  return codexRuntimeStatus(dockerResult, imageResult, image);
+}
+
+export async function inspectCodexRuntimeLiveAsync({ commandRunner = runtimeCommandAsync, image = process.env.AIWS_CODEX_DOCKER_IMAGE || DEFAULT_CODEX_IMAGE } = {}) {
+  const dockerResult = await commandRunner('docker', ['info', '--format', '{{.ServerVersion}}'], ROOT, 5000);
+  const imageResult = dockerResult.ok
+    ? await commandRunner('docker', ['image', 'inspect', image], ROOT, 5000)
+    : { ok: false, status: null, stdout: '', stderr: '', error: 'docker_unavailable' };
+  return codexRuntimeStatus(dockerResult, imageResult, image);
+}
+
+export async function inspectCodexRuntimeCached({ image = process.env.AIWS_CODEX_DOCKER_IMAGE || DEFAULT_CODEX_IMAGE, maxAgeMs = 2000, force = false, commandRunner = runtimeCommandAsync } = {}) {
+  const key = String(image);
+  const current = runtimeCache.get(key);
+  if (!force && current?.value && Date.now() - current.checkedAt < maxAgeMs) return current.value;
+  if (!force && current?.promise) return current.promise;
+  const promise = inspectCodexRuntimeLiveAsync({ image, commandRunner }).then((value) => {
+    runtimeCache.set(key, { value, checkedAt: Date.now(), promise: null });
+    return value;
+  }).catch((error) => {
+    runtimeCache.delete(key);
+    throw error;
+  });
+  runtimeCache.set(key, { value: current?.value || null, checkedAt: current?.checkedAt || 0, promise });
+  return promise;
+}
+
+export function invalidateCodexRuntimeCache(image) {
+  if (image) runtimeCache.delete(String(image));
+  else runtimeCache.clear();
+}
+
+function codexRuntimeStatus(dockerResult, imageResult, image) {
   const docker = {
     ok: dockerResult.ok === true,
     available: dockerResult.ok === true,
@@ -15,9 +59,6 @@ export function inspectCodexRuntimeLive({ commandRunner = command, image = proce
     summary: dockerResult.ok ? 'Docker 引擎可用' : 'Docker 引擎当前不可用',
     action: dockerResult.ok ? null : '启动 Docker Desktop，确认使用 Linux containers，然后重新检测。'
   };
-  const imageResult = docker.ok
-    ? commandRunner('docker', ['image', 'inspect', image], ROOT, 5000)
-    : { ok: false, status: null, stdout: '', stderr: '', error: 'docker_unavailable' };
   const imageId = imageResult.ok ? codexImageFingerprint(imageResult.stdout) : null;
   const imageOk = imageResult.ok === true && Boolean(imageId);
   const imageError = imageOk ? null : imageResult.ok ? 'codex_probe_image_inspection_failed' : docker.ok ? imageErrorCode(imageResult) : 'codex_probe_docker_unavailable';
@@ -60,4 +101,11 @@ function stableJson(value) {
   if (Array.isArray(value)) return `[${value.map(stableJson).join(',')}]`;
   if (value && typeof value === 'object') return `{${Object.keys(value).sort().map((key) => `${JSON.stringify(key)}:${stableJson(value[key])}`).join(',')}}`;
   return JSON.stringify(value);
+}
+
+function runtimeCommandAsync(commandName, args, cwd, timeout, env) {
+  const testScript = process.env.NODE_ENV === 'test' ? process.env.AIWS_TEST_DOCKER_SCRIPT : null;
+  return testScript && commandName === 'docker'
+    ? commandAsync(process.execPath, [testScript, ...args], cwd, timeout, env)
+    : commandAsync(commandName, args, cwd, timeout, env);
 }

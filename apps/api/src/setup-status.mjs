@@ -73,10 +73,10 @@ function githubStep({ githubReady, appConfigured, account, installations, select
 }
 
 export function isSetupExempt(pathname) {
-  if (pathname === '/health' || pathname === '/system/deployment' || pathname === '/setup/status' || pathname === '/setup/mode' || pathname === '/setup/complete' || pathname === '/github/webhook') return true;
+  if (pathname === '/health' || pathname === '/system/deployment' || pathname === '/setup/status' || pathname === '/setup/mode' || pathname === '/setup/complete' || pathname === '/github/webhook' || pathname === '/mcp') return true;
   if (/^\/github\/(status|app-config\/(defaults|validate|manual|reset)|manifest\/(start|callback)|device\/(start|poll)|disconnect|repositories\/sync)$/.test(pathname)) return true;
   if (/^\/github\/installations(?:\/start|\/discover|\/setup|\/[^/]+\/repositories(?:\/sync)?)?$/.test(pathname)) return true;
-  if (/^\/codex\/(status|docker\/build|auth\/(?:device\/start|device\/[^/]+\/(?:events|cancel)|api-key|reset)|profiles(?:\/[^/]+(?:\/validate)?)?|cc-switch\/(?:status|sync|import)|probe)$/.test(pathname)) return true;
+  if (/^\/codex\/(status|docker\/(?:build|builds\/(?:active|[^/]+(?:\/events|\/cancel)?))|auth\/(?:device\/start|device\/[^/]+\/(?:events|cancel)|api-key|reset)|profiles(?:\/[^/]+(?:\/validate)?)?|cc-switch\/(?:status|sync|import)|probe)$/.test(pathname)) return true;
   if (/^\/codex\/discovery(?:\/import)?$/.test(pathname)) return true;
   return false;
 }

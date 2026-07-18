@@ -1,6 +1,6 @@
 import { Check, Clock3, GitPullRequest, ShieldAlert, X } from 'lucide-react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { useEffect } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { ApiError } from '../../api/client';
 import { keys } from '../../api/queries';
 import type { ApprovalDecision, ApprovalItem } from '../../api/types';
@@ -9,8 +9,10 @@ import { IconButton } from '../common/IconButton';
 import { decideApproval, useApprovals } from './approval-api';
 
 export function ApprovalPrompt({ projectId }: { projectId?: string }) {
-  const { proposalId, showProposal, toast } = useUi();
+  const { proposalId, showProposal } = useUi();
   const client = useQueryClient();
+  const [decisionError, setDecisionError] = useState<string | null>(null);
+  const deferWhenReady = useRef(false);
   // Resolve by id across projects so a route/project switch cannot orphan an interrupting prompt.
   const approvals = useApprovals(undefined, Boolean(proposalId));
   const ordered = approvals.data?.slice().sort((a, b) => String(b.created_at).localeCompare(String(a.created_at)));
@@ -18,22 +20,22 @@ export function ApprovalPrompt({ projectId }: { projectId?: string }) {
   const resolved = item?.attention_state === 'resolved';
   const decision = useMutation({
     mutationFn: ({ value, target }: { value: ApprovalDecision; target: ApprovalItem }) => decideApproval(target, value, value === 'reject' ? '用户从即时审批弹窗拒绝' : undefined),
+    onMutate: () => setDecisionError(null),
     onSuccess: async (result, variables) => {
-      await invalidateApprovalState(client, projectId);
+      await invalidateApprovalState(client, projectId, variables.target.project_id);
       if (variables.value === 'approve_apply' && (result.applied || result.proposal)) {
         const proposal = result.proposal || (variables.target.type === 'change_proposal' ? { id: result.item?.id || variables.target.id } : undefined);
         window.dispatchEvent(new CustomEvent('aiws:proposal-applied', { detail: { proposal, applied: result.applied } }));
       }
       showProposal(null);
-      toast(variables.value === 'defer' ? '已暂定并移入审批中心' : variables.value === 'reject' ? '变更已拒绝' : '变更已批准并应用');
     },
     onError: async (error) => {
       if (error instanceof ApiError && error.status === 409 && error.payload.error === 'proposal_stale') {
-        toast('提案已过期，已加载最新 revision，请重新审查', 'error');
+        setDecisionError('提案已过期或目标工作流已变化，未应用任何修改。');
         await approvals.refetch();
         return;
       }
-      toast(error.message, 'error');
+      setDecisionError(error.message);
     }
   });
 
@@ -42,6 +44,13 @@ export function ApprovalPrompt({ projectId }: { projectId?: string }) {
   }
 
   useEffect(() => { if (proposalId && resolved) showProposal(null); }, [proposalId, resolved, showProposal]);
+  useEffect(() => {
+    if (!deferWhenReady.current || !item || resolved || decision.isPending) return;
+    deferWhenReady.current = false;
+    decide('defer');
+  }, [item?.id, item?.revision, resolved, decision.isPending]);
+  useEffect(() => { deferWhenReady.current = false; }, [proposalId]);
+  useEffect(() => setDecisionError(null), [item?.id]);
 
   useEffect(() => {
     if (!proposalId) return;
@@ -49,11 +58,13 @@ export function ApprovalPrompt({ projectId }: { projectId?: string }) {
       if (event.key !== 'Escape') return;
       event.preventDefault();
       event.stopImmediatePropagation();
-      decide('defer');
+      if (item) decide('defer');
+      else if (approvals.isError) showProposal(null);
+      else deferWhenReady.current = true;
     };
     window.addEventListener('keydown', onEscape, true);
     return () => window.removeEventListener('keydown', onEscape, true);
-  }, [proposalId, item?.id, item?.revision, decision.isPending]);
+  }, [proposalId, item?.id, item?.revision, decision.isPending, approvals.isError, showProposal]);
 
   if (!proposalId) return null;
   return (
@@ -62,13 +73,14 @@ export function ApprovalPrompt({ projectId }: { projectId?: string }) {
         {!item ? <div className="approval-prompt-loading">
           <ShieldAlert size={22} />
           <strong>{approvals.isError ? '审批项目加载失败' : '正在加载审批项目'}</strong>
-          {approvals.isError && <><small>{approvals.error.message}</small><button className="button secondary" onClick={() => approvals.refetch()}>重试</button></>}
+          {approvals.isError && <><small>{approvals.error.message}</small><button className="button secondary" onClick={() => approvals.refetch()}>重试</button><button className="button secondary" onClick={() => showProposal(null)}>关闭并稍后处理</button></>}
         </div> : <>
           <header><div className="approval-kind">{item.type === 'runtime_approval' ? <ShieldAlert size={17} /> : <GitPullRequest size={17} />}<span>{item.type === 'runtime_approval' ? 'RUNTIME APPROVAL' : 'CHANGE PROPOSAL'}</span></div><IconButton label="暂定并关闭" disabled={resolved || decision.isPending} onClick={() => decide('defer')}><X size={17} /></IconButton></header>
           <div className="approval-prompt-body">
             <div className="approval-meta"><span className={`status ${item.status}`}>{item.status}</span><span>revision {item.revision}</span>{item.change_type && <span>{item.change_type}</span>}</div>
             <h2 id="approval-prompt-title">{item.title}</h2>
             <p>{item.summary}</p>
+            {decisionError && <div className="approval-error" role="alert">{decisionError}</div>}
             {(item.before_json != null || item.after_json != null) && <details><summary>查看变更内容</summary><div className="approval-change"><section><strong>变更前</strong><pre>{JSON.stringify(item.before_json ?? null, null, 2)}</pre></section><section><strong>变更后</strong><pre>{JSON.stringify(item.after_json ?? null, null, 2)}</pre></section></div></details>}
             {item.impact?.length ? <div className="approval-chip-line"><strong>影响</strong>{item.impact.map((value) => <span key={value}>{value}</span>)}</div> : null}
             {item.risks?.length ? <div className="approval-risks"><strong>风险</strong><ul>{item.risks.map((value) => <li key={value}>{value}</li>)}</ul></div> : null}
@@ -80,12 +92,15 @@ export function ApprovalPrompt({ projectId }: { projectId?: string }) {
   );
 }
 
-export async function invalidateApprovalState(client: ReturnType<typeof useQueryClient>, projectId?: string) {
+export async function invalidateApprovalState(client: ReturnType<typeof useQueryClient>, ...projectIds: Array<string | undefined>) {
+  const ids = [...new Set(projectIds.filter((value): value is string => Boolean(value)))];
   await Promise.all([
     client.invalidateQueries({ queryKey: keys.approvals() }),
-    client.invalidateQueries({ queryKey: keys.approvals(projectId) }),
-    client.invalidateQueries({ queryKey: keys.proposals(projectId) }),
-    ...(projectId ? [client.invalidateQueries({ queryKey: keys.project(projectId) })] : []),
+    ...ids.flatMap((projectId) => [
+      client.invalidateQueries({ queryKey: keys.approvals(projectId) }),
+      client.invalidateQueries({ queryKey: keys.proposals(projectId) }),
+      client.invalidateQueries({ queryKey: keys.project(projectId) })
+    ]),
     client.invalidateQueries({ queryKey: keys.setup }),
     client.invalidateQueries({ queryKey: ['node-workspace'] }),
     client.invalidateQueries({ queryKey: ['codex-profiles'] }),

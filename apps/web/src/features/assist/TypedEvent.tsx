@@ -47,6 +47,7 @@ function failureMessage(value: unknown) {
   const code = text(value);
   return ({
     assist_workspace_unavailable: 'Assist 工作目录不可用，请重新进入项目后重试。',
+    codex_runtime_state_incompatible: 'Codex 运行时状态库不兼容，自动备份恢复未成功；请重新验证当前 Profile 后重试。',
     codex_runtime_start_failed: 'Codex Runner 启动失败，请检查运行时状态后重试。',
     codex_turn_failed: 'Codex 请求执行失败，请重试并检查 Endpoint 状态。',
     codex_auth_failed: 'Codex 凭据不可用，请重新验证当前 Profile。',

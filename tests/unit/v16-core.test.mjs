@@ -100,6 +100,13 @@ try {
   const parentDelete = await lifecycle.deleteV3Session(forked.id, { clock: () => new Date('2026-07-14T03:00:00.000Z') });
   assert.notEqual(childDelete.delete_batch_id, parentDelete.delete_batch_id);
   const sessionService = await import('../../apps/api/src/assist-v3-sessions.mjs');
+  await stateApi.mutate((state) => { state.assist_turns.find((item) => item.id === 'root-turn').status = 'waiting_user_input'; });
+  await assert.rejects(() => sessionService.archiveV3Session('root-session'), (error) => error.payload?.error === 'assist_session_running');
+  await stateApi.mutate((state) => { state.assist_turns.find((item) => item.id === 'root-turn').status = 'completed'; });
+  await sessionService.archiveV3Session('root-session');
+  assert.equal((await sessionService.getV3Session('root-session')).archived_at !== null, true, 'archived sessions remain readable');
+  assert.equal((await sessionService.updateV3Session('root-session', { title: 'Archived root' })).title, 'Archived root');
+  await sessionService.restoreV3Session('root-session');
   assert.equal((await sessionService.listV3Sessions({ project_id: 'project-v16' })).some((item) => item.id === forked.id), false, 'default session list excludes deleted branches');
   assert.equal((await sessionService.listV3Sessions({ project_id: 'project-v16', deleted: 'include' })).some((item) => item.id === forked.id), true, 'deleted branches require an explicit include query');
   assert.equal((await sessionService.listV3Sessions({ project_id: 'project-v16', deleted: 'only' })).every((item) => item.deleted_at), true);

@@ -85,7 +85,7 @@ async function runTestPresetLocked({ projectId, nodeId, preset }) {
   return mutate((state) => {
     const actor = owner(state), currentProject = state.projects.find((item) => item.id === project.id), node = state.workflow_nodes.find((item) => item.id === nodeId);
     assertManagedProjectWritable(currentProject);
-    const task = { id: id('tsk'), project_id: project.id, workspace_id: node?.workspace_id || project.current_workspace_id, node_id: node?.id || null, preset, command: invocation.label, status: result.ok ? 'succeeded' : 'failed', stdout: result.stdout.slice(-30000), stderr: result.stderr.slice(-30000), duration_ms: Date.now() - started, created_by_user_id: actor.id, created_at: now(), completed_at: now() };
+    const task = { id: id('tsk'), project_id: project.id, workspace_id: node?.workspace_id || project.current_workspace_id, node_id: node?.id || null, preset, command: invocation.label, status: result.ok ? 'succeeded' : 'failed', stdout: result.stdout.slice(-30000), stderr: [result.stderr, result.error].filter(Boolean).join('\n').slice(-30000), duration_ms: Date.now() - started, created_by_user_id: actor.id, created_at: now(), completed_at: now() };
     state.test_tasks.push(task);
     addTrace(state, 'test.completed', { project_id: project.id, workspace_id: task.workspace_id, node_id: task.node_id, target_id: task.id, summary: `${preset}: ${task.status}`, data: { duration_ms: task.duration_ms, command: task.command } }, actor.id);
     return task;
@@ -117,8 +117,12 @@ async function resolveProjectPath(projectId, relative, mustExist) {
   return { state, project, root, target: path.join(parent, path.basename(lexicalTarget)) };
 }
 
-function taskInvocation(root, preset) {
-  if (fs.existsSync(path.join(root, 'package.json'))) return { command: 'corepack', args: ['pnpm', preset], label: `pnpm ${preset}` };
+export function taskInvocation(root, preset, options = {}) {
+  if (!presets.has(preset)) throw new HttpError(400, { error: 'unsupported_test_preset', allowed: [...presets] });
+  const platform = options.platform || process.platform, comspec = options.comspec || process.env.ComSpec || 'cmd.exe';
+  if (fs.existsSync(path.join(root, 'package.json'))) return platform === 'win32'
+    ? { command: comspec, args: ['/d', '/s', '/c', `corepack pnpm ${preset}`], label: `pnpm ${preset}` }
+    : { command: 'corepack', args: ['pnpm', preset], label: `pnpm ${preset}` };
   if (fs.existsSync(path.join(root, 'Cargo.toml'))) return { command: 'cargo', args: [preset === 'test' ? 'test' : preset === 'build' ? 'build' : 'check'], label: `cargo ${preset}` };
   if (fs.existsSync(path.join(root, 'go.mod'))) return { command: 'go', args: [preset === 'test' ? 'test' : 'build', './...'], label: `go ${preset}` };
   throw new HttpError(409, { error: 'no_supported_task_runner' });

@@ -40,7 +40,7 @@ async function performNativeFork(sessionId, input, { rpc = runCodexAppServerRpc 
   try {
     response = await rpc({
       state, profile, cwd, sandbox: 'read-only', resumeId: sourceThreadId, createThread: false,
-      method: 'thread/fork', params: { ...(fromTurn?.codex_turn_id ? { turnId: fromTurn.codex_turn_id } : {}), ephemeral: false }
+      method: 'thread/fork', params: { ...(fromTurn?.codex_turn_id ? { turnId: fromTurn.codex_turn_id } : {}), ephemeral: false }, projectId: project.id
     });
   } catch (error) {
     throw nativeForkError(error);
@@ -69,7 +69,7 @@ async function performNativeFork(sessionId, input, { rpc = runCodexAppServerRpc 
       return sessionSummary(current, forked);
     });
   } catch (error) {
-    const cleanupError = await deleteOrphanNativeThread({ rpc, state, profile, cwd, threadId: forkedThreadId }).then(() => null, (failure) => failure);
+    const cleanupError = await deleteOrphanNativeThread({ rpc, state, profile, cwd, threadId: forkedThreadId, projectId: project.id }).then(() => null, (failure) => failure);
     if (cleanupError) await recordOrphanNativeThread(source, forkedThreadId, cleanupError).catch(() => undefined);
     throw error;
   }
@@ -193,7 +193,7 @@ function resolveForkProfile(state, source, input) {
 }
 function nativeForkThreadId(response) { return cleanText(response?.result?.thread?.id || response?.result?.threadId || response?.result?.thread_id || response?.forked_thread_id, 300) || null; }
 function nativeForkError(error) { if (error instanceof HttpError) return error; return new HttpError(502, { error: 'assist_native_fork_failed', reason: safeErrorCode(error), retryable: true }); }
-async function deleteOrphanNativeThread({ rpc, state, profile, cwd, threadId }) { try { return await rpc({ state, profile, cwd, sandbox: 'read-only', resumeId: threadId, createThread: false, method: 'thread/delete', params: {} }); } catch (error) { if (!nativeThreadMissing(error)) throw error; } }
+async function deleteOrphanNativeThread({ rpc, state, profile, cwd, threadId, projectId }) { try { return await rpc({ state, profile, cwd, sandbox: 'read-only', resumeId: threadId, createThread: false, method: 'thread/delete', params: {}, projectId }); } catch (error) { if (!nativeThreadMissing(error)) throw error; } }
 async function recordOrphanNativeThread(source, threadId, error) { return mutate((state) => addTrace(state, 'assist.native_thread.orphaned', { project_id: source.project_id, target_id: source.id, data: { native_thread_id: threadId, cleanup_error: safeErrorCode(error) }, summary: 'Native Fork cleanup requires retry.' })); }
 function assertSubtreeIdle(state, sessions, { allowOpenBatches = false } = {}) {
   const ids = new Set(sessions.map((item) => item.id));
@@ -211,7 +211,7 @@ async function deleteIndependentNativeThread(state, session, rpc) {
   const profile = state.codex_profiles.find((item) => item.id === session.runtime_profile_id && item.status === 'validated' && !item.assist_configuration);
   const project = state.projects.find((item) => item.id === session.project_id && !item.deleted_at);
   if (!profile || !project) throw new HttpError(409, { error: 'assist_native_thread_cleanup_unavailable' });
-  try { await rpc({ state, profile, cwd: readableProjectCwd(project), sandbox: 'read-only', resumeId: threadId, createThread: false, method: 'thread/delete', params: {} }); }
+  try { await rpc({ state, profile, cwd: readableProjectCwd(project), sandbox: 'read-only', resumeId: threadId, createThread: false, method: 'thread/delete', params: {}, projectId: project.id }); }
   catch (error) { if (!nativeThreadMissing(error)) throw error; }
 }
 async function removeManagedAttachment(file) {

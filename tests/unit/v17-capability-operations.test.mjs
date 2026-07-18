@@ -46,7 +46,8 @@ try {
   const specs = operations.dynamicPageToolSpec(viewContext, 'default', { state: initialState, projectId });
   const projectSpec = specs.find((item) => item.name === 'aiws_project');
   assert.ok(projectSpec, 'the current onboarding surface exposes project tools');
-  const projectDescriptors = shared.ASSIST_CAPABILITY_MANIFEST.filter((item) => item.id.startsWith('project.'));
+  assert.match(projectSpec.tools.find((item) => item.name === 'workflow_draft_node_add').description, /at most 12 Workstreams/);
+  const projectDescriptors = shared.ASSIST_CAPABILITY_MANIFEST.filter((item) => item.id.startsWith('project.') && item.route === '/projects/:projectId/onboarding');
   assert.deepEqual(new Set(projectSpec.tools.map((item) => item.name)), new Set(projectDescriptors.map(shared.assistCapabilityToolName)));
   for (const tool of projectSpec.tools) {
     for (const key of ['project_id', 'route', 'surface_id', 'surface_revision', 'browser_instance_id']) assert.equal(tool.inputSchema.properties[key].enum.length, 1, `${tool.name}.${key}`);
@@ -137,17 +138,37 @@ try {
   assert.equal((await stateApi.readState()).project_briefs[0].content.goal, '直接定点修订');
 
   state = await stateApi.readState();
-  const draft = state.workflow_drafts[0], firstNode = draft.nodes[0];
+  const draft = state.workflow_drafts[0];
   await operations.handleDynamicPageTool(sessionId, turnId, call('workflow_draft_node_add', 'workflow-add', draft.revision, {
-    type: 'add_node', node: { id: 'node-v17-extra', type: 'analysis', title: '能力评审', goal: '验证领域工具', dependency_ids: [firstNode.id] }
+    type: 'add_node', node: {
+      id: 'node-v17-base', role: 'workstream', title: '能力验证成果', goal: '验证领域工具', outcome: '形成能力验证成果',
+      category: 'deliverable', acceptance_criteria: ['领域工具验证通过'], boundary: { deliverable: '能力验证报告' }, dependency_ids: []
+    }
   }, { resource: 'workflow' }));
   state = await stateApi.readState();
   assert.equal(state.workflow_drafts[0].revision, draft.revision + 1);
-  assert.ok(state.workflow_drafts[0].nodes.some((item) => item.id === 'node-v17-extra'));
+  const firstNode = state.workflow_drafts[0].nodes.find((item) => item.id === 'node-v17-base');
+  assert.equal(firstNode.role, 'workstream');
+
+  await operations.handleDynamicPageTool(sessionId, turnId, call('workflow_draft_node_add', 'workflow-add-second', state.workflow_drafts[0].revision, {
+    type: 'add_node', node: {
+      id: 'node-v17-extra', role: 'workstream', title: '独立调研成果', goal: '独立交付调研证据', outcome: '形成可引用调研证据',
+      category: 'deliverable', acceptance_criteria: ['证据来源可追溯'], boundary: { owner: 'research-owner' }, dependency_ids: [firstNode.id]
+    }
+  }, { resource: 'workflow' }));
+  state = await stateApi.readState(); assert.equal(state.workflow_drafts[0].nodes.length, 2);
+  await operations.handleDynamicPageTool(sessionId, turnId, call('workflow_draft_node_add', 'workflow-add-task', state.workflow_drafts[0].revision, {
+    type: 'add_node', node: { id: 'task-v17-one', role: 'task', parent_node_id: firstNode.id, title: '执行能力验证', task_kind: 'analysis', execution_mode: 'assist', dependency_ids: [] }
+  }, { resource: 'workflow' }));
+  state = await stateApi.readState();
+  assert.equal(state.workflow_drafts[0].nodes.find((item) => item.id === 'task-v17-one').parent_node_id, firstNode.id);
+  await assert.rejects(() => operations.handleDynamicPageTool(sessionId, turnId, call('workflow_draft_node_add', 'workflow-add-review', state.workflow_drafts[0].revision, {
+    type: 'add_node', node: { id: 'node-v17-review', role: 'workstream', title: '复盘阶段', outcome: '不得成为顶层流程阶段', category: 'operation', acceptance_criteria: ['不适用'], boundary: { owner: 'owner' }, dependency_ids: [] }
+  }, { resource: 'workflow' })), (error) => error.payload?.error === 'workflow_workstream_process_stage_forbidden');
 
   await assert.rejects(() => operations.handleDynamicPageTool(sessionId, turnId, call('workflow_draft_node_connect', 'workflow-cycle', state.workflow_drafts[0].revision, {
     type: 'connect', node_id: firstNode.id, dependency_id: 'node-v17-extra'
-  }, { resource: 'workflow' })), (error) => error.payload?.error === 'workflow_draft_cycle');
+  }, { resource: 'workflow' })), (error) => error.payload?.error === 'workflow_top_level_cycle');
   state = await stateApi.readState();
   assert.equal(state.workflow_drafts[0].nodes.find((item) => item.id === firstNode.id).dependency_ids.includes('node-v17-extra'), false);
 

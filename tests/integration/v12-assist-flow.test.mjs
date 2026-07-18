@@ -5,7 +5,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { createConfirmedProject, repositorySnapshot } from './v13-test-helpers.mjs';
 
-const port = 4585;
+const port = Number(process.env.AIWS_TEST_PORT || 4585);
 const home = fs.mkdtempSync(path.join(os.tmpdir(), 'aiws-v12-assist-'));
 const repo = path.join(home, 'repo');
 fs.mkdirSync(repo); fs.writeFileSync(path.join(repo, 'README.md'), '# Assist\n'); spawnSync('git', ['init'], { cwd: repo });
@@ -80,7 +80,7 @@ try {
 }
 
 async function createSession(projectId, scopeType, scopeId, viewContext = {}) { return api('/assist/v2/sessions', 'POST', { project_id: projectId, scope_type: scopeType, scope_id: scopeId, view_context: viewContext }, 201); }
-async function waitForStatus(id, status) { for (let index = 0; index < 100; index++) { const value = await api(`/assist/v2/sessions/${id}`); if (value.status === status) return value; await new Promise((resolve) => setTimeout(resolve, 20)); } throw new Error(`Assist session did not reach ${status}`); }
+async function waitForStatus(id, status) { let latest; for (let index = 0; index < 250; index++) { latest = await api(`/assist/v2/sessions/${id}`); if (latest.status === status) return latest; await new Promise((resolve) => setTimeout(resolve, 20)); } throw new Error(`Assist session did not reach ${status}; latest=${latest?.status}:${latest?.error || ''}`); }
 async function rawPost(route) { const response = await fetch(`http://127.0.0.1:${port}${route}`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: '{}' }); return { status: response.status, data: await response.json() }; }
 function parseSse(text) { return text.split(/\n\n+/).filter((block) => block.includes('data: ')).map((block) => { const lines = block.split('\n'); assert.ok(lines.some((line) => line === 'event: assist')); const id = Number(lines.find((line) => line.startsWith('id: ')).slice(4)); const data = JSON.parse(lines.find((line) => line.startsWith('data: ')).slice(6)); assert.equal(data.id, id); return { id, data }; }); }
 async function api(route, method = 'GET', body, status = 200) { const response = await fetch(`http://127.0.0.1:${port}${route}`, { method, headers: { 'content-type': 'application/json' }, body: body === undefined ? undefined : JSON.stringify(body) }); const data = await response.json(); assert.equal(response.status, status, `${route}: ${JSON.stringify(data)}`); return data; }

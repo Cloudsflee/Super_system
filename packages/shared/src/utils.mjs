@@ -18,6 +18,7 @@ export function maskSecret(text) {
   let out = String(text);
   if (process.env.GITHUB_TOKEN) out = out.split(process.env.GITHUB_TOKEN).join('***MASKED_GITHUB_TOKEN***');
   return out.replace(/gh[pousr]_[A-Za-z0-9_]{20,}/g, '***MASKED_GITHUB_TOKEN***')
+    .replace(/\baiws_mcp_[A-Za-z0-9_-]{30,}\b/g, '***MASKED_MCP_TOKEN***')
     .replace(/-----BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY-----[\s\S]*?-----END (?:RSA |EC |OPENSSH )?PRIVATE KEY-----/g, '***MASKED_PRIVATE_KEY***')
     .replace(/\bsk-(?:proj-|svcacct-)?[A-Za-z0-9_-]{16,}\b/g, '***MASKED_API_KEY***')
     .replace(/(authorization|bearer|token)\s*[:=]\s*[^'"\s]+/gi, '$1=***MASKED***');
@@ -30,7 +31,7 @@ export function maskSecretsDeep(value) {
   }
   return value;
 }
-function secretField(key) { return /^(authorization|password|api_key|private_key|client_secret|webhook_secret|access_token|refresh_token|id_token|session_token_hash)$/i.test(key) || /_(?:password|secret|access_token|refresh_token)$/i.test(key); }
+function secretField(key) { return /^(authorization|token|password|api_key|private_key|client_secret|webhook_secret|access_token|refresh_token|id_token|session_token_hash)$/i.test(key) || /_(?:password|secret|access_token|refresh_token)$/i.test(key); }
 export function makeTrace(event_type, payload = {}, actor = {}) {
   if (!TRACE_EVENTS.includes(event_type)) throw new Error(`未知 TraceEvent 类型: ${event_type}`);
   return {

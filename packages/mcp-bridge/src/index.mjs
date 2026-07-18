@@ -14,3 +14,5 @@ export function inspectMcpConfig(config = {}) {
   const configured = Boolean(normalized.url || normalized.command);
   return { status: configured ? 'configured' : 'configuration_required', discovered_tools: [], config: normalized };
 }
+
+export { MCP_GATEWAY_HEADERS, loadMcpGatewaySecret, signMcpGatewayRequest, verifyMcpGatewayRequest } from './gateway-auth.mjs';

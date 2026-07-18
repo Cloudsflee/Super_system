@@ -49,6 +49,7 @@ assert.equal(readableProjectCwd({ id: 'prj_draft', repo_path: path.join(ASSIST_D
 assert.equal(publicErrorCode(new Error('runner_mount_outside_data_volume')), 'assist_workspace_unavailable');
 const startFailure = new Error('spawn failed'); startFailure.code = 'app_server_start_failed';
 assert.equal(publicErrorCode(startFailure), 'codex_runtime_start_failed');
+assert.equal(publicErrorCode(new Error('failed to initialize sqlite state runtime under /codex-home')), 'codex_runtime_state_incompatible');
 const nativePlanFailure = new Error('unavailable'); nativePlanFailure.code = 'native_plan_unavailable';
 assert.equal(publicErrorCode(nativePlanFailure), 'codex_native_plan_unavailable');
 assert.equal(preferAssistAppServer({ provider: 'custom' }, { guided_transport: 'app-server' }), true);

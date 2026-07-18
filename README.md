@@ -1,17 +1,23 @@
-# AI Workspace System V1.6
+# AI Workspace System V1.9
 
-AI Workspace System V1.6 是一个本地优先、自托管、MCP-first 但不是 MCP-only 的 AI 协作工作空间。V1.6 在 V1.5 原生 Assist 基线上增加真实线程 Fork、可撤销分支删除、内存型 BTW、全站上下文菜单、结构化文件引用、流式上传和安全在线预览。
+AI Workspace System V1.9 是一个本地优先、自托管的 AI 协作工作空间。V1.9 在全能力 MCP 基础上加入项目语义驱动的 Workstream/Task 两级工作流、四层 Assist scope 和多仓库 Draft PR Delivery。
 
 当前版本默认采用 **JSON-local 本地持久化**，不依赖外部数据库即可启动；同时保留 Prisma/PostgreSQL、Redis、Worker、CodexRunner、GitHub PR 等后续替换边界。
 
-> **交付状态**：V1.7 使用 state schema 16、Compose project `aiws-v17` 和独立 external volume `aiws-data-v17`。首次 `up` 从只读 `aiws-data-v16` 经带标签临时迁移卷克隆和验收；重复 `up` 不覆盖非空目标卷。正式切换见 [`docs/v1.7-cutover.md`](docs/v1.7-cutover.md)。
+> **交付状态**：V1.9 使用 state schema 18、Compose project `aiws-v19` 和独立 external volume `aiws-data-v19`。首次 `up` 从只读 `aiws-data-v18` 经带标签临时迁移卷克隆、执行确定性 17→18 迁移并验收；重复 `up` 不覆盖非空目标卷。V1.8 报告、迁移实现和 schema 17 源数据继续作为只读基线保留。
+
+工作流界面继续采用 V1.8 Focus OS 视觉与交互基线，见 [`docs/v1.8-focus-os-ui-design.md`](docs/v1.8-focus-os-ui-design.md)。
 
 ## 1. 项目能力概览
 
 - **本地账号与会话**：启动后自动创建 Local Owner Account 与本地会话。
+- **全能力 MCP**：`POST/GET/DELETE /api/mcp` 提供 15 个领域/目录/操作工具和资源；Settings 管理一次性 token、scope、项目范围、到期与撤销。
 - **Setup 硬门禁**：GitHub 与 Codex 均通过服务端验证后才开放业务路由。
 - **项目生命周期**：新项目先创建为可恢复 draft，经 Intake、版本化 Project Brief 和 workflow draft 确认后激活；legacy Project 迁移为 active。
-- **Workflow Canvas**：React Flow 全屏画布，支持 proposal、布局持久化、撤销/重做和 Inspector。
+- **两级 Workflow**：顶层画布只显示可独立验收的 Workstream；内部 Task 使用列表、看板或独立局部结构图，最大深度固定为 2。
+- **异步工作流生成**：Brief、材料和代码源就绪后由 Codex 生成候选并经独立 critic 校验；失败保持空白草案，不安装通用阶段兜底。
+- **四层 Assist**：线程严格归属于 `project/workflow/workstream/task`，显示完整 breadcrumb，节点删除或换版后按 scope snapshot 只读保留。
+- **多仓库 Delivery**：项目连接多个仓库，Task 在一次性 Delivery Policy 内使用隔离 worktree，检查路径、secret 和测试后只创建 Draft PR。
 - **Node Contract**：每个节点都有目标、验收标准、允许工具等结构化契约。
 - **Codex 原生 Assist**：普通 Turn 为 `default`，单次 Plan 使用原生 `collaborationMode: plan`；用户消息与 `additionalContext` 分离，只使用 app-server。
 - **Goal 与原生事件**：线程 Goal 直接透传 objective/status/budget/usage；Plan、tool、command/file/diff、reasoning summary 与 request-user-input 进入统一活动流。
@@ -37,11 +43,11 @@ AI Workspace System V1.6 是一个本地优先、自托管、MCP-first 但不是
 
 Node.js、pnpm、Git、SSH、tar 和生产 Web 都包含在镜像中。宿主开发模式另需 Node.js 24、Corepack/pnpm 与 Git。
 
-业务状态仍使用 JSON-local，不需要数据库或 Redis；V1.7 生产数据保存在固定命名卷 `aiws-data-v17`。
+业务状态仍使用 JSON-local，不需要数据库或 Redis；V1.9 生产数据保存在固定命名卷 `aiws-data-v19`。schema 18 新增 workflow generation、repository target、delivery 和 semantic migration collections；MCP token 仍只保存 hash。
 
 已使用过 Codex 的用户可直接导入本机 `CODEX_HOME` / `~/.codex` 中的 `config.toml` 与 `auth.json`；页面只返回脱敏摘要，确认后才复制 API Key 或官方 OAuth bundle，并重建 AIWS 托管 Profile。未使用过 Codex 的用户可在 Setup 选择官方 Device Login 或手动 API 配置。
 
-V1.7 启动脚本会自动生成只读导入 override，并在首次切换前停止 V1.6 app 与 4318 preview。脚本从只读 `aiws-data-v16` 创建并验证临时归档，再解压到空的 `aiws-data-v17`；源/目标 state 哈希、集合、记录 ID、文件和安全符号链接均进入迁移凭据。失败时停止 V1.7、保留两个卷并恢复原先运行的 V1.6 服务，不自动丢弃或重建目标数据。Codex Runner 只读挂载当前 Turn 实际引用的附件目录。
+V1.9 启动脚本从只读 `aiws-data-v18` 创建并验证临时归档，再解压到空的 `aiws-data-v19`；源/目标 state 哈希、集合、记录 ID、文件和安全符号链接均进入迁移凭据。失败时停止 V1.9、保留两个卷并恢复原先运行的 V1.8 服务，不自动丢弃或重建目标数据。
 
 ## 3. 快速启动项目
 
@@ -65,7 +71,7 @@ bash scripts/aiws.sh up
 http://127.0.0.1:4317
 ```
 
-默认构建 `aiws-app:1.7.0`、`aiws-verify:1.7.0` 与 `aiws-codex-runner:1.7.0-codex-0.144.0`，正式挂载 `aiws-data-v17`。首次升级流程由启动脚本执行只读克隆、schema 15→16 迁移、健康检查和迁移验收；后续启动保持幂等。
+默认构建 `aiws-app:1.9.0`、`aiws-verify:1.9.0` 与 `aiws-codex-runner:1.9.0-codex-0.144.0`，正式挂载 `aiws-data-v19`。团队模式另行构建 `aiws-mcp-gateway:1.9.0`；Gateway 不挂数据卷或 Docker socket。首次升级流程由启动脚本执行只读克隆、schema 17→18 迁移、健康检查和迁移验收；后续启动保持幂等。
 
 显式配置项目只读导入根：
 
@@ -95,9 +101,10 @@ corepack pnpm dev
 ### 3.3 手动构建镜像
 
 ```bash
-docker build --target production -t aiws-app:1.7.0 .
-docker build --target verify -t aiws-verify:1.7.0 .
-docker build -f docker/codex-runner.Dockerfile -t aiws-codex-runner:1.7.0-codex-0.144.0 .
+docker build --target production -t aiws-app:1.9.0 .
+docker build --target verify -t aiws-verify:1.9.0 .
+docker build --target mcp-gateway -t aiws-mcp-gateway:1.9.0 .
+docker build -f docker/codex-runner.Dockerfile -t aiws-codex-runner:1.9.0-codex-0.144.0 .
 docker build --target windows-bridge-export --output type=local,dest=./dist/bridge .
 docker compose up -d
 ```
@@ -128,7 +135,7 @@ http://localhost:4320
 
 ### 3.5 数据目录
 
-生产数据固定使用 `aiws-data-v17`；`down` 默认保留该卷，只有 `reset --confirm` / `reset -Confirm` 会删除它。升级成功后，`aiws-data-v16` 和 V1.6 镜像继续保留，直到单独执行并确认 `purge-legacy`，且清理前会验证 V1.7 迁移凭据。该清理不会删除仓库内旧迁移、兼容 API、回归测试或历史文档。
+生产数据固定使用 `aiws-data-v19`；`down` 默认保留该卷，只有 `reset --confirm` / `reset -Confirm` 会删除它。升级成功后，`aiws-data-v18` 和 V1.8 镜像继续保留，直到单独执行并确认 `purge-legacy`，且清理前会验证 V1.9 迁移凭据。该清理不会删除仓库内旧迁移、兼容 API、回归测试、报告或历史文档。
 
 迁移数据确实无法使用且已经接受空白启动时，显式执行：
 
@@ -168,7 +175,7 @@ bash scripts/aiws.sh purge-legacy --confirm
 
 ### 4.2 V1.6 使用流程
 
-1. 用 V1.7 启动脚本把只读 `aiws-data-v16` 克隆到 `aiws-data-v17`，迁移 schema 15 到 16 并完成验收；Host Profile 在容器部署中不可用。
+1. 用 V1.9 启动脚本把只读 `aiws-data-v18` 克隆到 `aiws-data-v19`，迁移 schema 17 到 18 并完成验收；Host Profile 在容器部署中不可用。
 2. 创建 draft Project，选择“从 0 头脑风暴”或“基于已有项目”。
 3. 恢复或完成 Intake，审查版本化 Project Brief 和初始 workflow draft。
 4. 已有代码源先经 staging 与安全校验，再 clone/copy 到命名卷内受管 repo；宿主导入源保持只读。
@@ -310,11 +317,34 @@ GitHub 集成最终采用“托管 GitHub App + 用户自带 GitHub App”双模
 
 无 SaaS 教程同时说明了 GitHub App Manifest 快速创建和 GitHub 后台手动创建两条路径。V1.2 已实现 App JWT、installation token、repository 同步、webhook 验签/去重和 Hosted/BYO 模式切换。
 
+### 5.11 MCP 开发命令
+
+在 Settings 创建 Client 后，只通过环境变量提供一次性 token：
+
+```powershell
+$env:AIWS_MCP_TOKEN='<一次性 token>'
+pnpm mcp:client list-tools
+pnpm mcp:client call aiws_capabilities '{"action":"search","query":"projects","limit":20}'
+pnpm mcp:stdio
+```
+
+默认 endpoint 是 `http://127.0.0.1:4317/api/mcp`，可用 `AIWS_MCP_URL` 覆盖。`mcp:stdio` 是到内建 HTTP server 的协议 bridge，不直接并发写 state 文件。
+
+团队模式使用独立 Gateway：
+
+```powershell
+$env:AIWS_MCP_GATEWAY_SECRET_FILE='C:\secure\aiws-mcp-gateway.secret'
+$env:AIWS_PUBLIC_MCP_URL='https://mcp.example.com/mcp'
+docker compose -f compose.yml -f compose.collaboration.yml up -d --build
+```
+
+Gateway 在宿主仅监听 `127.0.0.1:4319`，由 Caddy/Nginx 提供 HTTPS。成员 Codex 连接 `AIWS_PUBLIC_MCP_URL`；Core `/api/mcp` 不作为公网入口。完整拓扑、角色边界和远程网页前置条件见 [`docs/mcp-collaboration-architecture.md`](docs/mcp-collaboration-architecture.md)。
+
 ## 6. 根目录结构说明
 
 | 路径 | 用途 |
 |---|---|
-| `.ai-workspace/` | 宿主开发数据及临时发布记录；生产状态位于 `aiws-data-v17`，不会以宿主目录替换。`purge-legacy` 会清空其中的 `backups/`。 |
+| `.ai-workspace/` | 宿主开发数据及临时发布记录；生产状态位于 `aiws-data-v18`，不会以宿主目录替换。`purge-legacy` 会清空其中的 `backups/`。 |
 | `.git/` | Git 版本库元数据，由 Git 自动维护。 |
 | `apps/` | 应用层代码，包含 API 服务、前端页面和 worker 入口。 |
 | `packages/` | 可复用模块与共享领域逻辑，供 API、Worker、测试和后续扩展复用。 |
@@ -396,7 +426,7 @@ GitHub 集成最终采用“托管 GitHub App + 用户自带 GitHub App”双模
 - `.ai-workspace/` 已被 `.gitignore` 忽略，适合保存本机运行和调试数据。
 - 删除 `.ai-workspace/` 后再次启动，会重新初始化宿主开发状态；该操作不影响生产卷。
 
-V1.7 生产容器使用相同目录结构，根位于命名卷 `aiws-data-v17` 的 `/var/lib/aiws`，状态 schema 为 16。`down` 保留卷；只允许通过带显式确认的运维脚本执行 reset 或旧环境清理。
+V1.9 生产容器使用相同目录结构，根位于命名卷 `aiws-data-v19` 的 `/var/lib/aiws`，状态 schema 为 18。`down` 保留卷；只允许通过带显式确认的运维脚本执行 reset 或旧环境清理。
 
 ## 11. Legacy 可选基础设施
 
@@ -525,7 +555,7 @@ $env:AIWS_PORT="4320"; .\scripts\aiws.ps1 up
 
 ### 14.4 页面没有旧数据
 
-生产部署检查 `docker volume inspect aiws-data-v17`。首次切换时 V1.7 只读打开 `aiws-data-v16`，经临时迁移卷复制到新卷后才迁移 schema；非空 `aiws-data-v17` 不会被重复 `up` 覆盖。宿主开发模式仍检查 `.ai-workspace/data/state.json`。
+生产部署检查 `docker volume inspect aiws-data-v19`。首次切换时 V1.9 只读打开 `aiws-data-v18`，经临时迁移卷复制到新卷后才迁移 schema；非空 `aiws-data-v19` 不会被重复 `up` 覆盖。宿主开发模式仍检查 `.ai-workspace/data/state.json`。
 
 ### 14.5 Codex 不可用
 

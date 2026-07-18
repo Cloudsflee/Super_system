@@ -5,7 +5,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { createConfirmedProject, repositorySnapshot } from './v13-test-helpers.mjs';
 
-const port = 4571;
+const port = Number(process.env.AIWS_TEST_PORT || 4571);
 const home = fs.mkdtempSync(path.join(os.tmpdir(), 'aiws-github-home-'));
 const repo = path.join(home, 'repo');
 fs.mkdirSync(repo);
@@ -37,7 +37,7 @@ try {
   spawnSync('git', ['config', 'user.name', 'GitHub Fixture'], { cwd: managedRepo });
   fs.writeFileSync(path.join(managedRepo, 'README.md'), '# GitHub managed checkout\n');
   spawnSync('git', ['add', '.'], { cwd: managedRepo }); spawnSync('git', ['commit', '-m', 'init'], { cwd: managedRepo });
-  const node = (await api(`/projects/${project.project.id}`)).nodes[0];
+  const node = (await api(`/projects/${project.project.id}`)).nodes.find((item) => item.role === 'task');
   const approvalId = await approveNodeRun(project.project.id, node.id);
   const run = await api(`/nodes/${node.id}/run`, { method: 'POST', body: { adapter: 'test', runner: 'codex_docker', approval_id: approvalId } });
   await api(`/runs/${run.run.id}/git/branch`, { method: 'POST', body: {} });

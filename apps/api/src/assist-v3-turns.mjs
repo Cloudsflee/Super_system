@@ -8,7 +8,7 @@ import { pushV3Event } from './assist-v3-events.mjs';
 import { recoverChangeBatchLocks } from './assist-change-batches.mjs';
 import { recoverAssistOperations } from './assist-operations.mjs';
 import {
-  activeTurn, bindSessionRuntimeProfile, cancelPendingTurnApprovals, cleanText, hasActiveTurn, makeTurn, normalizeAttachmentIds,
+  activeTurn, assertSessionScope, bindSessionRuntimeProfile, cancelPendingTurnApprovals, cleanText, hasActiveTurn, makeTurn, normalizeAttachmentIds,
   normalizeTurnCollaborationMode, projectWriteUnavailableReason, queuePosition, requireProject, requireSession, requireTurn,
   resolveAssistTurnConfiguration, TERMINAL_TURN_STATES, turnDetail
 } from './assist-v3-domain.mjs';
@@ -19,6 +19,7 @@ export async function createV3Turn(sessionId, input = {}, options = {}) {
   const adapted = testAdapter(input);
   const result = await mutate((state) => {
     const actor = owner(state), session = requireSession(state, sessionId), project = requireProject(state, session.project_id);
+    assertSessionScope(state, session, input);
     if (session.archived_at) throw new HttpError(409, { error: 'assist_session_archived' });
     const attachmentIds = normalizeAttachmentIds(state, session, input.attachment_ids || []);
     const configuration = resolveAssistTurnConfiguration(state, input, { allowMissingProfile: adapted });

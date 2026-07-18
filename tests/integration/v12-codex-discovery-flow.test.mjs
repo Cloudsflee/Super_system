@@ -5,7 +5,7 @@ import path from 'node:path';
 import { spawn } from 'node:child_process';
 import { DatabaseSync } from 'node:sqlite';
 
-const port = 4592, root = fs.mkdtempSync(path.join(os.tmpdir(), 'aiws-discovery-flow-'));
+const port = Number(process.env.AIWS_TEST_PORT || 4592), root = fs.mkdtempSync(path.join(os.tmpdir(), 'aiws-discovery-flow-'));
 const home = path.join(root, 'aiws'), ccDir = path.join(root, 'cc-switch'), codexDir = path.join(root, 'codex'), userCodexDir = path.join(root, '.codex');
 fs.mkdirSync(ccDir); fs.mkdirSync(codexDir); fs.mkdirSync(userCodexDir);
 const ccSecret = 'cc-integration-secret-sentinel', rotatedSecret = 'cc-rotated-secret-sentinel', directSecret = 'direct-integration-secret-sentinel', manualSecret = 'manual-integration-secret-sentinel';

@@ -1,29 +1,53 @@
-import { Bot, Menu, PanelLeftClose, ShieldCheck } from 'lucide-react';
-import { lazy, Suspense, useEffect, type CSSProperties } from 'react';
+import { Bot, Focus, Menu, PanelLeftClose, ShieldCheck } from 'lucide-react';
+import { useEffect, type CSSProperties } from 'react';
 import { Outlet, useLocation, useNavigate, useParams } from 'react-router-dom';
-import { useProjects } from '../../api/queries';
+import { useProject, useProjects } from '../../api/queries';
 import { useUi } from '../../state/ui';
 import { IconButton } from '../common/IconButton';
 import { ApprovalCenter } from '../approvals/ApprovalCenter';
 import { ApprovalPrompt } from '../approvals/ApprovalPrompt';
 import { NavDrawer } from './NavDrawer';
 import { ToastHost } from './ToastHost';
-
-const AssistWorkbench = lazy(() => import('../../features/assist/AssistWorkbench').then((module) => ({ default: module.AssistWorkbench })));
+import { AssistCenter } from '../../features/assist/AssistCenter';
+import { OperationDiagnosticsButton } from '../../operations/OperationFeedback';
+import type { AssistScopeBreadcrumbItem, AssistScopeType } from '../../api/types';
 
 export function AppShell() {
   const ui = useUi();
   const params = useParams();
   const location = useLocation();
   const navigate = useNavigate();
+  const canvasRoute = /^\/projects\/[^/]+\/workflow(?:\/|$)/.test(location.pathname);
   const projects = useProjects();
+  const canvasProject = useProject(params.projectId);
   const routeProject = projects.data?.find((item) => item.id === params.projectId);
   const selectedProject = projects.data?.find((item) => item.id === ui.activeProjectId);
-  const current = routeProject || (!params.projectId ? selectedProject || projects.data?.[0] : undefined);
+  const current = canvasProject.data?.project || routeProject || (!params.projectId ? selectedProject || projects.data?.[0] : undefined);
   const projectId = current?.id;
   const section = sectionName(location.pathname);
-  const assistNodeId = params.nodeId || (location.pathname.includes('/workflow') ? ui.contextNodeId || undefined : undefined);
+  const workflowTitle = activeWorkflowTitle(canvasProject.data?.workflows) || current?.title || '工作流';
+  const commandDock = /^\/projects\/[^/]+(?:\/|$)/.test(location.pathname);
+  const activeWorkflow = canvasProject.data?.workflows?.filter((item) => item.status !== 'archived').sort((left, right) => Number(right.version || 0) - Number(left.version || 0))[0];
+  const allNodes = canvasProject.data?.nodes || [];
+  const contextNode = allNodes.find((item) => item.id === ui.contextNodeId);
+  const routeWorkstream = allNodes.find((item) => item.id === params.workstreamId && item.role === 'workstream');
+  const contextualTask = params.workstreamId && contextNode?.role === 'task' && contextNode.parent_node_id === params.workstreamId ? contextNode : undefined;
+  const selectedNode = params.nodeId ? allNodes.find((item) => item.id === params.nodeId) : params.workstreamId ? contextualTask || routeWorkstream : canvasRoute && contextNode?.role === 'workstream' ? contextNode : undefined;
+  const selectedNodeId = selectedNode?.id;
+  const assistScopeType: AssistScopeType | undefined = params.nodeId ? (selectedNode?.role === 'workstream' ? 'workstream' : 'task') : params.workstreamId ? (selectedNode?.role === 'task' ? 'task' : 'workstream') : canvasRoute ? (selectedNode?.role === 'workstream' ? 'workstream' : 'workflow') : projectId ? 'project' : undefined;
+  const assistScopeId = assistScopeType === 'project' ? projectId : assistScopeType === 'workflow' ? activeWorkflow?.id : selectedNodeId;
+  const scopedWorkflow = canvasProject.data?.workflows?.find((item) => item.id === selectedNode?.workflow_id) || activeWorkflow;
+  const parentWorkstream = selectedNode?.role === 'task' ? allNodes.find((item) => item.id === selectedNode.parent_node_id && item.role === 'workstream') : undefined;
+  const assistScopeBreadcrumb = buildAssistBreadcrumb(current, scopedWorkflow, parentWorkstream, selectedNode, assistScopeType);
   const overlayOpen = ui.navOpen || ui.assistOpen || ui.approvalCenterOpen || Boolean(ui.proposalId) || Boolean(ui.inspectorNodeId);
+
+  useEffect(() => {
+    if (routeProject?.id && routeProject.id !== ui.activeProjectId) ui.setProject(routeProject.id);
+  }, [routeProject?.id, ui.activeProjectId, ui.setProject]);
+
+  useEffect(() => {
+    if (!canvasRoute && ui.inspectorNodeId) ui.inspect(null);
+  }, [canvasRoute, ui.inspectorNodeId, ui.inspect]);
 
   useEffect(() => {
     if (!overlayOpen) return;
@@ -34,12 +58,12 @@ export function AppShell() {
       event.preventDefault();
       if (ui.navOpen) ui.setNav(false);
       else if (ui.approvalCenterOpen) ui.openApprovalCenter(false);
-      else if (ui.inspectorNodeId) ui.inspect(null);
-      else if (ui.assistOpen) ui.setAssist(false);
+      else if (ui.contextLane === 'inspector' && ui.inspectorNodeId) ui.inspect(null);
+      else if (ui.contextLane === 'assist' && ui.assistOpen) ui.setAssist(false);
     };
     window.addEventListener('keydown', closeOnEscape);
     return () => window.removeEventListener('keydown', closeOnEscape);
-  }, [overlayOpen, ui.proposalId, ui.navOpen, ui.approvalCenterOpen, ui.inspectorNodeId, ui.assistOpen, ui.setNav, ui.openApprovalCenter, ui.inspect, ui.setAssist]);
+  }, [overlayOpen, ui.proposalId, ui.navOpen, ui.approvalCenterOpen, ui.inspectorNodeId, ui.assistOpen, ui.contextLane, ui.setNav, ui.openApprovalCenter, ui.inspect, ui.setAssist]);
 
   function selectProject(id: string) {
     ui.setProject(id);
@@ -49,28 +73,41 @@ export function AppShell() {
   }
 
   return (
-    <div className={`app-shell${location.pathname.includes('/workflow') ? ' canvas-route' : ''}${ui.assistOpen && ui.assistSurface === 'docked' ? ' assist-docked' : ''}`} style={{ '--assist-dock-width': `${ui.assistDockWidth}px` } as CSSProperties}>
+    <div className={`app-shell${canvasRoute ? ' canvas-route' : ''}${canvasRoute && ui.focusMode ? ' focus-mode' : ''}${commandDock ? ' has-command-dock' : ''}${ui.contextLane ? ` context-${ui.contextLane}` : ''}`} style={{ '--assist-dock-width': `${ui.assistDockWidth}px` } as CSSProperties}>
       <header className="app-bar">
         <IconButton label="打开导航" onClick={() => ui.setNav(true)}><Menu size={19} /></IconButton>
-        <div className="brand-mark" aria-label="AI Workspace">AW</div>
-        <div className="location-title"><strong>{section}</strong><span>{current?.title || 'AI Workspace'}</span></div>
+        {(!canvasRoute || !ui.focusMode) && <div className="brand-mark" aria-label="AI Workspace">AW</div>}
+        <div className="location-title"><strong>{canvasRoute && ui.focusMode ? workflowTitle : section}</strong>{(!canvasRoute || !ui.focusMode) && <span>{current?.title || 'AI Workspace'}</span>}</div>
         <div className="app-bar-spacer" />
-        <select aria-label="当前项目" value={projectId || ''} onChange={(event) => selectProject(event.target.value)} disabled={!projects.data?.length}>
+        {(!canvasRoute || !ui.focusMode) && <select aria-label="当前项目" value={projectId || ''} onChange={(event) => selectProject(event.target.value)} disabled={!projects.data?.length}>
           {!projects.data?.length && <option value="">暂无项目</option>}
           {projects.data?.map((project) => <option key={project.id} value={project.id}>{project.title}</option>)}
-        </select>
+        </select>}
+        <OperationDiagnosticsButton />
         <IconButton label="审批队列" active={ui.approvalCenterOpen || Boolean(ui.proposalId)} onClick={() => ui.openApprovalCenter(!ui.approvalCenterOpen)}><ShieldCheck size={18} /></IconButton>
-        <IconButton label="打开 Codex Assist" active={ui.assistOpen} onClick={() => ui.setAssist(!ui.assistOpen)}><Bot size={19} /></IconButton>
+        <IconButton label="打开 Codex Assist" active={ui.assistOpen && ui.contextLane === 'assist'} onClick={() => ui.setAssist(!(ui.assistOpen && ui.contextLane === 'assist'))}><Bot size={19} /></IconButton>
+        {canvasRoute && ui.focusMode && <IconButton label="退出专注模式" onClick={() => ui.setFocusMode(false)}><Focus size={18} /></IconButton>}
       </header>
       <main className="route-stage"><Outlet /></main>
       <NavDrawer />
-      {ui.assistOpen && <Suspense fallback={null}><AssistWorkbench project={current} nodeId={assistNodeId} /></Suspense>}
+      <AssistCenter project={current} scopeType={assistScopeType} scopeId={assistScopeId} scopeBreadcrumb={assistScopeBreadcrumb} commandDock={commandDock} />
       <ApprovalCenter projectId={projectId} />
       <ApprovalPrompt projectId={projectId} />
       <ToastHost />
       {(ui.navOpen || ui.approvalCenterOpen) && <button className="scrim" aria-label="关闭浮层" onClick={() => ui.navOpen ? ui.setNav(false) : ui.openApprovalCenter(false)}><PanelLeftClose /></button>}
     </div>
   );
+}
+
+function buildAssistBreadcrumb(project: { id: string; title: string } | undefined, workflow: { id: string; title: string } | undefined, parent: { id: string; title: string } | undefined, node: { id: string; title: string } | undefined, scopeType?: AssistScopeType): AssistScopeBreadcrumbItem[] {
+  if (!project || !scopeType) return [];
+  const items: AssistScopeBreadcrumbItem[] = [{ type: 'project', id: project.id, label: project.title }];
+  if (scopeType === 'project') return items;
+  if (workflow) items.push({ type: 'workflow', id: workflow.id, label: workflow.title });
+  if (scopeType === 'workflow') return items;
+  if (scopeType === 'task' && parent) items.push({ type: 'workstream', id: parent.id, label: parent.title });
+  if (node) items.push({ type: scopeType, id: node.id, label: node.title });
+  return items;
 }
 
 function sectionName(pathname: string) {
@@ -81,4 +118,8 @@ function sectionName(pathname: string) {
   if (pathname.startsWith('/audit')) return '审计';
   if (pathname.startsWith('/settings')) return '设置';
   return '项目';
+}
+
+function activeWorkflowTitle(workflows?: Array<{ title: string; status: string; version?: number; created_at?: string; id: string }>) {
+  return workflows?.filter((item) => item.status !== 'archived').sort((left, right) => Number(right.version || 0) - Number(left.version || 0) || String(right.created_at || right.id).localeCompare(String(left.created_at || left.id)))[0]?.title;
 }

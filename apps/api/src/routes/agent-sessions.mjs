@@ -24,15 +24,21 @@ async function createAgentSessionRoute({ res, body }) {
     const project = assertProjectLifecycleIdle(state.projects.find((item) => item.id === body.project_id));
     const scopeType = body.scope_type || 'project';
     if (!['project', 'node'].includes(scopeType)) throw new HttpError(400, { error: 'invalid_agent_session_scope' });
-    if (scopeType === 'node' && !state.workflow_nodes.some((item) => item.id === body.scope_id && state.workflows.some((workflow) => workflow.id === item.workflow_id && workflow.project_id === project.id))) throw new HttpError(404, { error: 'node_not_found' });
-    const workspace = state.workspaces.find((item) => item.id === body.workspace_id && item.project_id === project.id) || (scopeType === 'node' ? state.workspaces.find((item) => item.project_id === project.id && item.workflow_node_id === body.scope_id) : state.workspaces.find((item) => item.id === project.current_workspace_id));
-    const parent = body.parent_session_id || findParentSession(state, { project, body });
+    const node = scopeType === 'node' ? state.workflow_nodes.find((item) => item.id === body.scope_id && state.workflows.some((workflow) => workflow.id === item.workflow_id && workflow.project_id === project.id)) : null;
+    if (scopeType === 'node' && !node) throw new HttpError(404, { error: 'node_not_found' });
+    const workspace = body.workspace_id
+      ? state.workspaces.find((item) => item.id === body.workspace_id && item.project_id === project.id && (!node || item.workflow_node_id === node.id || item.id === node.workspace_id))
+      : node ? state.workspaces.find((item) => item.project_id === project.id && (item.workflow_node_id === node.id || item.id === node.workspace_id)) : state.workspaces.find((item) => item.id === project.current_workspace_id && item.project_id === project.id);
+    if (body.workspace_id && !workspace) throw new HttpError(404, { error: 'workspace_not_found' });
+    const parentId = body.parent_session_id || findParentSession(state, { project, body });
+    const parent = parentId ? state.agent_sessions.find((item) => item.id === parentId && item.project_id === project.id) : null;
+    if (parentId && !parent) throw new HttpError(409, { error: 'parent_agent_session_required' });
     const session = createAgentSession({
       projectId: project.id,
-      workspaceId: workspace?.id || body.workspace_id || null,
+      workspaceId: workspace?.id || null,
       scopeType,
-      scopeId: body.scope_id || project.id,
-      parentSessionId: parent,
+      scopeId: node?.id || project.id,
+      parentSessionId: parent?.id || null,
       title: body.title,
       actorId: actor.id
     });
@@ -58,10 +64,15 @@ async function createSubmissionRoute({ res, params, body }) {
     assertProjectLifecycleIdle(state.projects.find((item) => item.id === from.project_id));
     const to = state.agent_sessions.find((item) => item.id === (body.to_session_id || from.parent_session_id)) || null;
     if (!to || to.project_id !== from.project_id) throw new HttpError(409, { error: 'parent_agent_session_required' });
+    if (from.scope_type === 'node' && body.node_id && body.node_id !== from.scope_id) throw new HttpError(409, { error: 'agent_submission_scope_mismatch' });
+    const nodeId = body.node_id || (from.scope_type === 'node' ? from.scope_id : null);
+    const node = nodeId ? state.workflow_nodes.find((item) => item.id === nodeId && state.workflows.some((workflow) => workflow.id === item.workflow_id && workflow.project_id === from.project_id)) : null;
+    if (nodeId && !node) throw new HttpError(404, { error: 'node_not_found' });
+    const workspace = node ? state.workspaces.find((item) => item.project_id === from.project_id && (item.workflow_node_id === node.id || item.id === node.workspace_id)) : null;
     const submission = createSubSubmission({
       projectId: from.project_id,
-      workspaceId: from.workspace_id,
-      nodeId: body.node_id || null,
+      workspaceId: workspace?.id || from.workspace_id,
+      nodeId: node?.id || null,
       fromSessionId: from.id,
       toSessionId: to?.id || null,
       title: body.title,

@@ -15,6 +15,7 @@ export const router = createBrowserRouter([
         { path: '/projects', lazy: page(() => import('../features/projects/ProjectsPage'), 'ProjectsPage') },
         { path: '/projects/:projectId/onboarding', lazy: page(() => import('../features/projects/onboarding/ProjectOnboardingPage'), 'ProjectOnboardingPage') },
         { path: '/projects/:projectId/workflow', lazy: page(() => import('../features/workflow/WorkflowPage'), 'WorkflowPage') },
+        { path: '/projects/:projectId/workflow/:workstreamId', lazy: page(() => import('../features/workflow/WorkstreamPage'), 'WorkstreamPage') },
         { path: '/projects/:projectId/nodes/:nodeId', lazy: page(() => import('../features/nodes/NodeWorkspacePage'), 'NodeWorkspacePage') },
         { path: '/assets', lazy: page(() => import('../features/assets/AssetsPage'), 'AssetsPage') },
         { path: '/audit', lazy: page(() => import('../features/audit/AuditPage'), 'AuditPage') },

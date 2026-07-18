@@ -10,6 +10,8 @@ import { codexContainerProxyEnv, containerizeLoopbackUrl } from './codex-contain
 import { assertProfileAllowed, isContainerized } from './container-runtime-config.mjs';
 import { spawnContainerProcess } from './container-runtime.mjs';
 import { buildCodexExecInvocation } from './codex-exec-invocation.mjs';
+import { isCodexStateRuntimeFailure, recoverCodexRuntimeState } from './codex-home-recovery.mjs';
+import { issueCodexMcpAccess, withCodexMcpEnvironment } from './codex-mcp-runtime.mjs';
 export const OFFICIAL_CODEX_PROVIDERS = Object.freeze(['openai', 'chatgpt']);
 // Codex rejects `wire_api = "chat"`; cc-switch can translate Chat Completions only while its local proxy runs.
 // this profile-scoped bridge does not pretend that lifecycle exists.
@@ -85,7 +87,18 @@ export async function writeProfileConfig(profile, authHome = '') {
   return { codex_home: home, config_file: path.join(home, 'config.toml') };
 }
 
-export async function runCodexJson({ state, profile, prompt, cwd = ROOT, resumeId, sandbox = 'workspace-write', runtimeKind = 'assist-exec', onEvent, signal, spawnProcess = spawn }) {
+export async function runCodexJson(options) {
+  let result;
+  try { result = await runCodexJsonOnce(options); }
+  catch (error) {
+    if (await recoverCodexRuntimeState(options.profile, error)) return runCodexJsonOnce(options);
+    throw error;
+  }
+  if (!isCodexStateRuntimeFailure(result?.stderr)) return result;
+  return await recoverCodexRuntimeState(options.profile, new Error(result.stderr)) ? runCodexJsonOnce(options) : result;
+}
+
+async function runCodexJsonOnce({ state, profile, prompt, cwd = ROOT, resumeId, sandbox = 'workspace-write', runtimeKind = 'assist-exec', projectId = null, onEvent, signal, spawnProcess = spawn }) {
   assertProfileAllowed(profile);
   const auth = state.integration_statuses.find((item) => item.key === 'codex_auth');
   if (!codexAuthMatchesProfile(auth, profile)) throw new Error('codex_auth_profile_mismatch');
@@ -93,11 +106,12 @@ export async function runCodexJson({ state, profile, prompt, cwd = ROOT, resumeI
   if (fileAuth) await materializeDeviceAuth(auth.home, profile.codex_home);
   const credential = await readSecret(auth?.refs?.credential);
   const proxyEnv = profile.kind === 'docker' ? codexContainerProxyEnv(process.env) : {};
-  const invocation = buildCodexExecInvocation({ profile, prompt, cwd, resumeId, sandbox, runtimeKind, exposeApiKey: Boolean(credential), proxyKeys: Object.keys(proxyEnv) });
-  const env = { ...process.env, ...proxyEnv, CODEX_HOME: profile.codex_home };
+  const mcpAccess = await issueCodexMcpAccess(projectId, profile, { ttlSeconds: Math.ceil(Number(profile.timeout_ms || 120000) / 1000) + 300 });
+  const invocation = buildCodexExecInvocation({ profile, prompt, cwd, resumeId, sandbox, runtimeKind, exposeApiKey: Boolean(credential), proxyKeys: Object.keys(proxyEnv), mcpAccess });
+  const env = withCodexMcpEnvironment({ ...process.env, ...proxyEnv, CODEX_HOME: profile.codex_home }, mcpAccess);
   if (credential) env.OPENAI_API_KEY = credential;
   else delete env.OPENAI_API_KEY;
-  return new Promise((resolve, reject) => {
+  try { return await new Promise((resolve, reject) => {
     const child = invocation.runtime === 'docker'
       ? spawnContainerProcess(invocation, { cwd, env, spawnProcess })
       : spawnProcess(invocation.command, invocation.args, { cwd, env, shell: false, windowsHide: true });
@@ -120,7 +134,7 @@ export async function runCodexJson({ state, profile, prompt, cwd = ROOT, resumeI
       if (!settled) { settled = true; resolve({ ok: code === 0 && !timedOut, code, stdout, stderr, timed_out: timedOut, timeout_ms: timeoutMs, invocation: { command: invocation.command, args: invocation.safeArgs } }); }
     });
     child.stdin?.end();
-  });
+  }); } finally { await mcpAccess?.release(); }
 }
 
 export async function probeCodex(state, profile, runtime = {}) {
@@ -199,6 +213,7 @@ function validateMcpServers(servers, errors) {
   for (const server of servers.slice(0, 33)) {
     if (!server || typeof server !== 'object' || Array.isArray(server)) { errors.push('invalid_mcp_server'); continue; }
     if (!/^[a-zA-Z0-9_-]{1,64}$/.test(server.name || '') || names.has(server.name)) errors.push(`invalid_mcp_name:${server.name || ''}`);
+    if (server.name === 'aiws-built-in') errors.push('mcp_reserved_name_conflict:aiws-built-in');
     names.add(server.name);
     if (!allowed.has(String(server.command || ''))) errors.push(`mcp_command_not_allowed:${server.command || ''}`);
     if (!Array.isArray(server.args || []) || (server.args || []).some((arg) => typeof arg !== 'string' || arg.length > 2000 || /[\r\n\0]/.test(arg))) errors.push(`invalid_mcp_args:${server.name || ''}`);

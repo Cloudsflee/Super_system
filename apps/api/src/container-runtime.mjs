@@ -3,18 +3,18 @@ import { isContainerized, managedInstance } from './container-runtime-config.mjs
 
 const active = new Map();
 
-export function spawnContainerProcess(invocation, { cwd = process.cwd(), env = process.env, spawnProcess = spawn } = {}) {
+export function spawnContainerProcess(invocation, { cwd = process.cwd(), env = process.env, spawnProcess = spawn, stopContainer } = {}) {
   const child = spawnProcess(invocation.command, invocation.args, { cwd, env: processEnvironment(env), shell: false, windowsHide: true });
-  return registerManagedProcessHandle(invocation, child);
+  return registerManagedProcessHandle(invocation, child, { stopContainer });
 }
 
-export function registerManagedProcessHandle(invocation, child) {
+export function registerManagedProcessHandle(invocation, child, { stopContainer = stopManagedContainerAsync } = {}) {
   if (!invocation.containerName) return child;
   const record = { child, name: invocation.containerName, stopping: false };
   active.set(record.name, record);
   const originalKill = typeof child.kill === 'function' ? child.kill.bind(child) : () => false;
   child.kill = (signal = 'SIGTERM') => {
-    if (!record.stopping) { record.stopping = true; stopManagedContainer(record.name); }
+    if (!record.stopping) { record.stopping = true; stopContainer(record.name); }
     return originalKill(signal);
   };
   child.once?.('close', () => { if (active.get(record.name)?.child === child) active.delete(record.name); });
@@ -49,6 +49,14 @@ export function stopManagedContainer(name, commandRunner = spawnSync) {
   return result?.status === 0;
 }
 
+export function stopManagedContainerAsync(name, spawnProcess = spawn) {
+  if (!/^[a-zA-Z0-9][a-zA-Z0-9_.-]{0,127}$/.test(String(name || ''))) return false;
+  try {
+    const child = spawnProcess('docker', ['container', 'stop', '--time', '5', name], { windowsHide: true, shell: false, stdio: 'ignore' });
+    child.once?.('error', () => undefined); child.unref?.(); return true;
+  } catch { return false; }
+}
+
 export function stopAllManagedContainers(commandRunner = spawnSync) {
   for (const record of [...active.values()]) {
     record.stopping = true;
@@ -68,13 +76,13 @@ export function cleanupStaleContainers({ env = process.env, commandRunner = spaw
   return ids;
 }
 
-export function attachContainerShutdown(server) {
-  if (!isContainerized()) return;
+export function attachContainerShutdown(server, { beforeClose = () => undefined } = {}) {
   let closing = false;
   const close = () => {
     if (closing) return;
     closing = true;
-    stopAllManagedContainers();
+    beforeClose();
+    if (isContainerized()) stopAllManagedContainers();
     server.close(() => process.exit(0));
     setTimeout(() => process.exit(1), 10000).unref();
   };

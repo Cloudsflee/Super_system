@@ -24,14 +24,14 @@ export class CodexRunner extends AgentRunner {
     this.timeoutMs = timeoutMs;
   }
 
-  buildArgs({ cwd, outputSchemaFile, lastMessageFile, model, json = true }) {
-    return [...this.commandArgs, 'exec', ...(json ? ['--json'] : []), '--skip-git-repo-check', ...(model ? ['--model', model] : []), '--cd', cwd, '--output-schema', outputSchemaFile, ...(lastMessageFile ? ['--output-last-message', lastMessageFile] : []), '-'];
+  buildArgs({ cwd, outputSchemaFile, lastMessageFile, model, json = true, configArgs = [] }) {
+    return [...this.commandArgs, ...configArgs, 'exec', ...(json ? ['--json'] : []), '--skip-git-repo-check', ...(model ? ['--model', model] : []), '--cd', cwd, '--output-schema', outputSchemaFile, ...(lastMessageFile ? ['--output-last-message', lastMessageFile] : []), '-'];
   }
 
-  async run({ cwd, model, env, promptFile, outputSchemaFile, fallback = {}, signal }) {
+  async run({ cwd, model, env, promptFile, outputSchemaFile, configArgs = [], fallback = {}, signal }) {
     try {
       const lastMessageFile = `${outputSchemaFile}.last-message.json`;
-      const args = this.buildArgs({ cwd, model, outputSchemaFile, lastMessageFile });
+      const args = this.buildArgs({ cwd, model, outputSchemaFile, lastMessageFile, configArgs });
       const prompt = fs.readFileSync(promptFile, 'utf8');
       const raw = await runProcess(this.command, args, { cwd, timeoutMs: this.timeoutMs, stdin: prompt, env, signal });
       const last = fs.existsSync(lastMessageFile) ? fs.readFileSync(lastMessageFile, 'utf8') : '';
@@ -52,7 +52,7 @@ export class DockerCodexRunner extends AgentRunner {
     this.processRunner = processRunner;
   }
 
-  buildDockerArgs({ cwd, codexHome = '.ai-workspace/codex-home', mounts = [], outputSchemaFile, lastMessageFile, model, json = true, exposeApiKey = false }) {
+  buildDockerArgs({ cwd, codexHome = '.ai-workspace/codex-home', mounts = [], outputSchemaFile, lastMessageFile, model, json = true, exposeApiKey = false, configArgs = [] }) {
     if (this.invocationBuilder) return this.invocationBuilder({ cwd, codexHome, mounts, outputSchemaFile, lastMessageFile, model, json, exposeApiKey }).args;
     const mountedCwd = '/workspace';
     const mountedCodex = '/codex-home';
@@ -67,6 +67,7 @@ export class DockerCodexRunner extends AgentRunner {
       ...mounts.flatMap((mount, index) => ['-v', `${mount}:/aiws-mounts/${index}:rw`]),
       '-w', mountedCwd,
       this.image,
+      ...configArgs,
       'exec',
       ...(json ? ['--json'] : []),
       '--skip-git-repo-check',
@@ -79,10 +80,10 @@ export class DockerCodexRunner extends AgentRunner {
     ];
   }
 
-  async run({ cwd, codexHome, mounts, model, env, promptFile, outputSchemaFile, fallback = {}, signal }) {
+  async run({ cwd, codexHome, mounts, model, env, promptFile, outputSchemaFile, configArgs = [], fallback = {}, signal }) {
     try {
       const lastMessageFile = `${outputSchemaFile}.last-message.json`;
-      const input = { cwd, codexHome, mounts, model, json: true, outputSchemaFile, lastMessageFile, exposeApiKey: Boolean(env?.OPENAI_API_KEY) };
+      const input = { cwd, codexHome, mounts, model, json: true, outputSchemaFile, lastMessageFile, exposeApiKey: Boolean(env?.OPENAI_API_KEY), configArgs };
       const invocation = this.invocationBuilder ? this.invocationBuilder(input) : { command: 'docker', args: this.buildDockerArgs(input) };
       const prompt = fs.readFileSync(promptFile, 'utf8');
       const raw = await this.processRunner(invocation.command, invocation.args, { cwd, timeoutMs: this.timeoutMs, stdin: prompt, env, signal }, invocation);

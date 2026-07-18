@@ -20,7 +20,8 @@ try {
   const { codexContainerProxyEnv, containerizeLoopbackUrl } = await import('../../apps/api/src/codex-container-network.mjs');
   const { ccSwitchBinding, ccSwitchProfileReady, resolveCodexParserInvocation, validateBridgeConformance } = await import('../../apps/api/src/cc-switch-service.mjs');
   const { extractDeviceAuthPublicState } = await import('../../apps/api/src/codex-device-auth.mjs');
-  const { createAppJwt, createInstallationToken, fetchInstallationRepositories, fetchUserInstallations, verifyApp } = await import('../../apps/api/src/github-service.mjs');
+  const { createAppJwt, createInstallationToken, fetchInstallationRepositories, fetchUserInstallations, githubGitAuthEnv, verifyApp } = await import('../../apps/api/src/github-service.mjs');
+  const { parseWindowsProxy, resolveProxyForUrl } = await import('../../apps/api/src/outbound-proxy.mjs');
   const { putSecret } = await import('../../apps/api/src/vault.mjs');
   const state = { projects: [{ repo_path: repo }], integration_statuses: [{ key: 'codex_auth', status: 'authenticated', provider: 'openai', refs: {} }] };
   const valid = { name: 'OpenAI', provider: 'openai', model: 'gpt-5.1', reasoning: 'high', web_search: true, timeout_ms: 1000, mounts: [repo], mcp_servers: [{ name: 'docs', command: 'node', args: ['server.mjs'] }] };
@@ -63,6 +64,10 @@ try {
   const proxyEnv = codexContainerProxyEnv({ HTTP_PROXY: 'http://127.0.0.1:7890', NO_PROXY: 'localhost' });
   assert.equal(proxyEnv.HTTP_PROXY, 'http://host.docker.internal:7890');
   assert.equal(proxyEnv.NO_PROXY, 'localhost,host.docker.internal');
+  assert.equal(resolveProxyForUrl('https://github.com/login/device/code', { env: { HTTPS_PROXY: 'http://127.0.0.1:7890' }, platform: 'linux' }), 'http://127.0.0.1:7890/');
+  assert.equal(parseWindowsProxy('HTTP=127.0.0.1:8080;HTTPS=127.0.0.1:7890', 'https:'), '127.0.0.1:7890');
+  assert.equal(resolveProxyForUrl('https://api.github.com/app', { env: {}, platform: 'win32', windowsProxy: '127.0.0.1:7890' }), 'http://127.0.0.1:7890/');
+  assert.equal(resolveProxyForUrl('https://github.com/login/device', { env: { HTTPS_PROXY: 'http://127.0.0.1:7890', NO_PROXY: 'github.com' }, platform: 'linux' }), null);
   const initialEvidence = createCodexProbeEvidence({ profile: one, auth: state.integration_statuses[0], runtime: { image: { id: 'sha256:unit-image' } } });
   assert.equal(codexProbeEvidenceMatches(initialEvidence, createCodexProbeEvidence({ profile: one, auth: state.integration_statuses[0], runtime: { image: { id: 'sha256:unit-image' } } })), true);
   assert.equal(codexProbeEvidenceMatches(initialEvidence, createCodexProbeEvidence({ profile: { ...one, model: 'gpt-changed' }, auth: state.integration_statuses[0], runtime: { image: { id: 'sha256:unit-image' } } })), false);
@@ -120,11 +125,14 @@ try {
   const jwt = createAppJwt('1234', privateKey, 1000);
   assert.equal(JSON.parse(Buffer.from(jwt.split('.')[1], 'base64url')).iss, '1234');
   const requests = [];
-  const request = async (url, options = {}) => { requests.push({ url, options }); return url.includes('access_tokens') ? { token: 'installation-token' } : url.includes('repositories') ? { total_count: 1, repositories: [{ id: 1 }] } : { id: 1234 }; };
+  const request = async (url, options = {}) => { requests.push({ url, options }); return url.includes('access_tokens') ? { token: 'installation-token', permissions: { contents: 'write', pull_requests: 'write' } } : url.includes('repositories') ? { total_count: 1, repositories: [{ id: 1, permissions: { pull: false, push: false, admin: false } }] } : { id: 1234 }; };
   await verifyApp(config, request);
   await createInstallationToken(config, '42', request);
   const repositories = await fetchInstallationRepositories(config, '42', request);
   assert.equal(repositories.repositories.length, 1);
+  assert.deepEqual(repositories.repositories[0].permissions, { pull: true, push: true, admin: false });
+  const gitAuth = githubGitAuthEnv('installation-token');
+  assert.equal(Buffer.from(gitAuth.GIT_CONFIG_VALUE_0.replace('Authorization: Basic ', ''), 'base64').toString('utf8'), 'x-access-token:installation-token');
   assert.equal(requests.some((item) => item.url.endsWith('/app') && item.options.headers.authorization.startsWith('Bearer ')), true);
   assert.equal(requests.some((item) => item.url.includes('/installations/42/access_tokens') && item.options.method === 'POST'), true);
   assert.equal(requests.some((item) => item.url.includes('/installation/repositories?per_page=100&page=1') && item.options.headers.authorization === 'Bearer installation-token'), true);

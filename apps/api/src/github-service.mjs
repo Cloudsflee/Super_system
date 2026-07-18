@@ -2,6 +2,8 @@ import { createSign } from 'node:crypto';
 import fsp from 'node:fs/promises';
 import path from 'node:path';
 import { readSecret } from './vault.mjs';
+import { HttpError } from './http.mjs';
+import { githubDispatcher } from './outbound-proxy.mjs';
 
 export function resolveGithubAppConfig(state) {
   const mode = state.setup_states?.[0]?.mode;
@@ -54,10 +56,22 @@ export function createAppJwt(appId, privateKey, timestamp = Math.floor(Date.now(
 }
 
 export async function githubJson(url, options = {}) {
-  const response = await fetch(url, {
-    ...options,
-    headers: { accept: 'application/vnd.github+json', 'user-agent': 'ai-workspace-v1.3', 'x-github-api-version': '2022-11-28', ...options.headers }
-  });
+  let response;
+  try {
+    const dispatcher = options.dispatcher || githubDispatcher(url);
+    response = await fetch(url, {
+      ...options,
+      ...(dispatcher ? { dispatcher } : {}),
+      signal: options.signal || AbortSignal.timeout(githubTimeout()),
+      headers: { accept: 'application/vnd.github+json', 'user-agent': 'ai-workspace-v1.9', 'x-github-api-version': '2022-11-28', ...options.headers }
+    });
+  } catch (error) {
+    throw new HttpError(502, {
+      error: 'github_network_unavailable', message: 'Unable to reach GitHub.',
+      action: 'Check network and proxy settings, then retry.', phase: 'github', retryable: true,
+      reason: String(error?.cause?.code || error?.code || error?.name || 'network_error')
+    });
+  }
   const text = await response.text();
   let data = {};
   try { data = text ? JSON.parse(text) : {}; } catch { data = { message: text }; }
@@ -68,6 +82,11 @@ export async function githubJson(url, options = {}) {
     throw error;
   }
   return data;
+}
+
+function githubTimeout() {
+  const value = Number(process.env.AIWS_GITHUB_HTTP_TIMEOUT_MS || 15000);
+  return Number.isFinite(value) ? Math.max(1000, Math.min(60000, Math.trunc(value))) : 15000;
 }
 
 export async function verifyApp(config, request = githubJson) {
@@ -84,12 +103,27 @@ export async function createInstallationToken(config, installationId, request = 
   });
 }
 
+export function githubGitAuthEnv(token) {
+  const value = String(token || '');
+  if (!value) throw new Error('github_installation_token_missing');
+  const encoded = Buffer.from(`x-access-token:${value}`, 'utf8').toString('base64');
+  return {
+    GIT_TERMINAL_PROMPT: '0',
+    GIT_CONFIG_COUNT: '1',
+    GIT_CONFIG_KEY_0: 'http.extraHeader',
+    GIT_CONFIG_VALUE_0: `Authorization: Basic ${encoded}`
+  };
+}
+
 export async function fetchInstallationRepositories(config, installationId, request = githubJson) {
   const token = await createInstallationToken(config, installationId, request);
   const repositories = [];
   for (let page = 1; page <= 100; page++) {
     const result = await request(`https://api.github.com/installation/repositories?per_page=100&page=${page}`, { headers: { authorization: `Bearer ${token.token}` } });
-    repositories.push(...(result.repositories || []));
+    repositories.push(...(result.repositories || []).map((repository) => ({
+      ...repository,
+      permissions: installationRepositoryPermissions(repository.permissions, token.permissions)
+    })));
     if ((result.repositories || []).length < 100) return { ...result, total_count: Number(result.total_count || repositories.length), repositories };
   }
   return { total_count: repositories.length, repositories };
@@ -112,3 +146,12 @@ export function connectedGithubAccount(state, userId = null) {
 
 function encode(value) { return Buffer.from(JSON.stringify(value)).toString('base64url'); }
 function normalizePrivateKey(value) { return String(value || '').replace(/\\n/g, '\n'); }
+function installationRepositoryPermissions(repository = {}, installation = {}) {
+  const contents = installation.contents;
+  return {
+    ...repository,
+    pull: repository.pull === true || contents === 'read' || contents === 'write',
+    push: repository.push === true || contents === 'write',
+    admin: repository.admin === true || installation.administration === 'write'
+  };
+}

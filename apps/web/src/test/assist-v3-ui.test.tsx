@@ -4,7 +4,8 @@ import type { ReactNode } from 'react';
 import { MemoryRouter } from 'react-router-dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { AssistOperation, AssistV3Event, Project, TerminalSession } from '../api/types';
-import { AssistWorkbench } from '../features/assist/AssistWorkbench';
+import { AssistCenter } from '../features/assist/AssistCenter';
+import { ContextMenuProvider } from '../components/common/ContextMenu';
 import { DiffReviewPanel } from '../features/assist/DiffReviewPanel';
 import { TerminalPanel } from '../features/assist/TerminalPanel';
 import { TypedEvent } from '../features/assist/TypedEvent';
@@ -21,7 +22,6 @@ describe('Assist V3 workbench', () => {
     vi.stubGlobal('EventSource', FakeEventSource);
   });
   afterEach(() => { cleanup(); vi.unstubAllGlobals(); terminalWrites.length = 0; });
-
   it('uses visible native model/reasoning controls and sends one-shot Plan collaboration mode', async () => {
     const calls: Array<{ url: string; body?: Record<string, unknown> }> = [];
     vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
@@ -34,7 +34,7 @@ describe('Assist V3 workbench', () => {
       if (url.endsWith('/assist/v3/sessions/s1/turns')) return response({ id: 'turn-new', session_id: 's1', mode: 'plan', collaboration_mode: 'plan', status: 'queued' }, 202);
       return response({});
     }));
-    renderWithClient(<MemoryRouter><AssistWorkbench project={projectFixture()} /></MemoryRouter>);
+    renderWithClient(<MemoryRouter><AssistCenter project={projectFixture()} scopeType="project" scopeId="p1" commandDock={false} /></MemoryRouter>);
     expect(await screen.findByText('Thread One')).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Ask' })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Agent' })).not.toBeInTheDocument();
@@ -51,7 +51,6 @@ describe('Assist V3 workbench', () => {
     const turn = calls.find((item) => item.url.endsWith('/sessions/s1/turns'))?.body;
     expect(turn?.view_context).toMatchObject({ route: '/', surface: { fields: expect.any(Array) } });
   });
-
   it('saves a model and reasoning combination as a switchable Assist configuration', async () => {
     const calls: Array<{ url: string; body?: Record<string, unknown> }> = [];
     vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
@@ -64,7 +63,7 @@ describe('Assist V3 workbench', () => {
       if (url.includes('/assist/v3/configurations')) return response([]);
       return response({});
     }));
-    renderWithClient(<MemoryRouter><AssistWorkbench project={projectFixture()} /></MemoryRouter>);
+    renderWithClient(<MemoryRouter><AssistCenter project={projectFixture()} scopeType="project" scopeId="p1" commandDock={false} /></MemoryRouter>);
     await screen.findByText('Thread One');
     fireEvent.click(await screen.findByRole('button', { name: 'gpt-base' }));
     fireEvent.click(await screen.findByRole('menuitemradio', { name: /gpt-saved/ }));
@@ -90,10 +89,11 @@ describe('Assist V3 workbench', () => {
       if (url.endsWith('/operations/operation-1/undo')) return response({ id: 'inverse-1', inverse_of: 'operation-1', status: 'pending' }, 202);
       return response({});
     }));
-    renderWithClient(<MemoryRouter><AssistWorkbench project={projectFixture()} /></MemoryRouter>);
+    renderWithClient(<MemoryRouter><AssistCenter project={projectFixture()} scopeType="project" scopeId="p1" commandDock={false} /></MemoryRouter>);
     expect(await screen.findByText('已更新页面字段')).toBeInTheDocument();
     expect(screen.queryByText('aiws_page.set_field')).not.toBeInTheDocument();
-    fireEvent.click(screen.getByRole('button', { name: '撤销' }));
+    fireEvent.click(screen.getByRole('button', { name: '更多操作' }));
+    fireEvent.click(screen.getByRole('menuitem', { name: '撤销' }));
     await waitFor(() => expect(calls.some((item) => item.url.endsWith('/operations/operation-1/undo') && item.body?.force === false)).toBe(true));
   });
 
@@ -112,7 +112,7 @@ describe('Assist V3 workbench', () => {
       if (url.endsWith('/operations/operation-original/undo')) return response({ ...inverse, status: 'pending', forced: true }, 202);
       return response({ goal: null });
     }));
-    renderWithClient(<MemoryRouter><AssistWorkbench project={projectFixture()} /></MemoryRouter>);
+    renderWithClient(<MemoryRouter><AssistCenter project={projectFixture()} scopeType="project" scopeId="p1" commandDock={false} /></MemoryRouter>);
     fireEvent.click(await screen.findByRole('button', { name: '强制撤回' }));
     expect(screen.getByRole('alert')).toHaveTextContent('强制撤回会覆盖它');
     expect(calls.some((item) => item.url.endsWith('/operations/operation-original/undo'))).toBe(false);
@@ -124,7 +124,7 @@ describe('Assist V3 workbench', () => {
   it('does not reclaim a committed operation from replayed historical SSE', async () => {
     const calls: string[] = [], operation = operationFixture();
     vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => { const url = String(input); calls.push(url); if (url.includes('/sessions?')) return response([sessionSummary()]); if (url.endsWith('/sessions/s1')) return response(sessionDetail()); if (url.endsWith('/codex/profiles')) return response([{ id: 'profile-1', name: 'Base', model: 'gpt-codex', reasoning: 'high', kind: 'docker', status: 'validated', is_active: true }]); if (url.includes('/operations?')) return response([operation]); return response([]); }));
-    renderWithClient(<MemoryRouter><AssistWorkbench project={projectFixture()} /></MemoryRouter>);
+    renderWithClient(<MemoryRouter><AssistCenter project={projectFixture()} scopeType="project" scopeId="p1" commandDock={false} /></MemoryRouter>);
     await screen.findByText('Thread One'); await waitFor(() => expect(calls.some((item) => item.includes('/operations?'))).toBe(true));
     FakeEventSource.last?.emit('operation', { id: 1, sequence: 1, session_id: 's1', turn_id: 'turn-1', type: 'operation', data: { operation_id: operation.id, claimable: true }, created_at: new Date(0).toISOString() });
     await new Promise((resolve) => setTimeout(resolve, 20)); expect(calls.some((item) => item.endsWith(`/operations/${operation.id}/claim`))).toBe(false);
@@ -132,22 +132,22 @@ describe('Assist V3 workbench', () => {
 
   it('resizes the docked surface from its divider and supports keyboard adjustment', () => {
     vi.stubGlobal('fetch', vi.fn(async () => response([])));
-    renderWithClient(<MemoryRouter><AssistWorkbench project={projectFixture()} /></MemoryRouter>);
+    renderWithClient(<MemoryRouter><AssistCenter project={projectFixture()} scopeType="project" scopeId="p1" commandDock={false} /></MemoryRouter>);
     const divider = screen.getByRole('separator', { name: '调整 Assist 宽度' });
     fireEvent.pointerDown(divider, { button: 0, clientX: 700 });
-    fireEvent.pointerMove(window, { clientX: 600 });
+    fireEvent.pointerMove(window, { clientX: 800 });
     fireEvent.pointerUp(window);
-    expect(useUi.getState().assistDockWidth).toBe(860);
-    expect(divider).toHaveAttribute('aria-valuenow', '860');
+    expect(useUi.getState().assistDockWidth).toBe(580);
+    expect(divider).toHaveAttribute('aria-valuenow', '580');
     fireEvent.keyDown(divider, { key: 'ArrowRight' });
-    expect(useUi.getState().assistDockWidth).toBe(836);
+    expect(useUi.getState().assistDockWidth).toBe(556);
     fireEvent.doubleClick(divider);
-    expect(useUi.getState().assistDockWidth).toBe(760);
+    expect(useUi.getState().assistDockWidth).toBe(520); expect(document.documentElement.style.getPropertyValue('--assist-active-dock-width')).toBe('520px');
   });
 
   it('combines surface choices into one layout menu and keeps minimize and close visible', () => {
     vi.stubGlobal('fetch', vi.fn(async () => response([])));
-    const view = renderWithClient(<MemoryRouter><AssistWorkbench project={projectFixture()} /></MemoryRouter>), header = view.container.querySelector('.assist-workbench-head')!;
+    const view = renderWithClient(<MemoryRouter><AssistCenter project={projectFixture()} scopeType="project" scopeId="p1" commandDock={false} /></MemoryRouter>), header = view.container.querySelector('.assist-workbench-head')!;
     expect(header.querySelector('.lucide-bot')).toBeNull(); expect(header).not.toHaveTextContent('live');
     expect(screen.queryByRole('button', { name: '停靠 Assist' })).not.toBeInTheDocument(); expect(screen.getByRole('button', { name: '最小化 Assist' })).toBeInTheDocument(); expect(screen.getByRole('button', { name: '关闭 Assist' })).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'Assist 布局' }));
@@ -159,13 +159,13 @@ describe('Assist V3 workbench', () => {
     vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => {
       const url = String(input); if (url.includes('/assist/v3/sessions?')) return response([sessionSummary()]); if (url.endsWith('/assist/v3/sessions/s1')) return response(sessionDetail()); if (url.endsWith('/codex/profiles')) return response([]); return response([]);
     }));
-    renderWithClient(<MemoryRouter><AssistWorkbench project={projectFixture()} /></MemoryRouter>); await screen.findByText('Thread One'); await waitFor(() => expect(FakeEventSource.last).toBeTruthy()); await new Promise((resolve) => setTimeout(resolve, 20));
+    renderWithClient(<MemoryRouter><AssistCenter project={projectFixture()} scopeType="project" scopeId="p1" commandDock={false} /></MemoryRouter>); await screen.findByText('Thread One'); await waitFor(() => expect(FakeEventSource.last).toBeTruthy()); await new Promise((resolve) => setTimeout(resolve, 20));
     expect(screen.queryByText('正在重新连接')).not.toBeInTheDocument(); FakeEventSource.last?.onerror?.(); expect(await screen.findByText('正在重新连接')).toBeInTheDocument(); FakeEventSource.last?.onopen?.(); await waitFor(() => expect(screen.queryByText('正在重新连接')).not.toBeInTheDocument());
   });
 
   it('explains that a project is required instead of silently failing thread creation', () => {
     vi.stubGlobal('fetch', vi.fn(async () => response([])));
-    renderWithClient(<MemoryRouter><AssistWorkbench /></MemoryRouter>);
+    renderWithClient(<MemoryRouter><AssistCenter commandDock={false} /></MemoryRouter>);
     expect(screen.getByText('先创建项目')).toBeInTheDocument();
     expect(screen.getByText('Assist 线程必须归属于一个项目。')).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: '新建线程' })).not.toBeInTheDocument();
@@ -181,7 +181,7 @@ describe('Assist V3 workbench', () => {
       if (url.endsWith('/codex/profiles')) return response([{ id: 'profile-1', name: 'Docker', model: 'gpt-codex', reasoning: 'high', kind: 'docker', status: 'validated', is_active: true }]);
       return response({});
     }));
-    renderWithClient(<MemoryRouter><AssistWorkbench project={{ ...projectFixture(), status: 'draft', managed_workspace_state: 'empty' }} /></MemoryRouter>);
+    renderWithClient(<MemoryRouter><AssistCenter project={{ ...projectFixture(), status: 'draft', managed_workspace_state: 'empty' }} scopeType="project" scopeId="p1" commandDock={false} /></MemoryRouter>);
     expect(await screen.findByText('Thread One')).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Ask' })).not.toBeInTheDocument();
     expect(await screen.findByRole('button', { name: 'Plan' })).toBeEnabled();
@@ -248,7 +248,7 @@ describe('Assist V3 workbench', () => {
   });
 });
 
-function renderWithClient(value: ReactNode) { const client = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } }); return render(<QueryClientProvider client={client}>{value}</QueryClientProvider>); }
+function renderWithClient(value: ReactNode) { const client = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } }); return render(<QueryClientProvider client={client}><ContextMenuProvider>{value}</ContextMenuProvider></QueryClientProvider>); }
 function response(value: unknown, status = 200) { return new Response(JSON.stringify(value), { status, headers: { 'content-type': 'application/json' } }); }
 function sessionSummary() { return { id: 's1', version: 3, project_id: 'p1', scope_type: 'project', scope_id: 'p1', title: 'Thread One', status: 'idle', lifecycle: 'active', pinned: true, turn_count: 0, last_turn: null, created_at: new Date(0).toISOString(), updated_at: new Date(0).toISOString() }; }
 function sessionDetail() { return { ...sessionSummary(), turns: [], attachments: [], last_event_id: 0 }; }

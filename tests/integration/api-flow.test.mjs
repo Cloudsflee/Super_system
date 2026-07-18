@@ -5,7 +5,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { createConfirmedProject } from './v13-test-helpers.mjs';
 
-const port = 4567;
+const port = Number(process.env.AIWS_TEST_PORT || 4567);
 const home = fs.mkdtempSync(path.join(os.tmpdir(), 'aiws-api-home-'));
 const child = spawn(process.execPath, ['apps/api/server.mjs'], { env: { ...process.env, AIWS_PORT: String(port), AIWS_HOME: home, NODE_ENV: 'test', AIWS_BYPASS_SETUP: '1' }, stdio: ['ignore', 'pipe', 'pipe'] });
 await waitForServer();
@@ -13,7 +13,7 @@ try {
   assert.equal((await api('/health')).status, 'ok');
   const project = await createConfirmedProject({ baseUrl: `http://127.0.0.1:${port}`, title: 'API Integration', goal: '验证项目、上下文、队列与 Digest', workflowNodes: [{ type: 'analysis', title: '分析节点', goal: '形成可追溯分析' }] });
   assert.equal(project.project.settings.token_budget, 12000);
-  const node = (await api(`/projects/${project.project.id}`)).nodes[0];
+  const node = (await api(`/projects/${project.project.id}`)).nodes.find((item) => item.role === 'task');
   const context = await api(`/nodes/${node.id}/context-pack/preview`, { method: 'POST', body: {} });
   assert.equal(context.quality_check.passed, true);
   await api(`/context-packs/${context.id}/confirm`, { method: 'POST', body: {} });

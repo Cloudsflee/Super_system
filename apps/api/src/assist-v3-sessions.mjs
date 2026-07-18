@@ -45,10 +45,11 @@ export async function createV3Session(input = {}) {
     return session;
   });
 }
-export async function getV3Session(sessionId) { const state = await readState(), session = requireSession(state, sessionId); return sessionDetail(state, session); }
+export async function getV3Session(sessionId) { const state = await readState(), session = requireSession(state, sessionId, true); return sessionDetail(state, session); }
 export async function updateV3Session(sessionId, input = {}) {
   return mutate((state) => {
-    const session = requireSession(state, sessionId);
+    const session = requireSession(state, sessionId, true);
+    for (const key of ['project_id', 'scope_type', 'scope_id']) if (input[key] !== undefined && input[key] !== session[key]) throw new HttpError(409, { error: 'assist_scope_immutable', field: key, current_value: session[key] });
     if (input.title !== undefined) { const title = cleanText(input.title, 120); if (!title) throw new HttpError(400, { error: 'assist_session_title_required' }); session.title = title; }
     if (input.pinned !== undefined) session.pinned = input.pinned === true;
     if (input.view_context !== undefined) session.view_context = safeViewContext(input.view_context);
@@ -59,7 +60,7 @@ export async function updateV3Session(sessionId, input = {}) {
 export async function archiveV3Session(sessionId) {
   return mutate((state) => {
     const session = requireSession(state, sessionId);
-    if (state.assist_turns.some((item) => item.session_id === session.id && ['queued', 'preparing', 'running', 'waiting_approval', 'stopping'].includes(item.status))) throw new HttpError(409, { error: 'assist_session_running' });
+    if (state.assist_turns.some((item) => item.session_id === session.id && ['queued', 'preparing', 'running', 'waiting_user_input', 'waiting_approval', 'stopping'].includes(item.status))) throw new HttpError(409, { error: 'assist_session_running' });
     if (!session.archived_at) Object.assign(session, { archived_at: now(), lifecycle: 'archived', pinned: false, updated_at: now() });
     return session;
   });

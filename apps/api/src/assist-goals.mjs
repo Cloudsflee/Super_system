@@ -20,7 +20,7 @@ async function withGoalProjectLock(sessionId, operation) {
   return withProjectLifecycleLock(project.id, operation);
 }
 
-async function performGoalRpc(sessionId, operation, input = {}, { rpc = runCodexAppServerRpc } = {}) {
+async function performGoalRpc(sessionId, operation, input = {}, { rpc = runCodexAppServerRpc, adapted = false } = {}) {
   let state = await readState(), session = requireSession(state, sessionId), project = requireProject(state, session.project_id);
   if (operation !== 'set' && (!session.codex_thread_id || session.native_thread_generation === 1)) return { goal: null };
   const configuration = resolveGoalProfile(state, session, input);
@@ -34,14 +34,15 @@ async function performGoalRpc(sessionId, operation, input = {}, { rpc = runCodex
   const method = operation === 'get' ? 'thread/goal/get' : operation === 'clear' ? 'thread/goal/clear' : 'thread/goal/set';
   const params = operation === 'set' ? normalizeGoalInput(input, session.native_goal_snapshot) : {};
   let response;
-  try {
-    response = await rpc({ state, profile, cwd, sandbox: 'read-only', resumeId, createThread: !resumeId, method, params });
+  if (adapted) response = adaptedGoalResponse(session, operation, params);
+  else try {
+    response = await rpc({ state, profile, cwd, sandbox: 'read-only', resumeId, createThread: !resumeId, method, params, projectId: project.id });
   } catch (error) {
     if (!resumeId || !isCodexThreadUnavailable(error)) throw error;
     await clearUnavailableNativeThread(session.id, resumeId);
     if (operation !== 'set') return { goal: null };
     state = await readState();
-    response = await rpc({ state, profile, cwd, sandbox: 'read-only', resumeId: null, createThread: true, method, params: restoredGoalInput(params, session.native_goal_snapshot) });
+    response = await rpc({ state, profile, cwd, sandbox: 'read-only', resumeId: null, createThread: true, method, params: restoredGoalInput(params, session.native_goal_snapshot), projectId: project.id });
   }
   const threadId = response.thread_id || resumeId;
   if (operation === 'set' && !threadId) throw new HttpError(409, { error: 'native_goal_thread_missing' });
@@ -90,4 +91,16 @@ function restoredGoalInput(input, snapshot) {
     ...(snapshot?.tokenBudget != null ? { tokenBudget: snapshot.tokenBudget } : {}),
     ...input
   };
+}
+
+function adaptedGoalResponse(session, operation, params) {
+  const threadId = session.codex_thread_id || `test-goal-${session.id}`;
+  if (operation === 'clear') return { thread_id: threadId, result: null };
+  const previous = session.native_goal_snapshot || {};
+  const goal = operation === 'get' ? previous : {
+    ...previous, ...params, status: params.status || previous.status || 'active', tokenBudget: params.tokenBudget ?? previous.tokenBudget ?? null,
+    tokensUsed: Number(previous.tokensUsed || 0), timeUsedSeconds: Number(previous.timeUsedSeconds || 0),
+    createdAt: previous.createdAt || now(), updatedAt: now()
+  };
+  return { thread_id: threadId, result: { goal } };
 }

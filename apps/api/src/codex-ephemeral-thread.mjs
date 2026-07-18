@@ -9,19 +9,25 @@ import {
   appServerInvocation, approvalResponse, dynamicToolResponse, mapNotification,
   nativeAdditionalContext, nativeCollaborationMode, sandboxPolicy, taggedError
 } from './codex-app-server.mjs';
+import { withCodexRuntimeStateRecovery } from './codex-home-recovery.mjs';
+import { issueCodexMcpAccess } from './codex-mcp-runtime.mjs';
 
-export async function createCodexEphemeralThread({ state, profile, cwd, sourceThreadId, sourceTurnId, additionalContext = [], signal, spawnProcess = spawn }) {
+export async function createCodexEphemeralThread(options) {
+  return withCodexRuntimeStateRecovery(options.profile, () => createCodexEphemeralThreadOnce(options));
+}
+
+async function createCodexEphemeralThreadOnce({ state, profile, cwd, sourceThreadId, sourceTurnId, projectId = null, additionalContext = [], signal, spawnProcess = spawn }) {
   assertProfileAllowed(profile);
   const auth = state.integration_statuses.find((item) => item.key === 'codex_auth');
   if (!codexAuthMatchesProfile(auth, profile)) throw taggedError('codex_auth_profile_mismatch', 'app_server_start_failed');
   if (auth.home && !isThirdPartyProvider(profile.provider)) await materializeDeviceAuth(auth.home, profile.codex_home);
-  const credential = await readSecret(auth?.refs?.credential), invocation = appServerInvocation(profile, cwd, 'read-only', credential);
+  const credential = await readSecret(auth?.refs?.credential), mcpAccess = await issueCodexMcpAccess(projectId, profile, { ttlSeconds: Math.ceil(Number(profile.timeout_ms || 120000) / 1000) + 1200 }), invocation = appServerInvocation(profile, cwd, 'read-only', credential, [], mcpAccess);
   let child;
   try {
     child = invocation.runtime === 'docker'
       ? spawnContainerProcess(invocation, { cwd, env: invocation.env, spawnProcess })
       : spawnProcess(invocation.command, invocation.args, { cwd, env: invocation.env, shell: false, windowsHide: true });
-  } catch (error) { throw taggedError(error.message, 'app_server_start_failed'); }
+  } catch (error) { await mcpAccess?.release(); throw taggedError(error.message, 'app_server_start_failed'); }
 
   let buffer = '', stderr = '', closed = false, requestId = 0, threadId = null, active = null;
   const pending = new Map(), runtimeCwd = invocation.cwd || cwd;
@@ -30,6 +36,7 @@ export async function createCodexEphemeralThread({ state, profile, cwd, sourceTh
     closed = true;
     for (const item of pending.values()) item.reject(error); pending.clear();
     finishActive(error);
+    void mcpAccess?.release();
   };
   const terminate = (error) => { closeError(error); if (child.exitCode === null && !child.killed) child.kill(); };
   child.stdout.on('data', (chunk) => { buffer += chunk.toString(); const lines = buffer.split(/\r?\n/); buffer = lines.pop() || ''; for (const line of lines) consume(line); });
@@ -37,7 +44,7 @@ export async function createCodexEphemeralThread({ state, profile, cwd, sourceTh
   child.on('error', (error) => terminate(taggedError(error.message, 'app_server_turn_failed')));
   child.on('close', (code) => closeError(taggedError(stderr || `codex_app_server_exit_${code}`, 'app_server_turn_failed')));
   const abortInitialize = () => close(), initializeTimer = setTimeout(() => terminate(taggedError('codex_ephemeral_initialize_timeout', 'app_server_start_failed')), Math.max(1000, Math.min(300000, Number(profile.timeout_ms || 120000))));
-  signal?.addEventListener('abort', abortInitialize, { once: true });
+  if (signal?.aborted) abortInitialize(); else signal?.addEventListener('abort', abortInitialize, { once: true });
 
   try {
     await request('initialize', { clientInfo: { name: 'aiws', title: 'AI Workspace', version: AIWS_VERSION }, capabilities: { experimentalApi: true, requestAttestation: false } });

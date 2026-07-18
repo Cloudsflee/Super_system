@@ -1,0 +1,30 @@
+name: V1.8 Soak
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '0 16 * * 6'
+
+permissions:
+  contents: read
+
+jobs:
+  v18-soak:
+    runs-on: [self-hosted, v18-soak]
+    timeout-minutes: 125
+    steps:
+      - uses: actions/checkout@v4
+        with: { fetch-depth: 0 }
+      - uses: pnpm/action-setup@v4
+        with: { version: 10.14.0 }
+      - uses: actions/setup-node@v4
+        with: { node-version: 24, cache: pnpm }
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm test:v18:soak
+      - if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: v18-soak-${{ github.run_id }}
+          path: .ai-workspace/test-reports/v1.8/
+          if-no-files-found: error
+          retention-days: 30

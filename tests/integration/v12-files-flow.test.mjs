@@ -5,7 +5,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { createConfirmedProject, repositorySnapshot } from './v13-test-helpers.mjs';
 
-const port = 4584;
+const port = Number(process.env.AIWS_TEST_PORT || 4584);
 const home = fs.mkdtempSync(path.join(os.tmpdir(), 'aiws-v12-files-'));
 const repo = path.join(home, 'repo');
 const outside = path.join(home, 'outside');

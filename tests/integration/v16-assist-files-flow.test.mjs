@@ -12,7 +12,7 @@ fs.writeFileSync(path.join(source, 'README.md'), '# V1.6 upload fixture\n'); git
 const fakeCodex = path.resolve('tests/fixtures/fake-codex-app-server-v15.mjs');
 const serverEnv = { AIWS_CODEX_BIN: fakeCodex, AIWS_CODEX_VERSION: '0.144.0' };
 const stateFile = path.join(fixture.home, 'data', 'state.json');
-const port = 4616, baseUrl = `http://127.0.0.1:${port}`;
+const port = Number(process.env.AIWS_TEST_PORT || 4616), baseUrl = `http://127.0.0.1:${port}`;
 let server;
 
 try {

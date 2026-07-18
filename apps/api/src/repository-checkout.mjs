@@ -3,7 +3,7 @@ import fsp from 'node:fs/promises';
 import path from 'node:path';
 import { command, HttpError } from './http.mjs';
 import { git, isGitRepo } from './git-utils.mjs';
-import { createInstallationToken, resolveGithubAppConfig } from './github-service.mjs';
+import { createInstallationToken, githubGitAuthEnv, resolveGithubAppConfig } from './github-service.mjs';
 import { managedProjectRoot, managedRepoPath } from './project-lifecycle.mjs';
 
 export async function ensureRepositoryCheckout(state, { project, installation, repository, adapted = false, adaptedFailure = null }) {
@@ -31,10 +31,7 @@ export async function ensureRepositoryCheckout(state, { project, installation, r
   const config = resolveGithubAppConfig(state);
   if (!config) throw new HttpError(409, { error: 'github_app_config_required' });
   const access = await createInstallationToken(config, installation.installation_id);
-  const env = {
-    GIT_TERMINAL_PROMPT: '0', GIT_CONFIG_COUNT: '1',
-    GIT_CONFIG_KEY_0: 'http.extraHeader', GIT_CONFIG_VALUE_0: `Authorization: Bearer ${access.token}`
-  };
+  const env = githubGitAuthEnv(access.token);
   const remote = `https://github.com/${repository.full_name}.git`;
   const result = command('git', ['clone', '--origin', 'origin', remote, target], root, 120000, env);
   if (!result.ok) {

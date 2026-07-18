@@ -7,6 +7,7 @@ WORKDIR /app
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 COPY apps/web/package.json apps/web/package.json
 COPY apps/worker/package.json apps/worker/package.json
+COPY apps/mcp-gateway/package.json apps/mcp-gateway/package.json
 COPY packages/context-pack/package.json packages/context-pack/package.json
 COPY packages/git-tools/package.json packages/git-tools/package.json
 COPY packages/mcp-bridge/package.json packages/mcp-bridge/package.json
@@ -47,6 +48,7 @@ WORKDIR /app
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 COPY apps/web/package.json apps/web/package.json
 COPY apps/worker/package.json apps/worker/package.json
+COPY apps/mcp-gateway/package.json apps/mcp-gateway/package.json
 COPY packages/context-pack/package.json packages/context-pack/package.json
 COPY packages/git-tools/package.json packages/git-tools/package.json
 COPY packages/mcp-bridge/package.json packages/mcp-bridge/package.json
@@ -55,9 +57,15 @@ COPY packages/runner-adapters/package.json packages/runner-adapters/package.json
 COPY packages/shared/package.json packages/shared/package.json
 RUN corepack pnpm install --prod --frozen-lockfile --filter ai-workspace-system
 
+FROM node:24-alpine AS gateway-deps
+RUN corepack enable
+WORKDIR /gateway
+COPY apps/mcp-gateway/package.json apps/mcp-gateway/pnpm-lock.yaml apps/mcp-gateway/pnpm-workspace.yaml ./
+RUN corepack pnpm install --prod --frozen-lockfile
+
 FROM node:24-alpine AS production
 LABEL org.opencontainers.image.title="AI Workspace System" \
-      org.opencontainers.image.version="1.7.0"
+      org.opencontainers.image.version="1.9.0"
 ARG ALPINE_FALLBACK_MIRROR=https://mirrors.aliyun.com/alpine
 RUN apk add --no-cache bash ca-certificates docker-cli docker-cli-compose git openssh-client python3 tar || (sed -i "s#https://dl-cdn.alpinelinux.org/alpine#${ALPINE_FALLBACK_MIRROR}#g" /etc/apk/repositories && apk add --no-cache bash ca-certificates docker-cli docker-cli-compose git openssh-client python3 tar)
 WORKDIR /app
@@ -79,3 +87,19 @@ EXPOSE 4317
 HEALTHCHECK --interval=10s --timeout=3s --start-period=20s --retries=6 \
   CMD node -e "fetch('http://127.0.0.1:4317/api/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
 CMD ["node", "apps/api/server.mjs"]
+
+FROM node:24-alpine AS mcp-gateway
+LABEL org.opencontainers.image.title="AI Workspace MCP Gateway" \
+      org.opencontainers.image.version="1.9.0"
+WORKDIR /app
+ENV NODE_ENV=production \
+    AIWS_MCP_GATEWAY_HOST=0.0.0.0 \
+    AIWS_MCP_GATEWAY_PORT=4319
+COPY --from=gateway-deps /gateway/node_modules ./node_modules
+COPY package.json ./package.json
+COPY apps/mcp-gateway ./apps/mcp-gateway
+COPY packages/mcp-bridge ./packages/mcp-bridge
+EXPOSE 4319
+HEALTHCHECK --interval=10s --timeout=3s --start-period=10s --retries=6 \
+  CMD node -e "fetch('http://127.0.0.1:4319/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
+CMD ["node", "apps/mcp-gateway/server.mjs"]

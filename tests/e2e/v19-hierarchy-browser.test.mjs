@@ -1,0 +1,232 @@
+import assert from 'node:assert/strict';
+import { spawn } from 'node:child_process';
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
+import { chromium } from '@playwright/test';
+import { assertViewport, browserExecutable } from './playwright-helpers.mjs';
+
+const root = fs.mkdtempSync(path.join(os.tmpdir(), 'aiws-v19-browser-'));
+const home = path.join(root, 'home');
+const port = Number(process.env.AIWS_V19_BROWSER_PORT || 4598);
+const output = process.env.AIWS_TEST_REPORT_DIR ? path.resolve(process.env.AIWS_TEST_REPORT_DIR, 'e2e-v19') : path.resolve('.ai-workspace', 'e2e-v19');
+const viewports = [{ name: 'desktop', width: 1440, height: 900 }, { name: 'mobile', width: 390, height: 844 }];
+let browser, server, serverLog = '';
+
+process.env.AIWS_HOME = home;
+process.env.NODE_ENV = 'test';
+fs.mkdirSync(output, { recursive: true });
+
+try {
+  const fixture = await seedHierarchyProject();
+  server = spawn(process.execPath, ['apps/api/server.mjs'], {
+    cwd: process.cwd(), windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'],
+    env: { ...process.env, AIWS_HOME: home, AIWS_PORT: String(port), AIWS_BYPASS_SETUP: '1', NODE_ENV: 'test' }
+  });
+  server.stdout.on('data', (chunk) => { serverLog += chunk; });
+  server.stderr.on('data', (chunk) => { serverLog += chunk; });
+  await waitForServer();
+  browser = await chromium.launch({ headless: true, ...browserExecutable() });
+
+  for (const viewport of viewports) {
+    const context = await browser.newContext({ viewport, deviceScaleFactor: 1 });
+    const page = await context.newPage(), errors = [];
+    await page.emulateMedia({ reducedMotion: 'reduce' });
+    await page.route('**/api/setup/status', (route) => route.fulfill({
+      status: 200, contentType: 'application/json',
+      body: JSON.stringify({ complete: true, can_complete: true, mode: 'byo', steps: { github: { ready: true }, codex: { ready: true } }, reasons: [] })
+    }));
+    page.on('console', (message) => { if (message.type() === 'error' && !message.text().startsWith('Failed to load resource')) errors.push(message.text()); });
+    page.on('pageerror', (error) => errors.push(error.message));
+    page.on('response', (response) => { if (response.status() >= 400) errors.push(`${response.status()} ${response.url()}`); });
+
+    await verifyHierarchyJourney(page, fixture, viewport);
+    assert.deepEqual(errors.filter((item) => !item.includes('favicon')), [], `${viewport.name} browser errors:\n${errors.join('\n')}`);
+    await context.close();
+  }
+
+  console.log(`V1.9 hierarchy and scoped Assist browser tests passed; screenshots: ${output}`);
+} finally {
+  await browser?.close();
+  if (server?.exitCode == null) server.kill();
+  if (server) await Promise.race([new Promise((resolve) => server.once('exit', resolve)), new Promise((resolve) => setTimeout(resolve, 3000))]);
+  if (server?.exitCode == null) server.kill('SIGKILL');
+  fs.rmSync(root, { recursive: true, force: true, maxRetries: 5, retryDelay: 150 });
+}
+
+async function verifyHierarchyJourney(page, fixture, viewport) {
+  const workflowUrl = `http://127.0.0.1:${port}/projects/${fixture.projectId}/workflow`;
+  await page.goto(workflowUrl);
+  await page.locator('.workflow-page .workspace-node').first().waitFor();
+  assert.equal(await page.locator('.workflow-page .workspace-node').count(), 2, 'the top canvas renders only Workstreams');
+  assert.equal(await page.getByText('Collect release evidence', { exact: true }).count(), 0, 'Task titles do not leak onto the parent canvas');
+  await assertScope(page, fixture, {
+    label: '工作流', icon: 'lucide-git-branch', breadcrumb: `${fixture.projectTitle} / ${fixture.workflowTitle}`,
+    thread: 'Workflow-only thread', forbidden: ['Project-only thread', 'Workstream-only thread', 'Task-only thread']
+  });
+
+  await page.goto(`http://127.0.0.1:${port}/projects`);
+  await page.getByRole('heading', { name: '项目' }).waitFor();
+  await assertScope(page, fixture, {
+    label: '项目', icon: 'lucide-folder-kanban', breadcrumb: fixture.projectTitle,
+    thread: 'Project-only thread', forbidden: ['Workflow-only thread', 'Workstream-only thread', 'Task-only thread']
+  });
+
+  await page.goto(workflowUrl);
+  const workstreamCard = page.locator('.workspace-node').filter({ hasText: fixture.workstreamTitle });
+  await workstreamCard.waitFor();
+  await page.getByRole('button', { name: '放大' }).click();
+  await page.getByRole('button', { name: '放大' }).click();
+  await page.waitForTimeout(100);
+  await workstreamCard.click();
+  await page.locator('.node-inspector').waitFor();
+  await page.locator('.node-inspector').getByRole('button', { name: '进入成果节点' }).click();
+  await page.waitForURL(`**/projects/${fixture.projectId}/workflow/${fixture.workstreamId}`);
+  const storedView = await page.evaluate((workflowId) => JSON.parse(sessionStorage.getItem(`aiws:v19:workflow-view:${workflowId}`) || 'null'), fixture.workflowId);
+  assert.equal(storedView.selectedId, fixture.workstreamId);
+  assert.equal(storedView.inspectorOpen, true);
+
+  await page.locator('.workstream-page').waitFor();
+  assert.equal(await page.locator('.workflow-page').count(), 0, 'mobile and desktop both navigate to a separate child page');
+  const breadcrumb = await page.locator('.workflow-breadcrumb').textContent();
+  for (const label of [fixture.projectTitle, fixture.workflowTitle, fixture.workstreamTitle]) assert.match(breadcrumb || '', new RegExp(escapeRegExp(label)));
+  assert.equal(await page.locator('.task-list [role="listitem"]').count(), 3);
+  await page.screenshot({ path: path.join(output, `workstream-list-${viewport.name}.png`), fullPage: true });
+
+  await page.getByRole('tab', { name: '看板' }).click();
+  await page.locator('.task-board').waitFor();
+  assert.equal(await page.locator('.task-board > section').count(), 5);
+  assert.equal(await page.locator('.task-board').getByText('Collect release evidence', { exact: true }).count(), 1);
+  await page.screenshot({ path: path.join(output, `workstream-board-${viewport.name}.png`), fullPage: true });
+
+  await page.getByRole('tab', { name: '结构' }).click();
+  await page.locator('.task-structure .react-flow__node').first().waitFor();
+  assert.equal(await page.locator('.task-structure .react-flow__node').count(), 3);
+  assert.equal(await page.locator('.task-structure .react-flow__edge').count(), 2, 'branching task dependencies render only in the local graph');
+  assert.equal(await page.locator('.workspace-node .react-flow,.node-inspector .react-flow').count(), 0, 'the local graph is never embedded in a parent card or Inspector');
+  await page.screenshot({ path: path.join(output, `workstream-structure-${viewport.name}.png`), fullPage: true });
+  await assertViewport(page);
+
+  await page.getByRole('tab', { name: '列表' }).click();
+  await assertScope(page, fixture, {
+    label: '成果节点', icon: 'lucide-boxes', breadcrumb: `${fixture.projectTitle} / ${fixture.workflowTitle} / ${fixture.workstreamTitle}`,
+    thread: 'Workstream-only thread', forbidden: ['Project-only thread', 'Workflow-only thread', 'Task-only thread']
+  });
+
+  await page.locator('.task-list [role="listitem"]').filter({ hasText: 'Collect release evidence' }).click();
+  await assertScope(page, fixture, {
+    label: '任务', icon: 'lucide-list-todo', breadcrumb: `${fixture.projectTitle} / ${fixture.workflowTitle} / ${fixture.workstreamTitle} / Collect release evidence`,
+    thread: 'Task-only thread', forbidden: ['Project-only thread', 'Workflow-only thread', 'Workstream-only thread', 'Sibling-task-only thread']
+  });
+
+  await page.getByRole('button', { name: '返回顶层工作流' }).click();
+  await page.waitForURL(`**/projects/${fixture.projectId}/workflow`);
+  await page.locator('.node-inspector').waitFor();
+  assert.equal(await page.locator('.node-inspector').getByText(fixture.workstreamTitle, { exact: true }).count(), 1, 'the selected Workstream and Inspector are restored');
+  await page.waitForFunction(({ expected }) => {
+    const viewportNode = document.querySelector('.workflow-page .react-flow__viewport');
+    if (!viewportNode) return false;
+    const matrix = new DOMMatrixReadOnly(getComputedStyle(viewportNode).transform);
+    return Math.abs(matrix.m41 - expected.x) < 2 && Math.abs(matrix.m42 - expected.y) < 2 && Math.abs(matrix.a - expected.zoom) < 0.02;
+  }, { expected: storedView.viewport });
+  if (viewport.width > 700) {
+    const addButton = page.getByRole('button', { name: '添加成果节点' });
+    await addButton.hover();
+    const tooltip = await addButton.evaluate((element) => {
+      const style = getComputedStyle(element, '::after');
+      return { width: Number.parseFloat(style.width), height: Number.parseFloat(style.height), whiteSpace: style.whiteSpace };
+    });
+    assert.ok(tooltip.width >= 60 && tooltip.height <= 30, `canvas tooltip must stay horizontal: ${JSON.stringify(tooltip)}`);
+  }
+  await page.screenshot({ path: path.join(output, `workflow-restored-${viewport.name}.png`) });
+  await assertViewport(page);
+}
+
+async function assertScope(page, fixture, { label, icon, breadcrumb, thread, forbidden }) {
+  await page.getByRole('button', { name: '打开 Codex Assist' }).click();
+  const workbench = page.locator('.assist-workbench');
+  await workbench.waitFor();
+  const heading = workbench.locator('.assist-scope-heading');
+  await heading.getByText(`${label} Assist`, { exact: true }).waitFor();
+  await heading.getByText(thread, { exact: true }).waitFor();
+  assert.equal(await heading.locator(`.${icon}`).count(), 1, `${label} Assist must display its scope icon`);
+  assert.equal((await workbench.locator('.assist-scope-breadcrumb').textContent())?.trim(), breadcrumb);
+  await workbench.getByRole('button', { name: '显示线程列表' }).click();
+  const list = workbench.locator('.thread-list');
+  await list.getByText(thread, { exact: true }).waitFor();
+  assert.equal(await list.locator('.thread-tree-node').count(), 1, `${label} scope must list only exact-scope sessions`);
+  for (const title of forbidden) assert.equal(await list.getByText(title, { exact: true }).count(), 0, `${label} scope leaked ${title}`);
+  const scopeRow = list.locator('.thread-scope').first();
+  assert.ok((await scopeRow.locator('b').textContent())?.trim(), `${label} thread must carry a visible scope label`);
+  assert.equal((await scopeRow.locator('span').textContent())?.trim(), breadcrumb, `${label} thread must carry its complete ownership path`);
+  await page.screenshot({ path: path.join(output, `assist-${label}-${page.viewportSize().width}.png`) });
+  await workbench.getByRole('button', { name: '关闭 Assist' }).click();
+  await workbench.waitFor({ state: 'detached' });
+  assert.equal(fixture.projectId.length > 0, true);
+}
+
+async function seedHierarchyProject() {
+  const stateApi = await import('../../apps/api/src/state.mjs');
+  const { activateDraftInState, createDraftProjectRecords } = await import('../../apps/api/src/project-lifecycle.mjs');
+  const { makeSession, resolveScope } = await import('../../apps/api/src/assist-v3-domain.mjs');
+  await stateApi.ensureRuntime();
+  const actor = stateApi.owner(await stateApi.readState());
+  let fixture;
+  await stateApi.mutate((state) => {
+    const created = createDraftProjectRecords({ title: 'Outcome delivery studio', goal: 'Deliver independently accepted release outcomes', mode: 'brainstorm', answers: { goal: 'Deliver independently accepted release outcomes' } }, actor);
+    created.project.managed_workspace_state = 'ready';
+    state.projects.push(created.project); state.workspaces.push(created.workspace); state.project_intakes.push(created.intake);
+    state.project_briefs.push(created.brief); state.workflow_drafts.push(created.workflowDraft); state.assist_sessions.push(created.session);
+    const activated = activateDraftInState(state, created.project, created.brief, hierarchy(), actor.id);
+    const workstream = activated.nodes.find((item) => item.id === 'ws-release-evidence');
+    const task = activated.nodes.find((item) => item.id === 'task-collect-evidence');
+    const siblingTask = activated.nodes.find((item) => item.id === 'task-verify-build');
+    created.session.title = 'Project-only thread';
+    const scopeSessions = [
+      ['workflow', activated.workflow.id, 'Workflow-only thread'],
+      ['workstream', workstream.id, 'Workstream-only thread'],
+      ['task', task.id, 'Task-only thread'],
+      ['task', siblingTask.id, 'Sibling-task-only thread']
+    ];
+    for (const [scopeType, scopeId, title] of scopeSessions) {
+      const scope = resolveScope(state, created.project, scopeType, scopeId);
+      state.assist_sessions.push(makeSession({ actor, project: created.project, scope, title, viewContext: { route: `/projects/${created.project.id}/workflow` } }));
+    }
+    fixture = {
+      projectId: created.project.id, projectTitle: created.project.title, workflowId: activated.workflow.id, workflowTitle: activated.workflow.title,
+      workstreamId: workstream.id, workstreamTitle: workstream.title, taskId: task.id
+    };
+  });
+  return fixture;
+}
+
+function hierarchy() {
+  return [
+    {
+      id: 'ws-release-evidence', role: 'workstream', title: 'Verified release evidence', outcome: 'A complete and independently reviewable release evidence package.',
+      category: 'deliverable', boundary: { repository: 'acme/release' }, acceptance_criteria: ['Evidence links and build checks are accepted.'], dependency_ids: [], position: { x: 120, y: 160 },
+      tasks: [
+        { id: 'task-collect-evidence', role: 'task', title: 'Collect release evidence', goal: 'Collect traceable release evidence', task_kind: 'research', execution_mode: 'assist', dependency_ids: [], position: { x: 100, y: 120 } },
+        { id: 'task-verify-build', role: 'task', title: 'Verify release build', goal: 'Run and record build verification', task_kind: 'test', execution_mode: 'codex', dependency_ids: ['task-collect-evidence'], position: { x: 420, y: 40 } },
+        { id: 'task-review-notes', role: 'task', title: 'Review release notes', goal: 'Review release notes against evidence', task_kind: 'review', execution_mode: 'assist', dependency_ids: ['task-collect-evidence'], position: { x: 420, y: 220 } }
+      ]
+    },
+    {
+      id: 'ws-launch-decision', role: 'workstream', title: 'Approved launch decision', outcome: 'A recorded launch decision with accepted constraints.',
+      category: 'decision', boundary: { owner: 'release-owner' }, acceptance_criteria: ['The launch owner records an explicit decision.'], dependency_ids: ['ws-release-evidence'], position: { x: 520, y: 160 },
+      tasks: [{ id: 'task-record-decision', role: 'task', title: 'Record launch decision', goal: 'Record the accepted launch decision', task_kind: 'manual', execution_mode: 'manual', dependency_ids: [] }]
+    }
+  ];
+}
+
+async function waitForServer() {
+  const deadline = Date.now() + 30_000;
+  while (Date.now() < deadline) {
+    if (server.exitCode != null) throw new Error(`API exited ${server.exitCode}:\n${serverLog}`);
+    try { const response = await fetch(`http://127.0.0.1:${port}/health`); if (response.ok) return; } catch {}
+    await new Promise((resolve) => setTimeout(resolve, 75));
+  }
+  throw new Error(`API startup timed out:\n${serverLog}`);
+}
+
+function escapeRegExp(value) { return String(value).replace(/[.*+?^${}()|[\]\\]/g, '\\$&'); }

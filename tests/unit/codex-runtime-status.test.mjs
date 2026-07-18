@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { codexImageFingerprint, inspectCodexRuntimeLive } from '../../apps/api/src/codex-runtime-status.mjs';
+import { codexImageFingerprint, inspectCodexRuntimeLive, selectedCodexRuntimeImage } from '../../apps/api/src/codex-runtime-status.mjs';
 
 const imageInspect = (overrides = {}) => JSON.stringify([{
   Id: 'sha256:volatile-build-id', Created: '2026-07-12T00:00:00Z',
@@ -7,6 +7,10 @@ const imageInspect = (overrides = {}) => JSON.stringify([{
   Config: { Entrypoint: ['codex'], Env: ['PATH=/usr/bin'], WorkingDir: '/workspace' },
   Metadata: { LastTagTime: '2026-07-12T00:00:00Z' }, ...overrides
 }]);
+
+assert.equal(selectedCodexRuntimeImage({ codex_profiles: [{ image: 'fallback:one', status: 'validated' }, { image: 'active:two', is_active: true }] }), 'active:two');
+assert.equal(selectedCodexRuntimeImage({ codex_profiles: [{ config: { image: 'configured:one' }, status: 'validated' }] }), 'configured:one');
+assert.equal(selectedCodexRuntimeImage({ codex_profiles: [] }), undefined);
 
 const stopped = inspectCodexRuntimeLive({ commandRunner: () => ({ ok: false, status: 1, stdout: '', stderr: 'daemon unavailable', error: null }) });
 assert.equal(stopped.ready, false);

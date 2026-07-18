@@ -1,8 +1,9 @@
-import { Archive, ArchiveRestore, GitFork, Pencil, Pin, PinOff, Plus, Search, Trash2, Undo2 } from 'lucide-react';
+import { Archive, ArchiveRestore, GitFork, LockKeyhole, Pencil, Pin, PinOff, Plus, Search, Trash2, Undo2 } from 'lucide-react';
 import type { CSSProperties } from 'react';
 import type { AssistV3Session } from '../../api/types';
 import { useContextMenu, type ContextMenuAction } from '../../components/common/ContextMenu';
 import { IconButton } from '../../components/common/IconButton';
+import { assistScopeLabel, assistScopePath, sessionIsReadOnly } from './scope-display';
 
 type Props = {
   sessions: AssistV3Session[]; selectedId?: string; search: string; archived: boolean; loading: boolean;
@@ -26,10 +27,15 @@ export function ThreadSidebar(props: Props) {
   ];
   const row = (node: TreeNode): React.ReactNode => {
     const item = node.item, style = { '--thread-depth': node.depth } as CSSProperties;
+    const scopePath = assistScopePath(item.scope_breadcrumb || []), readOnly = sessionIsReadOnly(item);
     return <div className="thread-tree-node" key={item.id}>{item.deleted_at
       ? <div className="thread-tombstone" style={style}><span>已删除分支</span><button onClick={() => props.onRestoreDeleted(item)}>撤销</button></div>
-      : <article className={item.id === props.selectedId ? 'active' : ''} style={style} onContextMenu={(event) => { event.preventDefault(); event.stopPropagation(); menu.open(actions(item), { x: event.clientX, y: event.clientY }, event.currentTarget); }}>
-        <button className="thread-main" onClick={() => props.onSelect(item.id)} onDoubleClick={() => props.onRename(item)}><span><strong>{item.title}</strong>{item.pinned && <Pin size={11} />}</span><small>{item.turn_count ? `${item.turn_count} 轮` : '尚无对话'}</small></button>
+      : <article className={`${item.id === props.selectedId ? 'active' : ''}${readOnly ? ' read-only' : ''}`} style={style} onContextMenu={(event) => { event.preventDefault(); event.stopPropagation(); menu.open(actions(item), { x: event.clientX, y: event.clientY }, event.currentTarget); }}>
+        <button className="thread-main" onClick={() => props.onSelect(item.id)} onDoubleClick={() => props.onRename(item)}>
+          <span><strong>{item.title}</strong>{item.pinned && <Pin size={11} />}{readOnly && <LockKeyhole size={11} aria-label="只读" />}</span>
+          <small className="thread-scope" data-tooltip={scopePath}><b>{item.scope_label || assistScopeLabel(item.scope_type)}</b><span>{scopePath || item.scope_id}</span></small>
+          <small>{item.turn_count ? `${item.turn_count} 轮` : '尚无对话'}{readOnly ? ' · 只读' : ''}</small>
+        </button>
       </article>}{node.children.map(row)}</div>;
   };
   return <aside className="assist-threads">

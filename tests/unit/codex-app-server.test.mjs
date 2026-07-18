@@ -8,7 +8,7 @@ class FakeProcess extends EventEmitter {
     this.stdin = { writable: true, write: (chunk) => { for (const line of String(chunk).trim().split(/\r?\n/).filter(Boolean)) handler(JSON.parse(line), this); return true; } };
   }
   send(message) { queueMicrotask(() => this.stdout.emit('data', Buffer.from(`${JSON.stringify(message)}\n`))); }
-  kill() { if (this.exitCode !== null) return; this.exitCode = 0; queueMicrotask(() => this.emit('close', 0)); }
+  kill() { if (this.exitCode !== null) return; this.exitCode = 0; this.stdin.writable = false; queueMicrotask(() => this.emit('close', 0)); }
 }
 
 const state = { integration_statuses: [{ key: 'codex_auth', status: 'authenticated', provider: 'openai', auth_mode: 'device', refs: {} }] };
@@ -108,6 +108,29 @@ await assert.rejects(
   }) }),
   (error) => error.code === 'native_plan_unavailable'
 );
+let resolveLateTool, unhandled = null;
+const abortController = new AbortController();
+const unhandledListener = (error) => { unhandled = error; };
+process.once('unhandledRejection', unhandledListener);
+const lateToolTurn = runCodexAppServer({
+  state, profile, prompt: 'late tool result', cwd: process.cwd(), sandbox: 'read-only', signal: abortController.signal,
+  spawnProcess: () => new FakeProcess((message, child) => {
+    if (message.method === 'initialize') child.send({ id: message.id, result: { userAgent: 'fake' } });
+    if (message.method === 'thread/start') child.send({ id: message.id, result: { thread: { id: 'thread-late-tool' } } });
+    if (message.method === 'turn/start') {
+      child.send({ id: message.id, result: { turn: { id: 'turn-late-tool', status: 'inProgress' } } });
+      setImmediate(() => child.send({ id: 'late-tool', method: 'item/tool/call', params: { callId: 'late-tool' } }));
+    }
+  }),
+  onDynamicTool: () => new Promise((resolve) => { resolveLateTool = resolve; })
+});
+while (!resolveLateTool) await new Promise((resolve) => setImmediate(resolve));
+abortController.abort();
+await assert.rejects(lateToolTurn, (error) => error.code === 'app_server_turn_failed');
+resolveLateTool({ success: true, contentItems: [] });
+await new Promise((resolve) => setImmediate(resolve));
+process.removeListener('unhandledRejection', unhandledListener);
+assert.equal(unhandled, null);
 console.log('Codex app-server protocol unit tests passed');
 
 function handleProtocol(message, child) {

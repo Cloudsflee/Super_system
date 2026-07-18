@@ -30,10 +30,37 @@ try {
     baseUrl: `http://127.0.0.1:${port}`,
     title: 'Terminal PTY', goal: '验证真实 PTY 闭环', source
   });
+  await server.stop();
   const profile = installHostProfile(fixture.home);
+  server = await startApi({
+    port, home: fixture.home, ccSwitch: fixture.ccSwitch,
+    env: { AIWS_CODEX_BIN: process.execPath, NODE_REPL_HISTORY: '' }
+  });
   const capability = await api(port, '/assist/v3/terminal-capabilities');
   assert.equal(capability.available, true);
   assert.equal(capability.transport, 'node-pty+websocket');
+  await assertMalformedWebSocketRejected(port);
+  assert.equal((await api(port, '/health')).status, 'ok');
+
+  const otherSession = await api(port, '/assist/v3/sessions', 'POST', {
+    project_id: project.project.id,
+    scope_type: 'project',
+    scope_id: project.project.id,
+    title: 'Terminal scope boundary'
+  }, 201);
+  const otherTurn = await api(port, `/assist/v3/sessions/${otherSession.id}/turns`, 'POST', {
+    adapter: 'test',
+    collaboration_mode: 'default',
+    content: 'Create a turn owned by another Assist session',
+    test_response: { message: 'scope fixture complete' }
+  }, 202);
+  await api(port, '/assist/v3/terminal-sessions', 'POST', {
+    project_id: project.project.id,
+    assist_session_id: project.draft.assist_session.id,
+    turn_id: otherTurn.id,
+    profile_id: profile.id,
+    runtime: 'host_dev'
+  }, 409, 'assist_turn_scope_mismatch');
 
   const terminal = await api(port, '/assist/v3/terminal-sessions', 'POST', {
     project_id: project.project.id,
@@ -71,7 +98,7 @@ try {
     data: "require('node:fs').writeFileSync('README.md','# Terminal managed change\\n');console.log(['AIWS','WRITE','OK'].join(':'))\r"
   });
   await second.waitForOutput('AIWS:WRITE:OK');
-  second.send({ type: 'input', data: `console.log(['AIWS','HOME',process.env.CODEX_HOME===${JSON.stringify(profile.codex_home)}?'OK':'BAD'].join(':'))\r` });
+  second.send({ type: 'input', data: `console.log(['AIWS','HOME',require('node:fs').realpathSync.native(process.env.CODEX_HOME).toLowerCase()===require('node:fs').realpathSync.native(${JSON.stringify(profile.codex_home)}).toLowerCase()?'OK':'BAD'].join(':'))\r` });
   await second.waitForOutput('AIWS:HOME:OK');
   second.send({ type: 'input', data: "console.log(process.env.OPENAI_API_KEY)\r" });
   await second.waitForOutput('***MASKED***');
@@ -140,7 +167,8 @@ try {
 }
 
 function installHostProfile(home) {
-  const state = readFixtureState(home), codexHome = path.join(home, 'codex-homes', 'terminal-test');
+  const profileId = 'cdx_terminal_host';
+  const state = readFixtureState(home), codexHome = path.join(home, 'codex-homes', profileId);
   fs.mkdirSync(codexHome, { recursive: true });
   const secret = 'terminal-secret-sentinel-v13';
   const secretId = 'terminal_test_credential';
@@ -149,7 +177,7 @@ function installHostProfile(home) {
   state.integration_statuses = state.integration_statuses.filter((item) => item.key !== 'codex_auth');
   state.integration_statuses.push({ key: 'codex_auth', status: 'authenticated', provider: 'openai', auth_mode: 'api_key', refs: { credential: `vault:${secretId}` }, updated_at: new Date().toISOString() });
   for (const item of state.codex_profiles) item.is_active = false;
-  const profile = { id: 'cdx_terminal_host', name: 'Terminal Host', kind: 'host', provider: 'openai', model: 'test-model', reasoning: 'medium', status: 'validated', is_active: true, codex_home: codexHome, mounts: [], created_at: new Date().toISOString(), updated_at: new Date().toISOString() };
+  const profile = { id: profileId, name: 'Terminal Host', kind: 'host', provider: 'openai', model: 'test-model', reasoning: 'medium', status: 'validated', is_active: true, codex_home: codexHome, mounts: [], created_at: new Date().toISOString(), updated_at: new Date().toISOString() };
   state.codex_profiles.push(profile);
   fs.writeFileSync(statePath(home), JSON.stringify(state, null, 2), 'utf8');
   return { ...profile, secret };
@@ -178,6 +206,17 @@ function assertWebSocketRejected(port, id) {
     ws.once('unexpected-response', (_request, response) => { clearTimeout(timer); assert.equal(response.statusCode, 403); response.resume(); resolve(); });
     ws.once('open', () => { clearTimeout(timer); ws.close(); reject(new Error('cross-origin terminal websocket opened')); });
     ws.once('error', () => undefined);
+  });
+}
+function assertMalformedWebSocketRejected(port) {
+  return new Promise((resolve, reject) => {
+    const socket = net.createConnection({ host: '127.0.0.1', port });
+    let response = '';
+    const timer = setTimeout(() => { socket.destroy(); reject(new Error('malformed terminal websocket was not rejected')); }, 5000);
+    socket.once('connect', () => socket.write('GET /assist/v3/terminal-sessions/%/ws HTTP/1.1\r\nHost: 127.0.0.1\r\nConnection: Upgrade\r\nUpgrade: websocket\r\nSec-WebSocket-Version: 13\r\nSec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\n\r\n'));
+    socket.on('data', (chunk) => { response += chunk; });
+    socket.once('end', () => { clearTimeout(timer); assert.match(response, /^HTTP\/1\.1 400 Bad Request\r\n/); resolve(); });
+    socket.once('error', (error) => { clearTimeout(timer); reject(error); });
   });
 }
 async function waitForMessages(messages, predicate) { for (let i = 0; i < 200; i++) { const result = predicate(messages); if (result) return result === true ? messages : result; await delay(25); } throw new Error(`terminal message timeout: ${JSON.stringify(messages.slice(-5))}`); }

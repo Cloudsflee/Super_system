@@ -1,12 +1,14 @@
 import { Box, Check, Cpu, LoaderCircle, Play } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
-import { api, ApiError, json } from '../../api/client';
-import type { CodexProbeReport, CodexProfile, CodexStatus, DeploymentStatus, StepState } from '../../api/types';
+import { api, ApiError, apiUrl, describeOperation, json } from '../../api/client';
+import type { CodexBuildLog, CodexBuildOperation, CodexBuildStart, CodexProbeReport, CodexProfile, CodexStatus, DeploymentStatus, StepState } from '../../api/types';
 import { validBaseUrl, type ProviderChoice, type WireApi } from './CodexProviderFields';
 import { CodexConnectionSetup, type ConnectionMode } from './CodexConnectionSetup';
 import { CodexProfileForm } from './CodexProfileForm';
 import { publicDeviceAuthSummary, type DeviceAuthSummary } from './codex-device-auth';
 import { useCodexDiscovery } from './useCodexDiscovery';
+import { registerOperationRetry, upsertExternalOperation } from '../../operations/operation-store';
+import { CodexBuildProgress, safeBuildDiagnostics } from './CodexBuildProgress';
 
 const OPENROUTER_BASE_URL = 'https://openrouter.ai/api/v1';
 
@@ -26,8 +28,11 @@ export function CodexSetup({ state, onChange, deployment }: { state: StepState; 
   const [error, setError] = useState('');
   const [errorAction, setErrorAction] = useState('');
   const [probeReport, setProbeReport] = useState<CodexProbeReport | null>(null);
+  const [buildOperation, setBuildOperation] = useState<CodexBuildOperation | null>(null);
+  const [buildConnection, setBuildConnection] = useState<'connected' | 'reconnecting'>('connected');
   const [hydratedProfile, setHydratedProfile] = useState<string | null>(null);
   const authHydrated = useRef(false);
+  const buildSource = useRef<EventSource | null>(null);
   const checks = state.checks || {};
   const thirdParty = providerChoice !== 'openai';
   const provider = providerChoice === 'custom' ? customProvider.trim() : providerChoice;
@@ -39,6 +44,15 @@ export function CodexSetup({ state, onChange, deployment }: { state: StepState; 
   const authMetadataReady = hydratedProfile === (state.profile_id || 'new');
 
   const discovery = useCodexDiscovery(async () => { await onChange(); });
+  useEffect(() => {
+    if (checks.docker_ready || deployment?.mode === 'container') return;
+    let active = true;
+    void api<{ operation: CodexBuildOperation | null }>('/codex/docker/builds/active').then((result) => {
+      if (active && result.operation) connectBuild(result.operation);
+    }).catch(() => undefined);
+    return () => { active = false; };
+  }, [checks.docker_ready, deployment?.mode]);
+  useEffect(() => () => buildSource.current?.close(), []);
   useEffect(() => {
     if (connectionMode === 'codex_home' && deployment?.mode === 'container' && !deployment.imports.codex_home) setConnectionMode('manual');
     if (connectionMode === 'cc_switch' && deployment?.mode === 'container' && !deployment.imports.cc_switch) setConnectionMode('manual');
@@ -110,7 +124,73 @@ export function CodexSetup({ state, onChange, deployment }: { state: StepState; 
     };
   }
 
-  const build = () => act(() => api('/codex/docker/build', json('POST')));
+  async function build() {
+    setBusy(true); setError(''); setErrorAction(''); setProbeReport(null);
+    try {
+      const result = await api<CodexBuildStart>('/codex/docker/build', json('POST', undefined, describeOperation('启动 Codex 镜像构建', { phase: '启动构建', timeoutMs: 30_000, safeRetry: true })));
+      if (result.operation_id && result.operation) connectBuild(result.operation, result.events_url);
+      else await onChange();
+    } catch (value) {
+      const feedback = errorFeedback(value); setError(feedback.message); setErrorAction(feedback.action);
+    } finally { setBusy(false); }
+  }
+
+  function connectBuild(snapshot: CodexBuildOperation, eventsUrl = `/codex/docker/builds/${snapshot.operation_id}/events`) {
+    buildSource.current?.close();
+    applyBuildSnapshot(snapshot);
+    if (snapshot.status !== 'running') return;
+    setBuildConnection('connected');
+    const source = new EventSource(apiUrl(eventsUrl));
+    buildSource.current = source;
+    source.onopen = () => setBuildConnection('connected');
+    source.onerror = () => setBuildConnection('reconnecting');
+    source.addEventListener('snapshot', (event) => applyBuildSnapshot(parseBuildSnapshot(event)));
+    source.addEventListener('phase', (event) => {
+      const value = parseEvent(event);
+      setBuildOperation((current) => {
+        if (!current) return current;
+        const next = { ...current, phase: { ...current.phase, ...value }, message: String(value.message || current.message || '') } as CodexBuildOperation;
+        syncBuildDiagnostic(next); return next;
+      });
+    });
+    source.addEventListener('log', (event) => {
+      const value = parseEvent(event) as CodexBuildLog;
+      setBuildOperation((current) => current ? { ...current, latest_log: value.text, logs: [...current.logs, value].slice(-200) } : current);
+    });
+    for (const type of ['completed', 'failed', 'cancelled'] as const) source.addEventListener(type, async (event) => {
+      source.close();
+      const value = parseBuildSnapshot(event);
+      applyBuildSnapshot(value);
+      await onChange();
+    });
+  }
+
+  function applyBuildSnapshot(snapshot: CodexBuildOperation) {
+    setBuildOperation(snapshot);
+    syncBuildDiagnostic(snapshot);
+  }
+
+  function syncBuildDiagnostic(snapshot: CodexBuildOperation) {
+    const status = snapshot.status === 'completed' ? 'succeeded' : snapshot.status;
+    const externalId = `codex-build:${snapshot.operation_id}`;
+    upsertExternalOperation({
+      id: externalId, name: '构建 Codex 隔离镜像', status, phase: snapshot.phase?.label || snapshot.status,
+      startedAt: snapshot.started_at, endedAt: snapshot.completed_at, errorCode: snapshot.error_code,
+      retryable: snapshot.retryable, reason: snapshot.status === 'failed' ? snapshot.message : '', action: snapshot.action || '', path: '/codex/docker/build'
+    });
+    if (snapshot.status === 'failed' && snapshot.retryable) registerOperationRetry(externalId, build);
+  }
+
+  async function cancelBuild() {
+    if (!buildOperation || buildOperation.status !== 'running') return;
+    try { await api(`/codex/docker/builds/${buildOperation.operation_id}/cancel`, json('POST', undefined, describeOperation('取消 Codex 镜像构建', { phase: '正在取消', timeoutMs: 30_000 }))); }
+    catch (value) { const feedback = errorFeedback(value); setError(feedback.message); setErrorAction(feedback.action); }
+  }
+
+  async function copyBuildDiagnostics() {
+    if (!buildOperation) return;
+    await navigator.clipboard.writeText(JSON.stringify(safeBuildDiagnostics(buildOperation), null, 2));
+  }
   const device = async () => {
     setBusy(true);
     setError('');
@@ -118,7 +198,7 @@ export function CodexSetup({ state, onChange, deployment }: { state: StepState; 
     setProbeReport(null);
     setDeviceAuth({ status: 'starting' });
     try {
-      const result = await api<{ authenticated?: boolean; events_url?: string }>('/codex/auth/device/start', json('POST'));
+      const result = await api<{ authenticated?: boolean; events_url?: string }>('/codex/auth/device/start', json('POST', undefined, '启动 Codex Device Login'));
       if (!result.events_url) { setDeviceAuth({ status: 'completed' }); await onChange(); setBusy(false); return; }
       const source = new EventSource(`/api${result.events_url}`);
       source.addEventListener('auth', (event) => { const safe = publicDeviceAuthSummary(JSON.parse((event as MessageEvent).data)); setDeviceAuth((value) => ({ ...value, ...safe, status: safe.status || 'waiting' })); });
@@ -126,18 +206,19 @@ export function CodexSetup({ state, onChange, deployment }: { state: StepState; 
       source.onerror = () => { source.close(); setBusy(false); setDeviceAuth((value) => ({ ...value, status: 'failed' })); setError('Codex 登录事件流已断开'); };
     } catch (value) { setBusy(false); setDeviceAuth({ status: 'failed' }); setError(message(value)); }
   };
-  const authenticate = () => act(() => api('/codex/auth/api-key', json('POST', { ...connectionFields(), api_key: apiKey })));
-  const createProfile = () => act(() => api('/codex/profiles', json('POST', profileFields())));
+  const authenticate = () => act(() => api('/codex/auth/api-key', json('POST', { ...connectionFields(), api_key: apiKey }, '保存 Codex 认证')));
+  const createProfile = () => act(() => api('/codex/profiles', json('POST', profileFields(), '创建 Codex Profile')));
   const repairProfile = () => act(async () => {
-    if (thirdParty || repairNeedsKey) await api('/codex/auth/api-key', json('POST', { ...connectionFields(), ...(repairApiKey ? { api_key: repairApiKey } : {}) }));
-    await api(`/codex/profiles/${state.profile_id}`, json('PUT', profileFields()));
+    if (thirdParty || repairNeedsKey) await api('/codex/auth/api-key', json('POST', { ...connectionFields(), ...(repairApiKey ? { api_key: repairApiKey } : {}) }, '更新 Codex 认证'));
+    await api(`/codex/profiles/${state.profile_id}`, json('PUT', profileFields(), '修复 Codex Profile'));
   });
-  const probe = () => act(() => api('/codex/probe', json('POST', { profile_id: state.profile_id })));
+  const probe = () => act(() => api('/codex/probe', json('POST', { profile_id: state.profile_id }, '运行 Codex Probe')));
 
   return (
     <section className="setup-section">
       <div className="section-title"><Cpu size={18} /><div><h2>Codex</h2><p>{state.detail || '等待运行时验证'}</p></div><span className={`status ${state.ready ? 'ready' : 'pending'}`}>{state.ready && <Check size={12} />}{state.status}</span></div>
-      {!checks.docker_ready && <div className="setup-row"><div><strong>Docker Runtime</strong><span>{deployment?.mode === 'container' ? '预构建 Runner 镜像当前不可用' : '隔离 Runner 镜像'}</span></div>{deployment?.mode === 'container' ? <span className="status failed"><Box size={13} />需要重新部署</span> : <button className="button primary" disabled={busy} onClick={build}><Box size={15} />检测并构建</button>}</div>}
+      {!checks.docker_ready && <div className="setup-row"><div><strong>Docker Runtime</strong><span>{deployment?.mode === 'container' ? '预构建 Runner 镜像当前不可用' : '隔离 Runner 镜像'}</span></div>{deployment?.mode === 'container' ? <span className="status failed"><Box size={13} />需要重新部署</span> : !buildOperation ? <button className="button primary" disabled={busy} onClick={build}><Box size={15} />检测并构建</button> : null}</div>}
+      {buildOperation && <CodexBuildProgress operation={buildOperation} connection={buildConnection} busy={busy} onCancel={cancelBuild} onCopy={copyBuildDiagnostics} onRetry={build} />}
 
       {(!checks.authenticated || needsProfileRepair) && <CodexConnectionSetup mode={connectionMode} runtimeReady={Boolean(checks.docker_ready)} repairing={needsProfileRepair} busy={busy} sourceAvailability={{ codex_home: deployment?.mode !== 'container' || deployment.imports.codex_home, cc_switch: deployment?.mode !== 'container' || deployment.imports.cc_switch }} providerChoice={providerChoice} customProvider={customProvider} baseUrl={baseUrl} wireApi={wireApi} apiKey={apiKey} providerValid={providerValid} endpointValid={endpointValid} deviceAuth={deviceAuth} discovery={discovery} onMode={setConnectionMode} onProvider={selectProvider} onCustomProvider={setCustomProvider} onBaseUrl={setBaseUrl} onWireApi={setWireApi} onApiKey={setApiKey} onDevice={device} onAuthenticate={authenticate} onDiscoveryRefresh={discovery.refresh} onDiscoveryImport={discovery.importConfig} />}
 
@@ -164,3 +245,6 @@ function errorFeedback(value: unknown): { message: string; action: string; probe
   const probe = candidate && typeof candidate === 'object' && typeof (candidate as CodexProbeReport).phase === 'string' ? candidate as CodexProbeReport : null;
   return { message: value.message, action, probe };
 }
+
+function parseEvent(event: Event) { try { return JSON.parse((event as MessageEvent).data) as Record<string, unknown>; } catch { return {}; } }
+function parseBuildSnapshot(event: Event) { return parseEvent(event) as unknown as CodexBuildOperation; }

@@ -15,6 +15,7 @@ import {
   createSubSubmission,
   defaultContractForNode,
   defaultTools,
+  generateBranchName,
   approveProposal,
   makeAssetFromCandidate,
   markProposalApplied,
@@ -80,4 +81,7 @@ assert.ok(merged.memory_manifest.included.length >= 1, 'assist exposes memory ma
 assert.equal(authorizeRepositoryAction({ role: 'owner', permissions: { push: true }, operation: 'git_push' }).allowed, true);
 assert.equal(authorizeRepositoryAction({ role: 'collaborator', permissions: { push: true }, operation: 'configure' }).allowed, false);
 assert.equal(authorizeRepositoryAction({ role: 'reviewer', permissions: { pull: true }, operation: 'review' }).allowed, true);
+assert.equal(generateBranchName('Implement Feature', 'run_123456789'), 'aiws/implement-feature-23456789');
+assert.equal(generateBranchName('实现核心交付', 'run_123456789'), 'aiws/node-23456789');
+assert.match(generateBranchName('实现 API 审计', 'run_123456789'), /^aiws\/api-[a-z0-9_-]{8}$/);
 console.log('unit shared tests passed');

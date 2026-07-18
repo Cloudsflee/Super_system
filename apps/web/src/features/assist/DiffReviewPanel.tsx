@@ -22,7 +22,7 @@ export function DiffReviewPanel({ target, onBack, onResolved }: { target: Review
   useEffect(() => { if (review.data?.changed_files.length && !review.data.changed_files.some((item) => item.path === path)) setPath(review.data.changed_files[0].path); }, [review.data, path]);
 
   const action = useMutation({
-    mutationFn: ({ name, body }: { name: string; body: Record<string, unknown> }) => api(`${base}/${name}`, json('POST', body)),
+    mutationFn: ({ name, body }: { name: string; body: Record<string, unknown> }) => api(`${base}/${name}`, json('POST', body, reviewOperationName(name))),
     onSuccess: async (_, variables) => {
       if (variables.name === 'rollback') client.removeQueries({ queryKey: assistKeys.review(key) });
       else if (variables.name === 'apply') await client.invalidateQueries({ queryKey: assistKeys.review(key), refetchType: 'none' });
@@ -57,3 +57,4 @@ function commentsFor(data: AssistReview, path: string) { return data.comments.fi
 function statusLetter(value: string) { return ({ modified: 'M', added: 'A', deleted: 'D', renamed: 'R', untracked: 'U' } as Record<string, string>)[value] || value.slice(0, 1).toUpperCase(); }
 function short(value: string) { return value ? `${value.slice(0, 10)}…` : 'no hash'; }
 function reviewMessage(value: string) { return ({ viewed: 'Viewed 状态已更新', comments: '行评论已添加', 'request-changes': '已请求修改', apply: '变更已安全应用', rollback: 'Turn 变更已回退' } as Record<string, string>)[value] || 'Review 已更新'; }
+function reviewOperationName(value: string) { return ({ viewed: '更新文件审阅状态', comments: '添加 Diff 行评论', 'request-changes': '请求修改 Assist 变更', apply: '应用 Assist 变更', rollback: '回退 Assist 变更' } as Record<string, string>)[value] || '更新 Assist Review'; }

@@ -23,6 +23,12 @@ export async function handleProjectCapabilityTool(sessionId, turnId, params, sig
     if (duplicate) return duplicate;
     const prepared = prepareProjectCapabilityOperation(state, session, turn, params), at = now();
     const item = makeProjectOperation(session, turn, prepared, callId, at);
+    if (prepared.request.resource_type === 'workflow') {
+      const actor = owner(state), outcome = executeProjectCapabilityInState(state, item, actor.id);
+      applyOutcome(item, outcome); item.summary = `已创建工作流变更提案 · ${outcome.targetLabel}`;
+      state.assist_operations.push(item); traceCommittedOutcome(state, item, outcome, actor.id);
+      pushV3Event(state, session.id, turn.id, 'operation', operationEvent(item)); return item;
+    }
     state.assist_operations.push(item); pushV3Event(state, session.id, turn.id, 'operation', operationEvent(item)); return item;
   });
   if (created.status === 'committed') return toolSuccess(created);
@@ -39,6 +45,7 @@ export async function undoProjectOperation(operationId, input) {
   const force = input.force === true;
   return mutate((state) => {
     const original = requireOperation(state, operationId); assertProjectOperationLocator(original, input);
+    if (original.result_kind === 'change_proposal') throw new HttpError(409, { error: 'assist_change_proposal_operation_not_undoable' });
     if (original.status !== 'committed' || original.inverse_of) throw new HttpError(409, { error: 'assist_operation_not_undoable', status: original.status });
     if (original.undone_by) return publicOperation(state.assist_operations.find((item) => item.id === original.undone_by));
     let inverse = state.assist_operations.find((item) => item.inverse_of === original.id && item.execution_layer === 'server');
@@ -76,7 +83,8 @@ export async function reviseProjectOperation(operationId, input) {
     const revised = makeProjectRevision(original, session, turn, prepared, value, at);
     const outcome = executeProjectCapabilityInState(state, revised, actor.id);
     applyOutcome(revised, outcome);
-    state.assist_operations.push(revised); addTrace(state, 'assist.action.confirmed', { project_id: revised.project_id, target_id: revised.id, summary: revised.summary }, actor.id);
+    if (outcome.resultKind === 'change_proposal') revised.summary = `已创建工作流变更提案 · ${outcome.targetLabel}`;
+    state.assist_operations.push(revised); traceCommittedOutcome(state, revised, outcome, actor.id);
     pushV3Event(state, revised.session_id, revised.turn_id, 'operation', operationEvent(revised)); return publicOperation(revised);
   });
 }
@@ -87,22 +95,28 @@ function commitProjectOperation(state, operationId) {
   if (operation.status !== 'pending') throw new HttpError(409, { error: 'assist_operation_not_executable', status: operation.status });
   const actor = owner(state), outcome = executeProjectCapabilityInState(state, operation, actor.id);
   applyOutcome(operation, outcome);
-  operation.summary = `${operation.summary.split(' · ')[0]} · ${outcome.targetLabel}`;
-  addTrace(state, 'assist.action.confirmed', { project_id: operation.project_id, target_id: operation.id, summary: operation.summary }, actor.id);
+  operation.summary = outcome.resultKind === 'change_proposal' ? `已创建工作流变更提案 · ${outcome.targetLabel}` : `${operation.summary.split(' · ')[0]} · ${outcome.targetLabel}`;
+  traceCommittedOutcome(state, operation, outcome, actor.id);
   pushV3Event(state, operation.session_id, operation.turn_id, 'operation', operationEvent(operation)); return operation;
 }
 
 function applyOutcome(operation, outcome) {
-  const beforeHash = canonicalHash(outcome.beforeValue), afterHash = canonicalHash(outcome.afterValue);
+  const beforeHash = canonicalHash(outcome.beforeValue), afterHash = canonicalHash(outcome.afterValue), currentHash = canonicalHash(outcome.currentValue);
   Object.assign(operation, {
     target_id: outcome.targetId, target_label: outcome.targetLabel,
     locator: { ...operation.locator, target_id: outcome.targetId, target_label: outcome.targetLabel, resource_revision: outcome.resourceRevisionAfter },
     domain_request: { ...operation.domain_request, target_id: outcome.targetId }, domain_inverse: outcome.inverse,
     domain_value_kind: outcome.valueKind, resource_revision_before: outcome.resourceRevisionBefore,
     resource_revision_after: outcome.resourceRevisionAfter, before_value: outcome.beforeValue, after_value: outcome.afterValue,
-    current_value: outcome.currentValue, before_hash: beforeHash, after_hash: afterHash, current_hash: afterHash,
+    current_value: outcome.currentValue, before_hash: beforeHash, after_hash: afterHash, current_hash: currentHash,
+    result_kind: outcome.resultKind || null, proposal_id: outcome.proposalId || null, proposal_status: outcome.proposalStatus || null,
     status: 'committed', committed_at: outcome.committedAt, revision: operation.revision + 1, updated_at: outcome.committedAt
   });
+}
+
+function traceCommittedOutcome(state, operation, outcome, actorId) {
+  if (outcome.resultKind === 'change_proposal') addTrace(state, 'change_proposal.created', { project_id: operation.project_id, target_type: 'change_proposal', target_id: outcome.proposalId, summary: operation.summary }, actorId);
+  addTrace(state, 'assist.action.confirmed', { project_id: operation.project_id, target_id: operation.id, summary: operation.summary }, actorId);
 }
 
 function makeProjectOperation(session, turn, prepared, callId, at) {
@@ -116,7 +130,8 @@ function makeProjectOperation(session, turn, prepared, callId, at) {
     requested_value: prepared.request, allowed_values: null, domain_request: prepared.request, domain_inverse: null,
     domain_value_kind: prepared.request.value_kind, resource_revision_before: null, resource_revision_after: null,
     before_value: null, after_value: null, current_value: null, before_hash: null, after_hash: null, current_hash: null,
-    status: requiresConfirmation(prepared.descriptor.risk) ? 'pending_confirmation' : 'pending', risk: prepared.descriptor.risk,
+    result_kind: null, proposal_id: null, proposal_status: null,
+    status: prepared.request.resource_type === 'workflow' ? 'pending' : requiresConfirmation(prepared.descriptor.risk) ? 'pending_confirmation' : 'pending', risk: prepared.descriptor.risk,
     revision: 1, inverse_of: null, operation_reference_id: turn.operation_reference_id || null, forced: false, conflict: null,
     claimed_by: null, claim_expires_at: null, approved_at: null, committed_at: null, failed_at: null, created_at: at, updated_at: at
   };
@@ -131,7 +146,7 @@ function makeProjectInverse(original, current, currentHash, force, at) {
     input_schema: original.input_schema, locator: original.locator, requested_value: original.before_value, allowed_values: null,
     domain_request: original.domain_request, domain_inverse: null, domain_value_kind: original.domain_value_kind,
     resource_revision_before: current.resource.revision, resource_revision_after: null, before_value: current.value, after_value: null,
-    current_value: current.value, before_hash: currentHash, after_hash: null, current_hash: currentHash, status: 'pending', risk: original.risk,
+    current_value: current.value, before_hash: currentHash, after_hash: null, current_hash: currentHash, result_kind: null, proposal_id: null, proposal_status: null, status: 'pending', risk: original.risk,
     revision: 1, inverse_of: original.id, operation_reference_id: original.id, expected_current_hash: original.after_hash,
     forced: force, conflict: null, claimed_by: null, claim_expires_at: null, approved_at: force ? at : null,
     committed_at: null, failed_at: null, created_at: at, updated_at: at
@@ -148,7 +163,7 @@ function makeProjectRevision(original, session, turn, prepared, value, at) {
     input_schema: prepared.inputSchema, locator: { ...original.locator, target_id: prepared.targetId, target_label: prepared.targetLabel },
     requested_value: value, allowed_values: null, domain_request: prepared.request, domain_inverse: null,
     domain_value_kind: prepared.request.value_kind, resource_revision_before: null, resource_revision_after: null,
-    before_value: null, after_value: null, current_value: null, before_hash: null, after_hash: null, current_hash: null,
+    before_value: null, after_value: null, current_value: null, before_hash: null, after_hash: null, current_hash: null, result_kind: null, proposal_id: null, proposal_status: null,
     status: 'pending', risk: 'low', revision: 1, inverse_of: null, forced: false, conflict: null, claimed_by: null,
     claim_expires_at: null, approved_at: at, committed_at: null, failed_at: null, created_at: at, updated_at: at
   };

@@ -13,7 +13,7 @@ export function ProposalDrawer({ projectId }: { projectId?: string }) {
   const ordered = list.data?.slice().reverse();
   const proposal = proposalId === 'latest' ? ordered?.find((item) => item.status === 'pending') || ordered?.[0] : list.data?.find((item) => item.id === proposalId);
   const decision = useMutation({
-    mutationFn: async (action: 'approve' | 'reject' | 'apply') => api<{ proposal?: ChangeProposal; applied?: Record<string, unknown> } | ChangeProposal>(`/change-proposals/${proposal?.id}/${action}`, json('POST', action === 'reject' ? { reason: '用户从审批抽屉拒绝' } : {})),
+    mutationFn: async (action: 'approve' | 'reject' | 'apply') => api<{ proposal?: ChangeProposal; applied?: Record<string, unknown> } | ChangeProposal>(`/change-proposals/${proposal?.id}/${action}`, json('POST', action === 'reject' ? { reason: '用户从审批抽屉拒绝' } : {}, action === 'approve' ? '批准变更提案' : action === 'reject' ? '拒绝变更提案' : '应用变更提案')),
     onSuccess: (result, action) => { queryClient.invalidateQueries({ queryKey: keys.proposals(projectId) }); if (projectId) queryClient.invalidateQueries({ queryKey: keys.project(projectId) }); queryClient.invalidateQueries({ queryKey: keys.setup }); queryClient.invalidateQueries({ queryKey: ['node-workspace'] }); queryClient.invalidateQueries({ queryKey: ['codex-profiles'] }); queryClient.invalidateQueries({ queryKey: ['review'] }); if (action === 'apply' && 'proposal' in result) { window.dispatchEvent(new CustomEvent('aiws:proposal-applied', { detail: result })); if (result.applied?.type === 'node_run_authorization') showProposal(null); } toast('审批状态已更新'); },
     onError: (error) => toast(error.message, 'error')
   });

@@ -23,7 +23,7 @@ try {
   assert.deepEqual(afterIntake.workflow_draft.nodes.map((node) => node.id), initialNodeIds, 'intake updates keep stable node ids');
   assert.equal(afterIntake.workflow_draft.revision, initial.workflow_draft.revision + 1, 'regenerated workflow invalidates stale revisions');
   assert.equal(afterIntake.workflow_draft.user_modified_at, null);
-  await api(port, `/projects/${projectId}/workflow-draft`, 'PATCH', { expected_revision: initial.workflow_draft.revision, operations: [{ type: 'update_node', node_id: initialNodeIds[0], patch: { title: 'stale' } }] }, 409, 'workflow_draft_revision_conflict');
+  await api(port, `/projects/${projectId}/workflow-draft`, 'PATCH', { expected_revision: initial.workflow_draft.revision, operations: [{ type: 'update_node', node_id: 'missing-stale-node', patch: { title: 'stale' } }] }, 409, 'workflow_draft_revision_conflict');
 
   const policy = await api(port, `/assist/v3/sessions/${sessionId}`, 'PATCH', { clarification_policy: 'auto_recommend' });
   assert.equal(policy.clarification_policy, 'auto_recommend');
@@ -47,10 +47,17 @@ try {
   await api(port, `/projects/${projectId}/briefs/${briefBefore.id}`, 'PATCH', { expected_revision: briefBefore.revision, operations: [{ type: 'set_title', title: 'stale' }] }, 409, 'project_brief_revision_conflict');
 
   const draftBefore = afterIntake.workflow_draft;
-  const draftUpdated = await api(port, `/projects/${projectId}/workflow-draft`, 'PATCH', { expected_revision: draftBefore.revision, operations: [{ type: 'add_node', node: { id: 'v17-analysis', type: 'analysis', title: 'V1.7 评审', goal: '评审迁移和 UI', dependency_ids: [draftBefore.nodes[0].id] } }] });
+  const draftUpdated = await api(port, `/projects/${projectId}/workflow-draft`, 'PATCH', { expected_revision: draftBefore.revision, nodes: [{
+    id: 'v17-outcome', role: 'workstream', title: 'V1.7 验收成果', outcome: '形成可验收的迁移与 UI 结果', category: 'deliverable',
+    acceptance_criteria: ['迁移和 UI 检查通过'], boundary: { deliverable: 'V1.7 验收包' }, dependency_ids: [],
+    tasks: [
+      { id: 'v17-analysis', role: 'task', title: '分析迁移结果', task_kind: 'analysis', execution_mode: 'assist', dependency_ids: [] },
+      { id: 'v17-review', role: 'task', title: '评审迁移和 UI', task_kind: 'review', execution_mode: 'assist', dependency_ids: ['v17-analysis'] }
+    ]
+  }] });
   assert.equal(draftUpdated.revision, draftBefore.revision + 1);
   assert.ok(draftUpdated.user_modified_at);
-  assert.equal(draftUpdated.nodes.find((node) => node.id === 'v17-analysis').dependency_ids[0], draftBefore.nodes[0].id);
+  assert.equal(draftUpdated.nodes.find((node) => node.id === 'v17-review').dependency_ids[0], 'v17-analysis');
   assert.deepEqual((await api(port, `/projects/${projectId}/workflow-draft`)).nodes.map((node) => node.id), draftUpdated.nodes.map((node) => node.id), 'refresh returns the persisted draft');
   await api(port, `/projects/${projectId}/workflow-draft`, 'PATCH', { expected_revision: draftUpdated.revision, operations: [{ type: 'delete_node', node_id: 'v17-analysis' }] }, 409, 'workflow_node_delete_confirmation_required');
 
@@ -75,12 +82,18 @@ try {
   await api(port, `/projects/${projectId}/workflow-draft`, 'PATCH', { expected_revision: draftUpdated.revision, operations: [{ type: 'update_node', node_id: draftUpdated.nodes[0].id, patch: { title: '不得绕过提案' } }] }, 409, 'workflow_draft_activated');
   const activatedCatalog = await api(port, `/assist/v3/capabilities?project_id=${encodeURIComponent(projectId)}&route=${encodeURIComponent(`/projects/${projectId}/onboarding`)}&collaboration_mode=default${capabilitySurface}`);
   assert.equal(activatedCatalog.current.find((item) => item.capability_id === 'project.workflow_draft.node.update').reason, 'resource_unavailable');
-  const nodeId = confirmed.nodes[0].id, workspaceId = confirmed.project.current_workspace_id;
+  const nodeId = confirmed.nodes.find((item) => item.role === 'task').id, workspaceId = confirmed.project.current_workspace_id;
   const agentParent = await api(port, '/agent-sessions', 'POST', { project_id: projectId, scope_type: 'project', title: 'Lifecycle parent' }, 201);
   const agentChild = await api(port, '/agent-sessions', 'POST', { project_id: projectId, scope_type: 'node', scope_id: nodeId, parent_session_id: agentParent.id, title: 'Lifecycle child' }, 201);
   const legacySession = await api(port, '/assist/v2/sessions', 'POST', { project_id: projectId, scope_type: 'project' }, 201);
   const other = await api(port, '/projects', 'POST', { title: 'Parent scope isolation' }, 201);
   await api(port, '/assist/v2/sessions', 'POST', { project_id: other.project.id, scope_type: 'project', parent_session_id: legacySession.id }, 409, 'assist_parent_project_mismatch');
+  const otherAgent = await api(port, '/agent-sessions', 'POST', { project_id: other.project.id, scope_type: 'project', title: 'Other project parent' }, 201);
+  await api(port, '/agent-sessions', 'POST', { project_id: projectId, scope_type: 'node', scope_id: nodeId, parent_session_id: otherAgent.id }, 409, 'parent_agent_session_required');
+  await api(port, '/agent-sessions', 'POST', { project_id: other.project.id, workspace_id: workspaceId, scope_type: 'project' }, 404, 'workspace_not_found');
+  await api(port, `/agent-sessions/${otherAgent.id}/submissions`, 'POST', { summary: 'cross-project node must fail', node_id: nodeId, to_session_id: otherAgent.id }, 404, 'node_not_found');
+  await api(port, '/change-proposals', 'POST', { project_id: other.project.id, workspace_id: workspaceId, change_type: 'record_only', apply_action: { type: 'record_only' } }, 404, 'workspace_not_found');
+  await api(port, '/change-proposals', 'POST', { project_id: other.project.id, node_id: nodeId, change_type: 'record_only', apply_action: { type: 'record_only' } }, 404, 'node_not_found');
   const legacyProposal = await api(port, '/change-proposals', 'POST', { project_id: projectId, change_type: 'record_only', title: 'Lifecycle proposal', apply_action: { type: 'record_only' } }, 201);
   const lifecycleContext = await api(port, `/nodes/${nodeId}/context-pack/preview`, 'POST', {}, 201);
   await api(port, `/assist/v2/sessions/${legacySession.id}/messages`, 'POST', { adapter: 'test', content: 'hold lifecycle gate', test_response: { delay_ms: 300, message: 'done', actions: [] } }, 202);
@@ -145,7 +158,7 @@ try {
   const account = await api(port, '/account/me'); assert.equal(Object.hasOwn(account.session, 'session_token_hash'), false);
   const reviewState = await api(port, '/review'); assert.equal(Object.hasOwn(reviewState, 'codex_profiles'), false); assert.equal(Object.hasOwn(reviewState, 'integrations'), false);
   const malformed = await fetch(`${baseUrl}/projects/%E0%A4%A`); assert.equal(malformed.status, 400); assert.equal((await malformed.json()).error, 'invalid_url_encoding');
-  const health = await api(port, '/health'); assert.equal(health.schema_version, 16);
+  const health = await api(port, '/health'); assert.equal(health.schema_version, 18);
   console.log('V1.7 Assist, Brief, and Workflow integration tests passed');
 } finally {
   await server?.stop(); cleanup(fixture.root);

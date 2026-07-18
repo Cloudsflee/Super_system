@@ -1,0 +1,36 @@
+{
+  "version": "1.8",
+  "product_version": "1.8.0",
+  "state_schema": 17,
+  "sdk_version": "1.29.0",
+  "budgets_ms": {
+    "pr": 900000,
+    "full": 5400000,
+    "soak": 7200000
+  },
+  "report_path": ".ai-workspace/test-reports/v1.8/<run-id>/测试结果v1.8.md",
+  "statuses": ["PASS", "FAIL", "BLOCKED", "SKIPPED", "FLAKY"],
+  "acceptance_status": "PASS",
+  "tests": [
+    { "id": "V18-L0-PLAN-001", "layer": "L0", "domain": "governance", "priority": "P0", "command": ["node", "scripts/v18-plan.mjs"], "suites": ["pr", "full", "release"], "covers": ["document:*", "tests/v18/*"] },
+    { "id": "V18-L0-REGISTRY-002", "layer": "L0", "domain": "registry", "priority": "P0", "command": ["node", "tests/v18/registry-contract.test.mjs"], "suites": ["pr", "full", "release"], "covers": ["route:*", "websocket:*", "collection:*", "capability:*"] },
+    { "id": "V18-L1-AUTH-001", "layer": "L1", "domain": "auth", "priority": "P0", "command": ["node", "tests/unit/v18-mcp-auth.test.mjs"], "suites": ["pr", "full", "release"], "covers": ["mcp_clients", "scope:*", "token:*"] },
+    { "id": "V18-L1-GATEWAY-003", "layer": "L1", "domain": "gateway-auth", "priority": "P0", "command": ["node", "tests/unit/v18-mcp-gateway-auth.test.mjs"], "suites": ["pr", "full", "release"], "covers": ["gateway:hmac", "gateway:replay", "gateway:local-admin"] },
+    { "id": "V18-L1-CATALOG-002", "layer": "L1", "domain": "catalog", "priority": "P0", "command": ["node", "tests/unit/v18-mcp-registry.test.mjs"], "suites": ["pr", "full"], "covers": ["operation:*", "mapping:*"] },
+    { "id": "V18-L2-HTTP-001", "layer": "L2", "domain": "mcp-http", "priority": "P0", "command": ["node", "tests/integration/v18-mcp-http-flow.test.mjs"], "suites": ["pr", "full", "release"], "covers": ["transport:http", "tools:*", "resources:*"] },
+    { "id": "V18-L2-GATEWAY-003", "layer": "L2", "domain": "mcp-gateway", "priority": "P0", "command": ["node", "tests/integration/v18-mcp-gateway-flow.test.mjs"], "suites": ["pr", "full", "release"], "covers": ["transport:gateway", "identity:subject", "actor:trace"] },
+    { "id": "V18-L2-STDIO-002", "layer": "L2", "domain": "mcp-stdio", "priority": "P1", "command": ["node", "tests/integration/v18-mcp-stdio-flow.test.mjs"], "suites": ["full", "release"], "covers": ["transport:stdio"] },
+    { "id": "V18-L3-PARITY-001", "layer": "L3", "domain": "parity", "priority": "P0", "command": ["node", "tests/v18/parity.test.mjs"], "suites": ["full"], "covers": ["operation:*"] },
+    { "id": "V18-L3-SECURITY-002", "layer": "L3", "domain": "security", "priority": "P0", "command": ["node", "tests/v18/security.test.mjs"], "suites": ["pr", "full", "release"], "covers": ["scope:*", "project-isolation", "path-security", "approval-security"] },
+    { "id": "V18-L4-ASYNC-001", "layer": "L4", "domain": "operations", "priority": "P0", "command": ["node", "tests/integration/v18-mcp-operations-flow.test.mjs"], "suites": ["pr", "full"], "covers": ["async_adapter:*", "cursor:*", "cancel:*"] },
+    { "id": "V18-L4-TERMINAL-002", "layer": "L4", "domain": "terminal", "priority": "P1", "command": ["node", "tests/integration/v18-mcp-terminal-flow.test.mjs"], "suites": ["full"], "covers": ["terminal:*", "websocket:terminal"] },
+    { "id": "V18-L4-FAULT-003", "layer": "L4", "domain": "fault", "priority": "P1", "command": ["node", "tests/v18/fault.test.mjs"], "suites": ["full"], "covers": ["restart", "timeout", "rate-limit", "cleanup"] },
+    { "id": "V18-L5-BROWSER-001", "layer": "L5", "domain": "browser", "priority": "P1", "command": ["node", "tests/e2e/playwright.test.mjs"], "suites": ["full"], "covers": ["frontend_only:*"] },
+    { "id": "V18-L5-JOURNEY-002", "layer": "L5", "domain": "journey", "priority": "P0", "command": ["node", "tests/e2e/v18-mcp-journey.test.mjs"], "suites": ["pr", "full", "release"], "covers": ["journey:mcp-only"] },
+    { "id": "V18-L6-MIGRATION-001", "layer": "L6", "domain": "release", "priority": "P0", "command": ["node", "tests/release/v18-volume-flow.test.mjs"], "suites": ["release"], "covers": ["schema:16-17", "volume:v18", "rollback"] },
+    { "id": "V18-L6-COMPAT-002", "layer": "L6", "domain": "compatibility", "priority": "P0", "command": ["node", "tests/v18/compatibility.test.mjs"], "suites": ["full", "release"], "covers": ["http-compat", "ui-compat"] },
+    { "id": "V18-L7-CODEX-001", "layer": "L7", "domain": "live-codex", "priority": "P1", "command": ["node", "tests/integration/v18-codex-mcp-live.test.mjs"], "suites": ["live"], "covers": ["codex:mcp-only"] },
+    { "id": "V18-L7-GITHUB-002", "layer": "L7", "domain": "live-github", "priority": "P1", "command": ["node", "tests/integration/v18-github-mcp-live.test.mjs"], "suites": ["live"], "covers": ["github:pr-lifecycle"] },
+    { "id": "V18-L8-SOAK-001", "layer": "L8", "domain": "soak", "priority": "P1", "command": ["node", "tests/v18/soak.test.mjs", "--minutes", "120"], "suites": ["soak"], "covers": ["session:20-rounds", "heap:max-20-percent", "cleanup:no-residue"] }
+  ]
+}
