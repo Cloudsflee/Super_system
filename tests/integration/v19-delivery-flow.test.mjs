@@ -31,11 +31,22 @@ try {
     domain.setWorkstreamRepositoryTargetsInState(state, workstream.id, { connection_ids: [connection.id] }, actor.id);
     for (const task of tasks) domain.setTaskRepositoryTargetsInState(state, task.id, { write_connection_id: connection.id }, actor.id);
     const policy = domain.approveDeliveryPolicyInState(state, workstream.id, {
-      connection_id: connection.id, base_ref: 'main', path_prefixes: ['src'], test_commands: ['node -e "process.exit(0)"'],
+      connection_id: connection.id, base_ref: 'main', path_prefixes: ['src'], test_commands: ['node -p process.argv[1] worktrees/task-diagnostics-12345678'],
       automation_permissions: ['codex_run', 'commit', 'push', 'draft_pr']
     }, actor.id);
     ids = { project: created.project.id, workstream: workstream.id, tasks: tasks.map((item) => item.id), policy: policy.id };
   });
+
+  await stateApi.mutate((state) => { state.projects.find((item) => item.id === ids.project).lifecycle_operation = { id: 'delivery-lifecycle-test', type: 'trash' }; });
+  await assert.rejects(() => deliveryService.startTaskDelivery(ids.tasks[0], { policy_id: ids.policy, adapter: 'test' }, actor.id), error('project_lifecycle_operation_in_progress'));
+  await stateApi.mutate((state) => { state.projects.find((item) => item.id === ids.project).lifecycle_operation = null; });
+  await stateApi.mutate((state) => {
+    state.canonical_repositories.push({ id: 'canonical-deleting', provider: 'github', repository_id: 'repo-test', full_name: 'acme/multi-task', remote_state: 'active' });
+    state.project_repository_bindings.push({ id: 'binding-deleting', project_id: ids.project, canonical_repository_id: 'canonical-deleting', status: 'ready' });
+    state.repository_deletion_intents.push({ id: 'intent-deleting', canonical_repository_id: 'canonical-deleting', status: 'executing', snapshot: { bindings: [{ project_id: ids.project }] } });
+  });
+  await assert.rejects(() => deliveryService.startTaskDelivery(ids.tasks[0], { policy_id: ids.policy, adapter: 'test' }, actor.id), error('repository_deletion_in_progress'));
+  await stateApi.mutate((state) => { state.canonical_repositories = state.canonical_repositories.filter((item) => item.id !== 'canonical-deleting'); state.project_repository_bindings = state.project_repository_bindings.filter((item) => item.id !== 'binding-deleting'); state.repository_deletion_intents = state.repository_deletion_intents.filter((item) => item.id !== 'intent-deleting'); });
 
   const [firstStart, duplicateStart] = await Promise.all([
     deliveryService.startTaskDelivery(ids.tasks[0], { policy_id: ids.policy, adapter: 'test', test_changes: [{ path: 'src/alpha.txt', content: 'alpha\n' }] }, actor.id),
@@ -53,6 +64,8 @@ try {
     assert.equal(item.pr_state, 'draft');
     assert.match(item.pr_url, /^https:\/\/github\.com\/acme\/multi-task\/pull\//);
     assert.ok(fs.existsSync(item.worktree_path));
+    assert.equal(fs.statSync(path.join(item.worktree_path, '.git')).isDirectory(), true, 'Delivery checkout keeps self-contained Git metadata');
+    assert.match(item.test_results[0].output, /worktrees\/task-diagnostics-12345678/, 'diagnostics do not mistake task paths for API keys');
     assert.match(item.branch, /^aiws\//);
   }
   assert.notEqual(first.worktree_path, second.worktree_path);

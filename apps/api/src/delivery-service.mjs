@@ -1,16 +1,18 @@
-import fs from 'node:fs';
 import fsp from 'node:fs/promises';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { generatePrBody, hashString, id, now } from '../../../packages/shared/index.mjs';
-import { WORKTREE_DIR } from './config.mjs';
 import { extractMessage, runCodexJson } from './codex-service.mjs';
+import { ensureDeliveryCheckout } from './delivery-checkout.mjs';
 import { createInstallationToken, githubGitAuthEnv, githubJson, resolveGithubAppConfig } from './github-service.mjs';
 import { git, isGitRepo } from './git-utils.mjs';
 import { HttpError } from './http.mjs';
 import { assertDeliveryPath, requireApprovedDeliveryPolicy } from './repository-delivery-domain.mjs';
 import { addTrace, mutate, owner, readState } from './state.mjs';
 import { reviewSnapshotForPath, safeSegment } from './assist-v3-git.mjs';
+import { assertProjectLifecycleIdle } from './project-lifecycle-operations.mjs';
+import { assertRepositoryDeletionInactive } from './repository-lifecycle-v19.mjs';
+import { redactKnownSecretsSync } from './vault.mjs';
 const controllers = new Map();
 const taskLocks = new Set(), repositoryPreparationLocks = new Set();
 const TERMINAL = new Set(['completed', 'failed', 'cancelled']);
@@ -24,6 +26,7 @@ const SECRET_PATTERNS = [
 export async function startTaskDelivery(taskId, input = {}, actorId = null) {
   const result = await mutate((state) => {
     const task = requireTask(state, taskId), actor = actorId ? state.users.find((item) => item.id === actorId) : owner(state);
+    const workflow = state.workflows.find((item) => item.id === task.workflow_id); assertProjectLifecycleIdle(state.projects.find((item) => item.id === workflow?.project_id)); assertRepositoryDeletionInactive(state, { projectId: workflow?.project_id });
     if (!['code', 'test', 'integration', 'deploy'].includes(task.task_kind)) throw new HttpError(409, { error: 'task_not_delivery_capable', task_kind: task.task_kind });
     const active = state.deliveries.find((item) => item.task_id === task.id && !TERMINAL.has(item.status));
     if (active) return { delivery: active, idempotent: true, created: false };
@@ -67,7 +70,7 @@ export async function cancelTaskDelivery(deliveryId, actorId = null) {
   });
 }
 export async function getDelivery(deliveryId) { const state = await readState(), delivery = state.deliveries.find((item) => item.id === deliveryId); if (!delivery) throw new HttpError(404, { error: 'delivery_not_found' }); return publicDelivery(delivery); }
-export async function listDeliveries(query = {}) { const state = await readState(); return state.deliveries.filter((item) => !query.project_id || item.project_id === query.project_id).filter((item) => !query.task_id || item.task_id === query.task_id).sort((a, b) => String(b.created_at).localeCompare(String(a.created_at))).slice(0, Math.min(100, Math.max(1, Number(query.limit) || 30))).map(publicDelivery); }
+export async function listDeliveries(query = {}) { const state = await readState(), { accessibleProjectIds } = await import('./project-governance-v19.mjs'), allowed = accessibleProjectIds(state); return state.deliveries.filter((item) => allowed.has(item.project_id) && (!query.project_id || item.project_id === query.project_id)).filter((item) => !query.task_id || item.task_id === query.task_id).sort((a, b) => String(b.created_at).localeCompare(String(a.created_at))).slice(0, Math.min(100, Math.max(1, Number(query.limit) || 30))).map(publicDelivery); }
 export async function deliveryEvents(deliveryId, after = 0) { const state = await readState(), delivery = state.deliveries.find((item) => item.id === deliveryId); if (!delivery) throw new HttpError(404, { error: 'delivery_not_found' }); const events = state.delivery_events.filter((item) => item.delivery_id === delivery.id && item.sequence > Number(after || 0)).sort((a, b) => a.sequence - b.sequence); return { delivery: publicDelivery(delivery), events, terminal: TERMINAL.has(delivery.status), next_cursor: events.at(-1)?.sequence || Number(after || 0) }; }
 async function executeDelivery(deliveryId) {
   const controller = new AbortController(); controllers.set(deliveryId, controller);
@@ -85,13 +88,13 @@ async function executeDelivery(deliveryId) {
       await persistDelivery(deliveryId, { base_sha: base.sha });
       assertNotCancelled(controller.signal);
       await phase(deliveryId, 'worktree');
-      worktree = await ensureDeliveryWorktree(context, delivery, base.sha);
+      worktree = await ensureDeliveryCheckout(context, delivery, base.sha);
       await persistDelivery(deliveryId, { worktree_path: worktree });
     } finally { releaseRepositoryLock(); }
     const startHead = git(worktree, ['rev-parse', 'HEAD'], 5_000).stdout.trim();
     assertNotCancelled(controller.signal);
     await phase(deliveryId, 'codex_run');
-    await runDeliveryCodex(context, delivery, worktree, controller.signal);
+    const codexOutput = await runDeliveryCodex(context, delivery, worktree, controller.signal);
     assertNotCancelled(controller.signal);
     if (git(worktree, ['rev-parse', 'HEAD'], 5_000).stdout.trim() !== startHead) throw deliveryError('delivery_codex_commit_forbidden');
     await phase(deliveryId, 'policy_checks');
@@ -109,7 +112,7 @@ async function executeDelivery(deliveryId) {
     assertNotCancelled(controller.signal);
     checked = await inspectDeliveryChanges(context.policy, worktree, base.sha);
     for (const file of checked.changed_files) assertDeliveryPath(context.policy, file.path);
-    if (!checked.changed_files.length) throw deliveryError('delivery_no_changes');
+    if (!checked.changed_files.length) throw deliveryError('delivery_no_changes', { model_summary: safeOutput(codexOutput) });
     await phase(deliveryId, 'commit');
     assertNotCancelled(controller.signal);
     const commitSha = commitDelivery(context, worktree, checked.changed_files);
@@ -136,7 +139,7 @@ function assertNotCancelled(signal) {
 }
 function deliveryContext(state, delivery) {
   const task = requireTask(state, delivery.task_id), workstream = state.workflow_nodes.find((item) => item.id === task.parent_node_id), project = state.projects.find((item) => item.id === delivery.project_id), connection = state.repository_connections.find((item) => item.id === delivery.connection_id), policy = state.delivery_policies.find((item) => item.id === delivery.policy_id);
-  if (!project || !workstream || !connection || !policy) throw deliveryError('delivery_context_missing');
+  if (!project || !workstream || !connection || !policy) throw deliveryError('delivery_context_missing'); assertProjectLifecycleIdle(project);
   const approved = requireApprovedDeliveryPolicy(state, task, policy.id);
   if (approved.policy.policy_hash !== delivery.policy_hash) throw deliveryError('delivery_policy_changed');
   const previousCompleted = state.deliveries.filter((item) => item.task_id === task.id && item.id !== delivery.id && item.status === 'completed').sort((a, b) => String(b.completed_at).localeCompare(String(a.completed_at)))[0] || null;
@@ -159,17 +162,6 @@ async function fetchAndVerifyBase(context, delivery, signal) {
   if (delivery.expected_base_sha && delivery.expected_base_sha !== sha) throw deliveryError('delivery_base_sha_mismatch', { expected: delivery.expected_base_sha, actual: sha });
   return { sha, ref };
 }
-async function ensureDeliveryWorktree(context, delivery, baseSha) {
-  const root = path.join(WORKTREE_DIR, safeSegment(context.project.id), 'deliveries'), target = path.join(root, safeSegment(context.task.id));
-  await fsp.mkdir(root, { recursive: true });
-  if (fs.existsSync(target) && isGitRepo(target)) return target;
-  if (fs.existsSync(target)) throw deliveryError('delivery_worktree_path_occupied');
-  const branchExists = git(context.repo_path, ['show-ref', '--verify', '--quiet', `refs/heads/${delivery.branch}`], 5_000).ok;
-  const args = branchExists ? ['worktree', 'add', target, delivery.branch] : ['worktree', 'add', '-b', delivery.branch, target, baseSha];
-  const added = git(context.repo_path, args, 60_000);
-  if (!added.ok) throw deliveryError('delivery_worktree_create_failed', { detail: safeOutput(added.stderr || added.error) });
-  return target;
-}
 async function runDeliveryCodex(context, delivery, worktree, signal) {
   if (delivery.adapter === 'test') {
     for (const change of delivery.test_input?.changes || [{ path: 'delivery.txt', content: `delivery ${delivery.id}\n` }]) {
@@ -189,7 +181,7 @@ async function runDeliveryCodex(context, delivery, worktree, signal) {
     'After making changes, return JSON only: {"summary":"..."}.'
   ].join('\n');
   const run = await runCodexJson({ state: context.state, profile, prompt, cwd: worktree, sandbox: 'workspace-write', projectId: context.project.id, signal, onEvent: (event) => { output += extractMessage(event); } });
-  if (!run.ok) throw deliveryError('delivery_codex_run_failed', { detail: safeOutput(run.stderr) });
+  if (!run.ok) throw deliveryError('delivery_codex_run_failed', { detail: safeOutput(run.stderr), stdout_tail: safeOutput(run.stdout), exit_code: run.code, timed_out: run.timed_out, timeout_ms: run.timeout_ms });
   return output || run.stdout;
 }
 async function inspectDeliveryChanges(policy, worktree, baseSha) {
@@ -197,7 +189,6 @@ async function inspectDeliveryChanges(policy, worktree, baseSha) {
   for (const file of snapshot.changedFiles) assertDeliveryPath(policy, file.path);
   return { changed_files: snapshot.changedFiles, diff: snapshot.diff, target_hash: snapshot.targetHash };
 }
-
 async function scanSecrets(worktree, files) {
   const findings = [];
   for (const file of files.filter((item) => !['deleted'].includes(item.status))) {
@@ -208,7 +199,6 @@ async function scanSecrets(worktree, files) {
   }
   return findings;
 }
-
 function runPolicyTests(policy, worktree, testInput) {
   return policy.test_commands.map((commandText, index) => {
     if (testInput?.force_test_failure && index === 0) return { command: commandText, status: 'failed', exit_code: 1, output: 'forced test failure' };
@@ -254,5 +244,5 @@ function stableBranch(task) { return `aiws/${safeSegment(task.id).slice(0, 48)}-
 function sanitizeTestInput(input) { return { changes: Array.isArray(input.test_changes) ? input.test_changes.slice(0, 50).map((item) => ({ path: clean(item?.path, 500), content: String(item?.content ?? '').slice(0, 500_000) })) : null, force_test_failure: input.test_failure === true, force_path_violation: input.path_violation === true, force_secret: input.secret_violation === true }; }
 function publicDelivery(item) { if (!item) return null; const { test_input, ...visible } = item; return structuredClone(visible); }
 function deliveryError(code, details = {}) { const error = new Error(code); error.code = code; error.details = details; return error; }
-function safeOutput(value) { return String(value || '').replace(/(?:gh[pousr]_|sk-|rk-)[A-Za-z0-9_-]{8,}/g, '[REDACTED]').slice(-8000); }
+function safeOutput(value) { return redactKnownSecretsSync(String(value || '')).slice(-8000); }
 function clean(value, max = 120) { return String(value ?? '').replace(/\0/g, '').trim().slice(0, max); }

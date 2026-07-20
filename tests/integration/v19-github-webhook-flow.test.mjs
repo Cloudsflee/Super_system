@@ -34,6 +34,7 @@ try {
   let state = await stateApi.readState();
   assert.equal(delivery(state, 'delivery-match').pr_number, 42);
   assert.equal(task(state, 'task-match').delivery_status, 'draft');
+  assert.equal(delivery(state, 'delivery-failed-same-branch').pr_number, null, 'a failed Delivery on the same stable branch is not claimed by the PR');
   assert.equal(delivery(state, 'delivery-other-branch').pr_number, null, 'an unbound Delivery on another branch is not claimed by the PR');
 
   const duplicate = await webhook('v19-pr-opened', 'pull_request', { action: 'opened', repository, pull_request: pullRequest });
@@ -122,6 +123,7 @@ function seedDeliveryState(state) {
   );
   state.deliveries.push(
     deliveryRecord('delivery-match', 'task-match', 'connection-match', 'aiws/task-match', 'sha-match'),
+    { ...deliveryRecord('delivery-failed-same-branch', 'task-match', 'connection-match', 'aiws/task-match', null), status: 'failed', phase: 'failed' },
     deliveryRecord('delivery-other-branch', 'task-other', 'connection-match', 'aiws/task-other', 'sha-other'),
     deliveryRecord('delivery-other-repository', 'task-other-repository', 'connection-other', 'aiws/task-match', 'sha-match')
   );

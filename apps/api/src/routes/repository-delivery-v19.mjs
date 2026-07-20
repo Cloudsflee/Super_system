@@ -5,6 +5,9 @@ import {
   setTaskRepositoryTargetsInState, setWorkstreamRepositoryTargetsInState
 } from '../repository-delivery-domain.mjs';
 import { cancelTaskDelivery, deliveryEvents, getDelivery, listDeliveries, retryTaskDelivery, startTaskDelivery } from '../delivery-service.mjs';
+import {
+  markDeliveryPullRequestReady, mergeDeliveryPullRequest, readDeliveryPullRequest, reconcileDeliveryPullRequest
+} from '../delivery-pull-request-service.mjs';
 import { testAdapter } from '../test-adapter.mjs';
 
 export const repositoryDeliveryV19Routes = [
@@ -23,6 +26,10 @@ export const repositoryDeliveryV19Routes = [
   makeRoute('GET', '/deliveries', listDeliveryRecords),
   makeRoute('GET', '/deliveries/:id', getDeliveryRecord),
   makeRoute('GET', '/deliveries/:id/events', getDeliveryEvents),
+  makeRoute('GET', '/deliveries/:id/pull-request', getDeliveryPullRequest),
+  makeRoute('POST', '/deliveries/:id/pull-request/ready', readyDeliveryPullRequest),
+  makeRoute('POST', '/deliveries/:id/pull-request/merge', mergeDeliveryPullRequestRoute),
+  makeRoute('POST', '/deliveries/:id/pull-request/reconcile', reconcileDeliveryPullRequestRoute),
   makeRoute('POST', '/deliveries/:id/cancel', cancelDelivery),
   makeRoute('POST', '/deliveries/:id/retry', retryDelivery)
 ];
@@ -44,6 +51,10 @@ async function revokePolicy({ res, params }) { const result = await mutate((stat
 async function createDelivery({ res, params, body, query }) { const state = await readState(), actor = owner(state); const result = await startTaskDelivery(params.id, { ...body, adapter: body.adapter || query.adapter }, actor?.id); return send(res, result.idempotent ? 200 : 202, deliveryHandle(result.delivery, result.idempotent)); }
 async function listDeliveryRecords({ res, query }) { return send(res, 200, { items: await listDeliveries(query) }); }
 async function getDeliveryRecord({ res, params }) { return send(res, 200, await getDelivery(params.id)); }
+async function getDeliveryPullRequest({ res, params }) { const state = await readState(), actor = owner(state); return send(res, 200, await readDeliveryPullRequest(params.id, actor?.id)); }
+async function readyDeliveryPullRequest({ res, params, body }) { const state = await readState(), actor = owner(state); return send(res, 200, await markDeliveryPullRequestReady(params.id, body, actor?.id)); }
+async function mergeDeliveryPullRequestRoute({ res, params, body }) { const state = await readState(), actor = owner(state); return send(res, 200, await mergeDeliveryPullRequest(params.id, body, actor?.id)); }
+async function reconcileDeliveryPullRequestRoute({ res, params }) { const state = await readState(), actor = owner(state); return send(res, 200, await reconcileDeliveryPullRequest(params.id, actor?.id)); }
 async function cancelDelivery({ res, params }) { const state = await readState(), actor = owner(state); return send(res, 202, deliveryHandle(await cancelTaskDelivery(params.id, actor?.id))); }
 async function retryDelivery({ res, params, body, query }) { const state = await readState(), actor = owner(state); const result = await retryTaskDelivery(params.id, { ...body, adapter: body.adapter || query.adapter }, actor?.id); return send(res, 202, deliveryHandle(result.delivery, result.idempotent)); }
 async function getDeliveryEvents({ req, res, params, query }) {
