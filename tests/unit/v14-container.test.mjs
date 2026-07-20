@@ -25,7 +25,7 @@ try {
   const secret = 'sk-v14-unit-secret';
   const invocation = config.buildCodexContainerInvocation({
     env, kind: 'node-run', sessionId: 'run-one', profileId: 'profile-one', nonce: 'fixed',
-    codexHome: profile, workspace, workspaceMode: 'rw', stdin: true,
+    codexHome: profile, workspace, workspaceMode: 'rw', nestedSandbox: true, stdin: true,
     containerEnv: { CODEX_HOME: '/codex-home', OPENAI_API_KEY: secret }, commandArgs: ['exec', '--json', '-']
   });
   assert.equal(invocation.command, 'docker');
@@ -36,6 +36,8 @@ try {
   assert.ok(invocation.args.includes('256'));
   assert.ok(invocation.args.includes('ALL'));
   assert.ok(invocation.args.includes('no-new-privileges'));
+  for (const capability of ['SETUID', 'SETGID', 'SETFCAP']) assert.ok(invocation.args.includes(capability));
+  assert.ok(invocation.args.includes('seccomp=unconfined'));
   assert.ok(invocation.args.some((value) => value.includes('volume-subpath=codex-homes/profile-one')));
   assert.ok(invocation.args.some((value) => value.includes('volume-subpath=workspaces/project-one/repo')));
   assert.ok(invocation.args.includes('OPENAI_API_KEY'));
@@ -90,6 +92,7 @@ try {
   assert.throws(() => config.validateDockerNetworkName('../host'), /invalid_docker_network/);
   const networkInvocation = config.buildCodexContainerInvocation({ env: { ...env, AIWS_RUNNER_NETWORK: 'aiws-v18-mcp-agents' }, kind: 'network-test', sessionId: 'network', commandArgs: [] });
   assert.equal(networkInvocation.args[networkInvocation.args.indexOf('--network') + 1], 'aiws-v18-mcp-agents');
+  assert.equal(networkInvocation.args.includes('seccomp=unconfined'), false, 'non-Codex utility containers retain the default seccomp profile');
   const serialized = JSON.stringify(deployment);
   assert.equal(serialized.includes(imports), false);
   assert.equal(serialized.includes('volume-private'), false);

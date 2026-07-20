@@ -11,10 +11,26 @@ try {
   const stateApi = await import('../../apps/api/src/state.mjs');
   const { createDraftProjectRecords } = await import('../../apps/api/src/project-lifecycle.mjs');
   const generation = await import('../../apps/api/src/workflow-generation-service.mjs');
+  const { resolveWorkflowGenerationCwd } = await import('../../apps/api/src/workflow-generation-workspace.mjs');
+  const { createCodexRunError, safeErrorDetail } = await import('../../apps/api/src/codex-run-diagnostics.mjs');
   await stateApi.ensureRuntime();
   const actor = stateApi.owner(await stateApi.readState());
 
+  await assert.rejects(() => resolveWorkflowGenerationCwd(null), (error) => error?.payload?.error === 'workflow_generation_project_required');
+  const timeoutError = createCodexRunError({ timed_out: true, timeout_ms: 120000, code: null, stderr: 'Reading input\nsk-0123456789abcdefghijklmnop' }, { failureCode: 'codex_workflow_generation_failed', timeoutCode: 'codex_workflow_generation_timeout' });
+  const timeoutDetail = safeErrorDetail(timeoutError);
+  assert.equal(timeoutError.code, 'codex_workflow_generation_timeout');
+  assert.equal(timeoutDetail.timed_out, true);
+  assert.equal(timeoutDetail.timeout_ms, 120000);
+  assert.equal(timeoutDetail.exit_code, null);
+  assert.equal(timeoutDetail.detail.includes('sk-0123456789abcdefghijklmnop'), false);
+
   const untouched = await addDraft('Research program', 'Produce an accepted evidence synthesis', actor, false, stateApi, createDraftProjectRecords);
+  const draftRoot = await resolveWorkflowGenerationCwd(untouched.project);
+  assert.equal(draftRoot, untouched.project.workspace_root);
+  assert.equal(fs.statSync(draftRoot).isDirectory(), true, 'brainstorm generation creates its isolated managed root before Codex starts');
+  fs.mkdirSync(untouched.project.repo_path, { recursive: true });
+  assert.equal(await resolveWorkflowGenerationCwd(untouched.project), untouched.project.repo_path, 'an initialized managed repository remains the preferred generation context');
   const started = await generation.startWorkflowGeneration(untouched.project.id, { adapter: 'test' }, actor.id);
   assert.equal(started.idempotent, false);
   const repeated = await generation.startWorkflowGeneration(untouched.project.id, { adapter: 'test' }, actor.id);
@@ -48,6 +64,7 @@ try {
   const failed = await waitForGeneration(generation, failedDraft.project.id, failedStart.generation.id);
   assert.equal(failed.status, 'failed');
   assert.equal(failed.error_code, 'workflow_workstream_process_stage_forbidden');
+  assert.equal(typeof failed.error_detail.message, 'string');
   const failedState = await stateApi.readState(), stillBlank = failedState.workflow_drafts.find((item) => item.project_id === failedDraft.project.id);
   assert.deepEqual(stillBlank.nodes, [], 'generation failure preserves a blank draft instead of installing a fallback chain');
   const eventBatch = await generation.listWorkflowGenerationEvents(failedDraft.project.id, failed.id, 0);

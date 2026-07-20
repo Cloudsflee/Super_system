@@ -1,17 +1,25 @@
 import assert from 'node:assert/strict';
 import { callOperation, createMcpTestFixture, resultData, waitFor } from '../v18/mcp-test-helpers.mjs';
-
 let fixture;
-
 try {
   fixture = await createMcpTestFixture('aiws-v19-migration-orchestrator-', {
     seed: async ({ stateApi }) => stateApi.mutate((state) => addLegacyProject(state, 'resume', { activeRun: true }))
   });
-
   let state = await fixture.stateApi.readState();
   const resumeIds = referenceSnapshot(state, 'resume');
   const initialBatch = state.workflow_migration_batches.find((item) => item.workflow_ids.includes('workflow-resume'));
   assert.equal(initialBatch.status, 'pending_approval');
+  await fixture.stateApi.mutate((current) => {
+    current.users.push({ id: 'user-migration-collaborator', display_name: 'Migration Collaborator', role: 'member', auth_mode: 'test' });
+    current.project_memberships.push({ id: 'membership-migration-collaborator', project_id: 'project-resume', user_id: 'user-migration-collaborator', role: 'collaborator', status: 'active' });
+  });
+  assert.equal((await request(fixture, '/api/workflow-migrations', 'GET', undefined, 200, { 'x-aiws-user-id': 'user-migration-collaborator' })).batch.id, initialBatch.id);
+  const denied = await request(fixture, `/api/workflow-migrations/batches/${initialBatch.id}/approve`, 'POST', { adapter: 'test' }, 403, { 'x-aiws-user-id': 'user-migration-collaborator' });
+  assert.equal(denied.error, 'workflow_migration_owner_required');
+  await fixture.stateApi.mutate((current) => {
+    current.project_memberships = current.project_memberships.filter((item) => item.user_id !== 'user-migration-collaborator');
+    current.users = current.users.filter((item) => item.id !== 'user-migration-collaborator');
+  });
 
   let connection = await fixture.connect(undefined, 'aiws-v18-legacy-reader');
   const legacyViaMcp = resultData(await callOperation(connection.client, 'aiws.projects.get.projects.by-id', { params: { id: 'project-resume' } }));
@@ -47,34 +55,46 @@ try {
   assert.deepEqual(completedJob.snapshot.asset_ids, resumeIds.assetIds);
   assert.deepEqual(completedJob.snapshot.trace_ids, resumeIds.traceIds);
   assert.deepEqual(completedJob.snapshot.assist_session_ids, resumeIds.assistIds);
-
+  await fixture.stopServer();
+  await fixture.stateApi.mutate((current) => addLegacyProject(current, 'interrupted'));
+  await fixture.restartServer();
+  state = await fixture.stateApi.readState();
+  const interruptedIds = referenceSnapshot(state, 'interrupted'), interruptedJob = state.workflow_migration_jobs.find((item) => item.workflow_id === 'workflow-interrupted'), interruptedBatch = state.workflow_migration_batches.find((item) => item.id === interruptedJob.batch_id);
+  await fixture.stopServer();
+  await fixture.stateApi.mutate((current) => {
+    Object.assign(current.workflow_migration_batches.find((item) => item.id === interruptedBatch.id), { status: 'completed', adapter: 'test', completed_at: new Date().toISOString() });
+    Object.assign(current.workflow_migration_jobs.find((item) => item.id === interruptedJob.id), { status: 'generating', adapter: 'test', attempt: 1 });
+  });
+  await fixture.restartServer();
+  state = await waitFor(async () => {
+    const current = await fixture.stateApi.readState(), job = current.workflow_migration_jobs.find((item) => item.id === interruptedJob.id);
+    return job?.status === 'completed' ? current : null;
+  }, { message: 'generating migration did not recover after server restart' });
+  const recoveredJob = state.workflow_migration_jobs.find((item) => item.id === interruptedJob.id);
+  assert.equal(recoveredJob.attempt, 2);
+  assert.equal(recoveredJob.restart_recovery_count, 1);
+  assertSuccessfulMigration(state, 'interrupted', interruptedIds);
   await fixture.stopServer();
   await fixture.stateApi.mutate((current) => addLegacyProject(current, 'rollback'));
   await fixture.restartServer();
-
   state = await fixture.stateApi.readState();
   const rollbackIds = referenceSnapshot(state, 'rollback');
   const legacyGraphBefore = graphRecords(state, 'rollback');
   const rollbackJob = state.workflow_migration_jobs.find((item) => item.workflow_id === 'workflow-rollback');
   const rollbackBatch = state.workflow_migration_batches.find((item) => item.id === rollbackJob.batch_id);
   assert.equal(rollbackBatch.status, 'pending_approval');
-
   connection = await fixture.connect(undefined, 'aiws-v18-failed-migration-reader');
   const rollbackLegacy = resultData(await callOperation(connection.client, 'aiws.projects.get.projects.by-id', { params: { id: 'project-rollback' } }));
   assert.equal(rollbackLegacy.workflows[0].semantic_migration_status, 'pending');
   assert.equal((await request(fixture, '/api/projects/project-rollback')).nodes.length, 8);
-
   await request(fixture, `/api/workflow-migrations/batches/${rollbackBatch.id}/approve`, 'POST', {}, 202);
   await assertFailedAttempt(fixture, rollbackJob.id, 1, 'active_codex_profile_required', legacyGraphBefore);
-
   const lowConfidence = migrationCandidate('rollback', { confidence: 0.4 });
   await request(fixture, `/api/workflow-migrations/jobs/${rollbackJob.id}/retry`, 'POST', { adapter: 'test', test_candidate: lowConfidence }, 202);
   await assertFailedAttempt(fixture, rollbackJob.id, 2, 'workflow_migration_critic_rejected', legacyGraphBefore);
-
   const missingMapping = migrationCandidate('rollback', { mapping: false });
   await request(fixture, `/api/workflow-migrations/jobs/${rollbackJob.id}/retry`, 'POST', { adapter: 'test', test_candidate: missingMapping }, 202);
   await assertFailedAttempt(fixture, rollbackJob.id, 3, 'workflow_migration_mapping_not_bijective', legacyGraphBefore);
-
   await request(fixture, `/api/workflow-migrations/jobs/${rollbackJob.id}/retry`, 'POST', { adapter: 'test' }, 202);
   state = await waitFor(async () => {
     const current = await fixture.stateApi.readState();
@@ -83,11 +103,21 @@ try {
   }, { message: 'failed migration did not complete after deterministic retry' });
   assert.equal(state.workflow_migration_jobs.find((item) => item.id === rollbackJob.id).attempt, 4);
   assertSuccessfulMigration(state, 'rollback', rollbackIds);
-
   const migratedViaMcp = resultData(await callOperation(connection.client, 'aiws.projects.get.projects.by-id', { params: { id: 'project-rollback' } }));
   assert.equal(migratedViaMcp.workflows[0].hierarchy_mode, 'two_level');
   assert.equal(migratedViaMcp.nodes.filter((item) => item.role === 'task').length, 8);
-
+  await connection.close(); connection = null;
+  await fixture.stopServer();
+  await fixture.stateApi.mutate((current) => { addLegacyProject(current, 'trashed'); current.projects.find((item) => item.id === 'project-trashed').deleted_at = new Date().toISOString(); });
+  await fixture.restartServer();
+  state = await fixture.stateApi.readState();
+  assert.equal(state.workflow_migration_jobs.some((item) => item.workflow_id === 'workflow-trashed'), false);
+  const migrationView = await request(fixture, '/api/workflow-migrations');
+  assert.equal(migrationView.legacy_workflow_ids.includes('workflow-trashed'), false);
+  await fixture.stateApi.mutate((current) => { current.projects.find((item) => item.id === 'project-trashed').deleted_at = null; });
+  const restoredMigrationView = await request(fixture, '/api/workflow-migrations');
+  assert.equal(restoredMigrationView.legacy_workflow_ids.includes('workflow-trashed'), true);
+  assert.equal(restoredMigrationView.jobs.some((item) => item.workflow_id === 'workflow-trashed' && item.status === 'pending'), true);
   console.log('V1.9 workflow migration orchestrator integration tests passed');
 } finally {
   await fixture?.close();
@@ -216,9 +246,9 @@ function graphRecords(state, suffix) {
   };
 }
 
-async function request(currentFixture, pathname, method = 'GET', body, expected = 200) {
+async function request(currentFixture, pathname, method = 'GET', body, expected = 200, headers = {}) {
   const response = await fetch(`${currentFixture.baseUrl}${pathname}`, {
-    method, headers: { 'content-type': 'application/json' }, body: body === undefined ? undefined : JSON.stringify(body)
+    method, headers: { 'content-type': 'application/json', ...headers }, body: body === undefined ? undefined : JSON.stringify(body)
   });
   const data = await response.json();
   assert.equal(response.status, expected, `${method} ${pathname}: ${JSON.stringify(data)}`);

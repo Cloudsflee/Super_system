@@ -1,10 +1,11 @@
 import { hashString, id, now } from '../../../packages/shared/index.mjs';
-import { AIWS_HOME } from './config.mjs';
 import { extractMessage, runCodexJson } from './codex-service.mjs';
 import { HttpError } from './http.mjs';
 import { addTrace, mutate, owner, readState } from './state.mjs';
 import { critiqueWorkflowGenerationCandidate, normalizeWorkflowGenerationCandidate } from './workflow-hierarchy-domain.mjs';
-
+import { resolveWorkflowGenerationCwd } from './workflow-generation-workspace.mjs';
+import { createCodexRunError, safeErrorDetail } from './codex-run-diagnostics.mjs';
+import { assertProjectLifecycleIdle } from './project-lifecycle-operations.mjs';
 const controllers = new Map();
 const TERMINAL = new Set(['completed', 'failed', 'cancelled', 'superseded']);
 export async function startWorkflowGeneration(projectId, input = {}, actorId = null) {
@@ -72,7 +73,6 @@ export async function listWorkflowGenerations(projectId, { limit = 20 } = {}) {
   if (!state.projects.some((item) => item.id === projectId && !item.deleted_at)) throw new HttpError(404, { error: 'project_not_found' });
   return state.workflow_generations.filter((item) => item.project_id === projectId).sort((a, b) => String(b.created_at).localeCompare(String(a.created_at))).slice(0, Math.min(100, Math.max(1, Number(limit) || 20))).map(publicGeneration);
 }
-
 export async function applyWorkflowGenerationCandidate(projectId, generationId, input = {}, actorId = null) {
   return mutate((state) => {
     const generation = state.workflow_generations.find((item) => item.id === generationId && item.project_id === projectId);
@@ -145,11 +145,11 @@ async function generateCandidateWithCodex(state, generation, fingerprint, signal
     'Top level: 1-6 independently acceptable workstreams. Each workstream needs role=workstream, category deliverable|decision|coordination|operation, a verifiable outcome, acceptance_criteria, at least one explicit boundary, dependencies, and 1-12 tasks.',
     'Tasks need role=task, task_kind research|analysis|design|content|code|test|review|deploy|manual|integration, execution_mode manual|assist|codex|integration, same-workstream dependencies, and optional repository_intent.',
     'Never use a lifecycle phase such as requirements analysis, design, coding, testing, review, deployment, or launch as a standalone workstream. Do not assume the project is software.',
-    'Return keys project_classification, decomposition_basis, evidence_refs [{section_id,quote}], confidence (0..1), repository_intent, workstreams [{id,title,outcome,category,boundary,acceptance_criteria,dependency_ids,tasks:[...]}].',
+    'Return keys project_classification, decomposition_basis, evidence_refs [{section_id,quote}], confidence (0..1), repository_intent, workstreams [{id,role:"workstream",title,outcome,category,boundary,acceptance_criteria,dependency_ids,tasks:[{id,role:"task",title,goal,task_kind,execution_mode,dependency_ids,repository_intent}]}].',
     `Input: ${JSON.stringify(context)}`
   ].join('\n');
-  const run = await runCodexJson({ state, profile, prompt, cwd: fingerprint.project.repo_path || fingerprint.project.workspace_root || AIWS_HOME, sandbox: 'read-only', projectId: fingerprint.project.id, signal, onEvent: (event) => { output += extractMessage(event); } });
-  if (!run.ok) throw generationError('codex_workflow_generation_failed', { detail: String(run.stderr || '').slice(-2000) });
+  const run = await runCodexJson({ state, profile, prompt, cwd: await resolveWorkflowGenerationCwd(fingerprint.project), sandbox: 'read-only', projectId: fingerprint.project.id, signal, onEvent: (event) => { output += extractMessage(event); } });
+  if (!run.ok) throw createCodexRunError(run, { failureCode: 'codex_workflow_generation_failed', timeoutCode: 'codex_workflow_generation_timeout' });
   return normalizeWorkflowGenerationCandidate(parseJson(output || run.stdout));
 }
 
@@ -163,8 +163,8 @@ async function critiqueCandidateWithCodex(state, generation, fingerprint, candid
     `Brief: ${JSON.stringify(generationContext(fingerprint))}`,
     `Candidate: ${JSON.stringify(candidate)}`
   ].join('\n');
-  const run = await runCodexJson({ state, profile, prompt, cwd: fingerprint.project.repo_path || fingerprint.project.workspace_root || AIWS_HOME, sandbox: 'read-only', projectId: fingerprint.project.id, signal, onEvent: (event) => { output += extractMessage(event); } });
-  if (!run.ok) throw generationError('codex_workflow_critic_failed', { detail: String(run.stderr || '').slice(-2000) });
+  const run = await runCodexJson({ state, profile, prompt, cwd: await resolveWorkflowGenerationCwd(fingerprint.project), sandbox: 'read-only', projectId: fingerprint.project.id, signal, onEvent: (event) => { output += extractMessage(event); } });
+  if (!run.ok) throw createCodexRunError(run, { failureCode: 'codex_workflow_critic_failed', timeoutCode: 'codex_workflow_critic_timeout' });
   const parsed = parseJson(output || run.stdout);
   return { approved: parsed.approved === true, errors: Array.isArray(parsed.errors) ? parsed.errors.slice(0, 100) : [] };
 }
@@ -198,7 +198,7 @@ async function failGeneration(generationId, error) {
     const generation = state.workflow_generations.find((item) => item.id === generationId);
     if (!generation || TERMINAL.has(generation.status)) return generation;
     const code = error?.code || error?.payload?.error || 'workflow_generation_failed';
-    Object.assign(generation, { status: 'failed', phase: 'failed', error_code: code, error_detail: safeDetail(error), retryable: true, completed_at: now(), updated_at: now() });
+    Object.assign(generation, { status: 'failed', phase: 'failed', error_code: code, error_detail: safeErrorDetail(error), retryable: true, completed_at: now(), updated_at: now() });
     const draft = state.workflow_drafts.find((item) => item.id === generation.draft_id);
     if (draft?.generation_id === generation.id) Object.assign(draft, { generation_status: 'failed', updated_at: now() });
     appendEvent(state, generation, 'failed', { error_code: code });
@@ -212,6 +212,7 @@ async function setGenerationPhase(generationId, phase, status) { return mutate((
 function requireReadyProject(state, projectId) {
   const project = state.projects.find((item) => item.id === projectId && !item.deleted_at);
   if (!project) throw new HttpError(404, { error: 'project_not_found' });
+  assertProjectLifecycleIdle(project);
   if (project.status !== 'draft') throw new HttpError(409, { error: 'workflow_generation_project_not_draft' });
   const intake = state.project_intakes.find((item) => item.project_id === project.id);
   if (!intake?.mode) throw new HttpError(409, { error: 'workflow_generation_intake_incomplete' });
@@ -256,4 +257,3 @@ function publicGeneration(item) { if (!item) return null; const { test_candidate
 function parseJson(text) { const cleaned = String(text || '').replace(/```(?:json)?/gi, '').replace(/```/g, ''), start = cleaned.indexOf('{'), end = cleaned.lastIndexOf('}'); if (start < 0 || end < start) throw generationError('codex_json_parse_failed'); try { return JSON.parse(cleaned.slice(start, end + 1)); } catch { throw generationError('codex_json_parse_failed'); } }
 function canonical(value) { if (Array.isArray(value)) return value.map(canonical); if (!value || typeof value !== 'object') return value; return Object.fromEntries(Object.keys(value).sort().map((key) => [key, canonical(value[key])])); }
 function generationError(code, details = {}) { const error = new Error(code); error.code = code; error.details = details; return error; }
-function safeDetail(error) { const detail = error?.details || error?.payload || {}; return JSON.parse(JSON.stringify(detail, (_key, value) => typeof value === 'string' ? value.slice(0, 2000) : value)); }

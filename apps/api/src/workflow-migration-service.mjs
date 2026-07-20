@@ -1,16 +1,18 @@
 import { createNodeWorkspace, defaultContractForNode, hashString, id, now } from '../../../packages/shared/index.mjs';
-import { AIWS_HOME } from './config.mjs';
 import { extractMessage, runCodexJson } from './codex-service.mjs';
 import { HttpError } from './http.mjs';
 import { addTrace, mutate, owner, readState } from './state.mjs';
 import { assertWorkflowHierarchy, critiqueWorkflowGenerationCandidate, legacyNodeTypeForTaskKind, normalizeWorkflowGenerationCandidate } from './workflow-hierarchy-domain.mjs';
 import { workflowVisualGraph } from './workflow-graph-service.mjs';
+import { resolveWorkflowGenerationCwd } from './workflow-generation-workspace.mjs';
+import { createCodexRunError, safeErrorDetail } from './codex-run-diagnostics.mjs';
+import { assertProjectLifecycleIdle } from './project-lifecycle-operations.mjs';
 
 const runningBatches = new Set();
 const MINIMUM_MIGRATION_CONFIDENCE = 0.7;
 
 export async function resumeWorkflowMigrationOrchestrator() {
-  const batch = await mutate((state) => ensureMigrationBatch(state));
+  const batch = await mutate((state) => { recoverInterruptedMigrationJobsInState(state); return ensureMigrationBatch(state); });
   if (batch?.status === 'approved' || batch?.status === 'running' || batch?.status === 'waiting_active_runs') queueMicrotask(() => { void runMigrationBatch(batch.id); });
   return batch;
 }
@@ -44,8 +46,9 @@ export async function cancelWorkflowMigrationBatch(batchId, actorId = null) {
 }
 
 export async function getWorkflowMigrationState() {
-  const state = await readState(), batch = state.workflow_migration_batches.sort((a, b) => String(b.created_at).localeCompare(String(a.created_at)))[0] || null;
-  return { batch, jobs: batch ? state.workflow_migration_jobs.filter((item) => item.batch_id === batch.id).sort((a, b) => String(a.created_at).localeCompare(String(b.created_at))) : [], legacy_workflow_ids: state.workflows.filter((item) => item.hierarchy_mode === 'legacy').map((item) => item.id) };
+  await mutate((state) => ensureMigrationBatch(state));
+  const state = await readState(), batch = state.workflow_migration_batches.sort((a, b) => String(b.created_at).localeCompare(String(a.created_at)))[0] || null, activeProjects = new Set(state.projects.filter((item) => !item.deleted_at).map((item) => item.id));
+  return { batch, jobs: batch ? state.workflow_migration_jobs.filter((item) => item.batch_id === batch.id).sort((a, b) => String(a.created_at).localeCompare(String(b.created_at))) : [], legacy_workflow_ids: state.workflows.filter((item) => activeProjects.has(item.project_id) && item.hierarchy_mode === 'legacy').map((item) => item.id) };
 }
 
 export async function retryWorkflowMigrationJob(jobId, input = {}) {
@@ -121,10 +124,14 @@ export function applyLegacyWorkflowMigrationInState(state, workflowId, candidate
 }
 
 function ensureMigrationBatch(state) {
-  const legacy = state.workflows.filter((item) => item.hierarchy_mode === 'legacy' && item.semantic_migration_status !== 'completed');
+  const activeProjects = new Set(state.projects.filter((item) => !item.deleted_at).map((item) => item.id));
+  const legacy = state.workflows.filter((item) => activeProjects.has(item.project_id) && item.hierarchy_mode === 'legacy' && item.semantic_migration_status !== 'completed');
   if (!legacy.length) return null;
   const existing = state.workflow_migration_batches.filter((item) => !['completed', 'cancelled'].includes(item.status)).sort((a, b) => String(b.created_at).localeCompare(String(a.created_at)))[0];
-  if (existing) return existing;
+  if (existing) {
+    for (const workflow of existing.status === 'pending_approval' ? legacy.filter((item) => !existing.workflow_ids.includes(item.id)) : []) { existing.workflow_ids.push(workflow.id); if (!existing.project_ids.includes(workflow.project_id)) existing.project_ids.push(workflow.project_id); state.workflow_migration_jobs.push({ id: id('wmj'), batch_id: existing.id, project_id: workflow.project_id, workflow_id: workflow.id, status: 'pending', attempt: 0, snapshot: null, before_hash: null, candidate: null, error_code: null, created_at: now(), updated_at: now() }); existing.updated_at = now(); }
+    return existing;
+  }
   const batch = { id: id('wmb'), status: 'pending_approval', workflow_ids: legacy.map((item) => item.id), project_ids: [...new Set(legacy.map((item) => item.project_id))], approved_by_user_id: null, approved_at: null, created_at: now(), updated_at: now() };
   state.workflow_migration_batches.push(batch);
   for (const workflow of legacy) state.workflow_migration_jobs.push({ id: id('wmj'), batch_id: batch.id, project_id: workflow.project_id, workflow_id: workflow.id, status: 'pending', attempt: 0, snapshot: null, before_hash: null, candidate: null, error_code: null, created_at: now(), updated_at: now() });
@@ -151,18 +158,19 @@ async function runMigrationBatch(batchId) {
 }
 
 async function executeMigrationJob(batch, job) {
-  const prepared = await mutate((state) => {
-    const currentBatch = state.workflow_migration_batches.find((item) => item.id === batch.id), currentJob = state.workflow_migration_jobs.find((item) => item.id === job.id), workflow = state.workflows.find((item) => item.id === job.workflow_id), nodes = state.workflow_nodes.filter((item) => item.workflow_id === job.workflow_id);
-    if (!currentBatch || !currentJob || workflow?.hierarchy_mode !== 'legacy') throw migrationError('workflow_migration_job_scope_invalid');
-    const snapshot = { workflow: structuredClone(workflow), nodes: structuredClone(nodes), workspace_ids: nodes.map((item) => item.workspace_id), contract_ids: nodes.map((item) => item.current_contract_id), run_ids: state.node_runs.filter((item) => item.project_id === job.project_id).map((item) => item.id), asset_ids: state.assets.filter((item) => item.project_id === job.project_id).map((item) => item.id), trace_ids: state.traces.filter((item) => item.project_id === job.project_id).map((item) => item.id), assist_session_ids: state.assist_sessions.filter((item) => item.project_id === job.project_id).map((item) => item.id) };
-    Object.assign(currentBatch, { status: 'running', updated_at: now() }); Object.assign(currentJob, { status: 'generating', attempt: Number(currentJob.attempt || 0) + 1, snapshot, before_hash: hashString(JSON.stringify(nodes)), active_run_ids: [], updated_at: now() });
-    return {
-      workflow: structuredClone(workflow), nodes: structuredClone(nodes), project: structuredClone(state.projects.find((item) => item.id === workflow.project_id)),
-      brief: structuredClone(state.project_briefs.filter((item) => item.project_id === workflow.project_id && item.status !== 'superseded').sort((a, b) => b.version - a.version)[0] || null),
-      adapter: currentJob.adapter || currentBatch.adapter, test_candidate: currentJob.test_candidate ? structuredClone(currentJob.test_candidate) : null
-    };
-  });
   try {
+    const prepared = await mutate((state) => {
+      const currentBatch = state.workflow_migration_batches.find((item) => item.id === batch.id), currentJob = state.workflow_migration_jobs.find((item) => item.id === job.id), workflow = state.workflows.find((item) => item.id === job.workflow_id), project = state.projects.find((item) => item.id === job.project_id), nodes = state.workflow_nodes.filter((item) => item.workflow_id === job.workflow_id);
+      if (!currentBatch || !currentJob || workflow?.hierarchy_mode !== 'legacy') throw migrationError('workflow_migration_job_scope_invalid');
+      assertProjectLifecycleIdle(project);
+      const snapshot = { workflow: structuredClone(workflow), nodes: structuredClone(nodes), workspace_ids: nodes.map((item) => item.workspace_id), contract_ids: nodes.map((item) => item.current_contract_id), run_ids: state.node_runs.filter((item) => item.project_id === job.project_id).map((item) => item.id), asset_ids: state.assets.filter((item) => item.project_id === job.project_id).map((item) => item.id), trace_ids: state.traces.filter((item) => item.project_id === job.project_id).map((item) => item.id), assist_session_ids: state.assist_sessions.filter((item) => item.project_id === job.project_id).map((item) => item.id) };
+      Object.assign(currentBatch, { status: 'running', updated_at: now() }); Object.assign(currentJob, { status: 'generating', attempt: Number(currentJob.attempt || 0) + 1, snapshot, before_hash: hashString(JSON.stringify(nodes)), active_run_ids: [], updated_at: now() });
+      return {
+        workflow: structuredClone(workflow), nodes: structuredClone(nodes), project: structuredClone(project),
+        brief: structuredClone(state.project_briefs.filter((item) => item.project_id === workflow.project_id && item.status !== 'superseded').sort((a, b) => b.version - a.version)[0] || null),
+        adapter: currentJob.adapter || currentBatch.adapter, test_candidate: currentJob.test_candidate ? structuredClone(currentJob.test_candidate) : null
+      };
+    });
     const state = await readState(), candidate = prepared.adapter === 'test'
       ? prepared.test_candidate ? normalizeTestMigrationCandidate(prepared.test_candidate) : deterministicMigrationCandidate(prepared)
       : await codexMigrationCandidate(state, prepared);
@@ -176,8 +184,19 @@ async function executeMigrationJob(batch, job) {
       addTrace(data, 'workflow.migration.completed', { project_id: job.project_id, target_id: job.workflow_id, summary: `Legacy workflow migrated with ${applied.workstream_ids.length} workstreams.` }, actor.id);
     });
   } catch (error) {
-    await mutate((state) => { const current = state.workflow_migration_jobs.find((item) => item.id === job.id), project = state.projects.find((item) => item.id === job.project_id), workflow = state.workflows.find((item) => item.id === job.workflow_id); if (current) Object.assign(current, { status: 'failed', error_code: error?.code || 'workflow_migration_failed', error_detail: error?.details || null, completed_at: now(), updated_at: now() }); if (project) project.workflow_migration_status = 'failed'; if (workflow) { workflow.semantic_migration_status = 'failed'; workflow.legacy_read_only = true; } });
+    await mutate((state) => { const current = state.workflow_migration_jobs.find((item) => item.id === job.id), project = state.projects.find((item) => item.id === job.project_id), workflow = state.workflows.find((item) => item.id === job.workflow_id); if (current) Object.assign(current, { status: 'failed', error_code: error?.code || error?.payload?.error || 'workflow_migration_failed', error_detail: safeErrorDetail(error), completed_at: now(), updated_at: now() }); if (project) project.workflow_migration_status = 'failed'; if (workflow) { workflow.semantic_migration_status = 'failed'; workflow.legacy_read_only = true; } });
   }
+}
+
+export function recoverInterruptedMigrationJobsInState(state, timestamp = now()) {
+  const recovered = state.workflow_migration_jobs.filter((item) => item.status === 'generating');
+  for (const job of recovered) {
+    const batch = state.workflow_migration_batches.find((item) => item.id === job.batch_id);
+    if (!batch || batch.status === 'cancelled') { Object.assign(job, { status: 'cancelled', error_code: 'workflow_migration_batch_not_retryable', completed_at: timestamp, updated_at: timestamp }); continue; }
+    Object.assign(job, { status: 'pending', active_run_ids: [], error_code: null, error_detail: null, completed_at: null, restart_recovery_count: Number(job.restart_recovery_count || 0) + 1, restart_recovered_at: timestamp, updated_at: timestamp });
+    Object.assign(batch, { status: 'approved', completed_at: null, updated_at: timestamp });
+  }
+  return recovered.length;
 }
 
 function normalizeTestMigrationCandidate(value) {
@@ -218,8 +237,8 @@ async function codexMigrationCandidate(state, prepared) {
     'Also return project_classification, decomposition_basis, evidence_refs, confidence, repository_intent and workstreams in the standard hierarchy format. Never use lifecycle phases as workstream titles.',
     `Project: ${JSON.stringify(prepared.project)}`, `Brief: ${JSON.stringify(prepared.brief?.content || null)}`, `Legacy nodes: ${JSON.stringify(prepared.nodes)}`
   ].join('\n');
-  const run = await runCodexJson({ state, profile, prompt, cwd: prepared.project.repo_path || prepared.project.workspace_root || AIWS_HOME, sandbox: 'read-only', projectId: prepared.project.id, onEvent: (event) => { output += extractMessage(event); } });
-  if (!run.ok) throw migrationError('codex_workflow_migration_failed', { detail: String(run.stderr || '').slice(-2000) });
+  const run = await runCodexJson({ state, profile, prompt, cwd: await resolveWorkflowGenerationCwd(prepared.project), sandbox: 'read-only', projectId: prepared.project.id, onEvent: (event) => { output += extractMessage(event); } });
+  if (!run.ok) throw createCodexRunError(run, { failureCode: 'codex_workflow_migration_failed', timeoutCode: 'codex_workflow_migration_timeout' });
   const parsed = parseJson(output || run.stdout), normalized = normalizeWorkflowGenerationCandidate(parsed); normalized.legacy_mapping = Array.isArray(parsed.legacy_mapping) ? parsed.legacy_mapping : [];
   return normalized;
 }

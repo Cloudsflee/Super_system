@@ -169,6 +169,7 @@ export function appServerInvocation(profile, cwd, sandbox, credential, attachmen
     ...buildCodexContainerInvocation({
       kind: 'assist-app-server', sessionId: `rpc-${Date.now().toString(36)}`, profileId: profile.id,
       image: profile.image || profile.config?.image, stdin: true, codexHome: home,
+      nestedSandbox: true,
       workspace: path.resolve(cwd), workspaceMode: sandbox === 'read-only' ? 'ro' : 'rw', extraMounts: [...(profile.mounts || []), ...attachmentMounts],
       containerEnv: { CODEX_HOME: '/codex-home', ...(credential ? { OPENAI_API_KEY: null } : {}), ...(mcpAccess?.containerEnv || {}), ...Object.fromEntries(Object.keys(proxy).map((key) => [key, null])) },
       commandArgs

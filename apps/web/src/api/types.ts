@@ -100,6 +100,8 @@ export type Project = {
   repo_path?: string; workspace_root?: string; current_workspace_id: string;
   workflow_count?: number; asset_count?: number; run_count?: number;
   onboarding_state?: string; managed_workspace_state?: string;
+  current_user_role?: 'owner' | 'collaborator' | 'viewer' | null;
+  workflow_migration_status?: string | null;
   deleted_at?: string | null; source_hash?: string | null;
 };
 
@@ -169,6 +171,19 @@ export type Workflow = {
   created_at?: string; updated_at?: string;
   graph_json?: { nodes?: unknown[]; edges?: unknown[] };
 };
+export type ProjectMembership = { id?: string; project_id: string; user_id: string; role: 'owner' | 'collaborator' | 'viewer'; status?: string; implicit?: boolean };
+export type WorkflowMigrationBatchStatus = 'pending_approval' | 'approved' | 'running' | 'waiting_active_runs' | 'completed' | 'completed_with_failures' | 'cancelled' | string;
+export type WorkflowMigrationBatch = {
+  id: string; status: WorkflowMigrationBatchStatus; workflow_ids: string[]; project_ids: string[];
+  approved_by_user_id?: string | null; approved_at?: string | null; created_at?: string; updated_at?: string;
+  completed_at?: string | null; cancelled_at?: string | null;
+};
+export type WorkflowMigrationJob = {
+  id: string; batch_id: string; project_id: string; workflow_id: string; status: string;
+  attempt?: number; active_run_ids?: string[] | null; error_code?: string | null; error_detail?: string | null;
+  created_at?: string; updated_at?: string;
+};
+export type WorkflowMigrationState = { batch: WorkflowMigrationBatch | null; jobs: WorkflowMigrationJob[]; legacy_workflow_ids: string[] };
 export type WorkflowNode = {
   id: string; workflow_id: string; workspace_id?: string; type: NodeKind;
   title: string; goal: string; status: string; order_index: number;
@@ -196,6 +211,7 @@ export type NodeContract = {
 export type ProjectBundle = {
   project: Project; workflows: Workflow[]; nodes: WorkflowNode[];
   contracts: NodeContract[]; assets: AssetRecord[]; runs: RunRecord[];
+  membership?: ProjectMembership | null;
 };
 export type AssetRecord = { id: string; title: string; type?: string; asset_type?: string; status: string; updated_at: string; project_id: string };
 export type RunRecord = { id: string; node_id: string; status: string; summary: string; created_at: string };

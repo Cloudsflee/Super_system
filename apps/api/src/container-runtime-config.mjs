@@ -74,6 +74,7 @@ export function buildCodexContainerInvocation(options) {
   const limits = runnerLimits(env), args = ['run', '--rm', '--pull', 'never', '--name', identity.name, '--init'];
   for (const [key, value] of Object.entries(identity.labels)) args.push('--label', `${key}=${value}`);
   args.push('--cpus', limits.cpus, '--memory', limits.memory, '--pids-limit', limits.pids, '--cap-drop', 'ALL', '--security-opt', 'no-new-privileges');
+  if (options.nestedSandbox) args.push('--cap-add', 'SETUID', '--cap-add', 'SETGID', '--cap-add', 'SETFCAP', '--security-opt', 'seccomp=unconfined');
   if (options.stdin || options.interactive) args.push('-i');
   if (options.interactive) args.push('-t');
   if (options.hostGateway !== false) args.push('--add-host', 'host.docker.internal:host-gateway');

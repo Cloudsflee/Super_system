@@ -112,6 +112,21 @@
 .task-structure { width: 100%; height: 100%; min-height: 420px; background: var(--workspace-bg); }
 .task-structure .react-flow__edge-path { stroke: #68737b; }.task-structure .react-flow__node { width: 190px; min-height: 52px; padding: 10px; border: 1px solid var(--workspace-line); border-radius: var(--radius-control); background: var(--workspace-surface); color: var(--workspace-text); font-size: 11px; }.task-structure .react-flow__node.blocked { border-color: #9f7034; }.task-structure .react-flow__node.completed { border-color: #367f5e; }
 
+.workflow-migration-state { padding: 24px; background: var(--surface-subtle); }
+.workflow-migration-panel { width: min(560px,100%); padding: 28px; display: grid; justify-items: center; border: 1px solid var(--line); border-radius: var(--radius-container); background: var(--surface); box-shadow: 0 12px 28px rgba(27,34,38,.08); }
+.workflow-migration-icon { width: 44px; height: 44px; margin-bottom: 12px; display: grid; place-items: center; border-radius: 50%; background: var(--green-soft); color: var(--green); }
+.workflow-migration-icon svg { width: 23px; height: 23px; }
+.workflow-migration-state.error .workflow-migration-icon { background: var(--red-soft); color: var(--red); }
+.workflow-migration-panel h1 { margin-top: 7px; }
+.workflow-migration-panel > p { margin-bottom: 20px; line-height: 1.6; }
+.workflow-migration-meta { width: 100%; margin: 0; border-top: 1px solid var(--line); }
+.workflow-migration-meta > div { min-height: 44px; padding: 7px 2px; display: grid; grid-template-columns: 92px minmax(0,1fr); align-items: center; gap: 12px; border-bottom: 1px solid var(--line); text-align: left; }
+.workflow-migration-meta dt { color: var(--muted); font-size: 10px; font-weight: 700; }
+.workflow-migration-meta dd { min-width: 0; margin: 0; overflow: hidden; color: var(--text); font: 10px "Cascadia Code", Consolas, monospace; text-overflow: ellipsis; white-space: nowrap; }
+.workflow-migration-meta .status { font-family: Inter,"Segoe UI","Microsoft YaHei",system-ui,sans-serif; }
+.workflow-migration-actions { min-height: 52px; padding-top: 16px; display: flex; align-items: center; justify-content: center; }
+.workflow-migration-owner-note { display: inline-flex; align-items: center; gap: 7px; color: var(--muted); font-size: 11px; }
+
 @media (max-width: 700px) {
   .canvas-edit-tools { top: 58px; left: 8px; }
   .canvas-view-tools { top: 58px; right: 8px; bottom: auto; left: auto; }
@@ -128,4 +143,5 @@
   .task-list { min-width: 0; }.task-list article { min-height: 108px; padding: 10px; grid-template-columns: 64px minmax(0,1fr) 64px; gap: 8px; }.task-list article > div:first-of-type { grid-column: 2 / 4; }.task-target { display: none; }.task-actions { grid-column: 1 / 4; justify-content: flex-end; }.task-actions .icon-button:nth-child(-n+2) { display: none; }
   .task-board { min-width: 0; height: auto; grid-template-columns: 1fr; }.task-board > section { min-height: 80px; border-left: 0; border-top: 1px solid var(--workspace-line); }
   .task-structure { min-height: calc(100vh - 240px); }
+  .workflow-migration-state { padding: 12px; }.workflow-migration-panel { padding: 22px 16px; }.workflow-migration-meta > div { grid-template-columns: 82px minmax(0,1fr); }
 }

@@ -16,6 +16,7 @@ export function buildCodexExecInvocation({ profile, prompt, cwd, resumeId, sandb
   const invocation = buildCodexContainerInvocation({
     kind: runtimeKind, sessionId: resumeId || uniqueSession(), profileId: profile.id,
     image: profile.image, codexHome: profile.codex_home, workspace: path.resolve(cwd),
+    nestedSandbox: true,
     workspaceMode: sandbox === 'read-only' ? 'ro' : 'rw', extraMounts: profile.mounts || [],
     containerEnv: { CODEX_HOME: '/codex-home', ...(exposeApiKey ? { OPENAI_API_KEY: null } : {}), ...(mcpAccess?.containerEnv || {}), ...Object.fromEntries(proxyKeys.map((key) => [key, null])) },
     commandArgs: execArgs

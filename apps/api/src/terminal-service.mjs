@@ -25,6 +25,7 @@ import { withProjectLifecycleLock } from './project-lifecycle-operations.mjs';
 import { issueCodexMcpAccess } from './codex-mcp-runtime.mjs';
 import { terminalInvocation } from './terminal-invocation.mjs';
 import { MAX_PREVIEW_CHARS, appendOutput, broadcast, clamp, finishTerminalArtifact, isWithin, publicSession, rejectWebSocket, safe } from './terminal-runtime-helpers.mjs';
+import { accessibleProjectIds, actorForRequest, assertProjectRun } from './project-governance-v19.mjs';
 
 export { terminalCodexArgs } from './terminal-invocation.mjs';
 
@@ -96,8 +97,8 @@ export async function getTerminalSession(sessionId) {
 }
 
 export async function listTerminalSessions({ projectId = null, assistSessionId = null } = {}) {
-  const state = await readState();
-  return state.terminal_sessions.filter((item) => (!projectId || item.project_id === projectId) && (!assistSessionId || item.assist_session_id === assistSessionId)).sort((a, b) => String(b.updated_at).localeCompare(String(a.updated_at))).map(publicSession);
+  const state = await readState(), allowed = accessibleProjectIds(state);
+  return state.terminal_sessions.filter((item) => allowed.has(item.project_id) && (!projectId || item.project_id === projectId) && (!assistSessionId || item.assist_session_id === assistSessionId)).sort((a, b) => String(b.updated_at).localeCompare(String(a.updated_at))).map(publicSession);
 }
 
 export async function stopTerminalSession(sessionId) {
@@ -151,14 +152,18 @@ export function attachTerminalWebSocket(server) {
     let sessionId;
     try { sessionId = decodeURIComponent(match[1]); }
     catch { rejectWebSocket(socket, 400, 'Bad Request'); return; }
-    sockets.handleUpgrade(request, socket, head, (ws) => connectSocket(ws, sessionId).catch(() => ws.close(1011, 'terminal_unavailable')));
+    sockets.handleUpgrade(request, socket, head, (ws) => connectSocket(ws, sessionId, request).catch(() => ws.close(1011, 'terminal_unavailable')));
   });
   return sockets;
 }
 
-async function connectSocket(ws, sessionId) {
+async function connectSocket(ws, sessionId, request) {
   const state = await readState(), session = state.terminal_sessions.find((item) => item.id === sessionId);
   if (!session) { ws.close(1008, 'terminal_session_not_found'); return; }
+  try {
+    const actor = actorForRequest(state, { headers: request.headers }, { strict: false });
+    assertProjectRun(state, session.project_id, actor.id);
+  } catch (error) { ws.close(1008, error?.payload?.error || 'terminal_project_access_denied'); return; }
   const runtime = ['exited', 'failed', 'stopped', 'interrupted'].includes(session.status) ? null : await ensureTerminalRuntime(session);
   if (!runtime) { ws.send(JSON.stringify({ type: 'status', session: publicSession(session) })); ws.close(1000, 'terminal_closed'); return; }
   runtime.clients.add(ws);
@@ -177,7 +182,7 @@ async function ensureTerminalRuntime(session) {
 }
 
 async function startTerminal(session) {
-  const state = await readState(), worktree = state.worktrees.find((item) => item.id === session.worktree_id), storedProfile = state.codex_profiles.find((item) => item.id === session.profile_id);
+  const state = await readState(), project = state.projects.find((item) => item.id === session.project_id), worktree = state.worktrees.find((item) => item.id === session.worktree_id), storedProfile = state.codex_profiles.find((item) => item.id === session.profile_id); assertManagedProjectWritable(project);
   if (!worktree || !storedProfile || !fs.existsSync(worktree.path)) throw new HttpError(409, { error: 'terminal_worktree_unavailable' });
   const profile = { ...storedProfile, model: session.model || storedProfile.model, reasoning: session.reasoning || storedProfile.reasoning };
   assertProfileAllowed(profile);

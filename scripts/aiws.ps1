@@ -1,3 +1,4 @@
+﻿# Keep this file UTF-8 with BOM for Windows PowerShell 5.1 compatibility.
 [CmdletBinding()]
 param(
   [Parameter(Position = 0)][ValidateSet('up', 'down', 'logs', 'status', 'verify', 'backup', 'restore', 'reset', 'purge-legacy', 'bridge')][string]$Command = 'status',

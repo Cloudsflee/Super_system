@@ -1,6 +1,6 @@
 import { useQuery } from '@tanstack/react-query';
 import { api } from './client';
-import type { DeploymentStatus, Project, ProjectBundle, ProjectOnboarding, SetupState } from './types';
+import type { DeploymentStatus, Project, ProjectBundle, ProjectOnboarding, SetupState, WorkflowMigrationState } from './types';
 
 export const keys = {
   setup: ['setup'] as const,
@@ -10,7 +10,8 @@ export const keys = {
   onboarding: (id: string) => ['project-onboarding', id] as const,
   workspace: (id: string) => ['node-workspace', id] as const,
   proposals: (projectId?: string) => ['proposals', projectId || 'all'] as const,
-  approvals: (projectId?: string) => ['approvals', projectId || 'all'] as const
+  approvals: (projectId?: string) => ['approvals', projectId || 'all'] as const,
+  workflowMigrations: ['workflow-migrations'] as const
 };
 
 export function useSetup() {
@@ -39,5 +40,17 @@ export function useProjectOnboarding(projectId?: string) {
     queryFn: () => api<ProjectOnboarding>(`/projects/${projectId}/onboarding`),
     enabled: Boolean(projectId),
     refetchInterval: (query) => query.state.data?.imports.some((item) => ['queued', 'running', 'staging'].includes(item.status)) ? 1_000 : false
+  });
+}
+
+export function useWorkflowMigrations(enabled = true) {
+  return useQuery({
+    queryKey: keys.workflowMigrations,
+    queryFn: () => api<WorkflowMigrationState>('/workflow-migrations'),
+    enabled,
+    refetchInterval: (query) => {
+      const status = query.state.data?.batch?.status;
+      return status && ['pending_approval', 'approved', 'running', 'waiting_active_runs'].includes(status) ? 1_500 : false;
+    }
   });
 }

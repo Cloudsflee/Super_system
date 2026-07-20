@@ -73,6 +73,7 @@ function buildNodeRunInvocation(profile, runId, input, proxyKeys, mcpAccess) {
   commandArgs.push('-');
   return buildCodexContainerInvocation({
     kind: 'node-run', sessionId: runId, profileId: profile.id, image: profile.image,
+    nestedSandbox: true,
     stdin: true, codexHome: input.codexHome, workspace: input.cwd, workspaceMode: 'rw', extraMounts: input.mounts,
     containerEnv: { CODEX_HOME: '/codex-home', ...(input.exposeApiKey ? { OPENAI_API_KEY: null } : {}), ...(mcpAccess?.containerEnv || {}), ...Object.fromEntries(proxyKeys.map((key) => [key, null])) },
     commandArgs

@@ -25,6 +25,7 @@ export function terminalInvocation(profile, cwd, credential, sessionId, mcpAcces
       sessionId,
       profileId: profile.id,
       image: profile.image || profile.config?.image,
+      nestedSandbox: true,
       interactive: true,
       codexHome,
       workspace: cwd,
