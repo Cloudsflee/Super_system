@@ -1,0 +1,17 @@
+{
+  "version": "1.9",
+  "product_version": "1.9.0",
+  "state_schema": 18,
+  "budgets_ms": { "plan": 120000, "pr": 900000, "full": 5400000 },
+  "tests": [
+    { "id": "V19-L0-PLAN-001", "layer": "L0", "domain": "plan", "priority": "P0", "command": ["node", "scripts/v19-plan.mjs"], "suites": ["plan"], "covers": ["开发计划v1.9.md", "测试计划v1.9.md"] },
+    { "id": "V19-L1-ACL-001", "layer": "L1", "domain": "acl", "priority": "P0", "command": ["node", "tests/unit/v19-project-governance.test.mjs"], "suites": ["pr", "full"], "covers": ["project_memberships", "project_invitations"] },
+    { "id": "V19-L2-PARITY-001", "layer": "L2", "domain": "parity", "priority": "P0", "command": ["node", "tests/integration/v19-project-governance-flow.test.mjs"], "suites": ["full"], "covers": ["REST", "MCP"] },
+    { "id": "V19-L3-REPOSITORY-001", "layer": "L3", "domain": "repository", "priority": "P0", "command": ["node", "tests/unit/v19-repository-lifecycle.test.mjs"], "suites": ["pr", "full"], "covers": ["deletion_intent", "canonical_repositories"] },
+    { "id": "V19-L3-REPOSITORY-002", "layer": "L3", "domain": "repository-faults", "priority": "P0", "command": ["node", "tests/integration/v19-repository-fault-flow.test.mjs"], "suites": ["full", "release"], "covers": ["installation_pending", "administration_preflight", "shared_canonical", "deletion_faults"] },
+    { "id": "V19-L4-ISOLATION-001", "layer": "L4", "domain": "isolation", "priority": "P0", "command": ["node", "tests/integration/v19-project-isolation-flow.test.mjs"], "suites": ["full"], "covers": ["path", "aggregate"] },
+    { "id": "V19-L5-EXCHANGE-001", "layer": "L5", "domain": "exchange", "priority": "P0", "command": ["node", "tests/unit/v19-exchange.test.mjs"], "suites": ["pr", "full"], "covers": ["exchange_requests", "context_packs"] },
+    { "id": "V19-L5-EXCHANGE-002", "layer": "L5", "domain": "exchange-parity", "priority": "P0", "command": ["node", "tests/integration/v19-exchange-flow.test.mjs"], "suites": ["full", "release"], "covers": ["REST", "MCP", "revoke", "expiry"] },
+    { "id": "V19-L6-COMPAT-001", "layer": "L6", "domain": "compatibility", "priority": "P1", "command": ["node", "tests/unit/v19-migration.test.mjs"], "suites": ["full", "release"], "covers": ["schema 18"] }
+  ]
+}

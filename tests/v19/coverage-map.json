@@ -1,0 +1,9 @@
+{
+  "version": "1.9",
+  "state_schema": 18,
+  "roles": ["owner", "collaborator", "viewer"],
+  "hierarchy": ["project", "workflow", "workstream", "task"],
+  "scopes": ["project:create", "project:read", "project:write", "github:read", "github:write", "exchange:read", "exchange:write", "approval:decide"],
+  "collections": ["project_memberships", "project_invitations", "canonical_repositories", "project_repository_bindings", "repository_deletion_intents", "exchange_requests", "exchange_grants", "context_packs"],
+  "mappings": ["tool", "resource", "async_adapter", "external_callback", "frontend_only"]
+}
