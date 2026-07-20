@@ -4,10 +4,13 @@ import { computeSetupStatus, setupRecord } from '../setup-status.mjs';
 import { now } from '../../../../packages/shared/index.mjs';
 import { removeSecret } from '../vault.mjs';
 import { inspectCodexRuntimeCached } from '../codex-runtime-status.mjs';
+import { actorForRequest, requireInstanceOwner } from '../project-governance-v19.mjs';
+import { revokeRepositoryInstallationBindingsInState } from '../repository-lifecycle-v19.mjs';
 
 export const setupV12Routes = [
   makeRoute('GET', '/setup/status', async ({ res }) => { const state = await readState(); return send(res, 200, computeSetupStatus(state, await setupRuntime(state))); }),
-  makeRoute('PUT', '/setup/mode', async ({ res, body }) => {
+  makeRoute('PUT', '/setup/mode', async ({ req, res, body }) => {
+    const authState = await readState(); requireInstanceOwner(authState, actorForRequest(authState, req, { strict: Boolean(req.auth?.clientId) })?.id);
     if (!['hosted', 'byo'].includes(body.mode)) throw new HttpError(400, { error: 'invalid_setup_mode' });
     const runtime = await setupRuntime(await readState());
     const changed = await mutate((state) => {
@@ -17,6 +20,7 @@ export const setupV12Routes = [
       const refs = modeChanged ? state.connected_accounts.filter((item) => item.provider === 'github').map((item) => item.credential_ref).filter(Boolean) : [];
       if (modeChanged) {
         state.connected_accounts = state.connected_accounts.filter((item) => item.provider !== 'github');
+        revokeRepositoryInstallationBindingsInState(state, null, null, { reason: 'setup_mode_changed' });
         state.github_installations = [];
         state.repository_bindings = [];
       }
@@ -27,7 +31,8 @@ export const setupV12Routes = [
     await Promise.all(changed.refs.map(removeSecret));
     return send(res, 200, changed.status);
   }),
-  makeRoute('POST', '/setup/complete', async ({ res }) => {
+  makeRoute('POST', '/setup/complete', async ({ req, res }) => {
+    const authState = await readState(); requireInstanceOwner(authState, actorForRequest(authState, req, { strict: Boolean(req.auth?.clientId) })?.id);
     const runtime = await setupRuntime(await readState());
     const result = await mutate((state) => {
       const status = computeSetupStatus(state, runtime);

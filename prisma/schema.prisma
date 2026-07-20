@@ -40,6 +40,7 @@ model Project {
   lifecycleOperation Json?    @map("lifecycle_operation")
   workflowMigrationStatus String @default("not_required") @map("workflow_migration_status")
   repositoryConnectionIds String[] @map("repository_connection_ids")
+  ownerUserId        String   @map("owner_user_id")
   createdByUserId    String   @map("created_by_user_id")
   createdBy          User     @relation(fields: [createdByUserId], references: [id])
   createdAt          DateTime @map("created_at")
@@ -1122,10 +1123,187 @@ model McpClient {
   lastUsedAt            DateTime? @map("last_used_at")
   revokedAt             DateTime? @map("revoked_at")
   revokedBy             String?   @map("revoked_by")
+  subjectUserId         String?   @map("subject_user_id")
 
   @@index([status, expiresAt])
   @@index([kind, status])
   @@map("mcp_clients")
+}
+
+model InstanceConfiguration {
+  id                  String   @id
+  instanceOwnerUserId String   @map("instance_owner_user_id")
+  createdAt           DateTime @map("created_at")
+  updatedAt           DateTime @map("updated_at")
+
+  @@map("instance_configuration")
+}
+
+model ProjectMembership {
+  id                  String    @id
+  projectId           String    @map("project_id")
+  userId              String    @map("user_id")
+  role                String
+  status              String
+  source              String?
+  invitedByUserId     String?   @map("invited_by_user_id")
+  invitationId        String?   @map("invitation_id")
+  githubIdentity      Json?     @map("github_identity")
+  acceptedAt          DateTime? @map("accepted_at")
+  revokedAt           DateTime? @map("revoked_at")
+  createdAt           DateTime  @map("created_at")
+  updatedAt           DateTime  @map("updated_at")
+
+  @@unique([projectId, userId])
+  @@index([userId, status])
+  @@map("project_memberships")
+}
+
+model ProjectInvitation {
+  id                  String    @id
+  projectId           String    @map("project_id")
+  invitedByUserId     String    @map("invited_by_user_id")
+  inviteeUserId       String?   @map("invitee_user_id")
+  githubIdentity      Json?     @map("github_identity")
+  role                String
+  status              String
+  revision            Int       @default(1)
+  operationKey        String?   @map("operation_key")
+  expiresAt           DateTime  @map("expires_at")
+  acceptedAt          DateTime? @map("accepted_at")
+  revokedAt           DateTime? @map("revoked_at")
+  createdAt           DateTime  @map("created_at")
+  updatedAt           DateTime  @map("updated_at")
+
+  @@index([projectId, status])
+  @@unique([projectId, invitedByUserId, operationKey])
+  @@map("project_invitations")
+}
+
+model CanonicalRepository {
+  id                       String    @id
+  provider                 String
+  repositoryId             String    @map("repository_id")
+  fullName                 String    @map("full_name")
+  name                     String
+  installationId           String?   @map("installation_id")
+  defaultBranch            String    @map("default_branch")
+  private                  Boolean
+  visibility               String
+  creatorUserId            String?   @map("creator_user_id")
+  creatorGithubIdentity    Json?     @map("creator_github_identity")
+  origin                   String
+  externalImport           Boolean   @default(false) @map("external_import")
+  administrationPermission String?   @map("administration_permission")
+  remoteState              String    @map("remote_state")
+  remoteSnapshot           Json      @map("remote_snapshot")
+  remoteSnapshotHash       String    @map("remote_snapshot_hash")
+  deletedAt                DateTime? @map("deleted_at")
+  createdAt                DateTime  @map("created_at")
+  updatedAt                DateTime  @map("updated_at")
+
+  @@unique([provider, repositoryId])
+  @@index([fullName])
+  @@map("canonical_repositories")
+}
+
+model ProjectRepositoryBinding {
+  id                    String    @id
+  projectId             String    @map("project_id")
+  canonicalRepositoryId String    @map("canonical_repository_id")
+  installationId        String?   @map("installation_id")
+  localCheckoutPath     String    @map("local_checkout_path")
+  managedWorktreeRoot   String    @map("managed_worktree_root")
+  permissions           Json
+  status                String
+  createdByUserId       String    @map("created_by_user_id")
+  removedAt             DateTime? @map("removed_at")
+  createdAt             DateTime  @map("created_at")
+  updatedAt             DateTime  @map("updated_at")
+
+  @@unique([projectId, canonicalRepositoryId])
+  @@index([canonicalRepositoryId, status])
+  @@map("project_repository_bindings")
+}
+
+model RepositoryDeletionIntent {
+  id                        String    @id
+  canonicalRepositoryId     String    @map("canonical_repository_id")
+  requestedByUserId         String    @map("requested_by_user_id")
+  operationKey              String?   @map("operation_key")
+  status                    String
+  revision                  Int
+  consentChallenge          String    @map("consent_challenge")
+  snapshot                  Json
+  snapshotHash              String    @map("snapshot_hash")
+  creatorConsent            Json?     @map("creator_consent")
+  projectOwnerConfirmations Json      @map("project_owner_confirmations")
+  expiresAt                 DateTime  @map("expires_at")
+  executionStartedAt        DateTime? @map("execution_started_at")
+  executedAt                DateTime? @map("executed_at")
+  remoteResult              Json?     @map("remote_result")
+  reconciliation            Json?
+  createdAt                 DateTime  @map("created_at")
+  updatedAt                 DateTime  @map("updated_at")
+
+  @@index([canonicalRepositoryId, status])
+  @@unique([canonicalRepositoryId, requestedByUserId, operationKey])
+  @@map("repository_deletion_intents")
+}
+
+model ExchangeRequest {
+  id                   String    @id
+  sourceProjectId      String    @map("source_project_id")
+  targetProjectId      String    @map("target_project_id")
+  requesterUserId      String    @map("requester_user_id")
+  rootScope            Json      @map("root_scope")
+  allowedDepth         Int       @map("allowed_depth")
+  items                Json
+  snapshot             Json
+  snapshotHash         String    @map("snapshot_hash")
+  snapshotVersion      Int       @map("snapshot_version")
+  tokenBudget          Int       @map("token_budget")
+  estimatedTokens      Int       @map("estimated_tokens")
+  sourceApproval       Json?     @map("source_approval")
+  targetApproval       Json?     @map("target_approval")
+  status               String
+  revision             Int
+  operationKey         String?   @map("operation_key")
+  expiresAt            DateTime  @map("expires_at")
+  revokedAt            DateTime? @map("revoked_at")
+  revokedByUserId      String?   @map("revoked_by_user_id")
+  createdAt            DateTime  @map("created_at")
+  updatedAt            DateTime  @map("updated_at")
+
+  @@index([sourceProjectId, status])
+  @@index([targetProjectId, status])
+  @@map("exchange_requests")
+}
+
+model ExchangeGrant {
+  id                    String    @id
+  exchangeRequestId     String    @map("exchange_request_id")
+  sourceProjectId       String    @map("source_project_id")
+  targetProjectId       String    @map("target_project_id")
+  requesterUserId       String    @map("requester_user_id")
+  requestRevision       Int       @map("request_revision")
+  snapshotHash          String    @map("snapshot_hash")
+  rootScope             Json      @map("root_scope")
+  allowedDepth          Int       @map("allowed_depth")
+  itemRefs              Json      @map("item_refs")
+  tokenBudget           Int       @map("token_budget")
+  status                String
+  expiresAt             DateTime  @map("expires_at")
+  revokedAt             DateTime? @map("revoked_at")
+  revokedByUserId       String?   @map("revoked_by_user_id")
+  lastContextPackId     String?   @map("last_context_pack_id")
+  lastInjectedAt        DateTime? @map("last_injected_at")
+  createdAt             DateTime  @map("created_at")
+  updatedAt             DateTime  @map("updated_at")
+
+  @@unique([exchangeRequestId])
+  @@index([targetProjectId, status])
+  @@map("exchange_grants")
 }
 
 model WorkflowGeneration {

@@ -127,6 +127,7 @@ export async function dispatch(routes, ctx) {
     if (!params) continue;
     ctx.params = params;
     ctx.body = item.body === 'stream' ? {} : ['POST', 'PUT', 'PATCH'].includes(ctx.req.method) ? await parseBody(ctx.req) : {};
+    if (typeof ctx.authorize === 'function') await ctx.authorize(item, ctx);
     await item.handler(ctx);
     return true;
   }

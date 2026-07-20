@@ -7,7 +7,7 @@ import { createInstallationToken, githubGitAuthEnv, resolveGithubAppConfig } fro
 import { managedProjectRoot, managedRepoPath } from './project-lifecycle.mjs';
 
 export async function ensureRepositoryCheckout(state, { project, installation, repository, adapted = false, adaptedFailure = null }) {
-  const currentBinding = state.repository_bindings.find((item) => item.project_id === project.id);
+  const currentBinding = state.repository_bindings.find((item) => item.project_id === project.id && item.status !== 'removed');
   const root = managedProjectRoot(project.id);
   const target = managedRepoPath(project.id);
   await fsp.mkdir(root, { recursive: true });

@@ -42,7 +42,9 @@ export const collections = [
   'brief_templates', 'workflow_drafts', 'mcp_clients',
   'workflow_generations', 'workflow_generation_events',
   'repository_connections', 'repository_targets', 'delivery_policies', 'deliveries', 'delivery_events',
-  'workflow_migration_batches', 'workflow_migration_jobs'
+  'workflow_migration_batches', 'workflow_migration_jobs',
+  'project_memberships', 'project_invitations', 'canonical_repositories', 'project_repository_bindings',
+  'repository_deletion_intents', 'exchange_requests', 'exchange_grants'
 ];
 
 export function readLocalGithubAppConfig() {

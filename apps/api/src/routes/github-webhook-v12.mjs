@@ -4,6 +4,7 @@ import { addTrace, mutate, owner, readState } from '../state.mjs';
 import { appCredentials, resolveGithubAppConfig } from '../github-service.mjs';
 import { id, now } from '../../../../packages/shared/index.mjs';
 import { pushV3Event } from '../assist-v3-events.mjs';
+import { reconcileRepositoryDeletionInState, revokeRepositoryInstallationBindingsInState } from '../repository-lifecycle-v19.mjs';
 
 export const githubWebhookV12Routes = [makeRoute('POST', '/github/webhook', webhook)];
 
@@ -22,14 +23,14 @@ async function webhook({ req, res, body }) {
     if (data.webhook_deliveries.some((item) => item.delivery_id === delivery)) return { accepted: true, duplicate: true, event };
     const actor = owner(data);
     data.webhook_deliveries.push({ delivery_id: delivery, event, received_at: now() });
-    applyEvent(data, event, body);
+    applyEvent(data, event, body, delivery);
     addTrace(data, 'github.webhook.received', { summary: `GitHub webhook: ${event}`, data: { delivery_id: delivery, action: body.action } }, actor.id);
     return { accepted: true, duplicate: false, event };
   });
   return send(res, 202, result);
 }
 
-function applyEvent(state, event, payload) {
+function applyEvent(state, event, payload, deliveryId = null) {
   const installationId = String(payload.installation?.id || '');
   const installation = state.github_installations.find((item) => String(item.installation_id) === installationId);
   if (event === 'installation' && payload.action === 'deleted' && installation) {
@@ -44,11 +45,18 @@ function applyEvent(state, event, payload) {
     installation.updated_at = now();
   }
   if (['pull_request', 'pull_request_review', 'check_run', 'check_suite', 'status', 'push'].includes(event)) applyDeliveryEvent(state, event, payload);
+  if (event === 'repository') {
+    const reconciled = reconcileRepositoryDeletionInState(state, payload.repository || {}, { deleted: payload.action === 'deleted', delivery_id: deliveryId });
+    for (const intent of reconciled?.intents || []) addTrace(state, 'repository.deletion.reconciled', { project_id: intent.snapshot?.bindings?.[0]?.project_id || null, target_type: 'repository_deletion_intent', target_id: intent.id, summary: payload.action === 'deleted' ? 'Repository 删除已由 webhook 确认' : 'Repository 仍存在，删除 intent 已对账', data: { delivery_id: deliveryId, status: intent.status } });
+  }
 }
 
 function removeBindings(state, installationId, repositoryIds = null) {
+  revokeRepositoryInstallationBindingsInState(state, installationId, repositoryIds);
+  // Keep the legacy collection's historical behavior for callers that still
+  // treat a missing binding as disconnected, while the V1.9 collections keep
+  // an explicit removed record for audit and reconciliation.
   state.repository_bindings = state.repository_bindings.filter((item) => String(item.installation_id) !== String(installationId) || (repositoryIds && !repositoryIds.has(String(item.repository_id))));
-  for (const connection of state.repository_connections.filter((item) => String(item.installation_id) === String(installationId) && (!repositoryIds || repositoryIds.has(String(item.repository_id))))) Object.assign(connection, { sync_status: 'disconnected', disconnected_at: now(), updated_at: now() });
 }
 
 function applyDeliveryEvent(state, event, payload) {
@@ -59,11 +67,16 @@ function applyDeliveryEvent(state, event, payload) {
   const branch = String(payload.pull_request?.head?.ref || payload.ref || '').replace(/^refs\/heads\//, '');
   const sha = String(payload.check_run?.head_sha || payload.check_suite?.head_sha || payload.sha || payload.after || '');
   let deliveries = state.deliveries.filter((item) => connectionIds.has(item.connection_id));
-  if (payload.pull_request?.number) deliveries = deliveries.filter((item) => item.pr_number
-    ? Number(item.pr_number) === Number(payload.pull_request.number)
-    : Boolean(branch) && item.branch === branch);
-  else if (branch) deliveries = deliveries.filter((item) => item.branch === branch);
-  else if (sha) deliveries = deliveries.filter((item) => item.commit_sha === sha);
+  if (payload.pull_request?.number) {
+    const exact = deliveries.filter((item) => Number(item.pr_number) === Number(payload.pull_request.number));
+    if (exact.length) deliveries = exact;
+    else {
+      const candidates = deliveries.filter((item) => !item.pr_number && Boolean(branch) && item.branch === branch && !['failed', 'cancelled'].includes(item.status));
+      deliveries = latestDelivery(candidates);
+    }
+  }
+  else if (branch) deliveries = latestDelivery(deliveries.filter((item) => item.branch === branch && !['failed', 'cancelled'].includes(item.status)));
+  else if (sha) deliveries = latestDelivery(deliveries.filter((item) => item.commit_sha === sha && !['failed', 'cancelled'].includes(item.status)));
   for (const delivery of deliveries) {
     const update = { event, action: payload.action || null, received_at: now() };
     if (event === 'pull_request') {
@@ -81,10 +94,12 @@ function applyDeliveryEvent(state, event, payload) {
       delivery.remote_head_sha = payload.after || null; update.remote_head_sha = delivery.remote_head_sha;
     }
     delivery.updated_at = now(); appendDeliveryWebhookEvent(state, delivery, update);
-    const task = state.workflow_nodes.find((item) => item.id === delivery.task_id); if (task) { task.delivery_status = deliveryTaskStatus(event, delivery, payload) || task.delivery_status; task.updated_at = now(); }
+    const task = state.workflow_nodes.find((item) => item.id === delivery.task_id); if (task && (!task.latest_delivery_id || task.latest_delivery_id === delivery.id)) { task.delivery_status = deliveryTaskStatus(event, delivery, payload) || task.delivery_status; task.updated_at = now(); }
     for (const session of state.assist_sessions.filter((item) => item.version === 3 && item.scope_type === 'task' && item.scope_id === delivery.task_id && item.scope_status === 'active')) pushV3Event(state, session.id, null, 'delivery_webhook', { delivery_id: delivery.id, ...update });
   }
 }
+
+function latestDelivery(items) { return items.length ? [items[items.length - 1]] : []; }
 
 function deliveryTaskStatus(event, delivery, payload) {
   if (event === 'pull_request') return delivery.pr_draft ? 'draft' : delivery.pr_state;

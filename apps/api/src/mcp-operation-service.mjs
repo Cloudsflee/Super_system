@@ -3,6 +3,7 @@ import { assertProjectAccess, assertScopes } from './mcp-client-service.mjs';
 import { executeRegistryOperation } from './api-route-registry.mjs';
 import { readState } from './state.mjs';
 import { maskSecretsDeep } from '../../../packages/shared/index.mjs';
+import { assertProjectRead, assertProjectWrite } from './project-governance-v19.mjs';
 
 const terminalStatuses = new Set(['completed', 'completed_with_failures', 'succeeded', 'failed', 'cancelled', 'canceled', 'stopped', 'exited', 'interrupted', 'applied', 'rejected', 'stale', 'superseded']);
 const operationCollections = [
@@ -15,6 +16,7 @@ export async function getMcpOperation(operationId, client) {
   const state = await readState(), found = findOperation(state, operationId);
   if (!found) throw new HttpError(404, { error: 'mcp_operation_handle_not_found', operation_id: operationId });
   assertProjectAccess(client, found.item.project_id || null);
+  assertOperationMembership(state, client, found.item.project_id, 'read');
   return publicOperation(found.collection, found.item);
 }
 
@@ -32,6 +34,7 @@ export async function readMcpOperationEvents(operationId, { cursor = null, limit
   const state = await readState(), found = findOperation(state, operationId);
   if (!found) throw new HttpError(404, { error: 'mcp_operation_handle_not_found', operation_id: operationId });
   assertProjectAccess(client, found.item.project_id || null);
+  assertOperationMembership(state, client, found.item.project_id, 'read');
   const related = relatedEvents(state, found.item).sort((a, b) => String(a.created_at || a.updated_at || '').localeCompare(String(b.created_at || b.updated_at || '')) || String(a.id).localeCompare(String(b.id)));
   const offset = decodeCursor(cursor), size = Math.min(Math.max(Number(limit) || 100, 1), 500), items = related.slice(offset, offset + size);
   return { operation: publicOperation(found.collection, found.item), items: maskSecretsDeep(items), cursor: encodeCursor(offset + items.length), has_more: offset + items.length < related.length };
@@ -41,6 +44,7 @@ export async function cancelMcpOperation(registry, operationId, body, client) {
   const state = await readState(), found = findOperation(state, operationId);
   if (!found) throw new HttpError(404, { error: 'mcp_operation_handle_not_found', operation_id: operationId });
   assertProjectAccess(client, found.item.project_id || null);
+  assertOperationMembership(state, client, found.item.project_id, 'write');
   const target = cancelTarget(registry, found.collection);
   if (!target) throw new HttpError(409, { error: 'mcp_operation_not_cancellable', operation_id: operationId, status: found.item.status || null });
   assertScopes(client, target.required_scopes);
@@ -92,3 +96,4 @@ function cancelParams(collection, item) {
 
 function encodeCursor(offset) { return Buffer.from(JSON.stringify({ offset }), 'utf8').toString('base64url'); }
 function decodeCursor(cursor) { if (!cursor) return 0; try { const value = JSON.parse(Buffer.from(String(cursor), 'base64url').toString('utf8')); if (!Number.isSafeInteger(value.offset) || value.offset < 0) throw new Error('invalid'); return value.offset; } catch { throw new HttpError(400, { error: 'mcp_cursor_invalid' }); } }
+function assertOperationMembership(state, client, projectId, action) { if (!projectId) return; if (!client.subject_user_id) throw new HttpError(403, { error: 'mcp_subject_user_required' }); return action === 'write' ? assertProjectWrite(state, projectId, client.subject_user_id) : assertProjectRead(state, projectId, client.subject_user_id); }

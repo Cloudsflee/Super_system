@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { hashString } from '../../packages/shared/index.mjs';
 import { migrateState16To17 } from '../../apps/api/src/state-migration-v17.mjs';
 import { migrateState17To18, validateState18, V18_COLLECTIONS } from '../../apps/api/src/state-migration-v18.mjs';
+import { purgeProjectInState } from '../../apps/api/src/state-purge.mjs';
 import { applyLegacyWorkflowMigrationInState, validateLegacyMigrationMapping } from '../../apps/api/src/workflow-migration-service.mjs';
 
 const v17 = migrateState16To17({ schema_version: 12 }).state;
@@ -48,6 +49,57 @@ assert.deepEqual(state.assist_sessions.map((item) => item.id), referenceIds.assi
 assert.equal(state.assist_sessions[0].scope_type, 'task');
 assert.equal(state.assist_sessions[0].scope_status, 'active');
 assert.equal(state.workflow_nodes.filter((item) => item.role === 'task').every((item) => item.migrated_from_legacy), true);
+
+const purgeState = structuredClone(state);
+purgeState.projects.push({ id: 'project-other', title: 'Retained Project', current_workspace_id: 'workspace-other' });
+purgeState.workspaces.push({ id: 'workspace-other', project_id: 'project-other' });
+purgeState.workflows.push({ id: 'workflow-other', project_id: 'project-other', workspace_id: 'workspace-other' });
+purgeState.workflow_migration_batches.push(
+  { id: 'batch-exclusive', project_ids: ['project-legacy'], workflow_ids: ['workflow-legacy'], status: 'completed_with_failures' },
+  { id: 'batch-shared', project_ids: ['project-legacy', 'project-other'], workflow_ids: ['workflow-legacy', 'workflow-other'], status: 'pending_approval' }
+);
+purgeState.workflow_migration_jobs.push(
+  { id: 'job-exclusive', batch_id: 'batch-exclusive', project_id: 'project-legacy', workflow_id: 'workflow-legacy' },
+  { id: 'job-shared-deleted', batch_id: 'batch-shared', project_id: 'project-legacy', workflow_id: 'workflow-legacy' },
+  { id: 'job-shared-retained', batch_id: 'batch-shared', project_id: 'project-other', workflow_id: 'workflow-other' }
+);
+purgeState.mcp_clients.push(
+  { id: 'mcp-exclusive', project_allowlist: ['project-legacy'] },
+  { id: 'mcp-shared', project_allowlist: ['project-legacy', 'project-other'] },
+  { id: 'mcp-global', project_allowlist: [] }
+);
+purgeState.assist_sessions.push({ id: 'assist-legacy-wizard', target_type: 'project_wizard', target_id: 'project-legacy' });
+purgeState.assist_messages.push({ id: 'message-legacy-wizard', session_id: 'assist-legacy-wizard' });
+purgeState.traces.push(
+  { id: 'trace-mcp-deleted', target_type: 'mcp_client', target_id: 'mcp-exclusive', summary: 'Project-scoped client' },
+  { id: 'trace-migration-deleted', target_type: 'workflow_migration_job', target_id: 'job-exclusive', summary: 'Legacy migration' }
+);
+purgeState.exchange_requests.push({ id: 'exchange-deleted', source_project_id: 'project-legacy', target_project_id: 'project-other' });
+purgeState.exchange_grants.push({ id: 'grant-deleted', exchange_request_id: 'exchange-deleted' });
+purgeState.context_packs.push({ id: 'exchange-pack-deleted', exchange_request_id: 'exchange-deleted', exchange_grant_id: 'grant-deleted' });
+purgeState.legacy_project_allowlist_compat = ['project-legacy', 'project-other'];
+purgeProjectInState(purgeState, 'project-legacy');
+assert.equal(JSON.stringify(purgeState).includes('project-legacy'), false, 'Project purge removes all legacy V1.9 references');
+assert.equal(purgeState.workflow_migration_batches.some((item) => item.id === 'batch-exclusive'), false);
+assert.deepEqual(purgeState.workflow_migration_batches.find((item) => item.id === 'batch-shared')?.project_ids, ['project-other']);
+assert.deepEqual(purgeState.workflow_migration_batches.find((item) => item.id === 'batch-shared')?.workflow_ids, ['workflow-other']);
+assert.deepEqual(purgeState.workflow_migration_jobs.map((item) => item.id), ['job-shared-retained']);
+assert.equal(purgeState.mcp_clients.some((item) => item.id === 'mcp-exclusive'), false);
+assert.deepEqual(purgeState.mcp_clients.find((item) => item.id === 'mcp-shared')?.project_allowlist, ['project-other']);
+assert.equal(purgeState.mcp_clients.some((item) => item.id === 'mcp-global'), true);
+assert.equal(purgeState.traces.some((item) => item.id === 'trace-mcp-deleted'), false);
+assert.equal(purgeState.traces.some((item) => item.id === 'trace-migration-deleted'), false);
+assert.equal(purgeState.assist_sessions.some((item) => item.id === 'assist-legacy-wizard'), false);
+assert.equal(purgeState.assist_messages.some((item) => item.id === 'message-legacy-wizard'), false);
+assert.equal(purgeState.exchange_requests.some((item) => item.id === 'exchange-deleted'), false);
+assert.equal(purgeState.exchange_grants.some((item) => item.id === 'grant-deleted'), false);
+assert.equal(purgeState.context_packs.some((item) => item.id === 'exchange-pack-deleted'), false);
+assert.deepEqual(purgeState.legacy_project_allowlist_compat, ['project-other']);
+
+const legacyPurgeState = structuredClone(state);
+for (const collection of ['exchange_requests', 'exchange_grants', 'workflow_migration_batches', 'workflow_migration_jobs', 'mcp_clients']) delete legacyPurgeState[collection];
+purgeProjectInState(legacyPurgeState, 'project-legacy');
+assert.equal(legacyPurgeState.projects.some((item) => item.id === 'project-legacy'), false, 'pre-V1.9 states can be purged without optional collections');
 
 console.log('V1.9 state and semantic workflow migration unit tests passed');
 

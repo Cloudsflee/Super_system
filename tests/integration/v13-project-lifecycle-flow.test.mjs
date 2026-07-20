@@ -93,13 +93,29 @@ try {
   await api(port, `/projects/${projectId}/purge`, 'POST', { confirm_title: 'V1.3 Managed Project' }, 409, 'project_not_trashed');
   assert.equal(fs.existsSync(managedRepo), true, 'active project purge must not remove managed files');
   await server.stop();
-  const seededArtifact = seedProjectPurgeDependents(path.join(fixture.home, 'data', 'state.json'), { projectId, workspaceId: confirmed.project.current_workspace_id });
+  const seeded = seedProjectPurgeDependents(path.join(fixture.home, 'data', 'state.json'), { projectId, workspaceId: confirmed.project.current_workspace_id });
+  const seededArtifact = seeded.artifact;
   const transientFiles = seedTransientFiles(fixture.home);
   server = await startApi({ port, home: fixture.home, ccSwitch: fixture.ccSwitch });
   const recoveredState = JSON.parse(fs.readFileSync(path.join(fixture.home, 'data', 'state.json'), 'utf8'));
   assert.equal(recoveredState.node_runs.find((item) => item.id === 'run-purge-late').status, 'failed');
+  assert.equal(recoveredState.workflow_nodes.find((item) => item.id === seeded.taskId).status, 'blocked');
   assert.equal(recoveredState.import_jobs.find((item) => item.id === 'import-purge-late').error_code, 'service_restarted');
   for (const file of transientFiles) assert.equal(fs.existsSync(file), false, `startup removes stale staging file ${file}`);
+
+  const stateFile = path.join(fixture.home, 'data', 'state.json');
+  for (const [collection, record] of [
+    ['terminal_sessions', { id: 'terminal-project-in-use', project_id: projectId, status: 'ready' }],
+    ['workflow_generations', { id: 'generation-project-in-use', project_id: projectId, status: 'queued' }],
+    ['deliveries', { id: 'delivery-project-in-use', project_id: projectId, status: 'running' }],
+    ['workflow_migration_jobs', { id: 'migration-project-in-use', project_id: projectId, status: 'generating' }],
+    ['repository_deletion_intents', { id: 'deletion-project-in-use', canonical_repository_id: 'canonical-project-in-use', status: 'executing', snapshot: { bindings: [{ project_id: projectId }] } }]
+  ]) {
+    const current = JSON.parse(fs.readFileSync(stateFile, 'utf8')); current[collection].push(record); fs.writeFileSync(stateFile, JSON.stringify(current, null, 2));
+    const blocked = await api(port, `/projects/${projectId}/trash`, 'POST', {}, 423, 'project_in_use');
+    assert.equal(blocked.resource_id, record.id);
+    const cleaned = JSON.parse(fs.readFileSync(stateFile, 'utf8')); cleaned[collection] = cleaned[collection].filter((item) => item.id !== record.id); fs.writeFileSync(stateFile, JSON.stringify(cleaned, null, 2));
+  }
 
   const trashed = await api(port, `/projects/${projectId}/trash`, 'POST', {});
   assert.ok(trashed.project.deleted_at);
@@ -157,6 +173,9 @@ function manualWorkflow(prefix, title, taskKind, executionMode) {
 
 function seedProjectPurgeDependents(stateFile, { projectId, workspaceId }) {
   const state = JSON.parse(fs.readFileSync(stateFile, 'utf8')), at = new Date().toISOString();
+  const workflow = state.workflows.find((item) => item.project_id === projectId);
+  const task = state.workflow_nodes.find((item) => item.workflow_id === workflow?.id && item.role === 'task');
+  task.status = 'running';
   const artifact = path.join(path.dirname(path.dirname(stateFile)), 'artifacts', 'purge-test', 'project-sentinel.log');
   fs.mkdirSync(path.dirname(artifact), { recursive: true }); fs.writeFileSync(artifact, 'project artifact sentinel');
   state.assist_sessions.push({ id: 'asst-purge-late', version: 3, project_id: projectId, workspace_id: workspaceId, scope_type: 'project', scope_id: projectId, scope_status: 'active', clarification_policy: 'ask', status: 'idle', created_at: at, updated_at: at });
@@ -173,7 +192,7 @@ function seedProjectPurgeDependents(stateFile, { projectId, workspaceId }) {
   state.assist_checkpoints.push({ id: 'checkpoint-purge-late', batch_id: 'batch-purge-late', session_id: 'asst-purge-late', turn_id: 'turn-purge-late' });
   state.terminal_sessions.push({ id: 'terminal-purge-late', project_id: projectId, assist_session_id: 'asst-purge-late', turn_id: 'turn-purge-late', worktree_id: 'worktree-purge-late', artifact_file_ref_id: 'ref-terminal-purge', status: 'exited' });
   state.human_reviews.push({ id: 'review-purge-late', target_type: 'terminal_session', target_id: 'terminal-purge-late' });
-  state.node_runs.push({ id: 'run-purge-late', project_id: projectId, workspace_id: workspaceId, context_pack_id: 'ctx-purge-late', status: 'running' });
+  state.node_runs.push({ id: 'run-purge-late', project_id: projectId, workspace_id: task.workspace_id || workspaceId, node_id: task.id, context_pack_id: 'ctx-purge-late', status: 'running' });
   state.import_jobs.push({ id: 'import-purge-late', project_id: projectId, kind: 'code_source', operation_key: 'restart-recovery', status: 'processing', created_at: at, updated_at: at });
   state.test_results.push({ id: 'test-result-purge-late', run_id: 'run-purge-late' });
   state.assets.push({ id: 'asset-purge-late', project_id: projectId, workspace_id: workspaceId, run_id: 'run-purge-late' });
@@ -182,7 +201,7 @@ function seedProjectPurgeDependents(stateFile, { projectId, workspaceId }) {
   state.runner_memory_candidates.push({ id: 'memory-purge-late', project_id: projectId, workspace_id: workspaceId });
   state.file_refs.push({ id: 'ref-context-purge', absolute_path: artifact, meta: { context_pack_id: 'ctx-purge-late' } }, { id: 'ref-terminal-purge', meta: { terminal_session_id: 'terminal-purge-late' } });
   fs.writeFileSync(stateFile, JSON.stringify(state, null, 2));
-  return artifact;
+  return { artifact, taskId: task.id };
 }
 
 function seedInterruptedPurge(stateFile, projectId) { const state = JSON.parse(fs.readFileSync(stateFile, 'utf8')), project = state.projects.find((item) => item.id === projectId); project.lifecycle_operation = { id: 'plop-interrupted-test', type: 'purge', started_at: new Date().toISOString(), trash_path: project.trash_metadata?.path || project.trash_path, retain_managed_directory: false }; fs.writeFileSync(stateFile, JSON.stringify(state, null, 2)); }

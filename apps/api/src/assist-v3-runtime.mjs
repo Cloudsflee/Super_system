@@ -21,6 +21,8 @@ import { coordinateAssistSession } from './assist-session-coordinator.mjs';
 import { dynamicPageToolSpec, handleDynamicPageTool } from './assist-operations.mjs';
 import { cancelTurnUserInputs, waitForAssistUserInput } from './assist-user-input.mjs';
 import { nativeAttachmentBindings, verifyTurnAttachmentManifest } from './assist-attachments.mjs';
+import { currentActorId, runAsActor } from './actor-context.mjs';
+import { assertProjectWrite } from './project-governance-v19.mjs';
 
 const controllers = new Map();
 const pumps = new Map();
@@ -34,7 +36,7 @@ export function scheduleV3Session(sessionId) {
       if (activeTurn(state, sessionId)) return;
       const next = state.assist_turns.filter((item) => item.session_id === sessionId && item.status === 'queued').sort((a, b) => String(a.created_at).localeCompare(String(b.created_at)))[0];
       if (!next) return;
-      await coordinateAssistSession(sessionId, () => runV3Turn(next.id));
+      await runAsActor(turnActorId(state, next), () => coordinateAssistSession(sessionId, () => runV3Turn(next.id)));
     }
   })().catch(() => undefined).finally(() => {
     if (pumps.get(sessionId) === pump) pumps.delete(sessionId);
@@ -50,6 +52,7 @@ async function runV3Turn(turnId) {
     start = await mutate((state) => {
       const turn = requireTurn(state, turnId), session = requireSession(state, turn.session_id), project = requireProject(state, turn.project_id);
       if (turn.status !== 'queued') return null;
+      assertProjectWrite(state, turn.project_id, currentActorId());
       Object.assign(turn, { status: 'preparing', started_at: now(), updated_at: now() });
       Object.assign(session, { status: 'running', updated_at: now() }); return { turn, session, project };
     });
@@ -219,6 +222,11 @@ function appServerAvailable(state, profile) {
   const cached = state.integration_statuses.find((item) => item.key === 'codex_capabilities')?.result;
   if (cached?.compatible && cached.selected_runtime === (profile.kind === 'docker' ? 'docker' : 'host')) return preferAssistAppServer(profile, cached);
   return preferAssistAppServer(profile, probeCodexCapabilities({ profile }));
+}
+
+function turnActorId(state, turn) {
+  const session = state.assist_sessions.find((item) => item.id === turn.session_id), project = state.projects.find((item) => item.id === turn.project_id);
+  return turn.created_by_user_id || session?.created_by_user_id || project?.owner_user_id || project?.created_by_user_id || null;
 }
 export function preferAssistAppServer(_profile, capability) { return capability?.guided_transport === 'app-server'; }
 

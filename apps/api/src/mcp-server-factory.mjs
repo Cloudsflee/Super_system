@@ -11,6 +11,7 @@ import { appendMcpUploadChunk, beginMcpUpload, cancelMcpUpload, commitMcpUpload 
 import { closeMcpGithubPullRequest, deleteMcpGithubBranch } from './mcp-github-service.mjs';
 import { readState } from './state.mjs';
 import { terminalRuntimeAction } from './terminal-service.mjs';
+import { assertProjectRead, assertProjectRun } from './project-governance-v19.mjs';
 
 export const MCP_TOOL_NAMES = Object.freeze([
   'aiws_system', 'aiws_projects', 'aiws_workflow', 'aiws_assist', 'aiws_runs', 'aiws_files',
@@ -19,6 +20,7 @@ export const MCP_TOOL_NAMES = Object.freeze([
 ]);
 
 export const MCP_SPECIAL_CAPABILITIES = Object.freeze([
+  { operation_id: 'aiws.projects.create', domain: 'projects', mapping: 'tool', required_scopes: ['project:create'], risk: 'high', reason: 'Stable V1.9 Project creation alias.' },
   { operation_id: 'aiws.files.upload.begin', domain: 'files', mapping: 'tool', required_scopes: ['files:write'], risk: 'medium' },
   { operation_id: 'aiws.files.upload.chunk', domain: 'files', mapping: 'tool', required_scopes: ['files:write'], risk: 'medium' },
   { operation_id: 'aiws.files.upload.commit', domain: 'files', mapping: 'tool', required_scopes: ['files:write'], risk: 'high' },
@@ -37,6 +39,7 @@ export const MCP_SPECIAL_CAPABILITIES = Object.freeze([
 ]);
 
 const virtualActions = Object.freeze({
+  aiws_projects: ['aiws.projects.create'],
   aiws_files: ['aiws.files.upload.begin', 'aiws.files.upload.chunk', 'aiws.files.upload.commit', 'aiws.files.upload.cancel'],
   aiws_terminal: ['aiws.terminal.input', 'aiws.terminal.resize', 'aiws.terminal.signal', 'aiws.terminal.read'],
   aiws_github: ['aiws.github.pull_request.close', 'aiws.github.branch.delete']
@@ -154,8 +157,10 @@ async function notifySubscriptions(server, subscriptions, client) {
 }
 
 async function executeAction(registry, action, args, client) {
+  if (action === 'aiws.projects.create') return executeRegistryOperation(registry, 'aiws.projects.post.projects', args?.body || args?.params || args?.query ? args : { body: args || {} }, { client });
   if (action.startsWith('aiws.files.upload.')) {
     try {
+      requireProjectSubject(client);
       const data = action.endsWith('.begin') ? await beginMcpUpload(args, client) : action.endsWith('.chunk') ? await appendMcpUploadChunk(args, client) : action.endsWith('.commit') ? await commitMcpUpload(args, client) : await cancelMcpUpload(args, client);
       return ok(action, data);
     } catch (error) { return fromError(action, error); }
@@ -165,6 +170,9 @@ async function executeAction(registry, action, args, client) {
       const mode = action.slice('aiws.terminal.'.length), state = await readState(), session = state.terminal_sessions.find((item) => item.id === args.session_id);
       if (!session) throw new HttpError(404, { error: 'terminal_session_not_found' });
       assertProjectAccess(client, session.project_id); assertScopes(client, [mode === 'read' ? 'terminal:read' : mode === 'resize' ? 'terminal:write' : 'terminal:execute']);
+      requireProjectSubject(client);
+      if (mode === 'read') assertProjectRead(state, session.project_id, client.subject_user_id);
+      else assertProjectRun(state, session.project_id, client.subject_user_id);
       return ok(action, await terminalRuntimeAction(session.id, mode, args));
     } catch (error) { return fromError(action, error); }
   }
@@ -183,3 +191,4 @@ function fail(operationId, status, error, details = {}) { return { ok: false, op
 function fromError(operationId, error) { return error instanceof HttpError ? fail(operationId, error.status, typeof error.payload === 'string' ? error.payload : error.payload.error, typeof error.payload === 'object' ? error.payload : {}) : fail(operationId, 500, 'mcp_operation_failed', { message: String(error?.message || error) }); }
 function specialAllowed(action, client) { const item = MCP_SPECIAL_CAPABILITIES.find((candidate) => candidate.operation_id === action); return item ? item.required_scopes.every((scope) => client.scopes.includes(scope)) : false; }
 function capabilityRisk(action, registry) { return registry.find((item) => item.operation_id === action)?.risk || MCP_SPECIAL_CAPABILITIES.find((item) => item.operation_id === action)?.risk || 'low'; }
+function requireProjectSubject(client) { if (!client.subject_user_id) throw new HttpError(403, { error: 'mcp_subject_user_required' }); return client.subject_user_id; }

@@ -158,7 +158,7 @@ async function executeGitAction(action) {
     result = git(repo, files.length ? ['add', '--', ...files] : ['add', '-A'], 10000);
     if (result.ok) result = git(repo, ['commit', '-m', String(action.args.message || 'chore(aiws): apply confirmed Assist change').slice(0, 500)], 20000);
   } else {
-    const binding = state.repository_bindings.find((item) => item.project_id === project.id), authorization = authorizeRepositoryAction({ role: actor.role, permissions: binding?.permissions || {}, operation: 'git_push' });
+    const binding = state.repository_bindings.find((item) => item.project_id === project.id && item.status !== 'removed'), authorization = authorizeRepositoryAction({ role: actor.role, permissions: binding?.permissions || {}, operation: 'git_push' });
     if (!authorization.allowed) throw new HttpError(403, { error: 'repository_permission_denied', authorization });
     const remote = String(action.args.remote || binding?.remote_name || 'origin'), refspec = String(action.args.refspec || 'HEAD');
     if (!/^[a-zA-Z0-9._-]+$/.test(remote) || !/^(HEAD|refs\/heads\/[a-zA-Z0-9._\/-]+)(:refs\/heads\/[a-zA-Z0-9._\/-]+)?$/.test(refspec)) throw new HttpError(400, { error: 'invalid_git_push_target' });

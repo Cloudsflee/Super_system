@@ -4,6 +4,7 @@ import { readState } from '../state.mjs';
 import { createDigest } from '../handlers/digests.mjs';
 import { AssetStatus, confirmAsset, now } from '../../../../packages/shared/index.mjs';
 import { assertProjectLifecycleIdle } from '../project-lifecycle-operations.mjs';
+import { accessibleProjectIds, actorForRequest } from '../project-governance-v19.mjs';
 
 async function confirmCandidate({ res, params, body }) {
   const result = await mutate((state) => {
@@ -38,7 +39,7 @@ function currentVersion(state, asset) { return state.asset_versions.find((item) 
 function assertAssetProjectIdle(state, asset) { return assertProjectLifecycleIdle(state.projects.find((item) => item.id === asset.project_id)); }
 
 export const assetRoutes = [
-  makeRoute('GET', '/assets', async ({ res, query }) => { const state = await readState(); const assets = query.project_id ? state.assets.filter((item) => item.project_id === query.project_id) : state.assets; return send(res, 200, assets); }),
+  makeRoute('GET', '/assets', async ({ req, res, query }) => { const state = await readState(), actor = actorForRequest(state, req, { strict: Boolean(req.auth?.clientId) }), allowed = accessibleProjectIds(state, actor?.id); const assets = state.assets.filter((item) => allowed.has(item.project_id) && (!query.project_id || item.project_id === query.project_id)); return send(res, 200, assets); }),
   makeRoute('POST', '/asset-candidates/:id/confirm', confirmCandidate),
   makeRoute('POST', '/asset-candidates/:id/reject', rejectCandidate),
   makeRoute('POST', '/workspaces/:id/digests', (ctx) => createDigest({ ...ctx, send }))

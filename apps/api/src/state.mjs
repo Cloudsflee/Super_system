@@ -8,9 +8,12 @@ import { codexAuthMatchesProfile, isThirdPartyProvider, normalizeProviderBaseUrl
 import { migrateStateFileToV18, normalizeOfficialRunnerImagesV19, STATE_SCHEMA_VERSION, validateState18 } from './state-migration-v18.mjs';
 import { normalizeState18Compatibility } from './state-compatibility.mjs';
 import { currentActorId } from './actor-context.mjs';
-
+import { ensureProjectGovernanceDefaults, expireProjectInvitationsInState } from './project-governance-v19.mjs';
+import { ensureRepositoryLifecycleDefaults, expireRepositoryDeletionIntentsInState } from './repository-lifecycle-v19.mjs';
+import { ensureExchangeDefaults, expireExchangeRequestsInState } from './exchange-v19.mjs';
+import { recoverInterruptedRepositoryDeletionsInState } from './repository-deletion-recovery.mjs';
+import { recoverInvalidDeliveryPullRequestClaimsInState } from './delivery-recovery.mjs';
 let lastMigration = null;
-
 export async function ensureRuntime() {
   await fsp.mkdir(DATA_DIR, { recursive: true });
   await fsp.mkdir(ARTIFACT_DIR, { recursive: true });
@@ -28,6 +31,15 @@ export async function ensureRuntime() {
   if (!state.users.length) { const { user, session } = createLocalOwner(); state.users.push(user); state.sessions.push(session); changed = true; }
   if (!state.tools.length) { state.tools.push(...defaultTools(state.users[0].id)); changed = true; }
   if (!state.codex_profiles.length) { state.codex_profiles.push(...defaultCodexProfiles(state.users[0]?.id)); changed = true; }
+  const governanceBefore = governanceFingerprint(state);
+  ensureProjectGovernanceDefaults(state);
+  if (expireProjectInvitationsInState(state)) changed = true;
+  if (governanceBefore !== governanceFingerprint(state)) changed = true;
+  const lifecycleBefore = lifecycleFingerprint(state);
+  ensureRepositoryLifecycleDefaults(state); ensureExchangeDefaults(state);
+  if (recoverInterruptedRepositoryDeletionsInState(state)) changed = true;
+  if (expireRepositoryDeletionIntentsInState(state) || expireExchangeRequestsInState(state)) changed = true;
+  if (lifecycleBefore !== lifecycleFingerprint(state)) changed = true; const deliveryRecovery = recoverInvalidDeliveryPullRequestClaimsInState(state); if (deliveryRecovery.changed) { changed = true; for (const deliveryId of deliveryRecovery.delivery_ids) addTrace(state, 'integration.synced', { target_type: 'delivery', target_id: deliveryId, summary: 'Removed an invalid webhook PR claim from a failed Delivery.' }); }
   for (const project of state.projects) {
     if (!project.status) { project.status = 'active'; changed = true; }
     project.settings ||= {};
@@ -62,7 +74,7 @@ export async function ensureRuntime() {
     Object.assign(session, { status: 'interrupted', interrupted_reason: 'service_restarted', updated_at: now() }); changed = true;
   }
   for (const run of state.node_runs.filter((item) => ['queued', 'running'].includes(item.status))) {
-    Object.assign(run, { status: 'failed', error_code: 'service_restarted', summary: run.summary || 'NodeRun interrupted by service restart.', completed_at: now(), updated_at: now() }); changed = true;
+    Object.assign(run, { status: 'failed', error_code: 'service_restarted', summary: run.summary || 'NodeRun interrupted by service restart.', completed_at: now(), updated_at: now() }); const node = state.workflow_nodes.find((item) => item.id === run.node_id); if (node) Object.assign(node, { status: 'blocked', updated_at: now() }); changed = true;
   }
   for (const job of state.import_jobs.filter((item) => ['queued', 'starting', 'running', 'processing', 'staging', 'stopping'].includes(item.status))) {
     Object.assign(job, { status: 'failed', error_code: 'service_restarted', updated_at: now() }); changed = true;
@@ -138,7 +150,6 @@ export async function ensureRuntime() {
   const serialized = JSON.stringify(state, null, 2);
   if (changed || await redactKnownSecrets(serialized) !== serialized) await writeState(state);
 }
-
 export function emptyState() { return Object.fromEntries(collections.map((key) => [key, []])); }
 
 function bootstrapState() {
@@ -147,6 +158,7 @@ function bootstrapState() {
   const { user, session } = createLocalOwner();
   state.users.push(user);
   state.sessions.push(session);
+  state.instance_owner_user_id = user.id;
   state.tools.push(...defaultTools(user.id));
   state.codex_profiles.push(...defaultCodexProfiles(user.id));
   state.traces.push(makeTrace('human.reviewed', { summary: '首次启动：创建 Local Owner Account。' }, { type: 'system', id: user.id }));
@@ -157,6 +169,8 @@ export async function readState() { return JSON.parse(await fsp.readFile(STATE_F
 
 export async function writeState(state) {
   normalizeState18Compatibility(state, collections);
+  ensureProjectGovernanceDefaults(state);
+  ensureRepositoryLifecycleDefaults(state); ensureExchangeDefaults(state);
   validateState18(state);
   const tmp = `${STATE_FILE}.tmp`;
   const serialized = await redactKnownSecrets(JSON.stringify(state, null, 2));
@@ -188,7 +202,14 @@ export function mutate(fn) {
 
 export function owner(state) {
   const actorId = currentActorId();
-  return state.users.find((user) => user.id === actorId) || state.users.find((user) => user.role === 'owner') || state.users[0];
+  return state.users.find((user) => user.id === actorId) || state.users.find((user) => user.id === state.instance_owner_user_id) || state.users.find((user) => user.role === 'owner') || state.users[0];
+}
+
+export function actor(state, { required = true } = {}) {
+  const actorId = currentActorId();
+  const value = state.users.find((user) => user.id === actorId) || null;
+  if (!value && required) throw new Error('authenticated_actor_required');
+  return value;
 }
 
 export function addTrace(state, event, payload = {}, actorId = null) {
@@ -217,6 +238,14 @@ function isWithin(root, candidate) {
   if (!candidate) return false;
   const relative = path.relative(path.resolve(root), path.resolve(candidate));
   return relative === '' || (!relative.startsWith('..') && !path.isAbsolute(relative));
+}
+
+function governanceFingerprint(state) {
+  return JSON.stringify({ instance_owner_user_id: state.instance_owner_user_id || null, memberships: (state.project_memberships || []).map((item) => [item.id, item.project_id, item.user_id, item.role, item.status]), project_owners: (state.projects || []).map((item) => [item.id, item.owner_user_id || null]) });
+}
+
+function lifecycleFingerprint(state) {
+  return JSON.stringify({ canonical: (state.canonical_repositories || []).map((item) => [item.id, item.repository_id, item.remote_state]), bindings: (state.project_repository_bindings || []).map((item) => [item.id, item.project_id, item.canonical_repository_id, item.status]), intents: (state.repository_deletion_intents || []).map((item) => [item.id, item.status]), exchanges: (state.exchange_requests || []).map((item) => [item.id, item.status]), grants: (state.exchange_grants || []).map((item) => [item.id, item.status]) });
 }
 
 async function replaceStateFile(source, target) {

@@ -25,6 +25,10 @@
     "webhook_deliveries", "node_workspace_data", "test_tasks", "project_intakes", "project_briefs", "assist_turns",
     "attachments", "worktrees", "runtime_approvals", "terminal_sessions", "config_revisions", "import_jobs",
     "assist_configurations", "assist_change_batches", "assist_checkpoints", "assist_operations", "runtime_user_inputs",
-    "host_bridge_devices", "brief_templates", "workflow_drafts", "mcp_clients"
+    "host_bridge_devices", "brief_templates", "workflow_drafts", "mcp_clients",
+    "workflow_generations", "workflow_generation_events", "repository_connections", "repository_targets",
+    "delivery_policies", "deliveries", "delivery_events", "workflow_migration_batches", "workflow_migration_jobs",
+    "project_memberships", "project_invitations", "canonical_repositories", "project_repository_bindings",
+    "repository_deletion_intents", "exchange_requests", "exchange_grants"
   ]
 }

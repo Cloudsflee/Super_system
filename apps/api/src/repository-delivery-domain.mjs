@@ -1,12 +1,14 @@
 import path from 'node:path';
 import { hashString, id, now } from '../../../packages/shared/index.mjs';
 import { HttpError } from './http.mjs';
+import { assertRepositoryDeletionInactive } from './repository-lifecycle-v19.mjs';
 
 const DELIVERY_PERMISSIONS = new Set(['codex_run', 'commit', 'push', 'draft_pr']);
 
 export function createRepositoryConnectionInState(state, projectId, input, actorId, { allowLocalPath = false } = {}) {
   const project = state.projects.find((item) => item.id === projectId && !item.deleted_at);
   if (!project) throw new HttpError(404, { error: 'project_not_found' });
+  assertRepositoryDeletionInactive(state, { projectId, repositoryId: input.repository_id });
   rejectCredentials(input);
   const repositoryId = required(input.repository_id, 'repository_id_required', 200), fullName = required(input.full_name, 'repository_full_name_required', 300);
   if (!/^[^/\s]+\/[^/\s]+$/.test(fullName)) throw new HttpError(400, { error: 'repository_full_name_invalid' });
@@ -86,7 +88,7 @@ export function requireApprovedDeliveryPolicy(state, task, requestedPolicyId = n
   const policy = state.delivery_policies.filter((item) => item.id === requestedPolicyId || !requestedPolicyId && item.workstream_id === task.parent_node_id && item.connection_id === target.connection_id).sort((a, b) => String(b.approved_at).localeCompare(String(a.approved_at)))[0];
   if (!policy) throw new HttpError(409, { error: 'delivery_policy_approval_required', workstream_id: task.parent_node_id, connection_id: target.connection_id });
   if (policy.status !== 'approved' || policy.expires_at && new Date(policy.expires_at).getTime() <= Date.now()) throw new HttpError(409, { error: 'delivery_policy_reapproval_required', policy_id: policy.id, status: policy.status, expired: Boolean(policy.expires_at && new Date(policy.expires_at).getTime() <= Date.now()) });
-  return { target, policy, connection: requireConnection(state, policy.project_id, target.connection_id) };
+  const connection = requireConnection(state, policy.project_id, target.connection_id); if (connection.sync_status === 'disconnected') throw new HttpError(409, { error: 'repository_connection_not_ready', connection_id: connection.id, status: connection.sync_status }); return { target, policy, connection };
 }
 
 export function assertDeliveryPath(policy, filePath) {

@@ -25,7 +25,7 @@ export function createProject({ title, goal, role = '', background = '', workspa
     project: {
       id: projectId, title: title || goal?.slice(0, 40) || '未命名项目', goal: goal || '', role, background,
       status, workspace_root: workspace_root || repo_path || '', repo_path: repo_path || workspace_root || '',
-      current_workspace_id: workspaceId, settings: { token_budget: 12000, preferred_runner: 'codex_docker', workspace_root_whitelist: workspace_root || repo_path ? [workspace_root || repo_path] : [], ...settings },
+      current_workspace_id: workspaceId, owner_user_id: created_by_user_id, settings: { token_budget: 12000, preferred_runner: 'codex_docker', workspace_root_whitelist: workspace_root || repo_path ? [workspace_root || repo_path] : [], ...settings },
       created_by_user_id, created_at: created, updated_at: created
     },
     workspace: { id: workspaceId, project_id: projectId, parent_workspace_id: null, workflow_node_id: null, type: 'project', title: 'Project Workspace', goal: goal || '', status: WorkspaceStatus.Active, current_digest_id: null, active_agent_session_id: null, open_questions: [], created_at: created, updated_at: created }

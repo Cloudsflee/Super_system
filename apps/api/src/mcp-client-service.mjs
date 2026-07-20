@@ -5,21 +5,20 @@ import { addTrace, mutate, readState } from './state.mjs';
 import { rememberSecret } from './vault.mjs';
 import { id, now } from '../../../packages/shared/index.mjs';
 import { loadMcpGatewaySecret, verifyMcpGatewayRequest } from '../../../packages/mcp-bridge/src/index.mjs';
-
 export const MCP_SCOPES = Object.freeze([
-  'system:read', 'system:write', 'project:read', 'project:write', 'workflow:read', 'workflow:write',
+  'system:read', 'system:write', 'project:create', 'project:read', 'project:write', 'project:share', 'workflow:read', 'workflow:write',
   'assist:read', 'assist:write', 'runs:read', 'runs:write', 'files:read', 'files:write',
   'terminal:read', 'terminal:write', 'terminal:execute', 'git:read', 'git:write',
   'github:read', 'github:write', 'assets:read', 'assets:write', 'governance:read', 'governance:write',
-  'approval:read', 'approval:decide', 'setup:read', 'setup:admin', 'mcp:admin', 'destructive:execute'
+  'approval:read', 'approval:decide', 'exchange:read', 'exchange:write', 'setup:read', 'setup:admin', 'mcp:admin', 'destructive:execute'
 ]);
 
 export const DEFAULT_OPERATOR_SCOPES = Object.freeze(MCP_SCOPES.filter((scope) => ![
-  'approval:decide', 'setup:admin', 'mcp:admin', 'destructive:execute', 'github:write'
+  'project:share', 'approval:decide', 'setup:admin', 'mcp:admin', 'destructive:execute', 'github:write'
 ].includes(scope)));
 
 export const INTERNAL_CODEX_SCOPES = Object.freeze(DEFAULT_OPERATOR_SCOPES.filter((scope) => ![
-  'system:write', 'governance:write'
+  'system:write', 'project:create', 'governance:write'
 ].includes(scope)));
 
 const scopeSet = new Set(MCP_SCOPES);
@@ -76,10 +75,12 @@ export async function revokeMcpClient(clientId, actorId = null) {
 
 export async function issueInternalCodexToken(projectId, { ttlSeconds = 3600, name = 'AIWS built-in Codex' } = {}) {
   if (!projectId) throw new HttpError(400, { error: 'mcp_internal_project_required' });
+  const state = await readState(), project = state.projects.find((item) => item.id === projectId && !item.deleted_at), subjectUserId = project?.owner_user_id || state.instance_owner_user_id || state.users.find((item) => item.role === 'owner')?.id || null;
+  if (!project) throw new HttpError(404, { error: 'mcp_internal_project_not_found', project_id: projectId });
   return createMcpClient({
-    name, scopes: INTERNAL_CODEX_SCOPES, project_allowlist: [projectId], ttl_seconds: Math.min(Math.max(Number(ttlSeconds) || 3600, 60), 21600),
+    name, subject_user_id: subjectUserId, scopes: INTERNAL_CODEX_SCOPES, project_allowlist: [projectId], ttl_seconds: Math.min(Math.max(Number(ttlSeconds) || 3600, 60), 21600),
     concurrent_limit: 4, rate_limit_per_minute: 600
-  }, null, { kind: 'internal_codex', maxTtlSeconds: 21600 });
+  }, subjectUserId, { kind: 'internal_codex', maxTtlSeconds: 21600 });
 }
 
 export async function authenticateMcpToken(rawToken, { requiredScopes = [], projectId = null } = {}) {
@@ -189,8 +190,11 @@ function normalizeSubjectUserId(value, state) {
 }
 
 function assertCollaborativeClientPolicy({ state, subjectUserId, scopes, projectAllowlist, input, kind }) {
-  if (process.env.AIWS_MCP_REMOTE_MODE !== 'gateway' || kind !== 'external') return;
   const subject = state.users.find((user) => user.id === subjectUserId);
+  const instanceOwner = state.instance_owner_user_id || state.users.find((user) => user.role === 'owner')?.id;
+  if (scopes.includes('project:create') && !subject) throw new HttpError(400, { error: 'mcp_client_subject_user_required' });
+  if (scopes.includes('project:create') && subjectUserId !== instanceOwner) throw new HttpError(403, { error: 'project_create_owner_required' });
+  if (process.env.AIWS_MCP_REMOTE_MODE !== 'gateway' || kind !== 'external') return;
   if (!subject) throw new HttpError(400, { error: 'mcp_client_subject_user_required' });
   const role = String(subject.role || 'member');
   const elevated = scopes.some((scope) => ['setup:admin', 'mcp:admin', 'destructive:execute'].includes(scope));
@@ -243,11 +247,8 @@ async function markExpired(clientId) {
   });
 }
 
-function normalizeAddress(value) { return String(value || '').replace(/^::ffff:/, '').replace(/^\[|\]$/g, '').toLowerCase(); }
-function isLoopbackAddress(value) { return value === '::1' || value === 'localhost' || /^127(?:\.\d{1,3}){3}$/.test(value); }
-function isPrivateAddress(value) { return /^10\./.test(value) || /^192\.168\./.test(value) || /^172\.(?:1[6-9]|2\d|3[01])\./.test(value) || /^f[cd][0-9a-f]{2}:/i.test(value); }
-
-function activeGatewaySecret() {
+function normalizeAddress(value) { return String(value || '').replace(/^::ffff:/, '').replace(/^\[|\]$/g, '').toLowerCase(); } function isLoopbackAddress(value) { return value === '::1' || value === 'localhost' || /^127(?:\.\d{1,3}){3}$/.test(value); }
+function isPrivateAddress(value) { return /^10\./.test(value) || /^192\.168\./.test(value) || /^172\.(?:1[6-9]|2\d|3[01])\./.test(value) || /^f[cd][0-9a-f]{2}:/i.test(value); } function activeGatewaySecret() {
   const inline = String(process.env.AIWS_MCP_GATEWAY_SECRET || '').trim();
   const file = String(process.env.AIWS_MCP_GATEWAY_SECRET_FILE || '').trim();
   const stat = !inline && file ? fs.statSync(file) : null;
@@ -255,5 +256,4 @@ function activeGatewaySecret() {
   if (gatewaySecretCache.key === key) return gatewaySecretCache.value;
   const value = loadMcpGatewaySecret();
   gatewaySecretCache = { key, value };
-  return value;
-}
+  return value; }

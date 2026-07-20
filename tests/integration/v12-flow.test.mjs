@@ -53,6 +53,8 @@ try {
   const manifest = await api('/github/manifest/start', { method: 'POST', body: {} });
   assert.equal(manifest.manifest.setup_url, 'http://localhost:4317/integrations/github/install/setup');
   assert.equal(manifest.manifest.public, true);
+  assert.equal(manifest.manifest.default_permissions.administration, 'write');
+  assert.equal(manifest.manifest.default_permissions.checks, 'read');
   assert.equal(manifest.manifest.hook_attributes.active, false);
   const secrets = { client_secret: 'client-secret-v12-unique', private_key: 'private-key-v12-unique', webhook_secret: 'webhook-secret-v12-unique' };
   const publicConfig = await api('/github/app-config/validate', { method: 'POST', body: { adapter: 'test', app_id: '101', client_id: 'Iv1.test', ...secrets } });
@@ -162,9 +164,12 @@ try {
   assert.deepEqual(repositorySnapshot(repo), sourceBefore);
   console.log('v1.2 integration tests passed');
 } finally {
-  child.kill();
-  await new Promise((resolve) => setTimeout(resolve, 200));
-  fs.rmSync(home, { recursive: true, force: true });
+  if (child.exitCode === null) child.kill();
+  await Promise.race([
+    child.exitCode === null ? new Promise((resolve) => child.once('exit', resolve)) : Promise.resolve(),
+    new Promise((resolve) => setTimeout(resolve, 2000))
+  ]);
+  fs.rmSync(home, { recursive: true, force: true, maxRetries: 10, retryDelay: 50 });
 }
 
 async function api(pathname, options = {}, expected = null) {

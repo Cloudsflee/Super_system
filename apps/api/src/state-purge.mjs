@@ -1,9 +1,9 @@
-function ids(items, predicate) {
+function ids(items = [], predicate) {
   return new Set(items.filter(predicate).map((item) => item.id).filter(Boolean));
 }
 
 function includes(values, value) { return value != null && values.has(value); }
-function filter(state, key, keep) { state[key] = state[key].filter(keep); }
+function filter(state, key, keep) { state[key] = (state[key] || []).filter(keep); }
 
 export function purgeAssistSessionsInState(state, sessionIds) {
   return purgeAssistGraph(state, new Set(sessionIds));
@@ -47,8 +47,14 @@ function purgeAssistGraph(state, sessionIds, extraTurnIds = new Set(), extraTerm
 
 export function purgeProjectInState(state, projectId) {
   const graph = projectPurgeGraph(state, projectId);
-  const { workspaceIds, workflowIds, nodeIds, runIds, assetIds, assetVersionIds, sessionIds, turnIds, terminalIds, proposalIds, contextPackIds, checkIds, fileRefIds, targetIds } = graph;
+  const {
+    workspaceIds, workflowIds, nodeIds, runIds, assetIds, assetVersionIds, sessionIds, turnIds, terminalIds,
+    proposalIds, contextPackIds, checkIds, fileRefIds, targetIds, exchangeRequestIds, exchangeGrantIds
+  } = graph;
   purgeAssistGraph(state, sessionIds, turnIds, terminalIds);
+  const migrationTargets = purgeWorkflowMigrationReferences(state, projectId, workflowIds);
+  const removedMcpClientIds = pruneProjectScopedMcpClients(state, projectId);
+  state.legacy_project_allowlist_compat = (state.legacy_project_allowlist_compat || []).filter((id) => id !== projectId);
   for (const [key, values] of Object.entries(state)) if (Array.isArray(values)) state[key] = values.filter((item) => item?.project_id !== projectId);
   filter(state, 'projects', (item) => item.id !== projectId);
   filter(state, 'workflow_nodes', (item) => !includes(workflowIds, item.workflow_id) && !includes(nodeIds, item.id));
@@ -61,6 +67,9 @@ export function purgeProjectInState(state, projectId) {
   filter(state, 'file_refs', (item) => !includes(fileRefIds, item.id) && !fileRefMatches(item, projectId, workspaceIds, runIds, terminalIds, contextPackIds));
   filter(state, 'test_results', (item) => !includes(runIds, item.run_id));
   filter(state, 'config_revisions', (item) => !includes(proposalIds, item.proposal_id));
+  filter(state, 'exchange_grants', (item) => !includes(exchangeGrantIds, item.id));
+  filter(state, 'exchange_requests', (item) => !includes(exchangeRequestIds, item.id));
+  filter(state, 'traces', (item) => !includes(migrationTargets, item.target_id) && !includes(removedMcpClientIds, item.target_id));
 }
 
 export function projectManagedPathsInState(state, projectId) {
@@ -82,16 +91,46 @@ function projectPurgeGraph(state, projectId) {
   const runIds = ids(state.node_runs, (item) => item.project_id === projectId || includes(workspaceIds, item.workspace_id) || includes(nodeIds, item.node_id));
   const assetIds = ids(state.assets, (item) => item.project_id === projectId || includes(workspaceIds, item.workspace_id) || includes(nodeIds, item.node_id) || includes(runIds, item.run_id));
   const assetVersionIds = ids(state.asset_versions, (item) => includes(assetIds, item.asset_id));
-  const sessionIds = ids(state.assist_sessions, (item) => item.project_id === projectId || includes(workspaceIds, item.workspace_id) || includes(nodeIds, item.node_id));
+  const sessionIds = ids(state.assist_sessions, (item) => item.project_id === projectId || includes(workspaceIds, item.workspace_id) || includes(nodeIds, item.node_id)
+    || (['project', 'project_wizard'].includes(item.target_type) && item.target_id === projectId)
+    || (item.scope_type === 'project' && item.scope_id === projectId));
   const turnIds = ids(state.assist_turns, (item) => item.project_id === projectId || includes(sessionIds, item.session_id));
   const terminalIds = ids(state.terminal_sessions, (item) => item.project_id === projectId || includes(sessionIds, item.assist_session_id) || includes(turnIds, item.turn_id));
   const proposalIds = ids(state.change_proposals, (item) => item.project_id === projectId || includes(workspaceIds, item.workspace_id) || includes(nodeIds, item.node_id));
-  const contextPackIds = ids(state.context_packs, (item) => includes(workspaceIds, item.source_workspace_id) || item.content_json?.project?.id === projectId || state.node_runs.some((run) => includes(runIds, run.id) && run.context_pack_id === item.id) || state.assist_turns.some((turn) => includes(turnIds, turn.id) && turn.context_pack_id === item.id));
+  const exchangeRequestIds = ids(state.exchange_requests || [], (item) => item.source_project_id === projectId || item.target_project_id === projectId);
+  const exchangeGrantIds = ids(state.exchange_grants || [], (item) => includes(exchangeRequestIds, item.exchange_request_id));
+  const contextPackIds = ids(state.context_packs, (item) => includes(workspaceIds, item.source_workspace_id) || item.content_json?.project?.id === projectId || includes(exchangeRequestIds, item.exchange_request_id) || includes(exchangeGrantIds, item.exchange_grant_id) || state.node_runs.some((run) => includes(runIds, run.id) && run.context_pack_id === item.id) || state.assist_turns.some((turn) => includes(turnIds, turn.id) && turn.context_pack_id === item.id));
   const checkIds = ids(state.context_sufficiency_checks, (item) => item.project_id === projectId || includes(workspaceIds, item.workspace_id) || includes(nodeIds, item.node_id) || (item.target_type === 'assist_turn' && includes(turnIds, item.target_id)));
   const projectRecords = [...state.context_packs.filter((item) => includes(contextPackIds, item.id)), ...state.node_runs.filter((item) => includes(runIds, item.id)), ...state.code_changes.filter((item) => item.project_id === projectId || includes(runIds, item.run_id)), ...state.terminal_sessions.filter((item) => includes(terminalIds, item.id)), ...state.attachments.filter((item) => item.project_id === projectId || includes(sessionIds, item.session_id) || includes(turnIds, item.turn_id)), ...state.traces.filter((item) => item.project_id === projectId || includes(runIds, item.run_id))];
   const fileRefIds = referencedFileIds(projectRecords);
-  const targetIds = new Set([projectId, ...workspaceIds, ...workflowIds, ...nodeIds, ...runIds, ...assetIds, ...assetVersionIds, ...sessionIds, ...turnIds, ...terminalIds, ...proposalIds, ...contextPackIds, ...checkIds]);
-  return { workspaceIds, workflowIds, nodeIds, runIds, assetIds, assetVersionIds, sessionIds, turnIds, terminalIds, proposalIds, contextPackIds, checkIds, fileRefIds, targetIds };
+  const targetIds = new Set([projectId, ...workspaceIds, ...workflowIds, ...nodeIds, ...runIds, ...assetIds, ...assetVersionIds, ...sessionIds, ...turnIds, ...terminalIds, ...proposalIds, ...contextPackIds, ...checkIds, ...exchangeRequestIds, ...exchangeGrantIds]);
+  return { workspaceIds, workflowIds, nodeIds, runIds, assetIds, assetVersionIds, sessionIds, turnIds, terminalIds, proposalIds, contextPackIds, checkIds, fileRefIds, targetIds, exchangeRequestIds, exchangeGrantIds };
+}
+
+function purgeWorkflowMigrationReferences(state, projectId, workflowIds) {
+  const removedBatchIds = new Set();
+  const removedJobIds = ids(state.workflow_migration_jobs || [], (item) => item.project_id === projectId || includes(workflowIds, item.workflow_id));
+  for (const batch of state.workflow_migration_batches || []) {
+    const touchesProject = (batch.project_ids || []).includes(projectId) || (batch.workflow_ids || []).some((id) => includes(workflowIds, id));
+    if (!touchesProject) continue;
+    batch.project_ids = (batch.project_ids || []).filter((id) => id !== projectId);
+    batch.workflow_ids = (batch.workflow_ids || []).filter((id) => !includes(workflowIds, id));
+    if (!batch.workflow_ids.length) removedBatchIds.add(batch.id);
+  }
+  state.workflow_migration_batches = (state.workflow_migration_batches || []).filter((item) => !removedBatchIds.has(item.id));
+  state.workflow_migration_jobs = (state.workflow_migration_jobs || []).filter((item) => item.project_id !== projectId && !includes(workflowIds, item.workflow_id) && !removedBatchIds.has(item.batch_id));
+  return new Set([...removedBatchIds, ...removedJobIds]);
+}
+
+function pruneProjectScopedMcpClients(state, projectId) {
+  const removedClientIds = new Set();
+  state.mcp_clients = (state.mcp_clients || []).flatMap((client) => {
+    if (!(client.project_allowlist || []).includes(projectId)) return [client];
+    const projectAllowlist = client.project_allowlist.filter((id) => id !== projectId);
+    if (projectAllowlist.length) return [{ ...client, project_allowlist: projectAllowlist }];
+    removedClientIds.add(client.id); return [];
+  });
+  return removedClientIds;
 }
 
 function referencedFileIds(records) {

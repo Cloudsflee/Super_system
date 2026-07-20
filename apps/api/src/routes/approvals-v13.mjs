@@ -7,18 +7,20 @@ import { pushV3Event } from '../assist-v3-events.mjs';
 import { cancelPendingTurnApprovals, hasActiveTurn } from '../assist-v3-domain.mjs';
 import { assertProjectLifecycleIdle, withProjectLifecycleLock } from '../project-lifecycle-operations.mjs';
 import { operationEvent, syncProposalOperationState } from '../assist-operation-metadata.mjs';
+import { accessibleProjectIds, actorForRequest, instanceOwnerId } from '../project-governance-v19.mjs';
 
 export const approvalV13Routes = [
   makeRoute('GET', '/approvals', listApprovals),
   makeRoute('POST', '/approvals/:type/:id/decision', decideApproval)
 ];
 
-async function listApprovals({ res, query }) {
-  const state = await readState();
+async function listApprovals({ req, res, query }) {
+  const state = await readState(), actor = actorForRequest(state, req, { strict: Boolean(req.auth?.clientId) }), allowed = accessibleProjectIds(state, actor?.id), instanceOwner = actor?.id === instanceOwnerId(state);
   let items = [
     ...state.change_proposals.map((item) => proposalItem(item)),
     ...state.runtime_approvals.map((item) => runtimeItem(item))
   ];
+  items = items.filter((item) => item.project_id ? allowed.has(item.project_id) : instanceOwner);
   if (query.project_id) items = items.filter((item) => item.project_id === query.project_id || item.project_id == null);
   if (query.type) items = items.filter((item) => item.type === query.type || item.category === query.type);
   const attention = query.attention_state || query.state;

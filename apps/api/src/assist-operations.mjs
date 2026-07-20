@@ -9,6 +9,7 @@ import { PROJECT_TOOL_NAMESPACE, projectCapabilityToolSpec } from './assist-proj
 import { handleProjectCapabilityTool, reviseProjectOperation, undoProjectOperation } from './assist-project-operation-ledger.mjs';
 import { assertLedgerValue, canonicalHash, exposedControls, pageIdentity, rejectDangerousArguments, sanitizeLedgerValue, validateToolValue } from './assist-operation-utils.mjs';
 import { settleOperationApproval, settleOperationResult, waitForOperationApproval, waitForOperationResult } from './assist-operation-waiters.mjs';
+import { accessibleProjectIds } from './project-governance-v19.mjs';
 
 const OPERATION_TIMEOUT_MS = 30_000;
 const TOOLS = new Set(['set_field', 'set_filter', 'select_tab']);
@@ -79,7 +80,9 @@ export async function handleDynamicPageTool(sessionId, turnId, params = {}, sign
 
 export async function listAssistOperations(query = {}) {
   const state = await readState();
-  let items = state.assist_operations;
+  const allowed = accessibleProjectIds(state);
+  let items = state.assist_operations.filter((item) => !item.project_id || allowed.has(item.project_id));
+  if (query.project_id) items = items.filter((item) => item.project_id === query.project_id);
   if (query.session_id) items = items.filter((item) => item.session_id === query.session_id);
   if (query.turn_id) items = items.filter((item) => item.turn_id === query.turn_id);
   if (query.status) items = items.filter((item) => item.status === query.status);

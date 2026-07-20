@@ -4,6 +4,7 @@ import { appendEvent, cancelAssistRun, decideAction, recordActionResult, startAs
 import { testAdapter } from '../test-adapter.mjs';
 import { createAgentSession, id, now } from '../../../../packages/shared/index.mjs';
 import { assertProjectLifecycleIdle } from '../project-lifecycle-operations.mjs';
+import { accessibleProjectIds, actorForRequest } from '../project-governance-v19.mjs';
 
 export const assistV12Routes = [
   makeRoute('GET', '/assist/v2/sessions', listSessions),
@@ -40,9 +41,9 @@ async function createSession({ res, body }) {
   return send(res, 201, result);
 }
 
-async function listSessions({ res, query }) {
-  const state = await readState();
-  let sessions = state.assist_sessions.filter((item) => item.version === 2);
+async function listSessions({ req, res, query }) {
+  const state = await readState(), actor = actorForRequest(state, req, { strict: Boolean(req.auth?.clientId) }), allowed = accessibleProjectIds(state, actor?.id);
+  let sessions = state.assist_sessions.filter((item) => item.version === 2 && allowed.has(item.project_id));
   if (query.project_id) sessions = sessions.filter((item) => item.project_id === query.project_id);
   if (query.scope_type) sessions = sessions.filter((item) => item.scope_type === query.scope_type);
   if (query.scope_id) sessions = sessions.filter((item) => item.scope_id === query.scope_id);

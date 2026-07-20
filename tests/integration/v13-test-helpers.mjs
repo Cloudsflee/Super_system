@@ -45,9 +45,10 @@ export async function startApi({ port, home, ccSwitch, env = {} }) {
 }
 
 export async function api(port, route, method = 'GET', body, expected = 200, errorCode) {
+  const baseUrl = `http://127.0.0.1:${port}`;
   const response = await fetch(`http://127.0.0.1:${port}${route}`, {
     method,
-    headers: { 'content-type': 'application/json' },
+    headers: { 'content-type': 'application/json', ...await projectCreateHeaders(baseUrl, route, method) },
     body: body === undefined ? undefined : JSON.stringify(body)
   });
   const data = await response.json();
@@ -112,10 +113,15 @@ async function waitForServer(port, getLog, child) {
 }
 
 async function request(baseUrl, route, method, body) {
-  const response = await fetch(`${baseUrl}${route}`, { method, headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) });
+  const response = await fetch(`${baseUrl}${route}`, { method, headers: { 'content-type': 'application/json', ...await projectCreateHeaders(baseUrl, route, method) }, body: JSON.stringify(body) });
   const data = await response.json();
   assert.ok(response.ok, `${method} ${route}: ${JSON.stringify(data)}`);
   return data;
+}
+async function projectCreateHeaders(baseUrl, route, method) {
+  if (method !== 'POST' || route !== '/projects') return {};
+  const account = await fetch(`${baseUrl}/account/me`).then((response) => response.json());
+  return { 'x-aiws-user-id': account.user.id, 'x-aiws-scopes': 'project:create' };
 }
 function normalizeSource(source) {
   if (!source) return null;

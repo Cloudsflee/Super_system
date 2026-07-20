@@ -2,6 +2,7 @@ import { HttpError, makeRoute, send } from '../http.mjs';
 import { addTrace, mutate, owner, readState } from '../state.mjs';
 import { createAgentSession, createSubSubmission } from '../../../../packages/shared/index.mjs';
 import { assertProjectLifecycleIdle } from '../project-lifecycle-operations.mjs';
+import { accessibleProjectIds, actorForRequest } from '../project-governance-v19.mjs';
 
 export const agentSessionRoutes = [
   makeRoute('GET', '/agent-sessions', listAgentSessions),
@@ -10,9 +11,11 @@ export const agentSessionRoutes = [
   makeRoute('POST', '/nodes/:id/submissions', createNodeSubmissionRoute)
 ];
 
-async function listAgentSessions({ res, query }) {
-  const state = await readState();
-  let sessions = state.agent_sessions;
+async function listAgentSessions({ req, res, query }) {
+  const state = await readState(), actor = actorForRequest(state, req, { strict: Boolean(req.auth?.clientId) }), allowed = accessibleProjectIds(state, actor?.id);
+  const tokenProjects = new Set(req.auth?.extra?.project_allowlist || []); if (tokenProjects.size) for (const projectId of [...allowed]) if (!tokenProjects.has(projectId)) allowed.delete(projectId);
+  let sessions = state.agent_sessions.filter((item) => allowed.has(item.project_id));
+  if (query.project_id) sessions = sessions.filter((item) => item.project_id === query.project_id);
   if (query.scope_type) sessions = sessions.filter((item) => item.scope_type === query.scope_type);
   if (query.scope_id) sessions = sessions.filter((item) => item.scope_id === query.scope_id);
   return send(res, 200, sessions);

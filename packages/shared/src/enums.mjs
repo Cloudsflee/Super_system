@@ -38,5 +38,9 @@ export const TRACE_EVENTS = Object.freeze([
   'mcp.client.created', 'mcp.client.revoked',
   'workflow.generation.queued', 'workflow.generation.completed', 'workflow.generation.failed', 'workflow.migration.completed',
   'repository.connection.created', 'repository.target.updated', 'delivery.policy.approved', 'delivery.started', 'delivery.completed', 'delivery.failed',
+  'delivery.pull_request.ready', 'delivery.pull_request.merged',
   'assist.scope.invalidated'
+  ,'project.invitation.created', 'project.invitation.accepted', 'project.invitation.revoked', 'project.membership.revoked',
+  'repository.deletion_intent.created', 'repository.deletion_intent.consented', 'repository.deletion_intent.confirmed', 'repository.deleted', 'repository.deletion.rejected', 'repository.deletion.reconciled',
+  'exchange.request.created', 'exchange.request.approved', 'exchange.request.revoked', 'exchange.context_pack.created'
 ]);

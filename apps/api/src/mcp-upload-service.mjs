@@ -5,6 +5,8 @@ import { ATTACHMENT_TEMP_DIR } from './config.mjs';
 import { saveProjectFile } from './file-service.mjs';
 import { HttpError } from './http.mjs';
 import { assertProjectAccess, assertScopes } from './mcp-client-service.mjs';
+import { readState } from './state.mjs';
+import { assertProjectWrite } from './project-governance-v19.mjs';
 
 export const MCP_UPLOAD_CHUNK_MAX_BYTES = 512 * 1024;
 export const MCP_UPLOAD_MAX_BYTES = 2 * 1024 * 1024;
@@ -14,6 +16,7 @@ export async function beginMcpUpload(input, client) {
   assertScopes(client, ['files:write']);
   const projectId = String(input.project_id || ''), relative = String(input.path || '').trim().replaceAll('\\', '/');
   assertProjectAccess(client, projectId);
+  if (client.subject_user_id) assertProjectWrite(await readState(), projectId, client.subject_user_id);
   if (!projectId || !relative || path.isAbsolute(relative) || relative.split('/').includes('..')) throw new HttpError(400, { error: 'mcp_upload_path_invalid' });
   const size = Number(input.size_bytes);
   if (!Number.isSafeInteger(size) || size < 0 || size > MCP_UPLOAD_MAX_BYTES) throw new HttpError(413, { error: 'mcp_upload_size_invalid', max_bytes: MCP_UPLOAD_MAX_BYTES });
@@ -40,6 +43,7 @@ export async function appendMcpUploadChunk(input, client) {
 
 export async function commitMcpUpload(input, client) {
   const upload = ownedUpload(input.upload_id, client);
+  if (client.subject_user_id) assertProjectWrite(await readState(), upload.project_id, client.subject_user_id);
   if (upload.received_bytes !== upload.size_bytes) throw new HttpError(409, { error: 'mcp_upload_incomplete', expected_bytes: upload.size_bytes, received_bytes: upload.received_bytes });
   const bytes = await fsp.readFile(upload.file), digest = createHash('sha256').update(bytes).digest('hex');
   if (digest !== upload.sha256) throw new HttpError(409, { error: 'mcp_upload_hash_mismatch', expected_sha256: upload.sha256, actual_sha256: digest });

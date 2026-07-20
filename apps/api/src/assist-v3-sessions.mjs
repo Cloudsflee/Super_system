@@ -11,10 +11,12 @@ import {
   normalizeAttachmentKind, normalizeSelection, normalizeClarificationPolicy, publicAttachment, requireProject, requireSession,
   requireTurn, resolveScope, safeRelativePath, safeViewContext, sessionDetail, sessionSummary
 } from './assist-v3-domain.mjs';
+import { accessibleProjectIds } from './project-governance-v19.mjs';
 
 export async function listV3Sessions(query = {}) {
   const state = await readState();
-  const availableProjects = new Set(state.projects.filter((item) => !item.deleted_at && !item.lifecycle_operation).map((item) => item.id));
+  const authorized = accessibleProjectIds(state);
+  const availableProjects = new Set(state.projects.filter((item) => authorized.has(item.id) && !item.deleted_at && !item.lifecycle_operation).map((item) => item.id));
   let sessions = state.assist_sessions.filter((item) => item.version === 3 && availableProjects.has(item.project_id));
   if (query.project_id) sessions = sessions.filter((item) => item.project_id === query.project_id);
   if (query.scope_type) sessions = sessions.filter((item) => item.scope_type === query.scope_type);

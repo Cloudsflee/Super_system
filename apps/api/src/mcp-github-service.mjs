@@ -3,6 +3,7 @@ import { connectedGithubAccount, createInstallationToken, githubJson, resolveGit
 import { assertProjectAccess, assertScopes } from './mcp-client-service.mjs';
 import { mutate, owner, readState } from './state.mjs';
 import { maskSecretsDeep, now } from '../../../packages/shared/index.mjs';
+import { assertProjectMembership } from './project-governance-v19.mjs';
 
 export async function closeMcpGithubPullRequest(input, client, dependencies = {}) {
   assertScopes(client, ['github:write']);
@@ -42,9 +43,11 @@ async function githubContext(input, client) {
   const run = state.node_runs.find((item) => item.id === String(input.run_id || ''));
   if (!run) throw new HttpError(404, { error: 'run_not_found' });
   assertProjectAccess(client, run.project_id);
+  if (!client.subject_user_id) throw new HttpError(403, { error: 'mcp_subject_user_required' });
+  assertProjectMembership(state, run.project_id, client.subject_user_id, 'github:write');
   const project = state.projects.find((item) => item.id === run.project_id);
   const change = state.code_changes.find((item) => item.run_id === run.id);
-  const binding = state.repository_bindings.find((item) => item.project_id === run.project_id);
+  const binding = state.repository_bindings.find((item) => item.project_id === run.project_id && item.status !== 'removed');
   const account = connectedGithubAccount(state, owner(state)?.id);
   const config = resolveGithubAppConfig(state);
   if (!project || !change) throw new HttpError(404, { error: 'run_code_change_not_found' });

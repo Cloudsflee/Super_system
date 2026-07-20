@@ -12,9 +12,12 @@ import { id, now } from '../../../packages/shared/index.mjs';
 const locks = new Map();
 const lockContext = new AsyncLocalStorage();
 const ACTIVE_TURNS = new Set(['queued', 'preparing', 'running', 'waiting_user_input', 'waiting_approval', 'stopping']);
-const ACTIVE_TERMINALS = new Set(['starting', 'running', 'connected', 'stopping']);
+const ACTIVE_TERMINALS = new Set(['ready', 'starting', 'running', 'connected', 'stopping']);
 const ACTIVE_JOBS = new Set(['queued', 'starting', 'running', 'processing', 'staging', 'stopping']);
 const ACTIVE_LEGACY_ASSIST = new Set(['running']);
+const ACTIVE_GENERATIONS = new Set(['queued', 'running']);
+const ACTIVE_DELIVERIES = new Set(['queued', 'running']);
+const ACTIVE_MIGRATIONS = new Set(['pending', 'waiting_active_runs', 'generating']);
 
 export function withProjectLifecycleLock(projectId, operation) {
   const key = String(projectId), held = lockContext.getStore();
@@ -125,7 +128,11 @@ function assertProjectIdle(state, projectId) {
     || (state.terminal_sessions || []).find((item) => (item.project_id === projectId || sessions.has(item.assist_session_id)) && ACTIVE_TERMINALS.has(item.status))
     || (state.node_runs || []).find((item) => item.project_id === projectId && ACTIVE_JOBS.has(item.status))
     || (state.test_tasks || []).find((item) => item.project_id === projectId && ACTIVE_JOBS.has(item.status))
-    || (state.import_jobs || []).find((item) => item.project_id === projectId && ACTIVE_JOBS.has(item.status));
+    || (state.import_jobs || []).find((item) => item.project_id === projectId && ACTIVE_JOBS.has(item.status))
+    || (state.workflow_generations || []).find((item) => item.project_id === projectId && ACTIVE_GENERATIONS.has(item.status))
+    || (state.deliveries || []).find((item) => item.project_id === projectId && ACTIVE_DELIVERIES.has(item.status))
+    || (state.workflow_migration_jobs || []).find((item) => item.project_id === projectId && ACTIVE_MIGRATIONS.has(item.status))
+    || (state.repository_deletion_intents || []).find((item) => ['executing', 'reconciliation_required'].includes(item.status) && ((item.snapshot?.bindings || []).some((binding) => binding.project_id === projectId) || (state.project_repository_bindings || []).some((binding) => binding.project_id === projectId && binding.canonical_repository_id === item.canonical_repository_id && binding.status !== 'removed')));
   if (active) throw new HttpError(423, { error: 'project_in_use', resource_id: active.id, status: active.status });
 }
 

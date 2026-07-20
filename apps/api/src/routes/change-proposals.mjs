@@ -8,6 +8,7 @@ import { assertProjectLifecycleIdle } from '../project-lifecycle-operations.mjs'
 import { applyWorkflowGraphPatchInState } from '../workflow-graph-service.mjs';
 import { operationEvent, syncProposalOperationState } from '../assist-operation-metadata.mjs';
 import { pushV3Event } from '../assist-v3-events.mjs';
+import { accessibleProjectIds, actorForRequest, instanceOwnerId } from '../project-governance-v19.mjs';
 
 export const changeProposalRoutes = [
   makeRoute('GET', '/change-proposals', listProposals),
@@ -17,10 +18,10 @@ export const changeProposalRoutes = [
   makeRoute('POST', '/change-proposals/:id/apply', applyProposalRoute)
 ];
 
-async function listProposals({ res, query }) {
-  const state = await readState();
-  let proposals = state.change_proposals;
-  if (query.project_id) proposals = proposals.filter((item) => !item.project_id || item.project_id === query.project_id);
+async function listProposals({ req, res, query }) {
+  const state = await readState(), actor = actorForRequest(state, req, { strict: Boolean(req.auth?.clientId) }), allowed = accessibleProjectIds(state, actor?.id);
+  let proposals = state.change_proposals.filter((item) => item.project_id ? allowed.has(item.project_id) : actor.id === instanceOwnerId(state));
+  if (query.project_id) proposals = proposals.filter((item) => item.project_id === query.project_id);
   if (query.status) proposals = proposals.filter((item) => item.status === query.status);
   return send(res, 200, proposals);
 }

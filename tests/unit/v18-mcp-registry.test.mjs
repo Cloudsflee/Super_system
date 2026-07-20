@@ -37,13 +37,18 @@ try {
   assert.equal(denied.ok, false); assert.equal(denied.status, 403);
   const recursive = await executeRegistryOperation(registry, transports.find((item) => item.method === 'POST').operation_id, { body: {} }, { client: { ...client, scopes: [...client.scopes, 'mcp:admin'] } });
   assert.equal(recursive.ok, false); assert.equal(recursive.error.error, 'mcp_operation_not_callable');
+  const owner = (await state.readState()).users[0];
   await state.mutate((data) => {
+    data.projects.push(
+      { id: 'prj_allowed', title: 'Allowed', owner_user_id: owner.id, created_by_user_id: owner.id, status: 'active', deleted_at: null },
+      { id: 'prj_denied', title: 'Denied', owner_user_id: owner.id, created_by_user_id: owner.id, status: 'active', deleted_at: null }
+    );
     data.context_packs.push(
       { id: 'ctx_allowed', content_json: { project: { id: 'prj_allowed' } } },
       { id: 'ctx_denied', content_json: { project: { id: 'prj_denied' } } }
     );
   });
-  const projectClient = { id: 'project-client', scopes: ['runs:read'], project_allowlist: ['prj_allowed'] };
+  const projectClient = { id: 'project-client', subject_user_id: owner.id, scopes: ['runs:read'], project_allowlist: ['prj_allowed'] };
   const allowedContext = await executeRegistryOperation(registry, 'aiws.runs.get.context-packs.by-id', { params: { id: 'ctx_allowed' } }, { client: projectClient });
   assert.equal(allowedContext.ok, true);
   const deniedContext = await executeRegistryOperation(registry, 'aiws.runs.get.context-packs.by-id', { params: { id: 'ctx_denied' } }, { client: projectClient });

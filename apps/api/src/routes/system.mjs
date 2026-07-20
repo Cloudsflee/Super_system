@@ -6,6 +6,7 @@ import { inspectCodexRuntimeCached, selectedCodexRuntimeImage } from '../codex-r
 import { dataDirectoryReady, deploymentStatus } from '../deployment-status.mjs';
 import { hostBridgeCapability } from '../host-bridge-service.mjs';
 import { terminalRuntimeStats } from '../terminal-service.mjs';
+import { accessibleProjectIds, actorForRequest } from '../project-governance-v19.mjs';
 
 export const systemRoutes = [
   makeRoute('GET', '/health', async ({ res, query }) => {
@@ -38,15 +39,15 @@ export const systemRoutes = [
     };
     return send(res, 200, deployment);
   }),
-  makeRoute('GET', '/account/me', async ({ res }) => {
+  makeRoute('GET', '/account/me', async ({ req, res }) => {
     const state = await readState();
-    const user = owner(state);
+    const user = actorForRequest(state, req, { strict: Boolean(req.auth?.clientId) });
     const accounts = state.connected_accounts.filter((item) => item.user_id === user.id).map(publicAccount);
     return send(res, 200, { user: pick(user, ['id', 'display_name', 'email', 'avatar_url', 'role', 'auth_mode', 'created_at', 'updated_at']), session: publicSession(state.sessions.find((item) => item.user_id === user.id)), connected_accounts: accounts, github: accounts.find((item) => item.provider === 'github') || null });
   }),
-  makeRoute('POST', '/account/setup-local-owner', async ({ res, body }) => {
+  makeRoute('POST', '/account/setup-local-owner', async ({ req, res, body }) => {
     const result = await mutate((state) => {
-      let user = owner(state);
+      let user = actorForRequest(state, req, { strict: Boolean(req.auth?.clientId) });
       if (!user) {
         const created = createLocalOwner(body.display_name || 'Local Owner');
         state.users.push(created.user); state.sessions.push(created.session); user = created.user;
@@ -59,9 +60,13 @@ export const systemRoutes = [
     });
     return send(res, 200, result);
   }),
-  makeRoute('GET', '/review', async ({ res }) => {
-    const state = await readState();
-    return send(res, 200, { projects: state.projects, workflows: state.workflows, nodes: state.workflow_nodes, runs: state.node_runs, traces: state.traces.slice(-500), assets: state.assets, decisions: state.decisions, digests: state.digests, code_changes: state.code_changes, agent_sessions: state.agent_sessions, submissions: state.submissions, change_proposals: state.change_proposals, open_questions: state.workspaces.flatMap((w) => (w.open_questions || []).map((q) => ({ workspace_id: w.id, question: q }))) });
+  makeRoute('GET', '/review', async ({ req, res, query }) => {
+    const state = await readState(), actor = actorForRequest(state, req, { strict: Boolean(req.auth?.clientId) }), allowed = accessibleProjectIds(state, actor?.id);
+    const tokenProjects = new Set(req.auth?.extra?.project_allowlist || []); if (tokenProjects.size) for (const projectId of [...allowed]) if (!tokenProjects.has(projectId)) allowed.delete(projectId);
+    if (query.project_id) for (const projectId of [...allowed]) if (projectId !== query.project_id) allowed.delete(projectId);
+    const projects = state.projects.filter((item) => allowed.has(item.id)), workflows = state.workflows.filter((item) => allowed.has(item.project_id)), workflowIds = new Set(workflows.map((item) => item.id));
+    const instanceOwner = actor?.id === state.instance_owner_user_id;
+    return send(res, 200, { projects, workflows, nodes: state.workflow_nodes.filter((item) => workflowIds.has(item.workflow_id)), runs: state.node_runs.filter((item) => allowed.has(item.project_id)), traces: state.traces.filter((item) => item.project_id ? allowed.has(item.project_id) : instanceOwner).slice(-500), assets: state.assets.filter((item) => allowed.has(item.project_id)), decisions: state.decisions.filter((item) => allowed.has(item.project_id)), digests: state.digests.filter((item) => allowed.has(item.project_id)), code_changes: state.code_changes.filter((item) => allowed.has(item.project_id)), agent_sessions: state.agent_sessions.filter((item) => allowed.has(item.project_id)), submissions: state.submissions.filter((item) => allowed.has(item.project_id)), change_proposals: state.change_proposals.filter((item) => item.project_id ? allowed.has(item.project_id) : instanceOwner), open_questions: state.workspaces.filter((item) => allowed.has(item.project_id)).flatMap((w) => (w.open_questions || []).map((q) => ({ workspace_id: w.id, question: q }))) });
   })
 ];
 

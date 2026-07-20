@@ -4,6 +4,8 @@ import { HttpError, normalizeErrorPayload, route as matchRoute } from './http.mj
 import { assertProjectAccess, assertScopes } from './mcp-client-service.mjs';
 import { readState } from './state.mjs';
 import { maskSecretsDeep } from '../../../packages/shared/index.mjs';
+import { runAsActor } from './actor-context.mjs';
+import { authorizeApiRoute } from './project-governance-v19.mjs';
 
 export const MCP_MAPPINGS = Object.freeze(['tool', 'resource', 'async_adapter', 'external_callback', 'frontend_only']);
 
@@ -41,14 +43,16 @@ export async function executeRegistryOperation(registry, operationId, args = {},
     if (operation.mapping === 'external_callback' || operation.mapping === 'frontend_only') throw new HttpError(403, { error: 'mcp_operation_not_callable', mapping: operation.mapping });
     if (context.client) {
       assertScopes(context.client, operation.required_scopes);
-      const projectId = await resolveProjectId(operation, args);
+      const projectId = await resolveProjectId(operation, args, context.client);
       if (operation.project_scoped && context.client.project_allowlist?.length && !projectId && operation.pattern !== '/projects') throw new HttpError(400, { error: 'mcp_project_context_required', operation_id: operation.operation_id });
       assertProjectAccess(context.client, projectId);
+      if (operation.project_scoped && !context.client.subject_user_id) throw new HttpError(403, { error: 'mcp_subject_user_required' });
+      if (!isInvitationAcceptance(operation.pattern) && (context.client.subject_user_id || operation.method !== 'GET')) await runAsActor(context.client.subject_user_id || null, () => authorizeApiRoute(operation, invocationContext(operation, args, requestId, context), { strict: Boolean(context.client.subject_user_id), state: null }));
     }
     if (operation.stream_response) {
       return success(operation, requestId, 202, null, { type: operation.mapping === 'async_adapter' ? 'operation_events' : 'resource', uri: resourceUriFor(operation, args), cursor: args.query?.after || null });
     }
-    const invocation = await invokeHandler(operation, args, requestId, context);
+    const invocation = await runAsActor(context.client?.subject_user_id || null, () => invokeHandler(operation, args, requestId, context));
     let data = invocation.data;
     if (context.client?.project_allowlist?.length && operation.pattern === '/projects' && Array.isArray(data)) data = data.filter((project) => context.client.project_allowlist.includes(project.id));
     if (invocation.status >= 400) return failure(operation.operation_id, requestId, invocation.status, data);
@@ -112,11 +116,18 @@ async function invokeHandler(operation, args, requestId, context) {
     headers: { 'content-type': 'application/json', 'x-aiws-request-id': requestId, ...(args.idempotency_key ? { 'x-idempotency-key': String(args.idempotency_key) } : {}), ...(context.headers || {}) },
     socket: { remoteAddress: '127.0.0.1' }
   });
+  if (context.client) req.auth = { clientId: context.client.id, scopes: context.client.scopes, extra: { project_allowlist: context.client.project_allowlist, subject_user_id: context.client.subject_user_id } };
   const res = new CaptureResponse(requestId);
   const params = matchRoute(buildPath(operation.pattern, args.params || {}), operation.pattern) || {};
   await operation.handler({ req, res, pathname: operation.pattern, params, query: args.query || {}, body: args.body || {} });
   if (!res.writableEnded) await res.waitForEnd();
   return { status: res.statusCode, data: res.value() };
+}
+
+function invocationContext(operation, args, requestId, context) {
+  const req = { method: operation.method, headers: { 'x-aiws-request-id': requestId, ...(context.headers || {}) }, socket: { remoteAddress: '127.0.0.1' } };
+  if (context.client) req.auth = { clientId: context.client.id, scopes: context.client.scopes, extra: { project_allowlist: context.client.project_allowlist, subject_user_id: context.client.subject_user_id } };
+  return { req, params: args.params || {}, query: args.query || {}, body: args.body || {} };
 }
 
 class CaptureResponse extends Writable {
@@ -134,36 +145,54 @@ class CaptureResponse extends Writable {
   waitForEnd() { return new Promise((resolve, reject) => { const timer = setTimeout(() => reject(new HttpError(504, { error: 'mcp_operation_response_timeout' })), 30_000); timer.unref?.(); this.once('finish', () => { clearTimeout(timer); resolve(); }); this.once('error', (error) => { clearTimeout(timer); reject(error); }); }); }
 }
 
-async function resolveProjectId(operation, args) {
-  const direct = args.params?.projectId || (operation.pattern.startsWith('/projects/:id') ? args.params?.id : null) || args.query?.project_id || args.body?.project_id;
-  if (direct) return String(direct);
+async function resolveProjectId(operation, args, client = null) {
+  const explicitPath = args.params?.projectId || (operation.pattern.startsWith('/projects/:id') ? args.params?.id : null);
+  if (explicitPath) return String(explicitPath);
   const state = await readState(), params = args.params || {};
   const findProject = (collection, value) => state[collection]?.find((item) => item.id === value)?.project_id || null;
   if (operation.pattern.startsWith('/assist/v3/sessions/:id')) return findProject('assist_sessions', params.id);
+  if (operation.pattern.startsWith('/assist/v2/sessions/:id')) return findProject('assist_sessions', params.id);
   if (operation.pattern.startsWith('/assist/v3/turns/:id')) return findProject('assist_turns', params.id);
   if (operation.pattern.startsWith('/assist/v3/terminal-sessions/:id')) return findProject('terminal_sessions', params.id);
+  if (operation.pattern.startsWith('/assist/v3/operations/:id')) return findProject('assist_operations', params.id);
+  if (operation.pattern.startsWith('/assist/v3/change-batches/:id')) return findProject('assist_change_batches', params.id);
+  if (operation.pattern.startsWith('/assist/v3/attachments/:id')) return findProject('attachments', params.id);
+  if (operation.pattern.startsWith('/agent-sessions/:id')) return findProject('agent_sessions', params.id);
   if (operation.pattern.startsWith('/runs/:id')) return findProject('node_runs', params.id);
-  if (operation.pattern.startsWith('/context-packs/:id')) {
-    const contextPack = state.context_packs.find((item) => item.id === params.id);
-    return contextPack?.content_json?.project?.id || state.workspaces.find((item) => item.id === contextPack?.source_workspace_id)?.project_id || null;
-  }
-  if (operation.pattern.startsWith('/nodes/:id')) {
-    const node = state.workflow_nodes.find((item) => item.id === params.id), workflow = state.workflows.find((item) => item.id === node?.workflow_id);
-    return workflow?.project_id || null;
-  }
-  if (operation.pattern.startsWith('/tasks/:id') || operation.pattern.startsWith('/workstreams/:id')) {
+  if (operation.pattern.startsWith('/context-packs/:id')) { const contextPack = state.context_packs.find((item) => item.id === params.id); return contextPack?.content_json?.project?.id || state.workspaces.find((item) => item.id === contextPack?.source_workspace_id)?.project_id || null; }
+  if (['/nodes/:id', '/tasks/:id', '/workstreams/:id'].some((prefix) => operation.pattern.startsWith(prefix))) {
     const node = state.workflow_nodes.find((item) => item.id === params.id), workflow = state.workflows.find((item) => item.id === node?.workflow_id);
     return workflow?.project_id || null;
   }
   if (operation.pattern.startsWith('/deliveries/:id')) return findProject('deliveries', params.id);
   if (operation.pattern.startsWith('/delivery-policies/:id')) return findProject('delivery_policies', params.id);
+  if (operation.pattern.startsWith('/exchange-requests/:id')) {
+    const request = state.exchange_requests.find((item) => item.id === params.id);
+    if (args.body?.side === 'source') return request?.source_project_id || null;
+    if (args.body?.side === 'target' || operation.pattern.endsWith('/context-packs')) return request?.target_project_id || null;
+    return chooseAllowedProject(client, request?.source_project_id, request?.target_project_id);
+  }
+  if (operation.pattern.startsWith('/project-invitations/:id')) return state.project_invitations.find((item) => item.id === params.id)?.project_id || null;
+  if (operation.pattern.startsWith('/exchange-grants/:id')) return findProject('exchange_grants', params.id) || state.exchange_grants.find((item) => item.id === params.id)?.target_project_id || null;
+  if (operation.pattern.startsWith('/repository-deletion-intents/:id')) {
+    const intent = state.repository_deletion_intents.find((item) => item.id === params.id), canonical = state.canonical_repositories.find((item) => item.id === intent?.canonical_repository_id);
+    return chooseAllowedProject(client, ...state.project_repository_bindings.filter((item) => item.canonical_repository_id === canonical?.id && item.status !== 'removed').map((item) => item.project_id), ...(intent?.snapshot?.bindings || []).map((item) => item.project_id));
+  }
+  if (operation.pattern.startsWith('/canonical-repositories/:id') || operation.pattern.startsWith('/github/repositories/:id/deletion')) {
+    const canonical = state.canonical_repositories.find((item) => item.id === params.id || String(item.repository_id) === String(params.id));
+    return chooseAllowedProject(client, ...state.project_repository_bindings.filter((item) => item.canonical_repository_id === canonical?.id && item.status !== 'removed').map((item) => item.project_id));
+  }
   if (operation.pattern.startsWith('/workflows/:id')) return findProject('workflows', params.id);
   if (operation.pattern.startsWith('/workspaces/:id')) return findProject('workspaces', params.id);
   if (operation.pattern.startsWith('/change-proposals/:id')) return findProject('change_proposals', params.id);
   if (operation.pattern.startsWith('/approvals/:type/:id')) return params.type === 'runtime' ? findProject('runtime_approvals', params.id) : findProject('change_proposals', params.id);
-  if (operation.pattern.startsWith('/assets') || operation.pattern.startsWith('/asset-candidates/:id')) return findProject('runner_memory_candidates', params.id);
-  return null;
+  if (operation.pattern.startsWith('/asset-candidates/:id')) return findProject('assets', params.id) || findProject('runner_memory_candidates', params.id);
+  if (params.id) return null;
+  const declared = args.query?.project_id || args.body?.project_id;
+  return declared ? String(declared) : null;
 }
+
+function chooseAllowedProject(client, ...values) { const projects = values.filter(Boolean); if (!projects.length) return null; const allowlist = client?.project_allowlist || []; return allowlist.length ? projects.find((item) => allowlist.includes(item)) || projects[0] : projects[0]; }
 
 function classifyDomain(pattern) {
   if (/^\/(?:health|system|account)/.test(pattern)) return 'system';
@@ -172,9 +201,10 @@ function classifyDomain(pattern) {
   if (/\/files(?:\/|$)|\/attachments/.test(pattern)) return 'files';
   if (/^\/assist/.test(pattern)) return 'assist';
   if (/\/git\//.test(pattern) || /git-repositories/.test(pattern)) return 'git';
-  if (/^\/github/.test(pattern) || /\/github\//.test(pattern) || /repository-(?:connections|targets)/.test(pattern) || /delivery|deliveries/.test(pattern)) return 'github';
+  if (/^\/github/.test(pattern) || /\/github\//.test(pattern) || /repository-(?:connections|targets)/.test(pattern) || /delivery|deliveries/.test(pattern) || /^\/(?:canonical-repositories|repository-deletion-intents)/.test(pattern)) return 'github';
   if (/^\/(?:assets|asset-candidates)/.test(pattern) || /\/digests$/.test(pattern)) return 'assets';
   if (/^\/(?:approvals|change-proposals|review)/.test(pattern)) return 'governance';
+  if (/^\/(?:exchange-requests|exchange-grants)/.test(pattern) || /\/exchange(?:-requests|s)$/.test(pattern)) return 'governance';
   if (/^\/(?:runs|context-packs)/.test(pattern) || /\/run(?:\/|$)/.test(pattern)) return 'runs';
   if (/^\/(?:workflows|nodes|workstreams|tasks)/.test(pattern) || /workflow-draft/.test(pattern) || /brief/.test(pattern)) return 'workflow';
   return 'projects';
@@ -187,6 +217,13 @@ function classifyMapping(item) {
 }
 
 function scopesFor(item, domain) {
+  if (item.pattern === '/projects' && item.method === 'POST') return ['project:create'];
+  if (item.pattern.endsWith('/share') && item.method === 'POST') return ['project:share'];
+  if (item.pattern.endsWith('/project-invitations/:id/accept')) return ['project:read'];
+  if (item.pattern.endsWith('/project-invitations/:id/revoke')) return ['project:share'];
+  if (/\/(?:members|memberships|invitations)(?:\/|$)/.test(item.pattern) && item.method !== 'GET') return ['project:share'];
+  if (/exchange-(?:requests|grants)|\/exchanges(?:$|\/)/.test(item.pattern)) return [`exchange:${item.method === 'GET' ? 'read' : 'write'}`];
+  if (/repository-deletion-intents|\/deletion-intent(?:s)?$/.test(item.pattern)) return [item.method === 'GET' ? 'github:read' : 'github:write', ...(item.pattern.endsWith('/execute') || item.method === 'DELETE' ? ['destructive:execute'] : [])];
   if (item.pattern.startsWith('/mcp/clients')) return ['mcp:admin'];
   if (item.pattern.startsWith('/setup') && item.method !== 'GET') return ['setup:admin'];
   if (/^\/approvals\/:type\/:id\/decision$/.test(item.pattern)) return ['approval:decide'];
@@ -199,12 +236,12 @@ function scopesFor(item, domain) {
   return scopes;
 }
 
-function riskFor(item, scopes) { if (scopes.includes('destructive:execute') || scopes.includes('approval:decide')) return 'critical'; if (item.method === 'GET') return 'low'; if (item.method === 'DELETE' || /apply|commit|confirm|complete|publish|repository/.test(item.pattern)) return 'high'; return 'medium'; }
+function riskFor(item, scopes) { if (scopes.includes('destructive:execute') || scopes.includes('approval:decide')) return 'critical'; if (item.method === 'GET') return 'low'; if (item.method === 'DELETE' || /apply|commit|confirm|complete|publish|repository|\/merge$/.test(item.pattern)) return 'high'; return 'medium'; }
 function idempotencyFor(item) { if (item.method === 'GET') return 'safe'; if (['PUT', 'DELETE'].includes(item.method)) return 'idempotent'; return item.method === 'POST' ? 'key_required' : 'conditional'; }
-function isDestructive(item) { return /\/(?:purge|reset|disconnect)$/.test(item.pattern) || (item.method === 'DELETE' && /^\/(?:mcp\/clients|codex\/profiles)/.test(item.pattern)); }
+function isDestructive(item) { return /\/(?:purge|reset|disconnect)$/.test(item.pattern) || item.pattern === '/projects/:id/trash' || item.method === 'DELETE' && (item.pattern === '/projects/:id' || /^\/(?:mcp\/clients|codex\/profiles)/.test(item.pattern)); }
 function isEventStream(item) { return item.method === 'GET' && /\/events$/.test(item.pattern); }
 function isStreamResponse(item) { return isEventStream(item) || item.body === 'stream' || item.method === 'GET' && /\/(?:content|download)$/.test(item.pattern) && /attachments/.test(item.pattern); }
-function isProjectScoped(pattern) { return /^\/(?:projects|workspaces|workflows|nodes|workstreams|tasks|runs|deliveries|delivery-policies|context-packs|assets|asset-candidates|change-proposals|approvals)/.test(pattern) || /^\/assist\/(?:v2\/sessions|v3\/(?:sessions|turns|terminal-sessions|operations|change-batches))/.test(pattern); }
+function isProjectScoped(pattern) { return /^\/(?:projects|workspaces|workflows|nodes|workstreams|tasks|runs|deliveries|delivery-policies|context-packs|assets|asset-candidates|change-proposals|approvals|agent-sessions|exchange-requests|exchange-grants|project-invitations|submissions|review)/.test(pattern) || /^\/assist\/(?:v2\/sessions|v3\/(?:sessions|turns|terminal-sessions|operations|change-batches|attachments))/.test(pattern) || pattern === '/brief-templates/:templateId/apply'; }
 
 function domainTool(domain) { return `aiws_${domain}`.replace('aiws_admin', 'aiws_admin'); }
 function operationIdFor(method, pattern, domain) { const suffix = pattern.split('/').filter(Boolean).map((part) => part.startsWith(':') ? `by-${part.slice(1).replace(/[A-Z]/g, (value) => `-${value.toLowerCase()}`)}` : part.replace(/[^a-zA-Z0-9-]/g, '-').toLowerCase()).join('.'); return `aiws.${domain}.${method.toLowerCase()}.${suffix || 'root'}`; }
@@ -217,3 +254,4 @@ function success(operation, requestId, status, data, handle = null) { return mas
 function failure(operationId, requestId, status, payload) { return maskSecretsDeep({ ok: false, operation_id: operationId, request_id: requestId, status, error: normalizeErrorPayload(payload || { error: 'request_failed' }, requestId) }); }
 function encodeCursor(offset) { return Buffer.from(JSON.stringify({ offset }), 'utf8').toString('base64url'); }
 function decodeCursor(value) { if (!value) return 0; try { const parsed = JSON.parse(Buffer.from(String(value), 'base64url').toString('utf8')); return Math.max(0, Number(parsed.offset) || 0); } catch { throw new HttpError(400, { error: 'mcp_cursor_invalid' }); } }
+function isInvitationAcceptance(pattern) { return pattern === '/project-invitations/:id/accept'; }

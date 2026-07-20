@@ -23,8 +23,9 @@ try {
       { id: 'project-sec-b', title: 'B', status: 'active', onboarding_state: 'confirmed', managed_workspace_state: 'ready', repo_path: repoB, workspace_root: repoB, settings: {}, lifecycle_operation: null }
     );
   });
+  const owner = (await state.readState()).users.find((item) => item.role === 'owner');
   await assert.rejects(() => clients.createMcpClient({ name: 'Bad scope', scopes: ['root:admin'] }), (error) => error.payload?.error === 'mcp_client_scope_invalid');
-  const operatorCreated = await clients.createMcpClient({ name: 'Restricted', scopes: ['project:read', 'governance:write', 'files:write'], project_allowlist: ['project-sec-a'], ttl_seconds: 3600 });
+  const operatorCreated = await clients.createMcpClient({ name: 'Restricted', scopes: ['project:read', 'governance:write', 'files:write'], project_allowlist: ['project-sec-a'], ttl_seconds: 3600 }, owner.id);
   const operator = await clients.authenticateMcpToken(operatorCreated.token);
   assert.equal(shared.maskSecret(operatorCreated.token), '***MASKED_MCP_TOKEN***');
   await assert.rejects(() => upload.beginMcpUpload({ project_id: 'project-sec-b', path: 'x.txt', size_bytes: 0, sha256: createHash('sha256').update('').digest('hex') }, operator), (error) => error.payload?.error === 'mcp_project_access_denied');

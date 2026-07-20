@@ -140,7 +140,7 @@ function validateMcpClient(client) {
   if (!String(client.name || '').trim() || String(client.name).length > 120) throw migrationError('mcp_client_name_invalid', { id: client.id });
   if (!/^[A-Za-z0-9_-]{6,24}$/.test(String(client.token_prefix || ''))) throw migrationError('mcp_client_token_prefix_invalid', { id: client.id });
   if (!/^[a-f0-9]{64}$/.test(String(client.token_hash || ''))) throw migrationError('mcp_client_token_hash_invalid', { id: client.id });
-  if (!Array.isArray(client.scopes) || client.scopes.some((scope) => !/^[a-z][a-z0-9-]*:(?:read|write|decide|admin|execute)$/.test(String(scope)))) throw migrationError('mcp_client_scopes_invalid', { id: client.id });
+  if (!Array.isArray(client.scopes) || client.scopes.some((scope) => !/^[a-z][a-z0-9-]*:(?:read|write|create|share|decide|admin|execute)$/.test(String(scope)))) throw migrationError('mcp_client_scopes_invalid', { id: client.id });
   if (!Array.isArray(client.project_allowlist) || client.project_allowlist.some((id) => typeof id !== 'string' || !id)) throw migrationError('mcp_client_project_allowlist_invalid', { id: client.id });
   if (!CLIENT_STATUSES.has(client.status)) throw migrationError('mcp_client_status_invalid', { id: client.id });
   if (client.expires_at !== null && !validTimestamp(client.expires_at)) throw migrationError('mcp_client_expiry_invalid', { id: client.id });

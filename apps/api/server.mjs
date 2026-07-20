@@ -20,6 +20,8 @@ import { createApiRouteRegistry } from './src/api-route-registry.mjs';
 import { resumeWorkflowMigrationOrchestrator } from './src/workflow-migration-service.mjs';
 import { closeMcpHttpRuntime, configureMcpHttpRuntime } from './src/mcp-http-runtime.mjs';
 import { closeGithubProxyDispatchers } from './src/outbound-proxy.mjs';
+import { runAsActor } from './src/actor-context.mjs';
+import { authorizeApiRoute, requestSubjectUserId } from './src/project-governance-v19.mjs';
 
 cleanupStaleContainers();
 await ensureRuntime();
@@ -58,7 +60,7 @@ const server = http.createServer(async (req, res) => {
     if (req.method === 'OPTIONS') {
       res.writeHead(204, {
         'access-control-allow-methods': 'GET,POST,PUT,PATCH,DELETE,OPTIONS',
-        'access-control-allow-headers': 'content-type, authorization, range, if-none-match, last-event-id, mcp-session-id, mcp-protocol-version, x-aiws-request-id, x-aiws-browser-id, x-aiws-btw-token, x-idempotency-key',
+        'access-control-allow-headers': 'content-type, authorization, range, if-none-match, last-event-id, mcp-session-id, mcp-protocol-version, x-aiws-request-id, x-aiws-browser-id, x-aiws-btw-token, x-idempotency-key, x-aiws-user-id, x-aiws-subject-user-id, x-aiws-scopes',
         'access-control-max-age': '86400'
       });
       res.end();
@@ -70,7 +72,11 @@ const server = http.createServer(async (req, res) => {
       const status = computeSetupStatus(await readState());
       if (!status.complete) return send(res, 403, { error: 'setup_required', setup: status });
     }
-    const handled = await dispatch(routes, { req, res, pathname: routePath, query: searchParamsObject(parsed.searchParams) });
+    const subjectUserId = requestSubjectUserId(req);
+    const handled = await runAsActor(subjectUserId, () => dispatch(routes, {
+      req, res, pathname: routePath, query: searchParamsObject(parsed.searchParams),
+      authorize: (route, context) => authorizeApiRoute(route, context, { strict: false })
+    }));
     if (!handled && req.method === 'GET' && isSpaPath(pathname)) return serveStatic(req, res, '/');
     if (!handled) notFound(res);
   } catch (error) {

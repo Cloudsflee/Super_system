@@ -29,6 +29,9 @@ import { mcpV18Routes } from './routes/mcp-v18.mjs';
 import { workflowV19Routes } from './routes/workflow-v19.mjs';
 import { repositoryDeliveryV19Routes } from './routes/repository-delivery-v19.mjs';
 import { workflowMigrationV19Routes } from './routes/workflow-migration-v19.mjs';
+import { projectGovernanceV19Routes } from './routes/project-governance-v19.mjs';
+import { exchangeV19Routes } from './routes/exchange-v19.mjs';
+import { repositoryLifecycleV19Routes } from './routes/repository-lifecycle-v19.mjs';
 
 const groups = [
   ['system.mjs', systemRoutes], ['setup-v12.mjs', setupV12Routes], ['projects.mjs', projectRoutes],
@@ -43,7 +46,8 @@ const groups = [
   ['github-repositories-v13.mjs', githubRepositoriesV13Routes], ['config-governance-v13.mjs', configGovernanceV13Routes],
   ['host-bridge-v15.mjs', hostBridgeV15Routes], ['mcp-clients-v18.mjs', mcpClientV18Routes], ['mcp-v18.mjs', mcpV18Routes],
   ['workflow-v19.mjs', workflowV19Routes], ['repository-delivery-v19.mjs', repositoryDeliveryV19Routes],
-  ['workflow-migration-v19.mjs', workflowMigrationV19Routes]
+  ['workflow-migration-v19.mjs', workflowMigrationV19Routes], ['project-governance-v19.mjs', projectGovernanceV19Routes], ['exchange-v19.mjs', exchangeV19Routes],
+  ['repository-lifecycle-v19.mjs', repositoryLifecycleV19Routes]
 ];
 
 export const apiRouteGroups = Object.freeze(groups.map(([sourceModule, routes]) => Object.freeze({ source_module: sourceModule, routes })));

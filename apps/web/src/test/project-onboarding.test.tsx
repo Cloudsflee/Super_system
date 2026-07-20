@@ -14,10 +14,11 @@ describe('V1.3 project onboarding', () => {
   afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
 
   it('creates a draft and navigates to its recoverable onboarding route', async () => {
-    const calls: Array<{ url: string; body?: Record<string, unknown> }> = [];
+    const calls: Array<{ url: string; body?: Record<string, unknown>; headers?: HeadersInit }> = [];
     vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = String(input);
-      calls.push({ url, body: init?.body ? JSON.parse(String(init.body)) : undefined });
+      calls.push({ url, body: init?.body ? JSON.parse(String(init.body)) : undefined, headers: init?.headers });
+      if (url.endsWith('/account/me')) return response({ user: { id: 'owner-user' } });
       if ((init?.method || 'GET') === 'GET') return response([]);
       return response({ project: project(), intake: { id: 'i1', project_id: 'p1', mode: null, status: 'awaiting_mode', answers: {}, context_sources: [], revision: 1 }, onboarding_route: '/projects/p1/onboarding' }, 201);
     }));
@@ -28,6 +29,8 @@ describe('V1.3 project onboarding', () => {
     const create = calls.find((item) => item.url.endsWith('/projects') && item.body);
     expect(create?.body).toMatchObject({ title: 'Desktop App' });
     expect(create?.body?.operation_key).toMatch(/^web-/);
+    expect(new Headers(create?.headers).get('x-aiws-user-id')).toBe('owner-user');
+    expect(new Headers(create?.headers).get('x-aiws-scopes')).toBe('project:create');
   });
 
   it('reviews the brief and atomically confirms its workflow draft', async () => {

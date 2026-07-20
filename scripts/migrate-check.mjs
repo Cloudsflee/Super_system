@@ -26,6 +26,7 @@ const coreModels = [
   'RuntimeUserInput', 'HostBridgeDevice', 'BriefTemplate', 'WorkflowDraft'
 ];
 for (const model of coreModels) assert.ok(schema.includes(`model ${model}`), `schema contains ${model}`);
+for (const model of ['InstanceConfiguration', 'ProjectMembership', 'ProjectInvitation', 'CanonicalRepository', 'ProjectRepositoryBinding', 'RepositoryDeletionIntent', 'ExchangeRequest', 'ExchangeGrant']) assert.ok(schema.includes(`model ${model}`), `schema contains V1.9 ${model}`);
 for (const mapped of ['users', 'projects', 'context_packs', 'node_runs', 'trace_events', 'assets', 'code_changes', 'tool_definitions']) assert.ok(schema.includes(`@@map("${mapped}")`), `schema maps ${mapped}`);
 const declaredModels = [...schema.matchAll(/^model\s+(\w+)\s*\{/gm)].map((match) => match[1]);
 assert.equal(new Set(declaredModels).size, declaredModels.length, 'schema model names are unique');
@@ -58,4 +59,7 @@ assert.match(schema, /model AssistTurn[\s\S]*?operationReferenceId\s+String\?/, 
 assert.match(schema, /model AssistOperation[\s\S]*?beforeHash[\s\S]*?inverseOf[\s\S]*?expectedCurrentHash[\s\S]*?forced/, 'operation schema keeps append-only Undo fields');
 assert.match(schema, /model AssistOperation[\s\S]*?capabilityId[\s\S]*?action\s+String\?[\s\S]*?targetLabel[\s\S]*?inputSchema[\s\S]*?locator/, 'operation schema keeps semantic and locator metadata');
 assert.match(schema, /model AssistOperation[\s\S]*?operationReferenceId\s+String\?/, 'operation schema keeps targeted revision references');
+assert.match(schema, /model Project[\s\S]*?ownerUserId\s+String[\s\S]*?createdByUserId/, 'project schema keeps V1.9 owner');
+assert.match(schema, /model RepositoryDeletionIntent[\s\S]*?snapshotHash[\s\S]*?projectOwnerConfirmations/, 'repository deletion schema keeps revision snapshot and approvals');
+assert.match(schema, /model ExchangeRequest[\s\S]*?snapshotVersion[\s\S]*?tokenBudget[\s\S]*?sourceApproval[\s\S]*?targetApproval/, 'exchange schema keeps immutable snapshot and dual approvals');
 console.log(`migration/schema check passed (${coreModels.length} core models)`);

@@ -7,6 +7,8 @@ import { putSecret, readSecret, removeSecret } from '../vault.mjs';
 import { connectedGithubAccount, githubJson, resolveGithubAppConfig, verifyApp } from '../github-service.mjs';
 import { id, now } from '../../../../packages/shared/index.mjs';
 import { readLocalGithubAppConfig } from '../config.mjs';
+import { accessibleProjectIds, actorForRequest, instanceOwnerId, requireInstanceOwner } from '../project-governance-v19.mjs';
+import { revokeRepositoryInstallationBindingsInState } from '../repository-lifecycle-v19.mjs';
 
 export const githubConfigV12Routes = [
   makeRoute('GET', '/github/status', githubStatus),
@@ -26,14 +28,18 @@ async function appConfigDefaults({ res }) {
   return send(res, 200, { app_id: String(config.app_id || ''), client_id: String(config.oauth_client_id || config.client_id || ''), app_name: String(config.app_name || '') });
 }
 
-async function githubStatus({ res }) {
-  const state = await readState();
-  const account = connectedGithubAccount(state);
-  const installations = state.github_installations.filter((item) => item.status === 'active');
+async function githubStatus({ req, res }) {
+  const state = await readState(), actor = actorForRequest(state, req, { strict: Boolean(req.auth?.clientId) });
+  const account = connectedGithubAccount(state, actor?.id), allowed = accessibleProjectIds(state, actor?.id);
+  const tokenProjects = new Set(req.auth?.extra?.project_allowlist || []); if (tokenProjects.size) for (const projectId of [...allowed]) if (!tokenProjects.has(projectId)) allowed.delete(projectId);
+  const remoteIds = new Set(state.project_repository_bindings.filter((item) => allowed.has(item.project_id) && item.status !== 'removed').map((item) => state.canonical_repositories.find((repo) => repo.id === item.canonical_repository_id)?.repository_id).filter(Boolean));
+  const unrestrictedOwner = actor?.id === instanceOwnerId(state) && !tokenProjects.size;
+  const installations = state.github_installations.filter((item) => item.status === 'active').map((item) => unrestrictedOwner ? item : { ...item, repositories: (item.repositories || []).filter((repo) => remoteIds.has(String(repo.id))) }).filter((item) => unrestrictedOwner || item.repositories.length);
   return send(res, 200, { connected: Boolean(account), login: account?.login, installation_count: installations.length, repository_count: installations.flatMap((item) => item.repositories || []).length, setup: computeSetupStatus(state).steps.github });
 }
 
-async function saveAppConfig({ res, body, query }) {
+async function saveAppConfig({ req, res, body, query }) {
+  if (req) assertGithubOwner(await readState(), req);
   await requireConfigurationConfirmation(body);
   requireFields(body, ['app_id', 'client_id', 'client_secret', 'private_key', 'webhook_secret']);
   const config = { id: id('ghapp'), mode: 'byo', app_id: String(body.app_id), client_id: body.client_id, slug: body.slug || '', status: 'pending', refs: {}, created_at: now(), updated_at: now() };
@@ -47,6 +53,7 @@ async function saveAppConfig({ res, body, query }) {
     const refs = [...state.github_app_configs.flatMap((item) => Object.values(item.refs || {})), ...state.connected_accounts.filter((item) => item.provider === 'github').map((item) => item.credential_ref)].filter(Boolean);
     state.github_app_configs = [config];
     state.connected_accounts = state.connected_accounts.filter((item) => item.provider !== 'github');
+    revokeRepositoryInstallationBindingsInState(state, null, null, { reason: 'github_app_reconfigured' });
     state.github_installations = [];
     state.repository_bindings = [];
     state.setup_states.forEach((item) => { item.completed_at = null; item.updated_at = now(); });
@@ -58,11 +65,12 @@ async function saveAppConfig({ res, body, query }) {
   return send(res, 200, result);
 }
 
-async function manifestStart({ res }) {
+async function manifestStart({ req, res }) {
+  assertGithubOwner(await readState(), req);
   const state = randomBytes(18).toString('hex');
   const baseUrl = publicBaseUrl();
   const webhookActive = !isLoopback(baseUrl);
-  const manifest = { name: 'AI Workspace', url: baseUrl, hook_attributes: { url: `${baseUrl}/api/github/webhook`, active: webhookActive }, redirect_url: `${baseUrl}/setup`, setup_url: `${baseUrl}/integrations/github/install/setup`, setup_on_update: true, public: true, default_permissions: { contents: 'write', pull_requests: 'write', metadata: 'read' }, default_events: webhookActive ? ['installation', 'installation_repositories', 'push', 'pull_request'] : [] };
+  const manifest = { name: 'AI Workspace', url: baseUrl, hook_attributes: { url: `${baseUrl}/api/github/webhook`, active: webhookActive }, redirect_url: `${baseUrl}/setup`, setup_url: `${baseUrl}/integrations/github/install/setup`, setup_on_update: true, public: true, default_permissions: { administration: 'write', checks: 'read', contents: 'write', pull_requests: 'write', metadata: 'read' }, default_events: webhookActive ? ['installation', 'installation_repositories', 'push', 'pull_request'] : [] };
   await mutate((data) => { upsert(data, 'github_manifest', { status: 'pending', state_hash: hash(state), updated_at: now() }); });
   return send(res, 200, { state, manifest, manifest_url: `https://github.com/settings/apps/new?state=${state}&manifest=${encodeURIComponent(JSON.stringify(manifest))}` });
 }
@@ -83,21 +91,22 @@ async function manifestCallback({ res, body, query }) {
   return saveAppConfig({ res, body: { app_id: converted.id, client_id: converted.client_id, client_secret: converted.client_secret, private_key: converted.pem, webhook_secret: converted.webhook_secret, slug: converted.slug, adapter: body.adapter, confirmed: true }, query });
 }
 
-async function deviceStart({ res, body, query }) {
-  const state = await readState();
+async function deviceStart({ req, res, body, query }) {
+  const state = await readState(), actor = actorForRequest(state, req, { strict: Boolean(req.auth?.clientId) });
   const config = resolveGithubAppConfig(state);
   const clientId = config?.client_id;
   if (!clientId && !testAdapter(body, query)) throw new HttpError(400, { error: 'github_client_id_required' });
   const response = testAdapter(body, query) ? { device_code: 'test-device-code', user_code: 'AIWS-2026', verification_uri: 'https://github.com/login/device', expires_in: 900, interval: 1 }
     : await githubJson('https://github.com/login/device/code', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ client_id: clientId }) });
   const requestId = id('ghdev'), ref = await putSecret('github_device', response.device_code);
-  await mutate((data) => { upsert(data, `github_device:${requestId}`, { status: 'pending', client_id: clientId, refs: { device: ref }, interval: Math.max(1, Number(response.interval || 5)), expires_at: new Date(Date.now() + Number(response.expires_in || 900) * 1000).toISOString(), next_poll_at: now(), updated_at: now() }); });
+  await mutate((data) => { upsert(data, `github_device:${requestId}`, { status: 'pending', client_id: clientId, requested_by_user_id: actor.id, refs: { device: ref }, interval: Math.max(1, Number(response.interval || 5)), expires_at: new Date(Date.now() + Number(response.expires_in || 900) * 1000).toISOString(), next_poll_at: now(), updated_at: now() }); });
   return send(res, 200, { request_id: requestId, user_code: response.user_code, verification_uri: response.verification_uri, expires_in: response.expires_in, interval: response.interval });
 }
 
-async function devicePoll({ res, body, query }) {
-  const state = await readState(), request = state.integration_statuses.find((item) => item.key === `github_device:${body.request_id}`);
+async function devicePoll({ req, res, body, query }) {
+  const state = await readState(), actor = actorForRequest(state, req, { strict: Boolean(req.auth?.clientId) }), request = state.integration_statuses.find((item) => item.key === `github_device:${body.request_id}`);
   if (!request) throw new HttpError(404, { error: 'device_request_not_found' });
+  if (request.requested_by_user_id && request.requested_by_user_id !== actor.id) throw new HttpError(403, { error: 'github_device_request_actor_mismatch' });
   if (request.status !== 'pending') throw new HttpError(409, { error: 'device_request_not_pending', status: request.status });
   if (Date.parse(request.expires_at) <= Date.now()) return finishDeviceError(res, request, 'expired_token');
   const adapted = testAdapter(body, query);
@@ -106,13 +115,16 @@ async function devicePoll({ res, body, query }) {
     : await githubJson('https://github.com/login/oauth/access_token', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ client_id: request.client_id, device_code: await readSecret(request.refs.device), grant_type: 'urn:ietf:params:oauth:grant-type:device_code' }) });
   if (response.error) return finishDeviceError(res, request, response.error, response.error_description);
   if (!response.access_token) throw new HttpError(502, { error: 'github_device_token_missing' });
-  const user = adapted ? { id: 1, login: 'aiws-owner', name: 'AIWS Owner' } : await githubJson('https://api.github.com/user', { headers: { authorization: `Bearer ${response.access_token}` } });
+  const user = adapted ? { id: body.test_github_user_id || 1, login: body.test_github_login || 'aiws-owner', name: body.test_github_name || 'AIWS Owner' } : await githubJson('https://api.github.com/user', { headers: { authorization: `Bearer ${response.access_token}` } });
   const ref = await putSecret('github_oauth', response.access_token);
-  const changed = await mutate((data) => {
-    const current = data.integration_statuses.find((item) => item.key === request.key);
-    if (!current || current.status !== 'pending') throw new HttpError(409, { error: 'device_request_not_pending', status: current?.status });
-    return connectAccount(data, user, ref, current);
-  });
+  let changed;
+  try {
+    changed = await mutate((data) => {
+      const current = data.integration_statuses.find((item) => item.key === request.key);
+      if (!current || current.status !== 'pending') throw new HttpError(409, { error: 'device_request_not_pending', status: current?.status });
+      return connectAccount(data, user, ref, current, actor.id);
+    });
+  } catch (error) { await removeSecret(ref); throw error; }
   await removeSecret(request.refs.device);
   await removeSecret(changed.previous_ref);
   return send(res, 200, changed.response);
@@ -133,20 +145,23 @@ async function finishDeviceError(res, source, error, message = '') {
   return send(res, status, { error, message, ...result });
 }
 
-async function disconnect({ res, body }) {
+async function disconnect({ req, res, body }) {
+  assertGithubOwner(await readState(), req);
   await requireConfigurationConfirmation(body);
-  const refs = await mutate((state) => { const actor = owner(state), values = state.connected_accounts.filter((item) => item.provider === 'github').map((item) => item.credential_ref).filter(Boolean); state.connected_accounts = state.connected_accounts.filter((item) => item.provider !== 'github'); state.github_installations = []; state.repository_bindings = []; state.setup_states.forEach((item) => { item.completed_at = null; }); addTrace(state, 'human.reviewed', { summary: 'GitHub 已断开。' }, actor.id); return values; });
+  const refs = await mutate((state) => { const actor = owner(state), values = state.connected_accounts.filter((item) => item.provider === 'github').map((item) => item.credential_ref).filter(Boolean); state.connected_accounts = state.connected_accounts.filter((item) => item.provider !== 'github'); revokeRepositoryInstallationBindingsInState(state, null, null, { reason: 'github_disconnected' }); state.github_installations = []; state.repository_bindings = []; state.setup_states.forEach((item) => { item.completed_at = null; }); addTrace(state, 'human.reviewed', { summary: 'GitHub 已断开。' }, actor.id); return values; });
   await Promise.all(refs.map(removeSecret));
   return send(res, 200, { connected: false });
 }
 
-async function resetAppConfig({ res, body }) {
+async function resetAppConfig({ req, res, body }) {
+  assertGithubOwner(await readState(), req);
   await requireConfigurationConfirmation(body);
   const refs = await mutate((state) => {
     if (state.setup_states[0]?.mode === 'hosted') throw new HttpError(409, { error: 'hosted_github_app_managed_by_provider' });
     const actor = owner(state);
     const values = [...state.github_app_configs.flatMap((item) => Object.values(item.refs || {})), ...state.connected_accounts.filter((item) => item.provider === 'github').map((item) => item.credential_ref)].filter(Boolean);
     state.github_app_configs = []; state.connected_accounts = state.connected_accounts.filter((item) => item.provider !== 'github');
+    revokeRepositoryInstallationBindingsInState(state, null, null, { reason: 'github_app_reset' });
     state.github_installations = []; state.repository_bindings = [];
     state.setup_states.forEach((item) => { item.completed_at = null; item.updated_at = now(); });
     addTrace(state, 'human.reviewed', { summary: 'GitHub App 本地配置已清除，等待重新配置。' }, actor.id);
@@ -156,7 +171,7 @@ async function resetAppConfig({ res, body }) {
   return send(res, 200, { configured: false });
 }
 
-function connectAccount(state, user, ref, request) { const actor = owner(state); const previous = state.connected_accounts.find((item) => item.provider === 'github')?.credential_ref || null; const account = { id: id('acct'), user_id: actor.id, provider: 'github', provider_account_id: String(user.id), login: user.login, display_name: user.name || user.login, credential_ref: ref, status: 'connected', scopes: ['repo'], last_verified_at: now(), created_at: now(), updated_at: now() }; state.connected_accounts = state.connected_accounts.filter((item) => item.provider !== 'github'); state.connected_accounts.push(account); Object.assign(request, { status: 'completed', completed_at: now(), updated_at: now() }); addTrace(state, 'github.account.connected', { summary: `GitHub Owner: ${account.login}` }, actor.id); return { previous_ref: previous, response: { connected: true, account: { ...account, credential_ref: '***MASKED***' } } }; }
+function connectAccount(state, user, ref, request, actorId) { const actor = state.users.find((item) => item.id === actorId) || owner(state); const conflict = state.connected_accounts.find((item) => item.provider === 'github' && item.status === 'connected' && item.user_id !== actor.id && String(item.provider_account_id) === String(user.id)); if (conflict) throw new HttpError(409, { error: 'github_identity_already_linked' }); const previous = state.connected_accounts.find((item) => item.provider === 'github' && item.user_id === actor.id)?.credential_ref || null; const account = { id: id('acct'), user_id: actor.id, provider: 'github', provider_account_id: String(user.id), login: user.login, display_name: user.name || user.login, credential_ref: ref, status: 'connected', scopes: ['repo'], last_verified_at: now(), created_at: now(), updated_at: now() }; state.connected_accounts = state.connected_accounts.filter((item) => item.provider !== 'github' || item.user_id !== actor.id); state.connected_accounts.push(account); Object.assign(request, { status: 'completed', completed_at: now(), completed_by_user_id: actor.id, updated_at: now() }); addTrace(state, 'github.account.connected', { summary: `GitHub identity connected: ${account.login}` }, actor.id); return { previous_ref: previous, response: { connected: true, account: { ...account, credential_ref: '***MASKED***' } } }; }
 function adapterDeviceResponse(body) { if (body.test_response && typeof body.test_response === 'object') return body.test_response; if (body.test_status && body.test_status !== 'success') return { error: body.test_status, error_description: `test ${body.test_status}` }; return { access_token: 'test-access-token', token_type: 'bearer', scope: 'repo' }; }
 function publicConfig(config) { return { ...config, refs: { client: '***MASKED***', private_key: '***MASKED***', webhook: '***MASKED***' } }; }
 function requireFields(body, names) { const missing = names.filter((name) => !body[name]); if (missing.length) throw new HttpError(400, { error: 'missing_fields', fields: missing }); }
@@ -165,3 +180,4 @@ function hash(value) { return createHash('sha256').update(String(value || '')).d
 function publicBaseUrl() { return String(process.env.AIWS_PUBLIC_BASE_URL || 'http://localhost:4317').replace(/\/$/, ''); }
 function isLoopback(value) { try { return ['localhost', '127.0.0.1', '::1'].includes(new URL(value).hostname); } catch { throw new HttpError(500, { error: 'invalid_public_base_url' }); } }
 async function requireConfigurationConfirmation(body = {}) { const state = await readState(); if (state.setup_states[0]?.completed_at && body.confirmed !== true) throw new HttpError(409, { error: 'configuration_confirmation_required' }); }
+function assertGithubOwner(state, req) { const actor = actorForRequest(state, req, { strict: Boolean(req.auth?.clientId) }); return requireInstanceOwner(state, actor?.id); }

@@ -1,23 +1,27 @@
 import { makeRoute, send, sendOneTimeSecret } from '../http.mjs';
 import { assertLocalMcpAdmin, createMcpClient, listMcpClients, MCP_SCOPES, revokeMcpClient } from '../mcp-client-service.mjs';
 import { owner, readState } from '../state.mjs';
+import { actorForRequest, requireInstanceOwner } from '../project-governance-v19.mjs';
 
 export const mcpClientV18Routes = [
   makeRoute('GET', '/mcp/clients', async ({ req, res }) => {
     assertLocalMcpAdmin(req);
     const state = await readState();
+    requireInstanceOwner(state, actorForRequest(state, req, { strict: Boolean(req.auth?.clientId) })?.id);
     const availableSubjects = state.users.map((user) => ({ id: user.id, display_name: user.display_name, role: user.role }));
     return send(res, 200, { clients: await listMcpClients(), available_scopes: MCP_SCOPES, available_subjects: availableSubjects });
   }),
   makeRoute('POST', '/mcp/clients', async ({ req, res, body }) => {
     assertLocalMcpAdmin(req);
-    const actor = owner(await readState());
+    const state = await readState(); requireInstanceOwner(state, actorForRequest(state, req, { strict: Boolean(req.auth?.clientId) })?.id);
+    const actor = owner(state);
     const created = await createMcpClient(body, actor?.id || null);
     return sendOneTimeSecret(res, 201, { ...created, token_visible_once: true, configuration: clientConfiguration(req, created.token) });
   }),
   makeRoute('DELETE', '/mcp/clients/:id', async ({ req, res, params }) => {
     assertLocalMcpAdmin(req);
-    const actor = owner(await readState());
+    const state = await readState(); requireInstanceOwner(state, actorForRequest(state, req, { strict: Boolean(req.auth?.clientId) })?.id);
+    const actor = owner(state);
     return send(res, 200, { client: await revokeMcpClient(params.id, actor?.id || null) });
   })
 ];
