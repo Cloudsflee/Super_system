@@ -24,7 +24,10 @@
     "tests/unit/v17-core.test.mjs",
     "tests/unit/v17-release.test.mjs",
     "tests/unit/v18-release.test.mjs",
-    "tests/unit/v19-migration.test.mjs"
+    "tests/unit/v19-migration.test.mjs",
+    "tests/unit/v19-exchange.test.mjs",
+    "tests/unit/v19-project-governance.test.mjs",
+    "tests/unit/v19-repository-lifecycle.test.mjs"
   ],
   "unit-capabilities": [
     "tests/unit/v17-capability-operations.test.mjs",
@@ -37,6 +40,7 @@
     "tests/unit/v18-mcp-gateway-auth.test.mjs",
     "tests/unit/v18-mcp-registry.test.mjs",
     "tests/unit/v19-core.test.mjs",
+    "tests/unit/v19-delivery-pull-request.test.mjs",
     "tests/unit/v19-mcp-registry.test.mjs",
     "tests/unit/v19-repository-delivery.test.mjs"
   ],
@@ -50,7 +54,10 @@
     "tests/integration/v18-mcp-gateway-flow.test.mjs",
     "tests/integration/v18-mcp-http-flow.test.mjs",
     "tests/integration/v18-mcp-operations-flow.test.mjs",
-    "tests/integration/v18-mcp-stdio-flow.test.mjs"
+    "tests/integration/v18-mcp-stdio-flow.test.mjs",
+    "tests/integration/v19-exchange-flow.test.mjs",
+    "tests/integration/v19-project-governance-flow.test.mjs",
+    "tests/integration/v19-project-isolation-flow.test.mjs"
   ],
   "integration-runtime": [
     "tests/integration/v12-codex-flow.test.mjs",
@@ -70,6 +77,8 @@
   ],
   "integration-workflow": [
     "tests/integration/v17-workflow-assist-flow.test.mjs",
+    "tests/integration/v19-assist-recovery-acl-flow.test.mjs",
+    "tests/integration/v19-workflow-migration-acl-flow.test.mjs",
     "tests/integration/v19-workflow-migration-orchestrator-flow.test.mjs"
   ],
   "integration-files": [
@@ -84,7 +93,9 @@
     "tests/integration/v12-github-security-flow.test.mjs",
     "tests/integration/v13-github-repository-flow.test.mjs",
     "tests/integration/v19-delivery-flow.test.mjs",
-    "tests/integration/v19-github-webhook-flow.test.mjs"
+    "tests/integration/v19-github-webhook-flow.test.mjs",
+    "tests/integration/v19-repository-exchange-flow.test.mjs",
+    "tests/integration/v19-repository-fault-flow.test.mjs"
   ],
   "integration-change": [
     "tests/integration/v13-terminal-flow.test.mjs",

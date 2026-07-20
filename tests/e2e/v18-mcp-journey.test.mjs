@@ -7,7 +7,7 @@ import {
 import { decide, journeyWorkflowHierarchy, readResource, writeJourneyProject } from './v18-mcp-journey-helpers.mjs';
 
 const fixture = await createMcpTestFixture('aiws-v18-journey-', {
-  approver: {},
+  approver: { scopes: ['system:read', 'project:read', 'project:write', 'workflow:read', 'governance:read', 'approval:read', 'approval:decide', 'destructive:execute'] },
   env: { AIWS_CODEX_BIN: process.execPath, NODE_REPL_HISTORY: '', AIWS_TEST_TASK_TIMEOUT_MS: '30000' },
   seed: seedHostCodexProfile
 });
@@ -238,7 +238,7 @@ try {
   assert.equal(restoredEvents.ok, true);
   assert.equal(restoredEvents.data.operation.status, 'succeeded');
 
-  const trashed = resultData(await callOperation(operator.client, 'aiws.projects.post.projects.by-id.trash', { params: { id: projectId }, body: {} }));
+  const trashed = resultData(await callOperation(approver.client, 'aiws.projects.post.projects.by-id.trash', { params: { id: projectId }, body: {} }));
   assert.ok(trashed.project.deleted_at);
   fixture.assertMcpOnlyHttp();
 
