@@ -172,12 +172,19 @@ function decorateGraphNode(state, node, allNodes) {
   const tasks = allNodes.filter((item) => item.role === 'task' && item.parent_node_id === node.id), completed = tasks.filter((item) => item.status === 'completed').length;
   const targets = state.repository_targets.filter((item) => item.workstream_id === node.id);
   return {
-    ...node, dependency_ids: dependencyIds(node), task_count: tasks.length, completed_task_count: completed,
+    ...node, status: workstreamStatus(node, tasks), dependency_ids: dependencyIds(node), task_count: tasks.length, completed_task_count: completed,
     progress: tasks.length ? completed / tasks.length : 0, blocked_count: tasks.filter((item) => item.status === 'blocked').length,
     pending_approval_count: state.runtime_approvals.filter((item) => (item.node_id === node.id || tasks.some((task) => task.id === item.node_id)) && item.status === 'pending').length,
     output_count: state.assets.filter((item) => item.node_id === node.id || tasks.some((task) => task.id === item.node_id)).length,
     repository_status: targets.length ? { target_count: targets.length, ready_count: targets.filter((item) => item.status === 'ready').length } : null
   };
+}
+function workstreamStatus(workstream, tasks) {
+  const required = tasks.filter((item) => item.required !== false);
+  if (required.some((item) => item.status === 'blocked')) return 'blocked';
+  if (required.length > 0 && required.every((item) => item.status === 'completed')) return 'ready_for_submission';
+  if (required.some((item) => ['running', 'needs_review', 'completed'].includes(item.status))) return 'running';
+  return workstream.status;
 }
 function dependencyIds(node) { return (node.dependencies || []).map((item) => typeof item === 'string' ? item : item.node_id).filter(Boolean); }
 function clean(value, max = 120) { return String(value ?? '').replace(/\0/g, '').trim().slice(0, max); }
