@@ -11,6 +11,7 @@ import {
 } from './codex-app-server.mjs';
 import { withCodexRuntimeStateRecovery } from './codex-home-recovery.mjs';
 import { issueCodexMcpAccess } from './codex-mcp-runtime.mjs';
+import { codexTimeoutTtlSeconds, resolveCodexTimeoutMs } from './codex-timeout.mjs';
 
 export async function createCodexEphemeralThread(options) {
   return withCodexRuntimeStateRecovery(options.profile, () => createCodexEphemeralThreadOnce(options));
@@ -21,7 +22,7 @@ async function createCodexEphemeralThreadOnce({ state, profile, cwd, sourceThrea
   const auth = state.integration_statuses.find((item) => item.key === 'codex_auth');
   if (!codexAuthMatchesProfile(auth, profile)) throw taggedError('codex_auth_profile_mismatch', 'app_server_start_failed');
   if (auth.home && !isThirdPartyProvider(profile.provider)) await materializeDeviceAuth(auth.home, profile.codex_home);
-  const credential = await readSecret(auth?.refs?.credential), mcpAccess = await issueCodexMcpAccess(projectId, profile, { ttlSeconds: Math.ceil(Number(profile.timeout_ms || 120000) / 1000) + 1200 }), invocation = appServerInvocation(profile, cwd, 'read-only', credential, [], mcpAccess);
+  const credential = await readSecret(auth?.refs?.credential), mcpAccess = await issueCodexMcpAccess(projectId, profile, { ttlSeconds: codexTimeoutTtlSeconds(profile.timeout_ms, 1200) }), invocation = appServerInvocation(profile, cwd, 'read-only', credential, [], mcpAccess);
   let child;
   try {
     child = invocation.runtime === 'docker'
@@ -43,7 +44,7 @@ async function createCodexEphemeralThreadOnce({ state, profile, cwd, sourceThrea
   child.stderr.on('data', (chunk) => { stderr = (stderr + redactKnownSecretsSync(chunk)).slice(-16000); });
   child.on('error', (error) => terminate(taggedError(error.message, 'app_server_turn_failed')));
   child.on('close', (code) => closeError(taggedError(stderr || `codex_app_server_exit_${code}`, 'app_server_turn_failed')));
-  const abortInitialize = () => close(), initializeTimer = setTimeout(() => terminate(taggedError('codex_ephemeral_initialize_timeout', 'app_server_start_failed')), Math.max(1000, Math.min(300000, Number(profile.timeout_ms || 120000))));
+  const abortInitialize = () => close(), initializeTimer = setTimeout(() => terminate(taggedError('codex_ephemeral_initialize_timeout', 'app_server_start_failed')), resolveCodexTimeoutMs(profile.timeout_ms));
   if (signal?.aborted) abortInitialize(); else signal?.addEventListener('abort', abortInitialize, { once: true });
 
   try {
@@ -65,7 +66,7 @@ async function createCodexEphemeralThreadOnce({ state, profile, cwd, sourceThrea
       if (active) throw taggedError('app_server_ephemeral_turn_busy', 'app_server_turn_failed');
       const deltaItems = new Set(); let resolveTurn, rejectTurn;
       const completion = new Promise((resolve, reject) => { resolveTurn = resolve; rejectTurn = reject; });
-      const timeout = Math.max(1000, Math.min(300000, Number(profile.timeout_ms || 120000)));
+      const timeout = resolveCodexTimeoutMs(profile.timeout_ms);
       const abort = () => { if (threadId && active?.turnId) void request('turn/interrupt', { threadId, turnId: active.turnId }).catch(() => undefined); finishActive(taggedError('codex_ephemeral_turn_interrupted', 'app_server_turn_failed')); };
       active = { turnId: null, output: '', onEvent, deltaItems, resolve: resolveTurn, reject: rejectTurn, timer: null, signal: turnSignal, abort };
       active.timer = setTimeout(() => {

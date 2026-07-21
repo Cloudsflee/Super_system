@@ -1,12 +1,13 @@
 import { HttpError } from '../http.mjs';
 import { addTrace, saveArtifact } from '../state.mjs';
-import { buildContextPack, contextPackToMarkdown, estimateTokens, now } from '../../../../packages/shared/index.mjs';
+import { contextPackToMarkdown, estimateTokens, now } from '../../../../packages/shared/index.mjs';
 import { assertExchangeGrantActive } from '../exchange-v19.mjs';
+import { evaluateTaskExecutionContextFreshness, prepareTaskExecutionContext } from '../task-execution-context.mjs';
 
 export function previewContextPack(state, { actor, node, project, workspace, contract, body }) {
-  const ctx = buildContextPack({ state, project, workspace, node, contract, purpose: body.purpose || 'node_run', receiver_name: body.receiver_name || 'CodexRunner', pinnedRefs: body.pinned_refs || [] });
-  state.context_packs.push(ctx);
-  state.context_sufficiency_checks.push(ctx._sufficiency_check);
+  const workflow = state.workflows.find((item) => item.id === node.workflow_id);
+  const prepared = prepareTaskExecutionContext(state, { actor, project, workflow, workspace, task: node, contract, purpose: body.purpose || 'node_run', receiverName: body.receiver_name || 'CodexRunner', repositoryWorkspaceId: body.repository_workspace_id });
+  const ctx = prepared.context_pack;
   addContextTraces(state, { actorId: actor.id, project, workspace, node, ctx, prefix: 'Context Pack' });
   return ctx;
 }
@@ -31,11 +32,13 @@ export function ensureRunContextPack(state, { actor, node, project, workspace, c
     if (existing.status !== 'confirmed') throw new HttpError(409, { error: 'context_pack_not_confirmed' });
     const scopedNodeId = existing.content_json?.workflow_node?.id;
     if (scopedNodeId && scopedNodeId !== node.id) throw new HttpError(409, { error: 'context_pack_scope_mismatch', context_pack_id: existing.id, node_id: node.id });
+    if (existing.task_execution_context) { const freshness = evaluateTaskExecutionContextFreshness(state, existing.task_execution_context); if (!freshness.current) throw new HttpError(409, { error: 'task_context_not_ready', reasons: freshness.reasons }); existing._task_execution_context = existing.task_execution_context; }
+    else if (state.workflows.find((item) => item.id === node.workflow_id)?.planning_quality === 'verified') throw new HttpError(409, { error: 'task_context_not_ready', reasons: [{ code: 'context_pack_v2_required', context_pack_id: existing.id }] });
     return existing;
   }
-  const ctx = buildContextPack({ state, project, workspace, node, contract, purpose: 'node_run', receiver_name: body.runner === 'codex' ? 'CodexRunner' : 'DockerCodexRunner' });
-  state.context_packs.push(ctx);
-  state.context_sufficiency_checks.push(ctx._sufficiency_check);
+  const workflow = state.workflows.find((item) => item.id === node.workflow_id);
+  const prepared = prepareTaskExecutionContext(state, { actor, project, workflow, workspace, task: node, contract, purpose: 'node_run', receiverName: body.runner === 'codex' ? 'CodexRunner' : 'DockerCodexRunner', repositoryWorkspaceId: body.repository_workspace_id });
+  const ctx = prepared.context_pack; ctx._task_execution_context = prepared.context;
   addContextTraces(state, { actorId: actor.id, project, workspace, node, ctx, prefix: 'NodeRun 前' });
   return ctx;
 }
@@ -50,7 +53,9 @@ function mergeExchangePack(state, { actor, node, project, workspace, contract, b
     throw new HttpError(409, { error: 'exchange_context_pack_inactive' });
   }
   assertTargetScope(state, exchangePack.content_json?.target_scope, project.id, node);
-  const ctx = buildContextPack({ state, project, workspace, node, contract, purpose: 'node_run', receiver_name: body.runner === 'codex' ? 'CodexRunner' : 'DockerCodexRunner' });
+  const workflow = state.workflows.find((item) => item.id === node.workflow_id);
+  const prepared = prepareTaskExecutionContext(state, { actor, project, workflow, workspace, task: node, contract, purpose: 'node_run', receiverName: body.runner === 'codex' ? 'CodexRunner' : 'DockerCodexRunner', repositoryWorkspaceId: body.repository_workspace_id });
+  const ctx = prepared.context_pack; ctx._task_execution_context = prepared.context;
   Object.assign(ctx.content_json, {
     precedence: 'target_local_first', external_context_pack_id: exchangePack.id,
     external_context: structuredClone(external),
@@ -60,8 +65,6 @@ function mergeExchangePack(state, { actor, node, project, workspace, contract, b
   ctx.memory_manifest = { ...ctx.memory_manifest, external_context: { authority: 'exchange_grant', grant_id: grant.id, snapshot_hash: grant.snapshot_hash, source_context_pack_id: exchangePack.id } };
   ctx.content_json.memory_manifest = ctx.memory_manifest;
   ctx.token_estimate = estimateTokens(JSON.stringify(ctx.content_json));
-  state.context_packs.push(ctx);
-  state.context_sufficiency_checks.push(ctx._sufficiency_check);
   addContextTraces(state, { actorId: actor.id, project, workspace, node, ctx, prefix: 'NodeRun 前' });
   return ctx;
 }

@@ -16,6 +16,8 @@ let latestProcess;
 
 try {
   const { codexAuthMatchesProfile, profileConfigToml, runCodexJson, validateProfileInput, writeProfileConfig } = await import('../../apps/api/src/codex-service.mjs');
+  const { DEFAULT_CODEX_TIMEOUT_MS, MAX_CODEX_TIMEOUT_MS, codexTimeoutTtlSeconds, resolveCodexTimeoutMs } = await import('../../apps/api/src/codex-timeout.mjs');
+  const { CodexRunner, DockerCodexRunner } = await import('../../packages/runner-adapters/src/index.mjs');
   const { codexProbeEvidenceMatches, createCodexProbeEvidence } = await import('../../apps/api/src/codex-probe-evidence.mjs');
   const { codexContainerProxyEnv, containerizeLoopbackUrl } = await import('../../apps/api/src/codex-container-network.mjs');
   const { ccSwitchBinding, ccSwitchProfileReady, resolveCodexParserInvocation, validateBridgeConformance } = await import('../../apps/api/src/cc-switch-service.mjs');
@@ -26,14 +28,21 @@ try {
   const state = { projects: [{ repo_path: repo }], integration_statuses: [{ key: 'codex_auth', status: 'authenticated', provider: 'openai', refs: {} }] };
   const valid = { name: 'OpenAI', provider: 'openai', model: 'gpt-5.1', reasoning: 'high', web_search: true, timeout_ms: 1000, mounts: [repo], mcp_servers: [{ name: 'docs', command: 'node', args: ['server.mjs'] }] };
   assert.deepEqual(validateProfileInput(state, valid), { ok: true, errors: [] });
+  assert.deepEqual(validateProfileInput(state, { ...valid, timeout_ms: undefined }), { ok: true, errors: [] });
   assert.deepEqual(validateProfileInput(state, { ...valid, reasoning: 'ultra' }), { ok: true, errors: [] });
   for (const [patch, error] of [
     [{ reasoning: 'not valid' }, 'invalid_reasoning'], [{ web_search: 'yes' }, 'invalid_web_search'],
-    [{ timeout_ms: 10 }, 'invalid_timeout'], [{ model: '--danger' }, 'invalid_model'],
+    [{ timeout_ms: 0 }, 'invalid_timeout'], [{ timeout_ms: 10 }, 'invalid_timeout'], [{ timeout_ms: '1800000' }, 'invalid_timeout'], [{ timeout_ms: 1_000.5 }, 'invalid_timeout'], [{ timeout_ms: MAX_CODEX_TIMEOUT_MS + 1 }, 'invalid_timeout'], [{ model: '--danger' }, 'invalid_model'],
     [{ mounts: [outside] }, `mount_not_allowed:${outside}`],
     [{ mcp_servers: [{ name: 'bad', command: 'powershell', args: [] }] }, 'mcp_command_not_allowed:powershell'],
     [{ mcp_servers: [{ name: 'bad', command: 'node', args: [], env: { TOKEN: 'raw' } }] }, 'mcp_env_not_allowed:bad']
   ]) assert.ok(validateProfileInput(state, { ...valid, ...patch }).errors.includes(error), error);
+  assert.equal(resolveCodexTimeoutMs(undefined), DEFAULT_CODEX_TIMEOUT_MS);
+  assert.equal(resolveCodexTimeoutMs(0), 1_000);
+  assert.equal(resolveCodexTimeoutMs(MAX_CODEX_TIMEOUT_MS + 1), MAX_CODEX_TIMEOUT_MS);
+  assert.equal(codexTimeoutTtlSeconds(undefined), DEFAULT_CODEX_TIMEOUT_MS / 1_000 + 300);
+  assert.equal(new CodexRunner().timeoutMs, DEFAULT_CODEX_TIMEOUT_MS);
+  assert.equal(new DockerCodexRunner().timeoutMs, DEFAULT_CODEX_TIMEOUT_MS);
   const thirdParty = { ...valid, name: 'OpenRouter', provider: 'openrouter', provider_name: 'OpenRouter', model: 'openai/gpt-test', base_url: 'https://openrouter.ai/api/v1', wire_api: 'responses', requires_openai_auth: false };
   assert.deepEqual(validateProfileInput(state, thirdParty), { ok: true, errors: [] });
   assert.ok(validateProfileInput(state, { ...thirdParty, base_url: '' }).errors.includes('base_url_required'));

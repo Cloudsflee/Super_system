@@ -1,10 +1,12 @@
 import {
   applyContractPatch, createChangeProposal, createNodeWorkspace, defaultContractForNode,
-  now
+  hashString, now
 } from '../../../packages/shared/index.mjs';
 import { HttpError } from './http.mjs';
 import { invalidateAssistScopesInState } from './assist-v3-domain.mjs';
-import { prepareWorkflowGraphPatch, workflowGraphHash, workflowGraphSnapshot, workflowVisualGraph } from './workflow-graph-validation.mjs';
+import { assertCompletedTaskDefinitions, prepareWorkflowGraphPatch, workflowGraphHash, workflowGraphSnapshot, workflowVisualGraph } from './workflow-graph-validation.mjs';
+import { assertWorkflowHierarchy, normalizeWorkflowHierarchyNodes } from './workflow-hierarchy-domain.mjs';
+import { assertWorkflowPlanningQuality } from './workflow-quality.mjs';
 
 export { prepareWorkflowGraphPatch, workflowGraphHash, workflowGraphSnapshot, workflowVisualGraph } from './workflow-graph-validation.mjs';
 
@@ -61,6 +63,29 @@ export function createWorkflowGraphProposalInState(state, workflowId, input, act
   return { proposal, ...prepared, target };
 }
 
+export function createWorkflowReplanProposalInState(state, workflowId, candidateInput, actorId, metadata = {}) {
+  const workflow = state.workflows.find((item) => item.id === workflowId && (!metadata.project_id || item.project_id === metadata.project_id));
+  if (!workflow) throw new HttpError(404, { error: 'workflow_not_found' });
+  const project = state.projects.find((item) => item.id === workflow.project_id), brief = currentBrief(state, workflow.project_id);
+  const current = formalNodes(state, workflow.id), candidate = normalizeWorkflowHierarchyNodes(candidateInput.nodes || []);
+  assertWorkflowHierarchy(candidate, { mode: 'formal', requireTasks: true });
+  assertCompletedTaskDefinitions(current, candidate);
+  const quality = assertWorkflowPlanningQuality({ nodes: candidate, project, brief, projectClassification: candidateInput.project_classification, briefCoverage: candidateInput.brief_coverage });
+  const revision = Number(workflow.workflow_revision || workflow.version || 1), before = fullSnapshot(workflow, current, revision), after = fullSnapshot(workflow, quality.nodes, revision + 1);
+  const proposal = createChangeProposal({
+    projectId: workflow.project_id, workspaceId: workflow.workspace_id, nodeId: null,
+    changeType: 'workflow_replan_replace', title: clean(metadata.title, 200) || `重规划工作流：${workflow.title}`,
+    summary: clean(metadata.summary, 1000) || '以通过质量门禁的新 Task DAG 替换正式工作流。', before, after,
+    impact: ['正式 Workflow', 'Task DAG', 'Node Contract', '资产输入输出'],
+    risks: ['批准前不修改正式工作流；已完成 Task 定义保持冻结。'],
+    applyAction: { type: 'workflow_replan_replace', workflow_id: workflow.id, expected_revision: revision, before_hash: digest(before), candidate_hash: digest(after), candidate: quality.nodes, brief_coverage: quality.brief_coverage, project_classification: candidateInput.project_classification },
+    actorId
+  });
+  Object.assign(proposal, { target_hash_mode: 'workflow_replan_v1', target_hash_version: 1, target_hash: digest(before), workflow_id: workflow.id, workflow_revision: revision, generation_id: metadata.generation_id || null });
+  state.change_proposals.push(proposal);
+  return { proposal, before, after, candidate: quality.nodes };
+}
+
 export function applyWorkflowGraphPatchInState(state, proposal) {
   const action = proposal?.apply_action || {};
   const workflow = state.workflows.find((item) => item.id === action.workflow_id && item.project_id === proposal.project_id);
@@ -95,6 +120,23 @@ export function applyWorkflowGraphPatchInState(state, proposal) {
   };
 }
 
+export function applyWorkflowReplanInState(state, proposal) {
+  const action = proposal?.apply_action || {}, workflow = state.workflows.find((item) => item.id === action.workflow_id && item.project_id === proposal.project_id);
+  if (!workflow) return { type: 'workflow_replan_replace', skipped: 'workflow_missing' };
+  const revision = Number(workflow.workflow_revision || workflow.version || 1);
+  if (revision !== Number(action.expected_revision)) throw stale('workflow_revision_changed', workflow, revision);
+  const current = formalNodes(state, workflow.id), before = fullSnapshot(workflow, current, revision);
+  if (action.before_hash && digest(before) !== action.before_hash) throw stale('workflow_graph_changed', workflow);
+  const candidate = normalizeWorkflowHierarchyNodes(action.candidate || []);
+  assertWorkflowHierarchy(candidate, { mode: 'formal', requireTasks: true }); assertCompletedTaskDefinitions(current, candidate);
+  const quality = assertWorkflowPlanningQuality({ nodes: candidate, project: state.projects.find((item) => item.id === workflow.project_id), brief: currentBrief(state, workflow.project_id), projectClassification: action.project_classification, briefCoverage: action.brief_coverage });
+  const after = fullSnapshot(workflow, quality.nodes, revision + 1);
+  if (action.candidate_hash && digest(after) !== action.candidate_hash) throw stale('workflow_candidate_changed', workflow);
+  applyCandidate(state, workflow, quality.nodes, proposal.approved_by_user_id || proposal.created_by_user_id);
+  Object.assign(workflow, { version: revision + 1, workflow_revision: revision + 1, planning_quality: 'verified', project_classification: action.project_classification, brief_coverage: quality.brief_coverage, graph_json: workflowVisualGraph(state.workflow_nodes.filter((item) => item.workflow_id === workflow.id)), updated_at: now() });
+  return { type: 'workflow_replan_replace', workflow_id: workflow.id, revision: workflow.workflow_revision, node_ids: quality.nodes.map((item) => item.id) };
+}
+
 function applyCandidate(state, workflow, candidate, actorId) {
   const project = state.projects.find((item) => item.id === workflow.project_id);
   if (!project) throw new HttpError(404, { error: 'project_not_found' });
@@ -114,8 +156,9 @@ function applyCandidate(state, workflow, candidate, actorId) {
         role: source.role, parent_node_id: source.parent_node_id, outcome: source.outcome, category: source.category,
         task_kind: source.task_kind, execution_mode: source.execution_mode, boundary: source.boundary,
         acceptance_criteria: source.acceptance_criteria, required: source.required !== false, repository_intent: source.repository_intent || null,
+        capability_tags: source.capability_tags || [], input_slots: source.input_slots || [], output_slots: source.output_slots || [], atomic_justification: source.atomic_justification || null,
         repository_target_ids: source.repository_target_ids || [], plan_revision: source.role === 'workstream' ? Number(source.plan_revision || 1) : null,
-        status: source.status || 'ready', order_index: source.order_index, dependencies: [], current_contract_id: null,
+        status: source.status || 'ready', execution_revision: Number(source.execution_revision || 1), order_index: source.order_index, dependencies: [], current_contract_id: null,
         template_outputs: [], position: source.position, legacy_read_only: false, created_at: now(), updated_at: now()
       };
       const workspace = createNodeWorkspace(project, node, actorId), contract = defaultContractForNode(node, project, actorId, 'confirmed');
@@ -126,6 +169,7 @@ function applyCandidate(state, workflow, candidate, actorId) {
         workspace.parent_workspace_id = parentWorkspaceId;
       }
       if (source.acceptance_criteria?.length) contract.acceptance_criteria = [...source.acceptance_criteria];
+      if (source.role === 'task') { contract.expected_inputs = structuredClone(source.input_slots || []); contract.expected_outputs = structuredClone(source.output_slots || []); }
       if (source.role === 'workstream') { contract.node_goal = source.outcome; contract.expected_outputs = [{ label: source.outcome, required: true }]; contract.boundary = structuredClone(source.boundary || {}); }
       node.workspace_id = workspace.id; node.current_contract_id = contract.id;
       state.workspaces.push(workspace); state.node_contracts.push(contract);
@@ -137,9 +181,11 @@ function applyCandidate(state, workflow, candidate, actorId) {
         role: source.role, parent_node_id: source.parent_node_id, outcome: source.outcome, category: source.category,
         task_kind: source.task_kind, execution_mode: source.execution_mode, boundary: source.boundary,
         acceptance_criteria: source.acceptance_criteria, required: source.required !== false, repository_intent: source.repository_intent || null,
+        capability_tags: source.capability_tags || [], input_slots: source.input_slots || [], output_slots: source.output_slots || [], atomic_justification: source.atomic_justification || null,
         repository_target_ids: source.repository_target_ids || node.repository_target_ids || [], plan_revision: source.role === 'workstream' ? Number(source.plan_revision || node.plan_revision || 1) : null,
         position: source.position, dependencies: source.dependency_ids.map((nodeId) => ({ node_id: nodeId, type: 'finish_to_start' })), updated_at: now()
       });
+      if (Number(source.execution_revision || 1) > Number(node.execution_revision || 1)) Object.assign(node, { status: source.status || 'ready', execution_revision: Number(source.execution_revision), reopened_from_revision: source.reopened_from_revision || Number(node.execution_revision || 1), reopen_reason: source.reopen_reason || null, latest_submission_id: null, reviewed_at: null, reviewed_by_user_id: null });
       if (typeChanged || goalChanged) refreshContract(state, project, node, actorId, typeChanged);
       const workspace = state.workspaces.find((item) => item.id === node.workspace_id || item.workflow_node_id === node.id);
       if (workspace) {
@@ -156,6 +202,14 @@ function applyCandidate(state, workflow, candidate, actorId) {
     node.dependencies = source.dependency_ids.map((nodeId) => ({ node_id: nodeId, type: 'finish_to_start' }));
     return node;
   });
+  for (const task of finalNodes.filter((node) => node.role === 'task' && !existing.has(node.id))) {
+    task.status = task.dependencies.every((dependency) => finalNodes.find((node) => node.id === dependency.node_id)?.status === 'completed') ? 'ready' : 'blocked';
+  }
+  for (const workstream of finalNodes.filter((node) => node.role === 'workstream' && node.status === 'completed')) {
+    if (finalNodes.some((node) => node.role === 'task' && node.parent_node_id === workstream.id && node.required !== false && node.status !== 'completed')) {
+      Object.assign(workstream, { status: 'ready', completed_at: null, updated_at: now() });
+    }
+  }
   state.workflow_nodes = [...state.workflow_nodes.filter((item) => item.workflow_id !== workflow.id), ...finalNodes];
 }
 
@@ -173,3 +227,7 @@ function clean(value, max = 120) { return String(value ?? '').replace(/\0/g, '')
 function proposalTarget(prepared, targetId) { const idValue = clean(targetId, 120); const node = prepared.after.nodes.find((item) => item.id === idValue) || prepared.before.nodes.find((item) => item.id === idValue); const parent = prepared.parent_node_id || null; return { id: idValue || parent || prepared.workflow.id, node_id: node?.id || parent, label: node?.title || (parent ? '成果节点任务计划' : prepared.workflow.title) || '正式工作流' }; }
 function summarizeOperations(operations) { const counts = new Map(); for (const item of operations) counts.set(item.type, (counts.get(item.type) || 0) + 1); const labels = { add_node: '新增', update_node: '修改', delete_node: '删除', reorder_nodes: '排序', connect: '连接', disconnect: '断开' }; return [...counts].map(([type, count]) => `${labels[type] || type} ${count} 项`).join('，'); }
 function stale(reason, workflow, revision = Number(workflow.workflow_revision || workflow.version || 1), parentNodeId = null) { return new HttpError(409, { error: 'proposal_stale', reason, workflow_id: workflow.id, parent_node_id: parentNodeId, current_revision: revision }); }
+function formalNodes(state, workflowId) { return normalizeWorkflowHierarchyNodes(state.workflow_nodes.filter((item) => item.workflow_id === workflowId).map((node) => ({ ...node, dependency_ids: (node.dependencies || []).map((item) => item.node_id) }))); }
+function currentBrief(state, projectId) { return state.project_briefs.filter((item) => item.project_id === projectId && item.status !== 'superseded').sort((a, b) => Number(b.version || 0) - Number(a.version || 0))[0] || null; }
+function fullSnapshot(workflow, nodes, revision) { return { workflow_id: workflow.id, revision, nodes: nodes.map((node) => ({ ...node, dependencies: undefined, dependency_ids: [...(node.dependency_ids || [])].sort() })).sort((a, b) => String(a.id).localeCompare(String(b.id))) }; }
+function digest(value) { return hashString(JSON.stringify(value)); }

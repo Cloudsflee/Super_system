@@ -12,6 +12,8 @@ import { spawnContainerProcess } from './container-runtime.mjs';
 import { buildCodexExecInvocation } from './codex-exec-invocation.mjs';
 import { isCodexStateRuntimeFailure, recoverCodexRuntimeState } from './codex-home-recovery.mjs';
 import { issueCodexMcpAccess, withCodexMcpEnvironment } from './codex-mcp-runtime.mjs';
+import { DEFAULT_CODEX_TIMEOUT_MS, codexTimeoutTtlSeconds, isValidCodexTimeoutMs, resolveCodexTimeoutMs } from './codex-timeout.mjs';
+export { DEFAULT_CODEX_TIMEOUT_MS, isValidCodexTimeoutMs, resolveCodexTimeoutMs };
 export const OFFICIAL_CODEX_PROVIDERS = Object.freeze(['openai', 'chatgpt']);
 // Codex rejects `wire_api = "chat"`; cc-switch can translate Chat Completions only while its local proxy runs.
 // this profile-scoped bridge does not pretend that lifecycle exists.
@@ -63,8 +65,7 @@ export function validateProfileInput(state, input) {
   if (input.requires_openai_auth !== undefined && typeof input.requires_openai_auth !== 'boolean') errors.push('invalid_requires_openai_auth');
   if (!/^[a-zA-Z][a-zA-Z0-9._-]{0,63}$/.test(String(input.reasoning || 'high'))) errors.push('invalid_reasoning');
   if (input.web_search !== undefined && typeof input.web_search !== 'boolean') errors.push('invalid_web_search');
-  const timeout = Number(input.timeout_ms || 120000);
-  if (!Number.isFinite(timeout) || timeout < 1000 || timeout > 1800000) errors.push('invalid_timeout');
+  if (!isValidCodexTimeoutMs(input.timeout_ms)) errors.push('invalid_timeout');
   const roots = [AIWS_HOME, ...state.projects.flatMap((project) => [project.repo_path, project.workspace_root]).filter(Boolean)].map((item) => path.resolve(item));
   if (!Array.isArray(input.mounts || [])) errors.push('invalid_mounts');
   else for (const mount of input.mounts || []) {
@@ -106,7 +107,7 @@ async function runCodexJsonOnce({ state, profile, prompt, cwd = ROOT, resumeId, 
   if (fileAuth) await materializeDeviceAuth(auth.home, profile.codex_home);
   const credential = await readSecret(auth?.refs?.credential);
   const proxyEnv = profile.kind === 'docker' ? codexContainerProxyEnv(process.env) : {};
-  const mcpAccess = await issueCodexMcpAccess(projectId, profile, { ttlSeconds: Math.ceil(Number(profile.timeout_ms || 120000) / 1000) + 300 });
+  const mcpAccess = await issueCodexMcpAccess(projectId, profile, { ttlSeconds: codexTimeoutTtlSeconds(profile.timeout_ms) });
   const invocation = buildCodexExecInvocation({ profile, prompt, cwd, resumeId, sandbox, runtimeKind, exposeApiKey: Boolean(credential), proxyKeys: Object.keys(proxyEnv), mcpAccess });
   const env = withCodexMcpEnvironment({ ...process.env, ...proxyEnv, CODEX_HOME: profile.codex_home }, mcpAccess);
   if (credential) env.OPENAI_API_KEY = credential;
@@ -116,7 +117,7 @@ async function runCodexJsonOnce({ state, profile, prompt, cwd = ROOT, resumeId, 
       ? spawnContainerProcess(invocation, { cwd, env, spawnProcess })
       : spawnProcess(invocation.command, invocation.args, { cwd, env, shell: false, windowsHide: true });
     let stdout = '', stderr = '', buffer = '', timedOut = false, settled = false;
-    const timeoutMs = Math.max(1000, Math.min(1800000, Number(profile.timeout_ms || 120000)));
+    const timeoutMs = resolveCodexTimeoutMs(profile.timeout_ms);
     const timer = setTimeout(() => { timedOut = true; child.kill(); }, timeoutMs);
     const abort = () => child.kill();
     signal?.addEventListener('abort', abort, { once: true });

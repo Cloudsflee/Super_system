@@ -5,7 +5,14 @@
     { "patterns": ["apps/api/src/routes/projects.mjs", "apps/api/src/routes/project-governance-v19.mjs", "apps/api/src/project-governance*.mjs"], "suites": ["pr", "full"] },
     { "patterns": ["apps/api/src/repository-lifecycle*.mjs", "apps/api/src/routes/repository-lifecycle-v19.mjs"], "suites": ["pr", "full", "release"] },
     { "patterns": ["apps/api/src/exchange*.mjs", "apps/api/src/routes/exchange-v19.mjs"], "suites": ["pr", "full"] },
+    { "patterns": ["apps/api/src/codex-timeout.mjs", "apps/api/src/codex-service.mjs", "apps/api/src/codex-app-server.mjs", "apps/api/src/codex-ephemeral-thread.mjs", "apps/api/src/config-revision-service.mjs", "apps/api/src/handlers/runners.mjs", "apps/api/src/terminal-service.mjs", "apps/api/src/routes/codex-*.mjs", "packages/shared/src/codex.mjs", "packages/runner-adapters/src/index.mjs"], "suites": ["pr", "full", "release"] },
+    { "patterns": ["apps/api/src/routes/github-config-v12.mjs", "apps/api/src/api-route-registry.mjs", "tests/unit/v19-mcp-registry.test.mjs"], "suites": ["pr", "full", "live"] },
+    { "patterns": ["apps/web/src/features/settings/SettingsPage.tsx", "apps/web/src/features/setup/Codex*.tsx", "apps/web/src/features/setup/codex-timeout.ts", "apps/web/src/api/types.ts"], "suites": ["pr", "full"] },
+    { "patterns": ["apps/api/src/delivery*.mjs", "apps/api/src/workflow-generation*.mjs", "apps/api/src/workflow-migration*.mjs", "apps/api/src/routes/workflow-v19.mjs"], "suites": ["full", "release"] },
+    { "patterns": ["apps/api/src/repository-workspace*.mjs", "apps/api/src/routes/repository-workspaces-v19.mjs", "apps/web/src/features/nodes/ExecutionWorkspace.tsx"], "suites": ["pr", "full", "release"] },
+    { "patterns": ["apps/api/src/pull-request-intent*.mjs", "apps/api/src/task-execution-context*.mjs", "apps/api/src/routes/pull-request-intents-v19.mjs"], "suites": ["pr", "full", "release"] },
+    { "patterns": ["apps/api/src/workflow-quality*.mjs", "packages/shared/src/collaboration.mjs", "apps/web/src/features/workflow/**"], "suites": ["pr", "full", "release"] },
     { "patterns": ["apps/api/src/state*.mjs", "apps/api/src/config.mjs"], "suites": ["pr", "full", "release"] },
-    { "patterns": ["tests/v19/**", "开发计划v1.9.md", "测试计划v1.9.md", "scripts/v19-*.mjs"], "suites": ["plan", "pr", "full"] }
+    { "patterns": ["tests/v19/**", "开发计划v1.9.md", "测试计划v1.9.md", "scripts/v19-*.mjs", "scripts/mcp-live-project-smoke.mjs", "package.json"], "suites": ["plan", "pr", "full", "live", "release", "soak"] }
   ]
 }

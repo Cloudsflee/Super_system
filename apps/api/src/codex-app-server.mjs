@@ -11,6 +11,7 @@ import { assertProfileAllowed, buildCodexContainerInvocation } from './container
 import { spawnContainerProcess } from './container-runtime.mjs';
 import { withCodexRuntimeStateRecovery } from './codex-home-recovery.mjs';
 import { codexMcpConfigArgs, issueCodexMcpAccess, withCodexMcpEnvironment } from './codex-mcp-runtime.mjs';
+import { codexTimeoutTtlSeconds, resolveCodexTimeoutMs } from './codex-timeout.mjs';
 
 const APP_SERVER_ARGS = ['app-server', '--stdio', '--disable', 'code_mode_host', '--disable', 'plugins', '--disable', 'apps'];
 
@@ -23,7 +24,7 @@ async function runCodexAppServerOnce({ state, profile, prompt, userInput, additi
   const auth = state.integration_statuses.find((item) => item.key === 'codex_auth');
   if (!codexAuthMatchesProfile(auth, profile)) throw taggedError('codex_auth_profile_mismatch', 'app_server_start_failed');
   if (auth.home && !isThirdPartyProvider(profile.provider)) await materializeDeviceAuth(auth.home, profile.codex_home);
-  const credential = await readSecret(auth?.refs?.credential), mcpAccess = await issueCodexMcpAccess(projectId, profile, { ttlSeconds: Math.ceil(Number(profile.timeout_ms || 120000) / 1000) + 300 }), invocation = appServerInvocation(profile, cwd, sandbox, credential, attachmentMounts, mcpAccess);
+  const credential = await readSecret(auth?.refs?.credential), mcpAccess = await issueCodexMcpAccess(projectId, profile, { ttlSeconds: codexTimeoutTtlSeconds(profile.timeout_ms) }), invocation = appServerInvocation(profile, cwd, sandbox, credential, attachmentMounts, mcpAccess);
   try { return await new Promise((resolve, reject) => {
     let child;
     try {
@@ -34,7 +35,7 @@ async function runCodexAppServerOnce({ state, profile, prompt, userInput, additi
     catch (error) { reject(taggedError(error.message, 'app_server_start_failed')); return; }
     let buffer = '', stderr = '', settled = false, requestId = 0, threadId = resumeId || null, turnId = null, turnStarted = false;
     const pending = new Map(), deltaItems = new Set();
-    const timer = setTimeout(() => finish(taggedError('codex_app_server_timeout', turnStarted ? 'app_server_turn_failed' : 'app_server_start_failed')), Math.max(1000, Math.min(1800000, Number(profile.timeout_ms || 120000))));
+    const timer = setTimeout(() => finish(taggedError('codex_app_server_timeout', turnStarted ? 'app_server_turn_failed' : 'app_server_start_failed')), resolveCodexTimeoutMs(profile.timeout_ms));
     const abort = () => { if (threadId && turnId) void request('turn/interrupt', { threadId, turnId }).catch(() => undefined); child.kill(); };
     signal?.addEventListener('abort', abort, { once: true });
     child.stdout.on('data', (chunk) => { buffer += chunk.toString(); const lines = buffer.split(/\r?\n/); buffer = lines.pop() || ''; for (const line of lines) consume(line); });
@@ -123,14 +124,14 @@ async function runCodexAppServerRpcOnce({ state, profile, cwd, sandbox = 'read-o
   const auth = state.integration_statuses.find((item) => item.key === 'codex_auth');
   if (!codexAuthMatchesProfile(auth, profile)) throw taggedError('codex_auth_profile_mismatch', 'app_server_start_failed');
   if (auth.home && !isThirdPartyProvider(profile.provider)) await materializeDeviceAuth(auth.home, profile.codex_home);
-  const credential = await readSecret(auth?.refs?.credential), mcpAccess = await issueCodexMcpAccess(projectId, profile, { ttlSeconds: Math.ceil(Number(profile.timeout_ms || 120000) / 1000) + 300 }), invocation = appServerInvocation(profile, cwd, sandbox, credential, [], mcpAccess);
+  const credential = await readSecret(auth?.refs?.credential), mcpAccess = await issueCodexMcpAccess(projectId, profile, { ttlSeconds: codexTimeoutTtlSeconds(profile.timeout_ms) }), invocation = appServerInvocation(profile, cwd, sandbox, credential, [], mcpAccess);
   try { return await new Promise((resolve, reject) => {
     let child;
     try { child = invocation.runtime === 'docker' ? spawnContainerProcess(invocation, { cwd, env: invocation.env, spawnProcess }) : spawnProcess(invocation.command, invocation.args, { cwd, env: invocation.env, shell: false, windowsHide: true }); }
     catch (error) { reject(taggedError(error.message, 'app_server_start_failed')); return; }
     let buffer = '', stderr = '', settled = false, requestId = 0, threadId = resumeId;
     const pending = new Map();
-    const timer = setTimeout(() => finish(taggedError('codex_app_server_control_timeout', 'app_server_turn_failed')), Math.max(1000, Math.min(300000, Number(profile.timeout_ms || 120000))));
+    const timer = setTimeout(() => finish(taggedError('codex_app_server_control_timeout', 'app_server_turn_failed')), resolveCodexTimeoutMs(profile.timeout_ms));
     const abort = () => { child.kill(); finish(taggedError('codex_app_server_control_aborted', 'app_server_turn_failed')); };
     signal?.addEventListener('abort', abort, { once: true });
     child.stdout.on('data', (chunk) => { buffer += chunk.toString(); const lines = buffer.split(/\r?\n/); buffer = lines.pop() || ''; for (const line of lines) consume(line); });

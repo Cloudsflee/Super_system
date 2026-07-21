@@ -31,6 +31,10 @@ try {
   await api('/github/manifest/callback', 'POST', { adapter: 'test', state: manifest.state }, 409, 'manifest_callback_already_used');
 
   const device = await startDevice();
+  assert.equal(device.status, 'authorization_required');
+  assert.deepEqual(device.action_required, { type: 'github_device_authorization', verification_uri: device.verification_uri, user_code: device.user_code, expires_at: device.expires_at });
+  assert.equal(device.next.operation_id, 'aiws.github.post.github.device.poll');
+  assert.deepEqual(device.next.arguments, { body: { request_id: device.request_id } });
   const pending = await pollDevice(device, { test_status: 'authorization_pending' }, 202);
   assert.equal(pending.error, 'authorization_pending');
   const slow = await pollDevice(device, { test_status: 'slow_down' }, 202);

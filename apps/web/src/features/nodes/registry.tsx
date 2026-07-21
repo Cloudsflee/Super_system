@@ -9,7 +9,7 @@ const AnalysisWorkspace = lazy(() => import('./renderers/AnalysisWorkspace').the
 const ExecutionWorkspace = lazy(() => import('./renderers/ExecutionWorkspace').then((item) => ({ default: item.ExecutionWorkspace })));
 const ReviewWorkspace = lazy(() => import('./renderers/ReviewWorkspace').then((item) => ({ default: item.ReviewWorkspace })));
 
-export type RendererProps = { value: NodeWorkspace; onSaved: () => Promise<unknown>; onRunNode?: () => void; runningNode?: boolean };
+export type RendererProps = { value: NodeWorkspace; onSaved: () => Promise<unknown>; onRunNode?: (repositoryWorkspaceId?: string) => void; runningNode?: boolean };
 export type NodeRendererDefinition = { type: NodeKind; label: string; icon: LucideIcon; component: ComponentType<RendererProps> };
 
 export const nodeRenderers: Record<NodeKind, NodeRendererDefinition> = {

@@ -5,6 +5,8 @@ import { appCredentials, resolveGithubAppConfig } from '../github-service.mjs';
 import { id, now } from '../../../../packages/shared/index.mjs';
 import { pushV3Event } from '../assist-v3-events.mjs';
 import { reconcileRepositoryDeletionInState, revokeRepositoryInstallationBindingsInState } from '../repository-lifecycle-v19.mjs';
+import { reconcilePullRequestIntentWebhookInState } from '../pull-request-intent-domain.mjs';
+import { markRepositoryWorkspacesStale } from '../repository-workspace-service.mjs';
 
 export const githubWebhookV12Routes = [makeRoute('POST', '/github/webhook', webhook)];
 
@@ -44,10 +46,28 @@ function applyEvent(state, event, payload, deliveryId = null) {
     for (const repo of payload.repositories_added || []) if (!installation.repositories.some((item) => String(item.id) === String(repo.id))) installation.repositories.push({ id: String(repo.id), name: repo.name, full_name: repo.full_name, private: repo.private, selected: false, permissions: { pull: true, push: false, admin: false } });
     installation.updated_at = now();
   }
-  if (['pull_request', 'pull_request_review', 'check_run', 'check_suite', 'status', 'push'].includes(event)) applyDeliveryEvent(state, event, payload);
+  if (['pull_request', 'pull_request_review', 'check_run', 'check_suite', 'status', 'push'].includes(event)) {
+    reconcilePullRequestIntentWebhookInState(state, event, payload, deliveryId);
+    applyRepositoryWorkspaceEvent(state, event, payload);
+    applyDeliveryEvent(state, event, payload);
+  }
   if (event === 'repository') {
     const reconciled = reconcileRepositoryDeletionInState(state, payload.repository || {}, { deleted: payload.action === 'deleted', delivery_id: deliveryId });
     for (const intent of reconciled?.intents || []) addTrace(state, 'repository.deletion.reconciled', { project_id: intent.snapshot?.bindings?.[0]?.project_id || null, target_type: 'repository_deletion_intent', target_id: intent.id, summary: payload.action === 'deleted' ? 'Repository 删除已由 webhook 确认' : 'Repository 仍存在，删除 intent 已对账', data: { delivery_id: deliveryId, status: intent.status } });
+  }
+}
+
+function applyRepositoryWorkspaceEvent(state, event, payload) {
+  const repositoryId = String(payload.repository?.id || ''), fullName = String(payload.repository?.full_name || '');
+  const connections = state.repository_connections.filter((item) => repositoryId && String(item.repository_id) === repositoryId || fullName && item.full_name === fullName);
+  if (!connections.length) return;
+  if (event === 'push') {
+    const ref = String(payload.ref || '').replace(/^refs\/heads\//, '');
+    for (const connection of connections) markRepositoryWorkspacesStale(state, { projectId: connection.project_id, connectionId: connection.id, ref, remoteSha: payload.after || null });
+  }
+  if (event === 'pull_request' && payload.pull_request?.merged) {
+    const ref = payload.pull_request.base?.ref || null, sha = payload.pull_request.merge_commit_sha || payload.pull_request.base?.sha || null;
+    for (const connection of connections) markRepositoryWorkspacesStale(state, { projectId: connection.project_id, connectionId: connection.id, ref, remoteSha: sha });
   }
 }
 

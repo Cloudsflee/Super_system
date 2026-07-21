@@ -12,6 +12,7 @@ export type AssistAttachment = {
 };
 export type AssistWorktree = {
   id: string; project_id: string; turn_id?: string | null; kind: string; status: string; base_commit?: string | null;
+  repository_workspace_id?: string | null;
   head_commit?: string | null; target_hash?: string | null; applied_target_hash?: string | null; applied_at?: string; rolled_back_at?: string;
 };
 export type AssistV3Turn = {
@@ -21,6 +22,7 @@ export type AssistV3Turn = {
   attachment_ids: string[]; attachments?: AssistAttachment[]; worktree_id?: string | null; change_batch_id?: string | null; worktree?: AssistWorktree | null;
   code_access?: 'workspace_write' | 'read_only'; code_read_only_reason?: string | null;
   operation_reference_id?: string | null;
+  repository_workspace_id?: string | null;
   usage?: Record<string, number> | null; review_status: string;
   review?: { status: string; target_hash?: string; viewed_files?: Record<string, string>; comment_count?: number };
   error_code?: string; waiting_approval_id?: string | null; last_event_id?: number; created_at: string; updated_at: string;
@@ -35,6 +37,7 @@ export type AssistV3Session = {
   turns?: AssistV3Turn[]; attachments?: AssistAttachment[]; last_event_id?: number; created_at: string; updated_at: string;
   change_batch?: AssistChangeBatch | null; native_goal_snapshot?: AssistGoal | null;
   clarification_policy?: AssistClarificationPolicy;
+  repository_workspace_id?: string | null;
 };
 export type AssistReviewFile = { path: string; previous_path?: string | null; status: string; code?: string };
 export type AssistReviewComment = { id: string; action: string; patch: { path?: string; line?: number; side?: 'old' | 'new'; body?: string; summary?: string }; created_at: string };
@@ -59,5 +62,5 @@ export type AssistOperationExecution = { operation_id: string; capability_id?: s
 export type AssistCapabilityDescriptor = { id: string; action: string; label_zh: string; target: string; route: string; input_schema: Record<string, unknown>; risk: string; reversible: boolean; locator_label: string; mutation: boolean };
 export type AssistCapabilityCatalog = { schema_version: string; descriptors: AssistCapabilityDescriptor[]; current: Array<{ capability_id: string; available: boolean; reason?: string | null; route: string; project_id?: string | null; surface_id?: string | null; surface_revision?: string | null }>; context: { session_id?: string | null; route?: string | null; project_id?: string | null; surface_id?: string | null; surface_revision?: string | null; collaboration_mode: AssistV3TurnMode } };
 export type AssistCheckpoint = { id: string; batch_id: string; source: string; source_id: string; phase: string; before_commit?: string; after_commit?: string; target_hash: string; changed_files: AssistReviewFile[]; status: string; created_at: string };
-export type AssistChangeBatch = { id: string; session_id: string; project_id: string; worktree_id: string; base_commit: string; head_commit: string; target_hash?: string | null; status: string; locked: boolean; worktree?: AssistWorktree | null; created_at: string; updated_at: string };
+export type AssistChangeBatch = { id: string; session_id: string; project_id: string; worktree_id: string; repository_workspace_id?: string | null; base_commit: string; head_commit: string; target_hash?: string | null; status: string; locked: boolean; review_ref?: string | null; pull_request_intent_id?: string | null; worktree?: AssistWorktree | null; created_at: string; updated_at: string };
 export type TerminalCapabilities = { linux_container: { available: boolean; default: boolean; reason?: string | null }; windows_bridge: { available: boolean; reason?: string | null; device_id?: string }; host_dev: { available: boolean; reason?: string | null } };

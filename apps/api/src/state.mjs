@@ -4,7 +4,7 @@ import path from 'node:path';
 import { createLocalOwner, defaultCodexProfiles, defaultTools, hashString, id, makeTrace, now } from '../../../packages/shared/index.mjs';
 import { ARTIFACT_DIR, ASSIST_DIR, ATTACHMENT_DIR, ATTACHMENT_TEMP_DIR, CODEX_HOME_DIR, DATA_DIR, EXPORT_DIR, PROBE_DIR, STAGING_DIR, STATE_FILE, TRASH_DIR, VAULT_DIR, WORKSPACE_DIR, WORKTREE_DIR, collections } from './config.mjs';
 import { redactKnownSecrets } from './vault.mjs';
-import { codexAuthMatchesProfile, isThirdPartyProvider, normalizeProviderBaseUrl, writeProfileConfig } from './codex-service.mjs';
+import { codexAuthMatchesProfile, isThirdPartyProvider, isValidCodexTimeoutMs, normalizeProviderBaseUrl, resolveCodexTimeoutMs, writeProfileConfig } from './codex-service.mjs';
 import { migrateStateFileToV18, normalizeOfficialRunnerImagesV19, STATE_SCHEMA_VERSION, validateState18 } from './state-migration-v18.mjs';
 import { normalizeState18Compatibility } from './state-compatibility.mjs';
 import { currentActorId } from './actor-context.mjs';
@@ -13,6 +13,7 @@ import { ensureRepositoryLifecycleDefaults, expireRepositoryDeletionIntentsInSta
 import { ensureExchangeDefaults, expireExchangeRequestsInState } from './exchange-v19.mjs';
 import { recoverInterruptedRepositoryDeletionsInState } from './repository-deletion-recovery.mjs';
 import { recoverInvalidDeliveryPullRequestClaimsInState } from './delivery-recovery.mjs';
+import { recoverPullRequestIntentsInState } from './pull-request-intent-domain.mjs';
 let lastMigration = null;
 export async function ensureRuntime() {
   await fsp.mkdir(DATA_DIR, { recursive: true });
@@ -40,6 +41,7 @@ export async function ensureRuntime() {
   if (recoverInterruptedRepositoryDeletionsInState(state)) changed = true;
   if (expireRepositoryDeletionIntentsInState(state) || expireExchangeRequestsInState(state)) changed = true;
   if (lifecycleBefore !== lifecycleFingerprint(state)) changed = true; const deliveryRecovery = recoverInvalidDeliveryPullRequestClaimsInState(state); if (deliveryRecovery.changed) { changed = true; for (const deliveryId of deliveryRecovery.delivery_ids) addTrace(state, 'integration.synced', { target_type: 'delivery', target_id: deliveryId, summary: 'Removed an invalid webhook PR claim from a failed Delivery.' }); }
+  if (recoverPullRequestIntentsInState(state)) changed = true;
   for (const project of state.projects) {
     if (!project.status) { project.status = 'active'; changed = true; }
     project.settings ||= {};
@@ -111,7 +113,7 @@ export async function ensureRuntime() {
     changed = true;
   }
   for (const profile of state.codex_profiles) {
-    const before = JSON.stringify(profile);
+    const before = JSON.stringify(profile); if (!isValidCodexTimeoutMs(profile.timeout_ms) || profile.timeout_ms == null) profile.timeout_ms = resolveCodexTimeoutMs(profile.timeout_ms);
     const usedMcpNames = new Set();
     for (const server of Array.isArray(profile.mcp_servers) ? profile.mcp_servers : []) {
       let name = String(server.name || 'external');
@@ -166,7 +168,6 @@ function bootstrapState() {
 }
 
 export async function readState() { return JSON.parse(await fsp.readFile(STATE_FILE, 'utf8')); }
-
 export async function writeState(state) {
   normalizeState18Compatibility(state, collections);
   ensureProjectGovernanceDefaults(state);
@@ -181,14 +182,12 @@ export async function writeState(state) {
 }
 
 export function lastStateMigration() { return lastMigration ? { ...lastMigration, state: undefined } : null; }
-
 async function clearEphemeralDirectory(directory) {
   const entries = await fsp.readdir(directory, { withFileTypes: true });
   await Promise.all(entries.map((entry) => fsp.rm(path.join(directory, entry.name), { recursive: true, force: true })));
 }
 
 let mutationQueue = Promise.resolve();
-
 export function mutate(fn) {
   const operation = mutationQueue.then(async () => {
     const state = await readState();

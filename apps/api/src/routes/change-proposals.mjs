@@ -5,7 +5,7 @@ import { codexAuthMatchesProfile, isThirdPartyProvider } from '../codex-service.
 import { proposalTargetHash } from '../proposal-target.mjs';
 import { applyProposalAtomically } from '../proposal-atomic.mjs';
 import { assertProjectLifecycleIdle } from '../project-lifecycle-operations.mjs';
-import { applyWorkflowGraphPatchInState } from '../workflow-graph-service.mjs';
+import { applyWorkflowGraphPatchInState, applyWorkflowReplanInState } from '../workflow-graph-service.mjs';
 import { operationEvent, syncProposalOperationState } from '../assist-operation-metadata.mjs';
 import { pushV3Event } from '../assist-v3-events.mjs';
 import { accessibleProjectIds, actorForRequest, instanceOwnerId } from '../project-governance-v19.mjs';
@@ -108,6 +108,7 @@ async function applyProposalRoute({ res, params }) {
 export function applyAction(state, proposal) {
   const action = proposal.apply_action || {};
   if (action.type === 'workflow_graph_patch') return applyWorkflowGraphPatchInState(state, proposal);
+  if (action.type === 'workflow_replan_replace') return applyWorkflowReplanInState(state, proposal);
   if (action.type === 'node_contract_patch' && proposal.node_id) {
     const node = state.workflow_nodes.find((item) => item.id === proposal.node_id);
     const workflow = state.workflows.find((item) => item.id === node?.workflow_id && item.project_id === proposal.project_id);
@@ -142,7 +143,7 @@ export function applyAction(state, proposal) {
     const workflow = state.workflows.find((item) => item.id === node?.workflow_id && item.project_id === proposal.project_id);
     if (!node || !workflow) return { type: action.type, skipped: 'node_missing' };
     if (!['codex_docker', 'codex'].includes(action.runner)) return { type: action.type, skipped: 'runner_invalid' };
-    return { type: action.type, node_id: node.id, runner: action.runner, ready: true };
+    return { type: action.type, node_id: node.id, runner: action.runner, repository_workspace_id: action.repository_workspace_id || null, ready: true };
   }
   if (['git_commit_authorization', 'git_publish_authorization'].includes(action.type)) {
     const run = state.node_runs.find((item) => item.id === action.run_id && item.project_id === proposal.project_id && item.node_id === proposal.node_id);

@@ -51,10 +51,12 @@ export function createNodeWorkspace(project, node, actorId) {
 export function defaultContractForNode(node, project, actorId, status = 'draft') {
   const created = now();
   const outputs = { [NodeType.GoalDefinition]: ['目标卡', '成功标准', '开放问题'], [NodeType.Research]: ['资料索引', '事实清单', '引用清单'], [NodeType.Analysis]: ['方案对比', '决策记录', '风险缓解策略'], [NodeType.Execution]: ['可运行变更', '测试结果', '资产候选', 'Git diff'], [NodeType.Retrospective]: ['Confirmed Assets', 'Workspace Digest', 'PR 草稿', '下一步计划'] };
+  const taskInputs = Array.isArray(node.input_slots) && node.input_slots.length ? node.input_slots : defaultInputSlots(node, project);
+  const taskOutputs = Array.isArray(node.output_slots) && node.output_slots.length ? node.output_slots : (outputs[node.type] || ['节点结果']).map((label, index) => ({ key: `output_${index + 1}`, kind: 'asset', required: true, asset_type: node.type === NodeType.Execution ? 'CodeChangeAsset' : 'DecisionAsset', acceptance_criteria: node.acceptance_criteria?.length ? [...node.acceptance_criteria] : ['输出必须与节点目标直接相关，并说明证据来源。'], confirmation_policy: node.type === NodeType.Execution ? 'system_evidence' : 'human', label }));
   return {
-    id: id('ctr'), node_id: node.id, version: 1, node_goal: node.goal || node.title,
-    expected_inputs: [{ key: 'project_goal', label: '项目目标', required: true, value: project.goal || '' }, { key: 'workspace_materials', label: '已有材料 / repo', required: false, value: project.repo_path || project.workspace_root || '' }],
-    expected_outputs: (outputs[node.type] || ['节点结果']).map((label) => ({ label, required: true })),
+    id: id('ctr'), node_id: node.id, version: 1, contract_schema_version: 2, node_goal: node.goal || node.title,
+    expected_inputs: structuredClone(taskInputs),
+    expected_outputs: structuredClone(taskOutputs),
     acceptance_criteria: ['输出必须与项目目标直接相关，并说明证据来源。', '所有长期事实必须先作为资产候选，再由用户确认。', 'Context Pack 必须包含 Memory Manifest 和充分性检查结果。'],
     required_context: [{ type: 'project_goal', required: true }, { type: 'latest_digest', required: false }, { type: 'confirmed_assets', required: false }, { type: 'allowed_tools', required: true }],
     allowed_tools: ['filesystem', 'git', node.type === NodeType.Execution ? 'codex_runner' : 'assist'],
@@ -74,13 +76,22 @@ export function validateNodeContract(contract) {
   if (!Array.isArray(contract?.acceptance_criteria) || contract.acceptance_criteria.length === 0) errors.push('acceptance_criteria 至少需要一项');
   if (!Array.isArray(contract?.allowed_tools) || contract.allowed_tools.length === 0) errors.push('allowed_tools 至少需要一项');
   if (!Array.isArray(contract?.asset_output_types)) errors.push('asset_output_types 必须是数组');
+  if (Number(contract?.contract_schema_version || 0) !== 2) errors.push('contract_schema_version 必须为 2');
+  for (const [index, slot] of (contract?.expected_inputs || []).entries()) if (!slot?.key || !slot?.kind || typeof slot.required !== 'boolean' || !slot?.source || !Object.hasOwn(slot, 'selector') || !Object.hasOwn(slot, 'ref_id') || !Object.hasOwn(slot, 'version_id')) errors.push(`expected_inputs[${index}] 不是合法 v2 输入槽`);
+  for (const [index, slot] of (contract?.expected_outputs || []).entries()) if (!slot?.key || !slot?.kind || typeof slot.required !== 'boolean' || !slot?.asset_type || !Array.isArray(slot.acceptance_criteria) || !slot.acceptance_criteria.length || !['human', 'system_evidence'].includes(slot.confirmation_policy)) errors.push(`expected_outputs[${index}] 不是合法 v2 输出槽`);
   return { ok: errors.length === 0, errors };
 }
 
 export function applyContractPatch(contract, patch, actorId) {
-  const allowed = new Set(['node_goal', 'expected_inputs', 'expected_outputs', 'acceptance_criteria', 'required_context', 'allowed_tools', 'asset_output_types', 'failure_policy', 'review_policy']);
+  const allowed = new Set(['expected_inputs', 'expected_outputs', 'node_goal', 'acceptance_criteria', 'required_context', 'allowed_tools', 'asset_output_types', 'failure_policy', 'review_policy']);
   const next = JSON.parse(JSON.stringify(contract));
   for (const [key, value] of Object.entries(patch || {})) if (allowed.has(key)) next[key] = value;
-  Object.assign(next, { id: id('ctr'), version: Number(contract.version || 0) + 1, status: 'draft', confirmed_by: null, confirmed_by_user_id: null, created_by_user_id: actorId, created_at: now(), updated_at: now() });
+  Object.assign(next, { id: id('ctr'), version: Number(contract.version || 0) + 1, contract_schema_version: 2, status: 'draft', confirmed_by: null, confirmed_by_user_id: null, created_by_user_id: actorId, created_at: now(), updated_at: now() });
   return next;
+}
+
+function defaultInputSlots(node, project) {
+  const dependencies = (node.dependencies || []).map((item, index) => ({ key: `upstream_${index + 1}`, kind: 'asset_version', required: true, source: 'dependency', selector: 'required_outputs', ref_id: typeof item === 'string' ? item : item.node_id, version_id: null })).filter((item) => item.ref_id);
+  const repository = ['execution', 'code', 'test', 'deploy', 'integration'].includes(node.type) || ['code', 'test', 'deploy', 'integration'].includes(node.task_kind) ? [{ key: 'repository_snapshot', kind: 'repository', required: true, source: 'repository_workspace', selector: 'fixed_sha', ref_id: null, version_id: null }] : [];
+  return [...(dependencies.length ? dependencies : [{ key: 'project_brief', kind: 'context', required: true, source: 'brief', selector: 'current', ref_id: null, version_id: null, value: project.goal || '' }]), ...repository];
 }

@@ -6,9 +6,7 @@ import { readState } from './state.mjs';
 import { maskSecretsDeep } from '../../../packages/shared/index.mjs';
 import { runAsActor } from './actor-context.mjs';
 import { authorizeApiRoute } from './project-governance-v19.mjs';
-
 export const MCP_MAPPINGS = Object.freeze(['tool', 'resource', 'async_adapter', 'external_callback', 'frontend_only']);
-
 export function createApiRouteRegistry(routes) {
   const operations = routes.map((item) => enrichRoute(item));
   const ids = new Set();
@@ -166,6 +164,8 @@ async function resolveProjectId(operation, args, client = null) {
   }
   if (operation.pattern.startsWith('/deliveries/:id')) return findProject('deliveries', params.id);
   if (operation.pattern.startsWith('/delivery-policies/:id')) return findProject('delivery_policies', params.id);
+  if (operation.pattern.startsWith('/repository-workspaces/:id')) return findProject('repository_workspaces', params.id);
+  if (operation.pattern.startsWith('/pull-request-intents/:id')) return findProject('pull_request_intents', params.id);
   if (operation.pattern.startsWith('/exchange-requests/:id')) {
     const request = state.exchange_requests.find((item) => item.id === params.id);
     if (args.body?.side === 'source') return request?.source_project_id || null;
@@ -201,7 +201,7 @@ function classifyDomain(pattern) {
   if (/\/files(?:\/|$)|\/attachments/.test(pattern)) return 'files';
   if (/^\/assist/.test(pattern)) return 'assist';
   if (/\/git\//.test(pattern) || /git-repositories/.test(pattern)) return 'git';
-  if (/^\/github/.test(pattern) || /\/github\//.test(pattern) || /repository-(?:connections|targets)/.test(pattern) || /delivery|deliveries/.test(pattern) || /^\/(?:canonical-repositories|repository-deletion-intents)/.test(pattern)) return 'github';
+  if (/^\/github/.test(pattern) || /\/github\//.test(pattern) || /repository-(?:connections|targets|branches|workspaces)/.test(pattern) || /pull-request-intents|pull-requests|delivery|deliveries/.test(pattern) || /^\/(?:canonical-repositories|repository-deletion-intents)/.test(pattern)) return 'github';
   if (/^\/(?:assets|asset-candidates)/.test(pattern) || /\/digests$/.test(pattern)) return 'assets';
   if (/^\/(?:approvals|change-proposals|review)/.test(pattern)) return 'governance';
   if (/^\/(?:exchange-requests|exchange-grants)/.test(pattern) || /\/exchange(?:-requests|s)$/.test(pattern)) return 'governance';
@@ -229,6 +229,7 @@ function scopesFor(item, domain) {
   if (/^\/approvals\/:type\/:id\/decision$/.test(item.pattern)) return ['approval:decide'];
   if (/^\/(?:tasks|workstreams)\/:id\/review$/.test(item.pattern)) return ['workflow:write', 'approval:decide'];
   if (/^\/workstreams\/:id\/delivery-policies$/.test(item.pattern) && item.method === 'POST') return ['github:write', 'approval:decide'];
+  if (/^\/pull-request-intents\/:id\/(?:approve|execute)$/.test(item.pattern)) return ['github:write', 'approval:decide'];
   if (domain === 'admin') return [item.method === 'GET' ? 'setup:read' : 'setup:admin'];
   const scopeDomain = ({ projects: 'project', governance: 'governance' })[domain] || domain;
   const scopes = [`${scopeDomain}:${item.method === 'GET' ? 'read' : 'write'}`];
@@ -241,7 +242,7 @@ function idempotencyFor(item) { if (item.method === 'GET') return 'safe'; if (['
 function isDestructive(item) { return /\/(?:purge|reset|disconnect)$/.test(item.pattern) || item.pattern === '/projects/:id/trash' || item.method === 'DELETE' && (item.pattern === '/projects/:id' || /^\/(?:mcp\/clients|codex\/profiles)/.test(item.pattern)); }
 function isEventStream(item) { return item.method === 'GET' && /\/events$/.test(item.pattern); }
 function isStreamResponse(item) { return isEventStream(item) || item.body === 'stream' || item.method === 'GET' && /\/(?:content|download)$/.test(item.pattern) && /attachments/.test(item.pattern); }
-function isProjectScoped(pattern) { return /^\/(?:projects|workspaces|workflows|nodes|workstreams|tasks|runs|deliveries|delivery-policies|context-packs|assets|asset-candidates|change-proposals|approvals|agent-sessions|exchange-requests|exchange-grants|project-invitations|submissions|review)/.test(pattern) || /^\/assist\/(?:v2\/sessions|v3\/(?:sessions|turns|terminal-sessions|operations|change-batches|attachments))/.test(pattern) || pattern === '/brief-templates/:templateId/apply'; }
+function isProjectScoped(pattern) { return /^\/(?:projects|workspaces|repository-workspaces|pull-request-intents|workflows|nodes|workstreams|tasks|runs|deliveries|delivery-policies|context-packs|assets|asset-candidates|change-proposals|approvals|agent-sessions|exchange-requests|exchange-grants|project-invitations|submissions|review)/.test(pattern) || /^\/assist\/(?:v2\/sessions|v3\/(?:sessions|turns|terminal-sessions|operations|change-batches|attachments))/.test(pattern) || pattern === '/brief-templates/:templateId/apply'; }
 
 function domainTool(domain) { return `aiws_${domain}`.replace('aiws_admin', 'aiws_admin'); }
 function operationIdFor(method, pattern, domain) { const suffix = pattern.split('/').filter(Boolean).map((part) => part.startsWith(':') ? `by-${part.slice(1).replace(/[A-Z]/g, (value) => `-${value.toLowerCase()}`)}` : part.replace(/[^a-zA-Z0-9-]/g, '-').toLowerCase()).join('.'); return `aiws.${domain}.${method.toLowerCase()}.${suffix || 'root'}`; }

@@ -5,6 +5,7 @@ import path from 'node:path';
 
 const root = fs.mkdtempSync(path.join(os.tmpdir(), 'aiws-v19-mcp-registry-'));
 process.env.AIWS_HOME = path.join(root, 'home');
+process.env.NODE_ENV = 'test';
 
 try {
   const { apiRoutes } = await import('../../apps/api/src/api-routes.mjs');
@@ -13,6 +14,13 @@ try {
   const state = await import('../../apps/api/src/state.mjs');
   await state.ensureRuntime();
   const registry = createApiRouteRegistry(apiRoutes), byId = new Map(registry.map((item) => [item.operation_id, item]));
+  let snapshot = await state.readState();
+  assert.equal(snapshot.codex_profiles[0].timeout_ms, 1_800_000);
+  await state.mutate((data) => { data.codex_profiles[0].timeout_ms = '600000'; });
+  await state.ensureRuntime();
+  snapshot = await state.readState();
+  assert.equal(snapshot.codex_profiles[0].timeout_ms, 600_000);
+  const ownerId = snapshot.instance_owner_user_id;
   const expected = [
     'aiws.workflow.get.workflows.by-id.graph',
     'aiws.workflow.post.workflows.by-id.graph-proposals',
@@ -29,7 +37,8 @@ try {
     'aiws.github.post.deliveries.by-id.pull-request.reconcile',
   'aiws.admin.post.workflow-migrations.batches.by-id.approve'
   , 'aiws.projects.post.projects', 'aiws.projects.post.projects.by-id.invitations',
-  'aiws.governance.post.projects.by-id.exchange-requests', 'aiws.github.post.repository-deletion-intents.by-id.execute'
+  'aiws.governance.post.projects.by-id.exchange-requests', 'aiws.github.post.repository-deletion-intents.by-id.execute',
+  'aiws.github.post.github.device.start', 'aiws.github.post.github.device.poll'
   ];
   for (const operationId of expected) assert.ok(byId.has(operationId), operationId);
   assert.equal(byId.get('aiws.workflow.get.projects.by-id.workflow-draft.generations.by-generation-id.events').mapping, 'async_adapter');
@@ -65,6 +74,18 @@ try {
   assert.equal(subjectlessAggregate.ok, false);
   assert.equal(subjectlessAggregate.status, 403);
   assert.equal(subjectlessAggregate.error.error, 'mcp_subject_user_required');
+
+  const githubClient = { id: 'github-device-client', subject_user_id: ownerId, scopes: ['github:write'], project_allowlist: [] };
+  const device = await executeRegistryOperation(registry, 'aiws.github.post.github.device.start', { body: { adapter: 'test' } }, { client: githubClient });
+  assert.equal(device.ok, true);
+  assert.equal(device.data.status, 'authorization_required');
+  assert.equal(device.data.user_code, 'AIWS-2026');
+  assert.deepEqual(device.data.action_required, { type: 'github_device_authorization', verification_uri: 'https://github.com/login/device', user_code: 'AIWS-2026', expires_at: device.data.expires_at });
+  assert.equal(device.data.next.operation_id, 'aiws.github.post.github.device.poll');
+  assert.deepEqual(device.data.next.arguments, { body: { request_id: device.data.request_id } });
+  const connected = await executeRegistryOperation(registry, device.data.next.operation_id, { body: { ...device.data.next.arguments.body, adapter: 'test' } }, { client: githubClient });
+  assert.equal(connected.ok, true);
+  assert.equal(connected.data.connected, true);
 
   console.log('V1.9 MCP route registry unit tests passed');
 } finally {

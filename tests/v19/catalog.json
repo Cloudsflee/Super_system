@@ -2,16 +2,174 @@
   "version": "1.9",
   "product_version": "1.9.0",
   "state_schema": 18,
-  "budgets_ms": { "plan": 120000, "pr": 900000, "full": 5400000 },
+  "budgets_ms": {
+    "plan": 120000,
+    "pr": 900000,
+    "full": 5400000,
+    "live": 5400000,
+    "release": 5400000,
+    "soak": 7260000
+  },
   "tests": [
-    { "id": "V19-L0-PLAN-001", "layer": "L0", "domain": "plan", "priority": "P0", "command": ["node", "scripts/v19-plan.mjs"], "suites": ["plan"], "covers": ["开发计划v1.9.md", "测试计划v1.9.md"] },
-    { "id": "V19-L1-ACL-001", "layer": "L1", "domain": "acl", "priority": "P0", "command": ["node", "tests/unit/v19-project-governance.test.mjs"], "suites": ["pr", "full"], "covers": ["project_memberships", "project_invitations"] },
-    { "id": "V19-L2-PARITY-001", "layer": "L2", "domain": "parity", "priority": "P0", "command": ["node", "tests/integration/v19-project-governance-flow.test.mjs"], "suites": ["full"], "covers": ["REST", "MCP"] },
-    { "id": "V19-L3-REPOSITORY-001", "layer": "L3", "domain": "repository", "priority": "P0", "command": ["node", "tests/unit/v19-repository-lifecycle.test.mjs"], "suites": ["pr", "full"], "covers": ["deletion_intent", "canonical_repositories"] },
-    { "id": "V19-L3-REPOSITORY-002", "layer": "L3", "domain": "repository-faults", "priority": "P0", "command": ["node", "tests/integration/v19-repository-fault-flow.test.mjs"], "suites": ["full", "release"], "covers": ["installation_pending", "administration_preflight", "shared_canonical", "deletion_faults"] },
-    { "id": "V19-L4-ISOLATION-001", "layer": "L4", "domain": "isolation", "priority": "P0", "command": ["node", "tests/integration/v19-project-isolation-flow.test.mjs"], "suites": ["full"], "covers": ["path", "aggregate"] },
-    { "id": "V19-L5-EXCHANGE-001", "layer": "L5", "domain": "exchange", "priority": "P0", "command": ["node", "tests/unit/v19-exchange.test.mjs"], "suites": ["pr", "full"], "covers": ["exchange_requests", "context_packs"] },
-    { "id": "V19-L5-EXCHANGE-002", "layer": "L5", "domain": "exchange-parity", "priority": "P0", "command": ["node", "tests/integration/v19-exchange-flow.test.mjs"], "suites": ["full", "release"], "covers": ["REST", "MCP", "revoke", "expiry"] },
-    { "id": "V19-L6-COMPAT-001", "layer": "L6", "domain": "compatibility", "priority": "P1", "command": ["node", "tests/unit/v19-migration.test.mjs"], "suites": ["full", "release"], "covers": ["schema 18"] }
+    {
+      "id": "V19-L0-PLAN-001", "layer": "L0", "domain": "plan", "priority": "P0",
+      "command": ["node", "scripts/v19-plan.mjs"], "timeout_ms": 30000, "external_effects": "none", "requires_env": [],
+      "suites": ["plan", "pr", "full", "live", "release", "soak"], "covers": ["开发计划v1.9.md", "测试计划v1.9.md", "tests/v19/**"]
+    },
+    {
+      "id": "V19-L0-STATIC-001", "layer": "L0", "domain": "static", "priority": "P1",
+      "command": ["node", "scripts/lint.mjs"], "timeout_ms": 120000, "external_effects": "none", "requires_env": [],
+      "suites": ["pr", "full", "release"], "covers": ["apps/**", "packages/**", "scripts/**"]
+    },
+    {
+      "id": "V19-L0-STATIC-002", "layer": "L0", "domain": "static", "priority": "P1",
+      "command": ["node", "scripts/typecheck.mjs"], "timeout_ms": 300000, "external_effects": "none", "requires_env": [],
+      "suites": ["pr", "full", "release"], "covers": ["apps/web/src/**", "apps/api/src/**"]
+    },
+    {
+      "id": "V19-L0-WEB-001", "layer": "L0", "domain": "web-build", "priority": "P1",
+      "command": ["node", "scripts/build-web.mjs"], "timeout_ms": 300000, "external_effects": "none", "requires_env": [],
+      "suites": ["full", "release"], "covers": ["apps/web/src/**", "apps/web/dist/**"]
+    },
+    {
+      "id": "V19-L1-ACL-001", "layer": "L1", "domain": "acl", "priority": "P0",
+      "command": ["node", "tests/unit/v19-project-governance.test.mjs"], "timeout_ms": 120000, "external_effects": "none", "requires_env": [],
+      "suites": ["pr", "full"], "covers": ["project_memberships", "project_invitations", "project:create"]
+    },
+    {
+      "id": "V19-L1-REPOSITORY-001", "layer": "L1", "domain": "repository", "priority": "P0",
+      "command": ["node", "tests/unit/v19-repository-lifecycle.test.mjs"], "timeout_ms": 120000, "external_effects": "none", "requires_env": [],
+      "suites": ["pr", "full", "release"], "covers": ["deletion_intent", "canonical_repositories", "repository_workspaces", "branch catalog", "workspace isolation", "stale SHA"]
+    },
+    {
+      "id": "V19-L1-WORKSPACE-001", "layer": "L1", "domain": "repository-workspace-pr", "priority": "P0",
+      "command": ["node", "tests/unit/v19-repository-workspace-pr-intent.test.mjs"], "timeout_ms": 120000, "external_effects": "none", "requires_env": [],
+      "suites": ["pr", "full", "release"], "covers": ["managed full clone", "canonical ref mirror", "fixed SHA", "stale", "pull_request_intents", "double approval", "replay"]
+    },
+    {
+      "id": "V19-L1-EXCHANGE-001", "layer": "L1", "domain": "exchange", "priority": "P0",
+      "command": ["node", "tests/unit/v19-exchange.test.mjs"], "timeout_ms": 120000, "external_effects": "none", "requires_env": [],
+      "suites": ["pr", "full", "release"], "covers": ["exchange_requests", "context_packs"]
+    },
+    {
+      "id": "V19-L1-HIERARCHY-001", "layer": "L1", "domain": "hierarchy", "priority": "P0",
+      "command": ["node", "tests/unit/v19-core.test.mjs"], "timeout_ms": 120000, "external_effects": "none", "requires_env": [],
+      "suites": ["pr", "full"], "covers": ["Project", "Workflow", "Workstream", "Task", "3-6 Task DAG", "brief_coverage", "typed I/O", "replan"]
+    },
+    {
+      "id": "V19-L1-DELIVERY-001", "layer": "L1", "domain": "delivery", "priority": "P0",
+      "command": ["node", "tests/unit/v19-repository-delivery.test.mjs"], "timeout_ms": 120000, "external_effects": "none", "requires_env": [],
+      "suites": ["full", "release"], "covers": ["repository_connections", "repository_targets", "delivery_policies"]
+    },
+    {
+      "id": "V19-L1-DELIVERY-002", "layer": "L1", "domain": "delivery-pr", "priority": "P0",
+      "command": ["node", "tests/unit/v19-delivery-pull-request.test.mjs"], "timeout_ms": 120000, "external_effects": "none", "requires_env": [],
+      "suites": ["full", "release"], "covers": ["pull_request_intents", "create_pr approval", "merge_pr approval", "Draft PR", "checks", "SHA/revision gate", "ready", "merge", "reconcile"]
+    },
+    {
+      "id": "V19-L1-MCP-001", "layer": "L1", "domain": "mcp", "priority": "P0",
+      "command": ["node", "tests/unit/v19-mcp-registry.test.mjs"], "timeout_ms": 120000, "external_effects": "none", "requires_env": [],
+      "suites": ["pr", "full", "live", "release"], "covers": ["REST/MCP parity", "GitHub Device Flow", "subject_user_id"]
+    },
+    {
+      "id": "V19-L1-TIMEOUT-001", "layer": "L1", "domain": "codex-timeout", "priority": "P0",
+      "command": ["node", "tests/unit/v12-services.test.mjs"], "timeout_ms": 180000, "external_effects": "none", "requires_env": [],
+      "suites": ["pr", "full", "release"], "covers": ["30 minute default", "zero validation", "runtime clamp", "MCP TTL"]
+    },
+    {
+      "id": "V19-L2-PARITY-001", "layer": "L2", "domain": "parity", "priority": "P0",
+      "command": ["node", "tests/integration/v19-project-governance-flow.test.mjs"], "timeout_ms": 240000, "external_effects": "none", "requires_env": [],
+      "suites": ["full", "soak"], "covers": ["Project ACL REST", "Project ACL MCP"]
+    },
+    {
+      "id": "V19-L2-REPOSITORY-001", "layer": "L2", "domain": "repository-parity", "priority": "P0",
+      "command": ["node", "tests/integration/v19-repository-exchange-flow.test.mjs"], "timeout_ms": 240000, "external_effects": "none", "requires_env": [],
+      "suites": ["full"], "covers": ["canonical binding", "managed checkout", "repository exchange"]
+    },
+    {
+      "id": "V19-L2-CONFIG-001", "layer": "L2", "domain": "config-revision", "priority": "P0",
+      "command": ["node", "tests/integration/v13-governance-flow.test.mjs"], "timeout_ms": 240000, "external_effects": "none", "requires_env": [],
+      "suites": ["full", "release"], "covers": ["timeout proposal before/after", "invalid timeout", "apply visibility"]
+    },
+    {
+      "id": "V19-L2-DEVICE-001", "layer": "L2", "domain": "github-device", "priority": "P0",
+      "command": ["node", "tests/integration/v12-github-security-flow.test.mjs"], "timeout_ms": 240000, "external_effects": "none", "requires_env": [],
+      "suites": ["full", "release"], "covers": ["Device Flow REST compatibility", "action_required", "poll operation"]
+    },
+    {
+      "id": "V19-L3-REPOSITORY-001", "layer": "L3", "domain": "repository-faults", "priority": "P0",
+      "command": ["node", "tests/integration/v19-repository-fault-flow.test.mjs"], "timeout_ms": 240000, "external_effects": "none", "requires_env": [],
+      "suites": ["full", "release"], "covers": ["installation_pending", "administration_preflight", "deletion_faults"]
+    },
+    {
+      "id": "V19-L4-ISOLATION-001", "layer": "L4", "domain": "isolation", "priority": "P0",
+      "command": ["node", "tests/integration/v19-project-isolation-flow.test.mjs"], "timeout_ms": 240000, "external_effects": "none", "requires_env": [],
+      "suites": ["full", "release"], "covers": ["path isolation", "aggregate isolation"]
+    },
+    {
+      "id": "V19-L4-RECOVERY-001", "layer": "L4", "domain": "assist-recovery-acl", "priority": "P0",
+      "command": ["node", "tests/integration/v19-assist-recovery-acl-flow.test.mjs"], "timeout_ms": 240000, "external_effects": "none", "requires_env": [],
+      "suites": ["full"], "covers": ["Assist recovery ACL", "cross-project denial"]
+    },
+    {
+      "id": "V19-L4-MIGRATION-001", "layer": "L4", "domain": "migration-acl", "priority": "P0",
+      "command": ["node", "tests/integration/v19-workflow-migration-acl-flow.test.mjs"], "timeout_ms": 240000, "external_effects": "none", "requires_env": [],
+      "suites": ["full", "release"], "covers": ["migration approval ACL", "owner identity"]
+    },
+    {
+      "id": "V19-L5-EXCHANGE-001", "layer": "L5", "domain": "exchange-parity", "priority": "P0",
+      "command": ["node", "tests/integration/v19-exchange-flow.test.mjs"], "timeout_ms": 240000, "external_effects": "none", "requires_env": [],
+      "suites": ["full", "release", "soak"], "covers": ["REST", "MCP", "revoke", "expiry", "token budget"]
+    },
+    {
+      "id": "V19-L5-WORKFLOW-001", "layer": "L5", "domain": "workflow-generation", "priority": "P0",
+      "command": ["node", "tests/integration/v19-workflow-generation-flow.test.mjs"], "timeout_ms": 300000, "external_effects": "none", "requires_env": [],
+      "suites": ["full"], "covers": ["workflow generation", "timeout diagnostics", "retry"]
+    },
+    {
+      "id": "V19-L5-DELIVERY-001", "layer": "L5", "domain": "delivery-flow", "priority": "P0",
+      "command": ["node", "tests/integration/v19-delivery-flow.test.mjs"], "timeout_ms": 300000, "external_effects": "none", "requires_env": [],
+      "suites": ["full", "release"], "covers": ["multi-task Delivery", "Draft PR lifecycle", "aiws.task_execution_context.v2", "task_context_not_ready", "asset lineage"]
+    },
+    {
+      "id": "V19-L5-WEBHOOK-001", "layer": "L5", "domain": "github-webhook", "priority": "P0",
+      "command": ["node", "tests/integration/v19-github-webhook-flow.test.mjs"], "timeout_ms": 240000, "external_effects": "none", "requires_env": [],
+      "suites": ["full", "release"], "covers": ["webhook reconciliation", "delivery claims"]
+    },
+    {
+      "id": "V19-L5-MIGRATION-001", "layer": "L5", "domain": "migration-orchestrator", "priority": "P0",
+      "command": ["node", "tests/integration/v19-workflow-migration-orchestrator-flow.test.mjs"], "timeout_ms": 300000, "external_effects": "none", "requires_env": [],
+      "suites": ["full", "release"], "covers": ["workflow migration batch", "failure recovery"]
+    },
+    {
+      "id": "V19-L6-COMPAT-001", "layer": "L6", "domain": "compatibility", "priority": "P0",
+      "command": ["node", "tests/unit/v19-migration.test.mjs"], "timeout_ms": 120000, "external_effects": "none", "requires_env": [],
+      "suites": ["full", "release"], "covers": ["schema 18", "legacy workflow references", "repository_workspaces normalization", "pull_request_intents normalization", "planning_quality legacy_unverified"]
+    },
+    {
+      "id": "V19-L6-BROWSER-001", "layer": "L6", "domain": "browser", "priority": "P1",
+      "command": ["node", "tests/e2e/v19-hierarchy-browser.test.mjs"], "timeout_ms": 600000, "external_effects": "browser", "requires_env": [],
+      "suites": ["full", "release"], "covers": ["desktop", "mobile", "hierarchy", "role UI", "Repository/Branch selector", "full Task DAG", "asset flow", "Open button contrast/focus/navigation", "Axe"]
+    },
+    {
+      "id": "V19-L6-MCP-001", "layer": "L6", "domain": "mcp-journey", "priority": "P0",
+      "command": ["node", "tests/e2e/v19-mcp-project-journeys.test.mjs"], "timeout_ms": 600000, "external_effects": "none", "requires_env": [],
+      "suites": ["full", "release", "soak"], "covers": ["MCP-only project journey", "multi-repository Delivery"]
+    },
+    {
+      "id": "V19-L6-WEB-001", "layer": "L6", "domain": "web-regression", "priority": "P1",
+      "command": ["pnpm", "--filter", "@aiws/web", "test"], "timeout_ms": 600000, "external_effects": "none", "requires_env": [],
+      "suites": ["full", "release"], "covers": ["Codex timeout controls", "GitHub device UI", "role UI regression"]
+    },
+    {
+      "id": "V19-L6-RELEASE-001", "layer": "L6", "domain": "release", "priority": "P0",
+      "command": ["node", "tests/release/v19-volume-flow.test.mjs"], "timeout_ms": 900000, "external_effects": "none", "requires_env": [],
+      "suites": ["release"], "covers": ["schema 17 to 18", "V1.9 volume", "source preservation"]
+    },
+    {
+      "id": "V19-L6-LIVE-001", "layer": "L6", "domain": "live-mcp", "priority": "P0",
+      "command": ["node", "scripts/mcp-live-project-smoke.mjs"], "timeout_ms": 1800000, "external_effects": "github", "requires_env": ["AIWS_MCP_LIVE_SMOKE_CONFIRM"],
+      "suites": ["live"], "covers": ["private GitHub repository", "Codex Delivery", "Draft PR", "MCP-only workflow"]
+    }
   ]
 }

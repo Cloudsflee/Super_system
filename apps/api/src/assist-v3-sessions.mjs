@@ -42,6 +42,7 @@ export async function createV3Session(input = {}) {
     const parent = input.parent_session_id ? requireSession(state, input.parent_session_id) : null;
     if (parent && parent.project_id !== project.id) throw new HttpError(409, { error: 'assist_parent_scope_mismatch' });
     const session = makeSession({ actor, project, scope, title: input.title, parentSessionId: parent?.id || null, viewContext: safeViewContext(input.view_context), clarificationPolicy: input.clarification_policy ?? parent?.clarification_policy ?? 'ask' });
+    session.repository_workspace_id = validateRepositoryWorkspace(state, project.id, input.repository_workspace_id || session.repository_workspace_id || parent?.repository_workspace_id);
     state.assist_sessions.push(session);
     addTrace(state, 'assist.session.created', { project_id: project.id, workspace_id: session.workspace_id, node_id: session.node_id, target_id: session.id, summary: `Assist V3 session: ${session.title}` }, actor.id);
     return session;
@@ -55,10 +56,12 @@ export async function updateV3Session(sessionId, input = {}) {
     if (input.title !== undefined) { const title = cleanText(input.title, 120); if (!title) throw new HttpError(400, { error: 'assist_session_title_required' }); session.title = title; }
     if (input.pinned !== undefined) session.pinned = input.pinned === true;
     if (input.view_context !== undefined) session.view_context = safeViewContext(input.view_context);
+    if (input.repository_workspace_id !== undefined || input.view_context?.repository_workspace_id !== undefined) session.repository_workspace_id = validateRepositoryWorkspace(state, session.project_id, input.repository_workspace_id || input.view_context?.repository_workspace_id);
     if (input.clarification_policy !== undefined) session.clarification_policy = normalizeClarificationPolicy(input.clarification_policy);
     session.updated_at = now(); return session;
   });
 }
+function validateRepositoryWorkspace(state, projectId, workspaceId) { if (!workspaceId) return null; const workspace = state.repository_workspaces.find((item) => item.id === workspaceId && item.project_id === projectId && item.status === 'active'); if (!workspace) throw new HttpError(404, { error: 'repository_workspace_not_found' }); return workspace.id; }
 export async function archiveV3Session(sessionId) {
   return mutate((state) => {
     const session = requireSession(state, sessionId);

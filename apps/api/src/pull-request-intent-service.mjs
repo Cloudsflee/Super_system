@@ -1,0 +1,127 @@
+import { git } from './git-utils.mjs';
+import { createInstallationToken, githubGitAuthEnv, githubJson, resolveGithubAppConfig } from './github-service.mjs';
+import { HttpError } from './http.mjs';
+import { addTrace, mutate, readState } from './state.mjs';
+import {
+  completePullRequestIntentExecutionInState, failPullRequestIntentExecutionInState, preparePullRequestIntentExecutionInState,
+  reconcilePullRequestIntentSnapshotInState, requireIntent
+} from './pull-request-intent-domain.mjs';
+import { markRepositoryWorkspacesStale, repositoryWorkspaceRoot } from './repository-workspace-service.mjs';
+
+const SUCCESS = new Set(['success', 'neutral', 'skipped']);
+
+export async function executePullRequestIntent(intentId, input, actorId, dependencies = {}) {
+  const prepared = await mutate((state) => preparePullRequestIntentExecutionInState(state, intentId, input, actorId));
+  const action = String(input.action || '');
+  try {
+    const snapshot = await readState(), intent = requireIntent(snapshot, intentId);
+    const result = isTest(input) ? testResult(intent, action, input) : await executeRemote(snapshot, intent, prepared.workspace, action, dependencies);
+    const completed = await mutate((state) => {
+      const value = completePullRequestIntentExecutionInState(state, intentId, action, result, actorId);
+      if (action === 'merge_pr') markRepositoryWorkspacesStale(state, { projectId: value.project_id, connectionId: value.connection_id, ref: value.base_ref, remoteSha: result.merge_commit_sha });
+      addTrace(state, action === 'create_pr' ? 'pull_request.intent.created' : 'pull_request.intent.merged', { project_id: value.project_id, target_type: 'pull_request_intent', target_id: value.id, summary: action === 'create_pr' ? `Draft PR #${value.pr_number} created` : `PR #${value.pr_number} merged`, data: { revision: value.revision, snapshot_hash: value.snapshot_hash } }, actorId);
+      return value;
+    });
+    return completed;
+  } catch (error) {
+    const uncertain = !error?.status || Number(error.status) >= 500 || error?.payload?.retryable === true;
+    await mutate((state) => failPullRequestIntentExecutionInState(state, intentId, action, error?.payload?.error || error.message, { uncertain }));
+    throw error;
+  }
+}
+
+export async function reconcilePullRequestIntent(intentId, actorId, dependencies = {}, input = {}) {
+  const state = await readState(), intent = requireIntent(state, intentId);
+  const { assertProjectMembership } = await import('./project-governance-v19.mjs'); assertProjectMembership(state, intent.project_id, actorId, 'write');
+  const snapshot = isTest(input) ? testReconciliation(intent, input) : await readRemoteSnapshot(state, intent, dependencies);
+  return mutate((current) => {
+    const reconciled = reconcilePullRequestIntentSnapshotInState(current, intentId, snapshot);
+    addTrace(current, 'pull_request.intent.reconciled', { project_id: reconciled.project_id, target_type: 'pull_request_intent', target_id: reconciled.id, summary: `PR intent reconciled: ${reconciled.status}`, data: { checks_status: reconciled.checks_status, revision: reconciled.revision } }, actorId);
+    return reconciled;
+  });
+}
+
+async function executeRemote(state, intent, workspace, action, dependencies) {
+  const context = await remoteContext(state, intent, dependencies);
+  await assertRemoteRefs(context, intent, workspace, action === 'create_pr');
+  if (action === 'create_pr') return createOrReusePullRequest(context, intent);
+  const pull = await readPull(context, intent.pr_number);
+  assertPullSnapshot(intent, pull);
+  const checks = await readChecks(context, intent.head_sha);
+  if (checks.status !== 'passed') throw new HttpError(409, { error: 'pull_request_checks_not_passed', checks_status: checks.status, checks: checks.items });
+  let ready = pull;
+  if (pull.draft) ready = await markReady(context, pull);
+  if (ready.draft) throw new HttpError(409, { error: 'pull_request_ready_unconfirmed' });
+  const merged = await call(context, `${context.repositoryUrl}/pulls/${intent.pr_number}/merge`, { method: 'PUT', headers: jsonHeaders(context), body: JSON.stringify({ sha: intent.head_sha, merge_method: normalizeMergeMethod(context.mergeMethod) }) }, 'github_pull_request_merge_failed');
+  if (!merged?.merged || !/^[a-f0-9]{40,64}$/i.test(String(merged.sha || ''))) throw new HttpError(409, { error: 'github_pull_request_merge_rejected', message: String(merged?.message || '').slice(0, 500) });
+  return { merge_commit_sha: String(merged.sha).toLowerCase() };
+}
+
+async function readRemoteSnapshot(state, intent, dependencies) {
+  const context = await remoteContext(state, intent, dependencies), pull = await readPull(context, intent.pr_number);
+  assertPullSnapshot(intent, pull);
+  const checks = await readChecks(context, intent.head_sha);
+  return pullSnapshot(pull, checks.status);
+}
+
+async function remoteContext(state, intent, dependencies) {
+  const connection = state.repository_connections.find((item) => item.id === intent.connection_id && item.project_id === intent.project_id);
+  if (!connection || connection.sync_status !== 'ready') throw new HttpError(409, { error: 'repository_connection_required' });
+  if (connection.permissions?.pull_requests !== true) throw new HttpError(403, { error: 'github_pull_request_write_required' });
+  if (!connection.installation_id) throw new HttpError(409, { error: 'github_installation_required' });
+  const config = resolveGithubAppConfig(state); if (!config) throw new HttpError(409, { error: 'github_app_config_required' });
+  const access = await (dependencies.createInstallationToken || createInstallationToken)(config, connection.installation_id), permissions = access?.permissions || {};
+  if (Object.keys(permissions).length && permissions.pull_requests !== 'write') throw new HttpError(403, { error: 'github_pull_request_write_required' });
+  if (!access?.token) throw new HttpError(502, { error: 'github_installation_token_missing' });
+  return { state, connection, token: access.token, permissions, request: dependencies.githubJson || githubJson, repositoryUrl: `https://api.github.com/repos/${connection.full_name}`, mergeMethod: dependencies.mergeMethod || 'squash' };
+}
+
+async function assertRemoteRefs(context, intent, workspace, allowPushReview) {
+  const base = await readRef(context, intent.base_ref);
+  if (base !== intent.base_sha) throw new HttpError(409, { error: 'pull_request_intent_base_changed', expected_base_sha: intent.base_sha, actual_base_sha: base });
+  let head = await readRef(context, intent.head_ref, true);
+  if (!head && allowPushReview && intent.head_ref.startsWith('aiws/review-')) {
+    const { root } = repositoryWorkspaceRoot(context.state, workspace.id);
+    const pushed = git(root, ['push', '--set-upstream', 'origin', `${intent.head_sha}:refs/heads/${intent.head_ref}`], 120_000, githubGitAuthEnv(context.token));
+    if (!pushed.ok) throw new HttpError(409, { error: 'pull_request_head_push_failed', detail: pushed.stderr || pushed.error });
+    head = await readRef(context, intent.head_ref);
+  }
+  if (!head) throw new HttpError(404, { error: 'pull_request_head_ref_not_found', ref: intent.head_ref });
+  if (head !== intent.head_sha) throw new HttpError(409, { error: 'pull_request_intent_head_changed', expected_head_sha: intent.head_sha, actual_head_sha: head });
+}
+
+async function createOrReusePullRequest(context, intent) {
+  const owner = context.connection.full_name.split('/')[0];
+  const query = new URLSearchParams({ state: 'open', head: `${owner}:${intent.head_ref}`, base: intent.base_ref, per_page: '100' });
+  const existing = await call(context, `${context.repositoryUrl}/pulls?${query}`, {}, 'github_pull_request_list_failed');
+  let pull = Array.isArray(existing) ? existing.find((item) => item.head?.ref === intent.head_ref && item.base?.ref === intent.base_ref) : null;
+  if (!pull) pull = await call(context, `${context.repositoryUrl}/pulls`, { method: 'POST', headers: jsonHeaders(context), body: JSON.stringify({ title: intent.title, head: intent.head_ref, base: intent.base_ref, body: intent.body || undefined, draft: true }) }, 'github_pull_request_create_failed');
+  assertPullSnapshot(intent, pull);
+  if (pull.state !== 'open') throw new HttpError(409, { error: 'github_pull_request_not_open' });
+  return { ...pullSnapshot(pull, 'pending'), number: pull.number, html_url: pull.html_url, node_id: pull.node_id, state: 'open', draft: pull.draft !== false };
+}
+
+async function readPull(context, number) { if (!Number.isInteger(Number(number)) || Number(number) < 1) throw new HttpError(409, { error: 'pull_request_number_required' }); return call(context, `${context.repositoryUrl}/pulls/${number}`, {}, 'github_pull_request_read_failed'); }
+async function readRef(context, ref, optional = false) { try { const result = await call(context, `${context.repositoryUrl}/git/ref/heads/${encodeURIComponent(ref)}`, {}, 'github_ref_read_failed'); return String(result?.object?.sha || '').toLowerCase() || null; } catch (error) { if (optional && error.status === 404) return null; throw error; } }
+async function readChecks(context, sha) {
+  const result = await call(context, `${context.repositoryUrl}/commits/${sha}/check-runs?per_page=100`, {}, 'github_checks_read_failed');
+  const items = (result?.check_runs || []).map((item) => ({ name: item.name, status: item.status, conclusion: item.conclusion || null }));
+  const failed = items.some((item) => item.status === 'completed' && !SUCCESS.has(item.conclusion)), pending = items.some((item) => item.status !== 'completed');
+  return { status: failed ? 'failed' : pending ? 'pending' : 'passed', items };
+}
+async function markReady(context, pull) {
+  if (!pull.node_id) throw new HttpError(502, { error: 'github_pull_request_node_id_missing' });
+  const result = await call(context, 'https://api.github.com/graphql', { method: 'POST', headers: jsonHeaders(context), body: JSON.stringify({ query: 'mutation($id:ID!){markPullRequestReadyForReview(input:{pullRequestId:$id}){pullRequest{id isDraft headRefOid}}}', variables: { id: pull.node_id } }) }, 'github_pull_request_ready_failed');
+  if (result.errors?.length) throw new HttpError(409, { error: 'github_pull_request_ready_failed', messages: result.errors.map((item) => item.message).slice(0, 5) });
+  const ready = result?.data?.markPullRequestReadyForReview?.pullRequest;
+  return { ...pull, draft: Boolean(ready?.isDraft), head: { ...pull.head, sha: ready?.headRefOid || pull.head?.sha } };
+}
+
+async function call(context, url, options, errorCode) { try { return await context.request(url, { ...options, headers: { authorization: `Bearer ${context.token}`, ...(options.headers || {}) } }); } catch (error) { const status = Number(error.status || 0); if ([401, 403].includes(status)) throw new HttpError(403, { error: errorCode, github_status: status }); if (status === 404) throw new HttpError(404, { error: errorCode, github_status: status }); if ([409, 422].includes(status)) throw new HttpError(409, { error: errorCode, github_status: status }); throw new HttpError(502, { error: errorCode, github_status: status || null, retryable: true }); } }
+function assertPullSnapshot(intent, pull) { const head = String(pull?.head?.sha || '').toLowerCase(), base = String(pull?.base?.sha || '').toLowerCase(); if (pull?.head?.ref && pull.head.ref !== intent.head_ref || pull?.base?.ref && pull.base.ref !== intent.base_ref) throw new HttpError(409, { error: 'pull_request_ref_mismatch' }); if (head && head !== intent.head_sha) throw new HttpError(409, { error: 'pull_request_intent_head_changed', expected_head_sha: intent.head_sha, actual_head_sha: head }); if (base && base !== intent.base_sha) throw new HttpError(409, { error: 'pull_request_intent_base_changed', expected_base_sha: intent.base_sha, actual_base_sha: base }); }
+function pullSnapshot(pull, checksStatus) { return { number: pull.number, html_url: pull.html_url, node_id: pull.node_id, state: pull.merged ? 'closed' : pull.state, draft: Boolean(pull.draft), merged: Boolean(pull.merged), merge_commit_sha: pull.merge_commit_sha || null, merged_at: pull.merged_at || null, head_sha: pull.head?.sha || null, base_sha: pull.base?.sha || null, checks_status: checksStatus }; }
+function testResult(intent, action, input) { if (input.test_head_sha && input.test_head_sha !== intent.head_sha) throw new HttpError(409, { error: 'pull_request_intent_head_changed', actual_head_sha: input.test_head_sha }); if (action === 'create_pr') return { number: Number(input.test_pr_number || 1), html_url: input.test_pr_url || 'https://github.test/pull/1', node_id: 'PR_test', state: 'open', draft: true, head_sha: intent.head_sha, base_sha: intent.base_sha, checks_status: input.test_checks_status || 'pending' }; if ((input.test_checks_status || intent.checks_status) !== 'passed') throw new HttpError(409, { error: 'pull_request_checks_not_passed' }); return { merge_commit_sha: input.test_merge_commit_sha || 'f'.repeat(40) }; }
+function testReconciliation(intent, input) { return { number: intent.pr_number || 1, html_url: intent.pr_url || 'https://github.test/pull/1', node_id: intent.pr_node_id || 'PR_test', state: input.test_pr_state || 'open', draft: input.test_draft !== false, head_sha: input.test_head_sha || intent.head_sha, base_sha: input.test_base_sha || intent.base_sha, checks_status: input.test_checks_status || 'passed', merged: input.test_pr_state === 'merged', merge_commit_sha: input.test_merge_commit_sha || null }; }
+function normalizeMergeMethod(value) { const method = String(value || 'squash'); if (!['merge', 'squash', 'rebase'].includes(method)) throw new HttpError(400, { error: 'github_merge_method_invalid' }); return method; }
+function jsonHeaders(context) { return { authorization: `Bearer ${context.token}`, 'content-type': 'application/json' }; }
+function isTest(input) { return process.env.NODE_ENV === 'test' && input.adapter === 'test'; }

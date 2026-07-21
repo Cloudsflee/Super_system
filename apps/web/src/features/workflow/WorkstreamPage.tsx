@@ -1,7 +1,7 @@
 import { Background, BackgroundVariant, Controls, ReactFlow, ReactFlowProvider, type Edge, type Node } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { ArrowDown, ArrowLeft, ArrowUp, Bot, Boxes, ChevronRight, GitBranch, List, Plus, Rows3 } from 'lucide-react';
+import { ArrowDown, ArrowLeft, ArrowRight, ArrowUp, Bot, Boxes, ChevronRight, GitBranch, List, Plus, Rows3 } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 import { Link, Navigate, useNavigate, useParams } from 'react-router-dom';
 import { api, json } from '../../api/client';
@@ -71,7 +71,7 @@ function TaskList({ tasks, onSelect, onEnter, onAssist, onMove }: { tasks: Workf
     <div><strong>{task.title}</strong><p>{task.goal}</p></div>
     <span className={`task-status ${task.status}`}>{statusLabel(task.status)}</span>
     <span className="task-target"><GitBranch size={14} />{task.repository_target_ids?.length || 0}</span>
-    <div className="task-actions" onClick={(event) => event.stopPropagation()}><IconButton label="上移" disabled={index === 0} onClick={() => onMove(task, -1)}><ArrowUp size={15} /></IconButton><IconButton label="下移" disabled={index === tasks.length - 1} onClick={() => onMove(task, 1)}><ArrowDown size={15} /></IconButton><IconButton label="Task Assist" onClick={() => onAssist(task)}><Bot size={15} /></IconButton><button className="button secondary" onClick={() => onEnter(task)}>打开</button></div>
+    <div className="task-actions" onClick={(event) => event.stopPropagation()}><IconButton label="上移" disabled={index === 0} onClick={() => onMove(task, -1)}><ArrowUp size={15} /></IconButton><IconButton label="下移" disabled={index === tasks.length - 1} onClick={() => onMove(task, 1)}><ArrowDown size={15} /></IconButton><IconButton label="Task Assist" onClick={() => onAssist(task)}><Bot size={15} /></IconButton><button className="button task-open-primary" aria-label={`打开任务：${task.title}`} onClick={() => onEnter(task)}>打开<ArrowRight size={15} /></button></div>
   </article>)}</div>;
 }
 

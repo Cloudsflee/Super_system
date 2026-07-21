@@ -1,5 +1,6 @@
 import { id } from '../../../packages/shared/index.mjs';
 import { HttpError } from './http.mjs';
+import { normalizeWorkflowPlanningFields } from './workflow-quality.mjs';
 
 export const WORKFLOW_NODE_ROLES = Object.freeze(['workstream', 'task']);
 export const WORKSTREAM_CATEGORIES = Object.freeze(['deliverable', 'decision', 'coordination', 'operation']);
@@ -31,14 +32,14 @@ export function normalizeWorkflowHierarchyNodes(source, { idFactory = id, strict
   const workstreamOrder = new Map();
   for (const node of normalized.filter((item) => item.role === 'workstream').sort(orderNodes)) workstreamOrder.set(node.id, workstreamOrder.size);
   const taskOrders = new Map();
-  return normalized
+  return normalizeWorkflowPlanningFields(normalized
     .sort((left, right) => hierarchySort(left, right, workstreamOrder))
     .map((node) => {
       if (node.role === 'workstream') return { ...node, order_index: workstreamOrder.get(node.id) ?? node.order_index };
       const order = taskOrders.get(node.parent_node_id) || 0;
       taskOrders.set(node.parent_node_id, order + 1);
       return { ...node, order_index: order };
-    });
+    }));
 }
 
 export function assertWorkflowHierarchy(nodes, { mode = 'formal', allowLegacy = false, requireTasks = true } = {}) {
@@ -82,6 +83,7 @@ export function normalizeWorkflowGenerationCandidate(value, options = {}) {
     evidence_refs: normalizeEvidenceRefs(value.evidence_refs || value.brief_evidence || []),
     confidence: finiteConfidence(value.confidence),
     repository_intent: normalizeRepositoryIntent(value.repository_intent),
+    brief_coverage: normalizeBriefCoverage(value.brief_coverage),
     nodes
   };
   assertWorkflowHierarchy(candidate.nodes, { mode: 'initial' });
@@ -159,6 +161,10 @@ function normalizeNode(raw = {}, index, idFactory, strict) {
     execution_mode: EXECUTION_MODE_SET.has(raw.execution_mode) ? raw.execution_mode : defaultExecutionMode(taskKind),
     boundary: role === 'workstream' ? normalizeBoundary(raw.boundary) : null,
     acceptance_criteria: uniqueStrings(raw.acceptance_criteria).slice(0, 50),
+    capability_tags: role === 'task' ? uniqueStrings(raw.capability_tags).slice(0, 20) : [],
+    input_slots: role === 'task' && Array.isArray(raw.input_slots) ? structuredClone(raw.input_slots).slice(0, 50) : [],
+    output_slots: role === 'task' && Array.isArray(raw.output_slots) ? structuredClone(raw.output_slots).slice(0, 50) : [],
+    atomic_justification: role === 'task' ? clean(raw.atomic_justification, 2000) || null : null,
     dependency_ids: dependencyIds(raw),
     repository_intent: raw.repository_intent && typeof raw.repository_intent === 'object' ? structuredClone(raw.repository_intent) : null,
     position: validPosition(raw.position, index),
@@ -235,6 +241,7 @@ function hasIndependentBoundary(value) { return value && typeof value === 'objec
 function nonEmpty(value) { return Array.isArray(value) ? value.length > 0 : value && typeof value === 'object' ? Object.keys(value).length > 0 : Boolean(clean(value, 2000)); }
 function normalizeEvidenceRefs(value) { return (Array.isArray(value) ? value : []).slice(0, 100).map((item) => typeof item === 'string' ? { section_id: clean(item, 200), quote: '' } : { section_id: clean(item?.section_id || item?.brief_section_id, 200), quote: clean(item?.quote || item?.evidence, 2000) }).filter((item) => item.section_id); }
 function normalizeRepositoryIntent(value) { if (value == null) return []; if (Array.isArray(value)) return structuredClone(value).slice(0, 50); if (typeof value === 'object') return structuredClone(value); throw validationError('workflow_generation_repository_intent_invalid'); }
+function normalizeBriefCoverage(value) { if (!value || typeof value !== 'object' || Array.isArray(value)) return {}; return Object.fromEntries(Object.entries(value).map(([key, ids]) => [clean(key, 80), uniqueStrings(ids)]).filter(([key]) => key)); }
 function finiteConfidence(value) { const number = Number(value); if (!Number.isFinite(number) || number < 0 || number > 1) throw validationError('workflow_generation_confidence_invalid'); return number; }
 function uniqueStrings(value) { return [...new Set((Array.isArray(value) ? value : []).map((item) => clean(item, 2000)).filter(Boolean))]; }
 function validPosition(value, index) { const x = Number(value?.x), y = Number(value?.y); return { x: Number.isFinite(x) ? Math.max(-10000, Math.min(10000, x)) : 100 + (index % 3) * 300, y: Number.isFinite(y) ? Math.max(-10000, Math.min(10000, y)) : 120 + Math.floor(index / 3) * 220 }; }

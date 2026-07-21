@@ -3,6 +3,9 @@ import { execFileSync } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
 import { callOperation, callTool, createMcpTestFixture, resultData } from '../v18/mcp-test-helpers.mjs';
+import {
+  codingHierarchy, completeDeliveryTask, completeHumanTask, createRepositoryWorkspace
+} from './v19-mcp-project-journey-helpers.mjs';
 
 let repositories;
 const fixture = await createMcpTestFixture('aiws-v19-mcp-journeys-', {
@@ -38,7 +41,7 @@ try {
   assert.equal(state.workflow_nodes.filter((item) => item.workflow_id === manual.workflowId && item.role === 'workstream').every((item) => item.status === 'completed'), true);
   assert.equal(state.repository_connections.filter((item) => item.project_id === coding.projectId).length, 2);
   assert.equal(state.deliveries.filter((item) => item.project_id === coding.projectId && item.status === 'completed').length, 2);
-  assert.equal(state.deliveries.filter((item) => item.project_id === coding.projectId).every((item) => item.pr_state === 'draft'), true);
+  assert.equal(state.pull_request_intents.filter((item) => item.project_id === coding.projectId && item.status === 'merged' && item.approvals.length === 2).length, 2);
 
   console.log(`V1.9 MCP-only project journeys passed (${manual.projectId}, ${coding.projectId})`);
 } finally {
@@ -77,25 +80,20 @@ async function completeNonCodingJourney(operatorClient, approverClient) {
 
   const onboarding = resultData(await callOperation(operatorClient, 'aiws.projects.get.projects.by-id.onboarding', { params: { id: projectId } }));
   assert.equal(onboarding.workflow_draft.nodes.filter((item) => item.role === 'workstream').length, 1);
-  assert.equal(onboarding.workflow_draft.nodes.filter((item) => item.role === 'task').every((item) => item.task_kind === 'manual'), true);
+  const draftTasks = onboarding.workflow_draft.nodes.filter((item) => item.role === 'task');
+  assert.deepEqual(draftTasks.map((item) => item.task_kind), ['research', 'content', 'review']);
   const confirmed = resultData(await callOperation(operatorClient, 'aiws.projects.post.projects.by-id.onboarding.confirm', {
     params: { id: projectId },
     body: { expected_brief_revision: onboarding.brief.revision, expected_workflow_revision: onboarding.workflow_draft.revision }
   }));
   const workflowId = confirmed.workflow.id;
   const workstream = confirmed.nodes.find((item) => item.role === 'workstream');
-  const task = confirmed.nodes.find((item) => item.role === 'task');
+  const tasks = confirmed.nodes.filter((item) => item.role === 'task').sort((left, right) => left.order_index - right.order_index);
   const topGraph = resultData(await callOperation(operatorClient, 'aiws.workflow.get.workflows.by-id.graph', { params: { id: workflowId }, query: {} }));
   const taskGraph = resultData(await callOperation(operatorClient, 'aiws.workflow.get.workflows.by-id.graph', { params: { id: workflowId }, query: { parent_node_id: workstream.id } }));
   assert.deepEqual(topGraph.nodes.map((item) => item.id), [workstream.id]);
-  assert.deepEqual(taskGraph.nodes.map((item) => item.id), [task.id]);
-
-  await callOperation(operatorClient, 'aiws.workflow.post.tasks.by-id.submissions', {
-    params: { id: task.id }, body: { title: 'Evidence brief task result', summary: 'Interview evidence is traceable and ready for acceptance.', evidence_refs: ['brief:community-evidence'] }
-  });
-  await callOperation(approverClient, 'aiws.workflow.post.tasks.by-id.review', {
-    params: { id: task.id }, body: { decision: 'approve', summary: 'Task evidence accepted.', acceptance_results: [{ criterion: 'Traceable evidence', passed: true }] }
-  });
+  assert.deepEqual(taskGraph.nodes.map((item) => item.id), tasks.map((item) => item.id));
+  for (const task of tasks) await completeHumanTask(operatorClient, approverClient, { projectId, task });
   await callOperation(operatorClient, 'aiws.workflow.post.workstreams.by-id.submissions', {
     params: { id: workstream.id }, body: { summary: 'The community evidence brief is complete and independently reviewable.' }
   });
@@ -128,7 +126,7 @@ async function completeMultiRepositoryJourney(operatorClient, approverClient) {
   let onboarding = resultData(await callOperation(operatorClient, 'aiws.projects.get.projects.by-id.onboarding', { params: { id: projectId } }));
   const reviewedDraft = resultData(await callOperation(operatorClient, 'aiws.workflow.patch.projects.by-id.workflow-draft', {
     params: { id: projectId },
-    body: { expected_revision: onboarding.workflow_draft.revision, nodes: codingHierarchy() }
+    body: { expected_revision: onboarding.workflow_draft.revision, nodes: codingHierarchy(), brief_coverage: { features: ['task-alpha-repository', 'task-beta-repository'], acceptance_criteria: ['task-beta-repository'], milestones: ['task-beta-repository'] } }
   }));
   onboarding = resultData(await callOperation(operatorClient, 'aiws.projects.get.projects.by-id.onboarding', { params: { id: projectId } }));
   assert.equal(reviewedDraft.user_modified_at != null, true, 'the generated candidate is explicitly reviewed and edited before confirmation');
@@ -137,6 +135,7 @@ async function completeMultiRepositoryJourney(operatorClient, approverClient) {
     body: { expected_brief_revision: onboarding.brief.revision, expected_workflow_revision: reviewedDraft.revision }
   }));
   const workstream = confirmed.nodes.find((item) => item.id === 'ws-multi-repo-release');
+  const evidenceTask = confirmed.nodes.find((item) => item.id === 'task-release-evidence');
   const alphaTask = confirmed.nodes.find((item) => item.id === 'task-alpha-repository');
   const betaTask = confirmed.nodes.find((item) => item.id === 'task-beta-repository');
 
@@ -149,6 +148,10 @@ async function completeMultiRepositoryJourney(operatorClient, approverClient) {
     }).then(resultData)
   ]);
   const alphaConnectionId = alphaConnection.connection.id, betaConnectionId = betaConnection.connection.id;
+  const [alphaWorkspace, betaWorkspace] = await Promise.all([
+    createRepositoryWorkspace(approverClient, { projectId, connectionId: alphaConnectionId, operationKey: 'v19-alpha-workspace', makeDefault: true }),
+    createRepositoryWorkspace(approverClient, { projectId, connectionId: betaConnectionId, operationKey: 'v19-beta-workspace' })
+  ]);
   await callOperation(approverClient, 'aiws.github.put.workstreams.by-id.repository-targets', {
     params: { id: workstream.id }, body: { connection_ids: [alphaConnectionId, betaConnectionId] }
   });
@@ -164,53 +167,28 @@ async function completeMultiRepositoryJourney(operatorClient, approverClient) {
       params: { id: workstream.id }, body: { connection_id: betaConnectionId, base_ref: 'main', path_prefixes: ['src/beta'], test_commands: ['node -e "process.exit(0)"'], automation_permissions: ['codex_run', 'commit', 'push', 'draft_pr'] }
     }).then(resultData)
   ]);
-
-  const starts = await Promise.all([
-    callOperation(approverClient, 'aiws.github.post.tasks.by-id.deliveries', {
-      params: { id: alphaTask.id }, body: { adapter: 'test', policy_id: alphaPolicy.id, test_changes: [{ path: 'src/alpha/change.txt', content: 'alpha verified change\n' }] }
-    }),
-    callOperation(approverClient, 'aiws.github.post.tasks.by-id.deliveries', {
-      params: { id: betaTask.id }, body: { adapter: 'test', policy_id: betaPolicy.id, test_changes: [{ path: 'src/beta/change.txt', content: 'beta verified change\n' }] }
-    })
-  ]);
-  const deliveryIds = starts.map((item) => item.handle.id);
-  const waits = await Promise.all(deliveryIds.map((operationId) => callTool(approverClient, 'aiws_operations', { action: 'wait', operation_id: operationId, timeout_ms: 20_000, poll_ms: 50 })));
-  assert.ok(waits.every((item) => item.data.operation.status === 'completed'));
-  const deliveries = await Promise.all(deliveryIds.map((id) => callOperation(approverClient, 'aiws.github.get.deliveries.by-id', { params: { id } }).then(resultData)));
+  await completeHumanTask(operatorClient, approverClient, { projectId, task: evidenceTask });
+  const alpha = await completeDeliveryTask(operatorClient, approverClient, {
+    projectId, task: alphaTask, policyId: alphaPolicy.id, repositoryWorkspaceId: alphaWorkspace.id,
+    change: { path: 'src/alpha/change.txt', content: 'alpha verified change\n' }, pullNumber: 11
+  });
+  const beta = await completeDeliveryTask(operatorClient, approverClient, {
+    projectId, task: betaTask, policyId: betaPolicy.id, repositoryWorkspaceId: betaWorkspace.id,
+    change: { path: 'src/beta/change.txt', content: 'beta verified change\n' }, pullNumber: 12
+  });
+  const deliveries = [alpha.delivery, beta.delivery], deliveryIds = deliveries.map((item) => item.id);
   assert.notEqual(deliveries[0].worktree_path, deliveries[1].worktree_path);
   assert.notEqual(deliveries[0].branch, deliveries[1].branch);
-  assert.deepEqual(new Set(deliveries.map((item) => item.pr_url)), new Set(['https://github.com/acme/service-alpha/pull/1', 'https://github.com/acme/service-beta/pull/1']));
-  assert.ok(deliveries.every((item) => item.pr_state === 'draft' && item.test_results.every((test) => test.status === 'passed')));
   const deliveryEvents = await callTool(approverClient, 'aiws_operations', { action: 'read_events', operation_id: deliveryIds[0], limit: 100 });
   assert.equal(deliveryEvents.data.items.some((item) => item.source === 'delivery_event' && item.type === 'completed'), true);
-
-  for (const task of [alphaTask, betaTask]) {
-    await callOperation(operatorClient, 'aiws.workflow.post.tasks.by-id.submissions', {
-      params: { id: task.id }, body: { summary: `${task.title} produced a tested Draft PR.`, evidence_refs: [`delivery:${deliveries.find((item) => item.task_id === task.id).id}`] }
-    });
-    await callOperation(approverClient, 'aiws.workflow.post.tasks.by-id.review', {
-      params: { id: task.id }, body: { decision: 'approve', summary: 'Draft PR and policy test evidence accepted.' }
-    });
-  }
   await callOperation(operatorClient, 'aiws.workflow.post.workstreams.by-id.submissions', {
-    params: { id: workstream.id }, body: { summary: 'Both repository deliveries have independent tested Draft PRs.', evidence_refs: deliveryIds.map((id) => `delivery:${id}`) }
+    params: { id: workstream.id }, body: { summary: 'Both repository deliveries completed the two-approval PR flow.', evidence_refs: deliveryIds.map((id) => `delivery:${id}`) }
   });
   const accepted = resultData(await callOperation(approverClient, 'aiws.workflow.post.workstreams.by-id.review', {
     params: { id: workstream.id }, body: { decision: 'approve', summary: 'Multi-repository outcome accepted.' }
   }));
   assert.equal(accepted.workstream.status, 'completed');
   return { projectId, workflowId: confirmed.workflow.id, deliveryIds };
-}
-
-function codingHierarchy() {
-  return [{
-    id: 'ws-multi-repo-release', role: 'workstream', title: 'Verified multi-repository release', outcome: 'Two independently tested repository changes, each represented by its own Draft PR.',
-    category: 'deliverable', boundary: { repositories: ['acme/service-alpha', 'acme/service-beta'], deliverable: 'two-draft-prs' }, acceptance_criteria: ['Both repository policy tests pass.', 'Each Task creates exactly one Draft PR.'], dependency_ids: [],
-    tasks: [
-      { id: 'task-alpha-repository', role: 'task', title: 'Deliver alpha repository change', goal: 'Create the tested alpha Draft PR', task_kind: 'code', execution_mode: 'codex', dependency_ids: [], repository_intent: { mode: 'write', repository: 'acme/service-alpha' } },
-      { id: 'task-beta-repository', role: 'task', title: 'Deliver beta repository change', goal: 'Create the tested beta Draft PR', task_kind: 'code', execution_mode: 'codex', dependency_ids: [], repository_intent: { mode: 'write', repository: 'acme/service-beta' } }
-    ]
-  }];
 }
 
 function initializeRepository(target, name) {

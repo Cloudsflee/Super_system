@@ -9,7 +9,7 @@ process.env.NODE_ENV = 'test';
 
 try {
   const stateApi = await import('../../apps/api/src/state.mjs');
-  const { createDraftProjectRecords } = await import('../../apps/api/src/project-lifecycle.mjs');
+  const { activateDraftInState, createDraftProjectRecords } = await import('../../apps/api/src/project-lifecycle.mjs');
   const generation = await import('../../apps/api/src/workflow-generation-service.mjs');
   const { resolveWorkflowGenerationCwd } = await import('../../apps/api/src/workflow-generation-workspace.mjs');
   const { createCodexRunError, safeErrorDetail } = await import('../../apps/api/src/codex-run-diagnostics.mjs');
@@ -43,8 +43,38 @@ try {
   assert.equal(completed.candidate.nodes.filter((item) => item.role === 'workstream').length, 1);
   assert.equal(completed.candidate.nodes.some((item) => item.role === 'workstream' && /coding|testing|design/i.test(item.title)), false);
   const untouchedState = await stateApi.readState(), untouchedDraft = untouchedState.workflow_drafts.find((item) => item.project_id === untouched.project.id);
-  assert.equal(untouchedDraft.nodes.length, 2);
+  const generatedTasks = untouchedDraft.nodes.filter((item) => item.role === 'task');
+  assert.equal(untouchedDraft.nodes.length, 4);
+  assert.equal(generatedTasks.length, 3);
+  assert.deepEqual(generatedTasks.map((item) => item.capability_tags[0]), ['research_evidence', 'execution', 'acceptance']);
+  assert.deepEqual(generatedTasks.map((item) => item.dependency_ids), [[], [generatedTasks[0].id], [generatedTasks[1].id]]);
+  assert.equal(generatedTasks.every((item) => item.acceptance_criteria.length && item.input_slots.length && item.output_slots.length), true);
+  assert.equal(generatedTasks.every((item) => item.input_slots.every((slot) => slot.key && slot.kind && slot.source && Object.hasOwn(slot, 'version_id'))), true);
+  assert.equal(generatedTasks.every((item) => item.output_slots.every((slot) => slot.key && slot.asset_type && slot.acceptance_criteria.length && slot.confirmation_policy)), true);
+  assert.deepEqual(Object.keys(untouchedDraft.brief_coverage).sort(), ['acceptance_criteria', 'features', 'milestones', 'risks']);
   assert.equal(untouchedDraft.user_modified_at, null);
+
+  let activeWorkflow;
+  await stateApi.mutate((state) => {
+    const project = state.projects.find((item) => item.id === untouched.project.id);
+    const brief = state.project_briefs.find((item) => item.project_id === project.id);
+    const draft = state.workflow_drafts.find((item) => item.project_id === project.id);
+    activeWorkflow = activateDraftInState(state, project, brief, {
+      nodes: draft.nodes, project_classification: draft.project_classification, brief_coverage: draft.brief_coverage
+    }, actor.id).workflow;
+  });
+  const replanStart = await generation.startWorkflowGeneration(untouched.project.id, { adapter: 'test', mode: 'replan' }, actor.id);
+  const replan = await waitForGeneration(generation, untouched.project.id, replanStart.generation.id);
+  assert.equal(replan.result_mode, 'replan_diff');
+  assert.equal(replan.diff.from_revision, activeWorkflow.workflow_revision);
+  const beforeReplanApply = await stateApi.readState();
+  assert.deepEqual(beforeReplanApply.workflow_nodes.filter((item) => item.workflow_id === activeWorkflow.id).map((item) => item.id), untouchedDraft.nodes.map((item) => item.id));
+  const proposed = await generation.applyWorkflowGenerationCandidate(untouched.project.id, replan.id, { expected_revision: activeWorkflow.workflow_revision }, actor.id);
+  assert.equal(proposed.generation.result_mode, 'replan_change_proposal_created');
+  assert.equal(proposed.proposal.change_type, 'workflow_replan_replace');
+  assert.equal(proposed.proposal.status, 'pending');
+  const afterReplanProposal = await stateApi.readState();
+  assert.equal(afterReplanProposal.workflows.find((item) => item.id === activeWorkflow.id).workflow_revision, activeWorkflow.workflow_revision);
 
   const edited = await addDraft('Editorial program', 'Publish an accepted editorial package', actor, true, stateApi, createDraftProjectRecords);
   const editedStarted = await generation.startWorkflowGeneration(edited.project.id, { adapter: 'test' }, actor.id);
@@ -77,7 +107,13 @@ try {
 }
 
 async function addDraft(title, goal, actor, manuallyEdited, stateApi, createDraftProjectRecords) {
-  const created = createDraftProjectRecords({ title, goal, mode: 'brainstorm', answers: { goal } }, actor);
+  const created = createDraftProjectRecords({
+    title, goal, mode: 'brainstorm',
+    answers: {
+      goal, features: ['Traceable result'], acceptance_criteria: ['The outcome is accepted'],
+      milestones: ['Accepted delivery'], risks: ['Insufficient evidence']
+    }
+  }, actor);
   created.intake.mode = 'brainstorm';
   created.intake.status = 'ready';
   if (manuallyEdited) {

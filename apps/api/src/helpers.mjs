@@ -23,6 +23,9 @@ export function projectBundle(state, projectId) {
     nodes,
     contracts: state.node_contracts.filter((c) => nodes.some((n) => n.id === c.node_id)),
     assets: state.assets.filter((a) => a.project_id === project.id),
+    asset_versions: state.asset_versions.filter((version) => state.assets.some((asset) => asset.project_id === project.id && asset.id === version.asset_id)),
+    asset_relations: state.asset_relations.filter((relation) => state.assets.some((asset) => asset.project_id === project.id && (asset.id === relation.source_asset_id || asset.id === relation.target_asset_id))),
+    submissions: state.submissions.filter((item) => item.project_id === project.id),
     digests: state.digests.filter((d) => d.project_id === project.id),
     runs: state.node_runs.filter((r) => r.project_id === project.id),
     traces: state.traces.filter((t) => t.project_id === project.id)

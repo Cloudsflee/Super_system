@@ -1,12 +1,12 @@
 import { Cpu, KeyRound } from 'lucide-react';
 import { ProviderFields, type ProviderChoice, type WireApi } from './CodexProviderFields';
 
-export function CodexProfileForm({ repair, thirdParty, busy, valid, providerChoice, customProvider, baseUrl, wireApi, model, repairNeedsKey, repairApiKey, onProvider, onCustomProvider, onBaseUrl, onWireApi, onModel, onRepairApiKey, onCreate, onRepair }: {
+export function CodexProfileForm({ repair, thirdParty, busy, valid, providerChoice, customProvider, baseUrl, wireApi, model, timeoutMinutes, repairNeedsKey, repairApiKey, onProvider, onCustomProvider, onBaseUrl, onWireApi, onModel, onTimeoutMinutes, onRepairApiKey, onCreate, onRepair }: {
   repair: boolean; thirdParty: boolean; busy: boolean; valid: boolean;
-  providerChoice: ProviderChoice; customProvider: string; baseUrl: string; wireApi: WireApi; model: string;
+  providerChoice: ProviderChoice; customProvider: string; baseUrl: string; wireApi: WireApi; model: string; timeoutMinutes: number;
   repairNeedsKey: boolean; repairApiKey: string;
   onProvider: (value: ProviderChoice) => void; onCustomProvider: (value: string) => void;
-  onBaseUrl: (value: string) => void; onWireApi: (value: WireApi) => void; onModel: (value: string) => void;
+  onBaseUrl: (value: string) => void; onWireApi: (value: WireApi) => void; onModel: (value: string) => void; onTimeoutMinutes: (value: number) => void;
   onRepairApiKey: (value: string) => void; onCreate: () => void; onRepair: () => void;
 }) {
   return <div className="setup-block">
@@ -14,6 +14,7 @@ export function CodexProfileForm({ repair, thirdParty, busy, valid, providerChoi
     <div className="form-grid codex-provider-form">
       <ProviderFields providerChoice={providerChoice} customProvider={customProvider} baseUrl={baseUrl} wireApi={wireApi} onProvider={onProvider} onCustomProvider={onCustomProvider} onBaseUrl={onBaseUrl} onWireApi={onWireApi} />
       <label className={thirdParty ? 'span-2' : ''}>Model<input aria-label="Model" value={model} onChange={(event) => onModel(event.target.value)} placeholder="例如 gpt-5.1-codex 或 provider/model" /></label>
+      <label><span>任务超时 <em className="required-mark">分钟</em></span><input aria-label="任务超时（分钟）" type="number" min={1} max={30} step={1} value={timeoutMinutes} onChange={(event) => onTimeoutMinutes(Number(event.target.value))} /></label>
       {repairNeedsKey && <label className="span-2"><span>API Key <em className="required-mark">当前凭据 Provider 不匹配</em></span><input aria-label="修复 Profile API Key" type="password" autoComplete="off" value={repairApiKey} onChange={(event) => onRepairApiKey(event.target.value)} /></label>}
     </div>
     <div className="block-actions">

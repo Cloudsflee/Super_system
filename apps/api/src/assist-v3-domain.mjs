@@ -67,7 +67,7 @@ export function makeSession({ actor, project, scope, title, parentSessionId, vie
     forked_from_session_id: null, forked_from_turn_id: null, forked_from_codex_turn_id: null,
     historical_shared_codex_thread_id: null, delete_batch_id: null, deleted_at: null,
     purge_after: null, purge_stage: null, purge_retry_at: null,
-    active_change_batch_id: null, view_context: viewContext || {}, clarification_policy: normalizeClarificationPolicy(clarificationPolicy),
+    active_change_batch_id: null, repository_workspace_id: repositoryWorkspaceId(viewContext), view_context: viewContext || {}, clarification_policy: normalizeClarificationPolicy(clarificationPolicy),
     scope_status: 'active', scope_snapshot: structuredClone(scope.snapshot), scope_breadcrumb: structuredClone(scope.breadcrumb), read_only: false,
     created_by_user_id: actor.id, created_at: created, updated_at: created
   };
@@ -79,7 +79,7 @@ export function makeTurn({ actor, session, mode, content, input, attachmentIds, 
     parent_turn_id: options.parentTurnId || null, retry_of_turn_id: options.retryOfTurnId || null, follow_up_kind: options.followUpKind || null,
     mode, collaboration_mode: mode, prompt: content, output_text: '', status: 'queued', profile_id: configuration.profile?.id || null,
     configuration_id: configuration.configuration?.id || null,
-    model: configuration.model, reasoning: configuration.reasoning, view_context: safeViewContext(input.view_context ?? session.view_context),
+    model: configuration.model, reasoning: configuration.reasoning, repository_workspace_id: cleanText(input.repository_workspace_id || repositoryWorkspaceId(input.view_context) || session.repository_workspace_id, 200) || null, view_context: safeViewContext(input.view_context ?? session.view_context),
     context_pack_id: null, worktree_id: null, change_batch_id: null, attachment_ids: attachmentIds, attachment_manifest: [], codex_thread_id: null, codex_turn_id: null, usage: null,
     code_access: null, code_read_only_reason: null, operation_reference_id: cleanText(input.operation_reference_id, 200) || null,
     review_status: 'pending', review: { status: 'pending', viewed_files: {}, comment_count: 0 },
@@ -170,6 +170,7 @@ export function safeViewContext(value) {
   if (Buffer.byteLength(text, 'utf8') > 100_000) throw new HttpError(413, { error: 'assist_view_context_too_large' });
   return JSON.parse(text);
 }
+function repositoryWorkspaceId(value) { return cleanText(value?.repository_workspace_id || value?.surface?.repository_workspace_id, 200) || null; }
 export function resolveAssistTurnConfiguration(state, input = {}, { allowMissingProfile = false } = {}) {
   const configurationId = cleanText(input.configuration_id, 200);
   let configuration = configurationId ? state.assist_configurations.find((item) => item.id === configurationId) : null;
@@ -232,7 +233,6 @@ export function bindSessionRuntimeProfile(session, profile) {
   session.runtime_profile_id = profile.id; session.runtime_affinity_key = affinityKey; session.updated_at = now();
   return session;
 }
-
 function sessionDescendantIds(state, sessionId) {
   const result = [], queue = [sessionId], seen = new Set([sessionId]);
   while (queue.length) {

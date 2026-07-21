@@ -12,9 +12,10 @@ import { codexContainerProxyEnv } from '../codex-container-network.mjs';
 import { assertProfileAllowed, buildCodexContainerInvocation, toRunnerPath } from '../container-runtime-config.mjs';
 import { runContainerProcess } from '../container-runtime.mjs';
 import { issueCodexMcpAccess, withCodexMcpEnvironment } from '../codex-mcp-runtime.mjs';
+import { codexTimeoutTtlSeconds, resolveCodexTimeoutMs } from '../codex-timeout.mjs';
 
 export async function invokeRunner(state, { actor, run, project, workspace, node, ctx, body }) {
-  const repoPath = project.repo_path || project.workspace_root || '';
+  const repoPath = run.task_execution_context?.repository_snapshot?.managed_path || project.repo_path || project.workspace_root || '';
   if (!repoPath || !fs.existsSync(repoPath)) throw new HttpError(409, { error: 'repository_root_required_for_node_run' });
   if (run.runner === 'codex_docker') return executeCodexDocker(state, { actor, run, project, workspace, node, ctx, repoPath });
   if (run.runner === 'codex') return executeCodex(state, { actor, run, project, workspace, node, ctx, repoPath });
@@ -33,9 +34,10 @@ async function executeCodexDocker(state, payload) {
   if (auth.home && !isThirdPartyProvider(profile.provider)) await materializeDeviceAuth(auth.home, profile.codex_home);
   const credential = await readSecret(auth?.refs?.credential);
   const proxyEnv = codexContainerProxyEnv(process.env);
-  const mcpAccess = await issueCodexMcpAccess(project.id, profile, { ttlSeconds: Math.ceil(Number(profile.timeout_ms || 120000) / 1000) + 300 });
+  const timeoutMs = resolveCodexTimeoutMs(profile.timeout_ms);
+  const mcpAccess = await issueCodexMcpAccess(project.id, profile, { ttlSeconds: codexTimeoutTtlSeconds(timeoutMs) });
   const runner = new DockerCodexRunner({
-    image: process.env.AIWS_CODEX_DOCKER_IMAGE, timeoutMs: profile.timeout_ms,
+    image: process.env.AIWS_CODEX_DOCKER_IMAGE, timeoutMs,
     invocationBuilder: (input) => buildNodeRunInvocation(profile, run.id, input, Object.keys(proxyEnv), mcpAccess),
     processRunner: (_command, _args, options, invocation) => runContainerProcess(invocation, options)
   });
@@ -57,10 +59,11 @@ async function executeCodex(state, payload) {
   if (!codexAuthMatchesProfile(auth, profile)) throw new HttpError(409, { error: 'codex_auth_profile_mismatch' });
   if (auth.home && !isThirdPartyProvider(profile.provider)) await materializeDeviceAuth(auth.home, profile.codex_home);
   const credential = await readSecret(auth?.refs?.credential);
-  const mcpAccess = await issueCodexMcpAccess(project.id, profile, { ttlSeconds: Math.ceil(Number(profile.timeout_ms || 120000) / 1000) + 300 });
+  const timeoutMs = resolveCodexTimeoutMs(profile.timeout_ms);
+  const mcpAccess = await issueCodexMcpAccess(project.id, profile, { ttlSeconds: codexTimeoutTtlSeconds(timeoutMs) });
   const fallback = buildNodeRunResult({ run, contextPack: ctx, changedFiles: [], raw: 'CodexRunner fallback', status: RunnerStatus.Partial });
   try {
-    const resultJson = await new CodexRunner({ timeoutMs: profile.timeout_ms }).run({ cwd, model: profile.model, env: withCodexMcpEnvironment({ CODEX_HOME: profile.codex_home, OPENAI_API_KEY: credential || undefined }, mcpAccess), configArgs: mcpAccess.configArgs, promptFile: files.promptFile, outputSchemaFile: files.schemaFile, fallback, signal: payload.body?.signal });
+    const resultJson = await new CodexRunner({ timeoutMs }).run({ cwd, model: profile.model, env: withCodexMcpEnvironment({ CODEX_HOME: profile.codex_home, OPENAI_API_KEY: credential || undefined }, mcpAccess), configArgs: mcpAccess.configArgs, promptFile: files.promptFile, outputSchemaFile: files.schemaFile, fallback, signal: payload.body?.signal });
     return { raw: resultJson._codex_process?.stderr || resultJson.summary, resultJson: { ...fallback, ...resultJson, changed_files: resultJson.changed_files || [] } };
   } finally { await mcpAccess.release(); }
 }

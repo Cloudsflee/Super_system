@@ -99,8 +99,15 @@ async function deviceStart({ req, res, body, query }) {
   const response = testAdapter(body, query) ? { device_code: 'test-device-code', user_code: 'AIWS-2026', verification_uri: 'https://github.com/login/device', expires_in: 900, interval: 1 }
     : await githubJson('https://github.com/login/device/code', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ client_id: clientId }) });
   const requestId = id('ghdev'), ref = await putSecret('github_device', response.device_code);
-  await mutate((data) => { upsert(data, `github_device:${requestId}`, { status: 'pending', client_id: clientId, requested_by_user_id: actor.id, refs: { device: ref }, interval: Math.max(1, Number(response.interval || 5)), expires_at: new Date(Date.now() + Number(response.expires_in || 900) * 1000).toISOString(), next_poll_at: now(), updated_at: now() }); });
-  return send(res, 200, { request_id: requestId, user_code: response.user_code, verification_uri: response.verification_uri, expires_in: response.expires_in, interval: response.interval });
+  const expiresIn = Math.max(1, Number(response.expires_in || 900)), interval = Math.max(1, Number(response.interval || 5));
+  const expiresAt = new Date(Date.now() + expiresIn * 1000).toISOString();
+  await mutate((data) => { upsert(data, `github_device:${requestId}`, { status: 'pending', client_id: clientId, requested_by_user_id: actor.id, refs: { device: ref }, interval, expires_at: expiresAt, next_poll_at: now(), updated_at: now() }); });
+  return send(res, 200, {
+    status: 'authorization_required', request_id: requestId, user_code: response.user_code,
+    verification_uri: response.verification_uri, expires_in: expiresIn, expires_at: expiresAt, interval,
+    action_required: { type: 'github_device_authorization', verification_uri: response.verification_uri, user_code: response.user_code, expires_at: expiresAt },
+    next: { operation_id: 'aiws.github.post.github.device.poll', arguments: { body: { request_id: requestId } }, poll_after_seconds: interval }
+  });
 }
 
 async function devicePoll({ req, res, body, query }) {

@@ -28,6 +28,9 @@ export async function createV3Turn(sessionId, input = {}, options = {}) {
     if (operationReference && (operationReference.session_id !== session.id || operationReference.project_id && operationReference.project_id !== project.id)) throw new HttpError(409, { error: 'assist_operation_reference_scope_mismatch' });
     if (configuration.profile) bindSessionRuntimeProfile(session, configuration.profile);
     const turn = makeTurn({ actor, session, mode, content, input, attachmentIds, options, configuration });
+    if (turn.repository_workspace_id && !state.repository_workspaces.some((item) => item.id === turn.repository_workspace_id && item.project_id === project.id && item.status === 'active')) throw new HttpError(404, { error: 'repository_workspace_not_found' });
+    if (session.active_change_batch_id && turn.repository_workspace_id !== session.repository_workspace_id) throw new HttpError(409, { error: 'assist_repository_workspace_change_batch_active', change_batch_id: session.active_change_batch_id });
+    if (turn.repository_workspace_id) session.repository_workspace_id = turn.repository_workspace_id;
     if (operationReference) assertOperationReferenceView(operationReference, turn.view_context);
     turn.attachment_manifest = attachmentIds.map((key) => {
       const item = state.attachments.find((entry) => entry.id === key);

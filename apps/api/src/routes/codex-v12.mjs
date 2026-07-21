@@ -16,6 +16,7 @@ import { codexProbeEvidenceMatches, createCodexProbeEvidence } from '../codex-pr
 import { codexRuntimeV12Routes } from './codex-runtime-v12.mjs';
 import { assertProfileAllowed, buildCodexContainerInvocation, DEFAULT_RUNNER_IMAGE } from '../container-runtime-config.mjs';
 import { spawnContainerProcess } from '../container-runtime.mjs';
+import { DEFAULT_CODEX_TIMEOUT_MS } from '../codex-timeout.mjs';
 
 const authProcesses = new Map();
 
@@ -138,7 +139,7 @@ async function ccSwitchImport({ res, body }) {
   const provider = String(entry.provider || entry.provider_id || '').trim().toLowerCase();
   if (!provider || !entry.model || !entry.base_url) throw new HttpError(400, { error: 'invalid_cc_switch_catalog_entry' });
   if (!isThirdPartyProvider(provider)) throw new HttpError(400, { error: 'cc_switch_catalog_third_party_only' });
-  return createProfile({ res, body: { name: entry.name || `${provider} (cc-switch)`, provider, provider_name: entry.provider_name || entry.name || provider, base_url: entry.base_url, wire_api: entry.wire_api || 'responses', requires_openai_auth: false, model: entry.model, reasoning: entry.reasoning || 'high', web_search: entry.web_search === true, timeout_ms: entry.timeout_ms || 120000, mounts: [], mcp_servers: [], confirmed: body.confirmed === true } });
+  return createProfile({ res, body: { name: entry.name || `${provider} (cc-switch)`, provider, provider_name: entry.provider_name || entry.name || provider, base_url: entry.base_url, wire_api: entry.wire_api || 'responses', requires_openai_auth: false, model: entry.model, reasoning: entry.reasoning || 'high', web_search: entry.web_search === true, timeout_ms: entry.timeout_ms ?? DEFAULT_CODEX_TIMEOUT_MS, mounts: [], mcp_servers: [], confirmed: body.confirmed === true } });
 }
 
 async function runProbe({ res, body, query }) {
@@ -205,7 +206,7 @@ async function markAuthenticated(provider, ref, home, metadata = {}) {
 }
 function upsert(state, key, patch) { let item = state.integration_statuses.find((entry) => entry.key === key); if (!item) { item = { key, created_at: now() }; state.integration_statuses.push(item); } return Object.assign(item, patch, { key }); }
 function upsertProbe(state, profileId, patch) { let item = state.integration_statuses.find((entry) => entry.key === 'codex_probe' && entry.profile_id === profileId); if (!item) { item = { key: 'codex_probe', profile_id: profileId, created_at: now() }; state.integration_statuses.push(item); } return Object.assign(item, patch, { key: 'codex_probe', profile_id: profileId }); }
-function profilePatch(body) { const provider = String(body.provider || '').trim().toLowerCase(); const baseUrl = normalizeProviderBaseUrl(body.base_url ?? body.api_url ?? body.provider_url); return { name: String(body.name || '').trim().slice(0, 100), provider, provider_name: String(body.provider_name || provider).trim().slice(0, 100), base_url: baseUrl, wire_api: body.wire_api || 'responses', requires_openai_auth: body.requires_openai_auth === true, model: String(body.model || '').trim(), reasoning: body.reasoning || 'high', web_search: body.web_search === true, mcp_servers: body.mcp_servers || [], timeout_ms: Number(body.timeout_ms || 120000), mounts: body.mounts || [] }; }
+function profilePatch(body) { const provider = String(body.provider || '').trim().toLowerCase(); const baseUrl = normalizeProviderBaseUrl(body.base_url ?? body.api_url ?? body.provider_url); return { name: String(body.name || '').trim().slice(0, 100), provider, provider_name: String(body.provider_name || provider).trim().slice(0, 100), base_url: baseUrl, wire_api: body.wire_api || 'responses', requires_openai_auth: body.requires_openai_auth === true, model: String(body.model || '').trim(), reasoning: body.reasoning || 'high', web_search: body.web_search === true, mcp_servers: body.mcp_servers || [], timeout_ms: Number(body.timeout_ms ?? DEFAULT_CODEX_TIMEOUT_MS), mounts: body.mounts || [] }; }
 async function requireConfigurationConfirmation(body = {}) { const state = await readState(); if (state.setup_states[0]?.completed_at && body.confirmed !== true) throw new HttpError(409, { error: 'configuration_confirmation_required' }); }
 function assertProfileAuth(auth, profile) { if (!codexAuthProviderMatchesProfile(auth, profile)) throw new HttpError(409, { error: 'codex_auth_provider_mismatch' }); if (!codexAuthMatchesProfile(auth, profile)) throw new HttpError(409, { error: 'codex_auth_endpoint_mismatch' }); }
 function containsSensitiveProviderField(value) { if (!value || typeof value !== 'object') return false; return Object.entries(value).some(([key, item]) => /^(?:api_key|access_token|bearer_token|experimental_bearer_token|auth|secret|client_secret|credential|credential_ref|token)$/i.test(key) || (item && typeof item === 'object' && containsSensitiveProviderField(item))); }

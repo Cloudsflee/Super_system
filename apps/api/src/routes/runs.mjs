@@ -5,10 +5,12 @@ import { ensureRunContextPack, confirmContextPack, previewContextPack } from '..
 import { cancelRunInState, invokeRunner, persistRunnerResult } from '../handlers/runners.mjs';
 import { consumeNodeRunApproval, requireNodeRunApproval } from '../run-approval.mjs';
 import { testAdapter } from '../test-adapter.mjs';
-import { RunnerStatus, buildNodeRunResult, makeAssetFromCandidate, now } from '../../../../packages/shared/index.mjs';
+import { RunnerStatus, buildNodeRunResult, now } from '../../../../packages/shared/index.mjs';
 import { assertManagedProjectWritable } from '../project-lifecycle.mjs';
 import { isContainerized } from '../container-runtime-config.mjs';
 import { assertProjectLifecycleIdle } from '../project-lifecycle-operations.mjs';
+import { evaluateTaskExecutionContextFreshness } from '../task-execution-context.mjs';
+import { createExecutionOutputAssets } from '../task-output-service.mjs';
 
 const runControllers = new Map();
 
@@ -74,7 +76,7 @@ async function prepareNodeRun(nodeId, body) {
     assertManagedProjectWritable(bundle.project);
     const ctx = ensureRunContextPack(state, { actor, ...bundle, body });
     const run = createRun({ actor, ...bundle, ctx, body });
-    const approval = requireNodeRunApproval(state, { approvalId: body.approval_id, nodeId, runner: run.runner });
+    const approval = requireNodeRunApproval(state, { approvalId: body.approval_id, nodeId, runner: run.runner, repositoryWorkspaceId: run.repository_workspace_id });
     state.node_runs.push(run);
     consumeNodeRunApproval(approval, run.id);
     addTrace(state, 'node_run.approval.consumed', { project_id: bundle.project.id, workspace_id: bundle.workspace.id, node_id: nodeId, run_id: run.id, target_type: 'change_proposal', target_id: approval.id, summary: `NodeRun 使用审批：${approval.title}` }, actor.id);
@@ -108,6 +110,8 @@ async function completeNodeRun(nodeId, body, prepared) {
       if (run.status === RunnerStatus.Cancelled) return { run, context_pack: ctx, assets: [] };
       requireNodeBundle(bundle);
       await persistRunnerResult(state, { actor, run, ...bundle, ...execution });
+      const freshness = evaluateTaskExecutionContextFreshness(state, run.task_execution_context);
+      if (!freshness.current) { Object.assign(run, { input_superseded: true, input_superseded_reasons: freshness.reasons }); Object.assign(bundle.node, { input_superseded: true, updated_at: now() }); }
       const assets = createAssetsFromRun(state, { actor, ...bundle, run, resultJson: execution.resultJson });
       return { run, context_pack: ctx, assets };
     });
@@ -130,7 +134,8 @@ function createRun({ actor, project, workspace, node, ctx, body }) {
   const runner = body.runner || project.settings?.preferred_runner || 'codex_docker';
   if (isContainerized() && runner === 'codex') throw new HttpError(409, { error: 'host_runner_disabled_in_container' });
   if (!['codex_docker', 'codex'].includes(runner)) throw new HttpError(400, { error: 'unsupported_runner', allowed: ['codex_docker', 'codex'] });
-  return { id: `run_${Date.now().toString(16)}${Math.random().toString(16).slice(2, 8)}`, project_id: project.id, workspace_id: workspace.id, node_id: node.id, context_pack_id: ctx.id, runner, status: RunnerStatus.Queued, summary: '', result_json: null, raw_output_file_ref_id: null, started_at: null, completed_at: null, created_by_user_id: actor.id, created_at: now(), updated_at: now() };
+  const execution = structuredClone(ctx.task_execution_context || ctx._task_execution_context || null);
+  return { id: `run_${Date.now().toString(16)}${Math.random().toString(16).slice(2, 8)}`, project_id: project.id, workspace_id: workspace.id, node_id: node.id, context_pack_id: ctx.id, task_execution_context: execution, input_snapshot_hash: execution?.input_snapshot_hash || null, repository_snapshot_hash: execution?.repository_snapshot?.snapshot_hash || null, contract_snapshot: execution?.contract || structuredClone(ctx.content_json?.node_contract || null), task_snapshot: execution?.task || null, dependency_graph: execution?.dependency_graph || [], input_assets: execution?.inputs?.flatMap((item) => item.asset_versions || []) || [], repository_workspace_id: execution?.repository_snapshot?.repository_workspace_id || null, runner, status: RunnerStatus.Queued, summary: '', result_json: null, raw_output_file_ref_id: null, input_superseded: false, started_at: null, completed_at: null, created_by_user_id: actor.id, created_at: now(), updated_at: now() };
 }
 
 function registerRunTrace(state, { actor, project, workspace, node, run }) {
@@ -146,12 +151,8 @@ function startRunTrace(state, { actor, project, workspace, node, run, ctx }) {
 }
 
 function createAssetsFromRun(state, { actor, project, workspace, node, run, resultJson }) {
-  const assets = [];
-  for (const candidate of resultJson.asset_candidates || []) {
-    const made = makeAssetFromCandidate(candidate, { projectId: project.id, workspaceId: workspace.id, nodeId: node.id, runId: run.id, actorId: actor.id });
-    state.assets.push(made.asset); state.asset_versions.push(made.version); assets.push(made.asset);
-    addTrace(state, 'asset_candidate.created', { project_id: project.id, workspace_id: workspace.id, node_id: node.id, run_id: run.id, target_type: 'asset', target_id: made.asset.id, summary: `创建资产候选：${made.asset.title}` }, actor.id);
-  }
+  const { assets } = createExecutionOutputAssets(state, { actorId: actor.id, project, task: node, workspace, execution: run, candidates: resultJson.asset_candidates || [] });
+  for (const asset of assets) addTrace(state, asset.status === 'confirmed' ? 'asset.confirmed' : 'asset_candidate.created', { project_id: project.id, workspace_id: workspace.id, node_id: node.id, run_id: run.id, target_type: 'asset', target_id: asset.id, summary: `${asset.status === 'confirmed' ? '系统确认资产' : '创建资产候选'}：${asset.title}` }, actor.id);
   return assets;
 }
 

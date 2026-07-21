@@ -76,12 +76,13 @@ describe('Codex Setup provider configuration', () => {
     await waitFor(() => expect(screen.getByRole('textbox', { name: 'API Base URL' })).toHaveValue('https://openrouter.ai/api/v1'));
     expect(screen.queryByText(/Runtime Bridge/)).not.toBeInTheDocument();
     const save = screen.getByRole('button', { name: '保存并校验 Profile' });
+    expect(screen.getByRole('spinbutton', { name: '任务超时（分钟）' })).toHaveValue(30);
     expect(save).toBeEnabled();
     fireEvent.click(save);
 
     await waitFor(() => expect(calls.some((item) => item.url.endsWith('/codex/profiles') && item.init?.method === 'POST')).toBe(true));
     const request = calls.find((item) => item.url.endsWith('/codex/profiles') && item.init?.method === 'POST');
-    expect(JSON.parse(String(request?.init?.body))).toMatchObject({ provider: 'openrouter', base_url: 'https://openrouter.ai/api/v1', wire_api: 'responses' });
+    expect(JSON.parse(String(request?.init?.body))).toMatchObject({ provider: 'openrouter', base_url: 'https://openrouter.ai/api/v1', wire_api: 'responses', timeout_ms: 1_800_000 });
     expect(calls.some((item) => /cc-switch\/(?:sync|import)$/.test(item.url))).toBe(false);
     expect(onChange).toHaveBeenCalledOnce();
   });
@@ -108,7 +109,7 @@ describe('Codex Setup provider configuration', () => {
       const url = String(input);
       calls.push({ url, init });
       if (url.endsWith('/codex/status')) return response({ authenticated: true, auth: { provider: 'acme', base_url: null, wire_api: 'responses', auth_mode: 'api_key' } });
-      if (url.endsWith('/codex/profiles') && (!init?.method || init.method === 'GET')) return response([{ id: 'legacy-profile', name: 'Legacy Acme', provider: 'acme', base_url: null, wire_api: 'responses', model: 'acme/codex', status: 'validated', is_active: true }]);
+      if (url.endsWith('/codex/profiles') && (!init?.method || init.method === 'GET')) return response([{ id: 'legacy-profile', name: 'Legacy Acme', provider: 'acme', base_url: null, wire_api: 'responses', model: 'acme/codex', timeout_ms: 600_000, status: 'validated', is_active: true }]);
       if (url.endsWith('/codex/cc-switch/status')) return response({ status: 'not_synced', sources });
       if (url.endsWith('/codex/auth/api-key')) return response({ authenticated: true, provider: 'acme', base_url: 'https://api.acme.test/v1' });
       if (url.endsWith('/codex/profiles/legacy-profile')) return response({ id: 'legacy-profile', status: 'validated' });
@@ -123,6 +124,7 @@ describe('Codex Setup provider configuration', () => {
     expect(screen.getByRole('button', { name: 'cc-switch' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: '本地 Codex' })).toBeInTheDocument();
     await waitFor(() => expect(screen.getByRole('textbox', { name: 'Provider ID' })).toHaveValue('acme'));
+    expect(screen.getByRole('spinbutton', { name: '任务超时（分钟）' })).toHaveValue(10);
     expect(screen.queryByLabelText('修复 Profile API Key')).not.toBeInTheDocument();
     expect(screen.queryByText('第三方 Profile 已保存')).not.toBeInTheDocument();
     fireEvent.change(screen.getByRole('textbox', { name: 'API Base URL' }), { target: { value: 'https://api.acme.test/v1' } });
@@ -133,7 +135,7 @@ describe('Codex Setup provider configuration', () => {
     expect(JSON.parse(String(auth?.init?.body))).toEqual({ provider: 'acme', base_url: 'https://api.acme.test/v1', wire_api: 'responses' });
     const update = calls.find((item) => item.url.endsWith('/codex/profiles/legacy-profile'));
     expect(update?.init?.method).toBe('PUT');
-    expect(JSON.parse(String(update?.init?.body))).toMatchObject({ name: 'Legacy Acme', provider: 'acme', base_url: 'https://api.acme.test/v1', model: 'acme/codex' });
+    expect(JSON.parse(String(update?.init?.body))).toMatchObject({ name: 'Legacy Acme', provider: 'acme', base_url: 'https://api.acme.test/v1', model: 'acme/codex', timeout_ms: 600_000 });
   });
 
   it('shows the actionable layered Probe diagnosis instead of a generic failure code', async () => {

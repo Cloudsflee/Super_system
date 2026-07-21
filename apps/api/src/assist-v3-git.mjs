@@ -46,8 +46,8 @@ export function validateWorktreeOwnership(project, worktree) {
   assertWithin(worktreeRoot(project.id), worktree.path);
 }
 export function worktreeRoot(projectId) { const root = path.join(WORKSPACE_DIR, safeSegment(projectId), 'worktrees'); assertWithin(WORKSPACE_DIR, root); return root; }
-export function gitResult(cwd, args, timeout, allowFailure = false) {
-  const result = command('git', args, cwd, timeout, { GIT_TERMINAL_PROMPT: '0' });
+export function gitResult(cwd, args, timeout, allowFailure = false, env = {}) {
+  const result = command('git', args, cwd, timeout, { GIT_TERMINAL_PROMPT: '0', ...env });
   if (!allowFailure && !result.ok) throw new HttpError(409, { error: 'git_operation_failed', detail: detail(result) });
   return result;
 }

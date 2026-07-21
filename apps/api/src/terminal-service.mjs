@@ -23,6 +23,7 @@ import { hostBridgeCapability } from './host-bridge-service.mjs';
 import { createWindowsBridgeProcess } from './terminal-windows-bridge.mjs';
 import { withProjectLifecycleLock } from './project-lifecycle-operations.mjs';
 import { issueCodexMcpAccess } from './codex-mcp-runtime.mjs';
+import { codexTimeoutTtlSeconds } from './codex-timeout.mjs';
 import { terminalInvocation } from './terminal-invocation.mjs';
 import { MAX_PREVIEW_CHARS, appendOutput, broadcast, clamp, finishTerminalArtifact, isWithin, publicSession, rejectWebSocket, safe } from './terminal-runtime-helpers.mjs';
 import { accessibleProjectIds, actorForRequest, assertProjectRun } from './project-governance-v19.mjs';
@@ -199,7 +200,7 @@ async function startTerminal(session) {
       if (!codexAuthMatchesProfile(auth, profile)) throw new HttpError(409, { error: 'codex_auth_profile_mismatch' });
       if (auth.home && !isThirdPartyProvider(profile.provider)) await materializeDeviceAuth(auth.home, profile.codex_home);
       const credential = await readSecret(auth?.refs?.credential), invocationProfile = session.runtime === 'host_dev' ? { ...profile, kind: 'host' } : { ...profile, kind: 'docker' };
-      mcpAccess = await issueCodexMcpAccess(session.project_id, invocationProfile, { ttlSeconds: Math.ceil(Number(profile.timeout_ms || 120000) / 1000) + 3600 });
+      mcpAccess = await issueCodexMcpAccess(session.project_id, invocationProfile, { ttlSeconds: codexTimeoutTtlSeconds(profile.timeout_ms, 3600) });
       invocation = terminalInvocation(invocationProfile, worktree.path, credential, session.id, mcpAccess);
       processHandle = pty.spawn(invocation.command, invocation.args, { name: 'xterm-256color', cols: session.cols, rows: session.rows, cwd: worktree.path, env: invocation.env, useConpty: process.platform === 'win32' });
     }

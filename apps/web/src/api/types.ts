@@ -32,72 +32,10 @@ export type McpClientConfiguration = {
 };
 export type McpClientCreated = { client: McpClientRecord; token: string; token_visible_once: true; configuration: McpClientConfiguration };
 
-export type CodexWireApi = 'responses';
-export type CodexAuthMetadata = {
-  provider: string; base_url?: string | null; wire_api: CodexWireApi; auth_mode: 'device' | 'api_key' | 'discovery' | 'local_codex';
-};
-export type CodexStatus = {
-  authenticated: boolean; auth?: CodexAuthMetadata | null;
-  docker?: { available: boolean; version?: string }; image?: { ready: boolean; name: string };
-  active_profile?: CodexProfile | null;
-};
-export type CodexBuildLog = { at: string; stream: 'stdout' | 'stderr' | string; text: string };
-export type CodexBuildOperation = {
-  operation_id: string; image: string; status: 'running' | 'completed' | 'failed' | 'cancelled';
-  phase: { key: string; label: string; index: number; total: number };
-  started_at: string; updated_at: string; completed_at?: string | null; elapsed_ms: number;
-  error_code?: string | null; message?: string; action?: string | null; retryable?: boolean;
-  latest_log?: string; logs: CodexBuildLog[]; last_event_id?: number;
-};
-export type CodexBuildStart = {
-  operation_id?: string; status?: string; attached?: boolean; events_url?: string; cancel_url?: string; operation?: CodexBuildOperation;
-};
-export type CodexProfile = {
-  id: string; name: string; provider?: string; provider_name?: string; base_url?: string | null;
-  wire_api?: CodexWireApi; model?: string; reasoning?: string; kind?: 'host' | 'docker' | string;
-  status: string; is_active: boolean; assist_configuration?: boolean; base_profile_id?: string | null;
-};
-export type CodexProbePhase = 'configuration' | 'runtime' | 'binding' | 'transport' | 'protocol' | 'model' | 'inference';
-export type CodexProbeCheck = {
-  phase: CodexProbePhase; label: string; status: 'passed' | 'failed' | 'pending';
-  error_code?: string; summary?: string; action?: string; retryable?: boolean;
-};
-export type CodexProbeReport = {
-  ok: boolean; phase: CodexProbePhase; error_code?: string; summary?: string; action?: string; retryable?: boolean;
-  checks?: CodexProbeCheck[]; process?: { exit_code: number | null; timed_out: boolean };
-};
-export type CcSwitchSource = {
-  name: string; repo: string; status?: string; commit?: string | null; error?: string | null;
-};
-export type CcSwitchStatus = {
-  status: string; local_path?: string; sources?: CcSwitchSource[]; updated_at?: string | null;
-  providers?: Array<{ profile_id?: string; provider_id?: string; name?: string; provider?: string; base_url?: string; model?: string; wire_api?: string; sync_status?: string }>;
-  bridge?: { ready?: boolean; revision?: string | number; mode?: string; implementation?: string };
-};
-export type CodexDiscoveryProvider = {
-  discovery_id: string; name: string; provider: string; provider_name?: string;
-  base_url?: string | null; model?: string | null; wire_api: CodexWireApi;
-  requires_openai_auth?: boolean; has_credential: boolean; credential_hint?: string | null; credential_kind?: 'api_key' | 'oauth_bundle' | 'none';
-  source_revision: string; importable?: boolean; issues?: string[]; is_current?: boolean; category?: string;
-};
-export type CodexDiscoverySource = {
-  source_id: string; type: 'cc_switch' | 'codex_home'; display_name: string;
-  status: string; path_hint?: string | null; revision: string | null;
-  providers: CodexDiscoveryProvider[]; read_only?: boolean; issues?: string[];
-};
-export type CodexDiscovery = { updated_at?: string | null; sources: CodexDiscoverySource[] };
-export type CodexDiscoveryImportInput = {
-  discovery_id: string; source_revision: string; confirmed: true; api_key?: string; reconfigure?: true;
-};
-export type CodexDiscoveryImportResult = {
-  profile: CodexProfile; authenticated: true;
-  source: { source_id: string; type: CodexDiscoverySource['type']; revision: string | null };
-  reconfiguration_started?: boolean;
-};
-
 export type Project = {
   id: string; title: string; goal: string; status: string;
   repo_path?: string; workspace_root?: string; current_workspace_id: string;
+  default_repository_workspace_id?: string | null;
   workflow_count?: number; asset_count?: number; run_count?: number;
   onboarding_state?: string; managed_workspace_state?: string;
   current_user_role?: 'owner' | 'collaborator' | 'viewer' | null;
@@ -148,6 +86,7 @@ export type WorkflowDraftNode = {
   id: string; type: NodeKind; role?: 'workstream' | 'task'; parent_node_id?: string | null; title: string; goal: string; dependency_ids: string[];
   outcome?: string | null; category?: WorkstreamCategory | null; task_kind?: TaskKind | null; execution_mode?: ExecutionMode | null;
   boundary?: Record<string, unknown> | null; acceptance_criteria?: string[]; required?: boolean;
+  capability_tags?: string[]; input_slots?: NodeInputSlot[]; output_slots?: NodeOutputSlot[]; atomic_justification?: string | null;
   position: { x: number; y: number }; order: number; dependency_indexes?: number[];
 };
 export type WorkflowDraft = { id: string; project_id: string; revision: number; nodes: WorkflowDraftNode[]; source_brief_id?: string | null; source_brief_revision?: number | null; status?: string; user_modified_at?: string | null; updated_at?: string };
@@ -168,6 +107,7 @@ export type DraftProjectResult = {
 export type Workflow = {
   id: string; project_id: string; title: string; status: string;
   version?: number; workflow_revision?: number; hierarchy_mode?: 'two_level' | 'legacy'; legacy_read_only?: boolean; semantic_migration_status?: string;
+  planning_quality?: 'verified' | 'legacy_unverified' | string; project_classification?: string | null; brief_coverage?: Record<string, string[]>;
   created_at?: string; updated_at?: string;
   graph_json?: { nodes?: unknown[]; edges?: unknown[] };
 };
@@ -192,6 +132,7 @@ export type WorkflowNode = {
   role?: 'workstream' | 'task'; parent_node_id?: string | null; outcome?: string | null;
   category?: WorkstreamCategory | null; task_kind?: TaskKind | null; execution_mode?: ExecutionMode | null;
   boundary?: Record<string, unknown> | null; acceptance_criteria?: string[]; required?: boolean; plan_revision?: number | null;
+  capability_tags?: string[]; input_slots?: NodeInputSlot[]; output_slots?: NodeOutputSlot[]; atomic_justification?: string | null;
   repository_target_ids?: string[]; repository_intent?: Record<string, unknown> | null;
   task_count?: number; completed_task_count?: number; progress?: number; blocked_count?: number; repository_status?: { target_count: number; ready_count: number } | null;
   latest_run?: { id: string; status: string; completed_at?: string };
@@ -202,19 +143,25 @@ export type WorkstreamCategory = 'deliverable' | 'decision' | 'coordination' | '
 export type TaskKind = 'research' | 'analysis' | 'design' | 'content' | 'code' | 'test' | 'review' | 'deploy' | 'manual' | 'integration';
 export type ExecutionMode = 'manual' | 'assist' | 'codex' | 'integration';
 export type AssistScopeType = 'project' | 'workflow' | 'workstream' | 'task';
+export type NodeInputSlot = { key: string; kind: string; required: boolean; source: string; selector: string | null; ref_id: string | null; version_id: string | null };
+export type NodeOutputSlot = { key: string; kind: string; required: boolean; asset_type: string; acceptance_criteria: string[]; confirmation_policy: 'human' | 'system_evidence' };
 export type NodeContract = {
-  id: string; node_id: string; version: number; node_goal: string;
+  id: string; node_id: string; version: number; contract_schema_version?: 2; node_goal: string;
   acceptance_criteria: string[]; allowed_tools: string[];
-  expected_inputs: Array<{ key: string; label: string; required: boolean; value?: string }>;
-  expected_outputs: Array<{ label: string; required: boolean }>;
+  expected_inputs: NodeInputSlot[];
+  expected_outputs: NodeOutputSlot[];
 };
 export type ProjectBundle = {
   project: Project; workflows: Workflow[]; nodes: WorkflowNode[];
   contracts: NodeContract[]; assets: AssetRecord[]; runs: RunRecord[];
+  asset_versions?: AssetVersionRecord[]; asset_relations?: AssetRelationRecord[]; submissions?: SubmissionRecord[];
   membership?: ProjectMembership | null;
 };
-export type AssetRecord = { id: string; title: string; type?: string; asset_type?: string; status: string; updated_at: string; project_id: string };
-export type RunRecord = { id: string; node_id: string; status: string; summary: string; created_at: string };
+export type AssetRecord = { id: string; title: string; type?: string; asset_type?: string; status: string; updated_at: string; project_id: string; node_id?: string | null; current_version_id?: string | null; output_key?: string | null; confirmation_policy?: string | null };
+export type AssetVersionRecord = { id: string; asset_id: string; title?: string; summary?: string; output_key?: string | null; input_snapshot_hash?: string | null; evidence_refs?: string[] };
+export type AssetRelationRecord = { id: string; relation_type: string; source_asset_id: string; source_asset_version_id: string; target_asset_id: string; target_asset_version_id: string; input_snapshot_hash?: string | null; execution_id?: string | null };
+export type SubmissionRecord = { id: string; node_id?: string | null; status: string; output_bindings?: Array<{ key: string; asset_id: string; version_id: string }>; input_snapshot_hash?: string | null };
+export type RunRecord = { id: string; node_id: string; status: string; summary: string; created_at: string; repository_workspace_id?: string | null; input_snapshot_hash?: string | null; repository_snapshot_hash?: string | null; input_superseded?: boolean };
 export type CodeChangeRecord = { id: string; run_id: string; status: string; work_branch?: string; head_commit?: string; pr_url?: string };
 export type TraceRecord = { id: string; event_type: string; summary: string; created_at?: string; occurred_at?: string; node_id?: string };
 export type ChangeProposal = {
@@ -223,6 +170,7 @@ export type ChangeProposal = {
   risks?: string[]; impact?: string[]; evidence_refs?: string[]; created_at: string;
   attention_state?: 'interrupting' | 'queued' | 'resolved'; revision?: number; target_hash?: string;
   workflow_id?: string; workflow_revision?: number; destructive?: boolean; operations_json?: unknown[];
+  apply_action?: Record<string, unknown>;
 };
 export type ApprovalItemType = 'change_proposal' | 'runtime_approval';
 export type ApprovalItem = {
@@ -250,10 +198,22 @@ export type UiAction = {
   result?: Record<string, unknown>; turn_id?: string; session_id?: string;
 };
 export type FileEntry = { name: string; path: string; type: 'file' | 'directory'; size?: number };
+export type RepositoryConnection = { id: string; project_id: string; full_name?: string; default_branch?: string; remote_name?: string; sync_status?: string; permissions?: { read?: boolean; push?: boolean; pull_requests?: boolean } };
+export type RepositoryBranch = { name: string; ref: string; sha: string; source: 'local' | 'remote'; full_ref: string };
+export type RepositoryBranchCatalog = { project_id: string; connection_id: string | null; default_branch: string; branches: RepositoryBranch[] };
+export type PullRequestSummary = { intent_id: string; number: number | null; url: string | null; state: string };
+export type RepositoryWorkspace = {
+  id: string; project_id: string; connection_id: string | null; ref: string; fixed_sha: string; current_sha: string;
+  mode: 'read_only' | 'read_write'; scope: { type: string; id: string | null; path_prefixes: string[] }; sync_status: 'ready' | 'stale' | string;
+  stale: boolean; ahead: number; behind: number; dirty: boolean; status: string; revision: number; last_synced_at?: string | null;
+  pull_requests?: PullRequestSummary[]; snapshot_hash?: string;
+};
 export type NodeWorkspace = {
   project: Project; workflow: Workflow; node: WorkflowNode; contract: NodeContract;
   workspace: { id: string; title: string; open_questions: string[] };
   data: Record<string, unknown>; runs: RunRecord[]; code_changes: CodeChangeRecord[]; assets: AssetRecord[]; traces: TraceRecord[];
+  asset_versions?: AssetVersionRecord[]; asset_relations?: AssetRelationRecord[]; submissions?: SubmissionRecord[];
 };
 
 export type * from './assist-types';
+export type * from './codex-types';

@@ -15,7 +15,7 @@ export async function resolveProjectIdForContext(route, ctx, suppliedState = nul
   }
   if (params.id && route.pattern.startsWith('/exchange-grants/')) return state.exchange_grants?.find((item) => item.id === params.id)?.target_project_id || null;
   const find = (collection, key) => state[collection]?.find((item) => item.id === key)?.project_id || null;
-  for (const collection of ['workspaces', 'workflows', 'node_runs', 'assets', 'asset_versions', 'change_proposals', 'agent_sessions', 'assist_sessions', 'assist_turns', 'terminal_sessions', 'deliveries', 'delivery_policies', 'repository_connections', 'repository_targets', 'exchange_requests', 'exchange_grants', 'assist_operations', 'assist_change_batches', 'attachments', 'submissions', 'runner_memory_candidates']) { const project = find(collection, params.id); if (project) return project; }
+  for (const collection of ['workspaces', 'workflows', 'node_runs', 'assets', 'asset_versions', 'change_proposals', 'agent_sessions', 'assist_sessions', 'assist_turns', 'terminal_sessions', 'deliveries', 'delivery_policies', 'repository_connections', 'repository_targets', 'repository_workspaces', 'pull_request_intents', 'exchange_requests', 'exchange_grants', 'assist_operations', 'assist_change_batches', 'attachments', 'submissions', 'runner_memory_candidates']) { const project = find(collection, params.id); if (project) return project; }
   if (params.id && route.pattern.startsWith('/context-packs/')) {
     const pack = state.context_packs?.find((item) => item.id === params.id);
     if (pack?.project_id) return pack.project_id;
@@ -38,7 +38,7 @@ export async function resolveProjectIdForContext(route, ctx, suppliedState = nul
 }
 
 export function isProjectRoute(pattern = '') {
-  return /^\/(?:projects|workspaces|workflows|nodes|workstreams|tasks|runs|deliveries|delivery-policies|context-packs|assets|asset-candidates|change-proposals|approvals|agent-sessions|exchange-requests|exchange-grants|project-invitations|submissions|review)/.test(pattern)
+  return /^\/(?:projects|workspaces|repository-workspaces|pull-request-intents|workflows|nodes|workstreams|tasks|runs|deliveries|delivery-policies|context-packs|assets|asset-candidates|change-proposals|approvals|agent-sessions|exchange-requests|exchange-grants|project-invitations|submissions|review)/.test(pattern)
     || /^\/assist\/(?:v2\/sessions|v3\/(?:sessions|turns|terminal-sessions|operations|change-batches|attachments))/.test(pattern)
     || /\/repository-(?:connections|targets)/.test(pattern) || pattern === '/brief-templates/:templateId/apply';
 }

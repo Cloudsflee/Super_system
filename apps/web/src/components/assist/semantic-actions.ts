@@ -11,7 +11,7 @@ type Control = {
   persist?: () => void | Promise<void>; reversible?: boolean;
 };
 type TabControl = Control & { select?: () => void | Promise<void> };
-export type AssistSurface = { id: string; revision?: string; fields?: Record<string, Control>; filters?: Record<string, Control>; tabs?: Record<string, TabControl> };
+export type AssistSurface = { id: string; revision?: string; repository_workspace_id?: string | null; fields?: Record<string, Control>; filters?: Record<string, Control>; tabs?: Record<string, TabControl> };
 
 type RegisteredSurface = { key: symbol; get: () => AssistSurface; revision: string };
 const surfaces = new Map<symbol, RegisteredSurface>();
@@ -41,6 +41,7 @@ export function describeAssistSurface() {
   const registered = [...surfaces.values()], primary = registered.at(-1), controls = registered.flatMap((item) => describeControls(item));
   return {
     id: primary?.get().id || 'empty', revision: registered.length > 1 ? `page-${registryRevision}` : primary?.revision || 'empty', browser_instance_id: browserInstanceId(),
+    repository_workspace_id: primary?.get().repository_workspace_id || null,
     fields: controls.filter((item) => item.kind === 'field'), filters: controls.filter((item) => item.kind === 'filter'), tabs: controls.filter((item) => item.kind === 'tab'), controls
   };
 }

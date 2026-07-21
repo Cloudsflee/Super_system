@@ -112,6 +112,7 @@ async function deliveryPullRequestContext(deliveryId, actorId, action, dependenc
   const delivery = state.deliveries?.find((item) => item.id === String(deliveryId || ''));
   if (!delivery) throw new HttpError(404, { error: 'delivery_not_found' });
   assertProjectMembership(state, delivery.project_id, actorId, action);
+  if (delivery.pull_request_intent_id) throw new HttpError(409, { error: 'delivery_pull_request_intent_required', pull_request_intent_id: delivery.pull_request_intent_id, endpoint: `/pull-request-intents/${delivery.pull_request_intent_id}` });
   if (delivery.status !== 'completed') throw new HttpError(409, { error: 'delivery_not_completed', status: delivery.status });
   const pullNumber = Number(delivery.pr_number);
   if (!Number.isSafeInteger(pullNumber) || pullNumber < 1) throw new HttpError(409, { error: 'delivery_pull_request_required' });

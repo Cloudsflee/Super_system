@@ -6,6 +6,7 @@ import {
   normalizeWorkflowHierarchyNodes, TASK_KINDS, WORKSTREAM_CATEGORIES
 } from './workflow-hierarchy-domain.mjs';
 import { assertProjectLifecycleIdle } from './project-lifecycle-operations.mjs';
+import { assertWorkflowPlanningQuality } from './workflow-quality.mjs';
 
 const CATEGORIES = new Set(WORKSTREAM_CATEGORIES);
 const KINDS = new Set(TASK_KINDS);
@@ -21,7 +22,7 @@ export function patchWorkflowDraftInState(state, projectId, body, actorId) {
   if (!Number.isInteger(body.expected_revision)) throw new HttpError(400, { error: 'expected_revision_required', current_revision: draft.revision });
   if (body.expected_revision !== draft.revision) throw new HttpError(409, { error: 'workflow_draft_revision_conflict', expected_revision: body.expected_revision, current_revision: draft.revision });
 
-  let nodes = normalizeWorkflowHierarchyNodes(draft.nodes || []);
+  let nodes = normalizeWorkflowHierarchyNodes(draft.nodes || []), briefCoverage = body.brief_coverage ?? draft.brief_coverage ?? {};
   if (Array.isArray(body.nodes)) {
     assertRawNodes(body.nodes);
     nodes = normalizeWorkflowHierarchyNodes(body.nodes);
@@ -30,9 +31,15 @@ export function patchWorkflowDraftInState(state, projectId, body, actorId) {
     for (const operation of body.operations) nodes = applyOperation(nodes, operation);
   }
   validateDraft(nodes);
+  if (Array.isArray(body.nodes)) {
+    const brief = state.project_briefs.filter((item) => item.project_id === projectId && item.status !== 'superseded').sort((a, b) => Number(b.version || 0) - Number(a.version || 0))[0];
+    const quality = assertWorkflowPlanningQuality({ nodes, project, brief, projectClassification: body.project_classification || draft.project_classification, briefCoverage });
+    nodes = quality.nodes; briefCoverage = quality.brief_coverage;
+  }
   const updatedAt = now();
   Object.assign(draft, {
-    nodes, revision: Number(draft.revision || 1) + 1, user_modified_at: updatedAt,
+    nodes, brief_coverage: structuredClone(briefCoverage), project_classification: clean(body.project_classification || draft.project_classification, 200) || null,
+    revision: Number(draft.revision || 1) + 1, user_modified_at: updatedAt,
     updated_by_user_id: actorId, generation_status: draft.generation_status === 'running' ? 'running_user_modified' : draft.generation_status,
     updated_at: updatedAt
   });
@@ -104,6 +111,11 @@ function patchNode(node, patch) {
     if (patch.execution_mode !== undefined) next.execution_mode = enumValue(patch.execution_mode, MODES, 'workflow_task_execution_mode_invalid');
     if (patch.required !== undefined) next.required = Boolean(patch.required);
     if (patch.repository_intent !== undefined) next.repository_intent = patch.repository_intent == null ? null : plainObject(patch.repository_intent, 'workflow_task_repository_intent_invalid');
+    if (patch.acceptance_criteria !== undefined) next.acceptance_criteria = cleanList(patch.acceptance_criteria, 50, 2000);
+    if (patch.capability_tags !== undefined) next.capability_tags = cleanList(patch.capability_tags, 20, 200);
+    if (patch.input_slots !== undefined) next.input_slots = objectList(patch.input_slots, 'workflow_task_input_slots_invalid');
+    if (patch.output_slots !== undefined) next.output_slots = objectList(patch.output_slots, 'workflow_task_output_slots_invalid');
+    if (patch.atomic_justification !== undefined) next.atomic_justification = clean(patch.atomic_justification, 2000) || null;
   }
   if (patch.position !== undefined) next.position = validPosition(patch.position);
   return next;
@@ -149,10 +161,11 @@ function operationType(operation) { const type = String(operation.type || operat
 function targetIndex(operation, length) { const value = Number(operation.to_index ?? operation.index ?? length); return Number.isInteger(value) ? Math.max(0, Math.min(length, value)) : length; }
 function defaultNodePosition(index) { return { x: 80 + (index % 4) * 310, y: 120 + Math.floor(index / 4) * 230 }; }
 function dependencyIds(node) { return [...new Set((Array.isArray(node?.dependency_ids) ? node.dependency_ids : (node?.dependencies || []).map((item) => typeof item === 'string' ? item : item?.node_id)).map((item) => clean(item)).filter(Boolean))]; }
-function cloneNode(node) { return { ...node, dependency_ids: [...(node.dependency_ids || [])], position: { ...(node.position || {}) }, boundary: node.boundary ? structuredClone(node.boundary) : null, acceptance_criteria: [...(node.acceptance_criteria || [])] }; }
+function cloneNode(node) { return { ...node, dependency_ids: [...(node.dependency_ids || [])], position: { ...(node.position || {}) }, boundary: node.boundary ? structuredClone(node.boundary) : null, acceptance_criteria: [...(node.acceptance_criteria || [])], capability_tags: [...(node.capability_tags || [])], input_slots: structuredClone(node.input_slots || []), output_slots: structuredClone(node.output_slots || []) }; }
 function enumValue(value, allowed, error) { if (!allowed.has(value)) throw new HttpError(400, { error, value }); return value; }
 function plainObject(value, error) { if (!value || typeof value !== 'object' || Array.isArray(value)) throw new HttpError(400, { error }); return structuredClone(value); }
 function cleanList(value, maxItems, maxLength) { if (!Array.isArray(value)) throw new HttpError(400, { error: 'workflow_list_invalid' }); return [...new Set(value.map((item) => clean(item, maxLength)).filter(Boolean))].slice(0, maxItems); }
+function objectList(value, error) { if (!Array.isArray(value) || value.some((item) => !item || typeof item !== 'object' || Array.isArray(item))) throw new HttpError(400, { error }); return structuredClone(value).slice(0, 50); }
 function validPosition(value) { const x = Number(value?.x), y = Number(value?.y); if (!Number.isFinite(x) || !Number.isFinite(y)) throw new HttpError(400, { error: 'workflow_node_position_invalid' }); return { x: Math.max(-10000, Math.min(10000, x)), y: Math.max(-10000, Math.min(10000, y)) }; }
 function required(value, code, max) { const result = clean(value, max); if (!result) throw new HttpError(400, { error: code }); return result; }
 function clean(value, max = 120) { return String(value ?? '').replace(/\0/g, '').trim().slice(0, max); }

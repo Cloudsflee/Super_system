@@ -81,7 +81,6 @@ export function WorkflowCanvas({ bundle, workflow }: { bundle: ProjectBundle; wo
 
   return (
     <section className="workflow-page">
-      <h1 className="sr-only">{workflow.title}</h1>
       <ReactFlow nodes={interactiveNodes} edges={edges} nodeTypes={nodeTypes} onNodesChange={changes} onConnect={(connection) => { if (connection.source && connection.target) proposal.mutate({ operations: [{ type: 'connect', node_id: connection.target, dependency_id: connection.source }] }); }} onNodeClick={(_, node) => { setEditNodeId(null); ui.inspect(node.id); remember(flow.getViewport(), node.id); }} onNodeDoubleClick={(_, node) => enter(node.id)} onNodeDragStart={() => { dragging.current = true; beforeDrag.current = snapshot(); }} onNodeDragStop={() => { dragging.current = false; commit(beforeDrag.current, snapshot()); }} onMoveEnd={(_, viewport) => remember(viewport)} fitView={!storedView.current} fitViewOptions={{ padding: .22, minZoom: compactViewport ? .78 : .25 }} minZoom={.25} maxZoom={1.8} deleteKeyCode={null} proOptions={{ hideAttribution: true }}>
         <Background variant={BackgroundVariant.Dots} gap={22} size={1} color="rgba(255,255,255,.08)" />
         {!ui.focusMode && <MiniMap style={{ width: 145, height: 94 }} pannable zoomable nodeColor={(node) => typeColor((node.data as CanvasNode['data']).record.type)} />}

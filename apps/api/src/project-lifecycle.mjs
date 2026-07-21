@@ -11,6 +11,7 @@ import { validateHostImportRelative } from './host-import-root.mjs';
 import { safeHttpsReferenceUrl } from './safe-reference-url.mjs';
 import { createBriefContentV2, createWorkflowDraft, MAX_WORKFLOW_DRAFT_NODES, normalizeBriefContentV2, suggestedWorkflowNodes } from './brief-workflow-domain.mjs';
 import { assertWorkflowHierarchy, normalizeWorkflowHierarchyNodes } from './workflow-hierarchy-domain.mjs';
+import { assertWorkflowPlanningQuality } from './workflow-quality.mjs';
 import { makeSession } from './assist-v3-domain.mjs';
 export { assertManagedProjectWritable, managedProjectRoot, managedRepoPath } from './managed-workspace.mjs';
 export { ensureManagedBaseline, ensureManagedRepository, materializeCodeSource, materializeContextSources } from './project-import-service.mjs';
@@ -76,20 +77,27 @@ export function activateDraftInState(state, project, brief, workflowInput, actor
   if (!brief || brief.status === 'superseded') throw new HttpError(409, { error: 'project_brief_required' });
   const workflow = createEmptyWorkflow(project, actorId);
   Object.assign(workflow, { status: 'active', generated_by: 'onboarding', confirmed_by: 'human', brief_version: brief.version, hierarchy_mode: 'two_level', workflow_revision: 1, semantic_migration_status: 'not_required', legacy_read_only: false });
-  state.workflows.push(workflow);
   const supplied = Array.isArray(workflowInput) ? workflowInput : Array.isArray(workflowInput?.nodes) ? workflowInput.nodes : null;
   if (!supplied?.length) throw new HttpError(409, { error: 'workflow_draft_requires_generation_or_manual_nodes' });
   if (supplied?.length > MAX_WORKFLOW_DRAFT_NODES) throw new HttpError(409, { error: 'workflow_draft_node_limit', max_nodes: MAX_WORKFLOW_DRAFT_NODES });
-  const inputs = normalizeWorkflowHierarchyNodes(supplied);
+  const legacyCompatibility = Array.isArray(workflowInput);
+  let inputs = normalizeWorkflowHierarchyNodes(supplied);
   assertWorkflowHierarchy(inputs, { mode: 'formal', requireTasks: true });
+  if (!legacyCompatibility) {
+    const quality = assertWorkflowPlanningQuality({ nodes: inputs, project, brief, projectClassification: workflowInput?.project_classification, briefCoverage: workflowInput?.brief_coverage });
+    inputs = quality.nodes;
+    Object.assign(workflow, { planning_quality: 'verified', project_classification: workflowInput?.project_classification || null, brief_coverage: quality.brief_coverage });
+  } else Object.assign(workflow, { planning_quality: 'legacy_unverified', project_classification: null, brief_coverage: {} });
+  state.workflows.push(workflow);
   const created = inputs.map((input, index) => ({
     id: input.id || id(input.role === 'workstream' ? 'wfs' : 'tsk'), workflow_id: workflow.id, workspace_id: null,
     role: input.role, parent_node_id: input.parent_node_id, type: input.type,
     title: text(input.title || '新节点', 160), goal: text(input.goal || input.outcome || input.title || '', 4000), outcome: input.outcome,
     category: input.category, task_kind: input.task_kind, execution_mode: input.execution_mode, boundary: input.boundary,
     acceptance_criteria: input.acceptance_criteria, required: input.required !== false, repository_intent: input.repository_intent || null,
+    capability_tags: input.capability_tags || [], input_slots: input.input_slots || [], output_slots: input.output_slots || [], atomic_justification: input.atomic_justification || null,
     repository_target_ids: [], plan_revision: input.role === 'workstream' ? 1 : null,
-    status: input.dependency_ids.length ? 'blocked' : 'ready', order_index: input.order_index,
+    status: input.dependency_ids.length ? 'blocked' : 'ready', execution_revision: 1, order_index: input.order_index,
     dependencies: input.dependency_ids.map((nodeId) => ({ node_id: nodeId, type: 'finish_to_start' })), current_contract_id: null,
     position: validPosition(input.position, index), legacy_read_only: false, created_at: now(), updated_at: now()
   }));
@@ -183,6 +191,7 @@ function hierarchyContract(node, project, actorId) {
   const contract = defaultContractForNode(node, project, actorId, 'confirmed');
   contract.node_goal = node.role === 'workstream' ? node.outcome : node.goal;
   if (node.acceptance_criteria?.length) contract.acceptance_criteria = [...node.acceptance_criteria];
+  if (node.role === 'task') { contract.expected_inputs = structuredClone(node.input_slots || []); contract.expected_outputs = structuredClone(node.output_slots || []); }
   if (node.role === 'workstream') {
     contract.expected_outputs = [{ label: node.outcome, required: true }];
     contract.allowed_tools = ['assist'];

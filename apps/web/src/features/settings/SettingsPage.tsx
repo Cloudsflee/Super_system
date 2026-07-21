@@ -9,10 +9,11 @@ import type { ChangeProposal, CodexDiscoverySource, CodexProfile, CodexStatus, M
 import { CodexDiscoveryPicker } from '../setup/CodexDiscoveryPicker';
 import { ProviderFields, validBaseUrl, type ProviderChoice, type WireApi } from '../setup/CodexProviderFields';
 import { useCodexDiscovery } from '../setup/useCodexDiscovery';
+import { DEFAULT_CODEX_TIMEOUT_MINUTES, codexTimeoutMinutesToMs, formatCodexTimeout, validCodexTimeoutMinutes } from '../setup/codex-timeout';
 
 type GithubStatus = { connected: boolean; login?: string; installation_count?: number; repository_count?: number };
-type ProfileDraft = { name: string; providerChoice: ProviderChoice; customProvider: string; baseUrl: string; wireApi: WireApi; model: string };
-const initialProfile: ProfileDraft = { name: '', providerChoice: 'openai', customProvider: '', baseUrl: '', wireApi: 'responses', model: 'gpt-5.1-codex' };
+type ProfileDraft = { name: string; providerChoice: ProviderChoice; customProvider: string; baseUrl: string; wireApi: WireApi; model: string; timeoutMinutes: number };
+const initialProfile: ProfileDraft = { name: '', providerChoice: 'openai', customProvider: '', baseUrl: '', wireApi: 'responses', model: 'gpt-5.1-codex', timeoutMinutes: DEFAULT_CODEX_TIMEOUT_MINUTES };
 const OPENROUTER_URL = 'https://openrouter.ai/api/v1';
 const DEFAULT_MCP_SCOPES = ['system:read', 'project:read', 'project:write', 'workflow:read', 'workflow:write', 'assist:read', 'assist:write', 'runs:read', 'runs:write', 'files:read', 'files:write', 'terminal:read', 'terminal:write', 'terminal:execute', 'git:read', 'git:write', 'github:read', 'assets:read', 'assets:write', 'governance:read', 'governance:write', 'approval:read', 'setup:read'];
 
@@ -46,7 +47,7 @@ export function SettingsPage() {
   const discovery = useCodexDiscovery(async () => { await refresh(); toast('本地 Codex 配置已导入，正在进入重配置'); setDiscoveryOpen(false); }, { reconfigure: true });
   const provider = profile.providerChoice === 'custom' ? profile.customProvider.trim() : profile.providerChoice;
   const thirdParty = profile.providerChoice !== 'openai';
-  const profileValid = Boolean(profile.name.trim() && profile.model.trim() && provider && (!thirdParty || validBaseUrl(profile.baseUrl)));
+  const profileValid = Boolean(profile.name.trim() && profile.model.trim() && provider && (!thirdParty || validBaseUrl(profile.baseUrl)) && validCodexTimeoutMinutes(profile.timeoutMinutes));
   const codexImport = deployment.data?.mode !== 'container' || Boolean(deployment.data?.imports.codex_home);
   const ccSwitchImport = deployment.data?.mode !== 'container' || Boolean(deployment.data?.imports.cc_switch);
   const visibleMcpClients = mcpClients.data?.clients || [];
@@ -75,7 +76,7 @@ export function SettingsPage() {
     return {
       name: profile.name.trim(), provider, model: profile.model.trim(),
       ...(thirdParty ? { base_url: profile.baseUrl.trim(), wire_api: 'responses' as const } : {}),
-      reasoning: 'high', web_search: false, timeout_ms: 120000, mounts: []
+      reasoning: 'high', web_search: false, timeout_ms: codexTimeoutMinutesToMs(profile.timeoutMinutes), mounts: []
     };
   }
   async function saveProfile() {
@@ -169,9 +170,10 @@ export function SettingsPage() {
           <label>名称<input aria-label="Profile 名称" value={profile.name} onChange={(event) => setProfile({ ...profile, name: event.target.value })} /></label>
           <ProviderFields providerChoice={profile.providerChoice} customProvider={profile.customProvider} baseUrl={profile.baseUrl} wireApi={profile.wireApi} onProvider={chooseProvider} onCustomProvider={(value) => setProfile({ ...profile, customProvider: value })} onBaseUrl={(value) => setProfile({ ...profile, baseUrl: value })} onWireApi={(value) => setProfile({ ...profile, wireApi: value })} />
           <label className={thirdParty ? 'span-2' : ''}>Model<input aria-label="Profile Model" value={profile.model} onChange={(event) => setProfile({ ...profile, model: event.target.value })} /></label>
+          <label>任务超时（分钟）<input aria-label="Profile 任务超时（分钟）" type="number" min={1} max={30} step={1} value={profile.timeoutMinutes} onChange={(event) => setProfile({ ...profile, timeoutMinutes: Number(event.target.value) })} /></label>
           <div className="settings-form-actions span-2"><button className="button primary" disabled={!profileValid} onClick={() => saveProfile()}><Plus size={15} />保存 Profile</button></div>
         </div>}
-        <div className="profile-table">{profiles.data?.map((item) => { const hostDisabled = deployment.data?.mode === 'container' && item.kind === 'host'; return <div key={item.id}><span><PlugZap size={16} /><span><strong>{item.name}</strong><small>{hostDisabled ? 'Host Profile 在容器部署中不可用' : `${item.provider || 'openai'} · ${item.model || 'default'}${item.base_url ? ` · ${item.base_url}` : ''}${item.wire_api ? ` · ${item.wire_api}` : ''}`}</small></span></span><i className={`status ${item.status}`}>{hostDisabled ? 'disabled' : item.status}</i><button className="button secondary" disabled={hostDisabled || item.is_active || item.status !== 'validated'} onClick={() => proposeProfile(item.id)}>{item.is_active && !hostDisabled ? <ShieldCheck size={15} /> : <RefreshCw size={15} />}{hostDisabled ? '不可用' : item.is_active ? 'Active' : item.status === 'validated' ? '切换' : '待验证'}</button></div>; })}</div>
+        <div className="profile-table">{profiles.data?.map((item) => { const hostDisabled = deployment.data?.mode === 'container' && item.kind === 'host'; return <div key={item.id}><span><PlugZap size={16} /><span><strong>{item.name}</strong><small>{hostDisabled ? 'Host Profile 在容器部署中不可用' : `${item.provider || 'openai'} · ${item.model || 'default'} · ${formatCodexTimeout(item.timeout_ms)}${item.base_url ? ` · ${item.base_url}` : ''}${item.wire_api ? ` · ${item.wire_api}` : ''}`}</small></span></span><i className={`status ${item.status}`}>{hostDisabled ? 'disabled' : item.status}</i><button className="button secondary" disabled={hostDisabled || item.is_active || item.status !== 'validated'} onClick={() => proposeProfile(item.id)}>{item.is_active && !hostDisabled ? <ShieldCheck size={15} /> : <RefreshCw size={15} />}{hostDisabled ? '不可用' : item.is_active ? 'Active' : item.status === 'validated' ? '切换' : '待验证'}</button></div>; })}</div>
       </section>
     </section>
   );

@@ -4,10 +4,12 @@ import {
   assertWorkflowHierarchy, critiqueWorkflowGenerationCandidate, isProcessStageTitle,
   normalizeWorkflowGenerationCandidate, normalizeWorkflowHierarchyNodes
 } from '../../apps/api/src/workflow-hierarchy-domain.mjs';
+import { createTestWorkflowCandidate, validateGenerationCandidate } from '../../apps/api/src/workflow-generation-candidate.mjs';
 import {
   applyWorkflowGraphPatchInState, createWorkflowGraphProposalInState,
   workflowGraphSnapshot
 } from '../../apps/api/src/workflow-graph-service.mjs';
+import { WORKFLOW_PHASE_TAGS } from '../../apps/api/src/workflow-quality.mjs';
 import {
   assertSessionScope, invalidateAssistScopesInState, makeSession, resolveScope, sessionSummary
 } from '../../apps/api/src/assist-v3-domain.mjs';
@@ -50,6 +52,24 @@ const tooMany = candidateFor('manual', 'Outcome 0', 'manual', 'manual');
 tooMany.workstreams = Array.from({ length: 7 }, (_, index) => workstream(`ws-${index}`, `Outcome package ${index}`, `task-${index}`));
 assert.throws(() => normalizeWorkflowGenerationCandidate(tooMany), code('workflow_workstream_count_invalid'));
 
+const knowledgePlan = validateGenerationCandidate(createTestWorkflowCandidate(generationFingerprint(false)), generationFingerprint(false));
+const knowledgeTasks = knowledgePlan.nodes.filter((item) => item.role === 'task');
+assert.equal(knowledgeTasks.length, 3);
+assert.deepEqual(knowledgeTasks.map((item) => item.capability_tags[0]), ['research_evidence', 'execution', 'acceptance']);
+assert.equal(knowledgeTasks.every(hasTypedContract), true);
+assert.deepEqual(Object.keys(knowledgePlan.brief_coverage).sort(), ['acceptance_criteria', 'features', 'milestones', 'risks']);
+
+const softwarePlan = validateGenerationCandidate(createTestWorkflowCandidate(generationFingerprint(true)), generationFingerprint(true));
+const softwareTasks = softwarePlan.nodes.filter((item) => item.role === 'task');
+assert.equal(softwareTasks.length, 6);
+assert.deepEqual(softwareTasks.flatMap((item) => item.capability_tags), [...WORKFLOW_PHASE_TAGS]);
+assert.deepEqual(softwareTasks.map((item) => item.dependency_ids), [[], ...softwareTasks.slice(0, -1).map((item) => [item.id])]);
+assert.equal(softwareTasks.every(hasTypedContract), true);
+
+const weakCandidate = candidateFor('manual', 'Accepted package', 'manual', 'manual');
+weakCandidate.confidence = 0.69;
+assert.equal(critiqueWorkflowGenerationCandidate(normalizeWorkflowGenerationCandidate(weakCandidate), { minimumConfidence: 0.7 }).ok, false);
+
 const graphState = hierarchyState();
 assert.equal(workflowGraphSnapshot(graphState, 'workflow-1').revision, 4);
 assert.equal(workflowGraphSnapshot(graphState, 'workflow-1', 'ws-a').revision, 7);
@@ -91,6 +111,28 @@ const addedTaskWorkspace = graphState.workspaces.find((item) => item.id === adde
 assert.equal(addedTaskWorkspace.parent_workspace_id, addedWorkstream.workspace_id, 'a Task created with its Workstream receives the new Workstream Workspace as parent');
 assert.equal(addedTaskWorkspace.type, 'task');
 
+const freezeState = hierarchyState(), frozenTask = freezeState.workflow_nodes.find((item) => item.id === 'task-a');
+frozenTask.status = 'completed';
+assert.throws(() => createWorkflowGraphProposalInState(freezeState, 'workflow-1', {
+  parent_node_id: 'ws-a', expected_revision: 7,
+  operations: [{ type: 'update_node', node_id: frozenTask.id, patch: { goal: 'Silently change completed work' } }]
+}, 'owner'), code('completed_task_immutable'));
+assert.throws(() => createWorkflowGraphProposalInState(freezeState, 'workflow-1', {
+  parent_node_id: 'ws-a', expected_revision: 7,
+  operations: [{ type: 'delete_node', node_id: frozenTask.id }]
+}, 'owner'), code('completed_task_immutable'));
+const reopened = createWorkflowGraphProposalInState(freezeState, 'workflow-1', {
+  parent_node_id: 'ws-a', expected_revision: 7,
+  operations: [
+    { type: 'reopen_task', node_id: frozenTask.id, reason: 'Approved maintenance revision' },
+    { type: 'update_node', node_id: frozenTask.id, patch: { goal: 'Maintain the accepted output in a new revision' } }
+  ]
+}, 'owner');
+applyWorkflowGraphPatchInState(freezeState, reopened.proposal);
+assert.equal(frozenTask.execution_revision, 2);
+assert.equal(frozenTask.status, 'ready');
+assert.equal(frozenTask.goal, 'Maintain the accepted output in a new revision');
+
 const project = graphState.projects[0];
 for (const [scopeType, scopeId, expectedLength] of [['project', project.id, 1], ['workflow', 'workflow-1', 2], ['workstream', 'ws-a', 3], ['task', 'task-a', 4]]) {
   const scope = resolveScope(graphState, project, scopeType, scopeId);
@@ -108,6 +150,9 @@ assert.deepEqual(invalidateAssistScopesInState(graphState, ['task-a']), [taskSes
 assert.equal(taskSession.read_only, true);
 assert.deepEqual(taskSession.scope_snapshot, snapshotBeforeInvalidation);
 assert.throws(() => assertSessionScope(graphState, taskSession), code('assist_scope_read_only'));
+
+await import('./v19-task-execution-context.test.mjs');
+await import('./v19-workflow-generation-contract.test.mjs');
 
 console.log('V1.9 hierarchy, revision, and Assist scope unit tests passed');
 
@@ -157,6 +202,24 @@ function hierarchyState() {
     workspaces: [{ id: 'workspace-root', project_id: 'project-1', status: 'active' }, ...nodes.map((node) => ({ id: node.workspace_id, project_id: 'project-1', workflow_node_id: node.id, status: 'active' }))],
     node_contracts: [], node_runs: [], change_proposals: [], assist_sessions: [], assist_turns: [], assist_events: [], assist_change_batches: [], attachments: [], assist_operations: [], runtime_user_inputs: [], human_reviews: [], worktrees: []
   };
+}
+
+function generationFingerprint(software) {
+  const project = { id: software ? 'project-software' : 'project-knowledge', title: software ? 'Software system' : 'Research program', goal: 'Produce an accepted outcome' };
+  const brief = {
+    id: `brief-${project.id}`, revision: 1,
+    content: {
+      goal: project.goal, summary: project.goal, sections: [{ id: 'brief-goal', title: 'Goal', type: 'markdown', markdown: project.goal }],
+      features: ['Traceable result'], acceptance_criteria: ['The result is accepted'], milestones: ['Accepted delivery'], risks: ['Insufficient evidence']
+    }
+  };
+  return { input_hash: `hash-${project.id}`, mode: 'initial', project, brief, intake: { mode: software ? 'existing' : 'brainstorm', context_sources: [] } };
+}
+
+function hasTypedContract(task) {
+  return task.acceptance_criteria.length > 0
+    && task.input_slots.every((slot) => slot.key && slot.kind && slot.source && Object.hasOwn(slot, 'version_id'))
+    && task.output_slots.every((slot) => slot.key && slot.kind && slot.asset_type && slot.acceptance_criteria.length && ['human', 'system_evidence'].includes(slot.confirmation_policy));
 }
 
 function code(expected) {

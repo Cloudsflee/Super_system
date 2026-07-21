@@ -123,7 +123,7 @@ function isApiRequest(pathname, routePath) {
 function isSpaPath(pathname) {
   return /^\/(?:setup|projects|assets|audit|settings)\/?$/.test(pathname)
     || /^\/integrations\/github\/install\/setup\/?$/.test(pathname)
-    || /^\/projects\/[^/]+\/(?:workflow|onboarding|nodes\/[^/]+)\/?$/.test(pathname);
+    || /^\/projects\/[^/]+\/(?:workflow(?:\/[^/]+)?|onboarding|nodes\/[^/]+)\/?$/.test(pathname);
 }
 
 server.listen(PORT, HOST, () => {

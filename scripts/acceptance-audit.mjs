@@ -169,6 +169,10 @@ const checks = [
   ['V1.9 hierarchy unit', 'tests/unit/v19-core.test.mjs', 'V1.9 hierarchy, revision, and Assist scope unit tests passed'],
   ['V1.9 migration unit', 'tests/unit/v19-migration.test.mjs', 'V1.9 state and semantic workflow migration unit tests passed'],
   ['V1.9 MCP registry unit', 'tests/unit/v19-mcp-registry.test.mjs', 'V1.9 MCP route registry unit tests passed'],
+  ['V1.9 catalog runner', 'scripts/v19-runner.mjs', '测试结果v1.9.md'],
+  ['V1.9 live MCP journey', 'scripts/mcp-live-project-smoke.mjs', 'AIWS_MCP_LIVE_SMOKE_CONFIRM'],
+  ['Codex 30 minute timeout policy', 'packages/shared/src/codex.mjs', 'DEFAULT_CODEX_TIMEOUT_MS = 30 * 60_000'],
+  ['GitHub device MCP action', 'apps/api/src/routes/github-config-v12.mjs', "type: 'github_device_authorization'"],
   ['V1.9 generation integration', 'tests/integration/v19-workflow-generation-flow.test.mjs', 'V1.9 asynchronous workflow generation integration tests passed'],
   ['V1.9 Delivery integration', 'tests/integration/v19-delivery-flow.test.mjs', 'V1.9 multi-task Delivery integration tests passed'],
   ['V1.9 release volume flow', 'tests/release/v19-volume-flow.test.mjs', 'V1.9 release volume flow tests passed'],
@@ -213,7 +217,8 @@ for (const suite of ['v13-terminal-flow', 'v14-container-flow', 'v15-native-assi
 for (const suite of ['v14-container.test', 'v15-core.test', 'v15-operations.test', 'v15-change-bridge.test', 'v16-core.test', 'v16-release.test', 'v17-core.test', 'v17-capability-operations.test', 'v17-release.test', 'v18-mcp-auth.test', 'v18-mcp-gateway-auth.test', 'v18-mcp-registry.test', 'v18-release.test', 'v19-core.test', 'v19-repository-delivery.test', 'v19-migration.test', 'v19-mcp-registry.test']) assert.ok(manifest.scripts.test.includes(suite), `unit gate includes ${suite}`);
 for (const script of ['test:v18:plan', 'test:v18:impact', 'test:v18:contract', 'test:v18:pr', 'test:v18:full', 'test:v18:mcp-journey', 'test:v18:live', 'test:v18:release', 'test:v18:soak', 'mcp:stdio', 'mcp:client', 'mcp:gateway']) assert.ok(manifest.scripts[script], `V1.8 command ${script}`);
 assert.ok(manifest.scripts['test:release'].includes('v18-volume-flow'), 'release gate includes V1.8 volume migration');
-for (const script of ['test:v19:unit', 'test:v19:integration', 'test:v19:release']) assert.ok(manifest.scripts[script], `V1.9 command ${script}`);
+for (const script of ['test:v19:unit', 'test:v19:integration', 'test:v19:pr', 'test:v19:full', 'test:v19:live', 'test:v19:release', 'test:v19:soak']) assert.ok(manifest.scripts[script], `V1.9 command ${script}`);
+for (const suite of ['pr', 'full', 'live', 'release', 'soak']) assert.match(manifest.scripts[`test:v19:${suite}`], new RegExp(`v19-runner\\.mjs ${suite}$`), `V1.9 ${suite} uses the catalog runner`);
 assert.ok(manifest.scripts['test:release'].includes('v19-volume-flow'), 'release gate includes V1.9 volume migration');
 
 for (const file of workspaceManifests()) assert.equal(JSON.parse(fs.readFileSync(file, 'utf8')).version, '1.9.0', `${file} is V1.9`);

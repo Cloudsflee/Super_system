@@ -83,6 +83,7 @@ async function createSubmissionRoute({ res, params, body }) {
       changes: body.changes || [],
       evidenceRefs: body.evidence_refs || [],
       risks: body.risks || [],
+      outputBindings: body.output_bindings || [], inputSnapshotHash: body.input_snapshot_hash || null,
       actorId: actor.id
     });
     state.submissions.push(submission);
@@ -105,7 +106,7 @@ async function createNodeSubmissionRoute({ res, params, body }) {
     if (!top) { top = createAgentSession({ projectId: project.id, workspaceId: project.current_workspace_id, scopeType: 'project', scopeId: project.id, title: `${project.title} Codex`, actorId: actor.id }); state.agent_sessions.push(top); addTrace(state, 'agent_session.created', { project_id: project.id, workspace_id: project.current_workspace_id, target_type: 'agent_session', target_id: top.id, summary: `创建 Codex 会话：${top.title}` }, actor.id); }
     let child = state.agent_sessions.filter((item) => item.project_id === project.id && item.scope_type === 'node' && item.scope_id === node.id && item.status === 'active').at(-1);
     if (!child) { child = createAgentSession({ projectId: project.id, workspaceId: workspace.id, scopeType: 'node', scopeId: node.id, parentSessionId: top.id, title: `${node.title} Codex`, actorId: actor.id }); state.agent_sessions.push(child); addTrace(state, 'agent_session.created', { project_id: project.id, workspace_id: workspace.id, node_id: node.id, target_type: 'agent_session', target_id: child.id, summary: `创建 Codex 会话：${child.title}` }, actor.id); }
-    const submission = createSubSubmission({ projectId: project.id, workspaceId: workspace.id, nodeId: node.id, fromSessionId: child.id, toSessionId: child.parent_session_id || top.id, title: body.title || `${node.title} 提交`, summary: body.summary, changes: body.changes || [], evidenceRefs: body.evidence_refs || [], risks: body.risks || [], actorId: actor.id });
+    const submission = createSubSubmission({ projectId: project.id, workspaceId: workspace.id, nodeId: node.id, fromSessionId: child.id, toSessionId: child.parent_session_id || top.id, title: body.title || `${node.title} 提交`, summary: body.summary, changes: body.changes || [], evidenceRefs: body.evidence_refs || [], risks: body.risks || [], outputBindings: body.output_bindings || [], inputSnapshotHash: body.input_snapshot_hash || null, actorId: actor.id });
     state.submissions.push(submission);
     addTrace(state, 'agent_session.submission.created', { project_id: project.id, workspace_id: workspace.id, node_id: node.id, target_type: 'submission', target_id: submission.id, summary: `SubSubmission：${submission.title}`, data: submission }, actor.id);
     return submission;

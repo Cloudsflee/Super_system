@@ -2,31 +2,43 @@ import { AssetStatus, RunnerStatus } from './enums.mjs';
 import { buildMemoryManifest, buildSufficiencyCheck } from './memory.mjs';
 import { estimateTokens, id, now, pick, slugify } from './utils.mjs';
 
-export function buildContextPack({ state, project, workspace, node, contract, purpose = 'node_run', receiver_name = 'CodexRunner', pinnedRefs = [] }) {
+export function buildContextPack({ state, project, workspace, node, contract, purpose = 'node_run', receiver_name = 'CodexRunner', pinnedRefs = [], executionContext = null }) {
   const tokenBudget = project.settings?.token_budget || 12000;
   const sufficiency = buildSufficiencyCheck({ state, project, workspace, node, contract, target_type: purpose, tokenBudget });
-  const manifest = buildMemoryManifest({ state, project, workspace, node, contract, tokenBudget, pinnedRefs });
+  const manifest = executionContext ? executionMemoryManifest(executionContext, project, workspace, node, tokenBudget) : buildMemoryManifest({ state, project, workspace, node, contract, tokenBudget, pinnedRefs });
+  if (executionContext) Object.assign(sufficiency, { status: 'sufficient', missing_slots: [], conflicts: [], stale_refs: [], recommended_questions: [], recommended_options: [] });
   sufficiency.included_memory_refs = manifest.included.map((m) => m.ref);
   sufficiency.excluded_memory_refs = manifest.excluded.map((m) => ({ ref: m.ref, reason: m.reason }));
-  const latestDigest = [...state.digests].reverse().find((d) => d.workspace_id === workspace?.id && d.status === 'confirmed') || null;
-  const confirmedAssets = state.assets.filter((a) => a.project_id === project.id && a.status === AssetStatus.Confirmed);
-  const decisions = state.decisions.filter((d) => d.project_id === project.id && d.status !== 'superseded');
-  const submissions = (state.submissions || []).filter((item) => item.project_id === project.id && (!node || item.node_id !== node.id)).slice(-8);
+  const latestDigest = executionContext?.workstream_digest || [...state.digests].reverse().find((d) => d.workspace_id === workspace?.id && d.status === 'confirmed') || null;
+  const assetRefs = new Set(executionContext?.inputs?.flatMap((item) => item.asset_versions || []).map((item) => item.asset_id) || []);
+  const confirmedAssets = state.assets.filter((a) => a.project_id === project.id && a.status === AssetStatus.Confirmed && (!executionContext || assetRefs.has(a.id)));
+  const decisions = executionContext?.project_decisions || state.decisions.filter((d) => d.project_id === project.id && d.status !== 'superseded');
+  const submissions = executionContext ? [] : (state.submissions || []).filter((item) => item.project_id === project.id && (!node || item.node_id !== node.id)).slice(-8);
   const availableTools = (state.tools || []).filter((t) => t.enabled !== false && (contract.allowed_tools || []).some((tool) => tool === t.id || tool === t.name || (t.capabilities || []).includes(tool)));
   const content = {
-    schema_version: 'aiws.context_pack.v1', project: pick(project, ['id', 'title', 'goal', 'role', 'background', 'workspace_root', 'repo_path']),
+    schema_version: executionContext ? 'aiws.context_pack.v2' : 'aiws.context_pack.v1', project: pick(project, ['id', 'title', 'goal', 'role', 'background', 'workspace_root', 'repo_path']),
     workspace: workspace ? pick(workspace, ['id', 'title', 'goal', 'type', 'status', 'current_digest_id']) : null,
     workflow_node: node ? pick(node, ['id', 'type', 'title', 'goal', 'status', 'order_index']) : null,
-    node_contract: contract, purpose, runner_instruction: buildRunnerInstruction({ project, node, contract }),
+    node_contract: contract, task_execution_context: executionContext, purpose, runner_instruction: buildRunnerInstruction({ project, node, contract }),
     latest_digest: latestDigest ? pick(latestDigest, ['id', 'version', 'summary', 'body', 'evidence_refs']) : null,
     confirmed_assets: confirmedAssets.map((a) => pick(a, ['id', 'asset_type', 'title', 'summary', 'evidence_refs', 'tags', 'created_at'])),
     decisions: decisions.map((d) => pick(d, ['id', 'title', 'summary', 'rationale', 'evidence_refs'])),
     submissions: submissions.map((s) => pick(s, ['id', 'title', 'summary', 'changes', 'evidence_refs', 'risks', 'from_session_id', 'to_session_id', 'created_at'])),
     available_tools: availableTools.map((t) => ({ id: t.id, name: t.name, type: t.type, health_status: t.health_status, permissions: t.permissions || {}, usage_boundary: t.usage_boundary || '仅在 Node Contract 允许范围内使用' })),
-    git: { repo_path: project.repo_path || project.workspace_root || '', branch_strategy: 'aiws/{node_slug}-{short_run_id}', dirty_policy: 'commit 型节点在 dirty repo 中先捕获 baseline，并要求人工确认。' },
+    git: { repo_path: executionContext?.repository_snapshot?.managed_path || project.repo_path || project.workspace_root || '', repository_snapshot: executionContext?.repository_snapshot || null, branch_strategy: 'aiws/{node_slug}-{short_run_id}', dirty_policy: '执行上下文固定后不得静默切换分支或覆盖快照。' },
     return_schema_ref: 'aiws.node_run_result.v1', result_schema: nodeRunResultSchema(), sufficiency_check: sufficiency, memory_manifest: manifest
   };
-  return { id: id('ctx'), source_workspace_id: workspace?.id || project.current_workspace_id, receiver_type: 'ai_runner', receiver_name, purpose, version: 1, status: 'draft', content_json: content, content_file_ref_id: null, markdown_file_ref_id: null, included_asset_versions: confirmedAssets.map((a) => ({ asset_id: a.id, version_id: a.current_version_id || null })), token_estimate: estimateTokens(JSON.stringify(content)), quality_check: qualityCheckContextPack(content), memory_manifest: manifest, sufficiency_check_id: sufficiency.id, created_by: 'system', consumed_at: null, created_at: now(), updated_at: now(), _sufficiency_check: sufficiency };
+  const includedVersions = executionContext?.inputs?.flatMap((item) => item.asset_versions || []).map((item) => ({ asset_id: item.asset_id, version_id: item.version_id })) || confirmedAssets.map((a) => ({ asset_id: a.id, version_id: a.current_version_id || null }));
+  return { id: id('ctx'), source_workspace_id: workspace?.id || project.current_workspace_id, receiver_type: 'ai_runner', receiver_name, purpose, version: executionContext ? 2 : 1, status: 'draft', content_json: content, content_file_ref_id: null, markdown_file_ref_id: null, included_asset_versions: includedVersions, token_estimate: estimateTokens(JSON.stringify(content)), quality_check: qualityCheckContextPack(content), memory_manifest: manifest, sufficiency_check_id: sufficiency.id, created_by: 'system', consumed_at: null, created_at: now(), updated_at: now(), _sufficiency_check: sufficiency };
+}
+
+function executionMemoryManifest(context, project, workspace, node, tokenBudget) {
+  const included = [];
+  for (const input of context.inputs || []) for (const asset of input.asset_versions || []) included.push({ ref: `asset_version:${asset.version_id}`, source_type: 'asset_version', source_id: asset.version_id, title: asset.title || asset.asset_type, summary: asset.summary || '', reason: `显式输入槽 ${input.key}`, authority: 'user_confirmed', freshness: 'current', token_estimate: estimateTokens(`${asset.title || ''}\n${asset.summary || ''}`) });
+  if (context.workstream_digest) included.push({ ref: `digest:${context.workstream_digest.id}`, source_type: 'digest', source_id: context.workstream_digest.id, title: `Workstream Digest v${context.workstream_digest.version}`, summary: context.workstream_digest.summary, reason: '当前 Workstream 摘要', authority: 'system_confirmed', freshness: 'current', token_estimate: estimateTokens(context.workstream_digest.summary || '') });
+  if (context.project_brief) included.push({ ref: `project_brief:${context.project_brief.id}`, source_type: 'project_brief', source_id: context.project_brief.id, title: 'Project Brief', summary: context.project_brief.content?.summary || project.goal, reason: '当前 Project Brief', authority: 'user_confirmed', freshness: 'current', token_estimate: estimateTokens(JSON.stringify(context.project_brief.content || {})) });
+  for (const decision of context.project_decisions || []) included.push({ ref: `decision:${decision.id}`, source_type: 'decision', source_id: decision.id, title: decision.title, summary: decision.summary, reason: 'Project Decision', authority: 'user_confirmed', freshness: 'current', token_estimate: estimateTokens(`${decision.title}\n${decision.summary}`) });
+  return { id: id('mmf'), project_id: project.id, workspace_id: workspace?.id || project.current_workspace_id, node_id: node?.id || null, generated_at: now(), token_budget: tokenBudget, token_estimate: included.reduce((total, item) => total + item.token_estimate, 0), included, excluded: [], warnings: [], policy: { explicit_inputs_only: true, sibling_context_included: false, authority_order: ['Task Execution Context', 'NodeContract', 'immutable input Asset versions', 'Workstream Digest', 'Project Brief/Decision'], rule: '不得自动注入兄弟节点或全 Project 资产。' } };
 }
 
 export function buildRunnerInstruction({ project, node, contract }) {
@@ -40,6 +52,7 @@ export function qualityCheckContextPack(content) {
 export function contextPackToMarkdown(contextPack) {
   const c = contextPack.content_json, lines = [`# Context Pack ${contextPack.id}`, '', `- Purpose: ${contextPack.purpose}`, `- Receiver: ${contextPack.receiver_name}`, `- Token estimate: ${contextPack.token_estimate}`, '', '## Project', `- ${c.project.title}: ${c.project.goal}`, '', '## Node Contract', `Goal: ${c.node_contract.node_goal}`, 'Acceptance Criteria:'];
   for (const item of c.node_contract.acceptance_criteria || []) lines.push(`- ${item}`);
+  if (c.task_execution_context) lines.push('', '## Task Execution Context v2', '```json', JSON.stringify(c.task_execution_context, null, 2), '```');
   lines.push('', '## Memory Manifest', 'Included:');
   for (const item of c.memory_manifest.included) lines.push(`- ${item.ref} · ${item.title} · ${item.reason}`);
   lines.push('Excluded:'); for (const item of c.memory_manifest.excluded) lines.push(`- ${item.ref} · ${item.title} · ${item.reason}`);

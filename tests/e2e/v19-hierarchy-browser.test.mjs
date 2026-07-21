@@ -4,7 +4,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { chromium } from '@playwright/test';
-import { assertViewport, browserExecutable } from './playwright-helpers.mjs';
+import { assertA11y, assertViewport, browserExecutable } from './playwright-helpers.mjs';
 
 const root = fs.mkdtempSync(path.join(os.tmpdir(), 'aiws-v19-browser-'));
 const home = path.join(root, 'home');
@@ -57,6 +57,17 @@ try {
 async function verifyHierarchyJourney(page, fixture, viewport) {
   const workflowUrl = `http://127.0.0.1:${port}/projects/${fixture.projectId}/workflow`;
   await page.goto(workflowUrl);
+  await page.locator('.workflow-full-process').waitFor();
+  assert.equal(await page.getByRole('tab', { name: '完整流程' }).getAttribute('aria-selected'), 'true', 'verified workflows open on the visible Task DAG');
+  assert.equal(await page.locator('.workflow-phase-coverage [role="listitem"]').count(), 6, 'the complete view exposes six-stage coverage');
+  assert.equal(await page.locator('.workflow-process-task').count(), 4, 'the complete view exposes every Task in its Workstream DAG');
+  const goalHeights = await page.locator('.workflow-task-main > p').evaluateAll((items) => items.map((item) => item.getBoundingClientRect().height)); assert.ok(goalHeights.every((height) => height <= 45), `Task goals must stay compact: ${JSON.stringify(goalHeights)}`);
+  await page.getByRole('button', { name: '重新规划' }).click();
+  await page.getByText('Collect release evidence with provenance', { exact: true }).waitFor();
+  await page.screenshot({ path: path.join(output, `workflow-process-${viewport.name}.png`), fullPage: true });
+  await assertA11y(page, `V1.9 complete workflow ${viewport.name}`);
+  await page.getByRole('button', { name: '关闭重新规划' }).click();
+  await page.getByRole('tab', { name: '成果视图' }).click();
   await page.locator('.workflow-page .workspace-node').first().waitFor();
   assert.equal(await page.locator('.workflow-page .workspace-node').count(), 2, 'the top canvas renders only Workstreams');
   assert.equal(await page.getByText('Collect release evidence', { exact: true }).count(), 0, 'Task titles do not leak onto the parent canvas');
@@ -73,6 +84,7 @@ async function verifyHierarchyJourney(page, fixture, viewport) {
   });
 
   await page.goto(workflowUrl);
+  await page.getByRole('tab', { name: '成果视图' }).click();
   const workstreamCard = page.locator('.workspace-node').filter({ hasText: fixture.workstreamTitle });
   await workstreamCard.waitFor();
   await page.getByRole('button', { name: '放大' }).click();
@@ -81,7 +93,7 @@ async function verifyHierarchyJourney(page, fixture, viewport) {
   await workstreamCard.click();
   await page.locator('.node-inspector').waitFor();
   await page.locator('.node-inspector').getByRole('button', { name: '进入成果节点' }).click();
-  await page.waitForURL(`**/projects/${fixture.projectId}/workflow/${fixture.workstreamId}`);
+  await page.waitForURL(`**/projects/${fixture.projectId}/workflow/${fixture.workstreamId}`); await page.reload();
   const storedView = await page.evaluate((workflowId) => JSON.parse(sessionStorage.getItem(`aiws:v19:workflow-view:${workflowId}`) || 'null'), fixture.workflowId);
   assert.equal(storedView.selectedId, fixture.workstreamId);
   assert.equal(storedView.inspectorOpen, true);
@@ -91,6 +103,12 @@ async function verifyHierarchyJourney(page, fixture, viewport) {
   const breadcrumb = await page.locator('.workflow-breadcrumb').textContent();
   for (const label of [fixture.projectTitle, fixture.workflowTitle, fixture.workstreamTitle]) assert.match(breadcrumb || '', new RegExp(escapeRegExp(label)));
   assert.equal(await page.locator('.task-list [role="listitem"]').count(), 3);
+  const openTask = page.getByRole('button', { name: '打开任务：Collect release evidence' });
+  await openTask.focus();
+  const openStyle = await openTask.evaluate((element) => { const style = getComputedStyle(element); return { height: Number.parseFloat(style.height), color: style.color, background: style.backgroundColor, outlineWidth: Number.parseFloat(style.outlineWidth), outlineStyle: style.outlineStyle }; });
+  assert.ok(openStyle.height >= 36, `Task open action is too short: ${JSON.stringify(openStyle)}`);
+  assert.ok(contrastRatio(openStyle.color, openStyle.background) >= 4.5, `Task open action contrast is too low: ${JSON.stringify(openStyle)}`);
+  assert.ok(openStyle.outlineWidth >= 3 && openStyle.outlineStyle !== 'none', `Task open focus indicator is insufficient: ${JSON.stringify(openStyle)}`);
   await page.screenshot({ path: path.join(output, `workstream-list-${viewport.name}.png`), fullPage: true });
 
   await page.getByRole('tab', { name: '看板' }).click();
@@ -121,6 +139,7 @@ async function verifyHierarchyJourney(page, fixture, viewport) {
 
   await page.getByRole('button', { name: '返回顶层工作流' }).click();
   await page.waitForURL(`**/projects/${fixture.projectId}/workflow`);
+  await page.getByRole('tab', { name: '成果视图' }).click();
   await page.locator('.node-inspector').waitFor();
   assert.equal(await page.locator('.node-inspector').getByText(fixture.workstreamTitle, { exact: true }).count(), 1, 'the selected Workstream and Inspector are restored');
   await page.waitForFunction(({ expected }) => {
@@ -177,10 +196,13 @@ async function seedHierarchyProject() {
     created.project.managed_workspace_state = 'ready';
     state.projects.push(created.project); state.workspaces.push(created.workspace); state.project_intakes.push(created.intake);
     state.project_briefs.push(created.brief); state.workflow_drafts.push(created.workflowDraft); state.assist_sessions.push(created.session);
-    const activated = activateDraftInState(state, created.project, created.brief, hierarchy(), actor.id);
+    const activated = activateDraftInState(state, created.project, created.brief, hierarchy(), actor.id); activated.workflow.planning_quality = 'verified';
     const workstream = activated.nodes.find((item) => item.id === 'ws-release-evidence');
     const task = activated.nodes.find((item) => item.id === 'task-collect-evidence');
     const siblingTask = activated.nodes.find((item) => item.id === 'task-verify-build');
+    const currentNodes = activated.nodes.map((item) => ({ ...item, dependency_ids: (item.dependencies || []).map((entry) => entry.node_id) }));
+    const candidateNodes = currentNodes.map((item) => item.id === task.id ? { ...item, title: 'Collect release evidence with provenance' } : item);
+    state.workflow_generations.push({ id: 'wfg-browser-replan', project_id: created.project.id, workflow_id: activated.workflow.id, mode: 'replan', status: 'completed', phase: 'completed', result_mode: 'replan_diff', candidate: { nodes: candidateNodes, confidence: .88 }, diff: { workflow_id: activated.workflow.id, from_revision: activated.workflow.workflow_revision, current_nodes: currentNodes, candidate_nodes: candidateNodes }, created_at: new Date().toISOString(), updated_at: new Date().toISOString() });
     created.session.title = 'Project-only thread';
     const scopeSessions = [
       ['workflow', activated.workflow.id, 'Workflow-only thread'],
@@ -206,7 +228,7 @@ function hierarchy() {
       id: 'ws-release-evidence', role: 'workstream', title: 'Verified release evidence', outcome: 'A complete and independently reviewable release evidence package.',
       category: 'deliverable', boundary: { repository: 'acme/release' }, acceptance_criteria: ['Evidence links and build checks are accepted.'], dependency_ids: [], position: { x: 120, y: 160 },
       tasks: [
-        { id: 'task-collect-evidence', role: 'task', title: 'Collect release evidence', goal: 'Collect traceable release evidence', task_kind: 'research', execution_mode: 'assist', dependency_ids: [], position: { x: 100, y: 120 } },
+        { id: 'task-collect-evidence', role: 'task', title: 'Collect release evidence', goal: 'Collect traceable release evidence with complete provenance. '.repeat(80), task_kind: 'research', execution_mode: 'assist', dependency_ids: [], position: { x: 100, y: 120 } },
         { id: 'task-verify-build', role: 'task', title: 'Verify release build', goal: 'Run and record build verification', task_kind: 'test', execution_mode: 'codex', dependency_ids: ['task-collect-evidence'], position: { x: 420, y: 40 } },
         { id: 'task-review-notes', role: 'task', title: 'Review release notes', goal: 'Review release notes against evidence', task_kind: 'review', execution_mode: 'assist', dependency_ids: ['task-collect-evidence'], position: { x: 420, y: 220 } }
       ]
@@ -230,3 +252,8 @@ async function waitForServer() {
 }
 
 function escapeRegExp(value) { return String(value).replace(/[.*+?^${}()|[\]\\]/g, '\\$&'); }
+function contrastRatio(left, right) {
+  const luminance = (value) => { const channels = value.match(/[\d.]+/g).slice(0, 3).map((item) => Number(item) / 255).map((item) => item <= .04045 ? item / 12.92 : ((item + .055) / 1.055) ** 2.4); return .2126 * channels[0] + .7152 * channels[1] + .0722 * channels[2]; };
+  const a = luminance(left), b = luminance(right);
+  return (Math.max(a, b) + .05) / (Math.min(a, b) + .05);
+}

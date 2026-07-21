@@ -8,8 +8,8 @@ import {
   validateWorktreeOwnership, worktreeRoot, writePrivatePatch
 } from './assist-v3-git.mjs';
 
-export async function createAssistWorktree(project, turn) {
-  const repoPath = await managedRepository(project);
+export async function createAssistWorktree(project, turn, repositoryWorkspace = null) {
+  const repoPath = repositoryWorkspace?.managed_path || await managedRepository(project);
   const dirty = gitResult(repoPath, ['status', '--porcelain=v1', '--untracked-files=all'], 10_000);
   if (dirty.stdout.trim()) throw new HttpError(409, { error: 'worktree_dirty_baseline', action: '先提交、暂存到其他分支或清理受管 checkout，再启动 Agent Turn。' });
   let base = gitResult(repoPath, ['rev-parse', 'HEAD'], 5_000, true).stdout.trim();
@@ -21,9 +21,15 @@ export async function createAssistWorktree(project, turn) {
   const root = worktreeRoot(project.id), worktreeId = id('wtr'), target = path.join(root, safeSegment(turn.id));
   await fsp.mkdir(root, { recursive: true });
   if (fs.existsSync(target)) throw new HttpError(409, { error: 'worktree_path_exists' });
-  const added = gitResult(repoPath, ['worktree', 'add', '--detach', target, base], 60_000, true);
+  const added = repositoryWorkspace ? gitResult(root, ['clone', '--no-hardlinks', '--no-checkout', repoPath, target], 60_000, true) : gitResult(repoPath, ['worktree', 'add', '--detach', target, base], 60_000, true);
   if (!added.ok) { await safeRemove(root, target); throw new HttpError(409, { error: 'worktree_create_failed', detail: detail(added) }); }
-  return { id: worktreeId, project_id: project.id, turn_id: turn.id, kind: 'assist_turn', repo_path: repoPath, path: target, base_commit: base, head_commit: base, dirty_baseline: false, status: 'active', target_hash: null, applied_target_hash: null, created_at: now(), updated_at: now() };
+  if (repositoryWorkspace) {
+    const upstream = gitResult(repoPath, ['remote', 'get-url', 'origin'], 5_000, true);
+    if (upstream.ok) gitResult(target, ['remote', 'set-url', 'origin', upstream.stdout.trim()], 5_000);
+    const checked = gitResult(target, ['checkout', '--detach', base], 30_000, true);
+    if (!checked.ok) { await safeRemove(root, target); throw new HttpError(409, { error: 'worktree_create_failed', detail: detail(checked) }); }
+  }
+  return { id: worktreeId, project_id: project.id, repository_workspace_id: repositoryWorkspace?.id || null, turn_id: turn.id, kind: repositoryWorkspace ? 'assist_repository_clone' : 'assist_turn', repo_path: repoPath, path: target, base_commit: base, head_commit: base, dirty_baseline: false, status: 'active', target_hash: null, applied_target_hash: null, created_at: now(), updated_at: now() };
 }
 
 export async function assistReviewSnapshot(project, worktree) {
@@ -45,7 +51,7 @@ export async function applyAssistWorktree(project, worktree, expectedTargetHash)
     const stat = await fsp.lstat(path.join(worktree.path, file.path)).catch(() => null);
     if (stat?.isSymbolicLink()) throw new HttpError(409, { error: 'review_symlink_change_not_allowed', path: file.path });
   }
-  const repoPath = await managedRepository(project), currentHead = gitResult(repoPath, ['rev-parse', 'HEAD'], 5_000).stdout.trim();
+  const repoPath = worktree.repository_workspace_id ? worktree.repo_path : await managedRepository(project), currentHead = gitResult(repoPath, ['rev-parse', 'HEAD'], 5_000).stdout.trim();
   if (currentHead !== worktree.base_commit) throw new HttpError(409, { error: 'review_base_changed', base_commit: worktree.base_commit, current_commit: currentHead });
   if (gitResult(repoPath, ['status', '--porcelain=v1', '--untracked-files=all'], 10_000).stdout.trim()) throw new HttpError(409, { error: 'review_target_dirty' });
   const patchFile = await writePrivatePatch(project.id, worktree.id, source.diff);
@@ -64,7 +70,7 @@ export async function rollbackAssistWorktree(project, worktree, expectedTargetHa
   validateWorktreeOwnership(project, worktree);
   if (worktree.status === 'rolled_back') return { idempotent: true, worktree };
   if (worktree.status === 'applied') {
-    const repoPath = await managedRepository(project), current = reviewSnapshotForPath(repoPath, worktree.base_commit);
+    const repoPath = worktree.repository_workspace_id ? worktree.repo_path : await managedRepository(project), current = reviewSnapshotForPath(repoPath, worktree.base_commit);
     if (expectedTargetHash && expectedTargetHash !== current.targetHash) throw new HttpError(409, { error: 'review_stale', target_hash: current.targetHash });
     if (!worktree.applied_target_hash || current.targetHash !== worktree.applied_target_hash) throw new HttpError(409, { error: 'rollback_target_changed', target_hash: current.targetHash });
     const source = reviewSnapshotForPath(worktree.path, worktree.base_commit), patchFile = await writePrivatePatch(project.id, worktree.id, source.diff);
@@ -85,9 +91,9 @@ export async function rollbackAssistWorktree(project, worktree, expectedTargetHa
 
 export async function removeAssistWorktree(project, worktree) {
   validateWorktreeOwnership(project, worktree);
-  const repoPath = await managedRepository(project);
-  if (fs.existsSync(worktree.path)) gitResult(repoPath, ['worktree', 'remove', '--force', worktree.path], 30_000, true);
-  await safeRemove(worktreeRoot(project.id), worktree.path); gitResult(repoPath, ['worktree', 'prune'], 10_000, true);
+  const repoPath = worktree.repository_workspace_id ? null : await managedRepository(project);
+  if (repoPath && fs.existsSync(worktree.path)) gitResult(repoPath, ['worktree', 'remove', '--force', worktree.path], 30_000, true);
+  await safeRemove(worktreeRoot(project.id), worktree.path); if (repoPath) gitResult(repoPath, ['worktree', 'prune'], 10_000, true);
 }
 export function publicWorktree(worktree) {
   if (!worktree) return null;

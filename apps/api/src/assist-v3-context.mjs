@@ -9,6 +9,7 @@ export function createTurnContext(state, { actor, project, session, turn, attach
   const workflow = project.status !== 'draft' && project.onboarding_state === 'confirmed' ? currentProjectWorkflow(state, project.id) : null;
   const workflowDraft = workflow ? null : state.workflow_drafts.find((item) => item.project_id === project.id && item.status !== 'activated') || null;
   const scopeContext = minimalScopeContext(state, { project, session, brief, workflow, workflowDraft });
+  const repositoryWorkspace = state.repository_workspaces.find((item) => item.id === turn.repository_workspace_id && item.project_id === project.id && item.status === 'active');
   const assets = scopedMemoryAssets(state, session).slice(-50);
   const missing = turn.prompt ? [] : ['prompt'];
   const check = {
@@ -24,6 +25,7 @@ export function createTurnContext(state, { actor, project, session, turn, attach
     content_json: {
       project: { id: project.id, title: project.title, goal: project.goal },
       scope: { type: session.scope_type, id: session.scope_id, snapshot: session.scope_snapshot || null },
+      repository_workspace: repositoryWorkspace ? { id: repositoryWorkspace.id, connection_id: repositoryWorkspace.connection_id, ref: repositoryWorkspace.ref, fixed_sha: repositoryWorkspace.fixed_sha, current_sha: repositoryWorkspace.current_sha, mode: repositoryWorkspace.mode, scope: repositoryWorkspace.scope, stale: repositoryWorkspace.stale } : null,
       ...scopeContext, attachment_ids: attachmentIds,
       operation_reference: publicOperationReference(state.assist_operations.find((item) => item.id === turn.operation_reference_id), state)
     },

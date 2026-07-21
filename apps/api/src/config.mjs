@@ -44,7 +44,8 @@ export const collections = [
   'repository_connections', 'repository_targets', 'delivery_policies', 'deliveries', 'delivery_events',
   'workflow_migration_batches', 'workflow_migration_jobs',
   'project_memberships', 'project_invitations', 'canonical_repositories', 'project_repository_bindings',
-  'repository_deletion_intents', 'exchange_requests', 'exchange_grants'
+  'repository_deletion_intents', 'exchange_requests', 'exchange_grants',
+  'repository_workspaces', 'pull_request_intents'
 ];
 
 export function readLocalGithubAppConfig() {

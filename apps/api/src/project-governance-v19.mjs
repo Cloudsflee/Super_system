@@ -205,7 +205,7 @@ export async function authorizeApiRoute(route, ctx, { state = null, strict = fal
   const snapshot = state || await (await import('./state.mjs')).readState();
   const actor = actorForRequest(snapshot, ctx.req || {}, { strict });
   if (!actor) throw new HttpError(401, { error: 'authentication_required' });
-  const approval = /^\/(?:approvals\/|change-proposals\/[^/]+\/(?:approve|reject|apply)|(?:tasks|workstreams)\/[^/]+\/review)/.test(route.pattern) || route.method === 'POST' && /\/delivery-policies$/.test(route.pattern);
+  const approval = /^\/(?:approvals\/|change-proposals\/[^/]+\/(?:approve|reject|apply)|(?:tasks|workstreams)\/[^/]+\/review|pull-request-intents\/[^/]+\/(?:approve|execute))/.test(route.pattern) || route.method === 'POST' && /\/delivery-policies$/.test(route.pattern);
   const ownerLifecycle = route.method === 'DELETE' && route.pattern === '/projects/:id'
     || route.method === 'POST' && /^\/projects\/:id\/(?:trash|restore|purge)$/.test(route.pattern);
   const action = route.method === 'GET' ? 'read' : ownerLifecycle ? 'delete:approve' : route.pattern.includes('/members') || route.pattern.includes('/invit') ? 'share' : route.pattern.includes('/run') ? 'run' : approval ? 'approve' : 'write';

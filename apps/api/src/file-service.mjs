@@ -7,21 +7,22 @@ import { addTrace, mutate, owner, readState } from './state.mjs';
 import { hashString, id, now } from '../../../packages/shared/index.mjs';
 import { assertManagedProjectWritable } from './project-lifecycle.mjs';
 import { withProjectLifecycleLock } from './project-lifecycle-operations.mjs';
+import { repositoryWorkspaceRoot } from './repository-workspace-service.mjs';
 
 const maxFileBytes = 2 * 1024 * 1024;
 const maxReferenceFileBytes = 25 * 1024 * 1024;
 const presets = new Set(['test', 'typecheck', 'lint', 'build']);
 
-export async function listProjectFiles(projectId, relative = '') {
-  const { root, target } = await resolveProjectPath(projectId, relative, true);
+export async function listProjectFiles(projectId, relative = '', repositoryWorkspaceId = null) {
+  const { root, target } = await resolveProjectPath(projectId, relative, true, { repositoryWorkspaceId });
   const stat = await fsp.stat(target);
   if (!stat.isDirectory()) throw new HttpError(400, { error: 'path_not_directory' });
   const entries = await fsp.readdir(target, { withFileTypes: true });
   return { root, path: normalize(path.relative(root, target)), entries: entries.filter((item) => !ignored(item.name)).map((item) => ({ name: item.name, path: normalize(path.relative(root, path.join(target, item.name))), type: item.isDirectory() ? 'directory' : 'file', size: item.isFile() ? fs.statSync(path.join(target, item.name)).size : undefined })).sort((a, b) => a.type === b.type ? a.name.localeCompare(b.name) : a.type === 'directory' ? -1 : 1) };
 }
 
-export async function readProjectFile(projectId, relative) {
-  const { root, target } = await resolveProjectPath(projectId, relative, true);
+export async function readProjectFile(projectId, relative, repositoryWorkspaceId = null) {
+  const { root, target } = await resolveProjectPath(projectId, relative, true, { repositoryWorkspaceId });
   const stat = await fsp.stat(target);
   if (!stat.isFile()) throw new HttpError(400, { error: 'path_not_file' });
   if (stat.size > maxFileBytes) throw new HttpError(413, { error: 'file_too_large', max_bytes: maxFileBytes });
@@ -29,8 +30,8 @@ export async function readProjectFile(projectId, relative) {
   return { path: normalize(path.relative(root, target)), content, language: languageFor(target), size: stat.size, sha256: createHash('sha256').update(bytes).digest('hex') };
 }
 
-export async function inspectProjectFile(projectId, relative, maxBytes = maxReferenceFileBytes) {
-  const { root, target } = await resolveProjectPath(projectId, relative, true);
+export async function inspectProjectFile(projectId, relative, maxBytes = maxReferenceFileBytes, repositoryWorkspaceId = null) {
+  const { root, target } = await resolveProjectPath(projectId, relative, true, { repositoryWorkspaceId });
   const stat = await fsp.stat(target);
   if (!stat.isFile()) throw new HttpError(400, { error: 'path_not_file' });
   if (!Number.isSafeInteger(maxBytes) || maxBytes < 1 || stat.size > maxBytes) throw new HttpError(413, { error: 'file_too_large', max_bytes: maxBytes });
@@ -40,11 +41,11 @@ export async function inspectProjectFile(projectId, relative, maxBytes = maxRefe
 }
 
 export function saveProjectFile(input) { return withProjectLifecycleLock(input.projectId, () => saveProjectFileLocked(input)); }
-async function saveProjectFileLocked({ projectId, nodeId, relative, content, source = 'owner_editor' }) {
+async function saveProjectFileLocked({ projectId, nodeId, relative, content, source = 'owner_editor', repositoryWorkspaceId = null }) {
   if (typeof relative !== 'string' || !relative.trim()) throw new HttpError(400, { error: 'file_path_required' });
   if (typeof content !== 'string') throw new HttpError(400, { error: 'file_content_required' });
   if (Buffer.byteLength(String(content), 'utf8') > maxFileBytes) throw new HttpError(413, { error: 'file_too_large', max_bytes: maxFileBytes });
-  const { state: snapshot, root, target, project } = await resolveProjectPath(projectId, relative, false);
+  const { state: snapshot, root, target, project, repositoryWorkspace } = await resolveProjectPath(projectId, relative, false, { repositoryWorkspaceId, write: true });
   assertManagedProjectWritable(project);
   const sourceNode = nodeId ? snapshot.workflow_nodes.find((item) => item.id === nodeId) : null;
   if (nodeId && (!sourceNode || !snapshot.workflows.some((item) => item.id === sourceNode.workflow_id && item.project_id === project.id))) throw new HttpError(404, { error: 'node_not_found' });
@@ -56,7 +57,7 @@ async function saveProjectFileLocked({ projectId, nodeId, relative, content, sou
     const actor = owner(state), currentProject = state.projects.find((item) => item.id === project.id), node = state.workflow_nodes.find((item) => item.id === nodeId);
     assertManagedProjectWritable(currentProject);
     if (nodeId && !node) throw new HttpError(404, { error: 'node_not_found' });
-    const change = { id: id('fch'), project_id: project.id, workspace_id: node?.workspace_id || project.current_workspace_id, node_id: node?.id || null, path: normalize(path.relative(root, target)), before_sha256: beforeHash, after_sha256: afterHash, bytes: Buffer.byteLength(String(content)), diff, source: normalizeSource(source), created_by_user_id: actor.id, created_at: now() };
+    const change = { id: id('fch'), project_id: project.id, workspace_id: node?.workspace_id || project.current_workspace_id, repository_workspace_id: repositoryWorkspace?.id || null, node_id: node?.id || null, path: normalize(path.relative(root, target)), before_sha256: beforeHash, after_sha256: afterHash, bytes: Buffer.byteLength(String(content)), diff, source: normalizeSource(source), created_by_user_id: actor.id, created_at: now() };
     state.file_changes.push(change);
     const summary = change.source === 'assist_confirmed' ? `确认 Assist 后保存文件：${change.path}` : `人工保存文件：${change.path}`;
     addTrace(state, 'file.saved', { project_id: project.id, workspace_id: change.workspace_id, node_id: change.node_id, target_type: 'file_change', target_id: change.id, summary, data: { path: change.path, before_sha256: beforeHash, after_sha256: afterHash, diff: change.diff, source: change.source } }, actor.id);
@@ -64,8 +65,8 @@ async function saveProjectFileLocked({ projectId, nodeId, relative, content, sou
   });
 }
 
-export async function projectDiff(projectId, relative = '') {
-  const { root, target } = await resolveProjectPath(projectId, relative, true);
+export async function projectDiff(projectId, relative = '', repositoryWorkspaceId = null) {
+  const { root, target } = await resolveProjectPath(projectId, relative, true, { repositoryWorkspaceId });
   const args = ['diff', '--no-ext-diff', '--'];
   if (relative) args.push(normalize(path.relative(root, target)));
   const result = command('git', args, root, 15000);
@@ -74,9 +75,9 @@ export async function projectDiff(projectId, relative = '') {
 }
 
 export function runTestPreset(input) { return withProjectLifecycleLock(input.projectId, () => runTestPresetLocked(input)); }
-async function runTestPresetLocked({ projectId, nodeId, preset }) {
+async function runTestPresetLocked({ projectId, nodeId, preset, repositoryWorkspaceId = null }) {
   if (!presets.has(preset)) throw new HttpError(400, { error: 'unsupported_test_preset', allowed: [...presets] });
-  const { state: snapshot, root, project } = await resolveProjectPath(projectId, '', true);
+  const { state: snapshot, root, project, repositoryWorkspace } = await resolveProjectPath(projectId, '', true, { repositoryWorkspaceId, write: true });
   assertManagedProjectWritable(project);
   const sourceNode = nodeId ? snapshot.workflow_nodes.find((item) => item.id === nodeId) : null;
   if (nodeId && (!sourceNode || !snapshot.workflows.some((item) => item.id === sourceNode.workflow_id && item.project_id === project.id))) throw new HttpError(404, { error: 'node_not_found' });
@@ -85,17 +86,20 @@ async function runTestPresetLocked({ projectId, nodeId, preset }) {
   return mutate((state) => {
     const actor = owner(state), currentProject = state.projects.find((item) => item.id === project.id), node = state.workflow_nodes.find((item) => item.id === nodeId);
     assertManagedProjectWritable(currentProject);
-    const task = { id: id('tsk'), project_id: project.id, workspace_id: node?.workspace_id || project.current_workspace_id, node_id: node?.id || null, preset, command: invocation.label, status: result.ok ? 'succeeded' : 'failed', stdout: result.stdout.slice(-30000), stderr: [result.stderr, result.error].filter(Boolean).join('\n').slice(-30000), duration_ms: Date.now() - started, created_by_user_id: actor.id, created_at: now(), completed_at: now() };
+    const task = { id: id('tsk'), project_id: project.id, workspace_id: node?.workspace_id || project.current_workspace_id, repository_workspace_id: repositoryWorkspace?.id || null, node_id: node?.id || null, preset, command: invocation.label, status: result.ok ? 'succeeded' : 'failed', stdout: result.stdout.slice(-30000), stderr: [result.stderr, result.error].filter(Boolean).join('\n').slice(-30000), duration_ms: Date.now() - started, created_by_user_id: actor.id, created_at: now(), completed_at: now() };
     state.test_tasks.push(task);
     addTrace(state, 'test.completed', { project_id: project.id, workspace_id: task.workspace_id, node_id: task.node_id, target_id: task.id, summary: `${preset}: ${task.status}`, data: { duration_ms: task.duration_ms, command: task.command } }, actor.id);
     return task;
   });
 }
 
-async function resolveProjectPath(projectId, relative, mustExist) {
+async function resolveProjectPath(projectId, relative, mustExist, { repositoryWorkspaceId = null, write = false } = {}) {
   const state = await readState(), project = state.projects.find((item) => item.id === projectId);
   if (!project) throw new HttpError(404, { error: 'project_not_found' });
-  const configured = project.repo_path || project.workspace_root;
+  const selectedWorkspaceId = repositoryWorkspaceId || project.default_repository_workspace_id || null;
+  const selected = selectedWorkspaceId ? repositoryWorkspaceRoot(state, selectedWorkspaceId, { write }) : null;
+  if (selected && selected.workspace.project_id !== project.id) throw new HttpError(403, { error: 'repository_workspace_project_mismatch' });
+  const configured = selected?.root || project.repo_path || project.workspace_root;
   if (!configured) throw new HttpError(409, { error: 'repository_not_bound' });
   const root = await fsp.realpath(path.resolve(configured)).catch(() => { throw new HttpError(409, { error: 'repository_root_unavailable' }); });
   const lexicalTarget = path.resolve(root, String(relative || '').replaceAll('\\', '/'));
@@ -103,18 +107,18 @@ async function resolveProjectPath(projectId, relative, mustExist) {
   if (mustExist) {
     const real = await fsp.realpath(lexicalTarget).catch(() => { throw new HttpError(404, { error: 'path_not_found' }); });
     if (!within(root, real)) throw new HttpError(403, { error: 'symlink_outside_repository' });
-    return { state, project, root, target: real };
+    return { state, project, repositoryWorkspace: selected?.workspace || null, root, target: real };
   }
   if (fs.existsSync(lexicalTarget)) {
     const real = await fsp.realpath(lexicalTarget).catch(() => { throw new HttpError(404, { error: 'path_not_found' }); });
     if (!within(root, real)) throw new HttpError(403, { error: 'symlink_outside_repository' });
     const stat = await fsp.stat(real);
     if (!stat.isFile()) throw new HttpError(400, { error: 'path_not_file' });
-    return { state, project, root, target: real };
+    return { state, project, repositoryWorkspace: selected?.workspace || null, root, target: real };
   }
   const parent = await fsp.realpath(path.dirname(lexicalTarget)).catch(() => { throw new HttpError(404, { error: 'parent_directory_not_found' }); });
   if (!within(root, parent)) throw new HttpError(403, { error: 'symlink_outside_repository' });
-  return { state, project, root, target: path.join(parent, path.basename(lexicalTarget)) };
+  return { state, project, repositoryWorkspace: selected?.workspace || null, root, target: path.join(parent, path.basename(lexicalTarget)) };
 }
 
 export function taskInvocation(root, preset, options = {}) {

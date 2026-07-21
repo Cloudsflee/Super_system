@@ -7,6 +7,8 @@ import {
 } from '../workflow-generation-service.mjs';
 import { createWorkflowGraphProposalInState, workflowGraphSnapshot, workflowVisualGraph } from '../workflow-graph-service.mjs';
 import { assertProjectLifecycleIdle, withProjectLifecycleLock } from '../project-lifecycle-operations.mjs';
+import { evaluateTaskExecutionContextFreshness } from '../task-execution-context.mjs';
+import { latestTaskExecution, recordAssetLineage, validateTaskOutputBindings } from '../task-output-service.mjs';
 
 export const workflowV19Routes = [
   makeRoute('GET', '/workflows/:id/graph', getWorkflowGraph),
@@ -30,7 +32,12 @@ async function submitTask({ res, params, body }) {
     if (task.status === 'completed') throw new HttpError(409, { error: 'task_already_completed' });
     const summary = clean(body.summary, 4000);
     if (!summary) throw new HttpError(400, { error: 'submission_summary_required' });
-    const submission = makeScopeSubmission({ state, actor, projectId: projectIdForNode(state, task), node: task, fromType: 'task', fromId: task.id, toType: 'workstream', toId: workstream.id, title: body.title || `${task.title} submission`, summary, body });
+    const workflow = state.workflows.find((item) => item.id === task.workflow_id), contract = state.node_contracts.find((item) => item.id === task.current_contract_id), execution = latestTaskExecution(state, task.id), strict = workflow?.planning_quality === 'verified';
+    const checked = validateTaskOutputBindings(state, { task, contract, bindings: body.output_bindings || execution?.output_bindings || [], projectId: workflow.project_id, strict });
+    const inputSnapshotHash = body.input_snapshot_hash || execution?.input_snapshot_hash || null;
+    if (strict && !inputSnapshotHash) throw new HttpError(409, { error: 'task_context_not_ready', reasons: [{ code: 'input_snapshot_hash_required' }] });
+    const submission = makeScopeSubmission({ state, actor, projectId: workflow.project_id, node: task, fromType: 'task', fromId: task.id, toType: 'workstream', toId: workstream.id, title: body.title || `${task.title} submission`, summary, body: { ...body, output_bindings: checked.bindings, input_snapshot_hash: inputSnapshotHash } });
+    recordAssetLineage(state, execution?.task_execution_context, checked.bindings, submission.id);
     state.submissions.push(submission); Object.assign(task, { status: 'needs_review', latest_submission_id: submission.id, updated_at: now() });
     addTrace(state, 'agent_session.submission.created', { project_id: submission.project_id, workspace_id: task.workspace_id, node_id: task.id, target_id: submission.id, summary: submission.title }, actor.id);
     return { task, workstream, submission };
@@ -44,8 +51,14 @@ async function reviewTask({ res, params, body }) {
     if (task.status !== 'needs_review') throw new HttpError(409, { error: 'task_not_in_review', status: task.status });
     if (!['approve', 'reject'].includes(body.decision)) throw new HttpError(400, { error: 'review_decision_invalid' });
     const approved = body.decision === 'approve';
+    const workflow = state.workflows.find((item) => item.id === task.workflow_id), contract = state.node_contracts.find((item) => item.id === task.current_contract_id), submission = state.submissions.find((item) => item.id === task.latest_submission_id), execution = latestTaskExecution(state, task.id), strict = workflow?.planning_quality === 'verified';
+    if (approved) {
+      validateTaskOutputBindings(state, { task, contract, bindings: submission?.output_bindings || [], projectId: workflow.project_id, strict });
+      const freshness = execution?.task_execution_context ? evaluateTaskExecutionContextFreshness(state, execution.task_execution_context) : { current: !strict, reasons: [{ code: 'task_execution_context_missing' }] };
+      if (strict && (!execution || submission?.input_snapshot_hash !== execution.input_snapshot_hash || !freshness.current || execution.input_superseded)) throw new HttpError(409, { error: 'task_context_not_ready', reasons: freshness.reasons.length ? freshness.reasons : [{ code: 'input_snapshot_hash_mismatch' }] });
+    }
     Object.assign(task, { status: approved ? 'completed' : 'blocked', review: { decision: body.decision, summary: clean(body.summary, 4000), acceptance_results: Array.isArray(body.acceptance_results) ? body.acceptance_results : [] }, reviewed_by_user_id: actor.id, reviewed_at: now(), updated_at: now() });
-    const submission = state.submissions.find((item) => item.id === task.latest_submission_id); if (submission) Object.assign(submission, { status: approved ? 'accepted' : 'changes_requested', reviewed_at: now(), reviewed_by_user_id: actor.id });
+    if (submission) Object.assign(submission, { status: approved ? 'accepted' : 'changes_requested', reviewed_at: now(), reviewed_by_user_id: actor.id });
     const workstream = aggregateWorkstream(state, task.parent_node_id);
     if (approved) { unblockSiblingTasks(state, workstream); addTrace(state, 'node.completed', { project_id: projectIdForNode(state, task), workspace_id: task.workspace_id, node_id: task.id, target_id: task.id, summary: `Task completed: ${task.title}` }, actor.id); }
     return { task, workstream, submission };
@@ -170,7 +183,7 @@ function dependencyIds(node) { return (node.dependencies || []).map((item) => ty
 function clean(value, max = 120) { return String(value ?? '').replace(/\0/g, '').trim().slice(0, max); }
 function requireHierarchyNode(state, nodeId, role) { const node = state.workflow_nodes.find((item) => item.id === nodeId && item.role === role && !item.legacy_read_only); if (!node) throw new HttpError(404, { error: `${role}_not_found` }); return node; }
 function projectIdForNode(state, node) { return state.workflows.find((item) => item.id === node.workflow_id)?.project_id || null; }
-function makeScopeSubmission({ state, actor, projectId, node, fromType, fromId, toType, toId, title, summary, body }) { return { id: `sub_${cryptoId()}`, project_id: projectId, workspace_id: node.workspace_id, node_id: node.id, from_scope_type: fromType, from_scope_id: fromId, to_scope_type: toType, to_scope_id: toId, from_session_id: null, to_session_id: null, title: clean(title, 200), summary, changes: Array.isArray(body.changes) ? body.changes : [], evidence_refs: Array.isArray(body.evidence_refs) ? body.evidence_refs : [], asset_ids: Array.isArray(body.asset_ids) ? body.asset_ids : [], risks: Array.isArray(body.risks) ? body.risks : [], status: 'submitted', created_by_user_id: actor.id, created_at: now(), updated_at: now() }; }
+function makeScopeSubmission({ state, actor, projectId, node, fromType, fromId, toType, toId, title, summary, body }) { return { id: `sub_${cryptoId()}`, project_id: projectId, workspace_id: node.workspace_id, node_id: node.id, from_scope_type: fromType, from_scope_id: fromId, to_scope_type: toType, to_scope_id: toId, from_session_id: null, to_session_id: null, title: clean(title, 200), summary, changes: Array.isArray(body.changes) ? body.changes : [], evidence_refs: Array.isArray(body.evidence_refs) ? body.evidence_refs : [], asset_ids: Array.isArray(body.asset_ids) ? body.asset_ids : [], output_bindings: Array.isArray(body.output_bindings) ? body.output_bindings : [], input_snapshot_hash: body.input_snapshot_hash || null, risks: Array.isArray(body.risks) ? body.risks : [], status: 'submitted', created_by_user_id: actor.id, created_at: now(), updated_at: now() }; }
 function aggregateWorkstream(state, workstreamId) { const workstream = requireHierarchyNode(state, workstreamId, 'workstream'), tasks = state.workflow_nodes.filter((item) => item.role === 'task' && item.parent_node_id === workstream.id), required = tasks.filter((item) => item.required !== false); if (required.length && required.every((item) => item.status === 'completed')) workstream.status = 'ready_for_submission'; else if (required.some((item) => item.status === 'blocked')) workstream.status = 'blocked'; else workstream.status = required.some((item) => ['running', 'needs_review', 'completed'].includes(item.status)) ? 'running' : workstream.status; workstream.progress = { total: tasks.length, completed: tasks.filter((item) => item.status === 'completed').length, blocked: tasks.filter((item) => item.status === 'blocked').length }; workstream.updated_at = now(); return workstream; }
 function unblockSiblingTasks(state, workstream) { if (!workstream) return; for (const task of state.workflow_nodes.filter((item) => item.role === 'task' && item.parent_node_id === workstream.id && item.status === 'blocked')) { const ready = dependencyIds(task).every((idValue) => state.workflow_nodes.find((item) => item.id === idValue)?.status === 'completed'); if (ready && dependencyIds(workstream).every((idValue) => state.workflow_nodes.find((item) => item.id === idValue)?.status === 'completed')) { task.status = 'ready'; task.updated_at = now(); } } }
 function unblockDownstreamWorkstreams(state, completed) { for (const workstream of state.workflow_nodes.filter((item) => item.role === 'workstream' && item.workflow_id === completed.workflow_id && item.status === 'blocked')) { if (!dependencyIds(workstream).every((idValue) => state.workflow_nodes.find((item) => item.id === idValue)?.status === 'completed')) continue; workstream.status = 'ready'; workstream.updated_at = now(); unblockSiblingTasks(state, workstream); } }

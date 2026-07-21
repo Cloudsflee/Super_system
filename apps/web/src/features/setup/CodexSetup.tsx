@@ -9,6 +9,7 @@ import { publicDeviceAuthSummary, type DeviceAuthSummary } from './codex-device-
 import { useCodexDiscovery } from './useCodexDiscovery';
 import { registerOperationRetry, upsertExternalOperation } from '../../operations/operation-store';
 import { CodexBuildProgress, safeBuildDiagnostics } from './CodexBuildProgress';
+import { DEFAULT_CODEX_TIMEOUT_MINUTES, codexTimeoutMinutesFromMs, codexTimeoutMinutesToMs, validCodexTimeoutMinutes } from './codex-timeout';
 
 const OPENROUTER_BASE_URL = 'https://openrouter.ai/api/v1';
 
@@ -20,6 +21,7 @@ export function CodexSetup({ state, onChange, deployment }: { state: StepState; 
   const [baseUrl, setBaseUrl] = useState('');
   const [wireApi, setWireApi] = useState<WireApi>('responses');
   const [model, setModel] = useState('gpt-5.1-codex');
+  const [timeoutMinutes, setTimeoutMinutes] = useState(DEFAULT_CODEX_TIMEOUT_MINUTES);
   const [profileName, setProfileName] = useState('');
   const [authProvider, setAuthProvider] = useState('');
   const [repairApiKey, setRepairApiKey] = useState('');
@@ -38,7 +40,7 @@ export function CodexSetup({ state, onChange, deployment }: { state: StepState; 
   const provider = providerChoice === 'custom' ? customProvider.trim() : providerChoice;
   const providerValid = Boolean(provider) && /^[a-zA-Z0-9][a-zA-Z0-9._-]{0,63}$/.test(provider);
   const endpointValid = !thirdParty || validBaseUrl(baseUrl);
-  const profileInputValid = providerValid && endpointValid && Boolean(model.trim());
+  const profileInputValid = providerValid && endpointValid && Boolean(model.trim()) && validCodexTimeoutMinutes(timeoutMinutes);
   const needsProfileRepair = Boolean(state.profile_id && (checks.provider_endpoint_valid === false || checks.auth_profile_match === false));
   const repairNeedsKey = needsProfileRepair && !sameProvider(authProvider, provider);
   const authMetadataReady = hydratedProfile === (state.profile_id || 'new');
@@ -72,6 +74,7 @@ export function CodexSetup({ state, onChange, deployment }: { state: StepState; 
         setBaseUrl(choice === 'openai' ? '' : record?.base_url || auth?.base_url || (choice === 'openrouter' ? OPENROUTER_BASE_URL : ''));
         setWireApi('responses');
         if (record?.model) setModel(record.model);
+        setTimeoutMinutes(codexTimeoutMinutesFromMs(record?.timeout_ms));
         if (record?.name) setProfileName(record.name);
         setAuthProvider(auth?.provider || '');
         if (auth?.auth_mode === 'api_key') setConnectionMode('manual');
@@ -119,7 +122,7 @@ export function CodexSetup({ state, onChange, deployment }: { state: StepState; 
       model: model.trim(),
       reasoning: 'high',
       web_search: false,
-      timeout_ms: 120000,
+      timeout_ms: codexTimeoutMinutesToMs(timeoutMinutes),
       mounts: []
     };
   }
@@ -222,7 +225,7 @@ export function CodexSetup({ state, onChange, deployment }: { state: StepState; 
 
       {(!checks.authenticated || needsProfileRepair) && <CodexConnectionSetup mode={connectionMode} runtimeReady={Boolean(checks.docker_ready)} repairing={needsProfileRepair} busy={busy} sourceAvailability={{ codex_home: deployment?.mode !== 'container' || deployment.imports.codex_home, cc_switch: deployment?.mode !== 'container' || deployment.imports.cc_switch }} providerChoice={providerChoice} customProvider={customProvider} baseUrl={baseUrl} wireApi={wireApi} apiKey={apiKey} providerValid={providerValid} endpointValid={endpointValid} deviceAuth={deviceAuth} discovery={discovery} onMode={setConnectionMode} onProvider={selectProvider} onCustomProvider={setCustomProvider} onBaseUrl={setBaseUrl} onWireApi={setWireApi} onApiKey={setApiKey} onDevice={device} onAuthenticate={authenticate} onDiscoveryRefresh={discovery.refresh} onDiscoveryImport={discovery.importConfig} />}
 
-      {checks.authenticated && !checks.profile_valid && (!state.profile_id || needsProfileRepair) && <CodexProfileForm repair={needsProfileRepair} thirdParty={thirdParty} busy={busy} valid={authMetadataReady && profileInputValid && (!repairNeedsKey || Boolean(repairApiKey))} providerChoice={providerChoice} customProvider={customProvider} baseUrl={baseUrl} wireApi={wireApi} model={model} repairNeedsKey={repairNeedsKey} repairApiKey={repairApiKey} onProvider={selectProvider} onCustomProvider={setCustomProvider} onBaseUrl={setBaseUrl} onWireApi={setWireApi} onModel={setModel} onRepairApiKey={setRepairApiKey} onCreate={createProfile} onRepair={repairProfile} />}
+      {checks.authenticated && !checks.profile_valid && (!state.profile_id || needsProfileRepair) && <CodexProfileForm repair={needsProfileRepair} thirdParty={thirdParty} busy={busy} valid={authMetadataReady && profileInputValid && (!repairNeedsKey || Boolean(repairApiKey))} providerChoice={providerChoice} customProvider={customProvider} baseUrl={baseUrl} wireApi={wireApi} model={model} timeoutMinutes={timeoutMinutes} repairNeedsKey={repairNeedsKey} repairApiKey={repairApiKey} onProvider={selectProvider} onCustomProvider={setCustomProvider} onBaseUrl={setBaseUrl} onWireApi={setWireApi} onModel={setModel} onTimeoutMinutes={setTimeoutMinutes} onRepairApiKey={setRepairApiKey} onCreate={createProfile} onRepair={repairProfile} />}
       {checks.docker_ready && checks.profile_valid && !checks.probe_ok && <div className="setup-row"><div><strong>非写入探针</strong><span>验证当前 profile、Endpoint 与隔离挂载</span></div><button className="button primary" disabled={busy} onClick={probe}><Play size={15} />运行 Probe</button></div>}
       {busy && <div className="inline-busy"><LoaderCircle className="spin" size={15} />正在执行</div>}
       {error && <div className="setup-feedback error probe-feedback" role="alert">

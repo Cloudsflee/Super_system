@@ -5,7 +5,7 @@ export const NODE_RUN_APPROVAL = 'node_run_authorization';
 export const GIT_COMMIT_APPROVAL = 'git_commit_authorization';
 export const GIT_PUBLISH_APPROVAL = 'git_publish_authorization';
 
-export function requireNodeRunApproval(state, { approvalId, nodeId, runner }) {
+export function requireNodeRunApproval(state, { approvalId, nodeId, runner, repositoryWorkspaceId = null }) {
   const proposal = state.change_proposals.find((item) => item.id === approvalId);
   if (!proposal) throw new HttpError(409, { error: 'node_run_approval_required' });
   const action = proposal.apply_action || {};
@@ -16,6 +16,7 @@ export function requireNodeRunApproval(state, { approvalId, nodeId, runner }) {
   if (proposal.node_id !== nodeId || action.node_id !== nodeId || approvedRunner !== runner) {
     throw new HttpError(409, { error: 'node_run_approval_scope_mismatch', approval_id: proposal.id });
   }
+  if ((action.repository_workspace_id || null) !== (repositoryWorkspaceId || null)) throw new HttpError(409, { error: 'node_run_approval_repository_workspace_mismatch', approval_id: proposal.id });
   if (proposal.consumed_at) throw new HttpError(409, { error: 'node_run_approval_consumed', approval_id: proposal.id });
   return proposal;
 }

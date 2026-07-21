@@ -4,6 +4,7 @@ import { spawn } from 'node:child_process';
 import { prepareCodexInvocation } from './codex-command.mjs';
 import {
   AIWS_RUNNER_IMAGE,
+  DEFAULT_CODEX_TIMEOUT_MS,
   RunnerStatus,
   agentsAiwsBlock,
   buildNodeRunResult,
@@ -16,7 +17,7 @@ export class AgentRunner {
 }
 
 export class CodexRunner extends AgentRunner {
-  constructor({ command = 'codex', timeoutMs = 120000 } = {}) {
+  constructor({ command = 'codex', timeoutMs = DEFAULT_CODEX_TIMEOUT_MS } = {}) {
     super('CodexRunner');
     const invocation = prepareCodexInvocation(command);
     this.command = invocation.command;
@@ -44,7 +45,7 @@ export class CodexRunner extends AgentRunner {
 }
 
 export class DockerCodexRunner extends AgentRunner {
-  constructor({ image = AIWS_RUNNER_IMAGE, timeoutMs = 120000, invocationBuilder = null, processRunner = runProcess } = {}) {
+  constructor({ image = AIWS_RUNNER_IMAGE, timeoutMs = DEFAULT_CODEX_TIMEOUT_MS, invocationBuilder = null, processRunner = runProcess } = {}) {
     super('DockerCodexRunner');
     this.image = image;
     this.timeoutMs = timeoutMs;

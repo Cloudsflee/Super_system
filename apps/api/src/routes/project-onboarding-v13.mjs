@@ -13,6 +13,7 @@ import { patchWorkflowDraftInState } from '../workflow-draft-service.mjs';
 import { assertProjectLifecycleIdle, purgeProjectLifecycle, restoreProjectLifecycle, trashProjectLifecycle, withProjectLifecycleLock } from '../project-lifecycle-operations.mjs';
 import { assertWorkflowHierarchy, normalizeWorkflowHierarchyNodes } from '../workflow-hierarchy-domain.mjs';
 import { startWorkflowGeneration } from '../workflow-generation-service.mjs';
+import { validateWorkflowPlanningQuality } from '../workflow-quality.mjs';
 
 export const projectOnboardingV13Routes = [
   makeRoute('GET', '/projects/:id/onboarding', getOnboarding),
@@ -45,7 +46,7 @@ async function getOnboarding({ res, params }) {
   const sourceReady = intake?.mode === 'brainstorm' || Boolean(intake?.code_source && project.managed_workspace_state === 'ready');
   const workflowDraft = state.workflow_drafts.find((item) => item.project_id === project.id) || null;
   const generation = state.workflow_generations.filter((item) => item.project_id === project.id).sort((a, b) => String(b.created_at).localeCompare(String(a.created_at)))[0] || null;
-  return send(res, 200, { project, intake, brief: briefs[0] || null, briefs, workflow_draft: workflowDraft, workflow_generation: generation, imports, assist_session: session, can_confirm: Boolean(intake?.mode && briefs[0] && workflowDraft && !intake.last_error && sourceReady && completeWorkflowDraft(workflowDraft)), onboarding_route: `/projects/${project.id}/onboarding` });
+  return send(res, 200, { project, intake, brief: briefs[0] || null, briefs, workflow_draft: workflowDraft, workflow_generation: generation, imports, assist_session: session, can_confirm: Boolean(intake?.mode && briefs[0] && workflowDraft && !intake.last_error && sourceReady && completeWorkflowDraft(project, briefs[0], workflowDraft)), onboarding_route: `/projects/${project.id}/onboarding` });
 }
 
 async function updateIntake({ res, params, body }) {
@@ -206,7 +207,7 @@ function findProject(state, idValue) { const project = state.projects.find((item
 function checkOptionalRevision(expected, current, error) { if (expected === undefined || expected === null) return; if (!Number.isInteger(expected)) throw new HttpError(400, { error: 'expected_revision_invalid' }); if (expected !== current) throw new HttpError(409, { error, expected_revision: expected, current_revision: current ?? null }); }
 function pairedConfirmationRevisions(body) { const brief = body.expected_brief_revision != null, workflow = body.expected_workflow_revision != null; if (brief !== workflow) throw new HttpError(400, { error: 'project_confirmation_revisions_required' }); return brief && workflow; }
 function rebaseSuggestedNodes(current = [], suggested = []) { const ids = suggested.map((node, index) => current[index]?.id || node.id); return suggested.map((node, index) => ({ ...node, id: ids[index], dependency_ids: (node.dependency_ids || []).map((dependencyId) => { const dependencyIndex = suggested.findIndex((candidate) => candidate.id === dependencyId); return dependencyIndex >= 0 ? ids[dependencyIndex] : dependencyId; }) })); }
-function completeWorkflowDraft(draft) { try { assertWorkflowHierarchy(normalizeWorkflowHierarchyNodes(draft?.nodes || []), { mode: 'formal', requireTasks: true }); return true; } catch { return false; } }
+function completeWorkflowDraft(project, brief, draft) { try { const nodes = normalizeWorkflowHierarchyNodes(draft?.nodes || []); assertWorkflowHierarchy(nodes, { mode: 'formal', requireTasks: true }); return validateWorkflowPlanningQuality({ nodes, project, brief, projectClassification: draft?.project_classification, briefCoverage: draft?.brief_coverage }).ok; } catch { return false; } }
 async function autoStartGeneration(projectId, adapter) { try { const state = await readState(), actor = owner(state); return (await startWorkflowGeneration(projectId, { adapter }, actor?.id)).generation; } catch (error) { if (['workflow_generation_intake_incomplete', 'workflow_generation_code_source_not_ready', 'workflow_generation_brief_and_draft_required', 'workflow_generation_project_not_draft'].includes(error?.payload?.error)) return null; throw error; } }
 function isGitRepository(value) { try { return Boolean(value && isGitRepo(value)); } catch { return false; } }
 function sanitizeImportedContexts(sources = [], attachments = []) { return sources.map((source, index) => source.path ? { type: source.type, label: source.label || attachments[index]?.label || '本地材料', path_scope: source.path_scope || 'managed_import', sha256: attachments[index]?.sha256 || null } : source); }

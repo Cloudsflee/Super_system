@@ -80,12 +80,12 @@ async function runV3Turn(turnId) {
       if (storedProfile.id !== 'test_adapter') turn.profile_id = storedProfile.id;
       Object.assign(turn, { model: profile.model, reasoning: profile.reasoning, status: 'running', updated_at: now() });
       pushV3Event(state, session.id, turn.id, 'started', { collaboration_mode: turn.collaboration_mode, code_access: turn.code_access, profile: publicProfile(profile), worktree_id: turn.worktree_id, change_batch_id: turn.change_batch_id });
-      return { turn, session, project, profile, attachments: turn.attachment_ids.map((key) => state.attachments.find((item) => item.id === key)).filter(Boolean), contextPack: state.context_packs.find((item) => item.id === turn.context_pack_id) };
+      return { turn, session, project, profile, repositoryWorkspace: state.repository_workspaces.find((item) => item.id === turn.repository_workspace_id && item.project_id === project.id && item.status === 'active') || null, attachments: turn.attachment_ids.map((key) => state.attachments.find((item) => item.id === key)).filter(Boolean), contextPack: state.context_packs.find((item) => item.id === turn.context_pack_id) };
     });
     if (!start) return;
 
     const worktree = batchInfo?.worktree || null;
-    const cwd = worktree?.path || readableProjectCwd(start.project);
+    const cwd = worktree?.path || start.repositoryWorkspace?.managed_path || readableProjectCwd(start.project);
     if (!worktree) await fsp.mkdir(cwd, { recursive: true, mode: 0o700 });
     const sandbox = start.turn.code_access === 'workspace_write' ? 'workspace-write' : 'read-only';
     const verifiedAttachmentPaths = await verifyTurnAttachmentManifest(start.turn, start.attachments, cwd);

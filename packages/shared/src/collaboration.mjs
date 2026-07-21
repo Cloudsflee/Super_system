@@ -1,5 +1,6 @@
 import { clone, hashString, id, now } from './utils.mjs';
 import { AIWS_RUNNER_IMAGE } from './version.mjs';
+import { DEFAULT_CODEX_TIMEOUT_MS } from './codex.mjs';
 
 export const ChangeProposalStatus = Object.freeze({
   Pending: 'pending',
@@ -28,7 +29,7 @@ export function createAgentSession({ projectId, workspaceId = null, scopeType = 
   };
 }
 
-export function createSubSubmission({ projectId, workspaceId, nodeId = null, fromSessionId, toSessionId, title, summary, changes = [], evidenceRefs = [], risks = [], actorId }) {
+export function createSubSubmission({ projectId, workspaceId, nodeId = null, fromSessionId, toSessionId, title, summary, changes = [], evidenceRefs = [], risks = [], outputBindings = [], inputSnapshotHash = null, actorId }) {
   const created = now();
   return {
     id: id('sub'),
@@ -41,6 +42,8 @@ export function createSubSubmission({ projectId, workspaceId, nodeId = null, fro
     summary: summary || '',
     changes,
     evidence_refs: evidenceRefs,
+    output_bindings: outputBindings,
+    input_snapshot_hash: inputSnapshotHash,
     risks,
     status: 'submitted',
     created_by_user_id: actorId,
@@ -104,6 +107,7 @@ export function defaultCodexProfiles(actorId = null) {
       name: 'Codex Docker 隔离运行',
       kind: 'docker',
       description: '每次 NodeRun 通过 docker run --rm 启动独立 Codex 容器。',
+      timeout_ms: DEFAULT_CODEX_TIMEOUT_MS,
       config: { image: AIWS_RUNNER_IMAGE, dockerfile: 'docker/codex-runner.Dockerfile' },
       status: 'needs_build',
       is_active: false,

@@ -2,6 +2,7 @@ import { hashString, id } from '../../../packages/shared/index.mjs';
 import { HttpError } from './http.mjs';
 import { MAX_WORKFLOW_DRAFT_NODES, WORKFLOW_NODE_TYPES } from './brief-workflow-domain.mjs';
 import { assertWorkflowHierarchy, normalizeWorkflowHierarchyNodes } from './workflow-hierarchy-domain.mjs';
+import { assertWorkflowPlanningQuality } from './workflow-quality.mjs';
 
 const ACTIVE_RUN_STATUSES = new Set(['queued', 'starting', 'running', 'waiting_approval', 'stopping']);
 const NODE_TYPES = new Set(WORKFLOW_NODE_TYPES);
@@ -65,6 +66,8 @@ function prepareHierarchyGraphPatch(state, workflow, input) {
   }
   candidate = normalizeWorkflowHierarchyNodes(candidate);
   assertWorkflowHierarchy(candidate, { mode: 'formal', requireTasks: true });
+  assertCompletedTaskDefinitions(currentNodes, candidate, normalized);
+  if (workflow.planning_quality === 'verified') assertFormalPlanningQuality(state, workflow, candidate, input.brief_coverage || workflow.brief_coverage);
   assertDeletedNodesIdle(state, workflow.id, deletedIds);
   const before = hierarchySnapshotFor(workflow, currentNodes, parentNodeId, expectedRevision);
   const after = hierarchySnapshotFor(workflow, candidate, parentNodeId, expectedRevision + 1);
@@ -98,12 +101,19 @@ function applyHierarchyOperation(nodes, source, parentNodeId) {
   }
   const nodeId = clean(source.node_id || source.target_id || source.id, 120), index = next.findIndex((node) => node.id === nodeId);
   if (index < 0 || !scoped.some((node) => node.id === nodeId)) throw new HttpError(404, { error: 'workflow_graph_node_not_found', node_id: nodeId, parent_node_id: parentNodeId });
+  if (type === 'reopen_task') {
+    if (!parentNodeId || next[index].role !== 'task') throw new HttpError(409, { error: 'workflow_reopen_task_scope_invalid', node_id: nodeId });
+    if (next[index].status !== 'completed') throw new HttpError(409, { error: 'workflow_reopen_task_not_completed', node_id: nodeId, status: next[index].status });
+    const reason = required(source.reason || source.justification, 'workflow_reopen_reason_required', 2000);
+    next[index] = { ...next[index], status: 'ready', execution_revision: Number(next[index].execution_revision || 1) + 1, reopened_from_revision: Number(next[index].execution_revision || 1), reopen_reason: reason };
+    return { nodes: next, operation: { type, node_id: nodeId, reason } };
+  }
   if (type === 'update_node') {
     const patch = object(source.patch || source.node, 'workflow_node_patch_required');
     if (patch.role !== undefined || patch.parent_node_id !== undefined) throw new HttpError(409, { error: 'workflow_node_scope_immutable', node_id: nodeId });
     const allowed = next[index].role === 'workstream'
       ? ['title', 'goal', 'outcome', 'category', 'boundary', 'acceptance_criteria', 'position']
-      : ['title', 'goal', 'task_kind', 'execution_mode', 'required', 'repository_intent', 'position'];
+      : ['title', 'goal', 'task_kind', 'execution_mode', 'required', 'repository_intent', 'capability_tags', 'acceptance_criteria', 'input_slots', 'output_slots', 'atomic_justification', 'position'];
     const normalizedPatch = Object.fromEntries(Object.entries(patch).filter(([key]) => allowed.includes(key)));
     if (!Object.keys(normalizedPatch).length) throw new HttpError(400, { error: 'workflow_node_patch_empty' });
     next[index] = { ...next[index], ...structuredClone(normalizedPatch) };
@@ -134,7 +144,9 @@ function hierarchySnapshotFor(workflow, nodes, parentNodeId, revision) {
       id: node.id, role: node.role, parent_node_id: node.parent_node_id, title: node.title, goal: node.goal,
       outcome: node.outcome, category: node.category, task_kind: node.task_kind, execution_mode: node.execution_mode,
       boundary: node.boundary, acceptance_criteria: node.acceptance_criteria, required: node.required,
-      repository_intent: node.repository_intent, order_index: node.order_index, dependency_ids: [...node.dependency_ids].sort()
+      repository_intent: node.repository_intent, capability_tags: node.capability_tags, input_slots: node.input_slots,
+      output_slots: node.output_slots, atomic_justification: node.atomic_justification, status: node.status,
+      execution_revision: Number(node.execution_revision || 1), order_index: node.order_index, dependency_ids: [...node.dependency_ids].sort()
     }))
   };
 }
@@ -150,7 +162,7 @@ function hierarchyVisualGraph(nodes, parentNodeId) {
 
 function hierarchyNodes(state, workflowId) { return normalizeWorkflowHierarchyNodes(state.workflow_nodes.filter((item) => item.workflow_id === workflowId).map((node) => ({ ...node, dependency_ids: dependencyIds(node) }))); }
 function hierarchyScope(nodes, parentNodeId) { return nodes.filter((node) => parentNodeId ? node.role === 'task' && node.parent_node_id === parentNodeId : node.role === 'workstream'); }
-function hierarchyClone(node) { return { ...node, dependency_ids: [...(node.dependency_ids || [])], position: { ...(node.position || {}) }, boundary: node.boundary ? structuredClone(node.boundary) : null, acceptance_criteria: [...(node.acceptance_criteria || [])] }; }
+function hierarchyClone(node) { return { ...node, dependency_ids: [...(node.dependency_ids || [])], position: { ...(node.position || {}) }, boundary: node.boundary ? structuredClone(node.boundary) : null, acceptance_criteria: [...(node.acceptance_criteria || [])], capability_tags: [...(node.capability_tags || [])], input_slots: structuredClone(node.input_slots || []), output_slots: structuredClone(node.output_slots || []) }; }
 function isHierarchyWorkflow(state, workflow) { const nodes = state.workflow_nodes.filter((item) => item.workflow_id === workflow.id); return workflow.hierarchy_mode === 'two_level' || nodes.some((node) => node.role === 'workstream'); }
 function graphRevision(workflow, nodes, parentNodeId) { return parentNodeId ? Number(nodes.find((node) => node.id === parentNodeId)?.plan_revision || 1) : Number(workflow.workflow_revision || workflow.version || 1); }
 
@@ -220,6 +232,17 @@ function validateCandidate(nodes) {
 }
 
 function assertDeletedNodesIdle(state, workflowId, deletedIds) { for (const nodeId of deletedIds) { const active = state.node_runs.find((item) => item.node_id === nodeId && ACTIVE_RUN_STATUSES.has(item.status)); if (active) throw new HttpError(409, { error: 'workflow_graph_active_node_run', workflow_id: workflowId, node_id: nodeId, run_id: active.id }); } }
+export function assertCompletedTaskDefinitions(before, after, operations = []) {
+  const next = new Map(after.map((node) => [node.id, node])), reopened = new Set(operations.filter((item) => item.type === 'reopen_task').map((item) => item.node_id));
+  for (const task of before.filter((node) => node.role === 'task' && node.status === 'completed')) {
+    const candidate = next.get(task.id);
+    if (!candidate) throw new HttpError(409, { error: 'completed_task_immutable', node_id: task.id, action: 'create_follow_up_task_or_reopen_revision' });
+    if (reopened.has(task.id)) continue;
+    if (JSON.stringify(taskDefinition(task)) !== JSON.stringify(taskDefinition(candidate))) throw new HttpError(409, { error: 'completed_task_immutable', node_id: task.id, action: 'create_follow_up_task_or_reopen_revision' });
+  }
+}
+function assertFormalPlanningQuality(state, workflow, nodes, briefCoverage) { const project = state.projects.find((item) => item.id === workflow.project_id), brief = state.project_briefs.filter((item) => item.project_id === workflow.project_id && item.status !== 'superseded').sort((a, b) => Number(b.version || 0) - Number(a.version || 0))[0]; assertWorkflowPlanningQuality({ nodes, project, brief, projectClassification: workflow.project_classification, briefCoverage }); }
+function taskDefinition(node) { return { parent_node_id: node.parent_node_id, title: node.title, goal: node.goal, task_kind: node.task_kind, execution_mode: node.execution_mode, required: node.required !== false, repository_intent: node.repository_intent || null, capability_tags: node.capability_tags || [], acceptance_criteria: node.acceptance_criteria || [], input_slots: node.input_slots || [], output_slots: node.output_slots || [], atomic_justification: node.atomic_justification || null, dependency_ids: dependencyIds(node) }; }
 function snapshotFor(workflow, nodes, revision) { const ordered = [...nodes].map(candidateNode).sort((left, right) => left.order_index - right.order_index); return { workflow_id: workflow.id, revision, nodes: ordered.map((node) => ({ id: node.id, type: node.type, title: node.title, goal: node.goal, order_index: node.order_index, dependency_ids: [...node.dependency_ids].sort() })) }; }
 function workflowNodes(state, workflowId) { return state.workflow_nodes.filter((item) => item.workflow_id === workflowId).sort((left, right) => Number(left.order_index || 0) - Number(right.order_index || 0)); }
 function candidateNode(node, index = 0) { return { id: clean(node.id, 120), type: node.type, title: clean(node.title, 100), goal: clean(node.goal || node.title, 2000), status: node.status || 'ready', order_index: Number.isInteger(node.order_index) ? node.order_index : index, dependency_ids: dependencyIds(node), position: validPosition(node.position, Number.isInteger(node.order_index) ? node.order_index : index) }; }

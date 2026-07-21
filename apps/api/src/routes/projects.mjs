@@ -56,7 +56,8 @@ async function nodeWorkspace({ res, params }) {
   const state = await readState(), bundle = nodeBundle(state, params.id);
   if (!bundle.node || !bundle.workflow || !bundle.project || !bundle.workspace) throw new HttpError(404, { error: 'node_workspace_not_found' });
   const data = state.node_workspace_data.find((item) => item.node_id === bundle.node.id)?.data || {};
-  return send(res, 200, { ...bundle, node: decorateNode(state, bundle.node), data, runs: state.node_runs.filter((item) => item.node_id === bundle.node.id), code_changes: state.code_changes.filter((item) => item.node_id === bundle.node.id), assets: state.assets.filter((item) => item.node_id === bundle.node.id || item.project_id === bundle.project.id), traces: state.traces.filter((item) => item.node_id === bundle.node.id || item.project_id === bundle.project.id).slice(-300) });
+  const assets = state.assets.filter((item) => item.node_id === bundle.node.id || item.project_id === bundle.project.id), assetIds = new Set(assets.map((item) => item.id));
+  return send(res, 200, { ...bundle, node: decorateNode(state, bundle.node), data, runs: state.node_runs.filter((item) => item.node_id === bundle.node.id), code_changes: state.code_changes.filter((item) => item.node_id === bundle.node.id), assets, asset_versions: state.asset_versions.filter((item) => assetIds.has(item.asset_id)), asset_relations: state.asset_relations.filter((item) => assetIds.has(item.source_asset_id) || assetIds.has(item.target_asset_id)), submissions: state.submissions.filter((item) => item.project_id === bundle.project.id && (item.node_id === bundle.node.id || item.to_scope_id === bundle.node.id)), traces: state.traces.filter((item) => item.node_id === bundle.node.id || item.project_id === bundle.project.id).slice(-300) });
 }
 
 async function saveWorkspaceData({ res, params, body }) {

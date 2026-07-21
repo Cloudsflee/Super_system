@@ -102,7 +102,9 @@ corepack pnpm verify
 
 `verify` 会再次运行 lint、typecheck、全部 integration、Prisma migration check、Web build、E2E smoke、三视口 Playwright 和 acceptance audit。默认套件使用临时 `AIWS_HOME`，不读取个人凭据执行外部写入。
 
-发布前还应执行 `corepack pnpm test:v19:release`。该专项覆盖 schema 17 只读克隆、17→18 原子迁移、runner 镜像升级、记录 ID/文件保全、回执复验和 V1.8 源字节不变。`corepack pnpm test:v18:release` 与 `docs/v1.8-cutover.md` 继续作为只读历史基线使用。
+发布前还应执行 `corepack pnpm test:v19:full` 与 `corepack pnpm test:v19:release`。两者由 `scripts/v19-runner.mjs` 按 catalog 执行，并在 `.ai-workspace/test-reports/v1.9/<run-id>/` 生成 Markdown、JSON 和脱敏日志。release 专项覆盖 schema 17 只读克隆、17→18 原子迁移、runner 镜像升级、记录 ID/文件保全、回执复验和 V1.8 源字节不变。`corepack pnpm test:v18:release` 与 `docs/v1.8-cutover.md` 继续作为只读历史基线使用。
+
+真实 MCP 建仓与 Draft PR 验收使用 `$env:AIWS_MCP_LIVE_SMOKE_CONFIRM='create-private-github-repository'; corepack pnpm test:v19:live`。未提供精确确认值时，runner 生成 `BLOCKED` 报告且不执行远端创建。
 
 ## V1.9 Live 验收
 

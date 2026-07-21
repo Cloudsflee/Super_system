@@ -118,14 +118,17 @@ try {
     profile_id: profiles[0].id,
     patch: {
       name: 'Native Direct Provider', provider: 'native-direct', provider_name: 'Native Direct',
-      base_url: 'https://native-direct.example/v1', model: 'native/direct-codex', reasoning: 'high'
+      base_url: 'https://native-direct.example/v1', model: 'native/direct-codex', reasoning: 'high', timeout_ms: 1_800_000
     }
   }, 201);
   assert.equal(nativeDirect.revision.apply_mode, 'native');
+  assert.equal(typeof nativeDirect.proposal.before_json.timeout_ms, 'number');
+  assert.equal(nativeDirect.proposal.after_json.timeout_ms, 1_800_000);
   const nativeDirectActivated = await api(port, `/approvals/proposal/${nativeDirect.proposal.id}/decision`, 'POST', {
     decision: 'approve_apply', revision: nativeDirect.proposal.revision, target_hash: nativeDirect.proposal.target_hash, adapter: 'test'
   });
   assert.equal(nativeDirectActivated.revision.reconciliation.mode, 'native-profile');
+  assert.equal(nativeDirectActivated.profile.timeout_ms, 1_800_000);
   assert.equal(JSON.parse(fs.readFileSync(path.join(fixture.home, 'data', 'state.json'), 'utf8')).integration_statuses.some((item) => item.key === 'cc_switch_managed'), false);
 
   const config = await api(port, '/codex/config-revisions', 'POST', {
@@ -159,6 +162,14 @@ try {
   await api(port, '/codex/config-revisions', 'POST', {
     profile_id: profiles[0].id,
     patch: { mcp_servers: [{ name: 'unsafe', command: 'powershell', args: [] }] }
+  }, 400, 'invalid_codex_profile');
+  await api(port, '/codex/config-revisions', 'POST', {
+    profile_id: profiles[0].id,
+    patch: { timeout_ms: 0 }
+  }, 400, 'invalid_codex_profile');
+  await api(port, '/codex/config-revisions', 'POST', {
+    profile_id: profiles[0].id,
+    patch: { timeout_ms: '1800000' }
   }, 400, 'invalid_codex_profile');
 
   const rollbackConfig = await api(port, '/codex/config-revisions', 'POST', {
