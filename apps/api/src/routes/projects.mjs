@@ -65,4 +65,38 @@ async function saveWorkspaceData({ res, params, body }) {
   return send(res, 200, result);
 }
 
-function decorateNode(state, node) { const runs = state.node_runs.filter((item) => item.node_id === node.id).sort((a, b) => String(b.created_at).localeCompare(String(a.created_at))); return { ...node, latest_run: runs[0] || null, output_count: state.assets.filter((item) => item.node_id === node.id).length, pending_approval_count: state.change_proposals.filter((item) => item.node_id === node.id && item.status === 'pending').length }; }
+function decorateNode(state, node) {
+  const runs = state.node_runs.filter((item) => item.node_id === node.id).sort((a, b) => String(b.created_at).localeCompare(String(a.created_at)));
+  const decorated = {
+    ...node,
+    latest_run: runs[0] || null,
+    output_count: state.assets.filter((item) => item.node_id === node.id).length,
+    pending_approval_count: state.change_proposals.filter((item) => item.node_id === node.id && item.status === 'pending').length
+  };
+  if (node.role !== 'workstream') return decorated;
+
+  const tasks = state.workflow_nodes.filter((item) => item.role === 'task' && item.parent_node_id === node.id);
+  const required = tasks.filter((item) => item.required !== false);
+  const completed = tasks.filter((item) => item.status === 'completed').length;
+  const blocked = tasks.filter((item) => item.status === 'blocked').length;
+  const pendingApprovals = state.change_proposals.filter((item) =>
+    (item.node_id === node.id || tasks.some((task) => task.id === item.node_id)) && item.status === 'pending'
+  ).length;
+  const status = required.some((item) => item.status === 'blocked')
+    ? 'blocked'
+    : required.length > 0 && required.every((item) => item.status === 'completed')
+      ? 'ready_for_submission'
+      : required.some((item) => ['running', 'needs_review', 'completed'].includes(item.status))
+        ? 'running'
+        : node.status;
+  return {
+    ...decorated,
+    status,
+    task_count: tasks.length,
+    completed_task_count: completed,
+    progress: tasks.length ? completed / tasks.length : 0,
+    blocked_count: blocked,
+    output_count: state.assets.filter((item) => item.node_id === node.id || tasks.some((task) => task.id === item.node_id)).length,
+    pending_approval_count: pendingApprovals
+  };
+}
