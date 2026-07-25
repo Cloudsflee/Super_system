@@ -1,18 +1,18 @@
 import { ReactFlowProvider } from '@xyflow/react';
-import { GitPullRequest, LayoutDashboard, ListTree } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { Navigate, useParams } from 'react-router-dom';
 import { useProject } from '../../api/queries';
-import type { ProjectBundle, Workflow } from '../../api/types';
+import type { ProjectBundle, Workflow, WorkflowExecutionSnapshot } from '../../api/types';
 import { FullPageState } from '../../components/common/FullPageState';
+import { RouteToolbarPortal } from '../../components/shell/RouteToolbarHost';
 import { useAssistSurface } from '../../components/assist/semantic-actions';
 import { useUi } from '../../state/ui';
 import { WorkflowCanvas } from './canvas/WorkflowCanvas';
 import { WorkflowFullProcess } from './WorkflowFullProcess';
 import { WorkflowMigrationGate } from './WorkflowMigrationGate';
 import { WorkflowReplanPanel } from './WorkflowReplanPanel';
-
-type WorkflowView = 'outcomes' | 'process';
+import { WorkflowExecutionBar } from './WorkflowExecutionBar';
+import { WorkflowRouteToolbar, type WorkflowView } from './WorkflowRouteToolbar';
 
 export function WorkflowPage() {
   const { projectId } = useParams();
@@ -35,32 +35,30 @@ export function WorkflowPage() {
   const allNodeIds = new Set(allNodes.map((node) => node.id)), workstreamIds = new Set(workstreamNodes.map((node) => node.id));
   const bundle: ProjectBundle = { ...project.data, workflows: [workflow], nodes: allNodes, contracts: project.data.contracts.filter((contract) => allNodeIds.has(contract.node_id)) };
   const canvasBundle: ProjectBundle = { ...bundle, nodes: workstreamNodes, contracts: bundle.contracts.filter((contract) => workstreamIds.has(contract.node_id)) };
-  return <ActiveWorkflow bundle={bundle} canvasBundle={canvasBundle} workflow={workflow} />;
+  return <ActiveWorkflow bundle={bundle} canvasBundle={canvasBundle} workflow={workflow} onRefresh={() => void project.refetch()} />;
 }
 
-function ActiveWorkflow({ bundle, canvasBundle, workflow }: { bundle: ProjectBundle; canvasBundle: ProjectBundle; workflow: Workflow }) {
+function ActiveWorkflow({ bundle, canvasBundle, workflow, onRefresh }: { bundle: ProjectBundle; canvasBundle: ProjectBundle; workflow: Workflow; onRefresh: () => void }) {
   const contextNodeId = useUi((state) => state.contextNodeId);
   const setContextNode = useUi((state) => state.setContextNode);
+  const taskDensity = useUi((state) => state.workflowTaskDensity);
+  const setTaskDensity = useUi((state) => state.setWorkflowTaskDensity);
   const [view, setView] = useState<WorkflowView>(() => workflow.planning_quality === 'verified' ? 'process' : 'outcomes');
   const [replanOpen, setReplanOpen] = useState(false);
+  const [execution, setExecution] = useState<WorkflowExecutionSnapshot | null>(null);
   useEffect(() => { if (contextNodeId && !bundle.nodes.some((item) => item.id === contextNodeId)) setContextNode(null); }, [bundle.nodes, contextNodeId, setContextNode]);
   useEffect(() => {
     if (workflow.planning_quality === 'verified') setView('process');
   }, [workflow.id, workflow.planning_quality, workflow.version, workflow.workflow_revision]);
   useAssistSurface({ id: `workflow-${workflow.id}`, revision: `${workflow.id}:v${Number(workflow.workflow_revision || workflow.version || 1)}` });
   const role = bundle.membership?.role || bundle.project.current_user_role;
-  return <section className="workflow-view-shell">
-    <header className="workflow-viewbar">
-      <div className="workflow-view-title"><h1>{workflow.title}</h1><span>v{Number(workflow.workflow_revision || workflow.version || 1)} · {canvasBundle.nodes.length} 个成果 · {bundle.nodes.length - canvasBundle.nodes.length} 个任务</span></div>
-      <div className="workflow-view-switch" role="tablist" aria-label="工作流视图">
-        <button role="tab" aria-selected={view === 'outcomes'} onClick={() => setView('outcomes')}><LayoutDashboard size={15} />成果视图</button>
-        <button role="tab" aria-selected={view === 'process'} onClick={() => setView('process')}><ListTree size={15} />完整流程</button>
-      </div>
-      <button className="button secondary workflow-replan-open" aria-expanded={replanOpen} disabled={role === 'viewer'} onClick={() => setReplanOpen((value) => !value)}><GitPullRequest size={15} />重新规划</button>
-    </header>
-    <div className={`workflow-view-layout ${replanOpen ? 'replan-open' : ''}`}>
+  return <section className={`workflow-view-shell${workflow.planning_quality === 'verified' ? ' workflow-execution-enabled' : ''}`}>
+    <h1 className="sr-only">{workflow.title}</h1>
+    <RouteToolbarPortal><WorkflowRouteToolbar view={view} density={taskDensity} replanOpen={replanOpen} canReplan={role !== 'viewer'} onView={setView} onDensity={setTaskDensity} onReplan={() => setReplanOpen((value) => !value)} /></RouteToolbarPortal>
+    {workflow.planning_quality === 'verified' && <WorkflowExecutionBar bundle={bundle} workflow={workflow} canWrite={role !== 'viewer'} onRefresh={onRefresh} onSnapshot={setExecution} />}
+    <div className={`workflow-view-layout ${view}-view ${replanOpen ? 'replan-open' : ''}`}>
       <div className="workflow-view-content">
-        {view === 'outcomes' ? <ReactFlowProvider><WorkflowCanvas bundle={canvasBundle} workflow={workflow} /></ReactFlowProvider> : <WorkflowFullProcess bundle={bundle} workflow={workflow} />}
+        {view === 'outcomes' ? <ReactFlowProvider><WorkflowCanvas bundle={canvasBundle} workflow={workflow} /></ReactFlowProvider> : <WorkflowFullProcess bundle={bundle} workflow={workflow} execution={execution} density={taskDensity} />}
       </div>
       {replanOpen && <WorkflowReplanPanel projectId={bundle.project.id} workflow={workflow} canWrite={role !== 'viewer'} onClose={() => setReplanOpen(false)} />}
     </div>

@@ -132,7 +132,8 @@ function isCallerAbort(_value: unknown, signal: AbortSignal | null | undefined, 
 function friendlyMessage(code: string, candidate: unknown, status: number) {
   const catalog: Record<string, string> = {
     request_timeout: '请求超时', network_request_failed: '无法连接到本地服务', internal_error: '服务端处理请求时发生内部错误',
-    setup_required: '需要先完成工作区配置', not_found: '请求的资源不存在', codex_build_not_found: '未找到该 Codex 构建任务'
+    setup_required: '需要先完成工作区配置', not_found: '请求的资源不存在', codex_build_not_found: '未找到该 Codex 构建任务',
+    discovery_source_stale: '本地配置已变化，请刷新后重新选择'
   };
   const value = String(candidate || '');
   return catalog[code] || (value && value !== code ? value : code || (status ? `请求失败（HTTP ${status}）` : '请求失败'));

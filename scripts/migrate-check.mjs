@@ -27,6 +27,7 @@ const coreModels = [
 ];
 for (const model of coreModels) assert.ok(schema.includes(`model ${model}`), `schema contains ${model}`);
 for (const model of ['InstanceConfiguration', 'ProjectMembership', 'ProjectInvitation', 'CanonicalRepository', 'ProjectRepositoryBinding', 'RepositoryDeletionIntent', 'ExchangeRequest', 'ExchangeGrant']) assert.ok(schema.includes(`model ${model}`), `schema contains V1.9 ${model}`);
+for (const model of ['AssetBlob', 'AssetAttestation', 'WorkflowExecution', 'TaskExecution', 'ExecutionEvent', 'RepositoryLine']) assert.ok(schema.includes(`model ${model}`), `schema contains V1.10 ${model}`);
 for (const mapped of ['users', 'projects', 'context_packs', 'node_runs', 'trace_events', 'assets', 'code_changes', 'tool_definitions']) assert.ok(schema.includes(`@@map("${mapped}")`), `schema maps ${mapped}`);
 const declaredModels = [...schema.matchAll(/^model\s+(\w+)\s*\{/gm)].map((match) => match[1]);
 assert.equal(new Set(declaredModels).size, declaredModels.length, 'schema model names are unique');
@@ -62,4 +63,7 @@ assert.match(schema, /model AssistOperation[\s\S]*?operationReferenceId\s+String
 assert.match(schema, /model Project[\s\S]*?ownerUserId\s+String[\s\S]*?createdByUserId/, 'project schema keeps V1.9 owner');
 assert.match(schema, /model RepositoryDeletionIntent[\s\S]*?snapshotHash[\s\S]*?projectOwnerConfirmations/, 'repository deletion schema keeps revision snapshot and approvals');
 assert.match(schema, /model ExchangeRequest[\s\S]*?snapshotVersion[\s\S]*?tokenBudget[\s\S]*?sourceApproval[\s\S]*?targetApproval/, 'exchange schema keeps immutable snapshot and dual approvals');
+assert.match(schema, /model AssetVersion[\s\S]*?payloadKind[\s\S]*?contentSha256[\s\S]*?blobRefs[\s\S]*?repositorySha[\s\S]*?provenance[\s\S]*?immutable/, 'asset version schema keeps immutable CAS identity and provenance');
+assert.match(schema, /model TaskExecution[\s\S]*?taskRevision[\s\S]*?contractVersion[\s\S]*?inputSnapshotHash[\s\S]*?outputBindings[\s\S]*?lease/, 'task execution schema pins revisions, inputs, outputs, and lease');
+for (const mapped of ['asset_blobs', 'asset_attestations', 'workflow_executions', 'task_executions', 'execution_events', 'repository_lines']) assert.ok(schema.includes(`@@map("${mapped}")`), `schema maps V1.10 collection ${mapped}`);
 console.log(`migration/schema check passed (${coreModels.length} core models)`);

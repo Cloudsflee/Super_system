@@ -1,15 +1,18 @@
 import { createBrowserRouter, Navigate } from 'react-router-dom';
 import { RequireSetup } from './setup-guard';
 import { AppShell } from '../components/shell/AppShell';
+import { RouteErrorState } from '../components/common/RouteErrorState';
 import { WorkspaceEntry } from './WorkspaceEntry';
 
 export const router = createBrowserRouter([
-  { path: '/setup', lazy: page(() => import('../features/setup/SetupPage'), 'SetupPage') },
-  { path: '/integrations/github/install/setup', lazy: page(() => import('../features/setup/SetupPage'), 'SetupPage') },
+  { path: '/setup', errorElement: <RouteErrorState />, lazy: page(() => import('../features/setup/SetupPage'), 'SetupPage') },
+  { path: '/integrations/github/install/setup', errorElement: <RouteErrorState />, lazy: page(() => import('../features/setup/SetupPage'), 'SetupPage') },
   {
     element: <RequireSetup />,
+    errorElement: <RouteErrorState />,
     children: [{
       element: <AppShell />,
+      errorElement: <RouteErrorState />,
       children: [
         { index: true, element: <WorkspaceEntry /> },
         { path: '/projects', lazy: page(() => import('../features/projects/ProjectsPage'), 'ProjectsPage') },

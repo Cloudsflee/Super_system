@@ -30,19 +30,19 @@ describe('Codex Setup provider configuration', () => {
     expect(screen.getByRole('button', { name: 'cc-switch' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: '本地 Codex' })).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: '手动 API' }));
-    fireEvent.change(screen.getByRole('combobox', { name: 'Provider' }), { target: { value: 'custom' } });
+    fireEvent.change(screen.getByRole('combobox', { name: '服务商' }), { target: { value: 'custom' } });
 
-    const endpoint = screen.getByRole('textbox', { name: 'API Base URL' });
-    const submit = screen.getByRole('button', { name: '保存凭据与 Endpoint' });
-    expect(screen.getByRole('textbox', { name: 'Provider ID' })).toHaveValue('custom');
+    const endpoint = screen.getByRole('textbox', { name: 'API 根地址' });
+    const submit = screen.getByRole('button', { name: '保存凭据与接口地址' });
+    expect(screen.getByRole('textbox', { name: '服务商标识' })).toHaveValue('custom');
     expect(endpoint).toBeRequired();
     expect(endpoint).toHaveAttribute('aria-invalid', 'true');
     expect(submit).toBeDisabled();
 
-    fireEvent.change(screen.getByRole('textbox', { name: 'Provider ID' }), { target: { value: 'acme' } });
-    fireEvent.change(screen.getByLabelText('API Key'), { target: { value: 'sk-third-party' } });
+    fireEvent.change(screen.getByRole('textbox', { name: '服务商标识' }), { target: { value: 'acme' } });
+    fireEvent.change(screen.getByLabelText('API 密钥'), { target: { value: 'sk-third-party' } });
     fireEvent.change(endpoint, { target: { value: 'not-a-url' } });
-    expect(await screen.findByRole('alert', { name: '' })).toHaveTextContent('请输入完整的 http:// 或 https:// API Base URL');
+    expect(await screen.findByRole('alert', { name: '' })).toHaveTextContent('请输入完整的 http:// 或 https:// API 根地址');
     expect(submit).toBeDisabled();
 
     fireEvent.change(endpoint, { target: { value: 'https://api.acme.test/v1' } });
@@ -73,9 +73,9 @@ describe('Codex Setup provider configuration', () => {
     const onChange = vi.fn().mockResolvedValue(undefined);
     render(<CodexSetup state={codexState({ docker_ready: true, authenticated: true, cc_switch_ready: false, profile_valid: false, probe_ok: false })} onChange={onChange} />);
 
-    await waitFor(() => expect(screen.getByRole('textbox', { name: 'API Base URL' })).toHaveValue('https://openrouter.ai/api/v1'));
+    await waitFor(() => expect(screen.getByRole('textbox', { name: 'API 根地址' })).toHaveValue('https://openrouter.ai/api/v1'));
     expect(screen.queryByText(/Runtime Bridge/)).not.toBeInTheDocument();
-    const save = screen.getByRole('button', { name: '保存并校验 Profile' });
+    const save = screen.getByRole('button', { name: '保存并校验配置' });
     expect(screen.getByRole('spinbutton', { name: '任务超时（分钟）' })).toHaveValue(30);
     expect(save).toBeEnabled();
     fireEvent.click(save);
@@ -96,10 +96,10 @@ describe('Codex Setup provider configuration', () => {
     }));
     render(<CodexSetup state={codexState({ docker_ready: true, authenticated: true, cc_switch_ready: false, profile_valid: false, probe_ok: false })} onChange={vi.fn().mockResolvedValue(undefined)} />);
 
-    await waitFor(() => expect(screen.getByRole('textbox', { name: 'Provider ID' })).toHaveValue('acme'));
-    expect(screen.getByRole('textbox', { name: 'API Base URL' })).toHaveValue('https://api.acme.test/v1');
+    await waitFor(() => expect(screen.getByRole('textbox', { name: '服务商标识' })).toHaveValue('acme'));
+    expect(screen.getByRole('textbox', { name: 'API 根地址' })).toHaveValue('https://api.acme.test/v1');
     expect(screen.getByRole('combobox', { name: 'API 协议' })).toHaveValue('responses');
-    expect(screen.getByRole('button', { name: '保存并校验 Profile' })).toBeEnabled();
+    expect(screen.getByRole('button', { name: '保存并校验配置' })).toBeEnabled();
     expect(screen.queryByText(/Runtime Bridge/)).not.toBeInTheDocument();
   });
 
@@ -119,16 +119,16 @@ describe('Codex Setup provider configuration', () => {
     const state = { ...codexState({ docker_ready: true, authenticated: true, auth_profile_match: true, provider_endpoint_valid: false, cc_switch_ready: false, profile_valid: false, probe_ok: false }), profile_id: 'legacy-profile' };
     render(<CodexSetup state={state} onChange={onChange} />);
 
-    expect(await screen.findByText('修复现有 Codex Profile')).toBeInTheDocument();
+    expect(await screen.findByText('修复现有 Codex 配置')).toBeInTheDocument();
     expect(screen.getByRole('group', { name: 'Codex 配置来源' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'cc-switch' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: '本地 Codex' })).toBeInTheDocument();
-    await waitFor(() => expect(screen.getByRole('textbox', { name: 'Provider ID' })).toHaveValue('acme'));
+    await waitFor(() => expect(screen.getByRole('textbox', { name: '服务商标识' })).toHaveValue('acme'));
     expect(screen.getByRole('spinbutton', { name: '任务超时（分钟）' })).toHaveValue(10);
-    expect(screen.queryByLabelText('修复 Profile API Key')).not.toBeInTheDocument();
-    expect(screen.queryByText('第三方 Profile 已保存')).not.toBeInTheDocument();
-    fireEvent.change(screen.getByRole('textbox', { name: 'API Base URL' }), { target: { value: 'https://api.acme.test/v1' } });
-    fireEvent.click(screen.getByRole('button', { name: '保存 Endpoint 并修复 Profile' }));
+    expect(screen.queryByLabelText('修复配置 API 密钥')).not.toBeInTheDocument();
+    expect(screen.queryByText('第三方配置已保存')).not.toBeInTheDocument();
+    fireEvent.change(screen.getByRole('textbox', { name: 'API 根地址' }), { target: { value: 'https://api.acme.test/v1' } });
+    fireEvent.click(screen.getByRole('button', { name: '保存接口地址并修复配置' }));
 
     await waitFor(() => expect(onChange).toHaveBeenCalledOnce());
     const auth = calls.find((item) => item.url.endsWith('/codex/auth/api-key') && item.init?.method === 'POST');
@@ -164,12 +164,12 @@ describe('Codex Setup provider configuration', () => {
     const onChange = vi.fn().mockResolvedValue(undefined);
     render(<CodexSetup state={{ ...codexState({ docker_ready: true, authenticated: true, profile_valid: true, probe_ok: false }), profile_id: 'profile-probe' }} onChange={onChange} />);
 
-    fireEvent.click(screen.getByRole('button', { name: '运行 Probe' }));
+    fireEvent.click(screen.getByRole('button', { name: '运行探针' }));
     const alert = await screen.findByRole('alert');
     expect(alert).toHaveTextContent('Docker 引擎当前不可用');
     expect(alert).toHaveTextContent('启动 Docker Desktop');
-    expect(screen.getByRole('list', { name: 'Probe 校验结果' })).toHaveTextContent('配置语法已通过');
-    expect(screen.getByRole('list', { name: 'Probe 校验结果' })).toHaveTextContent('Docker 运行时失败');
+    expect(screen.getByRole('list', { name: '探针校验结果' })).toHaveTextContent('配置语法已通过');
+    expect(screen.getByRole('list', { name: '探针校验结果' })).toHaveTextContent('Docker 运行时失败');
     expect(onChange).not.toHaveBeenCalled();
   });
 });

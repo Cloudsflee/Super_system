@@ -19,9 +19,9 @@ describe('execution workspace branch selection', () => {
     renderWithClient(<ExecutionWorkspace value={nodeWorkspace()} onSaved={vi.fn()} />);
 
     expect(await screen.findByText('当前目录为空')).toBeInTheDocument();
-    expect(screen.getByRole('combobox', { name: 'Repository' })).toBeInTheDocument();
-    expect(screen.getByRole('combobox', { name: 'Branch' })).toHaveValue('main');
-    expect(screen.queryByRole('combobox', { name: 'Repository Workspace' })).not.toBeInTheDocument();
+    expect(screen.getByRole('combobox', { name: '代码仓库' })).toBeInTheDocument();
+    expect(screen.getByRole('combobox', { name: '分支' })).toHaveValue('main');
+    expect(screen.queryByRole('combobox', { name: '执行副本' })).not.toBeInTheDocument();
     expect(screen.queryByText('执行副本')).not.toBeInTheDocument();
     expect(fetch.mock.calls.some(([, init]) => init?.method === 'POST')).toBe(false);
   });
@@ -42,7 +42,7 @@ describe('execution workspace branch selection', () => {
     const createCalls = fetch.mock.calls.filter(([input, init]) => String(input).endsWith('/projects/project-1/repository-workspaces') && init?.method === 'POST');
     expect(createCalls).toHaveLength(1);
     expect(JSON.parse(String(createCalls[0][1]?.body))).toMatchObject({ ref: 'main', expected_sha: 'abcdef1234567890' });
-    expect(screen.queryByRole('combobox', { name: 'Repository Workspace' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('combobox', { name: '执行副本' })).not.toBeInTheDocument();
   });
 
   it('only offers advanced copy selection when a branch has multiple copies', async () => {
@@ -56,7 +56,7 @@ describe('execution workspace branch selection', () => {
     expect(selector).toHaveValue('copy-current');
     fireEvent.change(selector, { target: { value: 'copy-old' } });
     await waitFor(() => expect(selector).toHaveValue('copy-old'));
-    expect(screen.getByText('stale')).toBeInTheDocument();
+    expect(screen.getByText('已过期')).toBeInTheDocument();
   });
 
   it('keeps viewers read-only when the selected branch has no reusable copy', async () => {

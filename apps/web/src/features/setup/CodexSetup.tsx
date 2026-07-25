@@ -10,6 +10,7 @@ import { useCodexDiscovery } from './useCodexDiscovery';
 import { registerOperationRetry, upsertExternalOperation } from '../../operations/operation-store';
 import { CodexBuildProgress, safeBuildDiagnostics } from './CodexBuildProgress';
 import { DEFAULT_CODEX_TIMEOUT_MINUTES, codexTimeoutMinutesFromMs, codexTimeoutMinutesToMs, validCodexTimeoutMinutes } from './codex-timeout';
+import { displayStatus, setupDetailLabel } from '../../components/common/display-labels';
 
 const OPENROUTER_BASE_URL = 'https://openrouter.ai/api/v1';
 
@@ -201,37 +202,37 @@ export function CodexSetup({ state, onChange, deployment }: { state: StepState; 
     setProbeReport(null);
     setDeviceAuth({ status: 'starting' });
     try {
-      const result = await api<{ authenticated?: boolean; events_url?: string }>('/codex/auth/device/start', json('POST', undefined, '启动 Codex Device Login'));
+      const result = await api<{ authenticated?: boolean; events_url?: string }>('/codex/auth/device/start', json('POST', undefined, '启动 Codex 设备登录'));
       if (!result.events_url) { setDeviceAuth({ status: 'completed' }); await onChange(); setBusy(false); return; }
       const source = new EventSource(`/api${result.events_url}`);
       source.addEventListener('auth', (event) => { const safe = publicDeviceAuthSummary(JSON.parse((event as MessageEvent).data)); setDeviceAuth((value) => ({ ...value, ...safe, status: safe.status || 'waiting' })); });
-      source.addEventListener('done', async (event) => { source.close(); setBusy(false); const result = JSON.parse((event as MessageEvent).data), status = result.status === 'completed' ? 'completed' : result.status === 'cancelled' ? 'cancelled' : 'failed'; setDeviceAuth((value) => ({ ...value, status })); if (status === 'failed') setError('Codex Device Login 失败，请重试'); await onChange(); });
+      source.addEventListener('done', async (event) => { source.close(); setBusy(false); const result = JSON.parse((event as MessageEvent).data), status = result.status === 'completed' ? 'completed' : result.status === 'cancelled' ? 'cancelled' : 'failed'; setDeviceAuth((value) => ({ ...value, status })); if (status === 'failed') setError('Codex 设备登录失败，请重试'); await onChange(); });
       source.onerror = () => { source.close(); setBusy(false); setDeviceAuth((value) => ({ ...value, status: 'failed' })); setError('Codex 登录事件流已断开'); };
     } catch (value) { setBusy(false); setDeviceAuth({ status: 'failed' }); setError(message(value)); }
   };
   const authenticate = () => act(() => api('/codex/auth/api-key', json('POST', { ...connectionFields(), api_key: apiKey }, '保存 Codex 认证')));
-  const createProfile = () => act(() => api('/codex/profiles', json('POST', profileFields(), '创建 Codex Profile')));
+  const createProfile = () => act(() => api('/codex/profiles', json('POST', profileFields(), '创建 Codex 配置')));
   const repairProfile = () => act(async () => {
     if (thirdParty || repairNeedsKey) await api('/codex/auth/api-key', json('POST', { ...connectionFields(), ...(repairApiKey ? { api_key: repairApiKey } : {}) }, '更新 Codex 认证'));
-    await api(`/codex/profiles/${state.profile_id}`, json('PUT', profileFields(), '修复 Codex Profile'));
+    await api(`/codex/profiles/${state.profile_id}`, json('PUT', profileFields(), '修复 Codex 配置'));
   });
-  const probe = () => act(() => api('/codex/probe', json('POST', { profile_id: state.profile_id }, '运行 Codex Probe')));
+  const probe = () => act(() => api('/codex/probe', json('POST', { profile_id: state.profile_id }, '运行 Codex 探针')));
 
   return (
     <section className="setup-section">
-      <div className="section-title"><Cpu size={18} /><div><h2>Codex</h2><p>{state.detail || '等待运行时验证'}</p></div><span className={`status ${state.ready ? 'ready' : 'pending'}`}>{state.ready && <Check size={12} />}{state.status}</span></div>
-      {!checks.docker_ready && <div className="setup-row"><div><strong>Docker Runtime</strong><span>{deployment?.mode === 'container' ? '预构建 Runner 镜像当前不可用' : '隔离 Runner 镜像'}</span></div>{deployment?.mode === 'container' ? <span className="status failed"><Box size={13} />需要重新部署</span> : !buildOperation ? <button className="button primary" disabled={busy} onClick={build}><Box size={15} />检测并构建</button> : null}</div>}
+      <div className="section-title"><Cpu size={18} /><div><h2>Codex</h2><p>{setupDetailLabel(state.detail) || '等待运行环境验证'}</p></div><span className={`status ${state.ready ? 'ready' : 'pending'}`}>{state.ready && <Check size={12} />}{displayStatus(state.status)}</span></div>
+      {!checks.docker_ready && <div className="setup-row"><div><strong>Docker 运行环境</strong><span>{deployment?.mode === 'container' ? '预构建执行器镜像当前不可用' : '隔离执行器镜像'}</span></div>{deployment?.mode === 'container' ? <span className="status failed"><Box size={13} />需要重新部署</span> : !buildOperation ? <button className="button primary" disabled={busy} onClick={build}><Box size={15} />检测并构建</button> : null}</div>}
       {buildOperation && <CodexBuildProgress operation={buildOperation} connection={buildConnection} busy={busy} onCancel={cancelBuild} onCopy={copyBuildDiagnostics} onRetry={build} />}
 
       {(!checks.authenticated || needsProfileRepair) && <CodexConnectionSetup mode={connectionMode} runtimeReady={Boolean(checks.docker_ready)} repairing={needsProfileRepair} busy={busy} sourceAvailability={{ codex_home: deployment?.mode !== 'container' || deployment.imports.codex_home, cc_switch: deployment?.mode !== 'container' || deployment.imports.cc_switch }} providerChoice={providerChoice} customProvider={customProvider} baseUrl={baseUrl} wireApi={wireApi} apiKey={apiKey} providerValid={providerValid} endpointValid={endpointValid} deviceAuth={deviceAuth} discovery={discovery} onMode={setConnectionMode} onProvider={selectProvider} onCustomProvider={setCustomProvider} onBaseUrl={setBaseUrl} onWireApi={setWireApi} onApiKey={setApiKey} onDevice={device} onAuthenticate={authenticate} onDiscoveryRefresh={discovery.refresh} onDiscoveryImport={discovery.importConfig} />}
 
       {checks.authenticated && !checks.profile_valid && (!state.profile_id || needsProfileRepair) && <CodexProfileForm repair={needsProfileRepair} thirdParty={thirdParty} busy={busy} valid={authMetadataReady && profileInputValid && (!repairNeedsKey || Boolean(repairApiKey))} providerChoice={providerChoice} customProvider={customProvider} baseUrl={baseUrl} wireApi={wireApi} model={model} timeoutMinutes={timeoutMinutes} repairNeedsKey={repairNeedsKey} repairApiKey={repairApiKey} onProvider={selectProvider} onCustomProvider={setCustomProvider} onBaseUrl={setBaseUrl} onWireApi={setWireApi} onModel={setModel} onTimeoutMinutes={setTimeoutMinutes} onRepairApiKey={setRepairApiKey} onCreate={createProfile} onRepair={repairProfile} />}
-      {checks.docker_ready && checks.profile_valid && !checks.probe_ok && <div className="setup-row"><div><strong>非写入探针</strong><span>验证当前 profile、Endpoint 与隔离挂载</span></div><button className="button primary" disabled={busy} onClick={probe}><Play size={15} />运行 Probe</button></div>}
+      {checks.docker_ready && checks.profile_valid && !checks.probe_ok && <div className="setup-row"><div><strong>非写入探针</strong><span>验证当前 Codex 配置、接口地址与隔离挂载</span></div><button className="button primary" disabled={busy} onClick={probe}><Play size={15} />运行探针</button></div>}
       {busy && <div className="inline-busy"><LoaderCircle className="spin" size={15} />正在执行</div>}
       {error && <div className="setup-feedback error probe-feedback" role="alert">
         <strong>{error}</strong>
         {errorAction && <span>{errorAction}</span>}
-        {probeReport?.checks?.length ? <ol aria-label="Probe 校验结果">{probeReport.checks.map((check) => <li key={check.phase} className={check.status}>
+        {probeReport?.checks?.length ? <ol aria-label="探针校验结果">{probeReport.checks.map((check) => <li key={check.phase} className={check.status}>
           <span>{check.label}</span><b>{check.status === 'passed' ? '已通过' : check.status === 'failed' ? '失败' : '未执行'}</b>
         </li>)}</ol> : null}
       </div>}

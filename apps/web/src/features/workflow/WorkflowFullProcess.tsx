@@ -1,127 +1,170 @@
-import { ArrowRight, Check, CircleDashed, GitBranch, Link2, LockKeyhole } from 'lucide-react';
+import { ArrowRight, Check, CircleDashed, Code2 } from 'lucide-react';
+import { useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
-import type { AssetRecord, NodeContract, NodeInputSlot, ProjectBundle, Workflow, WorkflowNode } from '../../api/types';
+import type { ProjectBundle, Workflow, WorkflowExecutionSnapshot } from '../../api/types';
+import type { WorkflowTaskDensity } from '../../state/ui';
+import { WorkflowTaskInspector } from './WorkflowTaskDetails';
+import { WorkflowTaskRow } from './WorkflowTaskRow';
+import {
+  buildWorkflowProcessViewModel,
+  normalizeTaskStatus,
+  workflowCategoryLabel,
+  WORKFLOW_STAGES,
+  type WorkflowTaskViewModel
+} from './WorkflowTaskViewModel';
+import { buildTaskTopologyFocus, WorkflowTopologyLayer } from './WorkflowTopology';
+import { useWorkflowProcessLayout, useWorkflowTaskSelection, type WorkflowProcessLayout } from './useWorkflowProcessController';
 
-const STAGES = [
-  ['research_evidence', '调研取证'], ['constraint_analysis', '约束分析'], ['solution_decision', '方案决策'],
-  ['execution', '实现执行'], ['acceptance', '测试验收'], ['integration_delivery', '集成交付']
-] as const;
-const COVERAGE_LABELS: Record<string, string> = { features: '特性', acceptance_criteria: '验收', milestones: '里程碑', risks: '风险' };
-
-export function WorkflowFullProcess({ bundle, workflow }: { bundle: ProjectBundle; workflow: Workflow }) {
-  const nodes = bundle.nodes.filter((item) => item.workflow_id === workflow.id);
-  const workstreams = nodes.filter((item) => item.role === 'workstream');
-  const tasks = nodes.filter((item) => item.role === 'task');
-  const taskById = new Map(tasks.map((item) => [item.id, item]));
+export function WorkflowFullProcess({
+  bundle,
+  workflow,
+  execution,
+  density
+}: {
+  bundle: ProjectBundle;
+  workflow: Workflow;
+  execution?: WorkflowExecutionSnapshot | null;
+  density: WorkflowTaskDensity;
+}) {
+  const containerRef = useRef<HTMLElement>(null);
+  const scrollPositions = useRef(new Map<string, number>());
+  const process = useMemo(() => buildWorkflowProcessViewModel(bundle, workflow, execution), [bundle, execution, workflow]);
+  const { layout, width } = useWorkflowProcessLayout(containerRef);
+  const selection = useWorkflowTaskSelection(process.tasks, layout, workflow.id);
+  const displayedTask = process.tasks.find((item) => item.id === selection.displayedTaskId);
   const software = /software|code/i.test(workflow.project_classification || '');
-  return <section className="workflow-full-process" aria-label="完整 Task 流程">
-    <header className="workflow-process-summary">
-      <div><span>PROCESS COVERAGE</span><strong>{tasks.length} 个任务 · {workstreams.length} 个成果</strong></div>
-      <div className="workflow-phase-coverage" role="list" aria-label="六阶段覆盖">
-        {STAGES.map(([key, label]) => <PhaseState key={key} tag={key} label={label} tasks={tasks} software={software} />)}
-      </div>
-    </header>
-    <div className="workflow-process-streams">
-      {workstreams.map((workstream, streamIndex) => {
-        const localTasks = tasks.filter((item) => item.parent_node_id === workstream.id).sort(byOrder);
-        return <section className="workflow-process-stream" key={workstream.id} aria-labelledby={`process-${workstream.id}`}>
-          <header>
-            <div className="workflow-stream-index">{String(streamIndex + 1).padStart(2, '0')}</div>
-            <div><span>{categoryLabel(workstream.category)}</span><h2 id={`process-${workstream.id}`}>{workstream.title}</h2><p>{workstream.outcome || workstream.goal}</p></div>
-            <div className="workflow-stream-progress"><strong>{localTasks.filter((item) => normalizedStatus(item.status) === 'completed').length}/{localTasks.length}</strong><span>已验收</span></div>
-            <Link to={`/projects/${bundle.project.id}/workflow/${workstream.id}`} aria-label={`进入成果节点：${workstream.title}`}><ArrowRight size={17} /></Link>
-          </header>
-          <div className="workflow-task-dag" role="list">
-            {localTasks.map((task, index) => <TaskProcessRow key={task.id} bundle={bundle} task={task} taskById={taskById} workflow={workflow} index={index} />)}
+
+  return <section
+    ref={containerRef}
+    className="workflow-full-process"
+    aria-label="完整任务流程"
+    data-density={density}
+    data-layout={layout}
+    data-container-width={Math.round(width)}
+  >
+    <div className="workflow-process-body">
+      <div className="workflow-process-master">
+        <header className="workflow-process-summary" aria-label={`流程覆盖：${process.tasks.length} 个任务，${process.workstreams.length} 个成果`}>
+          <div className="workflow-coverage-title"><span>流程覆盖</span><strong>{process.tasks.length} 个任务</strong></div>
+          <div className="workflow-phase-coverage" role="list" aria-label="六阶段覆盖">
+            {WORKFLOW_STAGES.map(([key, label]) => <PhaseState key={key} tag={key} label={label} tasks={process.tasks} software={software} />)}
           </div>
-        </section>;
-      })}
-      {!workstreams.length && <div className="workflow-process-empty">当前工作流没有成果节点。</div>}
+        </header>
+        <div className="workflow-process-streams">
+          {process.workstreams.map((workstream, streamIndex) => <section className="workflow-process-stream" key={workstream.node.id} aria-labelledby={`process-${workstream.node.id}`}>
+            <header>
+              <div className="workflow-stream-band">
+                <div className="workflow-stream-index">{String(streamIndex + 1).padStart(2, '0')}</div>
+                <div className="workflow-stream-main"><span>{workflowCategoryLabel(workstream.node.category)}</span><h2 id={`process-${workstream.node.id}`}>{workstream.node.title}</h2><p>{workstream.node.outcome || workstream.node.goal}</p></div>
+                <div className="workflow-stream-progress"><strong>{workstream.tasks.filter((item) => item.status === 'completed').length}/{workstream.tasks.length}</strong><span>已验收</span></div>
+                <div className="workflow-stream-actions">
+                  {hasCodeWorkspace(workstream.node) && <Link className="workflow-stream-code" to={`/projects/${bundle.project.id}/nodes/${workstream.node.id}`} aria-label={`查看代码：${workstream.node.title}`}><Code2 size={15} /><span>代码</span></Link>}
+                  <Link to={`/projects/${bundle.project.id}/workflow/${workstream.node.id}`} aria-label={`进入成果节点：${workstream.node.title}`} data-tooltip="任务总览"><ArrowRight size={17} /></Link>
+                </div>
+              </div>
+            </header>
+            <TaskDag
+              tasks={workstream.tasks}
+              projectId={bundle.project.id}
+              density={density}
+              layout={layout}
+              pinnedTaskId={selection.pinnedTaskId}
+              displayedTaskId={selection.displayedTaskId}
+              transientTaskId={selection.transientTaskId}
+              transientAnchor={selection.transientAnchor}
+              beginTransient={selection.beginTransient}
+              restoreSelection={selection.restoreSelection}
+              setPin={selection.setPin}
+              togglePin={selection.togglePin}
+            />
+          </section>)}
+          {!process.workstreams.length && <div className="workflow-process-empty">当前工作流没有成果节点。</div>}
+        </div>
+      </div>
+      {layout === 'master-detail' && <WorkflowTaskInspector
+        model={displayedTask}
+        projectId={bundle.project.id}
+        pinned={Boolean(displayedTask && displayedTask.id === selection.pinnedTaskId)}
+        scrollPositions={scrollPositions}
+        onTogglePin={() => { if (displayedTask) selection.togglePin(displayedTask.id); }}
+        onPointerEnter={selection.cancelRestore}
+        onPointerLeave={() => selection.restoreSelection(100)}
+      />}
     </div>
   </section>;
 }
 
-function PhaseState({ tag, label, tasks, software }: { tag: string; label: string; tasks: WorkflowNode[]; software: boolean }) {
-  const matched = tasks.filter((item) => phaseTags(item).includes(tag));
-  const completed = matched.length > 0 && matched.every((item) => normalizedStatus(item.status) === 'completed');
-  const active = matched.some((item) => ['running', 'needs_review'].includes(normalizedStatus(item.status)));
+function TaskDag({
+  tasks,
+  projectId,
+  density,
+  layout,
+  pinnedTaskId,
+  displayedTaskId,
+  transientTaskId,
+  transientAnchor,
+  beginTransient,
+  restoreSelection,
+  setPin,
+  togglePin
+}: {
+  tasks: WorkflowTaskViewModel[];
+  projectId: string;
+  density: WorkflowTaskDensity;
+  layout: WorkflowProcessLayout;
+  pinnedTaskId: string | null;
+  displayedTaskId: string | null;
+  transientTaskId: string | null;
+  transientAnchor: HTMLElement | null;
+  beginTransient: (taskId: string, anchor: HTMLElement, delay: number) => void;
+  restoreSelection: (delay: number) => void;
+  setPin: (taskId: string) => void;
+  togglePin: (taskId: string) => void;
+}) {
+  const [directFocusTaskId, setDirectFocusTaskId] = useState<string | null>(null);
+  const selectedTopologyTaskId = layout === 'master-detail' ? transientTaskId || pinnedTaskId : null;
+  const activeTaskId = directFocusTaskId || selectedTopologyTaskId;
+  const nodes = useMemo(() => tasks.map((item) => item.task), [tasks]);
+  const topology = useMemo(() => buildTaskTopologyFocus(nodes, activeTaskId), [activeTaskId, nodes]);
+  const layoutRevision = `${density}:${layout}${layout === 'accordion' ? `:${pinnedTaskId || ''}` : ''}`;
+  return <div className={`workflow-task-dag${activeTaskId ? ' topology-focused' : ''}`} role="list">
+    <WorkflowTopologyLayer tasks={nodes} activeTaskId={activeTaskId} layoutRevision={layoutRevision} />
+    {tasks.map((model, index) => <WorkflowTaskRow
+      key={model.id}
+      model={model}
+      projectId={projectId}
+      density={density}
+      index={index}
+      layout={layout}
+      expanded={layout === 'accordion' && pinnedTaskId === model.id}
+      pinned={pinnedTaskId === model.id}
+      selected={layout === 'master-detail' ? displayedTaskId === model.id : pinnedTaskId === model.id}
+      previewAnchor={transientTaskId === model.id ? transientAnchor : null}
+      topologyRelation={topology.relations.get(model.id) || 'neutral'}
+      onTopologyFocus={setDirectFocusTaskId}
+      onPreviewPointerEnter={(taskId, anchor) => {
+        if (layout === 'accordion' && pinnedTaskId === taskId) return;
+        beginTransient(taskId, anchor, 250);
+      }}
+      onPreviewPointerLeave={() => restoreSelection(100)}
+      onPreviewFocus={(taskId, anchor) => {
+        if (layout === 'accordion' && pinnedTaskId === taskId) return;
+        beginTransient(taskId, anchor, 0);
+      }}
+      onPreviewBlur={() => restoreSelection(0)}
+      onSetPin={() => setPin(model.id)}
+      onTogglePin={() => togglePin(model.id)}
+    />)}
+  </div>;
+}
+
+function PhaseState({ tag, label, tasks, software }: { tag: string; label: string; tasks: WorkflowTaskViewModel[]; software: boolean }) {
+  const matched = tasks.filter((item) => item.phaseTags.includes(tag));
+  const completed = matched.length > 0 && matched.every((item) => normalizeTaskStatus(item.status) === 'completed');
+  const active = matched.some((item) => ['running', 'verifying', 'awaiting_human', 'failed'].includes(normalizeTaskStatus(item.status)));
   const state = !matched.length ? (software ? 'missing' : 'merged') : completed ? 'completed' : active ? 'active' : 'planned';
-  return <div role="listitem" className={`workflow-phase ${state}`}><span>{completed ? <Check size={12} /> : <CircleDashed size={12} />}{label}</span><small>{matched.length ? `${matched.length} Task` : software ? '缺失' : '已合并'}</small></div>;
+  const stateLabel = matched.length ? `${matched.length} 个任务` : software ? '缺失' : '已合并';
+  return <div role="listitem" aria-label={`${label}：${stateLabel}`} className={`workflow-phase ${state}`}><span>{completed ? <Check size={11} /> : <CircleDashed size={11} />}<b>{label}</b></span><small>{matched.length || (software ? '!' : '合')}</small></div>;
 }
 
-function TaskProcessRow({ bundle, task, taskById, workflow, index }: { bundle: ProjectBundle; task: WorkflowNode; taskById: Map<string, WorkflowNode>; workflow: Workflow; index: number }) {
-  const dependencies = dependencyIds(task).map((id) => taskById.get(id)).filter(Boolean) as WorkflowNode[];
-  const contract = currentContract(bundle.contracts.filter((item) => item.node_id === task.id), task.current_contract_id);
-  const inputs = contract?.expected_inputs?.length ? contract.expected_inputs : task.input_slots || [];
-  const outputs = contract?.expected_outputs?.length ? contract.expected_outputs : task.output_slots || [];
-  const blockers = blockingReasons(bundle, task, dependencies, inputs);
-  const coverage = Object.entries(workflow.brief_coverage || {}).filter(([, ids]) => ids.includes(task.id)).map(([key]) => COVERAGE_LABELS[key] || key);
-  const lineages = assetFlow(bundle, task, dependencies, inputs, outputs.map((item) => item.key));
-  return <article className={`workflow-process-task ${normalizedStatus(task.status)}`} role="listitem">
-    <div className="workflow-task-sequence"><span>{String(index + 1).padStart(2, '0')}</span><i /></div>
-    <div className="workflow-task-main">
-      <header><span className="workflow-task-stage">{phaseLabel(task)}</span><span className={`task-status ${normalizedStatus(task.status)}`}>{statusLabel(task.status)}</span></header>
-      <h3>{task.title}</h3><p>{task.goal}</p>
-      <div className="workflow-task-tags">{task.capability_tags?.map((tag) => <span key={tag}>{tag}</span>)}{coverage.map((item) => <span className="brief-map" key={item}>{item}</span>)}</div>
-    </div>
-    <div className="workflow-task-dependencies">
-      <strong><GitBranch size={13} />前置依赖</strong>
-      {dependencies.length ? dependencies.map((item) => <span key={item.id}>{normalizedStatus(item.status) === 'completed' ? <Check size={12} /> : <CircleDashed size={12} />}{item.title}</span>) : <span>无</span>}
-      {blockers.map((item) => <em key={item}><LockKeyhole size={12} />{item}</em>)}
-    </div>
-    <div className="workflow-task-contract">
-      <div><strong>Typed inputs</strong>{inputs.map((slot) => <span key={slot.key}>{slot.key}<small>{slot.kind} · {slot.required ? '必需' : '可选'}</small></span>)}</div>
-      <div><strong>Typed outputs</strong>{outputs.map((slot) => <span key={slot.key}>{slot.key}<small>{slot.asset_type} · {slot.confirmation_policy === 'human' ? '人工确认' : '证据确认'}</small></span>)}</div>
-    </div>
-    <div className="workflow-task-assets"><strong><Link2 size={13} />资产流</strong>{lineages.map((item, itemIndex) => <span key={`${item}-${itemIndex}`}>{item}</span>)}</div>
-    <Link className="workflow-task-enter" to={`/projects/${bundle.project.id}/nodes/${task.id}`} aria-label={`打开任务：${task.title}`}><ArrowRight size={16} /></Link>
-  </article>;
-}
-
-function blockingReasons(bundle: ProjectBundle, task: WorkflowNode, dependencies: WorkflowNode[], inputs: NodeInputSlot[]) {
-  const reasons: string[] = [], waiting = dependencies.filter((item) => normalizedStatus(item.status) !== 'completed');
-  if (waiting.length) reasons.push(`等待 ${waiting.map((item) => item.title).join('、')}`);
-  for (const slot of inputs.filter((item) => item.required && item.source === 'dependency')) {
-    if (!bundle.assets.some((asset) => asset.node_id === slot.ref_id && asset.status === 'confirmed' && asset.current_version_id)) reasons.push(`输入 ${slot.key} 待确认`);
-  }
-  if (bundle.runs.some((run) => run.node_id === task.id && run.input_superseded)) reasons.push('输入版本已替代，需重新验收');
-  if (normalizedStatus(task.status) === 'blocked' && !reasons.length) reasons.push('执行上下文门禁未满足');
-  return [...new Set(reasons)];
-}
-
-function assetFlow(bundle: ProjectBundle, task: WorkflowNode, dependencies: WorkflowNode[], inputs: NodeInputSlot[], outputKeys: string[]) {
-  const outputAssets = bundle.assets.filter((item) => item.node_id === task.id), outputIds = new Set(outputAssets.map((item) => item.id));
-  const exact = (bundle.asset_relations || []).filter((item) => item.relation_type === 'derived_from' && outputIds.has(item.target_asset_id)).map((item) => `${assetVersionLabel(bundle, item.source_asset_id, item.source_asset_version_id)} -> 当前输入 -> ${assetVersionLabel(bundle, item.target_asset_id, item.target_asset_version_id)}`);
-  if (exact.length) return exact;
-  const targets = outputAssets.length ? outputAssets.map((item) => assetVersionLabel(bundle, item.id, item.current_version_id)) : outputKeys.map((key) => `${key}（待产出）`);
-  const planned = inputs.map((slot) => `${inputSourceLabel(bundle, slot, dependencies)} -> ${slot.key} -> ${targets.join('、') || '待定义输出'}`);
-  return planned.length ? planned : ['无显式输入 -> 待定义输出'];
-}
-
-function inputSourceLabel(bundle: ProjectBundle, slot: NodeInputSlot, dependencies: WorkflowNode[]) {
-  if (slot.version_id) return assetVersionLabel(bundle, bundle.asset_versions?.find((item) => item.id === slot.version_id)?.asset_id || slot.ref_id || '', slot.version_id);
-  if (slot.source === 'dependency') {
-    const dependency = dependencies.find((item) => item.id === slot.ref_id), assets = bundle.assets.filter((item) => item.node_id === dependency?.id && item.status === 'confirmed');
-    return assets.length ? assets.map((item) => assetVersionLabel(bundle, item.id, item.current_version_id)).join('、') : `${dependency?.title || slot.ref_id || '上游任务'}（待确认）`;
-  }
-  if (slot.source === 'brief') return 'Project Brief';
-  if (slot.source === 'repository_workspace') return 'Repository 固定快照';
-  const asset = bundle.assets.find((item) => item.id === slot.ref_id);
-  return asset ? assetVersionLabel(bundle, asset.id, asset.current_version_id) : slot.selector || slot.source;
-}
-
-function assetVersionLabel(bundle: ProjectBundle, assetId: string, versionId?: string | null) {
-  const asset: AssetRecord | undefined = bundle.assets.find((item) => item.id === assetId), version = bundle.asset_versions?.find((item) => item.id === versionId);
-  return `${asset?.title || version?.title || assetId || '资产'} @ ${shortId(versionId || asset?.current_version_id)}`;
-}
-
-function dependencyIds(task: WorkflowNode) { return (task.dependencies || []).map((item) => item.node_id).filter(Boolean) as string[]; }
-function currentContract(items: NodeContract[], id?: string) { return items.find((item) => item.id === id) || [...items].sort((a, b) => b.version - a.version)[0]; }
-function phaseTags(task: WorkflowNode) { return task.capability_tags?.length ? task.capability_tags : inferredTags(task.task_kind); }
-function phaseLabel(task: WorkflowNode) { const tag = phaseTags(task).find((item) => STAGES.some(([key]) => key === item)); return STAGES.find(([key]) => key === tag)?.[1] || '执行任务'; }
-function inferredTags(kind?: string | null) { return ({ research: ['research_evidence'], analysis: ['constraint_analysis'], design: ['solution_decision'], code: ['execution'], content: ['execution'], test: ['acceptance'], review: ['acceptance'], deploy: ['integration_delivery'], integration: ['integration_delivery'] } as Record<string, string[]>)[kind || ''] || ['execution']; }
-function byOrder(a: WorkflowNode, b: WorkflowNode) { return a.order_index - b.order_index; }
-function normalizedStatus(value: string) { return value === 'draft' || value === 'queued' ? 'ready' : value === 'succeeded' ? 'completed' : value; }
-function statusLabel(value: string) { return ({ ready: '待执行', running: '进行中', needs_review: '待验收', completed: '已完成', blocked: '阻塞' } as Record<string, string>)[normalizedStatus(value)] || value; }
-function categoryLabel(value?: string | null) { return ({ deliverable: '交付成果', decision: '关键决策', coordination: '协同成果', operation: '运营成果' } as Record<string, string>)[value || ''] || '成果节点'; }
-function shortId(value?: string | null) { return value ? value.slice(0, 10) : '待绑定'; }
+function hasCodeWorkspace(node: ProjectBundle['nodes'][number]) { return node.type === 'execution' || Boolean(node.repository_target_ids?.length); }

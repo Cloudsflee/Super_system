@@ -13,7 +13,7 @@ services:
       - mcp-core
 
   mcp-gateway:
-    image: ${AIWS_MCP_GATEWAY_IMAGE:-aiws-mcp-gateway:1.9.0}
+    image: ${AIWS_MCP_GATEWAY_IMAGE:-aiws-mcp-gateway:1.10.0}
     build:
       context: .
       dockerfile: Dockerfile

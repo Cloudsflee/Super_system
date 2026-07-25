@@ -1,13 +1,12 @@
 ﻿# Keep this file UTF-8 with BOM for Windows PowerShell 5.1 compatibility.
 [CmdletBinding()]
 param(
-  [Parameter(Position = 0)][ValidateSet('up', 'down', 'logs', 'status', 'verify', 'backup', 'restore', 'reset', 'purge-legacy', 'bridge')][string]$Command = 'status',
+  [Parameter(Position = 0)][ValidateSet('up', 'down', 'logs', 'status', 'verify', 'backup', 'restore', 'reset', 'bridge')][string]$Command = 'status',
   [Parameter(Position = 1)][string]$Path,
   [string]$ProjectsRoot,
   [string]$CodexHome,
   [string]$CcSwitchRoot,
   [switch]$Confirm,
-  [switch]$DiscardUnmigratable,
   [string]$PairingCode
 )
 
@@ -15,9 +14,8 @@ $ErrorActionPreference = 'Stop'
 $Root = Split-Path -Parent $PSScriptRoot
 $ComposeFile = Join-Path $Root 'compose.yml'
 $Volume = 'aiws-data-v19'
-$SourceVolume = 'aiws-data-v18'
-$AppImage = if ($env:AIWS_APP_IMAGE) { $env:AIWS_APP_IMAGE } else { 'aiws-app:1.9.0' }
-$RunnerImage = if ($env:AIWS_RUNNER_IMAGE) { $env:AIWS_RUNNER_IMAGE } else { 'aiws-codex-runner:1.9.0-codex-0.144.0' }
+$AppImage = if ($env:AIWS_APP_IMAGE) { $env:AIWS_APP_IMAGE } else { 'aiws-app:1.10.0' }
+$RunnerImage = if ($env:AIWS_RUNNER_IMAGE) { $env:AIWS_RUNNER_IMAGE } else { 'aiws-codex-runner:1.10.0-codex-0.144.0' }
 $Port = if ($env:AIWS_PORT) { [int]$env:AIWS_PORT } else { 4317 }
 $env:AIWS_DOCKER_DATA_VOLUME = $Volume
 $env:AIWS_APP_IMAGE = $AppImage
@@ -75,7 +73,7 @@ function Build-Images {
 }
 
 function Build-VerifyImage {
-  $verifyImage = 'aiws-verify:1.9.0'
+  $verifyImage = 'aiws-verify:1.10.0'
   $compatible = $false
   & docker image inspect $verifyImage *> $null
   if ($LASTEXITCODE -eq 0) {
@@ -203,18 +201,16 @@ switch ($Command) {
     $override = New-ImportOverride
     try {
       $releaseArgs = @(
-        (Join-Path $Root 'scripts\v19-release.mjs'), 'up',
+        (Join-Path $Root 'scripts\v110-release.mjs'),
         '--compose-file', $ComposeFile,
-        '--source-volume', $SourceVolume,
-        '--target-volume', $Volume,
+        '--volume', $Volume,
         '--app-image', $AppImage,
         '--runner-image', $RunnerImage,
         '--port', [string]$Port
       )
       if ($override) { $releaseArgs += @('--override', $override) }
-      if ($DiscardUnmigratable) { $releaseArgs += '--discard-unmigratable' }
       & node @releaseArgs
-      if ($LASTEXITCODE -ne 0) { throw 'v19_release_up_failed' }
+      if ($LASTEXITCODE -ne 0) { throw 'v110_release_up_failed' }
     } finally { if ($override) { Remove-Item -LiteralPath $override -Force } }
   }
   'down' { Invoke-Compose @('down', '--remove-orphans'); Write-Host "数据卷 $Volume 已保留。" }
@@ -233,7 +229,7 @@ switch ($Command) {
       if ($LASTEXITCODE -ne 0) { throw 'windows_bridge_export_failed' }
       if (-not (Test-Path -LiteralPath (Join-Path $bridgeVerify 'aiws-bridge.exe') -PathType Leaf)) { throw 'windows_bridge_export_missing' }
     } finally { if (Test-Path -LiteralPath $bridgeVerify) { Remove-Item -LiteralPath $bridgeVerify -Recurse -Force } }
-    & docker run --rm aiws-verify:1.9.0 corepack pnpm verify
+    & docker run --rm aiws-verify:1.10.0 corepack pnpm verify
     if ($LASTEXITCODE -ne 0) { throw 'container_verify_failed' }
   }
   'backup' { Invoke-Backup $Path }
@@ -244,11 +240,6 @@ switch ($Command) {
     & docker volume rm $Volume
     if ($LASTEXITCODE -ne 0) { throw 'reset_volume_remove_failed' }
     Write-Host "仅数据卷 $Volume 已删除。"
-  }
-  'purge-legacy' {
-    if (-not $Confirm) { throw 'purge_legacy_requires_confirm' }
-    & node (Join-Path $Root 'scripts\v19-release.mjs') purge-legacy --confirm --compose-file $ComposeFile --target-volume $Volume --app-image $AppImage --runner-image $RunnerImage --port ([string]$Port)
-    if ($LASTEXITCODE -ne 0) { throw 'purge_legacy_failed' }
   }
   'bridge' { Invoke-Bridge $Path }
 }

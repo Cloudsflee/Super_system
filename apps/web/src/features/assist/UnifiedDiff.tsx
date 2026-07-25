@@ -5,7 +5,7 @@ type DiffLine = { raw: string; kind: 'add' | 'delete' | 'context' | 'header' | '
 
 export function UnifiedDiff({ diff, path, selection, onSelect }: { diff: string; path: string; selection?: DiffSelection | null; onSelect: (value: DiffSelection) => void }) {
   const lines = parseDiff(fileDiff(diff, path));
-  if (!lines.length) return <div className="quiet-empty"><p>该文件没有可显示的文本 Diff</p></div>;
+  if (!lines.length) return <div className="quiet-empty"><p>该文件没有可显示的文本差异</p></div>;
   return <div className="unified-diff" role="table" aria-label={`${path} unified diff`}>
     {lines.map((line, index) => {
       const target = line.kind === 'delete' ? line.oldLine : line.newLine;

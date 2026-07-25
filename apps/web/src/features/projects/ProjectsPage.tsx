@@ -6,6 +6,7 @@ import { api, json } from '../../api/client';
 import { keys, useProjects } from '../../api/queries';
 import type { DraftProjectResult, Project } from '../../api/types';
 import { FullPageState } from '../../components/common/FullPageState';
+import { displayStatus } from '../../components/common/display-labels';
 import { useAssistSurface } from '../../components/assist/semantic-actions';
 import { useUi } from '../../state/ui';
 
@@ -50,7 +51,7 @@ export function ProjectsPage() {
   return (
     <section className={`projects-page ${empty ? 'empty' : ''}`}>
       <header className="page-heading">
-        <div><span className="overline">PROJECTS</span><h1>{empty ? '创建第一个项目' : '项目'}</h1><p>{empty ? '先创建草稿，再由项目引导生成简报与工作流。' : `${rows.length} 个本地工作空间`}</p></div>
+        <div><span className="overline">项目空间</span><h1>{empty ? '创建第一个项目' : '项目'}</h1><p>{empty ? '先创建草稿，再由项目引导生成简报与工作流。' : `${rows.length} 个本地工作空间`}</p></div>
         {!empty && <button className="button primary" onClick={() => setCreating(true)}><Plus size={16} />新建项目</button>}
       </header>
       {(empty || creating) && <form className="project-form" onSubmit={(event) => { event.preventDefault(); create.mutate(); }}>
@@ -64,7 +65,7 @@ export function ProjectsPage() {
         <div className="project-table-head" role="row"><span>项目</span><span>状态</span><span>工作流</span><span>最近活动</span><span /></div>
         {rows.map((project) => <button role="row" key={project.id} onClick={() => openProject(project, ui.setProject, navigate)}>
           <span className="project-name"><FolderGit2 size={18} /><span><strong>{project.title}</strong><small>{project.goal || (project.status === 'draft' ? '等待完成项目引导' : '尚未填写目标')}</small></span></span>
-          <span><i className={`status ${project.status === 'draft' ? 'pending' : 'active'}`}>{project.status === 'draft' ? 'draft · 可恢复' : project.status}</i></span>
+          <span><i className={`status ${project.status === 'draft' ? 'pending' : 'active'}`}>{project.status === 'draft' ? '草稿 · 可恢复' : displayStatus(project.status)}</i></span>
           <span>{project.workflow_count || 0}</span>
           <span>{project.status === 'draft' ? '继续引导' : `${project.run_count || 0} 次运行`}</span>
           <ArrowRight size={17} />

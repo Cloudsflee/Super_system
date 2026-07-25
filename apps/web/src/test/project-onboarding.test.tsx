@@ -143,7 +143,7 @@ describe('V1.3 project onboarding', () => {
     await screen.findByRole('heading', { name: 'p2' });
     fireEvent.click(screen.getByRole('button', { name: /补充简报/ }));
     await waitFor(() => expect(screen.getByRole('textbox', { name: '核心目标' })).toHaveValue('Beta goal'));
-    expect(screen.getByRole('textbox', { name: 'Repository URL' })).toHaveValue('');
+    expect(screen.getByRole('textbox', { name: '代码仓库地址' })).toHaveValue('');
   });
 });
 

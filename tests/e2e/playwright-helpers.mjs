@@ -10,12 +10,13 @@ export function browserDiscovery() {
   ] };
 }
 
-export async function assertViewport(page) {
-  const sizes = await page.evaluate(() => {
+export async function assertViewport(page, { allowOverflowWithin = [] } = {}) {
+  const sizes = await page.evaluate((allowedSelectors) => {
     const root = document.getElementById('root');
     const scrollX = window.scrollX;
+    const allowedLightSurface = '.attachment-text-preview,.attachment-office-preview,.attachment-csv-preview,.attachment-pdf-preview';
     const rows = [...document.querySelectorAll('body *')]
-      .filter((element) => getComputedStyle(element).display !== 'none' && !element.closest('.monaco-editor,.react-flow__viewport') && !element.matches('.monaco-aria-container,.monaco-alert,.monaco-status,.react-flow__viewport'))
+      .filter((element) => getComputedStyle(element).display !== 'none' && !element.closest('.monaco-editor,.react-flow__viewport') && !element.matches('.monaco-aria-container,.monaco-alert,.monaco-status,.react-flow__viewport') && !allowedSelectors.some((selector) => element.closest(selector)))
       .map((element) => ({ element: `${element.tagName.toLowerCase()}.${element.getAttribute('class') || ''}`, rect: element.getBoundingClientRect().toJSON() }));
     return {
       scrollX,
@@ -25,11 +26,18 @@ export async function assertViewport(page) {
       width: window.innerWidth,
       scrollHeight: document.documentElement.scrollHeight,
       height: window.innerHeight,
-      offenders: rows.filter((item) => item.rect.right + scrollX > window.innerWidth + 1 || item.rect.left + scrollX < -1).slice(0, 20)
+      offenders: rows.filter((item) => item.rect.right + scrollX > window.innerWidth + 1 || item.rect.left + scrollX < -1).slice(0, 20),
+      lightSurfaces: [...document.querySelectorAll('body *')].flatMap((element) => {
+        if (element.closest(allowedLightSurface)) return [];
+        const rect = element.getBoundingClientRect(), style = getComputedStyle(element), values = style.backgroundColor.match(/[\d.]+/g)?.map(Number) || [], alpha = values[3] ?? 1;
+        return style.display !== 'none' && style.visibility !== 'hidden' && rect.width * rect.height >= 200 && alpha >= .8 && values.slice(0, 3).reduce((sum, value) => sum + value, 0) / 3 >= 220 ? [{ element: `${element.tagName.toLowerCase()}.${element.getAttribute('class') || ''}`, color: style.backgroundColor, area: Math.round(rect.width * rect.height) }] : [];
+      }).slice(0, 20)
     };
-  });
+  }, allowOverflowWithin);
   assert.equal(sizes.rootScrollLeft, 0, `root horizontally scrolled: ${JSON.stringify(sizes)}`);
+  assert.ok(sizes.rootScrollWidth <= sizes.width + 1 && sizes.scrollWidth <= sizes.width + 1, `document horizontally overflows: ${JSON.stringify(sizes)}`);
   assert.deepEqual(sizes.offenders, [], `elements outside viewport: ${JSON.stringify(sizes)}`);
+  assert.deepEqual(sizes.lightSurfaces, [], `unexpected light UI surfaces: ${JSON.stringify(sizes)}`);
   assert.ok(sizes.scrollHeight >= sizes.height, 'document is rendered');
 }
 
@@ -61,6 +69,11 @@ export async function assertInsideViewport(page, selector) {
   const box = await page.locator(selector).boundingBox();
   const size = page.viewportSize();
   assert.ok(box && size && box.x >= -1 && box.y >= -1 && box.x + box.width <= size.width + 1 && box.y + box.height <= size.height + 1, `${selector} outside viewport: ${JSON.stringify({ box, size })}`);
+}
+
+export async function assertNoHorizontalScroll(page, selector) {
+  const size = await page.locator(selector).evaluate((element) => ({ clientWidth: element.clientWidth, scrollWidth: element.scrollWidth, scrollLeft: element.scrollLeft }));
+  assert.ok(size.scrollWidth <= size.clientWidth + 1 && size.scrollLeft === 0, `${selector} horizontally scrolls: ${JSON.stringify(size)}`);
 }
 
 export async function assertAssistHeader(page) {

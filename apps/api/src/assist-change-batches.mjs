@@ -8,9 +8,8 @@ import { requireProject, requireSession } from './assist-v3-domain.mjs';
 import { withProjectLifecycleLock } from './project-lifecycle-operations.mjs';
 import { assertManagedProjectWritable } from './project-lifecycle.mjs';
 import { publishAssistRepositoryReview } from './assist-repository-review.mjs';
-
+import { assertControlledProjectWrite, assertControlledTaskWrite } from './execution-governance.mjs';
 const heldLocks = new Map();
-
 export async function ensureSessionChangeBatch(sessionId) {
   const snapshot = await readState(), session = requireSession(snapshot, sessionId), project = requireProject(snapshot, session.project_id);
   const existing = snapshot.assist_change_batches.find((item) => item.id === session.active_change_batch_id && item.status === 'open')
@@ -50,14 +49,12 @@ export async function ensureSessionChangeBatch(sessionId) {
     throw error;
   }
 }
-
 export async function getSessionChangeBatch(sessionId) {
   const state = await readState(), session = requireSession(state, sessionId, true);
   const batch = state.assist_change_batches.find((item) => item.id === session.active_change_batch_id && item.status === 'open')
     || state.assist_change_batches.find((item) => item.session_id === session.id && item.status === 'open');
   return batch ? { batch, worktree: state.worktrees.find((item) => item.id === batch.worktree_id) || null } : null;
 }
-
 export async function acquireBatchWriteLock(batchId, holder) {
   const ownerId = `${holder.kind}:${holder.id}`;
   if (heldLocks.has(batchId)) {
@@ -146,12 +143,12 @@ async function getChangeBatchReviewLocked(batchId) {
   };
 }
 
-export async function applyChangeBatch(batchId, expectedTargetHash) {
+export async function applyChangeBatch(batchId, expectedTargetHash, executionBinding = {}) {
   const state = await readState(), batch = state.assist_change_batches.find((item) => item.id === batchId);
   if (!batch) throw new HttpError(404, { error: 'assist_change_batch_not_found' });
-  return withProjectLifecycleLock(batch.project_id, () => applyChangeBatchLocked(batchId, expectedTargetHash));
+  return withProjectLifecycleLock(batch.project_id, () => applyChangeBatchLocked(batchId, expectedTargetHash, executionBinding));
 }
-async function applyChangeBatchLocked(batchId, expectedTargetHash) {
+async function applyChangeBatchLocked(batchId, expectedTargetHash, executionBinding) {
   const existing = await closedBatchResult(batchId, 'applied');
   if (existing) return existing;
   const release = await acquireBatchWriteLock(batchId, { kind: 'review_apply', id: batchId });
@@ -159,6 +156,11 @@ async function applyChangeBatchLocked(batchId, expectedTargetHash) {
     const state = await readState(), batch = state.assist_change_batches.find((item) => item.id === batchId), project = requireProject(state, batch?.project_id), worktree = state.worktrees.find((item) => item.id === batch?.worktree_id);
     if (!batch || !worktree) throw new HttpError(404, { error: 'assist_change_batch_not_found' });
     assertManagedProjectWritable(project);
+    const boundTurn = state.assist_turns.filter((item) => item.change_batch_id === batch.id && item.task_execution_id).sort((a, b) => String(b.created_at).localeCompare(String(a.created_at)))[0];
+    const boundExecution = executionBinding.task_execution_id || boundTurn?.task_execution_id || null;
+    const task = state.workflow_nodes.find((item) => item.id === state.task_executions.find((entry) => entry.id === boundExecution)?.task_id);
+    if (task) assertControlledTaskWrite(state, task.id, { task_execution_id: boundExecution, lease_token: executionBinding.lease_token }, 'assist_apply');
+    else assertControlledProjectWrite(state, { projectId: project.id, taskExecutionId: boundExecution, leaseToken: executionBinding.lease_token, operation: 'assist_apply' });
     if (batch.status === 'applied') return { idempotent: true, batch: publicBatch(batch, worktree) };
     if (batch.status !== 'open') throw new HttpError(409, { error: 'assist_change_batch_not_open', status: batch.status });
     if (worktree.repository_workspace_id) {

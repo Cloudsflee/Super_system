@@ -1,3 +1,6 @@
+import fsp from 'node:fs/promises';
+import path from 'node:path';
+
 import { HttpError, makeRoute, send } from '../http.mjs';
 import { addTrace, mutate, owner, readState } from '../state.mjs';
 import { nodeBundle } from '../helpers.mjs';
@@ -11,6 +14,11 @@ import { isContainerized } from '../container-runtime-config.mjs';
 import { assertProjectLifecycleIdle } from '../project-lifecycle-operations.mjs';
 import { evaluateTaskExecutionContextFreshness } from '../task-execution-context.mjs';
 import { createExecutionOutputAssets } from '../task-output-service.mjs';
+import { assertControlledTaskWrite } from '../execution-governance.mjs';
+import { prepareTaskExecutionInState } from '../task-execution-service.mjs';
+import { collectActualEvidenceInState, ensureCompletedWorkstreamOutcomesInState } from '../task-execution-service.mjs';
+import { ingestExecutionOutputsInState } from '../asset-attestation-service.mjs';
+import { completeTaskExecutionInState, failTaskExecutionInState, reconcileWorkflowExecutionInState } from '../workflow-execution-domain.mjs';
 
 const runControllers = new Map();
 
@@ -69,17 +77,26 @@ async function startNodeRunRoute({ res, params, body }) {
 
 async function prepareNodeRun(nodeId, body) {
   if (body.enqueue_only === true) throw new HttpError(400, { error: 'enqueue_only_not_supported' });
-  return mutate((state) => {
+  return mutate(async (state) => {
     const actor = owner(state), bundle = nodeBundle(state, nodeId);
     requireNodeBundle(bundle);
     assertTaskDependencies(state, bundle.node);
     assertManagedProjectWritable(bundle.project);
-    const ctx = ensureRunContextPack(state, { actor, ...bundle, body });
+    const controlled = assertControlledTaskWrite(state, nodeId, body, 'node_run');
+    if (controlled.controlled && !['assist', 'repository_change'].includes(controlled.task_execution.executor)) throw new HttpError(409, { error: 'node_run_executor_mismatch', executor: controlled.task_execution.executor });
+    if (controlled.controlled) await prepareTaskExecutionInState(state, controlled.task_execution.id);
+    const ctx = controlled.controlled
+      ? state.context_packs.find((item) => item.id === controlled.task_execution.context_snapshot?.context_pack_id)
+      : ensureRunContextPack(state, { actor, ...bundle, body });
+    if (!ctx) throw new HttpError(409, { error: 'task_execution_context_pack_missing' });
     const run = createRun({ actor, ...bundle, ctx, body });
-    const approval = requireNodeRunApproval(state, { approvalId: body.approval_id, nodeId, runner: run.runner, repositoryWorkspaceId: run.repository_workspace_id });
+    run.task_execution_id = controlled.task_execution?.id || null;
     state.node_runs.push(run);
-    consumeNodeRunApproval(approval, run.id);
-    addTrace(state, 'node_run.approval.consumed', { project_id: bundle.project.id, workspace_id: bundle.workspace.id, node_id: nodeId, run_id: run.id, target_type: 'change_proposal', target_id: approval.id, summary: `NodeRun 使用审批：${approval.title}` }, actor.id);
+    if (!controlled.controlled) {
+      const approval = requireNodeRunApproval(state, { approvalId: body.approval_id, nodeId, runner: run.runner, repositoryWorkspaceId: run.repository_workspace_id });
+      consumeNodeRunApproval(approval, run.id);
+      addTrace(state, 'node_run.approval.consumed', { project_id: bundle.project.id, workspace_id: bundle.workspace.id, node_id: nodeId, run_id: run.id, target_type: 'change_proposal', target_id: approval.id, summary: `NodeRun 使用审批：${approval.title}` }, actor.id);
+    }
     startRunTrace(state, { actor, ...bundle, run, ctx });
     return { run_id: run.id, context_pack_id: ctx.id };
   });
@@ -96,6 +113,8 @@ async function completeNodeRun(nodeId, body, prepared) {
       if (testAdapter(body)) {
         await delay(Number(body.test_delay_ms || 10));
         const snapshot = await readState(), run = snapshot.node_runs.find((item) => item.id === prepared.run_id), ctx = snapshot.context_packs.find((item) => item.id === prepared.context_pack_id);
+        const taskExecution = snapshot.task_executions.find((item) => item.id === run?.task_execution_id);
+        if (taskExecution?.executor === 'repository_change') await applyTestRepositoryChanges(taskExecution, body.test_changes);
         execution = { raw: 'test adapter execution', resultJson: buildNodeRunResult({ run, contextPack: ctx, changedFiles: [], raw: body.test_summary || '测试 NodeRun 已完成', status: RunnerStatus.Succeeded }) };
       } else {
         const snapshot = await readState(), actor = owner(snapshot), bundle = nodeBundle(snapshot, nodeId);
@@ -104,17 +123,39 @@ async function completeNodeRun(nodeId, body, prepared) {
         execution = await invokeRunner(snapshot, { actor, run, ...bundle, ctx, body: { ...body, signal: controller.signal } });
       }
     } catch (error) { await failNodeRun(prepared.run_id, error); throw error; }
-    return await mutate(async (state) => {
+    const persisted = await mutate(async (state) => {
       const actor = owner(state), bundle = nodeBundle(state, nodeId), run = state.node_runs.find((item) => item.id === prepared.run_id), ctx = state.context_packs.find((item) => item.id === prepared.context_pack_id);
       if (!run || !ctx) throw new HttpError(404, { error: 'prepared_node_run_not_found' });
-      if (run.status === RunnerStatus.Cancelled) return { run, context_pack: ctx, assets: [] };
+      if (run.status === RunnerStatus.Cancelled) return { cancelled: true, response: { run, context_pack: ctx, assets: [] } };
       requireNodeBundle(bundle);
       await persistRunnerResult(state, { actor, run, ...bundle, ...execution });
       const freshness = evaluateTaskExecutionContextFreshness(state, run.task_execution_context);
       if (!freshness.current) { Object.assign(run, { input_superseded: true, input_superseded_reasons: freshness.reasons }); Object.assign(bundle.node, { input_superseded: true, updated_at: now() }); }
-      const assets = createAssetsFromRun(state, { actor, ...bundle, run, resultJson: execution.resultJson });
+      return { controlled: Boolean(run.task_execution_id), cancelled: false };
+    });
+    if (persisted.cancelled) return persisted.response;
+    const runnerError = controlledRunnerResultError(execution.resultJson, persisted.controlled);
+    if (runnerError) throw runnerError;
+    return await mutate(async (state) => {
+      const actor = owner(state), bundle = nodeBundle(state, nodeId), run = state.node_runs.find((item) => item.id === prepared.run_id), ctx = state.context_packs.find((item) => item.id === prepared.context_pack_id);
+      if (!run || !ctx) throw new HttpError(404, { error: 'prepared_node_run_not_found' });
+      requireNodeBundle(bundle);
+      let assets;
+      if (run.task_execution_id) {
+        const taskExecution = state.task_executions.find((item) => item.id === run.task_execution_id);
+        if (!taskExecution) throw new HttpError(409, { error: 'task_execution_missing' });
+        const evidence = await collectActualEvidenceInState(state, taskExecution);
+        const ingested = await ingestExecutionOutputsInState(state, { taskExecution, outputs: execution.resultJson.outputs, declaredConsumedInputVersions: execution.resultJson.consumed_input_versions, actorId: actor.id, verifierId: ({ repository_change: 'repository_change_verifier', repository_verify: 'repository_verify_verifier', repository_integrate: 'repository_integrate_verifier' })[taskExecution.executor] || null, actualEvidence: evidence });
+        if (!ingested.awaiting_human.length) completeTaskExecutionInState(state, taskExecution.id, { evidence });
+        await ensureCompletedWorkstreamOutcomesInState(state, taskExecution.workflow_execution_id);
+        reconcileWorkflowExecutionInState(state, taskExecution.workflow_execution_id);
+        assets = ingested.outputs.map((item) => item.asset);
+      } else assets = createAssetsFromRun(state, { actor, ...bundle, run, resultJson: execution.resultJson });
       return { run, context_pack: ctx, assets };
     });
+  } catch (error) {
+    await failNodeRun(prepared.run_id, error);
+    throw error;
   } finally { runControllers.delete(prepared.run_id); }
 }
 
@@ -123,11 +164,26 @@ async function failNodeRun(runId, error) {
     const run = state.node_runs.find((item) => item.id === runId);
     if (!run || run.status === RunnerStatus.Cancelled) return run;
     const node = state.workflow_nodes.find((item) => item.id === run.node_id);
-    Object.assign(run, { status: RunnerStatus.Failed, summary: String(error.message || error), completed_at: now(), updated_at: now() });
+    const diagnosticsPersisted = Boolean(run.raw_output_file_ref_id), alreadyFailed = run.status === RunnerStatus.Failed;
+    Object.assign(run, { status: RunnerStatus.Failed, error_code: error?.payload?.error || error?.code || 'node_run_failed', completed_at: now(), updated_at: now() });
+    if (!run.summary) run.summary = String(error.message || error);
     if (node) node.status = 'blocked';
-    addTrace(state, 'runner.failed', { project_id: run.project_id, workspace_id: run.workspace_id, node_id: run.node_id, run_id: run.id, summary: `Runner 启动失败：${run.summary}` }, owner(state).id);
+    const taskExecution = state.task_executions.find((item) => item.id === run.task_execution_id);
+    if (taskExecution && ['queued', 'running', 'verifying', 'awaiting_human'].includes(taskExecution.status)) { failTaskExecutionInState(state, taskExecution.id, { errorCode: run.error_code, retryClass: error?.retryable ? 'transient' : 'deterministic' }); reconcileWorkflowExecutionInState(state, taskExecution.workflow_execution_id); }
+    if (!diagnosticsPersisted && !alreadyFailed) addTrace(state, 'runner.failed', { project_id: run.project_id, workspace_id: run.workspace_id, node_id: run.node_id, run_id: run.id, summary: `Runner 启动失败：${run.summary}` }, owner(state).id);
     return run;
   });
+}
+
+export function controlledRunnerResultError(result, controlled = true) {
+  if (!controlled) return null;
+  if (result?.schema_version !== 'aiws.task_runner_result.v2') return new HttpError(409, { error: 'slot_aware_runner_output_required', retryable: false });
+  if (result.status === RunnerStatus.Succeeded) return null;
+  const process = result?._codex_process || {}, retryable = process.retryable === true;
+  const code = process.failure_code || 'task_runner_result_unsuccessful';
+  const error = new HttpError(retryable ? 503 : 409, { error: code, runner_status: result.status, retryable });
+  error.code = code; error.retryable = retryable;
+  return error;
 }
 
 function createRun({ actor, project, workspace, node, ctx, body }) {
@@ -184,3 +240,4 @@ function assertTaskDependencies(state, node) {
   if (incompleteUpstream.length || incompleteTasks.length) throw new HttpError(409, { error: 'task_dependency_blocked', node_id: node.id, workstream_dependencies: incompleteUpstream.map((item) => item.id), task_dependencies: incompleteTasks.map((item) => item.id), action: 'create_change_proposal' });
 }
 function delay(ms) { return new Promise((resolve) => setTimeout(resolve, Math.max(0, Math.min(ms, 5000)))); }
+async function applyTestRepositoryChanges(execution, changes) { const root = execution.context_snapshot?.repository_checkout?.path; if (!root) throw new HttpError(409, { error: 'repository_line_checkout_missing' }); const source = Array.isArray(changes) && changes.length ? changes : [{ path: `aiws-${execution.task_id}.txt`, content: `Task Execution ${execution.id}\n` }]; for (const item of source.slice(0, 50)) { const target = path.resolve(root, String(item?.path || '')), relative = path.relative(root, target); if (!relative || relative.startsWith('..') || path.isAbsolute(relative) || relative.includes('\0')) throw new HttpError(400, { error: 'test_change_path_invalid' }); if (item.delete === true) await fsp.rm(target, { force: true }); else { await fsp.mkdir(path.dirname(target), { recursive: true }); await fsp.writeFile(target, String(item.content ?? ''), 'utf8'); } } }

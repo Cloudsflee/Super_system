@@ -47,17 +47,20 @@ try {
   await api(port, `/projects/${projectId}/briefs/${briefBefore.id}`, 'PATCH', { expected_revision: briefBefore.revision, operations: [{ type: 'set_title', title: 'stale' }] }, 409, 'project_brief_revision_conflict');
 
   const draftBefore = afterIntake.workflow_draft;
-  const draftUpdated = await api(port, `/projects/${projectId}/workflow-draft`, 'PATCH', { expected_revision: draftBefore.revision, nodes: [{
+  const draftUpdated = await api(port, `/projects/${projectId}/workflow-draft`, 'PATCH', { expected_revision: draftBefore.revision, project_classification: draftBefore.project_classification, brief_coverage: {
+    features: ['v17-execution'], acceptance_criteria: ['v17-review'], milestones: ['v17-review']
+  }, nodes: [{
     id: 'v17-outcome', role: 'workstream', title: 'V1.7 验收成果', outcome: '形成可验收的迁移与 UI 结果', category: 'deliverable',
     acceptance_criteria: ['迁移和 UI 检查通过'], boundary: { deliverable: 'V1.7 验收包' }, dependency_ids: [],
     tasks: [
       { id: 'v17-analysis', role: 'task', title: '分析迁移结果', task_kind: 'analysis', execution_mode: 'assist', dependency_ids: [] },
-      { id: 'v17-review', role: 'task', title: '评审迁移和 UI', task_kind: 'review', execution_mode: 'assist', dependency_ids: ['v17-analysis'] }
+      { id: 'v17-execution', role: 'task', title: '执行迁移和 UI 验证', task_kind: 'manual', execution_mode: 'manual', dependency_ids: ['v17-analysis'] },
+      { id: 'v17-review', role: 'task', title: '评审迁移和 UI', task_kind: 'review', execution_mode: 'assist', dependency_ids: ['v17-execution'] }
     ]
   }] });
   assert.equal(draftUpdated.revision, draftBefore.revision + 1);
   assert.ok(draftUpdated.user_modified_at);
-  assert.equal(draftUpdated.nodes.find((node) => node.id === 'v17-review').dependency_ids[0], 'v17-analysis');
+  assert.equal(draftUpdated.nodes.find((node) => node.id === 'v17-review').dependency_ids[0], 'v17-execution');
   assert.deepEqual((await api(port, `/projects/${projectId}/workflow-draft`)).nodes.map((node) => node.id), draftUpdated.nodes.map((node) => node.id), 'refresh returns the persisted draft');
   await api(port, `/projects/${projectId}/workflow-draft`, 'PATCH', { expected_revision: draftUpdated.revision, operations: [{ type: 'delete_node', node_id: 'v17-analysis' }] }, 409, 'workflow_node_delete_confirmation_required');
 

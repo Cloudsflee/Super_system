@@ -48,8 +48,8 @@ try {
   await api(port, '/codex/auth/device/start', 'POST', { adapter: 'test' });
   const profile = await api(port, '/codex/profiles', 'POST', { name: 'Bridge profile', provider: 'openai', model: 'gpt-bridge', reasoning: 'high', mounts: [] }, 201);
   const pairing = await api(port, '/assist/v3/host-bridge/pairing', 'POST', {});
-  const exchanged = await api(port, '/assist/v3/host-bridge/pairing', 'POST', { action: 'exchange', pairing_code: pairing.pairing_code, protocol_version: 1, bridge_version: '1.9.0', device_name: 'Fake Windows' }, 201);
-  await api(port, '/assist/v3/host-bridge/pairing', 'POST', { action: 'exchange', pairing_code: pairing.pairing_code, protocol_version: 1, bridge_version: '1.9.0' }, 401, 'host_bridge_pairing_invalid_or_expired');
+  const exchanged = await api(port, '/assist/v3/host-bridge/pairing', 'POST', { action: 'exchange', pairing_code: pairing.pairing_code, protocol_version: 1, bridge_version: '1.10.0', device_name: 'Fake Windows' }, 201);
+  await api(port, '/assist/v3/host-bridge/pairing', 'POST', { action: 'exchange', pairing_code: pairing.pairing_code, protocol_version: 1, bridge_version: '1.10.0' }, 401, 'host_bridge_pairing_invalid_or_expired');
 
   const fake = new FakeBridge(fixture.root);
   bridgeSocket = new WebSocket(`ws://127.0.0.1:${port}/api/assist/v3/host-bridge/ws?device_id=${encodeURIComponent(exchanged.device.id)}`, { headers: { Authorization: `Bearer ${exchanged.credential}` } });
@@ -58,7 +58,7 @@ try {
   const preHelloCapability = await api(port, '/assist/v3/terminal-capabilities');
   assert.equal(preHelloCapability.windows_bridge.available, false);
   assert.equal(preHelloCapability.windows_bridge.reason, 'windows_bridge_offline');
-  bridgeSocket.send(JSON.stringify({ type: 'hello', protocol_version: 1, bridge_version: '1.9.0', capabilities: { os: 'windows', arch: 'amd64', conpty: true, codex_available: true, codex_version: 'codex-cli 0.144.0', code_page: 'utf-8' } }));
+  bridgeSocket.send(JSON.stringify({ type: 'hello', protocol_version: 1, bridge_version: '1.10.0', capabilities: { os: 'windows', arch: 'amd64', conpty: true, codex_available: true, codex_version: 'codex-cli 0.144.0', code_page: 'utf-8' } }));
   await fake.waitFor((item) => item.type === 'hello_ack');
   const capability = await api(port, '/assist/v3/terminal-capabilities');
   assert.equal(capability.windows_bridge.available, true); assert.equal(capability.windows_bridge.device_id, exchanged.device.id);

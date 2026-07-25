@@ -54,7 +54,7 @@ describe('formal workflow Assist UI', () => {
     expect(card).toHaveTextContent('就绪');
     fireEvent.contextMenu(card, { clientX: 120, clientY: 120 });
     expect(await screen.findByRole('menu')).toBeInTheDocument();
-    for (const label of ['查看详情', '进入工作区', '让 Assist 优化', '编辑节点', '移除节点']) expect(screen.getByRole('menuitem', { name: label })).toBeInTheDocument();
+    for (const label of ['查看详情', '进入工作区', '让智能助手优化', '编辑节点', '移除节点']) expect(screen.getByRole('menuitem', { name: label })).toBeInTheDocument();
     fireEvent.keyDown(screen.getByRole('menu'), { key: 'Escape' });
     card.focus();
     fireEvent.keyDown(card, { key: 'F10', shiftKey: true });

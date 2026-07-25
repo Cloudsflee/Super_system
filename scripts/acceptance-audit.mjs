@@ -1,7 +1,6 @@
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
-
 const checks = [
   ['V1.2 dev plan', '开发计划v1.2.md', '相对 `开发计划v1.1.md`'],
   ['V1.3 dev plan', '开发计划v1.3.md', '相对 `开发计划v1.2.md`'],
@@ -31,20 +30,26 @@ const checks = [
   ['Offline verify refresh', 'docker/verify-refresh.Dockerfile', 'pnpm install --offline --frozen-lockfile'],
   ['Failed cutover preservation', 'docker/release_orchestrator.mjs', 'failed_source_preserved'],
   ['Legacy purge confirmation', 'docker/release_volume.mjs', 'purge_legacy_requires_confirm'],
-  ['V1.9 Compose', 'compose.yml', 'name: aiws-v19'],
+  ['V1.10 Compose', 'compose.yml', 'aiws-app:1.10.0'],
   ['Schema 18 migration', 'apps/api/src/state-migration-v18.mjs', 'STATE_SCHEMA_VERSION = 18'],
+  ['Schema 19 migration', 'apps/api/src/state-migration-v19.mjs', 'STATE_SCHEMA_VERSION = 19'],
+  ['Immutable asset CAS', 'apps/api/src/asset-cas.mjs', 'createImmutableAssetVersion'],
+  ['Atomic asset attestation', 'apps/api/src/asset-attestation-service.mjs', 'attestAssetVersionInState'],
+  ['Workflow execution state machine', 'apps/api/src/workflow-execution-domain.mjs', 'TASK_EXECUTION_STATUSES'],
+  ['Persistent DAG dispatcher', 'apps/api/src/workflow-dispatcher.mjs', 'scheduleWorkflowExecution'],
+  ['Repository Line provisioning', 'apps/api/src/repository-line-service.mjs', 'provisionRepositoryLine'],
   ['Two-level workflow domain', 'apps/api/src/workflow-hierarchy-domain.mjs', 'TASKS_PER_WORKSTREAM_LIMIT = 12'],
   ['Workflow generation service', 'apps/api/src/workflow-generation-service.mjs', 'critiqueWorkflowGenerationCandidate'],
   ['Workstream and task graph routes', 'apps/api/src/routes/workflow-v19.mjs', '/workflows/:id/graph-proposals'],
   ['Multi-repository delivery', 'apps/api/src/delivery-service.mjs', 'draft_pr'],
   ['Semantic workflow migration', 'apps/api/src/workflow-migration-service.mjs', 'validateLegacyMigrationMapping'],
-  ['V1.9 release entry', 'scripts/v19-release.mjs', "AIWS_RELEASE_VERSION = '1.9.0'"],
+  ['V1.10 release entry', 'scripts/v110-release.mjs', 'runV110UpgradeCli'],
   ['Runner image', 'docker/codex-runner.Dockerfile', 'ARG CODEX_VERSION=0.144.0'],
   ['PowerShell bridge operations', 'scripts/aiws.ps1', "@('install','start','stop','status','uninstall')"],
   ['PowerShell backup validation', 'scripts/aiws.ps1', 'backup_validation_failed'],
   ['PowerShell verify cache validation', 'scripts/aiws.ps1', 'cmp -s /app/pnpm-lock.yaml'],
-  ['POSIX V1.6 migration operations', 'scripts/aiws.sh', '--discard-unmigratable'],
-  ['PowerShell legacy purge', 'scripts/aiws.ps1', "'purge-legacy'"],
+  ['POSIX V1.10 upgrade entry', 'scripts/aiws.sh', 'v110-release.mjs'],
+  ['PowerShell V1.10 upgrade entry', 'scripts/aiws.ps1', 'v110-release.mjs'],
   ['Setup guard', 'apps/web/src/app/setup-guard.tsx', '<Navigate to="/setup"'],
   ['GitHub App JWT', 'apps/api/src/github-service.mjs', 'createAppJwt'],
   ['GitHub webhook', 'apps/api/src/routes/github-webhook-v12.mjs', 'timingSafeEqual'],
@@ -83,7 +88,7 @@ const checks = [
   ['MCP subject attribution', 'apps/api/src/mcp-client-service.mjs', 'subject_user_id'],
   ['MCP Gateway HMAC', 'packages/mcp-bridge/src/gateway-auth.mjs', 'gateway_signature_replayed'],
   ['MCP Gateway protocol termination', 'apps/mcp-gateway/src/runtime.mjs', 'StreamableHTTPServerTransport'],
-  ['MCP collaboration Compose', 'compose.collaboration.yml', 'aiws-mcp-gateway:1.9.0'],
+  ['MCP collaboration Compose', 'compose.collaboration.yml', 'aiws-mcp-gateway:1.10.0'],
   ['Brief V2 domain', 'apps/api/src/brief-workflow-domain.mjs', 'schema_version: 2'],
   ['Brief revision operations', 'apps/api/src/project-brief-service.mjs', 'expected_revision'],
   ['Workflow draft persistence', 'apps/api/src/workflow-draft-service.mjs', 'workflow_draft_revision_conflict'],
@@ -176,6 +181,10 @@ const checks = [
   ['V1.9 generation integration', 'tests/integration/v19-workflow-generation-flow.test.mjs', 'V1.9 asynchronous workflow generation integration tests passed'],
   ['V1.9 Delivery integration', 'tests/integration/v19-delivery-flow.test.mjs', 'V1.9 multi-task Delivery integration tests passed'],
   ['V1.9 release volume flow', 'tests/release/v19-volume-flow.test.mjs', 'V1.9 release volume flow tests passed'],
+  ['V1.10 CAS unit', 'tests/unit/v110-cas.test.mjs', 'V1.10 CAS immutability and tamper detection unit tests passed'],
+  ['V1.10 DAG integration', 'tests/integration/v110-workflow-execution-flow.test.mjs', 'V1.10 persistent DAG, CAS, same-SHA verification, and PR integration flow passed'],
+  ['V1.10 in-place release flow', 'tests/release/v110-in-place-flow.test.mjs', 'V1.10 in-place volume backup and app-only replacement tests passed'],
+  ['V1.10 browser DAG journey', 'tests/e2e/v110-workflow-journey.test.mjs', 'assertWriteJourney'],
   ['Interaction audit', 'tests/e2e/smoke.test.mjs', 'auditButtons']
 ];
 
@@ -208,26 +217,28 @@ assert.match(apiClient, /multipart\(method: string, form: FormData, operation: O
 assert.match(apiClient, /method === 'GET' \? 30_000 : 120_000/, 'request timeout defaults are explicit');
 
 const manifest = JSON.parse(fs.readFileSync('package.json', 'utf8'));
-assert.equal(manifest.version, '1.9.0', 'root package is V1.9');
+assert.equal(manifest.version, '1.10.0', 'root package is V1.10');
 for (const script of ['lint', 'typecheck', 'test', 'test:integration', 'test:e2e', 'test:release', 'audit:acceptance', 'verify']) assert.ok(manifest.scripts[script], `mandatory script ${script}`);
 for (const dependency of ['@modelcontextprotocol/sdk', 'busboy', 'node-pty', 'ws', 'zod']) assert.ok(manifest.dependencies[dependency], `runtime dependency ${dependency}`);
-assert.match(manifest.scripts['test:e2e'], /build-web/, 'standalone e2e builds the frontend');
+assert.match(manifest.scripts['test:e2e'], /build-web.*v110-workflow-journey/, 'standalone e2e builds the frontend and runs the V1.10 DAG journey');
 assert.match(manifest.scripts['audit:acceptance'], /build-web/, 'standalone acceptance builds the frontend');
-for (const suite of ['v13-terminal-flow', 'v14-container-flow', 'v15-native-assist-flow', 'v15-host-bridge-flow', 'v16-assist-files-flow', 'v17-assist-brief-flow', 'v18-mcp-gateway-flow', 'v18-mcp-operations-flow', 'v18-mcp-terminal-flow', 'v19-workflow-generation-flow', 'v19-delivery-flow']) assert.ok(manifest.scripts['test:integration'].includes(suite), `integration gate includes ${suite}`);
-for (const suite of ['v14-container.test', 'v15-core.test', 'v15-operations.test', 'v15-change-bridge.test', 'v16-core.test', 'v16-release.test', 'v17-core.test', 'v17-capability-operations.test', 'v17-release.test', 'v18-mcp-auth.test', 'v18-mcp-gateway-auth.test', 'v18-mcp-registry.test', 'v18-release.test', 'v19-core.test', 'v19-repository-delivery.test', 'v19-migration.test', 'v19-mcp-registry.test']) assert.ok(manifest.scripts.test.includes(suite), `unit gate includes ${suite}`);
+for (const suite of ['v13-terminal-flow', 'v14-container-flow', 'v15-native-assist-flow', 'v15-host-bridge-flow', 'v16-assist-files-flow', 'v17-assist-brief-flow', 'v18-mcp-gateway-flow', 'v18-mcp-operations-flow', 'v18-mcp-terminal-flow', 'v19-workflow-generation-flow', 'v19-delivery-flow', 'v110-workflow-execution-flow']) assert.ok(manifest.scripts['test:integration'].includes(suite), `integration gate includes ${suite}`);
+for (const suite of ['v14-container.test', 'v15-core.test', 'v15-operations.test', 'v15-change-bridge.test', 'v16-core.test', 'v16-release.test', 'v17-core.test', 'v17-capability-operations.test', 'v17-release.test', 'v18-mcp-auth.test', 'v18-mcp-gateway-auth.test', 'v18-mcp-registry.test', 'v18-release.test', 'v19-core.test', 'v19-repository-delivery.test', 'v19-migration.test', 'v19-mcp-registry.test', 'v110-cas.test', 'v110-attestation.test', 'v110-workflow-execution.test']) assert.ok(manifest.scripts.test.includes(suite), `unit gate includes ${suite}`);
 for (const script of ['test:v18:plan', 'test:v18:impact', 'test:v18:contract', 'test:v18:pr', 'test:v18:full', 'test:v18:mcp-journey', 'test:v18:live', 'test:v18:release', 'test:v18:soak', 'mcp:stdio', 'mcp:client', 'mcp:gateway']) assert.ok(manifest.scripts[script], `V1.8 command ${script}`);
 assert.ok(manifest.scripts['test:release'].includes('v18-volume-flow'), 'release gate includes V1.8 volume migration');
 for (const script of ['test:v19:unit', 'test:v19:integration', 'test:v19:pr', 'test:v19:full', 'test:v19:live', 'test:v19:release', 'test:v19:soak']) assert.ok(manifest.scripts[script], `V1.9 command ${script}`);
 for (const suite of ['pr', 'full', 'live', 'release', 'soak']) assert.match(manifest.scripts[`test:v19:${suite}`], new RegExp(`v19-runner\\.mjs ${suite}$`), `V1.9 ${suite} uses the catalog runner`);
 assert.ok(manifest.scripts['test:release'].includes('v19-volume-flow'), 'release gate includes V1.9 volume migration');
+for (const script of ['test:v110:unit', 'test:v110:integration', 'test:v110:release', 'test:v110:full']) assert.ok(manifest.scripts[script], `V1.10 command ${script}`);
+assert.ok(manifest.scripts['test:release'].includes('v110-in-place-flow'), 'release gate includes V1.10 in-place upgrade');
 
-for (const file of workspaceManifests()) assert.equal(JSON.parse(fs.readFileSync(file, 'utf8')).version, '1.9.0', `${file} is V1.9`);
+for (const file of workspaceManifests()) assert.equal(JSON.parse(fs.readFileSync(file, 'utf8')).version, '1.10.0', `${file} is V1.10`);
 const compose = fs.readFileSync('compose.yml', 'utf8');
-for (const value of ['name: aiws-v19', 'aiws-app:1.9.0', 'aiws-codex-runner:1.9.0-codex-0.144.0', 'aiws-data-v19']) assert.ok(compose.includes(value), `Compose pins ${value}`);
+for (const value of ['name: aiws-v19', 'aiws-app:1.10.0', 'aiws-codex-runner:1.10.0-codex-0.144.0', 'aiws-data-v19']) assert.ok(compose.includes(value), `Compose pins ${value}`);
 assert.match(compose, /aiws-data:\s+[\s\S]*external: true/, 'production data volume cannot be silently replaced by Compose');
-assert.equal(compose.includes('aiws-data-v18'), false, 'V1.9 Compose never mounts the read-only migration source volume');
+assert.equal(compose.includes('aiws-data-v18'), false, 'V1.10 Compose never mounts a migration source volume');
 const collaborationCompose = fs.readFileSync('compose.collaboration.yml', 'utf8');
-for (const value of ['aiws-mcp-gateway:1.9.0', 'target: mcp-gateway', 'AIWS_MCP_REMOTE_MODE: gateway', 'AIWS_RUNNER_NETWORK', 'AIWS_PUBLIC_MCP_URL']) assert.ok(collaborationCompose.includes(value), `collaboration Compose includes ${value}`);
+for (const value of ['aiws-mcp-gateway:1.10.0', 'target: mcp-gateway', 'AIWS_MCP_REMOTE_MODE: gateway', 'AIWS_RUNNER_NETWORK', 'AIWS_PUBLIC_MCP_URL']) assert.ok(collaborationCompose.includes(value), `collaboration Compose includes ${value}`);
 const gatewayService = collaborationCompose.match(/\n  mcp-gateway:\n([\s\S]*?)\nsecrets:/)?.[1] || '';
 assert.equal(gatewayService.includes('docker.sock'), false, 'MCP Gateway never mounts Docker socket');
 assert.equal(gatewayService.includes('/var/lib/aiws'), false, 'MCP Gateway never mounts AIWS data volume');
@@ -241,8 +252,8 @@ const browser = fs.readFileSync('tests/e2e/playwright.test.mjs', 'utf8');
 for (const viewport of ['1440', '1024', '390', "keyboard.press('Escape')"]) assert.ok(browser.includes(viewport), `browser acceptance includes ${viewport}`);
 const managedCcSwitch = fs.readFileSync('apps/api/src/cc-switch-managed-cli.mjs', 'utf8');
 assert.equal(/sqlite|better-sqlite3/i.test(managedCcSwitch), false, 'managed cc-switch path never writes SQLite');
-assert.ok(fs.readFileSync('bridge/main.go', 'utf8').includes('bridgeVersion   = "1.9.0"'), 'Windows Bridge reports V1.9');
-console.log(`V1.9 acceptance audit passed (${checks.length} implementation checks)`);
+assert.ok(fs.readFileSync('bridge/main.go', 'utf8').includes('bridgeVersion   = "1.10.0"'), 'Windows Bridge reports V1.10');
+console.log(`V1.10 acceptance audit passed (${checks.length} implementation checks)`);
 
 function workspaceManifests() { return ['apps', 'packages'].flatMap((root) => fs.readdirSync(root, { withFileTypes: true }).filter((item) => item.isDirectory()).map((item) => path.join(root, item.name, 'package.json')).filter(fs.existsSync)); }
 function walk(dir) { if (!fs.existsSync(dir)) return []; return fs.readdirSync(dir, { withFileTypes: true }).flatMap((entry) => { if (['node_modules', 'dist'].includes(entry.name)) return []; const full = path.join(dir, entry.name); return entry.isDirectory() ? walk(full) : [full]; }); }

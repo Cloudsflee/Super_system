@@ -16,6 +16,7 @@ import { redactKnownSecretsSync } from './vault.mjs';
 import { evaluateTaskExecutionContextFreshness, prepareTaskExecutionContext } from './task-execution-context.mjs';
 import { createExecutionOutputAssets } from './task-output-service.mjs';
 import { createDeliveryPullRequestIntentInState, markDeliveryWorkspaceHeadInState, prepareManagedDeliveryCheckout } from './delivery-pr-intent.mjs';
+import { assertControlledTaskWrite } from './execution-governance.mjs';
 const controllers = new Map();
 const taskLocks = new Set(), repositoryPreparationLocks = new Set();
 const TERMINAL = new Set(['completed', 'failed', 'cancelled']);
@@ -30,6 +31,7 @@ export async function startTaskDelivery(taskId, input = {}, actorId = null) {
   const result = await mutate((state) => {
     const task = requireTask(state, taskId), actor = actorId ? state.users.find((item) => item.id === actorId) : owner(state);
     const workflow = state.workflows.find((item) => item.id === task.workflow_id); assertProjectLifecycleIdle(state.projects.find((item) => item.id === workflow?.project_id)); assertRepositoryDeletionInactive(state, { projectId: workflow?.project_id });
+    const controlled = assertControlledTaskWrite(state, task.id, input, 'repository_delivery');
     if (!['code', 'test', 'integration', 'deploy'].includes(task.task_kind)) throw new HttpError(409, { error: 'task_not_delivery_capable', task_kind: task.task_kind });
     const active = state.deliveries.find((item) => item.task_id === task.id && !TERMINAL.has(item.status));
     if (active) return { delivery: active, idempotent: true, created: false };
@@ -38,11 +40,14 @@ export async function startTaskDelivery(taskId, input = {}, actorId = null) {
     if (missingPermissions.length) throw new HttpError(409, { error: 'delivery_policy_permissions_required', missing_permissions: missingPermissions });
     const previous = state.deliveries.filter((item) => item.task_id === task.id && item.connection_id === connection.id && item.status === 'completed').sort((a, b) => String(b.completed_at).localeCompare(String(a.completed_at)))[0] || null;
     const project = state.projects.find((item) => item.id === workflow.project_id), workspace = state.workspaces.find((item) => item.id === task.workspace_id || item.workflow_node_id === task.id), contract = state.node_contracts.find((item) => item.id === task.current_contract_id);
-    const prepared = prepareTaskExecutionContext(state, { actor, project, workflow, workspace, task, contract, purpose: 'delivery', receiverName: 'CodexDelivery', repositoryWorkspaceId: input.repository_workspace_id });
+    const prepared = controlled.controlled
+      ? { context: structuredClone(controlled.task_execution.context_snapshot), context_pack: state.context_packs.find((item) => item.id === controlled.task_execution.context_snapshot?.context_pack_id) }
+      : prepareTaskExecutionContext(state, { actor, project, workflow, workspace, task, contract, purpose: 'delivery', receiverName: 'CodexDelivery', repositoryWorkspaceId: input.repository_workspace_id });
+    if (!prepared.context || !prepared.context_pack) throw new HttpError(409, { error: 'task_execution_context_required' });
     if (prepared.context.repository_snapshot?.connection_id && prepared.context.repository_snapshot.connection_id !== connection.id) throw new HttpError(409, { error: 'task_context_not_ready', reasons: [{ code: 'repository_workspace_connection_mismatch', repository_workspace_id: prepared.context.repository_snapshot.repository_workspace_id, connection_id: connection.id }] });
     const delivery = {
       id: id('dlv'), operation_id: null, project_id: policy.project_id, workflow_id: task.workflow_id, workstream_id: task.parent_node_id,
-      task_id: task.id, repository_target_id: target.id, connection_id: connection.id, policy_id: policy.id, policy_hash: policy.policy_hash,
+      task_id: task.id, task_execution_id: controlled.task_execution?.id || null, repository_target_id: target.id, connection_id: connection.id, policy_id: policy.id, policy_hash: policy.policy_hash,
       status: 'queued', phase: 'queued', attempt: Number(input.attempt || 1), retry_of_delivery_id: input.retry_of_delivery_id || null,
       branch: previous?.branch || stableBranch(task), base_ref: policy.base_ref, expected_base_sha: clean(input.expected_base_sha, 64) || null, base_sha: null,
       worktree_path: previous?.worktree_path || null, commit_sha: null, changed_files: [], test_results: [], pr_number: previous?.pr_number || null, pr_url: previous?.pr_url || null, pr_state: previous?.pr_state || null,
@@ -223,7 +228,6 @@ function commitDelivery(context, worktree, changedFiles) {
   if (!committed.ok) throw deliveryError('delivery_commit_failed', { detail: safeOutput(committed.stderr) });
   return git(worktree, ['rev-parse', 'HEAD'], 5_000).stdout.trim();
 }
-
 async function pushDelivery(context, worktree, branch) {
   if (context.delivery.adapter === 'test') return { pushed: true, adapted: true };
   if (context.connection.permissions?.push !== true) throw deliveryError('repository_push_permission_required');
@@ -231,7 +235,6 @@ async function pushDelivery(context, worktree, branch) {
   if (!pushed.ok) throw deliveryError('delivery_push_failed', { detail: safeOutput(pushed.stderr || pushed.error) });
   return { pushed: true };
 }
-
 async function createOrReuseDraftPullRequest(context, delivery, changedFiles, tests) {
   if (delivery.pr_url) return { html_url: delivery.pr_url, number: delivery.pr_number, state: 'open', draft: true, reused: true };
   if (delivery.adapter === 'test') return { html_url: `https://github.com/${context.connection.full_name}/pull/${Math.max(1, Number(delivery.attempt || 1))}`, number: Math.max(1, Number(delivery.attempt || 1)), state: 'open', draft: true };
@@ -240,7 +243,6 @@ async function createOrReuseDraftPullRequest(context, delivery, changedFiles, te
   const body = generatePrBody({ project: context.project, node: context.task, run, diff: { summary: run.summary, changed_files: changedFiles }, tests });
   return githubJson(`https://api.github.com/repos/${context.connection.full_name}/pulls`, { method: 'POST', headers: { authorization: `Bearer ${auth.token}`, 'content-type': 'application/json' }, body: JSON.stringify({ title: `${context.task.title}`, head: delivery.branch, base: context.policy.base_ref, body, draft: true }) });
 }
-
 async function githubAuth(state, connection) { const config = resolveGithubAppConfig(state); if (!config) throw deliveryError('github_app_config_required'); const token = await createInstallationToken(config, connection.installation_id); return { token: token.token, env: githubGitAuthEnv(token.token) }; }
 async function phase(deliveryId, phaseName) { return mutate((state) => { const item = state.deliveries.find((entry) => entry.id === deliveryId); if (!item || TERMINAL.has(item.status)) return item; Object.assign(item, { status: 'running', phase: phaseName, updated_at: now() }); appendEvent(state, item, 'phase', { phase: phaseName }); return item; }); }
 async function persistDelivery(deliveryId, patch) { return mutate((state) => { const item = state.deliveries.find((entry) => entry.id === deliveryId); if (!item || TERMINAL.has(item.status)) return item; Object.assign(item, structuredClone(patch), { updated_at: now() }); return item; }); }

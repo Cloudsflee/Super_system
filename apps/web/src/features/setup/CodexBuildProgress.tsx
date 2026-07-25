@@ -1,6 +1,7 @@
 import { Check, Copy, RotateCcw, Square, Terminal, WifiOff } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import type { CodexBuildOperation } from '../../api/types';
+import { displayStatus } from '../../components/common/display-labels';
 
 type Props = {
   operation: CodexBuildOperation;
@@ -20,13 +21,13 @@ export function CodexBuildProgress({ operation, connection, busy, onCancel, onCo
   }, [operation.status]);
   const elapsed = operation.status === 'running' ? Date.now() - Date.parse(operation.started_at) : operation.elapsed_ms;
   return <div className={`codex-build-progress ${operation.status}`} aria-live="polite">
-    <header><div><Terminal size={16} /><span><strong>{operation.phase.label}</strong><small>{formatElapsed(elapsed)} · {operation.image}</small></span></div><span className={`status ${operation.status === 'completed' ? 'ready' : operation.status === 'running' ? 'running' : 'failed'}`}>{operation.status}</span></header>
+    <header><div><Terminal size={16} /><span><strong>{operation.phase.label}</strong><small>{formatElapsed(elapsed)} · {operation.image}</small></span></div><span className={`status ${operation.status === 'completed' ? 'ready' : operation.status === 'running' ? 'running' : 'failed'}`}>{displayStatus(operation.status)}</span></header>
     <ol aria-label="构建阶段">{['运行时检查', '准备构建', '构建镜像', '验证镜像', '完成'].map((label, index) => <li key={label} className={index + 1 < operation.phase.index || operation.status === 'completed' ? 'done' : index + 1 === operation.phase.index ? 'active' : ''}><i>{index + 1 < operation.phase.index || operation.status === 'completed' ? <Check size={11} /> : index + 1}</i><span>{label}</span></li>)}</ol>
     {connection === 'reconnecting' && operation.status === 'running' && <div className="codex-build-connection"><WifiOff size={13} />事件流重连中</div>}
-    {operation.message && <p className="codex-build-message">{operation.message}</p>}
-    <pre aria-label="Docker Build 最新日志">{operation.logs.length ? operation.logs.slice(-12).map((item) => item.text).join('\n') : '等待 Docker Build 输出...'}</pre>
-    {operation.status === 'failed' && <div className="codex-build-error"><strong>{operation.message}</strong>{operation.action && <span>{operation.action}</span>}<code>{operation.error_code}</code></div>}
-    {operation.status === 'cancelled' && <div className="codex-build-error"><strong>{operation.message}</strong></div>}
+    {operation.message && <p className="codex-build-message">{buildText(operation.message)}</p>}
+    <pre aria-label="Docker 构建最新日志">{operation.logs.length ? operation.logs.slice(-12).map((item) => item.text).join('\n') : '等待 Docker 构建输出...'}</pre>
+    {operation.status === 'failed' && <div className="codex-build-error"><strong>{buildText(operation.message)}</strong>{operation.action && <span>{buildText(operation.action)}</span>}<code>{operation.error_code}</code></div>}
+    {operation.status === 'cancelled' && <div className="codex-build-error"><strong>{buildText(operation.message)}</strong></div>}
     <footer>
       <button className="button" onClick={onCopy}><Copy size={14} />复制诊断</button>
       {operation.status === 'running' && <button className="button danger" onClick={onCancel}><Square size={13} />取消</button>}
@@ -46,3 +47,4 @@ export function safeBuildDiagnostics(operation: CodexBuildOperation) {
 }
 
 function formatElapsed(value: number) { const seconds = Math.max(0, Math.round(value / 1000)); return seconds < 60 ? `${seconds} 秒` : `${Math.floor(seconds / 60)} 分 ${seconds % 60} 秒`; }
+function buildText(value?: string | null) { return String(value || '').replace(/Docker Build\s*/gi, 'Docker 构建').replace(/Linux containers/gi, 'Linux 容器'); }

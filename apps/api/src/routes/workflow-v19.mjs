@@ -29,6 +29,7 @@ export const workflowV19Routes = [
 async function submitTask({ res, params, body }) {
   const result = await mutate((state) => {
     const actor = owner(state), task = requireHierarchyNode(state, params.id, 'task'), workstream = requireHierarchyNode(state, task.parent_node_id, 'workstream');
+    assertLegacyOrchestrationAllowed(state, task.workflow_id);
     if (task.status === 'completed') throw new HttpError(409, { error: 'task_already_completed' });
     const summary = clean(body.summary, 4000);
     if (!summary) throw new HttpError(400, { error: 'submission_summary_required' });
@@ -48,6 +49,7 @@ async function submitTask({ res, params, body }) {
 async function reviewTask({ res, params, body }) {
   const result = await mutate((state) => {
     const actor = owner(state), task = requireHierarchyNode(state, params.id, 'task');
+    assertLegacyOrchestrationAllowed(state, task.workflow_id);
     if (task.status !== 'needs_review') throw new HttpError(409, { error: 'task_not_in_review', status: task.status });
     if (!['approve', 'reject'].includes(body.decision)) throw new HttpError(400, { error: 'review_decision_invalid' });
     const approved = body.decision === 'approve';
@@ -69,6 +71,7 @@ async function reviewTask({ res, params, body }) {
 async function submitWorkstream({ res, params, body }) {
   const result = await mutate((state) => {
     const actor = owner(state), workstream = requireHierarchyNode(state, params.id, 'workstream'), tasks = state.workflow_nodes.filter((item) => item.role === 'task' && item.parent_node_id === workstream.id);
+    assertLegacyOrchestrationAllowed(state, workstream.workflow_id);
     const incomplete = tasks.filter((item) => item.required !== false && item.status !== 'completed');
     if (incomplete.length) throw new HttpError(409, { error: 'workstream_required_tasks_incomplete', task_ids: incomplete.map((item) => item.id) });
     const summary = clean(body.summary || workstream.outcome, 4000);
@@ -83,6 +86,7 @@ async function submitWorkstream({ res, params, body }) {
 async function reviewWorkstream({ res, params, body }) {
   const result = await mutate((state) => {
     const actor = owner(state), workstream = requireHierarchyNode(state, params.id, 'workstream');
+    assertLegacyOrchestrationAllowed(state, workstream.workflow_id);
     if (workstream.status !== 'needs_review') throw new HttpError(409, { error: 'workstream_not_in_review', status: workstream.status });
     if (!['approve', 'reject'].includes(body.decision)) throw new HttpError(400, { error: 'review_decision_invalid' });
     const approved = body.decision === 'approve';
@@ -195,3 +199,4 @@ function aggregateWorkstream(state, workstreamId) { const workstream = requireHi
 function unblockSiblingTasks(state, workstream) { if (!workstream) return; for (const task of state.workflow_nodes.filter((item) => item.role === 'task' && item.parent_node_id === workstream.id && item.status === 'blocked')) { const ready = dependencyIds(task).every((idValue) => state.workflow_nodes.find((item) => item.id === idValue)?.status === 'completed'); if (ready && dependencyIds(workstream).every((idValue) => state.workflow_nodes.find((item) => item.id === idValue)?.status === 'completed')) { task.status = 'ready'; task.updated_at = now(); } } }
 function unblockDownstreamWorkstreams(state, completed) { for (const workstream of state.workflow_nodes.filter((item) => item.role === 'workstream' && item.workflow_id === completed.workflow_id && item.status === 'blocked')) { if (!dependencyIds(workstream).every((idValue) => state.workflow_nodes.find((item) => item.id === idValue)?.status === 'completed')) continue; workstream.status = 'ready'; workstream.updated_at = now(); unblockSiblingTasks(state, workstream); } }
 function cryptoId() { return `${Date.now().toString(16)}${Math.random().toString(16).slice(2, 14)}`; }
+function assertLegacyOrchestrationAllowed(state, workflowId) { const active = state.workflow_executions.find((item) => item.workflow_id === workflowId && ['running', 'paused'].includes(item.status)); if (active) throw new HttpError(409, { error: 'legacy_task_orchestration_forbidden', workflow_execution_id: active.id }); }

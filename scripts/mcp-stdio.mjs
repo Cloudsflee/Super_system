@@ -12,11 +12,11 @@ import {
 const token = String(process.env.AIWS_MCP_TOKEN || ''), url = new URL(process.env.AIWS_MCP_URL || 'http://127.0.0.1:4317/api/mcp');
 if (!token) { process.stderr.write('AIWS_MCP_TOKEN is required\n'); process.exit(2); }
 
-const remote = new Client({ name: 'aiws-stdio-bridge', version: '1.9.0' }, { capabilities: {} });
+const remote = new Client({ name: 'aiws-stdio-bridge', version: '1.10.0' }, { capabilities: {} });
 const remoteTransport = new StreamableHTTPClientTransport(url, { requestInit: { headers: { authorization: `Bearer ${token}` } } });
 await remote.connect(remoteTransport);
 const capabilities = remote.getServerCapabilities() || {};
-const local = new Server({ name: 'aiws-stdio-bridge', version: '1.9.0' }, {
+const local = new Server({ name: 'aiws-stdio-bridge', version: '1.10.0' }, {
   capabilities: {
     ...(capabilities.tools ? { tools: { listChanged: Boolean(capabilities.tools.listChanged) } } : {}),
     ...(capabilities.resources ? { resources: { subscribe: Boolean(capabilities.resources.subscribe), listChanged: Boolean(capabilities.resources.listChanged) } } : {})

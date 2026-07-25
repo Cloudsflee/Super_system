@@ -16,14 +16,25 @@ describe('V1.8 Focus OS state', () => {
     await useUi.persist.rehydrate();
     expect(useUi.getState().focusMode).toBe(false);
     expect(useUi.getState().assistDockWidth).toBe(680);
+    expect(useUi.getState().workflowTaskDensity).toBe('comfortable');
     useUi.getState().inspect('node-1');
     useUi.getState().setFocusMode(true);
+    useUi.getState().setCommandDockExpanded(true);
     const saved = JSON.parse(localStorage.getItem('aiws-v13-ui') || '{}').state;
     expect(saved.focusMode).toBe(true);
+    expect(saved.commandDockExpanded).toBe(true);
     expect(saved).not.toHaveProperty('contextLane');
     expect(saved).not.toHaveProperty('inspectorMode');
     useUi.getState().setAssistDockWidth(100);
     expect(useUi.getState().assistDockWidth).toBe(420);
+  });
+
+  it('persists workflow density globally and normalizes invalid legacy values', async () => {
+    useUi.getState().setWorkflowTaskDensity('detailed');
+    expect(JSON.parse(localStorage.getItem('aiws-v13-ui') || '{}').state.workflowTaskDensity).toBe('detailed');
+    localStorage.setItem('aiws-v13-ui', JSON.stringify({ version: 19, state: { workflowTaskDensity: 'oversized' } }));
+    await useUi.persist.rehydrate();
+    expect(useUi.getState().workflowTaskDensity).toBe('comfortable');
   });
 
   it('expands only the last explicit context while retaining the other as a peek', () => {
@@ -44,17 +55,29 @@ describe('V1.8 shared AssistCenter', () => {
   beforeEach(() => { resetUi(); CountingEventSource.created = 0; CountingEventSource.closed = 0; vi.stubGlobal('EventSource', CountingEventSource); });
   afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
 
+  it('keeps the bottom AI drawer collapsed until explicitly expanded', async () => {
+    vi.stubGlobal('fetch', fixtureFetch([], { sessions: [session('s1', 'Thread One')] }));
+    renderCenter();
+    const expand = await screen.findByRole('button', { name: '展开智能助手输入' });
+    expect(expand).toHaveAttribute('aria-expanded', 'false'); expect(screen.queryByRole('textbox', { name: '智能助手消息' })).not.toBeInTheDocument();
+    await expandCommandDock();
+    expect(useUi.getState().commandDockExpanded).toBe(true); expect(screen.getByRole('button', { name: '收起智能助手输入' })).toHaveAttribute('aria-expanded', 'true');
+    fireEvent.click(screen.getByRole('button', { name: '收起智能助手输入' }));
+    expect(useUi.getState().commandDockExpanded).toBe(false); expect(screen.queryByRole('textbox', { name: '智能助手消息' })).not.toBeInTheDocument();
+  });
+
   it('uses an existing thread and keeps one EventSource when the Dock expands', async () => {
     const calls: Call[] = [];
     vi.stubGlobal('fetch', fixtureFetch(calls, { sessions: [session('s1', 'Thread One')] }));
     renderCenter();
+    await expandCommandDock();
     await screen.findByRole('button', { name: 'gpt-codex' });
-    const input = screen.getByRole('textbox', { name: 'Assist 消息' });
+    const input = screen.getByRole('textbox', { name: '智能助手消息' });
     await waitFor(() => expect(CountingEventSource.created).toBe(1));
     fireEvent.change(input, { target: { value: 'Continue this thread' } });
     await waitFor(() => expect(screen.getByRole('button', { name: '发送' })).toBeEnabled());
     fireEvent.click(screen.getByRole('button', { name: '发送' }));
-    expect(await screen.findByRole('region', { name: 'Codex Assist V3' }, { timeout: 5_000 })).toBeInTheDocument();
+    expect(await screen.findByRole('region', { name: 'Codex 智能助手' }, { timeout: 5_000 })).toBeInTheDocument();
     await waitFor(() => expect(calls.some((call) => call.url.endsWith('/assist/v3/sessions/s1/turns'))).toBe(true));
     expect(calls.find((call) => call.url.endsWith('/assist/v3/sessions/s1/turns'))?.body).toMatchObject({ content: 'Continue this thread', collaboration_mode: 'default' });
     expect(CountingEventSource.created).toBe(1);
@@ -64,8 +87,9 @@ describe('V1.8 shared AssistCenter', () => {
     const calls: Call[] = [];
     vi.stubGlobal('fetch', fixtureFetch(calls, { sessions: [] }));
     renderCenter();
-    fireEvent.change(await screen.findByRole('textbox', { name: 'Assist 消息' }), { target: { value: 'Plan the next milestone' } });
-    fireEvent.click(screen.getByRole('button', { name: 'Plan' }));
+    await expandCommandDock();
+    fireEvent.change(await screen.findByRole('textbox', { name: '智能助手消息' }), { target: { value: 'Plan the next milestone' } });
+    fireEvent.click(screen.getByRole('button', { name: '规划' }));
     fireEvent.click(screen.getByRole('button', { name: '发送' }));
     await waitFor(() => expect(calls.some((call) => call.url.endsWith('/assist/v3/sessions/new-session/turns'))).toBe(true));
     const createIndex = calls.findIndex((call) => call.url.endsWith('/assist/v3/sessions') && call.method === 'POST');
@@ -74,22 +98,23 @@ describe('V1.8 shared AssistCenter', () => {
     expect(turnIndex).toBeGreaterThan(createIndex);
     expect(calls[createIndex].body).toMatchObject({ project_id: 'p1', scope_type: 'project', scope_id: 'p1' });
     expect(calls[turnIndex].body).toMatchObject({ content: 'Plan the next milestone', collaboration_mode: 'plan' });
-    await waitFor(() => expect(screen.getByRole('button', { name: 'Plan' })).toHaveAttribute('aria-pressed', 'false'));
+    await waitFor(() => expect(screen.getByRole('button', { name: '规划' })).toHaveAttribute('aria-pressed', 'false'));
   });
 
   it('keeps prompt and Plan state when a Dock request fails', async () => {
     const calls: Call[] = [];
     vi.stubGlobal('fetch', fixtureFetch(calls, { sessions: [session('s1', 'Thread One')], failTurn: true }));
     renderCenter();
+    await expandCommandDock();
     await screen.findByRole('button', { name: 'gpt-codex' });
-    const input = screen.getByRole('textbox', { name: 'Assist 消息' });
+    const input = screen.getByRole('textbox', { name: '智能助手消息' });
     fireEvent.change(input, { target: { value: 'Keep this prompt' } });
     await waitFor(() => expect(screen.getByRole('button', { name: '发送' })).toBeEnabled());
-    fireEvent.click(screen.getByRole('button', { name: 'Plan' }));
+    fireEvent.click(screen.getByRole('button', { name: '规划' }));
     fireEvent.click(screen.getByRole('button', { name: '发送' }));
     expect(await screen.findByDisplayValue('Keep this prompt')).toBeInTheDocument();
     await waitFor(() => expect(useUi.getState().toasts.some((toast) => toast.tone === 'error' && toast.message === 'turn failed')).toBe(true));
-    expect(screen.getByRole('button', { name: 'Plan' })).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.getByRole('button', { name: '规划' })).toHaveAttribute('aria-pressed', 'true');
   });
 
   it('resets project-scoped drafts and closes the previous project EventSource', async () => {
@@ -98,11 +123,12 @@ describe('V1.8 shared AssistCenter', () => {
     const client = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } });
     const shell = (value: Project) => <QueryClientProvider client={client}><MemoryRouter><AssistCenter project={value} scopeType="project" scopeId={value.id} commandDock /></MemoryRouter></QueryClientProvider>;
     const view = render(shell(project()));
-    const input = await screen.findByRole('textbox', { name: 'Assist 消息' });
+    await expandCommandDock();
+    const input = await screen.findByRole('textbox', { name: '智能助手消息' });
     fireEvent.change(input, { target: { value: 'Project A draft' } });
     await waitFor(() => expect(CountingEventSource.created).toBe(1));
     view.rerender(shell({ ...project(), id: 'p2', title: 'Project Two' }));
-    await waitFor(() => expect(screen.getByRole('textbox', { name: 'Assist 消息' })).toHaveValue(''));
+    await waitFor(() => expect(screen.getByRole('textbox', { name: '智能助手消息' })).toHaveValue(''));
     expect(CountingEventSource.closed).toBe(1);
   });
 
@@ -110,8 +136,8 @@ describe('V1.8 shared AssistCenter', () => {
     vi.stubGlobal('fetch', fixtureFetch([], { sessions: [session('s1', 'Thread One')] }));
     useUi.getState().inspect('node-1'); useUi.getState().setAssist(true); useUi.getState().inspect('node-1');
     renderCenter();
-    expect(await screen.findByRole('button', { name: /Assist/ })).toHaveClass('assist-peek');
-    expect(screen.queryByRole('complementary', { name: 'Assist Command Dock' })).not.toBeInTheDocument();
+    expect(await screen.findByRole('button', { name: /智能助手/ })).toHaveClass('assist-peek');
+    expect(screen.queryByRole('complementary', { name: '智能助手命令栏' })).not.toBeInTheDocument();
   });
 });
 
@@ -143,9 +169,11 @@ function renderCenter() {
   return render(<QueryClientProvider client={client}><MemoryRouter initialEntries={['/projects/p1/workflow']}><AssistCenter project={project()} scopeType="project" scopeId="p1" commandDock /></MemoryRouter></QueryClientProvider>);
 }
 
+async function expandCommandDock() { fireEvent.click(await screen.findByRole('button', { name: '展开智能助手输入' })); return screen.findByRole('textbox', { name: '智能助手消息' }); }
+
 function resetUi() {
   localStorage.clear();
-  useUi.setState({ navOpen: false, assistOpen: false, assistSurface: 'docked', assistRestoreSurface: 'docked', assistDockWidth: 520, focusMode: true, contextLane: null, inspectorMode: 'expanded', inspectorNodeId: null, contextNodeId: null, proposalId: null, approvalCenterOpen: false, approvalSelectionId: null, toasts: [] });
+  useUi.setState({ navOpen: false, assistOpen: false, assistSurface: 'docked', assistRestoreSurface: 'docked', assistDockWidth: 520, commandDockExpanded: false, focusMode: true, workflowTaskDensity: 'comfortable', contextLane: null, inspectorMode: 'expanded', inspectorNodeId: null, contextNodeId: null, proposalId: null, approvalCenterOpen: false, approvalSelectionId: null, toasts: [] });
 }
 function project(): Project { return { id: 'p1', title: 'Project One', goal: 'Ship', status: 'active', onboarding_state: 'confirmed', current_workspace_id: 'w1', managed_workspace_state: 'ready' }; }
 function session(id: string, title: string) { return { id, version: 3, project_id: 'p1', scope_type: 'project' as const, scope_id: 'p1', title, status: 'idle', lifecycle: 'active', pinned: false, turn_count: 0, last_turn: null, created_at: new Date(0).toISOString(), updated_at: new Date(0).toISOString() }; }

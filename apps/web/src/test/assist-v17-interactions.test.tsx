@@ -15,18 +15,18 @@ describe('Assist V1.7 interactions', () => {
     const view = render(<AssistComposer {...composerProps({ clarificationPolicy: 'ask', planNext: false, onClarificationPolicy, onPlanNext })} />);
     const clarification = screen.getByRole('group', { name: '澄清方式' });
     expect(within(clarification).getByRole('button', { name: '问我' })).toHaveAttribute('aria-pressed', 'true');
-    expect(screen.getByRole('button', { name: 'Plan' })).toHaveAttribute('aria-pressed', 'false');
+    expect(screen.getByRole('button', { name: '规划' })).toHaveAttribute('aria-pressed', 'false');
 
     fireEvent.click(within(clarification).getByRole('button', { name: '自动推荐' }));
     expect(onClarificationPolicy).toHaveBeenCalledWith('auto_recommend');
     expect(onPlanNext).not.toHaveBeenCalled();
-    fireEvent.click(screen.getByRole('button', { name: 'Plan' }));
+    fireEvent.click(screen.getByRole('button', { name: '规划' }));
     expect(onPlanNext).toHaveBeenCalledWith(true);
     expect(onClarificationPolicy).toHaveBeenCalledTimes(1);
 
     view.rerender(<AssistComposer {...composerProps({ clarificationPolicy: 'auto_recommend', planNext: true, onClarificationPolicy, onPlanNext })} />);
     expect(within(clarification).getByRole('button', { name: '自动推荐' })).toHaveAttribute('aria-pressed', 'true');
-    expect(screen.getByRole('button', { name: 'Plan' })).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.getByRole('button', { name: '规划' })).toHaveAttribute('aria-pressed', 'true');
   });
 
   it('renders recommendations and submits Other answers with a request-only Note', () => {
@@ -37,7 +37,7 @@ describe('Assist V1.7 interactions', () => {
 
     fireEvent.click(screen.getByRole('radio', { name: /其他/ }));
     fireEvent.change(screen.getByRole('textbox', { name: '范围 其他回答' }), { target: { value: '仅桌面端' } });
-    fireEvent.change(screen.getByRole('textbox', { name: '范围 Note' }), { target: { value: '  本轮先验证  ' } });
+    fireEvent.change(screen.getByRole('textbox', { name: '范围 备注' }), { target: { value: '  本轮先验证  ' } });
     fireEvent.click(screen.getByRole('button', { name: '提交回答' }));
     expect(onRespond).toHaveBeenCalledWith({ scope: { answers: ['仅桌面端'], note: '本轮先验证' } });
   });
@@ -77,7 +77,7 @@ describe('Assist V1.7 interactions', () => {
     const props = { templates: [], busy: false, onBrief: vi.fn(async () => true), onWorkflow: vi.fn(async () => true), onSaveTemplate: vi.fn(), onApplyTemplate: vi.fn(), onSearchTemplates: vi.fn() };
     const view = render(<BriefWorkspace brief={firstBrief} workflow={firstWorkflow} {...props} />);
     fireEvent.change(screen.getByRole('textbox', { name: '简报标题' }), { target: { value: '本地未保存标题' } });
-    fireEvent.change(screen.getByRole('textbox', { name: '核心目标 Markdown' }), { target: { value: '本地未保存目标' } });
+    fireEvent.change(screen.getByRole('textbox', { name: '核心目标 格式化文本' }), { target: { value: '本地未保存目标' } });
     fireEvent.change(screen.getByRole('textbox', { name: '确认简报 目标' }), { target: { value: '本地未保存节点目标' } });
 
     const nextBrief: ProjectBrief = { ...firstBrief, revision: firstBrief.revision + 1, content: { ...firstBrief.content, sections: firstBrief.content.sections.map((section) => section.id === 'features' && section.type === 'list' ? { ...section, items: ['服务端新功能'] } : { ...section }) } };
@@ -85,7 +85,7 @@ describe('Assist V1.7 interactions', () => {
     view.rerender(<BriefWorkspace brief={nextBrief} workflow={nextWorkflow} {...props} />);
 
     expect(screen.getByRole('textbox', { name: '简报标题' })).toHaveValue('本地未保存标题');
-    expect(screen.getByRole('textbox', { name: '核心目标 Markdown' })).toHaveValue('本地未保存目标');
+    expect(screen.getByRole('textbox', { name: '核心目标 格式化文本' })).toHaveValue('本地未保存目标');
     expect(screen.getByRole('textbox', { name: '功能 列表' })).toHaveValue('服务端新功能');
     expect(screen.getByRole('textbox', { name: '确认简报 目标' })).toHaveValue('本地未保存节点目标');
     expect(screen.getByRole('textbox', { name: '实现功能 目标' })).toHaveValue('服务端新节点目标');
@@ -96,7 +96,7 @@ describe('Assist V1.7 interactions', () => {
     const onBrief = vi.fn(async () => false), onWorkflow = vi.fn(async () => false);
     const props = { templates: [], busy: false, onBrief, onWorkflow, onSaveTemplate: vi.fn(), onApplyTemplate: vi.fn(), onSearchTemplates: vi.fn() };
     const view = render(<BriefWorkspace brief={firstBrief} workflow={firstWorkflow} {...props} />);
-    fireEvent.change(screen.getByRole('textbox', { name: '核心目标 Markdown' }), { target: { value: '冲突后仍保留的目标' } });
+    fireEvent.change(screen.getByRole('textbox', { name: '核心目标 格式化文本' }), { target: { value: '冲突后仍保留的目标' } });
     fireEvent.click(screen.getByRole('button', { name: '保存 核心目标' }));
     fireEvent.change(screen.getByRole('textbox', { name: '确认简报 目标' }), { target: { value: '冲突后仍保留的节点目标' } });
     fireEvent.blur(screen.getByRole('textbox', { name: '确认简报 目标' }));
@@ -104,7 +104,7 @@ describe('Assist V1.7 interactions', () => {
     const serverBrief = { ...firstBrief, revision: firstBrief.revision + 1, content: { ...firstBrief.content, sections: firstBrief.content.sections.map((section) => section.id === 'goal' && section.type === 'markdown' ? { ...section, markdown: '服务端冲突目标' } : section) } };
     const serverWorkflow = { ...firstWorkflow, revision: firstWorkflow.revision + 1, nodes: firstWorkflow.nodes.map((node) => node.id === 'node-1' ? { ...node, goal: '服务端冲突节点目标' } : node) };
     view.rerender(<BriefWorkspace brief={serverBrief} workflow={serverWorkflow} {...props} />);
-    expect(screen.getByRole('textbox', { name: '核心目标 Markdown' })).toHaveValue('冲突后仍保留的目标');
+    expect(screen.getByRole('textbox', { name: '核心目标 格式化文本' })).toHaveValue('冲突后仍保留的目标');
     expect(screen.getByRole('button', { name: '保存 核心目标' })).toBeInTheDocument();
     expect(screen.getByRole('textbox', { name: '确认简报 目标' })).toHaveValue('冲突后仍保留的节点目标');
   });

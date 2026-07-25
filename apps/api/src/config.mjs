@@ -5,6 +5,8 @@ export const ROOT = path.resolve(process.cwd());
 export const AIWS_HOME = process.env.AIWS_HOME ? path.resolve(process.env.AIWS_HOME) : path.join(ROOT, '.ai-workspace');
 export const DATA_DIR = path.join(AIWS_HOME, 'data');
 export const ARTIFACT_DIR = path.join(AIWS_HOME, 'artifacts');
+export const CAS_DIR = path.join(AIWS_HOME, 'cas');
+export const EXECUTION_DIR = path.join(AIWS_HOME, 'executions');
 export const VAULT_DIR = path.join(AIWS_HOME, 'vault');
 export const CODEX_HOME_DIR = path.join(AIWS_HOME, 'codex-homes');
 export const WORKSPACE_DIR = path.join(AIWS_HOME, 'workspaces');
@@ -46,6 +48,8 @@ export const collections = [
   'project_memberships', 'project_invitations', 'canonical_repositories', 'project_repository_bindings',
   'repository_deletion_intents', 'exchange_requests', 'exchange_grants',
   'repository_workspaces', 'pull_request_intents'
+  ,'asset_blobs', 'asset_attestations', 'workflow_executions', 'task_executions',
+  'execution_events', 'repository_lines'
 ];
 
 export function readLocalGithubAppConfig() {

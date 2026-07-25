@@ -63,11 +63,11 @@ describe('overlay and capability contracts', () => {
     vi.stubGlobal('fetch', fetch);
     renderWithClient(<ExecutionWorkspace value={workspace()} onSaved={vi.fn()} />);
 
-    expect(screen.getByText('未绑定 Repository')).toBeInTheDocument();
-    expect(screen.getByText('Repository 文件能力不可用')).toBeInTheDocument();
+    expect(screen.getByText('未绑定代码仓库')).toBeInTheDocument();
+    expect(screen.getByText('代码仓库文件能力不可用')).toBeInTheDocument();
     expect(screen.getByRole('combobox', { name: '测试任务' })).toBeDisabled();
     expect(screen.getByRole('button', { name: '运行任务' })).toBeDisabled();
-    expect(screen.getByRole('button', { name: 'Run' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: '运行' })).toBeDisabled();
     expect(fetch).not.toHaveBeenCalled();
   });
 
@@ -79,7 +79,7 @@ describe('overlay and capability contracts', () => {
     expect(alert).toHaveTextContent('文件加载失败');
     expect(alert).toHaveTextContent('repository_root_unavailable');
     expect(screen.getByRole('button', { name: '运行任务' })).toBeDisabled();
-    expect(screen.getByRole('button', { name: 'Run' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: '运行' })).toBeDisabled();
     expect(screen.getByRole('button', { name: '重新加载文件' })).toBeEnabled();
   });
 

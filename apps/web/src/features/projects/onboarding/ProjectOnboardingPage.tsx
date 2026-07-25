@@ -11,6 +11,7 @@ import type {
   BriefSection, BriefTemplate, ProjectBrief, ProjectCodeSource, ProjectIntakeMode, ProjectOnboarding, Workflow, WorkflowDraft, WorkflowDraftNode
 } from '../../../api/types';
 import { FullPageState } from '../../../components/common/FullPageState';
+import { displayStatus } from '../../../components/common/display-labels';
 import { useUi } from '../../../state/ui';
 import {
   CompletedOnboarding, ContextSources, StepButton,
@@ -20,7 +21,6 @@ import {
 } from './onboarding-support';
 import { useProjectBriefAssistSurface } from './useProjectBriefAssistSurface';
 import { BriefWorkspace } from './BriefWorkspace';
-
 type Step = 'mode' | 'intake' | 'review';
 type IntakeUpdate = Pick<ProjectOnboarding, 'project' | 'intake' | 'brief' | 'workflow_draft'>;
 const listFields: Array<{ key: Exclude<keyof AnswerDraft, 'goal'>; label: string; hint: string }> = [
@@ -35,7 +35,7 @@ const listFields: Array<{ key: Exclude<keyof AnswerDraft, 'goal'>; label: string
 ];
 
 const sourceLabels: Record<ProjectCodeSource['type'], string> = {
-  github: 'GitHub Repository', git: 'Git URL', local_directory: '本地目录',
+  github: 'GitHub 代码仓库', git: 'Git 地址', local_directory: '本地目录',
   local_git: '本地 Git 仓库', archive: 'ZIP / TAR 归档'
 };
 
@@ -65,7 +65,7 @@ export function ProjectOnboardingPage() {
 
   async function persistBriefFields(nextAnswers: AnswerDraft) {
     if (!projectId || !mode) throw new Error('project_intake_not_ready');
-    const result = await api<IntakeUpdate>(`/projects/${projectId}/intake`, json('PUT', intakePayload(mode, nextAnswers, sourceType, sourceValue || uploadFiles[0]?.name || '', contexts, relativeImports), { name: '保存 Assist 简报字段', feedback: 'background', timeoutMs: 120_000 }));
+    const result = await api<IntakeUpdate>(`/projects/${projectId}/intake`, json('PUT', intakePayload(mode, nextAnswers, sourceType, sourceValue || uploadFiles[0]?.name || '', contexts, relativeImports), { name: '保存智能助手简报字段', feedback: 'background', timeoutMs: 120_000 }));
     hydrated.current = `${result.project.id}:${result.intake.revision || 0}`; mergeUpdate(result);
   }
 
@@ -181,8 +181,8 @@ export function ProjectOnboardingPage() {
     <section className="onboarding-page">
       <header className="onboarding-header">
         <button className="icon-button" aria-label="返回项目" onClick={() => navigate('/projects')}><ArrowLeft size={18} /></button>
-        <div><span className="overline">PROJECT ONBOARDING · DRAFT</span><h1>{data.project.title}</h1><p>确认简报和初始工作流后才会激活。所有代码将进入 AIWS 受管副本。</p></div>
-        <span className="status pending">{data.project.status}</span>
+        <div><span className="overline">项目引导 · 草稿</span><h1>{data.project.title}</h1><p>确认简报和初始工作流后才会激活。所有代码将进入 AIWS 受管副本。</p></div>
+        <span className="status pending">{displayStatus(data.project.status)}</span>
       </header>
       <nav className="onboarding-steps" aria-label="项目引导步骤">
         <StepButton index="1" label="选择起点" active={step === 'mode'} done={Boolean(mode)} onClick={() => setStep('mode')} />
@@ -192,20 +192,20 @@ export function ProjectOnboardingPage() {
 
       <div className="onboarding-content">
         {step === 'mode' && <section className="onboarding-stage mode-stage">
-          <div className="stage-heading"><span className="overline">STARTING POINT</span><h2>这个项目从哪里开始？</h2><p>选择会立即保存，刷新页面后仍可继续。</p></div>
+          <div className="stage-heading"><span className="overline">选择起点</span><h2>这个项目从哪里开始？</h2><p>选择会立即保存，刷新页面后仍可继续。</p></div>
           <div className="mode-cards">
             <button className={mode === 'brainstorm' ? 'selected' : ''} disabled={chooseMode.isPending} onClick={() => chooseMode.mutate('brainstorm')}>
               <BrainCircuit size={25} /><strong>从 0 头脑风暴</strong><span>通过目标、用户、范围和验收问题形成第一版项目简报。</span><i>不需要现有代码</i>
             </button>
             <button className={mode === 'existing' ? 'selected' : ''} disabled={chooseMode.isPending} onClick={() => chooseMode.mutate('existing')}>
-              <FolderGit2 size={25} /><strong>基于已有项目</strong><span>导入 GitHub、Git URL、本地目录、Git 仓库或归档的只读副本。</span><i>外部源不会被修改</i>
+              <FolderGit2 size={25} /><strong>基于已有项目</strong><span>导入 GitHub、Git 地址、本地目录、Git 仓库或归档的只读副本。</span><i>外部源不会被修改</i>
             </button>
           </div>
           {chooseMode.isPending && <div className="inline-progress"><LoaderCircle className="spin" size={16} />正在保存选择</div>}
         </section>}
 
         {step === 'intake' && <section className="onboarding-stage intake-stage">
-          <div className="stage-heading"><span className="overline">PROJECT INTAKE</span><h2>{mode === 'existing' ? '描述项目并选择代码源' : '建立可验证的项目简报'}</h2><p>不知道的内容可先留在开放问题中，之后可以生成新版本。</p></div>
+          <div className="stage-heading"><span className="overline">项目信息收集</span><h2>{mode === 'existing' ? '描述项目并选择代码源' : '建立可验证的项目简报'}</h2><p>不知道的内容可先留在开放问题中，之后可以生成新版本。</p></div>
           <div className="intake-grid">
             <div className="answer-form">
               <label>核心目标<textarea id="brief-goal" rows={5} value={answers.goal} onChange={(event) => setAnswers({ ...answers, goal: event.target.value })} placeholder="希望为谁解决什么问题，最终交付什么可验证结果？" /></label>
@@ -213,11 +213,11 @@ export function ProjectOnboardingPage() {
             </div>
             <aside className="intake-sources">
               {mode === 'existing' && <section className="source-card">
-                <header><FolderGit2 size={17} /><div><strong>代码源</strong><small>只读扫描后复制或 clone 到受管 workspace</small></div></header>
+                <header><FolderGit2 size={17} /><div><strong>代码源</strong><small>只读扫描后克隆或复制到受管工作空间</small></div></header>
                 <label>来源类型<select value={sourceType} onChange={(event) => { setSourceType(event.target.value as ProjectCodeSource['type']); setSourceValue(''); setUploadFiles([]); }}>{sourceEntries.map(([value, label]) => <option value={value} key={value}>{label}</option>)}</select></label>
-                {(sourceType === 'github' || sourceType === 'git' || localPathAvailable) && <label>{sourceType === 'github' || sourceType === 'git' ? 'Repository URL' : relativeImports ? '导入根下的相对路径' : '本机绝对路径'}<input value={sourceValue} onChange={(event) => setSourceValue(event.target.value)} placeholder={sourcePlaceholder(sourceType, relativeImports)} /></label>}
-                {['local_directory', 'archive'].includes(sourceType) && <label>或从浏览器上传<input type="file" multiple={sourceType === 'local_directory'} accept={sourceType === 'archive' ? '.zip,.tar,.tgz,.gz' : undefined} {...(sourceType === 'local_directory' ? { webkitdirectory: '', directory: '' } : {})} onChange={(event) => { const files = [...(event.target.files || [])]; setUploadFiles(files); if (files[0]) setSourceValue(files[0].webkitRelativePath || files[0].name); }} /><small>{uploadFiles.length ? `已选择 ${uploadFiles.length} 个文件` : '上传内容同样先进入 staging 校验'}</small></label>}
-                <p><CheckCircle2 size={13} />不会原地修改或删除外部目录和远端 Repository。</p>
+                {(sourceType === 'github' || sourceType === 'git' || localPathAvailable) && <label>{sourceType === 'github' || sourceType === 'git' ? '代码仓库地址' : relativeImports ? '导入根下的相对路径' : '本机绝对路径'}<input value={sourceValue} onChange={(event) => setSourceValue(event.target.value)} placeholder={sourcePlaceholder(sourceType, relativeImports)} /></label>}
+                {['local_directory', 'archive'].includes(sourceType) && <label>或从浏览器上传<input type="file" multiple={sourceType === 'local_directory'} accept={sourceType === 'archive' ? '.zip,.tar,.tgz,.gz' : undefined} {...(sourceType === 'local_directory' ? { webkitdirectory: '', directory: '' } : {})} onChange={(event) => { const files = [...(event.target.files || [])]; setUploadFiles(files); if (files[0]) setSourceValue(files[0].webkitRelativePath || files[0].name); }} /><small>{uploadFiles.length ? `已选择 ${uploadFiles.length} 个文件` : '上传内容同样先进入暂存区校验'}</small></label>}
+                <p><CheckCircle2 size={13} />不会原地修改或删除外部目录和远端代码仓库。</p>
               </section>}
               <ContextSources value={contexts} onChange={setContexts} allowLocalPaths={localPathAvailable} relativePaths={relativeImports} />
             </aside>
@@ -226,12 +226,12 @@ export function ProjectOnboardingPage() {
         </section>}
 
         {step === 'review' && brief && <section className="onboarding-stage review-stage">
-          <div className="stage-heading"><span className="overline">BRIEF V{brief.version} · REVIEW</span><h2>审查项目简报与初始工作流</h2><p>确认后将创建独立工作单元并激活项目；功能、里程碑和验收条件继续由 Brief 与 Contract 管理。</p></div>
+          <div className="stage-heading"><span className="overline">简报第 {brief.version} 版 · 审查</span><h2>审查项目简报与初始工作流</h2><p>确认后将创建独立工作单元并激活项目；功能、里程碑和验收条件继续由项目简报与任务契约管理。</p></div>
           {data.intake.last_error && <div className="onboarding-alert" role="alert"><strong>上次处理失败</strong><span>{data.intake.last_error}</span><button className="button secondary" onClick={() => setStep('intake')}><RefreshCw size={14} />修正输入</button></div>}
-          {workflowDraft && <BriefWorkspace brief={brief} workflow={workflowDraft} templates={templates.data?.items || []} busy={patchBrief.isPending || patchWorkflow.isPending || applyTemplate.isPending || saveTemplate.isPending} onBrief={async (operations) => { try { await patchBrief.mutateAsync(operations); return true; } catch { return false; } }} onWorkflow={async (operations) => { try { await patchWorkflow.mutateAsync(operations); return true; } catch { return false; } }} onSaveTemplate={() => saveTemplate.mutate()} onApplyTemplate={(template) => applyTemplate.mutate(template)} onSearchTemplates={() => { ui.setAssist(true); window.dispatchEvent(new CustomEvent('aiws:assist-prefill', { detail: { prompt: `请使用启用 Web Search 的 Profile，为“${brief.content.title}”检索 2-3 个权威简报模板，比较发布方、时效、适用性、局限、来源链接和推荐理由。` } })); }} />}
+          {workflowDraft && <BriefWorkspace brief={brief} workflow={workflowDraft} templates={templates.data?.items || []} busy={patchBrief.isPending || patchWorkflow.isPending || applyTemplate.isPending || saveTemplate.isPending} onBrief={async (operations) => { try { await patchBrief.mutateAsync(operations); return true; } catch { return false; } }} onWorkflow={async (operations) => { try { await patchWorkflow.mutateAsync(operations); return true; } catch { return false; } }} onSaveTemplate={() => saveTemplate.mutate()} onApplyTemplate={(template) => applyTemplate.mutate(template)} onSearchTemplates={() => { ui.setAssist(true); window.dispatchEvent(new CustomEvent('aiws:assist-prefill', { detail: { prompt: `请使用已启用网页搜索的 Codex 配置，为“${brief.content.title}”检索 2-3 个权威简报模板，比较发布方、时效、适用性、局限、来源链接和推荐理由。` } })); }} />}
           {mode === 'existing' && <section className={`import-card ${sourceReady ? 'ready' : ''}`}>
-            <div>{sourceReady ? <CheckCircle2 size={20} /> : <UploadCloud size={20} />}<span><strong>{sourceReady ? '受管代码副本已就绪' : '导入代码源到受管 workspace'}</strong><small>{sourceReady ? `源 hash ${shortHash(data.project.source_hash)}` : '确认外部源只读校验、clone/copy 和落盘结果后才能激活'}</small></span></div>
-            {latestImport && <span className={`status ${latestImport.status === 'succeeded' ? 'ready' : latestImport.status === 'failed' ? 'failed' : 'pending'}`}>{latestImport.status}{latestImport.error_code ? ` · ${latestImport.error_code}` : ''}</span>}
+            <div>{sourceReady ? <CheckCircle2 size={20} /> : <UploadCloud size={20} />}<span><strong>{sourceReady ? '受管代码副本已就绪' : '导入代码源到受管工作空间'}</strong><small>{sourceReady ? `源哈希 ${shortHash(data.project.source_hash)}` : '确认外部源只读校验、克隆或复制和落盘结果后才能激活'}</small></span></div>
+            {latestImport && <span className={`status ${latestImport.status === 'succeeded' ? 'ready' : latestImport.status === 'failed' ? 'failed' : 'pending'}`}>{displayStatus(latestImport.status)}{latestImport.error_code ? ` · ${latestImport.error_code}` : ''}</span>}
             {!sourceReady && <button className="button secondary" disabled={importSource.isPending || (!sourceValue.trim() && !uploadFiles.length)} onClick={() => importSource.mutate()}>{importSource.isPending ? <LoaderCircle className="spin" size={15} /> : <UploadCloud size={15} />}{importSource.isPending ? '正在校验并导入' : '开始导入'}</button>}
           </section>}
           <div className="stage-actions"><button className="button secondary" onClick={() => setStep('intake')}><ArrowLeft size={15} />修改简报</button><button className="button primary" disabled={!canConfirm || confirm.isPending} onClick={() => confirm.mutate()}>{confirm.isPending ? <LoaderCircle className="spin" size={15} /> : <CheckCircle2 size={15} />}{sourceReady ? '确认简报并激活项目' : '请先完成代码导入'}</button></div>

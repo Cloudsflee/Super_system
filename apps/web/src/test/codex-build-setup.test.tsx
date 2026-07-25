@@ -30,13 +30,13 @@ describe('Codex async build setup', () => {
     render(<CodexSetup state={codexState()} onChange={onChange} />);
     fireEvent.click(await screen.findByRole('button', { name: '检测并构建' }));
 
-    expect(await screen.findByLabelText('Docker Build 最新日志')).toBeInTheDocument();
+    expect(await screen.findByLabelText('Docker 构建最新日志')).toBeInTheDocument();
     const source = await waitForSource();
     source.open();
     source.emit('phase', { key: 'building', label: '构建镜像', index: 3, total: 5, message: 'Docker Build 正在运行' });
     source.emit('log', { at: new Date().toISOString(), stream: 'stdout', text: 'step 4 token=***MASKED***' });
-    expect(await screen.findByText('Docker Build 正在运行')).toBeInTheDocument();
-    expect(screen.getByLabelText('Docker Build 最新日志')).toHaveTextContent('token=***MASKED***');
+    expect(await screen.findByText('Docker 构建正在运行')).toBeInTheDocument();
+    expect(screen.getByLabelText('Docker 构建最新日志')).toHaveTextContent('token=***MASKED***');
     source.fail();
     expect(await screen.findByText('事件流重连中')).toBeInTheDocument();
 
@@ -58,7 +58,7 @@ describe('Codex async build setup', () => {
     const onChange = vi.fn().mockResolvedValue(undefined);
     render(<CodexSetup state={codexState()} onChange={onChange} />);
 
-    expect(await screen.findByLabelText('Docker Build 最新日志')).toHaveTextContent('restored log');
+    expect(await screen.findByLabelText('Docker 构建最新日志')).toHaveTextContent('restored log');
     const source = await waitForSource();
     expect(source.url).toContain('/restored-build/events');
     source.emit('completed', { ...active, status: 'completed', phase: { key: 'completed', label: '完成', index: 5, total: 5 }, completed_at: new Date().toISOString(), message: 'Codex 隔离镜像已构建并验证' });

@@ -3,7 +3,7 @@ export function TurnUsage({ usage }: { usage: Record<string, unknown> }) {
   const output = tokenValue(usage, 'output_tokens', 'completion_tokens');
   const total = tokenValue(usage, 'total_tokens') ?? (input != null || output != null ? (input || 0) + (output || 0) : null);
   if (input == null && output == null && total == null) return null;
-  return <div className="turn-usage-row" aria-label="Token 用量">
+  return <div className="turn-usage-row" aria-label="令牌用量">
     <span>输入 <strong>{formatTokens(input)}</strong></span>
     <span>输出 <strong>{formatTokens(output)}</strong></span>
     <span>总计 <strong>{formatTokens(total)}</strong></span>

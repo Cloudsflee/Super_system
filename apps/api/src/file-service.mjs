@@ -8,6 +8,7 @@ import { hashString, id, now } from '../../../packages/shared/index.mjs';
 import { assertManagedProjectWritable } from './project-lifecycle.mjs';
 import { withProjectLifecycleLock } from './project-lifecycle-operations.mjs';
 import { repositoryWorkspaceRoot } from './repository-workspace-service.mjs';
+import { assertControlledProjectWrite, assertControlledTaskWrite } from './execution-governance.mjs';
 
 const maxFileBytes = 2 * 1024 * 1024;
 const maxReferenceFileBytes = 25 * 1024 * 1024;
@@ -41,7 +42,7 @@ export async function inspectProjectFile(projectId, relative, maxBytes = maxRefe
 }
 
 export function saveProjectFile(input) { return withProjectLifecycleLock(input.projectId, () => saveProjectFileLocked(input)); }
-async function saveProjectFileLocked({ projectId, nodeId, relative, content, source = 'owner_editor', repositoryWorkspaceId = null }) {
+async function saveProjectFileLocked({ projectId, nodeId, relative, content, source = 'owner_editor', repositoryWorkspaceId = null, taskExecutionId = null, leaseToken = null }) {
   if (typeof relative !== 'string' || !relative.trim()) throw new HttpError(400, { error: 'file_path_required' });
   if (typeof content !== 'string') throw new HttpError(400, { error: 'file_content_required' });
   if (Buffer.byteLength(String(content), 'utf8') > maxFileBytes) throw new HttpError(413, { error: 'file_too_large', max_bytes: maxFileBytes });
@@ -49,15 +50,16 @@ async function saveProjectFileLocked({ projectId, nodeId, relative, content, sou
   assertManagedProjectWritable(project);
   const sourceNode = nodeId ? snapshot.workflow_nodes.find((item) => item.id === nodeId) : null;
   if (nodeId && (!sourceNode || !snapshot.workflows.some((item) => item.id === sourceNode.workflow_id && item.project_id === project.id))) throw new HttpError(404, { error: 'node_not_found' });
-  const before = fs.existsSync(target) ? await fsp.readFile(target, 'utf8') : '';
-  await fsp.writeFile(target, String(content), 'utf8');
-  const afterHash = hashString(String(content)), beforeHash = hashString(before);
-  const diff = diffSummary(normalize(path.relative(root, target)), before, String(content));
-  return mutate((state) => {
+  return mutate(async (state) => {
     const actor = owner(state), currentProject = state.projects.find((item) => item.id === project.id), node = state.workflow_nodes.find((item) => item.id === nodeId);
     assertManagedProjectWritable(currentProject);
     if (nodeId && !node) throw new HttpError(404, { error: 'node_not_found' });
-    const change = { id: id('fch'), project_id: project.id, workspace_id: node?.workspace_id || project.current_workspace_id, repository_workspace_id: repositoryWorkspace?.id || null, node_id: node?.id || null, path: normalize(path.relative(root, target)), before_sha256: beforeHash, after_sha256: afterHash, bytes: Buffer.byteLength(String(content)), diff, source: normalizeSource(source), created_by_user_id: actor.id, created_at: now() };
+    if (nodeId) assertControlledTaskWrite(state, nodeId, { task_execution_id: taskExecutionId, lease_token: leaseToken }, 'file_edit');
+    else assertControlledProjectWrite(state, { projectId, taskExecutionId, leaseToken, operation: 'file_edit' });
+    const before = fs.existsSync(target) ? await fsp.readFile(target, 'utf8') : '';
+    await fsp.writeFile(target, String(content), 'utf8');
+    const afterHash = hashString(String(content)), beforeHash = hashString(before), diff = diffSummary(normalize(path.relative(root, target)), before, String(content));
+    const change = { id: id('fch'), project_id: project.id, workspace_id: node?.workspace_id || project.current_workspace_id, repository_workspace_id: repositoryWorkspace?.id || null, node_id: node?.id || null, task_execution_id: taskExecutionId, path: normalize(path.relative(root, target)), before_sha256: beforeHash, after_sha256: afterHash, bytes: Buffer.byteLength(String(content)), diff, source: normalizeSource(source), created_by_user_id: actor.id, created_at: now() };
     state.file_changes.push(change);
     const summary = change.source === 'assist_confirmed' ? `确认 Assist 后保存文件：${change.path}` : `人工保存文件：${change.path}`;
     addTrace(state, 'file.saved', { project_id: project.id, workspace_id: change.workspace_id, node_id: change.node_id, target_type: 'file_change', target_id: change.id, summary, data: { path: change.path, before_sha256: beforeHash, after_sha256: afterHash, diff: change.diff, source: change.source } }, actor.id);
@@ -75,18 +77,20 @@ export async function projectDiff(projectId, relative = '', repositoryWorkspaceI
 }
 
 export function runTestPreset(input) { return withProjectLifecycleLock(input.projectId, () => runTestPresetLocked(input)); }
-async function runTestPresetLocked({ projectId, nodeId, preset, repositoryWorkspaceId = null }) {
+async function runTestPresetLocked({ projectId, nodeId, preset, repositoryWorkspaceId = null, taskExecutionId = null, leaseToken = null }) {
   if (!presets.has(preset)) throw new HttpError(400, { error: 'unsupported_test_preset', allowed: [...presets] });
   const { state: snapshot, root, project, repositoryWorkspace } = await resolveProjectPath(projectId, '', true, { repositoryWorkspaceId, write: true });
   assertManagedProjectWritable(project);
   const sourceNode = nodeId ? snapshot.workflow_nodes.find((item) => item.id === nodeId) : null;
   if (nodeId && (!sourceNode || !snapshot.workflows.some((item) => item.id === sourceNode.workflow_id && item.project_id === project.id))) throw new HttpError(404, { error: 'node_not_found' });
+  if (nodeId) assertControlledTaskWrite(snapshot, nodeId, { task_execution_id: taskExecutionId, lease_token: leaseToken }, 'test');
+  else assertControlledProjectWrite(snapshot, { projectId, taskExecutionId, leaseToken, operation: 'test' });
   const invocation = taskInvocation(root, preset);
   const started = Date.now(), result = command(invocation.command, invocation.args, root, Number(process.env.AIWS_TEST_TASK_TIMEOUT_MS || 120000), {}, { inheritEnv: false });
   return mutate((state) => {
     const actor = owner(state), currentProject = state.projects.find((item) => item.id === project.id), node = state.workflow_nodes.find((item) => item.id === nodeId);
     assertManagedProjectWritable(currentProject);
-    const task = { id: id('tsk'), project_id: project.id, workspace_id: node?.workspace_id || project.current_workspace_id, repository_workspace_id: repositoryWorkspace?.id || null, node_id: node?.id || null, preset, command: invocation.label, status: result.ok ? 'succeeded' : 'failed', stdout: result.stdout.slice(-30000), stderr: [result.stderr, result.error].filter(Boolean).join('\n').slice(-30000), duration_ms: Date.now() - started, created_by_user_id: actor.id, created_at: now(), completed_at: now() };
+    const task = { id: id('tsk'), project_id: project.id, workspace_id: node?.workspace_id || project.current_workspace_id, repository_workspace_id: repositoryWorkspace?.id || null, node_id: node?.id || null, task_execution_id: taskExecutionId, preset, command: invocation.label, status: result.ok ? 'succeeded' : 'failed', stdout: result.stdout.slice(-30000), stderr: [result.stderr, result.error].filter(Boolean).join('\n').slice(-30000), duration_ms: Date.now() - started, created_by_user_id: actor.id, created_at: now(), completed_at: now() };
     state.test_tasks.push(task);
     addTrace(state, 'test.completed', { project_id: project.id, workspace_id: task.workspace_id, node_id: task.node_id, target_id: task.id, summary: `${preset}: ${task.status}`, data: { duration_ms: task.duration_ms, command: task.command } }, actor.id);
     return task;

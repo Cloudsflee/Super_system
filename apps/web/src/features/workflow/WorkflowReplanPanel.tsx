@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { api, json } from '../../api/client';
 import { keys } from '../../api/queries';
 import type { ChangeProposal, Workflow, WorkflowDraftNode } from '../../api/types';
+import { capabilityTagLabel, taskKindLabel } from '../../components/common/display-labels';
 import { useUi } from '../../state/ui';
 
 type ReplanNode = WorkflowDraftNode & { dependencies?: Array<{ node_id?: string }>; order_index?: number };
@@ -53,7 +54,7 @@ export function WorkflowReplanPanel({ projectId, workflow, canWrite, onClose }: 
   const diff = useMemo(() => summarizeDiff(value?.diff), [value?.diff]);
   const error = start.error || generation.error || apply.error;
   return <aside className="workflow-replan-panel" aria-label="工作流重新规划">
-    <header><div><span>REPLAN REVIEW</span><h2>工作流重新规划</h2></div><button className="icon-button" aria-label="关闭重新规划" onClick={onClose}><X size={17} /></button></header>
+    <header><div><span>重新规划审查</span><h2>工作流重新规划</h2></div><button className="icon-button" aria-label="关闭重新规划" onClick={onClose}><X size={17} /></button></header>
     <div className="workflow-replan-status">
       <span className={`status ${statusTone(value?.status)}`}>{generationStatus(value)}</span>
       {value?.diff && <span>基于 v{value.diff.from_revision}</span>}
@@ -100,8 +101,8 @@ function comparable(node: ReplanNode) {
     dependency_ids: [...(node.dependency_ids || node.dependencies?.map((item) => item.node_id).filter(Boolean) || [])].sort()
   };
 }
-function generationStatus(value?: WorkflowGeneration) { if (!value) return '未生成'; return ({ queued: '排队中', running: '生成中', completed: '可审阅', failed: '生成失败', cancelled: '已取消', superseded: '已过期' } as Record<string, string>)[value.status] || value.status; }
+function generationStatus(value?: WorkflowGeneration) { if (!value) return '未生成'; return ({ queued: '排队中', running: '生成中', completed: '可审阅', failed: '生成失败', cancelled: '已取消', superseded: '已过期' } as Record<string, string>)[value.status] || '处理中'; }
 function statusTone(value?: string) { return value === 'completed' ? 'completed' : value === 'failed' ? 'failed' : value || 'pending'; }
-function phaseLabel(value?: string) { return ({ queued: '正在排队', generating: '正在生成候选', critiquing: '正在校验质量', completed: '候选已就绪' } as Record<string, string>)[value || ''] || value || '处理中'; }
-function phaseLabelForNode(node: ReplanNode) { return node.capability_tags?.[0] || node.task_kind || '任务'; }
-function diffLabel(value: string) { return ({ added: '新增', changed: '修改', removed: '移除', kept: '保留' } as Record<string, string>)[value] || value; }
+function phaseLabel(value?: string) { return ({ queued: '正在排队', generating: '正在生成候选', critiquing: '正在校验质量', completed: '候选已就绪' } as Record<string, string>)[value || ''] || '处理中'; }
+function phaseLabelForNode(node: ReplanNode) { return node.capability_tags?.[0] ? capabilityTagLabel(node.capability_tags[0]) : taskKindLabel(node.task_kind); }
+function diffLabel(value: string) { return ({ added: '新增', changed: '修改', removed: '移除', kept: '保留' } as Record<string, string>)[value] || '已变更'; }

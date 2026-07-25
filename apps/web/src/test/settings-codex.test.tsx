@@ -36,24 +36,24 @@ describe('Codex settings', () => {
     fireEvent.click(screen.getByRole('button', { name: 'cc-switch' }));
     expect(await screen.findByText('CC Switch Catalog')).toBeInTheDocument();
     fireEvent.click(screen.getByRole('radio', { name: /Acme Relay/ }));
-    fireEvent.click(screen.getByRole('checkbox', { name: /重新进入 Setup/ }));
+    fireEvent.click(screen.getByRole('checkbox', { name: /重新进入首次配置/ }));
     fireEvent.click(screen.getByRole('button', { name: '确认导入配置' }));
     await waitFor(() => expect(calls.some((item) => item.url.endsWith('/codex/discovery/import'))).toBe(true));
     const discoveryImport = calls.find((item) => item.url.endsWith('/codex/discovery/import'));
     expect(JSON.parse(String(discoveryImport?.init?.body))).toEqual({ discovery_id: 'provider-1', source_revision: 'revision-1', confirmed: true, reconfigure: true });
     await waitFor(() => expect(screen.queryByLabelText('cc-switch 配置发现')).not.toBeInTheDocument());
-    fireEvent.click(screen.getByRole('button', { name: '手动新增 Profile' }));
-    fireEvent.change(screen.getByRole('combobox', { name: 'Provider' }), { target: { value: 'custom' } });
-    expect(screen.getByRole('textbox', { name: 'API Base URL' })).toBeRequired();
-    expect(screen.getByRole('button', { name: '保存 Profile' })).toBeDisabled();
+    fireEvent.click(screen.getByRole('button', { name: '手动新增配置' }));
+    fireEvent.change(screen.getByRole('combobox', { name: '服务商' }), { target: { value: 'custom' } });
+    expect(screen.getByRole('textbox', { name: 'API 根地址' })).toBeRequired();
+    expect(screen.getByRole('button', { name: '保存配置' })).toBeDisabled();
 
-    fireEvent.change(screen.getByRole('textbox', { name: 'Profile 名称' }), { target: { value: 'Acme Gateway' } });
-    fireEvent.change(screen.getByRole('textbox', { name: 'Provider ID' }), { target: { value: 'acme' } });
-    fireEvent.change(screen.getByRole('textbox', { name: 'API Base URL' }), { target: { value: 'https://gateway.acme.test/v1' } });
-    expect(screen.getByRole('spinbutton', { name: 'Profile 任务超时（分钟）' })).toHaveValue(30);
-    fireEvent.change(screen.getByRole('spinbutton', { name: 'Profile 任务超时（分钟）' }), { target: { value: '12' } });
+    fireEvent.change(screen.getByRole('textbox', { name: '配置名称' }), { target: { value: 'Acme Gateway' } });
+    fireEvent.change(screen.getByRole('textbox', { name: '服务商标识' }), { target: { value: 'acme' } });
+    fireEvent.change(screen.getByRole('textbox', { name: 'API 根地址' }), { target: { value: 'https://gateway.acme.test/v1' } });
+    expect(screen.getByRole('spinbutton', { name: '配置任务超时（分钟）' })).toHaveValue(30);
+    fireEvent.change(screen.getByRole('spinbutton', { name: '配置任务超时（分钟）' }), { target: { value: '12' } });
     expect(screen.getByRole('combobox', { name: 'API 协议' })).toBeDisabled();
-    fireEvent.click(screen.getByRole('button', { name: '保存 Profile' }));
+    fireEvent.click(screen.getByRole('button', { name: '保存配置' }));
 
     await waitFor(() => expect(calls.some((item) => item.url.endsWith('/codex/profiles') && item.init?.method === 'POST')).toBe(true));
     const request = calls.find((item) => item.url.endsWith('/codex/profiles') && item.init?.method === 'POST');

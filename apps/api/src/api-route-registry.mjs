@@ -17,13 +17,11 @@ export function createApiRouteRegistry(routes) {
   }
   return Object.freeze(operations.map(Object.freeze));
 }
-
 export function describeOperation(operation) {
   if (!operation) return null;
   const { handler, ...description } = operation;
   return structuredClone(description);
 }
-
 export function searchOperations(registry, { query = '', domain = null, mapping = null, limit = 50, cursor = null } = {}) {
   const needle = String(query || '').trim().toLowerCase();
   const start = decodeCursor(cursor);
@@ -31,7 +29,6 @@ export function searchOperations(registry, { query = '', domain = null, mapping 
   const size = Math.min(Math.max(Number(limit) || 50, 1), 200), page = filtered.slice(start, start + size);
   return { items: page.map(describeOperation), total: filtered.length, next_cursor: start + size < filtered.length ? encodeCursor(start + size) : null };
 }
-
 export async function executeRegistryOperation(registry, operationId, args = {}, context = {}) {
   const operation = registry.find((item) => item.operation_id === operationId);
   const requestId = context.requestId || `mcp_${randomUUID().replaceAll('-', '')}`;
@@ -61,7 +58,6 @@ export async function executeRegistryOperation(registry, operationId, args = {},
     return failure(operation.operation_id, requestId, 500, { error: 'mcp_operation_failed', message: error?.message || String(error) });
   }
 }
-
 function enrichRoute(item) {
   const domain = classifyDomain(item.pattern);
   const mapping = classifyMapping(item);
@@ -87,13 +83,11 @@ function enrichRoute(item) {
     ...(item.pattern === '/mcp' ? { protocol_reason: 'mcp_transport_endpoint' } : {})
   };
 }
-
 function validateOperation(operation) {
   for (const field of ['operation_id', 'method', 'pattern', 'source_module', 'domain', 'input_schema', 'output_schema', 'required_scopes', 'risk', 'idempotency', 'mapping', 'mcp_binding']) if (operation[field] == null) throw new Error(`api_operation_metadata_missing:${operation.operation_id || operation.pattern}:${field}`);
   if (!MCP_MAPPINGS.includes(operation.mapping)) throw new Error(`api_operation_mapping_invalid:${operation.operation_id}`);
   if (!/^aiws\.[a-z0-9-]+\.(?:get|post|put|patch|delete)\.[a-z0-9.-]+$/.test(operation.operation_id)) throw new Error(`api_operation_id_invalid:${operation.operation_id}`);
 }
-
 function validateArguments(operation, value) {
   if (!value || typeof value !== 'object' || Array.isArray(value)) throw new HttpError(400, { error: 'mcp_operation_arguments_invalid' });
   const allowed = new Set(['params', 'query', 'body', 'idempotency_key']);
@@ -163,6 +157,8 @@ async function resolveProjectId(operation, args, client = null) {
     return workflow?.project_id || null;
   }
   if (operation.pattern.startsWith('/deliveries/:id')) return findProject('deliveries', params.id);
+  if (operation.pattern.startsWith('/workflow-executions/:id')) return findProject('workflow_executions', params.id);
+  if (operation.pattern.startsWith('/task-executions/:id')) return findProject('task_executions', params.id);
   if (operation.pattern.startsWith('/delivery-policies/:id')) return findProject('delivery_policies', params.id);
   if (operation.pattern.startsWith('/repository-workspaces/:id')) return findProject('repository_workspaces', params.id);
   if (operation.pattern.startsWith('/pull-request-intents/:id')) return findProject('pull_request_intents', params.id);
@@ -187,6 +183,8 @@ async function resolveProjectId(operation, args, client = null) {
   if (operation.pattern.startsWith('/change-proposals/:id')) return findProject('change_proposals', params.id);
   if (operation.pattern.startsWith('/approvals/:type/:id')) return params.type === 'runtime' ? findProject('runtime_approvals', params.id) : findProject('change_proposals', params.id);
   if (operation.pattern.startsWith('/asset-candidates/:id')) return findProject('assets', params.id) || findProject('runner_memory_candidates', params.id);
+  if (operation.pattern.startsWith('/assets/:id')) return findProject('assets', params.id);
+  if (operation.pattern.startsWith('/asset-versions/:id')) { const version = state.asset_versions.find((item) => item.id === params.id); return findProject('assets', version?.asset_id); }
   if (params.id) return null;
   const declared = args.query?.project_id || args.body?.project_id;
   return declared ? String(declared) : null;
@@ -202,11 +200,11 @@ function classifyDomain(pattern) {
   if (/^\/assist/.test(pattern)) return 'assist';
   if (/\/git\//.test(pattern) || /git-repositories/.test(pattern)) return 'git';
   if (/^\/github/.test(pattern) || /\/github\//.test(pattern) || /repository-(?:connections|targets|branches|workspaces)/.test(pattern) || /pull-request-intents|pull-requests|delivery|deliveries/.test(pattern) || /^\/(?:canonical-repositories|repository-deletion-intents)/.test(pattern)) return 'github';
-  if (/^\/(?:assets|asset-candidates)/.test(pattern) || /\/digests$/.test(pattern)) return 'assets';
+  if (/^\/(?:assets|asset-candidates|asset-versions)/.test(pattern) || /\/digests$/.test(pattern)) return 'assets';
   if (/^\/(?:approvals|change-proposals|review)/.test(pattern)) return 'governance';
   if (/^\/(?:exchange-requests|exchange-grants)/.test(pattern) || /\/exchange(?:-requests|s)$/.test(pattern)) return 'governance';
   if (/^\/(?:runs|context-packs)/.test(pattern) || /\/run(?:\/|$)/.test(pattern)) return 'runs';
-  if (/^\/(?:workflows|nodes|workstreams|tasks)/.test(pattern) || /workflow-draft/.test(pattern) || /brief/.test(pattern)) return 'workflow';
+  if (/^\/(?:workflows|workflow-executions|task-executions|nodes|workstreams|tasks)/.test(pattern) || /workflow-draft/.test(pattern) || /brief/.test(pattern)) return 'workflow';
   return 'projects';
 }
 
@@ -228,6 +226,8 @@ function scopesFor(item, domain) {
   if (item.pattern.startsWith('/setup') && item.method !== 'GET') return ['setup:admin'];
   if (/^\/approvals\/:type\/:id\/decision$/.test(item.pattern)) return ['approval:decide'];
   if (/^\/(?:tasks|workstreams)\/:id\/review$/.test(item.pattern)) return ['workflow:write', 'approval:decide'];
+  if (/^\/task-executions\/:id\/human-approve$/.test(item.pattern)) return ['project:write', 'approval:decide'];
+  if (/^\/asset-versions\/:id\/attestations$/.test(item.pattern) && item.method === 'POST') return ['assets:write', 'approval:decide'];
   if (/^\/workstreams\/:id\/delivery-policies$/.test(item.pattern) && item.method === 'POST') return ['github:write', 'approval:decide'];
   if (/^\/pull-request-intents\/:id\/(?:approve|execute)$/.test(item.pattern)) return ['github:write', 'approval:decide'];
   if (domain === 'admin') return [item.method === 'GET' ? 'setup:read' : 'setup:admin'];
@@ -241,8 +241,8 @@ function riskFor(item, scopes) { if (scopes.includes('destructive:execute') || s
 function idempotencyFor(item) { if (item.method === 'GET') return 'safe'; if (['PUT', 'DELETE'].includes(item.method)) return 'idempotent'; return item.method === 'POST' ? 'key_required' : 'conditional'; }
 function isDestructive(item) { return /\/(?:purge|reset|disconnect)$/.test(item.pattern) || item.pattern === '/projects/:id/trash' || item.method === 'DELETE' && (item.pattern === '/projects/:id' || /^\/(?:mcp\/clients|codex\/profiles)/.test(item.pattern)); }
 function isEventStream(item) { return item.method === 'GET' && /\/events$/.test(item.pattern); }
-function isStreamResponse(item) { return isEventStream(item) || item.body === 'stream' || item.method === 'GET' && /\/(?:content|download)$/.test(item.pattern) && /attachments/.test(item.pattern); }
-function isProjectScoped(pattern) { return /^\/(?:projects|workspaces|repository-workspaces|pull-request-intents|workflows|nodes|workstreams|tasks|runs|deliveries|delivery-policies|context-packs|assets|asset-candidates|change-proposals|approvals|agent-sessions|exchange-requests|exchange-grants|project-invitations|submissions|review)/.test(pattern) || /^\/assist\/(?:v2\/sessions|v3\/(?:sessions|turns|terminal-sessions|operations|change-batches|attachments))/.test(pattern) || pattern === '/brief-templates/:templateId/apply'; }
+function isStreamResponse(item) { return isEventStream(item) || item.body === 'stream' || item.method === 'GET' && /\/(?:content|download)$/.test(item.pattern) && /(?:attachments|asset-versions)/.test(item.pattern); }
+function isProjectScoped(pattern) { return /^\/(?:projects|workspaces|repository-workspaces|pull-request-intents|workflows|workflow-executions|task-executions|nodes|workstreams|tasks|runs|deliveries|delivery-policies|context-packs|assets|asset-versions|asset-candidates|change-proposals|approvals|agent-sessions|exchange-requests|exchange-grants|project-invitations|submissions|review)/.test(pattern) || /^\/assist\/(?:v2\/sessions|v3\/(?:sessions|turns|terminal-sessions|operations|change-batches|attachments))/.test(pattern) || pattern === '/brief-templates/:templateId/apply'; }
 
 function domainTool(domain) { return `aiws_${domain}`.replace('aiws_admin', 'aiws_admin'); }
 function operationIdFor(method, pattern, domain) { const suffix = pattern.split('/').filter(Boolean).map((part) => part.startsWith(':') ? `by-${part.slice(1).replace(/[A-Z]/g, (value) => `-${value.toLowerCase()}`)}` : part.replace(/[^a-zA-Z0-9-]/g, '-').toLowerCase()).join('.'); return `aiws.${domain}.${method.toLowerCase()}.${suffix || 'root'}`; }

@@ -6,6 +6,7 @@ import { keys } from '../../api/queries';
 import type { ApprovalDecision, ApprovalItem } from '../../api/types';
 import { useUi } from '../../state/ui';
 import { IconButton } from '../common/IconButton';
+import { changeTypeLabel, displayStatus } from '../common/display-labels';
 import { decideApproval, useApprovals } from './approval-api';
 
 export function ApprovalPrompt({ projectId }: { projectId?: string }) {
@@ -75,9 +76,9 @@ export function ApprovalPrompt({ projectId }: { projectId?: string }) {
           <strong>{approvals.isError ? '审批项目加载失败' : '正在加载审批项目'}</strong>
           {approvals.isError && <><small>{approvals.error.message}</small><button className="button secondary" onClick={() => approvals.refetch()}>重试</button><button className="button secondary" onClick={() => showProposal(null)}>关闭并稍后处理</button></>}
         </div> : <>
-          <header><div className="approval-kind">{item.type === 'runtime_approval' ? <ShieldAlert size={17} /> : <GitPullRequest size={17} />}<span>{item.type === 'runtime_approval' ? 'RUNTIME APPROVAL' : 'CHANGE PROPOSAL'}</span></div><IconButton label="暂定并关闭" disabled={resolved || decision.isPending} onClick={() => decide('defer')}><X size={17} /></IconButton></header>
+          <header><div className="approval-kind">{item.type === 'runtime_approval' ? <ShieldAlert size={17} /> : <GitPullRequest size={17} />}<span>{item.type === 'runtime_approval' ? '运行审批' : '变更提案'}</span></div><IconButton label="暂定并关闭" disabled={resolved || decision.isPending} onClick={() => decide('defer')}><X size={17} /></IconButton></header>
           <div className="approval-prompt-body">
-            <div className="approval-meta"><span className={`status ${item.status}`}>{item.status}</span><span>revision {item.revision}</span>{item.change_type && <span>{item.change_type}</span>}</div>
+            <div className="approval-meta"><span className={`status ${item.status}`}>{displayStatus(item.status)}</span><span>修订版 {item.revision}</span>{item.change_type && <span>{changeTypeLabel(item.change_type)}</span>}</div>
             <h2 id="approval-prompt-title">{item.title}</h2>
             <p>{item.summary}</p>
             {decisionError && <div className="approval-error" role="alert">{decisionError}</div>}

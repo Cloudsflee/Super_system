@@ -4,15 +4,16 @@ import path from 'node:path';
 import { HttpError } from '../http.mjs';
 import { addTrace, saveArtifact } from '../state.mjs';
 import { CodexRunner, DockerCodexRunner } from '../../../../packages/runner-adapters/src/index.mjs';
-import { RunnerStatus, buildNodeRunResult, contextPackToMarkdown, nodeRunResultSchema, now } from '../../../../packages/shared/index.mjs';
+import { RunnerStatus, buildNodeRunResult, contextPackToMarkdown, runnerResultSchemaForContext, now } from '../../../../packages/shared/index.mjs';
 import { readSecret } from '../vault.mjs';
 import { codexAuthMatchesProfile, isThirdPartyProvider } from '../codex-service.mjs';
 import { materializeDeviceAuth } from '../codex-device-auth.mjs';
 import { codexContainerProxyEnv } from '../codex-container-network.mjs';
-import { assertProfileAllowed, buildCodexContainerInvocation, toRunnerPath } from '../container-runtime-config.mjs';
+import { assertProfileAllowed, buildCodexContainerInvocation } from '../container-runtime-config.mjs';
 import { runContainerProcess } from '../container-runtime.mjs';
 import { issueCodexMcpAccess, withCodexMcpEnvironment } from '../codex-mcp-runtime.mjs';
 import { codexTimeoutTtlSeconds, resolveCodexTimeoutMs } from '../codex-timeout.mjs';
+import { EXECUTION_DIR } from '../config.mjs';
 
 export async function invokeRunner(state, { actor, run, project, workspace, node, ctx, body }) {
   const repoPath = run.task_execution_context?.repository_snapshot?.managed_path || project.repo_path || project.workspace_root || '';
@@ -38,7 +39,7 @@ async function executeCodexDocker(state, payload) {
   const mcpAccess = await issueCodexMcpAccess(project.id, profile, { ttlSeconds: codexTimeoutTtlSeconds(timeoutMs) });
   const runner = new DockerCodexRunner({
     image: process.env.AIWS_CODEX_DOCKER_IMAGE, timeoutMs,
-    invocationBuilder: (input) => buildNodeRunInvocation(profile, run.id, input, Object.keys(proxyEnv), mcpAccess),
+    invocationBuilder: (input) => buildNodeRunInvocation(profile, run, input, Object.keys(proxyEnv), mcpAccess),
     processRunner: (_command, _args, options, invocation) => runContainerProcess(invocation, options)
   });
   const fallback = buildNodeRunResult({ run, contextPack: ctx, changedFiles: [], raw: 'DockerCodexRunner command prepared', status: RunnerStatus.Partial });
@@ -68,29 +69,53 @@ async function executeCodex(state, payload) {
   } finally { await mcpAccess.release(); }
 }
 
-function buildNodeRunInvocation(profile, runId, input, proxyKeys, mcpAccess) {
-  const commandArgs = [...(input.configArgs || []), 'exec', ...(input.json ? ['--json'] : []), '--skip-git-repo-check', '--sandbox', 'workspace-write'];
+export function buildNodeRunInvocation(profile, run, input, proxyKeys, mcpAccess) {
+  const readOnly = run.task_execution_context?.repository_checkout?.access === 'read_only';
+  const runtimeDir = path.dirname(input.outputSchemaFile);
+  const internalMounts = [{ source: runtimeDir, target: '/aiws-run', mode: 'rw' }];
+  const gitMetadata = resolveGitMetadataMount(input.cwd);
+  if (gitMetadata) internalMounts.push(gitMetadata);
+  for (const item of run.task_execution_context?.asset_mounts || []) {
+    const root = item.mount?.root;
+    if (root && path.posix.isAbsolute(root)) internalMounts.push({ source: root, target: root, mode: 'ro' });
+  }
+  const commandArgs = [...(input.configArgs || []), 'exec', ...(input.json ? ['--json'] : []), '--skip-git-repo-check', '--sandbox', readOnly ? 'read-only' : 'workspace-write'];
   if (input.model) commandArgs.push('--model', input.model);
-  commandArgs.push('--cd', '/workspace', '--output-schema', toRunnerPath(input.outputSchemaFile, input.cwd));
-  if (input.lastMessageFile) commandArgs.push('--output-last-message', toRunnerPath(input.lastMessageFile, input.cwd));
+  commandArgs.push('--cd', '/workspace', '--output-schema', `/aiws-run/${path.basename(input.outputSchemaFile)}`);
+  if (input.lastMessageFile) commandArgs.push('--output-last-message', `/aiws-run/${path.basename(input.lastMessageFile)}`);
   commandArgs.push('-');
   return buildCodexContainerInvocation({
-    kind: 'node-run', sessionId: runId, profileId: profile.id, image: profile.image,
+    kind: 'node-run', sessionId: run.id, profileId: profile.id, image: profile.image,
     nestedSandbox: true,
-    stdin: true, codexHome: input.codexHome, workspace: input.cwd, workspaceMode: 'rw', extraMounts: input.mounts,
-    containerEnv: { CODEX_HOME: '/codex-home', ...(input.exposeApiKey ? { OPENAI_API_KEY: null } : {}), ...(mcpAccess?.containerEnv || {}), ...Object.fromEntries(proxyKeys.map((key) => [key, null])) },
+    stdin: true, codexHome: input.codexHome, workspace: input.cwd, workspaceMode: readOnly ? 'ro' : 'rw', internalMounts, extraMounts: input.mounts,
+    containerEnv: { CODEX_HOME: '/codex-home', GIT_OPTIONAL_LOCKS: '0', GIT_TERMINAL_PROMPT: '0', ...(input.exposeApiKey ? { OPENAI_API_KEY: null } : {}), ...(mcpAccess?.containerEnv || {}), ...Object.fromEntries(proxyKeys.map((key) => [key, null])) },
     commandArgs
   });
 }
 
-async function prepareCodexFiles(cwd, run, ctx) {
-  const dir = path.join(cwd, '.ai-workspace', 'runs', run.id);
+export async function prepareCodexFiles(_cwd, run, ctx) {
+  const dir = path.join(EXECUTION_DIR, 'node-runs', run.id);
   await fsp.mkdir(dir, { recursive: true });
   const promptFile = path.join(dir, 'prompt.md');
   const schemaFile = path.join(dir, 'result-schema.json');
   await fsp.writeFile(promptFile, contextPackToMarkdown(ctx), 'utf8');
-  await fsp.writeFile(schemaFile, JSON.stringify(nodeRunResultSchema(), null, 2), 'utf8');
+  const executionContext = ctx.task_execution_context || ctx._task_execution_context || ctx.content_json?.task_execution_context;
+  await fsp.writeFile(schemaFile, JSON.stringify(runnerResultSchemaForContext(executionContext), null, 2), 'utf8');
   return { promptFile, schemaFile };
+}
+
+export function resolveGitMetadataMount(cwd) {
+  const marker = path.join(cwd, '.git');
+  try {
+    if (!fs.statSync(marker).isFile()) return null;
+    const match = fs.readFileSync(marker, 'utf8').match(/^gitdir:\s*(.+)\s*$/im);
+    if (!match) return null;
+    const gitDir = path.resolve(cwd, match[1].trim());
+    const commonRef = fs.readFileSync(path.join(gitDir, 'commondir'), 'utf8').trim();
+    const commonDir = path.resolve(gitDir, commonRef);
+    if (!path.posix.isAbsolute(commonDir) || !gitDir.startsWith(`${commonDir}${path.sep}`)) return null;
+    return { source: commonDir, target: commonDir.split(path.sep).join('/'), mode: 'ro' };
+  } catch { return null; }
 }
 
 export async function persistRunnerResult(state, { actor, run, project, workspace, node, raw, resultJson }) {

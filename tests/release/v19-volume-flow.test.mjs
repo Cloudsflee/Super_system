@@ -28,7 +28,7 @@ try {
 
   const migrated = await migration.migrateStateFileToV18(path.join(target, 'data', 'state.json'), { clock: () => new Date('2026-07-18T02:01:00.000Z') });
   assert.equal(migrated.state.schema_version, 18);
-  assert.equal(migrated.state.codex_profiles[0].image, 'aiws-codex-runner:1.9.0-codex-0.144.0');
+  assert.equal(migrated.state.codex_profiles[0].image, 'aiws-codex-runner:1.10.0-codex-0.144.0');
   assert.equal(migrated.manifest.from_schema, 17);
   assert.equal(migrated.manifest.to_schema, 18);
   const accepted = await release.acceptVolumeMigrationV19({ mode: 'migrated', sourceRoot: source, targetRoot: target, cloneManifestPath: cloneManifest, archiveSha256: archiveSha, migrationVolume: 'v19-migration-test' });
@@ -42,10 +42,11 @@ try {
   assert.equal(checked.legacy_runner_references.length, 0);
 
   const compose = fs.readFileSync('compose.yml', 'utf8');
-  for (const value of ['name: aiws-v19', 'aiws-app:1.9.0', 'aiws-codex-runner:1.9.0-codex-0.144.0', 'aiws-data-v19']) assert.ok(compose.includes(value), value);
+  for (const value of ['name: aiws-v19', 'aiws-app:1.10.0', 'aiws-codex-runner:1.10.0-codex-0.144.0', 'aiws-data-v19']) assert.ok(compose.includes(value), value);
   for (const script of ['scripts/aiws.ps1', 'scripts/aiws.sh']) {
     const text = fs.readFileSync(script, 'utf8');
-    for (const value of ['aiws-data-v18', 'aiws-data-v19', 'aiws-app:1.9.0', 'aiws-codex-runner:1.9.0-codex-0.144.0', 'v19-release.mjs']) assert.ok(text.includes(value), `${script}: ${value}`);
+    for (const value of ['aiws-data-v19', 'aiws-app:1.10.0', 'aiws-codex-runner:1.10.0-codex-0.144.0', 'v110-release.mjs']) assert.ok(text.includes(value), `${script}: ${value}`);
+    assert.equal(text.includes('aiws-data-v18'), false, `${script}: no migration source volume`);
   }
   const orchestrator = fs.readFileSync('docker/release_orchestrator.mjs', 'utf8');
   assert.ok(orchestrator.includes("RELEASE_V19 ? 18"));

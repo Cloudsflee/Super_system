@@ -40,11 +40,12 @@ describe('Assist V3 workbench', () => {
     expect(screen.queryByRole('button', { name: 'Agent' })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'CLI' })).not.toBeInTheDocument();
     fireEvent.click(await screen.findByRole('button', { name: 'gpt-codex' }));
+    expect(screen.getAllByText('服务商提供的模型')).toHaveLength(2); expect(screen.queryByText('gpt-codex model')).not.toBeInTheDocument();
     fireEvent.click(await screen.findByRole('menuitemradio', { name: /gpt-codex-custom/ }));
-    fireEvent.click(screen.getByRole('button', { name: 'high' }));
-    fireEvent.click(await screen.findByRole('menuitemradio', { name: /xhigh/ }));
-    const plan = screen.getByRole('button', { name: 'Plan' }); fireEvent.click(plan); expect(plan).toHaveAttribute('aria-pressed', 'true');
-    fireEvent.change(screen.getByRole('textbox', { name: 'Assist 消息' }), { target: { value: 'Implement feature' } });
+    fireEvent.click(screen.getByRole('button', { name: '推理强度' }));
+    fireEvent.click(await screen.findByRole('menuitemradio', { name: /最高/ }));
+    const plan = screen.getByRole('button', { name: '规划' }); fireEvent.click(plan); expect(plan).toHaveAttribute('aria-pressed', 'true');
+    fireEvent.change(screen.getByRole('textbox', { name: '智能助手消息' }), { target: { value: 'Implement feature' } });
     fireEvent.click(screen.getByRole('button', { name: '发送' }));
     await waitFor(() => expect(calls.some((item) => item.url.endsWith('/sessions/s1/turns') && item.body?.collaboration_mode === 'plan' && !('mode' in (item.body || {})) && item.body?.profile_id === 'profile-1' && item.body?.model === 'gpt-codex-custom' && item.body?.reasoning === 'xhigh')).toBe(true));
     expect(plan).toHaveAttribute('aria-pressed', 'false');
@@ -67,8 +68,8 @@ describe('Assist V3 workbench', () => {
     await screen.findByText('Thread One');
     fireEvent.click(await screen.findByRole('button', { name: 'gpt-base' }));
     fireEvent.click(await screen.findByRole('menuitemradio', { name: /gpt-saved/ }));
-    fireEvent.click(screen.getByRole('button', { name: 'high' }));
-    fireEvent.click(await screen.findByRole('menuitemradio', { name: /low/ }));
+    fireEvent.click(screen.getByRole('button', { name: '推理强度' }));
+    fireEvent.click(await screen.findByRole('menuitemradio', { name: /^低 / }));
     fireEvent.click(screen.getByRole('button', { name: 'gpt-saved' }));
     fireEvent.click(screen.getByRole('button', { name: '保存当前配置' }));
     fireEvent.change(screen.getByRole('textbox', { name: '配置名称' }), { target: { value: '快速简报' } });
@@ -76,7 +77,6 @@ describe('Assist V3 workbench', () => {
     await waitFor(() => expect(calls.some((item) => item.url.endsWith('/assist/v3/configurations') && item.body?.name === '快速简报')).toBe(true));
     expect(calls.find((item) => item.url.endsWith('/assist/v3/configurations') && item.body)?.body).toEqual({ base_profile_id: 'profile-1', name: '快速简报', model: 'gpt-saved', reasoning: 'low' });
   });
-
   it('renders a committed semantic operation and requests compensating Undo', async () => {
     const calls: Array<{ url: string; body?: Record<string, unknown> }> = [];
     const operation = { id: 'operation-1', session_id: 's1', turn_id: 'turn-1', tool: 'aiws_page.set_field', target_id: 'brief.goal', route: '/', surface_revision: 'r1', status: 'committed', risk: 'low', revision: 2, forced: false, before_value: '原始内容', after_value: '交付可验证结果', created_at: new Date(0).toISOString(), updated_at: new Date(0).toISOString() };
@@ -133,7 +133,7 @@ describe('Assist V3 workbench', () => {
   it('resizes the docked surface from its divider and supports keyboard adjustment', () => {
     vi.stubGlobal('fetch', vi.fn(async () => response([])));
     renderWithClient(<MemoryRouter><AssistCenter project={projectFixture()} scopeType="project" scopeId="p1" commandDock={false} /></MemoryRouter>);
-    const divider = screen.getByRole('separator', { name: '调整 Assist 宽度' });
+    const divider = screen.getByRole('separator', { name: '调整智能助手宽度' });
     fireEvent.pointerDown(divider, { button: 0, clientX: 700 });
     fireEvent.pointerMove(window, { clientX: 800 });
     fireEvent.pointerUp(window);
@@ -149,9 +149,9 @@ describe('Assist V3 workbench', () => {
     vi.stubGlobal('fetch', vi.fn(async () => response([])));
     const view = renderWithClient(<MemoryRouter><AssistCenter project={projectFixture()} scopeType="project" scopeId="p1" commandDock={false} /></MemoryRouter>), header = view.container.querySelector('.assist-workbench-head')!;
     expect(header.querySelector('.lucide-bot')).toBeNull(); expect(header).not.toHaveTextContent('live');
-    expect(screen.queryByRole('button', { name: '停靠 Assist' })).not.toBeInTheDocument(); expect(screen.getByRole('button', { name: '最小化 Assist' })).toBeInTheDocument(); expect(screen.getByRole('button', { name: '关闭 Assist' })).toBeInTheDocument();
-    fireEvent.click(screen.getByRole('button', { name: 'Assist 布局' }));
-    const menu = screen.getByRole('menu', { name: 'Assist 布局' }); expect(within(menu).getAllByRole('menuitemradio')).toHaveLength(3); expect(within(menu).getByRole('menuitemradio', { name: '停靠' })).toHaveAttribute('aria-checked', 'true');
+    expect(screen.queryByRole('button', { name: '停靠智能助手' })).not.toBeInTheDocument(); expect(screen.getByRole('button', { name: '最小化智能助手' })).toBeInTheDocument(); expect(screen.getByRole('button', { name: '关闭智能助手' })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: '智能助手布局' }));
+    const menu = screen.getByRole('menu', { name: '智能助手布局' }); expect(within(menu).getAllByRole('menuitemradio')).toHaveLength(3); expect(within(menu).getByRole('menuitemradio', { name: '停靠' })).toHaveAttribute('aria-checked', 'true');
     fireEvent.click(within(menu).getByRole('menuitemradio', { name: '浮动' })); expect(useUi.getState().assistSurface).toBe('floating'); expect(screen.queryByRole('menu')).not.toBeInTheDocument();
   });
 
@@ -167,7 +167,7 @@ describe('Assist V3 workbench', () => {
     vi.stubGlobal('fetch', vi.fn(async () => response([])));
     renderWithClient(<MemoryRouter><AssistCenter commandDock={false} /></MemoryRouter>);
     expect(screen.getByText('先创建项目')).toBeInTheDocument();
-    expect(screen.getByText('Assist 线程必须归属于一个项目。')).toBeInTheDocument();
+    expect(screen.getByText('智能助手线程必须归属于一个项目。')).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: '新建线程' })).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: '创建项目' }));
     expect(useUi.getState().assistOpen).toBe(false);
@@ -184,7 +184,7 @@ describe('Assist V3 workbench', () => {
     renderWithClient(<MemoryRouter><AssistCenter project={{ ...projectFixture(), status: 'draft', managed_workspace_state: 'empty' }} scopeType="project" scopeId="p1" commandDock={false} /></MemoryRouter>);
     expect(await screen.findByText('Thread One')).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Ask' })).not.toBeInTheDocument();
-    expect(await screen.findByRole('button', { name: 'Plan' })).toBeEnabled();
+    expect(await screen.findByRole('button', { name: '规划' })).toBeEnabled();
     expect(screen.queryByRole('button', { name: 'Agent' })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'CLI' })).not.toBeInTheDocument();
     expect(screen.getByRole('status')).toHaveTextContent('代码工作区只读');
@@ -207,7 +207,7 @@ describe('Assist V3 workbench', () => {
   it('renders actionable Assist runtime failures', () => {
     const event = { id: 4, sequence: 4, session_id: 's1', turn_id: 't1', type: 'failed', data: { error: 'assist_workspace_unavailable' }, created_at: new Date().toISOString() } as AssistV3Event;
     render(<TypedEvent event={event} />);
-    expect(screen.getByText('Assist 工作目录不可用，请重新进入项目后重试。')).toBeInTheDocument();
+    expect(screen.getByText('智能助手工作目录不可用，请重新进入项目后重试。')).toBeInTheDocument();
   });
 
   it('marks files viewed, comments a line, and applies a fresh Agent review', async () => {
@@ -222,8 +222,8 @@ describe('Assist V3 workbench', () => {
     }));
     renderWithClient(<DiffReviewPanel target={{ kind: 'turn', id: 't1' }} onBack={vi.fn()} />);
     expect(await screen.findByText('src/a.ts')).toBeInTheDocument();
-    fireEvent.click(screen.getByRole('button', { name: 'Mark viewed' }));
-    await screen.findByRole('button', { name: 'Viewed' });
+    fireEvent.click(screen.getByRole('button', { name: '标记为已查看' }));
+    await screen.findByRole('button', { name: '已查看' });
     fireEvent.click(screen.getByRole('row', { name: /const answer = 42/ }));
     fireEvent.change(screen.getByRole('textbox', { name: '行评论' }), { target: { value: 'Please add a test' } });
     fireEvent.click(screen.getByRole('button', { name: '评论' }));
@@ -241,9 +241,9 @@ describe('Assist V3 workbench', () => {
     await waitFor(() => expect(FakeWebSocket.last).toBeTruthy());
     FakeWebSocket.last?.emit({ type: 'output', data: 'hello', replay: true });
     await waitFor(() => expect(terminalWrites).toEqual(['hello']));
-    fireEvent.click(screen.getByRole('button', { name: 'Ctrl-C' }));
+    fireEvent.click(screen.getByRole('button', { name: '中断' }));
     expect(FakeWebSocket.last?.sent.some((item) => JSON.parse(item).signal === 'SIGINT')).toBe(true);
-    fireEvent.click(screen.getByRole('button', { name: '停止 Session' }));
+    fireEvent.click(screen.getByRole('button', { name: '停止会话' }));
     await waitFor(() => expect(changed).toHaveBeenCalledWith(expect.objectContaining({ status: 'stopped' })));
   });
 });

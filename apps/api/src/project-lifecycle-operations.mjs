@@ -1,7 +1,7 @@
 import fsp from 'node:fs/promises';
 import path from 'node:path';
 import { AsyncLocalStorage } from 'node:async_hooks';
-import { ARTIFACT_DIR, ASSIST_DIR, ATTACHMENT_DIR, EXPORT_DIR, STAGING_DIR, TRASH_DIR, WORKTREE_DIR } from './config.mjs';
+import { ARTIFACT_DIR, ASSIST_DIR, ATTACHMENT_DIR, CAS_DIR, EXPORT_DIR, STAGING_DIR, TRASH_DIR, WORKTREE_DIR } from './config.mjs';
 import { HttpError } from './http.mjs';
 import { addTrace, mutate, owner } from './state.mjs';
 import { moveProjectToTrash, purgeProjectDirectory, restoreProjectDirectory } from './project-lifecycle.mjs';
@@ -137,11 +137,12 @@ function assertProjectIdle(state, projectId) {
 }
 
 async function removeProjectManagedPaths(projectId, managed) {
-  let attachments = 0, artifacts = 0, directories = 0;
+  let attachments = 0, artifacts = 0, casBlobs = 0, directories = 0;
   for (const file of managed.attachment_paths) if (await removeFileWithin(ATTACHMENT_DIR, file)) attachments++;
   for (const file of managed.artifact_paths) if (await removeFileWithin(ARTIFACT_DIR, file)) artifacts++;
+  for (const file of managed.cas_blob_paths || []) if (await removeFileWithin(CAS_DIR, path.join(CAS_DIR, file))) casBlobs++;
   if (safeSegment(projectId) === projectId) for (const root of [ATTACHMENT_DIR, ASSIST_DIR, WORKTREE_DIR, STAGING_DIR]) if (await removeTreeWithin(root, path.join(root, projectId))) directories++;
-  return { attachments, artifacts, directories };
+  return { attachments, artifacts, cas_blobs: casBlobs, directories };
 }
 
 async function removeFileWithin(root, candidate) {

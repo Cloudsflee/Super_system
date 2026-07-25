@@ -22,6 +22,7 @@ export function currentProjectWorkflow(state, projectId) {
 export function createWorkflowGraphProposalInState(state, workflowId, input, actorId, metadata = {}) {
   const workflow = state.workflows.find((item) => item.id === workflowId && (!metadata.project_id || item.project_id === metadata.project_id));
   if (!workflow) throw new HttpError(404, { error: 'workflow_not_found' });
+  assertWorkflowExecutionInactive(state, workflow.id);
   let operations = structuredClone(input.operations || []), replacement = null;
   if (metadata.replaces_proposal_id) {
     replacement = state.change_proposals.find((item) => item.id === metadata.replaces_proposal_id);
@@ -66,6 +67,7 @@ export function createWorkflowGraphProposalInState(state, workflowId, input, act
 export function createWorkflowReplanProposalInState(state, workflowId, candidateInput, actorId, metadata = {}) {
   const workflow = state.workflows.find((item) => item.id === workflowId && (!metadata.project_id || item.project_id === metadata.project_id));
   if (!workflow) throw new HttpError(404, { error: 'workflow_not_found' });
+  assertWorkflowExecutionInactive(state, workflow.id);
   const project = state.projects.find((item) => item.id === workflow.project_id), brief = currentBrief(state, workflow.project_id);
   const current = formalNodes(state, workflow.id), candidate = normalizeWorkflowHierarchyNodes(candidateInput.nodes || []);
   assertWorkflowHierarchy(candidate, { mode: 'formal', requireTasks: true });
@@ -90,6 +92,7 @@ export function applyWorkflowGraphPatchInState(state, proposal) {
   const action = proposal?.apply_action || {};
   const workflow = state.workflows.find((item) => item.id === action.workflow_id && item.project_id === proposal.project_id);
   if (!workflow) return { type: 'workflow_graph_patch', skipped: 'workflow_missing' };
+  assertWorkflowExecutionInactive(state, workflow.id);
   const parent = action.parent_node_id ? state.workflow_nodes.find((item) => item.id === action.parent_node_id && item.workflow_id === workflow.id && item.role === 'workstream') : null;
   const currentRevision = parent ? Number(parent.plan_revision || 1) : Number(workflow.workflow_revision || workflow.version || 1);
   if (currentRevision !== Number(action.expected_revision)) throw stale(parent ? 'workstream_plan_revision_changed' : 'workflow_revision_changed', workflow, currentRevision, action.parent_node_id);
@@ -123,6 +126,7 @@ export function applyWorkflowGraphPatchInState(state, proposal) {
 export function applyWorkflowReplanInState(state, proposal) {
   const action = proposal?.apply_action || {}, workflow = state.workflows.find((item) => item.id === action.workflow_id && item.project_id === proposal.project_id);
   if (!workflow) return { type: 'workflow_replan_replace', skipped: 'workflow_missing' };
+  assertWorkflowExecutionInactive(state, workflow.id);
   const revision = Number(workflow.workflow_revision || workflow.version || 1);
   if (revision !== Number(action.expected_revision)) throw stale('workflow_revision_changed', workflow, revision);
   const current = formalNodes(state, workflow.id), before = fullSnapshot(workflow, current, revision);
@@ -176,6 +180,11 @@ function applyCandidate(state, workflow, candidate, actorId) {
       workspaceIdByNodeId.set(node.id, workspace.id);
     } else {
       const typeChanged = node.type !== source.type, goalChanged = node.goal !== source.goal;
+      const contractChanged = typeChanged || goalChanged || Number(source.execution_revision || 1) > Number(node.execution_revision || 1)
+        || JSON.stringify(node.dependencies || []) !== JSON.stringify(source.dependency_ids.map((nodeId) => ({ node_id: nodeId, type: 'finish_to_start' })))
+        || JSON.stringify(node.input_slots || []) !== JSON.stringify(source.input_slots || [])
+        || JSON.stringify(node.output_slots || []) !== JSON.stringify(source.output_slots || [])
+        || JSON.stringify(node.acceptance_criteria || []) !== JSON.stringify(source.acceptance_criteria || []);
       Object.assign(node, {
         type: source.type, title: source.title, goal: source.goal, order_index: source.order_index,
         role: source.role, parent_node_id: source.parent_node_id, outcome: source.outcome, category: source.category,
@@ -186,7 +195,7 @@ function applyCandidate(state, workflow, candidate, actorId) {
         position: source.position, dependencies: source.dependency_ids.map((nodeId) => ({ node_id: nodeId, type: 'finish_to_start' })), updated_at: now()
       });
       if (Number(source.execution_revision || 1) > Number(node.execution_revision || 1)) Object.assign(node, { status: source.status || 'ready', execution_revision: Number(source.execution_revision), reopened_from_revision: source.reopened_from_revision || Number(node.execution_revision || 1), reopen_reason: source.reopen_reason || null, latest_submission_id: null, reviewed_at: null, reviewed_by_user_id: null });
-      if (typeChanged || goalChanged) refreshContract(state, project, node, actorId, typeChanged);
+      if (contractChanged) refreshContract(state, project, node, actorId, typeChanged);
       const workspace = state.workspaces.find((item) => item.id === node.workspace_id || item.workflow_node_id === node.id);
       if (workspace) {
         const parentWorkspaceId = node.role === 'task' ? workspaceIdByNodeId.get(node.parent_node_id) : project.current_workspace_id;
@@ -215,13 +224,15 @@ function applyCandidate(state, workflow, candidate, actorId) {
 
 function refreshContract(state, project, node, actorId, reset) {
   const current = state.node_contracts.find((item) => item.id === node.current_contract_id);
-  const next = !current || reset ? defaultContractForNode(node, project, actorId, 'confirmed') : applyContractPatch(current, { node_goal: node.goal }, actorId);
+  const next = !current || reset ? defaultContractForNode(node, project, actorId, 'confirmed') : applyContractPatch(current, { node_goal: node.goal, expected_inputs: structuredClone(node.input_slots || []), expected_outputs: structuredClone(node.output_slots || []), acceptance_criteria: structuredClone(node.acceptance_criteria || []) }, actorId);
   if (current) current.status = 'superseded';
   Object.assign(next, {
     version: Number(current?.version || 0) + 1, status: 'confirmed', confirmed_by: 'human', confirmed_by_user_id: actorId
   });
   state.node_contracts.push(next); node.current_contract_id = next.id;
 }
+
+function assertWorkflowExecutionInactive(state, workflowId) { const active = state.workflow_executions?.find((item) => item.workflow_id === workflowId && ['running', 'paused'].includes(item.status)); if (active) throw new HttpError(409, { error: 'workflow_execution_active_replan_forbidden', workflow_execution_id: active.id }); }
 
 function clean(value, max = 120) { return String(value ?? '').replace(/\0/g, '').trim().slice(0, max); }
 function proposalTarget(prepared, targetId) { const idValue = clean(targetId, 120); const node = prepared.after.nodes.find((item) => item.id === idValue) || prepared.before.nodes.find((item) => item.id === idValue); const parent = prepared.parent_node_id || null; return { id: idValue || parent || prepared.workflow.id, node_id: node?.id || parent, label: node?.title || (parent ? '成果节点任务计划' : prepared.workflow.title) || '正式工作流' }; }

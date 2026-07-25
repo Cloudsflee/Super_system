@@ -5,6 +5,7 @@ import {
   approvePullRequestIntentInState, createPullRequestIntentInState, requireIntent, revokePullRequestIntentInState
 } from '../pull-request-intent-domain.mjs';
 import { executePullRequestIntent, reconcilePullRequestIntent } from '../pull-request-intent-service.mjs';
+import { assertControlledProjectWrite } from '../execution-governance.mjs';
 
 export const pullRequestIntentV19Routes = [
   makeRoute('GET', '/projects/:id/pull-requests', listProjectPullRequests),
@@ -24,7 +25,7 @@ async function listProjectPullRequests({ req, res, params, query }) {
 }
 async function getProjectPullRequest({ req, res, params }) { const state = await readState(), actor = actorForRequest(state, req, { strict: Boolean(req.auth?.clientId) }); assertProjectRead(state, params.id, actor.id); const intent = state.pull_request_intents.find((item) => item.project_id === params.id && (item.id === params.pullRequestId || String(item.pr_number) === params.pullRequestId)); return intent ? send(res, 200, publicIntent(intent)) : send(res, 404, { error: 'pull_request_not_found' }); }
 async function createIntent({ req, res, params, body }) {
-  const result = await mutate((state) => { const actor = actorForRequest(state, req, { strict: Boolean(req.auth?.clientId) }); assertProjectWrite(state, params.id, actor.id); const created = createPullRequestIntentInState(state, params.id, body, actor.id); if (!created.idempotent) addTrace(state, 'pull_request.intent.proposed', { project_id: params.id, target_type: 'pull_request_intent', target_id: created.intent.id, summary: `${created.intent.head_ref} -> ${created.intent.base_ref}`, data: { revision: created.intent.revision, snapshot_hash: created.intent.snapshot_hash } }, actor.id); return { ...created, intent: publicIntent(created.intent) }; });
+  const result = await mutate((state) => { const actor = actorForRequest(state, req, { strict: Boolean(req.auth?.clientId) }); assertProjectWrite(state, params.id, actor.id); assertControlledProjectWrite(state, { projectId: params.id, taskExecutionId: body.task_execution_id, leaseToken: body.lease_token, operation: 'pull_request_intent' }); const created = createPullRequestIntentInState(state, params.id, body, actor.id); if (!created.idempotent) addTrace(state, 'pull_request.intent.proposed', { project_id: params.id, target_type: 'pull_request_intent', target_id: created.intent.id, summary: `${created.intent.head_ref} -> ${created.intent.base_ref}`, data: { revision: created.intent.revision, snapshot_hash: created.intent.snapshot_hash } }, actor.id); return { ...created, intent: publicIntent(created.intent) }; });
   return send(res, result.idempotent ? 200 : 201, result);
 }
 async function getIntent({ req, res, params }) { const state = await readState(), intent = requireIntent(state, params.id), actor = actorForRequest(state, req, { strict: Boolean(req.auth?.clientId) }); assertProjectRead(state, intent.project_id, actor.id); return send(res, 200, publicIntent(intent)); }

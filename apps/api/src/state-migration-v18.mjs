@@ -17,7 +17,7 @@ export const V18_COLLECTIONS = Object.freeze([
 ]);
 export const V19_COLLECTIONS = V18_COLLECTIONS;
 export { canonicalStateHash, normalizeOfficialRunnerImagesV18, sha256 };
-export const V18_LEGACY_OFFICIAL_RUNNER_PATTERN = /^aiws-codex-runner:1\.[0-8]\.0-codex-\d+\.\d+\.\d+$/;
+export const V18_LEGACY_OFFICIAL_RUNNER_PATTERN = /^aiws-codex-runner:1\.[0-9]\.0-codex-\d+\.\d+\.\d+$/;
 const TERMINAL_GENERATION_STATUSES = new Set(['completed', 'failed', 'cancelled', 'superseded']);
 const VALID_SCOPES = new Set(['project', 'workflow', 'workstream', 'task', 'node']);
 export function migrateState17To18(source, { timestamp = new Date().toISOString() } = {}) {

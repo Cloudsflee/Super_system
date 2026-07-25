@@ -29,8 +29,8 @@ describe('Assist V1.5 interactions', () => {
     expect(onRespond).toHaveBeenCalledWith({ choice: { answers: ['手动检查'] } });
     inputView.unmount();
     render(<GoalCard goal={null} busy={false} onSet={onSet} onClear={vi.fn()} />);
-    fireEvent.click(screen.getByRole('button', { name: /设置线程 Goal/ }));
-    fireEvent.change(screen.getByRole('textbox', { name: 'Objective' }), { target: { value: '完成 V1.5' } });
+    fireEvent.click(screen.getByRole('button', { name: /设置线程目标/ }));
+    fireEvent.change(screen.getByRole('textbox', { name: '目标' }), { target: { value: '完成 V1.5' } });
     fireEvent.click(screen.getByRole('button', { name: '设置' }));
     expect(onSet).toHaveBeenCalledWith({ objective: '完成 V1.5' });
   });
@@ -39,7 +39,7 @@ describe('Assist V1.5 interactions', () => {
     const opener = document.createElement('button'); opener.textContent = 'Terminal'; document.body.append(opener); opener.focus();
     const capabilities: TerminalCapabilities = { linux_container: { available: true, default: true }, windows_bridge: { available: true }, host_dev: { available: false, reason: 'development only' } };
     const onClose = vi.fn(), view = render(<TerminalRuntimeSelector capabilities={capabilities} onClose={onClose} onSelect={vi.fn()} />);
-    const linux = screen.getByRole('button', { name: /Linux Container/ }), windows = screen.getByRole('button', { name: /Windows Native/ }), close = screen.getByRole('button', { name: '关闭运行时选择器' });
+    const linux = screen.getByRole('button', { name: /Linux 容器/ }), windows = screen.getByRole('button', { name: /Windows 本机/ }), close = screen.getByRole('button', { name: '关闭运行环境选择器' });
     await waitFor(() => expect(linux).toHaveFocus());
     windows.focus(); fireEvent.keyDown(windows, { key: 'Tab' }); expect(close).toHaveFocus();
     fireEvent.keyDown(close, { key: 'Escape' }); expect(onClose).toHaveBeenCalledOnce();

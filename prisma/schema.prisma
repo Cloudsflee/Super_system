@@ -133,12 +133,20 @@ model Asset {
   workspaceId String?  @map("workspace_id")
   nodeId      String?  @map("node_id")
   runId       String?  @map("run_id")
+  taskExecutionId String? @map("task_execution_id")
   assetType   String   @map("asset_type")
   title       String
   summary     String
   status      String
   evidenceRefs Json    @map("evidence_refs")
   currentVersionId String? @map("current_version_id")
+  outputKey   String?  @map("output_key")
+  confirmationPolicy String? @map("confirmation_policy")
+  attestationStatus String? @map("attestation_status")
+  acceptanceCriteria Json? @map("acceptance_criteria")
+  executionType String? @map("execution_type")
+  executionId String? @map("execution_id")
+  provenanceWorkflowExecutionId String? @map("provenance_workflow_execution_id")
   createdAt   DateTime @map("created_at")
   updatedAt   DateTime @map("updated_at")
 
@@ -298,6 +306,7 @@ model NodeRun {
   projectId         String   @map("project_id")
   workspaceId       String   @map("workspace_id")
   nodeId            String   @map("node_id")
+  taskExecutionId   String?  @map("task_execution_id")
   contextPackId     String   @map("context_pack_id")
   runner            String
   status            String
@@ -333,8 +342,20 @@ model AssetVersion {
   version           Int
   title             String
   summary           String
-  body              String
+  body              String?
+  payloadKind       String   @map("payload_kind")
+  mediaType         String   @map("media_type")
+  contentSha256     String   @map("content_sha256")
+  sizeBytes         Int      @map("size_bytes")
+  blobRefs          Json     @map("blob_refs")
+  manifest          Json
+  repositorySha     String?  @map("repository_sha")
+  provenance        Json
+  verificationStatus String  @default("verified") @map("verification_status")
+  immutable         Boolean  @default(true)
   evidenceRefs      Json     @map("evidence_refs")
+  outputKey         String?  @map("output_key")
+  inputSnapshotHash String?  @map("input_snapshot_hash")
   confirmedByUserId String?  @map("confirmed_by_user_id")
   createdAt         DateTime @map("created_at")
 
@@ -1410,6 +1431,7 @@ model Delivery {
   workflowId         String    @map("workflow_id")
   workstreamId       String    @map("workstream_id")
   taskId             String    @map("task_id")
+  taskExecutionId    String?   @map("task_execution_id")
   repositoryTargetId String    @map("repository_target_id")
   connectionId       String    @map("connection_id")
   policyId           String    @map("policy_id")
@@ -1481,4 +1503,142 @@ model WorkflowMigrationJob {
 
   @@index([batchId, status])
   @@map("workflow_migration_jobs")
+}
+
+model AssetBlob {
+  id          String   @id
+  sha256      String   @unique
+  sizeBytes   Int      @map("size_bytes")
+  mediaType   String   @map("media_type")
+  storagePath String   @map("storage_path")
+  createdAt   DateTime @map("created_at")
+
+  @@map("asset_blobs")
+}
+
+model AssetAttestation {
+  id                  String   @id
+  assetId             String   @map("asset_id")
+  assetVersionId      String   @map("asset_version_id")
+  taskExecutionId     String?  @map("task_execution_id")
+  outputKey           String?  @map("output_key")
+  decision            String
+  confirmationPolicy  String   @map("confirmation_policy")
+  attestorType        String   @map("attestor_type")
+  attestorId          String   @map("attestor_id")
+  expectedSha256      String   @map("expected_sha256")
+  acceptanceResults   Json     @map("acceptance_results")
+  evidence            Json
+  summary             String   @default("")
+  createdAt           DateTime @map("created_at")
+
+  @@index([assetVersionId, decision])
+  @@map("asset_attestations")
+}
+
+model WorkflowExecution {
+  id                    String    @id
+  projectId             String    @map("project_id")
+  workflowId            String    @map("workflow_id")
+  workflowRevision      Int       @map("workflow_revision")
+  status                String
+  repositorySelection   Json      @map("repository_selection")
+  inputHash             String    @map("input_hash")
+  executorConfig        Json      @map("executor_config")
+  operationKey          String?   @map("operation_key")
+  frontier              Json
+  waitingReasons        Json      @map("waiting_reasons")
+  createdByUserId       String    @map("created_by_user_id")
+  startedAt             DateTime  @map("started_at")
+  pausedAt              DateTime? @map("paused_at")
+  completedAt           DateTime? @map("completed_at")
+  cancelledAt           DateTime? @map("cancelled_at")
+  createdAt             DateTime  @map("created_at")
+  updatedAt             DateTime  @map("updated_at")
+
+  @@unique([workflowId, operationKey])
+  @@index([workflowId, status])
+  @@map("workflow_executions")
+}
+
+model TaskExecution {
+  id                    String    @id
+  workflowExecutionId   String    @map("workflow_execution_id")
+  projectId             String    @map("project_id")
+  workflowId            String    @map("workflow_id")
+  workstreamId          String    @map("workstream_id")
+  taskId                String    @map("task_id")
+  taskRevision          Int       @map("task_revision")
+  contractId            String    @map("contract_id")
+  contractVersion       Int       @map("contract_version")
+  attempt               Int
+  executor              String
+  status                String
+  readiness             Json
+  contextSnapshot       Json?     @map("context_snapshot")
+  inputSnapshotHash     String?   @map("input_snapshot_hash")
+  retryInputSnapshotHash String?  @map("retry_input_snapshot_hash")
+  outputBindings        Json      @map("output_bindings")
+  consumedInputs        Json      @map("consumed_inputs")
+  acceptanceResults     Json      @map("acceptance_results")
+  evidence              Json
+  errorCode             String?   @map("error_code")
+  retryClass            String?   @map("retry_class")
+  lease                 Json?
+  integration           Json?
+  supersedesId          String?   @map("supersedes_id")
+  queuedAt              DateTime? @map("queued_at")
+  startedAt             DateTime? @map("started_at")
+  completedAt           DateTime? @map("completed_at")
+  createdAt             DateTime  @map("created_at")
+  updatedAt             DateTime  @map("updated_at")
+
+  @@index([workflowExecutionId, status])
+  @@index([taskId, attempt])
+  @@map("task_executions")
+}
+
+model ExecutionEvent {
+  id                  String   @id
+  workflowExecutionId String   @map("workflow_execution_id")
+  taskExecutionId     String?  @map("task_execution_id")
+  projectId           String   @map("project_id")
+  sequence            Int
+  type                String
+  actorType           String   @map("actor_type")
+  actorId             String?  @map("actor_id")
+  data                Json
+  createdAt           DateTime @map("created_at")
+
+  @@unique([workflowExecutionId, sequence])
+  @@map("execution_events")
+}
+
+model RepositoryLine {
+  id                    String    @id
+  workflowExecutionId   String    @map("workflow_execution_id")
+  projectId             String    @map("project_id")
+  workflowId            String    @map("workflow_id")
+  workstreamId          String    @map("workstream_id")
+  connectionId          String    @map("connection_id")
+  canonicalRepositoryId String?   @map("canonical_repository_id")
+  baseRef               String    @map("base_ref")
+  baseSha               String?   @map("base_sha")
+  branch                String
+  headSha               String?   @map("head_sha")
+  checkoutPath          String?   @map("checkout_path")
+  status                String
+  activeWriterExecutionId String? @map("active_writer_execution_id")
+  pullRequestIntentId   String?   @map("pull_request_intent_id")
+  prNumber              Int?      @map("pr_number")
+  prUrl                 String?   @map("pr_url")
+  prState               String?   @map("pr_state")
+  mergedSha             String?   @map("merged_sha")
+  errorCode             String?   @map("error_code")
+  createdAt             DateTime  @map("created_at")
+  updatedAt             DateTime  @map("updated_at")
+
+  @@unique([workflowExecutionId, workstreamId, connectionId])
+  @@index([connectionId, status])
+  @@map("repository_lines")
 }

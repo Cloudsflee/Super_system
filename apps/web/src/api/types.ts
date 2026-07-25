@@ -111,6 +111,32 @@ export type Workflow = {
   created_at?: string; updated_at?: string;
   graph_json?: { nodes?: unknown[]; edges?: unknown[] };
 };
+export type ExecutionStatus = 'pending' | 'ready' | 'queued' | 'running' | 'verifying' | 'awaiting_human' | 'completed' | 'failed' | 'cancelled' | 'superseded';
+export type ExecutionReason = { code: string; [key: string]: unknown };
+export type TaskExecutionRecord = {
+  id: string; workflow_execution_id: string; project_id: string; workflow_id: string; workstream_id: string; task_id: string;
+  task_revision: number; contract_id: string; contract_version: number; attempt: number; executor: string; status: ExecutionStatus;
+  readiness: { ready: boolean; reasons: ExecutionReason[]; checked_at?: string }; input_snapshot_hash?: string | null;
+  context_snapshot?: { inputs?: TaskExecutionInput[]; asset_mounts?: unknown[]; repository_checkout?: Record<string, unknown> | null } | null;
+  output_bindings: ExecutionOutputBinding[]; acceptance_results?: unknown[]; error_code?: string | null; retry_class?: string | null;
+  integration?: { pull_request_intent_id?: string; stage?: string; pr_number?: number; pr_url?: string; merged_sha?: string } | null;
+  created_at: string; updated_at: string; started_at?: string | null; completed_at?: string | null;
+};
+export type WorkflowExecutionRecord = {
+  id: string; project_id: string; workflow_id: string; workflow_revision: number; status: 'running' | 'paused' | 'completed' | 'failed' | 'cancelled';
+  frontier: Array<{ task_execution_id: string; task_id: string; status: ExecutionStatus; executor: string }>;
+  waiting_reasons: Array<{ task_execution_id: string; task_id: string; reasons: ExecutionReason[] }>;
+  started_at: string; completed_at?: string | null; updated_at: string;
+};
+export type RepositoryLineRecord = { id: string; workflow_execution_id: string; workstream_id: string; connection_id: string; base_ref: string; base_sha?: string | null; branch: string; head_sha?: string | null; status: string; pr_number?: number | null; pr_url?: string | null; merged_sha?: string | null };
+export type WorkflowExecutionSnapshot = { workflow_execution: WorkflowExecutionRecord; task_executions: TaskExecutionRecord[]; repository_lines: RepositoryLineRecord[]; frontier: WorkflowExecutionRecord['frontier']; waiting_reasons: WorkflowExecutionRecord['waiting_reasons'] };
+export type WorkflowExecutionList = { items: WorkflowExecutionRecord[]; current: WorkflowExecutionSnapshot | null };
+export type TaskExecutionInput = { key: string; source: string; selector?: string | null; asset_versions?: Array<{ asset_id: string; version_id: string; asset_type: string; content_sha256?: string; repository_sha?: string | null; title?: string }> };
+export type ExecutionOutputBinding = { key: string; asset_id: string; version_id: string; asset_type: string; content_sha256: string; repository_sha?: string | null; confirmation_policy?: string; attestation_id?: string };
+export type PullRequestIntentRecord = { id: string; status: string; revision: number; snapshot_hash: string; head_ref: string; head_sha: string; base_ref: string; base_sha: string; checks_status: string; checks?: Array<{ name: string; status: string; conclusion?: string | null }>; approvals: Array<{ action: string; approved_at: string }>; pr_number?: number | null; pr_url?: string | null; merge_commit_sha?: string | null };
+export type TaskExecutionOutput = ExecutionOutputBinding & { asset?: AssetRecord; version?: AssetVersionRecord; attestation?: AssetAttestationRecord; bound?: boolean };
+export type TaskExecutionDetails = { task_execution: TaskExecutionRecord; workflow_execution: WorkflowExecutionRecord; task: WorkflowNode; contract: NodeContract; inputs: TaskExecutionInput[]; asset_mounts: unknown[]; outputs: TaskExecutionOutput[]; pull_request_intent?: PullRequestIntentRecord | null };
+export type TaskReadiness = { task_id: string; workflow_execution_id: string | null; task_execution_id: string | null; status: string; attempt: number; readiness: { ready: boolean; reasons: ExecutionReason[] } };
 export type ProjectMembership = { id?: string; project_id: string; user_id: string; role: 'owner' | 'collaborator' | 'viewer'; status?: string; implicit?: boolean };
 export type WorkflowMigrationBatchStatus = 'pending_approval' | 'approved' | 'running' | 'waiting_active_runs' | 'completed' | 'completed_with_failures' | 'cancelled' | string;
 export type WorkflowMigrationBatch = {
@@ -137,6 +163,8 @@ export type WorkflowNode = {
   task_count?: number; completed_task_count?: number; progress?: number; blocked_count?: number; repository_status?: { target_count: number; ready_count: number } | null;
   latest_run?: { id: string; status: string; completed_at?: string };
   output_count?: number; pending_approval_count?: number;
+  current_task_execution_id?: string | null; current_attempt?: number; waiting_reasons?: ExecutionReason[];
+  execution_evidence_status?: 'managed' | 'external_unverified' | string;
 };
 export type NodeKind = 'goal_definition' | 'research' | 'analysis' | 'execution' | 'retrospective' | 'workstream' | 'task';
 export type WorkstreamCategory = 'deliverable' | 'decision' | 'coordination' | 'operation';
@@ -157,8 +185,14 @@ export type ProjectBundle = {
   asset_versions?: AssetVersionRecord[]; asset_relations?: AssetRelationRecord[]; submissions?: SubmissionRecord[];
   membership?: ProjectMembership | null;
 };
-export type AssetRecord = { id: string; title: string; type?: string; asset_type?: string; status: string; updated_at: string; project_id: string; node_id?: string | null; current_version_id?: string | null; output_key?: string | null; confirmation_policy?: string | null };
-export type AssetVersionRecord = { id: string; asset_id: string; title?: string; summary?: string; output_key?: string | null; input_snapshot_hash?: string | null; evidence_refs?: string[] };
+export type AssetRecord = { id: string; title: string; summary?: string; type?: string; asset_type?: string; status: string; updated_at: string; project_id: string; node_id?: string | null; task_execution_id?: string | null; current_version_id?: string | null; output_key?: string | null; confirmation_policy?: string | null; current_version?: AssetVersionSummary | null; attestation_count?: number; consumer_count?: number };
+export type AssetVersionSummary = { id: string; version: number; payload_kind?: string; media_type?: string; content_sha256?: string; size_bytes?: number; repository_sha?: string | null; verification_status?: string };
+export type AssetManifestEntry = { path: string; sha256: string; size_bytes: number; media_type: string; role: string };
+export type AssetVersionRecord = { id: string; asset_id: string; version?: number; title?: string; summary?: string; output_key?: string | null; input_snapshot_hash?: string | null; evidence_refs?: string[]; payload_kind?: string; media_type?: string; content_sha256?: string; size_bytes?: number; repository_sha?: string | null; verification_status?: string; immutable?: boolean; manifest?: { entries?: AssetManifestEntry[]; metadata?: Record<string, unknown> }; provenance?: Record<string, unknown> };
+export type AssetAttestationRecord = { id: string; asset_id: string; asset_version_id: string; decision: string; confirmation_policy: string; attestor_type: string; attestor_id: string; expected_sha256: string; acceptance_results?: unknown[]; evidence?: Record<string, unknown>; summary?: string; created_at: string };
+export type AssetDetails = { asset: AssetRecord; versions: AssetVersionRecord[]; current: AssetVersionRecord | null; attestations: AssetAttestationRecord[]; consumers: AssetConsumer[] };
+export type AssetConsumer = { type: string; id: string; workflow_execution_id?: string; task_id?: string; status?: string; input_keys?: string[] };
+export type AssetVersionDetails = { asset: AssetRecord; version: AssetVersionRecord; attestations: AssetAttestationRecord[]; lineage: { upstream: AssetRelationRecord[]; downstream: AssetRelationRecord[] }; consumers: AssetConsumer[] };
 export type AssetRelationRecord = { id: string; relation_type: string; source_asset_id: string; source_asset_version_id: string; target_asset_id: string; target_asset_version_id: string; input_snapshot_hash?: string | null; execution_id?: string | null };
 export type SubmissionRecord = { id: string; node_id?: string | null; status: string; output_bindings?: Array<{ key: string; asset_id: string; version_id: string }>; input_snapshot_hash?: string | null };
 export type RunRecord = { id: string; node_id: string; status: string; summary: string; created_at: string; repository_workspace_id?: string | null; input_snapshot_hash?: string | null; repository_snapshot_hash?: string | null; input_superseded?: boolean };

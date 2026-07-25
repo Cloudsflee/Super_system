@@ -2,7 +2,7 @@ import { Check, ClipboardPenLine, ShieldCheck, ShieldX } from 'lucide-react';
 import type { UiAction } from '../../api/types';
 
 export function PageActionPreview({ action, busy, onApply }: { action: UiAction; busy: boolean; onApply: (action: UiAction) => void }) {
-  const field = String(action.args.field_id || 'field'), value = String(action.args.value ?? '');
+  const field = String(action.args.field_id || '字段'), value = String(action.args.value ?? '');
   return <article className={`page-action-preview ${action.status}`}>
     <header><ClipboardPenLine size={15} /><div><strong>{action.label}</strong><small>{field}</small></div><span>{statusLabel(action.status)}</span></header>
     <pre>{value || '（空值）'}</pre>
@@ -13,4 +13,4 @@ export function PageActionPreview({ action, busy, onApply }: { action: UiAction;
   </article>;
 }
 
-function statusLabel(status: string) { return status === 'ready' ? '待应用' : status === 'completed' ? '已应用' : status === 'failed' ? '失败' : status; }
+function statusLabel(status: string) { return status === 'ready' ? '待应用' : status === 'completed' ? '已应用' : status === 'failed' ? '失败' : '处理中'; }

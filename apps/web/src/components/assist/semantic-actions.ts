@@ -49,7 +49,7 @@ export function describeAssistSurface() {
 export async function executeAssistOperation(operationId: string, route: string) {
   const surface = describeAssistSurface(), browser = surface.browser_instance_id;
   const locator = { browser_instance_id: browser, route, surface_id: surface.id, surface_revision: surface.revision };
-  const execution = await api<AssistOperationExecution>(`/assist/v3/operations/${operationId}/claim`, json('POST', locator, { name: '认领 Assist 界面操作', feedback: 'background', timeoutMs: 120_000 }));
+  const execution = await api<AssistOperationExecution>(`/assist/v3/operations/${operationId}/claim`, json('POST', locator, { name: '认领智能助手界面操作', feedback: 'background', timeoutMs: 120_000 }));
   if (window.location.pathname !== execution.route || route !== execution.route) return submitFailure(execution, browser, 'assist_operation_route_changed');
   const claimedSurface = describeAssistSurface();
   if (claimedSurface.id !== execution.surface_id || claimedSurface.revision !== execution.surface_revision) return submitFailure(execution, browser, 'assist_operation_surface_changed');
@@ -64,14 +64,14 @@ export async function executeAssistOperation(operationId: string, route: string)
       // The authoritative canonical comparison is repeated by the server. This fast path
       // avoids a write only when the browser can prove a mismatch with WebCrypto.
       const currentHash = await canonicalHash(before);
-      if (currentHash !== execution.expected_current_hash) return api(`/assist/v3/operations/${operationId}/result`, json('POST', { ...locator, ok: true, persisted: true, before, after: before, current: before, conflict: true }, { name: '同步 Assist 冲突结果', feedback: 'background', timeoutMs: 120_000 }));
+      if (currentHash !== execution.expected_current_hash) return api(`/assist/v3/operations/${operationId}/result`, json('POST', { ...locator, ok: true, persisted: true, before, after: before, current: before, conflict: true }, { name: '同步智能助手冲突结果', feedback: 'background', timeoutMs: 120_000 }));
     }
     await writeControlFlushed(control, execution.value, { operation_id: operationId, inverse_of: execution.inverse_of });
     await control.persist?.(); await persistedFrame();
     const current = findControl(kind, executionTarget);
     if (!current) return submitFailure(execution, browser, 'assist_operation_target_unavailable');
     const after = normalize(current.control, await readControl(current.control));
-    return api(`/assist/v3/operations/${operationId}/result`, json('POST', { ...locator, ok: true, persisted: true, before, after, current: after }, { name: '同步 Assist 操作结果', feedback: 'background', timeoutMs: 120_000 }));
+    return api(`/assist/v3/operations/${operationId}/result`, json('POST', { ...locator, ok: true, persisted: true, before, after, current: after }, { name: '同步智能助手操作结果', feedback: 'background', timeoutMs: 120_000 }));
   } catch (error) { return submitFailure(execution, browser, (error as Error).message || 'assist_operation_browser_failed'); }
 }
 
@@ -93,7 +93,7 @@ function readableElement(id?: string) { if (!id) return null; const element = do
 function targetId(name: string, args: Record<string, unknown>) { if (name === 'switch_workspace_tab') return String(args.tab || args.tab_id || ''); if (name === 'set_filter') return String(args.filter_id || args.filter || args.name || ''); return String(args.field_id || args.field || args.name || ''); }
 function focus(id?: string) { if (id) window.setTimeout(() => document.getElementById(id)?.focus(), 0); }
 function browserInstanceId() { const key = 'aiws-browser-instance-v1'; let value = sessionStorage.getItem(key); if (!value) { value = `browser-${crypto.randomUUID()}`; sessionStorage.setItem(key, value); } return value; }
-async function submitFailure(execution: AssistOperationExecution, browser: string, error: string) { return api(`/assist/v3/operations/${execution.operation_id}/result`, json('POST', { browser_instance_id: browser, route: execution.route, surface_id: execution.surface_id, surface_revision: execution.surface_revision, ok: false, persisted: false, error }, { name: '同步 Assist 失败结果', feedback: 'background', timeoutMs: 120_000 })); }
+async function submitFailure(execution: AssistOperationExecution, browser: string, error: string) { return api(`/assist/v3/operations/${execution.operation_id}/result`, json('POST', { browser_instance_id: browser, route: execution.route, surface_id: execution.surface_id, surface_revision: execution.surface_revision, ok: false, persisted: false, error }, { name: '同步智能助手失败结果', feedback: 'background', timeoutMs: 120_000 })); }
 function persistedFrame() { return new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))); }
 async function canonicalHash(value: unknown) { const encoded = new TextEncoder().encode(canonicalJson(value)), digest = await crypto.subtle.digest('SHA-256', encoded); return [...new Uint8Array(digest)].map((item) => item.toString(16).padStart(2, '0')).join(''); }
 function canonicalJson(value: unknown): string { if (Array.isArray(value)) return `[${value.map(canonicalJson).join(',')}]`; if (value && typeof value === 'object') return `{${Object.keys(value).sort().map((key) => `${JSON.stringify(key)}:${canonicalJson((value as Record<string, unknown>)[key])}`).join(',')}}`; return JSON.stringify(value) ?? 'null'; }

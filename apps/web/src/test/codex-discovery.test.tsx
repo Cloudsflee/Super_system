@@ -28,7 +28,7 @@ describe('Codex local configuration discovery', () => {
     expect(screen.getByText('本地登录可复用')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: '官方账户' })).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: '官方账户' }));
-    expect(screen.getByRole('button', { name: '启动 Device Login' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: '启动设备登录' })).toBeDisabled();
     expect(screen.getByRole('button', { name: 'cc-switch' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: '本地 Codex' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: '手动 API' })).toBeInTheDocument();
@@ -40,7 +40,7 @@ describe('Codex local configuration discovery', () => {
     expect(screen.queryByText(/92x/)).not.toBeInTheDocument();
     expect(screen.queryByText('sk-live-never-render')).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole('radio', { name: /Acme Relay/ }));
-    expect(screen.queryByLabelText('Discovery API Key')).not.toBeInTheDocument();
+    expect(screen.queryByLabelText('导入配置所需的 API 密钥')).not.toBeInTheDocument();
     const consent = screen.getByRole('checkbox', { name: /确认导入所选脱敏配置/ });
     const importButton = screen.getByRole('button', { name: '确认导入配置' });
     expect(importButton).toBeDisabled();
@@ -52,7 +52,7 @@ describe('Codex local configuration discovery', () => {
     fireEvent.click(screen.getByRole('button', { name: '本地 Codex' }));
     expect(await screen.findByText('Local CODEX_HOME')).toBeInTheDocument();
     fireEvent.click(screen.getByRole('radio', { name: /Local Gateway/ }));
-    fireEvent.change(screen.getByLabelText('Discovery API Key'), { target: { value: 'sk-explicit-import' } });
+    fireEvent.change(screen.getByLabelText('导入配置所需的 API 密钥'), { target: { value: 'sk-explicit-import' } });
     fireEvent.click(screen.getByRole('checkbox', { name: /确认导入所选脱敏配置/ }));
     fireEvent.click(screen.getByRole('button', { name: '确认导入配置' }));
     await waitFor(() => expect(importCalls(calls)).toHaveLength(2));
@@ -74,7 +74,7 @@ describe('Codex local configuration discovery', () => {
     fireEvent.click(await screen.findByRole('radio', { name: /Acme Relay/ }));
     fireEvent.click(screen.getByRole('checkbox', { name: /确认导入所选脱敏配置/ }));
     fireEvent.click(screen.getByRole('button', { name: '确认导入配置' }));
-    expect(await screen.findByRole('alert')).toHaveTextContent('discovery_source_stale');
+    expect(await screen.findByRole('alert')).toHaveTextContent('本地配置已变化，请刷新后重新选择');
     fireEvent.click(screen.getByRole('button', { name: '刷新' }));
     await waitFor(() => expect(discoveryReads).toBeGreaterThanOrEqual(2));
   });

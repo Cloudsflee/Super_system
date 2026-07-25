@@ -1,7 +1,7 @@
 import { Background, BackgroundVariant, Controls, ReactFlow, ReactFlowProvider, type Edge, type Node } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { ArrowDown, ArrowLeft, ArrowRight, ArrowUp, Bot, Boxes, ChevronRight, GitBranch, List, Plus, Rows3 } from 'lucide-react';
+import { ArrowDown, ArrowLeft, ArrowRight, ArrowUp, Bot, Boxes, ChevronRight, Code2, GitBranch, List, Plus, Rows3 } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 import { Link, Navigate, useNavigate, useParams } from 'react-router-dom';
 import { api, json } from '../../api/client';
@@ -49,7 +49,10 @@ export function WorkstreamPage() {
       <IconButton label="返回顶层工作流" onClick={() => navigate(`/projects/${projectId}/workflow`)}><ArrowLeft size={18} /></IconButton>
       <div><span>{categoryLabel(parent.category)}</span><h1>{parent.title}</h1><p>{parent.outcome || parent.goal}</p></div>
       <div className="workstream-metrics"><strong>{tasks.filter((item) => item.status === 'completed').length}/{tasks.length}</strong><span>任务</span><strong>{tasks.filter((item) => item.status === 'blocked').length}</strong><span>阻塞</span></div>
-      <IconButton label="添加任务" onClick={addTask}><Plus size={18} /></IconButton>
+      <div className="workstream-header-actions">
+        {hasCodeWorkspace(parent) && <Link className="button secondary workstream-code-link" to={`/projects/${projectId}/nodes/${parent.id}`} aria-label={`查看代码：${parent.title}`}><Code2 size={15} />查看代码</Link>}
+        <IconButton label="添加任务" onClick={addTask}><Plus size={18} /></IconButton>
+      </div>
     </header>
     <div className="workstream-tabs" role="tablist" aria-label="任务视图">
       <button role="tab" aria-selected={view === 'list'} onClick={() => setView('list')}><List size={16} />列表</button>
@@ -71,23 +74,25 @@ function TaskList({ tasks, onSelect, onEnter, onAssist, onMove }: { tasks: Workf
     <div><strong>{task.title}</strong><p>{task.goal}</p></div>
     <span className={`task-status ${task.status}`}>{statusLabel(task.status)}</span>
     <span className="task-target"><GitBranch size={14} />{task.repository_target_ids?.length || 0}</span>
-    <div className="task-actions" onClick={(event) => event.stopPropagation()}><IconButton label="上移" disabled={index === 0} onClick={() => onMove(task, -1)}><ArrowUp size={15} /></IconButton><IconButton label="下移" disabled={index === tasks.length - 1} onClick={() => onMove(task, 1)}><ArrowDown size={15} /></IconButton><IconButton label="Task Assist" onClick={() => onAssist(task)}><Bot size={15} /></IconButton><button className="button task-open-primary" aria-label={`打开任务：${task.title}`} onClick={() => onEnter(task)}>打开<ArrowRight size={15} /></button></div>
+    <div className="task-actions" onClick={(event) => event.stopPropagation()}><IconButton label="上移" disabled={index === 0} onClick={() => onMove(task, -1)}><ArrowUp size={15} /></IconButton><IconButton label="下移" disabled={index === tasks.length - 1} onClick={() => onMove(task, 1)}><ArrowDown size={15} /></IconButton><IconButton label="任务智能助手" onClick={() => onAssist(task)}><Bot size={15} /></IconButton><button className="button task-open-primary" aria-label={`进入任务工作台：${task.title}`} onClick={() => onEnter(task)}>进入<ArrowRight size={15} /></button></div>
   </article>)}</div>;
 }
 
 function TaskBoard({ tasks, onSelect, onEnter }: { tasks: WorkflowNode[]; onSelect: (task: WorkflowNode) => void; onEnter: (task: WorkflowNode) => void }) {
   const columns = [{ key: 'ready', label: '待执行' }, { key: 'running', label: '进行中' }, { key: 'needs_review', label: '待验收' }, { key: 'completed', label: '已完成' }, { key: 'blocked', label: '阻塞' }];
-  return <div className="task-board">{columns.map((column) => <section key={column.key}><header><strong>{column.label}</strong><span>{tasks.filter((task) => normalizeStatus(task.status) === column.key).length}</span></header>{tasks.filter((task) => normalizeStatus(task.status) === column.key).map((task) => <button key={task.id} onClick={() => { onSelect(task); onEnter(task); }}><span>{taskKindLabel(task.task_kind)}</span><strong>{task.title}</strong><small>{task.execution_mode || 'manual'}</small></button>)}</section>)}</div>;
+  return <div className="task-board">{columns.map((column) => <section key={column.key}><header><strong>{column.label}</strong><span>{tasks.filter((task) => normalizeStatus(task.status) === column.key).length}</span></header>{tasks.filter((task) => normalizeStatus(task.status) === column.key).map((task) => <button key={task.id} onClick={() => { onSelect(task); onEnter(task); }}><span>{taskKindLabel(task.task_kind)}</span><strong>{task.title}</strong><small>{executionModeLabel(task.execution_mode)}</small></button>)}</section>)}</div>;
 }
 
 function TaskStructure({ response, onSelect, onEnter }: { response: GraphResponse; onSelect: (task: WorkflowNode) => void; onEnter: (task: WorkflowNode) => void }) {
   const records = new Map(response.nodes.map((item) => [item.id, item]));
   const nodes = useMemo<Node[]>(() => response.graph.nodes.map((item) => ({ id: item.id, position: item.position, data: { label: records.get(item.id)?.title || item.label }, className: `task-graph-node ${records.get(item.id)?.status || 'ready'}` })), [response]);
   const edges = useMemo<Edge[]>(() => response.graph.edges.map((item) => ({ ...item, animated: records.get(item.target)?.status === 'running' })), [response]);
-  return <div className="task-structure"><ReactFlow nodes={nodes} edges={edges} onNodeClick={(_, node) => { const task = records.get(node.id); if (task) onSelect(task); }} onNodeDoubleClick={(_, node) => { const task = records.get(node.id); if (task) onEnter(task); }} fitView minZoom={.35} maxZoom={1.8} proOptions={{ hideAttribution: true }}><Background variant={BackgroundVariant.Dots} gap={22} size={1} /><Controls showInteractive={false} /></ReactFlow></div>;
+  return <div className="task-structure"><ReactFlow nodes={nodes} edges={edges} colorMode="dark" onNodeClick={(_, node) => { const task = records.get(node.id); if (task) onSelect(task); }} onNodeDoubleClick={(_, node) => { const task = records.get(node.id); if (task) onEnter(task); }} fitView minZoom={.35} maxZoom={1.8} proOptions={{ hideAttribution: true }}><Background variant={BackgroundVariant.Dots} gap={22} size={1} /><Controls showInteractive={false} /></ReactFlow></div>;
 }
 
 function categoryLabel(value?: string | null) { return ({ deliverable: '交付成果', decision: '关键决策', coordination: '协同成果', operation: '运营成果' } as Record<string, string>)[value || ''] || '成果节点'; }
 function taskKindLabel(value?: TaskKind | null) { return ({ research: '研究', analysis: '分析', design: '设计', content: '内容', code: '编码', test: '测试', review: '审查', deploy: '部署', manual: '人工', integration: '集成' } as Record<string, string>)[value || 'manual']; }
 function normalizeStatus(value: string) { return value === 'draft' ? 'ready' : value === 'queued' ? 'ready' : value === 'succeeded' ? 'completed' : value; }
-function statusLabel(value: string) { return ({ ready: '待执行', running: '进行中', needs_review: '待验收', completed: '已完成', blocked: '阻塞', draft: '草稿' } as Record<string, string>)[normalizeStatus(value)] || value; }
+function statusLabel(value: string) { return ({ ready: '待执行', running: '进行中', needs_review: '待验收', completed: '已完成', blocked: '阻塞', draft: '草稿' } as Record<string, string>)[normalizeStatus(value)] || '状态未知'; }
+function executionModeLabel(value?: string | null) { return ({ manual: '人工执行', codex: 'Codex 自动执行', codex_docker: 'Codex 容器执行', repository_integrate: '代码仓库集成' } as Record<string, string>)[value || 'manual'] || '自动执行'; }
+function hasCodeWorkspace(node: WorkflowNode) { return node.type === 'execution' || Boolean(node.repository_target_ids?.length); }

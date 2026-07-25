@@ -11,11 +11,17 @@ body:has(.context-menu,.btw-popover,.attachment-preview-backdrop) [data-tooltip]
 .canvas-route .app-bar [data-tooltip]:last-child:hover::after,.canvas-route .app-bar [data-tooltip]:last-child:focus-visible::after { transform: translate(0,0); }
 .canvas-edit-tools > [data-tooltip]:first-child::after { left: 0; transform: translate(0,-3px); }
 .canvas-edit-tools > [data-tooltip]:first-child:hover::after,.canvas-edit-tools > [data-tooltip]:first-child:focus-visible::after { transform: translate(0,0); }
+.workspace-header > [data-tooltip]:first-child::after { left: 0; transform: translate(0,3px); }
+.workspace-header > [data-tooltip]:first-child:hover::after,.workspace-header > [data-tooltip]:first-child:focus-visible::after { transform: translate(0,0); }
+.workspace-header > [data-tooltip]:last-child::after { right: 0; left: auto; transform: translate(0,3px); }
+.workspace-header > [data-tooltip]:last-child:hover::after,.workspace-header > [data-tooltip]:last-child:focus-visible::after { transform: translate(0,0); }
 @media (max-width: 700px) {
   .canvas-view-tools [data-tooltip]::after { top: calc(100% + 7px); bottom: auto; transform: translate(-50%,-3px); }
   .canvas-view-tools [data-tooltip]:hover::after,.canvas-view-tools [data-tooltip]:focus-visible::after { transform: translate(-50%,0); }
   .canvas-view-tools [data-tooltip]:last-child::after { right: 0; left: auto; transform: translate(0,-3px); }
   .canvas-view-tools [data-tooltip]:last-child:hover::after,.canvas-view-tools [data-tooltip]:last-child:focus-visible::after { transform: translate(0,0); }
+  .canvas-route .app-bar .workflow-mobile-actions [data-tooltip]::after { right: 0; left: auto; transform: translate(0,-3px); }
+  .canvas-route .app-bar .workflow-mobile-actions [data-tooltip]:hover::after,.canvas-route .app-bar .workflow-mobile-actions [data-tooltip]:focus-visible::after { transform: translate(0,0); }
 }
 :where(button[aria-label]:not(.button):not([data-tooltip]):not(.scrim)) { position: relative; }
 button[aria-label]:not(.button):not([data-tooltip]):not(.scrim)::after { content: attr(aria-label); position: absolute; z-index: 500; left: 50%; bottom: calc(100% + 6px); padding: 5px 7px; opacity: 0; visibility: hidden; transform: translate(-50%,3px); border-radius: 5px; background: #202623; color: white; font: 10px/1.3 system-ui,sans-serif; white-space: nowrap; pointer-events: none; }

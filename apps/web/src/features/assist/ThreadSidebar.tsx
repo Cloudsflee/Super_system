@@ -21,7 +21,7 @@ export function ThreadSidebar(props: Props) {
     { id: `open:${item.id}`, label: '打开', onSelect: () => props.onSelect(item.id) },
     { id: `rename:${item.id}`, label: '重命名', icon: Pencil, onSelect: () => props.onRename(item) },
     { id: `pin:${item.id}`, label: item.pinned ? '取消置顶' : '置顶', icon: item.pinned ? PinOff : Pin, onSelect: () => props.onPin(item) },
-    { id: `fork:${item.id}`, label: 'Fork', icon: GitFork, onSelect: () => props.onFork(item) },
+    { id: `fork:${item.id}`, label: '创建线程分支', icon: GitFork, onSelect: () => props.onFork(item) },
     { id: `archive:${item.id}`, label: props.archived ? '恢复归档' : '归档', icon: props.archived ? ArchiveRestore : Archive, onSelect: () => props.onArchive(item) },
     ...(item.forked_from_session_id ? [{ id: `delete:${item.id}`, label: '删除分支', icon: Trash2, danger: true, onSelect: () => props.onDelete(item) }] : [])
   ];
@@ -40,9 +40,9 @@ export function ThreadSidebar(props: Props) {
   };
   return <aside className="assist-threads">
     <header><strong>线程</strong><IconButton label="新建线程" onClick={props.onCreate}><Plus size={16} /></IconButton></header>
-    <label className="assist-search"><Search size={14} /><input aria-label="搜索 Assist 线程" value={props.search} onChange={(event) => props.onSearch(event.target.value)} placeholder="搜索线程和消息" /></label>
+    <label className="assist-search"><Search size={14} /><input aria-label="搜索智能助手线程" value={props.search} onChange={(event) => props.onSearch(event.target.value)} placeholder="搜索线程和消息" /></label>
     <div className="thread-filter"><button className={!props.archived ? 'active' : ''} onClick={() => props.onArchived(false)}>进行中</button><button className={props.archived ? 'active' : ''} onClick={() => props.onArchived(true)}>已归档</button></div>
-    <div className="thread-list">{tree.map(row)}{!tree.length && <div className="thread-empty">{props.loading ? '正在加载线程' : props.archived ? '没有已归档线程' : '创建第一个 Assist 线程'}</div>}</div>
+    <div className="thread-list">{tree.map(row)}{!tree.length && <div className="thread-empty">{props.loading ? '正在加载线程' : props.archived ? '没有已归档线程' : '创建第一个智能助手线程'}</div>}</div>
   </aside>;
 }
 

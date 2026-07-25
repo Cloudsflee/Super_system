@@ -128,7 +128,7 @@ export function applyAction(state, proposal) {
     const probe = state.integration_statuses.find((item) => item.key === 'codex_probe' && item.profile_id === action.profile_id && item.status === 'ready');
     const auth = state.integration_statuses.find((item) => item.key === 'codex_auth');
     if (!selected || !probe || !codexAuthMatchesProfile(auth, selected)) return { type: action.type, skipped: 'validated_profile_probe_or_auth_missing' };
-    if (isThirdPartyProvider(selected.provider)) {
+    if (isThirdPartyProvider(selected.provider) && selected.cc_switch_mode === 'managed') {
       const discovered = state.integration_statuses.find((item) => item.key === 'codex_discovery_binding' && item.profile_id === selected.id && item.status === 'synced' && item.source_id === selected.discovery_source?.source_id && item.source_provider_id === selected.discovery_source?.source_provider_id && item.source_revision === selected.discovery_source?.revision);
       const ccSwitch = state.integration_statuses.find((item) => item.key === 'cc_switch');
       const sourceCommit = ccSwitch?.sources?.find((item) => item.name === 'cc-switch-cli')?.commit;

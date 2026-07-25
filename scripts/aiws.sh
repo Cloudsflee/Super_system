@@ -4,9 +4,8 @@ set -euo pipefail
 ROOT=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
 COMPOSE_FILE="$ROOT/compose.yml"
 VOLUME=aiws-data-v19
-SOURCE_VOLUME=aiws-data-v18
-APP_IMAGE=${AIWS_APP_IMAGE:-aiws-app:1.9.0}
-RUNNER_IMAGE=${AIWS_RUNNER_IMAGE:-aiws-codex-runner:1.9.0-codex-0.144.0}
+APP_IMAGE=${AIWS_APP_IMAGE:-aiws-app:1.10.0}
+RUNNER_IMAGE=${AIWS_RUNNER_IMAGE:-aiws-codex-runner:1.10.0-codex-0.144.0}
 PORT=${AIWS_PORT:-4317}
 COMMAND=${1:-status}
 shift || true
@@ -15,7 +14,6 @@ PROJECTS_ROOT=
 CODEX_HOME_ARG=
 CC_SWITCH_ROOT=
 CONFIRM=0
-DISCARD_UNMIGRATABLE=0
 
 while (($#)); do
   case "$1" in
@@ -23,7 +21,6 @@ while (($#)); do
     --codex-home) CODEX_HOME_ARG=${2:?missing_codex_home}; shift 2 ;;
     --cc-switch-root) CC_SWITCH_ROOT=${2:?missing_cc_switch_root}; shift 2 ;;
     --confirm) CONFIRM=1; shift ;;
-    --discard-unmigratable) DISCARD_UNMIGRATABLE=1; shift ;;
     -*) echo "unknown option: $1" >&2; exit 2 ;;
     *) if [[ -n "$PATH_ARG" ]]; then echo "unexpected argument: $1" >&2; exit 2; fi; PATH_ARG=$1; shift ;;
   esac
@@ -62,7 +59,7 @@ build_images() {
   docker build --target production -t "$APP_IMAGE" "$ROOT"
 }
 build_verify_image() {
-  local verify_image=aiws-verify:1.9.0 cache_image
+  local verify_image=aiws-verify:1.10.0 cache_image
   if docker image inspect "$verify_image" >/dev/null 2>&1 && docker run --rm --entrypoint sh --mount "type=bind,src=$ROOT,dst=/source,readonly" "$verify_image" -c 'test -d /app/node_modules && test -d "$(corepack pnpm store path)" && cmp -s /app/pnpm-lock.yaml /source/pnpm-lock.yaml && test "$(codex --version)" = "codex-cli 0.144.0" && (command -v chromium-browser >/dev/null || command -v chromium >/dev/null)'; then
     cache_image="aiws-verify-toolchain:$$-$RANDOM"
     docker tag "$verify_image" "$cache_image"
@@ -126,9 +123,8 @@ case "$COMMAND" in
   up)
     build_images; test_volume_subpath; override=$(new_import_override || true)
     trap '[[ -z "${override:-}" ]] || rm -f "$override"' EXIT
-    release_args=("$ROOT/scripts/v19-release.mjs" up --compose-file "$COMPOSE_FILE" --source-volume "$SOURCE_VOLUME" --target-volume "$VOLUME" --app-image "$APP_IMAGE" --runner-image "$RUNNER_IMAGE" --port "$PORT")
+    release_args=("$ROOT/scripts/v110-release.mjs" --compose-file "$COMPOSE_FILE" --volume "$VOLUME" --app-image "$APP_IMAGE" --runner-image "$RUNNER_IMAGE" --port "$PORT")
     [[ -z "$override" ]] || release_args+=(--override "$override")
-    [[ "$DISCARD_UNMIGRATABLE" == 0 ]] || release_args+=(--discard-unmigratable)
     node "${release_args[@]}" ;;
   down) compose down --remove-orphans; echo "数据卷 $VOLUME 已保留。" ;;
   logs) compose logs -f --tail 200 app ;;
@@ -137,14 +133,11 @@ case "$COMMAND" in
     compose config --quiet; build_images; build_verify_image
     bridge_export=$(mktemp -d "${TMPDIR:-/tmp}/aiws-bridge-XXXXXX"); trap 'rm -rf "${bridge_export:-}"' EXIT
     docker build --target windows-bridge-export --output "type=local,dest=$bridge_export" "$ROOT"; test -f "$bridge_export/aiws-bridge.exe"
-    docker run --rm "$RUNNER_IMAGE" --version; docker run --rm aiws-verify:1.9.0 corepack pnpm verify ;;
+    docker run --rm "$RUNNER_IMAGE" --version; docker run --rm aiws-verify:1.10.0 corepack pnpm verify ;;
   backup) backup_data ;;
   restore) restore_data ;;
   reset)
     [[ "$CONFIRM" == 1 ]] || { echo reset_requires_confirm >&2; exit 2; }
     compose down --remove-orphans; docker volume rm "$VOLUME"; echo "仅数据卷 $VOLUME 已删除。" ;;
-  purge-legacy)
-    [[ "$CONFIRM" == 1 ]] || { echo purge_legacy_requires_confirm >&2; exit 2; }
-    node "$ROOT/scripts/v19-release.mjs" purge-legacy --confirm --compose-file "$COMPOSE_FILE" --target-volume "$VOLUME" --app-image "$APP_IMAGE" --runner-image "$RUNNER_IMAGE" --port "$PORT" ;;
-  *) echo 'usage: aiws.sh {up|down|logs|status|verify|backup|restore|reset|purge-legacy} [--discard-unmigratable] [--confirm]' >&2; exit 2 ;;
+  *) echo 'usage: aiws.sh {up|down|logs|status|verify|backup|restore|reset} [--confirm]' >&2; exit 2 ;;
 esac

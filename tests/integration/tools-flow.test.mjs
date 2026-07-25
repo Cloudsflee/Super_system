@@ -17,13 +17,14 @@ try {
   const mcpHealth = await api(`/tools/${mcp.id}/health`, { method: 'POST', body: {} });
   assert.equal(mcpHealth.health_status, 'healthy');
   const project = await createConfirmedProject({ baseUrl: `http://127.0.0.1:${port}`, title: 'Tool Injection', goal: '验证工具进入 Context Pack', workflowNodes: [{ type: 'execution', title: '工具注入', goal: '验证 Context Pack 工具' }] });
-  const node = (await api(`/projects/${project.project.id}`)).nodes[0];
+  const node = (await api(`/projects/${project.project.id}`)).nodes.find((item) => item.role === 'task');
+  assert.ok(node, 'confirmed workflow exposes an executable Task');
   const contract = await api('/change-proposals', { method: 'POST', body: { project_id: project.project.id, node_id: node.id, change_type: 'node_contract_patch', title: '添加工具', after: { allowed_tools: ['filesystem', 'git', 'codex_runner', 'node', 'mcp'] }, apply_action: { type: 'node_contract_patch' } } });
   await api(`/change-proposals/${contract.id}/approve`, { method: 'POST', body: {} });
   await api(`/change-proposals/${contract.id}/apply`, { method: 'POST', body: {} });
   const ctx = await api(`/nodes/${node.id}/context-pack/preview`, { method: 'POST', body: {} });
   assert.ok(ctx.content_json.available_tools.some((tool) => tool.name === 'node'));
-  assert.ok(ctx.memory_manifest.included.some((item) => item.title === 'fixture_stdio_mcp'));
+  assert.ok(ctx.content_json.available_tools.some((tool) => tool.name === 'fixture_stdio_mcp'));
   console.log('tool registry integration tests passed');
 } finally {
   child.kill();

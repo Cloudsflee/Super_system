@@ -4,7 +4,7 @@ import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/
 
 const token = String(process.env.AIWS_MCP_TOKEN || ''), url = new URL(process.env.AIWS_MCP_URL || 'http://127.0.0.1:4317/api/mcp');
 if (!token) { process.stderr.write('AIWS_MCP_TOKEN is required\n'); process.exit(2); }
-const client = new Client({ name: 'aiws-developer-client', version: '1.9.0' }, { capabilities: {} });
+const client = new Client({ name: 'aiws-developer-client', version: '1.10.0' }, { capabilities: {} });
 const transport = new StreamableHTTPClientTransport(url, { requestInit: { headers: { authorization: `Bearer ${token}` } } });
 
 try {

@@ -1,0 +1,57 @@
+{
+  "source": "E:\\00_desktop\\毕业论文（设计）任务书20260723-v1.2.docx",
+  "source_sha256": "9874585938DEAB4D53A8FD58E4A70437A285ED63185560DE9EAFAB7B3A96E04E",
+  "output": "E:\\00_desktop\\毕业设计\\当前项目毕业设计任务书\\毕业论文（设计）任务书20260723-v1.3.docx",
+  "output_sha256": "80A8680996EE22BC0B7603596DAD28F81F098B9629A3EFCBCA698CFAADE67763",
+  "changed_ooxml_parts": [
+    "word/document.xml"
+  ],
+  "unchanged_ooxml_part_count": 17,
+  "document_xml_before_sha256": "3DB0B9430FBC5822ADEBDFFA65A078C26FAAA3372092FF281000BBED3ABEC1ED",
+  "document_xml_after_sha256": "461750F817D3BCC4DAE61C62766D53B586BCED581BC89EC4F656088DA2F36F49",
+  "allowed_scope_only": true,
+  "revision_count": 0,
+  "comment_count": 13,
+  "comment_parts_byte_identical": true,
+  "title_comment_anchor_order": [
+    [
+      "w:commentRangeStart",
+      "0"
+    ],
+    [
+      "w:commentRangeStart",
+      "1"
+    ],
+    [
+      "w:commentRangeStart",
+      "2"
+    ],
+    [
+      "w:commentRangeEnd",
+      "0"
+    ],
+    [
+      "w:commentRangeEnd",
+      "1"
+    ],
+    [
+      "w:commentRangeEnd",
+      "2"
+    ]
+  ],
+  "zero_length_comment_locations": {
+    "11": "new_reference_3_end",
+    "12": "new_reference_14_end"
+  },
+  "reference_count": 14,
+  "chinese_reference_count": 0,
+  "first_five_years": [
+    2025,
+    2024,
+    2024,
+    2024,
+    2024
+  ],
+  "journal_or_conference_count": 12,
+  "book_count": 0
+}

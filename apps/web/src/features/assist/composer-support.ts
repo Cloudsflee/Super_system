@@ -1,6 +1,6 @@
 export const ASSIST_COMMANDS = [
-  ['plan', '下一次使用 Plan'], ['goal', '编辑线程 Goal'], ['model', '选择模型'], ['reasoning', '选择 reasoning'],
-  ['terminal', '打开 Terminal'], ['review', '打开 Review'], ['fork', 'Fork 当前线程'], ['btw', '打开临时问答']
+  ['plan', '下一次先制定计划'], ['goal', '编辑线程目标'], ['model', '选择模型'], ['reasoning', '选择推理强度'],
+  ['terminal', '打开终端'], ['review', '打开变更审查'], ['fork', '创建线程分支'], ['btw', '打开临时问答']
 ] as const;
 
 export type AssistCommand = typeof ASSIST_COMMANDS[number][0];

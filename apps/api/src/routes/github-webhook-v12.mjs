@@ -7,6 +7,7 @@ import { pushV3Event } from '../assist-v3-events.mjs';
 import { reconcileRepositoryDeletionInState, revokeRepositoryInstallationBindingsInState } from '../repository-lifecycle-v19.mjs';
 import { reconcilePullRequestIntentWebhookInState } from '../pull-request-intent-domain.mjs';
 import { markRepositoryWorkspacesStale } from '../repository-workspace-service.mjs';
+import { reconcileWorkflowExecutionInState } from '../workflow-execution-domain.mjs';
 
 export const githubWebhookV12Routes = [makeRoute('POST', '/github/webhook', webhook)];
 
@@ -50,10 +51,27 @@ function applyEvent(state, event, payload, deliveryId = null) {
     reconcilePullRequestIntentWebhookInState(state, event, payload, deliveryId);
     applyRepositoryWorkspaceEvent(state, event, payload);
     applyDeliveryEvent(state, event, payload);
+    applyRepositoryLineEvent(state, event, payload);
   }
   if (event === 'repository') {
     const reconciled = reconcileRepositoryDeletionInState(state, payload.repository || {}, { deleted: payload.action === 'deleted', delivery_id: deliveryId });
     for (const intent of reconciled?.intents || []) addTrace(state, 'repository.deletion.reconciled', { project_id: intent.snapshot?.bindings?.[0]?.project_id || null, target_type: 'repository_deletion_intent', target_id: intent.id, summary: payload.action === 'deleted' ? 'Repository 删除已由 webhook 确认' : 'Repository 仍存在，删除 intent 已对账', data: { delivery_id: deliveryId, status: intent.status } });
+  }
+}
+
+function applyRepositoryLineEvent(state, event, payload) {
+  const repositoryId = String(payload.repository?.id || ''), fullName = String(payload.repository?.full_name || '');
+  const connectionIds = new Set(state.repository_connections.filter((item) => repositoryId && String(item.repository_id) === repositoryId || fullName && item.full_name === fullName).map((item) => item.id));
+  if (!connectionIds.size) return;
+  const branch = String(payload.pull_request?.head?.ref || payload.ref || '').replace(/^refs\/heads\//, ''), sha = String(payload.check_run?.head_sha || payload.check_suite?.head_sha || payload.sha || payload.after || '');
+  const lines = state.repository_lines.filter((item) => connectionIds.has(item.connection_id) && (branch ? item.branch === branch : sha ? item.head_sha === sha : false));
+  for (const line of lines) {
+    if (event === 'pull_request') Object.assign(line, { pr_number: payload.pull_request?.number || line.pr_number, pr_url: payload.pull_request?.html_url || line.pr_url, pr_state: payload.pull_request?.merged ? 'merged' : payload.pull_request?.state, merged_sha: payload.pull_request?.merged ? payload.pull_request?.merge_commit_sha || null : line.merged_sha, status: payload.pull_request?.merged ? 'merged' : 'integrating' });
+    if (event === 'pull_request_review' && payload.review?.state) line.reviews = [...(line.reviews || []).filter((item) => item.id !== payload.review.id), { id: payload.review.id, state: payload.review.state, user_id: payload.review.user?.id || null, submitted_at: payload.review.submitted_at || now() }];
+    if (event === 'check_run') line.checks = [...(line.checks || []).filter((item) => item.id !== payload.check_run?.id), { id: payload.check_run?.id, name: payload.check_run?.name, status: payload.check_run?.status, conclusion: payload.check_run?.conclusion }];
+    if (event === 'check_suite') line.check_suites = [...(line.check_suites || []).filter((item) => item.id !== payload.check_suite?.id), { id: payload.check_suite?.id, status: payload.check_suite?.status, conclusion: payload.check_suite?.conclusion }];
+    line.updated_at = now();
+    reconcileWorkflowExecutionInState(state, line.workflow_execution_id);
   }
 }
 

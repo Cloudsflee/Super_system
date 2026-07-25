@@ -4,7 +4,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { callOperation, callTool, createMcpTestFixture, resultData } from '../v18/mcp-test-helpers.mjs';
 import {
-  codingHierarchy, completeDeliveryTask, completeHumanTask, createRepositoryWorkspace
+  assertLegacyDeliveryRejected, assertLegacyTaskRunRejected, codingHierarchy, createRepositoryWorkspace
 } from './v19-mcp-project-journey-helpers.mjs';
 
 let repositories;
@@ -38,12 +38,13 @@ try {
 
   const state = await fixture.stateApi.readState();
   assert.equal(state.projects.find((item) => item.id === manual.projectId)?.status, 'active');
-  assert.equal(state.workflow_nodes.filter((item) => item.workflow_id === manual.workflowId && item.role === 'workstream').every((item) => item.status === 'completed'), true);
+  assert.equal(state.workflow_nodes.filter((item) => item.workflow_id === manual.workflowId && item.role === 'workstream').every((item) => item.status !== 'completed'), true);
   assert.equal(state.repository_connections.filter((item) => item.project_id === coding.projectId).length, 2);
-  assert.equal(state.deliveries.filter((item) => item.project_id === coding.projectId && item.status === 'completed').length, 2);
-  assert.equal(state.pull_request_intents.filter((item) => item.project_id === coding.projectId && item.status === 'merged' && item.approvals.length === 2).length, 2);
+  assert.equal(state.node_runs.filter((item) => [manual.projectId, coding.projectId].includes(item.project_id)).length, 0);
+  assert.equal(state.deliveries.filter((item) => item.project_id === coding.projectId).length, 0);
+  assert.equal(state.pull_request_intents.filter((item) => item.project_id === coding.projectId).length, 0);
 
-  console.log(`V1.9 MCP-only project journeys passed (${manual.projectId}, ${coding.projectId})`);
+  console.log(`V1.10 MCP legacy orchestration bypass rejection journeys passed (${manual.projectId}, ${coding.projectId})`);
 } finally {
   await operator?.close();
   await orchestrator?.close();
@@ -93,14 +94,7 @@ async function completeNonCodingJourney(operatorClient, approverClient) {
   const taskGraph = resultData(await callOperation(operatorClient, 'aiws.workflow.get.workflows.by-id.graph', { params: { id: workflowId }, query: { parent_node_id: workstream.id } }));
   assert.deepEqual(topGraph.nodes.map((item) => item.id), [workstream.id]);
   assert.deepEqual(taskGraph.nodes.map((item) => item.id), tasks.map((item) => item.id));
-  for (const task of tasks) await completeHumanTask(operatorClient, approverClient, { projectId, task });
-  await callOperation(operatorClient, 'aiws.workflow.post.workstreams.by-id.submissions', {
-    params: { id: workstream.id }, body: { summary: 'The community evidence brief is complete and independently reviewable.' }
-  });
-  const accepted = resultData(await callOperation(approverClient, 'aiws.workflow.post.workstreams.by-id.review', {
-    params: { id: workstream.id }, body: { decision: 'approve', summary: 'Outcome accepted by reviewers.' }
-  }));
-  assert.equal(accepted.workstream.status, 'completed');
+  await assertLegacyTaskRunRejected(operatorClient, approverClient, { projectId, task: tasks[0] });
   return { projectId, workflowId };
 }
 
@@ -167,28 +161,13 @@ async function completeMultiRepositoryJourney(operatorClient, approverClient) {
       params: { id: workstream.id }, body: { connection_id: betaConnectionId, base_ref: 'main', path_prefixes: ['src/beta'], test_commands: ['node -e "process.exit(0)"'], automation_permissions: ['codex_run', 'commit', 'push', 'draft_pr'] }
     }).then(resultData)
   ]);
-  await completeHumanTask(operatorClient, approverClient, { projectId, task: evidenceTask });
-  const alpha = await completeDeliveryTask(operatorClient, approverClient, {
-    projectId, task: alphaTask, policyId: alphaPolicy.id, repositoryWorkspaceId: alphaWorkspace.id,
-    change: { path: 'src/alpha/change.txt', content: 'alpha verified change\n' }, pullNumber: 11
+  await assertLegacyTaskRunRejected(operatorClient, approverClient, { projectId, task: evidenceTask });
+  await assertLegacyDeliveryRejected(approverClient, {
+    task: alphaTask, policyId: alphaPolicy.id, repositoryWorkspaceId: alphaWorkspace.id,
+    change: { path: 'src/alpha/change.txt', content: 'must not be written\n' }
   });
-  const beta = await completeDeliveryTask(operatorClient, approverClient, {
-    projectId, task: betaTask, policyId: betaPolicy.id, repositoryWorkspaceId: betaWorkspace.id,
-    change: { path: 'src/beta/change.txt', content: 'beta verified change\n' }, pullNumber: 12
-  });
-  const deliveries = [alpha.delivery, beta.delivery], deliveryIds = deliveries.map((item) => item.id);
-  assert.notEqual(deliveries[0].worktree_path, deliveries[1].worktree_path);
-  assert.notEqual(deliveries[0].branch, deliveries[1].branch);
-  const deliveryEvents = await callTool(approverClient, 'aiws_operations', { action: 'read_events', operation_id: deliveryIds[0], limit: 100 });
-  assert.equal(deliveryEvents.data.items.some((item) => item.source === 'delivery_event' && item.type === 'completed'), true);
-  await callOperation(operatorClient, 'aiws.workflow.post.workstreams.by-id.submissions', {
-    params: { id: workstream.id }, body: { summary: 'Both repository deliveries completed the two-approval PR flow.', evidence_refs: deliveryIds.map((id) => `delivery:${id}`) }
-  });
-  const accepted = resultData(await callOperation(approverClient, 'aiws.workflow.post.workstreams.by-id.review', {
-    params: { id: workstream.id }, body: { decision: 'approve', summary: 'Multi-repository outcome accepted.' }
-  }));
-  assert.equal(accepted.workstream.status, 'completed');
-  return { projectId, workflowId: confirmed.workflow.id, deliveryIds };
+  assert.ok(betaPolicy.id && betaWorkspace.id && betaTask.id);
+  return { projectId, workflowId: confirmed.workflow.id };
 }
 
 function initializeRepository(target, name) {

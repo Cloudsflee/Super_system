@@ -54,7 +54,7 @@ export function useContextMenuResolver(resolver: ContextMenuResolver) { const me
 
 function defaultActions(context: ContextMenuTarget) {
   const actions: ContextMenuAction[] = [];
-  if (context.selection && !context.sensitive) actions.push({ id: 'selection.ask', label: 'Ask', icon: Sparkles, onSelect: () => askSelection(context) }, { id: 'selection.copy', label: '复制选区', icon: Copy, onSelect: () => copyText(context.selection) });
+  if (context.selection && !context.sensitive) actions.push({ id: 'selection.ask', label: '询问智能助手', icon: Sparkles, onSelect: () => askSelection(context) }, { id: 'selection.copy', label: '复制选区', icon: Copy, onSelect: () => copyText(context.selection) });
   const editable = editableTarget(context.target);
   if (editable && !isPassword(editable)) actions.push(
     { id: 'input.cut', label: '剪切', icon: Scissors, onSelect: () => editCommand(editable, 'cut') },
@@ -62,7 +62,7 @@ function defaultActions(context: ContextMenuTarget) {
     { id: 'input.paste', label: '粘贴', icon: MessageCircleQuestion, onSelect: () => pasteInto(editable) },
     { id: 'input.select-all', label: '全选', icon: Check, onSelect: () => selectAll(editable) }
   );
-  actions.push({ id: 'page.assist', label: '打开 Assist', icon: MousePointer2, onSelect: () => useUi.getState().setAssist(true) }, { id: 'page.copy-link', label: '复制页面链接', icon: Copy, onSelect: () => copyText(window.location.href) });
+  actions.push({ id: 'page.assist', label: '打开智能助手', icon: MousePointer2, onSelect: () => useUi.getState().setAssist(true) }, { id: 'page.copy-link', label: '复制页面链接', icon: Copy, onSelect: () => copyText(window.location.href) });
   return actions;
 }
 function menuTarget(target: HTMLElement): ContextMenuTarget {

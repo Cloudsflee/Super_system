@@ -26,13 +26,12 @@ spawnSync('git', ['config', 'user.email', 'browser@example.test'], { cwd: repo }
 spawnSync('git', ['config', 'user.name', 'Browser Fixture'], { cwd: repo });
 spawnSync('git', ['add', '.'], { cwd: repo });
 spawnSync('git', ['commit', '-m', 'init'], { cwd: repo });
-const sourceBefore = repositorySnapshot(repo);
-const server = spawn(process.execPath, ['apps/api/server.mjs'], { env: { ...process.env, AIWS_PORT: String(port), AIWS_HOME: home, NODE_ENV: 'test' }, stdio: ['ignore', 'pipe', 'pipe'] });
-let browser;
+const sourceBefore = repositorySnapshot(repo), server = spawn(process.execPath, ['apps/api/server.mjs'], { env: { ...process.env, AIWS_PORT: String(port), AIWS_HOME: home, NODE_ENV: 'test' }, stdio: ['ignore', 'pipe', 'pipe'] });
+let browser, actorId = '';
 try {
-  await waitForServer();
+  await waitForServer(); actorId = (await api('/health')).local_owner.id;
   browser = await chromium.launch({ headless: true, ...browserExecutable() });
-  const context = await browser.newContext({ viewport: { width: 1440, height: 900 }, deviceScaleFactor: 1 }), page = await context.newPage();
+  const context = await browser.newContext({ viewport: { width: 1440, height: 900 }, deviceScaleFactor: 1, extraHTTPHeaders: authenticatedHeaders() }), page = await context.newPage();
   await page.emulateMedia({ reducedMotion: 'reduce' });
   const errors = [];
   page.on('console', (message) => { if (message.type() === 'error' && !message.text().startsWith('Failed to load resource')) errors.push(message.text()); });
@@ -74,7 +73,7 @@ try {
     await page.screenshot({ path: path.join(output, `setup-codex-third-party-${viewport.name}.png`), fullPage: true });
     await assertViewport(page);
   }
-  const fixture = await configureWorkspace(); const reopenedContext = await browser.newContext({ viewport: { width: 1440, height: 900 } }), reopened = await reopenedContext.newPage(); await verifyBriefPersistence(reopened, `http://127.0.0.1:${port}`, fixture.onboardingProjectId); await reopenedContext.close();
+  const fixture = await configureWorkspace(); const reopenedContext = await browser.newContext({ viewport: { width: 1440, height: 900 }, extraHTTPHeaders: authenticatedHeaders() }), reopened = await reopenedContext.newPage(); await verifyBriefPersistence(reopened, `http://127.0.0.1:${port}`, fixture.onboardingProjectId); await reopenedContext.close();
   for (const viewport of viewports) await verifyWorkspaceViewport(page, fixture, viewport);
   assert.deepEqual(repositorySnapshot(repo), sourceBefore);
   assert.deepEqual(errors.filter((item) => !item.includes('favicon')), [], `browser errors:\n${errors.join('\n')}`);
@@ -95,6 +94,7 @@ async function configureWorkspace() {
   const project = await createConfirmedProject({
     baseUrl: `http://127.0.0.1:${port}`,
     title: '发布工作空间', goal: '实现并验证可发布的桌面工作空间', source: repo,
+    requestHeaders: authenticatedHeaders(),
     workflowNodes: [
       { type: 'goal_definition', title: '目标', dependency_indexes: [] },
       { type: 'research', title: '调研', dependency_indexes: [0] },
@@ -246,14 +246,14 @@ async function verifyV17Assist(page, fixture, viewport) {
   const threadSummaries = await page.locator('.thread-main > small:not(.thread-scope)').allTextContents(); assert.ok(threadSummaries.length > 0 && threadSummaries.every((value) => /^\d+ 轮$|^尚无对话$/.test(value)), `thread summaries leaked state: ${JSON.stringify(threadSummaries)}`);
   await page.screenshot({ path: path.join(output, `assist-deleted-branch-${viewport.name}.png`) });
   await page.getByRole('button', { name: '隐藏线程列表' }).click();
-
   await page.getByRole('button', { name: fixture.previewTitle, exact: true }).click();
   const preview = page.getByRole('dialog', { name: `${fixture.previewTitle} 预览` }); await preview.waitFor();
   await preview.getByRole('heading', { name: 'Preview heading' }).waitFor(); await assertInsideViewport(page, '.attachment-preview-modal');
   await page.screenshot({ path: path.join(output, `assist-preview-${viewport.name}.png`) }); await preview.getByRole('button', { name: '关闭预览' }).click();
   await assertViewport(page);
 }
-async function api(route, method = 'GET', body) { const response = await fetch(`http://127.0.0.1:${port}${route}`, { method, headers: { 'content-type': 'application/json' }, body: body === undefined ? undefined : JSON.stringify(body) }); const data = await response.json(); assert.ok(response.ok, `${route}: ${JSON.stringify(data)}`); return data; }
-async function uploadAttachment(sessionId, filename, content) { const form = new FormData(); form.set('file', new Blob([content], { type: 'text/markdown' }), filename); const response = await fetch(`http://127.0.0.1:${port}/assist/v3/sessions/${sessionId}/attachments/upload`, { method: 'POST', body: form }); const data = await response.json(); assert.equal(response.status, 201, JSON.stringify(data)); return data; }
+async function api(route, method = 'GET', body) { const response = await fetch(`http://127.0.0.1:${port}${route}`, { method, headers: { 'content-type': 'application/json', ...authenticatedHeaders() }, body: body === undefined ? undefined : JSON.stringify(body) }); const data = await response.json(); assert.ok(response.ok, `${route}: ${JSON.stringify(data)}`); return data; }
+async function uploadAttachment(sessionId, filename, content) { const form = new FormData(); form.set('file', new Blob([content], { type: 'text/markdown' }), filename); const response = await fetch(`http://127.0.0.1:${port}/assist/v3/sessions/${sessionId}/attachments/upload`, { method: 'POST', headers: authenticatedHeaders(), body: form }); const data = await response.json(); assert.equal(response.status, 201, JSON.stringify(data)); return data; }
+function authenticatedHeaders() { return actorId ? { 'x-aiws-user-id': actorId, 'x-aiws-scopes': 'project:create' } : {}; }
 async function waitForTurn(id, status) { for (let index = 0; index < 200; index++) { const turn = await api(`/assist/v3/turns/${id}`); if (turn.status === status) return turn; if (['completed', 'failed', 'stopped', 'interrupted'].includes(turn.status)) throw new Error(`${id} reached ${turn.status}:${turn.error_code || ''}`); await new Promise((resolve) => setTimeout(resolve, 25)); } throw new Error(`${id} did not reach ${status}`); }
 async function waitForServer() { for (let index = 0; index < 100; index++) { try { await api('/health'); return; } catch { await new Promise((resolve) => setTimeout(resolve, 100)); } } throw new Error('server did not start'); }

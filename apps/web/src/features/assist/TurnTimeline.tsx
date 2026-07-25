@@ -21,7 +21,7 @@ export function TurnTimeline({ turns, events, reconnecting, busy, onRetry, onRev
   useEffect(() => { if (follow.current) end.current?.scrollIntoView?.({ block: 'end' }); }, [events.length, turns.length]);
   return <div className="turn-timeline" ref={root} onScroll={() => { const node = root.current; if (node) follow.current = node.scrollHeight - node.scrollTop - node.clientHeight < 120; }}>
     {reconnecting && <div className="stream-health" role="status"><i />正在重新连接</div>}
-    {!turns.length && <div className="quiet-empty"><Bot size={24} /><p>发送消息，或为下一次 Turn 开启原生 Plan</p></div>}
+    {!turns.length && <div className="quiet-empty"><Bot size={24} /><p>发送消息，或为下一轮开启原生规划模式</p></div>}
     {sessionEvents.length > 0 && <div className="turn-direct-events session-events">{sessionEvents.map((event) => <TypedEvent event={event} key={`${event.sequence}:${event.type}`} />)}</div>}
     {turns.map((turn) => {
       const allTurnEvents = events.filter((event) => event.turn_id === turn.id), usage = [...allTurnEvents].reverse().find((event) => event.type === 'usage')?.data || turn.usage || null;
@@ -29,14 +29,14 @@ export function TurnTimeline({ turns, events, reconnecting, busy, onRetry, onRev
       const retryable = ['failed', 'stopped', 'interrupted'].includes(turn.status), reviewable = Boolean(turn.change_batch_id && ['ready', 'no_changes', 'changes_requested', 'applied'].includes(turn.review_status));
       const phase = turnPhase(turn.status), directEvents = turnDirectEvents(turn, turnEvents, retryable), reply = assistantReply(turn, turnEvents);
       return <section className="assist-turn" key={turn.id}>
-        <article className="turn-prompt"><span className="sr-only">用户消息</span>{turn.collaboration_mode === 'plan' && <div className="turn-prompt-meta"><span className="native-plan-label">Plan</span></div>}<p>{turn.prompt}</p>{turn.attachments?.length ? <footer><Paperclip size={12} />{turn.attachments.map((item) => <span key={item.id}>{item.title}</span>)}</footer> : null}</article>
+        <article className="turn-prompt"><span className="sr-only">用户消息</span>{turn.collaboration_mode === 'plan' && <div className="turn-prompt-meta"><span className="native-plan-label">规划</span></div>}<p>{turn.prompt}</p>{turn.attachments?.length ? <footer><Paperclip size={12} />{turn.attachments.map((item) => <span key={item.id}>{item.title}</span>)}</footer> : null}</article>
         {phase && <div className={`turn-phase ${phase === '正在处理' ? 'processing' : 'waiting'}`} role="status"><i />{phase}</div>}
         <TurnRuntimeDetails events={turnEvents} usage={usage} active={Boolean(phase)} />
         {directEvents.length > 0 && <div className="turn-direct-events">{directEvents.map((event) => <TypedEvent event={event} key={`${event.sequence}:${event.type}`} />)}</div>}
         {(turn.user_inputs || []).map((item) => <UserInputCard key={item.id} item={item} busy={busy} onRespond={(answers) => onRespondUserInput(turn.id, item.item_id, answers)} />)}
         {(turn.operations || []).map((item) => <OperationReceipt key={item.id} operation={item} busy={busy} onConfirm={(approved) => onConfirmOperation(item, approved)} onUndo={(force) => onUndoOperation(item, force)} onRevise={() => onReviseOperation(item)} onContinue={() => onContinueOperation(item)} />)}
         {reply && <article className="turn-output"><span className="sr-only">助手回复</span><AssistMarkdown>{reply}</AssistMarkdown></article>}
-        {(retryable || reviewable) && <footer className="turn-actions">{retryable && <button className="button secondary" onClick={() => onRetry(turn)}><RotateCcw size={14} />Retry</button>}{reviewable && <button className="button primary" onClick={() => onReview(turn)}><GitCompare size={14} />Review batch</button>}</footer>}
+        {(retryable || reviewable) && <footer className="turn-actions">{retryable && <button className="button secondary" onClick={() => onRetry(turn)}><RotateCcw size={14} />重试</button>}{reviewable && <button className="button primary" onClick={() => onReview(turn)}><GitCompare size={14} />审查变更批次</button>}</footer>}
       </section>;
     })}<div ref={end} />
   </div>;

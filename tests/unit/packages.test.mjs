@@ -18,7 +18,7 @@ assert.ok(hostArgs.includes('gpt-test'));
 const dockerArgs = new DockerCodexRunner().buildDockerArgs({ cwd: '/repo', codexHome: '/home/codex', mounts: ['/extra'], outputSchemaFile: '/repo/schema.json' });
 assert.equal(new DockerCodexRunner().timeoutMs, 1_800_000);
 assert.deepEqual(dockerArgs.slice(0, 2), ['run', '--rm']);
-assert.ok(dockerArgs.includes('aiws-codex-runner:1.9.0-codex-0.144.0'));
+assert.ok(dockerArgs.includes('aiws-codex-runner:1.10.0-codex-0.144.0'));
 assert.ok(dockerArgs.includes('/workspace'));
 assert.ok(dockerArgs.includes('CODEX_HOME=/codex-home'));
 assert.equal(dockerArgs.includes('OPENAI_API_KEY'), false);
@@ -27,7 +27,7 @@ const dockerKeyArgs = new DockerCodexRunner().buildDockerArgs({ cwd: '/repo', co
 assert.ok(dockerKeyArgs.includes('OPENAI_API_KEY'));
 assert.ok(providerOrder().includes('node_contract'));
 assert.ok(authorityOrder.includes('confirmed_asset_or_decision'));
-assert.deepEqual(taskNames, ['context-pack.build', 'node-run.execute']);
+assert.deepEqual(taskNames, ['context-pack.build', 'node-run.execute', 'task-execution.claim', 'task-execution.output']);
 await assert.rejects(() => executeTask('unknown.task', {}), /unsupported_worker_task/);
 
 const repo = fs.mkdtempSync(path.join(os.tmpdir(), 'aiws-agents-'));

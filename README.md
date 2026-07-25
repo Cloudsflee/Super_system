@@ -1,10 +1,10 @@
-# AI Workspace System V1.9
+# AI Workspace System V1.10
 
-AI Workspace System V1.9 是一个本地优先、自托管的 AI 协作工作空间。V1.9 在全能力 MCP 基础上加入项目语义驱动的 Workstream/Task 两级工作流、四层 Assist scope 和多仓库 Draft PR Delivery。
+AI Workspace System V1.10 是一个本地优先、自托管的 AI 协作工作空间。V1.10 在两级 Workstream/Task 工作流上加入持久化 DAG 调度、不可变内容寻址资产、Repository Line、同 SHA 验证和受控 PR 合并。
 
 当前版本默认采用 **JSON-local 本地持久化**，不依赖外部数据库即可启动；同时保留 Prisma/PostgreSQL、Redis、Worker、CodexRunner、GitHub PR 等后续替换边界。
 
-> **交付状态**：V1.9 使用 state schema 18、Compose project `aiws-v19` 和独立 external volume `aiws-data-v19`。首次 `up` 从只读 `aiws-data-v18` 经带标签临时迁移卷克隆、执行确定性 17→18 迁移并验收；重复 `up` 不覆盖非空目标卷。V1.8 报告、迁移实现和 schema 17 源数据继续作为只读基线保留。
+> **交付状态**：V1.10 使用 state schema 19、Compose project `aiws-v19` 和 external volume `aiws-data-v19`。`up` 会等待活动执行结束，验证并备份现有卷，原地迁移到 schema 19，然后只以 `--no-deps --force-recreate app` 替换 `4317` 的 AIWS 应用；其他容器、卷和 GitHub 配置保持不变。
 
 工作流界面继续采用 V1.8 Focus OS 视觉与交互基线，见 [`docs/v1.8-focus-os-ui-design.md`](docs/v1.8-focus-os-ui-design.md)。
 
@@ -17,7 +17,9 @@ AI Workspace System V1.9 是一个本地优先、自托管的 AI 协作工作空
 - **两级 Workflow**：顶层画布只显示可独立验收的 Workstream；内部 Task 使用列表、看板或独立局部结构图，最大深度固定为 2。
 - **异步工作流生成**：Brief、材料和代码源就绪后由 Codex 生成候选并经独立 critic 校验；失败保持空白草案，不安装通用阶段兜底。
 - **四层 Assist**：线程严格归属于 `project/workflow/workstream/task`，显示完整 breadcrumb，节点删除或换版后按 scope snapshot 只读保留。
-- **多仓库 Delivery**：项目连接多个仓库，Task 在一次性 Delivery Policy 内使用隔离 worktree，检查路径、secret 和测试后只创建 Draft PR。
+- **持久化 DAG 执行**：用户启动一次 Workflow Execution，dispatcher 自动推进 readiness frontier，在人工 checkpoint、PR 批准或确定性失败处局部暂停并支持幂等恢复。
+- **不可变资产管线**：正文和文件集合进入 CAS 后按 SHA-256 校验；确认只新增 attestation，并原子写入 output binding、验收结果和 lineage。
+- **Repository Line**：每个 Workstream 绑定一条仓库版本线和一个最终 PR；写 Task 严格串行，只读验证固定上游 SHA 并最多并行两个。
 - **Node Contract**：每个节点都有目标、验收标准、允许工具等结构化契约。
 - **Codex 原生 Assist**：普通 Turn 为 `default`，单次 Plan 使用原生 `collaborationMode: plan`；用户消息与 `additionalContext` 分离，只使用 app-server。
 - **Goal 与原生事件**：线程 Goal 直接透传 objective/status/budget/usage；Plan、tool、command/file/diff、reasoning summary 与 request-user-input 进入统一活动流。
@@ -43,11 +45,11 @@ AI Workspace System V1.9 是一个本地优先、自托管的 AI 协作工作空
 
 Node.js、pnpm、Git、SSH、tar 和生产 Web 都包含在镜像中。宿主开发模式另需 Node.js 24、Corepack/pnpm 与 Git。
 
-业务状态仍使用 JSON-local，不需要数据库或 Redis；V1.9 生产数据保存在固定命名卷 `aiws-data-v19`。schema 18 新增 workflow generation、repository target、delivery 和 semantic migration collections；MCP token 仍只保存 hash。
+业务状态仍使用 JSON-local，不需要数据库或 Redis；V1.10 生产数据保存在固定命名卷 `aiws-data-v19`。schema 19 新增 CAS blob、attestation、Workflow/Task Execution、execution event 和 Repository Line collections；MCP token 仍只保存 hash。
 
 已使用过 Codex 的用户可直接导入本机 `CODEX_HOME` / `~/.codex` 中的 `config.toml` 与 `auth.json`；页面只返回脱敏摘要，确认后才复制 API Key 或官方 OAuth bundle，并重建 AIWS 托管 Profile。未使用过 Codex 的用户可在 Setup 选择官方 Device Login 或手动 API 配置。
 
-V1.9 启动脚本从只读 `aiws-data-v18` 创建并验证临时归档，再解压到空的 `aiws-data-v19`；源/目标 state 哈希、集合、记录 ID、文件和安全符号链接均进入迁移凭据。失败时停止 V1.9、保留两个卷并恢复原先运行的 V1.8 服务，不自动丢弃或重建目标数据。
+V1.10 启动脚本在 `.ai-workspace/backups/` 创建并验证 `aiws-data-v19-pre-v110-*.tar.gz`，再执行 schema 19 原地迁移。失败时停止新应用并保留备份与发布 transcript，不删除或重建生产卷。
 
 ## 3. 快速启动项目
 
@@ -71,7 +73,7 @@ bash scripts/aiws.sh up
 http://127.0.0.1:4317
 ```
 
-默认构建 `aiws-app:1.9.0`、`aiws-verify:1.9.0` 与 `aiws-codex-runner:1.9.0-codex-0.144.0`，正式挂载 `aiws-data-v19`。团队模式另行构建 `aiws-mcp-gateway:1.9.0`；Gateway 不挂数据卷或 Docker socket。首次升级流程由启动脚本执行只读克隆、schema 17→18 迁移、健康检查和迁移验收；后续启动保持幂等。
+默认构建 `aiws-app:1.10.0`、`aiws-verify:1.10.0` 与 `aiws-codex-runner:1.10.0-codex-0.144.0`，正式挂载 `aiws-data-v19`。团队模式另行构建 `aiws-mcp-gateway:1.10.0`；Gateway 不挂数据卷或 Docker socket。升级流程包含静默等待、备份、schema 19 校验、app-only replacement 和 `4317` 健康验收。
 
 显式配置项目只读导入根：
 
@@ -101,10 +103,10 @@ corepack pnpm dev
 ### 3.3 手动构建镜像
 
 ```bash
-docker build --target production -t aiws-app:1.9.0 .
-docker build --target verify -t aiws-verify:1.9.0 .
-docker build --target mcp-gateway -t aiws-mcp-gateway:1.9.0 .
-docker build -f docker/codex-runner.Dockerfile -t aiws-codex-runner:1.9.0-codex-0.144.0 .
+docker build --target production -t aiws-app:1.10.0 .
+docker build --target verify -t aiws-verify:1.10.0 .
+docker build --target mcp-gateway -t aiws-mcp-gateway:1.10.0 .
+docker build -f docker/codex-runner.Dockerfile -t aiws-codex-runner:1.10.0-codex-0.144.0 .
 docker build --target windows-bridge-export --output type=local,dest=./dist/bridge .
 docker compose up -d
 ```
@@ -135,27 +137,7 @@ http://localhost:4320
 
 ### 3.5 数据目录
 
-生产数据固定使用 `aiws-data-v19`；`down` 默认保留该卷，只有 `reset --confirm` / `reset -Confirm` 会删除它。升级成功后，`aiws-data-v18` 和 V1.8 镜像继续保留，直到单独执行并确认 `purge-legacy`，且清理前会验证 V1.9 迁移凭据。该清理不会删除仓库内旧迁移、兼容 API、回归测试、报告或历史文档。
-
-迁移数据确实无法使用且已经接受空白启动时，显式执行：
-
-```powershell
-.\scripts\aiws.ps1 up -DiscardUnmigratable
-```
-
-```bash
-bash scripts/aiws.sh up --discard-unmigratable
-```
-
-完成 V1.6 验收后清理旧容器、网络、卷、镜像和全部历史备份：
-
-```powershell
-.\scripts\aiws.ps1 purge-legacy -Confirm
-```
-
-```bash
-bash scripts/aiws.sh purge-legacy --confirm
-```
+生产数据固定使用 `aiws-data-v19`；`down` 默认保留该卷，只有 `reset --confirm` / `reset -Confirm` 会删除它。每次 V1.10 `up` 在迁移前生成独立归档并记录 `.ai-workspace/release/v110-cutover-latest.json`。活动 Workflow/Task Execution、NodeRun 或 Delivery 未结束时，升级器最多等待五分钟并拒绝切换；不会提供丢弃不可迁移数据或自动清理历史卷的快捷入口。
 
 ## 4. 使用流程与版本边界
 
@@ -173,17 +155,17 @@ bash scripts/aiws.sh purge-legacy --confirm
 
 更详细的操作与验收脚本可见：`docs/runbook.md`。
 
-### 4.2 V1.6 使用流程
+### 4.2 V1.10 DAG 使用流程
 
-1. 用 V1.9 启动脚本把只读 `aiws-data-v18` 克隆到 `aiws-data-v19`，迁移 schema 17 到 18 并完成验收；Host Profile 在容器部署中不可用。
-2. 创建 draft Project，选择“从 0 头脑风暴”或“基于已有项目”。
-3. 恢复或完成 Intake，审查版本化 Project Brief 和初始 workflow draft。
-4. 已有代码源先经 staging 与安全校验，再 clone/copy 到命名卷内受管 repo；宿主导入源保持只读。
-5. 确认后原子激活 Project；第一个可写 Turn 创建 session change batch，后续普通 Turn 和 CLI 复用该批次。
-6. Composer 始终显示 Codex 返回的原始 model/reasoning；Plan toggle 只影响下一次 Turn，发送后复位且严格只读。
-7. 在线程头部设置原生 Goal；request-user-input、审批、工具回执和冲突处理都在对话内完成。
-8. Assist 网页写入通过语义工具自动记账；代码写入通过 checkpoint 和累计 Diff Review 审查，Apply/Rollback 后关闭批次。
-9. Terminal 默认启动 Linux Container；已安装 Windows Bridge 时可选择宿主 Codex TUI，并与同一 change batch 串行同步。
+1. 创建或迁移 Project，确认 Project Brief、Workflow draft、typed I/O 和 Node Contract，使 Workflow 达到 `verified`。
+2. 在 Workflow 页面一次性选择每个 Workstream 的 Repository 与 base Branch，然后启动 DAG。
+3. 系统固定 Workflow/Task revision、Contract version、精确 AssetVersion hash 和 repository SHA，并自动调度 readiness frontier。
+4. 调研、需求和决策 Task 在 `awaiting_human` 只保留一个合并 checkpoint；批准时服务端原子完成 attestation、binding、验收和 lineage。
+5. `repository_change` 在 Workstream Repository Line 上提交真实代码；`repository_verify` 只读检出同一 SHA，出现 diff、空测试或失败退出码即阻断。
+6. `repository_integrate` 不改代码，只校验 RepositoryVersion、TestReport、head/base 和非空 checks；显式无 GitHub checks 时使用已接受的内部测试报告。
+7. 依次批准创建 PR 和合并 PR；只有远端确认 merged 且证据完整后 Integration Task 才完成。
+8. Workstream 完成后生成 `WorkstreamOutcomeAsset`，下游 Workstream 消费该精确版本并自动解锁。
+9. 在 Task 页面观察 attempt、输入快照、输出和等待原因，在 Asset 页面检查正文、下载、hash、evidence、attestation、lineage 与消费者。
 
 以上入口已纳入默认自动化门禁；外部服务与本机 CLI 的实际可用性仍由 Setup capability/probe 和可选 live 验收决定。完整证据见 `docs/completion-audit.md`。
 
@@ -344,7 +326,7 @@ Gateway 在宿主仅监听 `127.0.0.1:4319`，由 Caddy/Nginx 提供 HTTPS。成
 
 | 路径 | 用途 |
 |---|---|
-| `.ai-workspace/` | 宿主开发数据及临时发布记录；生产状态位于 `aiws-data-v18`，不会以宿主目录替换。`purge-legacy` 会清空其中的 `backups/`。 |
+| `.ai-workspace/` | 宿主开发数据、V1.10 升级备份和发布 transcript；生产状态位于 `aiws-data-v19`，不会以宿主目录替换。 |
 | `.git/` | Git 版本库元数据，由 Git 自动维护。 |
 | `apps/` | 应用层代码，包含 API 服务、前端页面和 worker 入口。 |
 | `packages/` | 可复用模块与共享领域逻辑，供 API、Worker、测试和后续扩展复用。 |
@@ -352,8 +334,8 @@ Gateway 在宿主仅监听 `127.0.0.1:4319`，由 Caddy/Nginx 提供 HTTPS。成
 | `scripts/` | 工程脚本目录，包含 lint、typecheck、verify、迁移检查和验收审计。 |
 | `docs/` | 工程文档目录，包含运行手册、V1 覆盖矩阵、完成审计报告和 `docs/github/` 下的 GitHub SaaS/自托管教程。 |
 | `doc/` | 早期核心想法、问题记录和方案草稿，用于保留设计演进过程。 |
-| `docker/` | Runner Dockerfile、导入 override/环境样例、归档/卷验收器、V1.6 发布编排及 legacy infra Compose。 |
-| `Dockerfile` / `compose.yml` | V1.6 production/verify/Windows Bridge export 镜像与默认完全容器化部署。 |
+| `docker/` | Runner Dockerfile、导入 override/环境样例、归档/卷验收器、V1.10 原地升级器及 legacy infra Compose。 |
+| `Dockerfile` / `compose.yml` | V1.10 production/verify/Windows Bridge export 镜像与默认完全容器化部署。 |
 | `bridge/` | Windows Native Bridge 的 Go/DPAPI/ConPTY 与 workspace bundle 客户端。 |
 | `config/` | 本地公开配置示例，目前保存 GitHub App 的公开 Client ID；不要在此目录提交 Client Secret 或 Private Key。 |
 | `prisma/` | Prisma schema 草案，描述未来替换到 PostgreSQL 时的数据模型边界。 |
@@ -426,7 +408,7 @@ Gateway 在宿主仅监听 `127.0.0.1:4319`，由 Caddy/Nginx 提供 HTTPS。成
 - `.ai-workspace/` 已被 `.gitignore` 忽略，适合保存本机运行和调试数据。
 - 删除 `.ai-workspace/` 后再次启动，会重新初始化宿主开发状态；该操作不影响生产卷。
 
-V1.9 生产容器使用相同目录结构，根位于命名卷 `aiws-data-v19` 的 `/var/lib/aiws`，状态 schema 为 18。`down` 保留卷；只允许通过带显式确认的运维脚本执行 reset 或旧环境清理。
+V1.10 生产容器使用相同目录结构，根位于命名卷 `aiws-data-v19` 的 `/var/lib/aiws`，状态 schema 为 19。`down` 保留卷；只允许通过带显式确认的运维脚本执行 reset。
 
 ## 11. Legacy 可选基础设施
 
@@ -478,7 +460,7 @@ V1.4 新增容器门禁：
 - Device Login、Probe、Assist app-server/exec、NodeRun 与 Terminal 统一容器名、label、资源限制、安全参数、volume-subpath 和停止清理。
 - `/system/deployment` 与新版 `/health` 脱敏能力状态；容器部署禁用 Host Profile。
 - Codex/cc-switch/项目根只读导入，项目与 Context Source 相对路径、symlink/realpath 越界防护。
-- PowerShell/POSIX `up/down/logs/status/verify/backup/restore/reset/purge-legacy`，命名卷备份恢复、显式丢弃和清理确认边界。
+- PowerShell/POSIX `up/down/logs/status/verify/backup/restore/reset`，命名卷备份恢复和清理确认边界。
 - 隔离 Compose smoke 已覆盖 UI/health、重启持久化、sibling Runner、volume-subpath 和零遗留容器。
 - 验证镜像内完整 `corepack pnpm verify` 与正式 Compose 切换均已通过；原 V1.3 `.ai-workspace` 聚合摘要保持不变。
 
@@ -555,7 +537,7 @@ $env:AIWS_PORT="4320"; .\scripts\aiws.ps1 up
 
 ### 14.4 页面没有旧数据
 
-生产部署检查 `docker volume inspect aiws-data-v19`。首次切换时 V1.9 只读打开 `aiws-data-v18`，经临时迁移卷复制到新卷后才迁移 schema；非空 `aiws-data-v19` 不会被重复 `up` 覆盖。宿主开发模式仍检查 `.ai-workspace/data/state.json`。
+生产部署检查 `docker volume inspect aiws-data-v19` 和 `.ai-workspace/release/v110-cutover-latest.json`。V1.10 在同一卷上先生成已验证归档，再迁移到 schema 19；不会从其他卷覆盖当前数据。宿主开发模式仍检查 `.ai-workspace/data/state.json`。
 
 ### 14.5 Codex 不可用
 

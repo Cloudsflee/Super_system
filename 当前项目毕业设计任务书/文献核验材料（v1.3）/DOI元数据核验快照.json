@@ -1,0 +1,646 @@
+{
+  "retrieved_at": "2026-07-24T22:46:48+08:00",
+  "provider": "Crossref REST API",
+  "records": [
+    {
+      "number": 1,
+      "doi": "10.1007/s10515-025-00544-2",
+      "status": "verified",
+      "title": "Agents in software engineering: survey, landscape, and vision",
+      "authors": [
+        {
+          "family": "Wang",
+          "given": "Yanlin"
+        },
+        {
+          "family": "Zhong",
+          "given": "Wanjun"
+        },
+        {
+          "family": "Huang",
+          "given": "Yanxian"
+        },
+        {
+          "family": "Shi",
+          "given": "Ensheng"
+        },
+        {
+          "family": "Yang",
+          "given": "Min"
+        },
+        {
+          "family": "Chen",
+          "given": "Jiachi"
+        },
+        {
+          "family": "Li",
+          "given": "Hui"
+        },
+        {
+          "family": "Ma",
+          "given": "Yuchi"
+        },
+        {
+          "family": "Wang",
+          "given": "Qianxiang"
+        },
+        {
+          "family": "Zheng",
+          "given": "Zibin"
+        }
+      ],
+      "container_title": "Automated Software Engineering",
+      "published": {
+        "date-parts": [
+          [
+            2025,
+            8,
+            7
+          ]
+        ]
+      },
+      "volume": "32",
+      "issue": "2",
+      "page": null,
+      "publisher": "Springer Science and Business Media LLC",
+      "official_url": "https://doi.org/10.1007/s10515-025-00544-2"
+    },
+    {
+      "number": 2,
+      "doi": "10.18653/v1/2024.acl-long.810",
+      "status": "verified",
+      "title": "ChatDev: Communicative Agents for Software Development",
+      "authors": [
+        {
+          "family": "Qian",
+          "given": "Chen"
+        },
+        {
+          "family": "Liu",
+          "given": "Wei"
+        },
+        {
+          "family": "Liu",
+          "given": "Hongzhang"
+        },
+        {
+          "family": "Chen",
+          "given": "Nuo"
+        },
+        {
+          "family": "Dang",
+          "given": "Yufan"
+        },
+        {
+          "family": "Li",
+          "given": "Jiahao"
+        },
+        {
+          "family": "Yang",
+          "given": "Cheng"
+        },
+        {
+          "family": "Chen",
+          "given": "Weize"
+        },
+        {
+          "family": "Su",
+          "given": "Yusheng"
+        },
+        {
+          "family": "Cong",
+          "given": "Xin"
+        },
+        {
+          "family": "Xu",
+          "given": "Juyuan"
+        },
+        {
+          "family": "Li",
+          "given": "Dahai"
+        },
+        {
+          "family": "Liu",
+          "given": "Zhiyuan"
+        },
+        {
+          "family": "Sun",
+          "given": "Maosong"
+        }
+      ],
+      "container_title": "Proceedings of the 62nd Annual Meeting of the Association for Computational Linguistics (Volume 1: Long Papers)",
+      "published": {
+        "date-parts": [
+          [
+            2024
+          ]
+        ]
+      },
+      "volume": null,
+      "issue": null,
+      "page": "15174-15186",
+      "publisher": "Association for Computational Linguistics",
+      "official_url": "https://aclanthology.org/2024.acl-long.810/"
+    },
+    {
+      "number": 3,
+      "doi": "10.52202/079017-1601",
+      "status": "verified",
+      "title": "SWE-agent: Agent-Computer Interfaces Enable Automated Software Engineering",
+      "authors": [
+        {
+          "family": "Yang",
+          "given": "John"
+        },
+        {
+          "family": "Jimenez",
+          "given": "Carlos"
+        },
+        {
+          "family": "Wettig",
+          "given": "Alexander"
+        },
+        {
+          "family": "Lieret",
+          "given": "Kilian"
+        },
+        {
+          "family": "Yao",
+          "given": "Shunyu"
+        },
+        {
+          "family": "Narasimhan",
+          "given": "Karthik"
+        },
+        {
+          "family": "Press",
+          "given": "Ofir"
+        }
+      ],
+      "container_title": "Advances in Neural Information Processing Systems 37",
+      "published": {
+        "date-parts": [
+          [
+            2024
+          ]
+        ]
+      },
+      "volume": null,
+      "issue": null,
+      "page": "50528-50652",
+      "publisher": "Neural Information Processing Systems Foundation, Inc. (NeurIPS)",
+      "official_url": "https://proceedings.neurips.cc/paper_files/paper/2024/hash/5a7c947568c1b1328ccc5230172e1e7c-Abstract-Conference.html"
+    },
+    {
+      "number": 4,
+      "doi": "10.1007/s11704-024-40231-1",
+      "status": "verified",
+      "title": "A survey on large language model based autonomous agents",
+      "authors": [
+        {
+          "family": "Wang",
+          "given": "Lei"
+        },
+        {
+          "family": "Ma",
+          "given": "Chen"
+        },
+        {
+          "family": "Feng",
+          "given": "Xueyang"
+        },
+        {
+          "family": "Zhang",
+          "given": "Zeyu"
+        },
+        {
+          "family": "Yang",
+          "given": "Hao"
+        },
+        {
+          "family": "Zhang",
+          "given": "Jingsen"
+        },
+        {
+          "family": "Chen",
+          "given": "Zhiyuan"
+        },
+        {
+          "family": "Tang",
+          "given": "Jiakai"
+        },
+        {
+          "family": "Chen",
+          "given": "Xu"
+        },
+        {
+          "family": "Lin",
+          "given": "Yankai"
+        },
+        {
+          "family": "Zhao",
+          "given": "Wayne Xin"
+        },
+        {
+          "family": "Wei",
+          "given": "Zhewei"
+        },
+        {
+          "family": "Wen",
+          "given": "Jirong"
+        }
+      ],
+      "container_title": "Frontiers of Computer Science",
+      "published": {
+        "date-parts": [
+          [
+            2024,
+            3,
+            22
+          ]
+        ]
+      },
+      "volume": "18",
+      "issue": "6",
+      "page": null,
+      "publisher": "Springer Science and Business Media LLC",
+      "official_url": "https://doi.org/10.1007/s11704-024-40231-1"
+    },
+    {
+      "number": 5,
+      "doi": null,
+      "status": "not_applicable",
+      "official_url": "https://openreview.net/forum?id=VtmBAGCN7o"
+    },
+    {
+      "number": 6,
+      "doi": null,
+      "status": "not_applicable",
+      "official_url": "https://modelcontextprotocol.io/specification/2025-06-18"
+    },
+    {
+      "number": 7,
+      "doi": "10.1145/3586030",
+      "status": "verified",
+      "title": "Grounded Copilot: How Programmers Interact with Code-Generating Models",
+      "authors": [
+        {
+          "family": "Barke",
+          "given": "Shraddha"
+        },
+        {
+          "family": "James",
+          "given": "Michael B."
+        },
+        {
+          "family": "Polikarpova",
+          "given": "Nadia"
+        }
+      ],
+      "container_title": "Proceedings of the ACM on Programming Languages",
+      "published": {
+        "date-parts": [
+          [
+            2023,
+            4,
+            6
+          ]
+        ]
+      },
+      "volume": "7",
+      "issue": "OOPSLA1",
+      "page": "85-111",
+      "publisher": "Association for Computing Machinery (ACM)",
+      "official_url": "https://doi.org/10.1145/3586030"
+    },
+    {
+      "number": 8,
+      "doi": "10.1145/3290605.3300233",
+      "status": "verified",
+      "title": "Guidelines for Human-AI Interaction",
+      "authors": [
+        {
+          "family": "Amershi",
+          "given": "Saleema"
+        },
+        {
+          "family": "Weld",
+          "given": "Dan"
+        },
+        {
+          "family": "Vorvoreanu",
+          "given": "Mihaela"
+        },
+        {
+          "family": "Fourney",
+          "given": "Adam"
+        },
+        {
+          "family": "Nushi",
+          "given": "Besmira"
+        },
+        {
+          "family": "Collisson",
+          "given": "Penny"
+        },
+        {
+          "family": "Suh",
+          "given": "Jina"
+        },
+        {
+          "family": "Iqbal",
+          "given": "Shamsi"
+        },
+        {
+          "family": "Bennett",
+          "given": "Paul N."
+        },
+        {
+          "family": "Inkpen",
+          "given": "Kori"
+        },
+        {
+          "family": "Teevan",
+          "given": "Jaime"
+        },
+        {
+          "family": "Kikin-Gil",
+          "given": "Ruth"
+        },
+        {
+          "family": "Horvitz",
+          "given": "Eric"
+        }
+      ],
+      "container_title": "Proceedings of the 2019 CHI Conference on Human Factors in Computing Systems",
+      "published": {
+        "date-parts": [
+          [
+            2019,
+            5,
+            2
+          ]
+        ]
+      },
+      "volume": null,
+      "issue": null,
+      "page": "1-13",
+      "publisher": "ACM",
+      "official_url": "https://doi.org/10.1145/3290605.3300233"
+    },
+    {
+      "number": 9,
+      "doi": "10.1145/3576915.3623157",
+      "status": "verified",
+      "title": "Do Users Write More Insecure Code with AI Assistants?",
+      "authors": [
+        {
+          "family": "Perry",
+          "given": "Neil"
+        },
+        {
+          "family": "Srivastava",
+          "given": "Megha"
+        },
+        {
+          "family": "Kumar",
+          "given": "Deepak"
+        },
+        {
+          "family": "Boneh",
+          "given": "Dan"
+        }
+      ],
+      "container_title": "Proceedings of the 2023 ACM SIGSAC Conference on Computer and Communications Security",
+      "published": {
+        "date-parts": [
+          [
+            2023,
+            11,
+            15
+          ]
+        ]
+      },
+      "volume": null,
+      "issue": null,
+      "page": "2785-2799",
+      "publisher": "ACM",
+      "official_url": "https://doi.org/10.1145/3576915.3623157"
+    },
+    {
+      "number": 10,
+      "doi": "10.1023/A:1022883727209",
+      "status": "verified",
+      "title": "Workflow Patterns",
+      "authors": [
+        {
+          "family": "van der Aalst",
+          "given": "W.M.P."
+        },
+        {
+          "family": "ter Hofstede",
+          "given": "A.H.M."
+        },
+        {
+          "family": "Kiepuszewski",
+          "given": "B."
+        },
+        {
+          "family": "Barros",
+          "given": "A.P."
+        }
+      ],
+      "container_title": "Distributed and Parallel Databases",
+      "published": {
+        "date-parts": [
+          [
+            2003,
+            7
+          ]
+        ]
+      },
+      "volume": "14",
+      "issue": "1",
+      "page": "5-51",
+      "publisher": "Springer Science and Business Media LLC",
+      "official_url": "https://doi.org/10.1023/A:1022883727209"
+    },
+    {
+      "number": 11,
+      "doi": "10.1016/j.infsof.2010.05.008",
+      "status": "verified",
+      "title": "Adoption of open source software in software-intensive organizations – A systematic literature review",
+      "authors": [
+        {
+          "family": "Hauge",
+          "given": "Øyvind"
+        },
+        {
+          "family": "Ayala",
+          "given": "Claudia"
+        },
+        {
+          "family": "Conradi",
+          "given": "Reidar"
+        }
+      ],
+      "container_title": "Information and Software Technology",
+      "published": {
+        "date-parts": [
+          [
+            2010,
+            11
+          ]
+        ]
+      },
+      "volume": "52",
+      "issue": "11",
+      "page": "1133-1154",
+      "publisher": "Elsevier BV",
+      "official_url": "https://doi.org/10.1016/j.infsof.2010.05.008"
+    },
+    {
+      "number": 12,
+      "doi": "10.1016/j.infsof.2017.07.007",
+      "status": "verified",
+      "title": "Open source software ecosystems: A Systematic mapping",
+      "authors": [
+        {
+          "family": "Franco-Bedoya",
+          "given": "Oscar"
+        },
+        {
+          "family": "Ameller",
+          "given": "David"
+        },
+        {
+          "family": "Costal",
+          "given": "Dolors"
+        },
+        {
+          "family": "Franch",
+          "given": "Xavier"
+        }
+      ],
+      "container_title": "Information and Software Technology",
+      "published": {
+        "date-parts": [
+          [
+            2017,
+            11
+          ]
+        ]
+      },
+      "volume": "91",
+      "issue": null,
+      "page": "160-185",
+      "publisher": "Elsevier BV",
+      "official_url": "https://doi.org/10.1016/j.infsof.2017.07.007"
+    },
+    {
+      "number": 13,
+      "doi": "10.1016/j.future.2010.07.005",
+      "status": "verified",
+      "title": "The Open Provenance Model core specification (v1.1)",
+      "authors": [
+        {
+          "family": "Moreau",
+          "given": "Luc"
+        },
+        {
+          "family": "Clifford",
+          "given": "Ben"
+        },
+        {
+          "family": "Freire",
+          "given": "Juliana"
+        },
+        {
+          "family": "Futrelle",
+          "given": "Joe"
+        },
+        {
+          "family": "Gil",
+          "given": "Yolanda"
+        },
+        {
+          "family": "Groth",
+          "given": "Paul"
+        },
+        {
+          "family": "Kwasnikowska",
+          "given": "Natalia"
+        },
+        {
+          "family": "Miles",
+          "given": "Simon"
+        },
+        {
+          "family": "Missier",
+          "given": "Paolo"
+        },
+        {
+          "family": "Myers",
+          "given": "Jim"
+        },
+        {
+          "family": "Plale",
+          "given": "Beth"
+        },
+        {
+          "family": "Simmhan",
+          "given": "Yogesh"
+        },
+        {
+          "family": "Stephan",
+          "given": "Eric"
+        },
+        {
+          "family": "den Bussche",
+          "given": "Jan Van"
+        }
+      ],
+      "container_title": "Future Generation Computer Systems",
+      "published": {
+        "date-parts": [
+          [
+            2011,
+            6
+          ]
+        ]
+      },
+      "volume": "27",
+      "issue": "6",
+      "page": "743-756",
+      "publisher": "Elsevier BV",
+      "official_url": "https://doi.org/10.1016/j.future.2010.07.005"
+    },
+    {
+      "number": 14,
+      "doi": "10.6028/NIST.AI.100-1",
+      "status": "verified",
+      "title": "Artificial Intelligence Risk Management Framework (AI RMF 1.0)",
+      "authors": [
+        {
+          "family": "Tabassi",
+          "given": "Elham"
+        }
+      ],
+      "container_title": null,
+      "published": {
+        "date-parts": [
+          [
+            2023,
+            1,
+            26
+          ]
+        ]
+      },
+      "volume": null,
+      "issue": null,
+      "page": null,
+      "publisher": "National Institute of Standards and Technology (U.S.)",
+      "official_url": "https://doi.org/10.6028/NIST.AI.100-1"
+    }
+  ]
+}

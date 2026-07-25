@@ -80,17 +80,17 @@ export function sourceSnapshot(root, ignoreNames = new Set()) {
 
 export function cleanup(root) { fs.rmSync(root, { recursive: true, force: true }); }
 
-export async function createConfirmedProject({ baseUrl, title, goal = '', source = null, workflowNodes, answers = {}, beforeConfirm }) {
+export async function createConfirmedProject({ baseUrl, title, goal = '', source = null, workflowNodes, answers = {}, beforeConfirm, requestHeaders = {} }) {
   const codeSource = normalizeSource(source);
-  const draft = await request(baseUrl, '/projects', 'POST', { title, goal });
+  const draft = await request(baseUrl, '/projects', 'POST', { title, goal }, requestHeaders);
   const intake = await request(baseUrl, `/projects/${draft.project.id}/intake`, 'PUT', {
     mode: codeSource ? 'existing' : 'brainstorm',
     code_source: codeSource,
     answers: { goal, ...answers }
-  });
-  const imported = codeSource ? await request(baseUrl, `/projects/${draft.project.id}/imports`, 'POST', { operation_key: `fixture-${draft.project.id}` }) : null;
+  }, requestHeaders);
+  const imported = codeSource ? await request(baseUrl, `/projects/${draft.project.id}/imports`, 'POST', { operation_key: `fixture-${draft.project.id}` }, requestHeaders) : null;
   if (beforeConfirm) await beforeConfirm({ draft, intake, imported });
-  const confirmed = await request(baseUrl, `/projects/${draft.project.id}/onboarding/confirm`, 'POST', { workflow_nodes: hierarchyFixtureNodes(workflowNodes, { title, goal }) });
+  const confirmed = await request(baseUrl, `/projects/${draft.project.id}/onboarding/confirm`, 'POST', { workflow_nodes: hierarchyFixtureNodes(workflowNodes, { title, goal }) }, requestHeaders);
   return { ...confirmed, draft, intake, imported, managedRepo: confirmed.project.repo_path };
 }
 
@@ -112,14 +112,16 @@ async function waitForServer(port, getLog, child) {
   throw new Error(`API did not start:\n${getLog()}`);
 }
 
-async function request(baseUrl, route, method, body) {
-  const response = await fetch(`${baseUrl}${route}`, { method, headers: { 'content-type': 'application/json', ...await projectCreateHeaders(baseUrl, route, method) }, body: JSON.stringify(body) });
+async function request(baseUrl, route, method, body, requestHeaders = {}) {
+  const response = await fetch(`${baseUrl}${route}`, { method, headers: { 'content-type': 'application/json', ...await projectCreateHeaders(baseUrl, route, method, requestHeaders), ...requestHeaders }, body: JSON.stringify(body) });
   const data = await response.json();
   assert.ok(response.ok, `${method} ${route}: ${JSON.stringify(data)}`);
   return data;
 }
-async function projectCreateHeaders(baseUrl, route, method) {
+async function projectCreateHeaders(baseUrl, route, method, requestHeaders = {}) {
   if (method !== 'POST' || route !== '/projects') return {};
+  const subject = requestHeaders['x-aiws-user-id'] || requestHeaders['X-AIWS-User-ID'];
+  if (subject) return { 'x-aiws-user-id': subject, 'x-aiws-scopes': 'project:create' };
   const account = await fetch(`${baseUrl}/account/me`).then((response) => response.json());
   return { 'x-aiws-user-id': account.user.id, 'x-aiws-scopes': 'project:create' };
 }

@@ -27,12 +27,10 @@ import { codexTimeoutTtlSeconds } from './codex-timeout.mjs';
 import { terminalInvocation } from './terminal-invocation.mjs';
 import { MAX_PREVIEW_CHARS, appendOutput, broadcast, clamp, finishTerminalArtifact, isWithin, publicSession, rejectWebSocket, safe } from './terminal-runtime-helpers.mjs';
 import { accessibleProjectIds, actorForRequest, assertProjectRun } from './project-governance-v19.mjs';
-
+import { assertControlledProjectWrite, assertControlledTaskWrite } from './execution-governance.mjs';
 export { terminalCodexArgs } from './terminal-invocation.mjs';
-
 const runtimes = new Map();
 const runtimeStarts = new Map();
-
 export function terminalRuntimeStats() {
   return { active_count: runtimes.size, starting_count: runtimeStarts.size, active_session_ids: [...runtimes.keys()].sort() };
 }
@@ -48,7 +46,6 @@ export function terminalCapability() {
     max_preview_chars: MAX_PREVIEW_CHARS
   };
 }
-
 export function createTerminalSession(body) { return withProjectLifecycleLock(body.project_id, () => createTerminalSessionLocked(body)); }
 async function createTerminalSessionLocked(body) {
   const requestedRuntime = body.runtime || 'linux_container';
@@ -61,6 +58,9 @@ async function createTerminalSessionLocked(body) {
   const turn = body.turn_id ? snapshot.assist_turns.find((item) => item.id === body.turn_id && item.project_id === project.id) : null;
   if (body.turn_id && !turn) throw new HttpError(404, { error: 'assist_turn_not_found' });
   if (assistSession && turn && turn.session_id !== assistSession.id) throw new HttpError(409, { error: 'assist_turn_scope_mismatch' });
+  const scopedTaskId = body.node_id || (assistSession?.scope_type === 'task' ? assistSession.scope_id : null);
+  if (scopedTaskId) assertControlledTaskWrite(snapshot, scopedTaskId, { task_execution_id: body.task_execution_id, lease_token: body.lease_token }, 'terminal');
+  else assertControlledProjectWrite(snapshot, { projectId: project.id, taskExecutionId: body.task_execution_id, leaseToken: body.lease_token, operation: 'terminal' });
   const configuration = resolveAssistTurnConfiguration(snapshot, body), profile = configuration.profile;
   assertProfileAllowed(profile);
   let bridgeCapability = null;
@@ -72,10 +72,13 @@ async function createTerminalSessionLocked(body) {
   const session = await mutate((state) => {
     const actor = owner(state), currentProject = state.projects.find((item) => item.id === project.id);
     assertManagedProjectWritable(currentProject);
+    if (scopedTaskId) assertControlledTaskWrite(state, scopedTaskId, { task_execution_id: body.task_execution_id, lease_token: body.lease_token }, 'terminal');
+    else assertControlledProjectWrite(state, { projectId: project.id, taskExecutionId: body.task_execution_id, leaseToken: body.lease_token, operation: 'terminal' });
     if (!sharedBatch && !body.worktree_id) state.worktrees.push(prepared.record);
     if (assistSession) bindSessionRuntimeProfile(state.assist_sessions.find((item) => item.id === assistSession.id), state.codex_profiles.find((item) => item.id === profile.id));
     const item = {
       id: sessionId, project_id: project.id, assist_session_id: assistSession?.id || turn?.session_id || null, turn_id: body.turn_id || null, worktree_id: prepared.record.id, profile_id: profile.id,
+      task_execution_id: body.task_execution_id || null, node_id: scopedTaskId || null,
       change_batch_id: prepared.batch?.id || null,
       host_bridge_device_id: bridgeCapability?.device_id || null,
       model: configuration.model, reasoning: configuration.reasoning,
@@ -90,18 +93,15 @@ async function createTerminalSessionLocked(body) {
   });
   return publicSession(session);
 }
-
 export async function getTerminalSession(sessionId) {
   const state = await readState(), session = state.terminal_sessions.find((item) => item.id === sessionId);
   if (!session) throw new HttpError(404, { error: 'terminal_session_not_found' });
   return publicSession(session);
 }
-
 export async function listTerminalSessions({ projectId = null, assistSessionId = null } = {}) {
   const state = await readState(), allowed = accessibleProjectIds(state);
   return state.terminal_sessions.filter((item) => allowed.has(item.project_id) && (!projectId || item.project_id === projectId) && (!assistSessionId || item.assist_session_id === assistSessionId)).sort((a, b) => String(b.updated_at).localeCompare(String(a.updated_at))).map(publicSession);
 }
-
 export async function stopTerminalSession(sessionId) {
   const runtime = runtimes.get(sessionId);
   const stopped = await mutate((state) => {

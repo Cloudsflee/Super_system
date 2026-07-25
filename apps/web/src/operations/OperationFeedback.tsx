@@ -79,7 +79,7 @@ function DiagnosticsPanel({ records, open, onClose }: { records: OperationRecord
     {open && <button className="operation-scrim" aria-label="关闭操作与诊断" onClick={onClose} />}
     <aside className={`operation-panel ${open ? 'open' : ''}`} aria-hidden={!open} inert={!open}>
       <header>
-        <div><span className="overline">OPERATIONS</span><h2><Activity size={18} />操作与诊断</h2></div>
+        <div><span className="overline">操作记录</span><h2><Activity size={18} />操作与诊断</h2></div>
         <div>
           <IconButton label={copied === 'all' ? '已复制' : '复制全部诊断'} onClick={() => copy(diagnosticJson(records), 'all')}><Clipboard size={17} /></IconButton>
           <IconButton label="清空诊断" disabled={!records.length} onClick={clearOperations}><Trash2 size={17} /></IconButton>
@@ -114,7 +114,7 @@ function OperationRow({ record, copied, onCopy }: { record: OperationRecord; cop
         <div><dt>阶段</dt><dd>{record.phase || '-'}</dd></div>
         <div><dt>错误码</dt><dd>{record.errorCode || '-'}</dd></div>
         <div><dt>HTTP</dt><dd>{record.httpStatus ?? '-'}</dd></div>
-        <div><dt>请求 ID</dt><dd>{record.requestId || '-'}</dd></div>
+        <div><dt>请求标识</dt><dd>{record.requestId || '-'}</dd></div>
         <div><dt>请求</dt><dd>{record.method} {record.path}</dd></div>
       </dl>
       <div className="operation-row-actions">
@@ -132,7 +132,7 @@ function StatusIcon({ status }: { status: OperationStatus }) {
 }
 
 function statusLabel(status: 'all' | OperationStatus) { return ({ all: '全部', running: '进行中', failed: '失败', succeeded: '成功', cancelled: '已取消' })[status]; }
-function duration(record: OperationRecord) { const value = record.durationMs ?? Math.max(0, Date.now() - Date.parse(record.startedAt)); return value < 1000 ? `${value} ms` : `${(value / 1000).toFixed(value < 10_000 ? 1 : 0)} s`; }
+function duration(record: OperationRecord) { const value = record.durationMs ?? Math.max(0, Date.now() - Date.parse(record.startedAt)); return value < 1000 ? `${value} 毫秒` : `${(value / 1000).toFixed(value < 10_000 ? 1 : 0)} 秒`; }
 
 class RootErrorBoundary extends Component<{ children: ReactNode }, { error: Error | null }> {
   state = { error: null as Error | null };

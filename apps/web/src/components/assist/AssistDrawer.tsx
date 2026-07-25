@@ -39,7 +39,7 @@ export function AssistDrawer({ projectId, nodeId }: { projectId?: string; nodeId
     const source = new EventSource(streamUrl(session.id, lastEvent.current));
     source.onmessage = (event) => consume(JSON.parse(event.data) as AssistEvent);
     source.addEventListener('assist', (event) => consume(JSON.parse((event as MessageEvent).data) as AssistEvent));
-    source.onerror = () => { toast('Assist 事件流正在重连', 'error'); };
+    source.onerror = () => { toast('智能助手事件流正在重连', 'error'); };
     function consume(event: AssistEvent) {
       lastEvent.current = Math.max(lastEvent.current, event.id);
       if (event.type === 'message') setMessages((items) => upsert(items, event.data.message as AssistMessage));
@@ -60,9 +60,9 @@ export function AssistDrawer({ projectId, nodeId }: { projectId?: string; nodeId
       const current = session || await api<AssistSession>('/assist/v2/sessions', json('POST', {
         project_id: projectId, scope_type: nodeId ? 'node' : 'project', scope_id: scopeId,
         view_context: viewContext
-      }, '创建 Assist 会话'));
+      }, '创建智能助手会话'));
       setSession(current);
-      const result = await api<{ message: AssistMessage }>(`/assist/v2/sessions/${current.id}/messages`, json('POST', { content: prompt, view_context: viewContext }, '发送 Assist 消息'));
+      const result = await api<{ message: AssistMessage }>(`/assist/v2/sessions/${current.id}/messages`, json('POST', { content: prompt, view_context: viewContext }, '发送智能助手消息'));
       setMessages((items) => upsert(items, result.message));
       setPrompt(''); setRunning(true);
     } catch (error) { toast((error as Error).message, 'error'); }
@@ -70,7 +70,7 @@ export function AssistDrawer({ projectId, nodeId }: { projectId?: string; nodeId
 
   async function cancel() {
     if (!session) return;
-    try { await api(`/assist/v2/sessions/${session.id}/cancel`, json('POST', undefined, '停止 Assist 会话')); setRunning(false); }
+    try { await api(`/assist/v2/sessions/${session.id}/cancel`, json('POST', undefined, '停止智能助手会话')); setRunning(false); }
     catch (error) { toast((error as Error).message, 'error'); }
   }
 
@@ -91,12 +91,12 @@ export function AssistDrawer({ projectId, nodeId }: { projectId?: string; nodeId
         ok = result.handled === true;
       }
     } catch (error) { ok = false; result = { error: (error as Error).message }; }
-    try { const next = await api<UiAction>(`/assist/v2/sessions/${targetSessionId}/actions/${action.id}/result`, json('POST', { ok, result }, { name: '同步 Assist 操作结果', feedback: 'background', timeoutMs: 120_000 })); setActions((items) => upsert(items, next)); } catch (error) { toast((error as Error).message, 'error'); }
+    try { const next = await api<UiAction>(`/assist/v2/sessions/${targetSessionId}/actions/${action.id}/result`, json('POST', { ok, result }, { name: '同步智能助手操作结果', feedback: 'background', timeoutMs: 120_000 })); setActions((items) => upsert(items, next)); } catch (error) { toast((error as Error).message, 'error'); }
   }
 
   return (
     <aside className={`assist-drawer drawer right ${assistOpen ? 'open' : ''}`} aria-hidden={!assistOpen} inert={!assistOpen}>
-      <div className="drawer-head"><div><span className="overline">CODEX SESSION</span><h2><Bot size={19} />Assist</h2></div><div>{session && <IconButton label="新建对话" onClick={() => { setSession(null); setMessages([]); setActions([]); setRunning(false); lastEvent.current = 0; }}><Plus size={18} /></IconButton>}<IconButton label="关闭 Assist" onClick={() => setAssist(false)}><X size={18} /></IconButton></div></div>
+      <div className="drawer-head"><div><span className="overline">Codex 会话</span><h2><Bot size={19} />智能助手</h2></div><div>{session && <IconButton label="新建对话" onClick={() => { setSession(null); setMessages([]); setActions([]); setRunning(false); lastEvent.current = 0; }}><Plus size={18} /></IconButton>}<IconButton label="关闭智能助手" onClick={() => setAssist(false)}><X size={18} /></IconButton></div></div>
       <div className="scope-bar"><span>{nodeId ? '节点' : '项目'}</span><strong>{scopeId ? scopeId.slice(0, 16) : '未选择作用域'}</strong></div>
       <div className="conversation">
         {!messages.length && <div className="quiet-empty"><Bot size={24} /><p>在当前作用域中启动 Codex 会话</p></div>}

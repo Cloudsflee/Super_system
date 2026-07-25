@@ -29,11 +29,11 @@ describe('V1.8 MCP client settings', () => {
     const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
     render(<QueryClientProvider client={client}><MemoryRouter><SettingsPage /></MemoryRouter></QueryClientProvider>);
     expect(await screen.findByText('Existing Client')).toBeInTheDocument();
-    fireEvent.click(screen.getByRole('button', { name: '创建 Client' }));
-    fireEvent.change(screen.getByRole('textbox', { name: 'MCP Client 名称' }), { target: { value: 'Project Operator' } });
+    fireEvent.click(screen.getByRole('button', { name: '创建客户端' }));
+    fireEvent.change(screen.getByRole('textbox', { name: 'MCP 客户端名称' }), { target: { value: 'Project Operator' } });
     fireEvent.click(screen.getByRole('checkbox', { name: 'Project One' }));
-    expect(screen.getByRole('checkbox', { name: 'approval:decide' })).not.toBeChecked();
-    expect(screen.getByRole('checkbox', { name: 'destructive:execute' })).not.toBeChecked();
+    expect(screen.getByRole('checkbox', { name: '处理审批' })).not.toBeChecked();
+    expect(screen.getByRole('checkbox', { name: '执行危险操作' })).not.toBeChecked();
     fireEvent.click(screen.getByRole('button', { name: '创建' }));
 
     await waitFor(() => expect(calls.some((item) => item.url.endsWith('/mcp/clients') && item.method === 'POST')).toBe(true));
@@ -70,10 +70,10 @@ describe('V1.8 MCP client settings', () => {
     }));
     const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
     render(<QueryClientProvider client={client}><MemoryRouter><SettingsPage /></MemoryRouter></QueryClientProvider>);
-    await screen.findByText('team gateway');
-    fireEvent.click(screen.getByRole('button', { name: '创建 Client' }));
-    expect(screen.queryByRole('checkbox', { name: 'All projects' })).not.toBeInTheDocument();
-    fireEvent.change(screen.getByRole('textbox', { name: 'MCP Client 名称' }), { target: { value: 'Member Codex' } });
+    await screen.findByText('团队网关');
+    fireEvent.click(screen.getByRole('button', { name: '创建客户端' }));
+    expect(screen.queryByRole('checkbox', { name: '全部项目' })).not.toBeInTheDocument();
+    fireEvent.change(screen.getByRole('textbox', { name: 'MCP 客户端名称' }), { target: { value: 'Member Codex' } });
     expect(screen.getByRole('button', { name: '创建' })).toBeDisabled();
     fireEvent.click(screen.getByRole('checkbox', { name: 'Project One' }));
     expect(screen.getByRole('button', { name: '创建' })).toBeEnabled();

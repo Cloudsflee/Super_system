@@ -22,12 +22,16 @@ import { closeMcpHttpRuntime, configureMcpHttpRuntime } from './src/mcp-http-run
 import { closeGithubProxyDispatchers } from './src/outbound-proxy.mjs';
 import { runAsActor } from './src/actor-context.mjs';
 import { authorizeApiRoute, requestSubjectUserId } from './src/project-governance-v19.mjs';
+import { recoverPersistentWorkflowExecutions } from './src/task-execution-service.mjs';
+import { startWorkflowDispatcher } from './src/workflow-dispatcher.mjs';
 
 cleanupStaleContainers();
 await ensureRuntime();
+await recoverPersistentWorkflowExecutions();
 await resumeWorkflowMigrationOrchestrator();
 await recoverAssistV3Runtime();
 await purgeExpiredDeletedSessions();
+const stopWorkflowDispatcher = startWorkflowDispatcher();
 
 const routes = createApiRouteRegistry(apiRoutes);
 configureMcpHttpRuntime(routes);
@@ -98,7 +102,7 @@ attachHostBridgeWebSocket(server);
 attachBtwShutdown(server);
 attachDeletedSessionSweeper(server);
 attachContainerShutdown(server, { beforeClose: () => codexBuildManager.shutdown() });
-server.on('close', () => { void Promise.all([closeMcpHttpRuntime(), closeGithubProxyDispatchers()]); });
+server.on('close', () => { stopWorkflowDispatcher(); void Promise.all([closeMcpHttpRuntime(), closeGithubProxyDispatchers()]); });
 
 function searchParamsObject(params) {
   const result = Object.create(null);

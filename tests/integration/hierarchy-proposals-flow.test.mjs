@@ -38,8 +38,8 @@ try {
   await api(`/change-proposals/${nextGraph.id}/apply`, { method: 'POST', body: {} });
   const nextNode = (await api(`/projects/${project.project.id}`)).nodes.find((item) => item.id === 'analysis-task');
   const context = await api(`/nodes/${nextNode.id}/context-pack/preview`, { method: 'POST', body: {} });
-  assert.ok(context.content_json.submissions.some((item) => item.id === submission.id));
-  assert.ok(context.content_json.submissions.some((item) => item.id === directSubmission.id));
+  assert.deepEqual(context.content_json.submissions, []);
+  assert.equal(context.memory_manifest.policy.sibling_context_included, false);
   const rejectedProposal = await api('/change-proposals', { method: 'POST', body: { project_id: project.project.id, node_id: node.id, change_type: 'node_contract_patch', title: '拒绝变更', after: { allowed_tools: ['filesystem'] }, apply_action: { type: 'node_contract_patch' } } });
   const rejected = await api(`/change-proposals/${rejectedProposal.id}/reject`, { method: 'POST', body: { reason: '保持当前工具集' } });
   assert.equal(rejected.status, 'rejected');

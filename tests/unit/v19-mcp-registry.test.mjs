@@ -35,16 +35,48 @@ try {
     'aiws.github.post.deliveries.by-id.pull-request.ready',
     'aiws.github.post.deliveries.by-id.pull-request.merge',
     'aiws.github.post.deliveries.by-id.pull-request.reconcile',
-  'aiws.admin.post.workflow-migrations.batches.by-id.approve'
-  , 'aiws.projects.post.projects', 'aiws.projects.post.projects.by-id.invitations',
-  'aiws.governance.post.projects.by-id.exchange-requests', 'aiws.github.post.repository-deletion-intents.by-id.execute',
-  'aiws.github.post.github.device.start', 'aiws.github.post.github.device.poll'
+    'aiws.workflow.post.workflows.by-id.executions',
+    'aiws.workflow.get.workflows.by-id.executions',
+    'aiws.workflow.get.workflow-executions.by-id',
+    'aiws.workflow.get.workflow-executions.by-id.events',
+    'aiws.workflow.post.workflow-executions.by-id.pause',
+    'aiws.workflow.post.workflow-executions.by-id.resume',
+    'aiws.workflow.post.workflow-executions.by-id.cancel',
+    'aiws.workflow.get.tasks.by-id.readiness',
+    'aiws.workflow.get.task-executions.by-id',
+    'aiws.workflow.get.task-executions.by-id.readiness',
+    'aiws.workflow.post.task-executions.by-id.retry',
+    'aiws.workflow.post.task-executions.by-id.manual-submit',
+    'aiws.workflow.post.task-executions.by-id.human-approve',
+    'aiws.assets.get.asset-versions.by-id',
+    'aiws.assets.get.asset-versions.by-id.content',
+    'aiws.assets.get.asset-versions.by-id.download',
+    'aiws.assets.get.asset-versions.by-id.attestations',
+    'aiws.assets.post.asset-versions.by-id.attestations',
+    'aiws.assets.get.asset-versions.by-id.lineage',
+    'aiws.assets.get.asset-versions.by-id.consumers',
+    'aiws.github.post.pull-request-intents.by-id.approve',
+    'aiws.github.post.pull-request-intents.by-id.execute',
+    'aiws.admin.post.workflow-migrations.batches.by-id.approve',
+    'aiws.projects.post.projects',
+    'aiws.projects.post.projects.by-id.invitations',
+    'aiws.governance.post.projects.by-id.exchange-requests',
+    'aiws.github.post.repository-deletion-intents.by-id.execute',
+    'aiws.github.post.github.device.start',
+    'aiws.github.post.github.device.poll'
   ];
   for (const operationId of expected) assert.ok(byId.has(operationId), operationId);
   assert.equal(byId.get('aiws.workflow.get.projects.by-id.workflow-draft.generations.by-generation-id.events').mapping, 'async_adapter');
   assert.equal(byId.get('aiws.github.get.deliveries.by-id.events').mapping, 'async_adapter');
   assert.deepEqual(byId.get('aiws.workflow.post.tasks.by-id.review').required_scopes, ['workflow:write', 'approval:decide']);
   assert.deepEqual(byId.get('aiws.workflow.post.workstreams.by-id.review').required_scopes, ['workflow:write', 'approval:decide']);
+  assert.equal(byId.get('aiws.workflow.get.workflow-executions.by-id.events').mapping, 'async_adapter');
+  assert.deepEqual(byId.get('aiws.workflow.post.task-executions.by-id.human-approve').required_scopes, ['project:write', 'approval:decide']);
+  assert.deepEqual(byId.get('aiws.assets.post.asset-versions.by-id.attestations').required_scopes, ['assets:write', 'approval:decide']);
+  assert.equal(byId.get('aiws.assets.get.asset-versions.by-id.content').stream_response, true);
+  assert.equal(byId.get('aiws.assets.get.asset-versions.by-id.download').stream_response, true);
+  assert.deepEqual(byId.get('aiws.github.post.pull-request-intents.by-id.approve').required_scopes, ['github:write', 'approval:decide']);
+  assert.deepEqual(byId.get('aiws.github.post.pull-request-intents.by-id.execute').required_scopes, ['github:write', 'approval:decide']);
   assert.deepEqual(byId.get('aiws.github.post.workstreams.by-id.delivery-policies').required_scopes, ['github:write', 'approval:decide']);
   assert.deepEqual(byId.get('aiws.github.get.deliveries.by-id.pull-request').required_scopes, ['github:read']);
   assert.deepEqual(byId.get('aiws.github.post.deliveries.by-id.pull-request.merge').required_scopes, ['github:write']);

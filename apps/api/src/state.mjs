@@ -2,10 +2,10 @@ import fs from 'node:fs';
 import fsp from 'node:fs/promises';
 import path from 'node:path';
 import { createLocalOwner, defaultCodexProfiles, defaultTools, hashString, id, makeTrace, now } from '../../../packages/shared/index.mjs';
-import { ARTIFACT_DIR, ASSIST_DIR, ATTACHMENT_DIR, ATTACHMENT_TEMP_DIR, CODEX_HOME_DIR, DATA_DIR, EXPORT_DIR, PROBE_DIR, STAGING_DIR, STATE_FILE, TRASH_DIR, VAULT_DIR, WORKSPACE_DIR, WORKTREE_DIR, collections } from './config.mjs';
+import { ARTIFACT_DIR, ASSIST_DIR, ATTACHMENT_DIR, ATTACHMENT_TEMP_DIR, CAS_DIR, CODEX_HOME_DIR, DATA_DIR, EXECUTION_DIR, EXPORT_DIR, PROBE_DIR, STAGING_DIR, STATE_FILE, TRASH_DIR, VAULT_DIR, WORKSPACE_DIR, WORKTREE_DIR, collections } from './config.mjs';
 import { redactKnownSecrets } from './vault.mjs';
 import { codexAuthMatchesProfile, isThirdPartyProvider, isValidCodexTimeoutMs, normalizeProviderBaseUrl, resolveCodexTimeoutMs, writeProfileConfig } from './codex-service.mjs';
-import { migrateStateFileToV18, normalizeOfficialRunnerImagesV19, STATE_SCHEMA_VERSION, validateState18 } from './state-migration-v18.mjs';
+import { migrateStateFileToV19, normalizeOfficialRunnerImagesV19, normalizeState19Defaults, STATE_SCHEMA_VERSION, validateState19 } from './state-migration-v19.mjs';
 import { normalizeState18Compatibility } from './state-compatibility.mjs';
 import { currentActorId } from './actor-context.mjs';
 import { ensureProjectGovernanceDefaults, expireProjectInvitationsInState } from './project-governance-v19.mjs';
@@ -14,16 +14,19 @@ import { ensureExchangeDefaults, expireExchangeRequestsInState } from './exchang
 import { recoverInterruptedRepositoryDeletionsInState } from './repository-deletion-recovery.mjs';
 import { recoverInvalidDeliveryPullRequestClaimsInState } from './delivery-recovery.mjs';
 import { recoverPullRequestIntentsInState } from './pull-request-intent-domain.mjs';
+import { promoteLegacyExecutionHistoryInState } from './legacy-execution-promotion.mjs';
 let lastMigration = null;
 export async function ensureRuntime() {
   await fsp.mkdir(DATA_DIR, { recursive: true });
   await fsp.mkdir(ARTIFACT_DIR, { recursive: true });
+  await fsp.mkdir(CAS_DIR, { recursive: true });
+  await fsp.mkdir(EXECUTION_DIR, { recursive: true });
   await fsp.mkdir(VAULT_DIR, { recursive: true });
   await fsp.mkdir(CODEX_HOME_DIR, { recursive: true });
   await Promise.all([WORKSPACE_DIR, STAGING_DIR, TRASH_DIR, EXPORT_DIR, WORKTREE_DIR, PROBE_DIR, ASSIST_DIR, ATTACHMENT_DIR, ATTACHMENT_TEMP_DIR].map((dir) => fsp.mkdir(dir, { recursive: true, mode: 0o700 })));
   await Promise.all([STAGING_DIR, ATTACHMENT_TEMP_DIR].map(clearEphemeralDirectory));
   if (!fs.existsSync(STATE_FILE)) return writeState(bootstrapState());
-  lastMigration = await migrateStateFileToV18(STATE_FILE);
+  lastMigration = await migrateStateFileToV19(STATE_FILE);
   const state = await readState();
   let changed = false;
   if (state.schema_version !== STATE_SCHEMA_VERSION) throw new Error(`unsupported_state_schema_${state.schema_version}`);
@@ -149,11 +152,11 @@ export async function ensureRuntime() {
   }
   const retiredRunner = ['m', 'o', 'c', 'k'].join('');
   for (const run of state.node_runs) if (run.runner === retiredRunner) { run.legacy_runner = retiredRunner; run.runner = 'legacy_retired_adapter'; run.legacy_read_only = true; changed = true; }
+  if ((await promoteLegacyExecutionHistoryInState(state)).changed) changed = true;
   const serialized = JSON.stringify(state, null, 2);
   if (changed || await redactKnownSecrets(serialized) !== serialized) await writeState(state);
 }
 export function emptyState() { return Object.fromEntries(collections.map((key) => [key, []])); }
-
 function bootstrapState() {
   const state = emptyState();
   state.schema_version = STATE_SCHEMA_VERSION;
@@ -166,13 +169,13 @@ function bootstrapState() {
   state.traces.push(makeTrace('human.reviewed', { summary: '首次启动：创建 Local Owner Account。' }, { type: 'system', id: user.id }));
   return state;
 }
-
 export async function readState() { return JSON.parse(await fsp.readFile(STATE_FILE, 'utf8')); }
 export async function writeState(state) {
   normalizeState18Compatibility(state, collections);
+  normalizeState19Defaults(state);
   ensureProjectGovernanceDefaults(state);
   ensureRepositoryLifecycleDefaults(state); ensureExchangeDefaults(state);
-  validateState18(state);
+  validateState19(state);
   const tmp = `${STATE_FILE}.tmp`;
   const serialized = await redactKnownSecrets(JSON.stringify(state, null, 2));
   const handle = await fsp.open(tmp, 'w', 0o600);
@@ -180,13 +183,11 @@ export async function writeState(state) {
   finally { await handle.close(); }
   await replaceStateFile(tmp, STATE_FILE);
 }
-
 export function lastStateMigration() { return lastMigration ? { ...lastMigration, state: undefined } : null; }
 async function clearEphemeralDirectory(directory) {
   const entries = await fsp.readdir(directory, { withFileTypes: true });
   await Promise.all(entries.map((entry) => fsp.rm(path.join(directory, entry.name), { recursive: true, force: true })));
 }
-
 let mutationQueue = Promise.resolve();
 export function mutate(fn) {
   const operation = mutationQueue.then(async () => {

@@ -3,7 +3,7 @@ import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
 
 export async function connectMcp(baseUrl, token) {
-  const client = new Client({ name: 'aiws-live-project-smoke', version: '1.9.0' }, { capabilities: { resources: { subscribe: true } } });
+  const client = new Client({ name: 'aiws-live-project-smoke', version: '1.10.0' }, { capabilities: { resources: { subscribe: true } } });
   const transport = new StreamableHTTPClientTransport(new URL('/api/mcp', `${baseUrl}/`), {
     requestInit: { headers: { authorization: `Bearer ${token}` } }
   });

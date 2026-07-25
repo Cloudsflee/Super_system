@@ -31,11 +31,11 @@ export function patchWorkflowDraftInState(state, projectId, body, actorId) {
     for (const operation of body.operations) nodes = applyOperation(nodes, operation);
   }
   validateDraft(nodes);
-  if (Array.isArray(body.nodes)) {
+  if (Array.isArray(body.nodes) && nodes.length) {
     const brief = state.project_briefs.filter((item) => item.project_id === projectId && item.status !== 'superseded').sort((a, b) => Number(b.version || 0) - Number(a.version || 0))[0];
     const quality = assertWorkflowPlanningQuality({ nodes, project, brief, projectClassification: body.project_classification || draft.project_classification, briefCoverage });
     nodes = quality.nodes; briefCoverage = quality.brief_coverage;
-  }
+  } else if (Array.isArray(body.nodes)) briefCoverage = {};
   const updatedAt = now();
   Object.assign(draft, {
     nodes, brief_coverage: structuredClone(briefCoverage), project_classification: clean(body.project_classification || draft.project_classification, 200) || null,

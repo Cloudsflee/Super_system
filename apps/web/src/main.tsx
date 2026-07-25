@@ -14,11 +14,13 @@ import './styles/setup.css';
 import './styles/projects.css';
 import './styles/onboarding.css';
 import './styles/workflow.css';
+import './styles/workflow-toolbar.css';
 import './styles/workflow-process.css';
 import './styles/workspace.css';
 import './styles/data.css';
 import './styles/overlays.css';
 import './styles/operations.css';
+import './styles/theme.css';
 
 export const queryClient = new QueryClient({
   defaultOptions: {

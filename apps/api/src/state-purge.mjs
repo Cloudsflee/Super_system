@@ -47,9 +47,18 @@ function purgeAssistGraph(state, sessionIds, extraTurnIds = new Set(), extraTerm
 
 export function purgeProjectInState(state, projectId) {
   const graph = projectPurgeGraph(state, projectId);
+  const projectRepositoryIds = new Set((state.project_repository_bindings || [])
+    .filter((binding) => binding.project_id === projectId)
+    .map((binding) => binding.canonical_repository_id)
+    .filter(Boolean));
+  const disposableRepositories = (state.canonical_repositories || []).filter((repository) => repository.remote_state === 'deleted'
+    && projectRepositoryIds.has(repository.id)
+    && !(state.project_repository_bindings || []).some((binding) => binding.canonical_repository_id === repository.id && binding.project_id !== projectId && binding.status !== 'removed'));
+  const disposableRepositoryIds = new Set(disposableRepositories.map((repository) => repository.id));
   const {
     workspaceIds, workflowIds, nodeIds, runIds, assetIds, assetVersionIds, sessionIds, turnIds, terminalIds,
-    proposalIds, contextPackIds, checkIds, fileRefIds, targetIds, exchangeRequestIds, exchangeGrantIds
+    proposalIds, contextPackIds, checkIds, fileRefIds, targetIds, exchangeRequestIds, exchangeGrantIds,
+    taskExecutionIds, assetBlobIds
   } = graph;
   purgeAssistGraph(state, sessionIds, turnIds, terminalIds);
   const migrationTargets = purgeWorkflowMigrationReferences(state, projectId, workflowIds);
@@ -62,6 +71,8 @@ export function purgeProjectInState(state, projectId) {
   filter(state, 'context_packs', (item) => !includes(contextPackIds, item.id));
   filter(state, 'context_sufficiency_checks', (item) => !includes(checkIds, item.id));
   filter(state, 'asset_versions', (item) => !includes(assetIds, item.asset_id) && !includes(assetVersionIds, item.id));
+  filter(state, 'asset_attestations', (item) => !includes(assetIds, item.asset_id) && !includes(assetVersionIds, item.asset_version_id) && !includes(taskExecutionIds, item.task_execution_id));
+  filter(state, 'asset_blobs', (item) => !includes(assetBlobIds, item.id));
   filter(state, 'asset_relations', (item) => !assetRelationMatches(item, assetIds, assetVersionIds));
   filter(state, 'human_reviews', (item) => !includes(targetIds, item.target_id));
   filter(state, 'file_refs', (item) => !includes(fileRefIds, item.id) && !fileRefMatches(item, projectId, workspaceIds, runIds, terminalIds, contextPackIds));
@@ -69,6 +80,13 @@ export function purgeProjectInState(state, projectId) {
   filter(state, 'config_revisions', (item) => !includes(proposalIds, item.proposal_id));
   filter(state, 'exchange_grants', (item) => !includes(exchangeGrantIds, item.id));
   filter(state, 'exchange_requests', (item) => !includes(exchangeRequestIds, item.id));
+  filter(state, 'project_repository_bindings', (item) => !includes(disposableRepositoryIds, item.canonical_repository_id));
+  filter(state, 'repository_deletion_intents', (item) => !includes(disposableRepositoryIds, item.canonical_repository_id));
+  filter(state, 'repository_bindings', (item) => !includes(disposableRepositoryIds, item.canonical_repository_id));
+  filter(state, 'github_repositories', (item) => !includes(disposableRepositoryIds, item.canonical_repository_id));
+  filter(state, 'canonical_repositories', (item) => !includes(disposableRepositoryIds, item.id));
+  for (const installation of state.github_installations || []) installation.repositories = (installation.repositories || [])
+    .filter((item) => !disposableRepositories.some((repository) => String(item.id || item.repository_id) === String(repository.repository_id) || item.full_name === repository.full_name));
   filter(state, 'traces', (item) => !includes(migrationTargets, item.target_id) && !includes(removedMcpClientIds, item.target_id));
 }
 
@@ -78,7 +96,8 @@ export function projectManagedPathsInState(state, projectId) {
   const fileRefs = state.file_refs.filter((item) => includes(graph.fileRefIds, item.id) || fileRefMatches(item, projectId, graph.workspaceIds, graph.runIds, graph.terminalIds, graph.contextPackIds));
   return {
     attachment_paths: [...new Set(attachments.map((item) => item.managed_path).filter(Boolean))],
-    artifact_paths: [...new Set(fileRefs.map((item) => item.absolute_path).filter(Boolean))]
+    artifact_paths: [...new Set(fileRefs.map((item) => item.absolute_path).filter(Boolean))],
+    cas_blob_paths: state.asset_blobs.filter((item) => includes(graph.assetBlobIds, item.id)).map((item) => item.storage_path).filter(Boolean)
   };
 }
 
@@ -91,6 +110,10 @@ function projectPurgeGraph(state, projectId) {
   const runIds = ids(state.node_runs, (item) => item.project_id === projectId || includes(workspaceIds, item.workspace_id) || includes(nodeIds, item.node_id));
   const assetIds = ids(state.assets, (item) => item.project_id === projectId || includes(workspaceIds, item.workspace_id) || includes(nodeIds, item.node_id) || includes(runIds, item.run_id));
   const assetVersionIds = ids(state.asset_versions, (item) => includes(assetIds, item.asset_id));
+  const taskExecutionIds = ids(state.task_executions || [], (item) => item.project_id === projectId || includes(nodeIds, item.task_id));
+  const projectBlobHashes = blobHashes(state.asset_versions.filter((item) => includes(assetVersionIds, item.id)));
+  const retainedBlobHashes = blobHashes(state.asset_versions.filter((item) => !includes(assetVersionIds, item.id)));
+  const assetBlobIds = ids(state.asset_blobs || [], (item) => projectBlobHashes.has(item.sha256) && !retainedBlobHashes.has(item.sha256));
   const sessionIds = ids(state.assist_sessions, (item) => item.project_id === projectId || includes(workspaceIds, item.workspace_id) || includes(nodeIds, item.node_id)
     || (['project', 'project_wizard'].includes(item.target_type) && item.target_id === projectId)
     || (item.scope_type === 'project' && item.scope_id === projectId));
@@ -103,8 +126,8 @@ function projectPurgeGraph(state, projectId) {
   const checkIds = ids(state.context_sufficiency_checks, (item) => item.project_id === projectId || includes(workspaceIds, item.workspace_id) || includes(nodeIds, item.node_id) || (item.target_type === 'assist_turn' && includes(turnIds, item.target_id)));
   const projectRecords = [...state.context_packs.filter((item) => includes(contextPackIds, item.id)), ...state.node_runs.filter((item) => includes(runIds, item.id)), ...state.code_changes.filter((item) => item.project_id === projectId || includes(runIds, item.run_id)), ...state.terminal_sessions.filter((item) => includes(terminalIds, item.id)), ...state.attachments.filter((item) => item.project_id === projectId || includes(sessionIds, item.session_id) || includes(turnIds, item.turn_id)), ...state.traces.filter((item) => item.project_id === projectId || includes(runIds, item.run_id))];
   const fileRefIds = referencedFileIds(projectRecords);
-  const targetIds = new Set([projectId, ...workspaceIds, ...workflowIds, ...nodeIds, ...runIds, ...assetIds, ...assetVersionIds, ...sessionIds, ...turnIds, ...terminalIds, ...proposalIds, ...contextPackIds, ...checkIds, ...exchangeRequestIds, ...exchangeGrantIds]);
-  return { workspaceIds, workflowIds, nodeIds, runIds, assetIds, assetVersionIds, sessionIds, turnIds, terminalIds, proposalIds, contextPackIds, checkIds, fileRefIds, targetIds, exchangeRequestIds, exchangeGrantIds };
+  const targetIds = new Set([projectId, ...workspaceIds, ...workflowIds, ...nodeIds, ...runIds, ...assetIds, ...assetVersionIds, ...taskExecutionIds, ...sessionIds, ...turnIds, ...terminalIds, ...proposalIds, ...contextPackIds, ...checkIds, ...exchangeRequestIds, ...exchangeGrantIds]);
+  return { workspaceIds, workflowIds, nodeIds, runIds, assetIds, assetVersionIds, taskExecutionIds, assetBlobIds, sessionIds, turnIds, terminalIds, proposalIds, contextPackIds, checkIds, fileRefIds, targetIds, exchangeRequestIds, exchangeGrantIds };
 }
 
 function purgeWorkflowMigrationReferences(state, projectId, workflowIds) {
@@ -146,5 +169,7 @@ function fileRefMatches(item, projectId, workspaceIds, runIds, terminalIds, cont
 
 function assetRelationMatches(item, assetIds, versionIds) {
   return ['asset_id', 'source_asset_id', 'target_asset_id', 'from_asset_id', 'to_asset_id'].some((key) => includes(assetIds, item[key]))
-    || ['asset_version_id', 'source_version_id', 'target_version_id', 'from_version_id', 'to_version_id'].some((key) => includes(versionIds, item[key]));
+    || ['asset_version_id', 'source_version_id', 'target_version_id', 'source_asset_version_id', 'target_asset_version_id', 'from_version_id', 'to_version_id'].some((key) => includes(versionIds, item[key]));
 }
+
+function blobHashes(versions) { return new Set(versions.flatMap((item) => item.blob_refs || []).map((item) => typeof item === 'string' ? item : item?.sha256).filter(Boolean)); }

@@ -36,10 +36,11 @@ try {
   assert.equal(checked.schema_version, 17); assert.equal(checked.core_counts.mcp_clients, 0);
 
   const compose = fs.readFileSync('compose.yml', 'utf8');
-  for (const value of ['name: aiws-v19', 'aiws-app:1.9.0', 'aiws-codex-runner:1.9.0-codex-0.144.0', 'aiws-data-v19']) assert.ok(compose.includes(value));
+  for (const value of ['name: aiws-v19', 'aiws-app:1.10.0', 'aiws-codex-runner:1.10.0-codex-0.144.0', 'aiws-data-v19']) assert.ok(compose.includes(value));
   for (const script of ['scripts/aiws.ps1', 'scripts/aiws.sh']) {
     const sourceText = fs.readFileSync(script, 'utf8');
-    for (const value of ['aiws-data-v18', 'aiws-data-v19', 'aiws-app:1.9.0', 'aiws-codex-runner:1.9.0-codex-0.144.0', 'v19-release.mjs']) assert.ok(sourceText.includes(value), `${script} ${value}`);
+    for (const value of ['aiws-data-v19', 'aiws-app:1.10.0', 'aiws-codex-runner:1.10.0-codex-0.144.0', 'v110-release.mjs']) assert.ok(sourceText.includes(value), `${script} ${value}`);
+    assert.equal(sourceText.includes('aiws-data-v18'), false, `${script} has no migration source`);
   }
   const orchestrator = fs.readFileSync('docker/release_orchestrator.mjs', 'utf8');
   assert.ok(orchestrator.includes("health.version !== RELEASE_VERSION")); assert.ok(orchestrator.includes('health.schema_version !== RELEASE_SCHEMA'));

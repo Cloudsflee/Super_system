@@ -12,12 +12,14 @@ import {
   normalizeTurnCollaborationMode, projectWriteUnavailableReason, queuePosition, requireProject, requireSession, requireTurn,
   resolveAssistTurnConfiguration, TERMINAL_TURN_STATES, turnDetail
 } from './assist-v3-domain.mjs';
+import { assertControlledTaskWrite } from './execution-governance.mjs';
+import { prepareTaskExecutionInState } from './task-execution-service.mjs';
 
 export async function createV3Turn(sessionId, input = {}, options = {}) {
   const content = cleanText(input.content ?? input.prompt, 100_000), mode = normalizeTurnCollaborationMode(input);
   if (!content) throw new HttpError(400, { error: 'assist_turn_content_required' });
   const adapted = testAdapter(input);
-  const result = await mutate((state) => {
+  const result = await mutate(async (state) => {
     const actor = owner(state), session = requireSession(state, sessionId), project = requireProject(state, session.project_id);
     assertSessionScope(state, session, input);
     if (session.archived_at) throw new HttpError(409, { error: 'assist_session_archived' });
@@ -28,6 +30,10 @@ export async function createV3Turn(sessionId, input = {}, options = {}) {
     if (operationReference && (operationReference.session_id !== session.id || operationReference.project_id && operationReference.project_id !== project.id)) throw new HttpError(409, { error: 'assist_operation_reference_scope_mismatch' });
     if (configuration.profile) bindSessionRuntimeProfile(session, configuration.profile);
     const turn = makeTurn({ actor, session, mode, content, input, attachmentIds, options, configuration });
+    const activeWorkflowExecution = state.workflow_executions.find((item) => item.project_id === project.id && ['running', 'paused'].includes(item.status));
+    const scopedTaskId = session.scope_type === 'task' ? session.scope_id : session.node_id && state.workflow_nodes.find((item) => item.id === session.node_id)?.role === 'task' ? session.node_id : null;
+    const controlled = activeWorkflowExecution && mode !== 'plan' && scopedTaskId ? assertControlledTaskWrite(state, scopedTaskId, { task_execution_id: input.task_execution_id, lease_token: input.lease_token }, 'assist') : { controlled: false };
+    if (controlled.controlled) await prepareTaskExecutionInState(state, controlled.task_execution.id);
     if (turn.repository_workspace_id && !state.repository_workspaces.some((item) => item.id === turn.repository_workspace_id && item.project_id === project.id && item.status === 'active')) throw new HttpError(404, { error: 'repository_workspace_not_found' });
     if (session.active_change_batch_id && turn.repository_workspace_id !== session.repository_workspace_id) throw new HttpError(409, { error: 'assist_repository_workspace_change_batch_active', change_batch_id: session.active_change_batch_id });
     if (turn.repository_workspace_id) session.repository_workspace_id = turn.repository_workspace_id;
@@ -36,12 +42,12 @@ export async function createV3Turn(sessionId, input = {}, options = {}) {
       const item = state.attachments.find((entry) => entry.id === key);
       return { id: item.id, sha256: item.sha256 || null, size_bytes: Number(item.size_bytes || 0), detected_mime_type: item.detected_mime_type || item.content_type || 'application/octet-stream', storage_status: item.storage_status || 'external', relative_path: item.relative_path || null };
     });
-    const readOnlyReason = mode === 'plan' ? 'plan_mode' : projectWriteUnavailableReason(project);
-    Object.assign(turn, { code_access: readOnlyReason ? 'read_only' : 'workspace_write', code_read_only_reason: readOnlyReason });
+    const readOnlyReason = mode === 'plan' ? 'plan_mode' : activeWorkflowExecution && !scopedTaskId ? 'workflow_execution_project_exploration' : projectWriteUnavailableReason(project);
+    Object.assign(turn, { code_access: readOnlyReason ? 'read_only' : 'workspace_write', code_read_only_reason: readOnlyReason, task_execution_id: controlled.task_execution?.id || null });
     if (adapted) Object.assign(turn, { test_adapter: true, test_response: normalizeTestResponse(input.test_response, input.test_delay_ms) });
-    const context = createTurnContext(state, { actor, project, session, turn, attachmentIds });
-    turn.context_pack_id = context.pack.id;
-    state.context_sufficiency_checks.push(context.check); state.context_packs.push(context.pack); state.assist_turns.push(turn);
+    if (controlled.controlled) turn.context_pack_id = controlled.task_execution.context_snapshot.context_pack_id;
+    else { const context = createTurnContext(state, { actor, project, session, turn, attachmentIds }); turn.context_pack_id = context.pack.id; state.context_sufficiency_checks.push(context.check); state.context_packs.push(context.pack); }
+    state.assist_turns.push(turn);
     state.assist_messages.push({ id: id('amsg'), session_id: session.id, turn_id: turn.id, role: 'user', content, status: 'completed', created_at: now() });
     Object.assign(session, { status: hasActiveTurn(state, session.id) ? 'running' : 'queued', view_context: turn.view_context, updated_at: now() });
     pushV3Event(state, session.id, turn.id, 'queued', { collaboration_mode: mode, code_access: turn.code_access, code_read_only_reason: readOnlyReason, queue_position: queuePosition(state, turn) });

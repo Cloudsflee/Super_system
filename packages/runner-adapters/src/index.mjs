@@ -35,6 +35,7 @@ export class CodexRunner extends AgentRunner {
       const args = this.buildArgs({ cwd, model, outputSchemaFile, lastMessageFile, configArgs });
       const prompt = fs.readFileSync(promptFile, 'utf8');
       const raw = await runProcess(this.command, args, { cwd, timeoutMs: this.timeoutMs, stdin: prompt, env, signal });
+      if (raw.code !== 0) return failedCodexProcessResult(fallback, raw);
       const last = fs.existsSync(lastMessageFile) ? fs.readFileSync(lastMessageFile, 'utf8') : '';
       const normalized = normalizeRunnerOutput(last || extractJsonMessage(raw.stdout) || raw.stdout || raw.stderr, fallback);
       return { ...normalized.result, status: normalized.status, _codex_process: { code: raw.code, stderr: raw.stderr, stdout: raw.stdout.slice(-4000) } };
@@ -88,6 +89,7 @@ export class DockerCodexRunner extends AgentRunner {
       const invocation = this.invocationBuilder ? this.invocationBuilder(input) : { command: 'docker', args: this.buildDockerArgs(input) };
       const prompt = fs.readFileSync(promptFile, 'utf8');
       const raw = await this.processRunner(invocation.command, invocation.args, { cwd, timeoutMs: this.timeoutMs, stdin: prompt, env, signal }, invocation);
+      if (raw.code !== 0) return failedCodexProcessResult(fallback, raw, 'docker');
       const last = fs.existsSync(lastMessageFile) ? fs.readFileSync(lastMessageFile, 'utf8') : '';
       const normalized = normalizeRunnerOutput(last || extractJsonMessage(raw.stdout) || raw.stdout || raw.stderr, fallback);
       return { ...normalized.result, status: normalized.status, _codex_process: { command: 'docker', code: raw.code, stderr: raw.stderr, stdout: raw.stdout.slice(-4000) } };
@@ -115,17 +117,39 @@ export function ensureAgentsBlock(repoPath, contextPackPath = '.ai-workspace/con
 
 
 function partialCodexResult(fallback, error) {
+  const failure = classifyCodexProcessFailure(String(error.message || error));
   return {
     ...fallback,
-    status: RunnerStatus.Partial,
+    status: RunnerStatus.Failed,
     summary: 'CodexRunner 未能完成，已保留错误与 raw trace，可在确认配置后重试。',
     changed_files: fallback.changed_files || [],
     asset_candidates: fallback.asset_candidates || [],
     test_results: [{ name: 'codex exec', status: 'failed', output: String(error.message || error) }],
     next_actions: ['查看 raw output', '确认 Codex Profile 与挂载', '重试 CodexRunner'],
     warnings: [...(fallback.warnings || []), String(error.message || error)],
-    _codex_process: { error: String(error.message || error) }
+    _codex_process: { error: String(error.message || error), ...failure }
   };
+}
+
+function failedCodexProcessResult(fallback, raw, command = null) {
+  const stdout = String(raw.stdout || ''), stderr = String(raw.stderr || '');
+  const failure = classifyCodexProcessFailure(`${stdout}\n${stderr}`);
+  return {
+    ...fallback,
+    status: RunnerStatus.Failed,
+    summary: `CodexRunner 进程以退出码 ${raw.code ?? 'unknown'} 结束。`,
+    warnings: [...(fallback.warnings || []), failure.failure_code],
+    _codex_process: { ...(command ? { command } : {}), code: raw.code, stderr, stdout: stdout.slice(-4000), ...failure }
+  };
+}
+
+export function classifyCodexProcessFailure(value) {
+  const output = String(value || '');
+  if (/\b(?:429|502|503|504)\b|bad gateway|upstream request failed|rate.?limit|reconnecting/i.test(output)) return { failure_code: 'runner_upstream_unavailable', retryable: true };
+  if (/timed?\s*out|timeout/i.test(output)) return { failure_code: 'runner_timeout', retryable: true };
+  if (/network|connection (?:reset|refused|closed)|econn(?:reset|refused)|dns|socket hang up/i.test(output)) return { failure_code: 'runner_network_failed', retryable: true };
+  if (/container_start|docker daemon|service unavailable/i.test(output)) return { failure_code: 'runner_infrastructure_failed', retryable: true };
+  return { failure_code: 'runner_process_failed', retryable: false };
 }
 
 function extractJsonMessage(stdout) {

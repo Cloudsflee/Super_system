@@ -5,6 +5,7 @@ import type { AssistAttachment, AssistGoal, AssistOperation, AssistV3Event, Assi
 import { ContextMenuProvider, useContextMenuResolver } from '../components/common/ContextMenu';
 import { publishSelectionAsk, subscribeSelectionAsk } from '../components/common/selection-ask';
 import { IconButton } from '../components/common/IconButton';
+import { previewErrorLabel, referenceKindLabel, runtimeUnavailableReasonLabel } from '../components/common/display-labels';
 import { AssistComposer } from '../features/assist/AssistComposer';
 import AttachmentPreview, { parseCsvRow } from '../features/assist/AttachmentPreview';
 import { BtwPopover } from '../features/assist/BtwPopover';
@@ -30,9 +31,9 @@ describe('Assist V1.6 interactions', () => {
     window.getSelection()?.removeAllRanges(); window.getSelection()?.addRange(range);
     fireEvent.contextMenu(target, { clientX: 30, clientY: 40 });
     const menu = screen.getByRole('menu', { name: '上下文菜单' });
-    expect(within(menu).getByRole('menuitem', { name: 'Ask' })).toBeInTheDocument();
+    expect(within(menu).getByRole('menuitem', { name: '询问智能助手' })).toBeInTheDocument();
     expect(within(menu).getByRole('menuitem', { name: '专属动作' })).toBeInTheDocument();
-    fireEvent.click(within(menu).getByRole('menuitem', { name: 'Ask' }));
+    fireEvent.click(within(menu).getByRole('menuitem', { name: '询问智能助手' }));
     await waitFor(() => expect(asked).toHaveBeenCalledWith(expect.objectContaining({ selection: 'Context target' })));
     expect(useUi.getState().assistOpen).toBe(true);
 
@@ -42,11 +43,11 @@ describe('Assist V1.6 interactions', () => {
     expect(await screen.findByRole('menu')).toBeInTheDocument(); fireEvent.keyDown(window, { key: 'Escape' });
 
     fireEvent.contextMenu(screen.getByLabelText('Secret'));
-    expect(screen.queryByRole('menuitem', { name: 'Ask' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('menuitem', { name: '询问智能助手' })).not.toBeInTheDocument();
     expect(screen.queryByRole('menuitem', { name: '粘贴' })).not.toBeInTheDocument();
     fireEvent.keyDown(window, { key: 'Escape' }); const sensitiveRange = document.createRange(); sensitiveRange.selectNodeContents(screen.getByText('Sensitive selection'));
     window.getSelection()?.removeAllRanges(); window.getSelection()?.addRange(sensitiveRange); fireEvent.contextMenu(target);
-    expect(screen.queryByRole('menuitem', { name: 'Ask' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('menuitem', { name: '询问智能助手' })).not.toBeInTheDocument();
     disposeAsk();
   });
 
@@ -69,6 +70,7 @@ describe('Assist V1.6 interactions', () => {
     expect(removeComposerToken('ask @src/features/file.ts', reference!)).toBe('ask ');
     expect(activeComposerToken('path/to/file', 12)).toBeNull(); expect(activeComposerToken('go /review', 10)?.query).toBe('review');
     expect(ASSIST_COMMANDS.map(([name]) => name)).toEqual(['plan', 'goal', 'model', 'reasoning', 'terminal', 'review', 'fork', 'btw']);
+    expect(referenceKindLabel('current_editor_file')).toBe('当前编辑文件'); expect(runtimeUnavailableReasonLabel('windows_bridge_not_paired')).toBe('Windows 本机桥接尚未配对'); expect(previewErrorLabel('preview_404')).toBe('预览内容读取失败（HTTP 404）');
     expect(LONG_PASTE_THRESHOLD).toBe(8000); expect(MAX_DROP_FILES).toBe(10);
     expect(parseCsvRow('')).toEqual(['']); expect(parseCsvRow('a,"b,b","c""d",')).toEqual(['a', 'b,b', 'c"d', '']);
   });
@@ -78,7 +80,7 @@ describe('Assist V1.6 interactions', () => {
     const fetchMock = vi.fn(() => new Promise<Response>((resolve) => { finish = resolve; })); vi.stubGlobal('fetch', fetchMock);
     const onPrompt = vi.fn(), onCreated = vi.fn(), onAttachments = vi.fn();
     render(<AssistComposer {...composerProps({ prompt: 'keep existing', onPrompt, onAttachmentCreated: onCreated, onAttachments })} />);
-    const textarea = screen.getByRole('textbox', { name: 'Assist 消息' }) as HTMLTextAreaElement; textarea.setSelectionRange(4, 4);
+    const textarea = screen.getByRole('textbox', { name: '智能助手消息' }) as HTMLTextAreaElement; textarea.setSelectionRange(4, 4);
     fireEvent.paste(textarea, { clipboardData: { getData: () => 'x'.repeat(LONG_PASTE_THRESHOLD) } });
     await waitFor(() => expect(screen.getByRole('button', { name: '发送' })).toBeDisabled());
     finish(jsonResponse(attachment())); await waitFor(() => expect(onCreated).toHaveBeenCalled());
@@ -88,7 +90,7 @@ describe('Assist V1.6 interactions', () => {
   it('keeps Stop available while a running Turn is finishing background refreshes', () => {
     const onStop = vi.fn();
     render(<AssistComposer {...composerProps({ activeTurn: { ...turnFixture(), status: 'running' }, busy: true, onStop })} />);
-    const stop = screen.getByRole('button', { name: 'Stop' });
+    const stop = screen.getByRole('button', { name: '停止' });
     expect(stop).toBeEnabled(); fireEvent.click(stop); expect(onStop).toHaveBeenCalledOnce();
   });
 
@@ -96,18 +98,18 @@ describe('Assist V1.6 interactions', () => {
     const onSubmit = vi.fn();
     render(<AssistComposer {...composerProps({ activeTurn: { ...turnFixture(), status: 'running' }, busy: true, onSubmit })} />);
     expect(screen.getByRole('button', { name: '加入队列' })).toBeEnabled();
-    fireEvent.change(screen.getByRole('combobox', { name: 'Follow-up 行为' }), { target: { value: 'steer' } });
-    const steer = screen.getByRole('button', { name: 'Steer' });
+    fireEvent.change(screen.getByRole('combobox', { name: '后续消息处理方式' }), { target: { value: 'steer' } });
+    const steer = screen.getByRole('button', { name: '调整当前方向' });
     fireEvent.click(steer); expect(onSubmit).toHaveBeenCalledWith('steer');
   });
 
   it('leaves a 7,999-character paste native and restores text when conversion fails', async () => {
     const fetchMock = vi.fn(async () => jsonResponse({ error: 'upload_failed' }, 500)); vi.stubGlobal('fetch', fetchMock);
     const shortPrompt = vi.fn(), first = render(<AssistComposer {...composerProps({ prompt: 'base', onPrompt: shortPrompt })} />);
-    fireEvent.paste(screen.getByRole('textbox', { name: 'Assist 消息' }), { clipboardData: { getData: () => 'x'.repeat(LONG_PASTE_THRESHOLD - 1) } });
+    fireEvent.paste(screen.getByRole('textbox', { name: '智能助手消息' }), { clipboardData: { getData: () => 'x'.repeat(LONG_PASTE_THRESHOLD - 1) } });
     expect(fetchMock).not.toHaveBeenCalled(); expect(shortPrompt).not.toHaveBeenCalled(); first.unmount();
     const restored = vi.fn(); render(<AssistComposer {...composerProps({ prompt: 'base', onPrompt: restored })} />);
-    const textarea = screen.getByRole('textbox', { name: 'Assist 消息' }) as HTMLTextAreaElement; textarea.setSelectionRange(4, 4);
+    const textarea = screen.getByRole('textbox', { name: '智能助手消息' }) as HTMLTextAreaElement; textarea.setSelectionRange(4, 4);
     fireEvent.paste(textarea, { clipboardData: { getData: () => 'z'.repeat(LONG_PASTE_THRESHOLD) } });
     await waitFor(() => expect(restored).toHaveBeenCalledWith(`base${'z'.repeat(LONG_PASTE_THRESHOLD)}`));
   });
@@ -154,7 +156,7 @@ describe('Assist V1.6 interactions', () => {
     expect(timeline).not.toHaveTextContent('completed'); expect(timeline).not.toHaveTextContent('MODEL_HISTORY_SENTINEL'); expect(timeline).not.toHaveTextContent('REASONING_HISTORY_SENTINEL'); expect(timeline).not.toHaveTextContent('PROFILE_HISTORY_SENTINEL'); expect(timeline).not.toHaveTextContent('PRIVATE_REASONING_SENTINEL');
     expect(timeline.textContent?.toLowerCase()).not.toContain('reasoning'); expect(timeline.querySelectorAll('.turn-output')).toHaveLength(1);
     const details = screen.getByText('运行详情').closest('details')!; expect(details).not.toHaveAttribute('open'); expect(details).toHaveTextContent('pnpm test'); expect(details).toHaveTextContent('Public concise summary');
-    expect(within(details).getByLabelText('Token 用量')).toHaveTextContent('输入 1,000'); expect(within(details).getByLabelText('Token 用量')).toHaveTextContent('输出 234'); expect(within(details).getByLabelText('Token 用量')).toHaveTextContent('总计 1,234');
+    expect(within(details).getByLabelText('令牌用量')).toHaveTextContent('输入 1,000'); expect(within(details).getByLabelText('令牌用量')).toHaveTextContent('输出 234'); expect(within(details).getByLabelText('令牌用量')).toHaveTextContent('总计 1,234');
     expect(screen.queryByRole('button', { name: '查看本次回复用量' })).not.toBeInTheDocument(); expect(screen.queryByText('实时事件已连接')).not.toBeInTheDocument();
   });
 
@@ -173,15 +175,15 @@ describe('Assist V1.6 interactions', () => {
     const turn = { ...turnFixture(), status: 'failed', output_text: '', error_code: 'assist_workspace_unavailable', change_batch_id: 'batch-1', review_status: 'ready', user_inputs: [input], operations: [operation] };
     const events = [assistEvent('approval', { approval_id: 'approval-1', command: 'pnpm test' }, 1), assistEvent('failed', { error: 'assist_workspace_unavailable' }, 2)];
     render(<TurnTimeline {...timelineProps({ turns: [turn], events })} />);
-    const approval = screen.getByRole('button', { name: '立即审查' }), retry = screen.getByRole('button', { name: 'Retry' }), review = screen.getByRole('button', { name: 'Review batch' });
-    expect(approval).toBeInTheDocument(); expect(screen.getByText('Codex 需要你的输入')).toBeInTheDocument(); expect(screen.getByText('Assist 工作目录不可用，请重新进入项目后重试。')).toBeInTheDocument();
+    const approval = screen.getByRole('button', { name: '立即审查' }), retry = screen.getByRole('button', { name: '重试' }), review = screen.getByRole('button', { name: '审查变更批次' });
+    expect(approval).toBeInTheDocument(); expect(screen.getByText('Codex 需要你的输入')).toBeInTheDocument(); expect(screen.getByText('智能助手工作目录不可用，请重新进入项目后重试。')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: '强制撤回' })).toBeInTheDocument(); expect(retry).toBeInTheDocument(); expect(review).toBeInTheDocument(); expect(approval.closest('details')).toBeNull(); expect(retry.closest('details')).toBeNull(); expect(review.closest('details')).toBeNull();
   });
 
   it('keeps an open no-change batch reachable for explicit cleanup', () => {
     const onReview = vi.fn(), turn = { ...turnFixture(), change_batch_id: 'batch-1', review_status: 'no_changes' as const };
     render(<TurnTimeline {...timelineProps({ turns: [turn], onReview })} />);
-    fireEvent.click(screen.getByRole('button', { name: 'Review batch' }));
+    fireEvent.click(screen.getByRole('button', { name: '审查变更批次' }));
     expect(onReview).toHaveBeenCalledWith(turn);
   });
 
@@ -190,7 +192,7 @@ describe('Assist V1.6 interactions', () => {
     const onSet = vi.fn(), view = render(<GoalCard goal={goal} busy={false} onSet={onSet} onClear={vi.fn()} />);
     expect(screen.getByText('Ship V1.6')).toHaveClass('goal-objective');
     expect(view.container).not.toHaveTextContent('99,999'); expect(view.container).not.toHaveTextContent('42,000'); expect(view.container).not.toHaveTextContent('3600');
-    expect(screen.getByRole('button', { name: '完成 Goal' })).toHaveAttribute('data-tooltip', '完成 Goal'); fireEvent.click(screen.getByRole('button', { name: '完成 Goal' }));
+    expect(screen.getByRole('button', { name: '完成目标' })).toHaveAttribute('data-tooltip', '完成目标'); fireEvent.click(screen.getByRole('button', { name: '完成目标' }));
     expect(onSet).toHaveBeenCalledWith({ status: 'complete' });
     view.unmount(); render(<IconButton label="统一说明" onClick={() => undefined}><span>i</span></IconButton>); expect(screen.getByRole('button', { name: '统一说明' })).toHaveAttribute('data-tooltip', '统一说明');
   });

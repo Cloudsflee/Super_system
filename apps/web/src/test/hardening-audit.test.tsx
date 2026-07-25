@@ -7,6 +7,7 @@ import { ApprovalCenter } from '../components/approvals/ApprovalCenter';
 import { invalidateApprovalState } from '../components/approvals/ApprovalPrompt';
 import { AppShell } from '../components/shell/AppShell';
 import { GoalCard } from '../features/assist/GoalCard';
+import { AuditPage } from '../features/audit/AuditPage';
 import { NodeWorkspacePage } from '../features/nodes/NodeWorkspacePage';
 import { markSavedSnapshot } from '../features/nodes/renderers/ExecutionWorkspace';
 import { GoalWorkspace } from '../features/nodes/renderers/GoalWorkspace';
@@ -28,6 +29,25 @@ describe('project and UI hardening audit', () => {
     expect(await screen.findByText('Node child')).toBeInTheDocument();
     expect(view.container.querySelector('.app-shell')).not.toHaveClass('canvas-route');
     await waitFor(() => expect(useUi.getState().activeProjectId).toBe('project-b'));
+  });
+
+  it('selects the first project for a fresh shell and highlights one navigation target', async () => {
+    useUi.setState({ activeProjectId: null, navOpen: true });
+    vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => String(input).endsWith('/projects') ? response([project('project-a'), project('project-b')]) : response([])));
+    const view = renderWithClient(<MemoryRouter initialEntries={['/projects']}><Routes><Route element={<AppShell />}><Route path="/projects" element={<div>Projects child</div>} /></Route></Routes></MemoryRouter>);
+    expect(await screen.findByText('Projects child')).toBeInTheDocument();
+    await waitFor(() => expect(useUi.getState().activeProjectId).toBe('project-a'));
+    const active = view.container.querySelectorAll('.primary-nav a.active');
+    expect(active).toHaveLength(1);
+    expect(active[0]).toHaveTextContent('项目');
+    expect(view.container.querySelector('.primary-nav a[href="/projects/project-a/workflow"]')).toBeInTheDocument();
+  });
+
+  it('renders audit submissions with missing legacy session ids', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => response({ traces: [], change_proposals: [], agent_sessions: [], submissions: [{ id: 'submission-a', title: 'Legacy submission', status: 'accepted', from_session_id: null, to_session_id: null }] })));
+    renderWithClient(<MemoryRouter><AuditPage /></MemoryRouter>);
+    expect(await screen.findByText('Legacy submission')).toBeInTheDocument();
+    expect(screen.getByText('已接受 · 未知 → 未知')).toBeInTheDocument();
   });
 
   it('redirects a node URL to the project that actually owns the node', async () => {
@@ -88,8 +108,8 @@ describe('project and UI hardening audit', () => {
 
   it('does not allow a busy Goal to enter edit mode', () => {
     render(<GoalCard goal={null} busy onSet={vi.fn()} onClear={vi.fn()} />);
-    expect(screen.getByRole('button', { name: '设置线程 Goal' })).toBeDisabled();
-    expect(screen.getByRole('button', { name: '编辑 Goal' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: '设置线程目标' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: '编辑目标' })).toBeDisabled();
   });
 
   it('gives the Goal open-questions editor a stable accessible name', () => {

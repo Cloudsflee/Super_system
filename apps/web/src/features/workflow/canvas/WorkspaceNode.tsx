@@ -38,7 +38,7 @@ export function WorkspaceNode({ data, selected }: NodeProps<CanvasNode>) {
         <span data-tooltip="待审批"><ShieldCheck size={12} />{node.pending_approval_count || 0}</span>
         <span data-tooltip="仓库目标"><GitBranch size={12} />{node.repository_status?.ready_count || 0}/{node.repository_status?.target_count || 0}</span>
       </footer>
-      <div className="node-quick-actions nodrag" onPointerDown={stop} onClick={stop}><IconButton label="进入工作区" onClick={handlers.enter}><ArrowUpRight size={14} /></IconButton><IconButton label="让 Assist 优化" onClick={handlers.assist}><Sparkles size={14} /></IconButton><IconButton ref={more} label="更多节点操作" aria-haspopup="menu" onClick={openMenu}><MoreHorizontal size={15} /></IconButton></div>
+      <div className="node-quick-actions nodrag" onPointerDown={stop} onClick={stop}><IconButton label="进入工作区" onClick={handlers.enter}><ArrowUpRight size={14} /></IconButton><IconButton label="让智能助手优化" onClick={handlers.assist}><Sparkles size={14} /></IconButton><IconButton ref={more} label="更多节点操作" aria-haspopup="menu" onClick={openMenu}><MoreHorizontal size={15} /></IconButton></div>
       <Handle type="source" position={Position.Right} />
     </article>
   );

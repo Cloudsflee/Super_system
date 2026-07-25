@@ -28,7 +28,7 @@ export function BtwPopover({ sessionId }: { sessionId?: string }) {
     const content = question.trim(); if (!content || busy) return;
     setBusy(true); setError('');
     try {
-      if (!sessionId) throw new Error('当前项目还没有可用的 Assist 线程');
+      if (!sessionId) throw new Error('当前项目还没有可用的智能助手线程');
       let current = session;
       if (!current) {
         current = await api<BtwSession>(`/assist/v3/sessions/${sessionId}/btw`, json('POST', { browser_id: browserId(), selection: detail?.selection, page_url: detail?.pageUrl }, '创建临时问答'));

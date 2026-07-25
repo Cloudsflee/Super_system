@@ -3,6 +3,7 @@ import { lazy, Suspense, useEffect, useRef, useState } from 'react';
 import type { AssistAttachment } from '../../api/types';
 import { apiUrl } from '../../api/client';
 import { IconButton } from '../../components/common/IconButton';
+import { previewErrorLabel } from '../../components/common/display-labels';
 import { AssistMarkdown } from './AssistMarkdown';
 
 const PdfPreview = lazy(() => import('./PdfPreview'));
@@ -17,7 +18,7 @@ export default function AttachmentPreview({ attachment, onClose }: { attachment:
     const controller = new AbortController(); fetch(contentUrl, { signal: controller.signal }).then(async (response) => { if (!response.ok) throw new Error(`preview_${response.status}`); return response.text(); }).then((value) => setText(value.slice(0, 2_000_000))).catch((reason) => { if (reason.name !== 'AbortError') setError(reason.message); }); return () => controller.abort();
   }, [attachment.content_deleted_at, contentUrl, kind]);
   const body = attachment.content_deleted_at ? <PreviewState text="内容已删除" />
-    : error ? <PreviewState text={`无法预览：${error}`} />
+    : error ? <PreviewState text={previewErrorLabel(error)} />
       : kind === 'image' ? <img className="attachment-image-preview" src={contentUrl} alt={attachment.title} onError={() => setError('image_load_failed')} />
         : kind === 'audio' ? <audio controls src={contentUrl} onError={() => setError('audio_load_failed')} />
           : kind === 'video' ? <video controls src={contentUrl} onError={() => setError('video_load_failed')} />

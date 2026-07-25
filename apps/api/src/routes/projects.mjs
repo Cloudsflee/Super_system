@@ -7,6 +7,7 @@ import {
   actorForRequest, assertProjectRead, createOwnerMembershipInState, instanceOwnerId,
   membershipFor, requireInstanceOwner, requestSubjectUserId
 } from '../project-governance-v19.mjs';
+import { assertControlledTaskWrite } from '../execution-governance.mjs';
 
 export const projectRoutes = [
   makeRoute('GET', '/projects', async ({ req, res, query }) => {
@@ -61,7 +62,7 @@ async function nodeWorkspace({ res, params }) {
 }
 
 async function saveWorkspaceData({ res, params, body }) {
-  const result = await mutate((state) => { const actor = owner(state), bundle = nodeBundle(state, params.id); if (!bundle.node || !bundle.workflow || !bundle.project || !bundle.workspace) throw new HttpError(404, { error: 'node_workspace_not_found' }); assertProjectLifecycleIdle(bundle.project); let record = state.node_workspace_data.find((item) => item.node_id === bundle.node.id); if (!record) { record = { id: `nwd_${Date.now().toString(16)}`, node_id: bundle.node.id, project_id: bundle.project.id, workspace_id: bundle.workspace.id, data: {}, created_at: new Date().toISOString() }; state.node_workspace_data.push(record); } Object.assign(record, { data: body.data || {}, updated_at: new Date().toISOString(), updated_by_user_id: actor.id }); bundle.workspace.open_questions = Array.isArray(record.data.questions) ? record.data.questions : bundle.workspace.open_questions; addTrace(state, 'node.workspace.updated', { project_id: bundle.project.id, workspace_id: bundle.workspace.id, node_id: bundle.node.id, summary: `保存节点工作区：${bundle.node.title}` }, actor.id); return record; });
+  const result = await mutate((state) => { const actor = owner(state), bundle = nodeBundle(state, params.id); if (!bundle.node || !bundle.workflow || !bundle.project || !bundle.workspace) throw new HttpError(404, { error: 'node_workspace_not_found' }); assertProjectLifecycleIdle(bundle.project); if (bundle.node.role === 'task') assertControlledTaskWrite(state, bundle.node.id, { task_execution_id: body.task_execution_id, lease_token: body.lease_token }, 'workspace_edit'); let record = state.node_workspace_data.find((item) => item.node_id === bundle.node.id); if (!record) { record = { id: `nwd_${Date.now().toString(16)}`, node_id: bundle.node.id, project_id: bundle.project.id, workspace_id: bundle.workspace.id, data: {}, created_at: new Date().toISOString() }; state.node_workspace_data.push(record); } Object.assign(record, { data: body.data || {}, task_execution_id: body.task_execution_id || null, updated_at: new Date().toISOString(), updated_by_user_id: actor.id }); bundle.workspace.open_questions = Array.isArray(record.data.questions) ? record.data.questions : bundle.workspace.open_questions; addTrace(state, 'node.workspace.updated', { project_id: bundle.project.id, workspace_id: bundle.workspace.id, node_id: bundle.node.id, summary: `保存节点工作区：${bundle.node.title}` }, actor.id); return record; });
   return send(res, 200, result);
 }
 

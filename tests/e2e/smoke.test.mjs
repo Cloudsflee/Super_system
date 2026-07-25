@@ -22,7 +22,7 @@ for (const route of ['/setup', '/integrations/github/install/setup', '/projects'
 const canvas = read('apps/web/src/features/workflow/canvas/WorkflowCanvas.tsx');
 for (const capability of ['ReactFlow', 'saveLayout', 'onNodeDoubleClick', 'autoLayout', 'fitView']) assert.ok(canvas.includes(capability), `${capability} connected`);
 const execution = read('apps/web/src/features/nodes/renderers/ExecutionWorkspace.tsx');
-for (const capability of ['<Editor', '/files/content', '/files/diff', '/test-tasks']) assert.ok(execution.includes(capability), `${capability} connected`);
+for (const capability of ['<Editor', '/files/content', '/diff?path=', '/test-tasks']) assert.ok(execution.includes(capability), `${capability} connected`);
 const nodeWorkspace = read('apps/web/src/features/nodes/NodeWorkspacePage.tsx');
 for (const capability of ['/change-proposals', '/run/start', 'node_run_authorization', '运行节点']) assert.ok(nodeWorkspace.includes(capability), `Node workspace ${capability} connected`);
 const assist = read('apps/web/src/components/assist/AssistDrawer.tsx');

@@ -82,6 +82,10 @@ export function buildCodexContainerInvocation(options) {
   for (const [key, value] of Object.entries(options.containerEnv || {})) appendEnvironment(args, key, value);
   if (options.codexHome) args.push(...runnerMount(options.codexHome, '/codex-home', options.codexHomeMode || 'rw', options));
   if (options.workspace) args.push(...runnerMount(options.workspace, '/workspace', options.workspaceMode || 'ro', options), '-w', '/workspace');
+  for (const mount of options.internalMounts || []) {
+    if (!mount || typeof mount !== 'object' || !mount.source || !mount.target) throw new Error('invalid_internal_runner_mount');
+    args.push(...runnerMount(mount.source, mount.target, mount.mode || 'ro', options));
+  }
   for (const [index, mount] of (options.extraMounts || []).entries()) args.push(...runnerMount(mount, `/aiws-mounts/${index}`, 'ro', options));
   const image = String(options.image || env.AIWS_CODEX_DOCKER_IMAGE || DEFAULT_RUNNER_IMAGE);
   if (!/^[a-zA-Z0-9][a-zA-Z0-9._/:@-]{0,255}$/.test(image)) throw new Error('invalid_runner_image');

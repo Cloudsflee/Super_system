@@ -129,7 +129,7 @@ export const assistV3Routes = [
   ,makeRoute('POST', '/assist/v3/operations/:id/undo', async ({ res, params, body }) => send(res, 202, await undoAssistOperation(params.id, body)))
   ,makeRoute('POST', '/assist/v3/operations/:id/revisions', async ({ res, params, body }) => send(res, 202, await reviseAssistOperation(params.id, body)))
   ,makeRoute('GET', '/assist/v3/change-batches/:id/review', async ({ res, params }) => send(res, 200, await getChangeBatchReview(params.id)))
-  ,makeRoute('POST', '/assist/v3/change-batches/:id/review/apply', async ({ res, params, body }) => send(res, 200, await applyChangeBatch(params.id, body.target_hash)))
+  ,makeRoute('POST', '/assist/v3/change-batches/:id/review/apply', async ({ res, params, body }) => send(res, 200, await applyChangeBatch(params.id, body.target_hash, body)))
   ,makeRoute('POST', '/assist/v3/change-batches/:id/review/rollback', async ({ res, params, body }) => send(res, 200, await rollbackChangeBatch(params.id, body.target_hash || null)))
 ];
 

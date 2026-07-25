@@ -9,6 +9,7 @@ const terminalStatuses = new Set(['completed', 'completed_with_failures', 'succe
 const operationCollections = [
   'assist_operations', 'assist_turns', 'node_runs', 'terminal_sessions', 'test_tasks', 'import_jobs',
   'workflow_generations', 'deliveries', 'workflow_migration_batches', 'workflow_migration_jobs',
+  'workflow_executions', 'task_executions',
   'change_proposals', 'runtime_approvals'
 ];
 

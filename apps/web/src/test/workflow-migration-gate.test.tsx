@@ -29,7 +29,7 @@ describe('workflow migration owner gate', () => {
     }));
 
     renderPage();
-    expect(await screen.findByRole('heading', { name: '工作流等待 Owner 批准' })).toBeInTheDocument();
+    expect(await screen.findByRole('heading', { name: '工作流等待所有者批准' })).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: '批准两级迁移' }));
 
     await waitFor(() => expect(calls).toContainEqual({ url: '/api/workflow-migrations/batches/batch-1/approve', method: 'POST' }));
@@ -39,7 +39,7 @@ describe('workflow migration owner gate', () => {
   it('keeps collaborators read-only while showing who must approve', async () => {
     vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => String(input).endsWith('/projects/project-1') ? response(bundle('collaborator')) : response(migration())));
     renderPage();
-    expect(await screen.findByText('只有 Project Owner 可以批准')).toBeInTheDocument();
+    expect(await screen.findByText('只有项目所有者可以批准')).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: '批准两级迁移' })).not.toBeInTheDocument();
   });
 
