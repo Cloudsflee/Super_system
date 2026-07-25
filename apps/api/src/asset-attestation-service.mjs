@@ -123,22 +123,46 @@ export async function ingestExecutionOutputsInState(
   };
 }
 
-export async function attestAssetVersionInState(
-  state,
-  {
+export async function attestAssetVersionInState(state, input) {
+  const normalized = normalizeAttestationInput(input);
+  const context = resolveAttestationContext(state, normalized);
+  const { asset, version, execution, key, slot, confirmationPolicy } = context;
+  await verifyAcceptedVersion(state, version, normalized.decision, normalized.casRoot);
+  const existing = findExistingAttestation(state, context, normalized);
+  if (existing) return { attestation: existing, asset, version, idempotent: true };
+  const criteria = slot?.acceptance_criteria || asset.acceptance_criteria || [];
+  const acceptanceResults = buildAcceptanceResults(criteria, version, normalized);
+  const attestation = createAttestation(context, normalized, acceptanceResults);
+  state.asset_attestations.push(attestation);
+  updateAttestedAsset(asset, normalized);
+  if (execution) updateAttestedExecution(state, context, normalized, attestation, criteria, acceptanceResults);
+  return { attestation, asset, version, task_execution: execution, idempotent: false };
+}
+
+function normalizeAttestationInput(input) {
+  return {
+    ...input,
+    taskExecutionId: input.taskExecutionId === undefined ? null : input.taskExecutionId,
+    outputKey: input.outputKey === undefined ? null : input.outputKey,
+    decision: input.decision === undefined ? 'accepted' : input.decision,
+    attestorType: input.attestorType === undefined ? 'human' : input.attestorType,
+    evidence: input.evidence === undefined ? {} : input.evidence,
+    summary: input.summary === undefined ? '' : input.summary
+  };
+}
+
+function resolveAttestationContext(state, input) {
+  const {
     assetId,
     versionId,
     expectedSha256,
-    taskExecutionId = null,
-    outputKey = null,
-    decision = 'accepted',
-    attestorType = 'human',
+    taskExecutionId,
+    outputKey,
+    decision,
+    attestorType,
     attestorId,
-    evidence = {},
-    summary = '',
-    casRoot
-  }
-) {
+    evidence
+  } = input;
   const asset = state.assets.find((item) => item.id === assetId),
     version = state.asset_versions.find((item) => item.id === versionId && item.asset_id === assetId);
   if (!asset || !version) throw new HttpError(404, { error: 'asset_version_not_found' });
@@ -166,73 +190,86 @@ export async function attestAssetVersionInState(
   } else if (attestorType !== 'human') throw new HttpError(403, { error: 'human_attestor_required' });
   if (attestorType === 'trusted_verifier' && !TRUSTED_VERIFIERS.has(attestorId))
     throw new HttpError(403, { error: 'trusted_verifier_unknown' });
-  if (decision === 'accepted') {
-    const integrity = await verifyAssetVersionPayload(state, version, { casRoot });
-    if (!integrity.ok)
-      throw new HttpError(409, { error: 'asset_version_integrity_failed', reasons: integrity.reasons });
-  }
+  return { asset, version, execution, key, slot, confirmationPolicy };
+}
 
-  const existing = state.asset_attestations.find(
+async function verifyAcceptedVersion(state, version, decision, casRoot) {
+  if (decision !== 'accepted') return;
+  const integrity = await verifyAssetVersionPayload(state, version, { casRoot });
+  if (!integrity.ok) throw new HttpError(409, { error: 'asset_version_integrity_failed', reasons: integrity.reasons });
+}
+
+function findExistingAttestation(state, context, input) {
+  const { version, execution, key } = context;
+  return state.asset_attestations.find(
     (item) =>
       item.asset_version_id === version.id &&
       item.task_execution_id === (execution?.id || null) &&
       item.output_key === (key || null) &&
-      item.attestor_type === attestorType &&
-      item.attestor_id === attestorId &&
-      item.decision === decision &&
-      item.expected_sha256 === expectedSha256
+      item.attestor_type === input.attestorType &&
+      item.attestor_id === input.attestorId &&
+      item.decision === input.decision &&
+      item.expected_sha256 === input.expectedSha256
   );
-  if (existing) return { attestation: existing, asset, version, idempotent: true };
-  const criteria = slot?.acceptance_criteria || asset.acceptance_criteria || [];
-  const acceptanceResults = criteria.map((criterion) => ({
+}
+
+function buildAcceptanceResults(criteria, version, input) {
+  return criteria.map((criterion) => ({
     criterion,
-    status: decision === 'accepted' ? 'accepted' : 'rejected',
+    status: input.decision === 'accepted' ? 'accepted' : 'rejected',
     evidence_refs: version.evidence_refs || [],
-    verified_by: attestorType === 'trusted_verifier' ? attestorId : null
+    verified_by: input.attestorType === 'trusted_verifier' ? input.attestorId : null
   }));
-  const attestation = {
+}
+
+function createAttestation(context, input, acceptanceResults) {
+  const { asset, version, execution, key, confirmationPolicy } = context;
+  return {
     id: id('aat'),
     asset_id: asset.id,
     asset_version_id: version.id,
     task_execution_id: execution?.id || null,
     output_key: key || null,
-    decision,
+    decision: input.decision,
     confirmation_policy: confirmationPolicy,
-    attestor_type: attestorType,
-    attestor_id: attestorId,
-    expected_sha256: expectedSha256,
+    attestor_type: input.attestorType,
+    attestor_id: input.attestorId,
+    expected_sha256: input.expectedSha256,
     acceptance_results: acceptanceResults,
-    evidence: structuredClone(evidence || {}),
-    summary: clean(summary, 4000),
+    evidence: structuredClone(input.evidence || {}),
+    summary: clean(input.summary, 4000),
     created_at: now()
   };
-  state.asset_attestations.push(attestation);
+}
+
+function updateAttestedAsset(asset, input) {
   Object.assign(asset, {
-    status: decision === 'accepted' ? 'confirmed' : 'rejected',
-    attestation_status: decision,
-    confirmed_by_user_id: decision === 'accepted' && attestorType === 'human' ? attestorId : null,
+    status: input.decision === 'accepted' ? 'confirmed' : 'rejected',
+    attestation_status: input.decision,
+    confirmed_by_user_id: input.decision === 'accepted' && input.attestorType === 'human' ? input.attestorId : null,
     updated_at: now()
   });
-  if (execution) {
-    const withoutKey = (execution.output_bindings || []).filter((item) => item.key !== key);
-    if (decision === 'accepted')
-      withoutKey.push({
-        key,
-        asset_id: asset.id,
-        version_id: version.id,
-        asset_type: asset.asset_type,
-        content_sha256: version.content_sha256,
-        repository_sha: version.repository_sha || null,
-        acceptance_criteria: criteria,
-        confirmation_policy: confirmationPolicy,
-        attestation_id: attestation.id
-      });
-    execution.output_bindings = withoutKey;
-    execution.acceptance_results = mergeAcceptanceResults(execution.acceptance_results, acceptanceResults, key);
-    execution.updated_at = now();
-    recordAssetLineage(state, execution.context_snapshot, execution.output_bindings, execution.id);
-  }
-  return { attestation, asset, version, task_execution: execution, idempotent: false };
+}
+
+function updateAttestedExecution(state, context, input, attestation, criteria, acceptanceResults) {
+  const { asset, version, execution, key, confirmationPolicy } = context;
+  const outputBindings = (execution.output_bindings || []).filter((item) => item.key !== key);
+  if (input.decision === 'accepted')
+    outputBindings.push({
+      key,
+      asset_id: asset.id,
+      version_id: version.id,
+      asset_type: asset.asset_type,
+      content_sha256: version.content_sha256,
+      repository_sha: version.repository_sha || null,
+      acceptance_criteria: criteria,
+      confirmation_policy: confirmationPolicy,
+      attestation_id: attestation.id
+    });
+  execution.output_bindings = outputBindings;
+  execution.acceptance_results = mergeAcceptanceResults(execution.acceptance_results, acceptanceResults, key);
+  execution.updated_at = now();
+  recordAssetLineage(state, execution.context_snapshot, execution.output_bindings, execution.id);
 }
 
 export function assetVersionDetails(state, versionId) {

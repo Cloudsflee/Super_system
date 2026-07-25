@@ -156,123 +156,142 @@ function applyHierarchyOperation(nodes, source, parentNodeId) {
   const type = clean(source.type || source.op, 80),
     next = nodes.map(hierarchyClone),
     scoped = hierarchyScope(next, parentNodeId);
-  if (type === 'add_node') {
-    const raw = object(source.node, 'workflow_node_required'),
-      role = parentNodeId ? 'task' : 'workstream';
-    if (raw.role && raw.role !== role)
-      throw new HttpError(409, {
-        error: 'workflow_graph_role_scope_invalid',
-        role: raw.role,
-        parent_node_id: parentNodeId
-      });
-    const sourceNode = {
-      ...raw,
-      role,
-      parent_node_id: parentNodeId,
-      id: clean(raw.id, 120) || id(role === 'workstream' ? 'wfs' : 'tsk')
-    };
-    if (next.some((node) => node.id === sourceNode.id))
-      throw new HttpError(409, { error: 'workflow_graph_node_id_conflict', node_id: sourceNode.id });
-    const additions = normalizeWorkflowHierarchyNodes(
-      role === 'workstream' && Array.isArray(raw.tasks) ? [{ ...sourceNode, tasks: raw.tasks }] : [sourceNode]
-    );
-    for (const addition of additions)
-      if (next.some((node) => node.id === addition.id))
-        throw new HttpError(409, { error: 'workflow_graph_node_id_conflict', node_id: addition.id });
-    next.push(...additions);
-    const root = additions.find((item) => item.id === sourceNode.id) || additions[0];
-    const persisted =
-      role === 'workstream'
-        ? { ...root, tasks: additions.filter((item) => item.role === 'task' && item.parent_node_id === root.id) }
-        : root;
-    return { nodes: next, operation: { type, node: structuredClone(persisted) } };
-  }
-  if (type === 'reorder_nodes') {
-    const ids = uniqueIds(source.ids ?? source.node_ids);
-    if (ids.length !== scoped.length || ids.some((nodeId) => !scoped.some((node) => node.id === nodeId)))
-      throw new HttpError(400, { error: 'workflow_graph_reorder_invalid', parent_node_id: parentNodeId });
-    const order = new Map(ids.map((nodeId, index) => [nodeId, index]));
-    return {
-      nodes: next.map((node) => (order.has(node.id) ? { ...node, order_index: order.get(node.id) } : node)),
-      operation: { type, ids }
-    };
-  }
-  const nodeId = clean(source.node_id || source.target_id || source.id, 120),
-    index = next.findIndex((node) => node.id === nodeId);
+  if (type === 'add_node') return addHierarchyNode(next, source, parentNodeId, type);
+  if (type === 'reorder_nodes') return reorderHierarchyNodes(next, scoped, source, parentNodeId, type);
+  const target = hierarchyOperationTarget(next, scoped, source, parentNodeId);
+  if (type === 'reopen_task') return reopenHierarchyTask(next, source, parentNodeId, target, type);
+  if (type === 'update_node') return updateHierarchyNode(next, source, target, type);
+  if (type === 'delete_node') return deleteHierarchyNode(next, target, type);
+  if (type === 'connect' || type === 'disconnect')
+    return connectHierarchyNodes(next, scoped, source, parentNodeId, target, type);
+  throw new HttpError(400, { error: 'workflow_graph_operation_unsupported', operation: type || null });
+}
+
+function addHierarchyNode(next, source, parentNodeId, type) {
+  const raw = object(source.node, 'workflow_node_required');
+  const role = parentNodeId ? 'task' : 'workstream';
+  if (raw.role && raw.role !== role)
+    throw new HttpError(409, {
+      error: 'workflow_graph_role_scope_invalid',
+      role: raw.role,
+      parent_node_id: parentNodeId
+    });
+  const sourceNode = {
+    ...raw,
+    role,
+    parent_node_id: parentNodeId,
+    id: clean(raw.id, 120) || id(role === 'workstream' ? 'wfs' : 'tsk')
+  };
+  if (next.some((node) => node.id === sourceNode.id))
+    throw new HttpError(409, { error: 'workflow_graph_node_id_conflict', node_id: sourceNode.id });
+  const additions = normalizeWorkflowHierarchyNodes(
+    role === 'workstream' && Array.isArray(raw.tasks) ? [{ ...sourceNode, tasks: raw.tasks }] : [sourceNode]
+  );
+  for (const addition of additions)
+    if (next.some((node) => node.id === addition.id))
+      throw new HttpError(409, { error: 'workflow_graph_node_id_conflict', node_id: addition.id });
+  next.push(...additions);
+  const root = additions.find((item) => item.id === sourceNode.id) || additions[0];
+  const persisted =
+    role === 'workstream'
+      ? { ...root, tasks: additions.filter((item) => item.role === 'task' && item.parent_node_id === root.id) }
+      : root;
+  return { nodes: next, operation: { type, node: structuredClone(persisted) } };
+}
+
+function reorderHierarchyNodes(next, scoped, source, parentNodeId, type) {
+  const ids = uniqueIds(source.ids ?? source.node_ids);
+  if (ids.length !== scoped.length || ids.some((nodeId) => !scoped.some((node) => node.id === nodeId)))
+    throw new HttpError(400, { error: 'workflow_graph_reorder_invalid', parent_node_id: parentNodeId });
+  const order = new Map(ids.map((nodeId, index) => [nodeId, index]));
+  return {
+    nodes: next.map((node) => (order.has(node.id) ? { ...node, order_index: order.get(node.id) } : node)),
+    operation: { type, ids }
+  };
+}
+
+function hierarchyOperationTarget(next, scoped, source, parentNodeId) {
+  const nodeId = clean(source.node_id || source.target_id || source.id, 120);
+  const index = next.findIndex((node) => node.id === nodeId);
   if (index < 0 || !scoped.some((node) => node.id === nodeId))
     throw new HttpError(404, { error: 'workflow_graph_node_not_found', node_id: nodeId, parent_node_id: parentNodeId });
-  if (type === 'reopen_task') {
-    if (!parentNodeId || next[index].role !== 'task')
-      throw new HttpError(409, { error: 'workflow_reopen_task_scope_invalid', node_id: nodeId });
-    if (next[index].status !== 'completed')
-      throw new HttpError(409, {
-        error: 'workflow_reopen_task_not_completed',
-        node_id: nodeId,
-        status: next[index].status
-      });
-    const reason = required(source.reason || source.justification, 'workflow_reopen_reason_required', 2000);
-    next[index] = {
-      ...next[index],
-      status: 'ready',
-      execution_revision: Number(next[index].execution_revision || 1) + 1,
-      reopened_from_revision: Number(next[index].execution_revision || 1),
-      reopen_reason: reason
-    };
-    return { nodes: next, operation: { type, node_id: nodeId, reason } };
-  }
-  if (type === 'update_node') {
-    const patch = object(source.patch || source.node, 'workflow_node_patch_required');
-    if (patch.role !== undefined || patch.parent_node_id !== undefined)
-      throw new HttpError(409, { error: 'workflow_node_scope_immutable', node_id: nodeId });
-    const allowed =
-      next[index].role === 'workstream'
-        ? ['title', 'goal', 'outcome', 'category', 'boundary', 'acceptance_criteria', 'position']
-        : [
-            'title',
-            'goal',
-            'task_kind',
-            'execution_mode',
-            'required',
-            'repository_intent',
-            'capability_tags',
-            'acceptance_criteria',
-            'input_slots',
-            'output_slots',
-            'atomic_justification',
-            'position'
-          ];
-    const normalizedPatch = Object.fromEntries(Object.entries(patch).filter(([key]) => allowed.includes(key)));
-    if (!Object.keys(normalizedPatch).length) throw new HttpError(400, { error: 'workflow_node_patch_empty' });
-    next[index] = { ...next[index], ...structuredClone(normalizedPatch) };
-    return { nodes: next, operation: { type, node_id: nodeId, patch: normalizedPatch } };
-  }
-  if (type === 'delete_node') {
-    const deleted = new Set([nodeId]);
-    if (next[index].role === 'workstream')
-      for (const task of next.filter((node) => node.parent_node_id === nodeId)) deleted.add(task.id);
-    const retained = next.filter((node) => !deleted.has(node.id));
-    for (const node of retained)
-      node.dependency_ids = node.dependency_ids.filter((dependencyId) => !deleted.has(dependencyId));
-    return { nodes: retained, operation: { type, node_id: nodeId }, deleted_ids: [...deleted] };
-  }
-  if (type === 'connect' || type === 'disconnect') {
-    const dependencyId = clean(source.dependency_id || source.source_id, 120),
-      dependency = scoped.find((node) => node.id === dependencyId);
-    if (!dependency)
-      throw new HttpError(409, {
-        error: parentNodeId ? 'workflow_task_dependency_scope_invalid' : 'workflow_top_level_dependency_scope_invalid',
-        node_id: nodeId,
-        dependency_id: dependencyId,
-        parent_node_id: parentNodeId
-      });
-    if (dependencyId === nodeId) throw new HttpError(409, { error: 'workflow_graph_self_dependency', node_id: nodeId });
-    next[index].dependency_ids =
-      type === 'connect'
-        ? [...new Set([...next[index].dependency_ids, dependencyId])]
-        : next[index].dependency_ids.filter((item) => item !== dependencyId);
-    return { nodes: next, operation: { type, node_id: nodeId, dependency_id: dependencyId } };
-  }
-  throw new HttpError(400, { error: 'workflow_graph_operation_unsupported', operation: type || null });
+  return { nodeId, index };
+}
+
+function reopenHierarchyTask(next, source, parentNodeId, target, type) {
+  if (!parentNodeId || next[target.index].role !== 'task')
+    throw new HttpError(409, { error: 'workflow_reopen_task_scope_invalid', node_id: target.nodeId });
+  if (next[target.index].status !== 'completed')
+    throw new HttpError(409, {
+      error: 'workflow_reopen_task_not_completed',
+      node_id: target.nodeId,
+      status: next[target.index].status
+    });
+  const reason = required(source.reason || source.justification, 'workflow_reopen_reason_required', 2000);
+  next[target.index] = {
+    ...next[target.index],
+    status: 'ready',
+    execution_revision: Number(next[target.index].execution_revision || 1) + 1,
+    reopened_from_revision: Number(next[target.index].execution_revision || 1),
+    reopen_reason: reason
+  };
+  return { nodes: next, operation: { type, node_id: target.nodeId, reason } };
+}
+
+function updateHierarchyNode(next, source, target, type) {
+  const patch = object(source.patch || source.node, 'workflow_node_patch_required');
+  if (patch.role !== undefined || patch.parent_node_id !== undefined)
+    throw new HttpError(409, { error: 'workflow_node_scope_immutable', node_id: target.nodeId });
+  const allowed =
+    next[target.index].role === 'workstream'
+      ? ['title', 'goal', 'outcome', 'category', 'boundary', 'acceptance_criteria', 'position']
+      : [
+          'title',
+          'goal',
+          'task_kind',
+          'execution_mode',
+          'required',
+          'repository_intent',
+          'capability_tags',
+          'acceptance_criteria',
+          'input_slots',
+          'output_slots',
+          'atomic_justification',
+          'position'
+        ];
+  const normalizedPatch = Object.fromEntries(Object.entries(patch).filter(([key]) => allowed.includes(key)));
+  if (!Object.keys(normalizedPatch).length) throw new HttpError(400, { error: 'workflow_node_patch_empty' });
+  next[target.index] = { ...next[target.index], ...structuredClone(normalizedPatch) };
+  return { nodes: next, operation: { type, node_id: target.nodeId, patch: normalizedPatch } };
+}
+
+function deleteHierarchyNode(next, target, type) {
+  const deleted = new Set([target.nodeId]);
+  if (next[target.index].role === 'workstream')
+    for (const task of next.filter((node) => node.parent_node_id === target.nodeId)) deleted.add(task.id);
+  const retained = next.filter((node) => !deleted.has(node.id));
+  for (const node of retained)
+    node.dependency_ids = node.dependency_ids.filter((dependencyId) => !deleted.has(dependencyId));
+  return { nodes: retained, operation: { type, node_id: target.nodeId }, deleted_ids: [...deleted] };
+}
+
+function connectHierarchyNodes(next, scoped, source, parentNodeId, target, type) {
+  const dependencyId = clean(source.dependency_id || source.source_id, 120);
+  const dependency = scoped.find((node) => node.id === dependencyId);
+  if (!dependency)
+    throw new HttpError(409, {
+      error: parentNodeId ? 'workflow_task_dependency_scope_invalid' : 'workflow_top_level_dependency_scope_invalid',
+      node_id: target.nodeId,
+      dependency_id: dependencyId,
+      parent_node_id: parentNodeId
+    });
+  if (dependencyId === target.nodeId)
+    throw new HttpError(409, { error: 'workflow_graph_self_dependency', node_id: target.nodeId });
+  next[target.index].dependency_ids =
+    type === 'connect'
+      ? [...new Set([...next[target.index].dependency_ids, dependencyId])]
+      : next[target.index].dependency_ids.filter((item) => item !== dependencyId);
+  return { nodes: next, operation: { type, node_id: target.nodeId, dependency_id: dependencyId } };
 }
 
 function hierarchySnapshotFor(workflow, nodes, parentNodeId, revision) {
@@ -371,83 +390,99 @@ function normalizeAndApply(nodes, source, usedIds) {
     throw new HttpError(400, { error: 'workflow_graph_operation_invalid' });
   const type = clean(source.type || source.op, 80),
     next = nodes.map(cloneCandidate);
-  if (type === 'add_node') {
-    const input = object(source.node, 'workflow_node_required'),
-      nodeId = clean(input.id, 120) || id('wfn');
-    if (usedIds.has(nodeId) || next.some((item) => item.id === nodeId))
-      throw new HttpError(409, { error: 'workflow_graph_node_id_conflict', node_id: nodeId });
-    usedIds.add(nodeId);
-    const title = clean(input.title || '新节点', 100),
-      index = insertionIndex(source.to_index ?? input.order_index, next.length);
-    const node = {
-      id: nodeId,
-      type: validType(input.type || 'execution'),
-      title,
-      goal: clean(input.goal || title, 2000) || title,
-      order_index: next.length,
-      dependency_ids: uniqueIds(input.dependency_ids || dependencyIds(input)),
-      position: validPosition(input.position, next.length),
-      status: clean(input.status, 50) || 'ready'
-    };
-    next.splice(index, 0, node);
-    return {
-      nodes: normalizeOrder(next),
-      operation: {
-        type,
-        node: {
-          id: node.id,
-          type: node.type,
-          title: node.title,
-          goal: node.goal,
-          dependency_ids: node.dependency_ids,
-          position: node.position
-        },
-        ...(index === next.length - 1 ? {} : { to_index: index })
-      }
-    };
-  }
-  if (type === 'reorder_nodes') {
-    const ids = uniqueIds(source.ids ?? source.node_ids);
-    if (ids.length !== next.length || ids.some((nodeId) => !next.some((node) => node.id === nodeId)))
-      throw new HttpError(400, { error: 'workflow_graph_reorder_invalid' });
-    const byId = new Map(next.map((node) => [node.id, node]));
-    return {
-      nodes: ids.map((nodeId, orderIndex) => ({ ...byId.get(nodeId), order_index: orderIndex })),
-      operation: { type, ids }
-    };
-  }
-  const nodeId = clean(source.node_id || source.target_id || source.id, 120),
-    index = next.findIndex((node) => node.id === nodeId);
-  if (index < 0) throw new HttpError(404, { error: 'workflow_graph_node_not_found', node_id: nodeId });
-  if (type === 'update_node') {
-    const patch = object(source.patch || source.node, 'workflow_node_patch_required'),
-      normalized = {};
-    if (Object.hasOwn(patch, 'title')) normalized.title = required(patch.title, 'workflow_node_title_required', 100);
-    if (Object.hasOwn(patch, 'goal'))
-      normalized.goal = clean(patch.goal, 2000) || normalized.title || next[index].title;
-    if (Object.hasOwn(patch, 'type')) normalized.type = validType(patch.type);
-    if (!Object.keys(normalized).length) throw new HttpError(400, { error: 'workflow_node_patch_empty' });
-    next[index] = { ...next[index], ...normalized };
-    return { nodes: next, operation: { type, node_id: nodeId, patch: normalized } };
-  }
-  if (type === 'delete_node') {
-    next.splice(index, 1);
-    for (const node of next)
-      node.dependency_ids = node.dependency_ids.filter((dependencyId) => dependencyId !== nodeId);
-    return { nodes: normalizeOrder(next), operation: { type, node_id: nodeId }, deleted_id: nodeId };
-  }
-  if (type === 'connect' || type === 'disconnect') {
-    const dependencyId = clean(source.dependency_id || source.source_id, 120);
-    if (!next.some((node) => node.id === dependencyId))
-      throw new HttpError(404, { error: 'workflow_graph_dependency_not_found', dependency_id: dependencyId });
-    if (dependencyId === nodeId) throw new HttpError(409, { error: 'workflow_graph_self_dependency', node_id: nodeId });
-    next[index].dependency_ids =
-      type === 'connect'
-        ? [...new Set([...next[index].dependency_ids, dependencyId])]
-        : next[index].dependency_ids.filter((item) => item !== dependencyId);
-    return { nodes: next, operation: { type, node_id: nodeId, dependency_id: dependencyId } };
-  }
+  if (type === 'add_node') return addFlatNode(next, source, usedIds, type);
+  if (type === 'reorder_nodes') return reorderFlatNodes(next, source, type);
+  const target = flatOperationTarget(next, source);
+  if (type === 'update_node') return updateFlatNode(next, source, target, type);
+  if (type === 'delete_node') return deleteFlatNode(next, target, type);
+  if (type === 'connect' || type === 'disconnect') return connectFlatNodes(next, source, target, type);
   throw new HttpError(400, { error: 'workflow_graph_operation_unsupported', operation: type || null });
+}
+
+function addFlatNode(next, source, usedIds, type) {
+  const input = object(source.node, 'workflow_node_required');
+  const nodeId = clean(input.id, 120) || id('wfn');
+  if (usedIds.has(nodeId) || next.some((item) => item.id === nodeId))
+    throw new HttpError(409, { error: 'workflow_graph_node_id_conflict', node_id: nodeId });
+  usedIds.add(nodeId);
+  const title = clean(input.title || '新节点', 100);
+  const index = insertionIndex(source.to_index ?? input.order_index, next.length);
+  const node = {
+    id: nodeId,
+    type: validType(input.type || 'execution'),
+    title,
+    goal: clean(input.goal || title, 2000) || title,
+    order_index: next.length,
+    dependency_ids: uniqueIds(input.dependency_ids || dependencyIds(input)),
+    position: validPosition(input.position, next.length),
+    status: clean(input.status, 50) || 'ready'
+  };
+  next.splice(index, 0, node);
+  return {
+    nodes: normalizeOrder(next),
+    operation: {
+      type,
+      node: {
+        id: node.id,
+        type: node.type,
+        title: node.title,
+        goal: node.goal,
+        dependency_ids: node.dependency_ids,
+        position: node.position
+      },
+      ...(index === next.length - 1 ? {} : { to_index: index })
+    }
+  };
+}
+
+function reorderFlatNodes(next, source, type) {
+  const ids = uniqueIds(source.ids ?? source.node_ids);
+  if (ids.length !== next.length || ids.some((nodeId) => !next.some((node) => node.id === nodeId)))
+    throw new HttpError(400, { error: 'workflow_graph_reorder_invalid' });
+  const byId = new Map(next.map((node) => [node.id, node]));
+  return {
+    nodes: ids.map((nodeId, orderIndex) => ({ ...byId.get(nodeId), order_index: orderIndex })),
+    operation: { type, ids }
+  };
+}
+
+function flatOperationTarget(next, source) {
+  const nodeId = clean(source.node_id || source.target_id || source.id, 120);
+  const index = next.findIndex((node) => node.id === nodeId);
+  if (index < 0) throw new HttpError(404, { error: 'workflow_graph_node_not_found', node_id: nodeId });
+  return { nodeId, index };
+}
+
+function updateFlatNode(next, source, target, type) {
+  const patch = object(source.patch || source.node, 'workflow_node_patch_required');
+  const normalized = {};
+  if (Object.hasOwn(patch, 'title')) normalized.title = required(patch.title, 'workflow_node_title_required', 100);
+  if (Object.hasOwn(patch, 'goal'))
+    normalized.goal = clean(patch.goal, 2000) || normalized.title || next[target.index].title;
+  if (Object.hasOwn(patch, 'type')) normalized.type = validType(patch.type);
+  if (!Object.keys(normalized).length) throw new HttpError(400, { error: 'workflow_node_patch_empty' });
+  next[target.index] = { ...next[target.index], ...normalized };
+  return { nodes: next, operation: { type, node_id: target.nodeId, patch: normalized } };
+}
+
+function deleteFlatNode(next, target, type) {
+  next.splice(target.index, 1);
+  for (const node of next)
+    node.dependency_ids = node.dependency_ids.filter((dependencyId) => dependencyId !== target.nodeId);
+  return { nodes: normalizeOrder(next), operation: { type, node_id: target.nodeId }, deleted_id: target.nodeId };
+}
+
+function connectFlatNodes(next, source, target, type) {
+  const dependencyId = clean(source.dependency_id || source.source_id, 120);
+  if (!next.some((node) => node.id === dependencyId))
+    throw new HttpError(404, { error: 'workflow_graph_dependency_not_found', dependency_id: dependencyId });
+  if (dependencyId === target.nodeId)
+    throw new HttpError(409, { error: 'workflow_graph_self_dependency', node_id: target.nodeId });
+  next[target.index].dependency_ids =
+    type === 'connect'
+      ? [...new Set([...next[target.index].dependency_ids, dependencyId])]
+      : next[target.index].dependency_ids.filter((item) => item !== dependencyId);
+  return { nodes: next, operation: { type, node_id: target.nodeId, dependency_id: dependencyId } };
 }
 
 function validateCandidate(nodes) {

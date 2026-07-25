@@ -326,9 +326,20 @@ export function revokePullRequestIntentInState(state, intentId, input, actorId) 
 }
 
 export function reconcilePullRequestIntentWebhookInState(state, event, payload, deliveryId = null) {
-  const repositoryId = String(payload.repository?.id || ''),
-    fullName = String(payload.repository?.full_name || '');
-  const connectionIds = new Set(
+  const connectionIds = matchingConnectionIds(state, payload.repository);
+  if (!connectionIds.size) return [];
+  const identity = pullRequestWebhookIdentity(payload);
+  const intents = state.pull_request_intents.filter(
+    (item) => connectionIds.has(item.connection_id) && pullRequestIntentMatches(item, identity)
+  );
+  for (const intent of intents) applyPullRequestWebhookEvent(intent, event, payload, deliveryId, identity.number);
+  return intents;
+}
+
+function matchingConnectionIds(state, repository) {
+  const repositoryId = String(repository?.id || '');
+  const fullName = String(repository?.full_name || '');
+  return new Set(
     state.repository_connections
       .filter(
         (item) =>
@@ -336,54 +347,67 @@ export function reconcilePullRequestIntentWebhookInState(state, event, payload, 
       )
       .map((item) => item.id)
   );
-  if (!connectionIds.size) return [];
-  const pr = payload.pull_request,
-    number = Number(pr?.number || 0),
-    branch = String(
-      pr?.head?.ref || payload.check_run?.check_suite?.head_branch || payload.check_suite?.head_branch || ''
+}
+
+function pullRequestWebhookIdentity(payload) {
+  return {
+    number: Number(payload.pull_request?.number || 0),
+    branch: String(
+      payload.pull_request?.head?.ref ||
+        payload.check_run?.check_suite?.head_branch ||
+        payload.check_suite?.head_branch ||
+        ''
     ).replace(/^refs\/heads\//, ''),
-    sha = String(
+    sha: String(
       payload.check_run?.head_sha || payload.check_suite?.head_sha || payload.sha || payload.after || ''
-    ).toLowerCase();
-  const intents = state.pull_request_intents.filter(
-    (item) =>
-      connectionIds.has(item.connection_id) &&
-      (number
-        ? Number(item.pr_number) === number || (!item.pr_number && item.head_ref === branch)
-        : branch
-          ? item.head_ref === branch
-          : sha
-            ? item.head_sha === sha
-            : false)
-  );
-  for (const intent of intents) {
-    if (event === 'pull_request')
-      Object.assign(intent, {
-        pr_number: number,
-        pr_url: pr.html_url || intent.pr_url,
-        pr_node_id: pr.node_id || intent.pr_node_id,
-        pr_state: pr.merged ? 'closed' : pr.state,
-        pr_draft: Boolean(pr.draft),
-        status: pr.merged ? 'merged' : pr.state === 'closed' ? 'closed' : pr.draft ? 'draft_open' : 'ready',
-        merge_commit_sha: pr.merge_commit_sha || intent.merge_commit_sha,
-        remote_head_sha: pr.head?.sha || intent.remote_head_sha,
-        remote_base_sha: pr.base?.sha || intent.remote_base_sha
-      });
-    if (event === 'check_run') {
-      intent.checks_status = checkConclusion(payload.check_run?.status, payload.check_run?.conclusion);
-      intent.checks = mergeCheck(intent.checks, payload.check_run);
-    }
-    if (event === 'check_suite')
-      intent.checks_status = checkConclusion(payload.check_suite?.status, payload.check_suite?.conclusion);
-    if (event === 'status')
-      intent.checks_status =
-        payload.state === 'success' ? 'passed' : ['failure', 'error'].includes(payload.state) ? 'failed' : 'pending';
-    Object.assign(intent, {
-      reconciliation: { status: 'webhook', event, delivery_id: deliveryId, reconciled_at: now() },
-      updated_at: now()
-    });
+    ).toLowerCase()
+  };
+}
+
+function pullRequestIntentMatches(intent, { number, branch, sha }) {
+  if (number) return Number(intent.pr_number) === number || (!intent.pr_number && intent.head_ref === branch);
+  if (branch) return intent.head_ref === branch;
+  return sha ? intent.head_sha === sha : false;
+}
+
+function applyPullRequestWebhookEvent(intent, event, payload, deliveryId, number) {
+  if (event === 'pull_request') applyPullRequestState(intent, payload.pull_request, number);
+  if (event === 'check_run') {
+    intent.checks_status = checkConclusion(payload.check_run?.status, payload.check_run?.conclusion);
+    intent.checks = mergeCheck(intent.checks, payload.check_run);
   }
-  return intents;
+  if (event === 'check_suite')
+    intent.checks_status = checkConclusion(payload.check_suite?.status, payload.check_suite?.conclusion);
+  if (event === 'status') intent.checks_status = commitChecksStatus(payload.state);
+  Object.assign(intent, {
+    reconciliation: { status: 'webhook', event, delivery_id: deliveryId, reconciled_at: now() },
+    updated_at: now()
+  });
+}
+
+function applyPullRequestState(intent, pullRequest, number) {
+  Object.assign(intent, {
+    pr_number: number,
+    pr_url: pullRequest.html_url || intent.pr_url,
+    pr_node_id: pullRequest.node_id || intent.pr_node_id,
+    pr_state: pullRequest.merged ? 'closed' : pullRequest.state,
+    pr_draft: Boolean(pullRequest.draft),
+    status: pullRequest.merged
+      ? 'merged'
+      : pullRequest.state === 'closed'
+        ? 'closed'
+        : pullRequest.draft
+          ? 'draft_open'
+          : 'ready',
+    merge_commit_sha: pullRequest.merge_commit_sha || intent.merge_commit_sha,
+    remote_head_sha: pullRequest.head?.sha || intent.remote_head_sha,
+    remote_base_sha: pullRequest.base?.sha || intent.remote_base_sha
+  });
+}
+
+function commitChecksStatus(state) {
+  if (state === 'success') return 'passed';
+  return ['failure', 'error'].includes(state) ? 'failed' : 'pending';
 }
 
 export function reconcilePullRequestIntentSnapshotInState(state, intentId, snapshot) {

@@ -80,11 +80,23 @@ export async function proposeConfigRevision(body) {
 }
 
 export async function applyConfigRevision(proposalId, expected = {}) {
-  const snapshot = await readState(),
-    proposal = snapshot.change_proposals.find((item) => item.id === proposalId),
-    revision = snapshot.config_revisions.find((item) => item.id === proposal?.apply_action?.config_revision_id),
-    profile = snapshot.codex_profiles.find((item) => item.id === revision?.profile_id);
+  const snapshot = await readState();
+  const { proposal, revision, profile } = resolveConfigRevision(snapshot, proposalId);
+  assertConfigRevisionApplicable(snapshot, proposal, profile, expected);
+  if (proposal.status === 'applied') return { proposal, revision, idempotent: true };
+  const runtime = await prepareRevisionRuntime(snapshot, revision, profile, expected);
+  return applyPreparedRevision({ proposalId, revision, expected, runtime });
+}
+
+function resolveConfigRevision(snapshot, proposalId) {
+  const proposal = snapshot.change_proposals.find((item) => item.id === proposalId);
+  const revision = snapshot.config_revisions.find((item) => item.id === proposal?.apply_action?.config_revision_id);
+  const profile = snapshot.codex_profiles.find((item) => item.id === revision?.profile_id);
   if (!proposal || !revision || !profile) throw new HttpError(404, { error: 'config_revision_not_found' });
+  return { proposal, revision, profile };
+}
+
+function assertConfigRevisionApplicable(snapshot, proposal, profile, expected) {
   if (proposal.project_id)
     assertProjectLifecycleIdle(snapshot.projects.find((item) => item.id === proposal.project_id));
   try {
@@ -92,7 +104,7 @@ export async function applyConfigRevision(proposalId, expected = {}) {
   } catch (error) {
     throw new HttpError(409, { error: error.message });
   }
-  if (proposal.status === 'applied') return { proposal, revision, idempotent: true };
+  if (proposal.status === 'applied') return;
   if (proposal.status !== 'pending') throw new HttpError(409, { error: 'proposal_not_pending' });
   if (expected.revision === undefined || !expected.target_hash)
     throw new HttpError(400, { error: 'approval_expectation_required', required: ['revision', 'target_hash'] });
@@ -100,14 +112,13 @@ export async function applyConfigRevision(proposalId, expected = {}) {
     throw new HttpError(409, { error: 'proposal_stale', reason: 'revision_mismatch', revision: proposal.revision });
   if (expected.target_hash !== proposal.target_hash || proposalTargetHash(snapshot, proposal) !== proposal.target_hash)
     throw new HttpError(409, { error: 'proposal_stale', reason: 'target_hash_mismatch' });
+}
+
+async function prepareRevisionRuntime(snapshot, revision, profile, expected) {
   const adapted = expected.adapter === 'test' && process.env.NODE_ENV === 'test',
     adapterFailure = adapted ? String(expected.test_failure || '') : '',
     useCcSwitch = revision.apply_mode === 'cc_switch';
-  const status = useCcSwitch
-    ? adapted
-      ? { installed: expected.test_managed_missing !== true }
-      : await managedCcSwitchStatus()
-    : { installed: false };
+  const status = await resolveManagedStatus(useCcSwitch, adapted, expected);
   if (useCcSwitch && !status.installed && !(expected.native_fallback === true && revision.native_fallback_allowed))
     throw new HttpError(409, {
       error: 'managed_cc_switch_install_required',
@@ -118,92 +129,145 @@ export async function applyConfigRevision(proposalId, expected = {}) {
     apiKey = await readSecret(auth?.refs?.credential);
   const oldProvider =
     snapshot.integration_statuses.find((item) => item.key === 'cc_switch_managed')?.active_provider_id || null;
-  let temp = null,
-    switched = false;
+  return {
+    adapted,
+    adapterFailure,
+    useCcSwitch,
+    status,
+    merged,
+    auth,
+    apiKey,
+    oldProvider,
+    temp: null,
+    switched: false
+  };
+}
+
+async function resolveManagedStatus(useCcSwitch, adapted, expected) {
+  if (!useCcSwitch) return { installed: false };
+  if (adapted) return { installed: expected.test_managed_missing !== true };
+  return managedCcSwitchStatus();
+}
+
+async function applyPreparedRevision({ proposalId, revision, expected, runtime }) {
   try {
-    if (useCcSwitch && status.installed) {
-      temp = await createPrivateProviderConfig(merged, apiKey);
-      const providerId = providerKey(merged.provider),
-        added = await managedCall(
-          'add',
-          [
-            '--app',
-            'codex',
-            'provider',
-            'add',
-            '--name',
-            merged.name,
-            '--id',
-            providerId,
-            '--config-file',
-            temp,
-            '--api-format',
-            'responses'
-          ],
-          'provider added'
-        );
-      if (!added.ok && !/already|exists|duplicate/i.test(`${added.stderr}\n${added.stdout}`))
-        throw new HttpError(409, { error: 'cc_switch_provider_add_failed', detail: added.stderr || added.error });
-      const selected = await managedCall(
-        'switch',
-        ['--app', 'codex', 'provider', 'switch', providerId],
-        'provider switched'
-      );
-      if (!selected.ok)
-        throw new HttpError(409, {
-          error: 'cc_switch_provider_switch_failed',
-          detail: selected.stderr || selected.error
-        });
-      switched = true;
-      const discovered = await managedCall(
-        'rediscover',
-        ['--app', 'codex', 'provider', 'list'],
-        `*  ${providerId}  ${merged.name}`
-      );
-      if (!discovered.ok || (!adapted && !parseProviderList(discovered.stdout).some((item) => item.id === providerId)))
-        throw new HttpError(409, { error: 'cc_switch_rediscovery_failed' });
-    } else Object.assign(merged, await writeProfileConfig(merged, auth?.home));
-    const capability =
-      adapted && adapterFailure === 'reprobe'
-        ? { compatible: false, guided_transport: 'unavailable' }
-        : probeCodexCapabilities({ adapted, profile: merged });
+    await configureRevision(runtime);
+    const capability = probeConfiguredRevision(runtime);
     if (!capability.compatible || capability.guided_transport === 'unavailable')
       throw new HttpError(409, { error: 'codex_reprobe_failed' });
-    const mode = useCcSwitch && status.installed ? 'cc-switch-cli' : useCcSwitch ? 'native-fallback' : 'native-profile';
-    return mutate((state) => activateRevision(state, proposalId, revision.id, merged, mode, capability));
+    const mode = revisionMode(runtime);
+    return mutate((state) => activateRevision(state, proposalId, revision.id, runtime.merged, mode, capability));
   } catch (error) {
-    let rollback = { attempted: false, ok: false };
-    if (switched && oldProvider) {
-      const result = await managedCall(
-        'rollback',
-        ['--app', 'codex', 'provider', 'switch', oldProvider],
-        'provider rolled back'
-      ).catch(() => ({ ok: false }));
-      rollback = { attempted: true, ok: result.ok === true };
-    }
-    await mutate((state) => {
-      const current = state.config_revisions.find((item) => item.id === revision.id);
-      if (current)
-        Object.assign(current, {
-          status: 'failed',
-          reconciliation: {
-            status: rollback.ok ? 'rolled_back' : 'manual_reconciliation_required',
-            rollback,
-            error_code: error.payload?.error || error.message
-          },
-          updated_at: now()
-        });
-    });
+    const rollback = await rollbackRevision(runtime, expected);
+    await recordRevisionFailure(revision.id, rollback, error);
     throw error;
   } finally {
-    await removePrivateProviderConfig(temp);
+    await removePrivateProviderConfig(runtime.temp);
   }
+}
 
-  async function managedCall(phase, args, adaptedOutput) {
-    if (adapterFailure === phase || (phase === 'rollback' && expected.test_rollback_failure === true))
-      return { ok: false, status: 1, stdout: '', stderr: `test ${phase} failure`, error: null };
-    return runManagedCcSwitch(args, { codexHome: merged.codex_home, adapted, adaptedOutput });
-  }
+async function configureRevision(runtime) {
+  if (runtime.useCcSwitch && runtime.status.installed) return configureManagedProvider(runtime);
+  Object.assign(runtime.merged, await writeProfileConfig(runtime.merged, runtime.auth?.home));
+}
+
+async function configureManagedProvider(runtime) {
+  runtime.temp = await createPrivateProviderConfig(runtime.merged, runtime.apiKey);
+  const providerId = providerKey(runtime.merged.provider);
+  const added = await managedCall(
+    runtime,
+    'add',
+    [
+      '--app',
+      'codex',
+      'provider',
+      'add',
+      '--name',
+      runtime.merged.name,
+      '--id',
+      providerId,
+      '--config-file',
+      runtime.temp,
+      '--api-format',
+      'responses'
+    ],
+    'provider added'
+  );
+  if (!added.ok && !/already|exists|duplicate/i.test(`${added.stderr}\n${added.stdout}`))
+    throw new HttpError(409, { error: 'cc_switch_provider_add_failed', detail: added.stderr || added.error });
+  const selected = await managedCall(
+    runtime,
+    'switch',
+    ['--app', 'codex', 'provider', 'switch', providerId],
+    'provider switched'
+  );
+  if (!selected.ok)
+    throw new HttpError(409, {
+      error: 'cc_switch_provider_switch_failed',
+      detail: selected.stderr || selected.error
+    });
+  runtime.switched = true;
+  const discovered = await managedCall(
+    runtime,
+    'rediscover',
+    ['--app', 'codex', 'provider', 'list'],
+    `*  ${providerId}  ${runtime.merged.name}`
+  );
+  if (!discovered.ok || !managedProviderDiscovered(runtime, discovered.stdout, providerId))
+    throw new HttpError(409, { error: 'cc_switch_rediscovery_failed' });
+}
+
+function managedProviderDiscovered(runtime, output, providerId) {
+  return runtime.adapted || parseProviderList(output).some((item) => item.id === providerId);
+}
+
+function probeConfiguredRevision(runtime) {
+  if (runtime.adapted && runtime.adapterFailure === 'reprobe')
+    return { compatible: false, guided_transport: 'unavailable' };
+  return probeCodexCapabilities({ adapted: runtime.adapted, profile: runtime.merged });
+}
+
+function revisionMode(runtime) {
+  if (runtime.useCcSwitch && runtime.status.installed) return 'cc-switch-cli';
+  return runtime.useCcSwitch ? 'native-fallback' : 'native-profile';
+}
+
+async function rollbackRevision(runtime, expected) {
+  if (!runtime.switched || !runtime.oldProvider) return { attempted: false, ok: false };
+  const result = await managedCall(
+    runtime,
+    'rollback',
+    ['--app', 'codex', 'provider', 'switch', runtime.oldProvider],
+    'provider rolled back',
+    expected
+  ).catch(() => ({ ok: false }));
+  return { attempted: true, ok: result.ok === true };
+}
+
+async function managedCall(runtime, phase, args, adaptedOutput, expected = {}) {
+  if (runtime.adapterFailure === phase || (phase === 'rollback' && expected.test_rollback_failure === true))
+    return { ok: false, status: 1, stdout: '', stderr: `test ${phase} failure`, error: null };
+  return runManagedCcSwitch(args, {
+    codexHome: runtime.merged.codex_home,
+    adapted: runtime.adapted,
+    adaptedOutput
+  });
+}
+
+async function recordRevisionFailure(revisionId, rollback, error) {
+  await mutate((state) => {
+    const current = state.config_revisions.find((item) => item.id === revisionId);
+    if (current)
+      Object.assign(current, {
+        status: 'failed',
+        reconciliation: {
+          status: rollback.ok ? 'rolled_back' : 'manual_reconciliation_required',
+          rollback,
+          error_code: error.payload?.error || error.message
+        },
+        updated_at: now()
+      });
+  });
 }
 
 function activateRevision(state, proposalId, revisionId, merged, mode, capability) {

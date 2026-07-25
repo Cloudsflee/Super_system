@@ -52,71 +52,93 @@ export function validateWorkflowPlanningQuality({
     /software|code|repository/i.test(String(projectClassification || ''))
   );
   const hasExternalMaterials = Boolean(brief?.content?.material_references?.length);
-  for (const workstream of normalized.filter((item) => item.role === 'workstream')) {
-    const tasks = normalized.filter((item) => item.role === 'task' && item.parent_node_id === workstream.id);
-    const software = hasRepository || tasks.some((item) => SOFTWARE_KINDS.has(item.task_kind));
-    const atomic =
-      tasks.length === 1 &&
-      allowAtomic &&
-      !software &&
-      !hasExternalMaterials &&
-      (workstream.acceptance_criteria || []).length === 1 &&
-      tasks[0]?.task_kind === 'manual' &&
-      Boolean(tasks[0]?.atomic_justification);
-    if (!atomic && tasks.length < 3)
-      errors.push(
-        issue('workflow_workstream_task_quality_minimum', workstream.id, { minimum: 3, count: tasks.length })
-      );
-    if (tasks.length === 1 && !atomic)
-      errors.push(issue('workflow_atomic_task_justification_required', tasks[0]?.id || workstream.id));
-    if (!atomic) {
-      const tags = new Set(tasks.flatMap((item) => item.capability_tags || []));
-      if (!hasAny(tags, ['research_evidence', 'constraint_analysis']))
-        errors.push(issue('workflow_evidence_preparation_task_required', workstream.id));
-      if (!hasAny(tags, ['solution_decision', 'execution']))
-        errors.push(issue('workflow_execution_task_required', workstream.id));
-      if (!hasAny(tags, ['acceptance', 'integration_delivery']))
-        errors.push(issue('workflow_acceptance_task_required', workstream.id));
-      if (software && tasks.length >= 6)
-        for (const tag of WORKFLOW_PHASE_TAGS)
-          if (!tags.has(tag))
-            errors.push(issue('workflow_default_phase_coverage_missing', workstream.id, { capability_tag: tag }));
-    }
-    for (const [index, task] of tasks.entries()) {
-      if (!task.acceptance_criteria?.length) errors.push(issue('workflow_task_acceptance_required', task.id));
-      if (!task.capability_tags?.length) errors.push(issue('workflow_task_capability_tags_required', task.id));
-      if (!task.input_slots?.length || task.input_slots.some((slot) => !slot.key || !slot.kind || !slot.source))
-        errors.push(issue('workflow_task_typed_inputs_invalid', task.id));
-      if (
-        !task.output_slots?.length ||
-        task.output_slots.some(
-          (slot) =>
-            !slot.key ||
-            !slot.kind ||
-            !slot.asset_type ||
-            !slot.acceptance_criteria?.length ||
-            !slot.confirmation_policy
-        )
-      )
-        errors.push(issue('workflow_task_typed_outputs_invalid', task.id));
-      const coveredCriteria = new Set(task.output_slots?.flatMap((slot) => slot.acceptance_criteria || []) || []);
-      if ((task.acceptance_criteria || []).some((criterion) => !coveredCriteria.has(criterion)))
-        errors.push(issue('workflow_task_output_acceptance_coverage_required', task.id));
-      if (index > 0 && !deps(task).length) errors.push(issue('workflow_task_dependency_flow_required', task.id));
-      for (const dependencyId of deps(task)) {
-        const bindings = task.input_slots.filter(
-          (slot) => slot.source === 'dependency' && slot.ref_id === dependencyId
-        );
-        if (!bindings.length)
-          errors.push(
-            issue('workflow_task_dependency_input_binding_required', task.id, { dependency_id: dependencyId })
-          );
-        else validateDependencySelectors(task, byId.get(dependencyId), bindings, errors);
-      }
-    }
-  }
+  const context = { normalized, byId, errors, hasRepository, hasExternalMaterials, allowAtomic };
+  for (const workstream of normalized.filter((item) => item.role === 'workstream'))
+    validateWorkstreamPlanning(workstream, context);
   validateBriefCoverage(brief, briefCoverage, taskIds, errors);
   return { ok: errors.length === 0, errors, nodes: normalized, brief_coverage: normalizeCoverage(briefCoverage) };
+}
+
+function validateWorkstreamPlanning(workstream, context) {
+  const tasks = context.normalized.filter((item) => item.role === 'task' && item.parent_node_id === workstream.id);
+  const software = context.hasRepository || tasks.some((item) => SOFTWARE_KINDS.has(item.task_kind));
+  const atomic = isAtomicWorkstream(workstream, tasks, software, context);
+  if (!atomic && tasks.length < 3)
+    context.errors.push(
+      issue('workflow_workstream_task_quality_minimum', workstream.id, { minimum: 3, count: tasks.length })
+    );
+  if (tasks.length === 1 && !atomic)
+    context.errors.push(issue('workflow_atomic_task_justification_required', tasks[0]?.id || workstream.id));
+  if (!atomic) validateWorkstreamPhaseCoverage(workstream, tasks, software, context.errors);
+  for (const [index, task] of tasks.entries()) validateTaskPlanning(task, index, context);
+}
+
+function isAtomicWorkstream(workstream, tasks, software, context) {
+  return (
+    tasks.length === 1 &&
+    context.allowAtomic &&
+    !software &&
+    !context.hasExternalMaterials &&
+    (workstream.acceptance_criteria || []).length === 1 &&
+    tasks[0]?.task_kind === 'manual' &&
+    Boolean(tasks[0]?.atomic_justification)
+  );
+}
+
+function validateWorkstreamPhaseCoverage(workstream, tasks, software, errors) {
+  const tags = new Set(tasks.flatMap((item) => item.capability_tags || []));
+  if (!hasAny(tags, ['research_evidence', 'constraint_analysis']))
+    errors.push(issue('workflow_evidence_preparation_task_required', workstream.id));
+  if (!hasAny(tags, ['solution_decision', 'execution']))
+    errors.push(issue('workflow_execution_task_required', workstream.id));
+  if (!hasAny(tags, ['acceptance', 'integration_delivery']))
+    errors.push(issue('workflow_acceptance_task_required', workstream.id));
+  if (software && tasks.length >= 6)
+    for (const tag of WORKFLOW_PHASE_TAGS)
+      if (!tags.has(tag))
+        errors.push(issue('workflow_default_phase_coverage_missing', workstream.id, { capability_tag: tag }));
+}
+
+function validateTaskPlanning(task, index, context) {
+  if (!task.acceptance_criteria?.length) context.errors.push(issue('workflow_task_acceptance_required', task.id));
+  if (!task.capability_tags?.length) context.errors.push(issue('workflow_task_capability_tags_required', task.id));
+  if (typedInputsInvalid(task)) context.errors.push(issue('workflow_task_typed_inputs_invalid', task.id));
+  if (typedOutputsInvalid(task)) context.errors.push(issue('workflow_task_typed_outputs_invalid', task.id));
+  if (outputAcceptanceCoverageMissing(task))
+    context.errors.push(issue('workflow_task_output_acceptance_coverage_required', task.id));
+  const dependencyIds = deps(task);
+  if (index > 0 && !dependencyIds.length) context.errors.push(issue('workflow_task_dependency_flow_required', task.id));
+  for (const dependencyId of dependencyIds) validateTaskDependency(task, dependencyId, context);
+}
+
+function typedInputsInvalid(task) {
+  return !task.input_slots?.length || task.input_slots.some((slot) => !slot.key || !slot.kind || !slot.source);
+}
+
+function typedOutputsInvalid(task) {
+  return (
+    !task.output_slots?.length ||
+    task.output_slots.some(
+      (slot) =>
+        !slot.key || !slot.kind || !slot.asset_type || !slot.acceptance_criteria?.length || !slot.confirmation_policy
+    )
+  );
+}
+
+function outputAcceptanceCoverageMissing(task) {
+  const coveredCriteria = new Set(task.output_slots?.flatMap((slot) => slot.acceptance_criteria || []) || []);
+  return (task.acceptance_criteria || []).some((criterion) => !coveredCriteria.has(criterion));
+}
+
+function validateTaskDependency(task, dependencyId, context) {
+  const bindings = task.input_slots.filter((slot) => slot.source === 'dependency' && slot.ref_id === dependencyId);
+  if (!bindings.length) {
+    context.errors.push(
+      issue('workflow_task_dependency_input_binding_required', task.id, { dependency_id: dependencyId })
+    );
+    return;
+  }
+  validateDependencySelectors(task, context.byId.get(dependencyId), bindings, context.errors);
 }
 
 export function assertWorkflowPlanningQuality(input) {

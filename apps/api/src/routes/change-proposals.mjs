@@ -209,97 +209,11 @@ export function applyAction(state, proposal) {
   const action = proposal.apply_action || {};
   if (action.type === 'workflow_graph_patch') return applyWorkflowGraphPatchInState(state, proposal);
   if (action.type === 'workflow_replan_replace') return applyWorkflowReplanInState(state, proposal);
-  if (action.type === 'node_contract_patch' && proposal.node_id) {
-    const node = state.workflow_nodes.find((item) => item.id === proposal.node_id);
-    const workflow = state.workflows.find(
-      (item) => item.id === node?.workflow_id && item.project_id === proposal.project_id
-    );
-    const current = state.node_contracts.find((item) => item.id === node?.current_contract_id);
-    if (!node || !workflow || !current) return { type: action.type, skipped: 'node_or_contract_missing' };
-    const next = applyContractPatch(
-      current,
-      proposal.after_json || action.patch || {},
-      proposal.approved_by_user_id || proposal.created_by_user_id
-    );
-    Object.assign(next, {
-      status: 'confirmed',
-      confirmed_by: 'human',
-      confirmed_by_user_id: proposal.approved_by_user_id
-    });
-    const validation = validateNodeContract(next);
-    if (!validation.ok) return { type: action.type, validation };
-    current.status = 'superseded';
-    state.node_contracts.push(next);
-    Object.assign(node, { current_contract_id: next.id, pending_approved_change_id: proposal.id, updated_at: now() });
-    return { type: action.type, node_id: proposal.node_id, contract_id: next.id };
-  }
-  if (action.type === 'codex_profile_apply' && action.profile_id) {
-    const selected = state.codex_profiles.find((item) => item.id === action.profile_id && item.status === 'validated');
-    const probe = state.integration_statuses.find(
-      (item) => item.key === 'codex_probe' && item.profile_id === action.profile_id && item.status === 'ready'
-    );
-    const auth = state.integration_statuses.find((item) => item.key === 'codex_auth');
-    if (!selected || !probe || !codexAuthMatchesProfile(auth, selected))
-      return { type: action.type, skipped: 'validated_profile_probe_or_auth_missing' };
-    if (isThirdPartyProvider(selected.provider) && selected.cc_switch_mode === 'managed') {
-      const discovered = state.integration_statuses.find(
-        (item) =>
-          item.key === 'codex_discovery_binding' &&
-          item.profile_id === selected.id &&
-          item.status === 'synced' &&
-          item.source_id === selected.discovery_source?.source_id &&
-          item.source_provider_id === selected.discovery_source?.source_provider_id &&
-          item.source_revision === selected.discovery_source?.revision
-      );
-      const ccSwitch = state.integration_statuses.find((item) => item.key === 'cc_switch');
-      const sourceCommit = ccSwitch?.sources?.find((item) => item.name === 'cc-switch-cli')?.commit;
-      if (
-        !discovered &&
-        (ccSwitch?.status !== 'synced' ||
-          ccSwitch.bridge?.ready !== true ||
-          selected.cc_switch_status !== 'synced' ||
-          !selected.cc_switch_synced_at ||
-          Number(selected.cc_switch_bridge_revision) !== Number(ccSwitch.bridge.revision) ||
-          !sourceCommit ||
-          selected.cc_switch_source_commit !== sourceCommit)
-      )
-        return { type: action.type, skipped: 'cc_switch_profile_not_synced' };
-      if (ccSwitch && !discovered) {
-        Object.assign(ccSwitch, {
-          active_profile_id: selected.id,
-          active_provider_id: selected.cc_switch_provider_id,
-          switched_at: now(),
-          updated_at: now()
-        });
-        selected.cc_switch_last_switched_at = ccSwitch.switched_at;
-      }
-    }
-    for (const item of state.codex_profiles) item.is_active = item.id === action.profile_id;
-    return { type: action.type, profile_id: action.profile_id };
-  }
-  if (action.type === 'node_run_authorization') {
-    const node = state.workflow_nodes.find((item) => item.id === proposal.node_id && item.id === action.node_id);
-    const workflow = state.workflows.find(
-      (item) => item.id === node?.workflow_id && item.project_id === proposal.project_id
-    );
-    if (!node || !workflow) return { type: action.type, skipped: 'node_missing' };
-    if (!['codex_docker', 'codex'].includes(action.runner)) return { type: action.type, skipped: 'runner_invalid' };
-    return {
-      type: action.type,
-      node_id: node.id,
-      runner: action.runner,
-      repository_workspace_id: action.repository_workspace_id || null,
-      ready: true
-    };
-  }
-  if (['git_commit_authorization', 'git_publish_authorization'].includes(action.type)) {
-    const run = state.node_runs.find(
-      (item) =>
-        item.id === action.run_id && item.project_id === proposal.project_id && item.node_id === proposal.node_id
-    );
-    if (!run) return { type: action.type, skipped: 'run_missing' };
-    return { type: action.type, run_id: run.id, node_id: run.node_id, ready: true };
-  }
+  if (action.type === 'node_contract_patch' && proposal.node_id) return applyNodeContractPatch(state, proposal, action);
+  if (action.type === 'codex_profile_apply' && action.profile_id) return applyCodexProfile(state, action);
+  if (action.type === 'node_run_authorization') return applyNodeRunAuthorization(state, proposal, action);
+  if (['git_commit_authorization', 'git_publish_authorization'].includes(action.type))
+    return applyGitAuthorization(state, proposal, action);
   if (action.type === 'workflow_nodes_create' && action.workflow_id)
     return createWorkflowNodes(state, proposal, action.workflow_id);
   if (action.type === 'workflow_node_remove') return removeWorkflowNode(state, proposal, action);
@@ -307,6 +221,111 @@ export function applyAction(state, proposal) {
   if (action.type === 'workflow_nodes_connect') return connectWorkflowNodes(state, proposal, action);
   if (action.type === 'record_only') return { type: action.type, recorded: true };
   return { type: action.type || 'unknown', skipped: 'unsupported_apply_action' };
+}
+
+function applyNodeContractPatch(state, proposal, action) {
+  const node = state.workflow_nodes.find((item) => item.id === proposal.node_id);
+  const workflow = state.workflows.find(
+    (item) => item.id === node?.workflow_id && item.project_id === proposal.project_id
+  );
+  const current = state.node_contracts.find((item) => item.id === node?.current_contract_id);
+  if (!node || !workflow || !current) return { type: action.type, skipped: 'node_or_contract_missing' };
+  const next = applyContractPatch(
+    current,
+    proposal.after_json || action.patch || {},
+    proposal.approved_by_user_id || proposal.created_by_user_id
+  );
+  Object.assign(next, {
+    status: 'confirmed',
+    confirmed_by: 'human',
+    confirmed_by_user_id: proposal.approved_by_user_id
+  });
+  const validation = validateNodeContract(next);
+  if (!validation.ok) return { type: action.type, validation };
+  current.status = 'superseded';
+  state.node_contracts.push(next);
+  Object.assign(node, { current_contract_id: next.id, pending_approved_change_id: proposal.id, updated_at: now() });
+  return { type: action.type, node_id: proposal.node_id, contract_id: next.id };
+}
+
+function applyCodexProfile(state, action) {
+  const selected = state.codex_profiles.find((item) => item.id === action.profile_id && item.status === 'validated');
+  const probe = state.integration_statuses.find(
+    (item) => item.key === 'codex_probe' && item.profile_id === action.profile_id && item.status === 'ready'
+  );
+  const auth = state.integration_statuses.find((item) => item.key === 'codex_auth');
+  if (!selected || !probe || !codexAuthMatchesProfile(auth, selected))
+    return { type: action.type, skipped: 'validated_profile_probe_or_auth_missing' };
+  const managedResult = activateManagedCodexProfile(state, selected, action.type);
+  if (managedResult) return managedResult;
+  for (const item of state.codex_profiles) item.is_active = item.id === action.profile_id;
+  return { type: action.type, profile_id: action.profile_id };
+}
+
+function activateManagedCodexProfile(state, selected, type) {
+  if (!isThirdPartyProvider(selected.provider) || selected.cc_switch_mode !== 'managed') return null;
+  const discovered = state.integration_statuses.find((item) => matchesDiscoveryBinding(item, selected));
+  const ccSwitch = state.integration_statuses.find((item) => item.key === 'cc_switch');
+  if (!discovered && !isManagedProfileSynced(ccSwitch, selected))
+    return { type, skipped: 'cc_switch_profile_not_synced' };
+  if (ccSwitch && !discovered) {
+    Object.assign(ccSwitch, {
+      active_profile_id: selected.id,
+      active_provider_id: selected.cc_switch_provider_id,
+      switched_at: now(),
+      updated_at: now()
+    });
+    selected.cc_switch_last_switched_at = ccSwitch.switched_at;
+  }
+  return null;
+}
+
+function matchesDiscoveryBinding(item, selected) {
+  return (
+    item.key === 'codex_discovery_binding' &&
+    item.profile_id === selected.id &&
+    item.status === 'synced' &&
+    item.source_id === selected.discovery_source?.source_id &&
+    item.source_provider_id === selected.discovery_source?.source_provider_id &&
+    item.source_revision === selected.discovery_source?.revision
+  );
+}
+
+function isManagedProfileSynced(ccSwitch, selected) {
+  const sourceCommit = ccSwitch?.sources?.find((item) => item.name === 'cc-switch-cli')?.commit;
+  return (
+    ccSwitch?.status === 'synced' &&
+    ccSwitch.bridge?.ready === true &&
+    selected.cc_switch_status === 'synced' &&
+    Boolean(selected.cc_switch_synced_at) &&
+    Number(selected.cc_switch_bridge_revision) === Number(ccSwitch.bridge.revision) &&
+    Boolean(sourceCommit) &&
+    selected.cc_switch_source_commit === sourceCommit
+  );
+}
+
+function applyNodeRunAuthorization(state, proposal, action) {
+  const node = state.workflow_nodes.find((item) => item.id === proposal.node_id && item.id === action.node_id);
+  const workflow = state.workflows.find(
+    (item) => item.id === node?.workflow_id && item.project_id === proposal.project_id
+  );
+  if (!node || !workflow) return { type: action.type, skipped: 'node_missing' };
+  if (!['codex_docker', 'codex'].includes(action.runner)) return { type: action.type, skipped: 'runner_invalid' };
+  return {
+    type: action.type,
+    node_id: node.id,
+    runner: action.runner,
+    repository_workspace_id: action.repository_workspace_id || null,
+    ready: true
+  };
+}
+
+function applyGitAuthorization(state, proposal, action) {
+  const run = state.node_runs.find(
+    (item) => item.id === action.run_id && item.project_id === proposal.project_id && item.node_id === proposal.node_id
+  );
+  if (!run) return { type: action.type, skipped: 'run_missing' };
+  return { type: action.type, run_id: run.id, node_id: run.node_id, ready: true };
 }
 
 function createWorkflowNodes(state, proposal, workflowId) {

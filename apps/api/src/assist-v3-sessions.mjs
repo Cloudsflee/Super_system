@@ -194,68 +194,93 @@ async function createV3AttachmentLocked(sessionId, input) {
     ['project_file', 'monaco_file'].includes(sourceKind) && sourcePath
       ? await inspectProjectFile(sourceProject.id, sourcePath)
       : null;
-  return mutate((state) => {
-    const actor = owner(state),
-      session = requireSession(state, sessionId),
-      project = assertProjectLifecycleIdle(requireProject(state, session.project_id));
-    const kind = sourceKind,
-      turn = input.turn_id ? requireTurn(state, input.turn_id) : null;
-    if (turn && turn.session_id !== session.id) throw new HttpError(409, { error: 'attachment_turn_scope_mismatch' });
-    const fileRef = input.file_ref_id ? state.file_refs.find((item) => item.id === input.file_ref_id) : null;
-    if (input.file_ref_id && !fileRef) throw new HttpError(404, { error: 'attachment_file_ref_not_found' });
-    if (fileRef && !fileRefBelongsToProject(state, fileRef, project.id))
-      throw new HttpError(404, { error: 'attachment_file_ref_not_found' });
-    const relativePath = projectFile?.path || sourcePath;
-    const selectionText =
-      kind === 'selection' || kind === 'text'
-        ? cleanText(input.text || input.content, 100_000)
-        : kind === 'url'
-          ? sourceUrl
-          : '';
-    const contentType =
-      kind === 'url'
-        ? 'text/uri-list'
-        : cleanText(
-            input.content_type || input.mime_type || fileRef?.content_type || inferContentType(relativePath),
-            200
-          ) || 'application/octet-stream';
-    const size = Number(
-      fileRef?.size_bytes ?? projectFile?.size ?? input.size_bytes ?? Buffer.byteLength(selectionText, 'utf8')
-    );
-    if (!Number.isSafeInteger(size) || size < 0 || size > 25 * 1024 * 1024)
-      throw new HttpError(413, { error: 'attachment_too_large', max_bytes: 25 * 1024 * 1024 });
-    const attachment = {
-      id: id('att'),
-      project_id: project.id,
-      session_id: session.id,
-      turn_id: turn?.id || null,
-      kind,
-      title: cleanText(input.title || sourceUrl || relativePath || kind, 200),
-      file_ref_id: fileRef?.id || null,
-      original_filename: cleanText(input.original_filename || relativePath || input.title || kind, 255),
-      relative_path: relativePath,
-      url: sourceUrl,
-      content_type: contentType,
-      client_mime_type: contentType,
-      detected_mime_type: contentType,
-      preview_kind: previewKind(contentType, relativePath || input.title || ''),
-      storage_status: ['selection', 'text', 'url'].includes(kind) ? 'inline' : 'external',
-      storage_error: null,
-      content_deleted_at: null,
-      deleted_at: null,
-      size_bytes: size,
-      sha256: fileRef?.sha256 || projectFile?.sha256 || attachmentHash(selectionText, input.sha256),
-      selection: normalizeSelection(input.selection),
-      text: selectionText || null,
-      model_policy: modelPolicy(kind, contentType),
-      status: 'ready',
-      created_by_user_id: actor.id,
-      created_at: now(),
-      updated_at: now()
-    };
-    state.attachments.push(attachment);
-    return publicAttachment(attachment);
-  });
+  return mutate((state) =>
+    createV3AttachmentInState(state, sessionId, input, { sourceKind, sourcePath, sourceUrl, projectFile })
+  );
+}
+
+function createV3AttachmentInState(state, sessionId, input, source) {
+  const actor = owner(state);
+  const session = requireSession(state, sessionId);
+  const project = assertProjectLifecycleIdle(requireProject(state, session.project_id));
+  const turn = input.turn_id ? requireTurn(state, input.turn_id) : null;
+  if (turn && turn.session_id !== session.id) throw new HttpError(409, { error: 'attachment_turn_scope_mismatch' });
+  const fileRef = resolveAttachmentFileRef(state, project.id, input.file_ref_id);
+  const attachment = buildAttachment({ actor, session, project, turn, fileRef, input, ...source });
+  state.attachments.push(attachment);
+  return publicAttachment(attachment);
+}
+
+function resolveAttachmentFileRef(state, projectId, fileRefId) {
+  const fileRef = fileRefId ? state.file_refs.find((item) => item.id === fileRefId) : null;
+  if (fileRefId && !fileRef) throw new HttpError(404, { error: 'attachment_file_ref_not_found' });
+  if (fileRef && !fileRefBelongsToProject(state, fileRef, projectId))
+    throw new HttpError(404, { error: 'attachment_file_ref_not_found' });
+  return fileRef;
+}
+
+function buildAttachment({
+  actor,
+  session,
+  project,
+  turn,
+  fileRef,
+  input,
+  sourceKind,
+  sourcePath,
+  sourceUrl,
+  projectFile
+}) {
+  const relativePath = projectFile?.path || sourcePath;
+  const selectionText = attachmentSelectionText(sourceKind, input, sourceUrl);
+  const contentType = attachmentContentType(sourceKind, input, fileRef, relativePath);
+  const size = Number(
+    fileRef?.size_bytes ?? projectFile?.size ?? input.size_bytes ?? Buffer.byteLength(selectionText, 'utf8')
+  );
+  if (!Number.isSafeInteger(size) || size < 0 || size > 25 * 1024 * 1024)
+    throw new HttpError(413, { error: 'attachment_too_large', max_bytes: 25 * 1024 * 1024 });
+  return {
+    id: id('att'),
+    project_id: project.id,
+    session_id: session.id,
+    turn_id: turn?.id || null,
+    kind: sourceKind,
+    title: cleanText(input.title || sourceUrl || relativePath || sourceKind, 200),
+    file_ref_id: fileRef?.id || null,
+    original_filename: cleanText(input.original_filename || relativePath || input.title || sourceKind, 255),
+    relative_path: relativePath,
+    url: sourceUrl,
+    content_type: contentType,
+    client_mime_type: contentType,
+    detected_mime_type: contentType,
+    preview_kind: previewKind(contentType, relativePath || input.title || ''),
+    storage_status: ['selection', 'text', 'url'].includes(sourceKind) ? 'inline' : 'external',
+    storage_error: null,
+    content_deleted_at: null,
+    deleted_at: null,
+    size_bytes: size,
+    sha256: fileRef?.sha256 || projectFile?.sha256 || attachmentHash(selectionText, input.sha256),
+    selection: normalizeSelection(input.selection),
+    text: selectionText || null,
+    model_policy: modelPolicy(sourceKind, contentType),
+    status: 'ready',
+    created_by_user_id: actor.id,
+    created_at: now(),
+    updated_at: now()
+  };
+}
+
+function attachmentSelectionText(kind, input, sourceUrl) {
+  if (kind === 'selection' || kind === 'text') return cleanText(input.text || input.content, 100_000);
+  return kind === 'url' ? sourceUrl : '';
+}
+
+function attachmentContentType(kind, input, fileRef, relativePath) {
+  if (kind === 'url') return 'text/uri-list';
+  return (
+    cleanText(input.content_type || input.mime_type || fileRef?.content_type || inferContentType(relativePath), 200) ||
+    'application/octet-stream'
+  );
 }
 
 function fileRefBelongsToProject(state, fileRef, projectId) {

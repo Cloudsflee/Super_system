@@ -39,6 +39,23 @@ import { assertProjectWrite } from './project-governance-v19.mjs';
 
 const controllers = new Map();
 const pumps = new Map();
+const ADAPTED_TYPED_EVENTS = new Set([
+  'text',
+  'plan',
+  'command',
+  'file_change',
+  'diff',
+  'test',
+  'mcp',
+  'search',
+  'usage',
+  'approval',
+  'reasoning_summary',
+  'status',
+  'terminal',
+  'request_user_input',
+  'operation'
+]);
 
 export function abortV3Turn(turnId) {
   controllers.get(turnId)?.abort();
@@ -71,233 +88,280 @@ export function scheduleV3Session(sessionId) {
 async function runV3Turn(turnId) {
   const controller = new AbortController();
   controllers.set(turnId, controller);
-  let batchInfo = null,
-    releaseWriteLock = null,
-    checkpointStarted = false,
-    start = null;
+  const runtime = {
+    turnId,
+    controller,
+    batchInfo: null,
+    releaseWriteLock: null,
+    checkpointStarted: false
+  };
   try {
-    start = await mutate((state) => {
-      const turn = requireTurn(state, turnId),
-        session = requireSession(state, turn.session_id),
-        project = requireProject(state, turn.project_id);
-      if (turn.status !== 'queued') return null;
-      assertProjectWrite(state, turn.project_id, currentActorId());
-      Object.assign(turn, { status: 'preparing', started_at: now(), updated_at: now() });
-      Object.assign(session, { status: 'running', updated_at: now() });
-      return { turn, session, project };
-    });
+    const queued = await prepareQueuedTurn(turnId);
+    if (!queued || !(await prepareTurnChangeBatch(runtime, queued))) return;
+    const start = await beginRunningTurn(turnId);
     if (!start) return;
-
-    if (start.turn.code_access === 'workspace_write') {
-      batchInfo = await ensureSessionChangeBatch(start.session.id);
-      releaseWriteLock = await acquireBatchWriteLock(batchInfo.batch.id, { kind: 'assist_turn', id: turnId });
-      const attached = await attachBatchToTurn(turnId, batchInfo);
-      if (!attached) return;
-      await createBatchCheckpoint(batchInfo.batch.id, { source: 'assist_turn', sourceId: turnId, phase: 'before' });
-      checkpointStarted = true;
-    } else {
-      batchInfo = await getSessionChangeBatch(start.session.id);
-      if (batchInfo) await attachBatchToTurn(turnId, batchInfo);
-    }
-
-    start = await mutate((state) => {
-      const turn = requireTurn(state, turnId),
-        session = requireSession(state, turn.session_id),
-        project = requireProject(state, turn.project_id);
-      if (turn.status !== 'preparing') return null;
-      const requestedProfile = turn.profile_id
-        ? state.codex_profiles.find(
-            (item) => item.id === turn.profile_id && item.status === 'validated' && !item.assist_configuration
-          )
-        : null;
-      const storedProfile = turn.test_adapter
-        ? requestedProfile || {
-            id: 'test_adapter',
-            name: 'Test Adapter',
-            kind: 'host',
-            model: 'test',
-            reasoning: 'high'
-          }
-        : requestedProfile;
-      if (!storedProfile) throw new HttpError(409, { error: 'active_codex_profile_required' });
-      const profile = {
-        ...storedProfile,
-        model: turn.model || storedProfile.model,
-        reasoning: turn.reasoning || storedProfile.reasoning
-      };
-      if (storedProfile.id !== 'test_adapter') turn.profile_id = storedProfile.id;
-      Object.assign(turn, { model: profile.model, reasoning: profile.reasoning, status: 'running', updated_at: now() });
-      pushV3Event(state, session.id, turn.id, 'started', {
-        collaboration_mode: turn.collaboration_mode,
-        code_access: turn.code_access,
-        profile: publicProfile(profile),
-        worktree_id: turn.worktree_id,
-        change_batch_id: turn.change_batch_id
-      });
-      return {
-        turn,
-        session,
-        project,
-        profile,
-        repositoryWorkspace:
-          state.repository_workspaces.find(
-            (item) =>
-              item.id === turn.repository_workspace_id && item.project_id === project.id && item.status === 'active'
-          ) || null,
-        attachments: turn.attachment_ids
-          .map((key) => state.attachments.find((item) => item.id === key))
-          .filter(Boolean),
-        contextPack: state.context_packs.find((item) => item.id === turn.context_pack_id)
-      };
-    });
-    if (!start) return;
-
-    const worktree = batchInfo?.worktree || null;
-    const cwd = worktree?.path || start.repositoryWorkspace?.managed_path || readableProjectCwd(start.project);
-    if (!worktree) await fsp.mkdir(cwd, { recursive: true, mode: 0o700 });
-    const sandbox = start.turn.code_access === 'workspace_write' ? 'workspace-write' : 'read-only';
-    const verifiedAttachmentPaths = await verifyTurnAttachmentManifest(start.turn, start.attachments, cwd);
-    const attachmentBindings = nativeAttachmentBindings(start.attachments, start.profile, verifiedAttachmentPaths);
-    const realCwd = await fsp.realpath(cwd);
-    for (const attachment of start.attachments.filter((item) => !item.managed_path)) {
-      const file = verifiedAttachmentPaths.get(attachment.id);
-      if (!file) continue;
-      const relative = path.relative(realCwd, file);
-      if (!relative || relative.startsWith('..') || path.isAbsolute(relative))
-        throw new HttpError(409, { error: 'attachment_path_invalid', attachment_id: attachment.id });
-      attachmentBindings.nativePaths.set(
-        attachment.id,
-        start.profile.kind === 'docker' ? `/workspace/${relative.split(path.sep).join('/')}` : file
-      );
-    }
-    let output = '',
-      nativePlanOutput = '',
-      nativeTurnId = null;
-    let threadId = start.session.native_thread_generation === 1 ? null : start.session.codex_thread_id || null;
-    let eventChain = Promise.resolve();
-
-    if (start.turn.test_adapter) {
-      const adapted = start.turn.test_response || {};
-      await abortableDelay(adapted.delay_ms || 0, controller.signal);
-      if (controller.signal.aborted) throw new HttpError(409, { error: 'turn_interrupted' });
-      if ((adapted.files || []).length && sandbox !== 'workspace-write')
-        throw new HttpError(409, { error: 'test_adapter_read_only_violation' });
-      const changed = worktree ? await writeAdapterFiles(worktree.path, adapted.files || []) : [];
-      if (changed.length)
-        await mutate((state) =>
-          pushV3Event(state, start.session.id, start.turn.id, 'file_change', { changes: changed })
-        );
-      const typed = new Set([
-        'text',
-        'plan',
-        'command',
-        'file_change',
-        'diff',
-        'test',
-        'mcp',
-        'search',
-        'usage',
-        'approval',
-        'reasoning_summary',
-        'status',
-        'terminal',
-        'request_user_input',
-        'operation'
-      ]);
-      for (const event of adapted.events || []) {
-        const saved =
-          typed.has(event.type) && event.data
-            ? await persistV3TypedEvent(start.session.id, start.turn.id, event.type, event.data)
-            : await persistV3CodexEvent(start.session.id, start.turn.id, event);
-        if (
-          saved?.type === 'approval' &&
-          !(await waitForRuntimeApproval(saved.data.approval_id, start.turn.id, controller.signal))
-        )
-          throw new HttpError(409, { error: 'runtime_approval_rejected' });
-      }
-      output = cleanText(adapted.message, 200_000) || '测试 Assist V3 Turn 已完成。';
-    } else {
-      const runtimeState = await readState();
-      if (!appServerAvailable(runtimeState, start.profile))
-        throw new HttpError(409, { error: 'codex_app_server_required', action: 'update_codex_or_profile' });
-      const eventHandler = (event) => {
-        if (event?.type === 'thread.started' && event.thread_id) threadId = cleanText(event.thread_id, 300);
-        if (event?.aiws_type === 'plan' && event.data?.text)
-          nativePlanOutput =
-            event.data.status === 'streaming' ? `${nativePlanOutput}${event.data.text}` : String(event.data.text);
-        const message = extractMessage(event);
-        if (message) output += message;
-        eventChain = eventChain.then(() => persistV3CodexEvent(start.session.id, start.turn.id, event));
-      };
-      const prompt = turnPrompt(start),
-        userInput = await appServerUserInput(prompt, start.attachments, runtimeState, {
-          nativePaths: attachmentBindings.nativePaths,
-          containerized: start.profile.kind === 'docker',
-          imageCapable: modelSupportsImages(start.profile, runtimeState),
-          cwd
-        });
-      const result = await runCodexAppServer({
-        state: runtimeState,
-        profile: start.profile,
-        prompt,
-        userInput,
-        additionalContext: applicationAdditionalContext(start),
-        dynamicTools: dynamicPageToolSpec(start.turn.view_context, start.turn.collaboration_mode, {
-          state: runtimeState,
-          projectId: start.project.id
-        }),
-        attachmentMounts: attachmentBindings.mounts,
-        cwd,
-        resumeId: threadId,
-        sandbox,
-        mode: start.turn.collaboration_mode,
-        projectId: start.project.id,
-        signal: controller.signal,
-        onEvent: eventHandler,
-        onApproval: async (request) => {
-          const saved = await persistV3TypedEvent(start.session.id, start.turn.id, 'approval', request);
-          return saved ? waitForRuntimeApproval(saved.data.approval_id, start.turn.id, controller.signal) : false;
-        },
-        onUserInput: (request) => waitForAssistUserInput(start.session.id, start.turn.id, request, controller.signal),
-        onDynamicTool: (request) => handleDynamicPageTool(start.session.id, start.turn.id, request, controller.signal)
-      });
-      await eventChain;
-      nativeTurnId = cleanText(result.turn_id, 300) || null;
-      if (controller.signal.aborted) throw new HttpError(409, { error: 'turn_interrupted' });
-      if (!result.ok) throw new Error(result.stderr || `codex_exit_${result.code}`);
-    }
-
-    let review = null;
-    if (checkpointStarted && batchInfo) {
-      await createBatchCheckpoint(batchInfo.batch.id, { source: 'assist_turn', sourceId: turnId, phase: 'after' });
-      review = await assistReviewSnapshot(start.project, batchInfo.worktree);
-    }
+    const environment = await prepareTurnEnvironment(start, runtime.batchInfo);
+    const result = await executePreparedTurn(start, environment, controller);
+    const review = await captureTurnReview(runtime, start);
     await mutate((state) =>
       completeTurn(state, {
         turnId,
-        output: output || nativePlanOutput,
-        threadId,
-        codexTurnId: nativeTurnId,
+        output: result.output || result.nativePlanOutput,
+        threadId: result.threadId,
+        codexTurnId: result.nativeTurnId,
         review,
-        worktree: batchInfo?.worktree || null
+        worktree: runtime.batchInfo?.worktree || null
       })
     );
   } catch (error) {
-    if (checkpointStarted && batchInfo)
-      await createBatchCheckpoint(batchInfo.batch.id, {
-        source: 'assist_turn',
-        sourceId: turnId,
-        phase: 'after',
-        status: 'interrupted'
-      }).catch(() => undefined);
-    await cancelTurnUserInputs(turnId, 'turn_ended').catch(() => undefined);
-    await mutate((state) => failTurn(state, turnId, error, controllers.get(turnId)?.signal.aborted)).catch(
-      () => undefined
-    );
+    await handleTurnFailure(runtime, error);
   } finally {
-    await releaseWriteLock?.();
+    await runtime.releaseWriteLock?.();
     if (controllers.get(turnId) === controller) controllers.delete(turnId);
   }
+}
+
+function prepareQueuedTurn(turnId) {
+  return mutate((state) => {
+    const turn = requireTurn(state, turnId),
+      session = requireSession(state, turn.session_id),
+      project = requireProject(state, turn.project_id);
+    if (turn.status !== 'queued') return null;
+    assertProjectWrite(state, turn.project_id, currentActorId());
+    Object.assign(turn, { status: 'preparing', started_at: now(), updated_at: now() });
+    Object.assign(session, { status: 'running', updated_at: now() });
+    return { turn, session, project };
+  });
+}
+
+async function prepareTurnChangeBatch(runtime, start) {
+  if (start.turn.code_access !== 'workspace_write') {
+    runtime.batchInfo = await getSessionChangeBatch(start.session.id);
+    if (runtime.batchInfo) await attachBatchToTurn(runtime.turnId, runtime.batchInfo);
+    return true;
+  }
+  runtime.batchInfo = await ensureSessionChangeBatch(start.session.id);
+  runtime.releaseWriteLock = await acquireBatchWriteLock(runtime.batchInfo.batch.id, {
+    kind: 'assist_turn',
+    id: runtime.turnId
+  });
+  const attached = await attachBatchToTurn(runtime.turnId, runtime.batchInfo);
+  if (!attached) return false;
+  await createBatchCheckpoint(runtime.batchInfo.batch.id, {
+    source: 'assist_turn',
+    sourceId: runtime.turnId,
+    phase: 'before'
+  });
+  runtime.checkpointStarted = true;
+  return true;
+}
+
+function beginRunningTurn(turnId) {
+  return mutate((state) => {
+    const turn = requireTurn(state, turnId),
+      session = requireSession(state, turn.session_id),
+      project = requireProject(state, turn.project_id);
+    if (turn.status !== 'preparing') return null;
+    const requestedProfile = resolveRequestedProfile(state, turn);
+    const storedProfile = turn.test_adapter ? requestedProfile || testAdapterProfile() : requestedProfile;
+    if (!storedProfile) throw new HttpError(409, { error: 'active_codex_profile_required' });
+    const profile = {
+      ...storedProfile,
+      model: turn.model || storedProfile.model,
+      reasoning: turn.reasoning || storedProfile.reasoning
+    };
+    if (storedProfile.id !== 'test_adapter') turn.profile_id = storedProfile.id;
+    Object.assign(turn, { model: profile.model, reasoning: profile.reasoning, status: 'running', updated_at: now() });
+    pushV3Event(state, session.id, turn.id, 'started', {
+      collaboration_mode: turn.collaboration_mode,
+      code_access: turn.code_access,
+      profile: publicProfile(profile),
+      worktree_id: turn.worktree_id,
+      change_batch_id: turn.change_batch_id
+    });
+    return runningTurnContext(state, turn, session, project, profile);
+  });
+}
+
+function resolveRequestedProfile(state, turn) {
+  if (!turn.profile_id) return null;
+  return state.codex_profiles.find(
+    (item) => item.id === turn.profile_id && item.status === 'validated' && !item.assist_configuration
+  );
+}
+
+function testAdapterProfile() {
+  return { id: 'test_adapter', name: 'Test Adapter', kind: 'host', model: 'test', reasoning: 'high' };
+}
+
+function runningTurnContext(state, turn, session, project, profile) {
+  return {
+    turn,
+    session,
+    project,
+    profile,
+    repositoryWorkspace:
+      state.repository_workspaces.find(
+        (item) => item.id === turn.repository_workspace_id && item.project_id === project.id && item.status === 'active'
+      ) || null,
+    attachments: turn.attachment_ids.map((key) => state.attachments.find((item) => item.id === key)).filter(Boolean),
+    contextPack: state.context_packs.find((item) => item.id === turn.context_pack_id)
+  };
+}
+
+async function prepareTurnEnvironment(start, batchInfo) {
+  const worktree = batchInfo?.worktree || null;
+  const cwd = worktree?.path || start.repositoryWorkspace?.managed_path || readableProjectCwd(start.project);
+  if (!worktree) await fsp.mkdir(cwd, { recursive: true, mode: 0o700 });
+  const sandbox = start.turn.code_access === 'workspace_write' ? 'workspace-write' : 'read-only';
+  const verifiedAttachmentPaths = await verifyTurnAttachmentManifest(start.turn, start.attachments, cwd);
+  const attachmentBindings = nativeAttachmentBindings(start.attachments, start.profile, verifiedAttachmentPaths);
+  await bindNativeAttachmentPaths(start, cwd, verifiedAttachmentPaths, attachmentBindings);
+  return { worktree, cwd, sandbox, attachmentBindings };
+}
+
+async function bindNativeAttachmentPaths(start, cwd, verifiedAttachmentPaths, attachmentBindings) {
+  const realCwd = await fsp.realpath(cwd);
+  for (const attachment of start.attachments.filter((item) => !item.managed_path)) {
+    const file = verifiedAttachmentPaths.get(attachment.id);
+    if (!file) continue;
+    const relative = path.relative(realCwd, file);
+    if (!relative || relative.startsWith('..') || path.isAbsolute(relative))
+      throw new HttpError(409, { error: 'attachment_path_invalid', attachment_id: attachment.id });
+    attachmentBindings.nativePaths.set(
+      attachment.id,
+      start.profile.kind === 'docker' ? `/workspace/${relative.split(path.sep).join('/')}` : file
+    );
+  }
+}
+
+function executePreparedTurn(start, environment, controller) {
+  const threadId = start.session.native_thread_generation === 1 ? null : start.session.codex_thread_id || null;
+  return start.turn.test_adapter
+    ? runAdaptedTurn(start, environment, controller, threadId)
+    : runNativeTurn(start, environment, controller, threadId);
+}
+
+async function runAdaptedTurn(start, environment, controller, threadId) {
+  const adapted = start.turn.test_response || {};
+  await abortableDelay(adapted.delay_ms || 0, controller.signal);
+  if (controller.signal.aborted) throw new HttpError(409, { error: 'turn_interrupted' });
+  if ((adapted.files || []).length && environment.sandbox !== 'workspace-write')
+    throw new HttpError(409, { error: 'test_adapter_read_only_violation' });
+  const changed = environment.worktree ? await writeAdapterFiles(environment.worktree.path, adapted.files || []) : [];
+  if (changed.length)
+    await mutate((state) => pushV3Event(state, start.session.id, start.turn.id, 'file_change', { changes: changed }));
+  await persistAdaptedEvents(start, adapted.events || [], controller.signal);
+  return {
+    output: cleanText(adapted.message, 200_000) || '测试 Assist V3 Turn 已完成。',
+    nativePlanOutput: '',
+    nativeTurnId: null,
+    threadId
+  };
+}
+
+async function persistAdaptedEvents(start, events, signal) {
+  for (const event of events) {
+    const saved =
+      ADAPTED_TYPED_EVENTS.has(event.type) && event.data
+        ? await persistV3TypedEvent(start.session.id, start.turn.id, event.type, event.data)
+        : await persistV3CodexEvent(start.session.id, start.turn.id, event);
+    if (saved?.type === 'approval' && !(await waitForRuntimeApproval(saved.data.approval_id, start.turn.id, signal)))
+      throw new HttpError(409, { error: 'runtime_approval_rejected' });
+  }
+}
+
+async function runNativeTurn(start, environment, controller, threadId) {
+  const runtimeState = await readState();
+  if (!appServerAvailable(runtimeState, start.profile))
+    throw new HttpError(409, { error: 'codex_app_server_required', action: 'update_codex_or_profile' });
+  const collector = nativeEventCollector(start, threadId);
+  const prompt = turnPrompt(start);
+  const userInput = await appServerUserInput(prompt, start.attachments, runtimeState, {
+    nativePaths: environment.attachmentBindings.nativePaths,
+    containerized: start.profile.kind === 'docker',
+    imageCapable: modelSupportsImages(start.profile, runtimeState),
+    cwd: environment.cwd
+  });
+  const result = await runCodexAppServer(
+    nativeTurnOptions(start, environment, controller, runtimeState, collector, prompt, userInput)
+  );
+  await collector.eventChain;
+  const nativeTurnId = cleanText(result.turn_id, 300) || null;
+  if (controller.signal.aborted) throw new HttpError(409, { error: 'turn_interrupted' });
+  if (!result.ok) throw new Error(result.stderr || `codex_exit_${result.code}`);
+  return {
+    output: collector.output,
+    nativePlanOutput: collector.nativePlanOutput,
+    nativeTurnId,
+    threadId: collector.threadId
+  };
+}
+
+function nativeEventCollector(start, threadId) {
+  const collector = { output: '', nativePlanOutput: '', threadId, eventChain: Promise.resolve() };
+  collector.onEvent = (event) => {
+    if (event?.type === 'thread.started' && event.thread_id) collector.threadId = cleanText(event.thread_id, 300);
+    if (event?.aiws_type === 'plan' && event.data?.text)
+      collector.nativePlanOutput =
+        event.data.status === 'streaming' ? `${collector.nativePlanOutput}${event.data.text}` : String(event.data.text);
+    const message = extractMessage(event);
+    if (message) collector.output += message;
+    collector.eventChain = collector.eventChain.then(() => persistV3CodexEvent(start.session.id, start.turn.id, event));
+  };
+  return collector;
+}
+
+function nativeTurnOptions(start, environment, controller, runtimeState, collector, prompt, userInput) {
+  return {
+    state: runtimeState,
+    profile: start.profile,
+    prompt,
+    userInput,
+    additionalContext: applicationAdditionalContext(start),
+    dynamicTools: dynamicPageToolSpec(start.turn.view_context, start.turn.collaboration_mode, {
+      state: runtimeState,
+      projectId: start.project.id
+    }),
+    attachmentMounts: environment.attachmentBindings.mounts,
+    cwd: environment.cwd,
+    resumeId: collector.threadId,
+    sandbox: environment.sandbox,
+    mode: start.turn.collaboration_mode,
+    projectId: start.project.id,
+    signal: controller.signal,
+    onEvent: collector.onEvent,
+    onApproval: async (request) => {
+      const saved = await persistV3TypedEvent(start.session.id, start.turn.id, 'approval', request);
+      return saved ? waitForRuntimeApproval(saved.data.approval_id, start.turn.id, controller.signal) : false;
+    },
+    onUserInput: (request) => waitForAssistUserInput(start.session.id, start.turn.id, request, controller.signal),
+    onDynamicTool: (request) => handleDynamicPageTool(start.session.id, start.turn.id, request, controller.signal)
+  };
+}
+
+async function captureTurnReview(runtime, start) {
+  if (!runtime.checkpointStarted || !runtime.batchInfo) return null;
+  await createBatchCheckpoint(runtime.batchInfo.batch.id, {
+    source: 'assist_turn',
+    sourceId: runtime.turnId,
+    phase: 'after'
+  });
+  return assistReviewSnapshot(start.project, runtime.batchInfo.worktree);
+}
+
+async function handleTurnFailure(runtime, error) {
+  if (runtime.checkpointStarted && runtime.batchInfo)
+    await createBatchCheckpoint(runtime.batchInfo.batch.id, {
+      source: 'assist_turn',
+      sourceId: runtime.turnId,
+      phase: 'after',
+      status: 'interrupted'
+    }).catch(() => undefined);
+  await cancelTurnUserInputs(runtime.turnId, 'turn_ended').catch(() => undefined);
+  await mutate((state) =>
+    failTurn(state, runtime.turnId, error, controllers.get(runtime.turnId)?.signal.aborted)
+  ).catch(() => undefined);
 }
 
 async function attachBatchToTurn(turnId, batchInfo) {

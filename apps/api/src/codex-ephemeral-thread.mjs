@@ -59,215 +59,283 @@ async function createCodexEphemeralThreadOnce({
     await mcpAccess?.release();
     throw taggedError(error.message, 'app_server_start_failed');
   }
-
-  let buffer = '',
-    stderr = '',
-    closed = false,
-    requestId = 0,
-    threadId = null,
-    active = null;
-  const pending = new Map(),
-    runtimeCwd = invocation.cwd || cwd;
-  const closeError = (error) => {
-    if (closed) return;
-    closed = true;
-    for (const item of pending.values()) item.reject(error);
-    pending.clear();
-    finishActive(error);
-    void mcpAccess?.release();
-  };
-  const terminate = (error) => {
-    closeError(error);
-    if (child.exitCode === null && !child.killed) child.kill();
-  };
-  child.stdout.on('data', (chunk) => {
-    buffer += chunk.toString();
-    const lines = buffer.split(/\r?\n/);
-    buffer = lines.pop() || '';
-    for (const line of lines) consume(line);
+  const context = createEphemeralContext({
+    profile,
+    additionalContext,
+    child,
+    mcpAccess,
+    runtimeCwd: invocation.cwd || cwd
   });
-  child.stderr.on('data', (chunk) => {
-    stderr = (stderr + redactKnownSecretsSync(chunk)).slice(-16000);
-  });
-  child.on('error', (error) => terminate(taggedError(error.message, 'app_server_turn_failed')));
-  child.on('close', (code) =>
-    closeError(taggedError(stderr || `codex_app_server_exit_${code}`, 'app_server_turn_failed'))
-  );
-  const abortInitialize = () => close(),
+  attachEphemeralListeners(context);
+  const abortInitialize = () => closeEphemeralThread(context),
     initializeTimer = setTimeout(
-      () => terminate(taggedError('codex_ephemeral_initialize_timeout', 'app_server_start_failed')),
+      () =>
+        terminateEphemeralContext(
+          context,
+          taggedError('codex_ephemeral_initialize_timeout', 'app_server_start_failed')
+        ),
       resolveCodexTimeoutMs(profile.timeout_ms)
     );
   if (signal?.aborted) abortInitialize();
   else signal?.addEventListener('abort', abortInitialize, { once: true });
-
   try {
-    await request('initialize', {
-      clientInfo: { name: 'aiws', title: 'AI Workspace', version: AIWS_VERSION },
-      capabilities: { experimentalApi: true, requestAttestation: false }
-    });
-    notify('initialized');
-    const forked = await request('thread/fork', {
-      threadId: sourceThreadId,
-      ...(sourceTurnId ? { turnId: sourceTurnId } : {}),
-      cwd: runtimeCwd,
-      approvalPolicy: 'never',
-      approvalsReviewer: 'user',
-      sandbox: 'read-only',
-      ephemeral: true
-    });
-    threadId = forked?.thread?.id || forked?.threadId || forked?.thread_id;
-    if (!threadId || threadId === sourceThreadId)
-      throw taggedError('app_server_ephemeral_thread_missing', 'app_server_start_failed');
+    await initializeEphemeralThread(context, sourceThreadId, sourceTurnId);
   } catch (error) {
-    close();
+    closeEphemeralThread(context);
     throw error;
   } finally {
     clearTimeout(initializeTimer);
     signal?.removeEventListener('abort', abortInitialize);
   }
+  return createEphemeralClient(context);
+}
 
+function createEphemeralContext({ profile, additionalContext, child, mcpAccess, runtimeCwd }) {
+  return {
+    profile,
+    additionalContext,
+    child,
+    mcpAccess,
+    runtimeCwd,
+    buffer: '',
+    stderr: '',
+    closed: false,
+    requestId: 0,
+    threadId: null,
+    active: null,
+    pending: new Map()
+  };
+}
+
+function attachEphemeralListeners(context) {
+  context.child.stdout.on('data', (chunk) => consumeEphemeralChunk(context, chunk));
+  context.child.stderr.on('data', (chunk) => {
+    context.stderr = (context.stderr + redactKnownSecretsSync(chunk)).slice(-16000);
+  });
+  context.child.on('error', (error) =>
+    terminateEphemeralContext(context, taggedError(error.message, 'app_server_turn_failed'))
+  );
+  context.child.on('close', (code) =>
+    closeEphemeralContext(
+      context,
+      taggedError(context.stderr || `codex_app_server_exit_${code}`, 'app_server_turn_failed')
+    )
+  );
+}
+
+async function initializeEphemeralThread(context, sourceThreadId, sourceTurnId) {
+  await ephemeralRequest(context, 'initialize', {
+    clientInfo: { name: 'aiws', title: 'AI Workspace', version: AIWS_VERSION },
+    capabilities: { experimentalApi: true, requestAttestation: false }
+  });
+  ephemeralNotify(context, 'initialized');
+  const forked = await ephemeralRequest(context, 'thread/fork', {
+    threadId: sourceThreadId,
+    ...(sourceTurnId ? { turnId: sourceTurnId } : {}),
+    cwd: context.runtimeCwd,
+    approvalPolicy: 'never',
+    approvalsReviewer: 'user',
+    sandbox: 'read-only',
+    ephemeral: true
+  });
+  context.threadId = forked?.thread?.id || forked?.threadId || forked?.thread_id;
+  if (!context.threadId || context.threadId === sourceThreadId)
+    throw taggedError('app_server_ephemeral_thread_missing', 'app_server_start_failed');
+}
+
+function createEphemeralClient(context) {
   return {
     get threadId() {
-      return threadId;
+      return context.threadId;
     },
     get busy() {
-      return Boolean(active);
+      return Boolean(context.active);
     },
-    async sendTurn({ prompt, userInput, onEvent, signal: turnSignal }) {
-      if (closed) throw taggedError('app_server_closed', 'app_server_turn_failed');
-      if (active) throw taggedError('app_server_ephemeral_turn_busy', 'app_server_turn_failed');
-      const deltaItems = new Set();
-      let resolveTurn, rejectTurn;
-      const completion = new Promise((resolve, reject) => {
-        resolveTurn = resolve;
-        rejectTurn = reject;
-      });
-      const timeout = resolveCodexTimeoutMs(profile.timeout_ms);
-      const abort = () => {
-        if (threadId && active?.turnId)
-          void request('turn/interrupt', { threadId, turnId: active.turnId }).catch(() => undefined);
-        finishActive(taggedError('codex_ephemeral_turn_interrupted', 'app_server_turn_failed'));
-      };
-      active = {
-        turnId: null,
-        output: '',
-        onEvent,
-        deltaItems,
-        resolve: resolveTurn,
-        reject: rejectTurn,
-        timer: null,
-        signal: turnSignal,
-        abort
-      };
-      active.timer = setTimeout(() => {
-        if (threadId && active?.turnId)
-          void request('turn/interrupt', { threadId, turnId: active.turnId }).catch(() => undefined);
-        finishActive(taggedError('codex_ephemeral_turn_timeout', 'app_server_turn_failed'));
-      }, timeout);
-      if (turnSignal?.aborted) abort();
-      else turnSignal?.addEventListener('abort', abort, { once: true });
-      try {
-        const started = await request('turn/start', {
-          threadId,
-          input: userInput?.length ? userInput : [{ type: 'text', text: String(prompt || ''), text_elements: [] }],
-          additionalContext: nativeAdditionalContext(additionalContext),
-          cwd: runtimeCwd,
-          approvalPolicy: 'never',
-          approvalsReviewer: 'user',
-          sandboxPolicy: sandboxPolicy('read-only', runtimeCwd),
-          collaborationMode: nativeCollaborationMode('default', profile),
-          summary: 'concise'
-        });
-        if (active) active.turnId = started?.turn?.id || active.turnId;
-        if (!active?.turnId) throw taggedError('app_server_turn_missing', 'app_server_turn_failed');
-      } catch (error) {
-        finishActive(error);
-      }
-      return completion;
+    sendTurn(input) {
+      return sendEphemeralTurn(context, input);
     },
-    close
+    close() {
+      closeEphemeralThread(context);
+    }
   };
+}
 
-  function request(method, params) {
-    if (closed || !child.stdin?.writable)
-      return Promise.reject(taggedError('app_server_stdin_closed', 'app_server_turn_failed'));
-    const requestKey = ++requestId;
-    return new Promise((resolve, reject) => {
-      pending.set(requestKey, { resolve, reject });
-      child.stdin.write(`${JSON.stringify({ method, id: requestKey, params })}\n`);
-    });
+async function sendEphemeralTurn(context, { prompt, userInput, onEvent, signal }) {
+  if (context.closed) throw taggedError('app_server_closed', 'app_server_turn_failed');
+  if (context.active) throw taggedError('app_server_ephemeral_turn_busy', 'app_server_turn_failed');
+  let resolveTurn, rejectTurn;
+  const completion = new Promise((resolve, reject) => {
+    resolveTurn = resolve;
+    rejectTurn = reject;
+  });
+  const abort = () => interruptEphemeralTurn(context, 'codex_ephemeral_turn_interrupted');
+  context.active = {
+    turnId: null,
+    output: '',
+    onEvent,
+    deltaItems: new Set(),
+    resolve: resolveTurn,
+    reject: rejectTurn,
+    timer: null,
+    signal,
+    abort
+  };
+  context.active.timer = setTimeout(
+    () => interruptEphemeralTurn(context, 'codex_ephemeral_turn_timeout'),
+    resolveCodexTimeoutMs(context.profile.timeout_ms)
+  );
+  if (signal?.aborted) abort();
+  else signal?.addEventListener('abort', abort, { once: true });
+  try {
+    const started = await ephemeralRequest(context, 'turn/start', ephemeralTurnParams(context, prompt, userInput));
+    if (context.active) context.active.turnId = started?.turn?.id || context.active.turnId;
+    if (!context.active?.turnId) throw taggedError('app_server_turn_missing', 'app_server_turn_failed');
+  } catch (error) {
+    finishEphemeralActive(context, error);
   }
-  function notify(method, params) {
-    if (child.stdin?.writable)
-      child.stdin.write(`${JSON.stringify(params === undefined ? { method } : { method, params })}\n`);
+  return completion;
+}
+
+function ephemeralTurnParams(context, prompt, userInput) {
+  return {
+    threadId: context.threadId,
+    input: userInput?.length ? userInput : [{ type: 'text', text: String(prompt || ''), text_elements: [] }],
+    additionalContext: nativeAdditionalContext(context.additionalContext),
+    cwd: context.runtimeCwd,
+    approvalPolicy: 'never',
+    approvalsReviewer: 'user',
+    sandboxPolicy: sandboxPolicy('read-only', context.runtimeCwd),
+    collaborationMode: nativeCollaborationMode('default', context.profile),
+    summary: 'concise'
+  };
+}
+
+function interruptEphemeralTurn(context, message) {
+  if (context.threadId && context.active?.turnId)
+    void ephemeralRequest(context, 'turn/interrupt', {
+      threadId: context.threadId,
+      turnId: context.active.turnId
+    }).catch(() => undefined);
+  finishEphemeralActive(context, taggedError(message, 'app_server_turn_failed'));
+}
+
+function ephemeralRequest(context, method, params) {
+  if (context.closed || !context.child.stdin?.writable)
+    return Promise.reject(taggedError('app_server_stdin_closed', 'app_server_turn_failed'));
+  const requestKey = ++context.requestId;
+  return new Promise((resolve, reject) => {
+    context.pending.set(requestKey, { resolve, reject });
+    context.child.stdin.write(`${JSON.stringify({ method, id: requestKey, params })}\n`);
+  });
+}
+
+function ephemeralNotify(context, method, params) {
+  if (context.child.stdin?.writable)
+    context.child.stdin.write(`${JSON.stringify(params === undefined ? { method } : { method, params })}\n`);
+}
+
+function consumeEphemeralChunk(context, chunk) {
+  context.buffer += chunk.toString();
+  const lines = context.buffer.split(/\r?\n/);
+  context.buffer = lines.pop() || '';
+  for (const line of lines) consumeEphemeralLine(context, line);
+}
+
+function consumeEphemeralLine(context, line) {
+  let message;
+  try {
+    message = JSON.parse(line);
+  } catch {
+    return;
   }
-  function consume(line) {
-    let message;
-    try {
-      message = JSON.parse(line);
-    } catch {
-      return;
-    }
-    if (message.id !== undefined && !message.method) {
-      const target = pending.get(message.id);
-      if (!target) return;
-      pending.delete(message.id);
-      if (message.error)
-        target.reject(taggedError(message.error.message || 'app_server_rpc_error', 'app_server_turn_failed'));
-      else target.resolve(message.result);
-      return;
-    }
-    if (message.id !== undefined && message.method) {
-      answerServerRequest(message);
-      return;
-    }
-    if (!active) return;
-    const mapped = mapNotification(message, active.deltaItems);
-    if (mapped) {
-      if (mapped.output_text) active.output += mapped.output_text;
-      active.onEvent?.(mapped);
-    }
-    if (message.method !== 'turn/completed' || (active.turnId && message.params?.turn?.id !== active.turnId)) return;
-    const status = message.params?.turn?.status;
-    if (status !== 'completed')
-      finishActive(
-        taggedError(message.params?.turn?.error?.message || `app_server_turn_${status}`, 'app_server_turn_failed')
-      );
-    else
-      finishActive(null, {
-        ok: true,
-        thread_id: threadId,
-        turn_id: active.turnId,
-        output_text: active.output,
-        transport: 'app-server'
-      });
+  if (message.id !== undefined && !message.method) return resolveEphemeralResponse(context, message);
+  if (message.id !== undefined && message.method) {
+    answerEphemeralServerRequest(context, message);
+    return;
   }
-  function answerServerRequest(message) {
-    if (!child.stdin?.writable) return;
-    const result =
-      message.method === 'item/tool/call'
-        ? dynamicToolResponse({ success: false, message: 'assist_btw_tools_disabled' })
-        : message.method === 'item/tool/requestUserInput'
-          ? { answers: {} }
-          : approvalResponse(message.method, false, message.params || {});
-    child.stdin.write(`${JSON.stringify({ id: message.id, result })}\n`);
+  if (!context.active) return;
+  const mapped = mapNotification(message, context.active.deltaItems);
+  if (mapped) {
+    if (mapped.output_text) context.active.output += mapped.output_text;
+    context.active.onEvent?.(mapped);
   }
-  function finishActive(error, result) {
-    const current = active;
-    if (!current) return;
-    active = null;
-    clearTimeout(current.timer);
-    current.signal?.removeEventListener('abort', current.abort);
-    error ? current.reject(error) : current.resolve(result);
+  if (
+    message.method === 'turn/completed' &&
+    (!context.active.turnId || message.params?.turn?.id === context.active.turnId)
+  )
+    completeEphemeralTurn(context, message.params?.turn);
+}
+
+function resolveEphemeralResponse(context, message) {
+  const target = context.pending.get(message.id);
+  if (!target) return;
+  context.pending.delete(message.id);
+  if (message.error)
+    target.reject(taggedError(message.error.message || 'app_server_rpc_error', 'app_server_turn_failed'));
+  else target.resolve(message.result);
+}
+
+function completeEphemeralTurn(context, turn) {
+  const status = turn?.status;
+  if (status !== 'completed') {
+    finishEphemeralActive(
+      context,
+      taggedError(turn?.error?.message || `app_server_turn_${status}`, 'app_server_turn_failed')
+    );
+    return;
   }
-  function close() {
-    if (closed) {
-      if (child.exitCode === null && !child.killed) child.kill();
-      return;
-    }
-    if (threadId && active?.turnId)
-      void request('turn/interrupt', { threadId, turnId: active.turnId }).catch(() => undefined);
-    terminate(taggedError('app_server_closed', 'app_server_turn_failed'));
+  finishEphemeralActive(context, null, {
+    ok: true,
+    thread_id: context.threadId,
+    turn_id: context.active.turnId,
+    output_text: context.active.output,
+    transport: 'app-server'
+  });
+}
+
+function answerEphemeralServerRequest(context, message) {
+  if (!context.child.stdin?.writable) return;
+  const result =
+    message.method === 'item/tool/call'
+      ? dynamicToolResponse({ success: false, message: 'assist_btw_tools_disabled' })
+      : message.method === 'item/tool/requestUserInput'
+        ? { answers: {} }
+        : approvalResponse(message.method, false, message.params || {});
+  context.child.stdin.write(`${JSON.stringify({ id: message.id, result })}\n`);
+}
+
+function finishEphemeralActive(context, error, result) {
+  const current = context.active;
+  if (!current) return;
+  context.active = null;
+  clearTimeout(current.timer);
+  current.signal?.removeEventListener('abort', current.abort);
+  error ? current.reject(error) : current.resolve(result);
+}
+
+function closeEphemeralContext(context, error) {
+  if (context.closed) return;
+  context.closed = true;
+  for (const item of context.pending.values()) item.reject(error);
+  context.pending.clear();
+  finishEphemeralActive(context, error);
+  void context.mcpAccess?.release();
+}
+
+function terminateEphemeralContext(context, error) {
+  closeEphemeralContext(context, error);
+  if (context.child.exitCode === null && !context.child.killed) context.child.kill();
+}
+
+function closeEphemeralThread(context) {
+  if (context.closed) {
+    if (context.child.exitCode === null && !context.child.killed) context.child.kill();
+    return;
   }
+  if (context.threadId && context.active?.turnId)
+    void ephemeralRequest(context, 'turn/interrupt', {
+      threadId: context.threadId,
+      turnId: context.active.turnId
+    }).catch(() => undefined);
+  terminateEphemeralContext(context, taggedError('app_server_closed', 'app_server_turn_failed'));
 }

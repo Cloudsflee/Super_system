@@ -59,236 +59,306 @@ async function runCodexAppServerOnce({
     }),
     invocation = appServerInvocation(profile, cwd, sandbox, credential, attachmentMounts, mcpAccess);
   try {
-    return await new Promise((resolve, reject) => {
-      let child;
-      try {
-        child =
-          invocation.runtime === 'docker'
-            ? spawnContainerProcess(invocation, { cwd, env: invocation.env, spawnProcess })
-            : spawnProcess(invocation.command, invocation.args, {
-                cwd,
-                env: invocation.env,
-                shell: false,
-                windowsHide: true
-              });
-      } catch (error) {
-        reject(taggedError(error.message, 'app_server_start_failed'));
-        return;
-      }
-      let buffer = '',
-        stderr = '',
-        settled = false,
-        requestId = 0,
-        threadId = resumeId || null,
-        turnId = null,
-        turnStarted = false;
-      const pending = new Map(),
-        deltaItems = new Set();
-      const timer = setTimeout(
-        () =>
-          finish(
-            taggedError('codex_app_server_timeout', turnStarted ? 'app_server_turn_failed' : 'app_server_start_failed')
-          ),
-        resolveCodexTimeoutMs(profile.timeout_ms)
-      );
-      const abort = () => {
-        if (threadId && turnId) void request('turn/interrupt', { threadId, turnId }).catch(() => undefined);
-        child.kill();
-      };
-      signal?.addEventListener('abort', abort, { once: true });
-      child.stdout.on('data', (chunk) => {
-        buffer += chunk.toString();
-        const lines = buffer.split(/\r?\n/);
-        buffer = lines.pop() || '';
-        for (const line of lines) consume(line);
-      });
-      child.stderr.on('data', (chunk) => {
-        stderr = (stderr + redactKnownSecretsSync(chunk)).slice(-16000);
-      });
-      child.on('error', (error) =>
-        finish(taggedError(error.message, turnStarted ? 'app_server_turn_failed' : 'app_server_start_failed'))
-      );
-      child.on('close', (code) => {
-        if (!settled)
-          finish(
-            taggedError(
-              stderr || `codex_app_server_exit_${code}`,
-              turnStarted ? 'app_server_turn_failed' : 'app_server_start_failed'
-            )
-          );
-      });
-      start().catch((error) => finish(error));
-
-      async function start() {
-        await request('initialize', {
-          clientInfo: { name: 'aiws', title: 'AI Workspace', version: AIWS_VERSION },
-          capabilities: { experimentalApi: true, requestAttestation: false }
-        });
-        notify('initialized');
-        if (mode === 'plan') {
-          let available;
-          try {
-            available = await request('collaborationMode/list', {});
-          } catch {
-            throw taggedError('codex_native_plan_unavailable', 'native_plan_unavailable');
-          }
-          if (!available?.data?.some((item) => item?.mode === 'plan'))
-            throw taggedError('codex_native_plan_unavailable', 'native_plan_unavailable');
-        }
-        const runtimeCwd = invocation.cwd || cwd;
-        const threadOptions = {
-          cwd: runtimeCwd,
-          approvalPolicy: 'on-request',
-          approvalsReviewer: 'user',
-          sandbox,
-          dynamicTools
-        };
-        let thread;
-        if (resumeId) {
-          try {
-            thread = await request('thread/resume', { threadId: resumeId, ...threadOptions });
-          } catch (error) {
-            if (!isCodexThreadUnavailable(error)) throw error;
-            thread = await request('thread/start', {
-              model: profile.model || null,
-              ...threadOptions,
-              ephemeral: false
-            });
-            onEvent?.({ type: 'thread.recreated' });
-          }
-        } else {
-          thread = await request('thread/start', { model: profile.model || null, ...threadOptions, ephemeral: false });
-        }
-        threadId = thread.thread?.id || resumeId;
-        if (!threadId) throw taggedError('app_server_thread_missing', 'app_server_start_failed');
-        onEvent?.({ type: 'thread.started', thread_id: threadId });
-        turnStarted = true;
-        const started = await request('turn/start', {
-          threadId,
-          input: userInput?.length ? userInput : [{ type: 'text', text: prompt, text_elements: [] }],
-          additionalContext: nativeAdditionalContext(additionalContext),
-          cwd: runtimeCwd,
-          approvalPolicy: 'on-request',
-          approvalsReviewer: 'user',
-          sandboxPolicy: sandboxPolicy(sandbox, runtimeCwd),
-          collaborationMode: nativeCollaborationMode(mode, profile),
-          summary: 'concise'
-        });
-        turnId = started.turn?.id;
-        if (!turnId) throw taggedError('app_server_turn_missing', 'app_server_turn_failed');
-      }
-      function request(method, params) {
-        const id = ++requestId;
-        return new Promise((resolveRequest, rejectRequest) => {
-          pending.set(id, { resolve: resolveRequest, reject: rejectRequest });
-          write({ method, id, params });
-        });
-      }
-      function notify(method, params) {
-        write(params === undefined ? { method } : { method, params });
-      }
-      function write(message) {
-        if (!child.stdin?.writable)
-          throw taggedError(
-            'app_server_stdin_closed',
-            turnStarted ? 'app_server_turn_failed' : 'app_server_start_failed'
-          );
-        child.stdin.write(`${JSON.stringify(message)}\n`);
-      }
-      function consume(line) {
-        let message;
-        try {
-          message = JSON.parse(line);
-        } catch {
-          return;
-        }
-        if (message.id !== undefined && !message.method) {
-          const target = pending.get(message.id);
-          if (!target) return;
-          pending.delete(message.id);
-          if (message.error)
-            target.reject(
-              taggedError(
-                message.error.message || 'app_server_rpc_error',
-                turnStarted ? 'app_server_turn_failed' : 'app_server_start_failed'
-              )
-            );
-          else target.resolve(message.result);
-          return;
-        }
-        if (message.id !== undefined && message.method) {
-          void answerServerRequest(message).catch((error) => {
-            if (!settled) finish(error);
-          });
-          return;
-        }
-        const mapped = mapNotification(message, deltaItems);
-        if (mapped) onEvent?.(mapped);
-        if (message.method === 'turn/completed' && (!turnId || message.params?.turn?.id === turnId)) {
-          const status = message.params?.turn?.status;
-          if (status !== 'completed')
-            return finish(
-              taggedError(message.params?.turn?.error?.message || `app_server_turn_${status}`, 'app_server_turn_failed')
-            );
-          finish(null, {
-            ok: true,
-            code: 0,
-            stdout: '',
-            stderr,
-            thread_id: threadId,
-            turn_id: turnId,
-            transport: 'app-server'
-          });
-        }
-      }
-      async function answerServerRequest(message) {
-        try {
-          if (message.method === 'item/tool/requestUserInput') {
-            const result = await onUserInput?.(message.params || {});
-            if (!result || typeof result.answers !== 'object')
-              throw taggedError('request_user_input_unhandled', 'app_server_turn_failed');
-            write({ id: message.id, result: { answers: result.answers } });
-            return;
-          }
-          if (message.method === 'item/tool/call') {
-            const result = await onDynamicTool?.(message.params || {});
-            write({ id: message.id, result: dynamicToolResponse(result) });
-            return;
-          }
-          const approval = approvalRequest(message),
-            approved = approval ? await onApproval?.(approval) : false;
-          write({
-            id: message.id,
-            result: approvalResponse(message.method, approved === true || approved?.approved === true, message.params)
-          });
-        } catch (error) {
-          if (settled) return;
-          if (message.method === 'item/tool/requestUserInput') {
-            finish(error);
-            return;
-          }
-          if (message.method === 'item/tool/call') {
-            write({ id: message.id, result: dynamicToolResponse({ success: false, message: publicToolError(error) }) });
-            return;
-          }
-          write({ id: message.id, result: approvalResponse(message.method, false, message.params) });
-        }
-      }
-      function finish(error, result) {
-        if (settled) return;
-        settled = true;
-        clearTimeout(timer);
-        signal?.removeEventListener('abort', abort);
-        for (const item of pending.values())
-          item.reject(error || taggedError('app_server_closed', 'app_server_turn_failed'));
-        pending.clear();
-        if (child.exitCode === null) child.kill();
-        error ? reject(error) : resolve(result);
-      }
+    return await runAppServerSession({
+      profile,
+      prompt,
+      userInput,
+      additionalContext,
+      dynamicTools,
+      cwd,
+      resumeId,
+      sandbox,
+      mode,
+      onEvent,
+      onApproval,
+      onUserInput,
+      onDynamicTool,
+      signal,
+      spawnProcess,
+      invocation
     });
   } finally {
     await mcpAccess?.release();
   }
+}
+
+function runAppServerSession(options) {
+  return new Promise((resolve, reject) => startAppServerTransport(options, resolve, reject));
+}
+
+function startAppServerTransport(options, resolve, reject) {
+  let child;
+  try {
+    child = spawnAppServerProcess(options.invocation, options.cwd, options.spawnProcess);
+  } catch (error) {
+    reject(taggedError(error.message, 'app_server_start_failed'));
+    return;
+  }
+  const context = createAppServerContext(options, child, resolve, reject);
+  attachAppServerListeners(context);
+  startAppServerTurn(context).catch((error) => finishAppServerSession(context, error));
+}
+
+function spawnAppServerProcess(invocation, cwd, spawnProcess) {
+  return invocation.runtime === 'docker'
+    ? spawnContainerProcess(invocation, { cwd, env: invocation.env, spawnProcess })
+    : spawnProcess(invocation.command, invocation.args, {
+        cwd,
+        env: invocation.env,
+        shell: false,
+        windowsHide: true
+      });
+}
+
+function createAppServerContext(options, child, resolve, reject) {
+  const context = {
+    ...options,
+    child,
+    resolve,
+    reject,
+    buffer: '',
+    stderr: '',
+    settled: false,
+    requestId: 0,
+    threadId: options.resumeId || null,
+    turnId: null,
+    turnStarted: false,
+    pending: new Map(),
+    deltaItems: new Set(),
+    timer: null,
+    abort: null
+  };
+  context.timer = setTimeout(
+    () => finishAppServerSession(context, taggedError('codex_app_server_timeout', appServerFailureCode(context))),
+    resolveCodexTimeoutMs(options.profile.timeout_ms)
+  );
+  context.abort = () => {
+    if (context.threadId && context.turnId)
+      void appServerRequest(context, 'turn/interrupt', {
+        threadId: context.threadId,
+        turnId: context.turnId
+      }).catch(() => undefined);
+    child.kill();
+  };
+  return context;
+}
+
+function attachAppServerListeners(context) {
+  context.signal?.addEventListener('abort', context.abort, { once: true });
+  context.child.stdout.on('data', (chunk) => consumeAppServerChunk(context, chunk));
+  context.child.stderr.on('data', (chunk) => {
+    context.stderr = (context.stderr + redactKnownSecretsSync(chunk)).slice(-16000);
+  });
+  context.child.on('error', (error) =>
+    finishAppServerSession(context, taggedError(error.message, appServerFailureCode(context)))
+  );
+  context.child.on('close', (code) => {
+    if (!context.settled)
+      finishAppServerSession(
+        context,
+        taggedError(context.stderr || `codex_app_server_exit_${code}`, appServerFailureCode(context))
+      );
+  });
+}
+
+function consumeAppServerChunk(context, chunk) {
+  context.buffer += chunk.toString();
+  const lines = context.buffer.split(/\r?\n/);
+  context.buffer = lines.pop() || '';
+  for (const line of lines) consumeAppServerLine(context, line);
+}
+
+async function startAppServerTurn(context) {
+  await appServerRequest(context, 'initialize', {
+    clientInfo: { name: 'aiws', title: 'AI Workspace', version: AIWS_VERSION },
+    capabilities: { experimentalApi: true, requestAttestation: false }
+  });
+  appServerNotify(context, 'initialized');
+  await assertNativePlanAvailable(context);
+  const runtimeCwd = context.invocation.cwd || context.cwd;
+  const threadOptions = {
+    cwd: runtimeCwd,
+    approvalPolicy: 'on-request',
+    approvalsReviewer: 'user',
+    sandbox: context.sandbox,
+    dynamicTools: context.dynamicTools
+  };
+  const thread = await openAppServerThread(context, threadOptions);
+  context.threadId = thread.thread?.id || context.resumeId;
+  if (!context.threadId) throw taggedError('app_server_thread_missing', 'app_server_start_failed');
+  context.onEvent?.({ type: 'thread.started', thread_id: context.threadId });
+  context.turnStarted = true;
+  const started = await appServerRequest(context, 'turn/start', {
+    threadId: context.threadId,
+    input: context.userInput?.length ? context.userInput : [{ type: 'text', text: context.prompt, text_elements: [] }],
+    additionalContext: nativeAdditionalContext(context.additionalContext),
+    cwd: runtimeCwd,
+    approvalPolicy: 'on-request',
+    approvalsReviewer: 'user',
+    sandboxPolicy: sandboxPolicy(context.sandbox, runtimeCwd),
+    collaborationMode: nativeCollaborationMode(context.mode, context.profile),
+    summary: 'concise'
+  });
+  context.turnId = started.turn?.id;
+  if (!context.turnId) throw taggedError('app_server_turn_missing', 'app_server_turn_failed');
+}
+
+async function assertNativePlanAvailable(context) {
+  if (context.mode !== 'plan') return;
+  let available;
+  try {
+    available = await appServerRequest(context, 'collaborationMode/list', {});
+  } catch {
+    throw taggedError('codex_native_plan_unavailable', 'native_plan_unavailable');
+  }
+  if (!available?.data?.some((item) => item?.mode === 'plan'))
+    throw taggedError('codex_native_plan_unavailable', 'native_plan_unavailable');
+}
+
+async function openAppServerThread(context, threadOptions) {
+  if (!context.resumeId)
+    return appServerRequest(context, 'thread/start', {
+      model: context.profile.model || null,
+      ...threadOptions,
+      ephemeral: false
+    });
+  try {
+    return await appServerRequest(context, 'thread/resume', {
+      threadId: context.resumeId,
+      ...threadOptions
+    });
+  } catch (error) {
+    if (!isCodexThreadUnavailable(error)) throw error;
+    const thread = await appServerRequest(context, 'thread/start', {
+      model: context.profile.model || null,
+      ...threadOptions,
+      ephemeral: false
+    });
+    context.onEvent?.({ type: 'thread.recreated' });
+    return thread;
+  }
+}
+
+function appServerRequest(context, method, params) {
+  const id = ++context.requestId;
+  return new Promise((resolve, reject) => {
+    context.pending.set(id, { resolve, reject });
+    writeAppServerMessage(context, { method, id, params });
+  });
+}
+
+function appServerNotify(context, method, params) {
+  writeAppServerMessage(context, params === undefined ? { method } : { method, params });
+}
+
+function writeAppServerMessage(context, message) {
+  if (!context.child.stdin?.writable) throw taggedError('app_server_stdin_closed', appServerFailureCode(context));
+  context.child.stdin.write(`${JSON.stringify(message)}\n`);
+}
+
+function consumeAppServerLine(context, line) {
+  let message;
+  try {
+    message = JSON.parse(line);
+  } catch {
+    return;
+  }
+  if (message.id !== undefined && !message.method) return resolveAppServerResponse(context, message);
+  if (message.id !== undefined && message.method) {
+    void answerAppServerRequest(context, message).catch((error) => {
+      if (!context.settled) finishAppServerSession(context, error);
+    });
+    return;
+  }
+  const mapped = mapNotification(message, context.deltaItems);
+  if (mapped) context.onEvent?.(mapped);
+  if (message.method === 'turn/completed' && (!context.turnId || message.params?.turn?.id === context.turnId))
+    completeAppServerTurn(context, message.params?.turn);
+}
+
+function resolveAppServerResponse(context, message) {
+  const target = context.pending.get(message.id);
+  if (!target) return;
+  context.pending.delete(message.id);
+  if (message.error)
+    target.reject(taggedError(message.error.message || 'app_server_rpc_error', appServerFailureCode(context)));
+  else target.resolve(message.result);
+}
+
+function completeAppServerTurn(context, turn) {
+  const status = turn?.status;
+  if (status !== 'completed') {
+    finishAppServerSession(
+      context,
+      taggedError(turn?.error?.message || `app_server_turn_${status}`, 'app_server_turn_failed')
+    );
+    return;
+  }
+  finishAppServerSession(context, null, {
+    ok: true,
+    code: 0,
+    stdout: '',
+    stderr: context.stderr,
+    thread_id: context.threadId,
+    turn_id: context.turnId,
+    transport: 'app-server'
+  });
+}
+
+async function answerAppServerRequest(context, message) {
+  try {
+    if (message.method === 'item/tool/requestUserInput') return await answerAppServerUserInput(context, message);
+    if (message.method === 'item/tool/call') return await answerAppServerDynamicTool(context, message);
+    const approval = approvalRequest(message);
+    const approved = approval ? await context.onApproval?.(approval) : false;
+    writeAppServerMessage(context, {
+      id: message.id,
+      result: approvalResponse(message.method, approved === true || approved?.approved === true, message.params)
+    });
+  } catch (error) {
+    handleAppServerRequestError(context, message, error);
+  }
+}
+
+async function answerAppServerUserInput(context, message) {
+  const result = await context.onUserInput?.(message.params || {});
+  if (!result || typeof result.answers !== 'object')
+    throw taggedError('request_user_input_unhandled', 'app_server_turn_failed');
+  writeAppServerMessage(context, { id: message.id, result: { answers: result.answers } });
+}
+
+async function answerAppServerDynamicTool(context, message) {
+  const result = await context.onDynamicTool?.(message.params || {});
+  writeAppServerMessage(context, { id: message.id, result: dynamicToolResponse(result) });
+}
+
+function handleAppServerRequestError(context, message, error) {
+  if (context.settled) return;
+  if (message.method === 'item/tool/requestUserInput') {
+    finishAppServerSession(context, error);
+    return;
+  }
+  const result =
+    message.method === 'item/tool/call'
+      ? dynamicToolResponse({ success: false, message: publicToolError(error) })
+      : approvalResponse(message.method, false, message.params);
+  writeAppServerMessage(context, { id: message.id, result });
+}
+
+function finishAppServerSession(context, error, result) {
+  if (context.settled) return;
+  context.settled = true;
+  clearTimeout(context.timer);
+  context.signal?.removeEventListener('abort', context.abort);
+  for (const item of context.pending.values())
+    item.reject(error || taggedError('app_server_closed', 'app_server_turn_failed'));
+  context.pending.clear();
+  if (context.child.exitCode === null) context.child.kill();
+  error ? context.reject(error) : context.resolve(result);
+}
+
+function appServerFailureCode(context) {
+  return context.turnStarted ? 'app_server_turn_failed' : 'app_server_start_failed';
 }
 
 export async function runCodexAppServerRpc(options) {

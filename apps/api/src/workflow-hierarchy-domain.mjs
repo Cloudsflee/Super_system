@@ -237,30 +237,9 @@ function normalizeNode(raw = {}, index, idFactory, strict) {
     throw validationError('workflow_node_role_invalid', { role: raw.role || null, node_id: raw.id || null });
   const role = ROLE_SET.has(raw.role) ? raw.role : raw.parent_node_id ? 'task' : 'workstream';
   const nodeId = clean(raw.id, 120) || idFactory(role === 'workstream' ? 'wfs' : 'tsk');
-  if (strict && role === 'workstream' && !CATEGORY_SET.has(raw.category))
-    throw validationError('workflow_workstream_category_invalid', { node_id: nodeId, category: raw.category || null });
-  if (strict && role === 'task' && !TASK_KIND_SET.has(raw.task_kind || raw.kind))
-    throw validationError('workflow_task_kind_invalid', {
-      node_id: nodeId,
-      task_kind: raw.task_kind || raw.kind || null
-    });
-  if (strict && role === 'task' && !EXECUTION_MODE_SET.has(raw.execution_mode))
-    throw validationError('workflow_task_execution_mode_invalid', {
-      node_id: nodeId,
-      execution_mode: raw.execution_mode || null
-    });
-  const taskKind =
-    role === 'task' && TASK_KIND_SET.has(raw.task_kind || raw.kind)
-      ? raw.task_kind || raw.kind
-      : role === 'task'
-        ? inferTaskKind(raw.type)
-        : null;
-  const category =
-    role === 'workstream' && CATEGORY_SET.has(raw.category)
-      ? raw.category
-      : role === 'workstream'
-        ? 'deliverable'
-        : null;
+  assertStrictNodeFields(raw, role, nodeId, strict);
+  const taskKind = normalizeTaskKind(raw, role);
+  const category = normalizeWorkstreamCategory(raw, role);
   const title = required(raw.title || raw.label, 'workflow_node_title_required', 160);
   const { tasks: _tasks, children: _children, ...record } = raw;
   return {
@@ -276,21 +255,63 @@ function normalizeNode(raw = {}, index, idFactory, strict) {
     execution_mode: EXECUTION_MODE_SET.has(raw.execution_mode) ? raw.execution_mode : defaultExecutionMode(taskKind),
     boundary: role === 'workstream' ? normalizeBoundary(raw.boundary) : null,
     acceptance_criteria: uniqueStrings(raw.acceptance_criteria).slice(0, 50),
-    capability_tags: role === 'task' ? uniqueStrings(raw.capability_tags).slice(0, 20) : [],
-    input_slots: role === 'task' && Array.isArray(raw.input_slots) ? structuredClone(raw.input_slots).slice(0, 50) : [],
-    output_slots:
-      role === 'task' && Array.isArray(raw.output_slots) ? structuredClone(raw.output_slots).slice(0, 50) : [],
+    capability_tags: taskCapabilityTags(raw, role),
+    input_slots: taskSlots(raw.input_slots, role),
+    output_slots: taskSlots(raw.output_slots, role),
     atomic_justification: role === 'task' ? clean(raw.atomic_justification, 2000) || null : null,
     dependency_ids: dependencyIds(raw),
-    repository_intent:
-      raw.repository_intent && typeof raw.repository_intent === 'object'
-        ? structuredClone(raw.repository_intent)
-        : null,
+    repository_intent: normalizeNodeRepositoryIntent(raw.repository_intent),
     position: validPosition(raw.position, index),
-    order_index: Number.isInteger(raw.order_index) ? raw.order_index : Number.isInteger(raw.order) ? raw.order : index,
+    order_index: normalizedOrderIndex(raw, index),
     plan_revision: role === 'workstream' ? Math.max(1, Number(raw.plan_revision) || 1) : null,
     type: role === 'task' ? legacyNodeTypeForTaskKind(taskKind) : 'execution'
   };
+}
+
+function assertStrictNodeFields(raw, role, nodeId, strict) {
+  if (!strict) return;
+  if (role === 'workstream' && !CATEGORY_SET.has(raw.category))
+    throw validationError('workflow_workstream_category_invalid', {
+      node_id: nodeId,
+      category: raw.category || null
+    });
+  if (role === 'task' && !TASK_KIND_SET.has(raw.task_kind || raw.kind))
+    throw validationError('workflow_task_kind_invalid', {
+      node_id: nodeId,
+      task_kind: raw.task_kind || raw.kind || null
+    });
+  if (role === 'task' && !EXECUTION_MODE_SET.has(raw.execution_mode))
+    throw validationError('workflow_task_execution_mode_invalid', {
+      node_id: nodeId,
+      execution_mode: raw.execution_mode || null
+    });
+}
+
+function normalizeTaskKind(raw, role) {
+  if (role !== 'task') return null;
+  return TASK_KIND_SET.has(raw.task_kind || raw.kind) ? raw.task_kind || raw.kind : inferTaskKind(raw.type);
+}
+
+function normalizeWorkstreamCategory(raw, role) {
+  if (role !== 'workstream') return null;
+  return CATEGORY_SET.has(raw.category) ? raw.category : 'deliverable';
+}
+
+function taskCapabilityTags(raw, role) {
+  return role === 'task' ? uniqueStrings(raw.capability_tags).slice(0, 20) : [];
+}
+
+function taskSlots(value, role) {
+  return role === 'task' && Array.isArray(value) ? structuredClone(value).slice(0, 50) : [];
+}
+
+function normalizeNodeRepositoryIntent(value) {
+  return value && typeof value === 'object' ? structuredClone(value) : null;
+}
+
+function normalizedOrderIndex(raw, index) {
+  if (Number.isInteger(raw.order_index)) return raw.order_index;
+  return Number.isInteger(raw.order) ? raw.order : index;
 }
 
 function validateWorkstream(node) {

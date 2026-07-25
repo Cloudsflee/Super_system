@@ -308,143 +308,8 @@ function applyCandidate(state, workflow, candidate, actorId) {
     [...existing.keys()].filter((nodeId) => !retainedIds.has(nodeId)),
     'workflow_node_removed'
   );
-  const finalNodes = candidate.map((source) => {
-    let node = existing.get(source.id);
-    if (!node) {
-      node = {
-        id: source.id,
-        workflow_id: workflow.id,
-        workspace_id: null,
-        type: source.type,
-        title: source.title,
-        goal: source.goal,
-        role: source.role,
-        parent_node_id: source.parent_node_id,
-        outcome: source.outcome,
-        category: source.category,
-        task_kind: source.task_kind,
-        execution_mode: source.execution_mode,
-        boundary: source.boundary,
-        acceptance_criteria: source.acceptance_criteria,
-        required: source.required !== false,
-        repository_intent: source.repository_intent || null,
-        capability_tags: source.capability_tags || [],
-        input_slots: source.input_slots || [],
-        output_slots: source.output_slots || [],
-        atomic_justification: source.atomic_justification || null,
-        repository_target_ids: source.repository_target_ids || [],
-        plan_revision: source.role === 'workstream' ? Number(source.plan_revision || 1) : null,
-        status: source.status || 'ready',
-        execution_revision: Number(source.execution_revision || 1),
-        order_index: source.order_index,
-        dependencies: [],
-        current_contract_id: null,
-        template_outputs: [],
-        position: source.position,
-        legacy_read_only: false,
-        created_at: now(),
-        updated_at: now()
-      };
-      const workspace = createNodeWorkspace(project, node, actorId),
-        contract = defaultContractForNode(node, project, actorId, 'confirmed');
-      workspace.type = source.role;
-      if (source.role === 'task') {
-        const parentWorkspaceId = workspaceIdByNodeId.get(source.parent_node_id);
-        if (!parentWorkspaceId)
-          throw new HttpError(409, {
-            error: 'workflow_task_parent_workspace_missing',
-            node_id: source.id,
-            parent_node_id: source.parent_node_id
-          });
-        workspace.parent_workspace_id = parentWorkspaceId;
-      }
-      if (source.acceptance_criteria?.length) contract.acceptance_criteria = [...source.acceptance_criteria];
-      if (source.role === 'task') {
-        contract.expected_inputs = structuredClone(source.input_slots || []);
-        contract.expected_outputs = structuredClone(source.output_slots || []);
-      }
-      if (source.role === 'workstream') {
-        contract.node_goal = source.outcome;
-        contract.expected_outputs = [{ label: source.outcome, required: true }];
-        contract.boundary = structuredClone(source.boundary || {});
-      }
-      node.workspace_id = workspace.id;
-      node.current_contract_id = contract.id;
-      state.workspaces.push(workspace);
-      state.node_contracts.push(contract);
-      workspaceIdByNodeId.set(node.id, workspace.id);
-    } else {
-      const typeChanged = node.type !== source.type,
-        goalChanged = node.goal !== source.goal;
-      const contractChanged =
-        typeChanged ||
-        goalChanged ||
-        Number(source.execution_revision || 1) > Number(node.execution_revision || 1) ||
-        JSON.stringify(node.dependencies || []) !==
-          JSON.stringify(source.dependency_ids.map((nodeId) => ({ node_id: nodeId, type: 'finish_to_start' }))) ||
-        JSON.stringify(node.input_slots || []) !== JSON.stringify(source.input_slots || []) ||
-        JSON.stringify(node.output_slots || []) !== JSON.stringify(source.output_slots || []) ||
-        JSON.stringify(node.acceptance_criteria || []) !== JSON.stringify(source.acceptance_criteria || []);
-      Object.assign(node, {
-        type: source.type,
-        title: source.title,
-        goal: source.goal,
-        order_index: source.order_index,
-        role: source.role,
-        parent_node_id: source.parent_node_id,
-        outcome: source.outcome,
-        category: source.category,
-        task_kind: source.task_kind,
-        execution_mode: source.execution_mode,
-        boundary: source.boundary,
-        acceptance_criteria: source.acceptance_criteria,
-        required: source.required !== false,
-        repository_intent: source.repository_intent || null,
-        capability_tags: source.capability_tags || [],
-        input_slots: source.input_slots || [],
-        output_slots: source.output_slots || [],
-        atomic_justification: source.atomic_justification || null,
-        repository_target_ids: source.repository_target_ids || node.repository_target_ids || [],
-        plan_revision: source.role === 'workstream' ? Number(source.plan_revision || node.plan_revision || 1) : null,
-        position: source.position,
-        dependencies: source.dependency_ids.map((nodeId) => ({ node_id: nodeId, type: 'finish_to_start' })),
-        updated_at: now()
-      });
-      if (Number(source.execution_revision || 1) > Number(node.execution_revision || 1))
-        Object.assign(node, {
-          status: source.status || 'ready',
-          execution_revision: Number(source.execution_revision),
-          reopened_from_revision: source.reopened_from_revision || Number(node.execution_revision || 1),
-          reopen_reason: source.reopen_reason || null,
-          latest_submission_id: null,
-          reviewed_at: null,
-          reviewed_by_user_id: null
-        });
-      if (contractChanged) refreshContract(state, project, node, actorId, typeChanged);
-      const workspace = state.workspaces.find(
-        (item) => item.id === node.workspace_id || item.workflow_node_id === node.id
-      );
-      if (workspace) {
-        const parentWorkspaceId =
-          node.role === 'task' ? workspaceIdByNodeId.get(node.parent_node_id) : project.current_workspace_id;
-        if (node.role === 'task' && !parentWorkspaceId)
-          throw new HttpError(409, {
-            error: 'workflow_task_parent_workspace_missing',
-            node_id: node.id,
-            parent_node_id: node.parent_node_id
-          });
-        Object.assign(workspace, {
-          title: node.title,
-          goal: node.goal,
-          ...(node.role ? { type: node.role, parent_workspace_id: parentWorkspaceId } : {}),
-          updated_at: now()
-        });
-        workspaceIdByNodeId.set(node.id, workspace.id);
-      }
-    }
-    node.dependencies = source.dependency_ids.map((nodeId) => ({ node_id: nodeId, type: 'finish_to_start' }));
-    return node;
-  });
+  const context = { state, workflow, project, actorId, existing, workspaceIdByNodeId };
+  const finalNodes = candidate.map((source) => applyCandidateNode(source, context));
   for (const task of finalNodes.filter((node) => node.role === 'task' && !existing.has(node.id))) {
     task.status = task.dependencies.every(
       (dependency) => finalNodes.find((node) => node.id === dependency.node_id)?.status === 'completed'
@@ -466,6 +331,179 @@ function applyCandidate(state, workflow, candidate, actorId) {
     }
   }
   state.workflow_nodes = [...state.workflow_nodes.filter((item) => item.workflow_id !== workflow.id), ...finalNodes];
+}
+
+function applyCandidateNode(source, context) {
+  const existing = context.existing.get(source.id);
+  const node = existing ? updateCandidateNode(existing, source, context) : createCandidateNode(source, context);
+  node.dependencies = candidateDependencies(source);
+  return node;
+}
+
+function createCandidateNode(source, context) {
+  const node = newCandidateNode(source, context.workflow.id);
+  const workspace = createNodeWorkspace(context.project, node, context.actorId);
+  const contract = defaultContractForNode(node, context.project, context.actorId, 'confirmed');
+  configureNewCandidateWorkspace(workspace, source, context.workspaceIdByNodeId);
+  configureNewCandidateContract(contract, source);
+  node.workspace_id = workspace.id;
+  node.current_contract_id = contract.id;
+  context.state.workspaces.push(workspace);
+  context.state.node_contracts.push(contract);
+  context.workspaceIdByNodeId.set(node.id, workspace.id);
+  return node;
+}
+
+function newCandidateNode(source, workflowId) {
+  return {
+    id: source.id,
+    workflow_id: workflowId,
+    workspace_id: null,
+    type: source.type,
+    title: source.title,
+    goal: source.goal,
+    role: source.role,
+    parent_node_id: source.parent_node_id,
+    outcome: source.outcome,
+    category: source.category,
+    task_kind: source.task_kind,
+    execution_mode: source.execution_mode,
+    boundary: source.boundary,
+    acceptance_criteria: source.acceptance_criteria,
+    required: source.required !== false,
+    repository_intent: source.repository_intent || null,
+    capability_tags: source.capability_tags || [],
+    input_slots: source.input_slots || [],
+    output_slots: source.output_slots || [],
+    atomic_justification: source.atomic_justification || null,
+    repository_target_ids: source.repository_target_ids || [],
+    plan_revision: source.role === 'workstream' ? Number(source.plan_revision || 1) : null,
+    status: source.status || 'ready',
+    execution_revision: Number(source.execution_revision || 1),
+    order_index: source.order_index,
+    dependencies: [],
+    current_contract_id: null,
+    template_outputs: [],
+    position: source.position,
+    legacy_read_only: false,
+    created_at: now(),
+    updated_at: now()
+  };
+}
+
+function configureNewCandidateWorkspace(workspace, source, workspaceIdByNodeId) {
+  workspace.type = source.role;
+  if (source.role !== 'task') return;
+  const parentWorkspaceId = workspaceIdByNodeId.get(source.parent_node_id);
+  if (!parentWorkspaceId)
+    throw new HttpError(409, {
+      error: 'workflow_task_parent_workspace_missing',
+      node_id: source.id,
+      parent_node_id: source.parent_node_id
+    });
+  workspace.parent_workspace_id = parentWorkspaceId;
+}
+
+function configureNewCandidateContract(contract, source) {
+  if (source.acceptance_criteria?.length) contract.acceptance_criteria = [...source.acceptance_criteria];
+  if (source.role === 'task') {
+    contract.expected_inputs = structuredClone(source.input_slots || []);
+    contract.expected_outputs = structuredClone(source.output_slots || []);
+  }
+  if (source.role === 'workstream') {
+    contract.node_goal = source.outcome;
+    contract.expected_outputs = [{ label: source.outcome, required: true }];
+    contract.boundary = structuredClone(source.boundary || {});
+  }
+}
+
+function updateCandidateNode(node, source, context) {
+  const typeChanged = node.type !== source.type;
+  const contractChanged = candidateContractChanged(node, source, typeChanged);
+  Object.assign(node, candidateNodePatch(node, source));
+  reopenCandidateNode(node, source);
+  if (contractChanged) refreshContract(context.state, context.project, node, context.actorId, typeChanged);
+  updateCandidateWorkspace(node, context);
+  return node;
+}
+
+function candidateContractChanged(node, source, typeChanged) {
+  return (
+    typeChanged ||
+    node.goal !== source.goal ||
+    Number(source.execution_revision || 1) > Number(node.execution_revision || 1) ||
+    JSON.stringify(node.dependencies || []) !== JSON.stringify(candidateDependencies(source)) ||
+    JSON.stringify(node.input_slots || []) !== JSON.stringify(source.input_slots || []) ||
+    JSON.stringify(node.output_slots || []) !== JSON.stringify(source.output_slots || []) ||
+    JSON.stringify(node.acceptance_criteria || []) !== JSON.stringify(source.acceptance_criteria || [])
+  );
+}
+
+function candidateNodePatch(node, source) {
+  return {
+    type: source.type,
+    title: source.title,
+    goal: source.goal,
+    order_index: source.order_index,
+    role: source.role,
+    parent_node_id: source.parent_node_id,
+    outcome: source.outcome,
+    category: source.category,
+    task_kind: source.task_kind,
+    execution_mode: source.execution_mode,
+    boundary: source.boundary,
+    acceptance_criteria: source.acceptance_criteria,
+    required: source.required !== false,
+    repository_intent: source.repository_intent || null,
+    capability_tags: source.capability_tags || [],
+    input_slots: source.input_slots || [],
+    output_slots: source.output_slots || [],
+    atomic_justification: source.atomic_justification || null,
+    repository_target_ids: source.repository_target_ids || node.repository_target_ids || [],
+    plan_revision: source.role === 'workstream' ? Number(source.plan_revision || node.plan_revision || 1) : null,
+    position: source.position,
+    dependencies: candidateDependencies(source),
+    updated_at: now()
+  };
+}
+
+function reopenCandidateNode(node, source) {
+  if (Number(source.execution_revision || 1) <= Number(node.execution_revision || 1)) return;
+  Object.assign(node, {
+    status: source.status || 'ready',
+    execution_revision: Number(source.execution_revision),
+    reopened_from_revision: source.reopened_from_revision || Number(node.execution_revision || 1),
+    reopen_reason: source.reopen_reason || null,
+    latest_submission_id: null,
+    reviewed_at: null,
+    reviewed_by_user_id: null
+  });
+}
+
+function updateCandidateWorkspace(node, context) {
+  const workspace = context.state.workspaces.find(
+    (item) => item.id === node.workspace_id || item.workflow_node_id === node.id
+  );
+  if (!workspace) return;
+  const parentWorkspaceId =
+    node.role === 'task' ? context.workspaceIdByNodeId.get(node.parent_node_id) : context.project.current_workspace_id;
+  if (node.role === 'task' && !parentWorkspaceId)
+    throw new HttpError(409, {
+      error: 'workflow_task_parent_workspace_missing',
+      node_id: node.id,
+      parent_node_id: node.parent_node_id
+    });
+  Object.assign(workspace, {
+    title: node.title,
+    goal: node.goal,
+    ...(node.role ? { type: node.role, parent_workspace_id: parentWorkspaceId } : {}),
+    updated_at: now()
+  });
+  context.workspaceIdByNodeId.set(node.id, workspace.id);
+}
+
+function candidateDependencies(source) {
+  return source.dependency_ids.map((nodeId) => ({ node_id: nodeId, type: 'finish_to_start' }));
 }
 
 function refreshContract(state, project, node, actorId, reset) {

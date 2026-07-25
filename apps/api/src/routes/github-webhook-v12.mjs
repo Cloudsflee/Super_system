@@ -91,16 +91,7 @@ function applyEvent(state, event, payload, deliveryId = null) {
 }
 
 function applyRepositoryLineEvent(state, event, payload) {
-  const repositoryId = String(payload.repository?.id || ''),
-    fullName = String(payload.repository?.full_name || '');
-  const connectionIds = new Set(
-    state.repository_connections
-      .filter(
-        (item) =>
-          (repositoryId && String(item.repository_id) === repositoryId) || (fullName && item.full_name === fullName)
-      )
-      .map((item) => item.id)
-  );
+  const connectionIds = new Set(matchingRepositoryConnections(state, payload).map((item) => item.id));
   if (!connectionIds.size) return;
   const branch = String(payload.pull_request?.head?.ref || payload.ref || '').replace(/^refs\/heads\//, ''),
     sha = String(payload.check_run?.head_sha || payload.check_suite?.head_sha || payload.sha || payload.after || '');
@@ -109,54 +100,57 @@ function applyRepositoryLineEvent(state, event, payload) {
       connectionIds.has(item.connection_id) && (branch ? item.branch === branch : sha ? item.head_sha === sha : false)
   );
   for (const line of lines) {
-    if (event === 'pull_request')
-      Object.assign(line, {
-        pr_number: payload.pull_request?.number || line.pr_number,
-        pr_url: payload.pull_request?.html_url || line.pr_url,
-        pr_state: payload.pull_request?.merged ? 'merged' : payload.pull_request?.state,
-        merged_sha: payload.pull_request?.merged ? payload.pull_request?.merge_commit_sha || null : line.merged_sha,
-        status: payload.pull_request?.merged ? 'merged' : 'integrating'
-      });
-    if (event === 'pull_request_review' && payload.review?.state)
-      line.reviews = [
-        ...(line.reviews || []).filter((item) => item.id !== payload.review.id),
-        {
-          id: payload.review.id,
-          state: payload.review.state,
-          user_id: payload.review.user?.id || null,
-          submitted_at: payload.review.submitted_at || now()
-        }
-      ];
-    if (event === 'check_run')
-      line.checks = [
-        ...(line.checks || []).filter((item) => item.id !== payload.check_run?.id),
-        {
-          id: payload.check_run?.id,
-          name: payload.check_run?.name,
-          status: payload.check_run?.status,
-          conclusion: payload.check_run?.conclusion
-        }
-      ];
-    if (event === 'check_suite')
-      line.check_suites = [
-        ...(line.check_suites || []).filter((item) => item.id !== payload.check_suite?.id),
-        {
-          id: payload.check_suite?.id,
-          status: payload.check_suite?.status,
-          conclusion: payload.check_suite?.conclusion
-        }
-      ];
+    updateRepositoryLine(line, event, payload);
     line.updated_at = now();
     reconcileWorkflowExecutionInState(state, line.workflow_execution_id);
   }
 }
 
+function updateRepositoryLine(line, event, payload) {
+  if (event === 'pull_request') updateRepositoryLinePullRequest(line, payload.pull_request);
+  if (event === 'pull_request_review' && payload.review?.state) updateRepositoryLineReview(line, payload.review);
+  if (event === 'check_run') updateRepositoryLineCheckRun(line, payload.check_run);
+  if (event === 'check_suite') updateRepositoryLineCheckSuite(line, payload.check_suite);
+}
+
+function updateRepositoryLinePullRequest(line, pullRequest) {
+  Object.assign(line, {
+    pr_number: pullRequest?.number || line.pr_number,
+    pr_url: pullRequest?.html_url || line.pr_url,
+    pr_state: pullRequest?.merged ? 'merged' : pullRequest?.state,
+    merged_sha: pullRequest?.merged ? pullRequest?.merge_commit_sha || null : line.merged_sha,
+    status: pullRequest?.merged ? 'merged' : 'integrating'
+  });
+}
+
+function updateRepositoryLineReview(line, review) {
+  line.reviews = [
+    ...(line.reviews || []).filter((item) => item.id !== review.id),
+    {
+      id: review.id,
+      state: review.state,
+      user_id: review.user?.id || null,
+      submitted_at: review.submitted_at || now()
+    }
+  ];
+}
+
+function updateRepositoryLineCheckRun(line, checkRun) {
+  line.checks = [
+    ...(line.checks || []).filter((item) => item.id !== checkRun?.id),
+    { id: checkRun?.id, name: checkRun?.name, status: checkRun?.status, conclusion: checkRun?.conclusion }
+  ];
+}
+
+function updateRepositoryLineCheckSuite(line, checkSuite) {
+  line.check_suites = [
+    ...(line.check_suites || []).filter((item) => item.id !== checkSuite?.id),
+    { id: checkSuite?.id, status: checkSuite?.status, conclusion: checkSuite?.conclusion }
+  ];
+}
+
 function applyRepositoryWorkspaceEvent(state, event, payload) {
-  const repositoryId = String(payload.repository?.id || ''),
-    fullName = String(payload.repository?.full_name || '');
-  const connections = state.repository_connections.filter(
-    (item) => (repositoryId && String(item.repository_id) === repositoryId) || (fullName && item.full_name === fullName)
-  );
+  const connections = matchingRepositoryConnections(state, payload);
   if (!connections.length) return;
   if (event === 'push') {
     const ref = String(payload.ref || '').replace(/^refs\/heads\//, '');
@@ -194,91 +188,113 @@ function removeBindings(state, installationId, repositoryIds = null) {
 }
 
 function applyDeliveryEvent(state, event, payload) {
-  const repositoryId = String(payload.repository?.id || ''),
-    fullName = String(payload.repository?.full_name || '');
-  const connections = state.repository_connections.filter(
-    (item) => (repositoryId && String(item.repository_id) === repositoryId) || (fullName && item.full_name === fullName)
-  );
+  const connections = matchingRepositoryConnections(state, payload);
   if (!connections.length) return;
   const connectionIds = new Set(connections.map((item) => item.id));
   const branch = String(payload.pull_request?.head?.ref || payload.ref || '').replace(/^refs\/heads\//, '');
   const sha = String(
     payload.check_run?.head_sha || payload.check_suite?.head_sha || payload.sha || payload.after || ''
   );
+  const deliveries = selectWebhookDeliveries(state, connectionIds, payload, branch, sha);
+  for (const delivery of deliveries) applyDeliveryWebhook(state, delivery, event, payload);
+}
+
+function matchingRepositoryConnections(state, payload) {
+  const repositoryId = String(payload.repository?.id || '');
+  const fullName = String(payload.repository?.full_name || '');
+  return state.repository_connections.filter(
+    (item) => (repositoryId && String(item.repository_id) === repositoryId) || (fullName && item.full_name === fullName)
+  );
+}
+
+function selectWebhookDeliveries(state, connectionIds, payload, branch, sha) {
   let deliveries = state.deliveries.filter((item) => connectionIds.has(item.connection_id));
   if (payload.pull_request?.number) {
     const exact = deliveries.filter((item) => Number(item.pr_number) === Number(payload.pull_request.number));
-    if (exact.length) deliveries = exact;
-    else {
-      const candidates = deliveries.filter(
-        (item) =>
-          !item.pr_number && Boolean(branch) && item.branch === branch && !['failed', 'cancelled'].includes(item.status)
-      );
-      deliveries = latestDelivery(candidates);
-    }
-  } else if (branch)
-    deliveries = latestDelivery(
+    if (exact.length) return exact;
+    const candidates = deliveries.filter(
+      (item) =>
+        !item.pr_number && Boolean(branch) && item.branch === branch && !['failed', 'cancelled'].includes(item.status)
+    );
+    return latestDelivery(candidates);
+  }
+  if (branch)
+    return latestDelivery(
       deliveries.filter((item) => item.branch === branch && !['failed', 'cancelled'].includes(item.status))
     );
-  else if (sha)
-    deliveries = latestDelivery(
+  if (sha)
+    return latestDelivery(
       deliveries.filter((item) => item.commit_sha === sha && !['failed', 'cancelled'].includes(item.status))
     );
-  for (const delivery of deliveries) {
-    const update = { event, action: payload.action || null, received_at: now() };
-    if (event === 'pull_request') {
-      Object.assign(delivery, {
-        pr_number: payload.pull_request.number,
-        pr_url: payload.pull_request.html_url || delivery.pr_url,
-        pr_state: payload.pull_request.merged ? 'merged' : payload.pull_request.state,
-        pr_draft: Boolean(payload.pull_request.draft)
-      });
-      update.pull_request = {
-        number: payload.pull_request.number,
-        state: delivery.pr_state,
-        draft: delivery.pr_draft,
-        merged: Boolean(payload.pull_request.merged)
-      };
-    } else if (event === 'pull_request_review') {
-      delivery.review_state = payload.review?.state || payload.action || null;
-      update.review_state = delivery.review_state;
-    } else if (event === 'check_run') {
-      delivery.check_run = {
-        id: payload.check_run?.id,
-        status: payload.check_run?.status,
-        conclusion: payload.check_run?.conclusion
-      };
-      update.check_run = delivery.check_run;
-    } else if (event === 'check_suite') {
-      delivery.check_suite = {
-        id: payload.check_suite?.id,
-        status: payload.check_suite?.status,
-        conclusion: payload.check_suite?.conclusion
-      };
-      update.check_suite = delivery.check_suite;
-    } else if (event === 'status') {
-      delivery.commit_status = { state: payload.state, context: payload.context, description: payload.description };
-      update.commit_status = delivery.commit_status;
-    } else if (event === 'push') {
-      delivery.remote_head_sha = payload.after || null;
-      update.remote_head_sha = delivery.remote_head_sha;
-    }
-    delivery.updated_at = now();
-    appendDeliveryWebhookEvent(state, delivery, update);
-    const task = state.workflow_nodes.find((item) => item.id === delivery.task_id);
-    if (task && (!task.latest_delivery_id || task.latest_delivery_id === delivery.id)) {
-      task.delivery_status = deliveryTaskStatus(event, delivery, payload) || task.delivery_status;
-      task.updated_at = now();
-    }
-    for (const session of state.assist_sessions.filter(
-      (item) =>
-        item.version === 3 &&
-        item.scope_type === 'task' &&
-        item.scope_id === delivery.task_id &&
-        item.scope_status === 'active'
-    ))
-      pushV3Event(state, session.id, null, 'delivery_webhook', { delivery_id: delivery.id, ...update });
+  return deliveries;
+}
+
+function applyDeliveryWebhook(state, delivery, event, payload) {
+  const update = { event, action: payload.action || null, received_at: now() };
+  updateDeliveryFromEvent(delivery, update, event, payload);
+  delivery.updated_at = now();
+  appendDeliveryWebhookEvent(state, delivery, update);
+  updateDeliveryTask(state, delivery, event, payload);
+  publishDeliveryWebhook(state, delivery, update);
+}
+
+function updateDeliveryFromEvent(delivery, update, event, payload) {
+  if (event === 'pull_request') updateDeliveryPullRequest(delivery, update, payload.pull_request);
+  else if (event === 'pull_request_review') {
+    delivery.review_state = payload.review?.state || payload.action || null;
+    update.review_state = delivery.review_state;
+  } else if (event === 'check_run') updateDeliveryCheckRun(delivery, update, payload.check_run);
+  else if (event === 'check_suite') updateDeliveryCheckSuite(delivery, update, payload.check_suite);
+  else if (event === 'status') {
+    delivery.commit_status = { state: payload.state, context: payload.context, description: payload.description };
+    update.commit_status = delivery.commit_status;
+  } else if (event === 'push') {
+    delivery.remote_head_sha = payload.after || null;
+    update.remote_head_sha = delivery.remote_head_sha;
   }
+}
+
+function updateDeliveryPullRequest(delivery, update, pullRequest) {
+  Object.assign(delivery, {
+    pr_number: pullRequest.number,
+    pr_url: pullRequest.html_url || delivery.pr_url,
+    pr_state: pullRequest.merged ? 'merged' : pullRequest.state,
+    pr_draft: Boolean(pullRequest.draft)
+  });
+  update.pull_request = {
+    number: pullRequest.number,
+    state: delivery.pr_state,
+    draft: delivery.pr_draft,
+    merged: Boolean(pullRequest.merged)
+  };
+}
+
+function updateDeliveryCheckRun(delivery, update, checkRun) {
+  delivery.check_run = { id: checkRun?.id, status: checkRun?.status, conclusion: checkRun?.conclusion };
+  update.check_run = delivery.check_run;
+}
+
+function updateDeliveryCheckSuite(delivery, update, checkSuite) {
+  delivery.check_suite = { id: checkSuite?.id, status: checkSuite?.status, conclusion: checkSuite?.conclusion };
+  update.check_suite = delivery.check_suite;
+}
+
+function updateDeliveryTask(state, delivery, event, payload) {
+  const task = state.workflow_nodes.find((item) => item.id === delivery.task_id);
+  if (!task || (task.latest_delivery_id && task.latest_delivery_id !== delivery.id)) return;
+  task.delivery_status = deliveryTaskStatus(event, delivery, payload) || task.delivery_status;
+  task.updated_at = now();
+}
+
+function publishDeliveryWebhook(state, delivery, update) {
+  for (const session of state.assist_sessions.filter(
+    (item) =>
+      item.version === 3 &&
+      item.scope_type === 'task' &&
+      item.scope_id === delivery.task_id &&
+      item.scope_status === 'active'
+  ))
+    pushV3Event(state, session.id, null, 'delivery_webhook', { delivery_id: delivery.id, ...update });
 }
 
 function latestDelivery(items) {
