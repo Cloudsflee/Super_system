@@ -10,7 +10,6 @@ const required = [
   'apps/web/src/features/workflow/canvas/WorkflowCanvas.tsx',
   'apps/web/src/features/nodes/NodeWorkspacePage.tsx',
   'apps/web/src/features/nodes/renderers/ExecutionWorkspace.tsx',
-  'apps/web/src/components/assist/AssistDrawer.tsx',
   'apps/web/src/features/projects/onboarding/ProjectOnboardingPage.tsx',
   'apps/web/src/features/assist/AssistWorkbench.tsx',
   'apps/web/src/features/assist/TerminalPanel.tsx',
@@ -64,9 +63,6 @@ for (const capability of ['<Editor', '/files/content', '/diff?path=', '/test-tas
 const nodeWorkspace = read('apps/web/src/features/nodes/NodeWorkspacePage.tsx');
 for (const capability of ['/change-proposals', '/run/start', 'node_run_authorization', '运行节点'])
   assert.ok(nodeWorkspace.includes(capability), `Node workspace ${capability} connected`);
-const assist = read('apps/web/src/components/assist/AssistDrawer.tsx');
-for (const capability of ['EventSource', 'view_context', 'executeAction', '/actions/'])
-  assert.ok(assist.includes(capability), `${capability} connected`);
 const workbench = read('apps/web/src/features/assist/AssistWorkbench.tsx');
 for (const capability of [
   'surface-${ui.assistSurface}',

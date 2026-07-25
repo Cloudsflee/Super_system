@@ -25,7 +25,9 @@ try {
   server = await startApi({ port, home: fixture.home, ccSwitch: fixture.ccSwitch });
   let migrated = readState();
   const project = migrated.projects.find((item) => item.id === 'prj_legacy_v12');
-  assert.equal(migrated.schema_version, 19);
+  assert.equal(migrated.schema_version, 20);
+  assert.equal(migrated.context_projection_coverage.warnings.length, 0);
+  assert.ok(migrated.context_nodes.length > 0);
   assert.equal(project.status, 'active');
   assert.equal(project.onboarding_state, 'confirmed');
   assert.equal(project.managed_workspace_state, 'workspace_migration_required');
@@ -81,7 +83,7 @@ try {
     )
   );
   assert.equal(migrationManifest.from_schema, 12);
-  assert.equal(migrationManifest.to_schema, 19);
+  assert.equal(migrationManifest.to_schema, 20);
   assert.equal(migrationManifest.status, 'committed');
 
   const v2 = await api(port, '/assist/v2/sessions/asst_legacy_v2');

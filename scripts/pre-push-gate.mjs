@@ -6,7 +6,7 @@ const updates = manual ? [] : parseUpdates(fs.readFileSync(0, 'utf8'));
 const mainUpdate = updates.find((item) => item.remoteRef === 'refs/heads/main');
 
 if (!manual && !mainUpdate) {
-  console.log('[pre-push] No main branch update; legacy gates skipped.');
+  console.log('[pre-push] No main branch update; release gates skipped.');
   process.exit(0);
 }
 if (mainUpdate && isZeroSha(mainUpdate.localSha)) fail('refusing to delete the remote main branch');
@@ -21,13 +21,13 @@ if (changes) fail(`working tree must be clean so tests match the pushed commit:\
 
 const baseSha = resolveBase(mainUpdate, head);
 console.log(`[pre-push] Verifying ${head.slice(0, 12)} against ${baseSha.slice(0, 12)}.`);
-for (const script of ['test:v175:pr', 'test:v18:pr']) {
+for (const script of ['test:v175:pr', 'test:v18:pr', 'test:v20:pr']) {
   console.log(`\n[pre-push] ${script}`);
   const result = runPnpm(script, { ...process.env, AIWS_TEST_BASE_SHA: baseSha });
   if (result.error) fail(result.error.message);
   if (result.status !== 0) fail(`${script} failed with exit code ${result.status ?? 'unknown'}`);
 }
-console.log('\n[pre-push] V1.75 and V1.8 gates passed.');
+console.log('\n[pre-push] Historical compatibility and V2.0 gates passed.');
 
 function resolveBase(update, headSha) {
   if (process.env.AIWS_TEST_BASE_SHA && !isZeroSha(process.env.AIWS_TEST_BASE_SHA))

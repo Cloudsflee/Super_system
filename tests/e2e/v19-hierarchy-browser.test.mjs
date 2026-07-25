@@ -26,6 +26,14 @@ const viewports = [
   { name: 'tablet', width: 768, height: 900 },
   { name: 'mobile', width: 390, height: 844 }
 ].filter((item) => !process.env.AIWS_TEST_VIEWPORT || item.name === process.env.AIWS_TEST_VIEWPORT);
+const LONG_TASK_GOAL =
+  '收集可追溯发布证据。\n' +
+  '- 保留来源链接与提交标识。\n' +
+  '- 固化不可变内容哈希。\n' +
+  '- 记录独立复核结论。\n' +
+  'Collect traceable release evidence with complete provenance. ' +
+  'Preserve source provenance and immutable hashes. '.repeat(60) +
+  '\nCLI: `node src/cli.mjs collect --date 2026-07-23`\n每天 23:50 Asia/Shanghai';
 let browser,
   server,
   serverLog = '';
@@ -316,7 +324,7 @@ async function openAndVerifyWorkflowProcess(page, fixture, viewport) {
   await assertViewport(page);
   await assertNoOverlap(page, '.workflow-full-process', '.command-dock');
   await page.screenshot({ path: path.join(output, `workflow-compact-${viewport.name}.png`), fullPage: true });
-  await assertWorkflowTaskSelectionJourney(page, viewport);
+  await assertWorkflowTaskSelectionJourney(page, viewport, fixture, output);
   await assertViewport(page);
   await assertNoOverlap(page, '.workflow-full-process', '.command-dock');
   await page.screenshot({ path: path.join(output, `workflow-expanded-${viewport.name}.png`), fullPage: true });
@@ -403,7 +411,8 @@ async function seedHierarchyProject() {
       workflowTitle: activated.workflow.title,
       workstreamId: workstream.id,
       workstreamTitle: workstream.title,
-      taskId: task.id
+      taskId: task.id,
+      taskGoal: LONG_TASK_GOAL
     };
   });
   return fixture;
@@ -426,9 +435,7 @@ function hierarchy() {
           id: 'task-collect-evidence',
           role: 'task',
           title: 'Collect release evidence',
-          goal:
-            '收集可追溯发布证据。 Collect traceable release evidence with complete provenance. CLI: `node src/cli.mjs collect --date 2026-07-23`. Run at 23:50 Asia/Shanghai. ' +
-            'Preserve source provenance and immutable hashes. '.repeat(80),
+          goal: LONG_TASK_GOAL,
           task_kind: 'research',
           execution_mode: 'assist',
           dependency_ids: [],

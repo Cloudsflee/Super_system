@@ -31,7 +31,8 @@
     "tests/unit/v19-project-governance.test.mjs",
     "tests/unit/v19-repository-lifecycle.test.mjs",
     "tests/unit/v110-cas.test.mjs",
-    "tests/unit/v110-legacy-execution-promotion.test.mjs"
+    "tests/unit/v110-legacy-execution-promotion.test.mjs",
+    "tests/unit/v20-migration.test.mjs"
   ],
   "unit-capabilities": [
     "tests/unit/v17-capability-operations.test.mjs",
@@ -51,7 +52,11 @@
     "tests/unit/v19-task-execution-context.test.mjs",
     "tests/unit/v19-workflow-generation-contract.test.mjs",
     "tests/unit/v110-attestation.test.mjs",
-    "tests/unit/v110-workflow-execution.test.mjs"
+    "tests/unit/v110-workflow-execution.test.mjs",
+    "tests/unit/v20-system-context.test.mjs",
+    "tests/unit/v20-context-pack.test.mjs",
+    "tests/unit/v20-mcp-context.test.mjs",
+    "tests/unit/v20-context-performance.test.mjs"
   ],
   "integration-core": [
     "tests/integration/api-flow.test.mjs",
@@ -66,7 +71,8 @@
     "tests/integration/v18-mcp-stdio-flow.test.mjs",
     "tests/integration/v19-exchange-flow.test.mjs",
     "tests/integration/v19-project-governance-flow.test.mjs",
-    "tests/integration/v19-project-isolation-flow.test.mjs"
+    "tests/integration/v19-project-isolation-flow.test.mjs",
+    "tests/integration/v20-context-flow.test.mjs"
   ],
   "integration-runtime": [
     "tests/integration/v12-codex-flow.test.mjs",

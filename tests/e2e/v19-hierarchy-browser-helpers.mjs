@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import path from 'node:path';
 import { assertWorkflowHeaderAndCoverage } from './v19-workflow-header-assertions.mjs';
+import { assertWorkflowContextViews } from './v19-workflow-context-assertions.mjs';
 
 export async function assertAssistScope(page, fixture, output, { label, icon, breadcrumb, thread, forbidden }) {
   await page.getByRole('button', { name: '打开 Codex 智能助手' }).click();
@@ -257,8 +258,11 @@ async function assertFinePointerWorkflowPreview(page, output, viewport, masterDe
     ? page.locator('.workflow-task-inspector')
     : page.locator('.workflow-task-quick-preview');
   await preview.waitFor();
+  const command = masterDetail
+    ? preview.getByLabel('命令行：node src/cli.mjs collect --date 2026-07-23')
+    : preview.locator('.workflow-code-bubble code');
   assert.equal(
-    (await preview.locator('.workflow-code-bubble code').textContent())?.trim(),
+    (await command.textContent())?.trim(),
     'node src/cli.mjs collect --date 2026-07-23',
     'Task preview must expose the extracted CLI'
   );
@@ -268,7 +272,7 @@ async function assertFinePointerWorkflowPreview(page, output, viewport, masterDe
     'Task preview must expose all four metrics'
   );
   if (masterDetail) {
-    const objective = await preview.locator('.workflow-task-copy').textContent();
+    const objective = await preview.locator('.workflow-context-summary .primary dd').textContent();
     assert.match(objective || '', /收集可追溯发布证据。/, 'the detail panel must retain the Chinese objective');
     assert.doesNotMatch(
       objective || '',
@@ -300,7 +304,7 @@ export async function setWorkflowDensity(page, viewport, density) {
   );
 }
 
-export async function assertWorkflowTaskSelectionJourney(page, viewport) {
+export async function assertWorkflowTaskSelectionJourney(page, viewport, fixture, output) {
   const masterDetail = (await page.locator('.workflow-full-process').getAttribute('data-layout')) === 'master-detail';
   const topologyBefore = await page
     .locator('.workflow-topology-edge')
@@ -326,6 +330,7 @@ export async function assertWorkflowTaskSelectionJourney(page, viewport) {
       topologyBefore,
       'pinning must not reflow topology'
     );
+    await assertWorkflowContextViews(page, page.locator('.workflow-task-inspector'), fixture, output, viewport);
     await setWorkflowDensity(page, viewport, 'compact');
     assert.equal(
       await page.locator('.workflow-task-inspector').getAttribute('data-detail-task-id'),
@@ -342,6 +347,11 @@ export async function assertWorkflowTaskSelectionJourney(page, viewport) {
       'task-verify-build',
       'a new pin must replace the previous pin'
     );
+    assert.equal(
+      await page.locator('.workflow-task-inspector').getByRole('button', { name: '摘要' }).getAttribute('aria-pressed'),
+      'true',
+      'switching the inspector Task must restore the summary view'
+    );
     assert.deepEqual(
       await page.locator('.workflow-topology-edge').evaluateAll((items) => items.map((item) => item.getAttribute('d'))),
       topologyBefore,
@@ -349,7 +359,9 @@ export async function assertWorkflowTaskSelectionJourney(page, viewport) {
     );
   } else {
     await page.getByRole('button', { name: '展开任务详情：Collect release evidence' }).click();
-    await page.getByRole('region', { name: '任务详情：Collect release evidence' }).waitFor();
+    const details = page.getByRole('region', { name: '任务详情：Collect release evidence' });
+    await details.waitFor();
+    await assertWorkflowContextViews(page, details, fixture, output, viewport);
     await assertWorkflowExpandedWorkband(page, viewport);
     await page.waitForTimeout(80);
     assert.notDeepEqual(
@@ -371,7 +383,13 @@ export async function assertWorkflowTaskSelectionJourney(page, viewport) {
       0,
       'opening another Task closes the previous disclosure'
     );
-    await page.getByRole('region', { name: '任务详情：Verify release build' }).waitFor();
+    const nextDetails = page.getByRole('region', { name: '任务详情：Verify release build' });
+    await nextDetails.waitFor();
+    assert.equal(
+      await nextDetails.getByRole('button', { name: '摘要' }).getAttribute('aria-pressed'),
+      'true',
+      'opening another Task must start in the summary view'
+    );
   }
 }
 

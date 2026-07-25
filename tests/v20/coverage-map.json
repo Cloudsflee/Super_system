@@ -1,0 +1,46 @@
+{
+  "version": "2.0",
+  "product_version": "2.0.0",
+  "state_schema": 20,
+  "state_collections": [
+    "users", "sessions", "connected_accounts", "credential_refs", "github_repositories", "projects",
+    "workspaces", "workflows", "workflow_nodes", "node_contracts", "context_packs",
+    "context_sufficiency_checks", "file_refs", "traces", "assets", "asset_versions", "asset_relations",
+    "decisions", "digests", "node_runs", "agent_sessions", "code_changes", "tools", "assist_sessions",
+    "human_reviews", "runner_memory_candidates", "test_results", "change_proposals", "submissions",
+    "codex_profiles", "integration_statuses", "setup_states", "github_app_configs", "github_installations",
+    "repository_bindings", "assist_messages", "assist_events", "ui_action_intents", "file_changes",
+    "webhook_deliveries", "node_workspace_data", "test_tasks", "project_intakes", "project_briefs",
+    "assist_turns", "attachments", "worktrees", "runtime_approvals", "terminal_sessions", "config_revisions",
+    "import_jobs", "assist_configurations", "assist_change_batches", "assist_checkpoints", "assist_operations",
+    "runtime_user_inputs", "host_bridge_devices", "brief_templates", "workflow_drafts", "mcp_clients",
+    "workflow_generations", "workflow_generation_events", "repository_connections", "repository_targets",
+    "delivery_policies", "deliveries", "delivery_events", "workflow_migration_batches",
+    "workflow_migration_jobs", "project_memberships", "project_invitations", "canonical_repositories",
+    "project_repository_bindings", "repository_deletion_intents", "exchange_requests", "exchange_grants",
+    "repository_workspaces", "pull_request_intents", "asset_blobs", "asset_attestations",
+    "workflow_executions", "task_executions", "execution_events", "repository_lines"
+  ],
+  "context_collections": [
+    "context_nodes", "context_document_versions", "context_edges", "context_selections", "context_policies",
+    "context_projection_jobs", "context_summaries"
+  ],
+  "edge_types": [
+    "contains", "depends_on", "produces", "consumes", "derived_from", "executes", "discussed_in",
+    "evidenced_by", "supersedes"
+  ],
+  "rest": [
+    "GET /context/v1/map", "POST /context/v1/search", "GET /context/v1/nodes/:id",
+    "POST /context/v1/selections", "GET /context/v1/selections/:id", "GET /context/v1/policy",
+    "PUT /context/v1/policy", "POST /context/v1/browser-state", "GET /context/v1/status",
+    "POST /context/v1/rebuild"
+  ],
+  "mcp_actions": ["map", "search", "read", "explain_selection"],
+  "mcp_resources": [
+    "aiws://context/map/{scope}", "aiws://context/nodes/{id}", "aiws://context/selections/{id}"
+  ],
+  "scopes": ["context:read", "context:admin"],
+  "ui_routes": ["/context", "/projects/:projectId/context"],
+  "viewports": [2560, 1920, 1440, 1024, 768, 390],
+  "security_sentinels": ["vault-value", "token", "cookie", "private-key", "credential", "host-absolute-path"]
+}

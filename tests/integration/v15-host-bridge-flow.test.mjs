@@ -160,7 +160,7 @@ try {
       action: 'exchange',
       pairing_code: pairing.pairing_code,
       protocol_version: 1,
-      bridge_version: '1.10.0',
+      bridge_version: '2.0.0',
       device_name: 'Fake Windows'
     },
     201
@@ -169,7 +169,7 @@ try {
     port,
     '/assist/v3/host-bridge/pairing',
     'POST',
-    { action: 'exchange', pairing_code: pairing.pairing_code, protocol_version: 1, bridge_version: '1.10.0' },
+    { action: 'exchange', pairing_code: pairing.pairing_code, protocol_version: 1, bridge_version: '2.0.0' },
     401,
     'host_bridge_pairing_invalid_or_expired'
   );
@@ -188,7 +188,7 @@ try {
     JSON.stringify({
       type: 'hello',
       protocol_version: 1,
-      bridge_version: '1.10.0',
+      bridge_version: '2.0.0',
       capabilities: {
         os: 'windows',
         arch: 'amd64',

@@ -15,11 +15,12 @@ try {
   const releaseVolume = fs.readFileSync(path.join(process.cwd(), 'docker', 'release_volume.mjs'), 'utf8');
   const backupTool = fs.readFileSync(path.join(process.cwd(), 'docker', 'backup_archive.py'), 'utf8');
   for (const script of [powershellOps, posixOps]) {
-    assert.ok(script.includes('aiws-app:1.10.0'));
-    assert.ok(script.includes('aiws-codex-runner:1.10.0-codex-0.144.0'));
+    assert.ok(script.includes('aiws-app:2.0.0'));
+    assert.ok(script.includes('aiws-codex-runner:2.0.0-codex-0.144.0'));
     assert.ok(script.includes('aiws-data-v19'));
-    assert.ok(script.includes('v110-release.mjs'));
-    assert.equal(script.includes('aiws-data-v18'), false, 'V1.10 does not mount a migration source');
+    assert.ok(script.includes('aiws-data-v20'));
+    assert.ok(script.includes('v20-release.mjs'));
+    assert.equal(script.includes('aiws-data-v18'), false, 'V2.0 only mounts the immediate V1.10 migration source');
     assert.ok(script.includes('pnpm-lock.yaml'));
     assert.ok(script.includes('codex-cli 0.144.0'));
     assert.ok(script.includes('windows-bridge-export'));

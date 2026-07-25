@@ -167,6 +167,20 @@ try {
     );
     assert.match(item.branch, /^aiws\//);
   }
+  const contextState = await stateApi.readState(),
+    firstDelivery = contextState.deliveries.find((item) => item.id === first.id),
+    firstContextPack = contextState.context_packs.find((item) => item.id === firstDelivery.context_pack_id),
+    firstSelection = contextState.context_selections.find((item) => item.id === firstContextPack.context_selection_id);
+  assert.equal(firstContextPack.schema_version, 'aiws.context_pack.v4');
+  assert.equal(
+    firstDelivery.task_execution_context.system_context.context_selection_id,
+    firstContextPack.context_selection_id
+  );
+  assert.match(
+    firstDelivery.task_execution_context.system_context.context_map.uri,
+    /^aiws:\/\/context\/map\/projects\//
+  );
+  assert.ok(firstSelection.included.length > 0, 'Delivery must use materialized context document versions');
   assert.notEqual(first.worktree_path, second.worktree_path);
   assert.notEqual(first.branch, second.branch);
 

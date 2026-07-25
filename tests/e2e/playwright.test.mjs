@@ -412,7 +412,7 @@ async function verifyV17Assist(page, fixture, viewport) {
   await selectionMenu.getByRole('menuitem', { name: '询问智能助手' }).waitFor();
   await page.screenshot({ path: path.join(output, `assist-context-selection-${viewport.name}.png`) });
   await selectionMenu.getByRole('menuitem', { name: '询问智能助手' }).click();
-  const btw = page.locator('.btw-popover[aria-label="问点什么"]');
+  const btw = page.locator('.btw-popover[aria-label="临时问答"]');
   await btw.waitFor();
   await assertInsideViewport(page, '.btw-popover');
   assert.match(await btw.locator('blockquote').textContent(), /V1\.7 visual reply/);

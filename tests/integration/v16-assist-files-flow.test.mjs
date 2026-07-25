@@ -246,6 +246,84 @@ try {
   assert.equal(fs.readFileSync(stateFile, 'utf8').includes('BTW_MEMORY_ONLY_QUESTION'), false);
   assert.match(await deleteBtwThroughSse(createdBtw.data.id, createdBtw.data.access_token), /event: closed/);
 
+  await fetchJson(
+    '/assist/v3/btw',
+    {
+      method: 'POST',
+      body: {
+        project_id: project.project.id,
+        scope_type: 'project',
+        scope_id: 'different-project',
+        session_id: sessionId,
+        browser_id: 'browser-v16-scope-mismatch'
+      }
+    },
+    409,
+    'assist_session_scope_mismatch'
+  );
+  const durableBeforeScopedBtw = readState(),
+    protocolBeforeScopedBtw = protocolMessages().length;
+  const scopedBtw = await fetchJson(
+    '/assist/v3/btw',
+    {
+      method: 'POST',
+      body: {
+        project_id: project.project.id,
+        scope_type: 'project',
+        scope_id: project.project.id,
+        profile_id: profile.id,
+        browser_id: 'browser-v16-scoped',
+        selection: 'SCOPED_BTW_SELECTION',
+        page_url: `${baseUrl}/projects/${project.project.id}`
+      }
+    },
+    201
+  );
+  assert.equal(scopedBtw.data.session_id, null);
+  assert.equal(scopedBtw.data.source_turn_id, null);
+  await fetchJson(
+    `/assist/v3/btw/${scopedBtw.data.id}/turns`,
+    {
+      method: 'POST',
+      headers: { 'x-aiws-btw-token': scopedBtw.data.access_token },
+      body: { content: 'SCOPED_BTW_MEMORY_ONLY_QUESTION' }
+    },
+    202
+  );
+  assert.match(await readSseUntilCompleted(scopedBtw.data.id, scopedBtw.data.access_token), /event: completed/);
+  const scopedProtocol = protocolMessages().slice(protocolBeforeScopedBtw),
+    ephemeralStart = scopedProtocol.find(
+      (item) => item.direction === 'from_aiws' && item.message.method === 'thread/start'
+    )?.message.params,
+    scopedTurnStart = scopedProtocol.find(
+      (item) =>
+        item.direction === 'from_aiws' &&
+        item.message.method === 'turn/start' &&
+        item.message.params.input?.some((entry) => entry.text === 'SCOPED_BTW_MEMORY_ONLY_QUESTION')
+    )?.message.params,
+    scopedApplicationContext = JSON.parse(Object.values(scopedTurnStart.additionalContext)[0].value);
+  assert.equal(ephemeralStart.ephemeral, true);
+  assert.equal(ephemeralStart.approvalPolicy, 'never');
+  assert.equal(ephemeralStart.sandbox, 'read-only');
+  assert.equal(scopedApplicationContext.project.id, project.project.id);
+  assert.equal(scopedApplicationContext.scope.id, project.project.id);
+  assert.equal(scopedApplicationContext.selection, 'SCOPED_BTW_SELECTION');
+  await fetchJson(
+    `/assist/v3/btw/${scopedBtw.data.id}`,
+    { method: 'DELETE', headers: { 'x-aiws-btw-token': scopedBtw.data.access_token } },
+    200
+  );
+  const durableAfterScopedBtw = readState();
+  assert.deepEqual(
+    durableAfterScopedBtw.assist_sessions.map((item) => item.id),
+    durableBeforeScopedBtw.assist_sessions.map((item) => item.id)
+  );
+  assert.deepEqual(
+    durableAfterScopedBtw.assist_turns.map((item) => item.id),
+    durableBeforeScopedBtw.assist_turns.map((item) => item.id)
+  );
+  assert.equal(JSON.stringify(durableAfterScopedBtw).includes('SCOPED_BTW_MEMORY_ONLY_QUESTION'), false);
+
   const restartBtw = await fetchJson(
     `/assist/v3/sessions/${sessionId}/btw`,
     { method: 'POST', headers: { 'x-aiws-browser-id': 'browser-v16-restart' }, body: {} },

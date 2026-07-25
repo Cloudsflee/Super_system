@@ -33,6 +33,15 @@ assert.match(prompt, /"input_slots"/);
 assert.match(prompt, /"output_slots"/);
 assert.match(prompt, /RepositoryVersionAsset/);
 assert.match(prompt, /Integration delivery inputs must both reference the acceptance Task/);
+assert.match(prompt, /match the project's primary natural language/);
+assert.match(
+  prompt,
+  /If Simplified Chinese is primary, write every user-visible title, goal, outcome, acceptance_criteria, and decomposition_basis value in Simplified Chinese/
+);
+assert.match(
+  prompt,
+  /Keep product and proper names, CLI commands, paths, URLs, JSON or Schema keys, and SHAs unchanged/
+);
 assert.match(
   workflowGenerationPrompt(fingerprint, [{ code: 'FIX_SELECTOR', node_id: 'task-a' }]),
   /Previous attempt critic errors.*FIX_SELECTOR/

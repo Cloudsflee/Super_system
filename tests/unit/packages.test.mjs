@@ -28,7 +28,7 @@ const dockerArgs = new DockerCodexRunner().buildDockerArgs({
 });
 assert.equal(new DockerCodexRunner().timeoutMs, 1_800_000);
 assert.deepEqual(dockerArgs.slice(0, 2), ['run', '--rm']);
-assert.ok(dockerArgs.includes('aiws-codex-runner:1.10.0-codex-0.144.0'));
+assert.ok(dockerArgs.includes('aiws-codex-runner:2.0.0-codex-0.144.0'));
 assert.ok(dockerArgs.includes('/workspace'));
 assert.ok(dockerArgs.includes('CODEX_HOME=/codex-home'));
 assert.equal(dockerArgs.includes('OPENAI_API_KEY'), false);

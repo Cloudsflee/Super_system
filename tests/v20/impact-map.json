@@ -1,0 +1,80 @@
+{
+  "version": "2.0",
+  "match_mode": "all",
+  "mappings": [
+    {
+      "domain": "context-core",
+      "patterns": [
+        "packages/system-context/**",
+        "apps/api/src/context-*.mjs",
+        "apps/api/src/routes/context-v20.mjs",
+        "apps/api/src/state-migration-v20.mjs"
+      ],
+      "tests": ["V20-L1-PROTOCOL-001", "V20-L2-MIGRATION-001", "V20-L4-SECURITY-001"]
+    },
+    {
+      "domain": "assist",
+      "patterns": [
+        "apps/api/src/assist-*.mjs",
+        "apps/api/src/task-execution-context.mjs",
+        "apps/api/src/routes/assist-v3.mjs"
+      ],
+      "tests": ["V20-L1-PACK-002", "V20-L4-SECURITY-001"]
+    },
+    {
+      "domain": "mcp",
+      "patterns": ["apps/api/src/mcp-*.mjs", "apps/mcp-gateway/**", "scripts/mcp-*.mjs"],
+      "tests": ["V20-L1-MCP-003", "V20-L4-SECURITY-001"]
+    },
+    {
+      "domain": "web",
+      "patterns": ["apps/web/**"],
+      "tests": ["V20-L3-WEB-001", "V20-L3-BROWSER-002"]
+    },
+    {
+      "domain": "release",
+      "patterns": [
+        ".gitattributes",
+        "Dockerfile",
+        "compose*.yml",
+        "docker/**",
+        "scripts/aiws.*",
+        "scripts/v20-release.mjs",
+        "tests/release/**"
+      ],
+      "tests": ["V20-L2-MIGRATION-001", "V20-L6-RELEASE-001"]
+    },
+    {
+      "domain": "governance",
+      "patterns": [
+        "package.json",
+        "pnpm-lock.yaml",
+        "prisma/**",
+        "scripts/**",
+        "tests/v20/**",
+        "README.md",
+        "docs/**",
+        "*.md"
+      ],
+      "tests": ["V20-L0-PLAN-001", "V20-L0-CATALOG-002", "V20-L0-COVERAGE-003", "V20-L0-IMPACT-004"]
+    },
+    {
+      "domain": "system",
+      "patterns": [
+        "apps/**",
+        "packages/**",
+        "bridge/**",
+        "config/**",
+        "tests/**",
+        "scripts/**",
+        "docker/**",
+        "*.json",
+        "*.yml",
+        "*.yaml",
+        "*.go",
+        "Dockerfile"
+      ],
+      "tests": ["V20-L1-PROTOCOL-001", "V20-L4-SECURITY-001"]
+    }
+  ]
+}

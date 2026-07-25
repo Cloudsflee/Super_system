@@ -500,8 +500,10 @@ try {
 
   btw = await import('../../apps/api/src/assist-btw.mjs');
   const closed = [],
-    conversations = [];
-  const createConversation = async () => {
+    conversations = [],
+    conversationOptions = [];
+  const createConversation = async (options) => {
+    conversationOptions.push(options);
     const current = {
       busy: false,
       close: () => closed.push(true),
@@ -520,6 +522,8 @@ try {
     {},
     { createConversation }
   );
+  assert.equal(conversationOptions[0].sourceThreadId, 'native-root');
+  assert.equal(conversationOptions[0].sourceTurnId, 'native-turn-root');
   assert.equal(btw.assistBtwStatus().active, 1);
   assert.equal(closed.length, 1);
   await assert.rejects(
@@ -534,6 +538,260 @@ try {
   assert.equal(
     fs.readFileSync(path.join(process.env.AIWS_HOME, 'data', 'state.json'), 'utf8').includes('memory-only-prompt'),
     false
+  );
+  const stateBeforeScopedBtw = await stateApi.readState(),
+    scoped = await btw.createScopedAssistBtw(
+      {
+        project_id: 'project-v16',
+        scope_type: 'project',
+        scope_id: 'project-v16',
+        profile_id: 'profile-v16',
+        browser_id: 'browser-scoped',
+        selection: 'scoped selection',
+        page_url: 'http://127.0.0.1:4317/projects/project-v16'
+      },
+      {},
+      { createConversation }
+    ),
+    scopedOptions = conversationOptions.at(-1),
+    scopedContext = JSON.parse(scopedOptions.additionalContext[0].value);
+  assert.equal(scoped.session_id, null);
+  assert.equal(scoped.source_turn_id, null);
+  assert.equal(scopedOptions.sourceThreadId, null);
+  assert.equal(scopedOptions.sourceTurnId, null);
+  assert.equal(scopedContext.project.id, 'project-v16');
+  assert.equal(scopedContext.scope.snapshot.scope_title, 'V1.6');
+  assert.equal(scopedContext.selection, 'scoped selection');
+  assert.deepEqual(scopedContext.scope.breadcrumb, [{ type: 'project', id: 'project-v16', label: 'V1.6' }]);
+  await btw.createAssistBtwTurn(scoped.id, {
+    content: 'scoped-memory-only-prompt',
+    access_token: scoped.access_token
+  });
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  const stateAfterScopedBtw = await stateApi.readState();
+  assert.equal(stateAfterScopedBtw.assist_sessions.length, stateBeforeScopedBtw.assist_sessions.length);
+  assert.equal(stateAfterScopedBtw.assist_turns.length, stateBeforeScopedBtw.assist_turns.length);
+  assert.equal(
+    fs
+      .readFileSync(path.join(process.env.AIWS_HOME, 'data', 'state.json'), 'utf8')
+      .includes('scoped-memory-only-prompt'),
+    false
+  );
+  await btw.deleteAssistBtw(scoped.id, { access_token: scoped.access_token });
+  await stateApi.mutate((state) => {
+    state.workflows.push({
+      id: 'workflow-v16',
+      project_id: 'project-v16',
+      title: '每日工作流',
+      status: 'active',
+      workflow_revision: 1
+    });
+    state.assist_sessions.push({
+      ...session('workflow-session', null, 'native-workflow'),
+      scope_type: 'workflow',
+      scope_id: 'workflow-v16'
+    });
+    state.assist_turns.push({
+      id: 'workflow-turn',
+      session_id: 'workflow-session',
+      project_id: 'project-v16',
+      status: 'completed',
+      codex_turn_id: 'native-turn-workflow',
+      completed_at: '2026-07-14T00:30:00.000Z',
+      updated_at: '2026-07-14T00:30:00.000Z'
+    });
+    state.workflow_nodes.push(
+      {
+        id: 'workstream-research',
+        workflow_id: 'workflow-v16',
+        role: 'workstream',
+        type: 'workstream',
+        title: '调研阶段',
+        status: 'running',
+        dependencies: []
+      },
+      {
+        id: 'task-topic',
+        workflow_id: 'workflow-v16',
+        parent_node_id: 'workstream-research',
+        role: 'task',
+        type: 'task',
+        title: '选题确认',
+        goal: '确认当天选题。',
+        status: 'running',
+        dependencies: []
+      },
+      {
+        id: 'task-research',
+        workflow_id: 'workflow-v16',
+        parent_node_id: 'workstream-research',
+        role: 'task',
+        type: 'task',
+        title: '调研取证',
+        goal: '收集并核验当前选题的原始证据。',
+        status: 'blocked',
+        dependencies: [{ node_id: 'task-topic', type: 'finish_to_start' }],
+        current_contract_id: 'contract-research',
+        task_kind: 'research',
+        execution_mode: 'assist',
+        required: true,
+        latest_task_execution_id: 'tex-research'
+      }
+    );
+    state.node_contracts.push({
+      id: 'contract-research',
+      node_id: 'task-research',
+      version: 1,
+      expected_inputs: [{ key: 'topic', required: true, source: 'dependency', ref_id: 'task-topic' }],
+      expected_outputs: [{ key: 'evidence', required: true, asset_type: 'EvidenceBundle' }]
+    });
+    state.workflow_executions.push({
+      id: 'wex-v16',
+      project_id: 'project-v16',
+      workflow_id: 'workflow-v16',
+      workflow_revision: 1,
+      status: 'running',
+      started_at: '2026-07-14T01:00:00.000Z'
+    });
+    state.task_executions.push({
+      id: 'tex-research',
+      workflow_execution_id: 'wex-v16',
+      project_id: 'project-v16',
+      workflow_id: 'workflow-v16',
+      workstream_id: 'workstream-research',
+      task_id: 'task-research',
+      task_revision: 1,
+      attempt: 1,
+      executor: 'assist',
+      status: 'failed',
+      readiness: {
+        ready: false,
+        reasons: []
+      },
+      context_snapshot: { migration: { source_id: 'run-research' } },
+      output_bindings: [],
+      error_code: 'legacy_partial',
+      updated_at: '2026-07-14T01:00:00.000Z'
+    });
+    state.node_runs.push({
+      id: 'run-research',
+      node_id: 'task-research',
+      status: 'partial',
+      summary: 'Runner 输出不是合法 JSON，已保留 raw output。',
+      result_json: {
+        warnings: ['runner output was partial'],
+        next_actions: ['查看 raw output'],
+        _codex_process: {
+          code: 1,
+          stdout:
+            '{"type":"turn.failed","error":{"message":"unexpected status 502 Bad Gateway: Upstream request failed"}}\n'
+        }
+      },
+      created_at: '2026-07-14T01:00:00.000Z'
+    });
+  });
+  const taskScoped = await btw.createScopedAssistBtw(
+      {
+        project_id: 'project-v16',
+        scope_type: 'task',
+        scope_id: 'task-research',
+        session_id: 'workflow-session',
+        browser_id: 'browser-task-context',
+        selection: '调研取证 · 已锁定'
+      },
+      {},
+      { createConversation }
+    ),
+    taskScopedOptions = conversationOptions.at(-1),
+    taskScopedContext = JSON.parse(taskScopedOptions.additionalContext[0].value),
+    taskContext = taskScopedContext.scope.context.task;
+  assert.equal(taskScopedOptions.sourceThreadId, 'native-workflow');
+  assert.equal(taskScopedOptions.sourceTurnId, 'native-turn-workflow');
+  assert.equal(taskScopedContext.schema, 'aiws.btw-context.v3');
+  assert.equal(taskScopedContext.context_protocol, 'aiws.system-context.v1');
+  assert.match(taskScopedContext.context_map.uri, /^aiws:\/\/context\/map\/projects\//);
+  assert.match(taskScopedContext.context_selection_id, /^csel_/);
+  assert.ok(taskScopedContext.document_versions.length > 0);
+  assert.ok(taskScopedContext.selected_context_documents.length > 0);
+  assert.equal(taskScopedContext.retrieval_protocol.mode, 'server_local');
+  assert.equal(taskScopedContext.response.language, 'zh-CN');
+  assert.equal(taskScopedContext.scope.type, 'task');
+  assert.equal(taskContext.status, 'failed');
+  assert.equal(taskContext.locked, true);
+  assert.equal(taskContext.lock_summary, '上次执行失败：上游模型服务返回 502 Bad Gateway');
+  assert.equal(taskContext.blockers[1].label, '等待前置任务“选题确认”完成');
+  assert.deepEqual(taskContext.dependency_progress, { total: 1, completed: 0, waiting: 1 });
+  assert.equal(taskContext.current_execution.id, 'tex-research');
+  assert.equal(taskContext.last_failure.error_code, 'legacy_partial');
+  assert.equal(taskContext.last_failure.run.process_exit_code, 1);
+  assert.equal(taskContext.context.summary.core_goal, '收集并核验当前选题的原始证据。');
+  assert.equal(taskContext.context.source.goal, '收集并核验当前选题的原始证据。');
+  await btw.deleteAssistBtw(taskScoped.id, { access_token: taskScoped.access_token });
+  await stateApi.mutate((state) => {
+    state.projects.push({ id: 'project-other', title: 'Other', status: 'active', settings: {} });
+    state.workflows.push({
+      id: 'workflow-other',
+      project_id: 'project-other',
+      title: 'Other workflow',
+      status: 'active'
+    });
+    state.workflow_nodes.push({
+      id: 'task-other-project',
+      workflow_id: 'workflow-other',
+      role: 'task',
+      type: 'task',
+      title: 'Other task',
+      goal: 'Other goal',
+      status: 'ready',
+      dependencies: []
+    });
+  });
+  await assert.rejects(
+    () =>
+      btw.createScopedAssistBtw(
+        {
+          project_id: 'project-v16',
+          scope_type: 'task',
+          scope_id: 'task-other-project',
+          browser_id: 'browser-cross-project-task'
+        },
+        {},
+        { createConversation }
+      ),
+    (error) => error.payload?.error === 'task_not_found'
+  );
+  await stateApi.mutate((state) => {
+    state.assist_sessions.push(session('empty-session', null, null));
+  });
+  const freshFromEmptySession = await btw.createScopedAssistBtw(
+    {
+      project_id: 'project-v16',
+      scope_type: 'project',
+      scope_id: 'project-v16',
+      session_id: 'empty-session',
+      browser_id: 'browser-empty-session'
+    },
+    {},
+    { createConversation }
+  );
+  assert.equal(freshFromEmptySession.session_id, 'empty-session');
+  assert.equal(freshFromEmptySession.source_turn_id, null);
+  assert.equal(conversationOptions.at(-1).sourceThreadId, null);
+  await btw.deleteAssistBtw(freshFromEmptySession.id, { access_token: freshFromEmptySession.access_token });
+  await assert.rejects(
+    () =>
+      btw.createScopedAssistBtw(
+        {
+          project_id: 'project-v16',
+          scope_type: 'project',
+          scope_id: 'another-project',
+          session_id: 'root-session',
+          browser_id: 'browser-mismatch'
+        },
+        {},
+        { createConversation }
+      ),
+    (error) => error.payload?.error === 'assist_session_scope_mismatch'
   );
   await btw.closeAllAssistBtw('test-reset');
   const active = [];

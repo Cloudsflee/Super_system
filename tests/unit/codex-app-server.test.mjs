@@ -5,6 +5,7 @@ import {
   nativeCollaborationMode,
   runCodexAppServer
 } from '../../apps/api/src/codex-app-server.mjs';
+import { createCodexEphemeralThread } from '../../apps/api/src/codex-ephemeral-thread.mjs';
 
 class FakeProcess extends EventEmitter {
   constructor(handler) {
@@ -130,6 +131,65 @@ assert.ok(events.some((item) => item.aiws_type === 'plan' && item.data.status ==
 assert.ok(events.some((item) => item.aiws_type === 'reasoning_summary' && item.data.summary === '公开摘要'));
 assert.ok(events.some((item) => item.aiws_type === 'command' && item.data.exit_code === 0));
 assert.equal(JSON.stringify(events).includes('PRIVATE_REASONING'), false);
+
+const freshEphemeralProtocol = [];
+const freshEphemeral = await createCodexEphemeralThread({
+  state,
+  profile,
+  cwd: process.cwd(),
+  sourceThreadId: null,
+  sourceTurnId: null,
+  spawnProcess() {
+    return new FakeProcess((message, child) => {
+      freshEphemeralProtocol.push(message);
+      if (message.method === 'initialize') child.send({ id: message.id, result: {} });
+      if (message.method === 'thread/start')
+        child.send({ id: message.id, result: { thread: { id: 'fresh-ephemeral-thread' } } });
+    });
+  }
+});
+assert.equal(freshEphemeral.threadId, 'fresh-ephemeral-thread');
+assert.deepEqual(freshEphemeralProtocol.find((item) => item.method === 'thread/start').params, {
+  model: 'gpt-test',
+  cwd: process.cwd(),
+  approvalPolicy: 'never',
+  approvalsReviewer: 'user',
+  sandbox: 'read-only',
+  ephemeral: true
+});
+assert.equal(
+  freshEphemeralProtocol.some((item) => item.method === 'thread/fork'),
+  false
+);
+freshEphemeral.close();
+
+const forkedEphemeralProtocol = [];
+const forkedEphemeral = await createCodexEphemeralThread({
+  state,
+  profile,
+  cwd: process.cwd(),
+  sourceThreadId: 'source-thread',
+  sourceTurnId: 'source-turn',
+  spawnProcess() {
+    return new FakeProcess((message, child) => {
+      forkedEphemeralProtocol.push(message);
+      if (message.method === 'initialize') child.send({ id: message.id, result: {} });
+      if (message.method === 'thread/fork')
+        child.send({ id: message.id, result: { thread: { id: 'forked-ephemeral-thread' } } });
+    });
+  }
+});
+assert.equal(forkedEphemeral.threadId, 'forked-ephemeral-thread');
+assert.deepEqual(forkedEphemeralProtocol.find((item) => item.method === 'thread/fork').params, {
+  threadId: 'source-thread',
+  turnId: 'source-turn',
+  cwd: process.cwd(),
+  approvalPolicy: 'never',
+  approvalsReviewer: 'user',
+  sandbox: 'read-only',
+  ephemeral: true
+});
+forkedEphemeral.close();
 
 const recoveryProtocol = [],
   recoveryEvents = [];

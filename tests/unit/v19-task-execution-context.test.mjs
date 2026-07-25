@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 
 import { emptyState } from '../../apps/api/src/state.mjs';
+import { contextPackToMarkdown } from '../../packages/shared/index.mjs';
 import {
   evaluateTaskExecutionContextFreshness,
   prepareTaskExecutionContext
@@ -24,7 +25,16 @@ const scope = {
 
 const nodeRun = prepareTaskExecutionContext(state, { ...scope, purpose: 'node_run', receiverName: 'CodexRunner' });
 const delivery = prepareTaskExecutionContext(state, { ...scope, purpose: 'delivery', receiverName: 'CodexRunner' });
+assert.equal(nodeRun.context_pack.schema_version, 'aiws.context_pack.v4');
+assert.equal(nodeRun.context_pack.version, 4);
+assert.equal(nodeRun.context_pack.content_json.schema_version, 'aiws.context_pack.v4');
+assert.equal(nodeRun.context_pack.context_selection_id, nodeRun.context_pack.content_json.context_selection_id);
+assert.ok(state.context_selections.some((item) => item.id === nodeRun.context_pack.context_selection_id));
 assert.equal(nodeRun.context.schema_version, 'aiws.task_execution_context.v2');
+assert.equal(nodeRun.context.system_context.context_selection_id, nodeRun.context_pack.context_selection_id);
+assert.match(nodeRun.context.system_context.context_map.uri, /^aiws:\/\/context\/map\/projects\//);
+assert.equal(nodeRun.context.system_context.retrieval_protocol.tool, 'aiws_context');
+assert.match(contextPackToMarkdown(nodeRun.context_pack), /"system_context"/);
 assert.equal(nodeRun.context.input_snapshot_hash, delivery.context.input_snapshot_hash);
 assert.equal(nodeRun.context.repository_snapshot.snapshot_hash, delivery.context.repository_snapshot.snapshot_hash);
 assert.deepEqual(

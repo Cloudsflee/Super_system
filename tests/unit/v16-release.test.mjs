@@ -164,8 +164,9 @@ try {
   const powershell = fs.readFileSync(path.join(process.cwd(), 'scripts', 'aiws.ps1'), 'utf8');
   const posix = fs.readFileSync(path.join(process.cwd(), 'scripts', 'aiws.sh'), 'utf8');
   for (const script of [powershell, posix]) {
-    assert.ok(script.includes('aiws-data-v19'), 'active scripts retain the production volume');
-    assert.ok(script.includes('v110-release.mjs'));
+    assert.ok(script.includes('aiws-data-v19'), 'active scripts retain V1.10 as the migration source');
+    assert.ok(script.includes('aiws-data-v20'), 'active scripts use the V2.0 production volume');
+    assert.ok(script.includes('v20-release.mjs'));
     assert.equal(script.includes('aiws-data-v18'), false, 'active V1.10 scripts have no source volume');
     assert.equal(script.includes('purge-legacy'), false);
     assert.equal(script.toLowerCase().includes('discard-unmigratable'), false);

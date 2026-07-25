@@ -6,6 +6,7 @@ import path from 'node:path';
 import { spawn } from 'node:child_process';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
+import { AIWS_VERSION } from '../../packages/shared/src/version.mjs';
 
 const root = fs.mkdtempSync(path.join(os.tmpdir(), 'aiws-v18-mcp-gateway-'));
 const home = path.join(root, 'home');
@@ -104,6 +105,7 @@ try {
   connections.push(connection, secondConnection);
   const { client } = connection;
   assert.equal(client.getServerVersion().name, 'aiws-mcp-gateway');
+  assert.equal(client.getServerVersion().version, AIWS_VERSION);
   assert.ok((await client.listTools()).tools.length >= 15);
   assert.equal(
     (await client.listResources()).resources.some((item) => item.uri === 'aiws://health'),
@@ -177,6 +179,7 @@ try {
   assert.equal((await clientApi.authenticateMcpToken(issued.token)).subject_user_id, member.id);
 
   const health = await (await fetch(`http://127.0.0.1:${gatewayPort}/health`)).json();
+  assert.equal(health.version, AIWS_VERSION);
   assert.equal(health.active_sessions, 2);
   const invalidClient = new Client({ name: 'invalid-team-member', version: '1.0.0' }, { capabilities: {} });
   const invalidTransport = new StreamableHTTPClientTransport(new URL(`http://127.0.0.1:${gatewayPort}/mcp`), {
