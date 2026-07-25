@@ -15,11 +15,11 @@ import {
   X
 } from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState, type ComponentProps } from 'react';
 import { api, json } from '../../../api/client';
 import type { FileEntry, RepositoryBranchCatalog, RepositoryConnection, RepositoryWorkspace } from '../../../api/types';
 import type { RendererProps } from '../registry';
-import { useUi } from '../../../state/ui';
+import { useUi, type UiState } from '../../../state/ui';
 import '../../../monaco';
 import { useAssistSurface } from '../../../components/assist/semantic-actions';
 import { displayStatus, pullRequestStatusLabel } from '../../../components/common/display-labels';
@@ -36,20 +36,9 @@ export function ExecutionWorkspace({
   onRunNode = () => undefined,
   runningNode = false
 }: RendererProps) {
-  const [directory, setDirectory] = useState(''),
-    [tabs, setTabs] = useState<ExecutionTab[]>([]),
-    [active, setActive] = useState('');
-  const [output, setOutput] = useState(''),
-    [task, setTask] = useState('test'),
-    [saving, setSaving] = useState(false);
   const [connectionId, setConnectionId] = useState(''),
     [branchRef, setBranchRef] = useState(''),
     [workspaceId, setWorkspaceId] = useState('');
-  const [preparingWorkspaceKey, setPreparingWorkspaceKey] = useState<string | null>(null),
-    [workspacePreparationError, setWorkspacePreparationError] = useState<string | null>(null);
-  const automaticWorkspaceAttempts = useRef(new Set<string>()),
-    activePreparationKey = useRef<string | null>(null),
-    manualWorkspaceSelection = useRef(false);
   const ui = useUi(),
     toast = ui.toast,
     projectId = value.project.id;
@@ -82,28 +71,23 @@ export function ExecutionWorkspace({
   );
   const selectedWorkspace = availableWorkspaces.find((item) => item.id === workspaceId) || null;
   const selectedBranch = branches.data?.branches.find((item) => item.ref === branchRef) || null;
-  const selectedWorkspaceKey = selectedBranch
-    ? workspaceAttemptKey(connectionId, selectedBranch.ref, selectedBranch.sha)
-    : null;
-  const opening = Boolean(selectedWorkspaceKey && selectedWorkspaceKey === preparingWorkspaceKey);
+  const preparation = useWorkspacePreparation({
+    value,
+    projectId,
+    connectionId,
+    selectedBranch,
+    availableWorkspaces,
+    workspaceId,
+    setWorkspaceId,
+    workspacesReady: workspaces.isSuccess,
+    refetchWorkspaces: workspaces.refetch,
+    toast
+  });
   const requiresRepository =
     value.node.type === 'execution' ||
     value.contract?.expected_inputs?.some((item) => item.source === 'repository_workspace') ||
     ['code', 'test', 'deploy', 'integration'].includes(value.node.task_kind || '');
-  const files = useQuery({
-    queryKey: ['repository-workspace-files', selectedWorkspace?.id, directory],
-    queryFn: () =>
-      api<{ entries: FileEntry[] }>(
-        `/repository-workspaces/${selectedWorkspace?.id}/files?path=${encodeURIComponent(directory)}`
-      ),
-    enabled: Boolean(selectedWorkspace?.id),
-    retry: false
-  });
-  const repositoryAvailable = Boolean(selectedWorkspace && files.isSuccess),
-    writeEnabled = Boolean(repositoryAvailable && selectedWorkspace?.mode === 'read_write' && !selectedWorkspace.stale);
   const repositoryError = connections.error || workspaces.error || branches.error;
-  const fileEntries = files.data?.entries || [],
-    current = tabs.find((tab) => tab.path === active);
 
   useEffect(() => {
     const preferred =
@@ -118,9 +102,8 @@ export function ExecutionWorkspace({
     const defaultBranch = branches.data.branches.find(
       (item) => item.ref === branches.data.default_branch || item.name === branches.data.default_branch
     );
-    manualWorkspaceSelection.current = false;
+    preparation.reset(false);
     setWorkspaceId('');
-    setWorkspacePreparationError(null);
     setBranchRef(
       (preferred && branches.data.branches.some((item) => item.ref === preferred.ref)
         ? preferred.ref
@@ -129,11 +112,98 @@ export function ExecutionWorkspace({
         ''
     );
   }, [branches.data, availableWorkspaces, branchRef, value.project.default_repository_workspace_id]);
+  const editor = useExecutionEditor({ value, onSaved, selectedWorkspace, workspaceId, toast });
+
+  async function refreshWorkspace() {
+    preparation.retry();
+    if (!selectedWorkspace) {
+      preparation.reset(false);
+      await Promise.all([branches.refetch(), workspaces.refetch()]);
+      return;
+    }
+    try {
+      await api(
+        `/repository-workspaces/${selectedWorkspace.id}/refresh`,
+        json('POST', { fetch: true }, '刷新代码仓库工作副本')
+      );
+      await Promise.all([branches.refetch(), workspaces.refetch()]);
+    } catch (error) {
+      toast((error as Error).message, 'error');
+    }
+  }
+  return (
+    <ExecutionWorkspaceView
+      connections={connections.data?.items || []}
+      catalog={branches.data}
+      workspaces={availableWorkspaces}
+      connectionId={connectionId}
+      branchRef={branchRef}
+      workspaceId={workspaceId}
+      selectedWorkspace={selectedWorkspace}
+      repositoryBound={repositoryBound}
+      repositoryError={repositoryError}
+      branchCount={branches.data?.branches.length || 0}
+      preparation={preparation}
+      editor={editor}
+      requiresRepository={requiresRepository}
+      runningNode={runningNode}
+      onConnection={(id) => {
+        preparation.reset(false);
+        setConnectionId(id);
+        setBranchRef('');
+        setWorkspaceId('');
+      }}
+      onBranch={(ref) => {
+        preparation.reset(false);
+        setBranchRef(ref);
+        setWorkspaceId('');
+      }}
+      onWorkspace={(id) => {
+        preparation.reset(true);
+        setWorkspaceId(id);
+      }}
+      onRefresh={refreshWorkspace}
+      onRetryRepository={() => Promise.all([connections.refetch(), workspaces.refetch(), branches.refetch()])}
+      onRunNode={onRunNode}
+    />
+  );
+}
+
+function useWorkspacePreparation({
+  value,
+  projectId,
+  connectionId,
+  selectedBranch,
+  availableWorkspaces,
+  workspaceId,
+  setWorkspaceId,
+  workspacesReady,
+  refetchWorkspaces,
+  toast
+}: {
+  value: RendererProps['value'];
+  projectId: string;
+  connectionId: string;
+  selectedBranch: RepositoryBranchCatalog['branches'][number] | null;
+  availableWorkspaces: RepositoryWorkspace[];
+  workspaceId: string;
+  setWorkspaceId: (value: string) => void;
+  workspacesReady: boolean;
+  refetchWorkspaces: () => Promise<unknown>;
+  toast: UiState['toast'];
+}) {
+  const [preparingKey, setPreparingKey] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const attempts = useRef(new Set<string>());
+  const activeKey = useRef<string | null>(null);
+  const manualSelection = useRef(false);
+  const selectedKey = selectedBranch ? workspaceAttemptKey(connectionId, selectedBranch.ref, selectedBranch.sha) : null;
+
   useEffect(() => {
-    if (!selectedBranch || !workspaces.isSuccess) return;
+    if (!selectedBranch || !workspacesReady) return;
     const currentWorkspace = availableWorkspaces.find((item) => item.id === workspaceId);
-    if (manualWorkspaceSelection.current && currentWorkspace?.ref === selectedBranch.ref) return;
-    manualWorkspaceSelection.current = false;
+    if (manualSelection.current && currentWorkspace?.ref === selectedBranch.ref) return;
+    manualSelection.current = false;
     const existing = pickCurrentWorkspace(
       availableWorkspaces,
       selectedBranch.ref,
@@ -142,23 +212,23 @@ export function ExecutionWorkspace({
       value.project.default_repository_workspace_id
     );
     if (existing) {
-      activePreparationKey.current = null;
-      setPreparingWorkspaceKey(null);
-      setWorkspacePreparationError(null);
+      activeKey.current = null;
+      setPreparingKey(null);
+      setError(null);
       if (existing.id !== workspaceId) setWorkspaceId(existing.id);
       return;
     }
     if (workspaceId) setWorkspaceId('');
     const key = workspaceAttemptKey(connectionId, selectedBranch.ref, selectedBranch.sha);
     if (value.project.current_user_role === 'viewer') {
-      setWorkspacePreparationError('只读角色无法为当前分支创建执行副本');
+      setError('只读角色无法为当前分支创建执行副本');
       return;
     }
-    if (automaticWorkspaceAttempts.current.has(key)) return;
-    automaticWorkspaceAttempts.current.add(key);
-    activePreparationKey.current = key;
-    setPreparingWorkspaceKey(key);
-    setWorkspacePreparationError(null);
+    if (attempts.current.has(key)) return;
+    attempts.current.add(key);
+    activeKey.current = key;
+    setPreparingKey(key);
+    setError(null);
     void api<{ workspace: RepositoryWorkspace }>(
       `/projects/${projectId}/repository-workspaces`,
       json(
@@ -175,20 +245,20 @@ export function ExecutionWorkspace({
       )
     )
       .then(async (result) => {
-        await workspaces.refetch();
-        if (activePreparationKey.current === key) {
+        await refetchWorkspaces();
+        if (activeKey.current === key) {
           setWorkspaceId(result.workspace.id);
-          setWorkspacePreparationError(null);
+          setError(null);
           toast(`已准备 ${selectedBranch.name}@${shortSha(selectedBranch.sha)}`);
         }
       })
-      .catch((error: Error) => {
-        if (activePreparationKey.current === key) setWorkspacePreparationError(error.message);
+      .catch((reason: Error) => {
+        if (activeKey.current === key) setError(reason.message);
       })
       .finally(() => {
-        if (activePreparationKey.current === key) {
-          activePreparationKey.current = null;
-          setPreparingWorkspaceKey(null);
+        if (activeKey.current === key) {
+          activeKey.current = null;
+          setPreparingKey(null);
         }
       });
   }, [
@@ -201,8 +271,57 @@ export function ExecutionWorkspace({
     value.project.current_user_role,
     value.project.default_repository_workspace_id,
     workspaceId,
-    workspaces
+    workspacesReady
   ]);
+
+  function reset(manual: boolean) {
+    manualSelection.current = manual;
+    activeKey.current = null;
+    setPreparingKey(null);
+    setError(null);
+  }
+  function retry() {
+    if (selectedKey) attempts.current.delete(selectedKey);
+    setError(null);
+  }
+  return { opening: Boolean(selectedKey && selectedKey === preparingKey), error, reset, retry };
+}
+
+function useExecutionEditor({
+  value,
+  onSaved,
+  selectedWorkspace,
+  workspaceId,
+  toast
+}: {
+  value: RendererProps['value'];
+  onSaved: RendererProps['onSaved'];
+  selectedWorkspace: RepositoryWorkspace | null;
+  workspaceId: string;
+  toast: UiState['toast'];
+}) {
+  const [directory, setDirectory] = useState('');
+  const [tabs, setTabs] = useState<ExecutionTab[]>([]);
+  const [active, setActive] = useState('');
+  const [output, setOutput] = useState('');
+  const [task, setTask] = useState('test');
+  const [saving, setSaving] = useState(false);
+  const files = useQuery({
+    queryKey: ['repository-workspace-files', selectedWorkspace?.id, directory],
+    queryFn: () =>
+      api<{ entries: FileEntry[] }>(
+        `/repository-workspaces/${selectedWorkspace?.id}/files?path=${encodeURIComponent(directory)}`
+      ),
+    enabled: Boolean(selectedWorkspace?.id),
+    retry: false
+  });
+  const repositoryAvailable = Boolean(selectedWorkspace && files.isSuccess);
+  const writeEnabled = Boolean(
+    repositoryAvailable && selectedWorkspace?.mode === 'read_write' && !selectedWorkspace.stale
+  );
+  const fileEntries = files.data?.entries || [];
+  const current = tabs.find((tab) => tab.path === active);
+
   useEffect(() => {
     setDirectory('');
     setTabs([]);
@@ -231,24 +350,6 @@ export function ExecutionWorkspace({
     }
   });
 
-  async function refreshWorkspace() {
-    if (selectedWorkspaceKey) automaticWorkspaceAttempts.current.delete(selectedWorkspaceKey);
-    setWorkspacePreparationError(null);
-    if (!selectedWorkspace) {
-      manualWorkspaceSelection.current = false;
-      await Promise.all([branches.refetch(), workspaces.refetch()]);
-      return;
-    }
-    try {
-      await api(
-        `/repository-workspaces/${selectedWorkspace.id}/refresh`,
-        json('POST', { fetch: true }, '刷新代码仓库工作副本')
-      );
-      await Promise.all([branches.refetch(), workspaces.refetch()]);
-    } catch (error) {
-      toast((error as Error).message, 'error');
-    }
-  }
   async function open(entry: FileEntry) {
     if (!repositoryAvailable) return;
     if (entry.type === 'directory') {
@@ -269,8 +370,8 @@ export function ExecutionWorkspace({
         { path: file.path, content: file.content, saved: file.content, language: file.language }
       ]);
       setActive(file.path);
-    } catch (error) {
-      toast((error as Error).message, 'error');
+    } catch (reason) {
+      toast((reason as Error).message, 'error');
     }
   }
   function change(content = '') {
@@ -283,8 +384,8 @@ export function ExecutionWorkspace({
   }
   async function save() {
     if (!writeEnabled || !current || saving) return;
-    const savedPath = current.path,
-      savedContent = current.content;
+    const savedPath = current.path;
+    const savedContent = current.content;
     setSaving(true);
     try {
       await api(
@@ -294,8 +395,8 @@ export function ExecutionWorkspace({
       setTabs((items) => markSavedSnapshot(items, savedPath, savedContent));
       await onSaved();
       toast('文件已保存并记录执行轨迹');
-    } catch (error) {
-      toast((error as Error).message, 'error');
+    } catch (reason) {
+      toast((reason as Error).message, 'error');
     } finally {
       setSaving(false);
     }
@@ -307,8 +408,8 @@ export function ExecutionWorkspace({
         `/repository-workspaces/${selectedWorkspace?.id}/diff?path=${encodeURIComponent(current?.path || '')}`
       );
       setOutput(result.diff || '没有未提交差异');
-    } catch (error) {
-      toast((error as Error).message, 'error');
+    } catch (reason) {
+      toast((reason as Error).message, 'error');
     }
   }
   async function runTask() {
@@ -320,205 +421,247 @@ export function ExecutionWorkspace({
       );
       setOutput(`[${displayStatus(result.task.status)}]\n${result.task.stdout}\n${result.task.stderr}`.trim());
       await onSaved();
-    } catch (error) {
-      toast((error as Error).message, 'error');
+    } catch (reason) {
+      toast((reason as Error).message, 'error');
     }
   }
+  return {
+    directory,
+    setDirectory,
+    tabs,
+    active,
+    setActive,
+    output,
+    task,
+    setTask,
+    saving,
+    files,
+    repositoryAvailable,
+    writeEnabled,
+    fileEntries,
+    current,
+    open,
+    change,
+    close,
+    save,
+    diff,
+    runTask
+  };
+}
 
+type ExecutionWorkspaceViewProps = {
+  connections: RepositoryConnection[];
+  catalog?: RepositoryBranchCatalog;
+  workspaces: RepositoryWorkspace[];
+  connectionId: string;
+  branchRef: string;
+  workspaceId: string;
+  selectedWorkspace: RepositoryWorkspace | null;
+  repositoryBound: boolean;
+  repositoryError: Error | null;
+  branchCount: number;
+  preparation: ReturnType<typeof useWorkspacePreparation>;
+  editor: ReturnType<typeof useExecutionEditor>;
+  requiresRepository: boolean;
+  runningNode: boolean;
+  onConnection: (value: string) => void;
+  onBranch: (value: string) => void;
+  onWorkspace: (value: string) => void;
+  onRefresh: () => void;
+  onRetryRepository: () => Promise<unknown>;
+  onRunNode: (repositoryWorkspaceId?: string) => void;
+};
+
+function ExecutionWorkspaceView(props: ExecutionWorkspaceViewProps) {
   return (
     <div className="execution-workspace">
       <RepositoryBar
-        connections={connections.data?.items || []}
-        catalog={branches.data}
-        workspaces={availableWorkspaces}
-        connectionId={connectionId}
-        branchRef={branchRef}
-        workspaceId={workspaceId}
-        selected={selectedWorkspace}
-        opening={opening}
-        onConnection={(id) => {
-          manualWorkspaceSelection.current = false;
-          activePreparationKey.current = null;
-          setPreparingWorkspaceKey(null);
-          setWorkspacePreparationError(null);
-          setConnectionId(id);
-          setBranchRef('');
-          setWorkspaceId('');
-        }}
-        onBranch={(ref) => {
-          manualWorkspaceSelection.current = false;
-          activePreparationKey.current = null;
-          setPreparingWorkspaceKey(null);
-          setWorkspacePreparationError(null);
-          setBranchRef(ref);
-          setWorkspaceId('');
-        }}
-        onWorkspace={(id) => {
-          manualWorkspaceSelection.current = true;
-          activePreparationKey.current = null;
-          setPreparingWorkspaceKey(null);
-          setWorkspacePreparationError(null);
-          setWorkspaceId(id);
-        }}
-        onRefresh={refreshWorkspace}
+        connections={props.connections}
+        catalog={props.catalog}
+        workspaces={props.workspaces}
+        connectionId={props.connectionId}
+        branchRef={props.branchRef}
+        workspaceId={props.workspaceId}
+        selected={props.selectedWorkspace}
+        opening={props.preparation.opening}
+        onConnection={props.onConnection}
+        onBranch={props.onBranch}
+        onWorkspace={props.onWorkspace}
+        onRefresh={props.onRefresh}
       />
-      <aside className="file-explorer">
-        <header>
-          <strong>文件</strong>
-          <button
-            className="row-icon"
-            aria-label="上一级目录"
-            disabled={!directory || !selectedWorkspace}
-            onClick={() => setDirectory(directory.split('/').slice(0, -1).join('/'))}
-          >
-            <FolderUp size={16} />
-          </button>
-        </header>
-        <div className="file-path">/{directory}</div>
-        <div className="file-list">
-          {!repositoryBound && <FileCapabilityState>未绑定代码仓库</FileCapabilityState>}
-          {repositoryBound && repositoryError && (
-            <FileCapabilityState
-              error
-              detail={repositoryError.message}
-              retry={() => Promise.all([connections.refetch(), workspaces.refetch(), branches.refetch()])}
-            >
-              文件加载失败
-            </FileCapabilityState>
-          )}
-          {repositoryBound && !repositoryError && !selectedWorkspace && workspacePreparationError && (
-            <FileCapabilityState error detail={workspacePreparationError} retry={refreshWorkspace}>
-              当前分支没有可用执行副本
-            </FileCapabilityState>
-          )}
-          {repositoryBound && !repositoryError && !selectedWorkspace && !workspacePreparationError && (
-            <FileCapabilityState>
-              {opening
-                ? '正在准备当前分支'
-                : branches.data?.branches.length
-                  ? '正在准备当前分支'
-                  : '当前代码仓库没有可用分支'}
-            </FileCapabilityState>
-          )}
-          {selectedWorkspace && files.isLoading && <FileCapabilityState>正在读取代码仓库</FileCapabilityState>}
-          {selectedWorkspace && files.isError && (
-            <FileCapabilityState error detail={files.error.message} retry={() => files.refetch()}>
-              文件加载失败
-            </FileCapabilityState>
-          )}
-          {repositoryAvailable && !fileEntries.length && <FileCapabilityState>当前目录为空</FileCapabilityState>}
-          {repositoryAvailable &&
-            fileEntries.map((entry) => (
-              <button key={entry.path} onClick={() => open(entry)}>
-                {entry.type === 'directory' ? <Folder size={15} /> : <File size={15} />}
-                <span>{entry.name}</span>
-              </button>
-            ))}
-        </div>
-      </aside>
-      <section className="code-area">
-        <div className="editor-tabs">
-          {tabs.map((tab) => (
-            <div className={tab.path === active ? 'active' : ''} key={tab.path}>
-              <button onClick={() => setActive(tab.path)}>
-                <span>
-                  {tab.path.split('/').at(-1)}
-                  {tab.content !== tab.saved ? ' *' : ''}
-                </span>
-              </button>
-              <button aria-label={`关闭 ${tab.path}`} onClick={() => close(tab.path)}>
-                <X size={12} />
-              </button>
-            </div>
+      <ExecutionFileExplorer {...props} />
+      <ExecutionCodeArea {...props} />
+    </div>
+  );
+}
+
+function ExecutionFileExplorer(props: ExecutionWorkspaceViewProps) {
+  const { editor, selectedWorkspace, repositoryBound, repositoryError, preparation, branchCount } = props;
+  return (
+    <aside className="file-explorer">
+      <header>
+        <strong>文件</strong>
+        <button
+          className="row-icon"
+          aria-label="上一级目录"
+          disabled={!editor.directory || !selectedWorkspace}
+          onClick={() => editor.setDirectory(editor.directory.split('/').slice(0, -1).join('/'))}
+        >
+          <FolderUp size={16} />
+        </button>
+      </header>
+      <div className="file-path">/{editor.directory}</div>
+      <div className="file-list">
+        {!repositoryBound && <FileCapabilityState>未绑定代码仓库</FileCapabilityState>}
+        {repositoryBound && repositoryError && (
+          <FileCapabilityState error detail={repositoryError.message} retry={props.onRetryRepository}>
+            文件加载失败
+          </FileCapabilityState>
+        )}
+        {repositoryBound && !repositoryError && !selectedWorkspace && preparation.error && (
+          <FileCapabilityState error detail={preparation.error} retry={props.onRefresh}>
+            当前分支没有可用执行副本
+          </FileCapabilityState>
+        )}
+        {repositoryBound && !repositoryError && !selectedWorkspace && !preparation.error && (
+          <FileCapabilityState>
+            {preparation.opening || branchCount ? '正在准备当前分支' : '当前代码仓库没有可用分支'}
+          </FileCapabilityState>
+        )}
+        {selectedWorkspace && editor.files.isLoading && <FileCapabilityState>正在读取代码仓库</FileCapabilityState>}
+        {selectedWorkspace && editor.files.isError && (
+          <FileCapabilityState error detail={editor.files.error.message} retry={() => editor.files.refetch()}>
+            文件加载失败
+          </FileCapabilityState>
+        )}
+        {editor.repositoryAvailable && !editor.fileEntries.length && (
+          <FileCapabilityState>当前目录为空</FileCapabilityState>
+        )}
+        {editor.repositoryAvailable &&
+          editor.fileEntries.map((entry) => (
+            <button key={entry.path} onClick={() => editor.open(entry)}>
+              {entry.type === 'directory' ? <Folder size={15} /> : <File size={15} />}
+              <span>{entry.name}</span>
+            </button>
           ))}
-        </div>
-        <div className="editor-toolbar">
-          <span>{current?.path || '未打开文件'}</span>
-          <button className="button secondary" disabled={!repositoryAvailable || !current} onClick={diff}>
-            <Diff size={14} />
-            差异
+      </div>
+    </aside>
+  );
+}
+
+function ExecutionCodeArea(props: ExecutionWorkspaceViewProps) {
+  const { editor, selectedWorkspace } = props;
+  const current = editor.current;
+  return (
+    <section className="code-area">
+      <div className="editor-tabs">
+        {editor.tabs.map((tab) => (
+          <div className={tab.path === editor.active ? 'active' : ''} key={tab.path}>
+            <button onClick={() => editor.setActive(tab.path)}>
+              <span>
+                {tab.path.split('/').at(-1)}
+                {tab.content !== tab.saved ? ' *' : ''}
+              </span>
+            </button>
+            <button aria-label={`关闭 ${tab.path}`} onClick={() => editor.close(tab.path)}>
+              <X size={12} />
+            </button>
+          </div>
+        ))}
+      </div>
+      <div className="editor-toolbar">
+        <span>{current?.path || '未打开文件'}</span>
+        <button className="button secondary" disabled={!editor.repositoryAvailable || !current} onClick={editor.diff}>
+          <Diff size={14} />
+          差异
+        </button>
+        <button
+          className="button primary"
+          disabled={editor.saving || !editor.writeEnabled || !current || current.content === current.saved}
+          onClick={editor.save}
+        >
+          <Save size={14} />
+          {editor.saving ? '保存中' : '保存'}
+        </button>
+      </div>
+      <div className="monaco-host">
+        {current ? (
+          <Editor
+            path={`${selectedWorkspace?.id}/${current.path}`}
+            language={current.language}
+            value={current.content}
+            onChange={editor.change}
+            onMount={(instance) => bindEditorSelection(instance, current)}
+            theme="vs-dark"
+            options={{
+              minimap: { enabled: false },
+              fontSize: 13,
+              automaticLayout: true,
+              wordWrap: 'on',
+              scrollBeyondLastLine: false
+            }}
+          />
+        ) : (
+          <div className="quiet-empty">
+            <File size={22} />
+            <p>{editor.repositoryAvailable ? '从文件树打开文件' : '代码仓库文件能力不可用'}</p>
+          </div>
+        )}
+      </div>
+      <div className="task-console">
+        <header>
+          <select
+            id="execution-test-task"
+            aria-label="测试任务"
+            value={editor.task}
+            disabled={!editor.writeEnabled}
+            onChange={(event) => editor.setTask(event.target.value)}
+          >
+            <option value="test">测试</option>
+            <option value="typecheck">类型检查</option>
+            <option value="lint">代码规范检查</option>
+            <option value="build">生产构建</option>
+          </select>
+          <button className="button secondary" disabled={!editor.writeEnabled} onClick={editor.runTask}>
+            <TestTube2 size={14} />
+            运行任务
           </button>
           <button
             className="button primary"
-            disabled={saving || !writeEnabled || !current || current.content === current.saved}
-            onClick={save}
+            disabled={
+              props.runningNode || Boolean(props.requiresRepository && (!editor.writeEnabled || !selectedWorkspace))
+            }
+            onClick={() => props.onRunNode(selectedWorkspace?.id)}
           >
-            <Save size={14} />
-            {saving ? '保存中' : '保存'}
+            <Play size={14} />
+            {props.runningNode ? '运行中' : '运行'}
           </button>
-        </div>
-        <div className="monaco-host">
-          {current ? (
-            <Editor
-              path={`${selectedWorkspace?.id}/${current.path}`}
-              language={current.language}
-              value={current.content}
-              onChange={change}
-              onMount={(editor) => {
-                useIdeContext.getState().setFile(current.path, editor.getValue());
-                editor.onDidChangeCursorSelection(({ selection }) => {
-                  const text = editor.getModel()?.getValueInRange(selection) || '';
-                  useIdeContext.getState().setSelection(
-                    text
-                      ? {
-                          text,
-                          start_line: selection.startLineNumber,
-                          start_column: selection.startColumn,
-                          end_line: selection.endLineNumber,
-                          end_column: selection.endColumn
-                        }
-                      : null
-                  );
-                });
-              }}
-              theme="vs-dark"
-              options={{
-                minimap: { enabled: false },
-                fontSize: 13,
-                automaticLayout: true,
-                wordWrap: 'on',
-                scrollBeyondLastLine: false
-              }}
-            />
-          ) : (
-            <div className="quiet-empty">
-              <File size={22} />
-              <p>{repositoryAvailable ? '从文件树打开文件' : '代码仓库文件能力不可用'}</p>
-            </div>
-          )}
-        </div>
-        <div className="task-console">
-          <header>
-            <select
-              id="execution-test-task"
-              aria-label="测试任务"
-              value={task}
-              disabled={!writeEnabled}
-              onChange={(event) => setTask(event.target.value)}
-            >
-              <option value="test">测试</option>
-              <option value="typecheck">类型检查</option>
-              <option value="lint">代码规范检查</option>
-              <option value="build">生产构建</option>
-            </select>
-            <button className="button secondary" disabled={!writeEnabled} onClick={runTask}>
-              <TestTube2 size={14} />
-              运行任务
-            </button>
-            <button
-              className="button primary"
-              disabled={runningNode || Boolean(requiresRepository && (!writeEnabled || !selectedWorkspace))}
-              onClick={() => onRunNode(selectedWorkspace?.id)}
-            >
-              <Play size={14} />
-              {runningNode ? '运行中' : '运行'}
-            </button>
-          </header>
-          <pre>{output || '等待任务输出'}</pre>
-        </div>
-      </section>
-    </div>
+        </header>
+        <pre>{editor.output || '等待任务输出'}</pre>
+      </div>
+    </section>
   );
+}
+
+function bindEditorSelection(
+  editor: Parameters<NonNullable<ComponentProps<typeof Editor>['onMount']>>[0],
+  tab: ExecutionTab
+) {
+  useIdeContext.getState().setFile(tab.path, editor.getValue());
+  editor.onDidChangeCursorSelection(({ selection }) => {
+    const text = editor.getModel()?.getValueInRange(selection) || '';
+    useIdeContext.getState().setSelection(
+      text
+        ? {
+            text,
+            start_line: selection.startLineNumber,
+            start_column: selection.startColumn,
+            end_line: selection.endLineNumber,
+            end_column: selection.endColumn
+          }
+        : null
+    );
+  });
 }
 
 function RepositoryBar(props: {

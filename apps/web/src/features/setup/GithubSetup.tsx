@@ -1,5 +1,5 @@
 import { Check, Copy, ExternalLink, Github, KeyRound, LoaderCircle, RefreshCw } from 'lucide-react';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useState, type Dispatch, type SetStateAction } from 'react';
 import { api, json } from '../../api/client';
 import type { StepState } from '../../api/types';
 import { IconButton } from '../../components/common/IconButton';
@@ -12,7 +12,7 @@ type Discovery = { installed: boolean; installations: Installation[] };
 type StartResult = { installation_url?: string; installation?: Installation };
 const INSTALL_URL_KEY = 'aiws-github-installation-url';
 
-export function GithubSetup({
+function useGithubSetupController({
   mode,
   state,
   onChange
@@ -28,15 +28,14 @@ export function GithubSetup({
     private_key: '',
     webhook_secret: ''
   });
-  const [device, setDevice] = useState<Device | null>(null);
   const [busy, setBusy] = useState(false);
   const [installations, setInstallations] = useState<Installation[]>([]);
   const [selected, setSelected] = useState<string[]>([]);
   const [installationUrl, setInstallationUrl] = useState(() => sessionStorage.getItem(INSTALL_URL_KEY) || '');
   const [feedback, setFeedback] = useState('');
   const [error, setError] = useState('');
-  const [copied, setCopied] = useState(false);
   const checks = state.checks || {};
+  const deviceAuthorization = useGithubDeviceAuthorization({ mode, onChange, setBusy, setError, setFeedback });
 
   const loadInstallations = useCallback(async () => {
     const items = await api<Installation[]>('/github/installations');
@@ -152,59 +151,6 @@ export function GithubSetup({
       setBusy(false);
     }
   }
-  async function connect() {
-    const popup = window.open('about:blank', 'aiws-github-device');
-    if (popup) popup.opener = null;
-    setBusy(true);
-    setError('');
-    try {
-      const result = await api<Device>('/github/device/start', json('POST', { mode }, '启动 GitHub 设备登录'));
-      setDevice(result);
-      setCopied(false);
-      if (popup) popup.location.replace(result.verification_uri);
-      else window.open(result.verification_uri, '_blank', 'noopener,noreferrer');
-    } catch (value) {
-      popup?.close();
-      setError(message(value));
-    } finally {
-      setBusy(false);
-    }
-  }
-  async function poll() {
-    if (!device) return;
-    setBusy(true);
-    setError('');
-    try {
-      const result = await api<{ connected?: boolean; error?: string }>(
-        '/github/device/poll',
-        json('POST', { request_id: device.request_id }, '检查 GitHub 授权')
-      );
-      if (result.connected) {
-        setDevice(null);
-        setFeedback('GitHub 所有者授权已完成。');
-      } else
-        setFeedback(
-          result.error === 'authorization_pending'
-            ? 'GitHub 尚未确认授权，请完成后再次检查。'
-            : result.error || '等待 GitHub 授权。'
-        );
-      await onChange();
-    } catch (value) {
-      setError(message(value));
-    } finally {
-      setBusy(false);
-    }
-  }
-  async function copyDeviceCode() {
-    if (!device) return;
-    try {
-      await navigator.clipboard.writeText(device.user_code);
-      setCopied(true);
-      setFeedback('设备码已复制。');
-    } catch {
-      setError('无法复制设备码，请手动选择。');
-    }
-  }
   async function openInstallation() {
     const popup = window.open('about:blank', 'aiws-github-install');
     if (popup) popup.opener = null;
@@ -244,6 +190,57 @@ export function GithubSetup({
     );
   }
 
+  return {
+    form,
+    setForm,
+    busy,
+    installations,
+    selected,
+    setSelected,
+    installationUrl,
+    feedback,
+    error,
+    checks,
+    saveManual,
+    startManifest,
+    discover,
+    openInstallation,
+    saveRepositories,
+    ...deviceAuthorization
+  };
+}
+
+export function GithubSetup({
+  mode,
+  state,
+  onChange
+}: {
+  mode: 'hosted' | 'byo';
+  state: StepState;
+  onChange: () => Promise<unknown>;
+}) {
+  const {
+    form,
+    setForm,
+    busy,
+    installations,
+    selected,
+    setSelected,
+    installationUrl,
+    feedback,
+    error,
+    checks,
+    saveManual,
+    startManifest,
+    discover,
+    openInstallation,
+    saveRepositories,
+    device,
+    copied,
+    connect,
+    poll,
+    copyDeviceCode
+  } = useGithubSetupController({ mode, state, onChange });
   const installed = Boolean(checks.installation_installed || state.installation_count || installations.length);
   const ownerAuthorizationRequired = (mode === 'hosted' || checks.app_configured) && !checks.account_connected;
   return (
@@ -409,6 +406,78 @@ export function GithubSetup({
       )}
     </section>
   );
+}
+
+function useGithubDeviceAuthorization({
+  mode,
+  onChange,
+  setBusy,
+  setError,
+  setFeedback
+}: {
+  mode: 'hosted' | 'byo';
+  onChange: () => Promise<unknown>;
+  setBusy: Dispatch<SetStateAction<boolean>>;
+  setError: Dispatch<SetStateAction<string>>;
+  setFeedback: Dispatch<SetStateAction<string>>;
+}) {
+  const [device, setDevice] = useState<Device | null>(null);
+  const [copied, setCopied] = useState(false);
+  async function connect() {
+    const popup = window.open('about:blank', 'aiws-github-device');
+    if (popup) popup.opener = null;
+    setBusy(true);
+    setError('');
+    try {
+      const result = await api<Device>('/github/device/start', json('POST', { mode }, '启动 GitHub 设备登录'));
+      setDevice(result);
+      setCopied(false);
+      if (popup) popup.location.replace(result.verification_uri);
+      else window.open(result.verification_uri, '_blank', 'noopener,noreferrer');
+    } catch (value) {
+      popup?.close();
+      setError(message(value));
+    } finally {
+      setBusy(false);
+    }
+  }
+  async function poll() {
+    if (!device) return;
+    setBusy(true);
+    setError('');
+    try {
+      const result = await api<{ connected?: boolean; error?: string }>(
+        '/github/device/poll',
+        json('POST', { request_id: device.request_id }, '检查 GitHub 授权')
+      );
+      if (result.connected) {
+        setDevice(null);
+        setFeedback('GitHub 所有者授权已完成。');
+      } else {
+        setFeedback(
+          result.error === 'authorization_pending'
+            ? 'GitHub 尚未确认授权，请完成后再次检查。'
+            : result.error || '等待 GitHub 授权。'
+        );
+      }
+      await onChange();
+    } catch (value) {
+      setError(message(value));
+    } finally {
+      setBusy(false);
+    }
+  }
+  async function copyDeviceCode() {
+    if (!device) return;
+    try {
+      await navigator.clipboard.writeText(device.user_code);
+      setCopied(true);
+      setFeedback('设备码已复制。');
+    } catch {
+      setError('无法复制设备码，请手动选择。');
+    }
+  }
+  return { device, copied, connect, poll, copyDeviceCode };
 }
 
 function RepositoryPicker({

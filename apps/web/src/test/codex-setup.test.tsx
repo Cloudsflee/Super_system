@@ -7,12 +7,12 @@ const sources = [
   { name: 'cc-switch CLI', repo: 'https://github.com/SaladDay/cc-switch-cli.git' }
 ];
 
-describe('Codex Setup provider configuration', () => {
-  afterEach(() => {
-    cleanup();
-    vi.unstubAllGlobals();
-  });
+afterEach(() => {
+  cleanup();
+  vi.unstubAllGlobals();
+});
 
+describe('Codex Setup provider configuration', () => {
   it('requires and submits a Base URL for a custom third-party API', async () => {
     const calls: Array<{ url: string; init?: RequestInit }> = [];
     vi.stubGlobal(
@@ -163,7 +163,9 @@ describe('Codex Setup provider configuration', () => {
     expect(screen.getByRole('button', { name: '保存并校验配置' })).toBeEnabled();
     expect(screen.queryByText(/Runtime Bridge/)).not.toBeInTheDocument();
   });
+});
 
+describe('Codex Setup profile repair and probe diagnosis', () => {
   it('repairs a legacy third-party Profile that has no endpoint without asking for the stored key again', async () => {
     const calls: Array<{ url: string; init?: RequestInit }> = [];
     vi.stubGlobal(

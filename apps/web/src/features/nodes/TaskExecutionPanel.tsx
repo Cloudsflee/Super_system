@@ -125,49 +125,18 @@ export function TaskExecutionPanel({ taskId, canWrite = true }: { taskId: string
       setBusy('');
     }
   }
-  if (!executionId)
-    return (
-      <section className="task-execution-panel empty">
-        <header>
-          <Database size={17} />
-          <div>
-            <strong>尚未启动</strong>
-            <small>工作流执行</small>
-          </div>
-        </header>
-      </section>
-    );
+  if (!executionId) return <TaskExecutionEmpty title="尚未启动" detail="工作流执行" />;
   if (details.isLoading || !value || !execution)
-    return (
-      <section className="task-execution-panel empty">
-        <header>
-          <Database size={17} />
-          <div>
-            <strong>正在读取任务执行</strong>
-            <small>{short(executionId)}</small>
-          </div>
-        </header>
-      </section>
-    );
+    return <TaskExecutionEmpty title="正在读取任务执行" detail={short(executionId)} />;
   const intent = value.pull_request_intent;
   return (
     <section className="task-execution-panel">
-      <header className="task-execution-heading">
-        <span className={`execution-dot ${execution.status}`} />
-        <div>
-          <strong>{displayStatus(execution.status)}</strong>
-          <small>
-            {executorLabel(execution.executor)} · 第 {execution.attempt} 次尝试 · {short(execution.id)}
-          </small>
-        </div>
-        {execution.error_code && <code>{execution.error_code}</code>}
-        {canWrite && execution.status === 'failed' && (
-          <button className="button secondary" disabled={Boolean(busy)} onClick={() => void retry()}>
-            <RotateCcw size={14} />
-            重试
-          </button>
-        )}
-      </header>
+      <TaskExecutionHeader
+        execution={execution}
+        canWrite={canWrite}
+        busy={Boolean(busy)}
+        onRetry={() => void retry()}
+      />
       <div className="task-execution-snapshot">
         <SnapshotColumn title="固定输入" icon={<Database size={14} />} empty="无资产输入">
           {value.inputs
@@ -242,6 +211,51 @@ export function TaskExecutionPanel({ taskId, canWrite = true }: { taskId: string
         </div>
       ) : null}
     </section>
+  );
+}
+
+function TaskExecutionEmpty({ title, detail }: { title: string; detail: string }) {
+  return (
+    <section className="task-execution-panel empty">
+      <header>
+        <Database size={17} />
+        <div>
+          <strong>{title}</strong>
+          <small>{detail}</small>
+        </div>
+      </header>
+    </section>
+  );
+}
+
+function TaskExecutionHeader({
+  execution,
+  canWrite,
+  busy,
+  onRetry
+}: {
+  execution: TaskExecutionDetails['task_execution'];
+  canWrite: boolean;
+  busy: boolean;
+  onRetry: () => void;
+}) {
+  return (
+    <header className="task-execution-heading">
+      <span className={`execution-dot ${execution.status}`} />
+      <div>
+        <strong>{displayStatus(execution.status)}</strong>
+        <small>
+          {executorLabel(execution.executor)} · 第 {execution.attempt} 次尝试 · {short(execution.id)}
+        </small>
+      </div>
+      {execution.error_code && <code>{execution.error_code}</code>}
+      {canWrite && execution.status === 'failed' && (
+        <button className="button secondary" disabled={busy} onClick={onRetry}>
+          <RotateCcw size={14} />
+          重试
+        </button>
+      )}
+    </header>
   );
 }
 

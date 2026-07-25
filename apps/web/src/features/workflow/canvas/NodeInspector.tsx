@@ -145,47 +145,7 @@ export function NodeInspector({
             <p>尚未建立任务契约</p>
           )}
         </section>
-        <dl>
-          <div>
-            <dt>
-              <ListChecks size={13} />
-              任务进度
-            </dt>
-            <dd>
-              {node.completed_task_count || 0}/{node.task_count || 0}
-            </dd>
-          </div>
-          <div>
-            <dt>
-              <CircleAlert size={13} />
-              阻塞
-            </dt>
-            <dd>{node.blocked_count || 0}</dd>
-          </div>
-          <div>
-            <dt>
-              <FileCheck2 size={13} />
-              输出
-            </dt>
-            <dd>{node.output_count || 0}</dd>
-          </div>
-          <div>
-            <dt>
-              <ShieldCheck size={13} />
-              待审批
-            </dt>
-            <dd>{node.pending_approval_count || 0}</dd>
-          </div>
-          <div>
-            <dt>
-              <GitBranch size={13} />
-              仓库
-            </dt>
-            <dd>
-              {node.repository_status?.ready_count || 0}/{node.repository_status?.target_count || 0}
-            </dd>
-          </div>
-        </dl>
+        <NodeStats node={node} />
         {editing && (
           <section className="node-edit">
             <label>
@@ -237,6 +197,52 @@ export function NodeInspector({
         )}
       </div>
     </aside>
+  );
+}
+
+function NodeStats({ node }: { node: WorkflowNode }) {
+  return (
+    <dl>
+      <div>
+        <dt>
+          <ListChecks size={13} />
+          任务进度
+        </dt>
+        <dd>
+          {node.completed_task_count || 0}/{node.task_count || 0}
+        </dd>
+      </div>
+      <div>
+        <dt>
+          <CircleAlert size={13} />
+          阻塞
+        </dt>
+        <dd>{node.blocked_count || 0}</dd>
+      </div>
+      <div>
+        <dt>
+          <FileCheck2 size={13} />
+          输出
+        </dt>
+        <dd>{node.output_count || 0}</dd>
+      </div>
+      <div>
+        <dt>
+          <ShieldCheck size={13} />
+          待审批
+        </dt>
+        <dd>{node.pending_approval_count || 0}</dd>
+      </div>
+      <div>
+        <dt>
+          <GitBranch size={13} />
+          仓库
+        </dt>
+        <dd>
+          {node.repository_status?.ready_count || 0}/{node.repository_status?.target_count || 0}
+        </dd>
+      </div>
+    </dl>
   );
 }
 

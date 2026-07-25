@@ -7,7 +7,7 @@ export type AssistGeometry = { x: number; y: number; width: number; height: numb
 export type ContextLane = 'assist' | 'inspector' | null;
 export type InspectorMode = 'expanded' | 'peek';
 export type WorkflowTaskDensity = 'compact' | 'comfortable' | 'detailed';
-type UiState = {
+export type UiState = {
   navOpen: boolean;
   assistOpen: boolean;
   inspectorNodeId: string | null;

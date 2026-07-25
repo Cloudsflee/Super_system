@@ -89,46 +89,22 @@ export function DiffReviewPanel({
   }
   return (
     <section className="diff-review-panel">
-      <header>
-        <button className="row-icon" aria-label="返回对话" onClick={onBack}>
-          <ArrowLeft size={16} />
-        </button>
-        <FileDiff size={17} />
-        <div>
-          <strong>审查变更</strong>
-          <small>
-            {data.changed_files.length} 个文件 · {displayStatus(data.worktree.status)} · {short(data.target_hash)}
-          </small>
-        </div>
-        <button
-          className={`button secondary ${viewed ? 'active' : ''}`}
-          disabled={!path || action.isPending}
-          onClick={() => markViewed()}
-        >
-          <Eye size={14} />
-          {viewed ? '已查看' : '标记为已查看'}
-        </button>
-      </header>
+      <DiffReviewHeader
+        data={data}
+        viewed={viewed}
+        canMarkViewed={Boolean(path) && !action.isPending}
+        onBack={onBack}
+        onMarkViewed={() => markViewed()}
+      />
       <div className="diff-review-layout">
-        <aside className="changed-files" role="tree" aria-label="已变更文件">
-          <h3>已变更文件</h3>
-          {data.changed_files.map((file) => (
-            <button
-              role="treeitem"
-              aria-level={file.path.split('/').length}
-              className={file.path === path ? 'active' : ''}
-              key={file.path}
-              onClick={() => {
-                setPath(file.path);
-                setSelection(null);
-              }}
-            >
-              <i className={file.status}>{statusLetter(file.status)}</i>
-              <span style={{ paddingLeft: Math.min(24, (file.path.split('/').length - 1) * 5) }}>{file.path}</span>
-              {data.viewed_files[file.path] && <Check size={13} />}
-            </button>
-          ))}
-        </aside>
+        <ChangedFilesTree
+          data={data}
+          path={path}
+          onSelect={(nextPath) => {
+            setPath(nextPath);
+            setSelection(null);
+          }}
+        />
         <main className="diff-main">
           <div className="diff-file-head">
             <strong>{path}</strong>
@@ -225,6 +201,68 @@ export function DiffReviewPanel({
         )}
       </footer>
     </section>
+  );
+}
+
+function DiffReviewHeader({
+  data,
+  viewed,
+  canMarkViewed,
+  onBack,
+  onMarkViewed
+}: {
+  data: AssistReview;
+  viewed: boolean;
+  canMarkViewed: boolean;
+  onBack: () => void;
+  onMarkViewed: () => void;
+}) {
+  return (
+    <header>
+      <button className="row-icon" aria-label="返回对话" onClick={onBack}>
+        <ArrowLeft size={16} />
+      </button>
+      <FileDiff size={17} />
+      <div>
+        <strong>审查变更</strong>
+        <small>
+          {data.changed_files.length} 个文件 · {displayStatus(data.worktree.status)} · {short(data.target_hash)}
+        </small>
+      </div>
+      <button className={`button secondary ${viewed ? 'active' : ''}`} disabled={!canMarkViewed} onClick={onMarkViewed}>
+        <Eye size={14} />
+        {viewed ? '已查看' : '标记为已查看'}
+      </button>
+    </header>
+  );
+}
+
+function ChangedFilesTree({
+  data,
+  path,
+  onSelect
+}: {
+  data: AssistReview;
+  path: string;
+  onSelect: (path: string) => void;
+}) {
+  return (
+    <aside className="changed-files" role="tree" aria-label="已变更文件">
+      <h3>已变更文件</h3>
+      {data.changed_files.map((file) => (
+        <button
+          role="treeitem"
+          aria-level={file.path.split('/').length}
+          className={file.path === path ? 'active' : ''}
+          key={file.path}
+          onClick={() => onSelect(file.path)}
+        >
+          <i className={file.status}>{statusLetter(file.status)}</i>
+          <span style={{ paddingLeft: Math.min(24, (file.path.split('/').length - 1) * 5) }}>{file.path}</span>
+          {data.viewed_files[file.path] && <Check size={13} />}
+        </button>
+      ))}
+    </aside>
   );
 }
 

@@ -11,7 +11,7 @@ import {
   ShieldCheck,
   X
 } from 'lucide-react';
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type RefObject } from 'react';
 import type { AssistOperation } from '../../api/types';
 import { useContextMenu, useContextMenuResolver, type ContextMenuAction } from '../../components/common/ContextMenu';
 import { IconButton } from '../../components/common/IconButton';
@@ -87,51 +87,17 @@ export function OperationReceipt({
     const rect = trigger.getBoundingClientRect();
     menu.open(menuActions, { x: rect.right - 8, y: rect.bottom + 5 }, trigger);
   }
-  if (operation.result_kind === 'change_proposal') {
-    const proposalStatus = operation.proposal_status || 'pending';
+  if (operation.result_kind === 'change_proposal')
     return (
-      <article
-        className={`operation-receipt proposal-${proposalStatus}`}
-        data-operation-receipt={operation.id}
-        tabIndex={0}
-      >
-        <header>
-          {proposalStatus === 'applied' ? (
-            <CheckCircle2 size={14} />
-          ) : ['rejected', 'superseded', 'stale'].includes(proposalStatus) ? (
-            <AlertTriangle size={14} />
-          ) : (
-            <GitPullRequest size={14} />
-          )}
-          <span>
-            <strong>
-              {operation.summary || `已创建工作流变更提案 · ${operation.target_label || operation.target_id}`}
-            </strong>
-            <small>
-              {operation.target_label || operation.target_id}
-              {operation.proposal_destructive ? ' · 包含删除' : ''}
-            </small>
-          </span>
-          <i>{proposalStatusLabel(proposalStatus)}</i>
-          {menuActions.length > 0 && (
-            <IconButton ref={more} label="更多操作" aria-haspopup="menu" onClick={openMenu}>
-              <MoreHorizontal size={14} />
-            </IconButton>
-          )}
-        </header>
-        <footer>
-          <a className="operation-route-link" href={locatedRoute(operation)}>
-            <MapPin size={13} />
-            定位工作流
-          </a>
-          <button disabled={busy || !operation.proposal_id} onClick={() => showProposal(operation.proposal_id || null)}>
-            <GitPullRequest size={13} />
-            审查提案
-          </button>
-        </footer>
-      </article>
+      <ProposalReceipt
+        operation={operation}
+        busy={busy}
+        menuActions={menuActions}
+        more={more}
+        openMenu={openMenu}
+        showProposal={showProposal}
+      />
     );
-  }
   return (
     <article className={`operation-receipt ${status}`} data-operation-receipt={operation.id} tabIndex={0}>
       <header>
@@ -216,6 +182,66 @@ export function OperationReceipt({
           )}
         </div>
       )}
+    </article>
+  );
+}
+
+function ProposalReceipt({
+  operation,
+  busy,
+  menuActions,
+  more,
+  openMenu,
+  showProposal
+}: {
+  operation: AssistOperation;
+  busy: boolean;
+  menuActions: ContextMenuAction[];
+  more: RefObject<HTMLButtonElement | null>;
+  openMenu: () => void;
+  showProposal: (id: string | null) => void;
+}) {
+  const proposalStatus = operation.proposal_status || 'pending';
+  return (
+    <article
+      className={`operation-receipt proposal-${proposalStatus}`}
+      data-operation-receipt={operation.id}
+      tabIndex={0}
+    >
+      <header>
+        {proposalStatus === 'applied' ? (
+          <CheckCircle2 size={14} />
+        ) : ['rejected', 'superseded', 'stale'].includes(proposalStatus) ? (
+          <AlertTriangle size={14} />
+        ) : (
+          <GitPullRequest size={14} />
+        )}
+        <span>
+          <strong>
+            {operation.summary || `已创建工作流变更提案 · ${operation.target_label || operation.target_id}`}
+          </strong>
+          <small>
+            {operation.target_label || operation.target_id}
+            {operation.proposal_destructive ? ' · 包含删除' : ''}
+          </small>
+        </span>
+        <i>{proposalStatusLabel(proposalStatus)}</i>
+        {menuActions.length > 0 && (
+          <IconButton ref={more} label="更多操作" aria-haspopup="menu" onClick={openMenu}>
+            <MoreHorizontal size={14} />
+          </IconButton>
+        )}
+      </header>
+      <footer>
+        <a className="operation-route-link" href={locatedRoute(operation)}>
+          <MapPin size={13} />
+          定位工作流
+        </a>
+        <button disabled={busy || !operation.proposal_id} onClick={() => showProposal(operation.proposal_id || null)}>
+          <GitPullRequest size={13} />
+          审查提案
+        </button>
+      </footer>
     </article>
   );
 }

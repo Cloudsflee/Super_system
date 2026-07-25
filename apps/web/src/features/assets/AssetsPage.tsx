@@ -20,7 +20,7 @@ import { useUi } from '../../state/ui';
 
 const PREVIEW_LIMIT = 1024 * 1024;
 
-export function AssetsPage() {
+function useAssetsPageController() {
   const projectId = useUi((state) => state.activeProjectId),
     toast = useUi((state) => state.toast);
   const [status, setStatus] = useState('all'),
@@ -136,9 +136,6 @@ export function AssetsPage() {
     }
   }
 
-  if (assets.isLoading) return <FullPageState title="正在加载资产" />;
-  if (assets.isError)
-    return <FullPageState title="资产加载失败" detail={assets.error.message} retry={assets.refetch} />;
   const selected = version.data?.version,
     current = detail.data?.asset;
   const canAttest =
@@ -146,6 +143,56 @@ export function AssetsPage() {
     current.current_version_id === selected?.id &&
     current.confirmation_policy !== 'system_evidence' &&
     Boolean(selected?.content_sha256);
+  return {
+    assets,
+    rows,
+    status,
+    setStatus,
+    selectedId,
+    setSelectedId,
+    detail,
+    selected,
+    current,
+    setVersionId,
+    previewPath,
+    setPreviewPath,
+    canAttest,
+    executionId,
+    busy,
+    task,
+    decide,
+    preview,
+    canPreview,
+    version
+  };
+}
+
+export function AssetsPage() {
+  const {
+    assets,
+    rows,
+    status,
+    setStatus,
+    selectedId,
+    setSelectedId,
+    detail,
+    selected,
+    current,
+    setVersionId,
+    previewPath,
+    setPreviewPath,
+    canAttest,
+    executionId,
+    busy,
+    task,
+    decide,
+    preview,
+    canPreview,
+    version
+  } = useAssetsPageController();
+  if (assets.isLoading) return <FullPageState title="正在加载资产" />;
+  if (assets.isError)
+    return <FullPageState title="资产加载失败" detail={assets.error.message} retry={assets.refetch} />;
   return (
     <section className="data-page assets-inspector-page">
       <header className="page-heading">

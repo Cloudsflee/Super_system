@@ -47,32 +47,7 @@ export async function api<T>(path: string, init: ApiRequestInit = {}): Promise<T
   const { operation, timeoutMs: explicitTimeout, ...requestInit } = init;
   const method = String(requestInit.method || 'GET').toUpperCase();
   const requestId = localRequestId();
-  if (method !== 'GET' && !operation) {
-    const error = new ApiError(
-      0,
-      {
-        error: 'write_operation_description_required',
-        message: '写操作缺少操作描述',
-        action: '为该请求声明用户可读名称、反馈级别和超时策略。',
-        phase: 'client',
-        retryable: false
-      },
-      { requestId, method, path }
-    );
-    recordRequestFailure({
-      name: '未描述的写操作',
-      method,
-      path,
-      requestId,
-      code: error.code,
-      phase: error.phase,
-      message: error.message,
-      action: error.action,
-      feedback: 'foreground'
-    });
-    error.operationRecorded = true;
-    throw error;
-  }
+  assertWriteOperationDescribed(operation, method, path, requestId);
   const headers = new Headers(requestInit.headers);
   if (!(requestInit.body instanceof FormData) && requestInit.body !== undefined && !headers.has('content-type'))
     headers.set('content-type', 'application/json');
@@ -94,74 +69,145 @@ export async function api<T>(path: string, init: ApiRequestInit = {}): Promise<T
   try {
     const response = await fetch(apiUrl(path), { ...requestInit, headers, signal: controller.signal });
     const responseRequestId = response.headers.get('x-aiws-request-id') || requestId;
-    const type = response.headers.get('content-type') || '';
-    let payload: Record<string, unknown>;
-    if (type.includes('json')) {
-      const parsed = await response.json();
-      payload =
-        parsed && typeof parsed === 'object' ? (parsed as Record<string, unknown>) : { message: String(parsed ?? '') };
-    } else payload = { message: await response.text() };
+    const payload = await apiResponsePayload(response);
     if (!response.ok) throw new ApiError(response.status, payload, { requestId: responseRequestId, method, path });
     if (operationId) completeOperation(operationId, { requestId: responseRequestId });
     else if (method === 'GET') clearBackgroundFailure(`读取 ${safePath(path)}`);
     return payload as T;
   } catch (value) {
-    if (isCallerAbort(value, requestInit.signal, timedOut)) {
-      if (operationId) cancelOperation(operationId);
-      throw value;
-    }
-    const error =
-      value instanceof ApiError
-        ? value
-        : new ApiError(
-            0,
-            {
-              error: timedOut ? 'request_timeout' : 'network_request_failed',
-              message: timedOut ? '请求超时' : '无法连接到本地服务',
-              action:
-                timedOut && method !== 'GET'
-                  ? '服务端可能仍在处理，请先检查操作状态，不要立即重复提交。'
-                  : '检查本地服务和网络连接后重试。',
-              phase: 'network',
-              retryable: method === 'GET' || retrySafe
-            },
-            { requestId, method, path, timeout: timedOut }
-          );
-    if (operationId) {
-      failOperation(operationId, {
-        code: error.code,
-        status: error.status,
-        requestId: error.requestId,
-        retryable: retrySafe && error.retryable,
-        timeout: error.timeout,
-        phase: error.phase,
-        message: error.message,
-        action: error.action
-      });
-      error.operationRecorded = true;
-    } else {
-      const recordedId = recordRequestFailure({
-        method,
-        path,
-        requestId: error.requestId,
-        code: error.code,
-        status: error.status,
-        retryable: method === 'GET' && error.retryable,
-        timeout: error.timeout,
-        phase: error.phase,
-        message: error.message,
-        action: error.action,
-        feedback: method === 'GET' ? 'background' : 'silent'
-      });
-      if (method === 'GET' && error.retryable)
-        registerOperationRetry(recordedId, () => api(path, { ...init, signal: undefined }));
-      error.operationRecorded = true;
-    }
-    throw error;
+    return handleApiFailure(value, {
+      path,
+      init,
+      signal: requestInit.signal,
+      timedOut,
+      method,
+      requestId,
+      operationId,
+      retrySafe
+    });
   } finally {
     window.clearTimeout(timer);
     requestInit.signal?.removeEventListener('abort', abortFromCaller);
   }
+}
+
+function assertWriteOperationDescribed(
+  operation: OperationDescriptor | undefined,
+  method: string,
+  path: string,
+  requestId: string
+) {
+  if (method === 'GET' || operation) return;
+  const error = new ApiError(
+    0,
+    {
+      error: 'write_operation_description_required',
+      message: '写操作缺少操作描述',
+      action: '为该请求声明用户可读名称、反馈级别和超时策略。',
+      phase: 'client',
+      retryable: false
+    },
+    { requestId, method, path }
+  );
+  recordRequestFailure({
+    name: '未描述的写操作',
+    method,
+    path,
+    requestId,
+    code: error.code,
+    phase: error.phase,
+    message: error.message,
+    action: error.action,
+    feedback: 'foreground'
+  });
+  error.operationRecorded = true;
+  throw error;
+}
+
+async function apiResponsePayload(response: Response): Promise<Record<string, unknown>> {
+  const type = response.headers.get('content-type') || '';
+  if (!type.includes('json')) return { message: await response.text() };
+  const parsed: unknown = await response.json();
+  return parsed && typeof parsed === 'object' ? (parsed as Record<string, unknown>) : { message: String(parsed ?? '') };
+}
+
+function handleApiFailure(
+  value: unknown,
+  context: {
+    path: string;
+    init: ApiRequestInit;
+    signal: AbortSignal | null | undefined;
+    timedOut: boolean;
+    method: string;
+    requestId: string;
+    operationId: string | null;
+    retrySafe: boolean;
+  }
+): never {
+  if (isCallerAbort(value, context.signal, context.timedOut)) {
+    if (context.operationId) cancelOperation(context.operationId);
+    throw value;
+  }
+  const error = normalizeApiError(value, context);
+  if (context.operationId) recordOperationFailure(context.operationId, error, context.retrySafe);
+  else recordUnscopedRequestFailure(error, context);
+  error.operationRecorded = true;
+  throw error;
+}
+
+function normalizeApiError(
+  value: unknown,
+  context: { timedOut: boolean; method: string; requestId: string; path: string; retrySafe: boolean }
+) {
+  if (value instanceof ApiError) return value;
+  return new ApiError(
+    0,
+    {
+      error: context.timedOut ? 'request_timeout' : 'network_request_failed',
+      message: context.timedOut ? '请求超时' : '无法连接到本地服务',
+      action:
+        context.timedOut && context.method !== 'GET'
+          ? '服务端可能仍在处理，请先检查操作状态，不要立即重复提交。'
+          : '检查本地服务和网络连接后重试。',
+      phase: 'network',
+      retryable: context.method === 'GET' || context.retrySafe
+    },
+    { requestId: context.requestId, method: context.method, path: context.path, timeout: context.timedOut }
+  );
+}
+
+function recordOperationFailure(operationId: string, error: ApiError, retrySafe: boolean) {
+  failOperation(operationId, {
+    code: error.code,
+    status: error.status,
+    requestId: error.requestId,
+    retryable: retrySafe && error.retryable,
+    timeout: error.timeout,
+    phase: error.phase,
+    message: error.message,
+    action: error.action
+  });
+}
+
+function recordUnscopedRequestFailure(
+  error: ApiError,
+  context: { method: string; path: string; init: ApiRequestInit }
+) {
+  const recordedId = recordRequestFailure({
+    method: context.method,
+    path: context.path,
+    requestId: error.requestId,
+    code: error.code,
+    status: error.status,
+    retryable: context.method === 'GET' && error.retryable,
+    timeout: error.timeout,
+    phase: error.phase,
+    message: error.message,
+    action: error.action,
+    feedback: context.method === 'GET' ? 'background' : 'silent'
+  });
+  if (context.method === 'GET' && error.retryable)
+    registerOperationRetry(recordedId, () => api(context.path, { ...context.init, signal: undefined }));
 }
 
 export function multipart(method: string, form: FormData, operation: OperationDescriptor | string): ApiRequestInit {

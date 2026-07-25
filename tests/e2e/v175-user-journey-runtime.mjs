@@ -10,22 +10,7 @@ import { repositorySnapshot } from '../integration/v13-test-helpers.mjs';
 import { browserExecutable } from './playwright-helpers.mjs';
 
 export async function createJourneyRuntime() {
-  const runId = process.env.AIWS_USER_JOURNEY_RUN_ID || utcRunId();
-  const evidenceRoot =
-    process.env.AIWS_USER_JOURNEY_ROOT ||
-    (process.env.AIWS_TEST_REPORT_DIR ? path.join(process.env.AIWS_TEST_REPORT_DIR, 'user-journeys') : 'temp');
-  const root = path.resolve(evidenceRoot, `v175-user-journey-${runId}`);
-  const ephemeralFixture = Boolean(process.env.AIWS_TEST_REPORT_DIR && !process.env.AIWS_USER_JOURNEY_ROOT);
-  const fixtureRoot = ephemeralFixture ? path.join(os.tmpdir(), `aiws-v175-journey-${runId}-${process.pid}`) : root;
-  const home = path.join(fixtureRoot, 'aiws-home'),
-    sourceRepo = path.join(fixtureRoot, 'source-repository');
-  const screenshots = path.join(root, 'screenshots'),
-    reportFile = path.join(root, '测试结果v1.75-真实用户旅程.md');
-  for (const directory of [root, home, sourceRepo, screenshots]) fs.mkdirSync(directory, { recursive: true });
-  initializeRepository(sourceRepo);
-  const sourceBefore = repositorySnapshot(sourceRepo),
-    port = await freePort();
-  const state = {
+  const {
     runId,
     root,
     fixtureRoot,
@@ -35,19 +20,9 @@ export async function createJourneyRuntime() {
     screenshots,
     reportFile,
     port,
-    steps: [],
-    requests: [],
-    browserErrors: [],
-    cleanup: {},
-    startedAt: new Date().toISOString(),
-    currentStep: null,
-    server: null,
-    serverStarts: 0,
-    logStream: null,
-    browser: null,
-    context: null,
-    page: null
-  };
+    sourceBefore,
+    state
+  } = await initializeJourneyRuntime();
 
   async function startServer() {
     state.logStream = fs.createWriteStream(path.join(root, 'server.log'), { flags: state.serverStarts++ ? 'a' : 'w' });
@@ -237,6 +212,60 @@ export async function createJourneyRuntime() {
     finish
   };
   return runtime;
+}
+
+async function initializeJourneyRuntime() {
+  const runId = process.env.AIWS_USER_JOURNEY_RUN_ID || utcRunId();
+  const evidenceRoot =
+    process.env.AIWS_USER_JOURNEY_ROOT ||
+    (process.env.AIWS_TEST_REPORT_DIR ? path.join(process.env.AIWS_TEST_REPORT_DIR, 'user-journeys') : 'temp');
+  const root = path.resolve(evidenceRoot, `v175-user-journey-${runId}`);
+  const ephemeralFixture = Boolean(process.env.AIWS_TEST_REPORT_DIR && !process.env.AIWS_USER_JOURNEY_ROOT);
+  const fixtureRoot = ephemeralFixture ? path.join(os.tmpdir(), `aiws-v175-journey-${runId}-${process.pid}`) : root;
+  const home = path.join(fixtureRoot, 'aiws-home'),
+    sourceRepo = path.join(fixtureRoot, 'source-repository');
+  const screenshots = path.join(root, 'screenshots'),
+    reportFile = path.join(root, '测试结果v1.75-真实用户旅程.md');
+  for (const directory of [root, home, sourceRepo, screenshots]) fs.mkdirSync(directory, { recursive: true });
+  initializeRepository(sourceRepo);
+  const sourceBefore = repositorySnapshot(sourceRepo),
+    port = await freePort();
+  const state = {
+    runId,
+    root,
+    fixtureRoot,
+    ephemeralFixture,
+    home,
+    sourceRepo,
+    screenshots,
+    reportFile,
+    port,
+    steps: [],
+    requests: [],
+    browserErrors: [],
+    cleanup: {},
+    startedAt: new Date().toISOString(),
+    currentStep: null,
+    server: null,
+    serverStarts: 0,
+    logStream: null,
+    browser: null,
+    context: null,
+    page: null
+  };
+  return {
+    runId,
+    root,
+    fixtureRoot,
+    ephemeralFixture,
+    home,
+    sourceRepo,
+    screenshots,
+    reportFile,
+    port,
+    sourceBefore,
+    state
+  };
 }
 
 function initializeRepository(root) {

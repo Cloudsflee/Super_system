@@ -101,40 +101,7 @@ try {
 }
 
 async function verifyHierarchyJourney(page, fixture, viewport) {
-  const workflowUrl = `http://127.0.0.1:${port}/projects/${fixture.projectId}/workflow`;
-  await page.goto(workflowUrl);
-  await page.locator('.workflow-full-process').waitFor();
-  assert.equal(
-    await page.getByRole('tab', { name: '完整流程' }).getAttribute('aria-selected'),
-    'true',
-    'verified workflows open on the visible Task DAG'
-  );
-  assert.equal(
-    await page.locator('.workflow-phase-coverage [role="listitem"]').count(),
-    6,
-    'the complete view exposes six-stage coverage'
-  );
-  assert.equal(
-    await page.locator('.workflow-process-task').count(),
-    4,
-    'the complete view exposes every Task in its Workstream DAG'
-  );
-  assert.equal(await page.locator('.workflow-task-details').count(), 0, 'row metadata stays collapsed until requested');
-  const summaryHeights = await page
-    .locator('.workflow-task-summary')
-    .evaluateAll((items) => items.map((item) => item.getBoundingClientRect().height));
-  assert.ok(
-    summaryHeights.every((height) => height <= (viewport.width <= 600 ? 80 : 72)),
-    `comfortable Task summaries exceed their target: ${JSON.stringify(summaryHeights)}`
-  );
-  await assertWorkflowProcessSemantics(page, output, viewport);
-  await assertViewport(page);
-  await assertNoOverlap(page, '.workflow-full-process', '.command-dock');
-  await page.screenshot({ path: path.join(output, `workflow-compact-${viewport.name}.png`), fullPage: true });
-  await assertWorkflowTaskSelectionJourney(page, viewport);
-  await assertViewport(page);
-  await assertNoOverlap(page, '.workflow-full-process', '.command-dock');
-  await page.screenshot({ path: path.join(output, `workflow-expanded-${viewport.name}.png`), fullPage: true });
+  const workflowUrl = await openAndVerifyWorkflowProcess(page, fixture, viewport);
   const replan = page.getByRole('button', { name: '重新规划' });
   assert.equal((await replan.textContent())?.trim(), '', 'replan must be an icon-only secondary action');
   assert.equal(
@@ -316,6 +283,44 @@ async function verifyHierarchyJourney(page, fixture, viewport) {
   }
   await page.screenshot({ path: path.join(output, `workflow-restored-${viewport.name}.png`) });
   await assertViewport(page);
+}
+
+async function openAndVerifyWorkflowProcess(page, fixture, viewport) {
+  const workflowUrl = `http://127.0.0.1:${port}/projects/${fixture.projectId}/workflow`;
+  await page.goto(workflowUrl);
+  await page.locator('.workflow-full-process').waitFor();
+  assert.equal(
+    await page.getByRole('tab', { name: '完整流程' }).getAttribute('aria-selected'),
+    'true',
+    'verified workflows open on the visible Task DAG'
+  );
+  assert.equal(
+    await page.locator('.workflow-phase-coverage [role="listitem"]').count(),
+    6,
+    'the complete view exposes six-stage coverage'
+  );
+  assert.equal(
+    await page.locator('.workflow-process-task').count(),
+    4,
+    'the complete view exposes every Task in its Workstream DAG'
+  );
+  assert.equal(await page.locator('.workflow-task-details').count(), 0, 'row metadata stays collapsed until requested');
+  const summaryHeights = await page
+    .locator('.workflow-task-summary')
+    .evaluateAll((items) => items.map((item) => item.getBoundingClientRect().height));
+  assert.ok(
+    summaryHeights.every((height) => height <= (viewport.width <= 600 ? 80 : 72)),
+    `comfortable Task summaries exceed their target: ${JSON.stringify(summaryHeights)}`
+  );
+  await assertWorkflowProcessSemantics(page, output, viewport);
+  await assertViewport(page);
+  await assertNoOverlap(page, '.workflow-full-process', '.command-dock');
+  await page.screenshot({ path: path.join(output, `workflow-compact-${viewport.name}.png`), fullPage: true });
+  await assertWorkflowTaskSelectionJourney(page, viewport);
+  await assertViewport(page);
+  await assertNoOverlap(page, '.workflow-full-process', '.command-dock');
+  await page.screenshot({ path: path.join(output, `workflow-expanded-${viewport.name}.png`), fullPage: true });
+  return workflowUrl;
 }
 
 async function seedHierarchyProject() {

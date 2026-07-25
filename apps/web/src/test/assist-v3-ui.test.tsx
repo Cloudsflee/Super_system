@@ -34,18 +34,19 @@ vi.mock('@xterm/addon-fit', () => ({
     fit() {}
   }
 }));
-describe('Assist V3 workbench', () => {
-  beforeEach(() => {
-    useUi.getState().closeOverlay();
-    useUi.setState({ assistOpen: true, assistSurface: 'docked', assistDockWidth: 760, proposalId: null });
-    vi.stubGlobal('PointerEvent', MouseEvent);
-    vi.stubGlobal('EventSource', FakeEventSource);
-  });
-  afterEach(() => {
-    cleanup();
-    vi.unstubAllGlobals();
-    terminalWrites.length = 0;
-  });
+beforeEach(() => {
+  useUi.getState().closeOverlay();
+  useUi.setState({ assistOpen: true, assistSurface: 'docked', assistDockWidth: 760, proposalId: null });
+  vi.stubGlobal('PointerEvent', MouseEvent);
+  vi.stubGlobal('EventSource', FakeEventSource);
+});
+afterEach(() => {
+  cleanup();
+  vi.unstubAllGlobals();
+  terminalWrites.length = 0;
+});
+
+describe('Assist V3 model configurations', () => {
   it('uses visible native model/reasoning controls and sends one-shot Plan collaboration mode', async () => {
     const calls: Array<{ url: string; body?: Record<string, unknown> }> = [];
     vi.stubGlobal(
@@ -179,6 +180,9 @@ describe('Assist V3 workbench', () => {
       reasoning: 'low'
     });
   });
+});
+
+describe('Assist V3 semantic operations', () => {
   it('renders a committed semantic operation and requests compensating Undo', async () => {
     const calls: Array<{ url: string; body?: Record<string, unknown> }> = [];
     const operation = {
@@ -329,7 +333,9 @@ describe('Assist V3 workbench', () => {
     );
     expect(calls.some((item) => item.url.endsWith('/operations/inverse-1/undo'))).toBe(false);
   });
+});
 
+describe('Assist V3 synchronization and surface controls', () => {
   it('does not reclaim a committed operation from replayed historical SSE', async () => {
     const calls: string[] = [],
       operation = operationFixture();
@@ -466,7 +472,9 @@ describe('Assist V3 workbench', () => {
     fireEvent.click(screen.getByRole('button', { name: '创建项目' }));
     expect(useUi.getState().assistOpen).toBe(false);
   });
+});
 
+describe('Assist V3 access, runtime events, review, and terminal', () => {
   it('keeps normal chat and one-shot Plan available while making draft code access read-only', async () => {
     vi.stubGlobal(
       'fetch',

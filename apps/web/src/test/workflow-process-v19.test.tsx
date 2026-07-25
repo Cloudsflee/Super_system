@@ -7,43 +7,10 @@ import { keys } from '../api/queries';
 import { WorkflowPage } from '../features/workflow/WorkflowPage';
 import { WorkstreamPage } from '../features/workflow/WorkstreamPage';
 import { useUi } from '../state/ui';
-describe('V1.9 workflow process UI', () => {
-  beforeEach(() => {
-    localStorage.clear();
-    useUi.setState({
-      proposalId: null,
-      contextNodeId: null,
-      inspectorNodeId: null,
-      assistOpen: false,
-      contextLane: null,
-      workflowTaskDensity: 'comfortable'
-    });
-    vi.stubGlobal(
-      'PointerEvent',
-      class TestPointerEvent extends MouseEvent {
-        pointerType: string;
-        constructor(type: string, init: PointerEventInit = {}) {
-          super(type, init);
-          this.pointerType = init.pointerType || '';
-        }
-      }
-    );
-    vi.stubGlobal(
-      'ResizeObserver',
-      class {
-        observe() {}
-        unobserve() {}
-        disconnect() {}
-      }
-    );
-  });
-  afterEach(() => {
-    cleanup();
-    localStorage.clear();
-    vi.useRealTimers();
-    vi.restoreAllMocks();
-    vi.unstubAllGlobals();
-  });
+
+describe('V1.9 workflow process density and topology', () => {
+  beforeEach(setupWorkflowProcessUi);
+  afterEach(cleanupWorkflowProcessUi);
 
   it('defaults to comfortable density and keeps full single-open details across density changes', async () => {
     vi.stubGlobal(
@@ -192,6 +159,11 @@ describe('V1.9 workflow process UI', () => {
     expect(afterDisclosure).not.toEqual(afterDensity);
     expectTopologyAnchors(container);
   });
+});
+
+describe('V1.9 workflow replanning and task actions', () => {
+  beforeEach(setupWorkflowProcessUi);
+  afterEach(cleanupWorkflowProcessUi);
 
   it('moves an already-open workflow to the Task DAG after a verified replan lands', async () => {
     const initial = bundle();
@@ -274,6 +246,44 @@ describe('V1.9 workflow process UI', () => {
     );
   });
 });
+
+function setupWorkflowProcessUi() {
+  localStorage.clear();
+  useUi.setState({
+    proposalId: null,
+    contextNodeId: null,
+    inspectorNodeId: null,
+    assistOpen: false,
+    contextLane: null,
+    workflowTaskDensity: 'comfortable'
+  });
+  vi.stubGlobal(
+    'PointerEvent',
+    class TestPointerEvent extends MouseEvent {
+      pointerType: string;
+      constructor(type: string, init: PointerEventInit = {}) {
+        super(type, init);
+        this.pointerType = init.pointerType || '';
+      }
+    }
+  );
+  vi.stubGlobal(
+    'ResizeObserver',
+    class {
+      observe() {}
+      unobserve() {}
+      disconnect() {}
+    }
+  );
+}
+
+function cleanupWorkflowProcessUi() {
+  cleanup();
+  localStorage.clear();
+  vi.useRealTimers();
+  vi.restoreAllMocks();
+  vi.unstubAllGlobals();
+}
 
 function renderPage(element: ReactNode, entry: string, path: string) {
   const client = new QueryClient({

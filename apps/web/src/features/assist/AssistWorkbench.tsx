@@ -17,7 +17,7 @@ import {
   Square,
   X
 } from 'lucide-react';
-import { useEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from 'react';
+import { useEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type PointerEventHandler } from 'react';
 import { useNavigate } from 'react-router-dom';
 import type { AssistScopeType, AssistSurfaceMode, Project } from '../../api/types';
 import { IconButton } from '../../components/common/IconButton';
@@ -44,7 +44,6 @@ export function AssistWorkbench({ project }: { project?: Project }) {
 
 function AssistWorkbenchSurface({ project, controller }: { project?: Project; controller: AssistController }) {
   const ui = useUi();
-  const navigate = useNavigate();
   const projectId = project?.id;
   const expanded = ui.assistOpen && ui.contextLane !== 'inspector';
   const floating = useAssistFloating(expanded && ui.assistSurface === 'floating');
@@ -75,12 +74,6 @@ function AssistWorkbenchSurface({ project, controller }: { project?: Project; co
       </>
     );
   if (ui.assistSurface === 'minimized') return btw;
-  const session = controller.session;
-  const readOnlySession = sessionIsReadOnly(session);
-  const scopeType = session?.scope_type || controller.scopeType;
-  const breadcrumb = assistScopeBreadcrumb(session, controller.scopeBreadcrumb);
-  const breadcrumbText = assistScopePath(breadcrumb) || project?.title || '未选择项目';
-  const ScopeIcon = iconForScope(scopeType);
   const showThreads = Boolean(projectId && threadsOpen);
   const surfaceClass = `surface-${ui.assistSurface}`;
   return (
@@ -106,201 +99,20 @@ function AssistWorkbenchSurface({ project, controller }: { project?: Project; co
             onDoubleClick={dockResize.reset}
           />
         )}
-        <header
-          className="assist-workbench-head"
+        <AssistWorkbenchHeader
+          project={project}
+          controller={controller}
+          showThreads={showThreads}
+          onToggleThreads={() => setThreadsOpen(!threadsOpen)}
           onPointerDown={ui.assistSurface === 'floating' ? floating.startMove : undefined}
-        >
-          <IconButton
-            label={showThreads ? '隐藏线程列表' : '显示线程列表'}
-            active={showThreads}
-            disabled={!projectId}
-            onClick={() => setThreadsOpen(!threadsOpen)}
-          >
-            <PanelLeft size={17} />
-          </IconButton>
-          <div className="assist-head-title">
-            <span className="assist-scope-heading">
-              <ScopeIcon size={14} />
-              <strong>{assistScopeLabel(scopeType)}智能助手</strong>
-              {readOnlySession && <LockKeyhole size={12} aria-label="只读" />}
-              <i>{session?.title || '选择或创建线程'}</i>
-            </span>
-            <small className="assist-scope-breadcrumb" data-tooltip={breadcrumbText}>
-              {breadcrumbText}
-            </small>
-          </div>
-          <nav>
-            {controller.view !== 'chat' && (
-              <button onClick={controller.backToChat}>
-                <MessageSquare size={13} />
-                对话
-              </button>
-            )}
-            {controller.reviewTarget && (
-              <button className={controller.view === 'review' ? 'active' : ''} onClick={controller.showReview}>
-                变更审查
-              </button>
-            )}
-            {controller.terminal && (
-              <button className={controller.view === 'terminal' ? 'active' : ''} onClick={controller.showTerminal}>
-                终端
-              </button>
-            )}
-          </nav>
-          <div className="assist-surface-actions">
-            <SurfaceMenu current={ui.assistSurface} set={ui.setAssistSurface} />
-            <IconButton label="最小化智能助手" onClick={() => ui.setAssistSurface('minimized')}>
-              <Minimize2 size={16} />
-            </IconButton>
-            <IconButton label="关闭智能助手" onClick={() => ui.setAssist(false)}>
-              <X size={17} />
-            </IconButton>
-          </div>
-        </header>
-        <div className="assist-workbench-body">
-          {showThreads && (
-            <ThreadSidebar
-              sessions={controller.sessions.data || []}
-              selectedId={controller.selectedId}
-              search={controller.search}
-              archived={controller.archived}
-              loading={controller.sessions.isLoading}
-              onSearch={controller.setSearch}
-              onArchived={controller.setArchived}
-              onSelect={(id) => {
-                controller.setSelectedId(id);
-                controller.backToChat();
-                if (isMobileAssist()) setThreadsOpen(false);
-              }}
-              onCreate={() => {
-                controller.createSession();
-                if (isMobileAssist()) setThreadsOpen(false);
-              }}
-              onRename={controller.rename}
-              onPin={controller.pin}
-              onArchive={controller.archive}
-              onFork={(item) => {
-                controller.fork(item);
-                if (isMobileAssist()) setThreadsOpen(false);
-              }}
-              onDelete={controller.deleteBranch}
-              onRestoreDeleted={controller.restoreDeleted}
-            />
-          )}
-          <main className="assist-main">
-            {!projectId && (
-              <div className="assist-no-session">
-                <FolderPlus size={28} />
-                <h3>先创建项目</h3>
-                <p>智能助手线程必须归属于一个项目。</p>
-                <button
-                  className="button primary"
-                  onClick={() => {
-                    ui.setAssist(false);
-                    navigate('/projects');
-                  }}
-                >
-                  <FolderPlus size={15} />
-                  创建项目
-                </button>
-              </div>
-            )}
-            {projectId && !session && (
-              <div className="assist-no-session">
-                <Bot size={28} />
-                <h3>{controller.archived ? '选择一个已归档线程' : '创建智能助手线程'}</h3>
-                <p>对话、附件与审查记录会保存在当前项目中。</p>
-                {controller.archived ? null : (
-                  <BootstrapAssistComposer unavailable={writeModeUnavailableReason} controller={controller} />
-                )}
-              </div>
-            )}
-            {session && controller.view === 'chat' && (
-              <>
-                <GoalCard
-                  goal={controller.goal.data?.goal || session.native_goal_snapshot || null}
-                  busy={controller.busy || readOnlySession}
-                  onSet={controller.setGoal}
-                  onClear={controller.clearGoal}
-                />
-                {readOnlySession && (
-                  <div className="assist-archived-status" role="status">
-                    {session.archived_at
-                      ? '此线程已归档，只读显示历史记录。恢复后可继续对话。'
-                      : '原作用域已删除或换版，此线程按审计快照只读保留。'}
-                  </div>
-                )}
-                <TurnTimeline
-                  turns={session.turns || []}
-                  events={controller.stream.events}
-                  reconnecting={controller.stream.reconnecting}
-                  busy={controller.busy}
-                  onRetry={controller.retry}
-                  onReview={controller.openReview}
-                  onRespondUserInput={controller.respondUserInput}
-                  onConfirmOperation={controller.confirmOperation}
-                  onUndoOperation={controller.undoOperation}
-                  onReviseOperation={controller.reviseOperation}
-                  onContinueOperation={controller.continueOperation}
-                />
-                {!readOnlySession && (
-                  <AssistComposer
-                    layout="workbench"
-                    session={session}
-                    profileName={
-                      controller.profiles.data?.find((item) => item.id === controller.profileId)?.name || 'Codex'
-                    }
-                    catalog={controller.models.data}
-                    configurations={Array.isArray(controller.configurations.data) ? controller.configurations.data : []}
-                    configurationId={controller.configurationId}
-                    model={controller.model}
-                    reasoning={controller.reasoning}
-                    clarificationPolicy={session.clarification_policy || 'ask'}
-                    planNext={controller.planNext}
-                    prompt={controller.prompt}
-                    attachments={session.attachments || []}
-                    selectedAttachments={controller.attachmentIds}
-                    activeTurn={controller.running}
-                    busy={controller.busy}
-                    writeModeUnavailableReason={writeModeUnavailableReason}
-                    onModel={controller.setModel}
-                    onReasoning={controller.setReasoning}
-                    onConfiguration={controller.selectConfiguration}
-                    onClarificationPolicy={controller.setClarificationPolicy}
-                    onPlanNext={controller.setPlanNext}
-                    onPrompt={controller.setPrompt}
-                    onAttachments={controller.setAttachmentIds}
-                    onAttachmentCreated={controller.addAttachment}
-                    onAttachmentDeleted={controller.attachmentDeleted}
-                    onSubmit={controller.submit}
-                    onStop={controller.stop}
-                    onTerminal={() => controller.setTerminalSelectorOpen(true)}
-                    onCommand={controller.composerCommand}
-                    onSaveConfiguration={controller.saveConfiguration}
-                    onError={(message) => controller.toast(message, 'error')}
-                  />
-                )}
-              </>
-            )}
-            {session && controller.view === 'review' && controller.reviewTarget && (
-              <DiffReviewPanel
-                target={controller.reviewTarget}
-                onBack={controller.backToChat}
-                onResolved={controller.resolveReview}
-              />
-            )}
-            {session && controller.view === 'terminal' && controller.terminal && (
-              <TerminalPanel
-                session={controller.terminal}
-                reviewDisabled={controller.terminalRolledBack}
-                onSession={controller.setTerminal}
-                onBack={controller.backToChat}
-                onReview={controller.openTerminalReview}
-                onError={(message) => controller.toast(message, 'error')}
-              />
-            )}
-          </main>
-        </div>
+        />
+        <AssistWorkbenchBody
+          project={project}
+          controller={controller}
+          showThreads={showThreads}
+          writeModeUnavailableReason={writeModeUnavailableReason}
+          onCloseThreads={() => setThreadsOpen(false)}
+        />
         {ui.assistSurface === 'floating' && (
           <button
             className="assist-resize-handle"
@@ -321,6 +133,262 @@ function AssistWorkbenchSurface({ project, controller }: { project?: Project; co
       </section>
       {btw}
     </>
+  );
+}
+
+function AssistWorkbenchHeader({
+  project,
+  controller,
+  showThreads,
+  onToggleThreads,
+  onPointerDown
+}: {
+  project?: Project;
+  controller: AssistController;
+  showThreads: boolean;
+  onToggleThreads: () => void;
+  onPointerDown?: PointerEventHandler<HTMLElement>;
+}) {
+  const ui = useUi();
+  const session = controller.session;
+  const readOnlySession = sessionIsReadOnly(session);
+  const scopeType = session?.scope_type || controller.scopeType;
+  const breadcrumb = assistScopeBreadcrumb(session, controller.scopeBreadcrumb);
+  const breadcrumbText = assistScopePath(breadcrumb) || project?.title || '未选择项目';
+  const ScopeIcon = iconForScope(scopeType);
+  return (
+    <header className="assist-workbench-head" onPointerDown={onPointerDown}>
+      <IconButton
+        label={showThreads ? '隐藏线程列表' : '显示线程列表'}
+        active={showThreads}
+        disabled={!project?.id}
+        onClick={onToggleThreads}
+      >
+        <PanelLeft size={17} />
+      </IconButton>
+      <div className="assist-head-title">
+        <span className="assist-scope-heading">
+          <ScopeIcon size={14} />
+          <strong>{assistScopeLabel(scopeType)}智能助手</strong>
+          {readOnlySession && <LockKeyhole size={12} aria-label="只读" />}
+          <i>{session?.title || '选择或创建线程'}</i>
+        </span>
+        <small className="assist-scope-breadcrumb" data-tooltip={breadcrumbText}>
+          {breadcrumbText}
+        </small>
+      </div>
+      <nav>
+        {controller.view !== 'chat' && (
+          <button onClick={controller.backToChat}>
+            <MessageSquare size={13} />
+            对话
+          </button>
+        )}
+        {controller.reviewTarget && (
+          <button className={controller.view === 'review' ? 'active' : ''} onClick={controller.showReview}>
+            变更审查
+          </button>
+        )}
+        {controller.terminal && (
+          <button className={controller.view === 'terminal' ? 'active' : ''} onClick={controller.showTerminal}>
+            终端
+          </button>
+        )}
+      </nav>
+      <div className="assist-surface-actions">
+        <SurfaceMenu current={ui.assistSurface} set={ui.setAssistSurface} />
+        <IconButton label="最小化智能助手" onClick={() => ui.setAssistSurface('minimized')}>
+          <Minimize2 size={16} />
+        </IconButton>
+        <IconButton label="关闭智能助手" onClick={() => ui.setAssist(false)}>
+          <X size={17} />
+        </IconButton>
+      </div>
+    </header>
+  );
+}
+
+function AssistWorkbenchBody({
+  project,
+  controller,
+  showThreads,
+  writeModeUnavailableReason,
+  onCloseThreads
+}: {
+  project?: Project;
+  controller: AssistController;
+  showThreads: boolean;
+  writeModeUnavailableReason: string | null;
+  onCloseThreads: () => void;
+}) {
+  const ui = useUi();
+  const navigate = useNavigate();
+  const session = controller.session;
+  const readOnlySession = sessionIsReadOnly(session);
+  const closeThreadsOnMobile = () => {
+    if (isMobileAssist()) onCloseThreads();
+  };
+  return (
+    <div className="assist-workbench-body">
+      {showThreads && (
+        <ThreadSidebar
+          sessions={controller.sessions.data || []}
+          selectedId={controller.selectedId}
+          search={controller.search}
+          archived={controller.archived}
+          loading={controller.sessions.isLoading}
+          onSearch={controller.setSearch}
+          onArchived={controller.setArchived}
+          onSelect={(id) => {
+            controller.setSelectedId(id);
+            controller.backToChat();
+            closeThreadsOnMobile();
+          }}
+          onCreate={() => {
+            controller.createSession();
+            closeThreadsOnMobile();
+          }}
+          onRename={controller.rename}
+          onPin={controller.pin}
+          onArchive={controller.archive}
+          onFork={(item) => {
+            controller.fork(item);
+            closeThreadsOnMobile();
+          }}
+          onDelete={controller.deleteBranch}
+          onRestoreDeleted={controller.restoreDeleted}
+        />
+      )}
+      <main className="assist-main">
+        {!project?.id && (
+          <div className="assist-no-session">
+            <FolderPlus size={28} />
+            <h3>先创建项目</h3>
+            <p>智能助手线程必须归属于一个项目。</p>
+            <button
+              className="button primary"
+              onClick={() => {
+                ui.setAssist(false);
+                navigate('/projects');
+              }}
+            >
+              <FolderPlus size={15} />
+              创建项目
+            </button>
+          </div>
+        )}
+        {project?.id && !session && (
+          <div className="assist-no-session">
+            <Bot size={28} />
+            <h3>{controller.archived ? '选择一个已归档线程' : '创建智能助手线程'}</h3>
+            <p>对话、附件与审查记录会保存在当前项目中。</p>
+            {controller.archived ? null : (
+              <BootstrapAssistComposer unavailable={writeModeUnavailableReason} controller={controller} />
+            )}
+          </div>
+        )}
+        {session && controller.view === 'chat' && (
+          <>
+            <GoalCard
+              goal={controller.goal.data?.goal || session.native_goal_snapshot || null}
+              busy={controller.busy || readOnlySession}
+              onSet={controller.setGoal}
+              onClear={controller.clearGoal}
+            />
+            {readOnlySession && (
+              <div className="assist-archived-status" role="status">
+                {session.archived_at
+                  ? '此线程已归档，只读显示历史记录。恢复后可继续对话。'
+                  : '原作用域已删除或换版，此线程按审计快照只读保留。'}
+              </div>
+            )}
+            <TurnTimeline
+              turns={session.turns || []}
+              events={controller.stream.events}
+              reconnecting={controller.stream.reconnecting}
+              busy={controller.busy}
+              onRetry={controller.retry}
+              onReview={controller.openReview}
+              onRespondUserInput={controller.respondUserInput}
+              onConfirmOperation={controller.confirmOperation}
+              onUndoOperation={controller.undoOperation}
+              onReviseOperation={controller.reviseOperation}
+              onContinueOperation={controller.continueOperation}
+            />
+            {!readOnlySession && (
+              <AssistWorkbenchComposer
+                controller={controller}
+                session={session}
+                unavailable={writeModeUnavailableReason}
+              />
+            )}
+          </>
+        )}
+        {session && controller.view === 'review' && controller.reviewTarget && (
+          <DiffReviewPanel
+            target={controller.reviewTarget}
+            onBack={controller.backToChat}
+            onResolved={controller.resolveReview}
+          />
+        )}
+        {session && controller.view === 'terminal' && controller.terminal && (
+          <TerminalPanel
+            session={controller.terminal}
+            reviewDisabled={controller.terminalRolledBack}
+            onSession={controller.setTerminal}
+            onBack={controller.backToChat}
+            onReview={controller.openTerminalReview}
+            onError={(message) => controller.toast(message, 'error')}
+          />
+        )}
+      </main>
+    </div>
+  );
+}
+
+function AssistWorkbenchComposer({
+  controller,
+  session,
+  unavailable
+}: {
+  controller: AssistController;
+  session: NonNullable<AssistController['session']>;
+  unavailable: string | null;
+}) {
+  return (
+    <AssistComposer
+      layout="workbench"
+      session={session}
+      profileName={controller.profiles.data?.find((item) => item.id === controller.profileId)?.name || 'Codex'}
+      catalog={controller.models.data}
+      configurations={Array.isArray(controller.configurations.data) ? controller.configurations.data : []}
+      configurationId={controller.configurationId}
+      model={controller.model}
+      reasoning={controller.reasoning}
+      clarificationPolicy={session.clarification_policy || 'ask'}
+      planNext={controller.planNext}
+      prompt={controller.prompt}
+      attachments={session.attachments || []}
+      selectedAttachments={controller.attachmentIds}
+      activeTurn={controller.running}
+      busy={controller.busy}
+      writeModeUnavailableReason={unavailable}
+      onModel={controller.setModel}
+      onReasoning={controller.setReasoning}
+      onConfiguration={controller.selectConfiguration}
+      onClarificationPolicy={controller.setClarificationPolicy}
+      onPlanNext={controller.setPlanNext}
+      onPrompt={controller.setPrompt}
+      onAttachments={controller.setAttachmentIds}
+      onAttachmentCreated={controller.addAttachment}
+      onAttachmentDeleted={controller.attachmentDeleted}
+      onSubmit={controller.submit}
+      onStop={controller.stop}
+      onTerminal={() => controller.setTerminalSelectorOpen(true)}
+      onCommand={controller.composerCommand}
+      onSaveConfiguration={controller.saveConfiguration}
+      onError={(message) => controller.toast(message, 'error')}
+    />
   );
 }
 

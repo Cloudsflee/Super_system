@@ -84,58 +84,15 @@ export function BriefWorkspace(props: Props) {
           </button>
         ))}
       </nav>
-      <aside className={`brief-outline${mobilePane === 'outline' ? ' mobile-active' : ''}`}>
-        <header>
-          <div>
-            <span>大纲</span>
-            <small>{props.brief.content.sections.length} 个区块</small>
-          </div>
-          <AddSectionMenu disabled={props.busy} onAdd={addSection} />
-        </header>
-        <ol>
-          {props.brief.content.sections.map((section, index) => (
-            <li className={selected === section.id ? 'active' : ''} key={section.id}>
-              <button className="outline-label" onClick={() => selectSection(section.id)}>
-                <i>{index + 1}</i>
-                <span>{section.title}</span>
-              </button>
-              <div>
-                <IconButton
-                  label={`上移 ${section.title}`}
-                  disabled={props.busy || index === 0}
-                  onClick={() => props.onBrief([{ type: 'move_section', section_id: section.id, to_index: index - 1 }])}
-                >
-                  <ChevronUp size={12} />
-                </IconButton>
-                <IconButton
-                  label={`下移 ${section.title}`}
-                  disabled={props.busy || index === props.brief.content.sections.length - 1}
-                  onClick={() => props.onBrief([{ type: 'move_section', section_id: section.id, to_index: index + 1 }])}
-                >
-                  <ChevronDown size={12} />
-                </IconButton>
-                <IconButton
-                  label={`复制 ${section.title}`}
-                  disabled={props.busy}
-                  onClick={() => props.onBrief([{ type: 'duplicate_section', section_id: section.id }])}
-                >
-                  <Copy size={12} />
-                </IconButton>
-                <IconButton
-                  label={`删除 ${section.title}`}
-                  disabled={props.busy}
-                  onClick={() => {
-                    if (window.confirm(`删除区块“${section.title}”？`))
-                      props.onBrief([{ type: 'delete_section', section_id: section.id }]);
-                  }}
-                >
-                  <Trash2 size={12} />
-                </IconButton>
-              </div>
-            </li>
-          ))}
-        </ol>
-      </aside>
+      <BriefOutline
+        active={mobilePane === 'outline'}
+        brief={props.brief}
+        busy={props.busy}
+        selected={selected}
+        onSelect={selectSection}
+        onAdd={addSection}
+        onBrief={props.onBrief}
+      />
       <main className={`brief-document${mobilePane === 'brief' ? ' mobile-active' : ''}`}>
         <header className="brief-document-head">
           <div className="brief-title-block">
@@ -269,6 +226,79 @@ export function BriefWorkspace(props: Props) {
         </div>
       </aside>
     </section>
+  );
+}
+
+function BriefOutline({
+  active,
+  brief,
+  busy,
+  selected,
+  onSelect,
+  onAdd,
+  onBrief
+}: {
+  active: boolean;
+  brief: ProjectBrief;
+  busy: boolean;
+  selected: string;
+  onSelect: (id: string) => void;
+  onAdd: (type: BriefSection['type']) => void;
+  onBrief: Props['onBrief'];
+}) {
+  return (
+    <aside className={`brief-outline${active ? ' mobile-active' : ''}`}>
+      <header>
+        <div>
+          <span>大纲</span>
+          <small>{brief.content.sections.length} 个区块</small>
+        </div>
+        <AddSectionMenu disabled={busy} onAdd={onAdd} />
+      </header>
+      <ol>
+        {brief.content.sections.map((section, index) => (
+          <li className={selected === section.id ? 'active' : ''} key={section.id}>
+            <button className="outline-label" onClick={() => onSelect(section.id)}>
+              <i>{index + 1}</i>
+              <span>{section.title}</span>
+            </button>
+            <div>
+              <IconButton
+                label={`上移 ${section.title}`}
+                disabled={busy || index === 0}
+                onClick={() => onBrief([{ type: 'move_section', section_id: section.id, to_index: index - 1 }])}
+              >
+                <ChevronUp size={12} />
+              </IconButton>
+              <IconButton
+                label={`下移 ${section.title}`}
+                disabled={busy || index === brief.content.sections.length - 1}
+                onClick={() => onBrief([{ type: 'move_section', section_id: section.id, to_index: index + 1 }])}
+              >
+                <ChevronDown size={12} />
+              </IconButton>
+              <IconButton
+                label={`复制 ${section.title}`}
+                disabled={busy}
+                onClick={() => onBrief([{ type: 'duplicate_section', section_id: section.id }])}
+              >
+                <Copy size={12} />
+              </IconButton>
+              <IconButton
+                label={`删除 ${section.title}`}
+                disabled={busy}
+                onClick={() => {
+                  if (window.confirm(`删除区块“${section.title}”？`))
+                    void onBrief([{ type: 'delete_section', section_id: section.id }]);
+                }}
+              >
+                <Trash2 size={12} />
+              </IconButton>
+            </div>
+          </li>
+        ))}
+      </ol>
+    </aside>
   );
 }
 

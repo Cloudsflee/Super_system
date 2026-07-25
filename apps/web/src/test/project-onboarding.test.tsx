@@ -9,13 +9,13 @@ import { WorkflowPage } from '../features/workflow/WorkflowPage';
 import { useUi } from '../state/ui';
 import { dispatchSemanticAction, executeAssistOperation } from '../components/assist/semantic-actions';
 
-describe('V1.3 project onboarding', () => {
-  beforeEach(() => useUi.getState().closeOverlay());
-  afterEach(() => {
-    cleanup();
-    vi.unstubAllGlobals();
-  });
+beforeEach(() => useUi.getState().closeOverlay());
+afterEach(() => {
+  cleanup();
+  vi.unstubAllGlobals();
+});
 
+describe('V1.3 project onboarding creation and brief review', () => {
   it('creates a draft and navigates to its recoverable onboarding route', async () => {
     const calls: Array<{ url: string; body?: Record<string, unknown>; headers?: HeadersInit }> = [];
     vi.stubGlobal(
@@ -149,7 +149,9 @@ describe('V1.3 project onboarding', () => {
     expect(await screen.findByRole('textbox', { name: '核心目标' })).toHaveValue('由 Assist 填写的新目标');
     expect(screen.getByText('建立可验证的项目简报')).toBeInTheDocument();
   });
+});
 
+describe('V1.3 project onboarding persistence and hydration', () => {
   it('persists Assist field operations before reporting them as committed', async () => {
     const calls: Array<{ url: string; method: string; body?: Record<string, unknown> }> = [];
     const initial = onboarding();

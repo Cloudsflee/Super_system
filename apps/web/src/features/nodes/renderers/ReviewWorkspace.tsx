@@ -184,6 +184,56 @@ export function ReviewWorkspace({ value, onSaved }: RendererProps) {
     }
   }
   return (
+    <ReviewWorkspaceView
+      value={value}
+      summary={summary}
+      next={next}
+      prUrl={prUrl}
+      creatingPr={creatingPr}
+      gitBusy={gitBusy}
+      onSummaryChange={setSummary}
+      onNextChange={setNext}
+      onSubmit={submitToProject}
+      onDigest={digest}
+      onSave={save}
+      onGitStep={gitStep}
+      onCreatePr={createPr}
+    />
+  );
+}
+
+function ReviewWorkspaceView({
+  value,
+  summary,
+  next,
+  prUrl,
+  creatingPr,
+  gitBusy,
+  onSummaryChange,
+  onNextChange,
+  onSubmit,
+  onDigest,
+  onSave,
+  onGitStep,
+  onCreatePr
+}: {
+  value: RendererProps['value'];
+  summary: string;
+  next: string;
+  prUrl: string;
+  creatingPr: boolean;
+  gitBusy: string;
+  onSummaryChange: (value: string) => void;
+  onNextChange: (value: string) => void;
+  onSubmit: () => Promise<void>;
+  onDigest: () => Promise<void>;
+  onSave: () => Promise<void>;
+  onGitStep: (step: 'branch' | 'diff' | 'commit') => Promise<void>;
+  onCreatePr: () => Promise<void>;
+}) {
+  const run = value.runs.filter((item) => item.status === 'succeeded').at(-1);
+  const change = value.code_changes?.find((item) => item.run_id === run?.id);
+  return (
     <div className="review-workspace">
       <header className="content-header">
         <div>
@@ -191,15 +241,15 @@ export function ReviewWorkspace({ value, onSaved }: RendererProps) {
           <h2>复盘与沉淀</h2>
         </div>
         <div>
-          <button className="button secondary" disabled={!summary.trim()} onClick={submitToProject}>
+          <button className="button secondary" disabled={!summary.trim()} onClick={onSubmit}>
             <Send size={15} />
             提交顶层
           </button>
-          <button className="button secondary" onClick={digest}>
+          <button className="button secondary" onClick={onDigest}>
             <Sparkles size={15} />
             生成摘要
           </button>
-          <button className="button primary" onClick={save}>
+          <button className="button primary" onClick={onSave}>
             <Save size={15} />
             保存
           </button>
@@ -209,7 +259,12 @@ export function ReviewWorkspace({ value, onSaved }: RendererProps) {
         <section>
           <label>
             复盘摘要
-            <textarea id="review-summary" rows={12} value={summary} onChange={(e) => setSummary(e.target.value)} />
+            <textarea
+              id="review-summary"
+              rows={12}
+              value={summary}
+              onChange={(event) => onSummaryChange(event.target.value)}
+            />
           </label>
           <label>
             下一步
@@ -217,7 +272,7 @@ export function ReviewWorkspace({ value, onSaved }: RendererProps) {
               id="review-next-steps"
               rows={9}
               value={next}
-              onChange={(e) => setNext(e.target.value)}
+              onChange={(event) => onNextChange(event.target.value)}
               placeholder="每行一项"
             />
           </label>
@@ -255,7 +310,7 @@ export function ReviewWorkspace({ value, onSaved }: RendererProps) {
               <button
                 className="button secondary"
                 disabled={!run || Boolean(change?.work_branch) || Boolean(gitBusy)}
-                onClick={() => gitStep('branch')}
+                onClick={() => onGitStep('branch')}
               >
                 <GitBranch size={14} />
                 分支
@@ -263,7 +318,7 @@ export function ReviewWorkspace({ value, onSaved }: RendererProps) {
               <button
                 className="button secondary"
                 disabled={!change?.work_branch || Boolean(gitBusy)}
-                onClick={() => gitStep('diff')}
+                onClick={() => onGitStep('diff')}
               >
                 <Diff size={14} />
                 差异
@@ -271,7 +326,7 @@ export function ReviewWorkspace({ value, onSaved }: RendererProps) {
               <button
                 className="button secondary"
                 disabled={change?.status !== 'diff_captured' || Boolean(gitBusy)}
-                onClick={() => gitStep('commit')}
+                onClick={() => onGitStep('commit')}
               >
                 <GitCommit size={14} />
                 提交
@@ -279,7 +334,7 @@ export function ReviewWorkspace({ value, onSaved }: RendererProps) {
               <button
                 className="button secondary"
                 disabled={creatingPr || change?.status !== 'committed'}
-                onClick={createPr}
+                onClick={onCreatePr}
               >
                 <GitPullRequest size={14} />
                 {creatingPr ? '创建中' : '草稿合并请求'}

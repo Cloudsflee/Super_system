@@ -91,102 +91,7 @@ export async function assertWorkflowProcessSemantics(page, output, viewport) {
     viewport.width <= 600 ? 6 : 8,
     'Task card gap must match the density grid'
   );
-  const edges = page.locator('.workflow-topology-edge');
-  assert.equal(await edges.count(), 2, 'the fixture DAG must render both dependency edges');
-  const paths = await edges.evaluateAll((items) => items.map((item) => item.getAttribute('d') || ''));
-  const rowHeights = await page
-    .locator('.workflow-task-summary')
-    .evaluateAll((items) => items.map((item) => item.getBoundingClientRect().height));
-  assert.ok(
-    paths.every((value) => /^M \d/.test(value)),
-    `dependency edges need measured SVG paths: ${JSON.stringify(paths)}`
-  );
-  await assertTopologyAnchors(page);
-  if (viewport.width > 700) {
-    await page.locator('[data-task-id="task-collect-evidence"]').hover();
-    assert.equal(
-      await page.locator('[data-task-id="task-collect-evidence"].topology-active').count(),
-      1,
-      'hovered Task must be active'
-    );
-    assert.equal(
-      await page
-        .locator(
-          '[data-task-id="task-verify-build"].topology-downstream,[data-task-id="task-review-notes"].topology-downstream'
-        )
-        .count(),
-      2,
-      'all downstream Tasks must highlight'
-    );
-    assert.equal(
-      await page.locator('.workflow-topology-edge.downstream').count(),
-      2,
-      'downstream dependency paths must highlight together'
-    );
-    assert.deepEqual(
-      await edges.evaluateAll((items) => items.map((item) => item.getAttribute('d') || '')),
-      paths,
-      'hover must not move dependency paths'
-    );
-    await page.waitForTimeout(280);
-    const preview = masterDetail
-      ? page.locator('.workflow-task-inspector')
-      : page.locator('.workflow-task-quick-preview');
-    await preview.waitFor();
-    assert.equal(
-      (await preview.locator('.workflow-code-bubble code').textContent())?.trim(),
-      'node src/cli.mjs collect --date 2026-07-23',
-      'Task preview must expose the extracted CLI'
-    );
-    assert.equal(
-      await preview.locator('.workflow-task-overview').count(),
-      1,
-      'Task preview must expose all four metrics'
-    );
-    if (masterDetail) {
-      const objective = await preview.locator('.workflow-task-copy').textContent();
-      assert.match(objective || '', /收集可追溯发布证据。/, 'the detail panel must retain the Chinese objective');
-      assert.doesNotMatch(
-        objective || '',
-        /Preserve source provenance and immutable hashes/,
-        'a bilingual objective must not repeat its English translation'
-      );
-    }
-    if (masterDetail)
-      assert.equal(
-        await page.locator('.workflow-task-quick-preview,.workflow-task-details').count(),
-        0,
-        'master-detail must not duplicate Task details'
-      );
-    else await assertPreviewBounds(page);
-    await preview.screenshot({ path: path.join(output, `workflow-preview-${viewport.name}.png`) });
-    await page.screenshot({ path: path.join(output, `workflow-topology-${viewport.name}.png`) });
-    await page.locator('.workflow-process-summary').hover();
-    await page.waitForTimeout(120);
-    if (!masterDetail) assert.equal(await preview.count(), 0, 'quick preview must close after pointer leave');
-  } else {
-    await page
-      .locator('[data-task-id="task-collect-evidence"]')
-      .dispatchEvent('pointerover', { pointerType: 'touch', bubbles: true });
-    await page.waitForTimeout(300);
-    assert.equal(
-      await page.locator('.workflow-task-quick-preview').count(),
-      0,
-      'touch pointers must not open hover previews'
-    );
-    assert.equal(
-      await page.locator('.workflow-process-task.topology-active').count(),
-      0,
-      'touch pointers must not activate hover topology'
-    );
-  }
-  assert.deepEqual(
-    await page
-      .locator('.workflow-task-summary')
-      .evaluateAll((items) => items.map((item) => item.getBoundingClientRect().height)),
-    rowHeights,
-    'Task previews must not resize summary rows'
-  );
+  await assertWorkflowTopologyPreview(page, output, viewport, masterDetail);
   const locked = page.locator('.workflow-task-enter.locked:disabled'),
     open = page.locator('a.workflow-task-enter').first();
   assert.ok((await locked.count()) >= 1, 'blocked Tasks must expose disabled lock actions');
@@ -280,6 +185,109 @@ export async function assertWorkflowProcessSemantics(page, output, viewport) {
     0,
     'topology highlight must clear after the pointer leaves the DAG'
   );
+}
+
+async function assertWorkflowTopologyPreview(page, output, viewport, masterDetail) {
+  const edges = page.locator('.workflow-topology-edge');
+  assert.equal(await edges.count(), 2, 'the fixture DAG must render both dependency edges');
+  const paths = await edges.evaluateAll((items) => items.map((item) => item.getAttribute('d') || ''));
+  const rowHeights = await page
+    .locator('.workflow-task-summary')
+    .evaluateAll((items) => items.map((item) => item.getBoundingClientRect().height));
+  assert.ok(
+    paths.every((value) => /^M \d/.test(value)),
+    `dependency edges need measured SVG paths: ${JSON.stringify(paths)}`
+  );
+  await assertTopologyAnchors(page);
+  if (viewport.width > 700) {
+    await assertFinePointerWorkflowPreview(page, output, viewport, masterDetail, edges, paths);
+  } else {
+    await page
+      .locator('[data-task-id="task-collect-evidence"]')
+      .dispatchEvent('pointerover', { pointerType: 'touch', bubbles: true });
+    await page.waitForTimeout(300);
+    assert.equal(
+      await page.locator('.workflow-task-quick-preview').count(),
+      0,
+      'touch pointers must not open hover previews'
+    );
+    assert.equal(
+      await page.locator('.workflow-process-task.topology-active').count(),
+      0,
+      'touch pointers must not activate hover topology'
+    );
+  }
+  assert.deepEqual(
+    await page
+      .locator('.workflow-task-summary')
+      .evaluateAll((items) => items.map((item) => item.getBoundingClientRect().height)),
+    rowHeights,
+    'Task previews must not resize summary rows'
+  );
+}
+
+async function assertFinePointerWorkflowPreview(page, output, viewport, masterDetail, edges, paths) {
+  await page.locator('[data-task-id="task-collect-evidence"]').hover();
+  assert.equal(
+    await page.locator('[data-task-id="task-collect-evidence"].topology-active').count(),
+    1,
+    'hovered Task must be active'
+  );
+  assert.equal(
+    await page
+      .locator(
+        '[data-task-id="task-verify-build"].topology-downstream,[data-task-id="task-review-notes"].topology-downstream'
+      )
+      .count(),
+    2,
+    'all downstream Tasks must highlight'
+  );
+  assert.equal(
+    await page.locator('.workflow-topology-edge.downstream').count(),
+    2,
+    'downstream dependency paths must highlight together'
+  );
+  assert.deepEqual(
+    await edges.evaluateAll((items) => items.map((item) => item.getAttribute('d') || '')),
+    paths,
+    'hover must not move dependency paths'
+  );
+  await page.waitForTimeout(280);
+  const preview = masterDetail
+    ? page.locator('.workflow-task-inspector')
+    : page.locator('.workflow-task-quick-preview');
+  await preview.waitFor();
+  assert.equal(
+    (await preview.locator('.workflow-code-bubble code').textContent())?.trim(),
+    'node src/cli.mjs collect --date 2026-07-23',
+    'Task preview must expose the extracted CLI'
+  );
+  assert.equal(
+    await preview.locator('.workflow-task-overview').count(),
+    1,
+    'Task preview must expose all four metrics'
+  );
+  if (masterDetail) {
+    const objective = await preview.locator('.workflow-task-copy').textContent();
+    assert.match(objective || '', /收集可追溯发布证据。/, 'the detail panel must retain the Chinese objective');
+    assert.doesNotMatch(
+      objective || '',
+      /Preserve source provenance and immutable hashes/,
+      'a bilingual objective must not repeat its English translation'
+    );
+  }
+  if (masterDetail)
+    assert.equal(
+      await page.locator('.workflow-task-quick-preview,.workflow-task-details').count(),
+      0,
+      'master-detail must not duplicate Task details'
+    );
+  else await assertPreviewBounds(page);
+  await preview.screenshot({ path: path.join(output, `workflow-preview-${viewport.name}.png`) });
+  await page.screenshot({ path: path.join(output, `workflow-topology-${viewport.name}.png`) });
+  await page.locator('.workflow-process-summary').hover();
+  await page.waitForTimeout(120);
+  if (!masterDetail) assert.equal(await preview.count(), 0, 'quick preview must close after pointer leave');
 }
 
 export async function setWorkflowDensity(page, viewport, density) {

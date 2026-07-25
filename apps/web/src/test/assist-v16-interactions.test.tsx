@@ -28,19 +28,19 @@ import { TurnTimeline } from '../features/assist/TurnTimeline';
 import { LONG_PASTE_THRESHOLD, MAX_DROP_FILES } from '../features/assist/useComposerFiles';
 import { useUi } from '../state/ui';
 
-describe('Assist V1.6 interactions', () => {
-  afterEach(() => {
-    cleanup();
-    vi.restoreAllMocks();
-    localStorage.clear();
-    sessionStorage.clear();
-    window.getSelection()?.removeAllRanges();
-    Reflect.deleteProperty(Range.prototype, 'getBoundingClientRect');
-    useUi.setState({ assistOpen: false });
-    const dispose = subscribeSelectionAsk(() => undefined);
-    dispose();
-  });
+afterEach(() => {
+  cleanup();
+  vi.restoreAllMocks();
+  localStorage.clear();
+  sessionStorage.clear();
+  window.getSelection()?.removeAllRanges();
+  Reflect.deleteProperty(Range.prototype, 'getBoundingClientRect');
+  useUi.setState({ assistOpen: false });
+  const dispose = subscribeSelectionAsk(() => undefined);
+  dispose();
+});
 
+describe('Assist V1.6 context, threads, and composer input', () => {
   it('owns ordinary context menus, keeps Shift escape, supports selection Ask and keyboard entry', async () => {
     const asked = vi.fn(),
       special = vi.fn(),
@@ -199,7 +199,9 @@ describe('Assist V1.6 interactions', () => {
     expect(onAttachments).toHaveBeenCalledWith(['attachment-1']);
     expect(onPrompt).not.toHaveBeenCalled();
   });
+});
 
+describe('Assist V1.6 composer state and attachment previews', () => {
   it('keeps Stop available while a running Turn is finishing background refreshes', () => {
     const onStop = vi.fn();
     render(
@@ -371,7 +373,9 @@ describe('Assist V1.6 interactions', () => {
     fireEvent.click(within(details).getByText('运行详情'));
     expect(details).toHaveAttribute('open');
   });
+});
 
+describe('Assist V1.6 timeline actions and goals', () => {
   it('keeps approvals, user input, errors, conflicts, Undo, Retry and Review outside runtime details', () => {
     const input: RuntimeUserInput = {
       id: 'input-1',

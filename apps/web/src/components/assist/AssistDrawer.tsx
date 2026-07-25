@@ -159,6 +159,63 @@ export function AssistDrawer({ projectId, nodeId }: { projectId?: string; nodeId
   }
 
   return (
+    <AssistDrawerView
+      assistOpen={assistOpen}
+      session={session}
+      messages={messages}
+      actions={actions}
+      prompt={prompt}
+      running={running}
+      nodeId={nodeId}
+      scopeId={scopeId}
+      onClose={() => setAssist(false)}
+      onNewSession={() => {
+        setSession(null);
+        setMessages([]);
+        setActions([]);
+        setRunning(false);
+        lastEvent.current = 0;
+      }}
+      onPromptChange={setPrompt}
+      onSubmit={submit}
+      onCancel={cancel}
+      onActionChange={(next) => setActions((items) => upsert(items, next))}
+    />
+  );
+}
+
+function AssistDrawerView({
+  assistOpen,
+  session,
+  messages,
+  actions,
+  prompt,
+  running,
+  nodeId,
+  scopeId,
+  onClose,
+  onNewSession,
+  onPromptChange,
+  onSubmit,
+  onCancel,
+  onActionChange
+}: {
+  assistOpen: boolean;
+  session: AssistSession | null;
+  messages: AssistMessage[];
+  actions: UiAction[];
+  prompt: string;
+  running: boolean;
+  nodeId?: string;
+  scopeId?: string;
+  onClose: () => void;
+  onNewSession: () => void;
+  onPromptChange: (value: string) => void;
+  onSubmit: () => void;
+  onCancel: () => void;
+  onActionChange: (action: UiAction) => void;
+}) {
+  return (
     <aside
       className={`assist-drawer drawer right ${assistOpen ? 'open' : ''}`}
       aria-hidden={!assistOpen}
@@ -174,20 +231,11 @@ export function AssistDrawer({ projectId, nodeId }: { projectId?: string; nodeId
         </div>
         <div>
           {session && (
-            <IconButton
-              label="新建对话"
-              onClick={() => {
-                setSession(null);
-                setMessages([]);
-                setActions([]);
-                setRunning(false);
-                lastEvent.current = 0;
-              }}
-            >
+            <IconButton label="新建对话" onClick={onNewSession}>
               <Plus size={18} />
             </IconButton>
           )}
-          <IconButton label="关闭智能助手" onClick={() => setAssist(false)}>
+          <IconButton label="关闭智能助手" onClick={onClose}>
             <X size={18} />
           </IconButton>
         </div>
@@ -210,12 +258,7 @@ export function AssistDrawer({ projectId, nodeId }: { projectId?: string; nodeId
           </article>
         ))}
         {actions.map((action) => (
-          <ActionIntent
-            key={action.id}
-            action={action}
-            sessionId={session?.id || ''}
-            onChange={(next) => setActions((items) => upsert(items, next))}
-          />
+          <ActionIntent key={action.id} action={action} sessionId={session?.id || ''} onChange={onActionChange} />
         ))}
         {running && (
           <div className="streaming">
@@ -227,21 +270,21 @@ export function AssistDrawer({ projectId, nodeId }: { projectId?: string; nodeId
       <div className="composer">
         <textarea
           value={prompt}
-          onChange={(event) => setPrompt(event.target.value)}
+          onChange={(event) => onPromptChange(event.target.value)}
           placeholder="向当前工作空间提问"
           rows={3}
           onKeyDown={(event) => {
-            if (event.key === 'Enter' && (event.ctrlKey || event.metaKey)) submit();
+            if (event.key === 'Enter' && (event.ctrlKey || event.metaKey)) onSubmit();
           }}
         />
         <div>
           {running ? (
-            <button className="button danger" onClick={cancel}>
+            <button className="button danger" onClick={onCancel}>
               <Ban size={16} />
               停止
             </button>
           ) : (
-            <button className="button primary" disabled={!prompt.trim() || !scopeId} onClick={submit}>
+            <button className="button primary" disabled={!prompt.trim() || !scopeId} onClick={onSubmit}>
               {session ? <RotateCcw size={16} /> : <Send size={16} />}
               {session ? '继续' : '发送'}
             </button>

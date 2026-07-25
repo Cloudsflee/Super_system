@@ -6,6 +6,7 @@ import {
   useEdgesState,
   useNodesState,
   useReactFlow,
+  type Edge,
   type NodeChange,
   type Viewport
 } from '@xyflow/react';
@@ -135,33 +136,8 @@ export function WorkflowCanvas({ bundle, workflow }: { bundle: ProjectBundle; wo
     window.setTimeout(() => flow.fitView({ padding: 0.18, minZoom: compactViewport ? 0.78 : 0.25, duration: 300 }), 30);
   }
   function add() {
-    proposal.mutate({
-      operations: [
-        {
-          type: 'add_node',
-          node: {
-            role: 'workstream',
-            title: '新成果节点',
-            goal: '形成可独立验收的项目成果',
-            outcome: '一项经过审阅且可验证的项目成果',
-            category: 'deliverable',
-            boundary: { deliverable: 'new_outcome' },
-            acceptance_criteria: ['成果可独立审阅，并附有验收证据。'],
-            dependency_ids: [],
-            position: flow.screenToFlowPosition({ x: window.innerWidth / 2, y: window.innerHeight / 2 }),
-            tasks: [
-              {
-                title: '完成并验证成果',
-                goal: '产出成果并整理验收证据',
-                task_kind: 'manual',
-                execution_mode: 'manual',
-                dependency_ids: []
-              }
-            ]
-          }
-        }
-      ]
-    });
+    const position = flow.screenToFlowPosition({ x: window.innerWidth / 2, y: window.innerHeight / 2 });
+    proposal.mutate(createNodeProposal(position));
   }
   function changes(value: NodeChange<CanvasNode>[]) {
     onNodesChange(value);
@@ -201,34 +177,132 @@ export function WorkflowCanvas({ bundle, workflow }: { bundle: ProjectBundle; wo
   }));
 
   return (
+    <WorkflowCanvasSurface
+      nodes={interactiveNodes}
+      edges={edges}
+      compactViewport={compactViewport}
+      restoreView={!storedView.current}
+      focusMode={ui.focusMode}
+      selected={selected}
+      contract={contract}
+      contextLane={ui.contextLane}
+      editNodeId={editNodeId}
+      projectId={bundle.project.id}
+      workflowVersion={Number(workflow.workflow_revision || workflow.version || 1)}
+      canUndo={history.length > 0}
+      canRedo={future.length > 0}
+      onNodesChange={changes}
+      onConnect={(source, target) =>
+        proposal.mutate({ operations: [{ type: 'connect', node_id: target, dependency_id: source }] })
+      }
+      onSelect={(nodeId) => {
+        setEditNodeId(null);
+        ui.inspect(nodeId);
+        remember(flow.getViewport(), nodeId);
+      }}
+      onEnter={enter}
+      onDragStart={() => {
+        dragging.current = true;
+        beforeDrag.current = snapshot();
+      }}
+      onDragStop={() => {
+        dragging.current = false;
+        commit(beforeDrag.current, snapshot());
+      }}
+      onMoveEnd={remember}
+      onAdd={add}
+      onLayout={layout}
+      onUndo={undo}
+      onRedo={redo}
+      onZoomIn={() => flow.zoomIn()}
+      onZoomOut={() => flow.zoomOut()}
+      onFit={() => flow.fitView({ padding: 0.2, minZoom: compactViewport ? 0.78 : 0.25, duration: 250 })}
+      onInspect={ui.inspect}
+      onEditingChange={(editing) => setEditNodeId(editing && selected ? selected.id : null)}
+      onAssist={() => selected && assistNode(selected)}
+    />
+  );
+}
+
+function WorkflowCanvasSurface({
+  nodes,
+  edges,
+  compactViewport,
+  restoreView,
+  focusMode,
+  selected,
+  contract,
+  contextLane,
+  editNodeId,
+  projectId,
+  workflowVersion,
+  canUndo,
+  canRedo,
+  onNodesChange,
+  onConnect,
+  onSelect,
+  onEnter,
+  onDragStart,
+  onDragStop,
+  onMoveEnd,
+  onAdd,
+  onLayout,
+  onUndo,
+  onRedo,
+  onZoomIn,
+  onZoomOut,
+  onFit,
+  onInspect,
+  onEditingChange,
+  onAssist
+}: {
+  nodes: CanvasNode[];
+  edges: Edge[];
+  compactViewport: boolean;
+  restoreView: boolean;
+  focusMode: boolean;
+  selected?: ProjectBundle['nodes'][number];
+  contract?: ProjectBundle['contracts'][number];
+  contextLane: string | null;
+  editNodeId: string | null;
+  projectId: string;
+  workflowVersion: number;
+  canUndo: boolean;
+  canRedo: boolean;
+  onNodesChange: (changes: NodeChange<CanvasNode>[]) => void;
+  onConnect: (source: string, target: string) => void;
+  onSelect: (nodeId: string) => void;
+  onEnter: (nodeId: string) => void;
+  onDragStart: () => void;
+  onDragStop: () => void;
+  onMoveEnd: (viewport: Viewport) => void;
+  onAdd: () => void;
+  onLayout: () => void;
+  onUndo: () => void;
+  onRedo: () => void;
+  onZoomIn: () => void;
+  onZoomOut: () => void;
+  onFit: () => void;
+  onInspect: (nodeId: string | null) => void;
+  onEditingChange: (editing: boolean) => void;
+  onAssist: () => void;
+}) {
+  return (
     <section className="workflow-page">
       <ReactFlow
-        nodes={interactiveNodes}
+        nodes={nodes}
         edges={edges}
         nodeTypes={nodeTypes}
-        onNodesChange={changes}
+        onNodesChange={onNodesChange}
         onConnect={(connection) => {
-          if (connection.source && connection.target)
-            proposal.mutate({
-              operations: [{ type: 'connect', node_id: connection.target, dependency_id: connection.source }]
-            });
+          if (connection.source && connection.target) onConnect(connection.source, connection.target);
         }}
-        onNodeClick={(_, node) => {
-          setEditNodeId(null);
-          ui.inspect(node.id);
-          remember(flow.getViewport(), node.id);
-        }}
-        onNodeDoubleClick={(_, node) => enter(node.id)}
-        onNodeDragStart={() => {
-          dragging.current = true;
-          beforeDrag.current = snapshot();
-        }}
-        onNodeDragStop={() => {
-          dragging.current = false;
-          commit(beforeDrag.current, snapshot());
-        }}
-        onMoveEnd={(_, viewport) => remember(viewport)}
-        fitView={!storedView.current}
+        onNodeClick={(_, node) => onSelect(node.id)}
+        onNodeDoubleClick={(_, node) => onEnter(node.id)}
+        onNodeDragStart={onDragStart}
+        onNodeDragStop={onDragStop}
+        onMoveEnd={(_, viewport) => onMoveEnd(viewport)}
+        fitView={restoreView}
         fitViewOptions={{ padding: 0.22, minZoom: compactViewport ? 0.78 : 0.25 }}
         minZoom={0.25}
         maxZoom={1.8}
@@ -236,7 +310,7 @@ export function WorkflowCanvas({ bundle, workflow }: { bundle: ProjectBundle; wo
         proOptions={{ hideAttribution: true }}
       >
         <Background variant={BackgroundVariant.Dots} gap={22} size={1} color="rgba(255,255,255,.08)" />
-        {!ui.focusMode && (
+        {!focusMode && (
           <MiniMap
             style={{ width: 145, height: 94 }}
             pannable
@@ -245,15 +319,15 @@ export function WorkflowCanvas({ bundle, workflow }: { bundle: ProjectBundle; wo
           />
         )}
         <CanvasToolbar
-          canUndo={history.length > 0}
-          canRedo={future.length > 0}
-          onAdd={add}
-          onLayout={layout}
-          onUndo={undo}
-          onRedo={redo}
-          onZoomIn={() => flow.zoomIn()}
-          onZoomOut={() => flow.zoomOut()}
-          onFit={() => flow.fitView({ padding: 0.2, minZoom: compactViewport ? 0.78 : 0.25, duration: 250 })}
+          canUndo={canUndo}
+          canRedo={canRedo}
+          onAdd={onAdd}
+          onLayout={onLayout}
+          onUndo={onUndo}
+          onRedo={onRedo}
+          onZoomIn={onZoomIn}
+          onZoomOut={onZoomOut}
+          onFit={onFit}
         />
         {!nodes.length && (
           <div className="canvas-empty">
@@ -262,25 +336,55 @@ export function WorkflowCanvas({ bundle, workflow }: { bundle: ProjectBundle; wo
           </div>
         )}
       </ReactFlow>
-      {selected && ui.contextLane !== 'assist' && (
+      {selected && contextLane !== 'assist' && (
         <NodeInspector
           node={selected}
           contract={contract}
-          projectId={bundle.project.id}
-          workflowVersion={Number(workflow.workflow_revision || workflow.version || 1)}
+          projectId={projectId}
+          workflowVersion={workflowVersion}
           startEditing={editNodeId === selected.id}
-          onEditingChange={(editing) => setEditNodeId(editing ? selected.id : null)}
-          onAssist={() => assistNode(selected)}
+          onEditingChange={onEditingChange}
+          onAssist={onAssist}
         />
       )}
-      {selected && ui.contextLane === 'assist' && (
-        <button className="context-peek inspector-peek" onClick={() => ui.inspect(selected.id)}>
+      {selected && contextLane === 'assist' && (
+        <button className="context-peek inspector-peek" onClick={() => onInspect(selected.id)}>
           <PanelRightOpen size={15} />
           <span>{selected.title}</span>
         </button>
       )}
     </section>
   );
+}
+
+function createNodeProposal(position: { x: number; y: number }) {
+  return {
+    operations: [
+      {
+        type: 'add_node',
+        node: {
+          role: 'workstream',
+          title: '新成果节点',
+          goal: '形成可独立验收的项目成果',
+          outcome: '一项经过审阅且可验证的项目成果',
+          category: 'deliverable',
+          boundary: { deliverable: 'new_outcome' },
+          acceptance_criteria: ['成果可独立审阅，并附有验收证据。'],
+          dependency_ids: [],
+          position,
+          tasks: [
+            {
+              title: '完成并验证成果',
+              goal: '产出成果并整理验收证据',
+              task_kind: 'manual',
+              execution_mode: 'manual',
+              dependency_ids: []
+            }
+          ]
+        }
+      }
+    ]
+  };
 }
 
 function typeColor(type: string) {
