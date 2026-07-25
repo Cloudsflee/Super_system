@@ -1,5 +1,6 @@
 {
   "unit-core": [
+    "tests/unit/quality-policy.test.mjs",
     "tests/unit/shared.test.mjs",
     "tests/unit/packages.test.mjs",
     "tests/unit/v12-services.test.mjs",
@@ -16,7 +17,8 @@
     "tests/unit/codex-app-server.test.mjs",
     "tests/unit/v14-container.test.mjs",
     "tests/unit/v15-operations.test.mjs",
-    "tests/unit/v18-codex-mcp-injection.test.mjs"
+    "tests/unit/v18-codex-mcp-injection.test.mjs",
+    "tests/unit/v110-runner-runtime.test.mjs"
   ],
   "unit-state": [
     "tests/unit/v16-core.test.mjs",
@@ -27,7 +29,9 @@
     "tests/unit/v19-migration.test.mjs",
     "tests/unit/v19-exchange.test.mjs",
     "tests/unit/v19-project-governance.test.mjs",
-    "tests/unit/v19-repository-lifecycle.test.mjs"
+    "tests/unit/v19-repository-lifecycle.test.mjs",
+    "tests/unit/v110-cas.test.mjs",
+    "tests/unit/v110-legacy-execution-promotion.test.mjs"
   ],
   "unit-capabilities": [
     "tests/unit/v17-capability-operations.test.mjs",
@@ -42,7 +46,12 @@
     "tests/unit/v19-core.test.mjs",
     "tests/unit/v19-delivery-pull-request.test.mjs",
     "tests/unit/v19-mcp-registry.test.mjs",
-    "tests/unit/v19-repository-delivery.test.mjs"
+    "tests/unit/v19-repository-delivery.test.mjs",
+    "tests/unit/v19-repository-workspace-pr-intent.test.mjs",
+    "tests/unit/v19-task-execution-context.test.mjs",
+    "tests/unit/v19-workflow-generation-contract.test.mjs",
+    "tests/unit/v110-attestation.test.mjs",
+    "tests/unit/v110-workflow-execution.test.mjs"
   ],
   "integration-core": [
     "tests/integration/api-flow.test.mjs",
@@ -79,7 +88,8 @@
     "tests/integration/v17-workflow-assist-flow.test.mjs",
     "tests/integration/v19-assist-recovery-acl-flow.test.mjs",
     "tests/integration/v19-workflow-migration-acl-flow.test.mjs",
-    "tests/integration/v19-workflow-migration-orchestrator-flow.test.mjs"
+    "tests/integration/v19-workflow-migration-orchestrator-flow.test.mjs",
+    "tests/integration/v110-workflow-execution-flow.test.mjs"
   ],
   "integration-files": [
     "tests/integration/tools-flow.test.mjs",
