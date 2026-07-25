@@ -18,6 +18,7 @@ export const PROBE_DIR = path.join(AIWS_HOME, 'probe-workspace');
 export const ASSIST_DIR = path.join(AIWS_HOME, 'assist-workspaces');
 export const ATTACHMENT_DIR = path.join(AIWS_HOME, 'attachments');
 export const ATTACHMENT_TEMP_DIR = path.join(AIWS_HOME, 'attachment-staging');
+export const CONTEXT_INDEX_DIR = path.join(DATA_DIR, '.context-index');
 export const STATE_FILE = path.join(DATA_DIR, 'state.json');
 export const WEB_SOURCE_DIR = path.join(ROOT, 'apps', 'web');
 export const WEB_DIST_DIR = path.join(WEB_SOURCE_DIR, 'dist');
@@ -112,7 +113,14 @@ export const collections = [
   'workflow_executions',
   'task_executions',
   'execution_events',
-  'repository_lines'
+  'repository_lines',
+  'context_nodes',
+  'context_document_versions',
+  'context_edges',
+  'context_selections',
+  'context_policies',
+  'context_projection_jobs',
+  'context_summaries'
 ];
 
 export function readLocalGithubAppConfig() {

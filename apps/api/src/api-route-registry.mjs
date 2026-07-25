@@ -111,7 +111,7 @@ export async function executeRegistryOperation(registry, operationId, args = {},
 function enrichRoute(item) {
   const domain = classifyDomain(item.pattern);
   const mapping = classifyMapping(item);
-  const requiredScopes = scopesFor(item, domain);
+  const requiredScopes = item.required_scopes || scopesFor(item, domain);
   const parameterNames = [...item.pattern.matchAll(/:([^/]+)/g)].map((match) => match[1]);
   return {
     ...item,
@@ -126,7 +126,10 @@ function enrichRoute(item) {
     mapping,
     mcp_binding:
       mapping === 'resource' || mapping === 'async_adapter'
-        ? { resource_uri_template: resourceTemplateFor(item.pattern), tool: domainTool(domain) }
+        ? {
+            resource_uri_template: item.mcp_resource_uri_template || resourceTemplateFor(item.pattern),
+            tool: domainTool(domain)
+          }
         : { tool: domainTool(domain) },
     stream_response: isStreamResponse(item),
     project_scoped: isProjectScoped(item.pattern),
@@ -295,6 +298,10 @@ async function resolveProjectId(operation, args, client = null) {
       null
     );
   }
+  if (pattern.startsWith('/context/v1/nodes/:id'))
+    return state.context_nodes.find((item) => item.id === params.id)?.project_id || null;
+  if (pattern.startsWith('/context/v1/selections/:id'))
+    return state.context_selections.find((item) => item.id === params.id)?.project_id || null;
   if (['/nodes/:id', '/tasks/:id', '/workstreams/:id'].some((prefix) => pattern.startsWith(prefix))) {
     const node = state.workflow_nodes.find((item) => item.id === params.id),
       workflow = state.workflows.find((item) => item.id === node?.workflow_id);
@@ -404,6 +411,7 @@ function chooseAllowedProject(client, ...values) {
 }
 
 function classifyDomain(pattern) {
+  if (pattern.startsWith('/context/v1/')) return 'context';
   if (/^\/(?:health|system|account)/.test(pattern)) return 'system';
   if (
     /^\/(?:setup|workflow-migrations)/.test(pattern) ||
@@ -447,6 +455,8 @@ function classifyMapping(item) {
 }
 
 function scopesFor(item, domain) {
+  if (domain === 'context')
+    return [item.pattern.endsWith('/rebuild') || item.pattern.endsWith('/status') ? 'context:admin' : 'context:read'];
   if (item.pattern === '/projects' && item.method === 'POST') return ['project:create'];
   if (item.pattern.endsWith('/share') && item.method === 'POST') return ['project:share'];
   if (item.pattern.endsWith('/project-invitations/:id/accept')) return ['project:read'];
@@ -486,6 +496,7 @@ function riskFor(item, scopes) {
   return 'medium';
 }
 function idempotencyFor(item) {
+  if (item.idempotency) return item.idempotency;
   if (item.method === 'GET') return 'safe';
   if (['PUT', 'DELETE'].includes(item.method)) return 'idempotent';
   return item.method === 'POST' ? 'key_required' : 'conditional';
@@ -512,6 +523,7 @@ function isStreamResponse(item) {
 }
 function isProjectScoped(pattern) {
   return (
+    /^\/context\/v1\/(?:map|search|nodes|selections|policy)/.test(pattern) ||
     /^\/(?:projects|workspaces|repository-workspaces|pull-request-intents|workflows|workflow-executions|task-executions|nodes|workstreams|tasks|runs|deliveries|delivery-policies|context-packs|assets|asset-versions|asset-candidates|change-proposals|approvals|agent-sessions|exchange-requests|exchange-grants|project-invitations|submissions|review)/.test(
       pattern
     ) ||

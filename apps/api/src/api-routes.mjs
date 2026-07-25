@@ -35,6 +35,7 @@ import { repositoryLifecycleV19Routes } from './routes/repository-lifecycle-v19.
 import { repositoryWorkspaceV19Routes } from './routes/repository-workspaces-v19.mjs';
 import { pullRequestIntentV19Routes } from './routes/pull-request-intents-v19.mjs';
 import { workflowExecutionV110Routes } from './routes/workflow-executions-v110.mjs';
+import { contextV20Routes } from './routes/context-v20.mjs';
 
 const groups = [
   ['system.mjs', systemRoutes],
@@ -73,7 +74,8 @@ const groups = [
   ['repository-lifecycle-v19.mjs', repositoryLifecycleV19Routes],
   ['repository-workspaces-v19.mjs', repositoryWorkspaceV19Routes],
   ['pull-request-intents-v19.mjs', pullRequestIntentV19Routes],
-  ['workflow-executions-v110.mjs', workflowExecutionV110Routes]
+  ['workflow-executions-v110.mjs', workflowExecutionV110Routes],
+  ['context-v20.mjs', contextV20Routes]
 ];
 
 export const apiRouteGroups = Object.freeze(

@@ -1,3 +1,7 @@
+import { CONTEXT_INTERNAL_COLLECTIONS } from '../../../packages/system-context/src/index.mjs';
+
+const CONTEXT_INTERNAL_COLLECTION_SET = new Set(CONTEXT_INTERNAL_COLLECTIONS);
+
 function ids(items = [], predicate) {
   return new Set(
     items
@@ -106,6 +110,7 @@ function purgeAssistGraph(state, sessionIds, extraTurnIds = new Set(), extraTerm
 
 export function purgeProjectInState(state, projectId) {
   const graph = projectPurgeGraph(state, projectId);
+  const contextGraph = projectContextGraph(state, projectId);
   const projectRepositoryIds = new Set(
     (state.project_repository_bindings || [])
       .filter((binding) => binding.project_id === projectId)
@@ -151,7 +156,8 @@ export function purgeProjectInState(state, projectId) {
     (id) => id !== projectId
   );
   for (const [key, values] of Object.entries(state))
-    if (Array.isArray(values)) state[key] = values.filter((item) => item?.project_id !== projectId);
+    if (Array.isArray(values) && !CONTEXT_INTERNAL_COLLECTION_SET.has(key))
+      state[key] = values.filter((item) => item?.project_id !== projectId);
   filter(state, 'projects', (item) => item.id !== projectId);
   filter(state, 'workflow_nodes', (item) => !includes(workflowIds, item.workflow_id) && !includes(nodeIds, item.id));
   filter(state, 'node_contracts', (item) => !includes(nodeIds, item.node_id));
@@ -207,10 +213,12 @@ export function purgeProjectInState(state, projectId) {
     'traces',
     (item) => !includes(migrationTargets, item.target_id) && !includes(removedMcpClientIds, item.target_id)
   );
+  purgeProjectContextGraph(state, contextGraph);
 }
 
 export function projectManagedPathsInState(state, projectId) {
   const graph = projectPurgeGraph(state, projectId);
+  const contextGraph = projectContextGraph(state, projectId);
   const attachments = state.attachments.filter(
     (item) =>
       item.project_id === projectId ||
@@ -222,14 +230,73 @@ export function projectManagedPathsInState(state, projectId) {
       includes(graph.fileRefIds, item.id) ||
       fileRefMatches(item, projectId, graph.workspaceIds, graph.runIds, graph.terminalIds, graph.contextPackIds)
   );
+  const retainedContextPaths = new Set(
+    state.context_document_versions
+      .filter((item) => !includes(contextGraph.versionIds, item.id))
+      .map((item) => item.cas_ref?.storage_path)
+      .filter(Boolean)
+  );
+  const contextPaths = state.context_document_versions
+    .filter((item) => includes(contextGraph.versionIds, item.id))
+    .map((item) => item.cas_ref?.storage_path)
+    .filter((storagePath) => storagePath && !retainedContextPaths.has(storagePath));
   return {
     attachment_paths: [...new Set(attachments.map((item) => item.managed_path).filter(Boolean))],
     artifact_paths: [...new Set(fileRefs.map((item) => item.absolute_path).filter(Boolean))],
-    cas_blob_paths: state.asset_blobs
-      .filter((item) => includes(graph.assetBlobIds, item.id))
-      .map((item) => item.storage_path)
-      .filter(Boolean)
+    cas_blob_paths: [
+      ...new Set([
+        ...state.asset_blobs
+          .filter((item) => includes(graph.assetBlobIds, item.id))
+          .map((item) => item.storage_path)
+          .filter(Boolean),
+        ...contextPaths
+      ])
+    ]
   };
+}
+
+function projectContextGraph(state, projectId) {
+  const nodeIds = ids(state.context_nodes, (item) => item.project_id === projectId);
+  const versionIds = ids(state.context_document_versions, (item) => includes(nodeIds, item.node_id));
+  const selectionIds = ids(
+    state.context_selections,
+    (item) =>
+      item.project_id === projectId ||
+      (item.candidate_node_ids || []).some((id) => includes(nodeIds, id)) ||
+      [...(item.included || []), ...(item.excluded || [])].some(
+        (entry) => includes(nodeIds, entry.node_id) || includes(versionIds, entry.document_version_id)
+      )
+  );
+  return { nodeIds, versionIds, selectionIds, projectId };
+}
+
+function purgeProjectContextGraph(state, { nodeIds, versionIds, selectionIds, projectId }) {
+  filter(state, 'context_nodes', (item) => !includes(nodeIds, item.id));
+  filter(state, 'context_document_versions', (item) => !includes(versionIds, item.id));
+  filter(
+    state,
+    'context_edges',
+    (item) => !includes(nodeIds, item.source_node_id) && !includes(nodeIds, item.target_node_id)
+  );
+  filter(state, 'context_selections', (item) => !includes(selectionIds, item.id));
+  filter(
+    state,
+    'context_policies',
+    (item) =>
+      item.project_id !== projectId &&
+      !(item.pinned_node_ids || []).some((id) => includes(nodeIds, id)) &&
+      !(item.excluded_node_ids || []).some((id) => includes(nodeIds, id))
+  );
+  filter(state, 'context_projection_jobs', (item) => !includes(nodeIds, item.node_id));
+  filter(
+    state,
+    'context_summaries',
+    (item) =>
+      item.project_id !== projectId &&
+      !includes(nodeIds, item.node_id) &&
+      !includes(versionIds, item.document_version_id)
+  );
+  filter(state, 'context_packs', (item) => !includes(selectionIds, item.context_selection_id));
 }
 
 function projectPurgeGraph(state, projectId) {

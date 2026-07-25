@@ -1642,3 +1642,139 @@ model RepositoryLine {
   @@index([connectionId, status])
   @@map("repository_lines")
 }
+
+model ContextNode {
+  id                   String    @id
+  uri                  String    @unique
+  kind                 String
+  sourceType           String    @map("source_type")
+  sourceCollection     String?   @map("source_collection")
+  sourceId             String?   @map("source_id")
+  sourceVersion        Int       @map("source_version")
+  projectId            String?   @map("project_id")
+  parentId             String?   @map("parent_id")
+  title                String
+  deterministicSummary String    @map("deterministic_summary")
+  sort                 Json
+  scope                Json
+  resource             Json?
+  sensitivity          String
+  requiredScopes       Json      @map("required_scopes")
+  freshness            Json
+  authority            String
+  sourceRecordHash     String    @map("source_record_hash")
+  sourceHash           String    @map("source_hash")
+  currentVersionId     String?   @map("current_version_id")
+  status               String
+  createdAt            DateTime  @map("created_at")
+  updatedAt            DateTime  @map("updated_at")
+
+  @@unique([sourceCollection, sourceId])
+  @@index([projectId, parentId, status])
+  @@map("context_nodes")
+}
+
+model ContextDocumentVersion {
+  id                   String   @id
+  nodeId               String   @map("node_id")
+  version              Int
+  rendererVersion      String   @map("renderer_version")
+  sourceHash           String   @map("source_hash")
+  markdownHash         String   @map("markdown_hash")
+  contentSha256        String   @map("content_sha256")
+  casRef               Json     @map("cas_ref")
+  sizeBytes            Int      @map("size_bytes")
+  mediaType            String   @map("media_type")
+  tokenEstimate        Int      @map("token_estimate")
+  deterministicSummary String   @map("deterministic_summary")
+  redactions           Json
+  immutable            Boolean
+  retainedUntil        DateTime? @map("retained_until")
+  createdAt            DateTime @map("created_at")
+
+  @@unique([nodeId, version])
+  @@index([nodeId, sourceHash])
+  @@map("context_document_versions")
+}
+
+model ContextEdge {
+  id           String   @id
+  type         String
+  sourceNodeId String   @map("source_node_id")
+  targetNodeId String   @map("target_node_id")
+  orderIndex   Int      @map("order_index")
+  source       Json
+  version      Int
+  createdAt    DateTime @map("created_at")
+
+  @@unique([type, sourceNodeId, targetNodeId])
+  @@index([sourceNodeId, type])
+  @@index([targetNodeId, type])
+  @@map("context_edges")
+}
+
+model ContextSelection {
+  id               String   @id
+  schemaVersion    String   @map("schema_version")
+  actorId           String   @map("actor_id")
+  sessionId         String?  @map("session_id")
+  projectId         String?  @map("project_id")
+  anchorNodeId      String?  @map("anchor_node_id")
+  candidateNodeIds Json      @map("candidate_node_ids")
+  included          Json
+  excluded          Json
+  tokenBudget       Int      @map("token_budget")
+  tokenUsed         Int      @map("token_used")
+  mapSnapshotHash   String   @map("map_snapshot_hash")
+  immutable         Boolean
+  createdAt         DateTime @map("created_at")
+
+  @@index([projectId, actorId, createdAt])
+  @@map("context_selections")
+}
+
+model ContextPolicy {
+  id              String   @id
+  actorId         String   @map("actor_id")
+  sessionId       String?  @map("session_id")
+  projectId       String?  @map("project_id")
+  pinnedNodeIds   Json     @map("pinned_node_ids")
+  excludedNodeIds Json     @map("excluded_node_ids")
+  revision        Int
+  createdAt       DateTime @map("created_at")
+  updatedAt       DateTime @map("updated_at")
+
+  @@index([actorId, projectId, sessionId])
+  @@map("context_policies")
+}
+
+model ContextProjectionJob {
+  id                 String    @id
+  nodeId             String    @map("node_id")
+  expectedSourceHash String    @map("expected_source_hash")
+  status             String
+  attempts           Int
+  errorCode          String?   @map("error_code")
+  nextRetryAt        DateTime? @map("next_retry_at")
+  createdAt          DateTime  @map("created_at")
+  updatedAt          DateTime  @map("updated_at")
+  completedAt        DateTime? @map("completed_at")
+
+  @@unique([nodeId, expectedSourceHash])
+  @@index([status, nextRetryAt])
+  @@map("context_projection_jobs")
+}
+
+model ContextSummary {
+  id              String   @id
+  nodeId          String   @map("node_id")
+  documentVersionId String @map("document_version_id")
+  model           String
+  body            String
+  source          Json
+  authoritative   Boolean  @default(false)
+  createdAt       DateTime @map("created_at")
+
+  @@index([nodeId, createdAt])
+  @@map("context_summaries")
+}

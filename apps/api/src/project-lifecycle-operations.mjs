@@ -150,21 +150,24 @@ export function purgeProjectLifecycle(projectId, { confirmTitle, retainManagedDi
       project.updated_at = now();
       return prepared;
     });
-    return mutate(async (state) => {
-      const project = requireOperation(state, projectId, operation.id, 'purge');
-      if (!project.deleted_at) throw new HttpError(409, { error: 'project_not_trashed' });
-      if (confirmTitle !== project.title) throw new HttpError(409, { error: 'project_title_confirmation_mismatch' });
-      assertProjectIdle(state, projectId);
-      const storage = await purgeProjectDirectory(
-        projectId,
-        operation.trash_path,
-        operation.retain_managed_directory,
-        operation.export_path
-      );
-      const cleanup = await removeProjectManagedPaths(projectId, projectManagedPathsInState(state, projectId));
-      purgeProjectInState(state, projectId);
-      return { purged: true, project_id: projectId, storage, cleanup };
-    });
+    return mutate(
+      async (state) => {
+        const project = requireOperation(state, projectId, operation.id, 'purge');
+        if (!project.deleted_at) throw new HttpError(409, { error: 'project_not_trashed' });
+        if (confirmTitle !== project.title) throw new HttpError(409, { error: 'project_title_confirmation_mismatch' });
+        assertProjectIdle(state, projectId);
+        const storage = await purgeProjectDirectory(
+          projectId,
+          operation.trash_path,
+          operation.retain_managed_directory,
+          operation.export_path
+        );
+        const cleanup = await removeProjectManagedPaths(projectId, projectManagedPathsInState(state, projectId));
+        purgeProjectInState(state, projectId);
+        return { purged: true, project_id: projectId, storage, cleanup };
+      },
+      { allowContextRecordDeletion: true }
+    );
   });
 }
 

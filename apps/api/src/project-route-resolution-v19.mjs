@@ -68,37 +68,52 @@ function findDirectProject(state, id) {
 }
 
 function resolveSpecialProject(pattern, params, state) {
-  if (pattern.startsWith('/asset-versions/')) {
-    const version = state.asset_versions?.find((item) => item.id === params.id);
-    return state.assets?.find((item) => item.id === version?.asset_id)?.project_id || null;
-  }
-  if (pattern.startsWith('/context-packs/')) {
-    const pack = state.context_packs?.find((item) => item.id === params.id);
-    if (pack?.project_id) return pack.project_id;
-    const workspace = state.workspaces?.find((item) => item.id === pack?.source_workspace_id);
-    if (workspace?.project_id) return workspace.project_id;
-    if (pack?.content_json?.project?.id) return String(pack.content_json.project.id);
-  }
-  if (pattern.startsWith('/approvals/')) {
-    const approval =
-      params.type === 'runtime'
-        ? state.runtime_approvals?.find((item) => item.id === params.id)
-        : state.change_proposals?.find((item) => item.id === params.id);
-    if (approval?.project_id) return approval.project_id;
-    if (approval?.turn_id) return state.assist_turns?.find((item) => item.id === approval.turn_id)?.project_id || null;
-  }
+  if (pattern.startsWith('/asset-versions/')) return resolveAssetVersionProject(params.id, state);
+  if (pattern.startsWith('/context-packs/')) return resolveContextPackProject(params.id, state);
+  if (pattern.startsWith('/context/v1/nodes/'))
+    return state.context_nodes?.find((item) => item.id === params.id)?.project_id || null;
+  if (pattern.startsWith('/context/v1/selections/'))
+    return state.context_selections?.find((item) => item.id === params.id)?.project_id || null;
+  if (pattern.startsWith('/approvals/')) return resolveApprovalProject(params, state);
   if (pattern.startsWith('/project-invitations/'))
     return state.project_invitations?.find((item) => item.id === params.id)?.project_id || null;
-  if (['nodes', 'tasks', 'workstreams'].some((prefix) => pattern.startsWith(`/${prefix}/`))) {
-    const node = state.workflow_nodes?.find((item) => item.id === params.id),
-      workflow = state.workflows?.find((item) => item.id === node?.workflow_id);
-    return workflow?.project_id || null;
-  }
+  if (['nodes', 'tasks', 'workstreams'].some((prefix) => pattern.startsWith(`/${prefix}/`)))
+    return resolveWorkflowNodeProject(params.id, state);
   return null;
+}
+
+function resolveAssetVersionProject(id, state) {
+  const version = state.asset_versions?.find((item) => item.id === id);
+  return state.assets?.find((item) => item.id === version?.asset_id)?.project_id || null;
+}
+
+function resolveContextPackProject(id, state) {
+  const pack = state.context_packs?.find((item) => item.id === id);
+  if (pack?.project_id) return pack.project_id;
+  const workspace = state.workspaces?.find((item) => item.id === pack?.source_workspace_id);
+  if (workspace?.project_id) return workspace.project_id;
+  return pack?.content_json?.project?.id ? String(pack.content_json.project.id) : null;
+}
+
+function resolveApprovalProject(params, state) {
+  const approval =
+    params.type === 'runtime'
+      ? state.runtime_approvals?.find((item) => item.id === params.id)
+      : state.change_proposals?.find((item) => item.id === params.id);
+  if (approval?.project_id) return approval.project_id;
+  if (approval?.turn_id) return state.assist_turns?.find((item) => item.id === approval.turn_id)?.project_id || null;
+  return null;
+}
+
+function resolveWorkflowNodeProject(id, state) {
+  const node = state.workflow_nodes?.find((item) => item.id === id),
+    workflow = state.workflows?.find((item) => item.id === node?.workflow_id);
+  return workflow?.project_id || null;
 }
 
 export function isProjectRoute(pattern = '') {
   return (
+    /^\/context\/v1\/(?:map|search|nodes|selections|policy)/.test(pattern) ||
     /^\/(?:projects|workspaces|repository-workspaces|repository-lines|pull-request-intents|workflows|workflow-executions|task-executions|nodes|workstreams|tasks|runs|deliveries|delivery-policies|context-packs|assets|asset-versions|asset-candidates|change-proposals|approvals|agent-sessions|exchange-requests|exchange-grants|project-invitations|submissions|review)/.test(
       pattern
     ) ||
