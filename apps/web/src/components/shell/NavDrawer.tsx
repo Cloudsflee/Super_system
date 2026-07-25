@@ -1,4 +1,4 @@
-import { Boxes, FolderKanban, GitBranch, ScrollText, Settings, X } from 'lucide-react';
+import { Boxes, FolderKanban, GitBranch, Map, ScrollText, Settings, X } from 'lucide-react';
 import { NavLink } from 'react-router-dom';
 import { useUi } from '../../state/ui';
 import { IconButton } from '../common/IconButton';
@@ -14,6 +14,12 @@ export function NavDrawer() {
       end: false
     },
     { to: '/assets', label: '资产', icon: Boxes, end: false },
+    {
+      to: activeProjectId ? `/projects/${activeProjectId}/context` : '/context',
+      label: '上下文地图',
+      icon: Map,
+      end: false
+    },
     { to: '/audit', label: '审计', icon: ScrollText, end: false },
     { to: '/settings', label: '设置', icon: Settings, end: false }
   ];
@@ -45,7 +51,7 @@ export function NavDrawer() {
       <div className="drawer-foot">
         <span className="status-dot" /> 本地 JSON 存储
         <br />
-        <small>所有者工作空间 · V1.7</small>
+        <small>所有者工作空间 · V2.0</small>
       </div>
     </aside>
   );

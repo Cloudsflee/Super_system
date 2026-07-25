@@ -178,7 +178,7 @@ export const useUi = create<UiState>()(
     }),
     {
       name: 'aiws-v13-ui',
-      version: 19,
+      version: 20,
       migrate: (persisted) => persisted as UiState,
       partialize: ({
         activeProjectId,

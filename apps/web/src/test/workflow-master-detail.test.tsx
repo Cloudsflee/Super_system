@@ -138,7 +138,7 @@ describe('Workflow master-detail process', () => {
         name: '固定任务：Decide and implement'
       })
     );
-    expect(screen.getAllByRole('button', { pressed: true })).toHaveLength(2);
+    expect(screen.getAllByRole('button', { name: '取消固定任务：Decide and implement' })).toHaveLength(2);
 
     const refreshed = { ...source, nodes: source.nodes.filter((item) => item.id !== 'task-2') };
     rerender(processElement(refreshed, 'detailed'));

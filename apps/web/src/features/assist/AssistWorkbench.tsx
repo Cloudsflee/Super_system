@@ -60,7 +60,16 @@ function AssistWorkbenchSurface({ project, controller }: { project?: Project; co
     media.addEventListener('change', collapse);
     return () => media.removeEventListener('change', collapse);
   }, [ui.assistOpen]);
-  const btw = <BtwPopover sessionId={controller.session?.id || controller.selectedId} />;
+  const btw = (
+    <BtwPopover
+      projectId={controller.projectId}
+      scopeType={controller.scopeType}
+      scopeId={controller.scopeId}
+      scopeBreadcrumb={controller.scopeBreadcrumb}
+      sessionId={controller.session?.id}
+      profileId={controller.profileId}
+    />
+  );
   if (!ui.assistOpen) return btw;
   if (!expanded)
     return (

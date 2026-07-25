@@ -1,7 +1,7 @@
 import { Check, Copy, MessageCircleQuestion, MousePointer2, Scissors, Sparkles } from 'lucide-react';
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { useUi } from '../../state/ui';
-import { publishSelectionAsk } from './selection-ask';
+import { publishSelectionAsk, type SelectionAskScope } from './selection-ask';
 
 export type ContextMenuAction = {
   id: string;
@@ -18,6 +18,7 @@ export type ContextMenuTarget = {
   selection: string;
   selectionRect: DOMRect | null;
   sensitive: boolean;
+  semanticScope?: SelectionAskScope;
 };
 type Point = { x: number; y: number };
 type ContextValue = {
@@ -175,14 +176,14 @@ function menuTarget(target: HTMLElement): ContextMenuTarget {
     target,
     selection: text,
     selectionRect: range && typeof range.getBoundingClientRect === 'function' ? range.getBoundingClientRect() : null,
-    sensitive: Boolean(sensitive)
+    sensitive: Boolean(sensitive),
+    semanticScope: selectionScope(target, selection, range, Boolean(text))
   };
 }
 function nodeElement(value: Node | null | undefined) {
   return value instanceof HTMLElement ? value : value?.parentElement || null;
 }
 function askSelection(context: ContextMenuTarget) {
-  useUi.getState().setAssist(true);
   publishSelectionAsk({
     selection: context.selection,
     rect: context.selectionRect
@@ -193,8 +194,56 @@ function askSelection(context: ContextMenuTarget) {
           width: context.selectionRect.width
         }
       : null,
-    pageUrl: window.location.href
+    pageUrl: window.location.href,
+    semanticScope: context.semanticScope
   });
+}
+
+function selectionScope(
+  target: HTMLElement,
+  selection: Selection | null,
+  range: Range | null,
+  hasSelection: boolean
+): SelectionAskScope | undefined {
+  if (!hasSelection) return scopeFromElement(target);
+  const common = scopeFromElement(nodeElement(range?.commonAncestorContainer));
+  if (common) return common;
+  const anchor = scopeFromElement(nodeElement(selection?.anchorNode)),
+    focus = scopeFromElement(nodeElement(selection?.focusNode));
+  return anchor && focus && anchor.type === focus.type && anchor.id === focus.id ? anchor : undefined;
+}
+
+function scopeFromElement(element: HTMLElement | null): SelectionAskScope | undefined {
+  const root = element?.closest<HTMLElement>('[data-assist-scope-type][data-assist-scope-id]');
+  if (!root) return undefined;
+  const type = root.dataset.assistScopeType;
+  if (!['project', 'workflow', 'workstream', 'task'].includes(type || '')) return undefined;
+  const id = root.dataset.assistScopeId?.trim(),
+    label = root.dataset.assistScopeLabel?.trim();
+  if (!id || !label) return undefined;
+  return {
+    type: type as SelectionAskScope['type'],
+    id,
+    label,
+    breadcrumb: scopeBreadcrumb(root.dataset.assistScopeBreadcrumb, label),
+    status: root.dataset.assistScopeStatus || undefined,
+    statusLabel: root.dataset.assistScopeStatusLabel || undefined,
+    lockReason: root.dataset.assistScopeLockReason || undefined
+  };
+}
+
+function scopeBreadcrumb(value: string | undefined, fallback: string) {
+  if (!value) return [fallback];
+  try {
+    const parsed = JSON.parse(value);
+    if (Array.isArray(parsed)) {
+      const labels = parsed.map((item) => String(item || '').trim()).filter(Boolean);
+      if (labels.length) return labels.slice(0, 8);
+    }
+  } catch {
+    /* Invalid DOM metadata falls back to the visible scope label. */
+  }
+  return [fallback];
 }
 function editableTarget(target: HTMLElement) {
   return target.closest('input, textarea, [contenteditable="true"]') as

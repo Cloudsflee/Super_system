@@ -42,6 +42,11 @@ export const router = createBrowserRouter([
             lazy: page(() => import('../features/nodes/NodeWorkspacePage'), 'NodeWorkspacePage')
           },
           { path: '/assets', lazy: page(() => import('../features/assets/AssetsPage'), 'AssetsPage') },
+          { path: '/context', lazy: page(() => import('../features/context/ContextMapPage'), 'ContextMapPage') },
+          {
+            path: '/projects/:projectId/context',
+            lazy: page(() => import('../features/context/ContextMapPage'), 'ContextMapPage')
+          },
           { path: '/audit', lazy: page(() => import('../features/audit/AuditPage'), 'AuditPage') },
           { path: '/settings', lazy: page(() => import('../features/settings/SettingsPage'), 'SettingsPage') }
         ]

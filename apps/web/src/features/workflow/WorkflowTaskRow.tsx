@@ -13,6 +13,7 @@ import { WorkflowTaskInlineDetails } from './WorkflowTaskDetails';
 import { primaryTaskObjective, type WorkflowTaskViewModel } from './WorkflowTaskViewModel';
 import type { TopologyRelation } from './WorkflowTopology';
 import type { WorkflowProcessLayout } from './useWorkflowProcessController';
+import { taskAssistScopeAttributes } from './workflow-assist-scope';
 
 export function WorkflowTaskRow({
   model,
@@ -73,6 +74,7 @@ export function WorkflowTaskRow({
     <>
       <article
         className={className}
+        {...taskAssistScopeAttributes(model)}
         data-task-id={model.id}
         data-selected={selected ? 'true' : 'false'}
         role="listitem"
@@ -109,7 +111,7 @@ export function WorkflowTaskRow({
                 <span className={`task-status ${model.status}`}>{model.statusText}</span>
                 {model.execution && <span className="task-attempt">第 {model.execution.attempt} 次</span>}
               </header>
-              <h3>{model.task.title}</h3>
+              <h3>{model.displayTitle}</h3>
               {density === 'compact' && model.blockers.length > 0 && <TaskAttention blockers={model.blockers} />}
               {density === 'comfortable' && (
                 <div className="workflow-task-primary-line">
@@ -134,7 +136,7 @@ export function WorkflowTaskRow({
               {density === 'detailed' && (
                 <>
                   <TaskObjective content={model.objective}>
-                    <TaskMetrics title={model.task.title} values={model.metrics} />
+                    <TaskMetrics title={model.displayTitle} values={model.metrics} />
                   </TaskObjective>
                   {model.blockers.length > 0 && <TaskAttention blockers={model.blockers} />}
                 </>
@@ -145,7 +147,7 @@ export function WorkflowTaskRow({
                 <button
                   type="button"
                   className="workflow-task-pin"
-                  aria-label={`${pinned ? '取消固定' : '固定'}任务：${model.task.title}`}
+                  aria-label={`${pinned ? '取消固定' : '固定'}任务：${model.displayTitle}`}
                   aria-pressed={pinned}
                   data-tooltip={pinned ? '取消固定' : '固定任务'}
                   onClick={onTogglePin}
@@ -158,7 +160,7 @@ export function WorkflowTaskRow({
                   className="workflow-task-disclosure"
                   aria-expanded={expanded}
                   aria-controls={model.detailsId}
-                  aria-label={`${expanded ? '收起' : '展开'}任务详情：${model.task.title}`}
+                  aria-label={`${expanded ? '收起' : '展开'}任务详情：${model.displayTitle}`}
                   data-tooltip={expanded ? '收起详情' : '展开详情'}
                   onClick={onTogglePin}
                 >
@@ -170,7 +172,7 @@ export function WorkflowTaskRow({
                   type="button"
                   className="workflow-task-enter locked"
                   disabled
-                  aria-label={`任务已锁定：${model.task.title}`}
+                  aria-label={`任务已锁定：${model.displayTitle}`}
                   data-tooltip={model.actionLockReason}
                 >
                   <LockKeyhole size={15} />
@@ -179,7 +181,7 @@ export function WorkflowTaskRow({
                 <Link
                   className="workflow-task-enter"
                   to={`/projects/${projectId}/nodes/${model.id}`}
-                  aria-label={`进入任务工作台：${model.task.title}`}
+                  aria-label={`进入任务工作台：${model.displayTitle}`}
                   data-tooltip="进入任务工作台"
                 >
                   <ArrowRight size={16} />

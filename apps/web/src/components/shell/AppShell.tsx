@@ -36,7 +36,7 @@ export function AppShell() {
   const section = sectionName(location.pathname);
   const compactWorkflowHeader = useCompactWorkflowHeader();
   const [routeToolbarHost, setRouteToolbarHost] = useState<HTMLDivElement | null>(null);
-  const commandDock = /^\/projects\/[^/]+(?:\/|$)/.test(location.pathname);
+  const commandDock = /^\/projects\/[^/]+(?:\/|$)/.test(location.pathname) && !/\/context\/?$/.test(location.pathname);
   const overlayOpen =
     ui.navOpen || ui.assistOpen || ui.approvalCenterOpen || Boolean(ui.proposalId) || Boolean(ui.inspectorNodeId);
   useAppShellEffects({ ui, routeProject, current, canvasRoute, overlayOpen });
@@ -341,6 +341,7 @@ function sectionName(pathname: string) {
   if (pathname.includes('/onboarding')) return '项目引导';
   if (pathname.includes('/workflow')) return '工作空间';
   if (pathname.startsWith('/assets')) return '资产';
+  if (pathname.includes('/context')) return '上下文地图';
   if (pathname.startsWith('/audit')) return '审计';
   if (pathname.startsWith('/settings')) return '设置';
   return '项目';

@@ -30,6 +30,7 @@ import './styles/workflow-process-details.css';
 import './styles/workflow-process-responsive.css';
 import './styles/workspace.css';
 import './styles/data.css';
+import './styles/context-map.css';
 import './styles/overlays.css';
 import './styles/operations.css';
 import './styles/theme.css';

@@ -3,20 +3,23 @@ import {
   Braces,
   Check,
   CircleDashed,
+  FileText,
   GitBranch,
   Link2,
+  ListTree,
   LockKeyhole,
   Pin,
   PinOff,
   SquareTerminal,
   Tags
 } from 'lucide-react';
-import { useLayoutEffect, useRef, type MutableRefObject } from 'react';
+import { useLayoutEffect, useRef, useState, type MutableRefObject } from 'react';
 import { Link } from 'react-router-dom';
 import type { WorkflowTaskDensity } from '../../state/ui';
 import { assetTypeLabel, confirmationPolicyLabel, inputKindLabel } from '../../components/common/display-labels';
-import { TaskMetrics, TaskObjective } from './WorkflowTaskPresentation';
+import { TaskMetrics } from './WorkflowTaskPresentation';
 import { normalizeTaskStatus, workflowCategoryLabel, type WorkflowTaskViewModel } from './WorkflowTaskViewModel';
+import { taskAssistScopeAttributes } from './workflow-assist-scope';
 
 export function WorkflowTaskInlineDetails({
   model,
@@ -28,12 +31,13 @@ export function WorkflowTaskInlineDetails({
   return (
     <div
       className="workflow-task-details"
+      {...taskAssistScopeAttributes(model)}
       id={model.detailsId}
       role="region"
-      aria-label={`任务详情：${model.task.title}`}
+      aria-label={`任务详情：${model.displayTitle}`}
     >
       <div className="workflow-task-details-band">
-        <WorkflowTaskDetailSections model={model} includeContext={density !== 'detailed'} fullContext={false} />
+        <WorkflowTaskDetailSections model={model} includeContext={density !== 'detailed'} />
       </div>
     </div>
   );
@@ -70,6 +74,7 @@ export function WorkflowTaskInspector({
     <aside
       ref={asideRef}
       className="workflow-task-inspector"
+      {...(model ? taskAssistScopeAttributes(model) : {})}
       aria-labelledby={titleId}
       data-detail-task-id={model?.id || ''}
       onPointerEnter={onPointerEnter}
@@ -88,11 +93,11 @@ export function WorkflowTaskInspector({
             <div className="workflow-task-inspector-heading">
               <span>
                 {model.workstream
-                  ? `${workflowCategoryLabel(model.workstream.category)} · ${model.workstream.title}`
+                  ? `${workflowCategoryLabel(model.workstream.category)} · ${model.workstreamDisplayTitle || model.workstream.title}`
                   : '流程任务'}
               </span>
               <small>{model.phase}</small>
-              <h2 id={titleId}>{model.task.title}</h2>
+              <h2 id={titleId}>{model.displayTitle}</h2>
               <div className="workflow-task-inspector-state">
                 <span className={`task-status ${model.status}`}>{model.statusText}</span>
                 {model.execution && <span className="task-attempt">第 {model.execution.attempt} 次尝试</span>}
@@ -108,7 +113,7 @@ export function WorkflowTaskInspector({
               <button
                 type="button"
                 className="workflow-task-pin"
-                aria-label={`${pinned ? '取消固定' : '固定'}任务：${model.task.title}`}
+                aria-label={`${pinned ? '取消固定' : '固定'}任务：${model.displayTitle}`}
                 aria-pressed={pinned}
                 data-tooltip={pinned ? '取消固定' : '固定任务'}
                 onClick={onTogglePin}
@@ -120,7 +125,7 @@ export function WorkflowTaskInspector({
                   type="button"
                   className="workflow-task-enter locked"
                   disabled
-                  aria-label={`任务已锁定：${model.task.title}`}
+                  aria-label={`任务已锁定：${model.displayTitle}`}
                   data-tooltip={model.actionLockReason}
                 >
                   <LockKeyhole size={15} />
@@ -129,7 +134,7 @@ export function WorkflowTaskInspector({
                 <Link
                   className="workflow-task-enter"
                   to={`/projects/${projectId}/nodes/${model.id}`}
-                  aria-label={`进入任务工作台：${model.task.title}`}
+                  aria-label={`进入任务工作台：${model.displayTitle}`}
                   data-tooltip="进入任务工作台"
                 >
                   <ArrowRight size={16} />
@@ -138,7 +143,7 @@ export function WorkflowTaskInspector({
             </div>
           </header>
           <div className="workflow-task-inspector-sections">
-            <WorkflowTaskDetailSections model={model} includeContext fullContext />
+            <WorkflowTaskDetailSections model={model} includeContext />
           </div>
         </>
       )}
@@ -148,27 +153,14 @@ export function WorkflowTaskInspector({
 
 function WorkflowTaskDetailSections({
   model,
-  includeContext,
-  fullContext
+  includeContext
 }: {
   model: WorkflowTaskViewModel;
   includeContext: boolean;
-  fullContext: boolean;
 }) {
   return (
     <>
-      {includeContext && (
-        <section className="workflow-task-context workflow-detail-span-all">
-          <header>
-            <SquareTerminal size={14} />
-            <strong>目标与执行上下文</strong>
-            <small>目标、命令行与调度</small>
-          </header>
-          <TaskObjective content={model.objective} full={fullContext}>
-            <TaskMetrics title={model.task.title} values={model.metrics} />
-          </TaskObjective>
-        </section>
-      )}
+      {includeContext && <WorkflowTaskContext key={model.id} model={model} />}
       <section className="workflow-task-dependencies">
         <header>
           <GitBranch size={14} />
@@ -263,5 +255,100 @@ function WorkflowTaskDetailSections({
         </div>
       </section>
     </>
+  );
+}
+
+function WorkflowTaskContext({ model }: { model: WorkflowTaskViewModel }) {
+  const [view, setView] = useState<'summary' | 'source'>('summary');
+  return (
+    <section className="workflow-task-context workflow-detail-span-all">
+      <header>
+        <SquareTerminal size={14} />
+        <strong>目标与执行上下文</strong>
+        <div className="workflow-context-view-switch" role="group" aria-label={`${model.displayTitle} 上下文视图`}>
+          <button type="button" aria-pressed={view === 'summary'} onClick={() => setView('summary')}>
+            <ListTree size={12} />
+            <span>摘要</span>
+          </button>
+          <button type="button" aria-pressed={view === 'source'} onClick={() => setView('source')}>
+            <FileText size={12} />
+            <span>原文</span>
+          </button>
+        </div>
+      </header>
+      <div
+        className="workflow-context-view"
+        role="region"
+        aria-label={`${model.displayTitle} ${view === 'summary' ? '上下文摘要' : '上下文原文'}`}
+      >
+        {view === 'summary' ? (
+          <TaskContextSummary model={model} />
+        ) : (
+          <pre className="workflow-context-source" tabIndex={0}>
+            {model.objective.raw}
+          </pre>
+        )}
+      </div>
+      <TaskMetrics title={model.displayTitle} values={model.metrics} />
+    </section>
+  );
+}
+
+function TaskContextSummary({ model }: { model: WorkflowTaskViewModel }) {
+  const objective = model.objective;
+  const schedule = [...objective.times, objective.timezone].filter(Boolean).join(' · ');
+  return (
+    <dl className="workflow-context-summary">
+      <div className="primary">
+        <dt>核心目标</dt>
+        <dd>{objective.summary}</dd>
+      </div>
+      <div>
+        <dt>执行状态</dt>
+        <dd>
+          {model.phase} · {model.statusText}
+        </dd>
+      </div>
+      {objective.keyPoints.length > 0 && (
+        <div>
+          <dt>关键要点</dt>
+          <dd>
+            <ul>
+              {objective.keyPoints.map((item) => (
+                <li key={item}>{item}</li>
+              ))}
+            </ul>
+          </dd>
+        </div>
+      )}
+      {objective.command && (
+        <div>
+          <dt>执行命令</dt>
+          <dd>
+            <code aria-label={`命令行：${objective.command}`}>{objective.command}</code>
+          </dd>
+        </div>
+      )}
+      {schedule && (
+        <div>
+          <dt>调度</dt>
+          <dd className="workflow-context-schedule" aria-label={schedule}>
+            {objective.times.map((time) => (
+              <span key={time}>{time}</span>
+            ))}
+            {objective.timezone && <span>{objective.timezone}</span>}
+          </dd>
+        </div>
+      )}
+      {model.blockers.length > 0 && (
+        <div>
+          <dt>当前门禁</dt>
+          <dd>
+            {model.blockers[0]}
+            {model.blockers.length > 1 && ` · 另有 ${model.blockers.length - 1} 项`}
+          </dd>
+        </div>
+      )}
+    </dl>
   );
 }

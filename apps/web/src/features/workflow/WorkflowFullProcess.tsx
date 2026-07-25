@@ -72,14 +72,23 @@ export function WorkflowFullProcess({
                 className="workflow-process-stream"
                 key={workstream.node.id}
                 aria-labelledby={`process-${workstream.node.id}`}
+                data-assist-scope-type="workstream"
+                data-assist-scope-id={workstream.node.id}
+                data-assist-scope-label={workstream.displayTitle}
+                data-assist-scope-breadcrumb={JSON.stringify([
+                  bundle.project.title,
+                  workflow.title,
+                  workstream.displayTitle
+                ])}
+                data-assist-scope-status={workstream.node.status}
               >
                 <header>
                   <div className="workflow-stream-band">
                     <div className="workflow-stream-index">{String(streamIndex + 1).padStart(2, '0')}</div>
                     <div className="workflow-stream-main">
                       <span>{workflowCategoryLabel(workstream.node.category)}</span>
-                      <h2 id={`process-${workstream.node.id}`}>{workstream.node.title}</h2>
-                      <p>{workstream.node.outcome || workstream.node.goal}</p>
+                      <h2 id={`process-${workstream.node.id}`}>{workstream.displayTitle}</h2>
+                      <p>{workstream.displayOutcome}</p>
                     </div>
                     <div className="workflow-stream-progress">
                       <strong>
@@ -93,7 +102,7 @@ export function WorkflowFullProcess({
                         <Link
                           className="workflow-stream-code"
                           to={`/projects/${bundle.project.id}/nodes/${workstream.node.id}`}
-                          aria-label={`查看代码：${workstream.node.title}`}
+                          aria-label={`查看代码：${workstream.displayTitle}`}
                         >
                           <Code2 size={15} />
                           <span>代码</span>
@@ -101,7 +110,7 @@ export function WorkflowFullProcess({
                       )}
                       <Link
                         to={`/projects/${bundle.project.id}/workflow/${workstream.node.id}`}
-                        aria-label={`进入成果节点：${workstream.node.title}`}
+                        aria-label={`进入成果节点：${workstream.displayTitle}`}
                         data-tooltip="任务总览"
                       >
                         <ArrowRight size={17} />

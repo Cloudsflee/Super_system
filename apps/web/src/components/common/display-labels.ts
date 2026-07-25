@@ -446,6 +446,8 @@ export function mcpScopeLabel(value: string) {
     'destructive:execute': '执行危险操作',
     'exchange:read': '读取交换数据',
     'exchange:write': '修改交换数据',
+    'context:read': '读取上下文地图',
+    'context:admin': '管理上下文投影',
     'project:create': '创建项目',
     'project:share': '共享项目'
   };

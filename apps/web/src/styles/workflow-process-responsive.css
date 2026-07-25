@@ -91,6 +91,15 @@
 .workflow-task-inspector-sections .workflow-task-copy p {
   font-size: 12px;
 }
+.workflow-context-view-switch button,
+.workflow-context-summary dt,
+.workflow-context-summary code,
+.workflow-context-source {
+  font-size: 10px;
+}
+.workflow-context-summary dd {
+  font-size: 11px;
+}
 .workflow-task-inspector-empty p {
   font-size: 11px;
 }
@@ -123,6 +132,14 @@
   }
 }
 @media (max-width: 600px) {
+  .workflow-context-view-switch {
+    width: 100%;
+    margin-left: 0;
+  }
+  .workflow-context-summary > div {
+    grid-template-columns: 68px minmax(0, 1fr);
+    gap: 8px;
+  }
   .workflow-phase b {
     font-size: 8px;
   }

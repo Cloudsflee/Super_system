@@ -29,8 +29,6 @@
   color: var(--text);
 }
 .drawer-head,
-.scope-bar,
-.composer,
 .proposal-list,
 .toast {
   border-color: var(--line);
@@ -194,7 +192,6 @@
   background: var(--green-soft);
   color: var(--green);
 }
-.cc-switch-card.required,
 .profile-waiting {
   border-color: color-mix(in srgb, var(--amber) 45%, var(--line));
   background: var(--amber-soft);
@@ -336,8 +333,6 @@
   background: var(--surface-raised);
   color: var(--text);
 }
-.page-action-preview,
-.page-action-preview pre,
 .diff-review-panel,
 .terminal-panel > header,
 .diff-review-panel > header,
@@ -352,12 +347,10 @@
   background: var(--surface);
   color: var(--text);
 }
-.page-action-preview > header,
 .unified-diff,
 .operation-value-grid pre {
   background: var(--surface-subtle);
 }
-.page-action-preview pre,
 .assist-markdown,
 .event-card p,
 .runtime-event-row > div {

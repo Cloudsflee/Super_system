@@ -2,6 +2,7 @@ import { Clock3, Database, GitBranch, GitFork, Globe2, LockKeyhole, PackageCheck
 import { useLayoutEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import type { TaskMetricValues, TaskObjectiveValue, WorkflowTaskViewModel } from './WorkflowTaskViewModel';
+import { taskAssistScopeAttributes } from './workflow-assist-scope';
 
 function TaskMetric({ icon, value, label }: { icon: ReactNode; value: number; label: string }) {
   return (
@@ -34,27 +35,11 @@ export function TaskAttention({ blockers }: { blockers: string[] }) {
   );
 }
 
-export function TaskObjective({
-  content,
-  children,
-  full = false
-}: {
-  content: TaskObjectiveValue;
-  children: ReactNode;
-  full?: boolean;
-}) {
+export function TaskObjective({ content, children }: { content: TaskObjectiveValue; children: ReactNode }) {
   return (
     <div className="workflow-task-objective">
       <div className="workflow-task-copy">
-        {full ? (
-          <p>{content.chinese || content.detail || content.fallback}</p>
-        ) : (
-          <>
-            {content.chinese && <p lang="zh-CN">{content.chinese}</p>}
-            {!content.chinese && content.english && <p lang="en">{content.english}</p>}
-            {!content.chinese && !content.english && <p>{content.fallback}</p>}
-          </>
-        )}
+        <p lang={content.summaryLanguage}>{content.summary || content.fallback}</p>
       </div>
       <div className="workflow-task-support">
         {(content.command || content.times.length || content.timezone) && (
@@ -141,18 +126,19 @@ export function TaskQuickPreview({ anchor, model }: { anchor: HTMLElement; model
     <div
       ref={root}
       className="workflow-task-quick-preview"
+      {...taskAssistScopeAttributes(model)}
       role="tooltip"
-      aria-label={`任务快速预览：${model.task.title}`}
+      aria-label={`任务快速预览：${model.displayTitle}`}
       data-task-preview={model.id}
       style={style}
     >
       <header>
         <span>{model.phase}</span>
-        <strong>{model.task.title}</strong>
+        <strong>{model.displayTitle}</strong>
         <span className={`task-status ${model.status}`}>{model.statusText}</span>
       </header>
       <TaskObjective content={model.objective}>
-        <TaskMetrics title={model.task.title} values={model.metrics} />
+        <TaskMetrics title={model.displayTitle} values={model.metrics} />
       </TaskObjective>
       {model.blockers.length > 0 && <TaskAttention blockers={model.blockers} />}
     </div>,

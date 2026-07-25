@@ -29,6 +29,7 @@ const DEFAULT_MCP_SCOPES = [
   'governance:read',
   'governance:write',
   'approval:read',
+  'context:read',
   'setup:read'
 ];
 

@@ -75,30 +75,6 @@ export type CodexProbeReport = {
   checks?: CodexProbeCheck[];
   process?: { exit_code: number | null; timed_out: boolean };
 };
-export type CcSwitchSource = {
-  name: string;
-  repo: string;
-  status?: string;
-  commit?: string | null;
-  error?: string | null;
-};
-export type CcSwitchStatus = {
-  status: string;
-  local_path?: string;
-  sources?: CcSwitchSource[];
-  updated_at?: string | null;
-  providers?: Array<{
-    profile_id?: string;
-    provider_id?: string;
-    name?: string;
-    provider?: string;
-    base_url?: string;
-    model?: string;
-    wire_api?: string;
-    sync_status?: string;
-  }>;
-  bridge?: { ready?: boolean; revision?: string | number; mode?: string; implementation?: string };
-};
 export type CodexDiscoveryProvider = {
   discovery_id: string;
   name: string;

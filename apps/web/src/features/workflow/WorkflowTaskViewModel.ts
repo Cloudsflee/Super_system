@@ -28,8 +28,45 @@ const COVERAGE_LABELS: Record<string, string> = {
 };
 const PRIORITY_STATUSES = new Set(['running', 'verifying', 'awaiting_human', 'failed']);
 const READY_STATUSES = new Set(['ready', 'queued']);
+const CHINESE_TASK_TITLES: Record<string, string> = {
+  research_evidence: '梳理并固化任务证据',
+  constraint_analysis: '明确任务约束与风险边界',
+  solution_decision: '确定可实施方案',
+  execution: '实施并固化任务成果',
+  acceptance: '验证精确实现与验收证据',
+  integration_delivery: '集成并交付已验收成果'
+};
+const CHINESE_STAGE_REQUIREMENTS: Record<string, string> = {
+  research_evidence: '梳理输入材料、来源位置和验证证据，确保结论可追溯。',
+  constraint_analysis: '明确约束、风险、失败边界和不可变要求。',
+  solution_decision: '基于已确认约束形成可实施、可复核的方案决策。',
+  execution: '按已确认方案实施，并将成果绑定到精确版本。',
+  acceptance: '针对同一实现版本执行确定性验证并保留验收证据。',
+  integration_delivery: '仅集成已验收成果，并保留完整的交付追溯关系。'
+};
+const CHINESE_CONTEXT_RULES: Array<[RegExp, string]> = [
+  [/\bread[- ]only\b|\bno[- ]write\b|write nothing|do not modify|never modify/i, '只读执行'],
+  [/\b(?:fixed|exact|same)[ -]?sha\b|repository snapshot|immutable repository/i, '固定 SHA'],
+  [/\boffline\b/i, '离线运行'],
+  [/\bidempoten\w*\b|\bdeterministic\w*\b|per-date lock/i, '确定性与幂等'],
+  [/\bredact\w*\b|\bcredential\w*\b|\bsecret\w*\b/i, '敏感信息脱敏'],
+  [/structured output|\bjson\b|\bschema\b/i, '结构化输出'],
+  [/fail[- ]closed/i, '失败时闭合'],
+  [/\btest\w*\b|\bacceptance\b|\bevidence\b|\baudit\b/i, '测试与验收证据']
+];
+const CHINESE_WORKSTREAM_TITLES: Array<[RegExp, string]> = [
+  [/integrity|tamper|verification|verify/i, '运行完整性审计与交付'],
+  [/security|credential|secret/i, '安全审计与交付'],
+  [/migration|upgrade/i, '迁移升级成果交付'],
+  [/workflow|orchestrat/i, '工作流成果交付'],
+  [/release|delivery|increment/i, '可验收成果交付']
+];
 
 export type TaskObjectiveValue = {
+  raw: string;
+  summary: string;
+  summaryLanguage?: 'zh-CN' | 'en';
+  keyPoints: string[];
   command: string;
   times: string[];
   timezone: string;
@@ -45,7 +82,10 @@ export type WorkflowTaskVersion = { key: string; label: string; meta?: string };
 export type WorkflowTaskViewModel = {
   id: string;
   task: WorkflowNode;
+  displayTitle: string;
+  assistBreadcrumb: string[];
   workstream?: WorkflowNode;
+  workstreamDisplayTitle?: string;
   execution?: TaskExecutionRecord;
   status: string;
   statusText: string;
@@ -65,7 +105,12 @@ export type WorkflowTaskViewModel = {
   detailsId: string;
 };
 
-export type WorkflowWorkstreamViewModel = { node: WorkflowNode; tasks: WorkflowTaskViewModel[] };
+export type WorkflowWorkstreamViewModel = {
+  node: WorkflowNode;
+  displayTitle: string;
+  displayOutcome: string;
+  tasks: WorkflowTaskViewModel[];
+};
 export type WorkflowProcessViewModel = { tasks: WorkflowTaskViewModel[]; workstreams: WorkflowWorkstreamViewModel[] };
 
 export function buildWorkflowProcessViewModel(
@@ -73,6 +118,7 @@ export function buildWorkflowProcessViewModel(
   workflow: Workflow,
   snapshot?: WorkflowExecutionSnapshot | null
 ): WorkflowProcessViewModel {
+  const preferChinese = projectUsesChinese(bundle.project.title, bundle.project.goal);
   const nodes = bundle.nodes.filter((item) => item.workflow_id === workflow.id);
   const workstreamNodes = nodes.filter((item) => item.role === 'workstream').sort(byOrder);
   const taskNodes = nodes.filter((item) => item.role === 'task');
@@ -85,15 +131,21 @@ export function buildWorkflowProcessViewModel(
       task,
       taskById,
       workstreamById.get(task.parent_node_id || ''),
-      latestExecution(snapshot, task.id)
+      latestExecution(snapshot, task.id),
+      preferChinese
     );
-  const workstreams = workstreamNodes.map((node) => ({
-    node,
-    tasks: taskNodes
-      .filter((item) => item.parent_node_id === node.id)
-      .sort(byOrder)
-      .map(build)
-  }));
+  const workstreams = workstreamNodes.map((node) => {
+    const displayTitle = workstreamDisplayTitle(node, preferChinese);
+    return {
+      node,
+      displayTitle,
+      displayOutcome: workstreamDisplayOutcome(node, displayTitle, preferChinese),
+      tasks: taskNodes
+        .filter((item) => item.parent_node_id === node.id)
+        .sort(byOrder)
+        .map(build)
+    };
+  });
   const visibleIds = new Set(workstreams.flatMap((item) => item.tasks.map((task) => task.id)));
   const orphans = taskNodes
     .filter((item) => !visibleIds.has(item.id))
@@ -161,8 +213,27 @@ export function workflowPhaseTags(task: WorkflowNode) {
   return inferred[task.task_kind || ''] || ['execution'];
 }
 
+export function projectUsesChinese(...values: Array<string | null | undefined>) {
+  const text = values.filter(Boolean).join(' ');
+  const chineseCharacters = text.match(/[\u3400-\u9fff]/g)?.length || 0;
+  const latinWords = text.match(/[A-Za-z]{2,}/g)?.length || 0;
+  return chineseCharacters >= 2 && (chineseCharacters >= 4 || chineseCharacters >= latinWords);
+}
+
+export function taskDisplayTitle(task: WorkflowNode, preferChinese: boolean) {
+  if (!preferChinese || hasMeaningfulChinese(task.title)) return task.title;
+  const phaseTag = workflowPhaseTags(task).find((item) => CHINESE_TASK_TITLES[item]);
+  return CHINESE_TASK_TITLES[phaseTag || 'execution'];
+}
+
+export function workstreamDisplayTitle(node: WorkflowNode, preferChinese: boolean) {
+  if (!preferChinese || hasMeaningfulChinese(node.title)) return node.title;
+  const source = [node.title, node.goal, node.outcome].filter(Boolean).join(' ');
+  return CHINESE_WORKSTREAM_TITLES.find(([pattern]) => pattern.test(source))?.[1] || '可验收项目成果';
+}
+
 export function primaryTaskObjective(content: TaskObjectiveValue) {
-  return content.chinese || content.english || content.fallback;
+  return content.summary || content.chinese || content.english || content.fallback;
 }
 
 function buildTaskViewModel(
@@ -171,7 +242,8 @@ function buildTaskViewModel(
   task: WorkflowNode,
   taskById: Map<string, WorkflowNode>,
   workstream?: WorkflowNode,
-  execution?: TaskExecutionRecord
+  execution?: TaskExecutionRecord,
+  preferChinese = false
 ): WorkflowTaskViewModel {
   const dependencyNodes = dependencyIds(task)
     .map((id) => taskById.get(id))
@@ -182,22 +254,38 @@ function buildTaskViewModel(
   );
   const inputs = contract?.expected_inputs?.length ? contract.expected_inputs : task.input_slots || [];
   const outputs = contract?.expected_outputs?.length ? contract.expected_outputs : task.output_slots || [];
-  const blockers =
-    execution?.readiness?.reasons?.map(reasonLabel) || blockingReasons(bundle, task, dependencyNodes, inputs);
+  const readinessBlockers = execution?.readiness?.reasons?.map(reasonLabel) || [];
+  const blockers = readinessBlockers.length
+    ? readinessBlockers
+    : blockingReasons(bundle, task, dependencyNodes, inputs, preferChinese);
   const status = normalizeTaskStatus(execution?.status || task.status);
   const inputVersions = execution?.context_snapshot?.inputs?.flatMap((item) => item.asset_versions || []) || [];
   const outputVersions = execution?.output_bindings || [];
   const versionCount =
     new Set([...inputVersions.map((item) => item.version_id), ...outputVersions.map((item) => item.version_id)]).size ||
     bundle.assets.filter((item) => item.node_id === task.id && item.current_version_id).length;
-  const objective = taskObjectiveContent(task.goal || '');
   const phaseTags = workflowPhaseTags(task);
   const phaseTag = phaseTags.find((item) => WORKFLOW_STAGES.some(([key]) => key === item));
+  const displayTitle = taskDisplayTitle(task, preferChinese);
+  const objective = parseTaskObjective(task.goal || '', {
+    preferChinese,
+    displayTitle,
+    projectGoal: bundle.project.goal,
+    phaseTag
+  });
   const actionLocked = taskActionLocked(status, blockers);
   return {
     id: task.id,
     task,
+    displayTitle,
+    assistBreadcrumb: [
+      bundle.project.title,
+      workflow.title,
+      ...(workstream ? [workstreamDisplayTitle(workstream, preferChinese)] : []),
+      displayTitle
+    ],
     workstream,
+    workstreamDisplayTitle: workstream ? workstreamDisplayTitle(workstream, preferChinese) : undefined,
     execution,
     status,
     statusText: workflowStatusLabel(status),
@@ -212,7 +300,7 @@ function buildTaskViewModel(
     },
     dependencies: dependencyNodes.map((item) => ({
       id: item.id,
-      title: item.title,
+      title: taskDisplayTitle(item, preferChinese),
       status: normalizeTaskStatus(item.status)
     })),
     blockers,
@@ -225,7 +313,8 @@ function buildTaskViewModel(
           task,
           dependencyNodes,
           inputs,
-          outputs.map((item) => item.key)
+          outputs.map((item) => item.key),
+          preferChinese
         ),
     capabilityTags: [...new Set(phaseTags.map(capabilityTagLabel))],
     coverage: Object.entries(workflow.brief_coverage || {})
@@ -237,48 +326,133 @@ function buildTaskViewModel(
   };
 }
 
-function taskObjectiveContent(goal: string): TaskObjectiveValue {
-  const quotedCommand = goal.match(/\bCLI\s*:\s*`([^`\r\n]+)`/i);
+export function parseTaskObjective(
+  goal: string,
+  options: {
+    preferChinese?: boolean;
+    displayTitle?: string;
+    projectGoal?: string;
+    phaseTag?: string;
+  } = {}
+): TaskObjectiveValue {
+  const raw = String(goal || '');
+  const quotedCommand = raw.match(/\bCLI\s*:\s*`([^`\r\n]+)`/i);
   const bareCommand = quotedCommand
     ? null
-    : goal.match(
+    : raw.match(
         /\bCLI\s*:\s*((?:node|npm|pnpm|yarn|bun|python|cargo|go)\b[^\r\n。]*?)(?=\.\s+[A-Z\u4e00-\u9fff]|[\r\n]|$)/i
       );
   const commandMatch = quotedCommand || bareCommand;
   const command = String(commandMatch?.[1] || '')
     .trim()
     .replace(/[.;]+$/, '');
-  const plain = (commandMatch ? goal.replace(commandMatch[0], ' ') : goal)
+  const plain = (commandMatch ? raw.replace(commandMatch[0], ' ') : raw)
     .replace(/`([^`]+)`/g, '$1')
     .replace(/[\t ]+/g, ' ')
     .trim();
   const sentences = plain
-    .split(/\r?\n+|(?<=[。！？.!?])\s+/)
-    .map((item) => item.trim())
+    .split(/\r?\n+|(?<=[。！？])|(?<=[.!?])\s+/)
+    .map((item) => item.replace(/^[-*•]\s*/, '').trim())
     .filter(Boolean);
   const chinese = sentences.find((item) => /[\u3400-\u9fff]/.test(item)) || '';
   const english = sentences.find((item) => !/[\u3400-\u9fff]/.test(item) && /[A-Za-z]{3}/.test(item)) || '';
+  const times = [...new Set(raw.match(/\b(?:[01]\d|2[0-3]):[0-5]\d\b/g) || [])];
+  const timezone =
+    raw.match(/\b(?:Asia|America|Europe|Africa|Australia|Pacific)\/[A-Za-z_+-]+(?:\/[A-Za-z_+-]+)?\b/)?.[0] || '';
+  const sameLanguage = sentences.filter((item) =>
+    chinese ? /[\u3400-\u9fff]/.test(item) : english ? !/[\u3400-\u9fff]/.test(item) : true
+  );
+  const coreSentences = (sameLanguage.length ? sameLanguage : sentences).filter(
+    (item) => !scheduleOnly(item, times, timezone)
+  );
+  const summarySource = coreSentences[0] || sameLanguage[0] || sentences[0] || plain || '未提供目标或执行上下文';
+  let summary = compactObjectiveText(summarySource, 180);
+  let keyPoints = [
+    ...new Set(
+      coreSentences
+        .slice(1)
+        .map((item) => compactObjectiveText(item, 120))
+        .filter((item) => item && item !== summary)
+    )
+  ].slice(0, 3);
+  if (options.preferChinese && !hasMeaningfulChinese(chinese)) {
+    const localized = localizedChineseObjective(raw, options);
+    summary = localized.summary;
+    keyPoints = localized.keyPoints;
+  }
   return {
+    raw,
+    summary,
+    summaryLanguage: hasMeaningfulChinese(summary) ? 'zh-CN' : /[A-Za-z]{3}/.test(summary) ? 'en' : undefined,
+    keyPoints,
     command,
-    times: [...new Set(goal.match(/\b(?:[01]\d|2[0-3]):[0-5]\d\b/g) || [])],
-    timezone:
-      goal.match(/\b(?:Asia|America|Europe|Africa|Australia|Pacific)\/[A-Za-z_+-]+(?:\/[A-Za-z_+-]+)?\b/)?.[0] || '',
+    times,
+    timezone,
     chinese,
     english,
-    fallback: goal.replace(/\s+/g, ' ').trim(),
+    fallback: raw.replace(/\s+/g, ' ').trim(),
     detail: plain.replace(/\s+/g, ' ').trim()
   };
+}
+
+function localizedChineseObjective(
+  raw: string,
+  options: { displayTitle?: string; projectGoal?: string; phaseTag?: string }
+) {
+  const title = String(options.displayTitle || '当前任务')
+    .replace(/[。！？.!?]+$/, '')
+    .trim();
+  const summary = compactObjectiveText(`${title}，并形成可核验的阶段成果。`, 180);
+  const keyPoints: string[] = [];
+  if (hasMeaningfulChinese(options.projectGoal || '')) {
+    keyPoints.push(compactObjectiveText(`对齐项目目标：${options.projectGoal}`, 120));
+  }
+  const stageRequirement = CHINESE_STAGE_REQUIREMENTS[options.phaseTag || ''];
+  if (stageRequirement) keyPoints.push(stageRequirement);
+  const rules = CHINESE_CONTEXT_RULES.filter(([pattern]) => pattern.test(raw)).map(([, label]) => label);
+  if (rules.length) keyPoints.push(compactObjectiveText(`执行要求：${[...new Set(rules)].join('、')}。`, 120));
+  return { summary, keyPoints: keyPoints.slice(0, 3) };
+}
+
+function workstreamDisplayOutcome(node: WorkflowNode, displayTitle: string, preferChinese: boolean) {
+  const source = node.outcome || node.goal || '';
+  if (!preferChinese || hasMeaningfulChinese(source)) return source;
+  return `围绕“${displayTitle}”形成可追溯、可独立验收的交付结果。`;
+}
+
+function hasMeaningfulChinese(value: string) {
+  return (value.match(/[\u3400-\u9fff]/g)?.length || 0) >= 2;
+}
+
+function scheduleOnly(value: string, times: string[], timezone: string) {
+  const hasScheduleValue = times.some((item) => value.includes(item)) || Boolean(timezone && value.includes(timezone));
+  return hasScheduleValue && /^(?:run|schedule|execute|at\b|每天|每晚|执行时间|调度|时区)/i.test(value.trim());
+}
+
+function compactObjectiveText(value: string, maximum: number) {
+  const text = value.replace(/\s+/g, ' ').trim();
+  const characters = [...text];
+  return characters.length <= maximum
+    ? text
+    : `${characters
+        .slice(0, maximum - 1)
+        .join('')
+        .trimEnd()}…`;
 }
 
 function blockingReasons(
   bundle: ProjectBundle,
   task: WorkflowNode,
   dependencies: WorkflowNode[],
-  inputs: NodeInputSlot[]
+  inputs: NodeInputSlot[],
+  preferChinese: boolean
 ) {
   const reasons: string[] = [];
+  const failedRun = task.latest_run && ['failed', 'partial'].includes(task.latest_run.status) ? task.latest_run : null;
+  if (normalizeTaskStatus(task.status) === 'blocked' && failedRun)
+    reasons.push(`上次执行失败：${failedRun.summary || '运行器未完成任务'}`);
   const waiting = dependencies.filter((item) => normalizeTaskStatus(item.status) !== 'completed');
-  if (waiting.length) reasons.push(`等待 ${waiting.map((item) => item.title).join('、')}`);
+  if (waiting.length) reasons.push(`等待 ${waiting.map((item) => taskDisplayTitle(item, preferChinese)).join('、')}`);
   for (const slot of inputs.filter((item) => item.required && item.source === 'dependency')) {
     if (
       !bundle.assets.some(
@@ -298,7 +472,8 @@ function assetFlow(
   task: WorkflowNode,
   dependencies: WorkflowNode[],
   inputs: NodeInputSlot[],
-  outputKeys: string[]
+  outputKeys: string[],
+  preferChinese: boolean
 ) {
   const outputAssets = bundle.assets.filter((item) => item.node_id === task.id);
   const outputIds = new Set(outputAssets.map((item) => item.id));
@@ -314,12 +489,17 @@ function assetFlow(
     : outputKeys.map((key) => `${key}（待产出）`);
   const planned = inputs.map((slot) => ({
     key: slot.key,
-    label: `${inputSourceLabel(bundle, slot, dependencies)} -> ${slot.key} -> ${targets.join('、') || '待定义输出'}`
+    label: `${inputSourceLabel(bundle, slot, dependencies, preferChinese)} -> ${slot.key} -> ${targets.join('、') || '待定义输出'}`
   }));
   return planned.length ? planned : [{ key: 'empty', label: '无显式输入 -> 待定义输出' }];
 }
 
-function inputSourceLabel(bundle: ProjectBundle, slot: NodeInputSlot, dependencies: WorkflowNode[]) {
+function inputSourceLabel(
+  bundle: ProjectBundle,
+  slot: NodeInputSlot,
+  dependencies: WorkflowNode[],
+  preferChinese: boolean
+) {
   if (slot.version_id)
     return assetVersionLabel(
       bundle,
@@ -331,7 +511,7 @@ function inputSourceLabel(bundle: ProjectBundle, slot: NodeInputSlot, dependenci
     const assets = bundle.assets.filter((item) => item.node_id === dependency?.id && item.status === 'confirmed');
     return assets.length
       ? assets.map((item) => assetVersionLabel(bundle, item.id, item.current_version_id)).join('、')
-      : `${dependency?.title || slot.ref_id || '上游任务'}（待确认）`;
+      : `${dependency ? taskDisplayTitle(dependency, preferChinese) : slot.ref_id || '上游任务'}（待确认）`;
   }
   if (slot.source === 'brief') return '项目简报';
   if (slot.source === 'repository_workspace') return '代码仓库固定快照';

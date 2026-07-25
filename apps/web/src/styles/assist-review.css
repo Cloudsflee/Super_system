@@ -692,95 +692,6 @@
   border-radius: 4px;
   color: var(--muted);
 }
-.page-action-list {
-  margin: 8px 8% 0 0;
-  display: grid;
-  gap: 6px;
-}
-.page-action-preview {
-  overflow: hidden;
-  border: 1px solid #b7cfdd;
-  border-radius: 6px;
-  background: white;
-  box-shadow: inset 3px 0 #5d8fa5;
-}
-.page-action-preview.completed {
-  border-color: #b7d7cb;
-  box-shadow: inset 3px 0 var(--green);
-}
-.page-action-preview.failed {
-  border-color: #e7c3c3;
-  box-shadow: inset 3px 0 var(--red);
-}
-.page-action-preview > header {
-  min-height: 38px;
-  padding: 6px 9px;
-  display: flex;
-  align-items: center;
-  gap: 7px;
-  background: #f4f8fa;
-}
-.page-action-preview > header > div {
-  min-width: 0;
-  flex: 1;
-  display: grid;
-  gap: 1px;
-}
-.page-action-preview > header strong {
-  overflow-wrap: anywhere;
-  font-size: 10px;
-}
-.page-action-preview > header small {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  color: var(--muted);
-  font:
-    8px 'Cascadia Code',
-    Consolas,
-    monospace;
-}
-.page-action-preview > header > span {
-  color: var(--blue);
-  font-size: 8px;
-  font-weight: 800;
-}
-.page-action-preview pre {
-  max-height: 180px;
-  margin: 0;
-  padding: 9px 11px;
-  overflow: auto;
-  white-space: pre-wrap;
-  overflow-wrap: anywhere;
-  background: white;
-  color: #394247;
-  font:
-    10px/1.55 'Cascadia Code',
-    Consolas,
-    monospace;
-}
-.page-action-preview > footer {
-  min-height: 39px;
-  padding: 5px 8px;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  border-top: 1px solid var(--line);
-}
-.page-action-preview > footer > span {
-  min-width: 0;
-  flex: 1;
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  color: var(--muted);
-  font-size: 8px;
-}
-.page-action-preview > footer .button {
-  min-height: 29px;
-  padding: 4px 8px;
-  font-size: 9px;
-}
 @media (max-width: 1100px) {
   .app-shell.assist-docked .route-stage {
     width: 100%;
@@ -858,8 +769,7 @@
   }
   .turn-output,
   .turn-direct-events,
-  .turn-runtime-details,
-  .page-action-list {
+  .turn-runtime-details {
     margin-right: 3%;
   }
   .diff-review-layout {

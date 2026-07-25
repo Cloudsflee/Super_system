@@ -35,7 +35,7 @@ describe('V1.9 workflow process density and topology', () => {
     expect(screen.queryByText('Asia/Shanghai')).not.toBeInTheDocument();
     expect(screen.getByLabelText('已设置调度参数')).toHaveAttribute('data-tooltip', '已设置调度');
     expect(screen.queryByText('外部证据')).not.toBeInTheDocument();
-    expect(screen.getByText('等待 Decide and implement')).toBeInTheDocument();
+    expect(screen.getByText('上次执行失败：上游模型服务返回 502 Bad Gateway')).toBeInTheDocument();
     expect(screen.queryByRole('region', { name: '任务详情：Decide and implement' })).not.toBeInTheDocument();
     expect(
       screen.queryByText(/Research dossier @ version-so -> 当前输入 -> Decision record @ version-de/)
@@ -45,6 +45,12 @@ describe('V1.9 workflow process density and topology', () => {
     const collectRow = screen.getByRole('heading', { name: 'Collect evidence' }).closest('article') as HTMLElement;
     const decisionRow = screen.getByRole('heading', { name: 'Decide and implement' }).closest('article') as HTMLElement;
     const verifyRow = screen.getByRole('heading', { name: 'Verify and deliver' }).closest('article') as HTMLElement;
+    expect(verifyRow).toHaveAttribute('data-assist-scope-type', 'task');
+    expect(verifyRow).toHaveAttribute('data-assist-scope-id', 'task-3');
+    expect(verifyRow).toHaveAttribute(
+      'data-assist-scope-lock-reason',
+      '上次执行失败：上游模型服务返回 502 Bad Gateway'
+    );
     fireEvent.pointerEnter(decisionRow, { pointerType: 'mouse' });
     expect(collectRow).toHaveClass('topology-upstream');
     expect(decisionRow).toHaveClass('topology-active');
@@ -453,7 +459,16 @@ function task(
     dependencies: dependencies.map((node_id) => ({ node_id, type: 'finish_to_start' })),
     capability_tags: tags,
     acceptance_criteria: [`${title} accepted`],
-    repository_target_ids: []
+    repository_target_ids: [],
+    ...(id === 'task-3'
+      ? {
+          latest_run: {
+            id: 'run-task-3',
+            status: 'partial',
+            summary: '上游模型服务返回 502 Bad Gateway'
+          }
+        }
+      : {})
   };
 }
 function contracts() {

@@ -1,15 +1,29 @@
-import { Send, X } from 'lucide-react';
-import { useEffect, useRef, useState } from 'react';
+import { Layers3, LockKeyhole, Send, X } from 'lucide-react';
+import { useEffect, useRef, useState, type RefObject } from 'react';
 import { api, apiUrl, json } from '../../api/client';
+import type { AssistScopeBreadcrumbItem, AssistScopeType } from '../../api/types';
 import { IconButton } from '../../components/common/IconButton';
-import { subscribeSelectionAsk, type SelectionAskDetail } from '../../components/common/selection-ask';
+import {
+  subscribeSelectionAsk,
+  type SelectionAskDetail,
+  type SelectionAskScope
+} from '../../components/common/selection-ask';
+import { assistScopeLabel } from './scope-display';
 
 type Anchor = { left: number; top: number; bottom: number; width: number };
 type OpenDetail = SelectionAskDetail;
 type BtwSession = { id: string; access_token: string; browser_id: string };
 type BtwEvent = { sequence: number; turn_id: string | null; type: string; data: Record<string, unknown> };
+type BtwPopoverProps = {
+  projectId?: string;
+  scopeType?: AssistScopeType;
+  scopeId?: string;
+  scopeBreadcrumb?: AssistScopeBreadcrumbItem[];
+  sessionId?: string;
+  profileId?: string;
+};
 
-export function BtwPopover({ sessionId }: { sessionId?: string }) {
+export function BtwPopover({ projectId, scopeType, scopeId, scopeBreadcrumb, sessionId, profileId }: BtwPopoverProps) {
   const [detail, setDetail] = useState<OpenDetail | null>(null),
     [question, setQuestion] = useState(''),
     [session, setSession] = useState<BtwSession | null>(null);
@@ -79,6 +93,7 @@ export function BtwPopover({ sessionId }: { sessionId?: string }) {
     };
   }, [detail]);
   if (!detail) return null;
+  const inheritedScope = detail.semanticScope || pageScope(scopeType, scopeId, scopeBreadcrumb);
 
   async function submit() {
     const content = question.trim();
@@ -86,14 +101,23 @@ export function BtwPopover({ sessionId }: { sessionId?: string }) {
     setBusy(true);
     setError('');
     try {
-      if (!sessionId) throw new Error('当前项目还没有可用的智能助手线程');
+      if (!projectId || !inheritedScope) throw new Error('当前页面没有可用的智能助手上下文');
       let current = session;
       if (!current) {
         current = await api<BtwSession>(
-          `/assist/v3/sessions/${sessionId}/btw`,
+          '/assist/v3/btw',
           json(
             'POST',
-            { browser_id: browserId(), selection: detail?.selection, page_url: detail?.pageUrl },
+            {
+              project_id: projectId,
+              scope_type: inheritedScope.type,
+              scope_id: inheritedScope.id,
+              session_id: sessionId,
+              profile_id: profileId || undefined,
+              browser_id: browserId(),
+              selection: detail?.selection,
+              page_url: detail?.pageUrl
+            },
             '创建临时问答'
           )
         );
@@ -144,17 +168,70 @@ export function BtwPopover({ sessionId }: { sessionId?: string }) {
     source.onopen = () => setError('');
     source.onerror = () => setError((value) => value || '临时问答连接已断开');
   }
+  return (
+    <BtwPopoverSurface
+      detail={detail}
+      inheritedScope={inheritedScope}
+      events={events}
+      error={error}
+      busy={busy}
+      question={question}
+      input={input}
+      popover={popover}
+      onQuestion={setQuestion}
+      onSubmit={() => void submit()}
+      onClose={() => void close()}
+    />
+  );
+}
+
+function BtwPopoverSurface({
+  detail,
+  inheritedScope,
+  events,
+  error,
+  busy,
+  question,
+  input,
+  popover,
+  onQuestion,
+  onSubmit,
+  onClose
+}: {
+  detail: SelectionAskDetail;
+  inheritedScope?: SelectionAskScope;
+  events: BtwEvent[];
+  error: string;
+  busy: boolean;
+  question: string;
+  input: RefObject<HTMLInputElement | null>;
+  popover: RefObject<HTMLElement | null>;
+  onQuestion: (value: string) => void;
+  onSubmit: () => void;
+  onClose: () => void;
+}) {
   const messages = btwMessages(events),
     position = popoverPosition(detail.rect);
   return (
-    <section ref={popover} className="btw-popover" role="dialog" aria-label="问点什么" style={position}>
+    <section ref={popover} className="btw-popover" role="dialog" aria-label="临时问答" style={position}>
       <header>
-        <strong>问点什么</strong>
-        <IconButton label="关闭临时问答" onClick={() => void close()}>
+        <strong>临时问答</strong>
+        <IconButton label="关闭临时问答" onClick={onClose}>
           <X size={15} />
         </IconButton>
       </header>
-      <blockquote>{detail.selection}</blockquote>
+      {inheritedScope ? (
+        <InheritedContext scope={inheritedScope} />
+      ) : (
+        <div className="btw-inherited-context" aria-label="当前上下文不可用">
+          <span>
+            <Layers3 size={12} />
+            当前上下文
+          </span>
+          <strong>未找到可继承的页面范围</strong>
+        </div>
+      )}
+      {detail.selection && <blockquote>{detail.selection}</blockquote>}
       {messages.length > 0 && (
         <div className="btw-messages" aria-live="polite">
           {messages.map((item, index) => (
@@ -174,20 +251,58 @@ export function BtwPopover({ sessionId }: { sessionId?: string }) {
           ref={input}
           aria-label="临时问题"
           value={question}
-          onChange={(event) => setQuestion(event.target.value)}
+          onChange={(event) => onQuestion(event.target.value)}
           onKeyDown={(event) => {
             if (event.key === 'Enter' && !event.shiftKey) {
               event.preventDefault();
-              void submit();
+              onSubmit();
             }
           }}
         />
-        <IconButton label="发送临时问题" disabled={busy || !question.trim()} onClick={() => void submit()}>
+        <IconButton label="发送临时问题" disabled={busy || !question.trim()} onClick={onSubmit}>
           <Send size={15} />
         </IconButton>
       </footer>
     </section>
   );
+}
+
+function InheritedContext({ scope }: { scope: SelectionAskScope }) {
+  const path = scope.breadcrumb.join(' / ');
+  return (
+    <div className="btw-inherited-context" aria-label={`当前上下文：${path}`}>
+      <span>
+        <Layers3 size={12} />
+        当前上下文
+      </span>
+      <strong>{path}</strong>
+      <small>
+        {assistScopeLabel(scope.type)}
+        {scope.statusLabel && ` · ${scope.statusLabel}`}
+      </small>
+      {scope.lockReason && (
+        <em>
+          <LockKeyhole size={11} />
+          {scope.lockReason}
+        </em>
+      )}
+    </div>
+  );
+}
+
+function pageScope(
+  type: AssistScopeType | undefined,
+  id: string | undefined,
+  breadcrumb: AssistScopeBreadcrumbItem[] | undefined
+): SelectionAskScope | undefined {
+  if (!type || !id) return undefined;
+  const labels = (breadcrumb || []).map((item) => item.label).filter(Boolean);
+  return {
+    type,
+    id,
+    label: labels.at(-1) || assistScopeLabel(type),
+    breadcrumb: labels.length ? labels : [assistScopeLabel(type)]
+  };
 }
 
 function btwMessages(events: BtwEvent[]) {

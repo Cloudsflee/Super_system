@@ -557,13 +557,6 @@
 .settings-form label {
   margin: 0;
 }
-.settings-cc-switch {
-  padding: 0 18px 14px;
-  border-bottom: 1px solid var(--line);
-}
-.settings-cc-switch .cc-switch-card {
-  margin: 0;
-}
 .settings-discovery {
   padding: 14px 18px;
   border-bottom: 1px solid var(--line);

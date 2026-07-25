@@ -37,6 +37,7 @@
   transform: translate(-50%, 0);
 }
 body:has(.context-menu, .btw-popover, .attachment-preview-backdrop) [data-tooltip]::after {
+  display: none !important;
   opacity: 0 !important;
   visibility: hidden !important;
   transition: none !important;
@@ -205,7 +206,7 @@ button[aria-label]:not(.button):not([data-tooltip]):not(.scrim):focus-visible::a
   z-index: 290;
   max-height: min(440px, calc(100vh - 16px));
   display: grid;
-  grid-template-rows: auto auto minmax(0, 1fr) auto auto;
+  grid-template-rows: auto auto auto minmax(0, 1fr) auto auto;
   border: 1px solid #aebeb8;
   border-radius: 7px;
   background: #fff;
@@ -226,6 +227,39 @@ button[aria-label]:not(.button):not([data-tooltip]):not(.scrim):focus-visible::a
 .btw-popover > header .icon-button {
   width: 29px;
   height: 29px;
+}
+.btw-inherited-context {
+  padding: 8px 10px;
+  display: grid;
+  gap: 3px;
+  border-bottom: 1px solid #e7ecea;
+  background: #fff;
+}
+.btw-inherited-context > span,
+.btw-inherited-context > em {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+.btw-inherited-context > span {
+  color: #66736e;
+  font-size: 9px;
+}
+.btw-inherited-context > strong {
+  color: #24332d;
+  font-size: 10px;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+}
+.btw-inherited-context > small {
+  color: #66736e;
+  font-size: 9px;
+}
+.btw-inherited-context > em {
+  color: #8a4a24;
+  font-size: 9px;
+  font-style: normal;
+  line-height: 1.4;
 }
 .btw-popover > blockquote {
   max-height: 72px;

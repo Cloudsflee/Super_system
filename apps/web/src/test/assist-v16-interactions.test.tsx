@@ -27,6 +27,7 @@ import { sessionTree, ThreadSidebar } from '../features/assist/ThreadSidebar';
 import { TurnTimeline } from '../features/assist/TurnTimeline';
 import { LONG_PASTE_THRESHOLD, MAX_DROP_FILES } from '../features/assist/useComposerFiles';
 import { useUi } from '../state/ui';
+import { FakeEventSource } from './fake-transports';
 
 afterEach(() => {
   cleanup();
@@ -65,8 +66,28 @@ describe('Assist V1.6 context, threads, and composer input', () => {
     expect(within(menu).getByRole('menuitem', { name: '询问智能助手' })).toBeInTheDocument();
     expect(within(menu).getByRole('menuitem', { name: '专属动作' })).toBeInTheDocument();
     fireEvent.click(within(menu).getByRole('menuitem', { name: '询问智能助手' }));
-    await waitFor(() => expect(asked).toHaveBeenCalledWith(expect.objectContaining({ selection: 'Context target' })));
+    await waitFor(() =>
+      expect(asked).toHaveBeenCalledWith(
+        expect.objectContaining({
+          selection: 'Context target',
+          semanticScope: {
+            type: 'task',
+            id: 'task-context',
+            label: '调研取证',
+            breadcrumb: ['DesignSignal', '每日工作流', '调研阶段', '调研取证'],
+            status: 'blocked',
+            statusLabel: '已锁定',
+            lockReason: '等待前置任务“选题确认”完成'
+          }
+        })
+      )
+    );
+    expect(useUi.getState().assistOpen).toBe(false);
+
+    fireEvent.contextMenu(target, { clientX: 30, clientY: 40 });
+    fireEvent.click(screen.getByRole('menuitem', { name: '打开智能助手' }));
     expect(useUi.getState().assistOpen).toBe(true);
+    useUi.setState({ assistOpen: false });
 
     const shiftMenu = new MouseEvent('contextmenu', { bubbles: true, cancelable: true, shiftKey: true });
     target.dispatchEvent(shiftMenu);
@@ -293,14 +314,18 @@ describe('Assist V1.6 composer state and attachment previews', () => {
   });
 
   it('focuses the BTW question and lets Escape close only the popover', async () => {
-    render(<BtwPopover sessionId="session-1" />);
+    render(<BtwPopover projectId="project-1" scopeType="project" scopeId="project-1" sessionId="session-1" />);
     act(() => publishSelectionAsk({ selection: 'selected text', rect: null, pageUrl: 'http://localhost/projects/1' }));
-    expect(await screen.findByRole('dialog', { name: '问点什么' })).toBeInTheDocument();
+    expect(await screen.findByRole('dialog', { name: '临时问答' })).toBeInTheDocument();
     const question = screen.getByRole('textbox', { name: '临时问题' });
     await waitFor(() => expect(question).toHaveFocus());
     fireEvent.keyDown(window, { key: 'Escape' });
-    await waitFor(() => expect(screen.queryByRole('dialog', { name: '问点什么' })).not.toBeInTheDocument());
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: '临时问答' })).not.toBeInTheDocument());
   });
+
+  it('creates a scoped temporary question without an existing Assist thread', scopedTemporaryQuestionTest);
+
+  it('uses the selected task scope while inheriting the current workflow thread', semanticTemporaryQuestionTest);
 
   it('keeps history focused on the conversation and moves runtime data into collapsed details', () => {
     const turn = {
@@ -479,9 +504,19 @@ function RegisteredTarget({ onSpecial }: { onSpecial: () => void }) {
   );
   return (
     <>
-      <button data-special type="button" onClick={() => undefined}>
-        Context target
-      </button>
+      <article
+        data-assist-scope-type="task"
+        data-assist-scope-id="task-context"
+        data-assist-scope-label="调研取证"
+        data-assist-scope-breadcrumb={JSON.stringify(['DesignSignal', '每日工作流', '调研阶段', '调研取证'])}
+        data-assist-scope-status="blocked"
+        data-assist-scope-status-label="已锁定"
+        data-assist-scope-lock-reason="等待前置任务“选题确认”完成"
+      >
+        <button data-special type="button" onClick={() => undefined}>
+          Context target
+        </button>
+      </article>
       <span data-sensitive="true">Sensitive selection</span>
     </>
   );
@@ -617,6 +652,123 @@ function composerProps(
     onError: vi.fn(),
     ...overrides
   };
+}
+async function scopedTemporaryQuestionTest() {
+  const requests: Array<{ url: string; method: string; body: Record<string, unknown> }> = [];
+  vi.stubGlobal('EventSource', FakeEventSource);
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(async (input: RequestInfo | URL, init: RequestInit = {}) => {
+      const url = String(input),
+        method = String(init.method || 'GET'),
+        body = init.body ? JSON.parse(String(init.body)) : {};
+      requests.push({ url, method, body });
+      if (url.endsWith('/api/assist/v3/btw'))
+        return jsonResponse(
+          {
+            id: 'btw-scoped',
+            access_token: 'temporary-token',
+            browser_id: 'browser-scoped'
+          },
+          201
+        );
+      if (url.endsWith('/api/assist/v3/btw/btw-scoped/turns'))
+        return jsonResponse({ id: 'btwt-scoped', status: 'running' }, 202);
+      if (url.includes('/api/assist/v3/btw/btw-scoped')) return jsonResponse({ deleted: true });
+      return jsonResponse({ error: 'unexpected_test_request' }, 404);
+    })
+  );
+  render(<BtwPopover projectId="project-1" scopeType="task" scopeId="task-1" profileId="profile-1" />);
+  act(() => publishSelectionAsk({ selection: 'task selection', rect: null, pageUrl: 'http://localhost/tasks/1' }));
+  fireEvent.change(await screen.findByRole('textbox', { name: '临时问题' }), {
+    target: { value: '解释当前任务' }
+  });
+  fireEvent.click(screen.getByRole('button', { name: '发送临时问题' }));
+  await waitFor(() => expect(requests.some((item) => item.url.endsWith('/turns'))).toBe(true));
+  expect(requests[0]).toMatchObject({
+    url: '/api/assist/v3/btw',
+    method: 'POST',
+    body: {
+      project_id: 'project-1',
+      scope_type: 'task',
+      scope_id: 'task-1',
+      profile_id: 'profile-1',
+      selection: 'task selection',
+      page_url: 'http://localhost/tasks/1'
+    }
+  });
+  expect(requests[0].body).not.toHaveProperty('session_id');
+  expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+}
+
+async function semanticTemporaryQuestionTest() {
+  const requests: Array<{ url: string; method: string; body: Record<string, unknown> }> = [];
+  vi.stubGlobal('EventSource', FakeEventSource);
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(async (input: RequestInfo | URL, init: RequestInit = {}) => {
+      const url = String(input),
+        method = String(init.method || 'GET'),
+        body = init.body ? JSON.parse(String(init.body)) : {};
+      requests.push({ url, method, body });
+      if (url.endsWith('/api/assist/v3/btw'))
+        return jsonResponse(
+          { id: 'btw-semantic', access_token: 'temporary-token', browser_id: 'browser-semantic' },
+          201
+        );
+      if (url.endsWith('/api/assist/v3/btw/btw-semantic/turns'))
+        return jsonResponse({ id: 'btwt-semantic', status: 'running' }, 202);
+      if (url.includes('/api/assist/v3/btw/btw-semantic')) return jsonResponse({ deleted: true });
+      return jsonResponse({ error: 'unexpected_test_request' }, 404);
+    })
+  );
+  render(
+    <BtwPopover
+      projectId="project-1"
+      scopeType="workflow"
+      scopeId="workflow-1"
+      scopeBreadcrumb={[
+        { type: 'project', id: 'project-1', label: 'DesignSignal' },
+        { type: 'workflow', id: 'workflow-1', label: '每日工作流' }
+      ]}
+      sessionId="workflow-session"
+    />
+  );
+  act(() =>
+    publishSelectionAsk({
+      selection: '调研取证 · 已锁定',
+      rect: null,
+      pageUrl: 'http://localhost/projects/project-1/workflow',
+      semanticScope: {
+        type: 'task',
+        id: 'task-research',
+        label: '调研取证',
+        breadcrumb: ['DesignSignal', '每日工作流', '调研阶段', '调研取证'],
+        status: 'blocked',
+        statusLabel: '已锁定',
+        lockReason: '等待前置任务“选题确认”完成'
+      }
+    })
+  );
+  const dialog = await screen.findByRole('dialog', { name: '临时问答' });
+  expect(
+    within(dialog).getByLabelText('当前上下文：DesignSignal / 每日工作流 / 调研阶段 / 调研取证')
+  ).toHaveTextContent('任务 · 已锁定');
+  expect(dialog).toHaveTextContent('等待前置任务“选题确认”完成');
+  fireEvent.change(within(dialog).getByRole('textbox', { name: '临时问题' }), {
+    target: { value: '这里为什么锁定了' }
+  });
+  fireEvent.click(within(dialog).getByRole('button', { name: '发送临时问题' }));
+  await waitFor(() => expect(requests.some((item) => item.url.endsWith('/turns'))).toBe(true));
+  expect(requests[0]).toMatchObject({
+    body: {
+      project_id: 'project-1',
+      scope_type: 'task',
+      scope_id: 'task-research',
+      session_id: 'workflow-session',
+      selection: '调研取证 · 已锁定'
+    }
+  });
 }
 function jsonResponse(value: unknown, status = 200) {
   return new Response(JSON.stringify(value), { status, headers: { 'content-type': 'application/json' } });
