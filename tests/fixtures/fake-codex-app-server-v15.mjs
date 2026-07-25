@@ -37,49 +37,86 @@ lines.on('line', (line) => {
 function handle(message) {
   if (message.id !== undefined && !message.method) return handleServerResponse(message);
   if (message.method === 'initialized') return;
-  if (message.method === 'initialize') return reply(message.id, { userAgent: 'aiws-v15-integration-fixture' });
-  if (message.method === 'collaborationMode/list')
-    return reply(message.id, {
+  if (handleDiscoveryRequest(message)) return;
+  if (handleThreadRequest(message)) return;
+  if (handleGoalRequest(message)) return;
+  if (message.method === 'turn/interrupt') return reply(message.id, {});
+  if (message.method !== 'turn/start') return reply(message.id, {});
+
+  activeTurnId = `fake-turn-${process.pid}-${++nativeTurnSequence}`;
+  reply(message.id, { turn: { id: activeTurnId, status: 'inProgress' } });
+  const prompt = (message.params?.input || [])
+    .filter((item) => item.type === 'text')
+    .map((item) => item.text)
+    .join('\n');
+  setTimeout(() => startTurnScenario(prompt), 15);
+}
+
+function handleDiscoveryRequest(message) {
+  if (message.method === 'initialize') {
+    reply(message.id, { userAgent: 'aiws-v15-integration-fixture' });
+    return true;
+  }
+  if (message.method === 'collaborationMode/list') {
+    reply(message.id, {
       data: [
         { name: 'Default', mode: 'default' },
         { name: 'Plan', mode: 'plan' }
       ]
     });
-  if (message.method === 'model/list')
-    return reply(message.id, {
-      data: [
-        {
-          id: 'gpt-v15-native',
-          model: 'gpt-v15-native',
-          displayName: 'V1.5 Native',
-          description: 'integration fixture',
-          hidden: false,
-          isDefault: true,
-          defaultReasoningEffort: 'max',
-          supportedReasoningEfforts: [
-            { reasoningEffort: 'max', description: 'maximum' },
-            { reasoningEffort: 'ultra', description: 'ultra' }
-          ]
-        }
-      ],
-      nextCursor: null
-    });
+    return true;
+  }
+  if (message.method !== 'model/list') return false;
+  reply(message.id, {
+    data: [
+      {
+        id: 'gpt-v15-native',
+        model: 'gpt-v15-native',
+        displayName: 'V1.5 Native',
+        description: 'integration fixture',
+        hidden: false,
+        isDefault: true,
+        defaultReasoningEffort: 'max',
+        supportedReasoningEfforts: [
+          { reasoningEffort: 'max', description: 'maximum' },
+          { reasoningEffort: 'ultra', description: 'ultra' }
+        ]
+      }
+    ],
+    nextCursor: null
+  });
+  return true;
+}
+
+function handleThreadRequest(message) {
   if (message.method === 'thread/start') {
     activeThreadId = threadId;
-    return reply(message.id, { thread: { id: activeThreadId } });
+    reply(message.id, { thread: { id: activeThreadId } });
+    return true;
   }
-  if (message.method === 'thread/resume' && message.params?.threadId === 'missing-native-thread')
-    return replyError(message.id, 'no rollout found for thread id missing-native-thread');
   if (message.method === 'thread/resume') {
-    activeThreadId = message.params?.threadId || threadId;
-    return reply(message.id, { thread: { id: activeThreadId } });
+    if (message.params?.threadId === 'missing-native-thread')
+      replyError(message.id, 'no rollout found for thread id missing-native-thread');
+    else {
+      activeThreadId = message.params?.threadId || threadId;
+      reply(message.id, { thread: { id: activeThreadId } });
+    }
+    return true;
   }
   if (message.method === 'thread/fork') {
-    if (message.params?.turnId === 'fork-failure-turn') return replyError(message.id, 'fixture fork failure');
-    activeThreadId = `fake-native-fork-${process.pid}-${++forkSequence}`;
-    return reply(message.id, { thread: { id: activeThreadId }, ephemeral: message.params?.ephemeral === true });
+    if (message.params?.turnId === 'fork-failure-turn') replyError(message.id, 'fixture fork failure');
+    else {
+      activeThreadId = `fake-native-fork-${process.pid}-${++forkSequence}`;
+      reply(message.id, { thread: { id: activeThreadId }, ephemeral: message.params?.ephemeral === true });
+    }
+    return true;
   }
-  if (message.method === 'thread/delete') return reply(message.id, { deleted: true, threadId: activeThreadId });
+  if (message.method !== 'thread/delete') return false;
+  reply(message.id, { deleted: true, threadId: activeThreadId });
+  return true;
+}
+
+function handleGoalRequest(message) {
   if (message.method === 'thread/goal/set') {
     const previous = readGoal();
     const goal = {
@@ -92,23 +129,17 @@ function handle(message) {
       updatedAt: new Date().toISOString()
     };
     fs.writeFileSync(goalFile, JSON.stringify(goal));
-    return reply(message.id, { goal });
+    reply(message.id, { goal });
+    return true;
   }
-  if (message.method === 'thread/goal/get') return reply(message.id, { goal: readGoal() });
-  if (message.method === 'thread/goal/clear') {
-    fs.rmSync(goalFile, { force: true });
-    return reply(message.id, {});
+  if (message.method === 'thread/goal/get') {
+    reply(message.id, { goal: readGoal() });
+    return true;
   }
-  if (message.method === 'turn/interrupt') return reply(message.id, {});
-  if (message.method !== 'turn/start') return reply(message.id, {});
-
-  activeTurnId = `fake-turn-${process.pid}-${++nativeTurnSequence}`;
-  reply(message.id, { turn: { id: activeTurnId, status: 'inProgress' } });
-  const prompt = (message.params?.input || [])
-    .filter((item) => item.type === 'text')
-    .map((item) => item.text)
-    .join('\n');
-  setTimeout(() => startTurnScenario(prompt), 15);
+  if (message.method !== 'thread/goal/clear') return false;
+  fs.rmSync(goalFile, { force: true });
+  reply(message.id, {});
+  return true;
 }
 
 function startTurnScenario(prompt) {

@@ -128,44 +128,61 @@ function validateCatalog() {
   if (!Array.isArray(catalog.tests) || !catalog.tests.length) return errors.push('catalog tests must be non-empty');
   const ids = new Set(),
     domains = new Set();
-  for (const item of catalog.tests) {
-    for (const field of requiredFields)
-      if (!Object.hasOwn(item, field)) errors.push(`${item.id || '<unknown>'} missing ${field}`);
-    if (!/^V175-L[0-8]-[A-Z0-9]+(?:-[A-Z0-9]+)*-\d{3}$/.test(item.id || '')) errors.push(`invalid case id: ${item.id}`);
-    if (ids.has(item.id)) errors.push(`duplicate case id: ${item.id}`);
-    ids.add(item.id);
-    domains.add(item.domain);
-    if (!layers.has(item.layer)) errors.push(`${item.id} invalid layer`);
-    if (!priorities.has(item.priority)) errors.push(`${item.id} invalid priority`);
-    if (!Array.isArray(item.command) || !item.command.length || !['node', 'pnpm', 'docker'].includes(item.command[0]))
-      errors.push(`${item.id} command must be an argv array with an allowed executable`);
-    if (!Number.isInteger(item.timeout) || item.timeout < 1000)
-      errors.push(`${item.id} timeout must be positive milliseconds`);
-    if (
-      !Array.isArray(item.dependencies) ||
-      !Array.isArray(item.cleanup) ||
-      !Array.isArray(item.covers) ||
-      !item.covers.length ||
-      !Array.isArray(item.suites) ||
-      !item.suites.length
-    )
-      errors.push(`${item.id} has invalid array fields`);
-    if (!effects.has(item.external_effects)) errors.push(`${item.id} invalid external_effects`);
-    for (const suite of item.suites || []) if (!suites.has(suite)) errors.push(`${item.id} invalid suite ${suite}`);
-    for (const cleanup of item.cleanup || [])
-      if (!Array.isArray(cleanup) || !cleanup.length) errors.push(`${item.id} cleanup entries must be argv arrays`);
-    if (['P0', 'P1'].includes(item.priority) && !quadrants.every((value) => item.quadrants?.includes(value)))
-      errors.push(`${item.id} must cover all four quadrants`);
-    if (item.command?.[1] === 'scripts/v175-suite.mjs' && !groups?.[item.command[2]])
-      errors.push(`${item.id} references unknown suite group ${item.command[2]}`);
-  }
-  for (const item of catalog.tests)
+  for (const item of catalog.tests) validateCatalogItem(item, ids, domains);
+  validateCatalogDependencies(catalog.tests);
+  validateCatalogCoverage(domains);
+}
+
+function validateCatalogItem(item, ids, domains) {
+  for (const field of requiredFields)
+    if (!Object.hasOwn(item, field)) errors.push(`${item.id || '<unknown>'} missing ${field}`);
+  if (!/^V175-L[0-8]-[A-Z0-9]+(?:-[A-Z0-9]+)*-\d{3}$/.test(item.id || '')) errors.push(`invalid case id: ${item.id}`);
+  if (ids.has(item.id)) errors.push(`duplicate case id: ${item.id}`);
+  ids.add(item.id);
+  domains.add(item.domain);
+  if (!layers.has(item.layer)) errors.push(`${item.id} invalid layer`);
+  if (!priorities.has(item.priority)) errors.push(`${item.id} invalid priority`);
+  if (!validCatalogCommand(item.command))
+    errors.push(`${item.id} command must be an argv array with an allowed executable`);
+  if (!Number.isInteger(item.timeout) || item.timeout < 1000)
+    errors.push(`${item.id} timeout must be positive milliseconds`);
+  if (!validCatalogArrayFields(item)) errors.push(`${item.id} has invalid array fields`);
+  if (!effects.has(item.external_effects)) errors.push(`${item.id} invalid external_effects`);
+  for (const suite of item.suites || []) if (!suites.has(suite)) errors.push(`${item.id} invalid suite ${suite}`);
+  for (const cleanup of item.cleanup || [])
+    if (!Array.isArray(cleanup) || !cleanup.length) errors.push(`${item.id} cleanup entries must be argv arrays`);
+  if (['P0', 'P1'].includes(item.priority) && !quadrants.every((value) => item.quadrants?.includes(value)))
+    errors.push(`${item.id} must cover all four quadrants`);
+  if (item.command?.[1] === 'scripts/v175-suite.mjs' && !groups?.[item.command[2]])
+    errors.push(`${item.id} references unknown suite group ${item.command[2]}`);
+}
+
+function validCatalogCommand(command) {
+  return Array.isArray(command) && command.length > 0 && ['node', 'pnpm', 'docker'].includes(command[0]);
+}
+
+function validCatalogArrayFields(item) {
+  return (
+    Array.isArray(item.dependencies) &&
+    Array.isArray(item.cleanup) &&
+    Array.isArray(item.covers) &&
+    item.covers.length > 0 &&
+    Array.isArray(item.suites) &&
+    item.suites.length > 0
+  );
+}
+
+function validateCatalogDependencies(tests) {
+  for (const item of tests)
     for (const dependency of item.dependencies || []) {
-      const target = catalog.tests.find((candidate) => candidate.id === dependency);
+      const target = tests.find((candidate) => candidate.id === dependency);
       if (!target) errors.push(`${item.id} has unknown dependency ${dependency}`);
       else if (Number(target.layer.slice(1)) > Number(item.layer.slice(1)))
         errors.push(`${item.id} depends on later layer ${dependency}`);
     }
+}
+
+function validateCatalogCoverage(domains) {
   for (const layer of layers)
     if (!catalog.tests.some((item) => item.layer === layer)) errors.push(`catalog missing ${layer}`);
   for (const domain of [

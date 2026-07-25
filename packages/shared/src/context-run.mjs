@@ -37,32 +37,14 @@ export function buildContextPack({
     });
   sufficiency.included_memory_refs = manifest.included.map((m) => m.ref);
   sufficiency.excluded_memory_refs = manifest.excluded.map((m) => ({ ref: m.ref, reason: m.reason }));
-  const latestDigest =
-    executionContext?.workstream_digest ||
-    [...state.digests].reverse().find((d) => d.workspace_id === workspace?.id && d.status === 'confirmed') ||
-    null;
-  const assetRefs = new Set(
-    executionContext?.inputs?.flatMap((item) => item.asset_versions || []).map((item) => item.asset_id) || []
-  );
-  const confirmedAssets = state.assets.filter(
-    (a) =>
-      a.project_id === project.id && a.status === AssetStatus.Confirmed && (!executionContext || assetRefs.has(a.id))
-  );
-  const decisions =
-    executionContext?.project_decisions ||
-    state.decisions.filter((d) => d.project_id === project.id && d.status !== 'superseded');
-  const submissions = executionContext
-    ? []
-    : (state.submissions || [])
-        .filter((item) => item.project_id === project.id && (!node || item.node_id !== node.id))
-        .slice(-8);
-  const availableTools = (state.tools || []).filter(
-    (t) =>
-      t.enabled !== false &&
-      (contract.allowed_tools || []).some(
-        (tool) => tool === t.id || tool === t.name || (t.capabilities || []).includes(tool)
-      )
-  );
+  const { latestDigest, confirmedAssets, decisions, submissions, availableTools } = selectContextPackSources({
+    state,
+    project,
+    workspace,
+    node,
+    contract,
+    executionContext
+  });
   const content = {
     schema_version:
       executionContext?.schema_version === 'aiws.task_execution_context.v3'
@@ -145,6 +127,38 @@ export function buildContextPack({
     updated_at: now(),
     _sufficiency_check: sufficiency
   };
+}
+
+function selectContextPackSources({ state, project, workspace, node, contract, executionContext }) {
+  const latestDigest =
+    executionContext?.workstream_digest ||
+    [...state.digests].reverse().find((item) => item.workspace_id === workspace?.id && item.status === 'confirmed') ||
+    null;
+  const assetRefs = new Set(
+    executionContext?.inputs?.flatMap((item) => item.asset_versions || []).map((item) => item.asset_id) || []
+  );
+  const confirmedAssets = state.assets.filter(
+    (item) =>
+      item.project_id === project.id &&
+      item.status === AssetStatus.Confirmed &&
+      (!executionContext || assetRefs.has(item.id))
+  );
+  const decisions =
+    executionContext?.project_decisions ||
+    state.decisions.filter((item) => item.project_id === project.id && item.status !== 'superseded');
+  const submissions = executionContext
+    ? []
+    : (state.submissions || [])
+        .filter((item) => item.project_id === project.id && (!node || item.node_id !== node.id))
+        .slice(-8);
+  const availableTools = (state.tools || []).filter(
+    (item) =>
+      item.enabled !== false &&
+      (contract.allowed_tools || []).some(
+        (tool) => tool === item.id || tool === item.name || (item.capabilities || []).includes(tool)
+      )
+  );
+  return { latestDigest, confirmedAssets, decisions, submissions, availableTools };
 }
 
 function executionMemoryManifest(context, project, workspace, node, tokenBudget) {

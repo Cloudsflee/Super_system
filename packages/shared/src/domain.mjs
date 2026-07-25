@@ -228,28 +228,34 @@ export function validateNodeContract(contract) {
   if (!Array.isArray(contract?.asset_output_types)) errors.push('asset_output_types 必须是数组');
   if (Number(contract?.contract_schema_version || 0) !== 2) errors.push('contract_schema_version 必须为 2');
   for (const [index, slot] of (contract?.expected_inputs || []).entries())
-    if (
-      !slot?.key ||
-      !slot?.kind ||
-      typeof slot.required !== 'boolean' ||
-      !slot?.source ||
-      !Object.hasOwn(slot, 'selector') ||
-      !Object.hasOwn(slot, 'ref_id') ||
-      !Object.hasOwn(slot, 'version_id')
-    )
-      errors.push(`expected_inputs[${index}] 不是合法 v2 输入槽`);
+    if (!validContractInputSlot(slot)) errors.push(`expected_inputs[${index}] 不是合法 v2 输入槽`);
   for (const [index, slot] of (contract?.expected_outputs || []).entries())
-    if (
-      !slot?.key ||
-      !slot?.kind ||
-      typeof slot.required !== 'boolean' ||
-      !slot?.asset_type ||
-      !Array.isArray(slot.acceptance_criteria) ||
-      !slot.acceptance_criteria.length ||
-      !['human', 'system_evidence'].includes(slot.confirmation_policy)
-    )
-      errors.push(`expected_outputs[${index}] 不是合法 v2 输出槽`);
+    if (!validContractOutputSlot(slot)) errors.push(`expected_outputs[${index}] 不是合法 v2 输出槽`);
   return { ok: errors.length === 0, errors };
+}
+
+function validContractInputSlot(slot) {
+  return (
+    Boolean(slot?.key) &&
+    Boolean(slot?.kind) &&
+    typeof slot.required === 'boolean' &&
+    Boolean(slot?.source) &&
+    Object.hasOwn(slot, 'selector') &&
+    Object.hasOwn(slot, 'ref_id') &&
+    Object.hasOwn(slot, 'version_id')
+  );
+}
+
+function validContractOutputSlot(slot) {
+  return (
+    Boolean(slot?.key) &&
+    Boolean(slot?.kind) &&
+    typeof slot.required === 'boolean' &&
+    Boolean(slot?.asset_type) &&
+    Array.isArray(slot.acceptance_criteria) &&
+    Boolean(slot.acceptance_criteria.length) &&
+    ['human', 'system_evidence'].includes(slot.confirmation_policy)
+  );
 }
 
 export function applyContractPatch(contract, patch, actorId) {
