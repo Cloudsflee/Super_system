@@ -1,0 +1,276 @@
+.assist-composer-v3 {
+  position: relative;
+  grid-row: 3;
+  padding: 11px 12px 10px;
+  border-top: 1px solid var(--line);
+  background: white;
+  box-shadow: 0 -8px 24px rgba(25, 45, 38, 0.035);
+}
+.composer-mode-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 9px;
+}
+.assist-mode-picker {
+  min-width: 0;
+  padding: 3px;
+  display: flex;
+  gap: 2px;
+  border-radius: 9px;
+  background: #f1f4f3;
+}
+.assist-mode-picker button {
+  min-height: 29px;
+  padding: 4px 8px;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: #64706b;
+  cursor: pointer;
+  font-size: 10px;
+  transition:
+    color 0.14s ease,
+    background-color 0.14s ease,
+    box-shadow 0.14s ease;
+}
+.assist-mode-picker button:hover:not(:disabled) {
+  color: var(--text);
+  background: rgba(255, 255, 255, 0.7);
+}
+.assist-mode-picker button.active {
+  background: white;
+  color: #147457;
+  font-weight: 750;
+  box-shadow: 0 1px 4px rgba(30, 55, 47, 0.12);
+}
+.assist-mode-picker button:disabled {
+  cursor: not-allowed;
+  opacity: 0.38;
+}
+.assist-mode-unavailable {
+  margin: 8px 0 0;
+  padding: 6px 9px;
+  border-radius: 6px;
+  background: #fff7e5;
+  color: #735a1e;
+  font-size: 9px;
+  line-height: 1.4;
+}
+.composer-height-handle {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 12px;
+  display: grid;
+  place-items: center;
+  color: #93a09b;
+  cursor: ns-resize;
+  touch-action: none;
+}
+.composer-height-handle:hover,
+.composer-height-handle:focus-visible,
+.composer-height-handle.dragging {
+  outline: 0;
+  color: var(--green);
+  background: #edf5f2;
+}
+.composer-input-area {
+  position: relative;
+  min-height: 84px;
+  margin-top: 7px;
+}
+.composer-input-area > textarea {
+  width: 100%;
+  height: 100%;
+  min-height: 84px;
+  padding: 10px 11px;
+  resize: none;
+  border-color: #cbd5d1;
+  border-radius: 7px;
+  background: #fcfdfd;
+  font-size: 11px;
+  line-height: 1.5;
+  transition:
+    border-color 0.14s ease,
+    box-shadow 0.14s ease,
+    background-color 0.14s ease;
+}
+.composer-input-area > textarea:focus {
+  border-color: #6aa992;
+  outline: 0;
+  background: white;
+  box-shadow: 0 0 0 3px rgba(24, 128, 93, 0.1);
+}
+.assist-composer-v3.dragging {
+  outline: 2px solid var(--green);
+  outline-offset: -3px;
+  background: #f1f8f5;
+}
+.assist-composer-v3 > footer {
+  margin-top: 7px;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+.assist-composer-v3 > footer > span {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--muted);
+  font-size: 8px;
+}
+.assist-composer-v3 > footer select {
+  width: 105px;
+  height: 31px;
+  padding: 3px 20px 3px 7px;
+  border-radius: 7px;
+  font-size: 9px;
+}
+.assist-composer-v3 .button {
+  min-height: 32px;
+  padding: 5px 10px;
+  border-radius: 7px;
+  font-size: 9px;
+}
+.cli-composer-hint {
+  min-height: 64px;
+  margin-top: 9px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  border: 1px dashed var(--line-strong);
+  border-radius: 9px;
+  color: var(--muted);
+  font-size: 9px;
+}
+.attachment-tray {
+  position: relative;
+  margin-top: 5px;
+}
+.attachment-chips {
+  margin-top: 4px;
+  display: flex;
+  gap: 4px;
+  overflow-x: auto;
+}
+.attachment-chip {
+  min-width: 0;
+  height: 25px;
+  display: flex;
+  align-items: center;
+  border-radius: 4px;
+  background: var(--surface-raised);
+}
+.attachment-chip-main {
+  min-width: 0;
+  padding-left: 5px;
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  color: inherit;
+  font-size: 8px;
+  white-space: nowrap;
+}
+.attachment-chip input {
+  width: 11px;
+  height: 11px;
+}
+.attachment-chip-main button {
+  max-width: 150px;
+  padding: 2px 3px;
+  overflow: hidden;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 8px;
+  cursor: pointer;
+}
+.attachment-chip > .icon-button {
+  width: 24px;
+  height: 24px;
+  border: 0;
+  background: transparent;
+}
+.attachment-chip.deleted {
+  color: var(--muted);
+  text-decoration: line-through;
+}
+.composer-token-menu {
+  position: absolute;
+  z-index: 48;
+  right: 4px;
+  bottom: 5px;
+  left: 4px;
+  max-height: min(280px, 45vh);
+  padding: 5px;
+  overflow: auto;
+  border: 1px solid #c5d1cd;
+  border-radius: 7px;
+  background: white;
+  box-shadow: 0 12px 34px rgba(19, 38, 31, 0.2);
+}
+.composer-token-menu button {
+  width: 100%;
+  padding: 6px 8px;
+  display: grid;
+  gap: 2px;
+  border: 0;
+  border-radius: 5px;
+  background: transparent;
+  text-align: left;
+}
+.composer-token-menu button:hover,
+.composer-token-menu button:focus-visible {
+  outline: 0;
+  background: #edf4f1;
+}
+.composer-token-menu strong {
+  font-size: 10px;
+}
+.composer-token-menu small {
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 8px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.composer-uploads {
+  margin-top: 4px;
+  display: flex;
+  gap: 4px;
+  overflow-x: auto;
+}
+.composer-uploads span {
+  padding: 3px 5px;
+  border-radius: 4px;
+  background: #eef3f1;
+  color: var(--muted);
+  font-size: 8px;
+  white-space: nowrap;
+}
+.composer-uploads .failed {
+  background: #fff0f0;
+  color: #a33;
+}
+.assist-resize-handle {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  width: 22px;
+  height: 22px;
+  display: grid;
+  place-items: center;
+  border: 0;
+  background: transparent;
+  cursor: nwse-resize;
+  color: var(--muted);
+}

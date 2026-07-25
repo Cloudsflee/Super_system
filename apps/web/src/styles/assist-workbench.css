@@ -1,0 +1,406 @@
+.app-shell {
+  --assist-dock-width: 760px;
+}
+.app-shell.assist-docked .route-stage {
+  width: calc(100% - var(--assist-dock-width));
+}
+.canvas-route.assist-docked .app-bar {
+  right: var(--assist-dock-width);
+}
+.assist-workbench {
+  position: fixed;
+  z-index: 70;
+  display: grid;
+  grid-template-rows: 56px minmax(0, 1fr);
+  border: 1px solid var(--line-strong);
+  background: white;
+  box-shadow: var(--shadow);
+  overflow: hidden;
+}
+.assist-workbench.surface-docked {
+  top: 56px;
+  right: 0;
+  bottom: 0;
+  width: var(--assist-dock-width);
+  border-width: 0 0 0 1px;
+  box-shadow: none;
+}
+.assist-workbench.surface-floating {
+  min-width: 520px;
+  min-height: 420px;
+  border-radius: 8px;
+}
+.assist-workbench.surface-fullscreen {
+  inset: 56px 0 0;
+  border: 0;
+  box-shadow: none;
+}
+.assist-dock-resizer {
+  position: absolute;
+  z-index: 5;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  width: 11px;
+  border: 0;
+  outline: 0;
+  cursor: col-resize;
+  touch-action: none;
+}
+.assist-dock-resizer::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  width: 2px;
+  background: transparent;
+  transition:
+    background-color 0.12s ease,
+    width 0.12s ease;
+}
+.assist-dock-resizer:hover::after,
+.assist-dock-resizer:focus-visible::after,
+.assist-dock-resizer.dragging::after {
+  width: 3px;
+  background: var(--green);
+}
+.assist-minimized {
+  position: fixed;
+  z-index: 72;
+  right: 18px;
+  bottom: 18px;
+  height: 42px;
+  padding: 0 14px;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  border: 1px solid var(--line-strong);
+  border-radius: 22px;
+  background: white;
+  box-shadow: var(--shadow);
+  cursor: pointer;
+  font-size: 11px;
+}
+.assist-minimized i {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--muted);
+}
+.assist-minimized i.running {
+  background: var(--green);
+  animation: pulse 1s infinite alternate;
+}
+.assist-workbench-head {
+  min-width: 0;
+  padding: 0 7px;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  border-bottom: 1px solid var(--line);
+  background: var(--surface-subtle);
+  user-select: none;
+}
+.surface-floating .assist-workbench-head {
+  cursor: move;
+}
+.assist-head-title {
+  min-width: 0;
+  flex: 1;
+  display: grid;
+  gap: 2px;
+  overflow: hidden;
+}
+.assist-scope-heading {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+.assist-scope-heading strong {
+  flex: 0 0 auto;
+  font-size: 11px;
+}
+.assist-scope-heading i {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 8px;
+  font-style: normal;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.assist-scope-breadcrumb {
+  width: 100%;
+  overflow-x: auto;
+  color: var(--muted);
+  font-size: 8px;
+  line-height: 12px;
+  scrollbar-width: none;
+  white-space: nowrap;
+}
+.assist-scope-breadcrumb::-webkit-scrollbar {
+  display: none;
+}
+.assist-workbench-head nav {
+  flex: 0 0 auto;
+  display: flex;
+  justify-content: center;
+  gap: 2px;
+}
+.assist-workbench-head nav button {
+  min-height: 27px;
+  padding: 3px 7px;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  cursor: pointer;
+  font-size: 9px;
+}
+.assist-workbench-head nav button.active,
+.assist-workbench-head nav button:hover {
+  background: white;
+}
+.assist-surface-actions {
+  display: flex;
+  gap: 1px;
+}
+.assist-surface-actions .icon-button {
+  width: 30px;
+  height: 30px;
+  flex-basis: 30px;
+}
+.assist-layout-menu {
+  position: relative;
+}
+.assist-layout-menu > [role='menu'] {
+  position: absolute;
+  z-index: 35;
+  top: 34px;
+  right: 0;
+  width: 142px;
+  padding: 5px;
+  border: 1px solid #c6d0cc;
+  border-radius: 6px;
+  background: white;
+  box-shadow: 0 12px 32px rgba(18, 35, 29, 0.2);
+}
+.assist-layout-menu [role='menuitemradio'] {
+  width: 100%;
+  min-height: 32px;
+  padding: 5px 7px;
+  display: grid;
+  grid-template-columns: 20px minmax(0, 1fr) 16px;
+  align-items: center;
+  gap: 5px;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--text);
+  text-align: left;
+  font-size: 10px;
+}
+.assist-layout-menu [role='menuitemradio']:hover,
+.assist-layout-menu [role='menuitemradio']:focus-visible,
+.assist-layout-menu [role='menuitemradio'][aria-checked='true'] {
+  outline: 0;
+  background: #edf4f1;
+}
+.assist-workbench-body {
+  min-width: 0;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: 0 minmax(0, 1fr);
+  transition: grid-template-columns 0.16s ease;
+}
+.assist-workbench.threads-open .assist-workbench-body {
+  grid-template-columns: 220px minmax(0, 1fr);
+}
+.assist-threads {
+  min-width: 0;
+  overflow: hidden;
+  display: grid;
+  grid-template-rows: 39px auto 34px minmax(0, 1fr);
+  border-right: 1px solid var(--line);
+  background: var(--surface-subtle);
+}
+.assist-threads > header {
+  padding: 0 7px 0 11px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.assist-threads > header strong {
+  font-size: 10px;
+}
+.assist-search {
+  position: relative;
+  margin: 0 7px 7px;
+}
+.assist-search svg {
+  position: absolute;
+  left: 8px;
+  top: 8px;
+  color: var(--muted);
+}
+.assist-search input {
+  height: 30px;
+  padding: 4px 7px 4px 27px;
+  font-size: 9px;
+}
+.thread-filter {
+  padding: 3px 7px;
+  display: flex;
+  gap: 3px;
+  border-top: 1px solid var(--line);
+  border-bottom: 1px solid var(--line);
+}
+.thread-filter button {
+  flex: 1;
+  padding: 4px;
+  border: 0;
+  border-radius: 3px;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  font-size: 9px;
+}
+.thread-filter button.active {
+  background: white;
+  color: var(--green);
+  font-weight: 700;
+}
+.thread-list {
+  min-height: 0;
+  overflow: auto;
+}
+.thread-list article {
+  position: relative;
+  border-bottom: 1px solid var(--line);
+}
+.thread-list article.active {
+  background: var(--green-soft);
+  box-shadow: inset 3px 0 var(--green);
+}
+.thread-list article.read-only:not(.active) {
+  background: #f4f5f5;
+}
+.thread-main {
+  width: 100%;
+  min-height: 66px;
+  padding: 8px 8px 8px calc(11px + var(--thread-depth, 0) * 14px);
+  display: grid;
+  gap: 4px;
+  border: 0;
+  background: transparent;
+  text-align: left;
+  cursor: pointer;
+}
+.thread-main > span {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+.thread-main strong {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 10px;
+}
+.thread-main small {
+  color: var(--muted);
+  font-size: 8px;
+}
+.thread-scope {
+  min-width: 0;
+  display: flex;
+  gap: 4px;
+}
+.thread-scope b {
+  flex: 0 0 auto;
+  color: var(--text);
+}
+.thread-scope span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.thread-tombstone {
+  min-height: 34px;
+  padding: 6px 8px 6px calc(11px + var(--thread-depth, 0) * 14px);
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  border-bottom: 1px solid var(--line);
+  color: var(--muted);
+  font-size: 9px;
+}
+.thread-tombstone button {
+  padding: 2px 4px;
+  border: 0;
+  background: transparent;
+  color: var(--green);
+  font-size: 9px;
+  font-weight: 700;
+  cursor: pointer;
+}
+.thread-actions {
+  position: absolute;
+  left: 9px;
+  bottom: 4px;
+  display: flex;
+  gap: 2px;
+  opacity: 0.25;
+}
+.thread-list article:hover .thread-actions,
+.thread-list article.active .thread-actions {
+  opacity: 1;
+}
+.thread-actions button {
+  width: 22px;
+  height: 19px;
+  display: grid;
+  place-items: center;
+  border: 0;
+  border-radius: 3px;
+  background: transparent;
+  cursor: pointer;
+}
+.thread-actions button:hover {
+  background: white;
+}
+.thread-empty {
+  padding: 28px 12px;
+  color: var(--muted);
+  text-align: center;
+  font-size: 9px;
+}
+.assist-main {
+  grid-column: 2;
+  min-width: 0;
+  min-height: 0;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  overflow: hidden;
+}
+.assist-no-session {
+  grid-row: 1/-1;
+  display: grid;
+  place-content: center;
+  justify-items: center;
+  padding: 24px;
+  text-align: center;
+}
+.assist-no-session h3 {
+  margin: 12px 0 4px;
+}
+.assist-no-session p {
+  color: var(--muted);
+  font-size: 10px;
+}

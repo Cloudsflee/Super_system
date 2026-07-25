@@ -1,0 +1,545 @@
+/* V1.7 native Codex composer */
+.codex-composer-controls {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.composer-native-controls {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  margin-right: auto;
+}
+.composer-text-control,
+.composer-plan-toggle,
+.composer-icon-control {
+  min-height: 27px;
+  padding: 3px 6px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: #52605b;
+  font:
+    10px 'Cascadia Code',
+    Consolas,
+    monospace;
+}
+.composer-text-control:hover,
+.composer-plan-toggle:hover,
+.composer-icon-control:hover,
+.composer-plan-toggle.active {
+  background: #e9f1ee;
+  color: #183d31;
+}
+.composer-plan-toggle {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-family: inherit;
+}
+.composer-plan-toggle.active {
+  box-shadow: inset 0 0 0 1px #7db29f;
+}
+.clarification-segment {
+  height: 27px;
+  display: inline-grid;
+  grid-template-columns: auto 42px 68px;
+  align-items: center;
+  padding: 2px;
+  border: 1px solid #d1dbd7;
+  border-radius: 6px;
+  background: #f7f9f8;
+}
+.clarification-segment > span {
+  padding: 0 5px;
+  color: #6b7772;
+  font-size: 9px;
+  white-space: nowrap;
+}
+.clarification-segment > button {
+  height: 21px;
+  padding: 0 5px;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: #52605b;
+  font-size: 9px;
+  white-space: nowrap;
+}
+.clarification-segment > button.active {
+  background: white;
+  color: #173d31;
+  box-shadow: 0 1px 4px rgba(28, 52, 44, 0.12);
+  font-weight: 700;
+}
+.composer-icon-control {
+  width: 28px;
+  padding: 3px;
+  display: grid;
+  place-items: center;
+}
+.composer-native-menu {
+  position: absolute;
+  z-index: 45;
+  bottom: 34px;
+  left: 0;
+  width: min(330px, calc(100vw - 32px));
+  max-height: 360px;
+  padding: 7px;
+  overflow: auto;
+  border: 1px solid #c8d6d1;
+  border-radius: 11px;
+  background: rgba(255, 255, 255, 0.98);
+  box-shadow: 0 16px 40px rgba(22, 45, 37, 0.2);
+}
+.composer-native-menu header {
+  padding: 7px 8px;
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+}
+.attachment-menu {
+  left: auto;
+  right: 0;
+  width: min(280px, calc(100vw - 32px));
+}
+.attachment-menu > button {
+  width: 100%;
+  min-height: 48px;
+  padding: 7px 8px;
+  display: grid;
+  grid-template-columns: 20px minmax(0, 1fr);
+  align-items: center;
+  gap: 7px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  text-align: left;
+}
+.attachment-menu > button:hover {
+  background: #edf3f1;
+}
+.attachment-menu > button span {
+  min-width: 0;
+  display: grid;
+  gap: 2px;
+}
+.attachment-menu > button small {
+  color: var(--muted);
+  font-size: 9px;
+}
+.composer-native-menu header small,
+.composer-native-menu .menu-label {
+  color: var(--muted);
+  font-size: 9px;
+}
+.composer-native-menu > button {
+  width: 100%;
+  padding: 7px 8px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  text-align: left;
+}
+.composer-native-menu > button:hover,
+.composer-native-menu > button[aria-checked='true'] {
+  background: #edf4f1;
+}
+.composer-native-menu button span {
+  min-width: 0;
+  display: grid;
+  gap: 2px;
+}
+.composer-native-menu button strong {
+  font-size: 10px;
+  overflow-wrap: anywhere;
+}
+.composer-native-menu button small {
+  color: var(--muted);
+  font-size: 9px;
+  overflow-wrap: anywhere;
+}
+.composer-native-menu hr {
+  border: 0;
+  border-top: 1px solid var(--line);
+}
+.composer-native-menu .menu-label {
+  display: block;
+  padding: 4px 8px;
+  text-transform: uppercase;
+}
+.composer-native-menu .menu-save {
+  margin-top: 4px;
+  justify-content: flex-start;
+  color: var(--green);
+}
+.composer-shortcut {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  color: var(--muted);
+  font-size: 8px;
+}
+
+/* Goal and native interaction cards */
+.assist-goal-card {
+  grid-row: 1;
+  min-height: 36px;
+  margin: 5px 10px 0;
+  padding: 3px 4px 3px 9px;
+  display: grid;
+  grid-template-columns: 16px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 5px;
+  border-bottom: 1px solid #dde5e2;
+  color: #50605a;
+}
+.goal-objective {
+  min-width: 0;
+  overflow: hidden;
+  border: 0;
+  background: transparent;
+  color: #34413c;
+  text-align: left;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 10px;
+}
+.assist-goal-card > input {
+  min-width: 0;
+  height: 27px;
+  font-size: 10px;
+}
+.assist-goal-card > div {
+  display: flex;
+}
+.assist-goal-card .icon-button {
+  width: 27px;
+  height: 27px;
+  border: 0;
+  background: transparent;
+}
+.native-input-card,
+.operation-receipt {
+  margin: 7px 4% 7px 0;
+  padding: 9px;
+  border: 1px solid #ccd9d4;
+  border-radius: 8px;
+  background: #fbfdfc;
+  box-shadow: 0 4px 15px rgba(25, 52, 43, 0.06);
+}
+.native-input-card > header,
+.operation-receipt > header {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+.native-input-card > header div,
+.operation-receipt > header span {
+  min-width: 0;
+  flex: 1;
+  display: grid;
+  gap: 2px;
+}
+.native-input-card header small,
+.operation-receipt header small {
+  color: var(--muted);
+  font-size: 8px;
+}
+.operation-receipt header i {
+  font:
+    8px 'Cascadia Code',
+    Consolas,
+    monospace;
+}
+.native-input-card fieldset {
+  margin: 8px 0;
+  padding: 8px;
+  border: 1px solid #dde5e2;
+  border-radius: 7px;
+}
+.native-input-card legend {
+  padding: 0 4px;
+  color: var(--green);
+  font-size: 9px;
+}
+.native-input-card p {
+  margin: 2px 0 7px;
+  font-size: 10px;
+}
+.native-input-card fieldset > input {
+  width: 100%;
+}
+.native-input-options {
+  display: grid;
+  gap: 4px;
+}
+.native-input-options label {
+  padding: 6px;
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  border-radius: 6px;
+  background: white;
+  color: var(--text);
+}
+.native-input-options span {
+  display: grid;
+  gap: 2px;
+}
+.native-input-options small {
+  color: var(--muted);
+}
+.native-input-options label.recommended {
+  box-shadow: inset 0 0 0 1px #94b7aa;
+  background: #f3f8f6;
+}
+.native-input-options strong {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.native-input-options strong em {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  color: #2f6754;
+  font-size: 8px;
+  font-style: normal;
+  font-weight: 700;
+}
+.native-input-note {
+  width: 100%;
+  margin-top: 7px;
+  min-height: 46px;
+  resize: vertical;
+  font-size: 10px;
+}
+.operation-receipt {
+  width: min(520px, 96%);
+}
+.operation-receipt > header strong,
+.operation-receipt > header small {
+  overflow-wrap: anywhere;
+}
+.operation-receipt > header strong {
+  font-size: 10px;
+}
+.operation-receipt footer {
+  flex-wrap: wrap;
+}
+.operation-values {
+  margin-top: 7px;
+}
+.operation-values details {
+  border-top: 1px solid #e0e7e4;
+}
+.operation-values summary {
+  min-height: 28px;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  color: #52605b;
+  cursor: pointer;
+  font-size: 9px;
+}
+.operation-value-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px;
+}
+.operation-value-grid section {
+  min-width: 0;
+}
+.operation-value-grid span {
+  color: var(--muted);
+  font-size: 8px;
+}
+.operation-value-grid pre {
+  max-height: 120px;
+  margin: 3px 0 0;
+  padding: 6px;
+  overflow: auto;
+  background: #f4f6f5;
+  font-size: 8px;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+@media (max-width: 700px) {
+  .codex-composer-controls {
+    align-items: flex-end;
+    flex-wrap: wrap;
+  }
+  .composer-native-controls {
+    width: 100%;
+    overflow-x: auto;
+  }
+  .clarification-segment {
+    flex: 0 0 auto;
+  }
+  .operation-receipt {
+    width: 100%;
+    margin-right: 0;
+  }
+  .operation-value-grid {
+    grid-template-columns: 1fr;
+  }
+}
+.operation-receipt footer {
+  margin-top: 8px;
+  display: flex;
+  justify-content: flex-end;
+  gap: 5px;
+}
+.operation-receipt footer button,
+.operation-conflict > button,
+.operation-force-confirm button,
+.operation-route-link {
+  min-height: 27px;
+  padding: 4px 8px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: white;
+  font-size: 9px;
+}
+.operation-receipt footer .primary {
+  background: var(--green);
+  color: white;
+}
+.operation-route-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--blue);
+  text-decoration: none;
+}
+.operation-conflict {
+  margin-top: 8px;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 5px;
+}
+.operation-conflict details {
+  min-width: 0;
+  padding: 5px;
+  border: 1px solid var(--line);
+  border-radius: 5px;
+}
+.operation-conflict pre {
+  max-height: 90px;
+  overflow: auto;
+  font-size: 8px;
+}
+.operation-conflict .danger {
+  grid-column: 1/-1;
+  color: #a22;
+}
+.operation-force-confirm {
+  grid-column: 1/-1;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 5px;
+  color: #922;
+  font-size: 9px;
+}
+.operation-force-confirm span {
+  margin-right: auto;
+}
+
+/* Runtime chooser */
+.terminal-runtime-backdrop {
+  position: fixed;
+  z-index: 100;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  background: rgba(15, 25, 22, 0.24);
+}
+.terminal-runtime-selector {
+  width: min(390px, calc(100vw - 24px));
+  padding: 10px;
+  border: 1px solid #bdcdc7;
+  border-radius: 13px;
+  background: white;
+  box-shadow: 0 24px 70px rgba(0, 0, 0, 0.25);
+}
+.terminal-runtime-selector > header {
+  padding: 4px 4px 9px;
+  display: flex;
+  justify-content: space-between;
+}
+.terminal-runtime-selector header div {
+  display: grid;
+}
+.terminal-runtime-selector header small {
+  color: var(--muted);
+  font-size: 9px;
+}
+.terminal-runtime-selector header button {
+  border: 0;
+  background: transparent;
+}
+.terminal-runtime-selector > button {
+  width: 100%;
+  padding: 10px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  text-align: left;
+}
+.terminal-runtime-selector > button:not(:disabled):hover {
+  background: #edf4f1;
+}
+.terminal-runtime-selector > button:disabled {
+  opacity: 0.55;
+}
+.terminal-runtime-selector > button span {
+  display: grid;
+}
+.terminal-runtime-selector > button small {
+  color: var(--muted);
+  font-size: 9px;
+}
+.native-plan-label {
+  padding: 2px 5px;
+  border: 1px solid #9fc8b9;
+  border-radius: 5px;
+  color: var(--green);
+  font-size: 8px;
+}
+
+@media (max-width: 700px) {
+  .composer-shortcut {
+    display: none;
+  }
+  .goal-editor {
+    grid-template-columns: 1fr;
+  }
+  .goal-editor footer {
+    grid-column: 1;
+  }
+  .operation-conflict {
+    grid-template-columns: 1fr;
+  }
+  .composer-native-menu {
+    position: fixed;
+    right: 10px;
+    bottom: 74px;
+    left: 10px;
+    width: auto;
+  }
+  .assist-goal-card {
+    margin-inline: 7px;
+  }
+}

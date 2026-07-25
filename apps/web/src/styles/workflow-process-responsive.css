@@ -1,0 +1,182 @@
+/* Keep dense process surfaces readable without changing their geometry. */
+.workflow-coverage-title span,
+.workflow-stream-main > span,
+.workflow-stream-progress span,
+.workflow-phase b,
+.workflow-phase small {
+  font-size: 10px;
+}
+.workflow-coverage-title strong {
+  font-size: 11px;
+}
+.workflow-process-stream header p {
+  font-size: 12px;
+}
+.workflow-task-sequence {
+  font-size: 11px;
+}
+.workflow-full-process .workflow-task-stage,
+.workflow-full-process .task-status,
+.workflow-task-quick-preview .task-status {
+  font-size: 11px;
+}
+.workflow-full-process .task-attempt {
+  font-size: 10px;
+}
+.workflow-full-process[data-density='compact'] .workflow-task-main h3 {
+  font-size: 13px;
+}
+.workflow-full-process[data-density='comfortable'] .workflow-task-main h3 {
+  margin-block: 1px;
+  font-size: 14px;
+}
+.workflow-full-process[data-density='detailed'] .workflow-task-summary-band {
+  padding-block: 4px;
+}
+.workflow-full-process[data-density='detailed'] .workflow-task-main h3 {
+  margin-block: 2px;
+  font-size: 14px;
+}
+.workflow-task-primary-line > p,
+.workflow-task-copy p {
+  font-size: 11px;
+}
+.workflow-code-bubble code {
+  font-size: 10px;
+}
+.workflow-task-fact,
+.workflow-task-fact strong,
+.workflow-task-attention,
+.workflow-task-attention small {
+  font-size: 10px;
+}
+.workflow-task-fact small,
+.workflow-task-overview small {
+  font-size: 9px;
+}
+.workflow-task-overview strong {
+  font-size: 11px;
+}
+.workflow-task-details-band > section > header strong,
+.workflow-task-inspector-sections > section > header strong {
+  font-size: 11px;
+}
+.workflow-task-details-band > section > header small,
+.workflow-task-inspector-sections > section > header small {
+  font-size: 10px;
+}
+.workflow-detail-list > span,
+.workflow-detail-list > em {
+  font-size: 11px;
+}
+.workflow-detail-list .workflow-detail-empty,
+.workflow-detail-empty {
+  font-size: 10px;
+}
+.workflow-contract-columns > div > strong,
+.workflow-contract-columns code,
+.workflow-contract-columns small {
+  font-size: 10px;
+}
+.workflow-detail-list.asset-versions > span,
+.workflow-detail-list.asset-versions small,
+.workflow-task-tags span {
+  font-size: 10px;
+}
+.workflow-task-inspector-heading > span,
+.workflow-task-inspector-heading > small,
+.workflow-task-inspector-state > small {
+  font-size: 10px;
+}
+.workflow-task-inspector-sections .workflow-task-copy p {
+  font-size: 12px;
+}
+.workflow-task-inspector-empty p {
+  font-size: 11px;
+}
+.workflow-task-quick-preview > header > span:first-child {
+  font-size: 10px;
+}
+.workflow-task-quick-preview > header > strong {
+  font-size: 13px;
+}
+.workflow-task-quick-preview .workflow-task-copy p {
+  font-size: 11px;
+}
+@media (max-width: 900px) {
+  .workflow-full-process[data-density='detailed'] .workflow-task-support {
+    flex-wrap: nowrap;
+    gap-inline: 7px;
+    overflow: hidden;
+  }
+  .workflow-full-process[data-density='detailed'] .workflow-task-highlights {
+    flex: 1 1 auto;
+    flex-wrap: nowrap;
+    overflow: hidden;
+  }
+  .workflow-full-process[data-density='detailed'] .workflow-code-bubble {
+    flex: 1 1 120px;
+  }
+  .workflow-full-process[data-density='detailed'] .workflow-task-overview {
+    flex: 0 1 auto;
+    flex-wrap: nowrap;
+  }
+}
+@media (max-width: 600px) {
+  .workflow-phase b {
+    font-size: 8px;
+  }
+  .workflow-full-process[data-density='detailed'] .workflow-task-copy p {
+    font-size: 9px;
+  }
+  .workflow-full-process[data-density='detailed'] .workflow-task-support {
+    display: grid;
+    gap: 2px;
+  }
+  .workflow-full-process[data-density='detailed'] .workflow-task-highlights {
+    width: 100%;
+  }
+  .workflow-full-process[data-density='detailed'] .workflow-code-bubble {
+    flex: 1;
+  }
+  .workflow-full-process[data-density='detailed'] .workflow-task-overview {
+    flex-wrap: nowrap;
+  }
+}
+.workflow-process-master,
+.workflow-task-inspector,
+.workflow-replan-diff > section {
+  scrollbar-color: #4a5b55 #15191b;
+  scrollbar-width: thin;
+}
+.workflow-process-master::-webkit-scrollbar,
+.workflow-task-inspector::-webkit-scrollbar,
+.workflow-replan-diff > section::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+.workflow-process-master::-webkit-scrollbar-track,
+.workflow-task-inspector::-webkit-scrollbar-track,
+.workflow-replan-diff > section::-webkit-scrollbar-track,
+.workflow-process-master::-webkit-scrollbar-corner,
+.workflow-task-inspector::-webkit-scrollbar-corner,
+.workflow-replan-diff > section::-webkit-scrollbar-corner {
+  background: #15191b;
+}
+.workflow-process-master::-webkit-scrollbar-thumb,
+.workflow-task-inspector::-webkit-scrollbar-thumb,
+.workflow-replan-diff > section::-webkit-scrollbar-thumb {
+  border: 2px solid #15191b;
+  border-radius: 5px;
+  background: #4a5b55;
+}
+.workflow-process-master::-webkit-scrollbar-thumb:hover,
+.workflow-task-inspector::-webkit-scrollbar-thumb:hover,
+.workflow-replan-diff > section::-webkit-scrollbar-thumb:hover {
+  background: #5f796e;
+}
+.workflow-process-master::-webkit-scrollbar-button,
+.workflow-task-inspector::-webkit-scrollbar-button,
+.workflow-replan-diff > section::-webkit-scrollbar-button {
+  display: none;
+}
