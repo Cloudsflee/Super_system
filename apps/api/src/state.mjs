@@ -58,6 +58,7 @@ import { recoverInvalidDeliveryPullRequestClaimsInState } from './delivery-recov
 import { recoverPullRequestIntentsInState } from './pull-request-intent-domain.mjs';
 import { promoteLegacyExecutionHistoryInState } from './legacy-execution-promotion.mjs';
 let lastMigration = null;
+const STATE_FILE_REPLACE_RETRIES = 100;
 export async function ensureRuntime() {
   await ensureRuntimeDirectories();
   if (!fs.existsSync(STATE_FILE)) return writeState(bootstrapState());
@@ -610,7 +611,7 @@ async function replaceStateFile(source, target) {
       await fsp.rename(source, target);
       return;
     } catch (error) {
-      if (!['EPERM', 'EACCES', 'EBUSY'].includes(error.code) || attempt >= 20) throw error;
+      if (!['EPERM', 'EACCES', 'EBUSY'].includes(error.code) || attempt >= STATE_FILE_REPLACE_RETRIES) throw error;
       await new Promise((resolve) => setTimeout(resolve, Math.min(100, 10 * (attempt + 1))));
     }
   }
