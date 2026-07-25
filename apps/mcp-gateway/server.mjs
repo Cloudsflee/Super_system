@@ -1,4 +1,5 @@
 import http from 'node:http';
+import { AIWS_VERSION } from '../../packages/shared/src/version.mjs';
 import { gatewayConfig } from './src/config.mjs';
 import { GatewayError, McpGatewayRuntime } from './src/runtime.mjs';
 
@@ -9,7 +10,12 @@ const server = http.createServer(async (req, res) => {
   try {
     const url = new URL(req.url || '/', 'http://aiws-gateway.local');
     if (req.method === 'GET' && url.pathname === '/health')
-      return json(res, 200, { status: 'ok', service: 'aiws-mcp-gateway', version: '1.8.0', ...runtime.snapshot() });
+      return json(res, 200, {
+        status: 'ok',
+        service: 'aiws-mcp-gateway',
+        version: AIWS_VERSION,
+        ...runtime.snapshot()
+      });
     if (!['/mcp', '/api/mcp'].includes(url.pathname)) throw new GatewayError(404, 'mcp_gateway_not_found');
     if (!['GET', 'POST', 'DELETE'].includes(req.method || ''))
       throw new GatewayError(405, 'mcp_gateway_method_not_allowed');

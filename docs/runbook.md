@@ -1,18 +1,18 @@
-# V1.9 运行与验收手册
+# V2.0 运行与验收手册
 
 ## 当前状态
 
-V1.9 默认离线门禁、MCP contract、两级工作流、四层 Assist、Delivery 和独立卷迁移专项均纳入发布流程。正式 Compose 使用 `aiws-data-v19`；`aiws-data-v18` 只在首次切换中作为只读源。V1.8 报告和 schema 17 状态保留为只读基线。真实 Codex、GitHub 与 cc-switch 验收仍需显式 opt-in，默认结果不能替代 live 结果。
+V2.0 默认离线门禁覆盖系统上下文协议、全域投影、REST/MCP、Context Pack v4、两级工作流、Assist、Delivery、六视口浏览器和 10,000 节点性能。正式 Compose 使用 `aiws-v20` 与 `aiws-data-v20`；`aiws-data-v19` 只作为只读迁移源和 V1.10 恢复点。历史 catalog、测试报告与旧 schema 状态保持只读。真实 Codex、GitHub 与 cc-switch 验收仍需显式 opt-in，默认结果不能替代 live 结果。
 
 ## 正式容器切换
 
-1. 执行 `scripts/aiws.ps1 verify` 或 `scripts/aiws.sh verify`，再执行 `up`。首次 `up` 会停止 V1.8 和 4318 preview，通过临时迁移卷克隆只读 `aiws-data-v18`，启动 V1.9 并验证 schema 18、记录 ID、文件清单和迁移 manifest。
-2. 迁移失败时，默认保留源卷和失败目标卷并恢复此前运行的旧容器。只有已经接受丢弃旧数据时，才使用 `-DiscardUnmigratable` / `--discard-unmigratable`。
-3. `up` 成功后会重新执行活动 Profile Probe。外部 Provider 失败只会让 Setup 降级，不会回滚已验收数据。
-4. 检查 `http://127.0.0.1:4317/api/health`、页面和核心数据，再执行 `purge-legacy -Confirm` / `purge-legacy --confirm`。
-5. 清理命令要求 4317 上的 `aiws-app:1.9.0` healthy、目标卷 schema 18、迁移凭据有效且无旧 Runner 引用。它只在独立确认后删除列明的旧 AIWS 资源与历史备份，不操作 Opsbot、DotAI、Langfuse 或匿名卷。
+1. 执行 `scripts/aiws.ps1 verify` 或 `scripts/aiws.sh verify`，再执行 `up`。首次 `up` 等待活动执行静默，通过临时迁移卷归档并克隆只读 `aiws-data-v19`，停止 V1.10 app 后只在 `aiws-data-v20` 执行 schema 19→20。
+2. 升级器物化确定性 Markdown、重建 MiniSearch，并验证 clone manifest、CAS、投影任务、覆盖率、源记录 ID 和 acceptance receipt 后才启动 `aiws-v20`。
+3. 迁移、启动或验收失败时，停止 V2.0、恢复先前运行的 V1.10 容器，并保留源卷和失败目标卷用于调查；没有丢弃不可迁移数据的快捷参数。
+4. 已存在非空 `aiws-data-v20` 时只允许复用已验收目标，不再从源卷覆盖。成功后检查 `http://127.0.0.1:4317/api/health`、Context Map 页面与 Owner `GET /context/v1/status`。
+5. `down` 保留两个卷；`reset --confirm` / `reset -Confirm` 只删除 `aiws-data-v20`。V2.0 验收后仍不得自动删除 `aiws-data-v19`。
 
-清理后不再保留旧数据恢复点。完整边界和最终哈希见 [`v1.6-cutover.md`](v1.6-cutover.md)。
+发布 transcript 位于 `.ai-workspace/release/v20-cutover-latest.json`；完整自动化由 `tests/release/v20-volume-flow.test.mjs` 覆盖。
 
 ## 启动与基础检查
 
@@ -31,7 +31,7 @@ V1.9 默认离线门禁、MCP contract、两级工作流、四层 Assist、Deliv
 5. confirm 在单次 state mutation 中保存 confirmed Brief、workflow、nodes 与 contracts；重复 confirm 返回同一结果。
 6. trash/restore 使用结构化 metadata。purge 要求项目名，可删除受管内容或保留到 `.ai-workspace/exports`，不会删除外部源或远端。
 
-## V1.9 两级工作流与 Delivery
+## 两级工作流与 Delivery
 
 1. 顶层只允许 1–12 个可独立验收的 Workstream；Task 只能属于一个 Workstream，依赖只能连接同层节点，最大深度固定为 2。
 2. 初始 Codex 候选限制为 1–6 个 Workstream、每个 1–12 个 Task，并必须提供分类、拆分依据、Brief 证据、置信度、DAG 和仓库意图。critic 任一失败会废弃整份候选。
@@ -41,6 +41,16 @@ V1.9 默认离线门禁、MCP contract、两级工作流、四层 Assist、Deliv
 6. 项目可连接多个 GitHub 仓库；Workstream 可声明多个目标，Task 最多一个写目标并可有多个只读依赖。跨仓库交付拆成多个 Task 和 Draft PR。
 7. 编码 Workstream 首次执行前批准 Delivery Policy，限定 repository、base ref、path prefixes、测试命令与自动化权限。策略撤销、过期或变更后必须重新批准。
 8. Delivery 固定执行 fetch/base SHA、隔离 worktree/branch、Codex、路径与 secret 检查、测试、commit、push、Draft PR。测试失败或路径越界时保留 worktree，但不得 commit、push 或创建 PR。
+
+## 系统上下文地图
+
+1. `/context` 提供 Owner 全局地图，`/projects/<projectId>/context` 只展示当前项目可见节点；全局入口不会扩大项目会话内 AI 的权限。
+2. 地图正文是只读投影。业务修改必须回到 Project、Workflow、Asset、Assist、配置或审计等权威来源，禁止从 Markdown 反向写状态。
+3. REST 使用 `/context/v1/map|search|nodes|selections|policy`；Owner 管理使用 `/context/v1/status|rebuild`。MCP 使用 `aiws_context` 的 `map/search/read/explain_selection` 和对应 `aiws://context/...` resources。
+4. `context:read` 与 `context:admin` 只开放上下文入口，不替代节点所属的 domain scope、Project ACL 或 Exchange Grant。用户固定项也必须重新经过权限、新鲜度和敏感级裁决。
+5. Vault 值、token、Cookie、私钥、原始凭据和宿主绝对路径不得进入正文、索引、摘要、选择审计、API 或日志。二进制只投影清单、hash、媒体类型、大小和描述。
+6. 当前文档版本始终保留；选择审计、Context Pack 或语义摘要引用的历史版本按其生命周期保留。其余超过 30 天的投影版本元数据会在状态 mutation 或启动恢复时回收。
+7. 读取当前脏节点会先物化并核对源 hash 与 CAS hash。失败返回 `context_projection_unavailable`，不得静默回退到旧正文；损坏的 `.context-index/minisearch-v1.json` 会自动重建。
 
 ## Assist、Terminal 与审批
 
@@ -75,7 +85,7 @@ V1.9 默认离线门禁、MCP contract、两级工作流、四层 Assist、Deliv
 
 ## 提交与历史门禁
 
-首次克隆后执行 `corepack pnpm hooks:install`。向 `main` 推送时，仓库的 `pre-push` hook 要求工作树干净，并以远端 `main` SHA 为 impact base 顺序执行 `test:v175:pr` 与 `test:v18:pr`；也可随时手动执行 `corepack pnpm gate:pre-push`。不得使用 `--no-verify` 绕过正式交付门禁。
+首次克隆后执行 `corepack pnpm hooks:install`。向 `main` 推送时，仓库的 `pre-push` hook 要求工作树干净，并以远端 `main` SHA 为 impact base 顺序执行 `test:v175:pr`、`test:v18:pr` 与 `test:v20:pr`；也可随时手动执行 `corepack pnpm gate:pre-push`。不得使用 `--no-verify` 绕过正式交付门禁。
 
 V1.75 的 `1.7.0` / schema `16` 与 V1.8 的 `1.8.0` / schema `17` 是只读历史 catalog，不是当前产品必须保持的值。后续版本只能按以下规则扩展：
 
@@ -100,9 +110,9 @@ corepack pnpm audit:acceptance
 corepack pnpm verify
 ```
 
-`verify` 会再次运行 lint、typecheck、全部 integration、Prisma migration check、Web build、E2E smoke、三视口 Playwright 和 acceptance audit。默认套件使用临时 `AIWS_HOME`，不读取个人凭据执行外部写入。
+`verify` 会运行 V2.0 plan/catalog/coverage/impact、历史兼容门禁、lint、typecheck、全部 unit/integration/release、Prisma migration check、Web build、bundle budget、E2E 与 acceptance audit。默认套件使用临时 `AIWS_HOME`，不读取个人凭据执行外部写入。
 
-发布前还应执行 `corepack pnpm test:v19:full` 与 `corepack pnpm test:v19:release`。两者由 `scripts/v19-runner.mjs` 按 catalog 执行，并在 `.ai-workspace/test-reports/v1.9/<run-id>/` 生成 Markdown、JSON 和脱敏日志。release 专项覆盖 schema 17 只读克隆、17→18 原子迁移、runner 镜像升级、记录 ID/文件保全、回执复验和 V1.8 源字节不变。`corepack pnpm test:v18:release` 与 `docs/v1.8-cutover.md` 继续作为只读历史基线使用。
+发布前执行 `corepack pnpm test:v20:full` 与 `corepack pnpm test:v20:release`。`scripts/v20-runner.mjs` 按 catalog 执行，并在 `.ai-workspace/test-reports/v2.0/<run-id>/` 生成 Markdown、JSON 和脱敏日志。release 专项覆盖 schema 19 只读克隆、19→20 原子迁移、投影与索引验收、Runner 镜像升级、源记录/文件保全、失败回滚和 V1.10 源卷不变。V1.8、V1.9 与 V1.10 release 套件继续作为兼容基线运行。
 
 真实 MCP 建仓与 Draft PR 验收使用 `$env:AIWS_MCP_LIVE_SMOKE_CONFIRM='create-private-github-repository'; corepack pnpm test:v19:live`。未提供精确确认值时，runner 生成 `BLOCKED` 报告且不执行远端创建。
 
@@ -122,6 +132,6 @@ Live 不属于默认 `verify`。它必须使用隔离的 AIWS state/Vault、临�
 
 正式 soak 另行执行 `corepack pnpm test:v18:soak`；固定 120 分钟，缩短运行不得计作发布通过。
 
-## 本轮记录
+## 历史 Live 记录
 
-2026-07-17 的最新 Full `full-20260717T151414Z-42400` 与 Release `release-20260717T130854Z-36904` 均为 `PASS`。Full 已覆盖项目启动期单“编码”工作流、Codex 顶层节点约束和替换式工作流提案。受控 Live `live-20260717T073825Z-9880` 复用了网页 Vault 的隔离副本并为 `PASS`：Codex MCP 只读审计未改变宿主 workspace；GitHub draft PR `Cloudsflee/---#3` 已关闭且未合并，临时分支 `aiws/node-2b8c723f` 已删除，短期 MCP clients 和所有隔离资源已清理。正式 120 分钟 Soak 尚未执行。
+2026-07-17 的 V1.9 Full `full-20260717T151414Z-42400`、Release `release-20260717T130854Z-36904` 与受控 Live `live-20260717T073825Z-9880` 均为历史 `PASS` 证据。它们不能替代 V2.0 的 `test:v20:full`、`test:v20:release` 或新的 opt-in live 结果。正式 120 分钟 Soak 尚未执行。

@@ -8,7 +8,6 @@ import {
   validateState17,
   V17_COLLECTIONS
 } from './state-migration-v17.mjs';
-import { AIWS_RUNNER_IMAGE } from '../../../packages/shared/src/version.mjs';
 import { collections as STATE_COLLECTIONS } from './config.mjs';
 export const STATE_SCHEMA_VERSION = 18;
 export const V18_COLLECTIONS = Object.freeze([
@@ -33,6 +32,7 @@ export const V18_COLLECTIONS = Object.freeze([
 export const V19_COLLECTIONS = V18_COLLECTIONS;
 export { canonicalStateHash, normalizeOfficialRunnerImagesV18, sha256 };
 export const V18_LEGACY_OFFICIAL_RUNNER_PATTERN = /^aiws-codex-runner:1\.[0-9]\.0-codex-\d+\.\d+\.\d+$/;
+export const V19_RUNNER_IMAGE = 'aiws-codex-runner:1.10.0-codex-0.144.0';
 const TERMINAL_GENERATION_STATUSES = new Set(['completed', 'failed', 'cancelled', 'superseded']);
 const VALID_SCOPES = new Set(['project', 'workflow', 'workstream', 'task', 'node']);
 export function migrateState17To18(source, { timestamp = new Date().toISOString() } = {}) {
@@ -68,7 +68,7 @@ export function migrateState17To18(source, { timestamp = new Date().toISOString(
 }
 export function normalizeOfficialRunnerImagesV19(
   state,
-  { targetImage = AIWS_RUNNER_IMAGE, timestamp = new Date().toISOString() } = {}
+  { targetImage = V19_RUNNER_IMAGE, timestamp = new Date().toISOString() } = {}
 ) {
   const changedProfiles = new Set(),
     changedFields = [];

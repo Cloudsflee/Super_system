@@ -11,11 +11,12 @@ import {
   ToolListChangedNotificationSchema,
   UnsubscribeRequestSchema
 } from '@modelcontextprotocol/sdk/types.js';
+import { AIWS_VERSION } from '../../../packages/shared/src/version.mjs';
 
 export function createForwardingServer(remote) {
   const capabilities = remote.getServerCapabilities() || {};
   const local = new Server(
-    { name: 'aiws-mcp-gateway', version: '1.8.0' },
+    { name: 'aiws-mcp-gateway', version: AIWS_VERSION },
     {
       capabilities: {
         ...(capabilities.tools ? { tools: { listChanged: Boolean(capabilities.tools.listChanged) } } : {}),

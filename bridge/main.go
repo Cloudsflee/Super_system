@@ -24,7 +24,7 @@ import (
 )
 
 const (
-	bridgeVersion   = "1.10.0"
+	bridgeVersion   = "2.0.0"
 	protocolVersion = 1
 )
 

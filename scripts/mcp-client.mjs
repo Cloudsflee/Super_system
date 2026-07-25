@@ -8,7 +8,7 @@ if (!token) {
   process.stderr.write('AIWS_MCP_TOKEN is required\n');
   process.exit(2);
 }
-const client = new Client({ name: 'aiws-developer-client', version: '1.10.0' }, { capabilities: {} });
+const client = new Client({ name: 'aiws-developer-client', version: '2.0.0' }, { capabilities: {} });
 const transport = new StreamableHTTPClientTransport(url, {
   requestInit: { headers: { authorization: `Bearer ${token}` } }
 });

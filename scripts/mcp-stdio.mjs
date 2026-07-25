@@ -23,14 +23,14 @@ if (!token) {
   process.exit(2);
 }
 
-const remote = new Client({ name: 'aiws-stdio-bridge', version: '1.10.0' }, { capabilities: {} });
+const remote = new Client({ name: 'aiws-stdio-bridge', version: '2.0.0' }, { capabilities: {} });
 const remoteTransport = new StreamableHTTPClientTransport(url, {
   requestInit: { headers: { authorization: `Bearer ${token}` } }
 });
 await remote.connect(remoteTransport);
 const capabilities = remote.getServerCapabilities() || {};
 const local = new Server(
-  { name: 'aiws-stdio-bridge', version: '1.10.0' },
+  { name: 'aiws-stdio-bridge', version: '2.0.0' },
   {
     capabilities: {
       ...(capabilities.tools ? { tools: { listChanged: Boolean(capabilities.tools.listChanged) } } : {}),

@@ -5,7 +5,7 @@ services:
       AIWS_MCP_GATEWAY_SECRET_FILE: /run/secrets/aiws_mcp_gateway
       AIWS_PUBLIC_MCP_URL: ${AIWS_PUBLIC_MCP_URL:?set AIWS_PUBLIC_MCP_URL to the HTTPS team MCP endpoint}
       AIWS_INTERNAL_MCP_URL: http://mcp-gateway:4319/mcp
-      AIWS_RUNNER_NETWORK: ${AIWS_MCP_AGENT_NETWORK:-aiws-v19-mcp-agents}
+      AIWS_RUNNER_NETWORK: ${AIWS_MCP_AGENT_NETWORK:-aiws-v20-mcp-agents}
     secrets:
       - aiws_mcp_gateway
     networks:
@@ -13,7 +13,7 @@ services:
       - mcp-core
 
   mcp-gateway:
-    image: ${AIWS_MCP_GATEWAY_IMAGE:-aiws-mcp-gateway:1.10.0}
+    image: ${AIWS_MCP_GATEWAY_IMAGE:-aiws-mcp-gateway:2.0.0}
     build:
       context: .
       dockerfile: Dockerfile
@@ -54,5 +54,5 @@ networks:
   mcp-core:
     internal: true
   mcp-agents:
-    name: ${AIWS_MCP_AGENT_NETWORK:-aiws-v19-mcp-agents}
+    name: ${AIWS_MCP_AGENT_NETWORK:-aiws-v20-mcp-agents}
     attachable: true

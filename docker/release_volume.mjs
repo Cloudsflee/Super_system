@@ -1,10 +1,12 @@
 #!/usr/bin/env node
+import fsp from 'node:fs/promises';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { canonicalJson, validateState15 } from '../apps/api/src/state-migration-v15.mjs';
 import { validateState16 } from '../apps/api/src/state-migration-v16.mjs';
 import { validateState17 } from '../apps/api/src/state-migration-v17.mjs';
 import { validateState18 } from '../apps/api/src/state-migration-v18.mjs';
+import { validateState19 } from '../apps/api/src/state-migration-v19.mjs';
 import {
   atomicJsonWrite,
   auditVolume,
@@ -28,7 +30,22 @@ import {
   withDocumentHash,
   withoutInventoryEntries
 } from './release-volume-validation.mjs';
+import {
+  V20_SOURCE_VOLUME,
+  V20_TARGET_VOLUME,
+  acceptVolumeMigrationV20,
+  validateV20ReleaseTarget,
+  verifyClonedVolumeV20
+} from './release-volume-v20.mjs';
 
+export {
+  V20_RECEIPT_RELATIVE_PATH,
+  V20_SOURCE_VOLUME,
+  V20_TARGET_VOLUME,
+  acceptVolumeMigrationV20,
+  validateV20ReleaseTarget,
+  verifyClonedVolumeV20
+} from './release-volume-v20.mjs';
 export { auditVolume, removeLegacySchemaBackups, stateAudit, volumeInventory };
 
 export const SOURCE_VOLUME = 'aiws-data-v14';
@@ -794,8 +811,10 @@ export async function validateV19ReleaseTarget(targetRoot, expectedTargetVolume 
 
 async function cli() {
   const [command, ...args] = process.argv.slice(2);
+  const modern = await executeModernReleaseCommand(command, args);
   let result;
-  if (command === 'audit') result = await auditVolume(required(args[0], 'volume_root_required'));
+  if (modern.matched) result = modern.result;
+  else if (command === 'audit') result = await auditVolume(required(args[0], 'volume_root_required'));
   else if (command === 'clone-verify')
     result = await verifyClonedVolume({
       sourceRoot: required(args[0], 'source_root_required'),
@@ -862,32 +881,78 @@ async function cli() {
     });
   else if (command === 'check-v18')
     result = await validateV18ReleaseTarget(required(args[0], 'target_root_required'), args[1] || V18_TARGET_VOLUME);
-  else if (command === 'clone-verify-v19')
-    result = await verifyClonedVolumeV19({
-      sourceRoot: required(args[0], 'source_root_required'),
-      targetRoot: required(args[1], 'target_root_required'),
-      manifestPath: required(args[2], 'clone_manifest_path_required'),
-      archiveSha256: required(args[3], 'archive_sha_required'),
-      sourceVolume: args[4] || V19_SOURCE_VOLUME,
-      targetVolume: args[5] || V19_TARGET_VOLUME
-    });
-  else if (command === 'accept-v19')
-    result = await acceptVolumeMigrationV19({
-      mode: required(args[0], 'acceptance_mode_required'),
-      targetRoot: required(args[1], 'target_root_required'),
-      sourceRoot: optional(args[2]),
-      cloneManifestPath: optional(args[3]),
-      archiveSha256: optional(args[4]),
-      migrationVolume: optional(args[5]),
-      sourceVolume: args[6] || V19_SOURCE_VOLUME,
-      targetVolume: args[7] || V19_TARGET_VOLUME
-    });
-  else if (command === 'check-v19')
-    result = await validateV19ReleaseTarget(required(args[0], 'target_root_required'), args[1] || V19_TARGET_VOLUME);
-  else if (command === 'purge-schema-backups')
-    result = { removed: await removeLegacySchemaBackups(required(args[0], 'target_root_required')) };
   else throw releaseError('release_volume_usage');
   process.stdout.write(`${JSON.stringify(result)}\n`);
+}
+
+async function executeModernReleaseCommand(command, args) {
+  if (command === 'clone-verify-v19')
+    return {
+      matched: true,
+      result: await verifyClonedVolumeV19({
+        sourceRoot: required(args[0], 'source_root_required'),
+        targetRoot: required(args[1], 'target_root_required'),
+        manifestPath: required(args[2], 'clone_manifest_path_required'),
+        archiveSha256: required(args[3], 'archive_sha_required'),
+        sourceVolume: args[4] || V19_SOURCE_VOLUME,
+        targetVolume: args[5] || V19_TARGET_VOLUME
+      })
+    };
+  if (command === 'accept-v19')
+    return {
+      matched: true,
+      result: await acceptVolumeMigrationV19({
+        mode: required(args[0], 'acceptance_mode_required'),
+        targetRoot: required(args[1], 'target_root_required'),
+        sourceRoot: optional(args[2]),
+        cloneManifestPath: optional(args[3]),
+        archiveSha256: optional(args[4]),
+        migrationVolume: optional(args[5]),
+        sourceVolume: args[6] || V19_SOURCE_VOLUME,
+        targetVolume: args[7] || V19_TARGET_VOLUME
+      })
+    };
+  if (command === 'check-v19')
+    return {
+      matched: true,
+      result: await validateV19ReleaseTarget(required(args[0], 'target_root_required'), args[1] || V19_TARGET_VOLUME)
+    };
+  if (command === 'clone-verify-v20')
+    return {
+      matched: true,
+      result: await verifyClonedVolumeV20({
+        sourceRoot: required(args[0], 'source_root_required'),
+        targetRoot: required(args[1], 'target_root_required'),
+        manifestPath: required(args[2], 'clone_manifest_path_required'),
+        archiveSha256: required(args[3], 'archive_sha_required'),
+        sourceVolume: args[4] || V20_SOURCE_VOLUME,
+        targetVolume: args[5] || V20_TARGET_VOLUME
+      })
+    };
+  if (command === 'accept-v20')
+    return {
+      matched: true,
+      result: await acceptVolumeMigrationV20({
+        targetRoot: required(args[0], 'target_root_required'),
+        sourceRoot: required(args[1], 'source_root_required'),
+        cloneManifestPath: required(args[2], 'clone_manifest_path_required'),
+        archiveSha256: required(args[3], 'archive_sha_required'),
+        migrationVolume: optional(args[4]),
+        sourceVolume: args[5] || V20_SOURCE_VOLUME,
+        targetVolume: args[6] || V20_TARGET_VOLUME
+      })
+    };
+  if (command === 'check-v20')
+    return {
+      matched: true,
+      result: await validateV20ReleaseTarget(required(args[0], 'target_root_required'), args[1] || V20_TARGET_VOLUME)
+    };
+  if (command === 'purge-schema-backups')
+    return {
+      matched: true,
+      result: { removed: await removeLegacySchemaBackups(required(args[0], 'target_root_required')) }
+    };
+  return { matched: false, result: null };
 }
 
 function required(value, code) {

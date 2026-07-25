@@ -13,11 +13,13 @@ param(
 $ErrorActionPreference = 'Stop'
 $Root = Split-Path -Parent $PSScriptRoot
 $ComposeFile = Join-Path $Root 'compose.yml'
-$Volume = 'aiws-data-v19'
-$AppImage = if ($env:AIWS_APP_IMAGE) { $env:AIWS_APP_IMAGE } else { 'aiws-app:1.10.0' }
-$RunnerImage = if ($env:AIWS_RUNNER_IMAGE) { $env:AIWS_RUNNER_IMAGE } else { 'aiws-codex-runner:1.10.0-codex-0.144.0' }
+$SourceVolume = 'aiws-data-v19'
+$Volume = 'aiws-data-v20'
+$AppImage = if ($env:AIWS_APP_IMAGE) { $env:AIWS_APP_IMAGE } else { 'aiws-app:2.0.0' }
+$RunnerImage = if ($env:AIWS_RUNNER_IMAGE) { $env:AIWS_RUNNER_IMAGE } else { 'aiws-codex-runner:2.0.0-codex-0.144.0' }
 $Port = if ($env:AIWS_PORT) { [int]$env:AIWS_PORT } else { 4317 }
 $env:AIWS_DOCKER_DATA_VOLUME = $Volume
+$env:AIWS_DOCKER_INSTANCE = 'aiws-v20'
 $env:AIWS_APP_IMAGE = $AppImage
 $env:AIWS_RUNNER_IMAGE = $RunnerImage
 
@@ -73,7 +75,7 @@ function Build-Images {
 }
 
 function Build-VerifyImage {
-  $verifyImage = 'aiws-verify:1.10.0'
+  $verifyImage = 'aiws-verify:2.0.0'
   $compatible = $false
   & docker image inspect $verifyImage *> $null
   if ($LASTEXITCODE -eq 0) {
@@ -97,8 +99,8 @@ function Build-VerifyImage {
 }
 
 function Test-VolumeSubpath {
-  $preflight = "aiws-v19-preflight-$([guid]::NewGuid().ToString('N'))"
-  & docker volume create --label 'aiws.owner=aiws-v19-release' --label 'aiws.role=preflight' $preflight *> $null
+  $preflight = "aiws-v20-preflight-$([guid]::NewGuid().ToString('N'))"
+  & docker volume create --label 'aiws.owner=aiws-v20-release' --label 'aiws.role=preflight' $preflight *> $null
   if ($LASTEXITCODE -ne 0) { throw 'volume_preflight_create_failed' }
   try {
     & docker run --rm --entrypoint sh --mount "type=volume,src=$preflight,dst=/data" $RunnerImage -c 'mkdir -p /data/.aiws-preflight'
@@ -201,21 +203,23 @@ switch ($Command) {
     $override = New-ImportOverride
     try {
       $releaseArgs = @(
-        (Join-Path $Root 'scripts\v110-release.mjs'),
+        (Join-Path $Root 'scripts\v20-release.mjs'),
         '--compose-file', $ComposeFile,
-        '--volume', $Volume,
+        '--source-volume', $SourceVolume,
+        '--target-volume', $Volume,
+        '--project-name', 'aiws-v20',
         '--app-image', $AppImage,
         '--runner-image', $RunnerImage,
         '--port', [string]$Port
       )
       if ($override) { $releaseArgs += @('--override', $override) }
       & node @releaseArgs
-      if ($LASTEXITCODE -ne 0) { throw 'v110_release_up_failed' }
+      if ($LASTEXITCODE -ne 0) { throw 'v20_release_up_failed' }
     } finally { if ($override) { Remove-Item -LiteralPath $override -Force } }
   }
   'down' { Invoke-Compose @('down', '--remove-orphans'); Write-Host "数据卷 $Volume 已保留。" }
   'logs' { Invoke-Compose @('logs', '-f', '--tail', '200', 'app') }
-  'status' { Invoke-Compose @('ps'); & docker volume inspect $Volume --format 'data volume: {{.Name}}' 2>$null }
+  'status' { Invoke-Compose @('ps'); & docker volume inspect $Volume --format 'data volume: {{.Name}}' 2>$null; & docker volume inspect $SourceVolume --format 'retained V1.10 volume: {{.Name}}' 2>$null }
   'verify' {
     Invoke-Compose @('config', '--quiet')
     Build-Images
@@ -229,7 +233,7 @@ switch ($Command) {
       if ($LASTEXITCODE -ne 0) { throw 'windows_bridge_export_failed' }
       if (-not (Test-Path -LiteralPath (Join-Path $bridgeVerify 'aiws-bridge.exe') -PathType Leaf)) { throw 'windows_bridge_export_missing' }
     } finally { if (Test-Path -LiteralPath $bridgeVerify) { Remove-Item -LiteralPath $bridgeVerify -Recurse -Force } }
-    & docker run --rm aiws-verify:1.10.0 corepack pnpm verify
+    & docker run --rm aiws-verify:2.0.0 corepack pnpm verify
     if ($LASTEXITCODE -ne 0) { throw 'container_verify_failed' }
   }
   'backup' { Invoke-Backup $Path }

@@ -4,7 +4,7 @@ import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/
 
 export async function connectMcp(baseUrl, token) {
   const client = new Client(
-    { name: 'aiws-live-project-smoke', version: '1.10.0' },
+    { name: 'aiws-live-project-smoke', version: '2.0.0' },
     { capabilities: { resources: { subscribe: true } } }
   );
   const transport = new StreamableHTTPClientTransport(new URL('/api/mcp', `${baseUrl}/`), {

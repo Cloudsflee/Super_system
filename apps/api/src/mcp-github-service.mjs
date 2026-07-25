@@ -95,5 +95,5 @@ function pullNumberFor(change, requested) {
   return value;
 }
 function githubHeaders(token) {
-  return { authorization: `Bearer ${token}`, 'content-type': 'application/json', 'user-agent': 'aiws-v19-mcp' };
+  return { authorization: `Bearer ${token}`, 'content-type': 'application/json', 'user-agent': 'aiws-v20-mcp' };
 }

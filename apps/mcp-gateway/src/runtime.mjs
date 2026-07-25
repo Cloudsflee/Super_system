@@ -4,6 +4,7 @@ import { StreamableHTTPClientTransport, StreamableHTTPError } from '@modelcontex
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
 import { isInitializeRequest } from '@modelcontextprotocol/sdk/types.js';
 import { signMcpGatewayRequest } from '../../../packages/mcp-bridge/src/index.mjs';
+import { AIWS_VERSION } from '../../../packages/shared/src/version.mjs';
 import { createForwardingServer } from './forwarder.mjs';
 
 export class McpGatewayRuntime {
@@ -62,7 +63,7 @@ export class McpGatewayRuntime {
 
   async createSession({ authorization, fingerprint }) {
     const upstream = new Client(
-      { name: 'aiws-mcp-gateway', version: '1.8.0' },
+      { name: 'aiws-mcp-gateway', version: AIWS_VERSION },
       { capabilities: { resources: { subscribe: true } } }
     );
     const upstreamTransport = new StreamableHTTPClientTransport(this.config.coreUrl, {

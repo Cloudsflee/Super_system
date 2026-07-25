@@ -3,9 +3,10 @@ set -euo pipefail
 
 ROOT=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
 COMPOSE_FILE="$ROOT/compose.yml"
-VOLUME=aiws-data-v19
-APP_IMAGE=${AIWS_APP_IMAGE:-aiws-app:1.10.0}
-RUNNER_IMAGE=${AIWS_RUNNER_IMAGE:-aiws-codex-runner:1.10.0-codex-0.144.0}
+SOURCE_VOLUME=aiws-data-v19
+VOLUME=aiws-data-v20
+APP_IMAGE=${AIWS_APP_IMAGE:-aiws-app:2.0.0}
+RUNNER_IMAGE=${AIWS_RUNNER_IMAGE:-aiws-codex-runner:2.0.0-codex-0.144.0}
 PORT=${AIWS_PORT:-4317}
 COMMAND=${1:-status}
 shift || true
@@ -26,7 +27,7 @@ while (($#)); do
   esac
 done
 
-export AIWS_DOCKER_DATA_VOLUME="$VOLUME" AIWS_APP_IMAGE="$APP_IMAGE" AIWS_RUNNER_IMAGE="$RUNNER_IMAGE"
+export AIWS_DOCKER_DATA_VOLUME="$VOLUME" AIWS_DOCKER_INSTANCE=aiws-v20 AIWS_APP_IMAGE="$APP_IMAGE" AIWS_RUNNER_IMAGE="$RUNNER_IMAGE"
 
 compose() { docker compose -f "$COMPOSE_FILE" "$@"; }
 assert_docker() { command -v docker >/dev/null || { echo docker_cli_required >&2; exit 1; }; docker info --format '{{.ServerVersion}}' >/dev/null; docker compose version >/dev/null; }
@@ -59,7 +60,7 @@ build_images() {
   docker build --target production -t "$APP_IMAGE" "$ROOT"
 }
 build_verify_image() {
-  local verify_image=aiws-verify:1.10.0 cache_image
+  local verify_image=aiws-verify:2.0.0 cache_image
   if docker image inspect "$verify_image" >/dev/null 2>&1 && docker run --rm --entrypoint sh --mount "type=bind,src=$ROOT,dst=/source,readonly" "$verify_image" -c 'test -d /app/node_modules && test -d "$(corepack pnpm store path)" && cmp -s /app/pnpm-lock.yaml /source/pnpm-lock.yaml && test "$(codex --version)" = "codex-cli 0.144.0" && (command -v chromium-browser >/dev/null || command -v chromium >/dev/null)'; then
     cache_image="aiws-verify-toolchain:$$-$RANDOM"
     docker tag "$verify_image" "$cache_image"
@@ -73,8 +74,8 @@ build_verify_image() {
   docker build --target verify -t "$verify_image" "$ROOT"
 }
 test_volume_subpath() {
-  local preflight="aiws-v19-preflight-$$-$RANDOM"
-  docker volume create --label aiws.owner=aiws-v19-release --label aiws.role=preflight "$preflight" >/dev/null
+  local preflight="aiws-v20-preflight-$$-$RANDOM"
+  docker volume create --label aiws.owner=aiws-v20-release --label aiws.role=preflight "$preflight" >/dev/null
   set +e
   docker run --rm --entrypoint sh --mount "type=volume,src=$preflight,dst=/data" "$RUNNER_IMAGE" -c 'mkdir -p /data/.aiws-preflight'
   local result=$?
@@ -123,17 +124,17 @@ case "$COMMAND" in
   up)
     build_images; test_volume_subpath; override=$(new_import_override || true)
     trap '[[ -z "${override:-}" ]] || rm -f "$override"' EXIT
-    release_args=("$ROOT/scripts/v110-release.mjs" --compose-file "$COMPOSE_FILE" --volume "$VOLUME" --app-image "$APP_IMAGE" --runner-image "$RUNNER_IMAGE" --port "$PORT")
+    release_args=("$ROOT/scripts/v20-release.mjs" --compose-file "$COMPOSE_FILE" --source-volume "$SOURCE_VOLUME" --target-volume "$VOLUME" --project-name aiws-v20 --app-image "$APP_IMAGE" --runner-image "$RUNNER_IMAGE" --port "$PORT")
     [[ -z "$override" ]] || release_args+=(--override "$override")
     node "${release_args[@]}" ;;
   down) compose down --remove-orphans; echo "数据卷 $VOLUME 已保留。" ;;
   logs) compose logs -f --tail 200 app ;;
-  status) compose ps; docker volume inspect "$VOLUME" --format 'data volume: {{.Name}}' 2>/dev/null || true ;;
+  status) compose ps; docker volume inspect "$VOLUME" --format 'data volume: {{.Name}}' 2>/dev/null || true; docker volume inspect "$SOURCE_VOLUME" --format 'retained V1.10 volume: {{.Name}}' 2>/dev/null || true ;;
   verify)
     compose config --quiet; build_images; build_verify_image
     bridge_export=$(mktemp -d "${TMPDIR:-/tmp}/aiws-bridge-XXXXXX"); trap 'rm -rf "${bridge_export:-}"' EXIT
     docker build --target windows-bridge-export --output "type=local,dest=$bridge_export" "$ROOT"; test -f "$bridge_export/aiws-bridge.exe"
-    docker run --rm "$RUNNER_IMAGE" --version; docker run --rm aiws-verify:1.10.0 corepack pnpm verify ;;
+    docker run --rm "$RUNNER_IMAGE" --version; docker run --rm aiws-verify:2.0.0 corepack pnpm verify ;;
   backup) backup_data ;;
   restore) restore_data ;;
   reset)
