@@ -6,9 +6,10 @@ import { MCP_SPECIAL_CAPABILITIES, MCP_TOOL_NAMES } from '../../apps/api/src/mcp
 import { MCP_SCOPES } from '../../apps/api/src/mcp-client-service.mjs';
 import { collections } from '../../apps/api/src/config.mjs';
 import { missingBaselineItems } from '../../scripts/legacy-baseline-policy.mjs';
-import { resolveV18ImpactBase } from '../../scripts/v18-impact.mjs';
+import { classifyV18ImpactFile, resolveV18ImpactBase } from '../../scripts/v18-impact.mjs';
 
 const coverage = JSON.parse(fs.readFileSync('tests/v18/coverage-map.json', 'utf8'));
+const impactMap = JSON.parse(fs.readFileSync('tests/v18/impact-map.json', 'utf8'));
 const routeBaseline = JSON.parse(fs.readFileSync(coverage.route_baseline_file, 'utf8'));
 const registry = createApiRouteRegistry(apiRoutes);
 const routeKeys = registry.map((item) => `${item.method} ${item.pattern}`);
@@ -17,6 +18,17 @@ const baselineRouteCount = routeBaseline.routes.length;
 assert.equal(resolveV18ImpactBase(undefined, { AIWS_TEST_BASE_SHA: 'remote-main-sha' }), 'remote-main-sha');
 assert.equal(resolveV18ImpactBase('cli-sha', { AIWS_TEST_BASE_SHA: 'remote-main-sha' }), 'cli-sha');
 assert.equal(resolveV18ImpactBase(undefined, {}), 'HEAD');
+for (const file of ['.prettierignore', '.prettierrc.json', 'eslint.config.mjs'])
+  assert.deepEqual(classifyV18ImpactFile(file, impactMap), ['full', 'plan'], `${file} is quality governance`);
+for (const file of ['任务书/source.doc', '当前项目毕业设计任务书/配套文件/check.py'])
+  assert.deepEqual(classifyV18ImpactFile(file, impactMap), ['contract'], `${file} is project documentation`);
+for (const file of [
+  '.prettierignore.bak',
+  'eslint.config.mjs.backup',
+  'archive/任务书/source.doc',
+  '当前项目毕业设计任务书备份/check.py'
+])
+  assert.deepEqual(classifyV18ImpactFile(file, impactMap), [], `${file} stays outside the explicit mappings`);
 assert.equal(baselineRouteCount, coverage.expected_http_routes);
 assert.equal(baselineRouteCount - routeBaseline.v18_routes.length, coverage.expected_legacy_http_routes);
 assert.equal(new Set(routeBaseline.routes).size, baselineRouteCount);

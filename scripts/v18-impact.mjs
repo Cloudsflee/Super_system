@@ -23,11 +23,7 @@ export function collectV18Impact(base = process.env.AIWS_TEST_BASE_SHA || 'HEAD'
   const files = [...changed].filter((file) => !file.startsWith('temp/') && !file.startsWith('.ai-workspace/')).sort();
   const items = files.map((file) => ({
     file,
-    suites: [
-      ...new Set(
-        map.mappings.filter((mapping) => matchesAny(file, mapping.patterns)).flatMap((mapping) => mapping.suites)
-      )
-    ].sort()
+    suites: classifyV18ImpactFile(file, map)
   }));
   return {
     version: '1.8',
@@ -36,6 +32,14 @@ export function collectV18Impact(base = process.env.AIWS_TEST_BASE_SHA || 'HEAD'
     suites: [...new Set(items.flatMap((item) => item.suites))].sort(),
     unclassified: items.filter((item) => !item.suites.length).map((item) => item.file)
   };
+}
+
+export function classifyV18ImpactFile(file, map) {
+  return [
+    ...new Set(
+      map.mappings.filter((mapping) => matchesAny(file, mapping.patterns)).flatMap((mapping) => mapping.suites)
+    )
+  ].sort();
 }
 
 export function resolveV18ImpactBase(cliBase, env = process.env) {

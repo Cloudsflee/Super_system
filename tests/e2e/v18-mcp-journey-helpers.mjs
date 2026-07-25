@@ -51,6 +51,7 @@ export function journeyWorkflowHierarchy() {
           goal: 'Review deterministic evidence',
           task_kind: 'analysis',
           execution_mode: 'assist',
+          capability_tags: ['constraint_analysis', 'acceptance'],
           dependency_ids: ['v18-research']
         }
       ]

@@ -9,7 +9,7 @@ import {
   seedHostCodexProfile,
   waitFor
 } from '../v18/mcp-test-helpers.mjs';
-import { decide, journeyWorkflowHierarchy, readResource, writeJourneyProject } from './v18-mcp-journey-helpers.mjs';
+import { decide, journeyWorkflowHierarchy, readResource } from './v18-mcp-journey-helpers.mjs';
 
 const fixture = await createMcpTestFixture('aiws-v18-journey-', {
   approver: {
@@ -29,8 +29,6 @@ const fixture = await createMcpTestFixture('aiws-v18-journey-', {
 });
 let operator;
 let approver;
-let terminalId = null;
-const evidence = {};
 
 try {
   operator = await fixture.connect(fixture.operator, 'v18-journey-operator');
@@ -82,7 +80,6 @@ try {
   );
   const projectId = draft.project.id;
   const sessionId = draft.assist_session.id;
-  evidence.project_id = projectId;
   assert.equal(draft.project.status, 'draft');
 
   const answers = {
@@ -115,11 +112,18 @@ try {
       params: { id: projectId },
       body: {
         expected_revision: onboarding.workflow_draft.revision,
-        nodes: journeyWorkflowHierarchy()
+        nodes: journeyWorkflowHierarchy(),
+        brief_coverage: {
+          features: ['v18-execution'],
+          acceptance_criteria: ['v18-analysis'],
+          milestones: ['v18-analysis'],
+          risks: ['v18-research']
+        }
       }
     })
   );
   assert.equal(workflowDraft.nodes.length, 4);
+
   const confirmed = resultData(
     await callOperation(operator.client, 'aiws.projects.post.projects.by-id.onboarding.confirm', {
       params: { id: projectId },
@@ -133,8 +137,16 @@ try {
   const executableTask = confirmed.nodes.find((item) => item.role === 'task' && item.task_kind === 'code');
   assert.ok(workstream && executableTask, 'confirmed workflow includes the V1.8 workstream and executable task');
   const nodeId = executableTask.id;
-  evidence.workflow_id = workflowId;
-  evidence.node_id = nodeId;
+  const rejectedFileWrite = await callOperation(
+    operator.client,
+    'aiws.files.put.projects.by-id.files.content',
+    {
+      params: { id: projectId },
+      body: { path: 'index.js', content: 'module.exports = {};\n', node_id: nodeId }
+    },
+    { ok: false }
+  );
+  assert.equal(rejectedFileWrite.error.error, 'workflow_execution_required');
 
   const assistSession = resultData(
     await callOperation(operator.client, 'aiws.assist.post.assist.v3.sessions', {
@@ -181,7 +193,14 @@ try {
     review.changed_files.some((item) => item.path === 'ASSIST.md'),
     true
   );
-  await callOperation(operator.client, 'aiws.assist.post.assist.v3.turns.by-id.review.apply', {
+  const rejectedApply = await callOperation(
+    operator.client,
+    'aiws.assist.post.assist.v3.turns.by-id.review.apply',
+    { params: { id: initialTurn.handle.id }, body: { target_hash: review.target_hash } },
+    { ok: false }
+  );
+  assert.equal(rejectedApply.error.error, 'workflow_execution_required');
+  await callOperation(operator.client, 'aiws.assist.post.assist.v3.turns.by-id.review.rollback', {
     params: { id: initialTurn.handle.id },
     body: { target_hash: review.target_hash }
   });
@@ -256,10 +275,10 @@ try {
     'completed'
   );
 
-  await writeJourneyProject(operator.client, { projectId, nodeId });
-
-  const terminal = resultData(
-    await callOperation(operator.client, 'aiws.terminal.post.assist.v3.terminal-sessions', {
+  const rejectedTerminal = await callOperation(
+    operator.client,
+    'aiws.terminal.post.assist.v3.terminal-sessions',
+    {
       body: {
         project_id: projectId,
         assist_session_id: activeSessionId,
@@ -268,46 +287,10 @@ try {
         cols: 110,
         rows: 28
       }
-    })
-  );
-  terminalId = terminal.id;
-  const terminalCommand = `const cp=require('node:child_process');const root=${JSON.stringify(confirmed.project.repo_path)};cp.execSync('git config user.email mcp-journey@example.test',{cwd:root});cp.execSync('git config user.name MCP-Journey',{cwd:root});console.log(cp.execSync('node --test',{cwd:root,encoding:'utf8'}));console.log('AIWS:MCP:TESTS:PASS')\r`;
-  await callTool(operator.client, 'aiws_terminal', {
-    action: 'aiws.terminal.input',
-    arguments: { session_id: terminalId, data: terminalCommand }
-  });
-  let terminalOutput = '';
-  await waitFor(
-    async () => {
-      const output = await callTool(operator.client, 'aiws_terminal', {
-        action: 'aiws.terminal.read',
-        arguments: { session_id: terminalId }
-      });
-      terminalOutput = output.data.output;
-      return (terminalOutput.match(/AIWS:MCP:TESTS:PASS/g) || []).length >= 2 && /pass 1/.test(terminalOutput);
     },
-    { timeout: 20_000, message: () => `Node tests did not finish:\n${terminalOutput}\nAPI:\n${fixture.logs()}` }
+    { ok: false }
   );
-  await callTool(operator.client, 'aiws_terminal', {
-    action: 'aiws.terminal.input',
-    arguments: { session_id: terminalId, data: 'process.exit(0)\r' }
-  });
-  assert.equal(
-    (
-      await callTool(operator.client, 'aiws_operations', {
-        action: 'wait',
-        operation_id: terminalId,
-        timeout_ms: 10_000,
-        poll_ms: 100
-      })
-    ).data.operation.status,
-    'exited'
-  );
-  await callOperation(operator.client, 'aiws.terminal.post.assist.v3.terminal-sessions.by-id.review.rollback', {
-    params: { id: terminalId },
-    body: {}
-  });
-  terminalId = null;
+  assert.equal(rejectedTerminal.error.error, 'workflow_execution_required');
 
   const workflowProposal = resultData(
     await callOperation(operator.client, 'aiws.workflow.post.workflows.by-id.graph-proposals', {
@@ -358,16 +341,6 @@ try {
   );
   assert.equal(resultData(await decide(approver.client, contractProposal)).item.status, 'applied');
 
-  const context = resultData(
-    await callOperation(operator.client, 'aiws.workflow.post.nodes.by-id.context-pack.preview', {
-      params: { id: nodeId },
-      body: {}
-    })
-  );
-  await callOperation(operator.client, 'aiws.runs.post.context-packs.by-id.confirm', {
-    params: { id: context.id },
-    body: {}
-  });
   const runProposal = resultData(
     await callOperation(operator.client, 'aiws.governance.post.change-proposals', {
       body: {
@@ -381,38 +354,29 @@ try {
     })
   );
   await decide(approver.client, runProposal);
-  const runStarted = await callOperation(operator.client, 'aiws.runs.post.nodes.by-id.run.start', {
-    params: { id: nodeId },
-    body: {
-      adapter: 'test',
-      runner: 'codex_docker',
-      approval_id: runProposal.id,
-      context_pack_id: context.id,
-      test_delay_ms: 100,
-      test_summary: 'V1.8 MCP NodeRun passed'
-    }
-  });
-  const runId = runStarted.handle.id;
-  evidence.run_id = runId;
-  const runWait = await callTool(operator.client, 'aiws_operations', {
-    action: 'wait',
-    operation_id: runId,
-    timeout_ms: 5000,
-    poll_ms: 50
-  });
-  assert.equal(runWait.data.operation.status, 'succeeded');
-  const runDetail = resultData(
-    await callOperation(operator.client, 'aiws.runs.get.runs.by-id', { params: { id: runId } })
+  const rejectedRun = await callOperation(
+    operator.client,
+    'aiws.runs.post.nodes.by-id.run.start',
+    {
+      params: { id: nodeId },
+      body: {
+        adapter: 'test',
+        runner: 'codex_docker',
+        approval_id: runProposal.id,
+        test_delay_ms: 100,
+        test_summary: 'V1.8 MCP NodeRun passed'
+      }
+    },
+    { ok: false }
   );
-  assert.equal(runDetail.run.status, 'succeeded');
-
-  const testTask = resultData(
-    await callOperation(operator.client, 'aiws.projects.post.projects.by-id.test-tasks', {
-      params: { id: projectId },
-      body: { node_id: nodeId, preset: 'test' }
-    })
+  assert.equal(rejectedRun.error.error, 'workflow_execution_required');
+  const rejectedTest = await callOperation(
+    operator.client,
+    'aiws.projects.post.projects.by-id.test-tasks',
+    { params: { id: projectId }, body: { node_id: nodeId, preset: 'test' } },
+    { ok: false }
   );
-  assert.equal(testTask.task.status, 'succeeded', testTask.task.stderr);
+  assert.equal(rejectedTest.error.error, 'workflow_execution_required');
   const fileDiff = resultData(
     await callOperation(operator.client, 'aiws.files.get.projects.by-id.files.diff', {
       params: { id: projectId },
@@ -420,68 +384,6 @@ try {
     })
   );
   assert.equal(typeof fileDiff.diff, 'string');
-  const digest = resultData(
-    await callOperation(operator.client, 'aiws.assets.post.workspaces.by-id.digests', {
-      params: { id: confirmed.project.current_workspace_id },
-      body: { summary: 'V1.8 MCP journey complete' }
-    })
-  );
-  assert.equal(digest.version, 1);
-  const submission = resultData(
-    await callOperation(operator.client, 'aiws.workflow.post.nodes.by-id.submissions', {
-      params: { id: nodeId },
-      body: {
-        title: 'MCP delivery',
-        summary: 'Source, tests, review, and NodeRun completed',
-        changes: ['package.json', 'index.js', 'index.test.js', 'README.md'],
-        evidence_refs: [`node_run:${runId}`, `digest:${digest.id}`]
-      }
-    })
-  );
-  assert.equal(submission.node_id, nodeId);
-
-  const branch = resultData(
-    await callOperation(operator.client, 'aiws.git.post.runs.by-id.git.branch', { params: { id: runId }, body: {} })
-  );
-  assert.equal(branch.command_result.ok, true);
-  const captured = resultData(
-    await callOperation(operator.client, 'aiws.git.post.runs.by-id.git.diff', { params: { id: runId }, body: {} })
-  );
-  assert.equal(captured.changed_files.length >= 4, true);
-  const commitProposal = resultData(
-    await callOperation(operator.client, 'aiws.governance.post.change-proposals', {
-      body: {
-        project_id: projectId,
-        node_id: nodeId,
-        change_type: 'git_commit',
-        title: 'Authorize local journey commit',
-        apply_action: { type: 'git_commit_authorization', run_id: runId }
-      }
-    })
-  );
-  await decide(approver.client, commitProposal);
-  const committed = resultData(
-    await callOperation(operator.client, 'aiws.git.post.runs.by-id.git.commit', {
-      params: { id: runId },
-      body: { approval_id: commitProposal.id, message: 'feat: complete V1.8 MCP journey' }
-    })
-  );
-  assert.equal(committed.command_result.ok, true, committed.command_result.stderr);
-  evidence.commit = committed.code_change.head_commit;
-  assert.match(evidence.commit, /^[a-f0-9]{40}$/);
-
-  const assets = resultData(
-    await callOperation(operator.client, 'aiws.assets.get.assets', { query: { project_id: projectId } })
-  );
-  const candidate = assets.find((item) => item.status === 'candidate' && item.run_id === runId);
-  assert.ok(candidate, 'Git commit creates a CodeChangeAsset candidate');
-  const confirmedAsset = resultData(
-    await callOperation(operator.client, 'aiws.assets.post.asset-candidates.by-id.confirm', {
-      params: { id: candidate.id },
-      body: { tags: ['v1.8', 'mcp-journey'] }
-    })
-  );
-  assert.equal(confirmedAsset.asset.status, 'confirmed');
 
   await operator.close();
   operator = null;
@@ -494,12 +396,6 @@ try {
   assert.equal(projectResource.data.project.id, projectId);
   const workflowResource = await readResource(operator.client, `aiws://workflows/${workflowId}`);
   assert.equal(workflowResource.data.workflow.id, workflowId);
-  const runResource = await readResource(operator.client, `aiws://runs/${runId}`);
-  assert.equal(runResource.data.run.id, runId);
-  assert.equal(runResource.data.code_change.head_commit, evidence.commit);
-  const restoredEvents = await readResource(operator.client, `aiws://operations/${runId}/events`);
-  assert.equal(restoredEvents.ok, true);
-  assert.equal(restoredEvents.data.operation.status, 'succeeded');
 
   const trashed = resultData(
     await callOperation(approver.client, 'aiws.projects.post.projects.by-id.trash', {
@@ -518,8 +414,12 @@ try {
   const oracle = await fixture.stateApi.readState();
   assert.equal(oracle.projects.find((item) => item.id === projectId)?.deleted_at != null, true);
   assert.equal(
-    oracle.code_changes.some((item) => item.run_id === runId && item.head_commit === evidence.commit),
-    true
+    oracle.node_runs.some((item) => item.project_id === projectId),
+    false
+  );
+  assert.equal(
+    oracle.code_changes.some((item) => item.project_id === projectId),
+    false
   );
   assert.equal(
     oracle.mcp_clients.some((item) => Object.hasOwn(item, 'token')),
@@ -530,13 +430,8 @@ try {
     false,
     'trash moves the managed workspace out of the active path'
   );
-  console.log(`V1.8 MCP-only journey passed (${projectId}, ${runId}, ${evidence.commit.slice(0, 12)})`);
+  console.log(`V1.8 MCP-only legacy execution rejection journey passed (${projectId}, ${workflowId})`);
 } finally {
-  if (terminalId && operator)
-    await callOperation(operator.client, 'aiws.terminal.post.assist.v3.terminal-sessions.by-id.stop', {
-      params: { id: terminalId },
-      body: {}
-    }).catch(() => undefined);
   await operator?.close();
   await approver?.close();
   await fixture.close();
