@@ -283,12 +283,14 @@ function git(cwd, args) {
   return execFileSync('git', args, { cwd, encoding: 'utf8' }).trim();
 }
 async function waitForDelivery(service, deliveryId) {
-  for (let attempt = 0; attempt < 300; attempt += 1) {
-    const current = await service.getDelivery(deliveryId);
+  const deadline = Date.now() + 30_000;
+  let current;
+  do {
+    current = await service.getDelivery(deliveryId);
     if (['completed', 'failed', 'cancelled'].includes(current.status)) return current;
-    await new Promise((resolve) => setTimeout(resolve, 20));
-  }
-  throw new Error(`delivery_timeout:${deliveryId}`);
+    await new Promise((resolve) => setTimeout(resolve, 50));
+  } while (Date.now() < deadline);
+  throw new Error(`delivery_timeout:${deliveryId}:${current?.status || 'unknown'}:${current?.phase || 'unknown'}`);
 }
 function error(expected) {
   return (value) => value?.payload?.error === expected;
