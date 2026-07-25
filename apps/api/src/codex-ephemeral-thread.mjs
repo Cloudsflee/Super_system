@@ -16,8 +16,7 @@ import {
   taggedError
 } from './codex-app-server.mjs';
 import { withCodexRuntimeStateRecovery } from './codex-home-recovery.mjs';
-import { issueCodexMcpAccess } from './codex-mcp-runtime.mjs';
-import { codexTimeoutTtlSeconds, resolveCodexTimeoutMs } from './codex-timeout.mjs';
+import { resolveCodexTimeoutMs } from './codex-timeout.mjs';
 
 export async function createCodexEphemeralThread(options) {
   return withCodexRuntimeStateRecovery(options.profile, () => createCodexEphemeralThreadOnce(options));
@@ -29,7 +28,6 @@ async function createCodexEphemeralThreadOnce({
   cwd,
   sourceThreadId,
   sourceTurnId,
-  projectId = null,
   additionalContext = [],
   signal,
   spawnProcess = spawn
@@ -40,10 +38,7 @@ async function createCodexEphemeralThreadOnce({
     throw taggedError('codex_auth_profile_mismatch', 'app_server_start_failed');
   if (auth.home && !isThirdPartyProvider(profile.provider)) await materializeDeviceAuth(auth.home, profile.codex_home);
   const credential = await readSecret(auth?.refs?.credential),
-    mcpAccess = await issueCodexMcpAccess(projectId, profile, {
-      ttlSeconds: codexTimeoutTtlSeconds(profile.timeout_ms, 1200)
-    }),
-    invocation = appServerInvocation(profile, cwd, 'read-only', credential, [], mcpAccess);
+    invocation = appServerInvocation(profile, cwd, 'read-only', credential, [], null);
   let child;
   try {
     child =
@@ -56,14 +51,12 @@ async function createCodexEphemeralThreadOnce({
             windowsHide: true
           });
   } catch (error) {
-    await mcpAccess?.release();
     throw taggedError(error.message, 'app_server_start_failed');
   }
   const context = createEphemeralContext({
     profile,
     additionalContext,
     child,
-    mcpAccess,
     runtimeCwd: invocation.cwd || cwd
   });
   attachEphemeralListeners(context);
@@ -90,12 +83,11 @@ async function createCodexEphemeralThreadOnce({
   return createEphemeralClient(context);
 }
 
-function createEphemeralContext({ profile, additionalContext, child, mcpAccess, runtimeCwd }) {
+function createEphemeralContext({ profile, additionalContext, child, runtimeCwd }) {
   return {
     profile,
     additionalContext,
     child,
-    mcpAccess,
     runtimeCwd,
     buffer: '',
     stderr: '',
@@ -129,17 +121,25 @@ async function initializeEphemeralThread(context, sourceThreadId, sourceTurnId) 
     capabilities: { experimentalApi: true, requestAttestation: false }
   });
   ephemeralNotify(context, 'initialized');
-  const forked = await ephemeralRequest(context, 'thread/fork', {
-    threadId: sourceThreadId,
-    ...(sourceTurnId ? { turnId: sourceTurnId } : {}),
+  const threadOptions = {
     cwd: context.runtimeCwd,
     approvalPolicy: 'never',
     approvalsReviewer: 'user',
     sandbox: 'read-only',
     ephemeral: true
-  });
-  context.threadId = forked?.thread?.id || forked?.threadId || forked?.thread_id;
-  if (!context.threadId || context.threadId === sourceThreadId)
+  };
+  const opened = sourceThreadId
+    ? await ephemeralRequest(context, 'thread/fork', {
+        threadId: sourceThreadId,
+        ...(sourceTurnId ? { turnId: sourceTurnId } : {}),
+        ...threadOptions
+      })
+    : await ephemeralRequest(context, 'thread/start', {
+        model: context.profile.model || null,
+        ...threadOptions
+      });
+  context.threadId = opened?.thread?.id || opened?.threadId || opened?.thread_id;
+  if (!context.threadId || (sourceThreadId && context.threadId === sourceThreadId))
     throw taggedError('app_server_ephemeral_thread_missing', 'app_server_start_failed');
 }
 
@@ -319,7 +319,6 @@ function closeEphemeralContext(context, error) {
   for (const item of context.pending.values()) item.reject(error);
   context.pending.clear();
   finishEphemeralActive(context, error);
-  void context.mcpAccess?.release();
 }
 
 function terminateEphemeralContext(context, error) {

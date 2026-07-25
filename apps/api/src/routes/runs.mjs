@@ -18,6 +18,7 @@ import { assertControlledTaskWrite } from '../execution-governance.mjs';
 import { prepareTaskExecutionInState } from '../task-execution-service.mjs';
 import { collectActualEvidenceInState, ensureCompletedWorkstreamOutcomesInState } from '../task-execution-service.mjs';
 import { ingestExecutionOutputsInState } from '../asset-attestation-service.mjs';
+import { ensureContextProjection } from '../context-service.mjs';
 import {
   completeTaskExecutionInState,
   failTaskExecutionInState,
@@ -38,6 +39,7 @@ export const runRoutes = [
 ];
 
 async function previewRoute({ res, params, body }) {
+  await ensureNodeContextProjection(params.id);
   const result = await mutate((state) => {
     const actor = owner(state),
       bundle = nodeBundle(state, params.id);
@@ -92,6 +94,7 @@ async function startNodeRunRoute({ res, params, body }) {
 
 async function prepareNodeRun(nodeId, body) {
   if (body.enqueue_only === true) throw new HttpError(400, { error: 'enqueue_only_not_supported' });
+  await ensureNodeContextProjection(nodeId);
   return mutate(async (state) => {
     const actor = owner(state),
       bundle = nodeBundle(state, nodeId);
@@ -135,6 +138,13 @@ async function prepareNodeRun(nodeId, body) {
     startRunTrace(state, { actor, ...bundle, run, ctx });
     return { run_id: run.id, context_pack_id: ctx.id };
   });
+}
+
+async function ensureNodeContextProjection(nodeId) {
+  const state = await readState(),
+    node = state.workflow_nodes.find((item) => item.id === nodeId),
+    workflow = state.workflows.find((item) => item.id === node?.workflow_id);
+  if (workflow?.project_id) await ensureContextProjection({ projectId: workflow.project_id });
 }
 
 async function completeNodeRun(nodeId, body, prepared) {

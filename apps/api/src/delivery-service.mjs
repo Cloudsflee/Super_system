@@ -21,9 +21,11 @@ import {
   prepareManagedDeliveryCheckout
 } from './delivery-pr-intent.mjs';
 import { assertControlledTaskWrite } from './execution-governance.mjs';
+import { ensureContextProjection } from './context-service.mjs';
 const controllers = new Map();
 const taskLocks = new Set(),
-  repositoryPreparationLocks = new Set();
+  repositoryPreparationLocks = new Set(),
+  contextProjectionLocks = new Map();
 const TERMINAL = new Set(['completed', 'failed', 'cancelled']);
 const REQUIRED_AUTOMATION_PERMISSIONS = ['codex_run', 'commit', 'push', 'draft_pr'];
 const SECRET_PATTERNS = [
@@ -33,6 +35,7 @@ const SECRET_PATTERNS = [
   /(?:password|secret|token)\s*[:=]\s*['"][^'"]{8,}['"]/i
 ];
 export async function startTaskDelivery(taskId, input = {}, actorId = null) {
+  await ensureDeliveryContextProjection(taskId);
   const result = await mutate((state) => {
     const task = requireTask(state, taskId),
       actor = actorId ? state.users.find((item) => item.id === actorId) : owner(state);
@@ -167,6 +170,23 @@ export async function startTaskDelivery(taskId, input = {}, actorId = null) {
       void executeDelivery(result.delivery.id);
     });
   return { delivery: publicDelivery(result.delivery), idempotent: result.idempotent };
+}
+
+async function ensureDeliveryContextProjection(taskId) {
+  const existing = contextProjectionLocks.get(taskId);
+  if (existing) return existing;
+  const operation = (async () => {
+    const state = await readState(),
+      task = state.workflow_nodes.find((item) => item.id === taskId),
+      workflow = state.workflows.find((item) => item.id === task?.workflow_id);
+    if (workflow?.project_id) await ensureContextProjection({ projectId: workflow.project_id });
+  })();
+  contextProjectionLocks.set(taskId, operation);
+  try {
+    return await operation;
+  } finally {
+    if (contextProjectionLocks.get(taskId) === operation) contextProjectionLocks.delete(taskId);
+  }
 }
 export async function retryTaskDelivery(deliveryId, input = {}, actorId = null) {
   const state = await readState(),

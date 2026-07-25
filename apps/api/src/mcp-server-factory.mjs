@@ -31,6 +31,7 @@ export const MCP_TOOL_NAMES = Object.freeze([
   'aiws_assets',
   'aiws_governance',
   'aiws_admin',
+  'aiws_context',
   'aiws_capabilities',
   'aiws_operations',
   'aiws_execute'
@@ -182,6 +183,7 @@ export function createAiwsMcpServer({ registry, client }) {
     operation.required_scopes.every((scope) => client.scopes.includes(scope))
   );
   registerDomainTools(server, allowed, registry, client);
+  registerContextTool(server, allowed, registry, client);
   registerCapabilityTool(server, allowed, registry, client);
   registerOperationsTool(server, registry, client);
   registerExecuteTool(server, allowed, registry, client);
@@ -200,7 +202,9 @@ export function createAiwsMcpServer({ registry, client }) {
 }
 
 function registerDomainTools(server, allowed, registry, client) {
-  for (const name of MCP_TOOL_NAMES.slice(0, 12)) {
+  for (const name of MCP_TOOL_NAMES.filter(
+    (item) => !['aiws_context', 'aiws_capabilities', 'aiws_operations', 'aiws_execute'].includes(item)
+  )) {
     const actions = [
       ...allowed
         .filter((operation) => operation.callable && operation.mcp_binding.tool === name)
@@ -227,6 +231,73 @@ function registerDomainTools(server, allowed, registry, client) {
       async ({ action, arguments: args }) => toolResult(await executeAction(registry, action, args, client))
     );
   }
+}
+
+function registerContextTool(server, allowed, registry, client) {
+  const contextOperations = new Map(
+    allowed
+      .filter((operation) => operation.domain === 'context')
+      .map((operation) => [operation.operation_id, operation])
+  );
+  server.registerTool(
+    'aiws_context',
+    {
+      title: 'AIWS 系统上下文',
+      description: '先读取低成本地图，再检索、读取节点或解释某次服务端选择。',
+      inputSchema: z.discriminatedUnion('action', [
+        z
+          .object({
+            action: z.literal('map'),
+            project_id: z.string().min(1).max(200).nullable().optional(),
+            root_id: z.string().min(1).max(200).nullable().optional(),
+            depth: z.number().int().min(1).max(12).default(4),
+            limit: z.number().int().min(1).max(10_000).default(1000)
+          })
+          .strict(),
+        z
+          .object({
+            action: z.literal('search'),
+            query: z.string().max(20_000).default(''),
+            project_id: z.string().min(1).max(200).nullable().optional(),
+            anchor_node_id: z.string().min(1).max(200).nullable().optional(),
+            explicit_refs: z.array(z.string().min(1).max(500)).max(200).default([]),
+            limit: z.number().int().min(1).max(200).default(30)
+          })
+          .strict(),
+        z
+          .object({
+            action: z.literal('read'),
+            node_id: z.string().min(1).max(200),
+            version_id: z.string().min(1).max(200).nullable().optional()
+          })
+          .strict(),
+        z.object({ action: z.literal('explain_selection'), selection_id: z.string().min(1).max(200) }).strict()
+      ]),
+      annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: false }
+    },
+    async (input) => {
+      const operationId =
+        input.action === 'map'
+          ? 'aiws.context.get.context.v1.map'
+          : input.action === 'search'
+            ? 'aiws.context.post.context.v1.search'
+            : input.action === 'read'
+              ? 'aiws.context.get.context.v1.nodes.by-id'
+              : 'aiws.context.get.context.v1.selections.by-id';
+      if (!contextOperations.has(operationId))
+        return toolResult(fail(`aiws.context.${input.action}`, 403, 'mcp_scope_required'));
+      const { action, node_id, selection_id, ...rest } = input;
+      const args =
+        action === 'map'
+          ? { query: rest }
+          : action === 'search'
+            ? { body: rest }
+            : action === 'read'
+              ? { params: { id: node_id }, query: rest }
+              : { params: { id: selection_id } };
+      return toolResult(await executeRegistryOperation(registry, operationId, args, { client }));
+    }
+  );
 }
 
 function registerCapabilityTool(server, allowed, registry, client) {
@@ -381,7 +452,10 @@ function registerResources(server, allowed, registry, client) {
         })
       )
   );
-  for (const operation of allowed.filter((item) => ['resource', 'async_adapter'].includes(item.mapping))) {
+  registerContextResources(server, allowed, registry, client);
+  for (const operation of allowed.filter(
+    (item) => item.domain !== 'context' && ['resource', 'async_adapter'].includes(item.mapping)
+  )) {
     const template = operation.mcp_binding.resource_uri_template;
     const read = async (uri, variables = {}) => {
       const params = Object.fromEntries(
@@ -436,6 +510,63 @@ function registerResources(server, allowed, registry, client) {
       }
     }
   );
+}
+
+function registerContextResources(server, allowed, registry, client) {
+  const operationIds = new Set(allowed.filter((item) => item.domain === 'context').map((item) => item.operation_id));
+  if (!operationIds.has('aiws.context.get.context.v1.map')) return;
+  server.registerResource(
+    'aiws-context-map',
+    new ResourceTemplate('aiws://context/map/{scope}', { list: undefined }),
+    { title: 'AIWS 系统上下文地图', mimeType: 'application/json' },
+    async (uri, variables) => {
+      const scope = Array.isArray(variables.scope) ? variables.scope[0] : variables.scope,
+        projectId = scope && scope !== 'global' ? String(scope) : null;
+      return resourceResult(
+        uri,
+        await executeRegistryOperation(
+          registry,
+          'aiws.context.get.context.v1.map',
+          projectId ? { query: { project_id: projectId } } : {},
+          { client }
+        )
+      );
+    }
+  );
+  server.registerResource(
+    'aiws-context-node',
+    new ResourceTemplate('aiws://context/nodes/{id}', { list: undefined }),
+    { title: 'AIWS 上下文文档', mimeType: 'application/json' },
+    async (uri, variables) =>
+      resourceResult(
+        uri,
+        await executeRegistryOperation(
+          registry,
+          'aiws.context.get.context.v1.nodes.by-id',
+          { params: { id: variableValue(variables.id) } },
+          { client }
+        )
+      )
+  );
+  server.registerResource(
+    'aiws-context-selection',
+    new ResourceTemplate('aiws://context/selections/{id}', { list: undefined }),
+    { title: 'AIWS 上下文选择审计', mimeType: 'application/json' },
+    async (uri, variables) =>
+      resourceResult(
+        uri,
+        await executeRegistryOperation(
+          registry,
+          'aiws.context.get.context.v1.selections.by-id',
+          { params: { id: variableValue(variables.id) } },
+          { client }
+        )
+      )
+  );
+}
+
+function variableValue(value) {
+  return Array.isArray(value) ? value[0] : String(value || '');
 }
 
 function registerSubscriptions(server, subscriptions) {

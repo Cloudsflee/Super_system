@@ -28,11 +28,15 @@ import {
 } from './assist-v3-domain.mjs';
 import { assertControlledTaskWrite } from './execution-governance.mjs';
 import { prepareTaskExecutionInState } from './task-execution-service.mjs';
+import { ensureContextProjection } from './context-service.mjs';
 
 export async function createV3Turn(sessionId, input = {}, options = {}) {
   const content = cleanText(input.content ?? input.prompt, 100_000),
     mode = normalizeTurnCollaborationMode(input);
   if (!content) throw new HttpError(400, { error: 'assist_turn_content_required' });
+  const projectionState = await readState(),
+    projectionSession = projectionState.assist_sessions.find((item) => item.id === sessionId);
+  if (projectionSession?.project_id) await ensureContextProjection({ projectId: projectionSession.project_id });
   const adapted = testAdapter(input);
   const result = await mutate(async (state) => {
     const actor = owner(state),

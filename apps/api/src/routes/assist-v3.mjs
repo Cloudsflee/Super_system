@@ -5,6 +5,7 @@ import {
   archiveV3Session,
   createAssistBtw,
   createAssistBtwTurn,
+  createScopedAssistBtw,
   createV3Attachment,
   createV3FollowUp,
   createV3Session,
@@ -105,7 +106,14 @@ export const assistV3Routes = [
     send(res, 201, await forkV3Session(params.id, body))
   ),
   makeRoute('POST', '/assist/v3/sessions/:id/btw', async ({ req, res, params, body }) =>
-    sendOneTimeSecret(res, 201, await createAssistBtw(params.id, body, { browserId: req.headers['x-aiws-browser-id'] }))
+    sendOneTimeSecret(
+      res,
+      201,
+      await createAssistBtw(params.id, body, { browserId: req.headers['x-aiws-browser-id'], req })
+    )
+  ),
+  makeRoute('POST', '/assist/v3/btw', async ({ req, res, body }) =>
+    sendOneTimeSecret(res, 201, await createScopedAssistBtw(body, { browserId: req.headers['x-aiws-browser-id'], req }))
   ),
   makeRoute('POST', '/assist/v3/btw/:id/turns', async ({ req, res, params, body }) =>
     send(res, 202, await createAssistBtwTurn(params.id, body, { accessToken: req.headers['x-aiws-btw-token'] }))

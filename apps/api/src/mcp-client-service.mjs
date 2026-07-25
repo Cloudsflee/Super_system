@@ -35,6 +35,8 @@ export const MCP_SCOPES = Object.freeze([
   'approval:decide',
   'exchange:read',
   'exchange:write',
+  'context:read',
+  'context:admin',
   'setup:read',
   'setup:admin',
   'mcp:admin',
@@ -44,9 +46,15 @@ export const MCP_SCOPES = Object.freeze([
 export const DEFAULT_OPERATOR_SCOPES = Object.freeze(
   MCP_SCOPES.filter(
     (scope) =>
-      !['project:share', 'approval:decide', 'setup:admin', 'mcp:admin', 'destructive:execute', 'github:write'].includes(
-        scope
-      )
+      ![
+        'project:share',
+        'approval:decide',
+        'context:admin',
+        'setup:admin',
+        'mcp:admin',
+        'destructive:execute',
+        'github:write'
+      ].includes(scope)
   )
 );
 

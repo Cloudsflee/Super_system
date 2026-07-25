@@ -45,7 +45,13 @@ export {
 } from './assist-operations.mjs';
 export { listAssistCapabilities } from './assist-capabilities-service.mjs';
 export { applyChangeBatch, getChangeBatchReview, rollbackChangeBatch } from './assist-change-batches.mjs';
-export { createAssistBtw, createAssistBtwTurn, deleteAssistBtw, streamAssistBtwEvents } from './assist-btw.mjs';
+export {
+  createAssistBtw,
+  createAssistBtwTurn,
+  createScopedAssistBtw,
+  deleteAssistBtw,
+  streamAssistBtwEvents
+} from './assist-btw.mjs';
 export { deleteV3Attachment, serveAttachmentContent, uploadV3Attachment } from './assist-attachments.mjs';
 export { listAssistReferences } from './assist-references.mjs';
 export {

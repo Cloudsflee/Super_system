@@ -1,7 +1,9 @@
-import { hashString, now } from '../../../packages/shared/index.mjs';
+import { estimateTokens, hashString, now } from '../../../packages/shared/index.mjs';
 import { buildContextPack } from '../../../packages/shared/src/context-run.mjs';
 import { HttpError } from './http.mjs';
 import { repositoryWorkspaceSnapshotHash } from './repository-workspace-service.mjs';
+import { CONTEXT_PACK_SCHEMA } from '../../../packages/system-context/src/index.mjs';
+import { compactRuntimeMap, createSelectionForRuntimeInState } from './context-service.mjs';
 
 export function prepareTaskExecutionContext(state, input) {
   const { project, workspace, task, contract } = input,
@@ -115,6 +117,46 @@ function persistExecutionContext(state, input, scope) {
     receiver_name: input.receiverName || 'CodexRunner',
     executionContext: snapshot
   });
+  const actorId = input.actorId || project.owner_user_id || project.created_by_user_id || state.instance_owner_user_id,
+    selection = createSelectionForRuntimeInState(state, {
+      actorId,
+      projectId: project.id,
+      anchorSourceCollection: 'workflow_nodes',
+      anchorSourceId: task.id,
+      tokenBudget: Number(project.settings?.token_budget || 12_000)
+    }),
+    compactMap = compactRuntimeMap(state, project.id, task.id),
+    documentVersions = selection.included.map((item) => ({
+      node_id: item.node_id,
+      document_version_id: item.document_version_id,
+      content_sha256: item.content_sha256
+    })),
+    retrievalProtocol = {
+      tool: 'aiws_context',
+      order: ['map', 'search', 'read'],
+      instruction: '按任务锚点读取必要上下文；不得绕过项目 ACL、资源 scope、新鲜度或 Exchange Grant。'
+    };
+  snapshot.system_context = {
+    current_anchor: { node_id: compactMap.anchor_node_id, source_collection: 'workflow_nodes', source_id: task.id },
+    context_map: compactMap,
+    context_selection_id: selection.id,
+    document_versions: documentVersions,
+    retrieval_protocol: retrievalProtocol
+  };
+  Object.assign(contextPack, {
+    schema_version: CONTEXT_PACK_SCHEMA,
+    version: 4,
+    context_selection_id: selection.id,
+    context_document_versions: selection.included.map((item) => item.document_version_id)
+  });
+  Object.assign(contextPack.content_json, {
+    schema_version: CONTEXT_PACK_SCHEMA,
+    context_map: compactMap,
+    context_selection_id: selection.id,
+    document_versions: documentVersions,
+    retrieval_protocol: retrievalProtocol
+  });
+  contextPack.token_estimate = estimateTokens(JSON.stringify(contextPack.content_json));
   snapshot.context_pack_id = contextPack.id;
   snapshot.prepared_at = now();
   Object.assign(contextPack, {

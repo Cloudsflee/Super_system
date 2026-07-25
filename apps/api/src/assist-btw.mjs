@@ -1,10 +1,25 @@
 import { randomBytes } from 'node:crypto';
 import { HttpError } from './http.mjs';
-import { readState } from './state.mjs';
+import { mutate, readState } from './state.mjs';
 import { createCodexEphemeralThread } from './codex-ephemeral-thread.mjs';
 import { getSessionChangeBatch } from './assist-change-batches.mjs';
-import { cleanText, readableProjectCwd, requireProject, requireSession } from './assist-v3-domain.mjs';
+import { assistScopeContext } from './assist-v3-context.mjs';
+import {
+  cleanText,
+  readableProjectCwd,
+  requireProject,
+  requireSession,
+  resolveAssistTurnConfiguration,
+  resolveScope
+} from './assist-v3-domain.mjs';
 import { id, now } from '../../../packages/shared/index.mjs';
+import {
+  compactRuntimeMap,
+  createSelectionForRuntimeInState,
+  ensureContextProjection,
+  loadContextSelectionDocumentsInState
+} from './context-service.mjs';
+import { actorForRequest, assertProjectRead } from './project-governance-v19.mjs';
 
 const BTW_TTL_MS = 15 * 60 * 1000;
 const BTW_GLOBAL_LIMIT = 4;
@@ -18,86 +33,260 @@ const sweeper = setInterval(() => {
 sweeper.unref?.();
 
 export async function createAssistBtw(sessionId, input = {}, request = {}, dependencies = {}) {
+  return createBtw(sessionId, input, request, dependencies);
+}
+
+export async function createScopedAssistBtw(input = {}, request = {}, dependencies = {}) {
+  return createBtw(cleanText(input.session_id, 200) || null, input, request, dependencies);
+}
+
+async function createBtw(sessionId, input, request, dependencies) {
   await sweepExpiredBtw();
   const browserId = normalizeBrowserId(input.browser_id || request.browserId);
   if (input.sensitive === true || /^(?:password|secret)$/i.test(String(input.control_type || '')))
-    throw new HttpError(403, { error: 'assist_btw_sensitive_selection' });
+    throw new HttpError(403, {
+      error: 'assist_btw_sensitive_selection',
+      message: '敏感输入内容不能发送到临时问答'
+    });
+  const context = await resolveBtwContext(sessionId, input, request);
   const existingId = browserRecords.get(browserId);
   if (existingId) await disposeRecord(records.get(existingId), 'replaced');
   if (records.size >= BTW_GLOBAL_LIMIT)
-    throw new HttpError(429, { error: 'assist_btw_capacity_reached', limit: BTW_GLOBAL_LIMIT });
+    throw new HttpError(429, {
+      error: 'assist_btw_capacity_reached',
+      message: '临时问答数量已达到上限，请稍后重试',
+      limit: BTW_GLOBAL_LIMIT
+    });
 
-  const state = await readState(),
-    session = requireSession(state, sessionId),
-    project = requireProject(state, session.project_id);
-  const sourceTurn = state.assist_turns
+  const record = makeBtwRecord(browserId, context);
+  records.set(record.id, record);
+  browserRecords.set(browserId, record.id);
+  try {
+    record.conversation = await initializeBtwConversation(context, input, dependencies);
+    record.status = 'idle';
+    emit(record, 'ready', { source_turn_id: record.sourceTurnId });
+    return publicRecord(record, true);
+  } catch (error) {
+    await disposeRecord(record, 'initialization_failed');
+    if (error instanceof HttpError) throw error;
+    throw new HttpError(502, {
+      error: 'assist_btw_native_thread_failed',
+      message: '临时问答初始化失败',
+      reason: safeErrorCode(error),
+      retryable: true
+    });
+  }
+}
+
+async function resolveBtwContext(sessionId, input, request) {
+  let state = await readState(),
+    session = sessionId ? requireSession(state, sessionId, true) : null;
+  assertBtwSessionProject(session, input);
+  const projectId = cleanText(input.project_id, 200) || session?.project_id;
+  if (!projectId)
+    throw new HttpError(400, { error: 'assist_btw_project_required', message: '当前页面没有可用的项目上下文' });
+  let project = requireProject(state, projectId);
+  const actor = request.req
+    ? actorForRequest(state, request.req, { strict: false })
+    : state.users.find((item) => item.id === session?.created_by_user_id) ||
+      state.users.find((item) => item.id === project.owner_user_id) ||
+      state.users.find((item) => item.id === state.instance_owner_user_id) ||
+      state.users[0];
+  assertProjectRead(state, projectId, actor.id);
+  await ensureContextProjection({ projectId });
+  const selection = await mutate((data) =>
+    createSelectionForRuntimeInState(data, {
+      actorId: actor.id,
+      sessionId: session?.id || null,
+      projectId,
+      anchorSourceCollection:
+        (cleanText(input.scope_type, 40) || session?.scope_type || 'project') === 'project'
+          ? 'projects'
+          : (cleanText(input.scope_type, 40) || session?.scope_type) === 'workflow'
+            ? 'workflows'
+            : 'workflow_nodes',
+      anchorSourceId: cleanText(input.scope_id, 200) || session?.scope_id || projectId,
+      tokenBudget: Number(project.settings?.token_budget || 12_000)
+    })
+  );
+  state = await readState();
+  session = sessionId ? requireSession(state, sessionId, true) : null;
+  project = requireProject(state, projectId);
+  const scopeType = cleanText(input.scope_type, 40) || session?.scope_type || 'project',
+    scopeId = cleanText(input.scope_id, 200) || session?.scope_id || (scopeType === 'project' ? project.id : null);
+  if (!scopeId)
+    throw new HttpError(400, { error: 'assist_btw_scope_required', message: '当前页面没有可用的作用域上下文' });
+  const scope = resolveScope(state, project, scopeType, scopeId),
+    completedTurn = latestCompletedTurn(state, session),
+    sourceTurn = eligibleSourceTurn(session, completedTurn),
+    profile = resolveBtwProfile(state, session, completedTurn, input),
+    scopeContext = assistScopeContext(state, { project, scopeType: scope.type, scopeId: scope.id }),
+    contextMap = compactRuntimeMap(state, project.id, scope.id),
+    selectedDocuments = await loadContextSelectionDocumentsInState(state, selection);
+  assertBtwSessionScope(session, scope);
+  return {
+    state,
+    session,
+    project,
+    scope,
+    scopeContext,
+    profile,
+    sourceTurn,
+    contextMap,
+    contextSelection: selection,
+    selectedDocuments
+  };
+}
+
+function assertBtwSessionProject(session, input) {
+  if (
+    session &&
+    ((input.project_id && input.project_id !== session.project_id) ||
+      (input.scope_type === 'project' && input.scope_id && input.scope_id !== session.project_id))
+  )
+    throwBtwScopeMismatch();
+}
+
+function assertBtwSessionScope(session, scope) {
+  if (!session || (session.scope_type === scope.type && session.scope_id === scope.id)) return;
+  const allowed =
+    session.scope_type === 'project' ||
+    (session.scope_type === 'workflow' && scope.workflow?.id === session.scope_id) ||
+    (session.scope_type === 'workstream' &&
+      (scope.id === session.scope_id || scope.node?.parent_node_id === session.scope_id));
+  if (!allowed) throwBtwScopeMismatch();
+}
+
+function throwBtwScopeMismatch() {
+  throw new HttpError(409, {
+    error: 'assist_session_scope_mismatch',
+    message: '所选智能助手线程与当前页面上下文不匹配'
+  });
+}
+
+function latestCompletedTurn(state, session) {
+  if (!session) return null;
+  return state.assist_turns
     .filter((item) => item.session_id === session.id && item.status === 'completed' && item.codex_turn_id)
     .sort((a, b) => String(a.completed_at || a.updated_at).localeCompare(String(b.completed_at || b.updated_at)))
     .at(-1);
+}
+
+function eligibleSourceTurn(session, completedTurn) {
   if (
-    !sourceTurn ||
-    !session.codex_thread_id ||
+    !completedTurn ||
+    !session?.codex_thread_id ||
     session.native_thread_repair_required ||
     session.native_thread_generation === 1
   )
-    throw new HttpError(409, { error: 'assist_btw_no_completed_turn' });
-  const profile = state.codex_profiles.find(
-    (item) => item.id === session.runtime_profile_id && item.status === 'validated' && !item.assist_configuration
-  );
-  if (!profile) throw new HttpError(409, { error: 'assist_runtime_profile_unavailable' });
-  const selection = cleanText(input.selection, 20_000),
-    pageUrl = safePageUrl(input.page_url),
-    createdAt = Date.now();
-  const record = {
+    return null;
+  return completedTurn;
+}
+
+function resolveBtwProfile(state, session, completedTurn, input) {
+  const storedProfile = session?.runtime_profile_id
+    ? state.codex_profiles.find(
+        (item) => item.id === session.runtime_profile_id && item.status === 'validated' && !item.assist_configuration
+      )
+    : null;
+  if (storedProfile)
+    return {
+      ...storedProfile,
+      model: completedTurn?.model || storedProfile.model,
+      reasoning: completedTurn?.reasoning || storedProfile.reasoning
+    };
+  const configuration = resolveAssistTurnConfiguration(state, input);
+  return { ...configuration.profile, model: configuration.model, reasoning: configuration.reasoning };
+}
+
+function makeBtwRecord(browserId, context) {
+  const createdAt = Date.now();
+  return {
     id: id('btw'),
     browserId,
-    sessionId: session.id,
-    projectId: project.id,
+    sessionId: context.session?.id || null,
+    projectId: context.project.id,
     accessToken: randomBytes(32).toString('base64url'),
     conversation: null,
     status: 'initializing',
     createdAt,
     lastSeenAt: createdAt,
     sequence: 0,
-    sourceTurnId: sourceTurn.id,
-    sourceCodexTurnId: sourceTurn.codex_turn_id,
+    sourceTurnId: context.sourceTurn?.id || null,
+    sourceCodexTurnId: context.sourceTurn?.codex_turn_id || null,
     events: [],
     listeners: new Set(),
     activeController: null
   };
-  records.set(record.id, record);
-  browserRecords.set(browserId, record.id);
-  try {
-    const batch = await getSessionChangeBatch(session.id),
-      cwd = batch?.worktree?.path || readableProjectCwd(project);
-    const createConversation = dependencies.createConversation || createCodexEphemeralThread;
-    record.conversation = await createConversation({
-      state,
-      profile,
-      cwd,
-      sourceThreadId: session.codex_thread_id,
-      sourceTurnId: sourceTurn.codex_turn_id,
-      projectId: project.id,
-      additionalContext: [
-        {
-          kind: 'application',
-          value: JSON.stringify({
-            schema: 'aiws.btw-context.v1',
-            boundary: 'Read-only ephemeral BTW. Do not use tools, modify files, or delegate to sub-agents.',
-            selection: selection || null,
-            page_url: pageUrl
-          })
+}
+
+async function initializeBtwConversation(context, input, dependencies) {
+  const batch = context.session ? await getSessionChangeBatch(context.session.id) : null,
+    cwd = batch?.worktree?.path || readableProjectCwd(context.project),
+    createConversation = dependencies.createConversation || createCodexEphemeralThread;
+  return createConversation({
+    state: context.state,
+    profile: context.profile,
+    cwd,
+    sourceThreadId: context.sourceTurn ? context.session.codex_thread_id : null,
+    sourceTurnId: context.sourceTurn?.codex_turn_id || null,
+    projectId: context.project.id,
+    additionalContext: btwAdditionalContext(context, input)
+  });
+}
+
+function btwAdditionalContext(context, input) {
+  return [
+    {
+      kind: 'application',
+      value: JSON.stringify({
+        schema: 'aiws.btw-context.v3',
+        context_protocol: 'aiws.system-context.v1',
+        boundary: '这是只读临时问答。不得修改文件、调用工具或委派子代理。',
+        response: {
+          language: 'zh-CN',
+          instruction:
+            '请使用简体中文，并严格依据当前锚点和 selected_context_documents 回答。询问状态或锁定原因时，先给出具体 lock_summary 和未满足条件；不要猜测权限、归档或阶段冻结。'
+        },
+        project: {
+          id: context.project.id,
+          title: context.project.title,
+          goal: context.project.goal || null
+        },
+        scope: {
+          type: context.scope.type,
+          id: context.scope.id,
+          snapshot: context.scope.snapshot,
+          breadcrumb: context.scope.breadcrumb,
+          context: context.scopeContext
+        },
+        current_anchor: {
+          node_id: context.contextMap.anchor_node_id,
+          scope_type: context.scope.type,
+          scope_id: context.scope.id
+        },
+        context_map: context.contextMap,
+        context_selection_id: context.contextSelection.id,
+        document_versions: context.contextSelection.included.map((item) => ({
+          node_id: item.node_id,
+          document_version_id: item.document_version_id,
+          content_sha256: item.content_sha256
+        })),
+        selected_context_documents: context.selectedDocuments,
+        retrieval_protocol: {
+          mode: 'server_local',
+          order: ['map', 'search', 'read'],
+          instruction: '服务端已按权限、范围、新鲜度和 token 预算执行本地检索计划。'
+        },
+        page: { url: safePageUrl(input.page_url) },
+        selection: cleanText(input.selection, 20_000) || null,
+        inheritance: {
+          session_id: context.session?.id || null,
+          source_turn_id: context.sourceTurn?.id || null
         }
-      ]
-    });
-    record.status = 'idle';
-    emit(record, 'ready', { source_turn_id: sourceTurn.id });
-    return publicRecord(record, true);
-  } catch (error) {
-    await disposeRecord(record, 'initialization_failed');
-    if (error instanceof HttpError) throw error;
-    throw new HttpError(502, { error: 'assist_btw_native_fork_failed', reason: safeErrorCode(error), retryable: true });
-  }
+      })
+    }
+  ];
 }
 
 export async function createAssistBtwTurn(btwId, input = {}, request = {}) {

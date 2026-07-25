@@ -16,6 +16,7 @@ import { finalizeRepositoryChangeInState } from './repository-change-verifier.mj
 import { verifyRepositoryLineHead } from './repository-line-service.mjs';
 import { mutate, readState } from './state.mjs';
 import { executionInputHash, prepareTaskExecutionContext } from './task-execution-context.mjs';
+import { ensureContextProjection } from './context-service.mjs';
 import { recordAssetLineage } from './task-output-service.mjs';
 import {
   appendExecutionEvent,
@@ -135,6 +136,7 @@ export async function prepareTaskExecutionInState(state, taskExecutionId) {
 }
 
 export async function claimTaskExecution(taskExecutionId, input = {}) {
+  await ensureTaskExecutionContextProjection(taskExecutionId);
   return mutate(async (state) => {
     await prepareTaskExecutionInState(state, taskExecutionId);
     const claimed = issueTaskExecutionLeaseInState(state, taskExecutionId, {
@@ -150,6 +152,7 @@ export async function submitTaskExecutionOutputs(
   taskExecutionId,
   { outputs, leaseToken = null, verifierId = null, actualEvidence = null, actorId = null, manual = false }
 ) {
+  if (manual) await ensureTaskExecutionContextProjection(taskExecutionId);
   const result = await mutate(async (state) => {
     const execution = requireTaskExecution(state, taskExecutionId);
     if (manual && execution.status === 'queued') {
@@ -191,6 +194,13 @@ export async function submitTaskExecutionOutputs(
     return { task_execution: execution, ...ingested, workflow_execution: reconciled.workflow_execution };
   });
   return result;
+}
+
+async function ensureTaskExecutionContextProjection(taskExecutionId) {
+  const state = await readState(),
+    execution = state.task_executions.find((item) => item.id === taskExecutionId);
+  if (execution?.project_id && !execution.context_snapshot)
+    await ensureContextProjection({ projectId: execution.project_id });
 }
 
 export async function approveTaskExecution(taskExecutionId, { decision, expectedVersions, actorId, summary = '' }) {
