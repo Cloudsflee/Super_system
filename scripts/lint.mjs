@@ -6,11 +6,14 @@ const jsFiles = roots.flatMap((root) => walk(root)).filter((file) => /\.(mjs|js|
 const tooLong = [];
 const uiViolations = [];
 for (const file of jsFiles) {
-  const source = fs.readFileSync(file, 'utf8'), lines = source.split(/\r?\n/).length;
+  const source = fs.readFileSync(file, 'utf8'),
+    lines = source.split(/\r?\n/).length;
   if (lines > 260) tooLong.push(`${file}: ${lines}`);
   if (/apps[\\/]web[\\/]src[\\/].*\.tsx$/.test(file)) {
-    if (/<(?:button|span|div|small|code)\b[^>]*\btitle=/.test(source)) uiViolations.push(`${file}: native title attribute`);
-    for (const match of source.matchAll(/<button\b([^>]*)>\s*<[A-Z][A-Za-z0-9]*\b[^>]*\/>\s*<\/button>/g)) if (!/aria-label=/.test(match[1])) uiViolations.push(`${file}: bare icon button without aria-label`);
+    if (/<(?:button|span|div|small|code)\b[^>]*\btitle=/.test(source))
+      uiViolations.push(`${file}: native title attribute`);
+    for (const match of source.matchAll(/<button\b([^>]*)>\s*<[A-Z][A-Za-z0-9]*\b[^>]*\/>\s*<\/button>/g))
+      if (!/aria-label=/.test(match[1])) uiViolations.push(`${file}: bare icon button without aria-label`);
   }
 }
 if (tooLong.length) throw new Error(`files too long:\n${tooLong.join('\n')}`);

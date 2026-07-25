@@ -10,46 +10,145 @@ const impact = JSON.parse(fs.readFileSync('tests/v175/impact-map.json', 'utf8'))
 const statuses = ['PASS', 'FAIL', 'BLOCKED', 'SKIPPED', 'FLAKY'];
 
 assert.equal(catalog.product_version, '1.7.0');
-assert.ok(versionAtLeast(pkg.version, catalog.product_version), `package version ${pkg.version} must not predate the V1.75 baseline ${catalog.product_version}`);
+assert.ok(
+  versionAtLeast(pkg.version, catalog.product_version),
+  `package version ${pkg.version} must not predate the V1.75 baseline ${catalog.product_version}`
+);
 assert.equal(versionAtLeast('1.10.0', '1.9.0'), true, 'minor versions compare numerically');
 assert.equal(versionAtLeast('2.0.0-beta.1', '1.9.0'), true, 'a newer release line may be prerelease');
 assert.equal(versionAtLeast('1.7.0-beta.1', '1.7.0'), false, 'a prerelease does not satisfy its stable baseline');
 assert.equal(versionAtLeast('1.6.99', '1.7.0'), false, 'older versions fail the baseline');
-assert.deepEqual(missingBaselineItems(['route:a', 'route:b', 'route:future'], ['route:a', 'route:b']), [], 'additive capabilities satisfy a frozen baseline');
-assert.deepEqual(missingBaselineItems(['route:a'], ['route:a', 'route:b']), ['route:b'], 'baseline removal remains a failure');
+assert.deepEqual(
+  missingBaselineItems(['route:a', 'route:b', 'route:future'], ['route:a', 'route:b']),
+  [],
+  'additive capabilities satisfy a frozen baseline'
+);
+assert.deepEqual(
+  missingBaselineItems(['route:a'], ['route:a', 'route:b']),
+  ['route:b'],
+  'baseline removal remains a failure'
+);
 assert.equal(catalog.state_schema, 16);
-for (const command of ['hooks:install', 'gate:pre-push', 'test:v175:plan', 'test:v175:impact', 'test:v175:pr', 'test:v175:full', 'test:v175:user-journey', 'test:v175:live', 'test:v175:soak']) assert.ok(pkg.scripts[command], `${command} exists`);
+for (const command of [
+  'hooks:install',
+  'gate:pre-push',
+  'test:v175:plan',
+  'test:v175:impact',
+  'test:v175:pr',
+  'test:v175:full',
+  'test:v175:user-journey',
+  'test:v175:live',
+  'test:v175:soak'
+])
+  assert.ok(pkg.scripts[command], `${command} exists`);
 assert.equal(new Set(catalog.tests.map((item) => item.id)).size, catalog.tests.length);
-assert.deepEqual(new Set(catalog.tests.map((item) => item.layer)), new Set(Array.from({ length: 9 }, (_, index) => `L${index}`)));
+assert.deepEqual(
+  new Set(catalog.tests.map((item) => item.layer)),
+  new Set(Array.from({ length: 9 }, (_, index) => `L${index}`))
+);
 assert.ok(impact.mappings.every((item) => item.patterns.length && item.domains.length));
-assert.ok(impact.mappings.findIndex((item) => item.patterns.includes('tests/v175/**')) < impact.mappings.findIndex((item) => item.patterns.includes('tests/**')), 'V1.75 governance files match before generic tests');
-for (const file of ['测试计划v1.75.md', '.gitattributes', '.githooks/pre-push', 'scripts/pre-push-gate.mjs', '.github/PULL_REQUEST_TEMPLATE.md']) assert.ok(fs.existsSync(file), `${file} exists`);
-assert.ok(fs.readFileSync('.gitattributes', 'utf8').includes('.githooks/* text eol=lf'), 'Git hooks keep LF line endings');
+assert.ok(
+  impact.mappings.findIndex((item) => item.patterns.includes('tests/v175/**')) <
+    impact.mappings.findIndex((item) => item.patterns.includes('tests/**')),
+  'V1.75 governance files match before generic tests'
+);
+for (const file of [
+  '测试计划v1.75.md',
+  '.gitattributes',
+  '.githooks/pre-push',
+  'scripts/pre-push-gate.mjs',
+  '.github/PULL_REQUEST_TEMPLATE.md'
+])
+  assert.ok(fs.existsSync(file), `${file} exists`);
+assert.ok(
+  fs.readFileSync('.gitattributes', 'utf8').includes('.githooks/* text eol=lf'),
+  'Git hooks keep LF line endings'
+);
 const prePush = fs.readFileSync('scripts/pre-push-gate.mjs', 'utf8');
-for (const contract of ['refs/heads/main', 'refusing to delete', 'status', '--porcelain', 'AIWS_TEST_BASE_SHA', 'test:v175:pr', 'test:v18:pr']) assert.ok(prePush.includes(contract), `pre-push gate keeps ${contract}`);
+for (const contract of [
+  'refs/heads/main',
+  'refusing to delete',
+  'status',
+  '--porcelain',
+  'AIWS_TEST_BASE_SHA',
+  'test:v175:pr',
+  'test:v18:pr'
+])
+  assert.ok(prePush.includes(contract), `pre-push gate keeps ${contract}`);
 const ciImpact = fs.readFileSync('scripts/v175-ci-impact.mjs', 'utf8');
-for (const contract of ['V1.75-Decision', 'V1.75-Reason', '!decisionMatch || !reasonMatch']) assert.ok(ciImpact.includes(contract), `PR impact gate keeps ${contract}`);
+for (const contract of ['V1.75-Decision', 'V1.75-Reason', '!decisionMatch || !reasonMatch'])
+  assert.ok(ciImpact.includes(contract), `PR impact gate keeps ${contract}`);
 const runner = fs.readFileSync('scripts/v175-runner.mjs', 'utf8');
-for (const contract of ['15 * 60_000', '90 * 60_000', '120 * 60_000', 'AIWS_TEST_RUN_ID', '测试结果v1.75.md']) assert.ok(runner.includes(contract), `runner keeps ${contract}`);
-assert.ok(runner.includes("item.external_effects === 'codex' && !process.env.AIWS_TEST_LIVE_BASE_URL"), 'service-backed Codex Live bypasses the host CLI precondition');
-for (const file of ['tests/integration/codex-live.test.mjs', 'tests/integration/github-live.test.mjs']) assert.ok(fs.readFileSync(file, 'utf8').includes('AIWS_TEST_LIVE_BASE_URL'), `${file} supports Docker service Vault mode`);
+for (const contract of ['15 * 60_000', '90 * 60_000', '120 * 60_000', 'AIWS_TEST_RUN_ID', '测试结果v1.75.md'])
+  assert.ok(runner.includes(contract), `runner keeps ${contract}`);
+assert.ok(
+  runner.includes("item.external_effects === 'codex' && !process.env.AIWS_TEST_LIVE_BASE_URL"),
+  'service-backed Codex Live bypasses the host CLI precondition'
+);
+for (const file of ['tests/integration/codex-live.test.mjs', 'tests/integration/github-live.test.mjs'])
+  assert.ok(
+    fs.readFileSync(file, 'utf8').includes('AIWS_TEST_LIVE_BASE_URL'),
+    `${file} supports Docker service Vault mode`
+  );
 const report = fs.readFileSync('scripts/v175-report.mjs', 'utf8');
 for (const status of statuses) assert.ok(report.includes(status), `report supports ${status}`);
-const isolation = { child_aiws_home: true, report_output_redirected: true, docker_context_excludes_active_workspace: true };
-assert.deepEqual(classifyWorkspaceDrift({ activeChanges: [{ path: 'data/state.json' }], writers: [{ pid: 1 }], isolation }), { polluted: false, external: true, reason: 'preexisting_writer_with_proven_test_isolation' });
-assert.equal(classifyWorkspaceDrift({ activeChanges: [{ path: 'data/state.json' }], writers: [], isolation }).polluted, true);
-assert.equal(normalizeCommandOutput(' M README.md\r\n?? new-file.md\r\n'), ' M README.md\r\n?? new-file.md', 'baseline preserves git status columns while trimming trailing newlines');
+const isolation = {
+  child_aiws_home: true,
+  report_output_redirected: true,
+  docker_context_excludes_active_workspace: true
+};
+assert.deepEqual(
+  classifyWorkspaceDrift({ activeChanges: [{ path: 'data/state.json' }], writers: [{ pid: 1 }], isolation }),
+  { polluted: false, external: true, reason: 'preexisting_writer_with_proven_test_isolation' }
+);
+assert.equal(
+  classifyWorkspaceDrift({ activeChanges: [{ path: 'data/state.json' }], writers: [], isolation }).polluted,
+  true
+);
+assert.equal(
+  normalizeCommandOutput(' M README.md\r\n?? new-file.md\r\n'),
+  ' M README.md\r\n?? new-file.md',
+  'baseline preserves git status columns while trimming trailing newlines'
+);
 const cleanBaseline = { source_polluted: false, active_workspace_polluted: false, resources_clean: true };
-assert.equal(classifyRunVerdict({ completed: true, finalBaseline: cleanBaseline, selected: [{ status: 'PASS' }] }), 'PASS');
-assert.equal(classifyRunVerdict({ completed: true, finalBaseline: cleanBaseline, selected: [{ status: 'PASS' }, { status: 'BLOCKED' }] }), 'INCOMPLETE');
-assert.equal(classifyRunVerdict({ completed: true, finalBaseline: cleanBaseline, selected: [{ status: 'FLAKY' }] }), 'FAIL');
+assert.equal(
+  classifyRunVerdict({ completed: true, finalBaseline: cleanBaseline, selected: [{ status: 'PASS' }] }),
+  'PASS'
+);
+assert.equal(
+  classifyRunVerdict({
+    completed: true,
+    finalBaseline: cleanBaseline,
+    selected: [{ status: 'PASS' }, { status: 'BLOCKED' }]
+  }),
+  'INCOMPLETE'
+);
+assert.equal(
+  classifyRunVerdict({ completed: true, finalBaseline: cleanBaseline, selected: [{ status: 'FLAKY' }] }),
+  'FAIL'
+);
 const soak = catalog.tests.find((item) => item.id === 'V175-L8-SOAK-001');
 assert.ok(soak.command.includes('--expose-gc'), 'soak enables deterministic heap collection');
 const soakSource = fs.readFileSync('tests/v175/soak.test.mjs', 'utf8');
-for (const evidence of ['new_managed_processes', 'occupied_ports', 'temp_directories', 'lock_files']) assert.ok(soakSource.includes(evidence), `soak records ${evidence}`);
+for (const evidence of ['new_managed_processes', 'occupied_ports', 'temp_directories', 'lock_files'])
+  assert.ok(soakSource.includes(evidence), `soak records ${evidence}`);
 const journey = catalog.tests.find((item) => item.id === 'V175-L5-JOURNEY-001');
-assert.equal(journey.priority, 'P0'); assert.deepEqual(journey.suites, ['full']);
-assert.ok(journey.dependencies.includes('V175-L5-WEB-001')); assert.ok(journey.command.includes('tests/e2e/v175-user-journey.test.mjs'));
+assert.equal(journey.priority, 'P0');
+assert.deepEqual(journey.suites, ['full']);
+assert.ok(journey.dependencies.includes('V175-L5-WEB-001'));
+assert.ok(journey.command.includes('tests/e2e/v175-user-journey.test.mjs'));
 const journeyRuntime = fs.readFileSync('tests/e2e/v175-user-journey-runtime.mjs', 'utf8');
-for (const contract of ['AIWS_TEST_REPORT_DIR', "'temp'", 'os.tmpdir()', 'AIWS_HOME', 'freePort()', 'sourceUnchanged', 'portReleased', 'secretsAbsent', 'fixtureCleanup', 'state-snapshot.json']) assert.ok(journeyRuntime.includes(contract), `user journey keeps ${contract}`);
+for (const contract of [
+  'AIWS_TEST_REPORT_DIR',
+  "'temp'",
+  'os.tmpdir()',
+  'AIWS_HOME',
+  'freePort()',
+  'sourceUnchanged',
+  'portReleased',
+  'secretsAbsent',
+  'fixtureCleanup',
+  'state-snapshot.json'
+])
+  assert.ok(journeyRuntime.includes(contract), `user journey keeps ${contract}`);
 console.log(`V1.75 governance contracts passed (${catalog.tests.length} catalog cases)`);

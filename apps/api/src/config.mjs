@@ -24,36 +24,102 @@ export const WEB_DIST_DIR = path.join(WEB_SOURCE_DIR, 'dist');
 export const WEB_DIR = fs.existsSync(WEB_DIST_DIR) ? WEB_DIST_DIR : WEB_SOURCE_DIR;
 export const PORT = Number(process.env.PORT || process.env.AIWS_PORT || 4317);
 export const HOST = process.env.AIWS_BIND_HOST || '127.0.0.1';
-export const LOCAL_GITHUB_APP_CONFIG = process.env.AIWS_GITHUB_APP_CONFIG ? path.resolve(process.env.AIWS_GITHUB_APP_CONFIG) : path.join(ROOT, 'config', 'github-app.local.example.json');
+export const LOCAL_GITHUB_APP_CONFIG = process.env.AIWS_GITHUB_APP_CONFIG
+  ? path.resolve(process.env.AIWS_GITHUB_APP_CONFIG)
+  : path.join(ROOT, 'config', 'github-app.local.example.json');
 
 export const collections = [
-  'users', 'sessions', 'connected_accounts', 'credential_refs', 'github_repositories',
-  'projects', 'workspaces', 'workflows', 'workflow_nodes', 'node_contracts',
-  'context_packs', 'context_sufficiency_checks', 'file_refs', 'traces',
-  'assets', 'asset_versions', 'asset_relations', 'decisions', 'digests',
-  'node_runs', 'agent_sessions', 'code_changes', 'tools', 'assist_sessions',
-  'human_reviews', 'runner_memory_candidates', 'test_results',
-  'change_proposals', 'submissions', 'codex_profiles', 'integration_statuses',
-  'setup_states', 'github_app_configs', 'github_installations', 'repository_bindings',
-  'assist_messages', 'assist_events', 'ui_action_intents', 'file_changes',
-  'webhook_deliveries', 'node_workspace_data', 'test_tasks'
-  ,'project_intakes', 'project_briefs', 'assist_turns', 'attachments', 'worktrees',
-  'runtime_approvals', 'terminal_sessions', 'config_revisions', 'import_jobs',
-  'assist_configurations', 'assist_change_batches', 'assist_checkpoints',
-  'assist_operations', 'runtime_user_inputs', 'host_bridge_devices',
-  'brief_templates', 'workflow_drafts', 'mcp_clients',
-  'workflow_generations', 'workflow_generation_events',
-  'repository_connections', 'repository_targets', 'delivery_policies', 'deliveries', 'delivery_events',
-  'workflow_migration_batches', 'workflow_migration_jobs',
-  'project_memberships', 'project_invitations', 'canonical_repositories', 'project_repository_bindings',
-  'repository_deletion_intents', 'exchange_requests', 'exchange_grants',
-  'repository_workspaces', 'pull_request_intents'
-  ,'asset_blobs', 'asset_attestations', 'workflow_executions', 'task_executions',
-  'execution_events', 'repository_lines'
+  'users',
+  'sessions',
+  'connected_accounts',
+  'credential_refs',
+  'github_repositories',
+  'projects',
+  'workspaces',
+  'workflows',
+  'workflow_nodes',
+  'node_contracts',
+  'context_packs',
+  'context_sufficiency_checks',
+  'file_refs',
+  'traces',
+  'assets',
+  'asset_versions',
+  'asset_relations',
+  'decisions',
+  'digests',
+  'node_runs',
+  'agent_sessions',
+  'code_changes',
+  'tools',
+  'assist_sessions',
+  'human_reviews',
+  'runner_memory_candidates',
+  'test_results',
+  'change_proposals',
+  'submissions',
+  'codex_profiles',
+  'integration_statuses',
+  'setup_states',
+  'github_app_configs',
+  'github_installations',
+  'repository_bindings',
+  'assist_messages',
+  'assist_events',
+  'ui_action_intents',
+  'file_changes',
+  'webhook_deliveries',
+  'node_workspace_data',
+  'test_tasks',
+  'project_intakes',
+  'project_briefs',
+  'assist_turns',
+  'attachments',
+  'worktrees',
+  'runtime_approvals',
+  'terminal_sessions',
+  'config_revisions',
+  'import_jobs',
+  'assist_configurations',
+  'assist_change_batches',
+  'assist_checkpoints',
+  'assist_operations',
+  'runtime_user_inputs',
+  'host_bridge_devices',
+  'brief_templates',
+  'workflow_drafts',
+  'mcp_clients',
+  'workflow_generations',
+  'workflow_generation_events',
+  'repository_connections',
+  'repository_targets',
+  'delivery_policies',
+  'deliveries',
+  'delivery_events',
+  'workflow_migration_batches',
+  'workflow_migration_jobs',
+  'project_memberships',
+  'project_invitations',
+  'canonical_repositories',
+  'project_repository_bindings',
+  'repository_deletion_intents',
+  'exchange_requests',
+  'exchange_grants',
+  'repository_workspaces',
+  'pull_request_intents',
+  'asset_blobs',
+  'asset_attestations',
+  'workflow_executions',
+  'task_executions',
+  'execution_events',
+  'repository_lines'
 ];
 
 export function readLocalGithubAppConfig() {
   if (!fs.existsSync(LOCAL_GITHUB_APP_CONFIG)) return {};
-  try { return JSON.parse(fs.readFileSync(LOCAL_GITHUB_APP_CONFIG, 'utf8')).github || {}; }
-  catch { return {}; }
+  try {
+    return JSON.parse(fs.readFileSync(LOCAL_GITHUB_APP_CONFIG, 'utf8')).github || {};
+  } catch {
+    return {};
+  }
 }

@@ -8,7 +8,13 @@ describe('Assist output rendering', () => {
   afterEach(cleanup);
 
   it('renders GFM without executing raw HTML or remote markdown images', () => {
-    const view = render(<AssistMarkdown>{'## Result\n\n| A | B |\n| - | - |\n| 1 | 2 |\n\n<script>window.__xss = true</script>\n\n![remote](https://example.invalid/a.png)'}</AssistMarkdown>);
+    const view = render(
+      <AssistMarkdown>
+        {
+          '## Result\n\n| A | B |\n| - | - |\n| 1 | 2 |\n\n<script>window.__xss = true</script>\n\n![remote](https://example.invalid/a.png)'
+        }
+      </AssistMarkdown>
+    );
     expect(screen.getByRole('heading', { name: 'Result' })).toBeInTheDocument();
     expect(screen.getByRole('table')).toBeInTheDocument();
     expect(view.container.querySelector('script')).toBeNull();
@@ -17,8 +23,18 @@ describe('Assist output rendering', () => {
   });
 
   it('coalesces native streaming text deltas without a machine action envelope', () => {
-    const base = { id: 1, sequence: 1, session_id: 's1', turn_id: 't1', type: 'text' as const, created_at: new Date().toISOString() };
-    const merged = coalesceAssistEvents([{ ...base, data: { text: 'Hello ' } }, { ...base, id: 2, sequence: 2, data: { text: 'world' } }]);
+    const base = {
+      id: 1,
+      sequence: 1,
+      session_id: 's1',
+      turn_id: 't1',
+      type: 'text' as const,
+      created_at: new Date().toISOString()
+    };
+    const merged = coalesceAssistEvents([
+      { ...base, data: { text: 'Hello ' } },
+      { ...base, id: 2, sequence: 2, data: { text: 'world' } }
+    ]);
     expect(merged).toHaveLength(1);
     render(<TypedEvent event={merged[0]} />);
     expect(screen.getByText('Hello world')).toBeInTheDocument();
@@ -26,7 +42,14 @@ describe('Assist output rendering', () => {
   });
 
   it('renders the authoritative Codex native plan instead of repeated delta cards', () => {
-    const base = { id: 1, sequence: 1, session_id: 's1', turn_id: 't1', type: 'plan' as const, created_at: new Date().toISOString() };
+    const base = {
+      id: 1,
+      sequence: 1,
+      session_id: 's1',
+      turn_id: 't1',
+      type: 'plan' as const,
+      created_at: new Date().toISOString()
+    };
     const merged = coalesceAssistEvents([
       { ...base, data: { text: '第一', status: 'streaming', source: 'codex-native' } },
       { ...base, id: 2, sequence: 2, data: { text: '步', status: 'streaming', source: 'codex-native' } },
@@ -40,12 +63,21 @@ describe('Assist output rendering', () => {
   });
 
   it('coalesces one command stream without merging the next command', () => {
-    const base = { id: 1, sequence: 1, session_id: 's1', turn_id: 't1', type: 'command' as const, created_at: new Date().toISOString() };
+    const base = {
+      id: 1,
+      sequence: 1,
+      session_id: 's1',
+      turn_id: 't1',
+      type: 'command' as const,
+      created_at: new Date().toISOString()
+    };
     const merged = coalesceAssistEvents([
       { ...base, data: { item_id: 'command-1', output: 'partial', status: 'running' } },
       { ...base, id: 2, sequence: 2, data: { command: 'pnpm test', output: 'complete output', status: 'completed' } },
       { ...base, id: 3, sequence: 3, data: { command: 'git status', output: 'clean', status: 'completed' } }
     ]);
-    expect(merged).toHaveLength(2); expect(merged[0].data).toMatchObject({ command: 'pnpm test', output: 'complete output' }); expect(merged[1].data.command).toBe('git status');
+    expect(merged).toHaveLength(2);
+    expect(merged[0].data).toMatchObject({ command: 'pnpm test', output: 'complete output' });
+    expect(merged[1].data.command).toBe('git status');
   });
 });

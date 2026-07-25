@@ -1,0 +1,12 @@
+**/node_modules/**
+**/dist/**
+**/build/**
+**/coverage/**
+**/.ai-workspace/**
+**/.ai-workspace-test-integration/**
+**/.tmp-*/**
+**/temp/**
+**/vendor/**
+**/generated/**
+**/*.generated.*
+**/*.min.*

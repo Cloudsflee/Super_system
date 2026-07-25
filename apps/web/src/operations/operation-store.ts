@@ -1,4 +1,12 @@
-import { localOperationId, persistableOperation, safeMethod, safeNullable, safePath, safeText, sanitizeOperationRecord } from './operation-sanitize';
+import {
+  localOperationId,
+  persistableOperation,
+  safeMethod,
+  safeNullable,
+  safePath,
+  safeText,
+  sanitizeOperationRecord
+} from './operation-sanitize';
 
 export const OPERATION_STORAGE_KEY = 'aiws-operation-diagnostics-v1';
 
@@ -50,14 +58,22 @@ const listeners = new Set<() => void>();
 const retries = new Map<string, () => Promise<unknown>>();
 const backgroundFailures = new Map<string, { count: number; firstAt: number }>();
 
-export function operationRecords() { return records; }
+export function operationRecords() {
+  return records;
+}
 
 export function subscribeOperations(listener: () => void) {
   listeners.add(listener);
   return () => listeners.delete(listener);
 }
 
-export function beginOperation(input: { id?: string; descriptor: OperationDescriptor; method: string; path: string; requestId?: string | null }) {
+export function beginOperation(input: {
+  id?: string;
+  descriptor: OperationDescriptor;
+  method: string;
+  path: string;
+  requestId?: string | null;
+}) {
   const timestamp = new Date().toISOString();
   const record: OperationRecord = {
     id: input.id || localOperationId('op'),
@@ -82,7 +98,10 @@ export function beginOperation(input: { id?: string; descriptor: OperationDescri
   return record.id;
 }
 
-export function completeOperation(id: string, patch: Partial<Pick<OperationRecord, 'phase' | 'requestId' | 'reason'>> = {}) {
+export function completeOperation(
+  id: string,
+  patch: Partial<Pick<OperationRecord, 'phase' | 'requestId' | 'reason'>> = {}
+) {
   update(id, (record) => finish(record, 'succeeded', { ...patch, phase: patch.phase || '已完成' }));
   const record = records.find((item) => item.id === id);
   if (record) backgroundFailures.delete(record.name);
@@ -109,8 +128,14 @@ export function failOperation(id: string, failure: RequestFailure) {
   });
 }
 
-export function recordRequestFailure(input: { name?: string; method: string; path: string; feedback?: OperationFeedbackLevel } & RequestFailure) {
-  const descriptor: OperationDescriptor = { name: input.name || `读取 ${safePath(input.path)}`, feedback: input.feedback || 'silent', phase: input.phase || '读取数据' };
+export function recordRequestFailure(
+  input: { name?: string; method: string; path: string; feedback?: OperationFeedbackLevel } & RequestFailure
+) {
+  const descriptor: OperationDescriptor = {
+    name: input.name || `读取 ${safePath(input.path)}`,
+    feedback: input.feedback || 'silent',
+    phase: input.phase || '读取数据'
+  };
   const id = beginOperation({ descriptor, method: input.method, path: input.path, requestId: input.requestId });
   failOperation(id, input);
   return id;
@@ -119,7 +144,13 @@ export function recordRequestFailure(input: { name?: string; method: string; pat
 export function recordSystemFailure(name: string, value: unknown, phase = '界面运行') {
   if (isAbort(value) || wasRecorded(value)) return null;
   const id = beginOperation({ descriptor: { name, feedback: 'foreground', phase }, method: 'SYSTEM', path: 'client' });
-  failOperation(id, { code: 'client_runtime_error', phase, message: errorMessage(value), action: '刷新页面；若问题再次出现，请复制诊断详情。', retryable: false });
+  failOperation(id, {
+    code: 'client_runtime_error',
+    phase,
+    message: errorMessage(value),
+    action: '刷新页面；若问题再次出现，请复制诊断详情。',
+    retryable: false
+  });
   return id;
 }
 
@@ -138,7 +169,12 @@ export function upsertExternalOperation(input: {
 }) {
   const existing = records.find((item) => item.id === input.id);
   if (!existing) {
-    const id = beginOperation({ id: input.id, descriptor: { name: input.name, feedback: 'background', phase: input.phase }, method: 'POST', path: input.path || '/codex/docker/build' });
+    const id = beginOperation({
+      id: input.id,
+      descriptor: { name: input.name, feedback: 'background', phase: input.phase },
+      method: 'POST',
+      path: input.path || '/codex/docker/build'
+    });
     update(id, (record) => externalPatch(record, input));
     return id;
   }
@@ -146,10 +182,18 @@ export function upsertExternalOperation(input: {
   return input.id;
 }
 
-export function registerOperationRetry(id: string, retry: () => Promise<unknown>) { retries.set(id, retry); }
-export function operationRetry(id: string) { return retries.get(id) || null; }
-export function dismissOperation(id: string) { update(id, (record) => ({ ...record, feedback: 'silent' })); }
-export function clearBackgroundFailure(name: string) { backgroundFailures.delete(name); }
+export function registerOperationRetry(id: string, retry: () => Promise<unknown>) {
+  retries.set(id, retry);
+}
+export function operationRetry(id: string) {
+  return retries.get(id) || null;
+}
+export function dismissOperation(id: string) {
+  update(id, (record) => ({ ...record, feedback: 'silent' }));
+}
+export function clearBackgroundFailure(name: string) {
+  backgroundFailures.delete(name);
+}
 
 export function clearOperations() {
   records = [];
@@ -160,11 +204,15 @@ export function clearOperations() {
 }
 
 export function diagnosticJson(selection = records) {
-  return JSON.stringify({
-    format: 'aiws-operation-diagnostics-v1',
-    generated_at: new Date().toISOString(),
-    records: selection.slice(0, 100).map(persistableOperation)
-  }, null, 2);
+  return JSON.stringify(
+    {
+      format: 'aiws-operation-diagnostics-v1',
+      generated_at: new Date().toISOString(),
+      records: selection.slice(0, 100).map(persistableOperation)
+    },
+    null,
+    2
+  );
 }
 
 function externalPatch(record: OperationRecord, input: Parameters<typeof upsertExternalOperation>[0]) {
@@ -187,12 +235,19 @@ function externalPatch(record: OperationRecord, input: Parameters<typeof upsertE
 
 function finish(record: OperationRecord, status: OperationStatus, patch: Partial<OperationRecord>) {
   const endedAt = new Date().toISOString();
-  return sanitizeOperationRecord({ ...record, ...patch, status, endedAt, durationMs: Math.max(0, Date.parse(endedAt) - Date.parse(record.startedAt)) });
+  return sanitizeOperationRecord({
+    ...record,
+    ...patch,
+    status,
+    endedAt,
+    durationMs: Math.max(0, Date.parse(endedAt) - Date.parse(record.startedAt))
+  });
 }
 
 function put(record: OperationRecord) {
   records = [sanitizeOperationRecord(record), ...records.filter((item) => item.id !== record.id)].slice(0, 100);
-  persist(); emit();
+  persist();
+  emit();
 }
 
 function update(id: string, updater: (record: OperationRecord) => OperationRecord) {
@@ -203,29 +258,52 @@ function update(id: string, updater: (record: OperationRecord) => OperationRecor
     return sanitizeOperationRecord(updater(record));
   });
   if (!changed) return;
-  persist(); emit();
+  persist();
+  emit();
 }
 
-function emit() { for (const listener of listeners) listener(); }
+function emit() {
+  for (const listener of listeners) listener();
+}
 
 function persist() {
-  try { sessionStorage.setItem(OPERATION_STORAGE_KEY, JSON.stringify(records.slice(0, 100).map(persistableOperation))); }
-  catch { /* Diagnostics must never break the user operation. */ }
+  try {
+    sessionStorage.setItem(OPERATION_STORAGE_KEY, JSON.stringify(records.slice(0, 100).map(persistableOperation)));
+  } catch {
+    /* Diagnostics must never break the user operation. */
+  }
 }
 
 function loadRecords(): OperationRecord[] {
   try {
     const parsed = JSON.parse(sessionStorage.getItem(OPERATION_STORAGE_KEY) || '[]');
     return Array.isArray(parsed) ? parsed.slice(0, 100).map(sanitizeOperationRecord) : [];
-  } catch { return []; }
+  } catch {
+    return [];
+  }
 }
 
 function backgroundEscalation(name: string) {
-  const now = Date.now(), current = backgroundFailures.get(name) || { count: 0, firstAt: now };
-  current.count += 1; backgroundFailures.set(name, current);
+  const now = Date.now(),
+    current = backgroundFailures.get(name) || { count: 0, firstAt: now };
+  current.count += 1;
+  backgroundFailures.set(name, current);
   return current.count >= 3 || now - current.firstAt >= 30_000;
 }
 
-function isAbort(value: unknown) { return value instanceof DOMException ? value.name === 'AbortError' : value instanceof Error && value.name === 'AbortError'; }
-function wasRecorded(value: unknown) { return Boolean(value && typeof value === 'object' && 'operationRecorded' in value && (value as { operationRecorded?: boolean }).operationRecorded); }
-function errorMessage(value: unknown) { return safeText(value instanceof Error ? value.message : value, '未知界面错误'); }
+function isAbort(value: unknown) {
+  return value instanceof DOMException
+    ? value.name === 'AbortError'
+    : value instanceof Error && value.name === 'AbortError';
+}
+function wasRecorded(value: unknown) {
+  return Boolean(
+    value &&
+    typeof value === 'object' &&
+    'operationRecorded' in value &&
+    (value as { operationRecorded?: boolean }).operationRecorded
+  );
+}
+function errorMessage(value: unknown) {
+  return safeText(value instanceof Error ? value.message : value, '未知界面错误');
+}

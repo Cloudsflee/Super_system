@@ -86,13 +86,20 @@ describe('overlay and capability contracts', () => {
   it('drives proposal approve and apply commands through the API', async () => {
     let status = 'pending';
     const calls: string[] = [];
-    vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
-      const url = String(input), method = init?.method || 'GET';
-      calls.push(`${method} ${url}`);
-      if (url.endsWith('/approve')) status = 'approved';
-      if (url.endsWith('/apply')) { status = 'applied'; return jsonResponse({ proposal: proposal(status), applied: { type: 'record_only' } }); }
-      return jsonResponse(method === 'GET' ? [proposal(status)] : proposal(status));
-    }));
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+        const url = String(input),
+          method = init?.method || 'GET';
+        calls.push(`${method} ${url}`);
+        if (url.endsWith('/approve')) status = 'approved';
+        if (url.endsWith('/apply')) {
+          status = 'applied';
+          return jsonResponse({ proposal: proposal(status), applied: { type: 'record_only' } });
+        }
+        return jsonResponse(method === 'GET' ? [proposal(status)] : proposal(status));
+      })
+    );
     useUi.getState().showProposal('proposal-1');
     renderWithClient(<ProposalDrawer projectId="project-1" />);
     fireEvent.click(await screen.findByRole('button', { name: '批准' }));
@@ -102,18 +109,33 @@ describe('overlay and capability contracts', () => {
 
   it('persists Escape from the immediate prompt as a defer decision', async () => {
     const calls: Array<{ url: string; body?: unknown }> = [];
-    vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
-      const url = String(input);
-      calls.push({ url, body: init?.body ? JSON.parse(String(init.body)) : undefined });
-      if (url.endsWith('/approvals')) return jsonResponse([approval()]);
-      if (url.endsWith('/decision')) return jsonResponse({ item: { ...approval(), attention_state: 'queued' } });
-      return jsonResponse([]);
-    }));
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+        const url = String(input);
+        calls.push({ url, body: init?.body ? JSON.parse(String(init.body)) : undefined });
+        if (url.endsWith('/approvals')) return jsonResponse([approval()]);
+        if (url.endsWith('/decision')) return jsonResponse({ item: { ...approval(), attention_state: 'queued' } });
+        return jsonResponse([]);
+      })
+    );
     useUi.getState().showProposal('proposal-1');
-    renderWithClient(<MemoryRouter><ApprovalPrompt projectId="project-1" /></MemoryRouter>);
+    renderWithClient(
+      <MemoryRouter>
+        <ApprovalPrompt projectId="project-1" />
+      </MemoryRouter>
+    );
     expect(await screen.findByText('确认变更')).toBeInTheDocument();
     fireEvent.keyDown(window, { key: 'Escape' });
-    await waitFor(() => expect(calls.some((item) => item.url.endsWith('/approvals/change_proposal/proposal-1/decision') && (item.body as { decision?: string })?.decision === 'defer')).toBe(true));
+    await waitFor(() =>
+      expect(
+        calls.some(
+          (item) =>
+            item.url.endsWith('/approvals/change_proposal/proposal-1/decision') &&
+            (item.body as { decision?: string })?.decision === 'defer'
+        )
+      ).toBe(true)
+    );
     await waitFor(() => expect(useUi.getState().proposalId).toBeNull());
   });
 
@@ -121,30 +143,58 @@ describe('overlay and capability contracts', () => {
     const calls: Array<{ url: string; body?: unknown }> = [];
     let resolveApprovals: ((response: Response) => void) | undefined;
     let firstApprovalRead = true;
-    const pendingApprovals = new Promise<Response>((resolve) => { resolveApprovals = resolve; });
-    vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
-      const url = String(input);
-      calls.push({ url, body: init?.body ? JSON.parse(String(init.body)) : undefined });
-      if (url.endsWith('/approvals') && firstApprovalRead) { firstApprovalRead = false; return pendingApprovals; }
-      if (url.endsWith('/approvals')) return jsonResponse([{ ...approval(), attention_state: 'queued' }]);
-      if (url.endsWith('/decision')) return jsonResponse({ item: { ...approval(), attention_state: 'queued' } });
-      return jsonResponse([]);
-    }));
+    const pendingApprovals = new Promise<Response>((resolve) => {
+      resolveApprovals = resolve;
+    });
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+        const url = String(input);
+        calls.push({ url, body: init?.body ? JSON.parse(String(init.body)) : undefined });
+        if (url.endsWith('/approvals') && firstApprovalRead) {
+          firstApprovalRead = false;
+          return pendingApprovals;
+        }
+        if (url.endsWith('/approvals')) return jsonResponse([{ ...approval(), attention_state: 'queued' }]);
+        if (url.endsWith('/decision')) return jsonResponse({ item: { ...approval(), attention_state: 'queued' } });
+        return jsonResponse([]);
+      })
+    );
     useUi.getState().showProposal('proposal-1');
-    renderWithClient(<MemoryRouter><ApprovalPrompt projectId="project-1" /></MemoryRouter>);
+    renderWithClient(
+      <MemoryRouter>
+        <ApprovalPrompt projectId="project-1" />
+      </MemoryRouter>
+    );
     expect(await screen.findByText('正在加载审批项目')).toBeInTheDocument();
     fireEvent.keyDown(window, { key: 'Escape' });
     expect(useUi.getState().proposalId).toBe('proposal-1');
-    await act(async () => { resolveApprovals?.(jsonResponse([approval()])); });
-    await waitFor(() => expect(calls.some((item) => item.url.endsWith('/approvals/change_proposal/proposal-1/decision') && (item.body as { decision?: string })?.decision === 'defer')).toBe(true));
+    await act(async () => {
+      resolveApprovals?.(jsonResponse([approval()]));
+    });
+    await waitFor(() =>
+      expect(
+        calls.some(
+          (item) =>
+            item.url.endsWith('/approvals/change_proposal/proposal-1/decision') &&
+            (item.body as { decision?: string })?.decision === 'defer'
+        )
+      ).toBe(true)
+    );
     await waitFor(() => expect(useUi.getState().proposalId).toBeNull());
   });
 
   it('closes an open prompt when the approval is resolved elsewhere', async () => {
-    const fetch = vi.fn(async () => jsonResponse([{ ...approval(), status: 'cancelled', attention_state: 'resolved' }]));
+    const fetch = vi.fn(async () =>
+      jsonResponse([{ ...approval(), status: 'cancelled', attention_state: 'resolved' }])
+    );
     vi.stubGlobal('fetch', fetch);
     useUi.getState().showProposal('proposal-1');
-    renderWithClient(<MemoryRouter><ApprovalPrompt projectId="project-1" /></MemoryRouter>);
+    renderWithClient(
+      <MemoryRouter>
+        <ApprovalPrompt projectId="project-1" />
+      </MemoryRouter>
+    );
     await waitFor(() => expect(useUi.getState().proposalId).toBeNull());
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
     expect(fetch).toHaveBeenCalledTimes(1);
@@ -153,11 +203,24 @@ describe('overlay and capability contracts', () => {
 
 function openOverlays() {
   const state = useUi.getState();
-  return [state.navOpen && 'nav', state.assistOpen && 'assist', state.proposalId && 'proposal', state.inspectorNodeId && 'inspector'].filter(Boolean);
+  return [
+    state.navOpen && 'nav',
+    state.assistOpen && 'assist',
+    state.proposalId && 'proposal',
+    state.inspectorNodeId && 'inspector'
+  ].filter(Boolean);
 }
 
 function renderShell() {
-  return renderWithClient(<MemoryRouter initialEntries={['/projects']}><Routes><Route element={<AppShell />}><Route path="/projects" element={<div>Projects</div>} /></Route></Routes></MemoryRouter>);
+  return renderWithClient(
+    <MemoryRouter initialEntries={['/projects']}>
+      <Routes>
+        <Route element={<AppShell />}>
+          <Route path="/projects" element={<div>Projects</div>} />
+        </Route>
+      </Routes>
+    </MemoryRouter>
+  );
 }
 
 function renderWithClient(value: ReactNode) {
@@ -169,16 +232,69 @@ function jsonResponse(value: unknown, status = 200) {
   return new Response(JSON.stringify(value), { status, headers: { 'content-type': 'application/json' } });
 }
 
-function proposal(status: string) { return { id: 'proposal-1', project_id: 'project-1', change_type: 'record', title: '确认变更', summary: '测试审批命令', before_json: null, after_json: {}, impact: [], risks: [], evidence_refs: [], status, created_at: new Date(0).toISOString() }; }
-function approval() { return { ...proposal('pending'), type: 'proposal', attention_state: 'interrupting', revision: 2, target_hash: 'hash-2' }; }
+function proposal(status: string) {
+  return {
+    id: 'proposal-1',
+    project_id: 'project-1',
+    change_type: 'record',
+    title: '确认变更',
+    summary: '测试审批命令',
+    before_json: null,
+    after_json: {},
+    impact: [],
+    risks: [],
+    evidence_refs: [],
+    status,
+    created_at: new Date(0).toISOString()
+  };
+}
+function approval() {
+  return {
+    ...proposal('pending'),
+    type: 'proposal',
+    attention_state: 'interrupting',
+    revision: 2,
+    target_hash: 'hash-2'
+  };
+}
 
 function workspace(repoPath = ''): NodeWorkspace {
   return {
-    project: { id: 'project-1', title: 'Fixture', goal: '', status: 'active', current_workspace_id: 'workspace-1', repo_path: repoPath },
+    project: {
+      id: 'project-1',
+      title: 'Fixture',
+      goal: '',
+      status: 'active',
+      current_workspace_id: 'workspace-1',
+      repo_path: repoPath
+    },
     workflow: { id: 'workflow-1', project_id: 'project-1', title: 'Workflow', status: 'active' },
-    node: { id: 'node-1', workflow_id: 'workflow-1', workspace_id: 'workspace-1', type: 'execution', title: 'Execute', goal: '', status: 'ready', order_index: 0, dependencies: [] },
-    contract: { id: 'contract-1', node_id: 'node-1', version: 1, node_goal: '', acceptance_criteria: [], allowed_tools: [], expected_inputs: [], expected_outputs: [] },
+    node: {
+      id: 'node-1',
+      workflow_id: 'workflow-1',
+      workspace_id: 'workspace-1',
+      type: 'execution',
+      title: 'Execute',
+      goal: '',
+      status: 'ready',
+      order_index: 0,
+      dependencies: []
+    },
+    contract: {
+      id: 'contract-1',
+      node_id: 'node-1',
+      version: 1,
+      node_goal: '',
+      acceptance_criteria: [],
+      allowed_tools: [],
+      expected_inputs: [],
+      expected_outputs: []
+    },
     workspace: { id: 'workspace-1', title: 'Execute', open_questions: [] },
-    data: {}, runs: [], code_changes: [], assets: [], traces: []
+    data: {},
+    runs: [],
+    code_changes: [],
+    assets: [],
+    traces: []
   };
 }

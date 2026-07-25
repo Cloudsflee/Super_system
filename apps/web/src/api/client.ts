@@ -1,5 +1,11 @@
 import {
-  beginOperation, cancelOperation, clearBackgroundFailure, completeOperation, failOperation, recordRequestFailure, registerOperationRetry,
+  beginOperation,
+  cancelOperation,
+  clearBackgroundFailure,
+  completeOperation,
+  failOperation,
+  recordRequestFailure,
+  registerOperationRetry,
   type OperationDescriptor
 } from '../operations/operation-store';
 
@@ -17,7 +23,11 @@ export class ApiError extends Error {
   retryable: boolean;
   timeout: boolean;
   operationRecorded = false;
-  constructor(status: number, payload: Record<string, unknown>, context: { requestId?: string | null; method?: string; path?: string; timeout?: boolean } = {}) {
+  constructor(
+    status: number,
+    payload: Record<string, unknown>,
+    context: { requestId?: string | null; method?: string; path?: string; timeout?: boolean } = {}
+  ) {
     const code = String(payload.error || (context.timeout ? 'request_timeout' : 'request_failed'));
     super(friendlyMessage(code, payload.message, status));
     this.status = status;
@@ -38,13 +48,34 @@ export async function api<T>(path: string, init: ApiRequestInit = {}): Promise<T
   const method = String(requestInit.method || 'GET').toUpperCase();
   const requestId = localRequestId();
   if (method !== 'GET' && !operation) {
-    const error = new ApiError(0, { error: 'write_operation_description_required', message: '写操作缺少操作描述', action: '为该请求声明用户可读名称、反馈级别和超时策略。', phase: 'client', retryable: false }, { requestId, method, path });
-    recordRequestFailure({ name: '未描述的写操作', method, path, requestId, code: error.code, phase: error.phase, message: error.message, action: error.action, feedback: 'foreground' });
+    const error = new ApiError(
+      0,
+      {
+        error: 'write_operation_description_required',
+        message: '写操作缺少操作描述',
+        action: '为该请求声明用户可读名称、反馈级别和超时策略。',
+        phase: 'client',
+        retryable: false
+      },
+      { requestId, method, path }
+    );
+    recordRequestFailure({
+      name: '未描述的写操作',
+      method,
+      path,
+      requestId,
+      code: error.code,
+      phase: error.phase,
+      message: error.message,
+      action: error.action,
+      feedback: 'foreground'
+    });
     error.operationRecorded = true;
     throw error;
   }
   const headers = new Headers(requestInit.headers);
-  if (!(requestInit.body instanceof FormData) && requestInit.body !== undefined && !headers.has('content-type')) headers.set('content-type', 'application/json');
+  if (!(requestInit.body instanceof FormData) && requestInit.body !== undefined && !headers.has('content-type'))
+    headers.set('content-type', 'application/json');
   headers.set('x-aiws-request-id', requestId);
   if (operation?.idempotencyKey) headers.set('x-idempotency-key', operation.idempotencyKey);
   const timeoutMs = Number(explicitTimeout || operation?.timeoutMs || (method === 'GET' ? 30_000 : 120_000));
@@ -53,7 +84,10 @@ export async function api<T>(path: string, init: ApiRequestInit = {}): Promise<T
   const abortFromCaller = () => controller.abort(requestInit.signal?.reason);
   if (requestInit.signal?.aborted) abortFromCaller();
   else requestInit.signal?.addEventListener('abort', abortFromCaller, { once: true });
-  const timer = window.setTimeout(() => { timedOut = true; controller.abort(new DOMException('Request timed out', 'TimeoutError')); }, timeoutMs);
+  const timer = window.setTimeout(() => {
+    timedOut = true;
+    controller.abort(new DOMException('Request timed out', 'TimeoutError'));
+  }, timeoutMs);
   const operationId = operation ? beginOperation({ descriptor: operation, method, path, requestId }) : null;
   const retrySafe = method === 'GET' || operation?.safeRetry === true || Boolean(operation?.idempotencyKey);
   if (operationId && retrySafe) registerOperationRetry(operationId, () => api(path, { ...init, signal: undefined }));
@@ -64,7 +98,8 @@ export async function api<T>(path: string, init: ApiRequestInit = {}): Promise<T
     let payload: Record<string, unknown>;
     if (type.includes('json')) {
       const parsed = await response.json();
-      payload = parsed && typeof parsed === 'object' ? parsed as Record<string, unknown> : { message: String(parsed ?? '') };
+      payload =
+        parsed && typeof parsed === 'object' ? (parsed as Record<string, unknown>) : { message: String(parsed ?? '') };
     } else payload = { message: await response.text() };
     if (!response.ok) throw new ApiError(response.status, payload, { requestId: responseRequestId, method, path });
     if (operationId) completeOperation(operationId, { requestId: responseRequestId });
@@ -75,19 +110,51 @@ export async function api<T>(path: string, init: ApiRequestInit = {}): Promise<T
       if (operationId) cancelOperation(operationId);
       throw value;
     }
-    const error = value instanceof ApiError ? value : new ApiError(0, {
-      error: timedOut ? 'request_timeout' : 'network_request_failed',
-      message: timedOut ? '请求超时' : '无法连接到本地服务',
-      action: timedOut && method !== 'GET' ? '服务端可能仍在处理，请先检查操作状态，不要立即重复提交。' : '检查本地服务和网络连接后重试。',
-      phase: 'network',
-      retryable: method === 'GET' || retrySafe
-    }, { requestId, method, path, timeout: timedOut });
+    const error =
+      value instanceof ApiError
+        ? value
+        : new ApiError(
+            0,
+            {
+              error: timedOut ? 'request_timeout' : 'network_request_failed',
+              message: timedOut ? '请求超时' : '无法连接到本地服务',
+              action:
+                timedOut && method !== 'GET'
+                  ? '服务端可能仍在处理，请先检查操作状态，不要立即重复提交。'
+                  : '检查本地服务和网络连接后重试。',
+              phase: 'network',
+              retryable: method === 'GET' || retrySafe
+            },
+            { requestId, method, path, timeout: timedOut }
+          );
     if (operationId) {
-      failOperation(operationId, { code: error.code, status: error.status, requestId: error.requestId, retryable: retrySafe && error.retryable, timeout: error.timeout, phase: error.phase, message: error.message, action: error.action });
+      failOperation(operationId, {
+        code: error.code,
+        status: error.status,
+        requestId: error.requestId,
+        retryable: retrySafe && error.retryable,
+        timeout: error.timeout,
+        phase: error.phase,
+        message: error.message,
+        action: error.action
+      });
       error.operationRecorded = true;
     } else {
-      const recordedId = recordRequestFailure({ method, path, requestId: error.requestId, code: error.code, status: error.status, retryable: method === 'GET' && error.retryable, timeout: error.timeout, phase: error.phase, message: error.message, action: error.action, feedback: method === 'GET' ? 'background' : 'silent' });
-      if (method === 'GET' && error.retryable) registerOperationRetry(recordedId, () => api(path, { ...init, signal: undefined }));
+      const recordedId = recordRequestFailure({
+        method,
+        path,
+        requestId: error.requestId,
+        code: error.code,
+        status: error.status,
+        retryable: method === 'GET' && error.retryable,
+        timeout: error.timeout,
+        phase: error.phase,
+        message: error.message,
+        action: error.action,
+        feedback: method === 'GET' ? 'background' : 'silent'
+      });
+      if (method === 'GET' && error.retryable)
+        registerOperationRetry(recordedId, () => api(path, { ...init, signal: undefined }));
       error.operationRecorded = true;
     }
     throw error;
@@ -97,14 +164,25 @@ export async function api<T>(path: string, init: ApiRequestInit = {}): Promise<T
   }
 }
 
-export function multipart(method: string, form: FormData, operation: OperationDescriptor | string): ApiRequestInit { const descriptor = operationDescriptor(operation); return { method, body: form, operation: descriptor, timeoutMs: descriptor.timeoutMs }; }
+export function multipart(method: string, form: FormData, operation: OperationDescriptor | string): ApiRequestInit {
+  const descriptor = operationDescriptor(operation);
+  return { method, body: form, operation: descriptor, timeoutMs: descriptor.timeoutMs };
+}
 
 export function json(method: string, body: unknown, operation: OperationDescriptor | string): ApiRequestInit {
   const descriptor = operationDescriptor(operation);
-  return { method, body: body === undefined ? undefined : JSON.stringify(body), operation: descriptor, timeoutMs: descriptor.timeoutMs };
+  return {
+    method,
+    body: body === undefined ? undefined : JSON.stringify(body),
+    operation: descriptor,
+    timeoutMs: descriptor.timeoutMs
+  };
 }
 
-export function describeOperation(name: string, options: Partial<Omit<OperationDescriptor, 'name'>> = {}): OperationDescriptor {
+export function describeOperation(
+  name: string,
+  options: Partial<Omit<OperationDescriptor, 'name'>> = {}
+): OperationDescriptor {
   return { name, feedback: options.feedback || 'foreground', ...options };
 }
 
@@ -124,23 +202,39 @@ export function websocketUrl(path: string) {
   return target.toString();
 }
 
-export function apiUrl(path: string) { return path.startsWith('/api/') ? path : `/api${path.startsWith('/') ? path : `/${path}`}`; }
+export function apiUrl(path: string) {
+  return path.startsWith('/api/') ? path : `/api${path.startsWith('/') ? path : `/${path}`}`;
+}
 
-function localRequestId() { return `web_${globalThis.crypto?.randomUUID?.() || `${Date.now()}_${Math.random().toString(36).slice(2)}`}`; }
-function safePath(value: string) { return String(value || '').split(/[?#]/, 1)[0]; }
-function isCallerAbort(_value: unknown, signal: AbortSignal | null | undefined, timedOut: boolean) { return !timedOut && Boolean(signal?.aborted); }
+function localRequestId() {
+  return `web_${globalThis.crypto?.randomUUID?.() || `${Date.now()}_${Math.random().toString(36).slice(2)}`}`;
+}
+function safePath(value: string) {
+  return String(value || '').split(/[?#]/, 1)[0];
+}
+function isCallerAbort(_value: unknown, signal: AbortSignal | null | undefined, timedOut: boolean) {
+  return !timedOut && Boolean(signal?.aborted);
+}
 function friendlyMessage(code: string, candidate: unknown, status: number) {
   const catalog: Record<string, string> = {
-    request_timeout: '请求超时', network_request_failed: '无法连接到本地服务', internal_error: '服务端处理请求时发生内部错误',
-    setup_required: '需要先完成工作区配置', not_found: '请求的资源不存在', codex_build_not_found: '未找到该 Codex 构建任务',
+    request_timeout: '请求超时',
+    network_request_failed: '无法连接到本地服务',
+    internal_error: '服务端处理请求时发生内部错误',
+    setup_required: '需要先完成工作区配置',
+    not_found: '请求的资源不存在',
+    codex_build_not_found: '未找到该 Codex 构建任务',
     discovery_source_stale: '本地配置已变化，请刷新后重新选择'
   };
   const value = String(candidate || '');
-  return catalog[code] || (value && value !== code ? value : code || (status ? `请求失败（HTTP ${status}）` : '请求失败'));
+  return (
+    catalog[code] || (value && value !== code ? value : code || (status ? `请求失败（HTTP ${status}）` : '请求失败'))
+  );
 }
 function defaultAction(code: string, method: string) {
   if (code === 'request_timeout' && method !== 'GET') return '服务端可能仍在处理，请先检查操作状态，不要立即重复提交。';
   if (code === 'network_request_failed') return '检查本地服务和网络连接后重试。';
   return '检查操作详情和服务状态后重试。';
 }
-function operationDescriptor(value: OperationDescriptor | string): OperationDescriptor { return typeof value === 'string' ? describeOperation(value) : value; }
+function operationDescriptor(value: OperationDescriptor | string): OperationDescriptor {
+  return typeof value === 'string' ? describeOperation(value) : value;
+}

@@ -1,1 +1,12 @@
 .githooks/* text eol=lf
+.gitattributes text eol=lf
+.prettierignore text eol=lf
+.prettierrc.json text eol=lf
+/package.json text eol=lf
+/pnpm-lock.yaml text eol=lf
+*.css text eol=lf
+*.go text eol=lf
+*.js text eol=lf
+*.mjs text eol=lf
+*.ts text eol=lf
+*.tsx text eol=lf

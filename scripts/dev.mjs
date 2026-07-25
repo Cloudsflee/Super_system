@@ -6,17 +6,27 @@ const api = spawn(process.execPath, ['apps/api/server.mjs'], {
   stdio: 'inherit'
 });
 const pnpmCommand = process.platform === 'win32' ? process.execPath : 'corepack';
-const pnpmArgs = process.platform === 'win32'
-  ? [path.join(path.dirname(process.execPath), 'node_modules', 'corepack', 'dist', 'pnpm.js'), '--filter', '@aiws/web', 'dev']
-  : ['pnpm', '--filter', '@aiws/web', 'dev'];
+const pnpmArgs =
+  process.platform === 'win32'
+    ? [
+        path.join(path.dirname(process.execPath), 'node_modules', 'corepack', 'dist', 'pnpm.js'),
+        '--filter',
+        '@aiws/web',
+        'dev'
+      ]
+    : ['pnpm', '--filter', '@aiws/web', 'dev'];
 const web = spawn(pnpmCommand, pnpmArgs, {
   stdio: 'inherit'
 });
 
-const stop = () => { api.kill(); web.kill(); };
+const stop = () => {
+  api.kill();
+  web.kill();
+};
 process.on('SIGINT', stop);
 process.on('SIGTERM', stop);
-for (const child of [api, web]) child.on('exit', (code) => {
-  stop();
-  if (code) process.exitCode = code;
-});
+for (const child of [api, web])
+  child.on('exit', (code) => {
+    stop();
+    if (code) process.exitCode = code;
+  });

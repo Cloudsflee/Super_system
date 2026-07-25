@@ -15,15 +15,16 @@ export function createCodexRunError(run, { failureCode, timeoutCode }) {
 
 export function safeErrorDetail(error) {
   const source = error?.details || error?.payload || {};
-  const detail = source && typeof source === 'object' && !Array.isArray(source)
-    ? structuredClone(source)
-    : { detail: source };
+  const detail =
+    source && typeof source === 'object' && !Array.isArray(source) ? structuredClone(source) : { detail: source };
   if (error?.message && detail.message === undefined) detail.message = error.message;
   if (error?.code && detail.code === undefined) detail.code = error.code;
-  return JSON.parse(JSON.stringify(detail, (key, value) => {
-    if (typeof value !== 'string') return value;
-    return sanitize(value, { tail: key === 'detail' || key === 'stderr' });
-  }));
+  return JSON.parse(
+    JSON.stringify(detail, (key, value) => {
+      if (typeof value !== 'string') return value;
+      return sanitize(value, { tail: key === 'detail' || key === 'stderr' });
+    })
+  );
 }
 
 function sanitize(value, { tail = false } = {}) {

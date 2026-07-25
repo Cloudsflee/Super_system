@@ -3,7 +3,10 @@ import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
 
 export async function connectMcp(baseUrl, token) {
-  const client = new Client({ name: 'aiws-live-project-smoke', version: '1.10.0' }, { capabilities: { resources: { subscribe: true } } });
+  const client = new Client(
+    { name: 'aiws-live-project-smoke', version: '1.10.0' },
+    { capabilities: { resources: { subscribe: true } } }
+  );
   const transport = new StreamableHTTPClientTransport(new URL('/api/mcp', `${baseUrl}/`), {
     requestInit: { headers: { authorization: `Bearer ${token}` } }
   });
@@ -13,8 +16,13 @@ export async function connectMcp(baseUrl, token) {
     const response = await client.callTool({ name, arguments: args });
     if (response.structuredContent) return response.structuredContent;
     const text = response.content?.find((item) => item.type === 'text')?.text || '';
-    try { return JSON.parse(text || '{}'); }
-    catch { const error = new Error(text || 'mcp_tool_result_invalid'); error.details = { tool: name }; throw error; }
+    try {
+      return JSON.parse(text || '{}');
+    } catch {
+      const error = new Error(text || 'mcp_tool_result_invalid');
+      error.details = { tool: name };
+      throw error;
+    }
   }
   function callOperation(operationId, args) {
     const domain = operationId.split('.')[1];
@@ -29,7 +37,10 @@ export async function connectMcp(baseUrl, token) {
     const deadline = Date.now() + timeoutMs;
     while (Date.now() < deadline) {
       const result = await callTool('aiws_operations', {
-        action: 'wait', operation_id: operationId, timeout_ms: Math.min(30_000, deadline - Date.now()), poll_ms: 250
+        action: 'wait',
+        operation_id: operationId,
+        timeout_ms: Math.min(30_000, deadline - Date.now()),
+        poll_ms: 250
       });
       if (!result.ok) throw operationError(result);
       if (result.data.operation.terminal) return result.data.operation;
@@ -49,20 +60,30 @@ export async function connectMcp(baseUrl, token) {
   return { client, callTool, callOperation, mustOperation, waitForOperation, readResource, close };
 }
 
-export async function createRepositoryWithVisibilityRetry({ mcp, repositoryName, projectId, installationId, operationKey }) {
+export async function createRepositoryWithVisibilityRetry({
+  mcp,
+  repositoryName,
+  projectId,
+  installationId,
+  operationKey
+}) {
   for (let attempt = 1; attempt <= 8; attempt++) {
     const result = await mcp.callOperation('aiws.github.post.projects.by-id.github.repository', {
       params: { id: projectId },
       body: {
-        installation_id: installationId, name: repositoryName,
+        installation_id: installationId,
+        name: repositoryName,
         description: 'Private repository created by the AIWS V1.9 MCP live smoke test.',
-        private: true, auto_init: true, operation_key: operationKey
+        private: true,
+        auto_init: true,
+        operation_key: operationKey
       }
     });
     const data = dataOf(result);
     if (result.ok && data?.canonical_repository && data?.binding?.status === 'ready') return result;
     const code = result.error?.error || data?.error;
-    if (!['access_required', 'github_installation_pending'].includes(code) && data?.status !== 'pending') throw operationError(result);
+    if (!['access_required', 'github_installation_pending'].includes(code) && data?.status !== 'pending')
+      throw operationError(result);
     if (attempt === 8) throw operationError(result);
     await new Promise((resolve) => setTimeout(resolve, attempt * 2_000));
     await mcp.mustOperation('aiws.github.post.github.repositories.sync', { body: {} });
@@ -81,12 +102,28 @@ export async function adminJson(baseUrl, pathname, { method = 'GET', ownerId = n
     signal: AbortSignal.timeout(30_000)
   });
   const data = await response.json().catch(() => ({}));
-  if (!response.ok) throw new Error(`${method} ${pathname} failed (${response.status}): ${data.error || data.message || 'request_failed'}`);
+  if (!response.ok)
+    throw new Error(
+      `${method} ${pathname} failed (${response.status}): ${data.error || data.message || 'request_failed'}`
+    );
   return data;
 }
 
-export function dataOf(result) { return result?.handle?.data ?? result?.data; }
-export function publicError(error) { return { message: String(error?.message || error), details: error?.details || null }; }
-export function normalizeBaseUrl(value) { const url = new URL(String(value)); assert.ok(['http:', 'https:'].includes(url.protocol)); assert.equal(url.username || url.password, ''); return url.href.replace(/\/$/, ''); }
+export function dataOf(result) {
+  return result?.handle?.data ?? result?.data;
+}
+export function publicError(error) {
+  return { message: String(error?.message || error), details: error?.details || null };
+}
+export function normalizeBaseUrl(value) {
+  const url = new URL(String(value));
+  assert.ok(['http:', 'https:'].includes(url.protocol));
+  assert.equal(url.username || url.password, '');
+  return url.href.replace(/\/$/, '');
+}
 
-function operationError(result) { const error = new Error(result?.error?.error || 'mcp_operation_failed'); error.details = result?.error || result; return error; }
+function operationError(result) {
+  const error = new Error(result?.error?.error || 'mcp_operation_failed');
+  error.details = result?.error || result;
+  return error;
+}

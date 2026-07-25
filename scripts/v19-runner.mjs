@@ -46,17 +46,46 @@ if (mode === 'soak' && !results.some((item) => item.status !== 'PASS')) {
 }
 
 const elapsedMs = Date.now() - started;
-if (elapsedMs > budgetMs) results.push({ id: 'V19-BUDGET', case_id: 'V19-BUDGET', command: '', priority: 'P0', status: 'FAIL', duration_ms: 0, cleanup: 'not-applicable', summary: `Suite exceeded ${budgetMs} ms budget.`, log: null, cycle: 1 });
+if (elapsedMs > budgetMs)
+  results.push({
+    id: 'V19-BUDGET',
+    case_id: 'V19-BUDGET',
+    command: '',
+    priority: 'P0',
+    status: 'FAIL',
+    duration_ms: 0,
+    cleanup: 'not-applicable',
+    summary: `Suite exceeded ${budgetMs} ms budget.`,
+    log: null,
+    cycle: 1
+  });
 const status = aggregateStatus(results);
 const finishedAt = new Date();
 const markdown = reportMarkdown({ status, elapsedMs, gitSha, source, startedAt, finishedAt });
 writeFileEnsured(path.join(reportDir, '测试结果v1.9.md'), markdown);
-writeFileEnsured(path.join(reportDir, 'results.json'), `${JSON.stringify({
-  run_id: runId, suite: mode, product_version: catalog.product_version, state_schema: catalog.state_schema,
-  git_sha: gitSha, git_dirty: source.dirty, source_fingerprint: source.fingerprint, status, started_at: startedAt.toISOString(), finished_at: finishedAt.toISOString(),
-  elapsed_ms: elapsedMs, budget_ms: budgetMs, report: '测试结果v1.9.md',
-  results: results.map(({ evidence, ...item }) => item)
-}, null, 2)}\n`);
+writeFileEnsured(
+  path.join(reportDir, 'results.json'),
+  `${JSON.stringify(
+    {
+      run_id: runId,
+      suite: mode,
+      product_version: catalog.product_version,
+      state_schema: catalog.state_schema,
+      git_sha: gitSha,
+      git_dirty: source.dirty,
+      source_fingerprint: source.fingerprint,
+      status,
+      started_at: startedAt.toISOString(),
+      finished_at: finishedAt.toISOString(),
+      elapsed_ms: elapsedMs,
+      budget_ms: budgetMs,
+      report: '测试结果v1.9.md',
+      results: results.map(({ evidence, ...item }) => item)
+    },
+    null,
+    2
+  )}\n`
+);
 
 console.log(`V1.9 ${mode} report: ${path.relative(root, reportDir)}`);
 if (status === 'BLOCKED') process.exit(2);
@@ -94,19 +123,52 @@ async function executeCase(item, cycle) {
   writeFileEnsured(path.join(reportDir, logRelative), evidence);
   const cleanup = removeCaseRoot(caseRoot) ? 'isolated-home-removed' : 'isolated-home-cleanup-failed';
   const caseStatus = executed.status === 0 && !executed.timedOut ? 'PASS' : executed.status === 2 ? 'BLOCKED' : 'FAIL';
-  const summary = executed.timedOut ? `Timed out after ${timeout} ms.` : executed.error ? `Failed to start: ${executed.error.message}` : executed.status === 0 ? 'Command passed.' : `Command exited with status ${executed.status ?? 'unknown'}.`;
-  results.push(result(item, caseId, cycle, cleanup === 'isolated-home-removed' ? caseStatus : 'FAIL', executed.durationMs, cleanup, summary, logRelative, evidence));
+  const summary = executed.timedOut
+    ? `Timed out after ${timeout} ms.`
+    : executed.error
+      ? `Failed to start: ${executed.error.message}`
+      : executed.status === 0
+        ? 'Command passed.'
+        : `Command exited with status ${executed.status ?? 'unknown'}.`;
+  results.push(
+    result(
+      item,
+      caseId,
+      cycle,
+      cleanup === 'isolated-home-removed' ? caseStatus : 'FAIL',
+      executed.durationMs,
+      cleanup,
+      summary,
+      logRelative,
+      evidence
+    )
+  );
 }
 
 function precondition(item) {
   const missing = item.requires_env.filter((key) => !String(process.env[key] || '').trim());
   if (missing.length) return `Missing required environment variable(s): ${missing.join(', ')}.`;
-  if (item.id === 'V19-L6-LIVE-001' && process.env.AIWS_MCP_LIVE_SMOKE_CONFIRM !== 'create-private-github-repository') return 'AIWS_MCP_LIVE_SMOKE_CONFIRM must equal create-private-github-repository.';
+  if (item.id === 'V19-L6-LIVE-001' && process.env.AIWS_MCP_LIVE_SMOKE_CONFIRM !== 'create-private-github-repository')
+    return 'AIWS_MCP_LIVE_SMOKE_CONFIRM must equal create-private-github-repository.';
   return null;
 }
 
 function result(item, caseId, cycle, status, durationMs, cleanup, summary, log, evidence) {
-  return { id: item.id, case_id: caseId, cycle, layer: item.layer, domain: item.domain, priority: item.priority, command: item.command.join(' '), status, duration_ms: durationMs, cleanup, summary, log, evidence };
+  return {
+    id: item.id,
+    case_id: caseId,
+    cycle,
+    layer: item.layer,
+    domain: item.domain,
+    priority: item.priority,
+    command: item.command.join(' '),
+    status,
+    duration_ms: durationMs,
+    cleanup,
+    summary,
+    log,
+    evidence
+  };
 }
 
 function aggregateStatus(items) {
@@ -117,18 +179,38 @@ function aggregateStatus(items) {
 }
 
 function reportMarkdown({ status, elapsedMs, gitSha, source, startedAt, finishedAt }) {
-  const totals = Object.fromEntries(['PASS', 'FAIL', 'BLOCKED', 'SKIPPED', 'FLAKY'].map((value) => [value, results.filter((item) => item.status === value).length]));
+  const totals = Object.fromEntries(
+    ['PASS', 'FAIL', 'BLOCKED', 'SKIPPED', 'FLAKY'].map((value) => [
+      value,
+      results.filter((item) => item.status === value).length
+    ])
+  );
   const lines = [
-    '# AIWS 测试结果 V1.9', '',
-    `- Run ID：\`${runId}\``, `- Suite：\`${mode}\``, `- 产品版本：\`${catalog.product_version}\``, `- state schema：\`${catalog.state_schema}\``,
-    `- Git SHA：\`${gitSha}\``, `- Git 工作树：\`${source.dirty ? 'dirty' : 'clean'}\``, `- Source fingerprint：\`${source.fingerprint}\``,
-    `- 结果：\`${status}\``, `- 耗时：${elapsedMs} ms`, `- 预算：${budgetMs} ms`,
-    `- 开始：${startedAt.toISOString()}`, `- 结束：${finishedAt.toISOString()}`,
+    '# AIWS 测试结果 V1.9',
+    '',
+    `- Run ID：\`${runId}\``,
+    `- Suite：\`${mode}\``,
+    `- 产品版本：\`${catalog.product_version}\``,
+    `- state schema：\`${catalog.state_schema}\``,
+    `- Git SHA：\`${gitSha}\``,
+    `- Git 工作树：\`${source.dirty ? 'dirty' : 'clean'}\``,
+    `- Source fingerprint：\`${source.fingerprint}\``,
+    `- 结果：\`${status}\``,
+    `- 耗时：${elapsedMs} ms`,
+    `- 预算：${budgetMs} ms`,
+    `- 开始：${startedAt.toISOString()}`,
+    `- 结束：${finishedAt.toISOString()}`,
     `- 统计：PASS ${totals.PASS} / FAIL ${totals.FAIL} / BLOCKED ${totals.BLOCKED} / SKIPPED ${totals.SKIPPED} / FLAKY ${totals.FLAKY}`,
     '- 隔离：每个命令使用独立 AIWS_HOME；命令结束后删除隔离目录。',
-    '- 脱敏：日志通过 limitedLog() 截断并移除环境变量凭据、Token、API Key 和带查询参数 URL。', '',
-    '| 用例 | 命令 | 状态 | 耗时 | 清理 |', '|---|---|---|---:|---|',
-    ...results.map((item) => `| \`${table(item.case_id)}\` | \`${table(item.command)}\` | ${item.status} | ${item.duration_ms} ms | ${table(item.cleanup)} |`), ''
+    '- 脱敏：日志通过 limitedLog() 截断并移除环境变量凭据、Token、API Key 和带查询参数 URL。',
+    '',
+    '| 用例 | 命令 | 状态 | 耗时 | 清理 |',
+    '|---|---|---|---:|---|',
+    ...results.map(
+      (item) =>
+        `| \`${table(item.case_id)}\` | \`${table(item.command)}\` | ${item.status} | ${item.duration_ms} ms | ${table(item.cleanup)} |`
+    ),
+    ''
   ];
   for (const item of results.filter((entry) => entry.status !== 'PASS')) {
     lines.push(`## ${item.status}: ${item.case_id}`, '', item.summary, '');
@@ -142,15 +224,25 @@ function reportMarkdown({ status, elapsedMs, gitSha, source, startedAt, finished
 function removeCaseRoot(caseRoot) {
   const relative = path.relative(reportDir, path.resolve(caseRoot));
   if (!relative || relative.startsWith('..') || path.isAbsolute(relative)) return false;
-  try { fs.rmSync(caseRoot, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 }); return true; }
-  catch { return false; }
+  try {
+    fs.rmSync(caseRoot, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 async function sourceState() {
   const [status, diff, untracked] = await Promise.all([
-    runCommand(['git', 'status', '--porcelain=v1', '--untracked-files=all'], { timeout: 15_000, maxCapture: 8 * 1024 * 1024 }),
+    runCommand(['git', 'status', '--porcelain=v1', '--untracked-files=all'], {
+      timeout: 15_000,
+      maxCapture: 8 * 1024 * 1024
+    }),
     runCommand(['git', 'diff', '--no-ext-diff', '--binary', 'HEAD'], { timeout: 30_000, maxCapture: 32 * 1024 * 1024 }),
-    runCommand(['git', 'ls-files', '--others', '--exclude-standard', '-z'], { timeout: 15_000, maxCapture: 8 * 1024 * 1024 })
+    runCommand(['git', 'ls-files', '--others', '--exclude-standard', '-z'], {
+      timeout: 15_000,
+      maxCapture: 8 * 1024 * 1024
+    })
   ]);
   const hash = crypto.createHash('sha256');
   hash.update(diff.stdout || '');
@@ -163,5 +255,13 @@ async function sourceState() {
   return { dirty: Boolean(status.stdout.trim()), fingerprint: hash.digest('hex') };
 }
 
-function safeName(value) { return String(value).toLowerCase().replace(/[^a-z0-9._-]+/g, '-'); }
-function table(value) { return String(value || '').replaceAll('|', '\\|').replaceAll('`', "'"); }
+function safeName(value) {
+  return String(value)
+    .toLowerCase()
+    .replace(/[^a-z0-9._-]+/g, '-');
+}
+function table(value) {
+  return String(value || '')
+    .replaceAll('|', '\\|')
+    .replaceAll('`', "'");
+}

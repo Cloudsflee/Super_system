@@ -10,9 +10,23 @@ export const codexCapabilitiesV13Routes = [
 ];
 
 async function probe({ res, body = {}, query }) {
-  const state = await readState(), profile = body.profile_id ? state.codex_profiles.find((item) => item.id === body.profile_id) : state.codex_profiles.find((item) => item.is_active) || null;
+  const state = await readState(),
+    profile = body.profile_id
+      ? state.codex_profiles.find((item) => item.id === body.profile_id)
+      : state.codex_profiles.find((item) => item.is_active) || null;
   const result = probeCodexCapabilities({ adapted: testAdapter(body, query), profile });
-  if (body.persist === true) await mutate((data) => { let item = data.integration_statuses.find((entry) => entry.key === 'codex_capabilities'); if (!item) { item = { key: 'codex_capabilities', created_at: now() }; data.integration_statuses.push(item); } Object.assign(item, { status: result.compatible ? 'ready' : result.guided_transport === 'unavailable' ? 'unavailable' : 'degraded', result, updated_at: now() }); });
+  if (body.persist === true)
+    await mutate((data) => {
+      let item = data.integration_statuses.find((entry) => entry.key === 'codex_capabilities');
+      if (!item) {
+        item = { key: 'codex_capabilities', created_at: now() };
+        data.integration_statuses.push(item);
+      }
+      Object.assign(item, {
+        status: result.compatible ? 'ready' : result.guided_transport === 'unavailable' ? 'unavailable' : 'degraded',
+        result,
+        updated_at: now()
+      });
+    });
   return send(res, 200, result);
 }
-

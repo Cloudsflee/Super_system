@@ -6,7 +6,15 @@ const SOURCES: CcSwitchSource[] = [
   { name: 'cc-switch CLI', repo: 'https://github.com/SaladDay/cc-switch-cli.git' }
 ];
 
-export function CcSwitchCard({ status, loading, error, required, busy, onReload, onSync }: {
+export function CcSwitchCard({
+  status,
+  loading,
+  error,
+  required,
+  busy,
+  onReload,
+  onSync
+}: {
   status: CcSwitchStatus | null;
   loading: boolean;
   error: string;
@@ -21,24 +29,83 @@ export function CcSwitchCard({ status, loading, error, required, busy, onReload,
   return (
     <section className={`cc-switch-card ${required ? 'required' : ''}`} aria-labelledby="cc-switch-title">
       <header>
-        <div><Route size={17} /><div><strong id="cc-switch-title">cc-switch 管理工具（可选）</strong><span>仅用于显式选择 cc-switch 管理模式的配置变更</span></div></div>
-        <span className={`status ${ready ? 'ready' : state === 'failed' || state === 'degraded' ? 'failed' : 'pending'}`}>{statusLabel(state)}</span>
+        <div>
+          <Route size={17} />
+          <div>
+            <strong id="cc-switch-title">cc-switch 管理工具（可选）</strong>
+            <span>仅用于显式选择 cc-switch 管理模式的配置变更</span>
+          </div>
+        </div>
+        <span
+          className={`status ${ready ? 'ready' : state === 'failed' || state === 'degraded' ? 'failed' : 'pending'}`}
+        >
+          {statusLabel(state)}
+        </span>
       </header>
-      <p className={required ? 'cc-switch-required' : ''}>{required ? '当前配置变更已显式选择 cc-switch 管理模式。' : '普通配置默认直接使用 AIWS 托管，不依赖此工具。'}</p>
+      <p className={required ? 'cc-switch-required' : ''}>
+        {required ? '当前配置变更已显式选择 cc-switch 管理模式。' : '普通配置默认直接使用 AIWS 托管，不依赖此工具。'}
+      </p>
       <div className="cc-switch-sources" aria-label="cc-switch 工具来源">
-        {sources.map((source) => <div key={source.repo || source.name}><a href={source.repo} target="_blank" rel="noreferrer"><ExternalLink size={13} />{source.name}</a><span className={`status ${source.status === 'synced' ? 'ready' : source.status === 'degraded' ? 'failed' : 'pending'}`}>{source.status ? statusLabel(source.status) : '待同步'}</span>{source.error && <small data-tooltip={source.error}>同步失败</small>}</div>)}
+        {sources.map((source) => (
+          <div key={source.repo || source.name}>
+            <a href={source.repo} target="_blank" rel="noreferrer">
+              <ExternalLink size={13} />
+              {source.name}
+            </a>
+            <span
+              className={`status ${source.status === 'synced' ? 'ready' : source.status === 'degraded' ? 'failed' : 'pending'}`}
+            >
+              {source.status ? statusLabel(source.status) : '待同步'}
+            </span>
+            {source.error && <small data-tooltip={source.error}>同步失败</small>}
+          </div>
+        ))}
       </div>
-      {status?.providers?.length ? <div className="cc-switch-providers" aria-label="cc-switch 服务商映射">{status.providers.map((item) => <span key={item.profile_id || item.provider_id || item.name}><strong>{item.name || item.provider || item.provider_id}</strong><small>{item.model || item.base_url || '已创建映射'}</small></span>)}</div> : null}
-      {status?.local_path && <code className="cc-switch-path" data-tooltip={status.local_path}>{status.local_path}</code>}
-      {error && <div className="setup-feedback error" role="alert">状态读取失败：{error}</div>}
+      {status?.providers?.length ? (
+        <div className="cc-switch-providers" aria-label="cc-switch 服务商映射">
+          {status.providers.map((item) => (
+            <span key={item.profile_id || item.provider_id || item.name}>
+              <strong>{item.name || item.provider || item.provider_id}</strong>
+              <small>{item.model || item.base_url || '已创建映射'}</small>
+            </span>
+          ))}
+        </div>
+      ) : null}
+      {status?.local_path && (
+        <code className="cc-switch-path" data-tooltip={status.local_path}>
+          {status.local_path}
+        </code>
+      )}
+      {error && (
+        <div className="setup-feedback error" role="alert">
+          状态读取失败：{error}
+        </div>
+      )}
       <div className="block-actions">
-        <button className="button secondary" disabled={loading || busy} onClick={() => void onReload()}><RefreshCw size={15} />刷新状态</button>
-        <button className={required && !ready ? 'button primary' : 'button secondary'} disabled={busy || loading} onClick={() => void onSync()}><RefreshCw size={15} />{ready ? '更新管理工具' : '安装管理工具'}</button>
+        <button className="button secondary" disabled={loading || busy} onClick={() => void onReload()}>
+          <RefreshCw size={15} />
+          刷新状态
+        </button>
+        <button
+          className={required && !ready ? 'button primary' : 'button secondary'}
+          disabled={busy || loading}
+          onClick={() => void onSync()}
+        >
+          <RefreshCw size={15} />
+          {ready ? '更新管理工具' : '安装管理工具'}
+        </button>
       </div>
     </section>
   );
 }
 
 function statusLabel(value: string) {
-  return ({ loading: '读取中', synced: '已同步', not_synced: '未同步', degraded: '部分失败', failed: '读取失败' } as Record<string, string>)[value] || '状态未知';
+  return (
+    (
+      { loading: '读取中', synced: '已同步', not_synced: '未同步', degraded: '部分失败', failed: '读取失败' } as Record<
+        string,
+        string
+      >
+    )[value] || '状态未知'
+  );
 }

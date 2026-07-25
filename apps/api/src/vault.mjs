@@ -19,7 +19,9 @@ export async function putSecret(label, value) {
   const id = `${safe(label)}_${randomBytes(12).toString('hex')}`;
   const file = path.join(VAULT_DIR, `${id}.secret`);
   await fsp.writeFile(file, String(value), { encoding: 'utf8', mode: 0o600 });
-  try { await fsp.chmod(file, 0o600); } catch {}
+  try {
+    await fsp.chmod(file, 0o600);
+  } catch {}
   const ref = `vault:${id}`;
   knownSecrets.set(ref, String(value));
   return ref;
@@ -31,8 +33,14 @@ export async function readSecret(ref) {
   if (!String(ref).startsWith('vault:')) return '';
   const id = String(ref).slice(6);
   if (safe(id) !== id) throw new Error('invalid_vault_ref');
-  try { const value = await fsp.readFile(path.join(VAULT_DIR, `${id}.secret`), 'utf8'); knownSecrets.set(String(ref), value); return value; }
-  catch (error) { if (error.code === 'ENOENT') return ''; throw error; }
+  try {
+    const value = await fsp.readFile(path.join(VAULT_DIR, `${id}.secret`), 'utf8');
+    knownSecrets.set(String(ref), value);
+    return value;
+  } catch (error) {
+    if (error.code === 'ENOENT') return '';
+    throw error;
+  }
 }
 
 export async function removeSecret(ref) {
@@ -66,7 +74,11 @@ export function redactKnownSecretsSync(value) {
       if (encoded !== secret) text = text.split(encoded).join('***MASKED***');
     } else {
       text = text.replace(new RegExp(`(?<![A-Za-z0-9_])${escapeRegex(secret)}(?![A-Za-z0-9_])`, 'g'), '***MASKED***');
-      if (encoded !== secret) text = text.replace(new RegExp(`(?<![A-Za-z0-9_])${escapeRegex(encoded)}(?![A-Za-z0-9_])`, 'g'), '***MASKED***');
+      if (encoded !== secret)
+        text = text.replace(
+          new RegExp(`(?<![A-Za-z0-9_])${escapeRegex(encoded)}(?![A-Za-z0-9_])`, 'g'),
+          '***MASKED***'
+        );
     }
   }
   return text;
@@ -78,11 +90,19 @@ export function redactKnownSecretStream(value, pending = '') {
   for (const secret of knownSecrets.values()) {
     for (const candidate of [secret, JSON.stringify(secret).slice(1, -1)]) {
       const limit = Math.min(raw.length, candidate.length - 1);
-      for (let size = limit; size > overlap.length; size--) if (raw.endsWith(candidate.slice(0, size))) { overlap = raw.slice(-size); break; }
+      for (let size = limit; size > overlap.length; size--)
+        if (raw.endsWith(candidate.slice(0, size))) {
+          overlap = raw.slice(-size);
+          break;
+        }
     }
   }
   return { text: redactKnownSecretsSync(raw.slice(0, raw.length - overlap.length)), pending: overlap };
 }
 
-function safe(value) { return String(value || '').replace(/[^a-zA-Z0-9_-]/g, ''); }
-function escapeRegex(value) { return String(value).replace(/[.*+?^${}()|[\]\\]/g, '\\$&'); }
+function safe(value) {
+  return String(value || '').replace(/[^a-zA-Z0-9_-]/g, '');
+}
+function escapeRegex(value) {
+  return String(value).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}

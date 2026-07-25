@@ -39,7 +39,11 @@ const checks = [
   ['Persistent DAG dispatcher', 'apps/api/src/workflow-dispatcher.mjs', 'scheduleWorkflowExecution'],
   ['Repository Line provisioning', 'apps/api/src/repository-line-service.mjs', 'provisionRepositoryLine'],
   ['Two-level workflow domain', 'apps/api/src/workflow-hierarchy-domain.mjs', 'TASKS_PER_WORKSTREAM_LIMIT = 12'],
-  ['Workflow generation service', 'apps/api/src/workflow-generation-service.mjs', 'critiqueWorkflowGenerationCandidate'],
+  [
+    'Workflow generation service',
+    'apps/api/src/workflow-generation-service.mjs',
+    'critiqueWorkflowGenerationCandidate'
+  ],
   ['Workstream and task graph routes', 'apps/api/src/routes/workflow-v19.mjs', '/workflows/:id/graph-proposals'],
   ['Multi-repository delivery', 'apps/api/src/delivery-service.mjs', 'draft_pr'],
   ['Semantic workflow migration', 'apps/api/src/workflow-migration-service.mjs', 'validateLegacyMigrationMapping'],
@@ -74,7 +78,11 @@ const checks = [
   ['Native Goal RPC', 'apps/api/src/assist-goals.mjs', "'thread/goal/set'"],
   ['Session coordinator', 'apps/api/src/assist-session-coordinator.mjs', 'coordinateAssistSession'],
   ['Native user input', 'apps/api/src/codex-app-server.mjs', 'item/tool/requestUserInput'],
-  ['Secret answers memory-only', 'apps/api/src/assist-user-input.mjs', 'deliberately never passed through state/event/logging'],
+  [
+    'Secret answers memory-only',
+    'apps/api/src/assist-user-input.mjs',
+    'deliberately never passed through state/event/logging'
+  ],
   ['Schema 14 migration', 'apps/api/src/state-migration-v14.mjs', 'STATE_SCHEMA_VERSION = 14'],
   ['Schema 14 collections', 'apps/api/src/state-migration-v14.mjs', 'host_bridge_devices'],
   ['Atomic migration backup', 'apps/api/src/state-migration-v14.mjs', 'migration_failed_and_backup_corrupt'],
@@ -94,8 +102,16 @@ const checks = [
   ['Workflow draft persistence', 'apps/api/src/workflow-draft-service.mjs', 'workflow_draft_revision_conflict'],
   ['Assist capability manifest', 'packages/shared/src/assist-capabilities.mjs', 'ASSIST_CAPABILITY_MANIFEST'],
   ['Manifest project tool generation', 'apps/api/src/assist-project-tool-spec.mjs', 'projectCapabilityToolSpec'],
-  ['Manifest project tool execution', 'apps/api/src/assist-project-operation-ledger.mjs', 'handleProjectCapabilityTool'],
-  ['Server capability operation isolation', 'apps/api/src/assist-operation-metadata.mjs', "item.execution_layer !== 'server'"],
+  [
+    'Manifest project tool execution',
+    'apps/api/src/assist-project-operation-ledger.mjs',
+    'handleProjectCapabilityTool'
+  ],
+  [
+    'Server capability operation isolation',
+    'apps/api/src/assist-operation-metadata.mjs',
+    "item.execution_layer !== 'server'"
+  ],
   ['Assist capability route', 'apps/api/src/routes/assist-v3.mjs', "'GET', '/assist/v3/capabilities'"],
   ['Clarification policy route', 'apps/api/src/routes/assist-v3.mjs', "'PATCH', '/assist/v3/sessions/:id'"],
   ['Targeted operation revisions', 'apps/api/src/routes/assist-v3.mjs', '/assist/v3/operations/:id/revisions'],
@@ -154,36 +170,88 @@ const checks = [
   ['V1.5 core unit', 'tests/unit/v15-core.test.mjs', 'V1.5 core unit tests passed'],
   ['V1.5 operations unit', 'tests/unit/v15-operations.test.mjs', 'V1.5 operation ledger unit tests passed'],
   ['V1.5 Bridge unit', 'tests/unit/v15-change-bridge.test.mjs', 'V1.5 change batch and Host Bridge unit tests passed'],
-  ['V1.5 Assist integration', 'tests/integration/v15-native-assist-flow.test.mjs', 'V1.5 native Assist integration tests passed'],
-  ['V1.5 Bridge integration', 'tests/integration/v15-host-bridge-flow.test.mjs', 'V1.5 Windows Host Bridge integration tests passed'],
+  [
+    'V1.5 Assist integration',
+    'tests/integration/v15-native-assist-flow.test.mjs',
+    'V1.5 native Assist integration tests passed'
+  ],
+  [
+    'V1.5 Bridge integration',
+    'tests/integration/v15-host-bridge-flow.test.mjs',
+    'V1.5 Windows Host Bridge integration tests passed'
+  ],
   ['V1.5 Web interactions', 'apps/web/src/test/assist-v15-interactions.test.tsx', 'Assist V1.5 interactions'],
   ['V1.6 core unit', 'tests/unit/v16-core.test.mjs', 'V1.6 core unit tests passed'],
   ['V1.6 release unit', 'tests/unit/v16-release.test.mjs', 'V1.6 release volume unit tests passed'],
-  ['V1.6 release Docker flow', 'tests/release/v16-volume-flow.test.mjs', 'V1.6 Docker release volume flow tests passed'],
-  ['V1.6 Assist files integration', 'tests/integration/v16-assist-files-flow.test.mjs', 'V1.6 Assist files and native Fork integration tests passed'],
+  [
+    'V1.6 release Docker flow',
+    'tests/release/v16-volume-flow.test.mjs',
+    'V1.6 Docker release volume flow tests passed'
+  ],
+  [
+    'V1.6 Assist files integration',
+    'tests/integration/v16-assist-files-flow.test.mjs',
+    'V1.6 Assist files and native Fork integration tests passed'
+  ],
   ['V1.6 Web interactions', 'apps/web/src/test/assist-v16-interactions.test.tsx', 'Assist V1.6 interactions'],
   ['V1.7 core unit', 'tests/unit/v17-core.test.mjs', 'V1.7 core unit tests passed'],
   ['V1.7 release primitives', 'tests/unit/v17-release.test.mjs', 'V1.7 release primitive compatibility tests passed'],
-  ['V1.7 Assist and Brief integration', 'tests/integration/v17-assist-brief-flow.test.mjs', 'V1.7 Assist, Brief, and Workflow integration tests passed'],
+  [
+    'V1.7 Assist and Brief integration',
+    'tests/integration/v17-assist-brief-flow.test.mjs',
+    'V1.7 Assist, Brief, and Workflow integration tests passed'
+  ],
   ['V1.7 Web interactions', 'apps/web/src/test/assist-v17-interactions.test.tsx', 'Assist V1.7 interactions'],
-  ['V1.7 Docker release volume flow', 'tests/release/v17-volume-flow.test.mjs', 'V1.7 Docker release volume flow tests passed'],
+  [
+    'V1.7 Docker release volume flow',
+    'tests/release/v17-volume-flow.test.mjs',
+    'V1.7 Docker release volume flow tests passed'
+  ],
   ['V1.8 MCP journey', 'tests/e2e/v18-mcp-journey.test.mjs', 'V1.8 MCP-only journey passed'],
-  ['V1.8 MCP Gateway contract', 'tests/integration/v18-mcp-gateway-flow.test.mjs', 'collaborative MCP Gateway integration tests passed'],
+  [
+    'V1.8 MCP Gateway contract',
+    'tests/integration/v18-mcp-gateway-flow.test.mjs',
+    'collaborative MCP Gateway integration tests passed'
+  ],
   ['V1.8 release volume flow', 'tests/release/v18-volume-flow.test.mjs', 'V1.8 release volume flow tests passed'],
   ['V1.8 MCP Settings UI', 'apps/web/src/test/settings-mcp-v18.test.tsx', 'V1.8 MCP client settings'],
-  ['V1.9 hierarchy unit', 'tests/unit/v19-core.test.mjs', 'V1.9 hierarchy, revision, and Assist scope unit tests passed'],
-  ['V1.9 migration unit', 'tests/unit/v19-migration.test.mjs', 'V1.9 state and semantic workflow migration unit tests passed'],
+  [
+    'V1.9 hierarchy unit',
+    'tests/unit/v19-core.test.mjs',
+    'V1.9 hierarchy, revision, and Assist scope unit tests passed'
+  ],
+  [
+    'V1.9 migration unit',
+    'tests/unit/v19-migration.test.mjs',
+    'V1.9 state and semantic workflow migration unit tests passed'
+  ],
   ['V1.9 MCP registry unit', 'tests/unit/v19-mcp-registry.test.mjs', 'V1.9 MCP route registry unit tests passed'],
   ['V1.9 catalog runner', 'scripts/v19-runner.mjs', '测试结果v1.9.md'],
   ['V1.9 live MCP journey', 'scripts/mcp-live-project-smoke.mjs', 'AIWS_MCP_LIVE_SMOKE_CONFIRM'],
   ['Codex 30 minute timeout policy', 'packages/shared/src/codex.mjs', 'DEFAULT_CODEX_TIMEOUT_MS = 30 * 60_000'],
   ['GitHub device MCP action', 'apps/api/src/routes/github-config-v12.mjs', "type: 'github_device_authorization'"],
-  ['V1.9 generation integration', 'tests/integration/v19-workflow-generation-flow.test.mjs', 'V1.9 asynchronous workflow generation integration tests passed'],
-  ['V1.9 Delivery integration', 'tests/integration/v19-delivery-flow.test.mjs', 'V1.9 multi-task Delivery integration tests passed'],
+  [
+    'V1.9 generation integration',
+    'tests/integration/v19-workflow-generation-flow.test.mjs',
+    'V1.9 asynchronous workflow generation integration tests passed'
+  ],
+  [
+    'V1.9 Delivery integration',
+    'tests/integration/v19-delivery-flow.test.mjs',
+    'V1.9 multi-task Delivery integration tests passed'
+  ],
   ['V1.9 release volume flow', 'tests/release/v19-volume-flow.test.mjs', 'V1.9 release volume flow tests passed'],
   ['V1.10 CAS unit', 'tests/unit/v110-cas.test.mjs', 'V1.10 CAS immutability and tamper detection unit tests passed'],
-  ['V1.10 DAG integration', 'tests/integration/v110-workflow-execution-flow.test.mjs', 'V1.10 persistent DAG, CAS, same-SHA verification, and PR integration flow passed'],
-  ['V1.10 in-place release flow', 'tests/release/v110-in-place-flow.test.mjs', 'V1.10 in-place volume backup and app-only replacement tests passed'],
+  [
+    'V1.10 DAG integration',
+    'tests/integration/v110-workflow-execution-flow.test.mjs',
+    'V1.10 persistent DAG, CAS, same-SHA verification, and PR integration flow passed'
+  ],
+  [
+    'V1.10 in-place release flow',
+    'tests/release/v110-in-place-flow.test.mjs',
+    'V1.10 in-place volume backup and app-only replacement tests passed'
+  ],
   ['V1.10 browser DAG journey', 'tests/e2e/v110-workflow-journey.test.mjs', 'assertWriteJourney'],
   ['Interaction audit', 'tests/e2e/smoke.test.mjs', 'auditButtons']
 ];
@@ -193,67 +261,221 @@ for (const [name, file, needle] of checks) {
   assert.ok(fs.readFileSync(file, 'utf8').includes(needle), `${name}: contains ${needle}`);
 }
 
-for (const removed of ['apps/api/src/routes/demo.mjs', 'tests/integration/demo-flow.test.mjs', 'apps/web/app.js', 'apps/web/boot.js', 'apps/web/src/features/assist/ActivityLedger.tsx']) assert.equal(fs.existsSync(removed), false, `${removed} removed`);
-const runtimeFiles = [...walk('apps'), ...walk('packages')].filter((file) => /\.(mjs|js|ts|tsx|html|css|json)$/.test(file) && !file.includes(`${path.sep}dist${path.sep}`));
+for (const removed of [
+  'apps/api/src/routes/demo.mjs',
+  'tests/integration/demo-flow.test.mjs',
+  'apps/web/app.js',
+  'apps/web/boot.js',
+  'apps/web/src/features/assist/ActivityLedger.tsx'
+])
+  assert.equal(fs.existsSync(removed), false, `${removed} removed`);
+const runtimeFiles = [...walk('apps'), ...walk('packages')].filter(
+  (file) => /\.(mjs|js|ts|tsx|html|css|json)$/.test(file) && !file.includes(`${path.sep}dist${path.sep}`)
+);
 const runtime = runtimeFiles.map((file) => fs.readFileSync(file, 'utf8')).join('\n');
-for (const forbidden of ['/demo/full-chain', 'MockRunner', 'mock_runner', '生成演示链路', '<aiws_actions>', 'transport_fallback']) assert.equal(runtime.includes(forbidden), false, `production runtime excludes ${forbidden}`);
+for (const forbidden of [
+  '/demo/full-chain',
+  'MockRunner',
+  'mock_runner',
+  '生成演示链路',
+  '<aiws_actions>',
+  'transport_fallback'
+])
+  assert.equal(runtime.includes(forbidden), false, `production runtime excludes ${forbidden}`);
 assert.equal(runtime.includes('buildAssistResult'), false, 'production runtime excludes fixed-rule Assist');
-assert.equal(runtime.includes('codexProfileFromCcSwitch'), false, 'production runtime excludes fake cc-switch Profiles');
+assert.equal(
+  runtime.includes('codexProfileFromCcSwitch'),
+  false,
+  'production runtime excludes fake cc-switch Profiles'
+);
 assert.ok(fs.existsSync('apps/web/dist/index.html'), 'production frontend build exists');
 
-const webSources = walk('apps/web/src').filter((file) => /\.(ts|tsx)$/.test(file) && !file.includes(`${path.sep}test${path.sep}`));
+const webSources = walk('apps/web/src').filter(
+  (file) => /\.(ts|tsx)$/.test(file) && !file.includes(`${path.sep}test${path.sep}`)
+);
 const rawWriteRequests = [];
 for (const file of webSources) {
   const source = fs.readFileSync(file, 'utf8');
   for (const [index, line] of source.split(/\r?\n/).entries()) {
-    if (/\bapi(?:<[^>]+>)?\([^\n]*\{\s*method\s*:\s*['"](?:POST|PUT|PATCH|DELETE)['"]/i.test(line)) rawWriteRequests.push(`${file}:${index + 1}: raw api write`);
-    if (/\bfetch\([^\n]*\{[^\n]*method\s*:\s*['"](?:POST|PUT|PATCH|DELETE)['"]/i.test(line)) rawWriteRequests.push(`${file}:${index + 1}: direct fetch write`);
+    if (/\bapi(?:<[^>]+>)?\([^\n]*\{\s*method\s*:\s*['"](?:POST|PUT|PATCH|DELETE)['"]/i.test(line))
+      rawWriteRequests.push(`${file}:${index + 1}: raw api write`);
+    if (/\bfetch\([^\n]*\{[^\n]*method\s*:\s*['"](?:POST|PUT|PATCH|DELETE)['"]/i.test(line))
+      rawWriteRequests.push(`${file}:${index + 1}: direct fetch write`);
   }
 }
-assert.deepEqual(rawWriteRequests, [], `web writes use described json()/multipart() requests:\n${rawWriteRequests.join('\n')}`);
+assert.deepEqual(
+  rawWriteRequests,
+  [],
+  `web writes use described json()/multipart() requests:\n${rawWriteRequests.join('\n')}`
+);
 const apiClient = fs.readFileSync('apps/web/src/api/client.ts', 'utf8');
-assert.match(apiClient, /json\(method: string, body: unknown, operation: OperationDescriptor \| string\)/, 'json writes require an operation description');
-assert.match(apiClient, /multipart\(method: string, form: FormData, operation: OperationDescriptor \| string\)/, 'uploads require an operation description');
+assert.match(
+  apiClient,
+  /json\(method: string, body: unknown, operation: OperationDescriptor \| string\)/,
+  'json writes require an operation description'
+);
+assert.match(
+  apiClient,
+  /multipart\(method: string, form: FormData, operation: OperationDescriptor \| string\)/,
+  'uploads require an operation description'
+);
 assert.match(apiClient, /method === 'GET' \? 30_000 : 120_000/, 'request timeout defaults are explicit');
 
 const manifest = JSON.parse(fs.readFileSync('package.json', 'utf8'));
 assert.equal(manifest.version, '1.10.0', 'root package is V1.10');
-for (const script of ['lint', 'typecheck', 'test', 'test:integration', 'test:e2e', 'test:release', 'audit:acceptance', 'verify']) assert.ok(manifest.scripts[script], `mandatory script ${script}`);
-for (const dependency of ['@modelcontextprotocol/sdk', 'busboy', 'node-pty', 'ws', 'zod']) assert.ok(manifest.dependencies[dependency], `runtime dependency ${dependency}`);
-assert.match(manifest.scripts['test:e2e'], /build-web.*v110-workflow-journey/, 'standalone e2e builds the frontend and runs the V1.10 DAG journey');
+for (const script of [
+  'lint',
+  'typecheck',
+  'test',
+  'test:integration',
+  'test:e2e',
+  'test:release',
+  'audit:acceptance',
+  'verify'
+])
+  assert.ok(manifest.scripts[script], `mandatory script ${script}`);
+for (const dependency of ['@modelcontextprotocol/sdk', 'busboy', 'node-pty', 'ws', 'zod'])
+  assert.ok(manifest.dependencies[dependency], `runtime dependency ${dependency}`);
+assert.match(
+  manifest.scripts['test:e2e'],
+  /build-web.*v110-workflow-journey/,
+  'standalone e2e builds the frontend and runs the V1.10 DAG journey'
+);
 assert.match(manifest.scripts['audit:acceptance'], /build-web/, 'standalone acceptance builds the frontend');
-for (const suite of ['v13-terminal-flow', 'v14-container-flow', 'v15-native-assist-flow', 'v15-host-bridge-flow', 'v16-assist-files-flow', 'v17-assist-brief-flow', 'v18-mcp-gateway-flow', 'v18-mcp-operations-flow', 'v18-mcp-terminal-flow', 'v19-workflow-generation-flow', 'v19-delivery-flow', 'v110-workflow-execution-flow']) assert.ok(manifest.scripts['test:integration'].includes(suite), `integration gate includes ${suite}`);
-for (const suite of ['v14-container.test', 'v15-core.test', 'v15-operations.test', 'v15-change-bridge.test', 'v16-core.test', 'v16-release.test', 'v17-core.test', 'v17-capability-operations.test', 'v17-release.test', 'v18-mcp-auth.test', 'v18-mcp-gateway-auth.test', 'v18-mcp-registry.test', 'v18-release.test', 'v19-core.test', 'v19-repository-delivery.test', 'v19-migration.test', 'v19-mcp-registry.test', 'v110-cas.test', 'v110-attestation.test', 'v110-workflow-execution.test']) assert.ok(manifest.scripts.test.includes(suite), `unit gate includes ${suite}`);
-for (const script of ['test:v18:plan', 'test:v18:impact', 'test:v18:contract', 'test:v18:pr', 'test:v18:full', 'test:v18:mcp-journey', 'test:v18:live', 'test:v18:release', 'test:v18:soak', 'mcp:stdio', 'mcp:client', 'mcp:gateway']) assert.ok(manifest.scripts[script], `V1.8 command ${script}`);
+for (const suite of [
+  'v13-terminal-flow',
+  'v14-container-flow',
+  'v15-native-assist-flow',
+  'v15-host-bridge-flow',
+  'v16-assist-files-flow',
+  'v17-assist-brief-flow',
+  'v18-mcp-gateway-flow',
+  'v18-mcp-operations-flow',
+  'v18-mcp-terminal-flow',
+  'v19-workflow-generation-flow',
+  'v19-delivery-flow',
+  'v110-workflow-execution-flow'
+])
+  assert.ok(manifest.scripts['test:integration'].includes(suite), `integration gate includes ${suite}`);
+for (const suite of [
+  'v14-container.test',
+  'v15-core.test',
+  'v15-operations.test',
+  'v15-change-bridge.test',
+  'v16-core.test',
+  'v16-release.test',
+  'v17-core.test',
+  'v17-capability-operations.test',
+  'v17-release.test',
+  'v18-mcp-auth.test',
+  'v18-mcp-gateway-auth.test',
+  'v18-mcp-registry.test',
+  'v18-release.test',
+  'v19-core.test',
+  'v19-repository-delivery.test',
+  'v19-migration.test',
+  'v19-mcp-registry.test',
+  'v110-cas.test',
+  'v110-attestation.test',
+  'v110-workflow-execution.test'
+])
+  assert.ok(manifest.scripts.test.includes(suite), `unit gate includes ${suite}`);
+for (const script of [
+  'test:v18:plan',
+  'test:v18:impact',
+  'test:v18:contract',
+  'test:v18:pr',
+  'test:v18:full',
+  'test:v18:mcp-journey',
+  'test:v18:live',
+  'test:v18:release',
+  'test:v18:soak',
+  'mcp:stdio',
+  'mcp:client',
+  'mcp:gateway'
+])
+  assert.ok(manifest.scripts[script], `V1.8 command ${script}`);
 assert.ok(manifest.scripts['test:release'].includes('v18-volume-flow'), 'release gate includes V1.8 volume migration');
-for (const script of ['test:v19:unit', 'test:v19:integration', 'test:v19:pr', 'test:v19:full', 'test:v19:live', 'test:v19:release', 'test:v19:soak']) assert.ok(manifest.scripts[script], `V1.9 command ${script}`);
-for (const suite of ['pr', 'full', 'live', 'release', 'soak']) assert.match(manifest.scripts[`test:v19:${suite}`], new RegExp(`v19-runner\\.mjs ${suite}$`), `V1.9 ${suite} uses the catalog runner`);
+for (const script of [
+  'test:v19:unit',
+  'test:v19:integration',
+  'test:v19:pr',
+  'test:v19:full',
+  'test:v19:live',
+  'test:v19:release',
+  'test:v19:soak'
+])
+  assert.ok(manifest.scripts[script], `V1.9 command ${script}`);
+for (const suite of ['pr', 'full', 'live', 'release', 'soak'])
+  assert.match(
+    manifest.scripts[`test:v19:${suite}`],
+    new RegExp(`v19-runner\\.mjs ${suite}$`),
+    `V1.9 ${suite} uses the catalog runner`
+  );
 assert.ok(manifest.scripts['test:release'].includes('v19-volume-flow'), 'release gate includes V1.9 volume migration');
-for (const script of ['test:v110:unit', 'test:v110:integration', 'test:v110:release', 'test:v110:full']) assert.ok(manifest.scripts[script], `V1.10 command ${script}`);
-assert.ok(manifest.scripts['test:release'].includes('v110-in-place-flow'), 'release gate includes V1.10 in-place upgrade');
+for (const script of ['test:v110:unit', 'test:v110:integration', 'test:v110:release', 'test:v110:full'])
+  assert.ok(manifest.scripts[script], `V1.10 command ${script}`);
+assert.ok(
+  manifest.scripts['test:release'].includes('v110-in-place-flow'),
+  'release gate includes V1.10 in-place upgrade'
+);
 
-for (const file of workspaceManifests()) assert.equal(JSON.parse(fs.readFileSync(file, 'utf8')).version, '1.10.0', `${file} is V1.10`);
+for (const file of workspaceManifests())
+  assert.equal(JSON.parse(fs.readFileSync(file, 'utf8')).version, '1.10.0', `${file} is V1.10`);
 const compose = fs.readFileSync('compose.yml', 'utf8');
-for (const value of ['name: aiws-v19', 'aiws-app:1.10.0', 'aiws-codex-runner:1.10.0-codex-0.144.0', 'aiws-data-v19']) assert.ok(compose.includes(value), `Compose pins ${value}`);
-assert.match(compose, /aiws-data:\s+[\s\S]*external: true/, 'production data volume cannot be silently replaced by Compose');
+for (const value of ['name: aiws-v19', 'aiws-app:1.10.0', 'aiws-codex-runner:1.10.0-codex-0.144.0', 'aiws-data-v19'])
+  assert.ok(compose.includes(value), `Compose pins ${value}`);
+assert.match(
+  compose,
+  /aiws-data:\s+[\s\S]*external: true/,
+  'production data volume cannot be silently replaced by Compose'
+);
 assert.equal(compose.includes('aiws-data-v18'), false, 'V1.10 Compose never mounts a migration source volume');
 const collaborationCompose = fs.readFileSync('compose.collaboration.yml', 'utf8');
-for (const value of ['aiws-mcp-gateway:1.10.0', 'target: mcp-gateway', 'AIWS_MCP_REMOTE_MODE: gateway', 'AIWS_RUNNER_NETWORK', 'AIWS_PUBLIC_MCP_URL']) assert.ok(collaborationCompose.includes(value), `collaboration Compose includes ${value}`);
+for (const value of [
+  'aiws-mcp-gateway:1.10.0',
+  'target: mcp-gateway',
+  'AIWS_MCP_REMOTE_MODE: gateway',
+  'AIWS_RUNNER_NETWORK',
+  'AIWS_PUBLIC_MCP_URL'
+])
+  assert.ok(collaborationCompose.includes(value), `collaboration Compose includes ${value}`);
 const gatewayService = collaborationCompose.match(/\n  mcp-gateway:\n([\s\S]*?)\nsecrets:/)?.[1] || '';
 assert.equal(gatewayService.includes('docker.sock'), false, 'MCP Gateway never mounts Docker socket');
 assert.equal(gatewayService.includes('/var/lib/aiws'), false, 'MCP Gateway never mounts AIWS data volume');
 assert.equal(runtime.includes('aiws-codex-runner:local'), false, 'runtime excludes mutable local Runner tag');
 
 const verify = fs.readFileSync('scripts/verify.mjs', 'utf8');
-for (const gate of ["pnpmStep('test'", "pnpmStep('test:integration'", 'e2e:playwright', 'acceptance:audit']) assert.ok(verify.includes(gate), `verify includes ${gate}`);
+for (const gate of ["pnpmStep('test'", "pnpmStep('test:integration'", 'e2e:playwright', 'acceptance:audit'])
+  assert.ok(verify.includes(gate), `verify includes ${gate}`);
 const composer = fs.readFileSync('apps/web/src/features/assist/AssistComposer.tsx', 'utf8');
-for (const removedMode of [">Ask<", ">Agent<", ">CLI<", ">Default<"]) assert.equal(composer.includes(removedMode), false, `composer excludes ${removedMode}`);
+for (const removedMode of ['>Ask<', '>Agent<', '>CLI<', '>Default<'])
+  assert.equal(composer.includes(removedMode), false, `composer excludes ${removedMode}`);
 const browser = fs.readFileSync('tests/e2e/playwright.test.mjs', 'utf8');
-for (const viewport of ['1440', '1024', '390', "keyboard.press('Escape')"]) assert.ok(browser.includes(viewport), `browser acceptance includes ${viewport}`);
+for (const viewport of ['1440', '1024', '390', "keyboard.press('Escape')"])
+  assert.ok(browser.includes(viewport), `browser acceptance includes ${viewport}`);
 const managedCcSwitch = fs.readFileSync('apps/api/src/cc-switch-managed-cli.mjs', 'utf8');
 assert.equal(/sqlite|better-sqlite3/i.test(managedCcSwitch), false, 'managed cc-switch path never writes SQLite');
-assert.ok(fs.readFileSync('bridge/main.go', 'utf8').includes('bridgeVersion   = "1.10.0"'), 'Windows Bridge reports V1.10');
+assert.ok(
+  fs.readFileSync('bridge/main.go', 'utf8').includes('bridgeVersion   = "1.10.0"'),
+  'Windows Bridge reports V1.10'
+);
 console.log(`V1.10 acceptance audit passed (${checks.length} implementation checks)`);
 
-function workspaceManifests() { return ['apps', 'packages'].flatMap((root) => fs.readdirSync(root, { withFileTypes: true }).filter((item) => item.isDirectory()).map((item) => path.join(root, item.name, 'package.json')).filter(fs.existsSync)); }
-function walk(dir) { if (!fs.existsSync(dir)) return []; return fs.readdirSync(dir, { withFileTypes: true }).flatMap((entry) => { if (['node_modules', 'dist'].includes(entry.name)) return []; const full = path.join(dir, entry.name); return entry.isDirectory() ? walk(full) : [full]; }); }
+function workspaceManifests() {
+  return ['apps', 'packages'].flatMap((root) =>
+    fs
+      .readdirSync(root, { withFileTypes: true })
+      .filter((item) => item.isDirectory())
+      .map((item) => path.join(root, item.name, 'package.json'))
+      .filter(fs.existsSync)
+  );
+}
+function walk(dir) {
+  if (!fs.existsSync(dir)) return [];
+  return fs.readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {
+    if (['node_modules', 'dist'].includes(entry.name)) return [];
+    const full = path.join(dir, entry.name);
+    return entry.isDirectory() ? walk(full) : [full];
+  });
+}

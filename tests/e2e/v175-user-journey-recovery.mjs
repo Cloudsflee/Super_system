@@ -38,7 +38,11 @@ export async function verifyBrowserAndServiceRecovery(runtime, fixture, nodes, a
   assert.equal(execution.contract.node_goal, '在受管副本中完成实现、测试和可回滚交付');
   const retrospective = await runtime.api(`/nodes/${nodes.retrospective.id}/workspace`);
   assert.ok(retrospective.runs.some((item) => item.id === delivery.runId && item.status === 'succeeded'));
-  assert.ok(retrospective.code_changes.some((item) => item.run_id === delivery.runId && ['draft', 'pr_created'].includes(item.status)));
+  assert.ok(
+    retrospective.code_changes.some(
+      (item) => item.run_id === delivery.runId && ['draft', 'pr_created'].includes(item.status)
+    )
+  );
   assert.equal(retrospective.assets.find((item) => item.id === delivery.assetId).status, 'confirmed');
 
   const session = await runtime.api(`/assist/v3/sessions/${assist.sessionId}`);
@@ -65,7 +69,7 @@ async function assertWorkspaceUi(runtime, projectId, nodes) {
 async function waitForValue(locator, expected) {
   await locator.waitFor({ timeout: 20_000 });
   for (let attempt = 0; attempt < 100; attempt++) {
-    if (await locator.inputValue() === expected) return;
+    if ((await locator.inputValue()) === expected) return;
     await new Promise((resolve) => setTimeout(resolve, 50));
   }
   assert.equal(await locator.inputValue(), expected);

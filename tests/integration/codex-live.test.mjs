@@ -20,17 +20,30 @@ async function runServiceProbe(baseUrl) {
   assert.equal(status.image?.ready, true, `Codex Runner image must be ready: ${status.image?.error_code || 'unknown'}`);
   assert.equal(status.authenticated, true, 'Docker service Codex credential must be configured');
   assert.equal(status.active_profile?.kind, 'docker', 'active service profile must use Docker isolation');
-  assert.equal(status.active_profile?.credential_configured, true, 'active service profile credential must be configured');
+  assert.equal(
+    status.active_profile?.credential_configured,
+    true,
+    'active service profile credential must be configured'
+  );
 
   const probe = await serviceJson(baseUrl, 'POST', '/api/codex/probe', {});
   assert.equal(probe.status, 'ready');
   assert.equal(probe.detail?.ok, true);
   assert.equal(probe.detail?.phase, 'inference');
   assert.ok((probe.detail?.checks || []).length >= 7, 'probe must report all isolation and inference phases');
-  assert.ok(probe.detail.checks.every((item) => item.status === 'passed'), 'all service probe phases must pass');
+  assert.ok(
+    probe.detail.checks.every((item) => item.status === 'passed'),
+    'all service probe phases must pass'
+  );
   assert.equal(probe.detail?.process?.timed_out, false);
-  assert.doesNotMatch(JSON.stringify({ status, probe }), /(?:api[_-]?key|private[_-]?key|authorization|access[_-]?token|refresh[_-]?token)["']?\s*:/i, 'service response must not expose credentials');
-  console.log(`Codex service-backed live probe passed (profile=${status.active_profile.id}, image=${status.image.name})`);
+  assert.doesNotMatch(
+    JSON.stringify({ status, probe }),
+    /(?:api[_-]?key|private[_-]?key|authorization|access[_-]?token|refresh[_-]?token)["']?\s*:/i,
+    'service response must not expose credentials'
+  );
+  console.log(
+    `Codex service-backed live probe passed (profile=${status.active_profile.id}, image=${status.image.name})`
+  );
 }
 
 async function runDedicatedHomeProbe() {
@@ -42,11 +55,35 @@ async function runDedicatedHomeProbe() {
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'aiws-codex-live-'));
   const promptFile = path.join(tmp, 'prompt.md');
   const schemaFile = path.join(tmp, 'schema.json');
-  fs.writeFileSync(promptFile, 'Return JSON for aiws.node_run_result.v1 with status partial or succeeded. Do not edit files.', 'utf8');
-  fs.writeFileSync(schemaFile, JSON.stringify({ type: 'object', required: ['status', 'summary', 'changed_files', 'asset_candidates', 'test_results', 'next_actions'], properties: { status: { type: 'string' }, summary: { type: 'string' }, changed_files: { type: 'array' }, asset_candidates: { type: 'array' }, test_results: { type: 'array' }, next_actions: { type: 'array' } } }), 'utf8');
+  fs.writeFileSync(
+    promptFile,
+    'Return JSON for aiws.node_run_result.v1 with status partial or succeeded. Do not edit files.',
+    'utf8'
+  );
+  fs.writeFileSync(
+    schemaFile,
+    JSON.stringify({
+      type: 'object',
+      required: ['status', 'summary', 'changed_files', 'asset_candidates', 'test_results', 'next_actions'],
+      properties: {
+        status: { type: 'string' },
+        summary: { type: 'string' },
+        changed_files: { type: 'array' },
+        asset_candidates: { type: 'array' },
+        test_results: { type: 'array' },
+        next_actions: { type: 'array' }
+      }
+    }),
+    'utf8'
+  );
   const before = snapshot(tmp);
   try {
-    const result = await new CodexRunner({ timeoutMs: Number(process.env.CODEX_LIVE_TIMEOUT_MS || 45000) }).run({ cwd: tmp, promptFile, outputSchemaFile: schemaFile, fallback: { changed_files: [], asset_candidates: [], test_results: [], next_actions: [] } });
+    const result = await new CodexRunner({ timeoutMs: Number(process.env.CODEX_LIVE_TIMEOUT_MS || 45000) }).run({
+      cwd: tmp,
+      promptFile,
+      outputSchemaFile: schemaFile,
+      fallback: { changed_files: [], asset_candidates: [], test_results: [], next_actions: [] }
+    });
     assert.ok(['succeeded', 'partial', 'failed'].includes(result.status));
     assert.ok(result.summary);
     assert.deepEqual(result.changed_files, []);
@@ -58,7 +95,21 @@ async function runDedicatedHomeProbe() {
   }
 }
 
-function snapshot(root) { return fs.readdirSync(root).sort().map((name) => { const file = path.join(root, name), stat = fs.statSync(file); return { name, size: stat.size, mtimeMs: stat.mtimeMs, content: stat.isFile() ? fs.readFileSync(file, 'base64') : null }; }); }
+function snapshot(root) {
+  return fs
+    .readdirSync(root)
+    .sort()
+    .map((name) => {
+      const file = path.join(root, name),
+        stat = fs.statSync(file);
+      return {
+        name,
+        size: stat.size,
+        mtimeMs: stat.mtimeMs,
+        content: stat.isFile() ? fs.readFileSync(file, 'base64') : null
+      };
+    });
+}
 
 function normalizeBaseUrl(value) {
   if (!String(value || '').trim()) return null;
@@ -76,6 +127,9 @@ async function serviceJson(baseUrl, method, route, body) {
     signal: AbortSignal.timeout(Number(process.env.CODEX_LIVE_TIMEOUT_MS || 150000))
   });
   const data = await response.json().catch(() => ({}));
-  if (!response.ok) throw new Error(`Codex service ${method} ${route} failed (${response.status}): ${data.error || data.message || 'unknown_error'}`);
+  if (!response.ok)
+    throw new Error(
+      `Codex service ${method} ${route} failed (${response.status}): ${data.error || data.message || 'unknown_error'}`
+    );
   return data;
 }

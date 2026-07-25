@@ -12,8 +12,12 @@ import {
 } from '../../shared/index.mjs';
 
 export class AgentRunner {
-  constructor(name) { this.name = name; }
-  async run() { throw new Error('AgentRunner.run must be implemented'); }
+  constructor(name) {
+    this.name = name;
+  }
+  async run() {
+    throw new Error('AgentRunner.run must be implemented');
+  }
 }
 
 export class CodexRunner extends AgentRunner {
@@ -26,7 +30,20 @@ export class CodexRunner extends AgentRunner {
   }
 
   buildArgs({ cwd, outputSchemaFile, lastMessageFile, model, json = true, configArgs = [] }) {
-    return [...this.commandArgs, ...configArgs, 'exec', ...(json ? ['--json'] : []), '--skip-git-repo-check', ...(model ? ['--model', model] : []), '--cd', cwd, '--output-schema', outputSchemaFile, ...(lastMessageFile ? ['--output-last-message', lastMessageFile] : []), '-'];
+    return [
+      ...this.commandArgs,
+      ...configArgs,
+      'exec',
+      ...(json ? ['--json'] : []),
+      '--skip-git-repo-check',
+      ...(model ? ['--model', model] : []),
+      '--cd',
+      cwd,
+      '--output-schema',
+      outputSchemaFile,
+      ...(lastMessageFile ? ['--output-last-message', lastMessageFile] : []),
+      '-'
+    ];
   }
 
   async run({ cwd, model, env, promptFile, outputSchemaFile, configArgs = [], fallback = {}, signal }) {
@@ -37,8 +54,15 @@ export class CodexRunner extends AgentRunner {
       const raw = await runProcess(this.command, args, { cwd, timeoutMs: this.timeoutMs, stdin: prompt, env, signal });
       if (raw.code !== 0) return failedCodexProcessResult(fallback, raw);
       const last = fs.existsSync(lastMessageFile) ? fs.readFileSync(lastMessageFile, 'utf8') : '';
-      const normalized = normalizeRunnerOutput(last || extractJsonMessage(raw.stdout) || raw.stdout || raw.stderr, fallback);
-      return { ...normalized.result, status: normalized.status, _codex_process: { code: raw.code, stderr: raw.stderr, stdout: raw.stdout.slice(-4000) } };
+      const normalized = normalizeRunnerOutput(
+        last || extractJsonMessage(raw.stdout) || raw.stdout || raw.stderr,
+        fallback
+      );
+      return {
+        ...normalized.result,
+        status: normalized.status,
+        _codex_process: { code: raw.code, stderr: raw.stderr, stdout: raw.stdout.slice(-4000) }
+      };
     } catch (error) {
       return partialCodexResult(fallback, error);
     }
@@ -46,7 +70,12 @@ export class CodexRunner extends AgentRunner {
 }
 
 export class DockerCodexRunner extends AgentRunner {
-  constructor({ image = AIWS_RUNNER_IMAGE, timeoutMs = DEFAULT_CODEX_TIMEOUT_MS, invocationBuilder = null, processRunner = runProcess } = {}) {
+  constructor({
+    image = AIWS_RUNNER_IMAGE,
+    timeoutMs = DEFAULT_CODEX_TIMEOUT_MS,
+    invocationBuilder = null,
+    processRunner = runProcess
+  } = {}) {
     super('DockerCodexRunner');
     this.image = image;
     this.timeoutMs = timeoutMs;
@@ -54,45 +83,108 @@ export class DockerCodexRunner extends AgentRunner {
     this.processRunner = processRunner;
   }
 
-  buildDockerArgs({ cwd, codexHome = '.ai-workspace/codex-home', mounts = [], outputSchemaFile, lastMessageFile, model, json = true, exposeApiKey = false, configArgs = [] }) {
-    if (this.invocationBuilder) return this.invocationBuilder({ cwd, codexHome, mounts, outputSchemaFile, lastMessageFile, model, json, exposeApiKey }).args;
+  buildDockerArgs({
+    cwd,
+    codexHome = '.ai-workspace/codex-home',
+    mounts = [],
+    outputSchemaFile,
+    lastMessageFile,
+    model,
+    json = true,
+    exposeApiKey = false,
+    configArgs = []
+  }) {
+    if (this.invocationBuilder)
+      return this.invocationBuilder({
+        cwd,
+        codexHome,
+        mounts,
+        outputSchemaFile,
+        lastMessageFile,
+        model,
+        json,
+        exposeApiKey
+      }).args;
     const mountedCwd = '/workspace';
     const mountedCodex = '/codex-home';
     const schemaPath = toContainerPath(outputSchemaFile, cwd, mountedCwd);
     const lastPath = lastMessageFile ? toContainerPath(lastMessageFile, cwd, mountedCwd) : null;
     return [
-      'run', '--rm',
-      '-v', `${cwd}:${mountedCwd}`,
-      '--env', `CODEX_HOME=${mountedCodex}`,
+      'run',
+      '--rm',
+      '-v',
+      `${cwd}:${mountedCwd}`,
+      '--env',
+      `CODEX_HOME=${mountedCodex}`,
       ...(exposeApiKey ? ['--env', 'OPENAI_API_KEY'] : []),
-      '-v', `${codexHome}:${mountedCodex}`,
+      '-v',
+      `${codexHome}:${mountedCodex}`,
       ...mounts.flatMap((mount, index) => ['-v', `${mount}:/aiws-mounts/${index}:rw`]),
-      '-w', mountedCwd,
+      '-w',
+      mountedCwd,
       this.image,
       ...configArgs,
       'exec',
       ...(json ? ['--json'] : []),
       '--skip-git-repo-check',
-      '--sandbox', 'workspace-write',
+      '--sandbox',
+      'workspace-write',
       ...(model ? ['--model', model] : []),
-      '--cd', mountedCwd,
-      '--output-schema', schemaPath,
+      '--cd',
+      mountedCwd,
+      '--output-schema',
+      schemaPath,
       ...(lastPath ? ['--output-last-message', lastPath] : []),
       '-'
     ];
   }
 
-  async run({ cwd, codexHome, mounts, model, env, promptFile, outputSchemaFile, configArgs = [], fallback = {}, signal }) {
+  async run({
+    cwd,
+    codexHome,
+    mounts,
+    model,
+    env,
+    promptFile,
+    outputSchemaFile,
+    configArgs = [],
+    fallback = {},
+    signal
+  }) {
     try {
       const lastMessageFile = `${outputSchemaFile}.last-message.json`;
-      const input = { cwd, codexHome, mounts, model, json: true, outputSchemaFile, lastMessageFile, exposeApiKey: Boolean(env?.OPENAI_API_KEY), configArgs };
-      const invocation = this.invocationBuilder ? this.invocationBuilder(input) : { command: 'docker', args: this.buildDockerArgs(input) };
+      const input = {
+        cwd,
+        codexHome,
+        mounts,
+        model,
+        json: true,
+        outputSchemaFile,
+        lastMessageFile,
+        exposeApiKey: Boolean(env?.OPENAI_API_KEY),
+        configArgs
+      };
+      const invocation = this.invocationBuilder
+        ? this.invocationBuilder(input)
+        : { command: 'docker', args: this.buildDockerArgs(input) };
       const prompt = fs.readFileSync(promptFile, 'utf8');
-      const raw = await this.processRunner(invocation.command, invocation.args, { cwd, timeoutMs: this.timeoutMs, stdin: prompt, env, signal }, invocation);
+      const raw = await this.processRunner(
+        invocation.command,
+        invocation.args,
+        { cwd, timeoutMs: this.timeoutMs, stdin: prompt, env, signal },
+        invocation
+      );
       if (raw.code !== 0) return failedCodexProcessResult(fallback, raw, 'docker');
       const last = fs.existsSync(lastMessageFile) ? fs.readFileSync(lastMessageFile, 'utf8') : '';
-      const normalized = normalizeRunnerOutput(last || extractJsonMessage(raw.stdout) || raw.stdout || raw.stderr, fallback);
-      return { ...normalized.result, status: normalized.status, _codex_process: { command: 'docker', code: raw.code, stderr: raw.stderr, stdout: raw.stdout.slice(-4000) } };
+      const normalized = normalizeRunnerOutput(
+        last || extractJsonMessage(raw.stdout) || raw.stdout || raw.stderr,
+        fallback
+      );
+      return {
+        ...normalized.result,
+        status: normalized.status,
+        _codex_process: { command: 'docker', code: raw.code, stderr: raw.stderr, stdout: raw.stdout.slice(-4000) }
+      };
     } catch (error) {
       return partialCodexResult(fallback, error);
     }
@@ -115,7 +207,6 @@ export function ensureAgentsBlock(repoPath, contextPackPath = '.ai-workspace/con
   return { file, changed: next !== current, content: next };
 }
 
-
 function partialCodexResult(fallback, error) {
   const failure = classifyCodexProcessFailure(String(error.message || error));
   return {
@@ -132,7 +223,8 @@ function partialCodexResult(fallback, error) {
 }
 
 function failedCodexProcessResult(fallback, raw, command = null) {
-  const stdout = String(raw.stdout || ''), stderr = String(raw.stderr || '');
+  const stdout = String(raw.stdout || ''),
+    stderr = String(raw.stderr || '');
   const failure = classifyCodexProcessFailure(`${stdout}\n${stderr}`);
   return {
     ...fallback,
@@ -145,21 +237,29 @@ function failedCodexProcessResult(fallback, raw, command = null) {
 
 export function classifyCodexProcessFailure(value) {
   const output = String(value || '');
-  if (/\b(?:429|502|503|504)\b|bad gateway|upstream request failed|rate.?limit|reconnecting/i.test(output)) return { failure_code: 'runner_upstream_unavailable', retryable: true };
+  if (/\b(?:429|502|503|504)\b|bad gateway|upstream request failed|rate.?limit|reconnecting/i.test(output))
+    return { failure_code: 'runner_upstream_unavailable', retryable: true };
   if (/timed?\s*out|timeout/i.test(output)) return { failure_code: 'runner_timeout', retryable: true };
-  if (/network|connection (?:reset|refused|closed)|econn(?:reset|refused)|dns|socket hang up/i.test(output)) return { failure_code: 'runner_network_failed', retryable: true };
-  if (/container_start|docker daemon|service unavailable/i.test(output)) return { failure_code: 'runner_infrastructure_failed', retryable: true };
+  if (/network|connection (?:reset|refused|closed)|econn(?:reset|refused)|dns|socket hang up/i.test(output))
+    return { failure_code: 'runner_network_failed', retryable: true };
+  if (/container_start|docker daemon|service unavailable/i.test(output))
+    return { failure_code: 'runner_infrastructure_failed', retryable: true };
   return { failure_code: 'runner_process_failed', retryable: false };
 }
 
 function extractJsonMessage(stdout) {
-  const lines = String(stdout || '').trim().split(/\r?\n/).reverse();
+  const lines = String(stdout || '')
+    .trim()
+    .split(/\r?\n/)
+    .reverse();
   for (const line of lines) {
     try {
       const event = JSON.parse(line);
       const candidate = event.message || event.content || event.text || event.output || event.last_message;
       if (typeof candidate === 'string' && candidate.trim().startsWith('{')) return candidate;
-    } catch { /* keep scanning */ }
+    } catch {
+      /* keep scanning */
+    }
   }
   return '';
 }
@@ -167,13 +267,30 @@ function extractJsonMessage(stdout) {
 function runProcess(command, args, { cwd, timeoutMs, stdin = '', env, signal }) {
   return new Promise((resolve, reject) => {
     const child = spawn(command, args, { cwd, shell: false, env: processEnvironment(env) });
-    let stdout = '', stderr = '';
+    let stdout = '',
+      stderr = '';
     let settled = false;
-    const finish = (callback, value) => { if (settled) return; settled = true; clearTimeout(timer); signal?.removeEventListener('abort', abort); callback(value); };
-    const abort = () => { child.kill('SIGTERM'); finish(reject, new Error('process cancelled')); };
-    const timer = setTimeout(() => { child.kill('SIGTERM'); finish(reject, new Error(`process timeout after ${timeoutMs}ms`)); }, timeoutMs);
-    child.stdout.on('data', (chunk) => { stdout += chunk; });
-    child.stderr.on('data', (chunk) => { stderr += chunk; });
+    const finish = (callback, value) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      signal?.removeEventListener('abort', abort);
+      callback(value);
+    };
+    const abort = () => {
+      child.kill('SIGTERM');
+      finish(reject, new Error('process cancelled'));
+    };
+    const timer = setTimeout(() => {
+      child.kill('SIGTERM');
+      finish(reject, new Error(`process timeout after ${timeoutMs}ms`));
+    }, timeoutMs);
+    child.stdout.on('data', (chunk) => {
+      stdout += chunk;
+    });
+    child.stderr.on('data', (chunk) => {
+      stderr += chunk;
+    });
     child.on('error', (error) => finish(reject, error));
     child.on('close', (code) => finish(resolve, { code, stdout, stderr }));
     if (signal?.aborted) return abort();

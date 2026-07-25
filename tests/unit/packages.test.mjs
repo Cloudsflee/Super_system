@@ -11,11 +11,21 @@ import { executeTask, taskNames } from '../../apps/worker/src/index.mjs';
 
 assert.equal(parseRemoteUrl('git@github.com:owner/repo.git').owner, 'owner');
 assert.equal(inspectMcpConfig({ name: 'fixture', command: 'node' }).status, 'configured');
-const hostArgs = new CodexRunner().buildArgs({ cwd: '.', model: 'gpt-test', promptFile: 'prompt.md', outputSchemaFile: 'schema.json' });
+const hostArgs = new CodexRunner().buildArgs({
+  cwd: '.',
+  model: 'gpt-test',
+  promptFile: 'prompt.md',
+  outputSchemaFile: 'schema.json'
+});
 assert.equal(new CodexRunner().timeoutMs, 1_800_000);
 assert.ok(hostArgs.includes('--json'));
 assert.ok(hostArgs.includes('gpt-test'));
-const dockerArgs = new DockerCodexRunner().buildDockerArgs({ cwd: '/repo', codexHome: '/home/codex', mounts: ['/extra'], outputSchemaFile: '/repo/schema.json' });
+const dockerArgs = new DockerCodexRunner().buildDockerArgs({
+  cwd: '/repo',
+  codexHome: '/home/codex',
+  mounts: ['/extra'],
+  outputSchemaFile: '/repo/schema.json'
+});
 assert.equal(new DockerCodexRunner().timeoutMs, 1_800_000);
 assert.deepEqual(dockerArgs.slice(0, 2), ['run', '--rm']);
 assert.ok(dockerArgs.includes('aiws-codex-runner:1.10.0-codex-0.144.0'));
@@ -23,11 +33,22 @@ assert.ok(dockerArgs.includes('/workspace'));
 assert.ok(dockerArgs.includes('CODEX_HOME=/codex-home'));
 assert.equal(dockerArgs.includes('OPENAI_API_KEY'), false);
 assert.ok(dockerArgs.includes('/extra:/aiws-mounts/0:rw'));
-const dockerKeyArgs = new DockerCodexRunner().buildDockerArgs({ cwd: '/repo', codexHome: '/home/codex', mounts: [], outputSchemaFile: '/repo/schema.json', exposeApiKey: true });
+const dockerKeyArgs = new DockerCodexRunner().buildDockerArgs({
+  cwd: '/repo',
+  codexHome: '/home/codex',
+  mounts: [],
+  outputSchemaFile: '/repo/schema.json',
+  exposeApiKey: true
+});
 assert.ok(dockerKeyArgs.includes('OPENAI_API_KEY'));
 assert.ok(providerOrder().includes('node_contract'));
 assert.ok(authorityOrder.includes('confirmed_asset_or_decision'));
-assert.deepEqual(taskNames, ['context-pack.build', 'node-run.execute', 'task-execution.claim', 'task-execution.output']);
+assert.deepEqual(taskNames, [
+  'context-pack.build',
+  'node-run.execute',
+  'task-execution.claim',
+  'task-execution.output'
+]);
 await assert.rejects(() => executeTask('unknown.task', {}), /unsupported_worker_task/);
 
 const repo = fs.mkdtempSync(path.join(os.tmpdir(), 'aiws-agents-'));

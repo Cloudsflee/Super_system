@@ -3,12 +3,7 @@ import { executeNodeRun } from '../../api/src/routes/runs.mjs';
 import { pathToFileURL } from 'node:url';
 import { claimTaskExecution, submitTaskExecutionOutputs } from '../../api/src/task-execution-service.mjs';
 
-export const taskNames = [
-  'context-pack.build',
-  'node-run.execute',
-  'task-execution.claim',
-  'task-execution.output'
-];
+export const taskNames = ['context-pack.build', 'node-run.execute', 'task-execution.claim', 'task-execution.output'];
 
 export async function executeTask(name, payload) {
   if (name === 'context-pack.build') return buildContextPack(payload);
@@ -22,7 +17,12 @@ export async function executeTask(name, payload) {
   }
   if (name === 'task-execution.output') {
     if (!payload?.task_execution_id) throw new Error('task_execution_id_required');
-    return submitTaskExecutionOutputs(payload.task_execution_id, { outputs: payload.outputs, leaseToken: payload.lease_token, verifierId: payload.verifier_id, actorId: payload.actor_id });
+    return submitTaskExecutionOutputs(payload.task_execution_id, {
+      outputs: payload.outputs,
+      leaseToken: payload.lease_token,
+      verifierId: payload.verifier_id,
+      actorId: payload.actor_id
+    });
   }
   throw new Error(`unsupported_worker_task:${name}`);
 }

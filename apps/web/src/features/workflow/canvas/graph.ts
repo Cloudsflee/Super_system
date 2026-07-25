@@ -23,13 +23,23 @@ export function toCanvasEdges(nodes: WorkflowNode[]): Edge[] {
 }
 
 export function autoLayout(nodes: CanvasNode[]) {
-  return nodes.map((node, index) => ({ ...node, position: { x: 90 + (index % 4) * 280, y: 100 + Math.floor(index / 4) * 220 } }));
+  return nodes.map((node, index) => ({
+    ...node,
+    position: { x: 90 + (index % 4) * 280, y: 100 + Math.floor(index / 4) * 220 }
+  }));
 }
 
 export function reconcileCanvasNodes(current: CanvasNode[], incoming: CanvasNode[], preservePositions = false) {
   const existing = new Map(current.map((node) => [node.id, node]));
   return incoming.map((node) => {
     const previous = existing.get(node.id);
-    return previous ? { ...previous, ...node, position: preservePositions ? previous.position : node.position, selected: previous.selected } : node;
+    return previous
+      ? {
+          ...previous,
+          ...node,
+          position: preservePositions ? previous.position : node.position,
+          selected: previous.selected
+        }
+      : node;
   });
 }

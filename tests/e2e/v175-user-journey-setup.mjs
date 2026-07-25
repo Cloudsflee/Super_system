@@ -21,22 +21,29 @@ export async function completeSetup(runtime) {
   await page.getByRole('button', { name: '打开安装页' }).waitFor();
   await page.getByRole('button', { name: '打开安装页' }).click();
   const repository = page.locator('.repository-picker input[type="checkbox"]').first();
-  await repository.waitFor(); await repository.check();
+  await repository.waitFor();
+  await repository.check();
   await page.getByRole('button', { name: '确认选择' }).click();
   await waitForSetup(runtime, (value) => value.steps.github.ready === true, 'GitHub setup did not become ready');
 
   await page.getByRole('button', { name: '检测并构建' }).waitFor();
   await page.getByRole('button', { name: '检测并构建' }).click();
-  await waitForSetup(runtime, (value) => value.steps.codex.checks?.docker_ready === true, 'Codex Docker build did not finish');
+  await waitForSetup(
+    runtime,
+    (value) => value.steps.codex.checks?.docker_ready === true,
+    'Codex Docker build did not finish'
+  );
   await page.getByRole('button', { name: '手动 API' }).click();
   await page.getByLabel('API Key').fill('journey-api-key');
   await page.getByRole('button', { name: '保存凭据与 Endpoint' }).click();
   const profile = page.getByRole('button', { name: '保存并校验 Profile' });
-  await profile.waitFor(); await profile.click();
+  await profile.waitFor();
+  await profile.click();
   await page.getByRole('button', { name: '运行 Probe' }).waitFor();
   await page.getByRole('button', { name: '运行 Probe' }).click();
   const finish = page.getByRole('button', { name: '完成配置' });
-  await finish.waitFor(); await finish.click();
+  await finish.waitFor();
+  await finish.click();
   await page.waitForURL('**/projects');
 
   const setup = await runtime.api('/setup/status');

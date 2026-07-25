@@ -4,7 +4,8 @@ export async function governWorkflowAndContract(runtime, fixture) {
   const page = runtime.page;
   await page.goto(`${runtime.baseUrl}/projects/${fixture.projectId}/workflow`);
   const node = page.locator('.workspace-node').first();
-  await node.waitFor(); await node.click();
+  await node.waitFor();
+  await node.click();
   const inspector = page.locator('.node-inspector');
   await inspector.waitFor();
   const originalTitle = await inspector.getByRole('heading', { level: 2 }).textContent();
@@ -25,10 +26,14 @@ export async function governWorkflowAndContract(runtime, fixture) {
   await page.getByLabel('节点目标').fill('在受管副本中完成实现、测试和可回滚交付');
   await page.getByLabel('验收标准').fill('受管文件可保存\n测试任务成功\n所有 Git 写入经过审批');
   const firstTool = page.locator('.tool-checks input[type="checkbox"]').first();
-  if (await firstTool.count() && !await firstTool.isChecked()) await firstTool.check();
+  if ((await firstTool.count()) && !(await firstTool.isChecked())) await firstTool.check();
   await page.getByRole('button', { name: '提交变更提案' }).click();
   await approvePrompt(page);
-  const after = await waitForWorkspace(runtime, execution.id, (value) => value.contract.version > before.contract.version);
+  const after = await waitForWorkspace(
+    runtime,
+    execution.id,
+    (value) => value.contract.version > before.contract.version
+  );
   assert.equal(after.contract.node_goal, '在受管副本中完成实现、测试和可回滚交付');
   assert.deepEqual(after.contract.acceptance_criteria, ['受管文件可保存', '测试任务成功', '所有 Git 写入经过审批']);
 }

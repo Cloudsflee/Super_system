@@ -17,16 +17,24 @@ export function ApprovalPrompt({ projectId }: { projectId?: string }) {
   // Resolve by id across projects so a route/project switch cannot orphan an interrupting prompt.
   const approvals = useApprovals(undefined, Boolean(proposalId));
   const ordered = approvals.data?.slice().sort((a, b) => String(b.created_at).localeCompare(String(a.created_at)));
-  const item = proposalId === 'latest' ? ordered?.find((candidate) => candidate.attention_state !== 'resolved') : ordered?.find((candidate) => candidate.id === proposalId);
+  const item =
+    proposalId === 'latest'
+      ? ordered?.find((candidate) => candidate.attention_state !== 'resolved')
+      : ordered?.find((candidate) => candidate.id === proposalId);
   const resolved = item?.attention_state === 'resolved';
   const decision = useMutation({
-    mutationFn: ({ value, target }: { value: ApprovalDecision; target: ApprovalItem }) => decideApproval(target, value, value === 'reject' ? '用户从即时审批弹窗拒绝' : undefined),
+    mutationFn: ({ value, target }: { value: ApprovalDecision; target: ApprovalItem }) =>
+      decideApproval(target, value, value === 'reject' ? '用户从即时审批弹窗拒绝' : undefined),
     onMutate: () => setDecisionError(null),
     onSuccess: async (result, variables) => {
       await invalidateApprovalState(client, projectId, variables.target.project_id);
       if (variables.value === 'approve_apply' && (result.applied || result.proposal)) {
-        const proposal = result.proposal || (variables.target.type === 'change_proposal' ? { id: result.item?.id || variables.target.id } : undefined);
-        window.dispatchEvent(new CustomEvent('aiws:proposal-applied', { detail: { proposal, applied: result.applied } }));
+        const proposal =
+          result.proposal ||
+          (variables.target.type === 'change_proposal' ? { id: result.item?.id || variables.target.id } : undefined);
+        window.dispatchEvent(
+          new CustomEvent('aiws:proposal-applied', { detail: { proposal, applied: result.applied } })
+        );
       }
       showProposal(null);
     },
@@ -44,13 +52,17 @@ export function ApprovalPrompt({ projectId }: { projectId?: string }) {
     if (item && !resolved && !decision.isPending) decision.mutate({ value, target: item });
   }
 
-  useEffect(() => { if (proposalId && resolved) showProposal(null); }, [proposalId, resolved, showProposal]);
+  useEffect(() => {
+    if (proposalId && resolved) showProposal(null);
+  }, [proposalId, resolved, showProposal]);
   useEffect(() => {
     if (!deferWhenReady.current || !item || resolved || decision.isPending) return;
     deferWhenReady.current = false;
     decide('defer');
   }, [item?.id, item?.revision, resolved, decision.isPending]);
-  useEffect(() => { deferWhenReady.current = false; }, [proposalId]);
+  useEffect(() => {
+    deferWhenReady.current = false;
+  }, [proposalId]);
   useEffect(() => setDecisionError(null), [item?.id]);
 
   useEffect(() => {
@@ -71,29 +83,117 @@ export function ApprovalPrompt({ projectId }: { projectId?: string }) {
   return (
     <div className="approval-prompt-layer">
       <section className="approval-prompt" role="dialog" aria-modal="false" aria-labelledby="approval-prompt-title">
-        {!item ? <div className="approval-prompt-loading">
-          <ShieldAlert size={22} />
-          <strong>{approvals.isError ? '审批项目加载失败' : '正在加载审批项目'}</strong>
-          {approvals.isError && <><small>{approvals.error.message}</small><button className="button secondary" onClick={() => approvals.refetch()}>重试</button><button className="button secondary" onClick={() => showProposal(null)}>关闭并稍后处理</button></>}
-        </div> : <>
-          <header><div className="approval-kind">{item.type === 'runtime_approval' ? <ShieldAlert size={17} /> : <GitPullRequest size={17} />}<span>{item.type === 'runtime_approval' ? '运行审批' : '变更提案'}</span></div><IconButton label="暂定并关闭" disabled={resolved || decision.isPending} onClick={() => decide('defer')}><X size={17} /></IconButton></header>
-          <div className="approval-prompt-body">
-            <div className="approval-meta"><span className={`status ${item.status}`}>{displayStatus(item.status)}</span><span>修订版 {item.revision}</span>{item.change_type && <span>{changeTypeLabel(item.change_type)}</span>}</div>
-            <h2 id="approval-prompt-title">{item.title}</h2>
-            <p>{item.summary}</p>
-            {decisionError && <div className="approval-error" role="alert">{decisionError}</div>}
-            {(item.before_json != null || item.after_json != null) && <details><summary>查看变更内容</summary><div className="approval-change"><section><strong>变更前</strong><pre>{JSON.stringify(item.before_json ?? null, null, 2)}</pre></section><section><strong>变更后</strong><pre>{JSON.stringify(item.after_json ?? null, null, 2)}</pre></section></div></details>}
-            {item.impact?.length ? <div className="approval-chip-line"><strong>影响</strong>{item.impact.map((value) => <span key={value}>{value}</span>)}</div> : null}
-            {item.risks?.length ? <div className="approval-risks"><strong>风险</strong><ul>{item.risks.map((value) => <li key={value}>{value}</li>)}</ul></div> : null}
+        {!item ? (
+          <div className="approval-prompt-loading">
+            <ShieldAlert size={22} />
+            <strong>{approvals.isError ? '审批项目加载失败' : '正在加载审批项目'}</strong>
+            {approvals.isError && (
+              <>
+                <small>{approvals.error.message}</small>
+                <button className="button secondary" onClick={() => approvals.refetch()}>
+                  重试
+                </button>
+                <button className="button secondary" onClick={() => showProposal(null)}>
+                  关闭并稍后处理
+                </button>
+              </>
+            )}
           </div>
-          <footer><button className="button secondary" disabled={resolved || decision.isPending} onClick={() => decide('defer')}><Clock3 size={15} />暂定</button><button className="button danger" disabled={resolved || decision.isPending} onClick={() => decide('reject')}><X size={15} />拒绝</button><button className="button primary" disabled={resolved || decision.isPending} onClick={() => decide('approve_apply')}><Check size={15} />{decision.isPending ? '正在处理' : '批准并应用'}</button></footer>
-        </>}
+        ) : (
+          <>
+            <header>
+              <div className="approval-kind">
+                {item.type === 'runtime_approval' ? <ShieldAlert size={17} /> : <GitPullRequest size={17} />}
+                <span>{item.type === 'runtime_approval' ? '运行审批' : '变更提案'}</span>
+              </div>
+              <IconButton label="暂定并关闭" disabled={resolved || decision.isPending} onClick={() => decide('defer')}>
+                <X size={17} />
+              </IconButton>
+            </header>
+            <div className="approval-prompt-body">
+              <div className="approval-meta">
+                <span className={`status ${item.status}`}>{displayStatus(item.status)}</span>
+                <span>修订版 {item.revision}</span>
+                {item.change_type && <span>{changeTypeLabel(item.change_type)}</span>}
+              </div>
+              <h2 id="approval-prompt-title">{item.title}</h2>
+              <p>{item.summary}</p>
+              {decisionError && (
+                <div className="approval-error" role="alert">
+                  {decisionError}
+                </div>
+              )}
+              {(item.before_json != null || item.after_json != null) && (
+                <details>
+                  <summary>查看变更内容</summary>
+                  <div className="approval-change">
+                    <section>
+                      <strong>变更前</strong>
+                      <pre>{JSON.stringify(item.before_json ?? null, null, 2)}</pre>
+                    </section>
+                    <section>
+                      <strong>变更后</strong>
+                      <pre>{JSON.stringify(item.after_json ?? null, null, 2)}</pre>
+                    </section>
+                  </div>
+                </details>
+              )}
+              {item.impact?.length ? (
+                <div className="approval-chip-line">
+                  <strong>影响</strong>
+                  {item.impact.map((value) => (
+                    <span key={value}>{value}</span>
+                  ))}
+                </div>
+              ) : null}
+              {item.risks?.length ? (
+                <div className="approval-risks">
+                  <strong>风险</strong>
+                  <ul>
+                    {item.risks.map((value) => (
+                      <li key={value}>{value}</li>
+                    ))}
+                  </ul>
+                </div>
+              ) : null}
+            </div>
+            <footer>
+              <button
+                className="button secondary"
+                disabled={resolved || decision.isPending}
+                onClick={() => decide('defer')}
+              >
+                <Clock3 size={15} />
+                暂定
+              </button>
+              <button
+                className="button danger"
+                disabled={resolved || decision.isPending}
+                onClick={() => decide('reject')}
+              >
+                <X size={15} />
+                拒绝
+              </button>
+              <button
+                className="button primary"
+                disabled={resolved || decision.isPending}
+                onClick={() => decide('approve_apply')}
+              >
+                <Check size={15} />
+                {decision.isPending ? '正在处理' : '批准并应用'}
+              </button>
+            </footer>
+          </>
+        )}
       </section>
     </div>
   );
 }
 
-export async function invalidateApprovalState(client: ReturnType<typeof useQueryClient>, ...projectIds: Array<string | undefined>) {
+export async function invalidateApprovalState(
+  client: ReturnType<typeof useQueryClient>,
+  ...projectIds: Array<string | undefined>
+) {
   const ids = [...new Set(projectIds.filter((value): value is string => Boolean(value)))];
   await Promise.all([
     client.invalidateQueries({ queryKey: keys.approvals() }),

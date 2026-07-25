@@ -22,9 +22,14 @@ export function useAssistDockResize(active: boolean) {
 
   useEffect(() => {
     const root = document.documentElement;
-    if (!active) { root.style.removeProperty('--assist-active-dock-width'); return; }
+    if (!active) {
+      root.style.removeProperty('--assist-active-dock-width');
+      return;
+    }
     root.style.setProperty('--assist-active-dock-width', `${width}px`);
-    return () => { root.style.removeProperty('--assist-active-dock-width'); };
+    return () => {
+      root.style.removeProperty('--assist-active-dock-width');
+    };
   }, [active, width]);
 
   useEffect(() => () => stopRef.current(), []);
@@ -61,15 +66,30 @@ export function useAssistDockResize(active: boolean) {
   function keyDown(event: React.KeyboardEvent) {
     const step = event.shiftKey ? 64 : 24;
     const current = useUi.getState().assistDockWidth;
-    const next = event.key === 'ArrowLeft' ? current + step
-      : event.key === 'ArrowRight' ? current - step
-        : event.key === 'Home' ? bounds.min : event.key === 'End' ? bounds.max : null;
+    const next =
+      event.key === 'ArrowLeft'
+        ? current + step
+        : event.key === 'ArrowRight'
+          ? current - step
+          : event.key === 'Home'
+            ? bounds.min
+            : event.key === 'End'
+              ? bounds.max
+              : null;
     if (next === null) return;
     event.preventDefault();
     setWidth(clampDockWidth(next));
   }
 
-  return { width, min: bounds.min, max: bounds.max, dragging, start, keyDown, reset: () => setWidth(clampDockWidth(DEFAULT_WIDTH)) };
+  return {
+    width,
+    min: bounds.min,
+    max: bounds.max,
+    dragging,
+    start,
+    keyDown,
+    reset: () => setWidth(clampDockWidth(DEFAULT_WIDTH))
+  };
 }
 
 function dockWidthBounds() {

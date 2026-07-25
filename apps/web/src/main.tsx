@@ -32,7 +32,11 @@ export const queryClient = new QueryClient({
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
     <QueryClientProvider client={queryClient}>
-      <OperationFeedbackProvider><ContextMenuProvider><RouterProvider router={router} /></ContextMenuProvider></OperationFeedbackProvider>
+      <OperationFeedbackProvider>
+        <ContextMenuProvider>
+          <RouterProvider router={router} />
+        </ContextMenuProvider>
+      </OperationFeedbackProvider>
     </QueryClientProvider>
   </StrictMode>
 );

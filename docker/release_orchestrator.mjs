@@ -5,7 +5,16 @@ import net from 'node:net';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
-import { requireConfirmation, selectTargetVolume, V17_SOURCE_VOLUME, V17_TARGET_VOLUME, V18_SOURCE_VOLUME, V18_TARGET_VOLUME, V19_SOURCE_VOLUME, V19_TARGET_VOLUME } from './release_volume.mjs';
+import {
+  requireConfirmation,
+  selectTargetVolume,
+  V17_SOURCE_VOLUME,
+  V17_TARGET_VOLUME,
+  V18_SOURCE_VOLUME,
+  V18_TARGET_VOLUME,
+  V19_SOURCE_VOLUME,
+  V19_TARGET_VOLUME
+} from './release_volume.mjs';
 
 const RELEASE_V19 = process.env.AIWS_RELEASE_VERSION === '1.9.0';
 const RELEASE_V18 = process.env.AIWS_RELEASE_VERSION === '1.8.0';
@@ -21,9 +30,34 @@ const BACKUP_DIR = path.join(ROOT, '.ai-workspace', 'backups');
 const DEFAULT_APP_IMAGE = `aiws-app:${RELEASE_VERSION}`;
 const DEFAULT_RUNNER_IMAGE = `aiws-codex-runner:${RELEASE_VERSION}-codex-0.144.0`;
 const FORMAL_PROJECT = RELEASE_V19 ? 'aiws-v19' : RELEASE_V18 ? 'aiws-v18' : 'aiws-v17';
-const LEGACY_PROJECTS = Object.freeze(RELEASE_V19 ? ['aiws-v18', 'aiws-v19-preview'] : RELEASE_V18 ? ['aiws-v17', 'aiws-v18-preview'] : ['aiws-v16', 'aiws-v17-preview']);
-const PURGE_PROJECTS = Object.freeze(RELEASE_V19 ? ['aiws-v14', 'aiws-v15', 'aiws-v16', 'aiws-v17', 'aiws-v18', 'aiws-v17-preview', 'aiws-v18-preview', 'aiws-v19-preview'] : RELEASE_V18 ? ['aiws-v14', 'aiws-v15', 'aiws-v16', 'aiws-v17', 'aiws-v17-preview', 'aiws-v18-preview'] : ['aiws-v14', 'aiws-v15', 'aiws-v16', 'aiws-v17-preview']);
-const PREVIEW_VOLUME = RELEASE_V19 ? 'aiws-v19-preview-data' : RELEASE_V18 ? 'aiws-v18-preview-data' : 'aiws-v17-preview-data';
+const LEGACY_PROJECTS = Object.freeze(
+  RELEASE_V19
+    ? ['aiws-v18', 'aiws-v19-preview']
+    : RELEASE_V18
+      ? ['aiws-v17', 'aiws-v18-preview']
+      : ['aiws-v16', 'aiws-v17-preview']
+);
+const PURGE_PROJECTS = Object.freeze(
+  RELEASE_V19
+    ? [
+        'aiws-v14',
+        'aiws-v15',
+        'aiws-v16',
+        'aiws-v17',
+        'aiws-v18',
+        'aiws-v17-preview',
+        'aiws-v18-preview',
+        'aiws-v19-preview'
+      ]
+    : RELEASE_V18
+      ? ['aiws-v14', 'aiws-v15', 'aiws-v16', 'aiws-v17', 'aiws-v17-preview', 'aiws-v18-preview']
+      : ['aiws-v14', 'aiws-v15', 'aiws-v16', 'aiws-v17-preview']
+);
+const PREVIEW_VOLUME = RELEASE_V19
+  ? 'aiws-v19-preview-data'
+  : RELEASE_V18
+    ? 'aiws-v18-preview-data'
+    : 'aiws-v17-preview-data';
 const LEGACY_IMAGES = Object.freeze([
   'aiws-app:1.4.0',
   'aiws-verify:1.4.0',
@@ -34,11 +68,19 @@ const LEGACY_IMAGES = Object.freeze([
   'aiws-app:1.6.0',
   'aiws-verify:1.6.0',
   'aiws-codex-runner:1.6.0-codex-0.144.0',
-  ...(RELEASE_V18 || RELEASE_V19 ? ['aiws-app:1.7.0', 'aiws-verify:1.7.0', 'aiws-codex-runner:1.7.0-codex-0.144.0'] : []),
-  ...(RELEASE_V19 ? ['aiws-app:1.8.0', 'aiws-verify:1.8.0', 'aiws-codex-runner:1.8.0-codex-0.144.0', 'aiws-mcp-gateway:1.8.0'] : []),
+  ...(RELEASE_V18 || RELEASE_V19
+    ? ['aiws-app:1.7.0', 'aiws-verify:1.7.0', 'aiws-codex-runner:1.7.0-codex-0.144.0']
+    : []),
+  ...(RELEASE_V19
+    ? ['aiws-app:1.8.0', 'aiws-verify:1.8.0', 'aiws-codex-runner:1.8.0-codex-0.144.0', 'aiws-mcp-gateway:1.8.0']
+    : []),
   'aiws-codex-runner:local'
 ]);
-const LEGACY_RUNNER_CONTAINER_PATTERN = RELEASE_V19 ? /^aiws-codex-runner:(?:1\.[0-8]\.0-codex-\d+\.\d+\.\d+|local)$/ : RELEASE_V18 ? /^aiws-codex-runner:(?:1\.[0-7]\.0-codex-\d+\.\d+\.\d+|local)$/ : /^aiws-codex-runner:(?:1\.[0-6]\.0-codex-\d+\.\d+\.\d+|local)$/;
+const LEGACY_RUNNER_CONTAINER_PATTERN = RELEASE_V19
+  ? /^aiws-codex-runner:(?:1\.[0-8]\.0-codex-\d+\.\d+\.\d+|local)$/
+  : RELEASE_V18
+    ? /^aiws-codex-runner:(?:1\.[0-7]\.0-codex-\d+\.\d+\.\d+|local)$/
+    : /^aiws-codex-runner:(?:1\.[0-6]\.0-codex-\d+\.\d+\.\d+|local)$/;
 
 export async function runReleaseUp(options = {}) {
   const config = releaseConfig(options);
@@ -80,11 +122,12 @@ export async function runReleaseUp(options = {}) {
     compose(config, ['up', '-d', '--remove-orphans']);
     const health = await waitForHealthy(config);
     context.health = health;
-    context.acceptance = disposition === 'clone'
-      ? acceptTarget(config, 'migrated', context)
-      : disposition === 'fresh'
-        ? acceptTarget(config, 'fresh', context)
-        : checkAcceptedTarget(config);
+    context.acceptance =
+      disposition === 'clone'
+        ? acceptTarget(config, 'migrated', context)
+        : disposition === 'fresh'
+          ? acceptTarget(config, 'fresh', context)
+          : checkAcceptedTarget(config);
     context.probe = await reprobeActiveProfile(config.port);
     context.status = 'accepted';
     context.completed_at = new Date().toISOString();
@@ -105,7 +148,8 @@ export async function runReleaseUp(options = {}) {
 export async function purgeLegacy(options = {}) {
   requireConfirmation(options.confirm === true);
   const config = releaseConfig(options);
-  if (config.targetVolume !== TARGET_VOLUME || config.port !== 4317 || config.projectName !== FORMAL_PROJECT) throw releaseError('purge_legacy_formal_target_required');
+  if (config.targetVolume !== TARGET_VOLUME || config.port !== 4317 || config.projectName !== FORMAL_PROJECT)
+    throw releaseError('purge_legacy_formal_target_required');
   setComposeEnvironment(config);
   const beforeHealth = await waitForHealthy(config, { attempts: 2, delayMs: 1000 });
   const acceptance = checkAcceptedTarget(config);
@@ -136,7 +180,9 @@ export async function purgeLegacy(options = {}) {
   transcript.status = 'complete';
   transcript.completed_at = new Date().toISOString();
   await writeTranscript(`${RELEASE_TAG}-purge-latest.json`, transcript);
-  process.stdout.write(`Legacy AIWS resources and historical backups purged; V${RELEASE_VERSION.slice(0, 3)} restart verified.\n`);
+  process.stdout.write(
+    `Legacy AIWS resources and historical backups purged; V${RELEASE_VERSION.slice(0, 3)} restart verified.\n`
+  );
   return transcript;
 }
 
@@ -169,30 +215,101 @@ function setComposeEnvironment(config) {
 
 function initializeFromSource(config) {
   createTargetVolume(config.targetVolume);
-  const stamp = new Date().toISOString().replace(/[-:TZ.]/g, '').slice(0, 17);
+  const stamp = new Date()
+    .toISOString()
+    .replace(/[-:TZ.]/g, '')
+    .slice(0, 17);
   const migrationVolume = `aiws-${RELEASE_TAG}-migration-${stamp}-${process.pid}`.toLowerCase();
-  docker(['volume', 'create', '--label', `aiws.owner=aiws-${RELEASE_TAG}-release`, '--label', 'aiws.role=migration', '--label', `aiws.source=${config.sourceVolume}`, '--label', `aiws.target=${config.targetVolume}`, migrationVolume]);
+  docker([
+    'volume',
+    'create',
+    '--label',
+    `aiws.owner=aiws-${RELEASE_TAG}-release`,
+    '--label',
+    'aiws.role=migration',
+    '--label',
+    `aiws.source=${config.sourceVolume}`,
+    '--label',
+    `aiws.target=${config.targetVolume}`,
+    migrationVolume
+  ]);
   try {
     docker([
-      'run', '--rm', '--entrypoint', 'python3',
-      '--mount', `type=volume,src=${config.sourceVolume},dst=/source,readonly`,
-      '--mount', `type=volume,src=${migrationVolume},dst=/migration`,
-      config.appImage, '/opt/aiws/backup_archive.py', 'create', '/source', '/migration/source.tar.gz'
+      'run',
+      '--rm',
+      '--entrypoint',
+      'python3',
+      '--mount',
+      `type=volume,src=${config.sourceVolume},dst=/source,readonly`,
+      '--mount',
+      `type=volume,src=${migrationVolume},dst=/migration`,
+      config.appImage,
+      '/opt/aiws/backup_archive.py',
+      'create',
+      '/source',
+      '/migration/source.tar.gz'
     ]);
-    docker(['run', '--rm', '--entrypoint', 'python3', '--mount', `type=volume,src=${migrationVolume},dst=/migration,readonly`, config.appImage, '/opt/aiws/backup_archive.py', 'validate', '/migration/source.tar.gz']);
-    const archiveSha256 = docker(['run', '--rm', '--entrypoint', 'sh', '--mount', `type=volume,src=${migrationVolume},dst=/migration,readonly`, config.appImage, '-c', 'sha256sum /migration/source.tar.gz | cut -d" " -f1'], { capture: true });
     docker([
-      'run', '--rm', '--entrypoint', 'python3',
-      '--mount', `type=volume,src=${migrationVolume},dst=/migration,readonly`,
-      '--mount', `type=volume,src=${config.targetVolume},dst=/target`,
-      config.appImage, '/opt/aiws/backup_archive.py', 'extract', '/migration/source.tar.gz', '/target'
+      'run',
+      '--rm',
+      '--entrypoint',
+      'python3',
+      '--mount',
+      `type=volume,src=${migrationVolume},dst=/migration,readonly`,
+      config.appImage,
+      '/opt/aiws/backup_archive.py',
+      'validate',
+      '/migration/source.tar.gz'
+    ]);
+    const archiveSha256 = docker(
+      [
+        'run',
+        '--rm',
+        '--entrypoint',
+        'sh',
+        '--mount',
+        `type=volume,src=${migrationVolume},dst=/migration,readonly`,
+        config.appImage,
+        '-c',
+        'sha256sum /migration/source.tar.gz | cut -d" " -f1'
+      ],
+      { capture: true }
+    );
+    docker([
+      'run',
+      '--rm',
+      '--entrypoint',
+      'python3',
+      '--mount',
+      `type=volume,src=${migrationVolume},dst=/migration,readonly`,
+      '--mount',
+      `type=volume,src=${config.targetVolume},dst=/target`,
+      config.appImage,
+      '/opt/aiws/backup_archive.py',
+      'extract',
+      '/migration/source.tar.gz',
+      '/target'
     ]);
     docker([
-      'run', '--rm', '--entrypoint', 'node',
-      '--mount', `type=volume,src=${config.sourceVolume},dst=/source,readonly`,
-      '--mount', `type=volume,src=${config.targetVolume},dst=/target,readonly`,
-      '--mount', `type=volume,src=${migrationVolume},dst=/migration`,
-      config.appImage, '/app/docker/release_volume.mjs', `clone-verify-${RELEASE_TAG}`, '/source', '/target', '/migration/clone.manifest.json', archiveSha256, config.sourceVolume, config.targetVolume
+      'run',
+      '--rm',
+      '--entrypoint',
+      'node',
+      '--mount',
+      `type=volume,src=${config.sourceVolume},dst=/source,readonly`,
+      '--mount',
+      `type=volume,src=${config.targetVolume},dst=/target,readonly`,
+      '--mount',
+      `type=volume,src=${migrationVolume},dst=/migration`,
+      config.appImage,
+      '/app/docker/release_volume.mjs',
+      `clone-verify-${RELEASE_TAG}`,
+      '/source',
+      '/target',
+      '/migration/clone.manifest.json',
+      archiveSha256,
+      config.sourceVolume,
+      config.targetVolume
     ]);
     return { migration_volume: migrationVolume, archive_sha256: archiveSha256 };
   } catch (error) {
@@ -203,35 +320,70 @@ function initializeFromSource(config) {
 
 function acceptTarget(config, mode, context) {
   const args = [
-    'run', '--rm', '--entrypoint', 'node',
-    '--mount', `type=volume,src=${config.targetVolume},dst=/target`,
-    ...(context.migration_volume ? ['--mount', `type=volume,src=${context.migration_volume},dst=/migration,readonly`] : []),
-    ...(volumeExists(config.sourceVolume) ? ['--mount', `type=volume,src=${config.sourceVolume},dst=/source,readonly`] : []),
+    'run',
+    '--rm',
+    '--entrypoint',
+    'node',
+    '--mount',
+    `type=volume,src=${config.targetVolume},dst=/target`,
+    ...(context.migration_volume
+      ? ['--mount', `type=volume,src=${context.migration_volume},dst=/migration,readonly`]
+      : []),
+    ...(volumeExists(config.sourceVolume)
+      ? ['--mount', `type=volume,src=${config.sourceVolume},dst=/source,readonly`]
+      : []),
     config.appImage,
-    '/app/docker/release_volume.mjs', `accept-${RELEASE_TAG}`, mode, '/target',
+    '/app/docker/release_volume.mjs',
+    `accept-${RELEASE_TAG}`,
+    mode,
+    '/target',
     volumeExists(config.sourceVolume) ? '/source' : '-',
     context.migration_volume ? '/migration/clone.manifest.json' : '-',
-    context.archive_sha256 || '-', context.migration_volume || '-', config.sourceVolume, config.targetVolume
+    context.archive_sha256 || '-',
+    context.migration_volume || '-',
+    config.sourceVolume,
+    config.targetVolume
   ];
   const output = docker(args, { capture: true });
   return parseJsonOutput(output, 'release_acceptance_output_invalid');
 }
 
 function checkAcceptedTarget(config) {
-  const output = docker([
-    'run', '--rm', '--entrypoint', 'node',
-    '--mount', `type=volume,src=${config.targetVolume},dst=/target,readonly`,
-    config.appImage, '/app/docker/release_volume.mjs', `check-${RELEASE_TAG}`, '/target', config.targetVolume
-  ], { capture: true });
+  const output = docker(
+    [
+      'run',
+      '--rm',
+      '--entrypoint',
+      'node',
+      '--mount',
+      `type=volume,src=${config.targetVolume},dst=/target,readonly`,
+      config.appImage,
+      '/app/docker/release_volume.mjs',
+      `check-${RELEASE_TAG}`,
+      '/target',
+      config.targetVolume
+    ],
+    { capture: true }
+  );
   return parseJsonOutput(output, 'release_acceptance_check_invalid');
 }
 
 function purgeTargetSchemaBackups(config) {
-  const output = docker([
-    'run', '--rm', '--entrypoint', 'node',
-    '--mount', `type=volume,src=${config.targetVolume},dst=/target`,
-    config.appImage, '/app/docker/release_volume.mjs', 'purge-schema-backups', '/target'
-  ], { capture: true });
+  const output = docker(
+    [
+      'run',
+      '--rm',
+      '--entrypoint',
+      'node',
+      '--mount',
+      `type=volume,src=${config.targetVolume},dst=/target`,
+      config.appImage,
+      '/app/docker/release_volume.mjs',
+      'purge-schema-backups',
+      '/target'
+    ],
+    { capture: true }
+  );
   return parseJsonOutput(output, 'schema_backup_purge_output_invalid').removed || [];
 }
 
@@ -267,21 +419,49 @@ async function waitForPortDisposition(port, projectName) {
 async function waitForHealthy(config, { attempts = 60, delayMs = 2000 } = {}) {
   let lastHealth = 'missing';
   for (let attempt = 0; attempt < attempts; attempt += 1) {
-    const ids = compose(config, ['ps', '-q', 'app'], { capture: true, allowFailure: true }).split(/\r?\n/).filter(Boolean);
+    const ids = compose(config, ['ps', '-q', 'app'], { capture: true, allowFailure: true })
+      .split(/\r?\n/)
+      .filter(Boolean);
     if (ids.length === 1) {
       const detail = inspectContainer(ids[0]);
       lastHealth = detail.health;
-      if (detail.image !== config.appImage) throw releaseError('formal_app_image_mismatch', { expected: config.appImage, actual: detail.image });
-      if (detail.project !== config.projectName) throw releaseError('formal_compose_project_mismatch', { expected: config.projectName, actual: detail.project });
+      if (detail.image !== config.appImage)
+        throw releaseError('formal_app_image_mismatch', { expected: config.appImage, actual: detail.image });
+      if (detail.project !== config.projectName)
+        throw releaseError('formal_compose_project_mismatch', { expected: config.projectName, actual: detail.project });
       if (detail.health === 'healthy') {
         const published = docker(['port', ids[0], '4317/tcp'], { capture: true });
-        if (!published.split(/\r?\n/).includes(`127.0.0.1:${config.port}`)) throw releaseError('formal_loopback_port_mismatch', { published });
-        const response = await fetch(`http://127.0.0.1:${config.port}/api/health`, { signal: AbortSignal.timeout(5000) });
+        if (!published.split(/\r?\n/).includes(`127.0.0.1:${config.port}`))
+          throw releaseError('formal_loopback_port_mismatch', { published });
+        const response = await fetch(`http://127.0.0.1:${config.port}/api/health`, {
+          signal: AbortSignal.timeout(5000)
+        });
         const health = await response.json();
-        if (!response.ok || health.status !== 'ok' || health.api?.healthy !== true || health.db?.healthy !== true || health.version !== RELEASE_VERSION || health.schema_version !== RELEASE_SCHEMA) throw releaseError('formal_health_api_invalid', { version: health.version, schema_version: health.schema_version });
-        return { container_id: ids[0], image: detail.image, project: detail.project, health: detail.health, http_status: response.status, api_status: health.status, version: health.version, schema_version: health.schema_version };
+        if (
+          !response.ok ||
+          health.status !== 'ok' ||
+          health.api?.healthy !== true ||
+          health.db?.healthy !== true ||
+          health.version !== RELEASE_VERSION ||
+          health.schema_version !== RELEASE_SCHEMA
+        )
+          throw releaseError('formal_health_api_invalid', {
+            version: health.version,
+            schema_version: health.schema_version
+          });
+        return {
+          container_id: ids[0],
+          image: detail.image,
+          project: detail.project,
+          health: detail.health,
+          http_status: response.status,
+          api_status: health.status,
+          version: health.version,
+          schema_version: health.schema_version
+        };
       }
-      if (detail.health === 'unhealthy' || detail.status === 'exited') throw releaseError(`app_${detail.health === 'unhealthy' ? 'unhealthy' : 'exited'}`);
+      if (detail.health === 'unhealthy' || detail.status === 'exited')
+        throw releaseError(`app_${detail.health === 'unhealthy' ? 'unhealthy' : 'exited'}`);
     }
     await sleep(delayMs);
   }
@@ -290,9 +470,13 @@ async function waitForHealthy(config, { attempts = 60, delayMs = 2000 } = {}) {
 
 async function reprobeActiveProfile(port) {
   try {
-    const profilesResponse = await fetch(`http://127.0.0.1:${port}/api/codex/profiles`, { signal: AbortSignal.timeout(5000) });
+    const profilesResponse = await fetch(`http://127.0.0.1:${port}/api/codex/profiles`, {
+      signal: AbortSignal.timeout(5000)
+    });
     const profiles = await profilesResponse.json();
-    const active = Array.isArray(profiles) ? profiles.find((item) => item.is_active && item.status === 'validated') : null;
+    const active = Array.isArray(profiles)
+      ? profiles.find((item) => item.is_active && item.status === 'validated')
+      : null;
     if (!active) return { attempted: false, status: 'skipped', reason: 'active_validated_profile_missing' };
     const response = await fetch(`http://127.0.0.1:${port}/api/codex/probe`, {
       method: 'POST',
@@ -301,18 +485,39 @@ async function reprobeActiveProfile(port) {
       signal: AbortSignal.timeout(180000)
     });
     const body = await response.json().catch(() => ({}));
-    return { attempted: true, profile_id: active.id, status: response.ok ? 'ready' : 'failed', http_status: response.status, error: response.ok ? null : body.error || 'probe_failed' };
+    return {
+      attempted: true,
+      profile_id: active.id,
+      status: response.ok ? 'ready' : 'failed',
+      http_status: response.status,
+      error: response.ok ? null : body.error || 'probe_failed'
+    };
   } catch (error) {
-    return { attempted: true, status: 'failed', error: error.name === 'TimeoutError' ? 'probe_timeout' : 'probe_request_failed' };
+    return {
+      attempted: true,
+      status: 'failed',
+      error: error.name === 'TimeoutError' ? 'probe_timeout' : 'probe_request_failed'
+    };
   }
 }
 
 function createTargetVolume(volume) {
   if (volumeExists(volume)) {
-    if (!volumeEmpty(volume, process.env.AIWS_APP_IMAGE || DEFAULT_APP_IMAGE)) throw releaseError('target_volume_not_empty');
+    if (!volumeEmpty(volume, process.env.AIWS_APP_IMAGE || DEFAULT_APP_IMAGE))
+      throw releaseError('target_volume_not_empty');
     return;
   }
-  docker(['volume', 'create', '--label', `aiws.owner=aiws-${RELEASE_TAG}`, '--label', 'aiws.role=production-data', '--label', `aiws.schema=${RELEASE_SCHEMA}`, volume]);
+  docker([
+    'volume',
+    'create',
+    '--label',
+    `aiws.owner=aiws-${RELEASE_TAG}`,
+    '--label',
+    'aiws.role=production-data',
+    '--label',
+    `aiws.schema=${RELEASE_SCHEMA}`,
+    volume
+  ]);
 }
 
 function volumeExists(volume) {
@@ -320,7 +525,21 @@ function volumeExists(volume) {
 }
 
 function volumeEmpty(volume, appImage) {
-  const result = raw('docker', ['run', '--rm', '--entrypoint', 'sh', '--mount', `type=volume,src=${volume},dst=/data,readonly`, appImage, '-c', 'test -z "$(ls -A /data)"'], { capture: true });
+  const result = raw(
+    'docker',
+    [
+      'run',
+      '--rm',
+      '--entrypoint',
+      'sh',
+      '--mount',
+      `type=volume,src=${volume},dst=/data,readonly`,
+      appImage,
+      '-c',
+      'test -z "$(ls -A /data)"'
+    ],
+    { capture: true }
+  );
   if (result.status === 0) return true;
   if (result.status === 1) return false;
   throw commandError('volume_empty_check_failed', result);
@@ -328,18 +547,24 @@ function volumeEmpty(volume, appImage) {
 
 function removeProjectContainers(projects) {
   const removed = [];
-  for (const project of projects) for (const id of containerIds(project)) {
-    const detail = inspectContainer(id);
-    docker(['container', 'rm', '-f', id]);
-    removed.push(detail.name);
-  }
+  for (const project of projects)
+    for (const id of containerIds(project)) {
+      const detail = inspectContainer(id);
+      docker(['container', 'rm', '-f', id]);
+      removed.push(detail.name);
+    }
   return removed.sort();
 }
 
 function removeProjectNetworks(projects) {
   const removed = [];
   for (const project of projects) {
-    const ids = docker(['network', 'ls', '-q', '--filter', `label=com.docker.compose.project=${project}`], { capture: true, allowFailure: true }).split(/\r?\n/).filter(Boolean);
+    const ids = docker(['network', 'ls', '-q', '--filter', `label=com.docker.compose.project=${project}`], {
+      capture: true,
+      allowFailure: true
+    })
+      .split(/\r?\n/)
+      .filter(Boolean);
     for (const id of ids) {
       const name = docker(['network', 'inspect', id, '--format', '{{.Name}}'], { capture: true });
       docker(['network', 'rm', id]);
@@ -352,10 +577,28 @@ function removeProjectNetworks(projects) {
 function removeLegacyVolumes(targetVolume) {
   const candidates = new Set([SOURCE_VOLUME, PREVIEW_VOLUME]);
   for (const project of PURGE_PROJECTS) {
-    const names = docker(['volume', 'ls', '-q', '--filter', `label=com.docker.compose.project=${project}`], { capture: true, allowFailure: true }).split(/\r?\n/).filter(Boolean);
+    const names = docker(['volume', 'ls', '-q', '--filter', `label=com.docker.compose.project=${project}`], {
+      capture: true,
+      allowFailure: true
+    })
+      .split(/\r?\n/)
+      .filter(Boolean);
     names.forEach((name) => candidates.add(name));
   }
-  const migrations = docker(['volume', 'ls', '-q', '--filter', `label=aiws.owner=aiws-${RELEASE_TAG}-release`, '--filter', 'label=aiws.role=migration'], { capture: true, allowFailure: true }).split(/\r?\n/).filter(Boolean);
+  const migrations = docker(
+    [
+      'volume',
+      'ls',
+      '-q',
+      '--filter',
+      `label=aiws.owner=aiws-${RELEASE_TAG}-release`,
+      '--filter',
+      'label=aiws.role=migration'
+    ],
+    { capture: true, allowFailure: true }
+  )
+    .split(/\r?\n/)
+    .filter(Boolean);
   migrations.forEach((name) => candidates.add(name));
   candidates.delete(targetVolume);
   const removed = [];
@@ -381,7 +624,13 @@ async function clearHostBackups() {
   const workspace = path.resolve(ROOT);
   const resolved = path.resolve(BACKUP_DIR);
   const relative = path.relative(workspace, resolved);
-  if (!relative || relative.startsWith('..') || path.isAbsolute(relative) || relative.replaceAll('\\', '/') !== '.ai-workspace/backups') throw releaseError('backup_cleanup_path_invalid');
+  if (
+    !relative ||
+    relative.startsWith('..') ||
+    path.isAbsolute(relative) ||
+    relative.replaceAll('\\', '/') !== '.ai-workspace/backups'
+  )
+    throw releaseError('backup_cleanup_path_invalid');
   await fsp.mkdir(resolved, { recursive: true });
   const entries = await fsp.readdir(resolved);
   for (const entry of entries) await fsp.rm(path.join(resolved, entry), { recursive: true, force: true });
@@ -389,21 +638,40 @@ async function clearHostBackups() {
 }
 
 function assertNoLegacyRunnerContainers() {
-  const lines = docker(['ps', '-a', '--format', '{{.ID}}\t{{.Image}}\t{{.Names}}'], { capture: true }).split(/\r?\n/).filter(Boolean);
-  const found = lines.map((line) => line.split('\t')).filter(([, image]) => LEGACY_RUNNER_CONTAINER_PATTERN.test(image || ''));
-  if (found.length) throw releaseError('legacy_runner_container_references_remain', { containers: found.map(([id, image, name]) => ({ id, image, name })) });
+  const lines = docker(['ps', '-a', '--format', '{{.ID}}\t{{.Image}}\t{{.Names}}'], { capture: true })
+    .split(/\r?\n/)
+    .filter(Boolean);
+  const found = lines
+    .map((line) => line.split('\t'))
+    .filter(([, image]) => LEGACY_RUNNER_CONTAINER_PATTERN.test(image || ''));
+  if (found.length)
+    throw releaseError('legacy_runner_container_references_remain', {
+      containers: found.map(([id, image, name]) => ({ id, image, name }))
+    });
 }
 
 function assertLegacyResourcesAbsent() {
-  for (const project of PURGE_PROJECTS) if (containerIds(project).length) throw releaseError('legacy_container_cleanup_incomplete', { project });
-  for (const volume of [SOURCE_VOLUME, PREVIEW_VOLUME]) if (volumeExists(volume)) throw releaseError('legacy_volume_cleanup_incomplete', { volume });
-  for (const image of LEGACY_IMAGES) if (raw('docker', ['image', 'inspect', image], { capture: true }).status === 0) throw releaseError('legacy_image_cleanup_incomplete', { image });
+  for (const project of PURGE_PROJECTS)
+    if (containerIds(project).length) throw releaseError('legacy_container_cleanup_incomplete', { project });
+  for (const volume of [SOURCE_VOLUME, PREVIEW_VOLUME])
+    if (volumeExists(volume)) throw releaseError('legacy_volume_cleanup_incomplete', { volume });
+  for (const image of LEGACY_IMAGES)
+    if (raw('docker', ['image', 'inspect', image], { capture: true }).status === 0)
+      throw releaseError('legacy_image_cleanup_incomplete', { image });
   const backupEntries = fs.existsSync(BACKUP_DIR) ? fs.readdirSync(BACKUP_DIR) : [];
   if (backupEntries.length) throw releaseError('host_backup_cleanup_incomplete');
 }
 
 function containerIds(project, { running = false } = {}) {
-  const args = ['ps', ...(running ? [] : ['-a']), '-q', '--filter', `label=com.docker.compose.project=${project}`, '--filter', 'label=com.docker.compose.service=app'];
+  const args = [
+    'ps',
+    ...(running ? [] : ['-a']),
+    '-q',
+    '--filter',
+    `label=com.docker.compose.project=${project}`,
+    '--filter',
+    'label=com.docker.compose.service=app'
+  ];
   return docker(args, { capture: true, allowFailure: true }).split(/\r?\n/).filter(Boolean);
 }
 
@@ -425,7 +693,13 @@ function inspectContainer(id) {
 }
 
 function compose(config, args, options = {}) {
-  const base = ['compose', '-f', config.composeFile, ...(config.override ? ['-f', config.override] : []), ...(config.projectName ? ['-p', config.projectName] : [])];
+  const base = [
+    'compose',
+    '-f',
+    config.composeFile,
+    ...(config.override ? ['-f', config.override] : []),
+    ...(config.projectName ? ['-p', config.projectName] : [])
+  ];
   return docker([...base, ...args], options);
 }
 
@@ -436,24 +710,42 @@ function docker(args, options = {}) {
 }
 
 function raw(command, args, { capture = false } = {}) {
-  const result = spawnSync(command, args, { cwd: ROOT, env: process.env, encoding: 'utf8', stdio: capture ? 'pipe' : 'inherit', windowsHide: true });
+  const result = spawnSync(command, args, {
+    cwd: ROOT,
+    env: process.env,
+    encoding: 'utf8',
+    stdio: capture ? 'pipe' : 'inherit',
+    windowsHide: true
+  });
   if (result.error) return { status: -1, stdout: result.stdout || '', stderr: result.error.message };
   return result;
 }
 
 function commandError(code, result, args = []) {
-  return releaseError(code, { command: ['docker', ...args].join(' '), status: result.status, stderr: String(result.stderr || '').trim().slice(-2000) });
+  return releaseError(code, {
+    command: ['docker', ...args].join(' '),
+    status: result.status,
+    stderr: String(result.stderr || '')
+      .trim()
+      .slice(-2000)
+  });
 }
 
 function parseJsonOutput(output, code) {
-  try { return JSON.parse(output); }
-  catch { throw releaseError(code); }
+  try {
+    return JSON.parse(output);
+  } catch {
+    throw releaseError(code);
+  }
 }
 
 async function portListening(port) {
   return new Promise((resolve) => {
     const socket = net.createConnection({ host: '127.0.0.1', port });
-    const done = (value) => { socket.destroy(); resolve(value); };
+    const done = (value) => {
+      socket.destroy();
+      resolve(value);
+    };
     socket.setTimeout(300);
     socket.once('connect', () => done(true));
     socket.once('timeout', () => done(false));
@@ -487,7 +779,18 @@ function parseCli(argv) {
     const token = tokens[index];
     if (token === '--confirm') options.confirm = true;
     else if (token === '--discard-unmigratable') options.discardUnmigratable = true;
-    else if (['--compose-file', '--override', '--source-volume', '--target-volume', '--app-image', '--runner-image', '--port', '--project-name'].includes(token)) {
+    else if (
+      [
+        '--compose-file',
+        '--override',
+        '--source-volume',
+        '--target-volume',
+        '--app-image',
+        '--runner-image',
+        '--port',
+        '--project-name'
+      ].includes(token)
+    ) {
       const value = tokens[++index];
       if (!value) throw releaseError('release_option_value_missing', { option: token });
       const key = token.slice(2).replace(/-([a-z])/g, (_, letter) => letter.toUpperCase());

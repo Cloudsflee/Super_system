@@ -16,15 +16,118 @@ try {
   for (const volume of volumes) docker(['volume', 'create', '--label', 'aiws.owner=aiws-v16-release-test', volume]);
   seedSchema14(source);
 
-  docker(['run', '--rm', '--entrypoint', 'python3', '--mount', `type=volume,src=${source},dst=/source,readonly`, '--mount', `type=volume,src=${migration},dst=/migration`, image, '/opt/aiws/backup_archive.py', 'create', '/source', '/migration/source.tar.gz']);
-  docker(['run', '--rm', '--entrypoint', 'python3', '--mount', `type=volume,src=${migration},dst=/migration,readonly`, image, '/opt/aiws/backup_archive.py', 'validate', '/migration/source.tar.gz']);
-  const archiveSha = docker(['run', '--rm', '--entrypoint', 'sh', '--mount', `type=volume,src=${migration},dst=/migration,readonly`, image, '-c', 'sha256sum /migration/source.tar.gz | cut -d" " -f1'], { capture: true });
-  docker(['run', '--rm', '--entrypoint', 'python3', '--mount', `type=volume,src=${migration},dst=/migration,readonly`, '--mount', `type=volume,src=${target},dst=/target`, image, '/opt/aiws/backup_archive.py', 'extract', '/migration/source.tar.gz', '/target']);
-  docker(['run', '--rm', '--entrypoint', 'node', '--mount', `type=volume,src=${source},dst=/source,readonly`, '--mount', `type=volume,src=${target},dst=/target,readonly`, '--mount', `type=volume,src=${migration},dst=/migration`, image, '/app/docker/release_volume.mjs', 'clone-verify', '/source', '/target', '/migration/clone.manifest.json', archiveSha, source, target]);
-  assert.equal(volumeFileExists(target, '/target/codex-homes/profile-one/tmp/cache'), false, 'Codex tmp cache is excluded');
+  docker([
+    'run',
+    '--rm',
+    '--entrypoint',
+    'python3',
+    '--mount',
+    `type=volume,src=${source},dst=/source,readonly`,
+    '--mount',
+    `type=volume,src=${migration},dst=/migration`,
+    image,
+    '/opt/aiws/backup_archive.py',
+    'create',
+    '/source',
+    '/migration/source.tar.gz'
+  ]);
+  docker([
+    'run',
+    '--rm',
+    '--entrypoint',
+    'python3',
+    '--mount',
+    `type=volume,src=${migration},dst=/migration,readonly`,
+    image,
+    '/opt/aiws/backup_archive.py',
+    'validate',
+    '/migration/source.tar.gz'
+  ]);
+  const archiveSha = docker(
+    [
+      'run',
+      '--rm',
+      '--entrypoint',
+      'sh',
+      '--mount',
+      `type=volume,src=${migration},dst=/migration,readonly`,
+      image,
+      '-c',
+      'sha256sum /migration/source.tar.gz | cut -d" " -f1'
+    ],
+    { capture: true }
+  );
+  docker([
+    'run',
+    '--rm',
+    '--entrypoint',
+    'python3',
+    '--mount',
+    `type=volume,src=${migration},dst=/migration,readonly`,
+    '--mount',
+    `type=volume,src=${target},dst=/target`,
+    image,
+    '/opt/aiws/backup_archive.py',
+    'extract',
+    '/migration/source.tar.gz',
+    '/target'
+  ]);
+  docker([
+    'run',
+    '--rm',
+    '--entrypoint',
+    'node',
+    '--mount',
+    `type=volume,src=${source},dst=/source,readonly`,
+    '--mount',
+    `type=volume,src=${target},dst=/target,readonly`,
+    '--mount',
+    `type=volume,src=${migration},dst=/migration`,
+    image,
+    '/app/docker/release_volume.mjs',
+    'clone-verify',
+    '/source',
+    '/target',
+    '/migration/clone.manifest.json',
+    archiveSha,
+    source,
+    target
+  ]);
+  assert.equal(
+    volumeFileExists(target, '/target/codex-homes/profile-one/tmp/cache'),
+    false,
+    'Codex tmp cache is excluded'
+  );
 
   ensureRuntime(target, true);
-  const accepted = JSON.parse(docker(['run', '--rm', '--entrypoint', 'node', '--mount', `type=volume,src=${source},dst=/source,readonly`, '--mount', `type=volume,src=${target},dst=/target`, '--mount', `type=volume,src=${migration},dst=/migration,readonly`, image, '/app/docker/release_volume.mjs', 'accept', 'migrated', '/target', '/source', '/migration/clone.manifest.json', archiveSha, migration, source, target], { capture: true }));
+  const accepted = JSON.parse(
+    docker(
+      [
+        'run',
+        '--rm',
+        '--entrypoint',
+        'node',
+        '--mount',
+        `type=volume,src=${source},dst=/source,readonly`,
+        '--mount',
+        `type=volume,src=${target},dst=/target`,
+        '--mount',
+        `type=volume,src=${migration},dst=/migration,readonly`,
+        image,
+        '/app/docker/release_volume.mjs',
+        'accept',
+        'migrated',
+        '/target',
+        '/source',
+        '/migration/clone.manifest.json',
+        archiveSha,
+        migration,
+        source,
+        target
+      ],
+      { capture: true }
+    )
+  );
   assert.equal(accepted.accepted, true);
   assert.equal(accepted.target_state.schema_version, 15);
   assert.equal(accepted.target_state.collection_counts.projects, 1);
@@ -36,7 +139,11 @@ try {
 
   writeVolumeFile(target, '/target/idempotent-sentinel', 'preserve');
   ensureRuntime(target, true);
-  assert.equal(readVolumeFile(target, '/target/idempotent-sentinel'), 'preserve', 'repeated startup does not overwrite the target volume');
+  assert.equal(
+    readVolumeFile(target, '/target/idempotent-sentinel'),
+    'preserve',
+    'repeated startup does not overwrite the target volume'
+  );
 
   seedInvalid(invalidSource);
   copyVolume(invalidSource, invalidTarget);
@@ -47,7 +154,30 @@ try {
   docker(['volume', 'rm', invalidTarget]);
   docker(['volume', 'create', '--label', 'aiws.owner=aiws-v16-release-test', invalidTarget]);
   ensureRuntime(invalidTarget, true);
-  const discarded = JSON.parse(docker(['run', '--rm', '--entrypoint', 'node', '--mount', `type=volume,src=${invalidTarget},dst=/target`, image, '/app/docker/release_volume.mjs', 'accept', 'discarded_unmigratable', '/target', '-', '-', '-', '-', invalidSource, invalidTarget], { capture: true }));
+  const discarded = JSON.parse(
+    docker(
+      [
+        'run',
+        '--rm',
+        '--entrypoint',
+        'node',
+        '--mount',
+        `type=volume,src=${invalidTarget},dst=/target`,
+        image,
+        '/app/docker/release_volume.mjs',
+        'accept',
+        'discarded_unmigratable',
+        '/target',
+        '-',
+        '-',
+        '-',
+        '-',
+        invalidSource,
+        invalidTarget
+      ],
+      { capture: true }
+    )
+  );
   assert.equal(discarded.mode, 'discarded_unmigratable');
   assert.equal(JSON.parse(checkTarget(invalidTarget)).schema_version, 15);
   console.log('V1.6 Docker release volume flow tests passed');
@@ -65,47 +195,157 @@ function seedSchema14(volume) {
     state.integration_statuses=[{key:'codex_probe',profile_id:'profile-one',status:'ready'}];
     fs.writeFileSync(root+'/data/state.json',JSON.stringify(state,null,2)+'\\n'); fs.writeFileSync(root+'/vault/credential.enc','ciphertext'); fs.writeFileSync(root+'/codex-homes/profile-one/tmp/cache','transient'); fs.symlinkSync('vault/credential.enc',root+'/credential-link');
   `;
-  docker(['run', '--rm', '--entrypoint', 'node', '--mount', `type=volume,src=${volume},dst=/volume`, image, '--input-type=module', '-e', script]);
+  docker([
+    'run',
+    '--rm',
+    '--entrypoint',
+    'node',
+    '--mount',
+    `type=volume,src=${volume},dst=/volume`,
+    image,
+    '--input-type=module',
+    '-e',
+    script
+  ]);
 }
 
 function seedInvalid(volume) {
   const script = `const fs=require('node:fs');fs.mkdirSync('/volume/data',{recursive:true});fs.writeFileSync('/volume/data/state.json',JSON.stringify({schema_version:999})+'\\n')`;
-  docker(['run', '--rm', '--entrypoint', 'node', '--mount', `type=volume,src=${volume},dst=/volume`, image, '-e', script]);
+  docker([
+    'run',
+    '--rm',
+    '--entrypoint',
+    'node',
+    '--mount',
+    `type=volume,src=${volume},dst=/volume`,
+    image,
+    '-e',
+    script
+  ]);
 }
 
 function copyVolume(from, to) {
-  docker(['run', '--rm', '--entrypoint', 'sh', '--mount', `type=volume,src=${from},dst=/source,readonly`, '--mount', `type=volume,src=${to},dst=/target`, image, '-c', 'cp -a /source/. /target/']);
+  docker([
+    'run',
+    '--rm',
+    '--entrypoint',
+    'sh',
+    '--mount',
+    `type=volume,src=${from},dst=/source,readonly`,
+    '--mount',
+    `type=volume,src=${to},dst=/target`,
+    image,
+    '-c',
+    'cp -a /source/. /target/'
+  ]);
 }
 
 function ensureRuntime(volume, expectSuccess) {
   const script = `import { ensureRuntime } from './apps/api/src/state.mjs'; await ensureRuntime();`;
-  const result = raw(['run', '--rm', '--entrypoint', 'node', '-e', 'AIWS_HOME=/var/lib/aiws', '--mount', `type=volume,src=${volume},dst=/var/lib/aiws`, image, '--input-type=module', '-e', script]);
+  const result = raw([
+    'run',
+    '--rm',
+    '--entrypoint',
+    'node',
+    '-e',
+    'AIWS_HOME=/var/lib/aiws',
+    '--mount',
+    `type=volume,src=${volume},dst=/var/lib/aiws`,
+    image,
+    '--input-type=module',
+    '-e',
+    script
+  ]);
   assert.equal(result.status === 0, expectSuccess, String(result.stderr || '').slice(-1000));
 }
 
 function checkTarget(volume) {
-  return docker(['run', '--rm', '--entrypoint', 'node', '--mount', `type=volume,src=${volume},dst=/target,readonly`, image, '/app/docker/release_volume.mjs', 'check-purge', '/target', volume], { capture: true });
+  return docker(
+    [
+      'run',
+      '--rm',
+      '--entrypoint',
+      'node',
+      '--mount',
+      `type=volume,src=${volume},dst=/target,readonly`,
+      image,
+      '/app/docker/release_volume.mjs',
+      'check-purge',
+      '/target',
+      volume
+    ],
+    { capture: true }
+  );
 }
 
 function stateSha(volume) {
-  return docker(['run', '--rm', '--entrypoint', 'sh', '--mount', `type=volume,src=${volume},dst=/volume,readonly`, image, '-c', 'sha256sum /volume/data/state.json | cut -d" " -f1'], { capture: true });
+  return docker(
+    [
+      'run',
+      '--rm',
+      '--entrypoint',
+      'sh',
+      '--mount',
+      `type=volume,src=${volume},dst=/volume,readonly`,
+      image,
+      '-c',
+      'sha256sum /volume/data/state.json | cut -d" " -f1'
+    ],
+    { capture: true }
+  );
 }
 
 function volumeFileExists(volume, file) {
-  return raw(['run', '--rm', '--entrypoint', 'sh', '--mount', `type=volume,src=${volume},dst=/target,readonly`, image, '-c', `test -e ${file}`]).status === 0;
+  return (
+    raw([
+      'run',
+      '--rm',
+      '--entrypoint',
+      'sh',
+      '--mount',
+      `type=volume,src=${volume},dst=/target,readonly`,
+      image,
+      '-c',
+      `test -e ${file}`
+    ]).status === 0
+  );
 }
 
 function writeVolumeFile(volume, file, content) {
-  docker(['run', '--rm', '--entrypoint', 'sh', '--mount', `type=volume,src=${volume},dst=/target`, image, '-c', `printf %s ${content} > ${file}`]);
+  docker([
+    'run',
+    '--rm',
+    '--entrypoint',
+    'sh',
+    '--mount',
+    `type=volume,src=${volume},dst=/target`,
+    image,
+    '-c',
+    `printf %s ${content} > ${file}`
+  ]);
 }
 
 function readVolumeFile(volume, file) {
-  return docker(['run', '--rm', '--entrypoint', 'sh', '--mount', `type=volume,src=${volume},dst=/target,readonly`, image, '-c', `cat ${file}`], { capture: true });
+  return docker(
+    [
+      'run',
+      '--rm',
+      '--entrypoint',
+      'sh',
+      '--mount',
+      `type=volume,src=${volume},dst=/target,readonly`,
+      image,
+      '-c',
+      `cat ${file}`
+    ],
+    { capture: true }
+  );
 }
 
 function docker(args, { capture = false, allowFailure = false } = {}) {
   const result = raw(args, capture);
-  if (result.status !== 0 && !allowFailure) throw new Error(`docker ${args.join(' ')} failed: ${String(result.stderr || '').slice(-2000)}`);
+  if (result.status !== 0 && !allowFailure)
+    throw new Error(`docker ${args.join(' ')} failed: ${String(result.stderr || '').slice(-2000)}`);
   return capture ? String(result.stdout || '').trim() : '';
 }
 

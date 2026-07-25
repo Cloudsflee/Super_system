@@ -11,14 +11,18 @@ export function normalizeState18Compatibility(state, collections) {
   }
   const nodesByWorkflow = new Map();
   for (const node of state.workflow_nodes || []) {
-    const items = nodesByWorkflow.get(node.workflow_id) || []; items.push(node); nodesByWorkflow.set(node.workflow_id, items);
+    const items = nodesByWorkflow.get(node.workflow_id) || [];
+    items.push(node);
+    nodesByWorkflow.set(node.workflow_id, items);
   }
   for (const workflow of state.workflows || []) {
-    const nodes = nodesByWorkflow.get(workflow.id) || [], twoLevel = nodes.some((node) => node.role === 'workstream');
+    const nodes = nodesByWorkflow.get(workflow.id) || [],
+      twoLevel = nodes.some((node) => node.role === 'workstream');
     if (!workflow.hierarchy_mode) workflow.hierarchy_mode = twoLevel || !nodes.length ? 'two_level' : 'legacy';
     if (!Number.isInteger(workflow.workflow_revision)) workflow.workflow_revision = Number(workflow.version || 1);
     if (workflow.legacy_read_only === undefined) workflow.legacy_read_only = workflow.hierarchy_mode === 'legacy';
-    if (!workflow.semantic_migration_status) workflow.semantic_migration_status = workflow.hierarchy_mode === 'legacy' ? 'pending' : 'not_required';
+    if (!workflow.semantic_migration_status)
+      workflow.semantic_migration_status = workflow.hierarchy_mode === 'legacy' ? 'pending' : 'not_required';
     if (!workflow.planning_quality) workflow.planning_quality = 'legacy_unverified';
   }
   for (const node of state.workflow_nodes || []) {
@@ -27,9 +31,28 @@ export function normalizeState18Compatibility(state, collections) {
     if (node.parent_node_id === undefined) node.parent_node_id = null;
     if (node.outcome === undefined) node.outcome = node.role === 'workstream' ? node.goal || node.title : null;
     if (node.category === undefined) node.category = node.role === 'workstream' ? 'deliverable' : null;
-    if (node.task_kind === undefined) node.task_kind = node.role === 'task' ? ({ research: 'research', analysis: 'analysis', retrospective: 'review', execution: 'code', goal_definition: 'analysis' })[node.type] || 'manual' : null;
-    if (node.execution_mode === undefined) node.execution_mode = node.role === 'task' ? (['code', 'test', 'deploy'].includes(node.task_kind) ? 'codex' : node.task_kind === 'manual' ? 'manual' : 'assist') : null;
-    if (node.boundary === undefined) node.boundary = node.role === 'workstream' ? { deliverable: node.outcome || node.title } : null;
+    if (node.task_kind === undefined)
+      node.task_kind =
+        node.role === 'task'
+          ? {
+              research: 'research',
+              analysis: 'analysis',
+              retrospective: 'review',
+              execution: 'code',
+              goal_definition: 'analysis'
+            }[node.type] || 'manual'
+          : null;
+    if (node.execution_mode === undefined)
+      node.execution_mode =
+        node.role === 'task'
+          ? ['code', 'test', 'deploy'].includes(node.task_kind)
+            ? 'codex'
+            : node.task_kind === 'manual'
+              ? 'manual'
+              : 'assist'
+          : null;
+    if (node.boundary === undefined)
+      node.boundary = node.role === 'workstream' ? { deliverable: node.outcome || node.title } : null;
     if (node.plan_revision === undefined) node.plan_revision = node.role === 'workstream' ? 1 : null;
     if (!Array.isArray(node.repository_target_ids)) node.repository_target_ids = [];
     if (node.required === undefined) node.required = true;
@@ -63,42 +86,55 @@ export function normalizeState18Compatibility(state, collections) {
   }
   for (const draft of state.workflow_drafts || []) {
     if (!draft.status) draft.status = draft.workflow_id || draft.activated_at ? 'activated' : 'draft';
-    if (draft.user_modified_at === undefined) draft.user_modified_at = Number(draft.revision || 1) > 1 ? draft.updated_at || now() : null;
+    if (draft.user_modified_at === undefined)
+      draft.user_modified_at = Number(draft.revision || 1) > 1 ? draft.updated_at || now() : null;
     if (!draft.brief_coverage || typeof draft.brief_coverage !== 'object') draft.brief_coverage = {};
     if (draft.project_classification === undefined) draft.project_classification = null;
   }
-  for (const session of state.assist_sessions || []) if (session.version === 3 && !['ask', 'auto_recommend'].includes(session.clarification_policy)) session.clarification_policy = 'ask';
+  for (const session of state.assist_sessions || [])
+    if (session.version === 3 && !['ask', 'auto_recommend'].includes(session.clarification_policy))
+      session.clarification_policy = 'ask';
   for (const brief of state.project_briefs || []) {
     if (brief.content?.schema_version !== 2) {
       const project = state.projects?.find((item) => item.id === brief.project_id);
-      brief.content = legacyBriefToV2(brief.content || {}, { briefId: brief.id, title: `${project?.title || '项目'}简报` });
+      brief.content = legacyBriefToV2(brief.content || {}, {
+        briefId: brief.id,
+        title: `${project?.title || '项目'}简报`
+      });
     }
-    if (!Number.isInteger(brief.revision) || brief.revision < 1) brief.revision = Math.max(1, Number(brief.version) || 1);
+    if (!Number.isInteger(brief.revision) || brief.revision < 1)
+      brief.revision = Math.max(1, Number(brief.version) || 1);
   }
 }
 
 function normalizeNodeContractV2(contract) {
   if (!contract || typeof contract !== 'object') return;
   contract.contract_schema_version = 2;
-  contract.expected_inputs = (Array.isArray(contract.expected_inputs) ? contract.expected_inputs : []).map((slot, index) => ({
-    ...slot,
-    key: text(slot?.key || `input_${index + 1}`),
-    kind: text(slot?.kind || inferInputKind(slot)),
-    required: slot?.required !== false,
-    source: text(slot?.source || (slot?.value != null ? 'inline' : 'explicit')),
-    selector: slot?.selector ?? null,
-    ref_id: slot?.ref_id ?? null,
-    version_id: slot?.version_id ?? null
-  }));
-  contract.expected_outputs = (Array.isArray(contract.expected_outputs) ? contract.expected_outputs : []).map((slot, index) => ({
-    ...slot,
-    key: text(slot?.key || `output_${index + 1}`),
-    kind: text(slot?.kind || 'asset'),
-    required: slot?.required !== false,
-    asset_type: text(slot?.asset_type || contract.asset_output_types?.[index] || 'ResultAsset'),
-    acceptance_criteria: Array.isArray(slot?.acceptance_criteria) ? slot.acceptance_criteria : [...(contract.acceptance_criteria || [])],
-    confirmation_policy: text(slot?.confirmation_policy || 'human')
-  }));
+  contract.expected_inputs = (Array.isArray(contract.expected_inputs) ? contract.expected_inputs : []).map(
+    (slot, index) => ({
+      ...slot,
+      key: text(slot?.key || `input_${index + 1}`),
+      kind: text(slot?.kind || inferInputKind(slot)),
+      required: slot?.required !== false,
+      source: text(slot?.source || (slot?.value != null ? 'inline' : 'explicit')),
+      selector: slot?.selector ?? null,
+      ref_id: slot?.ref_id ?? null,
+      version_id: slot?.version_id ?? null
+    })
+  );
+  contract.expected_outputs = (Array.isArray(contract.expected_outputs) ? contract.expected_outputs : []).map(
+    (slot, index) => ({
+      ...slot,
+      key: text(slot?.key || `output_${index + 1}`),
+      kind: text(slot?.kind || 'asset'),
+      required: slot?.required !== false,
+      asset_type: text(slot?.asset_type || contract.asset_output_types?.[index] || 'ResultAsset'),
+      acceptance_criteria: Array.isArray(slot?.acceptance_criteria)
+        ? slot.acceptance_criteria
+        : [...(contract.acceptance_criteria || [])],
+      confirmation_policy: text(slot?.confirmation_policy || 'human')
+    })
+  );
 }
 
 function inferInputKind(slot) {
@@ -106,4 +142,6 @@ function inferInputKind(slot) {
   if (slot?.key === 'repository_snapshot' || /repo|workspace/i.test(String(slot?.key || ''))) return 'repository';
   return 'context';
 }
-function text(value) { return String(value || '').trim(); }
+function text(value) {
+  return String(value || '').trim();
+}

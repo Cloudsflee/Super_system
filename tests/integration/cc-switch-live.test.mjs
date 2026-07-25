@@ -17,7 +17,8 @@ const externalBefore = externalDir ? snapshotTree(externalDir) : null;
 process.env.AIWS_HOME = home;
 
 try {
-  const { CC_SWITCH_VERSION, installManagedCcSwitch, managedCcSwitchStatus, parseProviderList, runManagedCcSwitch } = await import('../../apps/api/src/cc-switch-managed-cli.mjs');
+  const { CC_SWITCH_VERSION, installManagedCcSwitch, managedCcSwitchStatus, parseProviderList, runManagedCcSwitch } =
+    await import('../../apps/api/src/cc-switch-managed-cli.mjs');
   const installed = await installManagedCcSwitch();
   assert.equal(installed.installed, true);
   assert.equal(installed.version, CC_SWITCH_VERSION);
@@ -36,11 +37,23 @@ try {
 
 function snapshotTree(root) {
   if (!fs.existsSync(root)) return null;
-  return fs.readdirSync(root, { withFileTypes: true }).sort((a, b) => a.name.localeCompare(b.name)).flatMap((entry) => {
-    const full = path.join(root, entry.name);
-    if (entry.isDirectory()) return snapshotTree(full)?.map((item) => ({ ...item, path: `${entry.name}/${item.path}` })) || [];
-    if (!entry.isFile()) return [{ path: entry.name, type: entry.isSymbolicLink() ? 'symlink' : 'other' }];
-    const stat = fs.statSync(full);
-    return [{ path: entry.name, type: 'file', size: stat.size, mtimeMs: stat.mtimeMs, sha256: crypto.createHash('sha256').update(fs.readFileSync(full)).digest('hex') }];
-  });
+  return fs
+    .readdirSync(root, { withFileTypes: true })
+    .sort((a, b) => a.name.localeCompare(b.name))
+    .flatMap((entry) => {
+      const full = path.join(root, entry.name);
+      if (entry.isDirectory())
+        return snapshotTree(full)?.map((item) => ({ ...item, path: `${entry.name}/${item.path}` })) || [];
+      if (!entry.isFile()) return [{ path: entry.name, type: entry.isSymbolicLink() ? 'symlink' : 'other' }];
+      const stat = fs.statSync(full);
+      return [
+        {
+          path: entry.name,
+          type: 'file',
+          size: stat.size,
+          mtimeMs: stat.mtimeMs,
+          sha256: crypto.createHash('sha256').update(fs.readFileSync(full)).digest('hex')
+        }
+      ];
+    });
 }

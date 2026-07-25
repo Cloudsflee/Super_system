@@ -1,7 +1,15 @@
 import { ToolType } from './enums.mjs';
 import { now, slugify } from './utils.mjs';
 
-export function createTool({ name, type = ToolType.Cli, description = '', config = {}, enabled = true, capabilities = [], created_by_user_id }) {
+export function createTool({
+  name,
+  type = ToolType.Cli,
+  description = '',
+  config = {},
+  enabled = true,
+  capabilities = [],
+  created_by_user_id
+}) {
   const created = now();
   return {
     id: `tool_${Math.random().toString(16).slice(2)}${Date.now().toString(16)}`,
@@ -34,9 +42,34 @@ function defaultCapabilitiesForTool(name, type) {
 
 export function defaultTools(actorId) {
   return [
-    createTool({ name: 'filesystem', type: ToolType.BuiltIn, description: '受 workspace root 白名单约束的本地文件系统访问。', capabilities: ['filesystem'], created_by_user_id: actorId }),
-    createTool({ name: 'git', type: ToolType.BuiltIn, description: '本地 git diff / branch / commit。', capabilities: ['git', 'diff', 'commit'], created_by_user_id: actorId }),
-    createTool({ name: 'codex_runner', type: ToolType.Cli, description: '宿主机 Codex CLI Adapter。', config: { command: 'codex' }, capabilities: ['codex_runner', 'assist'], created_by_user_id: actorId }),
-    createTool({ name: 'github_pr_provider', type: ToolType.Api, description: 'GitHub PR 创建，可选绑定 token/env ref。', capabilities: ['github_pr'], created_by_user_id: actorId })
+    createTool({
+      name: 'filesystem',
+      type: ToolType.BuiltIn,
+      description: '受 workspace root 白名单约束的本地文件系统访问。',
+      capabilities: ['filesystem'],
+      created_by_user_id: actorId
+    }),
+    createTool({
+      name: 'git',
+      type: ToolType.BuiltIn,
+      description: '本地 git diff / branch / commit。',
+      capabilities: ['git', 'diff', 'commit'],
+      created_by_user_id: actorId
+    }),
+    createTool({
+      name: 'codex_runner',
+      type: ToolType.Cli,
+      description: '宿主机 Codex CLI Adapter。',
+      config: { command: 'codex' },
+      capabilities: ['codex_runner', 'assist'],
+      created_by_user_id: actorId
+    }),
+    createTool({
+      name: 'github_pr_provider',
+      type: ToolType.Api,
+      description: 'GitHub PR 创建，可选绑定 token/env ref。',
+      capabilities: ['github_pr'],
+      created_by_user_id: actorId
+    })
   ];
 }

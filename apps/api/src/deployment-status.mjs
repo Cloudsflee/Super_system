@@ -3,8 +3,12 @@ import { DATA_DIR } from './config.mjs';
 import { isContainerized } from './container-runtime-config.mjs';
 
 export function dataDirectoryReady(directory = DATA_DIR) {
-  try { fs.accessSync(directory, fs.constants.R_OK | fs.constants.W_OK); return true; }
-  catch { return false; }
+  try {
+    fs.accessSync(directory, fs.constants.R_OK | fs.constants.W_OK);
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 export function deploymentStatus({ env = process.env, dockerReady = false, storageReady = dataDirectoryReady() } = {}) {
@@ -13,7 +17,11 @@ export function deploymentStatus({ env = process.env, dockerReady = false, stora
   return {
     mode: container ? 'container' : 'host',
     local_only: !gateway,
-    collaboration: { mode: gateway ? 'gateway' : 'local', mcp_gateway: gateway, public_endpoint_configured: Boolean(env.AIWS_PUBLIC_MCP_URL) },
+    collaboration: {
+      mode: gateway ? 'gateway' : 'local',
+      mcp_gateway: gateway,
+      public_endpoint_configured: Boolean(env.AIWS_PUBLIC_MCP_URL)
+    },
     storage: { type: container ? 'docker_volume' : 'local_directory', ready: storageReady },
     docker: { strategy: container ? 'socket' : 'local_cli', ready: dockerReady },
     imports: {
@@ -27,6 +35,10 @@ export function deploymentStatus({ env = process.env, dockerReady = false, stora
 
 function importReady(value) {
   if (!value) return false;
-  try { const stat = fs.lstatSync(value); return stat.isDirectory() && !stat.isSymbolicLink(); }
-  catch { return false; }
+  try {
+    const stat = fs.lstatSync(value);
+    return stat.isDirectory() && !stat.isSymbolicLink();
+  } catch {
+    return false;
+  }
 }

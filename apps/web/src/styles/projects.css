@@ -1,25 +1,128 @@
-.projects-page { min-height: 100%; padding: 34px clamp(18px, 4vw, 56px); background: var(--surface-subtle); overflow: auto; }
-.projects-page.empty { display: grid; align-content: start; grid-template-columns: minmax(280px, 660px); justify-content: center; }
-.page-heading { display: flex; justify-content: space-between; align-items: end; gap: 20px; padding-bottom: 22px; border-bottom: 1px solid var(--line); }
-.page-heading h1 { margin: 6px 0 5px; }
-.page-heading p { margin: 0; color: var(--muted); font-size: 13px; }
-.project-form { position: relative; width: min(620px, 100%); margin: 28px 0; display: grid; gap: 16px; }
-.projects-page.empty .project-form { width: 100%; }
-.project-form .button { justify-self: start; }
-.form-close { position: absolute; right: 0; top: -48px; width: 34px; height: 34px; display: grid; place-items: center; border: 0; background: transparent; cursor: pointer; }
-.project-table { margin-top: 22px; border: 1px solid var(--line); border-radius: 7px; overflow: hidden; background: var(--surface); }
-.project-table-head, .project-table > button { display: grid; grid-template-columns: minmax(260px, 2fr) 110px 90px 140px 30px; gap: 16px; align-items: center; }
-.project-table-head { min-height: 38px; padding: 0 16px; background: var(--surface-raised); color: var(--muted); font-size: 10px; font-weight: 750; }
-.project-table > button { width: 100%; min-height: 72px; padding: 11px 16px; border: 0; border-top: 1px solid var(--line); background: white; text-align: left; cursor: pointer; }
-.project-table > button:hover { background: var(--surface-subtle); }
-.project-table > button > span { color: var(--muted); font-size: 12px; }
-.project-name { display: flex; align-items: center; gap: 11px; color: var(--text) !important; }
-.project-name > span { min-width: 0; display: grid; gap: 4px; }
-.project-name small { max-width: 380px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--muted); }
-.project-table i { font-style: normal; }
+.projects-page {
+  min-height: 100%;
+  padding: 34px clamp(18px, 4vw, 56px);
+  background: var(--surface-subtle);
+  overflow: auto;
+}
+.projects-page.empty {
+  display: grid;
+  align-content: start;
+  grid-template-columns: minmax(280px, 660px);
+  justify-content: center;
+}
+.page-heading {
+  display: flex;
+  justify-content: space-between;
+  align-items: end;
+  gap: 20px;
+  padding-bottom: 22px;
+  border-bottom: 1px solid var(--line);
+}
+.page-heading h1 {
+  margin: 6px 0 5px;
+}
+.page-heading p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 13px;
+}
+.project-form {
+  position: relative;
+  width: min(620px, 100%);
+  margin: 28px 0;
+  display: grid;
+  gap: 16px;
+}
+.projects-page.empty .project-form {
+  width: 100%;
+}
+.project-form .button {
+  justify-self: start;
+}
+.form-close {
+  position: absolute;
+  right: 0;
+  top: -48px;
+  width: 34px;
+  height: 34px;
+  display: grid;
+  place-items: center;
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+}
+.project-table {
+  margin-top: 22px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  overflow: hidden;
+  background: var(--surface);
+}
+.project-table-head,
+.project-table > button {
+  display: grid;
+  grid-template-columns: minmax(260px, 2fr) 110px 90px 140px 30px;
+  gap: 16px;
+  align-items: center;
+}
+.project-table-head {
+  min-height: 38px;
+  padding: 0 16px;
+  background: var(--surface-raised);
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 750;
+}
+.project-table > button {
+  width: 100%;
+  min-height: 72px;
+  padding: 11px 16px;
+  border: 0;
+  border-top: 1px solid var(--line);
+  background: white;
+  text-align: left;
+  cursor: pointer;
+}
+.project-table > button:hover {
+  background: var(--surface-subtle);
+}
+.project-table > button > span {
+  color: var(--muted);
+  font-size: 12px;
+}
+.project-name {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  color: var(--text) !important;
+}
+.project-name > span {
+  min-width: 0;
+  display: grid;
+  gap: 4px;
+}
+.project-name small {
+  max-width: 380px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--muted);
+}
+.project-table i {
+  font-style: normal;
+}
 @media (max-width: 760px) {
-  .projects-page { padding: 22px 14px; }
-  .project-table-head { display: none; }
-  .project-table > button { grid-template-columns: 1fr auto; gap: 8px; }
-  .project-table > button > span:not(.project-name) { display: none; }
+  .projects-page {
+    padding: 22px 14px;
+  }
+  .project-table-head {
+    display: none;
+  }
+  .project-table > button {
+    grid-template-columns: 1fr auto;
+    gap: 8px;
+  }
+  .project-table > button > span:not(.project-name) {
+    display: none;
+  }
 }

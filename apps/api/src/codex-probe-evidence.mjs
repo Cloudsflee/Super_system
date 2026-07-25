@@ -20,7 +20,9 @@ export function createCodexProbeEvidence({ profile, auth, runtime } = {}) {
 
 export function codexProbeEvidenceMatches(saved, current) {
   if (!saved || !current || saved.version !== EVIDENCE_VERSION || current.version !== EVIDENCE_VERSION) return false;
-  return ['profile_revision', 'auth_revision', 'config_revision', 'image_id'].every((key) => typeof saved[key] === 'string' && saved[key] === current[key]);
+  return ['profile_revision', 'auth_revision', 'config_revision', 'image_id'].every(
+    (key) => typeof saved[key] === 'string' && saved[key] === current[key]
+  );
 }
 
 function readProfileConfig(profile) {
@@ -32,7 +34,9 @@ function readProfileConfig(profile) {
     const stat = fs.lstatSync(file);
     if (!stat.isFile() || stat.isSymbolicLink() || stat.size > 1024 * 1024) return null;
     return fs.readFileSync(file, 'utf8');
-  } catch { return null; }
+  } catch {
+    return null;
+  }
 }
 
 function profileRevisionInput(profile) {
@@ -71,4 +75,6 @@ function authRevisionInput(auth) {
   });
 }
 
-function digest(value) { return `sha256:${createHash('sha256').update(String(value)).digest('hex')}`; }
+function digest(value) {
+  return `sha256:${createHash('sha256').update(String(value)).digest('hex')}`;
+}

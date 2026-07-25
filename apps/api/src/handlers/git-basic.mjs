@@ -25,7 +25,11 @@ async function bindRepoLocked({ res, params, body }) {
   const sourceProject = assertProjectLifecycleIdle(snapshot.projects.find((item) => item.id === params.id));
   const requested = body.local_path || body.repo_path || sourceProject.repo_path || sourceProject.workspace_root;
   if (!requested) throw new HttpError(400, { error: 'repository_path_required' });
-  const checkout = await materializeCodeSource(sourceProject, { type: isGitRepo(requested) ? 'local_git' : 'local_directory', path: requested }, body.operation_key || 'legacy-local-bind');
+  const checkout = await materializeCodeSource(
+    sourceProject,
+    { type: isGitRepo(requested) ? 'local_git' : 'local_directory', path: requested },
+    body.operation_key || 'legacy-local-bind'
+  );
   const result = await mutate((state) => {
     const actor = owner(state);
     const project = assertProjectLifecycleIdle(state.projects.find((item) => item.id === params.id));
@@ -36,14 +40,22 @@ async function bindRepoLocked({ res, params, body }) {
     project.workspace_root = path.dirname(repoPath);
     project.managed_workspace_state = 'ready';
     project.settings ||= {};
-    project.settings.workspace_root_whitelist = unique([...(project.settings.workspace_root_whitelist || []), repoPath]);
+    project.settings.workspace_root_whitelist = unique([
+      ...(project.settings.workspace_root_whitelist || []),
+      repoPath
+    ]);
     project.updated_at = now();
 
-    addTrace(state, 'human.reviewed', {
-      project_id: project.id,
-      workspace_id: project.current_workspace_id,
-      summary: `绑定 Git repo：${repoPath}`
-    }, actor.id);
+    addTrace(
+      state,
+      'human.reviewed',
+      {
+        project_id: project.id,
+        workspace_id: project.current_workspace_id,
+        summary: `绑定 Git repo：${repoPath}`
+      },
+      actor.id
+    );
 
     return { project, git: gitSummary(repoPath) };
   });
@@ -65,16 +77,21 @@ export async function createBranch({ res, params }) {
       status: commandResult.ok ? 'branched' : 'failed'
     });
 
-    addTrace(state, 'git.branch.created', {
-      project_id: project.id,
-      workspace_id: run.workspace_id,
-      node_id: run.node_id,
-      run_id: run.id,
-      target_type: 'code_change',
-      target_id: change.id,
-      summary: commandResult.ok ? `创建分支 ${branch}` : `创建分支失败 ${branch}`,
-      data: commandResult
-    }, actor.id);
+    addTrace(
+      state,
+      'git.branch.created',
+      {
+        project_id: project.id,
+        workspace_id: run.workspace_id,
+        node_id: run.node_id,
+        run_id: run.id,
+        target_type: 'code_change',
+        target_id: change.id,
+        summary: commandResult.ok ? `创建分支 ${branch}` : `创建分支失败 ${branch}`,
+        data: commandResult
+      },
+      actor.id
+    );
 
     return { code_change: change, branch, command_result: commandResult };
   });
@@ -87,7 +104,9 @@ export async function captureDiff({ res, params }) {
     const bundle = runBundle(state, params.id);
     assertManagedProjectWritable(bundle.project);
     const diff = collectDiff(bundle);
-    const diffRef = await saveArtifact('git', `${bundle.run.id}.diff.patch`, diff.text || '# no diff\n', { run_id: bundle.run.id });
+    const diffRef = await saveArtifact('git', `${bundle.run.id}.diff.patch`, diff.text || '# no diff\n', {
+      run_id: bundle.run.id
+    });
     state.file_refs.push(diffRef);
 
     const change = ensureCodeChange(state, bundle.run, bundle.project, bundle.node, actor.id);
@@ -98,17 +117,22 @@ export async function captureDiff({ res, params }) {
       updated_at: now()
     });
 
-    addTrace(state, 'git.diff.captured', {
-      project_id: bundle.project.id,
-      workspace_id: bundle.run.workspace_id,
-      node_id: bundle.run.node_id,
-      run_id: bundle.run.id,
-      target_type: 'code_change',
-      target_id: change.id,
-      raw_file_ref_id: diffRef.id,
-      summary: `捕获 diff：${diff.changed.length} 个文件`,
-      data: { changed_files: diff.changed }
-    }, actor.id);
+    addTrace(
+      state,
+      'git.diff.captured',
+      {
+        project_id: bundle.project.id,
+        workspace_id: bundle.run.workspace_id,
+        node_id: bundle.run.node_id,
+        run_id: bundle.run.id,
+        target_type: 'code_change',
+        target_id: change.id,
+        raw_file_ref_id: diffRef.id,
+        summary: `捕获 diff：${diff.changed.length} 个文件`,
+        data: { changed_files: diff.changed }
+      },
+      actor.id
+    );
 
     return { code_change: change, diff: diff.text, changed_files: diff.changed, file_ref: diffRef };
   });
@@ -119,7 +143,11 @@ function collectDiff({ repoPath }) {
   if (!isGitRepo(repoPath)) throw new HttpError(409, { error: 'git_repository_required' });
   const patch = git(repoPath, ['diff', '--patch'], 10000);
   const status = git(repoPath, ['status', '--porcelain'], 5000);
-  if (!patch.ok || !status.ok) throw new HttpError(409, { error: 'git_diff_failed', detail: patch.stderr || status.stderr || patch.error || status.error });
+  if (!patch.ok || !status.ok)
+    throw new HttpError(409, {
+      error: 'git_diff_failed',
+      detail: patch.stderr || status.stderr || patch.error || status.error
+    });
   return {
     text: patch.stdout,
     changed: parseGitStatus(status.stdout)

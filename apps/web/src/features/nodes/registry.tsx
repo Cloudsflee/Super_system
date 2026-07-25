@@ -1,16 +1,43 @@
-import { BarChart3, BookOpenCheck, Crosshair, Layers3, ListTodo, RefreshCw, TerminalSquare, type LucideIcon } from 'lucide-react';
+import {
+  BarChart3,
+  BookOpenCheck,
+  Crosshair,
+  Layers3,
+  ListTodo,
+  RefreshCw,
+  TerminalSquare,
+  type LucideIcon
+} from 'lucide-react';
 import type { ComponentType } from 'react';
 import { lazy } from 'react';
 import type { NodeKind, NodeWorkspace } from '../../api/types';
 
 const GoalWorkspace = lazy(() => import('./renderers/GoalWorkspace').then((item) => ({ default: item.GoalWorkspace })));
-const ResearchWorkspace = lazy(() => import('./renderers/ResearchWorkspace').then((item) => ({ default: item.ResearchWorkspace })));
-const AnalysisWorkspace = lazy(() => import('./renderers/AnalysisWorkspace').then((item) => ({ default: item.AnalysisWorkspace })));
-const ExecutionWorkspace = lazy(() => import('./renderers/ExecutionWorkspace').then((item) => ({ default: item.ExecutionWorkspace })));
-const ReviewWorkspace = lazy(() => import('./renderers/ReviewWorkspace').then((item) => ({ default: item.ReviewWorkspace })));
+const ResearchWorkspace = lazy(() =>
+  import('./renderers/ResearchWorkspace').then((item) => ({ default: item.ResearchWorkspace }))
+);
+const AnalysisWorkspace = lazy(() =>
+  import('./renderers/AnalysisWorkspace').then((item) => ({ default: item.AnalysisWorkspace }))
+);
+const ExecutionWorkspace = lazy(() =>
+  import('./renderers/ExecutionWorkspace').then((item) => ({ default: item.ExecutionWorkspace }))
+);
+const ReviewWorkspace = lazy(() =>
+  import('./renderers/ReviewWorkspace').then((item) => ({ default: item.ReviewWorkspace }))
+);
 
-export type RendererProps = { value: NodeWorkspace; onSaved: () => Promise<unknown>; onRunNode?: (repositoryWorkspaceId?: string) => void; runningNode?: boolean };
-export type NodeRendererDefinition = { type: NodeKind; label: string; icon: LucideIcon; component: ComponentType<RendererProps> };
+export type RendererProps = {
+  value: NodeWorkspace;
+  onSaved: () => Promise<unknown>;
+  onRunNode?: (repositoryWorkspaceId?: string) => void;
+  runningNode?: boolean;
+};
+export type NodeRendererDefinition = {
+  type: NodeKind;
+  label: string;
+  icon: LucideIcon;
+  component: ComponentType<RendererProps>;
+};
 
 export const nodeRenderers: Record<NodeKind, NodeRendererDefinition> = {
   goal_definition: { type: 'goal_definition', label: '目标工作区', icon: Crosshair, component: GoalWorkspace },
@@ -22,4 +49,6 @@ export const nodeRenderers: Record<NodeKind, NodeRendererDefinition> = {
   task: { type: 'task', label: '任务工作区', icon: ListTodo, component: ExecutionWorkspace }
 };
 
-export function rendererFor(type: NodeKind) { return nodeRenderers[type] || nodeRenderers.goal_definition; }
+export function rendererFor(type: NodeKind) {
+  return nodeRenderers[type] || nodeRenderers.goal_definition;
+}

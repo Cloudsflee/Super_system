@@ -14,7 +14,8 @@ if (mainUpdate && isZeroSha(mainUpdate.localSha)) fail('refusing to delete the r
 const root = git(['rev-parse', '--show-toplevel']);
 process.chdir(root);
 const head = git(['rev-parse', 'HEAD']);
-if (mainUpdate && mainUpdate.localSha !== head) fail(`main update ${mainUpdate.localSha} is not the checked-out HEAD ${head}`);
+if (mainUpdate && mainUpdate.localSha !== head)
+  fail(`main update ${mainUpdate.localSha} is not the checked-out HEAD ${head}`);
 const changes = git(['status', '--porcelain']);
 if (changes) fail(`working tree must be clean so tests match the pushed commit:\n${changes}`);
 
@@ -29,7 +30,8 @@ for (const script of ['test:v175:pr', 'test:v18:pr']) {
 console.log('\n[pre-push] V1.75 and V1.8 gates passed.');
 
 function resolveBase(update, headSha) {
-  if (process.env.AIWS_TEST_BASE_SHA && !isZeroSha(process.env.AIWS_TEST_BASE_SHA)) return process.env.AIWS_TEST_BASE_SHA;
+  if (process.env.AIWS_TEST_BASE_SHA && !isZeroSha(process.env.AIWS_TEST_BASE_SHA))
+    return process.env.AIWS_TEST_BASE_SHA;
   if (update && !isZeroSha(update.remoteSha)) return update.remoteSha;
   const originMain = git(['rev-parse', '--verify', 'origin/main'], false);
   if (originMain) return originMain;
@@ -37,7 +39,11 @@ function resolveBase(update, headSha) {
 }
 
 function parseUpdates(value) {
-  return String(value || '').split(/\r?\n/).map((line) => line.trim().split(/\s+/)).filter((parts) => parts.length === 4).map(([localRef, localSha, remoteRef, remoteSha]) => ({ localRef, localSha, remoteRef, remoteSha }));
+  return String(value || '')
+    .split(/\r?\n/)
+    .map((line) => line.trim().split(/\s+/))
+    .filter((parts) => parts.length === 4)
+    .map(([localRef, localSha, remoteRef, remoteSha]) => ({ localRef, localSha, remoteRef, remoteSha }));
 }
 
 function git(args, required = true) {
@@ -49,8 +55,17 @@ function git(args, required = true) {
 
 function runPnpm(script, env) {
   if (process.platform !== 'win32') return spawnSync('corepack', ['pnpm', script], { stdio: 'inherit', env });
-  return spawnSync(process.env.ComSpec || 'cmd.exe', ['/d', '/s', '/c', `corepack pnpm ${script}`], { stdio: 'inherit', env, windowsHide: true });
+  return spawnSync(process.env.ComSpec || 'cmd.exe', ['/d', '/s', '/c', `corepack pnpm ${script}`], {
+    stdio: 'inherit',
+    env,
+    windowsHide: true
+  });
 }
 
-function isZeroSha(value) { return /^0+$/.test(String(value || '')); }
-function fail(message) { console.error(`\n[pre-push] ${message}`); process.exit(1); }
+function isZeroSha(value) {
+  return /^0+$/.test(String(value || ''));
+}
+function fail(message) {
+  console.error(`\n[pre-push] ${message}`);
+  process.exit(1);
+}

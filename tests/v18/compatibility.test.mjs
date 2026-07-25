@@ -7,18 +7,29 @@ let connection;
 try {
   connection = await fixture.connect();
   const legacyResponse = await fetch(`${fixture.baseUrl}/api/projects`, {
-    method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ title: 'Legacy HTTP client', operation_key: 'v18-legacy-http' })
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ title: 'Legacy HTTP client', operation_key: 'v18-legacy-http' })
   });
   assert.equal(legacyResponse.status, 201);
   const legacy = await legacyResponse.json();
-  const viaMcp = resultData(await callOperation(connection.client, 'aiws.projects.get.projects.by-id', { params: { id: legacy.project.id } }));
+  const viaMcp = resultData(
+    await callOperation(connection.client, 'aiws.projects.get.projects.by-id', { params: { id: legacy.project.id } })
+  );
   assert.equal(viaMcp.project.id, legacy.project.id);
 
-  const modern = resultData(await callOperation(connection.client, 'aiws.projects.post.projects', { body: { title: 'MCP visible to legacy HTTP' } }));
+  const modern = resultData(
+    await callOperation(connection.client, 'aiws.projects.post.projects', {
+      body: { title: 'MCP visible to legacy HTTP' }
+    })
+  );
   const listResponse = await fetch(`${fixture.baseUrl}/api/projects`);
   const list = await listResponse.json();
   assert.equal(listResponse.status, 200);
-  assert.equal(list.some((item) => item.id === modern.project.id), true);
+  assert.equal(
+    list.some((item) => item.id === modern.project.id),
+    true
+  );
 
   const webClient = fs.readFileSync('apps/web/src/api/client.ts', 'utf8');
   assert.match(webClient, /\/api/);

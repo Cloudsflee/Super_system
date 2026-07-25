@@ -8,16 +8,20 @@ import { prepareCodexInvocation } from '../../../packages/runner-adapters/src/co
 export function terminalInvocation(profile, cwd, credential, sessionId, mcpAccess = null) {
   const codexHome = profile.codex_home || path.join(AIWS_HOME, 'codex-homes', profile.id);
   const proxy = profile.kind === 'docker' ? codexContainerProxyEnv(process.env) : {};
-  const env = withCodexMcpEnvironment({
-    ...minimalTerminalEnv(),
-    ...proxy,
-    TERM: 'xterm-256color',
-    COLORTERM: 'truecolor',
-    CODEX_HOME: codexHome,
-    ...(credential ? { OPENAI_API_KEY: credential } : {})
-  }, mcpAccess);
+  const env = withCodexMcpEnvironment(
+    {
+      ...minimalTerminalEnv(),
+      ...proxy,
+      TERM: 'xterm-256color',
+      COLORTERM: 'truecolor',
+      CODEX_HOME: codexHome,
+      ...(credential ? { OPENAI_API_KEY: credential } : {})
+    },
+    mcpAccess
+  );
   const requested = process.env.AIWS_CODEX_BIN || 'codex';
-  const commandArgs = profile.kind === 'docker' || isCodexCliExecutable(requested) ? terminalCodexArgs(profile, mcpAccess) : [];
+  const commandArgs =
+    profile.kind === 'docker' || isCodexCliExecutable(requested) ? terminalCodexArgs(profile, mcpAccess) : [];
   if (profile.kind !== 'docker') return { ...prepareCodexInvocation(requested, commandArgs), env };
   return {
     ...buildCodexContainerInvocation({
@@ -46,7 +50,13 @@ export function terminalInvocation(profile, cwd, credential, sessionId, mcpAcces
 }
 
 export function terminalCodexArgs(profile, mcpAccess = null) {
-  return [...(mcpAccess?.configArgs || []), '--model', profile.model, '-c', `model_reasoning_effort=${JSON.stringify(profile.reasoning || 'high')}`];
+  return [
+    ...(mcpAccess?.configArgs || []),
+    '--model',
+    profile.model,
+    '-c',
+    `model_reasoning_effort=${JSON.stringify(profile.reasoning || 'high')}`
+  ];
 }
 
 function isCodexCliExecutable(value) {
@@ -55,5 +65,7 @@ function isCodexCliExecutable(value) {
 
 function minimalTerminalEnv() {
   const names = ['PATH', 'Path', 'SystemRoot', 'ComSpec', 'PATHEXT', 'TEMP', 'TMP', 'HOME', 'USERPROFILE', 'LANG'];
-  return Object.fromEntries(names.filter((key) => process.env[key] !== undefined).map((key) => [key, process.env[key]]));
+  return Object.fromEntries(
+    names.filter((key) => process.env[key] !== undefined).map((key) => [key, process.env[key]])
+  );
 }

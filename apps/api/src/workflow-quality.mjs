@@ -1,6 +1,13 @@
 import { HttpError } from './http.mjs';
 
-export const WORKFLOW_PHASE_TAGS = Object.freeze(['research_evidence', 'constraint_analysis', 'solution_decision', 'execution', 'acceptance', 'integration_delivery']);
+export const WORKFLOW_PHASE_TAGS = Object.freeze([
+  'research_evidence',
+  'constraint_analysis',
+  'solution_decision',
+  'execution',
+  'acceptance',
+  'integration_delivery'
+]);
 const SOFTWARE_KINDS = new Set(['code', 'test', 'deploy', 'integration']);
 const HUMAN_CONFIRM_KINDS = new Set(['research', 'analysis', 'design', 'content', 'review', 'manual']);
 
@@ -8,42 +15,102 @@ export function normalizeWorkflowPlanningFields(nodes) {
   const source = Array.isArray(nodes) ? nodes : [];
   return source.map((node) => {
     if (node.role !== 'task') return { ...node };
-    const dependencyIds = deps(node), tags = unique([...(node.capability_tags || []), ...inferredTags(node)]);
-    const acceptance = unique(node.acceptance_criteria?.length ? node.acceptance_criteria : [`完成并验证：${node.goal || node.title}`]);
+    const dependencyIds = deps(node),
+      tags = unique([...(node.capability_tags || []), ...inferredTags(node)]);
+    const acceptance = unique(
+      node.acceptance_criteria?.length ? node.acceptance_criteria : [`完成并验证：${node.goal || node.title}`]
+    );
     const inputs = normalizeInputs(node.input_slots, dependencyIds, node);
     const outputs = normalizeOutputs(node.output_slots, acceptance, node);
-    return { ...node, capability_tags: tags, acceptance_criteria: acceptance, input_slots: inputs, output_slots: outputs, atomic_justification: clean(node.atomic_justification, 2000) || null };
+    return {
+      ...node,
+      capability_tags: tags,
+      acceptance_criteria: acceptance,
+      input_slots: inputs,
+      output_slots: outputs,
+      atomic_justification: clean(node.atomic_justification, 2000) || null
+    };
   });
 }
 
-export function validateWorkflowPlanningQuality({ nodes, project = null, brief = null, projectClassification = '', briefCoverage = null, allowAtomic = true } = {}) {
-  const errors = [], normalized = normalizeWorkflowPlanningFields(nodes), byId = new Map(normalized.map((item) => [item.id, item])), taskIds = new Set(normalized.filter((item) => item.role === 'task').map((item) => item.id));
-  const hasRepository = Boolean(project?.repo_path || project?.workspace_root || normalized.some((item) => item.repository_intent) || /software|code|repository/i.test(String(projectClassification || '')));
+export function validateWorkflowPlanningQuality({
+  nodes,
+  project = null,
+  brief = null,
+  projectClassification = '',
+  briefCoverage = null,
+  allowAtomic = true
+} = {}) {
+  const errors = [],
+    normalized = normalizeWorkflowPlanningFields(nodes),
+    byId = new Map(normalized.map((item) => [item.id, item])),
+    taskIds = new Set(normalized.filter((item) => item.role === 'task').map((item) => item.id));
+  const hasRepository = Boolean(
+    project?.repo_path ||
+    project?.workspace_root ||
+    normalized.some((item) => item.repository_intent) ||
+    /software|code|repository/i.test(String(projectClassification || ''))
+  );
   const hasExternalMaterials = Boolean(brief?.content?.material_references?.length);
   for (const workstream of normalized.filter((item) => item.role === 'workstream')) {
     const tasks = normalized.filter((item) => item.role === 'task' && item.parent_node_id === workstream.id);
     const software = hasRepository || tasks.some((item) => SOFTWARE_KINDS.has(item.task_kind));
-    const atomic = tasks.length === 1 && allowAtomic && !software && !hasExternalMaterials && (workstream.acceptance_criteria || []).length === 1 && tasks[0]?.task_kind === 'manual' && Boolean(tasks[0]?.atomic_justification);
-    if (!atomic && tasks.length < 3) errors.push(issue('workflow_workstream_task_quality_minimum', workstream.id, { minimum: 3, count: tasks.length }));
-    if (tasks.length === 1 && !atomic) errors.push(issue('workflow_atomic_task_justification_required', tasks[0]?.id || workstream.id));
+    const atomic =
+      tasks.length === 1 &&
+      allowAtomic &&
+      !software &&
+      !hasExternalMaterials &&
+      (workstream.acceptance_criteria || []).length === 1 &&
+      tasks[0]?.task_kind === 'manual' &&
+      Boolean(tasks[0]?.atomic_justification);
+    if (!atomic && tasks.length < 3)
+      errors.push(
+        issue('workflow_workstream_task_quality_minimum', workstream.id, { minimum: 3, count: tasks.length })
+      );
+    if (tasks.length === 1 && !atomic)
+      errors.push(issue('workflow_atomic_task_justification_required', tasks[0]?.id || workstream.id));
     if (!atomic) {
       const tags = new Set(tasks.flatMap((item) => item.capability_tags || []));
-      if (!hasAny(tags, ['research_evidence', 'constraint_analysis'])) errors.push(issue('workflow_evidence_preparation_task_required', workstream.id));
-      if (!hasAny(tags, ['solution_decision', 'execution'])) errors.push(issue('workflow_execution_task_required', workstream.id));
-      if (!hasAny(tags, ['acceptance', 'integration_delivery'])) errors.push(issue('workflow_acceptance_task_required', workstream.id));
-      if (software && tasks.length >= 6) for (const tag of WORKFLOW_PHASE_TAGS) if (!tags.has(tag)) errors.push(issue('workflow_default_phase_coverage_missing', workstream.id, { capability_tag: tag }));
+      if (!hasAny(tags, ['research_evidence', 'constraint_analysis']))
+        errors.push(issue('workflow_evidence_preparation_task_required', workstream.id));
+      if (!hasAny(tags, ['solution_decision', 'execution']))
+        errors.push(issue('workflow_execution_task_required', workstream.id));
+      if (!hasAny(tags, ['acceptance', 'integration_delivery']))
+        errors.push(issue('workflow_acceptance_task_required', workstream.id));
+      if (software && tasks.length >= 6)
+        for (const tag of WORKFLOW_PHASE_TAGS)
+          if (!tags.has(tag))
+            errors.push(issue('workflow_default_phase_coverage_missing', workstream.id, { capability_tag: tag }));
     }
     for (const [index, task] of tasks.entries()) {
       if (!task.acceptance_criteria?.length) errors.push(issue('workflow_task_acceptance_required', task.id));
       if (!task.capability_tags?.length) errors.push(issue('workflow_task_capability_tags_required', task.id));
-      if (!task.input_slots?.length || task.input_slots.some((slot) => !slot.key || !slot.kind || !slot.source)) errors.push(issue('workflow_task_typed_inputs_invalid', task.id));
-      if (!task.output_slots?.length || task.output_slots.some((slot) => !slot.key || !slot.kind || !slot.asset_type || !slot.acceptance_criteria?.length || !slot.confirmation_policy)) errors.push(issue('workflow_task_typed_outputs_invalid', task.id));
+      if (!task.input_slots?.length || task.input_slots.some((slot) => !slot.key || !slot.kind || !slot.source))
+        errors.push(issue('workflow_task_typed_inputs_invalid', task.id));
+      if (
+        !task.output_slots?.length ||
+        task.output_slots.some(
+          (slot) =>
+            !slot.key ||
+            !slot.kind ||
+            !slot.asset_type ||
+            !slot.acceptance_criteria?.length ||
+            !slot.confirmation_policy
+        )
+      )
+        errors.push(issue('workflow_task_typed_outputs_invalid', task.id));
       const coveredCriteria = new Set(task.output_slots?.flatMap((slot) => slot.acceptance_criteria || []) || []);
-      if ((task.acceptance_criteria || []).some((criterion) => !coveredCriteria.has(criterion))) errors.push(issue('workflow_task_output_acceptance_coverage_required', task.id));
+      if ((task.acceptance_criteria || []).some((criterion) => !coveredCriteria.has(criterion)))
+        errors.push(issue('workflow_task_output_acceptance_coverage_required', task.id));
       if (index > 0 && !deps(task).length) errors.push(issue('workflow_task_dependency_flow_required', task.id));
       for (const dependencyId of deps(task)) {
-        const bindings = task.input_slots.filter((slot) => slot.source === 'dependency' && slot.ref_id === dependencyId);
-        if (!bindings.length) errors.push(issue('workflow_task_dependency_input_binding_required', task.id, { dependency_id: dependencyId }));
+        const bindings = task.input_slots.filter(
+          (slot) => slot.source === 'dependency' && slot.ref_id === dependencyId
+        );
+        if (!bindings.length)
+          errors.push(
+            issue('workflow_task_dependency_input_binding_required', task.id, { dependency_id: dependencyId })
+          );
         else validateDependencySelectors(task, byId.get(dependencyId), bindings, errors);
       }
     }
@@ -59,27 +126,191 @@ export function assertWorkflowPlanningQuality(input) {
 }
 
 export function defaultBriefCoverage(brief, taskIds) {
-  const ids = unique(taskIds), last = ids.at(-1), first = ids[0];
-  return Object.fromEntries(requiredBriefKeys(brief).map((key) => [key, key === 'risks' ? [first || last].filter(Boolean) : [last || first].filter(Boolean)]));
+  const ids = unique(taskIds),
+    last = ids.at(-1),
+    first = ids[0];
+  return Object.fromEntries(
+    requiredBriefKeys(brief).map((key) => [
+      key,
+      key === 'risks' ? [first || last].filter(Boolean) : [last || first].filter(Boolean)
+    ])
+  );
 }
 
 function normalizeInputs(source, dependencyIds, node) {
-  const slots = (Array.isArray(source) ? source : []).map((slot, index) => ({ key: clean(slot?.key || `input_${index + 1}`, 120), kind: clean(slot?.kind || 'asset_version', 80), required: slot?.required !== false, source: clean(slot?.source || 'explicit', 80), selector: slot?.selector ?? null, ref_id: slot?.ref_id ?? null, version_id: slot?.version_id ?? null }));
-  for (const [index, dependencyId] of dependencyIds.entries()) if (!slots.some((slot) => slot.source === 'dependency' && slot.ref_id === dependencyId)) slots.push({ key: uniqueSlotKey(slots, `upstream_${index + 1}`), kind: 'asset_version', required: true, source: 'dependency', selector: 'required_outputs', ref_id: dependencyId, version_id: null });
-  if (!slots.length) slots.push({ key: 'project_brief', kind: 'context', required: true, source: 'brief', selector: 'current', ref_id: null, version_id: null });
-  if (SOFTWARE_KINDS.has(node.task_kind) && !slots.some((slot) => slot.source === 'repository_workspace')) slots.push({ key: uniqueSlotKey(slots, 'repository_snapshot'), kind: 'repository', required: true, source: 'repository_workspace', selector: 'fixed_sha', ref_id: null, version_id: null });
+  const slots = (Array.isArray(source) ? source : []).map((slot, index) => ({
+    key: clean(slot?.key || `input_${index + 1}`, 120),
+    kind: clean(slot?.kind || 'asset_version', 80),
+    required: slot?.required !== false,
+    source: clean(slot?.source || 'explicit', 80),
+    selector: slot?.selector ?? null,
+    ref_id: slot?.ref_id ?? null,
+    version_id: slot?.version_id ?? null
+  }));
+  for (const [index, dependencyId] of dependencyIds.entries())
+    if (!slots.some((slot) => slot.source === 'dependency' && slot.ref_id === dependencyId))
+      slots.push({
+        key: uniqueSlotKey(slots, `upstream_${index + 1}`),
+        kind: 'asset_version',
+        required: true,
+        source: 'dependency',
+        selector: 'required_outputs',
+        ref_id: dependencyId,
+        version_id: null
+      });
+  if (!slots.length)
+    slots.push({
+      key: 'project_brief',
+      kind: 'context',
+      required: true,
+      source: 'brief',
+      selector: 'current',
+      ref_id: null,
+      version_id: null
+    });
+  if (SOFTWARE_KINDS.has(node.task_kind) && !slots.some((slot) => slot.source === 'repository_workspace'))
+    slots.push({
+      key: uniqueSlotKey(slots, 'repository_snapshot'),
+      kind: 'repository',
+      required: true,
+      source: 'repository_workspace',
+      selector: 'fixed_sha',
+      ref_id: null,
+      version_id: null
+    });
   return slots;
 }
-function normalizeOutputs(source, acceptance, node) { const policy = HUMAN_CONFIRM_KINDS.has(node.task_kind) ? 'human' : 'system_evidence'; const slots = Array.isArray(source) && source.length ? source.map((slot, index) => ({ key: clean(slot?.key || `output_${index + 1}`, 120), kind: clean(slot?.kind || 'asset', 80), required: slot?.required !== false, asset_type: clean(slot?.asset_type || assetType(node), 120), acceptance_criteria: unique(slot?.acceptance_criteria?.length ? slot.acceptance_criteria : acceptance), confirmation_policy: clean(slot?.confirmation_policy || policy, 80) })) : [{ key: `${node.task_kind || 'task'}_result`, kind: 'asset', required: true, asset_type: assetType(node), acceptance_criteria: [...acceptance], confirmation_policy: policy }]; const covered = new Set(slots.flatMap((slot) => slot.acceptance_criteria)); slots[0].acceptance_criteria = unique([...slots[0].acceptance_criteria, ...acceptance.filter((criterion) => !covered.has(criterion))]); return slots; }
-function validateDependencySelectors(task, dependency, bindings, errors) { const outputs = (dependency?.output_slots || []).filter((slot) => slot.required !== false); for (const binding of bindings) { const exact = outputs.some((slot) => slot.key === binding.selector); if (outputs.length > 1 && !exact) errors.push(issue('workflow_task_dependency_output_selector_required', task.id, { dependency_id: dependency?.id, slot_key: binding.key, output_keys: outputs.map((slot) => slot.key) })); else if (outputs.length && !exact && binding.selector !== 'required_outputs') errors.push(issue('workflow_task_dependency_output_selector_invalid', task.id, { dependency_id: dependency?.id, slot_key: binding.key, selector: binding.selector })); } }
-function inferredTags(node) { return ({ research: ['research_evidence'], analysis: ['constraint_analysis'], design: ['solution_decision'], content: ['execution'], code: ['execution'], test: ['acceptance'], review: ['acceptance'], deploy: ['integration_delivery'], integration: ['integration_delivery'], manual: ['execution'] })[node.task_kind] || ['execution']; }
-function assetType(node) { return ({ research: 'ResearchEvidenceAsset', analysis: 'DecisionAsset', design: 'DesignAsset', code: 'CodeChangeAsset', test: 'TestEvidenceAsset', review: 'AcceptanceAsset', deploy: 'DeliveryEvidenceAsset', integration: 'DeliveryEvidenceAsset' })[node.task_kind] || 'ResultAsset'; }
-function validateBriefCoverage(brief, coverage, taskIds, errors) { const required = requiredBriefKeys(brief), normalized = normalizeCoverage(coverage); for (const key of required) { const ids = normalized[key] || []; if (!ids.length) errors.push(issue('workflow_brief_coverage_missing', null, { brief_key: key })); for (const taskId of ids) if (!taskIds.has(taskId)) errors.push(issue('workflow_brief_coverage_task_invalid', taskId, { brief_key: key })); } }
-function requiredBriefKeys(brief) { const derived = brief?.content?.derived || brief?.content || {}; return [['features', derived.features], ['acceptance_criteria', derived.acceptance_criteria], ['milestones', derived.milestones], ['risks', derived.risks]].filter(([, value]) => Array.isArray(value) && value.length).map(([key]) => key); }
-function normalizeCoverage(value) { if (!value || typeof value !== 'object' || Array.isArray(value)) return {}; return Object.fromEntries(Object.entries(value).map(([key, ids]) => [key, unique(ids)])); }
-function deps(node) { return unique(Array.isArray(node?.dependency_ids) ? node.dependency_ids : (node?.dependencies || []).map((item) => typeof item === 'string' ? item : item?.node_id)); }
-function hasAny(values, options) { return options.some((item) => values.has(item)); }
-function issue(code, nodeId, detail = {}) { return { code, ...(nodeId ? { node_id: nodeId } : {}), ...detail }; }
-function unique(value) { return [...new Set((Array.isArray(value) ? value : []).map((item) => clean(item, 2000)).filter(Boolean))]; }
-function uniqueSlotKey(slots, preferred) { let key = preferred, suffix = 2; while (slots.some((slot) => slot.key === key)) key = `${preferred}_${suffix++}`; return key; }
-function clean(value, max) { return String(value ?? '').replace(/\0/g, '').trim().slice(0, max); }
+function normalizeOutputs(source, acceptance, node) {
+  const policy = HUMAN_CONFIRM_KINDS.has(node.task_kind) ? 'human' : 'system_evidence';
+  const slots =
+    Array.isArray(source) && source.length
+      ? source.map((slot, index) => ({
+          key: clean(slot?.key || `output_${index + 1}`, 120),
+          kind: clean(slot?.kind || 'asset', 80),
+          required: slot?.required !== false,
+          asset_type: clean(slot?.asset_type || assetType(node), 120),
+          acceptance_criteria: unique(slot?.acceptance_criteria?.length ? slot.acceptance_criteria : acceptance),
+          confirmation_policy: clean(slot?.confirmation_policy || policy, 80)
+        }))
+      : [
+          {
+            key: `${node.task_kind || 'task'}_result`,
+            kind: 'asset',
+            required: true,
+            asset_type: assetType(node),
+            acceptance_criteria: [...acceptance],
+            confirmation_policy: policy
+          }
+        ];
+  const covered = new Set(slots.flatMap((slot) => slot.acceptance_criteria));
+  slots[0].acceptance_criteria = unique([
+    ...slots[0].acceptance_criteria,
+    ...acceptance.filter((criterion) => !covered.has(criterion))
+  ]);
+  return slots;
+}
+function validateDependencySelectors(task, dependency, bindings, errors) {
+  const outputs = (dependency?.output_slots || []).filter((slot) => slot.required !== false);
+  for (const binding of bindings) {
+    const exact = outputs.some((slot) => slot.key === binding.selector);
+    if (outputs.length > 1 && !exact)
+      errors.push(
+        issue('workflow_task_dependency_output_selector_required', task.id, {
+          dependency_id: dependency?.id,
+          slot_key: binding.key,
+          output_keys: outputs.map((slot) => slot.key)
+        })
+      );
+    else if (outputs.length && !exact && binding.selector !== 'required_outputs')
+      errors.push(
+        issue('workflow_task_dependency_output_selector_invalid', task.id, {
+          dependency_id: dependency?.id,
+          slot_key: binding.key,
+          selector: binding.selector
+        })
+      );
+  }
+}
+function inferredTags(node) {
+  return (
+    {
+      research: ['research_evidence'],
+      analysis: ['constraint_analysis'],
+      design: ['solution_decision'],
+      content: ['execution'],
+      code: ['execution'],
+      test: ['acceptance'],
+      review: ['acceptance'],
+      deploy: ['integration_delivery'],
+      integration: ['integration_delivery'],
+      manual: ['execution']
+    }[node.task_kind] || ['execution']
+  );
+}
+function assetType(node) {
+  return (
+    {
+      research: 'ResearchEvidenceAsset',
+      analysis: 'DecisionAsset',
+      design: 'DesignAsset',
+      code: 'CodeChangeAsset',
+      test: 'TestEvidenceAsset',
+      review: 'AcceptanceAsset',
+      deploy: 'DeliveryEvidenceAsset',
+      integration: 'DeliveryEvidenceAsset'
+    }[node.task_kind] || 'ResultAsset'
+  );
+}
+function validateBriefCoverage(brief, coverage, taskIds, errors) {
+  const required = requiredBriefKeys(brief),
+    normalized = normalizeCoverage(coverage);
+  for (const key of required) {
+    const ids = normalized[key] || [];
+    if (!ids.length) errors.push(issue('workflow_brief_coverage_missing', null, { brief_key: key }));
+    for (const taskId of ids)
+      if (!taskIds.has(taskId)) errors.push(issue('workflow_brief_coverage_task_invalid', taskId, { brief_key: key }));
+  }
+}
+function requiredBriefKeys(brief) {
+  const derived = brief?.content?.derived || brief?.content || {};
+  return [
+    ['features', derived.features],
+    ['acceptance_criteria', derived.acceptance_criteria],
+    ['milestones', derived.milestones],
+    ['risks', derived.risks]
+  ]
+    .filter(([, value]) => Array.isArray(value) && value.length)
+    .map(([key]) => key);
+}
+function normalizeCoverage(value) {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return {};
+  return Object.fromEntries(Object.entries(value).map(([key, ids]) => [key, unique(ids)]));
+}
+function deps(node) {
+  return unique(
+    Array.isArray(node?.dependency_ids)
+      ? node.dependency_ids
+      : (node?.dependencies || []).map((item) => (typeof item === 'string' ? item : item?.node_id))
+  );
+}
+function hasAny(values, options) {
+  return options.some((item) => values.has(item));
+}
+function issue(code, nodeId, detail = {}) {
+  return { code, ...(nodeId ? { node_id: nodeId } : {}), ...detail };
+}
+function unique(value) {
+  return [...new Set((Array.isArray(value) ? value : []).map((item) => clean(item, 2000)).filter(Boolean))];
+}
+function uniqueSlotKey(slots, preferred) {
+  let key = preferred,
+    suffix = 2;
+  while (slots.some((slot) => slot.key === key)) key = `${preferred}_${suffix++}`;
+  return key;
+}
+function clean(value, max) {
+  return String(value ?? '')
+    .replace(/\0/g, '')
+    .trim()
+    .slice(0, max);
+}

@@ -20,6 +20,28 @@ export async function createDigest({ res, params, body, send }) {
 }
 
 function traceDigest(state, { actorId, project, workspace, digest }) {
-  addTrace(state, 'digest.generated', { project_id: project.id, workspace_id: workspace.id, target_type: 'digest', target_id: digest.id, summary: `生成 Digest v${digest.version}` }, actorId);
-  addTrace(state, 'digest.confirmed', { project_id: project.id, workspace_id: workspace.id, target_type: 'digest', target_id: digest.id, summary: `确认 Digest v${digest.version}` }, actorId);
+  addTrace(
+    state,
+    'digest.generated',
+    {
+      project_id: project.id,
+      workspace_id: workspace.id,
+      target_type: 'digest',
+      target_id: digest.id,
+      summary: `生成 Digest v${digest.version}`
+    },
+    actorId
+  );
+  addTrace(
+    state,
+    'digest.confirmed',
+    {
+      project_id: project.id,
+      workspace_id: workspace.id,
+      target_type: 'digest',
+      target_id: digest.id,
+      summary: `确认 Digest v${digest.version}`
+    },
+    actorId
+  );
 }

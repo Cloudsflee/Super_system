@@ -8,11 +8,21 @@ import { UserInputCard } from '../features/assist/UserInputCard';
 import { BriefWorkspace } from '../features/projects/onboarding/BriefWorkspace';
 
 describe('Assist V1.7 interactions', () => {
-  afterEach(() => { cleanup(); vi.restoreAllMocks(); localStorage.clear(); sessionStorage.clear(); });
+  afterEach(() => {
+    cleanup();
+    vi.restoreAllMocks();
+    localStorage.clear();
+    sessionStorage.clear();
+  });
 
   it('keeps clarification policy and native Plan independently controlled', () => {
-    const onClarificationPolicy = vi.fn(), onPlanNext = vi.fn();
-    const view = render(<AssistComposer {...composerProps({ clarificationPolicy: 'ask', planNext: false, onClarificationPolicy, onPlanNext })} />);
+    const onClarificationPolicy = vi.fn(),
+      onPlanNext = vi.fn();
+    const view = render(
+      <AssistComposer
+        {...composerProps({ clarificationPolicy: 'ask', planNext: false, onClarificationPolicy, onPlanNext })}
+      />
+    );
     const clarification = screen.getByRole('group', { name: '澄清方式' });
     expect(within(clarification).getByRole('button', { name: '问我' })).toHaveAttribute('aria-pressed', 'true');
     expect(screen.getByRole('button', { name: '规划' })).toHaveAttribute('aria-pressed', 'false');
@@ -24,7 +34,11 @@ describe('Assist V1.7 interactions', () => {
     expect(onPlanNext).toHaveBeenCalledWith(true);
     expect(onClarificationPolicy).toHaveBeenCalledTimes(1);
 
-    view.rerender(<AssistComposer {...composerProps({ clarificationPolicy: 'auto_recommend', planNext: true, onClarificationPolicy, onPlanNext })} />);
+    view.rerender(
+      <AssistComposer
+        {...composerProps({ clarificationPolicy: 'auto_recommend', planNext: true, onClarificationPolicy, onPlanNext })}
+      />
+    );
     expect(within(clarification).getByRole('button', { name: '自动推荐' })).toHaveAttribute('aria-pressed', 'true');
     expect(screen.getByRole('button', { name: '规划' })).toHaveAttribute('aria-pressed', 'true');
   });
@@ -52,14 +66,40 @@ describe('Assist V1.7 interactions', () => {
 
   it('offers a targeted retry for revision conflicts instead of force undo', () => {
     const onRevise = vi.fn();
-    render(<OperationReceipt operation={{ ...operation(), status: 'conflicted', action: 'revise', operation_reference_id: 'operation-original', conflict: { before: '旧值', after: '拟修改值', current: '外部新值' } }} busy={false} onConfirm={vi.fn()} onUndo={vi.fn()} onRevise={onRevise} />);
+    render(
+      <OperationReceipt
+        operation={{
+          ...operation(),
+          status: 'conflicted',
+          action: 'revise',
+          operation_reference_id: 'operation-original',
+          conflict: { before: '旧值', after: '拟修改值', current: '外部新值' }
+        }}
+        busy={false}
+        onConfirm={vi.fn()}
+        onUndo={vi.fn()}
+        onRevise={onRevise}
+      />
+    );
     expect(screen.queryByRole('button', { name: '强制撤回' })).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: '基于当前值重新编辑' }));
     expect(onRevise).toHaveBeenCalledOnce();
   });
 
   it('switches the mobile Brief, outline, and workflow panes without changing data', () => {
-    const view = render(<BriefWorkspace brief={brief()} workflow={workflow()} templates={[]} busy={false} onBrief={vi.fn(async () => true)} onWorkflow={vi.fn(async () => true)} onSaveTemplate={vi.fn()} onApplyTemplate={vi.fn()} onSearchTemplates={vi.fn()} />);
+    const view = render(
+      <BriefWorkspace
+        brief={brief()}
+        workflow={workflow()}
+        templates={[]}
+        busy={false}
+        onBrief={vi.fn(async () => true)}
+        onWorkflow={vi.fn(async () => true)}
+        onSaveTemplate={vi.fn()}
+        onApplyTemplate={vi.fn()}
+        onSearchTemplates={vi.fn()}
+      />
+    );
     const tabs = screen.getByRole('navigation', { name: '简报工作区视图' });
     expect(within(tabs).getAllByRole('button')).toHaveLength(3);
     expect(within(tabs).getByRole('button', { name: '简报' })).toHaveAttribute('aria-pressed', 'true');
@@ -73,15 +113,45 @@ describe('Assist V1.7 interactions', () => {
   });
 
   it('preserves dirty Brief and workflow drafts across unrelated revisions', () => {
-    const firstBrief = briefWithSections(), firstWorkflow = workflowWithNodes();
-    const props = { templates: [], busy: false, onBrief: vi.fn(async () => true), onWorkflow: vi.fn(async () => true), onSaveTemplate: vi.fn(), onApplyTemplate: vi.fn(), onSearchTemplates: vi.fn() };
+    const firstBrief = briefWithSections(),
+      firstWorkflow = workflowWithNodes();
+    const props = {
+      templates: [],
+      busy: false,
+      onBrief: vi.fn(async () => true),
+      onWorkflow: vi.fn(async () => true),
+      onSaveTemplate: vi.fn(),
+      onApplyTemplate: vi.fn(),
+      onSearchTemplates: vi.fn()
+    };
     const view = render(<BriefWorkspace brief={firstBrief} workflow={firstWorkflow} {...props} />);
     fireEvent.change(screen.getByRole('textbox', { name: '简报标题' }), { target: { value: '本地未保存标题' } });
-    fireEvent.change(screen.getByRole('textbox', { name: '核心目标 格式化文本' }), { target: { value: '本地未保存目标' } });
-    fireEvent.change(screen.getByRole('textbox', { name: '确认简报 目标' }), { target: { value: '本地未保存节点目标' } });
+    fireEvent.change(screen.getByRole('textbox', { name: '核心目标 格式化文本' }), {
+      target: { value: '本地未保存目标' }
+    });
+    fireEvent.change(screen.getByRole('textbox', { name: '确认简报 目标' }), {
+      target: { value: '本地未保存节点目标' }
+    });
 
-    const nextBrief: ProjectBrief = { ...firstBrief, revision: firstBrief.revision + 1, content: { ...firstBrief.content, sections: firstBrief.content.sections.map((section) => section.id === 'features' && section.type === 'list' ? { ...section, items: ['服务端新功能'] } : { ...section }) } };
-    const nextWorkflow: WorkflowDraft = { ...firstWorkflow, revision: firstWorkflow.revision + 1, nodes: firstWorkflow.nodes.map((node) => node.id === 'node-2' ? { ...node, goal: '服务端新节点目标' } : { ...node }) };
+    const nextBrief: ProjectBrief = {
+      ...firstBrief,
+      revision: firstBrief.revision + 1,
+      content: {
+        ...firstBrief.content,
+        sections: firstBrief.content.sections.map((section) =>
+          section.id === 'features' && section.type === 'list'
+            ? { ...section, items: ['服务端新功能'] }
+            : { ...section }
+        )
+      }
+    };
+    const nextWorkflow: WorkflowDraft = {
+      ...firstWorkflow,
+      revision: firstWorkflow.revision + 1,
+      nodes: firstWorkflow.nodes.map((node) =>
+        node.id === 'node-2' ? { ...node, goal: '服务端新节点目标' } : { ...node }
+      )
+    };
     view.rerender(<BriefWorkspace brief={nextBrief} workflow={nextWorkflow} {...props} />);
 
     expect(screen.getByRole('textbox', { name: '简报标题' })).toHaveValue('本地未保存标题');
@@ -92,17 +162,47 @@ describe('Assist V1.7 interactions', () => {
   });
 
   it('keeps local editor values when a revision-conflicted save fails', async () => {
-    const firstBrief = briefWithSections(), firstWorkflow = workflowWithNodes();
-    const onBrief = vi.fn(async () => false), onWorkflow = vi.fn(async () => false);
-    const props = { templates: [], busy: false, onBrief, onWorkflow, onSaveTemplate: vi.fn(), onApplyTemplate: vi.fn(), onSearchTemplates: vi.fn() };
+    const firstBrief = briefWithSections(),
+      firstWorkflow = workflowWithNodes();
+    const onBrief = vi.fn(async () => false),
+      onWorkflow = vi.fn(async () => false);
+    const props = {
+      templates: [],
+      busy: false,
+      onBrief,
+      onWorkflow,
+      onSaveTemplate: vi.fn(),
+      onApplyTemplate: vi.fn(),
+      onSearchTemplates: vi.fn()
+    };
     const view = render(<BriefWorkspace brief={firstBrief} workflow={firstWorkflow} {...props} />);
-    fireEvent.change(screen.getByRole('textbox', { name: '核心目标 格式化文本' }), { target: { value: '冲突后仍保留的目标' } });
+    fireEvent.change(screen.getByRole('textbox', { name: '核心目标 格式化文本' }), {
+      target: { value: '冲突后仍保留的目标' }
+    });
     fireEvent.click(screen.getByRole('button', { name: '保存 核心目标' }));
-    fireEvent.change(screen.getByRole('textbox', { name: '确认简报 目标' }), { target: { value: '冲突后仍保留的节点目标' } });
+    fireEvent.change(screen.getByRole('textbox', { name: '确认简报 目标' }), {
+      target: { value: '冲突后仍保留的节点目标' }
+    });
     fireEvent.blur(screen.getByRole('textbox', { name: '确认简报 目标' }));
-    await waitFor(() => { expect(onBrief).toHaveBeenCalledOnce(); expect(onWorkflow).toHaveBeenCalledOnce(); });
-    const serverBrief = { ...firstBrief, revision: firstBrief.revision + 1, content: { ...firstBrief.content, sections: firstBrief.content.sections.map((section) => section.id === 'goal' && section.type === 'markdown' ? { ...section, markdown: '服务端冲突目标' } : section) } };
-    const serverWorkflow = { ...firstWorkflow, revision: firstWorkflow.revision + 1, nodes: firstWorkflow.nodes.map((node) => node.id === 'node-1' ? { ...node, goal: '服务端冲突节点目标' } : node) };
+    await waitFor(() => {
+      expect(onBrief).toHaveBeenCalledOnce();
+      expect(onWorkflow).toHaveBeenCalledOnce();
+    });
+    const serverBrief = {
+      ...firstBrief,
+      revision: firstBrief.revision + 1,
+      content: {
+        ...firstBrief.content,
+        sections: firstBrief.content.sections.map((section) =>
+          section.id === 'goal' && section.type === 'markdown' ? { ...section, markdown: '服务端冲突目标' } : section
+        )
+      }
+    };
+    const serverWorkflow = {
+      ...firstWorkflow,
+      revision: firstWorkflow.revision + 1,
+      nodes: firstWorkflow.nodes.map((node) => (node.id === 'node-1' ? { ...node, goal: '服务端冲突节点目标' } : node))
+    };
     view.rerender(<BriefWorkspace brief={serverBrief} workflow={serverWorkflow} {...props} />);
     expect(screen.getByRole('textbox', { name: '核心目标 格式化文本' })).toHaveValue('冲突后仍保留的目标');
     expect(screen.getByRole('button', { name: '保存 核心目标' })).toBeInTheDocument();
@@ -111,35 +211,203 @@ describe('Assist V1.7 interactions', () => {
 });
 
 function session(): AssistV3Session {
-  return { id: 'session-1', version: 3, project_id: 'project-1', scope_type: 'project', scope_id: 'project-1', title: 'V1.7', status: 'idle', lifecycle: 'active', pinned: false, clarification_policy: 'ask', created_at: new Date(0).toISOString(), updated_at: new Date(0).toISOString() };
+  return {
+    id: 'session-1',
+    version: 3,
+    project_id: 'project-1',
+    scope_type: 'project',
+    scope_id: 'project-1',
+    title: 'V1.7',
+    status: 'idle',
+    lifecycle: 'active',
+    pinned: false,
+    clarification_policy: 'ask',
+    created_at: new Date(0).toISOString(),
+    updated_at: new Date(0).toISOString()
+  };
 }
 
-function composerProps(overrides: Partial<ComponentProps<typeof AssistComposer>> = {}): ComponentProps<typeof AssistComposer> {
-  return { session: session(), profileName: 'Profile', catalog: { profile_id: 'profile-1', default_model: 'gpt-v17', source: 'test', models: [{ id: 'gpt-v17', model: 'gpt-v17', displayName: 'gpt-v17', description: 'test', hidden: false, isDefault: true, defaultReasoningEffort: 'high', supportedReasoningEfforts: [{ reasoningEffort: 'high', description: 'high' }] }] }, configurations: [], model: 'gpt-v17', reasoning: 'high', configurationId: '', clarificationPolicy: 'ask', planNext: false, prompt: 'message', attachments: [], selectedAttachments: [], activeTurn: null, busy: false, writeModeUnavailableReason: null, onModel: vi.fn(), onReasoning: vi.fn(), onConfiguration: vi.fn(), onClarificationPolicy: vi.fn(), onPlanNext: vi.fn(), onPrompt: vi.fn(), onAttachments: vi.fn(), onAttachmentCreated: vi.fn(), onAttachmentDeleted: vi.fn(), onSubmit: vi.fn(), onStop: vi.fn(), onTerminal: vi.fn(), onCommand: vi.fn(), onSaveConfiguration: vi.fn(async () => true), onError: vi.fn(), ...overrides };
+function composerProps(
+  overrides: Partial<ComponentProps<typeof AssistComposer>> = {}
+): ComponentProps<typeof AssistComposer> {
+  return {
+    session: session(),
+    profileName: 'Profile',
+    catalog: {
+      profile_id: 'profile-1',
+      default_model: 'gpt-v17',
+      source: 'test',
+      models: [
+        {
+          id: 'gpt-v17',
+          model: 'gpt-v17',
+          displayName: 'gpt-v17',
+          description: 'test',
+          hidden: false,
+          isDefault: true,
+          defaultReasoningEffort: 'high',
+          supportedReasoningEfforts: [{ reasoningEffort: 'high', description: 'high' }]
+        }
+      ]
+    },
+    configurations: [],
+    model: 'gpt-v17',
+    reasoning: 'high',
+    configurationId: '',
+    clarificationPolicy: 'ask',
+    planNext: false,
+    prompt: 'message',
+    attachments: [],
+    selectedAttachments: [],
+    activeTurn: null,
+    busy: false,
+    writeModeUnavailableReason: null,
+    onModel: vi.fn(),
+    onReasoning: vi.fn(),
+    onConfiguration: vi.fn(),
+    onClarificationPolicy: vi.fn(),
+    onPlanNext: vi.fn(),
+    onPrompt: vi.fn(),
+    onAttachments: vi.fn(),
+    onAttachmentCreated: vi.fn(),
+    onAttachmentDeleted: vi.fn(),
+    onSubmit: vi.fn(),
+    onStop: vi.fn(),
+    onTerminal: vi.fn(),
+    onCommand: vi.fn(),
+    onSaveConfiguration: vi.fn(async () => true),
+    onError: vi.fn(),
+    ...overrides
+  };
 }
 
 function userInput(): RuntimeUserInput {
-  return { id: 'input-1', session_id: 'session-1', turn_id: 'turn-1', item_id: 'item-1', status: 'pending', contains_secret: false, questions: [{ id: 'scope', header: '范围', question: '采用哪个范围？', isOther: true, options: [{ label: '安全范围', description: '只做可逆改动', recommended: true }, { label: '完整范围', description: '一次完成全部改动' }] }], created_at: new Date(0).toISOString(), updated_at: new Date(0).toISOString() };
+  return {
+    id: 'input-1',
+    session_id: 'session-1',
+    turn_id: 'turn-1',
+    item_id: 'item-1',
+    status: 'pending',
+    contains_secret: false,
+    questions: [
+      {
+        id: 'scope',
+        header: '范围',
+        question: '采用哪个范围？',
+        isOther: true,
+        options: [
+          { label: '安全范围', description: '只做可逆改动', recommended: true },
+          { label: '完整范围', description: '一次完成全部改动' }
+        ]
+      }
+    ],
+    created_at: new Date(0).toISOString(),
+    updated_at: new Date(0).toISOString()
+  };
 }
 
 function operation(): AssistOperation {
-  return { id: 'operation-1', session_id: 'session-1', turn_id: 'turn-1', project_id: 'project-1', tool: 'aiws_page.set_field', capability_id: 'surface.field.set', action: 'set', target_id: 'brief.goal', target_label: '核心目标', summary: '已更新 · 核心目标', route: '/projects/project-1/onboarding', surface_revision: 'r1', status: 'committed', risk: 'low', revision: 2, forced: false, before_value: '旧目标', after_value: '新目标', created_at: new Date(0).toISOString(), updated_at: new Date(0).toISOString() };
+  return {
+    id: 'operation-1',
+    session_id: 'session-1',
+    turn_id: 'turn-1',
+    project_id: 'project-1',
+    tool: 'aiws_page.set_field',
+    capability_id: 'surface.field.set',
+    action: 'set',
+    target_id: 'brief.goal',
+    target_label: '核心目标',
+    summary: '已更新 · 核心目标',
+    route: '/projects/project-1/onboarding',
+    surface_revision: 'r1',
+    status: 'committed',
+    risk: 'low',
+    revision: 2,
+    forced: false,
+    before_value: '旧目标',
+    after_value: '新目标',
+    created_at: new Date(0).toISOString(),
+    updated_at: new Date(0).toISOString()
+  };
 }
 
 function brief(): ProjectBrief {
-  return { id: 'brief-1', project_id: 'project-1', version: 1, revision: 3, status: 'draft', source: 'assist', content: { schema_version: 2, title: '项目简报', summary: '交付 V1.7', sections: [{ id: 'goal', semantic_key: 'goal', title: '核心目标', type: 'markdown', markdown: '交付 V1.7' }], goal: '交付 V1.7', users: [], scope: { in: ['Assist'], out: [] }, features: ['Assist'], constraints: [], milestones: [], acceptance_criteria: ['通过测试'], risks: [], open_questions: [] }, created_at: new Date(0).toISOString() };
+  return {
+    id: 'brief-1',
+    project_id: 'project-1',
+    version: 1,
+    revision: 3,
+    status: 'draft',
+    source: 'assist',
+    content: {
+      schema_version: 2,
+      title: '项目简报',
+      summary: '交付 V1.7',
+      sections: [{ id: 'goal', semantic_key: 'goal', title: '核心目标', type: 'markdown', markdown: '交付 V1.7' }],
+      goal: '交付 V1.7',
+      users: [],
+      scope: { in: ['Assist'], out: [] },
+      features: ['Assist'],
+      constraints: [],
+      milestones: [],
+      acceptance_criteria: ['通过测试'],
+      risks: [],
+      open_questions: []
+    },
+    created_at: new Date(0).toISOString()
+  };
 }
 
 function workflow(): WorkflowDraft {
-  return { id: 'draft-1', project_id: 'project-1', revision: 2, source_brief_id: 'brief-1', source_brief_revision: 3, nodes: [{ id: 'node-1', type: 'goal_definition', title: '确认简报', goal: '确认目标', dependency_ids: [], position: { x: 80, y: 120 }, order: 0 }] };
+  return {
+    id: 'draft-1',
+    project_id: 'project-1',
+    revision: 2,
+    source_brief_id: 'brief-1',
+    source_brief_revision: 3,
+    nodes: [
+      {
+        id: 'node-1',
+        type: 'goal_definition',
+        title: '确认简报',
+        goal: '确认目标',
+        dependency_ids: [],
+        position: { x: 80, y: 120 },
+        order: 0
+      }
+    ]
+  };
 }
 
 function briefWithSections(): ProjectBrief {
   const value = brief();
-  return { ...value, content: { ...value.content, sections: [...value.content.sections, { id: 'features', semantic_key: 'features', title: '功能', type: 'list', items: ['原功能'] }] } };
+  return {
+    ...value,
+    content: {
+      ...value.content,
+      sections: [
+        ...value.content.sections,
+        { id: 'features', semantic_key: 'features', title: '功能', type: 'list', items: ['原功能'] }
+      ]
+    }
+  };
 }
 
 function workflowWithNodes(): WorkflowDraft {
   const value = workflow();
-  return { ...value, nodes: [...value.nodes, { id: 'node-2', type: 'execution', title: '实现功能', goal: '原节点目标', dependency_ids: ['node-1'], position: { x: 390, y: 120 }, order: 1 }] };
+  return {
+    ...value,
+    nodes: [
+      ...value.nodes,
+      {
+        id: 'node-2',
+        type: 'execution',
+        title: '实现功能',
+        goal: '原节点目标',
+        dependency_ids: ['node-1'],
+        position: { x: 390, y: 120 },
+        order: 1
+      }
+    ]
+  };
 }

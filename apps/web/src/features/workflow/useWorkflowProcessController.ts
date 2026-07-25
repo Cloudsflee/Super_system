@@ -7,13 +7,19 @@ export type WorkflowProcessLayout = 'accordion' | 'master-detail';
 export type TransientTask = { taskId: string; anchor: HTMLElement };
 
 export function useWorkflowProcessLayout(containerRef: RefObject<HTMLElement | null>) {
-  const [measurement, setMeasurement] = useState<{ width: number; layout: WorkflowProcessLayout }>({ width: 0, layout: 'accordion' });
+  const [measurement, setMeasurement] = useState<{ width: number; layout: WorkflowProcessLayout }>({
+    width: 0,
+    layout: 'accordion'
+  });
   useLayoutEffect(() => {
     const container = containerRef.current;
     if (!container) return;
     const commit = (width: number) => {
-      const next = { width, layout: width >= MASTER_DETAIL_MIN_WIDTH ? 'master-detail' as const : 'accordion' as const };
-      setMeasurement((current) => current.width === next.width && current.layout === next.layout ? current : next);
+      const next = {
+        width,
+        layout: width >= MASTER_DETAIL_MIN_WIDTH ? ('master-detail' as const) : ('accordion' as const)
+      };
+      setMeasurement((current) => (current.width === next.width && current.layout === next.layout ? current : next));
     };
     const measure = () => commit(container.getBoundingClientRect().width || container.clientWidth || 0);
     measure();
@@ -31,7 +37,11 @@ export function useWorkflowProcessLayout(containerRef: RefObject<HTMLElement | n
   return measurement;
 }
 
-export function useWorkflowTaskSelection(tasks: WorkflowTaskViewModel[], layout: WorkflowProcessLayout, resetKey: string) {
+export function useWorkflowTaskSelection(
+  tasks: WorkflowTaskViewModel[],
+  layout: WorkflowProcessLayout,
+  resetKey: string
+) {
   const [pinnedTaskId, setPinnedTaskId] = useState<string | null>(null);
   const [transient, setTransient] = useState<TransientTask | null>(null);
   const openTimer = useRef<number | null>(null);
@@ -47,17 +57,26 @@ export function useWorkflowTaskSelection(tasks: WorkflowTaskViewModel[], layout:
     if (timer.current !== null) window.clearTimeout(timer.current);
     timer.current = null;
   };
-  const clearTimers = () => { clearTimer(openTimer); clearTimer(closeTimer); };
+  const clearTimers = () => {
+    clearTimer(openTimer);
+    clearTimer(closeTimer);
+  };
   const beginTransient = (taskId: string, anchor: HTMLElement, delay: number) => {
     clearTimers();
-    const commit = () => { openTimer.current = null; setTransient({ taskId, anchor }); };
+    const commit = () => {
+      openTimer.current = null;
+      setTransient({ taskId, anchor });
+    };
     if (delay > 0) openTimer.current = window.setTimeout(commit, delay);
     else commit();
   };
   const restoreSelection = (delay: number) => {
     clearTimer(openTimer);
     clearTimer(closeTimer);
-    const commit = () => { closeTimer.current = null; setTransient(null); };
+    const commit = () => {
+      closeTimer.current = null;
+      setTransient(null);
+    };
     if (delay > 0) closeTimer.current = window.setTimeout(commit, delay);
     else commit();
   };
@@ -69,7 +88,7 @@ export function useWorkflowTaskSelection(tasks: WorkflowTaskViewModel[], layout:
   };
   const togglePin = (taskId: string) => {
     clearTimers();
-    setPinnedTaskId((current) => current === taskId ? null : taskId);
+    setPinnedTaskId((current) => (current === taskId ? null : taskId));
     setTransient(null);
   };
 
@@ -77,8 +96,15 @@ export function useWorkflowTaskSelection(tasks: WorkflowTaskViewModel[], layout:
     if (pinnedTaskId && !taskIds.has(pinnedTaskId)) setPinnedTaskId(null);
     if (transient && !taskIds.has(transient.taskId)) setTransient(null);
   }, [pinnedTaskId, taskIdKey, taskIds, transient]);
-  useEffect(() => { clearTimers(); setPinnedTaskId(null); setTransient(null); }, [resetKey]);
-  useEffect(() => { clearTimers(); setTransient(null); }, [layout]);
+  useEffect(() => {
+    clearTimers();
+    setPinnedTaskId(null);
+    setTransient(null);
+  }, [resetKey]);
+  useEffect(() => {
+    clearTimers();
+    setTransient(null);
+  }, [layout]);
   useEffect(() => () => clearTimers(), []);
 
   return {

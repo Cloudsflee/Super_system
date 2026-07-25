@@ -10,17 +10,29 @@ export async function issueCodexMcpAccess(projectId, profile, { ttlSeconds = 360
   const hostUrl = String(process.env.AIWS_INTERNAL_MCP_URL || `http://127.0.0.1:${PORT}/api/mcp`);
   const url = profile?.kind === 'docker' ? containerizeLoopbackUrl(hostUrl) : hostUrl;
   const configArgs = [
-    '-c', `mcp_servers.${AIWS_BUILTIN_MCP_NAME}.url=${JSON.stringify(url)}`,
-    '-c', `mcp_servers.${AIWS_BUILTIN_MCP_NAME}.bearer_token_env_var=${JSON.stringify('AIWS_MCP_TOKEN')}`
+    '-c',
+    `mcp_servers.${AIWS_BUILTIN_MCP_NAME}.url=${JSON.stringify(url)}`,
+    '-c',
+    `mcp_servers.${AIWS_BUILTIN_MCP_NAME}.bearer_token_env_var=${JSON.stringify('AIWS_MCP_TOKEN')}`
   ];
   let released = false;
   return {
-    client_id: issued.client.id, url, configArgs,
+    client_id: issued.client.id,
+    url,
+    configArgs,
     env: { AIWS_MCP_URL: url, AIWS_MCP_TOKEN: issued.token },
     containerEnv: { AIWS_MCP_URL: url, AIWS_MCP_TOKEN: null },
-    release: async () => { if (released) return; released = true; await revokeMcpClient(issued.client.id, null).catch(() => undefined); }
+    release: async () => {
+      if (released) return;
+      released = true;
+      await revokeMcpClient(issued.client.id, null).catch(() => undefined);
+    }
   };
 }
 
-export function withCodexMcpEnvironment(env, access) { return access ? { ...env, ...access.env } : env; }
-export function codexMcpConfigArgs(access) { return access?.configArgs || []; }
+export function withCodexMcpEnvironment(env, access) {
+  return access ? { ...env, ...access.env } : env;
+}
+export function codexMcpConfigArgs(access) {
+  return access?.configArgs || [];
+}

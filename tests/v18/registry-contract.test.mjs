@@ -36,23 +36,36 @@ for (const operation of registry) {
   assert.equal(typeof operation.handler, 'function');
   assert.equal(MCP_MAPPINGS.includes(operation.mapping), true);
   assert.equal(typeof operation.callable, 'boolean');
-  for (const scope of operation.required_scopes) assert.equal(knownScopes.has(scope), true, `${operation.operation_id}: ${scope}`);
-  if (operation.mapping === 'resource' || operation.mapping === 'async_adapter') assert.ok(operation.mcp_binding.resource_uri_template);
-  if (operation.method !== 'GET' && operation.mapping === 'resource') assert.fail(`${operation.operation_id} maps a write as resource`);
+  for (const scope of operation.required_scopes)
+    assert.equal(knownScopes.has(scope), true, `${operation.operation_id}: ${scope}`);
+  if (operation.mapping === 'resource' || operation.mapping === 'async_adapter')
+    assert.ok(operation.mcp_binding.resource_uri_template);
+  if (operation.method !== 'GET' && operation.mapping === 'resource')
+    assert.fail(`${operation.operation_id} maps a write as resource`);
 }
 
 const transports = registry.filter((item) => item.pattern === '/mcp');
 assert.deepEqual(transports.map((item) => item.method).sort(), ['DELETE', 'GET', 'POST']);
-assert.equal(transports.every((item) => item.mapping === 'external_callback' && !item.callable && item.protocol_reason === 'mcp_transport_endpoint'), true);
+assert.equal(
+  transports.every(
+    (item) =>
+      item.mapping === 'external_callback' && !item.callable && item.protocol_reason === 'mcp_transport_endpoint'
+  ),
+  true
+);
 assert.equal(registry.find((item) => item.pattern === '/github/webhook').mapping, 'external_callback');
-assert.equal(registry.filter((item) => item.mapping === 'async_adapter').every((item) => item.pattern.endsWith('/events')), true);
+assert.equal(
+  registry.filter((item) => item.mapping === 'async_adapter').every((item) => item.pattern.endsWith('/events')),
+  true
+);
 
 const specialIds = new Set();
 for (const capability of MCP_SPECIAL_CAPABILITIES) {
   assert.equal(specialIds.has(capability.operation_id), false, capability.operation_id);
   specialIds.add(capability.operation_id);
   assert.equal(MCP_MAPPINGS.includes(capability.mapping), true);
-  for (const scope of capability.required_scopes) assert.equal(knownScopes.has(scope), true, `${capability.operation_id}: ${scope}`);
+  for (const scope of capability.required_scopes)
+    assert.equal(knownScopes.has(scope), true, `${capability.operation_id}: ${scope}`);
 }
 for (const item of coverage.frontend_only) assert.equal(specialIds.has(`aiws.frontend.${item}`), true, item);
 for (const websocket of coverage.websockets) {
@@ -60,4 +73,6 @@ for (const websocket of coverage.websockets) {
   else assert.equal(specialIds.has('aiws.external.host_bridge_ws'), true);
 }
 
-console.log(`V1.8 registry contract passed (${baselineRouteCount} baseline/${registry.length} current routes, ${MCP_SPECIAL_CAPABILITIES.length} special capabilities)`);
+console.log(
+  `V1.8 registry contract passed (${baselineRouteCount} baseline/${registry.length} current routes, ${MCP_SPECIAL_CAPABILITIES.length} special capabilities)`
+);

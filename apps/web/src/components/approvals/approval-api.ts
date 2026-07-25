@@ -2,7 +2,11 @@ import { useQuery } from '@tanstack/react-query';
 import { api, ApiError, json } from '../../api/client';
 import { keys } from '../../api/queries';
 import type {
-  ApprovalDecision, ApprovalDecisionResult, ApprovalItem, ApprovalItemType, ChangeProposal
+  ApprovalDecision,
+  ApprovalDecisionResult,
+  ApprovalItem,
+  ApprovalItemType,
+  ChangeProposal
 } from '../../api/types';
 
 type ApprovalListResponse = ApprovalItem[] | { items: ApprovalItem[] };
@@ -14,7 +18,8 @@ export function useApprovals(projectId?: string, enabled = true) {
     enabled,
     staleTime: 0,
     refetchOnMount: 'always',
-    refetchInterval: (query) => query.state.data?.some((item) => item.attention_state === 'interrupting') ? 2_000 : false
+    refetchInterval: (query) =>
+      query.state.data?.some((item) => item.attention_state === 'interrupting') ? 2_000 : false
   });
 }
 
@@ -30,29 +35,56 @@ export async function fetchApprovals(projectId?: string) {
   }
 }
 
-export async function decideApproval(item: ApprovalItem, decision: ApprovalDecision, reason?: string): Promise<ApprovalDecisionResult> {
+export async function decideApproval(
+  item: ApprovalItem,
+  decision: ApprovalDecision,
+  reason?: string
+): Promise<ApprovalDecisionResult> {
   try {
-    return await api<ApprovalDecisionResult>(`/approvals/${encodeURIComponent(item.type)}/${encodeURIComponent(item.id)}/decision`, json('POST', {
-      decision, revision: item.revision, target_hash: item.target_hash, ...(reason ? { reason } : {})
-    }, decision === 'approve_apply' ? '批准并应用变更' : decision === 'reject' ? '拒绝审批' : '暂缓审批'));
+    return await api<ApprovalDecisionResult>(
+      `/approvals/${encodeURIComponent(item.type)}/${encodeURIComponent(item.id)}/decision`,
+      json(
+        'POST',
+        {
+          decision,
+          revision: item.revision,
+          target_hash: item.target_hash,
+          ...(reason ? { reason } : {})
+        },
+        decision === 'approve_apply' ? '批准并应用变更' : decision === 'reject' ? '拒绝审批' : '暂缓审批'
+      )
+    );
   } catch (error) {
     if (!(error instanceof ApiError) || error.status !== 404 || item.type !== 'change_proposal') throw error;
     return legacyProposalDecision(item, decision, reason);
   }
 }
 
-async function legacyProposalDecision(item: ApprovalItem, decision: ApprovalDecision, reason?: string): Promise<ApprovalDecisionResult> {
+async function legacyProposalDecision(
+  item: ApprovalItem,
+  decision: ApprovalDecision,
+  reason?: string
+): Promise<ApprovalDecisionResult> {
   if (decision === 'approve_apply') {
     await api<ChangeProposal>(`/change-proposals/${item.id}/approve`, json('POST', undefined, '批准变更提案'));
-    const result = await api<{ proposal: ChangeProposal; applied?: Record<string, unknown> }>(`/change-proposals/${item.id}/apply`, json('POST', undefined, '应用变更提案'));
+    const result = await api<{ proposal: ChangeProposal; applied?: Record<string, unknown> }>(
+      `/change-proposals/${item.id}/apply`,
+      json('POST', undefined, '应用变更提案')
+    );
     return { item: proposalApproval(result.proposal), proposal: result.proposal, applied: result.applied };
   }
   if (decision === 'reject') {
-    const proposal = await api<ChangeProposal>(`/change-proposals/${item.id}/reject`, json('POST', { reason: reason || '用户拒绝' }, '拒绝变更提案'));
+    const proposal = await api<ChangeProposal>(
+      `/change-proposals/${item.id}/reject`,
+      json('POST', { reason: reason || '用户拒绝' }, '拒绝变更提案')
+    );
     return { item: proposalApproval(proposal), proposal };
   }
   try {
-    const proposal = await api<ChangeProposal>(`/change-proposals/${item.id}/defer`, json('POST', { revision: item.revision, target_hash: item.target_hash }, '暂缓变更提案'));
+    const proposal = await api<ChangeProposal>(
+      `/change-proposals/${item.id}/defer`,
+      json('POST', { revision: item.revision, target_hash: item.target_hash }, '暂缓变更提案')
+    );
     return { item: proposalApproval(proposal), proposal };
   } catch (error) {
     // V1.2 compatibility: deferral had no persisted route. Keep the item queued locally.
@@ -70,7 +102,8 @@ export function proposalApproval(proposal: ChangeProposal): ApprovalItem {
     title: proposal.title,
     summary: proposal.summary,
     status: proposal.status,
-    attention_state: proposal.attention_state || (['applied', 'rejected'].includes(proposal.status) ? 'resolved' : 'queued'),
+    attention_state:
+      proposal.attention_state || (['applied', 'rejected'].includes(proposal.status) ? 'resolved' : 'queued'),
     revision: Number(proposal.revision || 1),
     target_hash: proposal.target_hash || '',
     created_at: proposal.created_at,

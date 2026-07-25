@@ -1,4 +1,10 @@
-export { buildMemoryItems, buildMemoryManifest, buildSufficiencyCheck, findMemoryConflicts, memoryScore } from '../../shared/index.mjs';
+export {
+  buildMemoryItems,
+  buildMemoryManifest,
+  buildSufficiencyCheck,
+  findMemoryConflicts,
+  memoryScore
+} from '../../shared/index.mjs';
 
 export const authorityOrder = [
   'current_user_input',

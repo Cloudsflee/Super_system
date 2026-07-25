@@ -16,12 +16,21 @@ export function loadMcpGatewaySecret(env = process.env) {
   return secret;
 }
 
-export function signMcpGatewayRequest({ secret, method, url, authorization, timestamp = Date.now(), nonce = randomBytes(18).toString('base64url') }) {
+export function signMcpGatewayRequest({
+  secret,
+  method,
+  url,
+  authorization,
+  timestamp = Date.now(),
+  nonce = randomBytes(18).toString('base64url')
+}) {
   assertSecret(secret);
   const normalizedTimestamp = String(Math.trunc(Number(timestamp)));
   if (!/^\d{13}$/.test(normalizedTimestamp)) throw new Error('mcp_gateway_timestamp_invalid');
   if (!/^[A-Za-z0-9_-]{16,80}$/.test(String(nonce))) throw new Error('mcp_gateway_nonce_invalid');
-  const signature = createHmac('sha256', secret).update(signaturePayload({ method, url, authorization, timestamp: normalizedTimestamp, nonce })).digest('hex');
+  const signature = createHmac('sha256', secret)
+    .update(signaturePayload({ method, url, authorization, timestamp: normalizedTimestamp, nonce }))
+    .digest('hex');
   return {
     [MCP_GATEWAY_HEADERS.timestamp]: normalizedTimestamp,
     [MCP_GATEWAY_HEADERS.nonce]: String(nonce),
@@ -29,27 +38,54 @@ export function signMcpGatewayRequest({ secret, method, url, authorization, time
   };
 }
 
-export function verifyMcpGatewayRequest({ secret, method, url, authorization, headers, now = Date.now(), maxSkewMs = 30_000, seenNonces = null }) {
-  try { assertSecret(secret); } catch { return { ok: false, error: 'gateway_secret_invalid' }; }
+export function verifyMcpGatewayRequest({
+  secret,
+  method,
+  url,
+  authorization,
+  headers,
+  now = Date.now(),
+  maxSkewMs = 30_000,
+  seenNonces = null
+}) {
+  try {
+    assertSecret(secret);
+  } catch {
+    return { ok: false, error: 'gateway_secret_invalid' };
+  }
   const timestamp = header(headers, MCP_GATEWAY_HEADERS.timestamp);
   const nonce = header(headers, MCP_GATEWAY_HEADERS.nonce);
   const supplied = header(headers, MCP_GATEWAY_HEADERS.signature);
-  if (!/^\d{13}$/.test(timestamp) || !/^[A-Za-z0-9_-]{16,80}$/.test(nonce) || !/^v1=[a-f0-9]{64}$/.test(supplied)) return { ok: false, error: 'gateway_signature_missing' };
+  if (!/^\d{13}$/.test(timestamp) || !/^[A-Za-z0-9_-]{16,80}$/.test(nonce) || !/^v1=[a-f0-9]{64}$/.test(supplied))
+    return { ok: false, error: 'gateway_signature_missing' };
   const issuedAt = Number(timestamp);
   if (Math.abs(Number(now) - issuedAt) > maxSkewMs) return { ok: false, error: 'gateway_signature_expired' };
   pruneNonces(seenNonces, Number(now) - maxSkewMs);
   if (seenNonces?.has(nonce)) return { ok: false, error: 'gateway_signature_replayed' };
-  const expected = signMcpGatewayRequest({ secret, method, url, authorization, timestamp, nonce })[MCP_GATEWAY_HEADERS.signature];
-  const expectedBytes = Buffer.from(expected), suppliedBytes = Buffer.from(supplied);
-  if (expectedBytes.length !== suppliedBytes.length || !timingSafeEqual(expectedBytes, suppliedBytes)) return { ok: false, error: 'gateway_signature_invalid' };
+  const expected = signMcpGatewayRequest({ secret, method, url, authorization, timestamp, nonce })[
+    MCP_GATEWAY_HEADERS.signature
+  ];
+  const expectedBytes = Buffer.from(expected),
+    suppliedBytes = Buffer.from(supplied);
+  if (expectedBytes.length !== suppliedBytes.length || !timingSafeEqual(expectedBytes, suppliedBytes))
+    return { ok: false, error: 'gateway_signature_invalid' };
   seenNonces?.set(nonce, issuedAt);
   return { ok: true, issued_at: issuedAt, nonce };
 }
 
 function signaturePayload({ method, url, authorization, timestamp, nonce }) {
   const target = new URL(String(url || '/'), 'http://aiws.internal');
-  const authHash = createHash('sha256').update(String(authorization || '')).digest('hex');
-  return ['aiws-mcp-gateway-v1', timestamp, nonce, String(method || 'GET').toUpperCase(), `${target.pathname}${target.search}`, authHash].join('\n');
+  const authHash = createHash('sha256')
+    .update(String(authorization || ''))
+    .digest('hex');
+  return [
+    'aiws-mcp-gateway-v1',
+    timestamp,
+    nonce,
+    String(method || 'GET').toUpperCase(),
+    `${target.pathname}${target.search}`,
+    authHash
+  ].join('\n');
 }
 
 function assertSecret(value) {

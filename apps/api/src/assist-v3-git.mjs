@@ -13,18 +13,25 @@ export function reviewSnapshotForPath(repoPath, baseCommit) {
   const status = gitResult(repoPath, ['status', '--porcelain=v1', '-z', '--untracked-files=all'], 15_000);
   const workingFiles = parsePorcelainZ(status.stdout);
   const committedNames = gitResult(repoPath, ['diff', '--name-status', '-z', baseCommit, 'HEAD', '--'], 15_000, true);
-  if (!committedNames.ok) throw new HttpError(409, { error: 'review_file_list_failed', detail: detail(committedNames) });
+  if (!committedNames.ok)
+    throw new HttpError(409, { error: 'review_file_list_failed', detail: detail(committedNames) });
   const changedFiles = mergeChangedFiles(parseNameStatusZ(committedNames.stdout), workingFiles);
   const tracked = gitResult(repoPath, ['diff', '--binary', '--full-index', baseCommit, '--'], 30_000, true);
   if (!tracked.ok) throw new HttpError(409, { error: 'review_diff_failed', detail: detail(tracked) });
   let diffText = tracked.stdout;
   for (const file of changedFiles.filter((item) => item.status === 'untracked')) {
     assertRelativeGitPath(file.path);
-    const untracked = gitResult(repoPath, ['diff', '--no-index', '--binary', '--', '/dev/null', file.path], 30_000, true);
+    const untracked = gitResult(
+      repoPath,
+      ['diff', '--no-index', '--binary', '--', '/dev/null', file.path],
+      30_000,
+      true
+    );
     if (!untracked.stdout) throw new HttpError(409, { error: 'review_untracked_diff_failed', path: file.path });
     diffText += `${diffText && !diffText.endsWith('\n') ? '\n' : ''}${untracked.stdout}`;
   }
-  if (Buffer.byteLength(diffText, 'utf8') > MAX_DIFF_BYTES) throw new HttpError(413, { error: 'review_diff_too_large', max_bytes: MAX_DIFF_BYTES });
+  if (Buffer.byteLength(diffText, 'utf8') > MAX_DIFF_BYTES)
+    throw new HttpError(413, { error: 'review_diff_too_large', max_bytes: MAX_DIFF_BYTES });
   const headCommit = gitResult(repoPath, ['rev-parse', 'HEAD'], 5_000).stdout.trim();
   const targetHash = hashString(JSON.stringify({ baseCommit, headCommit, files: changedFiles, diff: diffText }));
   return { changedFiles, diff: diffText, targetHash, headCommit };
@@ -32,54 +39,110 @@ export function reviewSnapshotForPath(repoPath, baseCommit) {
 
 export async function managedRepository(project) {
   if (!project || project.deleted_at) throw new HttpError(404, { error: 'project_not_found' });
-  if (project.lifecycle_operation) throw new HttpError(423, { error: 'project_lifecycle_operation_in_progress', operation: project.lifecycle_operation.type || null });
+  if (project.lifecycle_operation)
+    throw new HttpError(423, {
+      error: 'project_lifecycle_operation_in_progress',
+      operation: project.lifecycle_operation.type || null
+    });
   if (project.status !== 'active') throw new HttpError(409, { error: 'project_not_active' });
-  if (project.managed_workspace_state !== 'ready') throw new HttpError(409, { error: 'workspace_migration_required', state: project.managed_workspace_state || 'unknown' });
-  const expected = path.join(WORKSPACE_DIR, safeSegment(project.id), 'repo'), configured = path.resolve(String(project.repo_path || ''));
+  if (project.managed_workspace_state !== 'ready')
+    throw new HttpError(409, {
+      error: 'workspace_migration_required',
+      state: project.managed_workspace_state || 'unknown'
+    });
+  const expected = path.join(WORKSPACE_DIR, safeSegment(project.id), 'repo'),
+    configured = path.resolve(String(project.repo_path || ''));
   assertWithin(WORKSPACE_DIR, configured);
-  const expectedReal = await fsp.realpath(expected).catch(() => null), configuredReal = await fsp.realpath(configured).catch(() => null);
-  if (!expectedReal || !configuredReal || normalizePath(expectedReal) !== normalizePath(configuredReal) || !isGitRepo(configuredReal)) throw new HttpError(409, { error: 'managed_repository_required' });
+  const expectedReal = await fsp.realpath(expected).catch(() => null),
+    configuredReal = await fsp.realpath(configured).catch(() => null);
+  if (
+    !expectedReal ||
+    !configuredReal ||
+    normalizePath(expectedReal) !== normalizePath(configuredReal) ||
+    !isGitRepo(configuredReal)
+  )
+    throw new HttpError(409, { error: 'managed_repository_required' });
   return configuredReal;
 }
 export function validateWorktreeOwnership(project, worktree) {
-  if (!worktree || worktree.project_id !== project?.id || !worktree.path) throw new HttpError(404, { error: 'worktree_not_found' });
+  if (!worktree || worktree.project_id !== project?.id || !worktree.path)
+    throw new HttpError(404, { error: 'worktree_not_found' });
   assertWithin(worktreeRoot(project.id), worktree.path);
 }
-export function worktreeRoot(projectId) { const root = path.join(WORKSPACE_DIR, safeSegment(projectId), 'worktrees'); assertWithin(WORKSPACE_DIR, root); return root; }
+export function worktreeRoot(projectId) {
+  const root = path.join(WORKSPACE_DIR, safeSegment(projectId), 'worktrees');
+  assertWithin(WORKSPACE_DIR, root);
+  return root;
+}
 export function gitResult(cwd, args, timeout, allowFailure = false, env = {}) {
   const result = command('git', args, cwd, timeout, { GIT_TERMINAL_PROMPT: '0', ...env });
   if (!allowFailure && !result.ok) throw new HttpError(409, { error: 'git_operation_failed', detail: detail(result) });
   return result;
 }
 export async function writePrivatePatch(projectId, worktreeId, content) {
-  const root = path.join(WORKSPACE_DIR, safeSegment(projectId), '.review'), file = path.join(root, `${safeSegment(worktreeId)}-${Date.now()}.patch`);
-  assertWithin(root, file); await fsp.mkdir(root, { recursive: true }); await fsp.writeFile(file, content, { encoding: 'utf8', mode: 0o600 }); return file;
+  const root = path.join(WORKSPACE_DIR, safeSegment(projectId), '.review'),
+    file = path.join(root, `${safeSegment(worktreeId)}-${Date.now()}.patch`);
+  assertWithin(root, file);
+  await fsp.mkdir(root, { recursive: true });
+  await fsp.writeFile(file, content, { encoding: 'utf8', mode: 0o600 });
+  return file;
 }
-export async function safeRemove(root, target) { assertWithin(root, target); await fsp.rm(target, { recursive: true, force: true }); }
-export function detail(result) { return String(result?.stderr || result?.error || '').slice(-2000); }
-export function safeSegment(value) { const result = String(value || '').replace(/[^a-zA-Z0-9._-]/g, '_'); if (!result || result === '.' || result === '..') throw new HttpError(400, { error: 'invalid_managed_path_segment' }); return result; }
+export async function safeRemove(root, target) {
+  assertWithin(root, target);
+  await fsp.rm(target, { recursive: true, force: true });
+}
+export function detail(result) {
+  return String(result?.stderr || result?.error || '').slice(-2000);
+}
+export function safeSegment(value) {
+  const result = String(value || '').replace(/[^a-zA-Z0-9._-]/g, '_');
+  if (!result || result === '.' || result === '..') throw new HttpError(400, { error: 'invalid_managed_path_segment' });
+  return result;
+}
 
 function parsePorcelainZ(value) {
-  const tokens = String(value || '').split('\0'), files = [];
+  const tokens = String(value || '').split('\0'),
+    files = [];
   for (let index = 0; index < tokens.length; index++) {
-    const token = tokens[index]; if (!token) continue;
-    const code = token.slice(0, 2), filePath = token.slice(3); if (!filePath) continue; assertRelativeGitPath(filePath);
-    const renamed = code.includes('R') || code.includes('C'), from = renamed ? tokens[++index] || null : null; if (from) assertRelativeGitPath(from);
-    files.push({ path: filePath.replaceAll('\\', '/'), previous_path: from?.replaceAll('\\', '/') || null, status: statusName(code), code });
+    const token = tokens[index];
+    if (!token) continue;
+    const code = token.slice(0, 2),
+      filePath = token.slice(3);
+    if (!filePath) continue;
+    assertRelativeGitPath(filePath);
+    const renamed = code.includes('R') || code.includes('C'),
+      from = renamed ? tokens[++index] || null : null;
+    if (from) assertRelativeGitPath(from);
+    files.push({
+      path: filePath.replaceAll('\\', '/'),
+      previous_path: from?.replaceAll('\\', '/') || null,
+      status: statusName(code),
+      code
+    });
   }
   return files.sort((a, b) => a.path.localeCompare(b.path));
 }
 function parseNameStatusZ(value) {
-  const tokens = String(value || '').split('\0'), files = [];
+  const tokens = String(value || '').split('\0'),
+    files = [];
   for (let index = 0; index < tokens.length;) {
-    const code = tokens[index++]; if (!code) continue;
+    const code = tokens[index++];
+    if (!code) continue;
     if (/^[RC]/.test(code)) {
-      const previous = tokens[index++] || '', filePath = tokens[index++] || '';
-      assertRelativeGitPath(previous); assertRelativeGitPath(filePath);
-      files.push({ path: filePath.replaceAll('\\', '/'), previous_path: previous.replaceAll('\\', '/'), status: code.startsWith('R') ? 'renamed' : 'copied', code });
+      const previous = tokens[index++] || '',
+        filePath = tokens[index++] || '';
+      assertRelativeGitPath(previous);
+      assertRelativeGitPath(filePath);
+      files.push({
+        path: filePath.replaceAll('\\', '/'),
+        previous_path: previous.replaceAll('\\', '/'),
+        status: code.startsWith('R') ? 'renamed' : 'copied',
+        code
+      });
       continue;
     }
-    const filePath = tokens[index++] || ''; assertRelativeGitPath(filePath);
+    const filePath = tokens[index++] || '';
+    assertRelativeGitPath(filePath);
     files.push({ path: filePath.replaceAll('\\', '/'), previous_path: null, status: statusName(code), code });
   }
   return files;
@@ -89,13 +152,32 @@ function mergeChangedFiles(...groups) {
   for (const item of groups.flat()) merged.set(item.path, { ...(merged.get(item.path) || {}), ...item });
   return [...merged.values()].sort((a, b) => a.path.localeCompare(b.path));
 }
-function statusName(code) { if (code === '??') return 'untracked'; if (code.includes('R')) return 'renamed'; if (code.includes('C')) return 'copied'; if (code.includes('D')) return 'deleted'; if (code.includes('A')) return 'added'; if (code.includes('U')) return 'conflicted'; return 'modified'; }
+function statusName(code) {
+  if (code === '??') return 'untracked';
+  if (code.includes('R')) return 'renamed';
+  if (code.includes('C')) return 'copied';
+  if (code.includes('D')) return 'deleted';
+  if (code.includes('A')) return 'added';
+  if (code.includes('U')) return 'conflicted';
+  return 'modified';
+}
 function assertRelativeGitPath(value) {
   const normalized = String(value || '').replaceAll('\\', '/');
-  if (!normalized || normalized.includes('\0') || normalized.startsWith('/') || /^[A-Za-z]:\//.test(normalized) || normalized.split('/').includes('..')) throw new HttpError(409, { error: 'invalid_changed_file_path' });
+  if (
+    !normalized ||
+    normalized.includes('\0') ||
+    normalized.startsWith('/') ||
+    /^[A-Za-z]:\//.test(normalized) ||
+    normalized.split('/').includes('..')
+  )
+    throw new HttpError(409, { error: 'invalid_changed_file_path' });
 }
 function assertWithin(root, target) {
   const relative = path.relative(path.resolve(root), path.resolve(target));
-  if (!relative || relative.startsWith('..') || path.isAbsolute(relative)) throw new HttpError(403, { error: 'managed_path_boundary_violation' });
+  if (!relative || relative.startsWith('..') || path.isAbsolute(relative))
+    throw new HttpError(403, { error: 'managed_path_boundary_violation' });
 }
-function normalizePath(value) { const normalized = path.resolve(value); return process.platform === 'win32' ? normalized.toLowerCase() : normalized; }
+function normalizePath(value) {
+  const normalized = path.resolve(value);
+  return process.platform === 'win32' ? normalized.toLowerCase() : normalized;
+}

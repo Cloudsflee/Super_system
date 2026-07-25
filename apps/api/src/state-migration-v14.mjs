@@ -32,12 +32,15 @@ export function migrateState13To14(source, { timestamp = new Date().toISOString(
     validateState14(source);
     return { state: structuredClone(source), migrated: false, from_version: 14, to_version: 14 };
   }
-  if (![12, 13].includes(inputVersion)) throw migrationError('unsupported_state_schema', { schema_version: source.schema_version ?? null });
+  if (![12, 13].includes(inputVersion))
+    throw migrationError('unsupported_state_schema', { schema_version: source.schema_version ?? null });
 
   const state = structuredClone(source);
   for (const collection of V14_COLLECTIONS) if (!Array.isArray(state[collection])) state[collection] = [];
 
-  const knownConfigurations = new Set(state.assist_configurations.map((item) => item?.legacy_profile_id).filter(Boolean));
+  const knownConfigurations = new Set(
+    state.assist_configurations.map((item) => item?.legacy_profile_id).filter(Boolean)
+  );
   for (const profile of Array.isArray(state.codex_profiles) ? state.codex_profiles : []) {
     if (!profile?.assist_configuration || knownConfigurations.has(profile.id)) continue;
     const baseProfileId = String(profile.base_profile_id || '').trim();
@@ -84,8 +87,10 @@ export function migrateState13To14(source, { timestamp = new Date().toISOString(
 
 export function validateState14(state) {
   if (!state || typeof state !== 'object' || Array.isArray(state)) throw migrationError('state_root_invalid');
-  if (Number(state.schema_version) !== STATE_SCHEMA_VERSION) throw migrationError('state_schema_not_14', { schema_version: state.schema_version ?? null });
-  for (const collection of V14_COLLECTIONS) if (!Array.isArray(state[collection])) throw migrationError('state_collection_invalid', { collection });
+  if (Number(state.schema_version) !== STATE_SCHEMA_VERSION)
+    throw migrationError('state_schema_not_14', { schema_version: state.schema_version ?? null });
+  for (const collection of V14_COLLECTIONS)
+    if (!Array.isArray(state[collection])) throw migrationError('state_collection_invalid', { collection });
   ensureUniqueIds(state.assist_configurations, 'assist_configurations');
   ensureUniqueIds(state.assist_change_batches, 'assist_change_batches');
   ensureUniqueIds(state.assist_checkpoints, 'assist_checkpoints');
@@ -95,30 +100,52 @@ export function validateState14(state) {
 
   const profileIds = new Set((state.codex_profiles || []).map((item) => item?.id));
   for (const item of state.assist_configurations) {
-    if (!item?.base_profile_id || !profileIds.has(item.base_profile_id)) throw migrationError('assist_configuration_profile_missing', { id: item?.id || null, base_profile_id: item?.base_profile_id || null });
-    for (const forbidden of ['api_key', 'access_token', 'refresh_token', 'credential', 'credential_ref', 'codex_home', 'base_url', 'endpoint']) {
-      if (Object.hasOwn(item, forbidden)) throw migrationError('assist_configuration_contains_secret_or_runtime_field', { id: item.id, field: forbidden });
+    if (!item?.base_profile_id || !profileIds.has(item.base_profile_id))
+      throw migrationError('assist_configuration_profile_missing', {
+        id: item?.id || null,
+        base_profile_id: item?.base_profile_id || null
+      });
+    for (const forbidden of [
+      'api_key',
+      'access_token',
+      'refresh_token',
+      'credential',
+      'credential_ref',
+      'codex_home',
+      'base_url',
+      'endpoint'
+    ]) {
+      if (Object.hasOwn(item, forbidden))
+        throw migrationError('assist_configuration_contains_secret_or_runtime_field', {
+          id: item.id,
+          field: forbidden
+        });
     }
   }
   const openBySession = new Set();
   for (const batch of state.assist_change_batches) {
     if (batch?.status !== 'open') continue;
-    if (!batch.session_id || openBySession.has(batch.session_id)) throw migrationError('duplicate_open_change_batch', { session_id: batch?.session_id || null });
+    if (!batch.session_id || openBySession.has(batch.session_id))
+      throw migrationError('duplicate_open_change_batch', { session_id: batch?.session_id || null });
     openBySession.add(batch.session_id);
   }
   return state;
 }
 
-export async function migrateStateFileToV14(stateFile, {
-  backupDirectory = path.join(path.dirname(stateFile), 'migrations'),
-  clock = () => new Date(),
-  beforeReplace,
-  afterReplace
-} = {}) {
+export async function migrateStateFileToV14(
+  stateFile,
+  {
+    backupDirectory = path.join(path.dirname(stateFile), 'migrations'),
+    clock = () => new Date(),
+    beforeReplace,
+    afterReplace
+  } = {}
+) {
   const original = await fsp.readFile(stateFile);
   const parsed = JSON.parse(original.toString('utf8'));
   const result = migrateState13To14(parsed, { timestamp: clock().toISOString() });
-  if (!result.migrated) return { ...result, state_hash: canonicalStateHash(result.state), backup_path: null, manifest_path: null };
+  if (!result.migrated)
+    return { ...result, state_hash: canonicalStateHash(result.state), backup_path: null, manifest_path: null };
 
   await fsp.mkdir(backupDirectory, { recursive: true, mode: 0o700 });
   const stamp = clock().toISOString().replace(/[:.]/g, '-');
@@ -161,12 +188,19 @@ export async function migrateStateFileToV14(stateFile, {
     manifest.status = 'committed';
     manifest.committed_at = clock().toISOString();
     await atomicRewrite(manifestPath, Buffer.from(`${JSON.stringify(manifest, null, 2)}\n`));
-    return { ...result, state_hash: manifest.migrated_state_hash, backup_path: backupPath, manifest_path: manifestPath, manifest };
+    return {
+      ...result,
+      state_hash: manifest.migrated_state_hash,
+      backup_path: backupPath,
+      manifest_path: manifestPath,
+      manifest
+    };
   } catch (error) {
     await fsp.rm(tempPath, { force: true }).catch(() => undefined);
     if (replaced) {
       const currentBackup = await fsp.readFile(backupPath);
-      if (sha256(currentBackup) !== backupDigest) throw migrationError('migration_failed_and_backup_corrupt', { cause: String(error?.message || error) });
+      if (sha256(currentBackup) !== backupDigest)
+        throw migrationError('migration_failed_and_backup_corrupt', { cause: String(error?.message || error) });
       const restoreTemp = `${stateFile}.restore-${process.pid}-${Date.now()}.tmp`;
       await writeExclusiveAndSync(restoreTemp, currentBackup);
       await replaceFile(restoreTemp, stateFile);
@@ -182,14 +216,20 @@ export async function migrateStateFileToV14(stateFile, {
 
 function canonicalValue(value) {
   if (Array.isArray(value)) return value.map(canonicalValue);
-  if (value && typeof value === 'object') return Object.fromEntries(Object.keys(value).sort().map((key) => [key, canonicalValue(value[key])]));
+  if (value && typeof value === 'object')
+    return Object.fromEntries(
+      Object.keys(value)
+        .sort()
+        .map((key) => [key, canonicalValue(value[key])])
+    );
   return value;
 }
 
 function ensureUniqueIds(items, collection) {
   const seen = new Set();
   for (const item of items) {
-    if (!item || typeof item !== 'object' || !String(item.id || '')) throw migrationError('state_record_id_missing', { collection });
+    if (!item || typeof item !== 'object' || !String(item.id || ''))
+      throw migrationError('state_record_id_missing', { collection });
     if (seen.has(item.id)) throw migrationError('state_record_id_duplicate', { collection, id: item.id });
     seen.add(item.id);
   }
@@ -200,7 +240,10 @@ function deterministicLegacyId(prefix, value) {
 }
 
 function cleanText(value, max) {
-  return String(value ?? '').replace(/\0/g, '').trim().slice(0, max);
+  return String(value ?? '')
+    .replace(/\0/g, '')
+    .trim()
+    .slice(0, max);
 }
 
 function migrationError(code, details = {}) {
@@ -216,8 +259,12 @@ function safeErrorCode(error) {
 
 async function writeExclusiveAndSync(file, bytes) {
   const handle = await fsp.open(file, 'wx', 0o600);
-  try { await handle.writeFile(bytes); await handle.sync(); }
-  finally { await handle.close(); }
+  try {
+    await handle.writeFile(bytes);
+    await handle.sync();
+  } finally {
+    await handle.close();
+  }
 }
 
 async function atomicRewrite(file, bytes) {
@@ -229,8 +276,10 @@ async function atomicRewrite(file, bytes) {
 
 async function replaceFile(source, target) {
   for (let attempt = 0; ; attempt++) {
-    try { await fsp.rename(source, target); return; }
-    catch (error) {
+    try {
+      await fsp.rename(source, target);
+      return;
+    } catch (error) {
       if (!['EEXIST', 'EPERM', 'EACCES', 'EBUSY'].includes(error.code) || attempt >= 20) throw error;
       await new Promise((resolve) => setTimeout(resolve, Math.min(100, 10 * (attempt + 1))));
     }
@@ -240,5 +289,9 @@ async function replaceFile(source, target) {
 async function syncDirectory(directory) {
   if (process.platform === 'win32') return;
   const handle = await fsp.open(directory, 'r');
-  try { await handle.sync(); } finally { await handle.close(); }
+  try {
+    await handle.sync();
+  } finally {
+    await handle.close();
+  }
 }

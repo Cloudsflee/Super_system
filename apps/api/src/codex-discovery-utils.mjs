@@ -16,21 +16,35 @@ export function privateRevision(...parts) {
   return opaqueId('revision', ...parts);
 }
 
-export function publicProviderFromToml(text, { credentialPresent = false, apiFormat = '', sourceType = 'codex_home', displayName = '' } = {}) {
+export function publicProviderFromToml(
+  text,
+  { credentialPresent = false, apiFormat = '', sourceType = 'codex_home', displayName = '' } = {}
+) {
   let root;
-  try { root = parseToml(String(text || '')); } catch { return { ok: false, issue: 'invalid_config_toml' }; }
+  try {
+    root = parseToml(String(text || ''));
+  } catch {
+    return { ok: false, issue: 'invalid_config_toml' };
+  }
   if (!root || typeof root !== 'object' || Array.isArray(root)) return { ok: false, issue: 'invalid_config_toml' };
   const rawProvider = scalar(root.model_provider) || (scalar(root.base_url) ? 'custom' : 'openai');
   const provider = codexProviderKey(rawProvider);
   const providers = object(root.model_providers);
-  const table = Object.hasOwn(providers, rawProvider) ? object(providers[rawProvider]) : Object.hasOwn(providers, provider) ? object(providers[provider]) : {};
+  const table = Object.hasOwn(providers, rawProvider)
+    ? object(providers[rawProvider])
+    : Object.hasOwn(providers, provider)
+      ? object(providers[provider])
+      : {};
   const baseRaw = scalar(table.base_url) || scalar(root.base_url);
   const normalizedBaseUrl = baseRaw ? normalizeProviderBaseUrl(baseRaw) : null;
   const sensitiveEndpoint = normalizedBaseUrl ? endpointMayContainSecret(normalizedBaseUrl) : false;
   const baseUrl = sensitiveEndpoint ? null : normalizedBaseUrl;
   const wireApi = scalar(table.wire_api) || scalar(root.wire_api) || 'responses';
   const model = scalar(root.model);
-  const embeddedCredential = secretScalar(table.experimental_bearer_token) || secretScalar(root.experimental_bearer_token) || secretScalar(root.OPENAI_API_KEY);
+  const embeddedCredential =
+    secretScalar(table.experimental_bearer_token) ||
+    secretScalar(root.experimental_bearer_token) ||
+    secretScalar(root.OPENAI_API_KEY);
   const official = !isThirdPartyProvider(provider) && !baseRaw;
   const issues = [];
   if (!/^[a-zA-Z0-9][a-zA-Z0-9._-]{0,63}$/.test(provider)) issues.push('invalid_provider');
@@ -40,17 +54,24 @@ export function publicProviderFromToml(text, { credentialPresent = false, apiFor
   else if (sensitiveEndpoint) issues.push('sensitive_base_url_rejected');
   else if (baseRaw && !baseUrl) issues.push('invalid_base_url');
   if (wireApi !== 'responses') issues.push('unsupported_wire_api');
-  if (['chat', 'openai_chat'].includes(String(apiFormat || '').toLowerCase())) issues.push('cc_switch_local_proxy_required');
+  if (['chat', 'openai_chat'].includes(String(apiFormat || '').toLowerCase()))
+    issues.push('cc_switch_local_proxy_required');
   const hasCredential = Boolean(credentialPresent || embeddedCredential);
   if (official && sourceType === 'cc_switch') issues.push('official_device_login_required');
   return {
     ok: true,
     descriptor: {
-      name: safeLabel(displayName || scalar(table.name) || provider, 100), provider,
-      provider_name: safeLabel(scalar(table.name) || displayName || provider, 100), base_url: baseUrl,
-      model, wire_api: 'responses', requires_openai_auth: Boolean(table.requires_openai_auth),
-      has_credential: hasCredential, credential_hint: hasCredential ? 'configured' : 'required',
-      importable: issues.length === 0 && !(official && !hasCredential), issues
+      name: safeLabel(displayName || scalar(table.name) || provider, 100),
+      provider,
+      provider_name: safeLabel(scalar(table.name) || displayName || provider, 100),
+      base_url: baseUrl,
+      model,
+      wire_api: 'responses',
+      requires_openai_auth: Boolean(table.requires_openai_auth),
+      has_credential: hasCredential,
+      credential_hint: hasCredential ? 'configured' : 'required',
+      importable: issues.length === 0 && !(official && !hasCredential),
+      issues
     },
     credential: embeddedCredential || ''
   };
@@ -59,11 +80,23 @@ export function publicProviderFromToml(text, { credentialPresent = false, apiFor
 export function authJsonInfo(text) {
   if (!text) return { credential: '', oauth: false };
   let value;
-  try { value = JSON.parse(text); } catch { return { credential: '', oauth: false, issue: 'invalid_auth_json' }; }
-  if (!value || typeof value !== 'object' || Array.isArray(value)) return { credential: '', oauth: false, issue: 'invalid_auth_json' };
+  try {
+    value = JSON.parse(text);
+  } catch {
+    return { credential: '', oauth: false, issue: 'invalid_auth_json' };
+  }
+  if (!value || typeof value !== 'object' || Array.isArray(value))
+    return { credential: '', oauth: false, issue: 'invalid_auth_json' };
   const credential = secretScalar(value.OPENAI_API_KEY) || secretScalar(value.api_key);
   const tokens = object(value.tokens);
-  const oauth = [value.access_token, value.id_token, value.refresh_token, tokens.access_token, tokens.id_token, tokens.refresh_token].some((item) => Boolean(secretScalar(item)));
+  const oauth = [
+    value.access_token,
+    value.id_token,
+    value.refresh_token,
+    tokens.access_token,
+    tokens.id_token,
+    tokens.refresh_token
+  ].some((item) => Boolean(secretScalar(item)));
   return { credential, oauth };
 }
 
@@ -73,7 +106,12 @@ export async function readCodexHome(root) {
   const config = await fixedFile(safeRoot, 'config.toml', MAX_CONFIG_BYTES);
   if (!config) return null;
   const auth = await fixedFile(safeRoot, 'auth.json', MAX_SECRET_BYTES, true);
-  return { root: safeRoot, config: config.text, auth: auth?.text || '', statKey: `${config.stat.size}:${config.stat.mtimeMs}:${auth?.stat.size || 0}:${auth?.stat.mtimeMs || 0}` };
+  return {
+    root: safeRoot,
+    config: config.text,
+    auth: auth?.text || '',
+    statKey: `${config.stat.size}:${config.stat.mtimeMs}:${auth?.stat.size || 0}:${auth?.stat.mtimeMs || 0}`
+  };
 }
 
 export async function fixedDatabase(configDir, fileName = 'cc-switch.db') {
@@ -85,19 +123,50 @@ export async function fixedDatabase(configDir, fileName = 'cc-switch.db') {
     if (!stat.isFile() || stat.isSymbolicLink() || stat.size > 256 * 1024 * 1024) return null;
     const real = await fsp.realpath(requested);
     return samePath(path.dirname(real), root) && path.basename(real) === fileName ? { path: real, stat } : null;
-  } catch { return null; }
+  } catch {
+    return null;
+  }
 }
 
-function scalar(value) { return typeof value === 'string' ? value.trim() : ''; }
-function secretScalar(value) { const item = scalar(value); return item && item.length <= 65536 && !/[\r\n\0]/.test(item) ? item : ''; }
-function object(value) { return value && typeof value === 'object' && !Array.isArray(value) ? value : {}; }
-function safeLabel(value, max) { return String(value || '').replace(/[\r\n\0]/g, ' ').trim().slice(0, max); }
+function scalar(value) {
+  return typeof value === 'string' ? value.trim() : '';
+}
+function secretScalar(value) {
+  const item = scalar(value);
+  return item && item.length <= 65536 && !/[\r\n\0]/.test(item) ? item : '';
+}
+function object(value) {
+  return value && typeof value === 'object' && !Array.isArray(value) ? value : {};
+}
+function safeLabel(value, max) {
+  return String(value || '')
+    .replace(/[\r\n\0]/g, ' ')
+    .trim()
+    .slice(0, max);
+}
 function endpointMayContainSecret(value) {
   try {
     const url = new URL(value);
-    const segments = url.pathname.split('/').filter(Boolean).map((item) => { try { return decodeURIComponent(item); } catch { return item; } });
-    return url.hostname.split('.').some((item) => /^[a-zA-Z0-9_-]{32,}$/.test(item)) || segments.some((item) => /(?:api[_-]?key|access[_-]?token|bearer|secret|credential)/i.test(item) || /^[a-zA-Z0-9_-]{32,}$/.test(item));
-  } catch { return true; }
+    const segments = url.pathname
+      .split('/')
+      .filter(Boolean)
+      .map((item) => {
+        try {
+          return decodeURIComponent(item);
+        } catch {
+          return item;
+        }
+      });
+    return (
+      url.hostname.split('.').some((item) => /^[a-zA-Z0-9_-]{32,}$/.test(item)) ||
+      segments.some(
+        (item) =>
+          /(?:api[_-]?key|access[_-]?token|bearer|secret|credential)/i.test(item) || /^[a-zA-Z0-9_-]{32,}$/.test(item)
+      )
+    );
+  } catch {
+    return true;
+  }
 }
 
 async function fixedDirectory(value) {
@@ -106,7 +175,9 @@ async function fixedDirectory(value) {
     const stat = await fsp.lstat(requested);
     if (!stat.isDirectory() || stat.isSymbolicLink()) return null;
     return await fsp.realpath(requested);
-  } catch { return null; }
+  } catch {
+    return null;
+  }
 }
 
 async function fixedFile(root, name, maxBytes, optional = false) {
@@ -121,9 +192,24 @@ async function fixedFile(root, name, maxBytes, optional = false) {
       const opened = await handle.stat();
       if (!opened.isFile() || opened.size > maxBytes || !sameFile(stat, opened)) return null;
       return { path: real, text: await handle.readFile('utf8'), stat: opened };
-    } finally { await handle.close(); }
-  } catch (error) { if (optional && error.code === 'ENOENT') return null; return null; }
+    } finally {
+      await handle.close();
+    }
+  } catch (error) {
+    if (optional && error.code === 'ENOENT') return null;
+    return null;
+  }
 }
 
-function samePath(left, right) { const a = path.resolve(left), b = path.resolve(right); return process.platform === 'win32' ? a.toLowerCase() === b.toLowerCase() : a === b; }
-function sameFile(left, right) { return (!left.ino || !right.ino || left.ino === right.ino) && (!left.dev || !right.dev || left.dev === right.dev) && left.size === right.size; }
+function samePath(left, right) {
+  const a = path.resolve(left),
+    b = path.resolve(right);
+  return process.platform === 'win32' ? a.toLowerCase() === b.toLowerCase() : a === b;
+}
+function sameFile(left, right) {
+  return (
+    (!left.ino || !right.ino || left.ino === right.ino) &&
+    (!left.dev || !right.dev || left.dev === right.dev) &&
+    left.size === right.size
+  );
+}

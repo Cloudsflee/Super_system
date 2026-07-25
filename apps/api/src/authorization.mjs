@@ -17,5 +17,12 @@ export function githubAllows(permissions = {}, operation) {
 export function authorizeRepositoryAction({ role, permissions, operation }) {
   const role_allowed = roleAllows(role, operation);
   const github_allowed = githubAllows(permissions, operation);
-  return { allowed: role_allowed && github_allowed, role_allowed, github_allowed, role, operation, github_permissions: permissions };
+  return {
+    allowed: role_allowed && github_allowed,
+    role_allowed,
+    github_allowed,
+    role,
+    operation,
+    github_permissions: permissions
+  };
 }

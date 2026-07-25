@@ -16,13 +16,34 @@ export function defaultCodingWorkflowNode({ makeId, goal, features = [], accepta
   const criteria = cleanList(acceptanceCriteria);
   const workstreamId = makeId('wfs', 'primary-deliverable');
   return {
-    id: workstreamId, role: 'workstream', parent_node_id: null, type: 'execution', title: '核心成果交付',
-    goal: scope, outcome: scope, category: 'deliverable', acceptance_criteria: criteria.length ? criteria : [`可验证交付：${scope}`],
-    boundary: { deliverable: scope }, dependency_ids: [], position: { x: 80, y: 120 }, order_index: 0, plan_revision: 1,
-    tasks: [{
-      id: makeId('tsk', 'primary-deliverable-task'), role: 'task', parent_node_id: workstreamId, type: 'execution',
-      title: '完成核心交付任务', goal: scope, task_kind: 'manual', execution_mode: 'manual', dependency_ids: [], order_index: 0
-    }]
+    id: workstreamId,
+    role: 'workstream',
+    parent_node_id: null,
+    type: 'execution',
+    title: '核心成果交付',
+    goal: scope,
+    outcome: scope,
+    category: 'deliverable',
+    acceptance_criteria: criteria.length ? criteria : [`可验证交付：${scope}`],
+    boundary: { deliverable: scope },
+    dependency_ids: [],
+    position: { x: 80, y: 120 },
+    order_index: 0,
+    plan_revision: 1,
+    tasks: [
+      {
+        id: makeId('tsk', 'primary-deliverable-task'),
+        role: 'task',
+        parent_node_id: workstreamId,
+        type: 'execution',
+        title: '完成核心交付任务',
+        goal: scope,
+        task_kind: 'manual',
+        execution_mode: 'manual',
+        dependency_ids: [],
+        order_index: 0
+      }
+    ]
   };
 }
 
@@ -44,18 +65,32 @@ export function assertStartupWorkflowOperations(nodes = [], operations = []) {
       if (isTopLevel(node) && operation?.patch?.title !== undefined) assertOutcomeTitle(operation.patch.title);
     }
   }
-  if (topLevel.size > STARTUP_WORKFLOW_MAX_NODES) throw new HttpError(409, {
-    error: 'assist_workflow_top_level_limit', max_nodes: STARTUP_WORKFLOW_MAX_NODES,
-    guidance: 'split_execution_steps_into_tasks_under_outcome_workstreams'
-  });
+  if (topLevel.size > STARTUP_WORKFLOW_MAX_NODES)
+    throw new HttpError(409, {
+      error: 'assist_workflow_top_level_limit',
+      max_nodes: STARTUP_WORKFLOW_MAX_NODES,
+      guidance: 'split_execution_steps_into_tasks_under_outcome_workstreams'
+    });
   return topLevel.size;
 }
 
-export function isStartupWorkflowType(value) { return STARTUP_WORKFLOW_TYPES.includes(String(value || '')); }
-
-function isTopLevel(node) { return Boolean(node) && node.role !== 'task' && !node.parent_node_id; }
-function assertOutcomeTitle(value) {
-  if (isProcessStageTitle(value)) throw new HttpError(409, { error: 'workflow_workstream_process_stage_forbidden', title: String(value || '') });
+export function isStartupWorkflowType(value) {
+  return STARTUP_WORKFLOW_TYPES.includes(String(value || ''));
 }
-function cleanList(value) { return (Array.isArray(value) ? value : []).map((item) => clean(item, 1000)).filter(Boolean); }
-function clean(value, max) { return String(value ?? '').replace(/\0/g, '').trim().slice(0, max); }
+
+function isTopLevel(node) {
+  return Boolean(node) && node.role !== 'task' && !node.parent_node_id;
+}
+function assertOutcomeTitle(value) {
+  if (isProcessStageTitle(value))
+    throw new HttpError(409, { error: 'workflow_workstream_process_stage_forbidden', title: String(value || '') });
+}
+function cleanList(value) {
+  return (Array.isArray(value) ? value : []).map((item) => clean(item, 1000)).filter(Boolean);
+}
+function clean(value, max) {
+  return String(value ?? '')
+    .replace(/\0/g, '')
+    .trim()
+    .slice(0, max);
+}

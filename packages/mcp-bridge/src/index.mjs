@@ -15,4 +15,9 @@ export function inspectMcpConfig(config = {}) {
   return { status: configured ? 'configured' : 'configuration_required', discovered_tools: [], config: normalized };
 }
 
-export { MCP_GATEWAY_HEADERS, loadMcpGatewaySecret, signMcpGatewayRequest, verifyMcpGatewayRequest } from './gateway-auth.mjs';
+export {
+  MCP_GATEWAY_HEADERS,
+  loadMcpGatewaySecret,
+  signMcpGatewayRequest,
+  verifyMcpGatewayRequest
+} from './gateway-auth.mjs';

@@ -3,7 +3,13 @@ import type { AssistController } from './useAssistController';
 
 const AssistControllerContext = createContext<AssistController | null>(null);
 
-export function AssistControllerProvider({ controller, children }: { controller: AssistController; children: ReactNode }) {
+export function AssistControllerProvider({
+  controller,
+  children
+}: {
+  controller: AssistController;
+  children: ReactNode;
+}) {
   return <AssistControllerContext.Provider value={controller}>{children}</AssistControllerContext.Provider>;
 }
 
@@ -13,4 +19,6 @@ export function useAssistCenter() {
   return controller;
 }
 
-export function useOptionalAssistCenter() { return useContext(AssistControllerContext); }
+export function useOptionalAssistCenter() {
+  return useContext(AssistControllerContext);
+}

@@ -13,7 +13,10 @@ export function selectedCodexRuntimeImage(state) {
   return String(profile?.image || profile?.config?.image || '').trim() || undefined;
 }
 
-export function inspectCodexRuntimeLive({ commandRunner = command, image = process.env.AIWS_CODEX_DOCKER_IMAGE || DEFAULT_CODEX_IMAGE } = {}) {
+export function inspectCodexRuntimeLive({
+  commandRunner = command,
+  image = process.env.AIWS_CODEX_DOCKER_IMAGE || DEFAULT_CODEX_IMAGE
+} = {}) {
   const dockerResult = commandRunner('docker', ['info', '--format', '{{.ServerVersion}}'], ROOT, 5000);
   const imageResult = dockerResult.ok
     ? commandRunner('docker', ['image', 'inspect', image], ROOT, 5000)
@@ -21,7 +24,10 @@ export function inspectCodexRuntimeLive({ commandRunner = command, image = proce
   return codexRuntimeStatus(dockerResult, imageResult, image);
 }
 
-export async function inspectCodexRuntimeLiveAsync({ commandRunner = runtimeCommandAsync, image = process.env.AIWS_CODEX_DOCKER_IMAGE || DEFAULT_CODEX_IMAGE } = {}) {
+export async function inspectCodexRuntimeLiveAsync({
+  commandRunner = runtimeCommandAsync,
+  image = process.env.AIWS_CODEX_DOCKER_IMAGE || DEFAULT_CODEX_IMAGE
+} = {}) {
   const dockerResult = await commandRunner('docker', ['info', '--format', '{{.ServerVersion}}'], ROOT, 5000);
   const imageResult = dockerResult.ok
     ? await commandRunner('docker', ['image', 'inspect', image], ROOT, 5000)
@@ -29,18 +35,25 @@ export async function inspectCodexRuntimeLiveAsync({ commandRunner = runtimeComm
   return codexRuntimeStatus(dockerResult, imageResult, image);
 }
 
-export async function inspectCodexRuntimeCached({ image = process.env.AIWS_CODEX_DOCKER_IMAGE || DEFAULT_CODEX_IMAGE, maxAgeMs = 2000, force = false, commandRunner = runtimeCommandAsync } = {}) {
+export async function inspectCodexRuntimeCached({
+  image = process.env.AIWS_CODEX_DOCKER_IMAGE || DEFAULT_CODEX_IMAGE,
+  maxAgeMs = 2000,
+  force = false,
+  commandRunner = runtimeCommandAsync
+} = {}) {
   const key = String(image);
   const current = runtimeCache.get(key);
   if (!force && current?.value && Date.now() - current.checkedAt < maxAgeMs) return current.value;
   if (!force && current?.promise) return current.promise;
-  const promise = inspectCodexRuntimeLiveAsync({ image, commandRunner }).then((value) => {
-    runtimeCache.set(key, { value, checkedAt: Date.now(), promise: null });
-    return value;
-  }).catch((error) => {
-    runtimeCache.delete(key);
-    throw error;
-  });
+  const promise = inspectCodexRuntimeLiveAsync({ image, commandRunner })
+    .then((value) => {
+      runtimeCache.set(key, { value, checkedAt: Date.now(), promise: null });
+      return value;
+    })
+    .catch((error) => {
+      runtimeCache.delete(key);
+      throw error;
+    });
   runtimeCache.set(key, { value: current?.value || null, checkedAt: current?.checkedAt || 0, promise });
   return promise;
 }
@@ -61,25 +74,55 @@ function codexRuntimeStatus(dockerResult, imageResult, image) {
   };
   const imageId = imageResult.ok ? codexImageFingerprint(imageResult.stdout) : null;
   const imageOk = imageResult.ok === true && Boolean(imageId);
-  const imageError = imageOk ? null : imageResult.ok ? 'codex_probe_image_inspection_failed' : docker.ok ? imageErrorCode(imageResult) : 'codex_probe_docker_unavailable';
+  const imageError = imageOk
+    ? null
+    : imageResult.ok
+      ? 'codex_probe_image_inspection_failed'
+      : docker.ok
+        ? imageErrorCode(imageResult)
+        : 'codex_probe_docker_unavailable';
   const imageStatus = {
     ok: imageOk,
     ready: imageOk,
     name: image,
     id: imageId,
     error_code: imageError,
-    summary: imageOk ? 'Codex 隔离镜像可用' : imageError === 'codex_probe_image_missing' ? 'Codex 隔离镜像不存在' : imageError === 'codex_probe_docker_unavailable' ? '等待 Docker 引擎' : 'Codex 隔离镜像状态无法确认',
-    action: imageOk ? null : imageError === 'codex_probe_image_missing' ? '点击“检测并构建”创建 Codex 隔离镜像。' : imageError === 'codex_probe_docker_unavailable' ? docker.action : '检查 Docker 权限与引擎状态，然后重新检测。'
+    summary: imageOk
+      ? 'Codex 隔离镜像可用'
+      : imageError === 'codex_probe_image_missing'
+        ? 'Codex 隔离镜像不存在'
+        : imageError === 'codex_probe_docker_unavailable'
+          ? '等待 Docker 引擎'
+          : 'Codex 隔离镜像状态无法确认',
+    action: imageOk
+      ? null
+      : imageError === 'codex_probe_image_missing'
+        ? '点击“检测并构建”创建 Codex 隔离镜像。'
+        : imageError === 'codex_probe_docker_unavailable'
+          ? docker.action
+          : '检查 Docker 权限与引擎状态，然后重新检测。'
   };
   return { ready: docker.ok && imageStatus.ok, checked_at: new Date().toISOString(), docker, image: imageStatus };
 }
 
 export function codexImageFingerprint(output) {
   let inspected;
-  try { inspected = JSON.parse(String(output || '')); } catch { return null; }
+  try {
+    inspected = JSON.parse(String(output || ''));
+  } catch {
+    return null;
+  }
   const image = Array.isArray(inspected) ? inspected[0] : inspected;
-  const layers = image?.RootFS?.Layers, config = image?.Config;
-  if (!Array.isArray(layers) || !layers.every((item) => typeof item === 'string' && item) || !config || typeof config !== 'object' || Array.isArray(config)) return null;
+  const layers = image?.RootFS?.Layers,
+    config = image?.Config;
+  if (
+    !Array.isArray(layers) ||
+    !layers.every((item) => typeof item === 'string' && item) ||
+    !config ||
+    typeof config !== 'object' ||
+    Array.isArray(config)
+  )
+    return null;
   const descriptor = { rootfs: { type: String(image.RootFS.Type || 'layers'), layers }, config };
   return `sha256:${createHash('sha256').update(stableJson(descriptor)).digest('hex')}`;
 }
@@ -93,13 +136,22 @@ function dockerErrorCode(result) {
 function imageErrorCode(result) {
   const text = `${result?.error || ''}\n${result?.stderr || ''}`.toLowerCase();
   if (/no such image|unable to find image|pull access denied/.test(text)) return 'codex_probe_image_missing';
-  if (/dockerdesktoplinuxengine|docker daemon|docker api|cannot connect to (?:the )?docker|is the docker daemon running|\\\.\\pipe\\docker/.test(text)) return 'codex_probe_docker_unavailable';
+  if (
+    /dockerdesktoplinuxengine|docker daemon|docker api|cannot connect to (?:the )?docker|is the docker daemon running|\\\.\\pipe\\docker/.test(
+      text
+    )
+  )
+    return 'codex_probe_docker_unavailable';
   return 'codex_probe_image_inspection_failed';
 }
 
 function stableJson(value) {
   if (Array.isArray(value)) return `[${value.map(stableJson).join(',')}]`;
-  if (value && typeof value === 'object') return `{${Object.keys(value).sort().map((key) => `${JSON.stringify(key)}:${stableJson(value[key])}`).join(',')}}`;
+  if (value && typeof value === 'object')
+    return `{${Object.keys(value)
+      .sort()
+      .map((key) => `${JSON.stringify(key)}:${stableJson(value[key])}`)
+      .join(',')}}`;
   return JSON.stringify(value);
 }
 

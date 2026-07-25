@@ -9,7 +9,9 @@ validateAssistCapabilityManifest();
 
 export async function listAssistCapabilities(query = {}) {
   const state = await readState();
-  const session = query.session_id ? state.assist_sessions.find((item) => item.id === query.session_id && item.version === 3) : null;
+  const session = query.session_id
+    ? state.assist_sessions.find((item) => item.id === query.session_id && item.version === 3)
+    : null;
   const sessionPage = pageIdentity(session?.view_context);
   const projectId = cleanText(query.project_id || session?.project_id, 200) || null;
   const route = cleanText(query.route || sessionPage.route, 2_000) || null;
@@ -19,25 +21,105 @@ export async function listAssistCapabilities(query = {}) {
   const project = projectId ? state.projects.find((item) => item.id === projectId && !item.deleted_at) : null;
   const routeScope = route ? routeProjectId(route) : null;
   const controls = exposedControls(session?.view_context);
-  const brief = project ? currentBrief(state, projectId) : null, draft = project ? currentWorkflowDraft(state, projectId) : null, workflow = project ? currentWorkflow(state, projectId) : null;
+  const brief = project ? currentBrief(state, projectId) : null,
+    draft = project ? currentWorkflowDraft(state, projectId) : null,
+    workflow = project ? currentWorkflow(state, projectId) : null;
   const current = ASSIST_CAPABILITY_MANIFEST.map((descriptor) => {
     const routeMatches = route ? matchesRoute(descriptor.route, route) : false;
     const requiresProject = descriptor.id.startsWith('project.');
-    const surfaceKind = descriptor.id === 'surface.field.set' ? 'field' : descriptor.id === 'surface.filter.set' ? 'filter' : descriptor.id === 'surface.tab.select' ? 'tab' : null;
+    const surfaceKind =
+      descriptor.id === 'surface.field.set'
+        ? 'field'
+        : descriptor.id === 'surface.filter.set'
+          ? 'filter'
+          : descriptor.id === 'surface.tab.select'
+            ? 'tab'
+            : null;
     const projectScopeMatches = !requiresProject || Boolean(project && routeScope === projectId);
-    const resourceAvailable = !requiresProject || (descriptor.id.startsWith('project.brief.') ? Boolean(brief) : descriptor.id.startsWith('project.workflow_draft.') ? Boolean(draft) : Boolean(workflow));
-    const workflowSurfaceMatches = !descriptor.id.startsWith('project.workflow.') || Boolean(workflow && surfaceId === workflowAssistSurfaceId(workflow.id) && surfaceRevision === workflowAssistSurfaceRevision(workflow));
-    const surfaceContextMatches = !surfaceKind || Boolean(session && sessionPage.route === route && sessionPage.surfaceId === surfaceId && sessionPage.revision === surfaceRevision);
+    const resourceAvailable =
+      !requiresProject ||
+      (descriptor.id.startsWith('project.brief.')
+        ? Boolean(brief)
+        : descriptor.id.startsWith('project.workflow_draft.')
+          ? Boolean(draft)
+          : Boolean(workflow));
+    const workflowSurfaceMatches =
+      !descriptor.id.startsWith('project.workflow.') ||
+      Boolean(
+        workflow &&
+        surfaceId === workflowAssistSurfaceId(workflow.id) &&
+        surfaceRevision === workflowAssistSurfaceRevision(workflow)
+      );
+    const surfaceContextMatches =
+      !surfaceKind ||
+      Boolean(
+        session &&
+        sessionPage.route === route &&
+        sessionPage.surfaceId === surfaceId &&
+        sessionPage.revision === surfaceRevision
+      );
     const surfaceControlAvailable = !surfaceKind || controls.some((item) => item.kind === surfaceKind);
-    const reason = unavailableReason({ descriptor, mode, route, routeMatches, requiresProject, projectId, projectScopeMatches, resourceAvailable, workflowSurfaceMatches, surfaceId, surfaceRevision, surfaceKind, session, surfaceContextMatches, surfaceControlAvailable });
+    const reason = unavailableReason({
+      descriptor,
+      mode,
+      route,
+      routeMatches,
+      requiresProject,
+      projectId,
+      projectScopeMatches,
+      resourceAvailable,
+      workflowSurfaceMatches,
+      surfaceId,
+      surfaceRevision,
+      surfaceKind,
+      session,
+      surfaceContextMatches,
+      surfaceControlAvailable
+    });
     const available = reason === null;
-    return { capability_id: descriptor.id, available, reason, route: descriptor.route, project_id: projectId, surface_id: surfaceId, surface_revision: surfaceRevision };
+    return {
+      capability_id: descriptor.id,
+      available,
+      reason,
+      route: descriptor.route,
+      project_id: projectId,
+      surface_id: surfaceId,
+      surface_revision: surfaceRevision
+    };
   });
-  return { schema_version: 'aiws.assist-capabilities.v1', descriptors: ASSIST_CAPABILITY_MANIFEST, current, context: { session_id: session?.id || null, route, project_id: projectId, surface_id: surfaceId, surface_revision: surfaceRevision, collaboration_mode: mode } };
+  return {
+    schema_version: 'aiws.assist-capabilities.v1',
+    descriptors: ASSIST_CAPABILITY_MANIFEST,
+    current,
+    context: {
+      session_id: session?.id || null,
+      route,
+      project_id: projectId,
+      surface_id: surfaceId,
+      surface_revision: surfaceRevision,
+      collaboration_mode: mode
+    }
+  };
 }
 
 function unavailableReason(context) {
-  const { descriptor, mode, route, routeMatches, requiresProject, projectId, projectScopeMatches, resourceAvailable, workflowSurfaceMatches, surfaceId, surfaceRevision, surfaceKind, session, surfaceContextMatches, surfaceControlAvailable } = context;
+  const {
+    descriptor,
+    mode,
+    route,
+    routeMatches,
+    requiresProject,
+    projectId,
+    projectScopeMatches,
+    resourceAvailable,
+    workflowSurfaceMatches,
+    surfaceId,
+    surfaceRevision,
+    surfaceKind,
+    session,
+    surfaceContextMatches,
+    surfaceControlAvailable
+  } = context;
   if (mode === 'plan' && descriptor.mutation) return 'plan_read_only';
   if (!route) return 'route_required';
   if (!routeMatches) return 'different_route';
@@ -55,6 +137,9 @@ function unavailableReason(context) {
 
 function matchesRoute(pattern, route) {
   if (pattern === '/**') return route.startsWith('/');
-  const escaped = pattern.split('/').map((part) => part.startsWith(':') ? '[^/]+' : part.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('/');
+  const escaped = pattern
+    .split('/')
+    .map((part) => (part.startsWith(':') ? '[^/]+' : part.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')))
+    .join('/');
   return new RegExp(`^${escaped}(?:/)?$`).test(route.split(/[?#]/)[0]);
 }

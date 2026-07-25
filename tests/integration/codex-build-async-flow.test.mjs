@@ -22,7 +22,10 @@ try {
   assert.equal(second.operation_id, first.operation_id);
   assert.equal(second.attached, true);
 
-  const sse = fetch(url(first.events_url)).then(async (response) => { assert.equal(response.status, 200); return response.text(); });
+  const sse = fetch(url(first.events_url)).then(async (response) => {
+    assert.equal(response.status, 200);
+    return response.text();
+  });
   const responsiveAt = Date.now();
   const [health, setup] = await Promise.all([request('/health'), request('/setup/status')]);
   assert.equal(health.status, 'ok');
@@ -45,17 +48,22 @@ try {
   assert.equal(deployment.capabilities.native_assist.available, true);
   assert.equal(deployment.capabilities.linux_cli.available, true);
 
-  const replayResponse = await fetch(url(`/codex/docker/builds/${first.operation_id}/events`), { headers: { 'last-event-id': String(Math.max(0, completed.last_event_id - 1)) } });
+  const replayResponse = await fetch(url(`/codex/docker/builds/${first.operation_id}/events`), {
+    headers: { 'last-event-id': String(Math.max(0, completed.last_event_id - 1)) }
+  });
   const replay = await replayResponse.text();
   assert.match(replay, /event: completed/);
 
   const clientRequestId = 'req_integration_build_123';
-  const missing = await fetch(url('/codex/docker/builds/missing'), { headers: { 'x-aiws-request-id': clientRequestId } });
+  const missing = await fetch(url('/codex/docker/builds/missing'), {
+    headers: { 'x-aiws-request-id': clientRequestId }
+  });
   const missingBody = await missing.json();
   assert.equal(missing.status, 404);
   assert.equal(missing.headers.get('x-aiws-request-id'), clientRequestId);
   assert.equal(missingBody.request_id, clientRequestId);
-  for (const field of ['error', 'message', 'action', 'phase', 'retryable', 'request_id']) assert.ok(Object.hasOwn(missingBody, field));
+  for (const field of ['error', 'message', 'action', 'phase', 'retryable', 'request_id'])
+    assert.ok(Object.hasOwn(missingBody, field));
 
   fs.rmSync(marker, { force: true });
   await delay(1700);
@@ -72,7 +80,11 @@ try {
   await stopServer();
   server = startServer();
   await waitForServer();
-  assert.equal((await request('/codex/docker/builds/active')).operation, null, 'in-memory build is cleared after service restart');
+  assert.equal(
+    (await request('/codex/docker/builds/active')).operation,
+    null,
+    'in-memory build is cleared after service restart'
+  );
 
   console.log('Codex async build integration tests passed');
 } finally {
@@ -82,12 +94,24 @@ try {
 
 function startServer() {
   const child = spawn(process.execPath, ['apps/api/server.mjs'], {
-    env: { ...process.env, PATH: `${bin}${path.delimiter}${process.env.PATH || ''}`, AIWS_PORT: String(port), AIWS_HOME: home, AIWS_FAKE_DOCKER_MARKER: marker, AIWS_TEST_DOCKER_SCRIPT: fakeDockerScript, NODE_ENV: 'test' },
+    env: {
+      ...process.env,
+      PATH: `${bin}${path.delimiter}${process.env.PATH || ''}`,
+      AIWS_PORT: String(port),
+      AIWS_HOME: home,
+      AIWS_FAKE_DOCKER_MARKER: marker,
+      AIWS_TEST_DOCKER_SCRIPT: fakeDockerScript,
+      NODE_ENV: 'test'
+    },
     stdio: ['ignore', 'pipe', 'pipe']
   });
   child.output = '';
-  child.stdout.on('data', (chunk) => { child.output += chunk; });
-  child.stderr.on('data', (chunk) => { child.output += chunk; });
+  child.stdout.on('data', (chunk) => {
+    child.output += chunk;
+  });
+  child.stderr.on('data', (chunk) => {
+    child.output += chunk;
+  });
   return child;
 }
 
@@ -105,10 +129,16 @@ async function request(route, init = {}, expected = 200) {
   assert.equal(response.status, expected, `${route}: ${JSON.stringify(body)}\n${server.output}`);
   return body;
 }
-function url(route) { return `http://127.0.0.1:${port}${route}`; }
+function url(route) {
+  return `http://127.0.0.1:${port}${route}`;
+}
 async function waitForServer() {
   for (let index = 0; index < 100; index++) {
-    try { if ((await request('/health')).status === 'ok') return; } catch { await delay(50); }
+    try {
+      if ((await request('/health')).status === 'ok') return;
+    } catch {
+      await delay(50);
+    }
   }
   throw new Error(`server did not start: ${server.output}`);
 }
@@ -123,9 +153,25 @@ async function waitForOperation(id, predicate) {
 
 function installFakeDocker() {
   const script = path.join(bin, 'fake-docker.mjs');
-  fs.writeFileSync(script, `import fs from 'node:fs';\nconst args=process.argv.slice(2),marker=process.env.AIWS_FAKE_DOCKER_MARKER;\nif(args[0]==='info'){console.log('29.4.1');process.exit(0);}\nif(args[0]==='image'&&args[1]==='inspect'){if(fs.existsSync(marker)){console.log(JSON.stringify([{RootFS:{Type:'layers',Layers:['sha256:unit-layer']},Config:{Env:[]}}]));process.exit(0);}console.error('Error: No such image');process.exit(1);}\nif(args[0]==='build'){console.log('fake build started token=super-secret-value');setTimeout(()=>{fs.writeFileSync(marker,'ready');console.log('fake build completed');},2500);process.on('SIGTERM',()=>process.exit(143));}else{process.exit(0);}\n`, 'utf8');
-  if (process.platform === 'win32') fs.writeFileSync(path.join(bin, 'docker.cmd'), `@echo off\r\n"${process.execPath}" "%~dp0fake-docker.mjs" %*\r\n`, 'utf8');
-  else { const executable = path.join(bin, 'docker'); fs.writeFileSync(executable, `#!/bin/sh\nexec "${process.execPath}" "$(dirname "$0")/fake-docker.mjs" "$@"\n`, { mode: 0o755 }); }
+  fs.writeFileSync(
+    script,
+    `import fs from 'node:fs';\nconst args=process.argv.slice(2),marker=process.env.AIWS_FAKE_DOCKER_MARKER;\nif(args[0]==='info'){console.log('29.4.1');process.exit(0);}\nif(args[0]==='image'&&args[1]==='inspect'){if(fs.existsSync(marker)){console.log(JSON.stringify([{RootFS:{Type:'layers',Layers:['sha256:unit-layer']},Config:{Env:[]}}]));process.exit(0);}console.error('Error: No such image');process.exit(1);}\nif(args[0]==='build'){console.log('fake build started token=super-secret-value');setTimeout(()=>{fs.writeFileSync(marker,'ready');console.log('fake build completed');},2500);process.on('SIGTERM',()=>process.exit(143));}else{process.exit(0);}\n`,
+    'utf8'
+  );
+  if (process.platform === 'win32')
+    fs.writeFileSync(
+      path.join(bin, 'docker.cmd'),
+      `@echo off\r\n"${process.execPath}" "%~dp0fake-docker.mjs" %*\r\n`,
+      'utf8'
+    );
+  else {
+    const executable = path.join(bin, 'docker');
+    fs.writeFileSync(executable, `#!/bin/sh\nexec "${process.execPath}" "$(dirname "$0")/fake-docker.mjs" "$@"\n`, {
+      mode: 0o755
+    });
+  }
   return script;
 }
-function delay(ms) { return new Promise((resolve) => setTimeout(resolve, ms)); }
+function delay(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}

@@ -24,25 +24,65 @@ export function AppShell() {
   const canvasProject = useProject(params.projectId);
   const routeProject = projects.data?.find((item) => item.id === params.projectId);
   const selectedProject = projects.data?.find((item) => item.id === ui.activeProjectId);
-  const current = canvasProject.data?.project || routeProject || (!params.projectId ? selectedProject || projects.data?.[0] : undefined);
+  const current =
+    canvasProject.data?.project ||
+    routeProject ||
+    (!params.projectId ? selectedProject || projects.data?.[0] : undefined);
   const projectId = current?.id;
   const section = sectionName(location.pathname);
   const compactWorkflowHeader = useCompactWorkflowHeader();
   const [routeToolbarHost, setRouteToolbarHost] = useState<HTMLDivElement | null>(null);
   const commandDock = /^\/projects\/[^/]+(?:\/|$)/.test(location.pathname);
-  const activeWorkflow = canvasProject.data?.workflows?.filter((item) => item.status !== 'archived').sort((left, right) => Number(right.version || 0) - Number(left.version || 0))[0];
+  const activeWorkflow = canvasProject.data?.workflows
+    ?.filter((item) => item.status !== 'archived')
+    .sort((left, right) => Number(right.version || 0) - Number(left.version || 0))[0];
   const allNodes = canvasProject.data?.nodes || [];
   const contextNode = allNodes.find((item) => item.id === ui.contextNodeId);
   const routeWorkstream = allNodes.find((item) => item.id === params.workstreamId && item.role === 'workstream');
-  const contextualTask = params.workstreamId && contextNode?.role === 'task' && contextNode.parent_node_id === params.workstreamId ? contextNode : undefined;
-  const selectedNode = params.nodeId ? allNodes.find((item) => item.id === params.nodeId) : params.workstreamId ? contextualTask || routeWorkstream : canvasRoute && contextNode?.role === 'workstream' ? contextNode : undefined;
+  const contextualTask =
+    params.workstreamId && contextNode?.role === 'task' && contextNode.parent_node_id === params.workstreamId
+      ? contextNode
+      : undefined;
+  const selectedNode = params.nodeId
+    ? allNodes.find((item) => item.id === params.nodeId)
+    : params.workstreamId
+      ? contextualTask || routeWorkstream
+      : canvasRoute && contextNode?.role === 'workstream'
+        ? contextNode
+        : undefined;
   const selectedNodeId = selectedNode?.id;
-  const assistScopeType: AssistScopeType | undefined = params.nodeId ? (selectedNode?.role === 'workstream' ? 'workstream' : 'task') : params.workstreamId ? (selectedNode?.role === 'task' ? 'task' : 'workstream') : canvasRoute ? (selectedNode?.role === 'workstream' ? 'workstream' : 'workflow') : projectId ? 'project' : undefined;
-  const assistScopeId = assistScopeType === 'project' ? projectId : assistScopeType === 'workflow' ? activeWorkflow?.id : selectedNodeId;
-  const scopedWorkflow = canvasProject.data?.workflows?.find((item) => item.id === selectedNode?.workflow_id) || activeWorkflow;
-  const parentWorkstream = selectedNode?.role === 'task' ? allNodes.find((item) => item.id === selectedNode.parent_node_id && item.role === 'workstream') : undefined;
-  const assistScopeBreadcrumb = buildAssistBreadcrumb(current, scopedWorkflow, parentWorkstream, selectedNode, assistScopeType);
-  const overlayOpen = ui.navOpen || ui.assistOpen || ui.approvalCenterOpen || Boolean(ui.proposalId) || Boolean(ui.inspectorNodeId);
+  const assistScopeType: AssistScopeType | undefined = params.nodeId
+    ? selectedNode?.role === 'workstream'
+      ? 'workstream'
+      : 'task'
+    : params.workstreamId
+      ? selectedNode?.role === 'task'
+        ? 'task'
+        : 'workstream'
+      : canvasRoute
+        ? selectedNode?.role === 'workstream'
+          ? 'workstream'
+          : 'workflow'
+        : projectId
+          ? 'project'
+          : undefined;
+  const assistScopeId =
+    assistScopeType === 'project' ? projectId : assistScopeType === 'workflow' ? activeWorkflow?.id : selectedNodeId;
+  const scopedWorkflow =
+    canvasProject.data?.workflows?.find((item) => item.id === selectedNode?.workflow_id) || activeWorkflow;
+  const parentWorkstream =
+    selectedNode?.role === 'task'
+      ? allNodes.find((item) => item.id === selectedNode.parent_node_id && item.role === 'workstream')
+      : undefined;
+  const assistScopeBreadcrumb = buildAssistBreadcrumb(
+    current,
+    scopedWorkflow,
+    parentWorkstream,
+    selectedNode,
+    assistScopeType
+  );
+  const overlayOpen =
+    ui.navOpen || ui.assistOpen || ui.approvalCenterOpen || Boolean(ui.proposalId) || Boolean(ui.inspectorNodeId);
 
   useEffect(() => {
     if (routeProject?.id && routeProject.id !== ui.activeProjectId) ui.setProject(routeProject.id);
@@ -70,49 +110,121 @@ export function AppShell() {
     };
     window.addEventListener('keydown', closeOnEscape);
     return () => window.removeEventListener('keydown', closeOnEscape);
-  }, [overlayOpen, ui.proposalId, ui.navOpen, ui.approvalCenterOpen, ui.inspectorNodeId, ui.assistOpen, ui.contextLane, ui.setNav, ui.openApprovalCenter, ui.inspect, ui.setAssist]);
+  }, [
+    overlayOpen,
+    ui.proposalId,
+    ui.navOpen,
+    ui.approvalCenterOpen,
+    ui.inspectorNodeId,
+    ui.assistOpen,
+    ui.contextLane,
+    ui.setNav,
+    ui.openApprovalCenter,
+    ui.inspect,
+    ui.setAssist
+  ]);
 
   function selectProject(id: string) {
     ui.setProject(id);
     const target = projects.data?.find((item) => item.id === id);
-    const onboarding = target?.status === 'draft' || Boolean(target?.onboarding_state && target.onboarding_state !== 'confirmed');
+    const onboarding =
+      target?.status === 'draft' || Boolean(target?.onboarding_state && target.onboarding_state !== 'confirmed');
     navigate(`/projects/${id}/${onboarding ? 'onboarding' : 'workflow'}`);
   }
 
-  return <RouteToolbarHostProvider host={routeToolbarHost}>
-    <div className={`app-shell${canvasRoute ? ' canvas-route' : ''}${canvasRoute && ui.focusMode ? ' focus-mode' : ''}${commandDock && !ui.assistOpen ? ' has-command-dock' : ''}${ui.contextLane ? ` context-${ui.contextLane}` : ''}`} style={{ '--assist-dock-width': `${ui.assistDockWidth}px` } as CSSProperties}>
-      <header className="app-bar">
-        <IconButton className="app-nav-trigger" label="打开导航" onClick={() => ui.setNav(true)}><Menu size={19} /></IconButton>
-        {canvasRoute ? <>
-          <WorkflowProjectBreadcrumb projects={projects.data || []} current={current} onSelect={selectProject} />
-          <div ref={setRouteToolbarHost} className="route-toolbar-host" />
-          <span className="workflow-toolbar-divider" aria-hidden="true" />
-          <WorkflowHeaderActions compact={compactWorkflowHeader} />
-        </> : <>
-          <div className="brand-mark" aria-label="AI 工作空间">AW</div>
-          <div className="location-title"><strong>{section}</strong><span>{current?.title || 'AI 工作空间'}</span></div>
-          <div className="app-bar-spacer" />
-          <select aria-label="当前项目" value={projectId || ''} onChange={(event) => selectProject(event.target.value)} disabled={!projects.data?.length}>
-            {!projects.data?.length && <option value="">暂无项目</option>}
-            {projects.data?.map((project) => <option key={project.id} value={project.id}>{project.title}</option>)}
-          </select>
-          <OperationDiagnosticsButton />
-          <IconButton label="审批队列" active={ui.approvalCenterOpen || Boolean(ui.proposalId)} onClick={() => ui.openApprovalCenter(!ui.approvalCenterOpen)}><ShieldCheck size={18} /></IconButton>
-          <IconButton label="打开 Codex 智能助手" active={ui.assistOpen && ui.contextLane === 'assist'} onClick={() => ui.setAssist(!(ui.assistOpen && ui.contextLane === 'assist'))}><Bot size={19} /></IconButton>
-        </>}
-      </header>
-      <main className="route-stage"><Outlet /></main>
-      <NavDrawer />
-      <AssistCenter project={current} scopeType={assistScopeType} scopeId={assistScopeId} scopeBreadcrumb={assistScopeBreadcrumb} commandDock={commandDock} />
-      <ApprovalCenter projectId={projectId} />
-      <ApprovalPrompt projectId={projectId} />
-      <ToastHost />
-      {(ui.navOpen || ui.approvalCenterOpen) && <button className="scrim" aria-label="关闭浮层" onClick={() => ui.navOpen ? ui.setNav(false) : ui.openApprovalCenter(false)}><PanelLeftClose /></button>}
-    </div>
-  </RouteToolbarHostProvider>;
+  return (
+    <RouteToolbarHostProvider host={routeToolbarHost}>
+      <div
+        className={`app-shell${canvasRoute ? ' canvas-route' : ''}${canvasRoute && ui.focusMode ? ' focus-mode' : ''}${commandDock && !ui.assistOpen ? ' has-command-dock' : ''}${ui.contextLane ? ` context-${ui.contextLane}` : ''}`}
+        style={{ '--assist-dock-width': `${ui.assistDockWidth}px` } as CSSProperties}
+      >
+        <header className="app-bar">
+          <IconButton className="app-nav-trigger" label="打开导航" onClick={() => ui.setNav(true)}>
+            <Menu size={19} />
+          </IconButton>
+          {canvasRoute ? (
+            <>
+              <WorkflowProjectBreadcrumb projects={projects.data || []} current={current} onSelect={selectProject} />
+              <div ref={setRouteToolbarHost} className="route-toolbar-host" />
+              <span className="workflow-toolbar-divider" aria-hidden="true" />
+              <WorkflowHeaderActions compact={compactWorkflowHeader} />
+            </>
+          ) : (
+            <>
+              <div className="brand-mark" aria-label="AI 工作空间">
+                AW
+              </div>
+              <div className="location-title">
+                <strong>{section}</strong>
+                <span>{current?.title || 'AI 工作空间'}</span>
+              </div>
+              <div className="app-bar-spacer" />
+              <select
+                aria-label="当前项目"
+                value={projectId || ''}
+                onChange={(event) => selectProject(event.target.value)}
+                disabled={!projects.data?.length}
+              >
+                {!projects.data?.length && <option value="">暂无项目</option>}
+                {projects.data?.map((project) => (
+                  <option key={project.id} value={project.id}>
+                    {project.title}
+                  </option>
+                ))}
+              </select>
+              <OperationDiagnosticsButton />
+              <IconButton
+                label="审批队列"
+                active={ui.approvalCenterOpen || Boolean(ui.proposalId)}
+                onClick={() => ui.openApprovalCenter(!ui.approvalCenterOpen)}
+              >
+                <ShieldCheck size={18} />
+              </IconButton>
+              <IconButton
+                label="打开 Codex 智能助手"
+                active={ui.assistOpen && ui.contextLane === 'assist'}
+                onClick={() => ui.setAssist(!(ui.assistOpen && ui.contextLane === 'assist'))}
+              >
+                <Bot size={19} />
+              </IconButton>
+            </>
+          )}
+        </header>
+        <main className="route-stage">
+          <Outlet />
+        </main>
+        <NavDrawer />
+        <AssistCenter
+          project={current}
+          scopeType={assistScopeType}
+          scopeId={assistScopeId}
+          scopeBreadcrumb={assistScopeBreadcrumb}
+          commandDock={commandDock}
+        />
+        <ApprovalCenter projectId={projectId} />
+        <ApprovalPrompt projectId={projectId} />
+        <ToastHost />
+        {(ui.navOpen || ui.approvalCenterOpen) && (
+          <button
+            className="scrim"
+            aria-label="关闭浮层"
+            onClick={() => (ui.navOpen ? ui.setNav(false) : ui.openApprovalCenter(false))}
+          >
+            <PanelLeftClose />
+          </button>
+        )}
+      </div>
+    </RouteToolbarHostProvider>
+  );
 }
 
-function buildAssistBreadcrumb(project: { id: string; title: string } | undefined, workflow: { id: string; title: string } | undefined, parent: { id: string; title: string } | undefined, node: { id: string; title: string } | undefined, scopeType?: AssistScopeType): AssistScopeBreadcrumbItem[] {
+function buildAssistBreadcrumb(
+  project: { id: string; title: string } | undefined,
+  workflow: { id: string; title: string } | undefined,
+  parent: { id: string; title: string } | undefined,
+  node: { id: string; title: string } | undefined,
+  scopeType?: AssistScopeType
+): AssistScopeBreadcrumbItem[] {
   if (!project || !scopeType) return [];
   const items: AssistScopeBreadcrumbItem[] = [{ type: 'project', id: project.id, label: project.title }];
   if (scopeType === 'project') return items;

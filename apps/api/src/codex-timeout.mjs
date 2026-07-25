@@ -1,10 +1,19 @@
-import { DEFAULT_CODEX_TIMEOUT_MS, MAX_CODEX_TIMEOUT_MS, MIN_CODEX_TIMEOUT_MS } from '../../../packages/shared/index.mjs';
+import {
+  DEFAULT_CODEX_TIMEOUT_MS,
+  MAX_CODEX_TIMEOUT_MS,
+  MIN_CODEX_TIMEOUT_MS
+} from '../../../packages/shared/index.mjs';
 
 export { DEFAULT_CODEX_TIMEOUT_MS, MAX_CODEX_TIMEOUT_MS, MIN_CODEX_TIMEOUT_MS };
 
 export function isValidCodexTimeoutMs(value) {
   if (value == null) return true;
-  return typeof value === 'number' && Number.isInteger(value) && value >= MIN_CODEX_TIMEOUT_MS && value <= MAX_CODEX_TIMEOUT_MS;
+  return (
+    typeof value === 'number' &&
+    Number.isInteger(value) &&
+    value >= MIN_CODEX_TIMEOUT_MS &&
+    value <= MAX_CODEX_TIMEOUT_MS
+  );
 }
 
 export function resolveCodexTimeoutMs(value) {

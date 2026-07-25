@@ -7,9 +7,10 @@ import path from 'node:path';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
 
-export async function createMcpTestFixture(prefix, {
-  operator = {}, approver = null, env = {}, seed = null, nodeArgs = []
-} = {}) {
+export async function createMcpTestFixture(
+  prefix,
+  { operator = {}, approver = null, env = {}, seed = null, nodeArgs = [] } = {}
+) {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), prefix));
   const home = path.join(root, 'home');
   const ccSwitch = path.join(root, 'cc-switch');
@@ -34,29 +35,49 @@ export async function createMcpTestFixture(prefix, {
   await stateApi.ensureRuntime();
   await seed?.({ root, home, ccSwitch, stateApi, clientApi });
   const owner = (await stateApi.readState()).users.find((item) => item.role === 'owner');
-  const operatorCreated = await clientApi.createMcpClient({
-    name: 'V1.8 test operator',
-    scopes: clientApi.DEFAULT_OPERATOR_SCOPES,
-    ttl_seconds: 3600,
-    concurrent_limit: 8,
-    rate_limit_per_minute: 1200,
-    ...operator
-  }, owner?.id || null);
-  const approverCreated = approver === null ? null : await clientApi.createMcpClient({
-    name: 'V1.8 test approver',
-    scopes: ['system:read', 'project:read', 'workflow:read', 'governance:read', 'approval:read', 'approval:decide'],
-    ttl_seconds: 3600,
-    concurrent_limit: 4,
-    rate_limit_per_minute: 600,
-    ...approver
-  }, owner?.id || null);
+  const operatorCreated = await clientApi.createMcpClient(
+    {
+      name: 'V1.8 test operator',
+      scopes: clientApi.DEFAULT_OPERATOR_SCOPES,
+      ttl_seconds: 3600,
+      concurrent_limit: 8,
+      rate_limit_per_minute: 1200,
+      ...operator
+    },
+    owner?.id || null
+  );
+  const approverCreated =
+    approver === null
+      ? null
+      : await clientApi.createMcpClient(
+          {
+            name: 'V1.8 test approver',
+            scopes: [
+              'system:read',
+              'project:read',
+              'workflow:read',
+              'governance:read',
+              'approval:read',
+              'approval:decide'
+            ],
+            ttl_seconds: 3600,
+            concurrent_limit: 4,
+            rate_limit_per_minute: 600,
+            ...approver
+          },
+          owner?.id || null
+        );
 
   const port = await freePort();
   const requests = [];
   const originalFetch = globalThis.fetch;
   globalThis.fetch = async (input, init) => {
     const url = new URL(typeof input === 'string' || input instanceof URL ? input : input.url);
-    requests.push({ method: String(init?.method || (typeof input === 'object' && input?.method) || 'GET').toUpperCase(), url: url.href, pathname: url.pathname });
+    requests.push({
+      method: String(init?.method || (typeof input === 'object' && input?.method) || 'GET').toUpperCase(),
+      url: url.href,
+      pathname: url.pathname
+    });
     return originalFetch(input, init);
   };
 
@@ -76,9 +97,19 @@ export async function createMcpTestFixture(prefix, {
   }
 
   return {
-    root, home, ccSwitch, port, baseUrl: `http://127.0.0.1:${port}`, requests,
-    get child() { return child; },
-    operator: operatorCreated, approver: approverCreated, stateApi, clientApi,
+    root,
+    home,
+    ccSwitch,
+    port,
+    baseUrl: `http://127.0.0.1:${port}`,
+    requests,
+    get child() {
+      return child;
+    },
+    operator: operatorCreated,
+    approver: approverCreated,
+    stateApi,
+    clientApi,
     logs: () => logs,
     async connect(created = operatorCreated, name = 'v18-test-client') {
       const client = new Client({ name, version: '1.8.0' }, { capabilities: { resources: { subscribe: true } } });
@@ -102,7 +133,9 @@ export async function createMcpTestFixture(prefix, {
       const unexpected = requests.filter((item) => !['/api/health', '/api/mcp'].includes(item.pathname));
       assert.deepEqual(unexpected, [], `non-MCP HTTP requests detected: ${JSON.stringify(unexpected)}`);
     },
-    async stopServer() { await stopChild(child); },
+    async stopServer() {
+      await stopChild(child);
+    },
     async restartServer() {
       for (const connection of [...connections]) await connection.close();
       await stopChild(child);
@@ -117,7 +150,7 @@ export async function createMcpTestFixture(prefix, {
       globalThis.fetch = originalFetch;
       restoreEnvironment(previousEnvironment);
       if (remove) fs.rmSync(root, { recursive: true, force: true });
-    },
+    }
   };
 
   function startApiChild() {
@@ -130,8 +163,12 @@ export async function createMcpTestFixture(prefix, {
   }
 
   function captureLogs(processHandle) {
-    processHandle.stdout.on('data', (chunk) => { logs += chunk; });
-    processHandle.stderr.on('data', (chunk) => { logs += chunk; });
+    processHandle.stdout.on('data', (chunk) => {
+      logs += chunk;
+    });
+    processHandle.stderr.on('data', (chunk) => {
+      logs += chunk;
+    });
   }
 }
 
@@ -141,13 +178,16 @@ export async function callOperation(client, operationId, args = {}, { ok = true 
 
 export async function callTool(client, name, args, { ok = true } = {}) {
   const response = await client.callTool({ name, arguments: args });
-  const result = response.structuredContent || JSON.parse(response.content?.find((item) => item.type === 'text')?.text || '{}');
+  const result =
+    response.structuredContent || JSON.parse(response.content?.find((item) => item.type === 'text')?.text || '{}');
   assert.equal(result.ok, ok, `${name}: ${JSON.stringify(result)}`);
   assert.equal(response.isError === true, !ok, `${name} isError`);
   return result;
 }
 
-export function resultData(result) { return result.handle?.data ?? result.data; }
+export function resultData(result) {
+  return result.handle?.data ?? result.data;
+}
 
 export async function seedHostCodexProfile({ home, stateApi }) {
   const codexHome = path.join(home, 'codex-homes', 'v18-test-host');
@@ -158,13 +198,27 @@ export async function seedHostCodexProfile({ home, stateApi }) {
   await stateApi.mutate((state) => {
     for (const profile of state.codex_profiles) profile.is_active = false;
     state.codex_profiles.push({
-      id: 'cdx_v18_test_host', name: 'V1.8 Test Host', kind: 'host', provider: 'openai', model: 'test-model', reasoning: 'medium',
-      status: 'validated', is_active: true, codex_home: codexHome, mounts: [], created_at: new Date().toISOString(), updated_at: new Date().toISOString()
+      id: 'cdx_v18_test_host',
+      name: 'V1.8 Test Host',
+      kind: 'host',
+      provider: 'openai',
+      model: 'test-model',
+      reasoning: 'medium',
+      status: 'validated',
+      is_active: true,
+      codex_home: codexHome,
+      mounts: [],
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString()
     });
     state.integration_statuses = state.integration_statuses.filter((item) => item.key !== 'codex_auth');
     state.integration_statuses.push({
-      key: 'codex_auth', status: 'authenticated', provider: 'openai', auth_mode: 'api_key',
-      refs: { credential: 'vault:v18_test_credential' }, updated_at: new Date().toISOString()
+      key: 'codex_auth',
+      status: 'authenticated',
+      provider: 'openai',
+      auth_mode: 'api_key',
+      refs: { credential: 'vault:v18_test_credential' },
+      updated_at: new Date().toISOString()
     });
   });
 }
@@ -192,7 +246,7 @@ async function freePort() {
     server.once('error', reject);
     server.listen(0, '127.0.0.1', () => {
       const address = server.address();
-      server.close((error) => error ? reject(error) : resolve(address.port));
+      server.close((error) => (error ? reject(error) : resolve(address.port)));
     });
   });
 }

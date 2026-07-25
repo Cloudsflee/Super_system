@@ -6,7 +6,12 @@ export function FullPageState({ title, detail, retry }: { title: string; detail?
       <LoaderCircle className="spin" aria-hidden />
       <h1>{title}</h1>
       {detail && <p>{detail}</p>}
-      {retry && <button className="button secondary" onClick={retry}><RefreshCw size={16} />重试</button>}
+      {retry && (
+        <button className="button secondary" onClick={retry}>
+          <RefreshCw size={16} />
+          重试
+        </button>
+      )}
     </main>
   );
 }

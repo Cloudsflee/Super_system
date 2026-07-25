@@ -11,7 +11,15 @@ export const ChangeProposalStatus = Object.freeze({
   Superseded: 'superseded'
 });
 
-export function createAgentSession({ projectId, workspaceId = null, scopeType = 'project', scopeId, parentSessionId = null, title = '', actorId }) {
+export function createAgentSession({
+  projectId,
+  workspaceId = null,
+  scopeType = 'project',
+  scopeId,
+  parentSessionId = null,
+  title = '',
+  actorId
+}) {
   const created = now();
   return {
     id: id('ags'),
@@ -29,7 +37,21 @@ export function createAgentSession({ projectId, workspaceId = null, scopeType = 
   };
 }
 
-export function createSubSubmission({ projectId, workspaceId, nodeId = null, fromSessionId, toSessionId, title, summary, changes = [], evidenceRefs = [], risks = [], outputBindings = [], inputSnapshotHash = null, actorId }) {
+export function createSubSubmission({
+  projectId,
+  workspaceId,
+  nodeId = null,
+  fromSessionId,
+  toSessionId,
+  title,
+  summary,
+  changes = [],
+  evidenceRefs = [],
+  risks = [],
+  outputBindings = [],
+  inputSnapshotHash = null,
+  actorId
+}) {
   const created = now();
   return {
     id: id('sub'),
@@ -52,7 +74,21 @@ export function createSubSubmission({ projectId, workspaceId, nodeId = null, fro
   };
 }
 
-export function createChangeProposal({ projectId, workspaceId = null, nodeId = null, changeType = 'general', title, summary, before = null, after = null, impact = [], risks = [], evidenceRefs = [], applyAction = null, actorId }) {
+export function createChangeProposal({
+  projectId,
+  workspaceId = null,
+  nodeId = null,
+  changeType = 'general',
+  title,
+  summary,
+  before = null,
+  after = null,
+  impact = [],
+  risks = [],
+  evidenceRefs = [],
+  applyAction = null,
+  actorId
+}) {
   const created = now();
   return {
     id: id('cpr'),
@@ -89,13 +125,23 @@ export function approveProposal(proposal, actorId) {
 
 export function rejectProposal(proposal, actorId, reason = '') {
   if (!proposal || proposal.status !== ChangeProposalStatus.Pending) throw new Error('proposal_not_pending');
-  Object.assign(proposal, { status: ChangeProposalStatus.Rejected, rejected_by_user_id: actorId, rejection_reason: reason, updated_at: now() });
+  Object.assign(proposal, {
+    status: ChangeProposalStatus.Rejected,
+    rejected_by_user_id: actorId,
+    rejection_reason: reason,
+    updated_at: now()
+  });
   return proposal;
 }
 
 export function markProposalApplied(proposal, actorId) {
   if (!proposal || proposal.status !== ChangeProposalStatus.Approved) throw new Error('proposal_not_approved');
-  Object.assign(proposal, { status: ChangeProposalStatus.Applied, applied_by_user_id: actorId, applied_at: now(), updated_at: now() });
+  Object.assign(proposal, {
+    status: ChangeProposalStatus.Applied,
+    applied_by_user_id: actorId,
+    applied_at: now(),
+    updated_at: now()
+  });
   return proposal;
 }
 

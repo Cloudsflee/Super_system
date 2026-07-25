@@ -37,23 +37,50 @@ import { pullRequestIntentV19Routes } from './routes/pull-request-intents-v19.mj
 import { workflowExecutionV110Routes } from './routes/workflow-executions-v110.mjs';
 
 const groups = [
-  ['system.mjs', systemRoutes], ['setup-v12.mjs', setupV12Routes], ['projects.mjs', projectRoutes],
-  ['project-onboarding-v13.mjs', projectOnboardingV13Routes], ['assist-v12.mjs', assistV12Routes],
-  ['assist-v3.mjs', assistV3Routes], ['runs.mjs', runRoutes], ['assets.mjs', assetRoutes], ['git.mjs', gitRoutes],
-  ['github.mjs', githubRoutes], ['tools.mjs', toolRoutes], ['github-config-v12.mjs', githubConfigV12Routes],
-  ['github-installations-v12.mjs', githubInstallationsV12Routes], ['github-webhook-v12.mjs', githubWebhookV12Routes],
-  ['codex-v12.mjs', codexV12Routes], ['codex-discovery-v12.mjs', codexDiscoveryV12Routes],
-  ['workflow-v12.mjs', workflowV12Routes], ['files-v12.mjs', fileV12Routes], ['agent-sessions.mjs', agentSessionRoutes],
-  ['change-proposals.mjs', changeProposalRoutes], ['approvals-v13.mjs', approvalV13Routes],
-  ['terminal-v13.mjs', terminalV13Routes], ['codex-capabilities-v13.mjs', codexCapabilitiesV13Routes],
-  ['github-repositories-v13.mjs', githubRepositoriesV13Routes], ['config-governance-v13.mjs', configGovernanceV13Routes],
-  ['host-bridge-v15.mjs', hostBridgeV15Routes], ['mcp-clients-v18.mjs', mcpClientV18Routes], ['mcp-v18.mjs', mcpV18Routes],
-  ['workflow-v19.mjs', workflowV19Routes], ['repository-delivery-v19.mjs', repositoryDeliveryV19Routes],
-  ['workflow-migration-v19.mjs', workflowMigrationV19Routes], ['project-governance-v19.mjs', projectGovernanceV19Routes], ['exchange-v19.mjs', exchangeV19Routes],
-  ['repository-lifecycle-v19.mjs', repositoryLifecycleV19Routes], ['repository-workspaces-v19.mjs', repositoryWorkspaceV19Routes],
-  ['pull-request-intents-v19.mjs', pullRequestIntentV19Routes]
-  ,['workflow-executions-v110.mjs', workflowExecutionV110Routes]
+  ['system.mjs', systemRoutes],
+  ['setup-v12.mjs', setupV12Routes],
+  ['projects.mjs', projectRoutes],
+  ['project-onboarding-v13.mjs', projectOnboardingV13Routes],
+  ['assist-v12.mjs', assistV12Routes],
+  ['assist-v3.mjs', assistV3Routes],
+  ['runs.mjs', runRoutes],
+  ['assets.mjs', assetRoutes],
+  ['git.mjs', gitRoutes],
+  ['github.mjs', githubRoutes],
+  ['tools.mjs', toolRoutes],
+  ['github-config-v12.mjs', githubConfigV12Routes],
+  ['github-installations-v12.mjs', githubInstallationsV12Routes],
+  ['github-webhook-v12.mjs', githubWebhookV12Routes],
+  ['codex-v12.mjs', codexV12Routes],
+  ['codex-discovery-v12.mjs', codexDiscoveryV12Routes],
+  ['workflow-v12.mjs', workflowV12Routes],
+  ['files-v12.mjs', fileV12Routes],
+  ['agent-sessions.mjs', agentSessionRoutes],
+  ['change-proposals.mjs', changeProposalRoutes],
+  ['approvals-v13.mjs', approvalV13Routes],
+  ['terminal-v13.mjs', terminalV13Routes],
+  ['codex-capabilities-v13.mjs', codexCapabilitiesV13Routes],
+  ['github-repositories-v13.mjs', githubRepositoriesV13Routes],
+  ['config-governance-v13.mjs', configGovernanceV13Routes],
+  ['host-bridge-v15.mjs', hostBridgeV15Routes],
+  ['mcp-clients-v18.mjs', mcpClientV18Routes],
+  ['mcp-v18.mjs', mcpV18Routes],
+  ['workflow-v19.mjs', workflowV19Routes],
+  ['repository-delivery-v19.mjs', repositoryDeliveryV19Routes],
+  ['workflow-migration-v19.mjs', workflowMigrationV19Routes],
+  ['project-governance-v19.mjs', projectGovernanceV19Routes],
+  ['exchange-v19.mjs', exchangeV19Routes],
+  ['repository-lifecycle-v19.mjs', repositoryLifecycleV19Routes],
+  ['repository-workspaces-v19.mjs', repositoryWorkspaceV19Routes],
+  ['pull-request-intents-v19.mjs', pullRequestIntentV19Routes],
+  ['workflow-executions-v110.mjs', workflowExecutionV110Routes]
 ];
 
-export const apiRouteGroups = Object.freeze(groups.map(([sourceModule, routes]) => Object.freeze({ source_module: sourceModule, routes })));
-export const apiRoutes = Object.freeze(apiRouteGroups.flatMap(({ source_module, routes }) => routes.map((route) => Object.freeze({ ...route, source_module }))));
+export const apiRouteGroups = Object.freeze(
+  groups.map(([sourceModule, routes]) => Object.freeze({ source_module: sourceModule, routes }))
+);
+export const apiRoutes = Object.freeze(
+  apiRouteGroups.flatMap(({ source_module, routes }) =>
+    routes.map((route) => Object.freeze({ ...route, source_module }))
+  )
+);

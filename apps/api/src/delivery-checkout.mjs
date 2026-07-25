@@ -25,8 +25,13 @@ export async function ensureDeliveryCheckout(context, delivery, baseSha) {
   try {
     await configureRemote(context, target);
     const branchExists = git(target, ['show-ref', '--verify', '--quiet', `refs/heads/${delivery.branch}`], 5_000).ok;
-    const checkedOut = git(target, branchExists ? ['checkout', delivery.branch] : ['checkout', '-b', delivery.branch, baseSha], 60_000);
-    if (!checkedOut.ok) throw checkoutError('delivery_worktree_create_failed', { detail: checkedOut.stderr || checkedOut.error });
+    const checkedOut = git(
+      target,
+      branchExists ? ['checkout', delivery.branch] : ['checkout', '-b', delivery.branch, baseSha],
+      60_000
+    );
+    if (!checkedOut.ok)
+      throw checkoutError('delivery_worktree_create_failed', { detail: checkedOut.stderr || checkedOut.error });
     const head = git(target, ['rev-parse', 'HEAD'], 5_000).stdout.trim();
     if (head !== baseSha) throw checkoutError('delivery_base_sha_mismatch', { expected: baseSha, actual: head });
     return target;
@@ -38,10 +43,12 @@ export async function ensureDeliveryCheckout(context, delivery, baseSha) {
 
 async function migrateLinkedWorktree(repository, target) {
   const status = git(target, ['status', '--porcelain', '--untracked-files=all'], 10_000);
-  if (!status.ok) throw checkoutError('delivery_linked_worktree_migration_failed', { detail: status.stderr || status.error });
+  if (!status.ok)
+    throw checkoutError('delivery_linked_worktree_migration_failed', { detail: status.stderr || status.error });
   if (status.stdout.trim()) throw checkoutError('delivery_linked_worktree_migration_dirty');
   const removed = git(repository, ['worktree', 'remove', '--force', target], 60_000);
-  if (!removed.ok) throw checkoutError('delivery_linked_worktree_migration_failed', { detail: removed.stderr || removed.error });
+  if (!removed.ok)
+    throw checkoutError('delivery_linked_worktree_migration_failed', { detail: removed.stderr || removed.error });
   git(repository, ['worktree', 'prune'], 10_000);
 }
 
@@ -50,8 +57,20 @@ async function configureRemote(context, target) {
   const sourceRemote = git(context.repo_path, ['remote', 'get-url', remoteName], 5_000);
   if (!sourceRemote.ok) return;
   const current = git(target, ['remote', 'get-url', remoteName], 5_000);
-  const configured = git(target, current.ok ? ['remote', 'set-url', remoteName, sourceRemote.stdout.trim()] : ['remote', 'add', remoteName, sourceRemote.stdout.trim()], 5_000);
-  if (!configured.ok) throw checkoutError('delivery_remote_configuration_failed', { detail: configured.stderr || configured.error });
+  const configured = git(
+    target,
+    current.ok
+      ? ['remote', 'set-url', remoteName, sourceRemote.stdout.trim()]
+      : ['remote', 'add', remoteName, sourceRemote.stdout.trim()],
+    5_000
+  );
+  if (!configured.ok)
+    throw checkoutError('delivery_remote_configuration_failed', { detail: configured.stderr || configured.error });
 }
 
-function checkoutError(code, details = {}) { const error = new Error(code); error.code = code; error.details = details; return error; }
+function checkoutError(code, details = {}) {
+  const error = new Error(code);
+  error.code = code;
+  error.details = details;
+  return error;
+}

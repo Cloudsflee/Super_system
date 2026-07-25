@@ -1,4 +1,19 @@
-import { BadgePlus, ChevronDown, ChevronUp, Copy, FileText, GitBranch, Library, Link2, ListTree, Plus, Save, Search, Trash2, Unlink2 } from 'lucide-react';
+import {
+  BadgePlus,
+  ChevronDown,
+  ChevronUp,
+  Copy,
+  FileText,
+  GitBranch,
+  Library,
+  Link2,
+  ListTree,
+  Plus,
+  Save,
+  Search,
+  Trash2,
+  Unlink2
+} from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import type { BriefSection, BriefTemplate, ProjectBrief, WorkflowDraft, WorkflowDraftNode } from '../../../api/types';
 import { IconButton } from '../../../components/common/IconButton';
@@ -7,65 +22,683 @@ import { templateDomainLabel } from '../../../components/common/display-labels';
 type BriefOperation = Record<string, unknown> & { type: string };
 type WorkflowOperation = Record<string, unknown> & { type: string };
 type Props = {
-  brief: ProjectBrief; workflow: WorkflowDraft; templates: BriefTemplate[]; busy: boolean;
-  onBrief: (operations: BriefOperation[]) => Promise<boolean>; onWorkflow: (operations: WorkflowOperation[]) => Promise<boolean>;
-  onSaveTemplate: () => void; onApplyTemplate: (template: BriefTemplate) => void; onSearchTemplates: () => void;
+  brief: ProjectBrief;
+  workflow: WorkflowDraft;
+  templates: BriefTemplate[];
+  busy: boolean;
+  onBrief: (operations: BriefOperation[]) => Promise<boolean>;
+  onWorkflow: (operations: WorkflowOperation[]) => Promise<boolean>;
+  onSaveTemplate: () => void;
+  onApplyTemplate: (template: BriefTemplate) => void;
+  onSearchTemplates: () => void;
 };
 
 export function BriefWorkspace(props: Props) {
-  const [selected, setSelected] = useState(props.brief.content.sections[0]?.id || ''), [mobilePane, setMobilePane] = useState<'brief' | 'outline' | 'workflow'>('brief'), [templatesOpen, setTemplatesOpen] = useState(false);
-  const [titleDraft, setTitleDraft] = useState(props.brief.content.title), titleDirty = useRef(false), titleBriefId = useRef(props.brief.id);
-  useEffect(() => { if (!props.brief.content.sections.some((section) => section.id === selected)) setSelected(props.brief.content.sections[0]?.id || ''); }, [props.brief.revision, selected]);
+  const [selected, setSelected] = useState(props.brief.content.sections[0]?.id || ''),
+    [mobilePane, setMobilePane] = useState<'brief' | 'outline' | 'workflow'>('brief'),
+    [templatesOpen, setTemplatesOpen] = useState(false);
+  const [titleDraft, setTitleDraft] = useState(props.brief.content.title),
+    titleDirty = useRef(false),
+    titleBriefId = useRef(props.brief.id);
   useEffect(() => {
-    if (titleBriefId.current !== props.brief.id) { titleBriefId.current = props.brief.id; titleDirty.current = false; setTitleDraft(props.brief.content.title); }
-    else if (!titleDirty.current) setTitleDraft(props.brief.content.title);
+    if (!props.brief.content.sections.some((section) => section.id === selected))
+      setSelected(props.brief.content.sections[0]?.id || '');
+  }, [props.brief.revision, selected]);
+  useEffect(() => {
+    if (titleBriefId.current !== props.brief.id) {
+      titleBriefId.current = props.brief.id;
+      titleDirty.current = false;
+      setTitleDraft(props.brief.content.title);
+    } else if (!titleDirty.current) setTitleDraft(props.brief.content.title);
   }, [props.brief.id, props.brief.content.title]);
-  function selectSection(id: string) { setSelected(id); setMobilePane('brief'); requestAnimationFrame(() => document.getElementById(`brief-section-${id}`)?.scrollIntoView({ behavior: 'smooth', block: 'start' })); }
-  function addSection(type: BriefSection['type']) { props.onBrief([{ type: 'add_section', section: emptySection(type), to_index: props.brief.content.sections.length }]); }
-  return <section className="brief-workspace" aria-label="项目简报工作区">
-    <nav className="brief-mobile-tabs" aria-label="简报工作区视图">{([['brief', '简报', FileText], ['outline', '大纲', ListTree], ['workflow', '工作流', GitBranch]] as const).map(([value, label, Icon]) => <button className={mobilePane === value ? 'active' : ''} aria-pressed={mobilePane === value} key={value} onClick={() => setMobilePane(value)}><Icon size={14} />{label}</button>)}</nav>
-    <aside className={`brief-outline${mobilePane === 'outline' ? ' mobile-active' : ''}`}>
-      <header><div><span>大纲</span><small>{props.brief.content.sections.length} 个区块</small></div><AddSectionMenu disabled={props.busy} onAdd={addSection} /></header>
-      <ol>{props.brief.content.sections.map((section, index) => <li className={selected === section.id ? 'active' : ''} key={section.id}><button className="outline-label" onClick={() => selectSection(section.id)}><i>{index + 1}</i><span>{section.title}</span></button><div><IconButton label={`上移 ${section.title}`} disabled={props.busy || index === 0} onClick={() => props.onBrief([{ type: 'move_section', section_id: section.id, to_index: index - 1 }])}><ChevronUp size={12} /></IconButton><IconButton label={`下移 ${section.title}`} disabled={props.busy || index === props.brief.content.sections.length - 1} onClick={() => props.onBrief([{ type: 'move_section', section_id: section.id, to_index: index + 1 }])}><ChevronDown size={12} /></IconButton><IconButton label={`复制 ${section.title}`} disabled={props.busy} onClick={() => props.onBrief([{ type: 'duplicate_section', section_id: section.id }])}><Copy size={12} /></IconButton><IconButton label={`删除 ${section.title}`} disabled={props.busy} onClick={() => { if (window.confirm(`删除区块“${section.title}”？`)) props.onBrief([{ type: 'delete_section', section_id: section.id }]); }}><Trash2 size={12} /></IconButton></div></li>)}</ol>
-    </aside>
-    <main className={`brief-document${mobilePane === 'brief' ? ' mobile-active' : ''}`}>
-      <header className="brief-document-head"><div className="brief-title-block"><input aria-label="简报标题" disabled={props.busy} value={titleDraft} onChange={(event) => { titleDirty.current = true; setTitleDraft(event.target.value); }} onBlur={() => { if (props.busy) return; const value = titleDraft.trim(); if (!value) return; setTitleDraft(value); if (value === props.brief.content.title) { titleDirty.current = false; return; } void props.onBrief([{ type: 'set_title', title: value }]).then((saved) => { if (saved) titleDirty.current = false; }); }} /><p>{props.brief.content.summary}</p></div><div className="brief-template-actions"><IconButton label="检索权威简报模板" disabled={props.busy} onClick={props.onSearchTemplates}><Search size={15} /></IconButton><div><IconButton label="个人模板库" active={templatesOpen} disabled={props.busy} onClick={() => setTemplatesOpen(!templatesOpen)}><Library size={15} /></IconButton>{templatesOpen && <div className="brief-template-menu" role="menu"><button role="menuitem" disabled={props.busy} onClick={() => { props.onSaveTemplate(); setTemplatesOpen(false); }}><BadgePlus size={14} />保存当前结构</button>{props.templates.map((template) => <button role="menuitem" disabled={props.busy} key={template.id} onClick={() => { props.onApplyTemplate(template); setTemplatesOpen(false); }}><span><strong>{template.title}</strong><small>{templateDomainLabel(template.domain)} · 第 {template.version} 版</small></span></button>)}{!props.templates.length && <p>模板库为空</p>}</div>}</div></div></header>
-      <div className="brief-section-list">{props.brief.content.sections.map((section, index) => <BriefSectionEditor key={section.id} section={section} index={index} selected={selected === section.id} busy={props.busy} onFocus={() => setSelected(section.id)} onSave={(next) => props.onBrief([{ type: 'update_section', section_id: section.id, section: next }])} />)}</div>
-    </main>
-    <aside className={`workflow-draft-panel${mobilePane === 'workflow' ? ' mobile-active' : ''}`}>
-      <header><div><span>初始工作流</span><small>{props.workflow.nodes.length} 个独立工作单元 · 修订版 {props.workflow.revision}</small></div><IconButton label="添加工作流节点" disabled={props.busy} onClick={() => props.onWorkflow([{ type: 'add_node', node: { type: 'execution', title: '独立工作流', goal: '定义独立负责人、权限边界或并行交付物', dependency_ids: [] } }])}><Plus size={14} /></IconButton></header>
-      <div className="workflow-draft-nodes">{props.workflow.nodes.map((node, index) => <WorkflowNodeEditor key={node.id} node={node} nodes={props.workflow.nodes} index={index} busy={props.busy} onOperation={(operation) => props.onWorkflow([operation])} />)}</div>
-    </aside>
-  </section>;
+  function selectSection(id: string) {
+    setSelected(id);
+    setMobilePane('brief');
+    requestAnimationFrame(() =>
+      document.getElementById(`brief-section-${id}`)?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+    );
+  }
+  function addSection(type: BriefSection['type']) {
+    props.onBrief([
+      { type: 'add_section', section: emptySection(type), to_index: props.brief.content.sections.length }
+    ]);
+  }
+  return (
+    <section className="brief-workspace" aria-label="项目简报工作区">
+      <nav className="brief-mobile-tabs" aria-label="简报工作区视图">
+        {(
+          [
+            ['brief', '简报', FileText],
+            ['outline', '大纲', ListTree],
+            ['workflow', '工作流', GitBranch]
+          ] as const
+        ).map(([value, label, Icon]) => (
+          <button
+            className={mobilePane === value ? 'active' : ''}
+            aria-pressed={mobilePane === value}
+            key={value}
+            onClick={() => setMobilePane(value)}
+          >
+            <Icon size={14} />
+            {label}
+          </button>
+        ))}
+      </nav>
+      <aside className={`brief-outline${mobilePane === 'outline' ? ' mobile-active' : ''}`}>
+        <header>
+          <div>
+            <span>大纲</span>
+            <small>{props.brief.content.sections.length} 个区块</small>
+          </div>
+          <AddSectionMenu disabled={props.busy} onAdd={addSection} />
+        </header>
+        <ol>
+          {props.brief.content.sections.map((section, index) => (
+            <li className={selected === section.id ? 'active' : ''} key={section.id}>
+              <button className="outline-label" onClick={() => selectSection(section.id)}>
+                <i>{index + 1}</i>
+                <span>{section.title}</span>
+              </button>
+              <div>
+                <IconButton
+                  label={`上移 ${section.title}`}
+                  disabled={props.busy || index === 0}
+                  onClick={() => props.onBrief([{ type: 'move_section', section_id: section.id, to_index: index - 1 }])}
+                >
+                  <ChevronUp size={12} />
+                </IconButton>
+                <IconButton
+                  label={`下移 ${section.title}`}
+                  disabled={props.busy || index === props.brief.content.sections.length - 1}
+                  onClick={() => props.onBrief([{ type: 'move_section', section_id: section.id, to_index: index + 1 }])}
+                >
+                  <ChevronDown size={12} />
+                </IconButton>
+                <IconButton
+                  label={`复制 ${section.title}`}
+                  disabled={props.busy}
+                  onClick={() => props.onBrief([{ type: 'duplicate_section', section_id: section.id }])}
+                >
+                  <Copy size={12} />
+                </IconButton>
+                <IconButton
+                  label={`删除 ${section.title}`}
+                  disabled={props.busy}
+                  onClick={() => {
+                    if (window.confirm(`删除区块“${section.title}”？`))
+                      props.onBrief([{ type: 'delete_section', section_id: section.id }]);
+                  }}
+                >
+                  <Trash2 size={12} />
+                </IconButton>
+              </div>
+            </li>
+          ))}
+        </ol>
+      </aside>
+      <main className={`brief-document${mobilePane === 'brief' ? ' mobile-active' : ''}`}>
+        <header className="brief-document-head">
+          <div className="brief-title-block">
+            <input
+              aria-label="简报标题"
+              disabled={props.busy}
+              value={titleDraft}
+              onChange={(event) => {
+                titleDirty.current = true;
+                setTitleDraft(event.target.value);
+              }}
+              onBlur={() => {
+                if (props.busy) return;
+                const value = titleDraft.trim();
+                if (!value) return;
+                setTitleDraft(value);
+                if (value === props.brief.content.title) {
+                  titleDirty.current = false;
+                  return;
+                }
+                void props.onBrief([{ type: 'set_title', title: value }]).then((saved) => {
+                  if (saved) titleDirty.current = false;
+                });
+              }}
+            />
+            <p>{props.brief.content.summary}</p>
+          </div>
+          <div className="brief-template-actions">
+            <IconButton label="检索权威简报模板" disabled={props.busy} onClick={props.onSearchTemplates}>
+              <Search size={15} />
+            </IconButton>
+            <div>
+              <IconButton
+                label="个人模板库"
+                active={templatesOpen}
+                disabled={props.busy}
+                onClick={() => setTemplatesOpen(!templatesOpen)}
+              >
+                <Library size={15} />
+              </IconButton>
+              {templatesOpen && (
+                <div className="brief-template-menu" role="menu">
+                  <button
+                    role="menuitem"
+                    disabled={props.busy}
+                    onClick={() => {
+                      props.onSaveTemplate();
+                      setTemplatesOpen(false);
+                    }}
+                  >
+                    <BadgePlus size={14} />
+                    保存当前结构
+                  </button>
+                  {props.templates.map((template) => (
+                    <button
+                      role="menuitem"
+                      disabled={props.busy}
+                      key={template.id}
+                      onClick={() => {
+                        props.onApplyTemplate(template);
+                        setTemplatesOpen(false);
+                      }}
+                    >
+                      <span>
+                        <strong>{template.title}</strong>
+                        <small>
+                          {templateDomainLabel(template.domain)} · 第 {template.version} 版
+                        </small>
+                      </span>
+                    </button>
+                  ))}
+                  {!props.templates.length && <p>模板库为空</p>}
+                </div>
+              )}
+            </div>
+          </div>
+        </header>
+        <div className="brief-section-list">
+          {props.brief.content.sections.map((section, index) => (
+            <BriefSectionEditor
+              key={section.id}
+              section={section}
+              index={index}
+              selected={selected === section.id}
+              busy={props.busy}
+              onFocus={() => setSelected(section.id)}
+              onSave={(next) => props.onBrief([{ type: 'update_section', section_id: section.id, section: next }])}
+            />
+          ))}
+        </div>
+      </main>
+      <aside className={`workflow-draft-panel${mobilePane === 'workflow' ? ' mobile-active' : ''}`}>
+        <header>
+          <div>
+            <span>初始工作流</span>
+            <small>
+              {props.workflow.nodes.length} 个独立工作单元 · 修订版 {props.workflow.revision}
+            </small>
+          </div>
+          <IconButton
+            label="添加工作流节点"
+            disabled={props.busy}
+            onClick={() =>
+              props.onWorkflow([
+                {
+                  type: 'add_node',
+                  node: {
+                    type: 'execution',
+                    title: '独立工作流',
+                    goal: '定义独立负责人、权限边界或并行交付物',
+                    dependency_ids: []
+                  }
+                }
+              ])
+            }
+          >
+            <Plus size={14} />
+          </IconButton>
+        </header>
+        <div className="workflow-draft-nodes">
+          {props.workflow.nodes.map((node, index) => (
+            <WorkflowNodeEditor
+              key={node.id}
+              node={node}
+              nodes={props.workflow.nodes}
+              index={index}
+              busy={props.busy}
+              onOperation={(operation) => props.onWorkflow([operation])}
+            />
+          ))}
+        </div>
+      </aside>
+    </section>
+  );
 }
 
-function BriefSectionEditor({ section, index, selected, busy, onFocus, onSave }: { section: BriefSection; index: number; selected: boolean; busy: boolean; onFocus: () => void; onSave: (value: BriefSection) => Promise<boolean> }) {
-  const [draft, setDraft] = useState<BriefSection>(() => structuredClone(section)), [dirty, setDirty] = useState(false);
+function BriefSectionEditor({
+  section,
+  index,
+  selected,
+  busy,
+  onFocus,
+  onSave
+}: {
+  section: BriefSection;
+  index: number;
+  selected: boolean;
+  busy: boolean;
+  onFocus: () => void;
+  onSave: (value: BriefSection) => Promise<boolean>;
+}) {
+  const [draft, setDraft] = useState<BriefSection>(() => structuredClone(section)),
+    [dirty, setDirty] = useState(false);
   const dirtyRef = useRef(false);
-  useEffect(() => { if (!dirtyRef.current) setDraft(structuredClone(section)); }, [section]);
-  function update(value: BriefSection) { setDraft(value); dirtyRef.current = true; setDirty(true); }
-  return <section id={`brief-section-${section.id}`} className={`brief-section-editor${selected ? ' selected' : ''}`} onFocus={onFocus}>
-    <header><span>{String(index + 1).padStart(2, '0')}</span><input aria-label={`${section.title} 区块标题`} disabled={busy} value={draft.title} onChange={(event) => { update({ ...draft, title: event.target.value } as BriefSection); }} /><small>{sectionTypeLabel(section.type)}</small>{dirty && <IconButton label={`保存 ${section.title}`} disabled={busy || !draft.title.trim()} onClick={() => { void onSave(draft).then((saved) => { if (saved) { dirtyRef.current = false; setDirty(false); } }); }}><Save size={14} /></IconButton>}</header>
-    {draft.type === 'markdown' && <textarea aria-label={`${draft.title} 格式化文本`} disabled={busy} rows={Math.max(5, Math.min(16, draft.markdown.split('\n').length + 2))} value={draft.markdown} onChange={(event) => update({ ...draft, markdown: event.target.value })} />}
-    {draft.type === 'list' && <textarea aria-label={`${draft.title} 列表`} disabled={busy} rows={Math.max(4, Math.min(14, draft.items.length + 2))} value={draft.items.join('\n')} onChange={(event) => update({ ...draft, items: event.target.value.split(/\r?\n/) })} />}
-    {draft.type === 'key_value' && <div className="brief-key-values">{draft.entries.map((entry, entryIndex) => <div key={entry.id}><input aria-label={`键 ${entryIndex + 1}`} disabled={busy} value={entry.key} onChange={(event) => update({ ...draft, entries: draft.entries.map((item) => item.id === entry.id ? { ...item, key: event.target.value } : item) })} /><textarea aria-label={`值 ${entryIndex + 1}`} disabled={busy} rows={2} value={entry.value} onChange={(event) => update({ ...draft, entries: draft.entries.map((item) => item.id === entry.id ? { ...item, value: event.target.value } : item) })} /><IconButton label="删除键值" disabled={busy} onClick={() => update({ ...draft, entries: draft.entries.filter((item) => item.id !== entry.id) })}><Trash2 size={12} /></IconButton></div>)}<button disabled={busy} onClick={() => update({ ...draft, entries: [...draft.entries, { id: localId('entry'), key: '', value: '' }] })}><Plus size={12} />添加键值</button></div>}
-    {draft.type === 'table' && <TableEditor section={draft} busy={busy} onChange={update} />}
-  </section>;
+  useEffect(() => {
+    if (!dirtyRef.current) setDraft(structuredClone(section));
+  }, [section]);
+  function update(value: BriefSection) {
+    setDraft(value);
+    dirtyRef.current = true;
+    setDirty(true);
+  }
+  return (
+    <section
+      id={`brief-section-${section.id}`}
+      className={`brief-section-editor${selected ? ' selected' : ''}`}
+      onFocus={onFocus}
+    >
+      <header>
+        <span>{String(index + 1).padStart(2, '0')}</span>
+        <input
+          aria-label={`${section.title} 区块标题`}
+          disabled={busy}
+          value={draft.title}
+          onChange={(event) => {
+            update({ ...draft, title: event.target.value } as BriefSection);
+          }}
+        />
+        <small>{sectionTypeLabel(section.type)}</small>
+        {dirty && (
+          <IconButton
+            label={`保存 ${section.title}`}
+            disabled={busy || !draft.title.trim()}
+            onClick={() => {
+              void onSave(draft).then((saved) => {
+                if (saved) {
+                  dirtyRef.current = false;
+                  setDirty(false);
+                }
+              });
+            }}
+          >
+            <Save size={14} />
+          </IconButton>
+        )}
+      </header>
+      {draft.type === 'markdown' && (
+        <textarea
+          aria-label={`${draft.title} 格式化文本`}
+          disabled={busy}
+          rows={Math.max(5, Math.min(16, draft.markdown.split('\n').length + 2))}
+          value={draft.markdown}
+          onChange={(event) => update({ ...draft, markdown: event.target.value })}
+        />
+      )}
+      {draft.type === 'list' && (
+        <textarea
+          aria-label={`${draft.title} 列表`}
+          disabled={busy}
+          rows={Math.max(4, Math.min(14, draft.items.length + 2))}
+          value={draft.items.join('\n')}
+          onChange={(event) => update({ ...draft, items: event.target.value.split(/\r?\n/) })}
+        />
+      )}
+      {draft.type === 'key_value' && (
+        <div className="brief-key-values">
+          {draft.entries.map((entry, entryIndex) => (
+            <div key={entry.id}>
+              <input
+                aria-label={`键 ${entryIndex + 1}`}
+                disabled={busy}
+                value={entry.key}
+                onChange={(event) =>
+                  update({
+                    ...draft,
+                    entries: draft.entries.map((item) =>
+                      item.id === entry.id ? { ...item, key: event.target.value } : item
+                    )
+                  })
+                }
+              />
+              <textarea
+                aria-label={`值 ${entryIndex + 1}`}
+                disabled={busy}
+                rows={2}
+                value={entry.value}
+                onChange={(event) =>
+                  update({
+                    ...draft,
+                    entries: draft.entries.map((item) =>
+                      item.id === entry.id ? { ...item, value: event.target.value } : item
+                    )
+                  })
+                }
+              />
+              <IconButton
+                label="删除键值"
+                disabled={busy}
+                onClick={() => update({ ...draft, entries: draft.entries.filter((item) => item.id !== entry.id) })}
+              >
+                <Trash2 size={12} />
+              </IconButton>
+            </div>
+          ))}
+          <button
+            disabled={busy}
+            onClick={() =>
+              update({ ...draft, entries: [...draft.entries, { id: localId('entry'), key: '', value: '' }] })
+            }
+          >
+            <Plus size={12} />
+            添加键值
+          </button>
+        </div>
+      )}
+      {draft.type === 'table' && <TableEditor section={draft} busy={busy} onChange={update} />}
+    </section>
+  );
 }
 
-function TableEditor({ section, busy, onChange }: { section: Extract<BriefSection, { type: 'table' }>; busy: boolean; onChange: (value: Extract<BriefSection, { type: 'table' }>) => void }) {
-  return <div className="brief-table-editor"><table><thead><tr>{section.columns.map((column) => <th key={column.id}><input aria-label="表格列名" disabled={busy} value={column.label} onChange={(event) => onChange({ ...section, columns: section.columns.map((item) => item.id === column.id ? { ...item, label: event.target.value } : item) })} /><IconButton label={`删除列 ${column.label}`} disabled={busy} onClick={() => onChange({ ...section, columns: section.columns.filter((item) => item.id !== column.id), rows: section.rows.map((row) => ({ ...row, cells: Object.fromEntries(Object.entries(row.cells).filter(([key]) => key !== column.id)) })) })}><Trash2 size={11} /></IconButton></th>)}<th><IconButton label="添加列" disabled={busy} onClick={() => onChange({ ...section, columns: [...section.columns, { id: localId('column'), label: `列 ${section.columns.length + 1}` }] })}><Plus size={12} /></IconButton></th></tr></thead><tbody>{section.rows.map((row) => <tr key={row.id}>{section.columns.map((column) => <td key={column.id}><textarea aria-label={`${column.label} 单元格`} disabled={busy} rows={2} value={row.cells[column.id] || ''} onChange={(event) => onChange({ ...section, rows: section.rows.map((item) => item.id === row.id ? { ...item, cells: { ...item.cells, [column.id]: event.target.value } } : item) })} /></td>)}<td><IconButton label="删除行" disabled={busy} onClick={() => onChange({ ...section, rows: section.rows.filter((item) => item.id !== row.id) })}><Trash2 size={12} /></IconButton></td></tr>)}</tbody></table><button disabled={busy} onClick={() => onChange({ ...section, rows: [...section.rows, { id: localId('row'), cells: {} }] })}><Plus size={12} />添加行</button></div>;
+function TableEditor({
+  section,
+  busy,
+  onChange
+}: {
+  section: Extract<BriefSection, { type: 'table' }>;
+  busy: boolean;
+  onChange: (value: Extract<BriefSection, { type: 'table' }>) => void;
+}) {
+  return (
+    <div className="brief-table-editor">
+      <table>
+        <thead>
+          <tr>
+            {section.columns.map((column) => (
+              <th key={column.id}>
+                <input
+                  aria-label="表格列名"
+                  disabled={busy}
+                  value={column.label}
+                  onChange={(event) =>
+                    onChange({
+                      ...section,
+                      columns: section.columns.map((item) =>
+                        item.id === column.id ? { ...item, label: event.target.value } : item
+                      )
+                    })
+                  }
+                />
+                <IconButton
+                  label={`删除列 ${column.label}`}
+                  disabled={busy}
+                  onClick={() =>
+                    onChange({
+                      ...section,
+                      columns: section.columns.filter((item) => item.id !== column.id),
+                      rows: section.rows.map((row) => ({
+                        ...row,
+                        cells: Object.fromEntries(Object.entries(row.cells).filter(([key]) => key !== column.id))
+                      }))
+                    })
+                  }
+                >
+                  <Trash2 size={11} />
+                </IconButton>
+              </th>
+            ))}
+            <th>
+              <IconButton
+                label="添加列"
+                disabled={busy}
+                onClick={() =>
+                  onChange({
+                    ...section,
+                    columns: [...section.columns, { id: localId('column'), label: `列 ${section.columns.length + 1}` }]
+                  })
+                }
+              >
+                <Plus size={12} />
+              </IconButton>
+            </th>
+          </tr>
+        </thead>
+        <tbody>
+          {section.rows.map((row) => (
+            <tr key={row.id}>
+              {section.columns.map((column) => (
+                <td key={column.id}>
+                  <textarea
+                    aria-label={`${column.label} 单元格`}
+                    disabled={busy}
+                    rows={2}
+                    value={row.cells[column.id] || ''}
+                    onChange={(event) =>
+                      onChange({
+                        ...section,
+                        rows: section.rows.map((item) =>
+                          item.id === row.id
+                            ? { ...item, cells: { ...item.cells, [column.id]: event.target.value } }
+                            : item
+                        )
+                      })
+                    }
+                  />
+                </td>
+              ))}
+              <td>
+                <IconButton
+                  label="删除行"
+                  disabled={busy}
+                  onClick={() => onChange({ ...section, rows: section.rows.filter((item) => item.id !== row.id) })}
+                >
+                  <Trash2 size={12} />
+                </IconButton>
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+      <button
+        disabled={busy}
+        onClick={() => onChange({ ...section, rows: [...section.rows, { id: localId('row'), cells: {} }] })}
+      >
+        <Plus size={12} />
+        添加行
+      </button>
+    </div>
+  );
 }
 
-function WorkflowNodeEditor({ node, nodes, index, busy, onOperation }: { node: WorkflowDraftNode; nodes: WorkflowDraftNode[]; index: number; busy: boolean; onOperation: (operation: WorkflowOperation) => Promise<boolean> }) {
-  const [title, setTitle] = useState(node.title), [goal, setGoal] = useState(node.goal);
-  const titleDirty = useRef(false), goalDirty = useRef(false);
-  useEffect(() => { if (!titleDirty.current) setTitle(node.title); }, [node.title]);
-  useEffect(() => { if (!goalDirty.current) setGoal(node.goal); }, [node.goal]);
-  return <article className="workflow-draft-node"><header><i>{index + 1}</i><input aria-label={`节点 ${index + 1} 标题`} disabled={busy} value={title} onChange={(event) => { titleDirty.current = true; setTitle(event.target.value); }} onBlur={() => { if (busy) return; const value = title.trim(); if (!value) return; setTitle(value); if (value === node.title) { titleDirty.current = false; return; } void onOperation({ type: 'update_node', node_id: node.id, patch: { title: value } }).then((saved) => { if (saved) titleDirty.current = false; }); }} /><IconButton label={`上移 ${node.title}`} disabled={busy || index === 0} onClick={() => onOperation({ type: 'move_node', node_id: node.id, to_index: index - 1 })}><ChevronUp size={12} /></IconButton><IconButton label={`下移 ${node.title}`} disabled={busy || index === nodes.length - 1} onClick={() => onOperation({ type: 'move_node', node_id: node.id, to_index: index + 1 })}><ChevronDown size={12} /></IconButton><IconButton label={`删除 ${node.title}`} disabled={busy} onClick={() => { if (window.confirm(`删除工作流节点“${node.title}”及相关连接？`)) void onOperation({ type: 'delete_node', node_id: node.id, confirmed: true }); }}><Trash2 size={12} /></IconButton></header><select aria-label={`${node.title} 类型`} disabled={busy} value={node.type} onChange={(event) => { void onOperation({ type: 'update_node', node_id: node.id, patch: { type: event.target.value } }); }}><option value="goal_definition">目标</option><option value="research">调研</option><option value="analysis">分析</option><option value="execution">执行</option><option value="retrospective">复盘</option></select><textarea aria-label={`${node.title} 目标`} disabled={busy} rows={3} value={goal} onChange={(event) => { goalDirty.current = true; setGoal(event.target.value); }} onBlur={() => { if (busy) return; const value = goal.trim(); setGoal(value); if (value === node.goal) { goalDirty.current = false; return; } void onOperation({ type: 'update_node', node_id: node.id, patch: { goal: value } }).then((saved) => { if (saved) goalDirty.current = false; }); }} /><fieldset disabled={busy}><legend>依赖</legend>{nodes.filter((candidate) => candidate.id !== node.id).map((candidate) => { const connected = node.dependency_ids.includes(candidate.id); return <label key={candidate.id}><input type="checkbox" checked={connected} onChange={() => { void onOperation({ type: connected ? 'disconnect' : 'connect', node_id: node.id, dependency_id: candidate.id }); }} />{connected ? <Link2 size={11} /> : <Unlink2 size={11} />}{candidate.title}</label>; })}</fieldset></article>;
+function WorkflowNodeEditor({
+  node,
+  nodes,
+  index,
+  busy,
+  onOperation
+}: {
+  node: WorkflowDraftNode;
+  nodes: WorkflowDraftNode[];
+  index: number;
+  busy: boolean;
+  onOperation: (operation: WorkflowOperation) => Promise<boolean>;
+}) {
+  const [title, setTitle] = useState(node.title),
+    [goal, setGoal] = useState(node.goal);
+  const titleDirty = useRef(false),
+    goalDirty = useRef(false);
+  useEffect(() => {
+    if (!titleDirty.current) setTitle(node.title);
+  }, [node.title]);
+  useEffect(() => {
+    if (!goalDirty.current) setGoal(node.goal);
+  }, [node.goal]);
+  return (
+    <article className="workflow-draft-node">
+      <header>
+        <i>{index + 1}</i>
+        <input
+          aria-label={`节点 ${index + 1} 标题`}
+          disabled={busy}
+          value={title}
+          onChange={(event) => {
+            titleDirty.current = true;
+            setTitle(event.target.value);
+          }}
+          onBlur={() => {
+            if (busy) return;
+            const value = title.trim();
+            if (!value) return;
+            setTitle(value);
+            if (value === node.title) {
+              titleDirty.current = false;
+              return;
+            }
+            void onOperation({ type: 'update_node', node_id: node.id, patch: { title: value } }).then((saved) => {
+              if (saved) titleDirty.current = false;
+            });
+          }}
+        />
+        <IconButton
+          label={`上移 ${node.title}`}
+          disabled={busy || index === 0}
+          onClick={() => onOperation({ type: 'move_node', node_id: node.id, to_index: index - 1 })}
+        >
+          <ChevronUp size={12} />
+        </IconButton>
+        <IconButton
+          label={`下移 ${node.title}`}
+          disabled={busy || index === nodes.length - 1}
+          onClick={() => onOperation({ type: 'move_node', node_id: node.id, to_index: index + 1 })}
+        >
+          <ChevronDown size={12} />
+        </IconButton>
+        <IconButton
+          label={`删除 ${node.title}`}
+          disabled={busy}
+          onClick={() => {
+            if (window.confirm(`删除工作流节点“${node.title}”及相关连接？`))
+              void onOperation({ type: 'delete_node', node_id: node.id, confirmed: true });
+          }}
+        >
+          <Trash2 size={12} />
+        </IconButton>
+      </header>
+      <select
+        aria-label={`${node.title} 类型`}
+        disabled={busy}
+        value={node.type}
+        onChange={(event) => {
+          void onOperation({ type: 'update_node', node_id: node.id, patch: { type: event.target.value } });
+        }}
+      >
+        <option value="goal_definition">目标</option>
+        <option value="research">调研</option>
+        <option value="analysis">分析</option>
+        <option value="execution">执行</option>
+        <option value="retrospective">复盘</option>
+      </select>
+      <textarea
+        aria-label={`${node.title} 目标`}
+        disabled={busy}
+        rows={3}
+        value={goal}
+        onChange={(event) => {
+          goalDirty.current = true;
+          setGoal(event.target.value);
+        }}
+        onBlur={() => {
+          if (busy) return;
+          const value = goal.trim();
+          setGoal(value);
+          if (value === node.goal) {
+            goalDirty.current = false;
+            return;
+          }
+          void onOperation({ type: 'update_node', node_id: node.id, patch: { goal: value } }).then((saved) => {
+            if (saved) goalDirty.current = false;
+          });
+        }}
+      />
+      <fieldset disabled={busy}>
+        <legend>依赖</legend>
+        {nodes
+          .filter((candidate) => candidate.id !== node.id)
+          .map((candidate) => {
+            const connected = node.dependency_ids.includes(candidate.id);
+            return (
+              <label key={candidate.id}>
+                <input
+                  type="checkbox"
+                  checked={connected}
+                  onChange={() => {
+                    void onOperation({
+                      type: connected ? 'disconnect' : 'connect',
+                      node_id: node.id,
+                      dependency_id: candidate.id
+                    });
+                  }}
+                />
+                {connected ? <Link2 size={11} /> : <Unlink2 size={11} />}
+                {candidate.title}
+              </label>
+            );
+          })}
+      </fieldset>
+    </article>
+  );
 }
 
-function AddSectionMenu({ disabled, onAdd }: { disabled: boolean; onAdd: (type: BriefSection['type']) => void }) { const [open, setOpen] = useState(false); return <div className="add-section-menu"><IconButton label="添加简报区块" active={open} disabled={disabled} onClick={() => setOpen(!open)}><Plus size={14} /></IconButton>{open && <div role="menu">{([['markdown', '格式化文本'], ['list', '列表'], ['key_value', '键值组'], ['table', '表格']] as const).map(([type, label]) => <button role="menuitem" disabled={disabled} key={type} onClick={() => { onAdd(type); setOpen(false); }}>{label}</button>)}</div>}</div>; }
-function emptySection(type: BriefSection['type']): BriefSection { const base = { id: localId('section'), title: '新区块', semantic_key: null }; if (type === 'list') return { ...base, type, items: [] }; if (type === 'key_value') return { ...base, type, entries: [] }; if (type === 'table') return { ...base, type, columns: [{ id: localId('column'), label: '列 1' }], rows: [] }; return { ...base, type, markdown: '' }; }
-function sectionTypeLabel(value: BriefSection['type']) { return ({ markdown: '格式化文本', list: '列表', key_value: '键值组', table: '表格' } as const)[value]; }
-function localId(prefix: string) { return `${prefix}_${crypto.randomUUID()}`; }
+function AddSectionMenu({ disabled, onAdd }: { disabled: boolean; onAdd: (type: BriefSection['type']) => void }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <div className="add-section-menu">
+      <IconButton label="添加简报区块" active={open} disabled={disabled} onClick={() => setOpen(!open)}>
+        <Plus size={14} />
+      </IconButton>
+      {open && (
+        <div role="menu">
+          {(
+            [
+              ['markdown', '格式化文本'],
+              ['list', '列表'],
+              ['key_value', '键值组'],
+              ['table', '表格']
+            ] as const
+          ).map(([type, label]) => (
+            <button
+              role="menuitem"
+              disabled={disabled}
+              key={type}
+              onClick={() => {
+                onAdd(type);
+                setOpen(false);
+              }}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+function emptySection(type: BriefSection['type']): BriefSection {
+  const base = { id: localId('section'), title: '新区块', semantic_key: null };
+  if (type === 'list') return { ...base, type, items: [] };
+  if (type === 'key_value') return { ...base, type, entries: [] };
+  if (type === 'table') return { ...base, type, columns: [{ id: localId('column'), label: '列 1' }], rows: [] };
+  return { ...base, type, markdown: '' };
+}
+function sectionTypeLabel(value: BriefSection['type']) {
+  return ({ markdown: '格式化文本', list: '列表', key_value: '键值组', table: '表格' } as const)[value];
+}
+function localId(prefix: string) {
+  return `${prefix}_${crypto.randomUUID()}`;
+}

@@ -17,7 +17,17 @@ fs.writeFileSync(path.join(repo, 'README.md'), '# Security\n');
 spawnSync('git', ['add', '.'], { cwd: repo });
 spawnSync('git', ['commit', '-m', 'init'], { cwd: repo });
 const sourceBefore = repositorySnapshot(repo);
-const child = spawn(process.execPath, ['apps/api/server.mjs'], { env: { ...process.env, AIWS_PORT: String(port), AIWS_HOME: home, NODE_ENV: 'test', AIWS_BYPASS_SETUP: '1', AIWS_PUBLIC_BASE_URL: 'http://localhost:4317' }, stdio: ['ignore', 'pipe', 'pipe'] });
+const child = spawn(process.execPath, ['apps/api/server.mjs'], {
+  env: {
+    ...process.env,
+    AIWS_PORT: String(port),
+    AIWS_HOME: home,
+    NODE_ENV: 'test',
+    AIWS_BYPASS_SETUP: '1',
+    AIWS_PUBLIC_BASE_URL: 'http://localhost:4317'
+  },
+  stdio: ['ignore', 'pipe', 'pipe']
+});
 
 await waitForServer();
 try {
@@ -28,11 +38,22 @@ try {
   await api('/github/manifest/callback', 'POST', { adapter: 'test' }, 400, 'manifest_state_required');
   await api('/github/manifest/callback', 'POST', { adapter: 'test', state: 'wrong' }, 400, 'manifest_state_mismatch');
   await api('/github/manifest/callback', 'POST', { adapter: 'test', state: manifest.state });
-  await api('/github/manifest/callback', 'POST', { adapter: 'test', state: manifest.state }, 409, 'manifest_callback_already_used');
+  await api(
+    '/github/manifest/callback',
+    'POST',
+    { adapter: 'test', state: manifest.state },
+    409,
+    'manifest_callback_already_used'
+  );
 
   const device = await startDevice();
   assert.equal(device.status, 'authorization_required');
-  assert.deepEqual(device.action_required, { type: 'github_device_authorization', verification_uri: device.verification_uri, user_code: device.user_code, expires_at: device.expires_at });
+  assert.deepEqual(device.action_required, {
+    type: 'github_device_authorization',
+    verification_uri: device.verification_uri,
+    user_code: device.user_code,
+    expires_at: device.expires_at
+  });
   assert.equal(device.next.operation_id, 'aiws.github.post.github.device.poll');
   assert.deepEqual(device.next.arguments, { body: { request_id: device.request_id } });
   const pending = await pollDevice(device, { test_status: 'authorization_pending' }, 202);
@@ -48,19 +69,60 @@ try {
   await pollDevice(await startDevice(), { test_status: 'access_denied' }, 403, 'access_denied');
   await pollDevice(await startDevice(), { test_status: 'incorrect_device_code' }, 400, 'incorrect_device_code');
 
-  const discovery = await api('/github/installations/discover', 'POST', { adapter: 'test', repositories: [{ id: 7001, name: 'workspace', full_name: 'aiws/workspace', private: true, permissions: { pull: true, push: false, admin: false } }] });
+  const discovery = await api('/github/installations/discover', 'POST', {
+    adapter: 'test',
+    repositories: [
+      {
+        id: 7001,
+        name: 'workspace',
+        full_name: 'aiws/workspace',
+        private: true,
+        permissions: { pull: true, push: false, admin: false }
+      }
+    ]
+  });
   assert.equal(discovery.installed, true);
   await api('/github/installations/9001/repositories', 'PUT', { repository_ids: ['7001'] });
-  const project = await createConfirmedProject({ baseUrl: `http://127.0.0.1:${port}`, title: 'Permission Fixture', source: repo, workflowNodes: [{ type: 'execution', title: 'Permission Node' }] });
-  await api(`/projects/${project.project.id}/repository-binding`, 'PUT', { installation_id: '9001', repository_id: '7001', adapter: 'test' }, 403, 'access_required');
-  const permission = await api('/github/permissions/check', 'POST', { project_id: project.project.id, operation: 'git_push' }, 403);
+  const project = await createConfirmedProject({
+    baseUrl: `http://127.0.0.1:${port}`,
+    title: 'Permission Fixture',
+    source: repo,
+    workflowNodes: [{ type: 'execution', title: 'Permission Node' }]
+  });
+  await api(
+    `/projects/${project.project.id}/repository-binding`,
+    'PUT',
+    { installation_id: '9001', repository_id: '7001', adapter: 'test' },
+    403,
+    'access_required'
+  );
+  const permission = await api(
+    '/github/permissions/check',
+    'POST',
+    { project_id: project.project.id, operation: 'git_push' },
+    403
+  );
   assert.equal(permission.github_allowed, false);
 
   const removedPayload = { action: 'removed', installation: { id: 9001 }, repositories_removed: [{ id: 7001 }] };
-  await webhook('bad-signature', 'installation_repositories', removedPayload, 'sha256=bad', 401, 'invalid_webhook_signature');
+  await webhook(
+    'bad-signature',
+    'installation_repositories',
+    removedPayload,
+    'sha256=bad',
+    401,
+    'invalid_webhook_signature'
+  );
   const accepted = await webhook('repository-removed', 'installation_repositories', removedPayload);
   assert.equal(accepted.accepted, true);
-  await webhook('repository-removed', 'installation_repositories', removedPayload, 'sha256=bad', 401, 'invalid_webhook_signature');
+  await webhook(
+    'repository-removed',
+    'installation_repositories',
+    removedPayload,
+    'sha256=bad',
+    401,
+    'invalid_webhook_signature'
+  );
   assert.equal((await webhook('repository-removed', 'installation_repositories', removedPayload)).duplicate, true);
   assert.equal((await api('/github/installations/9001/repositories')).length, 0);
 
@@ -75,22 +137,54 @@ try {
   fs.rmSync(home, { recursive: true, force: true });
 }
 
-async function startDevice() { return api('/github/device/start', 'POST', { adapter: 'test' }); }
-async function pollDevice(device, extra, status = 200, error) { return api('/github/device/poll', 'POST', { adapter: 'test', request_id: device.request_id, ...extra }, status, error); }
+async function startDevice() {
+  return api('/github/device/start', 'POST', { adapter: 'test' });
+}
+async function pollDevice(device, extra, status = 200, error) {
+  return api(
+    '/github/device/poll',
+    'POST',
+    { adapter: 'test', request_id: device.request_id, ...extra },
+    status,
+    error
+  );
+}
 async function webhook(delivery, event, body, signature, status = 202, error) {
   const payload = JSON.stringify(body);
   const signed = signature || `sha256=${createHmac('sha256', 'test-hook').update(payload).digest('hex')}`;
-  const response = await fetch(`http://127.0.0.1:${port}/github/webhook`, { method: 'POST', headers: { 'content-type': 'application/json', 'x-github-delivery': delivery, 'x-github-event': event, 'x-hub-signature-256': signed }, body: payload });
+  const response = await fetch(`http://127.0.0.1:${port}/github/webhook`, {
+    method: 'POST',
+    headers: {
+      'content-type': 'application/json',
+      'x-github-delivery': delivery,
+      'x-github-event': event,
+      'x-hub-signature-256': signed
+    },
+    body: payload
+  });
   const data = await response.json();
   assert.equal(response.status, status, JSON.stringify(data));
   if (error) assert.equal(data.error, error);
   return data;
 }
 async function api(route, method = 'GET', body, status = 200, error) {
-  const response = await fetch(`http://127.0.0.1:${port}${route}`, { method, headers: { 'content-type': 'application/json' }, body: body === undefined ? undefined : JSON.stringify(body) });
+  const response = await fetch(`http://127.0.0.1:${port}${route}`, {
+    method,
+    headers: { 'content-type': 'application/json' },
+    body: body === undefined ? undefined : JSON.stringify(body)
+  });
   const data = await response.json();
   assert.equal(response.status, status, `${route}: ${JSON.stringify(data)}`);
   if (error) assert.equal(data.error, error);
   return data;
 }
-async function waitForServer() { for (let index = 0; index < 100; index++) { try { if ((await api('/health')).status === 'ok') return; } catch { await new Promise((resolve) => setTimeout(resolve, 50)); } } throw new Error('server did not start'); }
+async function waitForServer() {
+  for (let index = 0; index < 100; index++) {
+    try {
+      if ((await api('/health')).status === 'ok') return;
+    } catch {
+      await new Promise((resolve) => setTimeout(resolve, 50));
+    }
+  }
+  throw new Error('server did not start');
+}

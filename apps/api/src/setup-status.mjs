@@ -15,8 +15,12 @@ export function computeSetupStatus(state, runtime = null) {
   const record = state.setup_states[0] || { mode: null, completed_at: null };
   const account = connectedGithubAccount(state);
   const config = resolveGithubAppConfig(state);
-  const installations = state.github_installations.filter((item) => item.status === 'active' && String(item.app_id || '') === String(config?.app_id || ''));
-  const selectedRepositories = installations.flatMap((item) => item.repositories || []).filter((item) => item.selected === true);
+  const installations = state.github_installations.filter(
+    (item) => item.status === 'active' && String(item.app_id || '') === String(config?.app_id || '')
+  );
+  const selectedRepositories = installations
+    .flatMap((item) => item.repositories || [])
+    .filter((item) => item.selected === true);
   const appConfigured = Boolean(config);
   const githubChecks = {
     app_configured: appConfigured,
@@ -26,16 +30,21 @@ export function computeSetupStatus(state, runtime = null) {
   };
   const docker = state.integration_statuses.find((item) => item.key === 'codex_docker');
   const auth = state.integration_statuses.find((item) => item.key === 'codex_auth');
-  const profile = state.codex_profiles.find((item) => item.is_active) || state.codex_profiles.find((item) => item.status === 'validated');
+  const profile =
+    state.codex_profiles.find((item) => item.is_active) ||
+    state.codex_profiles.find((item) => item.status === 'validated');
   const probe = state.integration_statuses
     .filter((item) => item.key === 'codex_probe' && item.profile_id === profile?.id)
-    .sort((left, right) => String(right.updated_at || right.created_at || '').localeCompare(String(left.updated_at || left.created_at || '')))[0];
+    .sort((left, right) =>
+      String(right.updated_at || right.created_at || '').localeCompare(String(left.updated_at || left.created_at || ''))
+    )[0];
   const thirdParty = profile && isThirdPartyProvider(profile.provider);
   const endpointValid = !thirdParty || Boolean(normalizeProviderBaseUrl(profile.base_url));
   const authMatches = Boolean(profile && codexAuthMatchesProfile(auth, profile));
   const dockerReady = runtime ? runtime.ready === true : docker?.status === 'ready' || probe?.status === 'ready';
   const currentEvidence = runtime ? createCodexProbeEvidence({ profile, auth, runtime }) : null;
-  const probeCurrent = probe?.status === 'ready' && (!runtime || codexProbeEvidenceMatches(probe.evidence, currentEvidence));
+  const probeCurrent =
+    probe?.status === 'ready' && (!runtime || codexProbeEvidenceMatches(probe.evidence, currentEvidence));
   const codexChecks = {
     docker_ready: dockerReady,
     authenticated: auth?.status === 'authenticated',
@@ -58,25 +67,72 @@ export function computeSetupStatus(state, runtime = null) {
     completed_at: record.completed_at || null,
     steps: {
       github: githubStep({ githubReady, appConfigured, account, installations, selectedRepositories, githubChecks }),
-      codex: { ready: codexReady, status: codexReady ? 'ready' : !dockerReady ? 'runtime_required' : 'configuration_required', checks: codexChecks, detail: codexReady ? profile.name : runtime && !runtime.ready ? runtime.image?.summary || runtime.docker?.summary || 'Docker Runtime 不可用' : probe?.status === 'ready' && !probeCurrent ? 'Profile、凭据、配置或镜像已变化，请重新运行 Probe' : '完成 Docker、凭据、Profile 与 Probe', profile_id: profile?.id, runtime }
+      codex: {
+        ready: codexReady,
+        status: codexReady ? 'ready' : !dockerReady ? 'runtime_required' : 'configuration_required',
+        checks: codexChecks,
+        detail: codexReady
+          ? profile.name
+          : runtime && !runtime.ready
+            ? runtime.image?.summary || runtime.docker?.summary || 'Docker Runtime 不可用'
+            : probe?.status === 'ready' && !probeCurrent
+              ? 'Profile、凭据、配置或镜像已变化，请重新运行 Probe'
+              : '完成 Docker、凭据、Profile 与 Probe',
+        profile_id: profile?.id,
+        runtime
+      }
     },
     reasons
   };
 }
 
 function githubStep({ githubReady, appConfigured, account, installations, selectedRepositories, githubChecks }) {
-  const status = githubReady ? 'ready' : !appConfigured ? 'configuration_required' : !account ? 'authorization_required'
-    : !installations.length ? 'installation_required' : 'repository_selection_required';
-  const detail = githubReady ? `${selectedRepositories.length} repositories` : !appConfigured ? '验证 GitHub App 配置'
-    : !account ? '完成 GitHub Owner 授权' : !installations.length ? '安装 GitHub App 并同步 repository' : '选择至少一个 repository';
+  const status = githubReady
+    ? 'ready'
+    : !appConfigured
+      ? 'configuration_required'
+      : !account
+        ? 'authorization_required'
+        : !installations.length
+          ? 'installation_required'
+          : 'repository_selection_required';
+  const detail = githubReady
+    ? `${selectedRepositories.length} repositories`
+    : !appConfigured
+      ? '验证 GitHub App 配置'
+      : !account
+        ? '完成 GitHub Owner 授权'
+        : !installations.length
+          ? '安装 GitHub App 并同步 repository'
+          : '选择至少一个 repository';
   return { ready: githubReady, status, checks: githubChecks, detail, installation_count: installations.length };
 }
 
 export function isSetupExempt(pathname) {
-  if (pathname === '/health' || pathname === '/system/deployment' || pathname === '/setup/status' || pathname === '/setup/mode' || pathname === '/setup/complete' || pathname === '/github/webhook' || pathname === '/mcp') return true;
-  if (/^\/github\/(status|app-config\/(defaults|validate|manual|reset)|manifest\/(start|callback)|device\/(start|poll)|disconnect|repositories\/sync)$/.test(pathname)) return true;
-  if (/^\/github\/installations(?:\/start|\/discover|\/setup|\/[^/]+\/repositories(?:\/sync)?)?$/.test(pathname)) return true;
-  if (/^\/codex\/(status|docker\/(?:build|builds\/(?:active|[^/]+(?:\/events|\/cancel)?))|auth\/(?:device\/start|device\/[^/]+\/(?:events|cancel)|api-key|reset)|profiles(?:\/[^/]+(?:\/validate)?)?|cc-switch\/(?:status|sync|import)|probe)$/.test(pathname)) return true;
+  if (
+    pathname === '/health' ||
+    pathname === '/system/deployment' ||
+    pathname === '/setup/status' ||
+    pathname === '/setup/mode' ||
+    pathname === '/setup/complete' ||
+    pathname === '/github/webhook' ||
+    pathname === '/mcp'
+  )
+    return true;
+  if (
+    /^\/github\/(status|app-config\/(defaults|validate|manual|reset)|manifest\/(start|callback)|device\/(start|poll)|disconnect|repositories\/sync)$/.test(
+      pathname
+    )
+  )
+    return true;
+  if (/^\/github\/installations(?:\/start|\/discover|\/setup|\/[^/]+\/repositories(?:\/sync)?)?$/.test(pathname))
+    return true;
+  if (
+    /^\/codex\/(status|docker\/(?:build|builds\/(?:active|[^/]+(?:\/events|\/cancel)?))|auth\/(?:device\/start|device\/[^/]+\/(?:events|cancel)|api-key|reset)|profiles(?:\/[^/]+(?:\/validate)?)?|cc-switch\/(?:status|sync|import)|probe)$/.test(
+      pathname
+    )
+  )
+    return true;
   if (/^\/codex\/discovery(?:\/import)?$/.test(pathname)) return true;
   return false;
 }

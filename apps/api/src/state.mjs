@@ -1,15 +1,57 @@
 import fs from 'node:fs';
 import fsp from 'node:fs/promises';
 import path from 'node:path';
-import { createLocalOwner, defaultCodexProfiles, defaultTools, hashString, id, makeTrace, now } from '../../../packages/shared/index.mjs';
-import { ARTIFACT_DIR, ASSIST_DIR, ATTACHMENT_DIR, ATTACHMENT_TEMP_DIR, CAS_DIR, CODEX_HOME_DIR, DATA_DIR, EXECUTION_DIR, EXPORT_DIR, PROBE_DIR, STAGING_DIR, STATE_FILE, TRASH_DIR, VAULT_DIR, WORKSPACE_DIR, WORKTREE_DIR, collections } from './config.mjs';
+import {
+  createLocalOwner,
+  defaultCodexProfiles,
+  defaultTools,
+  hashString,
+  id,
+  makeTrace,
+  now
+} from '../../../packages/shared/index.mjs';
+import {
+  ARTIFACT_DIR,
+  ASSIST_DIR,
+  ATTACHMENT_DIR,
+  ATTACHMENT_TEMP_DIR,
+  CAS_DIR,
+  CODEX_HOME_DIR,
+  DATA_DIR,
+  EXECUTION_DIR,
+  EXPORT_DIR,
+  PROBE_DIR,
+  STAGING_DIR,
+  STATE_FILE,
+  TRASH_DIR,
+  VAULT_DIR,
+  WORKSPACE_DIR,
+  WORKTREE_DIR,
+  collections
+} from './config.mjs';
 import { redactKnownSecrets } from './vault.mjs';
-import { codexAuthMatchesProfile, isThirdPartyProvider, isValidCodexTimeoutMs, normalizeProviderBaseUrl, resolveCodexTimeoutMs, writeProfileConfig } from './codex-service.mjs';
-import { migrateStateFileToV19, normalizeOfficialRunnerImagesV19, normalizeState19Defaults, STATE_SCHEMA_VERSION, validateState19 } from './state-migration-v19.mjs';
+import {
+  codexAuthMatchesProfile,
+  isThirdPartyProvider,
+  isValidCodexTimeoutMs,
+  normalizeProviderBaseUrl,
+  resolveCodexTimeoutMs,
+  writeProfileConfig
+} from './codex-service.mjs';
+import {
+  migrateStateFileToV19,
+  normalizeOfficialRunnerImagesV19,
+  normalizeState19Defaults,
+  STATE_SCHEMA_VERSION,
+  validateState19
+} from './state-migration-v19.mjs';
 import { normalizeState18Compatibility } from './state-compatibility.mjs';
 import { currentActorId } from './actor-context.mjs';
 import { ensureProjectGovernanceDefaults, expireProjectInvitationsInState } from './project-governance-v19.mjs';
-import { ensureRepositoryLifecycleDefaults, expireRepositoryDeletionIntentsInState } from './repository-lifecycle-v19.mjs';
+import {
+  ensureRepositoryLifecycleDefaults,
+  expireRepositoryDeletionIntentsInState
+} from './repository-lifecycle-v19.mjs';
 import { ensureExchangeDefaults, expireExchangeRequestsInState } from './exchange-v19.mjs';
 import { recoverInterruptedRepositoryDeletionsInState } from './repository-deletion-recovery.mjs';
 import { recoverInvalidDeliveryPullRequestClaimsInState } from './delivery-recovery.mjs';
@@ -23,140 +65,360 @@ export async function ensureRuntime() {
   await fsp.mkdir(EXECUTION_DIR, { recursive: true });
   await fsp.mkdir(VAULT_DIR, { recursive: true });
   await fsp.mkdir(CODEX_HOME_DIR, { recursive: true });
-  await Promise.all([WORKSPACE_DIR, STAGING_DIR, TRASH_DIR, EXPORT_DIR, WORKTREE_DIR, PROBE_DIR, ASSIST_DIR, ATTACHMENT_DIR, ATTACHMENT_TEMP_DIR].map((dir) => fsp.mkdir(dir, { recursive: true, mode: 0o700 })));
+  await Promise.all(
+    [
+      WORKSPACE_DIR,
+      STAGING_DIR,
+      TRASH_DIR,
+      EXPORT_DIR,
+      WORKTREE_DIR,
+      PROBE_DIR,
+      ASSIST_DIR,
+      ATTACHMENT_DIR,
+      ATTACHMENT_TEMP_DIR
+    ].map((dir) => fsp.mkdir(dir, { recursive: true, mode: 0o700 }))
+  );
   await Promise.all([STAGING_DIR, ATTACHMENT_TEMP_DIR].map(clearEphemeralDirectory));
   if (!fs.existsSync(STATE_FILE)) return writeState(bootstrapState());
   lastMigration = await migrateStateFileToV19(STATE_FILE);
   const state = await readState();
   let changed = false;
-  if (state.schema_version !== STATE_SCHEMA_VERSION) throw new Error(`unsupported_state_schema_${state.schema_version}`);
-  for (const key of collections) if (!Array.isArray(state[key])) { state[key] = []; changed = true; }
+  if (state.schema_version !== STATE_SCHEMA_VERSION)
+    throw new Error(`unsupported_state_schema_${state.schema_version}`);
+  for (const key of collections)
+    if (!Array.isArray(state[key])) {
+      state[key] = [];
+      changed = true;
+    }
   if (normalizeOfficialRunnerImagesV19(state, { timestamp: now() }).changed) changed = true;
-  if (!state.users.length) { const { user, session } = createLocalOwner(); state.users.push(user); state.sessions.push(session); changed = true; }
-  if (!state.tools.length) { state.tools.push(...defaultTools(state.users[0].id)); changed = true; }
-  if (!state.codex_profiles.length) { state.codex_profiles.push(...defaultCodexProfiles(state.users[0]?.id)); changed = true; }
+  if (!state.users.length) {
+    const { user, session } = createLocalOwner();
+    state.users.push(user);
+    state.sessions.push(session);
+    changed = true;
+  }
+  if (!state.tools.length) {
+    state.tools.push(...defaultTools(state.users[0].id));
+    changed = true;
+  }
+  if (!state.codex_profiles.length) {
+    state.codex_profiles.push(...defaultCodexProfiles(state.users[0]?.id));
+    changed = true;
+  }
   const governanceBefore = governanceFingerprint(state);
   ensureProjectGovernanceDefaults(state);
   if (expireProjectInvitationsInState(state)) changed = true;
   if (governanceBefore !== governanceFingerprint(state)) changed = true;
   const lifecycleBefore = lifecycleFingerprint(state);
-  ensureRepositoryLifecycleDefaults(state); ensureExchangeDefaults(state);
+  ensureRepositoryLifecycleDefaults(state);
+  ensureExchangeDefaults(state);
   if (recoverInterruptedRepositoryDeletionsInState(state)) changed = true;
   if (expireRepositoryDeletionIntentsInState(state) || expireExchangeRequestsInState(state)) changed = true;
-  if (lifecycleBefore !== lifecycleFingerprint(state)) changed = true; const deliveryRecovery = recoverInvalidDeliveryPullRequestClaimsInState(state); if (deliveryRecovery.changed) { changed = true; for (const deliveryId of deliveryRecovery.delivery_ids) addTrace(state, 'integration.synced', { target_type: 'delivery', target_id: deliveryId, summary: 'Removed an invalid webhook PR claim from a failed Delivery.' }); }
+  if (lifecycleBefore !== lifecycleFingerprint(state)) changed = true;
+  const deliveryRecovery = recoverInvalidDeliveryPullRequestClaimsInState(state);
+  if (deliveryRecovery.changed) {
+    changed = true;
+    for (const deliveryId of deliveryRecovery.delivery_ids)
+      addTrace(state, 'integration.synced', {
+        target_type: 'delivery',
+        target_id: deliveryId,
+        summary: 'Removed an invalid webhook PR claim from a failed Delivery.'
+      });
+  }
   if (recoverPullRequestIntentsInState(state)) changed = true;
   for (const project of state.projects) {
-    if (!project.status) { project.status = 'active'; changed = true; }
-    project.settings ||= {};
-    if (!Number.isFinite(Number(project.settings.token_budget))) { project.settings.token_budget = 12000; changed = true; }
-    if (!['codex', 'codex_docker'].includes(project.settings.preferred_runner)) { project.settings.preferred_runner = 'codex_docker'; changed = true; }
-    if (!Array.isArray(project.settings.workspace_root_whitelist)) { project.settings.workspace_root_whitelist = [project.repo_path || project.workspace_root].filter(Boolean); changed = true; }
-    if (!project.onboarding_state) { project.onboarding_state = project.status === 'draft' ? 'intake' : 'confirmed'; changed = true; }
-    if (project.source_metadata === undefined) { project.source_metadata = null; changed = true; }
-    if (project.github_account_id === undefined) { project.github_account_id = null; changed = true; }
-    if (!project.managed_workspace_state) {
-      const managed = isWithin(WORKSPACE_DIR, project.repo_path || project.workspace_root || '');
-      project.managed_workspace_state = managed ? 'ready' : (project.repo_path || project.workspace_root ? 'workspace_migration_required' : 'empty');
+    if (!project.status) {
+      project.status = 'active';
       changed = true;
     }
-    if (project.deleted_at === undefined) { project.deleted_at = null; changed = true; }
-    if (project.lifecycle_operation === undefined) { project.lifecycle_operation = null; changed = true; }
+    project.settings ||= {};
+    if (!Number.isFinite(Number(project.settings.token_budget))) {
+      project.settings.token_budget = 12000;
+      changed = true;
+    }
+    if (!['codex', 'codex_docker'].includes(project.settings.preferred_runner)) {
+      project.settings.preferred_runner = 'codex_docker';
+      changed = true;
+    }
+    if (!Array.isArray(project.settings.workspace_root_whitelist)) {
+      project.settings.workspace_root_whitelist = [project.repo_path || project.workspace_root].filter(Boolean);
+      changed = true;
+    }
+    if (!project.onboarding_state) {
+      project.onboarding_state = project.status === 'draft' ? 'intake' : 'confirmed';
+      changed = true;
+    }
+    if (project.source_metadata === undefined) {
+      project.source_metadata = null;
+      changed = true;
+    }
+    if (project.github_account_id === undefined) {
+      project.github_account_id = null;
+      changed = true;
+    }
+    if (!project.managed_workspace_state) {
+      const managed = isWithin(WORKSPACE_DIR, project.repo_path || project.workspace_root || '');
+      project.managed_workspace_state = managed
+        ? 'ready'
+        : project.repo_path || project.workspace_root
+          ? 'workspace_migration_required'
+          : 'empty';
+      changed = true;
+    }
+    if (project.deleted_at === undefined) {
+      project.deleted_at = null;
+      changed = true;
+    }
+    if (project.lifecycle_operation === undefined) {
+      project.lifecycle_operation = null;
+      changed = true;
+    }
     if (project.trash_metadata === undefined) {
-      project.trash_metadata = project.trash_path ? { path: project.trash_path, status_before_trash: project.status_before_trash || 'active', trashed_at: project.deleted_at } : null;
+      project.trash_metadata = project.trash_path
+        ? {
+            path: project.trash_path,
+            status_before_trash: project.status_before_trash || 'active',
+            trashed_at: project.deleted_at
+          }
+        : null;
       changed = true;
     }
   }
   for (const draft of state.workflow_drafts) {
-    if (!draft.status) { draft.status = draft.workflow_id || draft.activated_at ? 'activated' : 'draft'; changed = true; }
-    if (draft.user_modified_at === undefined) { draft.user_modified_at = Number(draft.revision || 1) > 1 ? draft.updated_at || now() : null; changed = true; }
+    if (!draft.status) {
+      draft.status = draft.workflow_id || draft.activated_at ? 'activated' : 'draft';
+      changed = true;
+    }
+    if (draft.user_modified_at === undefined) {
+      draft.user_modified_at = Number(draft.revision || 1) > 1 ? draft.updated_at || now() : null;
+      changed = true;
+    }
   }
   for (const proposal of state.change_proposals) {
-    if (!Number.isInteger(proposal.revision) || proposal.revision < 1) { proposal.revision = 1; changed = true; }
-    if (!proposal.attention_state) { proposal.attention_state = proposal.status === 'pending' ? 'queued' : 'resolved'; changed = true; }
-    if (!proposal.target_hash) { proposal.target_hash = hashString(JSON.stringify(proposal.before_json ?? null)); changed = true; }
+    if (!Number.isInteger(proposal.revision) || proposal.revision < 1) {
+      proposal.revision = 1;
+      changed = true;
+    }
+    if (!proposal.attention_state) {
+      proposal.attention_state = proposal.status === 'pending' ? 'queued' : 'resolved';
+      changed = true;
+    }
+    if (!proposal.target_hash) {
+      proposal.target_hash = hashString(JSON.stringify(proposal.before_json ?? null));
+      changed = true;
+    }
   }
-  for (const session of state.terminal_sessions.filter((item) => ['starting', 'running', 'connected'].includes(item.status))) {
-    Object.assign(session, { status: 'interrupted', interrupted_reason: 'service_restarted', updated_at: now() }); changed = true;
+  for (const session of state.terminal_sessions.filter((item) =>
+    ['starting', 'running', 'connected'].includes(item.status)
+  )) {
+    Object.assign(session, { status: 'interrupted', interrupted_reason: 'service_restarted', updated_at: now() });
+    changed = true;
   }
   for (const run of state.node_runs.filter((item) => ['queued', 'running'].includes(item.status))) {
-    Object.assign(run, { status: 'failed', error_code: 'service_restarted', summary: run.summary || 'NodeRun interrupted by service restart.', completed_at: now(), updated_at: now() }); const node = state.workflow_nodes.find((item) => item.id === run.node_id); if (node) Object.assign(node, { status: 'blocked', updated_at: now() }); changed = true;
+    Object.assign(run, {
+      status: 'failed',
+      error_code: 'service_restarted',
+      summary: run.summary || 'NodeRun interrupted by service restart.',
+      completed_at: now(),
+      updated_at: now()
+    });
+    const node = state.workflow_nodes.find((item) => item.id === run.node_id);
+    if (node) Object.assign(node, { status: 'blocked', updated_at: now() });
+    changed = true;
   }
-  for (const job of state.import_jobs.filter((item) => ['queued', 'starting', 'running', 'processing', 'staging', 'stopping'].includes(item.status))) {
-    Object.assign(job, { status: 'failed', error_code: 'service_restarted', updated_at: now() }); changed = true;
+  for (const job of state.import_jobs.filter((item) =>
+    ['queued', 'starting', 'running', 'processing', 'staging', 'stopping'].includes(item.status)
+  )) {
+    Object.assign(job, { status: 'failed', error_code: 'service_restarted', updated_at: now() });
+    changed = true;
   }
   for (const generation of state.workflow_generations.filter((item) => ['queued', 'running'].includes(item.status))) {
-    Object.assign(generation, { status: 'failed', phase: 'failed', error_code: 'service_restarted', retryable: true, completed_at: now(), updated_at: now() }); changed = true;
-    const draft = state.workflow_drafts.find((item) => item.id === generation.draft_id && item.generation_id === generation.id);
-    if (draft) { draft.generation_status = 'failed'; draft.updated_at = now(); }
+    Object.assign(generation, {
+      status: 'failed',
+      phase: 'failed',
+      error_code: 'service_restarted',
+      retryable: true,
+      completed_at: now(),
+      updated_at: now()
+    });
+    changed = true;
+    const draft = state.workflow_drafts.find(
+      (item) => item.id === generation.draft_id && item.generation_id === generation.id
+    );
+    if (draft) {
+      draft.generation_status = 'failed';
+      draft.updated_at = now();
+    }
   }
   for (const delivery of state.deliveries.filter((item) => ['queued', 'running'].includes(item.status))) {
-    Object.assign(delivery, { status: 'failed', phase: 'failed', error_code: 'service_restarted', retryable: true, completed_at: now(), updated_at: now() }); changed = true;
+    Object.assign(delivery, {
+      status: 'failed',
+      phase: 'failed',
+      error_code: 'service_restarted',
+      retryable: true,
+      completed_at: now(),
+      updated_at: now()
+    });
+    changed = true;
     const target = state.repository_targets.find((item) => item.id === delivery.repository_target_id);
     if (target) target.status = 'ready';
   }
   for (const session of state.assist_sessions.filter((item) => item.version !== 3 && item.status === 'running')) {
-    Object.assign(session, { status: 'failed', error: 'service_restarted', updated_at: now() }); changed = true;
+    Object.assign(session, { status: 'failed', error: 'service_restarted', updated_at: now() });
+    changed = true;
   }
   for (const input of state.runtime_user_inputs.filter((item) => item.status === 'pending')) {
-    Object.assign(input, { status: 'cancelled', cancelled_reason: 'service_restarted', cancelled_at: now(), updated_at: now() }); changed = true;
+    Object.assign(input, {
+      status: 'cancelled',
+      cancelled_reason: 'service_restarted',
+      cancelled_at: now(),
+      updated_at: now()
+    });
+    changed = true;
     const turn = state.assist_turns.find((item) => item.id === input.turn_id);
     if (turn && ['preparing', 'running', 'waiting_user_input', 'waiting_approval', 'stopping'].includes(turn.status)) {
-      Object.assign(turn, { status: 'interrupted', error_code: 'service_restarted', completed_at: now(), updated_at: now() });
+      Object.assign(turn, {
+        status: 'interrupted',
+        error_code: 'service_restarted',
+        completed_at: now(),
+        updated_at: now()
+      });
     }
   }
   const legacyWorkflowSuffix = ['V1', '闭环工作流'].join(' ');
-  for (const workflow of state.workflows) if (workflow.generated_by === 'system' && workflow.title?.includes(legacyWorkflowSuffix)) { workflow.title = workflow.title.replace(legacyWorkflowSuffix, '工作流'); changed = true; }
+  for (const workflow of state.workflows)
+    if (workflow.generated_by === 'system' && workflow.title?.includes(legacyWorkflowSuffix)) {
+      workflow.title = workflow.title.replace(legacyWorkflowSuffix, '工作流');
+      changed = true;
+    }
   const retiredProfileKind = ['m', 'o', 'c', 'k'].join('');
-  const productionProfiles = state.codex_profiles.filter((item) => item.kind !== retiredProfileKind && item.kind !== 'cc_switch');
-  if (productionProfiles.length !== state.codex_profiles.length) { state.codex_profiles = productionProfiles; changed = true; }
-  if (!state.codex_profiles.length) { state.codex_profiles.push(...defaultCodexProfiles(state.users[0]?.id)); changed = true; }
+  const productionProfiles = state.codex_profiles.filter(
+    (item) => item.kind !== retiredProfileKind && item.kind !== 'cc_switch'
+  );
+  if (productionProfiles.length !== state.codex_profiles.length) {
+    state.codex_profiles = productionProfiles;
+    changed = true;
+  }
+  if (!state.codex_profiles.length) {
+    state.codex_profiles.push(...defaultCodexProfiles(state.users[0]?.id));
+    changed = true;
+  }
   const ccSwitch = state.integration_statuses.find((item) => item.key === 'cc_switch');
-  if (ccSwitch && (!ccSwitch.bridge?.ready || ccSwitch.bridge?.conformance?.ok !== true || Number(ccSwitch.bridge?.revision || 0) < 2 || !ccSwitch.sources?.find((item) => item.name === 'cc-switch-cli')?.commit)) {
-    Object.assign(ccSwitch, { status: 'not_synced', bridge: { ...(ccSwitch.bridge || {}), ready: false, revision: Number(ccSwitch.bridge?.revision || 0), reason: 'bridge_resync_required' }, updated_at: now() });
+  if (
+    ccSwitch &&
+    (!ccSwitch.bridge?.ready ||
+      ccSwitch.bridge?.conformance?.ok !== true ||
+      Number(ccSwitch.bridge?.revision || 0) < 2 ||
+      !ccSwitch.sources?.find((item) => item.name === 'cc-switch-cli')?.commit)
+  ) {
+    Object.assign(ccSwitch, {
+      status: 'not_synced',
+      bridge: {
+        ...(ccSwitch.bridge || {}),
+        ready: false,
+        revision: Number(ccSwitch.bridge?.revision || 0),
+        reason: 'bridge_resync_required'
+      },
+      updated_at: now()
+    });
     changed = true;
   }
   for (const profile of state.codex_profiles) {
-    const before = JSON.stringify(profile); if (!isValidCodexTimeoutMs(profile.timeout_ms) || profile.timeout_ms == null) profile.timeout_ms = resolveCodexTimeoutMs(profile.timeout_ms);
+    const before = JSON.stringify(profile);
+    if (!isValidCodexTimeoutMs(profile.timeout_ms) || profile.timeout_ms == null)
+      profile.timeout_ms = resolveCodexTimeoutMs(profile.timeout_ms);
     const usedMcpNames = new Set();
     for (const server of Array.isArray(profile.mcp_servers) ? profile.mcp_servers : []) {
       let name = String(server.name || 'external');
       if (name === 'aiws-built-in') name = 'aiws-built-in-external';
-      let candidate = name, suffix = 2;
+      let candidate = name,
+        suffix = 2;
       while (usedMcpNames.has(candidate)) candidate = `${name}-${suffix++}`;
-      server.name = candidate; usedMcpNames.add(candidate);
+      server.name = candidate;
+      usedMcpNames.add(candidate);
     }
     if (!profile.base_url) profile.base_url = profile.api_url || profile.provider_url || null;
     if (profile.base_url) profile.base_url = normalizeProviderBaseUrl(profile.base_url) || profile.base_url;
     profile.wire_api ||= 'responses';
     if (typeof profile.requires_openai_auth !== 'boolean') profile.requires_openai_auth = false;
     profile.cc_switch_mode ||= 'native';
-    if (profile.cc_switch_mode !== 'managed') Object.assign(profile, { cc_switch_required: false, cc_switch_status: 'not_required', cc_switch_provider_id: null, cc_switch_synced_at: null, cc_switch_bridge_revision: null, cc_switch_source_commit: null });
-    if (isThirdPartyProvider(profile.provider) && !normalizeProviderBaseUrl(profile.base_url) && profile.status === 'validated') profile.status = 'configuration_required';
-    if (JSON.stringify(profile) !== before) { profile.updated_at = now(); changed = true; }
+    if (profile.cc_switch_mode !== 'managed')
+      Object.assign(profile, {
+        cc_switch_required: false,
+        cc_switch_status: 'not_required',
+        cc_switch_provider_id: null,
+        cc_switch_synced_at: null,
+        cc_switch_bridge_revision: null,
+        cc_switch_source_commit: null
+      });
+    if (
+      isThirdPartyProvider(profile.provider) &&
+      !normalizeProviderBaseUrl(profile.base_url) &&
+      profile.status === 'validated'
+    )
+      profile.status = 'configuration_required';
+    if (JSON.stringify(profile) !== before) {
+      profile.updated_at = now();
+      changed = true;
+    }
   }
   const codexAuth = state.integration_statuses.find((item) => item.key === 'codex_auth');
-  const activeProfile = state.codex_profiles.find((item) => item.is_active) || state.codex_profiles.find((item) => item.status === 'validated');
-  const activeProfileInvalid = activeProfile && (activeProfile.status !== 'validated' || !codexAuthMatchesProfile(codexAuth, activeProfile) || (isThirdPartyProvider(activeProfile.provider) && !normalizeProviderBaseUrl(activeProfile.base_url)));
-  if (activeProfileInvalid) for (const setup of state.setup_states.filter((item) => item.completed_at)) { setup.completed_at = null; setup.updated_at = now(); changed = true; }
-  for (const profile of state.codex_profiles.filter((item) => item.status === 'validated' && item.model && (!isThirdPartyProvider(item.provider) || normalizeProviderBaseUrl(item.base_url)))) {
+  const activeProfile =
+    state.codex_profiles.find((item) => item.is_active) ||
+    state.codex_profiles.find((item) => item.status === 'validated');
+  const activeProfileInvalid =
+    activeProfile &&
+    (activeProfile.status !== 'validated' ||
+      !codexAuthMatchesProfile(codexAuth, activeProfile) ||
+      (isThirdPartyProvider(activeProfile.provider) && !normalizeProviderBaseUrl(activeProfile.base_url)));
+  if (activeProfileInvalid)
+    for (const setup of state.setup_states.filter((item) => item.completed_at)) {
+      setup.completed_at = null;
+      setup.updated_at = now();
+      changed = true;
+    }
+  for (const profile of state.codex_profiles.filter(
+    (item) =>
+      item.status === 'validated' &&
+      item.model &&
+      (!isThirdPartyProvider(item.provider) || normalizeProviderBaseUrl(item.base_url))
+  )) {
     const generated = await writeProfileConfig(profile, codexAuth?.home);
-    if (profile.codex_home !== generated.codex_home || profile.config_file !== generated.config_file) { Object.assign(profile, generated); changed = true; }
+    if (profile.codex_home !== generated.codex_home || profile.config_file !== generated.config_file) {
+      Object.assign(profile, generated);
+      changed = true;
+    }
   }
   const retiredToolName = [['m', 'o', 'c', 'k'].join(''), 'runner'].join('_');
   const productionTools = state.tools.filter((item) => item.name !== retiredToolName);
-  if (productionTools.length !== state.tools.length) { state.tools = productionTools; changed = true; }
+  if (productionTools.length !== state.tools.length) {
+    state.tools = productionTools;
+    changed = true;
+  }
   for (const contract of state.node_contracts) {
     if (!Array.isArray(contract.allowed_tools)) continue;
     const allowed = contract.allowed_tools.filter((item) => item !== retiredToolName);
-    if (allowed.length !== contract.allowed_tools.length) { contract.allowed_tools = allowed; contract.updated_at = now(); changed = true; }
+    if (allowed.length !== contract.allowed_tools.length) {
+      contract.allowed_tools = allowed;
+      contract.updated_at = now();
+      changed = true;
+    }
   }
   const retiredRunner = ['m', 'o', 'c', 'k'].join('');
-  for (const run of state.node_runs) if (run.runner === retiredRunner) { run.legacy_runner = retiredRunner; run.runner = 'legacy_retired_adapter'; run.legacy_read_only = true; changed = true; }
+  for (const run of state.node_runs)
+    if (run.runner === retiredRunner) {
+      run.legacy_runner = retiredRunner;
+      run.runner = 'legacy_retired_adapter';
+      run.legacy_read_only = true;
+      changed = true;
+    }
   if ((await promoteLegacyExecutionHistoryInState(state)).changed) changed = true;
   const serialized = JSON.stringify(state, null, 2);
-  if (changed || await redactKnownSecrets(serialized) !== serialized) await writeState(state);
+  if (changed || (await redactKnownSecrets(serialized)) !== serialized) await writeState(state);
 }
-export function emptyState() { return Object.fromEntries(collections.map((key) => [key, []])); }
+export function emptyState() {
+  return Object.fromEntries(collections.map((key) => [key, []]));
+}
 function bootstrapState() {
   const state = emptyState();
   state.schema_version = STATE_SCHEMA_VERSION;
@@ -166,24 +428,35 @@ function bootstrapState() {
   state.instance_owner_user_id = user.id;
   state.tools.push(...defaultTools(user.id));
   state.codex_profiles.push(...defaultCodexProfiles(user.id));
-  state.traces.push(makeTrace('human.reviewed', { summary: '首次启动：创建 Local Owner Account。' }, { type: 'system', id: user.id }));
+  state.traces.push(
+    makeTrace('human.reviewed', { summary: '首次启动：创建 Local Owner Account。' }, { type: 'system', id: user.id })
+  );
   return state;
 }
-export async function readState() { return JSON.parse(await fsp.readFile(STATE_FILE, 'utf8')); }
+export async function readState() {
+  return JSON.parse(await fsp.readFile(STATE_FILE, 'utf8'));
+}
 export async function writeState(state) {
   normalizeState18Compatibility(state, collections);
   normalizeState19Defaults(state);
   ensureProjectGovernanceDefaults(state);
-  ensureRepositoryLifecycleDefaults(state); ensureExchangeDefaults(state);
+  ensureRepositoryLifecycleDefaults(state);
+  ensureExchangeDefaults(state);
   validateState19(state);
   const tmp = `${STATE_FILE}.tmp`;
   const serialized = await redactKnownSecrets(JSON.stringify(state, null, 2));
   const handle = await fsp.open(tmp, 'w', 0o600);
-  try { await handle.writeFile(serialized, 'utf8'); await handle.sync(); }
-  finally { await handle.close(); }
+  try {
+    await handle.writeFile(serialized, 'utf8');
+    await handle.sync();
+  } finally {
+    await handle.close();
+  }
   await replaceStateFile(tmp, STATE_FILE);
 }
-export function lastStateMigration() { return lastMigration ? { ...lastMigration, state: undefined } : null; }
+export function lastStateMigration() {
+  return lastMigration ? { ...lastMigration, state: undefined } : null;
+}
 async function clearEphemeralDirectory(directory) {
   const entries = await fsp.readdir(directory, { withFileTypes: true });
   await Promise.all(entries.map((entry) => fsp.rm(path.join(directory, entry.name), { recursive: true, force: true })));
@@ -202,7 +475,12 @@ export function mutate(fn) {
 
 export function owner(state) {
   const actorId = currentActorId();
-  return state.users.find((user) => user.id === actorId) || state.users.find((user) => user.id === state.instance_owner_user_id) || state.users.find((user) => user.role === 'owner') || state.users[0];
+  return (
+    state.users.find((user) => user.id === actorId) ||
+    state.users.find((user) => user.id === state.instance_owner_user_id) ||
+    state.users.find((user) => user.role === 'owner') ||
+    state.users[0]
+  );
 }
 
 export function actor(state, { required = true } = {}) {
@@ -221,16 +499,27 @@ export function addTrace(state, event, payload = {}, actorId = null) {
 export async function saveArtifact(kind, name, content, meta = {}) {
   const dir = path.join(ARTIFACT_DIR, String(kind || 'artifact').replace(/[^\w-]/g, '_'));
   await fsp.mkdir(dir, { recursive: true });
-  const fileName = `${Date.now()}_${String(name || 'artifact').replace(/[^\w.\-\u4e00-\u9fa5]+/g, '_').slice(0, 80)}`;
+  const fileName = `${Date.now()}_${String(name || 'artifact')
+    .replace(/[^\w.\-\u4e00-\u9fa5]+/g, '_')
+    .slice(0, 80)}`;
   const full = path.join(dir, fileName);
   const serialized = typeof content === 'string' ? content : JSON.stringify(content, null, 2);
   await fsp.writeFile(full, await redactKnownSecrets(serialized), 'utf8');
   const bytes = await fsp.readFile(full);
   return {
-    id: id('fil'), kind, absolute_path: full, relative_path: path.relative(path.dirname(DATA_DIR), full),
-    sha256: hashString(bytes), size_bytes: bytes.length,
-    content_type: fileName.endsWith('.json') ? 'application/json' : fileName.endsWith('.md') ? 'text/markdown' : 'text/plain',
-    meta, created_at: now()
+    id: id('fil'),
+    kind,
+    absolute_path: full,
+    relative_path: path.relative(path.dirname(DATA_DIR), full),
+    sha256: hashString(bytes),
+    size_bytes: bytes.length,
+    content_type: fileName.endsWith('.json')
+      ? 'application/json'
+      : fileName.endsWith('.md')
+        ? 'text/markdown'
+        : 'text/plain',
+    meta,
+    created_at: now()
   };
 }
 
@@ -241,17 +530,40 @@ function isWithin(root, candidate) {
 }
 
 function governanceFingerprint(state) {
-  return JSON.stringify({ instance_owner_user_id: state.instance_owner_user_id || null, memberships: (state.project_memberships || []).map((item) => [item.id, item.project_id, item.user_id, item.role, item.status]), project_owners: (state.projects || []).map((item) => [item.id, item.owner_user_id || null]) });
+  return JSON.stringify({
+    instance_owner_user_id: state.instance_owner_user_id || null,
+    memberships: (state.project_memberships || []).map((item) => [
+      item.id,
+      item.project_id,
+      item.user_id,
+      item.role,
+      item.status
+    ]),
+    project_owners: (state.projects || []).map((item) => [item.id, item.owner_user_id || null])
+  });
 }
 
 function lifecycleFingerprint(state) {
-  return JSON.stringify({ canonical: (state.canonical_repositories || []).map((item) => [item.id, item.repository_id, item.remote_state]), bindings: (state.project_repository_bindings || []).map((item) => [item.id, item.project_id, item.canonical_repository_id, item.status]), intents: (state.repository_deletion_intents || []).map((item) => [item.id, item.status]), exchanges: (state.exchange_requests || []).map((item) => [item.id, item.status]), grants: (state.exchange_grants || []).map((item) => [item.id, item.status]) });
+  return JSON.stringify({
+    canonical: (state.canonical_repositories || []).map((item) => [item.id, item.repository_id, item.remote_state]),
+    bindings: (state.project_repository_bindings || []).map((item) => [
+      item.id,
+      item.project_id,
+      item.canonical_repository_id,
+      item.status
+    ]),
+    intents: (state.repository_deletion_intents || []).map((item) => [item.id, item.status]),
+    exchanges: (state.exchange_requests || []).map((item) => [item.id, item.status]),
+    grants: (state.exchange_grants || []).map((item) => [item.id, item.status])
+  });
 }
 
 async function replaceStateFile(source, target) {
   for (let attempt = 0; ; attempt++) {
-    try { await fsp.rename(source, target); return; }
-    catch (error) {
+    try {
+      await fsp.rename(source, target);
+      return;
+    } catch (error) {
       if (!['EPERM', 'EACCES', 'EBUSY'].includes(error.code) || attempt >= 20) throw error;
       await new Promise((resolve) => setTimeout(resolve, Math.min(100, 10 * (attempt + 1))));
     }

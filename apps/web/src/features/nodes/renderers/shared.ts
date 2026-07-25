@@ -8,4 +8,9 @@ export function stringList(value: unknown): string[] {
   return Array.isArray(value) ? value.map(String) : [];
 }
 
-export function lines(value: string) { return value.split('\n').map((item) => item.trim()).filter(Boolean); }
+export function lines(value: string) {
+  return value
+    .split('\n')
+    .map((item) => item.trim())
+    .filter(Boolean);
+}

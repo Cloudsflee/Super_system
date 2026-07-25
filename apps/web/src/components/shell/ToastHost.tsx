@@ -10,11 +10,15 @@ export function ToastHost() {
   }, [toasts, dismissToast]);
   return (
     <div className="toast-host" aria-live="polite">
-      {toasts.map((toast) => <div className={`toast ${toast.tone}`} key={toast.id}>
-        {toast.tone === 'error' ? <CircleAlert size={17} /> : <Info size={17} />}
-        <span>{toast.message}</span>
-        <button aria-label="关闭通知" onClick={() => dismissToast(toast.id)}><X size={15} /></button>
-      </div>)}
+      {toasts.map((toast) => (
+        <div className={`toast ${toast.tone}`} key={toast.id}>
+          {toast.tone === 'error' ? <CircleAlert size={17} /> : <Info size={17} />}
+          <span>{toast.message}</span>
+          <button aria-label="关闭通知" onClick={() => dismissToast(toast.id)}>
+            <X size={15} />
+          </button>
+        </div>
+      ))}
     </div>
   );
 }

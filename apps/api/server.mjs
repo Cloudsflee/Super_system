@@ -3,10 +3,22 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { HOST, PORT, WEB_DIR } from './src/config.mjs';
-import { allowLocalBrowserOrigin, decodeUrlPathname, dispatch, HttpError, notFound, safeReadStream, send } from './src/http.mjs';
+import {
+  allowLocalBrowserOrigin,
+  decodeUrlPathname,
+  dispatch,
+  HttpError,
+  notFound,
+  safeReadStream,
+  send
+} from './src/http.mjs';
 import { ensureRuntime } from './src/state.mjs';
 import { attachTerminalWebSocket } from './src/terminal-service.mjs';
-import { attachDeletedSessionSweeper, purgeExpiredDeletedSessions, recoverAssistV3Runtime } from './src/assist-v3-service.mjs';
+import {
+  attachDeletedSessionSweeper,
+  purgeExpiredDeletedSessions,
+  recoverAssistV3Runtime
+} from './src/assist-v3-service.mjs';
 import { AIWS_VERSION } from '../../packages/shared/index.mjs';
 import { computeSetupStatus, isSetupExempt } from './src/setup-status.mjs';
 import { readState } from './src/state.mjs';
@@ -41,14 +53,21 @@ async function serveStatic(req, res, pathname) {
   const file = pathname === '/' ? 'index.html' : pathname.replace(/^\/+/, '');
   const full = path.resolve(WEB_DIR, file);
   const relative = path.relative(WEB_DIR, full);
-  if (relative.startsWith('..') || path.isAbsolute(relative) || !fs.existsSync(full) || fs.statSync(full).isDirectory()) return false;
+  if (relative.startsWith('..') || path.isAbsolute(relative) || !fs.existsSync(full) || fs.statSync(full).isDirectory())
+    return false;
   const ext = path.extname(full);
-  const type = ext === '.html' ? 'text/html; charset=utf-8'
-    : ext === '.css' ? 'text/css; charset=utf-8'
-      : ext === '.js' ? 'text/javascript; charset=utf-8'
-        : ext === '.svg' ? 'image/svg+xml'
-          : ext === '.json' ? 'application/json; charset=utf-8'
-        : 'application/octet-stream';
+  const type =
+    ext === '.html'
+      ? 'text/html; charset=utf-8'
+      : ext === '.css'
+        ? 'text/css; charset=utf-8'
+        : ext === '.js'
+          ? 'text/javascript; charset=utf-8'
+          : ext === '.svg'
+            ? 'image/svg+xml'
+            : ext === '.json'
+              ? 'application/json; charset=utf-8'
+              : 'application/octet-stream';
   safeReadStream(res, full, type);
   return true;
 }
@@ -58,29 +77,37 @@ const server = http.createServer(async (req, res) => {
   res.setHeader('x-aiws-request-id', requestId);
   try {
     const parsed = new URL(req.url || '/', 'http://aiws.local');
-    const encodedPathname = parsed.pathname || '/', pathname = decodeUrlPathname(encodedPathname);
+    const encodedPathname = parsed.pathname || '/',
+      pathname = decodeUrlPathname(encodedPathname);
     const routePath = encodedPathname.startsWith('/api/') ? encodedPathname.slice(4) : encodedPathname;
     allowLocalBrowserOrigin(req, res);
     if (req.method === 'OPTIONS') {
       res.writeHead(204, {
         'access-control-allow-methods': 'GET,POST,PUT,PATCH,DELETE,OPTIONS',
-        'access-control-allow-headers': 'content-type, authorization, range, if-none-match, last-event-id, mcp-session-id, mcp-protocol-version, x-aiws-request-id, x-aiws-browser-id, x-aiws-btw-token, x-idempotency-key, x-aiws-user-id, x-aiws-subject-user-id, x-aiws-scopes',
+        'access-control-allow-headers':
+          'content-type, authorization, range, if-none-match, last-event-id, mcp-session-id, mcp-protocol-version, x-aiws-request-id, x-aiws-browser-id, x-aiws-btw-token, x-idempotency-key, x-aiws-user-id, x-aiws-subject-user-id, x-aiws-scopes',
         'access-control-max-age': '86400'
       });
       res.end();
       return;
     }
     if (await serveStatic(req, res, pathname)) return;
-    if (req.method === 'GET' && String(req.headers.accept || '').includes('text/html') && isSpaPath(pathname)) return serveStatic(req, res, '/');
+    if (req.method === 'GET' && String(req.headers.accept || '').includes('text/html') && isSpaPath(pathname))
+      return serveStatic(req, res, '/');
     if (process.env.AIWS_BYPASS_SETUP !== '1' && !isSetupExempt(routePath) && isApiRequest(pathname, routePath)) {
       const status = computeSetupStatus(await readState());
       if (!status.complete) return send(res, 403, { error: 'setup_required', setup: status });
     }
     const subjectUserId = requestSubjectUserId(req);
-    const handled = await runAsActor(subjectUserId, () => dispatch(routes, {
-      req, res, pathname: routePath, query: searchParamsObject(parsed.searchParams),
-      authorize: (route, context) => authorizeApiRoute(route, context, { strict: false })
-    }));
+    const handled = await runAsActor(subjectUserId, () =>
+      dispatch(routes, {
+        req,
+        res,
+        pathname: routePath,
+        query: searchParamsObject(parsed.searchParams),
+        authorize: (route, context) => authorizeApiRoute(route, context, { strict: false })
+      })
+    );
     if (!handled && req.method === 'GET' && isSpaPath(pathname)) return serveStatic(req, res, '/');
     if (!handled) notFound(res);
   } catch (error) {
@@ -102,7 +129,10 @@ attachHostBridgeWebSocket(server);
 attachBtwShutdown(server);
 attachDeletedSessionSweeper(server);
 attachContainerShutdown(server, { beforeClose: () => codexBuildManager.shutdown() });
-server.on('close', () => { stopWorkflowDispatcher(); void Promise.all([closeMcpHttpRuntime(), closeGithubProxyDispatchers()]); });
+server.on('close', () => {
+  stopWorkflowDispatcher();
+  void Promise.all([closeMcpHttpRuntime(), closeGithubProxyDispatchers()]);
+});
 
 function searchParamsObject(params) {
   const result = Object.create(null);
@@ -125,9 +155,11 @@ function isApiRequest(pathname, routePath) {
 }
 
 function isSpaPath(pathname) {
-  return /^\/(?:setup|projects|assets|audit|settings)\/?$/.test(pathname)
-    || /^\/integrations\/github\/install\/setup\/?$/.test(pathname)
-    || /^\/projects\/[^/]+\/(?:workflow(?:\/[^/]+)?|onboarding|nodes\/[^/]+)\/?$/.test(pathname);
+  return (
+    /^\/(?:setup|projects|assets|audit|settings)\/?$/.test(pathname) ||
+    /^\/integrations\/github\/install\/setup\/?$/.test(pathname) ||
+    /^\/projects\/[^/]+\/(?:workflow(?:\/[^/]+)?|onboarding|nodes\/[^/]+)\/?$/.test(pathname)
+  );
 }
 
 server.listen(PORT, HOST, () => {

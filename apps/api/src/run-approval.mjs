@@ -16,7 +16,8 @@ export function requireNodeRunApproval(state, { approvalId, nodeId, runner, repo
   if (proposal.node_id !== nodeId || action.node_id !== nodeId || approvedRunner !== runner) {
     throw new HttpError(409, { error: 'node_run_approval_scope_mismatch', approval_id: proposal.id });
   }
-  if ((action.repository_workspace_id || null) !== (repositoryWorkspaceId || null)) throw new HttpError(409, { error: 'node_run_approval_repository_workspace_mismatch', approval_id: proposal.id });
+  if ((action.repository_workspace_id || null) !== (repositoryWorkspaceId || null))
+    throw new HttpError(409, { error: 'node_run_approval_repository_workspace_mismatch', approval_id: proposal.id });
   if (proposal.consumed_at) throw new HttpError(409, { error: 'node_run_approval_consumed', approval_id: proposal.id });
   return proposal;
 }
@@ -30,9 +31,12 @@ export function requireGitActionApproval(state, { approvalId, type, run, project
   const proposal = state.change_proposals.find((item) => item.id === approvalId);
   if (!proposal) throw new HttpError(409, { error: 'git_action_approval_required', approval_type: type });
   const action = proposal.apply_action || {};
-  if (proposal.status !== 'applied' || action.type !== type) throw new HttpError(409, { error: 'git_action_approval_not_applied', approval_id: proposal.id });
-  if (proposal.project_id !== project.id || proposal.node_id !== node.id || action.run_id !== run.id) throw new HttpError(409, { error: 'git_action_approval_scope_mismatch', approval_id: proposal.id });
-  if (proposal.consumed_at) throw new HttpError(409, { error: 'git_action_approval_consumed', approval_id: proposal.id });
+  if (proposal.status !== 'applied' || action.type !== type)
+    throw new HttpError(409, { error: 'git_action_approval_not_applied', approval_id: proposal.id });
+  if (proposal.project_id !== project.id || proposal.node_id !== node.id || action.run_id !== run.id)
+    throw new HttpError(409, { error: 'git_action_approval_scope_mismatch', approval_id: proposal.id });
+  if (proposal.consumed_at)
+    throw new HttpError(409, { error: 'git_action_approval_consumed', approval_id: proposal.id });
   return proposal;
 }
 
