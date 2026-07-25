@@ -105,17 +105,17 @@ try {
   assert.equal(await page.getByText('stored', { exact: true }).count(), 0);
   await page.getByRole('button', { name: '本地 Codex' }).click();
   await page.getByRole('radio', { name: /Local Gateway/ }).click();
-  await page.getByLabel('Discovery API Key').waitFor();
+  await page.getByLabel('导入配置所需的 API 密钥').waitFor();
   for (const viewport of viewports) {
     await page.setViewportSize(viewport);
     await page.screenshot({ path: path.join(output, `setup-codex-discovery-${viewport.name}.png`), fullPage: true });
     await assertViewport(page);
   }
   await page.getByRole('button', { name: '手动 API' }).click();
-  await page.getByRole('combobox', { name: 'Provider' }).selectOption('custom');
-  await page.getByRole('textbox', { name: 'API Base URL' }).waitFor();
+  await page.getByRole('combobox', { name: '服务商' }).selectOption('custom');
+  await page.getByRole('textbox', { name: 'API 根地址' }).waitFor();
   await page.getByRole('button', { name: 'cc-switch' }).waitFor();
-  await page.getByText(/Chat 需独立 cc-switch local proxy/).waitFor();
+  await page.getByText(/聊天接口需要独立的 cc-switch 本地代理/).waitFor();
   for (const viewport of viewports) {
     await page.setViewportSize(viewport);
     await page.screenshot({ path: path.join(output, `setup-codex-third-party-${viewport.name}.png`), fullPage: true });
@@ -241,7 +241,7 @@ async function verifyWorkspaceViewport(page, fixture, viewport) {
   const nodeMenu = page.getByRole('menu', { name: '上下文菜单' });
   await nodeMenu.waitFor();
   await assertInsideViewport(page, '.context-menu');
-  assert.equal(await nodeMenu.getByRole('menuitem', { name: '让 Assist 优化' }).count(), 1);
+  assert.equal(await nodeMenu.getByRole('menuitem', { name: '让智能助手优化' }).count(), 1);
   await page.screenshot({ path: path.join(output, `workflow-node-menu-${viewport.name}.png`) });
   await page.keyboard.press('Escape');
   await canvasNode.click();
@@ -258,8 +258,8 @@ async function verifyWorkspaceViewport(page, fixture, viewport) {
   await page.locator('.approval-prompt').waitFor({ state: 'detached' });
   if (viewport.width <= 700) {
     await page.locator('.node-inspector').getByRole('button', { name: '更多节点操作' }).click();
-    await page.getByRole('menuitem', { name: '让 Assist 优化' }).click();
-  } else await page.getByRole('button', { name: '打开 Codex Assist' }).click();
+    await page.getByRole('menuitem', { name: '让智能助手优化' }).click();
+  } else await page.getByRole('button', { name: '打开 Codex 智能助手' }).click();
   await page.locator('.assist-workbench').waitFor();
   await page.locator('.assist-composer-v3').waitFor();
   if (viewport.name === 'desktop') await assertA11y(page, 'assist');
@@ -339,7 +339,7 @@ async function verifyV17Assist(page, fixture, viewport) {
   const question = page.locator('.native-input-card').first();
   await question.waitFor();
   assert.equal(await question.getByText('推荐', { exact: true }).count(), 1);
-  assert.equal(await question.getByRole('textbox', { name: '范围确认 Note' }).count(), 1);
+  assert.equal(await question.getByRole('textbox', { name: '范围确认 备注' }).count(), 1);
   await question.screenshot({ path: path.join(output, `assist-question-${viewport.name}.png`) });
   const receipt = page.locator('.operation-receipt').first();
   await receipt.waitFor();
@@ -356,9 +356,9 @@ async function verifyV17Assist(page, fixture, viewport) {
     .filter({ hasText: 'V1.7 visual reply' })
     .screenshot({ path: path.join(output, `assist-reply-${viewport.name}.png`) });
 
-  const layoutButton = page.getByRole('button', { name: 'Assist 布局' });
+  const layoutButton = page.getByRole('button', { name: '智能助手布局' });
   await layoutButton.click();
-  const layoutMenu = page.getByRole('menu', { name: 'Assist 布局' });
+  const layoutMenu = page.getByRole('menu', { name: '智能助手布局' });
   await layoutMenu.waitFor();
   assert.equal(await layoutMenu.getByRole('menuitemradio').count(), 3);
   await assertInsideViewport(page, '.assist-layout-menu [role="menu"]');
@@ -380,7 +380,7 @@ async function verifyV17Assist(page, fixture, viewport) {
   await composerHandle.dispatchEvent('dblclick');
   assert.equal(await page.evaluate(() => localStorage.getItem('aiws-composer-height-v16')), null);
 
-  const input = page.getByRole('textbox', { name: 'Assist 消息' });
+  const input = page.getByRole('textbox', { name: '智能助手消息' });
   await input.focus();
   await page.keyboard.press('Shift+F10');
   const keyboardMenu = page.getByRole('menu', { name: '上下文菜单' });
@@ -409,9 +409,9 @@ async function verifyV17Assist(page, fixture, viewport) {
   });
   await reply.click({ button: 'right' });
   const selectionMenu = page.getByRole('menu', { name: '上下文菜单' });
-  await selectionMenu.getByRole('menuitem', { name: 'Ask' }).waitFor();
+  await selectionMenu.getByRole('menuitem', { name: '询问智能助手' }).waitFor();
   await page.screenshot({ path: path.join(output, `assist-context-selection-${viewport.name}.png`) });
-  await selectionMenu.getByRole('menuitem', { name: 'Ask' }).click();
+  await selectionMenu.getByRole('menuitem', { name: '询问智能助手' }).click();
   const btw = page.locator('.btw-popover[aria-label="问点什么"]');
   await btw.waitFor();
   await assertInsideViewport(page, '.btw-popover');
@@ -428,7 +428,7 @@ async function verifyV17Assist(page, fixture, viewport) {
   await runtimeDetails.waitFor();
   assert.equal(await runtimeDetails.getAttribute('open'), null, 'completed Turn details default to collapsed');
   await runtimeDetails.locator('summary').click();
-  const usage = runtimeDetails.locator('[aria-label="Token 用量"]');
+  const usage = runtimeDetails.locator('[aria-label="令牌用量"]');
   await usage.waitFor();
   assert.match(await usage.textContent(), /输入\s*1,000.*输出\s*234.*总计\s*1,234/s);
   await page.screenshot({ path: path.join(output, `assist-runtime-details-${viewport.name}.png`) });
