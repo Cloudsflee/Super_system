@@ -68,7 +68,7 @@ const checks = [
   ['File traversal guard', 'apps/api/src/file-service.mjs', 'path_outside_repository'],
   ['Assist V3 routes', 'apps/api/src/routes/assist-v3.mjs', '/assist/v3/sessions/:id/follow-ups'],
   ['Assist V3 replay', 'apps/api/src/assist-v3-events.mjs', 'last-event-id'],
-  ['Codex app-server', 'apps/api/src/codex-app-server.mjs', "request('turn/start'"],
+  ['Codex app-server', 'apps/api/src/codex-app-server.mjs', "appServerRequest(context, 'turn/start'"],
   ['Native collaboration mode', 'apps/api/src/codex-app-server.mjs', 'collaborationMode: nativeCollaborationMode'],
   ['Application context channel', 'apps/api/src/assist-v3-context.mjs', "return [{ kind: 'application'"],
   ['App-server-only Assist', 'apps/api/src/assist-v3-runtime.mjs', 'runCodexAppServer'],
@@ -122,7 +122,7 @@ const checks = [
   ['Native thread Fork', 'apps/api/src/assist-session-lifecycle.mjs', "method: 'thread/fork'"],
   ['Root delete protection', 'apps/api/src/assist-session-lifecycle.mjs', 'assist_root_session_not_deletable'],
   ['Delete batch restore', 'apps/api/src/routes/assist-v3.mjs', '/restore-deleted'],
-  ['Ephemeral BTW', 'apps/api/src/codex-ephemeral-thread.mjs', "request('thread/fork'"],
+  ['Ephemeral BTW', 'apps/api/src/codex-ephemeral-thread.mjs', "ephemeralRequest(context, 'thread/fork'"],
   ['BTW memory lifecycle', 'apps/api/src/assist-btw.mjs', 'BTW_GLOBAL_LIMIT = 4'],
   ['Streaming upload', 'apps/api/src/assist-attachments.mjs', 'streamMultipartFile'],
   ['Attachment Range', 'apps/api/src/assist-attachments.mjs', 'parseSingleRange'],
@@ -142,7 +142,7 @@ const checks = [
   ['Batch review API', 'apps/api/src/routes/assist-v3.mjs', '/assist/v3/change-batches/:id/review/apply'],
   ['Dynamic page tools', 'apps/api/src/assist-operations.mjs', "name: 'aiws_page'"],
   ['Operation conflict response', 'apps/api/src/assist-operation-waiters.mjs', 'assist_operation_undo_conflict'],
-  ['Operation conflict values', 'apps/api/src/assist-operations.mjs', 'conflict: { before:'],
+  ['Operation conflict values', 'apps/api/src/assist-operations.mjs', 'before: reference?.before_value ?? null'],
   ['Operation conflict retry', 'apps/api/src/assist-operations.mjs', 'retryingConflict ? original.current_hash'],
   ['Compensating Undo', 'apps/api/src/assist-operations.mjs', 'inverse_of: original.id'],
   ['Terminal capabilities', 'apps/api/src/routes/terminal-v13.mjs', '/assist/v3/terminal-capabilities'],
@@ -193,7 +193,11 @@ const checks = [
     'tests/integration/v16-assist-files-flow.test.mjs',
     'V1.6 Assist files and native Fork integration tests passed'
   ],
-  ['V1.6 Web interactions', 'apps/web/src/test/assist-v16-interactions.test.tsx', 'Assist V1.6 interactions'],
+  [
+    'V1.6 Web interactions',
+    'apps/web/src/test/assist-v16-interactions.test.tsx',
+    'Assist V1.6 context, threads, and composer input'
+  ],
   ['V1.7 core unit', 'tests/unit/v17-core.test.mjs', 'V1.7 core unit tests passed'],
   ['V1.7 release primitives', 'tests/unit/v17-release.test.mjs', 'V1.7 release primitive compatibility tests passed'],
   [
