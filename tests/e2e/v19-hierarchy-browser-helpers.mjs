@@ -533,7 +533,7 @@ async function assertWideWorkflowWorkbands(page, masterDetail) {
       streamBand = streamHeader.querySelector('.workflow-stream-band');
     const streamMain = streamBand.querySelector('.workflow-stream-main'),
       streamProgress = streamBand.querySelector('.workflow-stream-progress'),
-      streamAction = streamBand.querySelector(':scope > a');
+      streamAction = streamBand.querySelector('.workflow-stream-actions');
     const dag = stream.querySelector('.workflow-task-dag'),
       task = dag.querySelector('.workflow-process-task'),
       summary = task.querySelector('.workflow-task-summary'),
