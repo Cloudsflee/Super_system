@@ -75,9 +75,14 @@ for (const contract of [
   'test:v18:pr'
 ])
   assert.ok(prePush.includes(contract), `pre-push gate keeps ${contract}`);
-const ciImpact = fs.readFileSync('scripts/v175-ci-impact.mjs', 'utf8');
-for (const contract of ['V1.75-Decision', 'V1.75-Reason', '!decisionMatch || !reasonMatch'])
-  assert.ok(ciImpact.includes(contract), `PR impact gate keeps ${contract}`);
+assert.equal(
+  fs.existsSync('scripts/v175-ci-impact.mjs'),
+  false,
+  'removed GitHub Actions-only impact entry stays absent'
+);
+const pullRequestTemplate = fs.readFileSync('.github/PULL_REQUEST_TEMPLATE.md', 'utf8');
+for (const obsoleteField of ['V1.75-Decision', 'V1.75-Reason', 'V1.8-Decision', 'V1.8-Reason'])
+  assert.equal(pullRequestTemplate.includes(obsoleteField), false, `PR template omits obsolete ${obsoleteField}`);
 const runner = fs.readFileSync('scripts/v175-runner.mjs', 'utf8');
 for (const contract of ['15 * 60_000', '90 * 60_000', '120 * 60_000', 'AIWS_TEST_RUN_ID', '测试结果v1.75.md'])
   assert.ok(runner.includes(contract), `runner keeps ${contract}`);

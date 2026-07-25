@@ -7,6 +7,8 @@ dist/
 .env
 *.log
 *.tsbuildinfo
+__pycache__/
+*.py[cod]
 .tmp-*/
 /temp/
 temp/v175-user-journey-*/

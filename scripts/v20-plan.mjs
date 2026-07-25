@@ -85,7 +85,8 @@ for (const [file, anchors] of [
   ['apps/api/src/mcp-server-factory.mjs', ['aiws_context', 'aiws://context/map/{scope}', 'explain_selection']],
   ['apps/web/src/app/router.tsx', ["path: '/context'", "path: '/projects/:projectId/context'"]],
   ['compose.yml', ['name: aiws-v20', 'aiws-app:2.0.0', 'aiws-data-v20']],
-  ['packages/shared/src/version.mjs', ["AIWS_VERSION = '2.0.0'", 'AIWS_STATE_SCHEMA_VERSION = 20']]
+  ['packages/shared/src/version.mjs', ["AIWS_VERSION = '2.0.0'", 'AIWS_STATE_SCHEMA_VERSION = 20']],
+  ['.gitignore', ['__pycache__/', '*.py[cod]']]
 ]) {
   const source = fs.existsSync(file) ? fs.readFileSync(file, 'utf8') : '';
   for (const anchor of anchors) if (!source.includes(anchor)) errors.push(`${file}: missing ${anchor}`);
@@ -98,6 +99,14 @@ for (const viewport of [2560, 1920, 1440, 1024, 768, 390])
   if (!coverage.viewports.includes(viewport)) errors.push(`coverage viewport missing: ${viewport}`);
 if (impact.version !== '2.0' || impact.match_mode !== 'all' || !impact.mappings?.length)
   errors.push('impact map header invalid');
+const impactSource = fs.readFileSync('scripts/v20-impact.mjs', 'utf8');
+for (const anchor of [
+  '--diff-filter=ACMRD',
+  'impact audit tracked files unclassified',
+  'audited_tracked_files',
+  '.github/PULL_REQUEST_TEMPLATE.md'
+])
+  if (!impactSource.includes(anchor)) errors.push(`V2.0 impact audit contract missing: ${anchor}`);
 
 if (errors.length) {
   console.error(`V2.0 plan validation failed (${errors.length}):\n${errors.map((item) => `- ${item}`).join('\n')}`);
