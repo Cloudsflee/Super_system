@@ -137,29 +137,35 @@ function attachRuntimeApproval(state, turn, normalized) {
 
 function normalizeCodexEvent(event) {
   if (!event || typeof event !== 'object') return null;
-  if (
-    [
-      'text',
-      'plan',
-      'command',
-      'file_change',
-      'diff',
-      'test',
-      'mcp',
-      'search',
-      'usage',
-      'reasoning_summary',
-      'status',
-      'terminal',
-      'request_user_input',
-      'operation'
-    ].includes(event.aiws_type) &&
-    event.data &&
-    typeof event.data === 'object'
-  )
-    return { type: event.aiws_type, data: maskSecretsDeep(event.data) };
+  const nativeEvent = normalizeAiwsEvent(event);
+  if (nativeEvent) return nativeEvent;
   const item = event.item && typeof event.item === 'object' ? event.item : {},
     kind = String(item.type || '').toLowerCase();
+  return normalizeItemEvent(event, item, kind) || normalizeEnvelopeEvent(event, item, kind);
+}
+
+function normalizeAiwsEvent(event) {
+  const supportedTypes = [
+    'text',
+    'plan',
+    'command',
+    'file_change',
+    'diff',
+    'test',
+    'mcp',
+    'search',
+    'usage',
+    'reasoning_summary',
+    'status',
+    'terminal',
+    'request_user_input',
+    'operation'
+  ];
+  if (!supportedTypes.includes(event.aiws_type) || !event.data || typeof event.data !== 'object') return null;
+  return { type: event.aiws_type, data: maskSecretsDeep(event.data) };
+}
+
+function normalizeItemEvent(event, item, kind) {
   if (kind === 'agent_message') return { type: 'text', data: { text: cleanText(item.text, 100_000) } };
   if (kind === 'plan' || event.type === 'plan.updated')
     return {
@@ -181,6 +187,10 @@ function normalizeCodexEvent(event) {
       type: 'file_change',
       data: { status: cleanText(item.status, 100), changes: safeFileChanges(item.changes || item.files || []) }
     };
+  return null;
+}
+
+function normalizeEnvelopeEvent(event, item, kind) {
   if (kind.includes('mcp'))
     return {
       type: 'mcp',

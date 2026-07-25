@@ -64,7 +64,16 @@ export function migrateState18To19(source, { timestamp = new Date().toISOString(
 
 export function normalizeState19Defaults(state, timestamp = new Date().toISOString(), { migrating = false } = {}) {
   for (const collection of V19_COLLECTIONS) if (!Array.isArray(state[collection])) state[collection] = [];
-  for (const version of state.asset_versions) {
+  normalizeAssetVersionDefaults(state.asset_versions, timestamp);
+  normalizeAssetDefaults(state.assets);
+  normalizeWorkflowRevisionDefaults(state.workflows);
+  normalizeTaskExecutionDefaults(state, timestamp, migrating);
+  if (migrating) state.migrated_to_schema_19_at = timestamp;
+  return state;
+}
+
+function normalizeAssetVersionDefaults(versions, timestamp) {
+  for (const version of versions) {
     const legacyBody = typeof version.body === 'string' ? version.body : '';
     version.payload_kind ||= legacyPayloadKind(version);
     version.media_type ||= version.payload_kind === 'json' ? 'application/json' : 'text/plain; charset=utf-8';
@@ -83,15 +92,24 @@ export function normalizeState19Defaults(state, timestamp = new Date().toISOStri
       version.verification_status = version.blob_refs.length ? 'verified' : 'legacy_unverified';
     if (version.immutable === undefined) version.immutable = true;
   }
-  for (const asset of state.assets) {
+}
+
+function normalizeAssetDefaults(assets) {
+  for (const asset of assets) {
     if (asset.current_version_id === undefined) asset.current_version_id = null;
     if (asset.attestation_status === undefined)
       asset.attestation_status = asset.status === 'confirmed' ? 'legacy_unverified' : 'none';
   }
-  for (const workflow of state.workflows) {
+}
+
+function normalizeWorkflowRevisionDefaults(workflows) {
+  for (const workflow of workflows) {
     if (!Number.isInteger(workflow.workflow_revision) || workflow.workflow_revision < 1)
       workflow.workflow_revision = Math.max(1, Number(workflow.version) || 1);
   }
+}
+
+function normalizeTaskExecutionDefaults(state, timestamp, migrating) {
   const migrationCutoff = migrating ? timestamp : state.migrated_to_schema_19_at;
   const managedTaskIds = new Set(state.task_executions.map((item) => item.task_id));
   for (const node of state.workflow_nodes.filter((item) => item.role === 'task')) {
@@ -105,8 +123,6 @@ export function normalizeState19Defaults(state, timestamp = new Date().toISOStri
           : 'managed';
     }
   }
-  if (migrating) state.migrated_to_schema_19_at = timestamp;
-  return state;
 }
 
 export function validateState19(state) {
@@ -124,9 +140,19 @@ export function validateState19(state) {
   const nodeIds = new Set(state.workflow_nodes.map((item) => item.id));
   const workflowExecutionIds = new Set(state.workflow_executions.map((item) => item.id));
   const taskExecutionIds = new Set(state.task_executions.map((item) => item.id));
-  const blobHashes = new Set();
+  const blobHashes = validateAssetBlobs(state.asset_blobs);
+  validateAssetVersions(state.asset_versions, assetIds, blobHashes);
+  validateAssetAttestations(state.asset_attestations, assetIds, versionIds);
+  validateWorkflowExecutions(state.workflow_executions, workflowIds);
+  validateTaskExecutions(state.task_executions, workflowExecutionIds, nodeIds);
+  validateExecutionEvents(state.execution_events, workflowExecutionIds, taskExecutionIds);
+  validateRepositoryLines(state.repository_lines, workflowExecutionIds, nodeIds);
+  return state;
+}
 
-  for (const blob of state.asset_blobs) {
+function validateAssetBlobs(blobs) {
+  const blobHashes = new Set();
+  for (const blob of blobs) {
     if (!validSha(blob.sha256) || blob.id !== `blob_${blob.sha256}`)
       throw migrationError('asset_blob_identity_invalid', { id: blob.id });
     if (!Number.isSafeInteger(blob.size_bytes) || blob.size_bytes < 0)
@@ -135,7 +161,11 @@ export function validateState19(state) {
     if (blobHashes.has(blob.sha256)) throw migrationError('asset_blob_sha_duplicate', { sha256: blob.sha256 });
     blobHashes.add(blob.sha256);
   }
-  for (const version of state.asset_versions) {
+  return blobHashes;
+}
+
+function validateAssetVersions(versions, assetIds, blobHashes) {
+  for (const version of versions) {
     if (!assetIds.has(version.asset_id)) throw migrationError('asset_version_asset_missing', { id: version.id });
     if (!validSha(version.content_sha256) || !Number.isSafeInteger(version.size_bytes) || version.size_bytes < 0)
       throw migrationError('asset_version_content_identity_invalid', { id: version.id });
@@ -155,7 +185,10 @@ export function validateState19(state) {
     )
       throw migrationError('asset_version_blob_missing', { id: version.id });
   }
-  for (const attestation of state.asset_attestations) {
+}
+
+function validateAssetAttestations(attestations, assetIds, versionIds) {
+  for (const attestation of attestations) {
     if (!versionIds.has(attestation.asset_version_id) || !assetIds.has(attestation.asset_id))
       throw migrationError('asset_attestation_target_missing', { id: attestation.id });
     if (!['human', 'trusted_verifier'].includes(attestation.attestor_type))
@@ -165,13 +198,19 @@ export function validateState19(state) {
     if (attestation.confirmation_policy === 'system_evidence' && attestation.attestor_type !== 'trusted_verifier')
       throw migrationError('system_evidence_trusted_verifier_required', { id: attestation.id });
   }
-  for (const execution of state.workflow_executions) {
+}
+
+function validateWorkflowExecutions(executions, workflowIds) {
+  for (const execution of executions) {
     if (!workflowIds.has(execution.workflow_id) || !WORKFLOW_STATUSES.has(execution.status))
       throw migrationError('workflow_execution_invalid', { id: execution.id });
     if (!Number.isInteger(execution.workflow_revision) || execution.workflow_revision < 1)
       throw migrationError('workflow_execution_revision_invalid', { id: execution.id });
   }
-  for (const execution of state.task_executions) {
+}
+
+function validateTaskExecutions(executions, workflowExecutionIds, nodeIds) {
+  for (const execution of executions) {
     if (
       !workflowExecutionIds.has(execution.workflow_execution_id) ||
       !nodeIds.has(execution.task_id) ||
@@ -188,8 +227,11 @@ export function validateState19(state) {
     if (execution.lease && typeof execution.lease !== 'object')
       throw migrationError('task_execution_lease_invalid', { id: execution.id });
   }
+}
+
+function validateExecutionEvents(events, workflowExecutionIds, taskExecutionIds) {
   const eventKeys = new Set();
-  for (const event of state.execution_events) {
+  for (const event of events) {
     if (
       !workflowExecutionIds.has(event.workflow_execution_id) ||
       (event.task_execution_id && !taskExecutionIds.has(event.task_execution_id))
@@ -200,7 +242,10 @@ export function validateState19(state) {
       throw migrationError('execution_event_sequence_invalid', { id: event.id });
     eventKeys.add(key);
   }
-  for (const line of state.repository_lines) {
+}
+
+function validateRepositoryLines(lines, workflowExecutionIds, nodeIds) {
+  for (const line of lines) {
     if (!workflowExecutionIds.has(line.workflow_execution_id) || !nodeIds.has(line.workstream_id))
       throw migrationError('repository_line_scope_missing', { id: line.id });
     if (!['active', 'integrating', 'merged', 'failed', 'cancelled'].includes(line.status))
@@ -208,7 +253,6 @@ export function validateState19(state) {
     if (!safeRef(line.base_ref) || !safeRef(line.branch))
       throw migrationError('repository_line_ref_invalid', { id: line.id });
   }
-  return state;
 }
 
 export async function migrateStateFileToV19(

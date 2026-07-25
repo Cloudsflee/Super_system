@@ -13,6 +13,25 @@ export function setupRecord(state) {
 
 export function computeSetupStatus(state, runtime = null) {
   const record = state.setup_states[0] || { mode: null, completed_at: null };
+  const github = githubSetupState(state);
+  const codex = codexSetupState(state, runtime);
+  const githubReady = Boolean(record.mode) && Object.values(github.checks).every(Boolean);
+  const codexReady = Object.values(codex.checks).every(Boolean);
+  const reasons = setupReasons(record, githubReady, codexReady);
+  return {
+    complete: Boolean(record.completed_at && githubReady && codexReady),
+    mode: record.mode || null,
+    can_complete: githubReady && codexReady,
+    completed_at: record.completed_at || null,
+    steps: {
+      github: githubStep({ githubReady, ...github, githubChecks: github.checks }),
+      codex: codexStep({ codexReady, runtime, ...codex })
+    },
+    reasons
+  };
+}
+
+function githubSetupState(state) {
   const account = connectedGithubAccount(state);
   const config = resolveGithubAppConfig(state);
   const installations = state.github_installations.filter(
@@ -22,12 +41,16 @@ export function computeSetupStatus(state, runtime = null) {
     .flatMap((item) => item.repositories || [])
     .filter((item) => item.selected === true);
   const appConfigured = Boolean(config);
-  const githubChecks = {
+  const checks = {
     app_configured: appConfigured,
     account_connected: Boolean(account),
     installation_installed: installations.length > 0,
     installation_ready: installations.length > 0 && selectedRepositories.length > 0
   };
+  return { account, appConfigured, installations, selectedRepositories, checks };
+}
+
+function codexSetupState(state, runtime) {
   const docker = state.integration_statuses.find((item) => item.key === 'codex_docker');
   const auth = state.integration_statuses.find((item) => item.key === 'codex_auth');
   const profile =
@@ -45,7 +68,7 @@ export function computeSetupStatus(state, runtime = null) {
   const currentEvidence = runtime ? createCodexProbeEvidence({ profile, auth, runtime }) : null;
   const probeCurrent =
     probe?.status === 'ready' && (!runtime || codexProbeEvidenceMatches(probe.evidence, currentEvidence));
-  const codexChecks = {
+  const checks = {
     docker_ready: dockerReady,
     authenticated: auth?.status === 'authenticated',
     auth_profile_match: authMatches,
@@ -54,36 +77,33 @@ export function computeSetupStatus(state, runtime = null) {
     profile_valid: Boolean(profile?.status === 'validated' && endpointValid && authMatches),
     probe_ok: dockerReady && probeCurrent && authMatches
   };
-  const githubReady = Boolean(record.mode) && Object.values(githubChecks).every(Boolean);
-  const codexReady = Object.values(codexChecks).every(Boolean);
+  return { checks, dockerReady, probe, probeCurrent, profile };
+}
+
+function setupReasons(record, githubReady, codexReady) {
   const reasons = [];
   if (!record.mode) reasons.push('请选择运行模式');
   if (!githubReady) reasons.push('GitHub 尚未完成验证与 repository 选择');
   if (!codexReady) reasons.push('Codex 尚未通过隔离运行探针');
+  return reasons;
+}
+
+function codexStep({ codexReady, checks, dockerReady, probe, probeCurrent, profile, runtime }) {
   return {
-    complete: Boolean(record.completed_at && githubReady && codexReady),
-    mode: record.mode || null,
-    can_complete: githubReady && codexReady,
-    completed_at: record.completed_at || null,
-    steps: {
-      github: githubStep({ githubReady, appConfigured, account, installations, selectedRepositories, githubChecks }),
-      codex: {
-        ready: codexReady,
-        status: codexReady ? 'ready' : !dockerReady ? 'runtime_required' : 'configuration_required',
-        checks: codexChecks,
-        detail: codexReady
-          ? profile.name
-          : runtime && !runtime.ready
-            ? runtime.image?.summary || runtime.docker?.summary || 'Docker Runtime 不可用'
-            : probe?.status === 'ready' && !probeCurrent
-              ? 'Profile、凭据、配置或镜像已变化，请重新运行 Probe'
-              : '完成 Docker、凭据、Profile 与 Probe',
-        profile_id: profile?.id,
-        runtime
-      }
-    },
-    reasons
+    ready: codexReady,
+    status: codexReady ? 'ready' : !dockerReady ? 'runtime_required' : 'configuration_required',
+    checks,
+    detail: codexStepDetail({ codexReady, probe, probeCurrent, profile, runtime }),
+    profile_id: profile?.id,
+    runtime
   };
+}
+
+function codexStepDetail({ codexReady, probe, probeCurrent, profile, runtime }) {
+  if (codexReady) return profile.name;
+  if (runtime && !runtime.ready) return runtime.image?.summary || runtime.docker?.summary || 'Docker Runtime 不可用';
+  if (probe?.status === 'ready' && !probeCurrent) return 'Profile、凭据、配置或镜像已变化，请重新运行 Probe';
+  return '完成 Docker、凭据、Profile 与 Probe';
 }
 
 function githubStep({ githubReady, appConfigured, account, installations, selectedRepositories, githubChecks }) {

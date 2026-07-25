@@ -15,38 +15,52 @@ export function prepareTaskExecutionContext(state, input) {
       { code: 'task_completed_immutable', task_id: task.id, action: 'create_follow_up_task_or_reopen_revision' }
     ]);
   const strict = workflow.planning_quality === 'verified',
-    errors = [],
+    { errors, resolved } = resolveExecutionInputs(state, input, { project, task, contract, workflow, strict });
+  const repositorySnapshot = selectRepositorySnapshot(input, project, task, strict, resolved, errors);
+  validateRepositoryVersionBinding(resolved, repositorySnapshot, errors);
+  if (errors.length && strict) throw notReady(errors);
+  const snapshot = createExecutionSnapshot(state, input, {
+    project,
+    task,
+    contract,
+    workflow,
+    strict,
+    resolved,
+    repositorySnapshot
+  });
+  snapshot.input_snapshot_hash = executionInputHash(snapshot);
+  const contextPack = persistExecutionContext(state, input, { project, workspace, task, contract, snapshot });
+  return { context: snapshot, context_pack: contextPack };
+}
+
+function resolveExecutionInputs(state, input, scope) {
+  const errors = [],
     resolved = [];
-  const slots = Array.isArray(contract.expected_inputs) ? contract.expected_inputs : [];
+  const slots = Array.isArray(scope.contract?.expected_inputs) ? scope.contract.expected_inputs : [];
   for (const slot of slots) {
-    const value = resolveInputSlot(state, { ...input, project, task, workflow, strict }, slot, errors);
+    const value = resolveInputSlot(state, { ...input, ...scope }, slot, errors);
     if (value) resolved.push(value);
     else if (slot.required !== false && !errors.some((item) => item.slot_key === slot.key))
       errors.push({ code: 'required_input_missing', slot_key: slot.key });
   }
-  const repositorySnapshot =
-    resolved.find((item) => item.kind === 'repository')?.repository_snapshot ||
-    (input.repositoryLine
-      ? repositoryLineSnapshot(input.repositoryLine, task)
-      : legacyRepositorySnapshot(project, strict, errors));
-  validateRepositoryVersionBinding(resolved, repositorySnapshot, errors);
-  if (errors.length && strict) throw notReady(errors);
-  const assets = uniqueAssets(resolved.flatMap((item) => item.asset_versions || []));
-  const parent = state.workflow_nodes.find((item) => item.id === task.parent_node_id),
-    parentWorkspace = state.workspaces.find(
-      (item) => item.id === parent?.workspace_id || item.workflow_node_id === parent?.id
-    );
-  const digest =
-    state.digests
-      .filter((item) => item.workspace_id === parentWorkspace?.id && item.status === 'confirmed')
-      .sort(byNewest)[0] || null;
-  const brief =
-    (state.project_briefs || [])
-      .filter((item) => item.project_id === project.id && item.status !== 'superseded')
-      .sort((a, b) => Number(b.version || 0) - Number(a.version || 0))[0] || null;
-  const dependencyGraph = dependencySnapshot(state, task, input.taskExecution?.workflow_execution_id),
-    decisions = state.decisions.filter((item) => item.project_id === project.id && item.status !== 'superseded');
-  const snapshot = {
+  return { errors, resolved };
+}
+
+function selectRepositorySnapshot(input, project, task, strict, resolved, errors) {
+  const resolvedRepository = resolved.find((item) => item.kind === 'repository')?.repository_snapshot;
+  if (resolvedRepository) return resolvedRepository;
+  return input.repositoryLine
+    ? repositoryLineSnapshot(input.repositoryLine, task)
+    : legacyRepositorySnapshot(project, strict, errors);
+}
+
+function createExecutionSnapshot(state, input, scope) {
+  const { project, task, contract, workflow, strict, resolved, repositorySnapshot } = scope;
+  const digest = currentWorkstreamDigest(state, task);
+  const brief = currentProjectBrief(state, project.id);
+  const dependencyGraph = dependencySnapshot(state, task, input.taskExecution?.workflow_execution_id);
+  const decisions = state.decisions.filter((item) => item.project_id === project.id && item.status !== 'superseded');
+  return {
     schema_version: input.taskExecution ? 'aiws.task_execution_context.v3' : 'aiws.task_execution_context.v2',
     project_id: project.id,
     workflow_id: workflow.id,
@@ -67,7 +81,30 @@ export function prepareTaskExecutionContext(state, input) {
     planning_quality: workflow.planning_quality || 'legacy_unverified',
     legacy_compatibility: !strict
   };
-  snapshot.input_snapshot_hash = executionInputHash(snapshot);
+}
+
+function currentWorkstreamDigest(state, task) {
+  const parent = state.workflow_nodes.find((item) => item.id === task.parent_node_id);
+  const workspace = state.workspaces.find(
+    (item) => item.id === parent?.workspace_id || item.workflow_node_id === parent?.id
+  );
+  return (
+    state.digests
+      .filter((item) => item.workspace_id === workspace?.id && item.status === 'confirmed')
+      .sort(byNewest)[0] || null
+  );
+}
+
+function currentProjectBrief(state, projectId) {
+  return (
+    (state.project_briefs || [])
+      .filter((item) => item.project_id === projectId && item.status !== 'superseded')
+      .sort((a, b) => Number(b.version || 0) - Number(a.version || 0))[0] || null
+  );
+}
+
+function persistExecutionContext(state, input, scope) {
+  const { project, workspace, task, contract, snapshot } = scope;
   const contextPack = buildContextPack({
     state,
     project,
@@ -83,11 +120,11 @@ export function prepareTaskExecutionContext(state, input) {
   Object.assign(contextPack, {
     task_execution_context: structuredClone(snapshot),
     input_snapshot_hash: snapshot.input_snapshot_hash,
-    repository_snapshot_hash: repositorySnapshot?.snapshot_hash || null
+    repository_snapshot_hash: snapshot.repository_snapshot?.snapshot_hash || null
   });
   state.context_packs.push(contextPack);
   state.context_sufficiency_checks.push(contextPack._sufficiency_check);
-  return { context: snapshot, context_pack: contextPack };
+  return contextPack;
 }
 
 export function evaluateTaskExecutionContextFreshness(state, context) {

@@ -87,6 +87,16 @@ export function codexAuthMatchesProfile(auth, profile) {
 
 export function validateProfileInput(state, input) {
   const errors = [];
+  validateProfileIdentity(input, errors);
+  validateProfileProvider(input, errors);
+  validateProfileRuntimeOptions(input, errors);
+  validateProfileMounts(state, input, errors);
+  if (!Array.isArray(input.mcp_servers || [])) errors.push('invalid_mcp_servers');
+  else validateMcpServers(input.mcp_servers || [], errors);
+  return { ok: errors.length === 0, errors };
+}
+
+function validateProfileIdentity(input, errors) {
   if (isContainerized() && input.kind && input.kind !== 'docker') errors.push('host_profile_disabled_in_container');
   if (!input.name?.trim()) errors.push('name_required');
   else if (input.name.trim().length > 100) errors.push('invalid_name');
@@ -94,18 +104,26 @@ export function validateProfileInput(state, input) {
   else if (!/^[a-zA-Z0-9][a-zA-Z0-9._-]{0,63}$/.test(input.provider)) errors.push('invalid_provider');
   if (!input.model?.trim()) errors.push('model_required');
   else if (!/^[a-zA-Z0-9][a-zA-Z0-9._/+:@-]{0,199}$/.test(input.model)) errors.push('invalid_model');
+}
+
+function validateProfileProvider(input, errors) {
   const thirdParty = isThirdPartyProvider(input.provider);
-  const baseUrl = normalizeProviderBaseUrl(input.base_url ?? input.api_url ?? input.provider_url);
-  if (thirdParty && !String(input.base_url ?? input.api_url ?? input.provider_url ?? '').trim())
-    errors.push('base_url_required');
-  else if (String(input.base_url ?? input.api_url ?? input.provider_url ?? '').trim() && !baseUrl)
-    errors.push('invalid_base_url');
+  const rawBaseUrl = input.base_url ?? input.api_url ?? input.provider_url ?? '';
+  const baseUrl = normalizeProviderBaseUrl(rawBaseUrl);
+  if (thirdParty && !String(rawBaseUrl).trim()) errors.push('base_url_required');
+  else if (String(rawBaseUrl).trim() && !baseUrl) errors.push('invalid_base_url');
   if (!CODEX_WIRE_APIS.includes(input.wire_api || 'responses')) errors.push('unsupported_wire_api');
+}
+
+function validateProfileRuntimeOptions(input, errors) {
   if (input.requires_openai_auth !== undefined && typeof input.requires_openai_auth !== 'boolean')
     errors.push('invalid_requires_openai_auth');
   if (!/^[a-zA-Z][a-zA-Z0-9._-]{0,63}$/.test(String(input.reasoning || 'high'))) errors.push('invalid_reasoning');
   if (input.web_search !== undefined && typeof input.web_search !== 'boolean') errors.push('invalid_web_search');
   if (!isValidCodexTimeoutMs(input.timeout_ms)) errors.push('invalid_timeout');
+}
+
+function validateProfileMounts(state, input, errors) {
   const roots = [
     AIWS_HOME,
     ...state.projects.flatMap((project) => [project.repo_path, project.workspace_root]).filter(Boolean)
@@ -120,9 +138,6 @@ export function validateProfileInput(state, input) {
       const real = fs.realpathSync(path.resolve(mount));
       if (!roots.some((root) => within(realRoot(root), real))) errors.push(`mount_not_allowed:${mount}`);
     }
-  if (!Array.isArray(input.mcp_servers || [])) errors.push('invalid_mcp_servers');
-  else validateMcpServers(input.mcp_servers || [], errors);
-  return { ok: errors.length === 0, errors };
 }
 
 export async function writeProfileConfig(profile, authHome = '') {

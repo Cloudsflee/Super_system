@@ -156,7 +156,17 @@ export function validateState18(state) {
   const workflowIds = new Set(state.workflows.map((item) => item.id));
   const nodeIds = new Set(state.workflow_nodes.map((item) => item.id));
   for (const node of state.workflow_nodes) validateWorkflowNode18(node, nodeIds);
-  for (const session of state.assist_sessions) {
+  validateAssistScopes18(state.assist_sessions);
+  validateWorkflowGenerations18(state.workflow_generations, projectIds);
+  validateRepositoryConnections18(state.repository_connections, projectIds);
+  validateDeliveryScopes18(state, { projectIds, workflowIds, nodeIds });
+  validateProjectAccess18(state, { projectIds, userIds });
+  validateRepositoryExchange18(state, projectIds);
+  return state;
+}
+
+function validateAssistScopes18(sessions) {
+  for (const session of sessions) {
     if (session.version === 3 && !VALID_SCOPES.has(session.scope_type))
       throw migrationError('assist_scope_type_invalid', { id: session.id, scope_type: session.scope_type });
     if (
@@ -165,12 +175,18 @@ export function validateState18(state) {
     )
       throw migrationError('assist_scope_snapshot_invalid', { id: session.id });
   }
-  for (const item of state.workflow_generations) {
+}
+
+function validateWorkflowGenerations18(generations, projectIds) {
+  for (const item of generations) {
     if (!projectIds.has(item.project_id)) throw migrationError('workflow_generation_project_missing', { id: item.id });
     if (!['queued', 'running', ...TERMINAL_GENERATION_STATUSES].includes(item.status))
       throw migrationError('workflow_generation_status_invalid', { id: item.id });
   }
-  for (const connection of state.repository_connections) {
+}
+
+function validateRepositoryConnections18(connections, projectIds) {
+  for (const connection of connections) {
     if (!projectIds.has(connection.project_id))
       throw migrationError('repository_connection_project_missing', { id: connection.id });
     for (const forbidden of ['token', 'access_token', 'credential', 'secret'])
@@ -180,6 +196,10 @@ export function validateState18(state) {
           field: forbidden
         });
   }
+}
+
+function validateDeliveryScopes18(state, scope) {
+  const { projectIds, workflowIds, nodeIds } = scope;
   for (const target of state.repository_targets) {
     if (!projectIds.has(target.project_id) || (target.workstream_id && !nodeIds.has(target.workstream_id)))
       throw migrationError('repository_target_scope_missing', { id: target.id });
@@ -190,6 +210,10 @@ export function validateState18(state) {
   for (const delivery of state.deliveries)
     if (!projectIds.has(delivery.project_id) || (delivery.workflow_id && !workflowIds.has(delivery.workflow_id)))
       throw migrationError('delivery_scope_missing', { id: delivery.id });
+}
+
+function validateProjectAccess18(state, scope) {
+  const { projectIds, userIds } = scope;
   if (state.instance_owner_user_id && !userIds.has(state.instance_owner_user_id))
     throw migrationError('instance_owner_user_missing', { instance_owner_user_id: state.instance_owner_user_id });
   const membershipKeys = new Set();
@@ -214,6 +238,9 @@ export function validateState18(state) {
   for (const invitation of state.project_invitations)
     if (!projectIds.has(invitation.project_id) || !userIds.has(invitation.invited_by_user_id))
       throw migrationError('project_invitation_reference_missing', { id: invitation.id });
+}
+
+function validateRepositoryExchange18(state, projectIds) {
   const repositoryIds = new Set(state.canonical_repositories.map((item) => item.id));
   for (const binding of state.project_repository_bindings)
     if (!projectIds.has(binding.project_id) || !repositoryIds.has(binding.canonical_repository_id))
@@ -227,7 +254,6 @@ export function validateState18(state) {
   for (const grant of state.exchange_grants)
     if (!state.exchange_requests.some((item) => item.id === grant.exchange_request_id))
       throw migrationError('exchange_grant_request_missing', { id: grant.id });
-  return state;
 }
 export async function migrateStateFileToV18(
   stateFile,
@@ -316,6 +342,28 @@ function normalizeV18RecordDefaults(state, timestamp, { migrating = false } = {}
   for (const collection of STATE_COLLECTIONS) if (!Array.isArray(state[collection])) state[collection] = [];
   if (!Array.isArray(state.repository_bindings)) state.repository_bindings = [];
   if (!Array.isArray(state.legacy_project_allowlist_compat)) state.legacy_project_allowlist_compat = [];
+  ensureV18LocalOwner(state, timestamp);
+  const legacyWorkflowIds = [],
+    repositoryConnectionIds = [],
+    legacyAssistSessionIds = [];
+  const instanceOwnerId =
+    state.instance_owner_user_id || state.users.find((item) => item.role === 'owner')?.id || state.users[0]?.id || null;
+  if (instanceOwnerId && !state.instance_owner_user_id) state.instance_owner_user_id = instanceOwnerId;
+  const nodesByWorkflow = indexV18Nodes(state.workflow_nodes);
+  normalizeV18Workflows(state.workflows, nodesByWorkflow, legacyWorkflowIds);
+  normalizeV18Nodes(state.workflow_nodes, state.workflows);
+  normalizeV18Projects(state, { timestamp, migrating, instanceOwnerId, legacyWorkflowIds });
+  migrateV18RepositoryBindings(state, timestamp, repositoryConnectionIds);
+  normalizeV18AssistSessions(state, timestamp, legacyAssistSessionIds);
+  if (migrating) interruptV18Generations(state.workflow_generations, timestamp);
+  return {
+    legacy_workflow_ids: legacyWorkflowIds.sort(),
+    repository_connection_ids: repositoryConnectionIds.sort(),
+    legacy_assist_session_ids: legacyAssistSessionIds.sort()
+  };
+}
+
+function ensureV18LocalOwner(state, timestamp) {
   if (!state.users.length) {
     const userId = 'usr_migrated_local_owner';
     state.users.push({
@@ -337,19 +385,20 @@ function normalizeV18RecordDefaults(state, timestamp, { migrating = false } = {}
       created_at: timestamp
     });
   }
-  const legacyWorkflowIds = [],
-    repositoryConnectionIds = [],
-    legacyAssistSessionIds = [];
-  const instanceOwnerId =
-    state.instance_owner_user_id || state.users.find((item) => item.role === 'owner')?.id || state.users[0]?.id || null;
-  if (instanceOwnerId && !state.instance_owner_user_id) state.instance_owner_user_id = instanceOwnerId;
+}
+
+function indexV18Nodes(nodes) {
   const nodesByWorkflow = new Map();
-  for (const node of state.workflow_nodes) {
+  for (const node of nodes) {
     const records = nodesByWorkflow.get(node.workflow_id) || [];
     records.push(node);
     nodesByWorkflow.set(node.workflow_id, records);
   }
-  for (const workflow of state.workflows) {
+  return nodesByWorkflow;
+}
+
+function normalizeV18Workflows(workflows, nodesByWorkflow, legacyWorkflowIds) {
+  for (const workflow of workflows) {
     const nodes = nodesByWorkflow.get(workflow.id) || [];
     const alreadyTwoLevel =
       nodes.some((node) => node.role === 'workstream') &&
@@ -362,8 +411,11 @@ function normalizeV18RecordDefaults(state, timestamp, { migrating = false } = {}
     if (workflow.legacy_read_only === undefined) workflow.legacy_read_only = workflow.hierarchy_mode === 'legacy';
     if (workflow.hierarchy_mode === 'legacy') legacyWorkflowIds.push(workflow.id);
   }
-  for (const node of state.workflow_nodes) {
-    const workflow = state.workflows.find((item) => item.id === node.workflow_id);
+}
+
+function normalizeV18Nodes(nodes, workflows) {
+  for (const node of nodes) {
+    const workflow = workflows.find((item) => item.id === node.workflow_id);
     const legacy = workflow?.hierarchy_mode === 'legacy';
     if (node.role === undefined) node.role = legacy ? 'task' : node.parent_node_id ? 'task' : 'workstream';
     if (node.parent_node_id === undefined) node.parent_node_id = null;
@@ -380,6 +432,10 @@ function normalizeV18RecordDefaults(state, timestamp, { migrating = false } = {}
     if (node.legacy_read_only === undefined) node.legacy_read_only = legacy;
     if (legacy && node.legacy_node_type === undefined) node.legacy_node_type = node.type || null;
   }
+}
+
+function normalizeV18Projects(state, options) {
+  const { timestamp, migrating, instanceOwnerId, legacyWorkflowIds } = options;
   for (const project of state.projects) {
     if (migrating && !state.legacy_project_allowlist_compat.includes(project.id))
       state.legacy_project_allowlist_compat.push(project.id);
@@ -414,6 +470,9 @@ function normalizeV18RecordDefaults(state, timestamp, { migrating = false } = {}
         updated_at: timestamp
       });
   }
+}
+
+function migrateV18RepositoryBindings(state, timestamp, repositoryConnectionIds) {
   const existingBindings = new Set(state.repository_connections.map((item) => item.legacy_binding_id || item.id));
   for (const binding of state.repository_bindings) {
     binding.legacy_read_only = true;
@@ -441,6 +500,9 @@ function normalizeV18RecordDefaults(state, timestamp, { migrating = false } = {}
     if (project && !project.repository_connection_ids.includes(connection.id))
       project.repository_connection_ids.push(connection.id);
   }
+}
+
+function normalizeV18AssistSessions(state, timestamp, legacyAssistSessionIds) {
   for (const session of state.assist_sessions) {
     if (session.version !== 3) continue;
     if (session.scope_snapshot === undefined) session.scope_snapshot = snapshotScope(state, session, timestamp);
@@ -452,21 +514,17 @@ function normalizeV18RecordDefaults(state, timestamp, { migrating = false } = {}
       legacyAssistSessionIds.push(session.id);
     }
   }
-  if (migrating) {
-    for (const generation of state.workflow_generations.filter((item) => ['queued', 'running'].includes(item.status)))
-      Object.assign(generation, {
-        status: 'failed',
-        error_code: 'service_restarted',
-        retryable: true,
-        completed_at: timestamp,
-        updated_at: timestamp
-      });
-  }
-  return {
-    legacy_workflow_ids: legacyWorkflowIds.sort(),
-    repository_connection_ids: repositoryConnectionIds.sort(),
-    legacy_assist_session_ids: legacyAssistSessionIds.sort()
-  };
+}
+
+function interruptV18Generations(generations, timestamp) {
+  for (const generation of generations.filter((item) => ['queued', 'running'].includes(item.status)))
+    Object.assign(generation, {
+      status: 'failed',
+      error_code: 'service_restarted',
+      retryable: true,
+      completed_at: timestamp,
+      updated_at: timestamp
+    });
 }
 function validateWorkflowNode18(node, nodeIds) {
   if (!['workstream', 'task'].includes(node.role))

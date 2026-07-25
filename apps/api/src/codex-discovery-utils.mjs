@@ -20,21 +20,44 @@ export function publicProviderFromToml(
   text,
   { credentialPresent = false, apiFormat = '', sourceType = 'codex_home', displayName = '' } = {}
 ) {
+  const root = parseProviderRoot(text);
+  if (!root) return { ok: false, issue: 'invalid_config_toml' };
+  const configuration = providerConfiguration(root, { credentialPresent, apiFormat, sourceType, displayName });
+  const { embeddedCredential, hasCredential, issues, official, table } = configuration;
+  return {
+    ok: true,
+    descriptor: {
+      name: safeLabel(displayName || scalar(table.name) || configuration.provider, 100),
+      provider: configuration.provider,
+      provider_name: safeLabel(scalar(table.name) || displayName || configuration.provider, 100),
+      base_url: configuration.baseUrl,
+      model: configuration.model,
+      wire_api: 'responses',
+      requires_openai_auth: Boolean(table.requires_openai_auth),
+      has_credential: hasCredential,
+      credential_hint: hasCredential ? 'configured' : 'required',
+      importable: issues.length === 0 && !(official && !hasCredential),
+      issues
+    },
+    credential: embeddedCredential || ''
+  };
+}
+
+function parseProviderRoot(text) {
   let root;
   try {
     root = parseToml(String(text || ''));
   } catch {
-    return { ok: false, issue: 'invalid_config_toml' };
+    return null;
   }
-  if (!root || typeof root !== 'object' || Array.isArray(root)) return { ok: false, issue: 'invalid_config_toml' };
+  return root && typeof root === 'object' && !Array.isArray(root) ? root : null;
+}
+
+function providerConfiguration(root, { credentialPresent, apiFormat, sourceType }) {
   const rawProvider = scalar(root.model_provider) || (scalar(root.base_url) ? 'custom' : 'openai');
   const provider = codexProviderKey(rawProvider);
   const providers = object(root.model_providers);
-  const table = Object.hasOwn(providers, rawProvider)
-    ? object(providers[rawProvider])
-    : Object.hasOwn(providers, provider)
-      ? object(providers[provider])
-      : {};
+  const table = providerTable(providers, rawProvider, provider);
   const baseRaw = scalar(table.base_url) || scalar(root.base_url);
   const normalizedBaseUrl = baseRaw ? normalizeProviderBaseUrl(baseRaw) : null;
   const sensitiveEndpoint = normalizedBaseUrl ? endpointMayContainSecret(normalizedBaseUrl) : false;
@@ -46,6 +69,33 @@ export function publicProviderFromToml(
     secretScalar(root.experimental_bearer_token) ||
     secretScalar(root.OPENAI_API_KEY);
   const official = !isThirdPartyProvider(provider) && !baseRaw;
+  const hasCredential = Boolean(credentialPresent || embeddedCredential);
+  const configuration = {
+    apiFormat,
+    baseRaw,
+    baseUrl,
+    embeddedCredential,
+    hasCredential,
+    model,
+    official,
+    provider,
+    sensitiveEndpoint,
+    sourceType,
+    table,
+    wireApi
+  };
+  return { ...configuration, issues: providerIssues(configuration) };
+}
+
+function providerTable(providers, rawProvider, provider) {
+  if (Object.hasOwn(providers, rawProvider)) return object(providers[rawProvider]);
+  if (Object.hasOwn(providers, provider)) return object(providers[provider]);
+  return {};
+}
+
+function providerIssues(configuration) {
+  const { apiFormat, baseRaw, baseUrl, model, official, provider, sensitiveEndpoint, sourceType, wireApi } =
+    configuration;
   const issues = [];
   if (!/^[a-zA-Z0-9][a-zA-Z0-9._-]{0,63}$/.test(provider)) issues.push('invalid_provider');
   if (!model || model.length > 200) issues.push('model_required');
@@ -56,25 +106,8 @@ export function publicProviderFromToml(
   if (wireApi !== 'responses') issues.push('unsupported_wire_api');
   if (['chat', 'openai_chat'].includes(String(apiFormat || '').toLowerCase()))
     issues.push('cc_switch_local_proxy_required');
-  const hasCredential = Boolean(credentialPresent || embeddedCredential);
   if (official && sourceType === 'cc_switch') issues.push('official_device_login_required');
-  return {
-    ok: true,
-    descriptor: {
-      name: safeLabel(displayName || scalar(table.name) || provider, 100),
-      provider,
-      provider_name: safeLabel(scalar(table.name) || displayName || provider, 100),
-      base_url: baseUrl,
-      model,
-      wire_api: 'responses',
-      requires_openai_auth: Boolean(table.requires_openai_auth),
-      has_credential: hasCredential,
-      credential_hint: hasCredential ? 'configured' : 'required',
-      importable: issues.length === 0 && !(official && !hasCredential),
-      issues
-    },
-    credential: embeddedCredential || ''
-  };
+  return issues;
 }
 
 export function authJsonInfo(text) {

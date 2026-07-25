@@ -59,6 +59,32 @@ import { recoverPullRequestIntentsInState } from './pull-request-intent-domain.m
 import { promoteLegacyExecutionHistoryInState } from './legacy-execution-promotion.mjs';
 let lastMigration = null;
 export async function ensureRuntime() {
+  await ensureRuntimeDirectories();
+  if (!fs.existsSync(STATE_FILE)) return writeState(bootstrapState());
+  lastMigration = await migrateStateFileToV19(STATE_FILE);
+  const state = await readState();
+  if (state.schema_version !== STATE_SCHEMA_VERSION)
+    throw new Error(`unsupported_state_schema_${state.schema_version}`);
+
+  const changes = { value: false };
+  normalizeRuntimeCollections(state, changes);
+  if (normalizeOfficialRunnerImagesV19(state, { timestamp: now() }).changed) changes.value = true;
+  ensureRuntimeDefaults(state, changes);
+  normalizeRuntimeGovernance(state, changes);
+  normalizeRuntimeProjects(state, changes);
+  normalizeRuntimeDraftsAndProposals(state, changes);
+  recoverInterruptedRuntimeWork(state, changes);
+  normalizeLegacyRuntimeRecords(state, changes);
+  normalizeCodexProfileRecords(state, changes);
+  await refreshValidatedCodexProfiles(state, changes);
+  removeRetiredRuntimeRecords(state, changes);
+  if ((await promoteLegacyExecutionHistoryInState(state)).changed) changes.value = true;
+
+  const serialized = JSON.stringify(state, null, 2);
+  if (changes.value || (await redactKnownSecrets(serialized)) !== serialized) await writeState(state);
+}
+
+async function ensureRuntimeDirectories() {
   await fsp.mkdir(DATA_DIR, { recursive: true });
   await fsp.mkdir(ARTIFACT_DIR, { recursive: true });
   await fsp.mkdir(CAS_DIR, { recursive: true });
@@ -79,45 +105,47 @@ export async function ensureRuntime() {
     ].map((dir) => fsp.mkdir(dir, { recursive: true, mode: 0o700 }))
   );
   await Promise.all([STAGING_DIR, ATTACHMENT_TEMP_DIR].map(clearEphemeralDirectory));
-  if (!fs.existsSync(STATE_FILE)) return writeState(bootstrapState());
-  lastMigration = await migrateStateFileToV19(STATE_FILE);
-  const state = await readState();
-  let changed = false;
-  if (state.schema_version !== STATE_SCHEMA_VERSION)
-    throw new Error(`unsupported_state_schema_${state.schema_version}`);
+}
+
+function normalizeRuntimeCollections(state, changes) {
   for (const key of collections)
     if (!Array.isArray(state[key])) {
       state[key] = [];
-      changed = true;
+      changes.value = true;
     }
-  if (normalizeOfficialRunnerImagesV19(state, { timestamp: now() }).changed) changed = true;
+}
+
+function ensureRuntimeDefaults(state, changes) {
   if (!state.users.length) {
     const { user, session } = createLocalOwner();
     state.users.push(user);
     state.sessions.push(session);
-    changed = true;
+    changes.value = true;
   }
   if (!state.tools.length) {
     state.tools.push(...defaultTools(state.users[0].id));
-    changed = true;
+    changes.value = true;
   }
   if (!state.codex_profiles.length) {
     state.codex_profiles.push(...defaultCodexProfiles(state.users[0]?.id));
-    changed = true;
+    changes.value = true;
   }
+}
+
+function normalizeRuntimeGovernance(state, changes) {
   const governanceBefore = governanceFingerprint(state);
   ensureProjectGovernanceDefaults(state);
-  if (expireProjectInvitationsInState(state)) changed = true;
-  if (governanceBefore !== governanceFingerprint(state)) changed = true;
+  if (expireProjectInvitationsInState(state)) changes.value = true;
+  if (governanceBefore !== governanceFingerprint(state)) changes.value = true;
   const lifecycleBefore = lifecycleFingerprint(state);
   ensureRepositoryLifecycleDefaults(state);
   ensureExchangeDefaults(state);
-  if (recoverInterruptedRepositoryDeletionsInState(state)) changed = true;
-  if (expireRepositoryDeletionIntentsInState(state) || expireExchangeRequestsInState(state)) changed = true;
-  if (lifecycleBefore !== lifecycleFingerprint(state)) changed = true;
+  if (recoverInterruptedRepositoryDeletionsInState(state)) changes.value = true;
+  if (expireRepositoryDeletionIntentsInState(state) || expireExchangeRequestsInState(state)) changes.value = true;
+  if (lifecycleBefore !== lifecycleFingerprint(state)) changes.value = true;
   const deliveryRecovery = recoverInvalidDeliveryPullRequestClaimsInState(state);
   if (deliveryRecovery.changed) {
-    changed = true;
+    changes.value = true;
     for (const deliveryId of deliveryRecovery.delivery_ids)
       addTrace(state, 'integration.synced', {
         target_type: 'delivery',
@@ -125,36 +153,39 @@ export async function ensureRuntime() {
         summary: 'Removed an invalid webhook PR claim from a failed Delivery.'
       });
   }
-  if (recoverPullRequestIntentsInState(state)) changed = true;
+  if (recoverPullRequestIntentsInState(state)) changes.value = true;
+}
+
+function normalizeRuntimeProjects(state, changes) {
   for (const project of state.projects) {
     if (!project.status) {
       project.status = 'active';
-      changed = true;
+      changes.value = true;
     }
     project.settings ||= {};
     if (!Number.isFinite(Number(project.settings.token_budget))) {
       project.settings.token_budget = 12000;
-      changed = true;
+      changes.value = true;
     }
     if (!['codex', 'codex_docker'].includes(project.settings.preferred_runner)) {
       project.settings.preferred_runner = 'codex_docker';
-      changed = true;
+      changes.value = true;
     }
     if (!Array.isArray(project.settings.workspace_root_whitelist)) {
       project.settings.workspace_root_whitelist = [project.repo_path || project.workspace_root].filter(Boolean);
-      changed = true;
+      changes.value = true;
     }
     if (!project.onboarding_state) {
       project.onboarding_state = project.status === 'draft' ? 'intake' : 'confirmed';
-      changed = true;
+      changes.value = true;
     }
     if (project.source_metadata === undefined) {
       project.source_metadata = null;
-      changed = true;
+      changes.value = true;
     }
     if (project.github_account_id === undefined) {
       project.github_account_id = null;
-      changed = true;
+      changes.value = true;
     }
     if (!project.managed_workspace_state) {
       const managed = isWithin(WORKSPACE_DIR, project.repo_path || project.workspace_root || '');
@@ -163,15 +194,15 @@ export async function ensureRuntime() {
         : project.repo_path || project.workspace_root
           ? 'workspace_migration_required'
           : 'empty';
-      changed = true;
+      changes.value = true;
     }
     if (project.deleted_at === undefined) {
       project.deleted_at = null;
-      changed = true;
+      changes.value = true;
     }
     if (project.lifecycle_operation === undefined) {
       project.lifecycle_operation = null;
-      changed = true;
+      changes.value = true;
     }
     if (project.trash_metadata === undefined) {
       project.trash_metadata = project.trash_path
@@ -181,38 +212,44 @@ export async function ensureRuntime() {
             trashed_at: project.deleted_at
           }
         : null;
-      changed = true;
+      changes.value = true;
     }
   }
+}
+
+function normalizeRuntimeDraftsAndProposals(state, changes) {
   for (const draft of state.workflow_drafts) {
     if (!draft.status) {
       draft.status = draft.workflow_id || draft.activated_at ? 'activated' : 'draft';
-      changed = true;
+      changes.value = true;
     }
     if (draft.user_modified_at === undefined) {
       draft.user_modified_at = Number(draft.revision || 1) > 1 ? draft.updated_at || now() : null;
-      changed = true;
+      changes.value = true;
     }
   }
   for (const proposal of state.change_proposals) {
     if (!Number.isInteger(proposal.revision) || proposal.revision < 1) {
       proposal.revision = 1;
-      changed = true;
+      changes.value = true;
     }
     if (!proposal.attention_state) {
       proposal.attention_state = proposal.status === 'pending' ? 'queued' : 'resolved';
-      changed = true;
+      changes.value = true;
     }
     if (!proposal.target_hash) {
       proposal.target_hash = hashString(JSON.stringify(proposal.before_json ?? null));
-      changed = true;
+      changes.value = true;
     }
   }
+}
+
+function recoverInterruptedRuntimeWork(state, changes) {
   for (const session of state.terminal_sessions.filter((item) =>
     ['starting', 'running', 'connected'].includes(item.status)
   )) {
     Object.assign(session, { status: 'interrupted', interrupted_reason: 'service_restarted', updated_at: now() });
-    changed = true;
+    changes.value = true;
   }
   for (const run of state.node_runs.filter((item) => ['queued', 'running'].includes(item.status))) {
     Object.assign(run, {
@@ -224,13 +261,13 @@ export async function ensureRuntime() {
     });
     const node = state.workflow_nodes.find((item) => item.id === run.node_id);
     if (node) Object.assign(node, { status: 'blocked', updated_at: now() });
-    changed = true;
+    changes.value = true;
   }
   for (const job of state.import_jobs.filter((item) =>
     ['queued', 'starting', 'running', 'processing', 'staging', 'stopping'].includes(item.status)
   )) {
     Object.assign(job, { status: 'failed', error_code: 'service_restarted', updated_at: now() });
-    changed = true;
+    changes.value = true;
   }
   for (const generation of state.workflow_generations.filter((item) => ['queued', 'running'].includes(item.status))) {
     Object.assign(generation, {
@@ -241,7 +278,7 @@ export async function ensureRuntime() {
       completed_at: now(),
       updated_at: now()
     });
-    changed = true;
+    changes.value = true;
     const draft = state.workflow_drafts.find(
       (item) => item.id === generation.draft_id && item.generation_id === generation.id
     );
@@ -259,13 +296,13 @@ export async function ensureRuntime() {
       completed_at: now(),
       updated_at: now()
     });
-    changed = true;
+    changes.value = true;
     const target = state.repository_targets.find((item) => item.id === delivery.repository_target_id);
     if (target) target.status = 'ready';
   }
   for (const session of state.assist_sessions.filter((item) => item.version !== 3 && item.status === 'running')) {
     Object.assign(session, { status: 'failed', error: 'service_restarted', updated_at: now() });
-    changed = true;
+    changes.value = true;
   }
   for (const input of state.runtime_user_inputs.filter((item) => item.status === 'pending')) {
     Object.assign(input, {
@@ -274,7 +311,7 @@ export async function ensureRuntime() {
       cancelled_at: now(),
       updated_at: now()
     });
-    changed = true;
+    changes.value = true;
     const turn = state.assist_turns.find((item) => item.id === input.turn_id);
     if (turn && ['preparing', 'running', 'waiting_user_input', 'waiting_approval', 'stopping'].includes(turn.status)) {
       Object.assign(turn, {
@@ -285,11 +322,14 @@ export async function ensureRuntime() {
       });
     }
   }
+}
+
+function normalizeLegacyRuntimeRecords(state, changes) {
   const legacyWorkflowSuffix = ['V1', '闭环工作流'].join(' ');
   for (const workflow of state.workflows)
     if (workflow.generated_by === 'system' && workflow.title?.includes(legacyWorkflowSuffix)) {
       workflow.title = workflow.title.replace(legacyWorkflowSuffix, '工作流');
-      changed = true;
+      changes.value = true;
     }
   const retiredProfileKind = ['m', 'o', 'c', 'k'].join('');
   const productionProfiles = state.codex_profiles.filter(
@@ -297,11 +337,11 @@ export async function ensureRuntime() {
   );
   if (productionProfiles.length !== state.codex_profiles.length) {
     state.codex_profiles = productionProfiles;
-    changed = true;
+    changes.value = true;
   }
   if (!state.codex_profiles.length) {
     state.codex_profiles.push(...defaultCodexProfiles(state.users[0]?.id));
-    changed = true;
+    changes.value = true;
   }
   const ccSwitch = state.integration_statuses.find((item) => item.key === 'cc_switch');
   if (
@@ -321,8 +361,11 @@ export async function ensureRuntime() {
       },
       updated_at: now()
     });
-    changed = true;
+    changes.value = true;
   }
+}
+
+function normalizeCodexProfileRecords(state, changes) {
   for (const profile of state.codex_profiles) {
     const before = JSON.stringify(profile);
     if (!isValidCodexTimeoutMs(profile.timeout_ms) || profile.timeout_ms == null)
@@ -359,9 +402,12 @@ export async function ensureRuntime() {
       profile.status = 'configuration_required';
     if (JSON.stringify(profile) !== before) {
       profile.updated_at = now();
-      changed = true;
+      changes.value = true;
     }
   }
+}
+
+async function refreshValidatedCodexProfiles(state, changes) {
   const codexAuth = state.integration_statuses.find((item) => item.key === 'codex_auth');
   const activeProfile =
     state.codex_profiles.find((item) => item.is_active) ||
@@ -375,7 +421,7 @@ export async function ensureRuntime() {
     for (const setup of state.setup_states.filter((item) => item.completed_at)) {
       setup.completed_at = null;
       setup.updated_at = now();
-      changed = true;
+      changes.value = true;
     }
   for (const profile of state.codex_profiles.filter(
     (item) =>
@@ -386,14 +432,17 @@ export async function ensureRuntime() {
     const generated = await writeProfileConfig(profile, codexAuth?.home);
     if (profile.codex_home !== generated.codex_home || profile.config_file !== generated.config_file) {
       Object.assign(profile, generated);
-      changed = true;
+      changes.value = true;
     }
   }
+}
+
+function removeRetiredRuntimeRecords(state, changes) {
   const retiredToolName = [['m', 'o', 'c', 'k'].join(''), 'runner'].join('_');
   const productionTools = state.tools.filter((item) => item.name !== retiredToolName);
   if (productionTools.length !== state.tools.length) {
     state.tools = productionTools;
-    changed = true;
+    changes.value = true;
   }
   for (const contract of state.node_contracts) {
     if (!Array.isArray(contract.allowed_tools)) continue;
@@ -401,7 +450,7 @@ export async function ensureRuntime() {
     if (allowed.length !== contract.allowed_tools.length) {
       contract.allowed_tools = allowed;
       contract.updated_at = now();
-      changed = true;
+      changes.value = true;
     }
   }
   const retiredRunner = ['m', 'o', 'c', 'k'].join('');
@@ -410,11 +459,8 @@ export async function ensureRuntime() {
       run.legacy_runner = retiredRunner;
       run.runner = 'legacy_retired_adapter';
       run.legacy_read_only = true;
-      changed = true;
+      changes.value = true;
     }
-  if ((await promoteLegacyExecutionHistoryInState(state)).changed) changed = true;
-  const serialized = JSON.stringify(state, null, 2);
-  if (changed || (await redactKnownSecrets(serialized)) !== serialized) await writeState(state);
 }
 export function emptyState() {
   return Object.fromEntries(collections.map((key) => [key, []]));

@@ -77,41 +77,52 @@ function applyOperation(nodes, operation) {
     throw new HttpError(400, { error: 'workflow_draft_operation_invalid' });
   const type = operationType(operation),
     next = nodes.map(cloneNode);
-  if (type === 'add_node') {
-    if (next.length >= MAX_WORKFLOW_DRAFT_NODES)
-      throw new HttpError(409, { error: 'workflow_draft_node_limit', max_nodes: MAX_WORKFLOW_DRAFT_NODES });
-    const source = { ...(operation.node || {}) };
-    if (operation.role) source.role = operation.role;
-    if (operation.type === 'add_workstream') source.role = 'workstream';
-    if (operation.type === 'add_task') {
-      source.role = 'task';
-      source.parent_node_id ||= operation.parent_node_id;
-    }
-    source.id ||= id(source.role === 'task' ? 'tsk' : 'wfs');
-    if (next.some((item) => item.id === source.id))
-      throw new HttpError(409, { error: 'workflow_draft_node_id_conflict', node_id: source.id });
-    if (source.position == null) {
-      const task = source.role === 'task' || Boolean(source.parent_node_id);
-      const siblingIndex = next.filter((item) =>
-        task ? item.role === 'task' && item.parent_node_id === source.parent_node_id : item.role === 'workstream'
-      ).length;
-      source.position = defaultNodePosition(siblingIndex);
-    }
-    const normalized = normalizeWorkflowHierarchyNodes([source])[0];
-    if (
-      normalized.role === 'task' &&
-      !next.some((item) => item.id === normalized.parent_node_id && item.role === 'workstream')
-    )
-      throw new HttpError(404, { error: 'workflow_task_parent_required', parent_node_id: normalized.parent_node_id });
-    next.push(normalized);
-    return renormalize(next);
-  }
+  if (type === 'add_node') return addNode(next, operation);
 
   const nodeId = clean(operation.node_id || operation.id),
     index = next.findIndex((node) => node.id === nodeId);
   if (type === 'reorder_nodes')
     return reorder(next, operation.node_ids || operation.ids, operation.parent_node_id ?? null);
   if (index < 0) throw new HttpError(404, { error: 'workflow_draft_node_not_found', node_id: nodeId });
+  const result = applyExistingNodeOperation(next, operation, type, nodeId, index);
+  if (result.final) return result.nodes;
+  const normalized = renormalize(result.nodes);
+  validateDraft(normalized);
+  return normalized;
+}
+
+function addNode(next, operation) {
+  if (next.length >= MAX_WORKFLOW_DRAFT_NODES)
+    throw new HttpError(409, { error: 'workflow_draft_node_limit', max_nodes: MAX_WORKFLOW_DRAFT_NODES });
+  const source = { ...(operation.node || {}) };
+  if (operation.role) source.role = operation.role;
+  if (operation.type === 'add_workstream') source.role = 'workstream';
+  if (operation.type === 'add_task') {
+    source.role = 'task';
+    source.parent_node_id ||= operation.parent_node_id;
+  }
+  source.id ||= id(source.role === 'task' ? 'tsk' : 'wfs');
+  if (next.some((item) => item.id === source.id))
+    throw new HttpError(409, { error: 'workflow_draft_node_id_conflict', node_id: source.id });
+  if (source.position == null) source.position = defaultNodePosition(siblingCount(next, source));
+  const normalized = normalizeWorkflowHierarchyNodes([source])[0];
+  if (
+    normalized.role === 'task' &&
+    !next.some((item) => item.id === normalized.parent_node_id && item.role === 'workstream')
+  )
+    throw new HttpError(404, { error: 'workflow_task_parent_required', parent_node_id: normalized.parent_node_id });
+  next.push(normalized);
+  return renormalize(next);
+}
+
+function siblingCount(nodes, source) {
+  const task = source.role === 'task' || Boolean(source.parent_node_id);
+  return nodes.filter((item) =>
+    task ? item.role === 'task' && item.parent_node_id === source.parent_node_id : item.role === 'workstream'
+  ).length;
+}
+
+function applyExistingNodeOperation(next, operation, type, nodeId, index) {
   if (type === 'update_node') {
     const patch = operation.patch || operation.node || {};
     if (patch.role !== undefined && patch.role !== next[index].role)
@@ -127,13 +138,13 @@ function applyOperation(nodes, operation) {
       for (const task of next.filter((item) => item.parent_node_id === nodeId)) removed.add(task.id);
     const retained = next.filter((item) => !removed.has(item.id));
     for (const node of retained) node.dependency_ids = node.dependency_ids.filter((item) => !removed.has(item));
-    return renormalize(retained);
+    return { final: true, nodes: renormalize(retained) };
   } else if (type === 'move_node') {
     const siblings = next.filter(
       (item) => item.role === next[index].role && item.parent_node_id === next[index].parent_node_id
     );
     const ordered = moveWithinSiblings(siblings, nodeId, targetIndex(operation, siblings.length));
-    return replaceSiblingOrder(next, ordered);
+    return { final: true, nodes: replaceSiblingOrder(next, ordered) };
   } else if (type === 'connect' || type === 'disconnect') {
     const dependencyId = clean(operation.dependency_id || operation.source_id);
     const dependency = next.find((node) => node.id === dependencyId);
@@ -145,9 +156,7 @@ function applyOperation(nodes, operation) {
         ? [...new Set([...next[index].dependency_ids, dependencyId])]
         : next[index].dependency_ids.filter((item) => item !== dependencyId);
   } else throw new HttpError(400, { error: 'workflow_draft_operation_unsupported', operation: type });
-  const normalized = renormalize(next);
-  validateDraft(normalized);
-  return normalized;
+  return { final: false, nodes: next };
 }
 
 function patchNode(node, patch) {

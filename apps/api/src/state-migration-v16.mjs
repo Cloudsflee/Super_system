@@ -29,7 +29,25 @@ export function migrateState15To16(source, { timestamp = new Date().toISOString(
   const state = inputVersion === 15 ? structuredClone(source) : migrateState14To15(source, { timestamp }).state;
   for (const collection of V16_COLLECTIONS) if (!Array.isArray(state[collection])) state[collection] = [];
   normalizeV16RecordDefaults(state, timestamp);
+  normalizeAssistRecordsV16(state);
+  const runnerNormalization = normalizeOfficialRunnerImages(state, { timestamp });
+  const migratedBriefs = migrateProjectBriefsV16(state);
+  const createdWorkflowDrafts = createWorkflowDraftsV16(state, timestamp);
+  state.schema_version = STATE_SCHEMA_VERSION;
+  validateState16(state);
+  return {
+    state,
+    migrated: true,
+    from_version: inputVersion,
+    to_version: 16,
+    migrated_briefs: migratedBriefs,
+    created_workflow_drafts: createdWorkflowDrafts,
+    normalized_runner_profiles: runnerNormalization.profile_ids,
+    staled_runner_probes: runnerNormalization.staled_probe_count
+  };
+}
 
+function normalizeAssistRecordsV16(state) {
   for (const session of state.assist_sessions || []) {
     if (session.version !== 3) continue;
     if (!['ask', 'auto_recommend'].includes(session.clarification_policy)) session.clarification_policy = 'ask';
@@ -56,8 +74,9 @@ export function migrateState15To16(source, { timestamp = new Date().toISOString(
       if (question.allow_note === undefined) question.allow_note = true;
       for (const option of question.options || []) if (option.recommended === undefined) option.recommended = false;
     }
-  const runnerNormalization = normalizeOfficialRunnerImages(state, { timestamp });
+}
 
+function migrateProjectBriefsV16(state) {
   let migratedBriefs = 0;
   for (const brief of state.project_briefs || []) {
     if (brief.content?.schema_version !== 2) {
@@ -73,7 +92,10 @@ export function migrateState15To16(source, { timestamp = new Date().toISOString(
     if (!Number.isInteger(brief.revision) || brief.revision < 1)
       brief.revision = Math.max(1, Number(brief.version) || 1);
   }
+  return migratedBriefs;
+}
 
+function createWorkflowDraftsV16(state, timestamp) {
   const draftsByProject = new Set(state.workflow_drafts.map((draft) => draft.project_id));
   let createdWorkflowDrafts = 0;
   for (const project of state.projects || []) {
@@ -85,19 +107,7 @@ export function migrateState15To16(source, { timestamp = new Date().toISOString(
     draftsByProject.add(project.id);
     createdWorkflowDrafts += 1;
   }
-
-  state.schema_version = STATE_SCHEMA_VERSION;
-  validateState16(state);
-  return {
-    state,
-    migrated: true,
-    from_version: inputVersion,
-    to_version: 16,
-    migrated_briefs: migratedBriefs,
-    created_workflow_drafts: createdWorkflowDrafts,
-    normalized_runner_profiles: runnerNormalization.profile_ids,
-    staled_runner_probes: runnerNormalization.staled_probe_count
-  };
+  return createdWorkflowDrafts;
 }
 
 export function normalizeOfficialRunnerImages(
@@ -160,7 +170,15 @@ export function validateState16(state) {
   ensureUniqueIds(state.brief_templates, 'brief_templates');
   ensureUniqueIds(state.workflow_drafts, 'workflow_drafts');
   ensureUniqueIds(state.project_briefs || [], 'project_briefs');
-  for (const project of state.projects || []) {
+  validateV16Projects(state.projects || []);
+  validateV16Drafts(state.workflow_drafts);
+  validateV16Briefs(state.project_briefs || []);
+  validateV16AssistSessions(state.assist_sessions || []);
+  return state;
+}
+
+function validateV16Projects(projects) {
+  for (const project of projects) {
     if (!Object.hasOwn(project, 'lifecycle_operation'))
       throw migrationError('project_lifecycle_operation_missing', { id: project.id });
     const operation = project.lifecycle_operation;
@@ -173,8 +191,11 @@ export function validateState16(state) {
     )
       throw migrationError('project_lifecycle_operation_invalid', { id: project.id });
   }
+}
+
+function validateV16Drafts(drafts) {
   const draftProjects = new Set();
-  for (const draft of state.workflow_drafts) {
+  for (const draft of drafts) {
     if (!draft.project_id || draftProjects.has(draft.project_id))
       throw migrationError('workflow_draft_project_duplicate', { project_id: draft.project_id || null });
     draftProjects.add(draft.project_id);
@@ -198,15 +219,20 @@ export function validateState16(state) {
             dependency_id: dependencyId
           });
   }
-  for (const brief of state.project_briefs || []) {
+}
+
+function validateV16Briefs(briefs) {
+  for (const brief of briefs) {
     if (brief.content?.schema_version !== 2 || !Array.isArray(brief.content.sections))
       throw migrationError('project_brief_v2_required', { id: brief.id });
     ensureUniqueIds(brief.content.sections, `project_briefs.${brief.id}.sections`);
   }
-  for (const session of (state.assist_sessions || []).filter((item) => item.version === 3))
+}
+
+function validateV16AssistSessions(sessions) {
+  for (const session of sessions.filter((item) => item.version === 3))
     if (!['ask', 'auto_recommend'].includes(session.clarification_policy))
       throw migrationError('assist_clarification_policy_invalid', { id: session.id });
-  return state;
 }
 
 export async function migrateStateFileToV16(
