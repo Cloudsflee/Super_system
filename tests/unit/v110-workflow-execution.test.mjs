@@ -14,6 +14,28 @@ import {
 } from '../../apps/api/src/workflow-execution-domain.mjs';
 import { assertControlledProjectWrite, assertControlledTaskWrite } from '../../apps/api/src/execution-governance.mjs';
 import { normalizeState19Defaults } from '../../apps/api/src/state-migration-v19.mjs';
+import { authoritativeWorkstreamStatus } from '../../apps/api/src/workflow-execution-projection.mjs';
+
+assert.equal(authoritativeWorkstreamStatus({ status: 'needs_review' }), 'needs_review');
+assert.equal(authoritativeWorkstreamStatus({ status: 'completed' }), 'completed');
+assert.equal(
+  authoritativeWorkstreamStatus({
+    status: 'ready_for_submission',
+    latest_submission_id: 'submission-1',
+    reviewed_at: '2026-07-28T00:00:00.000Z',
+    review: { decision: 'approve' }
+  }),
+  'completed'
+);
+assert.equal(
+  authoritativeWorkstreamStatus({
+    status: 'ready',
+    latest_submission_id: null,
+    reviewed_at: null,
+    review: { decision: 'approve' }
+  }),
+  null
+);
 
 const migrated = emptyState();
 Object.assign(migrated, {

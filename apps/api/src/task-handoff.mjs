@@ -1,6 +1,7 @@
 import { hashString } from '../../../packages/shared/index.mjs';
 
-export const TASK_HANDOFF_SCHEMA = 'aiws.task_handoff.v1';
+export const TASK_HANDOFF_SCHEMA = 'aiws.task_handoff.v2';
+export const LEGACY_TASK_HANDOFF_SCHEMA = 'aiws.task_handoff.v1';
 export const INPUT_DISPOSITIONS = Object.freeze(['used', 'not_used']);
 
 /**
@@ -19,6 +20,9 @@ export function buildTaskHandoffManifest({
   consumedContextDocumentVersions = [],
   contextDispositions = [],
   contextSelectionId = null,
+  inputEffects,
+  contextEffects,
+  routes,
   unresolvedQuestions = [],
   limitations = []
 } = {}) {
@@ -26,8 +30,9 @@ export function buildTaskHandoffManifest({
     contexts = normalizeIdList(consumedContextDocumentVersions),
     normalizedInputDispositions = normalizeDispositions(inputDispositions, 'version_id'),
     normalizedContextDispositions = normalizeDispositions(contextDispositions, 'document_version_id'),
+    effectAware = Array.isArray(inputEffects) || Array.isArray(contextEffects) || Array.isArray(routes),
     manifest = {
-      schema_version: TASK_HANDOFF_SCHEMA,
+      schema_version: effectAware ? TASK_HANDOFF_SCHEMA : LEGACY_TASK_HANDOFF_SCHEMA,
       producer: handoffProducer(taskExecution, task),
       output: handoffOutput(output, slot, asset, version),
       source_snapshot: handoffSourceSnapshot(taskExecution, contextSelectionId, inputs, contexts),
@@ -38,10 +43,56 @@ export function buildTaskHandoffManifest({
       limitations: normalizeTextList(limitations),
       created_at: version?.created_at || taskExecution?.updated_at || taskExecution?.created_at || null
     };
+  if (effectAware) {
+    manifest.effects = {
+      inputs: normalizeEffects(inputEffects, 'input_key'),
+      context: normalizeEffects(contextEffects, 'document_version_id')
+    };
+    manifest.delivery = { routes: normalizeRoutes(routes) };
+  }
   return {
     ...manifest,
     manifest_sha256: hashString(JSON.stringify(manifest))
   };
+}
+
+export function taskHandoffRoutes(state, task, slot) {
+  if (!task || !slot || slot.handoff === false) return [];
+  const nodes = state.workflow_nodes?.filter((item) => item.workflow_id === task.workflow_id) || [],
+    tasks = nodes.filter((item) => item.role === 'task'),
+    routes = [];
+  for (const consumer of tasks) {
+    for (const input of consumer.input_slots || []) {
+      const internal = input.source === 'dependency' && input.ref_id === task.id,
+        crossWorkstream =
+          input.source === 'workstream_dependency' &&
+          input.ref_id === task.parent_node_id &&
+          consumer.parent_node_id !== task.parent_node_id;
+      if ((!internal && !crossWorkstream) || !selectorIncludesOutput(task, input.selector, slot.key)) continue;
+      routes.push({
+        route_type: internal ? 'task_input' : 'workstream_input',
+        producer_task_id: task.id,
+        output_key: slot.key,
+        consumer_task_id: consumer.id,
+        consumer_task_title: clean(consumer.title, 200) || null,
+        input_key: input.key,
+        purpose: clean(input.purpose, 1000) || null,
+        application_policy:
+          input.application_policy === 'required' || input.consumption_policy === 'must_use' ? 'required' : 'optional',
+        target_output_keys: normalizeIdList(input.target_output_keys)
+      });
+    }
+  }
+  const siblings = tasks.filter((item) => item.parent_node_id === task.parent_node_id),
+    terminal = !siblings.some((candidate) => dependencyIds(candidate).includes(task.id));
+  if (!routes.length && terminal)
+    routes.push({
+      route_type: 'workstream_boundary',
+      producer_task_id: task.id,
+      output_key: slot.key,
+      workstream_id: task.parent_node_id || null
+    });
+  return normalizeRoutes(routes);
 }
 
 function handoffProducer(taskExecution, task) {
@@ -146,57 +197,182 @@ export function notUsedContextDispositions(execution, reason) {
 
 export function taskHandoffDiagnostics(state, execution) {
   const contract = state.node_contracts?.find((item) => item.id === execution?.contract_id),
-    inputs = execution?.context_snapshot?.inputs || contract?.expected_inputs || [],
+    effectAware = execution?.context_snapshot?.schema_version === 'aiws.task_execution_context.v4',
+    inputDiagnostics = handoffInputDiagnostics(execution, contract),
+    effectDiagnostics = handoffEffectDiagnostics(execution),
+    exportedOutputs = handoffExportedOutputs(state, execution, contract),
+    semanticGaps = handoffSemanticGaps({
+      execution,
+      contract,
+      effectAware,
+      inputDiagnostics,
+      effectDiagnostics,
+      exportedOutputs
+    });
+  return {
+    schema_version: effectAware ? 'aiws.task_handoff_diagnostics.v2' : 'aiws.task_handoff_diagnostics.v1',
+    handoff_status:
+      execution?.status !== 'completed' ? 'awaiting_execution' : semanticGaps.length ? 'incomplete' : 'ready',
+    required_inputs: inputDiagnostics.requiredInputs,
+    used_inputs: normalizeIdList(execution?.consumed_inputs),
+    not_used_inputs: inputDiagnostics.inputDispositions.filter((item) => item.disposition === 'not_used'),
+    missing_dispositions: effectAware ? [] : inputDiagnostics.missingDispositions,
+    input_effect_obligations: effectDiagnostics.obligations,
+    input_effects: effectDiagnostics.inputEffects,
+    context_effects: effectDiagnostics.contextEffects,
+    exported_outputs: exportedOutputs,
+    context_used: normalizeIdList(execution?.consumed_context_document_versions),
+    context_not_used: inputDiagnostics.contextDispositions.filter((item) => item.disposition === 'not_used'),
+    semantic_gaps: semanticGaps
+  };
+}
+
+function handoffInputDiagnostics(execution, contract) {
+  const inputs = execution?.context_snapshot?.inputs || contract?.expected_inputs || [],
     inputDispositions = normalizeDispositions(execution?.input_dispositions, 'version_id'),
     contextDispositions = normalizeDispositions(execution?.context_dispositions, 'document_version_id'),
     dispositionByVersion = new Map(inputDispositions.map((item) => [item.version_id, item])),
-    requiredInputs = inputs.map((input) => ({
-      slot_key: input.key,
-      required: input.required !== false,
-      consumption_policy:
-        input.consumption_policy || (input.required !== false ? 'legacy_must_use' : 'legacy_available'),
-      version_ids: normalizeIdList((input.asset_versions || []).map((item) => item.version_id))
-    })),
+    requiredInputs = inputs.map(handoffRequiredInput),
     explicitVersionIds = requiredInputs
       .filter((item) => !item.consumption_policy.startsWith('legacy_'))
       .flatMap((item) => item.version_ids),
-    missingDispositions = normalizeIdList(explicitVersionIds).filter((value) => !dispositionByVersion.has(value)),
-    outputSlots = contract?.expected_outputs || [],
-    exportedOutputs = outputSlots
-      .filter((slot) => slot.handoff !== false)
-      .map((slot) => {
-        const binding = (execution?.output_bindings || []).find((item) => item.key === slot.key);
-        return {
-          output_key: slot.key,
-          required: slot.required !== false,
-          consumer_hint: slot.consumer_hint || null,
-          asset_id: binding?.asset_id || null,
-          version_id: binding?.version_id || null,
-          handoff_manifest_sha256: binding?.handoff_manifest_sha256 || null
-        };
-      }),
-    terminal = ['completed', 'failed', 'cancelled', 'superseded'].includes(execution?.status),
-    semanticGaps = [];
-  if (terminal && missingDispositions.length)
-    semanticGaps.push({ code: 'input_disposition_missing', version_ids: missingDispositions });
-  if (execution?.status === 'completed' && outputSlots.length && !exportedOutputs.length)
-    semanticGaps.push({ code: 'handoff_output_missing' });
-  for (const output of exportedOutputs)
-    if (execution?.status === 'completed' && output.required && !output.version_id)
-      semanticGaps.push({ code: 'handoff_output_unbound', output_key: output.output_key });
+    missingDispositions = normalizeIdList(explicitVersionIds).filter((value) => !dispositionByVersion.has(value));
+  return { requiredInputs, inputDispositions, contextDispositions, missingDispositions };
+}
+
+function handoffRequiredInput(input) {
   return {
-    schema_version: 'aiws.task_handoff_diagnostics.v1',
-    handoff_status:
-      execution?.status !== 'completed' ? 'awaiting_execution' : semanticGaps.length ? 'incomplete' : 'ready',
-    required_inputs: requiredInputs,
-    used_inputs: normalizeIdList(execution?.consumed_inputs),
-    not_used_inputs: inputDispositions.filter((item) => item.disposition === 'not_used'),
-    missing_dispositions: missingDispositions,
-    exported_outputs: exportedOutputs,
-    context_used: normalizeIdList(execution?.consumed_context_document_versions),
-    context_not_used: contextDispositions.filter((item) => item.disposition === 'not_used'),
-    semantic_gaps: semanticGaps
+    slot_key: input.key,
+    required: input.required !== false,
+    consumption_policy: input.consumption_policy || (input.required !== false ? 'legacy_must_use' : 'legacy_available'),
+    application_policy:
+      input.application_policy === 'required' || input.consumption_policy === 'must_use' ? 'required' : 'optional',
+    purpose: clean(input.purpose, 1000) || null,
+    target_output_keys: normalizeIdList(input.target_output_keys),
+    version_ids: normalizeIdList((input.asset_versions || []).map((item) => item.version_id))
   };
+}
+
+function handoffEffectDiagnostics(execution) {
+  const inputEffects = normalizeEffects(execution?.input_effects, 'input_key'),
+    contextEffects = normalizeEffects(execution?.context_effects, 'document_version_id'),
+    obligations = (execution?.context_snapshot?.input_effect_obligations || []).map((item) => ({
+      ...item,
+      satisfied: inputEffects.some((effect) => effect.input_key === item.input_key && effect.effect !== 'reference')
+    }));
+  return { inputEffects, contextEffects, obligations };
+}
+
+function handoffExportedOutputs(state, execution, contract) {
+  return (contract?.expected_outputs || [])
+    .filter((slot) => slot.handoff !== false)
+    .map((slot) => handoffExportedOutput(state, execution, slot));
+}
+
+function handoffExportedOutput(state, execution, slot) {
+  const binding = (execution?.output_bindings || []).find((item) => item.key === slot.key),
+    version = state.asset_versions?.find((item) => item.id === binding?.version_id),
+    manifest = version?.provenance?.handoff_manifest,
+    routes = manifest?.delivery?.routes || [];
+  return {
+    output_key: slot.key,
+    required: slot.required !== false,
+    consumer_hint: slot.consumer_hint || null,
+    asset_id: binding?.asset_id || null,
+    version_id: binding?.version_id || null,
+    handoff_manifest_sha256: binding?.handoff_manifest_sha256 || null,
+    route_count: routes.length,
+    routes,
+    effect_count: (manifest?.effects?.inputs || []).length + (manifest?.effects?.context || []).length
+  };
+}
+
+function handoffSemanticGaps({
+  execution,
+  contract,
+  effectAware,
+  inputDiagnostics,
+  effectDiagnostics,
+  exportedOutputs
+}) {
+  return [
+    ...legacyInputGaps(execution, effectAware, inputDiagnostics.missingDispositions),
+    ...requiredEffectGaps(execution, effectAware, effectDiagnostics.obligations),
+    ...handoffOutputGaps(execution, contract?.expected_outputs || [], exportedOutputs, effectAware)
+  ];
+}
+
+function legacyInputGaps(execution, effectAware, missingDispositions) {
+  const terminal = ['completed', 'failed', 'cancelled', 'superseded'].includes(execution?.status);
+  return !effectAware && terminal && missingDispositions.length
+    ? [{ code: 'input_disposition_missing', version_ids: missingDispositions }]
+    : [];
+}
+
+function requiredEffectGaps(execution, effectAware, obligations) {
+  if (!effectAware || execution?.status !== 'completed') return [];
+  return obligations
+    .filter((item) => item.application_policy === 'required' && !item.satisfied)
+    .map((item) => ({ code: 'required_input_effect_missing', input_key: item.input_key }));
+}
+
+function handoffOutputGaps(execution, outputSlots, exportedOutputs, effectAware) {
+  if (execution?.status !== 'completed') return [];
+  return [
+    ...(outputSlots.length && !exportedOutputs.length ? [{ code: 'handoff_output_missing' }] : []),
+    ...exportedOutputs
+      .filter((output) => output.required && !output.version_id)
+      .map((output) => ({ code: 'handoff_output_unbound', output_key: output.output_key })),
+    ...exportedOutputs
+      .filter((output) => effectAware && output.version_id && !output.route_count)
+      .map((output) => ({ code: 'handoff_output_unrouted', output_key: output.output_key }))
+  ];
+}
+
+function selectorIncludesOutput(task, selector, outputKey) {
+  if (selector === outputKey) return true;
+  if (selector !== 'required_outputs') return false;
+  const required = (task.output_slots || []).filter((item) => item.required !== false);
+  return required.length === 1 && required[0].key === outputKey;
+}
+
+function dependencyIds(node) {
+  const source = Array.isArray(node?.dependency_ids) ? node.dependency_ids : node?.dependencies || [];
+  return source.map((item) => (typeof item === 'string' ? item : item?.node_id || item?.id)).filter(Boolean);
+}
+
+function normalizeEffects(values, identityKey) {
+  return (Array.isArray(values) ? values : [])
+    .filter((item) => item && typeof item === 'object' && clean(item[identityKey], 200))
+    .map((item) => ({
+      ...structuredClone(item),
+      [identityKey]: clean(item[identityKey], 200),
+      ...(identityKey === 'input_key' ? { version_ids: normalizeIdList(item.version_ids) } : {}),
+      output_keys: normalizeIdList(item.output_keys),
+      statement: clean(item.statement, 2000),
+      evidence_refs: normalizeTextList(item.evidence_refs)
+    }))
+    .sort(
+      (left, right) =>
+        left[identityKey].localeCompare(right[identityKey]) ||
+        String(left.effect).localeCompare(String(right.effect)) ||
+        left.output_keys.join(',').localeCompare(right.output_keys.join(','))
+    );
+}
+
+function normalizeRoutes(values) {
+  return (Array.isArray(values) ? values : [])
+    .filter((item) => item && typeof item === 'object' && clean(item.route_type, 80))
+    .map((item) => ({
+      ...structuredClone(item),
+      target_output_keys: normalizeIdList(item.target_output_keys)
+    }))
+    .sort(
+      (left, right) =>
+        String(left.route_type).localeCompare(String(right.route_type)) ||
+        String(left.consumer_task_id || '').localeCompare(String(right.consumer_task_id || '')) ||
+        String(left.input_key || '').localeCompare(String(right.input_key || ''))
+    );
 }
 
 function normalizeTextList(values) {

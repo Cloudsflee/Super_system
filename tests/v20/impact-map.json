@@ -22,6 +22,17 @@
       "tests": ["V20-L1-PACK-002", "V20-L4-SECURITY-001"]
     },
     {
+      "domain": "task-execution",
+      "patterns": [
+        "apps/api/src/task-*.mjs",
+        "apps/api/src/asset-attestation-service.mjs",
+        "apps/api/src/workflow-quality.mjs",
+        "apps/web/src/features/nodes/TaskExecutionPanel.tsx",
+        "tests/unit/v20-task-effects.test.mjs"
+      ],
+      "tests": ["V20-L1-EFFECTS-004", "V20-L4-SECURITY-001"]
+    },
+    {
       "domain": "mcp",
       "patterns": ["apps/api/src/mcp-*.mjs", "apps/mcp-gateway/**", "scripts/mcp-*.mjs"],
       "tests": ["V20-L1-MCP-003", "V20-L4-SECURITY-001"]

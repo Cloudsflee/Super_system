@@ -424,6 +424,40 @@ function runtimeReadSelections(state, execution, nodeRunId, initialSelectionId) 
   });
 }
 
+export function contextReadReceiptsForExecution(state, execution, nodeRunId) {
+  const initialSelectionId = execution?.context_snapshot?.system_context?.context_selection_id || null,
+    receipts = new Map();
+  if (!nodeRunId || !initialSelectionId) return receipts;
+  for (const selection of runtimeReadSelections(state, execution, nodeRunId, initialSelectionId)) {
+    const runtime = selection.runtime_context,
+      version = state.context_document_versions.find(
+        (item) => item.id === runtime.read_document_version_id && item.node_id === runtime.read_node_id
+      ),
+      node = state.context_nodes.find((item) => item.id === runtime.read_node_id),
+      included = selection.included?.find(
+        (item) => item.node_id === runtime.read_node_id && item.document_version_id === runtime.read_document_version_id
+      );
+    if (
+      !version ||
+      !node ||
+      !included ||
+      included.content_sha256 !== version.content_sha256 ||
+      node.current_version_id !== version.id ||
+      node.source_hash !== version.source_hash
+    )
+      continue;
+    const current = receipts.get(version.id) || {
+      node_id: node.id,
+      content_sha256: version.content_sha256,
+      selection_ids: []
+    };
+    current.selection_ids.push(selection.id);
+    current.selection_ids = normalizeIdList(current.selection_ids);
+    receipts.set(version.id, current);
+  }
+  return receipts;
+}
+
 function orderedContextSelectionIds(state, values, initialSelectionId) {
   return [...values].sort((left, right) => {
     if (left === initialSelectionId) return -1;

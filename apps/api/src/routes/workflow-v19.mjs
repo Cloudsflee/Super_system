@@ -18,6 +18,7 @@ import {
 import { assertProjectLifecycleIdle, withProjectLifecycleLock } from '../project-lifecycle-operations.mjs';
 import { evaluateTaskExecutionContextFreshness } from '../task-execution-context.mjs';
 import { latestTaskExecution, recordAssetLineage, validateTaskOutputBindings } from '../task-output-service.mjs';
+import { authoritativeWorkstreamStatus } from '../workflow-execution-projection.mjs';
 
 export const workflowV19Routes = [
   makeRoute('GET', '/workflows/:id/graph', getWorkflowGraph),
@@ -451,6 +452,8 @@ function decorateGraphNode(state, node, allNodes) {
   };
 }
 function workstreamStatus(workstream, tasks) {
+  const authoritative = authoritativeWorkstreamStatus(workstream);
+  if (authoritative) return authoritative;
   const required = tasks.filter((item) => item.required !== false);
   if (required.some((item) => item.status === 'blocked')) return 'blocked';
   if (required.length > 0 && required.every((item) => item.status === 'completed')) return 'ready_for_submission';

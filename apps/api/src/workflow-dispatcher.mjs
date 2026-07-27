@@ -6,6 +6,7 @@ import { prepareRepositoryIntegration } from './repository-integration-service.m
 import { provisionWorkflowRepositoryLines } from './repository-line-service.mjs';
 import { mutate, readState } from './state.mjs';
 import { notUsedContextDispositions } from './task-handoff.mjs';
+import { deterministicInputEffects } from './task-effects.mjs';
 import {
   claimTaskExecution,
   prepareTaskExecutionInState,
@@ -131,25 +132,32 @@ async function runRepositoryVerification(taskExecutionId) {
     disposition: 'used',
     reason: 'The deterministic verifier checked this exact input version.'
   }));
-  const outputs = (contract?.expected_outputs || []).map((slot) => ({
-    output_key: slot.key,
-    asset_type: slot.asset_type,
-    title: `${slot.key} verification`,
-    summary: 'AIWS deterministic repository verification.',
-    payload: { payload_kind: 'test_report', media_type: 'application/json', content: {} },
-    evidence_refs: [],
-    consumed_input_versions: consumed,
-    input_dispositions: inputDispositions,
-    ...(contextDispositions.length
-      ? { consumed_context_document_versions: [], context_dispositions: contextDispositions }
-      : {})
-  }));
+  const outputKeys = (contract?.expected_outputs || []).map((slot) => slot.key),
+    inputEffects = deterministicInputEffects(execution, outputKeys, {
+      effect: 'verification',
+      statement: 'The deterministic repository verifier checked this exact input against the repository evidence.'
+    }),
+    outputs = (contract?.expected_outputs || []).map((slot) => ({
+      output_key: slot.key,
+      asset_type: slot.asset_type,
+      title: `${slot.key} verification`,
+      summary: 'AIWS deterministic repository verification.',
+      payload: { payload_kind: 'test_report', media_type: 'application/json', content: {} },
+      evidence_refs: [],
+      consumed_input_versions: consumed,
+      input_dispositions: inputDispositions,
+      ...(contextDispositions.length
+        ? { consumed_context_document_versions: [], context_dispositions: contextDispositions }
+        : {})
+    }));
   return submitTaskExecutionOutputs(execution.id, {
     outputs,
     leaseToken: claim.lease_token,
     verifierId: 'repository_verify_verifier',
     declaredConsumedContextDocumentVersions: contextDispositions.length ? [] : null,
-    declaredContextDispositions: contextDispositions.length ? contextDispositions : null
+    declaredContextDispositions: contextDispositions.length ? contextDispositions : null,
+    declaredInputEffects: inputEffects,
+    declaredContextEffects: []
   });
 }
 

@@ -1,6 +1,7 @@
 import { AssetStatus, RunnerStatus } from './enums.mjs';
 import { buildMemoryManifest, buildSufficiencyCheck } from './memory.mjs';
 import { estimateTokens, id, now, pick, slugify } from './utils.mjs';
+import { invalidEffectList, normalizedEffectList, taskEffectRunnerResultSchema } from './task-effects.mjs';
 
 export function buildContextPack({
   state,
@@ -47,11 +48,13 @@ export function buildContextPack({
   });
   const content = {
     schema_version:
-      executionContext?.schema_version === 'aiws.task_execution_context.v3'
-        ? 'aiws.context_pack.v3'
-        : executionContext
-          ? 'aiws.context_pack.v2'
-          : 'aiws.context_pack.v1',
+      executionContext?.schema_version === 'aiws.task_execution_context.v4'
+        ? 'aiws.context_pack.v4'
+        : executionContext?.schema_version === 'aiws.task_execution_context.v3'
+          ? 'aiws.context_pack.v3'
+          : executionContext
+            ? 'aiws.context_pack.v2'
+            : 'aiws.context_pack.v1',
     project: pick(project, ['id', 'title', 'goal', 'role', 'background', 'workspace_root', 'repo_path']),
     workspace: workspace ? pick(workspace, ['id', 'title', 'goal', 'type', 'status', 'current_digest_id']) : null,
     workflow_node: node ? pick(node, ['id', 'type', 'title', 'goal', 'status', 'order_index']) : null,
@@ -93,9 +96,11 @@ export function buildContextPack({
       dirty_policy: '执行上下文固定后不得静默切换分支或覆盖快照。'
     },
     return_schema_ref:
-      executionContext?.schema_version === 'aiws.task_execution_context.v3'
-        ? 'aiws.task_runner_result.v2'
-        : 'aiws.node_run_result.v1',
+      executionContext?.schema_version === 'aiws.task_execution_context.v4'
+        ? 'aiws.task_runner_result.v3'
+        : executionContext?.schema_version === 'aiws.task_execution_context.v3'
+          ? 'aiws.task_runner_result.v2'
+          : 'aiws.node_run_result.v1',
     result_schema: runnerResultSchemaForContext(executionContext),
     sufficiency_check: sufficiency,
     memory_manifest: manifest
@@ -111,7 +116,14 @@ export function buildContextPack({
     receiver_type: 'ai_runner',
     receiver_name,
     purpose,
-    version: executionContext?.schema_version === 'aiws.task_execution_context.v3' ? 3 : executionContext ? 2 : 1,
+    version:
+      executionContext?.schema_version === 'aiws.task_execution_context.v4'
+        ? 4
+        : executionContext?.schema_version === 'aiws.task_execution_context.v3'
+          ? 3
+          : executionContext
+            ? 2
+            : 1,
     status: 'draft',
     content_json: content,
     content_file_ref_id: null,
@@ -246,7 +258,18 @@ export function buildRunnerInstruction({ project, node, contract, executionConte
     '必须遵守 Node Contract 的验收标准、allowed_tools、失败处理和 Review 策略。',
     '如果 Codex Memory / 旧 Session 与 Context Pack、Confirmed Asset、Decision 或 NodeContract 冲突，必须以后者为准，并在结果中报告冲突。'
   ];
-  if (executionContext?.schema_version === 'aiws.task_execution_context.v3') {
+  if (executionContext?.schema_version === 'aiws.task_execution_context.v4') {
+    const versionIds = executionAssetVersionIds(executionContext),
+      obligations = executionContext.input_effect_obligations || [];
+    lines.push(
+      '必须返回 aiws.task_runner_result.v3。不要为了证明看过材料而使用材料；只有输入实际改变、约束、比较或验证了某个输出时，才写 input_effects/context_effects。',
+      `input_effects.input_key 必须来自本轮输入槽，AssetVersion 仅可使用精确集合：${JSON.stringify(versionIds)}。每条作用必须绑定实际 output_keys，并具体说明它改变了什么判断、约束或验证结论。`,
+      `输入作用义务为：${JSON.stringify(obligations)}。application_policy=required 的输入必须用非 reference 作用覆盖其 target_output_keys；optional 输入没有产生作用时直接省略，禁止生成 not_used 占位。`,
+      'required 只表示执行前必须可用，不等于必须使用。不要把输入摘要改写一遍当作作用说明；statement 必须能解释若移除该输入，哪个输出判断会不同。',
+      'Context Map 和 search 结果只是候选。context_effects 只能引用本轮 aiws_context read 返回的 provenance_claim.document_version_id；服务端会校验 read receipt、新鲜度和输出映射。未读取或未影响输出的 Context 文档直接省略。',
+      '每份输出仍需返回精确 typed payload、evidence_refs、purpose、unresolved_questions 和 limitations。服务端从作用回执派生 consumed IDs、资产关系与 handoff，不接受重复的 consumed/not_used 自报字段。'
+    );
+  } else if (executionContext?.schema_version === 'aiws.task_execution_context.v3') {
     const versionIds = executionAssetVersionIds(executionContext),
       contextVersionIds = executionContextDocumentVersionIds(executionContext);
     lines.push(
@@ -285,6 +308,7 @@ export function nodeRunResultSchema() {
   };
 }
 export function taskRunnerResultSchema(context = null) {
+  if (context?.schema_version === 'aiws.task_execution_context.v4') return taskEffectRunnerResultSchema(context);
   const outputKeys = (context?.contract?.expected_outputs || []).map((item) => item.key).filter(Boolean);
   const inputVersionIds = executionAssetVersionIds(context);
   const contextDocumentVersionIds = executionContextDocumentVersionIds(context);
@@ -423,8 +447,9 @@ export function taskRunnerResultSchema(context = null) {
     }
   };
 }
+
 export function runnerResultSchemaForContext(context) {
-  return context?.schema_version === 'aiws.task_execution_context.v3'
+  return ['aiws.task_execution_context.v3', 'aiws.task_execution_context.v4'].includes(context?.schema_version)
     ? taskRunnerResultSchema(context)
     : nodeRunResultSchema();
 }
@@ -545,11 +570,44 @@ export function buildNodeRunResult({
   consumedContextDocumentVersions = null,
   inputDispositions = [],
   contextDispositions = [],
+  inputEffects = [],
+  contextEffects = [],
   consumptionPlan = null,
   syntheticFallback = false
 }) {
   const nodeTitle = contextPack?.content_json?.workflow_node?.title || '节点任务',
     execution = contextPack?.content_json?.task_execution_context;
+  if (execution?.schema_version === 'aiws.task_execution_context.v4') {
+    const outputs = (execution.contract?.expected_outputs || []).map((slot) => ({
+        output_key: slot.key,
+        asset_type: slot.asset_type,
+        title: `${nodeTitle} ${slot.key}`,
+        summary: 'Runner candidate output; server verification remains authoritative.',
+        payload: {
+          payload_kind: 'text',
+          media_type: 'text/plain; charset=utf-8',
+          content: raw || nodeTitle,
+          files: []
+        },
+        evidence_refs: [`node_run:${run.id}`, `context_pack:${contextPack?.id}`],
+        purpose: String(slot.purpose || `Deliver ${slot.key}.`),
+        consumer_hint: String(slot.consumer_hint || ''),
+        unresolved_questions: [],
+        limitations: []
+      })),
+      plannedInputEffects = Object.values(consumptionPlan || {}).flatMap((item) => item?.input_effects || []),
+      plannedContextEffects = Object.values(consumptionPlan || {}).flatMap((item) => item?.context_effects || []);
+    return {
+      schema_version: 'aiws.task_runner_result.v3',
+      status,
+      summary: `${nodeTitle} 已完成 ${status}。${raw ? `Runner 输出：${raw.slice(0, 220)}` : ''}`,
+      input_effects: normalizedEffectList([...inputEffects, ...plannedInputEffects], 'input_key'),
+      context_effects: normalizedEffectList([...contextEffects, ...plannedContextEffects], 'document_version_id'),
+      outputs,
+      synthetic_fallback: syntheticFallback === true,
+      warnings: syntheticFallback ? ['synthetic fallback result; no effect is inferred from availability'] : []
+    };
+  }
   if (execution?.schema_version === 'aiws.task_execution_context.v3') {
     const explicitInput = normalizedIdList(consumedInputVersions),
       explicitContext = normalizedIdList(consumedContextDocumentVersions),
@@ -626,10 +684,13 @@ export function buildNodeRunResult({
 export function normalizeRunnerOutput(raw, fallback = {}) {
   try {
     const parsed = typeof raw === 'string' ? JSON.parse(raw) : raw;
-    const v2 = parsed.schema_version === 'aiws.task_runner_result.v2';
-    const required = v2
-      ? ['status', 'summary', 'outputs', 'consumed_input_versions', 'consumed_context_document_versions']
-      : ['status', 'summary', 'changed_files', 'asset_candidates', 'test_results', 'next_actions'];
+    const v3 = parsed.schema_version === 'aiws.task_runner_result.v3',
+      v2 = parsed.schema_version === 'aiws.task_runner_result.v2';
+    const required = v3
+      ? ['status', 'summary', 'outputs', 'input_effects', 'context_effects']
+      : v2
+        ? ['status', 'summary', 'outputs', 'consumed_input_versions', 'consumed_context_document_versions']
+        : ['status', 'summary', 'changed_files', 'asset_candidates', 'test_results', 'next_actions'];
     const missing = required.filter((key) => !(key in parsed));
     if (missing.length) {
       return {
@@ -638,7 +699,38 @@ export function normalizeRunnerOutput(raw, fallback = {}) {
         parse_error: null
       };
     }
-    if (v2) {
+    if (v3) {
+      const malformed =
+        !Array.isArray(parsed.outputs) ||
+        !Array.isArray(parsed.input_effects) ||
+        !Array.isArray(parsed.context_effects) ||
+        parsed.outputs.find(
+          (item) =>
+            !item?.output_key ||
+            !item?.asset_type ||
+            !item?.payload?.payload_kind ||
+            !item?.payload?.media_type ||
+            typeof item?.payload?.content !== 'string' ||
+            !Array.isArray(item?.payload?.files) ||
+            !Array.isArray(item?.evidence_refs) ||
+            !Array.isArray(item?.unresolved_questions) ||
+            !Array.isArray(item?.limitations)
+        ) ||
+        invalidEffectList(parsed.input_effects, 'input_key', true) ||
+        invalidEffectList(parsed.context_effects, 'document_version_id', false);
+      if (malformed)
+        return {
+          status: RunnerStatus.Partial,
+          result: {
+            ...parsed,
+            status: RunnerStatus.Partial,
+            warnings: [...(parsed.warnings || []), 'effect-aware v3 output malformed']
+          },
+          parse_error: 'effect_aware_output_malformed'
+        };
+      parsed.input_effects = normalizedEffectList(parsed.input_effects, 'input_key');
+      parsed.context_effects = normalizedEffectList(parsed.context_effects, 'document_version_id');
+    } else if (v2) {
       const malformed =
         !Array.isArray(parsed.outputs) ||
         !Array.isArray(parsed.consumed_input_versions) ||

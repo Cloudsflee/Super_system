@@ -18,6 +18,7 @@
 
 .task-manual-usage label {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 7px;
   min-width: 0;
@@ -54,6 +55,7 @@
 
 .task-handoff-summary {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 12px;
   min-height: 38px;
@@ -62,25 +64,51 @@
   color: var(--muted);
 }
 
-.task-handoff-summary > span {
+.task-handoff-summary > span:first-child {
   display: inline-flex;
   align-items: center;
   gap: 6px;
   color: var(--text);
 }
 
-.task-handoff-summary.ready > span {
+.task-handoff-summary.ready > span:first-child {
   color: var(--green);
 }
 
-.task-handoff-summary.incomplete > span,
+.task-handoff-summary.incomplete > span:first-child,
 .task-handoff-summary code {
   color: var(--red);
+}
+
+.task-effect-line,
+.task-route-line {
+  display: grid;
+  grid-template-columns: minmax(110px, 0.35fr) minmax(120px, 0.45fr) minmax(220px, 1fr);
+  align-items: baseline;
+  gap: 8px;
+  width: 100%;
+  color: var(--text);
+}
+
+.task-effect-line small,
+.task-route-line small {
+  color: var(--muted);
+}
+
+.task-effect-line > span,
+.task-route-line > span {
+  overflow-wrap: anywhere;
 }
 
 @media (max-width: 768px) {
   .task-handoff-summary {
     align-items: flex-start;
     flex-wrap: wrap;
+  }
+
+  .task-effect-line,
+  .task-route-line {
+    grid-template-columns: 1fr;
+    gap: 3px;
   }
 }

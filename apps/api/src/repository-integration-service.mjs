@@ -5,6 +5,7 @@ import { createRepositoryLinePullRequestIntentInState, requireIntent } from './p
 import { verifyRepositoryLineHead } from './repository-line-service.mjs';
 import { mutate } from './state.mjs';
 import { notUsedContextDispositions } from './task-handoff.mjs';
+import { deterministicInputEffects } from './task-effects.mjs';
 import { ensureCompletedWorkstreamOutcomesInState, prepareTaskExecutionInState } from './task-execution-service.mjs';
 import {
   appendExecutionEvent,
@@ -146,23 +147,35 @@ export async function advanceRepositoryIntegration(intentId, action, result, act
         execution,
         'The deterministic repository integration did not use semantic context.'
       );
-    const outputs = (contract?.expected_outputs || []).map((slot) => ({
-      output_key: slot.key,
-      asset_type: slot.asset_type,
-      title: `${slot.key} PR #${intent.pr_number}`,
-      summary: `Merged ${intent.head_sha} into ${intent.base_ref} as ${mergedSha}.`,
-      payload: { payload_kind: 'json', media_type: 'application/json', content: { pull_request_intent_id: intent.id } },
-      evidence_refs: evidence.evidence_refs,
-      consumed_input_versions: consumed,
-      ...(contextDispositions.length
-        ? { consumed_context_document_versions: [], context_dispositions: contextDispositions }
-        : {})
-    }));
+    const outputKeys = (contract?.expected_outputs || []).map((slot) => slot.key),
+      inputEffects = deterministicInputEffects(execution, outputKeys, {
+        effect: 'verification',
+        statement:
+          'The deterministic integration applied the accepted versions and repository snapshot to the merged delivery.'
+      }),
+      outputs = (contract?.expected_outputs || []).map((slot) => ({
+        output_key: slot.key,
+        asset_type: slot.asset_type,
+        title: `${slot.key} PR #${intent.pr_number}`,
+        summary: `Merged ${intent.head_sha} into ${intent.base_ref} as ${mergedSha}.`,
+        payload: {
+          payload_kind: 'json',
+          media_type: 'application/json',
+          content: { pull_request_intent_id: intent.id }
+        },
+        evidence_refs: evidence.evidence_refs,
+        consumed_input_versions: consumed,
+        ...(contextDispositions.length
+          ? { consumed_context_document_versions: [], context_dispositions: contextDispositions }
+          : {})
+      }));
     const ingested = await ingestExecutionOutputsInState(state, {
       taskExecution: execution,
       outputs,
       declaredConsumedContextDocumentVersions: contextDispositions.length ? [] : null,
       declaredContextDispositions: contextDispositions.length ? contextDispositions : null,
+      declaredInputEffects: inputEffects,
+      declaredContextEffects: [],
       actorId,
       verifierId: 'repository_integrate_verifier',
       actualEvidence: evidence

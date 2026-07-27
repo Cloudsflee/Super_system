@@ -184,7 +184,9 @@ export async function submitTaskExecutionOutputs(
     declaredConsumedInputVersions = null,
     declaredInputDispositions = null,
     declaredConsumedContextDocumentVersions = null,
-    declaredContextDispositions = null
+    declaredContextDispositions = null,
+    declaredInputEffects = null,
+    declaredContextEffects = null
   }
 ) {
   if (manual) await ensureTaskExecutionContextProjection(taskExecutionId);
@@ -207,6 +209,8 @@ export async function submitTaskExecutionOutputs(
       declaredInputDispositions,
       declaredConsumedContextDocumentVersions,
       declaredContextDispositions,
+      declaredInputEffects,
+      declaredContextEffects,
       actorId,
       verifierId: verifierId || verifierFor(execution.executor),
       actualEvidence: evidence
@@ -584,7 +588,7 @@ export function recoverablePartialRepositoryChangeRun(state, execution) {
         return (
           run.task_execution_id === execution.id &&
           run.status === RunnerStatus.Failed &&
-          result?.schema_version === 'aiws.task_runner_result.v2' &&
+          ['aiws.task_runner_result.v2', 'aiws.task_runner_result.v3'].includes(result?.schema_version) &&
           result.status === RunnerStatus.Partial &&
           Number(result._codex_process?.code) === 0 &&
           !result._codex_process?.failure_code &&
@@ -634,6 +638,8 @@ async function recoverPartialRepositoryChangeInState(state, previous, retry, sou
       declaredInputDispositions: result.input_dispositions,
       declaredConsumedContextDocumentVersions: result.consumed_context_document_versions,
       declaredContextDispositions: result.context_dispositions,
+      declaredInputEffects: result.input_effects,
+      declaredContextEffects: result.context_effects,
       actorId,
       verifierId: 'repository_change_verifier',
       actualEvidence: evidence

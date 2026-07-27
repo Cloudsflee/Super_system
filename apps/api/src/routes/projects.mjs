@@ -13,6 +13,7 @@ import {
   requestSubjectUserId
 } from '../project-governance-v19.mjs';
 import { assertControlledTaskWrite } from '../execution-governance.mjs';
+import { authoritativeWorkstreamStatus } from '../workflow-execution-projection.mjs';
 
 export const projectRoutes = [
   makeRoute('GET', '/projects', async ({ req, res, query }) => {
@@ -285,13 +286,15 @@ function decorateNode(state, node) {
   const pendingApprovals = state.change_proposals.filter(
     (item) => (item.node_id === node.id || tasks.some((task) => task.id === item.node_id)) && item.status === 'pending'
   ).length;
-  const status = required.some((item) => item.status === 'blocked')
-    ? 'blocked'
-    : required.length > 0 && required.every((item) => item.status === 'completed')
-      ? 'ready_for_submission'
-      : required.some((item) => ['running', 'needs_review', 'completed'].includes(item.status))
-        ? 'running'
-        : node.status;
+  const status =
+    authoritativeWorkstreamStatus(node) ||
+    (required.some((item) => item.status === 'blocked')
+      ? 'blocked'
+      : required.length > 0 && required.every((item) => item.status === 'completed')
+        ? 'ready_for_submission'
+        : required.some((item) => ['running', 'needs_review', 'completed'].includes(item.status))
+          ? 'running'
+          : node.status);
   return {
     ...decorated,
     status,

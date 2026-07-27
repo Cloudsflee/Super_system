@@ -204,6 +204,8 @@ function buildManualSubmission(
   manualReasons: Record<string, string>,
   usageOptions: ReturnType<typeof manualUsageOptions>
 ) {
+  if (value.task_execution.context_snapshot?.schema_version === 'aiws.task_execution_context.v4')
+    return buildEffectManualSubmission(value, manualValues, manualUsage, manualReasons, usageOptions);
   const globallyUsed = new Set(Object.values(manualUsage).flat()),
     dispositions = usageOptions
       .filter((option) => globallyUsed.has(option.id) || option.explicitPolicy)
@@ -274,6 +276,46 @@ function buildManualSubmission(
   };
 }
 
+function buildEffectManualSubmission(
+  value: TaskExecutionDetails,
+  manualValues: Record<string, string>,
+  manualUsage: Record<string, string[]>,
+  manualStatements: Record<string, string>,
+  usageOptions: ReturnType<typeof manualUsageOptions>
+) {
+  const outputs = value.contract.expected_outputs.map((slot) => ({
+      output_key: slot.key,
+      asset_type: slot.asset_type,
+      title: `${value.task.title} ${slot.key}`,
+      summary: manualValues[slot.key] || '',
+      payload: {
+        payload_kind: 'text',
+        media_type: 'text/plain; charset=utf-8',
+        content: manualValues[slot.key] || '',
+        files: []
+      },
+      evidence_refs: [],
+      purpose: slot.purpose || `交付 ${slot.key}`,
+      consumer_hint: slot.consumer_hint || '',
+      unresolved_questions: [],
+      limitations: []
+    })),
+    inputEffects = usageOptions
+      .filter((option) => option.kind === 'input')
+      .map((option) => ({
+        input_key: option.inputKey || '',
+        version_ids: option.versionIds,
+        effect: 'basis' as const,
+        output_keys: value.contract.expected_outputs
+          .map((slot) => slot.key)
+          .filter((key) => (manualUsage[key] || []).includes(option.id)),
+        statement: (manualStatements[option.id] || '').trim(),
+        evidence_refs: []
+      }))
+      .filter((effect) => effect.output_keys.length > 0);
+  return { outputs, input_effects: inputEffects, context_effects: [] };
+}
+
 function outputDispositionReason(
   item: { id: string; disposition: 'used' | 'not_used'; reason: string },
   outputUsage: string[],
@@ -310,11 +352,19 @@ function ManualTaskCheckpoint({
 }) {
   const incompleteOutput = contract.expected_outputs.some((slot) => !(manualValues[slot.key] || '').trim()),
     used = new Set(Object.values(manualUsage).flat()),
-    invalidUsage = usageOptions.some(
-      (option) =>
-        (option.consumptionPolicy === 'must_use' && !used.has(option.id)) ||
-        (!used.has(option.id) && option.explicitPolicy && !(manualReasons[option.id] || '').trim())
-    );
+    effectAware = usageOptions.some((option) => option.effectAware),
+    invalidUsage = effectAware
+      ? usageOptions.some(
+          (option) =>
+            (option.applicationPolicy === 'required' &&
+              option.targetOutputKeys.some((key) => !(manualUsage[key] || []).includes(option.id))) ||
+            (used.has(option.id) && (manualReasons[option.id] || '').trim().length < 12)
+        )
+      : usageOptions.some(
+          (option) =>
+            (option.consumptionPolicy === 'must_use' && !used.has(option.id)) ||
+            (!used.has(option.id) && option.explicitPolicy && !(manualReasons[option.id] || '').trim())
+        );
   return (
     <div className="task-manual-checkpoint">
       {contract.expected_outputs.map((slot) => (
@@ -339,7 +389,9 @@ function ManualTaskCheckpoint({
                     onChange={(event) => onUsageChange(slot.key, option.id, event.target.checked)}
                   />
                   <span>{option.label}</span>
-                  {option.consumptionPolicy === 'must_use' && <small>必须使用</small>}
+                  {(option.applicationPolicy === 'required' || option.consumptionPolicy === 'must_use') && (
+                    <small>必须产生作用</small>
+                  )}
                 </label>
               ))}
             </span>
@@ -347,10 +399,12 @@ function ManualTaskCheckpoint({
         </div>
       ))}
       {usageOptions
-        .filter((option) => !used.has(option.id) && option.explicitPolicy)
+        .filter((option) => (effectAware ? used.has(option.id) : !used.has(option.id) && option.explicitPolicy))
         .map((option) => (
           <label className="task-manual-reason" key={`reason-${option.id}`}>
-            <span>{option.label} · 未使用原因</span>
+            <span>
+              {option.label} · {effectAware ? '对输出产生的具体作用' : '未使用原因'}
+            </span>
             <input
               type="text"
               value={manualReasons[option.id] || ''}
@@ -366,15 +420,52 @@ function ManualTaskCheckpoint({
   );
 }
 
-function manualUsageOptions(value?: TaskExecutionDetails) {
+type ManualUsageOption = {
+  id: string;
+  kind: 'input' | 'context';
+  inputKey: string;
+  versionIds: string[];
+  label: string;
+  required: boolean;
+  consumptionPolicy: 'must_use' | 'must_acknowledge' | 'available';
+  applicationPolicy: 'required' | 'optional';
+  targetOutputKeys: string[];
+  explicitPolicy: boolean;
+  effectAware: boolean;
+};
+
+function manualUsageOptions(value?: TaskExecutionDetails): ManualUsageOption[] {
   if (!value) return [];
-  const options = value.inputs.flatMap((input) =>
+  const effectAware = value.task_execution.context_snapshot?.schema_version === 'aiws.task_execution_context.v4';
+  if (effectAware)
+    return value.inputs.map((input) => ({
+      id: `input:${input.key}`,
+      kind: 'input' as const,
+      inputKey: input.key,
+      versionIds: (input.asset_versions || []).map((version) => version.version_id),
+      label: `${input.key} · ${input.purpose || input.source}`,
+      required: input.required !== false,
+      consumptionPolicy: input.consumption_policy || 'available',
+      applicationPolicy: input.application_policy || 'optional',
+      targetOutputKeys: input.target_output_keys?.length
+        ? input.target_output_keys
+        : value.contract.expected_outputs.map((slot) => slot.key),
+      explicitPolicy: Boolean(input.application_policy),
+      effectAware: true
+    }));
+  const options: ManualUsageOption[] = value.inputs.flatMap((input) =>
     (input.asset_versions || []).map((version) => ({
       id: `asset:${version.version_id}`,
       label: `${input.key} · ${version.title || short(version.version_id)}`,
       required: input.required !== false,
       consumptionPolicy: input.consumption_policy || (input.required !== false ? 'must_use' : 'available'),
-      explicitPolicy: Boolean(input.consumption_policy)
+      applicationPolicy: input.consumption_policy === 'must_use' ? ('required' as const) : ('optional' as const),
+      targetOutputKeys: value.contract.expected_outputs.map((slot) => slot.key),
+      versionIds: [version.version_id],
+      inputKey: input.key,
+      kind: 'input' as const,
+      explicitPolicy: Boolean(input.consumption_policy),
+      effectAware: false
     }))
   );
   for (const document of value.context_documents || [])
@@ -383,7 +474,13 @@ function manualUsageOptions(value?: TaskExecutionDetails) {
       label: `${document.title || document.source_collection || '上下文'} · ${short(document.document_version_id)}`,
       required: document.required === true,
       consumptionPolicy: document.consumption_policy || (document.required === true ? 'must_use' : 'available'),
-      explicitPolicy: Boolean(document.consumption_policy)
+      applicationPolicy: document.consumption_policy === 'must_use' ? ('required' as const) : ('optional' as const),
+      targetOutputKeys: value.contract.expected_outputs.map((slot) => slot.key),
+      versionIds: [],
+      inputKey: '',
+      kind: 'context' as const,
+      explicitPolicy: Boolean(document.consumption_policy),
+      effectAware: false
     });
   const unique = new Map<string, (typeof options)[number]>();
   for (const option of options) {
@@ -420,9 +517,42 @@ function HandoffSummary({ value }: { value: TaskExecutionDetails }) {
       <small>未使用资产 {handoff.not_used_inputs.length}</small>
       <small>上下文 {handoff.context_used.length}</small>
       <small>导出 {handoff.exported_outputs.filter((item) => item.version_id).length}</small>
+      {handoff.schema_version === 'aiws.task_handoff_diagnostics.v2' && (
+        <>
+          <small>有效作用 {(handoff.input_effects?.length || 0) + (handoff.context_effects?.length || 0)}</small>
+          <small>交付路由 {handoff.exported_outputs.reduce((total, item) => total + (item.route_count || 0), 0)}</small>
+        </>
+      )}
       {handoff.semantic_gaps.map((item, index) => (
         <code key={`${item.code}-${index}`}>{reasonLabel(item.code)}</code>
       ))}
+      {handoff.input_effects?.map((effect, index) => (
+        <span className="task-effect-line" key={`${effect.input_key}-${effect.effect}-${index}`}>
+          <strong>{effect.input_key}</strong>
+          <small>{effect.output_keys.join(' · ')}</small>
+          <span>{effect.statement}</span>
+        </span>
+      ))}
+      {handoff.context_effects?.map((effect, index) => (
+        <span className="task-effect-line" key={`${effect.document_version_id}-${effect.effect}-${index}`}>
+          <strong>上下文 {short(effect.document_version_id)}</strong>
+          <small>{effect.output_keys.join(' · ')}</small>
+          <span>{effect.statement}</span>
+        </span>
+      ))}
+      {handoff.exported_outputs.flatMap((output) =>
+        (output.routes || []).map((route, index) => (
+          <span className="task-route-line" key={`${output.output_key}-${route.route_type}-${index}`}>
+            <strong>{output.output_key}</strong>
+            <small>
+              {route.route_type === 'workstream_boundary'
+                ? '成果节点边界'
+                : `${route.consumer_task_title || route.consumer_task_id} · ${route.input_key}`}
+            </small>
+            {route.purpose && <span>{route.purpose}</span>}
+          </span>
+        ))
+      )}
     </div>
   );
 }
@@ -572,6 +702,13 @@ function ExecutionInput({ input }: { input: TaskExecutionInput }) {
         {input.key} · {executionInputSource(input.source)}
       </strong>
       {originTitle && <small>{originTitle}</small>}
+      {input.purpose && <small>{input.purpose}</small>}
+      {input.target_output_keys?.length ? (
+        <small>
+          {input.application_policy === 'required' ? '必须产生作用' : '按需采用'} ·{' '}
+          {input.target_output_keys.join(' · ')}
+        </small>
+      ) : null}
       {versions.length ? (
         versions.map((item) => {
           const selected = selectedByVersion.get(item.version_id);

@@ -96,8 +96,44 @@ runtimeState.asset_relations.push({
   created_at: timestamp
 });
 const dirtyHandoffState = {
-  asset_versions: [],
-  node_runs: [],
+  asset_versions: [
+    {
+      id: 'version-effect-migration',
+      provenance: {
+        input_effects: [
+          {
+            input_key: ' evidence ',
+            version_ids: [null, 'version-b', 'version-a', 'version-a'],
+            effect: 'constraint',
+            output_keys: ['decision', null, 'decision'],
+            statement: '  Evidence constrained the migrated decision.  ',
+            evidence_refs: ['ref-b', null, 'ref-a'],
+            unknown_field: 'remove-me'
+          }
+        ]
+      }
+    }
+  ],
+  node_runs: [
+    {
+      id: 'run-effect-migration',
+      result_json: {
+        schema_version: 'aiws.task_runner_result.v3',
+        input_effects: [],
+        context_effects: [
+          {
+            document_version_id: ' context-version ',
+            version_ids: ['not-valid-on-context'],
+            effect: 'verification',
+            output_keys: ['decision'],
+            statement: '  Context verified the migrated decision.  ',
+            evidence_refs: [],
+            unknown_field: true
+          }
+        ]
+      }
+    }
+  ],
   task_executions: [
     {
       id: 'execution-null-consumption',
@@ -111,7 +147,19 @@ const dirtyHandoffState = {
       context_dispositions: [
         { document_version_id: null, disposition: 'not_used', reason: 'invalid' },
         { document_version_id: 'context-version-valid', disposition: 'not_used', reason: 'Not used.' }
-      ]
+      ],
+      input_effects: [
+        {
+          input_key: ' evidence ',
+          version_ids: [null, 'version-a'],
+          effect: 'basis',
+          output_keys: ['decision', ''],
+          statement: '  Evidence formed the decision basis.  ',
+          evidence_refs: [null, 'receipt-a']
+        },
+        { input_key: null, effect: 'basis', output_keys: [], statement: 'invalid', evidence_refs: [] }
+      ],
+      context_effects: []
     }
   ]
 };
@@ -126,6 +174,31 @@ assert.deepEqual(cleanedExecution.input_dispositions, [
 assert.deepEqual(cleanedExecution.context_dispositions, [
   { document_version_id: 'context-version-valid', disposition: 'not_used', reason: 'Not used.' }
 ]);
+assert.deepEqual(cleanedExecution.input_effects, [
+  {
+    input_key: 'evidence',
+    version_ids: ['version-a'],
+    effect: 'basis',
+    output_keys: ['decision'],
+    statement: 'Evidence formed the decision basis.',
+    evidence_refs: ['receipt-a']
+  }
+]);
+assert.deepEqual(dirtyHandoffState.asset_versions[0].provenance.input_effects[0], {
+  input_key: 'evidence',
+  version_ids: ['version-a', 'version-b'],
+  effect: 'constraint',
+  output_keys: ['decision'],
+  statement: 'Evidence constrained the migrated decision.',
+  evidence_refs: ['ref-a', 'ref-b']
+});
+assert.deepEqual(dirtyHandoffState.node_runs[0].result_json.context_effects[0], {
+  document_version_id: 'context-version',
+  effect: 'verification',
+  output_keys: ['decision'],
+  statement: 'Context verified the migrated decision.',
+  evidence_refs: []
+});
 normalizeState20Defaults(runtimeState, '2026-07-26T01:30:00.000Z');
 assert.match(runtimeAsset.version.content_sha256, /^[a-f0-9]{64}$/);
 assert.equal(runtimeAsset.version.size_bytes, Buffer.byteLength(runtimeAsset.version.body, 'utf8'));

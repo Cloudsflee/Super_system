@@ -160,8 +160,6 @@ export function defaultContractForNode(node, project, actorId, status = 'draft')
     [NodeType.Execution]: ['可运行变更', '测试结果', '资产候选', 'Git diff'],
     [NodeType.Retrospective]: ['Confirmed Assets', 'Workspace Digest', 'PR 草稿', '下一步计划']
   };
-  const taskInputs =
-    Array.isArray(node.input_slots) && node.input_slots.length ? node.input_slots : defaultInputSlots(node, project);
   const taskOutputs =
     Array.isArray(node.output_slots) && node.output_slots.length
       ? node.output_slots
@@ -176,8 +174,17 @@ export function defaultContractForNode(node, project, actorId, status = 'draft')
           confirmation_policy: node.type === NodeType.Execution ? 'system_evidence' : 'human',
           handoff: true,
           consumer_hint: null,
+          purpose: `交付并证明：${node.goal || node.title}`,
           label
         }));
+  const taskInputs =
+    Array.isArray(node.input_slots) && node.input_slots.length
+      ? node.input_slots
+      : defaultInputSlots(
+          node,
+          project,
+          taskOutputs.map((item) => item.key)
+        );
   return {
     id: id('ctr'),
     node_id: node.id,
@@ -245,7 +252,11 @@ function validContractInputSlot(slot) {
     Object.hasOwn(slot, 'selector') &&
     Object.hasOwn(slot, 'ref_id') &&
     Object.hasOwn(slot, 'version_id') &&
-    (!slot.consumption_policy || ['must_use', 'must_acknowledge', 'available'].includes(slot.consumption_policy))
+    (!slot.consumption_policy || ['must_use', 'must_acknowledge', 'available'].includes(slot.consumption_policy)) &&
+    (!slot.application_policy || ['required', 'optional'].includes(slot.application_policy)) &&
+    (!slot.coverage_policy || ['all', 'any'].includes(slot.coverage_policy)) &&
+    (slot.target_output_keys === undefined || Array.isArray(slot.target_output_keys)) &&
+    (slot.purpose === undefined || slot.purpose === null || typeof slot.purpose === 'string')
   );
 }
 
@@ -290,7 +301,7 @@ export function applyContractPatch(contract, patch, actorId) {
   return next;
 }
 
-function defaultInputSlots(node, project) {
+function defaultInputSlots(node, project, outputKeys) {
   const repository =
     ['execution', 'code', 'test', 'deploy', 'integration'].includes(node.type) ||
     ['code', 'test', 'deploy', 'integration'].includes(node.task_kind)
@@ -303,7 +314,11 @@ function defaultInputSlots(node, project) {
             selector: 'fixed_sha',
             ref_id: null,
             version_id: null,
-            consumption_policy: 'must_acknowledge'
+            consumption_policy: null,
+            application_policy: 'required',
+            purpose: `以固定仓库快照作为 ${outputKeys.join('、')} 的唯一执行基线。`,
+            target_output_keys: outputKeys,
+            coverage_policy: 'all'
           }
         ]
       : [];
@@ -316,7 +331,11 @@ function defaultInputSlots(node, project) {
       selector: 'current',
       ref_id: null,
       version_id: null,
-      consumption_policy: 'must_acknowledge',
+      consumption_policy: null,
+      application_policy: 'optional',
+      purpose: '仅在任务输出需要补充项目范围或验收边界时引用项目简报。',
+      target_output_keys: outputKeys,
+      coverage_policy: 'all',
       value: project.goal || ''
     },
     ...repository

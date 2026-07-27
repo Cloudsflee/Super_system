@@ -82,7 +82,15 @@ const crossWorkstream = normalizeWorkflowPlanningFields([
   {
     ...task('task-target-entry', 'Consume source outcome', 'research', 'assist', ['research_evidence'], []),
     parent_node_id: 'workstream-target',
-    input_slots: [dependencyInput('source_delivery', 'workstream_dependency', 'workstream-source', 'source_delivery')]
+    input_slots: [
+      dependencyInput(
+        'source_delivery',
+        'workstream_dependency',
+        'workstream-source',
+        'source_delivery',
+        'research_result'
+      )
+    ]
   },
   {
     ...task(
@@ -94,7 +102,9 @@ const crossWorkstream = normalizeWorkflowPlanningFields([
       ['task-target-entry']
     ),
     parent_node_id: 'workstream-target',
-    input_slots: [dependencyInput('research_result', 'dependency', 'task-target-entry', 'research_result')]
+    input_slots: [
+      dependencyInput('research_result', 'dependency', 'task-target-entry', 'research_result', 'analysis_result')
+    ]
   }
 ]);
 const targetEntry = crossWorkstream.find((item) => item.id === 'task-target-entry'),
@@ -109,7 +119,11 @@ assert.deepEqual(
     selector: 'source_delivery',
     ref_id: 'workstream-source',
     version_id: null,
-    consumption_policy: 'must_acknowledge'
+    consumption_policy: null,
+    application_policy: 'required',
+    purpose: 'Apply source_delivery to research_result.',
+    target_output_keys: ['research_result'],
+    coverage_policy: 'all'
   }
 );
 assert.equal(
@@ -130,7 +144,15 @@ const crossQualityNodes = [
   {
     ...task('quality-entry-consumer', 'Consume decision export', 'research', 'assist', ['research_evidence'], []),
     parent_node_id: 'quality-target',
-    input_slots: [dependencyInput('decision_export', 'workstream_dependency', 'quality-source', 'decision_export')]
+    input_slots: [
+      dependencyInput(
+        'decision_export',
+        'workstream_dependency',
+        'quality-source',
+        'decision_export',
+        'research_result'
+      )
+    ]
   },
   {
     ...task('quality-entry-independent', 'Prepare independent input', 'research', 'assist', ['research_evidence'], []),
@@ -152,7 +174,7 @@ assert.equal(
 );
 const outOfScopeCrossQuality = structuredClone(crossQualityNodes);
 outOfScopeCrossQuality.find((item) => item.id === 'quality-entry-independent').input_slots = [
-  dependencyInput('unrelated', 'workstream_dependency', 'workstream-unrelated', 'delivery')
+  dependencyInput('unrelated', 'workstream_dependency', 'workstream-unrelated', 'delivery', 'research_result')
 ];
 assert.equal(
   validateWorkflowPlanningQuality({ nodes: outOfScopeCrossQuality }).errors.some(
@@ -189,7 +211,13 @@ fanInQualityNodes.find((item) => item.id === 'quality-target').dependency_ids.pu
 fanInQualityNodes
   .find((item) => item.id === 'quality-entry-consumer')
   .input_slots.push(
-    dependencyInput('second_export', 'workstream_dependency', 'quality-source-second', 'second_export')
+    dependencyInput(
+      'second_export',
+      'workstream_dependency',
+      'quality-source-second',
+      'second_export',
+      'research_result'
+    )
   );
 assert.equal(
   validateWorkflowPlanningQuality({ nodes: fanInQualityNodes }).errors.some(
@@ -233,13 +261,13 @@ const candidate = {
   ]
 };
 candidate.nodes.find((node) => node.id === 'task-evidence').input_slots = [
-  dependencyInput('accepted_baseline', 'dependency', 'task-completed', 'code_result')
+  dependencyInput('accepted_baseline', 'dependency', 'task-completed', 'code_result', 'research_result')
 ];
 candidate.nodes.find((node) => node.id === 'task-decision').input_slots = [
-  dependencyInput('research_result', 'dependency', 'task-evidence', 'research_result')
+  dependencyInput('research_result', 'dependency', 'task-evidence', 'research_result', 'design_result')
 ];
 candidate.nodes.find((node) => node.id === 'task-follow-up').input_slots = [
-  dependencyInput('design_result', 'dependency', 'task-decision', 'design_result')
+  dependencyInput('design_result', 'dependency', 'task-decision', 'design_result', 'code_result')
 ];
 const ambiguous = structuredClone(candidate.nodes),
   decision = ambiguous.find((node) => node.id === 'task-decision'),
@@ -256,7 +284,12 @@ followUp.input_slots = [
     source: 'dependency',
     selector: 'required_outputs',
     ref_id: decision.id,
-    version_id: null
+    version_id: null,
+    consumption_policy: null,
+    application_policy: 'required',
+    purpose: 'Apply the selected decision to code_result.',
+    target_output_keys: ['code_result'],
+    coverage_policy: 'all'
   }
 ];
 const ambiguousQuality = validateWorkflowPlanningQuality({
@@ -278,7 +311,7 @@ optionalProducer.output_slots = [
   { ...output('repository_version', optionalProducer.acceptance_criteria), required: false }
 ];
 optionalConsumer.input_slots = [
-  dependencyInput('optional_repository', 'dependency', optionalProducer.id, 'repository_version')
+  dependencyInput('optional_repository', 'dependency', optionalProducer.id, 'repository_version', 'code_result')
 ];
 assert.equal(
   validateWorkflowPlanningQuality({ nodes: optionalSelection }).errors.some((item) =>
@@ -296,10 +329,16 @@ assert.equal(
   false
 );
 const generatedInput = structuredClone(candidate),
-  generatedFollowUp = generatedInput.nodes.find((node) => node.id === 'task-follow-up');
+  generatedFollowUp = generatedInput.nodes.find((node) => node.id === 'task-follow-up'),
+  generatedDecision = generatedInput.nodes.find((node) => node.id === 'task-decision');
 generatedFollowUp.input_slots = generatedFollowUp.input_slots.filter((slot) => slot.source !== 'dependency');
+generatedDecision.output_slots = [
+  { ...output('design_result', generatedDecision.acceptance_criteria), handoff: false }
+];
 assert.doesNotThrow(() => validateGenerationCandidate(generatedInput, fingerprint));
-generatedFollowUp.input_slots.push(dependencyInput('unrelated', 'dependency', 'task-evidence', 'research_result'));
+generatedFollowUp.input_slots.push(
+  dependencyInput('unrelated', 'dependency', 'task-evidence', 'research_result', 'code_result')
+);
 assert.throws(
   () => validateGenerationCandidate(generatedInput, fingerprint),
   (error) =>
@@ -336,10 +375,13 @@ function output(key, acceptance) {
     required: true,
     asset_type: 'DecisionAsset',
     acceptance_criteria: acceptance,
-    confirmation_policy: 'human'
+    confirmation_policy: 'human',
+    handoff: true,
+    consumer_hint: null,
+    purpose: `Deliver ${key} to its declared consumer.`
   };
 }
-function dependencyInput(key, source, refId, selector) {
+function dependencyInput(key, source, refId, selector, targetOutputKey) {
   return {
     key,
     kind: 'asset_version',
@@ -347,7 +389,12 @@ function dependencyInput(key, source, refId, selector) {
     source,
     selector,
     ref_id: refId,
-    version_id: null
+    version_id: null,
+    consumption_policy: null,
+    application_policy: 'required',
+    purpose: `Apply ${key} to ${targetOutputKey}.`,
+    target_output_keys: [targetOutputKey],
+    coverage_policy: 'all'
   };
 }
 

@@ -7,10 +7,22 @@ const suites = {
     ['node', 'tests/unit/v20-system-context.test.mjs'],
     ['node', 'tests/unit/v20-context-pack.test.mjs'],
     ['node', 'tests/unit/v20-mcp-context.test.mjs'],
-    ['node', 'tests/unit/v20-migration.test.mjs']
+    ['node', 'tests/unit/v20-migration.test.mjs'],
+    ['node', 'tests/unit/v20-task-effects.test.mjs']
   ],
   integration: [['node', 'tests/integration/v20-context-flow.test.mjs']],
-  web: [['pnpm', '--filter', '@aiws/web', 'exec', 'vitest', 'run', 'src/test/context-map-v20.test.tsx']],
+  web: [
+    [
+      'pnpm',
+      '--filter',
+      '@aiws/web',
+      'exec',
+      'vitest',
+      'run',
+      'src/test/context-map-v20.test.tsx',
+      'src/test/task-effects-v20.test.tsx'
+    ]
+  ],
   performance: [['node', 'tests/unit/v20-context-performance.test.mjs']],
   quality: [
     ['node', 'scripts/format.mjs', '--check'],

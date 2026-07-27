@@ -37,7 +37,7 @@ assert.match(nodeRun.context.system_context.context_map.uri, /^aiws:\/\/context\
 assert.equal(nodeRun.context.system_context.retrieval_protocol.tool, 'aiws_context');
 assert.match(contextPackToMarkdown(nodeRun.context_pack), /"system_context"/);
 assert.equal(nodeRun.context.input_snapshot_hash, delivery.context.input_snapshot_hash);
-assert.equal(nodeRun.context.input_snapshot_hash_version, 2);
+assert.equal(nodeRun.context.input_snapshot_hash_version, 3);
 assert.equal(nodeRun.context.repository_snapshot.snapshot_hash, delivery.context.repository_snapshot.snapshot_hash);
 const relocatedContext = structuredClone(nodeRun.context);
 relocatedContext.repository_snapshot.managed_path = '/different/runtime/path';

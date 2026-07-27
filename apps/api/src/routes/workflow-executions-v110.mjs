@@ -215,7 +215,9 @@ async function manualSubmit({ res, params, body }) {
       declaredInputDispositions: body.input_dispositions === undefined ? null : body.input_dispositions,
       declaredConsumedContextDocumentVersions:
         body.consumed_context_document_versions === undefined ? null : body.consumed_context_document_versions,
-      declaredContextDispositions: body.context_dispositions === undefined ? null : body.context_dispositions
+      declaredContextDispositions: body.context_dispositions === undefined ? null : body.context_dispositions,
+      declaredInputEffects: body.input_effects === undefined ? null : body.input_effects,
+      declaredContextEffects: body.context_effects === undefined ? null : body.context_effects
     });
   scheduleWorkflowExecution(execution.workflow_execution_id);
   return send(res, 200, result);

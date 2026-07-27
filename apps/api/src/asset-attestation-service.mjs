@@ -6,8 +6,10 @@ import {
   buildTaskHandoffManifest,
   normalizeDispositions,
   normalizeIdList,
-  taskHandoffDiagnostics
+  taskHandoffDiagnostics,
+  taskHandoffRoutes
 } from './task-handoff.mjs';
+import { normalizeTaskEffects } from './task-effects.mjs';
 import { recordAssetLineage } from './task-output-service.mjs';
 
 export const TRUSTED_VERIFIERS = Object.freeze(
@@ -28,138 +30,40 @@ export async function ingestExecutionOutputsInState(
     declaredInputDispositions = null,
     declaredConsumedContextDocumentVersions = null,
     declaredContextDispositions = null,
+    declaredInputEffects = null,
+    declaredContextEffects = null,
     nodeRunId = null,
     actorId = null,
     verifierId = null,
     actualEvidence = {}
   }
 ) {
-  const task = state.workflow_nodes.find((item) => item.id === taskExecution?.task_id && item.role === 'task');
-  const project = state.projects.find((item) => item.id === taskExecution?.project_id);
-  const contract = state.node_contracts.find((item) => item.id === taskExecution?.contract_id);
-  if (!taskExecution || !task || !project || !contract)
-    throw new HttpError(404, { error: 'task_execution_scope_not_found' });
-  if (!['running', 'verifying'].includes(taskExecution.status))
-    throw new HttpError(409, { error: 'task_execution_not_accepting_output', status: taskExecution.status });
-  const source = Array.isArray(outputs) ? outputs : [];
-  const duplicateKeys = duplicateValues(source.map((item) => clean(item?.output_key)));
-  if (duplicateKeys.length)
-    throw new HttpError(400, { error: 'runner_output_key_duplicate', output_keys: duplicateKeys });
-  const consumption = normalizeConsumedInputs(
+  const { task, project, contract, source } = resolveExecutionOutputScope(state, taskExecution, outputs),
+    { effects, consumption, contextConsumption } = resolveExecutionOutputUsage(state, {
       taskExecution,
       source,
       declaredConsumedInputVersions,
-      declaredInputDispositions
-    ),
-    contextConsumption = normalizeConsumedContextDocuments(
-      state,
-      taskExecution,
-      source,
+      declaredInputDispositions,
       declaredConsumedContextDocumentVersions,
       declaredContextDispositions,
+      declaredInputEffects,
+      declaredContextEffects,
       nodeRunId
-    );
-  const created = [];
-  for (const slot of contract.expected_outputs || []) {
-    const output = source.find((item) => clean(item.output_key) === slot.key);
-    if (!output) {
-      if (slot.required !== false)
-        throw new HttpError(409, { error: 'runner_required_output_missing', output_key: slot.key });
-      continue;
-    }
-    if (!output.payload || typeof output.payload !== 'object')
-      throw new HttpError(400, { error: 'runner_typed_payload_required', output_key: slot.key });
-    if (output.asset_type && output.asset_type !== slot.asset_type)
-      throw new HttpError(409, {
-        error: 'runner_output_asset_type_mismatch',
-        output_key: slot.key,
-        expected: slot.asset_type,
-        actual: output.asset_type
-      });
-    const asset = createAssetRecord({
-      projectId: project.id,
-      workspaceId: task.workspace_id,
-      taskId: task.id,
-      taskExecutionId: taskExecution.id,
-      assetType: slot.asset_type,
-      title: clean(output.title, 200) || `${task.title} ${slot.key}`,
-      summary: clean(output.summary, 4000),
-      outputKey: slot.key,
-      actorId
-    });
-    Object.assign(asset, {
-      acceptance_criteria: [...(slot.acceptance_criteria || [])],
-      confirmation_policy: slot.confirmation_policy,
-      execution_type: 'task_execution',
-      execution_id: taskExecution.id
-    });
-    state.assets.push(asset);
-    const repositorySha = repositoryShaFor(slot, actualEvidence, output);
-    const version = await createImmutableAssetVersion(state, {
-      asset,
-      payload: trustedPayloadForSlot(slot, output.payload, actualEvidence),
-      title: asset.title,
-      summary: asset.summary,
-      evidenceRefs: evidenceRefs(actualEvidence, output),
-      repositorySha,
-      provenance: {
-        source: 'task_execution',
-        workflow_execution_id: taskExecution.workflow_execution_id,
-        task_execution_id: taskExecution.id,
-        executor: taskExecution.executor,
-        output_key: slot.key,
-        input_snapshot_hash: taskExecution.input_snapshot_hash,
-        consumed_inputs: consumption.byOutput.get(slot.key) || [],
-        input_dispositions: consumption.byOutputDispositions.get(slot.key) || [],
-        context_selection_id: contextConsumption.selectionId,
-        context_selection_ids: contextConsumption.selectionIdsByOutput.get(slot.key) || [],
-        consumed_context_document_versions: contextConsumption.byOutput.get(slot.key) || [],
-        context_dispositions: contextConsumption.byOutputDispositions.get(slot.key) || []
-      },
-      actorId,
-      outputKey: slot.key
-    });
-    const handoffManifest = buildTaskHandoffManifest({
+    }),
+    created = await createExecutionOutputArtifacts(state, {
       taskExecution,
       task,
-      output,
-      asset,
-      version,
-      slot,
-      consumedInputVersions: consumption.byOutput.get(slot.key) || [],
-      inputDispositions: consumption.byOutputDispositions.get(slot.key) || [],
-      consumedContextDocumentVersions: contextConsumption.byOutput.get(slot.key) || [],
-      contextDispositions: contextConsumption.byOutputDispositions.get(slot.key) || [],
-      contextSelectionId: contextConsumption.selectionId,
-      unresolvedQuestions: output.unresolved_questions,
-      limitations: output.limitations
+      project,
+      contract,
+      source,
+      consumption,
+      contextConsumption,
+      effects,
+      actorId,
+      actualEvidence
     });
-    version.provenance.handoff_manifest = handoffManifest;
-    version.provenance.handoff_manifest_sha256 = handoffManifest.manifest_sha256;
-    created.push({ asset, version, slot });
-  }
-  taskExecution.consumed_inputs = consumption.aggregate;
-  taskExecution.input_dispositions = consumption.dispositions;
-  taskExecution.context_selection_id = contextConsumption.selectionId;
-  taskExecution.context_selection_ids = contextConsumption.selectionIds;
-  taskExecution.consumed_context_document_versions = contextConsumption.aggregate;
-  taskExecution.context_dispositions = contextConsumption.dispositions;
-  taskExecution.status = 'verifying';
-  taskExecution.updated_at = now();
-
-  for (const item of created.filter(({ slot }) => slot.confirmation_policy === 'system_evidence')) {
-    await attestAssetVersionInState(state, {
-      assetId: item.asset.id,
-      versionId: item.version.id,
-      expectedSha256: item.version.content_sha256,
-      taskExecutionId: taskExecution.id,
-      outputKey: item.slot.key,
-      decision: 'accepted',
-      attestorType: 'trusted_verifier',
-      attestorId: verifierId,
-      evidence: evidenceForRecord(actualEvidence)
-    });
-  }
+  applyExecutionOutputUsage(taskExecution, consumption, contextConsumption, effects);
+  await attestSystemEvidenceOutputs(state, taskExecution, created, verifierId, actualEvidence);
   const human = created.filter(({ slot }) => slot.confirmation_policy === 'human');
   if (human.length) taskExecution.status = 'awaiting_human';
   taskExecution.handoff_diagnostics = taskHandoffDiagnostics(state, taskExecution);
@@ -173,6 +77,250 @@ export async function ingestExecutionOutputsInState(
       content_sha256: version.content_sha256
     }))
   };
+}
+
+function resolveExecutionOutputScope(state, taskExecution, outputs) {
+  const task = state.workflow_nodes.find((item) => item.id === taskExecution?.task_id && item.role === 'task'),
+    project = state.projects.find((item) => item.id === taskExecution?.project_id),
+    contract = state.node_contracts.find((item) => item.id === taskExecution?.contract_id);
+  if (!taskExecution || !task || !project || !contract)
+    throw new HttpError(404, { error: 'task_execution_scope_not_found' });
+  if (!['running', 'verifying'].includes(taskExecution.status))
+    throw new HttpError(409, { error: 'task_execution_not_accepting_output', status: taskExecution.status });
+  const source = Array.isArray(outputs) ? outputs : [],
+    duplicateKeys = duplicateValues(source.map((item) => clean(item?.output_key)));
+  if (duplicateKeys.length)
+    throw new HttpError(400, { error: 'runner_output_key_duplicate', output_keys: duplicateKeys });
+  return { task, project, contract, source };
+}
+
+function resolveExecutionOutputUsage(
+  state,
+  {
+    taskExecution,
+    source,
+    declaredConsumedInputVersions,
+    declaredInputDispositions,
+    declaredConsumedContextDocumentVersions,
+    declaredContextDispositions,
+    declaredInputEffects,
+    declaredContextEffects,
+    nodeRunId
+  }
+) {
+  const effectAware =
+    taskExecution.context_snapshot?.schema_version === 'aiws.task_execution_context.v4' &&
+    (declaredInputEffects !== null || declaredContextEffects !== null);
+  if (effectAware) {
+    const effects = normalizeTaskEffects(
+      state,
+      taskExecution,
+      source,
+      declaredInputEffects,
+      declaredContextEffects,
+      nodeRunId
+    );
+    return {
+      effects,
+      consumption: effectInputConsumption(effects),
+      contextConsumption: effectContextConsumption(effects)
+    };
+  }
+  return {
+    effects: null,
+    consumption: normalizeConsumedInputs(
+      taskExecution,
+      source,
+      declaredConsumedInputVersions,
+      declaredInputDispositions
+    ),
+    contextConsumption: normalizeConsumedContextDocuments(
+      state,
+      taskExecution,
+      source,
+      declaredConsumedContextDocumentVersions,
+      declaredContextDispositions,
+      nodeRunId
+    )
+  };
+}
+
+function effectInputConsumption(effects) {
+  return {
+    aggregate: effects.aggregate,
+    byOutput: effects.byOutput,
+    dispositions: effects.inputDispositions,
+    byOutputDispositions: effects.byOutputDispositions
+  };
+}
+
+function effectContextConsumption(effects) {
+  return {
+    aggregate: effects.aggregateContext,
+    byOutput: effects.byOutputContext,
+    dispositions: effects.contextDispositions,
+    byOutputDispositions: effects.byOutputContextDispositions,
+    selectionId: effects.selectionId,
+    selectionIds: effects.selectionIds,
+    selectionIdsByOutput: effects.selectionIdsByOutput
+  };
+}
+
+async function createExecutionOutputArtifacts(state, options) {
+  const outputByKey = new Map(options.source.map((item) => [clean(item?.output_key), item])),
+    created = [];
+  for (const slot of options.contract.expected_outputs || []) {
+    const output = outputByKey.get(slot.key);
+    validateExecutionOutput(slot, output);
+    if (!output) continue;
+    created.push(await createExecutionOutputArtifact(state, { ...options, slot, output }));
+  }
+  return created;
+}
+
+function validateExecutionOutput(slot, output) {
+  if (!output) {
+    if (slot.required !== false)
+      throw new HttpError(409, { error: 'runner_required_output_missing', output_key: slot.key });
+    return;
+  }
+  if (!output.payload || typeof output.payload !== 'object')
+    throw new HttpError(400, { error: 'runner_typed_payload_required', output_key: slot.key });
+  if (output.asset_type && output.asset_type !== slot.asset_type)
+    throw new HttpError(409, {
+      error: 'runner_output_asset_type_mismatch',
+      output_key: slot.key,
+      expected: slot.asset_type,
+      actual: output.asset_type
+    });
+}
+
+async function createExecutionOutputArtifact(
+  state,
+  { taskExecution, task, project, slot, output, consumption, contextConsumption, effects, actorId, actualEvidence }
+) {
+  const asset = createAssetRecord({
+    projectId: project.id,
+    workspaceId: task.workspace_id,
+    taskId: task.id,
+    taskExecutionId: taskExecution.id,
+    assetType: slot.asset_type,
+    title: clean(output.title, 200) || `${task.title} ${slot.key}`,
+    summary: clean(output.summary, 4000),
+    outputKey: slot.key,
+    actorId
+  });
+  Object.assign(asset, {
+    acceptance_criteria: [...(slot.acceptance_criteria || [])],
+    confirmation_policy: slot.confirmation_policy,
+    execution_type: 'task_execution',
+    execution_id: taskExecution.id
+  });
+  state.assets.push(asset);
+  const usage = executionOutputUsage(slot.key, consumption, contextConsumption, effects),
+    version = await createImmutableAssetVersion(state, {
+      asset,
+      payload: trustedPayloadForSlot(slot, output.payload, actualEvidence),
+      title: asset.title,
+      summary: asset.summary,
+      evidenceRefs: evidenceRefs(actualEvidence, output),
+      repositorySha: repositoryShaFor(slot, actualEvidence, output),
+      provenance: executionOutputProvenance(taskExecution, slot.key, usage, effects),
+      actorId,
+      outputKey: slot.key
+    }),
+    handoffManifest = buildTaskHandoffManifest({
+      taskExecution,
+      task,
+      output,
+      asset,
+      version,
+      slot,
+      consumedInputVersions: usage.inputs,
+      inputDispositions: usage.inputDispositions,
+      consumedContextDocumentVersions: usage.context,
+      contextDispositions: usage.contextDispositions,
+      contextSelectionId: contextConsumption.selectionId,
+      inputEffects: usage.inputEffects,
+      contextEffects: usage.contextEffects,
+      routes: effects ? taskHandoffRoutes(state, task, slot) : undefined,
+      unresolvedQuestions: output.unresolved_questions,
+      limitations: output.limitations
+    });
+  version.provenance.handoff_manifest = handoffManifest;
+  version.provenance.handoff_manifest_sha256 = handoffManifest.manifest_sha256;
+  return { asset, version, slot };
+}
+
+function executionOutputUsage(outputKey, consumption, contextConsumption, effects) {
+  return {
+    inputs: consumption.byOutput.get(outputKey) || [],
+    inputDispositions: consumption.byOutputDispositions.get(outputKey) || [],
+    context: contextConsumption.byOutput.get(outputKey) || [],
+    contextDispositions: contextConsumption.byOutputDispositions.get(outputKey) || [],
+    contextSelectionId: contextConsumption.selectionId,
+    contextSelectionIds: contextConsumption.selectionIdsByOutput.get(outputKey) || [],
+    inputEffects: effects?.inputEffectsByOutput.get(outputKey),
+    contextEffects: effects?.contextEffectsByOutput.get(outputKey)
+  };
+}
+
+function executionOutputProvenance(taskExecution, outputKey, usage, effects) {
+  const provenance = {
+    source: 'task_execution',
+    workflow_execution_id: taskExecution.workflow_execution_id,
+    task_execution_id: taskExecution.id,
+    executor: taskExecution.executor,
+    output_key: outputKey,
+    input_snapshot_hash: taskExecution.input_snapshot_hash,
+    consumed_inputs: usage.inputs,
+    input_dispositions: usage.inputDispositions,
+    context_selection_id: usage.contextSelectionId,
+    context_selection_ids: usage.contextSelectionIds,
+    consumed_context_document_versions: usage.context,
+    context_dispositions: usage.contextDispositions
+  };
+  if (effects)
+    Object.assign(provenance, {
+      effects_schema_version: effects.schema_version,
+      input_effects: usage.inputEffects || [],
+      context_effects: usage.contextEffects || []
+    });
+  return provenance;
+}
+
+function applyExecutionOutputUsage(taskExecution, consumption, contextConsumption, effects) {
+  Object.assign(taskExecution, {
+    consumed_inputs: consumption.aggregate,
+    input_dispositions: consumption.dispositions,
+    context_selection_id: contextConsumption.selectionId,
+    context_selection_ids: contextConsumption.selectionIds,
+    consumed_context_document_versions: contextConsumption.aggregate,
+    context_dispositions: contextConsumption.dispositions,
+    status: 'verifying',
+    updated_at: now()
+  });
+  if (effects)
+    Object.assign(taskExecution, {
+      effects_schema_version: effects.schema_version,
+      input_effects: effects.inputEffects,
+      context_effects: effects.contextEffects
+    });
+}
+
+async function attestSystemEvidenceOutputs(state, taskExecution, created, verifierId, actualEvidence) {
+  for (const item of created.filter(({ slot }) => slot.confirmation_policy === 'system_evidence'))
+    await attestAssetVersionInState(state, {
+      assetId: item.asset.id,
+      versionId: item.version.id,
+      expectedSha256: item.version.content_sha256,
+      taskExecutionId: taskExecution.id,
+      outputKey: item.slot.key,
+      decision: 'accepted',
+      attestorType: 'trusted_verifier',
+      attestorId: verifierId,
+      evidence: evidenceForRecord(actualEvidence)
+    });
 }
 
 export async function attestAssetVersionInState(state, input) {
@@ -347,14 +495,16 @@ export function assetVersionConsumers(state, versionId) {
     const inputs = execution.context_snapshot?.inputs || [];
     const matched = inputs.flatMap((item) => item.asset_versions || []).filter((item) => item.version_id === versionId);
     if (matched.length) {
-      const consumed = (execution.consumed_inputs || []).includes(versionId);
+      const effects = (execution.input_effects || []).filter((item) => (item.version_ids || []).includes(versionId)),
+        consumed = effects.length > 0 || (execution.consumed_inputs || []).includes(versionId);
       consumers.push({
         type: consumed ? 'task_execution' : 'task_execution_input',
         id: execution.id,
         workflow_execution_id: execution.workflow_execution_id,
         task_id: execution.task_id,
         status: execution.status,
-        consumption_status: consumed ? 'consumed' : 'prepared',
+        consumption_status: effects.length ? 'applied' : consumed ? 'consumed' : 'prepared',
+        effects,
         input_keys: inputs
           .filter((item) => (item.asset_versions || []).some((version) => version.version_id === versionId))
           .map((item) => item.key)

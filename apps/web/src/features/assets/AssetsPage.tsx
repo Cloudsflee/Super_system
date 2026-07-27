@@ -454,16 +454,21 @@ function Consumers({ value }: { value?: AssetVersionDetails }) {
         <span key={`${item.type}-${item.id}`}>
           <b>
             {consumerTypeLabel(item.type)} ·{' '}
-            {item.consumption_status === 'consumed'
-              ? '已实际消费'
-              : item.consumption_status === 'evidenced'
-                ? '作为验收证据'
-                : '仅固定为输入'}{' '}
+            {item.consumption_status === 'applied'
+              ? '已影响下游输出'
+              : item.consumption_status === 'consumed'
+                ? '已实际消费'
+                : item.consumption_status === 'evidenced'
+                  ? '作为验收证据'
+                  : '仅固定为输入'}{' '}
             · {displayStatus(item.status)}
           </b>
           <code>
             {short(item.id)} · {(item.input_keys || []).join(', ')}
           </code>
+          {item.effects?.map((effect, index) => (
+            <small key={`${effect.input_key}-${effect.effect}-${index}`}>{effect.statement}</small>
+          ))}
         </span>
       ))}
       {!value?.consumers.length && <small>尚无下游使用</small>}

@@ -20,8 +20,8 @@ export function normalizeWorkflowPlanningFields(nodes) {
     const acceptance = unique(
       node.acceptance_criteria?.length ? node.acceptance_criteria : [`完成并验证：${node.goal || node.title}`]
     );
-    const inputs = normalizeInputs(node.input_slots, dependencyIds, node);
     const outputs = normalizeOutputs(node.output_slots, acceptance, node);
+    const inputs = normalizeInputs(node.input_slots, dependencyIds, node, outputs);
     return {
       ...node,
       capability_tags: tags,
@@ -73,6 +73,7 @@ function validateWorkstreamPlanning(workstream, context) {
   if (!atomic) validateWorkstreamPhaseCoverage(workstream, tasks, software, context.errors);
   validateWorkstreamDependencyInputs(workstream, tasks, context);
   for (const [index, task] of tasks.entries()) validateTaskPlanning(task, index, context);
+  validateHandoffRoutes(tasks, context);
 }
 
 function validateWorkstreamDependencyInputs(workstream, tasks, context) {
@@ -220,6 +221,7 @@ function validateTaskPlanning(task, index, context) {
 }
 
 function typedInputsInvalid(task) {
+  const outputKeys = new Set((task.output_slots || []).map((slot) => slot.key));
   return (
     !Array.isArray(task.input_slots) ||
     task.input_slots.some(
@@ -227,7 +229,12 @@ function typedInputsInvalid(task) {
         !slot.key ||
         !slot.kind ||
         !slot.source ||
-        !['must_use', 'must_acknowledge', 'available'].includes(slot.consumption_policy || 'must_acknowledge')
+        !slot.purpose ||
+        !['required', 'optional'].includes(slot.application_policy) ||
+        !['all', 'any'].includes(slot.coverage_policy) ||
+        !slot.target_output_keys?.length ||
+        slot.target_output_keys.some((key) => !outputKeys.has(key)) ||
+        (slot.consumption_policy && !['must_use', 'must_acknowledge', 'available'].includes(slot.consumption_policy))
     )
   );
 }
@@ -237,7 +244,12 @@ function typedOutputsInvalid(task) {
     !task.output_slots?.length ||
     task.output_slots.some(
       (slot) =>
-        !slot.key || !slot.kind || !slot.asset_type || !slot.acceptance_criteria?.length || !slot.confirmation_policy
+        !slot.key ||
+        !slot.kind ||
+        !slot.asset_type ||
+        !slot.acceptance_criteria?.length ||
+        !slot.confirmation_policy ||
+        !slot.purpose
     )
   );
 }
@@ -293,7 +305,8 @@ export function defaultBriefCoverage(brief, taskIds) {
   );
 }
 
-function normalizeInputs(source, _dependencyIds, node) {
+function normalizeInputs(source, _dependencyIds, node, outputs) {
+  const outputKeys = outputs.map((slot) => slot.key);
   const slots = (Array.isArray(source) ? source : []).map((slot, index) => ({
     key: clean(slot?.key || `input_${index + 1}`, 120),
     kind: clean(slot?.kind || 'asset_version', 80),
@@ -304,7 +317,17 @@ function normalizeInputs(source, _dependencyIds, node) {
     version_id: slot?.version_id ?? null,
     consumption_policy: ['must_use', 'must_acknowledge', 'available'].includes(slot?.consumption_policy)
       ? slot.consumption_policy
-      : 'must_acknowledge'
+      : null,
+    application_policy: ['required', 'optional'].includes(slot?.application_policy)
+      ? slot.application_policy
+      : slot?.consumption_policy === 'must_use'
+        ? 'required'
+        : 'optional',
+    purpose:
+      clean(slot?.purpose, 1000) ||
+      `使用 ${clean(slot?.source || '该输入', 80)} 输入影响 ${outputKeys.join('、') || '任务输出'}。`,
+    target_output_keys: unique(slot?.target_output_keys?.length ? slot.target_output_keys : outputKeys),
+    coverage_policy: slot?.coverage_policy === 'any' ? 'any' : 'all'
   }));
   if (SOFTWARE_KINDS.has(node.task_kind) && !slots.some((slot) => slot.source === 'repository_workspace'))
     slots.push({
@@ -315,7 +338,11 @@ function normalizeInputs(source, _dependencyIds, node) {
       selector: 'fixed_sha',
       ref_id: null,
       version_id: null,
-      consumption_policy: 'must_acknowledge'
+      consumption_policy: null,
+      application_policy: 'required',
+      purpose: `以固定仓库快照作为 ${outputKeys.join('、')} 的唯一代码与验证基线。`,
+      target_output_keys: outputKeys,
+      coverage_policy: 'all'
     });
   return slots;
 }
@@ -332,7 +359,7 @@ function normalizeOutputs(source, acceptance, node) {
           confirmation_policy: clean(slot?.confirmation_policy || policy, 80),
           handoff: slot?.handoff !== false,
           consumer_hint: clean(slot?.consumer_hint, 200) || null,
-          purpose: clean(slot?.purpose, 500) || null
+          purpose: clean(slot?.purpose, 500) || `交付并证明：${acceptance[0] || node.goal || node.title}`
         }))
       : [
           {
@@ -344,7 +371,7 @@ function normalizeOutputs(source, acceptance, node) {
             confirmation_policy: policy,
             handoff: true,
             consumer_hint: null,
-            purpose: null
+            purpose: `交付并证明：${acceptance[0] || node.goal || node.title}`
           }
         ];
   const covered = new Set(slots.flatMap((slot) => slot.acceptance_criteria));
@@ -386,6 +413,36 @@ function validateDependencySelectors(task, dependency, bindings, errors) {
           selector: binding.selector
         })
       );
+    else if (outputs.find((slot) => slot.key === binding.selector)?.handoff === false)
+      errors.push(
+        issue('workflow_task_dependency_output_not_exported', task.id, {
+          dependency_id: dependency?.id,
+          slot_key: binding.key,
+          selector: binding.selector
+        })
+      );
+  }
+}
+
+function validateHandoffRoutes(tasks, context) {
+  for (const producer of tasks) {
+    const terminal = !tasks.some((candidate) => deps(candidate).includes(producer.id));
+    for (const output of producer.output_slots || []) {
+      if (output.handoff === false || terminal) continue;
+      const routed = tasks.some((consumer) =>
+        (consumer.input_slots || []).some(
+          (input) =>
+            input.source === 'dependency' &&
+            input.ref_id === producer.id &&
+            (input.selector === output.key ||
+              (input.selector === 'required_outputs' &&
+                output.required !== false &&
+                (producer.output_slots || []).filter((item) => item.required !== false).length === 1))
+        )
+      );
+      if (!routed)
+        context.errors.push(issue('workflow_task_handoff_output_unrouted', producer.id, { output_key: output.key }));
+    }
   }
 }
 function inferredTags(node) {

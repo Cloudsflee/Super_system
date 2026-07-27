@@ -4,8 +4,9 @@ import { HttpError } from './http.mjs';
 import { repositoryWorkspaceSnapshotHash } from './repository-workspace-service.mjs';
 import { CONTEXT_PACK_SCHEMA } from '../../../packages/system-context/src/index.mjs';
 import { compactRuntimeMap, createSelectionForRuntimeInState } from './context-service.mjs';
+import { applicationPolicy } from './task-effects.mjs';
 
-export const EXECUTION_INPUT_HASH_VERSION = 2;
+export const EXECUTION_INPUT_HASH_VERSION = 3;
 
 export function prepareTaskExecutionContext(state, input) {
   const { project, workspace, task, contract } = input,
@@ -66,7 +67,7 @@ function createExecutionSnapshot(state, input, scope) {
     dependencyGraph = dependencySnapshot(state, task, input.taskExecution?.workflow_execution_id),
     decisions = resolved.filter((item) => item.source === 'decision' && item.context).map((item) => item.context);
   return {
-    schema_version: input.taskExecution ? 'aiws.task_execution_context.v3' : 'aiws.task_execution_context.v2',
+    schema_version: input.taskExecution ? 'aiws.task_execution_context.v4' : 'aiws.task_execution_context.v2',
     project_id: project.id,
     workflow_id: workflow.id,
     workflow_execution_id: input.workflowExecution?.id || input.taskExecution?.workflow_execution_id || null,
@@ -79,6 +80,7 @@ function createExecutionSnapshot(state, input, scope) {
     contract: structuredClone(contract),
     dependency_graph: dependencyGraph,
     inputs: resolved,
+    input_effect_obligations: inputEffectObligations(resolved, contract),
     repository_snapshot: repositorySnapshot,
     workstream_digest: digest ? digestSnapshot(digest) : null,
     project_brief: brief ? structuredClone(brief) : null,
@@ -140,7 +142,8 @@ function persistExecutionContext(state, input, scope) {
         title: node?.title || null,
         reason: item.reason,
         required: requiredContextRefs.has(sourceKey),
-        consumption_policy: requiredContextRefs.has(sourceKey) ? 'must_acknowledge' : 'available'
+        consumption_policy: 'available',
+        delivery_mode: 'metadata_only'
       };
     }),
     retrievalProtocol = {
@@ -214,7 +217,7 @@ function inputAssetFreshnessReasons(state, context, input) {
         version_id: binding.version_id
       });
     if (
-      context.schema_version === 'aiws.task_execution_context.v3' &&
+      ['aiws.task_execution_context.v3', 'aiws.task_execution_context.v4'].includes(context.schema_version) &&
       (version?.verification_status !== 'verified' ||
         version?.immutable !== true ||
         version?.content_sha256 !== binding.content_sha256)
@@ -366,7 +369,11 @@ function resolveInputSlot(state, scope, slot, errors) {
     version_id: slot.version_id ?? null,
     consumption_policy: ['must_use', 'must_acknowledge', 'available'].includes(slot.consumption_policy)
       ? slot.consumption_policy
-      : null
+      : null,
+    application_policy: applicationPolicy(slot),
+    purpose: clean(slot.purpose, 1000) || null,
+    target_output_keys: normalizeTargetOutputKeys(slot.target_output_keys, scope.contract),
+    coverage_policy: slot.coverage_policy === 'any' ? 'any' : 'all'
   };
   if (slot.source === 'brief') {
     const brief = (state.project_briefs || [])
@@ -948,6 +955,25 @@ function uniqueAssets(items) {
     return true;
   });
 }
+function inputEffectObligations(inputs, contract) {
+  return (inputs || []).map((input) => ({
+    input_key: input.key,
+    source: input.source,
+    required: input.required !== false,
+    application_policy: input.application_policy,
+    purpose: input.purpose,
+    target_output_keys: input.target_output_keys,
+    coverage_policy: input.coverage_policy,
+    version_ids: (input.asset_versions || []).map((item) => item.version_id).filter(Boolean)
+  }));
+}
+function normalizeTargetOutputKeys(values, contract) {
+  const declared = [
+    ...new Set((Array.isArray(values) ? values : []).map((value) => clean(value, 120)).filter(Boolean))
+  ];
+  if (declared.length) return declared.sort();
+  return [...new Set((contract?.expected_outputs || []).map((item) => clean(item?.key, 120)).filter(Boolean))].sort();
+}
 function missing(errors, slot, code, detail = {}) {
   errors.push({ code, slot_key: slot.key, ...detail });
   return null;
@@ -957,4 +983,10 @@ function notReady(reasons) {
 }
 function byNewest(a, b) {
   return String(b.reviewed_at || b.created_at || '').localeCompare(String(a.reviewed_at || a.created_at || ''));
+}
+function clean(value, max) {
+  return String(value ?? '')
+    .replace(/\0/g, '')
+    .trim()
+    .slice(0, max);
 }

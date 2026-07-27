@@ -239,6 +239,8 @@ async function completeNodeRun(nodeId, body, prepared) {
           declaredInputDispositions: execution.resultJson.input_dispositions,
           declaredConsumedContextDocumentVersions: execution.resultJson.consumed_context_document_versions,
           declaredContextDispositions: execution.resultJson.context_dispositions,
+          declaredInputEffects: execution.resultJson.input_effects,
+          declaredContextEffects: execution.resultJson.context_effects,
           nodeRunId: run.id,
           actorId: actor.id,
           verifierId:
@@ -265,6 +267,8 @@ async function completeNodeRun(nodeId, body, prepared) {
 }
 
 function testConsumptionFixture(taskExecution, body) {
+  if (taskExecution?.context_snapshot?.schema_version === 'aiws.task_execution_context.v4')
+    return testEffectFixture(taskExecution, body);
   if (body.test_consumption_plan && typeof body.test_consumption_plan === 'object') {
     const plans = Object.values(body.test_consumption_plan).filter((item) => item && typeof item === 'object');
     return {
@@ -335,6 +339,37 @@ function testConsumptionFixture(taskExecution, body) {
   };
 }
 
+function testEffectFixture(taskExecution, body) {
+  const inputs = taskExecution.context_snapshot?.inputs || [],
+    outputKeys = (taskExecution.context_snapshot?.contract?.expected_outputs || []).map((item) => item.key),
+    usedInputKeys = new Set(Array.isArray(body.test_used_input_keys) ? body.test_used_input_keys : []),
+    useRequiredInputs = body.test_use_required_inputs === true,
+    plans = Object.values(body.test_consumption_plan || {}).filter((item) => item && typeof item === 'object'),
+    declaredEffects = plans.flatMap((item) => item.input_effects || []);
+  const inputEffects = declaredEffects.length
+    ? declaredEffects
+    : inputs
+        .filter(
+          (input) =>
+            usedInputKeys.has(input.key) ||
+            (useRequiredInputs && (input.application_policy === 'required' || input.consumption_policy === 'must_use'))
+        )
+        .map((input) => ({
+          input_key: input.key,
+          version_ids: (input.asset_versions || []).map((item) => item.version_id).filter(Boolean),
+          effect: 'verification',
+          output_keys: input.target_output_keys?.length ? input.target_output_keys : outputKeys,
+          statement: `Test fixture verified how input ${input.key} changes the declared task outputs.`,
+          evidence_refs: []
+        }));
+  return {
+    inputEffects,
+    contextEffects: plans.flatMap((item) => item.context_effects || []),
+    consumptionPlan: null,
+    syntheticFallback: !inputEffects.length && !body.test_consumption_plan
+  };
+}
+
 async function failNodeRun(runId, error) {
   return mutate((state) => {
     const run = state.node_runs.find((item) => item.id === runId);
@@ -377,7 +412,7 @@ async function failNodeRun(runId, error) {
 
 export function controlledRunnerResultError(result, controlled = true) {
   if (!controlled) return null;
-  if (result?.schema_version !== 'aiws.task_runner_result.v2')
+  if (!['aiws.task_runner_result.v2', 'aiws.task_runner_result.v3'].includes(result?.schema_version))
     return new HttpError(409, { error: 'slot_aware_runner_output_required', retryable: false });
   if (result.status === RunnerStatus.Succeeded) return null;
   const process = result?._codex_process || {},

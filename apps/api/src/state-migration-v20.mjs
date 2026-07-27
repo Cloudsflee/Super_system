@@ -95,15 +95,24 @@ export function normalizeTaskHandoffDefaultsV20(state) {
       execution.context_dispositions = contextDispositions;
       changed = true;
     }
+    changed = cleanEffectRecord(execution, 'input_effects', 'input_key') || changed;
+    changed = cleanEffectRecord(execution, 'context_effects', 'document_version_id') || changed;
   }
   for (const version of state.asset_versions || []) {
     if (!version.provenance || typeof version.provenance !== 'object') continue;
     cleanRecord(version.provenance, 'consumed_inputs');
     cleanRecord(version.provenance, 'consumed_context_document_versions');
     cleanRecord(version.provenance, 'context_selection_ids');
+    changed = cleanEffectRecord(version.provenance, 'input_effects', 'input_key') || changed;
+    changed = cleanEffectRecord(version.provenance, 'context_effects', 'document_version_id') || changed;
   }
   for (const run of state.node_runs || []) {
     const result = run.result_json;
+    if (result?.schema_version === 'aiws.task_runner_result.v3') {
+      changed = cleanEffectRecord(result, 'input_effects', 'input_key') || changed;
+      changed = cleanEffectRecord(result, 'context_effects', 'document_version_id') || changed;
+      continue;
+    }
     if (!result || result.schema_version !== 'aiws.task_runner_result.v2') continue;
     cleanRecord(result, 'consumed_input_versions');
     cleanRecord(result, 'consumed_context_document_versions');
@@ -113,6 +122,39 @@ export function normalizeTaskHandoffDefaultsV20(state) {
     }
   }
   return { changed };
+}
+
+function cleanEffectRecord(record, field, idKey) {
+  if (!Array.isArray(record?.[field])) return false;
+  const before = record[field],
+    after = before
+      .filter(
+        (item) =>
+          item &&
+          typeof item === 'object' &&
+          typeof item[idKey] === 'string' &&
+          item[idKey].trim() &&
+          ['basis', 'constraint', 'comparison', 'verification', 'contradiction', 'reference'].includes(item.effect) &&
+          typeof item.statement === 'string' &&
+          item.statement.trim() &&
+          Array.isArray(item.output_keys)
+      )
+      .map((item) => ({
+        [idKey]: item[idKey].trim(),
+        ...(idKey === 'input_key' ? { version_ids: cleanIds(item.version_ids) } : {}),
+        effect: item.effect,
+        output_keys: cleanIds(item.output_keys),
+        statement: item.statement.trim(),
+        evidence_refs: cleanIds(item.evidence_refs)
+      }))
+      .sort((left, right) =>
+        `${left[idKey]}:${left.effect}:${left.output_keys.join(',')}`.localeCompare(
+          `${right[idKey]}:${right.effect}:${right.output_keys.join(',')}`
+        )
+      );
+  if (JSON.stringify(before) === JSON.stringify(after)) return false;
+  record[field] = after;
+  return true;
 }
 
 function cleanIds(values) {

@@ -27,7 +27,7 @@ export function projectWorkflowExecutionStateInState(state, workflowExecutionId)
         .map((item) => item.id)
     );
     const required = items.filter((item) => requiredIds.has(item.task_id));
-    workstream.status = workstreamStatus(required);
+    workstream.status = workstreamStatus(workstream, required);
     workstream.current_workflow_execution_id = workflowExecution.id;
     workstream.updated_at = now();
   }
@@ -60,10 +60,21 @@ function projectionStatus(status) {
   );
 }
 
-function workstreamStatus(required) {
+function workstreamStatus(workstream, required) {
+  const authoritative = authoritativeWorkstreamStatus(workstream);
+  if (authoritative) return authoritative;
   if (required.length && required.every((item) => item.status === 'completed')) return 'ready_for_submission';
   if (required.some((item) => ['running', 'verifying', 'awaiting_human', 'completed'].includes(item.status)))
     return 'running';
   if (required.some((item) => item.status === 'failed')) return 'blocked';
   return 'ready';
+}
+
+export function authoritativeWorkstreamStatus(workstream) {
+  if (workstream.status === 'needs_review' || workstream.status === 'completed') return workstream.status;
+  if (workstream.review?.decision === 'reject' && workstream.status === 'blocked') return 'blocked';
+  if (!workstream.latest_submission_id || !workstream.reviewed_at) return null;
+  if (workstream.review?.decision === 'approve') return 'completed';
+  if (workstream.review?.decision === 'reject') return 'blocked';
+  return null;
 }

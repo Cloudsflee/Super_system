@@ -8,6 +8,7 @@ import { attestAssetVersionInState, ingestExecutionOutputsInState } from './asse
 import { collectActualEvidenceInState, prepareTaskExecutionInState } from './task-execution-service.mjs';
 import { executionInputHash } from './task-execution-context.mjs';
 import { notUsedContextDispositions } from './task-handoff.mjs';
+import { deterministicInputEffects } from './task-effects.mjs';
 import {
   appendExecutionEvent,
   completeTaskExecutionInState,
@@ -211,6 +212,11 @@ export async function reopenRepositoryIntegration(taskExecutionId, input = {}, a
         remediation,
         'Repository remediation did not use semantic context.'
       );
+    const remediationInputEffects = deterministicInputEffects(remediation, ['code_change', 'repository_version'], {
+      effect: 'basis',
+      statement:
+        'Repository reconciliation applied the accepted decision and conflict evidence to the rebuilt repository outputs.'
+    });
     const remediationOutputs = [
       {
         output_key: 'code_change',
@@ -240,6 +246,8 @@ export async function reopenRepositoryIntegration(taskExecutionId, input = {}, a
       outputs: remediationOutputs,
       declaredConsumedContextDocumentVersions: remediationContextDispositions.length ? [] : null,
       declaredContextDispositions: remediationContextDispositions.length ? remediationContextDispositions : null,
+      declaredInputEffects: remediationInputEffects,
+      declaredContextEffects: [],
       actorId,
       verifierId: 'repository_change_verifier',
       actualEvidence: remediationEvidence
@@ -257,6 +265,11 @@ export async function reopenRepositoryIntegration(taskExecutionId, input = {}, a
         acceptance,
         'Repository acceptance verification did not use semantic context.'
       ),
+      acceptanceInputEffects = deterministicInputEffects(acceptance, ['test_evidence', 'accepted_repository_version'], {
+        effect: 'verification',
+        statement:
+          'Repository acceptance verified the exact repository version against the offline acceptance evidence.'
+      }),
       acceptanceOutputs = [
         {
           output_key: 'test_evidence',
@@ -286,6 +299,8 @@ export async function reopenRepositoryIntegration(taskExecutionId, input = {}, a
       outputs: acceptanceOutputs,
       declaredConsumedContextDocumentVersions: acceptanceContextDispositions.length ? [] : null,
       declaredContextDispositions: acceptanceContextDispositions.length ? acceptanceContextDispositions : null,
+      declaredInputEffects: acceptanceInputEffects,
+      declaredContextEffects: [],
       actorId,
       verifierId: 'repository_verify_verifier',
       actualEvidence: acceptanceEvidence
