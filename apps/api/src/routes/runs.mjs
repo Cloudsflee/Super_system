@@ -169,6 +169,7 @@ async function completeNodeRun(nodeId, body, prepared) {
         const taskExecution = snapshot.task_executions.find((item) => item.id === run?.task_execution_id);
         if (taskExecution?.executor === 'repository_change')
           await applyTestRepositoryChanges(taskExecution, body.test_changes);
+        const fixture = testConsumptionFixture(taskExecution, body);
         execution = {
           raw: 'test adapter execution',
           resultJson: buildNodeRunResult({
@@ -177,13 +178,7 @@ async function completeNodeRun(nodeId, body, prepared) {
             changedFiles: [],
             raw: body.test_summary || '测试 NodeRun 已完成',
             status: RunnerStatus.Succeeded,
-            consumedInputVersions: (taskExecution?.context_snapshot?.inputs || [])
-              .filter((item) => item.required !== false)
-              .flatMap((item) => item.asset_versions || [])
-              .map((item) => item.version_id),
-            consumedContextDocumentVersions: (taskExecution?.context_snapshot?.system_context?.document_versions || [])
-              .filter((item) => item.required === true)
-              .map((item) => item.document_version_id)
+            ...fixture
           })
         };
       } else {
@@ -241,7 +236,9 @@ async function completeNodeRun(nodeId, body, prepared) {
           taskExecution,
           outputs: execution.resultJson.outputs,
           declaredConsumedInputVersions: execution.resultJson.consumed_input_versions,
+          declaredInputDispositions: execution.resultJson.input_dispositions,
           declaredConsumedContextDocumentVersions: execution.resultJson.consumed_context_document_versions,
+          declaredContextDispositions: execution.resultJson.context_dispositions,
           nodeRunId: run.id,
           actorId: actor.id,
           verifierId:
@@ -265,6 +262,77 @@ async function completeNodeRun(nodeId, body, prepared) {
   } finally {
     runControllers.delete(prepared.run_id);
   }
+}
+
+function testConsumptionFixture(taskExecution, body) {
+  if (body.test_consumption_plan && typeof body.test_consumption_plan === 'object') {
+    const plans = Object.values(body.test_consumption_plan).filter((item) => item && typeof item === 'object');
+    return {
+      consumedInputVersions: plans.flatMap((item) => item.consumed_input_versions || []),
+      consumedContextDocumentVersions: plans.flatMap((item) => item.consumed_context_document_versions || []),
+      inputDispositions: plans.flatMap((item) => item.input_dispositions || []),
+      contextDispositions: plans.flatMap((item) => item.context_dispositions || []),
+      consumptionPlan: body.test_consumption_plan,
+      syntheticFallback: false
+    };
+  }
+  const inputs = taskExecution?.context_snapshot?.inputs || [],
+    documents = taskExecution?.context_snapshot?.system_context?.document_versions || [],
+    usedInputKeys = new Set(Array.isArray(body.test_used_input_keys) ? body.test_used_input_keys : []),
+    usedContextNodeIds = new Set(Array.isArray(body.test_used_context_node_ids) ? body.test_used_context_node_ids : []),
+    useRequiredInputs = body.test_use_required_inputs === true,
+    useRequiredContext = body.test_use_required_context === true,
+    consumedInputVersions = inputs
+      .filter((item) => usedInputKeys.has(item.key) || (useRequiredInputs && item.required !== false))
+      .flatMap((item) => item.asset_versions || [])
+      .map((item) => item.version_id)
+      .filter(Boolean),
+    consumedContextDocumentVersions = documents
+      .filter((item) => usedContextNodeIds.has(item.node_id) || (useRequiredContext && item.required === true))
+      .map((item) => item.document_version_id)
+      .filter(Boolean),
+    usedInputs = new Set(consumedInputVersions),
+    usedContext = new Set(consumedContextDocumentVersions),
+    inputDispositions = inputs.flatMap((item) =>
+      (item.asset_versions || []).map((version) => ({
+        version_id: version.version_id,
+        disposition: usedInputs.has(version.version_id) ? 'used' : 'not_used',
+        reason: usedInputs.has(version.version_id)
+          ? `Test fixture explicitly uses input slot ${item.key}.`
+          : `Test fixture explicitly does not use input slot ${item.key}.`
+      }))
+    ),
+    contextDispositions = documents.map((item) => ({
+      document_version_id: item.document_version_id,
+      disposition: usedContext.has(item.document_version_id) ? 'used' : 'not_used',
+      reason: usedContext.has(item.document_version_id)
+        ? 'Test fixture explicitly uses this context document.'
+        : 'Test fixture explicitly does not use this context document.'
+    })),
+    firstOutput = taskExecution?.context_snapshot?.contract?.expected_outputs?.[0]?.key,
+    consumptionPlan = firstOutput
+      ? {
+          [firstOutput]: {
+            consumed_input_versions: consumedInputVersions,
+            consumed_context_document_versions: consumedContextDocumentVersions,
+            input_dispositions: inputDispositions,
+            context_dispositions: contextDispositions
+          }
+        }
+      : null;
+  return {
+    consumedInputVersions,
+    consumedContextDocumentVersions,
+    inputDispositions,
+    contextDispositions,
+    consumptionPlan,
+    syntheticFallback:
+      !useRequiredInputs &&
+      !useRequiredContext &&
+      !usedInputKeys.size &&
+      !usedContextNodeIds.size &&
+      !body.test_consumption_plan
+  };
 }
 
 async function failNodeRun(runId, error) {

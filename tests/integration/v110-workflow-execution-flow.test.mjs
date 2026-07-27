@@ -12,6 +12,7 @@ process.env.AIWS_TEST_ADAPTERS = '1';
 try {
   const { managedRepoPath } = await import('../../apps/api/src/managed-workspace.mjs');
   const stateService = await import('../../apps/api/src/state.mjs');
+  const { readCasBlob } = await import('../../apps/api/src/asset-cas.mjs');
   const { createWorkflowExecutionInState } = await import('../../apps/api/src/workflow-execution-domain.mjs');
   const { provisionWorkflowRepositoryLines } = await import('../../apps/api/src/repository-line-service.mjs');
   const { dispatchWorkflowExecution } = await import('../../apps/api/src/workflow-dispatcher.mjs');
@@ -40,6 +41,8 @@ try {
         adapter: 'test',
         test_summary: 'deterministic test adapter',
         test_changes: [{ path: 'src/verified-change.txt', content: 'verified repository change\n' }],
+        test_use_required_inputs: true,
+        test_use_required_context: true,
         repositories: [
           { workstream_id: 'workstream-1', connection_id: 'connection-1', base_ref: 'main', base_sha: baseSha }
         ]
@@ -173,8 +176,10 @@ try {
   );
   assert.equal(outcome.status, 'confirmed');
   const outcomeVersion = state.asset_versions.find((item) => item.id === outcome.current_version_id);
-  const integration = currentExecution(state, 'task-integrate');
-  const integrationVersion = state.asset_versions.find((item) => item.id === integration.output_bindings[0].version_id);
+  const integration = currentExecution(state, 'task-integrate'),
+    integrationBinding = integration.output_bindings.find((item) => item.key === 'integration_evidence'),
+    internalBinding = integration.output_bindings.find((item) => item.key === 'internal_audit'),
+    integrationVersion = state.asset_versions.find((item) => item.id === integrationBinding.version_id);
   const consume = currentExecution(state, 'task-consume-outcome'),
     outcomeInput = consume.context_snapshot.inputs.find((item) => item.key === 'accepted_delivery');
   assert.equal(consume.status, 'awaiting_human');
@@ -186,8 +191,27 @@ try {
   assert.deepEqual(outcomeInput.resolved_from.selected_output_keys, ['integration_evidence']);
   assert.equal(outcomeInput.resolved_from.selected_outputs[0].producer_task_id, 'task-integrate');
   assert.equal(outcomeInput.resolved_from.outcome_version_id, outcomeVersion.id);
+  assert.equal(outcomeInput.asset_versions[0].handoff_manifest.output.version_id, integrationVersion.id);
+  assert.equal(
+    outcomeInput.asset_versions[0].handoff_manifest.manifest_sha256,
+    integrationBinding.handoff_manifest_sha256
+  );
+  assert.equal(internalBinding.handoff, false);
   assert.equal(integrationVersion.repository_sha, 'f'.repeat(40));
   assert.equal(outcomeVersion.repository_sha, 'f'.repeat(40));
+  const outcomePayload = JSON.parse(
+    (await readCasBlob(outcomeVersion.blob_refs.find((item) => item.role === 'payload').sha256, { state })).toString(
+      'utf8'
+    )
+  );
+  assert.deepEqual(
+    outcomePayload.handoff_output_bindings.map((item) => item.version_id),
+    [integrationVersion.id]
+  );
+  assert.deepEqual(
+    outcomePayload.terminal_output_bindings.map((item) => item.version_id).sort(),
+    [integrationBinding.version_id, internalBinding.version_id].sort()
+  );
   const terminalVersionIds = ['task-research', 'task-code', 'task-test', 'task-integrate']
     .flatMap((taskId) => currentExecution(state, taskId).output_bindings.map((binding) => binding.version_id))
     .sort();
@@ -366,6 +390,12 @@ function seed(state, repository, baseSha, ownerId) {
       allowed_tools: ['assist']
     }
   );
+  const integrationContract = state.node_contracts.find((item) => item.id === 'contract-integrate');
+  integrationContract.expected_outputs.push({
+    ...output('internal_audit', 'IntegrationEvidenceAsset', 'system_evidence'),
+    required: false,
+    handoff: false
+  });
   state.repository_connections.push({
     id: 'connection-1',
     project_id: 'project-1',

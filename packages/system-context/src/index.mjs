@@ -609,7 +609,7 @@ function buildDesiredEdges(state, activeIds, timestamp, nodeById = null) {
     });
   for (const relation of state.asset_relations || [])
     push(
-      'derived_from',
+      contextAssetRelationType(relation),
       bySource.get(`asset_versions:${relation.target_asset_version_id}`) ||
         bySource.get(`assets:${relation.target_asset_id}`),
       bySource.get(`asset_versions:${relation.source_asset_version_id}`) ||
@@ -669,6 +669,10 @@ function buildDesiredEdges(state, activeIds, timestamp, nodeById = null) {
     }
   }
   return uniqueBy(edges, (edge) => edge.id).sort(compareEdges);
+}
+
+function contextAssetRelationType(relation) {
+  return ['verified_against', 'evidenced_by'].includes(relation?.relation_type) ? 'evidenced_by' : 'derived_from';
 }
 
 function mergeCurrentEdges(existing, desired) {

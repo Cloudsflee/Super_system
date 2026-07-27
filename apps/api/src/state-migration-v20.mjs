@@ -50,6 +50,7 @@ export function normalizeState20Defaults(state, timestamp = new Date().toISOStri
   normalizeState19Defaults(state, timestamp);
   normalizeOfficialRunnerImagesV20(state, { timestamp });
   normalizeOutcomeEvidenceRelationsV20(state);
+  normalizeTaskHandoffDefaultsV20(state);
   reconcileContextProjectionState(state, { sourceCollections: V20_SOURCE_COLLECTIONS, timestamp });
   if (migrating) state.migrated_to_schema_20_at = timestamp;
   return state;
@@ -68,6 +69,85 @@ export function normalizeOutcomeEvidenceRelationsV20(state) {
     changed = true;
   }
   return { changed };
+}
+
+export function normalizeTaskHandoffDefaultsV20(state) {
+  let changed = false;
+  const cleanRecord = (record, field) => {
+    const before = Array.isArray(record?.[field]) ? record[field] : [];
+    const after = cleanIds(before);
+    if (JSON.stringify(before) !== JSON.stringify(after)) {
+      record[field] = after;
+      changed = true;
+    }
+  };
+  for (const execution of state.task_executions || []) {
+    cleanRecord(execution, 'consumed_inputs');
+    cleanRecord(execution, 'consumed_context_document_versions');
+    cleanRecord(execution, 'context_selection_ids');
+    const inputDispositions = cleanDispositions(execution.input_dispositions, 'version_id'),
+      contextDispositions = cleanDispositions(execution.context_dispositions, 'document_version_id');
+    if (JSON.stringify(execution.input_dispositions || []) !== JSON.stringify(inputDispositions)) {
+      execution.input_dispositions = inputDispositions;
+      changed = true;
+    }
+    if (JSON.stringify(execution.context_dispositions || []) !== JSON.stringify(contextDispositions)) {
+      execution.context_dispositions = contextDispositions;
+      changed = true;
+    }
+  }
+  for (const version of state.asset_versions || []) {
+    if (!version.provenance || typeof version.provenance !== 'object') continue;
+    cleanRecord(version.provenance, 'consumed_inputs');
+    cleanRecord(version.provenance, 'consumed_context_document_versions');
+    cleanRecord(version.provenance, 'context_selection_ids');
+  }
+  for (const run of state.node_runs || []) {
+    const result = run.result_json;
+    if (!result || result.schema_version !== 'aiws.task_runner_result.v2') continue;
+    cleanRecord(result, 'consumed_input_versions');
+    cleanRecord(result, 'consumed_context_document_versions');
+    for (const output of result.outputs || []) {
+      cleanRecord(output, 'consumed_input_versions');
+      cleanRecord(output, 'consumed_context_document_versions');
+    }
+  }
+  return { changed };
+}
+
+function cleanIds(values) {
+  return [
+    ...new Set(
+      (Array.isArray(values) ? values : [])
+        .filter((value) => typeof value === 'string')
+        .map((value) => value.trim())
+        .filter(Boolean)
+    )
+  ].sort();
+}
+
+function cleanDispositions(values, idKey) {
+  const seen = new Set();
+  return (Array.isArray(values) ? values : [])
+    .filter(
+      (item) =>
+        item &&
+        typeof item[idKey] === 'string' &&
+        item[idKey].trim() &&
+        ['used', 'not_used'].includes(item.disposition) &&
+        (item.disposition === 'used' || String(item.reason || '').trim())
+    )
+    .map((item) => ({
+      [idKey]: item[idKey].trim(),
+      disposition: item.disposition,
+      reason: String(item.reason || '').trim() || null
+    }))
+    .filter((item) => {
+      if (seen.has(item[idKey])) return false;
+      seen.add(item[idKey]);
+      return true;
+    })
+    .sort((left, right) => left[idKey].localeCompare(right[idKey]));
 }
 
 export function normalizeOfficialRunnerImagesV20(state, { timestamp = new Date().toISOString() } = {}) {

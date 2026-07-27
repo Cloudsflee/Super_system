@@ -250,13 +250,13 @@ export function buildRunnerInstruction({ project, node, contract, executionConte
     const versionIds = executionAssetVersionIds(executionContext),
       contextVersionIds = executionContextDocumentVersionIds(executionContext);
     lines.push(
-      '必须返回 aiws.task_runner_result.v2；每个输出声明 output_key、typed payload、evidence_refs、consumed_input_versions 和 consumed_context_document_versions。',
+      '必须返回 aiws.task_runner_result.v2；每个输出声明 output_key、typed payload、evidence_refs、consumed_input_versions、consumed_context_document_versions，并为明确给出的输入写 input_dispositions/context_dispositions。',
       'inputs 中 source=dependency 或 workstream_dependency 的 AssetVersion 是本轮权威上游交付；必须使用 asset_mounts 中固定的只读载荷，不得改用同项目的其他版本。',
       `consumed_input_versions 仅填写 inputs[].asset_versions[].version_id，允许的精确 AssetVersion ID 集合为：${JSON.stringify(versionIds)}。`,
-      '每个输出只声明它实际读取并用于形成该输出的 AssetVersion；required 输入必须至少被一个输出消费，optional 输入未使用时不要声明。',
+      '每个输出只声明它实际读取并用于形成该输出的 AssetVersion。consumption_policy=must_use 必须至少被一个输出使用；must_acknowledge/available 可声明 not_used，但必须给出具体原因。required 只表示执行前必须提供，不等于必须使用。',
       'Context Pack ID、Project Brief/Digest/Decision ID、Repository Line/branch/SHA 都不是 AssetVersion ID，禁止填入 consumed_input_versions。顶层 consumed_input_versions 必须等于所有输出所声明 ID 的并集。',
       `consumed_context_document_versions 可填写启动时 system_context.document_versions[].document_version_id（精确集合：${JSON.stringify(contextVersionIds)}），以及本轮 aiws_context read 响应 provenance_claim.document_version_id。`,
-      'aiws_context map/search 的节点或候选不算已读取；只有 read 返回且带本轮读取收据的精确文档版本才可声明。每个输出只声明它实际读取并用于形成该输出的上下文文档。required=true 的显式上下文必须至少被一个输出使用；当前锚点、用户固定项和其他地图文档不会自动算作已使用。顶层 consumed_context_document_versions 必须等于所有输出所声明 ID 的并集。'
+      'aiws_context map/search 的节点或候选不算已读取；只有 read 返回且带本轮读取收据的精确文档版本才可声明。每个输出只声明它实际读取并用于形成该输出的上下文文档；未使用的文档用 context_dispositions 明确说明。当前锚点、用户固定项和其他地图文档不会自动算作已使用。顶层 consumed_context_document_versions 必须等于所有输出所声明 ID 的并集。'
     );
   } else lines.push('输出必须匹配 aiws.node_run_result.v1。');
   return lines.join('\n');
@@ -299,6 +299,26 @@ export function taskRunnerResultSchema(context = null) {
     description: `Only exact ContextDocumentVersion IDs actually used: initial system_context IDs ${JSON.stringify(contextDocumentVersionIds)} or provenance_claim.document_version_id returned by aiws_context read during this run. The server validates the read receipt.`,
     items: { type: 'string', minLength: 1, maxLength: 200 }
   };
+  const inputDisposition = {
+    type: 'object',
+    additionalProperties: false,
+    required: ['version_id', 'disposition', 'reason'],
+    properties: {
+      version_id: inputVersionIds.length ? { type: 'string', enum: inputVersionIds } : { type: 'string' },
+      disposition: { enum: ['used', 'not_used'] },
+      reason: { type: 'string' }
+    }
+  };
+  const contextDisposition = {
+    type: 'object',
+    additionalProperties: false,
+    required: ['document_version_id', 'disposition', 'reason'],
+    properties: {
+      document_version_id: { type: 'string', minLength: 1, maxLength: 200 },
+      disposition: { enum: ['used', 'not_used'] },
+      reason: { type: 'string' }
+    }
+  };
   const payloadFile = {
     type: 'object',
     additionalProperties: false,
@@ -320,6 +340,9 @@ export function taskRunnerResultSchema(context = null) {
       'outputs',
       'consumed_input_versions',
       'consumed_context_document_versions',
+      'input_dispositions',
+      'context_dispositions',
+      'synthetic_fallback',
       'warnings'
     ],
     properties: {
@@ -328,6 +351,9 @@ export function taskRunnerResultSchema(context = null) {
       summary: { type: 'string' },
       consumed_input_versions: consumedVersions,
       consumed_context_document_versions: consumedContextVersions,
+      input_dispositions: { type: 'array', items: inputDisposition },
+      context_dispositions: { type: 'array', items: contextDisposition },
+      synthetic_fallback: { type: 'boolean' },
       outputs: {
         type: 'array',
         items: {
@@ -341,7 +367,14 @@ export function taskRunnerResultSchema(context = null) {
             'payload',
             'evidence_refs',
             'consumed_input_versions',
-            'consumed_context_document_versions'
+            'consumed_context_document_versions',
+            'input_dispositions',
+            'context_dispositions',
+            'purpose',
+            'consumer_hint',
+            'input_relations',
+            'unresolved_questions',
+            'limitations'
           ],
           properties: {
             output_key: outputKeys.length ? { enum: outputKeys } : { type: 'string' },
@@ -363,7 +396,26 @@ export function taskRunnerResultSchema(context = null) {
             },
             evidence_refs: stringArray,
             consumed_input_versions: consumedVersions,
-            consumed_context_document_versions: consumedContextVersions
+            consumed_context_document_versions: consumedContextVersions,
+            input_dispositions: { type: 'array', items: inputDisposition },
+            context_dispositions: { type: 'array', items: contextDisposition },
+            purpose: { type: 'string' },
+            consumer_hint: { type: 'string' },
+            input_relations: {
+              type: 'array',
+              items: {
+                type: 'object',
+                additionalProperties: false,
+                required: ['type', 'version_id', 'document_version_id'],
+                properties: {
+                  type: { enum: ['derived_from', 'verified_against', 'informed_by'] },
+                  version_id: { type: 'string' },
+                  document_version_id: { type: 'string' }
+                }
+              }
+            },
+            unresolved_questions: stringArray,
+            limitations: stringArray
           }
         }
       },
@@ -489,36 +541,63 @@ export function buildNodeRunResult({
   changedFiles = [],
   raw = '',
   status = RunnerStatus.Succeeded,
-  consumedInputVersions = [],
-  consumedContextDocumentVersions = []
+  consumedInputVersions = null,
+  consumedContextDocumentVersions = null,
+  inputDispositions = [],
+  contextDispositions = [],
+  consumptionPlan = null,
+  syntheticFallback = false
 }) {
   const nodeTitle = contextPack?.content_json?.workflow_node?.title || '节点任务',
     execution = contextPack?.content_json?.task_execution_context;
   if (execution?.schema_version === 'aiws.task_execution_context.v3') {
-    const consumed = [...new Set(consumedInputVersions)],
-      consumedContext = [...new Set(consumedContextDocumentVersions)];
+    const explicitInput = normalizedIdList(consumedInputVersions),
+      explicitContext = normalizedIdList(consumedContextDocumentVersions),
+      outputs = (execution.contract?.expected_outputs || []).map((slot, index) => {
+        const plan = consumptionPlan?.[slot.key] || {},
+          consumed = normalizedIdList(
+            plan.consumed_input_versions ?? (index === 0 && consumedInputVersions !== null ? explicitInput : [])
+          ),
+          consumedContext = normalizedIdList(
+            plan.consumed_context_document_versions ??
+              (index === 0 && consumedContextDocumentVersions !== null ? explicitContext : [])
+          );
+        return {
+          output_key: slot.key,
+          asset_type: slot.asset_type,
+          title: `${nodeTitle} ${slot.key}`,
+          summary: 'Runner candidate output; server verification remains authoritative.',
+          payload: {
+            payload_kind: 'text',
+            media_type: 'text/plain; charset=utf-8',
+            content: raw || nodeTitle,
+            files: []
+          },
+          evidence_refs: [`node_run:${run.id}`, `context_pack:${contextPack?.id}`],
+          consumed_input_versions: consumed,
+          consumed_context_document_versions: consumedContext,
+          input_dispositions: normalizedDispositionList(plan.input_dispositions || [], 'version_id'),
+          context_dispositions: normalizedDispositionList(plan.context_dispositions || [], 'document_version_id'),
+          purpose: String(plan.purpose || slot.purpose || `Deliver ${slot.key}.`),
+          consumer_hint: String(plan.consumer_hint || slot.consumer_hint || ''),
+          input_relations: Array.isArray(plan.input_relations) ? plan.input_relations : [],
+          unresolved_questions: Array.isArray(plan.unresolved_questions) ? plan.unresolved_questions : [],
+          limitations: Array.isArray(plan.limitations) ? plan.limitations : []
+        };
+      }),
+      aggregateInputs = normalizedIdList(outputs.flatMap((item) => item.consumed_input_versions)),
+      aggregateContext = normalizedIdList(outputs.flatMap((item) => item.consumed_context_document_versions));
     return {
       schema_version: 'aiws.task_runner_result.v2',
       status,
       summary: `${nodeTitle} 已完成 ${status}。${raw ? `Runner 输出：${raw.slice(0, 220)}` : ''}`,
-      consumed_input_versions: consumed,
-      consumed_context_document_versions: consumedContext,
-      outputs: (execution.contract?.expected_outputs || []).map((slot, index) => ({
-        output_key: slot.key,
-        asset_type: slot.asset_type,
-        title: `${nodeTitle} ${slot.key}`,
-        summary: 'Runner candidate output; server verification remains authoritative.',
-        payload: {
-          payload_kind: 'text',
-          media_type: 'text/plain; charset=utf-8',
-          content: raw || nodeTitle,
-          files: []
-        },
-        evidence_refs: [`node_run:${run.id}`, `context_pack:${contextPack?.id}`],
-        consumed_input_versions: index === 0 ? consumed : [],
-        consumed_context_document_versions: index === 0 ? consumedContext : []
-      })),
-      warnings: []
+      consumed_input_versions: aggregateInputs,
+      consumed_context_document_versions: aggregateContext,
+      input_dispositions: normalizedDispositionList(inputDispositions, 'version_id'),
+      context_dispositions: normalizedDispositionList(contextDispositions, 'document_version_id'),
+      outputs,
+      synthetic_fallback: syntheticFallback === true,
+      warnings: syntheticFallback ? ['synthetic fallback result; no usage is inferred from availability'] : []
     };
   }
   return {
@@ -561,9 +640,10 @@ export function normalizeRunnerOutput(raw, fallback = {}) {
     }
     if (v2) {
       const malformed =
+        !Array.isArray(parsed.outputs) ||
         !Array.isArray(parsed.consumed_input_versions) ||
         !Array.isArray(parsed.consumed_context_document_versions) ||
-        parsed.outputs?.find(
+        parsed.outputs.find(
           (item) =>
             !item?.output_key ||
             !item?.asset_type ||
@@ -573,8 +653,16 @@ export function normalizeRunnerOutput(raw, fallback = {}) {
             !Array.isArray(item?.payload?.files) ||
             !Array.isArray(item?.consumed_input_versions) ||
             !Array.isArray(item?.consumed_context_document_versions) ||
-            !Array.isArray(item?.evidence_refs)
-        );
+            !Array.isArray(item?.evidence_refs) ||
+            invalidIdList(item.consumed_input_versions) ||
+            invalidIdList(item.consumed_context_document_versions) ||
+            invalidDispositions(item.input_dispositions, 'version_id') ||
+            invalidDispositions(item.context_dispositions, 'document_version_id')
+        ) ||
+        invalidIdList(parsed.consumed_input_versions) ||
+        invalidIdList(parsed.consumed_context_document_versions) ||
+        invalidDispositions(parsed.input_dispositions, 'version_id') ||
+        invalidDispositions(parsed.context_dispositions, 'document_version_id');
       if (malformed)
         return {
           status: RunnerStatus.Partial,
@@ -585,6 +673,16 @@ export function normalizeRunnerOutput(raw, fallback = {}) {
           },
           parse_error: 'slot_aware_output_malformed'
         };
+      parsed.consumed_input_versions = normalizedIdList(parsed.consumed_input_versions);
+      parsed.consumed_context_document_versions = normalizedIdList(parsed.consumed_context_document_versions);
+      parsed.input_dispositions = normalizedDispositionList(parsed.input_dispositions, 'version_id');
+      parsed.context_dispositions = normalizedDispositionList(parsed.context_dispositions, 'document_version_id');
+      for (const item of parsed.outputs) {
+        item.consumed_input_versions = normalizedIdList(item.consumed_input_versions);
+        item.consumed_context_document_versions = normalizedIdList(item.consumed_context_document_versions);
+        item.input_dispositions = normalizedDispositionList(item.input_dispositions, 'version_id');
+        item.context_dispositions = normalizedDispositionList(item.context_dispositions, 'document_version_id');
+      }
     }
     return { status: parsed.status || RunnerStatus.Succeeded, result: parsed, parse_error: null };
   } catch (error) {
@@ -622,4 +720,52 @@ function executionContextDocumentVersionIds(context) {
       (context?.system_context?.document_versions || []).map((item) => item?.document_version_id).filter(Boolean)
     )
   ].sort();
+}
+
+function normalizedIdList(values) {
+  return [
+    ...new Set(
+      (Array.isArray(values) ? values : [])
+        .filter((value) => typeof value === 'string')
+        .map((value) => value.trim())
+        .filter(Boolean)
+    )
+  ].sort();
+}
+
+function normalizedDispositionList(values, idKey) {
+  const normalized = (Array.isArray(values) ? values : [])
+    .filter((item) => item && typeof item === 'object' && typeof item[idKey] === 'string')
+    .map((item) => ({
+      [idKey]: item[idKey].trim(),
+      disposition: item.disposition === 'not_used' ? 'not_used' : item.disposition === 'used' ? 'used' : '',
+      reason: String(item.reason || '').trim()
+    }))
+    .filter((item) => item[idKey] && item.disposition && (item.disposition === 'used' || item.reason));
+  const byId = new Map();
+  for (const item of normalized) {
+    const existing = byId.get(item[idKey]);
+    if (!existing || item.disposition === 'used') byId.set(item[idKey], item);
+  }
+  return [...byId.values()].sort((left, right) => left[idKey].localeCompare(right[idKey]));
+}
+
+function invalidIdList(values) {
+  return (Array.isArray(values) ? values : []).some(
+    (value) => value != null && value !== '' && typeof value !== 'string'
+  );
+}
+
+function invalidDispositions(values, idKey) {
+  if (values === undefined) return false;
+  if (!Array.isArray(values)) return true;
+  return values.some(
+    (item) =>
+      !item ||
+      typeof item !== 'object' ||
+      typeof item[idKey] !== 'string' ||
+      !item[idKey].trim() ||
+      !['used', 'not_used'].includes(item.disposition) ||
+      (item.disposition === 'not_used' && !String(item.reason || '').trim())
+  );
 }

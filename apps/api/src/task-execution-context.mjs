@@ -139,7 +139,8 @@ function persistExecutionContext(state, input, scope) {
         source_id: node?.source_id || null,
         title: node?.title || null,
         reason: item.reason,
-        required: requiredContextRefs.has(sourceKey)
+        required: requiredContextRefs.has(sourceKey),
+        consumption_policy: requiredContextRefs.has(sourceKey) ? 'must_acknowledge' : 'available'
       };
     }),
     retrievalProtocol = {
@@ -362,7 +363,10 @@ function resolveInputSlot(state, scope, slot, errors) {
     source: slot.source,
     selector: slot.selector ?? null,
     ref_id: slot.ref_id ?? null,
-    version_id: slot.version_id ?? null
+    version_id: slot.version_id ?? null,
+    consumption_policy: ['must_use', 'must_acknowledge', 'available'].includes(slot.consumption_policy)
+      ? slot.consumption_policy
+      : null
   };
   if (slot.source === 'brief') {
     const brief = (state.project_briefs || [])
@@ -812,6 +816,9 @@ function assetVersionSnapshot(asset, version, outputKey = null, origin = null) {
       : { body: version.body }),
     evidence_refs: version.evidence_refs || [],
     verification_status: version.verification_status || 'legacy_unverified',
+    handoff_manifest: version.provenance?.handoff_manifest
+      ? structuredClone(version.provenance.handoff_manifest)
+      : null,
     ...(origin?.producer_task_id
       ? {
           producer_task_id: origin.producer_task_id,

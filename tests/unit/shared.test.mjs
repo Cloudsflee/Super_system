@@ -35,6 +35,17 @@ assert.deepEqual(workflow.graph_json, { nodes: [], edges: [] }, 'new projects st
 const node = { id: 'node_execution', type: 'execution', title: '执行节点', goal: '完成验证', workflow_id: workflow.id };
 const contract = defaultContractForNode(node, created.project, user.id, 'confirmed');
 assert.equal(validateNodeContract(contract).ok, true, 'default contract should be valid');
+const orderingOnly = defaultContractForNode(
+  { ...node, id: 'node-ordering-only', dependencies: [{ node_id: 'node-upstream' }] },
+  created.project,
+  user.id,
+  'confirmed'
+);
+assert.equal(
+  orderingOnly.expected_inputs.some((slot) => slot.source === 'dependency'),
+  false,
+  'an ordering dependency must not invent an asset data flow'
+);
 
 const asset = makeAssetFromCandidate(
   { title: 'Confirmed Fact', summary: '系统事实', evidence_refs: ['trace:x'] },

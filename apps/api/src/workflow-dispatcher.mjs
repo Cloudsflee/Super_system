@@ -5,6 +5,7 @@ import { STATE_FILE } from './config.mjs';
 import { prepareRepositoryIntegration } from './repository-integration-service.mjs';
 import { provisionWorkflowRepositoryLines } from './repository-line-service.mjs';
 import { mutate, readState } from './state.mjs';
+import { notUsedContextDispositions } from './task-handoff.mjs';
 import {
   claimTaskExecution,
   prepareTaskExecutionInState,
@@ -101,7 +102,16 @@ async function runNodeExecutor(state, execution) {
     lease_token: claim.lease_token,
     ...(runner ? { runner } : {}),
     ...(options.adapter === 'test'
-      ? { adapter: 'test', test_summary: options.test_summary, test_changes: options.test_changes }
+      ? {
+          adapter: 'test',
+          test_summary: options.test_summary,
+          test_changes: options.test_changes,
+          test_use_required_inputs: options.test_use_required_inputs,
+          test_use_required_context: options.test_use_required_context,
+          test_used_input_keys: options.test_used_input_keys,
+          test_used_context_node_ids: options.test_used_context_node_ids,
+          test_consumption_plan: options.test_consumption_plan
+        }
       : {})
   });
 }
@@ -111,7 +121,16 @@ async function runRepositoryVerification(taskExecutionId) {
   const execution = claim.task_execution,
     state = await readState();
   const contract = state.node_contracts.find((item) => item.id === execution.contract_id),
-    consumed = inputVersions(execution);
+    consumed = inputVersions(execution),
+    contextDispositions = notUsedContextDispositions(
+      execution,
+      'The deterministic repository verifier did not use semantic context.'
+    );
+  const inputDispositions = consumed.map((versionId) => ({
+    version_id: versionId,
+    disposition: 'used',
+    reason: 'The deterministic verifier checked this exact input version.'
+  }));
   const outputs = (contract?.expected_outputs || []).map((slot) => ({
     output_key: slot.key,
     asset_type: slot.asset_type,
@@ -119,12 +138,18 @@ async function runRepositoryVerification(taskExecutionId) {
     summary: 'AIWS deterministic repository verification.',
     payload: { payload_kind: 'test_report', media_type: 'application/json', content: {} },
     evidence_refs: [],
-    consumed_input_versions: consumed
+    consumed_input_versions: consumed,
+    input_dispositions: inputDispositions,
+    ...(contextDispositions.length
+      ? { consumed_context_document_versions: [], context_dispositions: contextDispositions }
+      : {})
   }));
   return submitTaskExecutionOutputs(execution.id, {
     outputs,
     leaseToken: claim.lease_token,
-    verifierId: 'repository_verify_verifier'
+    verifierId: 'repository_verify_verifier',
+    declaredConsumedContextDocumentVersions: contextDispositions.length ? [] : null,
+    declaredContextDispositions: contextDispositions.length ? contextDispositions : null
   });
 }
 

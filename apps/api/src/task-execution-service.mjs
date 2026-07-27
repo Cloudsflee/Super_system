@@ -181,7 +181,10 @@ export async function submitTaskExecutionOutputs(
     actualEvidence = null,
     actorId = null,
     manual = false,
-    declaredConsumedContextDocumentVersions = null
+    declaredConsumedInputVersions = null,
+    declaredInputDispositions = null,
+    declaredConsumedContextDocumentVersions = null,
+    declaredContextDispositions = null
   }
 ) {
   if (manual) await ensureTaskExecutionContextProjection(taskExecutionId);
@@ -200,7 +203,10 @@ export async function submitTaskExecutionOutputs(
     const ingested = await ingestExecutionOutputsInState(state, {
       taskExecution: execution,
       outputs,
+      declaredConsumedInputVersions,
+      declaredInputDispositions,
       declaredConsumedContextDocumentVersions,
+      declaredContextDispositions,
       actorId,
       verifierId: verifierId || verifierFor(execution.executor),
       actualEvidence: evidence
@@ -334,7 +340,7 @@ export async function ensureCompletedWorkstreamOutcomesInState(state, workflowEx
           .map((item) => item.id)
       ),
       bindings = tasks.flatMap((item) => item.output_bindings || []),
-      handoffBindings = tasks
+      terminalBindings = tasks
         .filter((item) => terminalTaskIds.has(item.task_id))
         .flatMap((item) =>
           (item.output_bindings || []).map((binding) => {
@@ -348,9 +354,16 @@ export async function ensureCompletedWorkstreamOutcomesInState(state, workflowEx
             };
           })
         ),
+      handoffBindings = terminalBindings.filter((binding) => binding.handoff !== false),
       line = state.repository_lines.find(
         (item) => item.workflow_execution_id === workflowExecutionId && item.workstream_id === workstream.id
       );
+    if (!handoffBindings.length)
+      throw new HttpError(409, {
+        error: 'workstream_handoff_outputs_missing',
+        workstream_id: workstream.id,
+        terminal_task_ids: [...terminalTaskIds]
+      });
     if (line && line.status !== 'merged') continue;
     const payload = {
       payload_kind: 'json',
@@ -361,6 +374,7 @@ export async function ensureCompletedWorkstreamOutcomesInState(state, workflowEx
         workstream_id: workstream.id,
         workflow_revision: workflowExecution.workflow_revision,
         handoff_output_bindings: handoffBindings,
+        terminal_output_bindings: terminalBindings,
         terminal_task_executions: tasks.map((item) => ({
           id: item.id,
           task_id: item.task_id,
@@ -424,7 +438,7 @@ export async function ensureCompletedWorkstreamOutcomesInState(state, workflowEx
       evidence: {
         workflow_execution_id: workflowExecutionId,
         handoff_output_bindings: handoffBindings,
-        terminal_output_bindings: bindings,
+        terminal_output_bindings: terminalBindings,
         external_snapshot_sha256: version.content_sha256,
         repository_line: line ? { id: line.id, merged_sha: line.merged_sha, pr_number: line.pr_number } : null
       }
@@ -617,7 +631,9 @@ async function recoverPartialRepositoryChangeInState(state, previous, retry, sou
       taskExecution: retry,
       outputs: result.outputs,
       declaredConsumedInputVersions: result.consumed_input_versions,
+      declaredInputDispositions: result.input_dispositions,
       declaredConsumedContextDocumentVersions: result.consumed_context_document_versions,
+      declaredContextDispositions: result.context_dispositions,
       actorId,
       verifierId: 'repository_change_verifier',
       actualEvidence: evidence

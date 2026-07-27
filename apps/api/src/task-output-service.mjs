@@ -141,16 +141,22 @@ export function recordAssetLineage(state, context, outputBindings, executionId =
         ? uniqueBindings(declared.map((versionId) => sourceByVersion.get(versionId)).filter(Boolean))
         : sources;
     for (const source of consumedSources) {
+      const declaredRelation = targetVersion?.provenance?.handoff_manifest?.relations?.find(
+          (item) => item.version_id === source.version_id
+        ),
+        relationType = ['derived_from', 'verified_against'].includes(declaredRelation?.type)
+          ? declaredRelation.type
+          : 'derived_from';
       const duplicate = state.asset_relations.some(
         (item) =>
-          item.relation_type === 'derived_from' &&
+          item.relation_type === relationType &&
           item.source_asset_version_id === source.version_id &&
           item.target_asset_version_id === target.version_id
       );
       if (!duplicate)
         state.asset_relations.push({
           id: `arl_${cryptoId()}`,
-          relation_type: 'derived_from',
+          relation_type: relationType,
           source_asset_id: source.asset_id,
           source_asset_version_id: source.version_id,
           target_asset_id: target.asset_id,

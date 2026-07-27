@@ -4,6 +4,7 @@ import { HttpError } from './http.mjs';
 import { createRepositoryLinePullRequestIntentInState, requireIntent } from './pull-request-intent-domain.mjs';
 import { verifyRepositoryLineHead } from './repository-line-service.mjs';
 import { mutate } from './state.mjs';
+import { notUsedContextDispositions } from './task-handoff.mjs';
 import { ensureCompletedWorkstreamOutcomesInState, prepareTaskExecutionInState } from './task-execution-service.mjs';
 import {
   appendExecutionEvent,
@@ -135,12 +136,16 @@ export async function advanceRepositoryIntegration(intentId, action, result, act
     transitionTaskExecutionInState(state, execution, 'verifying', { reason: 'pull_request_merged' });
     const contract = state.node_contracts.find((item) => item.id === execution.contract_id);
     const consumed = [
-      ...new Set(
-        (execution.context_snapshot?.inputs || [])
-          .flatMap((item) => item.asset_versions || [])
-          .map((item) => item.version_id)
-      )
-    ];
+        ...new Set(
+          (execution.context_snapshot?.inputs || [])
+            .flatMap((item) => item.asset_versions || [])
+            .map((item) => item.version_id)
+        )
+      ],
+      contextDispositions = notUsedContextDispositions(
+        execution,
+        'The deterministic repository integration did not use semantic context.'
+      );
     const outputs = (contract?.expected_outputs || []).map((slot) => ({
       output_key: slot.key,
       asset_type: slot.asset_type,
@@ -148,11 +153,16 @@ export async function advanceRepositoryIntegration(intentId, action, result, act
       summary: `Merged ${intent.head_sha} into ${intent.base_ref} as ${mergedSha}.`,
       payload: { payload_kind: 'json', media_type: 'application/json', content: { pull_request_intent_id: intent.id } },
       evidence_refs: evidence.evidence_refs,
-      consumed_input_versions: consumed
+      consumed_input_versions: consumed,
+      ...(contextDispositions.length
+        ? { consumed_context_document_versions: [], context_dispositions: contextDispositions }
+        : {})
     }));
     const ingested = await ingestExecutionOutputsInState(state, {
       taskExecution: execution,
       outputs,
+      declaredConsumedContextDocumentVersions: contextDispositions.length ? [] : null,
+      declaredContextDispositions: contextDispositions.length ? contextDispositions : null,
       actorId,
       verifierId: 'repository_integrate_verifier',
       actualEvidence: evidence

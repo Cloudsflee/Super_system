@@ -9,6 +9,7 @@ import {
   migrateState19To20,
   migrateStateFileToV20,
   normalizeState20Defaults,
+  normalizeTaskHandoffDefaultsV20,
   validateState20
 } from '../../apps/api/src/state-migration-v20.mjs';
 
@@ -94,6 +95,37 @@ runtimeState.asset_relations.push({
   target_asset_version_id: outcomeAsset.version.id,
   created_at: timestamp
 });
+const dirtyHandoffState = {
+  asset_versions: [],
+  node_runs: [],
+  task_executions: [
+    {
+      id: 'execution-null-consumption',
+      consumed_inputs: [null, '', runtimeAsset.version.id],
+      consumed_context_document_versions: [null, '', 'context-version-valid'],
+      context_selection_ids: [null, '', 'selection-valid'],
+      input_dispositions: [
+        { version_id: null, disposition: 'used', reason: null },
+        { version_id: runtimeAsset.version.id, disposition: 'used', reason: null }
+      ],
+      context_dispositions: [
+        { document_version_id: null, disposition: 'not_used', reason: 'invalid' },
+        { document_version_id: 'context-version-valid', disposition: 'not_used', reason: 'Not used.' }
+      ]
+    }
+  ]
+};
+normalizeTaskHandoffDefaultsV20(dirtyHandoffState);
+const cleanedExecution = dirtyHandoffState.task_executions[0];
+assert.deepEqual(cleanedExecution.consumed_inputs, [runtimeAsset.version.id]);
+assert.deepEqual(cleanedExecution.consumed_context_document_versions, ['context-version-valid']);
+assert.deepEqual(cleanedExecution.context_selection_ids, ['selection-valid']);
+assert.deepEqual(cleanedExecution.input_dispositions, [
+  { version_id: runtimeAsset.version.id, disposition: 'used', reason: null }
+]);
+assert.deepEqual(cleanedExecution.context_dispositions, [
+  { document_version_id: 'context-version-valid', disposition: 'not_used', reason: 'Not used.' }
+]);
 normalizeState20Defaults(runtimeState, '2026-07-26T01:30:00.000Z');
 assert.match(runtimeAsset.version.content_sha256, /^[a-f0-9]{64}$/);
 assert.equal(runtimeAsset.version.size_bytes, Buffer.byteLength(runtimeAsset.version.body, 'utf8'));

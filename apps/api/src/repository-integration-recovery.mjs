@@ -7,6 +7,7 @@ import { createAssetRecord, createImmutableAssetVersion } from './asset-cas.mjs'
 import { attestAssetVersionInState, ingestExecutionOutputsInState } from './asset-attestation-service.mjs';
 import { collectActualEvidenceInState, prepareTaskExecutionInState } from './task-execution-service.mjs';
 import { executionInputHash } from './task-execution-context.mjs';
+import { notUsedContextDispositions } from './task-handoff.mjs';
 import {
   appendExecutionEvent,
   completeTaskExecutionInState,
@@ -205,7 +206,11 @@ export async function reopenRepositoryIntegration(taskExecutionId, input = {}, a
         }
       }
     };
-    const remediationInputs = inputVersionIds(remediation);
+    const remediationInputs = inputVersionIds(remediation),
+      remediationContextDispositions = notUsedContextDispositions(
+        remediation,
+        'Repository remediation did not use semantic context.'
+      );
     const remediationOutputs = [
       {
         output_key: 'code_change',
@@ -213,7 +218,10 @@ export async function reopenRepositoryIntegration(taskExecutionId, input = {}, a
         title: `冲突重开代码变更 ${nextHead.slice(0, 12)}`,
         summary: '基于新 base 合并提交重新确认代码变更，旧版本保留为历史证据。',
         payload: { payload_kind: 'json', media_type: 'application/json', content: remediationEvidence },
-        consumed_input_versions: remediationInputs
+        consumed_input_versions: remediationInputs,
+        ...(remediationContextDispositions.length
+          ? { consumed_context_document_versions: [], context_dispositions: remediationContextDispositions }
+          : {})
       },
       {
         output_key: 'repository_version',
@@ -221,12 +229,17 @@ export async function reopenRepositoryIntegration(taskExecutionId, input = {}, a
         title: `Repository version ${nextHead.slice(0, 12)}`,
         summary: '冲突事实已处理后的远端合并提交。',
         payload: { payload_kind: 'json', media_type: 'application/json', content: remediationEvidence },
-        consumed_input_versions: remediationInputs
+        consumed_input_versions: remediationInputs,
+        ...(remediationContextDispositions.length
+          ? { consumed_context_document_versions: [], context_dispositions: remediationContextDispositions }
+          : {})
       }
     ];
     const remediationIngested = await ingestExecutionOutputsInState(state, {
       taskExecution: remediation,
       outputs: remediationOutputs,
+      declaredConsumedContextDocumentVersions: remediationContextDispositions.length ? [] : null,
+      declaredContextDispositions: remediationContextDispositions.length ? remediationContextDispositions : null,
       actorId,
       verifierId: 'repository_change_verifier',
       actualEvidence: remediationEvidence
@@ -240,6 +253,10 @@ export async function reopenRepositoryIntegration(taskExecutionId, input = {}, a
     transitionTaskExecutionInState(state, acceptance, 'running', { reason: 'repository_revalidation_started' });
     const acceptanceEvidence = await collectActualEvidenceInState(state, acceptance),
       acceptanceInputs = inputVersionIds(acceptance),
+      acceptanceContextDispositions = notUsedContextDispositions(
+        acceptance,
+        'Repository acceptance verification did not use semantic context.'
+      ),
       acceptanceOutputs = [
         {
           output_key: 'test_evidence',
@@ -247,7 +264,10 @@ export async function reopenRepositoryIntegration(taskExecutionId, input = {}, a
           title: `test_evidence verification ${nextHead.slice(0, 12)}`,
           summary: '在新合并提交上重新执行离线验收。',
           payload: { payload_kind: 'test_report', media_type: 'application/json', content: acceptanceEvidence },
-          consumed_input_versions: acceptanceInputs
+          consumed_input_versions: acceptanceInputs,
+          ...(acceptanceContextDispositions.length
+            ? { consumed_context_document_versions: [], context_dispositions: acceptanceContextDispositions }
+            : {})
         },
         {
           output_key: 'accepted_repository_version',
@@ -255,12 +275,17 @@ export async function reopenRepositoryIntegration(taskExecutionId, input = {}, a
           title: `accepted_repository_version ${nextHead.slice(0, 12)}`,
           summary: '测试证据与仓库快照 SHA 完全一致。',
           payload: { payload_kind: 'json', media_type: 'application/json', content: acceptanceEvidence },
-          consumed_input_versions: acceptanceInputs
+          consumed_input_versions: acceptanceInputs,
+          ...(acceptanceContextDispositions.length
+            ? { consumed_context_document_versions: [], context_dispositions: acceptanceContextDispositions }
+            : {})
         }
       ];
     const acceptanceIngested = await ingestExecutionOutputsInState(state, {
       taskExecution: acceptance,
       outputs: acceptanceOutputs,
+      declaredConsumedContextDocumentVersions: acceptanceContextDispositions.length ? [] : null,
+      declaredContextDispositions: acceptanceContextDispositions.length ? acceptanceContextDispositions : null,
       actorId,
       verifierId: 'repository_verify_verifier',
       actualEvidence: acceptanceEvidence

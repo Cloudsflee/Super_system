@@ -108,7 +108,8 @@ assert.deepEqual(
     source: 'workstream_dependency',
     selector: 'source_delivery',
     ref_id: 'workstream-source',
-    version_id: null
+    version_id: null,
+    consumption_policy: 'must_acknowledge'
   }
 );
 assert.equal(

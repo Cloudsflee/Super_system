@@ -26,6 +26,7 @@ export function TaskExecutionPanel({ taskId, canWrite = true }: { taskId: string
     [busy, setBusy] = useState('');
   const [manualValues, setManualValues] = useState<Record<string, string>>({});
   const [manualUsage, setManualUsage] = useState<Record<string, string[]>>({});
+  const [manualReasons, setManualReasons] = useState<Record<string, string>>({});
   const readiness = useQuery({
     queryKey: ['task-readiness', taskId],
     queryFn: () => api<TaskReadiness>(`/tasks/${taskId}/readiness`),
@@ -73,26 +74,9 @@ export function TaskExecutionPanel({ taskId, canWrite = true }: { taskId: string
   }
   async function submitManual() {
     if (!execution || !value) return;
-    const outputs = value.contract.expected_outputs.map((slot) => ({
-      output_key: slot.key,
-      asset_type: slot.asset_type,
-      title: `${value.task.title} ${slot.key}`,
-      summary: manualValues[slot.key] || '',
-      payload: { payload_kind: 'text', media_type: 'text/plain; charset=utf-8', content: manualValues[slot.key] || '' },
-      evidence_refs: [],
-      consumed_input_versions: (manualUsage[slot.key] || [])
-        .filter((item) => item.startsWith('asset:'))
-        .map((item) => item.slice('asset:'.length)),
-      consumed_context_document_versions: (manualUsage[slot.key] || [])
-        .filter((item) => item.startsWith('context:'))
-        .map((item) => item.slice('context:'.length))
-    }));
-    const consumedContext = [...new Set(outputs.flatMap((item) => item.consumed_context_document_versions))];
+    const payload = buildManualSubmission(value, manualValues, manualUsage, manualReasons, usageOptions);
     await act('manual', () =>
-      api(
-        `/task-executions/${execution.id}/manual-submit`,
-        json('POST', { outputs, consumed_context_document_versions: consumedContext }, '提交人工确认点')
-      )
+      api(`/task-executions/${execution.id}/manual-submit`, json('POST', payload, '提交人工确认点'))
     );
   }
   async function approvePullRequest(action: 'create_pr' | 'merge_pr') {
@@ -157,6 +141,7 @@ export function TaskExecutionPanel({ taskId, canWrite = true }: { taskId: string
           ))}
         </SnapshotColumn>
       </div>
+      <HandoffSummary value={value} />
       {canWrite &&
         execution.status === 'awaiting_human' &&
         execution.executor === 'manual' &&
@@ -165,6 +150,7 @@ export function TaskExecutionPanel({ taskId, canWrite = true }: { taskId: string
             contract={value.contract}
             manualValues={manualValues}
             manualUsage={manualUsage}
+            manualReasons={manualReasons}
             usageOptions={usageOptions}
             busy={Boolean(busy)}
             onValueChange={(key, content) => setManualValues((current) => ({ ...current, [key]: content }))}
@@ -176,6 +162,7 @@ export function TaskExecutionPanel({ taskId, canWrite = true }: { taskId: string
                   : (current[key] || []).filter((item) => item !== id)
               }))
             }
+            onReasonChange={(id, reason) => setManualReasons((current) => ({ ...current, [id]: reason }))}
             onSubmit={() => void submitManual()}
           />
         )}
@@ -210,28 +197,123 @@ export function TaskExecutionPanel({ taskId, canWrite = true }: { taskId: string
   );
 }
 
+function buildManualSubmission(
+  value: TaskExecutionDetails,
+  manualValues: Record<string, string>,
+  manualUsage: Record<string, string[]>,
+  manualReasons: Record<string, string>,
+  usageOptions: ReturnType<typeof manualUsageOptions>
+) {
+  const globallyUsed = new Set(Object.values(manualUsage).flat()),
+    dispositions = usageOptions
+      .filter((option) => globallyUsed.has(option.id) || option.explicitPolicy)
+      .map((option) => ({
+        id: option.id,
+        disposition: globallyUsed.has(option.id) ? ('used' as const) : ('not_used' as const),
+        reason: globallyUsed.has(option.id) ? '人工输出明确使用该输入。' : (manualReasons[option.id] || '').trim()
+      })),
+    outputs = value.contract.expected_outputs.map((slot) => {
+      const outputUsage = manualUsage[slot.key] || [];
+      return {
+        output_key: slot.key,
+        asset_type: slot.asset_type,
+        title: `${value.task.title} ${slot.key}`,
+        summary: manualValues[slot.key] || '',
+        payload: {
+          payload_kind: 'text',
+          media_type: 'text/plain; charset=utf-8',
+          content: manualValues[slot.key] || ''
+        },
+        evidence_refs: [],
+        consumed_input_versions: outputUsage
+          .filter((item) => item.startsWith('asset:'))
+          .map((item) => item.slice('asset:'.length)),
+        consumed_context_document_versions: outputUsage
+          .filter((item) => item.startsWith('context:'))
+          .map((item) => item.slice('context:'.length)),
+        input_dispositions: dispositions
+          .filter((item) => item.id.startsWith('asset:'))
+          .map((item) => ({
+            version_id: item.id.slice('asset:'.length),
+            disposition: outputUsage.includes(item.id) ? ('used' as const) : ('not_used' as const),
+            reason: outputDispositionReason(item, outputUsage, 'asset')
+          })),
+        context_dispositions: dispositions
+          .filter((item) => item.id.startsWith('context:'))
+          .map((item) => ({
+            document_version_id: item.id.slice('context:'.length),
+            disposition: outputUsage.includes(item.id) ? ('used' as const) : ('not_used' as const),
+            reason: outputDispositionReason(item, outputUsage, 'context')
+          })),
+        purpose: slot.purpose || `交付 ${slot.key}`,
+        consumer_hint: slot.consumer_hint || '',
+        unresolved_questions: [],
+        limitations: []
+      };
+    });
+  return {
+    outputs,
+    consumed_input_versions: [...new Set(outputs.flatMap((item) => item.consumed_input_versions))],
+    input_dispositions: dispositions
+      .filter((item) => item.id.startsWith('asset:'))
+      .map((item) => ({
+        version_id: item.id.slice('asset:'.length),
+        disposition: item.disposition,
+        reason: item.reason
+      })),
+    consumed_context_document_versions: [
+      ...new Set(outputs.flatMap((item) => item.consumed_context_document_versions))
+    ],
+    context_dispositions: dispositions
+      .filter((item) => item.id.startsWith('context:'))
+      .map((item) => ({
+        document_version_id: item.id.slice('context:'.length),
+        disposition: item.disposition,
+        reason: item.reason
+      }))
+  };
+}
+
+function outputDispositionReason(
+  item: { id: string; disposition: 'used' | 'not_used'; reason: string },
+  outputUsage: string[],
+  kind: 'asset' | 'context'
+) {
+  if (outputUsage.includes(item.id))
+    return kind === 'asset' ? '该输出明确使用此资产版本。' : '该输出明确使用此上下文版本。';
+  if (item.disposition === 'used') return '该输入用于其他输出，本输出未使用。';
+  return item.reason;
+}
+
 function ManualTaskCheckpoint({
   contract,
   manualValues,
   manualUsage,
+  manualReasons,
   usageOptions,
   busy,
   onValueChange,
   onUsageChange,
+  onReasonChange,
   onSubmit
 }: {
   contract: TaskExecutionDetails['contract'];
   manualValues: Record<string, string>;
   manualUsage: Record<string, string[]>;
+  manualReasons: Record<string, string>;
   usageOptions: ReturnType<typeof manualUsageOptions>;
   busy: boolean;
   onValueChange: (key: string, content: string) => void;
   onUsageChange: (key: string, id: string, checked: boolean) => void;
+  onReasonChange: (id: string, reason: string) => void;
   onSubmit: () => void;
 }) {
   const incompleteOutput = contract.expected_outputs.some((slot) => !(manualValues[slot.key] || '').trim()),
-    missingRequiredUsage = usageOptions.some(
-      (option) => option.required && !Object.values(manualUsage).some((ids) => ids.includes(option.id))
+    used = new Set(Object.values(manualUsage).flat()),
+    invalidUsage = usageOptions.some(
+      (option) =>
+        (option.consumptionPolicy === 'must_use' && !used.has(option.id)) ||
+        (!used.has(option.id) && option.explicitPolicy && !(manualReasons[option.id] || '').trim())
     );
   return (
     <div className="task-manual-checkpoint">
@@ -257,13 +339,26 @@ function ManualTaskCheckpoint({
                     onChange={(event) => onUsageChange(slot.key, option.id, event.target.checked)}
                   />
                   <span>{option.label}</span>
+                  {option.consumptionPolicy === 'must_use' && <small>必须使用</small>}
                 </label>
               ))}
             </span>
           )}
         </div>
       ))}
-      <button className="button primary" disabled={busy || incompleteOutput || missingRequiredUsage} onClick={onSubmit}>
+      {usageOptions
+        .filter((option) => !used.has(option.id) && option.explicitPolicy)
+        .map((option) => (
+          <label className="task-manual-reason" key={`reason-${option.id}`}>
+            <span>{option.label} · 未使用原因</span>
+            <input
+              type="text"
+              value={manualReasons[option.id] || ''}
+              onChange={(event) => onReasonChange(option.id, event.target.value)}
+            />
+          </label>
+        ))}
+      <button className="button primary" disabled={busy || incompleteOutput || invalidUsage} onClick={onSubmit}>
         <Check size={15} />
         提交并验收
       </button>
@@ -277,21 +372,59 @@ function manualUsageOptions(value?: TaskExecutionDetails) {
     (input.asset_versions || []).map((version) => ({
       id: `asset:${version.version_id}`,
       label: `${input.key} · ${version.title || short(version.version_id)}`,
-      required: input.required !== false
+      required: input.required !== false,
+      consumptionPolicy: input.consumption_policy || (input.required !== false ? 'must_use' : 'available'),
+      explicitPolicy: Boolean(input.consumption_policy)
     }))
   );
   for (const document of value.context_documents || [])
     options.push({
       id: `context:${document.document_version_id}`,
       label: `${document.title || document.source_collection || '上下文'} · ${short(document.document_version_id)}`,
-      required: document.required === true
+      required: document.required === true,
+      consumptionPolicy: document.consumption_policy || (document.required === true ? 'must_use' : 'available'),
+      explicitPolicy: Boolean(document.consumption_policy)
     });
   const unique = new Map<string, (typeof options)[number]>();
   for (const option of options) {
     const previous = unique.get(option.id);
-    unique.set(option.id, { ...option, required: option.required || previous?.required === true });
+    unique.set(option.id, {
+      ...option,
+      required: option.required || previous?.required === true,
+      consumptionPolicy:
+        option.consumptionPolicy === 'must_use' || previous?.consumptionPolicy === 'must_use'
+          ? 'must_use'
+          : option.consumptionPolicy,
+      explicitPolicy: option.explicitPolicy || previous?.explicitPolicy === true
+    });
   }
   return [...unique.values()];
+}
+
+function HandoffSummary({ value }: { value: TaskExecutionDetails }) {
+  const handoff = value.handoff;
+  if (!handoff) return null;
+  return (
+    <div className={`task-handoff-summary ${handoff.handoff_status}`}>
+      <span>
+        <GitCommitHorizontal size={15} />
+        <strong>
+          {handoff.handoff_status === 'ready'
+            ? '交付就绪'
+            : handoff.handoff_status === 'incomplete'
+              ? '交付有缺口'
+              : '等待交付'}
+        </strong>
+      </span>
+      <small>使用资产 {handoff.used_inputs.length}</small>
+      <small>未使用资产 {handoff.not_used_inputs.length}</small>
+      <small>上下文 {handoff.context_used.length}</small>
+      <small>导出 {handoff.exported_outputs.filter((item) => item.version_id).length}</small>
+      {handoff.semantic_gaps.map((item, index) => (
+        <code key={`${item.code}-${index}`}>{reasonLabel(item.code)}</code>
+      ))}
+    </div>
+  );
 }
 
 function TaskExecutionEmpty({ title, detail }: { title: string; detail: string }) {

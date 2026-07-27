@@ -164,12 +164,14 @@ function terminalWorkstreamOutputs(nodes, workstreamId) {
   const tasks = nodes.filter((item) => item.role === 'task' && item.parent_node_id === workstreamId),
     terminal = tasks.filter((task) => !tasks.some((candidate) => deps(candidate).includes(task.id)));
   return terminal.flatMap((task) =>
-    (task.output_slots || []).map((slot) => ({
-      key: slot.key,
-      asset_type: slot.asset_type,
-      required: slot.required !== false,
-      producer_task_id: task.id
-    }))
+    (task.output_slots || [])
+      .filter((slot) => slot.handoff !== false)
+      .map((slot) => ({
+        key: slot.key,
+        asset_type: slot.asset_type,
+        required: slot.required !== false,
+        producer_task_id: task.id
+      }))
   );
 }
 
@@ -206,13 +208,28 @@ function validateTaskPlanning(task, index, context) {
   if (typedOutputsInvalid(task)) context.errors.push(issue('workflow_task_typed_outputs_invalid', task.id));
   if (outputAcceptanceCoverageMissing(task))
     context.errors.push(issue('workflow_task_output_acceptance_coverage_required', task.id));
+  const siblings = context.normalized.filter(
+      (item) => item.role === 'task' && item.parent_node_id === task.parent_node_id
+    ),
+    terminal = !siblings.some((candidate) => deps(candidate).includes(task.id));
+  if (terminal && !(task.output_slots || []).some((slot) => slot.handoff !== false))
+    context.errors.push(issue('workflow_task_handoff_output_required', task.id));
   const dependencyIds = deps(task);
   if (index > 0 && !dependencyIds.length) context.errors.push(issue('workflow_task_dependency_flow_required', task.id));
   validateTaskDependencyInputs(task, dependencyIds, context);
 }
 
 function typedInputsInvalid(task) {
-  return !Array.isArray(task.input_slots) || task.input_slots.some((slot) => !slot.key || !slot.kind || !slot.source);
+  return (
+    !Array.isArray(task.input_slots) ||
+    task.input_slots.some(
+      (slot) =>
+        !slot.key ||
+        !slot.kind ||
+        !slot.source ||
+        !['must_use', 'must_acknowledge', 'available'].includes(slot.consumption_policy || 'must_acknowledge')
+    )
+  );
 }
 
 function typedOutputsInvalid(task) {
@@ -284,7 +301,10 @@ function normalizeInputs(source, _dependencyIds, node) {
     source: clean(slot?.source || 'explicit', 80),
     selector: slot?.selector ?? null,
     ref_id: slot?.ref_id ?? null,
-    version_id: slot?.version_id ?? null
+    version_id: slot?.version_id ?? null,
+    consumption_policy: ['must_use', 'must_acknowledge', 'available'].includes(slot?.consumption_policy)
+      ? slot.consumption_policy
+      : 'must_acknowledge'
   }));
   if (SOFTWARE_KINDS.has(node.task_kind) && !slots.some((slot) => slot.source === 'repository_workspace'))
     slots.push({
@@ -294,7 +314,8 @@ function normalizeInputs(source, _dependencyIds, node) {
       source: 'repository_workspace',
       selector: 'fixed_sha',
       ref_id: null,
-      version_id: null
+      version_id: null,
+      consumption_policy: 'must_acknowledge'
     });
   return slots;
 }
@@ -308,7 +329,10 @@ function normalizeOutputs(source, acceptance, node) {
           required: slot?.required !== false,
           asset_type: clean(slot?.asset_type || assetType(node), 120),
           acceptance_criteria: unique(slot?.acceptance_criteria?.length ? slot.acceptance_criteria : acceptance),
-          confirmation_policy: clean(slot?.confirmation_policy || policy, 80)
+          confirmation_policy: clean(slot?.confirmation_policy || policy, 80),
+          handoff: slot?.handoff !== false,
+          consumer_hint: clean(slot?.consumer_hint, 200) || null,
+          purpose: clean(slot?.purpose, 500) || null
         }))
       : [
           {
@@ -317,7 +341,10 @@ function normalizeOutputs(source, acceptance, node) {
             required: true,
             asset_type: assetType(node),
             acceptance_criteria: [...acceptance],
-            confirmation_policy: policy
+            confirmation_policy: policy,
+            handoff: true,
+            consumer_hint: null,
+            purpose: null
           }
         ];
   const covered = new Set(slots.flatMap((slot) => slot.acceptance_criteria));

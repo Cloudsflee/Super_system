@@ -9,6 +9,7 @@ import {
 } from '../task-execution-service.mjs';
 import { scheduleWorkflowExecution } from '../workflow-dispatcher.mjs';
 import { reopenRepositoryIntegration } from '../repository-integration-recovery.mjs';
+import { taskHandoffDiagnostics } from '../task-handoff.mjs';
 import {
   cancelWorkflowExecutionInState,
   createWorkflowExecutionInState,
@@ -172,7 +173,12 @@ async function getTaskExecution({ res, params }) {
   return send(res, 200, taskSnapshot(state, execution));
 }
 async function getTaskExecutionReadiness({ res, params }) {
-  return send(res, 200, await taskExecutionReadiness(params.id));
+  const result = await taskExecutionReadiness(params.id),
+    state = await readState();
+  return send(res, 200, {
+    ...result,
+    handoff: taskHandoffDiagnostics(state, result.task_execution)
+  });
 }
 async function reconcileRepositoryTask({ res, params, body }) {
   const state = await readState(),
@@ -205,8 +211,11 @@ async function manualSubmit({ res, params, body }) {
       outputs: body.outputs,
       actorId: actor.id,
       manual: true,
+      declaredConsumedInputVersions: body.consumed_input_versions === undefined ? null : body.consumed_input_versions,
+      declaredInputDispositions: body.input_dispositions === undefined ? null : body.input_dispositions,
       declaredConsumedContextDocumentVersions:
-        body.consumed_context_document_versions === undefined ? null : body.consumed_context_document_versions
+        body.consumed_context_document_versions === undefined ? null : body.consumed_context_document_versions,
+      declaredContextDispositions: body.context_dispositions === undefined ? null : body.context_dispositions
     });
   scheduleWorkflowExecution(execution.workflow_execution_id);
   return send(res, 200, result);
@@ -271,6 +280,7 @@ function taskSnapshot(state, execution) {
     inputs: execution.context_snapshot?.inputs || [],
     context_documents: execution.context_snapshot?.system_context?.document_versions || [],
     asset_mounts: execution.context_snapshot?.asset_mounts || [],
+    handoff: taskHandoffDiagnostics(state, execution),
     pull_request_intent: intent || null,
     outputs
   };

@@ -174,6 +174,8 @@ export function defaultContractForNode(node, project, actorId, status = 'draft')
             ? [...node.acceptance_criteria]
             : ['输出必须与节点目标直接相关，并说明证据来源。'],
           confirmation_policy: node.type === NodeType.Execution ? 'system_evidence' : 'human',
+          handoff: true,
+          consumer_hint: null,
           label
         }));
   return {
@@ -242,7 +244,8 @@ function validContractInputSlot(slot) {
     Boolean(slot?.source) &&
     Object.hasOwn(slot, 'selector') &&
     Object.hasOwn(slot, 'ref_id') &&
-    Object.hasOwn(slot, 'version_id')
+    Object.hasOwn(slot, 'version_id') &&
+    (!slot.consumption_policy || ['must_use', 'must_acknowledge', 'available'].includes(slot.consumption_policy))
   );
 }
 
@@ -254,7 +257,8 @@ function validContractOutputSlot(slot) {
     Boolean(slot?.asset_type) &&
     Array.isArray(slot.acceptance_criteria) &&
     Boolean(slot.acceptance_criteria.length) &&
-    ['human', 'system_evidence'].includes(slot.confirmation_policy)
+    ['human', 'system_evidence'].includes(slot.confirmation_policy) &&
+    (slot.handoff === undefined || typeof slot.handoff === 'boolean')
   );
 }
 
@@ -287,17 +291,6 @@ export function applyContractPatch(contract, patch, actorId) {
 }
 
 function defaultInputSlots(node, project) {
-  const dependencies = (node.dependencies || [])
-    .map((item, index) => ({
-      key: `upstream_${index + 1}`,
-      kind: 'asset_version',
-      required: true,
-      source: 'dependency',
-      selector: 'required_outputs',
-      ref_id: typeof item === 'string' ? item : item.node_id,
-      version_id: null
-    }))
-    .filter((item) => item.ref_id);
   const repository =
     ['execution', 'code', 'test', 'deploy', 'integration'].includes(node.type) ||
     ['code', 'test', 'deploy', 'integration'].includes(node.task_kind)
@@ -309,25 +302,23 @@ function defaultInputSlots(node, project) {
             source: 'repository_workspace',
             selector: 'fixed_sha',
             ref_id: null,
-            version_id: null
+            version_id: null,
+            consumption_policy: 'must_acknowledge'
           }
         ]
       : [];
   return [
-    ...(dependencies.length
-      ? dependencies
-      : [
-          {
-            key: 'project_brief',
-            kind: 'context',
-            required: true,
-            source: 'brief',
-            selector: 'current',
-            ref_id: null,
-            version_id: null,
-            value: project.goal || ''
-          }
-        ]),
+    {
+      key: 'project_brief',
+      kind: 'context',
+      required: true,
+      source: 'brief',
+      selector: 'current',
+      ref_id: null,
+      version_id: null,
+      consumption_policy: 'must_acknowledge',
+      value: project.goal || ''
+    },
     ...repository
   ];
 }

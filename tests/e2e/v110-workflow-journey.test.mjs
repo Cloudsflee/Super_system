@@ -199,7 +199,9 @@ async function installTestAdapterRoutes(page) {
         ...body,
         adapter: 'test',
         test_summary: 'Browser DAG candidate',
-        test_changes: [{ path: 'src/verified-change.txt', content: 'verified browser change\n' }]
+        test_changes: [{ path: 'src/verified-change.txt', content: 'verified browser change\n' }],
+        test_use_required_inputs: true,
+        test_use_required_context: true
       }),
       headers: { ...request.headers(), 'content-type': 'application/json' }
     });

@@ -1,6 +1,13 @@
 import { id, now } from '../../../packages/shared/index.mjs';
 import { createAssetRecord, createImmutableAssetVersion, verifyAssetVersionPayload } from './asset-cas.mjs';
 import { HttpError } from './http.mjs';
+import { normalizeConsumedContextDocuments } from './task-context-consumption.mjs';
+import {
+  buildTaskHandoffManifest,
+  normalizeDispositions,
+  normalizeIdList,
+  taskHandoffDiagnostics
+} from './task-handoff.mjs';
 import { recordAssetLineage } from './task-output-service.mjs';
 
 export const TRUSTED_VERIFIERS = Object.freeze(
@@ -18,7 +25,9 @@ export async function ingestExecutionOutputsInState(
     taskExecution,
     outputs,
     declaredConsumedInputVersions = null,
+    declaredInputDispositions = null,
     declaredConsumedContextDocumentVersions = null,
+    declaredContextDispositions = null,
     nodeRunId = null,
     actorId = null,
     verifierId = null,
@@ -36,12 +45,18 @@ export async function ingestExecutionOutputsInState(
   const duplicateKeys = duplicateValues(source.map((item) => clean(item?.output_key)));
   if (duplicateKeys.length)
     throw new HttpError(400, { error: 'runner_output_key_duplicate', output_keys: duplicateKeys });
-  const consumption = normalizeConsumedInputs(taskExecution, source, declaredConsumedInputVersions),
+  const consumption = normalizeConsumedInputs(
+      taskExecution,
+      source,
+      declaredConsumedInputVersions,
+      declaredInputDispositions
+    ),
     contextConsumption = normalizeConsumedContextDocuments(
       state,
       taskExecution,
       source,
       declaredConsumedContextDocumentVersions,
+      declaredContextDispositions,
       nodeRunId
     );
   const created = [];
@@ -95,19 +110,40 @@ export async function ingestExecutionOutputsInState(
         output_key: slot.key,
         input_snapshot_hash: taskExecution.input_snapshot_hash,
         consumed_inputs: consumption.byOutput.get(slot.key) || [],
+        input_dispositions: consumption.byOutputDispositions.get(slot.key) || [],
         context_selection_id: contextConsumption.selectionId,
         context_selection_ids: contextConsumption.selectionIdsByOutput.get(slot.key) || [],
-        consumed_context_document_versions: contextConsumption.byOutput.get(slot.key) || []
+        consumed_context_document_versions: contextConsumption.byOutput.get(slot.key) || [],
+        context_dispositions: contextConsumption.byOutputDispositions.get(slot.key) || []
       },
       actorId,
       outputKey: slot.key
     });
+    const handoffManifest = buildTaskHandoffManifest({
+      taskExecution,
+      task,
+      output,
+      asset,
+      version,
+      slot,
+      consumedInputVersions: consumption.byOutput.get(slot.key) || [],
+      inputDispositions: consumption.byOutputDispositions.get(slot.key) || [],
+      consumedContextDocumentVersions: contextConsumption.byOutput.get(slot.key) || [],
+      contextDispositions: contextConsumption.byOutputDispositions.get(slot.key) || [],
+      contextSelectionId: contextConsumption.selectionId,
+      unresolvedQuestions: output.unresolved_questions,
+      limitations: output.limitations
+    });
+    version.provenance.handoff_manifest = handoffManifest;
+    version.provenance.handoff_manifest_sha256 = handoffManifest.manifest_sha256;
     created.push({ asset, version, slot });
   }
   taskExecution.consumed_inputs = consumption.aggregate;
+  taskExecution.input_dispositions = consumption.dispositions;
   taskExecution.context_selection_id = contextConsumption.selectionId;
   taskExecution.context_selection_ids = contextConsumption.selectionIds;
   taskExecution.consumed_context_document_versions = contextConsumption.aggregate;
+  taskExecution.context_dispositions = contextConsumption.dispositions;
   taskExecution.status = 'verifying';
   taskExecution.updated_at = now();
 
@@ -126,6 +162,7 @@ export async function ingestExecutionOutputsInState(
   }
   const human = created.filter(({ slot }) => slot.confirmation_policy === 'human');
   if (human.length) taskExecution.status = 'awaiting_human';
+  taskExecution.handoff_diagnostics = taskHandoffDiagnostics(state, taskExecution);
   return {
     outputs: created.map(({ asset, version }) => ({ asset, version })),
     output_bindings: taskExecution.output_bindings,
@@ -267,7 +304,7 @@ function updateAttestedAsset(asset, input) {
 }
 
 function updateAttestedExecution(state, context, input, attestation, criteria, acceptanceResults) {
-  const { asset, version, execution, key, confirmationPolicy } = context;
+  const { asset, version, execution, key, slot, confirmationPolicy } = context;
   const outputBindings = (execution.output_bindings || []).filter((item) => item.key !== key);
   if (input.decision === 'accepted')
     outputBindings.push({
@@ -279,6 +316,9 @@ function updateAttestedExecution(state, context, input, attestation, criteria, a
       repository_sha: version.repository_sha || null,
       acceptance_criteria: criteria,
       confirmation_policy: confirmationPolicy,
+      handoff: slot?.handoff !== false,
+      consumer_hint: slot?.consumer_hint || null,
+      handoff_manifest_sha256: version.provenance?.handoff_manifest_sha256 || null,
       attestation_id: attestation.id
     });
   execution.output_bindings = outputBindings;
@@ -565,30 +605,26 @@ function normalizeOutcomeEvidenceRelation(state, relation) {
 function relationKey(item) {
   return `${item.relation_type}:${item.source_asset_version_id}:${item.target_asset_version_id}`;
 }
-function normalizeConsumedInputs(execution, outputs, declaredAggregate = null) {
-  const available = [
-      ...new Set(
-        (execution.context_snapshot?.inputs || [])
-          .flatMap((item) => item.asset_versions || [])
-          .map((item) => item.version_id)
-      )
-    ].sort(),
+function normalizeConsumedInputs(execution, outputs, declaredAggregate = null, declaredDispositions = null) {
+  const inputs = execution.context_snapshot?.inputs || [],
+    available = normalizeIdList(inputs.flatMap((item) => item.asset_versions || []).map((item) => item.version_id)),
     availableSet = new Set(available),
-    required = [
-      ...new Set(
-        (execution.context_snapshot?.inputs || [])
-          .filter((item) => item.required !== false)
-          .flatMap((item) => item.asset_versions || [])
-          .map((item) => item.version_id)
-      )
-    ].sort(),
-    byOutput = new Map();
+    policyByVersion = inputPolicies(inputs),
+    required = available.filter((versionId) => policyByVersion.get(versionId)?.required),
+    byOutput = new Map(),
+    byOutputDispositions = new Map();
   for (const output of outputs) {
     const key = clean(output?.output_key),
-      declared = [
-        ...new Set(Array.isArray(output?.consumed_input_versions) ? output.consumed_input_versions : [])
-      ].sort(),
-      invalid = declared.filter((versionId) => !availableSet.has(versionId));
+      declared = validatedIdList(output?.consumed_input_versions, 'runner_consumed_inputs_invalid', {
+        source: `output:${key || 'unknown'}`
+      }),
+      invalid = declared.filter((versionId) => !availableSet.has(versionId)),
+      outputDispositions = validatedDispositions(
+        output?.input_dispositions,
+        'version_id',
+        'runner_input_disposition_invalid',
+        `output:${key || 'unknown'}`
+      );
     if (invalid.length)
       throw new HttpError(409, {
         error: 'runner_consumed_inputs_mismatch',
@@ -596,23 +632,73 @@ function normalizeConsumedInputs(execution, outputs, declaredAggregate = null) {
         available_version_ids: available,
         invalid_version_ids: invalid
       });
+    assertDispositionScope(outputDispositions, 'version_id', availableSet, 'runner_input_disposition_mismatch', key);
+    assertUsedDispositionConsistency(
+      outputDispositions,
+      'version_id',
+      declared,
+      'runner_input_disposition_mismatch',
+      key
+    );
     byOutput.set(key, declared);
+    byOutputDispositions.set(key, mergeUsedDispositions(declared, outputDispositions, 'version_id'));
   }
-  const aggregate = [...new Set([...byOutput.values()].flat())].sort(),
-    missingRequired = required.filter((versionId) => !aggregate.includes(versionId));
+  const aggregate = normalizeIdList([...byOutput.values()].flat()),
+    aggregateSet = new Set(aggregate),
+    topDispositions = validatedDispositions(
+      declaredDispositions,
+      'version_id',
+      'runner_input_disposition_invalid',
+      'aggregate'
+    );
+  assertDispositionScope(topDispositions, 'version_id', availableSet, 'runner_input_disposition_mismatch', 'aggregate');
+  assertUsedDispositionConsistency(
+    topDispositions,
+    'version_id',
+    aggregate,
+    'runner_input_disposition_mismatch',
+    'aggregate'
+  );
+  const dispositions = aggregateDispositions({
+      ids: available,
+      usedIds: aggregateSet,
+      explicit: topDispositions,
+      perOutput: byOutputDispositions,
+      idKey: 'version_id'
+    }),
+    dispositionByVersion = new Map(dispositions.map((item) => [item.version_id, item])),
+    mustUse = available.filter((versionId) => policyByVersion.get(versionId)?.mustUse),
+    missingRequired = mustUse.filter((versionId) => !aggregateSet.has(versionId));
   if (missingRequired.length)
     throw new HttpError(409, {
       error: 'runner_required_inputs_unconsumed',
-      required_version_ids: required,
+      required_version_ids: mustUse,
       missing_version_ids: missingRequired
+    });
+  const acknowledged = available.filter((versionId) => policyByVersion.get(versionId)?.explicit),
+    missingDispositions = acknowledged.filter((versionId) => !dispositionByVersion.has(versionId));
+  if (missingDispositions.length)
+    throw new HttpError(409, {
+      error: 'runner_input_disposition_required',
+      missing_version_ids: missingDispositions
     });
   if (declaredAggregate !== null)
     assertConsumedSet(
       aggregate,
-      [...new Set(Array.isArray(declaredAggregate) ? declaredAggregate : [])].sort(),
+      validatedIdList(declaredAggregate, 'runner_consumed_inputs_invalid', { source: 'aggregate' }),
       'aggregate'
     );
-  return { aggregate, byOutput };
+  return {
+    aggregate,
+    byOutput,
+    dispositions,
+    byOutputDispositions,
+    required,
+    missingDispositions,
+    semanticGaps: dispositions
+      .filter((item) => item.disposition === 'not_used' && policyByVersion.get(item.version_id)?.mustUse)
+      .map((item) => ({ code: 'must_use_input_not_used', version_id: item.version_id }))
+  };
 }
 function assertConsumedSet(expected, actual, source) {
   if (actual.length !== expected.length || actual.some((item, index) => item !== expected[index]))
@@ -624,246 +710,109 @@ function assertConsumedSet(expected, actual, source) {
     });
 }
 
-function normalizeConsumedContextDocuments(state, execution, outputs, declaredAggregate = null, nodeRunId = null) {
-  const context = execution.context_snapshot || {},
-    selectionId = context.system_context?.context_selection_id || null,
-    entries = context.system_context?.document_versions || [],
-    declarationProvided =
-      declaredAggregate !== null ||
-      outputs.some((output) => Object.hasOwn(output || {}, 'consumed_context_document_versions')),
-    byOutput = new Map(outputs.map((output) => [clean(output?.output_key), []])),
-    selectionIdsByOutput = new Map(outputs.map((output) => [clean(output?.output_key), []]));
-  if (!declarationProvided) return { aggregate: [], byOutput, selectionId, selectionIds: [], selectionIdsByOutput };
-  const { availableByVersion, staleDynamicVersions } = availableContextDocumentVersions(
-      state,
-      execution,
-      nodeRunId,
-      selectionId,
-      entries
-    ),
-    aggregate = normalizeOutputContextConsumption({
-      state,
-      outputs,
-      selectionId,
-      availableByVersion,
-      staleDynamicVersions,
-      byOutput,
-      selectionIdsByOutput
-    });
-  assertRequiredContextConsumption(entries, aggregate);
-  assertDeclaredContextAggregate(aggregate, declaredAggregate);
-  const selectionIds = orderedContextSelectionIds(
-    state,
-    new Set([...selectionIdsByOutput.values()].flat()),
-    selectionId
-  );
-  return { aggregate, byOutput, selectionId, selectionIds, selectionIdsByOutput };
-}
-
-function availableContextDocumentVersions(state, execution, nodeRunId, selectionId, entries) {
-  const selection = state.context_selections.find((item) => item.id === selectionId);
-  if (!selection || (selection.project_id && selection.project_id !== execution.project_id))
-    throw new HttpError(409, { error: 'runner_context_selection_invalid', context_selection_id: selectionId });
-  const includedByVersion = new Map((selection.included || []).map((item) => [item.document_version_id, item])),
-    availableByVersion = new Map(),
-    staleDynamicVersions = new Map();
-  addInitialContextDocumentVersions(state, entries, selectionId, includedByVersion, availableByVersion);
-  addRuntimeContextDocumentVersions(state, execution, nodeRunId, selectionId, availableByVersion, staleDynamicVersions);
-  return { availableByVersion, staleDynamicVersions };
-}
-
-function addInitialContextDocumentVersions(state, entries, selectionId, includedByVersion, availableByVersion) {
-  for (const entry of entries) {
-    const included = includedByVersion.get(entry.document_version_id),
-      version = state.context_document_versions.find((item) => item.id === entry.document_version_id),
-      node = state.context_nodes.find((item) => item.id === entry.node_id);
-    if (
-      !included ||
-      !version ||
-      included.node_id !== entry.node_id ||
-      version.node_id !== entry.node_id ||
-      included.content_sha256 !== entry.content_sha256 ||
-      version.content_sha256 !== entry.content_sha256
-    )
-      throw new HttpError(409, {
-        error: 'runner_context_selection_invalid',
-        context_selection_id: selectionId,
-        document_version_id: entry.document_version_id
+function inputPolicies(inputs) {
+  const result = new Map();
+  for (const input of inputs || []) {
+    const explicit = ['must_use', 'must_acknowledge', 'available'].includes(input?.consumption_policy),
+      policy = explicit ? input.consumption_policy : input.required !== false ? 'must_use' : 'available';
+    for (const version of input.asset_versions || []) {
+      if (typeof version?.version_id !== 'string' || !version.version_id.trim()) continue;
+      const versionId = version.version_id.trim(),
+        current = result.get(versionId);
+      result.set(versionId, {
+        policy: current?.mustUse || policy === 'must_use' ? 'must_use' : policy,
+        required: Boolean(current?.required || input.required !== false),
+        explicit: Boolean(current?.explicit || explicit),
+        mustUse: Boolean(current?.mustUse || policy === 'must_use')
       });
-    if (
-      entry.required === true &&
-      (!node || node.current_version_id !== version.id || node.source_hash !== version.source_hash)
-    )
-      throw new HttpError(409, {
-        error: 'runner_required_context_stale',
-        node_id: entry.node_id,
-        document_version_id: entry.document_version_id,
-        current_document_version_id: node?.current_version_id || null
-      });
-    availableByVersion.set(entry.document_version_id, {
-      node_id: entry.node_id,
-      content_sha256: entry.content_sha256,
-      selection_ids: [selectionId],
-      source: 'initial'
-    });
+    }
   }
+  return result;
 }
 
-function addRuntimeContextDocumentVersions(
-  state,
-  execution,
-  nodeRunId,
-  selectionId,
-  availableByVersion,
-  staleDynamicVersions
-) {
-  for (const runtimeSelection of runtimeReadSelections(state, execution, nodeRunId, selectionId)) {
-    const runtime = runtimeSelection.runtime_context,
-      version = state.context_document_versions.find(
-        (item) => item.id === runtime.read_document_version_id && item.node_id === runtime.read_node_id
-      ),
-      node = state.context_nodes.find((item) => item.id === runtime.read_node_id),
-      included = runtimeSelection.included?.find(
-        (item) => item.node_id === runtime.read_node_id && item.document_version_id === runtime.read_document_version_id
-      );
-    if (!version || !node || !included || included.content_sha256 !== version.content_sha256) continue;
-    if (node.current_version_id !== version.id || node.source_hash !== version.source_hash) {
-      staleDynamicVersions.set(version.id, {
-        node_id: node.id,
-        current_document_version_id: node.current_version_id || null
+function validatedIdList(values, error, detail = {}) {
+  if (values == null) return [];
+  if (!Array.isArray(values)) throw new HttpError(400, { error, ...detail });
+  if (values.some((value) => value != null && value !== '' && typeof value !== 'string'))
+    throw new HttpError(400, { error, ...detail });
+  return normalizeIdList(values);
+}
+
+function validatedDispositions(values, idKey, error, source) {
+  if (values == null) return [];
+  if (!Array.isArray(values)) throw new HttpError(400, { error, source });
+  const seen = new Set();
+  for (const item of values) {
+    if (
+      !item ||
+      typeof item !== 'object' ||
+      typeof item[idKey] !== 'string' ||
+      !item[idKey].trim() ||
+      !['used', 'not_used'].includes(item.disposition) ||
+      (item.disposition === 'not_used' && !clean(item.reason, 1000)) ||
+      seen.has(item[idKey].trim())
+    )
+      throw new HttpError(400, { error, source });
+    seen.add(item[idKey].trim());
+  }
+  return normalizeDispositions(values, idKey);
+}
+
+function assertDispositionScope(dispositions, idKey, availableSet, error, source) {
+  const invalid = dispositions.map((item) => item[idKey]).filter((value) => !availableSet.has(value));
+  if (invalid.length) throw new HttpError(409, { error, source: source || 'aggregate', invalid_ids: invalid });
+}
+
+function assertUsedDispositionConsistency(dispositions, idKey, usedIds, error, source) {
+  const used = new Set(usedIds),
+    invalid = dispositions.filter((item) => (item.disposition === 'used') !== used.has(item[idKey]));
+  if (invalid.length)
+    throw new HttpError(409, {
+      error,
+      source: source || 'aggregate',
+      inconsistent_ids: invalid.map((item) => item[idKey])
+    });
+}
+
+function mergeUsedDispositions(usedIds, dispositions, idKey) {
+  const byId = new Map(dispositions.map((item) => [item[idKey], item]));
+  for (const value of usedIds)
+    if (!byId.has(value))
+      byId.set(value, {
+        [idKey]: value,
+        disposition: 'used',
+        reason: 'Declared as used by this output.'
+      });
+  return [...byId.values()].sort((left, right) => left[idKey].localeCompare(right[idKey]));
+}
+
+function aggregateDispositions({ ids, usedIds, explicit, perOutput, idKey }) {
+  const explicitById = new Map(explicit.map((item) => [item[idKey], item])),
+    outputValues = [...perOutput.values()].flat(),
+    outputById = new Map();
+  for (const item of outputValues) {
+    const values = outputById.get(item[idKey]) || [];
+    values.push(item);
+    outputById.set(item[idKey], values);
+  }
+  const result = [];
+  for (const value of ids) {
+    if (usedIds.has(value)) {
+      const declaration = explicitById.get(value) || outputById.get(value)?.find((item) => item.disposition === 'used');
+      result.push({
+        [idKey]: value,
+        disposition: 'used',
+        reason: declaration?.reason || 'Declared as used by at least one output.'
       });
       continue;
     }
-    const existing = availableByVersion.get(version.id);
-    if (existing?.source === 'initial') continue;
-    if (existing) existing.selection_ids.push(runtimeSelection.id);
-    else
-      availableByVersion.set(version.id, {
-        node_id: node.id,
-        content_sha256: version.content_sha256,
-        selection_ids: [runtimeSelection.id],
-        source: 'runtime_read'
-      });
+    const declaration =
+      explicitById.get(value) || outputById.get(value)?.find((item) => item.disposition === 'not_used');
+    if (declaration) result.push(declaration);
   }
+  return result.sort((left, right) => left[idKey].localeCompare(right[idKey]));
 }
 
-function normalizeOutputContextConsumption({
-  state,
-  outputs,
-  selectionId,
-  availableByVersion,
-  staleDynamicVersions,
-  byOutput,
-  selectionIdsByOutput
-}) {
-  const available = [...availableByVersion.keys()].sort(),
-    availableSet = new Set(available);
-  for (const output of outputs) {
-    const key = clean(output?.output_key);
-    if (!Array.isArray(output?.consumed_context_document_versions))
-      throw new HttpError(409, { error: 'runner_consumed_context_declaration_required', output_key: key || null });
-    const declared = [...new Set(output.consumed_context_document_versions)].sort(),
-      invalid = declared.filter((versionId) => !availableSet.has(versionId));
-    const stale = invalid.find((versionId) => staleDynamicVersions.has(versionId));
-    if (stale) {
-      const detail = staleDynamicVersions.get(stale);
-      throw new HttpError(409, {
-        error: 'runner_context_document_stale',
-        node_id: detail.node_id,
-        document_version_id: stale,
-        current_document_version_id: detail.current_document_version_id
-      });
-    }
-    if (invalid.length)
-      throw new HttpError(409, {
-        error: 'runner_consumed_context_mismatch',
-        source: `output:${key || 'unknown'}`,
-        available_document_version_ids: available,
-        invalid_document_version_ids: invalid
-      });
-    byOutput.set(key, declared);
-    selectionIdsByOutput.set(
-      key,
-      orderedContextSelectionIds(
-        state,
-        new Set(declared.flatMap((versionId) => availableByVersion.get(versionId)?.selection_ids || [])),
-        selectionId
-      )
-    );
-  }
-  return [...new Set([...byOutput.values()].flat())].sort();
-}
-
-function assertRequiredContextConsumption(entries, aggregate) {
-  const required = [
-      ...new Set(entries.filter((item) => item.required === true).map((item) => item.document_version_id))
-    ].sort(),
-    missingRequired = required.filter((versionId) => !aggregate.includes(versionId));
-  if (missingRequired.length)
-    throw new HttpError(409, {
-      error: 'runner_required_context_unconsumed',
-      required_document_version_ids: required,
-      missing_document_version_ids: missingRequired
-    });
-}
-
-function assertDeclaredContextAggregate(aggregate, declaredAggregate) {
-  if (declaredAggregate === null) return;
-  const actual = [...new Set(Array.isArray(declaredAggregate) ? declaredAggregate : [])].sort();
-  if (actual.length !== aggregate.length || actual.some((item, index) => item !== aggregate[index]))
-    throw new HttpError(409, {
-      error: 'runner_consumed_context_mismatch',
-      source: 'aggregate',
-      expected_document_version_ids: aggregate,
-      actual_document_version_ids: actual
-    });
-}
-
-function runtimeReadSelections(state, execution, nodeRunId, initialSelectionId) {
-  if (!nodeRunId) return [];
-  const run = state.node_runs.find(
-    (item) =>
-      item.id === nodeRunId && item.task_execution_id === execution.id && item.project_id === execution.project_id
-  );
-  if (!run) throw new HttpError(409, { error: 'runner_context_run_invalid', node_run_id: nodeRunId });
-  return state.context_selections.filter((selection) => {
-    const runtime = selection.runtime_context;
-    if (
-      runtime?.schema_version !== 'aiws.context_runtime_selection.v1' ||
-      runtime.purpose !== 'mcp_read' ||
-      runtime.run_id !== nodeRunId ||
-      runtime.task_execution_id !== execution.id ||
-      runtime.initial_context_selection_id !== initialSelectionId ||
-      selection.project_id !== execution.project_id ||
-      !runtime.read_document_version_id
-    )
-      return false;
-    const client = state.mcp_clients.find((item) => item.id === runtime.mcp_client_id),
-      binding = client?.context_binding;
-    return (
-      client?.kind === 'internal_codex' &&
-      binding?.schema_version === 'aiws.mcp_context_binding.v1' &&
-      binding.project_id === execution.project_id &&
-      binding.session_id === runtime.session_id &&
-      binding.run_id === nodeRunId &&
-      binding.task_execution_id === execution.id &&
-      binding.context_selection_id === initialSelectionId
-    );
-  });
-}
-
-function orderedContextSelectionIds(state, values, initialSelectionId) {
-  return [...values].sort((left, right) => {
-    if (left === initialSelectionId) return -1;
-    if (right === initialSelectionId) return 1;
-    const leftSelection = state.context_selections.find((item) => item.id === left),
-      rightSelection = state.context_selections.find((item) => item.id === right);
-    return (
-      String(leftSelection?.created_at || '').localeCompare(String(rightSelection?.created_at || '')) ||
-      String(left).localeCompare(String(right))
-    );
-  });
-}
 function mergeAcceptanceResults(current, values, outputKey) {
   return [
     ...(current || []).filter((item) => item.output_key !== outputKey),

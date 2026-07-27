@@ -301,6 +301,36 @@ export type ExecutionStatus =
   | 'cancelled'
   | 'superseded';
 export type ExecutionReason = { code: string; [key: string]: unknown };
+export type InputDisposition = {
+  version_id?: string;
+  document_version_id?: string;
+  disposition: 'used' | 'not_used';
+  reason: string | null;
+};
+export type TaskHandoffDiagnostics = {
+  schema_version: 'aiws.task_handoff_diagnostics.v1';
+  handoff_status: 'awaiting_execution' | 'incomplete' | 'ready';
+  required_inputs: Array<{
+    slot_key: string;
+    required: boolean;
+    consumption_policy: string;
+    version_ids: string[];
+  }>;
+  used_inputs: string[];
+  not_used_inputs: InputDisposition[];
+  missing_dispositions: string[];
+  exported_outputs: Array<{
+    output_key: string;
+    required: boolean;
+    consumer_hint?: string | null;
+    asset_id?: string | null;
+    version_id?: string | null;
+    handoff_manifest_sha256?: string | null;
+  }>;
+  context_used: string[];
+  context_not_used: InputDisposition[];
+  semantic_gaps: ExecutionReason[];
+};
 export type TaskExecutionRecord = {
   id: string;
   workflow_execution_id: string;
@@ -314,12 +344,15 @@ export type TaskExecutionRecord = {
   attempt: number;
   executor: string;
   status: ExecutionStatus;
-  readiness: { ready: boolean; reasons: ExecutionReason[]; checked_at?: string };
+  readiness: { ready: boolean; reasons: ExecutionReason[]; checked_at?: string; handoff?: TaskHandoffDiagnostics };
   input_snapshot_hash?: string | null;
   context_selection_id?: string | null;
   context_selection_ids?: string[];
   consumed_inputs?: string[];
   consumed_context_document_versions?: string[];
+  input_dispositions?: InputDisposition[];
+  context_dispositions?: InputDisposition[];
+  handoff_diagnostics?: TaskHandoffDiagnostics | null;
   context_snapshot?: {
     inputs?: TaskExecutionInput[];
     system_context?: {
@@ -383,6 +416,7 @@ export type TaskExecutionInput = {
   key: string;
   kind?: string;
   required?: boolean;
+  consumption_policy?: 'must_use' | 'must_acknowledge' | 'available' | null;
   source: string;
   selector?: string | null;
   ref_id?: string | null;
@@ -429,6 +463,7 @@ export type TaskContextDocumentVersion = {
   title?: string | null;
   reason?: string;
   required?: boolean;
+  consumption_policy?: 'must_use' | 'must_acknowledge' | 'available' | null;
 };
 export type ExecutionOutputBinding = {
   key: string;
@@ -438,6 +473,9 @@ export type ExecutionOutputBinding = {
   content_sha256: string;
   repository_sha?: string | null;
   confirmation_policy?: string;
+  handoff?: boolean;
+  consumer_hint?: string | null;
+  handoff_manifest_sha256?: string | null;
   attestation_id?: string;
 };
 export type PullRequestIntentRecord = {
@@ -472,6 +510,7 @@ export type TaskExecutionDetails = {
   asset_mounts: unknown[];
   outputs: TaskExecutionOutput[];
   pull_request_intent?: PullRequestIntentRecord | null;
+  handoff: TaskHandoffDiagnostics;
 };
 export type TaskReadiness = {
   task_id: string;
@@ -590,6 +629,7 @@ export type NodeInputSlot = {
   selector: string | null;
   ref_id: string | null;
   version_id: string | null;
+  consumption_policy?: 'must_use' | 'must_acknowledge' | 'available' | null;
 };
 export type NodeOutputSlot = {
   key: string;
@@ -598,6 +638,9 @@ export type NodeOutputSlot = {
   asset_type: string;
   acceptance_criteria: string[];
   confirmation_policy: 'human' | 'system_evidence';
+  handoff?: boolean;
+  consumer_hint?: string | null;
+  purpose?: string | null;
 };
 export type NodeContract = {
   id: string;

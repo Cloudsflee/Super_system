@@ -64,7 +64,10 @@ assert.equal(
 );
 transitionTaskExecutionInState(state, first, 'verifying');
 completeTaskExecutionInState(state, first.id);
-assert.deepEqual(first.readiness, { ready: true, reasons: [], checked_at: first.readiness.checked_at });
+assert.equal(first.readiness.ready, true);
+assert.deepEqual(first.readiness.reasons, []);
+assert.equal(first.readiness.handoff.schema_version, 'aiws.task_handoff_diagnostics.v1');
+assert.equal(first.readiness.handoff.handoff_status, 'ready');
 
 const second = created.task_executions.find((item) => item.task_id === 'task-b');
 transitionTaskExecutionInState(state, second, 'running');

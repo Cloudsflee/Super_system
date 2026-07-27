@@ -32,3 +32,55 @@
   min-width: 0;
   overflow-wrap: anywhere;
 }
+
+.task-manual-usage label > small {
+  margin-left: auto;
+  color: var(--red);
+}
+
+.task-manual-reason {
+  display: grid;
+  gap: 5px;
+}
+
+.task-manual-reason span {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.task-manual-reason input {
+  min-width: 0;
+}
+
+.task-handoff-summary {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 38px;
+  padding: 8px 10px;
+  border-block: 1px solid var(--line);
+  color: var(--muted);
+}
+
+.task-handoff-summary > span {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--text);
+}
+
+.task-handoff-summary.ready > span {
+  color: var(--green);
+}
+
+.task-handoff-summary.incomplete > span,
+.task-handoff-summary code {
+  color: var(--red);
+}
+
+@media (max-width: 768px) {
+  .task-handoff-summary {
+    align-items: flex-start;
+    flex-wrap: wrap;
+  }
+}

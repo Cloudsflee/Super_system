@@ -3,6 +3,8 @@ import { hashString, id, now, slugify } from '../../../packages/shared/index.mjs
 import { HttpError } from './http.mjs';
 import { projectWorkflowExecutionStateInState } from './workflow-execution-projection.mjs';
 import { inspectWorkstreamDependencyHandoff, selectTaskOutputBindings } from './task-execution-context.mjs';
+import { taskHandoffDiagnostics } from './task-handoff.mjs';
+import { normalizeWorkflowExecutorConfig } from './workflow-executor-config.mjs';
 import {
   isLegacyStrandedRetry,
   legacyPromotedExecution,
@@ -104,7 +106,7 @@ export function createWorkflowExecutionInState(state, workflowId, input = {}, ac
     status: 'running',
     repository_selection: repositorySelection,
     input_hash: hashString(JSON.stringify({ definition, repositorySelection })),
-    executor_config: normalizeExecutorConfig(input),
+    executor_config: normalizeWorkflowExecutorConfig(input),
     operation_key: operationKey,
     frontier: [],
     waiting_reasons: [],
@@ -278,7 +280,12 @@ export function taskExecutionReadiness(state, execution) {
     if (incomplete.length)
       reasons.push({ code: 'workstream_tasks_incomplete', task_execution_ids: incomplete.map((item) => item.id) });
   }
-  return { ready: reasons.length === 0, reasons, checked_at: now() };
+  return {
+    ready: reasons.length === 0,
+    reasons,
+    checked_at: now(),
+    handoff: taskHandoffDiagnostics(state, execution)
+  };
 }
 export function transitionTaskExecutionInState(state, executionOrId, nextStatus, data = {}) {
   const execution = typeof executionOrId === 'string' ? requireTaskExecution(state, executionOrId) : executionOrId;
@@ -291,7 +298,12 @@ export function transitionTaskExecutionInState(state, executionOrId, nextStatus,
   if (TERMINAL.has(nextStatus)) {
     execution.completed_at = now();
     execution.lease = null;
-    execution.readiness = { ready: nextStatus === 'completed', reasons: [], checked_at: now() };
+    execution.readiness = {
+      ready: nextStatus === 'completed',
+      reasons: [],
+      checked_at: now(),
+      handoff: taskHandoffDiagnostics(state, execution)
+    };
     releaseRepositoryCapacity(state, execution);
   }
   appendExecutionEvent(
@@ -380,6 +392,8 @@ export function completeTaskExecutionInState(state, taskExecutionId, { evidence 
   if (execution.executor === 'repository_integrate') assertIntegrationEvidence(state, execution, evidence);
   execution.evidence = executionEvidence(evidence || execution.evidence || {});
   transitionTaskExecutionInState(state, execution, 'completed', { reason: 'outputs_accepted' });
+  execution.handoff_diagnostics = taskHandoffDiagnostics(state, execution);
+  execution.readiness.handoff = execution.handoff_diagnostics;
   projectWorkflowExecutionStateInState(state, execution.workflow_execution_id);
   return execution;
 }
@@ -441,6 +455,10 @@ export function retryTaskExecutionInState(state, taskExecutionId, actorId) {
     retry_input_snapshot_hash_version: retryInput.version,
     output_bindings: [],
     consumed_inputs: [],
+    input_dispositions: [],
+    consumed_context_document_versions: [],
+    context_dispositions: [],
+    handoff_diagnostics: null,
     acceptance_results: [],
     evidence: {},
     error_code: null,
@@ -603,6 +621,10 @@ function pendingTaskExecution(workflowExecution, task, contract, actorId, create
     input_snapshot_hash: null,
     output_bindings: [],
     consumed_inputs: [],
+    input_dispositions: [],
+    consumed_context_document_versions: [],
+    context_dispositions: [],
+    handoff_diagnostics: null,
     acceptance_results: [],
     evidence: {},
     error_code: null,
@@ -972,14 +994,4 @@ function executionEvidence(value) {
   delete result.repository_payload;
   delete result.raw_payload;
   return result;
-}
-function normalizeExecutorConfig(input) {
-  const config = { runner: ['codex', 'codex_docker'].includes(input.runner) ? input.runner : null };
-  if (process.env.NODE_ENV === 'test' && input.adapter === 'test')
-    Object.assign(config, {
-      adapter: 'test',
-      test_summary: clean(input.test_summary, 500),
-      test_changes: Array.isArray(input.test_changes) ? structuredClone(input.test_changes).slice(0, 50) : []
-    });
-  return config;
 }

@@ -300,6 +300,63 @@ try {
     true
   );
 
+  const honestExecution = structuredClone(execution);
+  Object.assign(honestExecution, {
+    id: 'tex-honest-disposition',
+    status: 'running',
+    output_bindings: [],
+    acceptance_results: [],
+    consumed_inputs: [],
+    consumed_context_document_versions: []
+  });
+  honestExecution.context_snapshot.inputs[0].consumption_policy = 'must_use';
+  honestExecution.context_snapshot.inputs[1].consumption_policy = 'available';
+  honestExecution.context_snapshot.system_context.document_versions[0].consumption_policy = 'must_acknowledge';
+  honestExecution.context_snapshot.system_context.document_versions[1].consumption_policy = 'available';
+  state.task_executions.push(honestExecution);
+  const honestOutputs = structuredClone(outputs);
+  honestOutputs.find((item) => item.output_key === 'decision').consumed_input_versions = [];
+  honestOutputs.find((item) => item.output_key === 'decision').consumed_context_document_versions = [];
+  honestOutputs.find((item) => item.output_key === 'test_report').consumed_context_document_versions = [
+    null,
+    'cdv-required'
+  ];
+  const honest = await ingestExecutionOutputsInState(state, {
+    taskExecution: honestExecution,
+    outputs: honestOutputs,
+    declaredConsumedInputVersions: ['version-input-required'],
+    declaredInputDispositions: [
+      { version_id: 'version-input-required', disposition: 'used', reason: 'Verified the required evidence.' },
+      {
+        version_id: 'version-input-optional',
+        disposition: 'not_used',
+        reason: 'The decision did not depend on this optional background.'
+      }
+    ],
+    declaredConsumedContextDocumentVersions: [null, 'cdv-required'],
+    declaredContextDispositions: [
+      { document_version_id: 'cdv-required', disposition: 'used', reason: 'Applied the required rule.' },
+      {
+        document_version_id: 'cdv-optional',
+        disposition: 'not_used',
+        reason: 'The optional note was unrelated to this output.'
+      }
+    ],
+    actorId: 'owner',
+    verifierId: 'repository_verify_verifier',
+    actualEvidence: evidence
+  });
+  assert.deepEqual(honestExecution.consumed_inputs, ['version-input-required']);
+  assert.deepEqual(honestExecution.consumed_context_document_versions, ['cdv-required']);
+  assert.equal(
+    honestExecution.input_dispositions.find((item) => item.version_id === 'version-input-optional').disposition,
+    'not_used'
+  );
+  const honestVersion = honest.outputs.find((item) => item.asset.output_key === 'test_report').version;
+  assert.equal(honestVersion.provenance.handoff_manifest.schema_version, 'aiws.task_handoff.v1');
+  assert.equal(honestVersion.provenance.handoff_manifest.output.version_id, honestVersion.id);
+  assert.match(honestVersion.provenance.handoff_manifest.manifest_sha256, /^[a-f0-9]{64}$/);
+
   const invalid = structuredClone(execution);
   Object.assign(invalid, { id: 'tex-invalid', status: 'running', output_bindings: [], acceptance_results: [] });
   state.task_executions.push(invalid);
