@@ -448,19 +448,25 @@ function Consumers({ value }: { value?: AssetVersionDetails }) {
     <section>
       <header>
         <Users size={14} />
-        <strong>下游消费者</strong>
+        <strong>下游使用</strong>
       </header>
       {value?.consumers.map((item) => (
         <span key={`${item.type}-${item.id}`}>
           <b>
-            {consumerTypeLabel(item.type)} · {displayStatus(item.status)}
+            {consumerTypeLabel(item.type)} ·{' '}
+            {item.consumption_status === 'consumed'
+              ? '已实际消费'
+              : item.consumption_status === 'evidenced'
+                ? '作为验收证据'
+                : '仅固定为输入'}{' '}
+            · {displayStatus(item.status)}
           </b>
           <code>
             {short(item.id)} · {(item.input_keys || []).join(', ')}
           </code>
         </span>
       ))}
-      {!value?.consumers.length && <small>尚无消费者</small>}
+      {!value?.consumers.length && <small>尚无下游使用</small>}
     </section>
   );
 }

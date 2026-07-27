@@ -229,6 +229,31 @@ assert.equal(
 assert.equal(isCodexThreadUnavailable(new Error('no rollout found for thread id stale-thread')), true);
 assert.equal(isCodexThreadUnavailable(new Error('endpoint unavailable')), false);
 
+const coalesced = await runCodexAppServer({
+  state,
+  profile,
+  prompt: 'coalesced turn response and completion',
+  cwd: process.cwd(),
+  sandbox: 'read-only',
+  spawnProcess: () =>
+    new FakeProcess((message, child) => {
+      if (message.method === 'initialize') child.send({ id: message.id, result: { userAgent: 'fake' } });
+      if (message.method === 'thread/start')
+        child.send({ id: message.id, result: { thread: { id: 'coalesced-thread' } } });
+      if (message.method === 'turn/start') {
+        const response = { id: message.id, result: { turn: { id: 'coalesced-turn', status: 'inProgress' } } };
+        const completed = {
+          method: 'turn/completed',
+          params: { turn: { id: 'coalesced-turn', status: 'completed' } }
+        };
+        queueMicrotask(() =>
+          child.stdout.emit('data', Buffer.from(`${JSON.stringify(response)}\n${JSON.stringify(completed)}\n`))
+        );
+      }
+    })
+});
+assert.equal(coalesced.turn_id, 'coalesced-turn');
+
 await assert.rejects(
   runCodexAppServer({
     state,

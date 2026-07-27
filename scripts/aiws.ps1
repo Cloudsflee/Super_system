@@ -74,6 +74,22 @@ function Build-Images {
   if ($LASTEXITCODE -ne 0) { throw 'app_image_build_failed' }
 }
 
+function Preserve-RollbackImage {
+  if ($env:AIWS_ROLLBACK_IMAGE) {
+    & docker image inspect $env:AIWS_ROLLBACK_IMAGE *> $null
+    if ($LASTEXITCODE -ne 0) { throw 'v20_rollback_image_missing' }
+    return $env:AIWS_ROLLBACK_IMAGE
+  }
+  $containerId = & docker ps -a -q --filter 'label=com.docker.compose.project=aiws-v20' --filter 'label=com.docker.compose.service=app' | Select-Object -First 1
+  if (-not $containerId) { return $null }
+  $imageId = & docker inspect --format '{{.Image}}' $containerId
+  if ($LASTEXITCODE -ne 0 -or -not $imageId) { throw 'v20_rollback_image_inspect_failed' }
+  $tag = "aiws-app:v20-rollback-$PID-$([guid]::NewGuid().ToString('N').Substring(0, 8))"
+  & docker image tag $imageId $tag
+  if ($LASTEXITCODE -ne 0) { throw 'v20_rollback_image_preserve_failed' }
+  return $tag
+}
+
 function Build-VerifyImage {
   $verifyImage = 'aiws-verify:2.0.0'
   $compatible = $false
@@ -198,6 +214,7 @@ Set-Location $Root
 Assert-Docker
 switch ($Command) {
   'up' {
+    $rollbackImage = Preserve-RollbackImage
     Build-Images
     Test-VolumeSubpath
     $override = New-ImportOverride
@@ -212,6 +229,7 @@ switch ($Command) {
         '--runner-image', $RunnerImage,
         '--port', [string]$Port
       )
+      if ($rollbackImage) { $releaseArgs += @('--rollback-image', $rollbackImage) }
       if ($override) { $releaseArgs += @('--override', $override) }
       & node @releaseArgs
       if ($LASTEXITCODE -ne 0) { throw 'v20_release_up_failed' }

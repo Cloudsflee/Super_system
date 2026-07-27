@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { spawnSync } from 'node:child_process';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -16,7 +17,13 @@ try {
   const { validateState19 } = await import('../../apps/api/src/state-migration-v19.mjs');
   const contextService = await import('../../apps/api/src/context-service.mjs');
   const release = await import('../../docker/release_volume.mjs');
+  const { v20RollbackAccepted } = await import('../../docker/v20-upgrade.mjs');
   const { findLegacyRunnerReferencesV20 } = await import('../../docker/release-volume-validation.mjs');
+
+  const healthyRollback = { status: 'ok', version: '2.0.0', schema_version: 20 };
+  assert.equal(v20RollbackAccepted(['container-1'], healthyRollback), true);
+  assert.equal(v20RollbackAccepted([], healthyRollback), false);
+  assert.equal(v20RollbackAccepted(['container-1'], { error_code: 'v20_health_check_failed' }), false);
 
   await stateApi.ensureRuntime();
   const sourceState = structuredClone(await stateApi.readState());
@@ -107,12 +114,28 @@ try {
   assert.equal((await release.volumeInventory(source)).hash, sourceInventory.hash);
   assert.equal(fs.readFileSync(path.join(source, 'vault', 'credential.enc'), 'utf8'), 'encrypted-v19-preserved');
 
+  await stateApi.mutate((state) => {
+    const user = state.users[0];
+    user.display_name = `${user.display_name} refreshed`;
+    user.updated_at = '2026-07-26T01:06:00.000Z';
+  });
+  await assert.rejects(() => release.validateV20ReleaseTarget(target));
+  const deferred = await release.validateV20ReleaseTarget(target, 'aiws-data-v20', { deferProjection: true });
+  assert.equal(deferred.accepted, true);
+  assert.deepEqual(deferred.projection, { deferred: true, reason: 'release_refresh_required' });
+  await contextService.rebuildContext({ req });
+  assert.equal((await release.validateV20ReleaseTarget(target)).projection.warnings, 0);
+
   const indexFile = path.join(target, 'data', '.context-index', 'minisearch-v1.json');
   const indexBytes = fs.readFileSync(indexFile);
   fs.writeFileSync(indexFile, '{"schema_version":"broken"}');
   await assert.rejects(
     () => release.validateV20ReleaseTarget(target),
     (error) => error.code === 'context_index_snapshot_invalid'
+  );
+  assert.equal(
+    (await release.validateV20ReleaseTarget(target, 'aiws-data-v20', { deferProjection: true })).accepted,
+    true
   );
   fs.writeFileSync(indexFile, indexBytes);
 
@@ -128,13 +151,43 @@ try {
     'type=volume,src=${config.sourceVolume},dst=/source,readonly',
     'clone-verify-v20',
     'migrateAndBuildContext(config)',
+    'maxBuffer: COMMAND_MAX_BUFFER_BYTES',
     'accept-v20',
     "compose(config, ['down', '--remove-orphans']",
+    'checkAcceptedTarget(config, { deferProjection: true })',
+    'waitForQuiescence(config, config.targetVolume)',
+    'context.stopped_v20_containers = stopProjectApps(config.projectName)',
+    'context.refresh = migrateAndBuildContext(config)',
+    "'--rollback-image': 'rollbackImage'",
+    "['container', 'commit', container.id, tag]",
+    "['stop', '--timeout', '30', id]",
+    'restorePreviousV20(config, context)',
+    'v20RollbackAccepted(restarted, health)',
+    "if (!restored) compose(config, ['down', '--remove-orphans']",
     'restartContainers(context.stopped_v110_containers)',
-    "status: 'failed_v20_stopped_v110_restored'"
+    "'failed_previous_v20_restored'",
+    "'failed_previous_v20_unchanged'",
+    "'failed_v20_stopped_v110_restored'"
   ])
     assert.ok(upgrade.includes(value), value);
   assert.equal(upgrade.includes("volume', 'rm', config.sourceVolume"), false);
+  for (const script of ['scripts/aiws.ps1', 'scripts/aiws.sh']) {
+    const source = fs.readFileSync(script, 'utf8');
+    assert.ok(source.includes('AIWS_ROLLBACK_IMAGE'), `${script} rollback image override`);
+    assert.ok(source.includes('--rollback-image'), `${script} rollback image handoff`);
+    assert.ok(source.includes('docker image tag'), `${script} rollback image preservation`);
+  }
+  const posix = fs.readFileSync('scripts/aiws.sh', 'utf8'),
+    rollbackFunction = posix.slice(
+      posix.indexOf('preserve_rollback_image() {'),
+      posix.indexOf('\nbuild_verify_image()', posix.indexOf('preserve_rollback_image() {'))
+    ),
+    firstInstallProbe = spawnSync('bash', [], {
+      input: `set -e\ndocker() { return 0; }\n${rollbackFunction}\nrollback_image=$(preserve_rollback_image)\nprintf 'continued'\n`,
+      encoding: 'utf8'
+    });
+  assert.equal(firstInstallProbe.status, 0, firstInstallProbe.stderr);
+  assert.equal(firstInstallProbe.stdout, 'continued');
 
   console.log('V2.0 read-only clone, projection acceptance, source retention, and rollback tests passed');
 } finally {

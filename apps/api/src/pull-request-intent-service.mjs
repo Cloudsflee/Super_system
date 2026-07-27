@@ -7,6 +7,7 @@ import {
   failPullRequestIntentExecutionInState,
   preparePullRequestIntentExecutionInState,
   reconcilePullRequestIntentSnapshotInState,
+  refreshPullRequestIntentBaseInState,
   requireIntent
 } from './pull-request-intent-domain.mjs';
 import { markRepositoryWorkspacesStale, repositoryWorkspaceRoot } from './repository-workspace-service.mjs';
@@ -54,6 +55,43 @@ export async function executePullRequestIntent(intentId, input, actorId, depende
     return completed;
   } catch (error) {
     if (remoteCompleted) throw error;
+    if (
+      action === 'create_pr' &&
+      error?.payload?.error === 'pull_request_intent_base_changed' &&
+      error.payload.refreshable === true &&
+      error.payload.actual_base_sha
+    ) {
+      const refreshed = await mutate((state) => {
+        const value = refreshPullRequestIntentBaseInState(state, intentId, error.payload.actual_base_sha);
+        addTrace(
+          state,
+          'pull_request.intent.reconciled',
+          {
+            project_id: value.intent.project_id,
+            target_type: 'pull_request_intent',
+            target_id: value.intent.id,
+            summary: `Base snapshot refreshed: ${value.previous_base_sha} -> ${value.intent.base_sha}`,
+            data: {
+              revision: value.intent.revision,
+              snapshot_hash: value.intent.snapshot_hash,
+              previous_base_sha: value.previous_base_sha,
+              actual_base_sha: value.intent.base_sha,
+              approval_required: true
+            }
+          },
+          actorId
+        );
+        return value;
+      });
+      throw new HttpError(409, {
+        error: 'pull_request_intent_base_refreshed',
+        previous_base_sha: refreshed.previous_base_sha,
+        actual_base_sha: refreshed.intent.base_sha,
+        actual_revision: refreshed.intent.revision,
+        actual_snapshot_hash: refreshed.intent.snapshot_hash,
+        approval_required: true
+      });
+    }
     const uncertain = !error?.status || Number(error.status) >= 500 || error?.payload?.retryable === true;
     await mutate((state) =>
       failPullRequestIntentExecutionInState(state, intentId, action, error?.payload?.error || error.message, {
@@ -168,10 +206,15 @@ async function assertRemoteRefs(context, intent, workspace, allowPushReview) {
     throw new HttpError(409, {
       error: 'pull_request_intent_base_changed',
       expected_base_sha: intent.base_sha,
-      actual_base_sha: base
+      actual_base_sha: base,
+      refreshable: true
     });
   let head = await readRef(context, intent.head_ref, true);
-  if (!head && allowPushReview && (intent.repository_line_id || intent.head_ref.startsWith('aiws/review-'))) {
+  if (
+    head !== intent.head_sha &&
+    allowPushReview &&
+    (intent.repository_line_id || intent.head_ref.startsWith('aiws/review-'))
+  ) {
     const line = intent.repository_line_id
       ? context.state.repository_lines.find((item) => item.id === intent.repository_line_id)
       : null;
@@ -319,8 +362,7 @@ async function call(context, url, options, errorCode) {
   }
 }
 function assertPullSnapshot(intent, pull) {
-  const head = String(pull?.head?.sha || '').toLowerCase(),
-    base = String(pull?.base?.sha || '').toLowerCase();
+  const head = String(pull?.head?.sha || '').toLowerCase();
   if ((pull?.head?.ref && pull.head.ref !== intent.head_ref) || (pull?.base?.ref && pull.base.ref !== intent.base_ref))
     throw new HttpError(409, { error: 'pull_request_ref_mismatch' });
   if (head && head !== intent.head_sha)
@@ -328,12 +370,6 @@ function assertPullSnapshot(intent, pull) {
       error: 'pull_request_intent_head_changed',
       expected_head_sha: intent.head_sha,
       actual_head_sha: head
-    });
-  if (base && base !== intent.base_sha)
-    throw new HttpError(409, {
-      error: 'pull_request_intent_base_changed',
-      expected_base_sha: intent.base_sha,
-      actual_base_sha: base
     });
 }
 function pullSnapshot(pull, checksStatus) {
@@ -355,6 +391,13 @@ function testResult(intent, action, input) {
   const checks = Array.isArray(input.test_checks) ? input.test_checks : [];
   if (input.test_head_sha && input.test_head_sha !== intent.head_sha)
     throw new HttpError(409, { error: 'pull_request_intent_head_changed', actual_head_sha: input.test_head_sha });
+  if (action === 'create_pr' && input.test_actual_base_sha && input.test_actual_base_sha !== intent.base_sha)
+    throw new HttpError(409, {
+      error: 'pull_request_intent_base_changed',
+      expected_base_sha: intent.base_sha,
+      actual_base_sha: input.test_actual_base_sha,
+      refreshable: true
+    });
   if (action === 'create_pr')
     return {
       number: Number(input.test_pr_number || 1),

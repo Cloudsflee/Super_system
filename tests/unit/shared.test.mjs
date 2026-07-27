@@ -18,6 +18,8 @@ import {
   generateBranchName,
   approveProposal,
   makeAssetFromCandidate,
+  maskSecret,
+  maskSecretsDeep,
   markProposalApplied,
   mergeSufficiencyIntoAssistResult,
   rejectProposal,
@@ -194,4 +196,55 @@ assert.equal(
 assert.equal(generateBranchName('Implement Feature', 'run_123456789'), 'aiws/implement-feature-23456789');
 assert.equal(generateBranchName('实现核心交付', 'run_123456789'), 'aiws/node-23456789');
 assert.match(generateBranchName('实现 API 审计', 'run_123456789'), /^aiws\/api-[a-z0-9_-]{8}$/);
+const opaqueSecret = 'opaque-secret-value-123456789';
+const githubPat = `github_pat_${'A'.repeat(30)}`;
+const npmToken = `npm_${'B'.repeat(30)}`;
+for (const candidate of [
+  `Authorization: Bearer ${opaqueSecret}`,
+  `Cookie: session=${opaqueSecret}; csrf=another-secret`,
+  `//registry.npmjs.org/:_authToken=${opaqueSecret}`,
+  `{"accessToken":"${opaqueSecret}"}`
+])
+  assert.equal(maskSecret(candidate).includes(opaqueSecret), false);
+assert.equal(maskSecret(githubPat).includes(githubPat), false);
+assert.equal(maskSecret(npmToken).includes(npmToken), false);
+const serializedSecrets = JSON.stringify(
+  {
+    message: `Authorization: Bearer ${opaqueSecret}`,
+    cookie: `session=${opaqueSecret}; csrf=another-secret`,
+    accessToken: opaqueSecret,
+    script: `clientSecret=${opaqueSecret},\nnext=true`,
+    refs: { credential: 'vault:provider-token' },
+    isSecret: true,
+    hasToken: false
+  },
+  null,
+  2
+);
+const maskedSerializedSecrets = maskSecret(serializedSecrets);
+assert.doesNotThrow(() => JSON.parse(maskedSerializedSecrets));
+assert.equal(maskedSerializedSecrets.includes(opaqueSecret), false);
+assert.equal(JSON.parse(maskedSerializedSecrets).isSecret, true);
+assert.equal(JSON.parse(maskedSerializedSecrets).hasToken, false);
+assert.equal(JSON.parse(maskedSerializedSecrets).refs.credential, 'vault:provider-token');
+assert.deepEqual(
+  maskSecretsDeep({
+    accessToken: opaqueSecret,
+    nested: { clientSecret: opaqueSecret },
+    refs: { credential: 'vault:provider-token', token: 'env:AIWS_TEST_TOKEN' },
+    token_count: 12,
+    isSecret: true,
+    hasToken: false,
+    credential_ref: 'vault:provider-token'
+  }),
+  {
+    accessToken: '***MASKED***',
+    nested: { clientSecret: '***MASKED***' },
+    refs: { credential: 'vault:provider-token', token: 'env:AIWS_TEST_TOKEN' },
+    token_count: 12,
+    isSecret: true,
+    hasToken: false,
+    credential_ref: 'vault:provider-token'
+  }
+);
 console.log('unit shared tests passed');

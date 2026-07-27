@@ -49,9 +49,25 @@ export function normalizeState20Defaults(state, timestamp = new Date().toISOStri
   for (const collection of V20_COLLECTIONS) if (!Array.isArray(state[collection])) state[collection] = [];
   normalizeState19Defaults(state, timestamp);
   normalizeOfficialRunnerImagesV20(state, { timestamp });
+  normalizeOutcomeEvidenceRelationsV20(state);
   reconcileContextProjectionState(state, { sourceCollections: V20_SOURCE_COLLECTIONS, timestamp });
   if (migrating) state.migrated_to_schema_20_at = timestamp;
   return state;
+}
+
+export function normalizeOutcomeEvidenceRelationsV20(state) {
+  let changed = false;
+  for (const relation of state.asset_relations || []) {
+    if (relation.relation_type !== 'derived_from') continue;
+    const targetVersion = (state.asset_versions || []).find((item) => item.id === relation.target_asset_version_id),
+      targetAsset = (state.assets || []).find(
+        (item) => item.id === (relation.target_asset_id || targetVersion?.asset_id)
+      );
+    if (!targetAsset || !/WorkstreamOutcome/i.test(targetAsset.asset_type)) continue;
+    relation.relation_type = 'evidenced_by';
+    changed = true;
+  }
+  return { changed };
 }
 
 export function normalizeOfficialRunnerImagesV20(state, { timestamp = new Date().toISOString() } = {}) {

@@ -58,6 +58,7 @@ COPY packages/runner-adapters/package.json packages/runner-adapters/package.json
 COPY packages/shared/package.json packages/shared/package.json
 COPY packages/system-context/package.json packages/system-context/package.json
 RUN corepack pnpm install --prod --frozen-lockfile --filter ai-workspace-system
+RUN corepack pnpm install --prod --frozen-lockfile --filter @aiws/system-context
 
 FROM node:24-alpine AS gateway-deps
 RUN corepack enable
@@ -80,10 +81,12 @@ COPY --from=production-deps /app/node_modules ./node_modules
 COPY package.json ./package.json
 COPY apps/api ./apps/api
 COPY packages ./packages
+COPY --from=production-deps /app/packages/system-context/node_modules ./packages/system-context/node_modules
 COPY config ./config
 COPY --from=build /app/apps/web/dist ./apps/web/dist
 COPY docker/backup_archive.py /opt/aiws/backup_archive.py
 COPY docker/release_volume.mjs ./docker/release_volume.mjs
+COPY docker/release-volume-v20.mjs ./docker/release-volume-v20.mjs
 COPY docker/release-volume-validation.mjs ./docker/release-volume-validation.mjs
 COPY docker/v20-upgrade.mjs ./docker/v20-upgrade.mjs
 RUN mkdir -p /var/lib/aiws && chmod 0700 /var/lib/aiws

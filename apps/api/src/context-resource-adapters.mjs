@@ -37,7 +37,7 @@ const IGNORED_DIRECTORIES = new Set([
   'vendor'
 ]);
 const SECRET_FILE =
-  /(?:^|[._-])(?:\.env|credentials?|secrets?|tokens?|cookies?|id_rsa|id_ed25519|private[_-]?key)(?:[._-]|$)|\.(?:pem|p12|pfx|key)$/i;
+  /(?:^|[._-])(?:\.env|credentials?|secrets?|tokens?|cookies?|id_rsa|id_ed25519|private[_-]?key)(?:[._-]|$)|\.(?:pem|p12|pfx|key)$|^(?:\.npmrc|\.yarnrc(?:\.yml)?|\.pypirc|\.netrc)$/i;
 
 export async function refreshContextResourcesInState(
   state,

@@ -81,9 +81,17 @@ try {
   );
   assert.equal(
     generatedTasks.every(
-      (item) => item.acceptance_criteria.length && item.input_slots.length && item.output_slots.length
+      (item) => item.acceptance_criteria.length && Array.isArray(item.input_slots) && item.output_slots.length
     ),
     true
+  );
+  assert.deepEqual(
+    generatedTasks.map((item) => item.input_slots.map((slot) => [slot.source, slot.ref_id, slot.selector])),
+    [
+      [],
+      [['dependency', generatedTasks[0].id, 'research_result']],
+      [['dependency', generatedTasks[1].id, 'content_result']]
+    ]
   );
   assert.equal(
     generatedTasks.every((item) =>

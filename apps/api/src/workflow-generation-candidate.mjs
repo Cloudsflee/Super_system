@@ -84,9 +84,11 @@ export function workflowGenerationPrompt(fingerprint, retryErrors = []) {
     'Top level: 1-6 independently acceptable Workstreams, never generic lifecycle phases.',
     'Software outcomes default to six Tasks: research evidence, constraint analysis, solution decision, implementation, acceptance testing, and integration delivery. Simple work may merge adjacent stages but must retain at least evidence preparation, execution, and acceptance.',
     'Allowed task_kind values: research, analysis, design, content, code, test, review, deploy, manual, integration. Allowed execution_mode values: manual, assist, codex, integration.',
-    'Every Task needs capability_tags, acceptance_criteria, typed input_slots, typed output_slots, same-Workstream dependency_ids, task_kind, execution_mode, and optional repository_intent.',
+    'Every Task needs capability_tags, acceptance_criteria, an input_slots array (which may be empty), typed output_slots, same-Workstream dependency_ids, task_kind, execution_mode, and optional repository_intent.',
     'Input slots use key/kind/required/source/selector/ref_id/version_id. Output slots use key/kind/required/asset_type/acceptance_criteria/confirmation_policy.',
-    'For every dependency_id, include an input slot with source="dependency" and ref_id equal to that Task id. If the upstream Task has one required output use selector="required_outputs"; if it has multiple outputs the selector must equal one exact upstream output key. Every Task acceptance criterion must appear in at least one output slot acceptance_criteria list.',
+    'Task dependency_ids control readiness and may be ordering-only. Add source="dependency" only when the Task genuinely reads an upstream asset; every such ref_id must also appear in dependency_ids. Select one exact upstream output key, or use selector="required_outputs" only when exactly one required output exists. Add separate input slots for multiple genuinely consumed outputs; never add a generic input merely to mirror a graph edge.',
+    'Workstream dependency_ids are readiness boundaries and may also be ordering-only. A Task that genuinely reads an upstream Workstream delivery may declare source="workstream_dependency" only when that Workstream id appears in its parent Workstream dependency_ids. Select one exact terminal output key, or use selector="required_outputs" only when exactly one required terminal output exists. The WorkstreamOutcome receipt is verification metadata and is never a consumable input. Runtime verifies the receipt but mounts only selected terminal AssetVersion payloads from the same Workflow Execution.',
+    'Declare source="brief", source="decision", or other context inputs only when the Task directly needs that material. An empty input_slots array is valid; do not invent Project Brief, Digest, dependency, asset, or context inputs to make the workflow look connected.',
     'Within each Workstream, every Task after the first returned Task must have at least one dependency_id. During replan, the first new follow-up Task must depend on an existing completed Task so the new asset chain starts from the accepted baseline.',
     'Use these exact capability tags as applicable: research_evidence, constraint_analysis, solution_decision, execution, acceptance, integration_delivery. A six-or-more-Task software Workstream must cover all six.',
     'Make Task titles, goals, outputs, and acceptance criteria specific to this Brief. Lifecycle stages are required as Tasks inside an outcome Workstream, never as top-level Workstreams.',
@@ -111,6 +113,7 @@ export function workflowCriticPrompt(fingerprint, candidate) {
     'brief_coverage is complete when every non-empty Brief features, acceptance_criteria, milestones, and risks collection maps to valid Task ids. Do not require users, scope, constraints, open questions, URLs, or per-item mappings.',
     'Do not reject missing external materials or code_source when current_workflow and repository intent provide the existing baseline. Do reject code changes after final acceptance or a test input that is not derived from the changed immutable repository version.',
     'A repository_workspace fixed_sha input is required execution material and may coexist with a dependency RepositoryVersionAsset. The server rejects the Task unless their SHAs are identical, so do not treat their coexistence as a version mismatch.',
+    'dependency_ids govern readiness, not automatic data flow. Empty input_slots and ordering-only Task or Workstream edges are valid. Every declared dependency/workstream_dependency input must, however, have its corresponding graph edge and select a real output; WorkstreamOutcome receipts are not consumable assets.',
     'Do not introduce requirements absent from the Brief or this contract. Candidate fields have already passed deterministic normalization and validation.',
     'The minimum acceptable confidence is 0.7.',
     'Return JSON only: {"approved":true|false,"errors":[{"code":"...","node_id":"...","detail":"..."}]}.',
@@ -129,18 +132,35 @@ export function createTestWorkflowCandidate(fingerprint) {
   const workstreamId = stable(fingerprint.input_hash, 'outcome', 'wfs');
   const phases = software ? softwarePhases() : simplePhases();
   const taskIds = phases.map((phase, index) => stable(fingerprint.input_hash, `task:${index}`, 'tsk'));
-  const tasks = phases.map((phase, index) => ({
-    id: taskIds[index],
-    role: 'task',
-    title: phase.title,
-    goal: phase.goal,
-    task_kind: phase.kind,
-    execution_mode: phase.mode,
-    capability_tags: [phase.tag],
-    acceptance_criteria: [phase.acceptance],
-    dependency_ids: index ? [taskIds[index - 1]] : [],
-    repository_intent: phase.repository ? { mode: 'write' } : null
-  }));
+  const tasks = phases.map((phase, index) => {
+    const previous = phases[index - 1],
+      previousOutputKey = previous ? `${previous.kind}_result` : null;
+    return {
+      id: taskIds[index],
+      role: 'task',
+      title: phase.title,
+      goal: phase.goal,
+      task_kind: phase.kind,
+      execution_mode: phase.mode,
+      capability_tags: [phase.tag],
+      acceptance_criteria: [phase.acceptance],
+      input_slots: previous
+        ? [
+            {
+              key: previousOutputKey,
+              kind: 'asset_version',
+              required: true,
+              source: 'dependency',
+              selector: previousOutputKey,
+              ref_id: taskIds[index - 1],
+              version_id: null
+            }
+          ]
+        : [],
+      dependency_ids: index ? [taskIds[index - 1]] : [],
+      repository_intent: phase.repository ? { mode: 'write' } : null
+    };
+  });
   return {
     project_classification: software ? 'software_delivery' : 'knowledge_or_manual_delivery',
     decomposition_basis: software

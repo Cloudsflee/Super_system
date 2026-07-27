@@ -29,6 +29,7 @@ import './styles/workflow-process-bands.css';
 import './styles/workflow-process-details.css';
 import './styles/workflow-process-responsive.css';
 import './styles/workspace.css';
+import './styles/task-execution.css';
 import './styles/data.css';
 import './styles/context-map.css';
 import './styles/overlays.css';

@@ -52,8 +52,11 @@ export async function provisionRepositoryLine(repositoryLineId) {
     );
   const source = connection?.local_path || workspace?.managed_path;
   if (!source) throw lineError('repository_line_source_checkout_missing');
-  const sourceHead = await gitOutput(source, ['rev-parse', line.base_sha || line.base_ref]);
-  if (line.base_sha && sourceHead !== line.base_sha)
+  const desiredHead = line.head_sha || line.base_sha || line.base_ref,
+    sourceHead = await gitOutput(source, ['rev-parse', desiredHead]);
+  if (line.head_sha && sourceHead !== line.head_sha)
+    throw lineError('repository_line_head_sha_mismatch', { expected_sha: line.head_sha, actual_sha: sourceHead });
+  if (!line.head_sha && line.base_sha && sourceHead !== line.base_sha)
     throw lineError('repository_line_base_sha_mismatch', { expected_sha: line.base_sha, actual_sha: sourceHead });
   const root = path.resolve(EXECUTION_DIR, 'repository-lines'),
     target = path.resolve(root, line.id);
@@ -67,10 +70,12 @@ export async function provisionRepositoryLine(repositoryLineId) {
     const created = await commandAsync('git', ['worktree', 'add', '--detach', target, sourceHead], source, 120_000);
     if (!created.ok)
       throw lineError('repository_line_worktree_create_failed', { detail: tail(created.stderr || created.error) });
-    const branch = await commandAsync('git', ['switch', '-c', line.branch], target, 30_000);
-    if (!branch.ok)
-      throw lineError('repository_line_branch_create_failed', { detail: tail(branch.stderr || branch.error) });
   }
+  const status = await gitOutput(target, ['status', '--porcelain=v1', '--untracked-files=all']);
+  if (status) throw lineError('repository_line_recovery_dirty');
+  const branch = await commandAsync('git', ['switch', '-C', line.branch, sourceHead], target, 30_000);
+  if (!branch.ok)
+    throw lineError('repository_line_branch_create_failed', { detail: tail(branch.stderr || branch.error) });
   const head = await repositoryHead(target);
   if (head !== sourceHead)
     throw lineError('repository_line_checkout_sha_mismatch', { expected_sha: sourceHead, actual_sha: head });
@@ -78,7 +83,7 @@ export async function provisionRepositoryLine(repositoryLineId) {
     const record = current.repository_lines.find((item) => item.id === repositoryLineId);
     if (!record) throw new HttpError(404, { error: 'repository_line_not_found' });
     Object.assign(record, {
-      base_sha: sourceHead,
+      base_sha: record.base_sha || sourceHead,
       head_sha: head,
       checkout_path: target,
       status: 'active',

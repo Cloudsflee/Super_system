@@ -4,9 +4,13 @@ import { issueInternalCodexToken, revokeMcpClient } from './mcp-client-service.m
 
 export const AIWS_BUILTIN_MCP_NAME = 'aiws-built-in';
 
-export async function issueCodexMcpAccess(projectId, profile, { ttlSeconds = 3600 } = {}) {
+export async function issueCodexMcpAccess(projectId, profile, { ttlSeconds = 3600, contextBinding = null } = {}) {
   if (!projectId) return null;
-  const issued = await issueInternalCodexToken(projectId, { ttlSeconds, name: `AIWS built-in Codex (${projectId})` });
+  const issued = await issueInternalCodexToken(projectId, {
+    ttlSeconds,
+    name: `AIWS built-in Codex (${projectId})`,
+    contextBinding
+  });
   const hostUrl = String(process.env.AIWS_INTERNAL_MCP_URL || `http://127.0.0.1:${PORT}/api/mcp`);
   const url = profile?.kind === 'docker' ? containerizeLoopbackUrl(hostUrl) : hostUrl;
   const configArgs = [

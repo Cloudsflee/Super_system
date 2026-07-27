@@ -945,7 +945,9 @@ async function executeModernReleaseCommand(command, args) {
   if (command === 'check-v20')
     return {
       matched: true,
-      result: await validateV20ReleaseTarget(required(args[0], 'target_root_required'), args[1] || V20_TARGET_VOLUME)
+      result: await validateV20ReleaseTarget(required(args[0], 'target_root_required'), args[1] || V20_TARGET_VOLUME, {
+        deferProjection: args[2] === 'defer-projection'
+      })
     };
   if (command === 'purge-schema-backups')
     return {

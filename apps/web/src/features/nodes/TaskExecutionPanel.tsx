@@ -11,7 +11,7 @@ import {
 } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import { api, json } from '../../api/client';
-import type { PullRequestIntentRecord, TaskExecutionDetails, TaskReadiness } from '../../api/types';
+import type { PullRequestIntentRecord, TaskExecutionDetails, TaskExecutionInput, TaskReadiness } from '../../api/types';
 import {
   assetTypeLabel,
   checkStatusLabel,
@@ -25,6 +25,7 @@ export function TaskExecutionPanel({ taskId, canWrite = true }: { taskId: string
   const toast = useUi((state) => state.toast),
     [busy, setBusy] = useState('');
   const [manualValues, setManualValues] = useState<Record<string, string>>({});
+  const [manualUsage, setManualUsage] = useState<Record<string, string[]>>({});
   const readiness = useQuery({
     queryKey: ['task-readiness', taskId],
     queryFn: () => api<TaskReadiness>(`/tasks/${taskId}/readiness`),
@@ -43,6 +44,7 @@ export function TaskExecutionPanel({ taskId, canWrite = true }: { taskId: string
     () => value?.outputs.filter((item) => item.asset?.status === 'candidate' && !item.bound) || [],
     [value?.outputs]
   );
+  const usageOptions = useMemo(() => manualUsageOptions(value), [value]);
   async function refresh() {
     await Promise.all([readiness.refetch(), details.refetch()]);
   }
@@ -71,9 +73,6 @@ export function TaskExecutionPanel({ taskId, canWrite = true }: { taskId: string
   }
   async function submitManual() {
     if (!execution || !value) return;
-    const consumed = [
-      ...new Set(value.inputs.flatMap((item) => item.asset_versions || []).map((item) => item.version_id))
-    ];
     const outputs = value.contract.expected_outputs.map((slot) => ({
       output_key: slot.key,
       asset_type: slot.asset_type,
@@ -81,10 +80,19 @@ export function TaskExecutionPanel({ taskId, canWrite = true }: { taskId: string
       summary: manualValues[slot.key] || '',
       payload: { payload_kind: 'text', media_type: 'text/plain; charset=utf-8', content: manualValues[slot.key] || '' },
       evidence_refs: [],
-      consumed_input_versions: consumed
+      consumed_input_versions: (manualUsage[slot.key] || [])
+        .filter((item) => item.startsWith('asset:'))
+        .map((item) => item.slice('asset:'.length)),
+      consumed_context_document_versions: (manualUsage[slot.key] || [])
+        .filter((item) => item.startsWith('context:'))
+        .map((item) => item.slice('context:'.length))
     }));
+    const consumedContext = [...new Set(outputs.flatMap((item) => item.consumed_context_document_versions))];
     await act('manual', () =>
-      api(`/task-executions/${execution.id}/manual-submit`, json('POST', { outputs }, '提交人工确认点'))
+      api(
+        `/task-executions/${execution.id}/manual-submit`,
+        json('POST', { outputs, consumed_context_document_versions: consumedContext }, '提交人工确认点')
+      )
     );
   }
   async function approvePullRequest(action: 'create_pr' | 'merge_pr') {
@@ -138,17 +146,10 @@ export function TaskExecutionPanel({ taskId, canWrite = true }: { taskId: string
         onRetry={() => void retry()}
       />
       <div className="task-execution-snapshot">
-        <SnapshotColumn title="固定输入" icon={<Database size={14} />} empty="无资产输入">
-          {value.inputs
-            .flatMap((input) => input.asset_versions || [])
-            .map((item) => (
-              <span key={item.version_id}>
-                <strong>{item.title || assetTypeLabel(item.asset_type)}</strong>
-                <code>
-                  {short(item.version_id)} · {short(item.content_sha256)}
-                </code>
-              </span>
-            ))}
+        <SnapshotColumn title="固定输入" icon={<Database size={14} />} empty="无固定输入">
+          {value.inputs.map((input) => (
+            <ExecutionInput key={input.key} input={input} />
+          ))}
         </SnapshotColumn>
         <SnapshotColumn title="输出载荷" icon={<ShieldCheck size={14} />} empty="等待输出">
           {value.outputs.map((item) => (
@@ -160,28 +161,23 @@ export function TaskExecutionPanel({ taskId, canWrite = true }: { taskId: string
         execution.status === 'awaiting_human' &&
         execution.executor === 'manual' &&
         !value.outputs.length && (
-          <div className="task-manual-checkpoint">
-            {value.contract.expected_outputs.map((slot) => (
-              <label key={slot.key}>
-                {slot.key}
-                <small>{assetTypeLabel(slot.asset_type)}</small>
-                <textarea
-                  value={manualValues[slot.key] || ''}
-                  onChange={(event) => setManualValues((current) => ({ ...current, [slot.key]: event.target.value }))}
-                />
-              </label>
-            ))}
-            <button
-              className="button primary"
-              disabled={
-                Boolean(busy) || value.contract.expected_outputs.some((slot) => !(manualValues[slot.key] || '').trim())
-              }
-              onClick={() => void submitManual()}
-            >
-              <Check size={15} />
-              提交并验收
-            </button>
-          </div>
+          <ManualTaskCheckpoint
+            contract={value.contract}
+            manualValues={manualValues}
+            manualUsage={manualUsage}
+            usageOptions={usageOptions}
+            busy={Boolean(busy)}
+            onValueChange={(key, content) => setManualValues((current) => ({ ...current, [key]: content }))}
+            onUsageChange={(key, id, checked) =>
+              setManualUsage((current) => ({
+                ...current,
+                [key]: checked
+                  ? [...new Set([...(current[key] || []), id])]
+                  : (current[key] || []).filter((item) => item !== id)
+              }))
+            }
+            onSubmit={() => void submitManual()}
+          />
         )}
       {canWrite && execution.status === 'awaiting_human' && candidates.length > 0 && (
         <div className="task-checkpoint-actions">
@@ -212,6 +208,90 @@ export function TaskExecutionPanel({ taskId, canWrite = true }: { taskId: string
       ) : null}
     </section>
   );
+}
+
+function ManualTaskCheckpoint({
+  contract,
+  manualValues,
+  manualUsage,
+  usageOptions,
+  busy,
+  onValueChange,
+  onUsageChange,
+  onSubmit
+}: {
+  contract: TaskExecutionDetails['contract'];
+  manualValues: Record<string, string>;
+  manualUsage: Record<string, string[]>;
+  usageOptions: ReturnType<typeof manualUsageOptions>;
+  busy: boolean;
+  onValueChange: (key: string, content: string) => void;
+  onUsageChange: (key: string, id: string, checked: boolean) => void;
+  onSubmit: () => void;
+}) {
+  const incompleteOutput = contract.expected_outputs.some((slot) => !(manualValues[slot.key] || '').trim()),
+    missingRequiredUsage = usageOptions.some(
+      (option) => option.required && !Object.values(manualUsage).some((ids) => ids.includes(option.id))
+    );
+  return (
+    <div className="task-manual-checkpoint">
+      {contract.expected_outputs.map((slot) => (
+        <div className="task-manual-output" key={slot.key}>
+          <label htmlFor={`manual-output-${slot.key}`}>
+            {slot.key}
+            <small>{assetTypeLabel(slot.asset_type)}</small>
+          </label>
+          <textarea
+            id={`manual-output-${slot.key}`}
+            value={manualValues[slot.key] || ''}
+            onChange={(event) => onValueChange(slot.key, event.target.value)}
+          />
+          {usageOptions.length > 0 && (
+            <span className="task-manual-usage">
+              <small>实际使用</small>
+              {usageOptions.map((option) => (
+                <label key={`${slot.key}-${option.id}`}>
+                  <input
+                    type="checkbox"
+                    checked={(manualUsage[slot.key] || []).includes(option.id)}
+                    onChange={(event) => onUsageChange(slot.key, option.id, event.target.checked)}
+                  />
+                  <span>{option.label}</span>
+                </label>
+              ))}
+            </span>
+          )}
+        </div>
+      ))}
+      <button className="button primary" disabled={busy || incompleteOutput || missingRequiredUsage} onClick={onSubmit}>
+        <Check size={15} />
+        提交并验收
+      </button>
+    </div>
+  );
+}
+
+function manualUsageOptions(value?: TaskExecutionDetails) {
+  if (!value) return [];
+  const options = value.inputs.flatMap((input) =>
+    (input.asset_versions || []).map((version) => ({
+      id: `asset:${version.version_id}`,
+      label: `${input.key} · ${version.title || short(version.version_id)}`,
+      required: input.required !== false
+    }))
+  );
+  for (const document of value.context_documents || [])
+    options.push({
+      id: `context:${document.document_version_id}`,
+      label: `${document.title || document.source_collection || '上下文'} · ${short(document.document_version_id)}`,
+      required: document.required === true
+    });
+  const unique = new Map<string, (typeof options)[number]>();
+  for (const option of options) {
+    const previous = unique.get(option.id);
+    unique.set(option.id, { ...option, required: option.required || previous?.required === true });
+  }
+  return [...unique.values()];
 }
 
 function TaskExecutionEmpty({ title, detail }: { title: string; detail: string }) {
@@ -347,6 +427,52 @@ function ExecutionOutput({ item }: { item: TaskExecutionDetails['outputs'][numbe
     </span>
   );
 }
+
+function ExecutionInput({ input }: { input: TaskExecutionInput }) {
+  const versions = input.asset_versions || [],
+    origin = input.resolved_from,
+    originTitle = origin?.workstream_title || origin?.task_title,
+    selectedByVersion = new Map((origin?.selected_outputs || []).map((item) => [item.version_id, item]));
+  return (
+    <span className="task-execution-input">
+      <strong>
+        {input.key} · {executionInputSource(input.source)}
+      </strong>
+      {originTitle && <small>{originTitle}</small>}
+      {versions.length ? (
+        versions.map((item) => {
+          const selected = selectedByVersion.get(item.version_id);
+          return (
+            <code key={item.version_id}>
+              {selected?.producer_task_title ? `${selected.producer_task_title} -> ` : ''}
+              {item.output_key || assetTypeLabel(item.asset_type)} · {short(item.version_id)} ·{' '}
+              {short(item.content_sha256)}
+            </code>
+          );
+        })
+      ) : (
+        <code>{input.selector || input.ref_id || '当前版本'}</code>
+      )}
+    </span>
+  );
+}
+
+function executionInputSource(source: string) {
+  return (
+    (
+      {
+        dependency: '前置任务交付',
+        workstream_dependency: '前置成果交付',
+        brief: '项目简报',
+        decision: '项目决策',
+        repository_workspace: '代码仓库快照',
+        asset: '固定资产',
+        asset_version: '固定资产版本',
+        inline: '任务声明'
+      } as Record<string, string>
+    )[source] || source
+  );
+}
 function terminal(value?: string) {
   return ['completed', 'failed', 'cancelled', 'superseded'].includes(value || '');
 }
@@ -358,7 +484,9 @@ function reasonLabel(value: string) {
         pull_request_create_approval_required: '等待批准创建合并请求',
         pull_request_merge_approval_required: '等待批准合并代码',
         task_dependency_waiting: '等待上游任务',
-        required_input_missing: '必需输入缺失'
+        required_input_missing: '必需输入缺失',
+        workstream_dependency_waiting: '等待前置成果节点完成',
+        workstream_input_missing: '前置成果版本尚未就绪'
       } as Record<string, string>
     )[value] || '等待执行条件'
   );

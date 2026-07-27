@@ -125,6 +125,7 @@ function createAppServerContext(options, child, resolve, reject) {
     turnStarted: false,
     pending: new Map(),
     deltaItems: new Set(),
+    pendingCompletedTurn: null,
     timer: null,
     abort: null
   };
@@ -201,6 +202,9 @@ async function startAppServerTurn(context) {
   });
   context.turnId = started.turn?.id;
   if (!context.turnId) throw taggedError('app_server_turn_missing', 'app_server_turn_failed');
+  const pendingCompletedTurn = context.pendingCompletedTurn;
+  context.pendingCompletedTurn = null;
+  if (pendingCompletedTurn?.id === context.turnId) completeAppServerTurn(context, pendingCompletedTurn);
 }
 
 async function assertNativePlanAvailable(context) {
@@ -272,8 +276,15 @@ function consumeAppServerLine(context, line) {
   }
   const mapped = mapNotification(message, context.deltaItems);
   if (mapped) context.onEvent?.(mapped);
-  if (message.method === 'turn/completed' && (!context.turnId || message.params?.turn?.id === context.turnId))
-    completeAppServerTurn(context, message.params?.turn);
+  if (message.method === 'turn/completed') handleAppServerTurnCompleted(context, message.params?.turn);
+}
+
+function handleAppServerTurnCompleted(context, turn) {
+  if (!context.turnId) {
+    if (context.turnStarted && turn?.id) context.pendingCompletedTurn = turn;
+    return;
+  }
+  if (turn?.id === context.turnId) completeAppServerTurn(context, turn);
 }
 
 function resolveAppServerResponse(context, message) {

@@ -10,6 +10,7 @@ import {
   completeTaskExecutionInState,
   reconcileWorkflowExecutionInState,
   requireTaskExecution,
+  integrationEvidenceFor,
   transitionTaskExecutionInState
 } from './workflow-execution-domain.mjs';
 
@@ -129,23 +130,8 @@ export async function advanceRepositoryIntegration(intentId, action, result, act
       pr_state: 'merged',
       updated_at: now()
     });
-    const evidence = {
-      repository_sha: mergedSha,
-      checks_policy: checks.length ? 'github_checks' : 'internal_test_report',
-      pull_request: {
-        merged: true,
-        merged_sha: mergedSha,
-        head_sha: intent.head_sha,
-        expected_head_sha: line.head_sha,
-        base_ref: intent.base_ref,
-        expected_base_ref: line.base_ref,
-        approvals,
-        checks,
-        number: intent.pr_number,
-        url: intent.pr_url
-      },
-      evidence_refs: [`pull-request:${intent.pr_number}`, `merge:${mergedSha}`]
-    };
+    const evidence = integrationEvidenceFor(state, execution, { checks, mergedSha });
+    execution.evidence = evidence;
     transitionTaskExecutionInState(state, execution, 'verifying', { reason: 'pull_request_merged' });
     const contract = state.node_contracts.find((item) => item.id === execution.contract_id);
     const consumed = [

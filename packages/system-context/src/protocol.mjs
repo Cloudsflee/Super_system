@@ -227,6 +227,10 @@ export const CONTEXT_STATE_ADAPTERS = Object.freeze(
 
 export const SECRET_KEY =
   /(?:^|_)(?:password|passwd|secret|token|cookie|credential|encrypted_value|encrypted_data|ciphertext|private_key|client_secret|authorization|api_key|access_key|refresh_key)(?:_|$)/i;
+// Runtime bookkeeping is intentionally excluded from the source fingerprint. These
+// fields can be refreshed by a scheduler without changing the authoritative fact
+// represented by the context document.
+const VOLATILE_CONTEXT_KEYS = new Set(['updated_at', 'checked_at', 'last_seen_at', 'last_synced_at']);
 const REFERENCE_KEY = /(?:^|_)(?:credential|secret|token|key|auth|vault)_ref(?:_id)?$/i;
 const HOST_PATH_KEY =
   /(?:^|_)(?:absolute_path|workspace_root|repo_path|checkout_path|worktree_path|local_path|host_path)$/i;
@@ -346,7 +350,18 @@ export function sanitizeContextFacts(value) {
 }
 
 export function contextSourceHash(collection, record) {
-  return contextHash({ collection, facts: sanitizeContextFacts(record).facts });
+  return contextHash({ collection, facts: stripVolatileContextFacts(sanitizeContextFacts(record).facts) });
+}
+
+function stripVolatileContextFacts(value) {
+  if (Array.isArray(value)) return value.map(stripVolatileContextFacts);
+  if (!value || typeof value !== 'object') return value;
+  const result = {};
+  for (const [key, child] of Object.entries(value)) {
+    if (VOLATILE_CONTEXT_KEYS.has(key)) continue;
+    result[key] = stripVolatileContextFacts(child);
+  }
+  return result;
 }
 
 export function tokenizeContextText(value, locales = ['zh-CN', 'en']) {
@@ -426,14 +441,18 @@ export function contextError(code, details = {}) {
 function maskContextSecretText(value) {
   return String(value)
     .replace(/gh[pousr]_[A-Za-z0-9_]{20,}/g, '[已脱敏]')
+    .replace(/\bgithub_pat_[A-Za-z0-9_]{20,}\b/g, '[已脱敏]')
+    .replace(/\bnpm_[A-Za-z0-9_]{20,}\b/g, '[已脱敏]')
     .replace(/\baiws_mcp_[A-Za-z0-9_-]{30,}\b/g, '[已脱敏]')
     .replace(
       /-----BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY-----[\s\S]*?-----END (?:RSA |EC |OPENSSH )?PRIVATE KEY-----/g,
       '[已脱敏]'
     )
     .replace(/\bsk-(?:proj-|svcacct-)?[A-Za-z0-9_-]{16,}\b/g, '[已脱敏]')
+    .replace(/\b(authorization|cookie)\s*["']?\s*[:=]\s*[^\r\n]*/gi, '$1=[已脱敏]')
+    .replace(/\bbearer\s+[A-Za-z0-9._~+/-]{8,}/gi, 'Bearer [已脱敏]')
     .replace(
-      /\b(authorization|bearer|token|cookie|password|passwd|secret|api[_-]?key)\s*[:=]\s*[^\s,;]+/gi,
+      /\b([a-z0-9_-]*(?:token|password|passwd|secret|credential|api[_-]?key|access[_-]?key|refresh[_-]?key|private[_-]?key))\s*["']?\s*[:=]\s*(?:"[^"\r\n]*"|'[^'\r\n]*'|[^\s,;}\]]+)/gi,
       '$1=[已脱敏]'
     );
 }

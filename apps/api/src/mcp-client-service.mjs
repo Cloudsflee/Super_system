@@ -94,6 +94,13 @@ export async function createMcpClient(input = {}, actorId = null, options = {}) 
       input,
       kind: options.kind || 'external'
     });
+    const contextBinding = normalizeInternalContextBinding(
+      state,
+      projectAllowlist,
+      subjectUserId,
+      options.contextBinding,
+      options.kind || 'external'
+    );
     const record = {
       id: id('mcp'),
       name,
@@ -107,6 +114,7 @@ export async function createMcpClient(input = {}, actorId = null, options = {}) 
       concurrent_limit: concurrentLimit,
       rate_limit_per_minute: rateLimit,
       subject_user_id: subjectUserId,
+      context_binding: contextBinding,
       created_by: actorId,
       created_at: timestamp,
       updated_at: timestamp,
@@ -160,7 +168,10 @@ export async function revokeMcpClient(clientId, actorId = null) {
   return publicMcpClient(revoked);
 }
 
-export async function issueInternalCodexToken(projectId, { ttlSeconds = 3600, name = 'AIWS built-in Codex' } = {}) {
+export async function issueInternalCodexToken(
+  projectId,
+  { ttlSeconds = 3600, name = 'AIWS built-in Codex', contextBinding = null } = {}
+) {
   if (!projectId) throw new HttpError(400, { error: 'mcp_internal_project_required' });
   const state = await readState(),
     project = state.projects.find((item) => item.id === projectId && !item.deleted_at),
@@ -181,7 +192,7 @@ export async function issueInternalCodexToken(projectId, { ttlSeconds = 3600, na
       rate_limit_per_minute: 600
     },
     subjectUserId,
-    { kind: 'internal_codex', maxTtlSeconds: 21600 }
+    { kind: 'internal_codex', maxTtlSeconds: 21600, contextBinding }
   );
 }
 
@@ -347,6 +358,112 @@ function assertCollaborativeClientPolicy({ state, subjectUserId, scopes, project
     throw new HttpError(403, { error: 'mcp_client_approver_role_required', role });
   if (!projectAllowlist.length && !(role === 'owner' && input.allow_all_projects === true))
     throw new HttpError(400, { error: 'mcp_client_project_allowlist_required' });
+}
+
+function normalizeInternalContextBinding(state, projectAllowlist, subjectUserId, value, kind) {
+  if (value == null) return null;
+  const projectId = validateContextBindingEnvelope(projectAllowlist, value, kind),
+    runId = cleanBindingId(value.run_id),
+    taskExecutionId = cleanBindingId(value.task_execution_id),
+    contextSelectionId = cleanBindingId(value.context_selection_id),
+    contextPackId = cleanBindingId(value.context_pack_id),
+    sessionId = cleanBindingId(value.session_id || runId),
+    anchorNodeId = cleanBindingId(value.anchor_node_id);
+  if (!runId && !taskExecutionId && !contextSelectionId && !sessionId)
+    throw new HttpError(400, { error: 'mcp_context_binding_anchor_required' });
+  const run = validateContextBindingRun(state, projectId, runId, taskExecutionId),
+    execution = validateContextBindingExecution(state, projectId, taskExecutionId, run, runId),
+    selection = validateContextBindingSelection(state, projectId, subjectUserId, contextSelectionId, execution);
+  validateContextBindingPack(state, projectId, contextPackId, run);
+  const tokenBudget = Number(selection?.token_budget || value.token_budget || 4000);
+  if (!Number.isInteger(tokenBudget) || tokenBudget < 1 || tokenBudget > 200_000)
+    throw new HttpError(400, { error: 'mcp_context_binding_token_budget_invalid' });
+  return {
+    schema_version: 'aiws.mcp_context_binding.v1',
+    project_id: projectId,
+    run_id: runId,
+    task_execution_id: taskExecutionId,
+    context_selection_id: contextSelectionId,
+    context_pack_id: contextPackId,
+    session_id: sessionId,
+    anchor_node_id: anchorNodeId || selection?.anchor_node_id || null,
+    token_budget: tokenBudget
+  };
+}
+
+function validateContextBindingEnvelope(projectAllowlist, value, kind) {
+  if (kind !== 'internal_codex') throw new HttpError(400, { error: 'mcp_context_binding_internal_only' });
+  if (typeof value !== 'object' || Array.isArray(value))
+    throw new HttpError(400, { error: 'mcp_context_binding_invalid' });
+  const projectId = cleanBindingId(value.project_id || projectAllowlist[0]);
+  if (!projectId || projectAllowlist.length !== 1 || projectAllowlist[0] !== projectId)
+    throw new HttpError(400, { error: 'mcp_context_binding_project_invalid' });
+  return projectId;
+}
+
+function validateContextBindingRun(state, projectId, runId, taskExecutionId) {
+  const run = runId ? state.node_runs.find((item) => item.id === runId) : null;
+  if (runId && (!run || run.project_id !== projectId))
+    throw new HttpError(400, { error: 'mcp_context_binding_run_invalid', run_id: runId });
+  if (run?.task_execution_id && run.task_execution_id !== taskExecutionId)
+    throw new HttpError(400, { error: 'mcp_context_binding_execution_mismatch', run_id: runId });
+  return run;
+}
+
+function validateContextBindingExecution(state, projectId, taskExecutionId, run, runId) {
+  const execution = taskExecutionId
+    ? state.task_executions.find((item) => item.id === taskExecutionId && item.project_id === projectId)
+    : null;
+  if (taskExecutionId && !execution)
+    throw new HttpError(400, {
+      error: 'mcp_context_binding_execution_invalid',
+      task_execution_id: taskExecutionId
+    });
+  if (execution && run && execution.id !== run.task_execution_id)
+    throw new HttpError(400, { error: 'mcp_context_binding_execution_mismatch', run_id: runId });
+  return execution;
+}
+
+function validateContextBindingSelection(state, projectId, subjectUserId, contextSelectionId, execution) {
+  const selection = contextSelectionId
+    ? state.context_selections.find((item) => item.id === contextSelectionId && item.project_id === projectId)
+    : null;
+  if (contextSelectionId && (!selection || selection.actor_id !== subjectUserId))
+    throw new HttpError(400, {
+      error: 'mcp_context_binding_selection_invalid',
+      context_selection_id: contextSelectionId
+    });
+  const expectedSelectionId = execution?.context_snapshot?.system_context?.context_selection_id || null;
+  if (expectedSelectionId && contextSelectionId !== expectedSelectionId)
+    throw new HttpError(400, {
+      error: 'mcp_context_binding_selection_mismatch',
+      context_selection_id: contextSelectionId,
+      expected_context_selection_id: expectedSelectionId
+    });
+  return selection;
+}
+
+function validateContextBindingPack(state, projectId, contextPackId, run) {
+  const contextPack = contextPackId ? state.context_packs.find((item) => item.id === contextPackId) : null;
+  if (contextPackId && !contextPack)
+    throw new HttpError(400, { error: 'mcp_context_binding_context_pack_invalid', context_pack_id: contextPackId });
+  const contextPackProjectId =
+    contextPack?.content_json?.project?.id ||
+    state.workspaces.find((item) => item.id === contextPack?.source_workspace_id)?.project_id ||
+    null;
+  if (contextPackProjectId && contextPackProjectId !== projectId)
+    throw new HttpError(400, { error: 'mcp_context_binding_context_pack_invalid', context_pack_id: contextPackId });
+  if (run?.context_pack_id && contextPackId !== run.context_pack_id)
+    throw new HttpError(400, {
+      error: 'mcp_context_binding_context_pack_mismatch',
+      context_pack_id: contextPackId,
+      expected_context_pack_id: run.context_pack_id
+    });
+}
+
+function cleanBindingId(value) {
+  const text = String(value ?? '').trim();
+  return text ? text.slice(0, 240) : null;
 }
 
 function normalizeExpiry(expiresAt, ttlSeconds, options) {

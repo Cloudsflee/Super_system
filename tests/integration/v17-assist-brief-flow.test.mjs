@@ -167,6 +167,17 @@ try {
             title: '执行迁移和 UI 验证',
             task_kind: 'manual',
             execution_mode: 'manual',
+            input_slots: [
+              {
+                key: 'analysis_result',
+                kind: 'asset_version',
+                required: true,
+                source: 'dependency',
+                selector: 'analysis_result',
+                ref_id: 'v17-analysis',
+                version_id: null
+              }
+            ],
             dependency_ids: ['v17-analysis']
           },
           {
@@ -175,6 +186,17 @@ try {
             title: '评审迁移和 UI',
             task_kind: 'review',
             execution_mode: 'assist',
+            input_slots: [
+              {
+                key: 'execution_result',
+                kind: 'asset_version',
+                required: true,
+                source: 'dependency',
+                selector: 'manual_result',
+                ref_id: 'v17-execution',
+                version_id: null
+              }
+            ],
             dependency_ids: ['v17-execution']
           }
         ]

@@ -4,6 +4,7 @@ import { emptyState } from '../../apps/api/src/state.mjs';
 import { contextPackToMarkdown } from '../../packages/shared/index.mjs';
 import {
   evaluateTaskExecutionContextFreshness,
+  executionInputHash,
   prepareTaskExecutionContext
 } from '../../apps/api/src/task-execution-context.mjs';
 import {
@@ -36,7 +37,15 @@ assert.match(nodeRun.context.system_context.context_map.uri, /^aiws:\/\/context\
 assert.equal(nodeRun.context.system_context.retrieval_protocol.tool, 'aiws_context');
 assert.match(contextPackToMarkdown(nodeRun.context_pack), /"system_context"/);
 assert.equal(nodeRun.context.input_snapshot_hash, delivery.context.input_snapshot_hash);
+assert.equal(nodeRun.context.input_snapshot_hash_version, 2);
 assert.equal(nodeRun.context.repository_snapshot.snapshot_hash, delivery.context.repository_snapshot.snapshot_hash);
+const relocatedContext = structuredClone(nodeRun.context);
+relocatedContext.repository_snapshot.managed_path = '/different/runtime/path';
+for (const input of relocatedContext.inputs)
+  if (input.repository_snapshot) input.repository_snapshot.managed_path = '/different/runtime/path';
+assert.equal(executionInputHash(relocatedContext), nodeRun.context.input_snapshot_hash);
+relocatedContext.repository_snapshot.fixed_sha = 'f'.repeat(40);
+assert.notEqual(executionInputHash(relocatedContext), nodeRun.context.input_snapshot_hash);
 assert.deepEqual(
   nodeRun.context.inputs.flatMap((item) => item.asset_versions || []).map((item) => item.version_id),
   ['version-upstream-1']
@@ -47,6 +56,66 @@ assert.deepEqual(
 );
 assert.equal(nodeRun.context_pack.content_json.submissions.length, 0);
 assert.equal(nodeRun.context_pack.memory_manifest.policy.sibling_context_included, false);
+assert.equal(nodeRun.context.workstream_digest, null);
+assert.equal(nodeRun.context_pack.content_json.latest_digest, null);
+assert.equal(nodeRun.context.project_brief, null);
+assert.deepEqual(nodeRun.context.project_decisions, []);
+
+const requiredContextState = fixture(),
+  requiredContextScope = {
+    ...scope,
+    project: requiredContextState.projects[0],
+    workflow: requiredContextState.workflows[0],
+    workspace: requiredContextState.workspaces.find((item) => item.id === 'workspace-task-2'),
+    task: requiredContextState.workflow_nodes.find((item) => item.id === 'task-2'),
+    contract: structuredClone(requiredContextState.node_contracts[0])
+  };
+requiredContextScope.contract.expected_inputs.push({
+  key: 'project_brief',
+  kind: 'context',
+  required: true,
+  source: 'brief',
+  selector: 'current',
+  ref_id: null,
+  version_id: null
+});
+requiredContextState.context_nodes.push({
+  id: 'context-brief',
+  uri: 'aiws://context/nodes/context-brief',
+  kind: 'record',
+  source_collection: 'project_briefs',
+  source_id: 'brief-1',
+  source_hash: 'brief-source-1',
+  current_version_id: 'context-document-brief-1',
+  project_id: 'project-1',
+  parent_id: null,
+  status: 'active',
+  sensitivity: 'internal',
+  authority: 'authoritative',
+  freshness: { status: 'current' },
+  required_scopes: [],
+  sort: { type_order: 1, order_index: 0, stable_id: 'brief-1' }
+});
+requiredContextState.context_document_versions.push({
+  id: 'context-document-brief-1',
+  node_id: 'context-brief',
+  source_hash: 'brief-source-1',
+  content_sha256: '8'.repeat(64),
+  token_estimate: 20
+});
+const requiredContextPrepared = prepareTaskExecutionContext(requiredContextState, requiredContextScope),
+  requiredBriefDocument = requiredContextPrepared.context.system_context.document_versions.find(
+    (item) => item.source_collection === 'project_briefs'
+  );
+assert.equal(requiredBriefDocument.required, true);
+requiredContextState.context_nodes.find((item) => item.id === 'context-brief').current_version_id =
+  'context-document-brief-2';
+assert.equal(
+  evaluateTaskExecutionContextFreshness(requiredContextState, requiredContextPrepared.context).reasons.some(
+    (item) => item.code === 'required_context_document_superseded'
+  ),
+  true
+);
 
 const missing = structuredClone(state);
 missing.submissions = [];
@@ -171,6 +240,112 @@ assert.equal(superseded.current, false);
 assert.equal(
   superseded.reasons.some((item) => item.code === 'input_asset_version_superseded'),
   true
+);
+
+const cross = crossWorkstreamFixture(),
+  crossPrepared = prepareTaskExecutionContext(cross.state, cross.scope),
+  outcomeInput = crossPrepared.context.inputs.find((item) => item.key === 'source_outcome');
+assert.equal(outcomeInput.resolved_from.kind, 'workstream_outcome');
+assert.equal(outcomeInput.resolved_from.workflow_execution_id, 'workflow-execution-current');
+assert.deepEqual(
+  outcomeInput.asset_versions.map((item) => item.version_id),
+  ['version-terminal-deliverable']
+);
+assert.deepEqual(outcomeInput.resolved_from.selected_output_keys, ['terminal_deliverable']);
+assert.deepEqual(outcomeInput.resolved_from.selected_outputs, [
+  {
+    output_key: 'terminal_deliverable',
+    asset_id: 'asset-terminal-deliverable',
+    version_id: 'version-terminal-deliverable',
+    asset_type: 'DecisionAsset',
+    producer_task_id: 'task-cross-source-terminal',
+    producer_task_title: 'Publish terminal deliverable',
+    producer_task_execution_id: 'task-execution-source-terminal'
+  }
+]);
+assert.equal(
+  outcomeInput.asset_versions.some((item) => item.version_id === 'version-outcome-old'),
+  false
+);
+const crossSelection = cross.state.context_selections.find(
+  (item) => item.id === crossPrepared.context.system_context.context_selection_id
+);
+assert.equal(
+  crossSelection.included.find((item) => item.node_id === 'context-terminal-version').reason,
+  'explicit_reference'
+);
+assert.equal(crossSelection.candidate_node_ids.includes('context-unrelated'), false);
+const multiOutput = crossWorkstreamFixture();
+multiOutput.state.asset_attestations
+  .find((item) => item.id === 'attestation-outcome-current')
+  .evidence.handoff_output_bindings.push({
+    key: 'unselected_export',
+    asset_id: 'asset-unselected-export',
+    version_id: 'version-unselected-export',
+    producer_task_id: 'task-cross-source-terminal',
+    producer_task_execution_id: 'task-execution-source-terminal'
+  });
+assert.deepEqual(
+  prepareTaskExecutionContext(multiOutput.state, multiOutput.scope).context.inputs[0].asset_versions.map(
+    (item) => item.version_id
+  ),
+  ['version-terminal-deliverable']
+);
+const optionalOutput = crossWorkstreamFixture();
+optionalOutput.scope.contract.expected_inputs[0].selector = 'required_outputs';
+optionalOutput.state.asset_attestations
+  .find((item) => item.id === 'attestation-outcome-current')
+  .evidence.handoff_output_bindings.push({
+    key: 'optional_export',
+    asset_id: 'asset-optional-export',
+    version_id: 'version-optional-export',
+    required: false
+  });
+assert.deepEqual(
+  prepareTaskExecutionContext(optionalOutput.state, optionalOutput.scope).context.inputs[0].asset_versions.map(
+    (item) => item.version_id
+  ),
+  ['version-terminal-deliverable']
+);
+const fanIn = addSecondWorkstreamHandoff(crossWorkstreamFixture()),
+  fanInPrepared = prepareTaskExecutionContext(fanIn.state, fanIn.scope);
+assert.deepEqual(
+  fanInPrepared.context.inputs.map((input) => input.asset_versions.map((item) => item.version_id)),
+  [['version-terminal-deliverable'], ['version-second-deliverable']]
+);
+assert.equal(
+  fanInPrepared.context.inputs.every(
+    (input) => input.resolved_from.workflow_execution_id === 'workflow-execution-current'
+  ),
+  true
+);
+const changedHandoff = structuredClone(cross.state);
+changedHandoff.asset_attestations.find((item) => item.id === 'attestation-outcome-current').decision = 'rejected';
+assert.equal(
+  evaluateTaskExecutionContextFreshness(changedHandoff, crossPrepared.context).reasons.some(
+    (item) => item.code === 'workstream_handoff_changed'
+  ),
+  true
+);
+const ambiguousHandoff = crossWorkstreamFixture();
+ambiguousHandoff.state.asset_attestations
+  .find((item) => item.id === 'attestation-outcome-current')
+  .evidence.handoff_output_bindings.push({
+    key: 'terminal_deliverable',
+    asset_id: 'asset-terminal-duplicate',
+    version_id: 'version-terminal-duplicate',
+    producer_task_id: 'task-cross-source-other',
+    producer_task_execution_id: 'task-execution-source-other'
+  });
+assert.throws(
+  () => prepareTaskExecutionContext(ambiguousHandoff.state, ambiguousHandoff.scope),
+  notReady('workstream_dependency_selector_ambiguous')
+);
+const receiptAsInput = crossWorkstreamFixture();
+receiptAsInput.scope.contract.expected_inputs[0].selector = 'workstream_outcome';
+assert.throws(
+  () => prepareTaskExecutionContext(receiptAsInput.state, receiptAsInput.scope),
+  notReady('workstream_outcome_not_consumable')
 );
 
 console.log('V1.9 Task execution context and typed asset tests passed');
@@ -437,6 +612,351 @@ function legacyFixture() {
       contract: value.node_contracts[0],
       repositoryWorkspaceId: 'repository-workspace-1'
     }
+  };
+}
+
+function crossWorkstreamFixture() {
+  const value = emptyState(),
+    terminalBinding = {
+      key: 'terminal_deliverable',
+      asset_id: 'asset-terminal-deliverable',
+      version_id: 'version-terminal-deliverable',
+      asset_type: 'DecisionAsset',
+      content_sha256: '1'.repeat(64),
+      attestation_id: 'attestation-terminal-deliverable',
+      producer_task_id: 'task-cross-source-terminal',
+      producer_task_execution_id: 'task-execution-source-terminal'
+    };
+  const project = {
+      id: 'project-cross',
+      title: 'Cross workstream handoff',
+      goal: 'Consume an accepted upstream outcome',
+      current_workspace_id: 'workspace-cross-root',
+      settings: { token_budget: 12000 }
+    },
+    workflow = {
+      id: 'workflow-cross',
+      project_id: project.id,
+      planning_quality: 'verified',
+      workflow_revision: 1
+    },
+    task = {
+      id: 'task-cross-target',
+      workflow_id: workflow.id,
+      workspace_id: 'workspace-cross-target',
+      parent_node_id: 'workstream-target',
+      role: 'task',
+      title: 'Consume upstream outcome',
+      goal: 'Use the exact accepted deliverable',
+      task_kind: 'manual',
+      execution_mode: 'manual',
+      status: 'ready',
+      execution_revision: 1,
+      current_contract_id: 'contract-cross-target',
+      dependencies: []
+    },
+    contract = {
+      id: task.current_contract_id,
+      node_id: task.id,
+      version: 1,
+      node_goal: task.goal,
+      expected_inputs: [
+        {
+          key: 'source_outcome',
+          kind: 'asset_version',
+          required: true,
+          source: 'workstream_dependency',
+          selector: 'terminal_deliverable',
+          ref_id: 'workstream-source',
+          version_id: null
+        }
+      ],
+      expected_outputs: [
+        {
+          key: 'target_result',
+          kind: 'asset',
+          required: true,
+          asset_type: 'DecisionAsset',
+          acceptance_criteria: ['Target result accepted'],
+          confirmation_policy: 'human'
+        }
+      ],
+      acceptance_criteria: ['Target result accepted'],
+      allowed_tools: ['assist']
+    },
+    workflowExecution = {
+      id: 'workflow-execution-current',
+      project_id: project.id,
+      workflow_id: workflow.id,
+      workflow_revision: 1,
+      status: 'running'
+    },
+    taskExecution = {
+      id: 'task-execution-target',
+      workflow_execution_id: workflowExecution.id,
+      project_id: project.id,
+      workflow_id: workflow.id,
+      workstream_id: task.parent_node_id,
+      task_id: task.id,
+      task_revision: 1,
+      contract_id: contract.id,
+      contract_version: 1,
+      status: 'queued'
+    };
+  value.projects.push(project);
+  value.workflows.push(workflow);
+  value.workspaces.push(
+    { id: 'workspace-cross-root', project_id: project.id, title: 'Project' },
+    { id: task.workspace_id, project_id: project.id, workflow_node_id: task.id, title: task.title }
+  );
+  value.workflow_nodes.push(
+    {
+      id: 'workstream-source',
+      workflow_id: workflow.id,
+      role: 'workstream',
+      title: 'Accepted source outcome',
+      dependencies: []
+    },
+    {
+      id: 'workstream-target',
+      workflow_id: workflow.id,
+      role: 'workstream',
+      title: 'Target outcome',
+      dependencies: [{ node_id: 'workstream-source', type: 'finish_to_start' }]
+    },
+    {
+      id: 'task-cross-source-terminal',
+      workflow_id: workflow.id,
+      parent_node_id: 'workstream-source',
+      role: 'task',
+      title: 'Publish terminal deliverable',
+      dependencies: []
+    },
+    task
+  );
+  value.node_contracts.push(contract);
+  value.workflow_executions.push(workflowExecution);
+  value.task_executions.push(taskExecution);
+  value.assets.push(
+    {
+      id: terminalBinding.asset_id,
+      project_id: project.id,
+      node_id: 'task-cross-source-terminal',
+      asset_type: terminalBinding.asset_type,
+      output_key: terminalBinding.key,
+      title: 'Terminal deliverable',
+      status: 'confirmed',
+      current_version_id: terminalBinding.version_id
+    },
+    crossOutcomeAsset(project.id, 'old', 'workflow-execution-old'),
+    crossOutcomeAsset(project.id, 'current', workflowExecution.id)
+  );
+  value.asset_versions.push(
+    crossVersion(
+      terminalBinding.version_id,
+      terminalBinding.asset_id,
+      terminalBinding.content_sha256,
+      'Terminal deliverable'
+    ),
+    crossVersion('version-outcome-old', 'asset-outcome-old', '2'.repeat(64), 'Old outcome'),
+    crossVersion('version-outcome-current', 'asset-outcome-current', '3'.repeat(64), 'Current outcome')
+  );
+  addCrossContextDocuments(value, project.id, terminalBinding.version_id);
+  value.asset_attestations.push(
+    {
+      id: terminalBinding.attestation_id,
+      asset_version_id: terminalBinding.version_id,
+      decision: 'accepted',
+      attestor_type: 'human'
+    },
+    crossOutcomeAttestation('old', 'workflow-execution-old', terminalBinding),
+    crossOutcomeAttestation('current', workflowExecution.id, terminalBinding)
+  );
+  return {
+    state: value,
+    scope: { project, workflow, workspace: value.workspaces[1], task, contract, taskExecution, workflowExecution }
+  };
+}
+
+function addCrossContextDocuments(state, projectId, terminalVersionId) {
+  const nodes = [
+    {
+      id: 'context-terminal-version',
+      kind: 'asset_version',
+      source_collection: 'asset_versions',
+      source_id: terminalVersionId,
+      title: 'Terminal deliverable version',
+      source_hash: 'context-source-terminal',
+      current_version_id: 'context-document-terminal',
+      order_index: 0
+    },
+    {
+      id: 'context-unrelated',
+      kind: 'record',
+      source_collection: 'decisions',
+      source_id: 'unrelated-decision',
+      title: 'Unrelated decision',
+      source_hash: 'context-source-unrelated',
+      current_version_id: 'context-document-unrelated',
+      order_index: 1
+    }
+  ];
+  for (const node of nodes)
+    state.context_nodes.push({
+      ...node,
+      uri: `aiws://context/nodes/${node.id}`,
+      project_id: projectId,
+      parent_id: null,
+      status: 'active',
+      sensitivity: 'internal',
+      authority: 'authoritative',
+      freshness: { status: 'current' },
+      required_scopes: [],
+      sort: { type_order: 1, order_index: node.order_index, stable_id: node.source_id }
+    });
+  state.context_document_versions.push(
+    {
+      id: 'context-document-terminal',
+      node_id: 'context-terminal-version',
+      source_hash: 'context-source-terminal',
+      content_sha256: '4'.repeat(64),
+      token_estimate: 30
+    },
+    {
+      id: 'context-document-unrelated',
+      node_id: 'context-unrelated',
+      source_hash: 'context-source-unrelated',
+      content_sha256: '5'.repeat(64),
+      token_estimate: 30
+    }
+  );
+}
+
+function crossOutcomeAsset(projectId, suffix, workflowExecutionId) {
+  return {
+    id: `asset-outcome-${suffix}`,
+    project_id: projectId,
+    node_id: 'workstream-source',
+    asset_type: 'WorkstreamOutcomeAsset',
+    output_key: 'workstream_outcome',
+    title: `${suffix} outcome`,
+    status: 'confirmed',
+    current_version_id: `version-outcome-${suffix}`,
+    provenance_workflow_execution_id: workflowExecutionId,
+    created_at: suffix === 'old' ? '2026-07-20T00:00:00.000Z' : '2026-07-21T00:00:00.000Z'
+  };
+}
+
+function addSecondWorkstreamHandoff(fixture) {
+  const { state, scope } = fixture,
+    binding = {
+      key: 'second_deliverable',
+      asset_id: 'asset-second-deliverable',
+      version_id: 'version-second-deliverable',
+      asset_type: 'DecisionAsset',
+      content_sha256: '6'.repeat(64),
+      producer_task_id: 'task-cross-source-second-terminal',
+      producer_task_execution_id: 'task-execution-source-second-terminal'
+    };
+  state.workflow_nodes.push(
+    {
+      id: 'workstream-source-second',
+      workflow_id: scope.workflow.id,
+      role: 'workstream',
+      title: 'Second accepted source outcome',
+      dependencies: []
+    },
+    {
+      id: binding.producer_task_id,
+      workflow_id: scope.workflow.id,
+      parent_node_id: 'workstream-source-second',
+      role: 'task',
+      title: 'Publish second deliverable',
+      dependencies: []
+    }
+  );
+  state.workflow_nodes
+    .find((item) => item.id === 'workstream-target')
+    .dependencies.push({ node_id: 'workstream-source-second', type: 'finish_to_start' });
+  scope.contract.expected_inputs.push({
+    key: 'second_outcome',
+    kind: 'asset_version',
+    required: true,
+    source: 'workstream_dependency',
+    selector: binding.key,
+    ref_id: 'workstream-source-second',
+    version_id: null
+  });
+  state.assets.push(
+    {
+      id: binding.asset_id,
+      project_id: scope.project.id,
+      node_id: binding.producer_task_id,
+      asset_type: binding.asset_type,
+      output_key: binding.key,
+      title: 'Second terminal deliverable',
+      status: 'confirmed',
+      current_version_id: binding.version_id
+    },
+    {
+      id: 'asset-outcome-second',
+      project_id: scope.project.id,
+      node_id: 'workstream-source-second',
+      asset_type: 'WorkstreamOutcomeAsset',
+      output_key: 'workstream_outcome',
+      title: 'Second outcome',
+      status: 'confirmed',
+      current_version_id: 'version-outcome-second',
+      provenance_workflow_execution_id: scope.workflowExecution.id,
+      created_at: '2026-07-21T00:00:00.000Z'
+    }
+  );
+  state.asset_versions.push(
+    crossVersion(binding.version_id, binding.asset_id, binding.content_sha256, 'Second terminal deliverable'),
+    crossVersion('version-outcome-second', 'asset-outcome-second', '7'.repeat(64), 'Second outcome')
+  );
+  state.asset_attestations.push({
+    id: 'attestation-outcome-second',
+    asset_version_id: 'version-outcome-second',
+    decision: 'accepted',
+    attestor_type: 'trusted_verifier',
+    evidence: {
+      workflow_execution_id: scope.workflowExecution.id,
+      handoff_output_bindings: [binding],
+      terminal_output_bindings: [binding]
+    }
+  });
+  return fixture;
+}
+
+function crossOutcomeAttestation(suffix, workflowExecutionId, binding) {
+  return {
+    id: `attestation-outcome-${suffix}`,
+    asset_version_id: `version-outcome-${suffix}`,
+    decision: 'accepted',
+    attestor_type: 'trusted_verifier',
+    evidence: {
+      workflow_execution_id: workflowExecutionId,
+      handoff_output_bindings: [binding],
+      terminal_output_bindings: [binding]
+    }
+  };
+}
+
+function crossVersion(id, assetId, contentSha256, title) {
+  return {
+    id,
+    asset_id: assetId,
+    title,
+    summary: title,
+    verification_status: 'verified',
+    immutable: true,
+    content_sha256: contentSha256,
+    payload_kind: 'json',
+    media_type: 'application/json',
+    size_bytes: 20,
+    blob_refs: [],
+    manifest: {}
   };
 }
 

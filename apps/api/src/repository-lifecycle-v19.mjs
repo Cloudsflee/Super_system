@@ -46,6 +46,9 @@ export function ensureRepositoryLifecycleDefaults(state, { timestamp = now() } =
       legacy.lifecycle_unresolved = true;
       continue;
     }
+    const existingCanonical = state.canonical_repositories.find(
+      (item) => (item.provider || 'github') === 'github' && String(item.repository_id) === String(legacy.repository_id)
+    );
     const canonical = upsertCanonicalRepositoryInState(
       state,
       {
@@ -62,7 +65,7 @@ export function ensureRepositoryLifecycleDefaults(state, { timestamp = now() } =
           state.projects.find((item) => item.id === legacy.project_id)?.owner_user_id ||
           null,
         external_import: true,
-        timestamp
+        timestamp: existingCanonical?.updated_at || legacy.updated_at || legacy.created_at || timestamp
       }
     );
     if (

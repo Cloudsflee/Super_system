@@ -38,29 +38,65 @@ export function maskSecret(text) {
   if (process.env.GITHUB_TOKEN) out = out.split(process.env.GITHUB_TOKEN).join('***MASKED_GITHUB_TOKEN***');
   return out
     .replace(/gh[pousr]_[A-Za-z0-9_]{20,}/g, '***MASKED_GITHUB_TOKEN***')
+    .replace(/\bgithub_pat_[A-Za-z0-9_]{20,}\b/g, '***MASKED_GITHUB_TOKEN***')
+    .replace(/\bnpm_[A-Za-z0-9_]{20,}\b/g, '***MASKED_NPM_TOKEN***')
     .replace(/\baiws_mcp_[A-Za-z0-9_-]{30,}\b/g, '***MASKED_MCP_TOKEN***')
     .replace(
       /-----BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY-----[\s\S]*?-----END (?:RSA |EC |OPENSSH )?PRIVATE KEY-----/g,
       '***MASKED_PRIVATE_KEY***'
     )
     .replace(/\bsk-(?:proj-|svcacct-)?[A-Za-z0-9_-]{16,}\b/g, '***MASKED_API_KEY***')
-    .replace(/(authorization|bearer|token)\s*[:=]\s*[^'"\s]+/gi, '$1=***MASKED***');
+    .replace(
+      /(\bauthorization\s*["']?\s*[:=]\s*["']?(?:(?:bearer|basic)\s+)?)([A-Za-z0-9._~+/-]{4,})/gi,
+      '$1***MASKED***'
+    )
+    .replace(/(\bcookie\s*["']?\s*[:=]\s*["']?)([^"'\\\r\n,}]+)/gi, '$1***MASKED***')
+    .replace(/(\bbearer\s+)([A-Za-z0-9._~+/-]{8,})/gi, '$1***MASKED***')
+    .replace(
+      /(\b(?!(?:is|has)[_-]?(?:token|password|passwd|secret|credential|key)\b)[a-z0-9_-]*(?:token|password|passwd|secret|credential|api[_-]?key|access[_-]?key|refresh[_-]?key|private[_-]?key)\s*["']?\s*[:=]\s*)(["'])([^"'\\\r\n]*)\2/gi,
+      (_match, prefix, quote, value) =>
+        secretReference(value) ? `${prefix}${quote}${value}${quote}` : `${prefix}${quote}***MASKED***${quote}`
+    )
+    .replace(
+      /(\b(?!(?:is|has)[_-]?(?:token|password|passwd|secret|credential|key)\b)[a-z0-9_-]*(?:token|password|passwd|secret|credential|api[_-]?key|access[_-]?key|refresh[_-]?key|private[_-]?key)\s*["']?\s*[:=]\s*)(?!(?:true|false|null|-?\d+(?:\.\d+)?)\b)([^"'\\\s,;}\]]+)/gi,
+      (_match, prefix, value) => (secretReference(value) ? `${prefix}${value}` : `${prefix}***MASKED***`)
+    );
 }
 export function maskSecretsDeep(value) {
   if (typeof value === 'string') return maskSecret(value);
   if (Array.isArray(value)) return value.map(maskSecretsDeep);
   if (value && typeof value === 'object') {
     return Object.fromEntries(
-      Object.entries(value).map(([k, v]) => [k, secretField(k) ? '***MASKED***' : maskSecretsDeep(v)])
+      Object.entries(value).map(([k, v]) => [
+        k,
+        secretField(k) && !secretReference(v) ? '***MASKED***' : maskSecretsDeep(v)
+      ])
     );
   }
   return value;
 }
+function secretReference(value) {
+  return typeof value === 'string' && /^(?:vault|env|memory):[a-zA-Z0-9_.:-]+$/.test(value);
+}
 function secretField(key) {
+  const normalized = String(key || '')
+    .replace(/([a-z0-9])([A-Z])/g, '$1_$2')
+    .replace(/[^a-zA-Z0-9]+/g, '_')
+    .replace(/^_+|_+$/g, '')
+    .toLowerCase();
+  if (
+    /^(?:is|has)_(?:authorization|cookie|token|password|passwd|secret|credential|api_key|private_key|auth_token|access_token|refresh_token)$/.test(
+      normalized
+    )
+  )
+    return false;
   return (
-    /^(authorization|token|password|api_key|private_key|client_secret|webhook_secret|access_token|refresh_token|id_token|session_token_hash)$/i.test(
-      key
-    ) || /_(?:password|secret|access_token|refresh_token)$/i.test(key)
+    /^(?:authorization|cookie|token|password|passwd|secret|credential|api_key|private_key|client_secret|webhook_secret|auth_token|access_token|refresh_token|id_token|session_token_hash)$/.test(
+      normalized
+    ) ||
+    /_(?:cookie|token|password|passwd|secret|credential|api_key|private_key|auth_token|access_token|refresh_token)$/.test(
+      normalized
+    )
   );
 }
 export function makeTrace(event_type, payload = {}, actor = {}) {

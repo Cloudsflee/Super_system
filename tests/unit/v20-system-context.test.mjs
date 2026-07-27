@@ -84,6 +84,7 @@ assert.equal(
 assert.equal(unknownState.context_nodes.find((node) => node.kind === 'uncategorized').title, '未分类');
 
 const secret = 'sentinel-secret-value';
+const fineGrainedToken = `github_pat_${'A'.repeat(30)}`;
 const { facts, redactions } = sanitizeContextFacts({
   title: '完整事实',
   password: secret,
@@ -92,6 +93,11 @@ const { facts, redactions } = sanitizeContextFacts({
   vault_ref: 'vault:device-credential',
   repo_path: 'C:\\Users\\owner\\private-repo',
   description: 'token=free-text-secret-value',
+  npm_config: `//registry.npmjs.org/:_authToken=${secret}`,
+  request_header: `Authorization: Bearer ${secret}`,
+  browser_header: `Cookie: session=${secret}; csrf=another-secret-value`,
+  json_config: `{"accessToken":"${secret}"}`,
+  provider_output: fineGrainedToken,
   payload: Buffer.from([0, 1, 2, 3])
 });
 assert.equal(facts.password, '[已脱敏]');
@@ -102,6 +108,7 @@ assert.equal(facts.repo_path, '[宿主机路径已隐藏]');
 assert.equal(facts.description.includes('free-text-secret-value'), false);
 assert.deepEqual(Object.keys(facts.payload).sort(), ['binary', 'description', 'media_type', 'sha256', 'size_bytes']);
 assert.equal(JSON.stringify(facts).includes(secret), false);
+assert.equal(JSON.stringify(facts).includes(fineGrainedToken), false);
 assert.deepEqual(
   new Set(redactions.map((item) => item.reason)),
   new Set(['sensitive_field', 'sensitive_value', 'secret_reference_only', 'host_path_hidden', 'binary_manifest_only'])
@@ -226,6 +233,23 @@ assert.deepEqual(Object.fromEntries(selection.excluded.map((item) => [item.node_
   'missing-scope': 'permission_denied'
 });
 assert.equal(selection.token_used, 4);
+const receiptSelection = createContextSelection(selectionState, {
+  id: 'selection-receipt',
+  actorId: 'user-1',
+  projectId: 'project-1',
+  candidateNodeIds: ['allowed'],
+  tokenBudget: 0,
+  scopes: ['context:read', 'project:read'],
+  allowedProjectIds: ['project-1'],
+  alreadyBudgetedDocumentVersionIds: [
+    selectionState.context_nodes.find((item) => item.id === 'allowed').current_version_id
+  ]
+});
+assert.deepEqual(
+  receiptSelection.included.map((item) => item.node_id),
+  ['allowed']
+);
+assert.equal(receiptSelection.token_used, 0);
 
 const rankedState = ensureContextCollections({}),
   stableFirst = selectableNode('rank-a'),
@@ -289,6 +313,7 @@ const retainedVersions = collectContextVersions(
       versionForRetention('current', '2020-01-01T00:00:00.000Z'),
       versionForRetention('selected', '2020-01-01T00:00:00.000Z'),
       versionForRetention('executed-pack', '2020-01-01T00:00:00.000Z'),
+      versionForRetention('asset-provenance', '2020-01-01T00:00:00.000Z'),
       versionForRetention('summary-source', '2020-01-01T00:00:00.000Z'),
       versionForRetention('explicit-retention', '2020-01-01T00:00:00.000Z', '2026-09-01T00:00:00.000Z'),
       versionForRetention('fresh', '2026-07-10T00:00:00.000Z'),
@@ -302,13 +327,14 @@ const retainedVersions = collectContextVersions(
         content_json: { document_versions: [{ document_version_id: 'executed-pack' }] }
       }
     ],
-    context_summaries: [{ document_version_id: 'summary-source' }]
+    context_summaries: [{ document_version_id: 'summary-source' }],
+    asset_versions: [{ provenance: { consumed_context_document_versions: ['asset-provenance'] } }]
   },
   { timestamp: '2026-07-26T00:00:00.000Z' }
 );
 assert.deepEqual(
   retainedVersions.map((item) => item.id),
-  ['current', 'selected', 'executed-pack', 'summary-source', 'explicit-retention', 'fresh']
+  ['current', 'selected', 'executed-pack', 'asset-provenance', 'summary-source', 'explicit-retention', 'fresh']
 );
 
 const recurringState = { projects: [{ id: 'project-recurring', title: '版本 A' }] };
@@ -394,6 +420,34 @@ assert.ok(
   )
 );
 
+const retryState = { projects: [{ id: 'project-retry', title: '重试项目' }] };
+reconcileContextProjectionState(retryState, {
+  sourceCollections: ['projects'],
+  timestamp: '2026-07-26T03:10:00.000Z'
+});
+const retryNode = retryState.context_nodes.find(
+    (node) => node.source_collection === 'projects' && node.source_id === 'project-retry'
+  ),
+  retryJob = retryState.context_projection_jobs.find((job) => job.node_id === retryNode.id);
+Object.assign(retryJob, {
+  status: 'failed',
+  attempts: 1,
+  error_code: 'context_projection_test_failure',
+  next_retry_at: '2999-01-01T00:00:00.000Z'
+});
+reconcileContextProjectionState(retryState, {
+  sourceCollections: ['projects'],
+  timestamp: '2026-07-26T03:11:00.000Z'
+});
+assert.equal(retryJob.status, 'failed', 'reconciliation must preserve a same-source failed job');
+assert.equal(retryJob.error_code, 'context_projection_test_failure');
+const deferredRetry = await materializeContextDocumentsInState(retryState, { nodeIds: [retryNode.id] });
+assert.equal(deferredRetry.attempted, 0, 'projection retry must honor next_retry_at');
+retryJob.attempts = 3;
+retryJob.next_retry_at = '2000-01-01T00:00:00.000Z';
+const exhaustedRetry = await materializeContextDocumentsInState(retryState, { nodeIds: [retryNode.id] });
+assert.equal(exhaustedRetry.attempted, 0, 'projection retry must stop after three attempts');
+
 const recoveryRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'aiws-context-recovery-'));
 try {
   const recoveryState = ensureContextCollections({}),
@@ -434,6 +488,70 @@ try {
 } finally {
   await fs.rm(recoveryRoot, { recursive: true, force: true });
 }
+
+const contextReadScopeState = {
+  context_nodes: [
+    {
+      id: 'ctx_scope_guard',
+      uri: 'aiws://context/nodes/ctx_scope_guard',
+      kind: 'record',
+      project_id: 'project-scope-guard',
+      parent_id: null,
+      source_hash: 'a'.repeat(64),
+      current_version_id: 'ctxv_scope_guard',
+      status: 'active',
+      sensitivity: 'internal',
+      required_scopes: ['context:read', 'project:read'],
+      freshness: { status: 'current' },
+      authority: 'authoritative',
+      sort: { type_order: 120, order_index: 0, stable_id: 'ctx_scope_guard' }
+    }
+  ],
+  context_document_versions: [
+    {
+      id: 'ctxv_scope_guard',
+      node_id: 'ctx_scope_guard',
+      source_hash: 'a'.repeat(64),
+      content_sha256: 'b'.repeat(64),
+      token_estimate: 10
+    }
+  ],
+  context_edges: [],
+  context_selections: [],
+  context_policies: [],
+  context_projection_jobs: [],
+  context_summaries: []
+};
+const missingContextReadSelection = createContextSelection(contextReadScopeState, {
+  id: 'selection-missing-context-read',
+  actorId: 'actor-scope-guard',
+  projectId: 'project-scope-guard',
+  candidateNodeIds: ['ctx_scope_guard'],
+  scopes: ['project:read'],
+  allowedProjectIds: ['project-scope-guard']
+});
+assert.equal(missingContextReadSelection.included.length, 0);
+assert.equal(missingContextReadSelection.excluded[0]?.reason, 'permission_denied');
+const unauthorizedStaleState = structuredClone(contextReadScopeState);
+unauthorizedStaleState.context_nodes[0].freshness.status = 'stale';
+const unauthorizedStaleSelection = createContextSelection(unauthorizedStaleState, {
+  id: 'selection-unauthorized-stale',
+  actorId: 'actor-scope-guard',
+  projectId: 'project-scope-guard',
+  candidateNodeIds: ['ctx_scope_guard'],
+  scopes: ['project:read'],
+  allowedProjectIds: ['project-scope-guard']
+});
+assert.equal(unauthorizedStaleSelection.excluded[0]?.reason, 'permission_denied');
+const completeScopeSelection = createContextSelection(contextReadScopeState, {
+  id: 'selection-complete-scopes',
+  actorId: 'actor-scope-guard',
+  projectId: 'project-scope-guard',
+  candidateNodeIds: ['ctx_scope_guard'],
+  scopes: ['context:read', 'project:read'],
+  allowedProjectIds: ['project-scope-guard']
+});
+assert.equal(completeScopeSelection.included.length, 1);
 
 console.log('V2.0 system context protocol unit tests passed');
 

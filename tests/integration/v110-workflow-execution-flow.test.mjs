@@ -15,7 +15,8 @@ try {
   const { createWorkflowExecutionInState } = await import('../../apps/api/src/workflow-execution-domain.mjs');
   const { provisionWorkflowRepositoryLines } = await import('../../apps/api/src/repository-line-service.mjs');
   const { dispatchWorkflowExecution } = await import('../../apps/api/src/workflow-dispatcher.mjs');
-  const { approveTaskExecution } = await import('../../apps/api/src/task-execution-service.mjs');
+  const { approveTaskExecution, submitTaskExecutionOutputs } =
+    await import('../../apps/api/src/task-execution-service.mjs');
   const { approvePullRequestIntentInState } = await import('../../apps/api/src/pull-request-intent-domain.mjs');
   const { executePullRequestIntent } = await import('../../apps/api/src/pull-request-intent-service.mjs');
   await stateService.ensureRuntime();
@@ -35,6 +36,7 @@ try {
       'workflow-1',
       {
         operation_key: 'v110-full-flow',
+        runner: 'history_promotion',
         adapter: 'test',
         test_summary: 'deterministic test adapter',
         test_changes: [{ path: 'src/verified-change.txt', content: 'verified repository change\n' }],
@@ -90,6 +92,39 @@ try {
   );
   state = await stateService.readState();
   intent = state.pull_request_intents.find((item) => item.id === intent.id);
+  const originalIntentSnapshotHash = intent.snapshot_hash,
+    refreshedBaseSha = 'b'.repeat(40);
+  await assert.rejects(
+    executePullRequestIntent(
+      intent.id,
+      {
+        action: 'create_pr',
+        expected_revision: intent.revision,
+        expected_snapshot_hash: intent.snapshot_hash,
+        adapter: 'test',
+        test_actual_base_sha: refreshedBaseSha
+      },
+      ownerId
+    ),
+    (error) =>
+      error?.payload?.error === 'pull_request_intent_base_refreshed' && error.payload.approval_required === true
+  );
+  state = await stateService.readState();
+  intent = state.pull_request_intents.find((item) => item.id === intent.id);
+  assert.equal(intent.status, 'proposed');
+  assert.equal(intent.base_sha, refreshedBaseSha);
+  assert.notEqual(intent.snapshot_hash, originalIntentSnapshotHash);
+  assert.equal(intent.approvals.length, 1);
+  await stateService.mutate((current) =>
+    approvePullRequestIntentInState(
+      current,
+      intent.id,
+      { action: 'create_pr', expected_revision: intent.revision, expected_snapshot_hash: intent.snapshot_hash },
+      ownerId
+    )
+  );
+  state = await stateService.readState();
+  intent = state.pull_request_intents.find((item) => item.id === intent.id);
   await executePullRequestIntent(
     intent.id,
     {
@@ -128,11 +163,11 @@ try {
     ownerId
   );
 
+  await dispatchWorkflowExecution(started.workflow_execution.id);
   state = await stateService.readState();
-  assert.equal(state.workflow_executions.find((item) => item.id === started.workflow_execution.id).status, 'completed');
   assert.equal(currentExecution(state, 'task-integrate').status, 'completed');
   assert.equal(state.repository_lines.find((item) => item.id === line.id).status, 'merged');
-  assert.equal(state.pull_request_intents.find((item) => item.id === intent.id).approvals.length, 2);
+  assert.equal(state.pull_request_intents.find((item) => item.id === intent.id).approvals.length, 3);
   const outcome = state.assets.find(
     (item) => item.node_id === 'workstream-1' && item.asset_type === 'WorkstreamOutcomeAsset'
   );
@@ -140,16 +175,64 @@ try {
   const outcomeVersion = state.asset_versions.find((item) => item.id === outcome.current_version_id);
   const integration = currentExecution(state, 'task-integrate');
   const integrationVersion = state.asset_versions.find((item) => item.id === integration.output_bindings[0].version_id);
+  const consume = currentExecution(state, 'task-consume-outcome'),
+    outcomeInput = consume.context_snapshot.inputs.find((item) => item.key === 'accepted_delivery');
+  assert.equal(consume.status, 'awaiting_human');
+  assert.equal(outcomeInput.resolved_from.workflow_execution_id, started.workflow_execution.id);
+  assert.deepEqual(
+    outcomeInput.asset_versions.map((item) => item.version_id),
+    [integrationVersion.id]
+  );
+  assert.deepEqual(outcomeInput.resolved_from.selected_output_keys, ['integration_evidence']);
+  assert.equal(outcomeInput.resolved_from.selected_outputs[0].producer_task_id, 'task-integrate');
+  assert.equal(outcomeInput.resolved_from.outcome_version_id, outcomeVersion.id);
   assert.equal(integrationVersion.repository_sha, 'f'.repeat(40));
   assert.equal(outcomeVersion.repository_sha, 'f'.repeat(40));
   const terminalVersionIds = ['task-research', 'task-code', 'task-test', 'task-integrate']
     .flatMap((taskId) => currentExecution(state, taskId).output_bindings.map((binding) => binding.version_id))
     .sort();
   const outcomeSources = state.asset_relations
-    .filter((item) => item.target_asset_version_id === outcomeVersion.id && item.relation_type === 'derived_from')
+    .filter((item) => item.target_asset_version_id === outcomeVersion.id && item.relation_type === 'evidenced_by')
     .map((item) => item.source_asset_version_id)
     .sort();
   assert.deepEqual(outcomeSources, terminalVersionIds);
+  const consumed = outcomeInput.asset_versions.map((item) => item.version_id);
+  await submitTaskExecutionOutputs(consume.id, {
+    manual: true,
+    actorId: ownerId,
+    outputs: [
+      {
+        output_key: 'accepted_outcome',
+        asset_type: 'DecisionAsset',
+        title: 'Accepted upstream outcome',
+        summary: 'The exact upstream delivery was consumed.',
+        payload: {
+          payload_kind: 'text',
+          media_type: 'text/plain; charset=utf-8',
+          content: 'Accepted.'
+        },
+        evidence_refs: [`asset-version:${integrationVersion.id}`],
+        consumed_input_versions: consumed
+      }
+    ]
+  });
+  state = await stateService.readState();
+  const completedConsume = currentExecution(state, 'task-consume-outcome'),
+    acceptedBinding = completedConsume.output_bindings.find((item) => item.key === 'accepted_outcome'),
+    acceptedVersion = state.asset_versions.find((item) => item.id === acceptedBinding.version_id),
+    acceptedSources = state.asset_relations
+      .filter((item) => item.target_asset_version_id === acceptedVersion.id)
+      .map((item) => item.source_asset_version_id);
+  assert.equal(completedConsume.status, 'completed');
+  assert.deepEqual(completedConsume.consumed_inputs, [integrationVersion.id]);
+  assert.deepEqual(acceptedVersion.provenance.consumed_inputs, [integrationVersion.id]);
+  assert.equal(
+    acceptedVersion.provenance.context_selection_id,
+    completedConsume.context_snapshot.system_context.context_selection_id
+  );
+  assert.deepEqual(acceptedSources, [integrationVersion.id]);
+  assert.equal(acceptedSources.includes(outcomeVersion.id), false);
+  assert.equal(state.workflow_executions.find((item) => item.id === started.workflow_execution.id).status, 'completed');
   console.log('V1.10 persistent DAG, CAS, same-SHA verification, and PR integration flow passed');
 } finally {
   fs.rmSync(root, { recursive: true, force: true });
@@ -180,6 +263,18 @@ function seed(state, repository, baseSha, ownerId) {
   state.workspaces.push(
     { id: 'workspace-root', project_id: 'project-1', title: 'Project' },
     { id: 'workspace-workstream', project_id: 'project-1', workflow_node_id: 'workstream-1', title: 'Delivery' },
+    {
+      id: 'workspace-workstream-consumer',
+      project_id: 'project-1',
+      workflow_node_id: 'workstream-2',
+      title: 'Consumer'
+    },
+    {
+      id: 'workspace-consume-outcome',
+      project_id: 'project-1',
+      workflow_node_id: 'task-consume-outcome',
+      title: 'Consume outcome'
+    },
     ...['research', 'code', 'test', 'integrate'].map((name) => ({
       id: `workspace-${name}`,
       project_id: 'project-1',
@@ -208,7 +303,30 @@ function seed(state, repository, baseSha, ownerId) {
     task('research', 'research', [], 1),
     task('code', 'code', ['task-research'], 2),
     task('test', 'test', ['task-code'], 3),
-    task('integrate', 'integration', ['task-test'], 4)
+    task('integrate', 'integration', ['task-test'], 4),
+    {
+      id: 'workstream-2',
+      workflow_id: 'workflow-1',
+      workspace_id: 'workspace-workstream-consumer',
+      role: 'workstream',
+      title: 'Consume verified delivery',
+      dependencies: [{ node_id: 'workstream-1', type: 'finish_to_start' }],
+      order_index: 5
+    },
+    {
+      id: 'task-consume-outcome',
+      workflow_id: 'workflow-1',
+      parent_node_id: 'workstream-2',
+      workspace_id: 'workspace-consume-outcome',
+      role: 'task',
+      title: 'Consume outcome',
+      task_kind: 'manual',
+      execution_mode: 'manual',
+      execution_revision: 1,
+      current_contract_id: 'contract-consume-outcome',
+      dependencies: [],
+      order_index: 6
+    }
   );
   state.node_contracts.push(
     contract('research', [], output('research_result', 'ResearchEvidenceAsset', 'human')),
@@ -226,7 +344,27 @@ function seed(state, repository, baseSha, ownerId) {
       'integrate',
       [input('verification', 'task-test', 'test_report')],
       output('integration_evidence', 'IntegrationEvidenceAsset', 'system_evidence')
-    )
+    ),
+    {
+      id: 'contract-consume-outcome',
+      node_id: 'task-consume-outcome',
+      version: 1,
+      node_goal: 'Consume the exact accepted upstream delivery.',
+      expected_inputs: [
+        {
+          key: 'accepted_delivery',
+          kind: 'asset_version',
+          required: true,
+          source: 'workstream_dependency',
+          ref_id: 'workstream-1',
+          selector: 'required_outputs',
+          version_id: null
+        }
+      ],
+      expected_outputs: [output('accepted_outcome', 'DecisionAsset', 'human')],
+      acceptance_criteria: ['accepted_outcome accepted'],
+      allowed_tools: ['assist']
+    }
   );
   state.repository_connections.push({
     id: 'connection-1',

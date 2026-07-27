@@ -39,12 +39,15 @@ export async function materializeContextDocumentsInState(
   }
   const jobs = state.context_projection_jobs
     .filter((job) => {
-      const node = state.context_nodes.find((item) => item.id === job.node_id);
+      const node = state.context_nodes.find((item) => item.id === job.node_id),
+        retryAt = Date.parse(job.next_retry_at || ''),
+        retryReady = !Number.isFinite(retryAt) || retryAt <= Date.now();
       return (
         node &&
         (!selectedIds || selectedIds.has(node.id)) &&
         nodeMatchesProjectionScope(node, { projectId, allowedProjects, allowedSystemNodes }) &&
-        (job.status === 'pending' || (job.status === 'failed' && (force || Number(job.attempts || 0) < 3)))
+        (job.status === 'pending' ||
+          (job.status === 'failed' && (force || (Number(job.attempts || 0) < 3 && retryReady))))
       );
     })
     .sort((left, right) => String(left.created_at).localeCompare(String(right.created_at)))
@@ -194,6 +197,9 @@ export function collectContextVersions(state, { timestamp = Date.now(), retentio
     for (const item of selection.included || []) referenced.add(item.document_version_id);
   for (const summary of state.context_summaries || [])
     if (summary.document_version_id) referenced.add(summary.document_version_id);
+  for (const assetVersion of state.asset_versions || [])
+    for (const versionId of assetVersion.provenance?.consumed_context_document_versions || [])
+      referenced.add(versionId);
   const current = new Set((state.context_nodes || []).map((node) => node.current_version_id).filter(Boolean)),
     instant =
       timestamp instanceof Date

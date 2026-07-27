@@ -173,13 +173,7 @@ export async function materializeAssetVersion(state, version, targetRoot, { casR
       blob = state.asset_blobs.find((item) => item.sha256 === entry.sha256);
     const bytes = await readCasBlob(blob, { casRoot });
     await fsp.mkdir(path.dirname(target), { recursive: true, mode: 0o700 });
-    const handle = await fsp.open(target, 'wx', 0o400);
-    try {
-      await handle.writeFile(bytes);
-      await handle.sync();
-    } finally {
-      await handle.close();
-    }
+    await writeImmutableMountFile(target, bytes, entry.sha256);
     const actual = await fsp.readFile(target);
     if (digest(actual) !== entry.sha256) throw casError('asset_mount_hash_mismatch', { path: entry.path });
     await fsp.chmod(target, 0o400).catch(() => undefined);
@@ -192,6 +186,27 @@ export async function materializeAssetVersion(state, version, targetRoot, { casR
     });
   }
   return { root, read_only: true, content_sha256: version.content_sha256, files };
+}
+
+async function writeImmutableMountFile(target, bytes, expectedSha256) {
+  let handle;
+  try {
+    handle = await fsp.open(target, 'wx', 0o400);
+  } catch (error) {
+    if (error.code !== 'EEXIST') throw error;
+    const stat = await fsp.lstat(target);
+    if (!stat.isFile() || stat.isSymbolicLink()) throw casError('asset_mount_path_conflict');
+    const existing = await fsp.readFile(target);
+    if (existing.length !== bytes.length || digest(existing) !== expectedSha256)
+      throw casError('asset_mount_existing_file_mismatch', { expected_sha256: expectedSha256 });
+    return;
+  }
+  try {
+    await handle.writeFile(bytes);
+    await handle.sync();
+  } finally {
+    await handle.close();
+  }
 }
 
 export function createAssetRecord({

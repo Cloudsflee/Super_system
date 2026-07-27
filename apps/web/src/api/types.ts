@@ -316,8 +316,16 @@ export type TaskExecutionRecord = {
   status: ExecutionStatus;
   readiness: { ready: boolean; reasons: ExecutionReason[]; checked_at?: string };
   input_snapshot_hash?: string | null;
+  context_selection_id?: string | null;
+  context_selection_ids?: string[];
+  consumed_inputs?: string[];
+  consumed_context_document_versions?: string[];
   context_snapshot?: {
     inputs?: TaskExecutionInput[];
+    system_context?: {
+      context_selection_id?: string | null;
+      document_versions?: TaskContextDocumentVersion[];
+    };
     asset_mounts?: unknown[];
     repository_checkout?: Record<string, unknown> | null;
   } | null;
@@ -373,16 +381,54 @@ export type WorkflowExecutionSnapshot = {
 export type WorkflowExecutionList = { items: WorkflowExecutionRecord[]; current: WorkflowExecutionSnapshot | null };
 export type TaskExecutionInput = {
   key: string;
+  kind?: string;
+  required?: boolean;
   source: string;
   selector?: string | null;
+  ref_id?: string | null;
+  resolved_from?: {
+    kind: 'task_execution_outputs' | 'workstream_outcome' | string;
+    workflow_execution_id?: string | null;
+    task_id?: string | null;
+    task_title?: string | null;
+    task_execution_id?: string | null;
+    workstream_id?: string | null;
+    workstream_title?: string | null;
+    outcome_asset_id?: string | null;
+    outcome_version_id?: string | null;
+    selector?: string | null;
+    selected_output_keys?: string[];
+    selected_outputs?: Array<{
+      output_key?: string | null;
+      asset_id: string;
+      version_id: string;
+      asset_type?: string;
+      producer_task_id?: string | null;
+      producer_task_title?: string | null;
+      producer_task_execution_id?: string | null;
+    }>;
+  };
   asset_versions?: Array<{
+    output_key?: string | null;
     asset_id: string;
     version_id: string;
     asset_type: string;
     content_sha256?: string;
     repository_sha?: string | null;
     title?: string;
+    producer_task_id?: string | null;
+    producer_task_execution_id?: string | null;
   }>;
+};
+export type TaskContextDocumentVersion = {
+  node_id: string;
+  document_version_id: string;
+  content_sha256: string;
+  source_collection?: string | null;
+  source_id?: string | null;
+  title?: string | null;
+  reason?: string;
+  required?: boolean;
 };
 export type ExecutionOutputBinding = {
   key: string;
@@ -422,6 +468,7 @@ export type TaskExecutionDetails = {
   task: WorkflowNode;
   contract: NodeContract;
   inputs: TaskExecutionInput[];
+  context_documents?: TaskContextDocumentVersion[];
   asset_mounts: unknown[];
   outputs: TaskExecutionOutput[];
   pull_request_intent?: PullRequestIntentRecord | null;
@@ -650,6 +697,7 @@ export type AssetConsumer = {
   workflow_execution_id?: string;
   task_id?: string;
   status?: string;
+  consumption_status?: 'consumed' | 'prepared' | 'evidenced' | string;
   input_keys?: string[];
 };
 export type AssetVersionDetails = {
@@ -837,124 +885,6 @@ export type NodeWorkspace = {
   submissions?: SubmissionRecord[];
 };
 
-export type ContextNodeRecord = {
-  id: string;
-  uri: string;
-  kind: string;
-  source_type: string;
-  title: string;
-  summary: string;
-  project_id: string | null;
-  parent_id: string | null;
-  source_collection: string | null;
-  source_id: string | null;
-  source_version: number;
-  status: string;
-  sensitivity: string;
-  authority: string;
-  freshness: { status: string; source_updated_at?: string | null; checked_at?: string | null };
-  current_version_id: string | null;
-  required_scopes: string[];
-  sort: { type_order: number; order_index: number; stable_id: string };
-  resource: Record<string, unknown> | null;
-};
-
-export type ContextEdgeRecord = {
-  id: string;
-  type: string;
-  source_node_id: string;
-  target_node_id: string;
-  order_index: number;
-  source: Record<string, unknown>;
-  version: number;
-};
-
-export type ContextDocumentVersion = {
-  id: string;
-  node_id: string;
-  version: number;
-  renderer_version: string;
-  source_hash: string;
-  content_sha256: string;
-  size_bytes: number;
-  media_type: string;
-  token_estimate: number;
-  deterministic_summary: string;
-  redactions: Array<{ path: string; reason: string }>;
-  created_at: string;
-};
-
-export type ContextPolicyRecord = {
-  id?: string;
-  actor_id?: string;
-  session_id: string | null;
-  project_id: string | null;
-  pinned_node_ids: string[];
-  excluded_node_ids: string[];
-  revision: number;
-  updated_at?: string;
-};
-
-export type ContextSelectionRecord = {
-  id: string;
-  schema_version: string;
-  actor_id: string;
-  session_id: string | null;
-  project_id: string | null;
-  anchor_node_id: string | null;
-  candidate_node_ids: string[];
-  included: Array<{
-    node_id: string;
-    document_version_id: string;
-    content_sha256: string;
-    token_estimate: number;
-    reason: string;
-  }>;
-  excluded: Array<{
-    node_id: string;
-    document_version_id: string | null;
-    token_estimate: number;
-    reason: string;
-  }>;
-  token_budget: number;
-  token_used: number;
-  map_snapshot_hash: string;
-  created_at: string;
-};
-
-export type ContextMapResponse = {
-  schema_version: string;
-  uri: string;
-  project_id: string | null;
-  root_id: string;
-  snapshot_hash: string;
-  nodes: ContextNodeRecord[];
-  edges: ContextEdgeRecord[];
-  compact_markdown: string;
-  policy: ContextPolicyRecord;
-  latest_selection: ContextSelectionRecord | null;
-  coverage?: { source_records: number; projected_records: number; tombstones: number; warnings: unknown[] };
-};
-
-export type ContextSearchResponse = {
-  schema_version: string;
-  query: string;
-  project_id: string | null;
-  snapshot_hash: string;
-  results: Array<ContextNodeRecord & { score: number; terms: string[] }>;
-  candidate_node_ids: string[];
-};
-
-export type ContextNodeResponse = {
-  schema_version: string;
-  node: ContextNodeRecord;
-  version: ContextDocumentVersion;
-  markdown: string;
-  facts: unknown;
-  edges: ContextEdgeRecord[];
-  related_nodes: ContextNodeRecord[];
-  history: ContextDocumentVersion[];
-};
-
+export type * from './context-types';
 export type * from './assist-types';
 export type * from './codex-types';

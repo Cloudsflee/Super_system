@@ -59,6 +59,21 @@ build_images() {
   docker build -f "$ROOT/docker/codex-runner.Dockerfile" --build-arg CODEX_VERSION=0.144.0 -t "$RUNNER_IMAGE" "$ROOT"
   docker build --target production -t "$APP_IMAGE" "$ROOT"
 }
+preserve_rollback_image() {
+  if [[ -n "${AIWS_ROLLBACK_IMAGE:-}" ]]; then
+    docker image inspect "$AIWS_ROLLBACK_IMAGE" >/dev/null 2>&1 || { echo v20_rollback_image_missing >&2; return 1; }
+    printf '%s' "$AIWS_ROLLBACK_IMAGE"
+    return
+  fi
+  local container image tag
+  container=$(docker ps -a -q --filter label=com.docker.compose.project=aiws-v20 --filter label=com.docker.compose.service=app | head -n 1)
+  [[ -n "$container" ]] || return 0
+  image=$(docker inspect --format '{{.Image}}' "$container")
+  [[ -n "$image" ]] || { echo v20_rollback_image_inspect_failed >&2; return 1; }
+  tag="aiws-app:v20-rollback-$$-$RANDOM"
+  docker image tag "$image" "$tag" || { echo v20_rollback_image_preserve_failed >&2; return 1; }
+  printf '%s' "$tag"
+}
 build_verify_image() {
   local verify_image=aiws-verify:2.0.0 cache_image
   if docker image inspect "$verify_image" >/dev/null 2>&1 && docker run --rm --entrypoint sh --mount "type=bind,src=$ROOT,dst=/source,readonly" "$verify_image" -c 'test -d /app/node_modules && test -d "$(corepack pnpm store path)" && cmp -s /app/pnpm-lock.yaml /source/pnpm-lock.yaml && test "$(codex --version)" = "codex-cli 0.144.0" && (command -v chromium-browser >/dev/null || command -v chromium >/dev/null)'; then
@@ -122,9 +137,10 @@ cd "$ROOT"
 assert_docker
 case "$COMMAND" in
   up)
-    build_images; test_volume_subpath; override=$(new_import_override || true)
+    rollback_image=$(preserve_rollback_image); build_images; test_volume_subpath; override=$(new_import_override || true)
     trap '[[ -z "${override:-}" ]] || rm -f "$override"' EXIT
     release_args=("$ROOT/scripts/v20-release.mjs" --compose-file "$COMPOSE_FILE" --source-volume "$SOURCE_VOLUME" --target-volume "$VOLUME" --project-name aiws-v20 --app-image "$APP_IMAGE" --runner-image "$RUNNER_IMAGE" --port "$PORT")
+    [[ -z "$rollback_image" ]] || release_args+=(--rollback-image "$rollback_image")
     [[ -z "$override" ]] || release_args+=(--override "$override")
     node "${release_args[@]}" ;;
   down) compose down --remove-orphans; echo "数据卷 $VOLUME 已保留。" ;;

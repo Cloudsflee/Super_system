@@ -130,10 +130,10 @@ export function buildContextPack({
 }
 
 function selectContextPackSources({ state, project, workspace, node, contract, executionContext }) {
-  const latestDigest =
-    executionContext?.workstream_digest ||
-    [...state.digests].reverse().find((item) => item.workspace_id === workspace?.id && item.status === 'confirmed') ||
-    null;
+  const latestDigest = executionContext
+    ? executionContext.workstream_digest || null
+    : [...state.digests].reverse().find((item) => item.workspace_id === workspace?.id && item.status === 'confirmed') ||
+      null;
   const assetRefs = new Set(
     executionContext?.inputs?.flatMap((item) => item.asset_versions || []).map((item) => item.asset_id) || []
   );
@@ -171,7 +171,7 @@ function executionMemoryManifest(context, project, workspace, node, tokenBudget)
         source_id: asset.version_id,
         title: asset.title || asset.asset_type,
         summary: asset.summary || '',
-        reason: `显式输入槽 ${input.key}`,
+        reason: executionInputReason(input),
         authority: 'user_confirmed',
         freshness: 'current',
         token_estimate: estimateTokens(`${asset.title || ''}\n${asset.summary || ''}`)
@@ -247,14 +247,27 @@ export function buildRunnerInstruction({ project, node, contract, executionConte
     '如果 Codex Memory / 旧 Session 与 Context Pack、Confirmed Asset、Decision 或 NodeContract 冲突，必须以后者为准，并在结果中报告冲突。'
   ];
   if (executionContext?.schema_version === 'aiws.task_execution_context.v3') {
-    const versionIds = executionAssetVersionIds(executionContext);
+    const versionIds = executionAssetVersionIds(executionContext),
+      contextVersionIds = executionContextDocumentVersionIds(executionContext);
     lines.push(
-      '必须返回 aiws.task_runner_result.v2；每个输出声明 output_key、typed payload、evidence_refs 和 consumed_input_versions。',
+      '必须返回 aiws.task_runner_result.v2；每个输出声明 output_key、typed payload、evidence_refs、consumed_input_versions 和 consumed_context_document_versions。',
+      'inputs 中 source=dependency 或 workstream_dependency 的 AssetVersion 是本轮权威上游交付；必须使用 asset_mounts 中固定的只读载荷，不得改用同项目的其他版本。',
       `consumed_input_versions 仅填写 inputs[].asset_versions[].version_id，允许的精确 AssetVersion ID 集合为：${JSON.stringify(versionIds)}。`,
-      'Context Pack ID、Project Brief/Digest/Decision ID、Repository Line/branch/SHA 都不是 AssetVersion ID，禁止填入 consumed_input_versions。顶层 consumed_input_versions 必须等于所有输出所声明 ID 的并集。'
+      '每个输出只声明它实际读取并用于形成该输出的 AssetVersion；required 输入必须至少被一个输出消费，optional 输入未使用时不要声明。',
+      'Context Pack ID、Project Brief/Digest/Decision ID、Repository Line/branch/SHA 都不是 AssetVersion ID，禁止填入 consumed_input_versions。顶层 consumed_input_versions 必须等于所有输出所声明 ID 的并集。',
+      `consumed_context_document_versions 可填写启动时 system_context.document_versions[].document_version_id（精确集合：${JSON.stringify(contextVersionIds)}），以及本轮 aiws_context read 响应 provenance_claim.document_version_id。`,
+      'aiws_context map/search 的节点或候选不算已读取；只有 read 返回且带本轮读取收据的精确文档版本才可声明。每个输出只声明它实际读取并用于形成该输出的上下文文档。required=true 的显式上下文必须至少被一个输出使用；当前锚点、用户固定项和其他地图文档不会自动算作已使用。顶层 consumed_context_document_versions 必须等于所有输出所声明 ID 的并集。'
     );
   } else lines.push('输出必须匹配 aiws.node_run_result.v1。');
   return lines.join('\n');
+}
+
+function executionInputReason(input) {
+  if (input.resolved_from?.kind === 'workstream_outcome')
+    return `成果节点交付 ${input.resolved_from.workstream_title || input.resolved_from.workstream_id} -> 输入槽 ${input.key}`;
+  if (input.resolved_from?.kind === 'task_execution_outputs')
+    return `前置任务交付 ${input.resolved_from.task_title || input.resolved_from.task_id} -> 输入槽 ${input.key}`;
+  return `显式输入槽 ${input.key}`;
 }
 export function nodeRunResultSchema() {
   return {
@@ -274,11 +287,17 @@ export function nodeRunResultSchema() {
 export function taskRunnerResultSchema(context = null) {
   const outputKeys = (context?.contract?.expected_outputs || []).map((item) => item.key).filter(Boolean);
   const inputVersionIds = executionAssetVersionIds(context);
+  const contextDocumentVersionIds = executionContextDocumentVersionIds(context);
   const stringArray = { type: 'array', items: { type: 'string' } };
   const consumedVersions = {
     type: 'array',
     description: `Only AssetVersion IDs from inputs[].asset_versions[].version_id. Exact available set: ${JSON.stringify(inputVersionIds)}.`,
     items: inputVersionIds.length ? { type: 'string', enum: inputVersionIds } : { type: 'string' }
+  };
+  const consumedContextVersions = {
+    type: 'array',
+    description: `Only exact ContextDocumentVersion IDs actually used: initial system_context IDs ${JSON.stringify(contextDocumentVersionIds)} or provenance_claim.document_version_id returned by aiws_context read during this run. The server validates the read receipt.`,
+    items: { type: 'string', minLength: 1, maxLength: 200 }
   };
   const payloadFile = {
     type: 'object',
@@ -294,12 +313,21 @@ export function taskRunnerResultSchema(context = null) {
   return {
     type: 'object',
     additionalProperties: false,
-    required: ['schema_version', 'status', 'summary', 'outputs', 'consumed_input_versions', 'warnings'],
+    required: [
+      'schema_version',
+      'status',
+      'summary',
+      'outputs',
+      'consumed_input_versions',
+      'consumed_context_document_versions',
+      'warnings'
+    ],
     properties: {
       schema_version: { enum: ['aiws.task_runner_result.v2'] },
       status: { enum: ['succeeded', 'partial', 'blocked', 'failed'] },
       summary: { type: 'string' },
       consumed_input_versions: consumedVersions,
+      consumed_context_document_versions: consumedContextVersions,
       outputs: {
         type: 'array',
         items: {
@@ -312,7 +340,8 @@ export function taskRunnerResultSchema(context = null) {
             'summary',
             'payload',
             'evidence_refs',
-            'consumed_input_versions'
+            'consumed_input_versions',
+            'consumed_context_document_versions'
           ],
           properties: {
             output_key: outputKeys.length ? { enum: outputKeys } : { type: 'string' },
@@ -333,7 +362,8 @@ export function taskRunnerResultSchema(context = null) {
               }
             },
             evidence_refs: stringArray,
-            consumed_input_versions: consumedVersions
+            consumed_input_versions: consumedVersions,
+            consumed_context_document_versions: consumedContextVersions
           }
         }
       },
@@ -453,19 +483,27 @@ export function generatePrBody({ project, node, run, diff, assets = [], tests = 
     '> GitHub 未绑定时，此内容作为 PR 草稿保存。'
   ].join('\n');
 }
-export function buildNodeRunResult({ run, contextPack, changedFiles = [], raw = '', status = RunnerStatus.Succeeded }) {
+export function buildNodeRunResult({
+  run,
+  contextPack,
+  changedFiles = [],
+  raw = '',
+  status = RunnerStatus.Succeeded,
+  consumedInputVersions = [],
+  consumedContextDocumentVersions = []
+}) {
   const nodeTitle = contextPack?.content_json?.workflow_node?.title || '节点任务',
     execution = contextPack?.content_json?.task_execution_context;
   if (execution?.schema_version === 'aiws.task_execution_context.v3') {
-    const consumed = [
-      ...new Set((execution.inputs || []).flatMap((item) => item.asset_versions || []).map((item) => item.version_id))
-    ];
+    const consumed = [...new Set(consumedInputVersions)],
+      consumedContext = [...new Set(consumedContextDocumentVersions)];
     return {
       schema_version: 'aiws.task_runner_result.v2',
       status,
       summary: `${nodeTitle} 已完成 ${status}。${raw ? `Runner 输出：${raw.slice(0, 220)}` : ''}`,
       consumed_input_versions: consumed,
-      outputs: (execution.contract?.expected_outputs || []).map((slot) => ({
+      consumed_context_document_versions: consumedContext,
+      outputs: (execution.contract?.expected_outputs || []).map((slot, index) => ({
         output_key: slot.key,
         asset_type: slot.asset_type,
         title: `${nodeTitle} ${slot.key}`,
@@ -477,7 +515,8 @@ export function buildNodeRunResult({ run, contextPack, changedFiles = [], raw = 
           files: []
         },
         evidence_refs: [`node_run:${run.id}`, `context_pack:${contextPack?.id}`],
-        consumed_input_versions: consumed
+        consumed_input_versions: index === 0 ? consumed : [],
+        consumed_context_document_versions: index === 0 ? consumedContext : []
       })),
       warnings: []
     };
@@ -510,7 +549,7 @@ export function normalizeRunnerOutput(raw, fallback = {}) {
     const parsed = typeof raw === 'string' ? JSON.parse(raw) : raw;
     const v2 = parsed.schema_version === 'aiws.task_runner_result.v2';
     const required = v2
-      ? ['status', 'summary', 'outputs', 'consumed_input_versions']
+      ? ['status', 'summary', 'outputs', 'consumed_input_versions', 'consumed_context_document_versions']
       : ['status', 'summary', 'changed_files', 'asset_candidates', 'test_results', 'next_actions'];
     const missing = required.filter((key) => !(key in parsed));
     if (missing.length) {
@@ -523,6 +562,7 @@ export function normalizeRunnerOutput(raw, fallback = {}) {
     if (v2) {
       const malformed =
         !Array.isArray(parsed.consumed_input_versions) ||
+        !Array.isArray(parsed.consumed_context_document_versions) ||
         parsed.outputs?.find(
           (item) =>
             !item?.output_key ||
@@ -532,6 +572,7 @@ export function normalizeRunnerOutput(raw, fallback = {}) {
             typeof item?.payload?.content !== 'string' ||
             !Array.isArray(item?.payload?.files) ||
             !Array.isArray(item?.consumed_input_versions) ||
+            !Array.isArray(item?.consumed_context_document_versions) ||
             !Array.isArray(item?.evidence_refs)
         );
       if (malformed)
@@ -571,6 +612,14 @@ function executionAssetVersionIds(context) {
         .flatMap((item) => item.asset_versions || [])
         .map((item) => item.version_id)
         .filter(Boolean)
+    )
+  ].sort();
+}
+
+function executionContextDocumentVersionIds(context) {
+  return [
+    ...new Set(
+      (context?.system_context?.document_versions || []).map((item) => item?.document_version_id).filter(Boolean)
     )
   ].sort();
 }

@@ -243,7 +243,7 @@ function registerContextTool(server, allowed, registry, client) {
     'aiws_context',
     {
       title: 'AIWS 系统上下文',
-      description: '先读取低成本地图，再检索、读取节点或解释某次服务端选择。',
+      description: '先读取低成本地图，再检索、读取节点或解释某次服务端选择；运行内读取会返回可审计版本收据。',
       inputSchema: z.discriminatedUnion('action', [
         z
           .object({
@@ -261,6 +261,7 @@ function registerContextTool(server, allowed, registry, client) {
             project_id: z.string().min(1).max(200).nullable().optional(),
             anchor_node_id: z.string().min(1).max(200).nullable().optional(),
             explicit_refs: z.array(z.string().min(1).max(500)).max(200).default([]),
+            token_budget: z.number().int().min(1).max(200_000).optional(),
             limit: z.number().int().min(1).max(200).default(30)
           })
           .strict(),
@@ -268,7 +269,8 @@ function registerContextTool(server, allowed, registry, client) {
           .object({
             action: z.literal('read'),
             node_id: z.string().min(1).max(200),
-            version_id: z.string().min(1).max(200).nullable().optional()
+            version_id: z.string().min(1).max(200).nullable().optional(),
+            selection_id: z.string().min(1).max(200).nullable().optional()
           })
           .strict(),
         z.object({ action: z.literal('explain_selection'), selection_id: z.string().min(1).max(200) }).strict()
@@ -286,7 +288,7 @@ function registerContextTool(server, allowed, registry, client) {
               : 'aiws.context.get.context.v1.selections.by-id';
       if (!contextOperations.has(operationId))
         return toolResult(fail(`aiws.context.${input.action}`, 403, 'mcp_scope_required'));
-      const { action, node_id, selection_id, ...rest } = input;
+      const { action, node_id, ...rest } = input;
       const args =
         action === 'map'
           ? { query: rest }
@@ -294,7 +296,7 @@ function registerContextTool(server, allowed, registry, client) {
             ? { body: rest }
             : action === 'read'
               ? { params: { id: node_id }, query: rest }
-              : { params: { id: selection_id } };
+              : { params: { id: input.selection_id } };
       return toolResult(await executeRegistryOperation(registry, operationId, args, { client }));
     }
   );

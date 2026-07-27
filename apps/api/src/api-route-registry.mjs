@@ -288,53 +288,14 @@ async function resolveProjectId(operation, args, client = null) {
   const state = await readState(),
     params = args.params || {};
   const pattern = operation.pattern;
-  const direct = directProjectRoute(pattern, state, params.id);
-  if (direct.matched) return direct.projectId;
-  if (pattern.startsWith('/context-packs/:id')) {
-    const contextPack = state.context_packs.find((item) => item.id === params.id);
-    return (
-      contextPack?.content_json?.project?.id ||
-      state.workspaces.find((item) => item.id === contextPack?.source_workspace_id)?.project_id ||
-      null
-    );
-  }
-  if (pattern.startsWith('/context/v1/nodes/:id'))
-    return state.context_nodes.find((item) => item.id === params.id)?.project_id || null;
-  if (pattern.startsWith('/context/v1/selections/:id'))
-    return state.context_selections.find((item) => item.id === params.id)?.project_id || null;
-  if (['/nodes/:id', '/tasks/:id', '/workstreams/:id'].some((prefix) => pattern.startsWith(prefix))) {
-    const node = state.workflow_nodes.find((item) => item.id === params.id),
-      workflow = state.workflows.find((item) => item.id === node?.workflow_id);
-    return workflow?.project_id || null;
-  }
-  const exchange = resolveExchangeProject(pattern, state, params.id, args.body, client);
-  if (exchange.matched) return exchange.projectId;
-  const repository = resolveCanonicalRepositoryProject(pattern, state, params.id, client);
-  if (repository.matched) return repository.projectId;
-  if (pattern.startsWith('/canonical-repositories/:id') || pattern.startsWith('/github/repositories/:id/deletion')) {
-    const canonical = state.canonical_repositories.find(
-      (item) => item.id === params.id || String(item.repository_id) === String(params.id)
-    );
-    return chooseAllowedProject(
-      client,
-      ...state.project_repository_bindings
-        .filter((item) => item.canonical_repository_id === canonical?.id && item.status !== 'removed')
-        .map((item) => item.project_id)
-    );
-  }
-  if (pattern.startsWith('/approvals/:type/:id'))
-    return params.type === 'runtime'
-      ? findProject(state, 'runtime_approvals', params.id)
-      : findProject(state, 'change_proposals', params.id);
-  if (pattern.startsWith('/asset-candidates/:id'))
-    return findProject(state, 'assets', params.id) || findProject(state, 'runner_memory_candidates', params.id);
-  if (pattern.startsWith('/asset-versions/:id')) {
-    const version = state.asset_versions.find((item) => item.id === params.id);
-    return findProject(state, 'assets', version?.asset_id);
-  }
+  const resolved = resolveProjectRoute(pattern, state, params, args.body, client);
+  if (resolved.matched) return resolved.projectId;
   if (params.id) return null;
   const declared = args.query?.project_id || args.body?.project_id;
-  return declared ? String(declared) : null;
+  if (declared) return String(declared);
+  if (pattern.startsWith('/context/v1/') && client?.project_allowlist?.length === 1)
+    return String(client.project_allowlist[0]);
+  return null;
 }
 
 const directProjectRoutes = [
@@ -359,6 +320,109 @@ const directProjectRoutes = [
   ['/change-proposals/:id', 'change_proposals'],
   ['/assets/:id', 'assets']
 ];
+
+const projectRouteResolvers = [
+  resolveDirectProjectRoute,
+  resolveContextPackProject,
+  resolveContextRecordProject,
+  resolveWorkflowNodeProject,
+  resolveExchangeRouteProject,
+  resolveRepositoryDeletionProject,
+  resolveCanonicalRepositoryBindingProject,
+  resolveApprovalProject,
+  resolveAssetProject
+];
+
+function resolveProjectRoute(pattern, state, params, body, client) {
+  const input = { pattern, state, params, body, client };
+  for (const resolver of projectRouteResolvers) {
+    const result = resolver(input);
+    if (result.matched) return result;
+  }
+  return { matched: false };
+}
+
+function resolveDirectProjectRoute({ pattern, state, params }) {
+  return directProjectRoute(pattern, state, params.id);
+}
+
+function resolveContextPackProject({ pattern, state, params }) {
+  if (!pattern.startsWith('/context-packs/:id')) return { matched: false };
+  const contextPack = state.context_packs.find((item) => item.id === params.id);
+  return {
+    matched: true,
+    projectId:
+      contextPack?.content_json?.project?.id ||
+      state.workspaces.find((item) => item.id === contextPack?.source_workspace_id)?.project_id ||
+      null
+  };
+}
+
+function resolveContextRecordProject({ pattern, state, params }) {
+  const collection = pattern.startsWith('/context/v1/nodes/:id')
+    ? 'context_nodes'
+    : pattern.startsWith('/context/v1/selections/:id')
+      ? 'context_selections'
+      : null;
+  return collection
+    ? { matched: true, projectId: state[collection].find((item) => item.id === params.id)?.project_id || null }
+    : { matched: false };
+}
+
+function resolveWorkflowNodeProject({ pattern, state, params }) {
+  if (!['/nodes/:id', '/tasks/:id', '/workstreams/:id'].some((prefix) => pattern.startsWith(prefix)))
+    return { matched: false };
+  const node = state.workflow_nodes.find((item) => item.id === params.id),
+    workflow = state.workflows.find((item) => item.id === node?.workflow_id);
+  return { matched: true, projectId: workflow?.project_id || null };
+}
+
+function resolveExchangeRouteProject({ pattern, state, params, body, client }) {
+  return resolveExchangeProject(pattern, state, params.id, body, client);
+}
+
+function resolveRepositoryDeletionProject({ pattern, state, params, client }) {
+  return resolveCanonicalRepositoryProject(pattern, state, params.id, client);
+}
+
+function resolveCanonicalRepositoryBindingProject({ pattern, state, params, client }) {
+  if (!pattern.startsWith('/canonical-repositories/:id') && !pattern.startsWith('/github/repositories/:id/deletion'))
+    return { matched: false };
+  const canonical = state.canonical_repositories.find(
+    (item) => item.id === params.id || String(item.repository_id) === String(params.id)
+  );
+  return {
+    matched: true,
+    projectId: chooseAllowedProject(
+      client,
+      ...state.project_repository_bindings
+        .filter((item) => item.canonical_repository_id === canonical?.id && item.status !== 'removed')
+        .map((item) => item.project_id)
+    )
+  };
+}
+
+function resolveApprovalProject({ pattern, state, params }) {
+  if (!pattern.startsWith('/approvals/:type/:id')) return { matched: false };
+  return {
+    matched: true,
+    projectId:
+      params.type === 'runtime'
+        ? findProject(state, 'runtime_approvals', params.id)
+        : findProject(state, 'change_proposals', params.id)
+  };
+}
+
+function resolveAssetProject({ pattern, state, params }) {
+  if (pattern.startsWith('/asset-candidates/:id'))
+    return {
+      matched: true,
+      projectId: findProject(state, 'assets', params.id) || findProject(state, 'runner_memory_candidates', params.id)
+    };
+  if (!pattern.startsWith('/asset-versions/:id')) return { matched: false };
+  const version = state.asset_versions.find((item) => item.id === params.id);
+  return { matched: true, projectId: findProject(state, 'assets', version?.asset_id) };
+}
 
 function directProjectRoute(pattern, state, id) {
   const route = directProjectRoutes.find(([prefix]) => pattern.startsWith(prefix));

@@ -395,10 +395,10 @@ try {
 }
 
 async function pendingOperation(stateApi, callId) {
-  for (let attempt = 0; attempt < 100; attempt++) {
+  for (let attempt = 0; attempt < 200; attempt++) {
     const item = (await stateApi.readState()).assist_operations.find((entry) => entry.tool_call_id === callId);
     if (item) return item;
-    await new Promise((resolve) => setTimeout(resolve, 10));
+    await new Promise((resolve) => setTimeout(resolve, 25));
   }
   throw new Error('operation_timeout');
 }

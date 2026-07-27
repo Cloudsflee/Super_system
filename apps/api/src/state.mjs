@@ -42,6 +42,7 @@ import {
 import {
   migrateStateFileToV20,
   normalizeOfficialRunnerImagesV20,
+  normalizeOutcomeEvidenceRelationsV20,
   normalizeState20Defaults,
   STATE_SCHEMA_VERSION,
   validateState20
@@ -81,6 +82,7 @@ export async function ensureRuntime() {
   const changes = { value: false };
   normalizeRuntimeCollections(state, changes);
   if (normalizeOfficialRunnerImagesV20(state, { timestamp: now() }).changed) changes.value = true;
+  if (normalizeOutcomeEvidenceRelationsV20(state).changed) changes.value = true;
   ensureRuntimeDefaults(state, changes);
   normalizeRuntimeGovernance(state, changes);
   normalizeRuntimeProjects(state, changes);

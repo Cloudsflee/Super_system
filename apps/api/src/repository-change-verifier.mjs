@@ -82,11 +82,24 @@ async function scanChangedFiles(root, files) {
     const target = path.resolve(root, file.path),
       stat = await fsp.stat(target).catch(() => null);
     if (!stat?.isFile() || stat.size > 2 * 1024 * 1024) continue;
-    const content = await fsp.readFile(target, 'utf8').catch(() => '');
+    const content =
+      file.status === 'added'
+        ? await fsp.readFile(target, 'utf8').catch(() => '')
+        : addedDiffText(
+            await git(root, ['diff', '--no-ext-diff', '--no-color', '--unified=0', 'HEAD', '--', file.path])
+          );
     if (redactKnownSecretsSync(content) !== content || SECRET_PATTERNS.some((pattern) => pattern.test(content)))
       findings.push(file.path);
   }
   return findings;
+}
+
+export function addedDiffText(diff) {
+  return String(diff || '')
+    .split(/\r?\n/)
+    .filter((line) => line.startsWith('+') && !line.startsWith('+++'))
+    .map((line) => line.slice(1))
+    .join('\n');
 }
 
 async function repositoryPayload(line, execution, previousSha, commitSha, changedFiles) {

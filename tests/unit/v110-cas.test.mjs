@@ -66,6 +66,14 @@ try {
   const mounted = await materializeAssetVersion(state, version, path.join(root, 'mount'), { casRoot });
   assert.equal(mounted.read_only, true);
   assert.equal(await fsp.readFile(path.join(mounted.root, 'notes/decision.txt'), 'utf8'), 'Use CAS.');
+  const mountedAgain = await materializeAssetVersion(state, version, path.join(root, 'mount'), { casRoot });
+  assert.equal(await fsp.readFile(path.join(mountedAgain.root, 'metadata.json'), 'utf8'), '{"accepted":true}');
+  await fsp.chmod(path.join(mounted.root, 'notes/decision.txt'), 0o600);
+  await fsp.writeFile(path.join(mounted.root, 'notes/decision.txt'), 'changed', 'utf8');
+  await assert.rejects(
+    () => materializeAssetVersion(state, version, path.join(root, 'mount'), { casRoot }),
+    (error) => error.code === 'asset_mount_existing_file_mismatch'
+  );
 
   const referenced = version.blob_refs.find((item) => item.role !== 'manifest');
   const blob = state.asset_blobs.find((item) => item.sha256 === referenced.sha256);

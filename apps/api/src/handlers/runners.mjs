@@ -45,7 +45,10 @@ async function executeCodexDocker(state, payload) {
   const credential = await readSecret(auth?.refs?.credential);
   const proxyEnv = codexContainerProxyEnv(process.env);
   const timeoutMs = resolveCodexTimeoutMs(profile.timeout_ms);
-  const mcpAccess = await issueCodexMcpAccess(project.id, profile, { ttlSeconds: codexTimeoutTtlSeconds(timeoutMs) });
+  const mcpAccess = await issueCodexMcpAccess(project.id, profile, {
+    ttlSeconds: codexTimeoutTtlSeconds(timeoutMs),
+    contextBinding: runnerContextBinding(run, ctx)
+  });
   const runner = new DockerCodexRunner({
     image: process.env.AIWS_CODEX_DOCKER_IMAGE,
     timeoutMs,
@@ -93,7 +96,10 @@ async function executeCodex(state, payload) {
   if (auth.home && !isThirdPartyProvider(profile.provider)) await materializeDeviceAuth(auth.home, profile.codex_home);
   const credential = await readSecret(auth?.refs?.credential);
   const timeoutMs = resolveCodexTimeoutMs(profile.timeout_ms);
-  const mcpAccess = await issueCodexMcpAccess(project.id, profile, { ttlSeconds: codexTimeoutTtlSeconds(timeoutMs) });
+  const mcpAccess = await issueCodexMcpAccess(project.id, profile, {
+    ttlSeconds: codexTimeoutTtlSeconds(timeoutMs),
+    contextBinding: runnerContextBinding(run, ctx)
+  });
   const fallback = buildNodeRunResult({
     run,
     contextPack: ctx,
@@ -134,15 +140,17 @@ export function buildNodeRunInvocation(profile, run, input, proxyKeys, mcpAccess
     const root = item.mount?.root;
     if (root && path.posix.isAbsolute(root)) internalMounts.push({ source: root, target: root, mode: 'ro' });
   }
+  // Docker keeps read-only repositories immutable; workspace-write lets Codex use the explicit /tmp allowance.
   const commandArgs = [
     ...(input.configArgs || []),
     'exec',
     ...(input.json ? ['--json'] : []),
     '--skip-git-repo-check',
     '--sandbox',
-    readOnly ? 'read-only' : 'workspace-write'
+    'workspace-write'
   ];
   if (input.model) commandArgs.push('--model', input.model);
+  if (readOnly) commandArgs.push('--add-dir', '/tmp');
   commandArgs.push('--cd', '/workspace', '--output-schema', `/aiws-run/${path.basename(input.outputSchemaFile)}`);
   if (input.lastMessageFile)
     commandArgs.push('--output-last-message', `/aiws-run/${path.basename(input.lastMessageFile)}`);
@@ -171,16 +179,67 @@ export function buildNodeRunInvocation(profile, run, input, proxyKeys, mcpAccess
   });
 }
 
+function runnerContextBinding(run, contextPack) {
+  const systemContext = run.task_execution_context?.system_context;
+  if (!run.task_execution_id || !systemContext?.context_selection_id) return null;
+  return {
+    project_id: run.project_id,
+    run_id: run.id,
+    task_execution_id: run.task_execution_id,
+    context_selection_id: systemContext.context_selection_id,
+    context_pack_id: contextPack?.id || run.context_pack_id || null,
+    anchor_node_id: systemContext.current_anchor?.node_id || systemContext.context_map?.anchor_node_id || null
+  };
+}
+
 export async function prepareCodexFiles(_cwd, run, ctx) {
   const dir = path.join(EXECUTION_DIR, 'node-runs', run.id);
   await fsp.mkdir(dir, { recursive: true });
   const promptFile = path.join(dir, 'prompt.md');
   const schemaFile = path.join(dir, 'result-schema.json');
-  await fsp.writeFile(promptFile, contextPackToMarkdown(ctx), 'utf8');
+  const promptContext = runnerVisibleContextPack(ctx, run);
+  await fsp.writeFile(promptFile, contextPackToMarkdown(promptContext), 'utf8');
   const executionContext =
     ctx.task_execution_context || ctx._task_execution_context || ctx.content_json?.task_execution_context;
   await fsp.writeFile(schemaFile, JSON.stringify(runnerResultSchemaForContext(executionContext), null, 2), 'utf8');
   return { promptFile, schemaFile };
+}
+
+export function runnerVisibleContextPack(contextPack, run) {
+  const projected = structuredClone(contextPack),
+    repositoryRoot = run.runner === 'codex_docker' ? '/workspace' : '.',
+    source =
+      projected.task_execution_context ||
+      projected._task_execution_context ||
+      projected.content_json?.task_execution_context;
+  if (source) {
+    const execution = runnerVisibleExecutionContext(source, repositoryRoot);
+    projected.task_execution_context = execution;
+    if (projected.content_json) projected.content_json.task_execution_context = execution;
+  }
+  if (projected.content_json) {
+    const serverCommitsRepository = source?.repository_checkout?.access === 'read_write';
+    projected.content_json.runner_instruction = [
+      `运行时仓库根目录固定为 ${repositoryRoot}；服务端物化路径不可在 runner 内使用。`,
+      `调用 /runs/:id 或对应 MCP 操作时必须使用 NodeRun ID ${run.id}，不得使用 TaskExecution ID。`,
+      serverCommitsRepository
+        ? 'Git 元数据刻意只读；不得执行 git add/commit 或 MCP commit。完成文件修改与测试后返回 succeeded，服务端将执行 secret scan、commit 并生成仓库证据。'
+        : '',
+      projected.content_json.runner_instruction || ''
+    ]
+      .filter(Boolean)
+      .join('\n');
+  }
+  return projected;
+}
+
+function runnerVisibleExecutionContext(context, repositoryRoot) {
+  const execution = structuredClone(context);
+  if (execution.repository_snapshot) execution.repository_snapshot.managed_path = repositoryRoot;
+  if (execution.repository_checkout) execution.repository_checkout.path = repositoryRoot;
+  for (const input of execution.inputs || [])
+    if (input.repository_snapshot) input.repository_snapshot.managed_path = repositoryRoot;
+  return execution;
 }
 
 export function resolveGitMetadataMount(cwd) {

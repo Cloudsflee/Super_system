@@ -122,6 +122,7 @@ export function buildCodexContainerInvocation(options) {
     );
   if (options.stdin || options.interactive) args.push('-i');
   if (options.interactive) args.push('-t');
+  if (options.tmpfs !== false) args.push('--tmpfs', '/tmp:rw,nosuid,nodev,size=256m');
   if (options.hostGateway !== false) args.push('--add-host', 'host.docker.internal:host-gateway');
   if (env.AIWS_RUNNER_NETWORK) args.push('--network', validateDockerNetworkName(env.AIWS_RUNNER_NETWORK));
   for (const [key, value] of Object.entries(options.containerEnv || {})) appendEnvironment(args, key, value);

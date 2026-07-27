@@ -36,7 +36,16 @@ import {
   resolveContextProjectionRecord,
   upsertBrowserSemanticResourceInState
 } from './context-resource-adapters.mjs';
+import {
+  contextRequestProjectAllowlist,
+  createRuntimeReadReceipt,
+  createRuntimeReadSelection,
+  createRuntimeSearchSelection,
+  runtimeContextBinding
+} from './context-runtime-selection.mjs';
 import { mutate, readState } from './state.mjs';
+
+export { compactRuntimeMap, loadContextSelectionDocumentsInState } from './context-runtime-selection.mjs';
 
 const INDEX_FILE = path.join(CONTEXT_INDEX_DIR, 'minisearch-v1.json');
 let indexCache = null;
@@ -83,7 +92,7 @@ export async function ensureContextProjection({
 }
 
 export async function getContextMap(input = {}, request = {}) {
-  const projectId = optionalString(input.project_id),
+  const projectId = await contextProjectId(input, request),
     initialActorContext = await contextActor(request, projectId);
   await ensureContextProjection({
     projectId,
@@ -115,12 +124,12 @@ export async function getContextMap(input = {}, request = {}) {
     compact_markdown: compactContextMap(nodes, { rootId, maxDepth: depth, maxNodes: limit }),
     policy: publicPolicy(findContextPolicy(state, { actorId: actorContext.actor.id, projectId })),
     latest_selection: selection ? publicSelection(selection) : null,
-    coverage: state.context_projection_coverage || null
+    coverage: publicContextCoverage(state, actorContext, projectId, nodes)
   };
 }
 
 export async function searchContext(input = {}, request = {}) {
-  const projectId = optionalString(input.project_id),
+  const projectId = await contextProjectId(input, request),
     initialActorContext = await contextActor(request, projectId);
   await ensureContextProjection({
     projectId,
@@ -172,13 +181,35 @@ export async function searchContext(input = {}, request = {}) {
       .sort(compareSearchResults)
       .slice(0, limit),
     results = ranked.map(({ _ranking, ...item }) => item);
-  return {
+  const response = {
     schema_version: 'aiws.context_search.v1',
     query,
     project_id: projectId,
     snapshot_hash: indexStatus.snapshot_hash,
     results,
     candidate_node_ids: results.map((item) => item.id)
+  };
+  const runtimeBinding = runtimeContextBinding(state, request);
+  if (!runtimeBinding || request.skipRuntimeSelection === true) return response;
+  const selection = await createRuntimeSearchSelection({
+    request,
+    binding: runtimeBinding,
+    projectId,
+    candidateNodeIds: response.candidate_node_ids,
+    explicitRefs: normalizeArray(input.explicit_refs),
+    candidateRanks: new Map(response.candidate_node_ids.map((nodeId, index) => [nodeId, index])),
+    requestedTokenBudget: input.token_budget
+  });
+  return {
+    ...response,
+    context_selection_id: selection.id,
+    context_selection: publicSelection(selection),
+    approved_document_versions: (selection.included || []).map((item) => ({
+      node_id: item.node_id,
+      document_version_id: item.document_version_id,
+      content_sha256: item.content_sha256,
+      token_estimate: item.token_estimate
+    }))
   };
 }
 
@@ -195,13 +226,24 @@ export async function readContextNode(nodeId, input = {}, request = {}) {
     allowedProjectIds: projectionProjectIds(initialActorContext, initialNode.project_id),
     allowedSystemNodeIds: projectionSystemNodeIds(initialActorContext, initialNode.project_id)
   });
-  const state = await readState(),
-    node = state.context_nodes.find((item) => item.id === nodeId),
+  let state = await readState();
+  const runtimeBinding = runtimeContextBinding(state, request),
+    runtimeApproval = runtimeBinding
+      ? await createRuntimeReadSelection({
+          request,
+          binding: runtimeBinding,
+          nodeId,
+          requestedVersionId: optionalString(input.version_id),
+          approvedSelectionId: optionalString(input.selection_id)
+        })
+      : null;
+  state = runtimeApproval ? await readState() : state;
+  const node = state.context_nodes.find((item) => item.id === nodeId),
     actorContext = await contextActor(request, node.project_id, state);
   assertNodeVisible(node, actorContext);
   if (node.sensitivity === 'secret') throw new HttpError(403, { error: 'context_node_sensitive' });
   assertDomainScopes(node, actorContext.scopes);
-  const versionId = optionalString(input.version_id) || node.current_version_id,
+  const versionId = runtimeApproval?.document_version_id || optionalString(input.version_id) || node.current_version_id,
     version = state.context_document_versions.find((item) => item.id === versionId && item.node_id === node.id);
   if (!version) throw new HttpError(404, { error: 'context_document_version_not_found' });
   if (!input.version_id && (version.source_hash !== node.source_hash || version.id !== node.current_version_id))
@@ -241,7 +283,7 @@ export async function readContextNode(nodeId, input = {}, request = {}) {
       .filter((item) => item.node_id === node.id)
       .sort((left, right) => Number(right.version) - Number(left.version))
       .map(publicVersion);
-  return {
+  const response = {
     schema_version: 'aiws.context_document.v1',
     node: publicNode(node),
     version: publicVersion(version),
@@ -251,13 +293,31 @@ export async function readContextNode(nodeId, input = {}, request = {}) {
     related_nodes: state.context_nodes.filter((item) => relatedIds.has(item.id)).map(publicNode),
     history
   };
+  if (!runtimeApproval) return response;
+  const runtimeReceipt = await createRuntimeReadReceipt({
+    request,
+    binding: runtimeBinding,
+    approvalSelectionId: runtimeApproval.selection.id,
+    nodeId: node.id,
+    documentVersionId: version.id
+  });
+  return {
+    ...response,
+    context_selection_id: runtimeReceipt.id,
+    context_selection_ids: [runtimeReceipt.id],
+    provenance_claim: {
+      document_version_id: version.id,
+      context_selection_id: runtimeReceipt.id,
+      instruction: '仅在该文档实际用于输出时声明 document_version_id；服务端将核对本次读取收据。'
+    }
+  };
 }
 
 export async function createSelection(input = {}, request = {}) {
-  const projectId = optionalString(input.project_id),
+  const projectId = await contextProjectId(input, request),
     actorContext = await contextActor(request, projectId),
     search = input.query
-      ? await searchContext(input, request)
+      ? await searchContext(input, { ...request, skipRuntimeSelection: true })
       : { candidate_node_ids: normalizeArray(input.candidate_node_ids) };
   const projectionState = await readState(),
     policy = findContextPolicy(projectionState, {
@@ -466,6 +526,7 @@ export function createSelectionForRuntimeInState(
     projectId,
     anchorSourceCollection = null,
     anchorSourceId = null,
+    explicitSourceRefs = [],
     candidateLimit = 80,
     tokenBudget = 4000
   }
@@ -477,17 +538,26 @@ export function createSelectionForRuntimeInState(
   const anchor = state.context_nodes.find(
     (node) => node.source_collection === anchorSourceCollection && node.source_id === anchorSourceId
   );
-  const candidates = state.context_nodes
-    .filter(
+  const eligible = state.context_nodes.filter(
       (node) =>
         node.current_version_id &&
         node.status === 'active' &&
         node.project_id === projectId &&
         node.sensitivity !== 'secret'
-    )
-    .sort(compareContextNodes)
-    .slice(0, candidateLimit)
-    .map((node) => node.id);
+    ),
+    explicitNodeIds = explicitSourceRefs
+      .map((ref) => eligible.find((node) => node.source_collection === ref?.collection && node.source_id === ref?.id))
+      .filter(Boolean)
+      .map((node) => node.id),
+    candidates = [
+      ...new Set([
+        ...explicitNodeIds,
+        ...eligible
+          .sort(compareContextNodes)
+          .slice(0, candidateLimit)
+          .map((node) => node.id)
+      ])
+    ];
   const selection = createContextSelection(state, {
     id: id('csel'),
     actorId,
@@ -495,6 +565,7 @@ export function createSelectionForRuntimeInState(
     projectId,
     anchorNodeId: anchor?.id || null,
     candidateNodeIds: anchor ? [anchor.id, ...candidates] : candidates,
+    explicitRefs: explicitNodeIds,
     tokenBudget,
     scopes: null,
     allowedProjectIds: [projectId],
@@ -502,57 +573,6 @@ export function createSelectionForRuntimeInState(
   });
   state.context_selections.push(selection);
   return selection;
-}
-
-export function compactRuntimeMap(state, projectId, rootSourceId = null) {
-  const nodes = (state.context_nodes || []).filter((node) => node.project_id === projectId),
-    projectNode = nodes.find((node) => node.source_collection === 'projects' && node.source_id === projectId),
-    anchor = rootSourceId ? nodes.find((node) => node.source_id === rootSourceId) : null;
-  return {
-    uri: `aiws://context/map/projects/${encodeURIComponent(projectId)}`,
-    snapshot_hash: mapSnapshotHash(nodes),
-    anchor_node_id: anchor?.id || projectNode?.id || null,
-    markdown: compactContextMap(nodes, { rootId: projectNode?.id || 'ctx_root_system', maxDepth: 3, maxNodes: 120 })
-  };
-}
-
-export async function loadContextSelectionDocumentsInState(state, selection) {
-  const documents = [];
-  for (const included of selection?.included || []) {
-    const node = state.context_nodes.find((item) => item.id === included.node_id);
-    const version = state.context_document_versions.find(
-      (item) => item.id === included.document_version_id && item.node_id === included.node_id
-    );
-    if (!node || !version || version.content_sha256 !== included.content_sha256)
-      throw new HttpError(503, { error: 'context_projection_unavailable', node_id: included.node_id });
-    let markdown;
-    try {
-      markdown = (await readCasBlob(version.cas_ref)).toString('utf8');
-    } catch (error) {
-      throw new HttpError(503, {
-        error: 'context_projection_unavailable',
-        node_id: included.node_id,
-        reason: error.code || error.message
-      });
-    }
-    if (contextHash(Buffer.from(markdown, 'utf8')) !== included.content_sha256)
-      throw new HttpError(503, {
-        error: 'context_projection_unavailable',
-        node_id: included.node_id,
-        reason: 'hash_mismatch'
-      });
-    documents.push({
-      node_id: node.id,
-      uri: node.uri,
-      title: node.title,
-      summary: node.deterministic_summary,
-      document_version_id: version.id,
-      content_sha256: version.content_sha256,
-      token_estimate: version.token_estimate,
-      markdown
-    });
-  }
-  return documents;
 }
 
 async function contextIndex(state, { force = false } = {}) {
@@ -578,35 +598,77 @@ async function contextIndex(state, { force = false } = {}) {
       indexStatus = { ...indexStatus, state: 'rebuilding', error_code: 'context_index_corrupt' };
     }
   }
-  const { index, documents } = await buildContextSearchIndex({
-    nodes: state.context_nodes,
-    documentVersions: state.context_document_versions,
-    edges: state.context_edges,
-    readDocument: async (version) => (await readCasBlob(version.cas_ref)).toString('utf8')
-  });
-  const rebuiltAt = now(),
-    payload = serializeContextSearchIndex(index, { snapshotHash, rebuiltAt });
-  await fsp.mkdir(CONTEXT_INDEX_DIR, { recursive: true, mode: 0o700 });
-  const temporary = `${INDEX_FILE}.${process.pid}.${Date.now()}.tmp`;
-  await fsp.writeFile(temporary, JSON.stringify(payload), { encoding: 'utf8', mode: 0o600 });
-  await fsp.rename(temporary, INDEX_FILE);
-  indexCache = { snapshot_hash: snapshotHash, index };
-  indexStatus = {
-    state: 'ready',
-    snapshot_hash: snapshotHash,
-    node_count: documents.length,
-    rebuilt_at: rebuiltAt,
-    error_code: null
-  };
-  return index;
+  let temporary = null;
+  try {
+    const { index, documents } = await buildContextSearchIndex({
+      nodes: state.context_nodes,
+      documentVersions: state.context_document_versions,
+      edges: state.context_edges,
+      readDocument: async (version) => (await readCasBlob(version.cas_ref)).toString('utf8')
+    });
+    const rebuiltAt = now(),
+      payload = serializeContextSearchIndex(index, { snapshotHash, rebuiltAt });
+    await fsp.mkdir(CONTEXT_INDEX_DIR, { recursive: true, mode: 0o700 });
+    temporary = `${INDEX_FILE}.${process.pid}.${id('ctxindex')}.tmp`;
+    await fsp.writeFile(temporary, JSON.stringify(payload), { encoding: 'utf8', mode: 0o600 });
+    await fsp.rename(temporary, INDEX_FILE);
+    indexCache = { snapshot_hash: snapshotHash, index };
+    indexStatus = {
+      state: 'ready',
+      snapshot_hash: snapshotHash,
+      node_count: documents.length,
+      rebuilt_at: rebuiltAt,
+      error_code: null
+    };
+    return index;
+  } catch (error) {
+    if (temporary) await fsp.rm(temporary, { force: true }).catch(() => undefined);
+    const reason = /^[a-z0-9_.-]{1,120}$/i.test(String(error?.code || ''))
+      ? String(error.code)
+      : 'context_index_rebuild_failed';
+    indexStatus = {
+      state: 'failed',
+      snapshot_hash: snapshotHash,
+      node_count: nodes.length,
+      rebuilt_at: null,
+      error_code: reason
+    };
+    throw new HttpError(503, { error: 'context_projection_unavailable', reason });
+  }
+}
+
+async function contextProjectId(input, request) {
+  const explicit = optionalString(input?.project_id),
+    state = await readState(),
+    binding = runtimeContextBinding(state, request),
+    allowlist = contextRequestProjectAllowlist(request);
+  if (binding) {
+    if (explicit && explicit !== binding.project_id)
+      throw new HttpError(403, {
+        error: 'context_runtime_project_mismatch',
+        project_id: explicit,
+        expected_project_id: binding.project_id
+      });
+    return binding.project_id;
+  }
+  if (explicit && allowlist.length && !allowlist.includes(explicit))
+    throw new HttpError(403, { error: 'mcp_project_access_denied', project_id: explicit });
+  return explicit || (allowlist.length === 1 ? allowlist[0] : null);
 }
 
 async function contextActor(request, projectId = null, suppliedState = null) {
   const state = suppliedState || (await readState()),
     actor = actorForRequest(state, request.req || request, { strict: false }),
-    scopes = contextRequestScopes(request);
+    scopes = contextRequestScopes(request),
+    allowlist = contextRequestProjectAllowlist(request),
+    accessible = accessibleProjectIds(state, actor.id);
+  if (allowlist.length)
+    for (const accessibleProjectId of [...accessible])
+      if (!allowlist.includes(String(accessibleProjectId))) accessible.delete(accessibleProjectId);
+  if (projectId && allowlist.length && !allowlist.includes(String(projectId)))
+    throw new HttpError(403, { error: 'mcp_project_access_denied', project_id: projectId });
   if (projectId) assertProjectRead(state, projectId, actor.id);
-  return { actor, scopes, accessible: accessibleProjectIds(state, actor.id), state };
+  return { actor, scopes, accessible, state };
 }
 
 function contextRequestScopes(request) {
@@ -835,6 +897,31 @@ function publicVersion(version) {
 
 function publicSelection(selection) {
   return selection ? structuredClone(selection) : null;
+}
+
+function publicContextCoverage(state, actorContext, projectId, nodes) {
+  const coverage = state.context_projection_coverage;
+  if (!coverage) return null;
+  if (!projectId && actorContext.actor.id === instanceOwnerId(state) && !actorContext.scopes)
+    return structuredClone(coverage);
+  const allowedProjects = projectId ? new Set([String(projectId)]) : actorContext.accessible,
+    sourceNodes = nodes.filter((node) => node.source_collection && node.status !== 'tombstone');
+  return {
+    source_records: sourceNodes.length,
+    projected_records: sourceNodes.length,
+    tombstones: nodes.filter((node) => node.status === 'tombstone').length,
+    warnings: (coverage.warnings || [])
+      .filter(
+        (warning) =>
+          warning.project_id &&
+          allowedProjects.has(String(warning.project_id)) &&
+          (!String(warning.code || '').startsWith('context_repository_') ||
+            !actorContext.scopes ||
+            actorContext.scopes.includes('files:read'))
+      )
+      .map((warning) => structuredClone(warning)),
+    checked_at: coverage.checked_at || null
+  };
 }
 
 function publicPolicy(policy) {

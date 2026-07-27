@@ -2,6 +2,15 @@ import { randomUUID } from 'node:crypto';
 import { hashString, id, now, slugify } from '../../../packages/shared/index.mjs';
 import { HttpError } from './http.mjs';
 import { projectWorkflowExecutionStateInState } from './workflow-execution-projection.mjs';
+import { inspectWorkstreamDependencyHandoff, selectTaskOutputBindings } from './task-execution-context.mjs';
+import {
+  isLegacyStrandedRetry,
+  legacyPromotedExecution,
+  restoreLegacyRetryCompatibility,
+  retryInputExpectation,
+  sanitizeLegacyExecutorConfig
+} from './workflow-retry-compatibility.mjs';
+export { integrationEvidenceFor } from './workflow-integration-evidence.mjs';
 
 export { projectWorkflowExecutionStateInState } from './workflow-execution-projection.mjs';
 export const TASK_EXECUTION_STATUSES = Object.freeze([
@@ -111,36 +120,7 @@ export function createWorkflowExecutionInState(state, workflowId, input = {}, ac
   for (const task of tasks.sort(byOrder)) {
     const contract = state.node_contracts.find((item) => item.id === task.current_contract_id);
     if (!contract) throw new HttpError(409, { error: 'task_contract_missing', task_id: task.id });
-    state.task_executions.push({
-      id: id('tex'),
-      workflow_execution_id: executionId,
-      project_id: project.id,
-      workflow_id: workflow.id,
-      workstream_id: task.parent_node_id,
-      task_id: task.id,
-      task_revision: Number(task.execution_revision || 1),
-      contract_id: contract.id,
-      contract_version: Number(contract.version || 1),
-      attempt: 1,
-      executor: executorForTask(task),
-      status: 'pending',
-      readiness: { ready: false, reasons: [{ code: 'reconcile_pending' }] },
-      context_snapshot: null,
-      input_snapshot_hash: null,
-      output_bindings: [],
-      consumed_inputs: [],
-      acceptance_results: [],
-      evidence: {},
-      error_code: null,
-      retry_class: null,
-      lease: null,
-      supersedes_id: null,
-      queued_at: null,
-      started_at: null,
-      completed_at: null,
-      created_at: createdAt,
-      updated_at: createdAt
-    });
+    state.task_executions.push(pendingTaskExecution(workflowExecution, task, contract, actorId, createdAt));
   }
   createRepositoryLinesInState(state, workflowExecution, workstreams, repositorySelection);
   appendExecutionEvent(
@@ -240,28 +220,29 @@ export function taskExecutionReadiness(state, execution) {
   }
   const workstream = state.workflow_nodes.find((item) => item.id === execution.workstream_id);
   for (const dependencyWorkstreamId of dependencyIds(workstream)) {
-    const outcome = state.assets.find(
-      (item) =>
-        item.project_id === execution.project_id &&
-        item.node_id === dependencyWorkstreamId &&
-        item.asset_type === 'WorkstreamOutcomeAsset' &&
-        item.status === 'confirmed'
-    );
-    if (!outcome)
-      reasons.push({ code: 'workstream_dependency_waiting', dependency_workstream_id: dependencyWorkstreamId });
+    const handoff = inspectWorkstreamDependencyHandoff(state, {
+      projectId: execution.project_id,
+      workflowId: execution.workflow_id,
+      workflowExecutionId: execution.workflow_execution_id,
+      workstreamId: dependencyWorkstreamId,
+      strict: true,
+      receiptOnly: true
+    });
+    if (!handoff.ready)
+      reasons.push({
+        code: 'workstream_dependency_waiting',
+        dependency_workstream_id: dependencyWorkstreamId,
+        detail_code: handoff.reason.code
+      });
   }
   const contract = state.node_contracts.find((item) => item.id === execution.contract_id);
   for (const slot of contract?.expected_inputs || []) {
     if (slot.required === false) continue;
     if (slot.source === 'dependency') {
-      const dependency = latestExecutionForTask(
-        state,
-        execution.workflow_execution_id,
-        slot.ref_id || dependencyIds(task)[0]
-      );
-      const bindings = (dependency?.output_bindings || []).filter(
-        (item) => !slot.selector || slot.selector === 'required_outputs' || item.key === slot.selector
-      );
+      const dependencyTaskId = slot.ref_id || dependencyIds(task)[0],
+        dependency = latestExecutionForTask(state, execution.workflow_execution_id, dependencyTaskId),
+        dependencyTask = state.workflow_nodes.find((item) => item.id === dependencyTaskId),
+        bindings = selectTaskOutputBindings(state, dependencyTask, dependency, slot.selector);
       if (!bindings.length) reasons.push({ code: 'required_input_missing', slot_key: slot.key });
       else
         for (const binding of bindings)
@@ -269,13 +250,16 @@ export function taskExecutionReadiness(state, execution) {
             reasons.push({ code: 'input_asset_unverified', slot_key: slot.key, version_id: binding.version_id });
     }
     if (slot.source === 'workstream_dependency') {
-      const asset = state.assets.find(
-        (item) =>
-          item.node_id === slot.ref_id && item.asset_type === 'WorkstreamOutcomeAsset' && item.status === 'confirmed'
-      );
-      const version = state.asset_versions.find((item) => item.id === asset?.current_version_id);
-      if (!asset || !version || version.verification_status !== 'verified')
-        reasons.push({ code: 'workstream_input_missing', slot_key: slot.key });
+      const handoff = inspectWorkstreamDependencyHandoff(state, {
+        projectId: execution.project_id,
+        workflowId: execution.workflow_id,
+        workflowExecutionId: execution.workflow_execution_id,
+        workstreamId: slot.ref_id,
+        selector: slot.selector || 'required_outputs',
+        strict: true
+      });
+      if (!handoff.ready)
+        reasons.push({ code: 'workstream_input_missing', slot_key: slot.key, detail_code: handoff.reason.code });
     }
   }
   if (requiresRepositoryLine(execution)) {
@@ -399,6 +383,7 @@ export function completeTaskExecutionInState(state, taskExecutionId, { evidence 
   projectWorkflowExecutionStateInState(state, execution.workflow_execution_id);
   return execution;
 }
+
 export function failTaskExecutionInState(state, taskExecutionId, { errorCode, retryClass = 'deterministic' } = {}) {
   const execution = requireTaskExecution(state, taskExecutionId);
   if (!['queued', 'running', 'verifying', 'awaiting_human'].includes(execution.status))
@@ -414,6 +399,17 @@ export function failTaskExecutionInState(state, taskExecutionId, { errorCode, re
 }
 export function retryTaskExecutionInState(state, taskExecutionId, actorId) {
   const previous = requireTaskExecution(state, taskExecutionId);
+  if (previous.status === 'superseded' && actorId) {
+    const existing = state.task_executions.find(
+      (item) =>
+        item.supersedes_id === previous.id &&
+        ['pending', 'queued', 'running', 'verifying', 'awaiting_human'].includes(item.status)
+    );
+    if (existing) {
+      restoreLegacyRetryRepositoryLine(state, previous, existing, actorId);
+      return recoverLegacyStrandedRetry(state, previous, existing, actorId) || existing;
+    }
+  }
   if (previous.status !== 'failed')
     throw new HttpError(409, { error: 'task_execution_retry_status_invalid', status: previous.status });
   const attempts = state.task_executions.filter(
@@ -430,6 +426,9 @@ export function retryTaskExecutionInState(state, taskExecutionId, actorId) {
     contract.id !== previous.contract_id
   )
     throw new HttpError(409, { error: 'task_execution_revision_changed' });
+  const workflowExecution = requireWorkflowExecution(state, previous.workflow_execution_id);
+  reopenFailedWorkflowForRetry(state, workflowExecution, task, actorId);
+  const retryInput = retryInputExpectation(previous);
   const created = {
     ...structuredClone(previous),
     id: id('tex'),
@@ -438,7 +437,8 @@ export function retryTaskExecutionInState(state, taskExecutionId, actorId) {
     readiness: { ready: false, reasons: [{ code: 'retry_pending' }] },
     context_snapshot: null,
     input_snapshot_hash: null,
-    retry_input_snapshot_hash: previous.input_snapshot_hash || previous.retry_input_snapshot_hash || null,
+    retry_input_snapshot_hash: retryInput.hash,
+    retry_input_snapshot_hash_version: retryInput.version,
     output_bindings: [],
     consumed_inputs: [],
     acceptance_results: [],
@@ -459,6 +459,7 @@ export function retryTaskExecutionInState(state, taskExecutionId, actorId) {
     next_task_execution_id: created.id
   });
   state.task_executions.push(created);
+  restoreLegacyRetryRepositoryLine(state, previous, created, actorId);
   appendExecutionEvent(
     state,
     state.workflow_executions.find((item) => item.id === created.workflow_execution_id),
@@ -470,6 +471,151 @@ export function retryTaskExecutionInState(state, taskExecutionId, actorId) {
   );
   reconcileWorkflowExecutionInState(state, created.workflow_execution_id);
   return created;
+}
+
+function restoreLegacyRetryRepositoryLine(state, previous, retry, actorId) {
+  const restored = restoreLegacyRetryCompatibility(state, previous, retry);
+  if (!restored) return;
+  appendExecutionEvent(
+    state,
+    state.workflow_executions.find((item) => item.id === previous.workflow_execution_id),
+    retry,
+    'repository_line.retry_head_restored',
+    {
+      repository_line_id: restored.line.id,
+      previous_head_sha: restored.previous_head_sha,
+      expected_head_sha: restored.expected_head_sha
+    },
+    'user',
+    actorId
+  );
+}
+
+function recoverLegacyStrandedRetry(state, previous, retry, actorId) {
+  const workflow = state.workflow_executions.find((item) => item.id === retry.workflow_execution_id);
+  if (!isLegacyStrandedRetry(state, previous, retry, workflow)) return null;
+  failTaskExecutionInState(state, retry.id, {
+    errorCode: 'legacy_runner_configuration_recovered',
+    retryClass: 'deterministic'
+  });
+  sanitizeLegacyExecutorConfig(workflow);
+  appendExecutionEvent(
+    state,
+    workflow,
+    retry,
+    'workflow.legacy_runner_recovered',
+    { ignored_runner: 'history_promotion' },
+    'user',
+    actorId
+  );
+  return retryTaskExecutionInState(state, retry.id, actorId);
+}
+
+function reopenFailedWorkflowForRetry(state, workflowExecution, task, actorId) {
+  if (workflowExecution.status !== 'failed') return [];
+  if (!actorId) throw new HttpError(409, { error: 'workflow_execution_explicit_retry_required' });
+  const active = state.workflow_executions.find(
+    (item) =>
+      item.id !== workflowExecution.id &&
+      item.workflow_id === workflowExecution.workflow_id &&
+      ACTIVE_WORKFLOW_EXECUTION_STATUSES.includes(item.status)
+  );
+  if (active) throw new HttpError(409, { error: 'workflow_execution_active', workflow_execution_id: active.id });
+  assertExecutionRevisionCurrent(state, workflowExecution);
+  sanitizeLegacyExecutorConfig(workflowExecution);
+  const continuationTaskIds = enrollRetryContinuationTasks(state, workflowExecution, task, actorId);
+  Object.assign(workflowExecution, {
+    status: 'running',
+    completed_at: null,
+    cancelled_at: null,
+    updated_at: now()
+  });
+  appendExecutionEvent(
+    state,
+    workflowExecution,
+    null,
+    'workflow.reopened',
+    { retry_task_id: task.id, continuation_task_ids: continuationTaskIds },
+    'user',
+    actorId
+  );
+  return continuationTaskIds;
+}
+
+function enrollRetryContinuationTasks(state, workflowExecution, originTask, actorId) {
+  const represented = new Set(
+      state.task_executions
+        .filter((item) => item.workflow_execution_id === workflowExecution.id)
+        .map((item) => item.task_id)
+    ),
+    workstreamTasks = state.workflow_nodes
+      .filter(
+        (item) =>
+          item.workflow_id === workflowExecution.workflow_id &&
+          item.parent_node_id === originTask.parent_node_id &&
+          item.role === 'task' &&
+          !item.legacy_read_only
+      )
+      .sort(byOrder),
+    descendants = new Set([originTask.id]);
+  let changed = true;
+  while (changed) {
+    changed = false;
+    for (const task of workstreamTasks) {
+      if (descendants.has(task.id) || !dependencyIds(task).some((taskId) => descendants.has(taskId))) continue;
+      descendants.add(task.id);
+      changed = true;
+    }
+  }
+  const continuation = workstreamTasks.filter((item) => descendants.has(item.id) && !represented.has(item.id)),
+    createdAt = now(),
+    enrolled = [];
+  for (const task of continuation) {
+    if (task.execution_evidence_status !== 'external_unverified')
+      throw new HttpError(409, { error: 'task_execution_continuation_scope_invalid', task_id: task.id });
+    const contract = state.node_contracts.find((item) => item.id === task.current_contract_id);
+    if (!contract) throw new HttpError(409, { error: 'task_contract_missing', task_id: task.id });
+    task.execution_evidence_status = 'managed';
+    task.updated_at = createdAt;
+    const execution = pendingTaskExecution(workflowExecution, task, contract, actorId, createdAt);
+    state.task_executions.push(execution);
+    enrolled.push(task.id);
+  }
+  return enrolled;
+}
+
+function pendingTaskExecution(workflowExecution, task, contract, actorId, createdAt) {
+  return {
+    id: id('tex'),
+    workflow_execution_id: workflowExecution.id,
+    project_id: workflowExecution.project_id,
+    workflow_id: workflowExecution.workflow_id,
+    workstream_id: task.parent_node_id,
+    task_id: task.id,
+    task_revision: Number(task.execution_revision || 1),
+    contract_id: contract.id,
+    contract_version: Number(contract.version || 1),
+    attempt: 1,
+    executor: executorForTask(task),
+    status: 'pending',
+    readiness: { ready: false, reasons: [{ code: 'reconcile_pending' }] },
+    context_snapshot: null,
+    input_snapshot_hash: null,
+    output_bindings: [],
+    consumed_inputs: [],
+    acceptance_results: [],
+    evidence: {},
+    error_code: null,
+    retry_class: null,
+    lease: null,
+    supersedes_id: null,
+    queued_at: null,
+    started_at: null,
+    completed_at: null,
+    created_at: createdAt,
+    updated_at: createdAt,
+    created_by_user_id: actorId
+  };
 }
 export function pauseWorkflowExecutionInState(state, workflowExecutionId, actorId) {
   const execution = requireWorkflowExecution(state, workflowExecutionId);

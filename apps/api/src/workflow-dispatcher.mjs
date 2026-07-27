@@ -1,4 +1,7 @@
+import fsp from 'node:fs/promises';
+
 import { HttpError } from './http.mjs';
+import { STATE_FILE } from './config.mjs';
 import { prepareRepositoryIntegration } from './repository-integration-service.mjs';
 import { provisionWorkflowRepositoryLines } from './repository-line-service.mjs';
 import { mutate, readState } from './state.mjs';
@@ -18,6 +21,7 @@ import {
 
 const pumps = new Map();
 let sweepTimer = null;
+let lastSweepMtimeMs = null;
 
 export function startWorkflowDispatcher({ intervalMs = 1_000 } = {}) {
   if (sweepTimer) return () => stopWorkflowDispatcher();
@@ -30,6 +34,7 @@ export function startWorkflowDispatcher({ intervalMs = 1_000 } = {}) {
 export function stopWorkflowDispatcher() {
   if (sweepTimer) clearInterval(sweepTimer);
   sweepTimer = null;
+  lastSweepMtimeMs = null;
 }
 
 export function scheduleWorkflowExecution(workflowExecutionId) {
@@ -68,10 +73,10 @@ async function executeQueuedTask(taskExecutionId) {
     const state = await readState(),
       execution = requireTaskExecution(state, taskExecutionId);
     if (execution.status !== 'queued') return;
-    if (execution.executor === 'manual') return prepareManualCheckpoint(execution.id);
-    if (execution.executor === 'repository_verify') return runRepositoryVerification(execution.id);
-    if (execution.executor === 'repository_integrate') return prepareRepositoryIntegration(execution.id);
-    if (['assist', 'repository_change'].includes(execution.executor)) return runNodeExecutor(state, execution);
+    if (execution.executor === 'manual') return await prepareManualCheckpoint(execution.id);
+    if (execution.executor === 'repository_verify') return await runRepositoryVerification(execution.id);
+    if (execution.executor === 'repository_integrate') return await prepareRepositoryIntegration(execution.id);
+    if (['assist', 'repository_change'].includes(execution.executor)) return await runNodeExecutor(state, execution);
     throw new HttpError(409, { error: 'task_executor_unsupported', executor: execution.executor });
   } catch (error) {
     try {
@@ -89,11 +94,12 @@ async function runNodeExecutor(state, execution) {
   const workflow = state.workflow_executions.find((item) => item.id === execution.workflow_execution_id);
   const claim = await claimTaskExecution(execution.id, { holder: `dispatcher:${execution.executor}` });
   const { executeNodeRun } = await import('./routes/runs.mjs');
-  const options = workflow?.executor_config || {};
+  const options = workflow?.executor_config || {},
+    runner = ['codex_docker', 'codex'].includes(options.runner) ? options.runner : null;
   return executeNodeRun(execution.task_id, {
     task_execution_id: execution.id,
     lease_token: claim.lease_token,
-    ...(options.runner ? { runner: options.runner } : {}),
+    ...(runner ? { runner } : {}),
     ...(options.adapter === 'test'
       ? { adapter: 'test', test_summary: options.test_summary, test_changes: options.test_changes }
       : {})
@@ -200,6 +206,9 @@ async function resumeMergedIntegrations(workflowExecutionId) {
 }
 
 async function scheduleAllActiveWorkflowExecutions() {
+  const metadata = await fsp.stat(STATE_FILE).catch(() => null);
+  if (!metadata || metadata.mtimeMs === lastSweepMtimeMs) return;
+  lastSweepMtimeMs = metadata.mtimeMs;
   const state = await readState().catch(() => null);
   for (const item of state?.workflow_executions || [])
     if (item.status === 'running') scheduleWorkflowExecution(item.id);

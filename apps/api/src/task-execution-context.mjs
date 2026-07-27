@@ -1,9 +1,11 @@
 import { estimateTokens, hashString, now } from '../../../packages/shared/index.mjs';
-import { buildContextPack } from '../../../packages/shared/src/context-run.mjs';
+import { buildContextPack, buildRunnerInstruction } from '../../../packages/shared/src/context-run.mjs';
 import { HttpError } from './http.mjs';
 import { repositoryWorkspaceSnapshotHash } from './repository-workspace-service.mjs';
 import { CONTEXT_PACK_SCHEMA } from '../../../packages/system-context/src/index.mjs';
 import { compactRuntimeMap, createSelectionForRuntimeInState } from './context-service.mjs';
+
+export const EXECUTION_INPUT_HASH_VERSION = 2;
 
 export function prepareTaskExecutionContext(state, input) {
   const { project, workspace, task, contract } = input,
@@ -12,7 +14,7 @@ export function prepareTaskExecutionContext(state, input) {
     throw new HttpError(404, { error: 'task_execution_scope_not_found' });
   if (task.role === 'workstream')
     throw new HttpError(409, { error: 'workstream_is_aggregate_not_executable', node_id: task.id });
-  if (task.status === 'completed')
+  if (task.status === 'completed' && input.allowCompletedTask !== true)
     throw notReady([
       { code: 'task_completed_immutable', task_id: task.id, action: 'create_follow_up_task_or_reopen_revision' }
     ]);
@@ -30,6 +32,7 @@ export function prepareTaskExecutionContext(state, input) {
     resolved,
     repositorySnapshot
   });
+  snapshot.input_snapshot_hash_version = EXECUTION_INPUT_HASH_VERSION;
   snapshot.input_snapshot_hash = executionInputHash(snapshot);
   const contextPack = persistExecutionContext(state, input, { project, workspace, task, contract, snapshot });
   return { context: snapshot, context_pack: contextPack };
@@ -58,10 +61,10 @@ function selectRepositorySnapshot(input, project, task, strict, resolved, errors
 
 function createExecutionSnapshot(state, input, scope) {
   const { project, task, contract, workflow, strict, resolved, repositorySnapshot } = scope;
-  const digest = currentWorkstreamDigest(state, task);
-  const brief = currentProjectBrief(state, project.id);
-  const dependencyGraph = dependencySnapshot(state, task, input.taskExecution?.workflow_execution_id);
-  const decisions = state.decisions.filter((item) => item.project_id === project.id && item.status !== 'superseded');
+  const digest = requiresContext(contract, 'latest_digest') ? currentWorkstreamDigest(state, task) : null,
+    brief = resolved.find((item) => item.source === 'brief')?.context || null,
+    dependencyGraph = dependencySnapshot(state, task, input.taskExecution?.workflow_execution_id),
+    decisions = resolved.filter((item) => item.source === 'decision' && item.context).map((item) => item.context);
   return {
     schema_version: input.taskExecution ? 'aiws.task_execution_context.v3' : 'aiws.task_execution_context.v2',
     project_id: project.id,
@@ -78,8 +81,8 @@ function createExecutionSnapshot(state, input, scope) {
     inputs: resolved,
     repository_snapshot: repositorySnapshot,
     workstream_digest: digest ? digestSnapshot(digest) : null,
-    project_brief: brief ? briefSnapshot(brief) : null,
-    project_decisions: decisions.map(decisionSnapshot),
+    project_brief: brief ? structuredClone(brief) : null,
+    project_decisions: decisions.map((item) => structuredClone(item)),
     planning_quality: workflow.planning_quality || 'legacy_unverified',
     legacy_compatibility: !strict
   };
@@ -97,12 +100,8 @@ function currentWorkstreamDigest(state, task) {
   );
 }
 
-function currentProjectBrief(state, projectId) {
-  return (
-    (state.project_briefs || [])
-      .filter((item) => item.project_id === projectId && item.status !== 'superseded')
-      .sort((a, b) => Number(b.version || 0) - Number(a.version || 0))[0] || null
-  );
+function requiresContext(contract, type) {
+  return (contract?.required_context || []).some((item) => item?.type === type && item.required === true);
 }
 
 function persistExecutionContext(state, input, scope) {
@@ -123,14 +122,26 @@ function persistExecutionContext(state, input, scope) {
       projectId: project.id,
       anchorSourceCollection: 'workflow_nodes',
       anchorSourceId: task.id,
+      explicitSourceRefs: runtimeContextSourceRefs(snapshot),
+      candidateLimit: 0,
       tokenBudget: Number(project.settings?.token_budget || 12_000)
     }),
     compactMap = compactRuntimeMap(state, project.id, task.id),
-    documentVersions = selection.included.map((item) => ({
-      node_id: item.node_id,
-      document_version_id: item.document_version_id,
-      content_sha256: item.content_sha256
-    })),
+    requiredContextRefs = requiredContextSourceRefs(snapshot),
+    documentVersions = selection.included.map((item) => {
+      const node = state.context_nodes.find((entry) => entry.id === item.node_id),
+        sourceKey = `${node?.source_collection || ''}:${node?.source_id || ''}`;
+      return {
+        node_id: item.node_id,
+        document_version_id: item.document_version_id,
+        content_sha256: item.content_sha256,
+        source_collection: node?.source_collection || null,
+        source_id: node?.source_id || null,
+        title: node?.title || null,
+        reason: item.reason,
+        required: requiredContextRefs.has(sourceKey)
+      };
+    }),
     retrievalProtocol = {
       tool: 'aiws_context',
       order: ['map', 'search', 'read'],
@@ -156,12 +167,19 @@ function persistExecutionContext(state, input, scope) {
     document_versions: documentVersions,
     retrieval_protocol: retrievalProtocol
   });
+  contextPack.content_json.runner_instruction = buildRunnerInstruction({
+    project,
+    node: task,
+    contract,
+    executionContext: snapshot
+  });
   contextPack.token_estimate = estimateTokens(JSON.stringify(contextPack.content_json));
   snapshot.context_pack_id = contextPack.id;
   snapshot.prepared_at = now();
   Object.assign(contextPack, {
     task_execution_context: structuredClone(snapshot),
     input_snapshot_hash: snapshot.input_snapshot_hash,
+    input_snapshot_hash_version: snapshot.input_snapshot_hash_version,
     repository_snapshot_hash: snapshot.repository_snapshot?.snapshot_hash || null
   });
   state.context_packs.push(contextPack);
@@ -172,49 +190,138 @@ function persistExecutionContext(state, input, scope) {
 export function evaluateTaskExecutionContextFreshness(state, context) {
   const reasons = [];
   for (const input of context?.inputs || []) {
-    for (const binding of input.asset_versions || []) {
-      const asset = state.assets.find((item) => item.id === binding.asset_id),
-        version = state.asset_versions.find(
-          (item) => item.id === binding.version_id && item.asset_id === binding.asset_id
-        );
-      if (!asset || !version || ['stale', 'disputed', 'superseded', 'rejected'].includes(asset.status))
-        reasons.push({
-          code: 'input_asset_version_invalid',
-          asset_id: binding.asset_id,
-          version_id: binding.version_id
-        });
-      if (
-        context.schema_version === 'aiws.task_execution_context.v3' &&
-        (version?.verification_status !== 'verified' || version?.content_sha256 !== binding.content_sha256)
-      )
-        reasons.push({
-          code: 'input_asset_integrity_invalid',
-          asset_id: binding.asset_id,
-          version_id: binding.version_id
-        });
-      if (input.source === 'dependency' && asset?.current_version_id !== binding.version_id)
-        reasons.push({
-          code: 'input_asset_version_superseded',
-          asset_id: binding.asset_id,
-          version_id: binding.version_id,
-          current_version_id: asset.current_version_id
-        });
-    }
-    if (input.legacy_accepted_dependency) {
-      const current = legacyAcceptedDependencySnapshot(state, input.ref_id);
-      if (!current || current.snapshot_hash !== input.legacy_accepted_dependency.snapshot_hash)
-        reasons.push({ code: 'legacy_dependency_acceptance_changed', dependency_id: input.ref_id });
-    }
+    reasons.push(...inputAssetFreshnessReasons(state, context, input));
+    reasons.push(...legacyDependencyFreshnessReasons(state, input));
+    reasons.push(...workstreamHandoffFreshnessReasons(state, context, input));
   }
-  const repository = context?.repository_snapshot;
-  if (repository?.repository_workspace_id) {
-    const current = state.repository_workspaces.find(
-      (item) => item.id === repository.repository_workspace_id && item.status === 'active'
-    );
-    if (!current || current.stale || repository.snapshot_hash !== repositoryWorkspaceSnapshotHash(current))
-      reasons.push({ code: 'repository_snapshot_stale', repository_workspace_id: repository.repository_workspace_id });
-  }
+  reasons.push(...contextDocumentFreshnessReasons(state, context));
+  reasons.push(...repositoryFreshnessReasons(state, context));
   return { current: reasons.length === 0, reasons };
+}
+
+function inputAssetFreshnessReasons(state, context, input) {
+  const reasons = [];
+  for (const binding of input.asset_versions || []) {
+    const asset = state.assets.find((item) => item.id === binding.asset_id),
+      version = state.asset_versions.find(
+        (item) => item.id === binding.version_id && item.asset_id === binding.asset_id
+      );
+    if (!asset || !version || ['stale', 'disputed', 'superseded', 'rejected'].includes(asset.status))
+      reasons.push({
+        code: 'input_asset_version_invalid',
+        asset_id: binding.asset_id,
+        version_id: binding.version_id
+      });
+    if (
+      context.schema_version === 'aiws.task_execution_context.v3' &&
+      (version?.verification_status !== 'verified' ||
+        version?.immutable !== true ||
+        version?.content_sha256 !== binding.content_sha256)
+    )
+      reasons.push({
+        code: 'input_asset_integrity_invalid',
+        asset_id: binding.asset_id,
+        version_id: binding.version_id
+      });
+    if (
+      ['dependency', 'workstream_dependency'].includes(input.source) &&
+      asset?.current_version_id !== binding.version_id
+    )
+      reasons.push({
+        code: 'input_asset_version_superseded',
+        asset_id: binding.asset_id,
+        version_id: binding.version_id,
+        current_version_id: asset.current_version_id
+      });
+  }
+  return reasons;
+}
+
+function legacyDependencyFreshnessReasons(state, input) {
+  if (!input.legacy_accepted_dependency) return [];
+  const current = legacyAcceptedDependencySnapshot(state, input.ref_id);
+  return !current || current.snapshot_hash !== input.legacy_accepted_dependency.snapshot_hash
+    ? [{ code: 'legacy_dependency_acceptance_changed', dependency_id: input.ref_id }]
+    : [];
+}
+
+function workstreamHandoffFreshnessReasons(state, context, input) {
+  if (input.resolved_from?.kind !== 'workstream_outcome') return [];
+  const current = inspectWorkstreamDependencyHandoff(state, {
+      projectId: context.project_id,
+      workflowId: context.workflow_id,
+      workflowExecutionId: context.workflow_execution_id,
+      workstreamId: input.resolved_from.workstream_id,
+      selector: input.resolved_from.selector,
+      strict: true
+    }),
+    expectedVersions = (input.asset_versions || []).map((item) => item.version_id).sort(),
+    currentVersions = current.ready ? current.asset_versions.map((item) => item.version_id).sort() : [];
+  const changed =
+    !current.ready ||
+    current.version.id !== input.resolved_from.outcome_version_id ||
+    current.attestation?.id !== input.resolved_from.outcome_attestation_id ||
+    JSON.stringify(currentVersions) !== JSON.stringify(expectedVersions);
+  return changed
+    ? [
+        {
+          code: 'workstream_handoff_changed',
+          dependency_workstream_id: input.resolved_from.workstream_id,
+          detail_code: current.ready ? 'handoff_version_changed' : current.reason.code
+        }
+      ]
+    : [];
+}
+
+function contextDocumentFreshnessReasons(state, context) {
+  const reasons = [],
+    selection = state.context_selections.find((item) => item.id === context?.system_context?.context_selection_id);
+  for (const document of context?.system_context?.document_versions || []) {
+    const node = state.context_nodes.find((item) => item.id === document.node_id),
+      version = state.context_document_versions.find(
+        (item) => item.id === document.document_version_id && item.node_id === document.node_id
+      ),
+      included = selection?.included?.find(
+        (item) => item.node_id === document.node_id && item.document_version_id === document.document_version_id
+      );
+    if (
+      !selection ||
+      !node ||
+      !version ||
+      !included ||
+      version.content_sha256 !== document.content_sha256 ||
+      included.content_sha256 !== document.content_sha256
+    ) {
+      reasons.push({
+        code: 'context_document_version_invalid',
+        node_id: document.node_id,
+        document_version_id: document.document_version_id
+      });
+      continue;
+    }
+    if (
+      document.required === true &&
+      (node.current_version_id !== version.id || node.source_hash !== version.source_hash)
+    )
+      reasons.push({
+        code: 'required_context_document_superseded',
+        node_id: document.node_id,
+        document_version_id: document.document_version_id,
+        current_document_version_id: node.current_version_id || null
+      });
+  }
+  return reasons;
+}
+
+function repositoryFreshnessReasons(state, context) {
+  const repository = context?.repository_snapshot;
+  if (!repository?.repository_workspace_id) return [];
+  const current = state.repository_workspaces.find(
+    (item) => item.id === repository.repository_workspace_id && item.status === 'active'
+  );
+  return !current || current.stale || repository.snapshot_hash !== repositoryWorkspaceSnapshotHash(current)
+    ? [{ code: 'repository_snapshot_stale', repository_workspace_id: repository.repository_workspace_id }]
+    : [];
 }
 
 export function executionInputHash(context) {
@@ -223,13 +330,28 @@ export function executionInputHash(context) {
       task: context.task,
       contract: context.contract,
       dependency_graph: context.dependency_graph,
-      inputs: context.inputs,
-      repository_snapshot: context.repository_snapshot,
+      inputs: hashableInputs(context.inputs),
+      repository_snapshot: hashableRepositorySnapshot(context.repository_snapshot),
       workstream_digest: context.workstream_digest,
       project_brief: context.project_brief,
       project_decisions: context.project_decisions
     })
   );
+}
+
+function hashableInputs(inputs) {
+  return (inputs || []).map((input) =>
+    input?.repository_snapshot
+      ? { ...input, repository_snapshot: hashableRepositorySnapshot(input.repository_snapshot) }
+      : input
+  );
+}
+
+function hashableRepositorySnapshot(repository) {
+  if (!repository) return repository;
+  const snapshot = { ...repository };
+  delete snapshot.managed_path;
+  return snapshot;
 }
 
 function resolveInputSlot(state, scope, slot, errors) {
@@ -287,17 +409,14 @@ function resolveDependencyInput(state, scope, slot, base, errors) {
   const submission = state.submissions
     .filter((item) => item.node_id === dependencyId && item.status === 'accepted')
     .sort(byNewest)[0];
-  let bindings = validBindings(
-    state,
-    scope.project.id,
-    dependencyExecution?.output_bindings?.length
+  const sourceBindings = dependencyExecution?.output_bindings?.length
       ? dependencyExecution.output_bindings
       : submission?.output_bindings || [],
-    Boolean(scope.taskExecution)
-  );
+    selectedBindings = selectTaskOutputBindings(state, dependency, dependencyExecution, slot.selector, sourceBindings);
+  let bindings = validBindings(state, scope.project.id, selectedBindings, Boolean(scope.taskExecution));
   if (!bindings.length && !scope.strict) bindings = confirmedNodeAssets(state, scope.project.id, dependencyId);
-  if (slot.selector && slot.selector !== 'required_outputs')
-    bindings = bindings.filter((item) => item.output_key === slot.selector);
+  if (scope.taskExecution && bindings.length !== uniqueBindingCount(selectedBindings))
+    return missing(errors, slot, 'dependency_output_binding_invalid', { dependency_id: dependencyId });
   if (!bindings.length) {
     const legacy =
       scope.strict && (!slot.selector || slot.selector === 'required_outputs')
@@ -313,33 +432,176 @@ function resolveDependencyInput(state, scope, slot, base, errors) {
       };
     return missing(errors, slot, 'dependency_output_binding_missing', { dependency_id: dependencyId });
   }
-  return { ...base, ref_id: dependencyId, asset_versions: bindings };
+  return {
+    ...base,
+    ref_id: dependencyId,
+    asset_versions: bindings,
+    resolved_from: {
+      kind: 'task_execution_outputs',
+      workflow_execution_id: dependencyExecution?.workflow_execution_id || null,
+      task_id: dependency.id,
+      task_title: dependency.title,
+      task_execution_id: dependencyExecution?.id || null,
+      submission_id: dependencyExecution ? null : submission?.id || null,
+      contract_id: dependencyExecution?.contract_id || dependency.current_contract_id || null,
+      selector: slot.selector || 'required_outputs',
+      selected_output_keys: bindings.map((item) => item.output_key).filter(Boolean),
+      attestation_ids: selectedBindings.map((item) => item.attestation_id).filter(Boolean)
+    }
+  };
 }
 
 function resolveWorkstreamDependencyInput(state, scope, slot, base, errors) {
-  const workstream = state.workflow_nodes.find(
-    (item) => item.id === slot.ref_id && item.role === 'workstream' && item.workflow_id === scope.workflow.id
-  );
-  const asset = state.assets.find(
+  const parentWorkstream = state.workflow_nodes.find(
     (item) =>
-      item.node_id === workstream?.id &&
-      item.project_id === scope.project.id &&
-      item.asset_type === 'WorkstreamOutcomeAsset' &&
-      item.status === 'confirmed'
+      item.id === scope.task.parent_node_id && item.role === 'workstream' && item.workflow_id === scope.workflow.id
   );
-  const version = state.asset_versions.find(
-    (item) => item.id === asset?.current_version_id && (!scope.taskExecution || item.verification_status === 'verified')
-  );
-  if (!workstream || !asset || !version)
-    return missing(errors, slot, 'workstream_dependency_output_missing', {
-      dependency_workstream_id: slot.ref_id || null
+  if (!parentWorkstream || !dependencyIds(parentWorkstream).includes(slot.ref_id))
+    return missing(errors, slot, 'workstream_dependency_input_scope_invalid', {
+      dependency_workstream_id: slot.ref_id || null,
+      workstream_id: parentWorkstream?.id || scope.task.parent_node_id || null
     });
+  const handoff = inspectWorkstreamDependencyHandoff(state, {
+    projectId: scope.project.id,
+    workflowId: scope.workflow.id,
+    workflowExecutionId: scope.taskExecution?.workflow_execution_id || null,
+    workstreamId: slot.ref_id,
+    selector: slot.selector || 'required_outputs',
+    strict: Boolean(scope.taskExecution)
+  });
+  if (!handoff.ready) {
+    const { code, ...detail } = handoff.reason;
+    return missing(errors, slot, code, detail);
+  }
   return {
     ...base,
-    ref_id: workstream.id,
-    version_id: version.id,
-    asset_versions: [assetVersionSnapshot(asset, version)]
+    ref_id: handoff.workstream.id,
+    version_id: handoff.asset_versions.length === 1 ? handoff.asset_versions[0].version_id : null,
+    asset_versions: handoff.asset_versions,
+    resolved_from: handoff.resolved_from
   };
+}
+
+export function inspectWorkstreamDependencyHandoff(
+  state,
+  {
+    projectId,
+    workflowId,
+    workflowExecutionId = null,
+    workstreamId,
+    selector = 'required_outputs',
+    strict = true,
+    receiptOnly = false
+  }
+) {
+  const workstream = state.workflow_nodes.find(
+    (item) => item.id === workstreamId && item.role === 'workstream' && item.workflow_id === workflowId
+  );
+  if (!workstream)
+    return handoffNotReady('workstream_dependency_scope_invalid', { dependency_workstream_id: workstreamId || null });
+  const asset = state.assets
+    .filter(
+      (item) =>
+        item.node_id === workstream.id &&
+        item.project_id === projectId &&
+        item.asset_type === 'WorkstreamOutcomeAsset' &&
+        item.status === 'confirmed' &&
+        (!workflowExecutionId || item.provenance_workflow_execution_id === workflowExecutionId)
+    )
+    .sort(byNewest)[0];
+  const version = state.asset_versions.find(
+      (item) =>
+        item.id === asset?.current_version_id &&
+        item.asset_id === asset?.id &&
+        (!strict || (item.verification_status === 'verified' && item.immutable === true))
+    ),
+    attestation = state.asset_attestations.find(
+      (item) =>
+        item.asset_version_id === version?.id &&
+        item.decision === 'accepted' &&
+        (!strict || item.attestor_type === 'trusted_verifier') &&
+        (!workflowExecutionId || item.evidence?.workflow_execution_id === workflowExecutionId)
+    );
+  if (!asset || !version || (strict && !attestation))
+    return handoffNotReady('workstream_dependency_output_missing', {
+      dependency_workstream_id: workstream.id,
+      workflow_execution_id: workflowExecutionId
+    });
+  if (!receiptOnly && selector === 'workstream_outcome')
+    return handoffNotReady('workstream_outcome_not_consumable', {
+      dependency_workstream_id: workstream.id,
+      workflow_execution_id: workflowExecutionId
+    });
+  const declaredBindings =
+    attestation?.evidence?.handoff_output_bindings || attestation?.evidence?.terminal_output_bindings || [];
+  const selectedBindings = receiptOnly
+    ? []
+    : selector === 'required_outputs'
+      ? declaredBindings.filter((item) => item.required !== false)
+      : declaredBindings.filter((item) => item.key === selector);
+  if (!receiptOnly && !selectedBindings.length && (strict || selector !== 'required_outputs'))
+    return handoffNotReady('workstream_dependency_binding_missing', {
+      dependency_workstream_id: workstream.id,
+      workflow_execution_id: workflowExecutionId,
+      selector
+    });
+  if (!receiptOnly && selector !== 'required_outputs' && selectedBindings.length > 1)
+    return handoffNotReady('workstream_dependency_selector_ambiguous', {
+      dependency_workstream_id: workstream.id,
+      workflow_execution_id: workflowExecutionId,
+      selector,
+      producer_task_ids: [...new Set(selectedBindings.map((item) => item.producer_task_id).filter(Boolean))]
+    });
+  const selectedVersions = validBindings(state, projectId, selectedBindings, strict);
+  if (strict && selectedVersions.length !== uniqueBindingCount(selectedBindings))
+    return handoffNotReady('workstream_dependency_binding_invalid', {
+      dependency_workstream_id: workstream.id,
+      workflow_execution_id: workflowExecutionId,
+      selector
+    });
+  const receipt = assetVersionSnapshot(asset, version, 'workstream_outcome'),
+    selectedOutputs = selectedVersions.map((item) => ({
+      output_key: item.output_key,
+      asset_id: item.asset_id,
+      version_id: item.version_id,
+      asset_type: item.asset_type,
+      producer_task_id: item.producer_task_id || null,
+      producer_task_title:
+        state.workflow_nodes.find((node) => node.id === item.producer_task_id)?.title || item.producer_task_id || null,
+      producer_task_execution_id: item.producer_task_execution_id || null
+    }));
+  return {
+    ready: true,
+    workstream,
+    asset,
+    version,
+    attestation,
+    receipt,
+    asset_versions: receiptOnly ? [] : uniqueAssets(selectedVersions),
+    resolved_from: {
+      kind: 'workstream_outcome',
+      workflow_execution_id: asset.provenance_workflow_execution_id || workflowExecutionId || null,
+      workstream_id: workstream.id,
+      workstream_title: workstream.title,
+      outcome_asset_id: asset.id,
+      outcome_version_id: version.id,
+      outcome_attestation_id: attestation?.id || null,
+      selector,
+      selected_output_keys: selectedOutputs.map((item) => item.output_key).filter(Boolean),
+      selected_outputs: selectedOutputs
+    }
+  };
+}
+
+export function selectTaskOutputBindings(state, task, execution, selector, bindings = null) {
+  const source = bindings || execution?.output_bindings || [],
+    contract = state.node_contracts.find((item) => item.id === (execution?.contract_id || task?.current_contract_id));
+  if (selector && selector !== 'required_outputs') return source.filter((item) => item.key === selector);
+  if (!contract) return source;
+  const requiredKeys = new Set(
+    (contract.expected_outputs || []).filter((item) => item.required !== false).map((item) => item.key)
+  );
+  return source.filter((item) => requiredKeys.has(item.key));
 }
 
 function legacyAcceptedDependencySnapshot(state, dependencyId) {
@@ -476,9 +738,9 @@ function validBindings(state, projectId, bindings, strict = false) {
             (entry) =>
               entry.id === item.version_id &&
               entry.asset_id === asset?.id &&
-              (!strict || entry.verification_status === 'verified')
+              (!strict || (entry.verification_status === 'verified' && entry.immutable === true))
           );
-        return asset && version ? assetVersionSnapshot(asset, version, item.key) : null;
+        return asset && version ? assetVersionSnapshot(asset, version, item.key, item) : null;
       })
       .filter(Boolean)
   );
@@ -492,7 +754,44 @@ function confirmedNodeAssets(state, projectId, nodeId) {
     })
     .filter(Boolean);
 }
-function assetVersionSnapshot(asset, version, outputKey = null) {
+
+function runtimeContextSourceRefs(snapshot) {
+  const refs = [];
+  for (const input of snapshot.inputs || []) {
+    if (input.ref_id && ['dependency', 'workstream_dependency'].includes(input.source))
+      refs.push({ collection: 'workflow_nodes', id: input.ref_id });
+    if (input.context?.id && input.source === 'brief')
+      refs.push({ collection: 'project_briefs', id: input.context.id });
+    if (input.context?.id && input.source === 'decision') refs.push({ collection: 'decisions', id: input.context.id });
+    for (const binding of input.asset_versions || []) {
+      refs.push({ collection: 'assets', id: binding.asset_id });
+      refs.push({ collection: 'asset_versions', id: binding.version_id });
+    }
+  }
+  if (snapshot.workstream_digest?.id) refs.push({ collection: 'digests', id: snapshot.workstream_digest.id });
+  return refs;
+}
+
+function requiredContextSourceRefs(snapshot) {
+  const refs = new Set();
+  for (const input of snapshot.inputs || []) {
+    if (input.required === false || !input.context?.id) continue;
+    if (input.source === 'brief') refs.add(`project_briefs:${input.context.id}`);
+    if (input.source === 'decision') refs.add(`decisions:${input.context.id}`);
+  }
+  if (snapshot.workstream_digest?.id) refs.add(`digests:${snapshot.workstream_digest.id}`);
+  return refs;
+}
+
+function uniqueBindingCount(bindings) {
+  return new Set((bindings || []).map((item) => `${item.asset_id}:${item.version_id}`)).size;
+}
+
+function handoffNotReady(code, detail = {}) {
+  return { ready: false, reason: { code, ...detail } };
+}
+
+function assetVersionSnapshot(asset, version, outputKey = null, origin = null) {
   return {
     output_key: outputKey,
     asset_id: asset.id,
@@ -512,7 +811,13 @@ function assetVersionSnapshot(asset, version, outputKey = null) {
         }
       : { body: version.body }),
     evidence_refs: version.evidence_refs || [],
-    verification_status: version.verification_status || 'legacy_unverified'
+    verification_status: version.verification_status || 'legacy_unverified',
+    ...(origin?.producer_task_id
+      ? {
+          producer_task_id: origin.producer_task_id,
+          producer_task_execution_id: origin.producer_task_execution_id || null
+        }
+      : {})
   };
 }
 function validateRepositoryVersionBinding(inputs, repository, errors) {

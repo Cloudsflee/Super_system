@@ -1,8 +1,14 @@
 import { HttpError, makeRoute, send } from '../http.mjs';
 import { provisionWorkflowRepositoryLines } from '../repository-line-service.mjs';
 import { mutate, owner, readState } from '../state.mjs';
-import { approveTaskExecution, retryTaskExecution, submitTaskExecutionOutputs } from '../task-execution-service.mjs';
+import {
+  approveTaskExecution,
+  retryTaskExecution,
+  submitTaskExecutionOutputs,
+  taskExecutionReadiness
+} from '../task-execution-service.mjs';
 import { scheduleWorkflowExecution } from '../workflow-dispatcher.mjs';
+import { reopenRepositoryIntegration } from '../repository-integration-recovery.mjs';
 import {
   cancelWorkflowExecutionInState,
   createWorkflowExecutionInState,
@@ -10,8 +16,7 @@ import {
   reconcileWorkflowExecutionInState,
   requireTaskExecution,
   requireWorkflowExecution,
-  resumeWorkflowExecutionInState,
-  taskExecutionReadiness
+  resumeWorkflowExecutionInState
 } from '../workflow-execution-domain.mjs';
 
 export const workflowExecutionV110Routes = [
@@ -25,6 +30,7 @@ export const workflowExecutionV110Routes = [
   makeRoute('GET', '/tasks/:id/readiness', getTaskReadiness),
   makeRoute('GET', '/task-executions/:id', getTaskExecution),
   makeRoute('GET', '/task-executions/:id/readiness', getTaskExecutionReadiness),
+  makeRoute('POST', '/task-executions/:id/reconcile-repository', reconcileRepositoryTask),
   makeRoute('POST', '/task-executions/:id/retry', retryTask),
   makeRoute('POST', '/task-executions/:id/manual-submit', manualSubmit),
   makeRoute('POST', '/task-executions/:id/human-approve', humanApprove)
@@ -168,12 +174,23 @@ async function getTaskExecution({ res, params }) {
 async function getTaskExecutionReadiness({ res, params }) {
   return send(res, 200, await taskExecutionReadiness(params.id));
 }
-async function retryTask({ res, params }) {
+async function reconcileRepositoryTask({ res, params, body }) {
+  const state = await readState(),
+    actor = owner(state),
+    result = await reopenRepositoryIntegration(params.id, body || {}, actor.id);
+  return send(res, 202, result);
+}
+async function retryTask({ res, params, body }) {
   const state = await readState(),
     actor = owner(state);
-  const execution = await retryTaskExecution(params.id, actor.id);
+  const execution = await retryTaskExecution(params.id, actor.id, {
+    recoverPartialResult: body?.recover_partial_result === true
+  });
   scheduleWorkflowExecution(execution.workflow_execution_id);
-  return send(res, 202, { operation: execution, task_execution: execution });
+  return send(res, execution.status === 'completed' ? 200 : 202, {
+    operation: execution,
+    task_execution: execution
+  });
 }
 
 async function manualSubmit({ res, params, body }) {
@@ -184,7 +201,13 @@ async function manualSubmit({ res, params, body }) {
   if (!['manual', 'assist'].includes(execution.executor))
     throw new HttpError(409, { error: 'manual_submit_executor_invalid', executor: execution.executor });
   const actor = owner(snapshot),
-    result = await submitTaskExecutionOutputs(params.id, { outputs: body.outputs, actorId: actor.id, manual: true });
+    result = await submitTaskExecutionOutputs(params.id, {
+      outputs: body.outputs,
+      actorId: actor.id,
+      manual: true,
+      declaredConsumedContextDocumentVersions:
+        body.consumed_context_document_versions === undefined ? null : body.consumed_context_document_versions
+    });
   scheduleWorkflowExecution(execution.workflow_execution_id);
   return send(res, 200, result);
 }
@@ -246,6 +269,7 @@ function taskSnapshot(state, execution) {
     task,
     contract,
     inputs: execution.context_snapshot?.inputs || [],
+    context_documents: execution.context_snapshot?.system_context?.document_versions || [],
     asset_mounts: execution.context_snapshot?.asset_mounts || [],
     pull_request_intent: intent || null,
     outputs

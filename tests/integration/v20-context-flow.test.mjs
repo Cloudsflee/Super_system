@@ -47,6 +47,7 @@ try {
   fs.writeFileSync(path.join(repository, 'diagram.bin'), Buffer.from([0, 1, 2, 3, 4]));
   fs.writeFileSync(path.join(repository, 'zz-omitted.md'), '# 超出仓库投影文件上限\n', 'utf8');
   fs.writeFileSync(path.join(repository, '.env'), `API_TOKEN=${sentinel}\n`, 'utf8');
+  fs.writeFileSync(path.join(repository, '.npmrc'), `//registry.npmjs.org/:_authToken=${sentinel}\n`, 'utf8');
   const artifactFile = path.join(fixture.home, 'artifacts', 'context', 'artifact.md');
   const attachmentFile = path.join(fixture.home, 'attachments', firstId, 'attachment.bin');
   const artifactBytes = Buffer.from('Artifact 全文内容', 'utf8');
@@ -167,6 +168,10 @@ try {
   );
   assert.equal(
     map.nodes.some((node) => node.resource?.relative_path === '.env'),
+    false
+  );
+  assert.equal(
+    map.nodes.some((node) => node.resource?.relative_path === '.npmrc'),
     false
   );
   const artifactNode = map.nodes.find((node) => node.source_id === 'file-context-artifact');
@@ -342,8 +347,32 @@ try {
       content_type: 'text/markdown',
       created_at: '2026-07-26T10:30:00.000Z'
     });
+    state.context_resource_coverage ||= { repositories: [], warnings: [] };
+    const secondReport = state.context_resource_coverage.repositories.find((report) => report.project_id === secondId);
+    Object.assign(secondReport, {
+      status: 'truncated',
+      complete: false,
+      included_file_count: 1,
+      omitted_file_count: 7,
+      file_limit: 1
+    });
   });
   const viewerGlobalMap = await request('/context/v1/map', 'GET', undefined, viewerHeaders);
+  assert.equal(
+    readState().context_projection_coverage.warnings.some((warning) => warning.project_id === secondId),
+    true,
+    'fixture must retain an inaccessible-project coverage warning in authoritative state'
+  );
+  assert.equal(
+    JSON.stringify(viewerGlobalMap.coverage).includes(secondId),
+    false,
+    'public coverage must not reveal inaccessible project metadata'
+  );
+  assert.equal(
+    viewerGlobalMap.coverage.warnings.some((warning) => String(warning.code || '').startsWith('context_repository_')),
+    false,
+    'repository coverage requires files:read in addition to project ACL'
+  );
   assert.equal(
     viewerGlobalMap.nodes.some((node) => node.project_id === secondId),
     false,
@@ -461,6 +490,25 @@ try {
   fs.rmSync(path.join(fixture.home, 'cas', version.cas_ref.storage_path));
   const unavailable = await request(`/context/v1/nodes/${projectNode.id}`, 'GET', undefined, ownerHeaders, 503);
   assert.equal(unavailable.error, 'context_projection_unavailable');
+
+  await server.stop();
+  server = null;
+  fs.writeFileSync(indexFile, '{corrupt-index', 'utf8');
+  server = await startApi({
+    port,
+    home: fixture.home,
+    ccSwitch: fixture.ccSwitch,
+    env: { AIWS_CONTEXT_REPOSITORY_FILE_LIMIT: '2' }
+  });
+  const unavailableSearch = await request(
+    '/context/v1/search',
+    'POST',
+    { project_id: firstId, query: '中文上下文' },
+    ownerHeaders,
+    503
+  );
+  assert.equal(unavailableSearch.error, 'context_projection_unavailable');
+  assert.equal(unavailableSearch.reason, 'cas_blob_missing');
 
   console.log('V2.0 context REST, isolation, index recovery, and CAS integrity flow passed');
 } finally {

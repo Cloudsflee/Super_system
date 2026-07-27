@@ -176,7 +176,14 @@ async function completeNodeRun(nodeId, body, prepared) {
             contextPack: ctx,
             changedFiles: [],
             raw: body.test_summary || '测试 NodeRun 已完成',
-            status: RunnerStatus.Succeeded
+            status: RunnerStatus.Succeeded,
+            consumedInputVersions: (taskExecution?.context_snapshot?.inputs || [])
+              .filter((item) => item.required !== false)
+              .flatMap((item) => item.asset_versions || [])
+              .map((item) => item.version_id),
+            consumedContextDocumentVersions: (taskExecution?.context_snapshot?.system_context?.document_versions || [])
+              .filter((item) => item.required === true)
+              .map((item) => item.document_version_id)
           })
         };
       } else {
@@ -234,6 +241,8 @@ async function completeNodeRun(nodeId, body, prepared) {
           taskExecution,
           outputs: execution.resultJson.outputs,
           declaredConsumedInputVersions: execution.resultJson.consumed_input_versions,
+          declaredConsumedContextDocumentVersions: execution.resultJson.consumed_context_document_versions,
+          nodeRunId: run.id,
           actorId: actor.id,
           verifierId:
             {

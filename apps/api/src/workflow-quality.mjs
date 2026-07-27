@@ -13,7 +13,7 @@ const HUMAN_CONFIRM_KINDS = new Set(['research', 'analysis', 'design', 'content'
 
 export function normalizeWorkflowPlanningFields(nodes) {
   const source = Array.isArray(nodes) ? nodes : [];
-  return source.map((node) => {
+  const normalized = source.map((node) => {
     if (node.role !== 'task') return { ...node };
     const dependencyIds = deps(node),
       tags = unique([...(node.capability_tags || []), ...inferredTags(node)]);
@@ -31,6 +31,7 @@ export function normalizeWorkflowPlanningFields(nodes) {
       atomic_justification: clean(node.atomic_justification, 2000) || null
     };
   });
+  return normalized;
 }
 
 export function validateWorkflowPlanningQuality({
@@ -70,7 +71,106 @@ function validateWorkstreamPlanning(workstream, context) {
   if (tasks.length === 1 && !atomic)
     context.errors.push(issue('workflow_atomic_task_justification_required', tasks[0]?.id || workstream.id));
   if (!atomic) validateWorkstreamPhaseCoverage(workstream, tasks, software, context.errors);
+  validateWorkstreamDependencyInputs(workstream, tasks, context);
   for (const [index, task] of tasks.entries()) validateTaskPlanning(task, index, context);
+}
+
+function validateWorkstreamDependencyInputs(workstream, tasks, context) {
+  const dependencyIds = deps(workstream);
+  for (const task of tasks) {
+    const bindings = (task.input_slots || []).filter((slot) => slot.source === 'workstream_dependency');
+    for (const binding of bindings) {
+      const dependencyId = binding.ref_id,
+        upstream = context.byId.get(dependencyId),
+        outputs = terminalWorkstreamOutputs(context.normalized, dependencyId);
+      if (!dependencyId || !dependencyIds.includes(dependencyId)) {
+        context.errors.push(
+          issue('workflow_workstream_dependency_input_scope_invalid', task.id, {
+            dependency_workstream_id: dependencyId || null,
+            workstream_id: workstream.id,
+            slot_key: binding.key
+          })
+        );
+        continue;
+      }
+      if (!upstream || upstream.role !== 'workstream') {
+        context.errors.push(
+          issue('workflow_workstream_dependency_invalid', workstream.id, { dependency_workstream_id: dependencyId })
+        );
+        continue;
+      }
+      if (!outputs.length) {
+        context.errors.push(
+          issue('workflow_workstream_dependency_exports_missing', workstream.id, {
+            dependency_workstream_id: dependencyId
+          })
+        );
+        continue;
+      }
+      validateWorkstreamDependencySelector(task, dependencyId, binding, outputs, context.errors);
+    }
+  }
+  for (const dependencyId of dependencyIds) {
+    const upstream = context.byId.get(dependencyId);
+    if (!upstream || upstream.role !== 'workstream') {
+      context.errors.push(
+        issue('workflow_workstream_dependency_invalid', workstream.id, { dependency_workstream_id: dependencyId })
+      );
+    }
+  }
+}
+
+function validateWorkstreamDependencySelector(task, dependencyId, binding, outputs, errors) {
+  if (binding.selector === 'workstream_outcome') {
+    errors.push(
+      issue('workflow_workstream_outcome_not_consumable', task.id, {
+        dependency_workstream_id: dependencyId,
+        slot_key: binding.key
+      })
+    );
+    return;
+  }
+  const matching = outputs.filter((item) => item.key === binding.selector),
+    requiredOutputs = outputs.filter((item) => item.required !== false);
+  if (binding.selector === 'required_outputs' && requiredOutputs.length === 1) return;
+  if (binding.selector === 'required_outputs') {
+    errors.push(
+      issue('workflow_workstream_dependency_output_selector_required', task.id, {
+        dependency_workstream_id: dependencyId,
+        slot_key: binding.key,
+        output_keys: requiredOutputs.map((item) => item.key)
+      })
+    );
+    return;
+  }
+  if (matching.length === 1) return;
+  errors.push(
+    issue(
+      matching.length > 1
+        ? 'workflow_workstream_dependency_output_selector_ambiguous'
+        : 'workflow_workstream_dependency_output_selector_invalid',
+      task.id,
+      {
+        dependency_workstream_id: dependencyId,
+        slot_key: binding.key,
+        selector: binding.selector,
+        output_keys: outputs.map((item) => item.key)
+      }
+    )
+  );
+}
+
+function terminalWorkstreamOutputs(nodes, workstreamId) {
+  const tasks = nodes.filter((item) => item.role === 'task' && item.parent_node_id === workstreamId),
+    terminal = tasks.filter((task) => !tasks.some((candidate) => deps(candidate).includes(task.id)));
+  return terminal.flatMap((task) =>
+    (task.output_slots || []).map((slot) => ({
+      key: slot.key,
+      asset_type: slot.asset_type,
+      required: slot.required !== false,
+      producer_task_id: task.id
+    }))
+  );
 }
 
 function isAtomicWorkstream(workstream, tasks, software, context) {
@@ -108,11 +208,11 @@ function validateTaskPlanning(task, index, context) {
     context.errors.push(issue('workflow_task_output_acceptance_coverage_required', task.id));
   const dependencyIds = deps(task);
   if (index > 0 && !dependencyIds.length) context.errors.push(issue('workflow_task_dependency_flow_required', task.id));
-  for (const dependencyId of dependencyIds) validateTaskDependency(task, dependencyId, context);
+  validateTaskDependencyInputs(task, dependencyIds, context);
 }
 
 function typedInputsInvalid(task) {
-  return !task.input_slots?.length || task.input_slots.some((slot) => !slot.key || !slot.kind || !slot.source);
+  return !Array.isArray(task.input_slots) || task.input_slots.some((slot) => !slot.key || !slot.kind || !slot.source);
 }
 
 function typedOutputsInvalid(task) {
@@ -130,15 +230,32 @@ function outputAcceptanceCoverageMissing(task) {
   return (task.acceptance_criteria || []).some((criterion) => !coveredCriteria.has(criterion));
 }
 
-function validateTaskDependency(task, dependencyId, context) {
-  const bindings = task.input_slots.filter((slot) => slot.source === 'dependency' && slot.ref_id === dependencyId);
-  if (!bindings.length) {
-    context.errors.push(
-      issue('workflow_task_dependency_input_binding_required', task.id, { dependency_id: dependencyId })
-    );
-    return;
+function validateTaskDependencyInputs(task, dependencyIds, context) {
+  for (const binding of (task.input_slots || []).filter((slot) => slot.source === 'dependency')) {
+    const dependencyId = binding.ref_id,
+      dependency = context.byId.get(dependencyId);
+    if (!dependencyId || !dependencyIds.includes(dependencyId)) {
+      context.errors.push(
+        issue('workflow_task_dependency_input_scope_invalid', task.id, {
+          dependency_id: dependencyId || null,
+          slot_key: binding.key
+        })
+      );
+      continue;
+    }
+    if (!dependency || dependency.role !== 'task' || dependency.parent_node_id !== task.parent_node_id) {
+      context.errors.push(
+        issue('workflow_task_dependency_invalid', task.id, { dependency_id: dependencyId, slot_key: binding.key })
+      );
+      continue;
+    }
+    validateDependencySelectors(task, dependency, [binding], context.errors);
   }
-  validateDependencySelectors(task, context.byId.get(dependencyId), bindings, context.errors);
+  for (const dependencyId of dependencyIds) {
+    const dependency = context.byId.get(dependencyId);
+    if (!dependency || dependency.role !== 'task' || dependency.parent_node_id !== task.parent_node_id)
+      context.errors.push(issue('workflow_task_dependency_invalid', task.id, { dependency_id: dependencyId }));
+  }
 }
 
 export function assertWorkflowPlanningQuality(input) {
@@ -159,7 +276,7 @@ export function defaultBriefCoverage(brief, taskIds) {
   );
 }
 
-function normalizeInputs(source, dependencyIds, node) {
+function normalizeInputs(source, _dependencyIds, node) {
   const slots = (Array.isArray(source) ? source : []).map((slot, index) => ({
     key: clean(slot?.key || `input_${index + 1}`, 120),
     kind: clean(slot?.kind || 'asset_version', 80),
@@ -169,27 +286,6 @@ function normalizeInputs(source, dependencyIds, node) {
     ref_id: slot?.ref_id ?? null,
     version_id: slot?.version_id ?? null
   }));
-  for (const [index, dependencyId] of dependencyIds.entries())
-    if (!slots.some((slot) => slot.source === 'dependency' && slot.ref_id === dependencyId))
-      slots.push({
-        key: uniqueSlotKey(slots, `upstream_${index + 1}`),
-        kind: 'asset_version',
-        required: true,
-        source: 'dependency',
-        selector: 'required_outputs',
-        ref_id: dependencyId,
-        version_id: null
-      });
-  if (!slots.length)
-    slots.push({
-      key: 'project_brief',
-      kind: 'context',
-      required: true,
-      source: 'brief',
-      selector: 'current',
-      ref_id: null,
-      version_id: null
-    });
   if (SOFTWARE_KINDS.has(node.task_kind) && !slots.some((slot) => slot.source === 'repository_workspace'))
     slots.push({
       key: uniqueSlotKey(slots, 'repository_snapshot'),
@@ -232,8 +328,20 @@ function normalizeOutputs(source, acceptance, node) {
   return slots;
 }
 function validateDependencySelectors(task, dependency, bindings, errors) {
-  const outputs = (dependency?.output_slots || []).filter((slot) => slot.required !== false);
+  const outputs = dependency?.output_slots || [],
+    requiredOutputs = outputs.filter((slot) => slot.required !== false);
   for (const binding of bindings) {
+    if (binding.selector === 'required_outputs') {
+      if (requiredOutputs.length !== 1)
+        errors.push(
+          issue('workflow_task_dependency_output_selector_required', task.id, {
+            dependency_id: dependency?.id,
+            slot_key: binding.key,
+            output_keys: requiredOutputs.map((slot) => slot.key)
+          })
+        );
+      continue;
+    }
     const exact = outputs.some((slot) => slot.key === binding.selector);
     if (outputs.length > 1 && !exact)
       errors.push(
@@ -243,7 +351,7 @@ function validateDependencySelectors(task, dependency, bindings, errors) {
           output_keys: outputs.map((slot) => slot.key)
         })
       );
-    else if (outputs.length && !exact && binding.selector !== 'required_outputs')
+    else if (outputs.length && !exact)
       errors.push(
         issue('workflow_task_dependency_output_selector_invalid', task.id, {
           dependency_id: dependency?.id,

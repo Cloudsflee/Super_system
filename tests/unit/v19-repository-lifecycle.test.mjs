@@ -7,6 +7,7 @@ import {
   confirmRepositoryDeletionInState,
   consentRepositoryDeletionInState,
   createRepositoryDeletionIntentInState,
+  ensureRepositoryLifecycleDefaults,
   prepareRepositoryDeletionExecutionInState,
   assertRepositoryDeletionInactive,
   repositoryAdministrationPreflight,
@@ -28,6 +29,40 @@ assert.equal(
   repositoryAdministrationPreflight(state, { project_id: 'p1', installation_id: 'missing', actor_id: 'creator' })
     .status,
   'pending'
+);
+
+const normalizationState = baseState();
+normalizationState.repository_bindings = [
+  {
+    id: 'legacy-binding',
+    project_id: 'p1',
+    installation_id: 'inst-1',
+    repository_id: '904',
+    full_name: 'acme/legacy',
+    default_branch: 'main',
+    private: true,
+    status: 'ready',
+    permissions: { push: true },
+    created_by_user_id: 'creator',
+    created_at: '2026-07-19T00:00:00.000Z',
+    updated_at: '2026-07-19T00:01:00.000Z'
+  }
+];
+ensureRepositoryLifecycleDefaults(normalizationState, { timestamp: '2026-07-20T00:00:00.000Z' });
+const normalizedRepositories = JSON.stringify({
+  canonical: normalizationState.canonical_repositories,
+  mirrors: normalizationState.github_repositories,
+  bindings: normalizationState.project_repository_bindings
+});
+ensureRepositoryLifecycleDefaults(normalizationState, { timestamp: '2026-07-21T00:00:00.000Z' });
+assert.equal(
+  JSON.stringify({
+    canonical: normalizationState.canonical_repositories,
+    mirrors: normalizationState.github_repositories,
+    bindings: normalizationState.project_repository_bindings
+  }),
+  normalizedRepositories,
+  'legacy repository normalization must be idempotent'
 );
 
 const repository = upsertCanonicalRepositoryInState(

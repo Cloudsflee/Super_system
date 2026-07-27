@@ -72,11 +72,34 @@ const runtimeAsset = makeAssetFromCandidate(
 );
 runtimeState.assets.push(runtimeAsset.asset);
 runtimeState.asset_versions.push(runtimeAsset.version);
+const outcomeAsset = makeAssetFromCandidate(
+  { title: '成果节点验收收据', summary: '旧关系语义兼容。', asset_type: 'WorkstreamOutcomeAsset' },
+  {
+    projectId: 'project-v20-migration',
+    workspaceId: null,
+    nodeId: null,
+    runId: 'outcome-v20',
+    actorId: 'owner-v20-migration'
+  }
+);
+outcomeAsset.asset.asset_type = 'WorkstreamOutcomeAsset';
+runtimeState.assets.push(outcomeAsset.asset);
+runtimeState.asset_versions.push(outcomeAsset.version);
+runtimeState.asset_relations.push({
+  id: 'relation-legacy-outcome',
+  relation_type: 'derived_from',
+  source_asset_id: runtimeAsset.asset.id,
+  source_asset_version_id: runtimeAsset.version.id,
+  target_asset_id: outcomeAsset.asset.id,
+  target_asset_version_id: outcomeAsset.version.id,
+  created_at: timestamp
+});
 normalizeState20Defaults(runtimeState, '2026-07-26T01:30:00.000Z');
 assert.match(runtimeAsset.version.content_sha256, /^[a-f0-9]{64}$/);
 assert.equal(runtimeAsset.version.size_bytes, Buffer.byteLength(runtimeAsset.version.body, 'utf8'));
 assert.equal(runtimeAsset.version.manifest.schema_version, 'aiws.asset_manifest.v1');
 assert.equal(runtimeAsset.version.immutable, true);
+assert.equal(runtimeState.asset_relations[0].relation_type, 'evidenced_by');
 validateState20(runtimeState);
 
 const root = fs.mkdtempSync(path.join(os.tmpdir(), 'aiws-v20-migration-'));

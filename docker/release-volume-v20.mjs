@@ -144,7 +144,11 @@ export async function acceptVolumeMigrationV20({
   return { ...receipt, receipt_path: V20_RECEIPT_RELATIVE_PATH };
 }
 
-export async function validateV20ReleaseTarget(targetRoot, expectedTargetVolume = V20_TARGET_VOLUME) {
+export async function validateV20ReleaseTarget(
+  targetRoot,
+  expectedTargetVolume = V20_TARGET_VOLUME,
+  { deferProjection = false } = {}
+) {
   const receipt = await readHashedJson(
     path.join(targetRoot, ...V20_RECEIPT_RELATIVE_PATH.split('/')),
     'receipt_sha256'
@@ -181,7 +185,9 @@ export async function validateV20ReleaseTarget(targetRoot, expectedTargetVolume 
     )
   )
     throw releaseError('accepted_schema_manifest_missing');
-  const projection = await auditV20Projection(targetRoot, targetState.parsed_state);
+  const projection = deferProjection
+    ? { deferred: true, reason: 'release_refresh_required' }
+    : await auditV20Projection(targetRoot, targetState.parsed_state);
   return {
     accepted: true,
     mode: receipt.mode,

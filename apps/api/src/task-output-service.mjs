@@ -132,9 +132,15 @@ export function createExecutionOutputAssets(state, { actorId, project, task, wor
 
 export function recordAssetLineage(state, context, outputBindings, executionId = null) {
   const sources = uniqueBindings((context?.inputs || []).flatMap((item) => item.asset_versions || [])),
+    sourceByVersion = new Map(sources.map((item) => [item.version_id, item])),
     targets = uniqueBindings(outputBindings || []);
-  for (const source of sources)
-    for (const target of targets) {
+  for (const target of targets) {
+    const targetVersion = state.asset_versions.find((item) => item.id === target.version_id),
+      declared = targetVersion?.provenance?.consumed_inputs,
+      consumedSources = Array.isArray(declared)
+        ? uniqueBindings(declared.map((versionId) => sourceByVersion.get(versionId)).filter(Boolean))
+        : sources;
+    for (const source of consumedSources) {
       const duplicate = state.asset_relations.some(
         (item) =>
           item.relation_type === 'derived_from' &&
@@ -154,6 +160,7 @@ export function recordAssetLineage(state, context, outputBindings, executionId =
           created_at: new Date().toISOString()
         });
     }
+  }
 }
 
 export function latestTaskExecution(state, taskId) {

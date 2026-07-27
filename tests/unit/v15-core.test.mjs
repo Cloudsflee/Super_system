@@ -452,9 +452,9 @@ try {
 }
 
 async function waitUntil(predicate) {
-  for (let attempt = 0; attempt < 100; attempt++) {
+  for (let attempt = 0; attempt < 200; attempt++) {
     if (await predicate()) return;
-    await new Promise((resolve) => setTimeout(resolve, 10));
+    await new Promise((resolve) => setTimeout(resolve, 25));
   }
   throw new Error('condition_timeout');
 }

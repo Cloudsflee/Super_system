@@ -17,10 +17,12 @@ export const V20_APP_IMAGE = 'aiws-app:2.0.0';
 export const V20_RUNNER_IMAGE = 'aiws-codex-runner:2.0.0-codex-0.144.0';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
+const COMMAND_MAX_BUFFER_BYTES = 64 * 1024 * 1024;
 
 export async function runV20Upgrade(options = {}) {
   const config = upgradeConfig(options);
   assertFormalConfig(config);
+  assertRollbackImage(config.rollbackImage);
   const sourceExists = volumeExists(config.sourceVolume),
     targetExists = volumeExists(config.targetVolume),
     sourceEmpty = !sourceExists || volumeEmpty(config.sourceVolume, config.appImage),
@@ -52,9 +54,13 @@ export async function runV20Upgrade(options = {}) {
     source_preserved: true,
     started_at: new Date().toISOString(),
     stopped_v110_containers: [],
+    stopped_v20_containers: [],
+    rollback_image: config.rollbackImage,
+    rollback: null,
     migration_volume: null,
     archive_sha256: null,
     migration: null,
+    refresh: null,
     health: null,
     acceptance: null,
     v20_start_attempted: false,
@@ -63,8 +69,12 @@ export async function runV20Upgrade(options = {}) {
   await writeTranscript(context);
 
   try {
-    if (disposition === 'reuse') context.acceptance = checkAcceptedTarget(config);
-    else context.activity = await waitForQuiescence(config);
+    if (disposition === 'reuse') {
+      context.acceptance = checkAcceptedTarget(config, { deferProjection: true });
+      context.activity = await waitForQuiescence(config, config.targetVolume);
+      context.stopped_v20_containers = stopProjectApps(config.projectName);
+      context.rollback_image ||= preserveRollbackImage(context.stopped_v20_containers);
+    } else context.activity = await waitForQuiescence(config);
     context.stopped_v110_containers = stopProjectApps(V110_PROJECT);
     await waitForPortDisposition(config);
 
@@ -73,6 +83,11 @@ export async function runV20Upgrade(options = {}) {
       Object.assign(context, cloned, { status: 'migrating' });
       await writeTranscript(context);
       context.migration = migrateAndBuildContext(config);
+    } else {
+      context.status = 'refreshing_v20_context';
+      await writeTranscript(context);
+      context.refresh = migrateAndBuildContext(config);
+      context.acceptance = checkAcceptedTarget(config);
     }
 
     context.status = 'starting_v20';
@@ -86,15 +101,37 @@ export async function runV20Upgrade(options = {}) {
       source_preserved: true,
       completed_at: new Date().toISOString()
     });
+    if (context.rollback_image) {
+      removeRollbackImage(context.rollback_image);
+      context.rollback_image_removed = true;
+    }
     await writeTranscript(context);
     process.stdout.write(`AIWS V2.0 accepted at http://127.0.0.1:${config.port}; ${config.sourceVolume} retained.\n`);
     return context;
   } catch (error) {
     if (context.v20_start_attempted) compose(config, ['down', '--remove-orphans'], { allowFailure: true });
-    const restored = restartContainers(context.stopped_v110_containers);
+    if (disposition === 'reuse' && context.stopped_v20_containers.length) {
+      try {
+        context.rollback = await restorePreviousV20(config, context);
+      } catch (rollbackError) {
+        context.rollback = {
+          restored: false,
+          error_code: rollbackError.code || 'v20_rollback_failed',
+          error: String(rollbackError.message || rollbackError)
+        };
+      }
+    }
+    const restored = context.rollback?.restored ? [] : restartContainers(context.stopped_v110_containers);
+    const previousV20Unchanged =
+      disposition === 'reuse' && context.status === 'preparing' && !context.stopped_v20_containers.length;
     Object.assign(context, {
-      status: 'failed_v20_stopped_v110_restored',
+      status: context.rollback?.restored
+        ? 'failed_previous_v20_restored'
+        : previousV20Unchanged
+          ? 'failed_previous_v20_unchanged'
+          : 'failed_v20_stopped_v110_restored',
       source_preserved: true,
+      restored_v20_containers: context.rollback?.container_ids || [],
       restored_v110_containers: restored,
       failure: { code: error.code || 'v20_upgrade_failed', message: String(error.message || error) },
       failed_at: new Date().toISOString()
@@ -104,7 +141,7 @@ export async function runV20Upgrade(options = {}) {
   }
 }
 
-async function waitForQuiescence(config) {
+async function waitForQuiescence(config, volume = config.sourceVolume) {
   const deadline = Date.now() + config.waitMs;
   while (true) {
     const output = docker(
@@ -114,7 +151,7 @@ async function waitForQuiescence(config) {
         '--entrypoint',
         'node',
         '--mount',
-        `type=volume,src=${config.sourceVolume},dst=/volume,readonly`,
+        `type=volume,src=${volume},dst=/volume,readonly`,
         config.appImage,
         '-e',
         executionActivityProbeScript()
@@ -126,7 +163,7 @@ async function waitForQuiescence(config) {
       activity = JSON.parse(output);
       if (typeof activity?.active !== 'boolean' || !Array.isArray(activity.records)) throw new Error();
     } catch {
-      throw upgradeError('v20_source_state_invalid');
+      throw upgradeError(volume === config.targetVolume ? 'v20_target_state_invalid' : 'v20_source_state_invalid');
     }
     if (!activity.active) return { records: [], checked_at: new Date().toISOString() };
     if (Date.now() >= deadline) throw upgradeError('v20_active_executions_timeout', { records: activity.records });
@@ -321,7 +358,7 @@ function acceptMigratedTarget(config, context) {
   return parseJson(output, 'v20_acceptance_output_invalid');
 }
 
-function checkAcceptedTarget(config) {
+function checkAcceptedTarget(config, { deferProjection = false } = {}) {
   const output = docker(
     [
       'run',
@@ -334,22 +371,23 @@ function checkAcceptedTarget(config) {
       '/app/docker/release_volume.mjs',
       'check-v20',
       '/target',
-      config.targetVolume
+      config.targetVolume,
+      ...(deferProjection ? ['defer-projection'] : [])
     ],
     { capture: true }
   );
   return parseJson(output, 'v20_acceptance_check_invalid');
 }
 
-async function waitForHealth(config) {
+async function waitForHealth(config, expectedImage = config.appImage) {
   let last = null;
   for (let attempt = 0; attempt < 60; attempt += 1) {
     try {
       const id = compose(config, ['ps', '-q', 'app'], { capture: true, allowFailure: true }).trim();
       if (id) {
         const detail = inspectContainer(id);
-        if (detail.image !== config.appImage)
-          throw upgradeError('v20_app_image_mismatch', { expected: config.appImage, actual: detail.image });
+        if (detail.image !== expectedImage)
+          throw upgradeError('v20_app_image_mismatch', { expected: expectedImage, actual: detail.image });
         if (detail.project !== config.projectName)
           throw upgradeError('v20_compose_project_mismatch', { expected: config.projectName, actual: detail.project });
         assertVolumeMount(id, config.targetVolume);
@@ -395,7 +433,7 @@ function stopProjectApps(project) {
     stopped = [];
   for (const id of ids) {
     const detail = inspectContainer(id);
-    docker(['stop', '--time', '30', id]);
+    docker(['stop', '--timeout', '30', id]);
     stopped.push(detail);
   }
   return stopped;
@@ -405,10 +443,72 @@ function restartContainers(containers) {
   const restored = [];
   for (const item of containers || []) {
     if (run('docker', ['container', 'inspect', item.id], { capture: true, allowFailure: true }).status !== 0) continue;
-    docker(['start', item.id], { allowFailure: true });
+    if (run('docker', ['start', item.id], { capture: true, allowFailure: true }).status !== 0) continue;
     restored.push(item.id);
   }
   return restored;
+}
+
+function preserveRollbackImage(containers) {
+  const container = containers?.[0];
+  if (!container?.image_id) return null;
+  const tag = `aiws-app:v20-rollback-${Date.now()}-${process.pid}`.toLowerCase();
+  const tagged = run('docker', ['image', 'tag', container.image_id, tag], { capture: true, allowFailure: true });
+  if (tagged.status !== 0) docker(['container', 'commit', container.id, tag]);
+  return tag;
+}
+
+function removeRollbackImage(tag) {
+  if (tag) docker(['image', 'rm', tag], { allowFailure: true });
+}
+
+async function restorePreviousV20(config, context) {
+  const restarted = restartContainers(context.stopped_v20_containers);
+  if (restarted.length) {
+    const health = await rollbackHealth(config, context.stopped_v20_containers[0]?.image || config.appImage),
+      restored = v20RollbackAccepted(restarted, health);
+    if (!restored) compose(config, ['down', '--remove-orphans'], { allowFailure: true });
+    return {
+      restored,
+      mode: 'container_restart',
+      container_ids: restarted,
+      health
+    };
+  }
+  if (!context.rollback_image) return { restored: false, mode: 'unavailable', container_ids: [] };
+  compose(config, ['up', '-d', '--remove-orphans'], { appImage: context.rollback_image });
+  const containerId = compose(config, ['ps', '-q', 'app'], {
+      capture: true,
+      appImage: context.rollback_image
+    }).trim(),
+    containerIds = containerId ? [containerId] : [],
+    health = await rollbackHealth(config, context.rollback_image),
+    restored = v20RollbackAccepted(containerIds, health);
+  if (!restored)
+    compose(config, ['down', '--remove-orphans'], { allowFailure: true, appImage: context.rollback_image });
+  return {
+    restored,
+    mode: 'rollback_image',
+    container_ids: containerIds,
+    health
+  };
+}
+
+export function v20RollbackAccepted(containerIds, health) {
+  return Boolean(
+    containerIds?.length &&
+    health?.status === 'ok' &&
+    health.version === V20_VERSION &&
+    health.schema_version === V20_SCHEMA
+  );
+}
+
+async function rollbackHealth(config, expectedImage) {
+  try {
+    return await waitForHealth(config, expectedImage);
+  } catch (error) {
+    return { error_code: error.code || 'v20_rollback_health_failed', error: String(error.message || error) };
+  }
 }
 
 async function waitForPortDisposition(config) {
@@ -488,12 +588,14 @@ function inspectContainer(id) {
     id: value.Id,
     name: String(value.Name || '').replace(/^\//, ''),
     image: value.Config?.Image || null,
+    image_id: value.Image || null,
     project: value.Config?.Labels?.['com.docker.compose.project'] || null,
     status: value.State?.Status || null
   };
 }
 
 function compose(config, args, options = {}) {
+  const { appImage = config.appImage, ...runOptions } = options;
   return docker(
     [
       'compose',
@@ -504,16 +606,16 @@ function compose(config, args, options = {}) {
       config.projectName,
       ...args
     ],
-    { ...options, env: composeEnvironment(config) }
+    { ...runOptions, env: composeEnvironment(config, { appImage }) }
   );
 }
 
-function composeEnvironment(config) {
+function composeEnvironment(config, { appImage = config.appImage } = {}) {
   return {
     ...process.env,
     AIWS_DOCKER_DATA_VOLUME: config.targetVolume,
     AIWS_DOCKER_INSTANCE: config.projectName,
-    AIWS_APP_IMAGE: config.appImage,
+    AIWS_APP_IMAGE: appImage,
     AIWS_RUNNER_IMAGE: config.runnerImage,
     AIWS_PORT: String(config.port)
   };
@@ -529,6 +631,7 @@ function run(command, args, { capture = false, allowFailure = false, env = proce
     cwd: ROOT,
     encoding: 'utf8',
     stdio: capture ? 'pipe' : 'inherit',
+    maxBuffer: COMMAND_MAX_BUFFER_BYTES,
     env,
     windowsHide: true
   });
@@ -556,6 +659,7 @@ function upgradeConfig(options) {
     projectName: options.projectName || V20_PROJECT,
     appImage: options.appImage || process.env.AIWS_APP_IMAGE || V20_APP_IMAGE,
     runnerImage: options.runnerImage || process.env.AIWS_RUNNER_IMAGE || V20_RUNNER_IMAGE,
+    rollbackImage: options.rollbackImage || process.env.AIWS_ROLLBACK_IMAGE || null,
     port: Number(options.port || process.env.AIWS_PORT || 4317),
     waitMs: Math.max(0, Number(options.waitMs ?? 300_000)),
     pollMs: Math.max(250, Number(options.pollMs || 2000))
@@ -575,6 +679,13 @@ function assertFormalConfig(config) {
     .filter(([key, value]) => config[key] !== value)
     .map(([key]) => key);
   if (mismatches.length) throw upgradeError('v20_formal_resources_required', { mismatches, expected });
+}
+
+function assertRollbackImage(image) {
+  if (!image) return;
+  if (!/^aiws-app:v20-rollback-[a-z0-9._-]+$/i.test(image)) throw upgradeError('v20_rollback_image_invalid', { image });
+  if (run('docker', ['image', 'inspect', image], { capture: true, allowFailure: true }).status !== 0)
+    throw upgradeError('v20_rollback_image_missing', { image });
 }
 
 async function writeTranscript(value) {
@@ -629,6 +740,7 @@ export function runV20UpgradeCli(argv) {
       '--project-name': 'projectName',
       '--app-image': 'appImage',
       '--runner-image': 'runnerImage',
+      '--rollback-image': 'rollbackImage',
       '--port': 'port',
       '--wait-ms': 'waitMs',
       '--poll-ms': 'pollMs'

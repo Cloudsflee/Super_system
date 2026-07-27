@@ -153,6 +153,36 @@ try {
     { action: 'create_pr', expected_revision: 2 },
     'owner'
   );
+  const originalSnapshotHash = created.intent.snapshot_hash,
+    refreshedBaseSha = 'a'.repeat(40),
+    refreshed = intentDomain.refreshPullRequestIntentBaseInState(state, created.intent.id, refreshedBaseSha);
+  assert.equal(refreshed.previous_base_sha, mainSha);
+  assert.equal(created.intent.status, 'proposed');
+  assert.equal(created.intent.revision, 3);
+  assert.equal(created.intent.base_sha, refreshedBaseSha);
+  assert.notEqual(created.intent.snapshot_hash, originalSnapshotHash);
+  assert.throws(
+    () =>
+      intentDomain.preparePullRequestIntentExecutionInState(
+        state,
+        created.intent.id,
+        { action: 'create_pr', expected_revision: 3, expected_snapshot_hash: created.intent.snapshot_hash },
+        'owner'
+      ),
+    code('pull_request_intent_not_approved')
+  );
+  intentDomain.approvePullRequestIntentInState(
+    state,
+    created.intent.id,
+    { action: 'create_pr', expected_revision: 3, expected_snapshot_hash: created.intent.snapshot_hash },
+    'owner'
+  );
+  intentDomain.preparePullRequestIntentExecutionInState(
+    state,
+    created.intent.id,
+    { action: 'create_pr', expected_revision: 4, expected_snapshot_hash: created.intent.snapshot_hash },
+    'owner'
+  );
   intentDomain.completePullRequestIntentExecutionInState(
     state,
     created.intent.id,
@@ -164,7 +194,7 @@ try {
       state: 'open',
       draft: true,
       head_sha: created.intent.head_sha,
-      base_sha: mainSha,
+      base_sha: refreshedBaseSha,
       checks_status: 'pending'
     },
     'owner'
@@ -174,7 +204,7 @@ try {
     state: 'open',
     draft: true,
     head_sha: created.intent.head_sha,
-    base_sha: mainSha,
+    base_sha: refreshedBaseSha,
     checks_status: 'passed'
   });
   const mergeRevision = created.intent.revision;
@@ -198,7 +228,14 @@ try {
     'owner'
   );
   assert.equal(created.intent.status, 'merged');
-  assert.equal(created.intent.approvals.length, 2);
+  assert.deepEqual(
+    created.intent.approvals.map((item) => [item.action, item.snapshot_hash]),
+    [
+      ['create_pr', originalSnapshotHash],
+      ['create_pr', created.intent.snapshot_hash],
+      ['merge_pr', created.intent.snapshot_hash]
+    ]
+  );
 
   const selectedHead = sha(second.workspace.managed_path);
   const assistWorktree = await createAssistWorktree(state.projects[0], { id: 'assist-review-turn' }, second.workspace);

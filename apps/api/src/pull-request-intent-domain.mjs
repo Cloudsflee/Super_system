@@ -254,6 +254,34 @@ export function preparePullRequestIntentExecutionInState(state, intentId, input,
   return { intent, workspace, repository_line: line };
 }
 
+export function refreshPullRequestIntentBaseInState(state, intentId, actualBaseSha) {
+  const intent = requireIntent(state, intentId);
+  if (intent.status !== 'creating_pr' || intent.executing_action !== 'create_pr')
+    throw stateError(intent, 'pull_request_base_refresh_not_available');
+  const baseSha = normalizedSha(actualBaseSha, 'pull_request_base_sha_invalid');
+  if (baseSha === intent.base_sha) throw new HttpError(409, { error: 'pull_request_base_refresh_not_required' });
+  const previousBaseSha = intent.base_sha,
+    timestamp = now();
+  intent.base_sha = baseSha;
+  Object.assign(intent, {
+    snapshot_hash: hashString(JSON.stringify(intentSnapshot(intent))),
+    status: 'proposed',
+    executing_action: null,
+    execution_started_at: null,
+    remote_base_sha: baseSha,
+    revision: intent.revision + 1,
+    reconciliation: {
+      status: 'confirmed',
+      action: 'refresh_base',
+      previous_base_sha: previousBaseSha,
+      actual_base_sha: baseSha,
+      reconciled_at: timestamp
+    },
+    updated_at: timestamp
+  });
+  return { intent, previous_base_sha: previousBaseSha };
+}
+
 export function completePullRequestIntentExecutionInState(state, intentId, action, result, actorId) {
   const intent = requireIntent(state, intentId);
   if (intent.executing_action !== action || !['creating_pr', 'merging_pr'].includes(intent.status))
@@ -484,6 +512,27 @@ function assertRevision(intent, expected) {
 function assertSnapshot(intent, expected) {
   if (expected && expected !== intent.snapshot_hash)
     throw new HttpError(409, { error: 'pull_request_intent_snapshot_changed' });
+}
+function intentSnapshot(intent) {
+  return intent.repository_line_id
+    ? {
+        project_id: intent.project_id,
+        repository_line_id: intent.repository_line_id,
+        connection_id: intent.connection_id,
+        head_ref: intent.head_ref,
+        head_sha: intent.head_sha,
+        base_ref: intent.base_ref,
+        base_sha: intent.base_sha
+      }
+    : {
+        project_id: intent.project_id,
+        repository_workspace_id: intent.repository_workspace_id,
+        connection_id: intent.connection_id,
+        head_ref: intent.head_ref,
+        head_sha: intent.head_sha,
+        base_ref: intent.base_ref,
+        base_sha: intent.base_sha
+      };
 }
 function normalizedSha(value, error) {
   const sha = String(value || '')

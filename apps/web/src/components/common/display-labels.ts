@@ -396,13 +396,22 @@ export function attestorTypeLabel(value?: string | null) {
 }
 
 export function relationTypeLabel(value?: string | null) {
-  return ({ derived_from: '衍生自', supersedes: '替代旧版本' } as Record<string, string>)[value || ''] || '关联版本';
+  return (
+    ({ derived_from: '衍生自', evidenced_by: '作为验收证据', supersedes: '替代旧版本' } as Record<string, string>)[
+      value || ''
+    ] || '关联版本'
+  );
 }
 
 export function consumerTypeLabel(value?: string | null) {
   return (
-    ({ task_execution: '任务执行', workstream_outcome: '工作流分组成果' } as Record<string, string>)[value || ''] ||
-    '下游流程'
+    (
+      {
+        task_execution: '任务执行',
+        task_execution_input: '任务输入',
+        workstream_outcome: '成果节点验收'
+      } as Record<string, string>
+    )[value || ''] || '下游流程'
   );
 }
 

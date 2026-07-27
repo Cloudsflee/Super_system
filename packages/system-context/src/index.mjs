@@ -29,6 +29,13 @@ import {
   compareContextEdges as compareEdges,
   contextDocumentRelationSnapshot
 } from './rendering.mjs';
+import {
+  ensureUniqueIds,
+  validateContainsTree,
+  validateContextSelections,
+  validateNodeHashes,
+  validSha
+} from './validation.mjs';
 
 export * from './search-index.mjs';
 export { compactContextMap, contextDocumentRelationSnapshot, renderContextMarkdown } from './rendering.mjs';
@@ -116,26 +123,40 @@ export function reconcileContextProjectionState(
   }
 
   const activeIds = new Set(state.context_nodes.filter((node) => node.status !== 'tombstone').map((node) => node.id));
-  const desiredEdges = buildDesiredEdges(state, activeIds, timestamp);
+  const nodeById = new Map(state.context_nodes.map((node) => [node.id, node]));
+  const desiredEdges = buildDesiredEdges(state, activeIds, timestamp, nodeById);
   state.context_edges = mergeCurrentEdges(state.context_edges, desiredEdges);
   const versionById = new Map(state.context_document_versions.map((version) => [version.id, version]));
+  const versionsByNode = new Map();
+  for (const version of state.context_document_versions) {
+    const versions = versionsByNode.get(version.node_id) || [];
+    versions.push(version);
+    versionsByNode.set(version.node_id, versions);
+  }
+  const jobsById = new Map(state.context_projection_jobs.map((job) => [job.id, job]));
+  const edgesByNode = new Map();
+  for (const edge of state.context_edges) {
+    for (const nodeId of [edge.source_node_id, edge.target_node_id]) {
+      const edges = edgesByNode.get(nodeId) || [];
+      edges.push(edge);
+      edgesByNode.set(nodeId, edges);
+    }
+  }
   for (const node of state.context_nodes) {
     const sourceRecordHash = node.source_record_hash || node.source_hash,
-      adjacentEdges = state.context_edges.filter(
-        (edge) => edge.source_node_id === node.id || edge.target_node_id === node.id
-      ),
+      adjacentEdges = edgesByNode.get(node.id) || [],
       relatedIds = new Set(
         adjacentEdges
           .flatMap((edge) => [edge.source_node_id, edge.target_node_id])
           .filter((nodeId) => nodeId !== node.id)
       ),
-      relatedNodes = state.context_nodes.filter((item) => relatedIds.has(item.id)),
+      relatedNodes = [...relatedIds].map((nodeId) => nodeById.get(nodeId)).filter(Boolean),
       relationSnapshot = contextDocumentRelationSnapshot(node, adjacentEdges, relatedNodes);
     node.source_record_hash = sourceRecordHash;
     node.source_hash = contextHash({ source_record_hash: sourceRecordHash, relations: relationSnapshot });
     const currentVersion = versionById.get(node.current_version_id);
     if (force || !currentVersion || currentVersion.source_hash !== node.source_hash) {
-      stageContextProjectionJob(state, node, timestamp);
+      stageContextProjectionJob(state, node, timestamp, { jobsById, versionsByNode });
       dirty += 1;
     }
   }
@@ -170,6 +191,7 @@ export function createContextSelection(
     allowedProjectIds = null,
     explicitRefs = [],
     candidateRanks = null,
+    alreadyBudgetedDocumentVersionIds = [],
     timestamp = new Date().toISOString()
   }
 ) {
@@ -180,6 +202,7 @@ export function createContextSelection(
     explicit = new Set(explicitRefs),
     scopeSet = scopes ? new Set(scopes) : null,
     allowedProjects = allowedProjectIds ? new Set(allowedProjectIds) : null,
+    alreadyBudgeted = new Set(alreadyBudgetedDocumentVersionIds),
     rankByNode = normalizeCandidateRanks(candidateRanks),
     nodeById = new Map(state.context_nodes.map((node) => [node.id, node])),
     versionById = new Map(state.context_document_versions.map((version) => [version.id, version]));
@@ -208,16 +231,17 @@ export function createContextSelection(
       scopeSet,
       allowedProjects
     });
-    const tokens = Number(version?.token_estimate || 0);
+    const tokens = Number(version?.token_estimate || 0),
+      chargedTokens = alreadyBudgeted.has(version?.id) ? 0 : tokens;
     if (reason) {
       excluded.push(selectionExclusion(node, version, reason));
       continue;
     }
-    if (used + tokens > tokenBudget) {
+    if (used + chargedTokens > tokenBudget) {
       excluded.push(selectionExclusion(node, version, 'budget_exceeded'));
       continue;
     }
-    used += tokens;
+    used += chargedTokens;
     included.push({
       node_id: node.id,
       document_version_id: version.id,
@@ -298,7 +322,8 @@ export function validateContextState(state, { sourceCollections = [] } = {}) {
   for (const name of CONTEXT_INTERNAL_COLLECTIONS) ensureUniqueIds(state[name], name);
   const nodeIds = new Set(state.context_nodes.map((node) => node.id));
   const versionIds = new Set(state.context_document_versions.map((version) => version.id)),
-    versionById = new Map(state.context_document_versions.map((version) => [version.id, version]));
+    versionById = new Map(state.context_document_versions.map((version) => [version.id, version])),
+    selectionIds = new Set(state.context_selections.map((selection) => selection.id));
   const uriSet = new Set();
   for (const node of state.context_nodes) {
     if (!URI_PATTERN.test(String(node.uri || '')))
@@ -329,18 +354,7 @@ export function validateContextState(state, { sourceCollections = [] } = {}) {
     if (!version.cas_ref || version.cas_ref.sha256 !== version.content_sha256)
       throw contextError('context_document_cas_ref_invalid', { id: version.id });
   }
-  for (const selection of state.context_selections) {
-    if (selection.immutable !== true || selection.schema_version !== CONTEXT_SELECTION_SCHEMA)
-      throw contextError('context_selection_invalid', { id: selection.id });
-    for (const item of selection.included || []) {
-      const version = versionById.get(item.document_version_id);
-      if (!nodeIds.has(item.node_id) || !version || version.node_id !== item.node_id)
-        throw contextError('context_selection_version_invalid', { id: selection.id });
-    }
-    for (const item of selection.excluded || [])
-      if (!CONTEXT_EXCLUSION_REASONS.includes(item.reason))
-        throw contextError('context_selection_reason_invalid', { id: selection.id, reason: item.reason });
-  }
+  validateContextSelections(state.context_selections, { nodeIds, versionById, selectionIds });
   const expectedSources = new Set(
     sourceCollections
       .filter((name) => !CONTEXT_INTERNAL_COLLECTIONS.includes(name) && Array.isArray(state[name]))
@@ -550,8 +564,9 @@ function directParentReference(state, collection, record) {
   return null;
 }
 
-function buildDesiredEdges(state, activeIds, timestamp) {
+function buildDesiredEdges(state, activeIds, timestamp, nodeById = null) {
   const edges = [];
+  const allNodesById = nodeById || new Map(state.context_nodes.map((node) => [node.id, node]));
   const bySource = new Map(
     state.context_nodes
       .filter((node) => node.source_collection && node.source_id && activeIds.has(node.id))
@@ -572,7 +587,7 @@ function buildDesiredEdges(state, activeIds, timestamp) {
     });
   };
   for (const node of state.context_nodes.filter((item) => activeIds.has(item.id) && item.parent_id)) {
-    const parent = state.context_nodes.find((item) => item.id === node.parent_id);
+    const parent = allNodesById.get(node.parent_id);
     push('contains', parent, node, { type: 'projection_tree', order_index: node.sort?.order_index || 0 });
   }
   for (const record of state.workflow_nodes || []) {
@@ -661,12 +676,21 @@ function mergeCurrentEdges(existing, desired) {
   return desired.map((edge) => ({ ...edge, created_at: created.get(edge.id) || edge.created_at }));
 }
 
-export function stageContextProjectionJob(state, node, timestamp) {
+export function stageContextProjectionJob(state, node, timestamp, indexes = null) {
   const id = `ctxjob_${contextHash(`${node.id}:${node.source_hash}`).slice(0, 24)}`;
-  const existing = state.context_projection_jobs.find((job) => job.id === id);
+  const jobsById = indexes?.jobsById || new Map(state.context_projection_jobs.map((job) => [job.id, job]));
+  const versionsByNode =
+    indexes?.versionsByNode ||
+    state.context_document_versions.reduce((map, version) => {
+      const versions = map.get(version.node_id) || [];
+      versions.push(version);
+      map.set(version.node_id, versions);
+      return map;
+    }, new Map());
+  const existing = jobsById.get(id);
   if (existing?.status === 'completed') {
-    const reusable = state.context_document_versions
-      .filter((version) => version.node_id === node.id && version.source_hash === node.source_hash)
+    const reusable = (versionsByNode.get(node.id) || [])
+      .filter((version) => version.source_hash === node.source_hash)
       .sort(
         (left, right) =>
           Number(right.version || 0) - Number(left.version || 0) ||
@@ -677,6 +701,7 @@ export function stageContextProjectionJob(state, node, timestamp) {
       return;
     }
   }
+  if (existing?.status === 'failed') return;
   const value = {
     id,
     node_id: node.id,
@@ -690,7 +715,10 @@ export function stageContextProjectionJob(state, node, timestamp) {
     completed_at: null
   };
   if (existing) Object.assign(existing, value);
-  else state.context_projection_jobs.push(value);
+  else {
+    state.context_projection_jobs.push(value);
+    jobsById.set(id, value);
+  }
 }
 
 function tombstoneContextNode(state, node, timestamp, reason) {
@@ -822,6 +850,7 @@ function knownCollection(collection) {
 
 function exclusionReason(node, version, { projectId, excludedByUser, scopeSet, allowedProjects }) {
   if (node.project_id && allowedProjects && !allowedProjects.has(node.project_id)) return 'permission_denied';
+  if (scopeSet && node.required_scopes.some((scope) => !scopeSet.has(scope))) return 'permission_denied';
   if (projectId && node.project_id !== projectId) return 'cross_scope';
   if (node.sensitivity === 'secret') return 'sensitive';
   if (
@@ -831,8 +860,6 @@ function exclusionReason(node, version, { projectId, excludedByUser, scopeSet, a
     version.source_hash !== node.source_hash
   )
     return 'stale';
-  if (scopeSet && node.required_scopes.some((scope) => scope !== 'context:read' && !scopeSet.has(scope)))
-    return 'permission_denied';
   if (excludedByUser.has(node.id)) return 'user_excluded';
   return null;
 }
@@ -904,28 +931,6 @@ function selectionExclusion(node, version, reason) {
   };
 }
 
-function validateContainsTree(nodes, edges) {
-  const contains = edges.filter((edge) => edge.type === 'contains');
-  const parentByChild = new Map(),
-    nodeById = new Map(nodes.map((node) => [node.id, node]));
-  for (const edge of contains) {
-    if (parentByChild.has(edge.target_node_id))
-      throw contextError('context_contains_multiple_parents', { node_id: edge.target_node_id });
-    parentByChild.set(edge.target_node_id, edge.source_node_id);
-  }
-  for (const node of nodes) {
-    if (node.parent_id && parentByChild.get(node.id) !== node.parent_id)
-      throw contextError('context_contains_parent_mismatch', { node_id: node.id });
-    const seen = new Set([node.id]);
-    let cursor = node.parent_id;
-    while (cursor) {
-      if (seen.has(cursor)) throw contextError('context_contains_cycle', { node_id: node.id });
-      seen.add(cursor);
-      cursor = nodeById.get(cursor)?.parent_id || null;
-    }
-  }
-}
-
 function normalizeEvidenceCollection(value) {
   return (
     {
@@ -942,26 +947,4 @@ function normalizeEvidenceCollection(value) {
 
 function ref(collection, id) {
   return id ? { collection, id: String(id) } : null;
-}
-
-function ensureUniqueIds(items, collection) {
-  const seen = new Set();
-  for (const item of items) {
-    if (!item || typeof item !== 'object' || !String(item.id || ''))
-      throw contextError('context_record_id_missing', { collection });
-    if (seen.has(item.id)) throw contextError('context_record_id_duplicate', { collection, id: item.id });
-    seen.add(item.id);
-  }
-}
-
-function validSha(value) {
-  return /^[a-f0-9]{64}$/.test(String(value || ''));
-}
-
-function validateNodeHashes(node) {
-  if (
-    (node.source_record_hash && !validSha(node.source_record_hash)) ||
-    (node.source_hash && !validSha(node.source_hash))
-  )
-    throw contextError('context_node_source_hash_invalid', { id: node.id });
 }
