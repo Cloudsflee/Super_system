@@ -590,6 +590,7 @@ function taskDefinition(node) {
     required: node.required !== false,
     repository_intent: node.repository_intent || null,
     capability_tags: node.capability_tags || [],
+    progression_protocol: node.progression_protocol || null,
     acceptance_criteria: node.acceptance_criteria || [],
     input_slots: node.input_slots || [],
     output_slots: node.output_slots || [],

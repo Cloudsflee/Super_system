@@ -1,3 +1,22 @@
+import type {
+  ExecutionReason,
+  InputContribution,
+  InputDisposition,
+  TaskContextEffect,
+  TaskHandoffDiagnostics,
+  TaskInputEffect
+} from './task-contribution-types';
+
+export type {
+  ExecutionReason,
+  InputContribution,
+  InputDisposition,
+  TaskContextEffect,
+  TaskHandoffDiagnostics,
+  TaskHandoffRoute,
+  TaskInputEffect
+} from './task-contribution-types';
+
 export type StepState = {
   ready: boolean;
   status: string;
@@ -204,6 +223,8 @@ export type WorkflowDraftNode = {
   category?: WorkstreamCategory | null;
   task_kind?: TaskKind | null;
   execution_mode?: ExecutionMode | null;
+  progression_protocol?: 'aiws.task_progression.v1' | null;
+  progression_compatibility?: 'legacy_upstream_bridge' | null;
   boundary?: Record<string, unknown> | null;
   acceptance_criteria?: string[];
   required?: boolean;
@@ -300,79 +321,6 @@ export type ExecutionStatus =
   | 'failed'
   | 'cancelled'
   | 'superseded';
-export type ExecutionReason = { code: string; [key: string]: unknown };
-export type InputDisposition = {
-  version_id?: string;
-  document_version_id?: string;
-  disposition: 'used' | 'not_used';
-  reason: string | null;
-};
-export type TaskInputEffect = {
-  input_key: string;
-  version_ids: string[];
-  effect: 'basis' | 'constraint' | 'comparison' | 'verification' | 'contradiction' | 'reference';
-  output_keys: string[];
-  statement: string;
-  evidence_refs: string[];
-};
-export type TaskContextEffect = Omit<TaskInputEffect, 'input_key' | 'version_ids'> & {
-  document_version_id: string;
-};
-export type TaskHandoffRoute = {
-  route_type: 'task_input' | 'workstream_input' | 'workstream_boundary';
-  producer_task_id?: string;
-  output_key?: string;
-  consumer_task_id?: string;
-  consumer_task_title?: string | null;
-  input_key?: string;
-  purpose?: string | null;
-  application_policy?: 'required' | 'optional';
-  target_output_keys?: string[];
-  workstream_id?: string | null;
-};
-export type TaskHandoffDiagnostics = {
-  schema_version: 'aiws.task_handoff_diagnostics.v1' | 'aiws.task_handoff_diagnostics.v2';
-  handoff_status: 'awaiting_execution' | 'incomplete' | 'ready';
-  required_inputs: Array<{
-    slot_key: string;
-    required: boolean;
-    consumption_policy: string;
-    application_policy?: 'required' | 'optional';
-    purpose?: string | null;
-    target_output_keys?: string[];
-    version_ids: string[];
-  }>;
-  used_inputs: string[];
-  not_used_inputs: InputDisposition[];
-  missing_dispositions: string[];
-  exported_outputs: Array<{
-    output_key: string;
-    required: boolean;
-    consumer_hint?: string | null;
-    asset_id?: string | null;
-    version_id?: string | null;
-    handoff_manifest_sha256?: string | null;
-    route_count?: number;
-    effect_count?: number;
-    routes?: TaskHandoffRoute[];
-  }>;
-  input_effect_obligations?: Array<{
-    input_key: string;
-    source: string;
-    required: boolean;
-    application_policy: 'required' | 'optional';
-    purpose?: string | null;
-    target_output_keys: string[];
-    coverage_policy: 'all' | 'any';
-    version_ids: string[];
-    satisfied: boolean;
-  }>;
-  input_effects?: TaskInputEffect[];
-  context_effects?: TaskContextEffect[];
-  context_used: string[];
-  context_not_used: InputDisposition[];
-  semantic_gaps: ExecutionReason[];
-};
 export type TaskExecutionRecord = {
   id: string;
   workflow_execution_id: string;
@@ -397,6 +345,9 @@ export type TaskExecutionRecord = {
   input_effects?: TaskInputEffect[];
   context_effects?: TaskContextEffect[];
   effects_schema_version?: string;
+  declared_consumed_inputs?: string[];
+  structurally_verified_inputs?: string[];
+  accepted_contribution_ids?: string[];
   handoff_diagnostics?: TaskHandoffDiagnostics | null;
   context_snapshot?: {
     schema_version?: string;
@@ -467,6 +418,7 @@ export type TaskExecutionInput = {
   purpose?: string | null;
   target_output_keys?: string[];
   coverage_policy?: 'all' | 'any';
+  contribution?: InputContribution | null;
   source: string;
   selector?: string | null;
   ref_id?: string | null;
@@ -685,6 +637,7 @@ export type NodeInputSlot = {
   purpose?: string | null;
   target_output_keys?: string[];
   coverage_policy?: 'all' | 'any' | null;
+  contribution?: InputContribution | null;
 };
 export type NodeOutputSlot = {
   key: string;
@@ -692,6 +645,7 @@ export type NodeOutputSlot = {
   required: boolean;
   asset_type: string;
   acceptance_criteria: string[];
+  acceptance_criterion_ids?: string[];
   confirmation_policy: 'human' | 'system_evidence';
   handoff?: boolean;
   consumer_hint?: string | null;

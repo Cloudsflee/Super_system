@@ -11,6 +11,8 @@ import {
 } from './task-handoff.mjs';
 import { normalizeTaskEffects } from './task-effects.mjs';
 import { recordAssetLineage } from './task-output-service.mjs';
+import { acceptanceCriterionId } from '../../../packages/shared/src/task-contributions.mjs';
+import { applyExecutionOutputUsage, updateAcceptedContributions } from './task-contribution-authority.mjs';
 
 export const TRUSTED_VERIFIERS = Object.freeze(
   new Set([
@@ -109,7 +111,9 @@ function resolveExecutionOutputUsage(
   }
 ) {
   const effectAware =
-    taskExecution.context_snapshot?.schema_version === 'aiws.task_execution_context.v4' &&
+    ['aiws.task_execution_context.v4', 'aiws.task_execution_context.v5'].includes(
+      taskExecution.context_snapshot?.schema_version
+    ) &&
     (declaredInputEffects !== null || declaredContextEffects !== null);
   if (effectAware) {
     const effects = normalizeTaskEffects(
@@ -289,25 +293,6 @@ function executionOutputProvenance(taskExecution, outputKey, usage, effects) {
   return provenance;
 }
 
-function applyExecutionOutputUsage(taskExecution, consumption, contextConsumption, effects) {
-  Object.assign(taskExecution, {
-    consumed_inputs: consumption.aggregate,
-    input_dispositions: consumption.dispositions,
-    context_selection_id: contextConsumption.selectionId,
-    context_selection_ids: contextConsumption.selectionIds,
-    consumed_context_document_versions: contextConsumption.aggregate,
-    context_dispositions: contextConsumption.dispositions,
-    status: 'verifying',
-    updated_at: now()
-  });
-  if (effects)
-    Object.assign(taskExecution, {
-      effects_schema_version: effects.schema_version,
-      input_effects: effects.inputEffects,
-      context_effects: effects.contextEffects
-    });
-}
-
 async function attestSystemEvidenceOutputs(state, taskExecution, created, verifierId, actualEvidence) {
   for (const item of created.filter(({ slot }) => slot.confirmation_policy === 'system_evidence'))
     await attestAssetVersionInState(state, {
@@ -331,7 +316,10 @@ export async function attestAssetVersionInState(state, input) {
   const existing = findExistingAttestation(state, context, normalized);
   if (existing) return { attestation: existing, asset, version, idempotent: true };
   const criteria = slot?.acceptance_criteria || asset.acceptance_criteria || [];
-  const acceptanceResults = buildAcceptanceResults(criteria, version, normalized);
+  const acceptanceResults = buildAcceptanceResults(criteria, version, normalized, {
+    taskId: execution?.task_id || asset.node_id || null,
+    outputKey: key || asset.output_key || version.output_key || null
+  });
   const attestation = createAttestation(context, normalized, acceptanceResults);
   state.asset_attestations.push(attestation);
   updateAttestedAsset(asset, normalized);
@@ -413,8 +401,10 @@ function findExistingAttestation(state, context, input) {
   );
 }
 
-function buildAcceptanceResults(criteria, version, input) {
+function buildAcceptanceResults(criteria, version, input, scope) {
   return criteria.map((criterion) => ({
+    acceptance_criterion_id:
+      scope.taskId && scope.outputKey ? acceptanceCriterionId(scope.taskId, scope.outputKey, criterion) : null,
     criterion,
     status: input.decision === 'accepted' ? 'accepted' : 'rejected',
     evidence_refs: version.evidence_refs || [],
@@ -471,6 +461,7 @@ function updateAttestedExecution(state, context, input, attestation, criteria, a
     });
   execution.output_bindings = outputBindings;
   execution.acceptance_results = mergeAcceptanceResults(execution.acceptance_results, acceptanceResults, key);
+  updateAcceptedContributions(execution);
   execution.updated_at = now();
   recordAssetLineage(state, execution.context_snapshot, execution.output_bindings, execution.id);
 }
@@ -496,14 +487,29 @@ export function assetVersionConsumers(state, versionId) {
     const matched = inputs.flatMap((item) => item.asset_versions || []).filter((item) => item.version_id === versionId);
     if (matched.length) {
       const effects = (execution.input_effects || []).filter((item) => (item.version_ids || []).includes(versionId)),
-        consumed = effects.length > 0 || (execution.consumed_inputs || []).includes(versionId);
+        acceptedContributionIds = new Set(execution.accepted_contribution_ids || []),
+        acceptedEffects = effects.filter((effect) => acceptedContributionIds.has(effect.contribution_id)),
+        contributionAware = execution.effects_schema_version === 'aiws.task_effects.v2',
+        consumed = contributionAware
+          ? acceptedEffects.length > 0
+          : effects.length > 0 || (execution.consumed_inputs || []).includes(versionId);
       consumers.push({
         type: consumed ? 'task_execution' : 'task_execution_input',
         id: execution.id,
         workflow_execution_id: execution.workflow_execution_id,
         task_id: execution.task_id,
         status: execution.status,
-        consumption_status: effects.length ? 'applied' : consumed ? 'consumed' : 'prepared',
+        consumption_status: contributionAware
+          ? acceptedEffects.length
+            ? 'accepted_contribution'
+            : effects.length
+              ? 'structurally_verified'
+              : 'prepared'
+          : effects.length
+            ? 'applied'
+            : consumed
+              ? 'consumed'
+              : 'prepared',
         effects,
         input_keys: inputs
           .filter((item) => (item.asset_versions || []).some((version) => version.version_id === versionId))

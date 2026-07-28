@@ -112,7 +112,17 @@
       "priority": "P0",
       "command": ["node", "tests/unit/v20-task-effects.test.mjs"],
       "suites": ["pr", "full", "release"],
-      "covers": ["application-policy", "effect-scope", "context-read-receipt", "handoff-route", "runner-v3"],
+      "covers": [
+        "application-policy",
+        "effect-scope",
+        "input-contribution-v1",
+        "criterion-binding",
+        "context-read-receipt",
+        "handoff-route-v3",
+        "route-staleness",
+        "accepted-authority",
+        "runner-v3-v4"
+      ],
       "timeout_ms": 60000,
       "external_effects": "none",
       "requires_env": []

@@ -267,7 +267,11 @@ async function completeNodeRun(nodeId, body, prepared) {
 }
 
 function testConsumptionFixture(taskExecution, body) {
-  if (taskExecution?.context_snapshot?.schema_version === 'aiws.task_execution_context.v4')
+  if (
+    ['aiws.task_execution_context.v4', 'aiws.task_execution_context.v5'].includes(
+      taskExecution?.context_snapshot?.schema_version
+    )
+  )
     return testEffectFixture(taskExecution, body);
   if (body.test_consumption_plan && typeof body.test_consumption_plan === 'object') {
     const plans = Object.values(body.test_consumption_plan).filter((item) => item && typeof item === 'object');
@@ -357,8 +361,14 @@ function testEffectFixture(taskExecution, body) {
         .map((input) => ({
           input_key: input.key,
           version_ids: (input.asset_versions || []).map((item) => item.version_id).filter(Boolean),
-          effect: 'verification',
-          output_keys: input.target_output_keys?.length ? input.target_output_keys : outputKeys,
+          ...(input.contribution ? { contribution_id: input.contribution.id } : {}),
+          effect: input.contribution?.effect || 'verification',
+          output_keys: input.contribution?.target_output_keys?.length
+            ? input.contribution.target_output_keys
+            : input.target_output_keys?.length
+              ? input.target_output_keys
+              : outputKeys,
+          ...(input.contribution ? { criterion_ids: input.contribution.target_criterion_ids } : {}),
           statement: `Test fixture verified how input ${input.key} changes the declared task outputs.`,
           evidence_refs: []
         }));
@@ -412,7 +422,11 @@ async function failNodeRun(runId, error) {
 
 export function controlledRunnerResultError(result, controlled = true) {
   if (!controlled) return null;
-  if (!['aiws.task_runner_result.v2', 'aiws.task_runner_result.v3'].includes(result?.schema_version))
+  if (
+    !['aiws.task_runner_result.v2', 'aiws.task_runner_result.v3', 'aiws.task_runner_result.v4'].includes(
+      result?.schema_version
+    )
+  )
     return new HttpError(409, { error: 'slot_aware_runner_output_required', retryable: false });
   if (result.status === RunnerStatus.Succeeded) return null;
   const process = result?._codex_process || {},

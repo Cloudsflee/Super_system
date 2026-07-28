@@ -85,6 +85,11 @@ export function normalizeTaskHandoffDefaultsV20(state) {
     cleanRecord(execution, 'consumed_inputs');
     cleanRecord(execution, 'consumed_context_document_versions');
     cleanRecord(execution, 'context_selection_ids');
+    cleanRecord(execution, 'declared_consumed_inputs');
+    cleanRecord(execution, 'structurally_verified_inputs');
+    cleanRecord(execution, 'declared_context_document_versions');
+    cleanRecord(execution, 'structurally_verified_context_document_versions');
+    cleanRecord(execution, 'accepted_contribution_ids');
     const inputDispositions = cleanDispositions(execution.input_dispositions, 'version_id'),
       contextDispositions = cleanDispositions(execution.context_dispositions, 'document_version_id');
     if (JSON.stringify(execution.input_dispositions || []) !== JSON.stringify(inputDispositions)) {
@@ -108,7 +113,7 @@ export function normalizeTaskHandoffDefaultsV20(state) {
   }
   for (const run of state.node_runs || []) {
     const result = run.result_json;
-    if (result?.schema_version === 'aiws.task_runner_result.v3') {
+    if (['aiws.task_runner_result.v3', 'aiws.task_runner_result.v4'].includes(result?.schema_version)) {
       changed = cleanEffectRecord(result, 'input_effects', 'input_key') || changed;
       changed = cleanEffectRecord(result, 'context_effects', 'document_version_id') || changed;
       continue;
@@ -142,10 +147,18 @@ function cleanEffectRecord(record, field, idKey) {
       .map((item) => ({
         [idKey]: item[idKey].trim(),
         ...(idKey === 'input_key' ? { version_ids: cleanIds(item.version_ids) } : {}),
+        ...(typeof item.contribution_id === 'string' && item.contribution_id.trim()
+          ? { contribution_id: item.contribution_id.trim() }
+          : {}),
         effect: item.effect,
         output_keys: cleanIds(item.output_keys),
+        ...(Array.isArray(item.criterion_ids) ? { criterion_ids: cleanIds(item.criterion_ids) } : {}),
         statement: item.statement.trim(),
-        evidence_refs: cleanIds(item.evidence_refs)
+        evidence_refs: cleanIds(item.evidence_refs),
+        ...(Array.isArray(item.source_receipts) ? { source_receipts: cleanIds(item.source_receipts) } : {}),
+        ...(item.verification_status === 'structurally_verified'
+          ? { verification_status: 'structurally_verified' }
+          : {})
       }))
       .sort((left, right) =>
         `${left[idKey]}:${left.effect}:${left.output_keys.join(',')}`.localeCompare(

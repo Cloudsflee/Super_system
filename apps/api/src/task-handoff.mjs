@@ -1,6 +1,12 @@
 import { hashString } from '../../../packages/shared/index.mjs';
+import {
+  INPUT_CONTRIBUTION_SCHEMA,
+  contributionRouteHash,
+  contributionRouteId
+} from '../../../packages/shared/src/task-contributions.mjs';
 
-export const TASK_HANDOFF_SCHEMA = 'aiws.task_handoff.v2';
+export const TASK_HANDOFF_SCHEMA = 'aiws.task_handoff.v3';
+export const EFFECT_TASK_HANDOFF_SCHEMA = 'aiws.task_handoff.v2';
 export const LEGACY_TASK_HANDOFF_SCHEMA = 'aiws.task_handoff.v1';
 export const INPUT_DISPOSITIONS = Object.freeze(['used', 'not_used']);
 
@@ -31,8 +37,15 @@ export function buildTaskHandoffManifest({
     normalizedInputDispositions = normalizeDispositions(inputDispositions, 'version_id'),
     normalizedContextDispositions = normalizeDispositions(contextDispositions, 'document_version_id'),
     effectAware = Array.isArray(inputEffects) || Array.isArray(contextEffects) || Array.isArray(routes),
+    contributionAware =
+      (inputEffects || []).some((item) => item?.contribution_id) ||
+      (routes || []).some((item) => item?.contribution_id),
     manifest = {
-      schema_version: effectAware ? TASK_HANDOFF_SCHEMA : LEGACY_TASK_HANDOFF_SCHEMA,
+      schema_version: contributionAware
+        ? TASK_HANDOFF_SCHEMA
+        : effectAware
+          ? EFFECT_TASK_HANDOFF_SCHEMA
+          : LEGACY_TASK_HANDOFF_SCHEMA,
       producer: handoffProducer(taskExecution, task),
       output: handoffOutput(output, slot, asset, version),
       source_snapshot: handoffSourceSnapshot(taskExecution, contextSelectionId, inputs, contexts),
@@ -69,7 +82,7 @@ export function taskHandoffRoutes(state, task, slot) {
           input.ref_id === task.parent_node_id &&
           consumer.parent_node_id !== task.parent_node_id;
       if ((!internal && !crossWorkstream) || !selectorIncludesOutput(task, input.selector, slot.key)) continue;
-      routes.push({
+      const route = {
         route_type: internal ? 'task_input' : 'workstream_input',
         producer_task_id: task.id,
         output_key: slot.key,
@@ -80,7 +93,20 @@ export function taskHandoffRoutes(state, task, slot) {
         application_policy:
           input.application_policy === 'required' || input.consumption_policy === 'must_use' ? 'required' : 'optional',
         target_output_keys: normalizeIdList(input.target_output_keys)
-      });
+      };
+      if (input.contribution?.schema_version === INPUT_CONTRIBUTION_SCHEMA) {
+        Object.assign(route, {
+          contribution_schema_version: INPUT_CONTRIBUTION_SCHEMA,
+          contribution_id: input.contribution.id,
+          effect: input.contribution.effect,
+          expected_effect: input.contribution.expected_effect,
+          target_output_keys: normalizeIdList(input.contribution.target_output_keys),
+          target_criterion_ids: normalizeIdList(input.contribution.target_criterion_ids)
+        });
+        route.route_id = contributionRouteId(route);
+        route.route_contract_hash = contributionRouteHash(route);
+      }
+      routes.push(route);
     }
   }
   const siblings = tasks.filter((item) => item.parent_node_id === task.parent_node_id),
@@ -197,7 +223,9 @@ export function notUsedContextDispositions(execution, reason) {
 
 export function taskHandoffDiagnostics(state, execution) {
   const contract = state.node_contracts?.find((item) => item.id === execution?.contract_id),
-    effectAware = execution?.context_snapshot?.schema_version === 'aiws.task_execution_context.v4',
+    contextSchema = execution?.context_snapshot?.schema_version,
+    contributionAware = contextSchema === 'aiws.task_execution_context.v5',
+    effectAware = contributionAware || contextSchema === 'aiws.task_execution_context.v4',
     inputDiagnostics = handoffInputDiagnostics(execution, contract),
     effectDiagnostics = handoffEffectDiagnostics(execution),
     exportedOutputs = handoffExportedOutputs(state, execution, contract),
@@ -205,12 +233,17 @@ export function taskHandoffDiagnostics(state, execution) {
       execution,
       contract,
       effectAware,
+      contributionAware,
       inputDiagnostics,
       effectDiagnostics,
       exportedOutputs
     });
   return {
-    schema_version: effectAware ? 'aiws.task_handoff_diagnostics.v2' : 'aiws.task_handoff_diagnostics.v1',
+    schema_version: contributionAware
+      ? 'aiws.task_handoff_diagnostics.v3'
+      : effectAware
+        ? 'aiws.task_handoff_diagnostics.v2'
+        : 'aiws.task_handoff_diagnostics.v1',
     handoff_status:
       execution?.status !== 'completed' ? 'awaiting_execution' : semanticGaps.length ? 'incomplete' : 'ready',
     required_inputs: inputDiagnostics.requiredInputs,
@@ -220,6 +253,7 @@ export function taskHandoffDiagnostics(state, execution) {
     input_effect_obligations: effectDiagnostics.obligations,
     input_effects: effectDiagnostics.inputEffects,
     context_effects: effectDiagnostics.contextEffects,
+    contribution_statuses: structuredClone(execution?.contribution_statuses || []),
     exported_outputs: exportedOutputs,
     context_used: normalizeIdList(execution?.consumed_context_document_versions),
     context_not_used: inputDiagnostics.contextDispositions.filter((item) => item.disposition === 'not_used'),
@@ -249,6 +283,7 @@ function handoffRequiredInput(input) {
       input.application_policy === 'required' || input.consumption_policy === 'must_use' ? 'required' : 'optional',
     purpose: clean(input.purpose, 1000) || null,
     target_output_keys: normalizeIdList(input.target_output_keys),
+    contribution: input.contribution ? structuredClone(input.contribution) : null,
     version_ids: normalizeIdList((input.asset_versions || []).map((item) => item.version_id))
   };
 }
@@ -256,9 +291,11 @@ function handoffRequiredInput(input) {
 function handoffEffectDiagnostics(execution) {
   const inputEffects = normalizeEffects(execution?.input_effects, 'input_key'),
     contextEffects = normalizeEffects(execution?.context_effects, 'document_version_id'),
+    accepted = new Set(execution?.accepted_contribution_ids || []),
     obligations = (execution?.context_snapshot?.input_effect_obligations || []).map((item) => ({
       ...item,
-      satisfied: inputEffects.some((effect) => effect.input_key === item.input_key && effect.effect !== 'reference')
+      satisfied: inputEffects.some((effect) => effect.input_key === item.input_key && effect.effect !== 'reference'),
+      accepted: item.contribution?.id ? accepted.has(item.contribution.id) : null
     }));
   return { inputEffects, contextEffects, obligations };
 }
@@ -291,13 +328,14 @@ function handoffSemanticGaps({
   execution,
   contract,
   effectAware,
+  contributionAware,
   inputDiagnostics,
   effectDiagnostics,
   exportedOutputs
 }) {
   return [
     ...legacyInputGaps(execution, effectAware, inputDiagnostics.missingDispositions),
-    ...requiredEffectGaps(execution, effectAware, effectDiagnostics.obligations),
+    ...requiredEffectGaps(execution, effectAware, contributionAware, effectDiagnostics.obligations),
     ...handoffOutputGaps(execution, contract?.expected_outputs || [], exportedOutputs, effectAware)
   ];
 }
@@ -309,11 +347,21 @@ function legacyInputGaps(execution, effectAware, missingDispositions) {
     : [];
 }
 
-function requiredEffectGaps(execution, effectAware, obligations) {
+function requiredEffectGaps(execution, effectAware, contributionAware, obligations) {
   if (!effectAware || execution?.status !== 'completed') return [];
   return obligations
-    .filter((item) => item.application_policy === 'required' && !item.satisfied)
-    .map((item) => ({ code: 'required_input_effect_missing', input_key: item.input_key }));
+    .filter(
+      (item) =>
+        item.application_policy === 'required' && (!item.satisfied || (contributionAware && item.accepted !== true))
+    )
+    .map((item) => ({
+      code:
+        contributionAware && item.satisfied && item.accepted !== true
+          ? 'required_contribution_not_accepted'
+          : 'required_input_effect_missing',
+      input_key: item.input_key,
+      contribution_id: item.contribution?.id || null
+    }));
 }
 
 function handoffOutputGaps(execution, outputSlots, exportedOutputs, effectAware) {
@@ -349,8 +397,10 @@ function normalizeEffects(values, identityKey) {
       [identityKey]: clean(item[identityKey], 200),
       ...(identityKey === 'input_key' ? { version_ids: normalizeIdList(item.version_ids) } : {}),
       output_keys: normalizeIdList(item.output_keys),
+      ...(item.criterion_ids ? { criterion_ids: normalizeIdList(item.criterion_ids) } : {}),
       statement: clean(item.statement, 2000),
-      evidence_refs: normalizeTextList(item.evidence_refs)
+      evidence_refs: normalizeTextList(item.evidence_refs),
+      ...(item.source_receipts ? { source_receipts: normalizeTextList(item.source_receipts) } : {})
     }))
     .sort(
       (left, right) =>
@@ -365,7 +415,8 @@ function normalizeRoutes(values) {
     .filter((item) => item && typeof item === 'object' && clean(item.route_type, 80))
     .map((item) => ({
       ...structuredClone(item),
-      target_output_keys: normalizeIdList(item.target_output_keys)
+      target_output_keys: normalizeIdList(item.target_output_keys),
+      ...(item.contribution_id ? { target_criterion_ids: normalizeIdList(item.target_criterion_ids) } : {})
     }))
     .sort(
       (left, right) =>
@@ -373,6 +424,83 @@ function normalizeRoutes(values) {
         String(left.consumer_task_id || '').localeCompare(String(right.consumer_task_id || '')) ||
         String(left.input_key || '').localeCompare(String(right.input_key || ''))
     );
+}
+
+export function verifyContributionRoutes(task, input, bindings) {
+  const contribution = input?.contribution;
+  if (
+    contribution?.schema_version !== INPUT_CONTRIBUTION_SCHEMA ||
+    !['dependency', 'workstream_dependency'].includes(input?.source)
+  )
+    return { ok: true, routes: [] };
+  const verified = [];
+  for (const binding of bindings || []) {
+    const manifest = binding?.handoff_manifest,
+      { manifest_sha256: declaredManifestHash, ...manifestBody } = manifest || {},
+      actualManifestHash = manifest ? hashString(JSON.stringify(manifestBody)) : null,
+      routes = manifest?.delivery?.routes || [],
+      sameConsumer = routes.filter(
+        (route) =>
+          route.consumer_task_id === task?.id &&
+          route.input_key === input.key &&
+          route.output_key === binding.output_key
+      ),
+      route = sameConsumer.find((item) => item.contribution_id === contribution.id);
+    if (
+      manifest?.schema_version !== TASK_HANDOFF_SCHEMA ||
+      !declaredManifestHash ||
+      actualManifestHash !== declaredManifestHash ||
+      (binding.handoff_manifest_sha256 && binding.handoff_manifest_sha256 !== declaredManifestHash)
+    )
+      return {
+        ok: false,
+        code: 'dependency_contribution_manifest_invalid',
+        input_key: input.key,
+        contribution_id: contribution.id,
+        version_id: binding.version_id || null
+      };
+    if (!route)
+      return {
+        ok: false,
+        code: sameConsumer.length ? 'dependency_contribution_route_stale' : 'dependency_contribution_route_missing',
+        input_key: input.key,
+        contribution_id: contribution.id,
+        producer_task_id: manifest?.producer?.task_id || binding?.producer_task_id || null,
+        output_key: binding.output_key || null,
+        available_contribution_ids: normalizeIdList(sameConsumer.map((item) => item.contribution_id))
+      };
+    const expected = {
+      ...route,
+      producer_task_id: manifest?.producer?.task_id || route.producer_task_id,
+      output_key: binding.output_key,
+      consumer_task_id: task.id,
+      input_key: input.key,
+      contribution_id: contribution.id,
+      effect: contribution.effect,
+      expected_effect: contribution.expected_effect,
+      target_output_keys: contribution.target_output_keys,
+      target_criterion_ids: contribution.target_criterion_ids
+    };
+    if (
+      route.route_id !== contributionRouteId(expected) ||
+      route.route_contract_hash !== contributionRouteHash(expected)
+    )
+      return {
+        ok: false,
+        code: 'dependency_contribution_route_stale',
+        input_key: input.key,
+        contribution_id: contribution.id,
+        producer_task_id: manifest?.producer?.task_id || null,
+        output_key: binding.output_key || null
+      };
+    verified.push({
+      route_id: route.route_id,
+      route_contract_hash: route.route_contract_hash,
+      contribution_id: contribution.id,
+      version_id: binding.version_id
+    });
+  }
+  return { ok: true, routes: verified };
 }
 
 function normalizeTextList(values) {

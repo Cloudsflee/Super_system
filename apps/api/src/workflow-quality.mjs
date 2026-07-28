@@ -1,4 +1,10 @@
 import { HttpError } from './http.mjs';
+import {
+  contributionValidationErrors,
+  isContributionTask,
+  normalizeInputContribution,
+  withAcceptanceCriterionIds
+} from '../../../packages/shared/src/task-contributions.mjs';
 
 export const WORKFLOW_PHASE_TAGS = Object.freeze([
   'research_evidence',
@@ -234,7 +240,8 @@ function typedInputsInvalid(task) {
         !['all', 'any'].includes(slot.coverage_policy) ||
         !slot.target_output_keys?.length ||
         slot.target_output_keys.some((key) => !outputKeys.has(key)) ||
-        (slot.consumption_policy && !['must_use', 'must_acknowledge', 'available'].includes(slot.consumption_policy))
+        (slot.consumption_policy && !['must_use', 'must_acknowledge', 'available'].includes(slot.consumption_policy)) ||
+        contributionValidationErrors(task, slot, task.output_slots).length > 0
     )
   );
 }
@@ -307,30 +314,41 @@ export function defaultBriefCoverage(brief, taskIds) {
 
 function normalizeInputs(source, _dependencyIds, node, outputs) {
   const outputKeys = outputs.map((slot) => slot.key);
-  const slots = (Array.isArray(source) ? source : []).map((slot, index) => ({
-    key: clean(slot?.key || `input_${index + 1}`, 120),
-    kind: clean(slot?.kind || 'asset_version', 80),
-    required: slot?.required !== false,
-    source: clean(slot?.source || 'explicit', 80),
-    selector: slot?.selector ?? null,
-    ref_id: slot?.ref_id ?? null,
-    version_id: slot?.version_id ?? null,
-    consumption_policy: ['must_use', 'must_acknowledge', 'available'].includes(slot?.consumption_policy)
-      ? slot.consumption_policy
-      : null,
-    application_policy: ['required', 'optional'].includes(slot?.application_policy)
-      ? slot.application_policy
-      : slot?.consumption_policy === 'must_use'
-        ? 'required'
-        : 'optional',
-    purpose:
-      clean(slot?.purpose, 1000) ||
-      `使用 ${clean(slot?.source || '该输入', 80)} 输入影响 ${outputKeys.join('、') || '任务输出'}。`,
-    target_output_keys: unique(slot?.target_output_keys?.length ? slot.target_output_keys : outputKeys),
-    coverage_policy: slot?.coverage_policy === 'any' ? 'any' : 'all'
-  }));
-  if (SOFTWARE_KINDS.has(node.task_kind) && !slots.some((slot) => slot.source === 'repository_workspace'))
-    slots.push({
+  const slots = (Array.isArray(source) ? source : []).map((slot, index) => {
+    const normalized = {
+      key: clean(slot?.key || `input_${index + 1}`, 120),
+      kind: clean(slot?.kind || 'asset_version', 80),
+      required: slot?.required !== false,
+      source: clean(slot?.source || 'explicit', 80),
+      selector: slot?.selector ?? null,
+      ref_id: slot?.ref_id ?? null,
+      version_id: slot?.version_id ?? null,
+      consumption_policy: ['must_use', 'must_acknowledge', 'available'].includes(slot?.consumption_policy)
+        ? slot.consumption_policy
+        : null,
+      application_policy: ['required', 'optional'].includes(slot?.application_policy)
+        ? slot.application_policy
+        : slot?.consumption_policy === 'must_use'
+          ? 'required'
+          : 'optional',
+      purpose:
+        clean(slot?.purpose, 1000) ||
+        (isContributionTask(node)
+          ? null
+          : `使用 ${clean(slot?.source || '该输入', 80)} 输入影响 ${outputKeys.join('、') || '任务输出'}。`),
+      target_output_keys: unique(slot?.target_output_keys?.length ? slot.target_output_keys : outputKeys),
+      coverage_policy: slot?.coverage_policy === 'any' ? 'any' : 'all'
+    };
+    if (isContributionTask(node))
+      normalized.contribution = normalizeInputContribution(node, { ...slot, ...normalized }, outputs, {
+        system: normalized.source === 'repository_workspace'
+      });
+    else if (slot?.contribution && typeof slot.contribution === 'object')
+      normalized.contribution = structuredClone(slot.contribution);
+    return normalized;
+  });
+  if (SOFTWARE_KINDS.has(node.task_kind) && !slots.some((slot) => slot.source === 'repository_workspace')) {
+    const repository = {
       key: uniqueSlotKey(slots, 'repository_snapshot'),
       kind: 'repository',
       required: true,
@@ -343,7 +361,11 @@ function normalizeInputs(source, _dependencyIds, node, outputs) {
       purpose: `以固定仓库快照作为 ${outputKeys.join('、')} 的唯一代码与验证基线。`,
       target_output_keys: outputKeys,
       coverage_policy: 'all'
-    });
+    };
+    if (isContributionTask(node))
+      repository.contribution = normalizeInputContribution(node, repository, outputs, { system: true });
+    slots.push(repository);
+  }
   return slots;
 }
 function normalizeOutputs(source, acceptance, node) {
@@ -379,7 +401,7 @@ function normalizeOutputs(source, acceptance, node) {
     ...slots[0].acceptance_criteria,
     ...acceptance.filter((criterion) => !covered.has(criterion))
   ]);
-  return slots;
+  return isContributionTask(node) ? slots.map((slot) => withAcceptanceCriterionIds(node.id, slot)) : slots;
 }
 function validateDependencySelectors(task, dependency, bindings, errors) {
   const outputs = dependency?.output_slots || [],

@@ -301,7 +301,7 @@ export function applyContractPatch(contract, patch, actorId) {
   return next;
 }
 
-function defaultInputSlots(node, project, outputKeys) {
+function defaultInputSlots(node, _project, outputKeys) {
   const repository =
     ['execution', 'code', 'test', 'deploy', 'integration'].includes(node.type) ||
     ['code', 'test', 'deploy', 'integration'].includes(node.task_kind)
@@ -322,22 +322,5 @@ function defaultInputSlots(node, project, outputKeys) {
           }
         ]
       : [];
-  return [
-    {
-      key: 'project_brief',
-      kind: 'context',
-      required: true,
-      source: 'brief',
-      selector: 'current',
-      ref_id: null,
-      version_id: null,
-      consumption_policy: null,
-      application_policy: 'optional',
-      purpose: '仅在任务输出需要补充项目范围或验收边界时引用项目简报。',
-      target_output_keys: outputKeys,
-      coverage_policy: 'all',
-      value: project.goal || ''
-    },
-    ...repository
-  ];
+  return repository;
 }

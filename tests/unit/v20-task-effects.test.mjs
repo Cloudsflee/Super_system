@@ -12,7 +12,10 @@ try {
     await import('../../apps/api/src/asset-attestation-service.mjs');
   const { normalizeTaskEffects } = await import('../../apps/api/src/task-effects.mjs');
   const { taskHandoffDiagnostics } = await import('../../apps/api/src/task-handoff.mjs');
+  const { verifyContributionRoutes } = await import('../../apps/api/src/task-handoff.mjs');
   const { normalizeRunnerOutput, taskRunnerResultSchema } = await import('../../packages/shared/src/context-run.mjs');
+  const { normalizeInputContribution, withAcceptanceCriterionIds } =
+    await import('../../packages/shared/src/task-contributions.mjs');
 
   const { state, execution, outputs } = effectState(emptyState());
   const requiredEffect = inputEffect({
@@ -202,7 +205,98 @@ try {
   assert.deepEqual(legacy.execution.consumed_inputs, legacyConsumed);
   assert.equal(legacy.execution.effects_schema_version, undefined);
 
-  console.log('V2.0 task effect, Context read receipt, handoff route, and Runner v3 tests passed');
+  const contribution = contributionState(emptyState(), normalizeInputContribution, withAcceptanceCriterionIds),
+    contributionId = contribution.execution.context_snapshot.inputs[0].contribution.id,
+    criterionId = contribution.execution.context_snapshot.contract.expected_outputs[0].acceptance_criterion_ids[0],
+    contributionEffect = {
+      ...requiredEffect,
+      contribution_id: contributionId,
+      criterion_ids: [criterionId]
+    },
+    contributionContextEffect = { ...contextEffect, criterion_ids: [criterionId] };
+  assert.throws(
+    () =>
+      normalizeTaskEffects(
+        contribution.state,
+        contribution.execution,
+        contribution.outputs,
+        [requiredEffect],
+        [],
+        'run-effects'
+      ),
+    (error) => error.payload?.error === 'runner_input_effects_invalid'
+  );
+  const contributionEffects = normalizeTaskEffects(
+    contribution.state,
+    contribution.execution,
+    contribution.outputs,
+    [contributionEffect],
+    [contributionContextEffect],
+    'run-effects'
+  );
+  assert.equal(contributionEffects.schema_version, 'aiws.task_effects.v2');
+  assert.equal(contributionEffects.inputEffects[0].verification_status, 'structurally_verified');
+  assert.ok(contributionEffects.inputEffects[0].source_receipts.includes('asset_version:version-evidence-a'));
+
+  const contributionSchema = taskRunnerResultSchema(contribution.execution.context_snapshot);
+  assert.deepEqual(contributionSchema.properties.schema_version.enum, ['aiws.task_runner_result.v4']);
+  assert.equal(contributionSchema.properties.input_effects.items.required.includes('contribution_id'), true);
+  assert.equal(contributionSchema.properties.input_effects.items.required.includes('criterion_ids'), true);
+  const normalizedContributionResult = normalizeRunnerOutput(
+    contributionRunnerResult([contributionEffect], [contributionContextEffect])
+  );
+  assert.equal(normalizedContributionResult.parse_error, null);
+  assert.equal(normalizedContributionResult.result.schema_version, 'aiws.task_runner_result.v4');
+
+  const contributionIngested = await ingestExecutionOutputsInState(contribution.state, {
+    taskExecution: contribution.execution,
+    outputs: [contribution.outputs[0]],
+    declaredInputEffects: [contributionEffect],
+    declaredContextEffects: [contributionContextEffect],
+    nodeRunId: 'run-effects',
+    actorId: 'owner-effects'
+  });
+  assert.equal(contribution.execution.effects_schema_version, 'aiws.task_effects.v2');
+  assert.deepEqual(contribution.execution.consumed_inputs, []);
+  assert.deepEqual(contribution.execution.structurally_verified_inputs, ['version-evidence-a', 'version-evidence-b']);
+  const contributionManifest = contributionIngested.outputs[0].version.provenance.handoff_manifest;
+  assert.equal(contributionManifest.schema_version, 'aiws.task_handoff.v3');
+  assert.equal(contributionManifest.delivery.routes[0].contribution_id, contribution.consumerContribution.id);
+  assert.match(contributionManifest.delivery.routes[0].route_id, /^cr_[a-f0-9]{24}$/);
+  const routeBinding = {
+    output_key: 'decision',
+    version_id: contributionIngested.outputs[0].version.id,
+    handoff_manifest: contributionManifest
+  };
+  assert.equal(
+    verifyContributionRoutes(contribution.consumer, contribution.consumer.input_slots[0], [routeBinding]).ok,
+    true
+  );
+  const staleInput = structuredClone(contribution.consumer.input_slots[0]);
+  staleInput.contribution = { ...staleInput.contribution, id: `ic_${'f'.repeat(24)}` };
+  assert.equal(
+    verifyContributionRoutes(contribution.consumer, staleInput, [routeBinding]).code,
+    'dependency_contribution_route_stale'
+  );
+
+  const contributionCreated = contributionIngested.outputs[0];
+  await attestAssetVersionInState(contribution.state, {
+    assetId: contributionCreated.asset.id,
+    versionId: contributionCreated.version.id,
+    expectedSha256: contributionCreated.version.content_sha256,
+    taskExecutionId: contribution.execution.id,
+    outputKey: 'decision',
+    decision: 'accepted',
+    attestorType: 'human',
+    attestorId: 'owner-effects'
+  });
+  assert.deepEqual(contribution.execution.consumed_inputs, ['version-evidence-a', 'version-evidence-b']);
+  assert.deepEqual(contribution.execution.accepted_contribution_ids, [contributionId]);
+  assert.equal(contribution.execution.contribution_statuses[0].status, 'accepted');
+  assert.equal(contribution.state.asset_relations[0].contribution_id, contributionId);
+  assert.equal(contribution.state.asset_relations[0].contribution_status, 'accepted');
+
+  console.log('V2.0 task effect, contribution authority, Context receipt, handoff, and Runner tests passed');
 } finally {
   fs.rmSync(root, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
 }
@@ -388,6 +482,82 @@ function addContextReadReceipt(state, execution) {
   });
 }
 
+function contributionState(state, normalizeInputContribution, withAcceptanceCriterionIds) {
+  const fixture = effectState(state),
+    producer = state.workflow_nodes.find((item) => item.id === 'task-producer'),
+    consumer = state.workflow_nodes.find((item) => item.id === 'task-consumer'),
+    outputSlots = fixture.execution.context_snapshot.contract.expected_outputs.map((output) =>
+      withAcceptanceCriterionIds(producer.id, output)
+    ),
+    decisionCriterion = outputSlots[0].acceptance_criteria[0];
+  producer.progression_protocol = 'aiws.task_progression.v1';
+  producer.output_slots = structuredClone(outputSlots);
+  fixture.execution.context_snapshot.schema_version = 'aiws.task_execution_context.v5';
+  fixture.execution.context_snapshot.contract.expected_outputs = structuredClone(outputSlots);
+  for (const input of fixture.execution.context_snapshot.inputs) {
+    const raw = {
+      schema_version: 'aiws.input_contribution.v1',
+      effect: input.key === 'research_evidence' ? 'constraint' : 'comparison',
+      expected_effect:
+        input.key === 'research_evidence'
+          ? 'Both evidence versions constrain the accepted decision and eliminate unsupported options.'
+          : 'The optional reference changes the comparison only when it contains a competing supported option.',
+      target_output_keys: ['decision'],
+      target_criteria: [decisionCriterion],
+      origin: 'declared'
+    };
+    input.contribution = normalizeInputContribution(producer, { ...input, contribution: raw }, outputSlots);
+  }
+  fixture.execution.context_snapshot.input_effect_obligations = fixture.execution.context_snapshot.inputs.map(
+    (input) => ({
+      input_key: input.key,
+      source: input.source,
+      required: input.required,
+      application_policy: input.application_policy,
+      purpose: input.purpose,
+      target_output_keys: input.contribution.target_output_keys,
+      coverage_policy: input.coverage_policy,
+      version_ids: input.asset_versions.map((item) => item.version_id),
+      contribution: structuredClone(input.contribution)
+    })
+  );
+  const consumerOutputs = [
+      withAcceptanceCriterionIds(consumer.id, {
+        key: 'implementation',
+        kind: 'asset',
+        required: true,
+        asset_type: 'CodeChangeAsset',
+        acceptance_criteria: ['Implementation applies the accepted decision.'],
+        confirmation_policy: 'system_evidence',
+        handoff: true,
+        purpose: 'Deliver the constrained implementation.'
+      })
+    ],
+    consumerInput = {
+      ...consumer.input_slots[0],
+      kind: 'asset_version',
+      required: true,
+      coverage_policy: 'all',
+      contribution: {
+        schema_version: 'aiws.input_contribution.v1',
+        effect: 'constraint',
+        expected_effect: 'The accepted decision constrains implementation choices and rejects incompatible changes.',
+        target_output_keys: ['implementation'],
+        target_criteria: ['Implementation applies the accepted decision.'],
+        origin: 'declared'
+      }
+    };
+  consumer.progression_protocol = 'aiws.task_progression.v1';
+  consumer.output_slots = consumerOutputs;
+  consumerInput.contribution = normalizeInputContribution(consumer, consumerInput, consumerOutputs);
+  consumer.input_slots = [consumerInput];
+  return {
+    ...fixture,
+    consumer,
+    consumerContribution: consumerInput.contribution
+  };
+}
+
 function inputEffect({ inputKey, versionIds }) {
   return {
     input_key: inputKey,
@@ -429,5 +599,12 @@ function runnerResult(inputEffects, contextEffects) {
     outputs: [taskOutput('decision', 'DecisionAsset')],
     synthetic_fallback: false,
     warnings: []
+  };
+}
+
+function contributionRunnerResult(inputEffects, contextEffects) {
+  return {
+    ...runnerResult(inputEffects, contextEffects),
+    schema_version: 'aiws.task_runner_result.v4'
   };
 }

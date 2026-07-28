@@ -5,6 +5,9 @@ import { repositoryWorkspaceSnapshotHash } from './repository-workspace-service.
 import { CONTEXT_PACK_SCHEMA } from '../../../packages/system-context/src/index.mjs';
 import { compactRuntimeMap, createSelectionForRuntimeInState } from './context-service.mjs';
 import { applicationPolicy } from './task-effects.mjs';
+import { isContributionTask } from '../../../packages/shared/src/task-contributions.mjs';
+import { verifyContributionRoutes } from './task-handoff.mjs';
+import { executionInputEffectObligations, normalizeTargetOutputKeys } from './task-execution-input-domain.mjs';
 
 export const EXECUTION_INPUT_HASH_VERSION = 3;
 
@@ -67,7 +70,11 @@ function createExecutionSnapshot(state, input, scope) {
     dependencyGraph = dependencySnapshot(state, task, input.taskExecution?.workflow_execution_id),
     decisions = resolved.filter((item) => item.source === 'decision' && item.context).map((item) => item.context);
   return {
-    schema_version: input.taskExecution ? 'aiws.task_execution_context.v4' : 'aiws.task_execution_context.v2',
+    schema_version: input.taskExecution
+      ? isContributionTask(task)
+        ? 'aiws.task_execution_context.v5'
+        : 'aiws.task_execution_context.v4'
+      : 'aiws.task_execution_context.v2',
     project_id: project.id,
     workflow_id: workflow.id,
     workflow_execution_id: input.workflowExecution?.id || input.taskExecution?.workflow_execution_id || null,
@@ -80,7 +87,7 @@ function createExecutionSnapshot(state, input, scope) {
     contract: structuredClone(contract),
     dependency_graph: dependencyGraph,
     inputs: resolved,
-    input_effect_obligations: inputEffectObligations(resolved, contract),
+    input_effect_obligations: executionInputEffectObligations(resolved),
     repository_snapshot: repositorySnapshot,
     workstream_digest: digest ? digestSnapshot(digest) : null,
     project_brief: brief ? structuredClone(brief) : null,
@@ -197,6 +204,8 @@ export function evaluateTaskExecutionContextFreshness(state, context) {
     reasons.push(...inputAssetFreshnessReasons(state, context, input));
     reasons.push(...legacyDependencyFreshnessReasons(state, input));
     reasons.push(...workstreamHandoffFreshnessReasons(state, context, input));
+    const routes = verifyContributionRoutes(context.task, input, input.asset_versions || []);
+    if (!routes.ok) reasons.push({ code: routes.code, input_key: input.key, contribution_id: routes.contribution_id });
   }
   reasons.push(...contextDocumentFreshnessReasons(state, context));
   reasons.push(...repositoryFreshnessReasons(state, context));
@@ -217,7 +226,9 @@ function inputAssetFreshnessReasons(state, context, input) {
         version_id: binding.version_id
       });
     if (
-      ['aiws.task_execution_context.v3', 'aiws.task_execution_context.v4'].includes(context.schema_version) &&
+      ['aiws.task_execution_context.v3', 'aiws.task_execution_context.v4', 'aiws.task_execution_context.v5'].includes(
+        context.schema_version
+      ) &&
       (version?.verification_status !== 'verified' ||
         version?.immutable !== true ||
         version?.content_sha256 !== binding.content_sha256)
@@ -373,7 +384,8 @@ function resolveInputSlot(state, scope, slot, errors) {
     application_policy: applicationPolicy(slot),
     purpose: clean(slot.purpose, 1000) || null,
     target_output_keys: normalizeTargetOutputKeys(slot.target_output_keys, scope.contract),
-    coverage_policy: slot.coverage_policy === 'any' ? 'any' : 'all'
+    coverage_policy: slot.coverage_policy === 'any' ? 'any' : 'all',
+    contribution: slot.contribution ? structuredClone(slot.contribution) : null
   };
   if (slot.source === 'brief') {
     const brief = (state.project_briefs || [])
@@ -430,7 +442,7 @@ function resolveDependencyInput(state, scope, slot, base, errors) {
     return missing(errors, slot, 'dependency_output_binding_invalid', { dependency_id: dependencyId });
   if (!bindings.length) {
     const legacy =
-      scope.strict && (!slot.selector || slot.selector === 'required_outputs')
+      scope.strict && !isContributionTask(scope.task) && (!slot.selector || slot.selector === 'required_outputs')
         ? legacyAcceptedDependencySnapshot(state, dependencyId)
         : null;
     if (legacy)
@@ -442,6 +454,11 @@ function resolveDependencyInput(state, scope, slot, base, errors) {
         legacy_accepted_dependency: legacy
       };
     return missing(errors, slot, 'dependency_output_binding_missing', { dependency_id: dependencyId });
+  }
+  const contributionRoutes = verifyContributionRoutes(scope.task, base, bindings);
+  if (!contributionRoutes.ok) {
+    const { code, ...detail } = contributionRoutes;
+    return missing(errors, slot, code, detail);
   }
   return {
     ...base,
@@ -457,7 +474,8 @@ function resolveDependencyInput(state, scope, slot, base, errors) {
       contract_id: dependencyExecution?.contract_id || dependency.current_contract_id || null,
       selector: slot.selector || 'required_outputs',
       selected_output_keys: bindings.map((item) => item.output_key).filter(Boolean),
-      attestation_ids: selectedBindings.map((item) => item.attestation_id).filter(Boolean)
+      attestation_ids: selectedBindings.map((item) => item.attestation_id).filter(Boolean),
+      contribution_routes: contributionRoutes.routes
     }
   };
 }
@@ -484,12 +502,17 @@ function resolveWorkstreamDependencyInput(state, scope, slot, base, errors) {
     const { code, ...detail } = handoff.reason;
     return missing(errors, slot, code, detail);
   }
+  const contributionRoutes = verifyContributionRoutes(scope.task, base, handoff.asset_versions);
+  if (!contributionRoutes.ok) {
+    const { code, ...detail } = contributionRoutes;
+    return missing(errors, slot, code, detail);
+  }
   return {
     ...base,
     ref_id: handoff.workstream.id,
     version_id: handoff.asset_versions.length === 1 ? handoff.asset_versions[0].version_id : null,
     asset_versions: handoff.asset_versions,
-    resolved_from: handoff.resolved_from
+    resolved_from: { ...handoff.resolved_from, contribution_routes: contributionRoutes.routes }
   };
 }
 
@@ -826,6 +849,7 @@ function assetVersionSnapshot(asset, version, outputKey = null, origin = null) {
     handoff_manifest: version.provenance?.handoff_manifest
       ? structuredClone(version.provenance.handoff_manifest)
       : null,
+    handoff_manifest_sha256: origin?.handoff_manifest_sha256 || version.provenance?.handoff_manifest_sha256 || null,
     ...(origin?.producer_task_id
       ? {
           producer_task_id: origin.producer_task_id,
@@ -907,6 +931,7 @@ function taskSnapshot(task) {
     execution_mode: task.execution_mode,
     capability_tags: task.capability_tags || [],
     acceptance_criteria: task.acceptance_criteria || [],
+    progression_protocol: task.progression_protocol || null,
     execution_revision: Number(task.execution_revision || 1)
   };
 }
@@ -954,25 +979,6 @@ function uniqueAssets(items) {
     seen.add(key);
     return true;
   });
-}
-function inputEffectObligations(inputs, contract) {
-  return (inputs || []).map((input) => ({
-    input_key: input.key,
-    source: input.source,
-    required: input.required !== false,
-    application_policy: input.application_policy,
-    purpose: input.purpose,
-    target_output_keys: input.target_output_keys,
-    coverage_policy: input.coverage_policy,
-    version_ids: (input.asset_versions || []).map((item) => item.version_id).filter(Boolean)
-  }));
-}
-function normalizeTargetOutputKeys(values, contract) {
-  const declared = [
-    ...new Set((Array.isArray(values) ? values : []).map((value) => clean(value, 120)).filter(Boolean))
-  ];
-  if (declared.length) return declared.sort();
-  return [...new Set((contract?.expected_outputs || []).map((item) => clean(item?.key, 120)).filter(Boolean))].sort();
 }
 function missing(errors, slot, code, detail = {}) {
   errors.push({ code, slot_key: slot.key, ...detail });

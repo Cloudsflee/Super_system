@@ -1,4 +1,5 @@
 import { hashString } from '../../../packages/shared/index.mjs';
+import { TASK_PROGRESSION_PROTOCOL } from '../../../packages/shared/src/task-contributions.mjs';
 import { normalizeWorkflowGenerationCandidate, normalizeWorkflowHierarchyNodes } from './workflow-hierarchy-domain.mjs';
 import { assertWorkflowPlanningQuality, defaultBriefCoverage } from './workflow-quality.mjs';
 
@@ -67,7 +68,9 @@ export function workflowGenerationNodeSnapshot(nodes) {
     order_index: node.order_index,
     position: node.position,
     plan_revision: node.plan_revision,
-    execution_revision: Number(node.execution_revision || 1)
+    execution_revision: Number(node.execution_revision || 1),
+    progression_protocol: node.progression_protocol || null,
+    progression_compatibility: node.progression_compatibility || null
   }));
 }
 
@@ -80,7 +83,7 @@ export function workflowGenerationPrompt(fingerprint, retryErrors = []) {
     `${modeInstruction} Return JSON only.`,
     'The role field is mandatory on every node: each Workstream must contain "role":"workstream" and every nested Task must contain "role":"task".',
     "For newly generated or editable content, match the project's primary natural language from its title, goal, and Brief. If Simplified Chinese is primary, write every user-visible title, goal, outcome, acceptance_criteria, and decomposition_basis value in Simplified Chinese. Preserve completed nodes exactly during replan. Keep product and proper names, CLI commands, paths, URLs, JSON or Schema keys, and SHAs unchanged.",
-    'Use this exact shape: {"project_classification":"...","decomposition_basis":"...","evidence_refs":[{"section_id":"...","quote":"..."}],"confidence":0.8,"repository_intent":[],"brief_coverage":{"features":["task-id"],"acceptance_criteria":["task-id"],"milestones":["task-id"],"risks":["task-id"]},"workstreams":[{"id":"workstream-id","role":"workstream","title":"...","outcome":"...","category":"deliverable","boundary":{"deliverable":"..."},"acceptance_criteria":["..."],"dependency_ids":[],"tasks":[{"id":"task-id","role":"task","title":"...","goal":"...","task_kind":"research","execution_mode":"assist","capability_tags":["research_evidence"],"acceptance_criteria":["..."],"input_slots":[{"key":"...","kind":"asset_version","required":true,"source":"dependency","selector":"upstream_output_key","ref_id":"producer-task-id","version_id":null,"purpose":"说明这份输入要解决的具体问题或施加的约束","application_policy":"required","target_output_keys":["result"],"coverage_policy":"all"}],"output_slots":[{"key":"result","kind":"asset","required":true,"asset_type":"ResearchEvidenceAsset","acceptance_criteria":["..."],"confirmation_policy":"human","handoff":true,"consumer_hint":null,"purpose":"说明该资产为后续决策提供什么"}],"dependency_ids":["producer-task-id"],"repository_intent":null}]}]}.',
+    'Use this exact shape: {"project_classification":"...","decomposition_basis":"...","evidence_refs":[{"section_id":"...","quote":"..."}],"confidence":0.8,"repository_intent":[],"brief_coverage":{"features":["task-id"],"acceptance_criteria":["task-id"],"milestones":["task-id"],"risks":["task-id"]},"workstreams":[{"id":"workstream-id","role":"workstream","title":"...","outcome":"...","category":"deliverable","boundary":{"deliverable":"..."},"acceptance_criteria":["..."],"dependency_ids":[],"tasks":[{"id":"task-id","role":"task","title":"...","goal":"...","task_kind":"research","execution_mode":"assist","capability_tags":["research_evidence"],"acceptance_criteria":["..."],"input_slots":[{"key":"...","kind":"asset_version","required":true,"source":"dependency","selector":"upstream_output_key","ref_id":"producer-task-id","version_id":null,"purpose":"说明这份输入要解决的具体问题或施加的约束","application_policy":"required","target_output_keys":["result"],"coverage_policy":"all","contribution":{"schema_version":"aiws.input_contribution.v1","effect":"constraint","expected_effect":"说明该输入会改变或约束的具体下游判断","target_output_keys":["result"],"target_criteria":["与 output acceptance_criteria 完全相同的文本"],"origin":"declared"}}],"output_slots":[{"key":"result","kind":"asset","required":true,"asset_type":"ResearchEvidenceAsset","acceptance_criteria":["..."],"confirmation_policy":"human","handoff":true,"consumer_hint":null,"purpose":"说明该资产为后续决策提供什么"}],"dependency_ids":["producer-task-id"],"repository_intent":null}]}]}.',
     'Top level: 1-6 independently acceptable Workstreams, never generic lifecycle phases.',
     'Software outcomes default to six Tasks: research evidence, constraint analysis, solution decision, implementation, acceptance testing, and integration delivery. Simple work may merge adjacent stages but must retain at least evidence preparation, execution, and acceptance.',
     'Allowed task_kind values: research, analysis, design, content, code, test, review, deploy, manual, integration. Allowed execution_mode values: manual, assist, codex, integration.',
@@ -90,6 +93,7 @@ export function workflowGenerationPrompt(fingerprint, retryErrors = []) {
     'Workstream dependency_ids are readiness boundaries and may also be ordering-only. A Task that genuinely reads an upstream Workstream delivery may declare source="workstream_dependency" only when that Workstream id appears in its parent Workstream dependency_ids. Select one exact terminal output key, or use selector="required_outputs" only when exactly one required terminal output exists. The WorkstreamOutcome receipt is verification metadata and is never a consumable input. Runtime verifies the receipt but mounts only selected terminal AssetVersion payloads from the same Workflow Execution.',
     'Declare source="brief", source="decision", or other context inputs only when the Task directly needs that material. An empty input_slots array is valid; do not invent Project Brief, Digest, dependency, asset, or context inputs to make the workflow look connected.',
     'For every declared input, purpose must state the concrete downstream question, constraint, comparison, or verification it serves. target_output_keys must name the exact outputs it may change. application_policy=required means those outputs are invalid without a concrete effect receipt; application_policy=optional means the executor may omit the input silently when it has no effect. required controls availability only. coverage_policy=all requires every selected AssetVersion to contribute; use any only when alternatives are genuinely interchangeable.',
+    'Every declared input must include aiws.input_contribution.v1. contribution.effect describes the intended effect type, expected_effect states the falsifiable downstream change, target_output_keys names exact outputs, and target_criteria repeats the exact acceptance criterion text that this input can help satisfy. The server derives immutable criterion and contribution IDs. Never use effect=reference with application_policy=required.',
     'Do not emit consumption_policy for new Tasks. It is legacy compatibility metadata, not the progression model. Never require a not_used declaration for optional material and never add an input merely so a later model can claim it used something.',
     'Mark only outputs intended for a real downstream input slot or the Workstream boundary with handoff=true. Every non-terminal handoff output must be selected by an actual downstream input slot; consumer_hint is descriptive only and cannot replace that route. Ordering-only dependencies do not require handoff assets.',
     'Within each Workstream, every Task after the first returned Task must have at least one dependency_id. During replan, the first new follow-up Task must depend on an existing completed Task so the new asset chain starts from the accepted baseline.',
@@ -156,7 +160,19 @@ export function createTestWorkflowCandidate(fingerprint) {
               source: 'dependency',
               selector: previousOutputKey,
               ref_id: taskIds[index - 1],
-              version_id: null
+              version_id: null,
+              purpose: `Use ${previousOutputKey} to constrain ${phase.kind}_result.`,
+              application_policy: 'required',
+              target_output_keys: [`${phase.kind}_result`],
+              coverage_policy: 'all',
+              contribution: {
+                schema_version: 'aiws.input_contribution.v1',
+                effect: phase.kind === 'test' ? 'verification' : 'constraint',
+                expected_effect: `${previousOutputKey} must change or constrain the accepted ${phase.kind} result.`,
+                target_output_keys: [`${phase.kind}_result`],
+                target_criteria: [phase.acceptance],
+                origin: 'declared'
+              }
             }
           ]
         : [],
@@ -295,13 +311,21 @@ function normalizeGeneratedRuntimeState(nodes, fingerprint) {
             ? 'completed'
             : 'ready'
       };
-    if (prior) return { ...node, status: prior.status };
+    if (prior) return { ...node, progression_protocol: prior.progression_protocol || null, status: prior.status };
     const inputSlots = node.input_slots.map((slot) =>
-      slot.source === 'repository_workspace' ? { ...slot, ref_id: null, version_id: null } : slot
-    );
+        slot.source === 'repository_workspace' ? { ...slot, ref_id: null, version_id: null } : slot
+      ),
+      legacyUpstreamBridge = inputSlots.some(
+        (slot) =>
+          ['dependency', 'workstream_dependency'].includes(slot.source) &&
+          current.has(slot.ref_id) &&
+          !current.get(slot.ref_id)?.progression_protocol
+      );
     return {
       ...node,
       input_slots: inputSlots,
+      progression_protocol: legacyUpstreamBridge ? null : TASK_PROGRESSION_PROTOCOL,
+      progression_compatibility: legacyUpstreamBridge ? 'legacy_upstream_bridge' : null,
       status: node.dependency_ids.every((id) => completed.has(id)) ? 'ready' : 'blocked'
     };
   });

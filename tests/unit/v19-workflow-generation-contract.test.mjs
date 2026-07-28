@@ -269,6 +269,7 @@ candidate.nodes.find((node) => node.id === 'task-decision').input_slots = [
 candidate.nodes.find((node) => node.id === 'task-follow-up').input_slots = [
   dependencyInput('design_result', 'dependency', 'task-decision', 'design_result', 'code_result')
 ];
+attachContributionContracts(candidate.nodes);
 const ambiguous = structuredClone(candidate.nodes),
   decision = ambiguous.find((node) => node.id === 'task-decision'),
   followUp = ambiguous.find((node) => node.id === 'task-follow-up');
@@ -335,7 +336,27 @@ generatedFollowUp.input_slots = generatedFollowUp.input_slots.filter((slot) => s
 generatedDecision.output_slots = [
   { ...output('design_result', generatedDecision.acceptance_criteria), handoff: false }
 ];
-assert.doesNotThrow(() => validateGenerationCandidate(generatedInput, fingerprint));
+const contributionCandidate = validateGenerationCandidate(generatedInput, fingerprint),
+  contributionTask = contributionCandidate.nodes.find((node) => node.id === 'task-decision'),
+  bridgeTask = contributionCandidate.nodes.find((node) => node.id === 'task-evidence'),
+  contributionContract = contributionTask.input_slots[0].contribution;
+assert.equal(bridgeTask.progression_protocol, null);
+assert.equal(bridgeTask.progression_compatibility, 'legacy_upstream_bridge');
+assert.equal(contributionTask.progression_protocol, 'aiws.task_progression.v1');
+assert.equal(contributionContract.schema_version, 'aiws.input_contribution.v1');
+assert.match(contributionContract.id, /^ic_[a-f0-9]{24}$/);
+assert.equal(
+  contributionContract.target_criterion_ids.every((id) => /^ac_[a-f0-9]{24}$/.test(id)),
+  true
+);
+const missingContribution = structuredClone(generatedInput);
+delete missingContribution.nodes.find((node) => node.id === 'task-decision').input_slots[0].contribution;
+assert.throws(
+  () => validateGenerationCandidate(missingContribution, fingerprint),
+  (error) =>
+    error?.payload?.error === 'workflow_planning_quality_failed' &&
+    error.payload.errors.some((item) => item.code === 'workflow_task_typed_inputs_invalid')
+);
 generatedFollowUp.input_slots.push(
   dependencyInput('unrelated', 'dependency', 'task-evidence', 'research_result', 'code_result')
 );
@@ -396,6 +417,23 @@ function dependencyInput(key, source, refId, selector, targetOutputKey) {
     target_output_keys: [targetOutputKey],
     coverage_policy: 'all'
   };
+}
+function attachContributionContracts(nodes) {
+  for (const node of nodes.filter((item) => item.role === 'task' && item.status !== 'completed'))
+    for (const input of node.input_slots || []) {
+      const targets = input.target_output_keys || [],
+        criteria = (node.output_slots || [])
+          .filter((outputSlot) => targets.includes(outputSlot.key))
+          .flatMap((outputSlot) => outputSlot.acceptance_criteria || []);
+      input.contribution = {
+        schema_version: 'aiws.input_contribution.v1',
+        effect: 'constraint',
+        expected_effect: `${input.key} constrains the accepted ${targets.join(', ')} decision.`,
+        target_output_keys: targets,
+        target_criteria: criteria.length ? criteria : node.acceptance_criteria || [],
+        origin: 'declared'
+      };
+    }
 }
 
 function replanState() {

@@ -204,7 +204,11 @@ function buildManualSubmission(
   manualReasons: Record<string, string>,
   usageOptions: ReturnType<typeof manualUsageOptions>
 ) {
-  if (value.task_execution.context_snapshot?.schema_version === 'aiws.task_execution_context.v4')
+  if (
+    ['aiws.task_execution_context.v4', 'aiws.task_execution_context.v5'].includes(
+      value.task_execution.context_snapshot?.schema_version || ''
+    )
+  )
     return buildEffectManualSubmission(value, manualValues, manualUsage, manualReasons, usageOptions);
   const globallyUsed = new Set(Object.values(manualUsage).flat()),
     dispositions = usageOptions
@@ -302,16 +306,25 @@ function buildEffectManualSubmission(
     })),
     inputEffects = usageOptions
       .filter((option) => option.kind === 'input')
-      .map((option) => ({
-        input_key: option.inputKey || '',
-        version_ids: option.versionIds,
-        effect: 'basis' as const,
-        output_keys: value.contract.expected_outputs
+      .map((option) => {
+        const selectedOutputKeys = value.contract.expected_outputs
           .map((slot) => slot.key)
-          .filter((key) => (manualUsage[key] || []).includes(option.id)),
-        statement: (manualStatements[option.id] || '').trim(),
-        evidence_refs: []
-      }))
+          .filter((key) => (manualUsage[key] || []).includes(option.id));
+        const selectedCriterionIds = value.contract.expected_outputs
+          .filter((slot) => selectedOutputKeys.includes(slot.key))
+          .flatMap((slot) => slot.acceptance_criterion_ids || [])
+          .filter((criterionId) => option.criterionIds.includes(criterionId));
+        return {
+          input_key: option.inputKey || '',
+          version_ids: option.versionIds,
+          ...(option.contributionId ? { contribution_id: option.contributionId } : {}),
+          effect: option.effect,
+          output_keys: selectedOutputKeys,
+          ...(option.contributionId ? { criterion_ids: selectedCriterionIds } : {}),
+          statement: (manualStatements[option.id] || '').trim(),
+          evidence_refs: []
+        };
+      })
       .filter((effect) => effect.output_keys.length > 0);
   return { outputs, input_effects: inputEffects, context_effects: [] };
 }
@@ -432,26 +445,38 @@ type ManualUsageOption = {
   targetOutputKeys: string[];
   explicitPolicy: boolean;
   effectAware: boolean;
+  contributionId: string | null;
+  criterionIds: string[];
+  effect: 'basis' | 'constraint' | 'comparison' | 'verification' | 'contradiction' | 'reference';
+  expectedEffect: string | null;
 };
 
 function manualUsageOptions(value?: TaskExecutionDetails): ManualUsageOption[] {
   if (!value) return [];
-  const effectAware = value.task_execution.context_snapshot?.schema_version === 'aiws.task_execution_context.v4';
+  const effectAware = ['aiws.task_execution_context.v4', 'aiws.task_execution_context.v5'].includes(
+    value.task_execution.context_snapshot?.schema_version || ''
+  );
   if (effectAware)
     return value.inputs.map((input) => ({
       id: `input:${input.key}`,
       kind: 'input' as const,
       inputKey: input.key,
       versionIds: (input.asset_versions || []).map((version) => version.version_id),
-      label: `${input.key} · ${input.purpose || input.source}`,
+      label: `${input.key} · ${input.contribution?.expected_effect || input.purpose || input.source}`,
       required: input.required !== false,
       consumptionPolicy: input.consumption_policy || 'available',
       applicationPolicy: input.application_policy || 'optional',
-      targetOutputKeys: input.target_output_keys?.length
-        ? input.target_output_keys
-        : value.contract.expected_outputs.map((slot) => slot.key),
+      targetOutputKeys: input.contribution?.target_output_keys?.length
+        ? input.contribution.target_output_keys
+        : input.target_output_keys?.length
+          ? input.target_output_keys
+          : value.contract.expected_outputs.map((slot) => slot.key),
       explicitPolicy: Boolean(input.application_policy),
-      effectAware: true
+      effectAware: true,
+      contributionId: input.contribution?.id || null,
+      criterionIds: input.contribution?.target_criterion_ids || [],
+      effect: input.contribution?.effect || 'basis',
+      expectedEffect: input.contribution?.expected_effect || null
     }));
   const options: ManualUsageOption[] = value.inputs.flatMap((input) =>
     (input.asset_versions || []).map((version) => ({
@@ -465,7 +490,11 @@ function manualUsageOptions(value?: TaskExecutionDetails): ManualUsageOption[] {
       inputKey: input.key,
       kind: 'input' as const,
       explicitPolicy: Boolean(input.consumption_policy),
-      effectAware: false
+      effectAware: false,
+      contributionId: null,
+      criterionIds: [],
+      effect: 'basis',
+      expectedEffect: null
     }))
   );
   for (const document of value.context_documents || [])
@@ -480,7 +509,11 @@ function manualUsageOptions(value?: TaskExecutionDetails): ManualUsageOption[] {
       inputKey: '',
       kind: 'context' as const,
       explicitPolicy: Boolean(document.consumption_policy),
-      effectAware: false
+      effectAware: false,
+      contributionId: null,
+      criterionIds: [],
+      effect: 'basis',
+      expectedEffect: null
     });
   const unique = new Map<string, (typeof options)[number]>();
   for (const option of options) {
@@ -517,9 +550,21 @@ function HandoffSummary({ value }: { value: TaskExecutionDetails }) {
       <small>未使用资产 {handoff.not_used_inputs.length}</small>
       <small>上下文 {handoff.context_used.length}</small>
       <small>导出 {handoff.exported_outputs.filter((item) => item.version_id).length}</small>
-      {handoff.schema_version === 'aiws.task_handoff_diagnostics.v2' && (
+      {['aiws.task_handoff_diagnostics.v2', 'aiws.task_handoff_diagnostics.v3'].includes(handoff.schema_version) && (
         <>
-          <small>有效作用 {(handoff.input_effects?.length || 0) + (handoff.context_effects?.length || 0)}</small>
+          {handoff.schema_version === 'aiws.task_handoff_diagnostics.v3' ? (
+            <>
+              <small>
+                已验收贡献 {handoff.contribution_statuses?.filter((item) => item.status === 'accepted').length || 0}
+              </small>
+              <small>
+                结构已核验{' '}
+                {handoff.contribution_statuses?.filter((item) => item.status === 'structurally_verified').length || 0}
+              </small>
+            </>
+          ) : (
+            <small>有效作用 {(handoff.input_effects?.length || 0) + (handoff.context_effects?.length || 0)}</small>
+          )}
           <small>交付路由 {handoff.exported_outputs.reduce((total, item) => total + (item.route_count || 0), 0)}</small>
         </>
       )}
@@ -529,7 +574,18 @@ function HandoffSummary({ value }: { value: TaskExecutionDetails }) {
       {handoff.input_effects?.map((effect, index) => (
         <span className="task-effect-line" key={`${effect.input_key}-${effect.effect}-${index}`}>
           <strong>{effect.input_key}</strong>
-          <small>{effect.output_keys.join(' · ')}</small>
+          <small>
+            {effect.output_keys.join(' · ')}
+            {effect.criterion_ids?.length ? ` · ${effect.criterion_ids.length} 项标准` : ''}
+            {effect.contribution_id
+              ? ` · ${
+                  handoff.contribution_statuses?.find((item) => item.contribution_id === effect.contribution_id)
+                    ?.status === 'accepted'
+                    ? '已验收'
+                    : '结构已核验'
+                }`
+              : ''}
+          </small>
           <span>{effect.statement}</span>
         </span>
       ))}
@@ -549,7 +605,8 @@ function HandoffSummary({ value }: { value: TaskExecutionDetails }) {
                 ? '成果节点边界'
                 : `${route.consumer_task_title || route.consumer_task_id} · ${route.input_key}`}
             </small>
-            {route.purpose && <span>{route.purpose}</span>}
+            {(route.expected_effect || route.purpose) && <span>{route.expected_effect || route.purpose}</span>}
+            {route.route_id && <code>{short(route.route_id)}</code>}
           </span>
         ))
       )}
@@ -703,6 +760,12 @@ function ExecutionInput({ input }: { input: TaskExecutionInput }) {
       </strong>
       {originTitle && <small>{originTitle}</small>}
       {input.purpose && <small>{input.purpose}</small>}
+      {input.contribution && (
+        <small>
+          {effectLabel(input.contribution.effect)} · {input.contribution.target_criterion_ids.length} 项验收标准 ·{' '}
+          {short(input.contribution.id)}
+        </small>
+      )}
       {input.target_output_keys?.length ? (
         <small>
           {input.application_policy === 'required' ? '必须产生作用' : '按需采用'} ·{' '}
@@ -756,9 +819,27 @@ function reasonLabel(value: string) {
         task_dependency_waiting: '等待上游任务',
         required_input_missing: '必需输入缺失',
         workstream_dependency_waiting: '等待前置成果节点完成',
-        workstream_input_missing: '前置成果版本尚未就绪'
+        workstream_input_missing: '前置成果版本尚未就绪',
+        dependency_contribution_route_missing: '上游交付缺少贡献路线',
+        dependency_contribution_route_stale: '上游贡献路线已过期',
+        dependency_contribution_manifest_invalid: '上游贡献清单校验失败',
+        required_contribution_not_accepted: '必需贡献尚未通过验收'
       } as Record<string, string>
     )[value] || '等待执行条件'
+  );
+}
+function effectLabel(value: string) {
+  return (
+    (
+      {
+        basis: '依据',
+        constraint: '约束',
+        comparison: '比较',
+        verification: '验证',
+        contradiction: '反证',
+        reference: '参考'
+      } as Record<string, string>
+    )[value] || value
   );
 }
 function short(value?: string | null) {

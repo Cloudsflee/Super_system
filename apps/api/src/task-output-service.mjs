@@ -144,6 +144,9 @@ export function recordAssetLineage(state, context, outputBindings, executionId =
       const declaredRelation = targetVersion?.provenance?.handoff_manifest?.relations?.find(
           (item) => item.version_id === source.version_id
         ),
+        contributionEffect = targetVersion?.provenance?.input_effects?.find((effect) =>
+          (effect.version_ids || []).includes(source.version_id)
+        ),
         relationType = ['derived_from', 'verified_against'].includes(declaredRelation?.type)
           ? declaredRelation.type
           : 'derived_from';
@@ -163,6 +166,14 @@ export function recordAssetLineage(state, context, outputBindings, executionId =
           target_asset_version_id: target.version_id,
           input_snapshot_hash: context?.input_snapshot_hash || null,
           execution_id: executionId,
+          ...(targetVersion?.provenance?.effects_schema_version === 'aiws.task_effects.v2'
+            ? {
+                contribution_id: contributionEffect?.contribution_id || null,
+                criterion_ids: [...(contributionEffect?.criterion_ids || [])],
+                contribution_status: 'accepted',
+                source_receipts: [...(contributionEffect?.source_receipts || [])]
+              }
+            : {}),
           created_at: new Date().toISOString()
         });
     }

@@ -3,6 +3,11 @@ const EFFECT_TYPES = new Set(['basis', 'constraint', 'comparison', 'verification
 export function taskEffectRunnerResultSchema(context) {
   const outputKeys = (context?.contract?.expected_outputs || []).map((item) => item.key).filter(Boolean),
     inputKeys = (context?.inputs || []).map((item) => item.key).filter(Boolean),
+    contributionAware = context?.schema_version === 'aiws.task_execution_context.v5',
+    contributionIds = (context?.inputs || []).map((item) => item.contribution?.id).filter(Boolean),
+    criterionIds = (context?.contract?.expected_outputs || [])
+      .flatMap((item) => item.acceptance_criterion_ids || [])
+      .filter(Boolean),
     versionIds = executionAssetVersionIds(context),
     stringArray = { type: 'array', items: { type: 'string' } },
     outputKeyArray = {
@@ -12,15 +17,33 @@ export function taskEffectRunnerResultSchema(context) {
     effectProperties = {
       effect: { enum: [...EFFECT_TYPES] },
       output_keys: outputKeyArray,
+      ...(contributionAware
+        ? {
+            criterion_ids: {
+              type: 'array',
+              items: criterionIds.length ? { type: 'string', enum: criterionIds } : { type: 'string' }
+            }
+          }
+        : {}),
       statement: { type: 'string' },
       evidence_refs: stringArray
     },
     inputEffect = {
       type: 'object',
       additionalProperties: false,
-      required: ['input_key', 'version_ids', ...Object.keys(effectProperties)],
+      required: [
+        'input_key',
+        'version_ids',
+        ...(contributionAware ? ['contribution_id'] : []),
+        ...Object.keys(effectProperties)
+      ],
       properties: {
         input_key: inputKeys.length ? { type: 'string', enum: inputKeys } : { type: 'string' },
+        ...(contributionAware
+          ? {
+              contribution_id: contributionIds.length ? { type: 'string', enum: contributionIds } : { type: 'string' }
+            }
+          : {}),
         version_ids: {
           type: 'array',
           items: versionIds.length ? { type: 'string', enum: versionIds } : { type: 'string' }
@@ -102,7 +125,9 @@ export function taskEffectRunnerResultSchema(context) {
       'warnings'
     ],
     properties: {
-      schema_version: { enum: ['aiws.task_runner_result.v3'] },
+      schema_version: {
+        enum: [contributionAware ? 'aiws.task_runner_result.v4' : 'aiws.task_runner_result.v3']
+      },
       status: { enum: ['succeeded', 'partial', 'blocked', 'failed'] },
       summary: { type: 'string' },
       input_effects: { type: 'array', items: inputEffect },
@@ -120,8 +145,10 @@ export function normalizedEffectList(values, idKey) {
     .map((item) => ({
       [idKey]: item[idKey].trim(),
       ...(idKey === 'input_key' ? { version_ids: normalizedIdList(item.version_ids) } : {}),
+      ...(typeof item.contribution_id === 'string' ? { contribution_id: item.contribution_id.trim() } : {}),
       effect: String(item.effect || '').trim(),
       output_keys: normalizedIdList(item.output_keys),
+      ...(Array.isArray(item.criterion_ids) ? { criterion_ids: normalizedIdList(item.criterion_ids) } : {}),
       statement: String(item.statement || '').trim(),
       evidence_refs: normalizedIdList(item.evidence_refs)
     }))
@@ -129,7 +156,9 @@ export function normalizedEffectList(values, idKey) {
   const byKey = new Map();
   for (const item of normalized)
     byKey.set(
-      `${item[idKey]}:${item.effect}:${item.output_keys.join(',')}:${(item.version_ids || []).join(',')}`,
+      `${item[idKey]}:${item.contribution_id || ''}:${item.effect}:${item.output_keys.join(',')}:${(
+        item.criterion_ids || []
+      ).join(',')}:${(item.version_ids || []).join(',')}`,
       item
     );
   return [...byKey.values()].sort(
@@ -140,7 +169,7 @@ export function normalizedEffectList(values, idKey) {
   );
 }
 
-export function invalidEffectList(values, idKey, versionsRequired) {
+export function invalidEffectList(values, idKey, versionsRequired, contributionAware = false) {
   if (!Array.isArray(values)) return true;
   return values.some(
     (item) =>
@@ -149,6 +178,11 @@ export function invalidEffectList(values, idKey, versionsRequired) {
       typeof item[idKey] !== 'string' ||
       !item[idKey].trim() ||
       (versionsRequired && (!Array.isArray(item.version_ids) || invalidIdList(item.version_ids))) ||
+      (contributionAware &&
+        idKey === 'input_key' &&
+        (typeof item.contribution_id !== 'string' || !item.contribution_id.trim())) ||
+      (contributionAware &&
+        (!Array.isArray(item.criterion_ids) || !item.criterion_ids.length || invalidIdList(item.criterion_ids))) ||
       !EFFECT_TYPES.has(item.effect) ||
       !Array.isArray(item.output_keys) ||
       !item.output_keys.length ||

@@ -588,7 +588,9 @@ export function recoverablePartialRepositoryChangeRun(state, execution) {
         return (
           run.task_execution_id === execution.id &&
           run.status === RunnerStatus.Failed &&
-          ['aiws.task_runner_result.v2', 'aiws.task_runner_result.v3'].includes(result?.schema_version) &&
+          ['aiws.task_runner_result.v2', 'aiws.task_runner_result.v3', 'aiws.task_runner_result.v4'].includes(
+            result?.schema_version
+          ) &&
           result.status === RunnerStatus.Partial &&
           Number(result._codex_process?.code) === 0 &&
           !result._codex_process?.failure_code &&

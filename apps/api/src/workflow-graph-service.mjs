@@ -373,6 +373,8 @@ function newCandidateNode(source, workflowId) {
     required: source.required !== false,
     repository_intent: source.repository_intent || null,
     capability_tags: source.capability_tags || [],
+    progression_protocol: source.progression_protocol || null,
+    progression_compatibility: source.progression_compatibility || null,
     input_slots: source.input_slots || [],
     output_slots: source.output_slots || [],
     atomic_justification: source.atomic_justification || null,
@@ -432,6 +434,7 @@ function candidateContractChanged(node, source, typeChanged) {
     typeChanged ||
     node.goal !== source.goal ||
     Number(source.execution_revision || 1) > Number(node.execution_revision || 1) ||
+    node.progression_protocol !== (source.progression_protocol || null) ||
     JSON.stringify(node.dependencies || []) !== JSON.stringify(candidateDependencies(source)) ||
     JSON.stringify(node.input_slots || []) !== JSON.stringify(source.input_slots || []) ||
     JSON.stringify(node.output_slots || []) !== JSON.stringify(source.output_slots || []) ||
@@ -456,6 +459,8 @@ function candidateNodePatch(node, source) {
     required: source.required !== false,
     repository_intent: source.repository_intent || null,
     capability_tags: source.capability_tags || [],
+    progression_protocol: source.progression_protocol || node.progression_protocol || null,
+    progression_compatibility: source.progression_compatibility || node.progression_compatibility || null,
     input_slots: source.input_slots || [],
     output_slots: source.output_slots || [],
     atomic_justification: source.atomic_justification || null,
