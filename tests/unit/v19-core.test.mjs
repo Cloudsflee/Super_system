@@ -152,6 +152,39 @@ assert.deepEqual(
   ['task-a', 'task-a2']
 );
 
+const progressionState = hierarchyState();
+const progressionUpgrade = createWorkflowGraphProposalInState(
+  progressionState,
+  'workflow-1',
+  {
+    parent_node_id: 'ws-a',
+    expected_revision: 7,
+    operations: [
+      {
+        type: 'update_node',
+        node_id: 'task-a',
+        patch: { progression_protocol: 'aiws.task_progression.v1', progression_compatibility: null }
+      }
+    ]
+  },
+  'owner'
+);
+assert.notEqual(
+  progressionUpgrade.proposal.apply_action.before_hash,
+  progressionUpgrade.proposal.apply_action.candidate_hash,
+  'progression changes participate in the reviewed graph hash'
+);
+assert.equal(
+  progressionUpgrade.after.nodes.find((item) => item.id === 'task-a').progression_protocol,
+  'aiws.task_progression.v1'
+);
+applyWorkflowGraphPatchInState(progressionState, progressionUpgrade.proposal);
+assert.equal(
+  progressionState.workflow_nodes.find((item) => item.id === 'task-a').progression_protocol,
+  'aiws.task_progression.v1',
+  'an approved graph candidate persists the progression contract'
+);
+
 assert.throws(
   () =>
     createWorkflowGraphProposalInState(
