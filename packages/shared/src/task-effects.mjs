@@ -1,4 +1,21 @@
+import { hashString } from './utils.mjs';
+
 const EFFECT_TYPES = new Set(['basis', 'constraint', 'comparison', 'verification', 'contradiction', 'reference']);
+
+export function effectClaimId(value) {
+  const identity = {
+    input_key: normalizedText(value?.input_key, 120) || null,
+    document_version_id: normalizedText(value?.document_version_id, 200) || null,
+    contribution_id: normalizedText(value?.contribution_id, 200) || null,
+    version_ids: normalizedIdList(value?.version_ids),
+    effect: normalizedText(value?.effect, 80) || null,
+    output_keys: normalizedIdList(value?.output_keys),
+    criterion_ids: normalizedIdList(value?.criterion_ids),
+    statement: normalizedText(value?.statement, 2000) || null,
+    evidence_refs: normalizedIdList(value?.evidence_refs)
+  };
+  return `ec_${hashString(JSON.stringify(identity)).slice(0, 24)}`;
+}
 
 export function taskEffectRunnerResultSchema(context) {
   const outputKeys = (context?.contract?.expected_outputs || []).map((item) => item.key).filter(Boolean),
@@ -215,4 +232,11 @@ function invalidIdList(values) {
   return (Array.isArray(values) ? values : []).some(
     (value) => value != null && value !== '' && typeof value !== 'string'
   );
+}
+
+function normalizedText(value, max) {
+  return String(value ?? '')
+    .replace(/\0/g, '')
+    .trim()
+    .slice(0, max);
 }

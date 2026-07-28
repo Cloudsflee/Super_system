@@ -5,7 +5,8 @@ import {
   contributionRouteId
 } from '../../../packages/shared/src/task-contributions.mjs';
 
-export const TASK_HANDOFF_SCHEMA = 'aiws.task_handoff.v3';
+export const TASK_HANDOFF_SCHEMA = 'aiws.task_handoff.v4';
+export const LEGACY_CONTRIBUTION_TASK_HANDOFF_SCHEMA = 'aiws.task_handoff.v3';
 export const EFFECT_TASK_HANDOFF_SCHEMA = 'aiws.task_handoff.v2';
 export const LEGACY_TASK_HANDOFF_SCHEMA = 'aiws.task_handoff.v1';
 export const INPUT_DISPOSITIONS = Object.freeze(['used', 'not_used']);
@@ -40,6 +41,7 @@ export function buildTaskHandoffManifest({
     contributionAware =
       (inputEffects || []).some((item) => item?.contribution_id) ||
       (routes || []).some((item) => item?.contribution_id),
+    claimedRelations = handoffRelations(output, inputs, contexts),
     manifest = {
       schema_version: contributionAware
         ? TASK_HANDOFF_SCHEMA
@@ -48,10 +50,18 @@ export function buildTaskHandoffManifest({
           : LEGACY_TASK_HANDOFF_SCHEMA,
       producer: handoffProducer(taskExecution, task),
       output: handoffOutput(output, slot, asset, version),
-      source_snapshot: handoffSourceSnapshot(taskExecution, contextSelectionId, inputs, contexts),
-      input_dispositions: normalizedInputDispositions,
-      context_dispositions: normalizedContextDispositions,
-      relations: handoffRelations(output, inputs, contexts),
+      source_snapshot: handoffSourceSnapshot(taskExecution, contextSelectionId, inputs, contexts, contributionAware),
+      input_dispositions: contributionAware ? [] : normalizedInputDispositions,
+      context_dispositions: contributionAware ? [] : normalizedContextDispositions,
+      relations: contributionAware ? [] : claimedRelations,
+      ...(contributionAware
+        ? {
+            authority_status: 'structurally_verified',
+            structurally_verified_input_dispositions: normalizedInputDispositions,
+            structurally_verified_context_dispositions: normalizedContextDispositions,
+            claimed_relations: claimedRelations
+          }
+        : {}),
       unresolved_questions: normalizeTextList(unresolvedQuestions),
       limitations: normalizeTextList(limitations),
       created_at: version?.created_at || taskExecution?.updated_at || taskExecution?.created_at || null
@@ -141,12 +151,18 @@ function handoffOutput(output, slot, asset, version) {
   };
 }
 
-function handoffSourceSnapshot(taskExecution, contextSelectionId, inputs, contexts) {
+function handoffSourceSnapshot(taskExecution, contextSelectionId, inputs, contexts, contributionAware) {
   return {
     input_snapshot_hash: taskExecution?.input_snapshot_hash || null,
     context_selection_id: contextSelectionId || null,
-    consumed_input_versions: inputs,
-    consumed_context_document_versions: contexts
+    consumed_input_versions: contributionAware ? [] : inputs,
+    consumed_context_document_versions: contributionAware ? [] : contexts,
+    ...(contributionAware
+      ? {
+          structurally_verified_input_versions: inputs,
+          structurally_verified_context_document_versions: contexts
+        }
+      : {})
   };
 }
 
@@ -240,7 +256,7 @@ export function taskHandoffDiagnostics(state, execution) {
     });
   return {
     schema_version: contributionAware
-      ? 'aiws.task_handoff_diagnostics.v3'
+      ? 'aiws.task_handoff_diagnostics.v4'
       : effectAware
         ? 'aiws.task_handoff_diagnostics.v2'
         : 'aiws.task_handoff_diagnostics.v1',
@@ -254,6 +270,7 @@ export function taskHandoffDiagnostics(state, execution) {
     input_effects: effectDiagnostics.inputEffects,
     context_effects: effectDiagnostics.contextEffects,
     contribution_statuses: structuredClone(execution?.contribution_statuses || []),
+    effect_claim_statuses: structuredClone(execution?.effect_claim_statuses || []),
     exported_outputs: exportedOutputs,
     context_used: normalizeIdList(execution?.consumed_context_document_versions),
     context_not_used: inputDiagnostics.contextDispositions.filter((item) => item.disposition === 'not_used'),
@@ -447,7 +464,7 @@ export function verifyContributionRoutes(task, input, bindings) {
       ),
       route = sameConsumer.find((item) => item.contribution_id === contribution.id);
     if (
-      manifest?.schema_version !== TASK_HANDOFF_SCHEMA ||
+      ![TASK_HANDOFF_SCHEMA, LEGACY_CONTRIBUTION_TASK_HANDOFF_SCHEMA].includes(manifest?.schema_version) ||
       !declaredManifestHash ||
       actualManifestHash !== declaredManifestHash ||
       (binding.handoff_manifest_sha256 && binding.handoff_manifest_sha256 !== declaredManifestHash)

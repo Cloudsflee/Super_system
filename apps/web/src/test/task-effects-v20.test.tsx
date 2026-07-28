@@ -90,6 +90,65 @@ describe('V2.0 task effect handoff', () => {
     expect(JSON.stringify(payload)).not.toContain('version-optional');
     expect(JSON.stringify(payload)).not.toContain('not_used');
   });
+
+  it('requires explicit acceptance of required v5 effect claims before approving candidate output', async () => {
+    const contributionDetails = v5ContributionDetails();
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+        const url = String(input),
+          method = String(init?.method || 'GET').toUpperCase(),
+          body = typeof init?.body === 'string' ? JSON.parse(init.body) : null;
+        requests.push({ url, method, body });
+        if (url.includes('/task-executions/execution-effects/human-approve') && method === 'POST')
+          return response({ task_execution: { ...contributionDetails.task_execution, status: 'completed' } });
+        if (url.includes('/tasks/task-producer/readiness')) return response(readiness);
+        if (url.includes('/task-executions/execution-effects')) return response(contributionDetails);
+        return response({ error: 'not_found' }, 404);
+      })
+    );
+
+    renderPanel();
+    expect(await screen.findByText('作用声明验收')).toBeInTheDocument();
+    expect(screen.getAllByText('Research evidence changed the accepted decision.')).toHaveLength(2);
+    expect(screen.getAllByText('Current context ruled out the stale alternative.')).toHaveLength(2);
+    const approve = screen.getByRole('button', { name: '验收' }),
+      requiredClaim = screen.getByRole('checkbox', { name: /research_evidence/ }),
+      contextClaim = screen.getByRole('checkbox', { name: /运行上下文/ });
+    expect(approve).toBeDisabled();
+    fireEvent.click(contextClaim);
+    expect(approve).toBeDisabled();
+    fireEvent.click(requiredClaim);
+    expect(approve).toBeEnabled();
+    fireEvent.click(approve);
+
+    await waitFor(() =>
+      expect(requests.some((item) => item.url.includes('/human-approve') && item.method === 'POST')).toBe(true)
+    );
+    expect(requests.find((item) => item.url.includes('/human-approve'))?.body).toMatchObject({
+      decision: 'approve',
+      accepted_effect_claim_ids: ['ec_context00000000000000000', 'ec_input000000000000000000']
+    });
+  });
+
+  it('labels a v5 manual submission as candidate output without changing the legacy v4 action', async () => {
+    const contributionDetails = v5ContributionDetails();
+    contributionDetails.outputs = [];
+    contributionDetails.task_execution.input_effects = [];
+    contributionDetails.task_execution.context_effects = [];
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: RequestInfo | URL) => {
+        const url = String(input);
+        if (url.includes('/tasks/task-producer/readiness')) return response(readiness);
+        if (url.includes('/task-executions/execution-effects')) return response(contributionDetails);
+        return response({ error: 'not_found' }, 404);
+      })
+    );
+    renderPanel();
+    expect(await screen.findByRole('button', { name: '提交候选输出' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: '提交并验收' })).not.toBeInTheDocument();
+  });
 });
 
 function renderPanel() {
@@ -241,6 +300,125 @@ const details = {
     semantic_gaps: []
   }
 };
+
+function v5ContributionDetails() {
+  const criterionId = 'ac_decision_criterion',
+    inputClaimId = 'ec_input000000000000000000',
+    contextClaimId = 'ec_context00000000000000000',
+    input = {
+      ...details.inputs[0],
+      contribution: {
+        schema_version: 'aiws.input_contribution.v1',
+        id: 'ic_research_evidence',
+        effect: 'basis',
+        expected_effect: 'Research evidence changes the accepted decision.',
+        target_output_keys: ['decision'],
+        target_criterion_ids: [criterionId],
+        origin: 'declared'
+      }
+    },
+    inputClaim = {
+      claim_id: inputClaimId,
+      input_key: 'research_evidence',
+      version_ids: ['version-evidence-a', 'version-evidence-b'],
+      contribution_id: 'ic_research_evidence',
+      effect: 'basis',
+      output_keys: ['decision'],
+      criterion_ids: [criterionId],
+      verification_status: 'structurally_verified',
+      source_receipts: ['asset_version:version-evidence-a', 'asset_version:version-evidence-b'],
+      statement: 'Research evidence changed the accepted decision.',
+      evidence_refs: []
+    },
+    contextClaim = {
+      claim_id: contextClaimId,
+      document_version_id: 'cdv-runtime-read',
+      effect: 'verification',
+      output_keys: ['decision'],
+      criterion_ids: [criterionId],
+      verification_status: 'structurally_verified',
+      source_receipts: ['context_read:csel-runtime:cdv-runtime-read'],
+      statement: 'Current context ruled out the stale alternative.',
+      evidence_refs: []
+    };
+  return {
+    ...structuredClone(details),
+    task_execution: {
+      ...structuredClone(details.task_execution),
+      context_snapshot: { schema_version: 'aiws.task_execution_context.v5' },
+      effects_schema_version: 'aiws.task_effects.v2',
+      input_effects: [inputClaim],
+      context_effects: [contextClaim],
+      accepted_effect_claim_ids: [],
+      accepted_contribution_ids: [],
+      output_bindings: []
+    },
+    contract: {
+      ...structuredClone(details.contract),
+      expected_outputs: [
+        {
+          ...structuredClone(details.contract.expected_outputs[0]),
+          acceptance_criterion_ids: [criterionId]
+        }
+      ]
+    },
+    inputs: [input],
+    context_documents: [
+      {
+        node_id: 'ctx-runtime',
+        document_version_id: 'cdv-runtime-read',
+        content_sha256: 'd'.repeat(64),
+        title: '运行上下文',
+        required: false,
+        consumption_policy: 'available'
+      }
+    ],
+    outputs: [
+      {
+        key: 'decision',
+        asset_id: 'asset-decision',
+        version_id: 'version-decision',
+        asset_type: 'DecisionAsset',
+        content_sha256: 'e'.repeat(64),
+        confirmation_policy: 'human',
+        bound: false,
+        asset: {
+          id: 'asset-decision',
+          title: 'Evidence-backed decision',
+          status: 'candidate'
+        },
+        version: {
+          id: 'version-decision',
+          asset_id: 'asset-decision',
+          content_sha256: 'e'.repeat(64),
+          manifest: { metadata: {} }
+        }
+      }
+    ],
+    handoff: {
+      ...structuredClone(details.handoff),
+      schema_version: 'aiws.task_handoff_diagnostics.v4',
+      input_effects: [inputClaim],
+      context_effects: [contextClaim],
+      contribution_statuses: [
+        {
+          contribution_id: 'ic_research_evidence',
+          status: 'structurally_verified',
+          output_keys: ['decision'],
+          criterion_ids: [criterionId],
+          version_ids: ['version-evidence-a', 'version-evidence-b'],
+          claim_ids: [inputClaimId],
+          accepted_claim_ids: [],
+          accepted_criterion_ids: [],
+          missing_criterion_ids: [criterionId],
+          source_receipts: inputClaim.source_receipts,
+          evidence_refs: []
+        }
+      ],
+      effect_claim_statuses: []
+    }
+  };
+}
 
 function response(value: unknown, status = 200) {
   return new Response(JSON.stringify(value), { status, headers: { 'content-type': 'application/json' } });

@@ -168,6 +168,7 @@ async function createAssetAttestation({ res, params, body }) {
       decision: body.decision || 'accepted',
       attestorType: 'human',
       attestorId: actor.id,
+      acceptedEffectClaimIds: body.accepted_effect_claim_ids,
       summary: body.summary
     });
     addTrace(

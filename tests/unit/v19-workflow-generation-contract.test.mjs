@@ -161,6 +161,10 @@ const crossQualityNodes = [
 ];
 const exactCrossQuality = validateWorkflowPlanningQuality({ nodes: crossQualityNodes });
 assert.equal(
+  exactCrossQuality.errors.some((item) => item.code === 'workflow_task_dependency_flow_required'),
+  false
+);
+assert.equal(
   exactCrossQuality.errors.some((item) => item.code === 'workflow_workstream_dependency_input_binding_required'),
   false
 );

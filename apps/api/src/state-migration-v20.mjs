@@ -74,12 +74,7 @@ export function normalizeOutcomeEvidenceRelationsV20(state) {
 export function normalizeTaskHandoffDefaultsV20(state) {
   let changed = false;
   const cleanRecord = (record, field) => {
-    const before = Array.isArray(record?.[field]) ? record[field] : [];
-    const after = cleanIds(before);
-    if (JSON.stringify(before) !== JSON.stringify(after)) {
-      record[field] = after;
-      changed = true;
-    }
+    changed = cleanIdField(record, field) || changed;
   };
   for (const execution of state.task_executions || []) {
     cleanRecord(execution, 'consumed_inputs');
@@ -89,17 +84,17 @@ export function normalizeTaskHandoffDefaultsV20(state) {
     cleanRecord(execution, 'structurally_verified_inputs');
     cleanRecord(execution, 'declared_context_document_versions');
     cleanRecord(execution, 'structurally_verified_context_document_versions');
+    cleanRecord(execution, 'accepted_effect_claim_ids');
     cleanRecord(execution, 'accepted_contribution_ids');
-    const inputDispositions = cleanDispositions(execution.input_dispositions, 'version_id'),
-      contextDispositions = cleanDispositions(execution.context_dispositions, 'document_version_id');
-    if (JSON.stringify(execution.input_dispositions || []) !== JSON.stringify(inputDispositions)) {
-      execution.input_dispositions = inputDispositions;
-      changed = true;
-    }
-    if (JSON.stringify(execution.context_dispositions || []) !== JSON.stringify(contextDispositions)) {
-      execution.context_dispositions = contextDispositions;
-      changed = true;
-    }
+    changed = cleanDispositionField(execution, 'input_dispositions', 'version_id') || changed;
+    changed = cleanDispositionField(execution, 'context_dispositions', 'document_version_id') || changed;
+    changed = cleanDispositionField(execution, 'structurally_verified_input_dispositions', 'version_id') || changed;
+    changed =
+      cleanDispositionField(execution, 'structurally_verified_context_dispositions', 'document_version_id') || changed;
+    changed = cleanStatusField(execution, 'effect_claim_statuses', cleanEffectClaimStatuses) || changed;
+    changed = cleanStatusField(execution, 'contribution_statuses', cleanContributionStatuses) || changed;
+    changed = cleanAuthorityStatus(execution) || changed;
+    for (const binding of execution.output_bindings || []) cleanRecord(binding, 'accepted_effect_claim_ids');
     changed = cleanEffectRecord(execution, 'input_effects', 'input_key') || changed;
     changed = cleanEffectRecord(execution, 'context_effects', 'document_version_id') || changed;
   }
@@ -108,9 +103,48 @@ export function normalizeTaskHandoffDefaultsV20(state) {
     cleanRecord(version.provenance, 'consumed_inputs');
     cleanRecord(version.provenance, 'consumed_context_document_versions');
     cleanRecord(version.provenance, 'context_selection_ids');
+    cleanRecord(version.provenance, 'declared_consumed_inputs');
+    cleanRecord(version.provenance, 'structurally_verified_inputs');
+    cleanRecord(version.provenance, 'declared_context_document_versions');
+    cleanRecord(version.provenance, 'structurally_verified_context_document_versions');
+    cleanRecord(version.provenance, 'accepted_effect_claim_ids');
+    cleanRecord(version.provenance, 'accepted_contribution_ids');
+    changed = cleanDispositionField(version.provenance, 'input_dispositions', 'version_id') || changed;
+    changed = cleanDispositionField(version.provenance, 'context_dispositions', 'document_version_id') || changed;
+    changed =
+      cleanDispositionField(version.provenance, 'structurally_verified_input_dispositions', 'version_id') || changed;
+    changed =
+      cleanDispositionField(version.provenance, 'structurally_verified_context_dispositions', 'document_version_id') ||
+      changed;
+    changed = cleanStatusField(version.provenance, 'effect_claim_statuses', cleanEffectClaimStatuses) || changed;
+    changed = cleanStatusField(version.provenance, 'contribution_statuses', cleanContributionStatuses) || changed;
+    changed = cleanAuthorityStatus(version.provenance) || changed;
     changed = cleanEffectRecord(version.provenance, 'input_effects', 'input_key') || changed;
     changed = cleanEffectRecord(version.provenance, 'context_effects', 'document_version_id') || changed;
   }
+  changed = cleanAuthorityReferences(state) || changed;
+  changed = cleanRunnerHandoffs(state) || changed;
+  return { changed };
+}
+
+function cleanAuthorityReferences(state) {
+  let changed = false;
+  for (const attestation of state.asset_attestations || []) {
+    changed = cleanIdField(attestation, 'accepted_effect_claim_ids') || changed;
+    changed = cleanStatusField(attestation, 'effect_acceptance_results', cleanEffectAcceptanceResults) || changed;
+  }
+  for (const relation of state.asset_relations || []) {
+    changed = cleanIdField(relation, 'criterion_ids') || changed;
+    changed = cleanIdField(relation, 'source_receipts') || changed;
+    changed = cleanIdField(relation, 'output_evidence_refs') || changed;
+    changed = cleanOptionalTextField(relation, 'effect_claim_id') || changed;
+    changed = cleanOptionalTextField(relation, 'attestation_id') || changed;
+  }
+  return changed;
+}
+
+function cleanRunnerHandoffs(state) {
+  let changed = false;
   for (const run of state.node_runs || []) {
     const result = run.result_json;
     if (['aiws.task_runner_result.v3', 'aiws.task_runner_result.v4'].includes(result?.schema_version)) {
@@ -119,14 +153,22 @@ export function normalizeTaskHandoffDefaultsV20(state) {
       continue;
     }
     if (!result || result.schema_version !== 'aiws.task_runner_result.v2') continue;
-    cleanRecord(result, 'consumed_input_versions');
-    cleanRecord(result, 'consumed_context_document_versions');
+    changed = cleanIdField(result, 'consumed_input_versions') || changed;
+    changed = cleanIdField(result, 'consumed_context_document_versions') || changed;
     for (const output of result.outputs || []) {
-      cleanRecord(output, 'consumed_input_versions');
-      cleanRecord(output, 'consumed_context_document_versions');
+      changed = cleanIdField(output, 'consumed_input_versions') || changed;
+      changed = cleanIdField(output, 'consumed_context_document_versions') || changed;
     }
   }
-  return { changed };
+  return changed;
+}
+
+function cleanIdField(record, field) {
+  const before = Array.isArray(record?.[field]) ? record[field] : [],
+    after = cleanIds(before);
+  if (JSON.stringify(before) === JSON.stringify(after)) return false;
+  record[field] = after;
+  return true;
 }
 
 function cleanEffectRecord(record, field, idKey) {
@@ -150,6 +192,7 @@ function cleanEffectRecord(record, field, idKey) {
         ...(typeof item.contribution_id === 'string' && item.contribution_id.trim()
           ? { contribution_id: item.contribution_id.trim() }
           : {}),
+        ...(typeof item.claim_id === 'string' && item.claim_id.trim() ? { claim_id: item.claim_id.trim() } : {}),
         effect: item.effect,
         output_keys: cleanIds(item.output_keys),
         ...(Array.isArray(item.criterion_ids) ? { criterion_ids: cleanIds(item.criterion_ids) } : {}),
@@ -167,6 +210,135 @@ function cleanEffectRecord(record, field, idKey) {
       );
   if (JSON.stringify(before) === JSON.stringify(after)) return false;
   record[field] = after;
+  return true;
+}
+
+function cleanDispositionField(record, field, idKey) {
+  if (!Array.isArray(record?.[field])) return false;
+  const before = record[field],
+    after = cleanDispositions(before, idKey);
+  if (JSON.stringify(before) === JSON.stringify(after)) return false;
+  record[field] = after;
+  return true;
+}
+
+function cleanStatusField(record, field, cleaner) {
+  if (!Array.isArray(record?.[field])) return false;
+  const before = record[field],
+    after = cleaner(before);
+  if (JSON.stringify(before) === JSON.stringify(after)) return false;
+  record[field] = after;
+  return true;
+}
+
+function cleanEffectClaimStatuses(values) {
+  return (Array.isArray(values) ? values : [])
+    .filter(
+      (item) =>
+        item &&
+        typeof item.claim_id === 'string' &&
+        item.claim_id.trim() &&
+        ['structurally_verified', 'accepted'].includes(item.status)
+    )
+    .map((item) => ({
+      claim_id: item.claim_id.trim(),
+      source_type: item.source_type === 'context' ? 'context' : 'input',
+      input_key: typeof item.input_key === 'string' && item.input_key.trim() ? item.input_key.trim() : null,
+      document_version_id:
+        typeof item.document_version_id === 'string' && item.document_version_id.trim()
+          ? item.document_version_id.trim()
+          : null,
+      contribution_id:
+        typeof item.contribution_id === 'string' && item.contribution_id.trim() ? item.contribution_id.trim() : null,
+      output_keys: cleanIds(item.output_keys),
+      criterion_ids: cleanIds(item.criterion_ids),
+      status: item.status
+    }))
+    .sort((left, right) => left.claim_id.localeCompare(right.claim_id));
+}
+
+function cleanEffectAcceptanceResults(values) {
+  return (Array.isArray(values) ? values : [])
+    .filter(
+      (item) =>
+        item &&
+        typeof item.claim_id === 'string' &&
+        item.claim_id.trim() &&
+        item.status === 'accepted' &&
+        typeof item.output_key === 'string' &&
+        item.output_key.trim()
+    )
+    .map((item) => ({
+      claim_id: item.claim_id.trim(),
+      status: 'accepted',
+      source_type: item.source_type === 'context' ? 'context' : 'input',
+      input_key: typeof item.input_key === 'string' && item.input_key.trim() ? item.input_key.trim() : null,
+      document_version_id:
+        typeof item.document_version_id === 'string' && item.document_version_id.trim()
+          ? item.document_version_id.trim()
+          : null,
+      contribution_id:
+        typeof item.contribution_id === 'string' && item.contribution_id.trim() ? item.contribution_id.trim() : null,
+      source_receipts: cleanIds(item.source_receipts),
+      output_key: item.output_key.trim(),
+      output_version_id:
+        typeof item.output_version_id === 'string' && item.output_version_id.trim()
+          ? item.output_version_id.trim()
+          : null,
+      output_content_sha256:
+        typeof item.output_content_sha256 === 'string' && item.output_content_sha256.trim()
+          ? item.output_content_sha256.trim()
+          : null,
+      criterion_ids: cleanIds(item.criterion_ids),
+      output_evidence_refs: cleanIds(item.output_evidence_refs),
+      attestor_type: item.attestor_type === 'trusted_verifier' ? 'trusted_verifier' : 'human',
+      attestor_id: typeof item.attestor_id === 'string' && item.attestor_id.trim() ? item.attestor_id.trim() : null
+    }))
+    .sort((left, right) => left.claim_id.localeCompare(right.claim_id));
+}
+
+function cleanContributionStatuses(values) {
+  return (Array.isArray(values) ? values : [])
+    .filter(
+      (item) =>
+        item &&
+        typeof item.contribution_id === 'string' &&
+        item.contribution_id.trim() &&
+        ['structurally_verified', 'accepted'].includes(item.status)
+    )
+    .map((item) => ({
+      contribution_id: item.contribution_id.trim(),
+      status: item.status,
+      output_keys: cleanIds(item.output_keys),
+      criterion_ids: cleanIds(item.criterion_ids),
+      version_ids: cleanIds(item.version_ids),
+      claim_ids: cleanIds(item.claim_ids),
+      accepted_claim_ids: cleanIds(item.accepted_claim_ids),
+      accepted_criterion_ids: cleanIds(item.accepted_criterion_ids),
+      missing_criterion_ids: cleanIds(item.missing_criterion_ids),
+      source_receipts: cleanIds(item.source_receipts),
+      evidence_refs: cleanIds(item.evidence_refs)
+    }))
+    .sort((left, right) => left.contribution_id.localeCompare(right.contribution_id));
+}
+
+function cleanAuthorityStatus(record) {
+  if (!Object.hasOwn(record || {}, 'authority_status')) return false;
+  const before = record.authority_status,
+    after = ['declared', 'structurally_verified', 'accepted'].includes(before) ? before : null;
+  if (before === after) return false;
+  if (after) record.authority_status = after;
+  else delete record.authority_status;
+  return true;
+}
+
+function cleanOptionalTextField(record, field) {
+  if (!Object.hasOwn(record || {}, field)) return false;
+  const before = record[field],
+    after = typeof before === 'string' && before.trim() ? before.trim() : null;
+  if (before === after) return false;
+  if (after) record[field] = after;
+  else delete record[field];
   return true;
 }
 

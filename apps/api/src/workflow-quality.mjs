@@ -78,7 +78,7 @@ function validateWorkstreamPlanning(workstream, context) {
     context.errors.push(issue('workflow_atomic_task_justification_required', tasks[0]?.id || workstream.id));
   if (!atomic) validateWorkstreamPhaseCoverage(workstream, tasks, software, context.errors);
   validateWorkstreamDependencyInputs(workstream, tasks, context);
-  for (const [index, task] of tasks.entries()) validateTaskPlanning(task, index, context);
+  for (const task of tasks) validateTaskPlanning(task, context);
   validateHandoffRoutes(tasks, context);
 }
 
@@ -208,7 +208,7 @@ function validateWorkstreamPhaseCoverage(workstream, tasks, software, errors) {
         errors.push(issue('workflow_default_phase_coverage_missing', workstream.id, { capability_tag: tag }));
 }
 
-function validateTaskPlanning(task, index, context) {
+function validateTaskPlanning(task, context) {
   if (!task.acceptance_criteria?.length) context.errors.push(issue('workflow_task_acceptance_required', task.id));
   if (!task.capability_tags?.length) context.errors.push(issue('workflow_task_capability_tags_required', task.id));
   if (typedInputsInvalid(task)) context.errors.push(issue('workflow_task_typed_inputs_invalid', task.id));
@@ -222,7 +222,6 @@ function validateTaskPlanning(task, index, context) {
   if (terminal && !(task.output_slots || []).some((slot) => slot.handoff !== false))
     context.errors.push(issue('workflow_task_handoff_output_required', task.id));
   const dependencyIds = deps(task);
-  if (index > 0 && !dependencyIds.length) context.errors.push(issue('workflow_task_dependency_flow_required', task.id));
   validateTaskDependencyInputs(task, dependencyIds, context);
 }
 

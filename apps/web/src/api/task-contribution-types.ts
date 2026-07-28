@@ -19,6 +19,7 @@ export type InputContribution = {
 };
 
 export type TaskInputEffect = {
+  claim_id?: string;
   input_key: string;
   version_ids: string[];
   effect: InputContribution['effect'];
@@ -33,6 +34,48 @@ export type TaskInputEffect = {
 
 export type TaskContextEffect = Omit<TaskInputEffect, 'input_key' | 'version_ids'> & {
   document_version_id: string;
+};
+
+export type EffectClaimStatus = {
+  claim_id: string;
+  source_type: 'input' | 'context';
+  input_key: string | null;
+  document_version_id: string | null;
+  contribution_id: string | null;
+  output_keys: string[];
+  criterion_ids: string[];
+  status: 'structurally_verified' | 'accepted';
+};
+
+export type EffectAcceptanceResult = {
+  claim_id: string;
+  status: 'accepted';
+  source_type: 'input' | 'context';
+  input_key: string | null;
+  document_version_id: string | null;
+  contribution_id: string | null;
+  source_receipts: string[];
+  output_key: string;
+  output_version_id: string | null;
+  output_content_sha256: string | null;
+  criterion_ids: string[];
+  output_evidence_refs: string[];
+  attestor_type: 'human' | 'trusted_verifier';
+  attestor_id: string | null;
+};
+
+export type ContributionStatus = {
+  contribution_id: string;
+  status: 'structurally_verified' | 'accepted';
+  output_keys: string[];
+  criterion_ids: string[];
+  version_ids: string[];
+  claim_ids: string[];
+  accepted_claim_ids: string[];
+  accepted_criterion_ids: string[];
+  missing_criterion_ids: string[];
+  source_receipts: string[];
+  evidence_refs: string[];
 };
 
 export type TaskHandoffRoute = {
@@ -57,7 +100,10 @@ export type TaskHandoffRoute = {
 
 export type TaskHandoffDiagnostics = {
   schema_version:
-    'aiws.task_handoff_diagnostics.v1' | 'aiws.task_handoff_diagnostics.v2' | 'aiws.task_handoff_diagnostics.v3';
+    | 'aiws.task_handoff_diagnostics.v1'
+    | 'aiws.task_handoff_diagnostics.v2'
+    | 'aiws.task_handoff_diagnostics.v3'
+    | 'aiws.task_handoff_diagnostics.v4';
   handoff_status: 'awaiting_execution' | 'incomplete' | 'ready';
   required_inputs: Array<{
     slot_key: string;
@@ -93,16 +139,13 @@ export type TaskHandoffDiagnostics = {
     coverage_policy: 'all' | 'any';
     version_ids: string[];
     satisfied: boolean;
+    accepted?: boolean | null;
+    contribution?: InputContribution | null;
   }>;
   input_effects?: TaskInputEffect[];
   context_effects?: TaskContextEffect[];
-  contribution_statuses?: Array<{
-    contribution_id: string;
-    status: 'structurally_verified' | 'accepted';
-    output_keys: string[];
-    criterion_ids: string[];
-    version_ids: string[];
-  }>;
+  contribution_statuses?: ContributionStatus[];
+  effect_claim_statuses?: EffectClaimStatus[];
   context_used: string[];
   context_not_used: InputDisposition[];
   semantic_gaps: ExecutionReason[];

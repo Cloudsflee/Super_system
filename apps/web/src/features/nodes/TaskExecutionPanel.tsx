@@ -9,7 +9,7 @@ import {
   ShieldCheck,
   X
 } from 'lucide-react';
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { api, json } from '../../api/client';
 import type { PullRequestIntentRecord, TaskExecutionDetails, TaskExecutionInput, TaskReadiness } from '../../api/types';
 import {
@@ -20,6 +20,7 @@ import {
   pullRequestStatusLabel
 } from '../../components/common/display-labels';
 import { useUi } from '../../state/ui';
+import { EffectClaimReview, type EffectClaimReviewItem } from './TaskEffectClaimReview';
 
 export function TaskExecutionPanel({ taskId, canWrite = true }: { taskId: string; canWrite?: boolean }) {
   const toast = useUi((state) => state.toast),
@@ -27,6 +28,7 @@ export function TaskExecutionPanel({ taskId, canWrite = true }: { taskId: string
   const [manualValues, setManualValues] = useState<Record<string, string>>({});
   const [manualUsage, setManualUsage] = useState<Record<string, string[]>>({});
   const [manualReasons, setManualReasons] = useState<Record<string, string>>({});
+  const [acceptedEffectClaims, setAcceptedEffectClaims] = useState<string[]>([]);
   const readiness = useQuery({
     queryKey: ['task-readiness', taskId],
     queryFn: () => api<TaskReadiness>(`/tasks/${taskId}/readiness`),
@@ -46,6 +48,9 @@ export function TaskExecutionPanel({ taskId, canWrite = true }: { taskId: string
     [value?.outputs]
   );
   const usageOptions = useMemo(() => manualUsageOptions(value), [value]);
+  const contributionReview = useMemo(() => effectClaimsForReview(value, candidates), [value, candidates]);
+  const contributionReviewRequired = execution?.context_snapshot?.schema_version === 'aiws.task_execution_context.v5';
+  useEffect(() => setAcceptedEffectClaims([]), [executionId]);
   async function refresh() {
     await Promise.all([readiness.refetch(), details.refetch()]);
   }
@@ -55,6 +60,7 @@ export function TaskExecutionPanel({ taskId, canWrite = true }: { taskId: string
   }
   async function decide(decision: 'approve' | 'reject') {
     if (!execution || !candidates.length) return;
+    const availableClaimIds = new Set(contributionReview.map((item) => item.claimId));
     await act(decision, () =>
       api(
         `/task-executions/${execution.id}/human-approve`,
@@ -65,7 +71,15 @@ export function TaskExecutionPanel({ taskId, canWrite = true }: { taskId: string
             expected_versions: candidates.map((item) => ({
               version_id: item.version?.id,
               content_sha256: item.version?.content_sha256
-            }))
+            })),
+            ...(contributionReviewRequired
+              ? {
+                  accepted_effect_claim_ids:
+                    decision === 'approve'
+                      ? acceptedEffectClaims.filter((claimId) => availableClaimIds.has(claimId))
+                      : []
+                }
+              : {})
           },
           decision === 'approve' ? '验收任务输出' : '退回任务输出'
         )
@@ -164,24 +178,22 @@ export function TaskExecutionPanel({ taskId, canWrite = true }: { taskId: string
             }
             onReasonChange={(id, reason) => setManualReasons((current) => ({ ...current, [id]: reason }))}
             onSubmit={() => void submitManual()}
+            submitLabel={contributionReviewRequired ? '提交候选输出' : '提交并验收'}
           />
         )}
       {canWrite && execution.status === 'awaiting_human' && candidates.length > 0 && (
-        <div className="task-checkpoint-actions">
-          <span>
-            <ShieldCheck size={15} />
-            <strong>{candidates.length} 项候选输出</strong>
-            <small>{candidates.map((item) => `${item.key}@${short(item.version?.id)}`).join(' · ')}</small>
-          </span>
-          <button className="button secondary danger" disabled={Boolean(busy)} onClick={() => void decide('reject')}>
-            <X size={14} />
-            退回
-          </button>
-          <button className="button primary" disabled={Boolean(busy)} onClick={() => void decide('approve')}>
-            <Check size={14} />
-            验收
-          </button>
-        </div>
+        <HumanOutputCheckpoint
+          candidates={candidates}
+          claims={contributionReviewRequired ? contributionReview : []}
+          acceptedClaimIds={acceptedEffectClaims}
+          busy={Boolean(busy)}
+          onClaimChange={(claimId, checked) =>
+            setAcceptedEffectClaims((current) =>
+              checked ? [...new Set([...current, claimId])] : current.filter((item) => item !== claimId)
+            )
+          }
+          onDecision={(decision) => void decide(decision)}
+        />
       )}
       {canWrite && execution.executor === 'repository_integrate' && intent && (
         <PullRequestCheckpoint intent={intent} busy={busy} onApprove={approvePullRequest} />
@@ -340,6 +352,92 @@ function outputDispositionReason(
   return item.reason;
 }
 
+function effectClaimsForReview(
+  value: TaskExecutionDetails | undefined,
+  candidates: TaskExecutionDetails['outputs']
+): EffectClaimReviewItem[] {
+  if (!value || value.task_execution.context_snapshot?.schema_version !== 'aiws.task_execution_context.v5') return [];
+  const candidateKeys = new Set(candidates.map((item) => item.key)),
+    claims = new Map<string, EffectClaimReviewItem>();
+  for (const effect of value.task_execution.input_effects || value.handoff.input_effects || []) {
+    if (!effect.claim_id || !effect.output_keys.some((key) => candidateKeys.has(key))) continue;
+    const input = value.inputs.find((item) => item.key === effect.input_key),
+      contributionMatches = !effect.contribution_id || effect.contribution_id === input?.contribution?.id;
+    claims.set(effect.claim_id, {
+      claimId: effect.claim_id,
+      effectLabel: effectLabel(effect.effect),
+      sourceLabel: `${effect.input_key} · ${executionInputSource(input?.source || 'input')}`,
+      statement: effect.statement,
+      outputKeys: effect.output_keys.filter((key) => candidateKeys.has(key)),
+      criterionIds: effect.criterion_ids || [],
+      required:
+        contributionMatches && (input?.application_policy === 'required' || input?.consumption_policy === 'must_use')
+    });
+  }
+  for (const effect of value.task_execution.context_effects || value.handoff.context_effects || []) {
+    if (!effect.claim_id || !effect.output_keys.some((key) => candidateKeys.has(key))) continue;
+    const document = value.context_documents?.find((item) => item.document_version_id === effect.document_version_id);
+    claims.set(effect.claim_id, {
+      claimId: effect.claim_id,
+      effectLabel: effectLabel(effect.effect),
+      sourceLabel: `${document?.title || document?.source_collection || '上下文'} · ${short(
+        effect.document_version_id
+      )}`,
+      statement: effect.statement,
+      outputKeys: effect.output_keys.filter((key) => candidateKeys.has(key)),
+      criterionIds: effect.criterion_ids || [],
+      required: document?.required === true || document?.consumption_policy === 'must_use'
+    });
+  }
+  return [...claims.values()].sort(
+    (left, right) => Number(right.required) - Number(left.required) || left.claimId.localeCompare(right.claimId)
+  );
+}
+
+function HumanOutputCheckpoint({
+  candidates,
+  claims,
+  acceptedClaimIds,
+  busy,
+  onClaimChange,
+  onDecision
+}: {
+  candidates: TaskExecutionDetails['outputs'];
+  claims: EffectClaimReviewItem[];
+  acceptedClaimIds: string[];
+  busy: boolean;
+  onClaimChange: (claimId: string, checked: boolean) => void;
+  onDecision: (decision: 'approve' | 'reject') => void;
+}) {
+  const missingRequiredClaim = claims.some((item) => item.required && !acceptedClaimIds.includes(item.claimId));
+  return (
+    <>
+      {claims.length > 0 && (
+        <EffectClaimReview claims={claims} acceptedClaimIds={acceptedClaimIds} onChange={onClaimChange} />
+      )}
+      <div className="task-checkpoint-actions">
+        <span>
+          <ShieldCheck size={15} />
+          <strong>{candidates.length} 项候选输出</strong>
+          <small>{candidates.map((item) => `${item.key}@${short(item.version?.id)}`).join(' · ')}</small>
+        </span>
+        <button className="button secondary danger" disabled={busy} onClick={() => onDecision('reject')}>
+          <X size={14} />
+          退回
+        </button>
+        <button
+          className="button primary"
+          disabled={busy || missingRequiredClaim}
+          onClick={() => onDecision('approve')}
+        >
+          <Check size={14} />
+          验收
+        </button>
+      </div>
+    </>
+  );
+}
+
 function ManualTaskCheckpoint({
   contract,
   manualValues,
@@ -350,7 +448,8 @@ function ManualTaskCheckpoint({
   onValueChange,
   onUsageChange,
   onReasonChange,
-  onSubmit
+  onSubmit,
+  submitLabel
 }: {
   contract: TaskExecutionDetails['contract'];
   manualValues: Record<string, string>;
@@ -362,6 +461,7 @@ function ManualTaskCheckpoint({
   onUsageChange: (key: string, id: string, checked: boolean) => void;
   onReasonChange: (id: string, reason: string) => void;
   onSubmit: () => void;
+  submitLabel: string;
 }) {
   const incompleteOutput = contract.expected_outputs.some((slot) => !(manualValues[slot.key] || '').trim()),
     used = new Set(Object.values(manualUsage).flat()),
@@ -427,7 +527,7 @@ function ManualTaskCheckpoint({
         ))}
       <button className="button primary" disabled={busy || incompleteOutput || invalidUsage} onClick={onSubmit}>
         <Check size={15} />
-        提交并验收
+        {submitLabel}
       </button>
     </div>
   );
@@ -550,9 +650,13 @@ function HandoffSummary({ value }: { value: TaskExecutionDetails }) {
       <small>未使用资产 {handoff.not_used_inputs.length}</small>
       <small>上下文 {handoff.context_used.length}</small>
       <small>导出 {handoff.exported_outputs.filter((item) => item.version_id).length}</small>
-      {['aiws.task_handoff_diagnostics.v2', 'aiws.task_handoff_diagnostics.v3'].includes(handoff.schema_version) && (
+      {[
+        'aiws.task_handoff_diagnostics.v2',
+        'aiws.task_handoff_diagnostics.v3',
+        'aiws.task_handoff_diagnostics.v4'
+      ].includes(handoff.schema_version) && (
         <>
-          {handoff.schema_version === 'aiws.task_handoff_diagnostics.v3' ? (
+          {['aiws.task_handoff_diagnostics.v3', 'aiws.task_handoff_diagnostics.v4'].includes(handoff.schema_version) ? (
             <>
               <small>
                 已验收贡献 {handoff.contribution_statuses?.filter((item) => item.status === 'accepted').length || 0}

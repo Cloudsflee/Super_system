@@ -1,6 +1,7 @@
 import { HttpError } from './http.mjs';
 import { contextReadReceiptsForExecution } from './task-context-consumption.mjs';
 import { normalizeIdList } from './task-handoff.mjs';
+import { effectClaimId } from '../../../packages/shared/src/task-effects.mjs';
 
 export const TASK_EFFECT_SCHEMA = 'aiws.task_effects.v1';
 export const CONTRIBUTION_TASK_EFFECT_SCHEMA = 'aiws.task_effects.v2';
@@ -224,6 +225,7 @@ function normalizeInputEffects(values, inputByKey, outputKeys, options) {
         verification_status: 'structurally_verified',
         source_receipts: inputSourceReceipts(options.execution, input, versionIds)
       });
+      effect.claim_id = effectClaimId({ input_key: inputKey, version_ids: versionIds, ...effect });
     }
     const key = `${inputKey}:${effect.contribution_id || ''}:${effect.effect}:${effect.output_keys.join(',')}:${(
       effect.criterion_ids || []
@@ -253,7 +255,7 @@ function normalizeContextEffects(values, receipts, outputKeys, options) {
       )}`;
     if (seen.has(key)) throw effectError('runner_context_effect_duplicate', { document_version_id: documentVersionId });
     seen.add(key);
-    result.push({
+    const normalized = {
       document_version_id: documentVersionId,
       ...effect,
       ...(options.contributionAware
@@ -264,7 +266,9 @@ function normalizeContextEffects(values, receipts, outputKeys, options) {
             )
           }
         : {})
-    });
+    };
+    if (options.contributionAware) normalized.claim_id = effectClaimId(normalized);
+    result.push(normalized);
   }
   return result.sort(compareEffects);
 }

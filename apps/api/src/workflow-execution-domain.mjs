@@ -4,6 +4,7 @@ import { HttpError } from './http.mjs';
 import { projectWorkflowExecutionStateInState } from './workflow-execution-projection.mjs';
 import { inspectWorkstreamDependencyHandoff, selectTaskOutputBindings } from './task-execution-context.mjs';
 import { taskHandoffDiagnostics } from './task-handoff.mjs';
+import { assertRequiredContributionAuthority } from './task-contribution-authority.mjs';
 import { normalizeWorkflowExecutorConfig } from './workflow-executor-config.mjs';
 import {
   isLegacyStrandedRetry,
@@ -389,6 +390,7 @@ export function completeTaskExecutionInState(state, taskExecutionId, { evidence 
       error: 'task_execution_outputs_incomplete',
       output_keys: missing.map((item) => item.key)
     });
+  assertRequiredContributionAuthority(execution);
   if (execution.executor === 'repository_integrate') assertIntegrationEvidence(state, execution, evidence);
   execution.evidence = executionEvidence(evidence || execution.evidence || {});
   transitionTaskExecutionInState(state, execution, 'completed', { reason: 'outputs_accepted' });

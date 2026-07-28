@@ -11,6 +11,7 @@ try {
   const { assetVersionConsumers, attestAssetVersionInState, ingestExecutionOutputsInState } =
     await import('../../apps/api/src/asset-attestation-service.mjs');
   const { normalizeTaskEffects } = await import('../../apps/api/src/task-effects.mjs');
+  const { resolveAttestationEffectClaims } = await import('../../apps/api/src/task-effect-claims.mjs');
   const { taskHandoffDiagnostics } = await import('../../apps/api/src/task-handoff.mjs');
   const { verifyContributionRoutes } = await import('../../apps/api/src/task-handoff.mjs');
   const { normalizeRunnerOutput, taskRunnerResultSchema } = await import('../../packages/shared/src/context-run.mjs');
@@ -236,6 +237,8 @@ try {
   );
   assert.equal(contributionEffects.schema_version, 'aiws.task_effects.v2');
   assert.equal(contributionEffects.inputEffects[0].verification_status, 'structurally_verified');
+  assert.match(contributionEffects.inputEffects[0].claim_id, /^ec_[a-f0-9]{24}$/);
+  assert.match(contributionEffects.contextEffects[0].claim_id, /^ec_[a-f0-9]{24}$/);
   assert.ok(contributionEffects.inputEffects[0].source_receipts.includes('asset_version:version-evidence-a'));
 
   const contributionSchema = taskRunnerResultSchema(contribution.execution.context_snapshot);
@@ -259,8 +262,26 @@ try {
   assert.equal(contribution.execution.effects_schema_version, 'aiws.task_effects.v2');
   assert.deepEqual(contribution.execution.consumed_inputs, []);
   assert.deepEqual(contribution.execution.structurally_verified_inputs, ['version-evidence-a', 'version-evidence-b']);
-  const contributionManifest = contributionIngested.outputs[0].version.provenance.handoff_manifest;
-  assert.equal(contributionManifest.schema_version, 'aiws.task_handoff.v3');
+  const contributionVersion = contributionIngested.outputs[0].version,
+    contributionManifest = contributionVersion.provenance.handoff_manifest;
+  assert.deepEqual(contributionVersion.provenance.consumed_inputs, []);
+  assert.deepEqual(contributionVersion.provenance.structurally_verified_inputs, [
+    'version-evidence-a',
+    'version-evidence-b'
+  ]);
+  assert.deepEqual(contributionVersion.provenance.consumed_context_document_versions, []);
+  assert.deepEqual(contributionVersion.provenance.structurally_verified_context_document_versions, [
+    'cdv-runtime-read'
+  ]);
+  assert.equal(contributionManifest.schema_version, 'aiws.task_handoff.v4');
+  assert.equal(contributionManifest.authority_status, 'structurally_verified');
+  assert.deepEqual(contributionManifest.source_snapshot.consumed_input_versions, []);
+  assert.deepEqual(contributionManifest.source_snapshot.structurally_verified_input_versions, [
+    'version-evidence-a',
+    'version-evidence-b'
+  ]);
+  assert.deepEqual(contributionManifest.relations, []);
+  assert.equal(contributionManifest.claimed_relations.length, 3);
   assert.equal(contributionManifest.delivery.routes[0].contribution_id, contribution.consumerContribution.id);
   assert.match(contributionManifest.delivery.routes[0].route_id, /^cr_[a-f0-9]{24}$/);
   const routeBinding = {
@@ -280,7 +301,51 @@ try {
   );
 
   const contributionCreated = contributionIngested.outputs[0];
-  await attestAssetVersionInState(contribution.state, {
+  const inputClaimId = contributionEffects.inputEffects[0].claim_id,
+    contextClaimId = contributionEffects.contextEffects[0].claim_id;
+  assert.throws(
+    () =>
+      resolveAttestationEffectClaims(contribution.execution, 'decision', {
+        decision: 'accepted',
+        attestorType: 'trusted_verifier',
+        acceptedEffectClaimIds: [],
+        outputVersion: contributionCreated.version,
+        evidence: {}
+      }),
+    (error) =>
+      error.payload?.error === 'task_effect_claim_evidence_required' && error.payload.output_evidence_required === true
+  );
+  assert.deepEqual(
+    resolveAttestationEffectClaims(contribution.execution, 'decision', {
+      decision: 'accepted',
+      attestorType: 'trusted_verifier',
+      acceptedEffectClaimIds: [],
+      outputVersion: contributionCreated.version,
+      evidence: { repository_sha: 'a'.repeat(40) }
+    }),
+    [contextClaimId, inputClaimId].sort()
+  );
+  await assert.rejects(
+    () =>
+      attestAssetVersionInState(contribution.state, {
+        assetId: contributionCreated.asset.id,
+        versionId: contributionCreated.version.id,
+        expectedSha256: contributionCreated.version.content_sha256,
+        taskExecutionId: contribution.execution.id,
+        outputKey: 'decision',
+        decision: 'accepted',
+        attestorType: 'human',
+        attestorId: 'owner-effects',
+        acceptedEffectClaimIds: []
+      }),
+    (error) =>
+      error.payload?.error === 'task_effect_claim_acceptance_required' &&
+      error.payload.missing_claim_ids.includes(inputClaimId) &&
+      error.payload.missing_claim_ids.includes(contextClaimId)
+  );
+  assert.deepEqual(contribution.execution.consumed_inputs, []);
+  assert.deepEqual(contribution.state.asset_relations, []);
+  const acceptedAttestation = await attestAssetVersionInState(contribution.state, {
     assetId: contributionCreated.asset.id,
     versionId: contributionCreated.version.id,
     expectedSha256: contributionCreated.version.content_sha256,
@@ -288,13 +353,40 @@ try {
     outputKey: 'decision',
     decision: 'accepted',
     attestorType: 'human',
-    attestorId: 'owner-effects'
+    attestorId: 'owner-effects',
+    acceptedEffectClaimIds: [inputClaimId, contextClaimId]
   });
   assert.deepEqual(contribution.execution.consumed_inputs, ['version-evidence-a', 'version-evidence-b']);
+  assert.deepEqual(contribution.execution.consumed_context_document_versions, ['cdv-runtime-read']);
+  assert.deepEqual(contribution.execution.accepted_effect_claim_ids, [contextClaimId, inputClaimId].sort());
+  assert.equal(acceptedAttestation.attestation.effect_acceptance_results.length, 2);
+  const acceptedInputClaim = acceptedAttestation.attestation.effect_acceptance_results.find(
+    (item) => item.claim_id === inputClaimId
+  );
+  assert.deepEqual(acceptedInputClaim.source_receipts, [
+    'asset_version:version-evidence-a',
+    'asset_version:version-evidence-b'
+  ]);
+  assert.equal(acceptedInputClaim.output_version_id, contributionCreated.version.id);
+  assert.equal(acceptedInputClaim.output_content_sha256, contributionCreated.version.content_sha256);
   assert.deepEqual(contribution.execution.accepted_contribution_ids, [contributionId]);
   assert.equal(contribution.execution.contribution_statuses[0].status, 'accepted');
+  assert.deepEqual(contribution.execution.contribution_statuses[0].accepted_criterion_ids, [criterionId]);
   assert.equal(contribution.state.asset_relations[0].contribution_id, contributionId);
+  assert.equal(contribution.state.asset_relations[0].effect_claim_id, inputClaimId);
   assert.equal(contribution.state.asset_relations[0].contribution_status, 'accepted');
+  assert.equal(contribution.state.asset_relations[0].attestation_id, acceptedAttestation.attestation.id);
+  assert.deepEqual(contribution.state.asset_relations[0].source_receipts, acceptedInputClaim.source_receipts);
+  const legacyContributionState = structuredClone(contribution.state),
+    legacyContributionExecution = legacyContributionState.task_executions.find(
+      (item) => item.id === contribution.execution.id
+    );
+  legacyContributionExecution.accepted_effect_claim_ids = [];
+  for (const effect of legacyContributionExecution.input_effects || []) delete effect.claim_id;
+  assert.equal(
+    assetVersionConsumers(legacyContributionState, 'version-evidence-a')[0].consumption_status,
+    'accepted_contribution'
+  );
 
   console.log('V2.0 task effect, contribution authority, Context receipt, handoff, and Runner tests passed');
 } finally {
@@ -494,6 +586,14 @@ function contributionState(state, normalizeInputContribution, withAcceptanceCrit
   producer.output_slots = structuredClone(outputSlots);
   fixture.execution.context_snapshot.schema_version = 'aiws.task_execution_context.v5';
   fixture.execution.context_snapshot.contract.expected_outputs = structuredClone(outputSlots);
+  fixture.execution.context_snapshot.system_context.document_versions = [
+    {
+      node_id: 'ctx-runtime-read',
+      document_version_id: 'cdv-runtime-read',
+      required: true,
+      consumption_policy: 'must_use'
+    }
+  ];
   for (const input of fixture.execution.context_snapshot.inputs) {
     const raw = {
       schema_version: 'aiws.input_contribution.v1',

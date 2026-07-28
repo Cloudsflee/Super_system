@@ -21,6 +21,7 @@ import {
   prepareTaskExecutionContext
 } from './task-execution-context.mjs';
 import { ensureContextProjection } from './context-service.mjs';
+import { effectClaimsForOutput, validateRequestedEffectClaims } from './task-effect-claims.mjs';
 import {
   appendExecutionEvent,
   completeTaskExecutionInState,
@@ -215,7 +216,8 @@ export async function submitTaskExecutionOutputs(
       verifierId: verifierId || verifierFor(execution.executor),
       actualEvidence: evidence
     });
-    if (manual && ingested.awaiting_human.length) {
+    const contributionReviewRequired = execution.context_snapshot?.schema_version === 'aiws.task_execution_context.v5';
+    if (manual && ingested.awaiting_human.length && !contributionReviewRequired) {
       for (const item of ingested.awaiting_human)
         await attestAssetVersionInState(state, {
           assetId: item.asset_id,
@@ -246,7 +248,10 @@ async function ensureTaskExecutionContextProjection(taskExecutionId) {
     await ensureContextProjection({ projectId: execution.project_id });
 }
 
-export async function approveTaskExecution(taskExecutionId, { decision, expectedVersions, actorId, summary = '' }) {
+export async function approveTaskExecution(
+  taskExecutionId,
+  { decision, expectedVersions, acceptedEffectClaimIds = [], actorId, summary = '' }
+) {
   return mutate(async (state) => {
     const execution = requireTaskExecution(state, taskExecutionId);
     if (execution.status !== 'awaiting_human')
@@ -255,8 +260,9 @@ export async function approveTaskExecution(taskExecutionId, { decision, expected
     const contract = state.node_contracts.find((item) => item.id === execution.contract_id),
       expected = Array.isArray(expectedVersions) ? expectedVersions : [];
     const humanSlots = (contract?.expected_outputs || []).filter(
-      (item) => item.confirmation_policy === 'human' && item.required !== false
-    );
+        (item) => item.confirmation_policy === 'human' && item.required !== false
+      ),
+      acceptedClaims = validateRequestedEffectClaims(execution, acceptedEffectClaimIds);
     const candidates = humanSlots.map((slot) => {
       const asset = state.assets.find(
           (item) =>
@@ -287,6 +293,9 @@ export async function approveTaskExecution(taskExecutionId, { decision, expected
         decision: decision === 'approve' ? 'accepted' : 'rejected',
         attestorType: 'human',
         attestorId: actorId,
+        acceptedEffectClaimIds: acceptedClaims.filter((claimId) =>
+          effectClaimsForOutput(execution, item.slot.key).some((effect) => effect.claim_id === claimId)
+        ),
         summary
       });
     if (decision === 'reject')

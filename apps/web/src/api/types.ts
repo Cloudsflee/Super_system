@@ -1,4 +1,7 @@
 import type {
+  ContributionStatus,
+  EffectAcceptanceResult,
+  EffectClaimStatus,
   ExecutionReason,
   InputContribution,
   InputDisposition,
@@ -8,6 +11,9 @@ import type {
 } from './task-contribution-types';
 
 export type {
+  ContributionStatus,
+  EffectAcceptanceResult,
+  EffectClaimStatus,
   ExecutionReason,
   InputContribution,
   InputDisposition,
@@ -347,11 +353,31 @@ export type TaskExecutionRecord = {
   effects_schema_version?: string;
   declared_consumed_inputs?: string[];
   structurally_verified_inputs?: string[];
+  structurally_verified_input_dispositions?: InputDisposition[];
+  declared_context_document_versions?: string[];
+  structurally_verified_context_document_versions?: string[];
+  structurally_verified_context_dispositions?: InputDisposition[];
+  authority_status?: 'declared' | 'structurally_verified' | 'accepted';
+  accepted_effect_claim_ids?: string[];
   accepted_contribution_ids?: string[];
+  effect_claim_statuses?: EffectClaimStatus[];
+  contribution_statuses?: ContributionStatus[];
   handoff_diagnostics?: TaskHandoffDiagnostics | null;
   context_snapshot?: {
     schema_version?: string;
+    contract?: NodeContract;
     inputs?: TaskExecutionInput[];
+    input_effect_obligations?: Array<{
+      input_key: string;
+      source: string;
+      required: boolean;
+      application_policy: 'required' | 'optional';
+      purpose?: string | null;
+      target_output_keys: string[];
+      coverage_policy: 'all' | 'any';
+      version_ids: string[];
+      contribution?: InputContribution | null;
+    }>;
     system_context?: {
       context_selection_id?: string | null;
       document_versions?: TaskContextDocumentVersion[];
@@ -479,6 +505,7 @@ export type ExecutionOutputBinding = {
   handoff?: boolean;
   consumer_hint?: string | null;
   handoff_manifest_sha256?: string | null;
+  accepted_effect_claim_ids?: string[];
   attestation_id?: string;
 };
 export type PullRequestIntentRecord = {
@@ -731,6 +758,8 @@ export type AssetAttestationRecord = {
   attestor_type: string;
   attestor_id: string;
   expected_sha256: string;
+  accepted_effect_claim_ids?: string[];
+  effect_acceptance_results?: EffectAcceptanceResult[];
   acceptance_results?: unknown[];
   evidence?: Record<string, unknown>;
   summary?: string;
@@ -769,6 +798,13 @@ export type AssetRelationRecord = {
   target_asset_version_id: string;
   input_snapshot_hash?: string | null;
   execution_id?: string | null;
+  contribution_id?: string | null;
+  effect_claim_id?: string | null;
+  criterion_ids?: string[];
+  contribution_status?: 'accepted' | string;
+  source_receipts?: string[];
+  output_evidence_refs?: string[];
+  attestation_id?: string | null;
 };
 export type SubmissionRecord = {
   id: string;

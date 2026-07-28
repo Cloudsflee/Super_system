@@ -13,6 +13,8 @@ import { normalizeTaskEffects } from './task-effects.mjs';
 import { recordAssetLineage } from './task-output-service.mjs';
 import { acceptanceCriterionId } from '../../../packages/shared/src/task-contributions.mjs';
 import { applyExecutionOutputUsage, updateAcceptedContributions } from './task-contribution-authority.mjs';
+import { effectClaimAcceptanceResults, resolveAttestationEffectClaims } from './task-effect-claims.mjs';
+import { executionOutputProvenance, executionOutputUsage } from './task-output-authority.mjs';
 
 export const TRUSTED_VERIFIERS = Object.freeze(
   new Set([
@@ -256,43 +258,6 @@ async function createExecutionOutputArtifact(
   return { asset, version, slot };
 }
 
-function executionOutputUsage(outputKey, consumption, contextConsumption, effects) {
-  return {
-    inputs: consumption.byOutput.get(outputKey) || [],
-    inputDispositions: consumption.byOutputDispositions.get(outputKey) || [],
-    context: contextConsumption.byOutput.get(outputKey) || [],
-    contextDispositions: contextConsumption.byOutputDispositions.get(outputKey) || [],
-    contextSelectionId: contextConsumption.selectionId,
-    contextSelectionIds: contextConsumption.selectionIdsByOutput.get(outputKey) || [],
-    inputEffects: effects?.inputEffectsByOutput.get(outputKey),
-    contextEffects: effects?.contextEffectsByOutput.get(outputKey)
-  };
-}
-
-function executionOutputProvenance(taskExecution, outputKey, usage, effects) {
-  const provenance = {
-    source: 'task_execution',
-    workflow_execution_id: taskExecution.workflow_execution_id,
-    task_execution_id: taskExecution.id,
-    executor: taskExecution.executor,
-    output_key: outputKey,
-    input_snapshot_hash: taskExecution.input_snapshot_hash,
-    consumed_inputs: usage.inputs,
-    input_dispositions: usage.inputDispositions,
-    context_selection_id: usage.contextSelectionId,
-    context_selection_ids: usage.contextSelectionIds,
-    consumed_context_document_versions: usage.context,
-    context_dispositions: usage.contextDispositions
-  };
-  if (effects)
-    Object.assign(provenance, {
-      effects_schema_version: effects.schema_version,
-      input_effects: usage.inputEffects || [],
-      context_effects: usage.contextEffects || []
-    });
-  return provenance;
-}
-
 async function attestSystemEvidenceOutputs(state, taskExecution, created, verifierId, actualEvidence) {
   for (const item of created.filter(({ slot }) => slot.confirmation_policy === 'system_evidence'))
     await attestAssetVersionInState(state, {
@@ -334,6 +299,7 @@ function normalizeAttestationInput(input) {
     outputKey: input.outputKey === undefined ? null : input.outputKey,
     decision: input.decision === undefined ? 'accepted' : input.decision,
     attestorType: input.attestorType === undefined ? 'human' : input.attestorType,
+    acceptedEffectClaimIds: normalizeIdList(input.acceptedEffectClaimIds),
     evidence: input.evidence === undefined ? {} : input.evidence,
     summary: input.summary === undefined ? '' : input.summary
   };
@@ -378,6 +344,7 @@ function resolveAttestationContext(state, input) {
   } else if (attestorType !== 'human') throw new HttpError(403, { error: 'human_attestor_required' });
   if (attestorType === 'trusted_verifier' && !TRUSTED_VERIFIERS.has(attestorId))
     throw new HttpError(403, { error: 'trusted_verifier_unknown' });
+  input.acceptedEffectClaimIds = resolveAttestationEffectClaims(execution, key, { ...input, outputVersion: version });
   return { asset, version, execution, key, slot, confirmationPolicy };
 }
 
@@ -397,7 +364,8 @@ function findExistingAttestation(state, context, input) {
       item.attestor_type === input.attestorType &&
       item.attestor_id === input.attestorId &&
       item.decision === input.decision &&
-      item.expected_sha256 === input.expectedSha256
+      item.expected_sha256 === input.expectedSha256 &&
+      JSON.stringify(item.accepted_effect_claim_ids || []) === JSON.stringify(input.acceptedEffectClaimIds || [])
   );
 }
 
@@ -425,6 +393,11 @@ function createAttestation(context, input, acceptanceResults) {
     attestor_type: input.attestorType,
     attestor_id: input.attestorId,
     expected_sha256: input.expectedSha256,
+    accepted_effect_claim_ids: [...(input.acceptedEffectClaimIds || [])],
+    effect_acceptance_results: effectClaimAcceptanceResults(execution, key, {
+      ...input,
+      outputVersion: version
+    }),
     acceptance_results: acceptanceResults,
     evidence: structuredClone(input.evidence || {}),
     summary: clean(input.summary, 4000),
@@ -457,6 +430,7 @@ function updateAttestedExecution(state, context, input, attestation, criteria, a
       handoff: slot?.handoff !== false,
       consumer_hint: slot?.consumer_hint || null,
       handoff_manifest_sha256: version.provenance?.handoff_manifest_sha256 || null,
+      accepted_effect_claim_ids: [...(attestation.accepted_effect_claim_ids || [])],
       attestation_id: attestation.id
     });
   execution.output_bindings = outputBindings;
@@ -487,8 +461,13 @@ export function assetVersionConsumers(state, versionId) {
     const matched = inputs.flatMap((item) => item.asset_versions || []).filter((item) => item.version_id === versionId);
     if (matched.length) {
       const effects = (execution.input_effects || []).filter((item) => (item.version_ids || []).includes(versionId)),
+        acceptedEffectClaimIds = new Set(execution.accepted_effect_claim_ids || []),
         acceptedContributionIds = new Set(execution.accepted_contribution_ids || []),
-        acceptedEffects = effects.filter((effect) => acceptedContributionIds.has(effect.contribution_id)),
+        acceptedEffects = effects.filter((effect) =>
+          effect.claim_id
+            ? acceptedEffectClaimIds.has(effect.claim_id)
+            : Boolean(effect.contribution_id && acceptedContributionIds.has(effect.contribution_id))
+        ),
         contributionAware = execution.effects_schema_version === 'aiws.task_effects.v2',
         consumed = contributionAware
           ? acceptedEffects.length > 0

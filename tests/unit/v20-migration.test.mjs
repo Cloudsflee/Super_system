@@ -100,14 +100,28 @@ const dirtyHandoffState = {
     {
       id: 'version-effect-migration',
       provenance: {
+        authority_status: 'structurally_verified',
+        declared_consumed_inputs: ['version-b', null, 'version-a'],
+        structurally_verified_inputs: ['version-b', null, 'version-a'],
+        declared_context_document_versions: ['context-version', null],
+        structurally_verified_context_document_versions: ['context-version', null],
+        structurally_verified_input_dispositions: [
+          { version_id: 'version-a', disposition: 'used', reason: 'Applied to output.' }
+        ],
+        structurally_verified_context_dispositions: [
+          { document_version_id: 'context-version', disposition: 'used', reason: 'Verified output.' }
+        ],
         input_effects: [
           {
+            claim_id: 'ec_111111111111111111111111',
             input_key: ' evidence ',
             version_ids: [null, 'version-b', 'version-a', 'version-a'],
             effect: 'constraint',
             output_keys: ['decision', null, 'decision'],
             statement: '  Evidence constrained the migrated decision.  ',
             evidence_refs: ['ref-b', null, 'ref-a'],
+            source_receipts: ['asset_version:version-b', 'asset_version:version-a'],
+            verification_status: 'structurally_verified',
             unknown_field: 'remove-me'
           }
         ]
@@ -140,6 +154,44 @@ const dirtyHandoffState = {
       consumed_inputs: [null, '', runtimeAsset.version.id],
       consumed_context_document_versions: [null, '', 'context-version-valid'],
       context_selection_ids: [null, '', 'selection-valid'],
+      structurally_verified_context_document_versions: [null, '', 'context-version-valid'],
+      accepted_effect_claim_ids: [null, '', 'ec_111111111111111111111111'],
+      accepted_contribution_ids: [null, '', 'ic_111111111111111111111111'],
+      effect_claim_statuses: [
+        {
+          claim_id: ' ec_111111111111111111111111 ',
+          source_type: 'input',
+          input_key: ' evidence ',
+          document_version_id: '',
+          contribution_id: ' ic_111111111111111111111111 ',
+          output_keys: ['decision', null],
+          criterion_ids: ['criterion-a', null],
+          status: 'accepted',
+          unknown_field: true
+        }
+      ],
+      contribution_statuses: [
+        {
+          contribution_id: ' ic_111111111111111111111111 ',
+          status: 'accepted',
+          output_keys: ['decision'],
+          criterion_ids: ['criterion-a'],
+          version_ids: ['version-a'],
+          claim_ids: ['ec_111111111111111111111111'],
+          accepted_claim_ids: ['ec_111111111111111111111111'],
+          accepted_criterion_ids: ['criterion-a'],
+          missing_criterion_ids: [],
+          source_receipts: ['asset_version:version-a'],
+          evidence_refs: ['ref-a'],
+          unknown_field: true
+        }
+      ],
+      output_bindings: [
+        {
+          key: 'decision',
+          accepted_effect_claim_ids: [null, 'ec_111111111111111111111111']
+        }
+      ],
       input_dispositions: [
         { version_id: null, disposition: 'used', reason: null },
         { version_id: runtimeAsset.version.id, disposition: 'used', reason: null }
@@ -150,6 +202,7 @@ const dirtyHandoffState = {
       ],
       input_effects: [
         {
+          claim_id: 'ec_111111111111111111111111',
           input_key: ' evidence ',
           version_ids: [null, 'version-a'],
           effect: 'basis',
@@ -161,6 +214,40 @@ const dirtyHandoffState = {
       ],
       context_effects: []
     }
+  ],
+  asset_attestations: [
+    {
+      id: 'attestation-effect-migration',
+      accepted_effect_claim_ids: [null, 'ec_111111111111111111111111'],
+      effect_acceptance_results: [
+        {
+          claim_id: ' ec_111111111111111111111111 ',
+          status: 'accepted',
+          source_type: 'input',
+          input_key: ' evidence ',
+          document_version_id: '',
+          contribution_id: ' ic_111111111111111111111111 ',
+          source_receipts: [null, 'asset_version:version-a'],
+          output_key: ' decision ',
+          output_version_id: ' version-output ',
+          output_content_sha256: ` ${'a'.repeat(64)} `,
+          criterion_ids: [null, 'criterion-a'],
+          output_evidence_refs: [null, 'commit:abc'],
+          attestor_type: 'trusted_verifier',
+          attestor_id: ' verifier '
+        }
+      ]
+    }
+  ],
+  asset_relations: [
+    {
+      id: 'relation-effect-migration',
+      criterion_ids: [null, 'criterion-a'],
+      source_receipts: [null, 'asset_version:version-a'],
+      output_evidence_refs: [null, 'commit:abc'],
+      effect_claim_id: ' ec_111111111111111111111111 ',
+      attestation_id: ' attestation-effect-migration '
+    }
   ]
 };
 normalizeTaskHandoffDefaultsV20(dirtyHandoffState);
@@ -168,6 +255,24 @@ const cleanedExecution = dirtyHandoffState.task_executions[0];
 assert.deepEqual(cleanedExecution.consumed_inputs, [runtimeAsset.version.id]);
 assert.deepEqual(cleanedExecution.consumed_context_document_versions, ['context-version-valid']);
 assert.deepEqual(cleanedExecution.context_selection_ids, ['selection-valid']);
+assert.deepEqual(cleanedExecution.structurally_verified_context_document_versions, ['context-version-valid']);
+assert.deepEqual(cleanedExecution.accepted_effect_claim_ids, ['ec_111111111111111111111111']);
+assert.deepEqual(cleanedExecution.accepted_contribution_ids, ['ic_111111111111111111111111']);
+assert.deepEqual(cleanedExecution.output_bindings[0].accepted_effect_claim_ids, ['ec_111111111111111111111111']);
+assert.deepEqual(cleanedExecution.effect_claim_statuses, [
+  {
+    claim_id: 'ec_111111111111111111111111',
+    source_type: 'input',
+    input_key: 'evidence',
+    document_version_id: null,
+    contribution_id: 'ic_111111111111111111111111',
+    output_keys: ['decision'],
+    criterion_ids: ['criterion-a'],
+    status: 'accepted'
+  }
+]);
+assert.equal(cleanedExecution.contribution_statuses[0].status, 'accepted');
+assert.deepEqual(cleanedExecution.contribution_statuses[0].accepted_criterion_ids, ['criterion-a']);
 assert.deepEqual(cleanedExecution.input_dispositions, [
   { version_id: runtimeAsset.version.id, disposition: 'used', reason: null }
 ]);
@@ -176,6 +281,7 @@ assert.deepEqual(cleanedExecution.context_dispositions, [
 ]);
 assert.deepEqual(cleanedExecution.input_effects, [
   {
+    claim_id: 'ec_111111111111111111111111',
     input_key: 'evidence',
     version_ids: ['version-a'],
     effect: 'basis',
@@ -185,13 +291,29 @@ assert.deepEqual(cleanedExecution.input_effects, [
   }
 ]);
 assert.deepEqual(dirtyHandoffState.asset_versions[0].provenance.input_effects[0], {
+  claim_id: 'ec_111111111111111111111111',
   input_key: 'evidence',
   version_ids: ['version-a', 'version-b'],
   effect: 'constraint',
   output_keys: ['decision'],
   statement: 'Evidence constrained the migrated decision.',
-  evidence_refs: ['ref-a', 'ref-b']
+  evidence_refs: ['ref-a', 'ref-b'],
+  source_receipts: ['asset_version:version-a', 'asset_version:version-b'],
+  verification_status: 'structurally_verified'
 });
+assert.deepEqual(dirtyHandoffState.asset_versions[0].provenance.structurally_verified_inputs, [
+  'version-a',
+  'version-b'
+]);
+assert.equal(dirtyHandoffState.asset_versions[0].provenance.authority_status, 'structurally_verified');
+assert.deepEqual(dirtyHandoffState.asset_attestations[0].accepted_effect_claim_ids, ['ec_111111111111111111111111']);
+assert.equal(dirtyHandoffState.asset_attestations[0].effect_acceptance_results[0].output_key, 'decision');
+assert.deepEqual(dirtyHandoffState.asset_attestations[0].effect_acceptance_results[0].output_evidence_refs, [
+  'commit:abc'
+]);
+assert.equal(dirtyHandoffState.asset_relations[0].effect_claim_id, 'ec_111111111111111111111111');
+assert.equal(dirtyHandoffState.asset_relations[0].attestation_id, 'attestation-effect-migration');
+assert.deepEqual(dirtyHandoffState.asset_relations[0].output_evidence_refs, ['commit:abc']);
 assert.deepEqual(dirtyHandoffState.node_runs[0].result_json.context_effects[0], {
   document_version_id: 'context-version',
   effect: 'verification',

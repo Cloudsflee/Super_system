@@ -231,6 +231,7 @@ async function humanApprove({ res, params, body }) {
   const result = await approveTaskExecution(params.id, {
     decision: body.decision,
     expectedVersions: body.expected_versions,
+    acceptedEffectClaimIds: body.accepted_effect_claim_ids,
     summary: body.summary,
     actorId: actor.id
   });

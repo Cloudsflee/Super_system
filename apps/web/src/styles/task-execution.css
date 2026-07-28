@@ -53,6 +53,65 @@
   min-width: 0;
 }
 
+.task-effect-review {
+  padding: 12px 14px;
+  display: grid;
+  gap: 9px;
+  border: 1px solid var(--line);
+  border-top: 0;
+  background: var(--surface);
+}
+
+.task-effect-review > header {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+
+.task-effect-review > header small {
+  margin-left: auto;
+  color: var(--muted);
+}
+
+.task-effect-review > div {
+  display: grid;
+}
+
+.task-effect-review label {
+  min-width: 0;
+  padding: 9px 0;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: start;
+  gap: 9px;
+  border-top: 1px solid var(--line);
+}
+
+.task-effect-review input {
+  margin-top: 2px;
+}
+
+.task-effect-review label > span {
+  min-width: 0;
+  display: grid;
+  gap: 3px;
+}
+
+.task-effect-review label small {
+  color: var(--muted);
+}
+
+.task-effect-review label span > span {
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+
+.task-effect-review code {
+  width: max-content;
+  max-width: 100%;
+  color: var(--muted);
+}
+
 .task-handoff-summary {
   display: flex;
   flex-wrap: wrap;

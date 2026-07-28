@@ -133,10 +133,19 @@ export function createExecutionOutputAssets(state, { actorId, project, task, wor
 export function recordAssetLineage(state, context, outputBindings, executionId = null) {
   const sources = uniqueBindings((context?.inputs || []).flatMap((item) => item.asset_versions || [])),
     sourceByVersion = new Map(sources.map((item) => [item.version_id, item])),
-    targets = uniqueBindings(outputBindings || []);
+    targets = uniqueBindings(outputBindings || []),
+    execution = state.task_executions?.find((item) => item.id === executionId),
+    contributionAware = execution?.effects_schema_version === 'aiws.task_effects.v2';
+  if (contributionAware)
+    state.asset_relations = (state.asset_relations || []).filter(
+      (item) => item.execution_id !== executionId || item.contribution_status !== 'accepted'
+    );
   for (const target of targets) {
     const targetVersion = state.asset_versions.find((item) => item.id === target.version_id),
-      declared = targetVersion?.provenance?.consumed_inputs,
+      acceptedEffects = acceptedInputEffects(targetVersion, target, execution),
+      declared = contributionAware
+        ? acceptedEffects.flatMap((effect) => effect.version_ids || [])
+        : targetVersion?.provenance?.consumed_inputs,
       consumedSources = Array.isArray(declared)
         ? uniqueBindings(declared.map((versionId) => sourceByVersion.get(versionId)).filter(Boolean))
         : sources;
@@ -144,9 +153,8 @@ export function recordAssetLineage(state, context, outputBindings, executionId =
       const declaredRelation = targetVersion?.provenance?.handoff_manifest?.relations?.find(
           (item) => item.version_id === source.version_id
         ),
-        contributionEffect = targetVersion?.provenance?.input_effects?.find((effect) =>
-          (effect.version_ids || []).includes(source.version_id)
-        ),
+        contributionEffect = acceptedEffects.find((effect) => (effect.version_ids || []).includes(source.version_id)),
+        effectAuthority = acceptedEffectAuthority(state, target, contributionEffect?.claim_id),
         relationType = ['derived_from', 'verified_against'].includes(declaredRelation?.type)
           ? declaredRelation.type
           : 'derived_from';
@@ -166,18 +174,40 @@ export function recordAssetLineage(state, context, outputBindings, executionId =
           target_asset_version_id: target.version_id,
           input_snapshot_hash: context?.input_snapshot_hash || null,
           execution_id: executionId,
-          ...(targetVersion?.provenance?.effects_schema_version === 'aiws.task_effects.v2'
-            ? {
-                contribution_id: contributionEffect?.contribution_id || null,
-                criterion_ids: [...(contributionEffect?.criterion_ids || [])],
-                contribution_status: 'accepted',
-                source_receipts: [...(contributionEffect?.source_receipts || [])]
-              }
-            : {}),
+          ...contributionAuthorityFields(targetVersion, target, contributionEffect, effectAuthority),
           created_at: new Date().toISOString()
         });
     }
   }
+}
+
+function contributionAuthorityFields(targetVersion, target, effect, authority) {
+  if (targetVersion?.provenance?.effects_schema_version !== 'aiws.task_effects.v2') return {};
+  return {
+    contribution_id: effect?.contribution_id || null,
+    effect_claim_id: effect?.claim_id || null,
+    criterion_ids: [...(effect?.criterion_ids || [])],
+    contribution_status: 'accepted',
+    source_receipts: [...(authority?.source_receipts || effect?.source_receipts || [])],
+    output_evidence_refs: [...(authority?.output_evidence_refs || [])],
+    attestation_id: target.attestation_id || null
+  };
+}
+
+function acceptedEffectAuthority(state, target, claimId) {
+  if (!claimId || !target.attestation_id) return null;
+  const attestation = state.asset_attestations?.find((item) => item.id === target.attestation_id);
+  return attestation?.effect_acceptance_results?.find((item) => item.claim_id === claimId) || null;
+}
+
+function acceptedInputEffects(targetVersion, target, execution) {
+  const acceptedClaims = new Set(target.accepted_effect_claim_ids || []),
+    acceptedContributions = new Set(execution?.accepted_contribution_ids || []);
+  return (targetVersion?.provenance?.input_effects || []).filter((effect) =>
+    effect.claim_id
+      ? acceptedClaims.has(effect.claim_id)
+      : Boolean(effect.contribution_id && acceptedContributions.has(effect.contribution_id))
+  );
 }
 
 export function latestTaskExecution(state, taskId) {
