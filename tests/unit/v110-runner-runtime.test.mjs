@@ -294,6 +294,10 @@ try {
     ),
     'const value = "new";'
   );
+  assert.equal(repositoryChanges.containsRepositorySecret("apiKey: 'sk-test-redacted'"), false);
+  assert.equal(repositoryChanges.containsRepositorySecret("token: 'fixture-placeholder-token'"), false);
+  assert.equal(repositoryChanges.containsRepositorySecret("apiKey: 'sk-proj-realisticvalue1234567890'"), true);
+  assert.equal(repositoryChanges.containsRepositorySecret("token: 'fixture-live-1234567890'"), true);
   const instruction = shared.buildRunnerInstruction({
     project: { title: 'Project', goal: 'Goal' },
     node: { title: 'Task' },

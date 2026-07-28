@@ -13,6 +13,13 @@ const SECRET_PATTERNS = [
   /\b(?:sk|rk)-[A-Za-z0-9_-]{20,}\b/,
   /(?:password|secret|token)\s*[:=]\s*['"][^'"]{8,}['"]/i
 ];
+const CREDENTIAL_LITERAL_PATTERN =
+  /\b[a-z0-9_-]*(?:token|password|passwd|secret|credential|api[_-]?key|access[_-]?key|refresh[_-]?key|private[_-]?key)\s*["']?\s*[:=]\s*(["'])([^"'\\\r\n]*)\1/gi;
+const SYNTHETIC_CREDENTIAL_WORDS = '(?:test|fake|dummy|example|sample|fixture|placeholder|redacted|masked)';
+const SYNTHETIC_CREDENTIAL_PATTERN = new RegExp(
+  `^(?:(?:sk|rk)[-_.])?${SYNTHETIC_CREDENTIAL_WORDS}(?:[-_.](?:${SYNTHETIC_CREDENTIAL_WORDS}|key|token|secret))*$`,
+  'i'
+);
 
 export async function finalizeRepositoryChangeInState(state, execution, line) {
   if (!line?.checkout_path) throw verifierError('repository_line_checkout_missing');
@@ -178,10 +185,26 @@ async function scanChangedFiles(root, files, committed = null) {
                 : ['diff', '--no-ext-diff', '--no-color', '--unified=0', 'HEAD', '--', file.path]
             )
           );
-    if (redactKnownSecretsSync(content) !== content || SECRET_PATTERNS.some((pattern) => pattern.test(content)))
-      findings.push(file.path);
+    if (containsRepositorySecret(content)) findings.push(file.path);
   }
   return findings;
+}
+
+export function containsRepositorySecret(content) {
+  const source = String(content || ''),
+    scanText = source.replace(CREDENTIAL_LITERAL_PATTERN, (match, _quote, value) =>
+      isClearlySyntheticCredential(value) ? 'aiws_fixture = true' : match
+    );
+  return redactKnownSecretsSync(scanText) !== scanText || SECRET_PATTERNS.some((pattern) => pattern.test(scanText));
+}
+
+function isClearlySyntheticCredential(value) {
+  const normalized = String(value || '').trim();
+  return (
+    /^\*{3,}$/.test(normalized) ||
+    /^\*{3}MASKED(?:_[A-Z_]+)?\*{3}$/i.test(normalized) ||
+    SYNTHETIC_CREDENTIAL_PATTERN.test(normalized)
+  );
 }
 
 export function addedDiffText(diff) {
