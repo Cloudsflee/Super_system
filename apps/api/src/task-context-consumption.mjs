@@ -393,9 +393,16 @@ function assertDeclaredContextAggregate(aggregate, declaredAggregate) {
 
 function runtimeReadSelections(state, execution, nodeRunId, initialSelectionId) {
   if (!nodeRunId) return [];
+  const recoverySource =
+      execution.recovery_source_node_run_id === nodeRunId && execution.recovery_source_task_execution_id
+        ? execution.recovery_source_task_execution_id
+        : null,
+    receiptTaskExecutionId = recoverySource || execution.id;
   const run = state.node_runs.find(
     (item) =>
-      item.id === nodeRunId && item.task_execution_id === execution.id && item.project_id === execution.project_id
+      item.id === nodeRunId &&
+      item.task_execution_id === receiptTaskExecutionId &&
+      item.project_id === execution.project_id
   );
   if (!run) throw new HttpError(409, { error: 'runner_context_run_invalid', node_run_id: nodeRunId });
   return state.context_selections.filter((selection) => {
@@ -404,7 +411,7 @@ function runtimeReadSelections(state, execution, nodeRunId, initialSelectionId) 
       runtime?.schema_version !== 'aiws.context_runtime_selection.v1' ||
       runtime.purpose !== 'mcp_read' ||
       runtime.run_id !== nodeRunId ||
-      runtime.task_execution_id !== execution.id ||
+      runtime.task_execution_id !== receiptTaskExecutionId ||
       runtime.initial_context_selection_id !== initialSelectionId ||
       selection.project_id !== execution.project_id ||
       !runtime.read_document_version_id
@@ -418,7 +425,7 @@ function runtimeReadSelections(state, execution, nodeRunId, initialSelectionId) 
       binding.project_id === execution.project_id &&
       binding.session_id === runtime.session_id &&
       binding.run_id === nodeRunId &&
-      binding.task_execution_id === execution.id &&
+      binding.task_execution_id === receiptTaskExecutionId &&
       binding.context_selection_id === initialSelectionId
     );
   });

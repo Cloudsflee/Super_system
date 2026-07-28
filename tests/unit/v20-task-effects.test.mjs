@@ -104,6 +104,22 @@ try {
   );
   assert.deepEqual(withContextReceipt.aggregateContext, ['cdv-runtime-read']);
   assert.deepEqual(withContextReceipt.selectionIds, ['csel-initial', 'csel-runtime-read']);
+  const recoveredExecution = {
+    ...structuredClone(execution),
+    id: 'execution-effects-retry',
+    recovery_source_task_execution_id: execution.id,
+    recovery_source_node_run_id: 'run-effects'
+  };
+  const recoveredContextReceipt = normalizeTaskEffects(
+    state,
+    recoveredExecution,
+    outputs,
+    [requiredEffect],
+    [contextEffect],
+    'run-effects'
+  );
+  assert.deepEqual(recoveredContextReceipt.aggregateContext, ['cdv-runtime-read']);
+  assert.deepEqual(recoveredContextReceipt.selectionIds, ['csel-initial', 'csel-runtime-read']);
 
   const ingested = await ingestExecutionOutputsInState(state, {
     taskExecution: execution,

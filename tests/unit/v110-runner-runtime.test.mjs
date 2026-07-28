@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { execFileSync } from 'node:child_process';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -212,6 +213,81 @@ try {
   assert.equal(taskExecutions.recoverablePartialRepositoryChangeRun(recoveryState, strandedRetry), recoveryRun);
   strandedRetry.task_id = 'different-task';
   assert.equal(taskExecutions.recoverablePartialRepositoryChangeRun(recoveryState, strandedRetry), null);
+  const recoveryRepository = path.join(root, 'committed-recovery');
+  fs.mkdirSync(recoveryRepository, { recursive: true });
+  git(recoveryRepository, ['init']);
+  fs.writeFileSync(path.join(recoveryRepository, 'change.mjs'), 'export const value = 1;\n');
+  git(recoveryRepository, ['add', 'change.mjs']);
+  git(recoveryRepository, [
+    '-c',
+    'user.name=Initial Author',
+    '-c',
+    'user.email=initial@example.test',
+    'commit',
+    '-m',
+    'initial'
+  ]);
+  const recoveryPreviousSha = git(recoveryRepository, ['rev-parse', 'HEAD']).trim();
+  fs.writeFileSync(path.join(recoveryRepository, 'change.mjs'), 'export const value = 2;\n');
+  git(recoveryRepository, ['add', 'change.mjs']);
+  git(recoveryRepository, [
+    '-c',
+    'user.name=AI Workspace',
+    '-c',
+    'user.email=aiws@local.invalid',
+    'commit',
+    '-m',
+    'feat(aiws): 恢复仓库变更'
+  ]);
+  const recoveryCommitSha = git(recoveryRepository, ['rev-parse', 'HEAD']).trim(),
+    recoveryLine = {
+      id: 'line-recovery',
+      workstream_id: 'workstream-recovery',
+      connection_id: 'connection-recovery',
+      checkout_path: recoveryRepository,
+      head_sha: recoveryPreviousSha,
+      branch: 'aiws/recovery'
+    },
+    recoveryTaskExecution = {
+      id: 'execution-recovery',
+      task_id: 'task-recovery',
+      workstream_id: recoveryLine.workstream_id,
+      workflow_execution_id: 'workflow-execution-recovery',
+      recovery_source_task_execution_id: 'execution-source',
+      recovery_source_node_run_id: 'run-source'
+    },
+    committedRecoveryState = {
+      delivery_policies: [
+        {
+          workstream_id: recoveryLine.workstream_id,
+          connection_id: recoveryLine.connection_id,
+          status: 'approved',
+          approved_at: '2026-07-28T00:00:00.000Z',
+          path_prefixes: ['.'],
+          automation_permissions: ['commit']
+        }
+      ],
+      workflow_nodes: [{ id: recoveryTaskExecution.task_id, title: '恢复仓库变更' }],
+      node_runs: [
+        {
+          id: 'run-source',
+          task_execution_id: 'execution-source',
+          status: 'failed',
+          result_json: {
+            _codex_process: { code: 0 },
+            outputs: [{ payload: { files: [{ path: 'change.mjs' }] } }]
+          }
+        }
+      ]
+    };
+  const recoveredCommit = await repositoryChanges.finalizeRepositoryChangeInState(
+    committedRecoveryState,
+    recoveryTaskExecution,
+    recoveryLine
+  );
+  assert.equal(recoveredCommit.commit_sha, recoveryCommitSha);
+  assert.equal(recoveryLine.head_sha, recoveryCommitSha);
+  assert.deepEqual(recoveredCommit.changed_files, [{ path: 'change.mjs', status: 'modified' }]);
   assert.equal(
     repositoryChanges.addedDiffText(
       'diff --git a/test.mjs b/test.mjs\n--- a/test.mjs\n+++ b/test.mjs\n@@ -1 +1 @@\n-const token = "old-fixture";\n+const value = "new";\n context'
@@ -328,4 +404,8 @@ function taskResult(status) {
     ],
     warnings: []
   };
+}
+
+function git(cwd, args) {
+  return execFileSync('git', args, { cwd, encoding: 'utf8', windowsHide: true });
 }

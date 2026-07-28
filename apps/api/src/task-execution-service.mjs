@@ -689,7 +689,8 @@ async function recoverPartialRepositoryChangeInState(
       declaredContextEffects: result.context_effects,
       actorId,
       verifierId: 'repository_change_verifier',
-      actualEvidence: evidence
+      actualEvidence: evidence,
+      nodeRunId: sourceRun.id
     });
   if (ingested.awaiting_human.length)
     throw new HttpError(409, { error: 'repository_change_partial_recovery_human_checkpoint' });

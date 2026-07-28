@@ -17,9 +17,11 @@ const SECRET_PATTERNS = [
 export async function finalizeRepositoryChangeInState(state, execution, line) {
   if (!line?.checkout_path) throw verifierError('repository_line_checkout_missing');
   const previousSha = line.head_sha;
-  await verifyRepositoryLineHead(line, previousSha);
   const policy = approvedPolicy(state, execution, line);
   if (!policy.automation_permissions?.includes('commit')) throw verifierError('repository_commit_permission_required');
+  const checkout = await verifyRepositoryLineHead(line, null);
+  if (checkout.repository_sha !== previousSha)
+    return recoverCommittedRepositoryChangeInState(state, execution, line, policy, previousSha, checkout);
   const changedFiles = await changedRepositoryFiles(line.checkout_path);
   if (!changedFiles.length) throw verifierError('repository_change_required');
   for (const file of changedFiles) assertDeliveryPath(policy, file.path);
@@ -45,8 +47,62 @@ export async function finalizeRepositoryChangeInState(state, execution, line) {
     120_000
   );
   const commitSha = await updateRepositoryLineHeadInState(state, line, previousSha);
-  const verified = await verifyRepositoryLineHead(line, commitSha, { requireClean: true });
-  const payload = await repositoryPayload(line, execution, previousSha, commitSha, changedFiles);
+  return verifiedRepositoryChange(line, execution, previousSha, commitSha, changedFiles);
+}
+
+async function recoverCommittedRepositoryChangeInState(state, execution, line, policy, previousSha, checkout) {
+  const sourceRun = state.node_runs.find(
+    (item) =>
+      item.id === execution.recovery_source_node_run_id &&
+      item.task_execution_id === execution.recovery_source_task_execution_id &&
+      item.status === 'failed' &&
+      Number(item.result_json?._codex_process?.code) === 0 &&
+      !item.result_json?._codex_process?.failure_code
+  );
+  if (!sourceRun || !checkout.clean)
+    throw verifierError('repository_recovery_commit_untrusted', {
+      expected_sha: previousSha,
+      actual_sha: checkout.repository_sha
+    });
+  const task = state.workflow_nodes.find((item) => item.id === execution.task_id),
+    [author, email, subject, parents] = splitZero(
+      await git(line.checkout_path, ['show', '-s', '--format=%an%x00%ae%x00%s%x00%P', checkout.repository_sha])
+    ).map((item) => item.trim()),
+    expectedSubject = `feat(aiws): ${clean(task?.title || execution.task_id, 100)}`;
+  if (
+    author !== 'AI Workspace' ||
+    email !== 'aiws@local.invalid' ||
+    subject !== expectedSubject ||
+    parents !== previousSha
+  )
+    throw verifierError('repository_recovery_commit_untrusted', {
+      expected_sha: previousSha,
+      actual_sha: checkout.repository_sha
+    });
+  const changedFiles = await committedRepositoryFiles(line.checkout_path, previousSha, checkout.repository_sha),
+    declaredPaths = new Set(
+      (sourceRun.result_json?.outputs || []).flatMap((output) =>
+        (output.payload?.files || []).map((file) => String(file?.path || '').replaceAll('\\', '/'))
+      )
+    );
+  if (!changedFiles.length || changedFiles.some((file) => !declaredPaths.has(file.path)))
+    throw verifierError('repository_recovery_changed_path_mismatch', {
+      changed_paths: changedFiles.map((file) => file.path),
+      declared_paths: [...declaredPaths]
+    });
+  for (const file of changedFiles) assertDeliveryPath(policy, file.path);
+  const secretFiles = await scanChangedFiles(line.checkout_path, changedFiles, {
+    previousSha,
+    commitSha: checkout.repository_sha
+  });
+  if (secretFiles.length) throw verifierError('repository_secret_scan_failed', { files: secretFiles });
+  const commitSha = await updateRepositoryLineHeadInState(state, line, previousSha);
+  return verifiedRepositoryChange(line, execution, previousSha, commitSha, changedFiles);
+}
+
+async function verifiedRepositoryChange(line, execution, previousSha, commitSha, changedFiles) {
+  const verified = await verifyRepositoryLineHead(line, commitSha, { requireClean: true }),
+    payload = await repositoryPayload(line, execution, previousSha, commitSha, changedFiles);
   return {
     repository_sha: commitSha,
     commit_sha: commitSha,
@@ -76,7 +132,27 @@ async function changedRepositoryFiles(root) {
   );
 }
 
-async function scanChangedFiles(root, files) {
+async function committedRepositoryFiles(root, previousSha, commitSha) {
+  const entries = splitZero(
+    await git(root, ['diff', '--name-status', '--no-renames', '-z', previousSha, commitSha, '--'])
+  );
+  if (entries.length % 2 !== 0) throw verifierError('repository_committed_diff_invalid');
+  const files = [];
+  for (let index = 0; index < entries.length; index += 2) {
+    const status = entries[index],
+      file = entries[index + 1];
+    if (!/^[AMDT]$/.test(status) || !file || /[\0\r\n]/.test(file) || path.isAbsolute(file))
+      throw verifierError('repository_committed_diff_invalid');
+    files.push({
+      path: file.replaceAll('\\', '/'),
+      status: status === 'A' ? 'added' : status === 'D' ? 'deleted' : 'modified'
+    });
+  }
+  if (files.length > 2_000) throw verifierError('repository_changed_file_limit_exceeded');
+  return files;
+}
+
+async function scanChangedFiles(root, files, committed = null) {
   const findings = [];
   for (const file of files.filter((item) => item.status !== 'deleted')) {
     const target = path.resolve(root, file.path),
@@ -86,7 +162,21 @@ async function scanChangedFiles(root, files) {
       file.status === 'added'
         ? await fsp.readFile(target, 'utf8').catch(() => '')
         : addedDiffText(
-            await git(root, ['diff', '--no-ext-diff', '--no-color', '--unified=0', 'HEAD', '--', file.path])
+            await git(
+              root,
+              committed
+                ? [
+                    'diff',
+                    '--no-ext-diff',
+                    '--no-color',
+                    '--unified=0',
+                    committed.previousSha,
+                    committed.commitSha,
+                    '--',
+                    file.path
+                  ]
+                : ['diff', '--no-ext-diff', '--no-color', '--unified=0', 'HEAD', '--', file.path]
+            )
           );
     if (redactKnownSecretsSync(content) !== content || SECRET_PATTERNS.some((pattern) => pattern.test(content)))
       findings.push(file.path);
