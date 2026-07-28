@@ -358,12 +358,12 @@ export function revokeProjectMembershipInState(state, projectId, userId, actorId
 
 /** Route-level ACL used by both HTTP dispatch and MCP registry invocation. */
 export async function authorizeApiRoute(route, ctx, { state = null, strict = false } = {}) {
-  const projectId = await resolveProjectIdForContext(route, ctx, state);
+  const snapshot = state || (await (await import('./state.mjs')).readStateSnapshot()),
+    projectId = await resolveProjectIdForContext(route, ctx, snapshot);
   if (route.pattern === '/project-invitations/:id/accept')
     return { project_id: projectId, actor_id: requestSubjectUserId(ctx.req || {}) };
   if (!projectId || !isProjectRoute(route.pattern))
     return { project_id: projectId, actor_id: requestSubjectUserId(ctx.req || {}) };
-  const snapshot = state || (await (await import('./state.mjs')).readState());
   const actor = actorForRequest(snapshot, ctx.req || {}, { strict });
   if (!actor) throw new HttpError(401, { error: 'authentication_required' });
   const approval =

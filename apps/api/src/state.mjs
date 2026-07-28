@@ -96,7 +96,7 @@ export async function ensureRuntime() {
   removeRetiredRuntimeRecords(state, changes);
   if ((await promoteLegacyExecutionHistoryInState(state)).changed) changes.value = true;
   const reconciled = reconcileContextProjectionState(state, { sourceCollections: collections, timestamp: now() });
-  if (reconciled.dirty) changes.value = true;
+  if (reconciled.dirty || reconciled.pruned_jobs) changes.value = true;
   const projection = await materializeContextDocumentsInState(state);
   if (projection.materialized || projection.reused || projection.failed) changes.value = true;
   if (pruneExpiredContextVersions(state)) changes.value = true;
@@ -504,6 +504,24 @@ function bootstrapState() {
 export async function readState() {
   return JSON.parse(await fsp.readFile(STATE_FILE, 'utf8'));
 }
+
+let stateSnapshotCache = null;
+
+export async function readStateSnapshot() {
+  const before = await fsp.stat(STATE_FILE),
+    signature = stateFileSignature(before);
+  if (stateSnapshotCache?.signature === signature) return stateSnapshotCache.state;
+
+  const serialized = await fsp.readFile(STATE_FILE, 'utf8'),
+    after = await fsp.stat(STATE_FILE),
+    stableSignature = stateFileSignature(after);
+  if (signature !== stableSignature) return readStateSnapshot();
+
+  const state = JSON.parse(serialized);
+  stateSnapshotCache = { signature: stableSignature, state };
+  return state;
+}
+
 export async function writeState(state) {
   normalizeState18Compatibility(state, collections);
   ensureProjectGovernanceDefaults(state);
@@ -521,6 +539,7 @@ export async function writeState(state) {
     await handle.close();
   }
   await replaceStateFile(tmp, STATE_FILE);
+  stateSnapshotCache = null;
 }
 export function lastStateMigration() {
   return lastMigration ? { ...lastMigration, state: undefined } : null;
@@ -553,6 +572,10 @@ function pruneExpiredContextVersions(state) {
     changed = retained.length !== (state.context_document_versions || []).length;
   if (changed) state.context_document_versions = retained;
   return changed;
+}
+
+function stateFileSignature(stat) {
+  return `${stat.dev}:${stat.ino}:${stat.size}:${stat.mtimeMs}`;
 }
 
 export function owner(state) {

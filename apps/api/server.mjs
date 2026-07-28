@@ -12,7 +12,7 @@ import {
   safeReadStream,
   send
 } from './src/http.mjs';
-import { ensureRuntime } from './src/state.mjs';
+import { ensureRuntime, readStateSnapshot } from './src/state.mjs';
 import { attachTerminalWebSocket } from './src/terminal-service.mjs';
 import {
   attachDeletedSessionSweeper,
@@ -21,7 +21,6 @@ import {
 } from './src/assist-v3-service.mjs';
 import { AIWS_VERSION } from '../../packages/shared/index.mjs';
 import { computeSetupStatus, isSetupExempt } from './src/setup-status.mjs';
-import { readState } from './src/state.mjs';
 import { redactKnownSecretsSync } from './src/vault.mjs';
 import { attachContainerShutdown, cleanupStaleContainers } from './src/container-runtime.mjs';
 import { attachHostBridgeWebSocket } from './src/host-bridge-service.mjs';
@@ -94,8 +93,9 @@ const server = http.createServer(async (req, res) => {
     if (await serveStatic(req, res, pathname)) return;
     if (req.method === 'GET' && String(req.headers.accept || '').includes('text/html') && isSpaPath(pathname))
       return serveStatic(req, res, '/');
+    const requestState = isApiRequest(pathname, routePath) ? await readStateSnapshot() : null;
     if (process.env.AIWS_BYPASS_SETUP !== '1' && !isSetupExempt(routePath) && isApiRequest(pathname, routePath)) {
-      const status = computeSetupStatus(await readState());
+      const status = computeSetupStatus(requestState);
       if (!status.complete) return send(res, 403, { error: 'setup_required', setup: status });
     }
     const subjectUserId = requestSubjectUserId(req);
@@ -105,7 +105,7 @@ const server = http.createServer(async (req, res) => {
         res,
         pathname: routePath,
         query: searchParamsObject(parsed.searchParams),
-        authorize: (route, context) => authorizeApiRoute(route, context, { strict: false })
+        authorize: (route, context) => authorizeApiRoute(route, context, { strict: false, state: requestState })
       })
     );
     if (!handled && req.method === 'GET' && isSpaPath(pathname)) return serveStatic(req, res, '/');

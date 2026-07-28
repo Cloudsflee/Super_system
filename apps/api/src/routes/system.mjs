@@ -1,6 +1,6 @@
 import { command, makeRoute, send } from '../http.mjs';
 import { ROOT } from '../config.mjs';
-import { addTrace, mutate, owner, readState } from '../state.mjs';
+import { addTrace, mutate, owner, readState, readStateSnapshot } from '../state.mjs';
 import { AIWS_VERSION, createLocalOwner, now, pick } from '../../../../packages/shared/index.mjs';
 import { inspectCodexRuntimeCached, selectedCodexRuntimeImage } from '../codex-runtime-status.mjs';
 import { dataDirectoryReady, deploymentStatus } from '../deployment-status.mjs';
@@ -11,7 +11,7 @@ import { accessibleProjectIds, actorForRequest } from '../project-governance-v19
 export const systemRoutes = [
   makeRoute('GET', '/health', async ({ res, query }) => {
     if (query.gc === '1' && process.env.NODE_ENV === 'test') global.gc?.();
-    const state = await readState();
+    const state = await readStateSnapshot();
     const git = command('git', ['--version'], ROOT, 3000);
     const codex = command('codex', ['--version'], ROOT, 3000);
     const runtime = await inspectCodexRuntimeCached({ image: selectedCodexRuntimeImage(state) });
@@ -46,7 +46,7 @@ export const systemRoutes = [
     });
   }),
   makeRoute('GET', '/system/deployment', async ({ res }) => {
-    const state = await readState();
+    const state = await readStateSnapshot();
     const runtime = await inspectCodexRuntimeCached({ image: selectedCodexRuntimeImage(state) });
     const deployment = deploymentStatus({ dockerReady: runtime.docker.ok });
     deployment.capabilities = {
@@ -57,7 +57,7 @@ export const systemRoutes = [
     return send(res, 200, deployment);
   }),
   makeRoute('GET', '/account/me', async ({ req, res }) => {
-    const state = await readState();
+    const state = await readStateSnapshot();
     const user = actorForRequest(state, req, { strict: Boolean(req.auth?.clientId) });
     const accounts = state.connected_accounts.filter((item) => item.user_id === user.id).map(publicAccount);
     return send(res, 200, {

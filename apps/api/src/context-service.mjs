@@ -2,7 +2,6 @@ import fsp from 'node:fs/promises';
 import path from 'node:path';
 
 import {
-  CONTEXT_INTERNAL_COLLECTIONS,
   buildContextSearchIndex,
   compactContextMap,
   compareContextNodes,
@@ -21,7 +20,7 @@ import {
   upsertContextPolicy
 } from '../../../packages/system-context/src/index.mjs';
 import { id, now } from '../../../packages/shared/index.mjs';
-import { collections as STATE_COLLECTIONS, CONTEXT_INDEX_DIR } from './config.mjs';
+import { CONTEXT_INDEX_DIR } from './config.mjs';
 import { HttpError } from './http.mjs';
 import { readCasBlob } from './asset-cas.mjs';
 import {
@@ -43,7 +42,14 @@ import {
   createRuntimeSearchSelection,
   runtimeContextBinding
 } from './context-runtime-selection.mjs';
-import { mutate, readState } from './state.mjs';
+import {
+  contextProjectionReusable,
+  contextProjectionScopeKey,
+  contextSourceCollections,
+  markContextProjectionScopeVerified
+} from './context-projection-cache.mjs';
+import { semanticFilters, semanticLabel, semanticRoute } from './context-semantic-state.mjs';
+import { mutate, readStateSnapshot } from './state.mjs';
 
 export { compactRuntimeMap, loadContextSelectionDocumentsInState } from './context-runtime-selection.mjs';
 
@@ -59,11 +65,27 @@ export async function ensureContextProjection({
   force = false
 } = {}) {
   const projectIds = allowedProjectIds == null ? null : [...allowedProjectIds].map(String),
-    systemNodeIds = allowedSystemNodeIds == null ? null : [...allowedSystemNodeIds].map(String);
+    systemNodeIds = allowedSystemNodeIds == null ? null : [...allowedSystemNodeIds].map(String),
+    scope = contextProjectionScopeKey({ projectId, nodeIds, projectIds, systemNodeIds }),
+    snapshot = await readStateSnapshot();
+  if (
+    !force &&
+    contextProjectionReusable(
+      snapshot,
+      scope,
+      collectProjectionFailures(snapshot, {
+        projectId,
+        nodeIds,
+        allowedProjectIds: projectIds,
+        allowedSystemNodeIds: systemNodeIds
+      })
+    )
+  )
+    return { attempted: 0, materialized: 0, reused: 0, failed: 0, failures: [], cached: true };
   const outcome = await mutate(async (state) => {
     await refreshContextResourcesInState(state, { projectId, projectIds });
     reconcileContextProjectionState(state, {
-      sourceCollections: sourceCollections(state),
+      sourceCollections: contextSourceCollections(state),
       timestamp: now(),
       force
     });
@@ -75,7 +97,7 @@ export async function ensureContextProjection({
       force
     });
   });
-  const state = await readState(),
+  const state = await readStateSnapshot(),
     failures = collectProjectionFailures(state, {
       projectId,
       nodeIds,
@@ -88,6 +110,7 @@ export async function ensureContextProjection({
       retryable: failures.some((item) => Number(item.job?.attempts || 0) < 3),
       nodes: failures.slice(0, 50)
     });
+  markContextProjectionScopeVerified(state, scope);
   return outcome;
 }
 
@@ -99,7 +122,7 @@ export async function getContextMap(input = {}, request = {}) {
     allowedProjectIds: projectionProjectIds(initialActorContext, projectId),
     allowedSystemNodeIds: projectionSystemNodeIds(initialActorContext, projectId)
   });
-  const state = await readState(),
+  const state = await readStateSnapshot(),
     actorContext = await contextActor(request, projectId, state),
     nodes = visibleContextNodes(state, actorContext, projectId),
     nodeIds = new Set(nodes.map((node) => node.id)),
@@ -136,7 +159,7 @@ export async function searchContext(input = {}, request = {}) {
     allowedProjectIds: projectionProjectIds(initialActorContext, projectId),
     allowedSystemNodeIds: projectionSystemNodeIds(initialActorContext, projectId)
   });
-  const state = await readState(),
+  const state = await readStateSnapshot(),
     actorContext = await contextActor(request, projectId, state),
     visible = visibleContextNodes(state, actorContext, projectId).filter((node) => node.status === 'active'),
     index = await contextIndex(state),
@@ -214,7 +237,7 @@ export async function searchContext(input = {}, request = {}) {
 }
 
 export async function readContextNode(nodeId, input = {}, request = {}) {
-  const initial = await readState(),
+  const initial = await readStateSnapshot(),
     initialNode = initial.context_nodes.find((node) => node.id === nodeId);
   if (!initialNode) throw new HttpError(404, { error: 'context_node_not_found' });
   const initialActorContext = await contextActor(request, initialNode.project_id, initial);
@@ -226,7 +249,7 @@ export async function readContextNode(nodeId, input = {}, request = {}) {
     allowedProjectIds: projectionProjectIds(initialActorContext, initialNode.project_id),
     allowedSystemNodeIds: projectionSystemNodeIds(initialActorContext, initialNode.project_id)
   });
-  let state = await readState();
+  let state = await readStateSnapshot();
   const runtimeBinding = runtimeContextBinding(state, request),
     runtimeApproval = runtimeBinding
       ? await createRuntimeReadSelection({
@@ -237,7 +260,7 @@ export async function readContextNode(nodeId, input = {}, request = {}) {
           approvedSelectionId: optionalString(input.selection_id)
         })
       : null;
-  state = runtimeApproval ? await readState() : state;
+  state = runtimeApproval ? await readStateSnapshot() : state;
   const node = state.context_nodes.find((item) => item.id === nodeId),
     actorContext = await contextActor(request, node.project_id, state);
   assertNodeVisible(node, actorContext);
@@ -319,7 +342,7 @@ export async function createSelection(input = {}, request = {}) {
     search = input.query
       ? await searchContext(input, { ...request, skipRuntimeSelection: true })
       : { candidate_node_ids: normalizeArray(input.candidate_node_ids) };
-  const projectionState = await readState(),
+  const projectionState = await readStateSnapshot(),
     policy = findContextPolicy(projectionState, {
       actorId: actorContext.actor.id,
       sessionId: optionalString(input.session_id),
@@ -359,7 +382,7 @@ export async function createSelection(input = {}, request = {}) {
 }
 
 export async function getSelection(selectionId, request = {}) {
-  const state = await readState(),
+  const state = await readStateSnapshot(),
     selection = state.context_selections.find((item) => item.id === selectionId);
   if (!selection) throw new HttpError(404, { error: 'context_selection_not_found' });
   const actorContext = await contextActor(request, selection.project_id, state);
@@ -388,7 +411,7 @@ export async function getSelection(selectionId, request = {}) {
 export async function getContextPolicy(input = {}, request = {}) {
   const projectId = optionalString(input.project_id),
     actorContext = await contextActor(request, projectId),
-    state = await readState();
+    state = await readStateSnapshot();
   return publicPolicy(
     findContextPolicy(state, {
       actorId: actorContext.actor.id,
@@ -434,7 +457,7 @@ export async function putContextPolicy(input = {}, request = {}) {
 }
 
 export async function contextStatus(request = {}) {
-  const state = await readState(),
+  const state = await readStateSnapshot(),
     actorContext = await contextActor(request, null, state);
   requireContextAdmin(state, actorContext);
   const jobsByStatus = Object.fromEntries(
@@ -457,13 +480,13 @@ export async function contextStatus(request = {}) {
 }
 
 export async function rebuildContext(request = {}) {
-  const state = await readState(),
+  const state = await readStateSnapshot(),
     actorContext = await contextActor(request, null, state);
   requireContextAdmin(state, actorContext);
   indexCache = null;
   await fsp.rm(INDEX_FILE, { force: true }).catch(() => undefined);
   const projection = await ensureContextProjection({ force: true });
-  const rebuiltState = await readState();
+  const rebuiltState = await readStateSnapshot();
   await contextIndex(rebuiltState, { force: true });
   return { rebuilt: true, projection, index: indexStatus, completed_at: now() };
 }
@@ -472,7 +495,7 @@ export async function reportBrowserSemanticState(input = {}, request = {}) {
   const projectId = optionalString(input.project_id),
     actorContext = await contextActor(request, projectId),
     selectedNodeId = optionalString(input.selected_node_id),
-    state = await readState();
+    state = await readStateSnapshot();
   if (selectedNodeId) {
     const selected = state.context_nodes.find((node) => node.id === selectedNodeId);
     assertNodeVisible(selected, actorContext);
@@ -639,7 +662,7 @@ async function contextIndex(state, { force = false } = {}) {
 
 async function contextProjectId(input, request) {
   const explicit = optionalString(input?.project_id),
-    state = await readState(),
+    state = await readStateSnapshot(),
     binding = runtimeContextBinding(state, request),
     allowlist = contextRequestProjectAllowlist(request);
   if (binding) {
@@ -657,7 +680,7 @@ async function contextProjectId(input, request) {
 }
 
 async function contextActor(request, projectId = null, suppliedState = null) {
-  const state = suppliedState || (await readState()),
+  const state = suppliedState || (await readStateSnapshot()),
     actor = actorForRequest(state, request.req || request, { strict: false }),
     scopes = contextRequestScopes(request),
     allowlist = contextRequestProjectAllowlist(request),
@@ -942,10 +965,6 @@ function mapSnapshotHash(nodes) {
   );
 }
 
-function sourceCollections(state) {
-  return STATE_COLLECTIONS.filter((name) => Array.isArray(state[name]) && !CONTEXT_INTERNAL_COLLECTIONS.includes(name));
-}
-
 function normalizeArray(value) {
   if (!Array.isArray(value)) return [];
   return [...new Set(value.map((item) => String(item || '').trim()).filter(Boolean))];
@@ -959,39 +978,4 @@ function optionalString(value) {
 function bounded(value, fallback, minimum, maximum) {
   const number = Number(value);
   return Number.isFinite(number) ? Math.min(maximum, Math.max(minimum, Math.floor(number))) : fallback;
-}
-
-function semanticRoute(value) {
-  const route = semanticLabel(value, 500);
-  if (!route) return '/';
-  if (!route.startsWith('/') || route.includes('://'))
-    throw new HttpError(400, { error: 'context_browser_route_invalid' });
-  return route.split(/[?#]/, 1)[0];
-}
-
-function semanticLabel(value, maximum) {
-  const text = String(value ?? '')
-    .replace(/[\u0000\r\n\t]/g, ' ')
-    .trim();
-  return text ? text.slice(0, maximum) : null;
-}
-
-function semanticFilters(value) {
-  if (value == null) return {};
-  if (typeof value !== 'object' || Array.isArray(value))
-    throw new HttpError(400, { error: 'context_browser_filters_invalid' });
-  const output = {};
-  for (const [key, raw] of Object.entries(value).slice(0, 50)) {
-    const safeKey = semanticLabel(key, 80);
-    if (!safeKey || /mouse|hover|toast|pixel|layout|coordinate|geometry/i.test(safeKey)) continue;
-    if (Array.isArray(raw))
-      output[safeKey] = raw
-        .slice(0, 100)
-        .map((item) => semanticLabel(item, 300))
-        .filter(Boolean);
-    else if (typeof raw === 'boolean' || typeof raw === 'number') output[safeKey] = raw;
-    else if (raw == null) output[safeKey] = null;
-    else if (typeof raw === 'string') output[safeKey] = semanticLabel(raw, 1000);
-  }
-  return output;
 }

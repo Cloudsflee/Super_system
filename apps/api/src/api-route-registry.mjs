@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { Readable, Writable } from 'node:stream';
 import { HttpError, normalizeErrorPayload, route as matchRoute } from './http.mjs';
 import { assertProjectAccess, assertScopes } from './mcp-client-service.mjs';
-import { readState } from './state.mjs';
+import { readStateSnapshot } from './state.mjs';
 import { maskSecretsDeep } from '../../../packages/shared/index.mjs';
 import { runAsActor } from './actor-context.mjs';
 import { authorizeApiRoute } from './project-governance-v19.mjs';
@@ -285,7 +285,7 @@ async function resolveProjectId(operation, args, client = null) {
   const explicitPath =
     args.params?.projectId || (operation.pattern.startsWith('/projects/:id') ? args.params?.id : null);
   if (explicitPath) return String(explicitPath);
-  const state = await readState(),
+  const state = await readStateSnapshot(),
     params = args.params || {};
   const pattern = operation.pattern;
   const resolved = resolveProjectRoute(pattern, state, params, args.body, client);

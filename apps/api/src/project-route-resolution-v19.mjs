@@ -6,7 +6,7 @@ export async function resolveProjectIdForContext(route, ctx, suppliedState = nul
     query = ctx.query || {};
   const explicitPath = params.projectId || (route.pattern.startsWith('/projects/:id') ? params.id : null);
   if (explicitPath) return String(explicitPath);
-  const state = suppliedState || (await (await import('./state.mjs')).readState());
+  const state = suppliedState || (await (await import('./state.mjs')).readStateSnapshot());
   if (!params.id) return body.project_id || query.project_id ? String(body.project_id || query.project_id) : null;
   const exchangeProject = resolveExchangeRequestProject(route.pattern, body, state, params.id);
   if (exchangeProject.matched) return exchangeProject.projectId;

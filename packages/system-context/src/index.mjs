@@ -160,7 +160,8 @@ export function reconcileContextProjectionState(
       dirty += 1;
     }
   }
-  const warnings = coverageWarnings(state, collections);
+  const prunedJobs = compactContextProjectionJobs(state),
+    warnings = coverageWarnings(state, collections);
   state.context_projection_coverage = {
     source_records: collections.reduce((count, name) => count + state[name].length, 0),
     projected_records: state.context_nodes.filter((node) => node.source_collection && node.status !== 'tombstone')
@@ -169,7 +170,13 @@ export function reconcileContextProjectionState(
     warnings,
     checked_at: timestamp
   };
-  return { dirty, warnings, nodes: state.context_nodes.length, edges: state.context_edges.length };
+  return {
+    dirty,
+    pruned_jobs: prunedJobs,
+    warnings,
+    nodes: state.context_nodes.length,
+    edges: state.context_edges.length
+  };
 }
 
 export function ensureContextCollections(state) {
@@ -691,20 +698,18 @@ export function stageContextProjectionJob(state, node, timestamp, indexes = null
       map.set(version.node_id, versions);
       return map;
     }, new Map());
-  const existing = jobsById.get(id);
-  if (existing?.status === 'completed') {
-    const reusable = (versionsByNode.get(node.id) || [])
-      .filter((version) => version.source_hash === node.source_hash)
-      .sort(
-        (left, right) =>
-          Number(right.version || 0) - Number(left.version || 0) ||
-          String(right.created_at || '').localeCompare(String(left.created_at || ''))
-      )[0];
-    if (reusable) {
-      node.current_version_id = reusable.id;
-      return;
-    }
+  const reusable = (versionsByNode.get(node.id) || [])
+    .filter((version) => version.source_hash === node.source_hash)
+    .sort(
+      (left, right) =>
+        Number(right.version || 0) - Number(left.version || 0) ||
+        String(right.created_at || '').localeCompare(String(left.created_at || ''))
+    )[0];
+  if (reusable) {
+    node.current_version_id = reusable.id;
+    return;
   }
+  const existing = jobsById.get(id);
   if (existing?.status === 'failed') return;
   const value = {
     id,
@@ -723,6 +728,33 @@ export function stageContextProjectionJob(state, node, timestamp, indexes = null
     state.context_projection_jobs.push(value);
     jobsById.set(id, value);
   }
+}
+
+export function compactContextProjectionJobs(state) {
+  ensureContextCollections(state);
+  const nodeById = new Map(state.context_nodes.map((node) => [node.id, node])),
+    completedByNode = new Map(),
+    retained = [];
+  for (const job of state.context_projection_jobs) {
+    const node = nodeById.get(job.node_id);
+    if (!node || job.expected_source_hash !== node.source_hash || job.status === 'superseded') continue;
+    if (job.status !== 'completed') {
+      retained.push(job);
+      continue;
+    }
+    const prior = completedByNode.get(job.node_id);
+    if (
+      !prior ||
+      String(job.updated_at || job.completed_at || '').localeCompare(
+        String(prior.updated_at || prior.completed_at || '')
+      ) > 0
+    )
+      completedByNode.set(job.node_id, job);
+  }
+  const keep = new Set([...retained, ...completedByNode.values()].map((job) => job.id)),
+    before = state.context_projection_jobs.length;
+  state.context_projection_jobs = state.context_projection_jobs.filter((job) => keep.has(job.id));
+  return before - state.context_projection_jobs.length;
 }
 
 function tombstoneContextNode(state, node, timestamp, reason) {
