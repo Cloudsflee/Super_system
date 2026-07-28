@@ -124,6 +124,32 @@ assert.equal(explicitRetry.retry_input_snapshot_hash, null);
 
 const duplicate = createWorkflowExecutionInState(state, 'workflow-1', { operation_key: 'start-1' }, 'owner');
 assert.equal(duplicate.idempotent, true);
+const localized = fixture();
+localized.workflow_nodes.find((item) => item.id === 'workstream-1').title = '每日设计信号产品';
+localized.repository_connections.push({
+  id: 'connection-localized',
+  project_id: 'project-1',
+  repository_id: 'repository-localized',
+  sync_status: 'ready'
+});
+const localizedRun = createWorkflowExecutionInState(
+    localized,
+    'workflow-1',
+    {
+      repositories: [
+        {
+          workstream_id: 'workstream-1',
+          connection_id: 'connection-localized',
+          base_ref: 'main',
+          base_sha: 'a'.repeat(40)
+        }
+      ]
+    },
+    'owner'
+  ),
+  localizedBranch = localizedRun.repository_lines[0].branch;
+assert.match(localizedBranch, /^aiws\/workstream-1-[a-f0-9]{8}$/);
+assert.match(localizedBranch, /^[A-Za-z0-9._/-]+$/);
 const stale = fixture(),
   staleCreated = createWorkflowExecutionInState(stale, 'workflow-1', {}, 'owner');
 stale.workflow_nodes.find((item) => item.id === 'task-a').execution_revision = 2;

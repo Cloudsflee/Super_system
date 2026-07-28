@@ -1,10 +1,11 @@
 import { randomUUID } from 'node:crypto';
-import { hashString, id, now, slugify } from '../../../packages/shared/index.mjs';
+import { hashString, id, now } from '../../../packages/shared/index.mjs';
 import { HttpError } from './http.mjs';
 import { projectWorkflowExecutionStateInState } from './workflow-execution-projection.mjs';
 import { inspectWorkstreamDependencyHandoff, selectTaskOutputBindings } from './task-execution-context.mjs';
 import { taskHandoffDiagnostics } from './task-handoff.mjs';
 import { assertRequiredContributionAuthority } from './task-contribution-authority.mjs';
+import { repositoryBranchSlug } from './workflow-branch-ref.mjs';
 import { normalizeWorkflowExecutorConfig } from './workflow-executor-config.mjs';
 import {
   isLegacyStrandedRetry,
@@ -758,7 +759,7 @@ function createRepositoryLinesInState(state, workflowExecution, workstreams, sel
       canonical_repository_id: selection.canonical_repository_id || null,
       base_ref: selection.base_ref,
       base_sha: selection.base_sha || null,
-      branch: `aiws/${slugify(workstream.title, 'workstream')}-${workflowExecution.id.slice(-8)}`,
+      branch: `aiws/${repositoryBranchSlug(workstream)}-${workflowExecution.id.slice(-8)}`,
       head_sha: selection.base_sha || null,
       checkout_path: null,
       status: 'active',
