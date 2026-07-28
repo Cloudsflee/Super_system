@@ -33,7 +33,16 @@ export function journeyWorkflowHierarchy() {
           goal: 'Create the deterministic implementation',
           task_kind: 'code',
           execution_mode: 'codex',
-          dependency_ids: []
+          dependency_ids: [],
+          output_slots: [
+            {
+              key: 'code_result',
+              kind: 'asset',
+              asset_type: 'CodeChangeAsset',
+              handoff: true,
+              purpose: '向研究任务提供可核验的代码结果。'
+            }
+          ]
         },
         {
           id: 'v18-research',
@@ -42,7 +51,26 @@ export function journeyWorkflowHierarchy() {
           goal: 'Validate MCP constraints',
           task_kind: 'research',
           execution_mode: 'assist',
-          dependency_ids: ['v18-execution']
+          dependency_ids: ['v18-execution'],
+          input_slots: [
+            {
+              key: 'implementation',
+              kind: 'asset_version',
+              source: 'dependency',
+              ref_id: 'v18-execution',
+              selector: 'code_result',
+              purpose: '基于固定代码结果核验约束。'
+            }
+          ],
+          output_slots: [
+            {
+              key: 'research_result',
+              kind: 'asset',
+              asset_type: 'ResearchEvidenceAsset',
+              handoff: true,
+              purpose: '向分析任务提供研究证据。'
+            }
+          ]
         },
         {
           id: 'v18-analysis',
@@ -52,7 +80,17 @@ export function journeyWorkflowHierarchy() {
           task_kind: 'analysis',
           execution_mode: 'assist',
           capability_tags: ['constraint_analysis', 'acceptance'],
-          dependency_ids: ['v18-research']
+          dependency_ids: ['v18-research'],
+          input_slots: [
+            {
+              key: 'research',
+              kind: 'asset_version',
+              source: 'dependency',
+              ref_id: 'v18-research',
+              selector: 'research_result',
+              purpose: '基于研究证据完成分析。'
+            }
+          ]
         }
       ]
     }
