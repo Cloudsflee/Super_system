@@ -140,9 +140,14 @@ export function buildNodeRunInvocation(profile, run, input, proxyKeys, mcpAccess
     const root = item.mount?.root;
     if (root && path.posix.isAbsolute(root)) internalMounts.push({ source: root, target: root, mode: 'ro' });
   }
-  // Docker keeps read-only repositories immutable; workspace-write lets Codex use the explicit /tmp allowance.
+  // Docker is the outer security boundary for NodeRun. Keep Codex workspace-write so its
+  // filesystem policy still applies, but allow networking inside that policy: loopback is
+  // required by repository HTTP tests and Node's child-process pipes on Linux use the same
+  // Landlock network permission in Codex 0.144.0.
   const commandArgs = [
     ...(input.configArgs || []),
+    '-c',
+    'sandbox_workspace_write.network_access=true',
     'exec',
     ...(input.json ? ['--json'] : []),
     '--skip-git-repo-check',

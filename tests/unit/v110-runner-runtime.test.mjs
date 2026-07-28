@@ -150,8 +150,12 @@ try {
   );
   const addDirectory = nodeRunInvocation.args.indexOf('--add-dir');
   const sandbox = nodeRunInvocation.args.indexOf('--sandbox');
+  const networkAccess = nodeRunInvocation.args.indexOf('sandbox_workspace_write.network_access=true');
   assert.ok(sandbox > 0);
   assert.equal(nodeRunInvocation.args[sandbox + 1], 'workspace-write');
+  assert.ok(networkAccess > 0);
+  assert.equal(nodeRunInvocation.args[networkAccess - 1], '-c');
+  assert.ok(networkAccess < nodeRunInvocation.args.indexOf('exec'));
   assert.ok(addDirectory > 0);
   assert.equal(nodeRunInvocation.args[addDirectory + 1], '/tmp');
   const resultSchema = JSON.parse(fs.readFileSync(prepared.schemaFile, 'utf8'));
