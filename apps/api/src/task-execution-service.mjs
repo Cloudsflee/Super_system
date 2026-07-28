@@ -578,14 +578,21 @@ export async function retryTaskExecution(taskExecutionId, actorId, { recoverPart
         error: 'repository_change_partial_result_not_recoverable',
         task_execution_id: previous.id
       });
+    const sourceExecution = state.task_executions.find((item) => item.id === sourceRun.task_execution_id);
+    if (!sourceExecution)
+      throw new HttpError(409, {
+        error: 'repository_change_recovery_source_missing',
+        task_execution_id: sourceRun.task_execution_id
+      });
     const retry = retryTaskExecutionInState(state, previous.id, actorId);
-    return recoverPartialRepositoryChangeInState(state, previous, retry, sourceRun, actorId);
+    return recoverPartialRepositoryChangeInState(state, sourceExecution, retry, sourceRun, actorId, previous.id);
   });
 }
 
 export function recoverablePartialRepositoryChangeRun(state, execution) {
   if (execution?.status !== 'failed' || execution.executor !== 'repository_change') return null;
   const contract = state.node_contracts.find((item) => item.id === execution.contract_id),
+    executionIds = repositoryChangeRetryAncestry(state, execution),
     requiredKeys = new Set(
       (contract?.expected_outputs || []).filter((item) => item.required !== false).map((item) => item.key)
     );
@@ -595,12 +602,12 @@ export function recoverablePartialRepositoryChangeRun(state, execution) {
         const result = run.result_json,
           outputKeys = new Set((result?.outputs || []).map((item) => item.output_key));
         return (
-          run.task_execution_id === execution.id &&
+          executionIds.has(run.task_execution_id) &&
           run.status === RunnerStatus.Failed &&
           ['aiws.task_runner_result.v2', 'aiws.task_runner_result.v3', 'aiws.task_runner_result.v4'].includes(
             result?.schema_version
           ) &&
-          result.status === RunnerStatus.Partial &&
+          [RunnerStatus.Partial, RunnerStatus.Succeeded].includes(result.status) &&
           Number(result._codex_process?.code) === 0 &&
           !result._codex_process?.failure_code &&
           requiredKeys.size > 0 &&
@@ -613,30 +620,59 @@ export function recoverablePartialRepositoryChangeRun(state, execution) {
   );
 }
 
-async function recoverPartialRepositoryChangeInState(state, previous, retry, sourceRun, actorId) {
+function repositoryChangeRetryAncestry(state, execution) {
+  const ids = new Set([execution.id]);
+  let current = execution;
+  for (let depth = 0; depth < 100 && current.supersedes_id; depth += 1) {
+    const ancestor = state.task_executions.find((item) => item.id === current.supersedes_id);
+    if (
+      !ancestor ||
+      ancestor.workflow_execution_id !== execution.workflow_execution_id ||
+      ancestor.task_id !== execution.task_id ||
+      ancestor.workstream_id !== execution.workstream_id ||
+      ancestor.executor !== execution.executor ||
+      ancestor.contract_id !== execution.contract_id ||
+      ancestor.task_revision !== execution.task_revision
+    )
+      break;
+    ids.add(ancestor.id);
+    current = ancestor;
+  }
+  return ids;
+}
+
+async function recoverPartialRepositoryChangeInState(
+  state,
+  sourceExecution,
+  retry,
+  sourceRun,
+  actorId,
+  requestedFromTaskExecutionId
+) {
   if (retry.status !== 'queued')
     throw new HttpError(409, { error: 'repository_change_partial_recovery_not_queued', status: retry.status });
-  const context = structuredClone(previous.context_snapshot);
+  const context = structuredClone(sourceExecution.context_snapshot);
   if (!context) throw new HttpError(409, { error: 'repository_change_partial_context_missing' });
   context.task_execution_id = retry.id;
   context.recovery_source = {
-    task_execution_id: previous.id,
+    task_execution_id: sourceExecution.id,
     node_run_id: sourceRun.id,
     result_status: sourceRun.result_json.status
   };
   const inputHash = executionInputHash(context);
-  if (previous.input_snapshot_hash && inputHash !== previous.input_snapshot_hash)
+  if (sourceExecution.input_snapshot_hash && inputHash !== sourceExecution.input_snapshot_hash)
     throw new HttpError(409, {
       error: 'repository_change_partial_input_mismatch',
-      expected_input_snapshot_hash: previous.input_snapshot_hash,
+      expected_input_snapshot_hash: sourceExecution.input_snapshot_hash,
       actual_input_snapshot_hash: inputHash
     });
   Object.assign(retry, {
     context_snapshot: context,
     input_snapshot_hash: inputHash,
-    input_snapshot_hash_version: previous.input_snapshot_hash_version || EXECUTION_INPUT_HASH_VERSION,
-    repository_snapshot_hash: previous.repository_snapshot_hash || context.repository_snapshot?.snapshot_hash || null,
-    recovery_source_task_execution_id: previous.id,
+    input_snapshot_hash_version: sourceExecution.input_snapshot_hash_version || EXECUTION_INPUT_HASH_VERSION,
+    repository_snapshot_hash:
+      sourceExecution.repository_snapshot_hash || context.repository_snapshot?.snapshot_hash || null,
+    recovery_source_task_execution_id: sourceExecution.id,
     recovery_source_node_run_id: sourceRun.id
   });
   transitionTaskExecutionInState(state, retry, 'running', { reason: 'partial_repository_change_recovery' });
@@ -663,7 +699,11 @@ async function recoverPartialRepositoryChangeInState(state, previous, retry, sou
     state.workflow_executions.find((item) => item.id === retry.workflow_execution_id),
     retry,
     'task.partial_repository_change_recovered',
-    { source_task_execution_id: previous.id, source_node_run_id: sourceRun.id },
+    {
+      source_task_execution_id: sourceExecution.id,
+      source_node_run_id: sourceRun.id,
+      requested_from_task_execution_id: requestedFromTaskExecutionId
+    },
     'user',
     actorId
   );

@@ -199,6 +199,19 @@ try {
   assert.equal(taskExecutions.recoverablePartialRepositoryChangeRun(recoveryState, recoveryExecution), recoveryRun);
   recoveryRun.result_json._codex_process.code = 1;
   assert.equal(taskExecutions.recoverablePartialRepositoryChangeRun(recoveryState, recoveryExecution), null);
+  recoveryRun.result_json._codex_process.code = 0;
+  recoveryRun.result_json.status = 'succeeded';
+  const strandedRetry = {
+    ...recoveryExecution,
+    id: 'tex-stranded-retry',
+    supersedes_id: recoveryExecution.id,
+    context_snapshot: null
+  };
+  recoveryExecution.status = 'superseded';
+  recoveryState.task_executions = [recoveryExecution, strandedRetry];
+  assert.equal(taskExecutions.recoverablePartialRepositoryChangeRun(recoveryState, strandedRetry), recoveryRun);
+  strandedRetry.task_id = 'different-task';
+  assert.equal(taskExecutions.recoverablePartialRepositoryChangeRun(recoveryState, strandedRetry), null);
   assert.equal(
     repositoryChanges.addedDiffText(
       'diff --git a/test.mjs b/test.mjs\n--- a/test.mjs\n+++ b/test.mjs\n@@ -1 +1 @@\n-const token = "old-fixture";\n+const value = "new";\n context'
