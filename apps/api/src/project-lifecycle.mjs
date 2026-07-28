@@ -207,6 +207,8 @@ export function activateDraftInState(state, project, brief, workflowInput, actor
     required: input.required !== false,
     repository_intent: input.repository_intent || null,
     capability_tags: input.capability_tags || [],
+    progression_protocol: input.progression_protocol || null,
+    progression_compatibility: input.progression_compatibility || null,
     input_slots: input.input_slots || [],
     output_slots: input.output_slots || [],
     atomic_justification: input.atomic_justification || null,

@@ -85,6 +85,11 @@ try {
     ),
     true
   );
+  assert.equal(
+    generatedTasks.every((item) => item.progression_protocol === 'aiws.task_progression.v1'),
+    true,
+    'newly generated Tasks opt into contribution progression'
+  );
   assert.deepEqual(
     generatedTasks.map((item) => item.input_slots.map((slot) => [slot.source, slot.ref_id, slot.selector])),
     [
@@ -115,12 +120,12 @@ try {
   ]);
   assert.equal(untouchedDraft.user_modified_at, null);
 
-  let activeWorkflow;
+  let activeWorkflow, activatedTasks;
   await stateApi.mutate((state) => {
     const project = state.projects.find((item) => item.id === untouched.project.id);
     const brief = state.project_briefs.find((item) => item.project_id === project.id);
     const draft = state.workflow_drafts.find((item) => item.project_id === project.id);
-    activeWorkflow = activateDraftInState(
+    const activated = activateDraftInState(
       state,
       project,
       brief,
@@ -130,8 +135,15 @@ try {
         brief_coverage: draft.brief_coverage
       },
       actor.id
-    ).workflow;
+    );
+    activeWorkflow = activated.workflow;
+    activatedTasks = activated.nodes.filter((item) => item.role === 'task');
   });
+  assert.deepEqual(
+    activatedTasks.map((item) => [item.id, item.progression_protocol, item.progression_compatibility]),
+    generatedTasks.map((item) => [item.id, item.progression_protocol, item.progression_compatibility]),
+    'activation preserves each generated Task progression contract'
+  );
   const replanStart = await generation.startWorkflowGeneration(
     untouched.project.id,
     { adapter: 'test', mode: 'replan' },
