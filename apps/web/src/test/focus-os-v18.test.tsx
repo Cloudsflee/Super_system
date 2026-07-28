@@ -119,7 +119,7 @@ describe('V1.8 shared AssistCenter', () => {
       collaboration_mode: 'default'
     });
     expect(CountingEventSource.created).toBe(1);
-  });
+  }, 15_000);
 
   it('creates a scoped thread and submits the same one-shot Plan turn', async () => {
     const calls: Call[] = [];

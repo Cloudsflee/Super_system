@@ -128,6 +128,18 @@
       "requires_env": []
     },
     {
+      "id": "V20-L1-DISPATCH-005",
+      "layer": "L1",
+      "domain": "task-execution",
+      "priority": "P0",
+      "command": ["node", "tests/unit/v20-controlled-node-run-dependencies.test.mjs"],
+      "suites": ["pr", "full", "release"],
+      "covers": ["controlled-node-run", "workstream-handoff", "legacy-dependency-gate"],
+      "timeout_ms": 60000,
+      "external_effects": "none",
+      "requires_env": []
+    },
+    {
       "id": "V20-L3-WEB-001",
       "layer": "L3",
       "domain": "web",

@@ -99,9 +99,9 @@ async function prepareNodeRun(nodeId, body) {
     const actor = owner(state),
       bundle = nodeBundle(state, nodeId);
     requireNodeBundle(bundle);
-    assertTaskDependencies(state, bundle.node);
-    assertManagedProjectWritable(bundle.project);
     const controlled = assertControlledTaskWrite(state, nodeId, body, 'node_run');
+    assertNodeRunDependencies(state, bundle.node, { controlled: controlled.controlled });
+    assertManagedProjectWritable(bundle.project);
     if (controlled.controlled && !['assist', 'repository_change'].includes(controlled.task_execution.executor))
       throw new HttpError(409, { error: 'node_run_executor_mismatch', executor: controlled.task_execution.executor });
     if (controlled.controlled) await prepareTaskExecutionInState(state, controlled.task_execution.id);
@@ -578,10 +578,16 @@ async function getRunRoute({ res, params }) {
 function requireNodeBundle({ node, project, contract }) {
   if (!node || !project || !contract) throw new HttpError(404, 'node_or_contract_not_found');
 }
-function assertTaskDependencies(state, node) {
+export function assertNodeRunDependencies(state, node, { controlled = false } = {}) {
   if (node.role === 'workstream')
     throw new HttpError(409, { error: 'workstream_is_aggregate_not_executable', node_id: node.id });
   if (node.role !== 'task') return;
+  // A controlled NodeRun is dispatched only after the workflow-execution domain has
+  // accepted task/workstream handoffs and issued a lease. Re-applying the legacy
+  // node-status gate here is incorrect: V2 projects completed workstreams as
+  // `ready_for_submission`, while their accepted WorkstreamOutcomeAsset is the
+  // authoritative dependency receipt.
+  if (controlled) return;
   const parent = state.workflow_nodes.find((item) => item.id === node.parent_node_id && item.role === 'workstream');
   const incompleteUpstream = (parent?.dependencies || [])
     .map((item) => (typeof item === 'string' ? item : item.node_id))

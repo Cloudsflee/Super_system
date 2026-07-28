@@ -8,7 +8,8 @@ const suites = {
     ['node', 'tests/unit/v20-context-pack.test.mjs'],
     ['node', 'tests/unit/v20-mcp-context.test.mjs'],
     ['node', 'tests/unit/v20-migration.test.mjs'],
-    ['node', 'tests/unit/v20-task-effects.test.mjs']
+    ['node', 'tests/unit/v20-task-effects.test.mjs'],
+    ['node', 'tests/unit/v20-controlled-node-run-dependencies.test.mjs']
   ],
   integration: [['node', 'tests/integration/v20-context-flow.test.mjs']],
   web: [

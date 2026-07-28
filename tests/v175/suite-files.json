@@ -57,6 +57,7 @@
     "tests/unit/v20-context-pack.test.mjs",
     "tests/unit/v20-mcp-context.test.mjs",
     "tests/unit/v20-task-effects.test.mjs",
+    "tests/unit/v20-controlled-node-run-dependencies.test.mjs",
     "tests/unit/v20-context-performance.test.mjs"
   ],
   "integration-core": [

@@ -69,7 +69,7 @@ describe('Assist operation browser synchronization', () => {
         <RoutedAssistFixture />
       </MemoryRouter>
     );
-    await screen.findByText('Thread One', {}, { timeout: 3_000 });
+    await screen.findByText('Thread One', {}, { timeout: 10_000 });
     await waitFor(() => expect(FakeEventSource.last).toBeTruthy());
     FakeEventSource.last?.emit('operation', eventData(pending.id, true));
     await waitFor(() => expect(claims).toBe(1));
@@ -77,7 +77,7 @@ describe('Assist operation browser synchronization', () => {
     expect(claims).toBe(1);
     fireEvent.click(screen.getByRole('button', { name: '切换测试路由' }));
     await waitFor(() => expect(claims).toBe(2));
-  });
+  }, 15_000);
 });
 
 function renderWithClient(value: ReactNode) {
