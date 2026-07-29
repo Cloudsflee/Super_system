@@ -18,6 +18,7 @@ import {
 } from './workflow-execution-domain.mjs';
 import { revokePullRequestIntentInState } from './pull-request-intent-domain.mjs';
 import { prepareRepositoryIntegration } from './repository-integration-service.mjs';
+import { executorForTask } from './workflow-executor-config.mjs';
 
 const SHA = /^[a-f0-9]{40,64}$/i;
 
@@ -394,13 +395,6 @@ function latestTaskExecutionForTask(state, taskId) {
           String(b.created_at).localeCompare(String(a.created_at)) || Number(b.attempt || 0) - Number(a.attempt || 0)
       )[0] || null
   );
-}
-
-function executorForTask(task) {
-  if (task?.task_kind === 'code') return 'repository_change';
-  if (task?.task_kind === 'test') return 'repository_verify';
-  if (['deploy', 'integration'].includes(task?.task_kind)) return 'repository_integrate';
-  return null;
 }
 
 function nextAttempt(previous, actorId) {

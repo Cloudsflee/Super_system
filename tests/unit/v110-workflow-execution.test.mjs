@@ -122,6 +122,27 @@ const explicitRetry = retryTaskExecutionInState(transientState, transientSecond.
 assert.equal(explicitRetry.attempt, 3);
 assert.equal(explicitRetry.retry_input_snapshot_hash, null);
 
+const deployState = fixture(),
+  deployTask = deployState.workflow_nodes.find((item) => item.id === 'task-a');
+Object.assign(deployTask, { task_kind: 'deploy', execution_mode: 'codex' });
+const deployRun = createWorkflowExecutionInState(deployState, 'workflow-1', {}, 'owner'),
+  deployExecution = deployRun.task_executions.find((item) => item.task_id === deployTask.id);
+assert.equal(deployExecution.executor, 'assist');
+Object.assign(deployExecution, {
+  executor: 'repository_integrate',
+  input_snapshot_hash: 'e'.repeat(64),
+  input_snapshot_hash_version: 3
+});
+failTaskExecutionInState(deployState, deployExecution.id, {
+  errorCode: 'pull_request_intent_no_changes',
+  retryClass: 'deterministic'
+});
+const deployRetry = retryTaskExecutionInState(deployState, deployExecution.id, 'owner');
+assert.equal(deployRetry.executor, 'assist');
+assert.equal(deployRetry.executor_reclassified_from, 'repository_integrate');
+assert.equal(deployRetry.retry_input_snapshot_hash, null);
+assert.equal(deployRetry.retry_input_snapshot_hash_version, null);
+
 const midIntegrationState = fixture(),
   midIntegrationTask = midIntegrationState.workflow_nodes.find((item) => item.id === 'task-join'),
   downstreamTask = task('task-after-integration', ['task-join'], 4);

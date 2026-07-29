@@ -6,7 +6,7 @@ import { inspectWorkstreamDependencyHandoff, selectTaskOutputBindings } from './
 import { taskHandoffDiagnostics } from './task-handoff.mjs';
 import { assertRequiredContributionAuthority } from './task-contribution-authority.mjs';
 import { repositoryBranchSlug } from './workflow-branch-ref.mjs';
-import { normalizeWorkflowExecutorConfig } from './workflow-executor-config.mjs';
+import { executorForTask, normalizeWorkflowExecutorConfig } from './workflow-executor-config.mjs';
 import { dependencyIds, workflowNodeDependsOn } from './workflow-graph-validation.mjs';
 import {
   isLegacyStrandedRetry,
@@ -449,11 +449,15 @@ export function retryTaskExecutionInState(state, taskExecutionId, actorId) {
     throw new HttpError(409, { error: 'task_execution_revision_changed' });
   const workflowExecution = requireWorkflowExecution(state, previous.workflow_execution_id);
   reopenFailedWorkflowForRetry(state, workflowExecution, task, actorId);
-  const retryInput = retryInputExpectation(previous);
+  const expectedExecutor = executorForTask(task),
+    retryInput =
+      previous.executor === expectedExecutor ? retryInputExpectation(previous) : { hash: null, version: null };
   const created = {
     ...structuredClone(previous),
     id: id('tex'),
     attempt: Math.max(...attempts.map((item) => item.attempt)) + 1,
+    executor: expectedExecutor,
+    executor_reclassified_from: previous.executor !== expectedExecutor ? previous.executor : null,
     status: 'pending',
     readiness: { ready: false, reasons: [{ code: 'retry_pending' }] },
     context_snapshot: null,
@@ -827,13 +831,6 @@ function workflowDefinitionSnapshot(state, workflow, nodes) {
       contract_version: state.node_contracts.find((item) => item.id === node.current_contract_id)?.version || null
     }))
   };
-}
-function executorForTask(task) {
-  if (task.execution_mode === 'manual' || task.task_kind === 'manual') return 'manual';
-  if (task.task_kind === 'code') return 'repository_change';
-  if (task.task_kind === 'test') return 'repository_verify';
-  if (['deploy', 'integration'].includes(task.task_kind)) return 'repository_integrate';
-  return 'assist';
 }
 function queueCapacityAvailable(state, execution) {
   const active = currentTaskExecutions(state, execution.workflow_execution_id).filter(
