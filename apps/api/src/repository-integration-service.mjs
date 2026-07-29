@@ -3,7 +3,7 @@ import { ingestExecutionOutputsInState } from './asset-attestation-service.mjs';
 import { HttpError } from './http.mjs';
 import { createRepositoryLinePullRequestIntentInState, requireIntent } from './pull-request-intent-domain.mjs';
 import { verifyRepositoryLineHead } from './repository-line-service.mjs';
-import { mutate } from './state.mjs';
+import { mutate, readState } from './state.mjs';
 import { notUsedContextDispositions } from './task-handoff.mjs';
 import { deterministicInputEffects } from './task-effects.mjs';
 import { ensureCompletedWorkstreamOutcomesInState, prepareTaskExecutionInState } from './task-execution-service.mjs';
@@ -66,6 +66,7 @@ export async function prepareRepositoryIntegration(taskExecutionId) {
 }
 
 export async function advanceRepositoryIntegration(intentId, action, result, actorId) {
+  if (action === 'merge_pr') await recoverMergedIntentChecks(intentId, actorId);
   return mutate(async (state) => {
     const intent = requireIntent(state, intentId),
       line = state.repository_lines.find((item) => item.id === intent.repository_line_id);
@@ -119,7 +120,7 @@ export async function advanceRepositoryIntegration(intentId, action, result, act
       throw new HttpError(409, { error: 'repository_integration_action_invalid' });
     if (execution.status !== 'awaiting_human')
       throw new HttpError(409, { error: 'repository_integration_task_status_invalid', status: execution.status });
-    const checks = Array.isArray(result.checks) ? result.checks : intent.checks || [];
+    const checks = Array.isArray(result.checks) && result.checks.length ? result.checks : intent.checks || [];
     const approvals = intent.approvals.filter((item) => ['create_pr', 'merge_pr'].includes(item.action));
     if (!approvals.some((item) => item.action === 'create_pr') || !approvals.some((item) => item.action === 'merge_pr'))
       throw new HttpError(409, { error: 'integration_two_approvals_required' });
@@ -194,6 +195,16 @@ export async function advanceRepositoryIntegration(intentId, action, result, act
       pull_request_intent: intent,
       workflow_execution: reconciled.workflow_execution
     };
+  });
+}
+
+async function recoverMergedIntentChecks(intentId, actorId) {
+  const state = await readState(),
+    intent = requireIntent(state, intentId);
+  if (intent.status !== 'merged' || (intent.checks || []).length) return;
+  const { ensurePullRequestIntentChecks } = await import('./pull-request-intent-service.mjs');
+  await ensurePullRequestIntentChecks(intent.id, actorId || intent.merged_by_user_id || state.instance_owner_user_id, {
+    allowMergedRecovery: true
   });
 }
 

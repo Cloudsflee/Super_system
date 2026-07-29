@@ -16,13 +16,13 @@ import { runApprovedVerificationCommands } from './task-execution-service.mjs';
 
 const SUCCESS = new Set(['success', 'neutral', 'skipped']);
 
-export async function ensurePullRequestIntentChecks(intentId, actorId) {
+export async function ensurePullRequestIntentChecks(intentId, actorId, options = {}) {
   const snapshot = await readState(),
     intent = requireIntent(snapshot, intentId);
   const { assertProjectMembership } = await import('./project-governance-v19.mjs');
   assertProjectMembership(snapshot, intent.project_id, actorId, 'approve');
   return mutate(async (state) => {
-    const result = await ensurePullRequestIntentChecksInState(state, intentId);
+    const result = await ensurePullRequestIntentChecksInState(state, intentId, options);
     if (result.executed)
       addTrace(
         state,
@@ -44,7 +44,7 @@ export async function ensurePullRequestIntentChecks(intentId, actorId) {
   });
 }
 
-export async function ensurePullRequestIntentChecksInState(state, intentId) {
+export async function ensurePullRequestIntentChecksInState(state, intentId, options = {}) {
   const intent = requireIntent(state, intentId);
   if ((intent.checks || []).length) return { intent, checks: intent.checks, executed: false };
   if (['pending', 'failed'].includes(intent.checks_status))
@@ -52,7 +52,8 @@ export async function ensurePullRequestIntentChecksInState(state, intentId) {
       error: 'pull_request_remote_checks_not_passed',
       checks_status: intent.checks_status
     });
-  if (!['draft_open', 'ready'].includes(intent.status))
+  const allowedStatuses = options.allowMergedRecovery ? ['draft_open', 'ready', 'merged'] : ['draft_open', 'ready'];
+  if (!allowedStatuses.includes(intent.status))
     throw new HttpError(409, { error: 'pull_request_local_checks_status_invalid', status: intent.status });
   const line = state.repository_lines.find((item) => item.id === intent.repository_line_id);
   if (!line) throw new HttpError(409, { error: 'pull_request_local_checks_repository_line_required' });
@@ -77,12 +78,16 @@ export async function ensurePullRequestIntentChecksInState(state, intentId) {
   Object.assign(intent, {
     checks,
     checks_status: failed ? 'failed' : 'passed',
-    reconciliation: {
-      status: 'local_delivery_policy',
-      action: 'verify_checks',
-      repository_sha: intent.head_sha,
-      reconciled_at: timestamp
-    },
+    ...(intent.status === 'merged'
+      ? { local_checks_recovered_at: timestamp }
+      : {
+          reconciliation: {
+            status: 'local_delivery_policy',
+            action: 'verify_checks',
+            repository_sha: intent.head_sha,
+            reconciled_at: timestamp
+          }
+        }),
     updated_at: timestamp
   });
   return { intent, checks, executed: true };

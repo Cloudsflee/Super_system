@@ -309,7 +309,7 @@ export function completePullRequestIntentExecutionInState(state, intentId, actio
       merged_by_user_id: actorId,
       merged_at: now(),
       checks_status: 'passed',
-      checks: structuredClone(result.checks || intent.checks || [])
+      checks: structuredClone(result.checks?.length ? result.checks : intent.checks || [])
     });
   Object.assign(intent, {
     executing_action: null,

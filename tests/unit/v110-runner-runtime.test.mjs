@@ -333,6 +333,15 @@ try {
     () => pullRequestIntents.ensurePullRequestIntentChecksInState(localCheckState, 'intent-local-check'),
     (error) => error?.payload?.error === 'pull_request_remote_checks_not_passed'
   );
+  localChecks.intent.status = 'merged';
+  localChecks.intent.checks_status = 'passed';
+  const recoveredChecks = await pullRequestIntents.ensurePullRequestIntentChecksInState(
+    localCheckState,
+    'intent-local-check',
+    { allowMergedRecovery: true }
+  );
+  assert.equal(recoveredChecks.checks.length, 1);
+  assert.ok(localChecks.intent.local_checks_recovered_at);
   assert.equal(
     repositoryChanges.addedDiffText(
       'diff --git a/test.mjs b/test.mjs\n--- a/test.mjs\n+++ b/test.mjs\n@@ -1 +1 @@\n-const token = "old-fixture";\n+const value = "new";\n context'

@@ -142,6 +142,19 @@ try {
   );
   state = await stateService.readState();
   intent = state.pull_request_intents.find((item) => item.id === intent.id);
+  await stateService.mutate((current) => {
+    const currentIntent = current.pull_request_intents.find((item) => item.id === intent.id);
+    currentIntent.checks = [
+      {
+        name: 'AIWS Delivery Policy: fixture',
+        status: 'completed',
+        conclusion: 'success',
+        source: 'aiws_delivery_policy',
+        repository_sha: currentIntent.head_sha,
+        log_sha256: 'a'.repeat(64)
+      }
+    ];
+  });
   await stateService.mutate((current) =>
     approvePullRequestIntentInState(
       current,
@@ -170,7 +183,10 @@ try {
   state = await stateService.readState();
   assert.equal(currentExecution(state, 'task-integrate').status, 'completed');
   assert.equal(state.repository_lines.find((item) => item.id === line.id).status, 'merged');
-  assert.equal(state.pull_request_intents.find((item) => item.id === intent.id).approvals.length, 3);
+  const mergedIntent = state.pull_request_intents.find((item) => item.id === intent.id);
+  assert.equal(mergedIntent.approvals.length, 3);
+  assert.equal(mergedIntent.checks[0].source, 'aiws_delivery_policy');
+  assert.equal(currentExecution(state, 'task-integrate').evidence.pull_request.checks.length, 1);
   const outcome = state.assets.find(
     (item) => item.node_id === 'workstream-1' && item.asset_type === 'WorkstreamOutcomeAsset'
   );
