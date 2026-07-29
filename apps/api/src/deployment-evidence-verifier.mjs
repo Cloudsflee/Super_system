@@ -14,6 +14,7 @@ const SHA40 = /^[a-f0-9]{40}$/;
 const SHA256 = /^[a-f0-9]{64}$/;
 const SAFE_PATH = /^\/(?:[A-Za-z0-9._~!$&'()*+,;=:@%-]+\/?)*$/;
 const SAFE_COMPOSE_FILE = /^(?:(?:[A-Za-z0-9._-]+)\/)*(?:compose|docker-compose)\.ya?ml$/i;
+const IMAGE_PATH = /\.(?:avif|bmp|gif|jpe?g|png|svg|webp)$/i;
 const SAFE_RUN_ID = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/;
 const BASELINE_SECURITY_HEADERS = Object.freeze([
   'content-security-policy',
@@ -368,14 +369,22 @@ function deploymentBaseUrl(candidate) {
 }
 
 function deploymentComposeFile(candidate) {
-  const value = String(candidate.compose?.file || '');
-  if (!SAFE_COMPOSE_FILE.test(value))
+  const declared = String(candidate.compose?.file || candidate.compose?.derived_from || ''),
+    value = declared.startsWith('/workspace/') ? declared.slice('/workspace/'.length) : declared;
+  if (!SAFE_COMPOSE_FILE.test(value) || value.split('/').some((segment) => segment === '.' || segment === '..'))
     throw new HttpError(409, { error: 'deployment_runtime_verifier_compose_file_invalid' });
   return value;
 }
 
 function deploymentEndpoints(candidate) {
-  const source = candidate.checks?.endpoints || candidate.api?.passed || [];
+  const source =
+    [
+      candidate.checks?.endpoints,
+      candidate.api?.GET,
+      candidate.api?.get,
+      candidate.api?.checks,
+      candidate.api?.passed
+    ].find((value) => Array.isArray(value)) || [];
   const endpoints = [];
   for (const item of source) {
     const method = String(item?.method || 'GET').toUpperCase(),
@@ -390,9 +399,15 @@ function deploymentEndpoints(candidate) {
 
 function deploymentSecurityHeaders(candidate) {
   const source = candidate.checks?.security_headers?.required || candidate.security_headers?.required || [];
-  if (!Array.isArray(source)) throw new HttpError(409, { error: 'deployment_runtime_verifier_security_claim_invalid' });
+  if (!Array.isArray(source) && (!source || typeof source !== 'object'))
+    throw new HttpError(409, { error: 'deployment_runtime_verifier_security_claim_invalid' });
+  const claims = Array.isArray(source)
+    ? source
+    : Object.entries(source)
+        .filter(([, claim]) => claim !== false && claim?.present !== false && claim?.passed !== false)
+        .map(([header]) => header);
   const claimed = new Set(
-    source.map((item) => String(item).trim().toLowerCase()).filter((value) => /^[a-z0-9][a-z0-9-]{0,100}$/.test(value))
+    claims.map((item) => String(item).trim().toLowerCase()).filter((value) => /^[a-z0-9][a-z0-9-]{0,100}$/.test(value))
   );
   for (const header of BASELINE_SECURITY_HEADERS)
     if (!claimed.has(header))
@@ -404,9 +419,14 @@ function deploymentImages(candidate) {
   const source = candidate.checks?.images || candidate.images?.static_assets || [];
   if (!Array.isArray(source)) throw new HttpError(409, { error: 'deployment_runtime_verifier_image_claim_invalid' });
   return source
-    .map((item) => ({ path: String(typeof item === 'string' ? item : item?.path || '') }))
+    .map((item) => ({
+      path: String(typeof item === 'string' ? item : item?.path || ''),
+      media_type: String(typeof item === 'string' ? '' : item?.media_type || item?.detected_type || '').toLowerCase()
+    }))
     .filter((item) => safePath(item.path))
+    .filter((item) => IMAGE_PATH.test(item.path) || item.media_type.startsWith('image/'))
     .filter((item, index, all) => all.findIndex((candidate) => candidate.path === item.path) === index)
+    .map((item) => ({ path: item.path }))
     .slice(0, 20);
 }
 

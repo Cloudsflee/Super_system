@@ -25,6 +25,14 @@ services:
       AIWS_RUNNER_MEMORY: ${AIWS_RUNNER_MEMORY:-4g}
       AIWS_RUNNER_PIDS: ${AIWS_RUNNER_PIDS:-512}
       AIWS_RUNNER_TMPFS: ${AIWS_RUNNER_TMPFS:-1g}
+      HTTP_PROXY: ${AIWS_HTTP_PROXY:-}
+      HTTPS_PROXY: ${AIWS_HTTPS_PROXY:-}
+      ALL_PROXY: ${AIWS_ALL_PROXY:-}
+      NO_PROXY: ${AIWS_NO_PROXY:-localhost,127.0.0.1,host.docker.internal}
+      http_proxy: ${AIWS_HTTP_PROXY:-}
+      https_proxy: ${AIWS_HTTPS_PROXY:-}
+      all_proxy: ${AIWS_ALL_PROXY:-}
+      no_proxy: ${AIWS_NO_PROXY:-localhost,127.0.0.1,host.docker.internal}
     volumes:
       - type: volume
         source: aiws-data

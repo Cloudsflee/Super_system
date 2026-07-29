@@ -15,7 +15,17 @@ COPY packages/memory-policy/package.json packages/memory-policy/package.json
 COPY packages/runner-adapters/package.json packages/runner-adapters/package.json
 COPY packages/shared/package.json packages/shared/package.json
 COPY packages/system-context/package.json packages/system-context/package.json
-RUN corepack pnpm install --frozen-lockfile
+RUN --mount=type=cache,id=aiws-corepack,target=/root/.cache/node/corepack,sharing=locked \
+    --mount=type=cache,id=aiws-pnpm-store,target=/root/.local/share/pnpm/store,sharing=locked \
+    npm_config_network_concurrency=8 \
+    npm_config_fetch_retries=5 \
+    npm_config_fetch_retry_mintimeout=10000 \
+    npm_config_fetch_retry_maxtimeout=60000 \
+    npm_config_fetch_timeout=30000 \
+    corepack pnpm fetch --frozen-lockfile
+RUN --mount=type=cache,id=aiws-corepack,target=/root/.cache/node/corepack,sharing=locked \
+    --mount=type=cache,id=aiws-pnpm-store,target=/root/.local/share/pnpm/store,sharing=locked \
+    corepack pnpm install --frozen-lockfile --offline
 
 FROM golang:1.24-alpine AS windows-bridge-build
 WORKDIR /src
@@ -57,14 +67,36 @@ COPY packages/memory-policy/package.json packages/memory-policy/package.json
 COPY packages/runner-adapters/package.json packages/runner-adapters/package.json
 COPY packages/shared/package.json packages/shared/package.json
 COPY packages/system-context/package.json packages/system-context/package.json
-RUN corepack pnpm install --prod --frozen-lockfile --filter ai-workspace-system
-RUN corepack pnpm install --prod --frozen-lockfile --filter @aiws/system-context
+RUN --mount=type=cache,id=aiws-corepack,target=/root/.cache/node/corepack,sharing=locked \
+    --mount=type=cache,id=aiws-pnpm-store,target=/root/.local/share/pnpm/store,sharing=locked \
+    npm_config_network_concurrency=8 \
+    npm_config_fetch_retries=5 \
+    npm_config_fetch_retry_mintimeout=10000 \
+    npm_config_fetch_retry_maxtimeout=60000 \
+    npm_config_fetch_timeout=30000 \
+    corepack pnpm fetch --prod --frozen-lockfile
+RUN --mount=type=cache,id=aiws-corepack,target=/root/.cache/node/corepack,sharing=locked \
+    --mount=type=cache,id=aiws-pnpm-store,target=/root/.local/share/pnpm/store,sharing=locked \
+    corepack pnpm install --prod --frozen-lockfile --offline --filter ai-workspace-system
+RUN --mount=type=cache,id=aiws-corepack,target=/root/.cache/node/corepack,sharing=locked \
+    --mount=type=cache,id=aiws-pnpm-store,target=/root/.local/share/pnpm/store,sharing=locked \
+    corepack pnpm install --prod --frozen-lockfile --offline --filter @aiws/system-context
 
 FROM node:24-alpine AS gateway-deps
 RUN corepack enable
 WORKDIR /gateway
 COPY apps/mcp-gateway/package.json apps/mcp-gateway/pnpm-lock.yaml apps/mcp-gateway/pnpm-workspace.yaml ./
-RUN corepack pnpm install --prod --frozen-lockfile
+RUN --mount=type=cache,id=aiws-corepack,target=/root/.cache/node/corepack,sharing=locked \
+    --mount=type=cache,id=aiws-pnpm-store,target=/root/.local/share/pnpm/store,sharing=locked \
+    npm_config_network_concurrency=8 \
+    npm_config_fetch_retries=5 \
+    npm_config_fetch_retry_mintimeout=10000 \
+    npm_config_fetch_retry_maxtimeout=60000 \
+    npm_config_fetch_timeout=30000 \
+    corepack pnpm fetch --prod --frozen-lockfile
+RUN --mount=type=cache,id=aiws-corepack,target=/root/.cache/node/corepack,sharing=locked \
+    --mount=type=cache,id=aiws-pnpm-store,target=/root/.local/share/pnpm/store,sharing=locked \
+    corepack pnpm install --prod --frozen-lockfile --offline
 
 FROM node:24-alpine AS production
 LABEL org.opencontainers.image.title="AI Workspace System" \

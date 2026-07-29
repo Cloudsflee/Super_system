@@ -93,6 +93,69 @@ try {
     ['/healthz', '/api/reports/latest', '/api/syllabus']
   );
 
+  const currentRunnerCandidate = {
+    ...candidate,
+    api: { passed: true, GET: candidate.api.passed },
+    security_headers: {
+      required: Object.fromEntries(
+        candidate.security_headers.required.map((header) => [header, { present: true, passed: true, value: 'present' }])
+      )
+    }
+  };
+  const currentRunnerRequest = verifier.deploymentVerificationRequest(state, {
+    run,
+    taskExecution,
+    resultJson: runnerResult(currentRunnerCandidate)
+  });
+  assert.deepEqual(currentRunnerRequest.endpoints, request.endpoints);
+  assert.deepEqual(currentRunnerRequest.security_headers, request.security_headers);
+
+  const persistedRunnerRequest = verifier.deploymentVerificationRequest(state, {
+    run,
+    taskExecution,
+    resultJson: runnerResult({
+      ...candidate,
+      compose: { host_url: candidate.compose.host_url, derived_from: '/workspace/compose.yml' },
+      api: { passed: true, checks: candidate.api.passed },
+      images: {
+        passed: true,
+        static_assets: ['/assets/styles.css', '/assets/app.js', '/assets/product.png', '/assets/ui.png']
+      }
+    })
+  });
+  assert.deepEqual(persistedRunnerRequest.endpoints, request.endpoints);
+  assert.equal(persistedRunnerRequest.compose_file, 'compose.yml');
+  assert.deepEqual(persistedRunnerRequest.images, [{ path: '/assets/product.png' }, { path: '/assets/ui.png' }]);
+
+  assert.throws(
+    () =>
+      verifier.deploymentVerificationRequest(state, {
+        run,
+        taskExecution,
+        resultJson: runnerResult({ ...candidate, api: { passed: true, GET: { path: '/healthz', status: 200 } } })
+      }),
+    (error) => error.payload?.error === 'deployment_runtime_verifier_health_endpoint_required'
+  );
+  assert.throws(
+    () =>
+      verifier.deploymentVerificationRequest(state, {
+        run,
+        taskExecution,
+        resultJson: runnerResult({
+          ...currentRunnerCandidate,
+          security_headers: {
+            required: {
+              ...currentRunnerCandidate.security_headers.required,
+              'content-security-policy': { present: true, passed: false }
+            }
+          }
+        })
+      }),
+    (error) =>
+      error.payload?.error === 'deployment_runtime_verifier_security_claim_incomplete' &&
+      error.payload?.header === 'content-security-policy'
+  );
+
   const nonDeployState = structuredClone(state);
   nonDeployState.workflow_nodes.find((item) => item.id === 'task-deploy').task_kind = 'review';
   assert.equal(verifier.deploymentVerificationRequest(nonDeployState, { run, taskExecution, resultJson }), null);
@@ -118,6 +181,19 @@ try {
           resultJson: runnerResult({ ...candidate, compose: { ...candidate.compose, host_url: target } })
         }),
       (error) => error.payload?.error === 'deployment_runtime_verifier_target_invalid'
+    );
+  for (const derivedFrom of ['/tmp/compose.yml', '/workspace/../compose.yml'])
+    assert.throws(
+      () =>
+        verifier.deploymentVerificationRequest(state, {
+          run,
+          taskExecution,
+          resultJson: runnerResult({
+            ...candidate,
+            compose: { host_url: candidate.compose.host_url, derived_from: derivedFrom }
+          })
+        }),
+      (error) => error.payload?.error === 'deployment_runtime_verifier_compose_file_invalid'
     );
   assert.throws(
     () =>
