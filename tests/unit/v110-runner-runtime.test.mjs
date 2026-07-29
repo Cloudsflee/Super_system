@@ -321,6 +321,12 @@ try {
   assert.equal(localChecks.checks[0].source, 'aiws_delivery_policy');
   assert.equal(localChecks.checks[0].repository_sha, recoveryCommitSha);
   assert.ok(localCheckState.asset_blobs.some((item) => item.sha256 === localChecks.checks[0].log_sha256));
+  assert.doesNotThrow(() =>
+    shared.makeTrace('pull_request.intent.local_checks_completed', {
+      target_type: 'pull_request_intent',
+      target_id: localChecks.intent.id
+    })
+  );
   localChecks.intent.checks = [];
   localChecks.intent.checks_status = 'failed';
   await assert.rejects(

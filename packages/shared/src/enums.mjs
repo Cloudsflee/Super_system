@@ -220,6 +220,7 @@ export const TRACE_EVENTS = Object.freeze([
   'pull_request.intent.created',
   'pull_request.intent.merged',
   'pull_request.intent.reconciled',
+  'pull_request.intent.local_checks_completed',
   'assist.scope.invalidated',
   'project.invitation.created',
   'project.invitation.accepted',
