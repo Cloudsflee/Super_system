@@ -15,7 +15,8 @@ try {
   const { ensureContextProjection, createSelectionForRuntimeInState } =
     await import('../../apps/api/src/context-service.mjs');
   const { issueCodexMcpAccess } = await import('../../apps/api/src/codex-mcp-runtime.mjs');
-  const { authenticateMcpToken } = await import('../../apps/api/src/mcp-client-service.mjs');
+  const { authenticateMcpToken, bindInternalCodexTaskLease } =
+    await import('../../apps/api/src/mcp-client-service.mjs');
   const stateApi = await import('../../apps/api/src/state.mjs');
   await stateApi.ensureRuntime();
   const state = await stateApi.readState();
@@ -222,11 +223,21 @@ try {
         context_selection_id: runtimeSetup.selectionId,
         context_pack_id: 'ctxpack-runtime-context',
         anchor_node_id: runtimeSetup.anchorNodeId
-      }
+      },
+      taskExecutionLeaseToken: `aiws_lease_${'a'.repeat(32)}`
     }
   );
   const runtimeClient = await authenticateMcpToken(access.env.AIWS_MCP_TOKEN),
     runtimeServer = createAiwsMcpServer({ registry, client: runtimeClient });
+  const unboundArguments = { body: { task_execution_id: 'tex-runtime-context' } },
+    boundArguments = bindInternalCodexTaskLease(runtimeClient, unboundArguments);
+  assert.equal(Object.hasOwn(unboundArguments.body, 'lease_token'), false);
+  assert.equal(boundArguments.body.lease_token, `aiws_lease_${'a'.repeat(32)}`);
+  assert.throws(
+    () => bindInternalCodexTaskLease(runtimeClient, { body: { task_execution_id: 'tex-foreign-context' } }),
+    (error) => error.payload?.error === 'mcp_context_binding_execution_mismatch'
+  );
+  assert.equal(JSON.stringify(runtimeClient).includes('aiws_lease_'), false);
   try {
     const scopedMap = payload(
       await runtimeServer.server._registeredTools.aiws_context.handler({ action: 'map', depth: 4, limit: 1000 })
@@ -318,6 +329,8 @@ try {
     await runtimeServer.dispose();
     await access.release();
   }
+  const releasedArguments = { body: { task_execution_id: 'tex-runtime-context' } };
+  assert.equal(bindInternalCodexTaskLease(runtimeClient, releasedArguments), releasedArguments);
 
   console.log('V2.0 MCP context tool and resource parity tests passed');
 } finally {

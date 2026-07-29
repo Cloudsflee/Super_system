@@ -47,7 +47,8 @@ async function executeCodexDocker(state, payload) {
   const timeoutMs = resolveCodexTimeoutMs(profile.timeout_ms);
   const mcpAccess = await issueCodexMcpAccess(project.id, profile, {
     ttlSeconds: codexTimeoutTtlSeconds(timeoutMs),
-    contextBinding: runnerContextBinding(run, ctx)
+    contextBinding: runnerContextBinding(run, ctx),
+    taskExecutionLeaseToken: payload.body?.lease_token
   });
   const runner = new DockerCodexRunner({
     image: process.env.AIWS_CODEX_DOCKER_IMAGE,
@@ -98,7 +99,8 @@ async function executeCodex(state, payload) {
   const timeoutMs = resolveCodexTimeoutMs(profile.timeout_ms);
   const mcpAccess = await issueCodexMcpAccess(project.id, profile, {
     ttlSeconds: codexTimeoutTtlSeconds(timeoutMs),
-    contextBinding: runnerContextBinding(run, ctx)
+    contextBinding: runnerContextBinding(run, ctx),
+    taskExecutionLeaseToken: payload.body?.lease_token
   });
   const fallback = buildNodeRunResult({
     run,
@@ -156,7 +158,12 @@ export function buildNodeRunInvocation(profile, run, input, proxyKeys, mcpAccess
   ];
   if (input.model) commandArgs.push('--model', input.model);
   if (readOnly) commandArgs.push('--add-dir', '/tmp');
-  commandArgs.push('--cd', '/workspace', '--output-schema', `/aiws-run/${path.basename(input.outputSchemaFile)}`);
+  commandArgs.push(
+    '--cd',
+    readOnly ? '/tmp' : '/workspace',
+    '--output-schema',
+    `/aiws-run/${path.basename(input.outputSchemaFile)}`
+  );
   if (input.lastMessageFile)
     commandArgs.push('--output-last-message', `/aiws-run/${path.basename(input.lastMessageFile)}`);
   commandArgs.push('-');

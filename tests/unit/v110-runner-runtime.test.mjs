@@ -152,6 +152,7 @@ try {
   );
   const addDirectory = nodeRunInvocation.args.indexOf('--add-dir');
   const sandbox = nodeRunInvocation.args.indexOf('--sandbox');
+  const workingDirectory = nodeRunInvocation.args.indexOf('--cd');
   const networkAccess = nodeRunInvocation.args.indexOf('sandbox_workspace_write.network_access=true');
   assert.ok(sandbox > 0);
   assert.equal(nodeRunInvocation.args[sandbox + 1], 'workspace-write');
@@ -160,6 +161,8 @@ try {
   assert.ok(networkAccess < nodeRunInvocation.args.indexOf('exec'));
   assert.ok(addDirectory > 0);
   assert.equal(nodeRunInvocation.args[addDirectory + 1], '/tmp');
+  assert.ok(workingDirectory > 0);
+  assert.equal(nodeRunInvocation.args[workingDirectory + 1], '/tmp');
   const resultSchema = JSON.parse(fs.readFileSync(prepared.schemaFile, 'utf8'));
   assert.deepEqual(resultSchema.properties.schema_version.enum, ['aiws.task_runner_result.v2']);
   assert.deepEqual(resultSchema.required.sort(), Object.keys(resultSchema.properties).sort());

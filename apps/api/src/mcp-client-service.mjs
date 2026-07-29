@@ -66,6 +66,7 @@ const scopeSet = new Set(MCP_SCOPES);
 const requestWindows = new Map();
 const activeRequests = new Map();
 const gatewayNonces = new Map();
+const internalCodexTaskLeases = new Map();
 let gatewaySecretCache = { key: null, value: null };
 export async function createMcpClient(input = {}, actorId = null, options = {}) {
   const name = String(input.name || '').trim();
@@ -165,13 +166,15 @@ export async function revokeMcpClient(clientId, actorId = null) {
   });
   requestWindows.delete(clientId);
   activeRequests.delete(clientId);
+  internalCodexTaskLeases.delete(clientId);
   return publicMcpClient(revoked);
 }
 
 export async function issueInternalCodexToken(
   projectId,
-  { ttlSeconds = 3600, name = 'AIWS built-in Codex', contextBinding = null } = {}
+  { ttlSeconds = 3600, name = 'AIWS built-in Codex', contextBinding = null, taskExecutionLeaseToken = null } = {}
 ) {
+  const boundTaskLease = normalizeInternalCodexTaskLease(contextBinding, taskExecutionLeaseToken);
   if (!projectId) throw new HttpError(400, { error: 'mcp_internal_project_required' });
   const state = await readState(),
     project = state.projects.find((item) => item.id === projectId && !item.deleted_at),
@@ -181,7 +184,7 @@ export async function issueInternalCodexToken(
       state.users.find((item) => item.role === 'owner')?.id ||
       null;
   if (!project) throw new HttpError(404, { error: 'mcp_internal_project_not_found', project_id: projectId });
-  return createMcpClient(
+  const issued = await createMcpClient(
     {
       name,
       subject_user_id: subjectUserId,
@@ -194,6 +197,11 @@ export async function issueInternalCodexToken(
     subjectUserId,
     { kind: 'internal_codex', maxTtlSeconds: 21600, contextBinding }
   );
+  if (boundTaskLease) {
+    rememberSecret(`mcp-task-lease-${issued.client.id}`, boundTaskLease.lease_token);
+    internalCodexTaskLeases.set(issued.client.id, boundTaskLease);
+  }
+  return issued;
 }
 
 export async function authenticateMcpToken(rawToken, { requiredScopes = [], projectId = null } = {}) {
@@ -295,6 +303,19 @@ export function assertProjectAccess(client, projectId) {
   const allowlist = client.project_allowlist || [];
   if (allowlist.length && !allowlist.includes(projectId))
     throw new HttpError(403, { error: 'mcp_project_access_denied', project_id: projectId });
+}
+
+export function bindInternalCodexTaskLease(client, args) {
+  const bound = client?.kind === 'internal_codex' ? internalCodexTaskLeases.get(client.id) : null;
+  const requestedTaskExecutionId = cleanBindingId(args?.body?.task_execution_id);
+  if (!bound || !requestedTaskExecutionId) return args;
+  if (requestedTaskExecutionId !== bound.task_execution_id)
+    throw new HttpError(409, {
+      error: 'mcp_context_binding_execution_mismatch',
+      task_execution_id: requestedTaskExecutionId,
+      expected_task_execution_id: bound.task_execution_id
+    });
+  return { ...args, body: { ...args.body, lease_token: bound.lease_token } };
 }
 
 export function publicMcpClient(client) {
@@ -466,6 +487,16 @@ function cleanBindingId(value) {
   return text ? text.slice(0, 240) : null;
 }
 
+function normalizeInternalCodexTaskLease(contextBinding, value) {
+  if (value == null || value === '') return null;
+  const taskExecutionId = cleanBindingId(contextBinding?.task_execution_id),
+    leaseToken = String(value);
+  if (!taskExecutionId) throw new HttpError(400, { error: 'mcp_internal_task_execution_binding_required' });
+  if (!/^aiws_lease_[a-f0-9]{32}$/.test(leaseToken))
+    throw new HttpError(400, { error: 'mcp_internal_task_execution_lease_invalid' });
+  return { task_execution_id: taskExecutionId, lease_token: leaseToken };
+}
+
 function normalizeExpiry(expiresAt, ttlSeconds, options) {
   const current = Date.now();
   if (ttlSeconds != null) {
@@ -538,6 +569,7 @@ async function markExpired(clientId) {
     const client = state.mcp_clients.find((item) => item.id === clientId);
     if (client?.status === 'active') Object.assign(client, { status: 'expired', updated_at: now() });
   });
+  internalCodexTaskLeases.delete(clientId);
 }
 
 function normalizeAddress(value) {

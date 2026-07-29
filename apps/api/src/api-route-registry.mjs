@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { Readable, Writable } from 'node:stream';
 import { HttpError, normalizeErrorPayload, route as matchRoute } from './http.mjs';
-import { assertProjectAccess, assertScopes } from './mcp-client-service.mjs';
+import { assertProjectAccess, assertScopes, bindInternalCodexTaskLease } from './mcp-client-service.mjs';
 import { readStateSnapshot } from './state.mjs';
 import { maskSecretsDeep } from '../../../packages/shared/index.mjs';
 import { runAsActor } from './actor-context.mjs';
@@ -54,6 +54,7 @@ export async function executeRegistryOperation(registry, operationId, args = {},
   if (!operation) return failure(operationId, requestId, 404, { error: 'mcp_operation_not_found' });
   try {
     validateArguments(operation, args);
+    args = bindInternalCodexTaskLease(context.client, args);
     if (operation.mapping === 'external_callback' || operation.mapping === 'frontend_only')
       throw new HttpError(403, { error: 'mcp_operation_not_callable', mapping: operation.mapping });
     if (context.client) {
