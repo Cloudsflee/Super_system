@@ -10,7 +10,8 @@ import { deterministicInputEffects } from './task-effects.mjs';
 import {
   claimTaskExecution,
   prepareTaskExecutionInState,
-  submitTaskExecutionOutputs
+  submitTaskExecutionOutputs,
+  synchronizeTaskExecutionRepositoryLine
 } from './task-execution-service.mjs';
 import {
   appendExecutionEvent,
@@ -72,6 +73,7 @@ export async function dispatchWorkflowExecution(workflowExecutionId) {
 
 async function executeQueuedTask(taskExecutionId) {
   try {
+    await synchronizeTaskExecutionRepositoryLine(taskExecutionId);
     const state = await readState(),
       execution = requireTaskExecution(state, taskExecutionId);
     if (execution.status !== 'queued') return;

@@ -20,6 +20,26 @@ export function normalizeTargetOutputKeys(values, contract) {
   return [...new Set((contract?.expected_outputs || []).map((item) => clean(item?.key, 120)).filter(Boolean))].sort();
 }
 
+export function validateRepositoryVersionBinding(inputs, repository, errors) {
+  const versions = inputs.flatMap((input) =>
+      (input.asset_versions || []).filter(
+        (version) =>
+          /RepositoryVersionAsset/i.test(version.asset_type) ||
+          (input.source === 'workstream_dependency' && version.repository_sha)
+      )
+    ),
+    hashes = [...new Set(versions.map((item) => item.repository_sha).filter(Boolean))];
+  if (!versions.length) return;
+  if (versions.some((item) => !item.repository_sha) || hashes.length !== 1)
+    errors.push({ code: 'repository_version_sha_invalid', version_ids: versions.map((item) => item.version_id) });
+  else if (!repository || repository.fixed_sha !== hashes[0])
+    errors.push({
+      code: 'repository_snapshot_version_mismatch',
+      expected_sha: hashes[0],
+      actual_sha: repository?.fixed_sha || null
+    });
+}
+
 function clean(value, max) {
   return String(value ?? '')
     .replace(/\0/g, '')

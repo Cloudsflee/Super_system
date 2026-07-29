@@ -44,7 +44,8 @@ try {
         test_use_required_inputs: true,
         test_use_required_context: true,
         repositories: [
-          { workstream_id: 'workstream-1', connection_id: 'connection-1', base_ref: 'main', base_sha: baseSha }
+          { workstream_id: 'workstream-1', connection_id: 'connection-1', base_ref: 'main', base_sha: baseSha },
+          { workstream_id: 'workstream-2', connection_id: 'connection-1', base_ref: 'main', base_sha: baseSha }
         ]
       },
       ownerId
@@ -75,6 +76,7 @@ try {
   assert.equal(verify.status, 'completed');
   assert.equal(integrate.status, 'awaiting_human');
   assert.notEqual(line.head_sha, baseSha);
+  const mergedSha = line.head_sha;
   assert.equal(git(line.checkout_path, ['status', '--porcelain']), '');
   const repositoryVersion = state.asset_versions.find((item) => item.id === code.output_bindings[0].version_id);
   const testReport = state.asset_versions.find((item) => item.id === verify.output_bindings[0].version_id);
@@ -174,7 +176,7 @@ try {
       adapter: 'test',
       test_checks_status: 'passed',
       test_checks: [],
-      test_merge_commit_sha: 'f'.repeat(40)
+      test_merge_commit_sha: mergedSha
     },
     ownerId
   );
@@ -197,8 +199,16 @@ try {
     internalBinding = integration.output_bindings.find((item) => item.key === 'internal_audit'),
     integrationVersion = state.asset_versions.find((item) => item.id === integrationBinding.version_id);
   const consume = currentExecution(state, 'task-consume-outcome'),
-    outcomeInput = consume.context_snapshot.inputs.find((item) => item.key === 'accepted_delivery');
-  assert.equal(consume.status, 'awaiting_human');
+    dependentLine = state.repository_lines.find((item) => item.workstream_id === 'workstream-2');
+  assert.equal(
+    consume.status,
+    'awaiting_human',
+    JSON.stringify({ error_code: consume.error_code, readiness: consume.readiness, dependent_line: dependentLine })
+  );
+  const outcomeInput = consume.context_snapshot.inputs.find((item) => item.key === 'accepted_delivery');
+  assert.equal(dependentLine.head_sha, mergedSha);
+  assert.equal(dependentLine.dependency_base_sha, mergedSha);
+  assert.equal(consume.context_snapshot.repository_snapshot.fixed_sha, mergedSha);
   assert.equal(outcomeInput.resolved_from.workflow_execution_id, started.workflow_execution.id);
   assert.deepEqual(
     outcomeInput.asset_versions.map((item) => item.version_id),
@@ -213,8 +223,8 @@ try {
     integrationBinding.handoff_manifest_sha256
   );
   assert.equal(internalBinding.handoff, false);
-  assert.equal(integrationVersion.repository_sha, 'f'.repeat(40));
-  assert.equal(outcomeVersion.repository_sha, 'f'.repeat(40));
+  assert.equal(integrationVersion.repository_sha, mergedSha);
+  assert.equal(outcomeVersion.repository_sha, mergedSha);
   const outcomePayload = JSON.parse(
     (await readCasBlob(outcomeVersion.blob_refs.find((item) => item.role === 'payload').sha256, { state })).toString(
       'utf8'

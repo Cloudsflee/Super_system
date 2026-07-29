@@ -6,7 +6,10 @@ import { commandAsync } from './http.mjs';
 import { EXECUTION_DIR } from './config.mjs';
 import { HttpError } from './http.mjs';
 import { mutate, readState } from './state.mjs';
+import { refreshRepositoryMirror } from './repository-workspace-service.mjs';
 import { reconcileWorkflowExecutionInState } from './workflow-execution-domain.mjs';
+
+const SHA = /^[a-f0-9]{40,64}$/i;
 
 export async function provisionWorkflowRepositoryLines(workflowExecutionId) {
   const snapshot = await readState(),
@@ -108,6 +111,93 @@ export async function verifyRepositoryLineHead(line, expectedSha = line?.head_sh
         .map((item) => item.slice(3))
     });
   return { repository_sha: head, checkout_head: head, clean: !status, status_porcelain: status };
+}
+
+export async function synchronizeRepositoryLineDependencyBase(repositoryLineId, targetSha) {
+  const normalizedTarget = String(targetSha || '')
+    .trim()
+    .toLowerCase();
+  if (!SHA.test(normalizedTarget)) throw lineError('repository_dependency_sha_invalid');
+  const state = await readState(),
+    line = state.repository_lines.find((item) => item.id === repositoryLineId);
+  if (!line) throw new HttpError(404, { error: 'repository_line_not_found' });
+  if (line.dependency_base_sha) {
+    if (line.dependency_base_sha !== normalizedTarget)
+      throw lineError('repository_dependency_sha_changed', {
+        expected_sha: line.dependency_base_sha,
+        actual_sha: normalizedTarget
+      });
+    return { line, changed: false, previous_sha: line.head_sha, target_sha: normalizedTarget };
+  }
+  if (line.status !== 'active' || line.active_writer_execution_id)
+    throw lineError('repository_dependency_sync_unavailable', {
+      status: line.status,
+      active_writer_execution_id: line.active_writer_execution_id || null
+    });
+  const completedOnLine = state.task_executions.some(
+    (item) =>
+      item.workflow_execution_id === line.workflow_execution_id &&
+      item.workstream_id === line.workstream_id &&
+      item.status === 'completed' &&
+      item.evidence?.repository_sha &&
+      item.evidence.repository_sha !== normalizedTarget
+  );
+  if (completedOnLine) throw lineError('repository_dependency_sync_completed_work_exists');
+  const previousSha = line.head_sha;
+  await verifyRepositoryLineHead(line, previousSha, { requireClean: true });
+  if (previousSha !== normalizedTarget) {
+    await refreshRepositoryMirror(state, line.project_id, line.connection_id, { fetch: true });
+    const available = await commandAsync(
+      'git',
+      ['cat-file', '-e', `${normalizedTarget}^{commit}`],
+      line.checkout_path,
+      30_000
+    );
+    if (!available.ok)
+      throw lineError('repository_dependency_sha_unavailable', {
+        target_sha: normalizedTarget,
+        detail: tail(available.stderr || available.error)
+      });
+    const switched = await commandAsync(
+      'git',
+      ['switch', '-C', line.branch, normalizedTarget],
+      line.checkout_path,
+      60_000
+    );
+    if (!switched.ok)
+      throw lineError('repository_dependency_checkout_failed', { detail: tail(switched.stderr || switched.error) });
+    await verifyRepositoryLineHead({ ...line, head_sha: normalizedTarget }, normalizedTarget, { requireClean: true });
+  }
+  try {
+    const updated = await mutate((current) => {
+      const record = current.repository_lines.find((item) => item.id === repositoryLineId);
+      if (!record) throw new HttpError(404, { error: 'repository_line_not_found' });
+      if (record.head_sha !== previousSha || record.dependency_base_sha)
+        throw lineError('repository_dependency_sync_concurrent_change', {
+          expected_sha: previousSha,
+          actual_sha: record.head_sha
+        });
+      Object.assign(record, {
+        base_sha: normalizedTarget,
+        head_sha: normalizedTarget,
+        dependency_base_sha: normalizedTarget,
+        dependency_synced_at: now(),
+        updated_at: now()
+      });
+      reconcileWorkflowExecutionInState(current, record.workflow_execution_id);
+      return record;
+    });
+    return {
+      line: updated,
+      changed: previousSha !== normalizedTarget,
+      previous_sha: previousSha,
+      target_sha: normalizedTarget
+    };
+  } catch (error) {
+    if (previousSha !== normalizedTarget)
+      await commandAsync('git', ['switch', '-C', line.branch, previousSha], line.checkout_path, 60_000);
+    throw error;
+  }
 }
 
 export async function updateRepositoryLineHeadInState(state, line, expectedPreviousSha) {

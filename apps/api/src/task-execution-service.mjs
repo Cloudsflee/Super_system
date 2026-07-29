@@ -13,11 +13,12 @@ import {
 import { EXECUTION_DIR } from './config.mjs';
 import { HttpError } from './http.mjs';
 import { finalizeRepositoryChangeInState } from './repository-change-verifier.mjs';
-import { verifyRepositoryLineHead } from './repository-line-service.mjs';
+import { synchronizeRepositoryLineDependencyBase, verifyRepositoryLineHead } from './repository-line-service.mjs';
 import { mutate, readState } from './state.mjs';
 import {
   EXECUTION_INPUT_HASH_VERSION,
   executionInputHash,
+  inspectWorkstreamDependencyHandoff,
   prepareTaskExecutionContext
 } from './task-execution-context.mjs';
 import { ensureContextProjection } from './context-service.mjs';
@@ -161,6 +162,7 @@ export async function prepareTaskExecutionInState(state, taskExecutionId, { allo
 }
 
 export async function claimTaskExecution(taskExecutionId, input = {}) {
+  await synchronizeTaskExecutionRepositoryLine(taskExecutionId);
   await ensureTaskExecutionContextProjection(taskExecutionId);
   return mutate(async (state) => {
     await prepareTaskExecutionInState(state, taskExecutionId);
@@ -570,9 +572,25 @@ export async function runApprovedVerificationCommands(state, execution, line) {
 }
 
 export async function retryTaskExecution(taskExecutionId, actorId, { recoverPartialResult = false } = {}) {
+  const dependencySync = recoverPartialResult
+    ? { changed: false }
+    : await synchronizeTaskExecutionRepositoryLine(taskExecutionId);
   return mutate(async (state) => {
     const previous = requireTaskExecution(state, taskExecutionId);
-    if (!recoverPartialResult) return retryTaskExecutionInState(state, taskExecutionId, actorId);
+    if (!recoverPartialResult) {
+      const retry = retryTaskExecutionInState(state, taskExecutionId, actorId);
+      if (dependencySync.changed) {
+        retry.retry_input_snapshot_hash = null;
+        retry.retry_input_snapshot_hash_version = null;
+        retry.repository_dependency_refresh = {
+          repository_line_id: dependencySync.line.id,
+          previous_sha: dependencySync.previous_sha,
+          target_sha: dependencySync.target_sha,
+          refreshed_at: now()
+        };
+      }
+      return retry;
+    }
     const sourceRun = recoverablePartialRepositoryChangeRun(state, previous);
     if (!sourceRun)
       throw new HttpError(409, {
@@ -588,6 +606,36 @@ export async function retryTaskExecution(taskExecutionId, actorId, { recoverPart
     const retry = retryTaskExecutionInState(state, previous.id, actorId);
     return recoverPartialRepositoryChangeInState(state, sourceExecution, retry, sourceRun, actorId, previous.id);
   });
+}
+
+export async function synchronizeTaskExecutionRepositoryLine(taskExecutionId) {
+  const state = await readState(),
+    execution = requireTaskExecution(state, taskExecutionId);
+  if (execution.context_snapshot && execution.status !== 'failed') return { changed: false };
+  const task = state.workflow_nodes.find((item) => item.id === execution.task_id),
+    contract = state.node_contracts.find((item) => item.id === execution.contract_id),
+    line = state.repository_lines.find(
+      (item) =>
+        item.workflow_execution_id === execution.workflow_execution_id && item.workstream_id === execution.workstream_id
+    );
+  if (!task || !contract || !line) return { changed: false };
+  const hashes = new Set();
+  for (const slot of (contract.expected_inputs || []).filter((item) => item.source === 'workstream_dependency')) {
+    const handoff = inspectWorkstreamDependencyHandoff(state, {
+      projectId: execution.project_id,
+      workflowId: execution.workflow_id,
+      workflowExecutionId: execution.workflow_execution_id,
+      workstreamId: slot.ref_id,
+      selector: slot.selector || 'required_outputs',
+      strict: true
+    });
+    if (!handoff.ready) continue;
+    for (const version of handoff.asset_versions || []) if (version.repository_sha) hashes.add(version.repository_sha);
+  }
+  if (!hashes.size) return { changed: false };
+  if (hashes.size !== 1)
+    throw new HttpError(409, { error: 'repository_dependency_sha_ambiguous', repository_shas: [...hashes] });
+  return synchronizeRepositoryLineDependencyBase(line.id, [...hashes][0]);
 }
 
 export function recoverablePartialRepositoryChangeRun(state, execution) {

@@ -7,7 +7,11 @@ import { compactRuntimeMap, createSelectionForRuntimeInState } from './context-s
 import { applicationPolicy } from './task-effects.mjs';
 import { isContributionTask } from '../../../packages/shared/src/task-contributions.mjs';
 import { verifyContributionRoutes } from './task-handoff.mjs';
-import { executionInputEffectObligations, normalizeTargetOutputKeys } from './task-execution-input-domain.mjs';
+import {
+  executionInputEffectObligations,
+  normalizeTargetOutputKeys,
+  validateRepositoryVersionBinding
+} from './task-execution-input-domain.mjs';
 
 export const EXECUTION_INPUT_HASH_VERSION = 3;
 
@@ -857,21 +861,6 @@ function assetVersionSnapshot(asset, version, outputKey = null, origin = null) {
         }
       : {})
   };
-}
-function validateRepositoryVersionBinding(inputs, repository, errors) {
-  const versions = inputs
-    .flatMap((item) => item.asset_versions || [])
-    .filter((item) => /RepositoryVersionAsset/i.test(item.asset_type));
-  const hashes = [...new Set(versions.map((item) => item.repository_sha).filter(Boolean))];
-  if (!versions.length) return;
-  if (versions.some((item) => !item.repository_sha) || hashes.length !== 1)
-    errors.push({ code: 'repository_version_sha_invalid', version_ids: versions.map((item) => item.version_id) });
-  else if (!repository || repository.fixed_sha !== hashes[0])
-    errors.push({
-      code: 'repository_snapshot_version_mismatch',
-      expected_sha: hashes[0],
-      actual_sha: repository?.fixed_sha || null
-    });
 }
 function legacyRepositorySnapshot(project, strict, errors) {
   if (strict || !project.repo_path) return null;
