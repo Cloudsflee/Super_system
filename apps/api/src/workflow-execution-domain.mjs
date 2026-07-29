@@ -7,6 +7,7 @@ import { taskHandoffDiagnostics } from './task-handoff.mjs';
 import { assertRequiredContributionAuthority } from './task-contribution-authority.mjs';
 import { repositoryBranchSlug } from './workflow-branch-ref.mjs';
 import { normalizeWorkflowExecutorConfig } from './workflow-executor-config.mjs';
+import { dependencyIds, workflowNodeDependsOn } from './workflow-graph-validation.mjs';
 import {
   isLegacyStrandedRetry,
   legacyPromotedExecution,
@@ -278,7 +279,10 @@ export function taskExecutionReadiness(state, execution) {
     const siblings = currentTaskExecutions(state, execution.workflow_execution_id).filter(
       (item) => item.workstream_id === execution.workstream_id && item.id !== execution.id
     );
-    const incomplete = siblings.filter((item) => item.status !== 'completed');
+    const incomplete = siblings.filter(
+      (item) =>
+        item.status !== 'completed' && !workflowNodeDependsOn(state.workflow_nodes, item.task_id, execution.task_id)
+    );
     if (incomplete.length)
       reasons.push({ code: 'workstream_tasks_incomplete', task_execution_ids: incomplete.map((item) => item.id) });
   }
@@ -959,13 +963,6 @@ function snapshot(state, workflowExecution) {
     repository_lines: repositoryLinesFor(state, workflowExecution.id),
     events: state.execution_events.filter((item) => item.workflow_execution_id === workflowExecution.id)
   };
-}
-function dependencyIds(node) {
-  return [
-    ...new Set(
-      (node?.dependencies || []).map((item) => (typeof item === 'string' ? item : item.node_id)).filter(Boolean)
-    )
-  ];
 }
 function taskOrder(state, execution) {
   return Number(state.workflow_nodes.find((item) => item.id === execution.task_id)?.order_index || 0);

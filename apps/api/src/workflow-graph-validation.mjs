@@ -638,12 +638,27 @@ function candidateNode(node, index = 0) {
 function cloneCandidate(node) {
   return { ...node, dependency_ids: [...node.dependency_ids], position: { ...node.position } };
 }
-function dependencyIds(node) {
+export function dependencyIds(node) {
   return uniqueIds(
     Array.isArray(node.dependency_ids)
       ? node.dependency_ids
       : (node.dependencies || []).map((item) => (typeof item === 'string' ? item : item?.node_id))
   );
+}
+export function workflowNodeDependsOn(nodes, nodeId, ancestorId) {
+  const byId = new Map((nodes || []).map((node) => [node.id, node])),
+    pending = [nodeId],
+    visited = new Set();
+  while (pending.length) {
+    const current = pending.pop();
+    if (!current || visited.has(current)) continue;
+    visited.add(current);
+    for (const dependencyId of dependencyIds(byId.get(current))) {
+      if (dependencyId === ancestorId) return true;
+      pending.push(dependencyId);
+    }
+  }
+  return false;
 }
 function uniqueIds(values) {
   return [...new Set((Array.isArray(values) ? values : []).map((value) => clean(value, 120)).filter(Boolean))];

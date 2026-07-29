@@ -122,6 +122,40 @@ const explicitRetry = retryTaskExecutionInState(transientState, transientSecond.
 assert.equal(explicitRetry.attempt, 3);
 assert.equal(explicitRetry.retry_input_snapshot_hash, null);
 
+const midIntegrationState = fixture(),
+  midIntegrationTask = midIntegrationState.workflow_nodes.find((item) => item.id === 'task-join'),
+  downstreamTask = task('task-after-integration', ['task-join'], 4);
+Object.assign(midIntegrationTask, { task_kind: 'integration', execution_mode: 'codex' });
+midIntegrationState.workflow_nodes.push(downstreamTask);
+midIntegrationState.node_contracts.push({
+  id: 'contract-after-integration',
+  node_id: downstreamTask.id,
+  version: 1,
+  expected_inputs: [],
+  expected_outputs: []
+});
+const midIntegrationRun = createWorkflowExecutionInState(midIntegrationState, 'workflow-1', {}, 'owner'),
+  midIntegration = midIntegrationRun.task_executions.find((item) => item.task_id === 'task-join'),
+  downstream = midIntegrationRun.task_executions.find((item) => item.task_id === downstreamTask.id),
+  upstream = midIntegrationRun.task_executions.find((item) => item.task_id === 'task-a'),
+  initialIntegrationWait = taskExecutionReadiness(midIntegrationState, midIntegration).reasons.find(
+    (item) => item.code === 'workstream_tasks_incomplete'
+  );
+assert.ok(initialIntegrationWait.task_execution_ids.includes(upstream.id));
+assert.equal(initialIntegrationWait.task_execution_ids.includes(downstream.id), false);
+for (const taskId of ['task-a', 'task-b']) {
+  const execution = midIntegrationRun.task_executions.find((item) => item.task_id === taskId);
+  transitionTaskExecutionInState(midIntegrationState, execution, 'running');
+  transitionTaskExecutionInState(midIntegrationState, execution, 'verifying');
+  completeTaskExecutionInState(midIntegrationState, execution.id);
+}
+assert.equal(
+  taskExecutionReadiness(midIntegrationState, midIntegration).reasons.some(
+    (item) => item.code === 'workstream_tasks_incomplete'
+  ),
+  false
+);
+
 const duplicate = createWorkflowExecutionInState(state, 'workflow-1', { operation_key: 'start-1' }, 'owner');
 assert.equal(duplicate.idempotent, true);
 const localized = fixture();
