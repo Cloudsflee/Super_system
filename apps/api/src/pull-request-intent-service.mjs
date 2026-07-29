@@ -10,9 +10,83 @@ import {
   refreshPullRequestIntentBaseInState,
   requireIntent
 } from './pull-request-intent-domain.mjs';
+import { verifyRepositoryLineHead } from './repository-line-service.mjs';
 import { markRepositoryWorkspacesStale, repositoryWorkspaceRoot } from './repository-workspace-service.mjs';
+import { runApprovedVerificationCommands } from './task-execution-service.mjs';
 
 const SUCCESS = new Set(['success', 'neutral', 'skipped']);
+
+export async function ensurePullRequestIntentChecks(intentId, actorId) {
+  const snapshot = await readState(),
+    intent = requireIntent(snapshot, intentId);
+  const { assertProjectMembership } = await import('./project-governance-v19.mjs');
+  assertProjectMembership(snapshot, intent.project_id, actorId, 'approve');
+  return mutate(async (state) => {
+    const result = await ensurePullRequestIntentChecksInState(state, intentId);
+    if (result.executed)
+      addTrace(
+        state,
+        'pull_request.intent.local_checks_completed',
+        {
+          project_id: result.intent.project_id,
+          target_type: 'pull_request_intent',
+          target_id: result.intent.id,
+          summary: `Local delivery-policy checks: ${result.intent.checks_status}`,
+          data: {
+            repository_sha: result.intent.head_sha,
+            checks_status: result.intent.checks_status,
+            checks_count: result.checks.length
+          }
+        },
+        actorId
+      );
+    return result;
+  });
+}
+
+export async function ensurePullRequestIntentChecksInState(state, intentId) {
+  const intent = requireIntent(state, intentId);
+  if ((intent.checks || []).length) return { intent, checks: intent.checks, executed: false };
+  if (['pending', 'failed'].includes(intent.checks_status))
+    throw new HttpError(409, {
+      error: 'pull_request_remote_checks_not_passed',
+      checks_status: intent.checks_status
+    });
+  if (!['draft_open', 'ready'].includes(intent.status))
+    throw new HttpError(409, { error: 'pull_request_local_checks_status_invalid', status: intent.status });
+  const line = state.repository_lines.find((item) => item.id === intent.repository_line_id);
+  if (!line) throw new HttpError(409, { error: 'pull_request_local_checks_repository_line_required' });
+  const before = await verifyRepositoryLineHead(line, intent.head_sha, { requireClean: true }),
+    commands = await runApprovedVerificationCommands(state, intent, line),
+    after = await verifyRepositoryLineHead(line, intent.head_sha, { requireClean: true });
+  if (before.repository_sha !== after.repository_sha)
+    throw new HttpError(409, { error: 'pull_request_local_checks_head_changed' });
+  if (!commands.length) throw new HttpError(409, { error: 'pull_request_local_checks_commands_required' });
+  const failed = commands.some((item) => item.status !== 'passed' || Number(item.exit_code) !== 0),
+    timestamp = new Date().toISOString(),
+    checks = commands.map((item, index) => ({
+      id: `aiws-policy-${index + 1}-${item.log_sha256.slice(0, 12)}`,
+      name: `AIWS Delivery Policy: ${item.command}`,
+      status: 'completed',
+      conclusion: item.status === 'passed' && Number(item.exit_code) === 0 ? 'success' : 'failure',
+      source: 'aiws_delivery_policy',
+      repository_sha: intent.head_sha,
+      log_sha256: item.log_sha256,
+      completed_at: timestamp
+    }));
+  Object.assign(intent, {
+    checks,
+    checks_status: failed ? 'failed' : 'passed',
+    reconciliation: {
+      status: 'local_delivery_policy',
+      action: 'verify_checks',
+      repository_sha: intent.head_sha,
+      reconciled_at: timestamp
+    },
+    updated_at: timestamp
+  });
+  return { intent, checks, executed: true };
+}
 
 export async function executePullRequestIntent(intentId, input, actorId, dependencies = {}) {
   const prepared = await mutate((state) => preparePullRequestIntentExecutionInState(state, intentId, input, actorId));

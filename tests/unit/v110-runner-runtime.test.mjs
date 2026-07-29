@@ -21,6 +21,7 @@ try {
   const runRoutes = await import('../../apps/api/src/routes/runs.mjs');
   const taskExecutions = await import('../../apps/api/src/task-execution-service.mjs');
   const repositoryChanges = await import('../../apps/api/src/repository-change-verifier.mjs');
+  const pullRequestIntents = await import('../../apps/api/src/pull-request-intent-service.mjs');
   const dispatcher = await import('../../apps/api/src/workflow-dispatcher.mjs');
   const proposals = await import('../../apps/api/src/routes/change-proposals.mjs');
   const promptFile = path.join(runtime, 'prompt.md'),
@@ -288,6 +289,44 @@ try {
   assert.equal(recoveredCommit.commit_sha, recoveryCommitSha);
   assert.equal(recoveryLine.head_sha, recoveryCommitSha);
   assert.deepEqual(recoveredCommit.changed_files, [{ path: 'change.mjs', status: 'modified' }]);
+  const localCheckState = {
+      asset_blobs: [],
+      pull_request_intents: [
+        {
+          id: 'intent-local-check',
+          project_id: 'project-local-check',
+          repository_line_id: recoveryLine.id,
+          workstream_id: recoveryLine.workstream_id,
+          head_sha: recoveryCommitSha,
+          status: 'draft_open',
+          checks_status: 'passed',
+          checks: []
+        }
+      ],
+      repository_lines: [recoveryLine],
+      delivery_policies: [
+        {
+          workstream_id: recoveryLine.workstream_id,
+          connection_id: recoveryLine.connection_id,
+          status: 'approved',
+          approved_at: '2026-07-28T00:00:00.000Z',
+          test_commands: ['node --version']
+        }
+      ]
+    },
+    localChecks = await pullRequestIntents.ensurePullRequestIntentChecksInState(localCheckState, 'intent-local-check');
+  assert.equal(localChecks.executed, true);
+  assert.equal(localChecks.intent.checks_status, 'passed');
+  assert.equal(localChecks.checks.length, 1);
+  assert.equal(localChecks.checks[0].source, 'aiws_delivery_policy');
+  assert.equal(localChecks.checks[0].repository_sha, recoveryCommitSha);
+  assert.ok(localCheckState.asset_blobs.some((item) => item.sha256 === localChecks.checks[0].log_sha256));
+  localChecks.intent.checks = [];
+  localChecks.intent.checks_status = 'failed';
+  await assert.rejects(
+    () => pullRequestIntents.ensurePullRequestIntentChecksInState(localCheckState, 'intent-local-check'),
+    (error) => error?.payload?.error === 'pull_request_remote_checks_not_passed'
+  );
   assert.equal(
     repositoryChanges.addedDiffText(
       'diff --git a/test.mjs b/test.mjs\n--- a/test.mjs\n+++ b/test.mjs\n@@ -1 +1 @@\n-const token = "old-fixture";\n+const value = "new";\n context'

@@ -7,7 +7,11 @@ import {
   requireIntent,
   revokePullRequestIntentInState
 } from '../pull-request-intent-domain.mjs';
-import { executePullRequestIntent, reconcilePullRequestIntent } from '../pull-request-intent-service.mjs';
+import {
+  ensurePullRequestIntentChecks,
+  executePullRequestIntent,
+  reconcilePullRequestIntent
+} from '../pull-request-intent-service.mjs';
 import { assertControlledProjectWrite } from '../execution-governance.mjs';
 
 export const pullRequestIntentV19Routes = [
@@ -78,6 +82,12 @@ async function getIntent({ req, res, params }) {
   return send(res, 200, publicIntent(intent));
 }
 async function approveIntent({ req, res, params, body }) {
+  if (body.action === 'merge_pr') {
+    const snapshot = await readState(),
+      intent = requireIntent(snapshot, params.id),
+      actor = actorForRequest(snapshot, req, { strict: Boolean(req.auth?.clientId) });
+    await ensurePullRequestIntentChecks(intent.id, actor.id);
+  }
   const result = await mutate((state) => {
     const intent = requireIntent(state, params.id),
       actor = actorForRequest(state, req, { strict: Boolean(req.auth?.clientId) });

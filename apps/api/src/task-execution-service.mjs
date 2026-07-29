@@ -529,13 +529,14 @@ export async function collectActualEvidenceInState(state, execution) {
   return execution.evidence || {};
 }
 
-async function runApprovedVerificationCommands(state, execution, line) {
+export async function runApprovedVerificationCommands(state, execution, line) {
   const policy = state.delivery_policies
     .filter(
       (item) =>
         item.workstream_id === execution.workstream_id &&
         item.connection_id === line.connection_id &&
-        item.status === 'approved'
+        item.status === 'approved' &&
+        (!item.expires_at || Date.parse(item.expires_at) > Date.now())
     )
     .sort((a, b) => String(b.approved_at).localeCompare(String(a.approved_at)))[0];
   const commands = policy?.test_commands || [];
