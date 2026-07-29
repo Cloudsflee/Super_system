@@ -146,6 +146,15 @@ export function buildCodexContainerInvocation(options) {
     args.push(...runnerMount(mount, `/aiws-mounts/${index}`, 'ro', options));
   const image = String(options.image || env.AIWS_CODEX_DOCKER_IMAGE || DEFAULT_RUNNER_IMAGE);
   if (!/^[a-zA-Z0-9][a-zA-Z0-9._/:@-]{0,255}$/.test(image)) throw new Error('invalid_runner_image');
+  if (options.entrypoint) {
+    const entrypoint = String(options.entrypoint);
+    if (
+      !/^(?:\/[a-zA-Z0-9._-]+)+$|^[a-zA-Z0-9][a-zA-Z0-9._-]{0,127}$/.test(entrypoint) ||
+      entrypoint.split('/').some((segment) => segment === '.' || segment === '..')
+    )
+      throw new Error('invalid_runner_entrypoint');
+    args.push('--entrypoint', entrypoint);
+  }
   args.push(image, ...(options.commandArgs || []));
   return {
     command: 'docker',
@@ -162,8 +171,8 @@ export function assertProfileAllowed(profile, env = process.env) {
 }
 
 function appendEnvironment(args, key, value) {
-  if (!/^[A-Z_][A-Z0-9_]*$/.test(key)) throw new Error('invalid_runner_environment_key');
-  const sensitive = /(?:KEY|TOKEN|SECRET|PASSWORD|AUTH|CREDENTIAL)/.test(key);
+  if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(key)) throw new Error('invalid_runner_environment_key');
+  const sensitive = /(?:KEY|TOKEN|SECRET|PASSWORD|AUTH|CREDENTIAL)/.test(key.toUpperCase());
   if (value === null || value === undefined || sensitive) args.push('--env', key);
   else {
     const text = String(value);

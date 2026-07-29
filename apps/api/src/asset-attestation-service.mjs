@@ -15,12 +15,14 @@ import { acceptanceCriterionId } from '../../../packages/shared/src/task-contrib
 import { applyExecutionOutputUsage, updateAcceptedContributions } from './task-contribution-authority.mjs';
 import { effectClaimAcceptanceResults, resolveAttestationEffectClaims } from './task-effect-claims.mjs';
 import { executionOutputProvenance, executionOutputUsage } from './task-output-authority.mjs';
+import { assertDeploymentSystemEvidence, DEPLOYMENT_RUNTIME_VERIFIER } from './deployment-evidence-attestation.mjs';
 
 export const TRUSTED_VERIFIERS = Object.freeze(
   new Set([
     'repository_change_verifier',
     'repository_verify_verifier',
     'repository_integrate_verifier',
+    DEPLOYMENT_RUNTIME_VERIFIER,
     'aiws_cas_verifier'
   ])
 );
@@ -564,6 +566,10 @@ function assertSystemEvidence(state, slot, asset, version, evidence, execution) 
   }
   if (!execution || execution.input_superseded)
     throw new HttpError(409, { error: 'system_evidence_execution_invalid' });
+  if (/DeliveryEvidence/i.test(asset.asset_type)) {
+    assertDeploymentSystemEvidence(state, asset, version, evidence, execution);
+    return;
+  }
   const repositorySha = evidence.repository_sha || evidence.commit_sha || version.repository_sha;
   const commands = Array.isArray(evidence.commands)
     ? evidence.commands
@@ -666,6 +672,7 @@ function trustedPayloadForSlot(slot, proposed, evidence) {
         }
       }
     );
+  if (/DeliveryEvidence/i.test(slot.asset_type) && evidence.deployment_payload) return evidence.deployment_payload;
   if (/DeliveryEvidence|Integration/i.test(slot.asset_type))
     return {
       payload_kind: 'json',
@@ -695,6 +702,7 @@ function evidenceForRecord(value) {
   const result = structuredClone(value || {});
   delete result.repository_payload;
   delete result.raw_payload;
+  delete result.deployment_payload;
   return result;
 }
 function inferredWorkstreamOutcomeRelations(state) {

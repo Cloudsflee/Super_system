@@ -140,6 +140,23 @@
       "requires_env": []
     },
     {
+      "id": "V20-L1-DEPLOY-006",
+      "layer": "L1",
+      "domain": "task-execution",
+      "priority": "P0",
+      "command": ["node", "tests/unit/v20-deployment-evidence-verifier.test.mjs"],
+      "suites": ["pr", "full", "release"],
+      "covers": [
+        "deployment-candidate-binding",
+        "compose-target-authorization",
+        "browser-runtime-verification",
+        "delivery-evidence-cas-attestation"
+      ],
+      "timeout_ms": 60000,
+      "external_effects": "none",
+      "requires_env": []
+    },
+    {
       "id": "V20-L3-WEB-001",
       "layer": "L3",
       "domain": "web",

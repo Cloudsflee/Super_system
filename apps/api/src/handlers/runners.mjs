@@ -183,6 +183,10 @@ export function buildNodeRunInvocation(profile, run, input, proxyKeys, mcpAccess
       CODEX_HOME: '/codex-home',
       AIWS_BROWSER_EXECUTABLE: '/usr/bin/chromium-browser',
       AIWS_HOST_GATEWAY: 'http://host.docker.internal',
+      HOME: '/tmp/aiws-browser-home',
+      XDG_CONFIG_HOME: '/tmp/aiws-browser-home/.config',
+      XDG_CACHE_HOME: '/tmp/aiws-browser-home/.cache',
+      NODE_PATH: '/usr/local/lib/node_modules',
       GIT_OPTIONAL_LOCKS: '0',
       GIT_TERMINAL_PROMPT: '0',
       ...(input.exposeApiKey ? { OPENAI_API_KEY: null } : {}),
@@ -241,6 +245,9 @@ export function runnerVisibleContextPack(contextPack, run) {
         : '',
       run.runner === 'codex_docker' && source?.task?.task_kind === 'deploy'
         ? 'Docker daemon 刻意不向 Runner 暴露。部署验收必须从 compose 推导宿主机发布端口，并通过 AIWS_HOST_GATEWAY 指向的 host.docker.internal 访问真实外层容器服务；不得用 Runner 内临时进程替代，端点不可用时必须明确返回 blocked。'
+        : '',
+      run.runner === 'codex_docker' && source?.task?.task_kind === 'deploy'
+        ? 'DeliveryEvidenceAsset 的 payload.content 必须是 JSON 字符串，至少包含 run_id、repository_sha、target.base_url（或 compose.host_url）、api.passed 的 GET 路径与状态、security_headers.required、images.static_assets 路径，以及 browser.viewports 的宽度和结果。服务端会用无模型的独立浏览器容器重跑这些检查；候选声明不能替代服务端复核。全局 Playwright 由 CommonJS require("/usr/local/lib/node_modules/playwright") 加载。'
         : '',
       serverCommitsRepository
         ? 'Git 元数据刻意只读；不得执行 git add/commit 或 MCP commit。完成文件修改与测试后返回 succeeded，服务端将执行 secret scan、commit 并生成仓库证据。'

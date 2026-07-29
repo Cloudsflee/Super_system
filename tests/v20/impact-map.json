@@ -26,6 +26,9 @@
       "patterns": [
         "apps/api/src/task-*.mjs",
         "apps/api/src/asset-attestation-service.mjs",
+        "apps/api/src/deployment-*.mjs",
+        "apps/api/src/container-runtime-config.mjs",
+        "apps/api/src/handlers/runners.mjs",
         "apps/api/src/workflow-quality.mjs",
         "apps/api/src/workflow-generation-candidate.mjs",
         "apps/api/src/routes/runs.mjs",
@@ -36,9 +39,15 @@
         "apps/web/src/features/nodes/TaskExecutionPanel.tsx",
         "tests/unit/v20-task-effects.test.mjs",
         "tests/unit/v20-controlled-node-run-dependencies.test.mjs",
+        "tests/unit/v20-deployment-evidence-verifier.test.mjs",
         "tests/unit/v19-workflow-generation-contract.test.mjs"
       ],
-      "tests": ["V20-L1-EFFECTS-004", "V20-L1-DISPATCH-005", "V20-L4-SECURITY-001"]
+      "tests": [
+        "V20-L1-EFFECTS-004",
+        "V20-L1-DISPATCH-005",
+        "V20-L1-DEPLOY-006",
+        "V20-L4-SECURITY-001"
+      ]
     },
     {
       "domain": "mcp",

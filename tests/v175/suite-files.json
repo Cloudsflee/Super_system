@@ -18,7 +18,8 @@
     "tests/unit/v14-container.test.mjs",
     "tests/unit/v15-operations.test.mjs",
     "tests/unit/v18-codex-mcp-injection.test.mjs",
-    "tests/unit/v110-runner-runtime.test.mjs"
+    "tests/unit/v110-runner-runtime.test.mjs",
+    "tests/unit/v20-deployment-evidence-verifier.test.mjs"
   ],
   "unit-state": [
     "tests/unit/v16-core.test.mjs",

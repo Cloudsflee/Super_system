@@ -128,6 +128,8 @@ try {
   assert.match(prompt, /不得下载浏览器二进制/);
   assert.match(prompt, /host\.docker\.internal/);
   assert.match(prompt, /不得用 Runner 内临时进程替代/);
+  assert.match(prompt, /无模型的独立浏览器容器重跑/);
+  assert.match(prompt, /payload\.content 必须是 JSON 字符串/);
   assert.match(prompt, /"managed_path": "\/workspace"/);
   assert.match(prompt, /"path": "\/workspace"/);
   assert.equal(prompt.includes(JSON.stringify(workspace).slice(1, -1)), false);
@@ -171,6 +173,10 @@ try {
   assert.equal(nodeRunInvocation.args[workingDirectory + 1], '/tmp');
   assert.ok(nodeRunInvocation.args.includes('AIWS_BROWSER_EXECUTABLE=/usr/bin/chromium-browser'));
   assert.ok(nodeRunInvocation.args.includes('AIWS_HOST_GATEWAY=http://host.docker.internal'));
+  assert.ok(nodeRunInvocation.args.includes('HOME=/tmp/aiws-browser-home'));
+  assert.ok(nodeRunInvocation.args.includes('XDG_CONFIG_HOME=/tmp/aiws-browser-home/.config'));
+  assert.ok(nodeRunInvocation.args.includes('XDG_CACHE_HOME=/tmp/aiws-browser-home/.cache'));
+  assert.ok(nodeRunInvocation.args.includes('NODE_PATH=/usr/local/lib/node_modules'));
   const resultSchema = JSON.parse(fs.readFileSync(prepared.schemaFile, 'utf8'));
   assert.deepEqual(resultSchema.properties.schema_version.enum, ['aiws.task_runner_result.v2']);
   assert.deepEqual(resultSchema.required.sort(), Object.keys(resultSchema.properties).sort());

@@ -19,6 +19,7 @@ import { prepareTaskExecutionInState } from '../task-execution-service.mjs';
 import { collectActualEvidenceInState, ensureCompletedWorkstreamOutcomesInState } from '../task-execution-service.mjs';
 import { ingestExecutionOutputsInState } from '../asset-attestation-service.mjs';
 import { ensureContextProjection } from '../context-service.mjs';
+import { verifyDeploymentNodeRun } from '../deployment-evidence-verifier.mjs';
 import {
   completeTaskExecutionInState,
   failTaskExecutionInState,
@@ -220,6 +221,9 @@ async function completeNodeRun(nodeId, body, prepared) {
     if (persisted.cancelled) return persisted.response;
     const runnerError = controlledRunnerResultError(execution.resultJson, persisted.controlled);
     if (runnerError) throw runnerError;
+    const deploymentVerification = persisted.controlled
+      ? await verifyPersistedDeploymentRun(prepared.run_id, execution.resultJson)
+      : null;
     return await mutate(async (state) => {
       const actor = owner(state),
         bundle = nodeBundle(state, nodeId),
@@ -231,7 +235,8 @@ async function completeNodeRun(nodeId, body, prepared) {
       if (run.task_execution_id) {
         const taskExecution = state.task_executions.find((item) => item.id === run.task_execution_id);
         if (!taskExecution) throw new HttpError(409, { error: 'task_execution_missing' });
-        const evidence = await collectActualEvidenceInState(state, taskExecution);
+        const actualEvidence = await collectActualEvidenceInState(state, taskExecution),
+          evidence = mergeActualEvidence(actualEvidence, deploymentVerification?.evidence);
         const ingested = await ingestExecutionOutputsInState(state, {
           taskExecution,
           outputs: execution.resultJson.outputs,
@@ -244,11 +249,13 @@ async function completeNodeRun(nodeId, body, prepared) {
           nodeRunId: run.id,
           actorId: actor.id,
           verifierId:
+            deploymentVerification?.verifierId ||
             {
               repository_change: 'repository_change_verifier',
               repository_verify: 'repository_verify_verifier',
               repository_integrate: 'repository_integrate_verifier'
-            }[taskExecution.executor] || null,
+            }[taskExecution.executor] ||
+            null,
           actualEvidence: evidence
         });
         if (!ingested.awaiting_human.length) completeTaskExecutionInState(state, taskExecution.id, { evidence });
@@ -264,6 +271,23 @@ async function completeNodeRun(nodeId, body, prepared) {
   } finally {
     runControllers.delete(prepared.run_id);
   }
+}
+
+async function verifyPersistedDeploymentRun(runId, resultJson) {
+  const state = await readState(),
+    run = state.node_runs.find((item) => item.id === runId),
+    taskExecution = state.task_executions.find((item) => item.id === run?.task_execution_id);
+  if (!run || !taskExecution) return null;
+  return verifyDeploymentNodeRun(state, { run, taskExecution, resultJson });
+}
+
+function mergeActualEvidence(actual, verified) {
+  if (!verified) return actual;
+  return {
+    ...(actual || {}),
+    ...verified,
+    evidence_refs: [...new Set([...(actual?.evidence_refs || []), ...(verified.evidence_refs || [])])]
+  };
 }
 
 function testConsumptionFixture(taskExecution, body) {
