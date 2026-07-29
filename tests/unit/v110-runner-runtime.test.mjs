@@ -61,7 +61,8 @@ try {
     AIWS_DOCKER_INSTANCE: 'runner-test',
     AIWS_RUNNER_CPUS: '1',
     AIWS_RUNNER_MEMORY: '512m',
-    AIWS_RUNNER_PIDS: '128'
+    AIWS_RUNNER_PIDS: '128',
+    AIWS_RUNNER_TMPFS: '768m'
   };
   const invocation = config.buildCodexContainerInvocation({
     env,
@@ -79,7 +80,7 @@ try {
   const mounts = invocation.args.filter((item) => item.startsWith('type=volume'));
   const tmpfsIndex = invocation.args.indexOf('--tmpfs');
   assert.ok(tmpfsIndex > 0);
-  assert.equal(invocation.args[tmpfsIndex + 1], '/tmp:rw,nosuid,nodev,size=256m');
+  assert.equal(invocation.args[tmpfsIndex + 1], '/tmp:rw,nosuid,nodev,size=768m');
   assert.ok(mounts.some((item) => item.includes('dst=/workspace') && item.endsWith(',readonly')));
   assert.ok(mounts.some((item) => item.includes('dst=/aiws-run') && !item.endsWith(',readonly')));
   assert.ok(
@@ -90,6 +91,7 @@ try {
 
   const context = {
     schema_version: 'aiws.task_execution_context.v3',
+    task: { task_kind: 'deploy' },
     contract: { expected_outputs: [{ key: 'result', asset_type: 'ResearchEvidenceAsset' }] },
     inputs: [{ key: 'repository', repository_snapshot: { fixed_sha: 'a'.repeat(40), managed_path: workspace } }],
     repository_snapshot: { fixed_sha: 'a'.repeat(40), managed_path: workspace },
@@ -122,6 +124,10 @@ try {
   const prompt = fs.readFileSync(prepared.promptFile, 'utf8');
   assert.match(prompt, /运行时仓库根目录固定为 \/workspace/);
   assert.match(prompt, /NodeRun ID run-external-files/);
+  assert.match(prompt, /\/usr\/bin\/chromium-browser/);
+  assert.match(prompt, /不得下载浏览器二进制/);
+  assert.match(prompt, /host\.docker\.internal/);
+  assert.match(prompt, /不得用 Runner 内临时进程替代/);
   assert.match(prompt, /"managed_path": "\/workspace"/);
   assert.match(prompt, /"path": "\/workspace"/);
   assert.equal(prompt.includes(JSON.stringify(workspace).slice(1, -1)), false);
@@ -163,6 +169,8 @@ try {
   assert.equal(nodeRunInvocation.args[addDirectory + 1], '/tmp');
   assert.ok(workingDirectory > 0);
   assert.equal(nodeRunInvocation.args[workingDirectory + 1], '/tmp');
+  assert.ok(nodeRunInvocation.args.includes('AIWS_BROWSER_EXECUTABLE=/usr/bin/chromium-browser'));
+  assert.ok(nodeRunInvocation.args.includes('AIWS_HOST_GATEWAY=http://host.docker.internal'));
   const resultSchema = JSON.parse(fs.readFileSync(prepared.schemaFile, 'utf8'));
   assert.deepEqual(resultSchema.properties.schema_version.enum, ['aiws.task_runner_result.v2']);
   assert.deepEqual(resultSchema.required.sort(), Object.keys(resultSchema.properties).sort());

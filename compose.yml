@@ -24,6 +24,7 @@ services:
       AIWS_RUNNER_CPUS: ${AIWS_RUNNER_CPUS:-2}
       AIWS_RUNNER_MEMORY: ${AIWS_RUNNER_MEMORY:-4g}
       AIWS_RUNNER_PIDS: ${AIWS_RUNNER_PIDS:-512}
+      AIWS_RUNNER_TMPFS: ${AIWS_RUNNER_TMPFS:-1g}
     volumes:
       - type: volume
         source: aiws-data

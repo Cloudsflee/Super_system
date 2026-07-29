@@ -25,7 +25,8 @@ try {
     AIWS_DOCKER_INSTANCE: 'unit-one',
     AIWS_RUNNER_CPUS: '1.5',
     AIWS_RUNNER_MEMORY: '768m',
-    AIWS_RUNNER_PIDS: '256'
+    AIWS_RUNNER_PIDS: '256',
+    AIWS_RUNNER_TMPFS: '384m'
   };
   const secret = 'sk-v14-unit-secret';
   const invocation = config.buildCodexContainerInvocation({
@@ -48,6 +49,7 @@ try {
   assert.ok(invocation.args.includes('1.5'));
   assert.ok(invocation.args.includes('768m'));
   assert.ok(invocation.args.includes('256'));
+  assert.ok(invocation.args.includes('/tmp:rw,nosuid,nodev,size=384m'));
   assert.ok(invocation.args.includes('ALL'));
   assert.ok(invocation.args.includes('no-new-privileges'));
   for (const capability of ['SETUID', 'SETGID', 'SETFCAP']) assert.ok(invocation.args.includes(capability));
@@ -71,11 +73,13 @@ try {
     }).containerName
   );
 
-  assert.deepEqual(config.runnerLimits({}), { cpus: '2', memory: '4g', pids: '512' });
+  assert.deepEqual(config.runnerLimits({}), { cpus: '2', memory: '4g', pids: '512', tmpfs: '1g' });
   assert.throws(() => config.runnerLimits({ AIWS_RUNNER_CPUS: '-1' }), /invalid_runner_cpus/);
   assert.throws(() => config.runnerLimits({ AIWS_RUNNER_MEMORY: '--privileged' }), /invalid_runner_memory/);
   assert.throws(() => config.runnerLimits({ AIWS_RUNNER_MEMORY: '99999t' }), /invalid_runner_memory/);
   assert.throws(() => config.runnerLimits({ AIWS_RUNNER_PIDS: '99999' }), /invalid_runner_pids/);
+  assert.throws(() => config.runnerLimits({ AIWS_RUNNER_TMPFS: '32m' }), /invalid_runner_tmpfs/);
+  assert.throws(() => config.runnerLimits({ AIWS_RUNNER_TMPFS: '--mount' }), /invalid_runner_tmpfs/);
   assert.throws(() => config.validateDockerVolumeName('--mount'), /invalid_docker_data_volume/);
   assert.throws(() => config.runnerMount(root, '/workspace', 'rw', { env, aiwsHome: home }), /outside_data_volume/);
   assert.throws(() => config.runnerMount(workspace, '/', 'rw', { env, aiwsHome: home }), /invalid_runner_mount_target/);

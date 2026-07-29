@@ -181,6 +181,8 @@ export function buildNodeRunInvocation(profile, run, input, proxyKeys, mcpAccess
     extraMounts: input.mounts,
     containerEnv: {
       CODEX_HOME: '/codex-home',
+      AIWS_BROWSER_EXECUTABLE: '/usr/bin/chromium-browser',
+      AIWS_HOST_GATEWAY: 'http://host.docker.internal',
       GIT_OPTIONAL_LOCKS: '0',
       GIT_TERMINAL_PROMPT: '0',
       ...(input.exposeApiKey ? { OPENAI_API_KEY: null } : {}),
@@ -234,6 +236,12 @@ export function runnerVisibleContextPack(contextPack, run) {
     projected.content_json.runner_instruction = [
       `运行时仓库根目录固定为 ${repositoryRoot}；服务端物化路径不可在 runner 内使用。`,
       `调用 /runs/:id 或对应 MCP 操作时必须使用 NodeRun ID ${run.id}，不得使用 TaskExecution ID。`,
+      run.runner === 'codex_docker'
+        ? '浏览器验收必须复用预装的 Playwright 与 /usr/bin/chromium-browser（AIWS_BROWSER_EXECUTABLE）；启动 Chromium 时使用 --no-sandbox 和 --disable-dev-shm-usage，不得下载浏览器二进制。'
+        : '',
+      run.runner === 'codex_docker' && source?.task?.task_kind === 'deploy'
+        ? 'Docker daemon 刻意不向 Runner 暴露。部署验收必须从 compose 推导宿主机发布端口，并通过 AIWS_HOST_GATEWAY 指向的 host.docker.internal 访问真实外层容器服务；不得用 Runner 内临时进程替代，端点不可用时必须明确返回 blocked。'
+        : '',
       serverCommitsRepository
         ? 'Git 元数据刻意只读；不得执行 git add/commit 或 MCP commit。完成文件修改与测试后返回 succeeded，服务端将执行 secret scan、commit 并生成仓库证据。'
         : '',

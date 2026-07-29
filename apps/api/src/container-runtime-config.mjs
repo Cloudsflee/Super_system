@@ -26,12 +26,15 @@ export function runnerLimits(env = process.env) {
   const cpus = String(env.AIWS_RUNNER_CPUS || '2');
   const memory = String(env.AIWS_RUNNER_MEMORY || '4g').toLowerCase();
   const pids = String(env.AIWS_RUNNER_PIDS || '512');
+  const tmpfs = String(env.AIWS_RUNNER_TMPFS || '1g').toLowerCase();
   if (!/^\d+(?:\.\d{1,3})?$/.test(cpus) || Number(cpus) < 0.1 || Number(cpus) > 64)
     throw new Error('invalid_runner_cpus');
   const bytes = parseMemoryBytes(memory);
   if (bytes < 4n * 1024n ** 2n || bytes > 1024n ** 4n) throw new Error('invalid_runner_memory');
   if (!/^\d+$/.test(pids) || Number(pids) < 32 || Number(pids) > 4096) throw new Error('invalid_runner_pids');
-  return { cpus, memory, pids };
+  const tmpfsBytes = parseMemoryBytes(tmpfs, 'invalid_runner_tmpfs');
+  if (tmpfsBytes < 64n * 1024n ** 2n || tmpfsBytes > 16n * 1024n ** 3n) throw new Error('invalid_runner_tmpfs');
+  return { cpus, memory, pids, tmpfs };
 }
 
 export function managedInstance(env = process.env) {
@@ -122,7 +125,7 @@ export function buildCodexContainerInvocation(options) {
     );
   if (options.stdin || options.interactive) args.push('-i');
   if (options.interactive) args.push('-t');
-  if (options.tmpfs !== false) args.push('--tmpfs', '/tmp:rw,nosuid,nodev,size=256m');
+  if (options.tmpfs !== false) args.push('--tmpfs', `/tmp:rw,nosuid,nodev,size=${limits.tmpfs}`);
   if (options.hostGateway !== false) args.push('--add-host', 'host.docker.internal:host-gateway');
   if (env.AIWS_RUNNER_NETWORK) args.push('--network', validateDockerNetworkName(env.AIWS_RUNNER_NETWORK));
   for (const [key, value] of Object.entries(options.containerEnv || {})) appendEnvironment(args, key, value);
@@ -190,9 +193,9 @@ function assertNoSymlinkSegments(root, relative) {
   }
 }
 
-function parseMemoryBytes(value) {
+function parseMemoryBytes(value, errorCode = 'invalid_runner_memory') {
   const match = String(value).match(/^([1-9]\d{0,8})(b|[kmgt](?:i?b)?)$/i);
-  if (!match) throw new Error('invalid_runner_memory');
+  if (!match) throw new Error(errorCode);
   const unit = match[2].toLowerCase(),
     prefix = unit === 'b' ? 'b' : unit[0];
   const multiplier = { b: 1n, k: 1024n, m: 1024n ** 2n, g: 1024n ** 3n, t: 1024n ** 4n }[prefix];
