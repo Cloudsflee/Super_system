@@ -7,7 +7,13 @@ import path from 'node:path';
 const port = Number(process.env.AIWS_TEST_PORT || 4586);
 const home = fs.mkdtempSync(path.join(os.tmpdir(), 'aiws-v12-codex-'));
 const child = spawn(process.execPath, ['apps/api/server.mjs'], {
-  env: { ...process.env, AIWS_PORT: String(port), AIWS_HOME: home, NODE_ENV: 'test' },
+  env: {
+    ...process.env,
+    AIWS_PORT: String(port),
+    AIWS_HOME: home,
+    AIWS_TEST_DISABLE_CONTEXT_PROJECTOR: '1',
+    NODE_ENV: 'test'
+  },
   stdio: ['ignore', 'pipe', 'pipe']
 });
 let serverLog = '';

@@ -35,6 +35,7 @@ import { runAsActor } from './src/actor-context.mjs';
 import { authorizeApiRoute, requestSubjectUserId } from './src/project-governance-v19.mjs';
 import { recoverPersistentWorkflowExecutions } from './src/task-execution-service.mjs';
 import { startWorkflowDispatcher } from './src/workflow-dispatcher.mjs';
+import { startContextProjectorCoordinator } from './src/context-projector-coordinator.mjs';
 
 cleanupStaleContainers();
 await ensureRuntime();
@@ -43,6 +44,10 @@ await resumeWorkflowMigrationOrchestrator();
 await recoverAssistV3Runtime();
 await purgeExpiredDeletedSessions();
 const stopWorkflowDispatcher = startWorkflowDispatcher();
+const stopContextProjector =
+  process.env.NODE_ENV === 'test' && process.env.AIWS_TEST_DISABLE_CONTEXT_PROJECTOR === '1'
+    ? () => undefined
+    : startContextProjectorCoordinator();
 
 const routes = createApiRouteRegistry(apiRoutes);
 configureMcpHttpRuntime(routes);
@@ -131,6 +136,7 @@ attachDeletedSessionSweeper(server);
 attachContainerShutdown(server, { beforeClose: () => codexBuildManager.shutdown() });
 server.on('close', () => {
   stopWorkflowDispatcher();
+  stopContextProjector();
   void Promise.all([closeMcpHttpRuntime(), closeGithubProxyDispatchers()]);
 });
 

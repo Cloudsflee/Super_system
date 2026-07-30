@@ -257,7 +257,7 @@ try {
     ownerHeaders,
     201
   );
-  assert.equal(selection.schema_version, 'aiws.context_selection.v1');
+  assert.equal(selection.schema_version, 'aiws.context_selection.v2');
   const selectedProjectDocument = await request(`/context/v1/nodes/${projectNode.id}`, 'GET', undefined, ownerHeaders);
   assert.equal(selection.included[0].document_version_id, selectedProjectDocument.version.id);
   const selectedVersionId = selectedProjectDocument.version.id;
@@ -440,7 +440,7 @@ try {
   assert.equal(revokedExplanation.included_nodes[0].node, null, 'selection audit reapplies current project ACL');
 
   const status = await request('/context/v1/status', 'GET', undefined, ownerHeaders);
-  assert.equal(status.schema_version, 20);
+  assert.equal(status.schema_version, 21);
   assert.ok(status.coverage.warnings.some((item) => item.code === 'context_repository_projection_truncated'));
   assert.equal(status.jobs.failed, 0);
   assert.equal(status.index.state, 'ready');

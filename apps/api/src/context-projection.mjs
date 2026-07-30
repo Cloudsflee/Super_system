@@ -20,7 +20,10 @@ export async function materializeContextDocumentsInState(
     allowedSystemNodeIds = null,
     force = false,
     maxJobs = 10_000,
-    casRoot = CAS_DIR
+    casRoot = CAS_DIR,
+    leaseHolder = null,
+    leaseMs = 30_000,
+    renderer = null
   } = {}
 ) {
   const selectedIds = nodeIds ? new Set(nodeIds) : null,
@@ -29,12 +32,15 @@ export async function materializeContextDocumentsInState(
   for (const job of state.context_projection_jobs.filter((item) => item.status === 'running')) {
     const node = state.context_nodes.find((item) => item.id === job.node_id);
     if (!node || !nodeMatchesProjectionScope(node, { projectId, allowedProjects, allowedSystemNodes })) continue;
+    const leaseExpiresAt = Date.parse(job.lease?.expires_at || '');
+    if (Number.isFinite(leaseExpiresAt) && leaseExpiresAt > Date.now()) continue;
     Object.assign(job, {
       status: 'pending',
       error_code: 'context_projection_interrupted',
       next_retry_at: null,
       updated_at: now(),
-      completed_at: null
+      completed_at: null,
+      lease: null
     });
   }
   const jobs = state.context_projection_jobs
@@ -47,6 +53,7 @@ export async function materializeContextDocumentsInState(
         (!selectedIds || selectedIds.has(node.id)) &&
         nodeMatchesProjectionScope(node, { projectId, allowedProjects, allowedSystemNodes }) &&
         (job.status === 'pending' ||
+          (job.status === 'running' && leaseHolder && job.lease?.holder === leaseHolder) ||
           (job.status === 'failed' && (force || (Number(job.attempts || 0) < 3 && retryReady))))
       );
     })
@@ -68,6 +75,11 @@ export async function materializeContextDocumentsInState(
     job.status = 'running';
     job.attempts = Number(job.attempts || 0) + 1;
     job.updated_at = now();
+    job.lease = {
+      holder: leaseHolder || `inline:${process.pid}`,
+      acquired_at: now(),
+      expires_at: new Date(Date.now() + Math.max(1_000, Number(leaseMs) || 30_000)).toISOString()
+    };
     try {
       const sourceRecord = node.source_collection
         ? state[node.source_collection]?.find(
@@ -84,9 +96,14 @@ export async function materializeContextDocumentsInState(
           edges.flatMap((edge) => [edge.source_node_id, edge.target_node_id]).filter((id) => id !== node.id)
         ),
         relatedNodes = state.context_nodes.filter((item) => relatedIds.has(item.id));
-      const markdown = await redactKnownSecrets(renderContextMarkdown({ node, record, edges, relatedNodes })),
+      const rendered = renderer
+          ? await renderer({ node, record, edges, relatedNodes })
+          : { markdown: renderContextMarkdown({ node, record, edges, relatedNodes }) },
+        markdown = await redactKnownSecrets(rendered.markdown),
         contentSha256 = contextHash(Buffer.from(markdown, 'utf8')),
         versionId = `ctxver_${contextHash(`${node.id}:${node.source_hash}:${contentSha256}`).slice(0, 24)}`;
+      if (node.source_hash !== job.expected_source_hash)
+        throw projectionError('context_projection_source_changed_before_commit');
       let version = state.context_document_versions.find((item) => item.id === versionId);
       if (!version) {
         const blob = await writeCasBlob(Buffer.from(markdown, 'utf8'), {
@@ -127,7 +144,8 @@ export async function materializeContextDocumentsInState(
         error_code: null,
         next_retry_at: null,
         updated_at: now(),
-        completed_at: now()
+        completed_at: now(),
+        lease: null
       });
     } catch (error) {
       const code = safeErrorCode(error);
@@ -136,7 +154,8 @@ export async function materializeContextDocumentsInState(
         error_code: code,
         next_retry_at: new Date(Date.now() + Math.min(60_000, 1000 * 2 ** Number(job.attempts || 1))).toISOString(),
         updated_at: now(),
-        completed_at: null
+        completed_at: null,
+        lease: null
       });
       result.failed += 1;
       result.failures.push({ job_id: job.id, node_id: job.node_id, error_code: code });

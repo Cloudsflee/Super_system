@@ -22,6 +22,7 @@ const child = spawn(process.execPath, ['apps/api/server.mjs'], {
     ...process.env,
     AIWS_PORT: String(port),
     AIWS_HOME: home,
+    AIWS_TEST_DISABLE_CONTEXT_PROJECTOR: '1',
     NODE_ENV: 'test',
     AIWS_PUBLIC_BASE_URL: 'http://localhost:4317',
     AIWS_HOSTED_GITHUB_APP_ID: '2026',

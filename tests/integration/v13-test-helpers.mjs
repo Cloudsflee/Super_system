@@ -24,6 +24,7 @@ export async function startApi({ port, home, ccSwitch, env = {} }) {
       CC_SWITCH_CONFIG_DIR: ccSwitch,
       NODE_ENV: 'test',
       AIWS_BYPASS_SETUP: '1',
+      AIWS_TEST_DISABLE_CONTEXT_PROJECTOR: '1',
       ...env
     },
     stdio: ['ignore', 'pipe', 'pipe']

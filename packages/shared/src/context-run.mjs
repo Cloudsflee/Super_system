@@ -14,6 +14,7 @@ export function buildContextPack({
   pinnedRefs = [],
   executionContext = null
 }) {
+  const protocol = contextPackProtocol(executionContext);
   const tokenBudget = project.settings?.token_budget || 12000;
   const sufficiency = buildSufficiencyCheck({
     state,
@@ -47,15 +48,7 @@ export function buildContextPack({
     executionContext
   });
   const content = {
-    schema_version: ['aiws.task_execution_context.v4', 'aiws.task_execution_context.v5'].includes(
-      executionContext?.schema_version
-    )
-      ? 'aiws.context_pack.v4'
-      : executionContext?.schema_version === 'aiws.task_execution_context.v3'
-        ? 'aiws.context_pack.v3'
-        : executionContext
-          ? 'aiws.context_pack.v2'
-          : 'aiws.context_pack.v1',
+    schema_version: protocol.schemaVersion,
     project: pick(project, ['id', 'title', 'goal', 'role', 'background', 'workspace_root', 'repo_path']),
     workspace: workspace ? pick(workspace, ['id', 'title', 'goal', 'type', 'status', 'current_digest_id']) : null,
     workflow_node: node ? pick(node, ['id', 'type', 'title', 'goal', 'status', 'order_index']) : null,
@@ -96,14 +89,7 @@ export function buildContextPack({
       branch_strategy: 'aiws/{node_slug}-{short_run_id}',
       dirty_policy: '执行上下文固定后不得静默切换分支或覆盖快照。'
     },
-    return_schema_ref:
-      executionContext?.schema_version === 'aiws.task_execution_context.v5'
-        ? 'aiws.task_runner_result.v4'
-        : executionContext?.schema_version === 'aiws.task_execution_context.v4'
-          ? 'aiws.task_runner_result.v3'
-          : executionContext?.schema_version === 'aiws.task_execution_context.v3'
-            ? 'aiws.task_runner_result.v2'
-            : 'aiws.node_run_result.v1',
+    return_schema_ref: protocol.resultSchemaRef,
     result_schema: runnerResultSchemaForContext(executionContext),
     sufficiency_check: sufficiency,
     memory_manifest: manifest
@@ -119,15 +105,7 @@ export function buildContextPack({
     receiver_type: 'ai_runner',
     receiver_name,
     purpose,
-    version: ['aiws.task_execution_context.v4', 'aiws.task_execution_context.v5'].includes(
-      executionContext?.schema_version
-    )
-      ? 4
-      : executionContext?.schema_version === 'aiws.task_execution_context.v3'
-        ? 3
-        : executionContext
-          ? 2
-          : 1,
+    version: protocol.version,
     status: 'draft',
     content_json: content,
     content_file_ref_id: null,
@@ -143,6 +121,25 @@ export function buildContextPack({
     updated_at: now(),
     _sufficiency_check: sufficiency
   };
+}
+
+function contextPackProtocol(executionContext) {
+  const resultSchemaRef =
+    executionContext?.schema_version === 'aiws.task_execution_context.v5'
+      ? 'aiws.task_runner_result.v4'
+      : executionContext?.schema_version === 'aiws.task_execution_context.v4'
+        ? 'aiws.task_runner_result.v3'
+        : executionContext?.schema_version === 'aiws.task_execution_context.v3'
+          ? 'aiws.task_runner_result.v2'
+          : 'aiws.node_run_result.v1';
+  if (executionContext?.outcome_contract_hash && executionContext?.quality_rubric_hash)
+    return { schemaVersion: 'aiws.context_pack.v5', version: 5, resultSchemaRef };
+  if (['aiws.task_execution_context.v4', 'aiws.task_execution_context.v5'].includes(executionContext?.schema_version))
+    return { schemaVersion: 'aiws.context_pack.v4', version: 4, resultSchemaRef };
+  if (executionContext?.schema_version === 'aiws.task_execution_context.v3')
+    return { schemaVersion: 'aiws.context_pack.v3', version: 3, resultSchemaRef };
+  if (executionContext) return { schemaVersion: 'aiws.context_pack.v2', version: 2, resultSchemaRef };
+  return { schemaVersion: 'aiws.context_pack.v1', version: 1, resultSchemaRef };
 }
 
 function selectContextPackSources({ state, project, workspace, node, contract, executionContext }) {

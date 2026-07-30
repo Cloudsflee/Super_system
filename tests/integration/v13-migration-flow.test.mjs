@@ -25,7 +25,7 @@ try {
   server = await startApi({ port, home: fixture.home, ccSwitch: fixture.ccSwitch });
   let migrated = readState();
   const project = migrated.projects.find((item) => item.id === 'prj_legacy_v12');
-  assert.equal(migrated.schema_version, 20);
+  assert.equal(migrated.schema_version, 21);
   assert.equal(migrated.context_projection_coverage.warnings.length, 0);
   assert.ok(migrated.context_nodes.length > 0);
   assert.equal(project.status, 'active');
@@ -58,6 +58,13 @@ try {
   for (const collection of ['brief_templates', 'workflow_drafts'])
     assert.ok(Array.isArray(migrated[collection]), collection);
   assert.ok(Array.isArray(migrated.mcp_clients));
+  for (const collection of [
+    'outcome_requirements',
+    'outcome_evaluations',
+    'outcome_waivers',
+    'execution_stage_checkpoints'
+  ])
+    assert.ok(Array.isArray(migrated[collection]), collection);
 
   const proposal = migrated.change_proposals.find((item) => item.id === 'cpr_legacy_pending');
   assert.equal(proposal.attention_state, 'queued');
@@ -83,7 +90,7 @@ try {
     )
   );
   assert.equal(migrationManifest.from_schema, 12);
-  assert.equal(migrationManifest.to_schema, 20);
+  assert.equal(migrationManifest.to_schema, 21);
   assert.equal(migrationManifest.status, 'committed');
 
   const v2 = await api(port, '/assist/v2/sessions/asst_legacy_v2');

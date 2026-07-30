@@ -57,7 +57,13 @@ spawnSync('git', ['add', '.'], { cwd: repo });
 spawnSync('git', ['commit', '-m', 'init'], { cwd: repo });
 const sourceBefore = repositorySnapshot(repo),
   server = spawn(process.execPath, ['apps/api/server.mjs'], {
-    env: { ...process.env, AIWS_PORT: String(port), AIWS_HOME: home, NODE_ENV: 'test' },
+    env: {
+      ...process.env,
+      AIWS_PORT: String(port),
+      AIWS_HOME: home,
+      NODE_ENV: 'test',
+      AIWS_TEST_DISABLE_CONTEXT_PROJECTOR: '1'
+    },
     stdio: ['ignore', 'pipe', 'pipe']
   });
 let browser,

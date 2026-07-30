@@ -5,7 +5,9 @@ import {
   CONTEXT_EDGE_TYPES,
   CONTEXT_EXCLUSION_REASONS,
   CONTEXT_INTERNAL_COLLECTIONS,
+  CONTEXT_PACK_LEGACY_SCHEMAS,
   CONTEXT_PROTOCOL_VERSION,
+  CONTEXT_SELECTION_LEGACY_SCHEMAS,
   CONTEXT_SELECTION_SCHEMA,
   CONTEXT_STATE_ADAPTERS,
   SECRET_KEY,
@@ -36,6 +38,7 @@ import {
   validateNodeHashes,
   validSha
 } from './validation.mjs';
+import { compareSelectionCandidates, isExplicitNode, normalizeCandidateRanks } from './selection-ranking.mjs';
 
 export * from './search-index.mjs';
 export { compactContextMap, contextDocumentRelationSnapshot, renderContextMarkdown } from './rendering.mjs';
@@ -46,9 +49,11 @@ export {
   CONTEXT_EXCLUSION_REASONS,
   CONTEXT_INTERNAL_COLLECTIONS,
   CONTEXT_PACK_SCHEMA,
+  CONTEXT_PACK_LEGACY_SCHEMAS,
   CONTEXT_PROTOCOL_VERSION,
   CONTEXT_RENDERER_VERSION,
   CONTEXT_SELECTION_SCHEMA,
+  CONTEXT_SELECTION_LEGACY_SCHEMAS,
   CONTEXT_STATE_ADAPTERS,
   canonicalJson,
   compareContextNodes,
@@ -199,12 +204,18 @@ export function createContextSelection(
     explicitRefs = [],
     candidateRanks = null,
     alreadyBudgetedDocumentVersionIds = [],
+    retrievalPlan = null,
+    rubricHash = null,
+    outcomeContractHash = null,
+    mandatoryEvidenceNodeIds = [],
+    schemaVersion = CONTEXT_SELECTION_SCHEMA,
     timestamp = new Date().toISOString()
   }
 ) {
   ensureContextCollections(state);
   const policy = findContextPolicy(state, { actorId, sessionId, projectId });
   const pinned = new Set(policy?.pinned_node_ids || []),
+    mandatory = new Set(mandatoryEvidenceNodeIds),
     excludedByUser = new Set(policy?.excluded_node_ids || []),
     explicit = new Set(explicitRefs),
     scopeSet = scopes ? new Set(scopes) : null,
@@ -213,11 +224,12 @@ export function createContextSelection(
     rankByNode = normalizeCandidateRanks(candidateRanks),
     nodeById = new Map(state.context_nodes.map((node) => [node.id, node])),
     versionById = new Map(state.context_document_versions.map((version) => [version.id, version]));
-  const candidates = [...new Set([...pinned, ...candidateNodeIds])]
+  const candidates = [...new Set([...mandatory, ...pinned, ...candidateNodeIds])]
     .map((nodeId) => nodeById.get(nodeId))
     .filter(Boolean)
     .sort((left, right) =>
       compareSelectionCandidates(left, right, {
+        mandatory,
         pinned,
         explicit,
         projectId,
@@ -270,7 +282,7 @@ export function createContextSelection(
     .map((node) => [node.id, node.source_hash, node.current_version_id, node.status]);
   return {
     id,
-    schema_version: CONTEXT_SELECTION_SCHEMA,
+    schema_version: schemaVersion,
     actor_id: actorId,
     session_id: sessionId,
     project_id: projectId,
@@ -281,6 +293,24 @@ export function createContextSelection(
     token_budget: Number(tokenBudget),
     token_used: used,
     map_snapshot_hash: contextHash(mapSnapshot),
+    retrieval_plan: retrievalPlan || {
+      strategy: 'minisearch_graph_deterministic',
+      query: null,
+      explicit_refs: [...explicit].sort(),
+      anchor_node_id: anchorNodeId
+    },
+    rubric_hash: rubricHash,
+    outcome_contract_hash: outcomeContractHash,
+    mandatory_evidence: {
+      required_node_ids: [...new Set(mandatoryEvidenceNodeIds)].sort(),
+      covered_node_ids: included
+        .map((item) => item.node_id)
+        .filter((nodeId) => mandatoryEvidenceNodeIds.includes(nodeId))
+        .sort(),
+      missing_node_ids: [...new Set(mandatoryEvidenceNodeIds)]
+        .filter((nodeId) => !included.some((item) => item.node_id === nodeId))
+        .sort()
+    },
     immutable: true,
     created_at: timestamp
   };
@@ -711,6 +741,7 @@ export function stageContextProjectionJob(state, node, timestamp, indexes = null
   }
   const existing = jobsById.get(id);
   if (existing?.status === 'failed') return;
+  if (existing?.status === 'running' && Date.parse(existing.lease?.expires_at || '') > Date.parse(timestamp)) return;
   const value = {
     id,
     node_id: node.id,
@@ -898,64 +929,6 @@ function exclusionReason(node, version, { projectId, excludedByUser, scopeSet, a
     return 'stale';
   if (excludedByUser.has(node.id)) return 'user_excluded';
   return null;
-}
-
-function compareSelectionCandidates(
-  left,
-  right,
-  { pinned, explicit, projectId, anchorNodeId, rankByNode, nodeById, edges }
-) {
-  return (
-    Number(pinned.has(right.id)) - Number(pinned.has(left.id)) ||
-    selectionScopeDistance(left, { projectId, anchorNodeId, nodeById }) -
-      selectionScopeDistance(right, { projectId, anchorNodeId, nodeById }) ||
-    Number(isExplicitNode(right, explicit)) - Number(isExplicitNode(left, explicit)) ||
-    candidateRank(left.id, rankByNode) - candidateRank(right.id, rankByNode) ||
-    Number(isRelatedToAnchor(right.id, anchorNodeId, edges)) -
-      Number(isRelatedToAnchor(left.id, anchorNodeId, edges)) ||
-    Number(right.authority === 'authoritative') - Number(left.authority === 'authoritative') ||
-    Number(right.freshness?.status === 'current') - Number(left.freshness?.status === 'current') ||
-    compareContextNodes(left, right)
-  );
-}
-
-function normalizeCandidateRanks(value) {
-  if (value instanceof Map) return value;
-  if (Array.isArray(value)) return new Map(value.map((nodeId, index) => [String(nodeId), index]));
-  if (value && typeof value === 'object')
-    return new Map(Object.entries(value).map(([nodeId, rank]) => [nodeId, Number(rank)]));
-  return new Map();
-}
-
-function candidateRank(nodeId, ranks) {
-  const rank = ranks.get(nodeId);
-  return Number.isFinite(Number(rank)) ? Number(rank) : Number.MAX_SAFE_INTEGER;
-}
-
-function isExplicitNode(node, explicit) {
-  return explicit.has(node.id) || explicit.has(node.uri);
-}
-
-function selectionScopeDistance(node, { projectId, anchorNodeId, nodeById }) {
-  if (node.id === anchorNodeId) return 0;
-  const anchor = anchorNodeId ? nodeById.get(anchorNodeId) : null;
-  if (anchor) {
-    if (node.parent_id === anchor.id || anchor.parent_id === node.id) return 1;
-    if (node.parent_id && node.parent_id === anchor.parent_id) return 2;
-  }
-  if (projectId && node.project_id === projectId) return 3;
-  if (!projectId) return 3;
-  return 4;
-}
-
-function isRelatedToAnchor(nodeId, anchorNodeId, edges) {
-  if (!anchorNodeId) return false;
-  return edges.some(
-    (edge) =>
-      edge.type !== 'contains' &&
-      ((edge.source_node_id === anchorNodeId && edge.target_node_id === nodeId) ||
-        (edge.target_node_id === anchorNodeId && edge.source_node_id === nodeId))
-  );
 }
 
 function selectionExclusion(node, version, reason) {

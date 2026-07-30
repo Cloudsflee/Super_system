@@ -1,8 +1,16 @@
-import { CONTEXT_EXCLUSION_REASONS, CONTEXT_SELECTION_SCHEMA, contextError } from './protocol.mjs';
+import {
+  CONTEXT_EXCLUSION_REASONS,
+  CONTEXT_SELECTION_LEGACY_SCHEMAS,
+  CONTEXT_SELECTION_SCHEMA,
+  contextError
+} from './protocol.mjs';
 
 export function validateContextSelections(selections, { nodeIds, versionById, selectionIds }) {
   for (const selection of selections) {
-    if (selection.immutable !== true || selection.schema_version !== CONTEXT_SELECTION_SCHEMA)
+    if (
+      selection.immutable !== true ||
+      ![CONTEXT_SELECTION_SCHEMA, ...CONTEXT_SELECTION_LEGACY_SCHEMAS].includes(selection.schema_version)
+    )
       throw contextError('context_selection_invalid', { id: selection.id });
     validateContextSelectionVersions(selection, nodeIds, versionById);
     validateContextSelectionExclusions(selection);

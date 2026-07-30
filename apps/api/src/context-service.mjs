@@ -50,6 +50,9 @@ import {
 } from './context-projection-cache.mjs';
 import { semanticFilters, semanticLabel, semanticRoute } from './context-semantic-state.mjs';
 import { mutate, readStateSnapshot } from './state.mjs';
+import { contextProjectorRuntimeStatus } from './context-projector-coordinator.mjs';
+import { contextStatusSnapshot } from './context-status-v21.mjs';
+import { waitForProjectionLeaseSettlement } from './context-projection-wait.mjs';
 
 export { compactRuntimeMap, loadContextSelectionDocumentsInState } from './context-runtime-selection.mjs';
 
@@ -97,13 +100,21 @@ export async function ensureContextProjection({
       force
     });
   });
-  const state = await readStateSnapshot(),
-    failures = collectProjectionFailures(state, {
-      projectId,
-      nodeIds,
-      allowedProjectIds: projectIds,
-      allowedSystemNodeIds: systemNodeIds
-    });
+  const failureOptions = {
+    projectId,
+    nodeIds,
+    allowedProjectIds: projectIds,
+    allowedSystemNodeIds: systemNodeIds
+  };
+  let state = await readStateSnapshot(),
+    failures = collectProjectionFailures(state, failureOptions);
+  ({ state, failures } = await waitForProjectionLeaseSettlement({
+    readState: readStateSnapshot,
+    collectFailures: collectProjectionFailures,
+    failureOptions,
+    state,
+    failures
+  }));
   if (failures.length)
     throw new HttpError(503, {
       error: 'context_projection_unavailable',
@@ -460,23 +471,7 @@ export async function contextStatus(request = {}) {
   const state = await readStateSnapshot(),
     actorContext = await contextActor(request, null, state);
   requireContextAdmin(state, actorContext);
-  const jobsByStatus = Object.fromEntries(
-    ['pending', 'running', 'completed', 'failed', 'superseded'].map((status) => [
-      status,
-      state.context_projection_jobs.filter((job) => job.status === status).length
-    ])
-  );
-  return {
-    schema_version: 20,
-    protocol_version: 'aiws.system-context.v1',
-    nodes: state.context_nodes.length,
-    document_versions: state.context_document_versions.length,
-    edges: state.context_edges.length,
-    selections: state.context_selections.length,
-    jobs: jobsByStatus,
-    coverage: state.context_projection_coverage || null,
-    index: indexStatus
-  };
+  return contextStatusSnapshot(state, indexStatus, contextProjectorRuntimeStatus());
 }
 
 export async function rebuildContext(request = {}) {
@@ -551,7 +546,12 @@ export function createSelectionForRuntimeInState(
     anchorSourceId = null,
     explicitSourceRefs = [],
     candidateLimit = 80,
-    tokenBudget = 4000
+    tokenBudget = 4000,
+    retrievalPlan = null,
+    rubricHash = null,
+    outcomeContractHash = null,
+    mandatoryEvidenceNodeIds = [],
+    selectionSchema = null
   }
 ) {
   state.context_nodes ||= [];
@@ -592,6 +592,11 @@ export function createSelectionForRuntimeInState(
     tokenBudget,
     scopes: null,
     allowedProjectIds: [projectId],
+    retrievalPlan,
+    rubricHash,
+    outcomeContractHash,
+    mandatoryEvidenceNodeIds,
+    ...(selectionSchema ? { schemaVersion: selectionSchema } : {}),
     timestamp: now()
   });
   state.context_selections.push(selection);

@@ -2,8 +2,15 @@ import { createHash } from 'node:crypto';
 
 export const CONTEXT_PROTOCOL_VERSION = 'aiws.system-context.v1';
 export const CONTEXT_RENDERER_VERSION = 'aiws.context-markdown.v1';
-export const CONTEXT_SELECTION_SCHEMA = 'aiws.context_selection.v1';
-export const CONTEXT_PACK_SCHEMA = 'aiws.context_pack.v4';
+export const CONTEXT_SELECTION_SCHEMA = 'aiws.context_selection.v2';
+export const CONTEXT_SELECTION_LEGACY_SCHEMAS = Object.freeze(['aiws.context_selection.v1']);
+export const CONTEXT_PACK_SCHEMA = 'aiws.context_pack.v5';
+export const CONTEXT_PACK_LEGACY_SCHEMAS = Object.freeze([
+  'aiws.context_pack.v1',
+  'aiws.context_pack.v2',
+  'aiws.context_pack.v3',
+  'aiws.context_pack.v4'
+]);
 
 export const CONTEXT_EDGE_TYPES = Object.freeze([
   'contains',
@@ -114,6 +121,10 @@ const ADAPTER_CATEGORY_GROUPS = Object.freeze({
     'workflow_executions',
     'task_executions',
     'execution_events',
+    'outcome_requirements',
+    'outcome_evaluations',
+    'outcome_waivers',
+    'execution_stage_checkpoints',
     'deliveries',
     'delivery_events',
     'delivery_policies',
@@ -181,6 +192,10 @@ export const COLLECTION_SCOPE = Object.freeze({
   workflow_executions: 'workflow:read',
   task_executions: 'runs:read',
   execution_events: 'runs:read',
+  outcome_requirements: 'workflow:read',
+  outcome_evaluations: 'workflow:read',
+  outcome_waivers: 'approval:read',
+  execution_stage_checkpoints: 'runs:read',
   node_runs: 'runs:read',
   context_packs: 'runs:read',
   context_sufficiency_checks: 'runs:read',
