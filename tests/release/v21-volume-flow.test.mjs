@@ -61,9 +61,14 @@ try {
 
   fs.rmSync(target, { recursive: true, force: true });
   fs.mkdirSync(path.join(source, 'data'), { recursive: true });
+  fs.mkdirSync(path.join(source, 'data', '.context-index'), { recursive: true });
   fs.mkdirSync(path.join(source, 'vault'), { recursive: true });
   fs.mkdirSync(migrationVolume, { recursive: true });
   fs.writeFileSync(path.join(source, 'data', 'state.json'), `${JSON.stringify(sourceState, null, 2)}\n`);
+  fs.writeFileSync(
+    path.join(source, 'data', '.context-index', 'minisearch-v1.json'),
+    '{"schema_version":"legacy-v20-index"}'
+  );
   fs.writeFileSync(path.join(source, 'vault', 'credential.enc'), 'encrypted-v20-preserved');
   fs.cpSync(source, target, { recursive: true });
 
@@ -121,6 +126,7 @@ try {
   });
   assert.equal(accepted.accepted, true);
   assert.equal(accepted.source_preserved, true);
+  assert.ok(accepted.preservation.allowed_changed_paths.includes('data/.context-index/minisearch-v1.json'));
   assert.equal(accepted.target_state.schema_version, 21);
   assert.equal(accepted.schema_migration.from_schema, 20);
   assert.equal(accepted.schema_migration.to_schema, 21);

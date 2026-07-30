@@ -116,14 +116,15 @@ export function compareStateIdentities(source, target) {
   }
 }
 
-export function comparePreservedFiles(sourceEntries, targetEntries) {
+export function comparePreservedFiles(sourceEntries, targetEntries, { mutablePaths = [] } = {}) {
   const target = new Map(targetEntries.map((item) => [item.path, item]));
+  const explicitlyMutable = new Set(mutablePaths);
   const changedAllowed = [];
   let verified = 0;
   for (const expected of sourceEntries) {
     const actual = target.get(expected.path);
     if (!actual) throw releaseError('migrated_file_missing', { path: expected.path });
-    if (mutableMigrationPath(expected.path)) {
+    if (mutableMigrationPath(expected.path) || explicitlyMutable.has(expected.path)) {
       if (actual.type !== expected.type) throw releaseError('migrated_file_type_changed', { path: expected.path });
       if (canonicalJson(actual) !== canonicalJson(expected)) changedAllowed.push(expected.path);
     } else if (canonicalJson(actual) !== canonicalJson(expected)) {

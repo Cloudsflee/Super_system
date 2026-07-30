@@ -119,7 +119,9 @@ export async function acceptVolumeMigrationV21({
   const projection = await auditV21Projection(targetRoot, targetState.parsed_state);
   const outcomes = auditV21Outcomes(targetState.parsed_state);
   const targetInventory = await volumeInventory(targetRoot),
-    preservation = comparePreservedFiles(cloneManifest.source_inventory.entries, targetInventory.entries),
+    preservation = comparePreservedFiles(cloneManifest.source_inventory.entries, targetInventory.entries, {
+      mutablePaths: ['data/.context-index/minisearch-v1.json']
+    }),
     receipt = {
       version: 1,
       migration: 'aiws-volume-v20-to-v21',
