@@ -16,13 +16,16 @@ try {
       await import('../../apps/api/src/state-migration-v20.mjs'),
     contextService = await import('../../apps/api/src/context-service.mjs'),
     release = await import('../../docker/release_volume.mjs'),
-    { v21RollbackAccepted } = await import('../../docker/v21-upgrade.mjs'),
+    { isV21UpgradeError, v21RollbackAccepted } = await import('../../docker/v21-upgrade.mjs'),
     { findLegacyRunnerReferencesV21 } = await import('../../docker/release-volume-validation.mjs');
 
   const healthyRollback = { status: 'ok', version: '2.1.0', schema_version: 21 };
   assert.equal(v21RollbackAccepted(['container-1'], healthyRollback), true);
   assert.equal(v21RollbackAccepted([], healthyRollback), false);
   assert.equal(v21RollbackAccepted(['container-1'], { error_code: 'v21_health_check_failed' }), false);
+  assert.equal(isV21UpgradeError({ code: 'v21_health_check_failed' }), true);
+  assert.equal(isV21UpgradeError({ code: 23 }), false);
+  assert.equal(isV21UpgradeError({}), false);
 
   await stateApi.ensureRuntime();
   const sourceState = structuredClone(await stateApi.readState());

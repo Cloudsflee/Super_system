@@ -407,12 +407,16 @@ async function waitForHealth(config, expectedImage = config.appImage) {
           return { ...health, container_id: id, compose_project: detail.project, data_volume: config.targetVolume };
       }
     } catch (error) {
-      if (error.code?.startsWith('v21_')) throw error;
+      if (isV21UpgradeError(error)) throw error;
       last = { error: error.message };
     }
     await sleep(2000);
   }
   throw upgradeError('v21_health_check_failed', { last });
+}
+
+export function isV21UpgradeError(error) {
+  return typeof error?.code === 'string' && error.code.startsWith('v21_');
 }
 
 function stopProjectApps(project) {
