@@ -1,4 +1,6 @@
 import assert from 'node:assert/strict';
+import os from 'node:os';
+import path from 'node:path';
 
 import {
   CONTEXT_PACK_SCHEMA,
@@ -11,6 +13,7 @@ import {
   searchContextSearchIndex
 } from '../../packages/system-context/src/index.mjs';
 import { prepareTaskExecutionContext } from '../../apps/api/src/task-execution-context.mjs';
+import { refreshContextResourcesInState } from '../../apps/api/src/context-resource-adapters.mjs';
 import {
   ContextProjectorCoordinator,
   claimContextProjectionJobsInState
@@ -69,6 +72,27 @@ const search = await buildContextSearchIndex({
 });
 assert.equal(searchContextSearchIndex(search.index, '权威来源')[0]?.node_id, mandatory.id);
 assert.equal(searchContextSearchIndex(search.index, '交付回执')[0]?.node_id, mandatory.id);
+
+const unconfiguredRepositoryState = ensureContextCollections({
+  projects: [
+    {
+      id: 'project-unconfigured-repository',
+      repo_path: path.join(os.tmpdir(), `aiws-unconfigured-repository-${process.pid}-${Date.now()}`),
+      managed_workspace_state: 'empty'
+    }
+  ],
+  integration_statuses: [],
+  tools: []
+});
+const unconfiguredResources = await refreshContextResourcesInState(unconfiguredRepositoryState);
+assert.equal(unconfiguredResources.repository_reports[0]?.status, 'not_configured');
+assert.deepEqual(unconfiguredRepositoryState.context_resource_coverage.warnings, []);
+assert.equal(
+  unconfiguredRepositoryState.context_nodes.some(
+    (node) => node.source_id === 'repository_manifest:project-unconfigured-repository'
+  ),
+  false
+);
 
 const packState = packFixture();
 const prepared = prepareTaskExecutionContext(packState, packState._input);

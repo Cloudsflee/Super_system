@@ -178,8 +178,9 @@ async function repositoryResourceNodes(state, project, timestamp) {
   const root = await repositoryRoot(project),
     projectNodeId = contextNodeId('projects', project.id);
   if (!root) {
+    const configured = project?.managed_workspace_state !== 'empty' && Boolean(project?.repo_path);
     const report = repositoryReport(project, {
-      status: project?.repo_path ? 'unavailable' : 'not_configured',
+      status: configured ? 'unavailable' : 'not_configured',
       discoveredFiles: 0,
       includedFiles: 0,
       omittedFiles: 0,
@@ -191,7 +192,7 @@ async function repositoryResourceNodes(state, project, timestamp) {
     });
     return {
       nodes: [],
-      manifestNode: project?.repo_path ? repositoryManifestNode(project, projectNodeId, report, timestamp) : null,
+      manifestNode: configured ? repositoryManifestNode(project, projectNodeId, report, timestamp) : null,
       report
     };
   }
