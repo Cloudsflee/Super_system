@@ -18,6 +18,7 @@ export function normalizeWorkflowExecutorConfig(input) {
     test_use_required_context: input.test_use_required_context === true,
     test_used_input_keys: cleanList(input.test_used_input_keys, 120),
     test_used_context_node_ids: cleanList(input.test_used_context_node_ids, 200),
+    test_verifier_failure: cleanCode(input.test_verifier_failure),
     test_consumption_plan:
       input.test_consumption_plan && typeof input.test_consumption_plan === 'object'
         ? structuredClone(input.test_consumption_plan)
@@ -39,4 +40,9 @@ function clean(value, max) {
     .replace(/\0/g, '')
     .trim()
     .slice(0, max);
+}
+
+function cleanCode(value) {
+  const code = clean(value, 120);
+  return /^[a-z0-9_.-]+$/i.test(code) ? code : null;
 }

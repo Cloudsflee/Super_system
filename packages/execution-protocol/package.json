@@ -1,0 +1,9 @@
+{
+  "name": "@aiws/execution-protocol",
+  "version": "2.1.0",
+  "type": "module",
+  "main": "src/index.mjs",
+  "dependencies": {
+    "zod": "4.4.3"
+  }
+}

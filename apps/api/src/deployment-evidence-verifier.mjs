@@ -7,6 +7,10 @@ import { EXECUTION_DIR } from './config.mjs';
 import { buildCodexContainerInvocation } from './container-runtime-config.mjs';
 import { runContainerProcess } from './container-runtime.mjs';
 import { HttpError } from './http.mjs';
+import {
+  DEPLOYMENT_EVIDENCE_SCHEMA,
+  parseDeploymentEvidenceV2
+} from '../../../packages/execution-protocol/src/index.mjs';
 
 export const DEPLOYMENT_RUNTIME_VERIFIER = 'deployment_runtime_verifier';
 
@@ -106,14 +110,59 @@ export async function verifyDeploymentNodeRun(
       entries,
       verified_at: report.completed_at
     };
+    const deploymentEvidence = parseDeploymentEvidenceV2({
+      schema_version: DEPLOYMENT_EVIDENCE_SCHEMA,
+      target: {
+        kind: 'compose',
+        origin: request.base_url,
+        repository_sha: request.repository_sha
+      },
+      http_checks: report.endpoints.map((endpoint) => ({
+        method: 'GET',
+        url: new URL(endpoint.path, request.base_url).toString(),
+        status: endpoint.status,
+        passed: endpoint.status === endpoint.expected_status,
+        content_type: endpoint.headers?.['content-type'] || null,
+        body_sha256: endpoint.sha256 || null
+      })),
+      compose_services: [
+        {
+          name: request.compose_authorization.service,
+          image: `compose-config:${request.compose_authorization.compose_config_sha256}`,
+          digest: request.compose_authorization.compose_config_sha256,
+          published_ports: [
+            `127.0.0.1:${request.compose_authorization.published_port}:${request.compose_authorization.target_port}`
+          ]
+        }
+      ],
+      static_assets: report.images.map((asset) => ({
+        path: asset.path,
+        media_type: asset.media_type,
+        sha256: asset.sha256,
+        size_bytes: asset.size_bytes
+      })),
+      security_headers: Object.fromEntries(
+        request.security_headers
+          .map((header) => [header, report.endpoints.find((endpoint) => endpoint.headers?.[header])?.headers?.[header]])
+          .filter(([, value]) => typeof value === 'string' && value)
+      ),
+      evidence_refs: [`node-run:${run.id}`, `file-ref:${run.raw_output_file_ref_id}`, `sha256:${reportEntry.sha256}`],
+      collected_at: report.completed_at,
+      collector_version: 'deployment_runtime_verifier.v2'
+    });
+    const v21 = Number(state.schema_version || 0) >= 21;
     return {
       verifierId: DEPLOYMENT_RUNTIME_VERIFIER,
       evidence: {
+        deployment_evidence: deploymentEvidence,
         deployment_verification: receipt,
         deployment_payload: {
           payload_kind: 'file_set',
           media_type: 'application/vnd.aiws.deployment-evidence+json',
-          metadata: { schema_version: receipt.schema_version, verifier: receipt.verifier },
+          metadata: {
+            schema_version: v21 ? deploymentEvidence.schema_version : receipt.schema_version,
+            verifier: receipt.verifier
+          },
           files
         },
         evidence_refs: [

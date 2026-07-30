@@ -1,10 +1,16 @@
 import { HttpError } from './http.mjs';
 import { DEPLOYMENT_RUNTIME_VERIFIER } from './deployment-evidence-verifier.mjs';
+import {
+  DEPLOYMENT_EVIDENCE_SCHEMA,
+  normalizeDeploymentEvidenceV2,
+  parseDeploymentEvidenceV2
+} from '../../../packages/execution-protocol/src/index.mjs';
 
 export { DEPLOYMENT_RUNTIME_VERIFIER };
 
 export function assertDeploymentSystemEvidence(state, asset, version, evidence, execution) {
   const context = deploymentEvidenceContext(state, version, evidence);
+  assertCanonicalEvidence(state, context, version, execution);
   assertReceipt(context, version, execution);
   assertSource(state, context, execution);
   assertPayload(context, version);
@@ -18,6 +24,10 @@ function deploymentEvidenceContext(state, version, evidence) {
     receiptEntries = Array.isArray(receipt?.entries) ? receipt.entries : [],
     viewports = Array.isArray(receipt?.required_viewports) ? receipt.required_viewports : [];
   return {
+    canonical:
+      Number(state.schema_version || 0) >= 21
+        ? parseCanonicalEvidence(evidence.deployment_evidence)
+        : normalizeDeploymentEvidenceV2(evidence.deployment_evidence || legacyEvidenceAdapter(receipt)),
     receipt,
     run: state.node_runs.find((item) => item.id === receipt?.node_run_id),
     manifestEntries,
@@ -26,6 +36,73 @@ function deploymentEvidenceContext(state, version, evidence) {
     receiptPaths: new Set(receiptEntries.map((item) => item?.path)),
     viewports,
     compose: receipt?.compose_authorization
+  };
+}
+
+function assertCanonicalEvidence(state, context, version, execution) {
+  const evidence = context.canonical;
+  if (
+    evidence.schema_version !== DEPLOYMENT_EVIDENCE_SCHEMA ||
+    evidence.target.repository_sha !== version.repository_sha ||
+    evidence.http_checks.some((item) => !item.passed) ||
+    !evidence.evidence_refs.includes(`node-run:${context.receipt?.node_run_id}`) ||
+    (Number(state.schema_version || 0) >= 21 &&
+      version.manifest?.metadata?.schema_version !== DEPLOYMENT_EVIDENCE_SCHEMA)
+  )
+    throw new HttpError(409, { error: 'deployment_evidence_v2_incomplete' });
+  if (context.receipt?.task_execution_id !== execution.id)
+    throw new HttpError(409, { error: 'deployment_evidence_v2_scope_invalid' });
+}
+
+function parseCanonicalEvidence(value) {
+  if (!value)
+    throw new HttpError(409, {
+      error: 'deployment_evidence_v2_required',
+      field_path: '/deployment_evidence'
+    });
+  try {
+    return parseDeploymentEvidenceV2(value);
+  } catch (error) {
+    throw new HttpError(409, {
+      error: 'deployment_evidence_v2_invalid',
+      field_path: error?.payload?.field_path || '/deployment_evidence',
+      issues: error?.payload?.issues || []
+    });
+  }
+}
+
+function legacyEvidenceAdapter(receipt) {
+  return {
+    origin: receipt?.target,
+    repository_sha: receipt?.repository_sha,
+    checks: [
+      {
+        method: 'GET',
+        url: receipt?.target,
+        status: 200,
+        passed: true,
+        content_type: 'text/html',
+        body_sha256: receipt?.report_sha256
+      }
+    ],
+    compose_services: receipt?.compose_authorization
+      ? [
+          {
+            name: receipt.compose_authorization.service,
+            image: `compose-config:${receipt.compose_authorization.compose_config_sha256}`,
+            digest: receipt.compose_authorization.compose_config_sha256,
+            ports: [
+              `127.0.0.1:${receipt.compose_authorization.published_port}:${receipt.compose_authorization.target_port}`
+            ]
+          }
+        ]
+      : [],
+    static_assets: [],
+    evidence_refs: [`node-run:${receipt?.node_run_id}`, `sha256:${receipt?.report_sha256}`].filter(
+      (item) => !item.includes('undefined')
+    ),
+    collected_at: receipt?.verified_at,
+    collector_version: 'deployment_runtime_receipt.v1-adapter'
   };
 }
 

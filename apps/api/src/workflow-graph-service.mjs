@@ -17,6 +17,7 @@ import {
 } from './workflow-graph-validation.mjs';
 import { assertWorkflowHierarchy, normalizeWorkflowHierarchyNodes } from './workflow-hierarchy-domain.mjs';
 import { assertWorkflowPlanningQuality } from './workflow-quality.mjs';
+import { applyWorkflowOutcomeProtocols } from './workflow-outcome-definition.mjs';
 
 export {
   prepareWorkflowGraphPatch,
@@ -232,6 +233,10 @@ export function applyWorkflowGraphPatchInState(state, proposal) {
     workflow.workflow_revision = prepared.expected_revision + 1;
   }
   workflow.graph_json = workflowVisualGraph(state.workflow_nodes.filter((item) => item.workflow_id === workflow.id));
+  applyWorkflowOutcomeProtocols(
+    workflow,
+    state.workflow_nodes.filter((item) => item.workflow_id === workflow.id)
+  );
   workflow.updated_at = now();
   return {
     type: 'workflow_graph_patch',
@@ -278,6 +283,10 @@ export function applyWorkflowReplanInState(state, proposal) {
     graph_json: workflowVisualGraph(state.workflow_nodes.filter((item) => item.workflow_id === workflow.id)),
     updated_at: now()
   });
+  applyWorkflowOutcomeProtocols(
+    workflow,
+    state.workflow_nodes.filter((item) => item.workflow_id === workflow.id)
+  );
   return {
     type: 'workflow_replan_replace',
     workflow_id: workflow.id,

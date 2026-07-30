@@ -23,6 +23,7 @@ export async function createMcpTestFixture(
     CC_SWITCH_CONFIG_DIR: ccSwitch,
     NODE_ENV: 'test',
     AIWS_BYPASS_SETUP: '1',
+    AIWS_TEST_DISABLE_CONTEXT_PROJECTOR: '1',
     ...env
   };
   for (const [key, value] of Object.entries(fixtureEnvironment)) {

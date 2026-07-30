@@ -367,7 +367,7 @@ export async function authorizeApiRoute(route, ctx, { state = null, strict = fal
   const actor = actorForRequest(snapshot, ctx.req || {}, { strict });
   if (!actor) throw new HttpError(401, { error: 'authentication_required' });
   const approval =
-    /^\/(?:approvals\/|change-proposals\/[^/]+\/(?:approve|reject|apply)|(?:tasks|workstreams)\/[^/]+\/review|task-executions\/[^/]+\/human-approve|asset-versions\/[^/]+\/attestations|pull-request-intents\/[^/]+\/(?:approve|execute))/.test(
+    /^\/(?:approvals\/|change-proposals\/[^/]+\/(?:approve|reject|apply)|(?:tasks|workstreams)\/[^/]+\/review|task-executions\/[^/]+\/human-approve|workflow-executions\/[^/]+\/outcome-waivers|asset-versions\/[^/]+\/attestations|pull-request-intents\/[^/]+\/(?:approve|execute))/.test(
       route.pattern
     ) ||
     (route.method === 'POST' && /\/delivery-policies$/.test(route.pattern));
@@ -381,7 +381,7 @@ export async function authorizeApiRoute(route, ctx, { state = null, strict = fal
         ? 'delete:approve'
         : route.pattern.includes('/members') || route.pattern.includes('/invit')
           ? 'share'
-          : route.pattern.includes('/run')
+          : route.pattern.includes('/run') || /\/stages\/[^/]+\/replay$/.test(route.pattern)
             ? 'run'
             : approval
               ? 'approve'

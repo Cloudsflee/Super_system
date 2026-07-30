@@ -540,6 +540,8 @@ function scopesFor(item, domain) {
   if (/^\/approvals\/:type\/:id\/decision$/.test(item.pattern)) return ['approval:decide'];
   if (/^\/(?:tasks|workstreams)\/:id\/review$/.test(item.pattern)) return ['workflow:write', 'approval:decide'];
   if (/^\/task-executions\/:id\/human-approve$/.test(item.pattern)) return ['project:write', 'approval:decide'];
+  if (/^\/workflow-executions\/:id\/outcome-waivers/.test(item.pattern)) return ['project:approve', 'approval:decide'];
+  if (/^\/task-executions\/:id\/stages\/:stage\/replay$/.test(item.pattern)) return ['project:run'];
   if (/^\/asset-versions\/:id\/attestations$/.test(item.pattern) && item.method === 'POST')
     return ['assets:write', 'approval:decide'];
   if (/^\/workstreams\/:id\/delivery-policies$/.test(item.pattern) && item.method === 'POST')

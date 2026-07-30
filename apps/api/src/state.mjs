@@ -40,14 +40,15 @@ import {
   writeProfileConfig
 } from './codex-service.mjs';
 import {
-  migrateStateFileToV20,
-  normalizeOfficialRunnerImagesV20,
+  assertV21AppendOnly,
+  migrateStateFileToV21,
+  normalizeOfficialRunnerImagesV21,
   normalizeOutcomeEvidenceRelationsV20,
   normalizeTaskHandoffDefaultsV20,
-  normalizeState20Defaults,
+  normalizeState21Defaults,
   STATE_SCHEMA_VERSION,
-  validateState20
-} from './state-migration-v20.mjs';
+  validateState21
+} from './state-migration-v21.mjs';
 import {
   assertContextImmutability,
   reconcileContextProjectionState
@@ -71,18 +72,18 @@ export async function ensureRuntime() {
   await ensureRuntimeDirectories();
   if (!fs.existsSync(STATE_FILE)) {
     const state = bootstrapState();
-    normalizeState20Defaults(state, now());
-    await materializeContextDocumentsInState(state);
+    normalizeState21Defaults(state, now());
+    await materializeContextDocumentsInState(state, { maxJobs: 0 });
     return writeState(state);
   }
-  lastMigration = await migrateStateFileToV20(STATE_FILE);
+  lastMigration = await migrateStateFileToV21(STATE_FILE);
   const state = await readState();
   if (state.schema_version !== STATE_SCHEMA_VERSION)
     throw new Error(`unsupported_state_schema_${state.schema_version}`);
 
   const changes = { value: false };
   normalizeRuntimeCollections(state, changes);
-  if (normalizeOfficialRunnerImagesV20(state, { timestamp: now() }).changed) changes.value = true;
+  if (normalizeOfficialRunnerImagesV21(state, { timestamp: now() }).changed) changes.value = true;
   if (normalizeOutcomeEvidenceRelationsV20(state).changed) changes.value = true;
   if (normalizeTaskHandoffDefaultsV20(state).changed) changes.value = true;
   ensureRuntimeDefaults(state, changes);
@@ -97,7 +98,7 @@ export async function ensureRuntime() {
   if ((await promoteLegacyExecutionHistoryInState(state)).changed) changes.value = true;
   const reconciled = reconcileContextProjectionState(state, { sourceCollections: collections, timestamp: now() });
   if (reconciled.dirty || reconciled.pruned_jobs) changes.value = true;
-  const projection = await materializeContextDocumentsInState(state);
+  const projection = await materializeContextDocumentsInState(state, { maxJobs: 0 });
   if (projection.materialized || projection.reused || projection.failed) changes.value = true;
   if (pruneExpiredContextVersions(state)) changes.value = true;
 
@@ -527,8 +528,8 @@ export async function writeState(state) {
   ensureProjectGovernanceDefaults(state);
   ensureRepositoryLifecycleDefaults(state);
   ensureExchangeDefaults(state);
-  normalizeState20Defaults(state);
-  validateState20(state);
+  normalizeState21Defaults(state);
+  validateState21(state);
   const tmp = `${STATE_FILE}.tmp`;
   const serialized = await redactKnownSecrets(JSON.stringify(state, null, 2));
   const handle = await fsp.open(tmp, 'w', 0o600);
@@ -554,10 +555,15 @@ export function mutate(fn, { allowContextRecordDeletion = false } = {}) {
     const state = await readState();
     const immutableBefore = {
       context_document_versions: structuredClone(state.context_document_versions || []),
-      context_selections: structuredClone(state.context_selections || [])
+      context_selections: structuredClone(state.context_selections || []),
+      outcome_requirements: structuredClone(state.outcome_requirements || []),
+      outcome_evaluations: structuredClone(state.outcome_evaluations || []),
+      outcome_waivers: structuredClone(state.outcome_waivers || []),
+      execution_stage_checkpoints: structuredClone(state.execution_stage_checkpoints || [])
     };
     const result = await fn(state);
     assertContextImmutability(immutableBefore, state, { allowDeletion: allowContextRecordDeletion });
+    assertV21AppendOnly(immutableBefore, state);
     reconcileContextProjectionState(state, { sourceCollections: collections, timestamp: now() });
     pruneExpiredContextVersions(state);
     await writeState(state);

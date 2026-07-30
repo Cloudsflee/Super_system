@@ -5,9 +5,43 @@ import { projectWorkflowExecutionStateInState } from './workflow-execution-proje
 import { inspectWorkstreamDependencyHandoff, selectTaskOutputBindings } from './task-execution-context.mjs';
 import { taskHandoffDiagnostics } from './task-handoff.mjs';
 import { assertRequiredContributionAuthority } from './task-contribution-authority.mjs';
-import { repositoryBranchSlug } from './workflow-branch-ref.mjs';
 import { executorForTask, normalizeWorkflowExecutorConfig } from './workflow-executor-config.mjs';
 import { dependencyIds, workflowNodeDependsOn } from './workflow-graph-validation.mjs';
+import {
+  activeTaskExecutionForTask,
+  assertExecutionRevisionCurrent,
+  assertIntegrationEvidence,
+  bindingIsConsumable,
+  byNewest,
+  byOrder,
+  clean,
+  createRepositoryLinesInState,
+  currentTaskExecutions,
+  executionEvidence,
+  latestExecutionForTask,
+  lineForExecution,
+  normalizeRepositorySelection,
+  queueCapacityAvailable,
+  releaseRepositoryCapacity,
+  repositoryLinesFor,
+  requireTaskExecution,
+  requireWorkflowExecution,
+  requiresRepositoryLine,
+  requiredOutputsAccepted,
+  reserveRepositoryCapacity,
+  taskExecutionsFor,
+  taskOrder,
+  workflowDefinitionSnapshot,
+  workflowExecutionSnapshot as snapshot
+} from './workflow-execution-support.mjs';
+import {
+  failureEnvelope,
+  parseFailureEnvelope,
+  parseOutcomeContract,
+  parseQualityRubric,
+  protocolHash
+} from '../../../packages/execution-protocol/src/index.mjs';
+import { materializeOutcomeRequirementsInState } from './outcome-service.mjs';
 import {
   isLegacyStrandedRetry,
   legacyPromotedExecution,
@@ -16,6 +50,12 @@ import {
   sanitizeLegacyExecutorConfig
 } from './workflow-retry-compatibility.mjs';
 export { integrationEvidenceFor } from './workflow-integration-evidence.mjs';
+export {
+  activeTaskExecutionForTask,
+  currentTaskExecutions,
+  requireTaskExecution,
+  requireWorkflowExecution
+} from './workflow-execution-support.mjs';
 
 export { projectWorkflowExecutionStateInState } from './workflow-execution-projection.mjs';
 export const TASK_EXECUTION_STATUSES = Object.freeze([
@@ -50,6 +90,8 @@ export function createWorkflowExecutionInState(state, workflowId, input = {}, ac
   const project = state.projects.find((item) => item.id === workflow?.project_id && !item.deleted_at);
   if (!workflow || !project) throw new HttpError(404, { error: 'workflow_not_found' });
   if (workflow.planning_quality !== 'verified') throw new HttpError(409, { error: 'verified_workflow_required' });
+  const v21Execution = Number(state.schema_version || 0) >= 21 || Boolean(workflow.outcome_contract);
+  const protocols = v21Execution ? requireWorkflowExecutionProtocols(workflow) : null;
   const operationKey = clean(input.operation_key || input.idempotency_key, 128) || null;
   if (operationKey) {
     const existing = state.workflow_executions.find(
@@ -108,11 +150,38 @@ export function createWorkflowExecutionInState(state, workflowId, input = {}, ac
     workflow_revision: workflowRevision,
     status: 'running',
     repository_selection: repositorySelection,
-    input_hash: hashString(JSON.stringify({ definition, repositorySelection })),
+    input_hash: hashString(
+      JSON.stringify({
+        definition,
+        repositorySelection,
+        outcome_contract_hash: protocols?.outcome_contract_hash || null,
+        quality_rubric_hash: protocols?.quality_rubric_hash || null
+      })
+    ),
     executor_config: normalizeWorkflowExecutorConfig(input),
     operation_key: operationKey,
     frontier: [],
     waiting_reasons: [],
+    ...(v21Execution
+      ? {
+          completion_status: 'pending',
+          release_eligible: false,
+          outcome_summary: {
+            total: 0,
+            pending: 0,
+            satisfied: 0,
+            unsatisfied: 0,
+            waived: 0,
+            error: 0,
+            mandatory_gaps: 0
+          },
+          outcome_contract_hash: protocols.outcome_contract_hash,
+          quality_rubric_hash: protocols.quality_rubric_hash,
+          outcome_contract_source: protocols.contract.source,
+          finalization_state: 'pending',
+          finalized_at: null
+        }
+      : {}),
     created_by_user_id: actorId,
     started_at: createdAt,
     paused_at: null,
@@ -122,6 +191,7 @@ export function createWorkflowExecutionInState(state, workflowId, input = {}, ac
     updated_at: createdAt
   };
   state.workflow_executions.push(workflowExecution);
+  if (v21Execution) materializeOutcomeRequirementsInState(state, workflowExecution, workflow, createdAt);
   for (const task of tasks.sort(byOrder)) {
     const contract = state.node_contracts.find((item) => item.id === task.current_contract_id);
     if (!contract) throw new HttpError(409, { error: 'task_contract_missing', task_id: task.id });
@@ -178,10 +248,38 @@ export function reconcileWorkflowExecutionInState(state, workflowExecutionId, { 
   projectWorkflowExecutionStateInState(state, workflowExecution.id);
   const active = executions.filter((item) => !TERMINAL.has(item.status));
   if (!active.length && executions.every((item) => item.status === 'completed')) {
-    workflowExecution.status = 'completed';
+    if (workflowExecution.completion_status) {
+      if (workflowExecution.finalization_state !== 'running') workflowExecution.finalization_state = 'pending';
+      if (
+        !state.execution_events.some(
+          (item) => item.workflow_execution_id === workflowExecution.id && item.type === 'workflow.finalization_pending'
+        )
+      )
+        appendExecutionEvent(state, workflowExecution, null, 'workflow.finalization_pending', {}, 'system', null);
+    } else {
+      workflowExecution.status = 'completed';
+      workflowExecution.completed_at = now();
+      workflowExecution.updated_at = now();
+      appendExecutionEvent(state, workflowExecution, null, 'workflow.completed', {}, 'system', null);
+    }
+  } else if (!active.length && executions.some((item) => ['failed', 'cancelled'].includes(item.status))) {
+    workflowExecution.status = executions.some((item) => item.status === 'cancelled') ? 'cancelled' : 'failed';
     workflowExecution.completed_at = now();
     workflowExecution.updated_at = now();
-    appendExecutionEvent(state, workflowExecution, null, 'workflow.completed', {}, 'system', null);
+    if (workflowExecution.completion_status) {
+      workflowExecution.completion_status = 'failed';
+      workflowExecution.release_eligible = false;
+      workflowExecution.finalization_state = 'completed';
+    }
+    appendExecutionEvent(
+      state,
+      workflowExecution,
+      null,
+      workflowExecution.status === 'cancelled' ? 'workflow.cancelled' : 'workflow.failed',
+      {},
+      'system',
+      null
+    );
   }
   const frontier = executions.filter((item) =>
     ['ready', 'queued', 'running', 'verifying', 'awaiting_human'].includes(item.status)
@@ -405,17 +503,62 @@ export function completeTaskExecutionInState(state, taskExecutionId, { evidence 
   return execution;
 }
 
-export function failTaskExecutionInState(state, taskExecutionId, { errorCode, retryClass = 'deterministic' } = {}) {
+export function failTaskExecutionInState(
+  state,
+  taskExecutionId,
+  { errorCode, retryClass = 'deterministic', failure = null, stage = null } = {}
+) {
   const execution = requireTaskExecution(state, taskExecutionId);
   if (!['queued', 'running', 'verifying', 'awaiting_human'].includes(execution.status))
     throw new HttpError(409, { error: 'task_execution_not_active', status: execution.status });
   execution.error_code = clean(errorCode, 200) || 'task_execution_failed';
   execution.retry_class = retryClass;
+  execution.current_stage ||= stage || 'execute';
+  execution.failure = failure
+    ? parseFailureEnvelope(structuredClone(failure))
+    : execution.failure?.code === execution.error_code
+      ? execution.failure
+      : failureEnvelope(
+          { code: execution.error_code, message: execution.error_code, retryable: retryClass === 'transient' },
+          {
+            stage: execution.current_stage,
+            category: execution.current_stage === 'verify' ? 'verifier' : 'runner',
+            retryable: retryClass === 'transient'
+          }
+        );
   transitionTaskExecutionInState(state, execution, 'failed', {
     error_code: execution.error_code,
     retry_class: retryClass
   });
   projectWorkflowExecutionStateInState(state, execution.workflow_execution_id);
+  return execution;
+}
+
+export function reopenTaskExecutionForStageReplayInState(state, taskExecutionId, stage, actorId) {
+  const execution = requireTaskExecution(state, taskExecutionId);
+  if (execution.status !== 'failed')
+    throw new HttpError(409, { error: 'task_execution_stage_replay_status_invalid', status: execution.status });
+  const task = state.workflow_nodes.find((item) => item.id === execution.task_id),
+    workflowExecution = requireWorkflowExecution(state, execution.workflow_execution_id);
+  if (!task) throw new HttpError(409, { error: 'task_execution_scope_missing' });
+  reopenFailedWorkflowForRetry(state, workflowExecution, task, actorId);
+  const previous = execution.status;
+  execution.status = ['verify', 'attest', 'promote'].includes(stage) ? 'verifying' : 'running';
+  execution.completed_at = null;
+  execution.error_code = null;
+  execution.retry_class = null;
+  execution.failure = null;
+  execution.current_stage = stage;
+  execution.updated_at = now();
+  appendExecutionEvent(
+    state,
+    state.workflow_executions.find((item) => item.id === execution.workflow_execution_id),
+    execution,
+    'task.stage_replay_started',
+    { from: previous, to: execution.status, stage },
+    'user',
+    actorId
+  );
   return execution;
 }
 export function retryTaskExecutionInState(state, taskExecutionId, actorId) {
@@ -474,6 +617,10 @@ export function retryTaskExecutionInState(state, taskExecutionId, actorId) {
     evidence: {},
     error_code: null,
     retry_class: null,
+    failure: null,
+    current_stage: null,
+    stage_checkpoint_ids: [],
+    replay_count: 0,
     lease: null,
     supersedes_id: previous.id,
     queued_at: null,
@@ -555,6 +702,14 @@ function reopenFailedWorkflowForRetry(state, workflowExecution, task, actorId) {
   const continuationTaskIds = enrollRetryContinuationTasks(state, workflowExecution, task, actorId);
   Object.assign(workflowExecution, {
     status: 'running',
+    ...(workflowExecution.completion_status
+      ? {
+          completion_status: 'pending',
+          release_eligible: false,
+          finalization_state: 'pending',
+          finalized_at: null
+        }
+      : {}),
     completed_at: null,
     cancelled_at: null,
     updated_at: now()
@@ -640,6 +795,10 @@ function pendingTaskExecution(workflowExecution, task, contract, actorId, create
     evidence: {},
     error_code: null,
     retry_class: null,
+    failure: null,
+    current_stage: null,
+    stage_checkpoint_ids: [],
+    replay_count: 0,
     lease: null,
     supersedes_id: null,
     queued_at: null,
@@ -679,6 +838,11 @@ export function cancelWorkflowExecutionInState(state, workflowExecutionId, actor
   for (const task of currentTaskExecutions(state, execution.id).filter((item) => !TERMINAL.has(item.status)))
     transitionTaskExecutionInState(state, task, 'cancelled', { reason: 'workflow_cancelled' });
   execution.status = 'cancelled';
+  if (execution.completion_status) {
+    execution.completion_status = 'failed';
+    execution.release_eligible = false;
+    execution.finalization_state = 'completed';
+  }
   execution.cancelled_at = now();
   execution.updated_at = now();
   for (const line of repositoryLinesFor(state, execution.id).filter(
@@ -690,6 +854,37 @@ export function cancelWorkflowExecutionInState(state, workflowExecutionId, actor
   appendExecutionEvent(state, execution, null, 'workflow.cancelled', {}, 'user', actorId);
   projectWorkflowExecutionStateInState(state, execution.id);
   return execution;
+}
+
+function requireWorkflowExecutionProtocols(workflow) {
+  if (!workflow.outcome_contract)
+    throw new HttpError(409, { error: 'workflow_outcome_contract_required', field_path: '/outcome_contract' });
+  if (!workflow.quality_rubric)
+    throw new HttpError(409, { error: 'workflow_quality_rubric_required', field_path: '/quality_rubric' });
+  try {
+    const contract = parseOutcomeContract(workflow.outcome_contract),
+      rubric = parseQualityRubric(workflow.quality_rubric),
+      outcomeContractHash = protocolHash(contract),
+      qualityRubricHash = protocolHash(rubric);
+    if (workflow.outcome_contract_hash && workflow.outcome_contract_hash !== outcomeContractHash)
+      throw new HttpError(409, { error: 'workflow_outcome_contract_hash_mismatch' });
+    if (workflow.quality_rubric_hash && workflow.quality_rubric_hash !== qualityRubricHash)
+      throw new HttpError(409, { error: 'workflow_quality_rubric_hash_mismatch' });
+    return {
+      contract,
+      rubric,
+      outcome_contract_hash: outcomeContractHash,
+      quality_rubric_hash: qualityRubricHash
+    };
+  } catch (error) {
+    if (error instanceof HttpError) throw error;
+    throw new HttpError(409, {
+      error: 'workflow_execution_protocol_invalid',
+      protocol: error?.payload?.protocol || null,
+      field_path: error?.payload?.field_path || '',
+      issues: error?.payload?.issues || []
+    });
+  }
 }
 export function appendExecutionEvent(
   state,
@@ -719,276 +914,4 @@ export function appendExecutionEvent(
   };
   state.execution_events.push(event);
   return event;
-}
-export function activeTaskExecutionForTask(state, taskId) {
-  return (
-    state.task_executions
-      .filter(
-        (item) =>
-          item.task_id === taskId &&
-          !TERMINAL.has(item.status) &&
-          ACTIVE_WORKFLOW_EXECUTION_STATUSES.includes(
-            state.workflow_executions.find((execution) => execution.id === item.workflow_execution_id)?.status
-          )
-      )
-      .sort(byNewest)[0] || null
-  );
-}
-export function currentTaskExecutions(state, workflowExecutionId) {
-  const grouped = new Map();
-  for (const item of state.task_executions
-    .filter((entry) => entry.workflow_execution_id === workflowExecutionId)
-    .sort((a, b) => a.attempt - b.attempt))
-    grouped.set(item.task_id, item);
-  return [...grouped.values()];
-}
-export function requireWorkflowExecution(state, idValue) {
-  const item = state.workflow_executions.find((entry) => entry.id === idValue);
-  if (!item) throw new HttpError(404, { error: 'workflow_execution_not_found' });
-  return item;
-}
-export function requireTaskExecution(state, idValue) {
-  const item = state.task_executions.find((entry) => entry.id === idValue);
-  if (!item) throw new HttpError(404, { error: 'task_execution_not_found' });
-  return item;
-}
-
-function createRepositoryLinesInState(state, workflowExecution, workstreams, selections) {
-  for (const selection of selections) {
-    const workstream = workstreams.find((item) => item.id === selection.workstream_id);
-    if (!workstream) continue;
-    state.repository_lines.push({
-      id: id('rln'),
-      workflow_execution_id: workflowExecution.id,
-      project_id: workflowExecution.project_id,
-      workflow_id: workflowExecution.workflow_id,
-      workstream_id: workstream.id,
-      connection_id: selection.connection_id,
-      canonical_repository_id: selection.canonical_repository_id || null,
-      base_ref: selection.base_ref,
-      base_sha: selection.base_sha || null,
-      branch: `aiws/${repositoryBranchSlug(workstream)}-${workflowExecution.id.slice(-8)}`,
-      head_sha: selection.base_sha || null,
-      checkout_path: null,
-      status: 'active',
-      active_writer_execution_id: null,
-      pull_request_intent_id: null,
-      pr_number: null,
-      merged_sha: null,
-      created_at: now(),
-      updated_at: now()
-    });
-  }
-}
-function normalizeRepositorySelection(state, project, workstreams, source) {
-  const rows = Array.isArray(source)
-    ? source
-    : Object.entries(source || {}).map(([workstream_id, value]) => ({
-        workstream_id,
-        ...(typeof value === 'string' ? { connection_id: value } : value)
-      }));
-  return rows.map((item) => {
-    const workstream = workstreams.find((entry) => entry.id === item.workstream_id),
-      connection = state.repository_connections.find(
-        (entry) =>
-          entry.id === item.connection_id && entry.project_id === project.id && entry.sync_status !== 'disconnected'
-      );
-    if (!workstream)
-      throw new HttpError(400, { error: 'repository_selection_workstream_invalid', workstream_id: item.workstream_id });
-    if (!connection)
-      throw new HttpError(400, { error: 'repository_selection_connection_invalid', connection_id: item.connection_id });
-    const workspace = state.repository_workspaces.find(
-      (entry) =>
-        entry.connection_id === connection.id &&
-        entry.project_id === project.id &&
-        entry.status === 'active' &&
-        !entry.stale
-    );
-    const canonical = state.canonical_repositories.find(
-      (entry) => String(entry.repository_id) === String(connection.repository_id)
-    );
-    return {
-      workstream_id: workstream.id,
-      connection_id: connection.id,
-      canonical_repository_id: canonical?.id || null,
-      base_ref: safeRef(item.base_ref || connection.default_branch || 'main'),
-      base_sha: item.base_sha || workspace?.current_sha || workspace?.fixed_sha || null
-    };
-  });
-}
-function workflowDefinitionSnapshot(state, workflow, nodes) {
-  return {
-    workflow_id: workflow.id,
-    workflow_revision: Number(workflow.workflow_revision || workflow.version || 1),
-    nodes: nodes.sort(byOrder).map((node) => ({
-      id: node.id,
-      role: node.role,
-      parent_node_id: node.parent_node_id || null,
-      execution_revision: Number(node.execution_revision || 1),
-      execution_evidence_status: node.execution_evidence_status || 'managed',
-      dependencies: dependencyIds(node),
-      current_contract_id: node.current_contract_id,
-      contract_version: state.node_contracts.find((item) => item.id === node.current_contract_id)?.version || null
-    }))
-  };
-}
-function queueCapacityAvailable(state, execution) {
-  const active = currentTaskExecutions(state, execution.workflow_execution_id).filter(
-    (item) => ['queued', 'running', 'verifying'].includes(item.status) && item.id !== execution.id
-  );
-  if (execution.executor === 'assist') return active.filter((item) => item.executor === 'assist').length < 2;
-  const line = lineForExecution(state, execution);
-  if (!line) return !requiresRepositoryLine(execution);
-  if (execution.executor === 'repository_change')
-    return (
-      !line.active_writer_execution_id &&
-      !active.some((item) => item.workstream_id === execution.workstream_id && item.executor === 'repository_change')
-    );
-  if (execution.executor === 'repository_verify')
-    return (
-      active.filter((item) => item.workstream_id === execution.workstream_id && item.executor === 'repository_verify')
-        .length < 2
-    );
-  if (execution.executor === 'repository_integrate')
-    return !active.some(
-      (item) => item.workstream_id === execution.workstream_id && item.executor !== 'repository_integrate'
-    );
-  return true;
-}
-function reserveRepositoryCapacity(state, execution) {
-  if (execution.executor !== 'repository_change') return;
-  const line = lineForExecution(state, execution);
-  if (line) {
-    line.active_writer_execution_id = execution.id;
-    line.updated_at = now();
-  }
-}
-function releaseRepositoryCapacity(state, execution) {
-  const line = lineForExecution(state, execution);
-  if (line?.active_writer_execution_id === execution.id) {
-    line.active_writer_execution_id = null;
-    line.updated_at = now();
-  }
-}
-function requiredOutputsAccepted(state, execution) {
-  const contract = state.node_contracts.find((item) => item.id === execution.contract_id);
-  return (contract?.expected_outputs || [])
-    .filter((item) => item.required !== false)
-    .every((slot) =>
-      (execution.output_bindings || []).some(
-        (binding) => binding.key === slot.key && bindingIsConsumable(state, binding)
-      )
-    );
-}
-function bindingIsConsumable(state, binding) {
-  const asset = state.assets.find(
-      (item) =>
-        item.id === binding.asset_id && item.current_version_id === binding.version_id && item.status === 'confirmed'
-    ),
-    version = state.asset_versions.find(
-      (item) =>
-        item.id === binding.version_id &&
-        item.asset_id === asset?.id &&
-        item.verification_status === 'verified' &&
-        item.immutable === true
-    ),
-    attestation = state.asset_attestations.find(
-      (item) =>
-        item.asset_version_id === version?.id &&
-        item.decision === 'accepted' &&
-        (item.confirmation_policy !== 'system_evidence' || item.attestor_type === 'trusted_verifier')
-    );
-  return Boolean(asset && version && attestation);
-}
-function assertIntegrationEvidence(state, execution, evidence) {
-  const pullRequest = evidence.pull_request || evidence.pr || {};
-  if (
-    pullRequest.merged !== true ||
-    !pullRequest.merged_sha ||
-    pullRequest.head_sha !== pullRequest.expected_head_sha ||
-    pullRequest.base_ref !== pullRequest.expected_base_ref
-  )
-    throw new HttpError(409, { error: 'integration_pull_request_not_verified' });
-  const approvals = Array.isArray(pullRequest.approvals) ? pullRequest.approvals : [];
-  if (approvals.length < 2) throw new HttpError(409, { error: 'integration_two_approvals_required' });
-  const checks = Array.isArray(pullRequest.checks) ? pullRequest.checks : [];
-  if (checks.length) {
-    if (checks.some((item) => !['success', 'passed', 'completed'].includes(item.status || item.conclusion)))
-      throw new HttpError(409, { error: 'integration_checks_failed' });
-  } else {
-    const siblings = currentTaskExecutions(state, execution.workflow_execution_id).filter(
-      (item) => item.workstream_id === execution.workstream_id && item.id !== execution.id
-    );
-    const internal = siblings
-      .flatMap((item) => item.output_bindings || [])
-      .some((binding) => /TestReport|TestEvidence/i.test(binding.asset_type) && bindingIsConsumable(state, binding));
-    if (evidence.checks_policy !== 'internal_test_report' || !internal)
-      throw new HttpError(409, { error: 'integration_checks_required' });
-  }
-}
-function assertExecutionRevisionCurrent(state, execution) {
-  const workflow = state.workflows.find((item) => item.id === execution.workflow_id);
-  if (!workflow || Number(workflow.workflow_revision || workflow.version || 1) !== execution.workflow_revision)
-    throw new HttpError(409, { error: 'workflow_execution_revision_superseded' });
-}
-function latestExecutionForTask(state, workflowExecutionId, taskId) {
-  return (
-    state.task_executions
-      .filter((item) => item.workflow_execution_id === workflowExecutionId && item.task_id === taskId)
-      .sort((a, b) => b.attempt - a.attempt)[0] || null
-  );
-}
-function lineForExecution(state, execution) {
-  return state.repository_lines.find(
-    (item) =>
-      item.workflow_execution_id === execution.workflow_execution_id && item.workstream_id === execution.workstream_id
-  );
-}
-function requiresRepositoryLine(execution) {
-  return ['repository_change', 'repository_verify', 'repository_integrate'].includes(execution.executor);
-}
-function repositoryLinesFor(state, workflowExecutionId) {
-  return state.repository_lines.filter((item) => item.workflow_execution_id === workflowExecutionId);
-}
-function taskExecutionsFor(state, workflowExecutionId) {
-  return state.task_executions.filter((item) => item.workflow_execution_id === workflowExecutionId);
-}
-function snapshot(state, workflowExecution) {
-  return {
-    workflow_execution: workflowExecution,
-    task_executions: currentTaskExecutions(state, workflowExecution.id),
-    repository_lines: repositoryLinesFor(state, workflowExecution.id),
-    events: state.execution_events.filter((item) => item.workflow_execution_id === workflowExecution.id)
-  };
-}
-function taskOrder(state, execution) {
-  return Number(state.workflow_nodes.find((item) => item.id === execution.task_id)?.order_index || 0);
-}
-function byOrder(left, right) {
-  return (
-    Number(left.order_index || 0) - Number(right.order_index || 0) || String(left.id).localeCompare(String(right.id))
-  );
-}
-function byNewest(left, right) {
-  return String(right.updated_at || right.created_at || '').localeCompare(
-    String(left.updated_at || left.created_at || '')
-  );
-}
-function safeRef(value) {
-  const ref = clean(value, 240);
-  if (!/^[A-Za-z0-9._/-]{1,240}$/.test(ref) || ref.includes('..'))
-    throw new HttpError(400, { error: 'repository_ref_invalid' });
-  return ref;
-}
-function clean(value, max = 120) {
-  return String(value ?? '')
-    .replace(/\0/g, '')
-    .trim()
-    .slice(0, max);
-}
-function executionEvidence(value) {
-  const result = structuredClone(value || {});
-  delete result.repository_payload;
-  delete result.raw_payload;
-  return result;
 }

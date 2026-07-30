@@ -11,6 +11,13 @@ import { scheduleWorkflowExecution } from '../workflow-dispatcher.mjs';
 import { reopenRepositoryIntegration } from '../repository-integration-recovery.mjs';
 import { taskHandoffDiagnostics } from '../task-handoff.mjs';
 import {
+  createOutcomeWaiverInState,
+  evaluateWorkflowOutcomesInState,
+  outcomeSnapshot,
+  revokeOutcomeWaiverInState
+} from '../outcome-service.mjs';
+import { replayTaskExecutionStage, taskStageSnapshotInState } from '../execution-replay-service.mjs';
+import {
   cancelWorkflowExecutionInState,
   createWorkflowExecutionInState,
   pauseWorkflowExecutionInState,
@@ -28,9 +35,24 @@ export const workflowExecutionV110Routes = [
   makeRoute('POST', '/workflow-executions/:id/pause', pauseWorkflowExecution),
   makeRoute('POST', '/workflow-executions/:id/resume', resumeWorkflowExecution),
   makeRoute('POST', '/workflow-executions/:id/cancel', cancelWorkflowExecution),
+  makeRoute('GET', '/workflow-executions/:id/outcomes', getWorkflowOutcomes, {
+    required_scopes: ['project:read']
+  }),
+  makeRoute('POST', '/workflow-executions/:id/outcome-waivers', createWorkflowOutcomeWaiver, {
+    required_scopes: ['project:approve', 'approval:decide']
+  }),
+  makeRoute('POST', '/workflow-executions/:id/outcome-waivers/:waiverId/revoke', revokeWorkflowOutcomeWaiver, {
+    required_scopes: ['project:approve', 'approval:decide']
+  }),
   makeRoute('GET', '/tasks/:id/readiness', getTaskReadiness),
   makeRoute('GET', '/task-executions/:id', getTaskExecution),
   makeRoute('GET', '/task-executions/:id/readiness', getTaskExecutionReadiness),
+  makeRoute('GET', '/task-executions/:id/stages', getTaskExecutionStages, {
+    required_scopes: ['project:read']
+  }),
+  makeRoute('POST', '/task-executions/:id/stages/:stage/replay', replayTaskExecutionStageRoute, {
+    required_scopes: ['project:run']
+  }),
   makeRoute('POST', '/task-executions/:id/reconcile-repository', reconcileRepositoryTask),
   makeRoute('POST', '/task-executions/:id/retry', retryTask),
   makeRoute('POST', '/task-executions/:id/manual-submit', manualSubmit),
@@ -150,6 +172,37 @@ async function cancelWorkflowExecution({ res, params }) {
   return send(res, 202, result);
 }
 
+async function getWorkflowOutcomes({ res, params }) {
+  const result = await mutate((state) => {
+    const execution = requireWorkflowExecution(state, params.id);
+    if (
+      execution.completion_status !== 'legacy_unassessed' &&
+      state.outcome_requirements.some((item) => item.workflow_execution_id === execution.id)
+    )
+      evaluateWorkflowOutcomesInState(state, execution.id);
+    return outcomeSnapshot(state, execution.id);
+  });
+  return send(res, 200, result);
+}
+
+async function createWorkflowOutcomeWaiver({ res, params, body }) {
+  const result = await mutate((state) => {
+    const actor = owner(state),
+      waiver = createOutcomeWaiverInState(state, params.id, body || {}, actor.id);
+    return { waiver, outcomes: outcomeSnapshot(state, params.id) };
+  });
+  return send(res, 201, result);
+}
+
+async function revokeWorkflowOutcomeWaiver({ res, params, body }) {
+  const result = await mutate((state) => {
+    const actor = owner(state),
+      revocation = revokeOutcomeWaiverInState(state, params.id, params.waiverId, body || {}, actor.id);
+    return { revocation, outcomes: outcomeSnapshot(state, params.id) };
+  });
+  return send(res, 201, result);
+}
+
 async function getTaskReadiness({ res, params }) {
   const state = await readState(),
     task = state.workflow_nodes.find((item) => item.id === params.id && item.role === 'task');
@@ -179,6 +232,18 @@ async function getTaskExecutionReadiness({ res, params }) {
     ...result,
     handoff: taskHandoffDiagnostics(state, result.task_execution)
   });
+}
+
+async function getTaskExecutionStages({ res, params }) {
+  const state = await readState();
+  return send(res, 200, taskStageSnapshotInState(state, params.id));
+}
+
+async function replayTaskExecutionStageRoute({ res, params }) {
+  const state = await readState(),
+    actor = owner(state),
+    result = await replayTaskExecutionStage(params.id, params.stage, actor.id);
+  return send(res, 202, result);
 }
 async function reconcileRepositoryTask({ res, params, body }) {
   const state = await readState(),

@@ -2,7 +2,6 @@ import { estimateTokens, hashString, now } from '../../../packages/shared/index.
 import { buildContextPack, buildRunnerInstruction } from '../../../packages/shared/src/context-run.mjs';
 import { HttpError } from './http.mjs';
 import { repositoryWorkspaceSnapshotHash } from './repository-workspace-service.mjs';
-import { CONTEXT_PACK_SCHEMA } from '../../../packages/system-context/src/index.mjs';
 import { compactRuntimeMap, createSelectionForRuntimeInState } from './context-service.mjs';
 import { applicationPolicy } from './task-effects.mjs';
 import { isContributionTask } from '../../../packages/shared/src/task-contributions.mjs';
@@ -12,6 +11,11 @@ import {
   normalizeTargetOutputKeys,
   validateRepositoryVersionBinding
 } from './task-execution-input-domain.mjs';
+import {
+  applyV21ContextPackFields,
+  assertMandatoryContextEvidence,
+  prepareV21ContextSelection
+} from './task-execution-context-v21.mjs';
 
 export const EXECUTION_INPUT_HASH_VERSION = 3;
 
@@ -97,6 +101,9 @@ function createExecutionSnapshot(state, input, scope) {
     project_brief: brief ? structuredClone(brief) : null,
     project_decisions: decisions.map((item) => structuredClone(item)),
     planning_quality: workflow.planning_quality || 'legacy_unverified',
+    outcome_contract_hash: input.workflowExecution?.outcome_contract_hash || workflow.outcome_contract_hash || null,
+    quality_rubric_hash: input.workflowExecution?.quality_rubric_hash || workflow.quality_rubric_hash || null,
+    quality_rubric: workflow.quality_rubric ? structuredClone(workflow.quality_rubric) : null,
     legacy_compatibility: !strict
   };
 }
@@ -119,6 +126,9 @@ function requiresContext(contract, type) {
 
 function persistExecutionContext(state, input, scope) {
   const { project, workspace, task, contract, snapshot } = scope;
+  const requiredContextRefs = requiredContextSourceRefs(snapshot),
+    explicitSourceRefs = runtimeContextSourceRefs(snapshot),
+    v21 = prepareV21ContextSelection(state, snapshot, task, explicitSourceRefs, requiredContextRefs);
   const contextPack = buildContextPack({
     state,
     project,
@@ -135,12 +145,12 @@ function persistExecutionContext(state, input, scope) {
       projectId: project.id,
       anchorSourceCollection: 'workflow_nodes',
       anchorSourceId: task.id,
-      explicitSourceRefs: runtimeContextSourceRefs(snapshot),
+      explicitSourceRefs,
       candidateLimit: 0,
-      tokenBudget: Number(project.settings?.token_budget || 12_000)
+      tokenBudget: Number(project.settings?.token_budget || 12_000),
+      ...v21.selectionOptions
     }),
     compactMap = compactRuntimeMap(state, project.id, task.id),
-    requiredContextRefs = requiredContextSourceRefs(snapshot),
     documentVersions = selection.included.map((item) => {
       const node = state.context_nodes.find((entry) => entry.id === item.node_id),
         sourceKey = `${node?.source_collection || ''}:${node?.source_id || ''}`;
@@ -162,6 +172,7 @@ function persistExecutionContext(state, input, scope) {
       order: ['map', 'search', 'read'],
       instruction: '按任务锚点读取必要上下文；不得绕过项目 ACL、资源 scope、新鲜度或 Exchange Grant。'
     };
+  assertMandatoryContextEvidence(selection, v21.enabled);
   snapshot.system_context = {
     current_anchor: { node_id: compactMap.anchor_node_id, source_collection: 'workflow_nodes', source_id: task.id },
     context_map: compactMap,
@@ -169,14 +180,8 @@ function persistExecutionContext(state, input, scope) {
     document_versions: documentVersions,
     retrieval_protocol: retrievalProtocol
   };
-  Object.assign(contextPack, {
-    schema_version: CONTEXT_PACK_SCHEMA,
-    version: 4,
-    context_selection_id: selection.id,
-    context_document_versions: selection.included.map((item) => item.document_version_id)
-  });
+  applyV21ContextPackFields(contextPack, snapshot, selection, v21);
   Object.assign(contextPack.content_json, {
-    schema_version: CONTEXT_PACK_SCHEMA,
     context_map: compactMap,
     context_selection_id: selection.id,
     document_versions: documentVersions,

@@ -21,6 +21,12 @@ import { ingestExecutionOutputsInState } from '../asset-attestation-service.mjs'
 import { ensureContextProjection } from '../context-service.mjs';
 import { verifyDeploymentNodeRun } from '../deployment-evidence-verifier.mjs';
 import {
+  beginExecutionStageInState,
+  completeExecutionStageInState,
+  failExecutionStageInState
+} from '../execution-stage-service.mjs';
+import { runnerPreflightInState } from '../runner-preflight.mjs';
+import {
   completeTaskExecutionInState,
   failTaskExecutionInState,
   reconcileWorkflowExecutionInState
@@ -96,7 +102,7 @@ async function startNodeRunRoute({ res, params, body }) {
 async function prepareNodeRun(nodeId, body) {
   if (body.enqueue_only === true) throw new HttpError(400, { error: 'enqueue_only_not_supported' });
   await ensureNodeContextProjection(nodeId);
-  return mutate(async (state) => {
+  const prepared = await mutate(async (state) => {
     const actor = owner(state),
       bundle = nodeBundle(state, nodeId);
     requireNodeBundle(bundle);
@@ -113,6 +119,59 @@ async function prepareNodeRun(nodeId, body) {
     const run = createRun({ actor, ...bundle, ctx, body });
     run.task_execution_id = controlled.task_execution?.id || null;
     state.node_runs.push(run);
+    const staged = Boolean(
+      controlled.task_execution?.workflow_execution_id &&
+      controlled.task_execution?.completion_status !== 'legacy_unassessed' &&
+      Number(state.schema_version || 0) >= 21
+    );
+    if (staged) {
+      const token = beginExecutionStageInState(state, {
+        workflowExecutionId: controlled.task_execution.workflow_execution_id,
+        taskExecutionId: controlled.task_execution.id,
+        stage: 'preflight',
+        input: { node_id: nodeId, context_pack_id: ctx.id, runner: run.runner }
+      });
+      try {
+        const preflight = runnerPreflightInState(state, {
+          taskExecution: controlled.task_execution,
+          node: bundle.node,
+          contract: bundle.contract,
+          runner: run.runner,
+          testAdapter: testAdapter(body)
+        });
+        run.preflight = preflight;
+        completeExecutionStageInState(state, token, { output: preflight });
+      } catch (error) {
+        const checkpoint = failExecutionStageInState(state, token, error, {
+          category: error?.payload?.failed_checks?.some((item) => ['dns', 'https', 'proxy_case'].includes(item))
+            ? 'network'
+            : 'capability',
+          retryable: error?.payload?.retryable === true,
+          details: { failed_checks: error?.payload?.failed_checks || [] }
+        });
+        Object.assign(run, {
+          status: RunnerStatus.Failed,
+          error_code: checkpoint.failure.code,
+          summary: checkpoint.failure.code,
+          completed_at: now(),
+          updated_at: now()
+        });
+        bundle.node.status = 'blocked';
+        failTaskExecutionInState(state, controlled.task_execution.id, {
+          errorCode: checkpoint.failure.code,
+          retryClass: checkpoint.failure.retryable ? 'transient' : 'deterministic',
+          failure: checkpoint.failure,
+          stage: 'preflight'
+        });
+        return {
+          run_id: run.id,
+          context_pack_id: ctx.id,
+          controlled: true,
+          staged: true,
+          error: { status: error?.status || 409, payload: error?.payload || { error: checkpoint.failure.code } }
+        };
+      }
+    }
     if (!controlled.controlled) {
       const approval = requireNodeRunApproval(state, {
         approvalId: body.approval_id,
@@ -137,8 +196,15 @@ async function prepareNodeRun(nodeId, body) {
       );
     }
     startRunTrace(state, { actor, ...bundle, run, ctx });
-    return { run_id: run.id, context_pack_id: ctx.id };
+    return {
+      run_id: run.id,
+      context_pack_id: ctx.id,
+      controlled: controlled.controlled,
+      staged
+    };
   });
+  if (prepared.error) throw new HttpError(prepared.error.status, prepared.error.payload);
+  return prepared;
 }
 
 async function ensureNodeContextProjection(nodeId) {
@@ -150,9 +216,21 @@ async function ensureNodeContextProjection(nodeId) {
 
 async function completeNodeRun(nodeId, body, prepared) {
   const controller = new AbortController();
+  let activeStageToken = null;
   runControllers.set(prepared.run_id, controller);
   try {
     let execution;
+    if (prepared.staged)
+      activeStageToken = await mutate((state) =>
+        beginExecutionStageInState(state, {
+          workflowExecutionId: state.task_executions.find(
+            (item) => item.id === state.node_runs.find((run) => run.id === prepared.run_id)?.task_execution_id
+          )?.workflow_execution_id,
+          taskExecutionId: state.node_runs.find((run) => run.id === prepared.run_id)?.task_execution_id,
+          stage: 'execute',
+          input: { node_run_id: prepared.run_id, context_pack_id: prepared.context_pack_id }
+        })
+      );
     try {
       const current = await readState(),
         currentRun = current.node_runs.find((item) => item.id === prepared.run_id);
@@ -198,10 +276,73 @@ async function completeNodeRun(nodeId, body, prepared) {
         });
       }
     } catch (error) {
-      await failNodeRun(prepared.run_id, error);
+      await failNodeRun(prepared.run_id, error, activeStageToken);
       throw error;
     }
-    const persisted = await mutate(async (state) => {
+    const runnerError = controlledRunnerResultError(execution.resultJson, prepared.controlled);
+    if (runnerError) {
+      await persistNodeRunCollection(nodeId, prepared, execution, null);
+      throw runnerError;
+    }
+    if (prepared.staged) {
+      await mutate((state) =>
+        completeExecutionStageInState(state, activeStageToken, {
+          output: { node_run_id: prepared.run_id, status: execution.resultJson?.status || RunnerStatus.Succeeded }
+        })
+      );
+      activeStageToken = await mutate((state) =>
+        beginExecutionStageInState(state, {
+          workflowExecutionId: activeStageToken.workflow_execution_id,
+          taskExecutionId: activeStageToken.task_execution_id,
+          stage: 'collect',
+          input: { node_run_id: prepared.run_id, result_schema: execution.resultJson?.schema_version || null }
+        })
+      );
+    }
+    const persisted = await persistNodeRunCollection(nodeId, prepared, execution, activeStageToken);
+    activeStageToken = null;
+    if (persisted.cancelled) return persisted.response;
+    if (prepared.staged)
+      activeStageToken = await mutate((state) =>
+        beginExecutionStageInState(state, {
+          workflowExecutionId: state.task_executions.find(
+            (item) => item.id === state.node_runs.find((run) => run.id === prepared.run_id)?.task_execution_id
+          )?.workflow_execution_id,
+          taskExecutionId: state.node_runs.find((run) => run.id === prepared.run_id)?.task_execution_id,
+          stage: 'verify',
+          input: {
+            node_run_id: prepared.run_id,
+            result_hash: nodeRunResultSize(state, prepared.run_id)
+          }
+        })
+      );
+    if (prepared.staged && testAdapter(body) && body.test_verifier_failure) {
+      const error = new Error(String(body.test_verifier_failure));
+      error.code = String(body.test_verifier_failure);
+      throw error;
+    }
+    const deploymentVerification = persisted.controlled
+      ? await verifyPersistedDeploymentRun(prepared.run_id, execution.resultJson)
+      : null;
+    if (prepared.staged) {
+      await mutate((state) =>
+        completeExecutionStageInState(state, activeStageToken, {
+          output: {
+            verifier: deploymentVerification?.verifierId || 'task_output_protocol_verifier',
+            evidence_refs: deploymentVerification?.evidence?.evidence_refs || []
+          }
+        })
+      );
+      activeStageToken = await mutate((state) =>
+        beginExecutionStageInState(state, {
+          workflowExecutionId: activeStageToken.workflow_execution_id,
+          taskExecutionId: activeStageToken.task_execution_id,
+          stage: 'attest',
+          input: { node_run_id: prepared.run_id, verifier: deploymentVerification?.verifierId || null }
+        })
+      );
+    }
+    return await mutate(async (state) => {
       const actor = owner(state),
         bundle = nodeBundle(state, nodeId),
         run = state.node_runs.find((item) => item.id === prepared.run_id),
@@ -209,27 +350,6 @@ async function completeNodeRun(nodeId, body, prepared) {
       if (!run || !ctx) throw new HttpError(404, { error: 'prepared_node_run_not_found' });
       if (run.status === RunnerStatus.Cancelled)
         return { cancelled: true, response: { run, context_pack: ctx, assets: [] } };
-      requireNodeBundle(bundle);
-      await persistRunnerResult(state, { actor, run, ...bundle, ...execution });
-      const freshness = evaluateTaskExecutionContextFreshness(state, run.task_execution_context);
-      if (!freshness.current) {
-        Object.assign(run, { input_superseded: true, input_superseded_reasons: freshness.reasons });
-        Object.assign(bundle.node, { input_superseded: true, updated_at: now() });
-      }
-      return { controlled: Boolean(run.task_execution_id), cancelled: false };
-    });
-    if (persisted.cancelled) return persisted.response;
-    const runnerError = controlledRunnerResultError(execution.resultJson, persisted.controlled);
-    if (runnerError) throw runnerError;
-    const deploymentVerification = persisted.controlled
-      ? await verifyPersistedDeploymentRun(prepared.run_id, execution.resultJson)
-      : null;
-    return await mutate(async (state) => {
-      const actor = owner(state),
-        bundle = nodeBundle(state, nodeId),
-        run = state.node_runs.find((item) => item.id === prepared.run_id),
-        ctx = state.context_packs.find((item) => item.id === prepared.context_pack_id);
-      if (!run || !ctx) throw new HttpError(404, { error: 'prepared_node_run_not_found' });
       requireNodeBundle(bundle);
       let assets;
       if (run.task_execution_id) {
@@ -258,7 +378,28 @@ async function completeNodeRun(nodeId, body, prepared) {
             null,
           actualEvidence: evidence
         });
-        if (!ingested.awaiting_human.length) completeTaskExecutionInState(state, taskExecution.id, { evidence });
+        if (prepared.staged)
+          completeExecutionStageInState(state, activeStageToken, {
+            output: {
+              output_version_ids: ingested.outputs.map((item) => item.version?.id).filter(Boolean),
+              awaiting_human: ingested.awaiting_human.length
+            }
+          });
+        if (!ingested.awaiting_human.length) {
+          const promoteToken = prepared.staged
+            ? beginExecutionStageInState(state, {
+                workflowExecutionId: taskExecution.workflow_execution_id,
+                taskExecutionId: taskExecution.id,
+                stage: 'promote',
+                input: { output_bindings: taskExecution.output_bindings || [] }
+              })
+            : null;
+          completeTaskExecutionInState(state, taskExecution.id, { evidence });
+          if (promoteToken)
+            completeExecutionStageInState(state, promoteToken, {
+              output: { status: taskExecution.status, output_bindings: taskExecution.output_bindings || [] }
+            });
+        }
         await ensureCompletedWorkstreamOutcomesInState(state, taskExecution.workflow_execution_id);
         reconcileWorkflowExecutionInState(state, taskExecution.workflow_execution_id);
         assets = ingested.outputs.map((item) => item.asset);
@@ -266,11 +407,40 @@ async function completeNodeRun(nodeId, body, prepared) {
       return { run, context_pack: ctx, assets };
     });
   } catch (error) {
-    await failNodeRun(prepared.run_id, error);
+    await failNodeRun(prepared.run_id, error, activeStageToken);
     throw error;
   } finally {
     runControllers.delete(prepared.run_id);
   }
+}
+
+function nodeRunResultSize(state, runId) {
+  const result = state.node_runs.find((run) => run.id === runId)?.result_json;
+  return result ? JSON.stringify(result).length : 0;
+}
+
+async function persistNodeRunCollection(nodeId, prepared, execution, stageToken) {
+  return mutate(async (state) => {
+    const actor = owner(state),
+      bundle = nodeBundle(state, nodeId),
+      run = state.node_runs.find((item) => item.id === prepared.run_id),
+      ctx = state.context_packs.find((item) => item.id === prepared.context_pack_id);
+    if (!run || !ctx) throw new HttpError(404, { error: 'prepared_node_run_not_found' });
+    if (run.status === RunnerStatus.Cancelled)
+      return { cancelled: true, response: { run, context_pack: ctx, assets: [] } };
+    requireNodeBundle(bundle);
+    await persistRunnerResult(state, { actor, run, ...bundle, ...execution });
+    const freshness = evaluateTaskExecutionContextFreshness(state, run.task_execution_context);
+    if (!freshness.current) {
+      Object.assign(run, { input_superseded: true, input_superseded_reasons: freshness.reasons });
+      Object.assign(bundle.node, { input_superseded: true, updated_at: now() });
+    }
+    if (stageToken)
+      completeExecutionStageInState(state, stageToken, {
+        output: { node_run_id: run.id, result_schema: execution.resultJson?.schema_version || null }
+      });
+    return { controlled: Boolean(run.task_execution_id), cancelled: false };
+  });
 }
 
 async function verifyPersistedDeploymentRun(runId, resultJson) {
@@ -404,7 +574,7 @@ function testEffectFixture(taskExecution, body) {
   };
 }
 
-async function failNodeRun(runId, error) {
+async function failNodeRun(runId, error, stageToken = null) {
   return mutate((state) => {
     const run = state.node_runs.find((item) => item.id === runId);
     if (!run || run.status === RunnerStatus.Cancelled) return run;
@@ -420,10 +590,36 @@ async function failNodeRun(runId, error) {
     if (!run.summary) run.summary = String(error.message || error);
     if (node) node.status = 'blocked';
     const taskExecution = state.task_executions.find((item) => item.id === run.task_execution_id);
+    let checkpoint = null;
+    if (taskExecution && Number(state.schema_version || 0) >= 21) {
+      const token =
+        stageToken ||
+        beginExecutionStageInState(state, {
+          workflowExecutionId: taskExecution.workflow_execution_id,
+          taskExecutionId: taskExecution.id,
+          stage: taskExecution.current_stage || 'execute',
+          input: { node_run_id: run.id }
+        });
+      const duplicate = state.execution_stage_checkpoints.find(
+        (item) =>
+          item.task_execution_id === taskExecution.id &&
+          item.stage === token.stage &&
+          item.status === 'failed' &&
+          item.input_hash === token.input_hash
+      );
+      checkpoint =
+        duplicate ||
+        failExecutionStageInState(state, token, error, {
+          category: token.stage === 'verify' ? 'verifier' : token.stage === 'collect' ? 'integrity' : 'runner',
+          retryable: error?.retryable === true
+        });
+    }
     if (taskExecution && ['queued', 'running', 'verifying', 'awaiting_human'].includes(taskExecution.status)) {
       failTaskExecutionInState(state, taskExecution.id, {
         errorCode: run.error_code,
-        retryClass: error?.retryable ? 'transient' : 'deterministic'
+        retryClass: error?.retryable ? 'transient' : 'deterministic',
+        failure: checkpoint?.failure || null,
+        stage: checkpoint?.stage || taskExecution.current_stage || 'execute'
       });
       reconcileWorkflowExecutionInState(state, taskExecution.workflow_execution_id);
     }

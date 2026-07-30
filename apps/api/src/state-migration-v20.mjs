@@ -15,9 +15,18 @@ import {
   validateState19
 } from './state-migration-v19.mjs';
 
+const POST_V20_COLLECTIONS = new Set([
+  'outcome_requirements',
+  'outcome_evaluations',
+  'outcome_waivers',
+  'execution_stage_checkpoints'
+]);
+
 export const STATE_SCHEMA_VERSION = 20;
 export const V20_SOURCE_COLLECTIONS = Object.freeze(
-  ALL_STATE_COLLECTIONS.filter((collection) => !CONTEXT_INTERNAL_COLLECTIONS.includes(collection))
+  ALL_STATE_COLLECTIONS.filter(
+    (collection) => !CONTEXT_INTERNAL_COLLECTIONS.includes(collection) && !POST_V20_COLLECTIONS.has(collection)
+  )
 );
 export const V20_COLLECTIONS = Object.freeze([...V20_SOURCE_COLLECTIONS, ...CONTEXT_INTERNAL_COLLECTIONS]);
 export const V20_RUNNER_IMAGE = 'aiws-codex-runner:2.0.0-codex-0.144.0';
@@ -27,6 +36,8 @@ export { canonicalStateHash, sha256 };
 export function migrateState19To20(source, { timestamp = new Date().toISOString() } = {}) {
   if (!source || typeof source !== 'object' || Array.isArray(source)) throw migrationError('state_root_invalid');
   const inputVersion = source.schema_version == null ? 13 : Number(source.schema_version);
+  if (inputVersion > STATE_SCHEMA_VERSION)
+    throw migrationError('state_schema_newer_than_runtime', { schema_version: inputVersion });
   const migrated19 =
     inputVersion === 20
       ? { state: structuredClone(source), from_version: 20, migrated: false }

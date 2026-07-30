@@ -231,7 +231,7 @@ function validateMcpClient(client) {
   if (
     !Array.isArray(client.scopes) ||
     client.scopes.some(
-      (scope) => !/^[a-z][a-z0-9-]*:(?:read|write|create|share|decide|admin|execute)$/.test(String(scope))
+      (scope) => !/^[a-z][a-z0-9-]*:(?:read|write|create|run|approve|share|decide|admin|execute)$/.test(String(scope))
     )
   )
     throw migrationError('mcp_client_scopes_invalid', { id: client.id });

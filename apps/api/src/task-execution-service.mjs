@@ -22,6 +22,7 @@ import {
   prepareTaskExecutionContext
 } from './task-execution-context.mjs';
 import { ensureContextProjection } from './context-service.mjs';
+import { beginExecutionStageInState, completeExecutionStageInState } from './execution-stage-service.mjs';
 import { effectClaimsForOutput, validateRequestedEffectClaims } from './task-effect-claims.mjs';
 import {
   appendExecutionEvent,
@@ -310,9 +311,22 @@ export async function approveTaskExecution(
         execution.executor === 'repository_integrate' && !Object.keys(execution.evidence || {}).length
           ? integrationEvidenceFor(state, execution)
           : execution.evidence || {};
+      const promoteToken =
+        Number(state.schema_version || 0) >= 21
+          ? beginExecutionStageInState(state, {
+              workflowExecutionId: execution.workflow_execution_id,
+              taskExecutionId: execution.id,
+              stage: 'promote',
+              input: { human_attestation: true, output_bindings: execution.output_bindings || [] }
+            })
+          : null;
       completeTaskExecutionInState(state, execution.id, {
         evidence: { ...evidence, human_attestation: true }
       });
+      if (promoteToken)
+        completeExecutionStageInState(state, promoteToken, {
+          output: { status: execution.status, output_bindings: execution.output_bindings || [] }
+        });
     }
     await ensureCompletedWorkstreamOutcomesInState(state, execution.workflow_execution_id);
     const reconciled = reconcileWorkflowExecutionInState(state, execution.workflow_execution_id);

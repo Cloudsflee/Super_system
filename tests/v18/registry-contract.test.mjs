@@ -43,6 +43,23 @@ assert.deepEqual(missingBaselineItems(MCP_TOOL_NAMES, coverage.tools), []);
 assert.deepEqual(missingBaselineItems(collections, coverage.state_collections), []);
 
 const knownScopes = new Set(MCP_SCOPES);
+const operationsById = new Map(registry.map((item) => [item.operation_id, item]));
+assert.deepEqual(operationsById.get('aiws.workflow.get.workflow-executions.by-id.outcomes').required_scopes, [
+  'project:read'
+]);
+assert.deepEqual(operationsById.get('aiws.workflow.post.workflow-executions.by-id.outcome-waivers').required_scopes, [
+  'project:approve',
+  'approval:decide'
+]);
+assert.deepEqual(
+  operationsById.get('aiws.workflow.post.workflow-executions.by-id.outcome-waivers.by-waiver-id.revoke')
+    .required_scopes,
+  ['project:approve', 'approval:decide']
+);
+assert.deepEqual(
+  operationsById.get('aiws.workflow.post.task-executions.by-id.stages.by-stage.replay').required_scopes,
+  ['project:run']
+);
 for (const operation of registry) {
   assert.match(operation.operation_id, /^aiws\.[a-z0-9-]+\.(get|post|put|patch|delete)\./);
   assert.equal(typeof operation.handler, 'function');

@@ -14,6 +14,14 @@ import {
 } from '../../apps/api/src/state-migration-v20.mjs';
 
 const timestamp = '2026-07-26T00:00:00.000Z';
+assert.equal(V20_SOURCE_COLLECTIONS.length, 84);
+for (const collection of [
+  'outcome_requirements',
+  'outcome_evaluations',
+  'outcome_waivers',
+  'execution_stage_checkpoints'
+])
+  assert.equal(V20_SOURCE_COLLECTIONS.includes(collection), false, collection);
 const source = Object.fromEntries(V20_SOURCE_COLLECTIONS.map((name) => [name, []]));
 source.schema_version = 19;
 source.users.push({ id: 'owner-v20-migration', role: 'owner', auth_mode: 'test' });

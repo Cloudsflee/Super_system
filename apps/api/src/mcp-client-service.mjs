@@ -10,6 +10,8 @@ export const MCP_SCOPES = Object.freeze([
   'system:write',
   'project:create',
   'project:read',
+  'project:run',
+  'project:approve',
   'project:write',
   'project:share',
   'workflow:read',
@@ -48,6 +50,7 @@ export const DEFAULT_OPERATOR_SCOPES = Object.freeze(
     (scope) =>
       ![
         'project:share',
+        'project:approve',
         'approval:decide',
         'context:admin',
         'setup:admin',

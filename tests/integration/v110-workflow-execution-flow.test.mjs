@@ -14,6 +14,7 @@ try {
   const stateService = await import('../../apps/api/src/state.mjs');
   const { readCasBlob } = await import('../../apps/api/src/asset-cas.mjs');
   const { createWorkflowExecutionInState } = await import('../../apps/api/src/workflow-execution-domain.mjs');
+  const { applyWorkflowOutcomeProtocols } = await import('../../apps/api/src/workflow-outcome-definition.mjs');
   const { provisionWorkflowRepositoryLines } = await import('../../apps/api/src/repository-line-service.mjs');
   const { dispatchWorkflowExecution } = await import('../../apps/api/src/workflow-dispatcher.mjs');
   const { approveTaskExecution, submitTaskExecutionOutputs } =
@@ -29,7 +30,13 @@ try {
   git(repository, ['add', '.']);
   git(repository, ['-c', 'user.name=Fixture', '-c', 'user.email=fixture@example.test', 'commit', '-m', 'base']);
   const baseSha = git(repository, ['rev-parse', 'HEAD']);
-  await stateService.mutate((state) => seed(state, repository, baseSha, ownerId));
+  await stateService.mutate((state) => {
+    seed(state, repository, baseSha, ownerId);
+    applyWorkflowOutcomeProtocols(
+      state.workflows.find((item) => item.id === 'workflow-1'),
+      state.workflow_nodes.filter((item) => item.workflow_id === 'workflow-1')
+    );
+  });
 
   const started = await stateService.mutate((state) =>
     createWorkflowExecutionInState(
@@ -266,6 +273,7 @@ try {
       }
     ]
   });
+  await dispatchWorkflowExecution(started.workflow_execution.id);
   state = await stateService.readState();
   const completedConsume = currentExecution(state, 'task-consume-outcome'),
     acceptedBinding = completedConsume.output_bindings.find((item) => item.key === 'accepted_outcome'),

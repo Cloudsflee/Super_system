@@ -21,6 +21,7 @@ import {
   retryTaskExecutionInState,
   transitionTaskExecutionInState
 } from './workflow-execution-domain.mjs';
+import { scheduleWorkflowFinalization } from './workflow-finalization-service.mjs';
 
 const pumps = new Map();
 let sweepTimer = null;
@@ -65,7 +66,10 @@ export async function dispatchWorkflowExecution(workflowExecutionId) {
         .filter((item) => item.workflow_execution_id === workflow.id && item.status === 'queued')
         .map((item) => item.id);
     });
-    if (!queued.length) return;
+    if (!queued.length) {
+      await scheduleWorkflowFinalization(workflowExecutionId);
+      return;
+    }
     await Promise.all(queued.map((taskExecutionId) => executeQueuedTask(taskExecutionId)));
   }
   throw new HttpError(500, { error: 'workflow_dispatch_pass_limit_exceeded' });
@@ -113,7 +117,8 @@ async function runNodeExecutor(state, execution) {
           test_use_required_context: options.test_use_required_context,
           test_used_input_keys: options.test_used_input_keys,
           test_used_context_node_ids: options.test_used_context_node_ids,
-          test_consumption_plan: options.test_consumption_plan
+          test_consumption_plan: options.test_consumption_plan,
+          test_verifier_failure: options.test_verifier_failure
         }
       : {})
   });

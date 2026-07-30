@@ -25,6 +25,7 @@ import {
 } from './brief-workflow-domain.mjs';
 import { assertWorkflowHierarchy, normalizeWorkflowHierarchyNodes } from './workflow-hierarchy-domain.mjs';
 import { assertWorkflowPlanningQuality } from './workflow-quality.mjs';
+import { applyWorkflowOutcomeProtocols } from './workflow-outcome-definition.mjs';
 import { makeSession } from './assist-v3-domain.mjs';
 export { assertManagedProjectWritable, managedProjectRoot, managedRepoPath } from './managed-workspace.mjs';
 export {
@@ -247,6 +248,7 @@ export function activateDraftInState(state, project, brief, workflowInput, actor
     state.node_contracts.push(contract);
   }
   state.workflow_nodes.push(...created);
+  if (workflow.planning_quality === 'verified') applyWorkflowOutcomeProtocols(workflow, created);
   workflow.graph_json = graphFor(created);
   brief.content = normalizeBriefContentV2(brief.content, { briefId: brief.id, title: `${project.title}简报` });
   Object.assign(brief, { status: 'confirmed', confirmed_by_user_id: actorId, confirmed_at: now(), updated_at: now() });
