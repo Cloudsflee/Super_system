@@ -77,6 +77,8 @@ const merged = ensureRunContextPack(state, {
 assert.notEqual(merged.id, pack.id);
 assert.equal(merged.content_json.workflow_node.id, 'target-task');
 assert.equal(merged.content_json.external_context_pack_id, pack.id);
+assert.equal(merged.schema_version, 'aiws.context_pack.v4');
+assert.deepEqual(state.context_nodes, [], 'legacy Exchange state initializes missing Context collections');
 merged.status = 'confirmed';
 state.context_packs.push({
   id: 'source-local-pack',

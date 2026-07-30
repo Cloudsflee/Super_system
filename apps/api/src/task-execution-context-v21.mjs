@@ -1,7 +1,8 @@
-import { CONTEXT_PACK_SCHEMA } from '../../../packages/system-context/src/index.mjs';
+import { CONTEXT_PACK_SCHEMA, ensureContextCollections } from '../../../packages/system-context/src/index.mjs';
 import { HttpError } from './http.mjs';
 
 export function prepareV21ContextSelection(state, snapshot, task, explicitSourceRefs, requiredContextRefs) {
+  ensureContextCollections(state);
   const enabled = Boolean(snapshot.outcome_contract_hash && snapshot.quality_rubric_hash);
   const mandatoryEvidenceNodeIds = state.context_nodes
     .filter((node) => requiredContextRefs.has(`${node.source_collection || ''}:${node.source_id || ''}`))
