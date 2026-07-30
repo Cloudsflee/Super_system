@@ -16,8 +16,9 @@ import { readJson } from './v175-lib.mjs';
 
 const errors = [];
 const coverage = readJson('tests/v20/coverage-map.json');
-const sources = collections.filter((name) => !CONTEXT_INTERNAL_COLLECTIONS.includes(name));
-if (!sameSet(sources, coverage.state_collections)) errors.push('state collection coverage is not exact');
+const sources = coverage.state_collections || [];
+for (const collection of sources)
+  if (!collections.includes(collection)) errors.push(`schema 20 collection no longer supported: ${collection}`);
 if (!sameSet(CONTEXT_INTERNAL_COLLECTIONS, coverage.context_collections))
   errors.push('context collection coverage is not exact');
 if (!sameSet(CONTEXT_EDGE_TYPES, coverage.edge_types)) errors.push('edge type coverage is not exact');

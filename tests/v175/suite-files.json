@@ -19,7 +19,10 @@
     "tests/unit/v15-operations.test.mjs",
     "tests/unit/v18-codex-mcp-injection.test.mjs",
     "tests/unit/v110-runner-runtime.test.mjs",
-    "tests/unit/v20-deployment-evidence-verifier.test.mjs"
+    "tests/unit/v20-deployment-evidence-verifier.test.mjs",
+    "tests/unit/v21-execution-protocol.test.mjs",
+    "tests/unit/v21-security.test.mjs",
+    "tests/unit/v21-stage-replay.test.mjs"
   ],
   "unit-state": [
     "tests/unit/v16-core.test.mjs",
@@ -33,7 +36,8 @@
     "tests/unit/v19-repository-lifecycle.test.mjs",
     "tests/unit/v110-cas.test.mjs",
     "tests/unit/v110-legacy-execution-promotion.test.mjs",
-    "tests/unit/v20-migration.test.mjs"
+    "tests/unit/v20-migration.test.mjs",
+    "tests/unit/v21-migration.test.mjs"
   ],
   "unit-capabilities": [
     "tests/unit/v17-capability-operations.test.mjs",
@@ -59,7 +63,10 @@
     "tests/unit/v20-mcp-context.test.mjs",
     "tests/unit/v20-task-effects.test.mjs",
     "tests/unit/v20-controlled-node-run-dependencies.test.mjs",
-    "tests/unit/v20-context-performance.test.mjs"
+    "tests/unit/v20-context-performance.test.mjs",
+    "tests/unit/v21-context.test.mjs",
+    "tests/unit/v21-outcome.test.mjs",
+    "tests/unit/v21-performance.test.mjs"
   ],
   "integration-core": [
     "tests/integration/api-flow.test.mjs",
@@ -98,7 +105,8 @@
     "tests/integration/v19-assist-recovery-acl-flow.test.mjs",
     "tests/integration/v19-workflow-migration-acl-flow.test.mjs",
     "tests/integration/v19-workflow-migration-orchestrator-flow.test.mjs",
-    "tests/integration/v110-workflow-execution-flow.test.mjs"
+    "tests/integration/v110-workflow-execution-flow.test.mjs",
+    "tests/integration/v21-stage-replay-flow.test.mjs"
   ],
   "integration-files": [
     "tests/integration/tools-flow.test.mjs",

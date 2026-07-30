@@ -1,5 +1,11 @@
 import fs from 'node:fs';
 import { spawnSync } from 'node:child_process';
+import {
+  DEFAULT_PRE_PUSH_GATES,
+  collectCurrentGateIdentity,
+  readGateReceiptForIdentity,
+  writeGateReceiptForIdentity
+} from './gate-receipt-v21.mjs';
 
 const manual = process.argv.includes('--all');
 const updates = manual ? [] : parseUpdates(fs.readFileSync(0, 'utf8'));
@@ -20,14 +26,35 @@ const changes = git(['status', '--porcelain']);
 if (changes) fail(`working tree must be clean so tests match the pushed commit:\n${changes}`);
 
 const baseSha = resolveBase(mainUpdate, head);
+const gateEnv = { ...process.env, AIWS_TEST_BASE_SHA: baseSha };
 console.log(`[pre-push] Verifying ${head.slice(0, 12)} against ${baseSha.slice(0, 12)}.`);
-for (const script of ['test:v175:pr', 'test:v18:pr', 'test:v20:pr']) {
+const identity = collectCurrentGateIdentity(root, gateEnv),
+  cached = readGateReceiptForIdentity({ root, identity, requiredGates: DEFAULT_PRE_PUSH_GATES, env: gateEnv });
+if (cached.hit) {
+  console.log(
+    `[pre-push] Exact gate receipt hit ${cached.receipt.fingerprint.slice(0, 12)} ` +
+      `(original ${cached.receipt.duration_ms}ms, lookup within 60s budget).`
+  );
+  process.exit(0);
+}
+console.log(`[pre-push] Gate receipt miss: ${cached.reason}.`);
+const gateStarted = Date.now();
+for (const script of DEFAULT_PRE_PUSH_GATES) {
   console.log(`\n[pre-push] ${script}`);
-  const result = runPnpm(script, { ...process.env, AIWS_TEST_BASE_SHA: baseSha });
+  const result = runPnpm(script, gateEnv);
   if (result.error) fail(result.error.message);
   if (result.status !== 0) fail(`${script} failed with exit code ${result.status ?? 'unknown'}`);
 }
-console.log('\n[pre-push] Historical compatibility and V2.0 gates passed.');
+const receipt = writeGateReceiptForIdentity({
+  root,
+  identity,
+  coveredGates: DEFAULT_PRE_PUSH_GATES,
+  durationMs: Date.now() - gateStarted,
+  env: gateEnv
+});
+console.log(
+  `\n[pre-push] Historical compatibility and V2.1 gates passed; receipt ${receipt.fingerprint.slice(0, 12)}.`
+);
 
 function resolveBase(update, headSha) {
   if (process.env.AIWS_TEST_BASE_SHA && !isZeroSha(process.env.AIWS_TEST_BASE_SHA))

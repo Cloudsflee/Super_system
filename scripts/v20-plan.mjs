@@ -10,8 +10,6 @@ const manifest = readJson('package.json');
 const coverage = readJson('tests/v20/coverage-map.json');
 const impact = readJson('tests/v20/impact-map.json');
 
-if (manifest.version !== '2.0.0') errors.push('package.json version must be 2.0.0');
-if (!String(manifest.description || '').includes('V2.0')) errors.push('package description must identify V2.0');
 for (const [name, expected] of Object.entries({
   'test:v20:plan': 'scripts/v20-plan.mjs',
   'test:v20:catalog': 'scripts/v20-catalog.mjs',
@@ -84,8 +82,12 @@ for (const [file, anchors] of [
   ['apps/api/src/routes/context-v20.mjs', ['/context/v1/map', '/context/v1/selections', '/context/v1/rebuild']],
   ['apps/api/src/mcp-server-factory.mjs', ['aiws_context', 'aiws://context/map/{scope}', 'explain_selection']],
   ['apps/web/src/app/router.tsx', ["path: '/context'", "path: '/projects/:projectId/context'"]],
-  ['compose.yml', ['name: aiws-v20', 'aiws-app:2.0.0', 'aiws-data-v20']],
-  ['packages/shared/src/version.mjs', ["AIWS_VERSION = '2.0.0'", 'AIWS_STATE_SCHEMA_VERSION = 20']],
+  [
+    'packages/system-context/src/protocol.mjs',
+    ["CONTEXT_PROTOCOL_VERSION = 'aiws.system-context.v1'", "'aiws.context_pack.v4'"]
+  ],
+  ['docker/v20-upgrade.mjs', ["source_mount_mode: 'readonly'", 'runV20UpgradeCli']],
+  ['scripts/v20-release.mjs', ['runV20UpgradeCli']],
   ['.gitignore', ['__pycache__/', '*.py[cod]']]
 ]) {
   const source = fs.existsSync(file) ? fs.readFileSync(file, 'utf8') : '';
@@ -112,7 +114,7 @@ if (errors.length) {
   console.error(`V2.0 plan validation failed (${errors.length}):\n${errors.map((item) => `- ${item}`).join('\n')}`);
   process.exit(1);
 }
-console.log('V2.0 plan validation passed (schema 20, context protocol v1, Context Pack v4)');
+console.log('V2.0 historical compatibility validation passed (schema 20, context protocol v1, Context Pack v4)');
 
 function sameSet(left, right) {
   return left.length === right.length && left.every((item) => right.includes(item));

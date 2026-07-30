@@ -13,9 +13,17 @@ process.env.AIWS_CONTEXT_REPOSITORY_FILE_LIMIT = '0';
 
 try {
   const stateApi = await import('../../apps/api/src/state.mjs');
-  const { CONTEXT_INTERNAL_COLLECTIONS } = await import('../../packages/system-context/src/index.mjs');
+  const {
+    CONTEXT_INTERNAL_COLLECTIONS,
+    buildContextSearchIndex,
+    contextIndexableNodes,
+    reconcileContextProjectionState,
+    serializeContextSearchIndex
+  } = await import('../../packages/system-context/src/index.mjs');
   const { validateState19 } = await import('../../apps/api/src/state-migration-v19.mjs');
-  const contextService = await import('../../apps/api/src/context-service.mjs');
+  const { V20_SOURCE_COLLECTIONS, migrateStateFileToV20, validateState20 } =
+    await import('../../apps/api/src/state-migration-v20.mjs');
+  const { materializeContextDocumentsInState } = await import('../../apps/api/src/context-projection.mjs');
   const release = await import('../../docker/release_volume.mjs');
   const { v20RollbackAccepted } = await import('../../docker/v20-upgrade.mjs');
   const { findLegacyRunnerReferencesV20 } = await import('../../docker/release-volume-validation.mjs');
@@ -30,6 +38,13 @@ try {
   sourceState.schema_version = 19;
   delete sourceState.context_projection_coverage;
   delete sourceState.migrated_to_schema_20_at;
+  for (const collection of [
+    'outcome_requirements',
+    'outcome_evaluations',
+    'outcome_waivers',
+    'execution_stage_checkpoints'
+  ])
+    delete sourceState[collection];
   for (const collection of CONTEXT_INTERNAL_COLLECTIONS) delete sourceState[collection];
   for (const profile of sourceState.codex_profiles || []) {
     if (profile.image) profile.image = 'aiws-codex-runner:1.10.0-codex-0.144.0';
@@ -67,16 +82,19 @@ try {
   assert.equal(clone.target_volume, 'aiws-data-v20');
   assert.equal(clone.source_state.schema_version, 19);
 
-  await stateApi.ensureRuntime();
-  const migrated = await stateApi.readState();
-  const ownerId = migrated.instance_owner_user_id || migrated.users.find((item) => item.role === 'owner').id;
-  const req = {
-    headers: { 'x-aiws-user-id': ownerId },
-    auth: { scopes: ['context:admin'] }
-  };
-  const rebuilt = await contextService.rebuildContext({ req });
+  const targetStateFile = path.join(target, 'data', 'state.json');
+  await migrateStateFileToV20(targetStateFile, { clock: () => new Date('2026-07-26T01:01:00.000Z') });
+  const rebuilt = await rebuildV20Context(target, {
+    V20_SOURCE_COLLECTIONS,
+    buildContextSearchIndex,
+    contextIndexableNodes,
+    materializeContextDocumentsInState,
+    reconcileContextProjectionState,
+    serializeContextSearchIndex,
+    validateState20
+  });
   assert.equal(rebuilt.index.state, 'ready');
-  const migratedState = await stateApi.readState();
+  const migratedState = JSON.parse(fs.readFileSync(targetStateFile, 'utf8'));
   assert.equal(migratedState.schema_version, 20);
   assert.ok(migratedState.context_nodes.length > 0);
   assert.equal(
@@ -114,16 +132,28 @@ try {
   assert.equal((await release.volumeInventory(source)).hash, sourceInventory.hash);
   assert.equal(fs.readFileSync(path.join(source, 'vault', 'credential.enc'), 'utf8'), 'encrypted-v19-preserved');
 
-  await stateApi.mutate((state) => {
-    const user = state.users[0];
-    user.display_name = `${user.display_name} refreshed`;
-    user.updated_at = '2026-07-26T01:06:00.000Z';
-  });
+  await mutateV20State(
+    targetStateFile,
+    { V20_SOURCE_COLLECTIONS, reconcileContextProjectionState, validateState20 },
+    (state) => {
+      const user = state.users[0];
+      user.display_name = `${user.display_name} refreshed`;
+      user.updated_at = '2026-07-26T01:06:00.000Z';
+    }
+  );
   await assert.rejects(() => release.validateV20ReleaseTarget(target));
   const deferred = await release.validateV20ReleaseTarget(target, 'aiws-data-v20', { deferProjection: true });
   assert.equal(deferred.accepted, true);
   assert.deepEqual(deferred.projection, { deferred: true, reason: 'release_refresh_required' });
-  await contextService.rebuildContext({ req });
+  await rebuildV20Context(target, {
+    V20_SOURCE_COLLECTIONS,
+    buildContextSearchIndex,
+    contextIndexableNodes,
+    materializeContextDocumentsInState,
+    reconcileContextProjectionState,
+    serializeContextSearchIndex,
+    validateState20
+  });
   assert.equal((await release.validateV20ReleaseTarget(target)).projection.warnings, 0);
 
   const indexFile = path.join(target, 'data', '.context-index', 'minisearch-v1.json');
@@ -144,7 +174,7 @@ try {
   assert.deepEqual(findLegacyRunnerReferencesV20(historical), []);
 
   const compose = fs.readFileSync('compose.yml', 'utf8');
-  for (const value of ['name: aiws-v20', 'aiws-app:2.0.0', 'aiws-codex-runner:2.0.0-codex-0.144.0', 'aiws-data-v20'])
+  for (const value of ['name: aiws-v21', 'aiws-app:2.1.0', 'aiws-codex-runner:2.1.0-codex-0.144.0', 'aiws-data-v21'])
     assert.ok(compose.includes(value), value);
   const upgrade = fs.readFileSync('docker/v20-upgrade.mjs', 'utf8');
   for (const value of [
@@ -192,4 +222,71 @@ try {
   console.log('V2.0 read-only clone, projection acceptance, source retention, and rollback tests passed');
 } finally {
   fs.rmSync(root, { recursive: true, force: true });
+}
+
+async function rebuildV20Context(
+  targetRoot,
+  {
+    V20_SOURCE_COLLECTIONS,
+    buildContextSearchIndex,
+    contextIndexableNodes,
+    materializeContextDocumentsInState,
+    reconcileContextProjectionState,
+    serializeContextSearchIndex,
+    validateState20
+  }
+) {
+  const stateFile = path.join(targetRoot, 'data', 'state.json'),
+    state = JSON.parse(fs.readFileSync(stateFile, 'utf8')),
+    timestamp = new Date().toISOString();
+  reconcileContextProjectionState(state, { sourceCollections: V20_SOURCE_COLLECTIONS, timestamp, force: true });
+  const projection = await materializeContextDocumentsInState(state, {
+    force: true,
+    casRoot: path.join(targetRoot, 'cas')
+  });
+  assert.equal(projection.failed, 0, JSON.stringify(projection.failures));
+  validateState20(state);
+  fs.writeFileSync(stateFile, `${JSON.stringify(state, null, 2)}\n`);
+
+  const nodes = contextIndexableNodes(state.context_nodes),
+    built = await buildContextSearchIndex({
+      nodes: state.context_nodes,
+      documentVersions: state.context_document_versions,
+      edges: state.context_edges,
+      readDocument: (version) =>
+        fs.promises.readFile(path.join(targetRoot, 'cas', ...version.cas_ref.storage_path.split('/')), 'utf8')
+    }),
+    rebuiltAt = new Date().toISOString(),
+    payload = serializeContextSearchIndex(built.index, {
+      snapshotHash: built.snapshot_hash,
+      rebuiltAt
+    }),
+    indexDirectory = path.join(targetRoot, 'data', '.context-index');
+  fs.mkdirSync(indexDirectory, { recursive: true });
+  fs.writeFileSync(path.join(indexDirectory, 'minisearch-v1.json'), JSON.stringify(payload));
+  return {
+    projection,
+    index: {
+      state: 'ready',
+      snapshot_hash: built.snapshot_hash,
+      node_count: nodes.length,
+      rebuilt_at: rebuiltAt,
+      error_code: null
+    }
+  };
+}
+
+async function mutateV20State(
+  stateFile,
+  { V20_SOURCE_COLLECTIONS, reconcileContextProjectionState, validateState20 },
+  apply
+) {
+  const state = JSON.parse(fs.readFileSync(stateFile, 'utf8'));
+  await apply(state);
+  reconcileContextProjectionState(state, {
+    sourceCollections: V20_SOURCE_COLLECTIONS,
+    timestamp: new Date().toISOString()
+  });
+  validateState20(state);
+  fs.writeFileSync(stateFile, `${JSON.stringify(state, null, 2)}\n`);
 }

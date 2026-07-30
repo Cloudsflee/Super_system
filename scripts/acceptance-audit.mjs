@@ -16,6 +16,8 @@ const checks = [
   ['V1.8 Focus OS UI design', 'docs/v1.8-focus-os-ui-design.md', '单一上下文轨道'],
   ['V1.8 dev plan', '开发计划v1.8.md', 'state schema：`17`'],
   ['V1.8 test plan', '测试计划v1.8.md', 'test:v18:mcp-journey'],
+  ['V2.1 dev plan', '开发计划v2.1.md', 'DEV210-14'],
+  ['V2.1 test plan', '测试计划v2.1.md', 'L7 Release'],
   ['V1.8 cutover guide', 'docs/v1.8-cutover.md', 'aiws-data-v18'],
   ['Collaborative MCP architecture', 'docs/mcp-collaboration-architecture.md', 'Team Single Node'],
   ['Production Dockerfile', 'Dockerfile', 'FROM workspace-deps AS verify'],
@@ -30,14 +32,15 @@ const checks = [
   ['Offline verify refresh', 'docker/verify-refresh.Dockerfile', 'pnpm install --offline --frozen-lockfile'],
   ['Failed cutover preservation', 'docker/release_orchestrator.mjs', 'failed_source_preserved'],
   ['Legacy purge confirmation', 'docker/release_volume.mjs', 'purge_legacy_requires_confirm'],
-  ['V2.0 Compose', 'compose.yml', 'aiws-app:2.0.0'],
+  ['V2.1 Compose', 'compose.yml', 'aiws-app:2.1.0'],
   ['Schema 18 migration', 'apps/api/src/state-migration-v18.mjs', 'STATE_SCHEMA_VERSION = 18'],
   ['Schema 19 migration', 'apps/api/src/state-migration-v19.mjs', 'STATE_SCHEMA_VERSION = 19'],
   ['Schema 20 migration', 'apps/api/src/state-migration-v20.mjs', 'STATE_SCHEMA_VERSION = 20'],
+  ['Schema 21 migration', 'apps/api/src/state-migration-v21.mjs', 'STATE_SCHEMA_VERSION = 21'],
   [
     'System context protocol',
     'packages/system-context/src/protocol.mjs',
-    "CONTEXT_PACK_SCHEMA = 'aiws.context_pack.v4'"
+    "CONTEXT_PACK_SCHEMA = 'aiws.context_pack.v5'"
   ],
   ['Context projection materializer', 'apps/api/src/context-projection.mjs', 'materializeContextDocumentsInState'],
   ['Context projection retention', 'apps/api/src/context-projection.mjs', 'collectContextVersions'],
@@ -60,13 +63,15 @@ const checks = [
   ['Semantic workflow migration', 'apps/api/src/workflow-migration-service.mjs', 'validateLegacyMigrationMapping'],
   ['V1.10 historical release entry', 'scripts/v110-release.mjs', 'runV110UpgradeCli'],
   ['V2.0 release entry', 'scripts/v20-release.mjs', 'runV20UpgradeCli'],
+  ['V2.1 release entry', 'scripts/v21-release.mjs', 'runV21UpgradeCli'],
   ['V2.0 read-only clone', 'docker/v20-upgrade.mjs', "source_mount_mode: 'readonly'"],
+  ['V2.1 read-only clone', 'docker/v21-upgrade.mjs', "source_mount_mode: 'readonly'"],
   ['Runner image', 'docker/codex-runner.Dockerfile', 'ARG CODEX_VERSION=0.144.0'],
   ['PowerShell bridge operations', 'scripts/aiws.ps1', "@('install','start','stop','status','uninstall')"],
   ['PowerShell backup validation', 'scripts/aiws.ps1', 'backup_validation_failed'],
   ['PowerShell verify cache validation', 'scripts/aiws.ps1', 'cmp -s /app/pnpm-lock.yaml'],
-  ['POSIX V2.0 upgrade entry', 'scripts/aiws.sh', 'v20-release.mjs'],
-  ['PowerShell V2.0 upgrade entry', 'scripts/aiws.ps1', 'v20-release.mjs'],
+  ['POSIX V2.1 upgrade entry', 'scripts/aiws.sh', 'v21-release.mjs'],
+  ['PowerShell V2.1 upgrade entry', 'scripts/aiws.ps1', 'v21-release.mjs'],
   ['Setup guard', 'apps/web/src/app/setup-guard.tsx', '<Navigate to="/setup"'],
   ['GitHub App JWT', 'apps/api/src/github-service.mjs', 'createAppJwt'],
   ['GitHub webhook', 'apps/api/src/routes/github-webhook-v12.mjs', 'timingSafeEqual'],
@@ -110,7 +115,7 @@ const checks = [
   ['MCP subject attribution', 'apps/api/src/mcp-client-service.mjs', 'subject_user_id'],
   ['MCP Gateway HMAC', 'packages/mcp-bridge/src/gateway-auth.mjs', 'gateway_signature_replayed'],
   ['MCP Gateway protocol termination', 'apps/mcp-gateway/src/runtime.mjs', 'StreamableHTTPServerTransport'],
-  ['MCP collaboration Compose', 'compose.collaboration.yml', 'aiws-mcp-gateway:2.0.0'],
+  ['MCP collaboration Compose', 'compose.collaboration.yml', 'aiws-mcp-gateway:2.1.0'],
   ['Brief V2 domain', 'apps/api/src/brief-workflow-domain.mjs', 'schema_version: 2'],
   ['Brief revision operations', 'apps/api/src/project-brief-service.mjs', 'expected_revision'],
   ['Workflow draft persistence', 'apps/api/src/workflow-draft-service.mjs', 'workflow_draft_revision_conflict'],
@@ -271,8 +276,8 @@ const checks = [
     'V1.10 in-place volume backup and app-only replacement tests passed'
   ],
   ['V1.10 browser DAG journey', 'tests/e2e/v110-workflow-journey.test.mjs', 'assertWriteJourney'],
-  ['V2.0 plan gate', 'scripts/v20-plan.mjs', 'V2.0 plan validation passed'],
-  ['V2.0 catalog gate', 'scripts/v20-catalog.mjs', 'V2.0 catalog validation passed'],
+  ['V2.0 plan gate', 'scripts/v20-plan.mjs', 'V2.0 historical compatibility validation passed'],
+  ['V2.0 catalog gate', 'scripts/v20-catalog.mjs', 'V2.0 historical catalog validation passed'],
   ['V2.0 coverage gate', 'scripts/v20-coverage.mjs', 'V2.0 coverage gate passed'],
   ['V2.0 impact gate', 'scripts/v20-impact.mjs', 'V2.0 impact'],
   ['V2.0 protocol unit', 'tests/unit/v20-system-context.test.mjs', 'V2.0 system context protocol unit tests passed'],
@@ -287,6 +292,27 @@ const checks = [
     'V2.0 read-only release flow',
     'tests/release/v20-volume-flow.test.mjs',
     'V2.0 read-only clone, projection acceptance, source retention, and rollback tests passed'
+  ],
+  ['V2.1 plan gate', 'scripts/v21-plan.mjs', 'V2.1 plan validation passed'],
+  ['V2.1 catalog gate', 'scripts/v21-catalog.mjs', 'V2.1 catalog validation passed'],
+  ['V2.1 coverage gate', 'scripts/v21-coverage.mjs', 'V2.1 coverage gate passed'],
+  ['V2.1 impact gate', 'scripts/v21-impact.mjs', 'V2.1 impact'],
+  ['V2.1 execution protocol', 'tests/unit/v21-execution-protocol.test.mjs', 'Deployment Evidence v2'],
+  ['V2.1 Outcome contract', 'tests/unit/v21-outcome.test.mjs', 'DesignSignal fixture'],
+  ['V2.1 stage replay', 'tests/unit/v21-stage-replay.test.mjs', 'replay identity'],
+  ['V2.1 Context v5', 'tests/unit/v21-context.test.mjs', 'Context Pack v5'],
+  ['V2.1 schema migration', 'tests/unit/v21-migration.test.mjs', 'schema 20 migration'],
+  ['V2.1 replay integration', 'tests/integration/v21-stage-replay-flow.test.mjs', 'replayed verify only'],
+  ['V2.1 Outcome UI', 'apps/web/src/features/workflow/WorkflowOutcomePanel.tsx', '创建 Outcome waiver'],
+  ['V2.1 stage timeline UI', 'apps/web/src/features/workflow/TaskStageTimeline.tsx', 'replay'],
+  ['V2.1 browser journey', 'tests/e2e/v21-outcomes-browser.test.mjs', 'viewports = ['],
+  ['V2.1 security', 'tests/unit/v21-security.test.mjs', 'secret sentinel'],
+  ['V2.1 performance', 'tests/unit/v21-performance.test.mjs', '10k Context'],
+  ['V2.1 soak', 'tests/v21/soak.test.mjs', 'concurrent checkpoint/projector soak'],
+  [
+    'V2.1 read-only release flow',
+    'tests/release/v21-volume-flow.test.mjs',
+    'V2.1 read-only clone, Outcome/Context acceptance, source retention, and rollback tests passed'
   ],
   ['Interaction audit', 'tests/e2e/smoke.test.mjs', 'auditButtons']
 ];
@@ -357,7 +383,7 @@ assert.match(
 assert.match(apiClient, /method === 'GET' \? 30_000 : 120_000/, 'request timeout defaults are explicit');
 
 const manifest = JSON.parse(fs.readFileSync('package.json', 'utf8'));
-assert.equal(manifest.version, '2.0.0', 'root package is V2.0');
+assert.equal(manifest.version, '2.1.0', 'root package is V2.1');
 for (const script of [
   'lint',
   'typecheck',
@@ -373,8 +399,8 @@ for (const dependency of ['@modelcontextprotocol/sdk', 'busboy', 'node-pty', 'ws
   assert.ok(manifest.dependencies[dependency], `runtime dependency ${dependency}`);
 assert.match(
   manifest.scripts['test:e2e'],
-  /build-web.*v110-workflow-journey.*v20-context-map-browser/,
-  'standalone e2e builds the frontend and runs the V1.10 DAG plus V2.0 Context Map journeys'
+  /build-web.*v110-workflow-journey.*v20-context-map-browser.*v21-outcomes-browser/,
+  'standalone e2e builds the frontend and runs the historical plus V2.1 Outcome journeys'
 );
 assert.match(manifest.scripts['audit:acceptance'], /build-web/, 'standalone acceptance builds the frontend');
 for (const suite of [
@@ -390,7 +416,8 @@ for (const suite of [
   'v19-workflow-generation-flow',
   'v19-delivery-flow',
   'v110-workflow-execution-flow',
-  'v20-context-flow'
+  'v20-context-flow',
+  'v21-suite.mjs integration'
 ])
   assert.ok(manifest.scripts['test:integration'].includes(suite), `integration gate includes ${suite}`);
 for (const suite of [
@@ -480,25 +507,51 @@ for (const suite of ['pr', 'full', 'release'])
     `V2.0 ${suite} uses the catalog runner`
   );
 assert.ok(manifest.scripts['test:release'].includes('v20-volume-flow'), 'release gate includes V2.0 volume clone');
+for (const script of [
+  'test:v21:plan',
+  'test:v21:catalog',
+  'test:v21:coverage',
+  'test:v21:impact',
+  'test:v21:unit',
+  'test:v21:integration',
+  'test:v21:web',
+  'test:v21:security',
+  'test:v21:performance',
+  'test:v21:soak',
+  'test:v21:pr',
+  'test:v21:full',
+  'test:v21:release'
+])
+  assert.ok(manifest.scripts[script], `V2.1 command ${script}`);
+for (const suite of ['pr', 'full', 'release'])
+  assert.match(
+    manifest.scripts[`test:v21:${suite}`],
+    new RegExp(`v21-runner\\.mjs ${suite}$`),
+    `V2.1 ${suite} uses the catalog runner`
+  );
+assert.ok(manifest.scripts.test.includes('v21-suite.mjs unit'), 'unit gate includes V2.1 unit suite');
+assert.ok(manifest.scripts.test.includes('v21-suite.mjs security'), 'unit gate includes V2.1 security suite');
+assert.ok(manifest.scripts['test:release'].includes('v21-volume-flow'), 'release gate includes V2.1 volume clone');
 assert.ok(
-  fs.readFileSync('scripts/pre-push-gate.mjs', 'utf8').includes("'test:v20:pr'"),
-  'pre-push gate includes V2.0 PR suite'
+  fs.readFileSync('scripts/gate-receipt-v21.mjs', 'utf8').includes("'test:v20:pr'") &&
+    fs.readFileSync('scripts/gate-receipt-v21.mjs', 'utf8').includes("'test:v21:pr'"),
+  'pre-push gate includes historical V2.0 and current V2.1 PR suites'
 );
 
 for (const file of workspaceManifests())
-  assert.equal(JSON.parse(fs.readFileSync(file, 'utf8')).version, '2.0.0', `${file} is V2.0`);
+  assert.equal(JSON.parse(fs.readFileSync(file, 'utf8')).version, '2.1.0', `${file} is V2.1`);
 const compose = fs.readFileSync('compose.yml', 'utf8');
-for (const value of ['name: aiws-v20', 'aiws-app:2.0.0', 'aiws-codex-runner:2.0.0-codex-0.144.0', 'aiws-data-v20'])
+for (const value of ['name: aiws-v21', 'aiws-app:2.1.0', 'aiws-codex-runner:2.1.0-codex-0.144.0', 'aiws-data-v21'])
   assert.ok(compose.includes(value), `Compose pins ${value}`);
 assert.match(
   compose,
   /aiws-data:\s+[\s\S]*external: true/,
   'production data volume cannot be silently replaced by Compose'
 );
-assert.equal(compose.includes('aiws-data-v19'), false, 'V2.0 Compose never mounts the migration source volume');
+assert.equal(compose.includes('aiws-data-v20'), false, 'V2.1 Compose never mounts the migration source volume');
 const collaborationCompose = fs.readFileSync('compose.collaboration.yml', 'utf8');
 for (const value of [
-  'aiws-mcp-gateway:2.0.0',
+  'aiws-mcp-gateway:2.1.0',
   'target: mcp-gateway',
   'AIWS_MCP_REMOTE_MODE: gateway',
   'AIWS_RUNNER_NETWORK',
@@ -522,10 +575,10 @@ for (const viewport of ['1440', '1024', '390', "keyboard.press('Escape')"])
 const managedCcSwitch = fs.readFileSync('apps/api/src/cc-switch-managed-cli.mjs', 'utf8');
 assert.equal(/sqlite|better-sqlite3/i.test(managedCcSwitch), false, 'managed cc-switch path never writes SQLite');
 assert.ok(
-  fs.readFileSync('bridge/main.go', 'utf8').includes('bridgeVersion   = "2.0.0"'),
-  'Windows Bridge reports V2.0'
+  fs.readFileSync('bridge/main.go', 'utf8').includes('bridgeVersion   = "2.1.0"'),
+  'Windows Bridge reports V2.1'
 );
-console.log(`V2.0 acceptance audit passed (${checks.length} implementation checks)`);
+console.log(`V2.1 acceptance audit passed (${checks.length} implementation checks)`);
 
 function workspaceManifests() {
   return ['apps', 'packages'].flatMap((root) =>

@@ -1,10 +1,10 @@
-# AI Workspace System V2.0
+# AI Workspace System V2.1
 
-AI Workspace System V2.0 是一个本地优先、自托管的 AI 协作工作空间。V2.0 在持久化 DAG、不可变资产和受控交付之上增加全域系统上下文地图：业务状态仍是权威源，规范 Markdown、全文索引和 Context Pack v4 只是只读、可验证的投影。
+AI Workspace System V2.1 是一个本地优先、自托管的 AI 协作工作空间。V2.1 在持久化 DAG、不可变资产和系统上下文地图之上增加 Outcome Contract、七阶段执行重放和最终交付验收：业务状态仍是权威源，规范 Markdown、全文索引和 Context Pack v5 只是只读、可验证的投影。
 
 当前版本默认采用 **JSON-local 本地持久化**，不依赖外部数据库即可启动；同时保留 Prisma/PostgreSQL、Redis、Worker、CodexRunner、GitHub PR 等后续替换边界。
 
-> **交付状态**：V2.0 使用 state schema 20、Compose project `aiws-v20` 和 external volume `aiws-data-v20`。首次 `up` 将 `aiws-data-v19` 作为只读源克隆到新卷，只在新卷迁移并完成投影、索引和覆盖验收；失败时停止 V2.0、恢复先前运行的 V1.10 容器，并保留源卷和失败目标卷。
+> **交付状态**：V2.1 使用 state schema 21、Compose project `aiws-v21` 和 external volume `aiws-data-v21`。首次 `up` 将 `aiws-data-v20` 作为只读源克隆到新卷，只在新卷迁移并完成 Context、Outcome 和发布覆盖验收；失败时停止 V2.1、恢复 V2.0，并保留源卷和失败目标卷。
 
 工作流界面继续采用 V1.8 Focus OS 视觉与交互基线，见 [`docs/v1.8-focus-os-ui-design.md`](docs/v1.8-focus-os-ui-design.md)。
 
@@ -18,6 +18,8 @@ AI Workspace System V2.0 是一个本地优先、自托管的 AI 协作工作空
 - **异步工作流生成**：Brief、材料和代码源就绪后由 Codex 生成候选并经独立 critic 校验；失败保持空白草案，不安装通用阶段兜底。
 - **四层 Assist**：线程严格归属于 `project/workflow/workstream/task`，显示完整 breadcrumb，节点删除或换版后按 scope snapshot 只读保留。
 - **持久化 DAG 执行**：用户启动一次 Workflow Execution，dispatcher 自动推进 readiness frontier，在人工 checkpoint、PR 批准或确定性失败处局部暂停并支持幂等恢复。
+- **真实完成判定**：Workflow 必须携带版本化 Outcome Contract 与 Quality Rubric；生命周期状态保持兼容，交付以 `completion_status` 和 `release_eligible` 为准。
+- **七阶段执行与重放**：NodeRun 固定经过 `preflight/execute/collect/verify/attest/promote/finalize`；输入身份完全一致时只重放失败阶段。
 - **不可变资产管线**：正文和文件集合进入 CAS 后按 SHA-256 校验；确认只新增 attestation，并原子写入 output binding、验收结果和 lineage。
 - **系统上下文地图**：所有非密钥 state 记录以及仓库文件、附件、Artifact、CAS、运行健康和浏览器语义状态进入稳定 `aiws://context/...` 有序树与类型化关系图。
 - **受控上下文检索**：AI 先读取紧凑地图，再由服务端按项目 ACL、domain scope、Exchange Grant、敏感级、新鲜度和 token 预算裁决搜索与正文展开。
@@ -28,7 +30,7 @@ AI Workspace System V2.0 是一个本地优先、自托管的 AI 协作工作空
 - **累计变更批次**：Assist、Linux CLI 与 Windows CLI 共享线程级 change batch、checkpoint、写锁和累计 Diff Review；Plan 严格只读。
 - **网页操作账本**：`aiws_page` dynamic tools 只操作页面声明的可逆语义控件，记录 before/after/hash，支持冲突阻止与二次确认强制 Undo。
 - **双 CLI 运行时**：Linux Runner Container 为默认；Windows Native Bridge 使用 DPAPI、ConPTY 与校验后的 Git bundle 往返，不共享宿主凭据。
-- **Context Pack v4**：Assist、BTW、NodeRun 和 Delivery 保存不可变选择审计与精确文档版本；v1-v3 保持只读兼容。
+- **Context Pack v5**：新执行保存 Selection v2、retrieval plan、rubric/Outcome hash 和精确文档版本；v1-v4 保持只读兼容。
 - **五类节点工作区**：目标、调研、分析、执行、复盘分别维护结构化工作资料；执行节点内置 Monaco、diff 和受控任务。
 - **Runner 执行**：正式入口只提供 CodexRunner 与隔离的 DockerCodexRunner。
 - **Trace / Asset / Digest**：记录运行轨迹，产出资产候选，确认后形成 Workspace Digest。
@@ -47,11 +49,11 @@ AI Workspace System V2.0 是一个本地优先、自托管的 AI 协作工作空
 
 Node.js、pnpm、Git、SSH、tar 和生产 Web 都包含在镜像中。宿主开发模式另需 Node.js 24、Corepack/pnpm 与 Git。
 
-业务状态仍使用 JSON-local，不需要数据库或 Redis；V2.0 生产数据保存在固定命名卷 `aiws-data-v20`。schema 20 新增 ContextNode、不可变 ContextDocumentVersion、ContextEdge、ContextSelection、ContextPolicy、ContextProjectionJob 和 ContextSummary collections；正文复用 CAS，MiniSearch 索引位于数据卷的 `.context-index` 可重建目录，MCP token 仍只保存 hash。
+业务状态仍使用 JSON-local，不需要数据库或 Redis；V2.1 生产数据保存在固定命名卷 `aiws-data-v21`。schema 21 在 Context collections 之外新增 OutcomeRequirement、OutcomeEvaluation、OutcomeWaiver 和 ExecutionStageCheckpoint；正文复用 CAS，MiniSearch 索引位于数据卷的 `.context-index` 可重建目录，MCP token 仍只保存 hash。
 
 已使用过 Codex 的用户可直接导入本机 `CODEX_HOME` / `~/.codex` 中的 `config.toml` 与 `auth.json`；页面只返回脱敏摘要，确认后才复制 API Key 或官方 OAuth bundle，并重建 AIWS 托管 Profile。未使用过 Codex 的用户可在 Setup 选择官方 Device Login 或手动 API 配置。
 
-V2.0 启动脚本等待活动 Workflow/Task Execution、NodeRun 和 Delivery 静默后，只读归档并克隆 `aiws-data-v19`。schema 19→20、确定性投影、CAS 校验、索引构建和源记录覆盖验收都只发生在 `aiws-data-v20`；发布记录写入 `.ai-workspace/release/v20-cutover-latest.json`，源卷不会自动清理。
+V2.1 启动脚本等待活动 Workflow/Task Execution、NodeRun 和 Delivery 静默后，只读归档并克隆 `aiws-data-v20`。schema 20→21、确定性投影、CAS 校验、索引构建、Outcome coverage 和源记录覆盖验收都只发生在 `aiws-data-v21`；发布记录写入 `.ai-workspace/release/v21-cutover-latest.json`，源卷不会自动清理。
 
 ## 3. 快速启动项目
 
@@ -75,7 +77,7 @@ bash scripts/aiws.sh up
 http://127.0.0.1:4317
 ```
 
-默认构建 `aiws-app:2.0.0`、`aiws-verify:2.0.0` 与 `aiws-codex-runner:2.0.0-codex-0.144.0`，正式挂载 `aiws-data-v20`。团队模式另行构建 `aiws-mcp-gateway:2.0.0`；Gateway 不挂数据卷或 Docker socket。升级流程包含静默等待、只读克隆、schema 20 与投影覆盖验收、V2.0 启动和 `4317` 健康检查。
+默认构建 `aiws-app:2.1.0`、`aiws-verify:2.1.0` 与 `aiws-codex-runner:2.1.0-codex-0.144.0`，正式挂载 `aiws-data-v21`。团队模式另行构建 `aiws-mcp-gateway:2.1.0`；Gateway 不挂数据卷或 Docker socket。升级流程包含静默等待、只读克隆、schema 21、Context/Outcome 覆盖验收、V2.1 启动和 `4317` 健康检查。
 
 显式配置项目只读导入根：
 
@@ -105,10 +107,10 @@ corepack pnpm dev
 ### 3.3 手动构建镜像
 
 ```bash
-docker build --target production -t aiws-app:2.0.0 .
-docker build --target verify -t aiws-verify:2.0.0 .
-docker build --target mcp-gateway -t aiws-mcp-gateway:2.0.0 .
-docker build -f docker/codex-runner.Dockerfile -t aiws-codex-runner:2.0.0-codex-0.144.0 .
+docker build --target production -t aiws-app:2.1.0 .
+docker build --target verify -t aiws-verify:2.1.0 .
+docker build --target mcp-gateway -t aiws-mcp-gateway:2.1.0 .
+docker build -f docker/codex-runner.Dockerfile -t aiws-codex-runner:2.1.0-codex-0.144.0 .
 docker build --target windows-bridge-export --output type=local,dest=./dist/bridge .
 docker compose up -d
 ```
@@ -139,7 +141,7 @@ http://localhost:4320
 
 ### 3.5 数据目录
 
-生产数据固定使用 `aiws-data-v20`；`down` 默认保留该卷，只有 `reset --confirm` / `reset -Confirm` 会删除 V2.0 目标卷。`aiws-data-v19` 始终作为保留的 V1.10 恢复点，不会被 reset 或发布脚本删除。活动 Workflow/Task Execution、NodeRun 或 Delivery 未结束时，升级器最多等待五分钟并拒绝切换。
+生产数据固定使用 `aiws-data-v21`；`down` 默认保留该卷，只有 `reset --confirm` / `reset -Confirm` 会删除 V2.1 目标卷。`aiws-data-v20` 始终作为保留的 V2.0 恢复点，不会被 reset 或发布脚本删除。活动 Workflow/Task Execution、NodeRun 或 Delivery 未结束时，升级器最多等待五分钟并拒绝切换。
 
 ## 4. 使用流程与版本边界
 
@@ -157,20 +159,21 @@ http://localhost:4320
 
 更详细的操作与验收脚本可见：`docs/runbook.md`。
 
-### 4.2 V2.0 上下文地图与 DAG 使用流程
+### 4.2 V2.1 上下文、Outcome 与 DAG 使用流程
 
 1. 创建或迁移 Project，确认 Project Brief、Workflow draft、typed I/O 和 Node Contract，使 Workflow 达到 `verified`。
 2. 从全局 `/context` 或项目 `/projects/<id>/context` 打开上下文地图；桌面使用目录、正文、关系三栏，移动端使用同级标签页。
 3. 在摘要、原文、结构、关系和历史视图检查规范投影；文本可复制或导出 Markdown，任何业务修改仍回到原始页面完成。
 4. 搜索或读取节点时，服务端同时校验 `context:read`、资源 domain scope、Project ACL、Exchange Grant、新鲜度和敏感级；固定节点不能绕过这些规则。
 5. “本轮取用”展示纳入、排除、原因、精确版本和 token 用量；用户可按会话固定或明确排除节点。
-6. 在 Workflow 页面一次性选择每个 Workstream 的 Repository 与 base Branch，然后启动 DAG。Assist、BTW、NodeRun 和 Delivery 都使用同一上下文选择服务与 Context Pack v4。
+6. 在 Workflow 页面一次性选择每个 Workstream 的 Repository 与 base Branch，并确认 Outcome Contract 与 Quality Rubric，然后启动 DAG。新执行统一使用 Context Pack v5。
 7. 系统固定 Workflow/Task revision、Contract version、精确 AssetVersion hash、上下文文档版本和 repository SHA，并自动调度 readiness frontier。
 8. 调研、需求和决策 Task 在 `awaiting_human` 只保留一个合并 checkpoint；批准时服务端原子完成 attestation、binding、验收和 lineage。
 9. `repository_change` 在 Workstream Repository Line 上提交真实代码；`repository_verify` 只读检出同一 SHA，出现 diff、空测试或失败退出码即阻断。
 10. `repository_integrate` 不改代码，只校验 RepositoryVersion、TestReport、head/base 和非空 checks；依次批准创建和合并 PR 后才完成。
 11. Workstream 完成后生成 `WorkstreamOutcomeAsset`，下游 Workstream 消费该精确版本并自动解锁。
-12. 在 Task 页面观察 attempt、输入快照、输出和等待原因，在 Context Map 与 Asset 页面检查上下文选择、正文 hash、evidence、attestation、lineage 与消费者。
+12. 在 Task 页面观察七阶段 checkpoint、结构化 Failure Envelope 和失败阶段 replay；在 Outcome 面板检查 requirement、waiver、完成状态与 release eligibility。
+13. 最后一项任务完成后，系统等待 Context 投影 ready 和 Outcome evaluation 完成再关闭 lifecycle；连续投影失败会保留可重放的 `context_projection_unavailable`。
 
 以上入口已纳入默认自动化门禁；外部服务与本机 CLI 的实际可用性仍由 Setup capability/probe 和可选 live 验收决定。完整证据见 `docs/completion-audit.md`。
 
@@ -232,7 +235,7 @@ pnpm verify
 npm run verify
 ```
 
-`verify` 会执行 V2.0 plan/catalog/coverage/impact、历史兼容门禁、lint、typecheck、unit、integration、release、Prisma schema 检查、Web build、bundle budget、E2E 和 V2.0 验收审计。V2.0 专项还提供 `test:v20:pr`、`test:v20:full` 与 `test:v20:release`；容器交付应执行 `scripts/aiws.ps1 verify` 或 `scripts/aiws.sh verify`。
+`verify` 会执行 V2.1 plan/catalog/coverage/impact、V2.0 及更早历史兼容门禁、lint、typecheck、unit、integration、release、Prisma schema 检查、Web build、bundle budget、E2E 和 acceptance audit。V2.1 专项提供 `test:v21:pr`、`test:v21:full` 与 `test:v21:release`；容器交付应执行 `scripts/aiws.ps1 verify` 或 `scripts/aiws.sh verify`。
 
 ### 5.6 Codex live 测试，可选
 
@@ -332,7 +335,7 @@ Gateway 在宿主仅监听 `127.0.0.1:4319`，由 Caddy/Nginx 提供 HTTPS。成
 
 | 路径 | 用途 |
 |---|---|
-| `.ai-workspace/` | 宿主开发数据和发布 transcript；生产状态位于 `aiws-data-v20`，V1.10 恢复点位于保留卷 `aiws-data-v19`。 |
+| `.ai-workspace/` | 宿主开发数据和发布 transcript；生产状态位于 `aiws-data-v21`，V2.0 恢复点位于保留卷 `aiws-data-v20`。 |
 | `.git/` | Git 版本库元数据，由 Git 自动维护。 |
 | `apps/` | 应用层代码，包含 API 服务、前端页面和 worker 入口。 |
 | `packages/` | 可复用模块与共享领域逻辑，供 API、Worker、测试和后续扩展复用。 |
@@ -340,8 +343,8 @@ Gateway 在宿主仅监听 `127.0.0.1:4319`，由 Caddy/Nginx 提供 HTTPS。成
 | `scripts/` | 工程脚本目录，包含 lint、typecheck、verify、迁移检查和验收审计。 |
 | `docs/` | 工程文档目录，包含运行手册、V1 覆盖矩阵、完成审计报告和 `docs/github/` 下的 GitHub SaaS/自托管教程。 |
 | `doc/` | 早期核心想法、问题记录和方案草稿，用于保留设计演进过程。 |
-| `docker/` | Runner Dockerfile、导入 override/环境样例、归档/卷验收器、V2.0 只读克隆升级器及历史迁移实现。 |
-| `Dockerfile` / `compose.yml` | V2.0 production/verify/Windows Bridge export 镜像与默认完全容器化部署。 |
+| `docker/` | Runner Dockerfile、导入 override/环境样例、归档/卷验收器、V2.1 只读克隆升级器及历史迁移实现。 |
+| `Dockerfile` / `compose.yml` | V2.1 production/verify/Windows Bridge export 镜像与默认完全容器化部署。 |
 | `bridge/` | Windows Native Bridge 的 Go/DPAPI/ConPTY 与 workspace bundle 客户端。 |
 | `config/` | 本地公开配置示例，目前保存 GitHub App 的公开 Client ID；不要在此目录提交 Client Secret 或 Private Key。 |
 | `prisma/` | Prisma schema 草案，描述未来替换到 PostgreSQL 时的数据模型边界。 |
@@ -366,6 +369,7 @@ Gateway 在宿主仅监听 `127.0.0.1:4319`，由 Caddy/Nginx 提供 HTTPS。成
 | `开发计划v1.8.md` / `测试计划v1.8.md` | V1.8 MCP、项目治理和 schema 17 团队协作增量。 |
 | `开发计划v1.9.md` / `测试计划v1.9.md` | V1.9 双层 Workflow、仓库交付和 schema 18/19 迁移增量。 |
 | `开发计划v2.0.md` / `测试计划v2.0.md` | V2.0 系统上下文地图、选择安全、schema 20 与只读卷升级发布计划。 |
+| `开发计划v2.1.md` / `测试计划v2.1.md` | V2.1 Outcome、阶段重放、Context 闭环、schema 21 与独立卷发布计划。 |
 | `tempmd.md` | V1.2 计划生成前的历史需求与决策备忘。 |
 
 ## 7. `apps/` 子目录说明
@@ -420,7 +424,7 @@ Gateway 在宿主仅监听 `127.0.0.1:4319`，由 Caddy/Nginx 提供 HTTPS。成
 - `.ai-workspace/` 已被 `.gitignore` 忽略，适合保存本机运行和调试数据。
 - 删除 `.ai-workspace/` 后再次启动，会重新初始化宿主开发状态；该操作不影响生产卷。
 
-V2.0 生产容器使用相同目录结构，根位于命名卷 `aiws-data-v20` 的 `/var/lib/aiws`，状态 schema 为 20。规范 Markdown 位于 CAS，`.context-index/minisearch-v1.json` 可从状态与 CAS 重建。`down` 保留卷；只允许通过带显式确认的运维脚本删除 V2.0 目标卷，V1.10 源卷仍保留。
+V2.1 生产容器使用相同目录结构，根位于命名卷 `aiws-data-v21` 的 `/var/lib/aiws`，状态 schema 为 21。规范 Markdown 位于 CAS，`.context-index/minisearch-v1.json` 可从状态与 CAS 重建。`down` 保留卷；只允许通过带显式确认的运维脚本删除 V2.1 目标卷，V2.0 源卷仍保留。
 
 ## 11. Legacy 可选基础设施
 
@@ -438,7 +442,7 @@ docker compose -f docker/compose.infra.yml down
 
 当前默认服务仍使用 JSON-local；`docker/compose.infra.yml` 主要用于后续替换持久化和队列基础设施。
 
-## 12. 已验证历史基线与 V2.0 增量
+## 12. 已验证历史基线与 V2.1 增量
 
 默认离线门禁已覆盖以下 V1.2 回归基线：
 
@@ -495,6 +499,14 @@ V2.0 新增并已纳入正式门禁：
 - `GET /context/v1/map`、search/read/selection/policy/status/rebuild REST 接口与 `aiws_context` MCP action/resource parity。
 - 密钥与宿主路径脱敏、跨项目隔离、domain scope、选择预算和投影失败显式错误。
 - Context Map 全局/项目页面、六视口 Playwright、10,000 节点性能门禁和 V1.10→V2.0 只读卷克隆发布回滚。
+
+V2.1 新增并已纳入正式门禁：
+
+- schema 20→21、历史终态 `legacy_unassessed`、活动执行 `legacy_derived` 人审要求和 V2.0 源卷 hash 保全。
+- Outcome Contract、Quality Rubric、追加式 evaluation/waiver，以及 `completion_status` 与 `release_eligible` 的真实交付判定。
+- 七阶段幂等 checkpoint、capability/network preflight、结构化 Failure Envelope 和严格身份匹配的失败阶段 replay。
+- 常驻 Context projector、Selection v2、Context Pack v5、finalization 闭环，以及 worker heartbeat/queue age/恢复指标。
+- 六视口 Outcome/阶段/Context E2E、安全哨兵、10,000 节点性能、并发 soak 和 DesignSignal 固定 fixture 回归。
 
 真实 Codex、GitHub 与 cc-switch live 套件本轮未运行；其 opt-in 入口和边界见 `docs/runbook.md`。
 
@@ -557,7 +569,7 @@ $env:AIWS_PORT="4320"; .\scripts\aiws.ps1 up
 
 ### 14.4 页面没有旧数据
 
-生产部署检查 `docker volume inspect aiws-data-v20`、保留的 `aiws-data-v19` 和 `.ai-workspace/release/v20-cutover-latest.json`。V2.0 只读克隆 V1.10 源卷并在新卷迁移；失败目标卷不会覆盖或删除源卷。宿主开发模式仍检查 `.ai-workspace/data/state.json`。
+生产部署检查 `docker volume inspect aiws-data-v21`、保留的 `aiws-data-v20` 和 `.ai-workspace/release/v21-cutover-latest.json`。V2.1 只读克隆 V2.0 源卷并在新卷迁移；失败目标卷不会覆盖或删除源卷。宿主开发模式仍检查 `.ai-workspace/data/state.json`。
 
 ### 14.5 Codex 不可用
 

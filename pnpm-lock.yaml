@@ -147,6 +147,12 @@ importers:
 
   packages/context-pack: {}
 
+  packages/execution-protocol:
+    dependencies:
+      zod:
+        specifier: 4.4.3
+        version: 4.4.3
+
   packages/git-tools: {}
 
   packages/mcp-bridge: {}

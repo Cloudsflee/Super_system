@@ -49,13 +49,13 @@ export function validateV20Catalog() {
     }
   }
 
-  const sourceCollections = collections.filter((name) => !CONTEXT_INTERNAL_COLLECTIONS.includes(name));
-  if (!sameSet(sourceCollections, coverage.state_collections))
-    errors.push('coverage state_collections differ from schema 20');
+  const sourceCollections = coverage.state_collections || [];
+  for (const collection of sourceCollections) {
+    if (!collections.includes(collection)) errors.push(`schema 20 collection no longer supported: ${collection}`);
+    if (!CONTEXT_STATE_ADAPTERS[collection]) errors.push(`schema 20 adapter no longer supported: ${collection}`);
+  }
   if (!sameSet(CONTEXT_INTERNAL_COLLECTIONS, coverage.context_collections))
     errors.push('coverage context_collections differ from protocol collections');
-  if (!sameSet(sourceCollections, Object.keys(CONTEXT_STATE_ADAPTERS)))
-    errors.push('state adapter catalog is incomplete');
   return { errors, catalog, suites, coverage };
 }
 
@@ -67,7 +67,9 @@ if (isMain(import.meta.url)) {
     );
     process.exit(1);
   }
-  console.log(`V2.0 catalog validation passed (${result.catalog.tests.length} cases, 84 source adapters)`);
+  console.log(
+    `V2.0 historical catalog validation passed (${result.catalog.tests.length} cases, ${result.coverage.state_collections.length} source adapters)`
+  );
 }
 
 function sameSet(left, right) {

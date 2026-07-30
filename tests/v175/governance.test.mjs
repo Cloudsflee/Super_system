@@ -65,16 +65,11 @@ assert.ok(
   'Git hooks keep LF line endings'
 );
 const prePush = fs.readFileSync('scripts/pre-push-gate.mjs', 'utf8');
-for (const contract of [
-  'refs/heads/main',
-  'refusing to delete',
-  'status',
-  '--porcelain',
-  'AIWS_TEST_BASE_SHA',
-  'test:v175:pr',
-  'test:v18:pr'
-])
+for (const contract of ['refs/heads/main', 'refusing to delete', 'status', '--porcelain', 'AIWS_TEST_BASE_SHA'])
   assert.ok(prePush.includes(contract), `pre-push gate keeps ${contract}`);
+const gateReceipt = fs.readFileSync('scripts/gate-receipt-v21.mjs', 'utf8');
+for (const gate of ['test:v175:pr', 'test:v18:pr', 'test:v20:pr', 'test:v21:pr'])
+  assert.ok(gateReceipt.includes(gate), `pre-push gate keeps ${gate}`);
 assert.equal(
   fs.existsSync('scripts/v175-ci-impact.mjs'),
   false,

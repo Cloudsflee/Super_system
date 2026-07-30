@@ -210,6 +210,22 @@ export function findLegacyRunnerReferencesV20(value) {
   }
 }
 
+export function findLegacyRunnerReferencesV21(value) {
+  const pattern = /^aiws-codex-runner:(?:1\.(?:[0-9]|10)\.0|2\.0\.0)-codex-\d+\.\d+\.\d+$/;
+  const found = [];
+  for (const [index, profile] of (value?.codex_profiles || []).entries()) {
+    inspect(profile?.image, `codex_profiles.${index}.image`);
+    inspect(profile?.config?.image, `codex_profiles.${index}.config.image`);
+  }
+  for (const [index, integration] of (value?.integration_statuses || []).entries())
+    if (integration?.key === 'codex_docker') inspect(integration.image, `integration_statuses.${index}.image`);
+  return found.sort((left, right) => left.path.localeCompare(right.path));
+
+  function inspect(current, field) {
+    if (pattern.test(String(current || ''))) found.push({ path: field, image: current });
+  }
+}
+
 export async function schemaMigrationManifests(root) {
   const directory = path.join(root, 'data', 'migrations');
   if (!fs.existsSync(directory)) return [];

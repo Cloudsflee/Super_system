@@ -76,19 +76,19 @@ try {
   assert.equal(checked.legacy_runner_references.length, 0);
 
   const compose = fs.readFileSync('compose.yml', 'utf8');
-  for (const value of ['name: aiws-v20', 'aiws-app:2.0.0', 'aiws-codex-runner:2.0.0-codex-0.144.0', 'aiws-data-v20'])
+  for (const value of ['name: aiws-v21', 'aiws-app:2.1.0', 'aiws-codex-runner:2.1.0-codex-0.144.0', 'aiws-data-v21'])
     assert.ok(compose.includes(value), value);
   for (const script of ['scripts/aiws.ps1', 'scripts/aiws.sh']) {
     const text = fs.readFileSync(script, 'utf8');
     for (const value of [
-      'aiws-data-v19',
       'aiws-data-v20',
-      'aiws-app:2.0.0',
-      'aiws-codex-runner:2.0.0-codex-0.144.0',
-      'v20-release.mjs'
+      'aiws-data-v21',
+      'aiws-app:2.1.0',
+      'aiws-codex-runner:2.1.0-codex-0.144.0',
+      'v21-release.mjs'
     ])
       assert.ok(text.includes(value), `${script}: ${value}`);
-    assert.equal(text.includes('aiws-data-v18'), false, `${script}: no migration source volume`);
+    assert.equal(text.includes('aiws-data-v19'), false, `${script}: only the immediate V2.0 source volume`);
   }
   const orchestrator = fs.readFileSync('docker/release_orchestrator.mjs', 'utf8');
   assert.ok(orchestrator.includes('RELEASE_V19 ? 18'));
