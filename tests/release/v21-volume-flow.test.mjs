@@ -16,7 +16,8 @@ try {
       await import('../../apps/api/src/state-migration-v20.mjs'),
     contextService = await import('../../apps/api/src/context-service.mjs'),
     release = await import('../../docker/release_volume.mjs'),
-    { isV21UpgradeError, v21RollbackAccepted } = await import('../../docker/v21-upgrade.mjs'),
+    { isV21UpgradeError, V21_HEALTH_POLL_MS, V21_HEALTH_REQUEST_TIMEOUT_MS, V21_HEALTH_WAIT_MS, v21RollbackAccepted } =
+      await import('../../docker/v21-upgrade.mjs'),
     { findLegacyRunnerReferencesV21 } = await import('../../docker/release-volume-validation.mjs');
 
   const healthyRollback = { status: 'ok', version: '2.1.0', schema_version: 21 };
@@ -26,6 +27,9 @@ try {
   assert.equal(isV21UpgradeError({ code: 'v21_health_check_failed' }), true);
   assert.equal(isV21UpgradeError({ code: 23 }), false);
   assert.equal(isV21UpgradeError({}), false);
+  assert.equal(V21_HEALTH_WAIT_MS, 600_000);
+  assert.equal(V21_HEALTH_REQUEST_TIMEOUT_MS, 30_000);
+  assert.equal(V21_HEALTH_POLL_MS, 2000);
 
   await stateApi.ensureRuntime();
   const sourceState = structuredClone(await stateApi.readState());
@@ -167,7 +171,15 @@ try {
   );
 
   const compose = fs.readFileSync('compose.yml', 'utf8');
-  for (const value of ['name: aiws-v21', 'aiws-app:2.1.0', 'aiws-codex-runner:2.1.0-codex-0.144.0', 'aiws-data-v21'])
+  for (const value of [
+    'name: aiws-v21',
+    'aiws-app:2.1.0',
+    'aiws-codex-runner:2.1.0-codex-0.144.0',
+    'aiws-data-v21',
+    'NODE_OPTIONS: "--max-old-space-size=4096"',
+    'timeout: 30s',
+    'start_period: 5m'
+  ])
     assert.ok(compose.includes(value), value);
   const upgrade = fs.readFileSync('docker/v21-upgrade.mjs', 'utf8');
   for (const value of [

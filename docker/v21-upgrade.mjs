@@ -15,6 +15,9 @@ export const V21_PROJECT = 'aiws-v21';
 export const V20_PROJECT = 'aiws-v20';
 export const V21_APP_IMAGE = 'aiws-app:2.1.0';
 export const V21_RUNNER_IMAGE = 'aiws-codex-runner:2.1.0-codex-0.144.0';
+export const V21_HEALTH_WAIT_MS = 600_000;
+export const V21_HEALTH_REQUEST_TIMEOUT_MS = 30_000;
+export const V21_HEALTH_POLL_MS = 2000;
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const COMMAND_MAX_BUFFER_BYTES = 64 * 1024 * 1024;
@@ -381,7 +384,8 @@ function checkAcceptedTarget(config, { deferProjection = false } = {}) {
 
 async function waitForHealth(config, expectedImage = config.appImage) {
   let last = null;
-  for (let attempt = 0; attempt < 60; attempt += 1) {
+  const deadline = Date.now() + V21_HEALTH_WAIT_MS;
+  while (Date.now() < deadline) {
     try {
       const id = compose(config, ['ps', '-q', 'app'], { capture: true, allowFailure: true }).trim();
       if (id) {
@@ -392,7 +396,7 @@ async function waitForHealth(config, expectedImage = config.appImage) {
           throw upgradeError('v21_compose_project_mismatch', { expected: config.projectName, actual: detail.project });
         assertVolumeMount(id, config.targetVolume);
         const response = await fetch(`http://127.0.0.1:${config.port}/api/health`, {
-            signal: AbortSignal.timeout(5000)
+            signal: AbortSignal.timeout(Math.min(V21_HEALTH_REQUEST_TIMEOUT_MS, Math.max(1, deadline - Date.now())))
           }),
           health = await response.json();
         last = health;
@@ -410,7 +414,8 @@ async function waitForHealth(config, expectedImage = config.appImage) {
       if (isV21UpgradeError(error)) throw error;
       last = { error: error.message };
     }
-    await sleep(2000);
+    const remaining = deadline - Date.now();
+    if (remaining > 0) await sleep(Math.min(V21_HEALTH_POLL_MS, remaining));
   }
   throw upgradeError('v21_health_check_failed', { last });
 }
