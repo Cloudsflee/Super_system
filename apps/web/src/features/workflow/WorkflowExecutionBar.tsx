@@ -1,6 +1,6 @@
 import { useQuery } from '@tanstack/react-query';
-import { GitBranch, Pause, Play, RotateCcw, Square } from 'lucide-react';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { ChevronDown, GitBranch, ListChecks, Pause, Play, RotateCcw, ShieldCheck, ShieldX, Square } from 'lucide-react';
+import { type Dispatch, type SetStateAction, useEffect, useMemo, useRef, useState } from 'react';
 import { api, json } from '../../api/client';
 import type {
   ProjectBundle,
@@ -11,12 +11,14 @@ import type {
   Workflow,
   WorkflowExecutionList,
   WorkflowExecutionRecord,
-  WorkflowExecutionSnapshot
+  WorkflowExecutionSnapshot,
+  WorkflowOutcomeSnapshot
 } from '../../api/types';
 import { displayStatus } from '../../components/common/display-labels';
 import { ToolbarMenu } from '../../components/common/ToolbarMenu';
 import { Tooltip } from '../../components/common/Tooltip';
 import { useUi } from '../../state/ui';
+import { WorkflowOutcomePanel } from './WorkflowOutcomePanel';
 
 type Selection = { connection_id: string; base_ref: string };
 
@@ -34,7 +36,8 @@ export function WorkflowExecutionBar({
   onSnapshot: (value: WorkflowExecutionSnapshot | null) => void;
 }) {
   const [configuring, setConfiguring] = useState(false),
-    [busy, setBusy] = useState('');
+    [busy, setBusy] = useState(''),
+    [outcomesOpen, setOutcomesOpen] = useState(false);
   const [selections, setSelections] = useState<Record<string, Selection>>({});
   const toast = useUi((state) => state.toast);
   const history = useQuery({
@@ -62,6 +65,12 @@ export function WorkflowExecutionBar({
   }, [connections.data, repositoryWorkstreams]);
   const snapshot = history.data?.current,
     execution = snapshot?.workflow_execution;
+  const outcomes = useQuery({
+    queryKey: ['workflow-outcomes', execution?.id],
+    queryFn: () => api<WorkflowOutcomeSnapshot>(`/workflow-executions/${execution!.id}/outcomes`),
+    enabled: Boolean(execution && outcomesOpen),
+    refetchInterval: execution?.completion_status === 'pending' ? 2_000 : false
+  });
   useEffect(() => onSnapshot(snapshot || null), [onSnapshot, snapshot]);
   const tasks = useMemo(() => latestTasks(snapshot?.task_executions || []), [snapshot?.task_executions]);
 
@@ -151,9 +160,23 @@ export function WorkflowExecutionBar({
             </span>
           </div>
         )}
+        {execution?.completion_status && <WorkflowCompletionBadge execution={execution} />}
         {lines[0] && <RepositoryLine line={lines[0]} />}
         {lines.length > 1 && <RepositoryLinesMenu lines={lines.slice(1)} />}
         {lines.length > 0 && <RepositoryLinesMenu lines={lines} mobile />}
+        {execution && execution.completion_status && (
+          <button
+            type="button"
+            className="workflow-outcome-toggle"
+            aria-expanded={outcomesOpen}
+            aria-controls={`workflow-outcomes-${execution.id}`}
+            onClick={() => setOutcomesOpen((value) => !value)}
+          >
+            <ListChecks size={14} />
+            <span>Outcome</span>
+            <ChevronDown size={13} />
+          </button>
+        )}
         <ExecutionActions
           execution={execution}
           canWrite={canWrite}
@@ -162,58 +185,116 @@ export function WorkflowExecutionBar({
           onControl={control}
         />
       </div>
-      {configuring && (
-        <div className="workflow-line-config">
-          {repositoryWorkstreams.map((stream) => (
-            <div key={stream.id} className="workflow-line-row">
-              <span>
-                <GitBranch size={14} />
-                <strong>{stream.title}</strong>
-              </span>
-              <label>
-                代码仓库
-                <select
-                  value={selections[stream.id]?.connection_id || ''}
-                  onChange={(event) => {
-                    const connection = connections.data?.items.find((item) => item.id === event.target.value);
-                    setSelections((current) => ({
-                      ...current,
-                      [stream.id]: { connection_id: event.target.value, base_ref: connection?.default_branch || 'main' }
-                    }));
-                  }}
-                >
-                  {connections.data?.items.map((item) => (
-                    <option key={item.id} value={item.id}>
-                      {item.full_name || item.id}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <BranchSelect
-                projectId={bundle.project.id}
-                selection={selections[stream.id]}
-                onChange={(base_ref) =>
-                  setSelections((current) => ({ ...current, [stream.id]: { ...current[stream.id], base_ref } }))
-                }
-              />
-            </div>
-          ))}
-          <div className="workflow-line-submit">
-            <button className="button secondary" onClick={() => setConfiguring(false)}>
-              取消
-            </button>
-            <button
-              className="button primary"
-              disabled={Boolean(busy) || connections.data?.items.length === 0}
-              onClick={() => void start()}
-            >
-              <Play size={15} />
-              启动
-            </button>
-          </div>
+      {execution && outcomesOpen && (
+        <div id={`workflow-outcomes-${execution.id}`}>
+          <WorkflowOutcomePanel
+            executionId={execution.id}
+            value={outcomes.data}
+            loading={outcomes.isLoading}
+            error={outcomes.error}
+            canApprove={(bundle.membership?.role || bundle.project.current_user_role) === 'owner'}
+            onRefresh={async () => {
+              await Promise.all([outcomes.refetch(), history.refetch()]);
+              onRefresh();
+            }}
+          />
         </div>
       )}
+      {configuring && (
+        <WorkflowLineConfiguration
+          projectId={bundle.project.id}
+          streams={repositoryWorkstreams}
+          connections={connections.data?.items || []}
+          selections={selections}
+          setSelections={setSelections}
+          busy={busy}
+          onCancel={() => setConfiguring(false)}
+          onStart={() => void start()}
+        />
+      )}
     </section>
+  );
+}
+
+function WorkflowLineConfiguration({
+  projectId,
+  streams,
+  connections,
+  selections,
+  setSelections,
+  busy,
+  onCancel,
+  onStart
+}: {
+  projectId: string;
+  streams: ReturnType<typeof repositoryStreams>;
+  connections: RepositoryConnection[];
+  selections: Record<string, Selection>;
+  setSelections: Dispatch<SetStateAction<Record<string, Selection>>>;
+  busy: string;
+  onCancel: () => void;
+  onStart: () => void;
+}) {
+  return (
+    <div className="workflow-line-config">
+      {streams.map((stream) => (
+        <div key={stream.id} className="workflow-line-row">
+          <span>
+            <GitBranch size={14} />
+            <strong>{stream.title}</strong>
+          </span>
+          <label>
+            代码仓库
+            <select
+              value={selections[stream.id]?.connection_id || ''}
+              onChange={(event) => {
+                const connection = connections.find((item) => item.id === event.target.value);
+                setSelections((current) => ({
+                  ...current,
+                  [stream.id]: { connection_id: event.target.value, base_ref: connection?.default_branch || 'main' }
+                }));
+              }}
+            >
+              {connections.map((item) => (
+                <option key={item.id} value={item.id}>
+                  {item.full_name || item.id}
+                </option>
+              ))}
+            </select>
+          </label>
+          <BranchSelect
+            projectId={projectId}
+            selection={selections[stream.id]}
+            onChange={(base_ref) =>
+              setSelections((current) => ({ ...current, [stream.id]: { ...current[stream.id], base_ref } }))
+            }
+          />
+        </div>
+      ))}
+      <div className="workflow-line-submit">
+        <button className="button secondary" onClick={onCancel}>
+          取消
+        </button>
+        <button className="button primary" disabled={Boolean(busy) || connections.length === 0} onClick={onStart}>
+          <Play size={15} />
+          启动
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function WorkflowCompletionBadge({ execution }: { execution: WorkflowExecutionRecord }) {
+  const eligible = execution.release_eligible === true;
+  return (
+    <Tooltip label={eligible ? 'Release eligible' : 'Release blocked'}>
+      <span
+        className={`workflow-completion-badge ${execution.completion_status} ${eligible ? 'eligible' : 'ineligible'}`}
+      >
+        {eligible ? <ShieldCheck size={13} /> : <ShieldX size={13} />}
+        <span>{completionStatusLabel(execution.completion_status || 'pending')}</span>
+      </span>
+    </Tooltip>
   );
 }
 
@@ -389,6 +470,20 @@ function statusLabel(value: string) {
         failed: '任务流程失败'
       } as Record<string, string>
     )[value] || '任务流程状态未知'
+  );
+}
+function completionStatusLabel(value: string) {
+  return (
+    (
+      {
+        pending: '结果待评估',
+        completed: '真实完成',
+        completed_with_gaps: '完成但有缺口',
+        waived: '已授权豁免',
+        failed: '交付失败',
+        legacy_unassessed: '历史未评估'
+      } as Record<string, string>
+    )[value] || value
   );
 }
 function actionLabel(value: string) {

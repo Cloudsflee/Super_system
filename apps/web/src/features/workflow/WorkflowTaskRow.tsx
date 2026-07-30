@@ -21,6 +21,7 @@ export function WorkflowTaskRow({
   density,
   index,
   layout,
+  canReplay,
   expanded,
   pinned,
   selected,
@@ -39,6 +40,7 @@ export function WorkflowTaskRow({
   density: WorkflowTaskDensity;
   index: number;
   layout: WorkflowProcessLayout;
+  canReplay: boolean;
   expanded: boolean;
   pinned: boolean;
   selected: boolean;
@@ -190,7 +192,9 @@ export function WorkflowTaskRow({
             </div>
           </div>
         </div>
-        {layout === 'accordion' && expanded && <WorkflowTaskInlineDetails model={model} density={density} />}
+        {layout === 'accordion' && expanded && (
+          <WorkflowTaskInlineDetails model={model} density={density} canReplay={canReplay} />
+        )}
       </article>
       {layout === 'accordion' && previewAnchor && !expanded && (
         <TaskQuickPreview anchor={previewAnchor} model={model} />

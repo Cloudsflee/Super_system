@@ -27,6 +27,40 @@
 .context-map-toolbar > [data-tooltip]:last-child:focus-visible::after {
   transform: translate(0, 0);
 }
+.context-worker-status {
+  position: relative;
+  flex: 0 0 auto;
+}
+.context-worker-status > [data-tooltip] {
+  display: block;
+}
+.context-worker-status .icon-button {
+  color: var(--green);
+}
+.context-worker-menu {
+  width: min(330px, calc(100vw - 24px));
+  padding: 5px;
+  background: var(--surface-raised);
+  color: var(--text);
+}
+.context-worker-menu .context-worker-row {
+  min-height: 34px;
+  grid-template-columns: 18px minmax(90px, 1fr) minmax(90px, auto);
+  cursor: default;
+}
+.context-worker-row svg {
+  color: var(--green);
+}
+.context-worker-row span {
+  color: var(--muted);
+}
+.context-worker-row strong {
+  overflow: hidden;
+  font-size: 10px;
+  text-align: right;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 .context-map-title {
   min-width: 210px;
   display: flex;
@@ -511,6 +545,12 @@
   }
   .context-map-title {
     min-width: 0;
+  }
+  .context-worker-status {
+    margin-left: auto;
+  }
+  .context-worker-menu {
+    right: -48px;
   }
   .context-search {
     order: 3;

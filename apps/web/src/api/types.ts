@@ -9,6 +9,7 @@ import type {
   TaskHandoffDiagnostics,
   TaskInputEffect
 } from './task-contribution-types';
+import type { ExecutionStage, FailureEnvelope, OutcomeSummary, WorkflowCompletionStatus } from './execution-types';
 
 export type {
   ContributionStatus,
@@ -315,6 +316,10 @@ export type Workflow = {
   created_at?: string;
   updated_at?: string;
   graph_json?: { nodes?: unknown[]; edges?: unknown[] };
+  outcome_contract?: Record<string, unknown>;
+  quality_rubric?: Record<string, unknown>;
+  outcome_contract_hash?: string;
+  quality_rubric_hash?: string;
 };
 export type ExecutionStatus =
   | 'pending'
@@ -389,6 +394,10 @@ export type TaskExecutionRecord = {
   acceptance_results?: unknown[];
   error_code?: string | null;
   retry_class?: string | null;
+  failure?: FailureEnvelope | null;
+  current_stage?: ExecutionStage | null;
+  stage_checkpoint_ids?: string[];
+  replay_count?: number;
   integration?: {
     pull_request_intent_id?: string;
     stage?: string;
@@ -407,6 +416,13 @@ export type WorkflowExecutionRecord = {
   workflow_id: string;
   workflow_revision: number;
   status: 'running' | 'paused' | 'completed' | 'failed' | 'cancelled';
+  completion_status?: WorkflowCompletionStatus;
+  release_eligible?: boolean;
+  outcome_summary?: OutcomeSummary;
+  outcome_contract_hash?: string | null;
+  quality_rubric_hash?: string | null;
+  finalization_state?: 'pending' | 'evaluating' | 'failed' | 'completed' | 'legacy' | string;
+  finalization_failure?: FailureEnvelope | null;
   frontier: Array<{ task_execution_id: string; task_id: string; status: ExecutionStatus; executor: string }>;
   waiting_reasons: Array<{ task_execution_id: string; task_id: string; reasons: ExecutionReason[] }>;
   started_at: string;
@@ -975,5 +991,6 @@ export type NodeWorkspace = {
 };
 
 export type * from './context-types';
+export type * from './execution-types';
 export type * from './assist-types';
 export type * from './codex-types';

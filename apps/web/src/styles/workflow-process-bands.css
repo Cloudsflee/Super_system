@@ -113,6 +113,9 @@
   padding-left: 0;
   border-left: 0;
 }
+.workflow-task-details-band > .workflow-detail-span-all {
+  grid-column: 1/-1;
+}
 .workflow-task-details-band > section > header {
   min-height: 22px;
   display: flex;

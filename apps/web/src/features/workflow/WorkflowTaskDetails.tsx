@@ -20,13 +20,16 @@ import { assetTypeLabel, confirmationPolicyLabel, inputKindLabel } from '../../c
 import { TaskMetrics } from './WorkflowTaskPresentation';
 import { normalizeTaskStatus, workflowCategoryLabel, type WorkflowTaskViewModel } from './WorkflowTaskViewModel';
 import { taskAssistScopeAttributes } from './workflow-assist-scope';
+import { TaskStageTimeline } from './TaskStageTimeline';
 
 export function WorkflowTaskInlineDetails({
   model,
-  density
+  density,
+  canReplay = false
 }: {
   model: WorkflowTaskViewModel;
   density: WorkflowTaskDensity;
+  canReplay?: boolean;
 }) {
   return (
     <div
@@ -37,7 +40,7 @@ export function WorkflowTaskInlineDetails({
       aria-label={`任务详情：${model.displayTitle}`}
     >
       <div className="workflow-task-details-band">
-        <WorkflowTaskDetailSections model={model} includeContext={density !== 'detailed'} />
+        <WorkflowTaskDetailSections model={model} includeContext={density !== 'detailed'} canReplay={canReplay} />
       </div>
     </div>
   );
@@ -47,6 +50,7 @@ export function WorkflowTaskInspector({
   model,
   projectId,
   pinned,
+  canReplay,
   scrollPositions,
   onTogglePin,
   onPointerEnter,
@@ -55,6 +59,7 @@ export function WorkflowTaskInspector({
   model?: WorkflowTaskViewModel;
   projectId: string;
   pinned: boolean;
+  canReplay: boolean;
   scrollPositions: MutableRefObject<Map<string, number>>;
   onTogglePin: () => void;
   onPointerEnter: () => void;
@@ -143,7 +148,7 @@ export function WorkflowTaskInspector({
             </div>
           </header>
           <div className="workflow-task-inspector-sections">
-            <WorkflowTaskDetailSections model={model} includeContext />
+            <WorkflowTaskDetailSections model={model} includeContext canReplay={canReplay} />
           </div>
         </>
       )}
@@ -153,10 +158,12 @@ export function WorkflowTaskInspector({
 
 function WorkflowTaskDetailSections({
   model,
-  includeContext
+  includeContext,
+  canReplay
 }: {
   model: WorkflowTaskViewModel;
   includeContext: boolean;
+  canReplay: boolean;
 }) {
   return (
     <>
@@ -234,6 +241,7 @@ function WorkflowTaskDetailSections({
           ))}
         </div>
       </section>
+      <TaskStageTimeline execution={model.execution} canReplay={canReplay} />
       <section className="workflow-task-tags-section workflow-detail-span-all">
         <header>
           <Tags size={14} />

@@ -147,3 +147,34 @@ export type ContextNodeResponse = {
     instruction: string;
   };
 };
+
+export type ContextStatusResponse = {
+  schema_version: number;
+  protocol_version: string;
+  nodes: number;
+  document_versions: number;
+  edges: number;
+  selections: number;
+  jobs: Record<'pending' | 'running' | 'completed' | 'failed' | 'superseded', number>;
+  worker: {
+    state?: string;
+    holder?: string;
+    heartbeat_at?: string | null;
+    worker_thread_id?: number | null;
+    event_loop_lag_ms?: number;
+    lease_ms?: number;
+    batch_size?: number;
+    active_leases?: number;
+    oldest_pending_age_ms?: number;
+    failed_jobs?: number;
+    recovered_expired_leases?: number;
+    index_generation?: number;
+    automatic_rebuild?: string;
+    last_error_code?: string | null;
+  };
+  oldest_pending_age_ms: number;
+  active_leases: number;
+  failed_jobs: number;
+  index_generation: number;
+  automatic_rebuild: string;
+};

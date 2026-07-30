@@ -40,6 +40,7 @@ export function WorkflowFullProcess({
   const selection = useWorkflowTaskSelection(process.tasks, layout, workflow.id);
   const displayedTask = process.tasks.find((item) => item.id === selection.displayedTaskId);
   const software = /software|code/i.test(workflow.project_classification || '');
+  const canReplay = (bundle.membership?.role || bundle.project.current_user_role) !== 'viewer';
 
   return (
     <section
@@ -123,6 +124,7 @@ export function WorkflowFullProcess({
                   projectId={bundle.project.id}
                   density={density}
                   layout={layout}
+                  canReplay={canReplay}
                   pinnedTaskId={selection.pinnedTaskId}
                   displayedTaskId={selection.displayedTaskId}
                   transientTaskId={selection.transientTaskId}
@@ -142,6 +144,7 @@ export function WorkflowFullProcess({
             model={displayedTask}
             projectId={bundle.project.id}
             pinned={Boolean(displayedTask && displayedTask.id === selection.pinnedTaskId)}
+            canReplay={canReplay}
             scrollPositions={scrollPositions}
             onTogglePin={() => {
               if (displayedTask) selection.togglePin(displayedTask.id);
@@ -160,6 +163,7 @@ function TaskDag({
   projectId,
   density,
   layout,
+  canReplay,
   pinnedTaskId,
   displayedTaskId,
   transientTaskId,
@@ -173,6 +177,7 @@ function TaskDag({
   projectId: string;
   density: WorkflowTaskDensity;
   layout: WorkflowProcessLayout;
+  canReplay: boolean;
   pinnedTaskId: string | null;
   displayedTaskId: string | null;
   transientTaskId: string | null;
@@ -199,6 +204,7 @@ function TaskDag({
           density={density}
           index={index}
           layout={layout}
+          canReplay={canReplay}
           expanded={layout === 'accordion' && pinnedTaskId === model.id}
           pinned={pinnedTaskId === model.id}
           selected={layout === 'master-detail' ? displayedTaskId === model.id : pinnedTaskId === model.id}

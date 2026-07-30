@@ -28,6 +28,7 @@ import type {
 import { FullPageState } from '../../components/common/FullPageState';
 import { IconButton } from '../../components/common/IconButton';
 import { useUi } from '../../state/ui';
+import { ContextWorkerStatus } from './ContextWorkerStatus';
 
 type DocumentTab = 'summary' | 'source' | 'structure' | 'relations' | 'history';
 type MobilePane = 'map' | 'document' | 'details';
@@ -161,6 +162,7 @@ export function ContextMapPage() {
             </IconButton>
           )}
         </form>
+        <ContextWorkerStatus />
         <IconButton label="刷新上下文地图" onClick={() => mapQuery.refetch()}>
           <RefreshCw size={16} />
         </IconButton>
