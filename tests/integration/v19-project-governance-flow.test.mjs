@@ -1,12 +1,12 @@
 import assert from 'node:assert/strict';
-import fs from 'node:fs';
-import { api, cleanup, makeFixture, startApi } from './v13-test-helpers.mjs';
+import { api, cleanup, makeFixture, openFixtureState, startApi } from './v13-test-helpers.mjs';
 
 const fixture = makeFixture('aiws-v19-governance-');
 const port = 4911;
-let server;
+let server, stateApi;
 try {
   server = await startApi({ port, home: fixture.home, ccSwitch: fixture.ccSwitch });
+  stateApi = await openFixtureState(fixture);
   const account = await api(port, '/account/me');
   const owner = account.user;
   const collaborator = {
@@ -25,7 +25,6 @@ try {
     created_at: new Date().toISOString(),
     updated_at: new Date().toISOString()
   };
-  const stateFile = `${fixture.home}/data/state.json`;
   const ownerHeaders = {
     'x-aiws-user-id': owner.id,
     'x-aiws-scopes': 'project:create project:read project:write project:share github:write'
@@ -37,9 +36,9 @@ try {
   const viewerHeaders = { 'x-aiws-user-id': viewer.id, 'x-aiws-scopes': 'project:read project:write' };
 
   await request('/projects', 'POST', { title: 'Unauthenticated' }, {}, 401, 'authentication_required');
-  const seeded = JSON.parse(fs.readFileSync(stateFile, 'utf8'));
-  seeded.users.push(collaborator, viewer);
-  fs.writeFileSync(stateFile, `${JSON.stringify(seeded, null, 2)}\n`);
+  await stateApi.mutate((state) => {
+    state.users.push(collaborator, viewer);
+  });
   const created = await request('/projects', 'POST', { title: 'Owner Project', goal: 'ACL' }, ownerHeaders, 201);
   assert.equal(created.project.owner_user_id, owner.id);
   assert.equal(created.membership.role, 'owner');
@@ -105,75 +104,75 @@ try {
     403,
     'project_access_denied'
   );
-  const aggregateState = JSON.parse(fs.readFileSync(stateFile, 'utf8'));
-  aggregateState.assets.push(
-    resource('asset-visible', created.project.id),
-    resource('asset-private', privateProject.project.id)
-  );
-  aggregateState.node_runs.push(
-    resource('run-visible', created.project.id),
-    resource('run-private', privateProject.project.id)
-  );
-  aggregateState.agent_sessions.push(
-    resource('agent-visible', created.project.id),
-    resource('agent-private', privateProject.project.id)
-  );
-  aggregateState.change_proposals.push(
-    { ...resource('approval-visible', created.project.id), status: 'pending', change_type: 'general' },
-    { ...resource('approval-private', privateProject.project.id), status: 'pending', change_type: 'general' }
-  );
-  aggregateState.canonical_repositories.push(
-    canonical('canonical-visible', 'repo-visible'),
-    canonical('canonical-private', 'repo-private')
-  );
-  aggregateState.project_repository_bindings.push(
-    binding('binding-visible', created.project.id, 'canonical-visible'),
-    binding('binding-private', privateProject.project.id, 'canonical-private')
-  );
-  aggregateState.github_installations.push({
-    id: 'installation-aggregate',
-    installation_id: 'aggregate',
-    status: 'active',
-    repositories: [
-      { id: 'repo-visible', full_name: 'aiws/visible' },
-      { id: 'repo-private', full_name: 'aiws/private' }
-    ]
-  });
-  const migrationAt = new Date().toISOString();
-  aggregateState.workflow_migration_batches.push({
-    id: 'migration-shared',
-    status: 'completed_with_failures',
-    project_ids: [created.project.id, privateProject.project.id],
-    workflow_ids: ['workflow-visible', 'workflow-private'],
-    approved_by_user_id: owner.id,
-    approved_at: migrationAt,
-    summary: { total: 2, completed: 1, failed: 1 },
-    created_at: migrationAt,
-    updated_at: migrationAt
-  });
-  aggregateState.workflow_migration_jobs.push(
-    {
-      id: 'migration-job-visible',
-      batch_id: 'migration-shared',
-      project_id: created.project.id,
-      workflow_id: 'workflow-visible',
-      status: 'completed',
-      attempt: 1,
+  await stateApi.mutate((aggregateState) => {
+    aggregateState.assets.push(
+      resource('asset-visible', created.project.id),
+      resource('asset-private', privateProject.project.id)
+    );
+    aggregateState.node_runs.push(
+      resource('run-visible', created.project.id),
+      resource('run-private', privateProject.project.id)
+    );
+    aggregateState.agent_sessions.push(
+      resource('agent-visible', created.project.id),
+      resource('agent-private', privateProject.project.id)
+    );
+    aggregateState.change_proposals.push(
+      { ...resource('approval-visible', created.project.id), status: 'pending', change_type: 'general' },
+      { ...resource('approval-private', privateProject.project.id), status: 'pending', change_type: 'general' }
+    );
+    aggregateState.canonical_repositories.push(
+      canonical('canonical-visible', 'repo-visible'),
+      canonical('canonical-private', 'repo-private')
+    );
+    aggregateState.project_repository_bindings.push(
+      binding('binding-visible', created.project.id, 'canonical-visible'),
+      binding('binding-private', privateProject.project.id, 'canonical-private')
+    );
+    aggregateState.github_installations.push({
+      id: 'installation-aggregate',
+      installation_id: 'aggregate',
+      status: 'active',
+      repositories: [
+        { id: 'repo-visible', full_name: 'aiws/visible' },
+        { id: 'repo-private', full_name: 'aiws/private' }
+      ]
+    });
+    const migrationAt = new Date().toISOString();
+    aggregateState.workflow_migration_batches.push({
+      id: 'migration-shared',
+      status: 'completed_with_failures',
+      project_ids: [created.project.id, privateProject.project.id],
+      workflow_ids: ['workflow-visible', 'workflow-private'],
+      approved_by_user_id: owner.id,
+      approved_at: migrationAt,
+      summary: { total: 2, completed: 1, failed: 1 },
       created_at: migrationAt,
       updated_at: migrationAt
-    },
-    {
-      id: 'migration-job-private',
-      batch_id: 'migration-shared',
-      project_id: privateProject.project.id,
-      workflow_id: 'workflow-private',
-      status: 'failed',
-      attempt: 1,
-      created_at: migrationAt,
-      updated_at: migrationAt
-    }
-  );
-  fs.writeFileSync(stateFile, `${JSON.stringify(aggregateState, null, 2)}\n`);
+    });
+    aggregateState.workflow_migration_jobs.push(
+      {
+        id: 'migration-job-visible',
+        batch_id: 'migration-shared',
+        project_id: created.project.id,
+        workflow_id: 'workflow-visible',
+        status: 'completed',
+        attempt: 1,
+        created_at: migrationAt,
+        updated_at: migrationAt
+      },
+      {
+        id: 'migration-job-private',
+        batch_id: 'migration-shared',
+        project_id: privateProject.project.id,
+        workflow_id: 'workflow-private',
+        status: 'failed',
+        attempt: 1,
+        created_at: migrationAt,
+        updated_at: migrationAt
+      }
+    );
+  });
   const visible = await request('/projects', 'GET', {}, memberHeaders);
   assert.equal(
     visible.some((item) => item.id === created.project.id),
@@ -252,6 +251,7 @@ try {
   console.log('V1.9 REST Project owner, invitation, role, subject, and aggregate ACL flow passed');
 } finally {
   await server?.stop();
+  await stateApi?.checkpointAndCloseState().catch(() => undefined);
   cleanup(fixture.root);
 }
 

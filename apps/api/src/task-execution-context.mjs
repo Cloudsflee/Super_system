@@ -1,3 +1,4 @@
+import { cloneStateValue as structuredClone } from './state-clone.mjs';
 import { estimateTokens, hashString, now } from '../../../packages/shared/index.mjs';
 import { buildContextPack, buildRunnerInstruction } from '../../../packages/shared/src/context-run.mjs';
 import { HttpError } from './http.mjs';

@@ -26,6 +26,7 @@ const sourceBefore = repositorySnapshot(source);
 const port = await freePort();
 let server;
 let terminalId;
+let stateApi;
 const openTerminalIds = new Set();
 
 try {
@@ -35,6 +36,10 @@ try {
     ccSwitch: fixture.ccSwitch,
     env: { AIWS_CODEX_BIN: process.execPath, NODE_REPL_HISTORY: '' }
   });
+  process.env.AIWS_HOME = fixture.home;
+  process.env.NODE_ENV = 'test';
+  stateApi = await import('../../apps/api/src/state.mjs');
+  await stateApi.ensureRuntime();
   const project = await createConfirmedProject({
     baseUrl: `http://127.0.0.1:${port}`,
     title: 'Terminal PTY',
@@ -42,7 +47,7 @@ try {
     source
   });
   await server.stop();
-  const profile = installHostProfile(fixture.home);
+  const profile = await installHostProfile(fixture.home);
   server = await startApi({
     port,
     home: fixture.home,
@@ -128,7 +133,7 @@ try {
   await first.waitForOutput('CANCEL.txt');
   first.send({ type: 'signal', signal: 'SIGINT' });
   await delay(100);
-  assert.equal(fs.existsSync(path.join(worktreePath(fixture.home, terminal.worktree_id), 'CANCEL.txt')), false);
+  assert.equal(fs.existsSync(path.join(await worktreePath(terminal.worktree_id), 'CANCEL.txt')), false);
 
   await first.close();
   const second = await connect(port, terminal.id);
@@ -159,7 +164,7 @@ try {
   assert.equal(settled.output_truncated, true);
   assert.ok(settled.output_preview.length <= 30000);
   assert.equal(settled.output_preview.includes(profile.secret), false);
-  const state = readFixtureState(fixture.home);
+  const state = await stateApi.readState();
   const artifact = state.file_refs.find((item) => item.id === settled.artifact_file_ref_id);
   assert.ok(artifact && fs.existsSync(artifact.absolute_path));
   assert.equal(artifact.meta.complete, true);
@@ -169,7 +174,7 @@ try {
   assert.match(terminalLog, /AIWS:LONG:BEGIN/);
   assert.match(terminalLog, /:END/);
   assert.equal(terminalLog.includes(profile.secret), false);
-  assert.equal(fs.readFileSync(statePath(fixture.home), 'utf8').includes(profile.secret), false);
+  assertStateFilesExclude(profile.secret);
 
   const review = await api(port, `/assist/v3/terminal-sessions/${terminal.id}/review`);
   assert.equal(
@@ -243,28 +248,18 @@ try {
   for (const id of openTerminalIds)
     await api(port, `/assist/v3/terminal-sessions/${id}/stop`, 'POST').catch(() => undefined);
   await server?.stop();
+  await stateApi?.checkpointAndCloseState().catch(() => undefined);
   cleanup(fixture.root);
 }
 
-function installHostProfile(home) {
+async function installHostProfile(home) {
   const profileId = 'cdx_terminal_host';
-  const state = readFixtureState(home),
-    codexHome = path.join(home, 'codex-homes', profileId);
+  const codexHome = path.join(home, 'codex-homes', profileId);
   fs.mkdirSync(codexHome, { recursive: true });
   const secret = 'terminal-secret-sentinel-v13';
   const secretId = 'terminal_test_credential';
   fs.mkdirSync(path.join(home, 'vault'), { recursive: true });
   fs.writeFileSync(path.join(home, 'vault', `${secretId}.secret`), secret, 'utf8');
-  state.integration_statuses = state.integration_statuses.filter((item) => item.key !== 'codex_auth');
-  state.integration_statuses.push({
-    key: 'codex_auth',
-    status: 'authenticated',
-    provider: 'openai',
-    auth_mode: 'api_key',
-    refs: { credential: `vault:${secretId}` },
-    updated_at: new Date().toISOString()
-  });
-  for (const item of state.codex_profiles) item.is_active = false;
   const profile = {
     id: profileId,
     name: 'Terminal Host',
@@ -279,18 +274,30 @@ function installHostProfile(home) {
     created_at: new Date().toISOString(),
     updated_at: new Date().toISOString()
   };
-  state.codex_profiles.push(profile);
-  fs.writeFileSync(statePath(home), JSON.stringify(state, null, 2), 'utf8');
+  await stateApi.mutate((state) => {
+    state.integration_statuses = state.integration_statuses.filter((item) => item.key !== 'codex_auth');
+    state.integration_statuses.push({
+      key: 'codex_auth',
+      status: 'authenticated',
+      provider: 'openai',
+      auth_mode: 'api_key',
+      refs: { credential: `vault:${secretId}` },
+      updated_at: new Date().toISOString()
+    });
+    for (const item of state.codex_profiles) item.is_active = false;
+    state.codex_profiles.push(profile);
+  });
   return { ...profile, secret };
 }
-function readFixtureState(home) {
-  return JSON.parse(fs.readFileSync(statePath(home), 'utf8'));
+async function worktreePath(id) {
+  return (await stateApi.readState()).worktrees.find((item) => item.id === id).path;
 }
-function statePath(home) {
-  return path.join(home, 'data', 'state.json');
-}
-function worktreePath(home, id) {
-  return readFixtureState(home).worktrees.find((item) => item.id === id).path;
+function assertStateFilesExclude(value) {
+  const needle = Buffer.from(value);
+  for (const name of ['state.json', 'state-v22.sqlite', 'state-v22.sqlite-wal']) {
+    const file = path.join(fixture.home, 'data', name);
+    if (fs.existsSync(file)) assert.equal(fs.readFileSync(file).includes(needle), false, `${name} contains secret`);
+  }
 }
 function connect(port, id) {
   return new Promise((resolve, reject) => {

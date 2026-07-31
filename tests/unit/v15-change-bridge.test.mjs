@@ -196,6 +196,7 @@ try {
   assert.match(dpapi, /DPAPI is bound to Windows CurrentUser/);
   console.log('V1.5 change batch and Host Bridge unit tests passed');
 } finally {
+  await import('../../apps/api/src/state.mjs').then((state) => state.checkpointAndCloseState()).catch(() => undefined);
   fs.rmSync(root, { recursive: true, force: true });
 }
 

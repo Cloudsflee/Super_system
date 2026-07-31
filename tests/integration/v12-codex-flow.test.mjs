@@ -17,6 +17,7 @@ const child = spawn(process.execPath, ['apps/api/server.mjs'], {
   stdio: ['ignore', 'pipe', 'pipe']
 });
 let serverLog = '';
+let stateApi;
 child.stdout.on('data', (chunk) => {
   serverLog += chunk;
 });
@@ -26,6 +27,11 @@ child.stderr.on('data', (chunk) => {
 
 await waitForServer();
 try {
+  process.env.AIWS_HOME = home;
+  process.env.NODE_ENV = 'test';
+  stateApi = await import('../../apps/api/src/state.mjs');
+  await stateApi.ensureRuntime();
+
   await api('/setup/mode', 'PUT', { mode: 'byo' });
   assert.equal((await api('/setup/status')).steps.codex.ready, false);
   await api('/setup/complete', 'POST', {}, 409, 'setup_incomplete');
@@ -90,10 +96,10 @@ try {
     wire_api: 'responses',
     auth_mode: 'api_key'
   });
-  const stateFile = path.join(home, 'data', 'state.json');
-  const legacyAuthState = JSON.parse(fs.readFileSync(stateFile, 'utf8'));
-  legacyAuthState.integration_statuses.find((item) => item.key === 'codex_auth').base_url = null;
-  fs.writeFileSync(stateFile, JSON.stringify(legacyAuthState), 'utf8');
+  await stateApi.readState();
+  await stateApi.mutate((state) => {
+    state.integration_statuses.find((item) => item.key === 'codex_auth').base_url = null;
+  });
   await api('/codex/auth/api-key', 'POST', {
     provider: 'openrouter',
     base_url: 'https://openrouter.ai/api/v1',
@@ -190,9 +196,10 @@ try {
     cc_switch_bridge_revision: null,
     cc_switch_source_commit: null
   };
-  const bindingState = JSON.parse(fs.readFileSync(stateFile, 'utf8'));
-  bindingState.codex_profiles.push(legacyMissingUrl);
-  fs.writeFileSync(stateFile, JSON.stringify(bindingState), 'utf8');
+  await stateApi.readState();
+  await stateApi.mutate((state) => {
+    state.codex_profiles.push(legacyMissingUrl);
+  });
   assert.equal((await api('/codex/cc-switch/sync', 'POST', { adapter: 'test' })).status, 'synced');
   const repairedBinding = await api(`/codex/profiles/${legacyMissingUrl.id}`, 'PUT', {
     base_url: 'https://openrouter.ai/api/v1'
@@ -267,10 +274,9 @@ try {
     ]
   );
   assert.doesNotMatch(JSON.stringify(failedProbe), /probe-sentinel|stderr/);
+  const persistedProbeState = await stateApi.readState();
   assert.doesNotMatch(
-    JSON.stringify(
-      JSON.parse(fs.readFileSync(stateFile, 'utf8')).integration_statuses.filter((item) => item.key === 'codex_probe')
-    ),
+    JSON.stringify(persistedProbeState.integration_statuses.filter((item) => item.key === 'codex_probe')),
     /probe-sentinel|stderr/
   );
   assert.equal((await api('/setup/status')).steps.codex.checks.profile_valid, true);
@@ -327,9 +333,10 @@ try {
   profiles = await api('/codex/profiles');
   assert.equal(profiles.find((item) => item.id === alternate.id).is_active, true);
   await api(`/codex/profiles/${alternate.id}`, 'PUT', { reasoning: 'medium' }, 409, 'profile_change_proposal_required');
-  const legacyProfileState = JSON.parse(fs.readFileSync(stateFile, 'utf8'));
-  legacyProfileState.codex_profiles.find((item) => item.id === alternate.id).status = 'configuration_required';
-  fs.writeFileSync(stateFile, JSON.stringify(legacyProfileState), 'utf8');
+  await stateApi.readState();
+  await stateApi.mutate((state) => {
+    state.codex_profiles.find((item) => item.id === alternate.id).status = 'configuration_required';
+  });
   const repaired = await api(`/codex/profiles/${alternate.id}`, 'PUT', { reasoning: 'medium' });
   assert.equal(repaired.status, 'validated');
   assert.equal((await api('/setup/status')).completed_at, null);
@@ -337,6 +344,7 @@ try {
 } finally {
   child.kill();
   await new Promise((resolve) => setTimeout(resolve, 150));
+  await stateApi?.checkpointAndCloseState().catch(() => undefined);
   fs.rmSync(home, { recursive: true, force: true });
 }
 

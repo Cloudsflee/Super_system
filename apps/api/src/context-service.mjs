@@ -1,26 +1,18 @@
-import fsp from 'node:fs/promises';
-import path from 'node:path';
-
+import { cloneStateValue as structuredClone } from './state-clone.mjs';
 import {
-  buildContextSearchIndex,
   compactContextMap,
   compareContextNodes,
   contextDocumentRelationSnapshot,
-  contextIndexableNodes,
   contextHash,
-  contextSearchIndexSnapshotHash,
   contextSourceRecordId,
   createContextSelection,
   findContextPolicy,
-  loadContextSearchIndex,
   reconcileContextProjectionState,
   sanitizeContextFacts,
   searchContextSearchIndex,
-  serializeContextSearchIndex,
   upsertContextPolicy
 } from '../../../packages/system-context/src/index.mjs';
 import { id, now } from '../../../packages/shared/index.mjs';
-import { CONTEXT_INDEX_DIR } from './config.mjs';
 import { HttpError } from './http.mjs';
 import { readCasBlob } from './asset-cas.mjs';
 import {
@@ -53,12 +45,13 @@ import { mutate, readStateSnapshot } from './state.mjs';
 import { contextProjectorRuntimeStatus } from './context-projector-coordinator.mjs';
 import { contextStatusSnapshot } from './context-status-v21.mjs';
 import { waitForProjectionLeaseSettlement } from './context-projection-wait.mjs';
+import {
+  contextIndexRuntimeStatus,
+  ensureContextSearchIndex,
+  invalidateContextIndexRuntime
+} from './context-index-runtime.mjs';
 
 export { compactRuntimeMap, loadContextSelectionDocumentsInState } from './context-runtime-selection.mjs';
-
-const INDEX_FILE = path.join(CONTEXT_INDEX_DIR, 'minisearch-v1.json');
-let indexCache = null;
-let indexStatus = { state: 'empty', snapshot_hash: null, node_count: 0, rebuilt_at: null, error_code: null };
 
 export async function ensureContextProjection({
   projectId = null,
@@ -70,7 +63,7 @@ export async function ensureContextProjection({
   const projectIds = allowedProjectIds == null ? null : [...allowedProjectIds].map(String),
     systemNodeIds = allowedSystemNodeIds == null ? null : [...allowedSystemNodeIds].map(String),
     scope = contextProjectionScopeKey({ projectId, nodeIds, projectIds, systemNodeIds }),
-    snapshot = await readStateSnapshot();
+    snapshot = await readStateSnapshot({ refresh: true });
   if (
     !force &&
     contextProjectionReusable(
@@ -219,7 +212,7 @@ export async function searchContext(input = {}, request = {}) {
     schema_version: 'aiws.context_search.v1',
     query,
     project_id: projectId,
-    snapshot_hash: indexStatus.snapshot_hash,
+    snapshot_hash: contextIndexRuntimeStatus().snapshot_hash,
     results,
     candidate_node_ids: results.map((item) => item.id)
   };
@@ -393,7 +386,7 @@ export async function createSelection(input = {}, request = {}) {
 }
 
 export async function getSelection(selectionId, request = {}) {
-  const state = await readStateSnapshot(),
+  const state = await readStateSnapshot({ refresh: true }),
     selection = state.context_selections.find((item) => item.id === selectionId);
   if (!selection) throw new HttpError(404, { error: 'context_selection_not_found' });
   const actorContext = await contextActor(request, selection.project_id, state);
@@ -471,19 +464,18 @@ export async function contextStatus(request = {}) {
   const state = await readStateSnapshot(),
     actorContext = await contextActor(request, null, state);
   requireContextAdmin(state, actorContext);
-  return contextStatusSnapshot(state, indexStatus, contextProjectorRuntimeStatus());
+  return contextStatusSnapshot(state, contextIndexRuntimeStatus(), contextProjectorRuntimeStatus());
 }
 
 export async function rebuildContext(request = {}) {
   const state = await readStateSnapshot(),
     actorContext = await contextActor(request, null, state);
   requireContextAdmin(state, actorContext);
-  indexCache = null;
-  await fsp.rm(INDEX_FILE, { force: true }).catch(() => undefined);
+  invalidateContextIndexRuntime();
   const projection = await ensureContextProjection({ force: true });
   const rebuiltState = await readStateSnapshot();
   await contextIndex(rebuiltState, { force: true });
-  return { rebuilt: true, projection, index: indexStatus, completed_at: now() };
+  return { rebuilt: true, projection, index: contextIndexRuntimeStatus(), completed_at: now() };
 }
 
 export async function reportBrowserSemanticState(input = {}, request = {}) {
@@ -603,64 +595,13 @@ export function createSelectionForRuntimeInState(
   return selection;
 }
 
-async function contextIndex(state, { force = false } = {}) {
-  const nodes = contextIndexableNodes(state.context_nodes),
-    snapshotHash = contextSearchIndexSnapshotHash(nodes);
-  if (!force && indexCache?.snapshot_hash === snapshotHash) return indexCache.index;
-  if (!force) {
-    try {
-      const stored = JSON.parse(await fsp.readFile(INDEX_FILE, 'utf8'));
-      if (stored.snapshot_hash === snapshotHash) {
-        const index = loadContextSearchIndex(stored);
-        indexCache = { snapshot_hash: snapshotHash, index };
-        indexStatus = {
-          state: 'ready',
-          snapshot_hash: snapshotHash,
-          node_count: nodes.length,
-          rebuilt_at: stored.rebuilt_at,
-          error_code: null
-        };
-        return index;
-      }
-    } catch (error) {
-      indexStatus = { ...indexStatus, state: 'rebuilding', error_code: 'context_index_corrupt' };
-    }
-  }
-  let temporary = null;
+async function contextIndex(state) {
   try {
-    const { index, documents } = await buildContextSearchIndex({
-      nodes: state.context_nodes,
-      documentVersions: state.context_document_versions,
-      edges: state.context_edges,
-      readDocument: async (version) => (await readCasBlob(version.cas_ref)).toString('utf8')
-    });
-    const rebuiltAt = now(),
-      payload = serializeContextSearchIndex(index, { snapshotHash, rebuiltAt });
-    await fsp.mkdir(CONTEXT_INDEX_DIR, { recursive: true, mode: 0o700 });
-    temporary = `${INDEX_FILE}.${process.pid}.${id('ctxindex')}.tmp`;
-    await fsp.writeFile(temporary, JSON.stringify(payload), { encoding: 'utf8', mode: 0o600 });
-    await fsp.rename(temporary, INDEX_FILE);
-    indexCache = { snapshot_hash: snapshotHash, index };
-    indexStatus = {
-      state: 'ready',
-      snapshot_hash: snapshotHash,
-      node_count: documents.length,
-      rebuilt_at: rebuiltAt,
-      error_code: null
-    };
-    return index;
+    return (await ensureContextSearchIndex(state)).index;
   } catch (error) {
-    if (temporary) await fsp.rm(temporary, { force: true }).catch(() => undefined);
     const reason = /^[a-z0-9_.-]{1,120}$/i.test(String(error?.code || ''))
       ? String(error.code)
       : 'context_index_rebuild_failed';
-    indexStatus = {
-      state: 'failed',
-      snapshot_hash: snapshotHash,
-      node_count: nodes.length,
-      rebuilt_at: null,
-      error_code: reason
-    };
     throw new HttpError(503, { error: 'context_projection_unavailable', reason });
   }
 }

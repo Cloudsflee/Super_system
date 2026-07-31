@@ -1,3 +1,4 @@
+import { cloneStateValue as structuredClone } from '../state-clone.mjs';
 import { addTrace, mutate, readState } from '../state.mjs';
 import { makeRoute, send } from '../http.mjs';
 import { actorForRequest, assertProjectRead, assertProjectWrite } from '../project-governance-v19.mjs';

@@ -240,6 +240,7 @@ async function seedFixture() {
       failExecutionStageInState
     })
   );
+  await stateService.checkpointAndCloseState();
 }
 
 function seedOutcomeFixtureState(

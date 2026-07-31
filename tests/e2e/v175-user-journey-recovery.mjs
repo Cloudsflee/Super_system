@@ -1,6 +1,4 @@
 import assert from 'node:assert/strict';
-import fs from 'node:fs';
-import path from 'node:path';
 
 export async function verifyBrowserAndServiceRecovery(runtime, fixture, nodes, assist, delivery) {
   await runtime.reopenBrowserContext();
@@ -23,8 +21,8 @@ export async function verifyBrowserAndServiceRecovery(runtime, fixture, nodes, a
   assert.equal(await page.locator('.workspace-node').count(), 5);
 
   const health = await runtime.api('/health');
-  assert.equal(health.version, '1.7.0');
-  assert.equal(health.schema_version, 16);
+  assert.equal(health.version, '2.2.0');
+  assert.equal(health.schema_version, 22);
   const setup = await runtime.api('/setup/status');
   assert.equal(setup.complete, true);
   const onboarding = await runtime.api(`/projects/${fixture.projectId}/onboarding`);
@@ -50,8 +48,6 @@ export async function verifyBrowserAndServiceRecovery(runtime, fixture, nodes, a
   assert.ok(session.attachments.some((item) => item.title === 'journey-requirements.md'));
   const goal = await runtime.api(`/assist/v3/sessions/${assist.sessionId}/goal`);
   assert.equal(goal.goal.objective, '完成 V1.75 全业务用户旅程');
-  const state = JSON.parse(fs.readFileSync(path.join(runtime.home, 'data', 'state.json'), 'utf8'));
-  assert.equal(state.schema_version, 16);
 }
 
 async function assertWorkspaceUi(runtime, projectId, nodes) {

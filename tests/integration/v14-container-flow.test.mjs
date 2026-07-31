@@ -87,8 +87,14 @@ try {
   );
   assert.equal(rejected.error, 'host_import_path_traversal');
   assert.deepEqual(sourceSnapshot(imports), before);
-  const stateText = fs.readFileSync(path.join(fixture.home, 'data', 'state.json'), 'utf8');
-  assert.equal(stateText.includes(imports), false);
+  const stateFiles = ['state.json', 'state-v22.sqlite', 'state-v22.sqlite-wal']
+    .map((name) => path.join(fixture.home, 'data', name))
+    .filter(fs.existsSync)
+    .map((file) => fs.readFileSync(file));
+  assert.equal(
+    stateFiles.some((contents) => contents.includes(Buffer.from(imports))),
+    false
+  );
   console.log('V1.4 container deployment/import integration tests passed');
 } finally {
   await server?.stop();

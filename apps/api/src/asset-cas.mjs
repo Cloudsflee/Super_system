@@ -1,3 +1,4 @@
+import { cloneStateValue as structuredClone } from './state-clone.mjs';
 import { createHash } from 'node:crypto';
 import fsp from 'node:fs/promises';
 import path from 'node:path';

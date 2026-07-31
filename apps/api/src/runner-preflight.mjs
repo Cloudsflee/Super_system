@@ -6,7 +6,7 @@ export function runnerPreflightInState(
   { taskExecution, node, contract, runner = 'codex_docker', testAdapter = false, env = process.env } = {}
 ) {
   if (!taskExecution || !node || !contract) throw new HttpError(409, { error: 'runner_preflight_scope_missing' });
-  const image = env.AIWS_CODEX_DOCKER_IMAGE || activeProfile(state)?.image || 'aiws-codex-runner:2.1.0-codex-0.144.0',
+  const image = env.AIWS_CODEX_DOCKER_IMAGE || activeProfile(state)?.image || 'aiws-codex-runner:2.2.0-codex-0.144.0',
     proxy = proxyCaseStatus(env),
     checks = [
       check('runner_image', Boolean(image), { image }),

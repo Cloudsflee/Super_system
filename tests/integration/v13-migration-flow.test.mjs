@@ -21,11 +21,16 @@ fs.writeFileSync(stateFile, JSON.stringify(legacyState(), null, 2), 'utf8');
 
 const port = Number(process.env.AIWS_TEST_PORT || 4598);
 let server;
+let stateApi;
 try {
   server = await startApi({ port, home: fixture.home, ccSwitch: fixture.ccSwitch });
-  let migrated = readState();
+  process.env.AIWS_HOME = fixture.home;
+  process.env.NODE_ENV = 'test';
+  stateApi = await import('../../apps/api/src/state.mjs');
+  await stateApi.ensureRuntime();
+  let migrated = await stateApi.readState();
   const project = migrated.projects.find((item) => item.id === 'prj_legacy_v12');
-  assert.equal(migrated.schema_version, 21);
+  assert.equal(migrated.schema_version, 22);
   assert.equal(migrated.context_projection_coverage.warnings.length, 0);
   assert.ok(migrated.context_nodes.length > 0);
   assert.equal(project.status, 'active');
@@ -90,7 +95,7 @@ try {
     )
   );
   assert.equal(migrationManifest.from_schema, 12);
-  assert.equal(migrationManifest.to_schema, 21);
+  assert.equal(migrationManifest.to_schema, 22);
   assert.equal(migrationManifest.status, 'committed');
 
   const v2 = await api(port, '/assist/v2/sessions/asst_legacy_v2');
@@ -160,11 +165,12 @@ try {
   });
   assert.equal(fs.readFileSync(path.join(managed.repo_path, 'README.md'), 'utf8'), '# Managed legacy copy\n');
   assert.deepEqual(repositorySnapshot(external), externalBefore);
-  migrated = readState();
+  migrated = await stateApi.readState();
   assert.equal(migrated.assist_sessions.find((item) => item.id === 'asst_legacy_v2').version, 2);
   console.log('V1.3 legacy migration integration tests passed');
 } finally {
   await server?.stop();
+  await stateApi?.checkpointAndCloseState().catch(() => undefined);
   cleanup(fixture.root);
 }
 
@@ -252,9 +258,6 @@ function legacyState() {
       }
     ]
   };
-}
-function readState() {
-  return JSON.parse(fs.readFileSync(stateFile, 'utf8'));
 }
 async function waitForV2Complete() {
   for (let attempt = 0; attempt < 100; attempt++) {

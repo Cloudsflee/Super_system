@@ -11,9 +11,14 @@ fs.writeFileSync(path.join(source, 'README.md'), '# External source\n', 'utf8');
 fs.writeFileSync(path.join(source, 'src', 'index.js'), 'export const external = true;\n', 'utf8');
 const original = sourceSnapshot(source);
 let server;
+let stateApi;
 
 try {
   server = await startApi({ port, home: fixture.home, ccSwitch: fixture.ccSwitch });
+  process.env.AIWS_HOME = fixture.home;
+  process.env.NODE_ENV = 'test';
+  stateApi = await import('../../apps/api/src/state.mjs');
+  await stateApi.ensureRuntime();
   const created = await api(
     port,
     '/projects',
@@ -137,14 +142,19 @@ try {
   );
   assert.equal(fs.existsSync(managedRepo), true, 'active project purge must not remove managed files');
   await server.stop();
-  const seeded = seedProjectPurgeDependents(path.join(fixture.home, 'data', 'state.json'), {
-    projectId,
-    workspaceId: confirmed.project.current_workspace_id
-  });
-  const seededArtifact = seeded.artifact;
+  const seededArtifact = path.join(fixture.home, 'artifacts', 'purge-test', 'project-sentinel.log');
+  fs.mkdirSync(path.dirname(seededArtifact), { recursive: true });
+  fs.writeFileSync(seededArtifact, 'project artifact sentinel');
+  const seeded = await mutateState((state) =>
+    seedProjectPurgeDependents(state, {
+      projectId,
+      workspaceId: confirmed.project.current_workspace_id,
+      artifact: seededArtifact
+    })
+  );
   const transientFiles = seedTransientFiles(fixture.home);
   server = await startApi({ port, home: fixture.home, ccSwitch: fixture.ccSwitch });
-  const recoveredState = JSON.parse(fs.readFileSync(path.join(fixture.home, 'data', 'state.json'), 'utf8'));
+  const recoveredState = await stateApi.readState();
   assert.equal(recoveredState.node_runs.find((item) => item.id === 'run-purge-late').status, 'failed');
   assert.equal(recoveredState.workflow_nodes.find((item) => item.id === seeded.taskId).status, 'blocked');
   assert.equal(
@@ -154,7 +164,15 @@ try {
   for (const file of transientFiles)
     assert.equal(fs.existsSync(file), false, `startup removes stale staging file ${file}`);
 
-  const stateFile = path.join(fixture.home, 'data', 'state.json');
+  await mutateState((state) => {
+    state.canonical_repositories.push({
+      id: 'canonical-project-in-use',
+      provider: 'github',
+      repository_id: 'repository-project-in-use',
+      full_name: 'fixture/project-in-use',
+      remote_state: 'active'
+    });
+  });
   for (const [collection, record] of [
     ['terminal_sessions', { id: 'terminal-project-in-use', project_id: projectId, status: 'ready' }],
     ['workflow_generations', { id: 'generation-project-in-use', project_id: projectId, status: 'queued' }],
@@ -170,14 +188,12 @@ try {
       }
     ]
   ]) {
-    const current = JSON.parse(fs.readFileSync(stateFile, 'utf8'));
-    current[collection].push(record);
-    fs.writeFileSync(stateFile, JSON.stringify(current, null, 2));
+    await mutateState((state) => state[collection].push(record));
     const blocked = await api(port, `/projects/${projectId}/trash`, 'POST', {}, 423, 'project_in_use');
     assert.equal(blocked.resource_id, record.id);
-    const cleaned = JSON.parse(fs.readFileSync(stateFile, 'utf8'));
-    cleaned[collection] = cleaned[collection].filter((item) => item.id !== record.id);
-    fs.writeFileSync(stateFile, JSON.stringify(cleaned, null, 2));
+    await mutateState((state) => {
+      state[collection] = state[collection].filter((item) => item.id !== record.id);
+    });
   }
 
   const trashed = await api(port, `/projects/${projectId}/trash`, 'POST', {});
@@ -193,7 +209,7 @@ try {
   assert.equal(fs.existsSync(managedRepo), true);
   await api(port, `/projects/${projectId}/trash`, 'POST', {});
   await server.stop();
-  seedInterruptedPurge(path.join(fixture.home, 'data', 'state.json'), projectId);
+  await mutateState((state) => seedInterruptedPurge(state, projectId));
   server = await startApi({ port, home: fixture.home, ccSwitch: fixture.ccSwitch });
   await api(port, `/projects/${projectId}/restore`, 'POST', {}, 423, 'project_lifecycle_operation_in_progress');
   await api(
@@ -210,7 +226,7 @@ try {
   assert.equal(fs.existsSync(seededArtifact), false, 'project artifact content must be removed');
   await api(port, `/projects/${projectId}/onboarding`, 'GET', undefined, 404, 'project_not_found');
   assert.deepEqual(sourceSnapshot(source), original);
-  assertProjectPurgeComplete(path.join(fixture.home, 'data', 'state.json'), projectId);
+  assertProjectPurgeComplete(await stateApi.readState(), projectId);
 
   const missing = await api(port, '/projects', 'POST', { title: 'Existing source required' }, 201);
   await api(port, `/projects/${missing.project.id}/intake`, 'PUT', {
@@ -264,6 +280,7 @@ try {
   console.log('V1.3 project lifecycle integration tests passed');
 } finally {
   await server?.stop();
+  await stateApi?.checkpointAndCloseState().catch(() => undefined);
   cleanup(fixture.root);
 }
 
@@ -293,15 +310,11 @@ function manualWorkflow(prefix, title, taskKind, executionMode) {
   ];
 }
 
-function seedProjectPurgeDependents(stateFile, { projectId, workspaceId }) {
-  const state = JSON.parse(fs.readFileSync(stateFile, 'utf8')),
-    at = new Date().toISOString();
+function seedProjectPurgeDependents(state, { projectId, workspaceId, artifact }) {
+  const at = new Date().toISOString();
   const workflow = state.workflows.find((item) => item.project_id === projectId);
   const task = state.workflow_nodes.find((item) => item.workflow_id === workflow?.id && item.role === 'task');
   task.status = 'running';
-  const artifact = path.join(path.dirname(path.dirname(stateFile)), 'artifacts', 'purge-test', 'project-sentinel.log');
-  fs.mkdirSync(path.dirname(artifact), { recursive: true });
-  fs.writeFileSync(artifact, 'project artifact sentinel');
   state.assist_sessions.push({
     id: 'asst-purge-late',
     version: 3,
@@ -416,13 +429,11 @@ function seedProjectPurgeDependents(stateFile, { projectId, workspaceId }) {
     { id: 'ref-context-purge', absolute_path: artifact, meta: { context_pack_id: 'ctx-purge-late' } },
     { id: 'ref-terminal-purge', meta: { terminal_session_id: 'terminal-purge-late' } }
   );
-  fs.writeFileSync(stateFile, JSON.stringify(state, null, 2));
-  return { artifact, taskId: task.id };
+  return { taskId: task.id };
 }
 
-function seedInterruptedPurge(stateFile, projectId) {
-  const state = JSON.parse(fs.readFileSync(stateFile, 'utf8')),
-    project = state.projects.find((item) => item.id === projectId);
+function seedInterruptedPurge(state, projectId) {
+  const project = state.projects.find((item) => item.id === projectId);
   project.lifecycle_operation = {
     id: 'plop-interrupted-test',
     type: 'purge',
@@ -430,7 +441,6 @@ function seedInterruptedPurge(stateFile, projectId) {
     trash_path: project.trash_metadata?.path || project.trash_path,
     retain_managed_directory: false
   };
-  fs.writeFileSync(stateFile, JSON.stringify(state, null, 2));
 }
 function seedTransientFiles(home) {
   const files = [
@@ -444,8 +454,7 @@ function seedTransientFiles(home) {
   return files;
 }
 
-function assertProjectPurgeComplete(stateFile, projectId) {
-  const state = JSON.parse(fs.readFileSync(stateFile, 'utf8'));
+function assertProjectPurgeComplete(state, projectId) {
   const direct = Object.entries(state)
     .filter(([, values]) => Array.isArray(values) && values.some((item) => item?.project_id === projectId))
     .map(([key]) => key);
@@ -469,4 +478,9 @@ function assertProjectPurgeComplete(stateFile, projectId) {
       `${collection} retains project data`
     );
   }
+}
+
+async function mutateState(mutator) {
+  await stateApi.readState();
+  return stateApi.mutate(mutator);
 }

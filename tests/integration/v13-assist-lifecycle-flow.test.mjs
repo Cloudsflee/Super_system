@@ -24,8 +24,13 @@ run('git', ['commit', '-m', 'baseline'], source);
 const sourceBefore = repositorySnapshot(source);
 const port = Number(process.env.AIWS_TEST_PORT || 4601);
 let server;
+let stateApi;
 try {
   server = await startApi({ port, home: fixture.home, ccSwitch: fixture.ccSwitch });
+  process.env.AIWS_HOME = fixture.home;
+  process.env.NODE_ENV = 'test';
+  stateApi = await import('../../apps/api/src/state.mjs');
+  await stateApi.ensureRuntime();
   const project = await createConfirmedProject({
     baseUrl: `http://127.0.0.1:${port}`,
     title: 'Assist lifecycle',
@@ -44,17 +49,17 @@ try {
     { name: 'Assist Base', provider: 'openai', model: 'gpt-base', reasoning: 'medium', mounts: [] },
     201
   );
-  const catalogState = readState();
-  catalogState.codex_profiles.find((item) => item.id === baseProfile.id).model_catalog = [
-    { id: 'gpt-base', model: 'gpt-base', supportedReasoningEfforts: [{ reasoningEffort: 'medium' }] },
-    {
-      id: 'gpt-review',
-      model: 'gpt-review',
-      supportedReasoningEfforts: [{ reasoningEffort: 'low' }, { reasoningEffort: 'xhigh' }]
-    },
-    { id: 'gpt-review-2', model: 'gpt-review-2', supportedReasoningEfforts: [{ reasoningEffort: 'xhigh' }] }
-  ];
-  fs.writeFileSync(path.join(fixture.home, 'data', 'state.json'), JSON.stringify(catalogState, null, 2), 'utf8');
+  await stateApi.mutate((state) => {
+    state.codex_profiles.find((item) => item.id === baseProfile.id).model_catalog = [
+      { id: 'gpt-base', model: 'gpt-base', supportedReasoningEfforts: [{ reasoningEffort: 'medium' }] },
+      {
+        id: 'gpt-review',
+        model: 'gpt-review',
+        supportedReasoningEfforts: [{ reasoningEffort: 'low' }, { reasoningEffort: 'xhigh' }]
+      },
+      { id: 'gpt-review-2', model: 'gpt-review-2', supportedReasoningEfforts: [{ reasoningEffort: 'xhigh' }] }
+    ];
+  });
   const savedConfiguration = await api(
     port,
     '/assist/v3/configurations',
@@ -158,7 +163,7 @@ try {
   });
   const contextualDone = await waitTurn(contextual.id, 'completed');
   assert.equal(contextualDone.attachments.length, 3);
-  const contextState = readState();
+  const contextState = await readState();
   const pack = contextState.context_packs.find((item) => item.id === contextualDone.context_pack_id);
   const sufficiency = contextState.context_sufficiency_checks.find((item) => item.id === pack.sufficiency_check_id);
   assert.equal(pack.receiver_type, 'assist_turn');
@@ -168,10 +173,7 @@ try {
     JSON.stringify(await api(port, `/assist/v3/turns/${contextual.id}`)).includes('PRIVATE_REASONING_SENTINEL'),
     false
   );
-  assert.equal(
-    fs.readFileSync(path.join(fixture.home, 'data', 'state.json'), 'utf8').includes('PRIVATE_REASONING_SENTINEL'),
-    false
-  );
+  assertStateFilesExclude('PRIVATE_REASONING_SENTINEL');
 
   const pageEdit = await createTurn(mainSession, {
     mode: 'ask',
@@ -200,22 +202,22 @@ try {
   assert.equal(readOnlyFailed.error_code, 'test_adapter_read_only_violation');
   assert.equal(normalize(fs.readFileSync(managedReadme, 'utf8')), '# Assist lifecycle baseline\n');
   const orphanApprovalId = 'rap_failed_turn_fixture';
-  const orphanState = readState();
-  orphanState.runtime_approvals.push({
-    id: orphanApprovalId,
-    project_id: project.project.id,
-    session_id: mainSession,
-    turn_id: readOnly.id,
-    approval_type: 'command',
-    request: { command: 'node --version' },
-    status: 'pending',
-    attention_state: 'interrupting',
-    revision: 1,
-    target_hash: 'orphan-target',
-    created_at: new Date(0).toISOString(),
-    updated_at: new Date(0).toISOString()
+  await stateApi.mutate((state) => {
+    state.runtime_approvals.push({
+      id: orphanApprovalId,
+      project_id: project.project.id,
+      session_id: mainSession,
+      turn_id: readOnly.id,
+      approval_type: 'command',
+      request: { command: 'node --version' },
+      status: 'pending',
+      attention_state: 'interrupting',
+      revision: 1,
+      target_hash: 'orphan-target',
+      created_at: new Date(0).toISOString(),
+      updated_at: new Date(0).toISOString()
+    });
   });
-  fs.writeFileSync(path.join(fixture.home, 'data', 'state.json'), JSON.stringify(orphanState, null, 2), 'utf8');
 
   const first = await createTurn(mainSession, {
     mode: 'ask',
@@ -423,12 +425,13 @@ try {
   server = await startApi({ port, home: fixture.home, ccSwitch: fixture.ccSwitch });
   const recoveredAfterRestart = await waitTurn(restarting.id, 'interrupted');
   assert.equal(recoveredAfterRestart.error_code, 'service_restarted');
-  const repairedApproval = readState().runtime_approvals.find((item) => item.id === orphanApprovalId);
+  const restartedState = await readState();
+  const repairedApproval = restartedState.runtime_approvals.find((item) => item.id === orphanApprovalId);
   assert.equal(repairedApproval.status, 'cancelled');
   assert.equal(repairedApproval.attention_state, 'resolved');
   assert.equal(recoveredAfterRestart.worktree.id, runningBeforeRestart.worktree.id);
   assert.equal(
-    fs.existsSync(readState().worktrees.find((item) => item.id === recoveredAfterRestart.worktree.id).path),
+    fs.existsSync(restartedState.worktrees.find((item) => item.id === recoveredAfterRestart.worktree.id).path),
     true
   );
   const restartReview = await api(port, `/assist/v3/turns/${restarting.id}/review`);
@@ -439,6 +442,7 @@ try {
   console.log('V1.3 Assist lifecycle integration tests passed');
 } finally {
   await server?.stop();
+  await stateApi?.checkpointAndCloseState().catch(() => undefined);
   cleanup(fixture.root);
 }
 
@@ -473,8 +477,15 @@ async function waitApproval(turnId) {
   }
   throw new Error('runtime approval did not appear');
 }
-function readState() {
-  return JSON.parse(fs.readFileSync(path.join(fixture.home, 'data', 'state.json'), 'utf8'));
+async function readState() {
+  return stateApi.readState();
+}
+function assertStateFilesExclude(value) {
+  const needle = Buffer.from(value);
+  for (const name of ['state.json', 'state-v22.sqlite', 'state-v22.sqlite-wal']) {
+    const file = path.join(fixture.home, 'data', name);
+    if (fs.existsSync(file)) assert.equal(fs.readFileSync(file).includes(needle), false, `${name} contains ${value}`);
+  }
 }
 function run(command, args, cwd) {
   const result = spawnSync(command, args, { cwd, encoding: 'utf8' });

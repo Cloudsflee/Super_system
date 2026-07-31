@@ -6,7 +6,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { once } from 'node:events';
 import { chromium } from '@playwright/test';
-import { repositorySnapshot } from '../integration/v13-test-helpers.mjs';
+import { openFixtureState, repositorySnapshot } from '../integration/v13-test-helpers.mjs';
 import { browserExecutable } from './playwright-helpers.mjs';
 
 export async function createJourneyRuntime() {
@@ -93,6 +93,7 @@ export async function createJourneyRuntime() {
 
   async function start() {
     await startServer();
+    state.stateApi = await openFixtureState({ home });
     state.browser = await chromium.launch({ headless: true, ...browserExecutable() });
     await openBrowserContext();
     writeReport(state, 'RUNNING');
@@ -151,19 +152,21 @@ export async function createJourneyRuntime() {
     await state.context?.close().catch(() => undefined);
     await state.browser?.close().catch(() => undefined);
     await stopServer();
+    const persistedState = await closeJourneyState(state);
     const sourceAfter = repositorySnapshot(sourceRepo);
     state.cleanup.sourceUnchanged = JSON.stringify(sourceAfter) === JSON.stringify(sourceBefore);
     state.cleanup.portReleased = await portIsFree(port);
-    state.cleanup.activeResources = activeResources(home);
+    state.cleanup.activeResources = persistedState ? activeResources(persistedState) : null;
     state.cleanup.browserErrors = [...new Set(state.browserErrors)].filter((item) => !item.includes('favicon'));
-    const stateFile = path.join(home, 'data', 'state.json');
-    state.cleanup.secretsAbsent = !containsSecrets(
-      root,
-      ['journey-client-secret', 'journey-private-key', 'journey-webhook-secret', 'journey-api-key'],
-      [stateFile]
-    );
-    if (state.cleanup.secretsAbsent && fs.existsSync(stateFile))
-      fs.copyFileSync(stateFile, path.join(root, 'state-snapshot.json'));
+    const secretValues = ['journey-client-secret', 'journey-private-key', 'journey-webhook-secret', 'journey-api-key'],
+      stateFiles = ['state.json', 'state-v22.sqlite', 'state-v22.sqlite-wal']
+        .map((name) => path.join(home, 'data', name))
+        .filter(fs.existsSync),
+      stateSnapshot = persistedState ? JSON.stringify(persistedState, null, 2) : '';
+    state.cleanup.secretsAbsent =
+      !containsSecrets(root, secretValues, stateFiles) && !secretValues.some((value) => stateSnapshot.includes(value));
+    if (state.cleanup.secretsAbsent && persistedState)
+      fs.writeFileSync(path.join(root, 'state-snapshot.json'), stateSnapshot);
     if (ephemeralFixture) {
       try {
         fs.rmSync(fixtureRoot, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
@@ -214,6 +217,16 @@ export async function createJourneyRuntime() {
   return runtime;
 }
 
+async function closeJourneyState(state) {
+  let persistedState = null;
+  try {
+    persistedState = await state.stateApi?.readState();
+  } catch {}
+  await state.stateApi?.checkpointAndCloseState().catch(() => undefined);
+  state.stateApi = null;
+  return persistedState;
+}
+
 async function initializeJourneyRuntime() {
   const runId = process.env.AIWS_USER_JOURNEY_RUN_ID || utcRunId();
   const evidenceRoot =
@@ -249,6 +262,7 @@ async function initializeJourneyRuntime() {
     server: null,
     serverStarts: 0,
     logStream: null,
+    stateApi: null,
     browser: null,
     context: null,
     page: null
@@ -341,13 +355,10 @@ function writeReport(state, status) {
   const failure = state.failure ? `\n## 失败\n\n\`\`\`text\n${state.failure}\n\`\`\`\n` : '';
   fs.writeFileSync(
     state.reportFile,
-    `# V1.75 真实用户全业务旅程\n\n- 状态：${status}\n- Run ID：\`${state.runId}\`\n- 产品版本：\`1.7.0\`\n- State schema：\`16\`\n- 隔离目录：\`${state.root}\`\n- AIWS_HOME：\`${state.home}\`\n- 源仓库：\`${state.sourceRepo}\`\n- 开始时间：${state.startedAt}\n- 完成时间：${state.finishedAt || '-'}\n\n## 步骤结果\n\n| ID | 用户步骤 | 状态 | 耗时 ms | 请求 ID |\n| --- | --- | --- | ---: | --- |\n${rows}\n${cleanup}${failure}`
+    `# V1.75 真实用户全业务旅程\n\n- 状态：${status}\n- Run ID：\`${state.runId}\`\n- 产品版本：\`2.2.0\`\n- State schema：\`22\`\n- 隔离目录：\`${state.root}\`\n- AIWS_HOME：\`${state.home}\`\n- 源仓库：\`${state.sourceRepo}\`\n- 开始时间：${state.startedAt}\n- 完成时间：${state.finishedAt || '-'}\n\n## 步骤结果\n\n| ID | 用户步骤 | 状态 | 耗时 ms | 请求 ID |\n| --- | --- | --- | ---: | --- |\n${rows}\n${cleanup}${failure}`
   );
 }
-function activeResources(home) {
-  const file = path.join(home, 'data', 'state.json');
-  if (!fs.existsSync(file)) return 0;
-  const state = JSON.parse(fs.readFileSync(file, 'utf8'));
+function activeResources(state) {
   const turns = (state.assist_turns || []).filter((item) =>
     ['queued', 'preparing', 'running', 'stopping', 'waiting_user_input', 'waiting_approval'].includes(item.status)
   ).length;
@@ -362,7 +373,10 @@ function containsSecrets(root, values, extraFiles = []) {
     ...['server.log', '测试结果v1.75-真实用户旅程.md', 'journey-result.json'].map((name) => path.join(root, name)),
     ...extraFiles
   ].filter(fs.existsSync);
-  return files.some((file) => values.some((value) => fs.readFileSync(file, 'utf8').includes(value)));
+  return files.some((file) => {
+    const bytes = fs.readFileSync(file);
+    return values.some((value) => bytes.includes(Buffer.from(value)));
+  });
 }
 async function waitForServer(child, port) {
   for (let attempt = 0; attempt < 160; attempt++) {

@@ -1,3 +1,4 @@
+import { cloneStateValue as structuredClone } from './state-clone.mjs';
 import path from 'node:path';
 import fsp from 'node:fs/promises';
 import { HttpError } from './http.mjs';

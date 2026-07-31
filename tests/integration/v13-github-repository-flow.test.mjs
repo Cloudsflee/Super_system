@@ -4,12 +4,16 @@ import path from 'node:path';
 import { api, cleanup, makeFixture, startApi } from './v13-test-helpers.mjs';
 
 const fixture = makeFixture('aiws-v13-github-repository-');
-const stateFile = path.join(fixture.home, 'data', 'state.json');
 const port = Number(process.env.AIWS_TEST_PORT || 4600);
 const sentinels = ['v13-client-secret-sentinel', 'v13-private-key-sentinel', 'v13-webhook-secret-sentinel'];
 let server;
+let stateApi;
 try {
   server = await startApi({ port, home: fixture.home, ccSwitch: fixture.ccSwitch });
+  process.env.AIWS_HOME = fixture.home;
+  process.env.NODE_ENV = 'test';
+  stateApi = await import('../../apps/api/src/state.mjs');
+  await stateApi.ensureRuntime();
   await api(port, '/setup/mode', 'PUT', { mode: 'byo' });
   await api(port, '/github/app-config/validate', 'POST', {
     adapter: 'test',
@@ -76,7 +80,7 @@ try {
   assert.equal(publicCreated.repository.private, false);
 
   const retryDraft = await draft('GitHub access retry');
-  const beforeRetry = readState();
+  const beforeRetry = await readState();
   const access = await api(
     port,
     `/projects/${retryDraft.project.id}/github/repository`,
@@ -115,7 +119,7 @@ try {
   );
   assert.equal(retried.operation.attempt, 2);
   assert.equal(retried.binding.status, 'ready');
-  const afterRetry = readState();
+  const afterRetry = await readState();
   assert.equal(afterRetry.projects.length, beforeRetry.projects.length);
   assert.equal(afterRetry.assist_sessions.length, beforeRetry.assist_sessions.length);
   assert.equal(afterRetry.import_jobs.filter((item) => item.operation_key === 'github-create-retry').length, 1);
@@ -140,7 +144,7 @@ try {
   assert.equal(rebound.idempotent, true);
   assert.equal(rebound.id, bound.id);
   assert.equal(rebound.operation.id, bound.operation.id);
-  const bindState = readState();
+  const bindState = await readState();
   assert.equal(bindState.import_jobs.filter((item) => item.operation_key === 'github-bind-retry').length, 1);
   assert.equal(bindState.repository_bindings.filter((item) => item.project_id === bindDraft.project.id).length, 1);
 
@@ -167,7 +171,7 @@ try {
           : 'repository_remote_verification_failed'
     );
     assert.equal(failed.error.includes('repository_'), true);
-    let failureState = readState();
+    let failureState = await readState();
     assert.equal(failureState.import_jobs.find((item) => item.operation_key === operationKey).status, 'failed');
     assert.equal(
       failureState.repository_bindings.some((item) => item.project_id === failedDraft.project.id),
@@ -189,7 +193,7 @@ try {
       201
     );
     assert.equal(recoveredCheckout.operation.attempt, 2);
-    failureState = readState();
+    failureState = await readState();
     assert.equal(failureState.import_jobs.filter((item) => item.operation_key === operationKey).length, 1);
     assert.equal(
       failureState.repository_bindings.filter((item) => item.project_id === failedDraft.project.id).length,
@@ -215,10 +219,11 @@ try {
   assert.equal(invisible.action, 'install_or_expand_repository_access');
   assert.equal(invisible.installation_url, '/github/installations/start');
   assertPublic(invisible);
-  assertNoSecrets(readState());
+  assertNoSecrets(await readState());
   console.log('V1.3 GitHub repository state-machine integration tests passed');
 } finally {
   await server?.stop();
+  await stateApi?.checkpointAndCloseState().catch(() => undefined);
   cleanup(fixture.root);
 }
 
@@ -237,8 +242,8 @@ async function discover(repositories) {
 function repository(id, name, pull, push) {
   return { id, name, full_name: `aiws-owner/${name}`, private: true, permissions: { pull, push, admin: push } };
 }
-function readState() {
-  return JSON.parse(fs.readFileSync(stateFile, 'utf8'));
+async function readState() {
+  return stateApi.readState();
 }
 function assertPublic(value) {
   const text = assertNoSecrets(value);

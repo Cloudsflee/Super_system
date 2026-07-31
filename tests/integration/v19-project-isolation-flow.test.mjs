@@ -1,12 +1,12 @@
 import assert from 'node:assert/strict';
-import fs from 'node:fs';
-import { api, cleanup, makeFixture, startApi } from './v13-test-helpers.mjs';
+import { api, cleanup, makeFixture, openFixtureState, startApi } from './v13-test-helpers.mjs';
 
 const fixture = makeFixture('aiws-v19-isolation-');
 const port = 4912;
-let server;
+let server, stateApi;
 try {
   server = await startApi({ port, home: fixture.home, ccSwitch: fixture.ccSwitch });
+  stateApi = await openFixtureState(fixture);
   const account = await api(port, '/account/me'),
     owner = account.user;
   const headers = {
@@ -15,10 +15,7 @@ try {
   };
   const first = await request('/projects', 'POST', { title: 'Isolation A' }, headers, 201);
   const second = await request('/projects', 'POST', { title: 'Isolation B' }, headers, 201);
-  const stateFile = `${fixture.home}/data/state.json`,
-    seeded = JSON.parse(fs.readFileSync(stateFile, 'utf8'));
-  {
-    const state = seeded;
+  await stateApi.mutate((state) => {
     for (const project of state.projects.filter((item) => [first.project.id, second.project.id].includes(item.id))) {
       project.status = 'active';
       project.onboarding_state = 'confirmed';
@@ -44,8 +41,7 @@ try {
       created_at: new Date().toISOString(),
       updated_at: new Date().toISOString()
     });
-  }
-  fs.writeFileSync(stateFile, `${JSON.stringify(seeded, null, 2)}\n`);
+  });
   const list = await request(`/assets?project_id=${first.project.id}`, 'GET', {}, headers);
   assert.deepEqual(
     list.map((item) => item.id),
@@ -57,7 +53,7 @@ try {
     true,
     'owner may see both projects'
   );
-  const state = JSON.parse(fs.readFileSync(stateFile, 'utf8')),
+  const state = await stateApi.readState(),
     paths = state.projects
       .filter((item) => [first.project.id, second.project.id].includes(item.id))
       .map((item) => item.repo_path);
@@ -66,6 +62,7 @@ try {
   console.log('V1.9 managed checkout and aggregate isolation flow passed');
 } finally {
   await server?.stop();
+  await stateApi?.checkpointAndCloseState().catch(() => undefined);
   cleanup(fixture.root);
 }
 

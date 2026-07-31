@@ -1,3 +1,4 @@
+import { cloneStateValue as structuredClone } from './state-clone.mjs';
 import { HttpError } from './http.mjs';
 import { createInstallationToken, githubJson, resolveGithubAppConfig } from './github-service.mjs';
 import { assertProjectMembership } from './project-governance-v19.mjs';

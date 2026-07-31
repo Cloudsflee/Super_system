@@ -10,9 +10,14 @@ const realCcSwitchFixture = path.join(fixture.ccSwitch, 'cc-switch.db');
 fs.writeFileSync(realCcSwitchFixture, 'read-only-catalog-fixture', 'utf8');
 const ccSwitchHash = sha256(realCcSwitchFixture);
 let server;
+let stateApi;
 
 try {
   server = await startApi({ port, home: fixture.home, ccSwitch: fixture.ccSwitch });
+  process.env.AIWS_HOME = fixture.home;
+  process.env.NODE_ENV = 'test';
+  stateApi = await import('../../apps/api/src/state.mjs');
+  await stateApi.ensureRuntime();
   const created = await api(
     port,
     '/projects',
@@ -133,22 +138,21 @@ try {
   );
 
   const runtimeId = 'rap_v13_fixture';
-  const stateFile = path.join(fixture.home, 'data', 'state.json');
-  const state = JSON.parse(fs.readFileSync(stateFile, 'utf8'));
-  state.runtime_approvals.push({
-    id: runtimeId,
-    project_id: projectId,
-    turn_id: null,
-    approval_type: 'command',
-    status: 'pending',
-    attention_state: 'interrupting',
-    revision: 1,
-    target_hash: 'runtime-target-v1',
-    request: { command: 'node --version', api_key: 'sk-runtime-approval-secret' },
-    created_at: new Date(0).toISOString(),
-    updated_at: new Date(0).toISOString()
+  await stateApi.mutate((state) => {
+    state.runtime_approvals.push({
+      id: runtimeId,
+      project_id: projectId,
+      turn_id: null,
+      approval_type: 'command',
+      status: 'pending',
+      attention_state: 'interrupting',
+      revision: 1,
+      target_hash: 'runtime-target-v1',
+      request: { command: 'node --version', api_key: 'sk-runtime-approval-secret' },
+      created_at: new Date(0).toISOString(),
+      updated_at: new Date(0).toISOString()
+    });
   });
-  fs.writeFileSync(stateFile, JSON.stringify(state, null, 2), 'utf8');
   const approvals = await api(port, `/approvals?project_id=${projectId}`);
   assert.equal(
     approvals.some((item) => item.type === 'proposal' && item.id === proposal.id),
@@ -239,9 +243,7 @@ try {
   assert.equal(nativeDirectActivated.revision.reconciliation.mode, 'native-profile');
   assert.equal(nativeDirectActivated.profile.timeout_ms, 1_800_000);
   assert.equal(
-    JSON.parse(fs.readFileSync(path.join(fixture.home, 'data', 'state.json'), 'utf8')).integration_statuses.some(
-      (item) => item.key === 'cc_switch_managed'
-    ),
+    (await stateApi.readState()).integration_statuses.some((item) => item.key === 'cc_switch_managed'),
     false
   );
 
@@ -363,7 +365,7 @@ try {
     409,
     'cc_switch_rediscovery_failed'
   );
-  let failedState = JSON.parse(fs.readFileSync(path.join(fixture.home, 'data', 'state.json'), 'utf8'));
+  let failedState = await stateApi.readState();
   let failedRevision = failedState.config_revisions.find((item) => item.id === rollbackConfig.revision.id);
   assert.equal(failedRevision.status, 'failed');
   assert.equal(failedRevision.reconciliation.status, 'rolled_back');
@@ -413,7 +415,7 @@ try {
     409,
     'cc_switch_rediscovery_failed'
   );
-  failedState = JSON.parse(fs.readFileSync(path.join(fixture.home, 'data', 'state.json'), 'utf8'));
+  failedState = await stateApi.readState();
   failedRevision = failedState.config_revisions.find((item) => item.id === manualConfig.revision.id);
   assert.equal(failedRevision.reconciliation.status, 'manual_reconciliation_required');
   assert.equal(failedRevision.reconciliation.rollback.ok, false);
@@ -468,6 +470,7 @@ try {
   console.log('V1.3 governance integration tests passed');
 } finally {
   await server?.stop();
+  await stateApi?.checkpointAndCloseState().catch(() => undefined);
   cleanup(fixture.root);
 }
 

@@ -1,6 +1,7 @@
-import fs from 'node:fs';
+import { cloneStateValue as structuredClone } from './state-clone.mjs';
 import fsp from 'node:fs/promises';
 import path from 'node:path';
+import { createDraft, enablePatches, finishDraft, freeze, produceWithPatches, setAutoFreeze } from 'immer';
 import {
   createLocalOwner,
   defaultCodexProfiles,
@@ -23,14 +24,14 @@ import {
   EXPORT_DIR,
   PROBE_DIR,
   STAGING_DIR,
-  STATE_FILE,
+  STATE_DB_FILE,
   TRASH_DIR,
   VAULT_DIR,
   WORKSPACE_DIR,
   WORKTREE_DIR,
   collections
 } from './config.mjs';
-import { redactKnownSecrets } from './vault.mjs';
+import { redactKnownSecrets, redactKnownSecretsSync } from './vault.mjs';
 import {
   codexAuthMatchesProfile,
   isThirdPartyProvider,
@@ -40,17 +41,27 @@ import {
   writeProfileConfig
 } from './codex-service.mjs';
 import {
-  assertV21AppendOnly,
-  migrateStateFileToV21,
-  normalizeOfficialRunnerImagesV21,
   normalizeOutcomeEvidenceRelationsV20,
   normalizeTaskHandoffDefaultsV20,
-  normalizeState21Defaults,
-  STATE_SCHEMA_VERSION,
-  validateState21
+  V21_OUTCOME_COLLECTIONS
 } from './state-migration-v21.mjs';
 import {
+  assertV21AppendOnly,
+  canonicalJsonHash,
+  normalizeOfficialRunnerImagesV22,
+  normalizeState22Defaults,
+  stateRecordIdentity,
+  STATE_SCHEMA_VERSION,
+  validateState22
+} from './state-migration-v22.mjs';
+import {
+  commitState22Sentinel,
+  prepareStateStoreInitialization,
+  recoverManagedStateTemp
+} from './state-runtime-v22.mjs';
+import {
   assertContextImmutability,
+  CONTEXT_INTERNAL_COLLECTIONS,
   reconcileContextProjectionState
 } from '../../../packages/system-context/src/index.mjs';
 import { collectContextVersions, materializeContextDocumentsInState } from './context-projection.mjs';
@@ -66,24 +77,50 @@ import { recoverInterruptedRepositoryDeletionsInState } from './repository-delet
 import { recoverInvalidDeliveryPullRequestClaimsInState } from './delivery-recovery.mjs';
 import { recoverPullRequestIntentsInState } from './pull-request-intent-domain.mjs';
 import { promoteLegacyExecutionHistoryInState } from './legacy-execution-promotion.mjs';
+import {
+  applyStateChanges,
+  checkpointStateStore,
+  closeStateStore,
+  initializeStateStore,
+  readStoredState,
+  readStoredStateRevision,
+  replaceStoredState,
+  stateStoreHealth,
+  stateStoreRuntimeStatus
+} from './state-store.mjs';
+
+enablePatches();
+setAutoFreeze(true);
+
 let lastMigration = null;
-const STATE_FILE_REPLACE_RETRIES = 100;
 export async function ensureRuntime() {
   await ensureRuntimeDirectories();
-  if (!fs.existsSync(STATE_FILE)) {
-    const state = bootstrapState();
-    normalizeState21Defaults(state, now());
-    await materializeContextDocumentsInState(state, { maxJobs: 0 });
-    return writeState(state);
-  }
-  lastMigration = await migrateStateFileToV21(STATE_FILE);
+  await recoverManagedStateTemp();
+  const prepared = await prepareStateStoreInitialization(bootstrapState);
+  const initialized = await initializeStateStore({
+    databasePath: STATE_DB_FILE,
+    collections,
+    state: prepared.state,
+    sourceStateHash: prepared.sourceStateHash,
+    migration: prepared.migration
+  });
+  if (prepared.sourceStateHash && initialized.source_state_hash !== prepared.sourceStateHash)
+    throw stateFailure('state_database_source_mismatch', {
+      expected: prepared.sourceStateHash,
+      actual: initialized.source_state_hash
+    });
+  validateState22(initialized.state);
+  stateSnapshotCache = { revision: initialized.revision, state: freeze(initialized.state, true) };
+  lastMigration = prepared.migration;
+  if (!prepared.sentinel) lastMigration = await commitState22Sentinel(prepared, initialized);
+
   const state = await readState();
   if (state.schema_version !== STATE_SCHEMA_VERSION)
     throw new Error(`unsupported_state_schema_${state.schema_version}`);
 
   const changes = { value: false };
   normalizeRuntimeCollections(state, changes);
-  if (normalizeOfficialRunnerImagesV21(state, { timestamp: now() }).changed) changes.value = true;
+  if (normalizeOfficialRunnerImagesV22(state, { timestamp: now() }).changed) changes.value = true;
   if (normalizeOutcomeEvidenceRelationsV20(state).changed) changes.value = true;
   if (normalizeTaskHandoffDefaultsV20(state).changed) changes.value = true;
   ensureRuntimeDefaults(state, changes);
@@ -102,7 +139,7 @@ export async function ensureRuntime() {
   if (projection.materialized || projection.reused || projection.failed) changes.value = true;
   if (pruneExpiredContextVersions(state)) changes.value = true;
 
-  const serialized = JSON.stringify(state, null, 2);
+  const serialized = JSON.stringify(state);
   if (changes.value || (await redactKnownSecrets(serialized)) !== serialized) await writeState(state);
 }
 
@@ -503,44 +540,33 @@ function bootstrapState() {
   return state;
 }
 export async function readState() {
-  return JSON.parse(await fsp.readFile(STATE_FILE, 'utf8'));
+  await refreshStateSnapshot();
+  return structuredClone(stateSnapshotCache.state);
+}
+
+async function refreshStateSnapshot() {
+  if (!stateSnapshotCache) throw stateFailure('state_store_not_initialized');
+  const persisted = await readStoredStateRevision();
+  if (persisted.revision !== stateSnapshotCache.revision) {
+    const refreshed = await readStoredState();
+    validateState22(refreshed.state);
+    installStateSnapshot(refreshed.state, refreshed.revision);
+  }
+  return stateSnapshotCache;
 }
 
 let stateSnapshotCache = null;
+let mutationQueue = Promise.resolve();
+const revisionSubscribers = new Set();
 
-export async function readStateSnapshot() {
-  const before = await fsp.stat(STATE_FILE),
-    signature = stateFileSignature(before);
-  if (stateSnapshotCache?.signature === signature) return stateSnapshotCache.state;
-
-  const serialized = await fsp.readFile(STATE_FILE, 'utf8'),
-    after = await fsp.stat(STATE_FILE),
-    stableSignature = stateFileSignature(after);
-  if (signature !== stableSignature) return readStateSnapshot();
-
-  const state = JSON.parse(serialized);
-  stateSnapshotCache = { signature: stableSignature, state };
-  return state;
+export async function readStateSnapshot({ refresh = false } = {}) {
+  if (refresh) await refreshStateSnapshot();
+  if (!stateSnapshotCache) throw stateFailure('state_store_not_initialized');
+  return stateSnapshotCache.state;
 }
 
 export async function writeState(state) {
-  normalizeState18Compatibility(state, collections);
-  ensureProjectGovernanceDefaults(state);
-  ensureRepositoryLifecycleDefaults(state);
-  ensureExchangeDefaults(state);
-  normalizeState21Defaults(state);
-  validateState21(state);
-  const tmp = `${STATE_FILE}.tmp`;
-  const serialized = await redactKnownSecrets(JSON.stringify(state, null, 2));
-  const handle = await fsp.open(tmp, 'w', 0o600);
-  try {
-    await handle.writeFile(serialized, 'utf8');
-    await handle.sync();
-  } finally {
-    await handle.close();
-  }
-  await replaceStateFile(tmp, STATE_FILE);
-  stateSnapshotCache = null;
+  return enqueueMutation(() => persistStateReplacement(state));
 }
 export function lastStateMigration() {
   return lastMigration ? { ...lastMigration, state: undefined } : null;
@@ -549,28 +575,63 @@ async function clearEphemeralDirectory(directory) {
   const entries = await fsp.readdir(directory, { withFileTypes: true });
   await Promise.all(entries.map((entry) => fsp.rm(path.join(directory, entry.name), { recursive: true, force: true })));
 }
-let mutationQueue = Promise.resolve();
 export function mutate(fn, { allowContextRecordDeletion = false } = {}) {
-  const operation = mutationQueue.then(async () => {
-    const state = await readState();
-    const immutableBefore = {
-      context_document_versions: structuredClone(state.context_document_versions || []),
-      context_selections: structuredClone(state.context_selections || []),
-      outcome_requirements: structuredClone(state.outcome_requirements || []),
-      outcome_evaluations: structuredClone(state.outcome_evaluations || []),
-      outcome_waivers: structuredClone(state.outcome_waivers || []),
-      execution_stage_checkpoints: structuredClone(state.execution_stage_checkpoints || [])
-    };
-    const result = await fn(state);
-    assertContextImmutability(immutableBefore, state, { allowDeletion: allowContextRecordDeletion });
-    assertV21AppendOnly(immutableBefore, state);
-    reconcileContextProjectionState(state, { sourceCollections: collections, timestamp: now() });
-    pruneExpiredContextVersions(state);
-    await writeState(state);
-    return result;
+  return enqueueMutation(async () => {
+    const snapshot = await refreshStateSnapshot(),
+      base = snapshot.state,
+      expectedRevision = snapshot.revision,
+      state = createDraft(base),
+      immutableBefore = {
+        context_document_versions: base.context_document_versions || [],
+        context_selections: base.context_selections || [],
+        outcome_requirements: base.outcome_requirements || [],
+        outcome_evaluations: base.outcome_evaluations || [],
+        outcome_waivers: base.outcome_waivers || [],
+        execution_stage_checkpoints: base.execution_stage_checkpoints || []
+      };
+    let result, resultSnapshot;
+    try {
+      result = await fn(state);
+      resultSnapshot = snapshotMutationResult(result);
+    } catch (error) {
+      finishDraft(state);
+      throw error;
+    }
+    let patches = [];
+    const candidate = finishDraft(state, (generated) => {
+      patches = generated;
+    });
+    if (!patches.length) return resultSnapshot;
+    const touched = new Set(patches.map((patch) => String(patch.path[0])));
+    if (touched.has('context_document_versions') || touched.has('context_selections'))
+      assertContextImmutability(immutableBefore, candidate, { allowDeletion: allowContextRecordDeletion });
+    if (V21_OUTCOME_COLLECTIONS.some((collection) => touched.has(collection)))
+      assertV21AppendOnly(immutableBefore, candidate);
+    const sourceChanged = [...touched].some(
+      (collection) => collections.includes(collection) && !CONTEXT_INTERNAL_COLLECTIONS.includes(collection)
+    );
+    const contextChanged =
+      sourceChanged || [...touched].some((collection) => CONTEXT_INTERNAL_COLLECTIONS.includes(collection));
+    const [next] = produceWithPatches(candidate, (draft) => {
+      normalizeStateForPersistence(draft);
+      if (sourceChanged) reconcileContextProjectionState(draft, { sourceCollections: collections, timestamp: now() });
+      if (contextChanged) pruneExpiredContextVersions(draft);
+    });
+    validateState22(next);
+    const persistence = await buildStateChanges(base, next);
+    if (
+      !persistence.changes.collections.length &&
+      !persistence.changes.meta.length &&
+      !persistence.changes.metaDeletes.length
+    )
+      return resultSnapshot;
+    const committed = await applyStateChanges({
+      expectedRevision,
+      ...persistence.changes
+    });
+    installStateSnapshot(persistence.state, committed.revision);
+    return resultSnapshot;
   });
-  mutationQueue = operation.catch(() => undefined);
-  return operation;
 }
 
 function pruneExpiredContextVersions(state) {
@@ -580,8 +641,171 @@ function pruneExpiredContextVersions(state) {
   return changed;
 }
 
-function stateFileSignature(stat) {
-  return `${stat.dev}:${stat.ino}:${stat.size}:${stat.mtimeMs}`;
+export function stateRevision() {
+  return Number(stateSnapshotCache?.revision || 0);
+}
+
+export function subscribeStateRevision(listener) {
+  if (typeof listener !== 'function') throw new TypeError('state_revision_listener_required');
+  revisionSubscribers.add(listener);
+  return () => revisionSubscribers.delete(listener);
+}
+
+export function waitForStateMutations() {
+  return mutationQueue;
+}
+
+export async function statePersistenceStatus() {
+  return { ...(await stateStoreHealth()), ...stateStoreRuntimeStatus(), database_file: STATE_DB_FILE };
+}
+
+export async function checkpointAndCloseState() {
+  await waitForStateMutations();
+  await checkpointStateStore();
+  await closeStateStore();
+}
+
+function enqueueMutation(operation) {
+  const queued = mutationQueue.then(operation);
+  mutationQueue = queued.catch(() => undefined);
+  return queued;
+}
+
+async function persistStateReplacement(input) {
+  if (!stateSnapshotCache) throw stateFailure('state_store_not_initialized');
+  const state = structuredClone(input);
+  normalizeStateForPersistence(state);
+  validateState22(state);
+  const sanitized = JSON.parse(await redactKnownSecrets(JSON.stringify(state)));
+  validateState22(sanitized);
+  if (canonicalJsonHash(sanitized) === canonicalJsonHash(stateSnapshotCache.state)) return;
+  const committed = await replaceStoredState({
+    expectedRevision: stateSnapshotCache.revision,
+    state: sanitized
+  });
+  installStateSnapshot(sanitized, committed.revision);
+}
+
+function normalizeStateForPersistence(state) {
+  normalizeState18Compatibility(state, collections);
+  ensureProjectGovernanceDefaults(state);
+  ensureRepositoryLifecycleDefaults(state);
+  ensureExchangeDefaults(state);
+  normalizeState22Defaults(state);
+}
+
+async function buildStateChanges(before, after) {
+  await redactKnownSecrets('');
+  const collectionChanges = [],
+    meta = [],
+    metaDeletes = [],
+    replacements = new Map();
+
+  for (const collection of collections) {
+    const beforeRecords = before[collection] || [],
+      afterRecords = after[collection] || [];
+    if (beforeRecords === afterRecords) continue;
+    const beforeByIdentity = new Map(
+        beforeRecords.map((record, ordinal) => [stateRecordIdentity(collection, record), { record, ordinal }])
+      ),
+      afterIdentities = new Set(),
+      upserts = [];
+    let reindex = false;
+    for (let ordinal = 0; ordinal < afterRecords.length; ordinal += 1) {
+      const record = afterRecords[ordinal],
+        identity = stateRecordIdentity(collection, record),
+        previous = beforeByIdentity.get(identity);
+      if (afterIdentities.has(identity))
+        throw stateFailure('state_record_identity_duplicate', { collection, identity });
+      afterIdentities.add(identity);
+      if (previous && previous.ordinal !== ordinal) reindex = true;
+      const contentChanged =
+        !previous || (previous.record !== record && canonicalJsonHash(previous.record) !== canonicalJsonHash(record));
+      if (!contentChanged && previous.ordinal === ordinal) continue;
+      const sanitized = sanitizeJsonValue(record);
+      if (sanitized.changed) {
+        let collectionReplacements = replacements.get(collection);
+        if (!collectionReplacements) replacements.set(collection, (collectionReplacements = new Map()));
+        collectionReplacements.set(ordinal, sanitized.value);
+      }
+      upserts.push({ identity, ordinal, value: sanitized.value });
+    }
+    const deletes = [...beforeByIdentity.keys()].filter((identity) => !afterIdentities.has(identity));
+    if (reindex) {
+      upserts.length = 0;
+      for (let ordinal = 0; ordinal < afterRecords.length; ordinal += 1) {
+        const record = afterRecords[ordinal],
+          identity = stateRecordIdentity(collection, record),
+          sanitized = sanitizeJsonValue(record);
+        if (sanitized.changed) {
+          let collectionReplacements = replacements.get(collection);
+          if (!collectionReplacements) replacements.set(collection, (collectionReplacements = new Map()));
+          collectionReplacements.set(ordinal, sanitized.value);
+        }
+        upserts.push({ identity, ordinal, value: sanitized.value });
+      }
+    }
+    if (deletes.length || upserts.length) collectionChanges.push({ collection, deletes, upserts, reindex });
+  }
+
+  const rootKeys = new Set([...Object.keys(before), ...Object.keys(after)]);
+  for (const key of rootKeys) {
+    if (collections.includes(key)) continue;
+    if (!Object.hasOwn(after, key)) {
+      metaDeletes.push(key);
+      continue;
+    }
+    if (Object.hasOwn(before, key) && canonicalJsonHash(before[key]) === canonicalJsonHash(after[key])) continue;
+    const sanitized = sanitizeJsonValue(after[key]);
+    if (sanitized.changed) replacements.set(key, sanitized.value);
+    meta.push({ key, value: sanitized.value });
+  }
+
+  let sanitizedState = after;
+  if (replacements.size) {
+    [sanitizedState] = produceWithPatches(after, (draft) => {
+      for (const [key, value] of replacements) {
+        if (value instanceof Map) for (const [ordinal, record] of value) draft[key][ordinal] = record;
+        else draft[key] = value;
+      }
+    });
+  }
+  validateState22(sanitizedState);
+  return {
+    state: sanitizedState,
+    changes: { collections: collectionChanges, meta, metaDeletes }
+  };
+}
+
+function sanitizeJsonValue(value) {
+  const serialized = JSON.stringify(value),
+    sanitized = redactKnownSecretsSync(serialized);
+  return sanitized === serialized ? { value, changed: false } : { value: JSON.parse(sanitized), changed: true };
+}
+
+function snapshotMutationResult(value) {
+  if (value === undefined || value === null || typeof value !== 'object') return value;
+  return structuredClone(value);
+}
+
+function installStateSnapshot(state, revision) {
+  const frozen = freeze(state, true);
+  stateSnapshotCache = { state: frozen, revision: Number(revision) };
+  for (const listener of revisionSubscribers)
+    queueMicrotask(() => {
+      try {
+        listener({ revision: Number(revision), state: frozen });
+      } catch (error) {
+        console.error('state revision subscriber failed', error?.code || error?.message || error);
+      }
+    });
+}
+
+function stateFailure(code, details = {}, cause = null) {
+  const error = new Error(code, cause ? { cause } : undefined);
+  error.code = code;
+  error.details = details;
+  return error;
 }
 
 export function owner(state) {
@@ -667,16 +891,4 @@ function lifecycleFingerprint(state) {
     exchanges: (state.exchange_requests || []).map((item) => [item.id, item.status]),
     grants: (state.exchange_grants || []).map((item) => [item.id, item.status])
   });
-}
-
-async function replaceStateFile(source, target) {
-  for (let attempt = 0; ; attempt++) {
-    try {
-      await fsp.rename(source, target);
-      return;
-    } catch (error) {
-      if (!['EPERM', 'EACCES', 'EBUSY'].includes(error.code) || attempt >= STATE_FILE_REPLACE_RETRIES) throw error;
-      await new Promise((resolve) => setTimeout(resolve, Math.min(100, 10 * (attempt + 1))));
-    }
-  }
 }

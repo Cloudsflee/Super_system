@@ -93,6 +93,15 @@ export function cleanup(root) {
   fs.rmSync(root, { recursive: true, force: true });
 }
 
+export async function openFixtureState({ home, ccSwitch }) {
+  process.env.AIWS_HOME = home;
+  if (ccSwitch) process.env.CC_SWITCH_CONFIG_DIR = ccSwitch;
+  process.env.NODE_ENV = 'test';
+  const stateApi = await import('../../apps/api/src/state.mjs');
+  await stateApi.ensureRuntime();
+  return stateApi;
+}
+
 export async function createConfirmedProject({
   baseUrl,
   title,

@@ -1,3 +1,4 @@
+import { cloneStateValue as structuredClone } from './state-clone.mjs';
 import fs from 'node:fs';
 import { HttpError } from './http.mjs';
 import { addTrace, mutate, owner, readState } from './state.mjs';

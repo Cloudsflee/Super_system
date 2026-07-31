@@ -1,3 +1,4 @@
+import { cloneStateValue as structuredClone } from './state-clone.mjs';
 import fsp from 'node:fs/promises';
 import path from 'node:path';
 
@@ -131,7 +132,7 @@ export function validateState19(state) {
     throw migrationError('state_schema_not_19', { schema_version: state.schema_version ?? null });
   for (const collection of V19_COLLECTIONS)
     if (!Array.isArray(state[collection])) throw migrationError('state_collection_invalid', { collection });
-  validateState18({ ...structuredClone(state), schema_version: 18 });
+  validateState18({ ...state, schema_version: 18 });
   for (const collection of V19_COLLECTIONS) ensureUniqueIds(state[collection], collection);
 
   const assetIds = new Set(state.assets.map((item) => item.id));

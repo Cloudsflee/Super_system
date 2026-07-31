@@ -1,3 +1,4 @@
+import { cloneStateValue as structuredClone } from './state-clone.mjs';
 import { id } from '../../../packages/shared/index.mjs';
 import { HttpError } from './http.mjs';
 import { cleanText } from './assist-v3-domain.mjs';

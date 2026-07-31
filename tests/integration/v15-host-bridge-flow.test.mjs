@@ -4,6 +4,7 @@ import { spawnSync } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
 import WebSocket from 'ws';
+import { AIWS_VERSION } from '../../packages/shared/index.mjs';
 import { api, cleanup, createConfirmedProject, makeFixture, startApi } from './v13-test-helpers.mjs';
 
 const fixture = makeFixture('aiws-v15-host-bridge-'),
@@ -160,7 +161,7 @@ try {
       action: 'exchange',
       pairing_code: pairing.pairing_code,
       protocol_version: 1,
-      bridge_version: '2.1.0',
+      bridge_version: AIWS_VERSION,
       device_name: 'Fake Windows'
     },
     201
@@ -169,7 +170,7 @@ try {
     port,
     '/assist/v3/host-bridge/pairing',
     'POST',
-    { action: 'exchange', pairing_code: pairing.pairing_code, protocol_version: 1, bridge_version: '2.1.0' },
+    { action: 'exchange', pairing_code: pairing.pairing_code, protocol_version: 1, bridge_version: AIWS_VERSION },
     401,
     'host_bridge_pairing_invalid_or_expired'
   );
@@ -188,7 +189,7 @@ try {
     JSON.stringify({
       type: 'hello',
       protocol_version: 1,
-      bridge_version: '2.1.0',
+      bridge_version: AIWS_VERSION,
       capabilities: {
         os: 'windows',
         arch: 'amd64',
@@ -278,9 +279,8 @@ try {
     'changed on Windows bridge\n'
   );
   assert.equal(fs.existsSync(path.join(project.managedRepo, 'LOCKED.txt')), false);
-  const stateText = fs.readFileSync(path.join(fixture.home, 'data', 'state.json'), 'utf8');
-  assert.equal(stateText.includes(exchanged.credential), false);
-  assert.equal(stateText.includes(pairing.pairing_code), false);
+  assertStateFilesExclude(exchanged.credential);
+  assertStateFilesExclude(pairing.pairing_code);
   assert.ok(fake.serverFrames.some((item) => item.type === 'workspace_return_ack'));
   console.log('V1.5 Windows Host Bridge integration tests passed');
 } finally {
@@ -326,4 +326,11 @@ function sha(bytes) {
 }
 function normalize(value) {
   return value.replaceAll('\r\n', '\n');
+}
+function assertStateFilesExclude(value) {
+  const needle = Buffer.from(value);
+  for (const name of ['state.json', 'state-v22.sqlite', 'state-v22.sqlite-wal']) {
+    const file = path.join(fixture.home, 'data', name);
+    if (fs.existsSync(file)) assert.equal(fs.readFileSync(file).includes(needle), false, `${name} contains secret`);
+  }
 }

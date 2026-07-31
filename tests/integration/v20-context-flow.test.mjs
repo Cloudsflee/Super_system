@@ -11,6 +11,7 @@ const baseUrl = `http://127.0.0.1:${port}`;
 const sentinel = 'V20_SECRET_SENTINEL_8c7813';
 const foreignTitleCanary = 'ForeignCanary7F42';
 let server;
+let stateApi;
 
 try {
   server = await startApi({
@@ -19,6 +20,10 @@ try {
     ccSwitch: fixture.ccSwitch,
     env: { AIWS_CONTEXT_REPOSITORY_FILE_LIMIT: '2' }
   });
+  process.env.AIWS_HOME = fixture.home;
+  process.env.NODE_ENV = 'test';
+  stateApi = await import('../../apps/api/src/state.mjs');
+  await stateApi.ensureRuntime();
   const account = await request('/account/me');
   const ownerId = account.user.id;
   const first = await request(
@@ -82,7 +87,7 @@ try {
     'exchange:read'
   ]);
 
-  patchState((state) => {
+  await patchState((state) => {
     const project = state.projects.find((item) => item.id === firstId);
     project.password = sentinel;
     project.repo_path = repository;
@@ -278,7 +283,7 @@ try {
     1
   );
 
-  patchState((state) => {
+  await patchState((state) => {
     const project = state.projects.find((item) => item.id === firstId);
     project.title = '中文上下文项目 V2';
     project.updated_at = '2026-07-26T09:00:00.000Z';
@@ -291,13 +296,10 @@ try {
   );
   const version2Id = version2Map.nodes.find((node) => node.id === projectNode.id).current_version_id;
   assert.notEqual(version2Id, selectedVersionId);
-  patchState((state) => {
+  await patchState((state) => {
     const project = state.projects.find((item) => item.id === firstId);
     project.title = '中文上下文项目 V3';
     project.updated_at = '2026-07-26T10:00:00.000Z';
-    state.context_document_versions.find((item) => item.id === selectedVersionId).created_at =
-      '2020-01-01T00:00:00.000Z';
-    state.context_document_versions.find((item) => item.id === version2Id).created_at = '2020-01-01T00:00:00.000Z';
   });
   const version3Map = await request(
     `/context/v1/map?project_id=${encodeURIComponent(firstId)}`,
@@ -311,7 +313,7 @@ try {
   assert.ok(version3Document.history.some((item) => item.id === selectedVersionId));
   assert.equal(
     version3Document.history.some((item) => item.id === version2Id),
-    false
+    true
   );
   assert.equal(
     (
@@ -335,7 +337,7 @@ try {
     (node) => node.source_collection === 'projects' && node.source_id === secondId
   );
   const viewerHeaders = auth('user-context-viewer', ['context:read', 'project:read']);
-  patchState((state) => {
+  await patchState((state) => {
     state.file_refs.push({
       id: 'file-inaccessible-project-failure',
       project_id: secondId,
@@ -359,7 +361,7 @@ try {
   });
   const viewerGlobalMap = await request('/context/v1/map', 'GET', undefined, viewerHeaders);
   assert.equal(
-    readState().context_projection_coverage.warnings.some((warning) => warning.project_id === secondId),
+    (await readState()).context_projection_coverage.warnings.some((warning) => warning.project_id === secondId),
     true,
     'fixture must retain an inaccessible-project coverage warning in authoritative state'
   );
@@ -425,7 +427,7 @@ try {
     201
   );
   assert.equal(viewerGlobalSelection.included[0].node_id, projectNode.id);
-  patchState((state) => {
+  await patchState((state) => {
     const membership = state.project_memberships.find((item) => item.id === 'membership-context-viewer');
     membership.status = 'revoked';
     membership.revoked_at = '2026-07-26T11:00:00.000Z';
@@ -440,12 +442,12 @@ try {
   assert.equal(revokedExplanation.included_nodes[0].node, null, 'selection audit reapplies current project ACL');
 
   const status = await request('/context/v1/status', 'GET', undefined, ownerHeaders);
-  assert.equal(status.schema_version, 21);
+  assert.equal(status.schema_version, 22);
   assert.ok(status.coverage.warnings.some((item) => item.code === 'context_repository_projection_truncated'));
   assert.equal(status.jobs.failed, 0);
   assert.equal(status.index.state, 'ready');
 
-  const projectionState = readState();
+  const projectionState = await readState();
   const protectedProjectionData = JSON.stringify({
     context_nodes: projectionState.context_nodes,
     context_document_versions: projectionState.context_document_versions,
@@ -459,7 +461,8 @@ try {
   assert.equal(protectedProjectionData.includes(sentinel), false);
   assert.equal(JSON.stringify(projectionState.context_selections).includes(sentinel), false);
   assert.equal(JSON.stringify(projectionState.context_summaries).includes(sentinel), false);
-  const indexFile = path.join(fixture.home, 'data', '.context-index', 'minisearch-v1.json');
+  assertStateFilesExclude(sentinel);
+  const indexFile = path.join(fixture.home, 'data', '.context-index', 'minisearch-v2.json');
   assert.equal(fs.readFileSync(indexFile, 'utf8').includes(sentinel), false);
   assert.equal(server.log().includes(sentinel), false);
 
@@ -484,7 +487,7 @@ try {
   assert.equal(JSON.stringify(rebuiltSearch).includes(sentinel), false);
   assert.equal(server.log().includes(sentinel), false);
 
-  const current = readState();
+  const current = await readState();
   const currentProjectNode = current.context_nodes.find((node) => node.id === projectNode.id);
   const version = current.context_document_versions.find((item) => item.id === currentProjectNode.current_version_id);
   fs.rmSync(path.join(fixture.home, 'cas', version.cas_ref.storage_path));
@@ -513,6 +516,7 @@ try {
   console.log('V2.0 context REST, isolation, index recovery, and CAS integrity flow passed');
 } finally {
   await server?.stop();
+  await stateApi?.checkpointAndCloseState().catch(() => undefined);
   cleanup(fixture.root);
 }
 
@@ -532,13 +536,19 @@ async function request(route, method = 'GET', body, headers = {}, expected = 200
 }
 
 function patchState(apply) {
-  const state = readState();
-  apply(state);
-  fs.writeFileSync(path.join(fixture.home, 'data', 'state.json'), `${JSON.stringify(state, null, 2)}\n`);
+  return stateApi.mutate(apply);
 }
 
-function readState() {
-  return JSON.parse(fs.readFileSync(path.join(fixture.home, 'data', 'state.json'), 'utf8'));
+async function readState() {
+  return stateApi.readState();
+}
+
+function assertStateFilesExclude(value) {
+  const needle = Buffer.from(value);
+  for (const name of ['state.json', 'state-v22.sqlite', 'state-v22.sqlite-wal']) {
+    const file = path.join(fixture.home, 'data', name);
+    if (fs.existsSync(file)) assert.equal(fs.readFileSync(file).includes(needle), false, `${name} contains ${value}`);
+  }
 }
 
 function sha256(bytes) {

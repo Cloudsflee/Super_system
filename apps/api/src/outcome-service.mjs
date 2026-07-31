@@ -1,3 +1,4 @@
+import { cloneStateValue as structuredClone } from './state-clone.mjs';
 import {
   OUTCOME_EVALUATION_STATUSES,
   parseOutcomeContract,

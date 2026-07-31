@@ -1,3 +1,4 @@
+import { cloneStateValue as structuredClone } from './state-clone.mjs';
 import { scanCcSwitchDiscovery, readCcSwitchCredential } from './cc-switch-discovery.mjs';
 import { scanCodexHomes } from './codex-home-discovery.mjs';
 

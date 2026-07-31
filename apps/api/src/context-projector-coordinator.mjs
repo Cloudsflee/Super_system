@@ -1,16 +1,16 @@
-import fsp from 'node:fs/promises';
-import path from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { Worker } from 'node:worker_threads';
 
-import { contextIndexableNodes, contextSearchIndexSnapshotHash } from '../../../packages/system-context/src/index.mjs';
 import { now } from '../../../packages/shared/index.mjs';
-import { readCasBlob } from './asset-cas.mjs';
-import { CONTEXT_INDEX_DIR } from './config.mjs';
-import { materializeContextDocumentsInState } from './context-projection.mjs';
+import {
+  finalizeClaimedContextProjectionsInState,
+  prepareClaimedContextProjection,
+  releaseContextProjectionLeasesInState
+} from './context-projection.mjs';
 import { mutate, readStateSnapshot } from './state.mjs';
+import { hasRunnableContextProjectionJobs } from './state-store.mjs';
+import { ensureContextSearchIndex } from './context-index-runtime.mjs';
 
-const INDEX_FILE = path.join(CONTEXT_INDEX_DIR, 'minisearch-v1.json');
 let activeCoordinator = null;
 
 export function startContextProjectorCoordinator({ intervalMs = 250, batchSize = 25, leaseMs = 30_000 } = {}) {
@@ -18,8 +18,8 @@ export function startContextProjectorCoordinator({ intervalMs = 250, batchSize =
   const coordinator = new ContextProjectorCoordinator({ intervalMs, batchSize, leaseMs });
   activeCoordinator = coordinator;
   coordinator.start();
-  return () => {
-    coordinator.stop();
+  return async () => {
+    await coordinator.stop();
     if (activeCoordinator === coordinator) activeCoordinator = null;
   };
 }
@@ -43,9 +43,11 @@ export class ContextProjectorCoordinator {
     this.leaseMs = Math.max(1_000, Number(leaseMs) || 30_000);
     this.holder = `context-projector:${process.pid}:${randomUUID().slice(0, 8)}`;
     this.pending = new Map();
+    this.claimedJobIds = new Set();
     this.sequence = 0;
-    this.running = false;
     this.stopped = false;
+    this.currentTick = null;
+    this.stopPromise = null;
     this.status = {
       state: 'starting',
       holder: this.holder,
@@ -64,30 +66,58 @@ export class ContextProjectorCoordinator {
     void this.tick();
   }
 
-  async stop() {
+  stop() {
+    if (this.stopPromise) return this.stopPromise;
+    this.stopPromise = this.stopInternal();
+    return this.stopPromise;
+  }
+
+  async stopInternal() {
     this.stopped = true;
     clearInterval(this.timer);
     this.timer = null;
-    this.status.state = 'stopped';
-    for (const pending of this.pending.values()) pending.reject(workerError('context_projection_worker_stopped'));
-    this.pending.clear();
-    await this.worker?.terminate().catch(() => undefined);
+    this.status.state = 'draining';
+    const worker = this.worker;
     this.worker = null;
+    for (const operation of this.pending.values()) operation.reject(workerError('context_projection_worker_stopped'));
+    this.pending.clear();
+    await worker?.terminate().catch(() => undefined);
+    await this.currentTick?.catch(() => undefined);
+    const claimed = [...this.claimedJobIds];
+    let released = 0;
+    if (claimed.length)
+      released = await mutate((state) =>
+        releaseContextProjectionLeasesInState(state, { holder: this.holder, jobIds: claimed, timestamp: now() })
+      ).catch(() => 0);
+    this.claimedJobIds.clear();
+    this.status.state = 'stopped';
+    this.status.heartbeat_at = now();
+    this.status.last_batch = { stopped: true, released, completed_at: this.status.heartbeat_at };
   }
 
   publicStatus() {
     return { ...this.status };
   }
 
-  async tick() {
-    if (this.running || this.stopped) return;
-    this.running = true;
+  tick() {
+    if (this.currentTick || this.stopped) return this.currentTick;
+    this.currentTick = this.runTick().finally(() => {
+      this.currentTick = null;
+    });
+    return this.currentTick;
+  }
+
+  async runTick() {
     const scheduledAt = Date.now();
     await new Promise((resolve) => setTimeout(resolve, 0));
     this.status.event_loop_lag_ms = Math.max(0, Date.now() - scheduledAt);
-    this.status.state = 'running';
     this.status.heartbeat_at = now();
+    this.status.state = 'running';
     try {
+      if (!(await hasRunnableContextProjectionJobs(this.status.heartbeat_at))) {
+        this.status.state = 'idle';
+        return;
+      }
       const claimed = await mutate((state) =>
         claimContextProjectionJobsInState(state, {
           holder: this.holder,
@@ -96,65 +126,73 @@ export class ContextProjectorCoordinator {
           timestamp: now()
         })
       );
-      if (!claimed.node_ids.length) {
-        if (!this.lastPersistedAt || Date.now() - this.lastPersistedAt >= 1_000)
-          await this.persistStatus({ claimed: 0, attempted: 0, materialized: 0, failed: 0 });
+      for (const job of claimed.jobs) this.claimedJobIds.add(job.job_id);
+      if (!claimed.jobs.length) {
+        if (claimed.recovered || claimed.superseded)
+          await this.persistStatus({
+            claimed: 0,
+            attempted: 0,
+            materialized: 0,
+            failed: 0,
+            recovered: claimed.recovered,
+            superseded: claimed.superseded
+          });
         return;
       }
-      const result = await mutate((state) =>
-        materializeContextDocumentsInState(state, {
-          nodeIds: claimed.node_ids,
-          maxJobs: this.batchSize,
-          leaseHolder: this.holder,
-          leaseMs: this.leaseMs,
-          renderer: (payload) => this.request('render', payload)
-        })
-      );
+
+      const snapshot = await readStateSnapshot(),
+        prepared = await Promise.all(
+          claimed.jobs.map(async (claim) => {
+            try {
+              const artifact = await prepareClaimedContextProjection(snapshot, claim, {
+                renderer: (payload) => this.request('render', payload)
+              });
+              return { artifact };
+            } catch (error) {
+              return { failure: { job_id: claim.job_id, node_id: claim.node_id, error } };
+            }
+          })
+        );
+      if (this.stopped) return;
+      const artifacts = prepared.map((item) => item.artifact).filter(Boolean),
+        failures = prepared.map((item) => item.failure).filter(Boolean),
+        result = await mutate((state) =>
+          finalizeClaimedContextProjectionsInState(state, {
+            holder: this.holder,
+            artifacts,
+            failures,
+            timestamp: now()
+          })
+        );
+      for (const job of claimed.jobs) this.claimedJobIds.delete(job.job_id);
       let index = null;
       if (result.materialized || result.reused) index = await this.rebuildIndex();
-      await this.persistStatus({ claimed: claimed.node_ids.length, ...result, index });
-      this.status.last_error_code = null;
+      await this.persistStatus({
+        claimed: claimed.jobs.length,
+        recovered: claimed.recovered,
+        ...result,
+        index
+      });
+      this.status.last_error_code = failures[0] ? safeCode(failures[0].error) : null;
+      if (failures.some((item) => /worker_(?:exited|failed|stopped)/.test(safeCode(item.error)))) this.restartWorker();
     } catch (error) {
+      if (this.stopped) return;
       this.status.last_error_code = safeCode(error);
+      this.status.state = 'failed';
       await this.persistStatus({ error_code: this.status.last_error_code }).catch(() => undefined);
       this.restartWorker();
     } finally {
       this.status.heartbeat_at = now();
-      this.running = false;
+      if (!this.stopped && this.status.state === 'running') this.status.state = 'idle';
     }
   }
 
   async rebuildIndex() {
-    const state = await readStateSnapshot(),
-      nodes = contextIndexableNodes(state.context_nodes),
-      snapshotHash = contextSearchIndexSnapshotHash(nodes),
-      documentVersions = state.context_document_versions.filter((version) =>
-        nodes.some((node) => node.current_version_id === version.id)
-      ),
-      documents = await Promise.all(
-        documentVersions.map(async (version) => ({
-          id: version.id,
-          markdown: (await readCasBlob(version.cas_ref)).toString('utf8')
-        }))
-      ),
-      rebuiltAt = now(),
-      built = await this.request('index', {
-        nodes: state.context_nodes,
-        documentVersions,
-        edges: state.context_edges,
-        documents,
-        snapshotHash,
-        rebuiltAt
-      });
-    await fsp.mkdir(CONTEXT_INDEX_DIR, { recursive: true, mode: 0o700 });
-    const temporary = `${INDEX_FILE}.${process.pid}.${Date.now()}.tmp`;
-    await fsp.writeFile(temporary, JSON.stringify(built.payload), { encoding: 'utf8', mode: 0o600 });
-    await fsp.rename(temporary, INDEX_FILE);
-    return { snapshot_hash: snapshotHash, rebuilt_at: rebuiltAt, node_count: built.node_count };
+    const built = await ensureContextSearchIndex(await readStateSnapshot());
+    return { ...built.status, changed: !built.reused };
   }
 
   async persistStatus(batch) {
-    this.lastPersistedAt = Date.now();
     this.status.last_batch = { ...batch, completed_at: now() };
     await mutate((state) => {
       const previous = state.context_projector_status || {},
@@ -178,10 +216,10 @@ export class ContextProjectorCoordinator {
         oldest_pending_age_ms: oldest ? Math.max(0, Date.now() - oldest) : 0,
         failed_jobs: state.context_projection_jobs.filter((item) => item.status === 'failed').length,
         recovered_expired_leases: Number(previous.recovered_expired_leases || 0) + Number(batch.recovered || 0),
-        index_generation: Number(previous.index_generation || 0) + (batch.index ? 1 : 0),
+        index_generation: Number(previous.index_generation || 0) + (batch.index?.changed ? 1 : 0),
         index: batch.index || previous.index || null,
         automatic_rebuild: batch.index ? 'completed' : batch.error_code ? 'failed' : 'idle',
-        last_error_code: batch.error_code || null,
+        last_error_code: batch.error_code || this.status.last_error_code || null,
         last_batch: this.status.last_batch
       };
       return state.context_projector_status;
@@ -189,16 +227,17 @@ export class ContextProjectorCoordinator {
   }
 
   ensureWorker() {
-    if (this.worker) return;
+    if (this.worker || this.stopped) return;
     const worker = new Worker(new URL('./context-projection-worker.mjs', import.meta.url));
+    worker.unref?.();
     this.worker = worker;
     this.status.worker_thread_id = worker.threadId;
     worker.on('message', (message) => {
-      const pending = this.pending.get(message.id);
-      if (!pending) return;
+      const operation = this.pending.get(message.id);
+      if (!operation) return;
       this.pending.delete(message.id);
-      if (message.ok) pending.resolve(message.value);
-      else pending.reject(workerError(message.error?.code, message.error?.message));
+      if (message.ok) operation.resolve(message.value);
+      else operation.reject(workerError(message.error?.code, message.error?.message));
     });
     worker.on('error', (error) => this.rejectWorker(error));
     worker.on('exit', (code) => {
@@ -213,6 +252,7 @@ export class ContextProjectorCoordinator {
 
   request(type, payload) {
     this.ensureWorker();
+    if (!this.worker) return Promise.reject(workerError('context_projection_worker_stopped'));
     const id = `${process.pid}:${++this.sequence}`;
     return new Promise((resolve, reject) => {
       this.pending.set(id, { resolve, reject });
@@ -221,7 +261,7 @@ export class ContextProjectorCoordinator {
   }
 
   rejectWorker(error) {
-    for (const pending of this.pending.values()) pending.reject(error);
+    for (const operation of this.pending.values()) operation.reject(error);
     this.pending.clear();
     this.status.last_error_code = safeCode(error);
   }
@@ -235,43 +275,75 @@ export class ContextProjectorCoordinator {
 }
 
 export function claimContextProjectionJobsInState(state, { holder, batchSize, leaseMs, timestamp }) {
-  let recovered = 0;
+  const instant = Date.parse(timestamp);
+  let recovered = 0,
+    superseded = 0;
   for (const job of state.context_projection_jobs.filter((item) => item.status === 'running')) {
-    if (Date.parse(job.lease?.expires_at || '') > Date.parse(timestamp)) continue;
+    if (Date.parse(job.lease?.expires_at || '') > instant) continue;
     Object.assign(job, {
       status: 'pending',
       lease: null,
       error_code: 'context_projection_lease_expired',
+      next_retry_at: null,
       updated_at: timestamp
     });
     recovered += 1;
   }
-  const jobs = state.context_projection_jobs
+  const candidates = state.context_projection_jobs
     .filter((item) => {
       const retryAt = Date.parse(item.next_retry_at || '');
       return (
         item.status === 'pending' ||
         (item.status === 'failed' &&
           Number(item.attempts || 0) < 3 &&
-          (!Number.isFinite(retryAt) || retryAt <= Date.now()))
+          (!Number.isFinite(retryAt) || retryAt <= instant))
       );
     })
     .sort(
       (left, right) =>
         String(left.created_at).localeCompare(String(right.created_at)) ||
         String(left.id).localeCompare(String(right.id))
-    )
-    .slice(0, batchSize);
-  for (const job of jobs) {
+    );
+  const claimed = [],
+    legacyJobOnlyState = state.context_nodes.length === 0;
+  for (const job of candidates) {
+    if (claimed.length >= batchSize) break;
+    const node = state.context_nodes.find((item) => item.id === job.node_id),
+      nodeGeneration = Number(node?.source_generation || 0),
+      expectedGeneration = Number.isInteger(job.expected_source_generation)
+        ? Number(job.expected_source_generation)
+        : nodeGeneration;
+    if (!Number.isInteger(job.expected_source_generation)) job.expected_source_generation = expectedGeneration;
+    if (
+      (!node && !legacyJobOnlyState) ||
+      (node && (node.source_hash !== job.expected_source_hash || nodeGeneration !== expectedGeneration))
+    ) {
+      Object.assign(job, {
+        status: 'superseded',
+        error_code: 'context_projection_job_superseded',
+        lease: null,
+        updated_at: timestamp,
+        completed_at: timestamp
+      });
+      superseded += 1;
+      continue;
+    }
     job.status = 'running';
+    job.attempts = Number(job.attempts || 0) + 1;
     job.lease = {
       holder,
       acquired_at: timestamp,
-      expires_at: new Date(Date.parse(timestamp) + leaseMs).toISOString()
+      expires_at: new Date(instant + leaseMs).toISOString()
     };
     job.updated_at = timestamp;
+    claimed.push({
+      job_id: job.id,
+      node_id: job.node_id,
+      expected_source_hash: job.expected_source_hash,
+      expected_source_generation: expectedGeneration
+    });
   }
-  return { node_ids: jobs.map((item) => item.node_id), recovered };
+  return { jobs: claimed, node_ids: claimed.map((item) => item.node_id), recovered, superseded };
 }
 
 function workerError(code, message = code) {

@@ -1,3 +1,4 @@
+import { cloneStateValue as structuredClone } from '../state-clone.mjs';
 import { HttpError } from '../http.mjs';
 import { addTrace, saveArtifact } from '../state.mjs';
 import { contextPackToMarkdown, estimateTokens, now } from '../../../../packages/shared/index.mjs';

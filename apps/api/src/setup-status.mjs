@@ -131,6 +131,8 @@ function githubStep({ githubReady, appConfigured, account, installations, select
 export function isSetupExempt(pathname) {
   if (
     pathname === '/health' ||
+    pathname === '/livez' ||
+    pathname === '/readyz' ||
     pathname === '/system/deployment' ||
     pathname === '/setup/status' ||
     pathname === '/setup/mode' ||

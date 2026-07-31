@@ -1,12 +1,12 @@
 import assert from 'node:assert/strict';
-import fs from 'node:fs';
-import { api, cleanup, makeFixture, startApi } from './v13-test-helpers.mjs';
+import { api, cleanup, makeFixture, openFixtureState, startApi } from './v13-test-helpers.mjs';
 
 const fixture = makeFixture('aiws-v19-exchange-flow-'),
   port = 4914;
-let server;
+let server, stateApi;
 try {
   server = await startApi({ port, home: fixture.home, ccSwitch: fixture.ccSwitch });
+  stateApi = await openFixtureState(fixture);
   const owner = (await api(port, '/account/me')).user;
   const headers = {
     'x-aiws-user-id': owner.id,
@@ -34,8 +34,6 @@ try {
     409,
     'exchange_source_project_mismatch'
   );
-  const stateFile = `${fixture.home}/data/state.json`;
-  const state = JSON.parse(fs.readFileSync(stateFile, 'utf8'));
   const targetOwner = {
     id: 'exchange-target-owner',
     display_name: 'Exchange Target Owner',
@@ -44,36 +42,37 @@ try {
     created_at: new Date().toISOString(),
     updated_at: new Date().toISOString()
   };
-  state.users.push(targetOwner);
-  state.projects.find((item) => item.id === target.project.id).owner_user_id = targetOwner.id;
-  Object.assign(
-    state.project_memberships.find((item) => item.project_id === target.project.id && item.user_id === owner.id),
-    { role: 'collaborator', status: 'revoked', revoked_at: new Date().toISOString() }
-  );
-  state.project_memberships.push({
-    id: 'exchange-target-owner-membership',
-    project_id: target.project.id,
-    user_id: targetOwner.id,
-    role: 'owner',
-    status: 'active',
-    source: 'test',
-    accepted_at: new Date().toISOString(),
-    created_at: new Date().toISOString(),
-    updated_at: new Date().toISOString()
+  await stateApi.mutate((state) => {
+    state.users.push(targetOwner);
+    state.projects.find((item) => item.id === target.project.id).owner_user_id = targetOwner.id;
+    Object.assign(
+      state.project_memberships.find((item) => item.project_id === target.project.id && item.user_id === owner.id),
+      { role: 'collaborator', status: 'revoked', revoked_at: new Date().toISOString() }
+    );
+    state.project_memberships.push({
+      id: 'exchange-target-owner-membership',
+      project_id: target.project.id,
+      user_id: targetOwner.id,
+      role: 'owner',
+      status: 'active',
+      source: 'test',
+      accepted_at: new Date().toISOString(),
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString()
+    });
+    state.assets.push({
+      id: 'exchange-asset',
+      project_id: source.project.id,
+      status: 'confirmed',
+      title: 'Accepted finding',
+      summary: 'A sanitized finding',
+      body: 'No local path',
+      evidence_refs: ['evidence:brief'],
+      current_version_id: null,
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString()
+    });
   });
-  state.assets.push({
-    id: 'exchange-asset',
-    project_id: source.project.id,
-    status: 'confirmed',
-    title: 'Accepted finding',
-    summary: 'A sanitized finding',
-    body: 'No local path',
-    evidence_refs: ['evidence:brief'],
-    current_version_id: null,
-    created_at: new Date().toISOString(),
-    updated_at: new Date().toISOString()
-  });
-  fs.writeFileSync(stateFile, `${JSON.stringify(state, null, 2)}\n`);
   const targetHeaders = {
     'x-aiws-user-id': targetOwner.id,
     'x-aiws-scopes': 'project:read project:write exchange:read exchange:write'
@@ -147,11 +146,11 @@ try {
     headers,
     201
   );
-  const expiredState = JSON.parse(fs.readFileSync(stateFile, 'utf8'));
-  expiredState.exchange_requests.find((item) => item.id === expiring.request.id).expires_at = new Date(
-    Date.now() - 1000
-  ).toISOString();
-  fs.writeFileSync(stateFile, `${JSON.stringify(expiredState, null, 2)}\n`);
+  await stateApi.mutate((state) => {
+    state.exchange_requests.find((item) => item.id === expiring.request.id).expires_at = new Date(
+      Date.now() - 1000
+    ).toISOString();
+  });
   await request(
     `/exchange-requests/${expiring.request.id}/approve`,
     'POST',
@@ -160,10 +159,9 @@ try {
     410,
     'exchange_request_expired'
   );
-  const persisted = JSON.parse(fs.readFileSync(stateFile, 'utf8'));
+  const persisted = await stateApi.readState();
   assert.equal(persisted.exchange_requests.find((item) => item.id === expiring.request.id).status, 'expired');
 
-  process.env.AIWS_HOME = fixture.home;
   const { apiRoutes } = await import('../../apps/api/src/api-routes.mjs');
   const { createApiRouteRegistry, executeRegistryOperation } =
     await import('../../apps/api/src/api-route-registry.mjs');
@@ -185,6 +183,7 @@ try {
   console.log('V1.9 REST/MCP Exchange request, Context Pack, revoke, and expiry flow passed');
 } finally {
   await server?.stop();
+  await stateApi?.checkpointAndCloseState().catch(() => undefined);
   cleanup(fixture.root);
 }
 

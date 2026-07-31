@@ -65,5 +65,6 @@ try {
   assert.equal(session.native_goal_snapshot, null);
   console.log('V1.75 Assist Goal adapter tests passed');
 } finally {
+  await import('../../apps/api/src/state.mjs').then((state) => state.checkpointAndCloseState()).catch(() => undefined);
   fs.rmSync(root, { recursive: true, force: true });
 }

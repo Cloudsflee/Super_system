@@ -6,6 +6,7 @@ const port = Number(process.env.AIWS_V19_WEBHOOK_PORT || process.env.AIWS_TEST_P
 const fixture = makeFixture('aiws-v19-webhook-');
 const webhookSecret = 'v19-delivery-webhook-secret';
 let server;
+let stateApi;
 
 try {
   server = await startApi({ port, home: fixture.home, ccSwitch: fixture.ccSwitch });
@@ -23,7 +24,7 @@ try {
 
   process.env.AIWS_HOME = fixture.home;
   process.env.NODE_ENV = 'test';
-  const stateApi = await import('../../apps/api/src/state.mjs');
+  stateApi = await import('../../apps/api/src/state.mjs');
   await stateApi.ensureRuntime();
   await stateApi.mutate(seedDeliveryState);
 
@@ -157,6 +158,7 @@ try {
   console.log('V1.9 GitHub Delivery webhook integration tests passed');
 } finally {
   await server?.stop();
+  await stateApi?.checkpointAndCloseState().catch(() => undefined);
   cleanup(fixture.root);
 }
 

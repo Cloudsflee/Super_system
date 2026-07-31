@@ -1,3 +1,4 @@
+import { cloneStateValue as structuredClone } from './state-clone.mjs';
 import fsp from 'node:fs/promises';
 import path from 'node:path';
 
@@ -263,7 +264,7 @@ export function validateState21(state) {
     throw migrationError('state_schema_not_21', { schema_version: state.schema_version ?? null });
   for (const collection of V21_COLLECTIONS)
     if (!Array.isArray(state[collection])) throw migrationError('state_collection_invalid', { collection });
-  validateState20({ ...structuredClone(state), schema_version: 20 });
+  validateState20({ ...state, schema_version: 20 });
   validateContextState(state, { sourceCollections: V21_SOURCE_COLLECTIONS });
   validateWorkflowProtocols(state);
   validateOutcomeCollections(state);
@@ -401,6 +402,7 @@ export function assertV21AppendOnly(before, after) {
     const nextById = new Map((after[collection] || []).map((item) => [item.id, item]));
     for (const item of before[collection] || []) {
       const next = nextById.get(item.id);
+      if (next === item) continue;
       if (!next || JSON.stringify(item) !== JSON.stringify(next))
         throw migrationError('v21_immutable_record_changed', { collection, id: item.id });
     }

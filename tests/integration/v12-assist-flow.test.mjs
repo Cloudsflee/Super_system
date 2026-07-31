@@ -20,6 +20,13 @@ const child = spawn(process.execPath, ['apps/api/server.mjs'], {
   env: { ...process.env, AIWS_PORT: String(port), AIWS_HOME: home, NODE_ENV: 'test', AIWS_BYPASS_SETUP: '1' },
   stdio: ['ignore', 'pipe', 'pipe']
 });
+let serverLog = '';
+child.stdout.on('data', (chunk) => {
+  serverLog += chunk;
+});
+child.stderr.on('data', (chunk) => {
+  serverLog += chunk;
+});
 
 await waitForServer();
 try {
@@ -189,7 +196,7 @@ async function api(route, method = 'GET', body, status = 200) {
     body: body === undefined ? undefined : JSON.stringify(body)
   });
   const data = await response.json();
-  assert.equal(response.status, status, `${route}: ${JSON.stringify(data)}`);
+  assert.equal(response.status, status, `${route}: ${JSON.stringify(data)}\n${serverLog}`);
   return data;
 }
 async function waitForServer() {

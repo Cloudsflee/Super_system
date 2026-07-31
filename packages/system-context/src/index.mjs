@@ -26,11 +26,7 @@ import {
   sanitizeContextFacts,
   uniqueBy
 } from './protocol.mjs';
-import {
-  cleanContextInline as cleanInline,
-  compareContextEdges as compareEdges,
-  contextDocumentRelationSnapshot
-} from './rendering.mjs';
+import { cleanContextInline as cleanInline, compareContextEdges as compareEdges } from './rendering.mjs';
 import {
   ensureUniqueIds,
   validateContainsTree,
@@ -39,6 +35,15 @@ import {
   validSha
 } from './validation.mjs';
 import { compareSelectionCandidates, isExplicitNode, normalizeCandidateRanks } from './selection-ranking.mjs';
+import {
+  buildProjectionIndexes,
+  captureProjectionSources,
+  mergeDesiredProjectionNodes,
+  retireDetachedProjectionNodes,
+  stableProjectionCoverage,
+  stageChangedProjectionNodes,
+  tombstoneMissingSourceNodes
+} from './projection-reconciliation.mjs';
 
 export * from './search-index.mjs';
 export { compactContextMap, contextDocumentRelationSnapshot, renderContextMarkdown } from './rendering.mjs';
@@ -76,105 +81,28 @@ export function reconcileContextProjectionState(
   const collections = sourceCollections.filter(
     (name) => !CONTEXT_INTERNAL_COLLECTIONS.includes(name) && Array.isArray(state[name])
   );
-  const priorNodes = new Map(state.context_nodes.map((node) => [node.id, node]));
-  const desiredNodes = buildDesiredNodes(state, collections, timestamp);
-  const activeSourceKeys = new Set();
-  let dirty = 0;
+  const priorNodeSources = captureProjectionSources(state.context_nodes),
+    desiredNodes = buildDesiredNodes(state, collections, timestamp),
+    activeSourceKeys = mergeDesiredProjectionNodes(state, desiredNodes);
+  tombstoneMissingSourceNodes(state, activeSourceKeys, timestamp);
+  retireDetachedProjectionNodes(state, desiredNodes, timestamp);
 
-  for (const desired of desiredNodes) {
-    const key =
-      desired.source_collection && desired.source_id ? `${desired.source_collection}:${desired.source_id}` : null;
-    if (key) activeSourceKeys.add(key);
-    const prior = priorNodes.get(desired.id);
-    if (prior) {
-      const currentVersionId = prior.current_version_id || null;
-      Object.assign(prior, desired, {
-        current_version_id: currentVersionId,
-        created_at: prior.created_at || desired.created_at
-      });
-    } else state.context_nodes.push(desired);
-  }
-
-  for (const node of state.context_nodes) {
-    if (!node.source_collection || !node.source_id || node.status === 'tombstone') continue;
-    if (activeSourceKeys.has(`${node.source_collection}:${node.source_id}`)) continue;
-    const sourceRecordHash = contextHash({
-      tombstone: true,
-      collection: node.source_collection,
-      id: node.source_id
-    });
-    Object.assign(node, {
-      kind: 'tombstone',
-      status: 'tombstone',
-      parent_id: null,
-      freshness: { ...(node.freshness || {}), status: 'superseded', tombstoned_at: timestamp },
-      source_record_hash: sourceRecordHash,
-      source_hash: sourceRecordHash,
-      updated_at: timestamp
-    });
-  }
-
-  const desiredIds = new Set(desiredNodes.map((node) => node.id));
-  const projectIds = new Set((state.projects || []).map((project) => String(project.id)));
-  for (const node of state.context_nodes) {
-    const retiredProjection = node.source_type === 'projection' && !desiredIds.has(node.id);
-    const orphanedResource =
-      node.source_type === 'resource' &&
-      ((node.project_id && !projectIds.has(String(node.project_id))) ||
-        (node.parent_id &&
-          !state.context_nodes.some((parent) => parent.id === node.parent_id && parent.status !== 'tombstone')));
-    if ((!retiredProjection && !orphanedResource) || node.status === 'tombstone') continue;
-    tombstoneContextNode(state, node, timestamp, retiredProjection ? 'projection_retired' : 'resource_orphaned');
-  }
-
-  const activeIds = new Set(state.context_nodes.filter((node) => node.status !== 'tombstone').map((node) => node.id));
-  const nodeById = new Map(state.context_nodes.map((node) => [node.id, node]));
-  const desiredEdges = buildDesiredEdges(state, activeIds, timestamp, nodeById);
+  const activeIds = new Set(state.context_nodes.filter((node) => node.status !== 'tombstone').map((node) => node.id)),
+    nodeById = new Map(state.context_nodes.map((node) => [node.id, node])),
+    desiredEdges = buildDesiredEdges(state, activeIds, timestamp, nodeById);
   state.context_edges = mergeCurrentEdges(state.context_edges, desiredEdges);
-  const versionById = new Map(state.context_document_versions.map((version) => [version.id, version]));
-  const versionsByNode = new Map();
-  for (const version of state.context_document_versions) {
-    const versions = versionsByNode.get(version.node_id) || [];
-    versions.push(version);
-    versionsByNode.set(version.node_id, versions);
-  }
-  const jobsById = new Map(state.context_projection_jobs.map((job) => [job.id, job]));
-  const edgesByNode = new Map();
-  for (const edge of state.context_edges) {
-    for (const nodeId of [edge.source_node_id, edge.target_node_id]) {
-      const edges = edgesByNode.get(nodeId) || [];
-      edges.push(edge);
-      edgesByNode.set(nodeId, edges);
-    }
-  }
-  for (const node of state.context_nodes) {
-    const sourceRecordHash = node.source_record_hash || node.source_hash,
-      adjacentEdges = edgesByNode.get(node.id) || [],
-      relatedIds = new Set(
-        adjacentEdges
-          .flatMap((edge) => [edge.source_node_id, edge.target_node_id])
-          .filter((nodeId) => nodeId !== node.id)
-      ),
-      relatedNodes = [...relatedIds].map((nodeId) => nodeById.get(nodeId)).filter(Boolean),
-      relationSnapshot = contextDocumentRelationSnapshot(node, adjacentEdges, relatedNodes);
-    node.source_record_hash = sourceRecordHash;
-    node.source_hash = contextHash({ source_record_hash: sourceRecordHash, relations: relationSnapshot });
-    const currentVersion = versionById.get(node.current_version_id);
-    if (force || !currentVersion || currentVersion.source_hash !== node.source_hash) {
-      stageContextProjectionJob(state, node, timestamp, { jobsById, versionsByNode });
-      dirty += 1;
-    }
-  }
+  const indexes = buildProjectionIndexes(state, nodeById),
+    dirty = stageChangedProjectionNodes({
+      state,
+      indexes,
+      priorNodeSources,
+      timestamp,
+      force,
+      stageJob: stageContextProjectionJob
+    });
   const prunedJobs = compactContextProjectionJobs(state),
     warnings = coverageWarnings(state, collections);
-  state.context_projection_coverage = {
-    source_records: collections.reduce((count, name) => count + state[name].length, 0),
-    projected_records: state.context_nodes.filter((node) => node.source_collection && node.status !== 'tombstone')
-      .length,
-    tombstones: state.context_nodes.filter((node) => node.status === 'tombstone').length,
-    warnings,
-    checked_at: timestamp
-  };
+  state.context_projection_coverage = stableProjectionCoverage(state, collections, warnings, timestamp);
   return {
     dirty,
     pruned_jobs: prunedJobs,
@@ -412,6 +340,7 @@ export function assertContextImmutability(before, after, { allowDeletion = false
     const nextById = new Map((after[collection] || []).map((item) => [item.id, item]));
     for (const item of before[collection] || []) {
       const next = nextById.get(item.id);
+      if (next === item) continue;
       if ((!next && !allowDeletion) || (next && canonicalJson(item) !== canonicalJson(next)))
         throw contextError('context_immutable_record_changed', { collection, id: item.id });
     }
@@ -718,7 +647,7 @@ function mergeCurrentEdges(existing, desired) {
 }
 
 export function stageContextProjectionJob(state, node, timestamp, indexes = null) {
-  const id = `ctxjob_${contextHash(`${node.id}:${node.source_hash}`).slice(0, 24)}`;
+  const id = `ctxjob_${contextHash(`${node.id}:${node.source_hash}:${Number(node.source_generation || 1)}`).slice(0, 24)}`;
   const jobsById = indexes?.jobsById || new Map(state.context_projection_jobs.map((job) => [job.id, job]));
   const versionsByNode =
     indexes?.versionsByNode ||
@@ -741,11 +670,17 @@ export function stageContextProjectionJob(state, node, timestamp, indexes = null
   }
   const existing = jobsById.get(id);
   if (existing?.status === 'failed') return;
+  if (existing?.status === 'pending') {
+    if (!Number.isInteger(existing.expected_source_generation))
+      existing.expected_source_generation = Number(node.source_generation || 1);
+    return;
+  }
   if (existing?.status === 'running' && Date.parse(existing.lease?.expires_at || '') > Date.parse(timestamp)) return;
   const value = {
     id,
     node_id: node.id,
     expected_source_hash: node.source_hash,
+    expected_source_generation: Number(node.source_generation || 1),
     status: 'pending',
     attempts: Number(existing?.attempts || 0),
     error_code: null,
@@ -765,12 +700,19 @@ export function compactContextProjectionJobs(state) {
   ensureContextCollections(state);
   const nodeById = new Map(state.context_nodes.map((node) => [node.id, node])),
     completedByNode = new Map(),
-    retained = [];
+    activeByProjection = new Map();
   for (const job of state.context_projection_jobs) {
     const node = nodeById.get(job.node_id);
     if (!node || job.expected_source_hash !== node.source_hash || job.status === 'superseded') continue;
+    const generation = Number.isInteger(job.expected_source_generation)
+      ? Number(job.expected_source_generation)
+      : Number(node.source_generation || 0);
+    if (!Number.isInteger(job.expected_source_generation)) job.expected_source_generation = generation;
+    if (generation !== Number(node.source_generation || 0)) continue;
     if (job.status !== 'completed') {
-      retained.push(job);
+      const key = `${job.node_id}:${job.expected_source_hash}:${generation}`,
+        prior = activeByProjection.get(key);
+      if (!prior || compareProjectionJobPriority(job, prior) < 0) activeByProjection.set(key, job);
       continue;
     }
     const prior = completedByNode.get(job.node_id);
@@ -782,27 +724,25 @@ export function compactContextProjectionJobs(state) {
     )
       completedByNode.set(job.node_id, job);
   }
-  const keep = new Set([...retained, ...completedByNode.values()].map((job) => job.id)),
+  const keep = new Set([...activeByProjection.values(), ...completedByNode.values()].map((job) => job.id)),
     before = state.context_projection_jobs.length;
   state.context_projection_jobs = state.context_projection_jobs.filter((job) => keep.has(job.id));
   return before - state.context_projection_jobs.length;
 }
 
-function tombstoneContextNode(state, node, timestamp, reason) {
-  const sourceRecordHash = contextHash({ tombstone: true, id: node.id, reason });
-  Object.assign(node, {
-    kind: 'tombstone',
-    status: 'tombstone',
-    parent_id: null,
-    freshness: { ...(node.freshness || {}), status: 'superseded', tombstoned_at: timestamp },
-    source_record_hash: sourceRecordHash,
-    source_hash: sourceRecordHash,
-    updated_at: timestamp
-  });
+function compareProjectionJobPriority(left, right) {
+  const priority = { running: 0, pending: 1, failed: 2 };
+  return (
+    (priority[left.status] ?? 9) - (priority[right.status] ?? 9) ||
+    String(right.updated_at || right.created_at || '').localeCompare(
+      String(left.updated_at || left.created_at || '')
+    ) ||
+    String(left.id).localeCompare(String(right.id))
+  );
 }
 
 function coverageWarnings(state, collections) {
-  const warnings = (state.context_resource_coverage?.warnings || []).map((item) => structuredClone(item));
+  const warnings = (state.context_resource_coverage?.warnings || []).map((item) => JSON.parse(JSON.stringify(item)));
   for (const collection of collections) {
     if (knownCollection(collection)) continue;
     if (state[collection].length)

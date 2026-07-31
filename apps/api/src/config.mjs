@@ -20,6 +20,7 @@ export const ATTACHMENT_DIR = path.join(AIWS_HOME, 'attachments');
 export const ATTACHMENT_TEMP_DIR = path.join(AIWS_HOME, 'attachment-staging');
 export const CONTEXT_INDEX_DIR = path.join(DATA_DIR, '.context-index');
 export const STATE_FILE = path.join(DATA_DIR, 'state.json');
+export const STATE_DB_FILE = path.join(DATA_DIR, 'state-v22.sqlite');
 export const WEB_SOURCE_DIR = path.join(ROOT, 'apps', 'web');
 export const WEB_DIST_DIR = path.join(WEB_SOURCE_DIR, 'dist');
 export const WEB_DIR = fs.existsSync(WEB_DIST_DIR) ? WEB_DIST_DIR : WEB_SOURCE_DIR;

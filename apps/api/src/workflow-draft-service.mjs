@@ -1,3 +1,4 @@
+import { cloneStateValue as structuredClone } from './state-clone.mjs';
 import { HttpError } from './http.mjs';
 import { id, now } from '../../../packages/shared/index.mjs';
 import { MAX_WORKFLOW_DRAFT_NODES } from './brief-workflow-domain.mjs';

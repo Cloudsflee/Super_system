@@ -1,3 +1,4 @@
+import { cloneStateValue as structuredClone } from './state-clone.mjs';
 import {
   EXECUTION_CHECKPOINT_SCHEMA,
   EXECUTION_STAGES,
@@ -25,7 +26,7 @@ export function executionIdentityInState(state, taskExecution, overrides = {}) {
       overrides.runner_image_digest ||
       workflowExecution?.executor_config?.runner_image_digest ||
       process.env.AIWS_CODEX_DOCKER_IMAGE ||
-      'aiws-codex-runner:2.1.0-codex-0.144.0',
+      'aiws-codex-runner:2.2.0-codex-0.144.0',
     policy_hash:
       overrides.policy_hash ||
       protocolHash({

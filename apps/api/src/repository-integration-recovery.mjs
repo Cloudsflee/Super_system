@@ -1,3 +1,4 @@
+import { cloneStateValue as structuredClone } from './state-clone.mjs';
 import { id, now } from '../../../packages/shared/index.mjs';
 import { addTrace, mutate, readState } from './state.mjs';
 import { HttpError, commandAsync } from './http.mjs';

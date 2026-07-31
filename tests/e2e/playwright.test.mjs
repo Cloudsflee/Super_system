@@ -4,7 +4,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { chromium } from '@playwright/test';
-import { createConfirmedProject, repositorySnapshot } from '../integration/v13-test-helpers.mjs';
+import { createConfirmedProject, openFixtureState, repositorySnapshot } from '../integration/v13-test-helpers.mjs';
 import {
   assertA11y,
   assertAssistHeader,
@@ -67,9 +67,11 @@ const sourceBefore = repositorySnapshot(repo),
     stdio: ['ignore', 'pipe', 'pipe']
   });
 let browser,
-  actorId = '';
+  actorId = '',
+  stateApi;
 try {
   await waitForServer();
+  stateApi = await openFixtureState({ home });
   actorId = (await api('/health')).local_owner.id;
   browser = await chromium.launch({ headless: true, ...browserExecutable() });
   const context = await browser.newContext({
@@ -147,6 +149,7 @@ try {
   await browser?.close();
   server.kill();
   await new Promise((resolve) => setTimeout(resolve, 200));
+  await stateApi?.checkpointAndCloseState().catch(() => undefined);
   fs.rmSync(home, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 });
 }
 async function configureWorkspace() {
@@ -206,8 +209,8 @@ async function configureWorkspace() {
     }
   });
   await waitForTurn(visualTurn.id, 'completed');
-  seedV17AssistVisualState({
-    stateFile: path.join(home, 'data', 'state.json'),
+  await seedV17AssistVisualState({
+    stateApi,
     assistSessionId,
     visualTurnId: visualTurn.id
   });

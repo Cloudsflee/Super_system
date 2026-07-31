@@ -16,13 +16,18 @@ git(source, ['add', '.']);
 git(source, ['commit', '-m', 'baseline']);
 const fakeCodex = path.resolve('tests/fixtures/fake-codex-app-server-v15.mjs');
 const serverEnv = { AIWS_CODEX_BIN: fakeCodex, AIWS_CODEX_VERSION: '0.144.0' };
-const stateFile = path.join(fixture.home, 'data', 'state.json');
 const port = Number(process.env.AIWS_TEST_PORT || 4616),
   baseUrl = `http://127.0.0.1:${port}`;
 let server;
+let stateApi;
+let profileHomePath;
 
 try {
   server = await startApi({ port, home: fixture.home, ccSwitch: fixture.ccSwitch, env: serverEnv });
+  process.env.AIWS_HOME = fixture.home;
+  process.env.NODE_ENV = 'test';
+  stateApi = await import('../../apps/api/src/state.mjs');
+  await stateApi.ensureRuntime();
   const project = await createConfirmedProject({
     baseUrl,
     title: 'V1.6 files',
@@ -38,7 +43,8 @@ try {
     { name: 'V1.6 fixture', provider: 'openai', model: 'gpt-v15-native', reasoning: 'high', mounts: [] },
     201
   );
-  updateState((state) => {
+  profileHomePath = profile.codex_home;
+  await updateState((state) => {
     for (const item of state.codex_profiles) item.is_active = item.id === profile.id;
     Object.assign(
       state.codex_profiles.find((item) => item.id === profile.id),
@@ -189,8 +195,8 @@ try {
   );
   assert.equal(forked.forked_from_session_id, sessionId);
   assert.notEqual(forked.codex_thread_id, 'fake-native-thread-v15');
-  const beforeFailedFork = readState().assist_sessions.length;
-  updateState((state) => {
+  const beforeFailedFork = (await readState()).assist_sessions.length;
+  await updateState((state) => {
     state.assist_turns.find((item) => item.id === referenceTurn.id).codex_turn_id = 'fork-failure-turn';
   });
   await fetchJson(
@@ -199,8 +205,8 @@ try {
     502,
     'assist_native_fork_failed'
   );
-  assert.equal(readState().assist_sessions.length, beforeFailedFork);
-  updateState((state) => {
+  assert.equal((await readState()).assist_sessions.length, beforeFailedFork);
+  await updateState((state) => {
     state.assist_turns.find((item) => item.id === referenceTurn.id).codex_turn_id = referenceDone.codex_turn_id;
   });
   const child = await api(port, `/assist/v3/sessions/${forked.id}/fork`, 'POST', { title: 'Nested branch' }, 201);
@@ -243,7 +249,7 @@ try {
     (await waitForTurn(slow.id, (item) => item.status === 'completed')).output_text,
     'native slow turn completed'
   );
-  assert.equal(fs.readFileSync(stateFile, 'utf8').includes('BTW_MEMORY_ONLY_QUESTION'), false);
+  assertStateFilesExclude('BTW_MEMORY_ONLY_QUESTION');
   assert.match(await deleteBtwThroughSse(createdBtw.data.id, createdBtw.data.access_token), /event: closed/);
 
   await fetchJson(
@@ -261,7 +267,7 @@ try {
     409,
     'assist_session_scope_mismatch'
   );
-  const durableBeforeScopedBtw = readState(),
+  const durableBeforeScopedBtw = await readState(),
     protocolBeforeScopedBtw = protocolMessages().length;
   const scopedBtw = await fetchJson(
     '/assist/v3/btw',
@@ -313,7 +319,7 @@ try {
     { method: 'DELETE', headers: { 'x-aiws-btw-token': scopedBtw.data.access_token } },
     200
   );
-  const durableAfterScopedBtw = readState();
+  const durableAfterScopedBtw = await readState();
   assert.deepEqual(
     durableAfterScopedBtw.assist_sessions.map((item) => item.id),
     durableBeforeScopedBtw.assist_sessions.map((item) => item.id)
@@ -344,6 +350,7 @@ try {
   console.log('V1.6 Assist files and native Fork integration tests passed');
 } finally {
   await server?.stop();
+  await stateApi?.checkpointAndCloseState().catch(() => undefined);
   if (process.env.AIWS_KEEP_V16_FIXTURE !== '1') cleanup(fixture.root);
   else console.error(`fixture:${fixture.root}`);
 }
@@ -424,24 +431,26 @@ async function deleteBtwThroughSse(id, token) {
     controller.abort();
   }
 }
-function readState() {
-  return JSON.parse(fs.readFileSync(stateFile, 'utf8'));
+async function readState() {
+  return stateApi.readState();
 }
 function updateState(change) {
-  const state = readState();
-  change(state);
-  fs.writeFileSync(stateFile, JSON.stringify(state, null, 2));
+  return stateApi.mutate(change);
 }
 function protocolMessages() {
   return fs
-    .readFileSync(path.join(profileHome(), 'fake-protocol.jsonl'), 'utf8')
+    .readFileSync(path.join(profileHomePath, 'fake-protocol.jsonl'), 'utf8')
     .trim()
     .split(/\r?\n/)
     .filter(Boolean)
     .map(JSON.parse);
 }
-function profileHome() {
-  return readState().codex_profiles.find((item) => item.name === 'V1.6 fixture').codex_home;
+function assertStateFilesExclude(value) {
+  const needle = Buffer.from(value);
+  for (const name of ['state.json', 'state-v22.sqlite', 'state-v22.sqlite-wal']) {
+    const file = path.join(fixture.home, 'data', name);
+    if (fs.existsSync(file)) assert.equal(fs.readFileSync(file).includes(needle), false, `${name} contains ${value}`);
+  }
 }
 function git(cwd, args) {
   const result = spawnSync('git', args, { cwd, encoding: 'utf8' });

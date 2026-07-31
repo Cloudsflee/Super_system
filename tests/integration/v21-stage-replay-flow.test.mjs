@@ -8,9 +8,10 @@ const root = fs.mkdtempSync(path.join(os.tmpdir(), 'aiws-v21-stage-replay-'));
 process.env.AIWS_HOME = path.join(root, 'home');
 process.env.NODE_ENV = 'test';
 process.env.AIWS_TEST_ADAPTERS = '1';
+let stateService;
 
 try {
-  const stateService = await import('../../apps/api/src/state.mjs');
+  stateService = await import('../../apps/api/src/state.mjs');
   const { managedProjectRoot, managedRepoPath } = await import('../../apps/api/src/managed-workspace.mjs');
   const { applyWorkflowOutcomeProtocols } = await import('../../apps/api/src/workflow-outcome-definition.mjs');
   const { createWorkflowExecutionInState } = await import('../../apps/api/src/workflow-execution-domain.mjs');
@@ -52,7 +53,7 @@ try {
     execution = state.task_executions.find((item) => item.id === taskExecutionId),
     stages = state.execution_stage_checkpoints.filter((item) => item.task_execution_id === taskExecutionId);
   assert.equal(execution.status, 'failed');
-  assert.equal(execution.current_stage, 'verify');
+  assert.equal(execution.current_stage, 'verify', JSON.stringify(execution));
   assert.equal(execution.failure?.code, 'verifier_injected_failure');
   assert.deepEqual(
     stages.map((item) => [item.stage, item.status]),
@@ -112,6 +113,7 @@ try {
 
   console.log('V2.1 verifier failure replayed verify only with one Runner invocation and completed finalization');
 } finally {
+  await stateService?.checkpointAndCloseState().catch(() => undefined);
   fs.rmSync(root, { recursive: true, force: true });
 }
 

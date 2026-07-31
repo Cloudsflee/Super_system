@@ -91,6 +91,7 @@ export async function createMcpTestFixture(
     await waitForHealth(port, child, () => logs);
   } catch (error) {
     await stopChild(child);
+    await stateApi.checkpointAndCloseState().catch(() => undefined);
     globalThis.fetch = originalFetch;
     restoreEnvironment(previousEnvironment);
     fs.rmSync(root, { recursive: true, force: true });
@@ -148,6 +149,7 @@ export async function createMcpTestFixture(
     async close({ remove = true } = {}) {
       for (const connection of [...connections]) await connection.close();
       await stopChild(child);
+      await stateApi.checkpointAndCloseState().catch(() => undefined);
       globalThis.fetch = originalFetch;
       restoreEnvironment(previousEnvironment);
       if (remove) fs.rmSync(root, { recursive: true, force: true });

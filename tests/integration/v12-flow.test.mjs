@@ -44,16 +44,20 @@ child.stderr.on('data', (chunk) => {
 
 await waitForServer();
 try {
-  const stateFile = path.join(home, 'data', 'state.json');
-  const legacyState = JSON.parse(fs.readFileSync(stateFile, 'utf8'));
-  legacyState.connected_accounts.push({
-    id: 'legacy-demo',
-    user_id: legacyState.users[0].id,
-    provider: 'github',
-    login: 'aiws-oauth-demo',
-    status: 'connected'
-  });
-  fs.writeFileSync(stateFile, JSON.stringify(legacyState), 'utf8');
+  process.env.AIWS_HOME = home;
+  process.env.NODE_ENV = 'test';
+  const stateApi = await import('../../apps/api/src/state.mjs');
+  await stateApi.ensureRuntime();
+  await stateApi.mutate((state) =>
+    state.connected_accounts.push({
+      id: 'legacy-demo',
+      user_id: state.users[0].id,
+      provider: 'github',
+      login: 'aiws-oauth-demo',
+      status: 'connected'
+    })
+  );
+  await stateApi.checkpointAndCloseState();
   const initial = await api('/setup/status');
   assert.equal(initial.complete, false);
   assert.equal(initial.steps.github.checks.account_connected, false);
@@ -311,10 +315,17 @@ try {
   assert.equal(duplicate.duplicate, true);
   await api('/projects', {}, 403);
   await api('/demo/full-chain', {}, 404);
-  const rawState = fs.readFileSync(path.join(home, 'data', 'state.json'), 'utf8');
+  const stateFiles = ['state.json', 'state-v22.sqlite', 'state-v22.sqlite-wal']
+    .map((name) => path.join(home, 'data', name))
+    .filter(fs.existsSync)
+    .map((file) => fs.readFileSync(file));
   const artifactText = readTree(path.join(home, 'artifacts'));
   for (const secret of [...Object.values(secrets), 'sk-v12-unique-api-key', 'test-access-token']) {
-    assert.equal(rawState.includes(secret), false, `state/Trace masks ${secret}`);
+    assert.equal(
+      stateFiles.some((contents) => contents.includes(Buffer.from(secret))),
+      false,
+      `state/Trace masks ${secret}`
+    );
     assert.equal(artifactText.includes(secret), false, `artifact masks ${secret}`);
     assert.equal(serverLog.includes(secret), false, `logs mask ${secret}`);
   }

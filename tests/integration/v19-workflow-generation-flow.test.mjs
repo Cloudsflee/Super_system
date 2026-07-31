@@ -235,6 +235,7 @@ try {
 
   console.log('V1.9 asynchronous workflow generation integration tests passed');
 } finally {
+  await import('../../apps/api/src/state.mjs').then((state) => state.checkpointAndCloseState()).catch(() => undefined);
   fs.rmSync(root, { recursive: true, force: true });
 }
 

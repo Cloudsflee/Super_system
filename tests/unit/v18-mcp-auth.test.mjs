@@ -181,5 +181,6 @@ try {
   );
   console.log('V1.8 MCP auth and schema unit tests passed');
 } finally {
+  await import('../../apps/api/src/state.mjs').then((state) => state.checkpointAndCloseState()).catch(() => undefined);
   fs.rmSync(root, { recursive: true, force: true });
 }

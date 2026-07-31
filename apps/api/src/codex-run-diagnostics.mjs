@@ -1,3 +1,4 @@
+import { cloneStateValue as structuredClone } from './state-clone.mjs';
 import { redactKnownSecretsSync } from './vault.mjs';
 
 export function createCodexRunError(run, { failureCode, timeoutCode }) {

@@ -164,6 +164,159 @@ export async function materializeContextDocumentsInState(
   return result;
 }
 
+export async function prepareClaimedContextProjection(state, claim, { casRoot = CAS_DIR, renderer = null } = {}) {
+  const node = state.context_nodes.find((item) => item.id === claim.node_id);
+  if (
+    !node ||
+    node.source_hash !== claim.expected_source_hash ||
+    Number(node.source_generation || 0) !== Number(claim.expected_source_generation || 0)
+  )
+    throw projectionError('context_projection_source_changed_before_render');
+  const sourceRecord = node.source_collection
+    ? state[node.source_collection]?.find(
+        (item) => contextSourceRecordId(node.source_collection, item) === String(node.source_id)
+      ) || null
+    : null;
+  if (node.status !== 'tombstone' && node.source_collection && !sourceRecord)
+    throw projectionError('context_projection_source_missing');
+  const record = await resolveContextProjectionRecord(state, node, sourceRecord, { casRoot }),
+    edges = state.context_edges.filter((edge) => edge.source_node_id === node.id || edge.target_node_id === node.id),
+    relatedIds = new Set(
+      edges.flatMap((edge) => [edge.source_node_id, edge.target_node_id]).filter((id) => id !== node.id)
+    ),
+    relatedNodes = state.context_nodes.filter((item) => relatedIds.has(item.id)),
+    rendered = renderer
+      ? await renderer({ node, record, edges, relatedNodes })
+      : { markdown: renderContextMarkdown({ node, record, edges, relatedNodes }) },
+    markdown = await redactKnownSecrets(rendered.markdown),
+    contentSha256 = contextHash(Buffer.from(markdown, 'utf8')),
+    versionId = `ctxver_${contextHash(`${node.id}:${node.source_hash}:${contentSha256}`).slice(0, 24)}`,
+    blob = await writeCasBlob(Buffer.from(markdown, 'utf8'), {
+      casRoot,
+      mediaType: 'text/markdown; charset=utf-8',
+      expectedSha256: contentSha256
+    }),
+    sanitized = sanitizeContextFacts(record || {});
+  return {
+    job_id: claim.job_id,
+    node_id: node.id,
+    expected_source_hash: claim.expected_source_hash,
+    expected_source_generation: Number(claim.expected_source_generation || 0),
+    version: {
+      id: versionId,
+      node_id: node.id,
+      renderer_version: CONTEXT_RENDERER_VERSION,
+      source_hash: node.source_hash,
+      source_generation: Number(node.source_generation || 0),
+      markdown_hash: contentSha256,
+      content_sha256: contentSha256,
+      cas_ref: blob,
+      size_bytes: blob.size_bytes,
+      media_type: blob.media_type,
+      token_estimate: estimateTokens(markdown),
+      deterministic_summary: node.deterministic_summary,
+      redactions: sanitized.redactions,
+      immutable: true,
+      retained_until: null
+    }
+  };
+}
+
+export function finalizeClaimedContextProjectionsInState(
+  state,
+  { holder, artifacts = [], failures = [], timestamp = now() }
+) {
+  const result = {
+    attempted: artifacts.length + failures.length,
+    materialized: 0,
+    reused: 0,
+    failed: 0,
+    superseded: 0,
+    failures: []
+  };
+  for (const artifact of artifacts) {
+    const job = state.context_projection_jobs.find((item) => item.id === artifact.job_id),
+      node = state.context_nodes.find((item) => item.id === artifact.node_id);
+    if (!leaseOwnedBy(job, holder)) continue;
+    if (
+      !node ||
+      node.source_hash !== artifact.expected_source_hash ||
+      Number(node.source_generation || 0) !== Number(artifact.expected_source_generation || 0) ||
+      job.expected_source_hash !== artifact.expected_source_hash ||
+      Number(job.expected_source_generation || 0) !== Number(artifact.expected_source_generation || 0)
+    ) {
+      Object.assign(job, {
+        status: 'superseded',
+        error_code: 'context_projection_job_superseded',
+        updated_at: timestamp,
+        completed_at: timestamp,
+        lease: null
+      });
+      result.superseded += 1;
+      continue;
+    }
+    let version = state.context_document_versions.find((item) => item.id === artifact.version.id);
+    if (!version) {
+      const versionNumber =
+        state.context_document_versions
+          .filter((item) => item.node_id === node.id)
+          .reduce((maximum, item) => Math.max(maximum, Number(item.version || 0)), 0) + 1;
+      version = { ...artifact.version, version: versionNumber, created_at: timestamp };
+      state.context_document_versions.push(version);
+      result.materialized += 1;
+    } else result.reused += 1;
+    node.current_version_id = version.id;
+    node.updated_at = timestamp;
+    Object.assign(job, {
+      status: 'completed',
+      error_code: null,
+      next_retry_at: null,
+      updated_at: timestamp,
+      completed_at: timestamp,
+      lease: null
+    });
+  }
+  for (const failure of failures) {
+    const job = state.context_projection_jobs.find((item) => item.id === failure.job_id);
+    if (!leaseOwnedBy(job, holder)) continue;
+    const errorCode = safeErrorCode(failure.error);
+    Object.assign(job, {
+      status: 'failed',
+      error_code: errorCode,
+      next_retry_at: new Date(
+        Date.parse(timestamp) + Math.min(60_000, 1000 * 2 ** Number(job.attempts || 1))
+      ).toISOString(),
+      updated_at: timestamp,
+      completed_at: null,
+      lease: null
+    });
+    result.failed += 1;
+    result.failures.push({ job_id: job.id, node_id: job.node_id, error_code: errorCode });
+  }
+  return result;
+}
+
+export function releaseContextProjectionLeasesInState(
+  state,
+  { holder, jobIds = null, timestamp = now(), errorCode = 'context_projection_shutdown_interrupted' }
+) {
+  const selected = jobIds ? new Set(jobIds) : null;
+  let released = 0;
+  for (const job of state.context_projection_jobs) {
+    if (!leaseOwnedBy(job, holder) || (selected && !selected.has(job.id))) continue;
+    Object.assign(job, {
+      status: 'pending',
+      lease: null,
+      error_code: errorCode,
+      next_retry_at: null,
+      completed_at: null,
+      updated_at: timestamp
+    });
+    released += 1;
+  }
+  return released;
+}
+
 export function collectProjectionFailures(
   state,
   { nodeIds = null, projectId = null, allowedProjectIds = null, allowedSystemNodeIds = null } = {}
@@ -246,6 +399,10 @@ function safeErrorCode(error) {
   return /^[a-z0-9_.-]{1,120}$/i.test(String(error?.code || ''))
     ? String(error.code)
     : 'context_projection_materialization_failed';
+}
+
+function leaseOwnedBy(job, holder) {
+  return Boolean(job && job.status === 'running' && job.lease?.holder === holder);
 }
 
 function nodeMatchesProjectionScope(node, { projectId, allowedProjects, allowedSystemNodes }) {

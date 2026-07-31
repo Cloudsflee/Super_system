@@ -1,3 +1,4 @@
+import { cloneStateValue as structuredClone } from './state-clone.mjs';
 import { createHash } from 'node:crypto';
 import { id } from '../../../packages/shared/index.mjs';
 import { normalizeWorkflowHierarchyNodes } from './workflow-hierarchy-domain.mjs';

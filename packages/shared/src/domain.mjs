@@ -191,8 +191,8 @@ export function defaultContractForNode(node, project, actorId, status = 'draft')
     version: 1,
     contract_schema_version: 2,
     node_goal: node.goal || node.title,
-    expected_inputs: structuredClone(taskInputs),
-    expected_outputs: structuredClone(taskOutputs),
+    expected_inputs: JSON.parse(JSON.stringify(taskInputs)),
+    expected_outputs: JSON.parse(JSON.stringify(taskOutputs)),
     acceptance_criteria: [
       '输出必须与项目目标直接相关，并说明证据来源。',
       '所有长期事实必须先作为资产候选，再由用户确认。',

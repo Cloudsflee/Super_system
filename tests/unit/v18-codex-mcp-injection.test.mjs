@@ -100,5 +100,6 @@ try {
   console.log('V1.8 Codex MCP injection unit tests passed');
 } finally {
   delete process.env.AIWS_INTERNAL_MCP_URL;
+  await import('../../apps/api/src/state.mjs').then((state) => state.checkpointAndCloseState()).catch(() => undefined);
   fs.rmSync(root, { recursive: true, force: true });
 }

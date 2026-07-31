@@ -1,10 +1,7 @@
-import fsp from 'node:fs/promises';
-
 import { HttpError } from './http.mjs';
-import { STATE_FILE } from './config.mjs';
 import { prepareRepositoryIntegration } from './repository-integration-service.mjs';
 import { provisionWorkflowRepositoryLines } from './repository-line-service.mjs';
-import { mutate, readState } from './state.mjs';
+import { mutate, readState, readStateSnapshot, subscribeStateRevision } from './state.mjs';
 import { notUsedContextDispositions } from './task-handoff.mjs';
 import { deterministicInputEffects } from './task-effects.mjs';
 import {
@@ -24,21 +21,19 @@ import {
 import { scheduleWorkflowFinalization } from './workflow-finalization-service.mjs';
 
 const pumps = new Map();
-let sweepTimer = null;
-let lastSweepMtimeMs = null;
+let unsubscribeRevision = null;
 
-export function startWorkflowDispatcher({ intervalMs = 1_000 } = {}) {
-  if (sweepTimer) return () => stopWorkflowDispatcher();
+export function startWorkflowDispatcher() {
+  if (unsubscribeRevision) return () => stopWorkflowDispatcher();
   void scheduleAllActiveWorkflowExecutions();
-  sweepTimer = setInterval(() => void scheduleAllActiveWorkflowExecutions(), Math.max(250, intervalMs));
-  sweepTimer.unref?.();
+  unsubscribeRevision = subscribeStateRevision(({ state }) => void scheduleAllActiveWorkflowExecutions(state));
   return () => stopWorkflowDispatcher();
 }
 
-export function stopWorkflowDispatcher() {
-  if (sweepTimer) clearInterval(sweepTimer);
-  sweepTimer = null;
-  lastSweepMtimeMs = null;
+export async function stopWorkflowDispatcher() {
+  unsubscribeRevision?.();
+  unsubscribeRevision = null;
+  await Promise.allSettled([...pumps.values()]);
 }
 
 export function scheduleWorkflowExecution(workflowExecutionId) {
@@ -245,11 +240,8 @@ async function resumeMergedIntegrations(workflowExecutionId) {
   }
 }
 
-async function scheduleAllActiveWorkflowExecutions() {
-  const metadata = await fsp.stat(STATE_FILE).catch(() => null);
-  if (!metadata || metadata.mtimeMs === lastSweepMtimeMs) return;
-  lastSweepMtimeMs = metadata.mtimeMs;
-  const state = await readState().catch(() => null);
+async function scheduleAllActiveWorkflowExecutions(snapshot = null) {
+  const state = snapshot || (await readStateSnapshot().catch(() => null));
   for (const item of state?.workflow_executions || [])
     if (item.status === 'running') scheduleWorkflowExecution(item.id);
 }

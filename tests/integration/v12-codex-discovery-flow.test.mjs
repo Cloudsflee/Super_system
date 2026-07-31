@@ -57,6 +57,7 @@ const child = spawn(process.execPath, ['--disable-warning=ExperimentalWarning', 
   stdio: ['ignore', 'pipe', 'pipe']
 });
 let log = '';
+let stateApi;
 child.stdout.on('data', (chunk) => {
   log += chunk;
 });
@@ -180,15 +181,23 @@ try {
   assert.equal(fs.existsSync(managedAuthFile), true);
   assert.equal(JSON.parse(fs.readFileSync(managedAuthFile, 'utf8')).tokens.refresh_token, oauthRefresh);
   assert.equal(fs.readFileSync(importedOfficial.profile.config_file, 'utf8').includes(oauthAccess), false);
-  const stateFile = path.join(home, 'data', 'state.json'),
-    stateText = fs.readFileSync(stateFile, 'utf8');
+  const stateFiles = ['state.json', 'state-v22.sqlite', 'state-v22.sqlite-wal']
+    .map((name) => path.join(home, 'data', name))
+    .filter(fs.existsSync)
+    .map((file) => fs.readFileSync(file));
   for (const forbidden of [ccSecret, rotatedSecret, directSecret, manualSecret, oauthAccess, oauthRefresh, oauthId])
-    assert.equal(stateText.includes(forbidden), false);
-  const state = JSON.parse(stateText);
-  state.setup_states = [
-    { id: 'setup_owner', mode: 'byo', completed_at: new Date().toISOString(), updated_at: new Date().toISOString() }
-  ];
-  fs.writeFileSync(stateFile, JSON.stringify(state), 'utf8');
+    assert.equal(
+      stateFiles.some((contents) => contents.includes(Buffer.from(forbidden))),
+      false
+    );
+  process.env.AIWS_HOME = home;
+  process.env.NODE_ENV = 'test';
+  stateApi = await import('../../apps/api/src/state.mjs');
+  await stateApi.ensureRuntime();
+  await stateApi.mutate((state) => {
+    const timestamp = new Date().toISOString();
+    state.setup_states = [{ id: 'setup_owner', mode: 'byo', completed_at: timestamp, updated_at: timestamp }];
+  });
   await api(
     '/codex/discovery/import',
     'POST',
@@ -211,6 +220,7 @@ try {
 } finally {
   child.kill();
   await new Promise((resolve) => setTimeout(resolve, 150));
+  await stateApi?.checkpointAndCloseState().catch(() => undefined);
   fs.rmSync(root, { recursive: true, force: true });
 }
 

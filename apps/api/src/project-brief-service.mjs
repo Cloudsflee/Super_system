@@ -1,3 +1,4 @@
+import { cloneStateValue as structuredClone } from './state-clone.mjs';
 import { HttpError } from './http.mjs';
 import { id, now } from '../../../packages/shared/index.mjs';
 import { normalizeBriefContentV2, normalizeBriefSection, withDerivedFields } from './brief-workflow-domain.mjs';

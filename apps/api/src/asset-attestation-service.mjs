@@ -1,3 +1,4 @@
+import { cloneStateValue as structuredClone } from './state-clone.mjs';
 import { id, now } from '../../../packages/shared/index.mjs';
 import { createAssetRecord, createImmutableAssetVersion, verifyAssetVersionPayload } from './asset-cas.mjs';
 import { HttpError } from './http.mjs';

@@ -155,5 +155,6 @@ try {
   assert.equal(persisted.includes('plain_token'), false);
   console.log('V1.8 MCP security tests passed');
 } finally {
+  await import('../../apps/api/src/state.mjs').then((state) => state.checkpointAndCloseState()).catch(() => undefined);
   fs.rmSync(root, { recursive: true, force: true });
 }

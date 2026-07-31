@@ -7,7 +7,7 @@ export function contextStatusSnapshot(state, index, runtimeStatus) {
   );
   const persisted = state.context_projector_status || {};
   return {
-    schema_version: 21,
+    schema_version: Number(state.schema_version),
     protocol_version: 'aiws.system-context.v1',
     nodes: state.context_nodes.length,
     document_versions: state.context_document_versions.length,

@@ -293,6 +293,7 @@ try {
   assert.equal(state.workflow_executions.find((item) => item.id === started.workflow_execution.id).status, 'completed');
   console.log('V1.10 persistent DAG, CAS, same-SHA verification, and PR integration flow passed');
 } finally {
+  await import('../../apps/api/src/state.mjs').then((state) => state.checkpointAndCloseState()).catch(() => undefined);
   fs.rmSync(root, { recursive: true, force: true });
 }
 

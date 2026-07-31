@@ -808,6 +808,7 @@ try {
   console.log('V1.6 core unit tests passed');
 } finally {
   await btw?.closeAllAssistBtw('test-finished');
+  await import('../../apps/api/src/state.mjs').then((state) => state.checkpointAndCloseState()).catch(() => undefined);
   fs.rmSync(root, { recursive: true, force: true });
 }
 

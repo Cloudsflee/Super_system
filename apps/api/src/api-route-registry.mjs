@@ -1,3 +1,4 @@
+import { cloneStateValue as structuredClone } from './state-clone.mjs';
 import { randomUUID } from 'node:crypto';
 import { Readable, Writable } from 'node:stream';
 import { HttpError, normalizeErrorPayload, route as matchRoute } from './http.mjs';

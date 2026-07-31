@@ -1,12 +1,12 @@
 import assert from 'node:assert/strict';
-import { api, cleanup, makeFixture, startApi } from './v13-test-helpers.mjs';
-import fs from 'node:fs';
+import { api, cleanup, makeFixture, openFixtureState, startApi } from './v13-test-helpers.mjs';
 
 const fixture = makeFixture('aiws-v19-repository-exchange-'),
   port = 4913;
-let server;
+let server, stateApi;
 try {
   server = await startApi({ port, home: fixture.home, ccSwitch: fixture.ccSwitch });
+  stateApi = await openFixtureState(fixture);
   await api(port, '/setup/mode', 'PUT', { mode: 'byo' });
   await api(port, '/github/app-config/validate', 'POST', {
     adapter: 'test',
@@ -74,10 +74,11 @@ try {
   });
   assert.equal(deleted.repository.remote_state, 'deleted');
   await api(port, `/github/repositories/${canonicalId}`, 'DELETE', {}, 405, 'repository_direct_delete_forbidden');
-  const state = JSON.parse(fs.readFileSync(`${fixture.home}/data/state.json`, 'utf8'));
+  const state = await stateApi.readState();
   assert.equal(state.repository_deletion_intents.find((item) => item.id === intent.intent.id).status, 'executed');
   console.log('V1.9 repository deletion intent and remote reconciliation flow passed');
 } finally {
   await server?.stop();
+  await stateApi?.checkpointAndCloseState().catch(() => undefined);
   cleanup(fixture.root);
 }

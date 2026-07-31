@@ -1,3 +1,4 @@
+import { cloneStateValue as structuredClone } from './state-clone.mjs';
 import { assistCapability, assistCapabilityToolName, now } from '../../../packages/shared/index.mjs';
 import { HttpError } from './http.mjs';
 import { requireTurn } from './assist-v3-domain.mjs';

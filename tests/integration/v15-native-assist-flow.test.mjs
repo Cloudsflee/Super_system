@@ -23,12 +23,16 @@ git(source, ['commit', '-m', 'baseline']);
 const sourceBefore = repositorySnapshot(source);
 const fakeCodex = path.resolve('tests/fixtures/fake-codex-app-server-v15.mjs');
 const serverEnv = { AIWS_CODEX_BIN: fakeCodex, AIWS_CODEX_VERSION: '0.144.0' };
-const stateFile = path.join(fixture.home, 'data', 'state.json');
 const port = Number(process.env.AIWS_TEST_PORT || 4615);
 let server;
+let stateApi;
 
 try {
   server = await startApi({ port, home: fixture.home, ccSwitch: fixture.ccSwitch, env: serverEnv });
+  process.env.AIWS_HOME = fixture.home;
+  process.env.NODE_ENV = 'test';
+  stateApi = await import('../../apps/api/src/state.mjs');
+  await stateApi.ensureRuntime();
   const project = await createConfirmedProject({
     baseUrl: `http://127.0.0.1:${port}`,
     title: 'HIDDEN_V15_PROJECT_CONTEXT',
@@ -44,14 +48,19 @@ try {
     { name: 'Native fixture', provider: 'openai', model: 'gpt-initial', reasoning: 'high', mounts: [] },
     201
   );
-  const state = readState();
-  for (const item of state.codex_profiles) item.is_active = item.id === profile.id;
-  Object.assign(
-    state.codex_profiles.find((item) => item.id === profile.id),
-    { kind: 'host', timeout_ms: 20_000, model_catalog: null, model_catalog_required: true }
-  );
-  state.integration_statuses = state.integration_statuses.filter((item) => item.key !== 'codex_capabilities');
-  writeState(state);
+  await stateApi.mutate((state) => {
+    for (const item of state.codex_profiles) item.is_active = item.id === profile.id;
+    Object.assign(
+      state.codex_profiles.find((item) => item.id === profile.id),
+      {
+        kind: 'host',
+        timeout_ms: 20_000,
+        model_catalog: null,
+        model_catalog_required: true
+      }
+    );
+    state.integration_statuses = state.integration_statuses.filter((item) => item.key !== 'codex_capabilities');
+  });
 
   const catalog = await api(port, `/assist/v3/models?profile_id=${encodeURIComponent(profile.id)}`);
   assert.equal(catalog.source, 'codex_model_list');
@@ -102,7 +111,7 @@ try {
   });
   const planned = await waitForTurn(plan.id, (item) => item.status === 'completed');
   assert.match(planned.output_text, /native input answer:alpha/);
-  const planEvents = readState().assist_events.filter((item) => item.turn_id === plan.id);
+  const planEvents = (await readState()).assist_events.filter((item) => item.turn_id === plan.id);
   assert.equal(
     planEvents.some((item) => item.type === 'plan'),
     true
@@ -112,9 +121,9 @@ try {
     true
   );
 
-  const staleState = readState();
-  staleState.assist_sessions.find((item) => item.id === sessionId).codex_thread_id = 'missing-native-thread';
-  writeState(staleState);
+  await stateApi.mutate((state) => {
+    state.assist_sessions.find((item) => item.id === sessionId).codex_thread_id = 'missing-native-thread';
+  });
   const recoveredTurn = await api(
     port,
     `/assist/v3/sessions/${sessionId}/turns`,
@@ -124,7 +133,7 @@ try {
   );
   const recoveredDone = await waitForTurn(recoveredTurn.id, (item) => item.status === 'completed');
   assert.equal(recoveredDone.codex_thread_id, 'fake-native-thread-v15');
-  const recoveryEvents = readState().assist_events.filter((item) => item.turn_id === recoveredTurn.id);
+  const recoveryEvents = (await readState()).assist_events.filter((item) => item.turn_id === recoveredTurn.id);
   assert.equal(
     recoveryEvents.some((item) => item.type === 'status' && item.data.status === 'thread_recreated'),
     true
@@ -264,15 +273,13 @@ try {
   console.log('V1.5 native Assist integration tests passed');
 } finally {
   await server?.stop();
+  await stateApi?.checkpointAndCloseState().catch(() => undefined);
   if (process.env.AIWS_KEEP_V15_FIXTURE !== '1') cleanup(fixture.root);
   else console.error(`fixture:${fixture.root}`);
 }
 
-function readState() {
-  return JSON.parse(fs.readFileSync(stateFile, 'utf8'));
-}
-function writeState(value) {
-  fs.writeFileSync(stateFile, JSON.stringify(value, null, 2));
+async function readState() {
+  return stateApi.readState();
 }
 function createAdaptedTurn(sessionId, input) {
   return api(

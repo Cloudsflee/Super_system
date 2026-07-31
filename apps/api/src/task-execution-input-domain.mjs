@@ -1,3 +1,4 @@
+import { cloneStateValue as structuredClone } from './state-clone.mjs';
 export function executionInputEffectObligations(inputs) {
   return (inputs || []).map((input) => ({
     input_key: input.key,

@@ -27,7 +27,7 @@ function render(payload) {
   return { markdown, content_sha256: contextHash(Buffer.from(markdown, 'utf8')) };
 }
 
-async function index({ nodes, documentVersions, edges, documents, snapshotHash, rebuiltAt }) {
+async function index({ nodes, documentVersions, edges, documents, snapshotHash }) {
   const markdownByVersion = new Map(documents.map((item) => [item.id, item.markdown]));
   const built = await buildContextSearchIndex({
     nodes,
@@ -36,7 +36,7 @@ async function index({ nodes, documentVersions, edges, documents, snapshotHash, 
     readDocument: async (version) => markdownByVersion.get(version.id) || ''
   });
   return {
-    payload: serializeContextSearchIndex(built.index, { snapshotHash, rebuiltAt }),
+    payload: serializeContextSearchIndex(built.index, { snapshotHash }),
     node_count: built.documents.length
   };
 }

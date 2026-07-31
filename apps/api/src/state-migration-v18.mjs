@@ -1,3 +1,4 @@
+import { cloneStateValue as structuredClone } from './state-clone.mjs';
 import fsp from 'node:fs/promises';
 import path from 'node:path';
 import {
@@ -128,7 +129,7 @@ export function validateState18(state) {
     throw migrationError('state_schema_not_18', { schema_version: state.schema_version ?? null });
   for (const collection of V18_COLLECTIONS)
     if (!Array.isArray(state[collection])) throw migrationError('state_collection_invalid', { collection });
-  validateState17({ ...structuredClone(state), schema_version: 17 });
+  validateState17({ ...state, schema_version: 17 });
   for (const collection of [
     'workflow_generations',
     'workflow_generation_events',

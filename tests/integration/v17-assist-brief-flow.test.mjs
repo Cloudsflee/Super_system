@@ -7,9 +7,14 @@ const fixture = makeFixture('aiws-v17-flow-'),
   port = 4617,
   baseUrl = `http://127.0.0.1:${port}`;
 let server;
+let stateApi;
 
 try {
   server = await startApi({ port, home: fixture.home, ccSwitch: fixture.ccSwitch });
+  process.env.AIWS_HOME = fixture.home;
+  process.env.NODE_ENV = 'test';
+  stateApi = await import('../../apps/api/src/state.mjs');
+  await stateApi.ensureRuntime();
   const created = await api(
     port,
     '/projects',
@@ -759,6 +764,7 @@ try {
   console.log('V1.7 Assist, Brief, and Workflow integration tests passed');
 } finally {
   await server?.stop();
+  await stateApi?.checkpointAndCloseState().catch(() => undefined);
   cleanup(fixture.root);
 }
 
@@ -782,21 +788,20 @@ async function waitForLegacySession(id, status) {
 
 async function restartWithLifecycleOperation(operation) {
   await server.stop();
-  const stateFile = path.join(fixture.home, 'data', 'state.json'),
-    state = JSON.parse(fs.readFileSync(stateFile, 'utf8'));
-  const project = state.projects.find((item) => item.title === 'V1.7 Brief');
-  if (!project) throw new Error('restart fixture project missing');
-  project.lifecycle_operation = operation;
-  if (operation && !state.assets.some((item) => item.id === 'asset-lifecycle-blocked'))
-    state.assets.push({
-      id: 'asset-lifecycle-blocked',
-      project_id: project.id,
-      status: 'candidate',
-      title: 'Lifecycle candidate',
-      evidence_refs: ['fixture'],
-      created_at: new Date().toISOString(),
-      updated_at: new Date().toISOString()
-    });
-  fs.writeFileSync(stateFile, JSON.stringify(state, null, 2));
+  await stateApi.mutate((state) => {
+    const project = state.projects.find((item) => item.title === 'V1.7 Brief');
+    if (!project) throw new Error('restart fixture project missing');
+    project.lifecycle_operation = operation;
+    if (operation && !state.assets.some((item) => item.id === 'asset-lifecycle-blocked'))
+      state.assets.push({
+        id: 'asset-lifecycle-blocked',
+        project_id: project.id,
+        status: 'candidate',
+        title: 'Lifecycle candidate',
+        evidence_refs: ['fixture'],
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString()
+      });
+  });
   server = await startApi({ port, home: fixture.home, ccSwitch: fixture.ccSwitch });
 }

@@ -1,3 +1,4 @@
+import { cloneStateValue as structuredClone } from './state-clone.mjs';
 import { HttpError } from './http.mjs';
 import { assertProjectRead, assertProjectWrite, hashSnapshot, membershipFor } from './project-governance-v19.mjs';
 import { estimateTokens, id, now } from '../../../packages/shared/index.mjs';

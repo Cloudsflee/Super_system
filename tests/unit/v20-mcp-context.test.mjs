@@ -334,6 +334,7 @@ try {
 
   console.log('V2.0 MCP context tool and resource parity tests passed');
 } finally {
+  await import('../../apps/api/src/state.mjs').then((state) => state.checkpointAndCloseState()).catch(() => undefined);
   fs.rmSync(root, { recursive: true, force: true });
 }
 

@@ -1,3 +1,4 @@
+import { cloneStateValue as structuredClone } from './state-clone.mjs';
 export function executorForTask(task) {
   if (task?.execution_mode === 'manual' || task?.task_kind === 'manual') return 'manual';
   if (task?.task_kind === 'code') return 'repository_change';

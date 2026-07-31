@@ -1,3 +1,4 @@
+import { cloneStateValue as structuredClone } from './state-clone.mjs';
 import { randomUUID } from 'node:crypto';
 import { hashString, id, now } from '../../../packages/shared/index.mjs';
 import { HttpError } from './http.mjs';

@@ -1,3 +1,4 @@
+import { cloneStateValue as structuredClone } from './state-clone.mjs';
 import { randomBytes } from 'node:crypto';
 import { id, maskSecretsDeep, now } from '../../../packages/shared/index.mjs';
 import { HttpError } from './http.mjs';
