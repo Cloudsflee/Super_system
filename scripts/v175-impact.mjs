@@ -1,5 +1,6 @@
 import fs from 'node:fs';
 import path from 'node:path';
+import { collectImpactRange } from './impact-range.mjs';
 import {
   REPORT_ROOT,
   ROOT,
@@ -14,17 +15,14 @@ import {
   writeFileEnsured
 } from './v175-lib.mjs';
 
-export function collectImpact(base = process.env.AIWS_TEST_BASE_SHA || 'HEAD') {
-  const map = readJson('tests/v175/impact-map.json');
-  const verified = runCommandSync(['git', 'rev-parse', '--verify', `${base}^{commit}`]);
-  if (verified.status !== 0) throw new Error(`invalid base revision: ${base}`);
-  const changed = new Set();
-  if (base !== 'HEAD')
-    addGitNames(changed, ['git', 'diff', '--name-only', '--diff-filter=ACDMRTUXB', `${base}...HEAD`]);
-  addGitNames(changed, ['git', 'diff', '--name-only', '--diff-filter=ACDMRTUXB']);
-  addGitNames(changed, ['git', 'diff', '--cached', '--name-only', '--diff-filter=ACDMRTUXB']);
-  addGitNames(changed, ['git', 'ls-files', '--others', '--exclude-standard']);
-  const files = [...changed].sort(),
+export function collectImpact(
+  base = process.env.AIWS_TEST_BASE_SHA || 'HEAD',
+  head = process.env.AIWS_TEST_HEAD_SHA || null
+) {
+  const map = readJson('tests/v175/impact-map.json'),
+    exactRange = head ? collectImpactRange({ base, head }) : null,
+    changed = exactRange ? new Set(exactRange.files) : collectWorkingTreeFiles(base),
+    files = [...changed].sort(),
     classified = [],
     unclassified = [],
     ignored = [];
@@ -43,8 +41,8 @@ export function collectImpact(base = process.env.AIWS_TEST_BASE_SHA || 'HEAD') {
   const domains = [...new Set(classified.flatMap((item) => item.domains))].sort();
   return {
     version: map.version,
-    base,
-    head: gitText(['git', 'rev-parse', 'HEAD']),
+    base: exactRange?.base_sha || base,
+    head: exactRange?.head_sha || gitText(['git', 'rev-parse', 'HEAD']),
     files,
     classified,
     unclassified,
@@ -52,6 +50,18 @@ export function collectImpact(base = process.env.AIWS_TEST_BASE_SHA || 'HEAD') {
     domains,
     has_p0: classified.some((item) => item.priority === 'P0')
   };
+}
+
+function collectWorkingTreeFiles(base) {
+  const verified = runCommandSync(['git', 'rev-parse', '--verify', `${base}^{commit}`]);
+  if (verified.status !== 0) throw new Error(`invalid base revision: ${base}`);
+  const changed = new Set();
+  if (base !== 'HEAD')
+    addGitNames(changed, ['git', 'diff', '--name-only', '--diff-filter=ACDMRTUXB', `${base}...HEAD`]);
+  addGitNames(changed, ['git', 'diff', '--name-only', '--diff-filter=ACDMRTUXB']);
+  addGitNames(changed, ['git', 'diff', '--cached', '--name-only', '--diff-filter=ACDMRTUXB']);
+  addGitNames(changed, ['git', 'ls-files', '--others', '--exclude-standard']);
+  return changed;
 }
 
 function addGitNames(target, command) {

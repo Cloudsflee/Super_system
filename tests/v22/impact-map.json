@@ -19,7 +19,7 @@
     },
     {
       "domain": "gate",
-      "patterns": ["scripts/impact-range.mjs", "scripts/v22-*.mjs", "scripts/pre-push-gate.mjs", "scripts/gate-receipt-v22.mjs", ".githooks/**", ".github/**"],
+      "patterns": ["scripts/impact-range.mjs", "scripts/v18-contract.mjs", "scripts/v175-impact.mjs", "scripts/v22-*.mjs", "scripts/compat-pr-runner.mjs", "scripts/gate-scheduler.mjs", "scripts/pre-push-gate.mjs", "scripts/gate-receipt-v22.mjs", ".githooks/**", ".github/**"],
       "tests": ["V22-L0-IMPACT-004", "V22-L5-SECURITY-001"]
     },
     {

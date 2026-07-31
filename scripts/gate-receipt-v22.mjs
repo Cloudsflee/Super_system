@@ -10,13 +10,7 @@ import { protocolHash } from '../packages/execution-protocol/src/index.mjs';
 
 export const GATE_RECEIPT_SCHEMA = 'aiws.gate_receipt.v2';
 export const GATE_RECEIPT_VERSION = '2.2';
-export const DEFAULT_PRE_PUSH_GATES = Object.freeze([
-  'test:v175:pr',
-  'test:v18:pr',
-  'test:v20:pr',
-  'test:v21:pr',
-  'test:v22:pr'
-]);
+export const DEFAULT_PRE_PUSH_GATES = Object.freeze(['test:compat:pr']);
 
 const IDENTITY_FILES = Object.freeze([
   'package.json',
@@ -25,12 +19,22 @@ const IDENTITY_FILES = Object.freeze([
   'tests/v22/coverage-map.json',
   'tests/v22/impact-map.json',
   'tests/v22/suites.json',
+  'tests/v175/catalog.json',
+  'tests/v175/impact-map.json',
+  'tests/v175/suite-files.json',
+  'tests/v18/catalog.json',
+  'tests/v18/suites.json',
+  'tests/v20/catalog.json',
+  'tests/v20/suites.json',
+  'tests/v21/catalog.json',
+  'tests/v21/suites.json',
   'scripts/pre-push-gate.mjs',
+  'scripts/compat-pr-runner.mjs',
+  'scripts/gate-scheduler.mjs',
+  'scripts/impact-range.mjs',
+  'scripts/v18-contract.mjs',
+  'scripts/v175-impact.mjs',
   'scripts/v175-runner.mjs',
-  'scripts/v18-runner.mjs',
-  'scripts/v20-runner.mjs',
-  'scripts/v21-runner.mjs',
-  'scripts/v22-runner.mjs',
   'scripts/gate-receipt-v22.mjs'
 ]);
 const ENVIRONMENT_KEYS = Object.freeze([
@@ -38,8 +42,6 @@ const ENVIRONMENT_KEYS = Object.freeze([
   'AIWS_TEST_HEAD_SHA',
   'CI',
   'NODE_ENV',
-  'PATH',
-  'PATHEXT',
   'COMSPEC',
   'HOME',
   'USERPROFILE',
@@ -50,8 +52,7 @@ const ENVIRONMENT_KEYS = Object.freeze([
   'http_proxy',
   'https_proxy',
   'all_proxy',
-  'no_proxy',
-  'npm_config_registry'
+  'no_proxy'
 ]);
 
 export function buildGateIdentity(input) {
@@ -77,11 +78,7 @@ export function buildGateIdentity(input) {
 }
 
 export function environmentFingerprint(env = process.env) {
-  return protocolHash(
-    Object.fromEntries(
-      ENVIRONMENT_KEYS.map((key) => [key, Object.hasOwn(env, key) ? sha256(String(env[key] ?? '')) : null])
-    )
-  );
+  return protocolHash(Object.fromEntries(ENVIRONMENT_KEYS.map((key) => [key, fingerprintEnvironmentValue(key, env)])));
 }
 
 export function gateReceiptCacheAllowed({ mode = 'pre-push', externalEffects = 'none', env = process.env } = {}) {
@@ -243,6 +240,36 @@ function fileSha256(file) {
 }
 function sha256(value) {
   return createHash('sha256').update(value).digest('hex');
+}
+function fingerprintEnvironmentValue(key, env) {
+  let value;
+  if (key === 'HOME' || key === 'USERPROFILE') {
+    const home = environmentEntry(env, 'HOME'),
+      profile = environmentEntry(env, 'USERPROFILE');
+    if (!home.present && !profile.present) return null;
+    value = home.value || profile.value;
+  } else {
+    const entry = environmentEntry(env, key);
+    if (!entry.present) return null;
+    value = entry.value;
+  }
+  const normalized = ['HOME', 'USERPROFILE', 'COMSPEC'].includes(key)
+    ? normalizeEnvironmentPath(value)
+    : String(value ?? '');
+  return sha256(normalized);
+}
+function environmentEntry(env, key) {
+  if (Object.hasOwn(env, key)) return { present: true, value: env[key] };
+  if (process.platform === 'win32') {
+    const actual = Object.keys(env).find((candidate) => candidate.toLowerCase() === key.toLowerCase());
+    if (actual) return { present: true, value: env[actual] };
+  }
+  return { present: false, value: undefined };
+}
+function normalizeEnvironmentPath(value) {
+  let normalized = String(value || '').replaceAll('\\', '/');
+  if (/^\/[A-Za-z]\//.test(normalized)) normalized = `${normalized[1]}:${normalized.slice(2)}`;
+  return /^[A-Za-z]:\//.test(normalized) ? normalized.toLowerCase() : normalized;
 }
 function normalizeHash(value, minimum, maximum) {
   const hash = String(value || '').toLowerCase();

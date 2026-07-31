@@ -21,7 +21,8 @@ for (const [name, expected] of Object.entries({
   'test:v22:performance': 'scripts/v22-suite.mjs performance',
   'test:v22:pr': 'scripts/v22-runner.mjs pr',
   'test:v22:full': 'scripts/v22-runner.mjs full',
-  'test:v22:release': 'scripts/v22-runner.mjs release'
+  'test:v22:release': 'scripts/v22-runner.mjs release',
+  'test:compat:pr': 'scripts/compat-pr-runner.mjs'
 }))
   if (!String(manifest.scripts?.[name] || '').includes(expected))
     errors.push(`package script ${name} must use ${expected}`);
@@ -38,6 +39,8 @@ for (const file of [
   'docker/release-volume-v22.mjs',
   'docker/release-volume-v22-cli.mjs',
   'docker/v22-upgrade.mjs',
+  'scripts/compat-pr-runner.mjs',
+  'scripts/gate-scheduler.mjs',
   'scripts/gate-receipt-v22.mjs',
   'scripts/impact-range.mjs',
   'scripts/v22-release.mjs'

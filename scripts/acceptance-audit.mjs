@@ -579,11 +579,14 @@ assert.ok(manifest.scripts.test.includes('v22-suite.mjs unit'), 'unit gate inclu
 assert.ok(manifest.scripts.test.includes('v22-suite.mjs security'), 'unit gate includes V2.2 security suite');
 assert.ok(manifest.scripts['test:integration'].includes('v22-suite.mjs integration'), 'integration gate includes V2.2');
 assert.ok(manifest.scripts['test:release'].includes('v22-volume-flow'), 'release gate includes V2.2 volume clone');
+assert.match(manifest.scripts['test:compat:pr'], /compat-pr-runner\.mjs$/, 'pre-push has one compatibility runner');
+const v22GateReceipt = fs.readFileSync('scripts/gate-receipt-v22.mjs', 'utf8'),
+  compatibilityRunner = fs.readFileSync('scripts/compat-pr-runner.mjs', 'utf8');
 assert.ok(
-  fs.readFileSync('scripts/gate-receipt-v22.mjs', 'utf8').includes("'test:v20:pr'") &&
-    fs.readFileSync('scripts/gate-receipt-v22.mjs', 'utf8').includes("'test:v21:pr'") &&
-    fs.readFileSync('scripts/gate-receipt-v22.mjs', 'utf8').includes("'test:v22:pr'"),
-  'pre-push gate includes historical V2.0/V2.1 and current V2.2 PR suites'
+  v22GateReceipt.includes("Object.freeze(['test:compat:pr'])") &&
+    compatibilityRunner.includes("['v18', 'v20', 'v21', 'v22']") &&
+    compatibilityRunner.includes('dedupe_kind'),
+  'pre-push gate consolidates historical and current PR suites with explicit dedupe ownership'
 );
 
 for (const file of workspaceManifests())

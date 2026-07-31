@@ -53,7 +53,7 @@
     {
       "id": "V22-L5-SECURITY-001", "layer": "L5", "domain": "security", "priority": "P0",
       "command": ["node", "tests/unit/v22-impact.test.mjs"], "suites": ["pr", "full", "release"],
-      "covers": ["OPT21-05", "receipt", "cache-policy"], "timeout_ms": 120000, "external_effects": "none", "requires_env": []
+      "covers": ["OPT21-05", "receipt", "cache-policy", "consolidated-summary", "dedupe", "dependency-concurrency"], "timeout_ms": 120000, "external_effects": "none", "requires_env": []
     },
     {
       "id": "V22-L5-FAULT-002", "layer": "L5", "domain": "fault", "priority": "P1",

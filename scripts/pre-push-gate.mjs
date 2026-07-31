@@ -53,7 +53,7 @@ const receipt = writeGateReceiptForIdentity({
   env: gateEnv
 });
 console.log(
-  `\n[pre-push] Historical compatibility and V2.2 gates passed; receipt ${receipt.fingerprint.slice(0, 12)}.`
+  `\n[pre-push] Consolidated historical compatibility gate passed; receipt ${receipt.fingerprint.slice(0, 12)}.`
 );
 
 function resolveBase(update, headSha) {

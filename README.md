@@ -235,7 +235,7 @@ pnpm verify
 npm run verify
 ```
 
-`verify` 会执行 V2.2 plan/catalog/coverage/impact/full、V2.1、V2.0 及更早历史兼容门禁、format、lint、typecheck、unit、integration、release、Prisma schema 检查、Web build、bundle budget、E2E 和 acceptance audit。V2.2 专项提供 `test:v22:pr`、`test:v22:full` 与 `test:v22:release`；容器交付应执行 `scripts/aiws.ps1 verify` 或 `scripts/aiws.sh verify`。
+`verify` 会执行 V2.2 plan/catalog/coverage/impact/full、V2.1、V2.0 及更早历史兼容门禁、format、lint、typecheck、unit、integration、release、Prisma schema 检查、Web build、bundle budget、E2E 和 acceptance audit。pre-push 只调用 `test:compat:pr`：先按依赖图执行 V1.75 PR，再将已覆盖的 V1.8/V2.0/V2.1/V2.2 测试标记为复用，同一补充测试文件也只执行一次；PR 默认并发 2，可用 `AIWS_TEST_CONCURRENCY=1..4` 覆盖。各版本 `full`/`release` 专项仍保持独立且不使用缓存。V2.2 专项提供 `test:v22:pr`、`test:v22:full` 与 `test:v22:release`；容器交付应执行 `scripts/aiws.ps1 verify` 或 `scripts/aiws.sh verify`。
 
 ### 5.6 Codex live 测试，可选
 
@@ -520,6 +520,7 @@ V2.2 新增并已纳入正式门禁：
 - `aiws.context_index.v2` canonical snapshot、Worker 构建、fsync/原子替换、相同输入 mtime 不变和受管临时文件恢复。
 - `/livez`、`/readyz`、统一 draining/shutdown coordinator，以及 Compose readiness healthcheck 与 30 秒停机宽限。
 - committed base/head NUL diff、rename/delete/非 ASCII 路径、精确 gate receipt 身份和 CI/Docker/live/release 禁用缓存。
+- 单一 `test:compat:pr` pre-push 汇总报告、跨版本测试文件去重和依赖感知 PR 并发；历史 full/release runner 保持独立。
 
 真实 Codex、GitHub 与 cc-switch live 套件本轮未运行；其 opt-in 入口和边界见 `docs/runbook.md`。
 

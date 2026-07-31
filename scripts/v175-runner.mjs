@@ -2,6 +2,7 @@ import fs from 'node:fs';
 import net from 'node:net';
 import path from 'node:path';
 import { captureBaseline, finishBaseline } from './v175-baseline.mjs';
+import { resolveGateConcurrency, runDependencyGraph } from './gate-scheduler.mjs';
 import { collectImpact } from './v175-impact.mjs';
 import { V175Report } from './v175-report.mjs';
 import {
@@ -73,29 +74,31 @@ const report = new V175Report({
   selectedIds: new Set(selected.map((item) => item.id))
 });
 const started = Date.now(),
+  concurrency = resolveGateConcurrency(mode),
   deferredCleanup = new Map(),
   variables = {
     RUN_ID: runId,
     REPORT_DIR: reportDir,
     BASE_SHA: impact.base
   };
+console.log(`[v175] dependency scheduler concurrency=${concurrency}`);
+await runDependencyGraph(selected, {
+  concurrency,
+  execute: executeSelectedCase,
+  onBlocked: blockSelectedCase
+});
 
-for (const item of selected) {
+async function executeSelectedCase(item) {
   const elapsed = Date.now() - started,
     remaining = budgets[mode] - elapsed;
   if (remaining <= 1000) {
     report.setResult(item.id, resultPatch(item, 'SKIPPED', 'budget', '全局时间预算已耗尽'));
-    continue;
-  }
-  const blockedBy = item.dependencies.filter((id) => !['PASS', 'FLAKY'].includes(report.results.get(id)?.status));
-  if (blockedBy.length) {
-    report.setResult(item.id, resultPatch(item, 'BLOCKED', 'dependency', `依赖未通过：${blockedBy.join(', ')}`));
-    continue;
+    return { ok: false, status: 'SKIPPED' };
   }
   const precondition = checkPreconditions(item);
   if (precondition) {
     report.setResult(item.id, resultPatch(item, 'BLOCKED', 'precondition', precondition));
-    continue;
+    return { ok: false, status: 'BLOCKED' };
   }
 
   console.log(`\n[v175] ${item.id} ${item.layer}/${item.domain}`);
@@ -131,6 +134,12 @@ for (const item of selected) {
     pending.ids.push(item.id);
     deferredCleanup.set(key, pending);
   }
+  return { ok: ['PASS', 'FLAKY'].includes(status), status };
+}
+
+async function blockSelectedCase(item, blockedBy) {
+  report.setResult(item.id, resultPatch(item, 'BLOCKED', 'dependency', `依赖未通过：${blockedBy.join(', ')}`));
+  return { ok: false, status: 'BLOCKED' };
 }
 
 for (const cleanup of [...deferredCleanup.values()].reverse()) {

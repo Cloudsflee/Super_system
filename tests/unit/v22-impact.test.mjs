@@ -5,7 +5,9 @@ import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 
 import { collectImpactRange } from '../../scripts/impact-range.mjs';
-import { buildGateIdentity, gateReceiptCacheAllowed } from '../../scripts/gate-receipt-v22.mjs';
+import { buildCompatibilityPlan, buildCompatibilityReport } from '../../scripts/compat-pr-runner.mjs';
+import { buildGateIdentity, environmentFingerprint, gateReceiptCacheAllowed } from '../../scripts/gate-receipt-v22.mjs';
+import { resolveGateConcurrency, runDependencyGraph } from '../../scripts/gate-scheduler.mjs';
 
 const root = fs.mkdtempSync(path.join(os.tmpdir(), 'aiws-v22-impact-'));
 try {
@@ -55,11 +57,149 @@ try {
   assert.equal(gateReceiptCacheAllowed({ mode: 'release', env: {} }).allowed, false);
   assert.equal(gateReceiptCacheAllowed({ externalEffects: 'docker', env: {} }).allowed, false);
   assert.equal(gateReceiptCacheAllowed({ externalEffects: 'live', env: {} }).allowed, false);
+  assert.equal(
+    environmentFingerprint({
+      PATH: 'first',
+      PATHEXT: '.EXE;.CMD',
+      HOME: 'same',
+      npm_config_registry: 'https://registry.npmmirror.com/'
+    }),
+    environmentFingerprint({
+      PATH: 'second',
+      PATHEXT: '.COM;.BAT',
+      HOME: 'same',
+      npm_config_registry: 'https://registry.npmjs.org/'
+    })
+  );
+  assert.equal(
+    environmentFingerprint({ USERPROFILE: 'C:\\Users\\Example', ComSpec: 'C:\\Windows\\System32\\cmd.exe' }),
+    environmentFingerprint({
+      HOME: 'C:/Users/Example',
+      USERPROFILE: 'C:/Users/Example',
+      COMSPEC: 'c:/windows/system32/cmd.exe'
+    })
+  );
+
+  await verifyDependencyScheduler();
+  verifyCompatibilityPlan();
 } finally {
   fs.rmSync(root, { recursive: true, force: true });
 }
 
-console.log('V2.2 committed base/head impact and cache identity tests passed');
+console.log('V2.2 committed impact, consolidated gate scheduler, dedupe and cache identity tests passed');
+
+async function verifyDependencyScheduler() {
+  const timeline = [],
+    blocked = [],
+    items = [
+      { id: 'slow', dependencies: [], delay: 30, ok: true },
+      { id: 'failed', dependencies: [], delay: 5, ok: false },
+      { id: 'after-slow', dependencies: ['slow'], delay: 1, ok: true },
+      { id: 'after-failed', dependencies: ['failed'], delay: 1, ok: true }
+    ];
+  let running = 0,
+    maximumRunning = 0;
+  const outcomes = await runDependencyGraph(items, {
+    concurrency: 2,
+    async execute(item) {
+      running += 1;
+      maximumRunning = Math.max(maximumRunning, running);
+      timeline.push(`start:${item.id}`);
+      await new Promise((resolve) => setTimeout(resolve, item.delay));
+      timeline.push(`end:${item.id}`);
+      running -= 1;
+      return { ok: item.ok, status: item.ok ? 'PASS' : 'FAIL' };
+    },
+    async onBlocked(item, blockedBy) {
+      blocked.push({ id: item.id, blockedBy });
+      return { ok: false, status: 'BLOCKED' };
+    }
+  });
+  assert.equal(maximumRunning, 2);
+  assert.ok(timeline.indexOf('start:after-slow') > timeline.indexOf('end:slow'));
+  assert.equal(timeline.includes('start:after-failed'), false);
+  assert.deepEqual(blocked, [{ id: 'after-failed', blockedBy: ['failed'] }]);
+  assert.equal(outcomes.get('after-slow').status, 'PASS');
+  assert.equal(outcomes.get('after-failed').status, 'BLOCKED');
+  assert.equal(resolveGateConcurrency('pr', {}), 2);
+  assert.equal(resolveGateConcurrency('full', {}), 1);
+  assert.throws(() => resolveGateConcurrency('pr', { AIWS_TEST_CONCURRENCY: '5' }), /gate_concurrency_invalid/);
+}
+
+function verifyCompatibilityPlan() {
+  const read = (file) => JSON.parse(fs.readFileSync(file, 'utf8')),
+    versionCatalogs = Object.fromEntries(
+      ['v18', 'v20', 'v21', 'v22'].map((version) => [
+        version,
+        { catalog: read(`tests/${version}/catalog.json`), suites: read(`tests/${version}/suites.json`) }
+      ])
+    ),
+    input = {
+      v175Catalog: read('tests/v175/catalog.json'),
+      suiteFiles: read('tests/v175/suite-files.json'),
+      versionCatalogs
+    },
+    supplementalPlan = buildCompatibilityPlan({ ...input, domains: [] }),
+    contextTasks = supplementalPlan.supplemental_tasks.filter((item) =>
+      item.command.includes('tests/unit/v21-context.test.mjs')
+    ),
+    outcomeTasks = supplementalPlan.supplemental_tasks.filter((item) =>
+      item.command.includes('tests/unit/v21-outcome.test.mjs')
+    );
+  assert.equal(contextTasks.length, 1);
+  assert.equal(contextTasks[0].owners.length, 2);
+  assert.equal(outcomeTasks.length, 1);
+  assert.equal(outcomeTasks[0].owners.length, 2);
+  assert.equal(
+    supplementalPlan.supplemental_tasks.length + supplementalPlan.aliases.length,
+    supplementalPlan.declared_compatibility_cases
+  );
+  const passingResults = [
+      {
+        key: 'v175:pr',
+        status: 'PASS',
+        owners: supplementalPlan.selected_v175_ids.map((id) => ({ version: '1.75', id }))
+      },
+      ...supplementalPlan.supplemental_tasks.map((task) => ({ ...task, status: 'PASS' }))
+    ],
+    report = buildCompatibilityReport({
+      runId: 'compat-unit',
+      impact: { base: 'base', head: 'head', domains: [] },
+      plan: supplementalPlan,
+      results: passingResults,
+      started: Date.now(),
+      passed: true
+    }),
+    incompleteReport = buildCompatibilityReport({
+      runId: 'compat-unit-incomplete',
+      impact: { base: 'base', head: 'head', domains: [] },
+      plan: supplementalPlan,
+      results: passingResults.slice(0, -1),
+      started: Date.now(),
+      passed: false
+    });
+  const compatibilityVersions = Object.entries(report.versions).filter(([version]) => version !== '1.75');
+  assert.equal(
+    compatibilityVersions.reduce((total, [, summary]) => total + summary.declared, 0),
+    supplementalPlan.declared_compatibility_cases
+  );
+  assert.equal(
+    compatibilityVersions.reduce((total, [, summary]) => total + summary.deduplicated, 0),
+    supplementalPlan.aliases.length
+  );
+  assert.ok(compatibilityVersions.every(([, summary]) => summary.failed === 0));
+  const incompleteVersions = Object.entries(incompleteReport.versions).filter(([version]) => version !== '1.75');
+  assert.equal(
+    incompleteVersions.reduce((total, [, summary]) => total + summary.declared, 0),
+    supplementalPlan.declared_compatibility_cases
+  );
+  assert.ok(incompleteVersions.some(([, summary]) => summary.failed > 0));
+
+  const v175DedupePlan = buildCompatibilityPlan({ ...input, domains: ['action'] });
+  assert.ok(
+    v175DedupePlan.aliases.some((item) => item.owner.id === 'V22-L5-SECURITY-001' && item.dedupe_kind === 'v175')
+  );
+}
 
 function git(args) {
   const result = spawnSync('git', args, { cwd: root, encoding: 'utf8', windowsHide: true });
