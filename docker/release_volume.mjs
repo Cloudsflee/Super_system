@@ -38,6 +38,7 @@ import {
   verifyClonedVolumeV20
 } from './release-volume-v20.mjs';
 import { executeV21ReleaseCommand } from './release-volume-v21-cli.mjs';
+import { executeV22ReleaseCommand } from './release-volume-v22-cli.mjs';
 
 export {
   V20_RECEIPT_RELATIVE_PATH,
@@ -55,6 +56,14 @@ export {
   validateV21ReleaseTarget,
   verifyClonedVolumeV21
 } from './release-volume-v21.mjs';
+export {
+  V22_RECEIPT_RELATIVE_PATH,
+  V22_SOURCE_VOLUME,
+  V22_TARGET_VOLUME,
+  acceptVolumeMigrationV22,
+  validateV22ReleaseTarget,
+  verifyClonedVolumeV22
+} from './release-volume-v22.mjs';
 export { auditVolume, removeLegacySchemaBackups, stateAudit, volumeInventory };
 
 export const SOURCE_VOLUME = 'aiws-data-v14';
@@ -960,6 +969,8 @@ async function executeModernReleaseCommand(command, args) {
     };
   const v21 = await executeV21ReleaseCommand(command, args);
   if (v21.matched) return v21;
+  const v22 = await executeV22ReleaseCommand(command, args);
+  if (v22.matched) return v22;
   if (command === 'purge-schema-backups')
     return {
       matched: true,

@@ -12,6 +12,7 @@ try {
   const release = await import('../../docker/release_volume.mjs');
   await stateApi.ensureRuntime();
   const sourceState = structuredClone(await stateApi.readState());
+  await stateApi.checkpointAndCloseState();
   sourceState.schema_version = 17;
   for (const collection of [
     'workflow_generations',
@@ -76,19 +77,19 @@ try {
   assert.equal(checked.legacy_runner_references.length, 0);
 
   const compose = fs.readFileSync('compose.yml', 'utf8');
-  for (const value of ['name: aiws-v21', 'aiws-app:2.1.0', 'aiws-codex-runner:2.1.0-codex-0.144.0', 'aiws-data-v21'])
+  for (const value of ['name: aiws-v22', 'aiws-app:2.2.0', 'aiws-codex-runner:2.2.0-codex-0.144.0', 'aiws-data-v22'])
     assert.ok(compose.includes(value), value);
   for (const script of ['scripts/aiws.ps1', 'scripts/aiws.sh']) {
     const text = fs.readFileSync(script, 'utf8');
     for (const value of [
-      'aiws-data-v20',
       'aiws-data-v21',
-      'aiws-app:2.1.0',
-      'aiws-codex-runner:2.1.0-codex-0.144.0',
-      'v21-release.mjs'
+      'aiws-data-v22',
+      'aiws-app:2.2.0',
+      'aiws-codex-runner:2.2.0-codex-0.144.0',
+      'v22-release.mjs'
     ])
       assert.ok(text.includes(value), `${script}: ${value}`);
-    assert.equal(text.includes('aiws-data-v19'), false, `${script}: only the immediate V2.0 source volume`);
+    assert.equal(text.includes('aiws-data-v20'), false, `${script}: only the immediate V2.1 source volume`);
   }
   const orchestrator = fs.readFileSync('docker/release_orchestrator.mjs', 'utf8');
   assert.ok(orchestrator.includes('RELEASE_V19 ? 18'));

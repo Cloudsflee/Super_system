@@ -7,9 +7,10 @@ import path from 'node:path';
 const root = fs.mkdtempSync(path.join(os.tmpdir(), 'aiws-v18-volume-flow-'));
 const runtimeHome = path.join(root, 'runtime');
 process.env.AIWS_HOME = runtimeHome;
+let stateApi;
 
 try {
-  const stateApi = await import('../../apps/api/src/state.mjs');
+  stateApi = await import('../../apps/api/src/state.mjs');
   const migration = await import('../../apps/api/src/state-migration-v17.mjs');
   const release = await import('../../docker/release_volume.mjs');
   await stateApi.ensureRuntime();
@@ -140,6 +141,7 @@ try {
 
   console.log('V1.8 release volume flow tests passed');
 } finally {
+  await stateApi?.checkpointAndCloseState().catch(() => undefined);
   fs.rmSync(root, { recursive: true, force: true });
 }
 

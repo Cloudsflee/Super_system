@@ -66,23 +66,24 @@ try {
   assert.equal(checked.core_counts.mcp_clients, 0);
 
   const compose = fs.readFileSync('compose.yml', 'utf8');
-  for (const value of ['name: aiws-v21', 'aiws-app:2.1.0', 'aiws-codex-runner:2.1.0-codex-0.144.0', 'aiws-data-v21'])
+  for (const value of ['name: aiws-v22', 'aiws-app:2.2.0', 'aiws-codex-runner:2.2.0-codex-0.144.0', 'aiws-data-v22'])
     assert.ok(compose.includes(value));
   for (const script of ['scripts/aiws.ps1', 'scripts/aiws.sh']) {
     const sourceText = fs.readFileSync(script, 'utf8');
     for (const value of [
-      'aiws-data-v20',
       'aiws-data-v21',
-      'aiws-app:2.1.0',
-      'aiws-codex-runner:2.1.0-codex-0.144.0',
-      'v21-release.mjs'
+      'aiws-data-v22',
+      'aiws-app:2.2.0',
+      'aiws-codex-runner:2.2.0-codex-0.144.0',
+      'v22-release.mjs'
     ])
       assert.ok(sourceText.includes(value), `${script} ${value}`);
-    assert.equal(sourceText.includes('aiws-data-v19'), false, `${script} only uses the immediate V2.0 source`);
+    assert.equal(sourceText.includes('aiws-data-v20'), false, `${script} only uses the immediate V2.1 source`);
   }
   const orchestrator = fs.readFileSync('docker/release_orchestrator.mjs', 'utf8');
   assert.ok(orchestrator.includes('health.version !== RELEASE_VERSION'));
   assert.ok(orchestrator.includes('health.schema_version !== RELEASE_SCHEMA'));
+  await stateApi.checkpointAndCloseState();
   console.log('V1.8 release volume unit tests passed');
 } finally {
   fs.rmSync(root, { recursive: true, force: true });

@@ -35,6 +35,7 @@ try {
 
   await stateApi.ensureRuntime();
   const sourceState = structuredClone(await stateApi.readState());
+  await stateApi.checkpointAndCloseState();
   sourceState.schema_version = 19;
   delete sourceState.context_projection_coverage;
   delete sourceState.migrated_to_schema_20_at;
@@ -174,7 +175,7 @@ try {
   assert.deepEqual(findLegacyRunnerReferencesV20(historical), []);
 
   const compose = fs.readFileSync('compose.yml', 'utf8');
-  for (const value of ['name: aiws-v21', 'aiws-app:2.1.0', 'aiws-codex-runner:2.1.0-codex-0.144.0', 'aiws-data-v21'])
+  for (const value of ['name: aiws-v22', 'aiws-app:2.2.0', 'aiws-codex-runner:2.2.0-codex-0.144.0', 'aiws-data-v22'])
     assert.ok(compose.includes(value), value);
   const upgrade = fs.readFileSync('docker/v20-upgrade.mjs', 'utf8');
   for (const value of [

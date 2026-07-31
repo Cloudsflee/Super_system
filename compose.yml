@@ -1,8 +1,8 @@
-name: aiws-v21
+name: aiws-v22
 
 services:
   app:
-    image: ${AIWS_APP_IMAGE:-aiws-app:2.1.0}
+    image: ${AIWS_APP_IMAGE:-aiws-app:2.2.0}
     build:
       context: .
       dockerfile: Dockerfile
@@ -19,9 +19,9 @@ services:
       AIWS_BIND_HOST: "0.0.0.0"
       AIWS_HOME: /var/lib/aiws
       AIWS_CONTAINERIZED: "1"
-      AIWS_DOCKER_DATA_VOLUME: ${AIWS_DOCKER_DATA_VOLUME:-aiws-data-v21}
-      AIWS_DOCKER_INSTANCE: ${AIWS_DOCKER_INSTANCE:-aiws-v21}
-      AIWS_CODEX_DOCKER_IMAGE: ${AIWS_RUNNER_IMAGE:-aiws-codex-runner:2.1.0-codex-0.144.0}
+      AIWS_DOCKER_DATA_VOLUME: ${AIWS_DOCKER_DATA_VOLUME:-aiws-data-v22}
+      AIWS_DOCKER_INSTANCE: ${AIWS_DOCKER_INSTANCE:-aiws-v22}
+      AIWS_CODEX_DOCKER_IMAGE: ${AIWS_RUNNER_IMAGE:-aiws-codex-runner:2.2.0-codex-0.144.0}
       AIWS_RUNNER_CPUS: ${AIWS_RUNNER_CPUS:-2}
       AIWS_RUNNER_MEMORY: ${AIWS_RUNNER_MEMORY:-4g}
       AIWS_RUNNER_PIDS: ${AIWS_RUNNER_PIDS:-512}
@@ -48,7 +48,7 @@ services:
     cap_drop:
       - ALL
     healthcheck:
-      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:4317/api/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:4317/api/readyz').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
       interval: 10s
       timeout: 30s
       start_period: 5m
@@ -56,5 +56,5 @@ services:
 
 volumes:
   aiws-data:
-    name: ${AIWS_DOCKER_DATA_VOLUME:-aiws-data-v21}
+    name: ${AIWS_DOCKER_DATA_VOLUME:-aiws-data-v22}
     external: true

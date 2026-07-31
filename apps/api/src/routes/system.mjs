@@ -1,28 +1,41 @@
 import { command, makeRoute, send } from '../http.mjs';
 import { ROOT } from '../config.mjs';
-import { addTrace, mutate, owner, readState, readStateSnapshot } from '../state.mjs';
+import { addTrace, mutate, owner, readState, readStateSnapshot, statePersistenceStatus } from '../state.mjs';
 import { AIWS_VERSION, createLocalOwner, now, pick } from '../../../../packages/shared/index.mjs';
 import { inspectCodexRuntimeCached, selectedCodexRuntimeImage } from '../codex-runtime-status.mjs';
 import { dataDirectoryReady, deploymentStatus } from '../deployment-status.mjs';
 import { hostBridgeCapability } from '../host-bridge-service.mjs';
 import { terminalRuntimeStats } from '../terminal-service.mjs';
 import { accessibleProjectIds, actorForRequest } from '../project-governance-v19.mjs';
+import { livezSnapshot, readyzSnapshot } from '../runtime-health.mjs';
 
 export const systemRoutes = [
+  makeRoute('GET', '/livez', async ({ res }) => send(res, 200, livezSnapshot())),
+  makeRoute('GET', '/readyz', async ({ res }) => {
+    const readiness = await readyzSnapshot();
+    return send(res, readiness.ready ? 200 : 503, readiness);
+  }),
   makeRoute('GET', '/health', async ({ res, query }) => {
     if (query.gc === '1' && process.env.NODE_ENV === 'test') global.gc?.();
     const state = await readStateSnapshot();
     const git = command('git', ['--version'], ROOT, 3000);
     const codex = command('codex', ['--version'], ROOT, 3000);
     const runtime = await inspectCodexRuntimeCached({ image: selectedCodexRuntimeImage(state) });
-    const storageReady = dataDirectoryReady();
+    const persistence = await statePersistenceStatus(),
+      storageReady = dataDirectoryReady() && persistence.healthy && persistence.writable;
     const deployment = deploymentStatus({ dockerReady: runtime.docker.ok, storageReady });
     return send(res, 200, {
       status: storageReady ? 'ok' : 'degraded',
       version: AIWS_VERSION,
       schema_version: state.schema_version,
       api: { healthy: true },
-      db: { healthy: storageReady, mode: 'json-local', writable: storageReady },
+      db: {
+        healthy: persistence.healthy,
+        mode: 'sqlite-wal',
+        writable: persistence.writable,
+        integrity: persistence.integrity,
+        revision: persistence.revision
+      },
       deployment: { mode: deployment.mode, local_only: deployment.local_only },
       queue: { required: false, status: 'not_configured', mode: 'direct-execution' },
       git: { healthy: git.ok, version: git.stdout.trim() || git.error },

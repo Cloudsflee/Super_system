@@ -205,6 +205,16 @@ export function attachHostBridgeWebSocket(server) {
   return sockets;
 }
 
+export async function closeHostBridgeWebSockets() {
+  const closing = [];
+  for (const ws of onlineDevices.values()) {
+    closing.push(new Promise((resolve) => ws.once('close', resolve)));
+    ws.close(1012, 'server_shutdown');
+  }
+  onlineDevices.clear();
+  await Promise.race([Promise.allSettled(closing), new Promise((resolve) => setTimeout(resolve, 2_000))]);
+}
+
 async function authenticateBridge(request, parsed) {
   if (
     !isHostBridgeLocalRequest(

@@ -12,8 +12,8 @@ import {
   safeReadStream,
   send
 } from './src/http.mjs';
-import { ensureRuntime, readStateSnapshot } from './src/state.mjs';
-import { attachTerminalWebSocket } from './src/terminal-service.mjs';
+import { checkpointAndCloseState, ensureRuntime, readStateSnapshot } from './src/state.mjs';
+import { attachTerminalWebSocket, closeTerminalRuntimes } from './src/terminal-service.mjs';
 import {
   attachDeletedSessionSweeper,
   purgeExpiredDeletedSessions,
@@ -22,9 +22,9 @@ import {
 import { AIWS_VERSION } from '../../packages/shared/index.mjs';
 import { computeSetupStatus, isSetupExempt } from './src/setup-status.mjs';
 import { redactKnownSecretsSync } from './src/vault.mjs';
-import { attachContainerShutdown, cleanupStaleContainers } from './src/container-runtime.mjs';
-import { attachHostBridgeWebSocket } from './src/host-bridge-service.mjs';
-import { attachBtwShutdown } from './src/assist-btw.mjs';
+import { cleanupStaleContainers, stopAllManagedContainers } from './src/container-runtime.mjs';
+import { attachHostBridgeWebSocket, closeHostBridgeWebSockets } from './src/host-bridge-service.mjs';
+import { attachBtwShutdown, closeAllAssistBtw } from './src/assist-btw.mjs';
 import { codexBuildManager } from './src/routes/codex-runtime-v12.mjs';
 import { apiRoutes } from './src/api-routes.mjs';
 import { createApiRouteRegistry } from './src/api-route-registry.mjs';
@@ -36,6 +36,9 @@ import { authorizeApiRoute, requestSubjectUserId } from './src/project-governanc
 import { recoverPersistentWorkflowExecutions } from './src/task-execution-service.mjs';
 import { startWorkflowDispatcher } from './src/workflow-dispatcher.mjs';
 import { startContextProjectorCoordinator } from './src/context-projector-coordinator.mjs';
+import { ensureContextSearchIndex, initializeContextIndexRuntime } from './src/context-index-runtime.mjs';
+import { createShutdownCoordinator, isRuntimeDraining } from './src/shutdown-coordinator.mjs';
+import { livezSnapshot } from './src/runtime-health.mjs';
 
 cleanupStaleContainers();
 await ensureRuntime();
@@ -43,6 +46,14 @@ await recoverPersistentWorkflowExecutions();
 await resumeWorkflowMigrationOrchestrator();
 await recoverAssistV3Runtime();
 await purgeExpiredDeletedSessions();
+try {
+  await initializeContextIndexRuntime();
+  await ensureContextSearchIndex(await readStateSnapshot());
+} catch (error) {
+  console.error(
+    `context index startup failed: ${redactKnownSecretsSync(error?.code || error?.message || String(error))}`
+  );
+}
 const stopWorkflowDispatcher = startWorkflowDispatcher();
 const stopContextProjector =
   process.env.NODE_ENV === 'test' && process.env.AIWS_TEST_DISABLE_CONTEXT_PROJECTOR === '1'
@@ -85,6 +96,9 @@ const server = http.createServer(async (req, res) => {
       pathname = decodeUrlPathname(encodedPathname);
     const routePath = encodedPathname.startsWith('/api/') ? encodedPathname.slice(4) : encodedPathname;
     allowLocalBrowserOrigin(req, res);
+    if (req.method === 'GET' && routePath === '/livez') return send(res, 200, livezSnapshot());
+    if (isRuntimeDraining() && routePath !== '/readyz')
+      return send(res, 503, { error: 'service_draining', retryable: true });
     if (req.method === 'OPTIONS') {
       res.writeHead(204, {
         'access-control-allow-methods': 'GET,POST,PUT,PATCH,DELETE,OPTIONS',
@@ -98,7 +112,7 @@ const server = http.createServer(async (req, res) => {
     if (await serveStatic(req, res, pathname)) return;
     if (req.method === 'GET' && String(req.headers.accept || '').includes('text/html') && isSpaPath(pathname))
       return serveStatic(req, res, '/');
-    const requestState = isApiRequest(pathname, routePath) ? await readStateSnapshot() : null;
+    const requestState = isApiRequest(pathname, routePath) ? await readStateSnapshot({ refresh: true }) : null;
     if (process.env.AIWS_BYPASS_SETUP !== '1' && !isSetupExempt(routePath) && isApiRequest(pathname, routePath)) {
       const status = computeSetupStatus(requestState);
       if (!status.complete) return send(res, 403, { error: 'setup_required', setup: status });
@@ -129,16 +143,38 @@ const server = http.createServer(async (req, res) => {
     });
   }
 });
-attachTerminalWebSocket(server);
-attachHostBridgeWebSocket(server);
+const terminalSockets = attachTerminalWebSocket(server);
+const hostBridgeSockets = attachHostBridgeWebSocket(server);
 attachBtwShutdown(server);
 attachDeletedSessionSweeper(server);
-attachContainerShutdown(server, { beforeClose: () => codexBuildManager.shutdown() });
-server.on('close', () => {
-  stopWorkflowDispatcher();
-  stopContextProjector();
-  void Promise.all([closeMcpHttpRuntime(), closeGithubProxyDispatchers()]);
+const shutdownCoordinator = createShutdownCoordinator({
+  server,
+  stopDispatcher: stopWorkflowDispatcher,
+  stopProjector: stopContextProjector,
+  stopRuntimeWork: async () => {
+    codexBuildManager.shutdown();
+    await closeTerminalRuntimes();
+    if (process.env.AIWS_CONTAINERIZED === '1') stopAllManagedContainers();
+  },
+  closeTransports: async () => {
+    await Promise.allSettled([
+      closeAllAssistBtw('service_stopped'),
+      closeHostBridgeWebSockets(),
+      closeMcpHttpRuntime(),
+      closeGithubProxyDispatchers()
+    ]);
+    await Promise.allSettled([closeWebSocketServer(terminalSockets), closeWebSocketServer(hostBridgeSockets)]);
+  },
+  closePersistence: checkpointAndCloseState,
+  timeoutMs: 30_000,
+  exit: (code) => process.exit(code)
 });
+for (const signal of ['SIGTERM', 'SIGINT'])
+  process.on(signal, () => {
+    void shutdownCoordinator.shutdown(signal).catch((error) => {
+      console.error(`shutdown failed: ${redactKnownSecretsSync(error?.code || error?.message || String(error))}`);
+    });
+  });
 
 function searchParamsObject(params) {
   const result = Object.create(null);
@@ -166,6 +202,10 @@ function isSpaPath(pathname) {
     /^\/integrations\/github\/install\/setup\/?$/.test(pathname) ||
     /^\/projects\/[^/]+\/(?:workflow(?:\/[^/]+)?|onboarding|context|nodes\/[^/]+)\/?$/.test(pathname)
   );
+}
+
+function closeWebSocketServer(sockets) {
+  return new Promise((resolve) => sockets.close(() => resolve()));
 }
 
 server.listen(PORT, HOST, () => {

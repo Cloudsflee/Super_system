@@ -308,6 +308,12 @@ export function attachTerminalWebSocket(server) {
   return sockets;
 }
 
+export async function closeTerminalRuntimes() {
+  await Promise.allSettled([...runtimeStarts.values()]);
+  for (const runtime of runtimes.values()) for (const client of runtime.clients) client.close(1012, 'server_shutdown');
+  await Promise.allSettled([...runtimes.keys()].map((sessionId) => stopTerminalSession(sessionId)));
+}
+
 async function connectSocket(ws, sessionId, request) {
   const state = await readState(),
     session = state.terminal_sessions.find((item) => item.id === sessionId);
