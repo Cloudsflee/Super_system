@@ -1,0 +1,31 @@
+{
+  "version": "2.2",
+  "product_version": "2.2.0",
+  "state_schema": 22,
+  "work_packages": {
+    "OPT21-01": {
+      "implementation": ["apps/api/src/context-projector-coordinator.mjs", "apps/api/src/context-projection.mjs", "packages/system-context/src/index.mjs"],
+      "tests": ["V22-L3-PROJECTOR-001", "V22-L5-FAULT-002", "V22-L6-PERFORMANCE-001"]
+    },
+    "OPT21-02": {
+      "implementation": ["apps/api/src/runtime-health.mjs", "apps/api/src/routes/system.mjs", "apps/api/server.mjs"],
+      "tests": ["V22-L4-HEALTH-001", "V22-L6-PERFORMANCE-001"]
+    },
+    "OPT21-03": {
+      "implementation": ["apps/api/src/shutdown-coordinator.mjs", "apps/api/src/workflow-dispatcher.mjs", "apps/api/server.mjs"],
+      "tests": ["V22-L4-HEALTH-001"]
+    },
+    "OPT21-04": {
+      "implementation": ["packages/system-context/src/search-index.mjs", "apps/api/src/context-index-runtime.mjs", "apps/api/src/context-projection-worker.mjs"],
+      "tests": ["V22-L3-PROJECTOR-001"]
+    },
+    "OPT21-05": {
+      "implementation": ["scripts/impact-range.mjs", "scripts/v22-impact.mjs", "scripts/pre-push-gate.mjs", "scripts/gate-receipt-v22.mjs"],
+      "tests": ["V22-L0-PLAN-001", "V22-L0-CATALOG-002", "V22-L0-COVERAGE-003", "V22-L0-IMPACT-004", "V22-L5-SECURITY-001"]
+    },
+    "OPT22-01": {
+      "implementation": ["apps/api/src/state.mjs", "apps/api/src/state-store.mjs", "apps/api/src/state-store-worker.mjs", "apps/api/src/state-migration-v22.mjs"],
+      "tests": ["V22-L1-STATE-001", "V22-L2-MIGRATION-001", "V22-L6-PERFORMANCE-001", "V22-L7-RELEASE-001"]
+    }
+  }
+}

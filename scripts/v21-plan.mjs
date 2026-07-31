@@ -8,8 +8,8 @@ const errors = [...validateV21Catalog().errors],
   manifest = readJson('package.json'),
   coverage = readJson('tests/v21/coverage-map.json');
 
-if (manifest.version !== '2.1.0') errors.push('package.json version must be 2.1.0');
-if (!String(manifest.description || '').includes('V2.1')) errors.push('package description must identify V2.1');
+if (!['2.1.0', '2.2.0'].includes(manifest.version))
+  errors.push('package.json version must be V2.1 or a declared V2.2 compatibility successor');
 for (const [name, expected] of Object.entries({
   'test:v21:plan': 'scripts/v21-plan.mjs',
   'test:v21:catalog': 'scripts/v21-catalog.mjs',
@@ -56,8 +56,8 @@ for (const [file, anchors] of [
     ['# AIWS 测试计划 V2.1', '产品版本：`2.1.0`', 'state schema：`21`', 'test:v21:plan', '5/6 + 12/15 + Outbox pending']
   ],
   [
-    'packages/shared/src/version.mjs',
-    ["AIWS_VERSION = '2.1.0'", 'AIWS_STATE_SCHEMA_VERSION = 21', "AIWS_COMPOSE_PROJECT = 'aiws-v21'"]
+    'apps/api/src/state-migration-v21.mjs',
+    ['STATE_SCHEMA_VERSION = 21', "V21_RUNNER_IMAGE = 'aiws-codex-runner:2.1.0-codex-0.144.0'"]
   ],
   [
     'packages/system-context/src/protocol.mjs',
@@ -67,7 +67,8 @@ for (const [file, anchors] of [
       "CONTEXT_PACK_SCHEMA = 'aiws.context_pack.v5'"
     ]
   ],
-  ['compose.yml', ['name: aiws-v21', 'aiws-app:2.1.0', 'aiws-codex-runner:2.1.0-codex-0.144.0', 'aiws-data-v21']]
+  ['docker/v21-upgrade.mjs', ["V21_PROJECT = 'aiws-v21'", "V21_APP_IMAGE = 'aiws-app:2.1.0'"]],
+  ['docker/release-volume-v21.mjs', ["V21_TARGET_VOLUME = 'aiws-data-v21'"]]
 ]) {
   const source = fs.existsSync(file) ? fs.readFileSync(file, 'utf8') : '';
   for (const anchor of anchors) if (!source.includes(anchor)) errors.push(`${file}: missing ${anchor}`);
@@ -83,4 +84,4 @@ if (errors.length) {
   console.error(`V2.1 plan validation failed (${errors.length}):\n${errors.map((item) => `- ${item}`).join('\n')}`);
   process.exit(1);
 }
-console.log('V2.1 plan validation passed (product 2.1.0, schema 21, Context Pack v5)');
+console.log('V2.1 plan validation passed (historical product 2.1.0, schema 21, Context Pack v5)');

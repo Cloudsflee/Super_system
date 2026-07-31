@@ -22,7 +22,8 @@
     "tests/unit/v20-deployment-evidence-verifier.test.mjs",
     "tests/unit/v21-execution-protocol.test.mjs",
     "tests/unit/v21-security.test.mjs",
-    "tests/unit/v21-stage-replay.test.mjs"
+    "tests/unit/v21-stage-replay.test.mjs",
+    "tests/unit/v22-health-shutdown.test.mjs"
   ],
   "unit-state": [
     "tests/unit/v16-core.test.mjs",
@@ -37,7 +38,8 @@
     "tests/unit/v110-cas.test.mjs",
     "tests/unit/v110-legacy-execution-promotion.test.mjs",
     "tests/unit/v20-migration.test.mjs",
-    "tests/unit/v21-migration.test.mjs"
+    "tests/unit/v21-migration.test.mjs",
+    "tests/unit/v22-state-store.test.mjs"
   ],
   "unit-capabilities": [
     "tests/unit/v17-capability-operations.test.mjs",
@@ -66,7 +68,10 @@
     "tests/unit/v20-context-performance.test.mjs",
     "tests/unit/v21-context.test.mjs",
     "tests/unit/v21-outcome.test.mjs",
-    "tests/unit/v21-performance.test.mjs"
+    "tests/unit/v21-performance.test.mjs",
+    "tests/unit/v22-impact.test.mjs",
+    "tests/unit/v22-performance.test.mjs",
+    "tests/unit/v22-projector-index.test.mjs"
   ],
   "integration-core": [
     "tests/integration/api-flow.test.mjs",

@@ -18,6 +18,8 @@ const checks = [
   ['V1.8 test plan', '测试计划v1.8.md', 'test:v18:mcp-journey'],
   ['V2.1 dev plan', '开发计划v2.1.md', 'DEV210-14'],
   ['V2.1 test plan', '测试计划v2.1.md', 'L7 Release'],
+  ['V2.2 dev plan', '开发计划v2.2.md', 'OPT22-01'],
+  ['V2.2 test plan', '测试计划v2.2.md', 'L7 Release'],
   ['V1.8 cutover guide', 'docs/v1.8-cutover.md', 'aiws-data-v18'],
   ['Collaborative MCP architecture', 'docs/mcp-collaboration-architecture.md', 'Team Single Node'],
   ['Production Dockerfile', 'Dockerfile', 'FROM workspace-deps AS verify'],
@@ -32,11 +34,17 @@ const checks = [
   ['Offline verify refresh', 'docker/verify-refresh.Dockerfile', 'pnpm install --offline --frozen-lockfile'],
   ['Failed cutover preservation', 'docker/release_orchestrator.mjs', 'failed_source_preserved'],
   ['Legacy purge confirmation', 'docker/release_volume.mjs', 'purge_legacy_requires_confirm'],
-  ['V2.1 Compose', 'compose.yml', 'aiws-app:2.1.0'],
+  ['V2.2 Compose', 'compose.yml', 'aiws-app:2.2.0'],
   ['Schema 18 migration', 'apps/api/src/state-migration-v18.mjs', 'STATE_SCHEMA_VERSION = 18'],
   ['Schema 19 migration', 'apps/api/src/state-migration-v19.mjs', 'STATE_SCHEMA_VERSION = 19'],
   ['Schema 20 migration', 'apps/api/src/state-migration-v20.mjs', 'STATE_SCHEMA_VERSION = 20'],
   ['Schema 21 migration', 'apps/api/src/state-migration-v21.mjs', 'STATE_SCHEMA_VERSION = 21'],
+  ['Schema 22 migration', 'apps/api/src/state-migration-v22.mjs', 'STATE_SCHEMA_VERSION = 22'],
+  ['SQLite state Worker', 'apps/api/src/state-store-worker.mjs', "from 'node:sqlite'"],
+  ['SQLite state facade', 'apps/api/src/state-store.mjs', 'initializeStateStore'],
+  ['Runtime readiness', 'apps/api/src/runtime-health.mjs', 'readyzSnapshot'],
+  ['Shutdown coordinator', 'apps/api/src/shutdown-coordinator.mjs', 'createShutdownCoordinator'],
+  ['Deterministic Context index runtime', 'apps/api/src/context-index-runtime.mjs', 'minisearch-v2.json'],
   [
     'System context protocol',
     'packages/system-context/src/protocol.mjs',
@@ -64,14 +72,16 @@ const checks = [
   ['V1.10 historical release entry', 'scripts/v110-release.mjs', 'runV110UpgradeCli'],
   ['V2.0 release entry', 'scripts/v20-release.mjs', 'runV20UpgradeCli'],
   ['V2.1 release entry', 'scripts/v21-release.mjs', 'runV21UpgradeCli'],
+  ['V2.2 release entry', 'scripts/v22-release.mjs', 'runV22UpgradeCli'],
   ['V2.0 read-only clone', 'docker/v20-upgrade.mjs', "source_mount_mode: 'readonly'"],
   ['V2.1 read-only clone', 'docker/v21-upgrade.mjs', "source_mount_mode: 'readonly'"],
+  ['V2.2 read-only clone', 'docker/v22-upgrade.mjs', "source_mount_mode: 'readonly'"],
   ['Runner image', 'docker/codex-runner.Dockerfile', 'ARG CODEX_VERSION=0.144.0'],
   ['PowerShell bridge operations', 'scripts/aiws.ps1', "@('install','start','stop','status','uninstall')"],
   ['PowerShell backup validation', 'scripts/aiws.ps1', 'backup_validation_failed'],
   ['PowerShell verify cache validation', 'scripts/aiws.ps1', 'cmp -s /app/pnpm-lock.yaml'],
-  ['POSIX V2.1 upgrade entry', 'scripts/aiws.sh', 'v21-release.mjs'],
-  ['PowerShell V2.1 upgrade entry', 'scripts/aiws.ps1', 'v21-release.mjs'],
+  ['POSIX V2.2 upgrade entry', 'scripts/aiws.sh', 'v22-release.mjs'],
+  ['PowerShell V2.2 upgrade entry', 'scripts/aiws.ps1', 'v22-release.mjs'],
   ['Setup guard', 'apps/web/src/app/setup-guard.tsx', '<Navigate to="/setup"'],
   ['GitHub App JWT', 'apps/api/src/github-service.mjs', 'createAppJwt'],
   ['GitHub webhook', 'apps/api/src/routes/github-webhook-v12.mjs', 'timingSafeEqual'],
@@ -115,7 +125,7 @@ const checks = [
   ['MCP subject attribution', 'apps/api/src/mcp-client-service.mjs', 'subject_user_id'],
   ['MCP Gateway HMAC', 'packages/mcp-bridge/src/gateway-auth.mjs', 'gateway_signature_replayed'],
   ['MCP Gateway protocol termination', 'apps/mcp-gateway/src/runtime.mjs', 'StreamableHTTPServerTransport'],
-  ['MCP collaboration Compose', 'compose.collaboration.yml', 'aiws-mcp-gateway:2.1.0'],
+  ['MCP collaboration Compose', 'compose.collaboration.yml', 'aiws-mcp-gateway:2.2.0'],
   ['Brief V2 domain', 'apps/api/src/brief-workflow-domain.mjs', 'schema_version: 2'],
   ['Brief revision operations', 'apps/api/src/project-brief-service.mjs', 'expected_revision'],
   ['Workflow draft persistence', 'apps/api/src/workflow-draft-service.mjs', 'workflow_draft_revision_conflict'],
@@ -314,6 +324,19 @@ const checks = [
     'tests/release/v21-volume-flow.test.mjs',
     'V2.1 read-only clone, Outcome/Context acceptance, source retention, and rollback tests passed'
   ],
+  ['V2.2 plan gate', 'scripts/v22-plan.mjs', 'V2.2 plan validation passed'],
+  ['V2.2 catalog gate', 'scripts/v22-catalog.mjs', 'V2.2 catalog validation passed'],
+  ['V2.2 coverage gate', 'scripts/v22-coverage.mjs', 'V2.2 coverage gate passed'],
+  ['V2.2 committed impact gate', 'scripts/v22-impact.mjs', 'base_sha'],
+  ['V2.2 SQLite state tests', 'tests/unit/v22-state-store.test.mjs', 'SQLite'],
+  ['V2.2 projector and index tests', 'tests/unit/v22-projector-index.test.mjs', 'snapshot'],
+  ['V2.2 health and shutdown tests', 'tests/unit/v22-health-shutdown.test.mjs', 'shutdown coordinator'],
+  ['V2.2 impact tests', 'tests/unit/v22-impact.test.mjs', 'committed'],
+  [
+    'V2.2 read-only release flow',
+    'tests/release/v22-volume-flow.test.mjs',
+    'V2.2 read-only V21 clone, idempotent SQLite migration, persistence and V21 refusal tests passed'
+  ],
   ['Interaction audit', 'tests/e2e/smoke.test.mjs', 'auditButtons']
 ];
 
@@ -383,7 +406,7 @@ assert.match(
 assert.match(apiClient, /method === 'GET' \? 30_000 : 120_000/, 'request timeout defaults are explicit');
 
 const manifest = JSON.parse(fs.readFileSync('package.json', 'utf8'));
-assert.equal(manifest.version, '2.1.0', 'root package is V2.1');
+assert.equal(manifest.version, '2.2.0', 'root package is V2.2');
 for (const script of [
   'lint',
   'typecheck',
@@ -532,26 +555,53 @@ for (const suite of ['pr', 'full', 'release'])
 assert.ok(manifest.scripts.test.includes('v21-suite.mjs unit'), 'unit gate includes V2.1 unit suite');
 assert.ok(manifest.scripts.test.includes('v21-suite.mjs security'), 'unit gate includes V2.1 security suite');
 assert.ok(manifest.scripts['test:release'].includes('v21-volume-flow'), 'release gate includes V2.1 volume clone');
+for (const script of [
+  'test:v22:plan',
+  'test:v22:catalog',
+  'test:v22:coverage',
+  'test:v22:impact',
+  'test:v22:unit',
+  'test:v22:integration',
+  'test:v22:security',
+  'test:v22:performance',
+  'test:v22:pr',
+  'test:v22:full',
+  'test:v22:release'
+])
+  assert.ok(manifest.scripts[script], `V2.2 command ${script}`);
+for (const suite of ['pr', 'full', 'release'])
+  assert.match(
+    manifest.scripts[`test:v22:${suite}`],
+    new RegExp(`v22-runner\\.mjs ${suite}$`),
+    `V2.2 ${suite} uses the catalog runner`
+  );
+assert.ok(manifest.scripts.test.includes('v22-suite.mjs unit'), 'unit gate includes V2.2 unit suite');
+assert.ok(manifest.scripts.test.includes('v22-suite.mjs security'), 'unit gate includes V2.2 security suite');
+assert.ok(manifest.scripts['test:integration'].includes('v22-suite.mjs integration'), 'integration gate includes V2.2');
+assert.ok(manifest.scripts['test:release'].includes('v22-volume-flow'), 'release gate includes V2.2 volume clone');
 assert.ok(
-  fs.readFileSync('scripts/gate-receipt-v21.mjs', 'utf8').includes("'test:v20:pr'") &&
-    fs.readFileSync('scripts/gate-receipt-v21.mjs', 'utf8').includes("'test:v21:pr'"),
-  'pre-push gate includes historical V2.0 and current V2.1 PR suites'
+  fs.readFileSync('scripts/gate-receipt-v22.mjs', 'utf8').includes("'test:v20:pr'") &&
+    fs.readFileSync('scripts/gate-receipt-v22.mjs', 'utf8').includes("'test:v21:pr'") &&
+    fs.readFileSync('scripts/gate-receipt-v22.mjs', 'utf8').includes("'test:v22:pr'"),
+  'pre-push gate includes historical V2.0/V2.1 and current V2.2 PR suites'
 );
 
 for (const file of workspaceManifests())
-  assert.equal(JSON.parse(fs.readFileSync(file, 'utf8')).version, '2.1.0', `${file} is V2.1`);
+  assert.equal(JSON.parse(fs.readFileSync(file, 'utf8')).version, '2.2.0', `${file} is V2.2`);
 const compose = fs.readFileSync('compose.yml', 'utf8');
-for (const value of ['name: aiws-v21', 'aiws-app:2.1.0', 'aiws-codex-runner:2.1.0-codex-0.144.0', 'aiws-data-v21'])
+for (const value of ['name: aiws-v22', 'aiws-app:2.2.0', 'aiws-codex-runner:2.2.0-codex-0.144.0', 'aiws-data-v22'])
   assert.ok(compose.includes(value), `Compose pins ${value}`);
 assert.match(
   compose,
   /aiws-data:\s+[\s\S]*external: true/,
   'production data volume cannot be silently replaced by Compose'
 );
-assert.equal(compose.includes('aiws-data-v20'), false, 'V2.1 Compose never mounts the migration source volume');
+assert.equal(compose.includes('aiws-data-v21'), false, 'V2.2 Compose never mounts the migration source volume');
+assert.ok(compose.includes('/api/readyz'), 'V2.2 Compose healthcheck uses readiness');
+assert.ok(compose.includes('stop_grace_period: 30s'), 'V2.2 Compose grants 30 seconds for shutdown');
 const collaborationCompose = fs.readFileSync('compose.collaboration.yml', 'utf8');
 for (const value of [
-  'aiws-mcp-gateway:2.1.0',
+  'aiws-mcp-gateway:2.2.0',
   'target: mcp-gateway',
   'AIWS_MCP_REMOTE_MODE: gateway',
   'AIWS_RUNNER_NETWORK',
@@ -564,7 +614,16 @@ assert.equal(gatewayService.includes('/var/lib/aiws'), false, 'MCP Gateway never
 assert.equal(runtime.includes('aiws-codex-runner:local'), false, 'runtime excludes mutable local Runner tag');
 
 const verify = fs.readFileSync('scripts/verify.mjs', 'utf8');
-for (const gate of ["pnpmStep('test'", "pnpmStep('test:integration'", 'e2e:playwright', 'acceptance:audit'])
+for (const gate of [
+  'v2.2:plan',
+  'v2.2:catalog',
+  'v2.2:coverage',
+  'v2.2:impact-audit',
+  "pnpmStep('test'",
+  "pnpmStep('test:integration'",
+  'e2e:playwright',
+  'acceptance:audit'
+])
   assert.ok(verify.includes(gate), `verify includes ${gate}`);
 const composer = fs.readFileSync('apps/web/src/features/assist/AssistComposer.tsx', 'utf8');
 for (const removedMode of ['>Ask<', '>Agent<', '>CLI<', '>Default<'])
@@ -575,10 +634,10 @@ for (const viewport of ['1440', '1024', '390', "keyboard.press('Escape')"])
 const managedCcSwitch = fs.readFileSync('apps/api/src/cc-switch-managed-cli.mjs', 'utf8');
 assert.equal(/sqlite|better-sqlite3/i.test(managedCcSwitch), false, 'managed cc-switch path never writes SQLite');
 assert.ok(
-  fs.readFileSync('bridge/main.go', 'utf8').includes('bridgeVersion   = "2.1.0"'),
-  'Windows Bridge reports V2.1'
+  fs.readFileSync('bridge/main.go', 'utf8').includes('bridgeVersion   = "2.2.0"'),
+  'Windows Bridge reports V2.2'
 );
-console.log(`V2.1 acceptance audit passed (${checks.length} implementation checks)`);
+console.log(`V2.2 acceptance audit passed (${checks.length} implementation checks)`);
 
 function workspaceManifests() {
   return ['apps', 'packages'].flatMap((root) =>

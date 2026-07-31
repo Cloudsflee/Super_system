@@ -5,7 +5,7 @@ import {
   collectCurrentGateIdentity,
   readGateReceiptForIdentity,
   writeGateReceiptForIdentity
-} from './gate-receipt-v21.mjs';
+} from './gate-receipt-v22.mjs';
 
 const manual = process.argv.includes('--all');
 const updates = manual ? [] : parseUpdates(fs.readFileSync(0, 'utf8'));
@@ -19,14 +19,14 @@ if (mainUpdate && isZeroSha(mainUpdate.localSha)) fail('refusing to delete the r
 
 const root = git(['rev-parse', '--show-toplevel']);
 process.chdir(root);
-const head = git(['rev-parse', 'HEAD']);
+const head = git(['rev-parse', '--verify', 'HEAD^{commit}']);
 if (mainUpdate && mainUpdate.localSha !== head)
   fail(`main update ${mainUpdate.localSha} is not the checked-out HEAD ${head}`);
 const changes = git(['status', '--porcelain']);
 if (changes) fail(`working tree must be clean so tests match the pushed commit:\n${changes}`);
 
-const baseSha = resolveBase(mainUpdate, head);
-const gateEnv = { ...process.env, AIWS_TEST_BASE_SHA: baseSha };
+const baseSha = git(['rev-parse', '--verify', `${resolveBase(mainUpdate, head)}^{commit}`]);
+const gateEnv = { ...process.env, AIWS_TEST_BASE_SHA: baseSha, AIWS_TEST_HEAD_SHA: head };
 console.log(`[pre-push] Verifying ${head.slice(0, 12)} against ${baseSha.slice(0, 12)}.`);
 const identity = collectCurrentGateIdentity(root, gateEnv),
   cached = readGateReceiptForIdentity({ root, identity, requiredGates: DEFAULT_PRE_PUSH_GATES, env: gateEnv });
@@ -53,7 +53,7 @@ const receipt = writeGateReceiptForIdentity({
   env: gateEnv
 });
 console.log(
-  `\n[pre-push] Historical compatibility and V2.1 gates passed; receipt ${receipt.fingerprint.slice(0, 12)}.`
+  `\n[pre-push] Historical compatibility and V2.2 gates passed; receipt ${receipt.fingerprint.slice(0, 12)}.`
 );
 
 function resolveBase(update, headSha) {

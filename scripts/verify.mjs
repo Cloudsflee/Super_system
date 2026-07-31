@@ -2,6 +2,11 @@ import { spawnSync } from 'node:child_process';
 import path from 'node:path';
 
 const steps = [
+  nodeStep('v2.2:plan', 'scripts/v22-plan.mjs'),
+  nodeStep('v2.2:catalog', 'scripts/v22-catalog.mjs'),
+  nodeStep('v2.2:coverage', 'scripts/v22-coverage.mjs'),
+  nodeStep('v2.2:impact-audit', 'scripts/v22-impact.mjs', '--audit'),
+  nodeStep('v2.2:full', 'scripts/v22-runner.mjs', 'full'),
   nodeStep('v2.1:plan', 'scripts/v21-plan.mjs'),
   nodeStep('v2.1:catalog', 'scripts/v21-catalog.mjs'),
   nodeStep('v2.1:coverage', 'scripts/v21-coverage.mjs'),
@@ -16,6 +21,7 @@ const steps = [
   nodeStep('v1.8:plan', 'scripts/v18-plan.mjs'),
   nodeStep('v1.8:impact-audit', 'scripts/v18-impact.mjs', '--audit'),
   nodeStep('v1.8:mcp-contract', 'scripts/v18-contract.mjs'),
+  nodeStep('format:check', 'scripts/format.mjs', '--check'),
   nodeStep('lint', 'scripts/lint.mjs'),
   nodeStep('typecheck', 'scripts/typecheck.mjs'),
   pnpmStep('test', 'test'),
