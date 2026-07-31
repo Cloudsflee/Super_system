@@ -11,7 +11,7 @@ import { id, now } from '../../../../packages/shared/index.mjs';
 import { authorizeRepositoryAction } from '../authorization.mjs';
 import { ensureRepositoryCheckout } from '../repository-checkout.mjs';
 import { assertProjectLifecycleIdle, withProjectLifecycleLock } from '../project-lifecycle-operations.mjs';
-import { bindCanonicalRepositoryInState, upsertCanonicalRepositoryInState } from '../repository-lifecycle-v19.mjs';
+import { commitRepositoryBindingInState } from '../repository-binding-state.mjs';
 import {
   accessibleProjectIds,
   actorForRequest,
@@ -148,180 +148,106 @@ async function bindRepository({ res, params, body }) {
   return withProjectLifecycleLock(params.id, () => bindRepositoryLocked({ res, params, body }));
 }
 async function bindRepositoryLocked({ res, params, body }) {
-  const snapshot = await readState();
-  const sourceProject = assertProjectLifecycleIdle(snapshot.projects.find((item) => item.id === params.id));
-  const actor = owner(snapshot),
-    account = connectedGithubAccount(snapshot, actor.id);
-  const operationKey = String(body.operation_key || `${sourceProject.id}:${body.installation_id}:${body.repository_id}`)
-    .trim()
-    .slice(0, 150);
-  const prior = snapshot.import_jobs.find(
+  const snapshot = await readState(),
+    context = repositoryBindingContext(snapshot, params.id, body);
+  if (context.priorResult) return send(res, 200, context.priorResult);
+  await assertRepositoryBindingAccess(context);
+  const checkout = await checkoutBoundRepository(snapshot, body, context),
+    result = await mutate((state) =>
+      commitRepositoryBindingInState(state, {
+        projectId: params.id,
+        body,
+        checkout,
+        account: context.account,
+        operationKey: context.operationKey
+      })
+    );
+  return send(res, 200, result);
+}
+
+function repositoryBindingContext(snapshot, projectId, body) {
+  const sourceProject = assertProjectLifecycleIdle(snapshot.projects.find((item) => item.id === projectId)),
+    actor = owner(snapshot),
+    account = connectedGithubAccount(snapshot, actor.id),
+    operationKey = String(body.operation_key || `${sourceProject.id}:${body.installation_id}:${body.repository_id}`)
+      .trim()
+      .slice(0, 150),
+    prior = matchingBindOperation(snapshot, sourceProject.id, operationKey, actor.id),
+    priorBinding = snapshot.repository_bindings.find(
+      (item) => item.project_id === sourceProject.id && String(item.repository_id) === String(body.repository_id)
+    );
+  if (prior?.status === 'succeeded' && priorBinding)
+    return {
+      priorResult: { ...priorBinding, checkout: prior.checkout, operation: prior, idempotent: true }
+    };
+  const sourceInstallation = findInstallation(snapshot, body.installation_id),
+    sourceRepository = selectedRepository(sourceInstallation, body.repository_id);
+  return { sourceProject, actor, account, operationKey, sourceInstallation, sourceRepository, priorResult: null };
+}
+
+function matchingBindOperation(state, projectId, operationKey, actorId) {
+  return state.import_jobs.find(
     (item) =>
       item.kind === 'github_repository_bind' &&
-      item.project_id === sourceProject.id &&
+      item.project_id === projectId &&
       item.operation_key === operationKey &&
-      (!item.owner_id || item.owner_id === actor.id)
+      (!item.owner_id || item.owner_id === actorId)
   );
-  const priorBinding = snapshot.repository_bindings.find(
-    (item) => item.project_id === sourceProject.id && String(item.repository_id) === String(body.repository_id)
+}
+
+function selectedRepository(installation, repositoryId) {
+  const repository = (installation.repositories || []).find(
+    (item) => String(item.id) === String(repositoryId) && item.selected !== false
   );
-  if (prior?.status === 'succeeded' && priorBinding)
-    return send(res, 200, { ...priorBinding, checkout: prior.checkout, operation: prior, idempotent: true });
-  const sourceInstallation = findInstallation(snapshot, body.installation_id);
-  const sourceRepository = (sourceInstallation.repositories || []).find(
-    (item) => String(item.id) === String(body.repository_id) && item.selected !== false
-  );
-  if (!sourceRepository) throw new HttpError(404, { error: 'repository_not_available' });
-  if (sourceRepository.permissions?.pull !== true || sourceRepository.permissions?.push !== true) {
-    await persistBindOperation({
-      operationKey,
-      projectId: sourceProject.id,
-      actorId: actor.id,
-      status: 'access_required',
-      errorCode: 'repository_pull_push_required'
-    });
-    throw new HttpError(403, {
-      error: 'access_required',
-      installation_url: '/github/installations/start',
-      action: 'grant_pull_push_access'
-    });
-  }
+  if (!repository) throw new HttpError(404, { error: 'repository_not_available' });
+  return repository;
+}
+
+async function assertRepositoryBindingAccess(context) {
+  if (context.sourceRepository.permissions?.pull === true && context.sourceRepository.permissions?.push === true)
+    return;
   await persistBindOperation({
-    operationKey,
-    projectId: sourceProject.id,
-    actorId: actor.id,
+    operationKey: context.operationKey,
+    projectId: context.sourceProject.id,
+    actorId: context.actor.id,
+    status: 'access_required',
+    errorCode: 'repository_pull_push_required'
+  });
+  throw new HttpError(403, {
+    error: 'access_required',
+    installation_url: '/github/installations/start',
+    action: 'grant_pull_push_access'
+  });
+}
+
+async function checkoutBoundRepository(snapshot, body, context) {
+  await persistBindOperation({
+    operationKey: context.operationKey,
+    projectId: context.sourceProject.id,
+    actorId: context.actor.id,
     status: 'running',
     errorCode: null,
     incrementAttempt: true
   });
-  let checkout;
   const adapted = testAdapter(body);
   try {
-    checkout = await ensureRepositoryCheckout(snapshot, {
-      project: sourceProject,
-      installation: sourceInstallation,
-      repository: sourceRepository,
+    return await ensureRepositoryCheckout(snapshot, {
+      project: context.sourceProject,
+      installation: context.sourceInstallation,
+      repository: context.sourceRepository,
       adapted,
       adaptedFailure: adapted ? body.test_checkout_failure : null
     });
   } catch (error) {
     await persistBindOperation({
-      operationKey,
-      projectId: sourceProject.id,
-      actorId: actor.id,
+      operationKey: context.operationKey,
+      projectId: context.sourceProject.id,
+      actorId: context.actor.id,
       status: 'failed',
       errorCode: error?.payload?.error || 'repository_checkout_failed'
     });
     throw error;
   }
-  const result = await mutate((state) => {
-    const currentActor = owner(state),
-      project = assertProjectLifecycleIdle(state.projects.find((item) => item.id === params.id));
-    const installation = findInstallation(state, body.installation_id);
-    const repository = (installation.repositories || []).find(
-      (item) => String(item.id) === String(body.repository_id) && item.selected !== false
-    );
-    if (!repository) throw new HttpError(404, { error: 'repository_not_available' });
-    let binding = state.repository_bindings.find(
-      (item) => item.project_id === project.id && String(item.repository_id) === String(repository.id)
-    );
-    state.repository_bindings = state.repository_bindings.filter(
-      (item) => item.project_id !== project.id || item === binding
-    );
-    if (!binding) {
-      binding = { id: id('rbd'), project_id: project.id, created_by_user_id: currentActor.id, created_at: now() };
-      state.repository_bindings.push(binding);
-    }
-    Object.assign(binding, {
-      github_account_id: account?.id || null,
-      installation_id: installation.installation_id,
-      repository_id: String(repository.id),
-      full_name: repository.full_name,
-      remote_name: checkout.remote_name,
-      permissions: repository.permissions,
-      status: 'ready',
-      updated_at: now()
-    });
-    project.repo_path = checkout.repo_path;
-    project.workspace_root = checkout.repo_path.replace(/[\\/]repo$/, '');
-    project.managed_workspace_state = 'ready';
-    project.github_account_id = account?.id || project.github_account_id || null;
-    project.settings ||= {};
-    project.settings.workspace_root_whitelist = [
-      ...new Set([...(project.settings.workspace_root_whitelist || []), checkout.repo_path])
-    ];
-    project.updated_at = now();
-    const canonicalRepository = upsertCanonicalRepositoryInState(
-      state,
-      { ...repository, repository_id: repository.id, default_branch: repository.default_branch || 'main' },
-      {
-        installation_id: installation.installation_id,
-        creator_user_id: null,
-        creator_github_identity: null,
-        external_import: true,
-        administration_permission: repository.permissions?.admin ? 'write' : 'unknown'
-      }
-    );
-    const projectRepositoryBinding = bindCanonicalRepositoryInState(state, {
-      project_id: project.id,
-      canonical_repository_id: canonicalRepository.id,
-      installation_id: installation.installation_id,
-      checkout,
-      permissions: repository.permissions,
-      actor_id: currentActor.id,
-      status: 'ready'
-    });
-    let operation = state.import_jobs.find(
-      (item) =>
-        item.kind === 'github_repository_bind' &&
-        item.project_id === project.id &&
-        item.operation_key === operationKey &&
-        (!item.owner_id || item.owner_id === currentActor.id)
-    );
-    if (!operation) {
-      operation = {
-        id: id('imp'),
-        kind: 'github_repository_bind',
-        project_id: project.id,
-        operation_key: operationKey,
-        owner_id: currentActor.id,
-        attempt: 1,
-        created_at: now()
-      };
-      state.import_jobs.push(operation);
-    }
-    Object.assign(operation, {
-      status: 'succeeded',
-      error_code: null,
-      binding_id: binding.id,
-      checkout: {
-        cloned: checkout.cloned,
-        remote_name: checkout.remote_name,
-        head: checkout.head,
-        ready: checkout.ready
-      },
-      updated_at: now()
-    });
-    addTrace(
-      state,
-      'human.reviewed',
-      {
-        project_id: project.id,
-        summary: `绑定 repository ${repository.full_name}`,
-        data: { repo_path: checkout.repo_path, cloned: checkout.cloned }
-      },
-      currentActor.id
-    );
-    return {
-      ...binding,
-      canonical_repository: canonicalRepository,
-      project_repository_binding: projectRepositoryBinding,
-      checkout,
-      operation,
-      idempotent: false
-    };
-  });
-  return send(res, 200, result);
 }
 
 async function checkPermissions({ req, res, body }) {

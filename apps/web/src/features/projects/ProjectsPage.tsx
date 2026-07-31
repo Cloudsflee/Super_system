@@ -94,47 +94,15 @@ export function ProjectsPage() {
         )}
       </header>
       {(empty || creating) && (
-        <form
-          className="project-form"
-          onSubmit={(event) => {
-            event.preventDefault();
-            create.mutate();
-          }}
-        >
-          {creating && !empty && (
-            <button type="button" className="form-close" aria-label="关闭新建项目" onClick={() => setCreating(false)}>
-              <X size={18} />
-            </button>
-          )}
-          <div className="project-draft-notice">
-            <strong>创建可恢复草稿</strong>
-            <span>代码源、背景材料和验收标准将在下一步配置；确认前不会激活工作流。</span>
-          </div>
-          <label>
-            项目名称
-            <input
-              id="project-title"
-              autoFocus
-              value={form.title}
-              onChange={(event) => setForm({ ...form, title: event.target.value })}
-              placeholder="例如：发布桌面客户端"
-            />
-          </label>
-          <label>
-            初始目标（可选）
-            <textarea
-              id="project-goal"
-              rows={3}
-              value={form.goal}
-              onChange={(event) => setForm({ ...form, goal: event.target.value })}
-              placeholder="用一句话描述希望交付的结果，之后可在引导中完善"
-            />
-          </label>
-          <button type="submit" className="button primary" disabled={!form.title.trim() || create.isPending}>
-            <Plus size={16} />
-            {create.isPending ? '正在创建草稿' : '创建并开始引导'}
-          </button>
-        </form>
+        <ProjectCreateForm
+          form={form}
+          creating={creating}
+          empty={empty}
+          pending={create.isPending}
+          onForm={setForm}
+          onClose={() => setCreating(false)}
+          onSubmit={() => create.mutate()}
+        />
       )}
       {!empty && (
         <div className="project-table" role="table">
@@ -167,6 +135,68 @@ export function ProjectsPage() {
         </div>
       )}
     </section>
+  );
+}
+
+function ProjectCreateForm({
+  form,
+  creating,
+  empty,
+  pending,
+  onForm,
+  onClose,
+  onSubmit
+}: {
+  form: { title: string; goal: string };
+  creating: boolean;
+  empty: boolean;
+  pending: boolean;
+  onForm: (value: { title: string; goal: string }) => void;
+  onClose: () => void;
+  onSubmit: () => void;
+}) {
+  return (
+    <form
+      className="project-form"
+      onSubmit={(event) => {
+        event.preventDefault();
+        onSubmit();
+      }}
+    >
+      {creating && !empty && (
+        <button type="button" className="form-close" aria-label="关闭新建项目" onClick={onClose}>
+          <X size={18} />
+        </button>
+      )}
+      <div className="project-draft-notice">
+        <strong>创建可恢复草稿</strong>
+        <span>代码源、背景材料和验收标准将在下一步配置；确认前不会激活工作流。</span>
+      </div>
+      <label>
+        项目名称
+        <input
+          id="project-title"
+          autoFocus
+          value={form.title}
+          onChange={(event) => onForm({ ...form, title: event.target.value })}
+          placeholder="例如：发布桌面客户端"
+        />
+      </label>
+      <label>
+        初始目标（可选）
+        <textarea
+          id="project-goal"
+          rows={3}
+          value={form.goal}
+          onChange={(event) => onForm({ ...form, goal: event.target.value })}
+          placeholder="用一句话描述希望交付的结果，之后可在引导中完善"
+        />
+      </label>
+      <button type="submit" className="button primary" disabled={!form.title.trim() || pending}>
+        <Plus size={16} />
+        {pending ? '正在创建草稿' : '创建并开始引导'}
+      </button>
+    </form>
   );
 }
 

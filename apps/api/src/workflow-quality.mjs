@@ -1,11 +1,10 @@
-import { cloneStateValue as structuredClone } from './state-clone.mjs';
 import { HttpError } from './http.mjs';
 import {
   contributionValidationErrors,
   isContributionTask,
-  normalizeInputContribution,
   withAcceptanceCriterionIds
 } from '../../../packages/shared/src/task-contributions.mjs';
+import { normalizeInputs } from './workflow-quality-inputs.mjs';
 
 export const WORKFLOW_PHASE_TAGS = Object.freeze([
   'research_evidence',
@@ -53,18 +52,22 @@ export function validateWorkflowPlanningQuality({
     normalized = normalizeWorkflowPlanningFields(nodes),
     byId = new Map(normalized.map((item) => [item.id, item])),
     taskIds = new Set(normalized.filter((item) => item.role === 'task').map((item) => item.id));
-  const hasRepository = Boolean(
-    project?.repo_path ||
-    project?.workspace_root ||
-    normalized.some((item) => item.repository_intent) ||
-    /software|code|repository/i.test(String(projectClassification || ''))
-  );
+  const hasRepository = workflowHasRepository(project, normalized, projectClassification);
   const hasExternalMaterials = Boolean(brief?.content?.material_references?.length);
   const context = { normalized, byId, errors, hasRepository, hasExternalMaterials, allowAtomic };
   for (const workstream of normalized.filter((item) => item.role === 'workstream'))
     validateWorkstreamPlanning(workstream, context);
   validateBriefCoverage(brief, briefCoverage, taskIds, errors);
   return { ok: errors.length === 0, errors, nodes: normalized, brief_coverage: normalizeCoverage(briefCoverage) };
+}
+
+function workflowHasRepository(project, nodes, projectClassification) {
+  return Boolean(
+    project?.repo_path ||
+    project?.workspace_root ||
+    nodes.some((item) => item.repository_intent) ||
+    /software|code|repository/i.test(String(projectClassification || ''))
+  );
 }
 
 function validateWorkstreamPlanning(workstream, context) {
@@ -312,90 +315,12 @@ export function defaultBriefCoverage(brief, taskIds) {
   );
 }
 
-function normalizeInputs(source, _dependencyIds, node, outputs) {
-  const outputKeys = outputs.map((slot) => slot.key);
-  const slots = (Array.isArray(source) ? source : []).map((slot, index) => {
-    const normalized = {
-      key: clean(slot?.key || `input_${index + 1}`, 120),
-      kind: clean(slot?.kind || 'asset_version', 80),
-      required: slot?.required !== false,
-      source: clean(slot?.source || 'explicit', 80),
-      selector: slot?.selector ?? null,
-      ref_id: slot?.ref_id ?? null,
-      version_id: slot?.version_id ?? null,
-      consumption_policy: ['must_use', 'must_acknowledge', 'available'].includes(slot?.consumption_policy)
-        ? slot.consumption_policy
-        : null,
-      application_policy: ['required', 'optional'].includes(slot?.application_policy)
-        ? slot.application_policy
-        : slot?.consumption_policy === 'must_use'
-          ? 'required'
-          : 'optional',
-      purpose:
-        clean(slot?.purpose, 1000) ||
-        (isContributionTask(node)
-          ? null
-          : `使用 ${clean(slot?.source || '该输入', 80)} 输入影响 ${outputKeys.join('、') || '任务输出'}。`),
-      target_output_keys: unique(slot?.target_output_keys?.length ? slot.target_output_keys : outputKeys),
-      coverage_policy: slot?.coverage_policy === 'any' ? 'any' : 'all'
-    };
-    if (isContributionTask(node))
-      normalized.contribution = normalizeInputContribution(node, { ...slot, ...normalized }, outputs, {
-        system: normalized.source === 'repository_workspace'
-      });
-    else if (slot?.contribution && typeof slot.contribution === 'object')
-      normalized.contribution = structuredClone(slot.contribution);
-    return normalized;
-  });
-  if (SOFTWARE_KINDS.has(node.task_kind) && !slots.some((slot) => slot.source === 'repository_workspace')) {
-    const repository = {
-      key: uniqueSlotKey(slots, 'repository_snapshot'),
-      kind: 'repository',
-      required: true,
-      source: 'repository_workspace',
-      selector: 'fixed_sha',
-      ref_id: null,
-      version_id: null,
-      consumption_policy: null,
-      application_policy: 'required',
-      purpose: `以固定仓库快照作为 ${outputKeys.join('、')} 的唯一代码与验证基线。`,
-      target_output_keys: outputKeys,
-      coverage_policy: 'all'
-    };
-    if (isContributionTask(node))
-      repository.contribution = normalizeInputContribution(node, repository, outputs, { system: true });
-    slots.push(repository);
-  }
-  return slots;
-}
 function normalizeOutputs(source, acceptance, node) {
   const policy = HUMAN_CONFIRM_KINDS.has(node.task_kind) ? 'human' : 'system_evidence';
   const slots =
     Array.isArray(source) && source.length
-      ? source.map((slot, index) => ({
-          key: clean(slot?.key || `output_${index + 1}`, 120),
-          kind: clean(slot?.kind || 'asset', 80),
-          required: slot?.required !== false,
-          asset_type: clean(slot?.asset_type || assetType(node), 120),
-          acceptance_criteria: unique(slot?.acceptance_criteria?.length ? slot.acceptance_criteria : acceptance),
-          confirmation_policy: clean(slot?.confirmation_policy || policy, 80),
-          handoff: slot?.handoff !== false,
-          consumer_hint: clean(slot?.consumer_hint, 200) || null,
-          purpose: clean(slot?.purpose, 500) || `交付并证明：${acceptance[0] || node.goal || node.title}`
-        }))
-      : [
-          {
-            key: `${node.task_kind || 'task'}_result`,
-            kind: 'asset',
-            required: true,
-            asset_type: assetType(node),
-            acceptance_criteria: [...acceptance],
-            confirmation_policy: policy,
-            handoff: true,
-            consumer_hint: null,
-            purpose: `交付并证明：${acceptance[0] || node.goal || node.title}`
-          }
-        ];
+      ? source.map((slot, index) => normalizeOutputSlot(slot, index, node, acceptance, policy))
+      : [defaultOutputSlot(node, acceptance, policy)];
   const covered = new Set(slots.flatMap((slot) => slot.acceptance_criteria));
   slots[0].acceptance_criteria = unique([
     ...slots[0].acceptance_criteria,
@@ -403,47 +328,103 @@ function normalizeOutputs(source, acceptance, node) {
   ]);
   return isContributionTask(node) ? slots.map((slot) => withAcceptanceCriterionIds(node.id, slot)) : slots;
 }
+
+function normalizeOutputSlot(slot, index, node, acceptance, policy) {
+  return {
+    ...outputSlotIdentity(slot, index, node),
+    ...outputSlotAcceptance(slot, acceptance, policy),
+    consumer_hint: clean(slot?.consumer_hint, 200) || null,
+    purpose: outputPurpose(slot?.purpose, acceptance, node)
+  };
+}
+
+function outputSlotIdentity(slot, index, node) {
+  return {
+    key: clean(slot?.key || `output_${index + 1}`, 120),
+    kind: clean(slot?.kind || 'asset', 80),
+    required: slot?.required !== false,
+    asset_type: clean(slot?.asset_type || assetType(node), 120)
+  };
+}
+
+function outputSlotAcceptance(slot, acceptance, policy) {
+  return {
+    acceptance_criteria: unique(slot?.acceptance_criteria?.length ? slot.acceptance_criteria : acceptance),
+    confirmation_policy: clean(slot?.confirmation_policy || policy, 80),
+    handoff: slot?.handoff !== false
+  };
+}
+
+function defaultOutputSlot(node, acceptance, policy) {
+  return {
+    key: `${node.task_kind || 'task'}_result`,
+    kind: 'asset',
+    required: true,
+    asset_type: assetType(node),
+    acceptance_criteria: [...acceptance],
+    confirmation_policy: policy,
+    handoff: true,
+    consumer_hint: null,
+    purpose: outputPurpose(null, acceptance, node)
+  };
+}
+
+function outputPurpose(value, acceptance, node) {
+  return clean(value, 500) || `交付并证明：${acceptance[0] || node.goal || node.title}`;
+}
+
 function validateDependencySelectors(task, dependency, bindings, errors) {
   const outputs = dependency?.output_slots || [],
     requiredOutputs = outputs.filter((slot) => slot.required !== false);
-  for (const binding of bindings) {
-    if (binding.selector === 'required_outputs') {
-      if (requiredOutputs.length !== 1)
-        errors.push(
-          issue('workflow_task_dependency_output_selector_required', task.id, {
-            dependency_id: dependency?.id,
-            slot_key: binding.key,
-            output_keys: requiredOutputs.map((slot) => slot.key)
-          })
-        );
-      continue;
-    }
-    const exact = outputs.some((slot) => slot.key === binding.selector);
-    if (outputs.length > 1 && !exact)
+  for (const binding of bindings)
+    validateDependencySelector(task, dependency, binding, outputs, requiredOutputs, errors);
+}
+
+function validateDependencySelector(task, dependency, binding, outputs, requiredOutputs, errors) {
+  if (binding.selector === 'required_outputs') {
+    if (requiredOutputs.length !== 1)
       errors.push(
         issue('workflow_task_dependency_output_selector_required', task.id, {
           dependency_id: dependency?.id,
           slot_key: binding.key,
-          output_keys: outputs.map((slot) => slot.key)
+          output_keys: requiredOutputs.map((slot) => slot.key)
         })
       );
-    else if (outputs.length && !exact)
-      errors.push(
-        issue('workflow_task_dependency_output_selector_invalid', task.id, {
-          dependency_id: dependency?.id,
-          slot_key: binding.key,
-          selector: binding.selector
-        })
-      );
-    else if (outputs.find((slot) => slot.key === binding.selector)?.handoff === false)
-      errors.push(
-        issue('workflow_task_dependency_output_not_exported', task.id, {
-          dependency_id: dependency?.id,
-          slot_key: binding.key,
-          selector: binding.selector
-        })
-      );
+    return;
   }
+  const exact = outputs.some((slot) => slot.key === binding.selector);
+  if (outputs.length > 1 && !exact) {
+    errors.push(missingDependencySelectorIssue(task, dependency, binding, outputs));
+    return;
+  }
+  if (outputs.length && !exact) {
+    errors.push(invalidDependencySelectorIssue(task, dependency, binding));
+    return;
+  }
+  if (outputs.find((slot) => slot.key === binding.selector)?.handoff === false)
+    errors.push(
+      issue('workflow_task_dependency_output_not_exported', task.id, {
+        dependency_id: dependency?.id,
+        slot_key: binding.key,
+        selector: binding.selector
+      })
+    );
+}
+
+function missingDependencySelectorIssue(task, dependency, binding, outputs) {
+  return issue('workflow_task_dependency_output_selector_required', task.id, {
+    dependency_id: dependency?.id,
+    slot_key: binding.key,
+    output_keys: outputs.map((slot) => slot.key)
+  });
+}
+
+function invalidDependencySelectorIssue(task, dependency, binding) {
+  return issue('workflow_task_dependency_output_selector_invalid', task.id, {
+    dependency_id: dependency?.id,
+    slot_key: binding.key,
+    selector: binding.selector
+  });
 }
 
 function validateHandoffRoutes(tasks, context) {
@@ -537,12 +518,6 @@ function issue(code, nodeId, detail = {}) {
 }
 function unique(value) {
   return [...new Set((Array.isArray(value) ? value : []).map((item) => clean(item, 2000)).filter(Boolean))];
-}
-function uniqueSlotKey(slots, preferred) {
-  let key = preferred,
-    suffix = 2;
-  while (slots.some((slot) => slot.key === key)) key = `${preferred}_${suffix++}`;
-  return key;
 }
 function clean(value, max) {
   return String(value ?? '')

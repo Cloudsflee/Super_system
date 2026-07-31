@@ -5,6 +5,32 @@ import { ProviderFields, type ProviderChoice, type WireApi } from './CodexProvid
 import type { DeviceAuthSummary } from './codex-device-auth';
 
 export type ConnectionMode = 'device' | 'cc_switch' | 'codex_home' | 'manual';
+export type CodexConnectionSetupProps = {
+  mode: ConnectionMode;
+  busy: boolean;
+  providerChoice: ProviderChoice;
+  customProvider: string;
+  baseUrl: string;
+  wireApi: WireApi;
+  apiKey: string;
+  runtimeReady: boolean;
+  repairing?: boolean;
+  providerValid: boolean;
+  endpointValid: boolean;
+  deviceAuth: DeviceAuthSummary;
+  sourceAvailability?: { codex_home: boolean; cc_switch: boolean };
+  discovery: { data: CodexDiscovery | null; loading: boolean; error: string; actionError: string; busy: boolean };
+  onMode: (value: ConnectionMode) => void;
+  onProvider: (value: ProviderChoice) => void;
+  onCustomProvider: (value: string) => void;
+  onBaseUrl: (value: string) => void;
+  onWireApi: (value: WireApi) => void;
+  onApiKey: (value: string) => void;
+  onDevice: () => void;
+  onAuthenticate: () => void;
+  onDiscoveryRefresh: () => Promise<unknown>;
+  onDiscoveryImport: (input: CodexDiscoveryImportInput) => Promise<unknown>;
+};
 
 export function CodexConnectionSetup({
   mode,
@@ -31,32 +57,7 @@ export function CodexConnectionSetup({
   onAuthenticate,
   onDiscoveryRefresh,
   onDiscoveryImport
-}: {
-  mode: ConnectionMode;
-  busy: boolean;
-  providerChoice: ProviderChoice;
-  customProvider: string;
-  baseUrl: string;
-  wireApi: WireApi;
-  apiKey: string;
-  runtimeReady: boolean;
-  repairing?: boolean;
-  providerValid: boolean;
-  endpointValid: boolean;
-  deviceAuth: DeviceAuthSummary;
-  sourceAvailability?: { codex_home: boolean; cc_switch: boolean };
-  discovery: { data: CodexDiscovery | null; loading: boolean; error: string; actionError: string; busy: boolean };
-  onMode: (value: ConnectionMode) => void;
-  onProvider: (value: ProviderChoice) => void;
-  onCustomProvider: (value: string) => void;
-  onBaseUrl: (value: string) => void;
-  onWireApi: (value: WireApi) => void;
-  onApiKey: (value: string) => void;
-  onDevice: () => void;
-  onAuthenticate: () => void;
-  onDiscoveryRefresh: () => Promise<unknown>;
-  onDiscoveryImport: (input: CodexDiscoveryImportInput) => Promise<unknown>;
-}) {
+}: CodexConnectionSetupProps) {
   const thirdParty = providerChoice !== 'openai';
   return (
     <div className="setup-block codex-auth-block">

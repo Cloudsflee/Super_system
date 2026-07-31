@@ -1,4 +1,4 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   Ban,
   Braces,
@@ -15,192 +15,107 @@ import {
   Search,
   X
 } from 'lucide-react';
-import { useEffect, useMemo, useState } from 'react';
-import { useLocation, useParams } from 'react-router-dom';
+import { useMemo } from 'react';
 import { api, describeOperation, json } from '../../api/client';
-import type {
-  ContextMapResponse,
-  ContextNodeRecord,
-  ContextNodeResponse,
-  ContextPolicyRecord,
-  ContextSearchResponse
-} from '../../api/types';
+import type { ContextMapResponse, ContextNodeRecord, ContextNodeResponse, ContextPolicyRecord } from '../../api/types';
 import { FullPageState } from '../../components/common/FullPageState';
 import { IconButton } from '../../components/common/IconButton';
 import { useUi } from '../../state/ui';
+import {
+  useContextMapController,
+  type ContextDocumentTab as DocumentTab,
+  type ContextMobilePane as MobilePane
+} from './ContextMapController';
 import { ContextWorkerStatus } from './ContextWorkerStatus';
 
-type DocumentTab = 'summary' | 'source' | 'structure' | 'relations' | 'history';
-type MobilePane = 'map' | 'document' | 'details';
-
 export function ContextMapPage() {
-  const { projectId } = useParams();
-  const location = useLocation();
-  const [selectedId, setSelectedId] = useState<string | null>(null);
-  const [versionId, setVersionId] = useState<string | null>(null);
-  const [tab, setTab] = useState<DocumentTab>('summary');
-  const [mobilePane, setMobilePane] = useState<MobilePane>('map');
-  const [searchInput, setSearchInput] = useState('');
-  const [searchResult, setSearchResult] = useState<ContextSearchResponse | null>(null);
-  const mapQuery = useQuery({
-    queryKey: ['context-map', projectId || 'global'],
-    queryFn: () =>
-      api<ContextMapResponse>(`/context/v1/map${projectId ? `?project_id=${encodeURIComponent(projectId)}` : ''}`)
-  });
-  const nodeQuery = useQuery({
-    queryKey: ['context-node', selectedId, versionId],
-    queryFn: () =>
-      api<ContextNodeResponse>(
-        `/context/v1/nodes/${encodeURIComponent(selectedId!)}${versionId ? `?version_id=${encodeURIComponent(versionId)}` : ''}`
-      ),
-    enabled: Boolean(selectedId)
-  });
-  const searchMutation = useMutation({
-    mutationFn: (query: string) =>
-      api<ContextSearchResponse>(
-        '/context/v1/search',
-        json(
-          'POST',
-          { query, project_id: projectId || null, limit: 100 },
-          describeOperation('检索上下文地图', { feedback: 'silent', safeRetry: true })
-        )
-      ),
-    onSuccess: setSearchResult
-  });
-  const nodes = searchResult?.results || mapQuery.data?.nodes || [];
-  const effectiveFilter = searchResult?.query || '';
-
-  useEffect(() => {
-    if (selectedId && nodes.some((node) => node.id === selectedId)) return;
-    const preferred = nodes.find(
-      (node) =>
-        ![
-          'system',
-          'contracts',
-          'dependencies',
-          'executions',
-          'assets',
-          'conversations',
-          'audit',
-          'uncategorized'
-        ].includes(node.kind)
-    );
-    setSelectedId(preferred?.id || nodes[0]?.id || null);
-  }, [nodes, selectedId]);
-  useEffect(() => setVersionId(null), [selectedId]);
-  useEffect(() => {
-    if (!mapQuery.data) return;
-    const controller = new AbortController();
-    const timer = window.setTimeout(() => {
-      void api('/context/v1/browser-state', {
-        ...json(
-          'POST',
-          {
-            project_id: projectId || null,
-            browser_id: contextBrowserId(),
-            route: location.pathname,
-            selected_node_id: selectedId,
-            tab,
-            filters: effectiveFilter ? { query: effectiveFilter } : {}
-          },
-          describeOperation('同步上下文语义状态', { feedback: 'silent', safeRetry: true })
-        ),
-        signal: controller.signal
-      }).catch(() => undefined);
-    }, 300);
-    return () => {
-      window.clearTimeout(timer);
-      controller.abort();
-    };
-  }, [effectiveFilter, location.pathname, mapQuery.data, projectId, selectedId, tab]);
-
+  const controller = useContextMapController(),
+    { mapQuery, nodeQuery } = controller;
   if (mapQuery.isLoading) return <FullPageState title="正在构建上下文地图" />;
   if (mapQuery.isError || !mapQuery.data)
     return <FullPageState title="上下文地图加载失败" detail={mapQuery.error?.message} retry={mapQuery.refetch} />;
 
-  function submitSearch(event: React.FormEvent) {
-    event.preventDefault();
-    const query = searchInput.trim();
-    if (!query) setSearchResult(null);
-    else searchMutation.mutate(query);
-  }
-
-  function selectNode(nodeId: string) {
-    setSelectedId(nodeId);
-    setMobilePane('document');
-  }
-
   return (
     <section className="context-map-page">
-      <header className="context-map-toolbar">
-        <div className="context-map-title">
-          <MapIcon size={18} />
-          <div>
-            <h1>上下文地图</h1>
-            <span>
-              {projectId ? '当前项目' : '全局'} · {mapQuery.data.nodes.length} 个节点
-            </span>
-          </div>
-        </div>
-        <form className="context-search" role="search" onSubmit={submitSearch}>
-          <Search size={15} />
-          <input
-            aria-label="检索上下文"
-            value={searchInput}
-            onChange={(event) => setSearchInput(event.target.value)}
-            placeholder="检索标题、事实或关系"
-          />
-          {searchResult && (
-            <IconButton
-              label="清除检索"
-              onClick={() => {
-                setSearchInput('');
-                setSearchResult(null);
-              }}
-            >
-              <X size={15} />
-            </IconButton>
-          )}
-        </form>
-        <ContextWorkerStatus />
-        <IconButton label="刷新上下文地图" onClick={() => mapQuery.refetch()}>
-          <RefreshCw size={16} />
-        </IconButton>
-      </header>
-      <nav className="context-mobile-tabs" aria-label="上下文地图区域">
-        <PaneButton active={mobilePane === 'map'} onClick={() => setMobilePane('map')} icon={ListTree} label="目录" />
-        <PaneButton
-          active={mobilePane === 'document'}
-          onClick={() => setMobilePane('document')}
-          icon={FileText}
-          label="正文"
-        />
-        <PaneButton
-          active={mobilePane === 'details'}
-          onClick={() => setMobilePane('details')}
-          icon={Network}
-          label="关系"
-        />
-      </nav>
-      <div className={`context-map-layout mobile-${mobilePane}`}>
+      <ContextMapToolbar {...controller} map={mapQuery.data} />
+      <ContextMobileTabs pane={controller.mobilePane} onPane={controller.setMobilePane} />
+      <div className={`context-map-layout mobile-${controller.mobilePane}`}>
         <ContextDirectory
           map={mapQuery.data}
-          nodes={nodes}
-          selectedId={selectedId}
-          searchActive={Boolean(searchResult)}
-          onSelect={selectNode}
+          nodes={controller.nodes}
+          selectedId={controller.selectedId}
+          searchActive={Boolean(controller.searchResult)}
+          onSelect={controller.selectNode}
         />
         <ContextDocument
           value={nodeQuery.data}
           loading={nodeQuery.isLoading}
           error={nodeQuery.error}
-          tab={tab}
-          setTab={setTab}
-          setVersionId={setVersionId}
+          tab={controller.tab}
+          setTab={controller.setTab}
+          setVersionId={controller.setVersionId}
         />
-        <ContextDetails map={mapQuery.data} value={nodeQuery.data} selectedId={selectedId} onSelect={selectNode} />
+        <ContextDetails
+          map={mapQuery.data}
+          value={nodeQuery.data}
+          selectedId={controller.selectedId}
+          onSelect={controller.selectNode}
+        />
       </div>
     </section>
+  );
+}
+
+function ContextMapToolbar({
+  projectId,
+  searchInput,
+  setSearchInput,
+  searchResult,
+  submitSearch,
+  clearSearch,
+  mapQuery,
+  map
+}: ReturnType<typeof useContextMapController> & { map: ContextMapResponse }) {
+  return (
+    <header className="context-map-toolbar">
+      <div className="context-map-title">
+        <MapIcon size={18} />
+        <div>
+          <h1>上下文地图</h1>
+          <span>
+            {projectId ? '当前项目' : '全局'} · {map.nodes.length} 个节点
+          </span>
+        </div>
+      </div>
+      <form className="context-search" role="search" onSubmit={submitSearch}>
+        <Search size={15} />
+        <input
+          aria-label="检索上下文"
+          value={searchInput}
+          onChange={(event) => setSearchInput(event.target.value)}
+          placeholder="检索标题、事实或关系"
+        />
+        {searchResult && (
+          <IconButton label="清除检索" onClick={clearSearch}>
+            <X size={15} />
+          </IconButton>
+        )}
+      </form>
+      <ContextWorkerStatus />
+      <IconButton label="刷新上下文地图" onClick={() => mapQuery.refetch()}>
+        <RefreshCw size={16} />
+      </IconButton>
+    </header>
+  );
+}
+
+function ContextMobileTabs({ pane, onPane }: { pane: MobilePane; onPane: (pane: MobilePane) => void }) {
+  return (
+    <nav className="context-mobile-tabs" aria-label="上下文地图区域">
+      <PaneButton active={pane === 'map'} onClick={() => onPane('map')} icon={ListTree} label="目录" />
+      <PaneButton active={pane === 'document'} onClick={() => onPane('document')} icon={FileText} label="正文" />
+      <PaneButton active={pane === 'details'} onClick={() => onPane('details')} icon={Network} label="关系" />
+    </nav>
   );
 }
 
@@ -746,14 +661,4 @@ function edgeTypeLabel(value: string) {
 
 function enumLabel(value: string, labels: Record<string, string>) {
   return labels[value] || value;
-}
-
-function contextBrowserId() {
-  const key = 'aiws-browser-instance-v16';
-  const stored = localStorage.getItem(key);
-  if (stored) return stored;
-  const random = crypto.randomUUID?.() || `${Date.now()}-${Math.random().toString(16).slice(2)}`;
-  const value = `browser-${random}`;
-  localStorage.setItem(key, value);
-  return value;
 }

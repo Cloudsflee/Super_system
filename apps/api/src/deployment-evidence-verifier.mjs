@@ -1,4 +1,3 @@
-import { createHash } from 'node:crypto';
 import fsp from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -11,6 +10,8 @@ import {
   DEPLOYMENT_EVIDENCE_SCHEMA,
   parseDeploymentEvidenceV2
 } from '../../../packages/execution-protocol/src/index.mjs';
+import { authorizeComposeTarget } from './deployment-compose-authorization.mjs';
+import { digest, runRequiredProcess, unavailableError } from './deployment-verifier-process.mjs';
 
 export const DEPLOYMENT_RUNTIME_VERIFIER = 'deployment_runtime_verifier';
 
@@ -182,44 +183,20 @@ export function deploymentVerificationRequest(state, { run, taskExecution, resul
     contract = state.node_contracts.find((item) => item.id === taskExecution?.contract_id),
     slots = (contract?.expected_outputs || []).filter((item) => item.confirmation_policy === 'system_evidence');
   if (taskExecution?.executor !== 'assist' || task?.task_kind !== 'deploy' || !slots.length) return null;
-  if (slots.length !== 1 || slots.some((item) => !/DeliveryEvidence/i.test(item.asset_type)))
-    throw new HttpError(409, { error: 'deployment_runtime_verifier_output_unsupported' });
-  if (run?.runner !== 'codex_docker' || !run.raw_output_file_ref_id)
-    throw new HttpError(409, { error: 'deployment_runtime_verifier_runner_required' });
-  if (
-    resultJson?.status !== 'succeeded' ||
-    Number(resultJson?._codex_process?.code) !== 0 ||
-    resultJson?._codex_process?.failure_code
-  )
-    throw new HttpError(409, { error: 'deployment_runtime_verifier_process_invalid' });
-  const snapshot = taskExecution.context_snapshot?.repository_snapshot,
-    repositorySha = snapshot?.fixed_sha;
-  if (!SHA40.test(String(repositorySha || '')))
-    throw new HttpError(409, { error: 'deployment_runtime_verifier_repository_sha_required' });
-  const candidates = slots.map((slot) => {
-    const output = (resultJson.outputs || []).find((item) => item.output_key === slot.key);
-    if (!output || output.asset_type !== slot.asset_type)
-      throw new HttpError(409, { error: 'deployment_runtime_verifier_output_missing', output_key: slot.key });
-    return parseCandidate(output.payload?.content);
-  });
-  const candidate = candidates[0];
-  if (candidate.run_id !== run.id || candidate.repository_sha !== repositorySha)
-    throw new HttpError(409, { error: 'deployment_runtime_verifier_candidate_binding_invalid' });
+  assertVerifierOutputSlots(slots);
+  assertVerifierRun(run);
+  assertVerifierResult(resultJson);
+  const repositorySha = verifierRepositorySha(taskExecution),
+    candidate = deploymentCandidate(slots, resultJson);
+  assertCandidateBinding(candidate, run, repositorySha);
   const baseUrl = deploymentBaseUrl(candidate),
     viewports = requiredViewports(contract);
-  if (!viewports.length) throw new HttpError(409, { error: 'deployment_runtime_verifier_viewports_required' });
-  if (!Array.isArray(candidate.browser?.viewports))
-    throw new HttpError(409, { error: 'deployment_runtime_verifier_viewport_claim_invalid' });
-  const claimedViewports = new Set(candidate.browser.viewports.map((item) => Number(item.width)));
-  if (viewports.some((width) => !claimedViewports.has(width)))
-    throw new HttpError(409, { error: 'deployment_runtime_verifier_viewport_claim_missing' });
+  assertViewportClaims(candidate, viewports);
   const endpoints = deploymentEndpoints(candidate);
-  if (!endpoints.some((item) => item.path === '/healthz'))
-    throw new HttpError(409, { error: 'deployment_runtime_verifier_health_endpoint_required' });
+  assertHealthEndpoint(endpoints);
   const securityHeaders = deploymentSecurityHeaders(candidate);
   const images = deploymentImages(candidate);
-  if (/图像|images?/i.test(criteriaText(contract)) && !images.length)
-    throw new HttpError(409, { error: 'deployment_runtime_verifier_image_claim_required' });
+  assertImageClaims(contract, images);
   return {
     schema_version: 'aiws.deployment_runtime_request.v1',
     node_run_id: run.id,
@@ -238,6 +215,66 @@ export function deploymentVerificationRequest(state, { run, taskExecution, resul
     maximum_endpoint_ms: 5_000,
     maximum_page_load_ms: 5_000
   };
+}
+
+function assertVerifierOutputSlots(slots) {
+  if (slots.length !== 1 || slots.some((item) => !/DeliveryEvidence/i.test(item.asset_type)))
+    throw new HttpError(409, { error: 'deployment_runtime_verifier_output_unsupported' });
+}
+
+function assertVerifierRun(run) {
+  if (run?.runner !== 'codex_docker' || !run.raw_output_file_ref_id)
+    throw new HttpError(409, { error: 'deployment_runtime_verifier_runner_required' });
+}
+
+function assertVerifierResult(resultJson) {
+  if (
+    resultJson?.status !== 'succeeded' ||
+    Number(resultJson?._codex_process?.code) !== 0 ||
+    resultJson?._codex_process?.failure_code
+  )
+    throw new HttpError(409, { error: 'deployment_runtime_verifier_process_invalid' });
+}
+
+function verifierRepositorySha(taskExecution) {
+  const repositorySha = taskExecution.context_snapshot?.repository_snapshot?.fixed_sha;
+  if (!SHA40.test(String(repositorySha || '')))
+    throw new HttpError(409, { error: 'deployment_runtime_verifier_repository_sha_required' });
+  return repositorySha;
+}
+
+function deploymentCandidate(slots, resultJson) {
+  const candidates = slots.map((slot) => {
+    const output = (resultJson.outputs || []).find((item) => item.output_key === slot.key);
+    if (!output || output.asset_type !== slot.asset_type)
+      throw new HttpError(409, { error: 'deployment_runtime_verifier_output_missing', output_key: slot.key });
+    return parseCandidate(output.payload?.content);
+  });
+  return candidates[0];
+}
+
+function assertCandidateBinding(candidate, run, repositorySha) {
+  if (candidate.run_id !== run.id || candidate.repository_sha !== repositorySha)
+    throw new HttpError(409, { error: 'deployment_runtime_verifier_candidate_binding_invalid' });
+}
+
+function assertViewportClaims(candidate, viewports) {
+  if (!viewports.length) throw new HttpError(409, { error: 'deployment_runtime_verifier_viewports_required' });
+  if (!Array.isArray(candidate.browser?.viewports))
+    throw new HttpError(409, { error: 'deployment_runtime_verifier_viewport_claim_invalid' });
+  const claimedViewports = new Set(candidate.browser.viewports.map((item) => Number(item.width)));
+  if (viewports.some((width) => !claimedViewports.has(width)))
+    throw new HttpError(409, { error: 'deployment_runtime_verifier_viewport_claim_missing' });
+}
+
+function assertHealthEndpoint(endpoints) {
+  if (!endpoints.some((item) => item.path === '/healthz'))
+    throw new HttpError(409, { error: 'deployment_runtime_verifier_health_endpoint_required' });
+}
+
+function assertImageClaims(contract, images) {
+  if (/图像|images?/i.test(criteriaText(contract)) && !images.length)
+    throw new HttpError(409, { error: 'deployment_runtime_verifier_image_claim_required' });
 }
 
 export function assertDeploymentVerificationReport(report, request) {
@@ -479,73 +516,6 @@ function deploymentImages(candidate) {
     .slice(0, 20);
 }
 
-async function authorizeComposeTarget(request, taskExecution, processRunner) {
-  const checkout = taskExecution.context_snapshot?.repository_checkout,
-    snapshot = taskExecution.context_snapshot?.repository_snapshot;
-  if (
-    !checkout?.path ||
-    checkout.access !== 'read_only' ||
-    checkout.expected_head_sha !== request.repository_sha ||
-    snapshot?.fixed_sha !== request.repository_sha ||
-    snapshot.managed_path !== checkout.path
-  )
-    throw new HttpError(409, { error: 'deployment_runtime_verifier_checkout_invalid' });
-  let checkoutRoot, composePath;
-  try {
-    checkoutRoot = await fsp.realpath(checkout.path);
-    composePath = await fsp.realpath(path.resolve(checkoutRoot, ...request.compose_file.split('/')));
-  } catch {
-    throw new HttpError(409, { error: 'deployment_runtime_verifier_compose_file_unavailable' });
-  }
-  const relative = path.relative(checkoutRoot, composePath);
-  if (!relative || relative === '..' || relative.startsWith(`..${path.sep}`) || path.isAbsolute(relative))
-    throw new HttpError(409, { error: 'deployment_runtime_verifier_compose_file_invalid' });
-  const execution = await runRequiredProcess(
-    processRunner,
-    {
-      command: 'docker',
-      args: ['compose', '--project-directory', checkoutRoot, '-f', composePath, 'config', '--format', 'json']
-    },
-    { timeoutMs: 30_000, env: {} },
-    'deployment_runtime_verifier_compose_config_unavailable'
-  );
-  if (Number(execution?.code) !== 0)
-    throw new HttpError(409, { error: 'deployment_runtime_verifier_compose_config_unavailable' });
-  const raw = String(execution.stdout || '');
-  if (!raw || Buffer.byteLength(raw) > 5 * 1024 * 1024)
-    throw new HttpError(409, { error: 'deployment_runtime_verifier_compose_config_invalid' });
-  let config;
-  try {
-    config = JSON.parse(raw);
-  } catch {
-    throw new HttpError(409, { error: 'deployment_runtime_verifier_compose_config_invalid' });
-  }
-  const port = Number(new URL(request.base_url).port),
-    matches = [];
-  for (const [service, definition] of Object.entries(config?.services || {})) {
-    for (const published of definition?.ports || []) {
-      if (
-        Number(published?.published) === port &&
-        String(published?.protocol || 'tcp').toLowerCase() === 'tcp' &&
-        String(published?.host_ip || '') === '127.0.0.1'
-      )
-        matches.push({ service, target_port: Number(published.target) });
-    }
-  }
-  if (matches.length !== 1 || !Number.isInteger(matches[0].target_port) || matches[0].target_port < 1)
-    throw new HttpError(409, { error: 'deployment_runtime_verifier_target_not_published' });
-  return {
-    schema_version: 'aiws.compose_target_authorization.v1',
-    compose_file: request.compose_file,
-    compose_config_sha256: digest(Buffer.from(raw)),
-    project: String(config.name || ''),
-    service: matches[0].service,
-    published_port: port,
-    target_port: matches[0].target_port,
-    host_ip: '127.0.0.1'
-  };
-}
-
 function requiredViewports(contract) {
   const result = [];
   for (const criterion of contract?.acceptance_criteria || []) {
@@ -648,19 +618,3 @@ function allowedIgnoredConsoleMessage(message, baseUrl) {
     message.text === COOP_HOST_GATEWAY_MESSAGE
   );
 }
-
-async function runRequiredProcess(processRunner, invocation, options, errorCode) {
-  try {
-    return await processRunner(invocation, options);
-  } catch {
-    throw unavailableError(errorCode);
-  }
-}
-
-function unavailableError(errorCode) {
-  const error = new HttpError(503, { error: errorCode, retryable: true });
-  error.retryable = true;
-  return error;
-}
-
-const digest = (value) => createHash('sha256').update(value).digest('hex');

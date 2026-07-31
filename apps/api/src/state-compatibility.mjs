@@ -60,38 +60,52 @@ function normalizeWorkflowNodes(nodes, workflows) {
 function normalizeWorkflowNode(node, workflows) {
   const legacy = workflows.find((item) => item.id === node.workflow_id)?.hierarchy_mode === 'legacy';
   if (!node.role) node.role = legacy ? 'task' : node.parent_node_id ? 'task' : 'workstream';
+  normalizeNodeHierarchy(node);
+  normalizeNodeExecution(node);
+  normalizeNodeTaskFields(node);
+  if (node.legacy_read_only === undefined) node.legacy_read_only = legacy;
+}
+
+function normalizeNodeHierarchy(node) {
   if (node.parent_node_id === undefined) node.parent_node_id = null;
   if (node.outcome === undefined) node.outcome = node.role === 'workstream' ? node.goal || node.title : null;
   if (node.category === undefined) node.category = node.role === 'workstream' ? 'deliverable' : null;
-  if (node.task_kind === undefined)
-    node.task_kind =
-      node.role === 'task'
-        ? {
-            research: 'research',
-            analysis: 'analysis',
-            retrospective: 'review',
-            execution: 'code',
-            goal_definition: 'analysis'
-          }[node.type] || 'manual'
-        : null;
-  if (node.execution_mode === undefined)
-    node.execution_mode =
-      node.role === 'task'
-        ? ['code', 'test', 'deploy'].includes(node.task_kind)
-          ? 'codex'
-          : node.task_kind === 'manual'
-            ? 'manual'
-            : 'assist'
-        : null;
   if (node.boundary === undefined)
     node.boundary = node.role === 'workstream' ? { deliverable: node.outcome || node.title } : null;
   if (node.plan_revision === undefined) node.plan_revision = node.role === 'workstream' ? 1 : null;
   if (!Array.isArray(node.repository_target_ids)) node.repository_target_ids = [];
   if (node.required === undefined) node.required = true;
-  if (node.legacy_read_only === undefined) node.legacy_read_only = legacy;
-  if (node.role === 'task' && !Array.isArray(node.capability_tags)) node.capability_tags = [];
-  if (node.role === 'task' && !Number.isInteger(node.execution_revision)) node.execution_revision = 1;
-  if (node.role === 'task' && node.input_superseded === undefined) node.input_superseded = false;
+}
+
+function normalizeNodeExecution(node) {
+  if (node.task_kind === undefined) node.task_kind = taskKindFor(node);
+  if (node.execution_mode === undefined) node.execution_mode = executionModeFor(node);
+}
+
+function taskKindFor(node) {
+  if (node.role !== 'task') return null;
+  return (
+    {
+      research: 'research',
+      analysis: 'analysis',
+      retrospective: 'review',
+      execution: 'code',
+      goal_definition: 'analysis'
+    }[node.type] || 'manual'
+  );
+}
+
+function executionModeFor(node) {
+  if (node.role !== 'task') return null;
+  if (['code', 'test', 'deploy'].includes(node.task_kind)) return 'codex';
+  return node.task_kind === 'manual' ? 'manual' : 'assist';
+}
+
+function normalizeNodeTaskFields(node) {
+  if (node.role !== 'task') return;
+  if (!Array.isArray(node.capability_tags)) node.capability_tags = [];
+  if (!Number.isInteger(node.execution_revision)) node.execution_revision = 1;
+  if (node.input_superseded === undefined) node.input_superseded = false;
 }
 
 function normalizeSubmissions(submissions) {
@@ -161,31 +175,42 @@ function normalizeProjectBriefs(state) {
 function normalizeNodeContractV2(contract) {
   if (!contract || typeof contract !== 'object') return;
   contract.contract_schema_version = 2;
-  contract.expected_inputs = (Array.isArray(contract.expected_inputs) ? contract.expected_inputs : []).map(
-    (slot, index) => ({
-      ...slot,
-      key: text(slot?.key || `input_${index + 1}`),
-      kind: text(slot?.kind || inferInputKind(slot)),
-      required: slot?.required !== false,
-      source: text(slot?.source || (slot?.value != null ? 'inline' : 'explicit')),
-      selector: slot?.selector ?? null,
-      ref_id: slot?.ref_id ?? null,
-      version_id: slot?.version_id ?? null
-    })
-  );
-  contract.expected_outputs = (Array.isArray(contract.expected_outputs) ? contract.expected_outputs : []).map(
-    (slot, index) => ({
-      ...slot,
-      key: text(slot?.key || `output_${index + 1}`),
-      kind: text(slot?.kind || 'asset'),
-      required: slot?.required !== false,
-      asset_type: text(slot?.asset_type || contract.asset_output_types?.[index] || 'ResultAsset'),
-      acceptance_criteria: Array.isArray(slot?.acceptance_criteria)
-        ? slot.acceptance_criteria
-        : [...(contract.acceptance_criteria || [])],
-      confirmation_policy: text(slot?.confirmation_policy || 'human')
-    })
-  );
+  const inputs = Array.isArray(contract.expected_inputs) ? contract.expected_inputs : [];
+  const outputs = Array.isArray(contract.expected_outputs) ? contract.expected_outputs : [];
+  contract.expected_inputs = inputs.map(normalizeInputSlot);
+  contract.expected_outputs = outputs.map((slot, index) => normalizeOutputSlot(contract, slot, index));
+}
+
+function normalizeInputSlot(slot, index) {
+  return {
+    ...slot,
+    key: text(slot?.key || `input_${index + 1}`),
+    kind: text(slot?.kind || inferInputKind(slot)),
+    required: slot?.required !== false,
+    source: text(inputSlotSource(slot)),
+    selector: slot?.selector ?? null,
+    ref_id: slot?.ref_id ?? null,
+    version_id: slot?.version_id ?? null
+  };
+}
+
+function inputSlotSource(slot) {
+  if (slot?.source) return slot.source;
+  return slot?.value != null ? 'inline' : 'explicit';
+}
+
+function normalizeOutputSlot(contract, slot, index) {
+  return {
+    ...slot,
+    key: text(slot?.key || `output_${index + 1}`),
+    kind: text(slot?.kind || 'asset'),
+    required: slot?.required !== false,
+    asset_type: text(slot?.asset_type || contract.asset_output_types?.[index] || 'ResultAsset'),
+    acceptance_criteria: Array.isArray(slot?.acceptance_criteria)
+      ? slot.acceptance_criteria
+      : [...(contract.acceptance_criteria || [])],
+    confirmation_policy: text(slot?.confirmation_policy || 'human')
+  };
 }
 
 function inferInputKind(slot) {

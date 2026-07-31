@@ -8,6 +8,18 @@ import type {
 } from '../../api/types';
 import { displayStatus } from '../../components/common/display-labels';
 
+type CodexDiscoveryPickerProps = {
+  type: CodexDiscoverySource['type'];
+  data: CodexDiscovery | null;
+  loading: boolean;
+  error: string;
+  actionError: string;
+  busy: boolean;
+  reconfigure?: boolean;
+  onRefresh: () => Promise<unknown>;
+  onImport: (input: CodexDiscoveryImportInput) => Promise<unknown>;
+};
+
 export function CodexDiscoveryPicker({
   type,
   data,
@@ -18,17 +30,7 @@ export function CodexDiscoveryPicker({
   reconfigure = false,
   onRefresh,
   onImport
-}: {
-  type: CodexDiscoverySource['type'];
-  data: CodexDiscovery | null;
-  loading: boolean;
-  error: string;
-  actionError: string;
-  busy: boolean;
-  reconfigure?: boolean;
-  onRefresh: () => Promise<unknown>;
-  onImport: (input: CodexDiscoveryImportInput) => Promise<unknown>;
-}) {
+}: CodexDiscoveryPickerProps) {
   const sources = useMemo(() => (data?.sources || []).filter((item) => item.type === type), [data, type]);
   const providers = useMemo(
     () => sources.flatMap((source) => source.providers.map((provider) => ({ provider, source }))),
@@ -51,20 +53,12 @@ export function CodexDiscoveryPicker({
     setConfirmed(false);
   }, [selected?.provider.source_revision]);
 
-  async function submit() {
-    if (!selected || !confirmed || (!selected.provider.has_credential && !apiKey.trim())) return;
-    const result = await onImport({
-      discovery_id: selected.provider.discovery_id,
-      source_revision: selected.provider.source_revision,
-      confirmed: true,
-      ...(selected.provider.has_credential ? {} : { api_key: apiKey })
-    });
-    if (result) {
+  const submit = () =>
+    submitDiscoveryImport(selected, confirmed, apiKey, onImport, () => {
       setSelectedId('');
       setApiKey('');
       setConfirmed(false);
-    }
-  }
+    });
 
   return (
     <section
@@ -172,6 +166,23 @@ export function CodexDiscoveryPicker({
       )}
     </section>
   );
+}
+
+async function submitDiscoveryImport(
+  selected: { provider: CodexDiscoveryProvider; source: CodexDiscoverySource } | undefined,
+  confirmed: boolean,
+  apiKey: string,
+  onImport: CodexDiscoveryPickerProps['onImport'],
+  reset: () => void
+) {
+  if (!selected || !confirmed || (!selected.provider.has_credential && !apiKey.trim())) return;
+  const result = await onImport({
+    discovery_id: selected.provider.discovery_id,
+    source_revision: selected.provider.source_revision,
+    confirmed: true,
+    ...(selected.provider.has_credential ? {} : { api_key: apiKey })
+  });
+  if (result) reset();
 }
 
 function ProviderOption({

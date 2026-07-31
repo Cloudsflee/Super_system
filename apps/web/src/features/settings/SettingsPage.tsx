@@ -1,4 +1,4 @@
-import { Box, Github, HardDrive, KeyRound, Plus, PlugZap, RefreshCw, Search, ShieldCheck, Unplug } from 'lucide-react';
+import { Box, Github, HardDrive, KeyRound, Plus, RefreshCw, Search, Unplug } from 'lucide-react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
@@ -20,9 +20,9 @@ import { useCodexDiscovery } from '../setup/useCodexDiscovery';
 import {
   DEFAULT_CODEX_TIMEOUT_MINUTES,
   codexTimeoutMinutesToMs,
-  formatCodexTimeout,
   validCodexTimeoutMinutes
 } from '../setup/codex-timeout';
+import { CodexProfileTable } from './CodexProfileTable';
 import { McpSettingsBand } from './McpSettingsBand';
 
 type GithubStatus = { connected: boolean; login?: string; installation_count?: number; repository_count?: number };
@@ -388,41 +388,11 @@ function CodexSettingsBand({
           </div>
         </div>
       )}
-      <div className="profile-table">
-        {profiles.data?.map((item) => {
-          const hostDisabled = deployment.data?.mode === 'container' && item.kind === 'host';
-          return (
-            <div key={item.id}>
-              <span>
-                <PlugZap size={16} />
-                <span>
-                  <strong>{item.name}</strong>
-                  <small>
-                    {hostDisabled
-                      ? '主机配置在容器部署中不可用'
-                      : `${item.provider || 'openai'} · ${item.model || '默认模型'} · ${formatCodexTimeout(item.timeout_ms)}${item.base_url ? ` · ${item.base_url}` : ''}${item.wire_api ? ` · ${wireApiLabel(item.wire_api)}` : ''}`}
-                  </small>
-                </span>
-              </span>
-              <i className={`status ${item.status}`}>{displayStatus(hostDisabled ? 'disabled' : item.status)}</i>
-              <button
-                className="button secondary"
-                disabled={hostDisabled || item.is_active || item.status !== 'validated'}
-                onClick={() => proposeProfile(item.id)}
-              >
-                {item.is_active && !hostDisabled ? <ShieldCheck size={15} /> : <RefreshCw size={15} />}
-                {hostDisabled
-                  ? '不可用'
-                  : item.is_active
-                    ? '当前使用'
-                    : item.status === 'validated'
-                      ? '切换'
-                      : '待验证'}
-              </button>
-            </div>
-          );
-        })}
-      </div>
+      <CodexProfileTable
+        profiles={profiles.data}
+        deployment={deployment.data}
+        onPropose={(id) => void proposeProfile(id)}
+      />
     </section>
   );
 }
@@ -573,7 +543,4 @@ function settingsProfileBody(profile: ProfileDraft, provider: string, thirdParty
 
 function pathModeLabel(value?: string | null) {
   return value === 'relative' ? '相对路径' : value === 'absolute' ? '绝对路径' : '已配置';
-}
-function wireApiLabel(value: string) {
-  return value === 'responses' ? 'Responses API' : value === 'chat' ? '聊天补全 API' : '自定义协议';
 }

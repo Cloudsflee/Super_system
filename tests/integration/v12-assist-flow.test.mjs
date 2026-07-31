@@ -146,9 +146,8 @@ try {
   assert.deepEqual(repositorySnapshot(repo), sourceBefore);
   console.log('v1.2 Assist stream and action integration tests passed');
 } finally {
-  child.kill();
-  await new Promise((resolve) => setTimeout(resolve, 150));
-  fs.rmSync(home, { recursive: true, force: true });
+  await stopChild(child);
+  fs.rmSync(home, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 });
 }
 
 async function createSession(projectId, scopeType, scopeId, viewContext = {}) {
@@ -208,4 +207,15 @@ async function waitForServer() {
     }
   }
   throw new Error('server did not start');
+}
+
+async function stopChild(processHandle) {
+  if (processHandle.exitCode !== null) return;
+  const exited = new Promise((resolve) => processHandle.once('exit', resolve));
+  processHandle.kill();
+  await Promise.race([exited, new Promise((resolve) => setTimeout(resolve, 5_000))]);
+  if (processHandle.exitCode !== null) return;
+  const forcedExit = new Promise((resolve) => processHandle.once('exit', resolve));
+  processHandle.kill('SIGKILL');
+  await Promise.race([forcedExit, new Promise((resolve) => setTimeout(resolve, 1_000))]);
 }

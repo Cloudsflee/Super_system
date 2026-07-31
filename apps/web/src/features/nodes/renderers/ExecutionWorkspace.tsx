@@ -1,19 +1,5 @@
 import Editor from '@monaco-editor/react';
-import {
-  AlertTriangle,
-  Diff,
-  ExternalLink,
-  File,
-  Folder,
-  FolderUp,
-  GitBranch,
-  Layers3,
-  Play,
-  RefreshCw,
-  Save,
-  TestTube2,
-  X
-} from 'lucide-react';
+import { Diff, File, Folder, FolderUp, Play, Save, TestTube2, X } from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
 import { useEffect, useMemo, useRef, useState, type ComponentProps } from 'react';
 import { api, json } from '../../../api/client';
@@ -22,11 +8,12 @@ import type { RendererProps } from '../registry';
 import { useUi, type UiState } from '../../../state/ui';
 import '../../../monaco';
 import { useAssistSurface } from '../../../components/assist/semantic-actions';
-import { displayStatus, pullRequestStatusLabel } from '../../../components/common/display-labels';
+import { displayStatus } from '../../../components/common/display-labels';
 import { useIdeContext } from '../../../state/ide-context';
+import { openExecutionEntry, type ExecutionFileTab } from './ExecutionFileActions';
+import { FileCapabilityState, RepositoryBar, shortSha } from './ExecutionRepositoryBar';
 
-export type ExecutionTab = { path: string; content: string; saved: string; language: string };
-type FileContent = { path: string; content: string; language: string };
+export type ExecutionTab = ExecutionFileTab;
 type WorkspaceList = { items: RepositoryWorkspace[] };
 type ConnectionList = { items: RepositoryConnection[] };
 
@@ -350,30 +337,16 @@ function useExecutionEditor({
     }
   });
 
-  async function open(entry: FileEntry) {
-    if (!repositoryAvailable) return;
-    if (entry.type === 'directory') {
-      setDirectory(entry.path);
-      return;
-    }
-    const existing = tabs.find((tab) => tab.path === entry.path);
-    if (existing) {
-      setActive(existing.path);
-      return;
-    }
-    try {
-      const file = await api<FileContent>(
-        `/repository-workspaces/${selectedWorkspace?.id}/files/content?path=${encodeURIComponent(entry.path)}`
-      );
-      setTabs((items) => [
-        ...items,
-        { path: file.path, content: file.content, saved: file.content, language: file.language }
-      ]);
-      setActive(file.path);
-    } catch (reason) {
-      toast((reason as Error).message, 'error');
-    }
-  }
+  const open = (entry: FileEntry) =>
+    openExecutionEntry(entry, {
+      repositoryAvailable,
+      tabs,
+      workspaceId: selectedWorkspace?.id,
+      setDirectory,
+      setActive,
+      setTabs,
+      toast
+    });
   function change(content = '') {
     setTabs((items) => items.map((tab) => (tab.path === active ? { ...tab, content } : tab)));
   }
@@ -664,138 +637,8 @@ function bindEditorSelection(
   });
 }
 
-function RepositoryBar(props: {
-  connections: RepositoryConnection[];
-  catalog?: RepositoryBranchCatalog;
-  workspaces: RepositoryWorkspace[];
-  connectionId: string;
-  branchRef: string;
-  workspaceId: string;
-  selected: RepositoryWorkspace | null;
-  opening: boolean;
-  onConnection: (value: string) => void;
-  onBranch: (value: string) => void;
-  onWorkspace: (value: string) => void;
-  onRefresh: () => void;
-}) {
-  const branchCopies = props.workspaces.filter((item) => item.ref === props.branchRef);
-  return (
-    <header className="repository-workspace-bar">
-      <label>
-        代码仓库
-        <select
-          aria-label="代码仓库"
-          value={props.connectionId}
-          onChange={(event) => props.onConnection(event.target.value)}
-        >
-          {!props.connections.length && <option value="">默认代码仓库</option>}
-          {props.connections.map((item) => (
-            <option value={item.id} key={item.id}>
-              {item.full_name || item.id}
-            </option>
-          ))}
-        </select>
-      </label>
-      <label>
-        分支
-        <select aria-label="分支" value={props.branchRef} onChange={(event) => props.onBranch(event.target.value)}>
-          {props.catalog?.branches.map((item) => (
-            <option value={item.ref} key={item.full_ref}>
-              {item.name}
-            </option>
-          ))}
-        </select>
-      </label>
-      <button className="row-icon repository-refresh" aria-label="刷新当前分支" onClick={props.onRefresh}>
-        <RefreshCw size={15} />
-      </button>
-      {branchCopies.length > 1 && (
-        <details className="repository-workspace-copies">
-          <summary aria-label="选择执行副本">
-            <Layers3 size={14} />
-            <span>执行副本</span>
-          </summary>
-          <div>
-            <label>
-              执行副本
-              <select
-                aria-label="执行副本"
-                value={props.workspaceId}
-                onChange={(event) => props.onWorkspace(event.target.value)}
-              >
-                {branchCopies.map((item) => (
-                  <option value={item.id} key={item.id}>
-                    {shortSha(item.fixed_sha)} · {item.mode === 'read_write' ? '可写' : '只读'}
-                    {item.stale ? ' · 已过期' : ''}
-                  </option>
-                ))}
-              </select>
-            </label>
-          </div>
-        </details>
-      )}
-      {props.opening && (
-        <div className="repository-workspace-meta" role="status">
-          正在准备当前分支
-        </div>
-      )}
-      {!props.opening && props.selected && (
-        <div className="repository-workspace-meta">
-          <code>{shortSha(props.selected.current_sha)}</code>
-          <span>{props.selected.mode === 'read_write' ? '可写' : '只读'}</span>
-          <span>
-            <GitBranch size={12} />
-            领先 {props.selected.ahead}/落后 {props.selected.behind}
-          </span>
-          {props.selected.stale && (
-            <span className="workspace-warning">
-              <AlertTriangle size={12} />
-              已过期
-            </span>
-          )}
-          {props.selected.dirty && <span className="workspace-warning">有未提交变更</span>}
-          {props.selected.pull_requests?.map((item) =>
-            item.url ? (
-              <a key={item.intent_id} href={item.url} target="_blank" rel="noreferrer">
-                合并请求 #{item.number}
-                <ExternalLink size={11} />
-              </a>
-            ) : (
-              <span key={item.intent_id}>合并请求 {pullRequestStatusLabel(item.state)}</span>
-            )
-          )}
-        </div>
-      )}
-    </header>
-  );
-}
-
 export function markSavedSnapshot(tabs: ExecutionTab[], filePath: string, content: string) {
   return tabs.map((tab) => (tab.path === filePath ? { ...tab, saved: content } : tab));
-}
-function FileCapabilityState({
-  children,
-  detail,
-  error = false,
-  retry
-}: {
-  children: string;
-  detail?: string;
-  error?: boolean;
-  retry?: () => unknown;
-}) {
-  return (
-    <div className={`file-capability-state${error ? ' error' : ''}`} role={error ? 'alert' : 'status'}>
-      <File size={18} />
-      <strong>{children}</strong>
-      {detail && <small>{detail}</small>}
-      {retry && (
-        <button className="row-icon" aria-label="重新加载文件" onClick={retry}>
-          <RefreshCw size={14} />
-        </button>
-      )}
-    </div>
-  );
 }
 function pickCurrentWorkspace(
   workspaces: RepositoryWorkspace[],
@@ -816,7 +659,4 @@ function pickCurrentWorkspace(
 }
 function workspaceAttemptKey(connectionId: string, ref: string, sha: string) {
   return `${connectionId || 'default'}:${ref}:${sha}`;
-}
-function shortSha(value?: string | null) {
-  return String(value || '').slice(0, 8) || '--------';
 }

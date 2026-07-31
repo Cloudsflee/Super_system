@@ -4,18 +4,18 @@ import {
   Eye,
   GitPullRequest,
   MapPin,
-  MessageSquareMore,
   MoreHorizontal,
   Pencil,
   RotateCcw,
   ShieldCheck,
   X
 } from 'lucide-react';
-import { useCallback, useEffect, useMemo, useRef, useState, type RefObject } from 'react';
+import { useEffect, useState, type RefObject } from 'react';
 import type { AssistOperation } from '../../api/types';
-import { useContextMenu, useContextMenuResolver, type ContextMenuAction } from '../../components/common/ContextMenu';
+import type { ContextMenuAction } from '../../components/common/ContextMenu';
 import { IconButton } from '../../components/common/IconButton';
 import { useUi } from '../../state/ui';
+import { localRoute, locatedRoute, useOperationReceiptMenu } from './OperationReceiptController';
 
 export function OperationReceipt({
   operation,
@@ -32,95 +32,62 @@ export function OperationReceipt({
   onRevise?: () => void;
   onContinue?: () => void;
 }) {
-  const conflict = operation.conflict;
-  const showProposal = useUi((state) => state.showProposal);
-  const menu = useContextMenu(),
-    more = useRef<HTMLButtonElement>(null);
-  const [confirmForce, setConfirmForce] = useState(false);
-  const status = operation.undone_by ? 'undone' : operation.status;
+  const showProposal = useUi((state) => state.showProposal),
+    [confirmForce, setConfirmForce] = useState(false),
+    status = operation.undone_by ? 'undone' : operation.status,
+    menu = useOperationReceiptMenu({ operation, busy, onUndo, onRevise, onContinue });
   useEffect(() => setConfirmForce(false), [operation.id, operation.revision, operation.status]);
-  const menuActions = useMemo<ContextMenuAction[]>(() => {
-    const actions: ContextMenuAction[] = [];
-    if (operation.result_kind === 'change_proposal' || operation.status === 'committed')
-      actions.push({
-        id: `operation.${operation.id}.locate`,
-        label: operation.result_kind === 'change_proposal' ? '定位工作流' : '定位操作',
-        icon: MapPin,
-        onSelect: () => navigateTo(locatedRoute(operation))
-      });
-    if (operation.status === 'committed' && !operation.inverse_of)
-      actions.push(
-        { id: `operation.${operation.id}.revise`, label: '直接编辑', icon: Pencil, disabled: busy, onSelect: onRevise },
-        {
-          id: `operation.${operation.id}.continue`,
-          label: '让智能助手继续修改',
-          icon: MessageSquareMore,
-          disabled: busy,
-          onSelect: onContinue
-        },
-        ...(!operation.undone_by
-          ? [
-              {
-                id: `operation.${operation.id}.undo`,
-                label: '撤销',
-                icon: RotateCcw,
-                disabled: busy,
-                onSelect: () => onUndo(false)
-              } satisfies ContextMenuAction
-            ]
-          : [])
-      );
-    return actions;
-  }, [busy, onContinue, onRevise, onUndo, operation]);
-  useContextMenuResolver(
-    useCallback(
-      (context) =>
-        context.target.closest<HTMLElement>('[data-operation-receipt]')?.dataset.operationReceipt === operation.id
-          ? menuActions
-          : [],
-      [menuActions, operation.id]
-    )
-  );
-  function openMenu() {
-    const trigger = more.current;
-    if (!trigger) return;
-    const rect = trigger.getBoundingClientRect();
-    menu.open(menuActions, { x: rect.right - 8, y: rect.bottom + 5 }, trigger);
-  }
   if (operation.result_kind === 'change_proposal')
-    return (
-      <ProposalReceipt
+    return <ProposalReceipt operation={operation} busy={busy} {...menu} showProposal={showProposal} />;
+  return (
+    <StandardOperationReceipt
+      operation={operation}
+      busy={busy}
+      status={status}
+      confirmForce={confirmForce}
+      onConfirm={onConfirm}
+      onUndo={onUndo}
+      onRevise={onRevise}
+      onConfirmForce={setConfirmForce}
+      {...menu}
+    />
+  );
+}
+
+function StandardOperationReceipt({
+  operation,
+  busy,
+  status,
+  confirmForce,
+  menuActions,
+  more,
+  openMenu,
+  onConfirm,
+  onUndo,
+  onRevise,
+  onConfirmForce
+}: {
+  operation: AssistOperation;
+  busy: boolean;
+  status: string;
+  confirmForce: boolean;
+  menuActions: ContextMenuAction[];
+  more: RefObject<HTMLButtonElement | null>;
+  openMenu: () => void;
+  onConfirm: (approved: boolean) => void;
+  onUndo: (force?: boolean) => void;
+  onRevise: () => void;
+  onConfirmForce: (value: boolean) => void;
+}) {
+  return (
+    <article className={`operation-receipt ${status}`} data-operation-receipt={operation.id} tabIndex={0}>
+      <OperationHeader
         operation={operation}
-        busy={busy}
+        status={status}
         menuActions={menuActions}
         more={more}
         openMenu={openMenu}
-        showProposal={showProposal}
       />
-    );
-  return (
-    <article className={`operation-receipt ${status}`} data-operation-receipt={operation.id} tabIndex={0}>
-      <header>
-        {status === 'committed' || status === 'undone' ? (
-          <CheckCircle2 size={14} />
-        ) : status === 'conflicted' ? (
-          <AlertTriangle size={14} />
-        ) : (
-          <ShieldCheck size={14} />
-        )}
-        <span>
-          <strong>{operation.summary || operationLabel(operation.capability_id, operation.tool)}</strong>
-          <small>
-            {operation.target_label || operation.target_id} · {riskLabel(operation.risk)}
-          </small>
-        </span>
-        <i>{operationStatusLabel(status)}</i>
-        {menuActions.length > 0 && (
-          <IconButton ref={more} label="更多操作" aria-haspopup="menu" onClick={openMenu}>
-            <MoreHorizontal size={14} />
-          </IconButton>
-        )}
-      </header>
       {operation.status === 'pending_confirmation' && (
         <footer>
           <button disabled={busy} onClick={() => onConfirm(false)}>
@@ -146,43 +113,109 @@ export function OperationReceipt({
           </a>
         </footer>
       )}
-      {conflict && (
-        <div className="operation-conflict">
-          <Value label="修改前" value={conflict.before} />
-          <Value label="拟修改为" value={conflict.after} />
-          <Value label="当前值" value={conflict.current} />
-          {operation.inverse_of ? (
-            confirmForce ? (
-              <div className="operation-force-confirm" role="alert">
-                <span>当前值已变化，强制撤回会覆盖它。</span>
-                <button disabled={busy} onClick={() => setConfirmForce(false)}>
-                  取消
-                </button>
-                <button
-                  className="danger"
-                  disabled={busy}
-                  onClick={() => {
-                    setConfirmForce(false);
-                    onUndo(true);
-                  }}
-                >
-                  确认强制撤回
-                </button>
-              </div>
-            ) : (
-              <button className="danger" disabled={busy} onClick={() => setConfirmForce(true)}>
-                强制撤回
-              </button>
-            )
-          ) : (
-            <button disabled={busy} onClick={onRevise}>
-              <Pencil size={13} />
-              基于当前值重新编辑
-            </button>
-          )}
-        </div>
+      {operation.conflict && (
+        <OperationConflict
+          operation={operation}
+          busy={busy}
+          confirmForce={confirmForce}
+          onUndo={onUndo}
+          onRevise={onRevise}
+          onConfirmForce={onConfirmForce}
+        />
       )}
     </article>
+  );
+}
+
+function OperationHeader({
+  operation,
+  status,
+  menuActions,
+  more,
+  openMenu
+}: {
+  operation: AssistOperation;
+  status: string;
+  menuActions: ContextMenuAction[];
+  more: RefObject<HTMLButtonElement | null>;
+  openMenu: () => void;
+}) {
+  return (
+    <header>
+      {status === 'committed' || status === 'undone' ? (
+        <CheckCircle2 size={14} />
+      ) : status === 'conflicted' ? (
+        <AlertTriangle size={14} />
+      ) : (
+        <ShieldCheck size={14} />
+      )}
+      <span>
+        <strong>{operation.summary || operationLabel(operation.capability_id, operation.tool)}</strong>
+        <small>
+          {operation.target_label || operation.target_id} · {riskLabel(operation.risk)}
+        </small>
+      </span>
+      <i>{operationStatusLabel(status)}</i>
+      {menuActions.length > 0 && (
+        <IconButton ref={more} label="更多操作" aria-haspopup="menu" onClick={openMenu}>
+          <MoreHorizontal size={14} />
+        </IconButton>
+      )}
+    </header>
+  );
+}
+
+function OperationConflict({
+  operation,
+  busy,
+  confirmForce,
+  onUndo,
+  onRevise,
+  onConfirmForce
+}: {
+  operation: AssistOperation;
+  busy: boolean;
+  confirmForce: boolean;
+  onUndo: (force?: boolean) => void;
+  onRevise: () => void;
+  onConfirmForce: (value: boolean) => void;
+}) {
+  const conflict = operation.conflict!;
+  return (
+    <div className="operation-conflict">
+      <Value label="修改前" value={conflict.before} />
+      <Value label="拟修改为" value={conflict.after} />
+      <Value label="当前值" value={conflict.current} />
+      {operation.inverse_of ? (
+        confirmForce ? (
+          <div className="operation-force-confirm" role="alert">
+            <span>当前值已变化，强制撤回会覆盖它。</span>
+            <button disabled={busy} onClick={() => onConfirmForce(false)}>
+              取消
+            </button>
+            <button
+              className="danger"
+              disabled={busy}
+              onClick={() => {
+                onConfirmForce(false);
+                onUndo(true);
+              }}
+            >
+              确认强制撤回
+            </button>
+          </div>
+        ) : (
+          <button className="danger" disabled={busy} onClick={() => onConfirmForce(true)}>
+            强制撤回
+          </button>
+        )
+      ) : (
+        <button disabled={busy} onClick={onRevise}>
+          <Pencil size={13} />
+          基于当前值重新编辑
+        </button>
+      )}
+    </div>
   );
 }
 
@@ -268,18 +301,6 @@ function Value({ label, value, before, after }: { label: string; value?: unknown
       )}
     </details>
   );
-}
-function localRoute(value: string) {
-  return /^\/(?!\/)/.test(value) ? value : '/';
-}
-function navigateTo(route: string) {
-  window.history.pushState({}, '', route);
-  window.dispatchEvent(new PopStateEvent('popstate'));
-}
-function locatedRoute(operation: AssistOperation) {
-  const route = localRoute(operation.locator?.route || operation.route);
-  const target = operation.locator?.target_id || operation.target_id;
-  return target ? `${route}#${encodeURIComponent(target)}` : route;
 }
 function operationLabel(value?: string | null, tool?: string) {
   const capability =

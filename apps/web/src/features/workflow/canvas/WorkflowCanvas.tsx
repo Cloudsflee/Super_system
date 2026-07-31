@@ -23,6 +23,7 @@ import { CanvasToolbar } from './CanvasToolbar';
 import { autoLayout, reconcileCanvasNodes, toCanvasEdges, toCanvasNodes } from './graph';
 import { NodeInspector } from './NodeInspector';
 import type { CanvasNode } from './node-types';
+import { useCompactViewport } from './useCompactViewport';
 import { WorkspaceNode } from './WorkspaceNode';
 
 const nodeTypes = { workspace: WorkspaceNode };
@@ -36,59 +37,22 @@ export function WorkflowCanvas({ bundle, workflow }: { bundle: ProjectBundle; wo
   const [history, setHistory] = useState<Snapshot[]>([]);
   const [future, setFuture] = useState<Snapshot[]>([]);
   const [editNodeId, setEditNodeId] = useState<string | null>(null);
-  const [compactViewport, setCompactViewport] = useState(
-    () => window.matchMedia?.('(max-width: 700px)').matches || false
-  );
+  const compactViewport = useCompactViewport();
   const beforeDrag = useRef<Snapshot>([]);
   const dragging = useRef(false);
   const storedView = useRef<StoredView | null>(readStoredView(workflow.id));
   const flow = useReactFlow<CanvasNode>();
   const navigate = useNavigate();
-  const client = useQueryClient();
   const ui = useUi();
   const selected = bundle.nodes.find((node) => node.id === ui.inspectorNodeId);
   const contract = bundle.contracts.find((item) => item.node_id === selected?.id);
-  const saveLayout = useMutation({
-    mutationFn: (snapshot: Snapshot) =>
-      api(
-        `/workflows/${workflow.id}/layout`,
-        json('PUT', { nodes: snapshot }, { name: '保存工作流画布位置', feedback: 'background', timeoutMs: 120_000 })
-      ),
-    onError: (error) => ui.toast(`画布位置保存失败：${error.message}`, 'error')
-  });
-  const proposal = useMutation({
-    mutationFn: (body: Record<string, unknown>) =>
-      api<ChangeProposal>(
-        `/workflows/${workflow.id}/graph-proposals`,
-        json(
-          'POST',
-          {
-            ...body,
-            parent_node_id: null,
-            expected_revision: Number(workflow.workflow_revision || workflow.version || 1)
-          },
-          '创建工作流变更提案'
-        )
-      ),
-    onSuccess: (result) => {
-      client.invalidateQueries({ queryKey: keys.proposals(bundle.project.id) });
-      ui.showProposal(result.id);
-    },
-    onError: (error) => ui.toast(error.message, 'error')
-  });
+  const { saveLayout, proposal } = useCanvasMutations(bundle, workflow);
 
   useEffect(() => {
     setNodes((current) => reconcileCanvasNodes(current, initial, dragging.current));
     setEdges(toCanvasEdges(bundle.nodes));
     if (ui.inspectorNodeId && !bundle.nodes.some((node) => node.id === ui.inspectorNodeId)) ui.inspect(null);
   }, [initial, bundle.nodes, setEdges, setNodes, ui.inspectorNodeId]);
-  useEffect(() => {
-    if (typeof window.matchMedia !== 'function') return;
-    const media = window.matchMedia('(max-width: 700px)'),
-      change = () => setCompactViewport(media.matches);
-    media.addEventListener('change', change);
-    return () => media.removeEventListener('change', change);
-  }, []);
   useEffect(() => {
     const saved = storedView.current;
     window.setTimeout(() => {
@@ -100,9 +64,7 @@ export function WorkflowCanvas({ bundle, workflow }: { bundle: ProjectBundle; wo
     }, 0);
   }, [flow]);
 
-  function snapshot(value = nodes): Snapshot {
-    return value.map(({ id, position }) => ({ id, position }));
-  }
+  const snapshot = (value = nodes): Snapshot => value.map(({ id, position }) => ({ id, position }));
   function applyPositions(value: Snapshot) {
     setNodes((items) =>
       items.map((node) => ({ ...node, position: value.find((item) => item.id === node.id)?.position || node.position }))
@@ -138,9 +100,6 @@ export function WorkflowCanvas({ bundle, workflow }: { bundle: ProjectBundle; wo
   function add() {
     const position = flow.screenToFlowPosition({ x: window.innerWidth / 2, y: window.innerHeight / 2 });
     proposal.mutate(createNodeProposal(position));
-  }
-  function changes(value: NodeChange<CanvasNode>[]) {
-    onNodesChange(value);
   }
   function assistNode(node: ProjectBundle['nodes'][number]) {
     ui.inspect(node.id);
@@ -191,7 +150,7 @@ export function WorkflowCanvas({ bundle, workflow }: { bundle: ProjectBundle; wo
       workflowVersion={Number(workflow.workflow_revision || workflow.version || 1)}
       canUndo={history.length > 0}
       canRedo={future.length > 0}
-      onNodesChange={changes}
+      onNodesChange={onNodesChange}
       onConnect={(source, target) =>
         proposal.mutate({ operations: [{ type: 'connect', node_id: target, dependency_id: source }] })
       }
@@ -222,6 +181,40 @@ export function WorkflowCanvas({ bundle, workflow }: { bundle: ProjectBundle; wo
       onAssist={() => selected && assistNode(selected)}
     />
   );
+}
+
+function useCanvasMutations(bundle: ProjectBundle, workflow: Workflow) {
+  const client = useQueryClient();
+  const ui = useUi();
+  const saveLayout = useMutation({
+    mutationFn: (snapshot: Snapshot) =>
+      api(
+        `/workflows/${workflow.id}/layout`,
+        json('PUT', { nodes: snapshot }, { name: '保存工作流画布位置', feedback: 'background', timeoutMs: 120_000 })
+      ),
+    onError: (error) => ui.toast(`画布位置保存失败：${error.message}`, 'error')
+  });
+  const proposal = useMutation({
+    mutationFn: (body: Record<string, unknown>) =>
+      api<ChangeProposal>(
+        `/workflows/${workflow.id}/graph-proposals`,
+        json(
+          'POST',
+          {
+            ...body,
+            parent_node_id: null,
+            expected_revision: Number(workflow.workflow_revision || workflow.version || 1)
+          },
+          '创建工作流变更提案'
+        )
+      ),
+    onSuccess: (result) => {
+      client.invalidateQueries({ queryKey: keys.proposals(bundle.project.id) });
+      ui.showProposal(result.id);
+    },
+    onError: (error) => ui.toast(error.message, 'error')
+  });
+  return { saveLayout, proposal };
 }
 
 function WorkflowCanvasSurface({

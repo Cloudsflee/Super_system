@@ -96,6 +96,45 @@ export function WorkflowReplanPanel({
   const diff = useMemo(() => summarizeDiff(value?.diff), [value?.diff]);
   const error = start.error || generation.error || apply.error;
   return (
+    <WorkflowReplanView
+      value={value}
+      diff={diff}
+      error={error}
+      canWrite={canWrite}
+      starting={start.isPending}
+      applying={apply.isPending}
+      onClose={onClose}
+      onStart={() => start.mutate()}
+      onApply={() => apply.mutate()}
+      onReview={(proposalId) => ui.showProposal(proposalId)}
+    />
+  );
+}
+
+function WorkflowReplanView({
+  value,
+  diff,
+  error,
+  canWrite,
+  starting,
+  applying,
+  onClose,
+  onStart,
+  onApply,
+  onReview
+}: {
+  value?: WorkflowGeneration;
+  diff: ReturnType<typeof summarizeDiff>;
+  error: Error | null;
+  canWrite: boolean;
+  starting: boolean;
+  applying: boolean;
+  onClose: () => void;
+  onStart: () => void;
+  onApply: () => void;
+  onReview: (proposalId: string) => void;
+}) {
+  return (
     <aside className="workflow-replan-panel" aria-label="工作流重新规划">
       <header>
         <div>
@@ -112,8 +151,8 @@ export function WorkflowReplanPanel({
         {value?.candidate?.confidence != null && <span>置信度 {Math.round(value.candidate.confidence * 100)}%</span>}
         <button
           className="button secondary"
-          disabled={!canWrite || start.isPending || Boolean(value && !TERMINAL.has(value.status))}
-          onClick={() => start.mutate()}
+          disabled={!canWrite || starting || Boolean(value && !TERMINAL.has(value.status))}
+          onClick={onStart}
         >
           <RefreshCw size={14} />
           {value ? '重新生成' : '生成候选方案'}
@@ -166,18 +205,18 @@ export function WorkflowReplanPanel({
       )}
       <footer>
         {value?.change_proposal_id ? (
-          <button className="button primary" onClick={() => ui.showProposal(value.change_proposal_id || null)}>
+          <button className="button primary" onClick={() => onReview(value.change_proposal_id || '')}>
             <GitPullRequest size={15} />
             审查变更提案
           </button>
         ) : (
           <button
             className="button primary"
-            disabled={!canWrite || value?.status !== 'completed' || !value.diff || apply.isPending}
-            onClick={() => apply.mutate()}
+            disabled={!canWrite || value?.status !== 'completed' || !value.diff || applying}
+            onClick={onApply}
           >
             <GitPullRequest size={15} />
-            {apply.isPending ? '创建中' : '创建变更提案'}
+            {applying ? '创建中' : '创建变更提案'}
           </button>
         )}
       </footer>

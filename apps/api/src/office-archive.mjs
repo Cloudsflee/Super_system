@@ -11,87 +11,131 @@ const MAX_COMPRESSION_RATIO = 200;
 export async function inspectOfficeArchive(file, mime) {
   const handle = await fsp.open(file, 'r');
   try {
-    const stat = await handle.stat(),
-      tailSize = Math.min(stat.size, 65_557),
-      tail = Buffer.alloc(tailSize);
-    await handle.read(tail, 0, tail.length, stat.size - tail.length);
-    const eocd = findEocd(tail);
-    if (eocd < 0) throw invalidArchive();
-    const disk = tail.readUInt16LE(eocd + 4),
-      centralDisk = tail.readUInt16LE(eocd + 6),
-      diskEntries = tail.readUInt16LE(eocd + 8),
-      entries = tail.readUInt16LE(eocd + 10);
-    const centralSize = tail.readUInt32LE(eocd + 12),
-      centralOffset = tail.readUInt32LE(eocd + 16),
-      commentSize = tail.readUInt16LE(eocd + 20);
-    if (eocd + 22 + commentSize > tail.length || disk || centralDisk || diskEntries !== entries || entries === 0)
-      throw invalidArchive();
-    if (entries === 0xffff || centralSize === 0xffffffff || centralOffset === 0xffffffff)
-      throw archiveLimit('zip64_unsupported');
-    const absoluteEocd = stat.size - tail.length + eocd;
-    if (entries > MAX_ENTRIES || centralSize > MAX_CENTRAL_BYTES || centralOffset + centralSize > absoluteEocd)
-      throw archiveLimit('central_directory_limit');
-    const central = Buffer.alloc(centralSize);
-    await handle.read(central, 0, central.length, centralOffset);
-    const names = new Set();
-    let cursor = 0,
-      totalCompressed = 0,
-      totalUncompressed = 0;
-    for (let index = 0; index < entries; index++) {
-      if (cursor + 46 > central.length || central.readUInt32LE(cursor) !== CENTRAL_SIGNATURE) throw invalidArchive();
-      const flags = central.readUInt16LE(cursor + 8),
-        method = central.readUInt16LE(cursor + 10),
-        compressed = central.readUInt32LE(cursor + 20),
-        uncompressed = central.readUInt32LE(cursor + 24);
-      const nameLength = central.readUInt16LE(cursor + 28),
-        extraLength = central.readUInt16LE(cursor + 30),
-        commentLength = central.readUInt16LE(cursor + 32),
-        localOffset = central.readUInt32LE(cursor + 42);
-      const next = cursor + 46 + nameLength + extraLength + commentLength;
-      if (
-        next > central.length ||
-        ![0, 8].includes(method) ||
-        flags & 1 ||
-        [compressed, uncompressed, localOffset].includes(0xffffffff) ||
-        localOffset >= centralOffset
-      )
-        throw invalidArchive();
-      const name = central
-        .subarray(cursor + 46, cursor + 46 + nameLength)
-        .toString('utf8')
-        .replaceAll('\\', '/');
-      validateEntryName(name);
-      names.add(name.toLowerCase());
-      totalCompressed += compressed;
-      totalUncompressed += uncompressed;
-      cursor = next;
-      if (totalUncompressed > MAX_UNCOMPRESSED_BYTES) throw archiveLimit('uncompressed_size_limit');
-    }
-    if (
-      cursor !== central.length ||
-      (totalUncompressed > 1024 * 1024 && totalUncompressed / Math.max(1, totalCompressed) > MAX_COMPRESSION_RATIO)
-    )
-      throw archiveLimit('compression_ratio_limit');
-    if ([...names].some((name) => /(?:^|\/)vbaproject\.bin$/i.test(name)))
-      throw new HttpError(422, { error: 'attachment_office_active_content', reason: 'vba_project' });
-    const prefix = mime.includes('wordprocessingml')
-      ? 'word/'
-      : mime.includes('spreadsheetml')
-        ? 'xl/'
-        : mime.includes('presentationml')
-          ? 'ppt/'
-          : null;
-    if (!prefix || !names.has('[content_types].xml') || ![...names].some((name) => name.startsWith(prefix)))
-      throw invalidArchive();
+    const metadata = await readArchiveMetadata(handle);
+    const central = await readCentralDirectory(handle, metadata);
+    const inspection = inspectCentralDirectory(central, metadata);
+    validateOfficePackage(inspection.names, mime);
     return {
-      entries,
-      central_bytes: centralSize,
-      compressed_bytes: totalCompressed,
-      uncompressed_bytes: totalUncompressed
+      entries: metadata.entries,
+      central_bytes: metadata.centralSize,
+      compressed_bytes: inspection.totalCompressed,
+      uncompressed_bytes: inspection.totalUncompressed
     };
   } finally {
     await handle.close();
   }
+}
+
+async function readArchiveMetadata(handle) {
+  const stat = await handle.stat();
+  const tailSize = Math.min(stat.size, 65_557);
+  const tail = Buffer.alloc(tailSize);
+  await handle.read(tail, 0, tail.length, stat.size - tail.length);
+  const eocd = findEocd(tail);
+  if (eocd < 0) throw invalidArchive();
+  const metadata = parseEndRecord(tail, eocd);
+  validateEndRecord(metadata, tail.length, stat.size - tail.length + eocd);
+  return metadata;
+}
+
+function parseEndRecord(tail, eocd) {
+  return {
+    eocd,
+    disk: tail.readUInt16LE(eocd + 4),
+    centralDisk: tail.readUInt16LE(eocd + 6),
+    diskEntries: tail.readUInt16LE(eocd + 8),
+    entries: tail.readUInt16LE(eocd + 10),
+    centralSize: tail.readUInt32LE(eocd + 12),
+    centralOffset: tail.readUInt32LE(eocd + 16),
+    commentSize: tail.readUInt16LE(eocd + 20)
+  };
+}
+
+function validateEndRecord(metadata, tailLength, absoluteEocd) {
+  const malformed =
+    metadata.eocd + 22 + metadata.commentSize > tailLength ||
+    metadata.disk ||
+    metadata.centralDisk ||
+    metadata.diskEntries !== metadata.entries ||
+    metadata.entries === 0;
+  if (malformed) throw invalidArchive();
+  if (metadata.entries === 0xffff || metadata.centralSize === 0xffffffff || metadata.centralOffset === 0xffffffff)
+    throw archiveLimit('zip64_unsupported');
+  const overLimit =
+    metadata.entries > MAX_ENTRIES ||
+    metadata.centralSize > MAX_CENTRAL_BYTES ||
+    metadata.centralOffset + metadata.centralSize > absoluteEocd;
+  if (overLimit) throw archiveLimit('central_directory_limit');
+}
+
+async function readCentralDirectory(handle, metadata) {
+  const central = Buffer.alloc(metadata.centralSize);
+  await handle.read(central, 0, central.length, metadata.centralOffset);
+  return central;
+}
+
+function inspectCentralDirectory(central, metadata) {
+  const names = new Set();
+  let cursor = 0;
+  let totalCompressed = 0;
+  let totalUncompressed = 0;
+  for (let index = 0; index < metadata.entries; index++) {
+    const entry = parseCentralEntry(central, cursor, metadata.centralOffset);
+    names.add(entry.name.toLowerCase());
+    totalCompressed += entry.compressed;
+    totalUncompressed += entry.uncompressed;
+    cursor = entry.next;
+    if (totalUncompressed > MAX_UNCOMPRESSED_BYTES) throw archiveLimit('uncompressed_size_limit');
+  }
+  validateCompressionTotals(central.length, cursor, totalCompressed, totalUncompressed);
+  return { names, totalCompressed, totalUncompressed };
+}
+
+function parseCentralEntry(central, cursor, centralOffset) {
+  if (cursor + 46 > central.length || central.readUInt32LE(cursor) !== CENTRAL_SIGNATURE) throw invalidArchive();
+  const flags = central.readUInt16LE(cursor + 8);
+  const method = central.readUInt16LE(cursor + 10);
+  const compressed = central.readUInt32LE(cursor + 20);
+  const uncompressed = central.readUInt32LE(cursor + 24);
+  const nameLength = central.readUInt16LE(cursor + 28);
+  const extraLength = central.readUInt16LE(cursor + 30);
+  const commentLength = central.readUInt16LE(cursor + 32);
+  const localOffset = central.readUInt32LE(cursor + 42);
+  const next = cursor + 46 + nameLength + extraLength + commentLength;
+  const invalid =
+    next > central.length ||
+    ![0, 8].includes(method) ||
+    Boolean(flags & 1) ||
+    [compressed, uncompressed, localOffset].includes(0xffffffff) ||
+    localOffset >= centralOffset;
+  if (invalid) throw invalidArchive();
+  const name = central
+    .subarray(cursor + 46, cursor + 46 + nameLength)
+    .toString('utf8')
+    .replaceAll('\\', '/');
+  validateEntryName(name);
+  return { name, compressed, uncompressed, next };
+}
+
+function validateCompressionTotals(centralLength, cursor, totalCompressed, totalUncompressed) {
+  const suspiciousRatio =
+    totalUncompressed > 1024 * 1024 && totalUncompressed / Math.max(1, totalCompressed) > MAX_COMPRESSION_RATIO;
+  if (cursor !== centralLength || suspiciousRatio) throw archiveLimit('compression_ratio_limit');
+}
+
+function validateOfficePackage(names, mime) {
+  if ([...names].some((name) => /(?:^|\/)vbaproject\.bin$/i.test(name)))
+    throw new HttpError(422, { error: 'attachment_office_active_content', reason: 'vba_project' });
+  const prefix = officeContentPrefix(mime);
+  if (!prefix || !names.has('[content_types].xml') || ![...names].some((name) => name.startsWith(prefix)))
+    throw invalidArchive();
+}
+
+function officeContentPrefix(mime) {
+  if (mime.includes('wordprocessingml')) return 'word/';
+  if (mime.includes('spreadsheetml')) return 'xl/';
+  if (mime.includes('presentationml')) return 'ppt/';
+  return null;
 }
 
 function findEocd(buffer) {

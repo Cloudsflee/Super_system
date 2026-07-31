@@ -63,94 +63,9 @@ export function ProposalDrawer({ projectId }: { projectId?: string }) {
           <X size={18} />
         </IconButton>
       </div>
-      <div className="proposal-list">
-        {ordered?.map((item) => (
-          <button
-            key={item.id}
-            className={item.id === proposal?.id ? 'active' : ''}
-            onClick={() => showProposal(item.id)}
-          >
-            <span>{changeTypeLabel(item.change_type)}</span>
-            <strong>{item.title}</strong>
-            <small>{displayStatus(item.status)}</small>
-          </button>
-        ))}
-      </div>
+      <ProposalList items={ordered} selectedId={proposal?.id} onSelect={showProposal} />
       {proposal ? (
-        <div className="proposal-detail">
-          <div className="status-line">
-            <span className={`status ${proposal.status}`}>{displayStatus(proposal.status)}</span>
-            <time>{new Date(proposal.created_at).toLocaleString()}</time>
-          </div>
-          <h3>{proposal.title}</h3>
-          <p>{proposal.summary}</p>
-          {proposal.before_json != null && (
-            <>
-              <h4>变更前</h4>
-              <pre>{JSON.stringify(proposal.before_json, null, 2)}</pre>
-            </>
-          )}
-          <h4>变更后</h4>
-          <pre>{JSON.stringify(proposal.after_json, null, 2)}</pre>
-          {proposal.impact?.length ? (
-            <>
-              <h4>影响范围</h4>
-              <ul>
-                {proposal.impact.map((item) => (
-                  <li key={item}>{item}</li>
-                ))}
-              </ul>
-            </>
-          ) : null}
-          {proposal.risks?.length ? (
-            <>
-              <h4>风险</h4>
-              <ul>
-                {proposal.risks.map((risk) => (
-                  <li key={risk}>{risk}</li>
-                ))}
-              </ul>
-            </>
-          ) : null}
-          {proposal.evidence_refs?.length ? (
-            <>
-              <h4>证据</h4>
-              <ul>
-                {proposal.evidence_refs.map((item) => (
-                  <li key={item}>{item}</li>
-                ))}
-              </ul>
-            </>
-          ) : null}
-          <div className="drawer-actions">
-            {proposal.status === 'pending' && (
-              <>
-                <button
-                  className="button secondary"
-                  disabled={decision.isPending}
-                  onClick={() => decision.mutate('reject')}
-                >
-                  <X size={16} />
-                  拒绝
-                </button>
-                <button
-                  className="button primary"
-                  disabled={decision.isPending}
-                  onClick={() => decision.mutate('approve')}
-                >
-                  <Check size={16} />
-                  批准
-                </button>
-              </>
-            )}
-            {proposal.status === 'approved' && (
-              <button className="button primary" disabled={decision.isPending} onClick={() => decision.mutate('apply')}>
-                <Check size={16} />
-                应用变更
-              </button>
-            )}
-          </div>
-        </div>
+        <ProposalDetail proposal={proposal} pending={decision.isPending} onDecision={decision.mutate} />
       ) : (
         <div className="quiet-empty">
           <GitPullRequest size={23} />
@@ -158,5 +73,109 @@ export function ProposalDrawer({ projectId }: { projectId?: string }) {
         </div>
       )}
     </aside>
+  );
+}
+
+function ProposalList({
+  items,
+  selectedId,
+  onSelect
+}: {
+  items?: ChangeProposal[];
+  selectedId?: string;
+  onSelect: (id: string | null) => void;
+}) {
+  return (
+    <div className="proposal-list">
+      {items?.map((item) => (
+        <button key={item.id} className={item.id === selectedId ? 'active' : ''} onClick={() => onSelect(item.id)}>
+          <span>{changeTypeLabel(item.change_type)}</span>
+          <strong>{item.title}</strong>
+          <small>{displayStatus(item.status)}</small>
+        </button>
+      ))}
+    </div>
+  );
+}
+
+type ProposalAction = 'approve' | 'reject' | 'apply';
+
+function ProposalDetail({
+  proposal,
+  pending,
+  onDecision
+}: {
+  proposal: ChangeProposal;
+  pending: boolean;
+  onDecision: (action: ProposalAction) => void;
+}) {
+  return (
+    <div className="proposal-detail">
+      <div className="status-line">
+        <span className={`status ${proposal.status}`}>{displayStatus(proposal.status)}</span>
+        <time>{new Date(proposal.created_at).toLocaleString()}</time>
+      </div>
+      <h3>{proposal.title}</h3>
+      <p>{proposal.summary}</p>
+      {proposal.before_json != null && (
+        <>
+          <h4>变更前</h4>
+          <pre>{JSON.stringify(proposal.before_json, null, 2)}</pre>
+        </>
+      )}
+      <h4>变更后</h4>
+      <pre>{JSON.stringify(proposal.after_json, null, 2)}</pre>
+      <ProposalValues title="影响范围" values={proposal.impact} />
+      <ProposalValues title="风险" values={proposal.risks} />
+      <ProposalValues title="证据" values={proposal.evidence_refs} />
+      <ProposalActions proposal={proposal} pending={pending} onDecision={onDecision} />
+    </div>
+  );
+}
+
+function ProposalValues({ title, values }: { title: string; values?: string[] }) {
+  if (!values?.length) return null;
+  return (
+    <>
+      <h4>{title}</h4>
+      <ul>
+        {values.map((item) => (
+          <li key={item}>{item}</li>
+        ))}
+      </ul>
+    </>
+  );
+}
+
+function ProposalActions({
+  proposal,
+  pending,
+  onDecision
+}: {
+  proposal: ChangeProposal;
+  pending: boolean;
+  onDecision: (action: ProposalAction) => void;
+}) {
+  return (
+    <div className="drawer-actions">
+      {proposal.status === 'pending' && (
+        <>
+          <button className="button secondary" disabled={pending} onClick={() => onDecision('reject')}>
+            <X size={16} />
+            拒绝
+          </button>
+          <button className="button primary" disabled={pending} onClick={() => onDecision('approve')}>
+            <Check size={16} />
+            批准
+          </button>
+        </>
+      )}
+      {proposal.status === 'approved' && (
+        <button className="button primary" disabled={pending} onClick={() => onDecision('apply')}>
+          <Check size={16} />
+          应用变更
+        </button>
+      )}
+    </div>
   );
 }

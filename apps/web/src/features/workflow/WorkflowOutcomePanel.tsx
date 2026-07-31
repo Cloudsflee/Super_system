@@ -115,85 +115,148 @@ export function WorkflowOutcomePanel({
             ))}
           </div>
           {canApprove && selectable.length > 0 && (
-            <div className="workflow-waiver-form">
-              <label>
-                <span>Waiver 理由</span>
-                <textarea value={reason} onChange={(event) => setReason(event.target.value)} rows={2} />
-              </label>
-              <label>
-                <span>证据引用</span>
-                <input
-                  value={evidence}
-                  onChange={(event) => setEvidence(event.target.value)}
-                  placeholder="receipt:..."
-                />
-              </label>
-              <label>
-                <span>到期时间</span>
-                <input
-                  type="datetime-local"
-                  value={expiresAt}
-                  max={maximumExpiry()}
-                  onChange={(event) => setExpiresAt(event.target.value)}
-                />
-              </label>
-              <button
-                className="button secondary"
-                disabled={
-                  busy === 'grant' || !selected.length || reason.trim().length < 10 || !splitEvidence(evidence).length
-                }
-                onClick={() => void grantWaiver()}
-              >
-                <ShieldAlert size={14} />
-                创建 waiver
-              </button>
-            </div>
+            <WaiverForm
+              selectedCount={selected.length}
+              reason={reason}
+              evidence={evidence}
+              expiresAt={expiresAt}
+              busy={busy === 'grant'}
+              onReasonChange={setReason}
+              onEvidenceChange={setEvidence}
+              onExpiryChange={setExpiresAt}
+              onSubmit={() => void grantWaiver()}
+            />
           )}
           {(value.waivers || []).length > 0 && (
-            <div className="workflow-waiver-history">
-              <header>
-                <Clock3 size={13} />
-                <strong>Waiver 记录</strong>
-              </header>
-              {value.waivers.map((waiver) => (
-                <div key={waiver.id} className={waiver.active ? 'active' : 'inactive'}>
-                  <span>
-                    <strong>{waiver.reason}</strong>
-                    <small>
-                      {waiver.active ? '有效' : waiver.revoked ? '已撤销' : '已过期'} · {formatTime(waiver.expires_at)}
-                    </small>
-                  </span>
-                  {canApprove && waiver.active && revoking !== waiver.id && (
-                    <button className="icon-button" aria-label="撤销 waiver" onClick={() => setRevoking(waiver.id)}>
-                      <Ban size={14} />
-                    </button>
-                  )}
-                  {revoking === waiver.id && (
-                    <span className="workflow-waiver-revoke">
-                      <input
-                        aria-label="撤销理由"
-                        value={revokeReason}
-                        onChange={(event) => setRevokeReason(event.target.value)}
-                      />
-                      <button
-                        className="icon-button"
-                        aria-label="确认撤销 waiver"
-                        disabled={busy === waiver.id || revokeReason.trim().length < 3}
-                        onClick={() => void revokeWaiver(waiver)}
-                      >
-                        <RotateCcw size={14} />
-                      </button>
-                      <button className="icon-button" aria-label="取消撤销" onClick={() => setRevoking(null)}>
-                        <X size={14} />
-                      </button>
-                    </span>
-                  )}
-                </div>
-              ))}
-            </div>
+            <WaiverHistory
+              waivers={value.waivers}
+              canApprove={canApprove}
+              revoking={revoking}
+              revokeReason={revokeReason}
+              busy={busy}
+              onStartRevoke={setRevoking}
+              onReasonChange={setRevokeReason}
+              onRevoke={(waiver) => void revokeWaiver(waiver)}
+              onCancel={() => setRevoking(null)}
+            />
           )}
         </>
       )}
+    </div>
+  );
+}
+
+function WaiverForm({
+  selectedCount,
+  reason,
+  evidence,
+  expiresAt,
+  busy,
+  onReasonChange,
+  onEvidenceChange,
+  onExpiryChange,
+  onSubmit
+}: {
+  selectedCount: number;
+  reason: string;
+  evidence: string;
+  expiresAt: string;
+  busy: boolean;
+  onReasonChange: (value: string) => void;
+  onEvidenceChange: (value: string) => void;
+  onExpiryChange: (value: string) => void;
+  onSubmit: () => void;
+}) {
+  const disabled = busy || selectedCount === 0 || reason.trim().length < 10 || splitEvidence(evidence).length === 0;
+  return (
+    <div className="workflow-waiver-form">
+      <label>
+        <span>Waiver 理由</span>
+        <textarea value={reason} onChange={(event) => onReasonChange(event.target.value)} rows={2} />
+      </label>
+      <label>
+        <span>证据引用</span>
+        <input value={evidence} onChange={(event) => onEvidenceChange(event.target.value)} placeholder="receipt:..." />
+      </label>
+      <label>
+        <span>到期时间</span>
+        <input
+          type="datetime-local"
+          value={expiresAt}
+          max={maximumExpiry()}
+          onChange={(event) => onExpiryChange(event.target.value)}
+        />
+      </label>
+      <button className="button secondary" disabled={disabled} onClick={onSubmit}>
+        <ShieldAlert size={14} />
+        创建 waiver
+      </button>
+    </div>
+  );
+}
+
+function WaiverHistory({
+  waivers,
+  canApprove,
+  revoking,
+  revokeReason,
+  busy,
+  onStartRevoke,
+  onReasonChange,
+  onRevoke,
+  onCancel
+}: {
+  waivers: OutcomeWaiver[];
+  canApprove: boolean;
+  revoking: string | null;
+  revokeReason: string;
+  busy: string;
+  onStartRevoke: (id: string) => void;
+  onReasonChange: (value: string) => void;
+  onRevoke: (waiver: OutcomeWaiver) => void;
+  onCancel: () => void;
+}) {
+  return (
+    <div className="workflow-waiver-history">
+      <header>
+        <Clock3 size={13} />
+        <strong>Waiver 记录</strong>
+      </header>
+      {waivers.map((waiver) => (
+        <div key={waiver.id} className={waiver.active ? 'active' : 'inactive'}>
+          <span>
+            <strong>{waiver.reason}</strong>
+            <small>
+              {waiver.active ? '有效' : waiver.revoked ? '已撤销' : '已过期'} · {formatTime(waiver.expires_at)}
+            </small>
+          </span>
+          {canApprove && waiver.active && revoking !== waiver.id && (
+            <button className="icon-button" aria-label="撤销 waiver" onClick={() => onStartRevoke(waiver.id)}>
+              <Ban size={14} />
+            </button>
+          )}
+          {revoking === waiver.id && (
+            <span className="workflow-waiver-revoke">
+              <input
+                aria-label="撤销理由"
+                value={revokeReason}
+                onChange={(event) => onReasonChange(event.target.value)}
+              />
+              <button
+                className="icon-button"
+                aria-label="确认撤销 waiver"
+                disabled={busy === waiver.id || revokeReason.trim().length < 3}
+                onClick={() => onRevoke(waiver)}
+              >
+                <RotateCcw size={14} />
+              </button>
+              <button className="icon-button" aria-label="取消撤销" onClick={onCancel}>
+                <X size={14} />
+              </button>
+            </span>
+          )}
+        </div>
+      ))}
     </div>
   );
 }

@@ -31,7 +31,7 @@ import {
   WORKTREE_DIR,
   collections
 } from './config.mjs';
-import { redactKnownSecrets, redactKnownSecretsSync } from './vault.mjs';
+import { redactKnownSecrets } from './vault.mjs';
 import {
   codexAuthMatchesProfile,
   isThirdPartyProvider,
@@ -50,7 +50,6 @@ import {
   canonicalJsonHash,
   normalizeOfficialRunnerImagesV22,
   normalizeState22Defaults,
-  stateRecordIdentity,
   STATE_SCHEMA_VERSION,
   validateState22
 } from './state-migration-v22.mjs';
@@ -88,6 +87,8 @@ import {
   stateStoreHealth,
   stateStoreRuntimeStatus
 } from './state-store.mjs';
+import { buildStateChanges } from './state-change-builder.mjs';
+import { governanceFingerprint, lifecycleFingerprint } from './state-fingerprints.mjs';
 
 enablePatches();
 setAutoFreeze(true);
@@ -694,95 +695,6 @@ function normalizeStateForPersistence(state) {
   normalizeState22Defaults(state);
 }
 
-async function buildStateChanges(before, after) {
-  await redactKnownSecrets('');
-  const collectionChanges = [],
-    meta = [],
-    metaDeletes = [],
-    replacements = new Map();
-
-  for (const collection of collections) {
-    const beforeRecords = before[collection] || [],
-      afterRecords = after[collection] || [];
-    if (beforeRecords === afterRecords) continue;
-    const beforeByIdentity = new Map(
-        beforeRecords.map((record, ordinal) => [stateRecordIdentity(collection, record), { record, ordinal }])
-      ),
-      afterIdentities = new Set(),
-      upserts = [];
-    let reindex = false;
-    for (let ordinal = 0; ordinal < afterRecords.length; ordinal += 1) {
-      const record = afterRecords[ordinal],
-        identity = stateRecordIdentity(collection, record),
-        previous = beforeByIdentity.get(identity);
-      if (afterIdentities.has(identity))
-        throw stateFailure('state_record_identity_duplicate', { collection, identity });
-      afterIdentities.add(identity);
-      if (previous && previous.ordinal !== ordinal) reindex = true;
-      const contentChanged =
-        !previous || (previous.record !== record && canonicalJsonHash(previous.record) !== canonicalJsonHash(record));
-      if (!contentChanged && previous.ordinal === ordinal) continue;
-      const sanitized = sanitizeJsonValue(record);
-      if (sanitized.changed) {
-        let collectionReplacements = replacements.get(collection);
-        if (!collectionReplacements) replacements.set(collection, (collectionReplacements = new Map()));
-        collectionReplacements.set(ordinal, sanitized.value);
-      }
-      upserts.push({ identity, ordinal, value: sanitized.value });
-    }
-    const deletes = [...beforeByIdentity.keys()].filter((identity) => !afterIdentities.has(identity));
-    if (reindex) {
-      upserts.length = 0;
-      for (let ordinal = 0; ordinal < afterRecords.length; ordinal += 1) {
-        const record = afterRecords[ordinal],
-          identity = stateRecordIdentity(collection, record),
-          sanitized = sanitizeJsonValue(record);
-        if (sanitized.changed) {
-          let collectionReplacements = replacements.get(collection);
-          if (!collectionReplacements) replacements.set(collection, (collectionReplacements = new Map()));
-          collectionReplacements.set(ordinal, sanitized.value);
-        }
-        upserts.push({ identity, ordinal, value: sanitized.value });
-      }
-    }
-    if (deletes.length || upserts.length) collectionChanges.push({ collection, deletes, upserts, reindex });
-  }
-
-  const rootKeys = new Set([...Object.keys(before), ...Object.keys(after)]);
-  for (const key of rootKeys) {
-    if (collections.includes(key)) continue;
-    if (!Object.hasOwn(after, key)) {
-      metaDeletes.push(key);
-      continue;
-    }
-    if (Object.hasOwn(before, key) && canonicalJsonHash(before[key]) === canonicalJsonHash(after[key])) continue;
-    const sanitized = sanitizeJsonValue(after[key]);
-    if (sanitized.changed) replacements.set(key, sanitized.value);
-    meta.push({ key, value: sanitized.value });
-  }
-
-  let sanitizedState = after;
-  if (replacements.size) {
-    [sanitizedState] = produceWithPatches(after, (draft) => {
-      for (const [key, value] of replacements) {
-        if (value instanceof Map) for (const [ordinal, record] of value) draft[key][ordinal] = record;
-        else draft[key] = value;
-      }
-    });
-  }
-  validateState22(sanitizedState);
-  return {
-    state: sanitizedState,
-    changes: { collections: collectionChanges, meta, metaDeletes }
-  };
-}
-
-function sanitizeJsonValue(value) {
-  const serialized = JSON.stringify(value),
-    sanitized = redactKnownSecretsSync(serialized);
-  return sanitized === serialized ? { value, changed: false } : { value: JSON.parse(sanitized), changed: true };
-}
-
 function snapshotMutationResult(value) {
   if (value === undefined || value === null || typeof value !== 'object') return value;
   return structuredClone(value);
@@ -862,33 +774,4 @@ function isWithin(root, candidate) {
   if (!candidate) return false;
   const relative = path.relative(path.resolve(root), path.resolve(candidate));
   return relative === '' || (!relative.startsWith('..') && !path.isAbsolute(relative));
-}
-
-function governanceFingerprint(state) {
-  return JSON.stringify({
-    instance_owner_user_id: state.instance_owner_user_id || null,
-    memberships: (state.project_memberships || []).map((item) => [
-      item.id,
-      item.project_id,
-      item.user_id,
-      item.role,
-      item.status
-    ]),
-    project_owners: (state.projects || []).map((item) => [item.id, item.owner_user_id || null])
-  });
-}
-
-function lifecycleFingerprint(state) {
-  return JSON.stringify({
-    canonical: (state.canonical_repositories || []).map((item) => [item.id, item.repository_id, item.remote_state]),
-    bindings: (state.project_repository_bindings || []).map((item) => [
-      item.id,
-      item.project_id,
-      item.canonical_repository_id,
-      item.status
-    ]),
-    intents: (state.repository_deletion_intents || []).map((item) => [item.id, item.status]),
-    exchanges: (state.exchange_requests || []).map((item) => [item.id, item.status]),
-    grants: (state.exchange_grants || []).map((item) => [item.id, item.status])
-  });
 }

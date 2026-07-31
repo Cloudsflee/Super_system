@@ -27,13 +27,10 @@ export function runnerLimits(env = process.env) {
   const memory = String(env.AIWS_RUNNER_MEMORY || '4g').toLowerCase();
   const pids = String(env.AIWS_RUNNER_PIDS || '512');
   const tmpfs = String(env.AIWS_RUNNER_TMPFS || '1g').toLowerCase();
-  if (!/^\d+(?:\.\d{1,3})?$/.test(cpus) || Number(cpus) < 0.1 || Number(cpus) > 64)
-    throw new Error('invalid_runner_cpus');
-  const bytes = parseMemoryBytes(memory);
-  if (bytes < 4n * 1024n ** 2n || bytes > 1024n ** 4n) throw new Error('invalid_runner_memory');
-  if (!/^\d+$/.test(pids) || Number(pids) < 32 || Number(pids) > 4096) throw new Error('invalid_runner_pids');
-  const tmpfsBytes = parseMemoryBytes(tmpfs, 'invalid_runner_tmpfs');
-  if (tmpfsBytes < 64n * 1024n ** 2n || tmpfsBytes > 16n * 1024n ** 3n) throw new Error('invalid_runner_tmpfs');
+  assertNumberInRange(cpus, /^\d+(?:\.\d{1,3})?$/, 0.1, 64, 'invalid_runner_cpus');
+  assertMemoryInRange(memory, 4n * 1024n ** 2n, 1024n ** 4n, 'invalid_runner_memory');
+  assertNumberInRange(pids, /^\d+$/, 32, 4096, 'invalid_runner_pids');
+  assertMemoryInRange(tmpfs, 64n * 1024n ** 2n, 16n * 1024n ** 3n, 'invalid_runner_tmpfs');
   return { cpus, memory, pids, tmpfs };
 }
 
@@ -62,20 +59,10 @@ export function runnerMount(source, target, mode = 'ro', options = {}) {
   const containerized = options.containerized ?? isContainerized(options.env);
   const root = path.resolve(options.aiwsHome || AIWS_HOME),
     resolved = path.resolve(String(source || ''));
-  if (
-    !/^\/[^/]+(?:\/[^/]+)*$/.test(target) ||
-    /[\0\r\n,]/.test(target) ||
-    target.split('/').some((item) => item === '.' || item === '..')
-  )
-    throw new Error('invalid_runner_mount_target');
+  assertMountTarget(target);
   if (!['ro', 'rw'].includes(mode)) throw new Error('invalid_runner_mount_mode');
   if (!containerized) return ['-v', `${resolved}:${target}:${mode}`];
-  const relative = path.relative(root, resolved);
-  if (!relative || relative === '..' || relative.startsWith(`..${path.sep}`) || path.isAbsolute(relative))
-    throw new Error('runner_mount_outside_data_volume');
-  assertNoSymlinkSegments(root, relative);
-  const subpath = relative.split(path.sep).join('/');
-  if (!safeSubpath(subpath)) throw new Error('invalid_runner_volume_subpath');
+  const subpath = volumeSubpath(root, resolved);
   const volume = validateDockerVolumeName(options.env?.AIWS_DOCKER_DATA_VOLUME || process.env.AIWS_DOCKER_DATA_VOLUME);
   return [
     '--mount',
@@ -97,8 +84,24 @@ export function toRunnerPath(file, workspace, mounted = '/workspace') {
 export function buildCodexContainerInvocation(options) {
   const env = options.env || process.env;
   const identity = managedContainerIdentity({ ...options, env });
-  const limits = runnerLimits(env),
-    args = ['run', '--rm', '--pull', 'never', '--name', identity.name, '--init'];
+  const limits = runnerLimits(env);
+  const args = baseContainerArguments(identity, limits);
+  appendIsolationArguments(args, options, env, limits);
+  appendMountArguments(args, options);
+  const image = runnerImage(options, env);
+  appendEntrypoint(args, options.entrypoint);
+  args.push(image, ...(options.commandArgs || []));
+  return {
+    command: 'docker',
+    args,
+    containerName: identity.name,
+    runtime: 'docker',
+    cwd: options.workspace ? '/workspace' : null
+  };
+}
+
+function baseContainerArguments(identity, limits) {
+  const args = ['run', '--rm', '--pull', 'never', '--name', identity.name, '--init'];
   for (const [key, value] of Object.entries(identity.labels)) args.push('--label', `${key}=${value}`);
   args.push(
     '--cpus',
@@ -112,6 +115,10 @@ export function buildCodexContainerInvocation(options) {
     '--security-opt',
     'no-new-privileges'
   );
+  return args;
+}
+
+function appendIsolationArguments(args, options, env, limits) {
   if (options.nestedSandbox)
     args.push(
       '--cap-add',
@@ -129,6 +136,9 @@ export function buildCodexContainerInvocation(options) {
   if (options.hostGateway !== false) args.push('--add-host', 'host.docker.internal:host-gateway');
   if (env.AIWS_RUNNER_NETWORK) args.push('--network', validateDockerNetworkName(env.AIWS_RUNNER_NETWORK));
   for (const [key, value] of Object.entries(options.containerEnv || {})) appendEnvironment(args, key, value);
+}
+
+function appendMountArguments(args, options) {
   if (options.codexHome)
     args.push(...runnerMount(options.codexHome, '/codex-home', options.codexHomeMode || 'rw', options));
   if (options.workspace)
@@ -137,32 +147,30 @@ export function buildCodexContainerInvocation(options) {
       '-w',
       '/workspace'
     );
-  for (const mount of options.internalMounts || []) {
-    if (!mount || typeof mount !== 'object' || !mount.source || !mount.target)
-      throw new Error('invalid_internal_runner_mount');
-    args.push(...runnerMount(mount.source, mount.target, mount.mode || 'ro', options));
-  }
+  for (const mount of options.internalMounts || []) appendInternalMount(args, mount, options);
   for (const [index, mount] of (options.extraMounts || []).entries())
     args.push(...runnerMount(mount, `/aiws-mounts/${index}`, 'ro', options));
+}
+
+function appendInternalMount(args, mount, options) {
+  if (!mount || typeof mount !== 'object' || !mount.source || !mount.target)
+    throw new Error('invalid_internal_runner_mount');
+  args.push(...runnerMount(mount.source, mount.target, mount.mode || 'ro', options));
+}
+
+function runnerImage(options, env) {
   const image = String(options.image || env.AIWS_CODEX_DOCKER_IMAGE || DEFAULT_RUNNER_IMAGE);
   if (!/^[a-zA-Z0-9][a-zA-Z0-9._/:@-]{0,255}$/.test(image)) throw new Error('invalid_runner_image');
-  if (options.entrypoint) {
-    const entrypoint = String(options.entrypoint);
-    if (
-      !/^(?:\/[a-zA-Z0-9._-]+)+$|^[a-zA-Z0-9][a-zA-Z0-9._-]{0,127}$/.test(entrypoint) ||
-      entrypoint.split('/').some((segment) => segment === '.' || segment === '..')
-    )
-      throw new Error('invalid_runner_entrypoint');
-    args.push('--entrypoint', entrypoint);
-  }
-  args.push(image, ...(options.commandArgs || []));
-  return {
-    command: 'docker',
-    args,
-    containerName: identity.name,
-    runtime: 'docker',
-    cwd: options.workspace ? '/workspace' : null
-  };
+  return image;
+}
+
+function appendEntrypoint(args, value) {
+  if (!value) return;
+  const entrypoint = String(value);
+  const validName = /^(?:\/[a-zA-Z0-9._-]+)+$|^[a-zA-Z0-9][a-zA-Z0-9._-]{0,127}$/.test(entrypoint);
+  const validSegments = !entrypoint.split('/').some((segment) => segment === '.' || segment === '..');
+  if (!validName || !validSegments) throw new Error('invalid_runner_entrypoint');
+  args.push('--entrypoint', entrypoint);
 }
 
 export function assertProfileAllowed(profile, env = process.env) {
@@ -179,6 +187,32 @@ function appendEnvironment(args, key, value) {
     if (/\0|\r|\n/.test(text)) throw new Error('invalid_runner_environment_value');
     args.push('--env', `${key}=${text}`);
   }
+}
+
+function assertNumberInRange(value, pattern, minimum, maximum, errorCode) {
+  if (!pattern.test(value) || Number(value) < minimum || Number(value) > maximum) throw new Error(errorCode);
+}
+
+function assertMemoryInRange(value, minimum, maximum, errorCode) {
+  const bytes = parseMemoryBytes(value, errorCode);
+  if (bytes < minimum || bytes > maximum) throw new Error(errorCode);
+}
+
+function assertMountTarget(target) {
+  const validPath = /^\/[^/]+(?:\/[^/]+)*$/.test(target);
+  const validCharacters = !/[\0\r\n,]/.test(target);
+  const validSegments = !target.split('/').some((item) => item === '.' || item === '..');
+  if (!validPath || !validCharacters || !validSegments) throw new Error('invalid_runner_mount_target');
+}
+
+function volumeSubpath(root, resolved) {
+  const relative = path.relative(root, resolved);
+  const outside = !relative || relative === '..' || relative.startsWith(`..${path.sep}`) || path.isAbsolute(relative);
+  if (outside) throw new Error('runner_mount_outside_data_volume');
+  assertNoSymlinkSegments(root, relative);
+  const subpath = relative.split(path.sep).join('/');
+  if (!safeSubpath(subpath)) throw new Error('invalid_runner_volume_subpath');
+  return subpath;
 }
 
 function assertNoSymlinkSegments(root, relative) {

@@ -1,7 +1,24 @@
 import { cloneStateValue as structuredClone } from './state-clone.mjs';
 import { id } from '../../../packages/shared/index.mjs';
-import { HttpError } from './http.mjs';
 import { normalizeWorkflowPlanningFields } from './workflow-quality.mjs';
+import {
+  clean,
+  defaultExecutionMode,
+  dependencyIds,
+  finiteConfidence,
+  hasIndependentBoundary,
+  hierarchySort,
+  inferTaskKind,
+  normalizeBoundary,
+  normalizeBriefCoverage,
+  normalizeEvidenceRefs,
+  normalizeRepositoryIntent,
+  orderNodes,
+  required,
+  uniqueStrings,
+  validationError,
+  validPosition
+} from './workflow-hierarchy-utilities.mjs';
 
 export const WORKFLOW_NODE_ROLES = Object.freeze(['workstream', 'task']);
 export const WORKSTREAM_CATEGORIES = Object.freeze(['deliverable', 'decision', 'coordination', 'operation']);
@@ -45,21 +62,6 @@ const PROCESS_STAGE_TITLES = new Set([
   'deployment',
   'launch'
 ]);
-const BOUNDARY_KEYS = Object.freeze([
-  'owner',
-  'owner_id',
-  'permissions',
-  'permission_boundary',
-  'repository',
-  'repository_id',
-  'repository_target_ids',
-  'external_dependency',
-  'external_dependencies',
-  'deliverable',
-  'deliverables',
-  'delivery_boundary'
-]);
-
 export function normalizeWorkflowHierarchyNodes(source, { idFactory = id, strict = false } = {}) {
   const flat = flattenHierarchySource(source, idFactory, strict);
   const normalized = flat.map((raw, index) => normalizeNode(raw, index, idFactory, strict));
@@ -85,6 +87,18 @@ export function normalizeWorkflowHierarchyNodes(source, { idFactory = id, strict
 
 export function assertWorkflowHierarchy(nodes, { mode = 'formal', allowLegacy = false, requireTasks = true } = {}) {
   if (!Array.isArray(nodes)) throw validationError('workflow_hierarchy_nodes_required');
+  assertHierarchyNodeIds(nodes);
+  const byId = new Map(nodes.map((node) => [node.id, node]));
+  const workstreams = nodes.filter((node) => node.role === 'workstream');
+  assertWorkstreamCount(workstreams, mode);
+  validateHierarchyNodes(nodes, byId, allowLegacy);
+  validateWorkstreamTaskCounts(nodes, workstreams, requireTasks);
+  validateDependencies(nodes, byId, allowLegacy);
+  validateHierarchyDags(nodes, workstreams);
+  return nodes;
+}
+
+function assertHierarchyNodeIds(nodes) {
   const ids = new Set();
   for (const node of nodes) {
     if (!node || typeof node !== 'object' || Array.isArray(node))
@@ -93,12 +107,15 @@ export function assertWorkflowHierarchy(nodes, { mode = 'formal', allowLegacy = 
       throw validationError('workflow_hierarchy_node_id_invalid', { node_id: node.id || null });
     ids.add(node.id);
   }
-  const byId = new Map(nodes.map((node) => [node.id, node]));
-  const workstreams = nodes.filter((node) => node.role === 'workstream');
+}
+
+function assertWorkstreamCount(workstreams, mode) {
   const limit = mode === 'initial' ? INITIAL_WORKSTREAM_LIMIT : FORMAL_WORKSTREAM_LIMIT;
   if (workstreams.length < 1 || workstreams.length > limit)
     throw validationError('workflow_workstream_count_invalid', { min: 1, max: limit, count: workstreams.length });
+}
 
+function validateHierarchyNodes(nodes, byId, allowLegacy) {
   for (const node of nodes) {
     if (allowLegacy && node.legacy_read_only && !ROLE_SET.has(node.role)) continue;
     if (!ROLE_SET.has(node.role))
@@ -106,7 +123,9 @@ export function assertWorkflowHierarchy(nodes, { mode = 'formal', allowLegacy = 
     if (node.role === 'workstream') validateWorkstream(node);
     else validateTask(node, byId, allowLegacy);
   }
+}
 
+function validateWorkstreamTaskCounts(nodes, workstreams, requireTasks) {
   for (const workstream of workstreams) {
     const tasks = nodes.filter((node) => node.role === 'task' && node.parent_node_id === workstream.id);
     if (requireTasks && !tasks.length)
@@ -117,15 +136,15 @@ export function assertWorkflowHierarchy(nodes, { mode = 'formal', allowLegacy = 
         max: TASKS_PER_WORKSTREAM_LIMIT
       });
   }
+}
 
-  validateDependencies(nodes, byId, allowLegacy);
+function validateHierarchyDags(nodes, workstreams) {
   validateDag(workstreams, 'workflow_top_level_cycle');
   for (const workstream of workstreams)
     validateDag(
       nodes.filter((node) => node.role === 'task' && node.parent_node_id === workstream.id),
       'workflow_task_graph_cycle'
     );
-  return nodes;
 }
 
 export function normalizeWorkflowGenerationCandidate(value, options = {}) {
@@ -159,6 +178,13 @@ export function normalizeWorkflowGenerationCandidate(value, options = {}) {
 
 export function critiqueWorkflowGenerationCandidate(candidate, { minimumConfidence = 0 } = {}) {
   const errors = [];
+  critiqueCandidateHierarchy(candidate, errors);
+  critiqueCandidateMetadata(candidate, minimumConfidence, errors);
+  critiqueProcessStageTitles(candidate, errors);
+  return { ok: errors.length === 0, errors };
+}
+
+function critiqueCandidateHierarchy(candidate, errors) {
   try {
     assertWorkflowHierarchy(candidate?.nodes, { mode: 'initial' });
   } catch (error) {
@@ -167,6 +193,9 @@ export function critiqueWorkflowGenerationCandidate(candidate, { minimumConfiden
       details: error.details || error.payload || {}
     });
   }
+}
+
+function critiqueCandidateMetadata(candidate, minimumConfidence, errors) {
   if (!candidate?.project_classification) errors.push({ code: 'workflow_generation_classification_required' });
   if (!candidate?.decomposition_basis) errors.push({ code: 'workflow_generation_basis_required' });
   if (!Array.isArray(candidate?.evidence_refs) || !candidate.evidence_refs.length)
@@ -177,10 +206,12 @@ export function critiqueWorkflowGenerationCandidate(candidate, { minimumConfiden
       minimum_confidence: minimumConfidence,
       confidence: candidate?.confidence ?? null
     });
+}
+
+function critiqueProcessStageTitles(candidate, errors) {
   for (const node of candidate?.nodes || [])
     if (node.role === 'workstream' && isProcessStageTitle(node.title))
       errors.push({ code: 'workflow_workstream_process_stage_forbidden', node_id: node.id, title: node.title });
-  return { ok: errors.length === 0, errors };
 }
 
 export function isProcessStageTitle(value) {
@@ -204,40 +235,68 @@ export function legacyNodeTypeForTaskKind(taskKind) {
 function flattenHierarchySource(source, idFactory, strict) {
   if (!Array.isArray(source)) return [];
   const result = [];
-  for (const item of source) {
-    if (strict && !ROLE_SET.has(item?.role))
-      throw validationError('workflow_node_role_invalid', { role: item?.role || null });
-    const role = item?.role || (Array.isArray(item?.tasks) ? 'workstream' : null);
-    if (role === 'workstream') {
-      if (item?.parent_node_id != null)
-        throw validationError('workflow_workstream_parent_forbidden', { node_id: item.id || null });
-      const parentId = clean(item.id, 120) || idFactory('wfs');
-      result.push({ ...item, id: parentId, role: 'workstream', parent_node_id: null });
-      for (const task of Array.isArray(item.tasks) ? item.tasks : []) {
-        if (
-          (Array.isArray(task?.tasks) && task.tasks.length) ||
-          (Array.isArray(task?.children) && task.children.length)
-        )
-          throw validationError('workflow_hierarchy_depth_exceeded', {
-            parent_node_id: parentId,
-            node_id: task?.id || null,
-            max_depth: 2
-          });
-        if (strict && task?.role !== 'task')
-          throw validationError('workflow_node_role_invalid', { role: task?.role || null, node_id: task?.id || null });
-        result.push({ ...task, role: 'task', parent_node_id: parentId });
-      }
-    } else result.push(item);
+  for (const item of source) result.push(...flattenHierarchyItem(item, idFactory, strict));
+  return result;
+}
+
+function flattenHierarchyItem(item, idFactory, strict) {
+  assertHierarchySourceRole(item, strict);
+  const role = hierarchySourceRole(item);
+  if (role !== 'workstream') return [item];
+  assertWorkstreamSourceRoot(item);
+  const parentId = clean(item.id, 120) || idFactory('wfs');
+  const result = [{ ...item, id: parentId, role: 'workstream', parent_node_id: null }];
+  for (const task of hierarchySourceTasks(item)) {
+    assertNestedTask(task, parentId, strict);
+    result.push({ ...task, role: 'task', parent_node_id: parentId });
   }
   return result;
+}
+
+function assertHierarchySourceRole(item, strict) {
+  if (strict && !ROLE_SET.has(item?.role))
+    throw validationError('workflow_node_role_invalid', { role: item?.role || null });
+}
+
+function hierarchySourceRole(item) {
+  if (item?.role) return item.role;
+  return Array.isArray(item?.tasks) ? 'workstream' : null;
+}
+
+function assertWorkstreamSourceRoot(item) {
+  if (item?.parent_node_id != null)
+    throw validationError('workflow_workstream_parent_forbidden', { node_id: item.id || null });
+}
+
+function hierarchySourceTasks(item) {
+  return Array.isArray(item.tasks) ? item.tasks : [];
+}
+
+function assertNestedTask(task, parentId, strict) {
+  if (hasNestedTasks(task))
+    throw validationError('workflow_hierarchy_depth_exceeded', {
+      parent_node_id: parentId,
+      node_id: task?.id || null,
+      max_depth: 2
+    });
+  if (strict && task?.role !== 'task')
+    throw validationError('workflow_node_role_invalid', { role: task?.role || null, node_id: task?.id || null });
+}
+
+function hasNestedTasks(task) {
+  return nonEmptyArray(task?.tasks) || nonEmptyArray(task?.children);
+}
+
+function nonEmptyArray(value) {
+  return Array.isArray(value) && value.length > 0;
 }
 
 function normalizeNode(raw = {}, index, idFactory, strict) {
   if (!raw || typeof raw !== 'object' || Array.isArray(raw)) throw validationError('workflow_hierarchy_node_invalid');
   if (strict && !ROLE_SET.has(raw.role))
     throw validationError('workflow_node_role_invalid', { role: raw.role || null, node_id: raw.id || null });
-  const role = ROLE_SET.has(raw.role) ? raw.role : raw.parent_node_id ? 'task' : 'workstream';
-  const nodeId = clean(raw.id, 120) || idFactory(role === 'workstream' ? 'wfs' : 'tsk');
+  const role = normalizedNodeRole(raw);
+  const nodeId = normalizedNodeId(raw, role, idFactory);
   assertStrictNodeFields(raw, role, nodeId, strict);
   const taskKind = normalizeTaskKind(raw, role);
   const category = normalizeWorkstreamCategory(raw, role);
@@ -247,26 +306,67 @@ function normalizeNode(raw = {}, index, idFactory, strict) {
     ...record,
     id: nodeId,
     role,
-    parent_node_id: clean(raw.parent_node_id, 120) || null,
+    parent_node_id: normalizedParentNodeId(raw),
     title,
-    goal: clean(raw.goal || raw.outcome || title, 4000),
-    outcome: role === 'workstream' ? clean(raw.outcome || raw.goal, 4000) : null,
+    goal: normalizedNodeGoal(raw, title),
+    outcome: normalizedNodeOutcome(raw, role),
     category,
     task_kind: taskKind,
-    execution_mode: EXECUTION_MODE_SET.has(raw.execution_mode) ? raw.execution_mode : defaultExecutionMode(taskKind),
-    boundary: role === 'workstream' ? normalizeBoundary(raw.boundary) : null,
+    execution_mode: normalizedExecutionMode(raw, taskKind),
+    boundary: normalizedNodeBoundary(raw, role),
     acceptance_criteria: uniqueStrings(raw.acceptance_criteria).slice(0, 50),
     capability_tags: taskCapabilityTags(raw, role),
     input_slots: taskSlots(raw.input_slots, role),
     output_slots: taskSlots(raw.output_slots, role),
-    atomic_justification: role === 'task' ? clean(raw.atomic_justification, 2000) || null : null,
+    atomic_justification: normalizedAtomicJustification(raw, role),
     dependency_ids: dependencyIds(raw),
     repository_intent: normalizeNodeRepositoryIntent(raw.repository_intent),
     position: validPosition(raw.position, index),
     order_index: normalizedOrderIndex(raw, index),
-    plan_revision: role === 'workstream' ? Math.max(1, Number(raw.plan_revision) || 1) : null,
-    type: role === 'task' ? legacyNodeTypeForTaskKind(taskKind) : 'execution'
+    plan_revision: normalizedPlanRevision(raw, role),
+    type: normalizedLegacyNodeType(role, taskKind)
   };
+}
+
+function normalizedNodeRole(raw) {
+  if (ROLE_SET.has(raw.role)) return raw.role;
+  return raw.parent_node_id ? 'task' : 'workstream';
+}
+
+function normalizedNodeId(raw, role, idFactory) {
+  return clean(raw.id, 120) || idFactory(role === 'workstream' ? 'wfs' : 'tsk');
+}
+
+function normalizedParentNodeId(raw) {
+  return clean(raw.parent_node_id, 120) || null;
+}
+
+function normalizedNodeGoal(raw, title) {
+  return clean(raw.goal || raw.outcome || title, 4000);
+}
+
+function normalizedNodeOutcome(raw, role) {
+  return role === 'workstream' ? clean(raw.outcome || raw.goal, 4000) : null;
+}
+
+function normalizedExecutionMode(raw, taskKind) {
+  return EXECUTION_MODE_SET.has(raw.execution_mode) ? raw.execution_mode : defaultExecutionMode(taskKind);
+}
+
+function normalizedNodeBoundary(raw, role) {
+  return role === 'workstream' ? normalizeBoundary(raw.boundary) : null;
+}
+
+function normalizedAtomicJustification(raw, role) {
+  return role === 'task' ? clean(raw.atomic_justification, 2000) || null : null;
+}
+
+function normalizedPlanRevision(raw, role) {
+  return role === 'workstream' ? Math.max(1, Number(raw.plan_revision) || 1) : null;
+}
+
+function normalizedLegacyNodeType(role, taskKind) {
+  return role === 'task' ? legacyNodeTypeForTaskKind(taskKind) : 'execution';
 }
 
 function assertStrictNodeFields(raw, role, nodeId, strict) {
@@ -393,112 +493,4 @@ function validateDag(nodes, code) {
     visited.add(nodeId);
   };
   for (const node of nodes) visit(node.id);
-}
-
-function hierarchySort(left, right, workstreamOrder) {
-  const leftRoot = left.role === 'workstream' ? left.id : left.parent_node_id;
-  const rightRoot = right.role === 'workstream' ? right.id : right.parent_node_id;
-  const rootDiff = (workstreamOrder.get(leftRoot) ?? 10000) - (workstreamOrder.get(rightRoot) ?? 10000);
-  if (rootDiff) return rootDiff;
-  if (left.role !== right.role) return left.role === 'workstream' ? -1 : 1;
-  return orderNodes(left, right);
-}
-
-function orderNodes(left, right) {
-  return Number(left.order_index || left.order || 0) - Number(right.order_index || right.order || 0);
-}
-function dependencyIds(node) {
-  return uniqueStrings(
-    Array.isArray(node?.dependency_ids)
-      ? node.dependency_ids
-      : (node?.dependencies || []).map((item) => (typeof item === 'string' ? item : item?.node_id))
-  );
-}
-function inferTaskKind(type) {
-  return TASK_KIND_SET.has(type)
-    ? type
-    : { goal_definition: 'analysis', execution: 'code', retrospective: 'review' }[type] || 'manual';
-}
-function defaultExecutionMode(taskKind) {
-  return ['code', 'test', 'deploy'].includes(taskKind)
-    ? 'codex'
-    : taskKind === 'integration'
-      ? 'integration'
-      : taskKind === 'manual'
-        ? 'manual'
-        : 'assist';
-}
-function normalizeBoundary(value) {
-  return value && typeof value === 'object' && !Array.isArray(value) ? structuredClone(value) : {};
-}
-function hasIndependentBoundary(value) {
-  return value && typeof value === 'object' && BOUNDARY_KEYS.some((key) => nonEmpty(value[key]));
-}
-function nonEmpty(value) {
-  return Array.isArray(value)
-    ? value.length > 0
-    : value && typeof value === 'object'
-      ? Object.keys(value).length > 0
-      : Boolean(clean(value, 2000));
-}
-function normalizeEvidenceRefs(value) {
-  return (Array.isArray(value) ? value : [])
-    .slice(0, 100)
-    .map((item) =>
-      typeof item === 'string'
-        ? { section_id: clean(item, 200), quote: '' }
-        : {
-            section_id: clean(item?.section_id || item?.brief_section_id, 200),
-            quote: clean(item?.quote || item?.evidence, 2000)
-          }
-    )
-    .filter((item) => item.section_id);
-}
-function normalizeRepositoryIntent(value) {
-  if (value == null) return [];
-  if (Array.isArray(value)) return structuredClone(value).slice(0, 50);
-  if (typeof value === 'object') return structuredClone(value);
-  throw validationError('workflow_generation_repository_intent_invalid');
-}
-function normalizeBriefCoverage(value) {
-  if (!value || typeof value !== 'object' || Array.isArray(value)) return {};
-  return Object.fromEntries(
-    Object.entries(value)
-      .map(([key, ids]) => [clean(key, 80), uniqueStrings(ids)])
-      .filter(([key]) => key)
-  );
-}
-function finiteConfidence(value) {
-  const number = Number(value);
-  if (!Number.isFinite(number) || number < 0 || number > 1)
-    throw validationError('workflow_generation_confidence_invalid');
-  return number;
-}
-function uniqueStrings(value) {
-  return [...new Set((Array.isArray(value) ? value : []).map((item) => clean(item, 2000)).filter(Boolean))];
-}
-function validPosition(value, index) {
-  const x = Number(value?.x),
-    y = Number(value?.y);
-  return {
-    x: Number.isFinite(x) ? Math.max(-10000, Math.min(10000, x)) : 100 + (index % 3) * 300,
-    y: Number.isFinite(y) ? Math.max(-10000, Math.min(10000, y)) : 120 + Math.floor(index / 3) * 220
-  };
-}
-function required(value, code, max) {
-  const result = clean(value, max);
-  if (!result) throw validationError(code);
-  return result;
-}
-function clean(value, max = 120) {
-  return String(value ?? '')
-    .replace(/\0/g, '')
-    .trim()
-    .slice(0, max);
-}
-function validationError(code, details = {}) {
-  const error = new HttpError(409, { error: code, ...details });
-  error.code = code;
-  error.details = details;
-  return error;
 }

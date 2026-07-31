@@ -1,23 +1,8 @@
-import {
-  BadgePlus,
-  ChevronDown,
-  ChevronUp,
-  Copy,
-  FileText,
-  GitBranch,
-  Library,
-  Link2,
-  ListTree,
-  Plus,
-  Save,
-  Search,
-  Trash2,
-  Unlink2
-} from 'lucide-react';
+import { ChevronDown, ChevronUp, Copy, Link2, Plus, Save, Trash2, Unlink2 } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import type { BriefSection, BriefTemplate, ProjectBrief, WorkflowDraft, WorkflowDraftNode } from '../../../api/types';
 import { IconButton } from '../../../components/common/IconButton';
-import { templateDomainLabel } from '../../../components/common/display-labels';
+import { BriefMobileTabs, BriefTemplateActions, type BriefMobilePane } from './BriefWorkspaceChrome';
 
 type BriefOperation = Record<string, unknown> & { type: string };
 type WorkflowOperation = Record<string, unknown> & { type: string };
@@ -35,7 +20,7 @@ type Props = {
 
 export function BriefWorkspace(props: Props) {
   const [selected, setSelected] = useState(props.brief.content.sections[0]?.id || ''),
-    [mobilePane, setMobilePane] = useState<'brief' | 'outline' | 'workflow'>('brief'),
+    [mobilePane, setMobilePane] = useState<BriefMobilePane>('brief'),
     [templatesOpen, setTemplatesOpen] = useState(false);
   const [titleDraft, setTitleDraft] = useState(props.brief.content.title),
     titleDirty = useRef(false),
@@ -65,25 +50,7 @@ export function BriefWorkspace(props: Props) {
   }
   return (
     <section className="brief-workspace" aria-label="项目简报工作区">
-      <nav className="brief-mobile-tabs" aria-label="简报工作区视图">
-        {(
-          [
-            ['brief', '简报', FileText],
-            ['outline', '大纲', ListTree],
-            ['workflow', '工作流', GitBranch]
-          ] as const
-        ).map(([value, label, Icon]) => (
-          <button
-            className={mobilePane === value ? 'active' : ''}
-            aria-pressed={mobilePane === value}
-            key={value}
-            onClick={() => setMobilePane(value)}
-          >
-            <Icon size={14} />
-            {label}
-          </button>
-        ))}
-      </nav>
+      <BriefMobileTabs pane={mobilePane} onPane={setMobilePane} />
       <BriefOutline
         active={mobilePane === 'outline'}
         brief={props.brief}
@@ -120,55 +87,15 @@ export function BriefWorkspace(props: Props) {
             />
             <p>{props.brief.content.summary}</p>
           </div>
-          <div className="brief-template-actions">
-            <IconButton label="检索权威简报模板" disabled={props.busy} onClick={props.onSearchTemplates}>
-              <Search size={15} />
-            </IconButton>
-            <div>
-              <IconButton
-                label="个人模板库"
-                active={templatesOpen}
-                disabled={props.busy}
-                onClick={() => setTemplatesOpen(!templatesOpen)}
-              >
-                <Library size={15} />
-              </IconButton>
-              {templatesOpen && (
-                <div className="brief-template-menu" role="menu">
-                  <button
-                    role="menuitem"
-                    disabled={props.busy}
-                    onClick={() => {
-                      props.onSaveTemplate();
-                      setTemplatesOpen(false);
-                    }}
-                  >
-                    <BadgePlus size={14} />
-                    保存当前结构
-                  </button>
-                  {props.templates.map((template) => (
-                    <button
-                      role="menuitem"
-                      disabled={props.busy}
-                      key={template.id}
-                      onClick={() => {
-                        props.onApplyTemplate(template);
-                        setTemplatesOpen(false);
-                      }}
-                    >
-                      <span>
-                        <strong>{template.title}</strong>
-                        <small>
-                          {templateDomainLabel(template.domain)} · 第 {template.version} 版
-                        </small>
-                      </span>
-                    </button>
-                  ))}
-                  {!props.templates.length && <p>模板库为空</p>}
-                </div>
-              )}
-            </div>
-          </div>
+          <BriefTemplateActions
+            busy={props.busy}
+            open={templatesOpen}
+            templates={props.templates}
+            onOpen={setTemplatesOpen}
+            onSearch={props.onSearchTemplates}
+            onSave={props.onSaveTemplate}
+            onApply={props.onApplyTemplate}
+          />
         </header>
         <div className="brief-section-list">
           {props.brief.content.sections.map((section, index) => (

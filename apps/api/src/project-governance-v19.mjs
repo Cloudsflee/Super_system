@@ -3,6 +3,7 @@ import { HttpError } from './http.mjs';
 import { currentActorId } from './actor-context.mjs';
 import { id, now } from '../../../packages/shared/index.mjs';
 import { isProjectRoute, resolveProjectIdForContext } from './project-route-resolution-v19.mjs';
+import { applyProjectGovernanceDefaults } from './project-governance-defaults.mjs';
 export { isProjectRoute, resolveProjectIdForContext } from './project-route-resolution-v19.mjs';
 
 export const PROJECT_ROLES = Object.freeze(['owner', 'collaborator', 'viewer']);
@@ -138,48 +139,7 @@ export function assertProjectRun(state, projectId, userId) {
   return assertProjectMembership(state, projectId, userId, 'run');
 }
 export function ensureProjectGovernanceDefaults(state, { timestamp = now(), markLegacy = true } = {}) {
-  if (!Array.isArray(state.project_memberships)) state.project_memberships = [];
-  if (!Array.isArray(state.project_invitations)) state.project_invitations = [];
-  if (!Array.isArray(state.legacy_project_allowlist_compat)) state.legacy_project_allowlist_compat = [];
-  const ownerId =
-    state.instance_owner_user_id ||
-    state.users?.find((item) => item.role === 'owner')?.id ||
-    state.users?.[0]?.id ||
-    null;
-  if (ownerId && !state.instance_owner_user_id) state.instance_owner_user_id = ownerId;
-  for (const project of state.projects || []) {
-    if (!project.owner_user_id) project.owner_user_id = project.created_by_user_id || ownerId;
-    if (!project.created_by_user_id) project.created_by_user_id = project.owner_user_id;
-    const hadProjectMembership = state.project_memberships.some((item) => item.project_id === project.id);
-    const existing = state.project_memberships.find(
-      (item) => item.project_id === project.id && item.user_id === project.owner_user_id
-    );
-    if (
-      markLegacy &&
-      !hadProjectMembership &&
-      project.owner_user_id &&
-      !state.legacy_project_allowlist_compat.includes(project.id)
-    )
-      state.legacy_project_allowlist_compat.push(project.id);
-    if (!existing && project.owner_user_id)
-      state.project_memberships.push({
-        id: id('pmb'),
-        project_id: project.id,
-        user_id: project.owner_user_id,
-        role: 'owner',
-        status: 'active',
-        source: 'migration',
-        invited_by_user_id: null,
-        github_identity: githubIdentityForUser(state, project.owner_user_id),
-        accepted_at: project.created_at || timestamp,
-        revoked_at: null,
-        created_at: project.created_at || timestamp,
-        updated_at: timestamp
-      });
-    else if (existing && existing.role !== 'owner')
-      Object.assign(existing, { role: 'owner', status: 'active', updated_at: timestamp });
-  }
-  return state;
+  return applyProjectGovernanceDefaults(state, { timestamp, markLegacy }, githubIdentityForUser);
 }
 export function expireProjectInvitationsInState(state, { at = Date.now() } = {}) {
   let changed = false;
@@ -359,47 +319,55 @@ export function revokeProjectMembershipInState(state, projectId, userId, actorId
 /** Route-level ACL used by both HTTP dispatch and MCP registry invocation. */
 export async function authorizeApiRoute(route, ctx, { state = null, strict = false } = {}) {
   const snapshot = state || (await (await import('./state.mjs')).readStateSnapshot()),
-    projectId = await resolveProjectIdForContext(route, ctx, snapshot);
-  if (route.pattern === '/project-invitations/:id/accept')
-    return { project_id: projectId, actor_id: requestSubjectUserId(ctx.req || {}) };
-  if (!projectId || !isProjectRoute(route.pattern))
-    return { project_id: projectId, actor_id: requestSubjectUserId(ctx.req || {}) };
+    projectId = await resolveProjectIdForContext(route, ctx, snapshot),
+    subjectUserId = requestSubjectUserId(ctx.req || {});
+  if (route.pattern === '/project-invitations/:id/accept') return { project_id: projectId, actor_id: subjectUserId };
+  if (!projectId || !isProjectRoute(route.pattern)) return { project_id: projectId, actor_id: subjectUserId };
   const actor = actorForRequest(snapshot, ctx.req || {}, { strict });
   if (!actor) throw new HttpError(401, { error: 'authentication_required' });
-  const approval =
+  const action = projectRouteAction(route),
+    client = snapshot.mcp_clients?.find((item) => item.id === ctx.req?.auth?.clientId);
+  if (legacyAllowlistAccess(snapshot, client, actor, projectId)) {
+    return { project_id: projectId, actor_id: actor.id, role: 'collaborator', legacy_allowlist_compat: true };
+  }
+  const allowDeleted = /^\/projects\/:id\/(?:restore|purge)$/.test(route.pattern);
+  assertProjectMembership(snapshot, projectId, actor.id, action, { allowDeleted });
+  return { project_id: projectId, actor_id: actor.id, role: projectRole(snapshot, projectId, actor.id) };
+}
+
+function projectRouteAction(route) {
+  if (route.method === 'GET') return 'read';
+  if (isOwnerLifecycleRoute(route)) return 'delete:approve';
+  if (route.pattern.includes('/members') || route.pattern.includes('/invit')) return 'share';
+  if (route.pattern.includes('/run') || /\/stages\/[^/]+\/replay$/.test(route.pattern)) return 'run';
+  return isApprovalRoute(route) ? 'approve' : 'write';
+}
+
+function isOwnerLifecycleRoute(route) {
+  return (
+    (route.method === 'DELETE' && route.pattern === '/projects/:id') ||
+    (route.method === 'POST' && /^\/projects\/:id\/(?:trash|restore|purge)$/.test(route.pattern))
+  );
+}
+
+function isApprovalRoute(route) {
+  return (
     /^\/(?:approvals\/|change-proposals\/[^/]+\/(?:approve|reject|apply)|(?:tasks|workstreams)\/[^/]+\/review|task-executions\/[^/]+\/human-approve|workflow-executions\/[^/]+\/outcome-waivers|asset-versions\/[^/]+\/attestations|pull-request-intents\/[^/]+\/(?:approve|execute))/.test(
       route.pattern
     ) ||
-    (route.method === 'POST' && /\/delivery-policies$/.test(route.pattern));
-  const ownerLifecycle =
-    (route.method === 'DELETE' && route.pattern === '/projects/:id') ||
-    (route.method === 'POST' && /^\/projects\/:id\/(?:trash|restore|purge)$/.test(route.pattern));
-  const action =
-    route.method === 'GET'
-      ? 'read'
-      : ownerLifecycle
-        ? 'delete:approve'
-        : route.pattern.includes('/members') || route.pattern.includes('/invit')
-          ? 'share'
-          : route.pattern.includes('/run') || /\/stages\/[^/]+\/replay$/.test(route.pattern)
-            ? 'run'
-            : approval
-              ? 'approve'
-              : 'write';
-  const client = snapshot.mcp_clients?.find((item) => item.id === ctx.req?.auth?.clientId);
-  if (
+    (route.method === 'POST' && /\/delivery-policies$/.test(route.pattern))
+  );
+}
+
+function legacyAllowlistAccess(snapshot, client, actor, projectId) {
+  return Boolean(
     client &&
     process.env.AIWS_MCP_REMOTE_MODE === 'gateway' &&
     client.kind === 'external' &&
     client.subject_user_id === actor.id &&
     client.project_allowlist?.includes(projectId) &&
     snapshot.legacy_project_allowlist_compat?.includes(projectId)
-  ) {
-    return { project_id: projectId, actor_id: actor.id, role: 'collaborator', legacy_allowlist_compat: true };
-  }
-  const allowDeleted = /^\/projects\/:id\/(?:restore|purge)$/.test(route.pattern);
-  assertProjectMembership(snapshot, projectId, actor.id, action, { allowDeleted });
-  return { project_id: projectId, actor_id: actor.id, role: projectRole(snapshot, projectId, actor.id) };
+  );
 }
 export function publicUser(user) {
   return user

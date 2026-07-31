@@ -85,15 +85,56 @@ export function prepareProjectCapabilityOperation(state, session, turn, params =
     tool = cleanText(params.tool, 100);
   const descriptor = namespace === PROJECT_TOOL_NAMESPACE ? assistCapabilityForToolName(tool) : null;
   if (!descriptor) throw new HttpError(400, { error: 'assist_dynamic_tool_not_allowed' });
+  assertCapabilityTurnScope(session, turn);
+  const args = capabilityArguments(params, descriptor);
+  const page = requireCapabilityPage(turn);
+  assertCapabilityPageScope(descriptor, args, turn, page);
+  const expectedRevision = requireExpectedRevision(args);
+  const resourceType = descriptorResourceType(descriptor);
+  const scope = requireCapabilityResource(state, turn.project_id, resourceType);
+  assertCapabilityResourceScope(args, page, resourceType, scope, expectedRevision);
+  const { operations, primary } = capabilityOperations(descriptor, args, resourceType);
+  if (resourceType === 'workflow_draft') assertStartupWorkflowOperations(scope.resource.nodes, operations);
+  const target = initialTarget(resourceType, primary, scope.resource);
+  const reference = assertOperationReference(state, turn, descriptor, target.id, page, resourceType, scope.resource.id);
+  return preparedCapabilityResult({
+    state,
+    turn,
+    descriptor,
+    tool,
+    page,
+    expectedRevision,
+    resourceType,
+    resource: scope.resource,
+    resourceIdKey: scope.resourceIdKey,
+    operations,
+    primary,
+    target,
+    reference
+  });
+}
+
+function assertCapabilityTurnScope(session, turn) {
   if (turn.collaboration_mode === 'plan' || turn.mode === 'plan')
     throw new HttpError(409, { error: 'assist_plan_capability_write_forbidden' });
   if (turn.session_id !== session.id || turn.project_id !== session.project_id)
     throw new HttpError(409, { error: 'assist_turn_scope_mismatch' });
+}
+
+function capabilityArguments(params, descriptor) {
   const args = plainObject(params.arguments, 'assist_capability_arguments_invalid');
   assertArgumentKeys(args, descriptor.input_schema);
+  return args;
+}
+
+function requireCapabilityPage(turn) {
   const page = pageIdentity(turn.view_context);
   if (!page.route || !page.surfaceId || !page.revision || !page.browserInstanceId)
     throw new HttpError(409, { error: 'assist_page_surface_revision_required' });
+  return page;
+}
+
+function assertCapabilityPageScope(descriptor, args, turn, page) {
   assertSame(cleanText(args.project_id, 200), turn.project_id, 'assist_capability_project_scope_mismatch');
   assertSame(cleanText(args.route, 2_000), page.route, 'assist_capability_route_mismatch');
   assertSame(cleanText(args.surface_id, 200), page.surfaceId, 'assist_capability_surface_mismatch');
@@ -101,43 +142,56 @@ export function prepareProjectCapabilityOperation(state, session, turn, params =
   assertSame(cleanText(args.browser_instance_id, 200), page.browserInstanceId, 'assist_capability_browser_mismatch');
   if (!matchesRoute(descriptor.route, page.route) || routeProjectId(page.route) !== turn.project_id)
     throw new HttpError(409, { error: 'assist_capability_route_scope_mismatch' });
+}
+
+function requireExpectedRevision(args) {
   const expectedRevision = args.expected_revision;
   if (!Number.isInteger(expectedRevision) || expectedRevision < 1)
     throw new HttpError(400, { error: 'expected_revision_required' });
-  const resourceType = descriptorResourceType(descriptor);
+  return expectedRevision;
+}
+
+function requireCapabilityResource(state, projectId, resourceType) {
   const rawResource =
     resourceType === 'brief'
-      ? currentBrief(state, turn.project_id)
+      ? currentBrief(state, projectId)
       : resourceType === 'workflow_draft'
-        ? currentWorkflowDraft(state, turn.project_id)
-        : currentWorkflow(state, turn.project_id);
+        ? currentWorkflowDraft(state, projectId)
+        : currentWorkflow(state, projectId);
   const resource = resourceType === 'workflow' && rawResource ? workflowResource(state, rawResource) : rawResource;
-  if (!resource)
-    throw new HttpError(404, {
-      error:
-        resourceType === 'brief'
-          ? 'project_brief_not_found'
-          : resourceType === 'workflow'
-            ? 'workflow_not_found'
-            : 'workflow_draft_not_found'
-    });
+  if (!resource) throw new HttpError(404, { error: capabilityResourceNotFoundCode(resourceType) });
+  return { rawResource, resource, resourceIdKey: capabilityResourceIdKey(resourceType) };
+}
+
+function capabilityResourceNotFoundCode(resourceType) {
+  if (resourceType === 'brief') return 'project_brief_not_found';
+  return resourceType === 'workflow' ? 'workflow_not_found' : 'workflow_draft_not_found';
+}
+
+function capabilityResourceIdKey(resourceType) {
+  if (resourceType === 'brief') return 'brief_id';
+  return resourceType === 'workflow_draft' ? 'workflow_draft_id' : 'workflow_id';
+}
+
+function assertCapabilityResourceScope(args, page, resourceType, scope, expectedRevision) {
   if (resourceType === 'workflow') {
-    assertSame(page.surfaceId, workflowAssistSurfaceId(rawResource.id), 'assist_capability_surface_mismatch');
+    assertSame(page.surfaceId, workflowAssistSurfaceId(scope.rawResource.id), 'assist_capability_surface_mismatch');
     assertSame(
       page.revision,
-      workflowAssistSurfaceRevision(rawResource),
+      workflowAssistSurfaceRevision(scope.rawResource),
       'assist_capability_surface_revision_mismatch'
     );
   }
-  const resourceIdKey =
-    resourceType === 'brief' ? 'brief_id' : resourceType === 'workflow_draft' ? 'workflow_draft_id' : 'workflow_id';
-  assertSame(cleanText(args[resourceIdKey], 200), resource.id, 'assist_capability_resource_scope_mismatch');
-  if (resourceType === 'workflow' && expectedRevision !== Number(resource.revision))
+  assertSame(cleanText(args[scope.resourceIdKey], 200), scope.resource.id, 'assist_capability_resource_scope_mismatch');
+  if (resourceType === 'workflow' && expectedRevision !== Number(scope.resource.revision))
     throw new HttpError(409, {
       error: 'workflow_graph_revision_conflict',
       expected_revision: expectedRevision,
-      current_revision: Number(resource.revision)
+      current_revision: Number(scope.resource.revision)
     });
+}
+
+function capabilityOperations(descriptor, args, resourceType) {
   let operations, primary;
   if (descriptor.id === 'project.workflow.graph.patch') {
     if (!Array.isArray(args.operations) || !args.operations.length || args.operations.length > 100)
@@ -157,9 +211,11 @@ export function prepareProjectCapabilityOperation(state, session, turn, params =
     normalizeCreatedId(resourceType, primary);
     operations = [primary];
   }
-  if (resourceType === 'workflow_draft') assertStartupWorkflowOperations(resource.nodes, operations);
-  const target = initialTarget(resourceType, primary, resource),
-    reference = assertOperationReference(state, turn, descriptor, target.id, page, resourceType, resource.id);
+  return { operations, primary };
+}
+
+function preparedCapabilityResult(input) {
+  const { turn, descriptor, tool, page, expectedRevision, resourceType, resource, operations, primary, target } = input;
   return {
     descriptor,
     tool,
@@ -167,7 +223,7 @@ export function prepareProjectCapabilityOperation(state, session, turn, params =
     targetLabel: target.label,
     inputSchema: bindInputSchema(descriptor.input_schema, {
       project_id: turn.project_id,
-      [resourceIdKey]: resource.id,
+      [input.resourceIdKey]: resource.id,
       route: page.route,
       surface_id: page.surfaceId,
       surface_revision: page.revision,
@@ -187,7 +243,7 @@ export function prepareProjectCapabilityOperation(state, session, turn, params =
       surface_id: page.surfaceId,
       surface_revision: page.revision,
       browser_instance_id: page.browserInstanceId,
-      replaces_proposal_id: pendingProposalId(state, reference)
+      replaces_proposal_id: pendingProposalId(input.state, input.reference)
     }
   };
 }
@@ -196,35 +252,44 @@ function assertOperationReference(state, turn, descriptor, targetId, page, resou
   if (!turn.operation_reference_id) return null;
   const reference = state.assist_operations.find((item) => item.id === turn.operation_reference_id);
   if (!reference) throw new HttpError(404, { error: 'assist_operation_reference_not_found' });
-  if (
-    reference.session_id !== turn.session_id ||
-    reference.project_id !== turn.project_id ||
-    reference.route !== page.route ||
-    reference.surface_id !== page.surfaceId ||
-    reference.surface_revision !== page.revision
-  )
-    throw new HttpError(409, { error: 'assist_operation_reference_scope_mismatch' });
+  assertOperationReferenceScope(reference, turn, page);
   if (reference.target_id !== targetId)
     throw new HttpError(409, { error: 'assist_operation_reference_target_mismatch' });
-  if (
-    reference.domain_request &&
-    (reference.domain_request.resource_type !== resourceType || reference.domain_request.resource_id !== resourceId)
-  )
-    throw new HttpError(409, { error: 'assist_operation_reference_resource_mismatch' });
-  const prefix =
-    resourceType === 'brief'
-      ? 'project.brief.'
-      : resourceType === 'workflow'
-        ? 'project.workflow.'
-        : 'project.workflow_draft.';
-  if (!descriptor.id.startsWith(prefix))
+  assertOperationReferenceResource(reference, resourceType, resourceId);
+  if (!descriptor.id.startsWith(capabilityPrefix(resourceType)))
     throw new HttpError(409, { error: 'assist_operation_reference_capability_mismatch' });
-  if (resourceType === 'workflow' && reference.proposal_id) {
-    const proposal = state.change_proposals.find((item) => item.id === reference.proposal_id);
-    if (!proposal || (proposal.workflow_id !== resourceId && proposal.apply_action?.workflow_id !== resourceId))
-      throw new HttpError(409, { error: 'assist_operation_reference_proposal_scope_mismatch' });
-  }
+  assertOperationReferenceProposal(state, reference, resourceType, resourceId);
   return reference;
+}
+
+function assertOperationReferenceScope(reference, turn, page) {
+  const matches =
+    reference.session_id === turn.session_id &&
+    reference.project_id === turn.project_id &&
+    reference.route === page.route &&
+    reference.surface_id === page.surfaceId &&
+    reference.surface_revision === page.revision;
+  if (!matches) throw new HttpError(409, { error: 'assist_operation_reference_scope_mismatch' });
+}
+
+function assertOperationReferenceResource(reference, resourceType, resourceId) {
+  if (!reference.domain_request) return;
+  const matches =
+    reference.domain_request.resource_type === resourceType && reference.domain_request.resource_id === resourceId;
+  if (!matches) throw new HttpError(409, { error: 'assist_operation_reference_resource_mismatch' });
+}
+
+function capabilityPrefix(resourceType) {
+  if (resourceType === 'brief') return 'project.brief.';
+  return resourceType === 'workflow' ? 'project.workflow.' : 'project.workflow_draft.';
+}
+
+function assertOperationReferenceProposal(state, reference, resourceType, resourceId) {
+  if (resourceType !== 'workflow' || !reference.proposal_id) return;
+  const proposal = state.change_proposals.find((item) => item.id === reference.proposal_id);
+  const matches =
+    proposal && (proposal.workflow_id === resourceId || proposal.apply_action?.workflow_id === resourceId);
+  if (!matches) throw new HttpError(409, { error: 'assist_operation_reference_proposal_scope_mismatch' });
 }
 
 function descriptorResourceType(descriptor) {

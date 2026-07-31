@@ -4,37 +4,29 @@ import path from 'node:path';
 import { hashString, id, now } from '../../../packages/shared/index.mjs';
 import { git, isGitRepo } from './git-utils.mjs';
 import { HttpError } from './http.mjs';
-import { managedProjectRoot, isWithin, safeSegment } from './managed-workspace.mjs';
+import { isWithin, safeSegment } from './managed-workspace.mjs';
 import { createInstallationToken, githubGitAuthEnv, resolveGithubAppConfig } from './github-service.mjs';
+import {
+  canonicalDefaultBranch,
+  canonicalRepositoryId,
+  currentBranch,
+  managedRepositoryWorkspacePath,
+  managedRepositoryWorkspaceRoot,
+  normalizeScope,
+  repositoryWorkspaceSnapshotHash,
+  validateRepositoryRef,
+  verifiedWorkspacePath
+} from './repository-workspace-domain.mjs';
+
+export {
+  managedRepositoryWorkspacePath,
+  managedRepositoryWorkspaceRoot,
+  repositoryWorkspaceSnapshotHash,
+  validateRepositoryRef
+};
 
 const SHA_PATTERN = /^[a-f0-9]{40,64}$/i;
 const WORKSPACE_MODES = new Set(['read_only', 'read_write']);
-
-export function managedRepositoryWorkspaceRoot(projectId) {
-  return path.join(managedProjectRoot(projectId), 'repository-workspaces');
-}
-
-export function managedRepositoryWorkspacePath(projectId, workspaceId) {
-  return path.join(managedRepositoryWorkspaceRoot(projectId), safeSegment(workspaceId));
-}
-
-export function validateRepositoryRef(value) {
-  const ref = String(value || '').trim();
-  const invalid =
-    !ref ||
-    ref.length > 240 ||
-    ref === 'HEAD' ||
-    ref.startsWith('-') ||
-    ref.startsWith('/') ||
-    ref.endsWith('/') ||
-    ref.endsWith('.') ||
-    ref.includes('..') ||
-    ref.includes('@{') ||
-    /[\x00-\x20\x7f~^:?*[\\]/.test(ref) ||
-    ref.split('/').some((part) => !part || part.startsWith('.') || part.endsWith('.lock'));
-  if (invalid) throw new HttpError(400, { error: 'repository_ref_invalid', ref });
-  return ref;
-}
 
 export function repositoryBranches(state, projectId, connectionId = null) {
   const { project, connection, sourcePath } = repositorySource(state, projectId, connectionId);
@@ -48,23 +40,9 @@ export function repositoryBranches(state, projectId, connectionId = null) {
     throw new HttpError(409, { error: 'repository_branch_catalog_unavailable', detail: lines.stderr || lines.error });
   const byName = new Map();
   for (const line of lines.stdout.split(/\r?\n/).filter(Boolean)) {
-    const [fullRef, sha] = line.split('|');
-    if (!SHA_PATTERN.test(String(sha || '')) || fullRef === `refs/remotes/${remoteName}/HEAD`) continue;
-    const remotePrefix = `refs/remotes/${remoteName}/`,
-      localPrefix = 'refs/heads/';
-    const name = fullRef.startsWith(remotePrefix)
-      ? fullRef.slice(remotePrefix.length)
-      : fullRef.startsWith(localPrefix)
-        ? fullRef.slice(localPrefix.length)
-        : null;
-    if (!name) continue;
-    const candidate = {
-      name,
-      ref: name,
-      sha: sha.toLowerCase(),
-      source: fullRef.startsWith(remotePrefix) ? 'remote' : 'local',
-      full_ref: fullRef
-    };
+    const candidate = branchCandidate(line, remoteName);
+    if (!candidate) continue;
+    const { name } = candidate;
     if (!byName.has(name) || candidate.source === 'remote') byName.set(name, candidate);
   }
   const defaultBranch =
@@ -73,6 +51,27 @@ export function repositoryBranches(state, projectId, connectionId = null) {
     (a, b) => Number(b.name === defaultBranch) - Number(a.name === defaultBranch) || a.name.localeCompare(b.name)
   );
   return { project, connection, default_branch: defaultBranch, mirror_path: sourcePath, branches };
+}
+
+function branchCandidate(line, remoteName) {
+  const [fullRef, sha] = line.split('|');
+  const remotePrefix = `refs/remotes/${remoteName}/`;
+  if (!SHA_PATTERN.test(String(sha || '')) || fullRef === `${remotePrefix}HEAD`) return null;
+  const localPrefix = 'refs/heads/';
+  const remote = fullRef.startsWith(remotePrefix);
+  const name = remote
+    ? fullRef.slice(remotePrefix.length)
+    : fullRef.startsWith(localPrefix)
+      ? fullRef.slice(localPrefix.length)
+      : null;
+  if (!name) return null;
+  return {
+    name,
+    ref: name,
+    sha: sha.toLowerCase(),
+    source: remote ? 'remote' : 'local',
+    full_ref: fullRef
+  };
 }
 
 export async function refreshRepositoryMirror(state, projectId, connectionId = null, { fetch = true, env = {} } = {}) {
@@ -104,12 +103,40 @@ export async function repositoryGitAuthEnv(state, connection, remoteUrl = '') {
 }
 
 export async function createRepositoryWorkspace(state, projectId, input, actorId) {
+  const request = repositoryWorkspaceRequest(state, projectId, input);
+  const prior = idempotentRepositoryWorkspace(state, projectId, actorId, request.operationKey);
+  if (prior) return { workspace: prior, idempotent: true };
+  const workspaceId = id('rws');
+  const target = await materializeRepositoryWorkspace(projectId, workspaceId, request.catalog, request.expectedSha);
+  const workspace = repositoryWorkspaceRecord({
+    state,
+    projectId,
+    actorId,
+    input,
+    workspaceId,
+    target,
+    ...request
+  });
+  state.repository_workspaces.push(workspace);
+  assignDefaultRepositoryWorkspace(state, projectId, workspace, input);
+  return { workspace, idempotent: false };
+}
+
+function repositoryWorkspaceRequest(state, projectId, input) {
   const connectionId = String(input.connection_id || '').trim() || null;
   const catalog = repositoryBranches(state, projectId, connectionId);
   const ref = validateRepositoryRef(input.ref || catalog.default_branch);
   const branch = catalog.branches.find((item) => item.name === ref);
   if (!branch) throw new HttpError(404, { error: 'repository_branch_not_found', ref });
   const expectedSha = input.expected_sha ? String(input.expected_sha).trim().toLowerCase() : branch.sha;
+  assertRequestedRepositorySha(expectedSha, branch, ref);
+  const mode = String(input.mode || 'read_only');
+  if (!WORKSPACE_MODES.has(mode))
+    throw new HttpError(400, { error: 'repository_workspace_mode_invalid', allowed: [...WORKSPACE_MODES] });
+  return { catalog, ref, expectedSha, mode, operationKey: normalizedOperationKey(input.operation_key) };
+}
+
+function assertRequestedRepositorySha(expectedSha, branch, ref) {
   if (!SHA_PATTERN.test(expectedSha)) throw new HttpError(400, { error: 'repository_sha_invalid' });
   if (expectedSha !== branch.sha)
     throw new HttpError(409, {
@@ -118,26 +145,32 @@ export async function createRepositoryWorkspace(state, projectId, input, actorId
       expected_sha: expectedSha,
       actual_sha: branch.sha
     });
-  const mode = String(input.mode || 'read_only');
-  if (!WORKSPACE_MODES.has(mode))
-    throw new HttpError(400, { error: 'repository_workspace_mode_invalid', allowed: [...WORKSPACE_MODES] });
-  const operationKey =
-    String(input.operation_key || '')
+}
+
+function normalizedOperationKey(value) {
+  return (
+    String(value || '')
       .trim()
-      .slice(0, 128) || null;
-  if (operationKey) {
-    const prior = state.repository_workspaces.find(
+      .slice(0, 128) || null
+  );
+}
+
+function idempotentRepositoryWorkspace(state, projectId, actorId, operationKey) {
+  if (!operationKey) return null;
+  return (
+    state.repository_workspaces.find(
       (item) =>
         item.project_id === projectId &&
         item.operation_key === operationKey &&
         item.created_by_user_id === actorId &&
         item.status !== 'removed'
-    );
-    if (prior) return { workspace: prior, idempotent: true };
-  }
-  const workspaceId = id('rws'),
-    target = managedRepositoryWorkspacePath(projectId, workspaceId),
-    root = managedRepositoryWorkspaceRoot(projectId);
+    ) || null
+  );
+}
+
+async function materializeRepositoryWorkspace(projectId, workspaceId, catalog, expectedSha) {
+  const target = managedRepositoryWorkspacePath(projectId, workspaceId);
+  const root = managedRepositoryWorkspaceRoot(projectId);
   await fsp.mkdir(root, { recursive: true });
   if (!isWithin(root, target) || fs.existsSync(target))
     throw new HttpError(409, { error: 'repository_workspace_path_occupied' });
@@ -147,45 +180,56 @@ export async function createRepositoryWorkspace(state, projectId, input, actorId
     throw new HttpError(409, { error: 'repository_workspace_clone_failed', detail: cloned.stderr || cloned.error });
   }
   try {
-    const remoteName = catalog.connection?.remote_name || 'origin';
-    const sourceRemote = git(catalog.mirror_path, ['remote', 'get-url', remoteName], 5_000);
-    if (sourceRemote.ok) {
-      const configured = git(target, ['remote', 'set-url', 'origin', sourceRemote.stdout.trim()], 5_000);
-      if (!configured.ok)
-        throw new HttpError(409, {
-          error: 'repository_workspace_remote_configuration_failed',
-          detail: configured.stderr || configured.error
-        });
-    }
-    const checkedOut = git(target, ['checkout', '--detach', expectedSha], 60_000);
-    if (!checkedOut.ok)
-      throw new HttpError(409, {
-        error: 'repository_workspace_checkout_failed',
-        detail: checkedOut.stderr || checkedOut.error
-      });
-    const actualSha = git(target, ['rev-parse', 'HEAD'], 5_000).stdout.trim().toLowerCase();
-    if (actualSha !== expectedSha)
-      throw new HttpError(409, {
-        error: 'repository_workspace_sha_mismatch',
-        expected_sha: expectedSha,
-        actual_sha: actualSha
-      });
+    configureRepositoryWorkspaceRemote(catalog, target);
+    checkoutRepositoryWorkspace(target, expectedSha);
   } catch (error) {
     await fsp.rm(target, { recursive: true, force: true });
     throw error;
   }
+  return target;
+}
+
+function configureRepositoryWorkspaceRemote(catalog, target) {
+  const remoteName = catalog.connection?.remote_name || 'origin';
+  const sourceRemote = git(catalog.mirror_path, ['remote', 'get-url', remoteName], 5_000);
+  if (!sourceRemote.ok) return;
+  const configured = git(target, ['remote', 'set-url', 'origin', sourceRemote.stdout.trim()], 5_000);
+  if (!configured.ok)
+    throw new HttpError(409, {
+      error: 'repository_workspace_remote_configuration_failed',
+      detail: configured.stderr || configured.error
+    });
+}
+
+function checkoutRepositoryWorkspace(target, expectedSha) {
+  const checkedOut = git(target, ['checkout', '--detach', expectedSha], 60_000);
+  if (!checkedOut.ok)
+    throw new HttpError(409, {
+      error: 'repository_workspace_checkout_failed',
+      detail: checkedOut.stderr || checkedOut.error
+    });
+  const actualSha = git(target, ['rev-parse', 'HEAD'], 5_000).stdout.trim().toLowerCase();
+  if (actualSha !== expectedSha)
+    throw new HttpError(409, {
+      error: 'repository_workspace_sha_mismatch',
+      expected_sha: expectedSha,
+      actual_sha: actualSha
+    });
+}
+
+function repositoryWorkspaceRecord(input) {
   const timestamp = now();
-  const workspace = {
-    id: workspaceId,
-    project_id: projectId,
-    connection_id: catalog.connection?.id || null,
-    canonical_repository_id: canonicalRepositoryId(state, projectId, catalog.connection),
-    ref,
-    fixed_sha: expectedSha,
-    current_sha: expectedSha,
-    mode,
-    scope: normalizeScope(input.scope),
-    managed_path: target,
+  return {
+    id: input.workspaceId,
+    project_id: input.projectId,
+    connection_id: input.catalog.connection?.id || null,
+    canonical_repository_id: canonicalRepositoryId(input.state, input.projectId, input.catalog.connection),
+    ref: input.ref,
+    fixed_sha: input.expectedSha,
+    current_sha: input.expectedSha,
+    mode: input.mode,
+    scope: normalizeScope(input.input.scope),
+    managed_path: input.target,
     sync_status: 'ready',
     stale: false,
     ahead: 0,
@@ -193,17 +237,18 @@ export async function createRepositoryWorkspace(state, projectId, input, actorId
     dirty: false,
     status: 'active',
     revision: 1,
-    operation_key: operationKey,
+    operation_key: input.operationKey,
     last_synced_at: timestamp,
-    created_by_user_id: actorId,
+    created_by_user_id: input.actorId,
     created_at: timestamp,
     updated_at: timestamp
   };
-  state.repository_workspaces.push(workspace);
+}
+
+function assignDefaultRepositoryWorkspace(state, projectId, workspace, input) {
   const project = state.projects.find((item) => item.id === projectId);
   if (project && (input.make_default === true || !project.default_repository_workspace_id))
     project.default_repository_workspace_id = workspace.id;
-  return { workspace, idempotent: false };
 }
 
 export function inspectRepositoryWorkspace(state, workspaceId) {
@@ -290,23 +335,32 @@ export function markRepositoryWorkspacesStale(
 ) {
   let changed = 0;
   for (const workspace of state.repository_workspaces || []) {
-    if (
-      workspace.status !== 'active' ||
-      (projectId && workspace.project_id !== projectId) ||
-      (connectionId && workspace.connection_id !== connectionId) ||
-      (ref && workspace.ref !== ref)
-    )
-      continue;
-    if (remoteSha && String(workspace.fixed_sha).toLowerCase() === String(remoteSha).toLowerCase()) continue;
-    Object.assign(workspace, {
-      stale: true,
-      sync_status: 'stale',
-      remote_sha: remoteSha || workspace.remote_sha || null,
-      updated_at: now()
-    });
+    if (!workspaceMatchesStaleScope(workspace, { projectId, connectionId, ref })) continue;
+    if (workspaceMatchesRemoteSha(workspace, remoteSha)) continue;
+    markRepositoryWorkspaceStale(workspace, remoteSha);
     changed += 1;
   }
   return changed;
+}
+
+function workspaceMatchesStaleScope(workspace, { projectId, connectionId, ref }) {
+  if (workspace.status !== 'active') return false;
+  if (projectId && workspace.project_id !== projectId) return false;
+  if (connectionId && workspace.connection_id !== connectionId) return false;
+  return !ref || workspace.ref === ref;
+}
+
+function workspaceMatchesRemoteSha(workspace, remoteSha) {
+  return Boolean(remoteSha && String(workspace.fixed_sha).toLowerCase() === String(remoteSha).toLowerCase());
+}
+
+function markRepositoryWorkspaceStale(workspace, remoteSha) {
+  Object.assign(workspace, {
+    stale: true,
+    sync_status: 'stale',
+    remote_sha: remoteSha || workspace.remote_sha || null,
+    updated_at: now()
+  });
 }
 
 export function requireRepositoryWorkspace(state, workspaceId, projectId = null) {
@@ -340,68 +394,4 @@ function repositorySource(state, projectId, connectionId) {
   );
   if (!sourcePath || !isGitRepo(sourcePath)) throw new HttpError(409, { error: 'repository_ref_mirror_unavailable' });
   return { project, connection, sourcePath };
-}
-
-function verifiedWorkspacePath(workspace) {
-  const expected = path.resolve(managedRepositoryWorkspacePath(workspace.project_id, workspace.id));
-  if (
-    path.resolve(workspace.managed_path || '') !== expected ||
-    !isWithin(managedRepositoryWorkspaceRoot(workspace.project_id), expected) ||
-    !isGitRepo(expected)
-  )
-    throw new HttpError(409, { error: 'repository_workspace_path_invalid' });
-  const real = fs.realpathSync(expected);
-  if (!isWithin(managedRepositoryWorkspaceRoot(workspace.project_id), real))
-    throw new HttpError(409, { error: 'repository_workspace_symlink_escape' });
-  return real;
-}
-
-function canonicalRepositoryId(state, projectId, connection) {
-  const binding = state.project_repository_bindings.find(
-    (item) => item.project_id === projectId && item.status !== 'removed'
-  );
-  if (binding) return binding.canonical_repository_id;
-  const canonical = state.canonical_repositories.find(
-    (item) => String(item.repository_id) === String(connection?.repository_id)
-  );
-  return canonical?.id || null;
-}
-function canonicalDefaultBranch(state, projectId) {
-  const binding = state.project_repository_bindings.find(
-    (item) => item.project_id === projectId && item.status !== 'removed'
-  );
-  return (
-    state.canonical_repositories.find((item) => item.id === binding?.canonical_repository_id)?.default_branch || null
-  );
-}
-function currentBranch(repoPath) {
-  return git(repoPath, ['branch', '--show-current'], 5_000).stdout.trim() || null;
-}
-function normalizeScope(value) {
-  const scope = value && typeof value === 'object' && !Array.isArray(value) ? value : {};
-  return {
-    type: String(scope.type || 'project'),
-    id: scope.id == null ? null : String(scope.id),
-    path_prefixes: [
-      ...new Set(
-        (Array.isArray(scope.path_prefixes) ? scope.path_prefixes : ['.']).map((item) =>
-          String(item || '.').replaceAll('\\', '/')
-        )
-      )
-    ]
-  };
-}
-
-export function repositoryWorkspaceSnapshotHash(workspace) {
-  return hashString(
-    JSON.stringify({
-      id: workspace.id,
-      project_id: workspace.project_id,
-      connection_id: workspace.connection_id,
-      ref: workspace.ref,
-      fixed_sha: workspace.fixed_sha,
-      mode: workspace.mode,
-      scope: workspace.scope
-    })
-  );
 }

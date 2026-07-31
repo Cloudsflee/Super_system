@@ -101,6 +101,7 @@
     "format": "node scripts/format.mjs",
     "format:check": "node scripts/format.mjs --check",
     "test:quality": "node tests/unit/quality-policy.test.mjs",
+    "quality:baseline": "node scripts/quality-baseline-update.mjs",
     "lint": "node scripts/lint.mjs",
     "typecheck": "node scripts/typecheck.mjs",
     "prisma:migrate:check": "node scripts/migrate-check.mjs",

@@ -9,22 +9,9 @@ import {
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import {
-  ArrowDown,
-  ArrowLeft,
-  ArrowRight,
-  ArrowUp,
-  Bot,
-  Boxes,
-  ChevronRight,
-  Code2,
-  GitBranch,
-  List,
-  Plus,
-  Rows3
-} from 'lucide-react';
+import { ArrowDown, ArrowRight, ArrowUp, Bot, GitBranch } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
-import { Link, Navigate, useNavigate, useParams } from 'react-router-dom';
+import { Navigate, useNavigate, useParams } from 'react-router-dom';
 import { api, json } from '../../api/client';
 import { keys, useProject } from '../../api/queries';
 import type { ChangeProposal, Project, TaskKind, Workflow, WorkflowNode } from '../../api/types';
@@ -32,6 +19,7 @@ import { FullPageState } from '../../components/common/FullPageState';
 import { IconButton } from '../../components/common/IconButton';
 import { useAssistSurface } from '../../components/assist/semantic-actions';
 import { useUi } from '../../state/ui';
+import { WorkstreamHeader, WorkstreamTabs, type WorkstreamViewMode } from './WorkstreamChrome';
 
 type GraphResponse = {
   project: Project;
@@ -45,7 +33,7 @@ type GraphResponse = {
     edges: Array<{ id: string; source: string; target: string }>;
   };
 };
-type ViewMode = 'list' | 'board' | 'structure';
+type ViewMode = WorkstreamViewMode;
 
 export function WorkstreamPage() {
   const { projectId, workstreamId } = useParams(),
@@ -138,87 +126,72 @@ export function WorkstreamPage() {
   }
 
   return (
+    <WorkstreamView
+      projectId={projectId || ''}
+      projectTitle={project.data.project.title}
+      response={graph.data}
+      view={view}
+      onViewChange={setView}
+      onBack={() => navigate(`/projects/${projectId}/workflow`)}
+      onSelect={selectTask}
+      onEnter={(task) => navigate(`/projects/${projectId}/nodes/${task.id}`)}
+      onAssist={assistTask}
+      onMove={move}
+      onAdd={addTask}
+      onSelectParent={() => ui.setContextNode(parent.id)}
+    />
+  );
+}
+
+function WorkstreamView({
+  projectId,
+  projectTitle,
+  response,
+  view,
+  onViewChange,
+  onBack,
+  onSelect,
+  onEnter,
+  onAssist,
+  onMove,
+  onAdd,
+  onSelectParent
+}: {
+  projectId: string;
+  projectTitle: string;
+  response: GraphResponse;
+  view: ViewMode;
+  onViewChange: (view: ViewMode) => void;
+  onBack: () => void;
+  onSelect: (task: WorkflowNode) => void;
+  onEnter: (task: WorkflowNode) => void;
+  onAssist: (task: WorkflowNode) => void;
+  onMove: (task: WorkflowNode, delta: number) => void;
+  onAdd: () => void;
+  onSelectParent: () => void;
+}) {
+  const { parent, nodes: tasks } = response;
+  return (
     <section className="workstream-page">
-      <nav className="workflow-breadcrumb" aria-label="层级导航">
-        <Link to="/projects">{project.data.project.title}</Link>
-        <ChevronRight size={14} />
-        <Link to={`/projects/${projectId}/workflow`}>{graph.data.workflow.title}</Link>
-        <ChevronRight size={14} />
-        <button type="button" onClick={() => ui.setContextNode(parent.id)}>
-          {parent.title}
-        </button>
-      </nav>
-      <header className="workstream-header">
-        <IconButton label="返回顶层工作流" onClick={() => navigate(`/projects/${projectId}/workflow`)}>
-          <ArrowLeft size={18} />
-        </IconButton>
-        <div>
-          <span>{categoryLabel(parent.category)}</span>
-          <h1>{parent.title}</h1>
-          <p>{parent.outcome || parent.goal}</p>
-        </div>
-        <div className="workstream-metrics">
-          <strong>
-            {tasks.filter((item) => item.status === 'completed').length}/{tasks.length}
-          </strong>
-          <span>任务</span>
-          <strong>{tasks.filter((item) => item.status === 'blocked').length}</strong>
-          <span>阻塞</span>
-        </div>
-        <div className="workstream-header-actions">
-          {hasCodeWorkspace(parent) && (
-            <Link
-              className="button secondary workstream-code-link"
-              to={`/projects/${projectId}/nodes/${parent.id}`}
-              aria-label={`查看代码：${parent.title}`}
-            >
-              <Code2 size={15} />
-              查看代码
-            </Link>
-          )}
-          <IconButton label="添加任务" onClick={addTask}>
-            <Plus size={18} />
-          </IconButton>
-        </div>
-      </header>
-      <div className="workstream-tabs" role="tablist" aria-label="任务视图">
-        <button role="tab" aria-selected={view === 'list'} onClick={() => setView('list')}>
-          <List size={16} />
-          列表
-        </button>
-        <button role="tab" aria-selected={view === 'board'} onClick={() => setView('board')}>
-          <Rows3 size={16} />
-          看板
-        </button>
-        <button role="tab" aria-selected={view === 'structure'} onClick={() => setView('structure')}>
-          <Boxes size={16} />
-          结构
-        </button>
-      </div>
+      <WorkstreamHeader
+        projectId={projectId}
+        projectTitle={projectTitle}
+        workflowTitle={response.workflow.title}
+        parent={parent}
+        tasks={tasks}
+        onBack={onBack}
+        onAdd={onAdd}
+        onSelectParent={onSelectParent}
+      />
+      <WorkstreamTabs view={view} onChange={onViewChange} />
       <div className="workstream-content">
         {view === 'list' && (
-          <TaskList
-            tasks={tasks}
-            onSelect={selectTask}
-            onEnter={(task) => navigate(`/projects/${projectId}/nodes/${task.id}`)}
-            onAssist={assistTask}
-            onMove={move}
-          />
+          <TaskList tasks={tasks} onSelect={onSelect} onEnter={onEnter} onAssist={onAssist} onMove={onMove} />
         )}
-        {view === 'board' && (
-          <TaskBoard
-            tasks={tasks}
-            onSelect={selectTask}
-            onEnter={(task) => navigate(`/projects/${projectId}/nodes/${task.id}`)}
-          />
-        )}
+        {view === 'board' && <TaskBoard tasks={tasks} onSelect={onSelect} onEnter={onEnter} />}
         {view === 'structure' && (
           <ReactFlowProvider>
-            <TaskStructure
-              response={graph.data}
-              onSelect={selectTask}
-              onEnter={(task) => navigate(`/projects/${projectId}/nodes/${task.id}`)}
-            />
+            <TaskStructure response={response} onSelect={onSelect} onEnter={onEnter} />
           </ReactFlowProvider>
         )}
       </div>
@@ -379,16 +352,6 @@ function TaskStructure({
   );
 }
 
-function categoryLabel(value?: string | null) {
-  return (
-    (
-      { deliverable: '交付成果', decision: '关键决策', coordination: '协同成果', operation: '运营成果' } as Record<
-        string,
-        string
-      >
-    )[value || ''] || '成果节点'
-  );
-}
 function taskKindLabel(value?: TaskKind | null) {
   return (
     {
@@ -433,7 +396,4 @@ function executionModeLabel(value?: string | null) {
       } as Record<string, string>
     )[value || 'manual'] || '自动执行'
   );
-}
-function hasCodeWorkspace(node: WorkflowNode) {
-  return node.type === 'execution' || Boolean(node.repository_target_ids?.length);
 }

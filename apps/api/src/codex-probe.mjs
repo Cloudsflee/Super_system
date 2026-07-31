@@ -1,6 +1,15 @@
 import { parse as parseToml } from 'smol-toml';
 import { AIWS_RUNNER_IMAGE } from '../../../packages/shared/index.mjs';
 import { containerizeLoopbackUrl } from './codex-container-network.mjs';
+import {
+  isThirdParty,
+  normalizeUrl,
+  normalizedProvider,
+  providerConfigKey,
+  publicOverrides,
+  publicProcess,
+  sameProvider
+} from './codex-probe-normalization.mjs';
 
 export const CODEX_PROBE_PHASES = Object.freeze([
   'configuration',
@@ -170,6 +179,62 @@ const FAILURES = Object.freeze({
   codex_probe_request_failed: ['inference', 'Codex 真实请求失败', '根据上方已通过和失败的检查项修复配置后重试。', true]
 });
 
+const DIAGNOSTIC_FAILURE_RULES = Object.freeze([
+  [
+    /\b(?:connect(?:ion)?|request|operation)[^\n]{0,80}(?:timed? out|timeout)\b|\b(?:timed? out|timeout)[^\n]{0,80}(?:connect(?:ion)?|request|operation)\b/,
+    'codex_probe_endpoint_timeout'
+  ],
+  [
+    /dockerdesktoplinuxengine|docker daemon|docker api|cannot connect to (?:the )?docker|is the docker daemon running|\\\\\.\\pipe\\docker/,
+    'codex_probe_docker_unavailable'
+  ],
+  [/unable to find image|no such image|pull access denied/, 'codex_probe_image_missing'],
+  [
+    /invalid mount config|mount denied|drive is not shared|bind source path does not exist/,
+    'codex_probe_mount_unavailable'
+  ],
+  [/enoent|not recognized as an internal|command not found|executable file not found/, 'codex_probe_cli_missing'],
+  [
+    /toml parse error|failed to parse.*config|invalid configuration|unknown variant.*wire_api/,
+    'codex_probe_config_invalid'
+  ],
+  [
+    /model[_ -]?not[_ -]?found|unknown model|model .* does not exist|404[^\n]{0,160}\bmodel\b|\bmodel\b[^\n]{0,160}404/,
+    'codex_probe_model_not_found'
+  ],
+  [
+    /does not have access to model|model access (?:denied|forbidden)|not authorized (?:to use|for).*model/,
+    'codex_probe_model_access_denied'
+  ],
+  [
+    /401|unauthorized|invalid api key|incorrect api key|authentication failed|invalid[_ -]?token|token.*expired/,
+    'codex_probe_auth_rejected'
+  ],
+  [/403|forbidden|permission denied/, forbiddenFailureCode],
+  [
+    /enotfound|eai_again|dns error|failed to lookup address|name or service not known|no such host/,
+    'codex_probe_endpoint_dns_failed'
+  ],
+  [/certificate|unknown issuer|self[- ]signed|tls|ssl|invalid peer certificate/, 'codex_probe_endpoint_tls_failed'],
+  [
+    /econnrefused|econnreset|network is unreachable|connection refused|connection reset|error sending request|failed to connect/,
+    'codex_probe_endpoint_unreachable'
+  ],
+  [
+    /(?=[\s\S]*(?:404|method not allowed|405))(?=[\s\S]*(?:responses|endpoint|route|url))/,
+    'codex_probe_responses_route_not_found'
+  ],
+  [/429|too many requests|rate.?limit|insufficient_quota|quota exceeded/, 'codex_probe_rate_limited'],
+  [
+    /\b(?:500|502|503|504)\b|bad gateway|service unavailable|gateway timeout|upstream/,
+    'codex_probe_upstream_unavailable'
+  ],
+  [
+    /invalid response|unexpected response|failed to deserialize|decode.*response|responses api/,
+    'codex_probe_protocol_rejected'
+  ]
+]);
+
 export function probeFailure(errorCode, overrides = {}) {
   const definition = FAILURES[errorCode] || FAILURES.codex_probe_request_failed;
   const [phase, summary, action, retryable] = definition;
@@ -200,32 +265,42 @@ export function probeCheck(phase, status = 'passed', failure = null) {
 export function inspectCodexConfig(profile, text) {
   if (typeof text !== 'string' || !text.trim()) return probeFailure('codex_probe_config_missing');
   if (Buffer.byteLength(text, 'utf8') > 1024 * 1024) return probeFailure('codex_probe_config_too_large');
-  let parsed;
-  try {
-    parsed = parseToml(text);
-  } catch {
-    return probeFailure('codex_probe_config_invalid');
-  }
+  const parsed = parseCodexConfig(text);
+  if (!parsed) return probeFailure('codex_probe_config_invalid');
   if (!profile?.model || String(parsed.model || '') !== String(profile.model))
     return probeFailure('codex_probe_config_profile_mismatch');
-  if (!isThirdParty(profile?.provider)) {
-    if (parsed.model_provider !== undefined || parsed.model_providers !== undefined)
-      return probeFailure('codex_probe_config_profile_mismatch');
-    return { ok: true, check: probeCheck('configuration') };
+  const failure = isThirdParty(profile?.provider)
+    ? thirdPartyConfigFailure(profile, parsed)
+    : officialConfigFailure(parsed);
+  return failure ? probeFailure(failure) : { ok: true, check: probeCheck('configuration') };
+}
+
+function parseCodexConfig(text) {
+  try {
+    return parseToml(text);
+  } catch {
+    return null;
   }
-  if ((profile.wire_api || 'responses') !== 'responses') return probeFailure('codex_probe_unsupported_wire_api');
+}
+
+function officialConfigFailure(parsed) {
+  return parsed.model_provider !== undefined || parsed.model_providers !== undefined
+    ? 'codex_probe_config_profile_mismatch'
+    : null;
+}
+
+function thirdPartyConfigFailure(profile, parsed) {
+  if ((profile.wire_api || 'responses') !== 'responses') return 'codex_probe_unsupported_wire_api';
   const providerKey = providerConfigKey(profile.cc_switch_provider_id || profile.provider);
   const configuredKey = String(parsed.model_provider || '');
   const configured = parsed.model_providers?.[configuredKey];
   if (configuredKey !== providerKey || !configured || configured.wire_api !== 'responses')
-    return probeFailure('codex_probe_config_profile_mismatch');
+    return 'codex_probe_config_profile_mismatch';
   const expectedBaseUrl = profile.kind === 'docker' ? containerizeLoopbackUrl(profile.base_url) : profile.base_url;
-  if (normalizeUrl(configured.base_url) !== normalizeUrl(expectedBaseUrl))
-    return probeFailure('codex_probe_config_profile_mismatch');
+  if (normalizeUrl(configured.base_url) !== normalizeUrl(expectedBaseUrl)) return 'codex_probe_config_profile_mismatch';
   if (configured.requires_openai_auth !== (profile.requires_openai_auth === true))
-    return probeFailure('codex_probe_config_profile_mismatch');
-  if (configured.env_key !== 'OPENAI_API_KEY') return probeFailure('codex_probe_config_profile_mismatch');
-  return { ok: true, check: probeCheck('configuration') };
+    return 'codex_probe_config_profile_mismatch';
+  return configured.env_key === 'OPENAI_API_KEY' ? null : 'codex_probe_config_profile_mismatch';
 }
 
 export function inspectCodexRuntime(profile, dockerInfo, imageInspect) {
@@ -248,23 +323,26 @@ export function inspectCodexRuntime(profile, dockerInfo, imageInspect) {
 
 export function inspectCodexBinding(profile, auth) {
   if (!auth || auth.status !== 'authenticated') return probeFailure('codex_probe_auth_missing');
-  const authProvider = String(auth.provider || '')
-    .trim()
-    .toLowerCase();
-  const profileProvider = String(profile?.provider || '')
-    .trim()
-    .toLowerCase();
+  const authProvider = normalizedProvider(auth.provider);
+  const profileProvider = normalizedProvider(profile?.provider);
   if (!sameProvider(authProvider, profileProvider)) return probeFailure('codex_probe_auth_provider_mismatch');
-  if (isThirdParty(profileProvider)) {
-    if (!normalizeUrl(profile?.base_url) || normalizeUrl(auth.base_url) !== normalizeUrl(profile.base_url))
-      return probeFailure('codex_probe_auth_endpoint_mismatch');
-    if ((profile.wire_api || 'responses') !== 'responses' || (auth.wire_api || 'responses') !== 'responses')
-      return probeFailure('codex_probe_unsupported_wire_api');
-    if (!auth.refs?.credential) return probeFailure('codex_probe_credential_unavailable');
-  } else if (auth.home || auth.refs?.auth_bundle) {
-    if (!auth.refs?.auth_bundle && !auth.home) return probeFailure('codex_probe_credential_unavailable');
-  } else if (!auth.refs?.credential) return probeFailure('codex_probe_credential_unavailable');
-  return { ok: true, check: probeCheck('binding') };
+  const failure = isThirdParty(profileProvider)
+    ? thirdPartyBindingFailure(profile, auth)
+    : officialBindingFailure(auth);
+  return failure ? probeFailure(failure) : { ok: true, check: probeCheck('binding') };
+}
+
+function thirdPartyBindingFailure(profile, auth) {
+  if (!normalizeUrl(profile?.base_url) || normalizeUrl(auth.base_url) !== normalizeUrl(profile.base_url))
+    return 'codex_probe_auth_endpoint_mismatch';
+  if ((profile.wire_api || 'responses') !== 'responses' || (auth.wire_api || 'responses') !== 'responses')
+    return 'codex_probe_unsupported_wire_api';
+  return auth.refs?.credential ? null : 'codex_probe_credential_unavailable';
+}
+
+function officialBindingFailure(auth) {
+  if (auth.home || auth.refs?.auth_bundle) return null;
+  return auth.refs?.credential ? null : 'codex_probe_credential_unavailable';
 }
 
 export function createCodexPreflight({ profile, auth, configText, dockerInfo, imageInspect }) {
@@ -282,79 +360,37 @@ export function createCodexPreflight({ profile, auth, configText, dockerInfo, im
 
 export function classifyCodexExecution(processResult, { markerFound = false, diagnostic = '' } = {}) {
   const process = publicProcess(processResult);
-  if (processResult?.ok && markerFound)
-    return {
-      ok: true,
-      phase: 'inference',
-      checks: ['transport', 'protocol', 'model', 'inference'].map((phase) => probeCheck(phase)),
-      process
-    };
+  if (processResult?.ok && markerFound) return successfulExecution(process);
   const text = String(diagnostic || '')
     .slice(-16000)
     .toLowerCase();
-  let failure;
-  if (processResult?.timed_out) failure = probeFailure('codex_probe_timeout');
-  else if (
-    /\b(?:connect(?:ion)?|request|operation)[^\n]{0,80}(?:timed? out|timeout)\b|\b(?:timed? out|timeout)[^\n]{0,80}(?:connect(?:ion)?|request|operation)\b/.test(
-      text
-    )
-  )
-    failure = probeFailure('codex_probe_endpoint_timeout');
-  else if (
-    /dockerdesktoplinuxengine|docker daemon|docker api|cannot connect to (?:the )?docker|is the docker daemon running|\\\\\.\\pipe\\docker/.test(
-      text
-    )
-  )
-    failure = probeFailure('codex_probe_docker_unavailable');
-  else if (/unable to find image|no such image|pull access denied/.test(text))
-    failure = probeFailure('codex_probe_image_missing');
-  else if (/invalid mount config|mount denied|drive is not shared|bind source path does not exist/.test(text))
-    failure = probeFailure('codex_probe_mount_unavailable');
-  else if (/enoent|not recognized as an internal|command not found|executable file not found/.test(text))
-    failure = probeFailure('codex_probe_cli_missing');
-  else if (/toml parse error|failed to parse.*config|invalid configuration|unknown variant.*wire_api/.test(text))
-    failure = probeFailure('codex_probe_config_invalid');
-  else if (
-    /model[_ -]?not[_ -]?found|unknown model|model .* does not exist|404[^\n]{0,160}\bmodel\b|\bmodel\b[^\n]{0,160}404/.test(
-      text
-    )
-  )
-    failure = probeFailure('codex_probe_model_not_found');
-  else if (
-    /does not have access to model|model access (?:denied|forbidden)|not authorized (?:to use|for).*model/.test(text)
-  )
-    failure = probeFailure('codex_probe_model_access_denied');
-  else if (
-    /401|unauthorized|invalid api key|incorrect api key|authentication failed|invalid[_ -]?token|token.*expired/.test(
-      text
-    )
-  )
-    failure = probeFailure('codex_probe_auth_rejected');
-  else if (/403|forbidden|permission denied/.test(text))
-    failure = /model/.test(text)
-      ? probeFailure('codex_probe_model_access_denied')
-      : probeFailure('codex_probe_auth_rejected');
-  else if (/enotfound|eai_again|dns error|failed to lookup address|name or service not known|no such host/.test(text))
-    failure = probeFailure('codex_probe_endpoint_dns_failed');
-  else if (/certificate|unknown issuer|self[- ]signed|tls|ssl|invalid peer certificate/.test(text))
-    failure = probeFailure('codex_probe_endpoint_tls_failed');
-  else if (
-    /econnrefused|econnreset|network is unreachable|connection refused|connection reset|error sending request|failed to connect/.test(
-      text
-    )
-  )
-    failure = probeFailure('codex_probe_endpoint_unreachable');
-  else if (/404|method not allowed|405/.test(text) && /responses|endpoint|route|url/.test(text))
-    failure = probeFailure('codex_probe_responses_route_not_found');
-  else if (/429|too many requests|rate.?limit|insufficient_quota|quota exceeded/.test(text))
-    failure = probeFailure('codex_probe_rate_limited');
-  else if (/\b(?:500|502|503|504)\b|bad gateway|service unavailable|gateway timeout|upstream/.test(text))
-    failure = probeFailure('codex_probe_upstream_unavailable');
-  else if (/invalid response|unexpected response|failed to deserialize|decode.*response|responses api/.test(text))
-    failure = probeFailure('codex_probe_protocol_rejected');
-  else if (processResult?.ok && !markerFound) failure = probeFailure('codex_probe_response_marker_missing');
-  else if (!processResult?.ok) failure = probeFailure('codex_probe_request_failed');
+  const failure = executionFailure(processResult, markerFound, text);
   if (failure) return { ...failure, process };
+  return successfulExecution(process);
+}
+
+function executionFailure(processResult, markerFound, text) {
+  if (processResult?.timed_out) return probeFailure('codex_probe_timeout');
+  const diagnostic = diagnosticFailure(text);
+  if (diagnostic) return diagnostic;
+  if (processResult?.ok && !markerFound) return probeFailure('codex_probe_response_marker_missing');
+  return processResult?.ok ? null : probeFailure('codex_probe_request_failed');
+}
+
+function diagnosticFailure(text) {
+  for (const [pattern, resolution] of DIAGNOSTIC_FAILURE_RULES) {
+    if (!pattern.test(text)) continue;
+    const errorCode = typeof resolution === 'function' ? resolution(text) : resolution;
+    return probeFailure(errorCode);
+  }
+  return null;
+}
+
+function forbiddenFailureCode(text) {
+  return /model/.test(text) ? 'codex_probe_model_access_denied' : 'codex_probe_auth_rejected';
+}
+
+function successfulExecution(process) {
   return {
     ok: true,
     phase: 'inference',
@@ -390,40 +426,4 @@ function failedChecks(preflightChecks, failure) {
     if (index === failedIndex) return probeCheck(phase, 'failed', failure);
     return probeCheck(phase, 'pending');
   });
-}
-function publicProcess(value) {
-  return { exit_code: Number.isInteger(value?.code) ? value.code : null, timed_out: value?.timed_out === true };
-}
-function publicOverrides(value) {
-  const allowed = {};
-  if (Array.isArray(value.checks)) allowed.checks = value.checks;
-  if (value.process) allowed.process = publicProcess(value.process);
-  return allowed;
-}
-function providerConfigKey(value) {
-  return (
-    String(value || '')
-      .trim()
-      .toLowerCase()
-      .replace(/[^a-z0-9_-]+/g, '_')
-      .replace(/^_+|_+$/g, '') || 'custom'
-  );
-}
-function normalizeUrl(value) {
-  try {
-    const url = new URL(String(value || '').trim());
-    return url.href.replace(/\/$/, '');
-  } catch {
-    return null;
-  }
-}
-function isThirdParty(value) {
-  return !['openai', 'chatgpt'].includes(
-    String(value || 'openai')
-      .trim()
-      .toLowerCase()
-  );
-}
-function sameProvider(left, right) {
-  return left === right || (!isThirdParty(left) && !isThirdParty(right));
 }

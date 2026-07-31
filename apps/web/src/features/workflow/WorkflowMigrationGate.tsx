@@ -114,97 +114,163 @@ export function WorkflowMigrationGate({ project, membership, workflow }: Props) 
     );
 
   const state = migrationState(batch, job);
-  const busy = approve.isPending || retry.isPending;
-  if (state === 'pending_approval') {
+  return (
+    <MigrationState
+      state={state}
+      batch={batch}
+      job={job}
+      isOwner={isOwner}
+      approvePending={approve.isPending}
+      retryPending={retry.isPending}
+      onApprove={() => approve.mutate()}
+      onRetry={() => retry.mutate()}
+    />
+  );
+}
+
+function MigrationState({
+  state,
+  batch,
+  job,
+  isOwner,
+  approvePending,
+  retryPending,
+  onApprove,
+  onRetry
+}: {
+  state: string;
+  batch: WorkflowMigrationBatch;
+  job: WorkflowMigrationJob | null;
+  isOwner: boolean;
+  approvePending: boolean;
+  retryPending: boolean;
+  onApprove: () => void;
+  onRetry: () => void;
+}) {
+  const busy = approvePending || retryPending;
+  if (state === 'pending_approval')
     return (
-      <GateState
-        icon={<ShieldCheck aria-hidden />}
-        title="工作流等待所有者批准"
-        detail="旧工作流会保持只读。批准后，系统会保留原任务标识并生成两级工作流分组与任务结构。"
+      <PendingMigrationState
         batch={batch}
         job={job}
-        action={
-          isOwner ? (
-            <button className="button primary" disabled={busy} onClick={() => approve.mutate()}>
-              <ShieldCheck size={16} />
-              {approve.isPending ? '正在提交批准' : '批准两级迁移'}
-            </button>
-          ) : (
-            <span className="workflow-migration-owner-note">
-              <LockKeyhole size={16} />
-              只有项目所有者可以批准
-            </span>
-          )
-        }
+        isOwner={isOwner}
+        busy={busy}
+        approvePending={approvePending}
+        onApprove={onApprove}
       />
     );
-  }
-  if (state === 'waiting_active_runs') {
+  if (state === 'failed')
     return (
-      <GateState
-        icon={<LoaderCircle className="spin" aria-hidden />}
-        title="等待活动运行完成"
-        detail="迁移不会中断正在执行的任务；全部运行结束后会自动继续。"
+      <FailedMigrationState
         batch={batch}
         job={job}
+        isOwner={isOwner}
+        busy={busy}
+        retryPending={retryPending}
+        onRetry={onRetry}
       />
     );
-  }
-  if (state === 'approved' || state === 'running') {
-    return (
-      <GateState
-        icon={<LoaderCircle className="spin" aria-hidden />}
-        title="正在生成两级工作流"
-        detail="系统正在生成候选结构并执行一致性检查，页面会自动刷新。"
-        batch={batch}
-        job={job}
-      />
-    );
-  }
-  if (state === 'failed') {
-    return (
-      <GateState
-        icon={<CircleAlert aria-hidden />}
-        title="两级迁移失败"
-        detail={job?.error_code ? `迁移失败代码：${job.error_code}` : '迁移没有完成，旧工作流仍保持只读。'}
-        error
-        batch={batch}
-        job={job}
-        action={
-          isOwner && job?.status === 'failed' ? (
-            <button className="button primary" disabled={busy} onClick={() => retry.mutate()}>
-              <RefreshCw size={16} />
-              {retry.isPending ? '正在重试' : '重试迁移'}
-            </button>
-          ) : (
-            <span className="workflow-migration-owner-note">
-              <LockKeyhole size={16} />
-              请项目所有者处理
-            </span>
-          )
-        }
-      />
-    );
-  }
-  if (state === 'completed')
-    return (
-      <GateState
-        icon={<CheckCircle2 aria-hidden />}
-        title="两级迁移已完成"
-        detail="正在刷新工作流结构。"
-        batch={batch}
-        job={job}
-      />
+  return <GateState {...migrationStateContent(state, batch.status)} batch={batch} job={job} />;
+}
+
+function PendingMigrationState({
+  batch,
+  job,
+  isOwner,
+  busy,
+  approvePending,
+  onApprove
+}: {
+  batch: WorkflowMigrationBatch;
+  job: WorkflowMigrationJob | null;
+  isOwner: boolean;
+  busy: boolean;
+  approvePending: boolean;
+  onApprove: () => void;
+}) {
+  const action = isOwner ? (
+    <button className="button primary" disabled={busy} onClick={onApprove}>
+      <ShieldCheck size={16} />
+      {approvePending ? '正在提交批准' : '批准两级迁移'}
+    </button>
+  ) : (
+    <span className="workflow-migration-owner-note">
+      <LockKeyhole size={16} />
+      只有项目所有者可以批准
+    </span>
+  );
+  return (
+    <GateState
+      icon={<ShieldCheck aria-hidden />}
+      title="工作流等待所有者批准"
+      detail="旧工作流会保持只读。批准后，系统会保留原任务标识并生成两级工作流分组与任务结构。"
+      batch={batch}
+      job={job}
+      action={action}
+    />
+  );
+}
+
+function FailedMigrationState({
+  batch,
+  job,
+  isOwner,
+  busy,
+  retryPending,
+  onRetry
+}: {
+  batch: WorkflowMigrationBatch;
+  job: WorkflowMigrationJob | null;
+  isOwner: boolean;
+  busy: boolean;
+  retryPending: boolean;
+  onRetry: () => void;
+}) {
+  const action =
+    isOwner && job?.status === 'failed' ? (
+      <button className="button primary" disabled={busy} onClick={onRetry}>
+        <RefreshCw size={16} />
+        {retryPending ? '正在重试' : '重试迁移'}
+      </button>
+    ) : (
+      <span className="workflow-migration-owner-note">
+        <LockKeyhole size={16} />
+        请项目所有者处理
+      </span>
     );
   return (
     <GateState
       icon={<CircleAlert aria-hidden />}
-      title="迁移批次已结束"
-      detail={`当前状态：${migrationStatusLabel(batch.status)}`}
+      title="两级迁移失败"
+      detail={job?.error_code ? `迁移失败代码：${job.error_code}` : '迁移没有完成，旧工作流仍保持只读。'}
+      error
       batch={batch}
       job={job}
+      action={action}
     />
   );
+}
+
+function migrationStateContent(state: string, batchStatus: string) {
+  if (state === 'waiting_active_runs')
+    return {
+      icon: <LoaderCircle className="spin" aria-hidden />,
+      title: '等待活动运行完成',
+      detail: '迁移不会中断正在执行的任务；全部运行结束后会自动继续。'
+    };
+  if (state === 'approved' || state === 'running')
+    return {
+      icon: <LoaderCircle className="spin" aria-hidden />,
+      title: '正在生成两级工作流',
+      detail: '系统正在生成候选结构并执行一致性检查，页面会自动刷新。'
+    };
+  if (state === 'completed')
+    return { icon: <CheckCircle2 aria-hidden />, title: '两级迁移已完成', detail: '正在刷新工作流结构。' };
+  return {
+    icon: <CircleAlert aria-hidden />,
+    title: '迁移批次已结束',
+    detail: `当前状态：${migrationStatusLabel(batchStatus)}`
+  };
 }
 
 function GateState({

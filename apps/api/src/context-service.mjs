@@ -1,14 +1,11 @@
-import { cloneStateValue as structuredClone } from './state-clone.mjs';
 import {
   compactContextMap,
   compareContextNodes,
   contextDocumentRelationSnapshot,
   contextHash,
-  contextSourceRecordId,
   createContextSelection,
   findContextPolicy,
   reconcileContextProjectionState,
-  sanitizeContextFacts,
   searchContextSearchIndex,
   upsertContextPolicy
 } from '../../../packages/system-context/src/index.mjs';
@@ -22,11 +19,7 @@ import {
   instanceOwnerId
 } from './project-governance-v19.mjs';
 import { collectProjectionFailures, materializeContextDocumentsInState } from './context-projection.mjs';
-import {
-  refreshContextResourcesInState,
-  resolveContextProjectionRecord,
-  upsertBrowserSemanticResourceInState
-} from './context-resource-adapters.mjs';
+import { refreshContextResourcesInState, upsertBrowserSemanticResourceInState } from './context-resource-adapters.mjs';
 import {
   contextRequestProjectAllowlist,
   createRuntimeReadReceipt,
@@ -50,6 +43,35 @@ import {
   ensureContextSearchIndex,
   invalidateContextIndexRuntime
 } from './context-index-runtime.mjs';
+import {
+  assertContextAnchor,
+  assertDomainScopes,
+  assertNodeVisible,
+  contextRequestScopes,
+  nodeCanBeMaterialized,
+  nodeIsVisible,
+  projectionProjectIds,
+  projectionSystemNodeIds,
+  requireContextAdmin,
+  visibleContextNodes
+} from './context-service-access.mjs';
+import {
+  bounded,
+  compareSearchResults,
+  latestSelection,
+  mapSnapshotHash,
+  normalizeArray,
+  optionalString,
+  publicContextCoverage,
+  publicNode,
+  publicPolicy,
+  publicSelection,
+  publicVersion,
+  searchRanking,
+  selectionScore,
+  sourceFacts,
+  subtree
+} from './context-service-presentation.mjs';
 
 export { compactRuntimeMap, loadContextSelectionDocumentsInState } from './context-runtime-selection.mjs';
 
@@ -638,290 +660,4 @@ async function contextActor(request, projectId = null, suppliedState = null) {
     throw new HttpError(403, { error: 'mcp_project_access_denied', project_id: projectId });
   if (projectId) assertProjectRead(state, projectId, actor.id);
   return { actor, scopes, accessible, state };
-}
-
-function contextRequestScopes(request) {
-  const direct = request.scopes ?? request.req?.auth?.scopes;
-  if (direct != null) return normalizeRequestScopes(direct);
-  const headers = request.req?.headers || request.headers,
-    header = typeof headers?.get === 'function' ? headers.get('x-aiws-scopes') : headers?.['x-aiws-scopes'];
-  return header == null ? null : normalizeRequestScopes(header);
-}
-
-function normalizeRequestScopes(value) {
-  const values = value instanceof Set ? [...value] : Array.isArray(value) ? value : [value];
-  return [
-    ...new Set(
-      values
-        .flatMap((item) => String(item || '').split(/[\s,]+/))
-        .map((item) => item.trim())
-        .filter(Boolean)
-    )
-  ];
-}
-
-function visibleContextNodes(state, actorContext, projectId) {
-  return state.context_nodes.filter((node) => nodeIsVisible(node, actorContext, projectId)).sort(compareContextNodes);
-}
-
-function assertNodeVisible(node, actorContext) {
-  if (!node) throw new HttpError(404, { error: 'context_node_not_found' });
-  if (!nodeIsVisible(node, actorContext, null, { checkScopes: false }))
-    throw new HttpError(403, { error: 'context_node_access_denied' });
-}
-
-function nodeIsVisible(node, actorContext, projectId, { checkScopes = true } = {}) {
-  const owner = actorContext.actor.id === instanceOwnerId(actorContext.state);
-  if (projectId && String(node.project_id || '') !== String(projectId)) return false;
-  if (node.project_id && !actorContext.accessible.has(String(node.project_id))) return false;
-  if (!node.project_id && !owner && !['system', 'project'].includes(node.kind)) return false;
-  return !checkScopes || nodeScopesAllowed(node, actorContext.scopes);
-}
-
-function nodeCanBeMaterialized(node, actorContext, projectId) {
-  return nodeIsVisible(node, actorContext, projectId) && node.sensitivity !== 'secret' && node.status !== 'tombstone';
-}
-
-function assertContextAnchor(state, actorContext, projectId, anchorNodeId) {
-  if (!anchorNodeId) return;
-  const node = state.context_nodes.find((item) => item.id === anchorNodeId);
-  assertNodeVisible(node, actorContext);
-  if (projectId && String(node.project_id || '') !== projectId)
-    throw new HttpError(403, { error: 'context_node_cross_scope', node_id: anchorNodeId });
-  if (node.sensitivity === 'secret')
-    throw new HttpError(403, { error: 'context_node_sensitive', node_id: anchorNodeId });
-  assertDomainScopes(node, actorContext.scopes);
-}
-
-function projectionProjectIds(actorContext, projectId) {
-  if (projectId) return new Set([String(projectId)]);
-  if (actorContext.actor.id === instanceOwnerId(actorContext.state)) return null;
-  return new Set([...actorContext.accessible].map(String));
-}
-
-function projectionSystemNodeIds(actorContext, projectId) {
-  if (projectId || actorContext.actor.id === instanceOwnerId(actorContext.state)) return null;
-  return new Set(['ctx_root_system']);
-}
-
-function assertDomainScopes(node, scopes) {
-  if (!scopes) return;
-  const missing = node.required_scopes.filter((scope) => !scopes.includes(scope));
-  if (missing.length) throw new HttpError(403, { error: 'mcp_scope_required', required_scopes: missing });
-}
-
-function nodeScopesAllowed(node, scopes) {
-  return !scopes || node.required_scopes.every((scope) => scopes.includes(scope));
-}
-
-function requireContextAdmin(state, actorContext) {
-  if (actorContext.actor.id !== instanceOwnerId(state))
-    throw new HttpError(403, { error: 'context_admin_owner_required' });
-  if (actorContext.scopes && !actorContext.scopes.includes('context:admin'))
-    throw new HttpError(403, { error: 'mcp_scope_required', required_scopes: ['context:admin'] });
-}
-
-function subtree(nodes, rootId, maxDepth) {
-  const byParent = new Map(),
-    byId = new Map(nodes.map((node) => [node.id, node]));
-  for (const node of nodes) {
-    const parent = node.parent_id || '';
-    if (!byParent.has(parent)) byParent.set(parent, []);
-    byParent.get(parent).push(node);
-  }
-  for (const children of byParent.values()) children.sort(compareContextNodes);
-  const output = [],
-    seen = new Set();
-  const visit = (nodeId, depth) => {
-    if (depth > maxDepth || seen.has(nodeId)) return;
-    const node = byId.get(nodeId);
-    if (!node) return;
-    seen.add(nodeId);
-    output.push(node);
-    for (const child of byParent.get(nodeId) || []) visit(child.id, depth + 1);
-  };
-  visit(rootId, 0);
-  return output;
-}
-
-function selectionScore(node, fulltext, { pinned, explicitRefs, projectId, anchorNodeId, state }) {
-  const relation = anchorNodeId
-    ? state.context_edges.some(
-        (edge) =>
-          (edge.source_node_id === anchorNodeId && edge.target_node_id === node.id) ||
-          (edge.target_node_id === anchorNodeId && edge.source_node_id === node.id)
-      )
-    : false;
-  return (
-    (pinned.has(node.id) ? 1_000_000 : 0) +
-    (node.id === anchorNodeId ? 500_000 : 0) +
-    (explicitRefs.has(node.id) || explicitRefs.has(node.uri) ? 250_000 : 0) +
-    (projectId && node.project_id === projectId ? 100_000 : 0) +
-    fulltext * 1_000 +
-    (relation ? 500 : 0) +
-    (node.authority === 'authoritative' ? 100 : 0) +
-    (node.freshness?.status === 'current' ? 10 : 0)
-  );
-}
-
-function searchRanking(node, fulltext, { pinned, explicitRefs, projectId, anchorNodeId, state }) {
-  const anchor = anchorNodeId ? state.context_nodes.find((item) => item.id === anchorNodeId) : null;
-  return {
-    pinned: pinned.has(node.id),
-    scope_distance:
-      node.id === anchorNodeId
-        ? 0
-        : anchor && (node.parent_id === anchor.id || anchor.parent_id === node.id)
-          ? 1
-          : anchor && node.parent_id && node.parent_id === anchor.parent_id
-            ? 2
-            : projectId && node.project_id === projectId
-              ? 3
-              : !projectId
-                ? 3
-                : 4,
-    explicit: explicitRefs.has(node.id) || explicitRefs.has(node.uri),
-    fulltext,
-    related: anchorNodeId
-      ? state.context_edges.some(
-          (edge) =>
-            edge.type !== 'contains' &&
-            ((edge.source_node_id === anchorNodeId && edge.target_node_id === node.id) ||
-              (edge.target_node_id === anchorNodeId && edge.source_node_id === node.id))
-        )
-      : false,
-    authoritative: node.authority === 'authoritative',
-    current: node.freshness?.status === 'current'
-  };
-}
-
-function compareSearchResults(left, right) {
-  const leftRank = left._ranking,
-    rightRank = right._ranking;
-  return (
-    Number(rightRank.pinned) - Number(leftRank.pinned) ||
-    leftRank.scope_distance - rightRank.scope_distance ||
-    Number(rightRank.explicit) - Number(leftRank.explicit) ||
-    rightRank.fulltext - leftRank.fulltext ||
-    Number(rightRank.related) - Number(leftRank.related) ||
-    Number(rightRank.authoritative) - Number(leftRank.authoritative) ||
-    Number(rightRank.current) - Number(leftRank.current) ||
-    compareContextNodes(left, right)
-  );
-}
-
-async function sourceFacts(state, node) {
-  const record = node.source_collection
-    ? state[node.source_collection]?.find(
-        (item) => contextSourceRecordId(node.source_collection, item) === String(node.source_id)
-      )
-    : null;
-  if (!record && node.source_collection)
-    return { tombstone: true, source_collection: node.source_collection, source_id: node.source_id };
-  const resolved = await resolveContextProjectionRecord(state, node, record);
-  return sanitizeContextFacts(resolved || {}).facts;
-}
-
-function publicNode(node) {
-  if (!node) return null;
-  return {
-    id: node.id,
-    uri: node.uri,
-    kind: node.kind,
-    source_type: node.source_type,
-    title: node.title,
-    summary: node.deterministic_summary,
-    project_id: node.project_id,
-    parent_id: node.parent_id,
-    source_collection: node.source_collection,
-    source_id: node.source_id,
-    source_version: node.source_version,
-    status: node.status,
-    sensitivity: node.sensitivity,
-    authority: node.authority,
-    freshness: node.freshness,
-    current_version_id: node.current_version_id,
-    required_scopes: node.required_scopes,
-    sort: node.sort,
-    resource: node.resource ? sanitizeContextFacts(node.resource).facts : null
-  };
-}
-
-function publicVersion(version) {
-  return {
-    id: version.id,
-    node_id: version.node_id,
-    version: version.version,
-    renderer_version: version.renderer_version,
-    source_hash: version.source_hash,
-    content_sha256: version.content_sha256,
-    size_bytes: version.size_bytes,
-    media_type: version.media_type,
-    token_estimate: version.token_estimate,
-    deterministic_summary: version.deterministic_summary,
-    redactions: version.redactions,
-    created_at: version.created_at
-  };
-}
-
-function publicSelection(selection) {
-  return selection ? structuredClone(selection) : null;
-}
-
-function publicContextCoverage(state, actorContext, projectId, nodes) {
-  const coverage = state.context_projection_coverage;
-  if (!coverage) return null;
-  if (!projectId && actorContext.actor.id === instanceOwnerId(state) && !actorContext.scopes)
-    return structuredClone(coverage);
-  const allowedProjects = projectId ? new Set([String(projectId)]) : actorContext.accessible,
-    sourceNodes = nodes.filter((node) => node.source_collection && node.status !== 'tombstone');
-  return {
-    source_records: sourceNodes.length,
-    projected_records: sourceNodes.length,
-    tombstones: nodes.filter((node) => node.status === 'tombstone').length,
-    warnings: (coverage.warnings || [])
-      .filter(
-        (warning) =>
-          warning.project_id &&
-          allowedProjects.has(String(warning.project_id)) &&
-          (!String(warning.code || '').startsWith('context_repository_') ||
-            !actorContext.scopes ||
-            actorContext.scopes.includes('files:read'))
-      )
-      .map((warning) => structuredClone(warning)),
-    checked_at: coverage.checked_at || null
-  };
-}
-
-function publicPolicy(policy) {
-  return policy
-    ? structuredClone(policy)
-    : { pinned_node_ids: [], excluded_node_ids: [], revision: 0, session_id: null, project_id: null };
-}
-
-function latestSelection(state, actorId, projectId) {
-  return state.context_selections
-    .filter((item) => item.actor_id === actorId && (item.project_id || null) === (projectId || null))
-    .sort((left, right) => String(right.created_at).localeCompare(String(left.created_at)))[0];
-}
-
-function mapSnapshotHash(nodes) {
-  return contextHash(
-    nodes.map((node) => [node.id, node.source_hash, node.current_version_id, node.parent_id, node.status])
-  );
-}
-
-function normalizeArray(value) {
-  if (!Array.isArray(value)) return [];
-  return [...new Set(value.map((item) => String(item || '').trim()).filter(Boolean))];
-}
-
-function optionalString(value) {
-  const text = String(value ?? '').trim();
-  return text || null;
-}
-
-function bounded(value, fallback, minimum, maximum) {
-  const number = Number(value);
-  return Number.isFinite(number) ? Math.min(maximum, Math.max(minimum, Math.floor(number))) : fallback;
 }

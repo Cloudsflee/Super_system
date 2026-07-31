@@ -12,32 +12,55 @@ import { HttpError } from './http.mjs';
 import { redactKnownSecretsSync } from './vault.mjs';
 
 export function executionIdentityInState(state, taskExecution, overrides = {}) {
-  const workflowExecution = state.workflow_executions.find((item) => item.id === taskExecution?.workflow_execution_id),
-    repositorySha =
-      overrides.repository_sha ||
-      taskExecution?.context_snapshot?.repository_snapshot?.fixed_sha ||
-      taskExecution?.context_snapshot?.repository_snapshot?.head_sha ||
-      null,
-    contextPack = state.context_packs.find((item) => item.id === taskExecution?.context_snapshot?.context_pack_id);
+  const workflowExecution = state.workflow_executions.find((item) => item.id === taskExecution?.workflow_execution_id);
+  const contextPack = state.context_packs.find((item) => item.id === taskExecution?.context_snapshot?.context_pack_id);
   return {
-    input_snapshot_hash: validSha(taskExecution?.input_snapshot_hash) ? taskExecution.input_snapshot_hash : null,
-    repository_sha: /^[a-f0-9]{40,64}$/.test(String(repositorySha || '')) ? repositorySha : null,
-    runner_image_digest:
-      overrides.runner_image_digest ||
-      workflowExecution?.executor_config?.runner_image_digest ||
-      process.env.AIWS_CODEX_DOCKER_IMAGE ||
-      'aiws-codex-runner:2.2.0-codex-0.144.0',
-    policy_hash:
-      overrides.policy_hash ||
-      protocolHash({
-        workflow_input_hash: workflowExecution?.input_hash || null,
-        contract_id: taskExecution?.contract_id || null,
-        contract_version: taskExecution?.contract_version || null,
-        executor: taskExecution?.executor || null
-      }),
+    input_snapshot_hash: executionInputSnapshotHash(taskExecution),
+    repository_sha: executionRepositorySha(taskExecution, overrides),
+    runner_image_digest: executionRunnerImage(workflowExecution, overrides),
+    policy_hash: executionPolicyHash(workflowExecution, taskExecution, overrides),
     verifier_version: overrides.verifier_version || verifierVersion(taskExecution),
-    cas_hash: overrides.cas_hash || (contextPack ? protocolHash(contextPack.content_json || contextPack) : null)
+    cas_hash: executionCasHash(contextPack, overrides)
   };
+}
+
+function executionInputSnapshotHash(taskExecution) {
+  return validSha(taskExecution?.input_snapshot_hash) ? taskExecution.input_snapshot_hash : null;
+}
+
+function executionRepositorySha(taskExecution, overrides) {
+  const repositorySha =
+    overrides.repository_sha ||
+    taskExecution?.context_snapshot?.repository_snapshot?.fixed_sha ||
+    taskExecution?.context_snapshot?.repository_snapshot?.head_sha ||
+    null;
+  return /^[a-f0-9]{40,64}$/.test(String(repositorySha || '')) ? repositorySha : null;
+}
+
+function executionRunnerImage(workflowExecution, overrides) {
+  return (
+    overrides.runner_image_digest ||
+    workflowExecution?.executor_config?.runner_image_digest ||
+    process.env.AIWS_CODEX_DOCKER_IMAGE ||
+    'aiws-codex-runner:2.2.0-codex-0.144.0'
+  );
+}
+
+function executionPolicyHash(workflowExecution, taskExecution, overrides) {
+  return (
+    overrides.policy_hash ||
+    protocolHash({
+      workflow_input_hash: workflowExecution?.input_hash || null,
+      contract_id: taskExecution?.contract_id || null,
+      contract_version: taskExecution?.contract_version || null,
+      executor: taskExecution?.executor || null
+    })
+  );
+}
+
+function executionCasHash(contextPack, overrides) {
+  if (overrides.cas_hash) return overrides.cas_hash;
+  return contextPack ? protocolHash(contextPack.content_json || contextPack) : null;
 }
 
 export function beginExecutionStageInState(

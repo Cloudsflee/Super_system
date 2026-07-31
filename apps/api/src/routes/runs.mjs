@@ -1,7 +1,3 @@
-import { cloneStateValue as structuredClone } from '../state-clone.mjs';
-import fsp from 'node:fs/promises';
-import path from 'node:path';
-
 import { HttpError, makeRoute, send } from '../http.mjs';
 import { addTrace, mutate, owner, readState } from '../state.mjs';
 import { nodeBundle } from '../helpers.mjs';
@@ -11,10 +7,8 @@ import { consumeNodeRunApproval, requireNodeRunApproval } from '../run-approval.
 import { testAdapter } from '../test-adapter.mjs';
 import { RunnerStatus, buildNodeRunResult, now } from '../../../../packages/shared/index.mjs';
 import { assertManagedProjectWritable } from '../project-lifecycle.mjs';
-import { isContainerized } from '../container-runtime-config.mjs';
 import { assertProjectLifecycleIdle } from '../project-lifecycle-operations.mjs';
 import { evaluateTaskExecutionContextFreshness } from '../task-execution-context.mjs';
-import { createExecutionOutputAssets } from '../task-output-service.mjs';
 import { assertControlledTaskWrite } from '../execution-governance.mjs';
 import { prepareTaskExecutionInState } from '../task-execution-service.mjs';
 import { collectActualEvidenceInState, ensureCompletedWorkstreamOutcomesInState } from '../task-execution-service.mjs';
@@ -32,6 +26,18 @@ import {
   failTaskExecutionInState,
   reconcileWorkflowExecutionInState
 } from '../workflow-execution-domain.mjs';
+import { controlledRunnerResultError, failNodeRun } from '../run-failure-support.mjs';
+import {
+  assertNodeRunDependencies,
+  createAssetsFromRun,
+  createRun,
+  requireNodeBundle,
+  startRunTrace
+} from '../run-record-support.mjs';
+import { applyTestRepositoryChanges, delay, testConsumptionFixture } from '../run-test-support.mjs';
+
+export { controlledRunnerResultError } from '../run-failure-support.mjs';
+export { assertNodeRunDependencies } from '../run-record-support.mjs';
 
 const runControllers = new Map();
 
@@ -220,199 +226,249 @@ async function completeNodeRun(nodeId, body, prepared) {
   let activeStageToken = null;
   runControllers.set(prepared.run_id, controller);
   try {
-    let execution;
-    if (prepared.staged)
-      activeStageToken = await mutate((state) =>
-        beginExecutionStageInState(state, {
-          workflowExecutionId: state.task_executions.find(
-            (item) => item.id === state.node_runs.find((run) => run.id === prepared.run_id)?.task_execution_id
-          )?.workflow_execution_id,
-          taskExecutionId: state.node_runs.find((run) => run.id === prepared.run_id)?.task_execution_id,
-          stage: 'execute',
-          input: { node_run_id: prepared.run_id, context_pack_id: prepared.context_pack_id }
-        })
-      );
-    try {
-      const current = await readState(),
-        currentRun = current.node_runs.find((item) => item.id === prepared.run_id);
-      if (currentRun?.status === RunnerStatus.Cancelled)
-        return {
-          run: currentRun,
-          context_pack: current.context_packs.find((item) => item.id === prepared.context_pack_id),
-          assets: []
-        };
-      if (testAdapter(body)) {
-        await delay(Number(body.test_delay_ms || 10));
-        const snapshot = await readState(),
-          run = snapshot.node_runs.find((item) => item.id === prepared.run_id),
-          ctx = snapshot.context_packs.find((item) => item.id === prepared.context_pack_id);
-        const taskExecution = snapshot.task_executions.find((item) => item.id === run?.task_execution_id);
-        if (taskExecution?.executor === 'repository_change')
-          await applyTestRepositoryChanges(taskExecution, body.test_changes);
-        const fixture = testConsumptionFixture(taskExecution, body);
-        execution = {
-          raw: 'test adapter execution',
-          resultJson: buildNodeRunResult({
-            run,
-            contextPack: ctx,
-            changedFiles: [],
-            raw: body.test_summary || '测试 NodeRun 已完成',
-            status: RunnerStatus.Succeeded,
-            ...fixture
-          })
-        };
-      } else {
-        const snapshot = await readState(),
-          actor = owner(snapshot),
-          bundle = nodeBundle(snapshot, nodeId);
-        requireNodeBundle(bundle);
-        const run = snapshot.node_runs.find((item) => item.id === prepared.run_id),
-          ctx = snapshot.context_packs.find((item) => item.id === prepared.context_pack_id);
-        execution = await invokeRunner(snapshot, {
-          actor,
-          run,
-          ...bundle,
-          ctx,
-          body: { ...body, signal: controller.signal }
-        });
-      }
-    } catch (error) {
-      await failNodeRun(prepared.run_id, error, activeStageToken);
-      throw error;
-    }
+    activeStageToken = await beginPreparedRunStage(prepared, 'execute', {
+      node_run_id: prepared.run_id,
+      context_pack_id: prepared.context_pack_id
+    });
+    const invoked = await invokePreparedNodeRun(nodeId, body, prepared, controller, activeStageToken);
+    if (invoked.cancelled) return invoked.response;
+    const execution = invoked.execution;
     const runnerError = controlledRunnerResultError(execution.resultJson, prepared.controlled);
     if (runnerError) {
       await persistNodeRunCollection(nodeId, prepared, execution, null);
       throw runnerError;
     }
-    if (prepared.staged) {
-      await mutate((state) =>
-        completeExecutionStageInState(state, activeStageToken, {
-          output: { node_run_id: prepared.run_id, status: execution.resultJson?.status || RunnerStatus.Succeeded }
-        })
-      );
-      activeStageToken = await mutate((state) =>
-        beginExecutionStageInState(state, {
-          workflowExecutionId: activeStageToken.workflow_execution_id,
-          taskExecutionId: activeStageToken.task_execution_id,
-          stage: 'collect',
-          input: { node_run_id: prepared.run_id, result_schema: execution.resultJson?.schema_version || null }
-        })
-      );
-    }
+    activeStageToken = await completeAndBeginRunStage(
+      prepared,
+      activeStageToken,
+      { node_run_id: prepared.run_id, status: execution.resultJson?.status || RunnerStatus.Succeeded },
+      'collect',
+      { node_run_id: prepared.run_id, result_schema: execution.resultJson?.schema_version || null }
+    );
     const persisted = await persistNodeRunCollection(nodeId, prepared, execution, activeStageToken);
     activeStageToken = null;
     if (persisted.cancelled) return persisted.response;
-    if (prepared.staged)
-      activeStageToken = await mutate((state) =>
-        beginExecutionStageInState(state, {
-          workflowExecutionId: state.task_executions.find(
-            (item) => item.id === state.node_runs.find((run) => run.id === prepared.run_id)?.task_execution_id
-          )?.workflow_execution_id,
-          taskExecutionId: state.node_runs.find((run) => run.id === prepared.run_id)?.task_execution_id,
-          stage: 'verify',
-          input: {
-            node_run_id: prepared.run_id,
-            result_hash: nodeRunResultSize(state, prepared.run_id)
-          }
-        })
-      );
-    if (prepared.staged && testAdapter(body) && body.test_verifier_failure) {
-      const error = new Error(String(body.test_verifier_failure));
-      error.code = String(body.test_verifier_failure);
-      throw error;
-    }
+    activeStageToken = await beginVerifyStage(prepared);
+    assertNoTestVerifierFailure(prepared, body);
     const deploymentVerification = persisted.controlled
       ? await verifyPersistedDeploymentRun(prepared.run_id, execution.resultJson)
       : null;
-    if (prepared.staged) {
-      await mutate((state) =>
-        completeExecutionStageInState(state, activeStageToken, {
-          output: {
-            verifier: deploymentVerification?.verifierId || 'task_output_protocol_verifier',
-            evidence_refs: deploymentVerification?.evidence?.evidence_refs || []
-          }
-        })
-      );
-      activeStageToken = await mutate((state) =>
-        beginExecutionStageInState(state, {
-          workflowExecutionId: activeStageToken.workflow_execution_id,
-          taskExecutionId: activeStageToken.task_execution_id,
-          stage: 'attest',
-          input: { node_run_id: prepared.run_id, verifier: deploymentVerification?.verifierId || null }
-        })
-      );
-    }
-    return await mutate(async (state) => {
-      const actor = owner(state),
-        bundle = nodeBundle(state, nodeId),
-        run = state.node_runs.find((item) => item.id === prepared.run_id),
-        ctx = state.context_packs.find((item) => item.id === prepared.context_pack_id);
-      if (!run || !ctx) throw new HttpError(404, { error: 'prepared_node_run_not_found' });
-      if (run.status === RunnerStatus.Cancelled)
-        return { cancelled: true, response: { run, context_pack: ctx, assets: [] } };
-      requireNodeBundle(bundle);
-      let assets;
-      if (run.task_execution_id) {
-        const taskExecution = state.task_executions.find((item) => item.id === run.task_execution_id);
-        if (!taskExecution) throw new HttpError(409, { error: 'task_execution_missing' });
-        const actualEvidence = await collectActualEvidenceInState(state, taskExecution),
-          evidence = mergeActualEvidence(actualEvidence, deploymentVerification?.evidence);
-        const ingested = await ingestExecutionOutputsInState(state, {
-          taskExecution,
-          outputs: execution.resultJson.outputs,
-          declaredConsumedInputVersions: execution.resultJson.consumed_input_versions,
-          declaredInputDispositions: execution.resultJson.input_dispositions,
-          declaredConsumedContextDocumentVersions: execution.resultJson.consumed_context_document_versions,
-          declaredContextDispositions: execution.resultJson.context_dispositions,
-          declaredInputEffects: execution.resultJson.input_effects,
-          declaredContextEffects: execution.resultJson.context_effects,
-          nodeRunId: run.id,
-          actorId: actor.id,
-          verifierId:
-            deploymentVerification?.verifierId ||
-            {
-              repository_change: 'repository_change_verifier',
-              repository_verify: 'repository_verify_verifier',
-              repository_integrate: 'repository_integrate_verifier'
-            }[taskExecution.executor] ||
-            null,
-          actualEvidence: evidence
-        });
-        if (prepared.staged)
-          completeExecutionStageInState(state, activeStageToken, {
-            output: {
-              output_version_ids: ingested.outputs.map((item) => item.version?.id).filter(Boolean),
-              awaiting_human: ingested.awaiting_human.length
-            }
-          });
-        if (!ingested.awaiting_human.length) {
-          const promoteToken = prepared.staged
-            ? beginExecutionStageInState(state, {
-                workflowExecutionId: taskExecution.workflow_execution_id,
-                taskExecutionId: taskExecution.id,
-                stage: 'promote',
-                input: { output_bindings: taskExecution.output_bindings || [] }
-              })
-            : null;
-          completeTaskExecutionInState(state, taskExecution.id, { evidence });
-          if (promoteToken)
-            completeExecutionStageInState(state, promoteToken, {
-              output: { status: taskExecution.status, output_bindings: taskExecution.output_bindings || [] }
-            });
-        }
-        await ensureCompletedWorkstreamOutcomesInState(state, taskExecution.workflow_execution_id);
-        reconcileWorkflowExecutionInState(state, taskExecution.workflow_execution_id);
-        assets = ingested.outputs.map((item) => item.asset);
-      } else assets = createAssetsFromRun(state, { actor, ...bundle, run, resultJson: execution.resultJson });
-      return { run, context_pack: ctx, assets };
-    });
+    activeStageToken = await completeVerifyAndBeginAttest(prepared, activeStageToken, deploymentVerification);
+    return await finalizeNodeRun(nodeId, prepared, execution, activeStageToken, deploymentVerification);
   } catch (error) {
     await failNodeRun(prepared.run_id, error, activeStageToken);
     throw error;
   } finally {
     runControllers.delete(prepared.run_id);
   }
+}
+
+async function beginPreparedRunStage(prepared, stage, input) {
+  if (!prepared.staged) return null;
+  return mutate((state) => {
+    const taskExecution = taskExecutionForRun(state, prepared.run_id);
+    return beginExecutionStageInState(state, {
+      workflowExecutionId: taskExecution?.workflow_execution_id,
+      taskExecutionId: taskExecution?.id,
+      stage,
+      input
+    });
+  });
+}
+
+async function invokePreparedNodeRun(nodeId, body, prepared, controller, stageToken) {
+  try {
+    const cancelled = await cancelledNodeRunResponse(prepared);
+    if (cancelled) return { cancelled: true, response: cancelled };
+    const execution = testAdapter(body)
+      ? await executeTestNodeRun(body, prepared)
+      : await executeRunnerNodeRun(nodeId, body, prepared, controller);
+    return { cancelled: false, execution };
+  } catch (error) {
+    await failNodeRun(prepared.run_id, error, stageToken);
+    throw error;
+  }
+}
+
+async function cancelledNodeRunResponse(prepared) {
+  const state = await readState();
+  const run = state.node_runs.find((item) => item.id === prepared.run_id);
+  if (run?.status !== RunnerStatus.Cancelled) return null;
+  return {
+    run,
+    context_pack: state.context_packs.find((item) => item.id === prepared.context_pack_id),
+    assets: []
+  };
+}
+
+async function executeTestNodeRun(body, prepared) {
+  await delay(Number(body.test_delay_ms || 10));
+  const state = await readState();
+  const run = state.node_runs.find((item) => item.id === prepared.run_id);
+  const contextPack = state.context_packs.find((item) => item.id === prepared.context_pack_id);
+  const taskExecution = state.task_executions.find((item) => item.id === run?.task_execution_id);
+  if (taskExecution?.executor === 'repository_change')
+    await applyTestRepositoryChanges(taskExecution, body.test_changes);
+  return {
+    raw: 'test adapter execution',
+    resultJson: buildNodeRunResult({
+      run,
+      contextPack,
+      changedFiles: [],
+      raw: body.test_summary || '测试 NodeRun 已完成',
+      status: RunnerStatus.Succeeded,
+      ...testConsumptionFixture(taskExecution, body)
+    })
+  };
+}
+
+async function executeRunnerNodeRun(nodeId, body, prepared, controller) {
+  const state = await readState();
+  const actor = owner(state);
+  const bundle = nodeBundle(state, nodeId);
+  requireNodeBundle(bundle);
+  return invokeRunner(state, {
+    actor,
+    run: state.node_runs.find((item) => item.id === prepared.run_id),
+    ...bundle,
+    ctx: state.context_packs.find((item) => item.id === prepared.context_pack_id),
+    body: { ...body, signal: controller.signal }
+  });
+}
+
+async function completeAndBeginRunStage(prepared, token, output, stage, input) {
+  if (!prepared.staged) return token;
+  await mutate((state) => completeExecutionStageInState(state, token, { output }));
+  return mutate((state) =>
+    beginExecutionStageInState(state, {
+      workflowExecutionId: token.workflow_execution_id,
+      taskExecutionId: token.task_execution_id,
+      stage,
+      input
+    })
+  );
+}
+
+async function beginVerifyStage(prepared) {
+  if (!prepared.staged) return null;
+  return mutate((state) => {
+    const taskExecution = taskExecutionForRun(state, prepared.run_id);
+    return beginExecutionStageInState(state, {
+      workflowExecutionId: taskExecution?.workflow_execution_id,
+      taskExecutionId: taskExecution?.id,
+      stage: 'verify',
+      input: { node_run_id: prepared.run_id, result_hash: nodeRunResultSize(state, prepared.run_id) }
+    });
+  });
+}
+
+function assertNoTestVerifierFailure(prepared, body) {
+  if (!prepared.staged || !testAdapter(body) || !body.test_verifier_failure) return;
+  const error = new Error(String(body.test_verifier_failure));
+  error.code = String(body.test_verifier_failure);
+  throw error;
+}
+
+async function completeVerifyAndBeginAttest(prepared, token, verification) {
+  return completeAndBeginRunStage(
+    prepared,
+    token,
+    {
+      verifier: verification?.verifierId || 'task_output_protocol_verifier',
+      evidence_refs: verification?.evidence?.evidence_refs || []
+    },
+    'attest',
+    { node_run_id: prepared.run_id, verifier: verification?.verifierId || null }
+  );
+}
+
+async function finalizeNodeRun(nodeId, prepared, execution, stageToken, verification) {
+  return mutate((state) => finalizeNodeRunInState(state, nodeId, prepared, execution, stageToken, verification));
+}
+
+async function finalizeNodeRunInState(state, nodeId, prepared, execution, stageToken, verification) {
+  const actor = owner(state);
+  const bundle = nodeBundle(state, nodeId);
+  const run = state.node_runs.find((item) => item.id === prepared.run_id);
+  const contextPack = state.context_packs.find((item) => item.id === prepared.context_pack_id);
+  if (!run || !contextPack) throw new HttpError(404, { error: 'prepared_node_run_not_found' });
+  if (run.status === RunnerStatus.Cancelled)
+    return { cancelled: true, response: { run, context_pack: contextPack, assets: [] } };
+  requireNodeBundle(bundle);
+  const assets = run.task_execution_id
+    ? await finalizeControlledNodeRun(state, { actor, run, execution, prepared, stageToken, verification })
+    : createAssetsFromRun(state, { actor, ...bundle, run, resultJson: execution.resultJson });
+  return { run, context_pack: contextPack, assets };
+}
+
+async function finalizeControlledNodeRun(state, options) {
+  const { actor, run, execution, prepared, stageToken, verification } = options;
+  const taskExecution = state.task_executions.find((item) => item.id === run.task_execution_id);
+  if (!taskExecution) throw new HttpError(409, { error: 'task_execution_missing' });
+  const actualEvidence = await collectActualEvidenceInState(state, taskExecution);
+  const evidence = mergeActualEvidence(actualEvidence, verification?.evidence);
+  const ingested = await ingestExecutionOutputsInState(state, {
+    taskExecution,
+    outputs: execution.resultJson.outputs,
+    declaredConsumedInputVersions: execution.resultJson.consumed_input_versions,
+    declaredInputDispositions: execution.resultJson.input_dispositions,
+    declaredConsumedContextDocumentVersions: execution.resultJson.consumed_context_document_versions,
+    declaredContextDispositions: execution.resultJson.context_dispositions,
+    declaredInputEffects: execution.resultJson.input_effects,
+    declaredContextEffects: execution.resultJson.context_effects,
+    nodeRunId: run.id,
+    actorId: actor.id,
+    verifierId: executionVerifierId(taskExecution, verification),
+    actualEvidence: evidence
+  });
+  completeAttestationStage(state, prepared, stageToken, ingested);
+  if (!ingested.awaiting_human.length) promoteTaskExecution(state, prepared, taskExecution, evidence);
+  await ensureCompletedWorkstreamOutcomesInState(state, taskExecution.workflow_execution_id);
+  reconcileWorkflowExecutionInState(state, taskExecution.workflow_execution_id);
+  return ingested.outputs.map((item) => item.asset);
+}
+
+function executionVerifierId(taskExecution, verification) {
+  return (
+    verification?.verifierId ||
+    {
+      repository_change: 'repository_change_verifier',
+      repository_verify: 'repository_verify_verifier',
+      repository_integrate: 'repository_integrate_verifier'
+    }[taskExecution.executor] ||
+    null
+  );
+}
+
+function completeAttestationStage(state, prepared, stageToken, ingested) {
+  if (!prepared.staged) return;
+  completeExecutionStageInState(state, stageToken, {
+    output: {
+      output_version_ids: ingested.outputs.map((item) => item.version?.id).filter(Boolean),
+      awaiting_human: ingested.awaiting_human.length
+    }
+  });
+}
+
+function promoteTaskExecution(state, prepared, taskExecution, evidence) {
+  const token = prepared.staged
+    ? beginExecutionStageInState(state, {
+        workflowExecutionId: taskExecution.workflow_execution_id,
+        taskExecutionId: taskExecution.id,
+        stage: 'promote',
+        input: { output_bindings: taskExecution.output_bindings || [] }
+      })
+    : null;
+  completeTaskExecutionInState(state, taskExecution.id, { evidence });
+  if (token)
+    completeExecutionStageInState(state, token, {
+      output: { status: taskExecution.status, output_bindings: taskExecution.output_bindings || [] }
+    });
+}
+
+function taskExecutionForRun(state, runId) {
+  const run = state.node_runs.find((item) => item.id === runId);
+  return state.task_executions.find((item) => item.id === run?.task_execution_id);
 }
 
 function nodeRunResultSize(state, runId) {
@@ -461,311 +517,6 @@ function mergeActualEvidence(actual, verified) {
   };
 }
 
-function testConsumptionFixture(taskExecution, body) {
-  if (
-    ['aiws.task_execution_context.v4', 'aiws.task_execution_context.v5'].includes(
-      taskExecution?.context_snapshot?.schema_version
-    )
-  )
-    return testEffectFixture(taskExecution, body);
-  if (body.test_consumption_plan && typeof body.test_consumption_plan === 'object') {
-    const plans = Object.values(body.test_consumption_plan).filter((item) => item && typeof item === 'object');
-    return {
-      consumedInputVersions: plans.flatMap((item) => item.consumed_input_versions || []),
-      consumedContextDocumentVersions: plans.flatMap((item) => item.consumed_context_document_versions || []),
-      inputDispositions: plans.flatMap((item) => item.input_dispositions || []),
-      contextDispositions: plans.flatMap((item) => item.context_dispositions || []),
-      consumptionPlan: body.test_consumption_plan,
-      syntheticFallback: false
-    };
-  }
-  const inputs = taskExecution?.context_snapshot?.inputs || [],
-    documents = taskExecution?.context_snapshot?.system_context?.document_versions || [],
-    usedInputKeys = new Set(Array.isArray(body.test_used_input_keys) ? body.test_used_input_keys : []),
-    usedContextNodeIds = new Set(Array.isArray(body.test_used_context_node_ids) ? body.test_used_context_node_ids : []),
-    useRequiredInputs = body.test_use_required_inputs === true,
-    useRequiredContext = body.test_use_required_context === true,
-    consumedInputVersions = inputs
-      .filter((item) => usedInputKeys.has(item.key) || (useRequiredInputs && item.required !== false))
-      .flatMap((item) => item.asset_versions || [])
-      .map((item) => item.version_id)
-      .filter(Boolean),
-    consumedContextDocumentVersions = documents
-      .filter((item) => usedContextNodeIds.has(item.node_id) || (useRequiredContext && item.required === true))
-      .map((item) => item.document_version_id)
-      .filter(Boolean),
-    usedInputs = new Set(consumedInputVersions),
-    usedContext = new Set(consumedContextDocumentVersions),
-    inputDispositions = inputs.flatMap((item) =>
-      (item.asset_versions || []).map((version) => ({
-        version_id: version.version_id,
-        disposition: usedInputs.has(version.version_id) ? 'used' : 'not_used',
-        reason: usedInputs.has(version.version_id)
-          ? `Test fixture explicitly uses input slot ${item.key}.`
-          : `Test fixture explicitly does not use input slot ${item.key}.`
-      }))
-    ),
-    contextDispositions = documents.map((item) => ({
-      document_version_id: item.document_version_id,
-      disposition: usedContext.has(item.document_version_id) ? 'used' : 'not_used',
-      reason: usedContext.has(item.document_version_id)
-        ? 'Test fixture explicitly uses this context document.'
-        : 'Test fixture explicitly does not use this context document.'
-    })),
-    firstOutput = taskExecution?.context_snapshot?.contract?.expected_outputs?.[0]?.key,
-    consumptionPlan = firstOutput
-      ? {
-          [firstOutput]: {
-            consumed_input_versions: consumedInputVersions,
-            consumed_context_document_versions: consumedContextDocumentVersions,
-            input_dispositions: inputDispositions,
-            context_dispositions: contextDispositions
-          }
-        }
-      : null;
-  return {
-    consumedInputVersions,
-    consumedContextDocumentVersions,
-    inputDispositions,
-    contextDispositions,
-    consumptionPlan,
-    syntheticFallback:
-      !useRequiredInputs &&
-      !useRequiredContext &&
-      !usedInputKeys.size &&
-      !usedContextNodeIds.size &&
-      !body.test_consumption_plan
-  };
-}
-
-function testEffectFixture(taskExecution, body) {
-  const inputs = taskExecution.context_snapshot?.inputs || [],
-    outputKeys = (taskExecution.context_snapshot?.contract?.expected_outputs || []).map((item) => item.key),
-    usedInputKeys = new Set(Array.isArray(body.test_used_input_keys) ? body.test_used_input_keys : []),
-    useRequiredInputs = body.test_use_required_inputs === true,
-    plans = Object.values(body.test_consumption_plan || {}).filter((item) => item && typeof item === 'object'),
-    declaredEffects = plans.flatMap((item) => item.input_effects || []);
-  const inputEffects = declaredEffects.length
-    ? declaredEffects
-    : inputs
-        .filter(
-          (input) =>
-            usedInputKeys.has(input.key) ||
-            (useRequiredInputs && (input.application_policy === 'required' || input.consumption_policy === 'must_use'))
-        )
-        .map((input) => ({
-          input_key: input.key,
-          version_ids: (input.asset_versions || []).map((item) => item.version_id).filter(Boolean),
-          ...(input.contribution ? { contribution_id: input.contribution.id } : {}),
-          effect: input.contribution?.effect || 'verification',
-          output_keys: input.contribution?.target_output_keys?.length
-            ? input.contribution.target_output_keys
-            : input.target_output_keys?.length
-              ? input.target_output_keys
-              : outputKeys,
-          ...(input.contribution ? { criterion_ids: input.contribution.target_criterion_ids } : {}),
-          statement: `Test fixture verified how input ${input.key} changes the declared task outputs.`,
-          evidence_refs: []
-        }));
-  return {
-    inputEffects,
-    contextEffects: plans.flatMap((item) => item.context_effects || []),
-    consumptionPlan: null,
-    syntheticFallback: !inputEffects.length && !body.test_consumption_plan
-  };
-}
-
-async function failNodeRun(runId, error, stageToken = null) {
-  return mutate((state) => {
-    const run = state.node_runs.find((item) => item.id === runId);
-    if (!run || run.status === RunnerStatus.Cancelled) return run;
-    const node = state.workflow_nodes.find((item) => item.id === run.node_id);
-    const diagnosticsPersisted = Boolean(run.raw_output_file_ref_id),
-      alreadyFailed = run.status === RunnerStatus.Failed;
-    Object.assign(run, {
-      status: RunnerStatus.Failed,
-      error_code: error?.payload?.error || error?.code || 'node_run_failed',
-      completed_at: now(),
-      updated_at: now()
-    });
-    if (!run.summary) run.summary = String(error.message || error);
-    if (node) node.status = 'blocked';
-    const taskExecution = state.task_executions.find((item) => item.id === run.task_execution_id);
-    let checkpoint = null;
-    if (taskExecution && Number(state.schema_version || 0) >= 21) {
-      const token =
-        stageToken ||
-        beginExecutionStageInState(state, {
-          workflowExecutionId: taskExecution.workflow_execution_id,
-          taskExecutionId: taskExecution.id,
-          stage: taskExecution.current_stage || 'execute',
-          input: { node_run_id: run.id }
-        });
-      const duplicate = state.execution_stage_checkpoints.find(
-        (item) =>
-          item.task_execution_id === taskExecution.id &&
-          item.stage === token.stage &&
-          item.status === 'failed' &&
-          item.input_hash === token.input_hash
-      );
-      checkpoint =
-        duplicate ||
-        failExecutionStageInState(state, token, error, {
-          category: token.stage === 'verify' ? 'verifier' : token.stage === 'collect' ? 'integrity' : 'runner',
-          retryable: error?.retryable === true
-        });
-    }
-    if (taskExecution && ['queued', 'running', 'verifying', 'awaiting_human'].includes(taskExecution.status)) {
-      failTaskExecutionInState(state, taskExecution.id, {
-        errorCode: run.error_code,
-        retryClass: error?.retryable ? 'transient' : 'deterministic',
-        failure: checkpoint?.failure || null,
-        stage: checkpoint?.stage || taskExecution.current_stage || 'execute'
-      });
-      reconcileWorkflowExecutionInState(state, taskExecution.workflow_execution_id);
-    }
-    if (!diagnosticsPersisted && !alreadyFailed)
-      addTrace(
-        state,
-        'runner.failed',
-        {
-          project_id: run.project_id,
-          workspace_id: run.workspace_id,
-          node_id: run.node_id,
-          run_id: run.id,
-          summary: `Runner 启动失败：${run.summary}`
-        },
-        owner(state).id
-      );
-    return run;
-  });
-}
-
-export function controlledRunnerResultError(result, controlled = true) {
-  if (!controlled) return null;
-  if (
-    !['aiws.task_runner_result.v2', 'aiws.task_runner_result.v3', 'aiws.task_runner_result.v4'].includes(
-      result?.schema_version
-    )
-  )
-    return new HttpError(409, { error: 'slot_aware_runner_output_required', retryable: false });
-  if (result.status === RunnerStatus.Succeeded) return null;
-  const process = result?._codex_process || {},
-    retryable = process.retryable === true;
-  const code = process.failure_code || 'task_runner_result_unsuccessful';
-  const error = new HttpError(retryable ? 503 : 409, { error: code, runner_status: result.status, retryable });
-  error.code = code;
-  error.retryable = retryable;
-  return error;
-}
-
-function createRun({ actor, project, workspace, node, ctx, body }) {
-  const runner = body.runner || project.settings?.preferred_runner || 'codex_docker';
-  if (isContainerized() && runner === 'codex') throw new HttpError(409, { error: 'host_runner_disabled_in_container' });
-  if (!['codex_docker', 'codex'].includes(runner))
-    throw new HttpError(400, { error: 'unsupported_runner', allowed: ['codex_docker', 'codex'] });
-  const execution = structuredClone(ctx.task_execution_context || ctx._task_execution_context || null);
-  return {
-    id: `run_${Date.now().toString(16)}${Math.random().toString(16).slice(2, 8)}`,
-    project_id: project.id,
-    workspace_id: workspace.id,
-    node_id: node.id,
-    context_pack_id: ctx.id,
-    task_execution_context: execution,
-    input_snapshot_hash: execution?.input_snapshot_hash || null,
-    repository_snapshot_hash: execution?.repository_snapshot?.snapshot_hash || null,
-    contract_snapshot: execution?.contract || structuredClone(ctx.content_json?.node_contract || null),
-    task_snapshot: execution?.task || null,
-    dependency_graph: execution?.dependency_graph || [],
-    input_assets: execution?.inputs?.flatMap((item) => item.asset_versions || []) || [],
-    repository_workspace_id: execution?.repository_snapshot?.repository_workspace_id || null,
-    runner,
-    status: RunnerStatus.Queued,
-    summary: '',
-    result_json: null,
-    raw_output_file_ref_id: null,
-    input_superseded: false,
-    started_at: null,
-    completed_at: null,
-    created_by_user_id: actor.id,
-    created_at: now(),
-    updated_at: now()
-  };
-}
-
-function registerRunTrace(state, { actor, project, workspace, node, run }) {
-  node.status = 'running';
-  addTrace(
-    state,
-    'node_run.queued',
-    {
-      project_id: project.id,
-      workspace_id: workspace.id,
-      node_id: node.id,
-      run_id: run.id,
-      summary: 'NodeRun 已登记并准备执行。'
-    },
-    actor.id
-  );
-}
-
-function startRunTrace(state, { actor, project, workspace, node, run, ctx }) {
-  registerRunTrace(state, { actor, project, workspace, node, run });
-  addTrace(
-    state,
-    'node_run.started',
-    {
-      project_id: project.id,
-      workspace_id: workspace.id,
-      node_id: node.id,
-      run_id: run.id,
-      summary: `NodeRun 启动：${run.runner}`
-    },
-    actor.id
-  );
-  addTrace(
-    state,
-    'runner.invoked',
-    {
-      project_id: project.id,
-      workspace_id: workspace.id,
-      node_id: node.id,
-      run_id: run.id,
-      summary: `调用 Runner：${run.runner}`,
-      data: { runner: run.runner, context_pack_id: ctx.id }
-    },
-    actor.id
-  );
-  Object.assign(run, { status: RunnerStatus.Running, started_at: now() });
-}
-
-function createAssetsFromRun(state, { actor, project, workspace, node, run, resultJson }) {
-  const { assets } = createExecutionOutputAssets(state, {
-    actorId: actor.id,
-    project,
-    task: node,
-    workspace,
-    execution: run,
-    candidates: resultJson.asset_candidates || []
-  });
-  for (const asset of assets)
-    addTrace(
-      state,
-      asset.status === 'confirmed' ? 'asset.confirmed' : 'asset_candidate.created',
-      {
-        project_id: project.id,
-        workspace_id: workspace.id,
-        node_id: node.id,
-        run_id: run.id,
-        target_type: 'asset',
-        target_id: asset.id,
-        summary: `${asset.status === 'confirmed' ? '系统确认资产' : '创建资产候选'}：${asset.title}`
-      },
-      actor.id
-    );
-  return assets;
-}
-
 async function cancelRunRoute({ res, params }) {
   runControllers.get(params.id)?.abort();
   const result = await mutate((state) => cancelRunInState(state, params.id, owner(state).id));
@@ -794,58 +545,4 @@ async function getRunRoute({ res, params }) {
     assets: state.assets.filter((a) => a.run_id === run.id),
     code_change: state.code_changes.find((c) => c.run_id === run.id)
   });
-}
-
-function requireNodeBundle({ node, project, contract }) {
-  if (!node || !project || !contract) throw new HttpError(404, 'node_or_contract_not_found');
-}
-export function assertNodeRunDependencies(state, node, { controlled = false } = {}) {
-  if (node.role === 'workstream')
-    throw new HttpError(409, { error: 'workstream_is_aggregate_not_executable', node_id: node.id });
-  if (node.role !== 'task') return;
-  // A controlled NodeRun is dispatched only after the workflow-execution domain has
-  // accepted task/workstream handoffs and issued a lease. Re-applying the legacy
-  // node-status gate here is incorrect: V2 projects completed workstreams as
-  // `ready_for_submission`, while their accepted WorkstreamOutcomeAsset is the
-  // authoritative dependency receipt.
-  if (controlled) return;
-  const parent = state.workflow_nodes.find((item) => item.id === node.parent_node_id && item.role === 'workstream');
-  const incompleteUpstream = (parent?.dependencies || [])
-    .map((item) => (typeof item === 'string' ? item : item.node_id))
-    .map((id) => state.workflow_nodes.find((item) => item.id === id))
-    .filter((item) => item && item.status !== 'completed');
-  const incompleteTasks = (node.dependencies || [])
-    .map((item) => (typeof item === 'string' ? item : item.node_id))
-    .map((id) => state.workflow_nodes.find((item) => item.id === id))
-    .filter((item) => item && item.status !== 'completed');
-  if (incompleteUpstream.length || incompleteTasks.length)
-    throw new HttpError(409, {
-      error: 'task_dependency_blocked',
-      node_id: node.id,
-      workstream_dependencies: incompleteUpstream.map((item) => item.id),
-      task_dependencies: incompleteTasks.map((item) => item.id),
-      action: 'create_change_proposal'
-    });
-}
-function delay(ms) {
-  return new Promise((resolve) => setTimeout(resolve, Math.max(0, Math.min(ms, 5000))));
-}
-async function applyTestRepositoryChanges(execution, changes) {
-  const root = execution.context_snapshot?.repository_checkout?.path;
-  if (!root) throw new HttpError(409, { error: 'repository_line_checkout_missing' });
-  const source =
-    Array.isArray(changes) && changes.length
-      ? changes
-      : [{ path: `aiws-${execution.task_id}.txt`, content: `Task Execution ${execution.id}\n` }];
-  for (const item of source.slice(0, 50)) {
-    const target = path.resolve(root, String(item?.path || '')),
-      relative = path.relative(root, target);
-    if (!relative || relative.startsWith('..') || path.isAbsolute(relative) || relative.includes('\0'))
-      throw new HttpError(400, { error: 'test_change_path_invalid' });
-    if (item.delete === true) await fsp.rm(target, { force: true });
-    else {
-      await fsp.mkdir(path.dirname(target), { recursive: true });
-      await fsp.writeFile(target, String(item.content ?? ''), 'utf8');
-    }
-  }
 }

@@ -11,13 +11,14 @@ import {
 import { now } from '../../../packages/shared/index.mjs';
 import { readCasBlob } from './asset-cas.mjs';
 import { ARTIFACT_DIR, ATTACHMENT_DIR, CAS_DIR } from './config.mjs';
+import * as resourcePath from './context-resource-paths.mjs';
 
 const REPOSITORY_ADAPTER = 'repository_file.v1';
 const REPOSITORY_MANIFEST_ADAPTER = 'repository_manifest.v1';
 const RUNTIME_ADAPTER = 'runtime_environment.v1';
 const BROWSER_ADAPTER = 'browser_semantic_state.v1';
-const MAX_REPOSITORY_FILES = boundedEnvironment('AIWS_CONTEXT_REPOSITORY_FILE_LIMIT', 2000, 0, 20_000);
-const MAX_REPOSITORY_FILE_BYTES = boundedEnvironment(
+const MAX_REPOSITORY_FILES = resourcePath.boundedEnvironment('AIWS_CONTEXT_REPOSITORY_FILE_LIMIT', 2000, 0, 20_000);
+const MAX_REPOSITORY_FILE_BYTES = resourcePath.boundedEnvironment(
   'AIWS_CONTEXT_REPOSITORY_FILE_MAX_BYTES',
   32 * 1024 * 1024,
   1024,
@@ -44,28 +45,51 @@ export async function refreshContextResourcesInState(
   state,
   { projectId = null, projectIds = null, timestamp = now(), includeRepositoryFiles = true } = {}
 ) {
-  const allowedProjects = projectIds == null ? null : new Set([...projectIds].map(String)),
-    desired = [runtimeResourceNode(state, timestamp)],
-    repositoryReports = [];
-  const projects = (state.projects || []).filter(
+  const allowedProjects = projectIds == null ? null : new Set([...projectIds].map(String));
+  const projects = selectedProjects(state, projectId, allowedProjects);
+  const repositories = await projectRepositoryResources(state, projects, timestamp, includeRepositoryFiles);
+  const desired = [runtimeResourceNode(state, timestamp), ...repositories.nodes];
+  updateRepositoryCoverage(state, repositories.reports, {
+    fullRefresh: !projectId && allowedProjects == null,
+    timestamp
+  });
+  let dirty = upsertResourceNodes(state, desired);
+  const refreshedProjectIds = new Set(projects.map((project) => String(project.id)));
+  dirty += tombstoneMissingResources(state, desired, refreshedProjectIds, {
+    scoped: Boolean(projectId || allowedProjects),
+    timestamp
+  });
+  return {
+    dirty,
+    resources: desired.length,
+    repository_files: desired.filter((node) => node.resource?.adapter === REPOSITORY_ADAPTER).length,
+    repository_reports: repositories.reports
+  };
+}
+
+function selectedProjects(state, projectId, allowedProjects) {
+  return (state.projects || []).filter(
     (project) =>
       !project.deleted_at &&
       (!projectId || String(project.id) === String(projectId)) &&
       (!allowedProjects || allowedProjects.has(String(project.id)))
   );
-  if (includeRepositoryFiles) {
-    for (const project of projects) {
-      const projection = await repositoryResourceNodes(state, project, timestamp);
-      if (projection.manifestNode) desired.push(projection.manifestNode);
-      desired.push(...projection.nodes);
-      repositoryReports.push(projection.report);
-    }
+}
+
+async function projectRepositoryResources(state, projects, timestamp, includeRepositoryFiles) {
+  const nodes = [];
+  const reports = [];
+  if (!includeRepositoryFiles) return { nodes, reports };
+  for (const project of projects) {
+    const projection = await repositoryResourceNodes(state, project, timestamp);
+    if (projection.manifestNode) nodes.push(projection.manifestNode);
+    nodes.push(...projection.nodes);
+    reports.push(projection.report);
   }
-  updateRepositoryCoverage(state, repositoryReports, {
-    fullRefresh: !projectId && allowedProjects == null,
-    timestamp
-  });
-  const desiredIds = new Set(desired.map((node) => node.id));
+  return { nodes, reports };
+}
+
+function upsertResourceNodes(state, desired) {
   let dirty = 0;
   for (const next of desired) {
     const existing = state.context_nodes.find((node) => node.id === next.id);
@@ -73,40 +97,49 @@ export async function refreshContextResourcesInState(
       !existing ||
       (existing.source_record_hash || existing.source_hash) !== next.source_record_hash ||
       existing.status !== 'active';
-    if (existing)
-      Object.assign(existing, next, {
-        current_version_id: existing.current_version_id || null,
-        created_at: existing.created_at || next.created_at
-      });
+    if (existing) updateResourceNode(existing, next);
     else state.context_nodes.push(next);
     if (changed) dirty += 1;
   }
+  return dirty;
+}
 
-  const refreshedProjectIds = new Set(projects.map((project) => String(project.id)));
+function updateResourceNode(existing, next) {
+  Object.assign(existing, next, {
+    current_version_id: existing.current_version_id || null,
+    created_at: existing.created_at || next.created_at
+  });
+}
+
+function tombstoneMissingResources(state, desired, refreshedProjectIds, { scoped, timestamp }) {
+  const desiredIds = new Set(desired.map((node) => node.id));
+  let dirty = 0;
   for (const node of state.context_nodes) {
-    const managedRuntime = node.resource?.adapter === RUNTIME_ADAPTER;
-    const managedRepository =
-      [REPOSITORY_ADAPTER, REPOSITORY_MANIFEST_ADAPTER].includes(node.resource?.adapter) &&
-      (projectId || allowedProjects ? refreshedProjectIds.has(String(node.project_id)) : true);
-    if ((!managedRuntime && !managedRepository) || desiredIds.has(node.id) || node.status === 'tombstone') continue;
-    const sourceRecordHash = contextHash({ tombstone: true, id: node.id, adapter: node.resource.adapter });
-    Object.assign(node, {
-      kind: 'tombstone',
-      status: 'tombstone',
-      parent_id: null,
-      freshness: { ...(node.freshness || {}), status: 'superseded', tombstoned_at: timestamp },
-      source_record_hash: sourceRecordHash,
-      source_hash: sourceRecordHash,
-      updated_at: timestamp
-    });
+    if (!isManagedResource(node, refreshedProjectIds, scoped)) continue;
+    if (desiredIds.has(node.id) || node.status === 'tombstone') continue;
+    tombstoneResourceNode(node, timestamp);
     dirty += 1;
   }
-  return {
-    dirty,
-    resources: desired.length,
-    repository_files: desired.filter((node) => node.resource?.adapter === REPOSITORY_ADAPTER).length,
-    repository_reports: repositoryReports
-  };
+  return dirty;
+}
+
+function isManagedResource(node, refreshedProjectIds, scoped) {
+  if (node.resource?.adapter === RUNTIME_ADAPTER) return true;
+  if (![REPOSITORY_ADAPTER, REPOSITORY_MANIFEST_ADAPTER].includes(node.resource?.adapter)) return false;
+  return scoped ? refreshedProjectIds.has(String(node.project_id)) : true;
+}
+
+function tombstoneResourceNode(node, timestamp) {
+  const sourceRecordHash = contextHash({ tombstone: true, id: node.id, adapter: node.resource.adapter });
+  Object.assign(node, {
+    kind: 'tombstone',
+    status: 'tombstone',
+    parent_id: null,
+    freshness: { ...(node.freshness || {}), status: 'superseded', tombstoned_at: timestamp },
+    source_record_hash: sourceRecordHash,
+    source_hash: sourceRecordHash,
+    updated_at: timestamp
+  });
 }
 
 export async function resolveContextProjectionRecord(state, node, record, { casRoot = CAS_DIR } = {}) {
@@ -176,32 +209,49 @@ export function upsertBrowserSemanticResourceInState(
 }
 
 async function repositoryResourceNodes(state, project, timestamp) {
-  const root = await repositoryRoot(project),
-    projectNodeId = contextNodeId('projects', project.id);
-  if (!root) {
-    const configured = project?.managed_workspace_state !== 'empty' && Boolean(project?.repo_path);
-    const report = repositoryReport(project, {
-      status: configured ? 'unavailable' : 'not_configured',
-      discoveredFiles: 0,
-      includedFiles: 0,
-      omittedFiles: 0,
-      oversizedFiles: 0,
-      excludedSensitive: 0,
-      excludedSymlinks: 0,
-      ignoredDirectories: 0,
-      unreadableDirectories: 0
-    });
-    return {
-      nodes: [],
-      manifestNode: configured ? repositoryManifestNode(project, projectNodeId, report, timestamp) : null,
-      report
-    };
-  }
-  const previous = new Map(
+  const root = await repositoryRoot(project);
+  const projectNodeId = contextNodeId('projects', project.id);
+  if (!root) return unavailableRepositoryProjection(project, projectNodeId, timestamp);
+
+  const previous = previousRepositoryNodes(state, project.id);
+  const scan = await scanRepository(root);
+  const files = scan.files.slice(0, MAX_REPOSITORY_FILES);
+  const report = repositoryScanReport(project, scan, files);
+  const nodes = [];
+  for (const file of files)
+    nodes.push(await repositoryFileNode(project, projectNodeId, file, previous.get(file.relativePath), timestamp));
+  return { nodes, manifestNode: repositoryManifestNode(project, projectNodeId, report, timestamp), report };
+}
+
+function unavailableRepositoryProjection(project, projectNodeId, timestamp) {
+  const configured = project?.managed_workspace_state !== 'empty' && Boolean(project?.repo_path);
+  const report = repositoryReport(project, {
+    status: configured ? 'unavailable' : 'not_configured',
+    discoveredFiles: 0,
+    includedFiles: 0,
+    omittedFiles: 0,
+    oversizedFiles: 0,
+    excludedSensitive: 0,
+    excludedSymlinks: 0,
+    ignoredDirectories: 0,
+    unreadableDirectories: 0
+  });
+  return {
+    nodes: [],
+    manifestNode: configured ? repositoryManifestNode(project, projectNodeId, report, timestamp) : null,
+    report
+  };
+}
+
+function previousRepositoryNodes(state, projectId) {
+  return new Map(
     state.context_nodes
-      .filter((node) => node.resource?.adapter === REPOSITORY_ADAPTER && String(node.project_id) === String(project.id))
+      .filter((node) => node.resource?.adapter === REPOSITORY_ADAPTER && String(node.project_id) === String(projectId))
       .map((node) => [node.resource.relative_path, node])
   );
+}
+
+async function scanRepository(root) {
   const scan = {
     files: [],
     excludedSensitive: 0,
@@ -211,88 +261,105 @@ async function repositoryResourceNodes(state, project, timestamp) {
   };
   await walkRepository(root, '', scan);
   scan.files.sort((left, right) => left.relativePath.localeCompare(right.relativePath));
-  const files = scan.files.slice(0, MAX_REPOSITORY_FILES),
-    report = repositoryReport(project, {
-      status: scan.files.length > files.length ? 'truncated' : 'complete',
-      discoveredFiles: scan.files.length,
-      includedFiles: files.length,
-      omittedFiles: Math.max(0, scan.files.length - files.length),
-      oversizedFiles: scan.files.filter((item) => item.manifestOnly).length,
-      excludedSensitive: scan.excludedSensitive,
-      excludedSymlinks: scan.excludedSymlinks,
-      ignoredDirectories: scan.ignoredDirectories,
-      unreadableDirectories: scan.unreadableDirectories
-    });
-  const nodes = [];
-  for (const file of files) {
-    const prior = previous.get(file.relativePath);
-    let sha256 = file.manifestOnly ? null : prior?.resource?.sha256;
-    if (
-      !file.manifestOnly &&
-      (!sha256 ||
-        Number(prior?.resource?.size_bytes) !== file.stat.size ||
-        Number(prior?.resource?.mtime_ms) !== file.stat.mtimeMs ||
-        Number(prior?.resource?.ctime_ms) !== file.stat.ctimeMs)
-    ) {
-      const bytes = await fsp.readFile(file.fullPath);
-      sha256 = contextHash(bytes);
-    }
-    const mediaType = mediaTypeFor(file.relativePath);
-    const binary = file.manifestOnly || isBinaryMediaType(mediaType);
-    const id = contextNodeId('repository_files', `${project.id}:${file.relativePath}`);
-    const resource = {
-      adapter: REPOSITORY_ADAPTER,
-      project_id: String(project.id),
-      relative_path: file.relativePath,
-      sha256,
-      size_bytes: file.stat.size,
-      mtime_ms: file.stat.mtimeMs,
-      ctime_ms: file.stat.ctimeMs,
-      media_type: mediaType,
-      binary,
-      manifest_only: file.manifestOnly,
-      description: file.manifestOnly
-        ? '文件超过内容读取上限，仅投影元数据清单。'
-        : binary
-          ? '仓库二进制文件，仅投影清单。'
-          : '仓库文本文件，只读投影。'
-    };
-    const sourceHash = contextHash({
-      adapter: REPOSITORY_ADAPTER,
-      sha256,
-      size_bytes: file.stat.size,
-      media_type: mediaType,
-      manifest_only: file.manifestOnly,
-      ...(file.manifestOnly ? { mtime_ms: file.stat.mtimeMs, ctime_ms: file.stat.ctimeMs } : {})
-    });
-    nodes.push({
-      id,
-      uri: contextNodeUri(id),
-      kind: 'record',
-      source_type: 'resource',
-      source_collection: null,
-      source_id: `repository_file:${project.id}:${file.relativePath}`,
-      source_version: 1,
-      project_id: String(project.id),
-      parent_id: projectNodeId,
-      title: file.relativePath,
-      deterministic_summary: `${file.relativePath} 的仓库${file.manifestOnly ? '元数据清单' : binary ? '二进制清单' : '文本'}投影。`,
-      sort: { type_order: 80, order_index: 0, stable_id: file.relativePath },
-      scope: { type: 'project', id: String(project.id), project_id: String(project.id) },
-      sensitivity: 'internal',
-      required_scopes: ['context:read', 'files:read'],
-      freshness: { status: 'current', source_updated_at: file.stat.mtime.toISOString(), checked_at: timestamp },
-      authority: 'authoritative',
-      source_record_hash: sourceHash,
-      source_hash: sourceHash,
-      current_version_id: null,
-      status: 'active',
-      resource,
-      created_at: timestamp,
-      updated_at: timestamp
-    });
-  }
-  return { nodes, manifestNode: repositoryManifestNode(project, projectNodeId, report, timestamp), report };
+  return scan;
+}
+
+function repositoryScanReport(project, scan, files) {
+  return repositoryReport(project, {
+    status: scan.files.length > files.length ? 'truncated' : 'complete',
+    discoveredFiles: scan.files.length,
+    includedFiles: files.length,
+    omittedFiles: Math.max(0, scan.files.length - files.length),
+    oversizedFiles: scan.files.filter((item) => item.manifestOnly).length,
+    excludedSensitive: scan.excludedSensitive,
+    excludedSymlinks: scan.excludedSymlinks,
+    ignoredDirectories: scan.ignoredDirectories,
+    unreadableDirectories: scan.unreadableDirectories
+  });
+}
+
+async function repositoryFileNode(project, projectNodeId, file, prior, timestamp) {
+  const sha256 = await repositoryFileHash(file, prior);
+  const mediaType = resourcePath.mediaTypeFor(file.relativePath);
+  const binary = file.manifestOnly || resourcePath.isBinaryMediaType(mediaType);
+  const id = contextNodeId('repository_files', `${project.id}:${file.relativePath}`);
+  const resource = repositoryFileResource(project.id, file, sha256, mediaType, binary);
+  const sourceHash = repositoryFileSourceHash(file, sha256, mediaType);
+  return {
+    id,
+    uri: contextNodeUri(id),
+    kind: 'record',
+    source_type: 'resource',
+    source_collection: null,
+    source_id: `repository_file:${project.id}:${file.relativePath}`,
+    source_version: 1,
+    project_id: String(project.id),
+    parent_id: projectNodeId,
+    title: file.relativePath,
+    deterministic_summary: `${file.relativePath} 的仓库${repositoryProjectionKind(file, binary)}投影。`,
+    sort: { type_order: 80, order_index: 0, stable_id: file.relativePath },
+    scope: { type: 'project', id: String(project.id), project_id: String(project.id) },
+    sensitivity: 'internal',
+    required_scopes: ['context:read', 'files:read'],
+    freshness: { status: 'current', source_updated_at: file.stat.mtime.toISOString(), checked_at: timestamp },
+    authority: 'authoritative',
+    source_record_hash: sourceHash,
+    source_hash: sourceHash,
+    current_version_id: null,
+    status: 'active',
+    resource,
+    created_at: timestamp,
+    updated_at: timestamp
+  };
+}
+
+async function repositoryFileHash(file, prior) {
+  if (file.manifestOnly) return null;
+  const priorResource = prior?.resource;
+  const unchanged =
+    priorResource?.sha256 &&
+    Number(priorResource.size_bytes) === file.stat.size &&
+    Number(priorResource.mtime_ms) === file.stat.mtimeMs &&
+    Number(priorResource.ctime_ms) === file.stat.ctimeMs;
+  if (unchanged) return priorResource.sha256;
+  return contextHash(await fsp.readFile(file.fullPath));
+}
+
+function repositoryFileResource(projectId, file, sha256, mediaType, binary) {
+  return {
+    adapter: REPOSITORY_ADAPTER,
+    project_id: String(projectId),
+    relative_path: file.relativePath,
+    sha256,
+    size_bytes: file.stat.size,
+    mtime_ms: file.stat.mtimeMs,
+    ctime_ms: file.stat.ctimeMs,
+    media_type: mediaType,
+    binary,
+    manifest_only: file.manifestOnly,
+    description: repositoryFileDescription(file, binary)
+  };
+}
+
+function repositoryFileDescription(file, binary) {
+  if (file.manifestOnly) return '文件超过内容读取上限，仅投影元数据清单。';
+  return binary ? '仓库二进制文件，仅投影清单。' : '仓库文本文件，只读投影。';
+}
+
+function repositoryProjectionKind(file, binary) {
+  if (file.manifestOnly) return '元数据清单';
+  return binary ? '二进制清单' : '文本';
+}
+
+function repositoryFileSourceHash(file, sha256, mediaType) {
+  return contextHash({
+    adapter: REPOSITORY_ADAPTER,
+    sha256,
+    size_bytes: file.stat.size,
+    media_type: mediaType,
+    manifest_only: file.manifestOnly,
+    ...(file.manifestOnly ? { mtime_ms: file.stat.mtimeMs, ctime_ms: file.stat.ctimeMs } : {})
+  });
 }
 
 function runtimeResourceNode(state, timestamp) {
@@ -352,40 +419,31 @@ function runtimeResourceNode(state, timestamp) {
 
 async function resolveResourceNode(state, node) {
   if (node.status === 'tombstone') return { tombstone: true, resource: node.resource || null };
-  if (node.resource?.adapter === RUNTIME_ADAPTER) return node.resource.manifest;
-  if (node.resource?.adapter === BROWSER_ADAPTER) return node.resource.manifest;
-  if (node.resource?.adapter === REPOSITORY_MANIFEST_ADAPTER) return node.resource.manifest;
-  if (node.resource?.adapter !== REPOSITORY_ADAPTER) throw resourceError('context_resource_adapter_unknown');
+  const manifest = staticResourceManifest(node);
+  if (manifest.matched) return manifest.value;
+  if (node.resource?.adapter !== REPOSITORY_ADAPTER)
+    throw resourcePath.resourceError('context_resource_adapter_unknown');
+  return resolveRepositoryResourceNode(state, node);
+}
+
+function staticResourceManifest(node) {
+  const adapters = [RUNTIME_ADAPTER, BROWSER_ADAPTER, REPOSITORY_MANIFEST_ADAPTER];
+  return adapters.includes(node.resource?.adapter)
+    ? { matched: true, value: node.resource.manifest }
+    : { matched: false, value: null };
+}
+
+async function resolveRepositoryResourceNode(state, node) {
   const project = (state.projects || []).find((item) => String(item.id) === String(node.project_id));
   const root = await repositoryRoot(project);
-  if (!root) throw resourceError('context_repository_unavailable');
-  const file = resolveWithin(root, node.resource.relative_path);
+  if (!root) throw resourcePath.resourceError('context_repository_unavailable');
+  const file = resourcePath.resolveWithin(root, node.resource.relative_path);
   const stat = await fsp.lstat(file).catch(() => null);
-  if (!stat?.isFile() || stat.isSymbolicLink()) throw resourceError('context_repository_file_unavailable');
-  if (node.resource.manifest_only) {
-    if (
-      stat.size !== Number(node.resource.size_bytes) ||
-      stat.mtimeMs !== Number(node.resource.mtime_ms) ||
-      stat.ctimeMs !== Number(node.resource.ctime_ms)
-    )
-      throw resourceError('context_resource_source_changed');
-    return {
-      resource_type: 'repository_file',
-      project_id: String(node.project_id),
-      relative_path: node.resource.relative_path,
-      resource_content: {
-        binary: true,
-        manifest_only: true,
-        size_bytes: stat.size,
-        sha256: null,
-        media_type: node.resource.media_type,
-        description: node.resource.description
-      }
-    };
-  }
+  if (!stat?.isFile() || stat.isSymbolicLink()) throw resourcePath.resourceError('context_repository_file_unavailable');
+  if (node.resource.manifest_only) return resolveRepositoryManifest(node, stat);
   const bytes = await fsp.readFile(file);
   if (contextHash(bytes) !== node.resource.sha256 || bytes.length !== Number(node.resource.size_bytes))
-    throw resourceError('context_resource_source_changed');
+    throw resourcePath.resourceError('context_resource_source_changed');
   return attachBytes(
     {
       resource_type: 'repository_file',
@@ -397,12 +455,34 @@ async function resolveResourceNode(state, node) {
   );
 }
 
+function resolveRepositoryManifest(node, stat) {
+  const unchanged =
+    stat.size === Number(node.resource.size_bytes) &&
+    stat.mtimeMs === Number(node.resource.mtime_ms) &&
+    stat.ctimeMs === Number(node.resource.ctime_ms);
+  if (!unchanged) throw resourcePath.resourceError('context_resource_source_changed');
+  return {
+    resource_type: 'repository_file',
+    project_id: String(node.project_id),
+    relative_path: node.resource.relative_path,
+    resource_content: {
+      binary: true,
+      manifest_only: true,
+      size_bytes: stat.size,
+      sha256: null,
+      media_type: node.resource.media_type,
+      description: node.resource.description
+    }
+  };
+}
+
 async function attachFileContent(record, file, { allowedRoot, expectedSha256, mediaType }) {
-  const safeFile = resolveExistingWithin(allowedRoot, file);
+  const safeFile = resourcePath.resolveExistingWithin(allowedRoot, file);
   const bytes = await fsp.readFile(safeFile).catch(() => {
-    throw resourceError('context_resource_file_unavailable');
+    throw resourcePath.resourceError('context_resource_file_unavailable');
   });
-  if (expectedSha256 && contextHash(bytes) !== expectedSha256) throw resourceError('context_resource_hash_mismatch');
+  if (expectedSha256 && contextHash(bytes) !== expectedSha256)
+    throw resourcePath.resourceError('context_resource_hash_mismatch');
   return attachBytes(record, bytes, mediaType);
 }
 
@@ -410,7 +490,7 @@ function attachBytes(record, bytes, mediaType = 'application/octet-stream') {
   const normalizedMediaType = String(mediaType || 'application/octet-stream')
     .split(';')[0]
     .toLowerCase();
-  const binary = isBinaryMediaType(normalizedMediaType) || bytes.includes(0);
+  const binary = resourcePath.isBinaryMediaType(normalizedMediaType) || bytes.includes(0);
   return {
     ...structuredClone(record),
     resource_content: binary
@@ -439,7 +519,7 @@ async function repositoryRoot(project) {
 }
 
 async function walkRepository(root, relative, scan) {
-  const directory = relative ? resolveWithin(root, relative) : root;
+  const directory = relative ? resourcePath.resolveWithin(root, relative) : root;
   const entries = await fsp.readdir(directory, { withFileTypes: true }).catch(() => {
     scan.unreadableDirectories += 1;
     return [];
@@ -455,7 +535,7 @@ async function walkRepository(root, relative, scan) {
       continue;
     }
     const childRelative = path.posix.join(relative.split(path.sep).join('/'), entry.name);
-    if (!safeRepositoryRelativePath(childRelative)) {
+    if (!resourcePath.safeRepositoryRelativePath(childRelative)) {
       scan.excludedSensitive += 1;
       continue;
     }
@@ -465,7 +545,7 @@ async function walkRepository(root, relative, scan) {
       continue;
     }
     if (!entry.isFile()) continue;
-    const fullPath = resolveWithin(root, childRelative);
+    const fullPath = resourcePath.resolveWithin(root, childRelative);
     const stat = await fsp.stat(fullPath).catch(() => null);
     if (!stat?.isFile()) continue;
     scan.files.push({
@@ -567,89 +647,4 @@ function updateRepositoryCoverage(state, reports, { fullRefresh, timestamp }) {
     return output;
   });
   state.context_resource_coverage = { repositories, warnings, checked_at: timestamp };
-}
-
-function safeRepositoryRelativePath(value) {
-  const sanitized = sanitizeContextFacts({ relative_path: value }).facts.relative_path;
-  return sanitized === value;
-}
-
-function resolveExistingWithin(root, file) {
-  const resolvedRoot = path.resolve(root);
-  const candidate = path.resolve(String(file || ''));
-  const relative = path.relative(resolvedRoot, candidate);
-  if (relative.startsWith('..') || path.isAbsolute(relative)) throw resourceError('context_resource_path_forbidden');
-  return candidate;
-}
-
-function resolveWithin(root, relativePath) {
-  const normalized = String(relativePath || '').replace(/\\/g, '/');
-  if (!normalized || normalized.startsWith('/') || normalized.split('/').includes('..'))
-    throw resourceError('context_resource_path_forbidden');
-  return resolveExistingWithin(root, path.join(root, ...normalized.split('/')));
-}
-
-function mediaTypeFor(file) {
-  const extension = path.extname(file).toLowerCase();
-  return (
-    {
-      '.json': 'application/json',
-      '.jsonl': 'application/x-ndjson',
-      '.md': 'text/markdown',
-      '.txt': 'text/plain',
-      '.csv': 'text/csv',
-      '.tsv': 'text/tab-separated-values',
-      '.js': 'text/javascript',
-      '.mjs': 'text/javascript',
-      '.cjs': 'text/javascript',
-      '.ts': 'text/typescript',
-      '.tsx': 'text/typescript',
-      '.jsx': 'text/javascript',
-      '.css': 'text/css',
-      '.html': 'text/html',
-      '.xml': 'application/xml',
-      '.yaml': 'application/yaml',
-      '.yml': 'application/yaml',
-      '.toml': 'application/toml',
-      '.sql': 'application/sql',
-      '.py': 'text/x-python',
-      '.go': 'text/x-go',
-      '.rs': 'text/x-rust',
-      '.java': 'text/x-java',
-      '.c': 'text/x-c',
-      '.h': 'text/x-c',
-      '.cpp': 'text/x-c++',
-      '.sh': 'text/x-shellscript',
-      '.ps1': 'text/x-powershell',
-      '.svg': 'image/svg+xml',
-      '.png': 'image/png',
-      '.jpg': 'image/jpeg',
-      '.jpeg': 'image/jpeg',
-      '.gif': 'image/gif',
-      '.webp': 'image/webp',
-      '.pdf': 'application/pdf',
-      '.zip': 'application/zip'
-    }[extension] || 'text/plain'
-  );
-}
-
-function isBinaryMediaType(mediaType) {
-  const value = String(mediaType || '').toLowerCase();
-  return (
-    (value.startsWith('image/') && value !== 'image/svg+xml') ||
-    value.startsWith('audio/') ||
-    value.startsWith('video/') ||
-    ['application/pdf', 'application/zip', 'application/octet-stream'].includes(value)
-  );
-}
-
-function boundedEnvironment(name, fallback, minimum, maximum) {
-  const value = Number(process.env[name]);
-  return Number.isFinite(value) ? Math.min(maximum, Math.max(minimum, Math.floor(value))) : fallback;
-}
-
-function resourceError(code) {
-  const error = new Error(code);
-  error.code = code;
-  return error;
 }

@@ -60,7 +60,10 @@ for (const capability of ['ReactFlow', 'saveLayout', 'onNodeDoubleClick', 'autoL
 const execution = read('apps/web/src/features/nodes/renderers/ExecutionWorkspace.tsx');
 for (const capability of ['<Editor', '/files/content', '/diff?path=', '/test-tasks'])
   assert.ok(execution.includes(capability), `${capability} connected`);
-const nodeWorkspace = read('apps/web/src/features/nodes/NodeWorkspacePage.tsx');
+const nodeWorkspace = [
+  read('apps/web/src/features/nodes/NodeWorkspacePage.tsx'),
+  read('apps/web/src/features/nodes/NodeWorkspaceController.ts')
+].join('\n');
 for (const capability of ['/change-proposals', '/run/start', 'node_run_authorization', '运行节点'])
   assert.ok(nodeWorkspace.includes(capability), `Node workspace ${capability} connected`);
 const workbench = read('apps/web/src/features/assist/AssistWorkbench.tsx');
@@ -74,27 +77,34 @@ for (const capability of [
   'DiffReviewPanel'
 ])
   assert.ok(workbench.includes(capability), `Assist V3 ${capability} connected`);
-const timeline = read('apps/web/src/features/assist/TurnTimeline.tsx');
+const timelineSource = read('apps/web/src/features/assist/TurnTimeline.tsx');
+const timeline = [timelineSource, read('apps/web/src/features/assist/TurnCard.tsx')].join('\n');
 for (const capability of ['reconnecting', '正在重新连接', 'TurnRuntimeDetails'])
   assert.ok(timeline.includes(capability), `Assist timeline ${capability} connected`);
-assert.equal(timeline.includes('实时事件已连接'), false, 'healthy Assist event stream stays quiet');
-const composer = read('apps/web/src/features/assist/AssistComposer.tsx');
+assert.equal(timelineSource.includes('实时事件已连接'), false, 'healthy Assist event stream stays quiet');
+const composer = [
+  read('apps/web/src/features/assist/AssistComposer.tsx'),
+  read('apps/web/src/features/assist/AssistComposerControls.tsx')
+].join('\n');
 for (const capability of ['clarification-segment', 'composer-plan-toggle', '添加需求文档、设计稿或参考链接'])
   assert.ok(composer.includes(capability), `Assist composer ${capability} connected`);
-const brief = read('apps/web/src/features/projects/onboarding/BriefWorkspace.tsx');
+const brief = [
+  read('apps/web/src/features/projects/onboarding/BriefWorkspace.tsx'),
+  read('apps/web/src/features/projects/onboarding/BriefWorkspaceChrome.tsx')
+].join('\n');
 for (const capability of ['brief-mobile-tabs', 'brief-outline', 'workflow-draft-panel'])
   assert.ok(brief.includes(capability), `Brief workspace ${capability} connected`);
-const terminal = read('apps/web/src/features/assist/TerminalPanel.tsx');
+const terminal = [
+  read('apps/web/src/features/assist/TerminalPanel.tsx'),
+  read('apps/web/src/features/assist/TerminalRuntime.ts')
+].join('\n');
 for (const capability of ['@xterm/xterm', 'WebSocket', "signal: 'SIGINT'", "type: 'resize'"])
   assert.ok(terminal.includes(capability), `Terminal ${capability} connected`);
-const review = read('apps/web/src/features/assist/DiffReviewPanel.tsx');
-for (const capability of [
-  "name: 'viewed'",
-  "name: 'comments'",
-  "name: 'request-changes'",
-  "name: 'apply'",
-  "name: 'rollback'"
-])
+const review = [
+  read('apps/web/src/features/assist/DiffReviewPanel.tsx'),
+  read('apps/web/src/features/assist/DiffReviewController.ts')
+].join('\n');
+for (const capability of ["'viewed'", "'comments'", "'request-changes'", "'apply'", "'rollback'"])
   assert.ok(review.includes(capability), `Review ${capability} connected`);
 
 const runtimeFiles = walk('apps')

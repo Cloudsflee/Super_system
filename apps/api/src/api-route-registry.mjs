@@ -7,6 +7,7 @@ import { readStateSnapshot } from './state.mjs';
 import { maskSecretsDeep } from '../../../packages/shared/index.mjs';
 import { runAsActor } from './actor-context.mjs';
 import { authorizeApiRoute } from './project-governance-v19.mjs';
+import { operationHandle, scopesFor } from './api-operation-policy.mjs';
 export const MCP_MAPPINGS = Object.freeze(['tool', 'resource', 'async_adapter', 'external_callback', 'frontend_only']);
 export function createApiRouteRegistry(routes) {
   const operations = routes.map((item) => enrichRoute(item));
@@ -54,61 +55,84 @@ export async function executeRegistryOperation(registry, operationId, args = {},
   const requestId = context.requestId || `mcp_${randomUUID().replaceAll('-', '')}`;
   if (!operation) return failure(operationId, requestId, 404, { error: 'mcp_operation_not_found' });
   try {
-    validateArguments(operation, args);
-    args = bindInternalCodexTaskLease(context.client, args);
-    if (operation.mapping === 'external_callback' || operation.mapping === 'frontend_only')
-      throw new HttpError(403, { error: 'mcp_operation_not_callable', mapping: operation.mapping });
-    if (context.client) {
-      assertScopes(context.client, operation.required_scopes);
-      const projectId = await resolveProjectId(operation, args, context.client);
-      if (
-        operation.project_scoped &&
-        context.client.project_allowlist?.length &&
-        !projectId &&
-        operation.pattern !== '/projects'
-      )
-        throw new HttpError(400, { error: 'mcp_project_context_required', operation_id: operation.operation_id });
-      assertProjectAccess(context.client, projectId);
-      if (operation.project_scoped && !context.client.subject_user_id)
-        throw new HttpError(403, { error: 'mcp_subject_user_required' });
-      if (!isInvitationAcceptance(operation.pattern) && (context.client.subject_user_id || operation.method !== 'GET'))
-        await runAsActor(context.client.subject_user_id || null, () =>
-          authorizeApiRoute(operation, invocationContext(operation, args, requestId, context), {
-            strict: Boolean(context.client.subject_user_id),
-            state: null
-          })
-        );
-    }
-    if (operation.stream_response) {
-      return success(operation, requestId, 202, null, {
-        type: operation.mapping === 'async_adapter' ? 'operation_events' : 'resource',
-        uri: resourceUriFor(operation, args),
-        cursor: args.query?.after || null
-      });
-    }
-    const invocation = await runAsActor(context.client?.subject_user_id || null, () =>
-      invokeHandler(operation, args, requestId, context)
-    );
-    let data = invocation.data;
-    if (context.client?.project_allowlist?.length && operation.pattern === '/projects' && Array.isArray(data))
-      data = data.filter((project) => context.client.project_allowlist.includes(project.id));
-    if (invocation.status >= 400) return failure(operation.operation_id, requestId, invocation.status, data);
-    if (invocation.status === 202)
-      return success(operation, requestId, invocation.status, null, operationHandle(operation, data));
-    return success(operation, requestId, invocation.status, data);
+    const boundArgs = prepareRegistryArguments(operation, args, context.client);
+    await authorizeRegistryClient(operation, boundArgs, context, requestId);
+    return await invokeRegistryOperation(operation, boundArgs, context, requestId);
   } catch (error) {
-    if (error instanceof HttpError)
-      return failure(
-        operation.operation_id,
-        requestId,
-        error.status,
-        typeof error.payload === 'string' ? { error: error.payload } : error.payload
-      );
-    return failure(operation.operation_id, requestId, 500, {
-      error: 'mcp_operation_failed',
-      message: error?.message || String(error)
-    });
+    return registryOperationFailure(operation, requestId, error);
   }
+}
+
+function prepareRegistryArguments(operation, args, client) {
+  validateArguments(operation, args);
+  const boundArgs = bindInternalCodexTaskLease(client, args);
+  if (['external_callback', 'frontend_only'].includes(operation.mapping))
+    throw new HttpError(403, { error: 'mcp_operation_not_callable', mapping: operation.mapping });
+  return boundArgs;
+}
+
+async function authorizeRegistryClient(operation, args, context, requestId) {
+  const client = context.client;
+  if (!client) return;
+  assertScopes(client, operation.required_scopes);
+  const projectId = await resolveProjectId(operation, args, client);
+  assertRegistryProjectContext(operation, client, projectId);
+  assertProjectAccess(client, projectId);
+  if (operation.project_scoped && !client.subject_user_id)
+    throw new HttpError(403, { error: 'mcp_subject_user_required' });
+  if (shouldAuthorizeRoute(operation, client))
+    await runAsActor(client.subject_user_id || null, () =>
+      authorizeApiRoute(operation, invocationContext(operation, args, requestId, context), {
+        strict: Boolean(client.subject_user_id),
+        state: null
+      })
+    );
+}
+
+function assertRegistryProjectContext(operation, client, projectId) {
+  const contextRequired =
+    operation.project_scoped && client.project_allowlist?.length && !projectId && operation.pattern !== '/projects';
+  if (contextRequired)
+    throw new HttpError(400, { error: 'mcp_project_context_required', operation_id: operation.operation_id });
+}
+
+function shouldAuthorizeRoute(operation, client) {
+  return !isInvitationAcceptance(operation.pattern) && (client.subject_user_id || operation.method !== 'GET');
+}
+
+async function invokeRegistryOperation(operation, args, context, requestId) {
+  if (operation.stream_response) return streamOperationSuccess(operation, args, requestId);
+  const invocation = await runAsActor(context.client?.subject_user_id || null, () =>
+      invokeHandler(operation, args, requestId, context)
+    ),
+    data = filterProjectCollection(invocation.data, operation, context.client);
+  if (invocation.status >= 400) return failure(operation.operation_id, requestId, invocation.status, data);
+  if (invocation.status === 202) return success(operation, requestId, invocation.status, null, operationHandle(data));
+  return success(operation, requestId, invocation.status, data);
+}
+
+function streamOperationSuccess(operation, args, requestId) {
+  return success(operation, requestId, 202, null, {
+    type: operation.mapping === 'async_adapter' ? 'operation_events' : 'resource',
+    uri: resourceUriFor(operation, args),
+    cursor: args.query?.after || null
+  });
+}
+
+function filterProjectCollection(data, operation, client) {
+  if (!client?.project_allowlist?.length || operation.pattern !== '/projects' || !Array.isArray(data)) return data;
+  return data.filter((project) => client.project_allowlist.includes(project.id));
+}
+
+function registryOperationFailure(operation, requestId, error) {
+  if (error instanceof HttpError) {
+    const payload = typeof error.payload === 'string' ? { error: error.payload } : error.payload;
+    return failure(operation.operation_id, requestId, error.status, payload);
+  }
+  return failure(operation.operation_id, requestId, 500, {
+    error: 'mcp_operation_failed',
+    message: error?.message || String(error)
+  });
 }
 function enrichRoute(item) {
   const domain = classifyDomain(item.pattern);
@@ -520,42 +544,6 @@ function classifyMapping(item) {
   return item.method === 'GET' ? 'resource' : 'tool';
 }
 
-function scopesFor(item, domain) {
-  if (domain === 'context')
-    return [item.pattern.endsWith('/rebuild') || item.pattern.endsWith('/status') ? 'context:admin' : 'context:read'];
-  if (item.pattern === '/projects' && item.method === 'POST') return ['project:create'];
-  if (item.pattern.endsWith('/share') && item.method === 'POST') return ['project:share'];
-  if (item.pattern.endsWith('/project-invitations/:id/accept')) return ['project:read'];
-  if (item.pattern.endsWith('/project-invitations/:id/revoke')) return ['project:share'];
-  if (/\/(?:members|memberships|invitations)(?:\/|$)/.test(item.pattern) && item.method !== 'GET')
-    return ['project:share'];
-  if (/exchange-(?:requests|grants)|\/exchanges(?:$|\/)/.test(item.pattern))
-    return [`exchange:${item.method === 'GET' ? 'read' : 'write'}`];
-  if (/repository-deletion-intents|\/deletion-intent(?:s)?$/.test(item.pattern))
-    return [
-      item.method === 'GET' ? 'github:read' : 'github:write',
-      ...(item.pattern.endsWith('/execute') || item.method === 'DELETE' ? ['destructive:execute'] : [])
-    ];
-  if (item.pattern.startsWith('/mcp/clients')) return ['mcp:admin'];
-  if (item.pattern.startsWith('/setup') && item.method !== 'GET') return ['setup:admin'];
-  if (/^\/approvals\/:type\/:id\/decision$/.test(item.pattern)) return ['approval:decide'];
-  if (/^\/(?:tasks|workstreams)\/:id\/review$/.test(item.pattern)) return ['workflow:write', 'approval:decide'];
-  if (/^\/task-executions\/:id\/human-approve$/.test(item.pattern)) return ['project:write', 'approval:decide'];
-  if (/^\/workflow-executions\/:id\/outcome-waivers/.test(item.pattern)) return ['project:approve', 'approval:decide'];
-  if (/^\/task-executions\/:id\/stages\/:stage\/replay$/.test(item.pattern)) return ['project:run'];
-  if (/^\/asset-versions\/:id\/attestations$/.test(item.pattern) && item.method === 'POST')
-    return ['assets:write', 'approval:decide'];
-  if (/^\/workstreams\/:id\/delivery-policies$/.test(item.pattern) && item.method === 'POST')
-    return ['github:write', 'approval:decide'];
-  if (/^\/pull-request-intents\/:id\/(?:approve|execute)$/.test(item.pattern))
-    return ['github:write', 'approval:decide'];
-  if (domain === 'admin') return [item.method === 'GET' ? 'setup:read' : 'setup:admin'];
-  const scopeDomain = { projects: 'project', governance: 'governance' }[domain] || domain;
-  const scopes = [`${scopeDomain}:${item.method === 'GET' ? 'read' : 'write'}`];
-  if (isDestructive(item)) scopes.push('destructive:execute');
-  return scopes;
-}
-
 function riskFor(item, scopes) {
   if (scopes.includes('destructive:execute') || scopes.includes('approval:decide')) return 'critical';
   if (item.method === 'GET') return 'low';
@@ -568,14 +556,6 @@ function idempotencyFor(item) {
   if (item.method === 'GET') return 'safe';
   if (['PUT', 'DELETE'].includes(item.method)) return 'idempotent';
   return item.method === 'POST' ? 'key_required' : 'conditional';
-}
-function isDestructive(item) {
-  return (
-    /\/(?:purge|reset|disconnect)$/.test(item.pattern) ||
-    item.pattern === '/projects/:id/trash' ||
-    (item.method === 'DELETE' &&
-      (item.pattern === '/projects/:id' || /^\/(?:mcp\/clients|codex\/profiles)/.test(item.pattern)))
-  );
 }
 function isEventStream(item) {
   return item.method === 'GET' && /\/events$/.test(item.pattern);
@@ -654,23 +634,6 @@ function resourceUriFor(operation, args) {
 }
 function buildPath(pattern, params) {
   return pattern.replace(/:([^/]+)/g, (_, key) => encodeURIComponent(String(params[key] || '')));
-}
-function operationHandle(operation, data) {
-  const id =
-    data?.operation?.id || data?.turn?.id || data?.task?.id || data?.run?.id || data?.build?.id || data?.id || null;
-  return {
-    type: 'operation',
-    id,
-    status:
-      data?.operation?.status ||
-      data?.turn?.status ||
-      data?.task?.status ||
-      data?.run?.status ||
-      data?.status ||
-      'accepted',
-    resource_uri: id ? `aiws://operations/${encodeURIComponent(id)}/events` : null,
-    data
-  };
 }
 function success(operation, requestId, status, data, handle = null) {
   return maskSecretsDeep({

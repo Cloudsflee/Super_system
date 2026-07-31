@@ -19,10 +19,13 @@ export {
   projectWriteUnavailableReason,
   readableProjectCwd
 } from './assist-project-readiness.mjs';
+export {
+  normalizeAssistModel,
+  normalizeAssistReasoning,
+  resolveAssistTurnConfiguration
+} from './assist-configuration-domain.mjs';
 export const TERMINAL_TURN_STATES = new Set(['completed', 'failed', 'stopped', 'interrupted']);
 export const TURN_MODES = new Set(['default', 'plan']);
-const CODEX_MODEL_PATTERN = /^[a-zA-Z0-9][a-zA-Z0-9._/+:@-]{0,199}$/;
-const REASONING_PATTERN = /^[a-zA-Z][a-zA-Z0-9._-]{0,63}$/;
 export function requireProject(state, projectId) {
   const project = state.projects.find((item) => item.id === projectId && !item.deleted_at);
   if (!project) throw new HttpError(404, { error: 'project_not_found' });
@@ -413,53 +416,6 @@ export function safeViewContext(value) {
 }
 function repositoryWorkspaceId(value) {
   return cleanText(value?.repository_workspace_id || value?.surface?.repository_workspace_id, 200) || null;
-}
-export function resolveAssistTurnConfiguration(state, input = {}, { allowMissingProfile = false } = {}) {
-  const configurationId = cleanText(input.configuration_id, 200);
-  let configuration = configurationId ? state.assist_configurations.find((item) => item.id === configurationId) : null;
-  if (configurationId && !configuration) throw new HttpError(404, { error: 'assist_configuration_not_found' });
-  const requestedId = cleanText(input.profile_id, 200);
-  const requestedProfile = requestedId
-    ? state.codex_profiles.find((item) => item.id === requestedId && item.status === 'validated')
-    : null;
-  if (requestedId && !requestedProfile) throw new HttpError(404, { error: 'validated_profile_not_found' });
-  if (!configuration && requestedProfile?.assist_configuration)
-    configuration = state.assist_configurations.find((item) => item.legacy_profile_id === requestedProfile.id) || {
-      id: null,
-      base_profile_id: requestedProfile.base_profile_id,
-      model: requestedProfile.model,
-      reasoning: requestedProfile.reasoning
-    };
-  const baseProfileId = configuration?.base_profile_id || requestedProfile?.base_profile_id || requestedProfile?.id;
-  const profile = baseProfileId
-    ? state.codex_profiles.find(
-        (item) => item.id === baseProfileId && item.status === 'validated' && !item.assist_configuration
-      )
-    : state.codex_profiles.find(
-        (item) => item.is_active && item.status === 'validated' && !item.assist_configuration
-      ) || state.codex_profiles.find((item) => item.status === 'validated' && !item.assist_configuration);
-  if (!profile && !allowMissingProfile) throw new HttpError(409, { error: 'active_codex_profile_required' });
-  const model = normalizeAssistModel(
-    input.model ??
-      configuration?.model ??
-      requestedProfile?.model ??
-      profile?.model ??
-      (allowMissingProfile ? 'test' : '')
-  );
-  const reasoning = normalizeAssistReasoning(
-    input.reasoning ?? configuration?.reasoning ?? requestedProfile?.reasoning ?? profile?.reasoning ?? 'high'
-  );
-  return { profile, configuration, model, reasoning };
-}
-export function normalizeAssistModel(value) {
-  const model = cleanText(value, 200);
-  if (!CODEX_MODEL_PATTERN.test(model)) throw new HttpError(400, { error: 'invalid_assist_model' });
-  return model;
-}
-export function normalizeAssistReasoning(value) {
-  const reasoning = cleanText(value, 64).toLowerCase();
-  if (!REASONING_PATTERN.test(reasoning)) throw new HttpError(400, { error: 'invalid_assist_reasoning' });
-  return reasoning;
 }
 export function publicProfile(profile) {
   return { id: profile.id, name: profile.name, model: profile.model, reasoning: profile.reasoning, kind: profile.kind };

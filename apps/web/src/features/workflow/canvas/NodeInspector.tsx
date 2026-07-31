@@ -28,6 +28,12 @@ type Props = {
   onAssist: () => void;
   onEditingChange?: (editing: boolean) => void;
 };
+type NodeDraft = {
+  title: string;
+  goal: string;
+  outcome: string;
+  category: WorkstreamCategory;
+};
 
 export function NodeInspector({
   node,
@@ -147,56 +153,69 @@ export function NodeInspector({
         </section>
         <NodeStats node={node} />
         {editing && (
-          <section className="node-edit">
-            <label>
-              类别
-              <select
-                value={draft.category}
-                onChange={(event) => setDraft({ ...draft, category: event.target.value as WorkstreamCategory })}
-              >
-                <option value="deliverable">交付成果</option>
-                <option value="decision">关键决策</option>
-                <option value="coordination">协同成果</option>
-                <option value="operation">运营成果</option>
-              </select>
-            </label>
-            <label>
-              标题
-              <input value={draft.title} onChange={(event) => setDraft({ ...draft, title: event.target.value })} />
-            </label>
-            <label>
-              成果
-              <textarea
-                rows={5}
-                value={draft.outcome}
-                onChange={(event) => setDraft({ ...draft, outcome: event.target.value, goal: event.target.value })}
-              />
-            </label>
-            <footer>
-              <button
-                className="button secondary"
-                onClick={() => {
-                  setDraft({
-                    title: node.title,
-                    goal: node.goal,
-                    outcome: node.outcome || node.goal,
-                    category: node.category || 'deliverable'
-                  });
-                  setEditing(false);
-                  onEditingChange(false);
-                }}
-              >
-                取消
-              </button>
-              <button className="button primary" onClick={() => void propose('update_node')}>
-                <GitPullRequest size={15} />
-                提交提案
-              </button>
-            </footer>
-          </section>
+          <NodeEditor
+            draft={draft}
+            onChange={setDraft}
+            onCancel={() => {
+              setDraft(nodeDraft(node));
+              setEditing(false);
+              onEditingChange(false);
+            }}
+            onSubmit={() => void propose('update_node')}
+          />
         )}
       </div>
     </aside>
+  );
+}
+
+function NodeEditor({
+  draft,
+  onChange,
+  onCancel,
+  onSubmit
+}: {
+  draft: NodeDraft;
+  onChange: (value: NodeDraft) => void;
+  onCancel: () => void;
+  onSubmit: () => void;
+}) {
+  return (
+    <section className="node-edit">
+      <label>
+        类别
+        <select
+          value={draft.category}
+          onChange={(event) => onChange({ ...draft, category: event.target.value as WorkstreamCategory })}
+        >
+          <option value="deliverable">交付成果</option>
+          <option value="decision">关键决策</option>
+          <option value="coordination">协同成果</option>
+          <option value="operation">运营成果</option>
+        </select>
+      </label>
+      <label>
+        标题
+        <input value={draft.title} onChange={(event) => onChange({ ...draft, title: event.target.value })} />
+      </label>
+      <label>
+        成果
+        <textarea
+          rows={5}
+          value={draft.outcome}
+          onChange={(event) => onChange({ ...draft, outcome: event.target.value, goal: event.target.value })}
+        />
+      </label>
+      <footer>
+        <button className="button secondary" onClick={onCancel}>
+          取消
+        </button>
+        <button className="button primary" onClick={onSubmit}>
+          <GitPullRequest size={15} />
+          提交提案
+        </button>
+      </footer>
+    </section>
   );
 }
 
@@ -255,4 +274,13 @@ function workstreamLabel(value?: string | null) {
       >
     )[value || ''] || '成果节点'
   );
+}
+
+function nodeDraft(node: WorkflowNode): NodeDraft {
+  return {
+    title: node.title,
+    goal: node.goal,
+    outcome: node.outcome || node.goal,
+    category: node.category || 'deliverable'
+  };
 }

@@ -5,6 +5,17 @@ import {
   contributionRouteHash,
   contributionRouteId
 } from '../../../packages/shared/src/task-contributions.mjs';
+import {
+  clean,
+  dependencyIds,
+  normalizeEffects,
+  normalizeIdList,
+  normalizeRoutes,
+  normalizeTextList,
+  selectorIncludesOutput
+} from './task-handoff-normalization.mjs';
+
+export { normalizeIdList };
 
 export const TASK_HANDOFF_SCHEMA = 'aiws.task_handoff.v4';
 export const LEGACY_CONTRIBUTION_TASK_HANDOFF_SCHEMA = 'aiws.task_handoff.v3';
@@ -182,28 +193,6 @@ function handoffRelations(output, inputs, contexts) {
       return { type: relation?.type || 'informed_by', document_version_id: documentVersionId };
     })
   ];
-}
-
-export function normalizeIdList(values, { rejectInvalid = false } = {}) {
-  if (values == null) return [];
-  if (!Array.isArray(values)) {
-    if (rejectInvalid) throw new TypeError('id_list_must_be_array');
-    return [];
-  }
-  const result = [],
-    seen = new Set();
-  for (const value of values) {
-    if (value == null || value === '') continue;
-    if (typeof value !== 'string') {
-      if (rejectInvalid) throw new TypeError('id_must_be_string');
-      continue;
-    }
-    const normalized = value.trim();
-    if (!normalized || seen.has(normalized)) continue;
-    seen.add(normalized);
-    result.push(normalized);
-  }
-  return result.sort();
 }
 
 export function normalizeDispositions(values, idKey = 'version_id') {
@@ -395,139 +384,116 @@ function handoffOutputGaps(execution, outputSlots, exportedOutputs, effectAware)
   ];
 }
 
-function selectorIncludesOutput(task, selector, outputKey) {
-  if (selector === outputKey) return true;
-  if (selector !== 'required_outputs') return false;
-  const required = (task.output_slots || []).filter((item) => item.required !== false);
-  return required.length === 1 && required[0].key === outputKey;
-}
-
-function dependencyIds(node) {
-  const source = Array.isArray(node?.dependency_ids) ? node.dependency_ids : node?.dependencies || [];
-  return source.map((item) => (typeof item === 'string' ? item : item?.node_id || item?.id)).filter(Boolean);
-}
-
-function normalizeEffects(values, identityKey) {
-  return (Array.isArray(values) ? values : [])
-    .filter((item) => item && typeof item === 'object' && clean(item[identityKey], 200))
-    .map((item) => ({
-      ...structuredClone(item),
-      [identityKey]: clean(item[identityKey], 200),
-      ...(identityKey === 'input_key' ? { version_ids: normalizeIdList(item.version_ids) } : {}),
-      output_keys: normalizeIdList(item.output_keys),
-      ...(item.criterion_ids ? { criterion_ids: normalizeIdList(item.criterion_ids) } : {}),
-      statement: clean(item.statement, 2000),
-      evidence_refs: normalizeTextList(item.evidence_refs),
-      ...(item.source_receipts ? { source_receipts: normalizeTextList(item.source_receipts) } : {})
-    }))
-    .sort(
-      (left, right) =>
-        left[identityKey].localeCompare(right[identityKey]) ||
-        String(left.effect).localeCompare(String(right.effect)) ||
-        left.output_keys.join(',').localeCompare(right.output_keys.join(','))
-    );
-}
-
-function normalizeRoutes(values) {
-  return (Array.isArray(values) ? values : [])
-    .filter((item) => item && typeof item === 'object' && clean(item.route_type, 80))
-    .map((item) => ({
-      ...structuredClone(item),
-      target_output_keys: normalizeIdList(item.target_output_keys),
-      ...(item.contribution_id ? { target_criterion_ids: normalizeIdList(item.target_criterion_ids) } : {})
-    }))
-    .sort(
-      (left, right) =>
-        String(left.route_type).localeCompare(String(right.route_type)) ||
-        String(left.consumer_task_id || '').localeCompare(String(right.consumer_task_id || '')) ||
-        String(left.input_key || '').localeCompare(String(right.input_key || ''))
-    );
-}
-
 export function verifyContributionRoutes(task, input, bindings) {
   const contribution = input?.contribution;
-  if (
-    contribution?.schema_version !== INPUT_CONTRIBUTION_SCHEMA ||
-    !['dependency', 'workstream_dependency'].includes(input?.source)
-  )
-    return { ok: true, routes: [] };
+  if (!requiresContributionRouteVerification(input, contribution)) return { ok: true, routes: [] };
   const verified = [];
   for (const binding of bindings || []) {
-    const manifest = binding?.handoff_manifest,
-      { manifest_sha256: declaredManifestHash, ...manifestBody } = manifest || {},
-      actualManifestHash = manifest ? hashString(JSON.stringify(manifestBody)) : null,
-      routes = manifest?.delivery?.routes || [],
-      sameConsumer = routes.filter(
-        (route) =>
-          route.consumer_task_id === task?.id &&
-          route.input_key === input.key &&
-          route.output_key === binding.output_key
-      ),
-      route = sameConsumer.find((item) => item.contribution_id === contribution.id);
-    if (
-      ![TASK_HANDOFF_SCHEMA, LEGACY_CONTRIBUTION_TASK_HANDOFF_SCHEMA].includes(manifest?.schema_version) ||
-      !declaredManifestHash ||
-      actualManifestHash !== declaredManifestHash ||
-      (binding.handoff_manifest_sha256 && binding.handoff_manifest_sha256 !== declaredManifestHash)
-    )
-      return {
-        ok: false,
-        code: 'dependency_contribution_manifest_invalid',
-        input_key: input.key,
-        contribution_id: contribution.id,
-        version_id: binding.version_id || null
-      };
-    if (!route)
-      return {
-        ok: false,
-        code: sameConsumer.length ? 'dependency_contribution_route_stale' : 'dependency_contribution_route_missing',
-        input_key: input.key,
-        contribution_id: contribution.id,
-        producer_task_id: manifest?.producer?.task_id || binding?.producer_task_id || null,
-        output_key: binding.output_key || null,
-        available_contribution_ids: normalizeIdList(sameConsumer.map((item) => item.contribution_id))
-      };
-    const expected = {
-      ...route,
-      producer_task_id: manifest?.producer?.task_id || route.producer_task_id,
-      output_key: binding.output_key,
-      consumer_task_id: task.id,
-      input_key: input.key,
-      contribution_id: contribution.id,
-      effect: contribution.effect,
-      expected_effect: contribution.expected_effect,
-      target_output_keys: contribution.target_output_keys,
-      target_criterion_ids: contribution.target_criterion_ids
-    };
-    if (
-      route.route_id !== contributionRouteId(expected) ||
-      route.route_contract_hash !== contributionRouteHash(expected)
-    )
-      return {
-        ok: false,
-        code: 'dependency_contribution_route_stale',
-        input_key: input.key,
-        contribution_id: contribution.id,
-        producer_task_id: manifest?.producer?.task_id || null,
-        output_key: binding.output_key || null
-      };
-    verified.push({
-      route_id: route.route_id,
-      route_contract_hash: route.route_contract_hash,
-      contribution_id: contribution.id,
-      version_id: binding.version_id
-    });
+    const result = verifyContributionBinding(task, input, contribution, binding);
+    if (!result.ok) return result;
+    verified.push(result.route);
   }
   return { ok: true, routes: verified };
 }
 
-function normalizeTextList(values) {
-  return (Array.isArray(values) ? values : []).map((value) => clean(value, 1000)).filter(Boolean);
+function requiresContributionRouteVerification(input, contribution) {
+  return (
+    contribution?.schema_version === INPUT_CONTRIBUTION_SCHEMA &&
+    ['dependency', 'workstream_dependency'].includes(input?.source)
+  );
 }
 
-function clean(value, max) {
-  return String(value ?? '')
-    .replace(/\0/g, '')
-    .trim()
-    .slice(0, max);
+function verifyContributionBinding(task, input, contribution, binding) {
+  const manifest = binding?.handoff_manifest,
+    hash = contributionManifestHash(manifest);
+  if (!validContributionManifest(manifest, binding, hash))
+    return invalidContributionManifest(input, contribution, binding);
+
+  const sameConsumer = matchingContributionRoutes(manifest, task, input, binding),
+    route = sameConsumer.find((item) => item.contribution_id === contribution.id);
+  if (!route) return missingContributionRoute(input, contribution, binding, manifest, sameConsumer);
+  if (!validContributionRoute(route, task, input, contribution, binding, manifest))
+    return staleContributionRoute(input, contribution, binding, manifest);
+  return {
+    ok: true,
+    route: {
+      route_id: route.route_id,
+      route_contract_hash: route.route_contract_hash,
+      contribution_id: contribution.id,
+      version_id: binding.version_id
+    }
+  };
+}
+
+function contributionManifestHash(manifest) {
+  if (!manifest) return { declared: null, actual: null };
+  const { manifest_sha256: declared, ...body } = manifest;
+  return { declared, actual: hashString(JSON.stringify(body)) };
+}
+
+function validContributionManifest(manifest, binding, hash) {
+  return (
+    [TASK_HANDOFF_SCHEMA, LEGACY_CONTRIBUTION_TASK_HANDOFF_SCHEMA].includes(manifest?.schema_version) &&
+    Boolean(hash.declared) &&
+    hash.actual === hash.declared &&
+    (!binding.handoff_manifest_sha256 || binding.handoff_manifest_sha256 === hash.declared)
+  );
+}
+
+function matchingContributionRoutes(manifest, task, input, binding) {
+  return (manifest?.delivery?.routes || []).filter(
+    (route) =>
+      route.consumer_task_id === task?.id && route.input_key === input.key && route.output_key === binding.output_key
+  );
+}
+
+function validContributionRoute(route, task, input, contribution, binding, manifest) {
+  const expected = {
+    ...route,
+    producer_task_id: manifest?.producer?.task_id || route.producer_task_id,
+    output_key: binding.output_key,
+    consumer_task_id: task.id,
+    input_key: input.key,
+    contribution_id: contribution.id,
+    effect: contribution.effect,
+    expected_effect: contribution.expected_effect,
+    target_output_keys: contribution.target_output_keys,
+    target_criterion_ids: contribution.target_criterion_ids
+  };
+  return (
+    route.route_id === contributionRouteId(expected) && route.route_contract_hash === contributionRouteHash(expected)
+  );
+}
+
+function invalidContributionManifest(input, contribution, binding) {
+  return {
+    ok: false,
+    code: 'dependency_contribution_manifest_invalid',
+    input_key: input.key,
+    contribution_id: contribution.id,
+    version_id: binding.version_id || null
+  };
+}
+
+function missingContributionRoute(input, contribution, binding, manifest, sameConsumer) {
+  return {
+    ok: false,
+    code: sameConsumer.length ? 'dependency_contribution_route_stale' : 'dependency_contribution_route_missing',
+    input_key: input.key,
+    contribution_id: contribution.id,
+    producer_task_id: manifest?.producer?.task_id || binding?.producer_task_id || null,
+    output_key: binding.output_key || null,
+    available_contribution_ids: normalizeIdList(sameConsumer.map((item) => item.contribution_id))
+  };
+}
+
+function staleContributionRoute(input, contribution, binding, manifest) {
+  return {
+    ok: false,
+    code: 'dependency_contribution_route_stale',
+    input_key: input.key,
+    contribution_id: contribution.id,
+    producer_task_id: manifest?.producer?.task_id || null,
+    output_key: binding.output_key || null
+  };
 }

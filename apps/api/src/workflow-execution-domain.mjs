@@ -3,11 +3,10 @@ import { randomUUID } from 'node:crypto';
 import { hashString, id, now } from '../../../packages/shared/index.mjs';
 import { HttpError } from './http.mjs';
 import { projectWorkflowExecutionStateInState } from './workflow-execution-projection.mjs';
-import { inspectWorkstreamDependencyHandoff, selectTaskOutputBindings } from './task-execution-context.mjs';
 import { taskHandoffDiagnostics } from './task-handoff.mjs';
 import { assertRequiredContributionAuthority } from './task-contribution-authority.mjs';
 import { executorForTask, normalizeWorkflowExecutorConfig } from './workflow-executor-config.mjs';
-import { dependencyIds, workflowNodeDependsOn } from './workflow-graph-validation.mjs';
+import { dependencyIds } from './workflow-graph-validation.mjs';
 import {
   activeTaskExecutionForTask,
   assertExecutionRevisionCurrent,
@@ -20,59 +19,53 @@ import {
   currentTaskExecutions,
   executionEvidence,
   latestExecutionForTask,
-  lineForExecution,
   normalizeRepositorySelection,
+  pendingTaskExecution,
   queueCapacityAvailable,
   releaseRepositoryCapacity,
   repositoryLinesFor,
   requireTaskExecution,
   requireWorkflowExecution,
   requiresRepositoryLine,
-  requiredOutputsAccepted,
+  restoreLegacyRetryRepositoryLine,
   reserveRepositoryCapacity,
   taskExecutionsFor,
   taskOrder,
   workflowDefinitionSnapshot,
+  appendExecutionEvent,
   workflowExecutionSnapshot as snapshot
 } from './workflow-execution-support.mjs';
+import { taskExecutionReadiness } from './workflow-execution-readiness.mjs';
 import {
-  failureEnvelope,
-  parseFailureEnvelope,
-  parseOutcomeContract,
-  parseQualityRubric,
-  protocolHash
-} from '../../../packages/execution-protocol/src/index.mjs';
+  ACTIVE_WORKFLOW_EXECUTION_STATUSES,
+  TASK_EXECUTION_STATUSES,
+  TERMINAL_TASK_EXECUTION_STATUSES
+} from './workflow-execution-status.mjs';
+import { failureEnvelope, parseFailureEnvelope } from '../../../packages/execution-protocol/src/index.mjs';
 import { materializeOutcomeRequirementsInState } from './outcome-service.mjs';
 import {
   isLegacyStrandedRetry,
   legacyPromotedExecution,
-  restoreLegacyRetryCompatibility,
   retryInputExpectation,
   sanitizeLegacyExecutorConfig
 } from './workflow-retry-compatibility.mjs';
+import { requireWorkflowExecutionProtocols } from './workflow-execution-protocols.mjs';
 export { integrationEvidenceFor } from './workflow-integration-evidence.mjs';
+export { taskExecutionReadiness } from './workflow-execution-readiness.mjs';
 export {
+  appendExecutionEvent,
   activeTaskExecutionForTask,
   currentTaskExecutions,
   requireTaskExecution,
   requireWorkflowExecution
 } from './workflow-execution-support.mjs';
+export {
+  ACTIVE_WORKFLOW_EXECUTION_STATUSES,
+  TASK_EXECUTION_STATUSES,
+  TERMINAL_TASK_EXECUTION_STATUSES
+} from './workflow-execution-status.mjs';
 
 export { projectWorkflowExecutionStateInState } from './workflow-execution-projection.mjs';
-export const TASK_EXECUTION_STATUSES = Object.freeze([
-  'pending',
-  'ready',
-  'queued',
-  'running',
-  'verifying',
-  'awaiting_human',
-  'completed',
-  'failed',
-  'cancelled',
-  'superseded'
-]);
-export const TERMINAL_TASK_EXECUTION_STATUSES = Object.freeze(['completed', 'failed', 'cancelled', 'superseded']);
-export const ACTIVE_WORKFLOW_EXECUTION_STATUSES = Object.freeze(['running', 'paused']);
 const TERMINAL = new Set(TERMINAL_TASK_EXECUTION_STATUSES);
 const TRANSITIONS = Object.freeze({
   pending: new Set(['ready', 'cancelled', 'superseded']),
@@ -296,101 +289,6 @@ export function reconcileWorkflowExecutionInState(state, workflowExecutionId, { 
     .map((item) => ({ task_execution_id: item.id, task_id: item.task_id, reasons: item.readiness.reasons }));
   workflowExecution.updated_at = now();
   return snapshot(state, workflowExecution);
-}
-export function taskExecutionReadiness(state, execution) {
-  const workflowExecution = state.workflow_executions.find((item) => item.id === execution.workflow_execution_id),
-    task = state.workflow_nodes.find((item) => item.id === execution.task_id),
-    reasons = [];
-  if (!workflowExecution || !task) return { ready: false, reasons: [{ code: 'execution_scope_missing' }] };
-  if (workflowExecution.status === 'paused') reasons.push({ code: 'workflow_paused' });
-  if (Number(task.execution_revision || 1) !== execution.task_revision)
-    reasons.push({
-      code: 'task_revision_superseded',
-      expected: execution.task_revision,
-      actual: Number(task.execution_revision || 1)
-    });
-  if (task.current_contract_id !== execution.contract_id)
-    reasons.push({ code: 'contract_superseded', expected: execution.contract_id, actual: task.current_contract_id });
-  for (const dependencyId of dependencyIds(task)) {
-    const dependency = latestExecutionForTask(state, execution.workflow_execution_id, dependencyId);
-    if (!dependency || dependency.status !== 'completed')
-      reasons.push({
-        code: 'task_dependency_waiting',
-        dependency_task_id: dependencyId,
-        status: dependency?.status || 'missing'
-      });
-    else if (!requiredOutputsAccepted(state, dependency))
-      reasons.push({ code: 'task_dependency_outputs_unaccepted', dependency_task_id: dependencyId });
-  }
-  const workstream = state.workflow_nodes.find((item) => item.id === execution.workstream_id);
-  for (const dependencyWorkstreamId of dependencyIds(workstream)) {
-    const handoff = inspectWorkstreamDependencyHandoff(state, {
-      projectId: execution.project_id,
-      workflowId: execution.workflow_id,
-      workflowExecutionId: execution.workflow_execution_id,
-      workstreamId: dependencyWorkstreamId,
-      strict: true,
-      receiptOnly: true
-    });
-    if (!handoff.ready)
-      reasons.push({
-        code: 'workstream_dependency_waiting',
-        dependency_workstream_id: dependencyWorkstreamId,
-        detail_code: handoff.reason.code
-      });
-  }
-  const contract = state.node_contracts.find((item) => item.id === execution.contract_id);
-  for (const slot of contract?.expected_inputs || []) {
-    if (slot.required === false) continue;
-    if (slot.source === 'dependency') {
-      const dependencyTaskId = slot.ref_id || dependencyIds(task)[0],
-        dependency = latestExecutionForTask(state, execution.workflow_execution_id, dependencyTaskId),
-        dependencyTask = state.workflow_nodes.find((item) => item.id === dependencyTaskId),
-        bindings = selectTaskOutputBindings(state, dependencyTask, dependency, slot.selector);
-      if (!bindings.length) reasons.push({ code: 'required_input_missing', slot_key: slot.key });
-      else
-        for (const binding of bindings)
-          if (!bindingIsConsumable(state, binding))
-            reasons.push({ code: 'input_asset_unverified', slot_key: slot.key, version_id: binding.version_id });
-    }
-    if (slot.source === 'workstream_dependency') {
-      const handoff = inspectWorkstreamDependencyHandoff(state, {
-        projectId: execution.project_id,
-        workflowId: execution.workflow_id,
-        workflowExecutionId: execution.workflow_execution_id,
-        workstreamId: slot.ref_id,
-        selector: slot.selector || 'required_outputs',
-        strict: true
-      });
-      if (!handoff.ready)
-        reasons.push({ code: 'workstream_input_missing', slot_key: slot.key, detail_code: handoff.reason.code });
-    }
-  }
-  if (requiresRepositoryLine(execution)) {
-    const line = lineForExecution(state, execution);
-    if (!line) reasons.push({ code: 'repository_line_missing' });
-    else if (!['active', 'integrating'].includes(line.status))
-      reasons.push({ code: 'repository_line_not_active', status: line.status });
-    else if (!line.checkout_path || !line.head_sha)
-      reasons.push({ code: 'repository_line_provisioning', repository_line_id: line.id });
-  }
-  if (execution.executor === 'repository_integrate') {
-    const siblings = currentTaskExecutions(state, execution.workflow_execution_id).filter(
-      (item) => item.workstream_id === execution.workstream_id && item.id !== execution.id
-    );
-    const incomplete = siblings.filter(
-      (item) =>
-        item.status !== 'completed' && !workflowNodeDependsOn(state.workflow_nodes, item.task_id, execution.task_id)
-    );
-    if (incomplete.length)
-      reasons.push({ code: 'workstream_tasks_incomplete', task_execution_ids: incomplete.map((item) => item.id) });
-  }
-  return {
-    ready: reasons.length === 0,
-    reasons,
-    checked_at: now(),
-    handoff: taskHandoffDiagnostics(state, execution)
-  };
 }
 export function transitionTaskExecutionInState(state, executionOrId, nextStatus, data = {}) {
   const execution = typeof executionOrId === 'string' ? requireTaskExecution(state, executionOrId) : executionOrId;
@@ -650,24 +548,6 @@ export function retryTaskExecutionInState(state, taskExecutionId, actorId) {
   return created;
 }
 
-function restoreLegacyRetryRepositoryLine(state, previous, retry, actorId) {
-  const restored = restoreLegacyRetryCompatibility(state, previous, retry);
-  if (!restored) return;
-  appendExecutionEvent(
-    state,
-    state.workflow_executions.find((item) => item.id === previous.workflow_execution_id),
-    retry,
-    'repository_line.retry_head_restored',
-    {
-      repository_line_id: restored.line.id,
-      previous_head_sha: restored.previous_head_sha,
-      expected_head_sha: restored.expected_head_sha
-    },
-    'user',
-    actorId
-  );
-}
-
 function recoverLegacyStrandedRetry(state, previous, retry, actorId) {
   const workflow = state.workflow_executions.find((item) => item.id === retry.workflow_execution_id);
   if (!isLegacyStrandedRetry(state, previous, retry, workflow)) return null;
@@ -769,47 +649,6 @@ function enrollRetryContinuationTasks(state, workflowExecution, originTask, acto
   return enrolled;
 }
 
-function pendingTaskExecution(workflowExecution, task, contract, actorId, createdAt) {
-  return {
-    id: id('tex'),
-    workflow_execution_id: workflowExecution.id,
-    project_id: workflowExecution.project_id,
-    workflow_id: workflowExecution.workflow_id,
-    workstream_id: task.parent_node_id,
-    task_id: task.id,
-    task_revision: Number(task.execution_revision || 1),
-    contract_id: contract.id,
-    contract_version: Number(contract.version || 1),
-    attempt: 1,
-    executor: executorForTask(task),
-    status: 'pending',
-    readiness: { ready: false, reasons: [{ code: 'reconcile_pending' }] },
-    context_snapshot: null,
-    input_snapshot_hash: null,
-    output_bindings: [],
-    consumed_inputs: [],
-    input_dispositions: [],
-    consumed_context_document_versions: [],
-    context_dispositions: [],
-    handoff_diagnostics: null,
-    acceptance_results: [],
-    evidence: {},
-    error_code: null,
-    retry_class: null,
-    failure: null,
-    current_stage: null,
-    stage_checkpoint_ids: [],
-    replay_count: 0,
-    lease: null,
-    supersedes_id: null,
-    queued_at: null,
-    started_at: null,
-    completed_at: null,
-    created_at: createdAt,
-    updated_at: createdAt,
-    created_by_user_id: actorId
-  };
-}
 export function pauseWorkflowExecutionInState(state, workflowExecutionId, actorId) {
   const execution = requireWorkflowExecution(state, workflowExecutionId);
   if (execution.status !== 'running')
@@ -855,64 +694,4 @@ export function cancelWorkflowExecutionInState(state, workflowExecutionId, actor
   appendExecutionEvent(state, execution, null, 'workflow.cancelled', {}, 'user', actorId);
   projectWorkflowExecutionStateInState(state, execution.id);
   return execution;
-}
-
-function requireWorkflowExecutionProtocols(workflow) {
-  if (!workflow.outcome_contract)
-    throw new HttpError(409, { error: 'workflow_outcome_contract_required', field_path: '/outcome_contract' });
-  if (!workflow.quality_rubric)
-    throw new HttpError(409, { error: 'workflow_quality_rubric_required', field_path: '/quality_rubric' });
-  try {
-    const contract = parseOutcomeContract(workflow.outcome_contract),
-      rubric = parseQualityRubric(workflow.quality_rubric),
-      outcomeContractHash = protocolHash(contract),
-      qualityRubricHash = protocolHash(rubric);
-    if (workflow.outcome_contract_hash && workflow.outcome_contract_hash !== outcomeContractHash)
-      throw new HttpError(409, { error: 'workflow_outcome_contract_hash_mismatch' });
-    if (workflow.quality_rubric_hash && workflow.quality_rubric_hash !== qualityRubricHash)
-      throw new HttpError(409, { error: 'workflow_quality_rubric_hash_mismatch' });
-    return {
-      contract,
-      rubric,
-      outcome_contract_hash: outcomeContractHash,
-      quality_rubric_hash: qualityRubricHash
-    };
-  } catch (error) {
-    if (error instanceof HttpError) throw error;
-    throw new HttpError(409, {
-      error: 'workflow_execution_protocol_invalid',
-      protocol: error?.payload?.protocol || null,
-      field_path: error?.payload?.field_path || '',
-      issues: error?.payload?.issues || []
-    });
-  }
-}
-export function appendExecutionEvent(
-  state,
-  workflowExecution,
-  taskExecution,
-  type,
-  data = {},
-  actorType = 'system',
-  actorId = null
-) {
-  if (!workflowExecution) throw new HttpError(404, { error: 'workflow_execution_not_found' });
-  const sequence =
-    state.execution_events
-      .filter((item) => item.workflow_execution_id === workflowExecution.id)
-      .reduce((max, item) => Math.max(max, Number(item.sequence) || 0), 0) + 1;
-  const event = {
-    id: id('exe'),
-    workflow_execution_id: workflowExecution.id,
-    task_execution_id: taskExecution?.id || null,
-    project_id: workflowExecution.project_id,
-    sequence,
-    type,
-    actor_type: actorType,
-    actor_id: actorId,
-    data: structuredClone(data || {}),
-    created_at: now()
-  };
-  state.execution_events.push(event);
-  return event;
 }

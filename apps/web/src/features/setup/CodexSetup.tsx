@@ -1,4 +1,3 @@
-import { Box, Check, Cpu, LoaderCircle, Play } from 'lucide-react';
 import { useEffect, useRef, useState, type Dispatch, type SetStateAction } from 'react';
 import { api, ApiError, apiUrl, describeOperation, json } from '../../api/client';
 import type {
@@ -12,19 +11,18 @@ import type {
   StepState
 } from '../../api/types';
 import { validBaseUrl, type ProviderChoice, type WireApi } from './CodexProviderFields';
-import { CodexConnectionSetup, type ConnectionMode } from './CodexConnectionSetup';
-import { CodexProfileForm } from './CodexProfileForm';
+import type { ConnectionMode } from './CodexConnectionSetup';
 import { publicDeviceAuthSummary, type DeviceAuthSummary } from './codex-device-auth';
 import { useCodexDiscovery } from './useCodexDiscovery';
 import { registerOperationRetry, upsertExternalOperation } from '../../operations/operation-store';
-import { CodexBuildProgress, safeBuildDiagnostics } from './CodexBuildProgress';
+import { safeBuildDiagnostics } from './CodexBuildProgress';
+import { CodexSetupView } from './CodexSetupView';
 import {
   DEFAULT_CODEX_TIMEOUT_MINUTES,
   codexTimeoutMinutesFromMs,
   codexTimeoutMinutesToMs,
   validCodexTimeoutMinutes
 } from './codex-timeout';
-import { displayStatus, setupDetailLabel } from '../../components/common/display-labels';
 
 const OPENROUTER_BASE_URL = 'https://openrouter.ai/api/v1';
 
@@ -103,23 +101,7 @@ export function CodexSetup({
     if (connectionMode === 'cc_switch' && deployment?.mode === 'container' && !deployment.imports.cc_switch)
       setConnectionMode('manual');
   }, [connectionMode, deployment]);
-  async function act(task: () => Promise<unknown>) {
-    setBusy(true);
-    setError('');
-    setErrorAction('');
-    setProbeReport(null);
-    try {
-      await task();
-      await onChange();
-    } catch (value) {
-      const feedback = errorFeedback(value);
-      setError(feedback.message);
-      setErrorAction(feedback.action);
-      setProbeReport(feedback.probe);
-    } finally {
-      setBusy(false);
-    }
-  }
+  const act = createCodexAction({ onChange, setBusy, setError, setErrorAction, setProbeReport });
 
   function selectProvider(value: ProviderChoice) {
     setProviderChoice(value);
@@ -192,7 +174,39 @@ export function CodexSetup({
   return <CodexSetupView model={viewModel} />;
 }
 
-type CodexSetupViewModel = {
+function createCodexAction({
+  onChange,
+  setBusy,
+  setError,
+  setErrorAction,
+  setProbeReport
+}: {
+  onChange: () => Promise<unknown>;
+  setBusy: Dispatch<SetStateAction<boolean>>;
+  setError: Dispatch<SetStateAction<string>>;
+  setErrorAction: Dispatch<SetStateAction<string>>;
+  setProbeReport: Dispatch<SetStateAction<CodexProbeReport | null>>;
+}) {
+  return async (task: () => Promise<unknown>) => {
+    setBusy(true);
+    setError('');
+    setErrorAction('');
+    setProbeReport(null);
+    try {
+      await task();
+      await onChange();
+    } catch (value) {
+      const feedback = errorFeedback(value);
+      setError(feedback.message);
+      setErrorAction(feedback.action);
+      setProbeReport(feedback.probe);
+    } finally {
+      setBusy(false);
+    }
+  };
+}
+
+export type CodexSetupViewModel = {
   state: StepState;
   deployment?: DeploymentStatus;
   checks: Record<string, boolean>;
@@ -240,165 +254,6 @@ type CodexSetupViewModel = {
   };
   probe: () => Promise<void>;
 };
-
-function CodexSetupView({ model }: { model: CodexSetupViewModel }) {
-  const { state, deployment, checks, feedback, build, connection, profile, probe } = model;
-  const { busy, error, errorAction, probeReport } = feedback;
-  const { buildOperation, buildConnection, cancelBuild, copyBuildDiagnostics } = build;
-  const {
-    connectionMode,
-    providerChoice,
-    customProvider,
-    baseUrl,
-    wireApi,
-    apiKey,
-    providerValid,
-    endpointValid,
-    deviceAuth,
-    discovery,
-    needsProfileRepair
-  } = connection;
-  return (
-    <section className="setup-section">
-      <div className="section-title">
-        <Cpu size={18} />
-        <div>
-          <h2>Codex</h2>
-          <p>{setupDetailLabel(state.detail) || '等待运行环境验证'}</p>
-        </div>
-        <span className={`status ${state.ready ? 'ready' : 'pending'}`}>
-          {state.ready && <Check size={12} />}
-          {displayStatus(state.status)}
-        </span>
-      </div>
-      {!checks.docker_ready && (
-        <div className="setup-row">
-          <div>
-            <strong>Docker 运行环境</strong>
-            <span>{deployment?.mode === 'container' ? '预构建执行器镜像当前不可用' : '隔离执行器镜像'}</span>
-          </div>
-          {deployment?.mode === 'container' ? (
-            <span className="status failed">
-              <Box size={13} />
-              需要重新部署
-            </span>
-          ) : !buildOperation ? (
-            <button className="button primary" disabled={busy} onClick={build.build}>
-              <Box size={15} />
-              检测并构建
-            </button>
-          ) : null}
-        </div>
-      )}
-      {buildOperation && (
-        <CodexBuildProgress
-          operation={buildOperation}
-          connection={buildConnection}
-          busy={busy}
-          onCancel={cancelBuild}
-          onCopy={copyBuildDiagnostics}
-          onRetry={build.build}
-        />
-      )}
-
-      {(!checks.authenticated || needsProfileRepair) && (
-        <CodexConnectionSetup
-          mode={connectionMode}
-          runtimeReady={Boolean(checks.docker_ready)}
-          repairing={needsProfileRepair}
-          busy={busy}
-          sourceAvailability={{
-            codex_home: deployment?.mode !== 'container' || deployment.imports.codex_home,
-            cc_switch: deployment?.mode !== 'container' || deployment.imports.cc_switch
-          }}
-          providerChoice={providerChoice}
-          customProvider={customProvider}
-          baseUrl={baseUrl}
-          wireApi={wireApi}
-          apiKey={apiKey}
-          providerValid={providerValid}
-          endpointValid={endpointValid}
-          deviceAuth={deviceAuth}
-          discovery={discovery}
-          onMode={connection.setConnectionMode}
-          onProvider={connection.selectProvider}
-          onCustomProvider={connection.setCustomProvider}
-          onBaseUrl={connection.setBaseUrl}
-          onWireApi={connection.setWireApi}
-          onApiKey={connection.setApiKey}
-          onDevice={connection.device}
-          onAuthenticate={connection.authenticate}
-          onDiscoveryRefresh={discovery.refresh}
-          onDiscoveryImport={discovery.importConfig}
-        />
-      )}
-
-      {checks.authenticated && !checks.profile_valid && (!state.profile_id || needsProfileRepair) && (
-        <CodexProfileForm
-          repair={needsProfileRepair}
-          thirdParty={profile.thirdParty}
-          busy={busy}
-          valid={
-            profile.authMetadataReady &&
-            profile.profileInputValid &&
-            (!profile.repairNeedsKey || Boolean(profile.repairApiKey))
-          }
-          providerChoice={providerChoice}
-          customProvider={customProvider}
-          baseUrl={baseUrl}
-          wireApi={wireApi}
-          model={profile.model}
-          timeoutMinutes={profile.timeoutMinutes}
-          repairNeedsKey={profile.repairNeedsKey}
-          repairApiKey={profile.repairApiKey}
-          onProvider={connection.selectProvider}
-          onCustomProvider={connection.setCustomProvider}
-          onBaseUrl={connection.setBaseUrl}
-          onWireApi={connection.setWireApi}
-          onModel={profile.setModel}
-          onTimeoutMinutes={profile.setTimeoutMinutes}
-          onRepairApiKey={profile.setRepairApiKey}
-          onCreate={profile.createProfile}
-          onRepair={profile.repairProfile}
-        />
-      )}
-      {checks.docker_ready && checks.profile_valid && !checks.probe_ok && (
-        <div className="setup-row">
-          <div>
-            <strong>非写入探针</strong>
-            <span>验证当前 Codex 配置、接口地址与隔离挂载</span>
-          </div>
-          <button className="button primary" disabled={busy} onClick={probe}>
-            <Play size={15} />
-            运行探针
-          </button>
-        </div>
-      )}
-      {busy && (
-        <div className="inline-busy">
-          <LoaderCircle className="spin" size={15} />
-          正在执行
-        </div>
-      )}
-      {error && (
-        <div className="setup-feedback error probe-feedback" role="alert">
-          <strong>{error}</strong>
-          {errorAction && <span>{errorAction}</span>}
-          {probeReport?.checks?.length ? (
-            <ol aria-label="探针校验结果">
-              {probeReport.checks.map((check) => (
-                <li key={check.phase} className={check.status}>
-                  <span>{check.label}</span>
-                  <b>{check.status === 'passed' ? '已通过' : check.status === 'failed' ? '失败' : '未执行'}</b>
-                </li>
-              ))}
-            </ol>
-          ) : null}
-        </div>
-      )}
-    </section>
-  );
-}
 
 function useCodexProfileHydration({
   authenticated,

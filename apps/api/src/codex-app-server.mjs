@@ -12,6 +12,9 @@ import { spawnContainerProcess } from './container-runtime.mjs';
 import { withCodexRuntimeStateRecovery } from './codex-home-recovery.mjs';
 import { codexMcpConfigArgs, issueCodexMcpAccess, withCodexMcpEnvironment } from './codex-mcp-runtime.mjs';
 import { codexTimeoutTtlSeconds, resolveCodexTimeoutMs } from './codex-timeout.mjs';
+import { mapNotification } from './codex-app-server-notifications.mjs';
+
+export { mapNotification } from './codex-app-server-notifications.mjs';
 
 const APP_SERVER_ARGS = [
   'app-server',
@@ -585,69 +588,6 @@ export function approvalResponse(method, approved, params) {
   if (method === 'mcpServer/elicitation/request')
     return { action: approved ? 'accept' : 'decline', content: null, _meta: null };
   return { success: false, contentItems: [] };
-}
-export function mapNotification(message, deltaItems) {
-  const params = message.params || {},
-    item = params.item || {};
-  if (message.method === 'item/agentMessage/delta') {
-    deltaItems.add(params.itemId);
-    return { aiws_type: 'text', data: { text: params.delta || '' }, output_text: params.delta || '' };
-  }
-  if (message.method === 'item/plan/delta')
-    return { aiws_type: 'plan', data: { text: params.delta || '', status: 'streaming', source: 'codex-native' } };
-  if (message.method === 'item/reasoning/summaryTextDelta')
-    return { aiws_type: 'reasoning_summary', data: { summary: params.delta || '' } };
-  if (message.method === 'turn/plan/updated')
-    return {
-      aiws_type: 'plan',
-      data: {
-        text: (params.plan || []).map((step) => `${step.status}: ${step.step}`).join('\n'),
-        status: 'updated',
-        source: 'codex-native'
-      }
-    };
-  if (message.method === 'turn/diff/updated')
-    return { aiws_type: 'diff', data: { diff: params.diff || '', status: 'updated' } };
-  if (message.method === 'item/commandExecution/outputDelta')
-    return { aiws_type: 'command', data: { item_id: params.itemId, output: params.delta || '', status: 'running' } };
-  if (message.method === 'item/fileChange/outputDelta' || message.method === 'item/fileChange/patchUpdated')
-    return {
-      aiws_type: 'file_change',
-      data: { item_id: params.itemId, patch: params.delta || params.patch || '', status: 'running' }
-    };
-  if (message.method === 'thread/tokenUsage/updated') {
-    const usage = params.tokenUsage?.total || {};
-    return {
-      aiws_type: 'usage',
-      data: {
-        input_tokens: usage.inputTokens,
-        cached_input_tokens: usage.cachedInputTokens,
-        output_tokens: usage.outputTokens,
-        reasoning_output_tokens: usage.reasoningOutputTokens,
-        total_tokens: usage.totalTokens
-      }
-    };
-  }
-  if (message.method !== 'item/completed') return null;
-  if (item.type === 'agentMessage')
-    return deltaItems.has(item.id)
-      ? null
-      : { aiws_type: 'text', data: { text: item.text || '' }, output_text: item.text || '' };
-  if (item.type === 'plan')
-    return { aiws_type: 'plan', data: { text: item.text || '', status: 'completed', source: 'codex-native' } };
-  if (item.type === 'commandExecution')
-    return {
-      aiws_type: 'command',
-      data: { command: item.command, status: item.status, exit_code: item.exitCode, output: item.aggregatedOutput }
-    };
-  if (item.type === 'fileChange')
-    return { aiws_type: 'file_change', data: { status: item.status, changes: item.changes || [] } };
-  if (item.type === 'mcpToolCall')
-    return { aiws_type: 'mcp', data: { server: item.server, tool: item.tool, status: item.status } };
-  if (item.type === 'webSearch') return { aiws_type: 'search', data: { query: item.query || '', status: 'completed' } };
-  if (item.type === 'reasoning' && Array.isArray(item.summary))
-    return { aiws_type: 'reasoning_summary', data: { summary: item.summary.join('\n') } };
-  return null;
 }
 export function nativeCollaborationMode(mode, profile) {
   return {

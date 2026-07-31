@@ -3,9 +3,12 @@ import { id, now } from '../../../packages/shared/index.mjs';
 import { HttpError } from './http.mjs';
 import { repositoryBranchSlug } from './workflow-branch-ref.mjs';
 import { dependencyIds } from './workflow-graph-validation.mjs';
+import { executorForTask } from './workflow-executor-config.mjs';
+import { restoreLegacyRetryCompatibility } from './workflow-retry-compatibility.mjs';
+import { ACTIVE_WORKFLOW_EXECUTION_STATUSES, TERMINAL_TASK_EXECUTION_STATUSES } from './workflow-execution-status.mjs';
 
-const TERMINAL_TASK_STATUSES = new Set(['completed', 'failed', 'cancelled', 'superseded']);
-const ACTIVE_WORKFLOW_STATUSES = new Set(['running', 'paused']);
+const TERMINAL_TASK_STATUSES = new Set(TERMINAL_TASK_EXECUTION_STATUSES);
+const ACTIVE_WORKFLOW_STATUSES = new Set(ACTIVE_WORKFLOW_EXECUTION_STATUSES);
 
 export function activeTaskExecutionForTask(state, taskId) {
   return (
@@ -291,6 +294,96 @@ export function executionEvidence(value) {
   delete result.repository_payload;
   delete result.raw_payload;
   return result;
+}
+
+export function pendingTaskExecution(workflowExecution, task, contract, actorId, createdAt) {
+  return {
+    id: id('tex'),
+    workflow_execution_id: workflowExecution.id,
+    project_id: workflowExecution.project_id,
+    workflow_id: workflowExecution.workflow_id,
+    workstream_id: task.parent_node_id,
+    task_id: task.id,
+    task_revision: Number(task.execution_revision || 1),
+    contract_id: contract.id,
+    contract_version: Number(contract.version || 1),
+    attempt: 1,
+    executor: executorForTask(task),
+    status: 'pending',
+    readiness: { ready: false, reasons: [{ code: 'reconcile_pending' }] },
+    context_snapshot: null,
+    input_snapshot_hash: null,
+    output_bindings: [],
+    consumed_inputs: [],
+    input_dispositions: [],
+    consumed_context_document_versions: [],
+    context_dispositions: [],
+    handoff_diagnostics: null,
+    acceptance_results: [],
+    evidence: {},
+    error_code: null,
+    retry_class: null,
+    failure: null,
+    current_stage: null,
+    stage_checkpoint_ids: [],
+    replay_count: 0,
+    lease: null,
+    supersedes_id: null,
+    queued_at: null,
+    started_at: null,
+    completed_at: null,
+    created_at: createdAt,
+    updated_at: createdAt,
+    created_by_user_id: actorId
+  };
+}
+
+export function restoreLegacyRetryRepositoryLine(state, previous, retry, actorId) {
+  const restored = restoreLegacyRetryCompatibility(state, previous, retry);
+  if (!restored) return;
+  appendExecutionEvent(
+    state,
+    state.workflow_executions.find((item) => item.id === previous.workflow_execution_id),
+    retry,
+    'repository_line.retry_head_restored',
+    {
+      repository_line_id: restored.line.id,
+      previous_head_sha: restored.previous_head_sha,
+      expected_head_sha: restored.expected_head_sha
+    },
+    'user',
+    actorId
+  );
+}
+
+export function appendExecutionEvent(
+  state,
+  workflowExecution,
+  taskExecution,
+  type,
+  data = {},
+  actorType = 'system',
+  actorId = null
+) {
+  if (!workflowExecution) throw new HttpError(404, { error: 'workflow_execution_not_found' });
+  const sequence =
+    state.execution_events
+      .filter((item) => item.workflow_execution_id === workflowExecution.id)
+      .reduce((max, item) => Math.max(max, Number(item.sequence) || 0), 0) + 1;
+  const event = {
+    id: id('exe'),
+    workflow_execution_id: workflowExecution.id,
+    task_execution_id: taskExecution?.id || null,
+    project_id: workflowExecution.project_id,
+    sequence,
+    type,
+    actor_type: actorType,
+    actor_id: actorId,
+    data: structuredClone(data || {}),
+    created_at: now()
+  };
+  state.execution_events.push(event);
+  return event;
 }
 
 export function requiresRepositoryLine(execution) {

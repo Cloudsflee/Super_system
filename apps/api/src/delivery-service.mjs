@@ -2,33 +2,36 @@ import { cloneStateValue as structuredClone } from './state-clone.mjs';
 import fsp from 'node:fs/promises';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
-import { generatePrBody, hashString, id, now } from '../../../packages/shared/index.mjs';
+import { generatePrBody, now } from '../../../packages/shared/index.mjs';
 import { extractMessage, runCodexJson } from './codex-service.mjs';
 import { ensureDeliveryCheckout } from './delivery-checkout.mjs';
 import { createInstallationToken, githubGitAuthEnv, githubJson, resolveGithubAppConfig } from './github-service.mjs';
 import { git, isGitRepo } from './git-utils.mjs';
 import { HttpError } from './http.mjs';
 import { assertDeliveryPath, requireApprovedDeliveryPolicy } from './repository-delivery-domain.mjs';
-import { addTrace, mutate, owner, readState } from './state.mjs';
-import { reviewSnapshotForPath, safeSegment } from './assist-v3-git.mjs';
+import { addTrace, mutate, readState } from './state.mjs';
+import { reviewSnapshotForPath } from './assist-v3-git.mjs';
 import { assertProjectLifecycleIdle } from './project-lifecycle-operations.mjs';
-import { assertRepositoryDeletionInactive } from './repository-lifecycle-v19.mjs';
 import { redactKnownSecretsSync } from './vault.mjs';
-import { evaluateTaskExecutionContextFreshness, prepareTaskExecutionContext } from './task-execution-context.mjs';
+import { evaluateTaskExecutionContextFreshness } from './task-execution-context.mjs';
 import { createExecutionOutputAssets } from './task-output-service.mjs';
 import {
   createDeliveryPullRequestIntentInState,
   markDeliveryWorkspaceHeadInState,
   prepareManagedDeliveryCheckout
 } from './delivery-pr-intent.mjs';
-import { assertControlledTaskWrite } from './execution-governance.mjs';
 import { ensureContextProjection } from './context-service.mjs';
+import { createTaskDeliveryInState } from './delivery-creation.mjs';
+import {
+  appendDeliveryEvent as appendEvent,
+  publicDelivery,
+  requireDeliveryTask as requireTask
+} from './delivery-state-domain.mjs';
 const controllers = new Map();
 const taskLocks = new Set(),
   repositoryPreparationLocks = new Set(),
   contextProjectionLocks = new Map();
 const TERMINAL = new Set(['completed', 'failed', 'cancelled']);
-const REQUIRED_AUTOMATION_PERMISSIONS = ['codex_run', 'commit', 'push', 'draft_pr'];
 const SECRET_PATTERNS = [
   /-----BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY-----/,
   /\bgh[pousr]_[A-Za-z0-9_]{20,}\b/,
@@ -37,135 +40,7 @@ const SECRET_PATTERNS = [
 ];
 export async function startTaskDelivery(taskId, input = {}, actorId = null) {
   await ensureDeliveryContextProjection(taskId);
-  const result = await mutate((state) => {
-    const task = requireTask(state, taskId),
-      actor = actorId ? state.users.find((item) => item.id === actorId) : owner(state);
-    const workflow = state.workflows.find((item) => item.id === task.workflow_id);
-    assertProjectLifecycleIdle(state.projects.find((item) => item.id === workflow?.project_id));
-    assertRepositoryDeletionInactive(state, { projectId: workflow?.project_id });
-    const controlled = assertControlledTaskWrite(state, task.id, input, 'repository_delivery');
-    if (!['code', 'test', 'integration', 'deploy'].includes(task.task_kind))
-      throw new HttpError(409, { error: 'task_not_delivery_capable', task_kind: task.task_kind });
-    const active = state.deliveries.find((item) => item.task_id === task.id && !TERMINAL.has(item.status));
-    if (active) return { delivery: active, idempotent: true, created: false };
-    const { target, policy, connection } = requireApprovedDeliveryPolicy(state, task, input.policy_id || null);
-    const missingPermissions = REQUIRED_AUTOMATION_PERMISSIONS.filter(
-      (permission) => !policy.automation_permissions.includes(permission)
-    );
-    if (missingPermissions.length)
-      throw new HttpError(409, {
-        error: 'delivery_policy_permissions_required',
-        missing_permissions: missingPermissions
-      });
-    const previous =
-      state.deliveries
-        .filter(
-          (item) => item.task_id === task.id && item.connection_id === connection.id && item.status === 'completed'
-        )
-        .sort((a, b) => String(b.completed_at).localeCompare(String(a.completed_at)))[0] || null;
-    const project = state.projects.find((item) => item.id === workflow.project_id),
-      workspace = state.workspaces.find((item) => item.id === task.workspace_id || item.workflow_node_id === task.id),
-      contract = state.node_contracts.find((item) => item.id === task.current_contract_id);
-    const prepared = controlled.controlled
-      ? {
-          context: structuredClone(controlled.task_execution.context_snapshot),
-          context_pack: state.context_packs.find(
-            (item) => item.id === controlled.task_execution.context_snapshot?.context_pack_id
-          )
-        }
-      : prepareTaskExecutionContext(state, {
-          actor,
-          project,
-          workflow,
-          workspace,
-          task,
-          contract,
-          purpose: 'delivery',
-          receiverName: 'CodexDelivery',
-          repositoryWorkspaceId: input.repository_workspace_id
-        });
-    if (!prepared.context || !prepared.context_pack)
-      throw new HttpError(409, { error: 'task_execution_context_required' });
-    if (
-      prepared.context.repository_snapshot?.connection_id &&
-      prepared.context.repository_snapshot.connection_id !== connection.id
-    )
-      throw new HttpError(409, {
-        error: 'task_context_not_ready',
-        reasons: [
-          {
-            code: 'repository_workspace_connection_mismatch',
-            repository_workspace_id: prepared.context.repository_snapshot.repository_workspace_id,
-            connection_id: connection.id
-          }
-        ]
-      });
-    const delivery = {
-      id: id('dlv'),
-      operation_id: null,
-      project_id: policy.project_id,
-      workflow_id: task.workflow_id,
-      workstream_id: task.parent_node_id,
-      task_id: task.id,
-      task_execution_id: controlled.task_execution?.id || null,
-      repository_target_id: target.id,
-      connection_id: connection.id,
-      policy_id: policy.id,
-      policy_hash: policy.policy_hash,
-      status: 'queued',
-      phase: 'queued',
-      attempt: Number(input.attempt || 1),
-      retry_of_delivery_id: input.retry_of_delivery_id || null,
-      branch: previous?.branch || stableBranch(task),
-      base_ref: policy.base_ref,
-      expected_base_sha: clean(input.expected_base_sha, 64) || null,
-      base_sha: null,
-      worktree_path: previous?.worktree_path || null,
-      commit_sha: null,
-      changed_files: [],
-      test_results: [],
-      pr_number: previous?.pr_number || null,
-      pr_url: previous?.pr_url || null,
-      pr_state: previous?.pr_state || null,
-      adapter: input.adapter === 'test' ? 'test' : null,
-      test_input: input.adapter === 'test' ? sanitizeTestInput(input) : null,
-      context_pack_id: prepared.context_pack.id,
-      task_execution_context: structuredClone(prepared.context),
-      input_snapshot_hash: prepared.context.input_snapshot_hash,
-      repository_snapshot_hash: prepared.context.repository_snapshot?.snapshot_hash || null,
-      contract_snapshot: prepared.context.contract,
-      task_snapshot: prepared.context.task,
-      dependency_graph: prepared.context.dependency_graph,
-      input_assets: prepared.context.inputs.flatMap((item) => item.asset_versions || []),
-      repository_workspace_id: prepared.context.repository_snapshot?.repository_workspace_id || null,
-      error_code: null,
-      error_detail: null,
-      retryable: false,
-      input_superseded: false,
-      cancel_requested_at: null,
-      created_by_user_id: actor?.id || null,
-      created_at: now(),
-      updated_at: now(),
-      completed_at: null
-    };
-    delivery.operation_id = delivery.id;
-    state.deliveries.push(delivery);
-    appendEvent(state, delivery, 'queued', { attempt: delivery.attempt, branch: delivery.branch });
-    target.status = 'active_delivery';
-    target.updated_at = now();
-    addTrace(
-      state,
-      'delivery.started',
-      {
-        project_id: delivery.project_id,
-        node_id: task.id,
-        target_id: delivery.id,
-        summary: `Delivery queued for ${connection.full_name}.`
-      },
-      actor?.id || null
-    );
-    return { delivery, idempotent: false, created: true };
-  });
+  const result = await mutate((state) => createTaskDeliveryInState(state, taskId, input, actorId));
   if (result.created)
     queueMicrotask(() => {
       void executeDelivery(result.delivery.id);
@@ -707,51 +582,6 @@ async function failDelivery(deliveryId, error) {
     );
     return delivery;
   });
-}
-function appendEvent(state, delivery, type, data) {
-  const sequence =
-      state.delivery_events
-        .filter((item) => item.delivery_id === delivery.id)
-        .reduce((max, item) => Math.max(max, Number(item.sequence) || 0), 0) + 1,
-    event = {
-      id: id('dle'),
-      delivery_id: delivery.id,
-      project_id: delivery.project_id,
-      task_id: delivery.task_id,
-      sequence,
-      type,
-      data: structuredClone(data || {}),
-      created_at: now()
-    };
-  state.delivery_events.push(event);
-  return event;
-}
-function requireTask(state, taskId) {
-  const task = state.workflow_nodes.find(
-    (item) => item.id === taskId && item.role === 'task' && !item.legacy_read_only
-  );
-  if (!task) throw new HttpError(404, { error: 'task_not_found' });
-  return task;
-}
-function stableBranch(task) {
-  return `aiws/${safeSegment(task.id).slice(0, 48)}-${hashString(task.id).slice(0, 8)}`;
-}
-function sanitizeTestInput(input) {
-  return {
-    changes: Array.isArray(input.test_changes)
-      ? input.test_changes
-          .slice(0, 50)
-          .map((item) => ({ path: clean(item?.path, 500), content: String(item?.content ?? '').slice(0, 500_000) }))
-      : null,
-    force_test_failure: input.test_failure === true,
-    force_path_violation: input.path_violation === true,
-    force_secret: input.secret_violation === true
-  };
-}
-function publicDelivery(item) {
-  if (!item) return null;
-  const { test_input, ...visible } = item;
-  return structuredClone(visible);
 }
 function deliveryError(code, details = {}) {
   const error = new Error(code);
