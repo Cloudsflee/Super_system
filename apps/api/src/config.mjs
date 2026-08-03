@@ -18,9 +18,10 @@ export const PROBE_DIR = path.join(AIWS_HOME, 'probe-workspace');
 export const ASSIST_DIR = path.join(AIWS_HOME, 'assist-workspaces');
 export const ATTACHMENT_DIR = path.join(AIWS_HOME, 'attachments');
 export const ATTACHMENT_TEMP_DIR = path.join(AIWS_HOME, 'attachment-staging');
+export const QUALITY_REVIEW_TEMP_DIR = path.join(AIWS_HOME, 'quality-review-tmp');
 export const CONTEXT_INDEX_DIR = path.join(DATA_DIR, '.context-index');
 export const STATE_FILE = path.join(DATA_DIR, 'state.json');
-export const STATE_DB_FILE = path.join(DATA_DIR, 'state-v22.sqlite');
+export const STATE_DB_FILE = path.join(DATA_DIR, 'state-v23.sqlite');
 export const WEB_SOURCE_DIR = path.join(ROOT, 'apps', 'web');
 export const WEB_DIST_DIR = path.join(WEB_SOURCE_DIR, 'dist');
 export const WEB_DIR = fs.existsSync(WEB_DIST_DIR) ? WEB_DIST_DIR : WEB_SOURCE_DIR;
@@ -125,7 +126,10 @@ export const collections = [
   'context_selections',
   'context_policies',
   'context_projection_jobs',
-  'context_summaries'
+  'context_summaries',
+  'quality_review_runs',
+  'quality_review_reports',
+  'quality_review_events'
 ];
 
 export function readLocalGithubAppConfig() {

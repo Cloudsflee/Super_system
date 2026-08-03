@@ -8,6 +8,7 @@ import {
   normalizeState21Defaults,
   validateState21
 } from './state-migration-v21.mjs';
+import { removeRetiredRuntimeRecordsForMigration } from './state-migration-retired-runtime.mjs';
 
 export const STATE_SCHEMA_VERSION = 22;
 export const V22_RUNNER_IMAGE = 'aiws-codex-runner:2.2.0-codex-0.144.0';
@@ -19,6 +20,11 @@ export const V22_SPECIALIZED_COLLECTIONS = Object.freeze([
   'context_projection_jobs',
   'context_selections'
 ]);
+export const V22_COLLECTIONS = Object.freeze(
+  collections.filter(
+    (collection) => !['quality_review_runs', 'quality_review_reports', 'quality_review_events'].includes(collection)
+  )
+);
 
 export { assertV21AppendOnly, canonicalStateHash };
 
@@ -59,6 +65,7 @@ export function migrateState21To22(source, { timestamp = new Date().toISOString(
 export function normalizeState22Defaults(state, timestamp = new Date().toISOString(), { migrating = false } = {}) {
   normalizeState21Defaults(state, timestamp, { migrating: false });
   normalizeOfficialRunnerImagesV22(state, { timestamp });
+  if (migrating) removeRetiredRuntimeRecordsForMigration(state, timestamp);
   if (migrating) state.migrated_to_schema_22_at ||= timestamp;
   state.schema_version = STATE_SCHEMA_VERSION;
   return state;
@@ -96,7 +103,7 @@ export function validateState22(state) {
   if (Number(state?.schema_version) !== STATE_SCHEMA_VERSION)
     throw stateError('state_schema_invalid', { expected: STATE_SCHEMA_VERSION, actual: state?.schema_version });
   validateState21({ ...state, schema_version: 21 });
-  for (const collection of collections) validateCollectionIdentities(collection, state[collection]);
+  for (const collection of V22_COLLECTIONS) validateCollectionIdentities(collection, state[collection]);
   return true;
 }
 

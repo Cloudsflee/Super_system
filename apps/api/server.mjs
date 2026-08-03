@@ -39,6 +39,7 @@ import { startContextProjectorCoordinator } from './src/context-projector-coordi
 import { ensureContextSearchIndex, initializeContextIndexRuntime } from './src/context-index-runtime.mjs';
 import { createShutdownCoordinator, isRuntimeDraining } from './src/shutdown-coordinator.mjs';
 import { livezSnapshot } from './src/runtime-health.mjs';
+import { shutdownQualityReviews } from './src/quality-review-service.mjs';
 
 cleanupStaleContainers();
 await ensureRuntime();
@@ -152,6 +153,7 @@ const shutdownCoordinator = createShutdownCoordinator({
   stopDispatcher: stopWorkflowDispatcher,
   stopProjector: stopContextProjector,
   stopRuntimeWork: async () => {
+    await shutdownQualityReviews();
     codexBuildManager.shutdown();
     await closeTerminalRuntimes();
     if (process.env.AIWS_CONTAINERIZED === '1') stopAllManagedContainers();

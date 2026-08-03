@@ -6,6 +6,10 @@ import { AIWS_RUNNER_IMAGE } from '../../../packages/shared/index.mjs';
 
 export const DEFAULT_RUNNER_IMAGE = AIWS_RUNNER_IMAGE;
 
+export function resolveRunnerImage(env = process.env) {
+  return env.AIWS_CODEX_DOCKER_IMAGE || DEFAULT_RUNNER_IMAGE;
+}
+
 export function isContainerized(env = process.env) {
   return env.AIWS_CONTAINERIZED === '1';
 }

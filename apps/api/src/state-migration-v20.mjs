@@ -22,11 +22,15 @@ const POST_V20_COLLECTIONS = new Set([
   'outcome_waivers',
   'execution_stage_checkpoints'
 ]);
+const PRE_V23_COLLECTIONS = new Set(['quality_review_runs', 'quality_review_reports', 'quality_review_events']);
 
 export const STATE_SCHEMA_VERSION = 20;
 export const V20_SOURCE_COLLECTIONS = Object.freeze(
   ALL_STATE_COLLECTIONS.filter(
-    (collection) => !CONTEXT_INTERNAL_COLLECTIONS.includes(collection) && !POST_V20_COLLECTIONS.has(collection)
+    (collection) =>
+      !CONTEXT_INTERNAL_COLLECTIONS.includes(collection) &&
+      !POST_V20_COLLECTIONS.has(collection) &&
+      !PRE_V23_COLLECTIONS.has(collection)
   )
 );
 export const V20_COLLECTIONS = Object.freeze([...V20_SOURCE_COLLECTIONS, ...CONTEXT_INTERNAL_COLLECTIONS]);

@@ -16,7 +16,11 @@ import { readSecret } from '../vault.mjs';
 import { codexAuthMatchesProfile, isThirdPartyProvider } from '../codex-service.mjs';
 import { materializeDeviceAuth } from '../codex-device-auth.mjs';
 import { codexContainerProxyEnv } from '../codex-container-network.mjs';
-import { assertProfileAllowed, buildCodexContainerInvocation } from '../container-runtime-config.mjs';
+import {
+  assertProfileAllowed,
+  buildCodexContainerInvocation,
+  resolveRunnerImage
+} from '../container-runtime-config.mjs';
 import { runContainerProcess } from '../container-runtime.mjs';
 import { issueCodexMcpAccess, withCodexMcpEnvironment } from '../codex-mcp-runtime.mjs';
 import { codexTimeoutTtlSeconds, resolveCodexTimeoutMs } from '../codex-timeout.mjs';
@@ -52,7 +56,7 @@ async function executeCodexDocker(state, payload) {
     taskExecutionLeaseToken: payload.body?.lease_token
   });
   const runner = new DockerCodexRunner({
-    image: process.env.AIWS_CODEX_DOCKER_IMAGE,
+    image: resolveRunnerImage(),
     timeoutMs,
     invocationBuilder: (input) => buildNodeRunInvocation(profile, run, input, Object.keys(proxyEnv), mcpAccess),
     processRunner: (_command, _args, options, invocation) => runContainerProcess(invocation, options)

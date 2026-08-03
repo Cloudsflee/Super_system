@@ -19,14 +19,13 @@ import {
 import { assertWorkflowHierarchy, normalizeWorkflowHierarchyNodes } from './workflow-hierarchy-domain.mjs';
 import { assertWorkflowPlanningQuality } from './workflow-quality.mjs';
 import { applyWorkflowOutcomeProtocols } from './workflow-outcome-definition.mjs';
-
+import { ensureQualityReviewPolicy } from './quality-review-rubric.mjs';
 export {
   prepareWorkflowGraphPatch,
   workflowGraphHash,
   workflowGraphSnapshot,
   workflowVisualGraph
 } from './workflow-graph-validation.mjs';
-
 export function workflowAssistSurfaceId(workflowId) {
   return `workflow-${workflowId}`;
 }
@@ -275,6 +274,7 @@ export function applyWorkflowReplanInState(state, proposal) {
   if (action.candidate_hash && digest(after) !== action.candidate_hash)
     throw stale('workflow_candidate_changed', workflow);
   applyCandidate(state, workflow, quality.nodes, proposal.approved_by_user_id || proposal.created_by_user_id);
+  ensureQualityReviewPolicy(workflow);
   Object.assign(workflow, {
     version: revision + 1,
     workflow_revision: revision + 1,

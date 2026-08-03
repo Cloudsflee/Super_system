@@ -36,6 +36,7 @@ import { repositoryWorkspaceV19Routes } from './routes/repository-workspaces-v19
 import { pullRequestIntentV19Routes } from './routes/pull-request-intents-v19.mjs';
 import { workflowExecutionV110Routes } from './routes/workflow-executions-v110.mjs';
 import { contextV20Routes } from './routes/context-v20.mjs';
+import { qualityReviewV23Routes } from './routes/quality-reviews-v23.mjs';
 
 const groups = [
   ['system.mjs', systemRoutes],
@@ -75,7 +76,8 @@ const groups = [
   ['repository-workspaces-v19.mjs', repositoryWorkspaceV19Routes],
   ['pull-request-intents-v19.mjs', pullRequestIntentV19Routes],
   ['workflow-executions-v110.mjs', workflowExecutionV110Routes],
-  ['context-v20.mjs', contextV20Routes]
+  ['context-v20.mjs', contextV20Routes],
+  ['quality-reviews-v23.mjs', qualityReviewV23Routes]
 ];
 
 export const apiRouteGroups = Object.freeze(

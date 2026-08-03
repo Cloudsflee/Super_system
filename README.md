@@ -1,10 +1,10 @@
-# AI Workspace System V2.2
+# AI Workspace System V2.3
 
-AI Workspace System V2.2 是一个本地优先、自托管的 AI 协作工作空间。V2.2 在 Outcome Contract、七阶段执行重放和系统上下文闭环之上，引入 Worker 隔离的 SQLite/WAL 权威状态库、零空闲写入的 Context projector、确定性 Context Index v2、轻量存活/就绪探针和可等待的统一停机流程。
+AI Workspace System V2.3 是一个本地优先、自托管的 AI 协作工作空间。V2.3 在 Outcome Contract、七阶段执行重放和系统上下文闭环之上，引入 Worker 隔离的 SQLite/WAL 权威状态库、零空闲写入的 Context projector、确定性 Context Index v2、Quality Review 内容质量门禁、轻量存活/就绪探针和可等待的统一停机流程。
 
-当前版本使用 Node 24.14 内置 `node:sqlite`，不依赖外部数据库或 Redis 即可启动；同时保留 Prisma/PostgreSQL、独立 Worker、CodexRunner、GitHub PR 等后续替换边界。
+当前版本使用 Node 24.14 内置 `node:sqlite`，不依赖外部数据库或 Redis 即可启动；同时保留 Prisma/PostgreSQL、独立 Worker、CodexRunner、GitHub PR 等后续替换边界。Quality Review 的模型建议仅供人工参考，不能直接修改 Outcome、创建 waiver 或代替人工裁决。
 
-> **交付状态**：V2.2 使用 state schema 22、Compose project `aiws-v22` 和 external volume `aiws-data-v22`。首次 `up` 将 `aiws-data-v21` 作为只读源克隆到新卷，只在目标卷创建 SQLite、sentinel 和 Context Index v2；失败时停止 V2.2、恢复 V2.1，并保留源卷、镜像和失败目标卷。
+> **交付状态**：V2.3 使用 state schema 23、Compose project `aiws-v23` 和 external volume `aiws-data-v23`。首次 `up` 将 `aiws-data-v22` 作为只读源克隆到新卷，只在目标卷创建 SQLite、sentinel 和 Context Index v2；失败时停止 V2.3、恢复 V2.2，并保留源卷、镜像和失败目标卷。
 
 工作流界面继续采用 V1.8 Focus OS 视觉与交互基线，见 [`docs/v1.8-focus-os-ui-design.md`](docs/v1.8-focus-os-ui-design.md)。
 
@@ -19,6 +19,7 @@ AI Workspace System V2.2 是一个本地优先、自托管的 AI 协作工作空
 - **四层 Assist**：线程严格归属于 `project/workflow/workstream/task`，显示完整 breadcrumb，节点删除或换版后按 scope snapshot 只读保留。
 - **持久化 DAG 执行**：用户启动一次 Workflow Execution，dispatcher 自动推进 readiness frontier，在人工 checkpoint、PR 批准或确定性失败处局部暂停并支持幂等恢复。
 - **真实完成判定**：Workflow 必须携带版本化 Outcome Contract 与 Quality Rubric；生命周期状态保持兼容，交付以 `completion_status` 和 `release_eligible` 为准。
+- **Quality Review V2.3**：新建 V2.3 Workflow 默认启用 mandatory `semantic_human_score`（阈值 80）。准备接口冻结当前资产版本和 Rubric；解析器覆盖文本、Markdown、JSON、CSV、XML/SVG、PDF、DOCX、XLSX 和静态图片，音视频、PPTX、压缩包明确列为范围外。隔离 Reviewer 只能提交带证据锚点的建议，人工在 `human_reviews` 中逐维度评分后才重新评估 Outcome。
 - **七阶段执行与重放**：NodeRun 固定经过 `preflight/execute/collect/verify/attest/promote/finalize`；输入身份完全一致时只重放失败阶段。
 - **不可变资产管线**：正文和文件集合进入 CAS 后按 SHA-256 校验；确认只新增 attestation，并原子写入 output binding、验收结果和 lineage。
 - **系统上下文地图**：所有非密钥 state 记录以及仓库文件、附件、Artifact、CAS、运行健康和浏览器语义状态进入稳定 `aiws://context/...` 有序树与类型化关系图。
@@ -49,11 +50,11 @@ AI Workspace System V2.2 是一个本地优先、自托管的 AI 协作工作空
 
 Node.js、pnpm、Git、SSH、tar 和生产 Web 都包含在镜像中。宿主开发模式固定使用 Node.js `24.14.x`、Corepack/pnpm 与 Git。
 
-业务状态使用数据卷内 `data/state-v22.sqlite`，开启 WAL、外键、FULL synchronous 与完整性检查。`data/state.json` 仅是 schema 22 sentinel，不是状态镜像；正文复用 CAS，确定性 MiniSearch 索引位于 `data/.context-index/minisearch-v2.json`，MCP token 仍只保存 hash。
+业务状态使用数据卷内 `data/state-v23.sqlite`，开启 WAL、外键、FULL synchronous 与完整性检查。`data/state.json` 仅是 schema 23 sentinel，不是状态镜像；正文复用 CAS，确定性 MiniSearch 索引位于 `data/.context-index/minisearch-v2.json`，MCP token 仍只保存 hash。
 
 已使用过 Codex 的用户可直接导入本机 `CODEX_HOME` / `~/.codex` 中的 `config.toml` 与 `auth.json`；页面只返回脱敏摘要，确认后才复制 API Key 或官方 OAuth bundle，并重建 AIWS 托管 Profile。未使用过 Codex 的用户可在 Setup 选择官方 Device Login 或手动 API 配置。
 
-V2.2 启动脚本等待活动 Workflow/Task Execution、NodeRun 和 Delivery 静默后，只读归档并克隆 `aiws-data-v21`。schema 21→22 导入、SQLite integrity、记录身份/顺序、CAS 和 Context Index v2 验收都只发生在 `aiws-data-v22`；发布记录写入 `.ai-workspace/release/v22-cutover-latest.json`，V2.1 源卷和镜像不会自动清理。
+V2.3 启动脚本等待活动 Workflow/Task Execution、NodeRun、Delivery 和 Quality Review 静默后，只读归档并克隆 `aiws-data-v22`。schema 22→23 导入、SQLite integrity、记录身份/顺序、CAS 和 Context Index v2 验收都只发生在 `aiws-data-v23`；发布记录写入 `.ai-workspace/release/v23-cutover-latest.json`，V2.2 源卷和镜像不会自动清理。
 
 ## 3. 快速启动项目
 
@@ -77,7 +78,7 @@ bash scripts/aiws.sh up
 http://127.0.0.1:4317
 ```
 
-默认构建 `aiws-app:2.2.0`、`aiws-verify:2.2.0` 与 `aiws-codex-runner:2.2.0-codex-0.144.0`，正式挂载 `aiws-data-v22`。团队模式另行构建 `aiws-mcp-gateway:2.2.0`；Gateway 不挂数据卷或 Docker socket。升级流程包含静默等待、只读克隆、schema 22 SQLite 验收、Context Index v2 构建、V2.2 启动和 `4317` readiness 检查。
+默认构建 `aiws-app:2.3.0`、`aiws-verify:2.3.0` 与 `aiws-codex-runner:2.3.0-codex-0.144.0`，正式挂载 `aiws-data-v23`。团队模式另行构建 `aiws-mcp-gateway:2.3.0`；Gateway 不挂数据卷或 Docker socket。升级流程包含静默等待、只读克隆、schema 23 SQLite 验收、Context Index v2 构建、V2.3 启动和 `4317` readiness 检查。
 
 显式配置项目只读导入根：
 
@@ -107,10 +108,10 @@ corepack pnpm dev
 ### 3.3 手动构建镜像
 
 ```bash
-docker build --target production -t aiws-app:2.2.0 .
-docker build --target verify -t aiws-verify:2.2.0 .
-docker build --target mcp-gateway -t aiws-mcp-gateway:2.2.0 .
-docker build -f docker/codex-runner.Dockerfile -t aiws-codex-runner:2.2.0-codex-0.144.0 .
+docker build --target production -t aiws-app:2.3.0 .
+docker build --target verify -t aiws-verify:2.3.0 .
+docker build --target mcp-gateway -t aiws-mcp-gateway:2.3.0 .
+docker build -f docker/codex-runner.Dockerfile -t aiws-codex-runner:2.3.0-codex-0.144.0 .
 docker build --target windows-bridge-export --output type=local,dest=./dist/bridge .
 docker compose up -d
 ```
@@ -141,7 +142,7 @@ http://localhost:4320
 
 ### 3.5 数据目录
 
-生产数据固定使用 `aiws-data-v22`；`down` 默认保留该卷，只有 `reset --confirm` / `reset -Confirm` 会删除 V2.2 目标卷。`aiws-data-v21` 始终作为保留的 V2.1 恢复点，不会被 reset 或发布脚本删除。活动 Workflow/Task Execution、NodeRun 或 Delivery 未结束时，升级器最多等待五分钟并拒绝切换。
+生产数据固定使用 `aiws-data-v23`；`down` 默认保留该卷，只有 `reset --confirm` / `reset -Confirm` 会删除 V2.3 目标卷。`aiws-data-v22` 始终作为保留的 V2.2 恢复点，不会被 reset 或发布脚本删除。活动 Workflow/Task Execution、NodeRun、Delivery 或 Quality Review 未结束时，升级器最多等待五分钟并拒绝切换。
 
 ## 4. 使用流程与版本边界
 
@@ -159,7 +160,7 @@ http://localhost:4320
 
 更详细的操作与验收脚本可见：`docs/runbook.md`。
 
-### 4.2 V2.2 上下文、Outcome 与 DAG 使用流程
+### 4.2 V2.3 上下文、Outcome、DAG 与 Quality Review 使用流程
 
 1. 创建或迁移 Project，确认 Project Brief、Workflow draft、typed I/O 和 Node Contract，使 Workflow 达到 `verified`。
 2. 从全局 `/context` 或项目 `/projects/<id>/context` 打开上下文地图；桌面使用目录、正文、关系三栏，移动端使用同级标签页。
@@ -174,6 +175,8 @@ http://localhost:4320
 11. Workstream 完成后生成 `WorkstreamOutcomeAsset`，下游 Workstream 消费该精确版本并自动解锁。
 12. 在 Task 页面观察七阶段 checkpoint、结构化 Failure Envelope 和失败阶段 replay；在 Outcome 面板检查 requirement、waiver、完成状态与 release eligibility。
 13. 最后一项任务完成后，系统等待 Context 投影 ready 和 Outcome evaluation 完成再关闭 lifecycle；连续投影失败会保留可重放的 `context_projection_unavailable`。
+14. 对内容 Workflow 在 Outcome 面板打开 Quality Review，先确认当前有效资产、范围外资产和 Rubric 快照，再启动确定性检查与独立模型建议。
+15. 运行进入 `awaiting_human` 后，人工逐维度填写分数和理由；模型建议只作参考，不会预填评分、修改 Outcome 或创建 waiver。提交时必须匹配报告 hash 与输入快照 hash。
 
 以上入口已纳入默认自动化门禁；外部服务与本机 CLI 的实际可用性仍由 Setup capability/probe 和可选 live 验收决定。完整证据见 `docs/completion-audit.md`。
 
@@ -235,7 +238,7 @@ pnpm verify
 npm run verify
 ```
 
-`verify` 会执行 V2.2 plan/catalog/coverage/impact/full、V2.1、V2.0 及更早历史兼容门禁、format、lint、typecheck、unit、integration、release、Prisma schema 检查、Web build、bundle budget、E2E 和 acceptance audit。pre-push 只调用 `test:compat:pr`：先按依赖图执行 V1.75 PR，再将已覆盖的 V1.8/V2.0/V2.1/V2.2 测试标记为复用，同一补充测试文件也只执行一次；PR 默认并发 2，可用 `AIWS_TEST_CONCURRENCY=1..4` 覆盖。各版本 `full`/`release` 专项仍保持独立且不使用缓存。V2.2 专项提供 `test:v22:pr`、`test:v22:full` 与 `test:v22:release`；容器交付应执行 `scripts/aiws.ps1 verify` 或 `scripts/aiws.sh verify`。
+`verify` 会执行 V2.3 plan/catalog/coverage/impact/full、Quality Review parser/协议/迁移/安全门禁，以及 V2.2、V2.1、V2.0 及更早历史兼容门禁、format、lint、typecheck、unit、integration、release、Prisma schema 检查、Web build、bundle budget、E2E 和 acceptance audit。pre-push 只调用 `test:compat:pr`：先按依赖图执行 V1.75 PR，再将已覆盖的 V1.8/V2.0/V2.1/V2.2 测试标记为复用，同一补充测试文件也只执行一次；PR 默认并发 2，可用 `AIWS_TEST_CONCURRENCY=1..4` 覆盖。各版本 `full`/`release` 专项仍保持独立且不使用缓存。V2.3 专项提供 `test:v23:pr`、`test:v23:full` 与 `test:v23:release`；容器交付应执行 `scripts/aiws.ps1 verify` 或 `scripts/aiws.sh verify`。
 
 ### 5.6 Codex live 测试，可选
 
@@ -335,7 +338,7 @@ Gateway 在宿主仅监听 `127.0.0.1:4319`，由 Caddy/Nginx 提供 HTTPS。成
 
 | 路径 | 用途 |
 |---|---|
-| `.ai-workspace/` | 宿主开发数据和发布 transcript；生产状态位于 `aiws-data-v22`，V2.1 恢复点位于保留卷 `aiws-data-v21`。 |
+| `.ai-workspace/` | 宿主开发数据和发布 transcript；生产状态位于 `aiws-data-v23`，V2.2 恢复点位于保留卷 `aiws-data-v22`。 |
 | `.git/` | Git 版本库元数据，由 Git 自动维护。 |
 | `apps/` | 应用层代码，包含 API 服务、前端页面和 worker 入口。 |
 | `packages/` | 可复用模块与共享领域逻辑，供 API、Worker、测试和后续扩展复用。 |
@@ -343,8 +346,8 @@ Gateway 在宿主仅监听 `127.0.0.1:4319`，由 Caddy/Nginx 提供 HTTPS。成
 | `scripts/` | 工程脚本目录，包含 lint、typecheck、verify、迁移检查和验收审计。 |
 | `docs/` | 工程文档目录，包含运行手册、V1 覆盖矩阵、完成审计报告和 `docs/github/` 下的 GitHub SaaS/自托管教程。 |
 | `doc/` | 早期核心想法、问题记录和方案草稿，用于保留设计演进过程。 |
-| `docker/` | Runner Dockerfile、导入 override/环境样例、归档/卷验收器、V2.2 只读克隆升级器及历史迁移实现。 |
-| `Dockerfile` / `compose.yml` | V2.2 production/verify/Windows Bridge export 镜像与默认完全容器化部署。 |
+| `docker/` | Runner Dockerfile、导入 override/环境样例、归档/卷验收器、V2.3 只读克隆升级器及历史迁移实现。 |
+| `Dockerfile` / `compose.yml` | V2.3 production/verify/Windows Bridge export 镜像与默认完全容器化部署。 |
 | `bridge/` | Windows Native Bridge 的 Go/DPAPI/ConPTY 与 workspace bundle 客户端。 |
 | `config/` | 本地公开配置示例，目前保存 GitHub App 的公开 Client ID；不要在此目录提交 Client Secret 或 Private Key。 |
 | `prisma/` | Prisma schema 草案，描述未来替换到 PostgreSQL 时的数据模型边界。 |
@@ -371,6 +374,7 @@ Gateway 在宿主仅监听 `127.0.0.1:4319`，由 Caddy/Nginx 提供 HTTPS。成
 | `开发计划v2.0.md` / `测试计划v2.0.md` | V2.0 系统上下文地图、选择安全、schema 20 与只读卷升级发布计划。 |
 | `开发计划v2.1.md` / `测试计划v2.1.md` | V2.1 Outcome、阶段重放、Context 闭环、schema 21 与独立卷发布计划。 |
 | `开发计划v2.2.md` / `测试计划v2.2.md` | V2.2 SQLite、投影/index、健康停机、committed impact 与 schema 22 发布计划。 |
+| `开发计划v2.3.md` / `测试计划v2.3.md` | V2.3 Quality Review、隔离 Reviewer、内容解析、人工评分与 schema 23 发布计划。 |
 | `tempmd.md` | V1.2 计划生成前的历史需求与决策备忘。 |
 
 ## 7. `apps/` 子目录说明
@@ -428,7 +432,7 @@ Gateway 在宿主仅监听 `127.0.0.1:4319`，由 Caddy/Nginx 提供 HTTPS。成
 - `.ai-workspace/` 已被 `.gitignore` 忽略，适合保存本机运行和调试数据。
 - 删除 `.ai-workspace/` 后再次启动，会重新初始化宿主开发状态；该操作不影响生产卷。
 
-V2.2 生产容器使用相同目录结构，根位于命名卷 `aiws-data-v22` 的 `/var/lib/aiws`，状态 schema 为 22。规范 Markdown 位于 CAS，`.context-index/minisearch-v2.json` 可从 SQLite 与 CAS 重建。`down` 保留卷；只允许通过带显式确认的运维脚本删除 V2.2 目标卷，V2.1 源卷仍保留。
+V2.3 生产容器使用相同目录结构，根位于命名卷 `aiws-data-v23` 的 `/var/lib/aiws`，状态 schema 为 23。规范 Markdown 位于 CAS，`.context-index/minisearch-v2.json` 可从 SQLite 与 CAS 重建。`down` 保留卷；只允许通过带显式确认的运维脚本删除 V2.3 目标卷，V2.2 源卷仍保留。
 
 ## 11. Legacy 可选基础设施
 
@@ -583,7 +587,7 @@ $env:AIWS_PORT="4320"; .\scripts\aiws.ps1 up
 
 ### 14.4 页面没有旧数据
 
-生产部署检查 `docker volume inspect aiws-data-v22`、保留的 `aiws-data-v21` 和 `.ai-workspace/release/v22-cutover-latest.json`。V2.2 只读克隆 V2.1 源卷并在新卷迁移；失败目标卷不会覆盖或删除源卷。宿主开发模式检查 `.ai-workspace/data/state-v22.sqlite` 及其 schema 22 sentinel。
+生产部署检查 `docker volume inspect aiws-data-v23`、保留的 `aiws-data-v22` 和 `.ai-workspace/release/v23-cutover-latest.json`。V2.3 只读克隆 V2.2 源卷并在新卷迁移；失败目标卷不会覆盖或删除源卷。宿主开发模式检查 `.ai-workspace/data/state-v23.sqlite` 及其 schema 23 sentinel。
 
 ### 14.5 Codex 不可用
 

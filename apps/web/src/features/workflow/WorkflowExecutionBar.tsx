@@ -15,6 +15,7 @@ import type {
 import { useUi } from '../../state/ui';
 import { WorkflowExecutionSummary } from './WorkflowExecutionSummary';
 import { WorkflowOutcomePanel } from './WorkflowOutcomePanel';
+import { QualityReviewPolicyEditor } from './QualityReviewPolicyEditor';
 
 type Selection = { connection_id: string; base_ref: string };
 
@@ -69,7 +70,6 @@ export function WorkflowExecutionBar({
   });
   useEffect(() => onSnapshot(snapshot || null), [onSnapshot, snapshot]);
   const tasks = useMemo(() => latestTasks(snapshot?.task_executions || []), [snapshot?.task_executions]);
-
   async function start() {
     if (repositoryWorkstreams.some((item) => !selections[item.id]?.connection_id || !selections[item.id]?.base_ref))
       return toast('请选择每条仓库执行线的代码仓库和分支', 'error');
@@ -92,8 +92,7 @@ export function WorkflowExecutionBar({
         )
       );
       setConfiguring(false);
-      await history.refetch();
-      onRefresh();
+      await history.refetch().then(() => onRefresh());
       toast('工作流已启动');
     } catch (error) {
       toast((error as Error).message, 'error');
@@ -101,7 +100,6 @@ export function WorkflowExecutionBar({
       setBusy('');
     }
   }
-
   async function control(action: 'pause' | 'resume' | 'cancel') {
     if (!execution) return;
     setBusy(action);
@@ -115,8 +113,6 @@ export function WorkflowExecutionBar({
       setBusy('');
     }
   }
-
-  const lines = snapshot?.repository_lines || [];
   const openConfiguration = () => (repositoryWorkstreams.length ? setConfiguring(true) : void start());
   return (
     <section
@@ -128,7 +124,7 @@ export function WorkflowExecutionBar({
         snapshot={snapshot}
         execution={execution}
         tasks={tasks}
-        lines={lines}
+        lines={snapshot?.repository_lines || []}
         workflowRevision={Number(workflow.workflow_revision || workflow.version || 1)}
         outcomesOpen={outcomesOpen}
         canWrite={canWrite}
@@ -137,6 +133,7 @@ export function WorkflowExecutionBar({
         onStart={openConfiguration}
         onControl={control}
       />
+      <ExecutionQualityPolicy workflow={workflow} canWrite={canWrite} execution={execution} onRefresh={onRefresh} />
       {execution && outcomesOpen && (
         <div id={`workflow-outcomes-${execution.id}`}>
           <WorkflowOutcomePanel
@@ -144,6 +141,7 @@ export function WorkflowExecutionBar({
             value={outcomes.data}
             loading={outcomes.isLoading}
             error={outcomes.error}
+            canRun={canWrite}
             canApprove={(bundle.membership?.role || bundle.project.current_user_role) === 'owner'}
             onRefresh={async () => {
               await Promise.all([outcomes.refetch(), history.refetch()]);
@@ -165,6 +163,28 @@ export function WorkflowExecutionBar({
         />
       )}
     </section>
+  );
+}
+
+function ExecutionQualityPolicy({
+  workflow,
+  canWrite,
+  execution,
+  onRefresh
+}: {
+  workflow: Workflow;
+  canWrite: boolean;
+  execution?: WorkflowExecutionSnapshot['workflow_execution'];
+  onRefresh: () => void;
+}) {
+  const executionActive = Boolean(execution && !['completed', 'failed', 'cancelled'].includes(execution.status));
+  return (
+    <QualityReviewPolicyEditor
+      workflow={workflow}
+      canWrite={canWrite}
+      executionActive={executionActive}
+      onRefresh={onRefresh}
+    />
   );
 }
 

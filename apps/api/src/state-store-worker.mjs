@@ -8,8 +8,8 @@ import {
   canonicalJson,
   canonicalJsonHash,
   stateRecordIdentity,
-  V22_SPECIALIZED_COLLECTIONS
-} from './state-migration-v22.mjs';
+  V23_SPECIALIZED_COLLECTIONS
+} from './state-migration-v23.mjs';
 
 const SPECIAL_TABLES = Object.freeze({
   context_nodes: 'context_nodes',
@@ -18,11 +18,10 @@ const SPECIAL_TABLES = Object.freeze({
   context_projection_jobs: 'context_projection_jobs',
   context_selections: 'context_selections'
 });
-
-let database = null;
-let databasePath = null;
-let stateCollections = [];
-
+let database = null,
+  databasePath = null,
+  stateCollections = [],
+  storeSchemaVersion = 22;
 parentPort.on('message', (message) => {
   const { id, type, payload } = message || {};
   try {
@@ -45,7 +44,8 @@ parentPort.on('message', (message) => {
 const handlers = {
   initialize(payload) {
     databasePath = path.resolve(payload.databasePath);
-    stateCollections = [...payload.collections];
+    ((stateCollections = [...payload.collections]), (storeSchemaVersion = Number(payload.store_schema_version || 22)));
+    if (![22, 23].includes(storeSchemaVersion)) throw storeError('state_database_schema_invalid');
     fs.mkdirSync(path.dirname(databasePath), { recursive: true, mode: 0o700 });
     recoverManagedMigrationDatabase(payload.sourceStateHash || null);
     if (!fs.existsSync(databasePath)) {
@@ -137,7 +137,7 @@ const handlers = {
       } catch {}
     }
     return {
-      healthy: schemaVersion === 22 && integrity === 'ok',
+      healthy: schemaVersion === storeSchemaVersion && integrity === 'ok',
       writable,
       migration_complete: metaValue(database, '__migration_complete') === true,
       schema_version: schemaVersion,
@@ -185,7 +185,7 @@ function createDatabaseAtomically(state, sourceStateHash, migration) {
     db.exec('BEGIN IMMEDIATE');
     try {
       insertWholeState(db, state);
-      setMeta(db, '__store_schema', 22);
+      setMeta(db, '__store_schema', storeSchemaVersion);
       setMeta(db, '__revision', 1);
       setMeta(db, '__migration_complete', true);
       setMeta(db, '__source_state_hash', sourceStateHash);
@@ -258,7 +258,7 @@ function openDatabase(file, { create = false } = {}) {
   db.exec('PRAGMA synchronous = FULL');
   db.exec('PRAGMA busy_timeout = 5000');
   db.exec('PRAGMA journal_mode = WAL');
-  if (!create && Number(db.prepare('PRAGMA user_version').get().user_version) !== 22) {
+  if (!create && Number(db.prepare('PRAGMA user_version').get().user_version) !== storeSchemaVersion) {
     db.close();
     throw storeError('state_database_schema_invalid');
   }
@@ -267,7 +267,7 @@ function openDatabase(file, { create = false } = {}) {
 
 function createSchema(db) {
   db.exec(`
-    PRAGMA user_version = 22;
+    PRAGMA user_version = ${storeSchemaVersion};
     CREATE TABLE state_meta (
       key TEXT PRIMARY KEY,
       value_json TEXT NOT NULL,
@@ -486,7 +486,7 @@ function readWholeState(db) {
     state[row.key] = JSON.parse(row.value_json);
   const generic = db.prepare('SELECT collection, value_json FROM state_records ORDER BY collection, ordinal').all();
   for (const row of generic) state[row.collection].push(JSON.parse(row.value_json));
-  for (const collection of V22_SPECIALIZED_COLLECTIONS) {
+  for (const collection of V23_SPECIALIZED_COLLECTIONS) {
     const table = SPECIAL_TABLES[collection];
     state[collection] = db
       .prepare(`SELECT value_json FROM ${table} ORDER BY ordinal`)
@@ -540,7 +540,7 @@ function verifyStoredState(db, expected) {
 }
 
 function verifyDatabase(db) {
-  if (Number(db.prepare('PRAGMA user_version').get().user_version) !== 22)
+  if (Number(db.prepare('PRAGMA user_version').get().user_version) !== storeSchemaVersion)
     throw storeError('state_database_schema_invalid');
   if (metaValue(db, '__migration_complete') !== true) throw storeError('state_database_migration_incomplete');
   const integrity = String(db.prepare('PRAGMA integrity_check').get().integrity_check || '');

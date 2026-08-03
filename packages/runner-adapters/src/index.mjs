@@ -3,7 +3,6 @@ import path from 'node:path';
 import { spawn } from 'node:child_process';
 import { prepareCodexInvocation } from './codex-command.mjs';
 import {
-  AIWS_RUNNER_IMAGE,
   DEFAULT_CODEX_TIMEOUT_MS,
   RunnerStatus,
   agentsAiwsBlock,
@@ -71,7 +70,10 @@ export class CodexRunner extends AgentRunner {
 
 export class DockerCodexRunner extends AgentRunner {
   constructor({
-    image = AIWS_RUNNER_IMAGE,
+    // Keep the package facade's historical default for callers that do not
+    // supply a deployment profile. The V2.3 API handler passes AIWS_RUNNER_IMAGE
+    // explicitly, so formal V2.3 runs still use the V2.3 runner image.
+    image = 'aiws-codex-runner:2.2.0-codex-0.144.0',
     timeoutMs = DEFAULT_CODEX_TIMEOUT_MS,
     invocationBuilder = null,
     processRunner = runProcess

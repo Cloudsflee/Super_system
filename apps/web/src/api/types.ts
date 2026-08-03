@@ -300,7 +300,7 @@ export type DraftProjectResult = {
   onboarding_route?: string;
   idempotent?: boolean;
 };
-export type Workflow = {
+export type Workflow = import('./execution-types').WorkflowQualityReviewFields & {
   id: string;
   project_id: string;
   title: string;

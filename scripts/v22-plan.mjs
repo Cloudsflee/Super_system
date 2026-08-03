@@ -6,10 +6,32 @@ import { validateV22Catalog } from './v22-catalog.mjs';
 
 const errors = [...validateV22Catalog().errors],
   manifest = readJson('package.json'),
-  coverage = readJson('tests/v22/coverage-map.json');
+  coverage = readJson('tests/v22/coverage-map.json'),
+  currentRelease =
+    manifest.version === '2.3.0'
+      ? {
+          label: 'V2.3',
+          versionAnchors: [
+            "AIWS_VERSION = '2.3.0'",
+            'AIWS_STATE_SCHEMA_VERSION = 23',
+            "AIWS_COMPOSE_PROJECT = 'aiws-v23'"
+          ],
+          composeAnchors: ['name: aiws-v23', 'aiws-app:2.3.0', 'aiws-codex-runner:2.3.0-codex-0.144.0', 'aiws-data-v23']
+        }
+      : {
+          label: 'V2.2',
+          versionAnchors: [
+            "AIWS_VERSION = '2.2.0'",
+            'AIWS_STATE_SCHEMA_VERSION = 22',
+            "AIWS_COMPOSE_PROJECT = 'aiws-v22'"
+          ],
+          composeAnchors: ['name: aiws-v22', 'aiws-app:2.2.0', 'aiws-codex-runner:2.2.0-codex-0.144.0', 'aiws-data-v22']
+        };
 
-if (manifest.version !== '2.2.0') errors.push('package.json version must be 2.2.0');
-if (!String(manifest.description || '').includes('V2.2')) errors.push('package description must identify V2.2');
+if (!['2.2.0', '2.3.0'].includes(manifest.version))
+  errors.push('package.json version must be V2.2 or a declared V2.3 compatibility successor');
+if (!String(manifest.description || '').includes(currentRelease.label))
+  errors.push(`package description must identify ${currentRelease.label}`);
 for (const [name, expected] of Object.entries({
   'test:v22:plan': 'scripts/v22-plan.mjs',
   'test:v22:catalog': 'scripts/v22-catalog.mjs',
@@ -50,15 +72,12 @@ for (const file of [
 for (const [file, anchors] of [
   ['开发计划v2.2.md', ['# AIWS 开发计划 V2.2', '产品版本：`2.2.0`', 'state schema：`22`', 'OPT22-01']],
   ['测试计划v2.2.md', ['# AIWS 测试计划 V2.2', '产品版本：`2.2.0`', 'state schema：`22`', 'test:v22:plan']],
-  [
-    'packages/shared/src/version.mjs',
-    ["AIWS_VERSION = '2.2.0'", 'AIWS_STATE_SCHEMA_VERSION = 22', "AIWS_COMPOSE_PROJECT = 'aiws-v22'"]
-  ],
+  ['packages/shared/src/version.mjs', currentRelease.versionAnchors],
   [
     'packages/system-context/src/protocol.mjs',
     ["CONTEXT_PROTOCOL_VERSION = 'aiws.system-context.v1'", "CONTEXT_PACK_SCHEMA = 'aiws.context_pack.v5'"]
   ],
-  ['compose.yml', ['name: aiws-v22', 'aiws-app:2.2.0', 'aiws-codex-runner:2.2.0-codex-0.144.0', 'aiws-data-v22']]
+  ['compose.yml', currentRelease.composeAnchors]
 ]) {
   const source = fs.existsSync(file) ? fs.readFileSync(file, 'utf8') : '';
   for (const anchor of anchors) if (!source.includes(anchor)) errors.push(`${file}: missing ${anchor}`);

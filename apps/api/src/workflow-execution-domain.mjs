@@ -50,6 +50,7 @@ import {
   sanitizeLegacyExecutorConfig
 } from './workflow-retry-compatibility.mjs';
 import { requireWorkflowExecutionProtocols } from './workflow-execution-protocols.mjs';
+import { pendingOutcomeSummary, workflowQualityReviewRubricHash } from './quality-review-rubric.mjs';
 export { integrationEvidenceFor } from './workflow-integration-evidence.mjs';
 export { taskExecutionReadiness } from './workflow-execution-readiness.mjs';
 export {
@@ -149,7 +150,8 @@ export function createWorkflowExecutionInState(state, workflowId, input = {}, ac
         definition,
         repositorySelection,
         outcome_contract_hash: protocols?.outcome_contract_hash || null,
-        quality_rubric_hash: protocols?.quality_rubric_hash || null
+        quality_rubric_hash: protocols?.quality_rubric_hash || null,
+        quality_review_rubric_hash: workflowQualityReviewRubricHash(workflow)
       })
     ),
     executor_config: normalizeWorkflowExecutorConfig(input),
@@ -160,17 +162,10 @@ export function createWorkflowExecutionInState(state, workflowId, input = {}, ac
       ? {
           completion_status: 'pending',
           release_eligible: false,
-          outcome_summary: {
-            total: 0,
-            pending: 0,
-            satisfied: 0,
-            unsatisfied: 0,
-            waived: 0,
-            error: 0,
-            mandatory_gaps: 0
-          },
+          outcome_summary: pendingOutcomeSummary(),
           outcome_contract_hash: protocols.outcome_contract_hash,
           quality_rubric_hash: protocols.quality_rubric_hash,
+          quality_review_rubric_hash: workflowQualityReviewRubricHash(workflow),
           outcome_contract_source: protocols.contract.source,
           finalization_state: 'pending',
           finalized_at: null

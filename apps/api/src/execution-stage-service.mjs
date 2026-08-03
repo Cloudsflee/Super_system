@@ -7,7 +7,7 @@ import {
   parseFailureEnvelope,
   protocolHash
 } from '../../../packages/execution-protocol/src/index.mjs';
-import { id, now } from '../../../packages/shared/index.mjs';
+import { AIWS_RUNNER_IMAGE, id, now } from '../../../packages/shared/index.mjs';
 import { HttpError } from './http.mjs';
 import { redactKnownSecretsSync } from './vault.mjs';
 
@@ -42,7 +42,7 @@ function executionRunnerImage(workflowExecution, overrides) {
     overrides.runner_image_digest ||
     workflowExecution?.executor_config?.runner_image_digest ||
     process.env.AIWS_CODEX_DOCKER_IMAGE ||
-    'aiws-codex-runner:2.2.0-codex-0.144.0'
+    AIWS_RUNNER_IMAGE
   );
 }
 

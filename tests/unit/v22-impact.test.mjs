@@ -140,6 +140,16 @@ function verifyCompatibilityPlan() {
       versionCatalogs
     },
     supplementalPlan = buildCompatibilityPlan({ ...input, domains: [] }),
+    v23Catalogs = {
+      ...versionCatalogs,
+      v23: { catalog: read('tests/v23/catalog.json'), suites: read('tests/v23/suites.json') }
+    },
+    v23PrecoveredPlan = buildCompatibilityPlan({
+      ...input,
+      versionCatalogs: v23Catalogs,
+      domains: [],
+      precoveredVersions: ['2.3']
+    }),
     contextTasks = supplementalPlan.supplemental_tasks.filter((item) =>
       item.command.includes('tests/unit/v21-context.test.mjs')
     ),
@@ -150,6 +160,10 @@ function verifyCompatibilityPlan() {
   assert.equal(contextTasks[0].owners.length, 2);
   assert.equal(outcomeTasks.length, 1);
   assert.equal(outcomeTasks[0].owners.length, 2);
+  assert.equal(
+    v23PrecoveredPlan.aliases.filter((item) => item.owner.version === '2.3' && item.dedupe_kind === 'prepush').length,
+    v23Catalogs.v23.suites.pr.length
+  );
   assert.equal(
     supplementalPlan.supplemental_tasks.length + supplementalPlan.aliases.length,
     supplementalPlan.declared_compatibility_cases

@@ -26,6 +26,7 @@ import {
 } from './brief-workflow-domain.mjs';
 import { assertWorkflowHierarchy, normalizeWorkflowHierarchyNodes } from './workflow-hierarchy-domain.mjs';
 import { assertWorkflowPlanningQuality } from './workflow-quality.mjs';
+import { applyQualityReviewPolicy } from './quality-review-rubric.mjs';
 import { applyWorkflowOutcomeProtocols } from './workflow-outcome-definition.mjs';
 import { makeSession } from './assist-v3-domain.mjs';
 export { assertManagedProjectWritable, managedProjectRoot, managedRepoPath } from './managed-workspace.mjs';
@@ -114,7 +115,6 @@ export function createDraftProjectRecords(body, actor) {
     onboarding_route: `/projects/${created.project.id}/onboarding`
   };
 }
-
 export function buildProjectBrief(project, intake, actorId, version) {
   const briefId = id('pbr');
   return {
@@ -190,7 +190,7 @@ export function activateDraftInState(state, project, brief, workflowInput, actor
       project_classification: null,
       brief_coverage: {}
     });
-  state.workflows.push(workflow);
+  state.workflows.push(applyQualityReviewPolicy(workflow, state, !legacyCompatibility));
   const created = inputs.map((input, index) => ({
     id: input.id || id(input.role === 'workstream' ? 'wfs' : 'tsk'),
     workflow_id: workflow.id,

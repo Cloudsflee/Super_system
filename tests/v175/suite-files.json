@@ -71,7 +71,10 @@
     "tests/unit/v21-performance.test.mjs",
     "tests/unit/v22-impact.test.mjs",
     "tests/unit/v22-performance.test.mjs",
-    "tests/unit/v22-projector-index.test.mjs"
+    "tests/unit/v22-projector-index.test.mjs",
+    "tests/unit/v23-quality-review.test.mjs",
+    "tests/unit/v23-quality-review-parser.test.mjs",
+    "tests/unit/v23-quality-review-state.test.mjs"
   ],
   "integration-core": [
     "tests/integration/api-flow.test.mjs",
@@ -111,7 +114,8 @@
     "tests/integration/v19-workflow-migration-acl-flow.test.mjs",
     "tests/integration/v19-workflow-migration-orchestrator-flow.test.mjs",
     "tests/integration/v110-workflow-execution-flow.test.mjs",
-    "tests/integration/v21-stage-replay-flow.test.mjs"
+    "tests/integration/v21-stage-replay-flow.test.mjs",
+    "tests/integration/v23-quality-review-flow.test.mjs"
   ],
   "integration-files": [
     "tests/integration/tools-flow.test.mjs",

@@ -1,8 +1,14 @@
 import { containerizeLoopbackUrl } from './codex-container-network.mjs';
 import { PORT } from './config.mjs';
 import { issueInternalCodexToken, revokeMcpClient } from './mcp-client-service.mjs';
+import { codexTimeoutTtlSeconds } from './codex-timeout.mjs';
 
 export const AIWS_BUILTIN_MCP_NAME = 'aiws-built-in';
+
+export async function resolveCodexMcpAccess(projectId, profile, options = {}) {
+  if (options.disableMcp) return null;
+  return issueCodexMcpAccess(projectId, profile, { ttlSeconds: codexTimeoutTtlSeconds(profile.timeout_ms) });
+}
 
 export async function issueCodexMcpAccess(
   projectId,

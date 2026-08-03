@@ -13,7 +13,10 @@ const errors = [],
   catalog = validateV21Catalog(),
   knownTests = new Set(catalog.catalog.tests.map((item) => item.id)),
   knownImplementations = new Set(Object.keys(coverage.work_packages || {})),
-  sources = collections.filter((name) => !CONTEXT_INTERNAL_COLLECTIONS.includes(name));
+  successorCollections = new Set(['quality_review_runs', 'quality_review_reports', 'quality_review_events']),
+  sources = collections.filter(
+    (name) => !CONTEXT_INTERNAL_COLLECTIONS.includes(name) && !successorCollections.has(name)
+  );
 
 if (!sameSet(sources, coverage.state_collections)) errors.push('state collection coverage is not exact');
 if (!sameSet(CONTEXT_INTERNAL_COLLECTIONS, coverage.context_collections))

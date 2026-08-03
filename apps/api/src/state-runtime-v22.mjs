@@ -3,7 +3,7 @@ import fsp from 'node:fs/promises';
 import path from 'node:path';
 
 import { now } from '../../../packages/shared/index.mjs';
-import { DATA_DIR, STATE_DB_FILE, STATE_FILE } from './config.mjs';
+import { DATA_DIR, STATE_DB_FILE, STATE_FILE } from './config-v22.mjs';
 import { materializeContextDocumentsInState } from './context-projection.mjs';
 import {
   canonicalJsonHash,
@@ -13,7 +13,7 @@ import {
   migrateState21To22,
   normalizeState22Defaults,
   validateState22
-} from './state-migration-v22.mjs';
+} from './state-migration-v22-compat.mjs';
 
 const STATE_FILE_REPLACE_RETRIES = 100;
 

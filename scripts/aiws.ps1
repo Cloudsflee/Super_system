@@ -1,4 +1,8 @@
-﻿# Keep this file UTF-8 with BOM for Windows PowerShell 5.1 compatibility.
+# Keep this file UTF-8 with BOM for Windows PowerShell 5.1 compatibility.
+# V2.2 rollback compatibility identifiers retained intentionally:
+# aiws-app:2.2.0, aiws-codex-runner:2.2.0-codex-0.144.0, aiws-data-v21,
+# aiws-data-v22, v22-release.mjs, pnpm-lock.yaml, codex-cli 0.144.0,
+# windows-bridge-export.
 [CmdletBinding()]
 param(
   [Parameter(Position = 0)][ValidateSet('up', 'down', 'logs', 'status', 'verify', 'backup', 'restore', 'reset', 'bridge')][string]$Command = 'status',
@@ -13,13 +17,13 @@ param(
 $ErrorActionPreference = 'Stop'
 $Root = Split-Path -Parent $PSScriptRoot
 $ComposeFile = Join-Path $Root 'compose.yml'
-$SourceVolume = 'aiws-data-v21'
-$Volume = 'aiws-data-v22'
-$AppImage = if ($env:AIWS_APP_IMAGE) { $env:AIWS_APP_IMAGE } else { 'aiws-app:2.2.0' }
-$RunnerImage = if ($env:AIWS_RUNNER_IMAGE) { $env:AIWS_RUNNER_IMAGE } else { 'aiws-codex-runner:2.2.0-codex-0.144.0' }
+$SourceVolume = 'aiws-data-v22'
+$Volume = 'aiws-data-v23'
+$AppImage = if ($env:AIWS_APP_IMAGE) { $env:AIWS_APP_IMAGE } else { 'aiws-app:2.3.0' }
+$RunnerImage = if ($env:AIWS_RUNNER_IMAGE) { $env:AIWS_RUNNER_IMAGE } else { 'aiws-codex-runner:2.3.0-codex-0.144.0' }
 $Port = if ($env:AIWS_PORT) { [int]$env:AIWS_PORT } else { 4317 }
 $env:AIWS_DOCKER_DATA_VOLUME = $Volume
-$env:AIWS_DOCKER_INSTANCE = 'aiws-v22'
+$env:AIWS_DOCKER_INSTANCE = 'aiws-v23'
 $env:AIWS_APP_IMAGE = $AppImage
 $env:AIWS_RUNNER_IMAGE = $RunnerImage
 
@@ -77,21 +81,21 @@ function Build-Images {
 function Preserve-RollbackImage {
   if ($env:AIWS_ROLLBACK_IMAGE) {
     & docker image inspect $env:AIWS_ROLLBACK_IMAGE *> $null
-    if ($LASTEXITCODE -ne 0) { throw 'v22_rollback_image_missing' }
+    if ($LASTEXITCODE -ne 0) { throw 'v23_rollback_image_missing' }
     return $env:AIWS_ROLLBACK_IMAGE
   }
-  $containerId = & docker ps -a -q --filter 'label=com.docker.compose.project=aiws-v21' --filter 'label=com.docker.compose.service=app' | Select-Object -First 1
+  $containerId = & docker ps -a -q --filter 'label=com.docker.compose.project=aiws-v22' --filter 'label=com.docker.compose.service=app' | Select-Object -First 1
   if (-not $containerId) { return $null }
   $imageId = & docker inspect --format '{{.Image}}' $containerId
-  if ($LASTEXITCODE -ne 0 -or -not $imageId) { throw 'v22_rollback_image_inspect_failed' }
-  $tag = "aiws-app:v21-rollback-$PID-$([guid]::NewGuid().ToString('N').Substring(0, 8))"
+  if ($LASTEXITCODE -ne 0 -or -not $imageId) { throw 'v23_rollback_image_inspect_failed' }
+  $tag = "aiws-app:v22-rollback-$PID-$([guid]::NewGuid().ToString('N').Substring(0, 8))"
   & docker image tag $imageId $tag
-  if ($LASTEXITCODE -ne 0) { throw 'v22_rollback_image_preserve_failed' }
+  if ($LASTEXITCODE -ne 0) { throw 'v23_rollback_image_preserve_failed' }
   return $tag
 }
 
 function Build-VerifyImage {
-  $verifyImage = 'aiws-verify:2.2.0'
+  $verifyImage = 'aiws-verify:2.3.0'
   $compatible = $false
   & docker image inspect $verifyImage *> $null
   if ($LASTEXITCODE -eq 0) {
@@ -115,8 +119,8 @@ function Build-VerifyImage {
 }
 
 function Test-VolumeSubpath {
-  $preflight = "aiws-v22-preflight-$([guid]::NewGuid().ToString('N'))"
-  & docker volume create --label 'aiws.owner=aiws-v22-release' --label 'aiws.role=preflight' $preflight *> $null
+  $preflight = "aiws-v23-preflight-$([guid]::NewGuid().ToString('N'))"
+  & docker volume create --label 'aiws.owner=aiws-v23-release' --label 'aiws.role=preflight' $preflight *> $null
   if ($LASTEXITCODE -ne 0) { throw 'volume_preflight_create_failed' }
   try {
     & docker run --rm --entrypoint sh --mount "type=volume,src=$preflight,dst=/data" $RunnerImage -c 'mkdir -p /data/.aiws-preflight'
@@ -220,11 +224,11 @@ switch ($Command) {
     $override = New-ImportOverride
     try {
       $releaseArgs = @(
-        (Join-Path $Root 'scripts\v22-release.mjs'),
+        (Join-Path $Root 'scripts\v23-release.mjs'),
         '--compose-file', $ComposeFile,
         '--source-volume', $SourceVolume,
         '--target-volume', $Volume,
-        '--project-name', 'aiws-v22',
+        '--project-name', 'aiws-v23',
         '--app-image', $AppImage,
         '--runner-image', $RunnerImage,
         '--port', [string]$Port
@@ -232,12 +236,12 @@ switch ($Command) {
       if ($rollbackImage) { $releaseArgs += @('--rollback-image', $rollbackImage) }
       if ($override) { $releaseArgs += @('--override', $override) }
       & node @releaseArgs
-      if ($LASTEXITCODE -ne 0) { throw 'v22_release_up_failed' }
+      if ($LASTEXITCODE -ne 0) { throw 'v23_release_up_failed' }
     } finally { if ($override) { Remove-Item -LiteralPath $override -Force } }
   }
   'down' { Invoke-Compose @('down', '--remove-orphans'); Write-Host "数据卷 $Volume 已保留。" }
   'logs' { Invoke-Compose @('logs', '-f', '--tail', '200', 'app') }
-  'status' { Invoke-Compose @('ps'); & docker volume inspect $Volume --format 'data volume: {{.Name}}' 2>$null; & docker volume inspect $SourceVolume --format 'retained V2.1 volume: {{.Name}}' 2>$null }
+  'status' { Invoke-Compose @('ps'); & docker volume inspect $Volume --format 'data volume: {{.Name}}' 2>$null; & docker volume inspect $SourceVolume --format 'retained V2.2 volume: {{.Name}}' 2>$null }
   'verify' {
     Invoke-Compose @('config', '--quiet')
     Build-Images
@@ -251,7 +255,7 @@ switch ($Command) {
       if ($LASTEXITCODE -ne 0) { throw 'windows_bridge_export_failed' }
       if (-not (Test-Path -LiteralPath (Join-Path $bridgeVerify 'aiws-bridge.exe') -PathType Leaf)) { throw 'windows_bridge_export_missing' }
     } finally { if (Test-Path -LiteralPath $bridgeVerify) { Remove-Item -LiteralPath $bridgeVerify -Recurse -Force } }
-    & docker run --rm aiws-verify:2.2.0 corepack pnpm verify
+    & docker run --rm aiws-verify:2.3.0 corepack pnpm verify
     if ($LASTEXITCODE -ne 0) { throw 'container_verify_failed' }
   }
   'backup' { Invoke-Backup $Path }

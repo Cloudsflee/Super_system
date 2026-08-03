@@ -5,6 +5,7 @@ import {
   validateV22ReleaseTarget,
   verifyClonedVolumeV22
 } from './release-volume-v22.mjs';
+import { executeV23ReleaseCommand } from './release-volume-v23-cli.mjs';
 import { releaseError } from './release-volume-validation.mjs';
 
 export async function executeV22ReleaseCommand(command, args) {
@@ -38,6 +39,8 @@ export async function executeV22ReleaseCommand(command, args) {
       matched: true,
       result: await validateV22ReleaseTarget(required(args[0], 'target_root_required'), args[1] || V22_TARGET_VOLUME)
     };
+  const v23 = await executeV23ReleaseCommand(command, args);
+  if (v23.matched) return v23;
   return { matched: false, result: null };
 }
 

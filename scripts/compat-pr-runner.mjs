@@ -19,7 +19,7 @@ import {
 
 const BUDGET_MS = 15 * 60_000;
 
-export function buildCompatibilityPlan({ domains, v175Catalog, suiteFiles, versionCatalogs }) {
+export function buildCompatibilityPlan({ domains, v175Catalog, suiteFiles, versionCatalogs, precoveredVersions = [] }) {
   const selectedV175 = selectV175Cases(v175Catalog.tests, 'pr', domains),
     coverage = v175Coverage(selectedV175, suiteFiles),
     candidates = compatibilityCandidates(versionCatalogs),
@@ -27,6 +27,15 @@ export function buildCompatibilityPlan({ domains, v175Catalog, suiteFiles, versi
     aliases = [];
 
   for (const candidate of candidates) {
+    if (precoveredVersions.includes(candidate.owner.version)) {
+      aliases.push({
+        ...candidate,
+        status: 'DEDUPED',
+        dedupe_kind: 'prepush',
+        covered_by: [`pre-push:test:v23:pr`]
+      });
+      continue;
+    }
     const coveredBy = v175CoverageForCommand(candidate.command, coverage);
     if (coveredBy.length) {
       aliases.push({ ...candidate, status: 'DEDUPED', dedupe_kind: 'v175', covered_by: coveredBy });
@@ -110,7 +119,8 @@ async function main() {
     domains: impact.domains,
     v175Catalog: readJson('tests/v175/catalog.json'),
     suiteFiles: readJson('tests/v175/suite-files.json'),
-    versionCatalogs: loadVersionCatalogs()
+    versionCatalogs: loadVersionCatalogs(),
+    precoveredVersions: process.env.AIWS_V23_PR_PREPASSED === '1' ? ['2.3'] : []
   });
   if (args.plan) {
     console.log(JSON.stringify({ base: impact.base, head: impact.head, domains: impact.domains, ...plan }, null, 2));
@@ -196,7 +206,7 @@ async function main() {
 
 function loadVersionCatalogs() {
   return Object.fromEntries(
-    ['v18', 'v20', 'v21', 'v22'].map((version) => [
+    ['v18', 'v20', 'v21', 'v22', 'v23'].map((version) => [
       version,
       {
         catalog: readJson(`tests/${version}/catalog.json`),
@@ -219,8 +229,10 @@ function compatibilityCandidates(versionCatalogs) {
   const journey = v18Tests.find((test) => test.id === 'V18-L5-JOURNEY-002');
   candidates.push(candidate('1.8', journey.id, journey.command, 240_000));
 
-  for (const version of ['v20', 'v21', 'v22']) {
-    const { catalog, suites } = versionCatalogs[version],
+  for (const version of ['v20', 'v21', 'v22', 'v23']) {
+    const versionCatalog = versionCatalogs[version];
+    if (!versionCatalog) continue;
+    const { catalog, suites } = versionCatalog,
       byId = new Map(catalog.tests.map((item) => [item.id, item]));
     for (const id of suites.pr) {
       const item = byId.get(id);
@@ -312,7 +324,12 @@ export function buildCompatibilityReport({ runId, impact, plan, results, started
     ),
     ownership = [
       ...plan.aliases.map((item) => {
-        const sourceStatus = item.dedupe_kind === 'v175' ? v175Status : resultByKey.get(item.task_key)?.status;
+        const sourceStatus =
+          item.dedupe_kind === 'v175'
+            ? v175Status
+            : item.dedupe_kind === 'prepush'
+              ? 'PASS'
+              : resultByKey.get(item.task_key)?.status;
         return {
           owner: item.owner,
           status: sourceStatus === 'PASS' ? 'DEDUPED' : sourceStatus || 'NOT_RUN',

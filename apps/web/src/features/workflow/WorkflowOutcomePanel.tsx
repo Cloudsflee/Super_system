@@ -3,12 +3,14 @@ import { useMemo, useState } from 'react';
 import { api, json } from '../../api/client';
 import type { OutcomeEvaluation, OutcomeRequirement, OutcomeWaiver, WorkflowOutcomeSnapshot } from '../../api/types';
 import { useUi } from '../../state/ui';
+import { QualityReviewController } from './QualityReviewController';
 
 export function WorkflowOutcomePanel({
   executionId,
   value,
   loading,
   error,
+  canRun,
   canApprove,
   onRefresh
 }: {
@@ -16,6 +18,7 @@ export function WorkflowOutcomePanel({
   value?: WorkflowOutcomeSnapshot;
   loading: boolean;
   error?: Error | null;
+  canRun?: boolean;
   canApprove: boolean;
   onRefresh: () => Promise<unknown>;
 }) {
@@ -88,16 +91,14 @@ export function WorkflowOutcomePanel({
       {error && <p className="workflow-outcome-empty error">{error.message}</p>}
       {value && (
         <>
-          <div className="workflow-outcome-summary">
-            <OutcomeMetric label="满足" value={value.workflow_execution.outcome_summary?.satisfied || 0} tone="ok" />
-            <OutcomeMetric label="缺口" value={value.workflow_execution.outcome_summary?.unsatisfied || 0} tone="gap" />
-            <OutcomeMetric label="豁免" value={value.workflow_execution.outcome_summary?.waived || 0} tone="waived" />
-            <OutcomeMetric
-              label="Mandatory gap"
-              value={value.workflow_execution.outcome_summary?.mandatory_gaps || 0}
-              tone="gap"
-            />
-          </div>
+          <OutcomeSummary value={value} />
+          <QualityReviewSlot
+            executionId={executionId}
+            value={value}
+            canRun={canRun}
+            canApprove={canApprove}
+            onRefresh={onRefresh}
+          />
           <div className="workflow-outcome-requirements">
             {value.requirements.map((requirement) => (
               <RequirementRow
@@ -143,6 +144,46 @@ export function WorkflowOutcomePanel({
         </>
       )}
     </div>
+  );
+}
+
+function OutcomeSummary({ value }: { value: WorkflowOutcomeSnapshot }) {
+  return (
+    <div className="workflow-outcome-summary">
+      <OutcomeMetric label="满足" value={value.workflow_execution.outcome_summary?.satisfied || 0} tone="ok" />
+      <OutcomeMetric label="缺口" value={value.workflow_execution.outcome_summary?.unsatisfied || 0} tone="gap" />
+      <OutcomeMetric label="豁免" value={value.workflow_execution.outcome_summary?.waived || 0} tone="waived" />
+      <OutcomeMetric
+        label="Mandatory gap"
+        value={value.workflow_execution.outcome_summary?.mandatory_gaps || 0}
+        tone="gap"
+      />
+    </div>
+  );
+}
+
+function QualityReviewSlot({
+  executionId,
+  value,
+  canRun,
+  canApprove,
+  onRefresh
+}: {
+  executionId: string;
+  value: WorkflowOutcomeSnapshot;
+  canRun?: boolean;
+  canApprove: boolean;
+  onRefresh: () => Promise<unknown>;
+}) {
+  if (!value.workflow_execution.quality_review_rubric_hash) return null;
+  return (
+    <QualityReviewController
+      executionId={executionId}
+      enabled
+      canRun={canRun}
+      canApprove={canApprove}
+      onRefresh={onRefresh}
+    />
   );
 }
 

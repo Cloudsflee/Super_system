@@ -102,7 +102,7 @@ RUN --mount=type=cache,id=aiws-corepack,target=/root/.cache/node/corepack,sharin
 
 FROM node:24.14.0-alpine3.22 AS production
 LABEL org.opencontainers.image.title="AI Workspace System" \
-      org.opencontainers.image.version="2.2.0"
+      org.opencontainers.image.version="2.3.0"
 ARG ALPINE_FALLBACK_MIRROR=https://mirrors.aliyun.com/alpine
 RUN apk add --no-cache bash ca-certificates docker-cli docker-cli-compose git openssh-client python3 tar || (sed -i "s#https://dl-cdn.alpinelinux.org/alpine#${ALPINE_FALLBACK_MIRROR}#g" /etc/apk/repositories && apk add --no-cache bash ca-certificates docker-cli docker-cli-compose git openssh-client python3 tar)
 WORKDIR /app
@@ -125,10 +125,15 @@ COPY docker/release-volume-v21.mjs ./docker/release-volume-v21.mjs
 COPY docker/release-volume-v21-cli.mjs ./docker/release-volume-v21-cli.mjs
 COPY docker/release-volume-v22.mjs ./docker/release-volume-v22.mjs
 COPY docker/release-volume-v22-cli.mjs ./docker/release-volume-v22-cli.mjs
+COPY docker/release-volume-v23.mjs ./docker/release-volume-v23.mjs
+COPY docker/release-volume-v23-cli.mjs ./docker/release-volume-v23-cli.mjs
+COPY docker/v23-readiness.mjs ./docker/v23-readiness.mjs
 COPY docker/release-volume-validation.mjs ./docker/release-volume-validation.mjs
 COPY docker/v20-upgrade.mjs ./docker/v20-upgrade.mjs
 COPY docker/v21-upgrade.mjs ./docker/v21-upgrade.mjs
 COPY docker/v22-upgrade.mjs ./docker/v22-upgrade.mjs
+COPY docker/v23-upgrade.mjs ./docker/v23-upgrade.mjs
+RUN node -e "import('./docker/v23-readiness.mjs').then(m=>{if(typeof m.waitForV23Readiness!=='function')process.exit(1)})"
 RUN mkdir -p /var/lib/aiws && chmod 0700 /var/lib/aiws
 EXPOSE 4317
 HEALTHCHECK --interval=10s --timeout=3s --start-period=20s --retries=6 \
@@ -137,7 +142,7 @@ CMD ["node", "apps/api/server.mjs"]
 
 FROM node:24.14.0-alpine3.22 AS mcp-gateway
 LABEL org.opencontainers.image.title="AI Workspace MCP Gateway" \
-      org.opencontainers.image.version="2.2.0"
+      org.opencontainers.image.version="2.3.0"
 WORKDIR /app
 ENV NODE_ENV=production \
     AIWS_MCP_GATEWAY_HOST=0.0.0.0 \

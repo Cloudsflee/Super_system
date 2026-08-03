@@ -235,5 +235,10 @@ export const TRACE_EVENTS = Object.freeze([
   'exchange.request.created',
   'exchange.request.approved',
   'exchange.request.revoked',
-  'exchange.context_pack.created'
+  'exchange.context_pack.created',
+  'quality_review.queued',
+  'quality_review.policy_updated',
+  'quality_review.cancelled',
+  'quality_review.failed',
+  'quality_review.decided'
 ]);

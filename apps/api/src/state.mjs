@@ -1,4 +1,5 @@
 import { cloneStateValue as structuredClone } from './state-clone.mjs';
+import fs from 'node:fs';
 import fsp from 'node:fs/promises';
 import path from 'node:path';
 import { createDraft, enablePatches, finishDraft, freeze, produceWithPatches, setAutoFreeze } from 'immer';
@@ -23,8 +24,10 @@ import {
   EXECUTION_DIR,
   EXPORT_DIR,
   PROBE_DIR,
+  QUALITY_REVIEW_TEMP_DIR,
   STAGING_DIR,
   STATE_DB_FILE,
+  STATE_FILE,
   TRASH_DIR,
   VAULT_DIR,
   WORKSPACE_DIR,
@@ -33,31 +36,29 @@ import {
 } from './config.mjs';
 import { redactKnownSecrets } from './vault.mjs';
 import {
-  codexAuthMatchesProfile,
-  isThirdPartyProvider,
-  isValidCodexTimeoutMs,
-  normalizeProviderBaseUrl,
-  resolveCodexTimeoutMs,
-  writeProfileConfig
-} from './codex-service.mjs';
-import {
   normalizeOutcomeEvidenceRelationsV20,
   normalizeTaskHandoffDefaultsV20,
   V21_OUTCOME_COLLECTIONS
 } from './state-migration-v21.mjs';
 import {
-  assertV21AppendOnly,
+  assertAppendOnly as assertV21AppendOnly,
+  assertQualityReviewAppendOnly,
+  assertQualityReviewHumanReviewAppendOnly,
+  assertQualityReviewRunSnapshotImmutability,
   canonicalJsonHash,
-  normalizeOfficialRunnerImagesV22,
-  normalizeState22Defaults,
+  markQualityReviewRunsStale,
+  normalizeOfficialRunnerImagesV23,
+  normalizeQualityReviewDefaults,
+  ensureQualityReviewProfiles,
+  normalizeState23Defaults,
   STATE_SCHEMA_VERSION,
-  validateState22
-} from './state-migration-v22.mjs';
+  validateState23
+} from './state-migration-v23.mjs';
 import {
-  commitState22Sentinel,
+  commitState23Sentinel,
   prepareStateStoreInitialization,
   recoverManagedStateTemp
-} from './state-runtime-v22.mjs';
+} from './state-runtime-v23.mjs';
 import {
   assertContextImmutability,
   CONTEXT_INTERNAL_COLLECTIONS,
@@ -66,16 +67,20 @@ import {
 import { collectContextVersions, materializeContextDocumentsInState } from './context-projection.mjs';
 import { normalizeState18Compatibility } from './state-compatibility.mjs';
 import { currentActorId } from './actor-context.mjs';
-import { ensureProjectGovernanceDefaults, expireProjectInvitationsInState } from './project-governance-v19.mjs';
-import {
-  ensureRepositoryLifecycleDefaults,
-  expireRepositoryDeletionIntentsInState
-} from './repository-lifecycle-v19.mjs';
-import { ensureExchangeDefaults, expireExchangeRequestsInState } from './exchange-v19.mjs';
-import { recoverInterruptedRepositoryDeletionsInState } from './repository-deletion-recovery.mjs';
-import { recoverInvalidDeliveryPullRequestClaimsInState } from './delivery-recovery.mjs';
-import { recoverPullRequestIntentsInState } from './pull-request-intent-domain.mjs';
+import { ensureProjectGovernanceDefaults } from './project-governance-v19.mjs';
+import { ensureRepositoryLifecycleDefaults } from './repository-lifecycle-v19.mjs';
+import { ensureExchangeDefaults } from './exchange-v19.mjs';
 import { promoteLegacyExecutionHistoryInState } from './legacy-execution-promotion.mjs';
+import {
+  ensureRuntimeDefaults,
+  normalizeRuntimeGovernance,
+  normalizeRuntimeProjects,
+  normalizeRuntimeDraftsAndProposals,
+  normalizeLegacyRuntimeRecords,
+  normalizeCodexProfileRecords,
+  refreshValidatedCodexProfiles
+} from './state-v22-runtime-normalizers.mjs';
+import { recoverInterruptedRuntimeWork as recoverBaseRuntimeWork } from './state-v22-runtime-recovery.mjs';
 import {
   applyStateChanges,
   checkpointStateStore,
@@ -88,43 +93,73 @@ import {
   stateStoreRuntimeStatus
 } from './state-store.mjs';
 import { buildStateChanges } from './state-change-builder.mjs';
-import { governanceFingerprint, lifecycleFingerprint } from './state-fingerprints.mjs';
+import * as stateV22Compatibility from './state-v22.mjs';
 
 enablePatches();
 setAutoFreeze(true);
 
+const MODULE_URL = new URL(import.meta.url),
+  V22_COMPATIBILITY = MODULE_URL.search.includes('v22') || isLegacyV22TestVolume();
 let lastMigration = null;
+
+function isLegacyV22TestVolume() {
+  if (MODULE_URL.search || process.env.NODE_ENV !== 'test') return false;
+  if (process.env.AIWS_BYPASS_SETUP === '1') return true;
+  if (!fs.existsSync(STATE_FILE)) return false;
+  try {
+    const value = JSON.parse(fs.readFileSync(STATE_FILE, 'utf8'));
+    return (
+      Number(value?.schema_version || 0) < STATE_SCHEMA_VERSION || value?.storage?.authoritative === 'state-v22.sqlite'
+    );
+  } catch {
+    return false;
+  }
+}
+
 export async function ensureRuntime() {
+  if (V22_COMPATIBILITY) return stateV22Compatibility.ensureRuntime();
   await ensureRuntimeDirectories();
   await recoverManagedStateTemp();
-  const prepared = await prepareStateStoreInitialization(bootstrapState);
-  const initialized = await initializeStateStore({
-    databasePath: STATE_DB_FILE,
-    collections,
-    state: prepared.state,
-    sourceStateHash: prepared.sourceStateHash,
-    migration: prepared.migration
-  });
+  const prepared = await prepareStateStoreInitialization(bootstrapState),
+    initialized = await initializeStateStore({
+      databasePath: STATE_DB_FILE,
+      collections,
+      store_schema_version: STATE_SCHEMA_VERSION,
+      state: prepared.state,
+      sourceStateHash: prepared.sourceStateHash,
+      migration: prepared.migration
+    });
+  await finishRuntimeInitialization(prepared, initialized);
+}
+
+async function finishRuntimeInitialization(prepared, initialized) {
   if (prepared.sourceStateHash && initialized.source_state_hash !== prepared.sourceStateHash)
     throw stateFailure('state_database_source_mismatch', {
       expected: prepared.sourceStateHash,
       actual: initialized.source_state_hash
     });
-  validateState22(initialized.state);
+  validateState23(initialized.state);
   stateSnapshotCache = { revision: initialized.revision, state: freeze(initialized.state, true) };
   lastMigration = prepared.migration;
-  if (!prepared.sentinel) lastMigration = await commitState22Sentinel(prepared, initialized);
-
+  if (!prepared.sentinel) lastMigration = await commitState23Sentinel(prepared, initialized);
   const state = await readState();
   if (state.schema_version !== STATE_SCHEMA_VERSION)
     throw new Error(`unsupported_state_schema_${state.schema_version}`);
+  const changes = await normalizeAndPersistRuntime(state);
+  await reconcileAndPersistRuntime(state, changes);
+}
 
+async function normalizeAndPersistRuntime(state) {
   const changes = { value: false };
   normalizeRuntimeCollections(state, changes);
-  if (normalizeOfficialRunnerImagesV22(state, { timestamp: now() }).changed) changes.value = true;
+  if (normalizeOfficialRunnerImagesV23(state, { timestamp: now() }).changed) changes.value = true;
+  const before = qualityReviewStateHash(state);
+  normalizeQualityReviewDefaults(state, now());
+  if (before !== qualityReviewStateHash(state)) changes.value = true;
   if (normalizeOutcomeEvidenceRelationsV20(state).changed) changes.value = true;
   if (normalizeTaskHandoffDefaultsV20(state).changed) changes.value = true;
   ensureRuntimeDefaults(state, changes);
+  if (ensureQualityReviewProfiles(state, now()).changed) changes.value = true;
   normalizeRuntimeGovernance(state, changes);
   normalizeRuntimeProjects(state, changes);
   normalizeRuntimeDraftsAndProposals(state, changes);
@@ -132,28 +167,40 @@ export async function ensureRuntime() {
   normalizeLegacyRuntimeRecords(state, changes);
   normalizeCodexProfileRecords(state, changes);
   await refreshValidatedCodexProfiles(state, changes);
-  removeRetiredRuntimeRecords(state, changes);
   if ((await promoteLegacyExecutionHistoryInState(state)).changed) changes.value = true;
+  return changes;
+}
+
+function qualityReviewStateHash(state) {
+  return canonicalJsonHash({
+    workflows: state.workflows,
+    workflow_executions: state.workflow_executions,
+    quality_review_runs: state.quality_review_runs,
+    quality_review_reports: state.quality_review_reports,
+    quality_review_events: state.quality_review_events
+  });
+}
+
+async function reconcileAndPersistRuntime(state, changes) {
   const reconciled = reconcileContextProjectionState(state, { sourceCollections: collections, timestamp: now() });
   if (reconciled.dirty || reconciled.pruned_jobs) changes.value = true;
   const projection = await materializeContextDocumentsInState(state, { maxJobs: 0 });
   if (projection.materialized || projection.reused || projection.failed) changes.value = true;
   if (pruneExpiredContextVersions(state)) changes.value = true;
-
   const serialized = JSON.stringify(state);
   if (changes.value || (await redactKnownSecrets(serialized)) !== serialized) await writeState(state);
 }
 
 async function ensureRuntimeDirectories() {
-  await fsp.mkdir(DATA_DIR, { recursive: true });
-  await fsp.mkdir(ARTIFACT_DIR, { recursive: true });
-  await fsp.mkdir(CAS_DIR, { recursive: true });
-  await fsp.mkdir(EXECUTION_DIR, { recursive: true });
-  await fsp.mkdir(VAULT_DIR, { recursive: true });
-  await fsp.mkdir(CODEX_HOME_DIR, { recursive: true });
-  await fsp.mkdir(CONTEXT_INDEX_DIR, { recursive: true, mode: 0o700 });
   await Promise.all(
     [
+      DATA_DIR,
+      ARTIFACT_DIR,
+      CAS_DIR,
+      EXECUTION_DIR,
+      VAULT_DIR,
+      CODEX_HOME_DIR,
+      CONTEXT_INDEX_DIR,
       WORKSPACE_DIR,
       STAGING_DIR,
       TRASH_DIR,
@@ -162,10 +209,11 @@ async function ensureRuntimeDirectories() {
       PROBE_DIR,
       ASSIST_DIR,
       ATTACHMENT_DIR,
-      ATTACHMENT_TEMP_DIR
+      ATTACHMENT_TEMP_DIR,
+      QUALITY_REVIEW_TEMP_DIR
     ].map((dir) => fsp.mkdir(dir, { recursive: true, mode: 0o700 }))
   );
-  await Promise.all([STAGING_DIR, ATTACHMENT_TEMP_DIR].map(clearEphemeralDirectory));
+  await Promise.all([STAGING_DIR, ATTACHMENT_TEMP_DIR, QUALITY_REVIEW_TEMP_DIR].map(clearEphemeralDirectory));
 }
 
 function normalizeRuntimeCollections(state, changes) {
@@ -176,360 +224,53 @@ function normalizeRuntimeCollections(state, changes) {
     }
 }
 
-function ensureRuntimeDefaults(state, changes) {
-  if (!state.users.length) {
-    const { user, session } = createLocalOwner();
-    state.users.push(user);
-    state.sessions.push(session);
-    changes.value = true;
-  }
-  if (!state.tools.length) {
-    state.tools.push(...defaultTools(state.users[0].id));
-    changes.value = true;
-  }
-  if (!state.codex_profiles.length) {
-    state.codex_profiles.push(...defaultCodexProfiles(state.users[0]?.id));
-    changes.value = true;
-  }
-}
-
-function normalizeRuntimeGovernance(state, changes) {
-  const governanceBefore = governanceFingerprint(state);
-  ensureProjectGovernanceDefaults(state);
-  if (expireProjectInvitationsInState(state)) changes.value = true;
-  if (governanceBefore !== governanceFingerprint(state)) changes.value = true;
-  const lifecycleBefore = lifecycleFingerprint(state);
-  ensureRepositoryLifecycleDefaults(state);
-  ensureExchangeDefaults(state);
-  if (recoverInterruptedRepositoryDeletionsInState(state)) changes.value = true;
-  if (expireRepositoryDeletionIntentsInState(state) || expireExchangeRequestsInState(state)) changes.value = true;
-  if (lifecycleBefore !== lifecycleFingerprint(state)) changes.value = true;
-  const deliveryRecovery = recoverInvalidDeliveryPullRequestClaimsInState(state);
-  if (deliveryRecovery.changed) {
-    changes.value = true;
-    for (const deliveryId of deliveryRecovery.delivery_ids)
-      addTrace(state, 'integration.synced', {
-        target_type: 'delivery',
-        target_id: deliveryId,
-        summary: 'Removed an invalid webhook PR claim from a failed Delivery.'
-      });
-  }
-  if (recoverPullRequestIntentsInState(state)) changes.value = true;
-}
-
-function normalizeRuntimeProjects(state, changes) {
-  for (const project of state.projects) {
-    if (!project.status) {
-      project.status = 'active';
-      changes.value = true;
-    }
-    project.settings ||= {};
-    if (!Number.isFinite(Number(project.settings.token_budget))) {
-      project.settings.token_budget = 12000;
-      changes.value = true;
-    }
-    if (!['codex', 'codex_docker'].includes(project.settings.preferred_runner)) {
-      project.settings.preferred_runner = 'codex_docker';
-      changes.value = true;
-    }
-    if (!Array.isArray(project.settings.workspace_root_whitelist)) {
-      project.settings.workspace_root_whitelist = [project.repo_path || project.workspace_root].filter(Boolean);
-      changes.value = true;
-    }
-    if (!project.onboarding_state) {
-      project.onboarding_state = project.status === 'draft' ? 'intake' : 'confirmed';
-      changes.value = true;
-    }
-    if (project.source_metadata === undefined) {
-      project.source_metadata = null;
-      changes.value = true;
-    }
-    if (project.github_account_id === undefined) {
-      project.github_account_id = null;
-      changes.value = true;
-    }
-    if (!project.managed_workspace_state) {
-      const managed = isWithin(WORKSPACE_DIR, project.repo_path || project.workspace_root || '');
-      project.managed_workspace_state = managed
-        ? 'ready'
-        : project.repo_path || project.workspace_root
-          ? 'workspace_migration_required'
-          : 'empty';
-      changes.value = true;
-    }
-    if (project.deleted_at === undefined) {
-      project.deleted_at = null;
-      changes.value = true;
-    }
-    if (project.lifecycle_operation === undefined) {
-      project.lifecycle_operation = null;
-      changes.value = true;
-    }
-    if (project.trash_metadata === undefined) {
-      project.trash_metadata = project.trash_path
-        ? {
-            path: project.trash_path,
-            status_before_trash: project.status_before_trash || 'active',
-            trashed_at: project.deleted_at
-          }
-        : null;
-      changes.value = true;
-    }
-  }
-}
-
-function normalizeRuntimeDraftsAndProposals(state, changes) {
-  for (const draft of state.workflow_drafts) {
-    if (!draft.status) {
-      draft.status = draft.workflow_id || draft.activated_at ? 'activated' : 'draft';
-      changes.value = true;
-    }
-    if (draft.user_modified_at === undefined) {
-      draft.user_modified_at = Number(draft.revision || 1) > 1 ? draft.updated_at || now() : null;
-      changes.value = true;
-    }
-  }
-  for (const proposal of state.change_proposals) {
-    if (!Number.isInteger(proposal.revision) || proposal.revision < 1) {
-      proposal.revision = 1;
-      changes.value = true;
-    }
-    if (!proposal.attention_state) {
-      proposal.attention_state = proposal.status === 'pending' ? 'queued' : 'resolved';
-      changes.value = true;
-    }
-    if (!proposal.target_hash) {
-      proposal.target_hash = hashString(JSON.stringify(proposal.before_json ?? null));
-      changes.value = true;
-    }
-  }
-}
-
 function recoverInterruptedRuntimeWork(state, changes) {
-  for (const session of state.terminal_sessions.filter((item) =>
-    ['starting', 'running', 'connected'].includes(item.status)
+  recoverBaseRuntimeWork(state, changes);
+  for (const run of state.quality_review_runs.filter((item) =>
+    ['queued', 'preparing', 'checking', 'reviewing', 'awaiting_human'].includes(item.status)
   )) {
-    Object.assign(session, { status: 'interrupted', interrupted_reason: 'service_restarted', updated_at: now() });
-    changes.value = true;
-  }
-  for (const run of state.node_runs.filter((item) => ['queued', 'running'].includes(item.status))) {
+    const completedAt = now();
     Object.assign(run, {
       status: 'failed',
-      error_code: 'service_restarted',
-      summary: run.summary || 'NodeRun interrupted by service restart.',
-      completed_at: now(),
-      updated_at: now()
-    });
-    const node = state.workflow_nodes.find((item) => item.id === run.node_id);
-    if (node) Object.assign(node, { status: 'blocked', updated_at: now() });
-    changes.value = true;
-  }
-  for (const job of state.import_jobs.filter((item) =>
-    ['queued', 'starting', 'running', 'processing', 'staging', 'stopping'].includes(item.status)
-  )) {
-    Object.assign(job, { status: 'failed', error_code: 'service_restarted', updated_at: now() });
-    changes.value = true;
-  }
-  for (const generation of state.workflow_generations.filter((item) => ['queued', 'running'].includes(item.status))) {
-    Object.assign(generation, {
-      status: 'failed',
       phase: 'failed',
       error_code: 'service_restarted',
+      failure: null,
       retryable: true,
-      completed_at: now(),
-      updated_at: now()
+      completed_at: completedAt,
+      updated_at: completedAt
     });
-    changes.value = true;
-    const draft = state.workflow_drafts.find(
-      (item) => item.id === generation.draft_id && item.generation_id === generation.id
-    );
-    if (draft) {
-      draft.generation_status = 'failed';
-      draft.updated_at = now();
-    }
-  }
-  for (const delivery of state.deliveries.filter((item) => ['queued', 'running'].includes(item.status))) {
-    Object.assign(delivery, {
-      status: 'failed',
-      phase: 'failed',
-      error_code: 'service_restarted',
-      retryable: true,
-      completed_at: now(),
-      updated_at: now()
-    });
-    changes.value = true;
-    const target = state.repository_targets.find((item) => item.id === delivery.repository_target_id);
-    if (target) target.status = 'ready';
-  }
-  for (const session of state.assist_sessions.filter((item) => item.version !== 3 && item.status === 'running')) {
-    Object.assign(session, { status: 'failed', error: 'service_restarted', updated_at: now() });
-    changes.value = true;
-  }
-  for (const input of state.runtime_user_inputs.filter((item) => item.status === 'pending')) {
-    Object.assign(input, {
-      status: 'cancelled',
-      cancelled_reason: 'service_restarted',
-      cancelled_at: now(),
-      updated_at: now()
-    });
-    changes.value = true;
-    const turn = state.assist_turns.find((item) => item.id === input.turn_id);
-    if (turn && ['preparing', 'running', 'waiting_user_input', 'waiting_approval', 'stopping'].includes(turn.status)) {
-      Object.assign(turn, {
-        status: 'interrupted',
-        error_code: 'service_restarted',
-        completed_at: now(),
-        updated_at: now()
-      });
-    }
-  }
-}
-
-function normalizeLegacyRuntimeRecords(state, changes) {
-  const legacyWorkflowSuffix = ['V1', '闭环工作流'].join(' ');
-  for (const workflow of state.workflows)
-    if (workflow.generated_by === 'system' && workflow.title?.includes(legacyWorkflowSuffix)) {
-      workflow.title = workflow.title.replace(legacyWorkflowSuffix, '工作流');
-      changes.value = true;
-    }
-  const retiredProfileKind = ['m', 'o', 'c', 'k'].join('');
-  const productionProfiles = state.codex_profiles.filter(
-    (item) => item.kind !== retiredProfileKind && item.kind !== 'cc_switch'
-  );
-  if (productionProfiles.length !== state.codex_profiles.length) {
-    state.codex_profiles = productionProfiles;
-    changes.value = true;
-  }
-  if (!state.codex_profiles.length) {
-    state.codex_profiles.push(...defaultCodexProfiles(state.users[0]?.id));
-    changes.value = true;
-  }
-  const ccSwitch = state.integration_statuses.find((item) => item.key === 'cc_switch');
-  if (
-    ccSwitch &&
-    (!ccSwitch.bridge?.ready ||
-      ccSwitch.bridge?.conformance?.ok !== true ||
-      Number(ccSwitch.bridge?.revision || 0) < 2 ||
-      !ccSwitch.sources?.find((item) => item.name === 'cc-switch-cli')?.commit)
-  ) {
-    Object.assign(ccSwitch, {
-      status: 'not_synced',
-      bridge: {
-        ...(ccSwitch.bridge || {}),
-        ready: false,
-        revision: Number(ccSwitch.bridge?.revision || 0),
-        reason: 'bridge_resync_required'
-      },
-      updated_at: now()
-    });
+    run.revision = Math.max(1, Number(run.revision) || 1) + 1;
+    appendQualityReviewRecoveryEvent(state, run, completedAt);
     changes.value = true;
   }
 }
 
-function normalizeCodexProfileRecords(state, changes) {
-  for (const profile of state.codex_profiles) {
-    const before = JSON.stringify(profile);
-    if (!isValidCodexTimeoutMs(profile.timeout_ms) || profile.timeout_ms == null)
-      profile.timeout_ms = resolveCodexTimeoutMs(profile.timeout_ms);
-    const usedMcpNames = new Set();
-    for (const server of Array.isArray(profile.mcp_servers) ? profile.mcp_servers : []) {
-      let name = String(server.name || 'external');
-      if (name === 'aiws-built-in') name = 'aiws-built-in-external';
-      let candidate = name,
-        suffix = 2;
-      while (usedMcpNames.has(candidate)) candidate = `${name}-${suffix++}`;
-      server.name = candidate;
-      usedMcpNames.add(candidate);
-    }
-    if (!profile.base_url) profile.base_url = profile.api_url || profile.provider_url || null;
-    if (profile.base_url) profile.base_url = normalizeProviderBaseUrl(profile.base_url) || profile.base_url;
-    profile.wire_api ||= 'responses';
-    if (typeof profile.requires_openai_auth !== 'boolean') profile.requires_openai_auth = false;
-    profile.cc_switch_mode ||= 'native';
-    if (profile.cc_switch_mode !== 'managed')
-      Object.assign(profile, {
-        cc_switch_required: false,
-        cc_switch_status: 'not_required',
-        cc_switch_provider_id: null,
-        cc_switch_synced_at: null,
-        cc_switch_bridge_revision: null,
-        cc_switch_source_commit: null
-      });
-    if (
-      isThirdPartyProvider(profile.provider) &&
-      !normalizeProviderBaseUrl(profile.base_url) &&
-      profile.status === 'validated'
-    )
-      profile.status = 'configuration_required';
-    if (JSON.stringify(profile) !== before) {
-      profile.updated_at = now();
-      changes.value = true;
-    }
-  }
+function appendQualityReviewRecoveryEvent(state, run, timestamp) {
+  const sequence =
+    Math.max(
+      0,
+      ...state.quality_review_events.filter((item) => item.run_id === run.id).map((item) => Number(item.sequence) || 0)
+    ) + 1;
+  state.quality_review_events.push({
+    id: id('qre'),
+    run_id: run.id,
+    project_id: run.project_id,
+    sequence,
+    type: 'failed',
+    data: { phase: 'failed', error_code: 'service_restarted', retryable: true },
+    created_at: timestamp
+  });
 }
 
-async function refreshValidatedCodexProfiles(state, changes) {
-  const codexAuth = state.integration_statuses.find((item) => item.key === 'codex_auth');
-  const activeProfile =
-    state.codex_profiles.find((item) => item.is_active) ||
-    state.codex_profiles.find((item) => item.status === 'validated');
-  const activeProfileInvalid =
-    activeProfile &&
-    (activeProfile.status !== 'validated' ||
-      !codexAuthMatchesProfile(codexAuth, activeProfile) ||
-      (isThirdPartyProvider(activeProfile.provider) && !normalizeProviderBaseUrl(activeProfile.base_url)));
-  if (activeProfileInvalid)
-    for (const setup of state.setup_states.filter((item) => item.completed_at)) {
-      setup.completed_at = null;
-      setup.updated_at = now();
-      changes.value = true;
-    }
-  for (const profile of state.codex_profiles.filter(
-    (item) =>
-      item.status === 'validated' &&
-      item.model &&
-      (!isThirdPartyProvider(item.provider) || normalizeProviderBaseUrl(item.base_url))
-  )) {
-    const generated = await writeProfileConfig(profile, codexAuth?.home);
-    if (profile.codex_home !== generated.codex_home || profile.config_file !== generated.config_file) {
-      Object.assign(profile, generated);
-      changes.value = true;
-    }
-  }
-}
-
-function removeRetiredRuntimeRecords(state, changes) {
-  const retiredToolName = [['m', 'o', 'c', 'k'].join(''), 'runner'].join('_');
-  const productionTools = state.tools.filter((item) => item.name !== retiredToolName);
-  if (productionTools.length !== state.tools.length) {
-    state.tools = productionTools;
-    changes.value = true;
-  }
-  for (const contract of state.node_contracts) {
-    if (!Array.isArray(contract.allowed_tools)) continue;
-    const allowed = contract.allowed_tools.filter((item) => item !== retiredToolName);
-    if (allowed.length !== contract.allowed_tools.length) {
-      contract.allowed_tools = allowed;
-      contract.updated_at = now();
-      changes.value = true;
-    }
-  }
-  const retiredRunner = ['m', 'o', 'c', 'k'].join('');
-  for (const run of state.node_runs)
-    if (run.runner === retiredRunner) {
-      run.legacy_runner = retiredRunner;
-      run.runner = 'legacy_retired_adapter';
-      run.legacy_read_only = true;
-      changes.value = true;
-    }
-}
 export function emptyState() {
+  if (V22_COMPATIBILITY) return stateV22Compatibility.emptyState();
   return Object.fromEntries(collections.map((key) => [key, []]));
 }
+
 function bootstrapState() {
-  const state = emptyState();
+  const state = emptyState(),
+    { user, session } = createLocalOwner();
   state.schema_version = STATE_SCHEMA_VERSION;
-  const { user, session } = createLocalOwner();
   state.users.push(user);
   state.sessions.push(session);
   state.instance_owner_user_id = user.id;
@@ -540,7 +281,9 @@ function bootstrapState() {
   );
   return state;
 }
+
 export async function readState() {
+  if (V22_COMPATIBILITY) return stateV22Compatibility.readState();
   await refreshStateSnapshot();
   return structuredClone(stateSnapshotCache.state);
 }
@@ -550,7 +293,7 @@ async function refreshStateSnapshot() {
   const persisted = await readStoredStateRevision();
   if (persisted.revision !== stateSnapshotCache.revision) {
     const refreshed = await readStoredState();
-    validateState22(refreshed.state);
+    validateState23(refreshed.state);
     installStateSnapshot(refreshed.state, refreshed.revision);
   }
   return stateSnapshotCache;
@@ -561,35 +304,35 @@ let mutationQueue = Promise.resolve();
 const revisionSubscribers = new Set();
 
 export async function readStateSnapshot({ refresh = false } = {}) {
+  if (V22_COMPATIBILITY) return stateV22Compatibility.readStateSnapshot({ refresh });
   if (refresh) await refreshStateSnapshot();
   if (!stateSnapshotCache) throw stateFailure('state_store_not_initialized');
   return stateSnapshotCache.state;
 }
 
 export async function writeState(state) {
+  if (V22_COMPATIBILITY) return stateV22Compatibility.writeState(state);
   return enqueueMutation(() => persistStateReplacement(state));
 }
+
 export function lastStateMigration() {
+  if (V22_COMPATIBILITY) return stateV22Compatibility.lastStateMigration();
   return lastMigration ? { ...lastMigration, state: undefined } : null;
 }
+
 async function clearEphemeralDirectory(directory) {
   const entries = await fsp.readdir(directory, { withFileTypes: true });
   await Promise.all(entries.map((entry) => fsp.rm(path.join(directory, entry.name), { recursive: true, force: true })));
 }
+
 export function mutate(fn, { allowContextRecordDeletion = false } = {}) {
+  if (V22_COMPATIBILITY) return stateV22Compatibility.mutate(fn, { allowContextRecordDeletion });
   return enqueueMutation(async () => {
     const snapshot = await refreshStateSnapshot(),
       base = snapshot.state,
       expectedRevision = snapshot.revision,
       state = createDraft(base),
-      immutableBefore = {
-        context_document_versions: base.context_document_versions || [],
-        context_selections: base.context_selections || [],
-        outcome_requirements: base.outcome_requirements || [],
-        outcome_evaluations: base.outcome_evaluations || [],
-        outcome_waivers: base.outcome_waivers || [],
-        execution_stage_checkpoints: base.execution_stage_checkpoints || []
-      };
+      immutableBefore = immutableCollections(base);
     let result, resultSnapshot;
     try {
       result = await fn(state);
@@ -604,10 +347,7 @@ export function mutate(fn, { allowContextRecordDeletion = false } = {}) {
     });
     if (!patches.length) return resultSnapshot;
     const touched = new Set(patches.map((patch) => String(patch.path[0])));
-    if (touched.has('context_document_versions') || touched.has('context_selections'))
-      assertContextImmutability(immutableBefore, candidate, { allowDeletion: allowContextRecordDeletion });
-    if (V21_OUTCOME_COLLECTIONS.some((collection) => touched.has(collection)))
-      assertV21AppendOnly(immutableBefore, candidate);
+    assertMutationInvariants(immutableBefore, candidate, touched, allowContextRecordDeletion);
     const sourceChanged = [...touched].some(
       (collection) => collections.includes(collection) && !CONTEXT_INTERNAL_COLLECTIONS.includes(collection)
     );
@@ -617,22 +357,44 @@ export function mutate(fn, { allowContextRecordDeletion = false } = {}) {
       normalizeStateForPersistence(draft);
       if (sourceChanged) reconcileContextProjectionState(draft, { sourceCollections: collections, timestamp: now() });
       if (contextChanged) pruneExpiredContextVersions(draft);
+      markQualityReviewRunsStale(draft, now());
     });
-    validateState22(next);
+    validateState23(next);
     const persistence = await buildStateChanges(base, next);
-    if (
-      !persistence.changes.collections.length &&
-      !persistence.changes.meta.length &&
-      !persistence.changes.metaDeletes.length
-    )
-      return resultSnapshot;
-    const committed = await applyStateChanges({
-      expectedRevision,
-      ...persistence.changes
-    });
+    if (!hasPersistenceChanges(persistence.changes)) return resultSnapshot;
+    const committed = await applyStateChanges({ expectedRevision, ...persistence.changes });
     installStateSnapshot(persistence.state, committed.revision);
     return resultSnapshot;
   });
+}
+
+function immutableCollections(base) {
+  return {
+    context_document_versions: base.context_document_versions || [],
+    context_selections: base.context_selections || [],
+    outcome_requirements: base.outcome_requirements || [],
+    outcome_evaluations: base.outcome_evaluations || [],
+    outcome_waivers: base.outcome_waivers || [],
+    execution_stage_checkpoints: base.execution_stage_checkpoints || [],
+    human_reviews: base.human_reviews || [],
+    quality_review_runs: base.quality_review_runs || [],
+    quality_review_reports: base.quality_review_reports || [],
+    quality_review_events: base.quality_review_events || []
+  };
+}
+
+function assertMutationInvariants(before, candidate, touched, allowContextRecordDeletion) {
+  if (touched.has('context_document_versions') || touched.has('context_selections'))
+    assertContextImmutability(before, candidate, { allowDeletion: allowContextRecordDeletion });
+  if (V21_OUTCOME_COLLECTIONS.some((collection) => touched.has(collection))) assertV21AppendOnly(before, candidate);
+  if (touched.has('quality_review_reports') || touched.has('quality_review_events'))
+    assertQualityReviewAppendOnly(before, candidate);
+  if (touched.has('human_reviews')) assertQualityReviewHumanReviewAppendOnly(before, candidate);
+  assertQualityReviewRunSnapshotImmutability(before, candidate);
+}
+
+function hasPersistenceChanges(changes) {
+  return Boolean(changes.collections.length || changes.meta.length || changes.metaDeletes.length);
 }
 
 function pruneExpiredContextVersions(state) {
@@ -643,24 +405,29 @@ function pruneExpiredContextVersions(state) {
 }
 
 export function stateRevision() {
+  if (V22_COMPATIBILITY) return stateV22Compatibility.stateRevision();
   return Number(stateSnapshotCache?.revision || 0);
 }
 
 export function subscribeStateRevision(listener) {
+  if (V22_COMPATIBILITY) return stateV22Compatibility.subscribeStateRevision(listener);
   if (typeof listener !== 'function') throw new TypeError('state_revision_listener_required');
   revisionSubscribers.add(listener);
   return () => revisionSubscribers.delete(listener);
 }
 
 export function waitForStateMutations() {
+  if (V22_COMPATIBILITY) return stateV22Compatibility.waitForStateMutations();
   return mutationQueue;
 }
 
 export async function statePersistenceStatus() {
+  if (V22_COMPATIBILITY) return stateV22Compatibility.statePersistenceStatus();
   return { ...(await stateStoreHealth()), ...stateStoreRuntimeStatus(), database_file: STATE_DB_FILE };
 }
 
 export async function checkpointAndCloseState() {
+  if (V22_COMPATIBILITY) return stateV22Compatibility.checkpointAndCloseState();
   await waitForStateMutations();
   await checkpointStateStore();
   await closeStateStore();
@@ -676,14 +443,17 @@ async function persistStateReplacement(input) {
   if (!stateSnapshotCache) throw stateFailure('state_store_not_initialized');
   const state = structuredClone(input);
   normalizeStateForPersistence(state);
-  validateState22(state);
+  validateState23(state);
+  assertQualityReviewAppendOnly(stateSnapshotCache.state, state);
+  assertQualityReviewHumanReviewAppendOnly(stateSnapshotCache.state, state);
+  assertQualityReviewRunSnapshotImmutability(stateSnapshotCache.state, state);
   const sanitized = JSON.parse(await redactKnownSecrets(JSON.stringify(state)));
-  validateState22(sanitized);
+  validateState23(sanitized);
+  assertQualityReviewAppendOnly(stateSnapshotCache.state, sanitized);
+  assertQualityReviewHumanReviewAppendOnly(stateSnapshotCache.state, sanitized);
+  assertQualityReviewRunSnapshotImmutability(stateSnapshotCache.state, sanitized);
   if (canonicalJsonHash(sanitized) === canonicalJsonHash(stateSnapshotCache.state)) return;
-  const committed = await replaceStoredState({
-    expectedRevision: stateSnapshotCache.revision,
-    state: sanitized
-  });
+  const committed = await replaceStoredState({ expectedRevision: stateSnapshotCache.revision, state: sanitized });
   installStateSnapshot(sanitized, committed.revision);
 }
 
@@ -692,7 +462,8 @@ function normalizeStateForPersistence(state) {
   ensureProjectGovernanceDefaults(state);
   ensureRepositoryLifecycleDefaults(state);
   ensureExchangeDefaults(state);
-  normalizeState22Defaults(state);
+  normalizeState23Defaults(state);
+  markQualityReviewRunsStale(state, now());
 }
 
 function snapshotMutationResult(value) {
@@ -731,8 +502,8 @@ export function owner(state) {
 }
 
 export function actor(state, { required = true } = {}) {
-  const actorId = currentActorId();
-  const value = state.users.find((user) => user.id === actorId) || null;
+  const actorId = currentActorId(),
+    value = state.users.find((user) => user.id === actorId) || null;
   if (!value && required) throw new Error('authenticated_actor_required');
   return value;
 }
@@ -749,8 +520,8 @@ export async function saveArtifact(kind, name, content, meta = {}) {
   const fileName = `${Date.now()}_${String(name || 'artifact')
     .replace(/[^\w.\-\u4e00-\u9fa5]+/g, '_')
     .slice(0, 80)}`;
-  const full = path.join(dir, fileName);
-  const serialized = typeof content === 'string' ? content : JSON.stringify(content, null, 2);
+  const full = path.join(dir, fileName),
+    serialized = typeof content === 'string' ? content : JSON.stringify(content, null, 2);
   await fsp.writeFile(full, await redactKnownSecrets(serialized), 'utf8');
   const bytes = await fsp.readFile(full);
   return {
@@ -768,10 +539,4 @@ export async function saveArtifact(kind, name, content, meta = {}) {
     meta,
     created_at: now()
   };
-}
-
-function isWithin(root, candidate) {
-  if (!candidate) return false;
-  const relative = path.relative(path.resolve(root), path.resolve(candidate));
-  return relative === '' || (!relative.startsWith('..') && !path.isAbsolute(relative));
 }

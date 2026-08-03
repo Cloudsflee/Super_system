@@ -35,7 +35,11 @@ export const V21_OUTCOME_COLLECTIONS = Object.freeze([
   'execution_stage_checkpoints'
 ]);
 export const V21_SOURCE_COLLECTIONS = Object.freeze(
-  ALL_STATE_COLLECTIONS.filter((collection) => !CONTEXT_INTERNAL_COLLECTIONS.includes(collection))
+  ALL_STATE_COLLECTIONS.filter(
+    (collection) =>
+      !CONTEXT_INTERNAL_COLLECTIONS.includes(collection) &&
+      !['quality_review_runs', 'quality_review_reports', 'quality_review_events'].includes(collection)
+  )
 );
 export const V21_COLLECTIONS = Object.freeze([...V21_SOURCE_COLLECTIONS, ...CONTEXT_INTERNAL_COLLECTIONS]);
 export const V21_RUNNER_IMAGE = 'aiws-codex-runner:2.1.0-codex-0.144.0';

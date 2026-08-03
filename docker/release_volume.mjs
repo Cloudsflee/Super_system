@@ -64,8 +64,8 @@ export {
   validateV22ReleaseTarget,
   verifyClonedVolumeV22
 } from './release-volume-v22.mjs';
+export * from './release-volume-v23.mjs';
 export { auditVolume, removeLegacySchemaBackups, stateAudit, volumeInventory };
-
 export const SOURCE_VOLUME = 'aiws-data-v14';
 export const TARGET_VOLUME = 'aiws-data-v16';
 export const RECEIPT_RELATIVE_PATH = 'data/migrations/v16-volume-migration.manifest.json';

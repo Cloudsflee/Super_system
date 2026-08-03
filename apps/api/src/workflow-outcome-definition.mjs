@@ -5,11 +5,13 @@ import {
   parseQualityRubric,
   protocolHash
 } from '../../../packages/execution-protocol/src/index.mjs';
+import { normalizeQualityReviewRubric, qualityReviewRubricHash } from './quality-review-rubric.mjs';
 
 const CONTENT_KINDS = /research|content|writing|analysis|report|design|editorial|document/i;
 const DELIVERY_KINDS = /deploy|delivery|publish|release|notify|webhook/i;
 
 export function applyWorkflowOutcomeProtocols(workflow, nodes, { source = 'declared' } = {}) {
+  const qualityReviewPolicy = enabledQualityReviewPolicy(workflow);
   const tasks = (nodes || []).filter((item) => item.role === 'task' && !item.legacy_read_only),
     contentTasks = tasks.filter(isContentTask),
     requirements = tasks
@@ -53,7 +55,7 @@ export function applyWorkflowOutcomeProtocols(workflow, nodes, { source = 'decla
       evaluator_config: {}
     });
   const criteria = contentTasks.length
-    ? contentRubricCriteria(contentTasks)
+    ? contentRubricCriteria(contentTasks, qualityReviewPolicy)
     : [
         {
           id: 'non_content_not_applicable',
@@ -65,32 +67,35 @@ export function applyWorkflowOutcomeProtocols(workflow, nodes, { source = 'decla
           authority_mapping: {}
         }
       ];
-  const contract = parseOutcomeContract({
-      schema_version: OUTCOME_CONTRACT_SCHEMA,
-      version: Number(workflow.workflow_revision || workflow.version || 1),
-      source,
-      requirements
-    }),
-    rubric = parseQualityRubric({
-      schema_version: QUALITY_RUBRIC_SCHEMA,
-      version: Number(workflow.workflow_revision || workflow.version || 1),
-      criteria
-    });
-  Object.assign(workflow, {
+  Object.assign(workflow, buildWorkflowProtocols(workflow, source, requirements, criteria, qualityReviewPolicy));
+  return workflow;
+}
+
+function enabledQualityReviewPolicy(workflow) {
+  return workflow.quality_review_policy?.enabled
+    ? normalizeQualityReviewRubric(workflow.quality_review_policy.rubric)
+    : null;
+}
+
+function buildWorkflowProtocols(workflow, source, requirements, criteria, qualityReviewPolicy) {
+  const version = Number(workflow.workflow_revision || workflow.version || 1),
+    contract = parseOutcomeContract({ schema_version: OUTCOME_CONTRACT_SCHEMA, version, source, requirements }),
+    rubric = parseQualityRubric({ schema_version: QUALITY_RUBRIC_SCHEMA, version, criteria });
+  return {
     outcome_contract: contract,
     quality_rubric: rubric,
     outcome_contract_hash: protocolHash(contract),
     quality_rubric_hash: protocolHash(rubric),
+    quality_review_rubric_hash: qualityReviewPolicy ? qualityReviewRubricHash(qualityReviewPolicy) : null,
     protocols: {
       ...(workflow.protocols || {}),
       outcome_contract: OUTCOME_CONTRACT_SCHEMA,
       quality_rubric: QUALITY_RUBRIC_SCHEMA
     }
-  });
-  return workflow;
+  };
 }
 
-function contentRubricCriteria(tasks) {
+function contentRubricCriteria(tasks, qualityReviewPolicy = null) {
   const authorityMapping = Object.fromEntries(tasks.map((task) => [task.id, 'task_output_authority']));
   return [
     {
@@ -133,10 +138,14 @@ function contentRubricCriteria(tasks) {
       id: 'semantic_human_score',
       title: '语义质量人工评分',
       evaluator: 'human_score',
-      mandatory: false,
-      applicable: false,
-      expected: { min: 0 },
-      authority_mapping: {}
+      mandatory: Boolean(qualityReviewPolicy?.mandatory),
+      applicable: Boolean(qualityReviewPolicy?.enabled),
+      expected: { min: Number(qualityReviewPolicy?.threshold ?? 80) },
+      authority_mapping: {},
+      evaluator_config: {
+        quality_review: true,
+        quality_review_rubric_hash: qualityReviewPolicy ? qualityReviewRubricHash(qualityReviewPolicy) : null
+      }
     }
   ];
 }

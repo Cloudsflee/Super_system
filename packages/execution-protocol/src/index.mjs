@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto';
 import { z } from 'zod';
-
+import { parseProtocol } from './protocol-validation.mjs';
 export const OUTCOME_CONTRACT_SCHEMA = 'aiws.outcome_contract.v1';
 export const QUALITY_RUBRIC_SCHEMA = 'aiws.quality_rubric.v1';
 export const FAILURE_ENVELOPE_SCHEMA = 'aiws.failure_envelope.v1';
@@ -34,7 +34,9 @@ const isoDate = z.iso.datetime({ offset: true });
 const jsonPointer = z.string().regex(/^(?:\/(?:[^~/]|~[01])*)*$/);
 const jsonValue = z.json();
 const evidenceRefs = z.array(identifier).max(500).default([]);
-
+export * from './quality-review-protocol.mjs';
+export * from './quality-review-parsing.mjs';
+export * from './protocol-validation.mjs';
 export const OutcomeRequirementDefinitionSchema = z
   .object({
     id: identifier,
@@ -90,7 +92,8 @@ export const QualityRubricCriterionSchema = z
     mandatory: z.boolean().default(true),
     applicable: z.boolean(),
     expected: jsonValue,
-    authority_mapping: z.record(z.string(), identifier).default({})
+    authority_mapping: z.record(z.string(), identifier).default({}),
+    evaluator_config: z.record(z.string(), jsonValue).optional()
   })
   .strict();
 
@@ -233,33 +236,6 @@ export const DeploymentEvidenceV2Schema = z
   })
   .strict();
 
-export class ProtocolValidationError extends Error {
-  constructor(protocol, issues) {
-    const normalized = issues.map((issue) => {
-      const path =
-        issue.code === 'unrecognized_keys' && Array.isArray(issue.keys) && issue.keys.length
-          ? [...issue.path, issue.keys[0]]
-          : issue.path;
-      return {
-        path: pathToJsonPointer(path),
-        code: String(issue.code || 'invalid'),
-        message: String(issue.message || 'invalid_value')
-      };
-    });
-    super(`${protocol}_invalid`);
-    this.name = 'ProtocolValidationError';
-    this.code = 'execution_protocol_invalid';
-    this.status = 400;
-    this.payload = { error: this.code, protocol, field_path: normalized[0]?.path || '', issues: normalized };
-  }
-}
-
-export function parseProtocol(schema, value, protocol = 'execution_protocol') {
-  const parsed = schema.safeParse(value);
-  if (!parsed.success) throw new ProtocolValidationError(protocol, parsed.error.issues);
-  return parsed.data;
-}
-
 export function parseOutcomeContract(value) {
   return parseProtocol(OutcomeContractSchema, value, OUTCOME_CONTRACT_SCHEMA);
 }
@@ -286,11 +262,6 @@ export function protocolHash(value) {
 
 export function canonicalJson(value) {
   return JSON.stringify(sortJson(value));
-}
-
-export function pathToJsonPointer(path) {
-  if (!Array.isArray(path) || !path.length) return '';
-  return `/${path.map((part) => String(part).replaceAll('~', '~0').replaceAll('/', '~1')).join('/')}`;
 }
 
 export function failureEnvelope(

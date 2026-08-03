@@ -8,8 +8,8 @@ const errors = [...validateV21Catalog().errors],
   manifest = readJson('package.json'),
   coverage = readJson('tests/v21/coverage-map.json');
 
-if (!['2.1.0', '2.2.0'].includes(manifest.version))
-  errors.push('package.json version must be V2.1 or a declared V2.2 compatibility successor');
+if (!['2.1.0', '2.2.0', '2.3.0'].includes(manifest.version))
+  errors.push('package.json version must be V2.1 or a declared V2.2/V2.3 compatibility successor');
 for (const [name, expected] of Object.entries({
   'test:v21:plan': 'scripts/v21-plan.mjs',
   'test:v21:catalog': 'scripts/v21-catalog.mjs',

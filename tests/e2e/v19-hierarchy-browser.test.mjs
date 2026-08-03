@@ -98,13 +98,13 @@ try {
   console.log(`V1.9 hierarchy and scoped Assist browser tests passed; screenshots: ${output}`);
 } finally {
   await browser?.close();
-  if (server?.exitCode == null) server.kill();
+  if (server && server.exitCode == null) server.kill();
   if (server)
     await Promise.race([
       new Promise((resolve) => server.once('exit', resolve)),
       new Promise((resolve) => setTimeout(resolve, 3000))
     ]);
-  if (server?.exitCode == null) server.kill('SIGKILL');
+  if (server && server.exitCode == null) server.kill('SIGKILL');
   fs.rmSync(root, { recursive: true, force: true, maxRetries: 5, retryDelay: 150 });
 }
 

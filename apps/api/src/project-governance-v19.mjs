@@ -1,11 +1,11 @@
 import { createHash, randomUUID } from 'node:crypto';
 import { HttpError } from './http.mjs';
+import { isProjectRunRoute } from './project-governance-quality.mjs';
 import { currentActorId } from './actor-context.mjs';
 import { id, now } from '../../../packages/shared/index.mjs';
 import { isProjectRoute, resolveProjectIdForContext } from './project-route-resolution-v19.mjs';
 import { applyProjectGovernanceDefaults } from './project-governance-defaults.mjs';
 export { isProjectRoute, resolveProjectIdForContext } from './project-route-resolution-v19.mjs';
-
 export const PROJECT_ROLES = Object.freeze(['owner', 'collaborator', 'viewer']);
 export const PROJECT_ROLE_PERMISSIONS = Object.freeze({
   owner: Object.freeze(['read', 'write', 'run', 'propose', 'approve', 'share', 'github:write', 'delete:approve']),
@@ -339,7 +339,7 @@ function projectRouteAction(route) {
   if (route.method === 'GET') return 'read';
   if (isOwnerLifecycleRoute(route)) return 'delete:approve';
   if (route.pattern.includes('/members') || route.pattern.includes('/invit')) return 'share';
-  if (route.pattern.includes('/run') || /\/stages\/[^/]+\/replay$/.test(route.pattern)) return 'run';
+  if (isProjectRunRoute(route)) return 'run';
   return isApprovalRoute(route) ? 'approve' : 'write';
 }
 
@@ -352,7 +352,7 @@ function isOwnerLifecycleRoute(route) {
 
 function isApprovalRoute(route) {
   return (
-    /^\/(?:approvals\/|change-proposals\/[^/]+\/(?:approve|reject|apply)|(?:tasks|workstreams)\/[^/]+\/review|task-executions\/[^/]+\/human-approve|workflow-executions\/[^/]+\/outcome-waivers|asset-versions\/[^/]+\/attestations|pull-request-intents\/[^/]+\/(?:approve|execute))/.test(
+    /^\/(?:approvals\/|change-proposals\/[^/]+\/(?:approve|reject|apply)|(?:tasks|workstreams)\/[^/]+\/review|task-executions\/[^/]+\/human-approve|workflow-executions\/[^/]+\/outcome-waivers|quality-reviews\/[^/]+\/decision|asset-versions\/[^/]+\/attestations|pull-request-intents\/[^/]+\/(?:approve|execute))/.test(
       route.pattern
     ) ||
     (route.method === 'POST' && /\/delivery-policies$/.test(route.pattern))

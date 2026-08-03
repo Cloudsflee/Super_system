@@ -1,5 +1,4 @@
 import { createHash } from 'node:crypto';
-
 export const CONTEXT_PROTOCOL_VERSION = 'aiws.system-context.v1';
 export const CONTEXT_RENDERER_VERSION = 'aiws.context-markdown.v1';
 export const CONTEXT_SELECTION_SCHEMA = 'aiws.context_selection.v2';
@@ -174,6 +173,7 @@ const ADAPTER_CATEGORY_GROUPS = Object.freeze({
     'github_installations',
     'config_revisions',
     'mcp_clients',
+    ...['quality_review_runs', 'quality_review_reports', 'quality_review_events'],
     'project_memberships',
     'project_invitations',
     'repository_deletion_intents'
@@ -409,11 +409,11 @@ export function defaultCollectionScope(collection) {
   if (/^asset_|^assets$/.test(collection)) return 'assets:read';
   if (/file|attachment|submission|digest|workspace_data|memory_candidate/.test(collection)) return 'files:read';
   if (/repository|github|delivery|pull_request|webhook/.test(collection)) return 'github:read';
-  if (/workflow|node_contract|test_task/.test(collection)) return 'workflow:read';
+  if (/workflow|node_contract|test_task|^quality_review_runs$/.test(collection)) return 'workflow:read';
   if (/execution|node_run|agent_session|test_result/.test(collection)) return 'runs:read';
   if (/terminal/.test(collection)) return 'terminal:read';
   if (/exchange/.test(collection)) return 'exchange:read';
-  if (/approval|human_review/.test(collection)) return 'approval:read';
+  if (/approval|human_review|^quality_review_(?:reports|events)$/.test(collection)) return 'approval:read';
   if (/trace|decision|proposal|membership|invitation/.test(collection)) return 'governance:read';
   if (/setup|config|profile|integration|mcp_client|connected_account|credential/.test(collection)) return 'setup:read';
   return 'system:read';

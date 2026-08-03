@@ -194,7 +194,7 @@ async function verifyContextWorker(page, viewport) {
 
 async function seedFixture() {
   const { protocolHash } = await import('../../packages/execution-protocol/src/index.mjs'),
-    stateService = await import('../../apps/api/src/state.mjs'),
+    stateService = await import('../../apps/api/src/state.mjs?v22'),
     { materializeOutcomeRequirementsInState, evaluateWorkflowOutcomesInState } =
       await import('../../apps/api/src/outcome-service.mjs'),
     { beginExecutionStageInState, completeExecutionStageInState, failExecutionStageInState } =

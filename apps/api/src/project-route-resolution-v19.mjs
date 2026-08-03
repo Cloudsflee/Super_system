@@ -38,6 +38,7 @@ function findDirectProject(state, id) {
     'workspaces',
     'workflows',
     'workflow_executions',
+    'quality_review_runs',
     'task_executions',
     'repository_lines',
     'node_runs',
@@ -114,7 +115,7 @@ function resolveWorkflowNodeProject(id, state) {
 export function isProjectRoute(pattern = '') {
   return (
     /^\/context\/v1\/(?:map|search|nodes|selections|policy)/.test(pattern) ||
-    /^\/(?:projects|workspaces|repository-workspaces|repository-lines|pull-request-intents|workflows|workflow-executions|task-executions|nodes|workstreams|tasks|runs|deliveries|delivery-policies|context-packs|assets|asset-versions|asset-candidates|change-proposals|approvals|agent-sessions|exchange-requests|exchange-grants|project-invitations|submissions|review)/.test(
+    /^\/(?:projects|workspaces|repository-workspaces|repository-lines|pull-request-intents|workflows|workflow-executions|quality-reviews|task-executions|nodes|workstreams|tasks|runs|deliveries|delivery-policies|context-packs|assets|asset-versions|asset-candidates|change-proposals|approvals|agent-sessions|exchange-requests|exchange-grants|project-invitations|submissions|review)/.test(
       pattern
     ) ||
     /^\/assist\/(?:v2\/sessions|v3\/(?:sessions|turns|terminal-sessions|operations|change-batches|attachments))/.test(

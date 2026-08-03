@@ -22,6 +22,7 @@ import './styles/workflow-canvas.css';
 import './styles/workflow-workstream.css';
 import './styles/workflow-migration.css';
 import './styles/workflow-toolbar.css';
+import './styles/quality-review.css';
 import './styles/workflow-process-structure.css';
 import './styles/workflow-process-replan.css';
 import './styles/workflow-process-tasks.css';

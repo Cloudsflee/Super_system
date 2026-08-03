@@ -17,13 +17,8 @@ import { assertProfileAllowed, isContainerized } from './container-runtime-confi
 import { spawnContainerProcess } from './container-runtime.mjs';
 import { buildCodexExecInvocation } from './codex-exec-invocation.mjs';
 import { isCodexStateRuntimeFailure, recoverCodexRuntimeState } from './codex-home-recovery.mjs';
-import { issueCodexMcpAccess, withCodexMcpEnvironment } from './codex-mcp-runtime.mjs';
-import {
-  DEFAULT_CODEX_TIMEOUT_MS,
-  codexTimeoutTtlSeconds,
-  isValidCodexTimeoutMs,
-  resolveCodexTimeoutMs
-} from './codex-timeout.mjs';
+import { resolveCodexMcpAccess, withCodexMcpEnvironment } from './codex-mcp-runtime.mjs';
+import { DEFAULT_CODEX_TIMEOUT_MS, isValidCodexTimeoutMs, resolveCodexTimeoutMs } from './codex-timeout.mjs';
 export { DEFAULT_CODEX_TIMEOUT_MS, isValidCodexTimeoutMs, resolveCodexTimeoutMs };
 export const OFFICIAL_CODEX_PROVIDERS = Object.freeze(['openai', 'chatgpt']);
 // Codex rejects `wire_api = "chat"`; cc-switch can translate Chat Completions only while its local proxy runs.
@@ -175,7 +170,8 @@ async function runCodexJsonOnce({
   projectId = null,
   onEvent,
   signal,
-  spawnProcess = spawn
+  spawnProcess = spawn,
+  ...qualityOptions
 }) {
   assertProfileAllowed(profile);
   const auth = state.integration_statuses.find((item) => item.key === 'codex_auth');
@@ -184,9 +180,7 @@ async function runCodexJsonOnce({
   if (fileAuth) await materializeDeviceAuth(auth.home, profile.codex_home);
   const credential = await readSecret(auth?.refs?.credential);
   const proxyEnv = profile.kind === 'docker' ? codexContainerProxyEnv(process.env) : {};
-  const mcpAccess = await issueCodexMcpAccess(projectId, profile, {
-    ttlSeconds: codexTimeoutTtlSeconds(profile.timeout_ms)
-  });
+  const mcpAccess = await resolveCodexMcpAccess(projectId, profile, qualityOptions);
   const invocation = buildCodexExecInvocation({
     profile,
     prompt,
@@ -196,7 +190,8 @@ async function runCodexJsonOnce({
     runtimeKind,
     exposeApiKey: Boolean(credential),
     proxyKeys: Object.keys(proxyEnv),
-    mcpAccess
+    mcpAccess,
+    ...qualityOptions
   });
   const env = withCodexMcpEnvironment({ ...process.env, ...proxyEnv, CODEX_HOME: profile.codex_home }, mcpAccess);
   if (credential) env.OPENAI_API_KEY = credential;

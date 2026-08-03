@@ -2,7 +2,7 @@ import { produceWithPatches } from 'immer';
 
 import { collections } from './config.mjs';
 import { redactKnownSecrets, redactKnownSecretsSync } from './vault.mjs';
-import { canonicalJsonHash, stateRecordIdentity, validateState22 } from './state-migration-v22.mjs';
+import { canonicalJsonHash, stateRecordIdentity, validateState23 } from './state-migration-v23.mjs';
 
 export async function buildStateChanges(before, after) {
   await redactKnownSecrets('');
@@ -12,7 +12,7 @@ export async function buildStateChanges(before, after) {
       .filter(Boolean),
     { meta, metaDeletes } = metaChanges(before, after, replacements),
     sanitizedState = applyReplacements(after, replacements);
-  validateState22(sanitizedState);
+  validateState23(sanitizedState);
   return { state: sanitizedState, changes: { collections: collectionChanges, meta, metaDeletes } };
 }
 

@@ -5,7 +5,7 @@ import {
   collectCurrentGateIdentity,
   readGateReceiptForIdentity,
   writeGateReceiptForIdentity
-} from './gate-receipt-v22.mjs';
+} from './gate-receipt-v23.mjs';
 
 const manual = process.argv.includes('--all');
 const updates = manual ? [] : parseUpdates(fs.readFileSync(0, 'utf8'));
@@ -44,6 +44,7 @@ for (const script of DEFAULT_PRE_PUSH_GATES) {
   const result = runPnpm(script, gateEnv);
   if (result.error) fail(result.error.message);
   if (result.status !== 0) fail(`${script} failed with exit code ${result.status ?? 'unknown'}`);
+  if (script === 'test:v23:pr') gateEnv.AIWS_V23_PR_PREPASSED = '1';
 }
 const receipt = writeGateReceiptForIdentity({
   root,

@@ -2,6 +2,9 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
 
+import { defaultTools } from '../../packages/shared/index.mjs';
+import { apiRoutes } from '../../apps/api/src/api-routes.mjs';
+
 const required = [
   'apps/web/package.json',
   'apps/web/src/main.tsx',
@@ -109,10 +112,17 @@ for (const capability of ["'viewed'", "'comments'", "'request-changes'", "'apply
 
 const runtimeFiles = walk('apps')
   .concat(walk('packages'))
-  .filter((file) => /\.(mjs|ts|tsx|json|html|css)$/.test(file) && !file.includes('dist'));
+  .filter((file) => /\.(mjs|ts|tsx|json|html|css)$/.test(file) && !file.includes('dist') && !isMigrationModule(file));
 const runtime = runtimeFiles.map(read).join('\n');
 for (const forbidden of ['/demo/full-chain', 'MockRunner', 'mock_runner', '生成演示链路'])
   assert.equal(runtime.includes(forbidden), false, `runtime excludes ${forbidden}`);
+const registeredTools = defaultTools('smoke-owner').map((item) => item.name);
+assert.equal(registeredTools.includes('mock_runner'), false, 'actual default tool registry excludes retired runner');
+assert.equal(
+  apiRoutes.some((route) => route.pattern === '/demo/full-chain'),
+  false,
+  'actual API route registry excludes demo runtime'
+);
 auditButtons(walk('apps/web/src').filter((file) => file.endsWith('.tsx')));
 for (const nodeInteraction of ['onNodeClick=', 'onNodeDoubleClick=', 'onConnect='])
   assert.ok(canvas.includes(nodeInteraction), `canvas nodes connect ${nodeInteraction}`);
@@ -178,4 +188,7 @@ function walk(dir) {
     if (['node_modules', 'dist'].includes(entry.name)) return [];
     return entry.isDirectory() ? walk(full) : [full];
   });
+}
+function isMigrationModule(file) {
+  return /(?:^|[\\/])apps[\\/]api[\\/]src[\\/]state-migration-[^\\/]+\.mjs$/.test(file);
 }

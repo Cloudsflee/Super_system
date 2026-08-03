@@ -5,6 +5,7 @@ import {
   parseQualityRubric,
   protocolHash
 } from '../../../packages/execution-protocol/src/index.mjs';
+import * as qualityReview from './outcome-quality-review.mjs';
 import { id, now } from '../../../packages/shared/index.mjs';
 import { HttpError } from './http.mjs';
 import { instanceOwnerId, membershipFor } from './project-governance-v19.mjs';
@@ -20,6 +21,8 @@ export function materializeOutcomeRequirementsInState(state, workflowExecution, 
   workflowExecution.outcome_contract_hash = contractHash;
   workflowExecution.outcome_contract_source = contract.source;
   workflowExecution.quality_rubric_hash = rubricHash;
+  workflowExecution.quality_review_rubric_hash = qualityReview.qualityReviewMaterialization(workflow).hash;
+  workflowExecution.quality_review_policy_snapshot = qualityReview.qualityReviewPolicySnapshot(workflow);
   const definitions = [
     ...contract.requirements.map((requirement) => ({ ...requirement, source: 'outcome_contract' })),
     ...rubric.criteria
@@ -35,7 +38,7 @@ export function materializeOutcomeRequirementsInState(state, workflowExecution, 
         evaluator: criterion.evaluator,
         expected: criterion.expected,
         waivable: true,
-        evaluator_config: { criterion_id: criterion.id, authority_mapping: criterion.authority_mapping },
+        evaluator_config: qualityReview.qualityReviewCriterionConfig(criterion),
         source: 'quality_rubric'
       }))
   ];
@@ -274,7 +277,8 @@ export function effectiveWaiversFor(state, workflowExecutionId, timestamp = now(
 function evaluateRequirement(state, execution, requirement) {
   const supplied =
     execution.outcome_facts?.[requirement.contract_requirement_id] || execution.outcome_facts?.[requirement.id];
-  if (supplied) return evaluateSuppliedFact(supplied, requirement);
+  if (supplied && !qualityReview.isQualityReviewHumanScore(requirement))
+    return evaluateSuppliedFact(supplied, requirement);
   const evaluator = EVALUATORS[requirement.evaluator];
   if (!evaluator) return result('error', null, [], 'outcome_evaluator_unknown');
   return evaluator(state, execution, requirement);
@@ -411,17 +415,8 @@ const EVALUATORS = Object.freeze({
     return EVALUATORS.effect_claim(state, execution, requirement);
   },
   human_score(state, execution, requirement) {
-    const reviews = (state.human_reviews || []).filter((item) => item.workflow_execution_id === execution.id),
-      scores = reviews.map((item) => Number(item.score)).filter(Number.isFinite),
-      actual = scores.length ? scores.reduce((sum, score) => sum + score, 0) / scores.length : null,
-      minimum = Number(requirement.expected?.min ?? requirement.expected ?? 0),
-      passed = actual != null && actual >= minimum;
-    return result(
-      passed ? 'satisfied' : 'unsatisfied',
-      { score: actual, minimum },
-      reviews.map((item) => `human_review:${item.id}`),
-      passed ? 'human_score_satisfied' : 'human_score_unsatisfied'
-    );
+    const evaluation = qualityReview.qualityReviewHumanScoreEvaluation(state, execution, requirement);
+    return result(evaluation.status, evaluation.actual, evaluation.evidenceRefs, evaluation.reasonCode);
   }
 });
 
@@ -451,8 +446,7 @@ function applyCompletionStatus(execution, requirements, evaluations, effectiveWa
       ? 'waived'
       : 'completed_with_gaps';
   execution.completion_status = completionStatus;
-  execution.release_eligible =
-    completionStatus === 'completed' || (completionStatus === 'waived' && effectiveWaivers.length > 0);
+  execution.release_eligible = mandatoryGaps.length === 0 || mandatoryGapsWaived;
   execution.outcome_summary = {
     total: requirements.length,
     ...counts,

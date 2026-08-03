@@ -413,7 +413,7 @@
       "profile": "production",
       "metrics": {
         "complexity": [
-          17
+          16
         ]
       }
     },
@@ -454,7 +454,7 @@
           16
         ],
         "max-lines": [
-          434
+          429
         ],
         "max-lines-per-function": [
           97
@@ -757,7 +757,7 @@
           20
         ],
         "max-lines": [
-          580
+          574
         ]
       }
     },
@@ -1276,16 +1276,8 @@
       "path": "apps/api/src/state.mjs",
       "profile": "production",
       "metrics": {
-        "complexity": [
-          23,
-          23,
-          22,
-          17,
-          16,
-          16
-        ],
         "max-lines": [
-          777
+          542
         ]
       }
     },
@@ -1427,10 +1419,10 @@
           16
         ],
         "max-lines": [
-          697
+          692
         ],
         "max-lines-per-function": [
-          132,
+          126,
           87
         ]
       }
@@ -2023,9 +2015,6 @@
       "path": "apps/web/src/features/workflow/WorkflowOutcomePanel.tsx",
       "profile": "production",
       "metrics": {
-        "complexity": [
-          19
-        ],
         "max-lines-per-function": [
           138
         ]
@@ -2359,9 +2348,6 @@
           24,
           23,
           18
-        ],
-        "max-lines": [
-          428
         ]
       }
     },
@@ -2454,7 +2440,7 @@
       "profile": "tooling",
       "metrics": {
         "max-lines": [
-          661
+          605
         ]
       }
     },

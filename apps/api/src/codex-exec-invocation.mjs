@@ -1,7 +1,7 @@
 import path from 'node:path';
 import { prepareCodexInvocation } from '../../../packages/runner-adapters/src/codex-command.mjs';
 import { buildCodexContainerInvocation, isContainerized } from './container-runtime-config.mjs';
-import { codexMcpConfigArgs } from './codex-mcp-runtime.mjs';
+import { appendCodexQualityArgs, codexConfigArgs, reviewerMounts } from './codex-quality-invocation.mjs';
 
 export function buildCodexExecInvocation({
   profile,
@@ -12,13 +12,15 @@ export function buildCodexExecInvocation({
   exposeApiKey = false,
   proxyKeys = [],
   runtimeKind = 'assist-exec',
-  mcpAccess = null
+  mcpAccess = null,
+  ...qualityOptions
 }) {
   const configArgs = [
-    ...codexMcpConfigArgs(mcpAccess),
+    ...codexConfigArgs(mcpAccess, qualityOptions.disableMcp),
     ...(profile.reasoning ? ['-c', `model_reasoning_effort=${JSON.stringify(profile.reasoning)}`] : [])
   ];
   const execArgs = resumeId ? [...configArgs, 'exec', 'resume', '--json', resumeId] : [...configArgs, 'exec', '--json'];
+  appendCodexQualityArgs(execArgs, { profile, cwd, ...qualityOptions });
   execArgs.push('--sandbox', sandbox, '--skip-git-repo-check');
   if (profile.model) execArgs.push('--model', profile.model);
   execArgs.push(prompt);
@@ -39,7 +41,7 @@ export function buildCodexExecInvocation({
     workspace: path.resolve(cwd),
     nestedSandbox: true,
     workspaceMode: sandbox === 'read-only' ? 'ro' : 'rw',
-    extraMounts: profile.mounts || [],
+    extraMounts: reviewerMounts(profile, qualityOptions.reviewer),
     containerEnv: {
       CODEX_HOME: '/codex-home',
       ...(exposeApiKey ? { OPENAI_API_KEY: null } : {}),

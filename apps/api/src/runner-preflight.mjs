@@ -1,4 +1,5 @@
 import { protocolHash } from '../../../packages/execution-protocol/src/index.mjs';
+import { AIWS_RUNNER_IMAGE } from '../../../packages/shared/index.mjs';
 import { HttpError } from './http.mjs';
 
 export function runnerPreflightInState(
@@ -6,7 +7,7 @@ export function runnerPreflightInState(
   { taskExecution, node, contract, runner = 'codex_docker', testAdapter = false, env = process.env } = {}
 ) {
   if (!taskExecution || !node || !contract) throw new HttpError(409, { error: 'runner_preflight_scope_missing' });
-  const image = env.AIWS_CODEX_DOCKER_IMAGE || activeProfile(state)?.image || 'aiws-codex-runner:2.2.0-codex-0.144.0',
+  const image = env.AIWS_CODEX_DOCKER_IMAGE || activeProfile(state)?.image || AIWS_RUNNER_IMAGE,
     proxy = proxyCaseStatus(env),
     checks = [
       check('runner_image', Boolean(image), { image }),

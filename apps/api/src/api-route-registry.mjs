@@ -323,7 +323,6 @@ async function resolveProjectId(operation, args, client = null) {
     return String(client.project_allowlist[0]);
   return null;
 }
-
 const directProjectRoutes = [
   ['/assist/v3/sessions/:id', 'assist_sessions'],
   ['/assist/v2/sessions/:id', 'assist_sessions'],
@@ -336,6 +335,7 @@ const directProjectRoutes = [
   ['/runs/:id', 'node_runs'],
   ['/deliveries/:id', 'deliveries'],
   ['/workflow-executions/:id', 'workflow_executions'],
+  ['/quality-reviews/:id', 'quality_review_runs'],
   ['/task-executions/:id', 'task_executions'],
   ['/delivery-policies/:id', 'delivery_policies'],
   ['/repository-workspaces/:id', 'repository_workspaces'],
@@ -529,7 +529,7 @@ function classifyDomain(pattern) {
     return 'governance';
   if (/^\/(?:runs|context-packs)/.test(pattern) || /\/run(?:\/|$)/.test(pattern)) return 'runs';
   if (
-    /^\/(?:workflows|workflow-executions|task-executions|nodes|workstreams|tasks)/.test(pattern) ||
+    /^\/(?:workflows|workflow-executions|quality-reviews|task-executions|nodes|workstreams|tasks)/.test(pattern) ||
     /workflow-draft/.test(pattern) ||
     /brief/.test(pattern)
   )
@@ -572,7 +572,7 @@ function isStreamResponse(item) {
 function isProjectScoped(pattern) {
   return (
     /^\/context\/v1\/(?:map|search|nodes|selections|policy)/.test(pattern) ||
-    /^\/(?:projects|workspaces|repository-workspaces|pull-request-intents|workflows|workflow-executions|task-executions|nodes|workstreams|tasks|runs|deliveries|delivery-policies|context-packs|assets|asset-versions|asset-candidates|change-proposals|approvals|agent-sessions|exchange-requests|exchange-grants|project-invitations|submissions|review)/.test(
+    /^\/(?:projects|workspaces|repository-workspaces|pull-request-intents|workflows|workflow-executions|quality-reviews|task-executions|nodes|workstreams|tasks|runs|deliveries|delivery-policies|context-packs|assets|asset-versions|asset-candidates|change-proposals|approvals|agent-sessions|exchange-requests|exchange-grants|project-invitations|submissions|review)/.test(
       pattern
     ) ||
     /^\/assist\/(?:v2\/sessions|v3\/(?:sessions|turns|terminal-sessions|operations|change-batches|attachments))/.test(
