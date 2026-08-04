@@ -1,9 +1,9 @@
 import fs from 'node:fs';
-import net from 'node:net';
 import path from 'node:path';
 import { captureBaseline, finishBaseline } from './v175-baseline.mjs';
 import { resolveGateConcurrency, runDependencyGraph } from './gate-scheduler.mjs';
 import { collectImpact } from './v175-impact.mjs';
+import { createLoopbackPortAllocator } from './loopback-port-allocator.mjs';
 import { V175Report } from './v175-report.mjs';
 import {
   REPORT_ROOT,
@@ -28,6 +28,7 @@ const PLAN_TIMEOUT = 60_000,
   PR_BUDGET = 15 * 60_000,
   FULL_BUDGET = 90 * 60_000,
   SOAK_BUDGET = 120 * 60_000;
+const allocateTestPort = createLoopbackPortAllocator();
 const budgets = {
   pr: PR_BUDGET,
   full: FULL_BUDGET,
@@ -84,9 +85,14 @@ const started = Date.now(),
 console.log(`[v175] dependency scheduler concurrency=${concurrency}`);
 await runDependencyGraph(selected, {
   concurrency,
+  resourceKey: v175ResourceKey,
   execute: executeSelectedCase,
   onBlocked: blockSelectedCase
 });
+
+function v175ResourceKey(item) {
+  return item.command.includes('scripts/v175-suite.mjs') || item.id === 'V175-L3-WEB-001' ? 'v175-host-heavy' : null;
+}
 
 async function executeSelectedCase(item) {
   const elapsed = Date.now() - started,
@@ -212,7 +218,7 @@ async function attempt(item, number, timeout) {
     home = path.join(caseDir, 'home');
   fs.rmSync(caseDir, { recursive: true, force: true });
   fs.mkdirSync(home, { recursive: true });
-  const port = await freePort(),
+  const port = await allocateTestPort(),
     requestId = `req_v175_${sha256(`${runId}:${item.id}:${number}`).slice(0, 24)}`;
   const env = {
     AIWS_HOME: home,
@@ -266,16 +272,6 @@ function resultPatch(item, status, phase, summary) {
     first_attempt_status: null,
     rerun_status: null
   };
-}
-function freePort() {
-  return new Promise((resolve, reject) => {
-    const server = net.createServer();
-    server.once('error', reject);
-    server.listen(0, '127.0.0.1', () => {
-      const address = server.address();
-      server.close(() => resolve(address.port));
-    });
-  });
 }
 function formatCleanup(value) {
   return typeof value === 'string' ? value : JSON.stringify(value);

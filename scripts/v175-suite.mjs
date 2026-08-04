@@ -1,5 +1,6 @@
 import fs from 'node:fs';
 import path from 'node:path';
+import { createLoopbackPortAllocator } from './loopback-port-allocator.mjs';
 import { ROOT, limitedLog, readJson, runCommand } from './v175-lib.mjs';
 
 const group = process.argv[2],
@@ -20,16 +21,19 @@ if (!Array.isArray(files) || !files.length) {
 }
 
 const failures = [],
+  allocateTestPort = createLoopbackPortAllocator(),
   started = Date.now();
 for (const file of files) {
   if (!fs.existsSync(path.join(ROOT, file))) {
     failures.push(`${file}: missing`);
     continue;
   }
-  const result = await runCommand(['node', '--disable-warning=ExperimentalWarning', file], {
-    timeout: Number(process.env.AIWS_TEST_FILE_TIMEOUT_MS || 240000),
-    inherit: true
-  });
+  const port = await allocateTestPort(),
+    result = await runCommand(['node', '--disable-warning=ExperimentalWarning', file], {
+      timeout: Number(process.env.AIWS_TEST_FILE_TIMEOUT_MS || 240000),
+      inherit: true,
+      env: { AIWS_TEST_PORT: String(port) }
+    });
   const state = result.timedOut ? 'TIMEOUT' : result.status === 0 ? 'PASS' : 'FAIL';
   console.log(`[v175-suite] ${state} ${file} (${result.durationMs}ms)`);
   if (state !== 'PASS') failures.push(`${file}: ${state}\n${limitedLog(`${result.stdout}\n${result.stderr}`)}`);

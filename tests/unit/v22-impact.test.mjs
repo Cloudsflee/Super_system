@@ -9,6 +9,7 @@ import { buildSourceSnapshot, writeSourceSnapshot } from '../../scripts/source-s
 import { buildCompatibilityPlan, buildCompatibilityReport } from '../../scripts/compat-pr-runner.mjs';
 import { buildGateIdentity, environmentFingerprint, gateReceiptCacheAllowed } from '../../scripts/gate-receipt-v22.mjs';
 import { resolveGateConcurrency, runDependencyGraph } from '../../scripts/gate-scheduler.mjs';
+import { createLoopbackPortAllocator } from '../../scripts/loopback-port-allocator.mjs';
 
 const repositoryRoot = process.cwd(),
   root = fs.mkdtempSync(path.join(os.tmpdir(), 'aiws-v22-impact-'));
@@ -164,6 +165,8 @@ try {
   );
 
   await verifyDependencyScheduler();
+  await verifyResourceScheduler();
+  await verifyLoopbackPortAllocator();
   verifyCompatibilityPlan();
 } finally {
   fs.rmSync(root, { recursive: true, force: true });
@@ -207,6 +210,53 @@ async function verifyDependencyScheduler() {
   assert.equal(resolveGateConcurrency('pr', {}), 2);
   assert.equal(resolveGateConcurrency('full', {}), 1);
   assert.throws(() => resolveGateConcurrency('pr', { AIWS_TEST_CONCURRENCY: '5' }), /gate_concurrency_invalid/);
+}
+
+async function verifyResourceScheduler() {
+  let suiteRunning = 0,
+    maximumRunning = 0,
+    totalRunning = 0;
+  const outcomes = await runDependencyGraph(
+    [
+      { id: 'suite-a', dependencies: [], resource: 'suite', delay: 20 },
+      { id: 'suite-b', dependencies: [], resource: 'suite', delay: 10 },
+      { id: 'unrelated', dependencies: [], resource: null, delay: 10 }
+    ],
+    {
+      concurrency: 2,
+      resourceKey: (item) => item.resource,
+      async execute(item) {
+        totalRunning += 1;
+        maximumRunning = Math.max(maximumRunning, totalRunning);
+        if (item.resource === 'suite') {
+          suiteRunning += 1;
+          assert.equal(suiteRunning, 1, 'the same gate resource must never overlap');
+        }
+        await new Promise((resolve) => setTimeout(resolve, item.delay));
+        if (item.resource === 'suite') suiteRunning -= 1;
+        totalRunning -= 1;
+        return { ok: true, status: 'PASS' };
+      }
+    }
+  );
+  assert.equal(maximumRunning, 2, 'unrelated gates may still run concurrently');
+  assert.ok([...outcomes.values()].every((outcome) => outcome.status === 'PASS'));
+  await assert.rejects(
+    () =>
+      runDependencyGraph([{ id: 'invalid', dependencies: [] }], {
+        execute: async () => ({ ok: true }),
+        resourceKey: () => 1
+      }),
+    /gate_scheduler_resource_key_invalid/
+  );
+}
+
+async function verifyLoopbackPortAllocator() {
+  const allocate = createLoopbackPortAllocator({ minPort: 24_000, maxPort: 24_099, seed: 0 }),
+    ports = await Promise.all(Array.from({ length: 8 }, () => allocate()));
+  assert.equal(new Set(ports).size, ports.length);
+  assert.ok(ports.every((port) => port >= 24_000 && port <= 24_099));
+  assert.throws(() => createLoopbackPortAllocator({ minPort: 65_535, maxPort: 20_000 }), /loopback_port_range_invalid/);
 }
 
 function verifyCompatibilityPlan() {

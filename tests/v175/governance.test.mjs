@@ -81,6 +81,11 @@ for (const obsoleteField of ['V1.75-Decision', 'V1.75-Reason', 'V1.8-Decision', 
 const runner = fs.readFileSync('scripts/v175-runner.mjs', 'utf8');
 for (const contract of ['15 * 60_000', '90 * 60_000', '120 * 60_000', 'AIWS_TEST_RUN_ID', '测试结果v1.75.md'])
   assert.ok(runner.includes(contract), `runner keeps ${contract}`);
+for (const contract of ['v175-host-heavy', 'V175-L3-WEB-001'])
+  assert.ok(runner.includes(contract), `runner serializes host-heavy gate: ${contract}`);
+const suite = fs.readFileSync('scripts/v175-suite.mjs', 'utf8');
+for (const contract of ['createLoopbackPortAllocator', 'allocateTestPort', 'AIWS_TEST_PORT'])
+  assert.ok(suite.includes(contract), `suite keeps per-file port isolation: ${contract}`);
 assert.ok(
   runner.includes("item.external_effects === 'codex' && !process.env.AIWS_TEST_LIVE_BASE_URL"),
   'service-backed Codex Live bypasses the host CLI precondition'

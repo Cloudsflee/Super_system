@@ -1,10 +1,10 @@
 #!/usr/bin/env node
 import fs from 'node:fs';
-import net from 'node:net';
 import path from 'node:path';
 
 import { V18_CONTRACT_TESTS } from './v18-contract.mjs';
 import { collectImpact } from './v175-impact.mjs';
+import { createLoopbackPortAllocator } from './loopback-port-allocator.mjs';
 import {
   ROOT,
   isMain,
@@ -18,6 +18,7 @@ import {
 } from './v175-lib.mjs';
 
 const BUDGET_MS = 15 * 60_000;
+const allocateTestPort = createLoopbackPortAllocator();
 
 export function buildCompatibilityPlan({ domains, v175Catalog, suiteFiles, versionCatalogs, precoveredVersions = [] }) {
   const selectedV175 = selectV175Cases(v175Catalog.tests, 'pr', domains),
@@ -159,7 +160,7 @@ async function main() {
       }
       console.log(`\n[compat-pr] ${task.owners.map(ownerLabel).join(', ')} :: ${task.command.join(' ')}`);
       const fixture = path.join(reportDir, 'fixtures', String(index + 1).padStart(3, '0')),
-        port = await freePort();
+        port = await allocateTestPort();
       fs.mkdirSync(fixture, { recursive: true });
       const executed = await runCommand(task.command, {
         timeout: Math.min(task.timeout_ms, remaining),
@@ -415,17 +416,6 @@ function renderReport(report) {
     ),
     ''
   ].join('\n');
-}
-
-function freePort() {
-  return new Promise((resolve, reject) => {
-    const server = net.createServer();
-    server.once('error', reject);
-    server.listen(0, '127.0.0.1', () => {
-      const address = server.address();
-      server.close(() => resolve(address.port));
-    });
-  });
 }
 
 if (isMain(import.meta.url))
