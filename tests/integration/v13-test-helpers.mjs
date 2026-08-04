@@ -53,7 +53,11 @@ export async function api(port, route, method = 'GET', body, expected = 200, err
   const baseUrl = `http://127.0.0.1:${port}`;
   const response = await fetch(`http://127.0.0.1:${port}${route}`, {
     method,
-    headers: { 'content-type': 'application/json', ...(await projectCreateHeaders(baseUrl, route, method)) },
+    headers: {
+      connection: 'close',
+      'content-type': 'application/json',
+      ...(await projectCreateHeaders(baseUrl, route, method))
+    },
     body: body === undefined ? undefined : JSON.stringify(body)
   });
   const data = await response.json();
@@ -169,6 +173,7 @@ async function request(baseUrl, route, method, body, requestHeaders = {}) {
   const response = await fetch(`${baseUrl}${route}`, {
     method,
     headers: {
+      connection: 'close',
       'content-type': 'application/json',
       ...(await projectCreateHeaders(baseUrl, route, method, requestHeaders)),
       ...requestHeaders
@@ -183,7 +188,9 @@ async function projectCreateHeaders(baseUrl, route, method, requestHeaders = {})
   if (method !== 'POST' || route !== '/projects') return {};
   const subject = requestHeaders['x-aiws-user-id'] || requestHeaders['X-AIWS-User-ID'];
   if (subject) return { 'x-aiws-user-id': subject, 'x-aiws-scopes': 'project:create' };
-  const account = await fetch(`${baseUrl}/account/me`).then((response) => response.json());
+  const account = await fetch(`${baseUrl}/account/me`, { headers: { connection: 'close' } }).then((response) =>
+    response.json()
+  );
   return { 'x-aiws-user-id': account.user.id, 'x-aiws-scopes': 'project:create' };
 }
 function normalizeSource(source) {
