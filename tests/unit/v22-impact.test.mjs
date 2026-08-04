@@ -28,7 +28,7 @@ try {
   git(['add', '-A']);
   git(['commit', '-m', 'head']);
   const head = git(['rev-parse', 'HEAD']),
-    impact = collectImpactRange({ base, head, cwd: root });
+    impact = collectImpactRange({ base, head, cwd: root, env: {} });
   assert.equal(impact.mode, 'committed-range');
   assert.equal(impact.base_sha, base);
   assert.equal(impact.head_sha, head);
@@ -37,7 +37,7 @@ try {
   assert.ok(impact.files.includes('重命名后.txt'));
   assert.ok(impact.files.includes('新增.txt'));
   assert.throws(
-    () => collectImpactRange({ base: '0'.repeat(40), head, cwd: root }),
+    () => collectImpactRange({ base: '0'.repeat(40), head, cwd: root, env: {} }),
     (error) => error.code === 'impact_base_not_found'
   );
 
@@ -155,8 +155,9 @@ try {
       npm_config_registry: 'https://registry.npmjs.org/'
     })
   );
+  const comspecKey = process.platform === 'win32' ? 'ComSpec' : 'COMSPEC';
   assert.equal(
-    environmentFingerprint({ USERPROFILE: 'C:\\Users\\Example', ComSpec: 'C:\\Windows\\System32\\cmd.exe' }),
+    environmentFingerprint({ USERPROFILE: 'C:\\Users\\Example', [comspecKey]: 'C:\\Windows\\System32\\cmd.exe' }),
     environmentFingerprint({
       HOME: 'C:/Users/Example',
       USERPROFILE: 'C:/Users/Example',
