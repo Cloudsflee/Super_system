@@ -323,11 +323,17 @@ async function assertParserFailure(input, expectedCode) {
 function runParserWorker(input) {
   return new Promise((resolve, reject) => {
     const worker = new Worker(new URL('../../apps/api/src/quality-review-parser-worker.mjs', import.meta.url));
-    worker.once('message', (message) => {
-      void worker.terminate();
-      resolve(message);
-    });
-    worker.once('error', reject);
+    let settled = false;
+    const finish = async (error, message) => {
+      if (settled) return;
+      settled = true;
+      worker.removeAllListeners();
+      await worker.terminate().catch(() => undefined);
+      if (error) reject(error);
+      else resolve(message);
+    };
+    worker.once('message', (message) => void finish(null, message));
+    worker.once('error', (error) => void finish(error));
     worker.postMessage(input);
   });
 }

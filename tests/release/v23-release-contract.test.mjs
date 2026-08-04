@@ -24,6 +24,7 @@ import {
   V23_VERSION,
   v23RollbackAccepted
 } from '../../docker/v23-upgrade.mjs';
+import { limitedLog } from '../../scripts/v175-lib.mjs';
 
 const packageJson = JSON.parse(fs.readFileSync('package.json', 'utf8')),
   dockerfile = fs.readFileSync('Dockerfile', 'utf8'),
@@ -33,7 +34,8 @@ const packageJson = JSON.parse(fs.readFileSync('package.json', 'utf8')),
   collaborationCompose = fs.readFileSync('compose.collaboration.yml', 'utf8'),
   bridge = fs.readFileSync('bridge/main.go', 'utf8'),
   powershell = fs.readFileSync('scripts/aiws.ps1', 'utf8'),
-  posix = fs.readFileSync('scripts/aiws.sh', 'utf8');
+  posix = fs.readFileSync('scripts/aiws.sh', 'utf8'),
+  v23Runner = fs.readFileSync('scripts/v23-runner.mjs', 'utf8');
 
 assert.equal(packageJson.version, '2.3.0');
 assert.equal(packageJson.engines.node, '24.14.x');
@@ -73,6 +75,16 @@ assert.match(compose, /aiws-codex-runner:2\.3\.0-codex-0\.144\.0/);
 assert.match(compose, /127\.0\.0\.1:\$\{AIWS_PORT:-4317\}:4317/);
 assert.match(collaborationCompose, /aiws-mcp-gateway:2\.3\.0/);
 assert.match(bridge, /bridgeVersion\s+= "2\.3\.0"/);
+assert.match(v23Runner, /AIWS_HOME: caseHome/);
+assert.match(v23Runner, /NODE_ENV: 'test'/);
+assert.match(v23Runner, /cleanupCaseHome\(caseHome\)/);
+assert.match(v23Runner, /limitedLog\([\s\S]+?,\s*env\s*\)/);
+assert.match(v23Runner, /signal=\$\{result\.signal/);
+assert.equal(v23Runner.includes("limitedLog(`${result.stdout || ''}\\n${result.stderr || ''}`, 80_000)"), false);
+assert.equal(
+  limitedLog('V23_RUNNER_SECRET_SENTINEL', { AIWS_RUNNER_SECRET: 'V23_RUNNER_SECRET_SENTINEL' }),
+  '[REDACTED]'
+);
 
 assert.equal(V23_VERSION, '2.3.0');
 assert.equal(V23_SCHEMA, 23);

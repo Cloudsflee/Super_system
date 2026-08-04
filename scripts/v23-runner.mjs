@@ -32,13 +32,16 @@ for (const item of selected) {
     results.push(caseResult(item, 'BLOCKED', 0, `missing env: ${missing.join(', ')}`));
     continue;
   }
-  const caseRoot = path.join(reportDir, 'fixtures', item.id.toLowerCase());
-  fs.mkdirSync(caseRoot, { recursive: true });
+  const caseRoot = path.join(reportDir, 'fixtures', item.id.toLowerCase()),
+    caseHome = path.join(caseRoot, 'home');
+  fs.mkdirSync(caseHome, { recursive: true });
   const env = {
     ...process.env,
+    AIWS_HOME: caseHome,
     AIWS_TEST_RUN_ID: runId,
     AIWS_TEST_CASE_ID: item.id,
     AIWS_TEST_REPORT_DIR: caseRoot,
+    NODE_ENV: 'test',
     AIWS_GATE_CACHE_DISABLED:
       mode === 'release' || item.external_effects === 'docker' || item.external_effects === 'live'
         ? '1'
@@ -46,10 +49,17 @@ for (const item of selected) {
   };
   const timeout = Math.min(Number(item.timeout_ms), remaining),
     result = await runCommand(item.command, { timeout, env }),
-    output = limitedLog(`${result.stdout || ''}\n${result.stderr || ''}`, 80_000),
-    status = result.status === 0 && !result.timedOut ? 'PASS' : result.timedOut ? 'TIMEOUT' : 'FAIL';
+    cleanup = cleanupCaseHome(caseHome),
+    output = limitedLog(`${result.stdout || ''}\n${result.stderr || ''}\n${runnerDiagnostic(result, cleanup)}`, env),
+    status = cleanup.ok
+      ? result.status === 0 && !result.timedOut
+        ? 'PASS'
+        : result.timedOut
+          ? 'TIMEOUT'
+          : 'FAIL'
+      : 'FAIL';
   writeFileEnsured(path.join(reportDir, `${item.id}.log`), `${output}\n`);
-  results.push(caseResult(item, status, result.durationMs, output.slice(-4000)));
+  results.push(caseResult(item, status, result.durationMs, output.slice(-4000), cleanup.status));
   console.log(`[v23:${mode}] ${item.id} ${status} (${result.durationMs}ms)`);
   if (status !== 'PASS') break;
 }
@@ -92,6 +102,22 @@ writeFileEnsured(
 if (!passed) process.exit(1);
 console.log(`V2.3 ${mode} suite passed in ${report.duration_ms}ms; report: ${reportDir}`);
 
-function caseResult(item, status, durationMs, detail) {
-  return { id: item.id, layer: item.layer, domain: item.domain, status, duration_ms: durationMs, detail };
+function caseResult(item, status, durationMs, detail, cleanup = 'not-started') {
+  return { id: item.id, layer: item.layer, domain: item.domain, status, duration_ms: durationMs, detail, cleanup };
+}
+
+function cleanupCaseHome(caseHome) {
+  try {
+    fs.rmSync(caseHome, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
+    return { ok: true, status: 'isolated-home-removed' };
+  } catch (error) {
+    return { ok: false, status: `isolated-home-cleanup-failed:${error.code || 'unknown'}` };
+  }
+}
+
+function runnerDiagnostic(result, cleanup) {
+  return (
+    `[runner] status=${result.status ?? 'none'} signal=${result.signal || 'none'} ` +
+    `timed_out=${result.timedOut === true} error=${result.error?.code || 'none'} cleanup=${cleanup.status}`
+  );
 }

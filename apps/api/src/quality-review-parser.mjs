@@ -196,25 +196,23 @@ function runParserWorker(input, timeoutMs, signal = null) {
       if (settled) return;
       settled = true;
       clearTimeout(timer);
-      void worker.terminate();
-      reject(qualityParseError('quality_review_cancelled'));
+      signal?.removeEventListener('abort', abort);
+      void terminateWorker(worker).then(() => reject(qualityParseError('quality_review_cancelled')));
     };
     const timer = setTimeout(() => {
       if (settled) return;
       settled = true;
       signal?.removeEventListener('abort', abort);
-      void worker.terminate();
       const error = qualityParseError('quality_review_parser_timeout');
       error.retryable = true;
-      reject(error);
+      void terminateWorker(worker).then(() => reject(error));
     }, timeoutMs);
     const finish = (callback) => (value) => {
       if (settled) return;
       settled = true;
       clearTimeout(timer);
       signal?.removeEventListener('abort', abort);
-      void worker.terminate();
-      callback(value);
+      void terminateWorker(worker).then(() => callback(value));
     };
     worker.once(
       'message',
@@ -251,6 +249,11 @@ function runParserWorker(input, timeoutMs, signal = null) {
     if (signal?.aborted) return abort();
     worker.postMessage(input);
   });
+}
+
+async function terminateWorker(worker) {
+  worker.removeAllListeners();
+  await worker.terminate().catch(() => undefined);
 }
 
 function throwIfAborted(signal) {
