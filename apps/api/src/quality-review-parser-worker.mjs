@@ -5,12 +5,15 @@ import { extractText } from './quality-review-parser-worker-formats.mjs';
 import { assertValidImage, gifFrames, imageInfo } from './quality-review-parser-worker-images.mjs';
 import { normalizeText, qualityError } from './quality-review-parser-worker-utils.mjs';
 
-parentPort.on('message', async (message) => {
+parentPort.once('message', async (message) => {
+  let response;
   try {
-    parentPort.postMessage({ ok: true, result: await parseAsset(message) });
+    response = { ok: true, result: await parseAsset(message) };
   } catch (error) {
-    parentPort.postMessage({ ok: false, error: serializeError(error) });
+    response = { ok: false, error: serializeError(error) };
   }
+  parentPort.postMessage(response);
+  parentPort.close();
 });
 
 async function parseAsset(input) {

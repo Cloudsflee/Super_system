@@ -35,7 +35,8 @@ const packageJson = JSON.parse(fs.readFileSync('package.json', 'utf8')),
   bridge = fs.readFileSync('bridge/main.go', 'utf8'),
   powershell = fs.readFileSync('scripts/aiws.ps1', 'utf8'),
   posix = fs.readFileSync('scripts/aiws.sh', 'utf8'),
-  v23Runner = fs.readFileSync('scripts/v23-runner.mjs', 'utf8');
+  v23Runner = fs.readFileSync('scripts/v23-runner.mjs', 'utf8'),
+  parserWorker = fs.readFileSync('apps/api/src/quality-review-parser-worker.mjs', 'utf8');
 
 assert.equal(packageJson.version, '2.3.0');
 assert.equal(packageJson.engines.node, '24.14.x');
@@ -85,6 +86,9 @@ assert.equal(
   limitedLog('V23_RUNNER_SECRET_SENTINEL', { AIWS_RUNNER_SECRET: 'V23_RUNNER_SECRET_SENTINEL' }),
   '[REDACTED]'
 );
+assert.match(parserWorker, /parentPort\.once\('message'/);
+assert.match(parserWorker, /parentPort\.close\(\)/);
+assert.equal(parserWorker.includes("parentPort.on('message'"), false);
 
 assert.equal(V23_VERSION, '2.3.0');
 assert.equal(V23_SCHEMA, 23);

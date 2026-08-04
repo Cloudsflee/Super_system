@@ -179,17 +179,23 @@ function completedAdvice(rubric) {
 function parseInWorker(input) {
   return new Promise((resolve, reject) => {
     const worker = new Worker(new URL('../../apps/api/src/quality-review-parser-worker.mjs', import.meta.url));
-    let settled = false;
-    const finish = async (error, message) => {
+    let settled = false,
+      message;
+    const finish = (error, value) => {
       if (settled) return;
       settled = true;
-      worker.removeAllListeners();
-      await worker.terminate().catch(() => undefined);
       if (error) reject(error);
-      else resolve(message);
+      else resolve(value);
     };
-    worker.once('message', (message) => void finish(null, message));
-    worker.once('error', (error) => void finish(error));
+    worker.once('message', (value) => {
+      message = value;
+    });
+    worker.once('error', (error) => finish(error));
+    worker.once('exit', (code) => {
+      if (code !== 0 || message === undefined)
+        finish(new Error(code === 0 ? 'quality_review_parser_worker_no_result' : `worker_exit_${code}`));
+      else finish(null, message);
+    });
     worker.postMessage(input);
   });
 }

@@ -191,59 +191,60 @@ function runParserWorker(input, timeoutMs, signal = null) {
     const worker = new Worker(new URL('./quality-review-parser-worker.mjs', import.meta.url), {
       resourceLimits: QUALITY_REVIEW_WORKER_RESOURCE_LIMITS
     });
-    let settled = false;
-    const abort = () => {
+    let settled = false,
+      message,
+      timer;
+    const cleanup = () => {
+        if (timer) clearTimeout(timer);
+        signal?.removeEventListener('abort', abort);
+        worker.removeAllListeners();
+      },
+      settle = (callback, value) => {
+        if (settled) return;
+        settled = true;
+        cleanup();
+        callback(value);
+      },
+      terminateAndReject = (error) => {
+        if (settled) return;
+        settled = true;
+        cleanup();
+        void terminateWorker(worker).then(() => reject(error));
+      },
+      abort = () => {
+        terminateAndReject(qualityParseError('quality_review_cancelled'));
+      };
+    timer = setTimeout(() => {
       if (settled) return;
-      settled = true;
-      clearTimeout(timer);
-      signal?.removeEventListener('abort', abort);
-      void terminateWorker(worker).then(() => reject(qualityParseError('quality_review_cancelled')));
-    };
-    const timer = setTimeout(() => {
-      if (settled) return;
-      settled = true;
-      signal?.removeEventListener('abort', abort);
       const error = qualityParseError('quality_review_parser_timeout');
       error.retryable = true;
-      void terminateWorker(worker).then(() => reject(error));
+      terminateAndReject(error);
     }, timeoutMs);
-    const finish = (callback) => (value) => {
-      if (settled) return;
-      settled = true;
-      clearTimeout(timer);
-      signal?.removeEventListener('abort', abort);
-      void terminateWorker(worker).then(() => callback(value));
-    };
-    worker.once(
-      'message',
-      finish((message) => {
-        if (message?.ok) resolve(message.result);
-        else {
-          const error = qualityParseError(message?.error?.code || 'quality_review_parse_failed', message?.error);
-          error.retryable = Boolean(message?.error?.retryable);
-          reject(error);
-        }
-      })
-    );
-    worker.once(
-      'error',
-      finish((error) => {
-        const failure = qualityParseError(error.code || 'quality_review_parser_worker_failed');
-        failure.retryable = true;
-        reject(failure);
-      })
-    );
+    worker.once('message', (value) => {
+      message = value;
+    });
+    worker.once('error', (error) => {
+      const failure = qualityParseError(error.code || 'quality_review_parser_worker_failed');
+      failure.retryable = true;
+      terminateAndReject(failure);
+    });
     worker.once('exit', (code) => {
       if (settled) return;
-      settled = true;
-      clearTimeout(timer);
-      signal?.removeEventListener('abort', abort);
-      const failure = qualityParseError(
-        code === 0 ? 'quality_review_parser_worker_no_result' : 'quality_review_parser_worker_exited',
-        { code }
-      );
-      failure.retryable = code !== 0;
-      reject(failure);
+      if (code !== 0 || message === undefined) {
+        const failure = qualityParseError(
+          code === 0 ? 'quality_review_parser_worker_no_result' : 'quality_review_parser_worker_exited',
+          { code }
+        );
+        failure.retryable = code !== 0;
+        settle(reject, failure);
+        return;
+      }
+      if (message?.ok) settle(resolve, message.result);
+      else {
+        const error = qualityParseError(message?.error?.code || 'quality_review_parse_failed', message?.error);
+        error.retryable = Boolean(message?.error?.retryable);
+        settle(reject, error);
+      }
     });
     signal?.addEventListener('abort', abort, { once: true });
     if (signal?.aborted) return abort();
@@ -252,7 +253,6 @@ function runParserWorker(input, timeoutMs, signal = null) {
 }
 
 async function terminateWorker(worker) {
-  worker.removeAllListeners();
   await worker.terminate().catch(() => undefined);
 }
 
