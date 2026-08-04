@@ -208,7 +208,7 @@ async function auditV22SourceState(root) {
     authoritativeBytes = stateFileBytes;
   if (isState22Sentinel(stateFileValue)) {
     try {
-      state = readLegacySqliteState(databasePath);
+      state = await readLegacySqliteState(databasePath);
       authoritativeBytes = await fsp.readFile(databasePath);
     } catch (error) {
       throw releaseError('source_state_database_invalid', {

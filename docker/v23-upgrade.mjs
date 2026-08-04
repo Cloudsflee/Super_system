@@ -201,7 +201,7 @@ function sqliteActivityProbeScript() {
 function v22SqliteActivityProbeScript() {
   return [
     "const {readLegacySqliteState}=await import('/app/apps/api/src/state-runtime-v23.mjs')",
-    "const state=readLegacySqliteState('/volume/data/state-v22.sqlite')",
+    "const state=await readLegacySqliteState('/volume/data/state-v22.sqlite')",
     "const activeTask=new Set(['queued','running','verifying','awaiting_human'])",
     "const activeRun=new Set(['queued','running','verifying'])",
     "const activeDelivery=new Set(['queued','running','awaiting_confirmation'])",

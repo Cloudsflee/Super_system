@@ -1,5 +1,4 @@
 import assert from 'node:assert/strict';
-import { Worker } from 'node:worker_threads';
 
 import {
   QUALITY_REVIEW_ADVICE_JSON_SCHEMA,
@@ -32,6 +31,7 @@ import {
 } from '../../apps/api/src/state-migration-v23.mjs';
 import { normalizeState22Defaults, validateState22 } from '../../apps/api/src/state-migration-v22.mjs';
 import { AIWS_RUNNER_IMAGE } from '../../packages/shared/index.mjs';
+import { exchangeQualityReviewParser } from '../../apps/api/src/quality-review-parser-process.mjs';
 
 const rubric = defaultQualityReviewRubric();
 assert.deepEqual(rubric, DEFAULT_QUALITY_REVIEW_RUBRIC);
@@ -132,19 +132,19 @@ assert.equal(report.immutable, true);
 const normalized = normalizeState23Defaults({ ...state }, '2026-08-01T00:00:00.000Z');
 assert.doesNotThrow(() => validateState23(normalized));
 
-const workerMessage = await runParserWorker({
+const parserMessage = await runParserProcess({
   files: [{ path: 'note.md', media_type: 'text/markdown', bytes: Buffer.from('# 标题\n内容') }]
 });
-assert.equal(workerMessage.ok, true);
-assert.match(workerMessage.result.normalized_text, /标题/);
-assert.equal(workerMessage.result.files[0].kind, 'text');
-const unsupported = await runParserWorker({
+assert.equal(parserMessage.ok, true);
+assert.match(parserMessage.result.normalized_text, /标题/);
+assert.equal(parserMessage.result.files[0].kind, 'text');
+const unsupported = await runParserProcess({
   files: [{ path: 'movie.mp4', media_type: 'video/mp4', bytes: Buffer.from('fixture') }]
 });
 assert.equal(unsupported.ok, true);
 assert.equal(unsupported.result.out_of_scope[0].reason, 'format_not_supported');
 
-const validJson = await runParserWorker({
+const validJson = await runParserProcess({
   files: [{ path: 'result.json', media_type: 'application/json', bytes: Buffer.from('{"ok":true}') }]
 });
 assert.equal(validJson.ok, true);
@@ -153,7 +153,7 @@ await assertParserFailure(
   { files: [{ path: 'broken.json', media_type: 'application/json', bytes: Buffer.from('{"ok":') }] },
   'quality_review_json_invalid'
 );
-const validXml = await runParserWorker({
+const validXml = await runParserProcess({
   files: [{ path: 'result.xml', media_type: 'application/xml', bytes: Buffer.from('<result><ok>true</ok></result>') }]
 });
 assert.equal(validXml.ok, true);
@@ -166,7 +166,7 @@ await assertParserFailure(
   { files: [{ path: 'broken.pdf', media_type: 'application/pdf', bytes: Buffer.from('%PDF-1.7\nnot a pdf') }] },
   'quality_review_pdf_invalid'
 );
-const legacyXls = await runParserWorker({
+const legacyXls = await runParserProcess({
   files: [{ path: 'legacy.xls', media_type: 'application/vnd.ms-excel', bytes: Buffer.from('legacy') }]
 });
 assert.equal(legacyXls.ok, true);
@@ -315,31 +315,11 @@ function assertLegacyReviewerProjectionMigration() {
 }
 
 async function assertParserFailure(input, expectedCode) {
-  const message = await runParserWorker(input);
+  const message = await runParserProcess(input);
   assert.equal(message.ok, false);
   assert.equal(message.error.code, expectedCode);
 }
 
-function runParserWorker(input) {
-  return new Promise((resolve, reject) => {
-    const worker = new Worker(new URL('../../apps/api/src/quality-review-parser-worker.mjs', import.meta.url));
-    let settled = false,
-      message;
-    const finish = (error, value) => {
-      if (settled) return;
-      settled = true;
-      if (error) reject(error);
-      else resolve(value);
-    };
-    worker.once('message', (value) => {
-      message = value;
-    });
-    worker.once('error', (error) => finish(error));
-    worker.once('exit', (code) => {
-      if (code !== 0 || message === undefined)
-        finish(new Error(code === 0 ? 'quality_review_parser_worker_no_result' : `worker_exit_${code}`));
-      else finish(null, message);
-    });
-    worker.postMessage(input);
-  });
+function runParserProcess(input) {
+  return exchangeQualityReviewParser(input, { timeoutMs: 15_000 });
 }

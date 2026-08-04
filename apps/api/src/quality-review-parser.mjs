@@ -1,7 +1,7 @@
-import { Worker } from 'node:worker_threads';
 import { createHash } from 'node:crypto';
 
 import { readCasBlob, verifyAssetVersionPayload } from './asset-cas.mjs';
+import { exchangeQualityReviewParser, QUALITY_REVIEW_PARSER_PROCESS_LIMITS } from './quality-review-parser-process.mjs';
 
 export const QUALITY_REVIEW_LIMITS = Object.freeze({
   max_assets: 16,
@@ -12,11 +12,7 @@ export const QUALITY_REVIEW_LIMITS = Object.freeze({
   parser_timeout_ms: 15_000
 });
 
-export const QUALITY_REVIEW_WORKER_RESOURCE_LIMITS = Object.freeze({
-  maxOldGenerationSizeMb: 128,
-  maxYoungGenerationSizeMb: 16,
-  stackSizeMb: 4
-});
+export { QUALITY_REVIEW_PARSER_PROCESS_LIMITS };
 
 export async function parseQualityReviewAsset(
   state,
@@ -32,7 +28,7 @@ export async function parseQualityReviewAsset(
   await assertAssetIntegrity(state, version);
   const entries = await loadAssetEntries(state, version),
     rawSizeBytes = validateEntryLimits(entries),
-    result = await runParserWorkerWithRetry(
+    result = await runParserProcessWithRetry(
       {
         files: entries,
         max_direct_images: maxImageCount,
@@ -176,84 +172,22 @@ function assertAnchorsResolvable(version, files, anchors) {
   throw qualityParseError('quality_review_anchor_unresolvable');
 }
 
-async function runParserWorkerWithRetry(input, timeoutMs, signal = null) {
+async function runParserProcessWithRetry(input, timeoutMs, signal = null) {
   try {
-    return await runParserWorker(input, timeoutMs, signal);
+    return await runParserProcess(input, timeoutMs, signal);
   } catch (error) {
     if (!error.retryable || signal?.aborted) throw error;
     await new Promise((resolve) => setTimeout(resolve, 25));
-    return runParserWorker(input, timeoutMs, signal);
+    return runParserProcess(input, timeoutMs, signal);
   }
 }
 
-function runParserWorker(input, timeoutMs, signal = null) {
-  return new Promise((resolve, reject) => {
-    const worker = new Worker(new URL('./quality-review-parser-worker.mjs', import.meta.url), {
-      resourceLimits: QUALITY_REVIEW_WORKER_RESOURCE_LIMITS
-    });
-    let settled = false,
-      message,
-      timer;
-    const cleanup = () => {
-        if (timer) clearTimeout(timer);
-        signal?.removeEventListener('abort', abort);
-        worker.removeAllListeners();
-      },
-      settle = (callback, value) => {
-        if (settled) return;
-        settled = true;
-        cleanup();
-        callback(value);
-      },
-      terminateAndReject = (error) => {
-        if (settled) return;
-        settled = true;
-        cleanup();
-        void terminateWorker(worker).then(() => reject(error));
-      },
-      abort = () => {
-        terminateAndReject(qualityParseError('quality_review_cancelled'));
-      };
-    timer = setTimeout(() => {
-      if (settled) return;
-      const error = qualityParseError('quality_review_parser_timeout');
-      error.retryable = true;
-      terminateAndReject(error);
-    }, timeoutMs);
-    worker.once('message', (value) => {
-      message = value;
-    });
-    worker.once('error', (error) => {
-      const failure = qualityParseError(error.code || 'quality_review_parser_worker_failed');
-      failure.retryable = true;
-      terminateAndReject(failure);
-    });
-    worker.once('exit', (code) => {
-      if (settled) return;
-      if (code !== 0 || message === undefined) {
-        const failure = qualityParseError(
-          code === 0 ? 'quality_review_parser_worker_no_result' : 'quality_review_parser_worker_exited',
-          { code }
-        );
-        failure.retryable = code !== 0;
-        settle(reject, failure);
-        return;
-      }
-      if (message?.ok) settle(resolve, message.result);
-      else {
-        const error = qualityParseError(message?.error?.code || 'quality_review_parse_failed', message?.error);
-        error.retryable = Boolean(message?.error?.retryable);
-        settle(reject, error);
-      }
-    });
-    signal?.addEventListener('abort', abort, { once: true });
-    if (signal?.aborted) return abort();
-    worker.postMessage(input);
-  });
-}
-
-async function terminateWorker(worker) {
-  await worker.terminate().catch(() => undefined);
+async function runParserProcess(input, timeoutMs, signal = null) {
+  const message = await exchangeQualityReviewParser(input, { timeoutMs, signal });
+  if (message?.ok) return message.result;
+  const error = qualityParseError(message?.error?.code || 'quality_review_parse_failed', message?.error);
+  error.retryable = Boolean(message?.error?.retryable);
+  throw error;
 }
 
 function throwIfAborted(signal) {

@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import fs from 'node:fs';
 
 import { defaultQualityReviewRubric, qualityReviewRubricHash } from '../../apps/api/src/quality-review-rubric.mjs';
 import { qualityReviewInputHash } from '../../apps/api/src/quality-review-freshness.mjs';
@@ -14,6 +15,16 @@ import {
   qualityReviewHumanScoreEvaluation
 } from '../../apps/api/src/outcome-quality-review.mjs';
 import { updateQualityReviewPolicyInState } from '../../apps/api/src/quality-review-policy-service.mjs';
+
+const stateRuntimeSource = fs.readFileSync('apps/api/src/state-runtime-v23.mjs', 'utf8'),
+  legacyReaderWorkerSource = fs.readFileSync('apps/api/src/state-legacy-sqlite-reader-worker.mjs', 'utf8');
+assert.equal(stateRuntimeSource.includes('node:sqlite'), false);
+assert.match(stateRuntimeSource, /new Worker\(new URL\('\.\/state-legacy-sqlite-reader-worker\.mjs'/);
+assert.match(legacyReaderWorkerSource, /from 'node:sqlite'/);
+assert.match(legacyReaderWorkerSource, /immutable=1/);
+assert.match(legacyReaderWorkerSource, /readOnly:\s*true/);
+assert.match(legacyReaderWorkerSource, /database\.close\(\)/);
+assert.match(legacyReaderWorkerSource, /parentPort\.close\(\)/);
 
 const timestamp = '2026-08-01T00:00:00.000Z',
   rubric = defaultQualityReviewRubric(),

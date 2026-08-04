@@ -5,16 +5,31 @@ import { extractText } from './quality-review-parser-worker-formats.mjs';
 import { assertValidImage, gifFrames, imageInfo } from './quality-review-parser-worker-images.mjs';
 import { normalizeText, qualityError } from './quality-review-parser-worker-utils.mjs';
 
-parentPort.once('message', async (message) => {
+if (parentPort) parentPort.once('message', handleMessage);
+else if (typeof process.send === 'function') process.once('message', handleMessage);
+else throw new Error('quality_review_parser_parent_required');
+
+async function handleMessage(message) {
   let response;
   try {
     response = { ok: true, result: await parseAsset(message) };
   } catch (error) {
     response = { ok: false, error: serializeError(error) };
   }
-  parentPort.postMessage(response);
-  parentPort.close();
-});
+  sendResponse(response);
+}
+
+function sendResponse(response) {
+  if (parentPort) {
+    parentPort.postMessage(response);
+    parentPort.close();
+    return;
+  }
+  if (typeof process.send !== 'function') throw new Error('quality_review_parser_parent_required');
+  process.send(response, undefined, { keepOpen: false }, () => {
+    if (process.connected) process.disconnect();
+  });
+}
 
 async function parseAsset(input) {
   const files = normalizeFiles(input.files),

@@ -26,6 +26,8 @@
     "OPT22-01": {
       "implementation": [
         "apps/api/src/state.mjs",
+        "apps/api/src/state-runtime-v23.mjs",
+        "apps/api/src/state-legacy-sqlite-reader-worker.mjs",
         "apps/api/src/state-store-worker.mjs",
         "apps/api/src/state-migration-v23.mjs"
       ],
@@ -35,6 +37,7 @@
       "implementation": [
         "apps/api/src/quality-review-service.mjs",
         "apps/api/src/quality-review-parser.mjs",
+        "apps/api/src/quality-review-parser-process.mjs",
         "apps/api/src/quality-review-parser-worker.mjs",
         "apps/api/src/quality-review-reviewer-readiness.mjs",
         "apps/api/src/quality-review-policy-service.mjs",

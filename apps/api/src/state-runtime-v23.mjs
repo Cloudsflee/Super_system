@@ -1,11 +1,10 @@
 import fs from 'node:fs';
 import fsp from 'node:fs/promises';
 import path from 'node:path';
-import { DatabaseSync } from 'node:sqlite';
-import { pathToFileURL } from 'node:url';
+import { Worker } from 'node:worker_threads';
 
 import { now } from '../../../packages/shared/index.mjs';
-import { collections, DATA_DIR, STATE_DB_FILE, STATE_FILE } from './config.mjs';
+import { DATA_DIR, STATE_DB_FILE, STATE_FILE } from './config.mjs';
 import { materializeContextDocumentsInState } from './context-projection.mjs';
 import {
   canonicalJsonHash,
@@ -13,9 +12,7 @@ import {
   isState23Sentinel,
   migrateState22To23,
   normalizeState23Defaults,
-  stateRecordIdentity,
-  validateState23,
-  V23_SPECIALIZED_COLLECTIONS
+  validateState23
 } from './state-migration-v23.mjs';
 
 const STATE_FILE_REPLACE_RETRIES = 100;
@@ -170,49 +167,55 @@ function isLegacySqliteSentinel(value, version) {
   return Number(value?.schema_version) === version && value?.storage?.authoritative === `state-v${version}.sqlite`;
 }
 
-export function readLegacySqliteState(databasePath) {
+export async function readLegacySqliteState(databasePath) {
   if (!fs.existsSync(databasePath)) throw stateRuntimeFailure('state_database_missing_for_schema_22');
-  // immutable=1 prevents SQLite from creating -wal/-shm sidecars while a
-  // V2.2 volume is mounted read-only during the V2.3 cutover audit.
-  const database = new DatabaseSync(`${pathToFileURL(path.resolve(databasePath)).href}?immutable=1`, {
-      readOnly: true
-    }),
-    state = Object.fromEntries(collections.map((collection) => [collection, []]));
-  try {
-    database.exec('PRAGMA foreign_keys = ON');
-    for (const row of database
-      .prepare("SELECT key, value_json FROM state_meta WHERE key NOT LIKE '\\_\\_%' ESCAPE '\\'")
-      .all())
-      state[row.key] = JSON.parse(row.value_json);
-    for (const row of database
-      .prepare('SELECT collection, value_json FROM state_records ORDER BY collection, ordinal')
-      .all())
-      (state[row.collection] ||= []).push(JSON.parse(row.value_json));
-    for (const collection of V23_SPECIALIZED_COLLECTIONS) {
-      if (!tableExists(database, collection)) continue;
-      state[collection] = database
-        .prepare(`SELECT value_json FROM ${collection} ORDER BY ordinal`)
-        .all()
-        .map((row) => JSON.parse(row.value_json));
-    }
-    state.schema_version = Number(database.prepare('PRAGMA user_version').get().user_version) || 22;
-    for (const collection of collections) {
-      if (!Array.isArray(state[collection])) state[collection] = [];
-      const identities = new Set();
-      for (const record of state[collection]) {
-        const key = stateRecordIdentity(collection, record);
-        if (identities.has(key)) throw stateRuntimeFailure('state_record_identity_duplicate', { collection, key });
-        identities.add(key);
+  return new Promise((resolve, reject) => {
+    const worker = new Worker(new URL('./state-legacy-sqlite-reader-worker.mjs', import.meta.url), {
+      workerData: { databasePath: path.resolve(databasePath) }
+    });
+    let settled = false,
+      message;
+    const settle = (callback, value) => {
+      if (settled) return;
+      settled = true;
+      worker.removeAllListeners();
+      callback(value);
+    };
+    worker.once('message', (value) => {
+      message = value;
+    });
+    worker.once('error', (error) => {
+      settle(
+        reject,
+        stateRuntimeFailure(
+          'state_database_reader_worker_failed',
+          { cause: error?.code || error?.message || 'worker_error' },
+          error
+        )
+      );
+    });
+    worker.once('exit', (code) => {
+      if (settled) return;
+      if (code !== 0 || message === undefined) {
+        settle(
+          reject,
+          stateRuntimeFailure(
+            code === 0 ? 'state_database_reader_worker_no_result' : 'state_database_reader_worker_exited',
+            {
+              exit_code: code
+            }
+          )
+        );
+        return;
       }
-    }
-    return state;
-  } finally {
-    database.close();
-  }
-}
-
-function tableExists(database, table) {
-  return Boolean(database.prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?").get(table));
+      if (message.ok) settle(resolve, message.state);
+      else {
+        const error = stateRuntimeFailure(message.error?.code || 'state_database_read_failed', message.error?.details);
+        if (message.error?.message) error.message = message.error.message;
+        settle(reject, error);
+      }
+    });
+  });
 }
 
 async function atomicWriteStateSentinel(sentinel) {

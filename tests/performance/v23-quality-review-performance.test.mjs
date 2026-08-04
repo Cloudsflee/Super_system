@@ -3,7 +3,8 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { monitorEventLoopDelay } from 'node:perf_hooks';
-import { Worker } from 'node:worker_threads';
+
+import { exchangeQualityReviewParser } from '../../apps/api/src/quality-review-parser-process.mjs';
 
 const root = fs.mkdtempSync(path.join(os.tmpdir(), 'aiws-v23-performance-'));
 process.env.AIWS_HOME = path.join(root, 'home');
@@ -41,7 +42,7 @@ try {
   assert.ok(startDurationMs < 200, `Quality Review start took ${startDurationMs.toFixed(2)}ms`);
 
   const parserTasks = Array.from({ length: 8 }, (_, index) =>
-      parseInWorker({
+      parseInProcess({
         files: [
           {
             path: `concurrent-${index}.md`,
@@ -176,28 +177,8 @@ function completedAdvice(rubric) {
   };
 }
 
-function parseInWorker(input) {
-  return new Promise((resolve, reject) => {
-    const worker = new Worker(new URL('../../apps/api/src/quality-review-parser-worker.mjs', import.meta.url));
-    let settled = false,
-      message;
-    const finish = (error, value) => {
-      if (settled) return;
-      settled = true;
-      if (error) reject(error);
-      else resolve(value);
-    };
-    worker.once('message', (value) => {
-      message = value;
-    });
-    worker.once('error', (error) => finish(error));
-    worker.once('exit', (code) => {
-      if (code !== 0 || message === undefined)
-        finish(new Error(code === 0 ? 'quality_review_parser_worker_no_result' : `worker_exit_${code}`));
-      else finish(null, message);
-    });
-    worker.postMessage(input);
-  });
+function parseInProcess(input) {
+  return exchangeQualityReviewParser(input, { timeoutMs: 15_000 });
 }
 
 async function waitForStatus(runId, statuses) {

@@ -1,10 +1,10 @@
 import assert from 'node:assert/strict';
-import { Worker } from 'node:worker_threads';
 
 import { createCanvas } from '@napi-rs/canvas';
 import * as XLSX from 'xlsx';
 
 import { buildAnchors, qualityReviewAnchorResolves } from '../../apps/api/src/quality-review-parser.mjs';
+import { exchangeQualityReviewParser } from '../../apps/api/src/quality-review-parser-process.mjs';
 
 const textMatrix = [
   ['plain.txt', 'text/plain', 'alpha\nbeta', 'text'],
@@ -145,7 +145,7 @@ await assertFailure([images[0]], 'quality_review_image_count_exceeded', { max_di
 console.log('V2.3 parser format matrix, media identity, limits, and evidence anchor tests passed');
 
 async function parseFiles(files, options = {}) {
-  const message = await workerMessage({ files, max_direct_images: 20, ...options });
+  const message = await processMessage({ files, max_direct_images: 20, ...options });
   if (!message.ok) {
     const error = new Error(message.error.code);
     error.code = message.error.code;
@@ -163,28 +163,8 @@ async function assertFailure(files, code, options = {}) {
   );
 }
 
-function workerMessage(input) {
-  return new Promise((resolve, reject) => {
-    const worker = new Worker(new URL('../../apps/api/src/quality-review-parser-worker.mjs', import.meta.url));
-    let settled = false,
-      message;
-    const finish = (error, value) => {
-      if (settled) return;
-      settled = true;
-      if (error) reject(error);
-      else resolve(value);
-    };
-    worker.once('message', (value) => {
-      message = value;
-    });
-    worker.once('error', (error) => finish(error));
-    worker.once('exit', (code) => {
-      if (code !== 0 || message === undefined)
-        finish(new Error(code === 0 ? 'quality_review_parser_worker_no_result' : `worker_exit_${code}`));
-      else finish(null, message);
-    });
-    worker.postMessage(input);
-  });
+function processMessage(input) {
+  return exchangeQualityReviewParser(input, { timeoutMs: 15_000 });
 }
 
 function assertAnchors(result, versionId) {

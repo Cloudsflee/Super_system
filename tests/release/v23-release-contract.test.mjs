@@ -36,7 +36,8 @@ const packageJson = JSON.parse(fs.readFileSync('package.json', 'utf8')),
   powershell = fs.readFileSync('scripts/aiws.ps1', 'utf8'),
   posix = fs.readFileSync('scripts/aiws.sh', 'utf8'),
   v23Runner = fs.readFileSync('scripts/v23-runner.mjs', 'utf8'),
-  parserWorker = fs.readFileSync('apps/api/src/quality-review-parser-worker.mjs', 'utf8');
+  parserWorker = fs.readFileSync('apps/api/src/quality-review-parser-worker.mjs', 'utf8'),
+  parserProcess = fs.readFileSync('apps/api/src/quality-review-parser-process.mjs', 'utf8');
 
 assert.equal(packageJson.version, '2.3.0');
 assert.equal(packageJson.engines.node, '24.14.x');
@@ -89,6 +90,13 @@ assert.equal(
 assert.match(parserWorker, /parentPort\.once\('message'/);
 assert.match(parserWorker, /parentPort\.close\(\)/);
 assert.equal(parserWorker.includes("parentPort.on('message'"), false);
+assert.match(parserProcess, /fork\(PARSER_MODULE/);
+assert.match(parserProcess, /env: parserEnvironment\(\)/);
+assert.equal(parserProcess.includes('env: process.env'), false);
+assert.equal(parserProcess.includes('...process.env'), false);
+assert.match(parserProcess, /serialization: 'advanced'/);
+assert.match(parserProcess, /stdio: \['ignore', 'ignore', 'ignore', 'ipc'\]/);
+assert.match(parserProcess, /child\.kill\('SIGKILL'\)/);
 
 assert.equal(V23_VERSION, '2.3.0');
 assert.equal(V23_SCHEMA, 23);
