@@ -1,5 +1,6 @@
 import fs from 'node:fs';
 import path from 'node:path';
+import { collectImpactRange } from './impact-range.mjs';
 import {
   isMain,
   matchesAny,
@@ -13,13 +14,20 @@ import {
 const ROOT = process.cwd(),
   REPORT_ROOT = path.join(ROOT, '.ai-workspace', 'test-reports', 'v1.8');
 
-export function collectV18Impact(base = process.env.AIWS_TEST_BASE_SHA || 'HEAD') {
+export function collectV18Impact(base = process.env.AIWS_TEST_BASE_SHA || 'HEAD', env = process.env) {
   const map = JSON.parse(fs.readFileSync(path.join(ROOT, 'tests/v18/impact-map.json'), 'utf8'));
   const changed = new Set();
-  if (base !== 'HEAD') add(changed, gitArgs('diff', '--name-only', '--diff-filter=ACDMRTUXB', `${base}...HEAD`));
-  add(changed, gitArgs('diff', '--name-only', '--diff-filter=ACDMRTUXB'));
-  add(changed, gitArgs('diff', '--cached', '--name-only', '--diff-filter=ACDMRTUXB'));
-  add(changed, gitArgs('ls-files', '--others', '--exclude-standard'));
+  let effectiveBase = base;
+  if (env.AIWS_IMPACT_SNAPSHOT) {
+    const range = collectImpactRange({ env, cwd: ROOT });
+    for (const file of range.files) changed.add(file);
+    effectiveBase = range.base_sha;
+  } else {
+    if (base !== 'HEAD') add(changed, gitArgs('diff', '--name-only', '--diff-filter=ACDMRTUXB', `${base}...HEAD`));
+    add(changed, gitArgs('diff', '--name-only', '--diff-filter=ACDMRTUXB'));
+    add(changed, gitArgs('diff', '--cached', '--name-only', '--diff-filter=ACDMRTUXB'));
+    add(changed, gitArgs('ls-files', '--others', '--exclude-standard'));
+  }
   const files = [...changed].filter((file) => !file.startsWith('temp/') && !file.startsWith('.ai-workspace/')).sort();
   const items = files.map((file) => ({
     file,
@@ -27,7 +35,7 @@ export function collectV18Impact(base = process.env.AIWS_TEST_BASE_SHA || 'HEAD'
   }));
   return {
     version: '1.8',
-    base,
+    base: effectiveBase,
     files: items,
     suites: [...new Set(items.flatMap((item) => item.suites))].sort(),
     unclassified: items.filter((item) => !item.suites.length).map((item) => item.file)

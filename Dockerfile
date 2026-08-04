@@ -1,3 +1,7 @@
+ARG AIWS_SOURCE_BASE_SHA
+ARG AIWS_SOURCE_HEAD_SHA
+ARG AIWS_SOURCE_TREE_SHA
+
 FROM node:24.14.0-alpine3.22 AS workspace-deps
 ARG ALPINE_FALLBACK_MIRROR=https://mirrors.aliyun.com/alpine
 RUN apk add --no-cache git python3 make g++ || (sed -i "s#https://dl-cdn.alpinelinux.org/alpine#${ALPINE_FALLBACK_MIRROR}#g" /etc/apk/repositories && apk add --no-cache git python3 make g++)
@@ -47,8 +51,21 @@ ARG CODEX_VERSION=0.144.0
 ARG ALPINE_FALLBACK_MIRROR=https://mirrors.aliyun.com/alpine
 RUN apk add --no-cache chromium freetype harfbuzz nss ttf-freefont || (sed -i "s#https://dl-cdn.alpinelinux.org/alpine#${ALPINE_FALLBACK_MIRROR}#g" /etc/apk/repositories && apk add --no-cache chromium freetype harfbuzz nss ttf-freefont)
 RUN npm install -g @openai/codex@${CODEX_VERSION} && npm cache clean --force
-ENV PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1
+ARG AIWS_SOURCE_BASE_SHA
+ARG AIWS_SOURCE_HEAD_SHA
+ARG AIWS_SOURCE_TREE_SHA
+ENV PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1 \
+    AIWS_TEST_BASE_SHA=${AIWS_SOURCE_BASE_SHA} \
+    AIWS_TEST_HEAD_SHA=${AIWS_SOURCE_HEAD_SHA} \
+    AIWS_SOURCE_TREE_SHA=${AIWS_SOURCE_TREE_SHA} \
+    AIWS_IMPACT_SNAPSHOT=/opt/aiws/impact-snapshot.json
 COPY . .
+COPY --from=aiws-impact-snapshot /impact-snapshot.json /opt/aiws/impact-snapshot.json
+RUN node scripts/v23-impact.mjs --audit >/dev/null \
+    && node scripts/v22-impact.mjs --audit >/dev/null \
+    && node scripts/v21-impact.mjs --audit >/dev/null \
+    && node scripts/v20-impact.mjs --audit >/dev/null \
+    && node scripts/v18-impact.mjs --audit >/dev/null
 CMD ["corepack", "pnpm", "verify"]
 
 FROM node:24.14.0-alpine3.22 AS production-deps

@@ -4,12 +4,14 @@ import os from 'node:os';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 
-import { collectImpactRange } from '../../scripts/impact-range.mjs';
+import { collectImpactRange, trackedFilesNul } from '../../scripts/impact-range.mjs';
+import { buildSourceSnapshot, writeSourceSnapshot } from '../../scripts/source-snapshot.mjs';
 import { buildCompatibilityPlan, buildCompatibilityReport } from '../../scripts/compat-pr-runner.mjs';
 import { buildGateIdentity, environmentFingerprint, gateReceiptCacheAllowed } from '../../scripts/gate-receipt-v22.mjs';
 import { resolveGateConcurrency, runDependencyGraph } from '../../scripts/gate-scheduler.mjs';
 
-const root = fs.mkdtempSync(path.join(os.tmpdir(), 'aiws-v22-impact-'));
+const repositoryRoot = process.cwd(),
+  root = fs.mkdtempSync(path.join(os.tmpdir(), 'aiws-v22-impact-'));
 try {
   git(['init']);
   git(['config', 'user.email', 'v22-impact@aiws.test']);
@@ -37,6 +39,87 @@ try {
     () => collectImpactRange({ base: '0'.repeat(40), head, cwd: root }),
     (error) => error.code === 'impact_base_not_found'
   );
+
+  const snapshotPath = path.join(root, 'impact-snapshot.json');
+  const snapshot = buildSourceSnapshot({
+      root,
+      baseSha: base,
+      headSha: head,
+      treeSha: git(['rev-parse', 'HEAD^{tree}'])
+    }),
+    snapshotEnv = {
+      AIWS_IMPACT_SNAPSHOT: snapshotPath,
+      AIWS_TEST_BASE_SHA: base,
+      AIWS_TEST_HEAD_SHA: head
+    };
+  writeSourceSnapshot(snapshotPath, snapshot);
+  const snapshotImpact = collectImpactRange({ cwd: root, env: snapshotEnv });
+  assert.equal(snapshotImpact.mode, 'source-snapshot');
+  assert.equal(snapshotImpact.tree_sha, snapshot.tree_sha);
+  assert.deepEqual(snapshotImpact.files, ['新增.txt', '重命名后.txt']);
+  assert.equal(
+    snapshotImpact.files.some((file) => file.startsWith('.git')),
+    false
+  );
+  assert.deepEqual(trackedFilesNul(root, snapshotEnv), snapshotImpact.files);
+  assert.throws(
+    () => collectImpactRange({ base: 'f'.repeat(40), head, cwd: root, env: snapshotEnv }),
+    (error) => error.code === 'impact_snapshot_range_mismatch'
+  );
+  fs.writeFileSync(snapshotPath, JSON.stringify({ ...snapshot, unexpected: true }));
+  assert.throws(
+    () => collectImpactRange({ cwd: root, env: snapshotEnv }),
+    (error) => error.code === 'impact_snapshot_invalid' && error.details.reason === 'source_snapshot_fields_invalid'
+  );
+  fs.writeFileSync(
+    snapshotPath,
+    JSON.stringify({
+      ...snapshot,
+      entries: [{ ...snapshot.entries[0], unexpected: true }, ...snapshot.entries.slice(1)]
+    })
+  );
+  assert.throws(
+    () => collectImpactRange({ cwd: root, env: snapshotEnv }),
+    (error) => error.code === 'impact_snapshot_invalid' && error.details.reason === 'source_snapshot_entries_invalid'
+  );
+  fs.writeFileSync(snapshotPath, JSON.stringify({ ...snapshot, source_sha256: '0'.repeat(64) }));
+  assert.throws(
+    () => collectImpactRange({ cwd: root, env: snapshotEnv }),
+    (error) => error.code === 'impact_snapshot_invalid' && error.details.reason === 'source_snapshot_hash_invalid'
+  );
+  fs.writeFileSync(snapshotPath, JSON.stringify(snapshot));
+
+  fs.rmSync(snapshotPath);
+  fs.rmSync(path.join(root, '新增.txt'));
+  fs.rmSync(path.join(root, '重命名后.txt'));
+  fs.mkdirSync(path.join(root, 'scripts'));
+  fs.writeFileSync(path.join(root, 'scripts', 'snapshot-impact-fixture.mjs'), 'export const fixture = true;\n');
+  git(['add', '-A']);
+  git(['commit', '-m', 'historical impact snapshot']);
+  const historicalHead = git(['rev-parse', 'HEAD']),
+    historicalSnapshot = buildSourceSnapshot({
+      root,
+      baseSha: head,
+      headSha: historicalHead,
+      treeSha: git(['rev-parse', 'HEAD^{tree}'])
+    }),
+    historicalEnv = withoutGitOnPath({
+      ...process.env,
+      AIWS_IMPACT_SNAPSHOT: snapshotPath,
+      AIWS_TEST_BASE_SHA: head,
+      AIWS_TEST_HEAD_SHA: historicalHead
+    });
+  writeSourceSnapshot(snapshotPath, historicalSnapshot);
+  for (const version of ['v21', 'v20', 'v18']) {
+    const result = spawnSync(process.execPath, [`scripts/${version}-impact.mjs`, '--audit'], {
+      cwd: repositoryRoot,
+      env: historicalEnv,
+      encoding: 'utf8',
+      windowsHide: true
+    });
+    assert.equal(result.status, 0, `${version} snapshot impact failed without Git:\n${result.stderr || result.stdout}`);
+    assert.match(result.stdout, version === 'v18' ? /1 changed files/ : /"mode": "source-snapshot"/);
+  }
 
   const fixture = {
       clean_head_tree: true,
@@ -86,7 +169,7 @@ try {
   fs.rmSync(root, { recursive: true, force: true });
 }
 
-console.log('V2.2 committed impact, consolidated gate scheduler, dedupe and cache identity tests passed');
+console.log('V2.2 committed/snapshot impact, consolidated gate scheduler, dedupe and cache identity tests passed');
 
 async function verifyDependencyScheduler() {
   const timeline = [],
@@ -221,4 +304,11 @@ function git(args) {
   return String(result.stdout || '')
     .trim()
     .toLowerCase();
+}
+
+function withoutGitOnPath(env) {
+  const isolated = { ...env };
+  for (const key of Object.keys(isolated)) if (key.toLowerCase() === 'path') delete isolated[key];
+  isolated.PATH = path.dirname(process.execPath);
+  return isolated;
 }

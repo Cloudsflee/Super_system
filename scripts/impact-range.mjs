@@ -1,12 +1,36 @@
 import { spawnSync } from 'node:child_process';
+import path from 'node:path';
 
 import { normalizePath } from './v175-lib.mjs';
+import { readSourceSnapshot } from './source-snapshot.mjs';
 
 export function collectImpactRange({ base = null, head = null, env = process.env, cwd = process.cwd() } = {}) {
   const requestedBase = base || env.AIWS_TEST_BASE_SHA || null,
-    requestedHead = head || env.AIWS_TEST_HEAD_SHA || null;
+    requestedHead = head || env.AIWS_TEST_HEAD_SHA || null,
+    snapshot = configuredSnapshot(env, cwd);
+  if (Boolean(requestedBase) !== Boolean(requestedHead)) throw impactError('impact_range_incomplete');
+  if (snapshot) {
+    if (
+      (requestedBase && String(requestedBase).toLowerCase() !== snapshot.base_sha) ||
+      (requestedHead && String(requestedHead).toLowerCase() !== snapshot.head_sha)
+    )
+      throw impactError('impact_snapshot_range_mismatch', {
+        requested_base: requestedBase,
+        requested_head: requestedHead,
+        snapshot_base: snapshot.base_sha,
+        snapshot_head: snapshot.head_sha
+      });
+    return {
+      mode: 'source-snapshot',
+      base_sha: snapshot.base_sha,
+      head_sha: snapshot.head_sha,
+      tree_sha: snapshot.tree_sha,
+      source_sha256: snapshot.source_sha256,
+      changes: snapshot.files.map((file) => ({ status: 'A', path: file })),
+      files: [...snapshot.files]
+    };
+  }
   if (requestedBase || requestedHead) {
-    if (!requestedBase || !requestedHead) throw impactError('impact_range_incomplete');
     const baseSha = resolveCommit(requestedBase, cwd, 'impact_base_not_found'),
       headSha = resolveCommit(requestedHead, cwd, 'impact_head_not_found'),
       changes = parseNameStatus(diffBuffer(cwd, baseSha, headSha)),
@@ -30,8 +54,21 @@ export function collectImpactRange({ base = null, head = null, env = process.env
   };
 }
 
-export function trackedFilesNul(cwd = process.cwd()) {
+export function trackedFilesNul(cwd = process.cwd(), env = process.env) {
+  const snapshot = configuredSnapshot(env, cwd);
+  if (snapshot) return [...snapshot.files];
   return uniqueSorted(splitNul(gitBuffer(cwd, ['ls-files', '-z'])).map(normalizePath));
+}
+
+function configuredSnapshot(env, cwd) {
+  const configured = env?.AIWS_IMPACT_SNAPSHOT;
+  if (!configured) return null;
+  const file = path.isAbsolute(configured) ? configured : path.resolve(cwd, configured);
+  try {
+    return readSourceSnapshot(file);
+  } catch (error) {
+    throw impactError('impact_snapshot_invalid', { reason: error.code || error.message });
+  }
 }
 
 export function parseNameStatus(buffer) {

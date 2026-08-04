@@ -101,14 +101,18 @@ for (const viewport of [2560, 1920, 1440, 1024, 768, 390])
   if (!coverage.viewports.includes(viewport)) errors.push(`coverage viewport missing: ${viewport}`);
 if (impact.version !== '2.0' || impact.match_mode !== 'all' || !impact.mappings?.length)
   errors.push('impact map header invalid');
-const impactSource = fs.readFileSync('scripts/v20-impact.mjs', 'utf8');
+const impactSource = fs.readFileSync('scripts/v20-impact.mjs', 'utf8'),
+  impactRangeSource = fs.readFileSync('scripts/impact-range.mjs', 'utf8');
 for (const anchor of [
-  '--diff-filter=ACMRD',
+  'collectImpactRange',
+  'trackedFilesNul',
   'impact audit tracked files unclassified',
   'audited_tracked_files',
   '.github/PULL_REQUEST_TEMPLATE.md'
 ])
   if (!impactSource.includes(anchor)) errors.push(`V2.0 impact audit contract missing: ${anchor}`);
+for (const anchor of ['--diff-filter=ACDMRTUXB', 'AIWS_IMPACT_SNAPSHOT'])
+  if (!impactRangeSource.includes(anchor)) errors.push(`shared impact range contract missing: ${anchor}`);
 
 if (errors.length) {
   console.error(`V2.0 plan validation failed (${errors.length}):\n${errors.map((item) => `- ${item}`).join('\n')}`);

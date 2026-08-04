@@ -9,12 +9,12 @@
     { "patterns": ["apps/api/src/terminal*.mjs", "apps/api/src/host-bridge*.mjs"], "suites": ["contract", "fault", "journey"] },
     { "patterns": ["apps/api/src/codex*.mjs", "apps/api/src/assist*.mjs"], "suites": ["contract", "journey", "live"] },
     { "patterns": ["apps/web/**"], "suites": ["contract", "browser"] },
-    { "patterns": ["compose.yml", "Dockerfile", "docker/**", "scripts/aiws.*", "scripts/v18-release.mjs"], "suites": ["release"] },
+    { "patterns": [".dockerignore", "compose.yml", "Dockerfile", "docker/**", "scripts/aiws.*", "scripts/v18-release.mjs"], "suites": ["release"] },
     { "patterns": ["package.json", "pnpm-lock.yaml", "packages/**"], "suites": ["contract", "full"] },
     { "patterns": ["apps/api/**", "apps/worker/**"], "suites": ["contract", "security", "full"] },
     { "patterns": ["tests/**", "scripts/**", ".github/**", ".githooks/**", ".gitattributes", ".gitignore"], "suites": ["plan", "full"] },
     { "patterns": [".prettierignore", ".prettierrc.json", "eslint.config.mjs"], "suites": ["plan", "full"] },
     { "patterns": ["任务书/**", "当前项目毕业设计任务书/**"], "suites": ["contract"] },
-    { "patterns": ["README.md", "docs/**", "doc/**", "bridge/**", "config/**", "*.md", "*.yml", "*.yaml"], "suites": ["contract"] }
+    { "patterns": ["README.md", "docs/**", "doc/**", "bridge/**", "config/**", "愿景与范围文档模板/**", "探索*/**", "*.md", "*.yml", "*.yaml"], "suites": ["contract"] }
   ]
 }

@@ -27,9 +27,13 @@ import {
 
 const packageJson = JSON.parse(fs.readFileSync('package.json', 'utf8')),
   dockerfile = fs.readFileSync('Dockerfile', 'utf8'),
+  dockerignore = fs.readFileSync('.dockerignore', 'utf8'),
+  verifyRefresh = fs.readFileSync('docker/verify-refresh.Dockerfile', 'utf8'),
   compose = fs.readFileSync('compose.yml', 'utf8'),
   collaborationCompose = fs.readFileSync('compose.collaboration.yml', 'utf8'),
-  bridge = fs.readFileSync('bridge/main.go', 'utf8');
+  bridge = fs.readFileSync('bridge/main.go', 'utf8'),
+  powershell = fs.readFileSync('scripts/aiws.ps1', 'utf8'),
+  posix = fs.readFileSync('scripts/aiws.sh', 'utf8');
 
 assert.equal(packageJson.version, '2.3.0');
 assert.equal(packageJson.engines.node, '24.14.x');
@@ -45,6 +49,25 @@ assert.match(dockerfile, /FROM node:24\.14\.0-alpine3\.22 AS production/);
 assert.match(dockerfile, /COPY docker\/v23-readiness\.mjs \.\/docker\/v23-readiness\.mjs/);
 assert.match(dockerfile, /RUN node -e "import\('\.\/docker\/v23-readiness\.mjs'\).*waitForV23Readiness/s);
 assert.match(dockerfile, /org\.opencontainers\.image\.version="2\.3\.0"/);
+assert.match(dockerfile, /COPY --from=aiws-impact-snapshot \/impact-snapshot\.json/);
+assert.match(dockerfile, /AIWS_IMPACT_SNAPSHOT=\/opt\/aiws\/impact-snapshot\.json/);
+assert.equal(dockerfile.includes('COPY .git'), false);
+assert.match(verifyRefresh, /COPY --from=aiws-impact-snapshot \/impact-snapshot\.json/);
+assert.match(verifyRefresh, /AIWS_IMPACT_SNAPSHOT=\/opt\/aiws\/impact-snapshot\.json/);
+for (const source of [dockerfile, verifyRefresh])
+  for (const version of ['v23', 'v22', 'v21', 'v20', 'v18'])
+    assert.match(source, new RegExp(`node scripts/${version}-impact\\.mjs --audit`));
+assert.match(dockerignore, /^\.git$/m);
+for (const script of [powershell, posix]) {
+  assert.match(script, /AIWS_SOURCE_BASE_SHA/);
+  assert.match(script, /AIWS_SOURCE_HEAD_SHA/);
+  assert.match(script, /AIWS_SOURCE_TREE_SHA/);
+  assert.match(script, /org\.opencontainers\.image\.revision/);
+  assert.match(script, /--build-context/);
+  assert.match(script, /source-snapshot\.mjs/);
+  for (const version of ['v23', 'v22', 'v21', 'v20', 'v18'])
+    assert.match(script, new RegExp(`node scripts/${version}-impact\\.mjs --audit`));
+}
 assert.match(compose, /aiws-app:2\.3\.0/);
 assert.match(compose, /aiws-codex-runner:2\.3\.0-codex-0\.144\.0/);
 assert.match(compose, /127\.0\.0\.1:\$\{AIWS_PORT:-4317\}:4317/);

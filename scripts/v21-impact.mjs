@@ -1,7 +1,6 @@
 #!/usr/bin/env node
-import { spawnSync } from 'node:child_process';
-
-import { matchesAny, normalizePath, parseArgs, readJson } from './v175-lib.mjs';
+import { collectImpactRange, trackedFilesNul } from './impact-range.mjs';
+import { matchesAny, parseArgs, readJson } from './v175-lib.mjs';
 
 const args = parseArgs(),
   impact = readJson('tests/v21/impact-map.json'),
@@ -16,14 +15,23 @@ for (const mapping of impact.mappings || []) {
   for (const id of mapping.tests || []) if (!knownTests.has(id)) errors.push(`${mapping.domain}: unknown test ${id}`);
 }
 
-const files = changedFiles(),
+let range;
+try {
+  range = collectImpactRange();
+} catch (error) {
+  console.error(
+    `V2.1 impact gate failed: ${error.code || error.message}${error.details ? ` ${JSON.stringify(error.details)}` : ''}`
+  );
+  process.exit(1);
+}
+const files = range.files,
   classified = files.map((file) => ({
     file,
     domains: impact.mappings.filter((mapping) => matchesAny(file, mapping.patterns)).map((mapping) => mapping.domain)
   })),
   unclassified = classified.filter((item) => !item.domains.length).map((item) => item.file);
 if (unclassified.length) errors.push(`unclassified changed files: ${unclassified.join(', ')}`);
-const auditedTrackedFiles = args.audit ? trackedFiles() : [];
+const auditedTrackedFiles = args.audit ? trackedFilesNul() : [];
 if (args.audit) {
   const unclassifiedTracked = auditedTrackedFiles.filter(
     (file) => !impact.mappings.some((mapping) => matchesAny(file, mapping.patterns))
@@ -47,6 +55,9 @@ console.log(
   JSON.stringify(
     {
       version: '2.1',
+      mode: range.mode,
+      base_sha: range.base_sha,
+      head_sha: range.head_sha,
       changed_files: files.length,
       ...(args.audit ? { audited_tracked_files: auditedTrackedFiles.length } : {}),
       domains: [...new Set(classified.flatMap((item) => item.domains))].sort(),
@@ -57,17 +68,3 @@ console.log(
     2
   )
 );
-
-function changedFiles() {
-  const tracked = git(['diff', '--name-only', '--diff-filter=ACMRD', 'HEAD']),
-    untracked = git(['ls-files', '--others', '--exclude-standard']);
-  return [...new Set(`${tracked}\n${untracked}`.split(/\r?\n/).map(normalizePath).filter(Boolean))].sort();
-}
-function trackedFiles() {
-  return git(['ls-files']).split(/\r?\n/).map(normalizePath).filter(Boolean);
-}
-function git(argv) {
-  const result = spawnSync('git', ['-c', 'core.quotepath=false', ...argv], { encoding: 'utf8', windowsHide: true });
-  if (result.status !== 0) throw new Error((result.stderr || result.stdout || `git ${argv.join(' ')} failed`).trim());
-  return String(result.stdout || '');
-}

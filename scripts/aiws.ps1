@@ -71,10 +71,40 @@ function New-ImportOverride {
   return $file
 }
 
+function Get-SourceIdentity {
+  $status = & git status --porcelain
+  if ($LASTEXITCODE -ne 0) { throw 'source_git_status_failed' }
+  if ($status) { throw 'source_worktree_not_clean' }
+  $head = (& git rev-parse --verify HEAD).Trim().ToLowerInvariant()
+  if ($LASTEXITCODE -ne 0) { throw 'source_head_missing' }
+  if ($env:AIWS_TEST_HEAD_SHA -and $env:AIWS_TEST_HEAD_SHA.ToLowerInvariant() -ne $head) { throw 'source_head_mismatch' }
+  $baseCandidate = if ($env:AIWS_TEST_BASE_SHA) { $env:AIWS_TEST_BASE_SHA.ToLowerInvariant() } else { 'HEAD^' }
+  $base = (& git rev-parse --verify "${baseCandidate}^{commit}").Trim().ToLowerInvariant()
+  if ($LASTEXITCODE -ne 0) { throw 'source_base_missing' }
+  $tree = (& git rev-parse --verify 'HEAD^{tree}').Trim().ToLowerInvariant()
+  if ($LASTEXITCODE -ne 0) { throw 'source_tree_missing' }
+  foreach ($value in @($base, $head, $tree)) { if ($value -notmatch '^[a-f0-9]{40}$') { throw 'source_identity_invalid' } }
+  return [pscustomobject]@{ Base = $base; Head = $head; Tree = $tree }
+}
+
+function New-ImpactSnapshotContext($Source) {
+  $directory = Join-Path ([IO.Path]::GetTempPath()) "aiws-impact-$([guid]::NewGuid().ToString('N'))"
+  New-Item -ItemType Directory -Path $directory | Out-Null
+  $output = Join-Path $directory 'impact-snapshot.json'
+  $result = & node (Join-Path $Root 'scripts\source-snapshot.mjs') --git-root $Root --output $output --base $Source.Base --head $Source.Head --tree $Source.Tree 2>&1
+  if ($LASTEXITCODE -ne 0) {
+    Remove-Item -LiteralPath $directory -Recurse -Force
+    throw "impact_snapshot_generation_failed: $($result -join ' ')"
+  }
+  return $directory
+}
+
 function Build-Images {
-  & docker build -f (Join-Path $Root 'docker/codex-runner.Dockerfile') --build-arg CODEX_VERSION=0.144.0 -t $RunnerImage $Root
+  $source = Get-SourceIdentity
+  $labels = @('--label', 'org.opencontainers.image.version=2.3.0', '--label', "org.opencontainers.image.revision=$($source.Head)", '--label', "aiws.source_tree=$($source.Tree)", '--label', 'aiws.state_schema=23')
+  & docker build -f (Join-Path $Root 'docker/codex-runner.Dockerfile') --build-arg CODEX_VERSION=0.144.0 @labels -t $RunnerImage $Root
   if ($LASTEXITCODE -ne 0) { throw 'runner_image_build_failed' }
-  & docker build --target production -t $AppImage $Root
+  & docker build --target production @labels -t $AppImage $Root
   if ($LASTEXITCODE -ne 0) { throw 'app_image_build_failed' }
 }
 
@@ -96,25 +126,38 @@ function Preserve-RollbackImage {
 
 function Build-VerifyImage {
   $verifyImage = 'aiws-verify:2.3.0'
-  $compatible = $false
-  & docker image inspect $verifyImage *> $null
-  if ($LASTEXITCODE -eq 0) {
-    & docker run --rm --entrypoint sh --mount "type=bind,src=$Root,dst=/source,readonly" $verifyImage -c 'test -d /app/node_modules && test -d "$(corepack pnpm store path)" && cmp -s /app/pnpm-lock.yaml /source/pnpm-lock.yaml && test "$(codex --version)" = "codex-cli 0.144.0" && (command -v chromium-browser >/dev/null || command -v chromium >/dev/null)'
-    $compatible = $LASTEXITCODE -eq 0
-  }
-  if (-not $compatible) {
-    & docker build --target verify -t $verifyImage $Root
-    if ($LASTEXITCODE -ne 0) { throw 'verify_image_build_failed' }
-    return
-  }
-  $cacheImage = "aiws-verify-toolchain:$([guid]::NewGuid().ToString('N'))"
-  & docker tag $verifyImage $cacheImage
-  if ($LASTEXITCODE -ne 0) { throw 'verify_toolchain_tag_failed' }
+  $source = Get-SourceIdentity
+  $snapshotContext = New-ImpactSnapshotContext $source
+  $sourceArgs = @(
+    '--build-arg', "AIWS_SOURCE_BASE_SHA=$($source.Base)",
+    '--build-arg', "AIWS_SOURCE_HEAD_SHA=$($source.Head)",
+    '--build-arg', "AIWS_SOURCE_TREE_SHA=$($source.Tree)",
+    '--build-context', "aiws-impact-snapshot=$snapshotContext"
+  )
+  $labels = @('--label', 'org.opencontainers.image.version=2.3.0', '--label', "org.opencontainers.image.revision=$($source.Head)", '--label', "aiws.source_tree=$($source.Tree)", '--label', 'aiws.state_schema=23')
   try {
-    & docker build -f (Join-Path $Root 'docker\verify-refresh.Dockerfile') --build-arg "VERIFY_BASE_IMAGE=$cacheImage" -t $verifyImage $Root
-    if ($LASTEXITCODE -ne 0) { throw 'verify_image_refresh_failed' }
+    $compatible = $false
+    $revision = & docker image inspect $verifyImage --format '{{index .Config.Labels "org.opencontainers.image.revision"}}' 2>$null
+    if ($LASTEXITCODE -eq 0 -and $revision -eq $source.Head) {
+      & docker run --rm --entrypoint sh --mount "type=bind,src=$Root,dst=/source,readonly" $verifyImage -c 'test -d /app/node_modules && test -d "$(corepack pnpm store path)" && cmp -s /app/pnpm-lock.yaml /source/pnpm-lock.yaml && test "$(codex --version)" = "codex-cli 0.144.0" && (command -v chromium-browser >/dev/null || command -v chromium >/dev/null) && test -n "$AIWS_IMPACT_SNAPSHOT" && test -f "$AIWS_IMPACT_SNAPSHOT" && node scripts/v23-impact.mjs --audit >/dev/null && node scripts/v22-impact.mjs --audit >/dev/null && node scripts/v21-impact.mjs --audit >/dev/null && node scripts/v20-impact.mjs --audit >/dev/null && node scripts/v18-impact.mjs --audit >/dev/null'
+      $compatible = $LASTEXITCODE -eq 0
+    }
+    if (-not $compatible) {
+      & docker build --target verify --build-arg CODEX_VERSION=0.144.0 @sourceArgs @labels -t $verifyImage $Root
+      if ($LASTEXITCODE -ne 0) { throw 'verify_image_build_failed' }
+      return
+    }
+    $cacheImage = "aiws-verify-toolchain:$([guid]::NewGuid().ToString('N'))"
+    & docker tag $verifyImage $cacheImage
+    if ($LASTEXITCODE -ne 0) { throw 'verify_toolchain_tag_failed' }
+    try {
+      & docker build -f (Join-Path $Root 'docker\verify-refresh.Dockerfile') --build-arg "VERIFY_BASE_IMAGE=$cacheImage" @sourceArgs @labels -t $verifyImage $Root
+      if ($LASTEXITCODE -ne 0) { throw 'verify_image_refresh_failed' }
+    } finally {
+      & docker image rm $cacheImage *> $null
+    }
   } finally {
-    & docker image rm $cacheImage *> $null
+    Remove-Item -LiteralPath $snapshotContext -Recurse -Force
   }
 }
 
