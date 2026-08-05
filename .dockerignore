@@ -1,5 +1,7 @@
 .git
 .github
+!.github
+!.github/**
 .agents
 .ai-workspace
 .ai-workspace-*
@@ -25,4 +27,3 @@ temp
 探索
 探索-1
 愿景与范围文档模板
-
