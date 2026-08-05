@@ -111,7 +111,10 @@ export async function acceptVolumeMigrationV23({
   const index = await auditContextIndex(targetRoot),
     targetInventory = await volumeInventory(targetRoot),
     preservation = comparePreservedFiles(cloneManifest.source_inventory.entries, targetInventory.entries, {
-      mutablePaths: ['data/.context-index/minisearch-v1.json'],
+      // The V2.3 rebuild writes the v2 index in place. Keep both index
+      // generations mutable so a V2.2 source that already has either file
+      // can be reconciled without weakening checks for unrelated files.
+      mutablePaths: ['data/.context-index/minisearch-v1.json', 'data/.context-index/minisearch-v2.json'],
       removablePaths: ['data/state.json.tmp']
     }),
     receipt = {

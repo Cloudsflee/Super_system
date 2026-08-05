@@ -53,6 +53,16 @@ try {
   const sourceStateFile = path.join(source, 'data', 'state.json');
   fs.writeFileSync(sourceStateFile, `${JSON.stringify(sentinel, null, 2)}\n`);
   fs.writeFileSync(`${sourceStateFile}.tmp`, `${JSON.stringify({ ...sentinel, revision: 0 }, null, 2)}\n`);
+  // A V2.2 source may already carry a v2 index. Rebuilds are allowed to
+  // replace that projection, while all unrelated source files stay immutable.
+  const sourceIndexPayload = serializeContextSearchIndex(createContextSearchIndex([]), {
+    snapshotHash: '0'.repeat(64)
+  });
+  fs.mkdirSync(path.join(source, 'data', '.context-index'), { recursive: true });
+  fs.writeFileSync(
+    path.join(source, 'data', '.context-index', 'minisearch-v2.json'),
+    `${JSON.stringify(sourceIndexPayload, null, 2)}\n`
+  );
   fs.writeFileSync(path.join(source, 'vault', 'fixture.enc'), 'V23_RELEASE_SECRET_MUST_NOT_REACH_RECEIPT');
   const sourceBytes = fs.readFileSync(sourceStateFile);
   fs.cpSync(source, target, { recursive: true });
