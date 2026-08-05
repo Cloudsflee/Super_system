@@ -84,7 +84,6 @@ try {
 const core = start(['apps/api/server.mjs'], {
   AIWS_HOME: home,
   AIWS_PORT: String(corePort),
-  AIWS_BYPASS_SETUP: '1',
   AIWS_MCP_REMOTE_MODE: 'gateway',
   AIWS_MCP_GATEWAY_SECRET: secret
 });
