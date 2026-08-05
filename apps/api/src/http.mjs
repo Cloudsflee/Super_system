@@ -1,303 +1,240 @@
 import fs from 'node:fs';
-import { spawn, spawnSync } from 'node:child_process';
-import { maskSecret, maskSecretsDeep } from '../../../packages/shared/index.mjs';
-import { prepareCodexInvocation } from '../../../packages/runner-adapters/src/codex-command.mjs';
-import { redactKnownSecretsSync } from './vault.mjs';
+import path from 'node:path';
+import { randomUUID } from 'node:crypto';
+import { hashJson, now, parseJson } from './crypto.mjs';
+import { AppError, asAppError } from './errors.mjs';
 
-export class HttpError extends Error {
-  constructor(status, payload) {
-    super(typeof payload === 'string' ? payload : JSON.stringify(payload));
-    this.status = status;
-    this.payload = payload;
-  }
+const MUTATING = new Set(['POST', 'PATCH', 'DELETE']);
+
+function send(res, status, payload, headers = {}) {
+  const body = JSON.stringify(payload);
+  res.writeHead(status, { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store', ...headers });
+  res.end(body);
 }
 
-export function send(res, status, body, headers = {}) {
-  const requestId = String(res.getHeader('x-aiws-request-id') || '');
-  const normalized =
-    status >= 400 && body && typeof body === 'object' && !Array.isArray(body)
-      ? normalizeErrorPayload(body, requestId)
-      : body;
-  const text = redactKnownSecretsSync(
-    typeof normalized === 'string' ? normalized : JSON.stringify(maskSecretsDeep(normalized), null, 2)
-  );
-  res.writeHead(status, {
-    'content-type': typeof body === 'string' ? 'text/plain; charset=utf-8' : 'application/json; charset=utf-8',
-    'cache-control': 'no-store',
-    ...headers
-  });
-  res.end(text);
-  return true;
+function pathParts(urlPath) {
+  return urlPath.split('/').filter(Boolean).map((part) => decodeURIComponent(part));
 }
 
-export function sendOneTimeSecret(res, status, body) {
-  const text = JSON.stringify(body);
-  res.writeHead(status, {
-    'content-type': 'application/json; charset=utf-8',
-    'cache-control': 'no-store, max-age=0',
-    pragma: 'no-cache'
-  });
-  res.end(text);
-  return true;
-}
-
-export function notFound(res) {
-  return send(res, 404, { error: 'not_found' });
-}
-
-export function normalizeErrorPayload(payload = {}, requestId = '') {
-  const error = String(payload.error || 'request_failed');
-  return {
-    ...payload,
-    error,
-    message: String(payload.message || payload.reason || error),
-    action: typeof payload.action === 'string' ? payload.action : null,
-    phase: typeof payload.phase === 'string' ? payload.phase : 'request',
-    retryable: payload.retryable === true,
-    request_id: String(payload.request_id || requestId || '') || null
-  };
-}
-
-export function allowLocalBrowserOrigin(req, res) {
-  const origin = String(req.headers.origin || '').trim();
-  if (!origin) return null;
-  if (!isTrustedLocalOrigin(origin)) throw new HttpError(403, { error: 'local_origin_required' });
-  res.setHeader('access-control-allow-origin', new URL(origin).origin);
-  res.setHeader('access-control-expose-headers', 'x-aiws-request-id, mcp-session-id');
-  res.setHeader('vary', 'Origin');
-  return origin;
-}
-
-export function isTrustedLocalOrigin(value) {
-  try {
-    const url = new URL(String(value));
-    const host = url.hostname.toLowerCase().replace(/^\[|\]$/g, '');
-    return (
-      ['http:', 'https:'].includes(url.protocol) &&
-      !url.username &&
-      !url.password &&
-      (host === 'localhost' || host === '::1' || host === '0.0.0.0' || /^127(?:\.\d{1,3}){3}$/.test(host))
-    );
-  } catch {
-    return false;
-  }
-}
-
-export async function parseBody(req) {
+async function readBody(req) {
   const chunks = [];
   let size = 0;
   for await (const chunk of req) {
     size += chunk.length;
-    if (size > 32 * 1024 * 1024)
-      throw new HttpError(413, { error: 'request_body_too_large', max_bytes: 32 * 1024 * 1024 });
+    if (size > 25 * 1024 * 1024) throw new AppError('payload_too_large', 'request body is too large', { status: 413 });
     chunks.push(chunk);
   }
-  const bytes = Buffer.concat(chunks),
-    contentType = String(req.headers['content-type'] || '');
-  if (/^multipart\/form-data/i.test(contentType)) {
-    req.rawBody = bytes;
-    return parseMultipart(bytes, contentType);
-  }
-  const raw = bytes.toString('utf8');
-  req.rawBody = raw;
-  if (!raw) return {};
-  try {
-    return JSON.parse(raw);
-  } catch {
-    return Object.fromEntries(new URLSearchParams(raw));
-  }
+  if (!chunks.length) return {};
+  const raw = Buffer.concat(chunks).toString('utf8');
+  try { return JSON.parse(raw); } catch { throw new AppError('invalid_json', 'request body must be JSON'); }
 }
 
-export function parseMultipart(bytes, contentType) {
-  const boundaryMatch = String(contentType).match(/boundary=(?:"([^"]+)"|([^;\s]+))/i),
-    boundary = boundaryMatch?.[1] || boundaryMatch?.[2];
-  if (!boundary || boundary.length > 200) throw new HttpError(400, { error: 'multipart_boundary_invalid' });
-  const marker = Buffer.from(`--${boundary}`),
-    delimiter = Buffer.from('\r\n\r\n'),
-    result = {},
-    files = [];
-  let cursor = 0,
-    parts = 0;
-  while (cursor < bytes.length) {
-    const start = bytes.indexOf(marker, cursor);
-    if (start < 0) break;
-    let headerStart = start + marker.length;
-    if (bytes.subarray(headerStart, headerStart + 2).toString() === '--') break;
-    if (bytes.subarray(headerStart, headerStart + 2).toString() === '\r\n') headerStart += 2;
-    const headerEnd = bytes.indexOf(delimiter, headerStart);
-    if (headerEnd < 0) throw new HttpError(400, { error: 'multipart_part_invalid' });
-    const next = bytes.indexOf(marker, headerEnd + delimiter.length);
-    if (next < 0) throw new HttpError(400, { error: 'multipart_terminator_missing' });
-    const headers = bytes.subarray(headerStart, headerEnd).toString('utf8'),
-      disposition = headers.match(/content-disposition:\s*form-data;([^\r\n]+)/i)?.[1] || '';
-    const name = disposition.match(/(?:^|;)\s*name="([^"]+)"/i)?.[1],
-      filename = disposition.match(/(?:^|;)\s*filename="([^"]*)"/i)?.[1];
-    if (!name) throw new HttpError(400, { error: 'multipart_name_required' });
-    let dataEnd = next;
-    if (bytes.subarray(next - 2, next).toString() === '\r\n') dataEnd -= 2;
-    const data = bytes.subarray(headerEnd + delimiter.length, dataEnd);
-    parts += 1;
-    if (parts > 2000) throw new HttpError(413, { error: 'multipart_part_count_exceeded' });
-    if (filename !== undefined)
-      files.push({
-        name,
-        filename,
-        content_type: headers.match(/content-type:\s*([^\r\n]+)/i)?.[1]?.trim() || 'application/octet-stream',
-        data: Buffer.from(data)
-      });
-    else {
-      if (data.length > 1024 * 1024) throw new HttpError(413, { error: 'multipart_field_too_large' });
-      result[name] = data.toString('utf8');
+function errorPayload(error, requestId) {
+  const appError = asAppError(error);
+  return {
+    error: {
+      code: appError.code,
+      message: appError.message,
+      retryable: appError.retryable,
+      request_id: requestId,
+      details: appError.details || {}
     }
-    cursor = next;
-  }
-  return { ...result, _files: files };
+  };
 }
 
-export function route(pathname, pattern) {
-  const names = [];
-  const regex = new RegExp(
-    `^${pattern.replace(/:[^/]+/g, (m) => {
-      names.push(m.slice(1));
-      return '([^/]+)';
-    })}$`
-  );
-  const match = pathname.match(regex);
-  return match ? Object.fromEntries(names.map((name, i) => [name, decodeUrlPart(match[i + 1])])) : null;
+function responseForCommand(result) {
+  return result ?? {};
 }
 
-export function decodeUrlPathname(value) {
-  return decodeUrlPart(value);
-}
-
-export function makeRoute(method, pattern, handler, options = {}) {
-  return { method, pattern, handler, ...options };
-}
-
-export async function dispatch(routes, ctx) {
-  for (const item of routes) {
-    if (item.method !== '*' && item.method !== ctx.req.method) continue;
-    const params = route(ctx.pathname, item.pattern);
-    if (!params) continue;
-    ctx.params = params;
-    ctx.body =
-      item.body === 'stream' ? {} : ['POST', 'PUT', 'PATCH'].includes(ctx.req.method) ? await parseBody(ctx.req) : {};
-    if (typeof ctx.authorize === 'function') await ctx.authorize(item, ctx);
-    await item.handler(ctx);
-    return true;
-  }
-  return false;
-}
-
-export function command(cmd, args = [], cwd = process.cwd(), timeout = 8000, env = {}, options = {}) {
-  try {
-    const baseEnv = options.inheritEnv === false ? minimalProcessEnv() : process.env;
-    const invocation = prepareCodexInvocation(cmd, args);
-    const r = spawnSync(invocation.command, invocation.args, {
-      cwd,
-      timeout,
-      encoding: 'utf8',
-      shell: false,
-      env: { ...baseEnv, ...env }
-    });
-    return {
-      ok: r.status === 0,
-      status: r.status,
-      stdout: redactKnownSecretsSync(r.stdout || ''),
-      stderr: redactKnownSecretsSync(r.stderr || ''),
-      error: redactKnownSecretsSync(r.error?.message || '') || null
-    };
-  } catch (error) {
-    return { ok: false, status: null, stdout: '', stderr: '', error: error.message };
-  }
-}
-
-export function commandAsync(cmd, args = [], cwd = process.cwd(), timeout = 8000, env = {}, options = {}) {
-  return new Promise((resolve) => {
-    const baseEnv = options.inheritEnv === false ? minimalProcessEnv() : process.env;
-    const invocation = prepareCodexInvocation(cmd, args);
-    const maxOutputBytes = Number(options.maxOutputBytes || 2 * 1024 * 1024);
-    let stdout = '',
-      stderr = '',
-      settled = false,
-      timedOut = false;
-    let child;
-    const finish = (status, error = null) => {
-      if (settled) return;
-      settled = true;
-      clearTimeout(timer);
-      resolve({
-        ok: status === 0 && !error && !timedOut,
-        status,
-        stdout: redactKnownSecretsSync(stdout),
-        stderr: redactKnownSecretsSync(stderr),
-        error: redactKnownSecretsSync(error?.message || '') || null,
-        timed_out: timedOut
-      });
-    };
+export function createHttpHandler({ domain, registry, db, config, performanceProbe = () => ({}), webRoot }) {
+  async function executeCommand(command, body, req, requestPath, explicitKey = null) {
+    const key = explicitKey || req.headers['idempotency-key'];
+    if (!key || String(key).length > 200) throw new AppError('idempotency_required', 'Idempotency-Key header is required');
+    const scope = `${req.method}:${requestPath}`;
+    const requestHash = hashJson({ command, body });
+    const existing = await db.get('SELECT * FROM idempotency_keys WHERE scope=? AND key=?', [scope, String(key)]);
+    if (existing) {
+      if (existing.request_hash !== requestHash) throw new AppError('idempotency_conflict', 'Idempotency-Key was used with a different request', { details: { scope } });
+      if (existing.response_json) return { status: Number(existing.response_status) || 200, body: JSON.parse(existing.response_json) };
+      throw new AppError('idempotency_in_progress', 'an identical command is already in progress', { retryable: true, status: 409 });
+    }
     try {
-      child = spawn(invocation.command, invocation.args, {
-        cwd,
-        shell: false,
-        windowsHide: true,
-        env: { ...baseEnv, ...env },
-        stdio: ['ignore', 'pipe', 'pipe']
-      });
+      await db.run('INSERT INTO idempotency_keys(scope,key,request_hash,created_at) VALUES(?,?,?,?)', [scope, String(key), requestHash, now()]);
     } catch (error) {
-      resolve({
-        ok: false,
-        status: null,
-        stdout: '',
-        stderr: '',
-        error: redactKnownSecretsSync(error.message),
-        timed_out: false
-      });
-      return;
+      if (!String(error.message).includes('UNIQUE')) throw error;
+      const retry = await db.get('SELECT * FROM idempotency_keys WHERE scope=? AND key=?', [scope, String(key)]);
+      if (retry?.response_json) return { status: Number(retry.response_status) || 200, body: JSON.parse(retry.response_json) };
+      throw new AppError('idempotency_in_progress', 'an identical command is already in progress', { retryable: true, status: 409 });
     }
-    const append = (current, chunk) => `${current}${String(chunk)}`.slice(-maxOutputBytes);
-    child.stdout?.on('data', (chunk) => {
-      stdout = append(stdout, chunk);
-    });
-    child.stderr?.on('data', (chunk) => {
-      stderr = append(stderr, chunk);
-    });
-    child.once('error', (error) => finish(null, error));
-    child.once('close', (code) => finish(code));
-    const timer = setTimeout(() => {
-      timedOut = true;
-      child.kill();
-      const force = setTimeout(() => {
-        if (!settled) child.kill('SIGKILL');
-      }, 1000);
-      force.unref?.();
-    }, timeout);
-    timer.unref?.();
-  });
-}
-
-function minimalProcessEnv() {
-  return Object.fromEntries(
-    ['PATH', 'Path', 'SystemRoot', 'ComSpec', 'PATHEXT', 'TEMP', 'TMP', 'HOME', 'USERPROFILE', 'LANG']
-      .filter((key) => process.env[key] !== undefined)
-      .map((key) => [key, process.env[key]])
-  );
-}
-
-function decodeUrlPart(value) {
-  try {
-    return decodeURIComponent(String(value));
-  } catch {
-    throw new HttpError(400, { error: 'invalid_url_encoding' });
+    try {
+      const result = await registry.execute(command, body, { actor: req.headers['x-aiws-actor'] || 'local-user' });
+      const responseBody = responseForCommand(result);
+      await db.run('UPDATE idempotency_keys SET response_status=?,response_json=? WHERE scope=? AND key=?', [201, JSON.stringify(responseBody), scope, String(key)]);
+      return { status: 201, body: responseBody };
+    } catch (error) {
+      await db.run('DELETE FROM idempotency_keys WHERE scope=? AND key=?', [scope, String(key)]).catch(() => undefined);
+      throw error;
+    }
   }
+
+  async function mcp(req, requestId) {
+    const body = await readBody(req);
+    const rpcId = body.id ?? null;
+    if (body.method === 'initialize') {
+      return { jsonrpc: '2.0', id: rpcId, result: { protocolVersion: '2025-06-18', capabilities: { tools: {} }, serverInfo: { name: 'aiws-v3', version: config.version } } };
+    }
+    if (body.method === 'notifications/initialized') return { jsonrpc: '2.0', id: rpcId, result: {} };
+    if (body.method === 'tools/list') {
+      const tools = [
+        ...registry.list().map((name) => ({ name, description: `AIWS command ${name}`, inputSchema: { type: 'object' } })),
+        { name: 'projects.list', description: 'List projects', inputSchema: { type: 'object' } },
+        { name: 'project.get', description: 'Get a project bundle', inputSchema: { type: 'object', properties: { project_id: { type: 'string' } }, required: ['project_id'] } }
+      ];
+      return { jsonrpc: '2.0', id: rpcId, result: { tools } };
+    }
+    if (body.method === 'tools/call') {
+      const name = body.params?.name;
+      const args = body.params?.arguments || {};
+      let result;
+      if (name === 'projects.list') result = await domain.listProjects();
+      else if (name === 'project.get') result = await domain.getProject(args.project_id);
+      else {
+        const key = req.headers['idempotency-key'] || `mcp-${rpcId || randomUUID()}`;
+        const commandResult = await executeCommand(name, args, req, '/api/v1/mcp', key);
+        result = commandResult.body;
+      }
+      return { jsonrpc: '2.0', id: rpcId, result: { content: [{ type: 'text', text: JSON.stringify(result) }], structuredContent: result } };
+    }
+    throw new AppError('invalid_input', 'unsupported MCP method');
+  }
+
+  async function handler(req, res) {
+    const requestId = String(req.headers['x-request-id'] || randomUUID());
+    const parsed = new URL(req.url || '/', `http://${req.headers.host || '127.0.0.1'}`);
+    const urlPath = parsed.pathname;
+    try {
+      if (req.method === 'GET' && urlPath === '/livez') return send(res, 200, { status: 'alive', request_id: requestId });
+      if (req.method === 'GET' && urlPath === '/readyz') {
+        const health = await domain.health();
+        const ready = health.sqlite.integrity?.every((item) => item === 'ok') && health.sqlite.user_version === 1 && health.broker.status === 'available' && health.broker.runner_digest === config.runnerDigest;
+        return send(res, ready ? 200 : 503, { status: ready ? 'ready' : 'not_ready', checks: health, request_id: requestId });
+      }
+      if (!urlPath.startsWith(config.apiPrefix)) return serveWeb(req, res, webRoot, urlPath);
+      if (urlPath === `${config.apiPrefix}/mcp` && req.method === 'POST') return send(res, 200, await mcp(req, requestId));
+      if (urlPath === `${config.apiPrefix}/system/capabilities` && req.method === 'GET') return send(res, 200, await domain.capabilities());
+      if (urlPath === `${config.apiPrefix}/system/performance` && req.method === 'GET') return send(res, 200, performanceProbe());
+      if (urlPath === `${config.apiPrefix}/system` && req.method === 'GET') return send(res, 200, { version: config.version, api_prefix: config.apiPrefix, data_volume: config.dataVolume });
+
+      const parts = pathParts(urlPath.slice(config.apiPrefix.length));
+      const body = MUTATING.has(req.method) ? await readBody(req) : {};
+      let result;
+      let status = 200;
+      const command = (name, input = body) => executeCommand(name, input, req, urlPath);
+
+      if (req.method === 'GET' && parts.length === 1 && parts[0] === 'projects') result = await domain.listProjects();
+      else if (req.method === 'POST' && parts.length === 1 && parts[0] === 'projects') ({ status, body: result } = await command('project.create'));
+      else if (parts[0] === 'projects' && parts.length >= 2) {
+        const projectId = parts[1];
+        if (req.method === 'GET' && parts.length === 2) result = await domain.getProject(projectId);
+        else if (req.method === 'PATCH' && parts.length === 2) ({ status, body: result } = await command('project.update', { ...body, project_id: projectId }));
+        else if (req.method === 'GET' && parts[2] === 'briefs') result = await domain.listBriefs(projectId);
+        else if (req.method === 'POST' && parts[2] === 'briefs') ({ status, body: result } = await command('brief.create', { ...body, project_id: projectId }));
+        else if (req.method === 'GET' && parts[2] === 'workflows') result = await domain.listWorkflows(projectId);
+        else if (req.method === 'POST' && parts[2] === 'workflows') ({ status, body: result } = await command('workflow.create', { ...body, project_id: projectId }));
+        else if (req.method === 'GET' && parts[2] === 'context' && parts[3] === 'sources') result = await domain.listContextSources(projectId, parsed.searchParams.get('q') || '');
+        else if (req.method === 'POST' && parts[2] === 'context' && parts[3] === 'sources') ({ status, body: result } = await command('context.source.create', { ...body, project_id: projectId }));
+        else if (req.method === 'GET' && parts[2] === 'context' && parts[3] === 'packs') result = await domain.listContextPacks(projectId);
+        else if (req.method === 'POST' && parts[2] === 'context' && parts[3] === 'packs') ({ status, body: result } = await command('context.pack.create', { ...body, project_id: projectId }));
+        else if (req.method === 'GET' && parts[2] === 'assets') result = await domain.listAssets(projectId);
+        else if (req.method === 'POST' && parts[2] === 'assets') ({ status, body: result } = await command('asset.create', { ...body, project_id: projectId }));
+        else if (req.method === 'GET' && parts[2] === 'diff') result = await domain.gitDiff(projectId);
+        else if (req.method === 'GET' && parts[2] === 'executions') result = await domain.listExecutions(projectId);
+        else if (req.method === 'POST' && parts[2] === 'executions') ({ status, body: result } = await command('execution.create', { ...body, project_id: projectId }));
+        else throw new AppError('not_found', 'route not found');
+      } else if (parts[0] === 'executions' && parts.length >= 2) {
+        const executionId = parts[1];
+        if (req.method === 'GET' && parts[2] === 'events') return streamEvents(req, res, domain, executionId);
+        if (req.method === 'GET' && parts.length === 2) result = await domain.getExecution(executionId);
+        else if (req.method === 'POST' && parts[2] === 'start') ({ status, body: result } = await command('execution.start', { ...body, execution_id: executionId }));
+        else if (req.method === 'POST' && parts[2] === 'cancel') ({ status, body: result } = await command('execution.cancel', { ...body, execution_id: executionId }));
+        else throw new AppError('not_found', 'route not found');
+      } else if (parts[0] === 'reviews') {
+        if (req.method === 'GET') result = await domain.listReviews(parsed.searchParams.get('project_id') || null);
+        else if (req.method === 'POST' && parts.length === 1) ({ status, body: result } = await command('review.create'));
+        else if (req.method === 'POST' && parts[2] === 'decisions') ({ status, body: result } = await command('review.decide', { ...body, review_id: parts[1] }));
+        else throw new AppError('not_found', 'route not found');
+      } else if (parts[0] === 'assets' && req.method === 'GET') {
+        const asset = await db.get('SELECT * FROM asset_versions WHERE id=?', [parts[1]]);
+        if (!asset) throw new AppError('not_found', 'asset not found');
+        if (parts[2] === 'content') return serveAsset(res, asset, config);
+        result = asset;
+      } else if (parts[0] === 'deliveries') {
+        if (req.method === 'GET') result = await domain.listDeliveries(parsed.searchParams.get('project_id') || null);
+        else if (req.method === 'POST' && parts.length === 1) ({ status, body: result } = await command('delivery.create'));
+        else if (req.method === 'POST' && parts[2] === 'merge') ({ status, body: result } = await command('delivery.merge', { ...body, delivery_id: parts[1] }));
+        else throw new AppError('not_found', 'route not found');
+      } else if (parts[0] === 'audit' && req.method === 'GET') result = await domain.listAudit(parsed.searchParams.get('limit'));
+      else throw new AppError('not_found', 'route not found');
+      return send(res, status, result);
+    } catch (error) {
+      const appError = asAppError(error);
+      return send(res, appError.status, errorPayload(appError, requestId));
+    }
+  }
+
+  return handler;
 }
 
-export function safeReadStream(res, full, type) {
+async function streamEvents(req, res, domain, executionId) {
+  const initial = Number(req.headers['last-event-id'] || 0);
+  res.writeHead(200, { 'content-type': 'text/event-stream; charset=utf-8', 'cache-control': 'no-cache', connection: 'keep-alive' });
+  let cursor = initial;
+  let closed = false;
+  const pump = async () => {
+    if (closed) return;
+    try {
+      const events = await domain.events(executionId, cursor);
+      for (const event of events) {
+        cursor = event.cursor;
+        res.write(`id: ${cursor}\nevent: ${event.type}\ndata: ${JSON.stringify(event)}\n\n`);
+      }
+      if (!events.length) res.write(': heartbeat\n\n');
+    } catch {
+      closed = true;
+      res.end();
+    }
+  };
+  const timer = setInterval(pump, 500);
+  req.on('close', () => { closed = true; clearInterval(timer); });
+  await pump();
+}
+
+function serveWeb(req, res, webRoot, urlPath) {
+  if (req.method !== 'GET' && req.method !== 'HEAD') return send(res, 404, { error: { code: 'not_found', message: 'route not found', retryable: false } });
+  const relative = urlPath === '/' ? 'index.html' : urlPath.replace(/^\//, '');
+  const candidate = path.resolve(webRoot, relative);
+  const root = path.resolve(webRoot);
+  const file = candidate.startsWith(`${root}${path.sep}`) ? candidate : path.join(root, 'index.html');
+  const fallback = path.join(root, 'index.html');
+  const selected = fs.existsSync(file) && fs.statSync(file).isFile() ? file : fallback;
+  if (!fs.existsSync(selected)) return send(res, 404, { error: { code: 'not_found', message: 'web bundle not found', retryable: false } });
+  const contentType = selected.endsWith('.html') ? 'text/html; charset=utf-8' : selected.endsWith('.js') ? 'text/javascript; charset=utf-8' : selected.endsWith('.css') ? 'text/css; charset=utf-8' : 'application/octet-stream';
+  res.writeHead(200, { 'content-type': contentType, 'cache-control': selected.endsWith('index.html') ? 'no-cache' : 'public, max-age=31536000, immutable' });
+  if (req.method === 'HEAD') return res.end();
+  fs.createReadStream(selected).pipe(res);
+}
+
+function serveAsset(res, asset, config) {
+  const file = path.resolve(config.casRoot, asset.cas_hash.slice(0, 2), asset.cas_hash);
+  const root = path.resolve(config.casRoot);
+  if (!file.startsWith(`${root}${path.sep}`) || !fs.existsSync(file)) throw new AppError('not_found', 'asset content not found');
+  const filename = String(asset.name).replace(/[\r\n"\\/]/g, '_');
   res.writeHead(200, {
-    'content-type': type,
-    'cache-control': 'no-store, no-cache, must-revalidate, proxy-revalidate',
-    pragma: 'no-cache',
-    expires: '0'
+    'content-type': asset.media_type || 'application/octet-stream',
+    'content-length': String(asset.byte_size),
+    'content-disposition': `attachment; filename="${filename}"`,
+    'cache-control': 'private, max-age=31536000, immutable',
+    etag: `"sha256-${asset.cas_hash}"`
   });
-  fs.createReadStream(full).pipe(res);
-  return true;
+  fs.createReadStream(file).pipe(res);
 }

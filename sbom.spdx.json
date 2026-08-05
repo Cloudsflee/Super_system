@@ -1,0 +1,92 @@
+{
+  "spdxVersion": "SPDX-2.3",
+  "dataLicense": "CC0-1.0",
+  "SPDXID": "SPDXRef-DOCUMENT",
+  "name": "AIWS-3.0.0-source-runtime",
+  "documentNamespace": "https://aiws.local/spdx/aiws-3.0.0-source-runtime",
+  "creationInfo": {
+    "created": "2026-08-06T00:00:00Z",
+    "creators": [
+      "Tool: AIWS-release-build"
+    ]
+  },
+  "packages": [
+    {
+      "name": "ai-workspace-system",
+      "SPDXID": "SPDXRef-Package-AIWS",
+      "versionInfo": "3.0.0",
+      "downloadLocation": "NOASSERTION",
+      "filesAnalyzed": false,
+      "licenseConcluded": "NOASSERTION",
+      "licenseDeclared": "NOASSERTION",
+      "copyrightText": "NOASSERTION"
+    },
+    {
+      "name": "node",
+      "SPDXID": "SPDXRef-Package-Node",
+      "versionInfo": "24.14.0",
+      "downloadLocation": "https://nodejs.org/",
+      "filesAnalyzed": false,
+      "licenseConcluded": "NOASSERTION",
+      "licenseDeclared": "MIT",
+      "copyrightText": "NOASSERTION"
+    },
+    {
+      "name": "react",
+      "SPDXID": "SPDXRef-Package-React",
+      "versionInfo": "19.2.7",
+      "downloadLocation": "https://registry.npmjs.org/react/-/react-19.2.7.tgz",
+      "filesAnalyzed": false,
+      "licenseConcluded": "NOASSERTION",
+      "licenseDeclared": "MIT",
+      "copyrightText": "NOASSERTION"
+    },
+    {
+      "name": "react-dom",
+      "SPDXID": "SPDXRef-Package-ReactDOM",
+      "versionInfo": "19.2.7",
+      "downloadLocation": "https://registry.npmjs.org/react-dom/-/react-dom-19.2.7.tgz",
+      "filesAnalyzed": false,
+      "licenseConcluded": "NOASSERTION",
+      "licenseDeclared": "MIT",
+      "copyrightText": "NOASSERTION"
+    },
+    {
+      "name": "lucide-react",
+      "SPDXID": "SPDXRef-Package-LucideReact",
+      "versionInfo": "0.525.0",
+      "downloadLocation": "https://registry.npmjs.org/lucide-react/-/lucide-react-0.525.0.tgz",
+      "filesAnalyzed": false,
+      "licenseConcluded": "NOASSERTION",
+      "licenseDeclared": "ISC",
+      "copyrightText": "NOASSERTION"
+    }
+  ],
+  "relationships": [
+    {
+      "spdxElementId": "SPDXRef-DOCUMENT",
+      "relationshipType": "DESCRIBES",
+      "relatedSpdxElement": "SPDXRef-Package-AIWS"
+    },
+    {
+      "spdxElementId": "SPDXRef-Package-AIWS",
+      "relationshipType": "DEPENDS_ON",
+      "relatedSpdxElement": "SPDXRef-Package-Node"
+    },
+    {
+      "spdxElementId": "SPDXRef-Package-AIWS",
+      "relationshipType": "DEPENDS_ON",
+      "relatedSpdxElement": "SPDXRef-Package-React"
+    },
+    {
+      "spdxElementId": "SPDXRef-Package-AIWS",
+      "relationshipType": "DEPENDS_ON",
+      "relatedSpdxElement": "SPDXRef-Package-ReactDOM"
+    },
+    {
+      "spdxElementId": "SPDXRef-Package-AIWS",
+      "relationshipType": "DEPENDS_ON",
+      "relatedSpdxElement": "SPDXRef-Package-LucideReact"
+    }
+  ]
+}

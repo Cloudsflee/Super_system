@@ -3,23 +3,16 @@ import { defineConfig } from 'vite';
 
 export default defineConfig({
   plugins: [react()],
-  worker: { format: 'es' },
   server: {
     proxy: {
-      '/api': { target: 'http://127.0.0.1:4318', ws: true, rewrite: (value) => value.replace(/^\/api/, '') }
+      '/api': { target: 'http://127.0.0.1:4317', ws: true },
+      '/livez': { target: 'http://127.0.0.1:4317' },
+      '/readyz': { target: 'http://127.0.0.1:4317' }
     }
   },
   build: {
     manifest: true,
-    rollupOptions: {
-      output: {
-        manualChunks: {
-          'vendor-react': ['react', 'react-dom', 'react-router-dom'],
-          'vendor-flow': ['@xyflow/react'],
-          'vendor-state': ['@tanstack/react-query', 'zustand']
-        }
-      }
-    }
+    rollupOptions: { output: { manualChunks: { 'vendor-react': ['react', 'react-dom'], 'vendor-icons': ['lucide-react'] } } }
   },
   test: { environment: 'jsdom', setupFiles: './src/test/setup.ts', fileParallelism: false }
 });

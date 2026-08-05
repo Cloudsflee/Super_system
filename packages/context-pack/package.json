@@ -1,6 +1,0 @@
-{
-  "name": "@aiws/context-pack",
-  "version": "2.3.0",
-  "type": "module",
-  "main": "src/index.mjs"
-}

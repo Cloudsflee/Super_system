@@ -1,112 +1,58 @@
 import assert from 'node:assert/strict';
-import { spawn } from 'node:child_process';
-import fs from 'node:fs';
-import os from 'node:os';
-import path from 'node:path';
-import { createConfirmedProject } from './v13-test-helpers.mjs';
+import test from 'node:test';
+import { eventually, fixture, mutate, request } from './helpers.mjs';
 
-const port = Number(process.env.AIWS_TEST_PORT || 4567);
-const home = fs.mkdtempSync(path.join(os.tmpdir(), 'aiws-api-home-'));
-const child = spawn(process.execPath, ['apps/api/server.mjs'], {
-  env: { ...process.env, AIWS_PORT: String(port), AIWS_HOME: home, NODE_ENV: 'test', AIWS_BYPASS_SETUP: '1' },
-  stdio: ['ignore', 'pipe', 'pipe']
+test('public API completes the project-to-review delivery journey', async () => {
+  const env = await fixture();
+  try {
+    const ready = await request(env.base, '/readyz');
+    assert.equal(ready.response.status, 200);
+    assert.equal(ready.json.status, 'ready');
+    const performance = await request(env.base, '/api/v1/system/performance');
+    assert.equal(performance.response.status, 200);
+    assert.ok(performance.json.rss_bytes > 0);
+    assert.ok(performance.json.event_loop_lag_p95_ms >= 0);
+    const missingKey = await request(env.base, '/api/v1/projects', { method: 'POST', body: { name: 'Missing key' } });
+    assert.equal(missingKey.response.status, 400);
+    assert.equal(missingKey.json.error.code, 'idempotency_required');
+
+    const projectResponse = await mutate(env.base, '/api/v1/projects', { name: 'Integration project', description: 'fixture' }, 'project-create');
+    assert.equal(projectResponse.response.status, 201);
+    const project = projectResponse.json;
+    const replay = await mutate(env.base, '/api/v1/projects', { name: 'Integration project', description: 'fixture' }, 'project-create');
+    assert.equal(replay.json.id, project.id);
+    await mutate(env.base, `/api/v1/projects/${project.id}/briefs`, { content: { objective: 'Ship a verified change', acceptance: ['passes'] } }, 'brief-create');
+    await mutate(env.base, `/api/v1/projects/${project.id}/workflows`, { tasks: [{ id: 'inspect', title: 'Inspect', level: 1, mode: 'read' }, { id: 'write', title: 'Write', level: 2, deps: ['inspect'], mode: 'write' }] }, 'workflow-create');
+    const source = await mutate(env.base, `/api/v1/projects/${project.id}/context/sources`, { kind: 'note', title: 'Signal', content: 'deterministic fixture' }, 'source-create');
+    const pack = await mutate(env.base, `/api/v1/projects/${project.id}/context/packs`, { source_ids: [source.json.id] }, 'pack-create');
+    const asset = await mutate(env.base, `/api/v1/projects/${project.id}/assets`, { name: 'report.json', media_type: 'application/json', content: '{"ok":true}' }, 'asset-create');
+    const attachmentBytes = Buffer.from([0, 255, 80, 75, 3, 4]);
+    const attachment = await mutate(env.base, `/api/v1/projects/${project.id}/assets`, { name: 'evidence/archive.zip', media_type: 'application/zip', content: attachmentBytes.toString('base64'), encoding: 'base64' }, 'attachment-create');
+    assert.equal(attachment.response.status, 201);
+    const downloaded = await fetch(`${env.base}/api/v1/assets/${attachment.json.id}/content`);
+    assert.equal(downloaded.headers.get('content-disposition'), 'attachment; filename="evidence_archive.zip"');
+    assert.deepEqual(Buffer.from(await downloaded.arrayBuffer()), attachmentBytes);
+    const executionResponse = await mutate(env.base, `/api/v1/projects/${project.id}/executions`, { context_pack_id: pack.json.id, asset_ids: [asset.json.id] }, 'execution-create');
+    assert.equal(executionResponse.response.status, 201);
+    const execution = executionResponse.json;
+    const eventsResponse = await fetch(`${env.base}/api/v1/executions/${execution.id}/events`, { headers: { 'Last-Event-ID': '0' }, signal: AbortSignal.timeout(800) }).catch((error) => error);
+    assert.ok(eventsResponse instanceof Response || eventsResponse.name === 'TimeoutError');
+    const started = await mutate(env.base, `/api/v1/executions/${execution.id}/start`, { expected_revision: execution.revision }, 'execution-start');
+    assert.equal(started.response.status, 201);
+    const completed = await eventually(async () => (await request(env.base, `/api/v1/executions/${execution.id}`)).json, (value) => value.status === 'completed');
+    assert.equal(completed.status, 'completed');
+    assert.ok(completed.tasks.every((task) => task.status === 'completed'));
+    const review = await mutate(env.base, '/api/v1/reviews', { project_id: project.id, execution_id: execution.id, kind: 'delivery_create', model_status: 'unavailable', suggestion: {} }, 'review-create');
+    const decision = await mutate(env.base, `/api/v1/reviews/${review.json.id}/decisions`, { decision: 'approved', note: 'human fixture approval' }, 'review-decision');
+    assert.equal(decision.json.decision.decision, 'approved');
+    const delivery = await mutate(env.base, '/api/v1/deliveries', { project_id: project.id, execution_id: execution.id, review_id: review.json.id, title: 'Draft PR' }, 'delivery-create');
+    assert.equal(delivery.response.status, 201);
+    const update = await mutate(env.base, `/api/v1/projects/${project.id}`, { expected_revision: 1, name: 'updated' }, 'project-update', 'PATCH');
+    assert.equal(update.response.status, 201);
+    const conflict = await mutate(env.base, `/api/v1/projects/${project.id}`, { expected_revision: 1, name: 'stale' }, 'project-update-stale', 'PATCH');
+    assert.equal(conflict.response.status, 409);
+    assert.equal(conflict.json.error.code, 'revision_conflict');
+    const projectAudit = (await request(env.base, '/api/v1/audit?limit=300')).json.filter((event) => event.action === 'project.updated' && event.entity_id === project.id);
+    assert.equal(projectAudit.length, 1);
+  } finally { await env.close(); }
 });
-await waitForServer();
-try {
-  assert.equal((await api('/health')).status, 'ok');
-  const project = await createConfirmedProject({
-    baseUrl: `http://127.0.0.1:${port}`,
-    title: 'API Integration',
-    goal: '验证项目、上下文、队列与 Digest',
-    workflowNodes: [{ type: 'analysis', title: '分析节点', goal: '形成可追溯分析' }]
-  });
-  assert.equal(project.project.settings.token_budget, 12000);
-  const node = (await api(`/projects/${project.project.id}`)).nodes.find((item) => item.role === 'task');
-  const context = await api(`/nodes/${node.id}/context-pack/preview`, { method: 'POST', body: {} });
-  assert.equal(context.quality_check.passed, true);
-  await api(`/context-packs/${context.id}/confirm`, { method: 'POST', body: {} });
-  await apiStatus(`/nodes/${node.id}/run`, { method: 'POST', body: { runner: 'codex_docker' } }, 409);
-  const approvalId = await approveNodeRun(project.project.id, node.id);
-  const started = await api(`/nodes/${node.id}/run/start`, {
-    method: 'POST',
-    body: { adapter: 'test', test_delay_ms: 300, runner: 'codex_docker', approval_id: approvalId }
-  });
-  const visibleRun = started.run;
-  assert.equal(visibleRun.status, 'running');
-  const cancelled = await api(`/runs/${visibleRun.id}/cancel`, { method: 'POST', body: {} });
-  assert.equal(cancelled.status, 'cancelled');
-  assert.equal((await waitForRunStatus(visibleRun.id, 'cancelled')).status, 'cancelled');
-  await apiStatus(
-    `/nodes/${node.id}/run`,
-    { method: 'POST', body: { adapter: 'test', runner: 'codex_docker', approval_id: approvalId } },
-    409
-  );
-  await api(`/nodes/${node.id}/workspace-data`, { method: 'PUT', body: { data: { decision: '保持接口边界' } } });
-  const workspace = await api(`/nodes/${node.id}/workspace`);
-  assert.equal(workspace.data.decision, '保持接口边界');
-  const digest = await api(`/workspaces/${node.workspace_id}/digests`, { method: 'POST', body: {} });
-  assert.equal(digest.version, 1);
-  const trace = await api(`/runs/${visibleRun.id}/trace`);
-  assert.ok(trace.some((item) => item.event_type === 'runner.cancelled'));
-  console.log('integration api flow tests passed');
-} finally {
-  child.kill();
-  await new Promise((resolve) => setTimeout(resolve, 200));
-  fs.rmSync(home, { recursive: true, force: true });
-}
-
-async function api(pathname, options = {}) {
-  const response = await fetch(`http://127.0.0.1:${port}${pathname}`, {
-    headers: { 'content-type': 'application/json' },
-    ...options,
-    body: options.body ? JSON.stringify(options.body) : undefined
-  });
-  const data = await response.json();
-  assert.ok(response.ok, `${pathname}: ${JSON.stringify(data)}`);
-  return data;
-}
-async function apiStatus(pathname, options, expected) {
-  const response = await fetch(`http://127.0.0.1:${port}${pathname}`, {
-    headers: { 'content-type': 'application/json' },
-    ...options,
-    body: JSON.stringify(options.body || {})
-  });
-  const data = await response.json();
-  assert.equal(response.status, expected, `${pathname}: ${JSON.stringify(data)}`);
-  return data;
-}
-async function approveNodeRun(projectId, nodeId) {
-  const proposal = await api('/change-proposals', {
-    method: 'POST',
-    body: {
-      project_id: projectId,
-      node_id: nodeId,
-      change_type: 'node_run_write',
-      title: '批准测试运行',
-      after: { runner: 'codex_docker' },
-      apply_action: { type: 'node_run_authorization', node_id: nodeId, runner: 'codex_docker' }
-    }
-  });
-  await api(`/change-proposals/${proposal.id}/approve`, { method: 'POST', body: {} });
-  await api(`/change-proposals/${proposal.id}/apply`, { method: 'POST', body: {} });
-  return proposal.id;
-}
-async function waitForRunStatus(runId, status) {
-  for (let index = 0; index < 40; index++) {
-    const result = await api(`/runs/${runId}`);
-    if (result.run.status === status) return result.run;
-    await new Promise((resolve) => setTimeout(resolve, 20));
-  }
-  throw new Error(`run did not reach ${status}`);
-}
-async function waitForServer() {
-  for (let index = 0; index < 80; index++) {
-    try {
-      await api('/health');
-      return;
-    } catch {
-      await new Promise((resolve) => setTimeout(resolve, 100));
-    }
-  }
-  throw new Error('server did not start');
-}

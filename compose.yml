@@ -1,63 +1,104 @@
-# V2.2 rollback identifiers retained for release-boundary checks:
-# name: aiws-v22, aiws-app:2.2.0, aiws-codex-runner:2.2.0-codex-0.144.0,
-# aiws-data-v22.
-name: aiws-v23
+name: aiws-v3
 
 services:
   app:
-    image: ${AIWS_APP_IMAGE:-aiws-app:2.3.0}
+    image: ${AIWS_APP_IMAGE:-aiws-app:3.0.0}
     build:
       context: .
       dockerfile: Dockerfile
       target: production
+      args:
+        AIWS_VERSION: 3.0.0
+        AIWS_COMMIT: ${AIWS_COMMIT:-working-tree}
     init: true
+    labels:
+      aiws.owner: aiws-v3
+      aiws.role: app
     restart: unless-stopped
     stop_grace_period: 30s
+    read_only: true
     ports:
       - "127.0.0.1:${AIWS_PORT:-4317}:4317"
     environment:
       NODE_ENV: production
-      NODE_OPTIONS: "--max-old-space-size=4096"
-      PORT: "4317"
-      AIWS_BIND_HOST: "0.0.0.0"
       AIWS_HOME: /var/lib/aiws
-      AIWS_CONTAINERIZED: "1"
-      AIWS_DOCKER_DATA_VOLUME: ${AIWS_DOCKER_DATA_VOLUME:-aiws-data-v23}
-      AIWS_DOCKER_INSTANCE: ${AIWS_DOCKER_INSTANCE:-aiws-v23}
-      AIWS_CODEX_DOCKER_IMAGE: ${AIWS_RUNNER_IMAGE:-aiws-codex-runner:2.3.0-codex-0.144.0}
-      AIWS_RUNNER_CPUS: ${AIWS_RUNNER_CPUS:-2}
-      AIWS_RUNNER_MEMORY: ${AIWS_RUNNER_MEMORY:-4g}
-      AIWS_RUNNER_PIDS: ${AIWS_RUNNER_PIDS:-512}
-      AIWS_RUNNER_TMPFS: ${AIWS_RUNNER_TMPFS:-1g}
-      HTTP_PROXY: ${AIWS_HTTP_PROXY:-}
-      HTTPS_PROXY: ${AIWS_HTTPS_PROXY:-}
-      ALL_PROXY: ${AIWS_ALL_PROXY:-}
-      NO_PROXY: ${AIWS_NO_PROXY:-localhost,127.0.0.1,host.docker.internal}
-      http_proxy: ${AIWS_HTTP_PROXY:-}
-      https_proxy: ${AIWS_HTTPS_PROXY:-}
-      all_proxy: ${AIWS_ALL_PROXY:-}
-      no_proxy: ${AIWS_NO_PROXY:-localhost,127.0.0.1,host.docker.internal}
+      AIWS_DOCKER_DATA_VOLUME: aiws-data-v3
+      AIWS_BROKER_URL: http://runner-broker:4321
+      AIWS_BROKER_MODE: http
+      AIWS_RUNNER_DIGEST: ${AIWS_RUNNER_DIGEST:?set AIWS_RUNNER_DIGEST to the built Runner sha256 digest}
+      AIWS_CODEX_AVAILABLE: ${AIWS_CODEX_AVAILABLE:-0}
+      AIWS_GITHUB_AVAILABLE: ${AIWS_GITHUB_AVAILABLE:-0}
+    secrets:
+      - broker_hmac
     volumes:
       - type: volume
-        source: aiws-data
+        source: aiws-data-v3
         target: /var/lib/aiws
-      - type: bind
-        source: /var/run/docker.sock
-        target: /var/run/docker.sock
     tmpfs:
       - /tmp:size=256m,mode=1777
     security_opt:
       - no-new-privileges:true
     cap_drop:
       - ALL
-    healthcheck:
-      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:4317/api/readyz').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
-      interval: 10s
-      timeout: 30s
-      start_period: 5m
-      retries: 6
+    networks:
+      - internal
+      - edge
+
+  runner-broker:
+    image: ${AIWS_BROKER_IMAGE:-aiws-runner-broker:3.0.0}
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: broker
+      args:
+        AIWS_VERSION: 3.0.0
+        AIWS_COMMIT: ${AIWS_COMMIT:-working-tree}
+    init: true
+    labels:
+      aiws.owner: aiws-v3
+      aiws.role: runner-broker
+    restart: unless-stopped
+    read_only: true
+    expose:
+      - "4321"
+    environment:
+      AIWS_BROKER_EXECUTOR: docker
+      AIWS_BROKER_DATA_ROOT: /var/lib/aiws
+      AIWS_DOCKER_DATA_VOLUME: aiws-data-v3
+      AIWS_RUNNER_DIGEST: ${AIWS_RUNNER_DIGEST:?set AIWS_RUNNER_DIGEST to the built Runner sha256 digest}
+      AIWS_RUNNER_IMAGE: ${AIWS_RUNNER_IMAGE:?set AIWS_RUNNER_IMAGE to a digest-pinned Runner reference}
+    secrets:
+      - broker_hmac
+    volumes:
+      - type: bind
+        source: /var/run/docker.sock
+        target: /var/run/docker.sock
+      - type: volume
+        source: aiws-data-v3
+        target: /var/lib/aiws
+    tmpfs:
+      - /tmp:size=256m,mode=1777
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    networks:
+      - internal
+
+networks:
+  internal:
+    internal: true
+  edge:
+    internal: false
 
 volumes:
-  aiws-data:
-    name: ${AIWS_DOCKER_DATA_VOLUME:-aiws-data-v23}
-    external: true
+  aiws-data-v3:
+    name: aiws-data-v3
+    labels:
+      aiws.owner: aiws-v3
+      aiws.role: production-data
+      aiws.schema: "1"
+
+secrets:
+  broker_hmac:
+    file: ${AIWS_BROKER_SECRET_FILE:-./docker/secrets/broker_hmac}

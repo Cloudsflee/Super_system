@@ -1,9 +1,0 @@
-{
-  "name": "@aiws/system-context",
-  "version": "2.3.0",
-  "type": "module",
-  "main": "src/index.mjs",
-  "dependencies": {
-    "minisearch": "7.1.2"
-  }
-}

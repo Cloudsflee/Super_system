@@ -1,7 +1,0 @@
-{
-  "pr": ["plan", "registry", "auth", "gateway-auth", "http-contract", "gateway-contract", "security", "operations", "mcp-journey"],
-  "full": ["plan", "impact", "registry", "unit", "http-contract", "gateway-contract", "stdio-contract", "parity", "security", "operations", "terminal", "fault", "browser", "mcp-journey", "compatibility"],
-  "live": ["live-codex", "live-github"],
-  "release": ["plan", "registry", "auth", "gateway-auth", "http-contract", "gateway-contract", "security", "mcp-journey", "migration", "compatibility"],
-  "soak": ["soak-120m"]
-}

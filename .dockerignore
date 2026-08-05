@@ -17,6 +17,8 @@ node_modules
 .env.*
 !.env.example
 docker/.env
+docker/secrets/*
+!docker/secrets/broker_hmac.example
 *.log
 *.tar
 *.tar.gz

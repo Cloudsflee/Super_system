@@ -1,0 +1,428 @@
+import fs from 'node:fs';
+import net from 'node:net';
+import os from 'node:os';
+import path from 'node:path';
+import { createHash, randomBytes, randomUUID } from 'node:crypto';
+import { execFileSync, spawnSync } from 'node:child_process';
+import { DatabaseSync } from 'node:sqlite';
+import { performance } from 'node:perf_hooks';
+
+const root = process.cwd();
+const releaseRoot = path.join(root, '.ai-workspace', 'release', 'v3-transition');
+const stamp = new Date().toISOString().replace(/[-:.TZ]/g, '').slice(0, 14);
+const commands = [];
+const createdProjects = [];
+fs.mkdirSync(releaseRoot, { recursive: true });
+
+function sha256Bytes(value) {
+  return createHash('sha256').update(value).digest('hex');
+}
+
+function sha256File(file) {
+  return sha256Bytes(fs.readFileSync(file));
+}
+
+function exact(command, args) {
+  return [command, ...args].map((value) => /\s/.test(value) ? JSON.stringify(value) : value).join(' ');
+}
+
+function run(label, command, args, allowed = [0]) {
+  const started = performance.now();
+  const result = spawnSync(command, args, {
+    cwd: root, encoding: 'utf8', windowsHide: true, maxBuffer: 32 * 1024 * 1024
+  });
+  const record = {
+    label,
+    command: exact(command, args),
+    cwd: root,
+    exit_status: result.status ?? 1,
+    signal: result.signal || null,
+    duration_ms: Math.round(performance.now() - started),
+    stdout: result.stdout || '',
+    stderr: result.stderr || ''
+  };
+  commands.push(record);
+  if (!allowed.includes(record.exit_status)) throw Object.assign(new Error(`${label} failed with exit status ${record.exit_status}: ${record.stderr.trim()}`), { record });
+  return record;
+}
+
+function git(args) {
+  return execFileSync('git', args, { cwd: root, encoding: 'utf8', windowsHide: true }).trim();
+}
+
+function writeReceipt(name, body) {
+  const unsigned = { ...body, created_at: new Date().toISOString() };
+  const receipt = { ...unsigned, receipt_sha256: sha256Bytes(JSON.stringify(unsigned)) };
+  const target = path.join(releaseRoot, name);
+  fs.writeFileSync(target, `${JSON.stringify(receipt, null, 2)}\n`, { flag: 'wx', mode: 0o444 });
+  fs.chmodSync(target, 0o444);
+  return target;
+}
+
+function latestReceipt(prefix) {
+  const explicit = process.env.AIWS_IMAGE_RECEIPT;
+  if (explicit) return path.resolve(explicit);
+  const files = fs.readdirSync(releaseRoot)
+    .filter((name) => name.startsWith(prefix) && name.endsWith('.json'))
+    .sort();
+  if (!files.length) throw new Error(`missing_receipt:${prefix}`);
+  return path.join(releaseRoot, files.at(-1));
+}
+
+async function allocatePort() {
+  const server = net.createServer();
+  await new Promise((resolve, reject) => server.once('error', reject).listen(0, '127.0.0.1', resolve));
+  const port = server.address().port;
+  await new Promise((resolve) => server.close(resolve));
+  return port;
+}
+
+function composeYaml({ appImage, brokerImage, runnerImage, runnerDigest, volume, port, secretFile }) {
+  const secret = secretFile.replaceAll('\\', '/');
+  return `services:
+  app:
+    image: ${appImage}
+    init: true
+    read_only: true
+    labels:
+      aiws.owner: aiws-v3-release
+      aiws.role: acceptance-app
+    ports:
+      - "127.0.0.1:${port}:4317"
+    environment:
+      NODE_ENV: production
+      AIWS_HOME: /var/lib/aiws
+      AIWS_DOCKER_DATA_VOLUME: ${volume}
+      AIWS_BROKER_URL: http://runner-broker:4321
+      AIWS_BROKER_MODE: http
+      AIWS_RUNNER_DIGEST: ${runnerDigest}
+      AIWS_CODEX_AVAILABLE: "0"
+      AIWS_GITHUB_AVAILABLE: "0"
+    secrets:
+      - broker_hmac
+    volumes:
+      - data:/var/lib/aiws
+    tmpfs:
+      - /tmp:size=256m,mode=1777
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    depends_on:
+      - runner-broker
+    networks:
+      - internal
+      - edge
+  runner-broker:
+    image: ${brokerImage}
+    init: true
+    read_only: true
+    labels:
+      aiws.owner: aiws-v3-release
+      aiws.role: acceptance-broker
+    environment:
+      NODE_ENV: production
+      AIWS_BROKER_EXECUTOR: docker
+      AIWS_BROKER_DATA_ROOT: /var/lib/aiws
+      AIWS_DOCKER_DATA_VOLUME: ${volume}
+      AIWS_RUNNER_DIGEST: ${runnerDigest}
+      AIWS_RUNNER_IMAGE: ${runnerImage}
+    secrets:
+      - broker_hmac
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - data:/var/lib/aiws
+    tmpfs:
+      - /tmp:size=256m,mode=1777
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    networks:
+      - internal
+networks:
+  internal:
+    internal: true
+  edge: {}
+volumes:
+  data:
+    external: true
+    name: ${volume}
+secrets:
+  broker_hmac:
+    file: "${secret}"
+`;
+}
+
+async function waitReady(base, timeoutMs = 60_000) {
+  const started = performance.now();
+  let last = '';
+  while (performance.now() - started < timeoutMs) {
+    try {
+      const response = await fetch(`${base}/readyz`, { signal: AbortSignal.timeout(2_000) });
+      last = await response.text();
+      if (response.ok) return { elapsed_ms: Math.round(performance.now() - started), body: JSON.parse(last) };
+    } catch (error) {
+      last = error.message;
+    }
+    await new Promise((resolve) => setTimeout(resolve, 100));
+  }
+  throw new Error(`ready_timeout:${last}`);
+}
+
+async function mutate(base, route, body, key = randomUUID()) {
+  const response = await fetch(`${base}${route}`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', 'Idempotency-Key': key },
+    body: JSON.stringify(body),
+    signal: AbortSignal.timeout(10_000)
+  });
+  const value = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(`api_failure:${route}:${response.status}:${JSON.stringify(value)}`);
+  return value;
+}
+
+async function journey(base, suffix, repeats = 3) {
+  const project = await mutate(base, '/api/v1/projects', { name: `Release ${suffix}` }, `${suffix}-project`);
+  createdProjects.push(project.id);
+  await mutate(base, `/api/v1/projects/${project.id}/briefs`, { content: { objective: `Verify ${suffix}`, acceptance: ['execution completes'] } }, `${suffix}-brief`);
+  await mutate(base, `/api/v1/projects/${project.id}/workflows`, { tasks: [
+    { id: 'inspect', level: 1, title: 'Inspect', mode: 'read' },
+    { id: 'change', level: 2, title: 'Change', mode: 'write', deps: ['inspect'] }
+  ] }, `${suffix}-workflow`);
+  const executions = [];
+  for (let index = 0; index < repeats; index += 1) {
+    const execution = await mutate(base, `/api/v1/projects/${project.id}/executions`, {}, `${suffix}-execution-${index}`);
+    await mutate(base, `/api/v1/executions/${execution.id}/start`, { expected_revision: execution.revision }, `${suffix}-start-${index}`);
+    let current = execution;
+    for (let attempt = 0; attempt < 200; attempt += 1) {
+      const response = await fetch(`${base}/api/v1/executions/${execution.id}`, { signal: AbortSignal.timeout(2_000) });
+      current = await response.json();
+      if (current.status === 'completed') break;
+      if (['failed', 'awaiting_human', 'cancelled'].includes(current.status)) throw new Error(`acceptance_execution_${current.status}`);
+      await new Promise((resolve) => setTimeout(resolve, 25));
+    }
+    if (current.status !== 'completed' || !current.tasks.every((task) => task.status === 'completed')) throw new Error('acceptance_execution_timeout');
+    executions.push({ id: current.id, status: current.status, tasks: current.tasks.map((task) => ({ id: task.task_id, status: task.status, broker_job_id: task.broker_job_id })) });
+  }
+  return { project_id: project.id, executions };
+}
+
+function manifest(directory) {
+  const files = [];
+  const walk = (current) => {
+    for (const entry of fs.readdirSync(current, { withFileTypes: true })) {
+      const full = path.join(current, entry.name);
+      if (entry.isDirectory()) walk(full);
+      else {
+        const relative = path.relative(directory, full).replaceAll('\\', '/');
+        const stat = fs.statSync(full);
+        files.push({ path: relative, size: stat.size, sha256: sha256File(full) });
+      }
+    }
+  };
+  walk(directory);
+  files.sort((a, b) => a.path.localeCompare(b.path));
+  return files;
+}
+
+function sqliteEvidence(directory) {
+  const file = path.join(directory, 'data', 'state.sqlite');
+  const db = new DatabaseSync(file, { readOnly: true });
+  try {
+    const integrity = db.prepare('PRAGMA integrity_check').all().map((row) => row.integrity_check);
+    const userVersion = Number(db.prepare('PRAGMA user_version').get().user_version);
+    const foreignKeyViolations = db.prepare('PRAGMA foreign_key_check').all();
+    const events = db.prepare("SELECT execution_id,task_id,type,created_at,cursor FROM events WHERE type IN ('task.ready','task.running') ORDER BY cursor").all();
+    const ready = new Map();
+    const submissionMs = [];
+    for (const event of events) {
+      const key = `${event.execution_id}:${event.task_id}`;
+      if (event.type === 'task.ready') ready.set(key, Date.parse(event.created_at));
+      if (event.type === 'task.running' && ready.has(key)) submissionMs.push(Math.max(0, Date.parse(event.created_at) - ready.get(key)));
+    }
+    submissionMs.sort((a, b) => a - b);
+    const p95 = submissionMs.length ? submissionMs[Math.min(submissionMs.length - 1, Math.ceil(submissionMs.length * 0.95) - 1)] : null;
+    return { file: 'data/state.sqlite', integrity, user_version: userVersion, foreign_key_violations: foreignKeyViolations, broker_submission_samples_ms: submissionMs, broker_submission_p95_ms: p95 };
+  } finally {
+    db.close();
+  }
+}
+
+function archiveVolume(volume, image, target, label) {
+  const helper = `aiws-v3-${label}-${stamp}`;
+  run(`${label}-create-helper`, 'docker', ['create', '--name', helper, '--label', 'aiws.owner=aiws-v3-release', '--mount', `type=volume,src=${volume},dst=/source,readonly`, image, 'sh', '-c', 'tar -C /source -czf /tmp/data.tar.gz .']);
+  try {
+    run(`${label}-archive`, 'docker', ['start', '--attach', helper]);
+    run(`${label}-copy`, 'docker', ['cp', `${helper}:/tmp/data.tar.gz`, target]);
+  } finally {
+    run(`${label}-remove-helper`, 'docker', ['rm', '-f', helper], [0, 1]);
+  }
+}
+
+function restoreVolume(volume, image, archive, label) {
+  const helper = `aiws-v3-${label}-${stamp}`;
+  run(`${label}-create-helper`, 'docker', ['create', '--name', helper, '--label', 'aiws.owner=aiws-v3-release', '--mount', `type=volume,src=${volume},dst=/target`, image, 'sh', '-c', 'tar -C /target -xzf /tmp/data.tar.gz']);
+  try {
+    run(`${label}-copy`, 'docker', ['cp', archive, `${helper}:/tmp/data.tar.gz`]);
+    run(`${label}-restore`, 'docker', ['start', '--attach', helper]);
+  } finally {
+    run(`${label}-remove-helper`, 'docker', ['rm', '-f', helper], [0, 1]);
+  }
+}
+
+function writeRollback(composeFile, project) {
+  const target = path.join(releaseRoot, `rollback-rehearsal-${stamp}.ps1`);
+  const content = `param(\n  [string]$ProjectName = '${project}',\n  [string]$ComposeFile = '${composeFile.replaceAll("'", "''")}'\n)\n$ErrorActionPreference = 'Stop'\nif ($ProjectName -notmatch '^aiws-v3-rehearsal-[0-9]+-(source|restore)$') { throw 'invalid_rehearsal_project' }\n& docker compose -p $ProjectName -f $ComposeFile down --remove-orphans\nif ($LASTEXITCODE -ne 0) { throw "rollback_failed:$LASTEXITCODE" }\n& docker ps -a --filter "label=com.docker.compose.project=$ProjectName" --format '{{.Names}}'\nif ($LASTEXITCODE -ne 0) { throw "rollback_verify_failed:$LASTEXITCODE" }\n`;
+  fs.writeFileSync(target, content, { flag: 'wx', mode: 0o444 });
+  fs.chmodSync(target, 0o444);
+  return target;
+}
+
+const imageReceiptPath = latestReceipt('v3-images-');
+const imageReceipt = JSON.parse(fs.readFileSync(imageReceiptPath, 'utf8'));
+const commit = git(['rev-parse', 'HEAD']);
+if (git(['status', '--porcelain=v1', '--untracked-files=all'])) throw new Error('release_rehearsal_requires_clean_commit');
+if (imageReceipt.status !== 'candidate' || imageReceipt.source?.commit !== commit) throw new Error('candidate_image_receipt_mismatch');
+const byRole = Object.fromEntries(imageReceipt.images.map((image) => [image.role, image]));
+for (const role of ['app', 'broker', 'runner']) if (!/^sha256:[a-f0-9]{64}$/.test(byRole[role]?.image_id || '')) throw new Error(`missing_candidate_image:${role}`);
+
+const sourceProject = `aiws-v3-rehearsal-${stamp}-source`;
+const restoreProject = `aiws-v3-rehearsal-${stamp}-restore`;
+const sourceVolume = `aiws-v3-snapshot-${stamp}`;
+const restoreVolumeName = `aiws-v3-restored-${stamp}`;
+const secretFile = path.join(releaseRoot, `.rehearsal-secret-${stamp}`);
+const sourceCompose = path.join(releaseRoot, `compose-rehearsal-source-${stamp}.yml`);
+const restoreCompose = path.join(releaseRoot, `compose-rehearsal-restore-${stamp}.yml`);
+const archive = path.join(releaseRoot, `v3-backup-${stamp}.tar.gz`);
+const restoredArchive = path.join(releaseRoot, `v3-restored-validation-${stamp}.tar.gz`);
+let sourceUp = false;
+let restoreUp = false;
+
+try {
+  fs.writeFileSync(secretFile, randomBytes(32).toString('hex'), { flag: 'wx', mode: 0o600 });
+  run('create-source-volume', 'docker', ['volume', 'create', '--label', 'aiws.owner=aiws-v3', '--label', 'aiws.role=snapshot', '--label', `aiws.source.commit=${commit}`, sourceVolume]);
+  const sourcePort = await allocatePort();
+  fs.writeFileSync(sourceCompose, composeYaml({ appImage: byRole.app.image_id, brokerImage: byRole.broker.image_id, runnerImage: byRole.runner.image_id, runnerDigest: byRole.runner.image_id, volume: sourceVolume, port: sourcePort, secretFile }), { flag: 'wx', mode: 0o444 });
+  const sourceStarted = performance.now();
+  run('source-compose-up', 'docker', ['compose', '-p', sourceProject, '-f', sourceCompose, 'up', '-d']);
+  sourceUp = true;
+  const sourceReady = await waitReady(`http://127.0.0.1:${sourcePort}`);
+  const startupMs = Math.round(performance.now() - sourceStarted);
+  const sourceJourney = await journey(`http://127.0.0.1:${sourcePort}`, 'source', 3);
+  const sourcePerformance = await (await fetch(`http://127.0.0.1:${sourcePort}/api/v1/system/performance`)).json();
+  const sourceCapabilities = await (await fetch(`http://127.0.0.1:${sourcePort}/api/v1/system/capabilities`)).json();
+  const rootResponse = await fetch(`http://127.0.0.1:${sourcePort}/`);
+  if (!rootResponse.ok || !(await rootResponse.text()).includes('AIWS')) throw new Error('production_web_bundle_unavailable');
+  const appContainer = `${sourceProject}-app-1`;
+  const brokerContainer = `${sourceProject}-runner-broker-1`;
+  run('app-docker-cli-absence', 'docker', ['exec', appContainer, 'sh', '-c', 'command -v docker'], [1, 127]);
+  const appInspect = JSON.parse(run('inspect-source-app', 'docker', ['inspect', appContainer]).stdout)[0];
+  const brokerInspect = JSON.parse(run('inspect-source-broker', 'docker', ['inspect', brokerContainer]).stdout)[0];
+  if (appInspect.Mounts.some((mount) => mount.Destination === '/var/run/docker.sock')) throw new Error('app_socket_boundary_failed');
+  if (brokerInspect.HostConfig?.PortBindings && Object.keys(brokerInspect.HostConfig.PortBindings).length) throw new Error('broker_host_port_boundary_failed');
+  if (startupMs >= 3_000) throw new Error(`startup_threshold_failed:${startupMs}`);
+  if (sourcePerformance.rss_bytes >= 512 * 1024 * 1024) throw new Error(`rss_threshold_failed:${sourcePerformance.rss_bytes}`);
+  if (sourcePerformance.event_loop_lag_p95_ms > 50) throw new Error(`event_loop_threshold_failed:${sourcePerformance.event_loop_lag_p95_ms}`);
+  if (sourceCapabilities.broker?.runner_digest !== byRole.runner.image_id) throw new Error('ready_runner_digest_mismatch');
+
+  run('source-compose-stop', 'docker', ['compose', '-p', sourceProject, '-f', sourceCompose, 'down', '--remove-orphans']);
+  sourceUp = false;
+  archiveVolume(sourceVolume, byRole.app.image_id, archive, 'source');
+  const extractionRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'aiws-v3-source-'));
+  run('extract-source-archive', 'tar', ['-xzf', archive, '-C', extractionRoot]);
+  const sourceManifest = manifest(extractionRoot);
+  const sourceSqlite = sqliteEvidence(extractionRoot);
+  if (sourceSqlite.integrity.join(',') !== 'ok' || sourceSqlite.user_version !== 1 || sourceSqlite.foreign_key_violations.length) throw new Error('source_sqlite_validation_failed');
+  if (sourceSqlite.broker_submission_p95_ms == null || sourceSqlite.broker_submission_p95_ms >= 500) throw new Error(`broker_submission_threshold_failed:${sourceSqlite.broker_submission_p95_ms}`);
+
+  const acceptanceReceipt = writeReceipt(`v3-acceptance-docker-${stamp}.json`, {
+    schema_version: 'aiws.v3.docker_acceptance_receipt.v1', status: 'passed',
+    source: imageReceipt.source,
+    image_receipt: path.relative(root, imageReceiptPath).replaceAll('\\', '/'),
+    images: { app: byRole.app.image_id, broker: byRole.broker.image_id, runner: byRole.runner.image_id },
+    dynamic_port: sourcePort,
+    startup_ms: startupMs,
+    ready: sourceReady,
+    performance: sourcePerformance,
+    capabilities: sourceCapabilities,
+    journey: sourceJourney,
+    boundaries: { app_has_docker_cli: false, app_has_docker_socket: false, broker_has_host_port: false },
+    volume: sourceVolume,
+    archive: { path: path.relative(root, archive).replaceAll('\\', '/'), sha256: sha256File(archive) },
+    manifest: { file_count: sourceManifest.length, sha256: sha256Bytes(JSON.stringify(sourceManifest)) },
+    sqlite: sourceSqlite,
+    commands
+  });
+
+  run('create-restore-volume', 'docker', ['volume', 'create', '--label', 'aiws.owner=aiws-v3', '--label', 'aiws.role=recovery-snapshot', '--label', `aiws.source=${sourceVolume}`, restoreVolumeName]);
+  restoreVolume(restoreVolumeName, byRole.app.image_id, archive, 'restore');
+  archiveVolume(restoreVolumeName, byRole.app.image_id, restoredArchive, 'restored-validation');
+  const restoredRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'aiws-v3-restored-'));
+  run('extract-restored-archive', 'tar', ['-xzf', restoredArchive, '-C', restoredRoot]);
+  const restoredManifest = manifest(restoredRoot);
+  const restoredSqlite = sqliteEvidence(restoredRoot);
+  if (JSON.stringify(restoredManifest) !== JSON.stringify(sourceManifest)) throw new Error('restored_manifest_mismatch');
+  if (restoredSqlite.integrity.join(',') !== 'ok' || restoredSqlite.user_version !== 1 || restoredSqlite.foreign_key_violations.length) throw new Error('restored_sqlite_validation_failed');
+
+  const restorePort = await allocatePort();
+  fs.writeFileSync(restoreCompose, composeYaml({ appImage: byRole.app.image_id, brokerImage: byRole.broker.image_id, runnerImage: byRole.runner.image_id, runnerDigest: byRole.runner.image_id, volume: restoreVolumeName, port: restorePort, secretFile }), { flag: 'wx', mode: 0o444 });
+  run('restore-compose-up', 'docker', ['compose', '-p', restoreProject, '-f', restoreCompose, 'up', '-d']);
+  restoreUp = true;
+  const restoreReady = await waitReady(`http://127.0.0.1:${restorePort}`);
+  const restoredProjects = await (await fetch(`http://127.0.0.1:${restorePort}/api/v1/projects`)).json();
+  if (!restoredProjects.some((project) => project.id === sourceJourney.project_id)) throw new Error('restored_project_missing');
+  const restoreJourney = await journey(`http://127.0.0.1:${restorePort}`, 'restore', 1);
+  const rollback = writeRollback(restoreCompose, restoreProject);
+  const powershell = process.platform === 'win32' ? 'powershell.exe' : 'pwsh';
+  const rollbackExecution = run('execute-rehearsal-rollback', powershell, ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', rollback]);
+  restoreUp = false;
+  const remaining = run('verify-rehearsal-rollback', 'docker', ['ps', '-a', '--filter', `label=com.docker.compose.project=${restoreProject}`, '--format', '{{.Names}}']);
+  if (remaining.stdout.trim()) throw new Error('rollback_left_containers');
+
+  const recoveryReceipt = writeReceipt(`v3-recovery-${stamp}.json`, {
+    schema_version: 'aiws.v3.recovery_receipt.v1', status: 'passed',
+    source: imageReceipt.source,
+    acceptance_receipt: path.relative(root, acceptanceReceipt).replaceAll('\\', '/'),
+    baseline: {
+      volume: sourceVolume,
+      archive: path.relative(root, archive).replaceAll('\\', '/'),
+      archive_sha256: sha256File(archive),
+      manifest_sha256: sha256Bytes(JSON.stringify(sourceManifest)),
+      sqlite: sourceSqlite
+    },
+    restored: {
+      volume: restoreVolumeName,
+      validation_archive: path.relative(root, restoredArchive).replaceAll('\\', '/'),
+      archive_sha256: sha256File(restoredArchive),
+      manifest_sha256: sha256Bytes(JSON.stringify(restoredManifest)),
+      sqlite: restoredSqlite,
+      ready: restoreReady,
+      original_project_found: true,
+      journey: restoreJourney
+    },
+    rollback: {
+      path: path.relative(root, rollback).replaceAll('\\', '/'),
+      sha256: sha256File(rollback),
+      command: rollbackExecution.command,
+      output: rollbackExecution.stdout,
+      exit_status: rollbackExecution.exit_status,
+      verified_no_containers: true
+    },
+    commands
+  });
+  process.stdout.write(`${JSON.stringify({ status: 'passed', acceptance_receipt: acceptanceReceipt, recovery_receipt: recoveryReceipt, snapshots: [sourceVolume, restoreVolumeName] }, null, 2)}\n`);
+} catch (error) {
+  const failure = writeReceipt(`v3-rehearsal-failure-${stamp}.json`, {
+    schema_version: 'aiws.v3.rehearsal_failure_receipt.v1', status: 'failed',
+    image_receipt: path.relative(root, imageReceiptPath).replaceAll('\\', '/'),
+    error: error.message,
+    commands
+  });
+  process.stderr.write(`release rehearsal failed; receipt: ${failure}\n`);
+  process.exitCode = 1;
+} finally {
+  if (restoreUp) run('cleanup-restore-compose', 'docker', ['compose', '-p', restoreProject, '-f', restoreCompose, 'down', '--remove-orphans'], [0, 1]);
+  if (sourceUp) run('cleanup-source-compose', 'docker', ['compose', '-p', sourceProject, '-f', sourceCompose, 'down', '--remove-orphans'], [0, 1]);
+  try { fs.chmodSync(secretFile, 0o600); fs.rmSync(secretFile, { force: true }); } catch { /* secret cleanup is best effort after containers stop */ }
+}

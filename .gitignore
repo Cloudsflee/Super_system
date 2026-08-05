@@ -5,6 +5,7 @@ node_modules/
 coverage/
 dist/
 .env
+docker/secrets/broker_hmac
 *.log
 *.tsbuildinfo
 __pycache__/
