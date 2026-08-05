@@ -47,6 +47,7 @@ COPY . .
 RUN corepack pnpm build
 
 FROM workspace-deps AS verify
+COPY --from=windows-bridge-build /usr/local/go/bin/gofmt /usr/local/bin/gofmt
 ARG CODEX_VERSION=0.144.0
 ARG ALPINE_FALLBACK_MIRROR=https://mirrors.aliyun.com/alpine
 RUN apk add --no-cache chromium freetype harfbuzz nss ttf-freefont || (sed -i "s#https://dl-cdn.alpinelinux.org/alpine#${ALPINE_FALLBACK_MIRROR}#g" /etc/apk/repositories && apk add --no-cache chromium freetype harfbuzz nss ttf-freefont)

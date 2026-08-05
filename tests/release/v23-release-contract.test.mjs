@@ -50,6 +50,7 @@ assert.equal(QUALITY_REVIEW_ADVICE_SCHEMA, 'aiws.quality_review_advice.v1');
 assert.equal(QUALITY_REVIEW_REPORT_SCHEMA, 'aiws.quality_review_report.v1');
 
 assert.match(dockerfile, /FROM node:24\.14\.0-alpine3\.22 AS production/);
+assert.match(dockerfile, /COPY --from=windows-bridge-build \/usr\/local\/go\/bin\/gofmt \/usr\/local\/bin\/gofmt/);
 assert.match(dockerfile, /COPY docker\/v23-readiness\.mjs \.\/docker\/v23-readiness\.mjs/);
 assert.match(dockerfile, /RUN node -e "import\('\.\/docker\/v23-readiness\.mjs'\).*waitForV23Readiness/s);
 assert.match(dockerfile, /org\.opencontainers\.image\.version="2\.3\.0"/);
