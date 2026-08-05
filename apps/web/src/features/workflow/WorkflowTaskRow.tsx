@@ -1,14 +1,8 @@
 import { ArrowRight, ChevronDown, Clock3, LockKeyhole, Pin, PinOff } from 'lucide-react';
-import { useRef, type MouseEvent as ReactMouseEvent, type RefObject } from 'react';
+import type { MouseEvent as ReactMouseEvent } from 'react';
 import { Link } from 'react-router-dom';
 import type { WorkflowTaskDensity } from '../../state/ui';
-import {
-  pointerCanHover,
-  TaskAttention,
-  TaskMetrics,
-  TaskObjective,
-  TaskQuickPreview
-} from './WorkflowTaskPresentation';
+import { pointerCanHover, TaskAttention, TaskMetrics, TaskObjective } from './WorkflowTaskPresentation';
 import { WorkflowTaskInlineDetails } from './WorkflowTaskDetails';
 import { primaryTaskObjective, type WorkflowTaskViewModel } from './WorkflowTaskViewModel';
 import type { TopologyRelation } from './WorkflowTopology';
@@ -25,13 +19,8 @@ export function WorkflowTaskRow({
   expanded,
   pinned,
   selected,
-  previewAnchor,
   topologyRelation,
   onTopologyFocus,
-  onPreviewPointerEnter,
-  onPreviewPointerLeave,
-  onPreviewFocus,
-  onPreviewBlur,
   onSetPin,
   onTogglePin
 }: {
@@ -44,18 +33,11 @@ export function WorkflowTaskRow({
   expanded: boolean;
   pinned: boolean;
   selected: boolean;
-  previewAnchor: HTMLElement | null;
   topologyRelation: TopologyRelation;
   onTopologyFocus: (taskId: string | null) => void;
-  onPreviewPointerEnter: (taskId: string, anchor: HTMLElement, pointerType: string) => void;
-  onPreviewPointerLeave: () => void;
-  onPreviewFocus: (taskId: string, anchor: HTMLElement) => void;
-  onPreviewBlur: () => void;
   onSetPin: () => void;
   onTogglePin: () => void;
 }) {
-  const previewAnchorRef = useRef<HTMLDivElement>(null);
-  const anchor = (fallback: HTMLElement) => previewAnchorRef.current || fallback;
   const hasSchedule = model.objective.times.length > 0 || Boolean(model.objective.timezone);
   const className = [
     'workflow-process-task',
@@ -73,56 +55,46 @@ export function WorkflowTaskRow({
     onSetPin();
   };
   return (
-    <>
-      <article
-        className={className}
-        {...taskAssistScopeAttributes(model)}
-        data-task-id={model.id}
-        data-selected={selected ? 'true' : 'false'}
-        role="listitem"
-        onClick={handleSummaryClick}
-        onPointerEnter={(event) => {
-          if (!pointerCanHover(event.pointerType)) return;
-          onTopologyFocus(model.id);
-          onPreviewPointerEnter(model.id, anchor(event.currentTarget), event.pointerType);
-        }}
-        onPointerLeave={(event) => {
-          if (!event.currentTarget.contains(document.activeElement)) onTopologyFocus(null);
-          onPreviewPointerLeave();
-        }}
-        onFocusCapture={(event) => {
-          onTopologyFocus(model.id);
-          onPreviewFocus(model.id, anchor(event.currentTarget));
-        }}
-        onBlurCapture={(event) => {
-          if (!event.relatedTarget || !event.currentTarget.contains(event.relatedTarget as Node)) {
-            onTopologyFocus(null);
-            onPreviewBlur();
-          }
-        }}
-      >
-        <div className="workflow-task-summary">
-          <TaskSummaryBand
-            model={model}
-            projectId={projectId}
-            density={density}
-            index={index}
-            layout={layout}
-            expanded={expanded}
-            pinned={pinned}
-            hasSchedule={hasSchedule}
-            previewAnchorRef={previewAnchorRef}
-            onTogglePin={onTogglePin}
-          />
-        </div>
-        {layout === 'accordion' && expanded && (
-          <WorkflowTaskInlineDetails model={model} density={density} canReplay={canReplay} />
-        )}
-      </article>
-      {layout === 'accordion' && previewAnchor && !expanded && (
-        <TaskQuickPreview anchor={previewAnchor} model={model} />
+    <article
+      className={className}
+      {...taskAssistScopeAttributes(model)}
+      data-task-id={model.id}
+      data-selected={selected ? 'true' : 'false'}
+      role="listitem"
+      onClick={handleSummaryClick}
+      onPointerEnter={(event) => {
+        if (!pointerCanHover(event.pointerType)) return;
+        onTopologyFocus(model.id);
+      }}
+      onPointerLeave={(event) => {
+        if (!event.currentTarget.contains(document.activeElement)) onTopologyFocus(null);
+      }}
+      onFocusCapture={() => {
+        onTopologyFocus(model.id);
+      }}
+      onBlurCapture={(event) => {
+        if (!event.relatedTarget || !event.currentTarget.contains(event.relatedTarget as Node)) {
+          onTopologyFocus(null);
+        }
+      }}
+    >
+      <div className="workflow-task-summary">
+        <TaskSummaryBand
+          model={model}
+          projectId={projectId}
+          density={density}
+          index={index}
+          layout={layout}
+          expanded={expanded}
+          pinned={pinned}
+          hasSchedule={hasSchedule}
+          onTogglePin={onTogglePin}
+        />
+      </div>
+      {layout === 'accordion' && expanded && (
+        <WorkflowTaskInlineDetails model={model} density={density} canReplay={canReplay} />
       )}
-    </>
+    </article>
   );
 }
 
@@ -135,7 +107,6 @@ function TaskSummaryBand({
   expanded,
   pinned,
   hasSchedule,
-  previewAnchorRef,
   onTogglePin
 }: {
   model: WorkflowTaskViewModel;
@@ -146,7 +117,6 @@ function TaskSummaryBand({
   expanded: boolean;
   pinned: boolean;
   hasSchedule: boolean;
-  previewAnchorRef: RefObject<HTMLDivElement | null>;
   onTogglePin: () => void;
 }) {
   return (
@@ -155,7 +125,7 @@ function TaskSummaryBand({
         <span>{String(index + 1).padStart(2, '0')}</span>
         <i data-topology-anchor aria-hidden="true" />
       </div>
-      <div ref={previewAnchorRef} className="workflow-task-main" data-preview-anchor>
+      <div className="workflow-task-main">
         <header>
           {density === 'detailed' && <span className="workflow-task-stage">{model.phase}</span>}
           <span className={`task-status ${model.status}`}>{model.statusText}</span>

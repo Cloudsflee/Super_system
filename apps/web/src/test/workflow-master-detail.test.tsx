@@ -66,9 +66,8 @@ describe('Workflow master-detail process', () => {
     expect(screen.queryByRole('complementary')).not.toBeInTheDocument();
   });
 
-  it('pins blank-row clicks and restores the pinned detail after pointer and focus previews', () => {
+  it('pins blank-row clicks and keeps the detail stable across pointer and focus changes', () => {
     processWidth = 1600;
-    vi.useFakeTimers();
     const { container } = renderProcess();
     const process = screen.getByRole('region', { name: '完整任务流程' });
     expect(process).toHaveAttribute('data-layout', 'master-detail');
@@ -91,34 +90,31 @@ describe('Workflow master-detail process', () => {
     aside.scrollTop = 180;
 
     fireEvent.pointerEnter(decide, { pointerType: 'mouse' });
-    act(() => vi.advanceTimersByTime(249));
     expect(screen.getByRole('complementary', { name: 'Collect evidence' })).toBeInTheDocument();
-    act(() => vi.advanceTimersByTime(1));
-    aside = screen.getByRole('complementary', { name: 'Decide and implement' });
-    expect(aside.scrollTop).toBe(0);
+    expect(decide).toHaveClass('topology-active');
     expect(topologyPaths(container)).toEqual(paths);
     expect(document.querySelector('.workflow-task-quick-preview')).not.toBeInTheDocument();
 
     fireEvent.pointerLeave(decide, { pointerType: 'mouse' });
-    fireEvent.pointerEnter(aside, { pointerType: 'mouse' });
-    act(() => vi.advanceTimersByTime(100));
-    expect(screen.getByRole('complementary', { name: 'Decide and implement' })).toBeInTheDocument();
-    expect(within(aside).getByRole('link', { name: '进入任务工作台：Decide and implement' })).toBeInTheDocument();
-    fireEvent.pointerLeave(aside, { pointerType: 'mouse' });
-    act(() => vi.advanceTimersByTime(100));
-    aside = screen.getByRole('complementary', { name: 'Collect evidence' });
+    expect(screen.getByRole('complementary', { name: 'Collect evidence' })).toBeInTheDocument();
     expect(aside.scrollTop).toBe(180);
 
     const decidePin = within(decide).getByRole('button', { name: '固定任务：Decide and implement' });
     fireEvent.focus(decidePin);
-    expect(screen.getByRole('complementary', { name: 'Decide and implement' })).toBeInTheDocument();
+    expect(screen.getByRole('complementary', { name: 'Collect evidence' })).toBeInTheDocument();
+    expect(decide).toHaveClass('topology-active');
     fireEvent.blur(decidePin, { relatedTarget: null });
     expect(screen.getByRole('complementary', { name: 'Collect evidence' })).toBeInTheDocument();
     fireEvent.pointerEnter(decide, { pointerType: 'touch' });
-    act(() => vi.advanceTimersByTime(300));
     expect(screen.getByRole('complementary', { name: 'Collect evidence' })).toBeInTheDocument();
 
-    fireEvent.click(within(aside).getByRole('button', { name: '取消固定任务：Collect evidence' }));
+    fireEvent.click(decide.querySelector('.workflow-task-main') as HTMLElement);
+    aside = screen.getByRole('complementary', { name: 'Decide and implement' });
+    expect(aside.scrollTop).toBe(0);
+    fireEvent.click(collect.querySelector('.workflow-task-main') as HTMLElement);
+    aside = screen.getByRole('complementary', { name: 'Collect evidence' });
+    expect(aside.scrollTop).toBe(180);
+    fireEvent.click(decide.querySelector('.workflow-task-main') as HTMLElement);
     expect(screen.getByRole('complementary', { name: 'Decide and implement' })).toBeInTheDocument();
   });
 

@@ -1,8 +1,6 @@
 import { Clock3, Database, GitBranch, GitFork, Globe2, LockKeyhole, PackageCheck, SquareTerminal } from 'lucide-react';
-import { useLayoutEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react';
-import { createPortal } from 'react-dom';
-import type { TaskMetricValues, TaskObjectiveValue, WorkflowTaskViewModel } from './WorkflowTaskViewModel';
-import { taskAssistScopeAttributes } from './workflow-assist-scope';
+import type { ReactNode } from 'react';
+import type { TaskMetricValues, TaskObjectiveValue } from './WorkflowTaskViewModel';
 
 function TaskMetric({ icon, value, label }: { icon: ReactNode; value: number; label: string }) {
   return (
@@ -71,81 +69,6 @@ export function TaskObjective({ content, children }: { content: TaskObjectiveVal
   );
 }
 
-export function TaskQuickPreview({ anchor, model }: { anchor: HTMLElement; model: WorkflowTaskViewModel }) {
-  const root = useRef<HTMLDivElement>(null);
-  const [style, setStyle] = useState<CSSProperties>({ left: 8, top: 8, visibility: 'hidden' });
-  useLayoutEffect(() => {
-    let frame = 0;
-    const dock = document.querySelector<HTMLElement>('.command-dock');
-    const update = () => {
-      frame = 0;
-      const element = root.current;
-      if (!element) return;
-      const viewportWidth = document.documentElement.clientWidth || window.innerWidth,
-        viewportHeight = document.documentElement.clientHeight || window.innerHeight;
-      const anchorRect = anchor.getBoundingClientRect(),
-        previewRect = element.getBoundingClientRect();
-      const width = previewRect.width || Math.min(380, viewportWidth - 16),
-        height = previewRect.height || 220,
-        dockRect = dock?.getBoundingClientRect();
-      const safeBottom =
-        dockRect && dockRect.height > 0 && dockRect.top < viewportHeight
-          ? Math.min(viewportHeight - 8, dockRect.top - 8)
-          : viewportHeight - 8;
-      const maxTop = Math.max(8, safeBottom - height),
-        below = anchorRect.bottom + 8 + height <= safeBottom;
-      setStyle({
-        left: clamp(anchorRect.left, 8, Math.max(8, viewportWidth - width - 8)),
-        top: clamp(below ? anchorRect.bottom + 8 : anchorRect.top - height - 8, 8, maxTop),
-        maxHeight: Math.max(80, safeBottom - 16),
-        visibility: 'visible'
-      });
-    };
-    const schedule = () => {
-      if (!frame)
-        frame = window.requestAnimationFrame ? window.requestAnimationFrame(update) : window.setTimeout(update, 0);
-    };
-    const observer = typeof ResizeObserver === 'function' ? new ResizeObserver(schedule) : null;
-    if (root.current) observer?.observe(root.current);
-    observer?.observe(anchor);
-    if (dock) observer?.observe(dock);
-    window.addEventListener('resize', schedule);
-    window.addEventListener('scroll', schedule, true);
-    update();
-    return () => {
-      observer?.disconnect();
-      if (frame) {
-        if (window.cancelAnimationFrame) window.cancelAnimationFrame(frame);
-        else window.clearTimeout(frame);
-      }
-      window.removeEventListener('resize', schedule);
-      window.removeEventListener('scroll', schedule, true);
-    };
-  }, [anchor]);
-  return createPortal(
-    <div
-      ref={root}
-      className="workflow-task-quick-preview"
-      {...taskAssistScopeAttributes(model)}
-      role="tooltip"
-      aria-label={`任务快速预览：${model.displayTitle}`}
-      data-task-preview={model.id}
-      style={style}
-    >
-      <header>
-        <span>{model.phase}</span>
-        <strong>{model.displayTitle}</strong>
-        <span className={`task-status ${model.status}`}>{model.statusText}</span>
-      </header>
-      <TaskObjective content={model.objective}>
-        <TaskMetrics title={model.displayTitle} values={model.metrics} />
-      </TaskObjective>
-      {model.blockers.length > 0 && <TaskAttention blockers={model.blockers} />}
-    </div>,
-    document.body
-  );
-}
-
 export function pointerCanHover(pointerType: string) {
   if (pointerType === 'touch') return false;
   if (pointerType === 'mouse') return true;
@@ -171,8 +94,4 @@ function HighlightedCommand({ value }: { value: string }) {
       )}
     </code>
   );
-}
-
-function clamp(value: number, minimum: number, maximum: number) {
-  return Math.min(maximum, Math.max(minimum, value));
 }

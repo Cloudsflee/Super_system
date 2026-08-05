@@ -3,7 +3,8 @@ import assert from 'node:assert/strict';
 export async function assertWorkflowHeaderAndCoverage(page, viewport) {
   const shell = await page.evaluate(() => {
     const bar = document.querySelector('.app-bar')?.getBoundingClientRect(),
-      execution = document.querySelector('.workflow-execution-band')?.getBoundingClientRect();
+      execution = document.querySelector('.workflow-execution-band')?.getBoundingClientRect(),
+      qualityPolicy = document.querySelector('.quality-review-policy')?.getBoundingClientRect();
     return {
       focus: document.querySelector('.app-shell')?.classList.contains('focus-mode'),
       legacyTitles: document.querySelectorAll('.workflow-viewbar,.workflow-view-title').length,
@@ -11,7 +12,10 @@ export async function assertWorkflowHeaderAndCoverage(page, viewport) {
       portalToolbar: document.querySelectorAll('.route-toolbar-host > .workflow-route-toolbar').length,
       barBottom: bar?.bottom || 0,
       executionTop: execution?.top || 0,
-      fixedTop: execution?.bottom || bar?.bottom || 0
+      fixedTop: execution?.bottom || bar?.bottom || 0,
+      qualityPolicyTop: qualityPolicy?.top || 0,
+      qualityPolicyBottom: qualityPolicy?.bottom || 0,
+      qualityPolicyHeight: qualityPolicy?.height || 0
     };
   });
   assert.equal(shell.focus, true, 'the Workflow fixture must exercise Focus mode');
@@ -22,7 +26,12 @@ export async function assertWorkflowHeaderAndCoverage(page, viewport) {
     Math.abs(shell.barBottom - shell.executionTop) <= 1,
     `the status band must follow the App Bar without overlap: ${JSON.stringify(shell)}`
   );
-  const fixedLimit = viewport.width <= 390 ? 160 : 96;
+  if (shell.qualityPolicyHeight)
+    assert.ok(
+      shell.qualityPolicyTop >= shell.executionTop && shell.qualityPolicyBottom <= shell.fixedTop + 1,
+      `Quality Review policy must remain inside the execution band: ${JSON.stringify(shell)}`
+    );
+  const fixedLimit = (viewport.width <= 390 ? 160 : 96) + shell.qualityPolicyHeight;
   assert.ok(shell.fixedTop <= fixedLimit, `fixed Workflow top exceeds ${fixedLimit}px: ${JSON.stringify(shell)}`);
 
   const process = page.locator('.workflow-full-process'),

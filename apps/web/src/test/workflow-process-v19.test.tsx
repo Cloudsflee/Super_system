@@ -103,7 +103,7 @@ describe('V1.9 workflow process density and topology', () => {
     ).toBeInTheDocument();
   });
 
-  it('uses delayed fine-pointer previews, immediate keyboard previews, and no touch hover', async () => {
+  it('keeps details click-driven while pointer and keyboard focus only highlight topology', async () => {
     vi.stubGlobal(
       'fetch',
       vi.fn(async () => response(bundle()))
@@ -111,33 +111,24 @@ describe('V1.9 workflow process density and topology', () => {
     renderPage(<WorkflowPage />, '/projects/project-1/workflow', '/projects/:projectId/workflow');
     await screen.findByRole('heading', { name: 'Delivery workflow' });
     const row = screen.getByRole('heading', { name: 'Collect evidence' }).closest('article') as HTMLElement;
-    vi.useFakeTimers();
 
     fireEvent.pointerEnter(row, { pointerType: 'mouse' });
-    act(() => vi.advanceTimersByTime(249));
+    expect(row).toHaveClass('topology-active');
     expect(screen.queryByRole('tooltip', { name: '任务快速预览：Collect evidence' })).not.toBeInTheDocument();
-    act(() => vi.advanceTimersByTime(1));
-    const preview = screen.getByRole('tooltip', { name: '任务快速预览：Collect evidence' });
-    expect(within(preview).getByText('收集可追溯发布证据。')).toBeInTheDocument();
-    expect(within(preview).getByLabelText('命令行：node src/cli.mjs collect --date 2026-07-23')).toBeInTheDocument();
-    expect(within(preview).getByText('23:50')).toBeInTheDocument();
-    expect(within(preview).getByText('Asia/Shanghai')).toBeInTheDocument();
-    expect(within(preview).getByLabelText('Collect evidence 执行摘要')).toHaveTextContent('0前置1输入1输出1版本');
-
     fireEvent.pointerLeave(row, { pointerType: 'mouse' });
-    act(() => vi.advanceTimersByTime(99));
-    expect(screen.getByRole('tooltip', { name: '任务快速预览：Collect evidence' })).toBeInTheDocument();
-    act(() => vi.advanceTimersByTime(1));
+    expect(row).not.toHaveClass('topology-active');
     expect(screen.queryByRole('tooltip', { name: '任务快速预览：Collect evidence' })).not.toBeInTheDocument();
 
     const disclosure = screen.getByRole('button', { name: '展开任务详情：Collect evidence' });
     fireEvent.focus(disclosure);
-    expect(screen.getByRole('tooltip', { name: '任务快速预览：Collect evidence' })).toBeInTheDocument();
+    expect(row).toHaveClass('topology-active');
+    expect(screen.queryByRole('tooltip', { name: '任务快速预览：Collect evidence' })).not.toBeInTheDocument();
     fireEvent.blur(disclosure, { relatedTarget: null });
+    expect(row).not.toHaveClass('topology-active');
     expect(screen.queryByRole('tooltip', { name: '任务快速预览：Collect evidence' })).not.toBeInTheDocument();
 
     fireEvent.pointerEnter(row, { pointerType: 'touch' });
-    act(() => vi.advanceTimersByTime(300));
+    expect(row).not.toHaveClass('topology-active');
     expect(screen.queryByRole('tooltip', { name: '任务快速预览：Collect evidence' })).not.toBeInTheDocument();
   });
 

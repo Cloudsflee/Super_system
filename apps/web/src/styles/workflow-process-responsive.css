@@ -16,8 +16,7 @@
   font-size: 11px;
 }
 .workflow-full-process .workflow-task-stage,
-.workflow-full-process .task-status,
-.workflow-task-quick-preview .task-status {
+.workflow-full-process .task-status {
   font-size: 11px;
 }
 .workflow-full-process .task-attempt {
@@ -101,15 +100,6 @@
   font-size: 11px;
 }
 .workflow-task-inspector-empty p {
-  font-size: 11px;
-}
-.workflow-task-quick-preview > header > span:first-child {
-  font-size: 10px;
-}
-.workflow-task-quick-preview > header > strong {
-  font-size: 13px;
-}
-.workflow-task-quick-preview .workflow-task-copy p {
   font-size: 11px;
 }
 @media (max-width: 900px) {

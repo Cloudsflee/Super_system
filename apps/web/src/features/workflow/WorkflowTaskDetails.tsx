@@ -52,9 +52,7 @@ export function WorkflowTaskInspector({
   pinned,
   canReplay,
   scrollPositions,
-  onTogglePin,
-  onPointerEnter,
-  onPointerLeave
+  onTogglePin
 }: {
   model?: WorkflowTaskViewModel;
   projectId: string;
@@ -62,8 +60,6 @@ export function WorkflowTaskInspector({
   canReplay: boolean;
   scrollPositions: MutableRefObject<Map<string, number>>;
   onTogglePin: () => void;
-  onPointerEnter: () => void;
-  onPointerLeave: () => void;
 }) {
   const asideRef = useRef<HTMLElement>(null);
   const titleId = model ? `${model.detailsId}-inspector-title` : 'workflow-task-inspector-empty-title';
@@ -82,9 +78,6 @@ export function WorkflowTaskInspector({
       {...(model ? taskAssistScopeAttributes(model) : {})}
       aria-labelledby={titleId}
       data-detail-task-id={model?.id || ''}
-      onPointerEnter={onPointerEnter}
-      onPointerLeave={onPointerLeave}
-      onFocusCapture={onPointerEnter}
     >
       {!model ? (
         <div className="workflow-task-inspector-empty">

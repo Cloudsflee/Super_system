@@ -92,7 +92,7 @@ export async function assertWorkflowProcessSemantics(page, output, viewport) {
     viewport.width <= 600 ? 6 : 8,
     'Task card gap must match the density grid'
   );
-  await assertWorkflowTopologyPreview(page, output, viewport, masterDetail);
+  await assertWorkflowTopologyInteraction(page, output, viewport, masterDetail);
   const locked = page.locator('.workflow-task-enter.locked:disabled'),
     open = page.locator('a.workflow-task-enter').first();
   assert.ok((await locked.count()) >= 1, 'blocked Tasks must expose disabled lock actions');
@@ -188,7 +188,7 @@ export async function assertWorkflowProcessSemantics(page, output, viewport) {
   );
 }
 
-async function assertWorkflowTopologyPreview(page, output, viewport, masterDetail) {
+async function assertWorkflowTopologyInteraction(page, output, viewport, masterDetail) {
   const edges = page.locator('.workflow-topology-edge');
   assert.equal(await edges.count(), 2, 'the fixture DAG must render both dependency edges');
   const paths = await edges.evaluateAll((items) => items.map((item) => item.getAttribute('d') || ''));
@@ -201,7 +201,7 @@ async function assertWorkflowTopologyPreview(page, output, viewport, masterDetai
   );
   await assertTopologyAnchors(page);
   if (viewport.width > 700) {
-    await assertFinePointerWorkflowPreview(page, output, viewport, masterDetail, edges, paths);
+    await assertFinePointerWorkflowFocus(page, output, viewport, masterDetail, edges, paths);
   } else {
     await page
       .locator('[data-task-id="task-collect-evidence"]')
@@ -210,7 +210,7 @@ async function assertWorkflowTopologyPreview(page, output, viewport, masterDetai
     assert.equal(
       await page.locator('.workflow-task-quick-preview').count(),
       0,
-      'touch pointers must not open hover previews'
+      'touch pointers must not open Task details'
     );
     assert.equal(
       await page.locator('.workflow-process-task.topology-active').count(),
@@ -223,30 +223,43 @@ async function assertWorkflowTopologyPreview(page, output, viewport, masterDetai
       .locator('.workflow-task-summary')
       .evaluateAll((items) => items.map((item) => item.getBoundingClientRect().height)),
     rowHeights,
-    'Task previews must not resize summary rows'
+    'Task hover and focus must not resize summary rows'
   );
 }
 
-async function assertFinePointerWorkflowPreview(page, output, viewport, masterDetail, edges, paths) {
-  await page.locator('[data-task-id="task-collect-evidence"]').hover();
+async function assertFinePointerWorkflowFocus(page, output, viewport, masterDetail, edges, paths) {
+  const detailTaskBefore = masterDetail
+    ? await page.locator('.workflow-task-inspector').getAttribute('data-detail-task-id')
+    : null;
+  const inlineDetailsBefore = await page
+    .locator('.workflow-task-details')
+    .evaluateAll((items) => items.map((item) => item.id));
+  if (masterDetail)
+    assert.equal(detailTaskBefore, 'task-collect-evidence', 'the fixture must start with Collect selected');
+  await page.locator('[data-task-id="task-verify-build"]').hover();
   assert.equal(
-    await page.locator('[data-task-id="task-collect-evidence"].topology-active').count(),
+    await page.locator('[data-task-id="task-verify-build"].topology-active').count(),
     1,
     'hovered Task must be active'
   );
   assert.equal(
     await page
       .locator(
-        '[data-task-id="task-verify-build"].topology-downstream,[data-task-id="task-review-notes"].topology-downstream'
+        '[data-task-id="task-collect-evidence"].topology-upstream,[data-task-id="task-review-notes"].topology-unrelated'
       )
       .count(),
     2,
-    'all downstream Tasks must highlight'
+    'the hovered Task must distinguish its upstream and unrelated Tasks'
+  );
+  assert.equal(
+    await page.locator('.workflow-topology-edge.upstream').count(),
+    1,
+    'the upstream dependency path must highlight'
   );
   assert.equal(
     await page.locator('.workflow-topology-edge.downstream').count(),
-    2,
-    'downstream dependency paths must highlight together'
+    0,
+    'the fixture has no downstream edge from Verify'
   );
   assert.deepEqual(
     await edges.evaluateAll((items) => items.map((item) => item.getAttribute('d') || '')),
@@ -254,44 +267,21 @@ async function assertFinePointerWorkflowPreview(page, output, viewport, masterDe
     'hover must not move dependency paths'
   );
   await page.waitForTimeout(280);
-  const preview = masterDetail
-    ? page.locator('.workflow-task-inspector')
-    : page.locator('.workflow-task-quick-preview');
-  await preview.waitFor();
-  const command = masterDetail
-    ? preview.getByLabel('命令行：node src/cli.mjs collect --date 2026-07-23')
-    : preview.locator('.workflow-code-bubble code');
-  assert.equal(
-    (await command.textContent())?.trim(),
-    'node src/cli.mjs collect --date 2026-07-23',
-    'Task preview must expose the extracted CLI'
-  );
-  assert.equal(
-    await preview.locator('.workflow-task-overview').count(),
-    1,
-    'Task preview must expose all four metrics'
-  );
-  if (masterDetail) {
-    const objective = await preview.locator('.workflow-context-summary .primary dd').textContent();
-    assert.match(objective || '', /收集可追溯发布证据。/, 'the detail panel must retain the Chinese objective');
-    assert.doesNotMatch(
-      objective || '',
-      /Preserve source provenance and immutable hashes/,
-      'a bilingual objective must not repeat its English translation'
-    );
-  }
+  assert.equal(await page.locator('.workflow-task-quick-preview').count(), 0, 'hover must not open a Task preview');
   if (masterDetail)
     assert.equal(
-      await page.locator('.workflow-task-quick-preview,.workflow-task-details').count(),
-      0,
-      'master-detail must not duplicate Task details'
+      await page.locator('.workflow-task-inspector').getAttribute('data-detail-task-id'),
+      detailTaskBefore,
+      'hover must not replace the selected detail Task'
     );
-  else await assertPreviewBounds(page);
-  await preview.screenshot({ path: path.join(output, `workflow-preview-${viewport.name}.png`) });
+  assert.deepEqual(
+    await page.locator('.workflow-task-details').evaluateAll((items) => items.map((item) => item.id)),
+    inlineDetailsBefore,
+    'hover must not expand or replace inline Task details'
+  );
   await page.screenshot({ path: path.join(output, `workflow-topology-${viewport.name}.png`) });
   await page.locator('.workflow-process-summary').hover();
   await page.waitForTimeout(120);
-  if (!masterDetail) assert.equal(await preview.count(), 0, 'quick preview must close after pointer leave');
 }
 
 export async function setWorkflowDensity(page, viewport, density) {
@@ -505,42 +495,6 @@ async function assertTopologyAnchors(page) {
   assert.ok(
     errors.every((error) => error <= 1),
     `topology endpoints must stay within 1px of DOM anchors: ${JSON.stringify(errors)}`
-  );
-}
-
-async function assertPreviewBounds(page) {
-  const result = await page.locator('.workflow-task-quick-preview').evaluate((element) => {
-    const preview = element.getBoundingClientRect(),
-      dock = document.querySelector('.command-dock')?.getBoundingClientRect();
-    const anchor = document
-      .querySelector(`[data-task-id="${CSS.escape(element.dataset.taskPreview)}"] [data-preview-anchor]`)
-      ?.getBoundingClientRect();
-    return {
-      preview: preview.toJSON(),
-      anchor: anchor?.toJSON(),
-      dock: dock?.toJSON(),
-      width: innerWidth,
-      height: innerHeight,
-      pointerEvents: getComputedStyle(element).pointerEvents
-    };
-  });
-  assert.ok(
-    result.preview.left >= 8 &&
-      result.preview.top >= 8 &&
-      result.preview.right <= result.width - 8 &&
-      result.preview.bottom <= result.height - 8,
-    `quick preview crossed its 8px viewport boundary: ${JSON.stringify(result)}`
-  );
-  assert.equal(result.pointerEvents, 'none', 'quick preview must remain read-only');
-  assert.ok(
-    !result.dock || result.preview.bottom <= result.dock.top - 8,
-    `quick preview must not cover the Command Dock: ${JSON.stringify(result)}`
-  );
-  assert.ok(result.anchor, `quick preview must retain its Task content anchor: ${JSON.stringify(result)}`);
-  const expectedLeft = Math.min(Math.max(result.anchor.left, 8), Math.max(8, result.width - result.preview.width - 8));
-  assert.ok(
-    Math.abs(result.preview.left - expectedLeft) <= 1,
-    `quick preview must align with the Task content axis unless viewport-clamped: ${JSON.stringify(result)}`
   );
 }
 

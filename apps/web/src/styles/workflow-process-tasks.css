@@ -293,14 +293,12 @@
 .workflow-schedule-indicator[data-tooltip]:focus-visible::after {
   transform: translate(0, 0);
 }
-.workflow-process-task .task-status,
-.workflow-task-quick-preview .task-status {
+.workflow-process-task .task-status {
   display: inline-flex;
   align-items: center;
   gap: 4px;
 }
-.workflow-process-task .task-status::before,
-.workflow-task-quick-preview .task-status::before {
+.workflow-process-task .task-status::before {
   width: 5px;
   height: 5px;
   flex: 0 0 5px;
@@ -381,76 +379,6 @@
 }
 .workflow-task-context .workflow-task-support {
   margin-top: 5px;
-}
-
-.workflow-task-quick-preview {
-  position: fixed;
-  z-index: 61;
-  box-sizing: border-box;
-  width: min(380px, calc(100vw - 16px));
-  padding: 11px 12px 12px;
-  overflow: hidden;
-  border: 1px solid #4a565c;
-  border-radius: 6px;
-  background: #1c2225;
-  color: var(--workspace-text);
-  box-shadow: 0 8px 22px rgba(0, 0, 0, 0.26);
-  pointer-events: none;
-}
-.workflow-task-quick-preview > header {
-  min-width: 0;
-  display: grid;
-  grid-template-columns: auto minmax(0, 1fr) auto;
-  align-items: center;
-  gap: 7px;
-}
-.workflow-task-quick-preview > header > span:first-child {
-  color: #8fd2b4;
-  font-size: 8px;
-}
-.workflow-task-quick-preview > header > strong {
-  overflow: hidden;
-  font-size: 11px;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.workflow-task-quick-preview .workflow-task-objective {
-  margin-top: 8px;
-}
-.workflow-task-quick-preview .workflow-task-copy {
-  gap: 2px;
-}
-.workflow-task-quick-preview .workflow-task-copy p {
-  font-size: 9px;
-  white-space: normal;
-}
-.workflow-task-quick-preview .workflow-task-support {
-  margin-top: 7px;
-  display: grid;
-  gap: 6px;
-}
-.workflow-task-quick-preview .workflow-task-highlights {
-  flex-wrap: nowrap;
-}
-.workflow-task-quick-preview .workflow-code-bubble {
-  flex: 1;
-  flex-direction: row;
-  justify-content: flex-start;
-  direction: ltr;
-  text-align: left;
-}
-.workflow-task-quick-preview .workflow-code-bubble code {
-  width: 0;
-  display: block;
-  flex: 1 1 auto;
-  direction: ltr;
-  text-align: left;
-}
-.workflow-task-quick-preview .workflow-task-overview {
-  width: 100%;
-}
-.workflow-task-quick-preview .workflow-task-attention {
-  margin-top: 7px;
 }
 
 @media (max-width: 900px) {

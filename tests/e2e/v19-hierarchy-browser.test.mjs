@@ -36,7 +36,8 @@ const LONG_TASK_GOAL =
   '\nCLI: `node src/cli.mjs collect --date 2026-07-23`\n每天 23:50 Asia/Shanghai';
 let browser,
   server,
-  serverLog = '';
+  serverLog = '',
+  primaryFailure;
 
 process.env.AIWS_HOME = home;
 process.env.NODE_ENV = 'test';
@@ -96,6 +97,9 @@ try {
   }
 
   console.log(`V1.9 hierarchy and scoped Assist browser tests passed; screenshots: ${output}`);
+} catch (error) {
+  primaryFailure = error;
+  throw error;
 } finally {
   await browser?.close();
   if (server && server.exitCode == null) server.kill();
@@ -105,7 +109,12 @@ try {
       new Promise((resolve) => setTimeout(resolve, 3000))
     ]);
   if (server && server.exitCode == null) server.kill('SIGKILL');
-  fs.rmSync(root, { recursive: true, force: true, maxRetries: 5, retryDelay: 150 });
+  try {
+    fs.rmSync(root, { recursive: true, force: true, maxRetries: 5, retryDelay: 150 });
+  } catch (error) {
+    if (!primaryFailure) throw error;
+    console.error(`fixture cleanup failed after test failure: ${error.code || error.message}`);
+  }
 }
 
 async function verifyHierarchyJourney(page, fixture, viewport) {
@@ -332,90 +341,96 @@ async function openAndVerifyWorkflowProcess(page, fixture, viewport) {
 }
 
 async function seedHierarchyProject() {
-  const stateApi = await import('../../apps/api/src/state.mjs');
+  const stateApi = await import('../../apps/api/src/state.mjs?v22');
   const { activateDraftInState, createDraftProjectRecords } = await import('../../apps/api/src/project-lifecycle.mjs');
+  const { applyWorkflowOutcomeProtocols } = await import('../../apps/api/src/workflow-outcome-definition.mjs');
   const { makeSession, resolveScope } = await import('../../apps/api/src/assist-v3-domain.mjs');
   await stateApi.ensureRuntime();
-  const actor = stateApi.owner(await stateApi.readState());
-  let fixture;
-  await stateApi.mutate((state) => {
-    const created = createDraftProjectRecords(
-      {
-        title: 'Outcome delivery studio',
-        goal: 'Deliver independently accepted release outcomes',
-        mode: 'brainstorm',
-        answers: { goal: 'Deliver independently accepted release outcomes' }
-      },
-      actor
-    );
-    created.project.managed_workspace_state = 'ready';
-    state.projects.push(created.project);
-    state.workspaces.push(created.workspace);
-    state.project_intakes.push(created.intake);
-    state.project_briefs.push(created.brief);
-    state.workflow_drafts.push(created.workflowDraft);
-    state.assist_sessions.push(created.session);
-    const activated = activateDraftInState(state, created.project, created.brief, hierarchy(), actor.id);
-    activated.workflow.planning_quality = 'verified';
-    const workstream = activated.nodes.find((item) => item.id === 'ws-release-evidence');
-    const task = activated.nodes.find((item) => item.id === 'task-collect-evidence');
-    const siblingTask = activated.nodes.find((item) => item.id === 'task-verify-build');
-    const currentNodes = activated.nodes.map((item) => ({
-      ...item,
-      dependency_ids: (item.dependencies || []).map((entry) => entry.node_id)
-    }));
-    const candidateNodes = currentNodes.map((item) =>
-      item.id === task.id ? { ...item, title: 'Collect release evidence with provenance' } : item
-    );
-    state.workflow_generations.push({
-      id: 'wfg-browser-replan',
-      project_id: created.project.id,
-      workflow_id: activated.workflow.id,
-      mode: 'replan',
-      status: 'completed',
-      phase: 'completed',
-      result_mode: 'replan_diff',
-      candidate: { nodes: candidateNodes, confidence: 0.88 },
-      diff: {
-        workflow_id: activated.workflow.id,
-        from_revision: activated.workflow.workflow_revision,
-        current_nodes: currentNodes,
-        candidate_nodes: candidateNodes
-      },
-      created_at: new Date().toISOString(),
-      updated_at: new Date().toISOString()
-    });
-    created.session.title = 'Project-only thread';
-    const scopeSessions = [
-      ['workflow', activated.workflow.id, 'Workflow-only thread'],
-      ['workstream', workstream.id, 'Workstream-only thread'],
-      ['task', task.id, 'Task-only thread'],
-      ['task', siblingTask.id, 'Sibling-task-only thread']
-    ];
-    for (const [scopeType, scopeId, title] of scopeSessions) {
-      const scope = resolveScope(state, created.project, scopeType, scopeId);
-      state.assist_sessions.push(
-        makeSession({
-          actor,
-          project: created.project,
-          scope,
-          title,
-          viewContext: { route: `/projects/${created.project.id}/workflow` }
-        })
+  try {
+    const actor = stateApi.owner(await stateApi.readState());
+    let fixture;
+    await stateApi.mutate((state) => {
+      const created = createDraftProjectRecords(
+        {
+          title: 'Outcome delivery studio',
+          goal: 'Deliver independently accepted release outcomes',
+          mode: 'brainstorm',
+          answers: { goal: 'Deliver independently accepted release outcomes' }
+        },
+        actor
       );
-    }
-    fixture = {
-      projectId: created.project.id,
-      projectTitle: created.project.title,
-      workflowId: activated.workflow.id,
-      workflowTitle: activated.workflow.title,
-      workstreamId: workstream.id,
-      workstreamTitle: workstream.title,
-      taskId: task.id,
-      taskGoal: LONG_TASK_GOAL
-    };
-  });
-  return fixture;
+      created.project.managed_workspace_state = 'ready';
+      state.projects.push(created.project);
+      state.workspaces.push(created.workspace);
+      state.project_intakes.push(created.intake);
+      state.project_briefs.push(created.brief);
+      state.workflow_drafts.push(created.workflowDraft);
+      state.assist_sessions.push(created.session);
+      const activated = activateDraftInState(state, created.project, created.brief, hierarchy(), actor.id);
+      applyWorkflowOutcomeProtocols(activated.workflow, activated.nodes);
+      activated.workflow.planning_quality = 'verified';
+      const workstream = activated.nodes.find((item) => item.id === 'ws-release-evidence');
+      const task = activated.nodes.find((item) => item.id === 'task-collect-evidence');
+      const siblingTask = activated.nodes.find((item) => item.id === 'task-verify-build');
+      const currentNodes = activated.nodes.map((item) => ({
+        ...item,
+        dependency_ids: (item.dependencies || []).map((entry) => entry.node_id)
+      }));
+      const candidateNodes = currentNodes.map((item) =>
+        item.id === task.id ? { ...item, title: 'Collect release evidence with provenance' } : item
+      );
+      state.workflow_generations.push({
+        id: 'wfg-browser-replan',
+        project_id: created.project.id,
+        workflow_id: activated.workflow.id,
+        mode: 'replan',
+        status: 'completed',
+        phase: 'completed',
+        result_mode: 'replan_diff',
+        candidate: { nodes: candidateNodes, confidence: 0.88 },
+        diff: {
+          workflow_id: activated.workflow.id,
+          from_revision: activated.workflow.workflow_revision,
+          current_nodes: currentNodes,
+          candidate_nodes: candidateNodes
+        },
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString()
+      });
+      created.session.title = 'Project-only thread';
+      const scopeSessions = [
+        ['workflow', activated.workflow.id, 'Workflow-only thread'],
+        ['workstream', workstream.id, 'Workstream-only thread'],
+        ['task', task.id, 'Task-only thread'],
+        ['task', siblingTask.id, 'Sibling-task-only thread']
+      ];
+      for (const [scopeType, scopeId, title] of scopeSessions) {
+        const scope = resolveScope(state, created.project, scopeType, scopeId);
+        state.assist_sessions.push(
+          makeSession({
+            actor,
+            project: created.project,
+            scope,
+            title,
+            viewContext: { route: `/projects/${created.project.id}/workflow` }
+          })
+        );
+      }
+      fixture = {
+        projectId: created.project.id,
+        projectTitle: created.project.title,
+        workflowId: activated.workflow.id,
+        workflowTitle: activated.workflow.title,
+        workstreamId: workstream.id,
+        workstreamTitle: workstream.title,
+        taskId: task.id,
+        taskGoal: LONG_TASK_GOAL
+      };
+    });
+    return fixture;
+  } finally {
+    await stateApi.checkpointAndCloseState();
+  }
 }
 
 function hierarchy() {

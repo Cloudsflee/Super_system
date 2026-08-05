@@ -37,7 +37,7 @@ export function WorkflowFullProcess({
     [bundle, execution, workflow]
   );
   const { layout, width } = useWorkflowProcessLayout(containerRef);
-  const selection = useWorkflowTaskSelection(process.tasks, layout, workflow.id);
+  const selection = useWorkflowTaskSelection(process.tasks, workflow.id);
   const displayedTask = process.tasks.find((item) => item.id === selection.displayedTaskId);
   const software = /software|code/i.test(workflow.project_classification || '');
   const canReplay = (bundle.membership?.role || bundle.project.current_user_role) !== 'viewer';
@@ -127,10 +127,6 @@ export function WorkflowFullProcess({
                   canReplay={canReplay}
                   pinnedTaskId={selection.pinnedTaskId}
                   displayedTaskId={selection.displayedTaskId}
-                  transientTaskId={selection.transientTaskId}
-                  transientAnchor={selection.transientAnchor}
-                  beginTransient={selection.beginTransient}
-                  restoreSelection={selection.restoreSelection}
                   setPin={selection.setPin}
                   togglePin={selection.togglePin}
                 />
@@ -149,8 +145,6 @@ export function WorkflowFullProcess({
             onTogglePin={() => {
               if (displayedTask) selection.togglePin(displayedTask.id);
             }}
-            onPointerEnter={selection.cancelRestore}
-            onPointerLeave={() => selection.restoreSelection(100)}
           />
         )}
       </div>
@@ -166,10 +160,6 @@ function TaskDag({
   canReplay,
   pinnedTaskId,
   displayedTaskId,
-  transientTaskId,
-  transientAnchor,
-  beginTransient,
-  restoreSelection,
   setPin,
   togglePin
 }: {
@@ -180,15 +170,11 @@ function TaskDag({
   canReplay: boolean;
   pinnedTaskId: string | null;
   displayedTaskId: string | null;
-  transientTaskId: string | null;
-  transientAnchor: HTMLElement | null;
-  beginTransient: (taskId: string, anchor: HTMLElement, delay: number) => void;
-  restoreSelection: (delay: number) => void;
   setPin: (taskId: string) => void;
   togglePin: (taskId: string) => void;
 }) {
   const [directFocusTaskId, setDirectFocusTaskId] = useState<string | null>(null);
-  const selectedTopologyTaskId = layout === 'master-detail' ? transientTaskId || pinnedTaskId : null;
+  const selectedTopologyTaskId = layout === 'master-detail' ? pinnedTaskId : null;
   const activeTaskId = directFocusTaskId || selectedTopologyTaskId;
   const nodes = useMemo(() => tasks.map((item) => item.task), [tasks]);
   const topology = useMemo(() => buildTaskTopologyFocus(nodes, activeTaskId), [activeTaskId, nodes]);
@@ -208,19 +194,8 @@ function TaskDag({
           expanded={layout === 'accordion' && pinnedTaskId === model.id}
           pinned={pinnedTaskId === model.id}
           selected={layout === 'master-detail' ? displayedTaskId === model.id : pinnedTaskId === model.id}
-          previewAnchor={transientTaskId === model.id ? transientAnchor : null}
           topologyRelation={topology.relations.get(model.id) || 'neutral'}
           onTopologyFocus={setDirectFocusTaskId}
-          onPreviewPointerEnter={(taskId, anchor) => {
-            if (layout === 'accordion' && pinnedTaskId === taskId) return;
-            beginTransient(taskId, anchor, 250);
-          }}
-          onPreviewPointerLeave={() => restoreSelection(100)}
-          onPreviewFocus={(taskId, anchor) => {
-            if (layout === 'accordion' && pinnedTaskId === taskId) return;
-            beginTransient(taskId, anchor, 0);
-          }}
-          onPreviewBlur={() => restoreSelection(0)}
           onSetPin={() => setPin(model.id)}
           onTogglePin={() => togglePin(model.id)}
         />
