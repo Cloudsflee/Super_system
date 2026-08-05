@@ -48,6 +48,8 @@ test('release rehearsal and promotion use dynamic acceptance ports and targeted 
   assert.doesNotMatch(rehearsal, /4320/);
   assert.match(promotion, /aiws-v22-app-1/);
   assert.match(promotion, /aiws-data-v22/);
+  assert.ok(promotion.includes("const Helper = '$($Helper)';"));
+  assert.ok(promotion.includes('docker cp $BackupArchive "${Helper}:/tmp/data.tar.gz"'));
   assert.doesNotMatch(`${rehearsal}\n${promotion}`, /\b(?:system|image|volume|builder) prune\b/);
 });
 
