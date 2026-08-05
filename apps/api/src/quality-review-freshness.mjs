@@ -16,18 +16,28 @@ export function qualityReviewInputHash(execution, assetVersionIds, rubric, exclu
 export function qualityReviewRunIsCurrent(state, execution, run) {
   if (!execution || !Array.isArray(run.input_asset_version_ids)) return false;
   const current = currentQualityReviewAssetVersionIds(state, execution.id),
-    workflow = (state.workflows || []).find((item) => item.id === execution.workflow_id),
     expectedPolicyHash = run.workflow_policy_rubric_hash ?? run.rubric_hash,
-    executionPolicyHash =
-      execution.quality_review_policy_snapshot?.rubric_hash ??
-      execution.quality_review_rubric_hash ??
-      workflowQualityReviewPolicyHash(workflow);
+    executionPolicyHash = executionQualityReviewPolicyHash(execution);
   return (
     protocolHash(current) === protocolHash([...run.input_asset_version_ids].sort()) &&
     qualityReviewInputHash(execution, run.input_asset_version_ids, run.rubric, run.excluded_assets || []) ===
       run.input_snapshot_hash &&
     expectedPolicyHash === executionPolicyHash
   );
+}
+
+export function qualityReviewPolicyForExecution(execution) {
+  const snapshot = execution?.quality_review_policy_snapshot;
+  return snapshot && typeof snapshot === 'object' ? snapshot : null;
+}
+
+export function executionQualityReviewPolicyHash(execution) {
+  const snapshot = qualityReviewPolicyForExecution(execution);
+  if (snapshot) {
+    if (!snapshot.enabled || !snapshot.rubric) return null;
+    return snapshot.rubric_hash || qualityReviewRubricHash(snapshot.rubric);
+  }
+  return execution?.quality_review_rubric_hash || null;
 }
 
 export function workflowQualityReviewPolicyHash(workflow) {

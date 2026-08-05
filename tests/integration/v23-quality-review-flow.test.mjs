@@ -63,7 +63,21 @@ try {
       workflow_id: workflow.id,
       workflow_revision: 1,
       input_hash: 'a'.repeat(64),
-      status: 'completed'
+      status: 'completed',
+      quality_review_rubric_hash: qualityReviewRubricHash(rubric),
+      quality_review_policy_snapshot: {
+        enabled: true,
+        mandatory: true,
+        strategy: 'v23_default',
+        rubric,
+        rubric_hash: qualityReviewRubricHash(rubric)
+      }
+    },
+    historicalExecution = {
+      ...execution,
+      id: 'qrr-flow-historical-execution',
+      quality_review_rubric_hash: null,
+      quality_review_policy_snapshot: null
     },
     taskExecution = pendingTaskExecution(
       execution,
@@ -86,7 +100,7 @@ try {
   state.projects.push(project);
   state.workflows.push(workflow);
   state.workflow_nodes.push(task);
-  state.workflow_executions.push(execution);
+  state.workflow_executions.push(execution, historicalExecution);
   state.task_executions.push(taskExecution);
   state.assets.push(asset);
   const version = await createImmutableAssetVersion(state, {
@@ -101,6 +115,11 @@ try {
   });
   taskExecution.output_bindings.push({ key: 'main', version_id: version.id });
   await writeState(state);
+
+  await assert.rejects(
+    () => startQualityReview(historicalExecution.id, { operation_key: 'historical-policy-change' }, owner.id),
+    (error) => error.status === 409 && error.payload?.error === 'quality_review_not_enabled'
+  );
 
   setQualityReviewModelRunner(() => ({
     schema_version: 'aiws.quality_review_advice.v1',

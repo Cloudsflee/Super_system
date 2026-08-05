@@ -1,5 +1,6 @@
 import { currentTaskExecutions } from './workflow-execution-domain.mjs';
 import { normalizeQualityReviewRubric, qualityReviewRubricHash } from './quality-review-rubric.mjs';
+import { qualityReviewPolicyForExecution } from './quality-review-freshness.mjs';
 import { safeCode } from './quality-review-service-state.mjs';
 
 export function qualityReviewRubricChecks(state, execution, run) {
@@ -23,9 +24,7 @@ export function qualityReviewRubricChecks(state, execution, run) {
 }
 
 function rubricCheckContext(state, execution, run, rubric) {
-  const workflow = state.workflows.find((item) => item.id === execution.workflow_id),
-    frozenPolicy = execution.quality_review_policy_snapshot,
-    policy = frozenPolicy && typeof frozenPolicy === 'object' ? frozenPolicy : workflow?.quality_review_policy,
+  const policy = qualityReviewPolicyForExecution(execution),
     policyRubric = policy?.enabled ? normalizeQualityReviewRubric(policy.rubric) : null,
     thresholdRequirement = (state.outcome_requirements || []).find(isSemanticHumanRequirement(execution.id)),
     expectedOutcomeThreshold = thresholdRequirement

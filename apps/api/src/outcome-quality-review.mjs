@@ -1,8 +1,5 @@
 import { normalizeQualityReviewRubric, qualityReviewRubricHash } from './quality-review-rubric.mjs';
-import {
-  qualityReviewRunIsCurrent,
-  workflowQualityReviewPolicyHash as workflowPolicyHash
-} from './quality-review-freshness.mjs';
+import { executionQualityReviewPolicyHash, qualityReviewRunIsCurrent } from './quality-review-freshness.mjs';
 
 export function qualityReviewMaterialization(workflow) {
   const rubric = workflow?.quality_review_policy?.enabled
@@ -44,7 +41,7 @@ export function isQualityReviewHumanScore(requirement) {
 
 export function latestQualityReviewDecisions(state, execution, requirement) {
   if (requirement.evaluator_config?.quality_review !== true) return legacyHumanReviews(state, execution);
-  const policyHash = workflowQualityReviewPolicyHash(state, execution);
+  const policyHash = executionQualityReviewPolicyHash(execution);
   const runs = (state.quality_review_runs || [])
     .filter((run) => isCurrentCompletedRun(state, execution, run, policyHash))
     .sort((left, right) => completionTime(right).localeCompare(completionTime(left)));
@@ -134,14 +131,6 @@ function qualityReviewDecisionMatchesRubric(review, run) {
 
 function reviewRunInputIsCurrent(state, execution, run) {
   return run.stale !== true && qualityReviewRunIsCurrent(state, execution, run);
-}
-
-function workflowQualityReviewPolicyHash(state, execution) {
-  return (
-    execution.quality_review_policy_snapshot?.rubric_hash ??
-    execution.quality_review_rubric_hash ??
-    workflowPolicyHash((state.workflows || []).find((item) => item.id === execution.workflow_id))
-  );
 }
 
 function completionTime(run) {

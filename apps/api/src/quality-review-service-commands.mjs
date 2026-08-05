@@ -15,6 +15,7 @@ import {
 } from './quality-review-service-state.mjs';
 import { requireWorkflowExecution } from './workflow-execution-domain.mjs';
 import { markQualityReviewRunsStale } from './state-migration-v23.mjs';
+import { executionQualityReviewPolicyHash } from './quality-review-freshness.mjs';
 
 const ACTIVE_STATUSES = new Set(['queued', 'preparing', 'checking', 'reviewing', 'awaiting_human']);
 
@@ -90,11 +91,7 @@ function buildQueuedRun(state, workflow, execution, preparation, launch, operati
       out_of_scope_assets: preparation.out_of_scope_assets.map((item) => item.asset_version_id),
       rubric: structuredClone(rubric),
       rubric_hash: qualityReviewRubricHash(rubric),
-      workflow_policy_rubric_hash:
-        execution.quality_review_policy_snapshot?.rubric_hash ??
-        execution.quality_review_rubric_hash ??
-        preparation.rubric_hash ??
-        workflowQualityReviewPolicyHash(workflow),
+      workflow_policy_rubric_hash: executionQualityReviewPolicyHash(execution) ?? preparation.rubric_hash,
       threshold: rubric.threshold,
       reviewer_profile_snapshot: preparation.reviewer_readiness?.profile || reviewerReadiness(state, workflow).profile,
       report_id: null,
@@ -170,12 +167,6 @@ function assertRubricFields(rubric, policyRubric) {
     actual = rubric.dimensions.map((item) => item.id).sort();
   if (expected.length !== actual.length || expected.some((item, index) => item !== actual[index]))
     throw new HttpError(409, { error: 'quality_review_rubric_dimensions_read_only' });
-}
-
-function workflowQualityReviewPolicyHash(workflow) {
-  return workflow?.quality_review_policy?.enabled && workflow.quality_review_policy.rubric
-    ? qualityReviewRubricHash(workflow.quality_review_policy.rubric)
-    : null;
 }
 
 export function decideQualityReviewInState(state, runId, input = {}, actorId = null) {

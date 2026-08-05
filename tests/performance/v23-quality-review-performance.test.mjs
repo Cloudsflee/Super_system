@@ -122,7 +122,15 @@ async function seedFixture() {
       workflow_id: workflow.id,
       workflow_revision: 1,
       input_hash: 'a'.repeat(64),
-      status: 'completed'
+      status: 'completed',
+      quality_review_rubric_hash: qualityReviewRubricHash(rubric),
+      quality_review_policy_snapshot: {
+        enabled: true,
+        mandatory: true,
+        strategy: 'v23_default',
+        rubric,
+        rubric_hash: qualityReviewRubricHash(rubric)
+      }
     },
     taskExecution = pendingTaskExecution(
       execution,

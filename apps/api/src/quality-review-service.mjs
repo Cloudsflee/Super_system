@@ -11,6 +11,7 @@ import {
   qualityReviewRubricHash
 } from './quality-review-rubric.mjs';
 import { QUALITY_REVIEW_LIMITS } from './quality-review-parser.mjs';
+import { qualityReviewPolicyForExecution } from './quality-review-freshness.mjs';
 import { requireWorkflowExecution } from './workflow-execution-domain.mjs';
 import { createQualityReviewRun, decideQualityReviewInState } from './quality-review-service-commands.mjs';
 import { collectCandidateAssets, publicCandidateAsset } from './quality-review-service-assets.mjs';
@@ -51,8 +52,7 @@ export async function prepareQualityReview(workflowExecutionId) {
 export function prepareQualityReviewInState(state, workflowExecutionId) {
   const execution = requireWorkflowExecution(state, workflowExecutionId),
     workflow = state.workflows.find((item) => item.id === execution.workflow_id),
-    frozenPolicy = execution.quality_review_policy_snapshot,
-    effectivePolicy = frozenPolicy && typeof frozenPolicy === 'object' ? frozenPolicy : workflow?.quality_review_policy,
+    effectivePolicy = qualityReviewPolicyForExecution(execution),
     policy = effectivePolicy?.enabled
       ? normalizeQualityReviewRubric(effectivePolicy.rubric)
       : { ...defaultQualityReviewRubric(), enabled: false, mandatory: false },

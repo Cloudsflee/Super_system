@@ -63,7 +63,15 @@ const state = {
       workflow_id: 'workflow-quality-fixture',
       project_id: 'project-quality-fixture',
       workflow_revision: 1,
-      status: 'completed'
+      status: 'completed',
+      quality_review_rubric_hash: qualityReviewRubricHash(rubric),
+      quality_review_policy_snapshot: {
+        enabled: true,
+        mandatory: true,
+        strategy: 'v23_default',
+        rubric,
+        rubric_hash: qualityReviewRubricHash(rubric)
+      }
     }
   ],
   task_executions: [],
@@ -80,6 +88,13 @@ assert.equal(prepared.mandatory, true);
 assert.equal(prepared.threshold, 80);
 assert.deepEqual(prepared.default_included_asset_version_ids, []);
 assert.equal(prepared.reviewer_readiness.ready, false);
+
+const historicalState = structuredClone(state);
+historicalState.workflow_executions[0].quality_review_rubric_hash = null;
+historicalState.workflow_executions[0].quality_review_policy_snapshot = null;
+const historicalPreparation = prepareQualityReviewInState(historicalState, 'execution-quality-fixture');
+assert.equal(historicalPreparation.enabled, false);
+assert.equal(historicalPreparation.mandatory, false);
 
 const advice = {
   schema_version: QUALITY_REVIEW_ADVICE_SCHEMA,
@@ -210,13 +225,21 @@ function assertReviewerSnapshotIsFrozen() {
 }
 
 function assertRetryFreshnessUsesSupersedes(reviewRubric) {
-  const execution = {
+  const rubricHash = qualityReviewRubricHash(reviewRubric),
+    execution = {
       id: 'quality-execution-retry',
       workflow_id: 'quality-workflow-retry',
       workflow_revision: 1,
-      input_hash: 'b'.repeat(64)
+      input_hash: 'b'.repeat(64),
+      quality_review_rubric_hash: rubricHash,
+      quality_review_policy_snapshot: {
+        enabled: true,
+        mandatory: true,
+        strategy: 'v23_default',
+        rubric: reviewRubric,
+        rubric_hash: rubricHash
+      }
     },
-    rubricHash = qualityReviewRubricHash(reviewRubric),
     run = {
       workflow_execution_id: execution.id,
       input_asset_version_ids: ['version-current-retry'],

@@ -70,6 +70,16 @@ assert.match(hashA, /^[a-f0-9]{64}$/);
 assert.notEqual(hashA, hashB);
 assert.equal(hashA, state.quality_review_runs[0].input_snapshot_hash);
 
+const futurePolicyState = fixtureState(),
+  futureRubric = structuredClone(rubric);
+futureRubric.dimensions[0].instructions = '仅作用于未来执行的新说明。';
+futurePolicyState.workflows[0].quality_review_policy.rubric = futureRubric;
+futurePolicyState.workflows[0].quality_review_policy.rubric_hash = qualityReviewRubricHash(futureRubric);
+futurePolicyState.workflows[0].workflow_revision = 2;
+futurePolicyState.workflows[0].version = 2;
+assert.equal(markQualityReviewRunsStale(futurePolicyState, '2026-08-01T00:00:30.000Z').changed, false);
+assert.equal(futurePolicyState.quality_review_runs[0].stale, false);
+
 const staleState = structuredClone(state);
 staleState.quality_review_runs.push({
   ...structuredClone(staleState.quality_review_runs[0]),
@@ -114,6 +124,14 @@ assert.throws(
   (error) => error.status === 409 && error.payload?.error === 'quality_review_policy_execution_active'
 );
 policyState.workflow_executions[0].status = 'completed';
+policyState.workflow_executions[0].quality_review_rubric_hash = null;
+policyState.workflow_executions[0].quality_review_policy_snapshot = {
+  enabled: false,
+  mandatory: false,
+  strategy: 'legacy_opt_in',
+  rubric: null,
+  rubric_hash: null
+};
 const policyResult = updateQualityReviewPolicyInState(
   policyState,
   'workflow-1',
@@ -123,6 +141,7 @@ const policyResult = updateQualityReviewPolicyInState(
 assert.equal(policyResult.revision, 2);
 assert.equal(policyResult.quality_review_policy.mandatory, true);
 assert.equal(policyResult.quality_review_policy.rubric.threshold, 80);
+assert.equal(policyState.workflow_executions[0].quality_review_policy_snapshot.enabled, false);
 
 const outcomeState = fixtureState(),
   completedRun = outcomeState.quality_review_runs[0];
