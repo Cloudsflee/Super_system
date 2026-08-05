@@ -46,6 +46,11 @@ function run(label, command, args, allowed = [0]) {
   return record;
 }
 
+function powershellExecutable() {
+  const probe = spawnSync('pwsh', ['-NoProfile', '-Command', 'exit 0'], { windowsHide: true });
+  return probe.status === 0 ? 'pwsh' : 'powershell.exe';
+}
+
 function git(args) {
   return execFileSync('git', args, { cwd: root, encoding: 'utf8', windowsHide: true }).trim();
 }
@@ -274,7 +279,7 @@ function restoreVolume(volume, image, archive, label) {
 function writeRollback(composeFile, project) {
   const target = path.join(releaseRoot, `rollback-rehearsal-${stamp}.ps1`);
   const content = `param(\n  [string]$ProjectName = '${project}',\n  [string]$ComposeFile = '${composeFile.replaceAll("'", "''")}'\n)\n$ErrorActionPreference = 'Stop'\nif ($ProjectName -notmatch '^aiws-v3-rehearsal-[0-9]+-(source|restore)$') { throw 'invalid_rehearsal_project' }\n& docker compose -p $ProjectName -f $ComposeFile down --remove-orphans\nif ($LASTEXITCODE -ne 0) { throw "rollback_failed:$LASTEXITCODE" }\n& docker ps -a --filter "label=com.docker.compose.project=$ProjectName" --format '{{.Names}}'\nif ($LASTEXITCODE -ne 0) { throw "rollback_verify_failed:$LASTEXITCODE" }\n`;
-  fs.writeFileSync(target, content, { flag: 'wx', mode: 0o444 });
+  fs.writeFileSync(target, `\uFEFF${content}`, { flag: 'wx', mode: 0o444 });
   fs.chmodSync(target, 0o444);
   return target;
 }
@@ -374,7 +379,7 @@ try {
   if (!restoredProjects.some((project) => project.id === sourceJourney.project_id)) throw new Error('restored_project_missing');
   const restoreJourney = await journey(`http://127.0.0.1:${restorePort}`, 'restore', 1);
   const rollback = writeRollback(restoreCompose, restoreProject);
-  const powershell = process.platform === 'win32' ? 'powershell.exe' : 'pwsh';
+  const powershell = powershellExecutable();
   const rollbackExecution = run('execute-rehearsal-rollback', powershell, ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', rollback]);
   restoreUp = false;
   const remaining = run('verify-rehearsal-rollback', 'docker', ['ps', '-a', '--filter', `label=com.docker.compose.project=${restoreProject}`, '--format', '{{.Names}}']);

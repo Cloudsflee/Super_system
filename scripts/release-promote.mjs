@@ -41,6 +41,11 @@ function run(label, command, args, allowed = [0], env = commandEnv) {
   return record;
 }
 
+function powershellExecutable() {
+  const probe = spawnSync('pwsh', ['-NoProfile', '-Command', 'exit 0'], { windowsHide: true });
+  return probe.status === 0 ? 'pwsh' : 'powershell.exe';
+}
+
 function git(args) {
   return execFileSync('git', args, { cwd: root, encoding: 'utf8', windowsHide: true }).trim();
 }
@@ -201,7 +206,7 @@ function writeRollback({ previous, helperImage, archive, archiveSha256, secretFi
   fs.writeFileSync(rollbackCompose, standaloneCompose({ app: previous.app, broker: previous.broker, runner: previous.runner, volume: 'aiws-data-v3', secretFile }), { flag: 'wx', mode: 0o444 });
   const script = path.join(releaseRoot, `rollback-production-${stamp}.ps1`);
   const content = `param([switch]$ValidateOnly)\n$ErrorActionPreference = 'Stop'\n$BackupArchive = '${archive.replaceAll("'", "''")}'\n$ExpectedHash = '${archiveSha256}'\n$ComposeFile = '${rollbackCompose.replaceAll("'", "''")}'\n$DataVolume = 'aiws-data-v3'\n$FailedVolume = 'aiws-data-v3-failed-${stamp}'\n$HelperImage = '${helperImage}'\n$Images = @('${previous.app}','${previous.broker}','${previous.runner}')\nforeach ($Image in $Images) { & docker image inspect $Image *> $null; if ($LASTEXITCODE -ne 0) { throw "rollback_image_missing:$Image" } }\n& docker volume inspect $DataVolume *> $null\nif ($LASTEXITCODE -ne 0) { throw 'rollback_volume_missing' }\nif (-not (Test-Path -LiteralPath $BackupArchive)) { throw 'rollback_archive_missing' }\nif ((Get-FileHash -LiteralPath $BackupArchive -Algorithm SHA256).Hash.ToLowerInvariant() -ne $ExpectedHash) { throw 'rollback_archive_hash_mismatch' }\nif (-not (Test-Path -LiteralPath $ComposeFile)) { throw 'rollback_compose_missing' }\nif ($ValidateOnly) { Write-Output 'rollback validation passed'; exit 0 }\n& docker rm -f aiws-v3-app-1 aiws-v3-runner-broker-1 2>$null\n& docker volume create --label aiws.owner=aiws-v3 --label aiws.role=failed-preservation $FailedVolume *> $null\nif ($LASTEXITCODE -ne 0) { throw 'rollback_failed_volume_create' }\n& docker run --rm --label aiws.owner=aiws-v3 --mount "type=volume,src=$DataVolume,dst=/source,readonly" --mount "type=volume,src=$FailedVolume,dst=/target" $HelperImage sh -c 'tar -C /source -cf - . | tar -C /target -xf -'\nif ($LASTEXITCODE -ne 0) { throw 'rollback_failed_volume_copy' }\n$Helper = 'aiws-v3-rollback-restore-${stamp}'\n& docker create --name $Helper --label aiws.owner=aiws-v3 --mount "type=volume,src=$DataVolume,dst=/target" $HelperImage sh -c 'find /target -mindepth 1 -maxdepth 1 -exec rm -rf -- {} + && tar -C /target -xzf /tmp/data.tar.gz' *> $null\nif ($LASTEXITCODE -ne 0) { throw 'rollback_restore_helper_create' }\ntry {\n  & docker cp $BackupArchive "${Helper}:/tmp/data.tar.gz"\n  if ($LASTEXITCODE -ne 0) { throw 'rollback_archive_copy' }\n  & docker start --attach $Helper\n  if ($LASTEXITCODE -ne 0) { throw 'rollback_archive_restore' }\n} finally { & docker rm -f $Helper *> $null }\n& docker compose -p aiws-v3 -f $ComposeFile up -d\nif ($LASTEXITCODE -ne 0) { throw 'rollback_compose_up' }\n$Ready = $false\nfor ($Index = 0; $Index -lt 120; $Index++) { try { $Response = Invoke-WebRequest -UseBasicParsing -Uri 'http://127.0.0.1:4317/readyz' -TimeoutSec 2; if ($Response.StatusCode -eq 200) { $Ready = $true; break } } catch {}; Start-Sleep -Milliseconds 250 }\nif (-not $Ready) { throw 'rollback_ready_timeout' }\nWrite-Output "rollback complete; failed volume preserved as $FailedVolume"\n`;
-  fs.writeFileSync(script, content, { flag: 'wx', mode: 0o444 });
+  fs.writeFileSync(script, `\uFEFF${content}`, { flag: 'wx', mode: 0o444 });
   fs.chmodSync(script, 0o444);
   return { script, compose: rollbackCompose };
 }
@@ -260,7 +265,7 @@ try {
   });
   const rollback = writeRollback({ previous, helperImage: byRole.app.image_id, archive: productionArchive, archiveSha256: sha256File(productionArchive), secretFile });
   rollbackScript = rollback.script;
-  const powershell = process.platform === 'win32' ? 'powershell.exe' : 'pwsh';
+  const powershell = powershellExecutable();
   const rollbackValidation = run('validate-production-rollback', powershell, ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', rollback.script, '-ValidateOnly']);
 
   run('remove-current-production', 'docker', ['compose', '-p', 'aiws-v3', '-f', path.join(root, 'compose.yml'), 'down', '--remove-orphans']);
@@ -334,7 +339,7 @@ try {
 } catch (error) {
   let rollback = null;
   if (switched && !promoted && rollbackScript) {
-    const powershell = process.platform === 'win32' ? 'powershell.exe' : 'pwsh';
+    const powershell = powershellExecutable();
     rollback = run('automatic-production-rollback', powershell, ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', rollbackScript], [0, 1]);
   } else if (oldStopped) {
     rollback = run('restart-previous-production', 'docker', ['start', 'aiws-v3-runner-broker-1', 'aiws-v3-app-1'], [0, 1]);
