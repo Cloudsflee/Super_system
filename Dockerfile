@@ -52,6 +52,7 @@ ARG CODEX_VERSION=0.144.0
 ARG ALPINE_FALLBACK_MIRROR=https://mirrors.aliyun.com/alpine
 RUN apk add --no-cache chromium freetype harfbuzz nss ttf-freefont || (sed -i "s#https://dl-cdn.alpinelinux.org/alpine#${ALPINE_FALLBACK_MIRROR}#g" /etc/apk/repositories && apk add --no-cache chromium freetype harfbuzz nss ttf-freefont)
 RUN npm install -g @openai/codex@${CODEX_VERSION} && npm cache clean --force
+RUN apk add --no-cache bash || (sed -i "s#https://dl-cdn.alpinelinux.org/alpine#${ALPINE_FALLBACK_MIRROR}#g" /etc/apk/repositories && apk add --no-cache bash)
 ARG AIWS_SOURCE_BASE_SHA
 ARG AIWS_SOURCE_HEAD_SHA
 ARG AIWS_SOURCE_TREE_SHA
