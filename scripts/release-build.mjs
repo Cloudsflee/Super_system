@@ -71,30 +71,33 @@ if (dirty) throw new Error('release_build_requires_clean_commit');
 const commit = git(['rev-parse', 'HEAD']);
 const tree = git(['rev-parse', 'HEAD^{tree}']);
 const shortCommit = git(['rev-parse', '--short=12', 'HEAD']);
+const releaseBase = process.env.AIWS_RELEASE_BASE || '6517a17';
+const baseCommit = git(['rev-parse', releaseBase]);
+execFileSync('git', ['merge-base', '--is-ancestor', baseCommit, commit], { cwd: root, windowsHide: true });
 const lockfileSha256 = sha256File(path.join(root, 'pnpm-lock.yaml'));
 const sourceSbom = path.join(root, 'sbom.spdx.json');
 const sourceSbomSha256 = sha256File(sourceSbom);
-const corepack = process.platform === 'win32' ? 'corepack.cmd' : 'corepack';
-const sourcePatch = path.join(releaseRoot, `aiws-${version}-${shortCommit}.patch`);
-fs.writeFileSync(sourcePatch, execFileSync('git', ['format-patch', '-1', '--stdout', '--binary'], {
+const pnpmCli = path.join(path.dirname(process.execPath), 'node_modules', 'corepack', 'dist', 'pnpm.js');
+const sourcePatch = path.join(releaseRoot, `aiws-${version}-${shortCommit}-${stamp}.patch`);
+fs.writeFileSync(sourcePatch, execFileSync('git', ['diff', '--binary', baseCommit, commit], {
   cwd: root, windowsHide: true, maxBuffer: 64 * 1024 * 1024
 }), { flag: 'wx', mode: 0o444 });
 fs.chmodSync(sourcePatch, 0o444);
 const sourcePatchSha256 = sha256File(sourcePatch);
 
 try {
-  const gate = await runLogged('gate', corepack, ['pnpm', 'verify']);
+  const gate = await runLogged('gate', process.execPath, [pnpmCli, 'verify']);
   const patchRollbackCheck = await runLogged('patch-rollback-check', 'git', ['apply', '--check', '--reverse', sourcePatch]);
   if (git(['status', '--porcelain=v1', '--untracked-files=all'])) throw new Error('gate_modified_source_tree');
   const gateFingerprint = sha256Json({
-    schema: 'aiws.gate_fingerprint.v1', commit, tree, lockfile_sha256: lockfileSha256,
+    schema: 'aiws.gate_fingerprint.v1', base_commit: baseCommit, commit, tree, lockfile_sha256: lockfileSha256,
     command: gate.command, output_sha256: gate.output_sha256, exit_status: gate.exit_status,
     source_patch_sha256: sourcePatchSha256, patch_rollback_check_sha256: patchRollbackCheck.output_sha256
   });
   const gateReceipt = writeReceipt(`v3-gate-${stamp}.json`, {
     schema_version: 'aiws.v3.gate_receipt.v1',
     status: 'passed',
-    source: { commit, tree, clean: true, lockfile_sha256: lockfileSha256 },
+    source: { base_commit: baseCommit, commit, tree, clean: true, lockfile_sha256: lockfileSha256 },
     gate_fingerprint: gateFingerprint,
     verification: gate,
     source_patch: {
