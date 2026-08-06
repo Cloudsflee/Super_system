@@ -19,6 +19,8 @@ node_modules
 docker/.env
 docker/secrets/*
 !docker/secrets/broker_hmac.example
+!docker/secrets/codex_api_key.example
+!docker/secrets/github_token.example
 *.log
 *.tar
 *.tar.gz
@@ -29,3 +31,13 @@ temp
 探索
 探索-1
 愿景与范围文档模板
+当前项目毕业设计任务书
+任务书
+doc
+**/*.doc
+**/*.docx
+**/*.pdf
+**/*.png
+**/*.jpg
+**/*.jpeg
+**/*.gif

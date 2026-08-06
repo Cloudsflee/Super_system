@@ -26,7 +26,7 @@ async function readBody(req) {
   }
   if (!chunks.length) return {};
   const raw = Buffer.concat(chunks).toString('utf8');
-  try { return JSON.parse(raw); } catch { throw new AppError('invalid_json', 'request body must be JSON'); }
+  try { return JSON.parse(raw); } catch { throw new AppError('invalid_json', 'request body must be JSON', { status: 400 }); }
 }
 
 function errorPayload(error, requestId) {
@@ -47,7 +47,7 @@ function responseForCommand(result) {
 }
 
 export function createHttpHandler({ domain, registry, db, config, performanceProbe = () => ({}), webRoot }) {
-  async function executeCommand(command, body, req, requestPath, explicitKey = null) {
+  async function executeCommand(command, body, req, requestPath, explicitKey = null, responseStatus = 201) {
     const key = explicitKey || req.headers['idempotency-key'];
     if (!key || String(key).length > 200) throw new AppError('idempotency_required', 'Idempotency-Key header is required');
     const scope = `${req.method}:${requestPath}`;
@@ -69,8 +69,8 @@ export function createHttpHandler({ domain, registry, db, config, performancePro
     try {
       const result = await registry.execute(command, body, { actor: req.headers['x-aiws-actor'] || 'local-user' });
       const responseBody = responseForCommand(result);
-      await db.run('UPDATE idempotency_keys SET response_status=?,response_json=? WHERE scope=? AND key=?', [201, JSON.stringify(responseBody), scope, String(key)]);
-      return { status: 201, body: responseBody };
+      await db.run('UPDATE idempotency_keys SET response_status=?,response_json=? WHERE scope=? AND key=?', [responseStatus, JSON.stringify(responseBody), scope, String(key)]);
+      return { status: responseStatus, body: responseBody };
     } catch (error) {
       await db.run('DELETE FROM idempotency_keys WHERE scope=? AND key=?', [scope, String(key)]).catch(() => undefined);
       throw error;
@@ -122,6 +122,18 @@ export function createHttpHandler({ domain, registry, db, config, performancePro
       if (!urlPath.startsWith(config.apiPrefix)) return serveWeb(req, res, webRoot, urlPath);
       if (urlPath === `${config.apiPrefix}/mcp` && req.method === 'POST') return send(res, 200, await mcp(req, requestId));
       if (urlPath === `${config.apiPrefix}/system/capabilities` && req.method === 'GET') return send(res, 200, await domain.capabilities());
+      if (urlPath === `${config.apiPrefix}/integrations/codex/probe` && req.method === 'POST') {
+        const probeBody = await readBody(req);
+        const key = req.headers['idempotency-key'];
+        const probe = await executeCommand('integration.codex.probe', probeBody, req, urlPath, key, 200);
+        return send(res, probe.status, probe.body);
+      }
+      if (urlPath === `${config.apiPrefix}/integrations/github/probe` && req.method === 'POST') {
+        const probeBody = await readBody(req);
+        const key = req.headers['idempotency-key'];
+        const probe = await executeCommand('integration.github.probe', probeBody, req, urlPath, key, 200);
+        return send(res, probe.status, probe.body);
+      }
       if (urlPath === `${config.apiPrefix}/system/performance` && req.method === 'GET') return send(res, 200, performanceProbe());
       if (urlPath === `${config.apiPrefix}/system` && req.method === 'GET') return send(res, 200, { version: config.version, api_prefix: config.apiPrefix, data_volume: config.dataVolume });
 
@@ -154,9 +166,11 @@ export function createHttpHandler({ domain, registry, db, config, performancePro
       } else if (parts[0] === 'executions' && parts.length >= 2) {
         const executionId = parts[1];
         if (req.method === 'GET' && parts[2] === 'events') return streamEvents(req, res, domain, executionId);
-        if (req.method === 'GET' && parts.length === 2) result = await domain.getExecution(executionId);
+        if (req.method === 'GET' && parts[2] === 'diff') result = await domain.executionDiff(executionId);
+        else if (req.method === 'GET' && parts.length === 2) result = await domain.getExecution(executionId);
         else if (req.method === 'POST' && parts[2] === 'start') ({ status, body: result } = await command('execution.start', { ...body, execution_id: executionId }));
         else if (req.method === 'POST' && parts[2] === 'cancel') ({ status, body: result } = await command('execution.cancel', { ...body, execution_id: executionId }));
+        else if (req.method === 'POST' && parts[2] === 'evidence' && parts[3] === 'resolve') ({ status, body: result } = await command('execution.evidence.resolve', { ...body, execution_id: executionId }));
         else throw new AppError('not_found', 'route not found');
       } else if (parts[0] === 'reviews') {
         if (req.method === 'GET') result = await domain.listReviews(parsed.searchParams.get('project_id') || null);
@@ -172,6 +186,7 @@ export function createHttpHandler({ domain, registry, db, config, performancePro
         if (req.method === 'GET') result = await domain.listDeliveries(parsed.searchParams.get('project_id') || null);
         else if (req.method === 'POST' && parts.length === 1) ({ status, body: result } = await command('delivery.create'));
         else if (req.method === 'POST' && parts[2] === 'merge') ({ status, body: result } = await command('delivery.merge', { ...body, delivery_id: parts[1] }));
+        else if (req.method === 'POST' && parts[2] === 'retry') ({ status, body: result } = await command('delivery.retry', { ...body, delivery_id: parts[1] }));
         else throw new AppError('not_found', 'route not found');
       } else if (parts[0] === 'audit' && req.method === 'GET') result = await domain.listAudit(parsed.searchParams.get('limit'));
       else throw new AppError('not_found', 'route not found');
@@ -227,7 +242,15 @@ function serveWeb(req, res, webRoot, urlPath) {
 function serveAsset(res, asset, config) {
   const file = path.resolve(config.casRoot, asset.cas_hash.slice(0, 2), asset.cas_hash);
   const root = path.resolve(config.casRoot);
-  if (!file.startsWith(`${root}${path.sep}`) || !fs.existsSync(file)) throw new AppError('not_found', 'asset content not found');
+  let safe = file.startsWith(`${root}${path.sep}`) && fs.existsSync(file);
+  if (safe) {
+    try {
+      const realRoot = fs.realpathSync(root);
+      const realFile = fs.realpathSync(file);
+      safe = !fs.lstatSync(file).isSymbolicLink() && (realFile === realRoot || realFile.startsWith(`${realRoot}${path.sep}`));
+    } catch { safe = false; }
+  }
+  if (!safe) throw new AppError('not_found', 'asset content not found');
   const filename = String(asset.name).replace(/[\r\n"\\/]/g, '_');
   res.writeHead(200, {
     'content-type': asset.media_type || 'application/octet-stream',

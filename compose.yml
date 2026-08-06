@@ -26,10 +26,15 @@ services:
       AIWS_BROKER_URL: http://runner-broker:4321
       AIWS_BROKER_MODE: http
       AIWS_RUNNER_DIGEST: ${AIWS_RUNNER_DIGEST:?set AIWS_RUNNER_DIGEST to the built Runner sha256 digest}
-      AIWS_CODEX_AVAILABLE: ${AIWS_CODEX_AVAILABLE:-0}
-      AIWS_GITHUB_AVAILABLE: ${AIWS_GITHUB_AVAILABLE:-0}
+      AIWS_CODEX_SECRET_FILE: /run/secrets/codex_api_key
+      AIWS_CODEX_MODEL: ${AIWS_CODEX_MODEL:-gpt-5.5}
+      AIWS_GITHUB_SECRET_FILE: /run/secrets/github_token
+      AIWS_GITHUB_REPOSITORY: ${AIWS_GITHUB_REPOSITORY:-}
+      AIWS_GITHUB_FIXTURE_SHA: ${AIWS_GITHUB_FIXTURE_SHA:-}
     secrets:
       - broker_hmac
+      - codex_api_key
+      - github_token
     volumes:
       - type: volume
         source: aiws-data-v3
@@ -65,6 +70,7 @@ services:
       AIWS_BROKER_EXECUTOR: docker
       AIWS_BROKER_DATA_ROOT: /var/lib/aiws
       AIWS_DOCKER_DATA_VOLUME: aiws-data-v3
+      AIWS_CODEX_MODEL: ${AIWS_CODEX_MODEL:-gpt-5.5}
       AIWS_RUNNER_DIGEST: ${AIWS_RUNNER_DIGEST:?set AIWS_RUNNER_DIGEST to the built Runner sha256 digest}
       AIWS_RUNNER_IMAGE: ${AIWS_RUNNER_IMAGE:?set AIWS_RUNNER_IMAGE to a digest-pinned Runner reference}
     secrets:
@@ -90,6 +96,9 @@ networks:
     internal: true
   edge:
     internal: false
+  model:
+    name: aiws-runner-model
+    internal: false
 
 volumes:
   aiws-data-v3:
@@ -102,3 +111,7 @@ volumes:
 secrets:
   broker_hmac:
     file: ${AIWS_BROKER_SECRET_FILE:-./docker/secrets/broker_hmac}
+  codex_api_key:
+    file: ${AIWS_CODEX_SECRET_FILE:-./docker/secrets/codex_api_key}
+  github_token:
+    file: ${AIWS_GITHUB_SECRET_FILE:-./docker/secrets/github_token}

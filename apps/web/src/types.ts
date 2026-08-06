@@ -1,4 +1,5 @@
-export type CapabilityStatus = 'available' | 'unavailable' | 'invalid';
+export type CapabilityStatus = 'unknown' | 'available' | 'unavailable';
+export type ModelSuggestionStatus = 'available' | 'unavailable' | 'invalid';
 
 export interface Project {
   id: string;
@@ -54,7 +55,13 @@ export interface TaskAttempt {
   status: 'pending' | 'ready' | 'running' | 'awaiting_human' | 'completed' | 'failed' | 'cancelled';
   mode: string;
   error_code: string;
-  output: Record<string, unknown>;
+  output: {
+    outcome?: 'completed' | 'failed' | 'cancelled';
+    summary?: string;
+    retryable?: boolean;
+    checks?: Array<{ id: string; passed: boolean; exit_code: number | null; stdout_sha256: string | null }>;
+    evidence_assets?: Array<{ id: string; cas_hash: string }>;
+  };
 }
 
 export interface Execution {
@@ -68,6 +75,10 @@ export interface Execution {
   status: 'queued' | 'running' | 'awaiting_human' | 'completed' | 'failed' | 'cancelled';
   revision: number;
   tasks: TaskAttempt[];
+  attempts: TaskAttempt[];
+  diff?: { files?: string[]; diff_sha256?: string; byte_size?: number; asset_version_id?: string } | null;
+  evidence?: Array<{ id: string; asset_version_id: string; target_type: string; target_id: string; name: string; cas_hash: string }>;
+  runner?: { status: string; baseline_sha?: string | null; worktree_status?: string; auto_correct_count?: number; last_error_code?: string | null; human_instruction?: string | null; evidence_status?: string; evidence_error_code?: string | null; diff_bytes?: number; latest_attempt?: { id: string; task_id: string; attempt_no: number; status: string } | null };
   created_at: string;
 }
 
@@ -101,10 +112,26 @@ export interface Review {
   project_id: string;
   execution_id?: string;
   kind: string;
-  model_status: CapabilityStatus;
+  model_status: ModelSuggestionStatus;
   suggestion: Record<string, unknown>;
   decision?: { decision: 'approved' | 'rejected' | 'changes_requested'; note: string } | null;
   created_at: string;
+}
+
+export interface Delivery {
+  id: string;
+  project_id: string;
+  execution_id?: string;
+  status: 'draft' | 'ready' | 'submitted' | 'merged' | 'blocked' | 'cancelled';
+  title: string;
+  external_ref: string;
+  revision: number;
+  remote_status?: string;
+  blocked_reason?: string | null;
+  pull_number?: number | null;
+  head_sha?: string | null;
+  merge_sha?: string | null;
+  branch?: string | null;
 }
 
 export interface AuditEvent {

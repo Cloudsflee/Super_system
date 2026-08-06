@@ -37,7 +37,11 @@ class MockBroker {
       if (!current || current.status === 'cancelled') return;
       current.status = 'completed';
       current.finished_at = new Date().toISOString();
-      current.result = { exit_code: 0, output_paths: spec.output_paths ?? [] };
+      current.result = {
+        outcome: 'completed', summary: 'deterministic runner completed', changed_files: [],
+        checks: [{ id: 'node_test', passed: true, exit_code: 0, stdout_sha256: null }, { id: 'git_diff_check', passed: true, exit_code: 0, stdout_sha256: null }],
+        output_paths: spec.output_paths ?? [], usage: {}
+      };
     }, 35);
     return { job_id: jobId, status: job.status };
   }
@@ -59,13 +63,13 @@ export class BrokerClient {
     this.mock = config.brokerMode === 'mock' ? new MockBroker(config.runnerDigest) : null;
   }
 
-  async request(method, requestPath, payload = undefined) {
+  async request(method, requestPath, payload = undefined, timeoutMs = 3000) {
     const body = payload === undefined ? '' : JSON.stringify(payload);
     const response = await fetch(`${this.config.brokerUrl}${requestPath}`, {
       method,
       headers: signedHeaders(this.config.brokerSecret, method, requestPath, body),
       body: body || undefined,
-      signal: AbortSignal.timeout(3000)
+      signal: AbortSignal.timeout(timeoutMs)
     }).catch((error) => {
       throw new AppError('broker_unavailable', 'runner broker is unavailable', { retryable: true, details: { cause: error.message } });
     });
@@ -81,11 +85,23 @@ export class BrokerClient {
   }
 
   probe() {
-    return this.mock ? this.mock.probe() : this.request('GET', '/internal/v1/probe');
+    return this.mock ? this.mock.probe() : this.request('GET', '/internal/v1/probe', undefined, 15_000);
+  }
+
+  codexProbe() {
+    if (this.mock) return Promise.resolve({ provider: 'codex', status: 'unavailable', error_code: 'deterministic_adapter' });
+    const credential = this.config.codexCredential
+      ? { ref: this.config.codexCredential.ref, profile: this.config.codexCredential.profile, auth: this.config.codexCredential.auth }
+      : null;
+    return this.request('POST', '/internal/v1/integrations/codex/probe', { model: this.config.codexModel, credential }, 120_000);
   }
 
   submit(spec) {
-    return this.mock ? this.mock.submit(spec) : this.request('POST', '/internal/v1/jobs', spec);
+    if (this.mock) return this.mock.submit(spec);
+    const credential = this.config.codexCredential
+      ? { ref: this.config.codexCredential.ref, profile: this.config.codexCredential.profile, auth: this.config.codexCredential.auth }
+      : null;
+    return this.request('POST', '/internal/v1/jobs', { spec, credential });
   }
 
   status(jobId) {

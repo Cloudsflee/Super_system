@@ -60,6 +60,26 @@
       "licenseConcluded": "NOASSERTION",
       "licenseDeclared": "ISC",
       "copyrightText": "NOASSERTION"
+    },
+    {
+      "name": "@openai/codex",
+      "SPDXID": "SPDXRef-Package-OpenAICodex",
+      "versionInfo": "0.146.1",
+      "downloadLocation": "https://registry.npmjs.org/@openai/codex",
+      "filesAnalyzed": false,
+      "licenseConcluded": "NOASSERTION",
+      "licenseDeclared": "Apache-2.0",
+      "copyrightText": "NOASSERTION"
+    },
+    {
+      "name": "@openai/codex",
+      "SPDXID": "SPDXRef-Package-OpenAICodexLinuxX64",
+      "versionInfo": "0.146.1-linux-x64",
+      "downloadLocation": "https://registry.npmjs.org/@openai/codex/-/codex-0.146.1-linux-x64.tgz",
+      "filesAnalyzed": false,
+      "licenseConcluded": "NOASSERTION",
+      "licenseDeclared": "Apache-2.0",
+      "copyrightText": "NOASSERTION"
     }
   ],
   "relationships": [
@@ -87,6 +107,16 @@
       "spdxElementId": "SPDXRef-Package-AIWS",
       "relationshipType": "DEPENDS_ON",
       "relatedSpdxElement": "SPDXRef-Package-LucideReact"
+    },
+    {
+      "spdxElementId": "SPDXRef-Package-AIWS",
+      "relationshipType": "DEPENDS_ON",
+      "relatedSpdxElement": "SPDXRef-Package-OpenAICodex"
+    },
+    {
+      "spdxElementId": "SPDXRef-Package-OpenAICodex",
+      "relationshipType": "DEPENDS_ON",
+      "relatedSpdxElement": "SPDXRef-Package-OpenAICodexLinuxX64"
     }
   ]
 }

@@ -42,6 +42,16 @@ CREATE TABLE IF NOT EXISTS repository_bindings (
   updated_at TEXT NOT NULL
 ) STRICT;
 
+CREATE TABLE IF NOT EXISTS repository_worktrees (
+  execution_id TEXT PRIMARY KEY REFERENCES executions(id) ON DELETE RESTRICT,
+  project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE RESTRICT,
+  baseline_sha TEXT NOT NULL CHECK(length(baseline_sha) = 40),
+  worktree_path TEXT NOT NULL,
+  mode TEXT NOT NULL CHECK(mode IN ('read','write')),
+  created_at TEXT NOT NULL,
+  removed_at TEXT
+) STRICT;
+
 CREATE TABLE IF NOT EXISTS workflow_revisions (
   project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE RESTRICT,
   revision INTEGER NOT NULL CHECK(revision > 0),
@@ -168,6 +178,17 @@ CREATE TABLE IF NOT EXISTS execution_inputs (
   PRIMARY KEY(execution_id, asset_version_id)
 ) STRICT;
 
+CREATE TABLE IF NOT EXISTS execution_diffs (
+  execution_id TEXT PRIMARY KEY REFERENCES executions(id) ON DELETE RESTRICT,
+  project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE RESTRICT,
+  baseline_sha TEXT NOT NULL CHECK(baseline_sha = '' OR length(baseline_sha) = 40),
+  diff TEXT NOT NULL DEFAULT '',
+  files_json TEXT NOT NULL DEFAULT '[]' CHECK(json_valid(files_json)),
+  diff_sha256 TEXT NOT NULL CHECK(length(diff_sha256) = 64),
+  asset_version_id TEXT REFERENCES asset_versions(id) ON DELETE RESTRICT,
+  created_at TEXT NOT NULL
+) STRICT;
+
 CREATE TABLE IF NOT EXISTS events (
   cursor INTEGER PRIMARY KEY AUTOINCREMENT,
   type TEXT NOT NULL,
@@ -229,6 +250,8 @@ CREATE INDEX IF NOT EXISTS idx_executions_project ON executions(project_id, crea
 CREATE INDEX IF NOT EXISTS idx_attempts_execution ON task_attempts(execution_id, task_id, attempt_no DESC);
 CREATE INDEX IF NOT EXISTS idx_events_execution ON events(execution_id, cursor);
 CREATE INDEX IF NOT EXISTS idx_audit_created ON audit_events(created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_evidence_target ON evidence_links(target_type, target_id, created_at);
+CREATE INDEX IF NOT EXISTS idx_worktrees_project ON repository_worktrees(project_id, created_at DESC);
 
 CREATE TRIGGER IF NOT EXISTS immutable_brief_revisions_update BEFORE UPDATE ON brief_revisions BEGIN SELECT RAISE(ABORT, 'immutable_record'); END;
 CREATE TRIGGER IF NOT EXISTS immutable_brief_revisions_delete BEFORE DELETE ON brief_revisions BEGIN SELECT RAISE(ABORT, 'immutable_record'); END;
@@ -242,6 +265,10 @@ CREATE TRIGGER IF NOT EXISTS immutable_review_decisions_update BEFORE UPDATE ON 
 CREATE TRIGGER IF NOT EXISTS immutable_review_decisions_delete BEFORE DELETE ON review_decisions BEGIN SELECT RAISE(ABORT, 'immutable_record'); END;
 CREATE TRIGGER IF NOT EXISTS immutable_asset_versions_update BEFORE UPDATE ON asset_versions BEGIN SELECT RAISE(ABORT, 'immutable_record'); END;
 CREATE TRIGGER IF NOT EXISTS immutable_asset_versions_delete BEFORE DELETE ON asset_versions BEGIN SELECT RAISE(ABORT, 'immutable_record'); END;
+CREATE TRIGGER IF NOT EXISTS immutable_execution_diffs_update BEFORE UPDATE ON execution_diffs BEGIN SELECT RAISE(ABORT, 'immutable_record'); END;
+CREATE TRIGGER IF NOT EXISTS immutable_execution_diffs_delete BEFORE DELETE ON execution_diffs BEGIN SELECT RAISE(ABORT, 'immutable_record'); END;
+CREATE TRIGGER IF NOT EXISTS immutable_evidence_links_update BEFORE UPDATE ON evidence_links BEGIN SELECT RAISE(ABORT, 'immutable_record'); END;
+CREATE TRIGGER IF NOT EXISTS immutable_evidence_links_delete BEFORE DELETE ON evidence_links BEGIN SELECT RAISE(ABORT, 'immutable_record'); END;
 CREATE TRIGGER IF NOT EXISTS immutable_events_update BEFORE UPDATE ON events BEGIN SELECT RAISE(ABORT, 'immutable_record'); END;
 CREATE TRIGGER IF NOT EXISTS immutable_events_delete BEFORE DELETE ON events BEGIN SELECT RAISE(ABORT, 'immutable_record'); END;
 `;
@@ -253,5 +280,7 @@ export const IMMUTABLE_TABLES = [
   'reviews',
   'review_decisions',
   'asset_versions',
+  'execution_diffs',
+  'evidence_links',
   'events'
 ];

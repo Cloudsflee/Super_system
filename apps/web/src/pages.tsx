@@ -1,13 +1,13 @@
 import { useCallback, useEffect, useMemo, useState, type FormEvent, type ReactNode } from 'react';
 import {
-  Activity, ArrowRight, Check, CircleAlert, ClipboardCheck, Code2, Download, FilePlus2,
-  GitBranch, GitPullRequest, Layers3, LoaderCircle, PackageCheck, Play, Plus, RefreshCw,
+  Activity, ArrowRight, Check, CircleAlert, ClipboardCheck, Code2, Download, ExternalLink, FilePlus2,
+  GitBranch, GitMerge, GitPullRequest, Layers3, LoaderCircle, PackageCheck, Play, Plus, RefreshCw,
   Save, Search, ShieldCheck, Square, Trash2, Upload, WandSparkles
 } from 'lucide-react';
 import { api, formatBytes, formatTime, mutate, shortHash } from './api';
 import type { PageKey } from './App';
 import type {
-  AssetVersion, AuditEvent, ContextPack, ContextSource, Execution, Project, Review, WorkflowTask
+  AssetVersion, AuditEvent, ContextPack, ContextSource, Delivery, Execution, Project, Review, WorkflowTask
 } from './types';
 
 export interface WorkspacePageProps {
@@ -22,8 +22,8 @@ export interface WorkspacePageProps {
 type Capabilities = {
   version: string;
   api: string;
-  codex: { status: string };
-  github: { status: string };
+  codex: { status: string; model?: string; checked_at?: string; error_code?: string | null };
+  github: { provider?: string; status: string; checked_at?: string | null; error_code?: string | null };
   broker: { status: string; runner_digest: string };
 };
 
@@ -59,9 +59,10 @@ function useProjectBundle(projectId: string) {
   return { bundle, loading, reload: load };
 }
 
-export function SetupPage({ navigate }: WorkspacePageProps) {
+export function SetupPage({ navigate, notify }: WorkspacePageProps) {
   const [capabilities, setCapabilities] = useState<Capabilities | null>(null);
   const [readiness, setReadiness] = useState<{ status: string; checks?: Record<string, unknown> } | null>(null);
+  const [probing, setProbing] = useState(false);
   const load = useCallback(async () => {
     const [caps, ready] = await Promise.all([
       api<Capabilities>('/api/v1/system/capabilities'),
@@ -71,9 +72,17 @@ export function SetupPage({ navigate }: WorkspacePageProps) {
     setReadiness(ready);
   }, []);
   useEffect(() => { void load(); }, [load]);
+  const probe = async () => {
+    setProbing(true);
+    try {
+      await Promise.all([mutate('/api/v1/integrations/codex/probe', {}), mutate('/api/v1/integrations/github/probe', {})]);
+      await load();
+    } catch (error) { notify(error instanceof Error ? error.message : 'Probe failed', 'error'); }
+    finally { setProbing(false); }
+  };
   return (
     <div className="page page-setup">
-      <div className="page-heading"><div><p className="eyebrow">Instance</p><h1>AIWS 3.0 workspace</h1></div><button className="icon-button" title="刷新" aria-label="刷新" onClick={() => void load()}><RefreshCw size={18} /></button></div>
+      <div className="page-heading"><div><p className="eyebrow">Instance</p><h1>AIWS 3.0 workspace</h1></div><button className="icon-button" title="刷新" aria-label="刷新" disabled={probing} onClick={() => void probe()}><RefreshCw className={probing ? 'spin' : ''} size={18} /></button></div>
       <section className="health-band">
         <div><span>Process</span><Status value={readiness?.status || 'checking'} /></div>
         <div><span>SQLite</span><Status value={readiness?.status === 'ready' ? 'ready' : 'checking'} /></div>
@@ -255,7 +264,7 @@ export function WorkflowPage({ projectId, navigate, notify }: WorkspacePageProps
   );
 }
 
-type ExecutionEvent = { cursor: number; type: string; task_id?: string; created_at: string };
+type ExecutionEvent = { cursor: number; type: string; task_id?: string; created_at: string; data?: { phase?: string; summary?: string; exit_code?: number | null } };
 
 export function ExecutionPage({ projectId, navigate, notify }: WorkspacePageProps) {
   const { bundle } = useProjectBundle(projectId);
@@ -264,17 +273,20 @@ export function ExecutionPage({ projectId, navigate, notify }: WorkspacePageProp
   const [selected, setSelected] = useState<Execution | null>(null);
   const [packs, setPacks] = useState<ContextPack[]>([]);
   const [reviews, setReviews] = useState<Review[]>([]);
+  const [deliveries, setDeliveries] = useState<Delivery[]>([]);
   const [events, setEvents] = useState<ExecutionEvent[]>([]);
   const [diff, setDiff] = useState('');
+  const [instruction, setInstruction] = useState('');
   const [busy, setBusy] = useState('');
   const load = useCallback(async () => {
     if (!projectId) return;
-    const [runs, contextPacks, reviewRows] = await Promise.all([
+    const [runs, contextPacks, reviewRows, deliveryRows] = await Promise.all([
       api<Execution[]>(`/api/v1/projects/${projectId}/executions`),
       api<ContextPack[]>(`/api/v1/projects/${projectId}/context/packs`),
-      api<Review[]>(`/api/v1/reviews?project_id=${projectId}`)
+      api<Review[]>(`/api/v1/reviews?project_id=${projectId}`),
+      api<Delivery[]>(`/api/v1/deliveries?project_id=${projectId}`)
     ]);
-    setExecutions(runs); setPacks(contextPacks); setReviews(reviewRows);
+    setExecutions(runs); setPacks(contextPacks); setReviews(reviewRows); setDeliveries(deliveryRows);
     setSelectedId((current) => current && runs.some((run) => run.id === current) ? current : runs[0]?.id || '');
   }, [projectId]);
   const loadSelected = useCallback(async () => {
@@ -297,13 +309,13 @@ export function ExecutionPage({ projectId, navigate, notify }: WorkspacePageProp
       setEvents((rows) => [...rows.filter((row) => row.cursor !== item.cursor), item].sort((a, b) => a.cursor - b.cursor).slice(-100));
       if (item.type.endsWith('completed') || item.type.endsWith('failed') || item.type.endsWith('human')) void loadSelected();
     };
-    ['execution.created', 'execution.started', 'execution.completed', 'execution.awaiting_human', 'task.ready', 'task.running', 'task.completed', 'task.failed', 'task.awaiting_human'].forEach((name) => stream.addEventListener(name, handler as EventListener));
+    ['execution.created', 'execution.started', 'execution.completed', 'execution.awaiting_human', 'task.ready', 'task.running', 'task.completed', 'task.failed', 'task.awaiting_human', 'runner.thread.started', 'runner.turn.started', 'runner.item.completed', 'runner.turn.completed', 'runner.unknown'].forEach((name) => stream.addEventListener(name, handler as EventListener));
     return () => stream.close();
   }, [loadSelected, selectedId]);
   useEffect(() => {
-    if (!projectId || selected?.status !== 'completed') { setDiff(''); return; }
-    void api<{ diff: string }>(`/api/v1/projects/${projectId}/diff`).then((result) => setDiff(result.diff)).catch(() => setDiff(''));
-  }, [projectId, selected?.status]);
+    if (!selectedId || selected?.runner?.evidence_status !== 'captured' || (selected.runner.diff_bytes || 0) > 256 * 1024) { setDiff(''); return; }
+    void api<{ diff: string }>(`/api/v1/executions/${selectedId}/diff`).then((result) => setDiff(result.diff)).catch(() => setDiff(''));
+  }, [selectedId, selected?.runner?.diff_bytes, selected?.runner?.evidence_status]);
   if (!projectId) return <EmptyProject navigate={navigate} />;
 
   const createExecution = async () => {
@@ -316,7 +328,7 @@ export function ExecutionPage({ projectId, navigate, notify }: WorkspacePageProp
   const startExecution = async () => {
     if (!selected) return;
     setBusy('start');
-    try { await mutate(`/api/v1/executions/${selected.id}/start`, { expected_revision: selected.revision, mode: selected.status === 'awaiting_human' ? 'human_retry' : 'initial' }); await loadSelected(); notify('Execution started'); }
+    try { await mutate(`/api/v1/executions/${selected.id}/start`, { expected_revision: selected.revision, mode: selected.status === 'awaiting_human' ? 'human_retry' : 'initial', ...(selected.status === 'awaiting_human' ? { instruction } : {}) }); setInstruction(''); await loadSelected(); notify('Execution started'); }
     catch (error) { notify(error instanceof Error ? error.message : 'Start failed', 'error'); } finally { setBusy(''); }
   };
   const createReview = async () => {
@@ -335,7 +347,7 @@ export function ExecutionPage({ projectId, navigate, notify }: WorkspacePageProp
   const createDelivery = async () => {
     if (!selected || !executionReview) return;
     setBusy('delivery');
-    try { await mutate('/api/v1/deliveries', { project_id: projectId, execution_id: selected.id, review_id: executionReview.id, title: `${bundle?.name || 'AIWS'} changes`, body: 'Generated from immutable execution evidence.' }); notify('Draft PR delivery created'); }
+    try { await mutate('/api/v1/deliveries', { project_id: projectId, execution_id: selected.id, review_id: executionReview.id, title: `${bundle?.name || 'AIWS'} changes`, body: 'Generated from immutable execution evidence.' }); await load(); notify('Draft PR delivery created'); }
     catch (error) { notify(error instanceof Error ? error.message : 'Delivery failed', 'error'); } finally { setBusy(''); }
   };
   const downloadDiff = () => {
@@ -343,6 +355,38 @@ export function ExecutionPage({ projectId, navigate, notify }: WorkspacePageProp
     const anchor = document.createElement('a');
     anchor.href = url; anchor.download = `${bundle?.name || 'workspace'}.diff`; anchor.click();
     URL.revokeObjectURL(url);
+  };
+  const resolveEvidence = async (action: 'retry_capture' | 'discard_worktree') => {
+    if (!selected) return;
+    setBusy(action);
+    try { await mutate(`/api/v1/executions/${selected.id}/evidence/resolve`, { action, expected_revision: selected.revision }); await loadSelected(); notify('Evidence state updated'); }
+    catch (error) { notify(error instanceof Error ? error.message : 'Evidence recovery failed', 'error'); } finally { setBusy(''); }
+  };
+  const delivery = deliveries.find((item) => item.execution_id === selectedId);
+  const mergeReview = reviews.find((review) => review.execution_id === selectedId && review.kind === 'delivery_merge');
+  const openMergeReview = async () => {
+    if (!selected) return;
+    setBusy('merge-review');
+    try { await mutate('/api/v1/reviews', { project_id: projectId, execution_id: selected.id, kind: 'delivery_merge', model_status: 'unavailable', suggestion: {} }); await load(); notify('Merge review opened'); }
+    catch (error) { notify(error instanceof Error ? error.message : 'Merge review failed', 'error'); } finally { setBusy(''); }
+  };
+  const approveMerge = async () => {
+    if (!mergeReview) return;
+    setBusy('merge-approve');
+    try { await mutate(`/api/v1/reviews/${mergeReview.id}/decisions`, { decision: 'approved', note: 'Verified independently' }); await load(); notify('Merge review approved'); }
+    catch (error) { notify(error instanceof Error ? error.message : 'Merge approval failed', 'error'); } finally { setBusy(''); }
+  };
+  const mergeDelivery = async () => {
+    if (!delivery || !mergeReview) return;
+    setBusy('merge');
+    try { await mutate(`/api/v1/deliveries/${delivery.id}/merge`, { review_id: mergeReview.id, expected_revision: delivery.revision }); await load(); notify('Delivery merge submitted'); }
+    catch (error) { notify(error instanceof Error ? error.message : 'Merge failed', 'error'); } finally { setBusy(''); }
+  };
+  const retryDelivery = async () => {
+    if (!delivery) return;
+    setBusy('delivery-retry');
+    try { await mutate(`/api/v1/deliveries/${delivery.id}/retry`, { expected_revision: delivery.revision, review_id: mergeReview?.id }); await load(); notify('Delivery retried'); }
+    catch (error) { notify(error instanceof Error ? error.message : 'Delivery retry failed', 'error'); } finally { setBusy(''); }
   };
   return (
     <div className="page execution-page">
@@ -352,24 +396,43 @@ export function ExecutionPage({ projectId, navigate, notify }: WorkspacePageProp
         {selected && <><Status value={selected.status} /><span className="pin"><span>Workflow</span>r{selected.workflow_revision}</span><span className="pin"><span>Brief</span>{shortHash(selected.brief_hash)}</span><span className="pin"><span>Repo</span>{shortHash(selected.repository_sha)}</span></>}
         <button className="button" disabled={!selected || !['queued', 'failed', 'awaiting_human'].includes(selected.status) || busy === 'start'} onClick={() => void startExecution()}>{selected?.status === 'running' ? <Square size={15} /> : <Play size={15} />}Run</button>
       </div>
+      {selected?.status === 'awaiting_human' && <section className="upload-band"><CircleAlert size={20} /><div><strong>Human retry</strong>{selected.runner?.human_instruction && <span>{selected.runner.human_instruction}</span>}</div><label><span>Retry instruction</span><input value={instruction} maxLength={2000} onChange={(event) => setInstruction(event.target.value)} /></label></section>}
+      {selected?.runner?.evidence_status === 'failed' && <section className="upload-band"><CircleAlert size={20} /><div><strong>Evidence capture failed</strong><span>{selected.runner.evidence_error_code}</span></div><button className="button" disabled={busy === 'retry_capture'} onClick={() => void resolveEvidence('retry_capture')}><RefreshCw size={16} />Retry capture</button><button className="button" disabled={busy === 'discard_worktree'} onClick={() => void resolveEvidence('discard_worktree')}><Trash2 size={16} />Discard worktree</button></section>}
       {!selected ? <div className="empty-state"><Activity size={28} /><h2>No execution</h2></div> : <div className="execution-grid">
         <section className="panel task-table-panel">
-          <SectionTitle title="Task attempts" meta={`${selected.tasks.length} tasks`} />
-          <div className="data-table task-table"><div className="table-head"><span>Task</span><span>Attempt</span><span>Mode</span><span>Status</span></div>{selected.tasks.map((task) => <div className="table-row" key={task.id}><span className="mono">{task.task_id}</span><span>#{task.attempt_no}</span><span>{task.mode.replaceAll('_', ' ')}</span><Status value={task.status} /></div>)}</div>
+          <SectionTitle title="Task attempts" meta={`${selected.attempts.length} attempts · ${selected.runner?.auto_correct_count || 0} corrections`} />
+          <div className="data-table task-table"><div className="table-head"><span>Task</span><span>Attempt</span><span>Mode</span><span>Status</span></div>{selected.attempts.map((task) => <div className="table-row" key={task.id}><span><span className="mono">{task.task_id}</span>{task.error_code && <small>{task.error_code}</small>}{task.output.summary && <small>{task.output.summary}</small>}</span><span>#{task.attempt_no}</span><span>{task.mode.replaceAll('_', ' ')}</span><Status value={task.status} /></div>)}</div>
         </section>
         <section className="panel event-panel">
           <SectionTitle title="Event stream" meta={events.length ? `Cursor ${events.at(-1)?.cursor}` : 'Connected'} />
-          <div className="event-list">{events.slice().reverse().map((event) => <div key={event.cursor}><span className="event-dot" /><span>{event.type}</span><small>{event.task_id || 'execution'}</small><time>{formatTime(event.created_at)}</time></div>)}{!events.length && <div className="list-empty">Waiting for events</div>}</div>
+          <div className="event-list">{events.slice().reverse().map((event) => <div key={event.cursor}><span className="event-dot" /><span>{event.type}</span><small>{event.data?.phase || event.data?.summary || event.task_id || 'execution'}</small><time>{formatTime(event.created_at)}</time></div>)}{!events.length && <div className="list-empty">Waiting for events</div>}</div>
+        </section>
+        <section className="panel checks-panel">
+          <SectionTitle title="Checks" meta={`${selected.tasks.flatMap((task) => task.output.checks || []).length} results`} />
+          <div className="event-list">{selected.tasks.flatMap((task) => (task.output.checks || []).map((check) => ({ ...check, task_id: task.task_id }))).map((check) => <div key={`${check.task_id}:${check.id}`}><span className="event-dot" /><span>{check.id}</span><small>{check.task_id} · exit {check.exit_code ?? 'n/a'}</small><Status value={check.passed ? 'passed' : 'failed'} /></div>)}{!selected.tasks.some((task) => task.output.checks?.length) && <div className="list-empty">No check results</div>}</div>
         </section>
         <section className="panel diff-panel">
-          <SectionTitle title="Git Diff" meta={selected.status === 'completed' ? 'Managed repository' : 'Pending'} action={<button className="icon-button" title="下载 diff" aria-label="下载 diff" disabled={!diff} onClick={downloadDiff}><Download size={17} /></button>} />
-          <pre>{diff || 'No repository changes captured for this execution.'}</pre>
+          <SectionTitle title="Git Diff" meta={selected.diff?.diff_sha256 ? `${formatBytes(selected.runner?.diff_bytes || 0)} · ${shortHash(selected.diff.diff_sha256)}` : 'Pending'} action={selected.diff?.asset_version_id ? <a className="icon-button" href={`/api/v1/assets/${selected.diff.asset_version_id}/content`} title="下载 diff" aria-label="下载 diff"><Download size={17} /></a> : <button className="icon-button" title="下载 diff" aria-label="下载 diff" disabled={!diff} onClick={downloadDiff}><Download size={17} /></button>} />
+          <pre>{diff || ((selected.runner?.diff_bytes || 0) > 256 * 1024 ? 'Diff is available from the download action.' : 'No repository changes captured for this execution.')}</pre>
+        </section>
+        <section className="panel evidence-panel">
+          <SectionTitle title="Evidence" meta={`${selected.evidence?.length || 0} links`} />
+          <div className="event-list">{(selected.evidence || []).map((item) => <div key={item.id}><span className="event-dot" /><a href={`/api/v1/assets/${item.asset_version_id}/content`}>{item.name}</a><small className="mono">{shortHash(item.cas_hash)}</small><Download size={14} /></div>)}{!selected.evidence?.length && <div className="list-empty">No evidence captured</div>}</div>
         </section>
         <section className="panel review-panel">
           <SectionTitle title="Human review" meta="Draft PR gate" />
           {!executionReview && <button className="button" disabled={selected.status !== 'completed' || busy === 'review'} onClick={() => void createReview()}><ClipboardCheck size={16} />Open review</button>}
           {executionReview && <div className="review-state"><div><Status value={executionReview.decision?.decision || 'awaiting_human'} /><span>Model suggestion: {executionReview.model_status}</span></div>{!executionReview.decision && <button className="button" onClick={() => void approve()} disabled={busy === 'approve'}><Check size={16} />Approve</button>}{executionReview.decision?.decision === 'approved' && <button className="button primary" onClick={() => void createDelivery()} disabled={busy === 'delivery'}><GitPullRequest size={16} />Create draft PR</button>}</div>}
         </section>
+        {delivery && <section className="panel review-panel">
+          <SectionTitle title="Delivery" meta={delivery.pull_number ? `PR #${delivery.pull_number}` : 'Remote state'} />
+          <div className="review-state"><div><Status value={delivery.remote_status || delivery.status} />{delivery.external_ref && <a href={delivery.external_ref} target="_blank" rel="noreferrer">Open pull request<ExternalLink size={14} /></a>}{delivery.blocked_reason && <span>{delivery.blocked_reason}</span>}</div>
+            {delivery.status === 'blocked' && <button className="button" disabled={busy === 'delivery-retry'} onClick={() => void retryDelivery()}><RefreshCw size={16} />Retry</button>}
+            {delivery.status === 'submitted' && !mergeReview && <button className="button" disabled={busy === 'merge-review'} onClick={() => void openMergeReview()}><ClipboardCheck size={16} />Open merge review</button>}
+            {mergeReview && !mergeReview.decision && <button className="button" disabled={busy === 'merge-approve'} onClick={() => void approveMerge()}><Check size={16} />Approve merge</button>}
+            {mergeReview?.decision?.decision === 'approved' && delivery.status !== 'merged' && <button className="button primary" disabled={busy === 'merge'} onClick={() => void mergeDelivery()}><GitMerge size={16} />Merge</button>}
+          </div>
+        </section>}
       </div>}
     </div>
   );
@@ -423,22 +486,32 @@ export function AuditPage({ notify }: WorkspacePageProps) {
   );
 }
 
-export function SettingsPage(_: WorkspacePageProps) {
+export function SettingsPage({ notify }: WorkspacePageProps) {
   const [capabilities, setCapabilities] = useState<Capabilities | null>(null);
-  useEffect(() => { void api<Capabilities>('/api/v1/system/capabilities').then(setCapabilities); }, []);
+  const [probing, setProbing] = useState(false);
+  const load = useCallback(() => api<Capabilities>('/api/v1/system/capabilities').then(setCapabilities), []);
+  useEffect(() => { void load(); }, [load]);
+  const probe = async () => {
+    setProbing(true);
+    try {
+      await Promise.all([mutate('/api/v1/integrations/codex/probe', {}), mutate('/api/v1/integrations/github/probe', {})]);
+      await load();
+    } catch (error) { notify(error instanceof Error ? error.message : 'Probe failed', 'error'); } finally { setProbing(false); }
+  };
   return (
     <div className="page settings-page">
       <div className="page-heading"><div><p className="eyebrow">Instance policy</p><h1>Settings</h1></div></div>
       <div className="settings-layout">
         <section className="panel">
-          <SectionTitle title="Runner security" meta="Fixed profile" />
+          <SectionTitle title="Runner security" meta="Fixed profile" action={<button className="icon-button" title="刷新 probe" aria-label="刷新 probe" disabled={probing} onClick={() => void probe()}><RefreshCw className={probing ? 'spin' : ''} size={17} /></button>} />
           <div className="security-summary"><ShieldCheck size={26} /><div><strong>Isolated broker</strong><span className="mono">{capabilities?.broker.runner_digest || 'probing'}</span></div><Status value={capabilities?.broker.status || 'checking'} /></div>
           <dl className="definition-list"><div><dt>CPU</dt><dd>2</dd></div><div><dt>Memory</dt><dd>4 GB</dd></div><div><dt>PIDs</dt><dd>512</dd></div><div><dt>Root filesystem</dt><dd>Read only</dd></div><div><dt>Capabilities</dt><dd>None</dd></div></dl>
         </section>
         <section className="panel">
-          <SectionTitle title="GitHub App" meta="Single instance" />
-          <div className="integration-row"><div><GitPullRequest size={18} /><span>Probe</span></div><Status value={capabilities?.github.status || 'checking'} /></div>
-          <label className="toggle-line"><span><strong>Draft PR only</strong><small>Merge requires a separate review</small></span><input type="checkbox" checked readOnly /></label>
+          <SectionTitle title="External integrations" meta={capabilities?.codex.model || 'Registered model'} />
+          <div className="integration-row"><div><Code2 size={18} /><span>Codex</span></div><Status value={capabilities?.codex.status || 'checking'} /></div>
+          <div className="integration-row"><div><GitPullRequest size={18} /><span>GitHub</span></div><Status value={capabilities?.github.status || 'checking'} /></div>
+          <dl className="definition-list"><div><dt>Codex checked</dt><dd>{capabilities?.codex.checked_at ? formatTime(capabilities.codex.checked_at) : 'Pending'}</dd></div><div><dt>Codex error</dt><dd>{capabilities?.codex.error_code || 'None'}</dd></div><div><dt>GitHub checked</dt><dd>{capabilities?.github.checked_at ? formatTime(capabilities.github.checked_at) : 'Pending'}</dd></div><div><dt>GitHub error</dt><dd>{capabilities?.github.error_code || 'None'}</dd></div></dl>
         </section>
         <section className="panel">
           <SectionTitle title="Review policy" meta="Human decision" />

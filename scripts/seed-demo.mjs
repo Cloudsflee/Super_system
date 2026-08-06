@@ -14,7 +14,7 @@ async function call(path, body, key) {
 const project = await call('/api/v1/projects', {
   name: 'DesignSignal Demo',
   description: 'Sanitized AIWS 3.0 acceptance fixture',
-  repository: { local_path: 'projects/designsignal-demo', remote_url: '', head_sha: '0000000000000000000000000000000000000000' }
+  repository: { source: { kind: 'fixture', id: 'designsignal-v1' } }
 }, 'demo-project-v3');
 await call(`/api/v1/projects/${project.id}/briefs`, {
   content: {

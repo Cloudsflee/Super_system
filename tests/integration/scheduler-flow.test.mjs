@@ -54,7 +54,7 @@ class ControlledBroker {
   }
 }
 
-async function domainFixture() {
+async function domainFixture(options = {}) {
   const home = fs.mkdtempSync(path.join(os.tmpdir(), 'aiws-v3-scheduler-'));
   const databaseFile = path.join(home, 'data', 'state.sqlite');
   const db = await openDatabase(databaseFile);
@@ -65,7 +65,7 @@ async function domainFixture() {
     runnerDigest: digest, codexAvailable: false, githubAvailable: false
   };
   const domain = new Domain({ db, config, broker });
-  const project = await domain.createProject({ name: 'Scheduler fixture', repository: { local_path: 'projects/shared' } });
+  const project = await domain.createProject({ name: 'Scheduler fixture', repository: options.fixtureRepository ? { source: { kind: 'fixture', id: 'designsignal-v1' } } : { local_path: 'projects/shared' } });
   await domain.createBrief(project.id, { content: { objective: 'Verify repository scheduling' } });
   return { home, databaseFile, db, broker, config, domain, project };
 }
@@ -152,9 +152,9 @@ test('stale cancellation has no side effects and a committed cancellation releas
 });
 
 test('a second runner failure pauses for a human retry and creates a new immutable attempt', async () => {
-  const env = await domainFixture();
+  const env = await domainFixture({ fixtureRepository: true });
   try {
-    const workflow = await env.domain.createWorkflow(env.project.id, { tasks: [{ id: 'inspect', level: 1, mode: 'read' }] });
+    const workflow = await env.domain.createWorkflow(env.project.id, { tasks: [{ id: 'inspect', level: 1, mode: 'write' }] });
     const execution = await executionFor(env.domain, env.project.id, workflow.revision);
     await env.domain.startExecution(execution.id, { expected_revision: execution.revision });
     const first = await eventually(() => env.broker.submissions[0], Boolean);
@@ -165,14 +165,43 @@ test('a second runner failure pauses for a human retry and creates a new immutab
     const paused = await eventually(() => env.domain.getExecution(execution.id), (value) => value.status === 'awaiting_human');
     assert.equal(paused.tasks[0].attempt_no, 2);
     assert.equal(paused.tasks[0].status, 'awaiting_human');
+    const worktree = await env.db.get('SELECT * FROM repository_worktrees WHERE execution_id=?', [execution.id]);
+    const worktreePath = path.join(env.home, worktree.worktree_path);
+    assert.equal(worktree.removed_at, null);
+    assert.equal(fs.existsSync(worktreePath), true);
+    fs.writeFileSync(path.join(worktreePath, 'retry-state.txt'), 'preserved\n', 'utf8');
 
     await env.domain.startExecution(execution.id, { expected_revision: paused.revision, mode: 'human_retry' });
     const third = await eventually(() => env.broker.submissions[2], Boolean);
     assert.ok(third);
+    assert.equal(fs.readFileSync(path.join(worktreePath, 'retry-state.txt'), 'utf8'), 'preserved\n');
     env.broker.complete(third);
     const completed = await eventually(() => env.domain.getExecution(execution.id), (value) => value.status === 'completed');
     assert.equal(completed.tasks[0].attempt_no, 3);
     assert.equal(completed.tasks[0].mode, 'human_retry');
+    assert.equal(completed.runner.worktree_status, 'removed');
+    assert.ok(completed.diff.files.includes('retry-state.txt'));
+  } finally {
+    await env.db.close();
+  }
+});
+
+test('an unknown job after Broker state loss is a retryable failed attempt', async () => {
+  const env = await domainFixture();
+  try {
+    const workflow = await env.domain.createWorkflow(env.project.id, { tasks: [{ id: 'inspect', level: 1, mode: 'read' }] });
+    const execution = await executionFor(env.domain, env.project.id, workflow.revision);
+    await env.domain.startExecution(execution.id, { expected_revision: execution.revision });
+    const lost = await eventually(() => env.broker.submissions[0], Boolean);
+    env.broker.jobs.delete(lost.job_id);
+    const retry = await eventually(() => env.broker.submissions[1], Boolean);
+    const firstAttempt = await env.db.get('SELECT * FROM task_attempts WHERE execution_id=? AND task_id=? AND attempt_no=1', [execution.id, 'inspect']);
+    assert.equal(firstAttempt.status, 'failed');
+    assert.equal(firstAttempt.error_code, 'broker_job_unknown');
+    assert.equal(JSON.parse(firstAttempt.output_json).retryable, true);
+    assert.equal(retry.spec.execution_mode, 'read');
+    env.broker.complete(retry);
+    assert.equal((await eventually(() => env.domain.getExecution(execution.id), (value) => value.status === 'completed')).status, 'completed');
   } finally {
     await env.db.close();
   }

@@ -21,7 +21,9 @@ export const COMMAND_NAMES = Object.freeze([
   'project.create', 'project.update', 'brief.create', 'workflow.create',
   'context.source.create', 'context.pack.create', 'asset.create',
   'execution.create', 'execution.start', 'execution.cancel',
-  'review.create', 'review.decide', 'delivery.create', 'delivery.merge'
+  'execution.evidence.resolve', 'review.create', 'review.decide',
+  'delivery.create', 'delivery.merge', 'delivery.retry',
+  'integration.codex.probe', 'integration.github.probe'
 ]);
 
 export function errorEnvelope({ code, message, retryable = false, requestId, details = {} }) {

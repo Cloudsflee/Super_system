@@ -32,3 +32,5 @@ The browser is untrusted input. The App is trusted for commands and relational d
 ## Residual risks
 
 The Docker daemon remains a high-privilege dependency for the Broker. A compromised Broker can control local containers, so it is not host-published and accepts only signed requests. GitHub and Codex probes are capability states, not readiness exceptions. External integration success must be evidenced before a formal release receipt is marked passed.
+
+The only model egress is the fixed `aiws-runner-model` network. Public provider egress is an accepted residual risk: the Broker does not add a general-purpose proxy or a mutable domain allowlist. Credentials are delivered over the signed App-to-Broker request and exist only in the probe/Runner process lifetime.

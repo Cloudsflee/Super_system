@@ -69,6 +69,21 @@ function assertFormalCapabilities(capabilities, source) {
   const required = ['codex', 'github'];
   const unavailable = required.filter((name) => capabilities?.[name]?.status !== 'available');
   if (unavailable.length) throw new Error(`formal_capability_gate_failed:${source}:${unavailable.join(',')}`);
+  const codex = capabilities.codex;
+  if (!codex.model || !codex.checked_at || codex.error_code != null) throw new Error(`formal_capability_probe_invalid:${source}`);
+  const github = capabilities.github;
+  if (!github.checked_at || github.error_code != null) throw new Error(`formal_capability_probe_invalid:${source}`);
+}
+
+function assertFormalAcceptance(receipt) {
+  assertFormalCapabilities(receipt.capabilities, 'acceptance_receipt');
+  const executions = receipt.journey?.executions || [];
+  const runnerJobs = executions.flatMap((execution) => execution.tasks || []).filter((task) => task.broker_job_id);
+  if (receipt.runner_adapter !== 'docker' || !executions.length || !runnerJobs.length) throw new Error('formal_runner_journey_missing');
+  const delivery = receipt.github_delivery;
+  if (delivery?.status !== 'merged' || !delivery.pull_url || !/^[a-f0-9]{40}$/.test(String(delivery.merge_sha || '')) || delivery.local_head_sha !== delivery.remote_base_sha || delivery.project_branch_deleted !== true) {
+    throw new Error('formal_github_merge_evidence_missing');
+  }
 }
 
 function inspect(name) {
@@ -126,10 +141,10 @@ async function waitReady(timeoutMs = 60_000) {
   throw new Error(`production_ready_timeout:${last}`);
 }
 
-async function post(route, body, key) {
+async function post(route, body, key, timeoutMs = 10_000) {
   const response = await fetch(`http://127.0.0.1:4317${route}`, {
     method: 'POST', headers: { 'content-type': 'application/json', 'Idempotency-Key': key || randomUUID() },
-    body: JSON.stringify(body), signal: AbortSignal.timeout(10_000)
+    body: JSON.stringify(body), signal: AbortSignal.timeout(timeoutMs)
   });
   const value = await response.json().catch(() => ({}));
   if (!response.ok) throw new Error(`production_api_failure:${route}:${response.status}:${JSON.stringify(value)}`);
@@ -138,7 +153,7 @@ async function post(route, body, key) {
 
 async function productionJourney() {
   const suffix = stamp;
-  const project = await post('/api/v1/projects', { name: `AIWS 3.0 final ${suffix}` }, `final-${suffix}-project`);
+  const project = await post('/api/v1/projects', { name: `AIWS 3.0 final ${suffix}`, repository: { source: { kind: 'fixture', id: 'designsignal-v1' } } }, `final-${suffix}-project`);
   await post(`/api/v1/projects/${project.id}/briefs`, { content: { objective: 'Verify final digest deployment', acceptance: ['completed'] } }, `final-${suffix}-brief`);
   await post(`/api/v1/projects/${project.id}/workflows`, { tasks: [
     { id: 'inspect', level: 1, mode: 'read' },
@@ -147,18 +162,26 @@ async function productionJourney() {
   const execution = await post(`/api/v1/projects/${project.id}/executions`, {}, `final-${suffix}-execution`);
   await post(`/api/v1/executions/${execution.id}/start`, { expected_revision: execution.revision }, `final-${suffix}-start`);
   let final = execution;
-  for (let index = 0; index < 200; index += 1) {
+  const deadline = Date.now() + 10 * 60_000;
+  while (Date.now() < deadline) {
     final = await (await fetch(`http://127.0.0.1:4317/api/v1/executions/${execution.id}`)).json();
     if (final.status === 'completed') break;
     if (['failed', 'awaiting_human', 'cancelled'].includes(final.status)) throw new Error(`production_execution_${final.status}`);
-    await new Promise((resolve) => setTimeout(resolve, 25));
+    await new Promise((resolve) => setTimeout(resolve, 500));
   }
   if (final.status !== 'completed') throw new Error('production_execution_timeout');
   return { project_id: project.id, execution_id: execution.id, status: final.status, tasks: final.tasks };
 }
 
-function standaloneCompose({ app, broker, runner, volume, secretFile }) {
+function standaloneCompose({ app, broker, runner, volume, secretFile, codexSecretFile = process.env.AIWS_CODEX_SECRET_FILE || '', githubSecretFile = process.env.AIWS_GITHUB_SECRET_FILE || '', githubRepository = process.env.AIWS_GITHUB_REPOSITORY || '', githubFixtureSha = process.env.AIWS_GITHUB_FIXTURE_SHA || '' }) {
   const secret = secretFile.replaceAll('\\', '/');
+  const codexSecret = codexSecretFile && fs.existsSync(codexSecretFile) ? codexSecretFile.replaceAll('\\', '/') : '';
+  const codexEnvironment = codexSecret ? `\n      AIWS_CODEX_SECRET_FILE: /run/secrets/codex_api_key` : '';
+  const codexDefinition = codexSecret ? `\n  codex_api_key: { file: "${codexSecret}" }` : '';
+  const githubSecret = githubSecretFile && fs.existsSync(githubSecretFile) ? githubSecretFile.replaceAll('\\', '/') : '';
+  const githubEnvironment = githubSecret ? `\n      AIWS_GITHUB_SECRET_FILE: /run/secrets/github_token\n      AIWS_GITHUB_REPOSITORY: ${githubRepository}\n      AIWS_GITHUB_FIXTURE_SHA: ${githubFixtureSha}` : '';
+  const appSecrets = ['broker_hmac', ...(codexSecret ? ['codex_api_key'] : []), ...(githubSecret ? ['github_token'] : [])];
+  const githubDefinition = githubSecret ? `\n  github_token: { file: "${githubSecret}" }` : '';
   return `services:
   app:
     image: ${app}
@@ -173,7 +196,8 @@ function standaloneCompose({ app, broker, runner, volume, secretFile }) {
       AIWS_BROKER_URL: http://runner-broker:4321
       AIWS_BROKER_MODE: http
       AIWS_RUNNER_DIGEST: ${runner}
-    secrets: [broker_hmac]
+      AIWS_CODEX_MODEL: ${process.env.AIWS_CODEX_MODEL || 'gpt-5.5'}${codexEnvironment}${githubEnvironment}
+    secrets: [${appSecrets.join(', ')}]
     volumes: [data:/var/lib/aiws]
     tmpfs: [/tmp:size=256m,mode=1777]
     security_opt: [no-new-privileges:true]
@@ -189,6 +213,7 @@ function standaloneCompose({ app, broker, runner, volume, secretFile }) {
       AIWS_BROKER_EXECUTOR: docker
       AIWS_BROKER_DATA_ROOT: /var/lib/aiws
       AIWS_DOCKER_DATA_VOLUME: ${volume}
+      AIWS_CODEX_MODEL: ${process.env.AIWS_CODEX_MODEL || 'gpt-5.5'}
       AIWS_RUNNER_DIGEST: ${runner}
       AIWS_RUNNER_IMAGE: ${runner}
     secrets: [broker_hmac]
@@ -200,16 +225,17 @@ function standaloneCompose({ app, broker, runner, volume, secretFile }) {
 networks:
   internal: { internal: true }
   edge: {}
+  model: { name: aiws-runner-model }
 volumes:
   data: { external: true, name: ${volume} }
 secrets:
-  broker_hmac: { file: "${secret}" }
+  broker_hmac: { file: "${secret}" }${codexDefinition}${githubDefinition}
 `;
 }
 
-function writeRollback({ previous, helperImage, archive, archiveSha256, secretFile }) {
+function writeRollback({ previous, helperImage, archive, archiveSha256, secretFile, codexSecretFile, githubSecretFile, githubRepository, githubFixtureSha }) {
   const rollbackCompose = path.join(releaseRoot, `compose-production-rollback-${stamp}.yml`);
-  fs.writeFileSync(rollbackCompose, standaloneCompose({ app: previous.app, broker: previous.broker, runner: previous.runner, volume: 'aiws-data-v3', secretFile }), { flag: 'wx', mode: 0o444 });
+  fs.writeFileSync(rollbackCompose, standaloneCompose({ app: previous.app, broker: previous.broker, runner: previous.runner, volume: 'aiws-data-v3', secretFile, codexSecretFile, githubSecretFile, githubRepository, githubFixtureSha }), { flag: 'wx', mode: 0o444 });
   const script = path.join(releaseRoot, `rollback-production-${stamp}.ps1`);
   const Helper = '$($Helper)';
   const content = `param([switch]$ValidateOnly)\n$ErrorActionPreference = 'Stop'\n$BackupArchive = '${archive.replaceAll("'", "''")}'\n$ExpectedHash = '${archiveSha256}'\n$ComposeFile = '${rollbackCompose.replaceAll("'", "''")}'\n$DataVolume = 'aiws-data-v3'\n$FailedVolume = 'aiws-data-v3-failed-${stamp}'\n$HelperImage = '${helperImage}'\n$Images = @('${previous.app}','${previous.broker}','${previous.runner}')\nforeach ($Image in $Images) { & docker image inspect $Image *> $null; if ($LASTEXITCODE -ne 0) { throw "rollback_image_missing:$Image" } }\n& docker volume inspect $DataVolume *> $null\nif ($LASTEXITCODE -ne 0) { throw 'rollback_volume_missing' }\nif (-not (Test-Path -LiteralPath $BackupArchive)) { throw 'rollback_archive_missing' }\nif ((Get-FileHash -LiteralPath $BackupArchive -Algorithm SHA256).Hash.ToLowerInvariant() -ne $ExpectedHash) { throw 'rollback_archive_hash_mismatch' }\nif (-not (Test-Path -LiteralPath $ComposeFile)) { throw 'rollback_compose_missing' }\nif ($ValidateOnly) { Write-Output 'rollback validation passed'; exit 0 }\n& docker rm -f aiws-v3-app-1 aiws-v3-runner-broker-1 2>$null\n& docker volume create --label aiws.owner=aiws-v3 --label aiws.role=failed-preservation $FailedVolume *> $null\nif ($LASTEXITCODE -ne 0) { throw 'rollback_failed_volume_create' }\n& docker run --rm --label aiws.owner=aiws-v3 --mount "type=volume,src=$DataVolume,dst=/source,readonly" --mount "type=volume,src=$FailedVolume,dst=/target" $HelperImage sh -c 'tar -C /source -cf - . | tar -C /target -xf -'\nif ($LASTEXITCODE -ne 0) { throw 'rollback_failed_volume_copy' }\n$Helper = 'aiws-v3-rollback-restore-${stamp}'\n& docker create --name $Helper --label aiws.owner=aiws-v3 --mount "type=volume,src=$DataVolume,dst=/target" $HelperImage sh -c 'find /target -mindepth 1 -maxdepth 1 -exec rm -rf -- {} + && tar -C /target -xzf /tmp/data.tar.gz' *> $null\nif ($LASTEXITCODE -ne 0) { throw 'rollback_restore_helper_create' }\ntry {\n  & docker cp $BackupArchive "${Helper}:/tmp/data.tar.gz"\n  if ($LASTEXITCODE -ne 0) { throw 'rollback_archive_copy' }\n  & docker start --attach $Helper\n  if ($LASTEXITCODE -ne 0) { throw 'rollback_archive_restore' }\n} finally { & docker rm -f $Helper *> $null }\n& docker compose -p aiws-v3 -f $ComposeFile up -d\nif ($LASTEXITCODE -ne 0) { throw 'rollback_compose_up' }\n$Ready = $false\nfor ($Index = 0; $Index -lt 120; $Index++) { try { $Response = Invoke-WebRequest -UseBasicParsing -Uri 'http://127.0.0.1:4317/readyz' -TimeoutSec 2; if ($Response.StatusCode -eq 200) { $Ready = $true; break } } catch {}; Start-Sleep -Milliseconds 250 }\nif (-not $Ready) { throw 'rollback_ready_timeout' }\nWrite-Output "rollback complete; failed volume preserved as $FailedVolume"\n`;
@@ -229,11 +255,19 @@ const acceptanceReceipt = JSON.parse(fs.readFileSync(acceptanceReceiptPath, 'utf
 const recoveryReceipt = JSON.parse(fs.readFileSync(recoveryReceiptPath, 'utf8'));
 if (imageReceipt.source?.commit !== commit || acceptanceReceipt.source?.commit !== commit || recoveryReceipt.source?.commit !== commit) throw new Error('promotion_receipt_commit_mismatch');
 if (imageReceipt.status !== 'candidate' || acceptanceReceipt.status !== 'passed' || recoveryReceipt.status !== 'passed') throw new Error('promotion_gate_not_passed');
-assertFormalCapabilities(acceptanceReceipt.capabilities, 'acceptance_receipt');
+assertFormalAcceptance(acceptanceReceipt);
 const byRole = Object.fromEntries(imageReceipt.images.map((image) => [image.role, image]));
 for (const role of ['app', 'broker', 'runner']) run(`verify-candidate-${role}`, 'docker', ['image', 'inspect', byRole[role].image_id]);
 const secretFile = path.join(root, 'docker', 'secrets', 'broker_hmac');
 if (!fs.existsSync(secretFile) || fs.readFileSync(secretFile, 'utf8').trim().length < 32) throw new Error('production_broker_secret_invalid');
+const codexSecretFile = process.env.AIWS_CODEX_SECRET_FILE || path.join(root, 'docker', 'secrets', 'codex_api_key');
+if (!fs.existsSync(codexSecretFile) || fs.readFileSync(codexSecretFile, 'utf8').trim().length < 8) throw new Error('production_codex_secret_invalid');
+const githubSecretFile = process.env.AIWS_GITHUB_SECRET_FILE || path.join(root, 'docker', 'secrets', 'github_token');
+const githubRepository = process.env.AIWS_GITHUB_REPOSITORY || '';
+const githubFixtureSha = process.env.AIWS_GITHUB_FIXTURE_SHA || '';
+if (!fs.existsSync(githubSecretFile) || fs.readFileSync(githubSecretFile, 'utf8').trim().length < 8) throw new Error('production_github_secret_invalid');
+if (!/^[A-Za-z0-9_.-]{1,100}\/[A-Za-z0-9_.-]{1,100}$/.test(githubRepository)) throw new Error('production_github_repository_invalid');
+if (!/^[a-f0-9]{40}$/.test(githubFixtureSha)) throw new Error('production_github_fixture_sha_invalid');
 
 const oldApp = inspect('aiws-v3-app-1');
 const oldBroker = inspect('aiws-v3-runner-broker-1');
@@ -248,6 +282,10 @@ commandEnv = {
   AIWS_BROKER_IMAGE: byRole.broker.image_id,
   AIWS_RUNNER_IMAGE: byRole.runner.image_id,
   AIWS_RUNNER_DIGEST: byRole.runner.image_id,
+  AIWS_CODEX_SECRET_FILE: codexSecretFile,
+  AIWS_GITHUB_SECRET_FILE: githubSecretFile,
+  AIWS_GITHUB_REPOSITORY: githubRepository,
+  AIWS_GITHUB_FIXTURE_SHA: githubFixtureSha,
   AIWS_COMMIT: commit,
   AIWS_PORT: '4317'
 };
@@ -271,7 +309,7 @@ try {
     previous_images: previous,
     commands
   });
-  const rollback = writeRollback({ previous, helperImage: byRole.app.image_id, archive: productionArchive, archiveSha256: sha256File(productionArchive), secretFile });
+  const rollback = writeRollback({ previous, helperImage: byRole.app.image_id, archive: productionArchive, archiveSha256: sha256File(productionArchive), secretFile, codexSecretFile, githubSecretFile, githubRepository, githubFixtureSha });
   rollbackScript = rollback.script;
   const powershell = powershellExecutable();
   const rollbackValidation = run('validate-production-rollback', powershell, ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', rollback.script, '-ValidateOnly']);
@@ -285,6 +323,8 @@ try {
   oldStopped = false;
   const ready = await waitReady();
   const journey = await productionJourney();
+  await post('/api/v1/integrations/codex/probe', { force: true }, `final-${stamp}-codex-probe`, 120_000);
+  await post('/api/v1/integrations/github/probe', { force: true }, `final-${stamp}-github-probe`, 120_000);
   const capabilities = await (await fetch('http://127.0.0.1:4317/api/v1/system/capabilities')).json();
   assertFormalCapabilities(capabilities, 'production_probe');
   const appPerformance = await (await fetch('http://127.0.0.1:4317/api/v1/system/performance')).json();
@@ -306,6 +346,7 @@ try {
     previous_images: previous,
     formal_tags: ['aiws-app:3.0.0', 'aiws-runner-broker:3.0.0', 'aiws-codex-runner:3.0.0'],
     ready, capabilities, performance: appPerformance, journey,
+    github_merge_evidence: acceptanceReceipt.github_delivery,
     rollback: {
       script: path.relative(root, rollback.script).replaceAll('\\', '/'), sha256: sha256File(rollback.script),
       compose: path.relative(root, rollback.compose).replaceAll('\\', '/'), validation_command: rollbackValidation.command,

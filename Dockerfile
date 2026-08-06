@@ -22,6 +22,7 @@ COPY . .
 RUN corepack pnpm --filter @aiws/web build
 
 FROM ${NODE_IMAGE} AS production
+ARG ALPINE_MIRROR=https://mirrors.aliyun.com/alpine
 ARG AIWS_VERSION
 ARG AIWS_COMMIT
 ARG AIWS_TREE
@@ -36,7 +37,7 @@ LABEL org.opencontainers.image.title="AIWS app" \
       aiws.gate.fingerprint="${AIWS_GATE_FINGERPRINT}" \
       aiws.sbom.sha256="${AIWS_SBOM_SHA256}" \
       aiws.component="app"
-RUN apk add --no-cache ca-certificates git
+RUN apk add --no-cache ca-certificates git || (sed -i "s#https://dl-cdn.alpinelinux.org/alpine#${ALPINE_MIRROR}#g" /etc/apk/repositories && apk add --no-cache ca-certificates git)
 WORKDIR /app
 ENV NODE_ENV=production AIWS_BIND_HOST=0.0.0.0 PORT=4317 AIWS_HOME=/var/lib/aiws AIWS_BROKER_HMAC_SECRET_FILE=/run/secrets/broker_hmac
 COPY package.json ./package.json
@@ -50,6 +51,7 @@ HEALTHCHECK --interval=10s --timeout=5s --start-period=20s --retries=6 CMD node 
 CMD ["node", "apps/api/server.mjs"]
 
 FROM ${NODE_IMAGE} AS broker
+ARG ALPINE_MIRROR=https://mirrors.aliyun.com/alpine
 ARG AIWS_VERSION
 ARG AIWS_COMMIT
 ARG AIWS_TREE
@@ -64,7 +66,7 @@ LABEL org.opencontainers.image.title="AIWS runner broker" \
       aiws.gate.fingerprint="${AIWS_GATE_FINGERPRINT}" \
       aiws.sbom.sha256="${AIWS_SBOM_SHA256}" \
       aiws.component="runner-broker"
-RUN apk add --no-cache ca-certificates docker-cli
+RUN apk add --no-cache ca-certificates docker-cli || (sed -i "s#https://dl-cdn.alpinelinux.org/alpine#${ALPINE_MIRROR}#g" /etc/apk/repositories && apk add --no-cache ca-certificates docker-cli)
 WORKDIR /app
 ENV NODE_ENV=production AIWS_BROKER_HOST=0.0.0.0 AIWS_BROKER_PORT=4321 AIWS_BROKER_DATA_ROOT=/var/lib/aiws AIWS_BROKER_HMAC_SECRET_FILE=/run/secrets/broker_hmac
 COPY package.json ./package.json
@@ -82,6 +84,10 @@ HEALTHCHECK --interval=10s --timeout=5s --start-period=10s --retries=6 CMD node 
 CMD ["node", "apps/runner-broker/server.mjs"]
 
 FROM ${NODE_IMAGE} AS codex-runner
+ARG ALPINE_MIRROR=https://mirrors.aliyun.com/alpine
+ARG CODEX_CLI_VERSION=0.146.1
+ARG CODEX_LINUX_X64_VERSION=0.146.1-linux-x64
+ARG TARGETARCH
 ARG AIWS_VERSION
 ARG AIWS_COMMIT
 ARG AIWS_TREE
@@ -95,9 +101,27 @@ LABEL org.opencontainers.image.title="AIWS codex runner" \
       aiws.source.lockfile-sha256="${AIWS_LOCKFILE_SHA256}" \
       aiws.gate.fingerprint="${AIWS_GATE_FINGERPRINT}" \
       aiws.sbom.sha256="${AIWS_SBOM_SHA256}" \
-      aiws.component="codex-runner"
+      aiws.component="codex-runner" \
+      aiws.codex-cli.version="${CODEX_CLI_VERSION}" \
+      aiws.codex-cli.platform-version="${CODEX_LINUX_X64_VERSION}" \
+      aiws.codex-cli.platform="x86_64-unknown-linux-musl"
+RUN test "${TARGETARCH}" = "amd64" \
+    && (apk add --no-cache git ca-certificates gcompat || (sed -i "s#https://dl-cdn.alpinelinux.org/alpine#${ALPINE_MIRROR}#g" /etc/apk/repositories && apk add --no-cache git ca-certificates gcompat)) \
+    && npm install --global "@openai/codex@${CODEX_CLI_VERSION}" \
+      --omit=optional --registry=https://registry.npmmirror.com \
+      --fetch-timeout=300000 --fetch-retries=1 \
+    && mkdir -p /usr/local/lib/node_modules/@openai/codex/node_modules/@openai/codex-linux-x64 \
+    && wget -q -O /tmp/codex-linux-x64.tgz \
+      "https://cdn.npmmirror.com/packages/%40openai/codex/${CODEX_LINUX_X64_VERSION}/codex-${CODEX_LINUX_X64_VERSION}.tgz" \
+    && echo "5cf5a95b326018ad7282c50131782c90492bfae4d58ff5ce9e708fd9413db505174d6611604973ed05b5612ddbc6437a29ebf808940a6dd268a55c21fb413f4d  /tmp/codex-linux-x64.tgz" | sha512sum -c - \
+    && tar -xzf /tmp/codex-linux-x64.tgz --strip-components=1 \
+      -C /usr/local/lib/node_modules/@openai/codex/node_modules/@openai/codex-linux-x64 \
+    && rm /tmp/codex-linux-x64.tgz \
+    && test "$(codex --version)" = "codex-cli ${CODEX_CLI_VERSION}"
 WORKDIR /runner
 COPY apps/runner-broker/codex-runner.mjs ./codex-runner.mjs
+COPY apps/runner-broker/src/runner-result.mjs ./src/runner-result.mjs
+COPY apps/runner-broker/src/codex-config.mjs ./src/codex-config.mjs
 COPY sbom.spdx.json ./sbom.spdx.json
 USER 10001:10001
 ENTRYPOINT ["node", "/runner/codex-runner.mjs"]

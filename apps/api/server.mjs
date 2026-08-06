@@ -8,6 +8,7 @@ import { openDatabase } from './src/database.mjs';
 import { Domain } from './src/domain.mjs';
 import { createHttpHandler } from './src/http.mjs';
 import { createCommandRegistry } from './src/command-registry.mjs';
+import { GitHubIntegration } from './src/github-integration.mjs';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 
@@ -15,10 +16,11 @@ export async function createApp(options = {}) {
   const config = options.config || loadConfig(options.env || process.env);
   const database = options.db || await openDatabase(options.databaseFile || config.databaseFile);
   const broker = options.broker || new BrokerClient(config);
+  const github = options.github || new GitHubIntegration(config, options.githubOptions);
   const listeners = new Set();
   const loopDelay = monitorEventLoopDelay({ resolution: 10 });
   loopDelay.enable();
-  const domain = new Domain({ db: database, config, broker, emit: (event) => listeners.forEach((listener) => listener(event)) });
+  const domain = new Domain({ db: database, config, broker, github, emit: (event) => listeners.forEach((listener) => listener(event)) });
   const registry = createCommandRegistry(domain);
   const performanceProbe = () => ({
     rss_bytes: process.memoryUsage().rss,
@@ -31,11 +33,12 @@ export async function createApp(options = {}) {
     config,
     database,
     broker,
+    github,
     domain,
     registry,
     handler,
     subscribe(listener) { listeners.add(listener); return () => listeners.delete(listener); },
-    async close() { loopDelay.disable(); await database.close(); }
+    async close() { loopDelay.disable(); await domain.shutdown(); await database.close(); }
   };
 }
 

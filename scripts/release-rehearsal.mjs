@@ -82,8 +82,20 @@ async function allocatePort() {
   return port;
 }
 
-function composeYaml({ appImage, brokerImage, runnerImage, runnerDigest, volume, port, secretFile }) {
+function composeYaml({ appImage, brokerImage, runnerImage, runnerDigest, volume, port, secretFile, codexSecretFile = process.env.AIWS_CODEX_SECRET_FILE || '', githubSecretFile = process.env.AIWS_GITHUB_SECRET_FILE || '', githubRepository = process.env.AIWS_GITHUB_REPOSITORY || '', githubFixtureSha = process.env.AIWS_GITHUB_FIXTURE_SHA || '' }) {
   const secret = secretFile.replaceAll('\\', '/');
+  const codexPath = codexSecretFile ? path.resolve(root, codexSecretFile) : '';
+  if (codexPath && !fs.existsSync(codexPath)) throw new Error('rehearsal_codex_secret_unreadable');
+  const codexSecret = codexPath && fs.existsSync(codexPath) ? codexPath.replaceAll('\\', '/') : '';
+  const codexEnvironment = codexSecret ? '\n      AIWS_CODEX_SECRET_FILE: /run/secrets/codex_api_key' : '';
+  const codexServiceSecret = codexSecret ? '\n      - codex_api_key' : '';
+  const codexSecretDefinition = codexSecret ? `\n  codex_api_key:\n    file: "${codexSecret}"` : '';
+  const githubPath = githubSecretFile ? path.resolve(root, githubSecretFile) : '';
+  if (githubPath && !fs.existsSync(githubPath)) throw new Error('rehearsal_github_secret_unreadable');
+  const githubSecret = githubPath && fs.existsSync(githubPath) ? githubPath.replaceAll('\\', '/') : '';
+  const githubEnvironment = githubSecret ? `\n      AIWS_GITHUB_SECRET_FILE: /run/secrets/github_token\n      AIWS_GITHUB_REPOSITORY: ${githubRepository}\n      AIWS_GITHUB_FIXTURE_SHA: ${githubFixtureSha}` : '';
+  const githubServiceSecret = githubSecret ? '\n      - github_token' : '';
+  const githubSecretDefinition = githubSecret ? `\n  github_token:\n    file: "${githubSecret}"` : '';
   return `services:
   app:
     image: ${appImage}
@@ -101,10 +113,9 @@ function composeYaml({ appImage, brokerImage, runnerImage, runnerDigest, volume,
       AIWS_BROKER_URL: http://runner-broker:4321
       AIWS_BROKER_MODE: http
       AIWS_RUNNER_DIGEST: ${runnerDigest}
-      AIWS_CODEX_AVAILABLE: "0"
-      AIWS_GITHUB_AVAILABLE: "0"
+      AIWS_CODEX_MODEL: ${process.env.AIWS_CODEX_MODEL || 'gpt-5.5'}${codexEnvironment}${githubEnvironment}
     secrets:
-      - broker_hmac
+      - broker_hmac${codexServiceSecret}${githubServiceSecret}
     volumes:
       - data:/var/lib/aiws
     tmpfs:
@@ -127,9 +138,10 @@ function composeYaml({ appImage, brokerImage, runnerImage, runnerDigest, volume,
       aiws.role: acceptance-broker
     environment:
       NODE_ENV: production
-      AIWS_BROKER_EXECUTOR: docker
+      AIWS_BROKER_EXECUTOR: ${codexSecret ? 'docker' : 'mock'}
       AIWS_BROKER_DATA_ROOT: /var/lib/aiws
       AIWS_DOCKER_DATA_VOLUME: ${volume}
+      AIWS_CODEX_MODEL: ${process.env.AIWS_CODEX_MODEL || 'gpt-5.5'}
       AIWS_RUNNER_DIGEST: ${runnerDigest}
       AIWS_RUNNER_IMAGE: ${runnerImage}
     secrets:
@@ -149,13 +161,15 @@ networks:
   internal:
     internal: true
   edge: {}
+  model:
+    name: aiws-runner-model
 volumes:
   data:
     external: true
     name: ${volume}
 secrets:
   broker_hmac:
-    file: "${secret}"
+    file: "${secret}"${codexSecretDefinition}${githubSecretDefinition}
 `;
 }
 
@@ -175,37 +189,126 @@ async function waitReady(base, timeoutMs = 60_000) {
   throw new Error(`ready_timeout:${last}`);
 }
 
-async function mutate(base, route, body, key = randomUUID()) {
+async function mutate(base, route, body, key = randomUUID(), timeoutMs = 10_000) {
   const response = await fetch(`${base}${route}`, {
     method: 'POST',
     headers: { 'content-type': 'application/json', 'Idempotency-Key': key },
     body: JSON.stringify(body),
-    signal: AbortSignal.timeout(10_000)
+    signal: AbortSignal.timeout(timeoutMs)
   });
   const value = await response.json().catch(() => ({}));
   if (!response.ok) throw new Error(`api_failure:${route}:${response.status}:${JSON.stringify(value)}`);
   return value;
 }
 
+async function explicitCapabilities(base, suffix) {
+  await mutate(base, '/api/v1/integrations/codex/probe', { force: true }, `${suffix}-codex-probe`, 120_000);
+  await mutate(base, '/api/v1/integrations/github/probe', { force: true }, `${suffix}-github-probe`, 120_000);
+  return (await fetch(`${base}/api/v1/system/capabilities`, { signal: AbortSignal.timeout(10_000) })).json();
+}
+
+function githubRef(value) {
+  return String(value).split('/').map(encodeURIComponent).join('/');
+}
+
+async function githubRequest(method, requestPath, token, body = undefined, allowed = [200]) {
+  const response = await fetch(`https://api.github.com${requestPath}`, {
+    method,
+    headers: {
+      accept: 'application/vnd.github+json',
+      authorization: `Bearer ${token}`,
+      'content-type': 'application/json',
+      'x-github-api-version': '2022-11-28',
+      'user-agent': 'aiws-v3-release'
+    },
+    body: body === undefined ? undefined : JSON.stringify(body),
+    signal: AbortSignal.timeout(30_000)
+  });
+  const text = await response.text();
+  const value = text ? JSON.parse(text) : {};
+  if (!allowed.includes(response.status)) throw new Error(`github_rehearsal_api_failed:${response.status}`);
+  return { status: response.status, value };
+}
+
+async function githubDeliveryJourney(base, journeyResult, suffix, configuration) {
+  const token = fs.readFileSync(configuration.secretFile, 'utf8').trim();
+  const executionId = journeyResult.executions[0]?.id;
+  if (!executionId) throw new Error('github_rehearsal_execution_missing');
+  let delivery = null;
+  let evidence = null;
+  let projectBranchDeleted = false;
+  let deliveryBranchDeleted = false;
+  try {
+    const createReview = await mutate(base, '/api/v1/reviews', {
+      project_id: journeyResult.project_id, execution_id: executionId, kind: 'delivery_create',
+      model_status: 'unavailable', suggestion: {}
+    }, `${suffix}-delivery-create-review`);
+    await mutate(base, `/api/v1/reviews/${createReview.id}/decisions`, { decision: 'approved', note: 'Release rehearsal delivery approval' }, `${suffix}-delivery-create-decision`);
+    delivery = await mutate(base, '/api/v1/deliveries', {
+      project_id: journeyResult.project_id, execution_id: executionId, review_id: createReview.id,
+      title: `AIWS release rehearsal ${suffix}`, body: 'Automated release rehearsal Draft PR.'
+    }, `${suffix}-delivery`, 180_000);
+    if (delivery.status !== 'submitted' || !delivery.pull_number || !delivery.head_sha || !delivery.external_ref) throw new Error(`github_rehearsal_delivery_${delivery.status}`);
+    const draft = (await githubRequest('GET', `/repos/${configuration.repository}/pulls/${delivery.pull_number}`, token)).value;
+    if (!draft.draft || draft.head?.sha !== delivery.head_sha || draft.head?.ref !== delivery.branch) throw new Error('github_rehearsal_draft_evidence_invalid');
+
+    const mergeReview = await mutate(base, '/api/v1/reviews', {
+      project_id: journeyResult.project_id, execution_id: executionId, kind: 'delivery_merge',
+      model_status: 'unavailable', suggestion: {}
+    }, `${suffix}-delivery-merge-review`);
+    await mutate(base, `/api/v1/reviews/${mergeReview.id}/decisions`, { decision: 'approved', note: 'Independent release rehearsal merge approval' }, `${suffix}-delivery-merge-decision`);
+    const merged = await mutate(base, `/api/v1/deliveries/${delivery.id}/merge`, {
+      review_id: mergeReview.id, expected_revision: delivery.revision
+    }, `${suffix}-delivery-merge`, 180_000);
+    if (merged.status !== 'merged' || !/^[a-f0-9]{40}$/.test(String(merged.merge_sha || ''))) throw new Error(`github_rehearsal_merge_${merged.status}`);
+    const [projectResponse, mergedPull, remoteBase] = await Promise.all([
+      fetch(`${base}/api/v1/projects/${journeyResult.project_id}`, { signal: AbortSignal.timeout(10_000) }).then((response) => response.json()),
+      githubRequest('GET', `/repos/${configuration.repository}/pulls/${delivery.pull_number}`, token).then((result) => result.value),
+      githubRequest('GET', `/repos/${configuration.repository}/git/ref/heads/${githubRef(`aiws/projects/${journeyResult.project_id}`)}`, token).then((result) => result.value)
+    ]);
+    if (!mergedPull.merged || mergedPull.merge_commit_sha !== merged.merge_sha) throw new Error('github_rehearsal_remote_merge_invalid');
+    const localHead = String(projectResponse.repository?.head_sha || '');
+    const remoteHead = String(remoteBase.object?.sha || '');
+    if (localHead !== remoteHead || localHead !== merged.merge_sha) throw new Error('github_rehearsal_baseline_sync_failed');
+    evidence = {
+      status: 'merged', project_id: journeyResult.project_id, execution_id: executionId,
+      delivery_id: delivery.id, pull_number: delivery.pull_number, pull_url: delivery.external_ref,
+      draft_created: true, head_sha: delivery.head_sha, merge_sha: merged.merge_sha,
+      local_head_sha: localHead, remote_base_sha: remoteHead, merged_at: mergedPull.merged_at
+    };
+  } finally {
+    if (delivery?.branch) {
+      const deleted = await githubRequest('DELETE', `/repos/${configuration.repository}/git/refs/heads/${githubRef(delivery.branch)}`, token, undefined, [204, 404, 422]).catch(() => null);
+      deliveryBranchDeleted = Boolean(deleted && [204, 404, 422].includes(deleted.status));
+    }
+    const projectBranch = `aiws/projects/${journeyResult.project_id}`;
+    const deleted = await githubRequest('DELETE', `/repos/${configuration.repository}/git/refs/heads/${githubRef(projectBranch)}`, token, undefined, [204, 404, 422]).catch(() => null);
+    projectBranchDeleted = Boolean(deleted && [204, 404, 422].includes(deleted.status));
+  }
+  if (!evidence || !projectBranchDeleted || !deliveryBranchDeleted) throw new Error('github_rehearsal_branch_cleanup_failed');
+  return { ...evidence, project_branch_deleted: projectBranchDeleted, delivery_branch_deleted: deliveryBranchDeleted };
+}
+
 async function journey(base, suffix, repeats = 3) {
-  const project = await mutate(base, '/api/v1/projects', { name: `Release ${suffix}` }, `${suffix}-project`);
+  const project = await mutate(base, '/api/v1/projects', { name: `Release ${suffix}`, repository: { source: { kind: 'fixture', id: 'designsignal-v1' } } }, `${suffix}-project`);
   createdProjects.push(project.id);
   await mutate(base, `/api/v1/projects/${project.id}/briefs`, { content: { objective: `Verify ${suffix}`, acceptance: ['execution completes'] } }, `${suffix}-brief`);
   await mutate(base, `/api/v1/projects/${project.id}/workflows`, { tasks: [
     { id: 'inspect', level: 1, title: 'Inspect', mode: 'read' },
-    { id: 'change', level: 2, title: 'Change', mode: 'write', deps: ['inspect'] }
+    { id: 'change', level: 2, title: 'Write release rehearsal evidence', mode: 'write', deps: ['inspect'], outputs: [`release-${suffix}.txt`] }
   ] }, `${suffix}-workflow`);
   const executions = [];
   for (let index = 0; index < repeats; index += 1) {
     const execution = await mutate(base, `/api/v1/projects/${project.id}/executions`, {}, `${suffix}-execution-${index}`);
     await mutate(base, `/api/v1/executions/${execution.id}/start`, { expected_revision: execution.revision }, `${suffix}-start-${index}`);
     let current = execution;
-    for (let attempt = 0; attempt < 200; attempt += 1) {
+    const deadline = Date.now() + 10 * 60_000;
+    while (Date.now() < deadline) {
       const response = await fetch(`${base}/api/v1/executions/${execution.id}`, { signal: AbortSignal.timeout(2_000) });
       current = await response.json();
       if (current.status === 'completed') break;
       if (['failed', 'awaiting_human', 'cancelled'].includes(current.status)) throw new Error(`acceptance_execution_${current.status}`);
-      await new Promise((resolve) => setTimeout(resolve, 25));
+      await new Promise((resolve) => setTimeout(resolve, 500));
     }
     if (current.status !== 'completed' || !current.tasks.every((task) => task.status === 'completed')) throw new Error('acceptance_execution_timeout');
     executions.push({ id: current.id, status: current.status, tasks: current.tasks.map((task) => ({ id: task.task_id, status: task.status, broker_job_id: task.broker_job_id })) });
@@ -296,6 +399,11 @@ const sourceProject = `aiws-v3-rehearsal-${stamp}-source`;
 const restoreProject = `aiws-v3-rehearsal-${stamp}-restore`;
 const sourceVolume = `aiws-v3-snapshot-${stamp}`;
 const restoreVolumeName = `aiws-v3-restored-${stamp}`;
+const codexSecretFile = process.env.AIWS_CODEX_SECRET_FILE || '';
+const githubSecretFile = process.env.AIWS_GITHUB_SECRET_FILE || '';
+const githubRepository = process.env.AIWS_GITHUB_REPOSITORY || '';
+const githubFixtureSha = process.env.AIWS_GITHUB_FIXTURE_SHA || '';
+const codexSecretConfigured = Boolean(codexSecretFile && fs.existsSync(codexSecretFile));
 const secretFile = path.join(releaseRoot, `.rehearsal-secret-${stamp}`);
 const sourceCompose = path.join(releaseRoot, `compose-rehearsal-source-${stamp}.yml`);
 const restoreCompose = path.join(releaseRoot, `compose-rehearsal-restore-${stamp}.yml`);
@@ -308,7 +416,7 @@ try {
   fs.writeFileSync(secretFile, randomBytes(32).toString('hex'), { flag: 'wx', mode: 0o600 });
   run('create-source-volume', 'docker', ['volume', 'create', '--label', 'aiws.owner=aiws-v3', '--label', 'aiws.role=snapshot', '--label', `aiws.source.commit=${commit}`, sourceVolume]);
   const sourcePort = await allocatePort();
-  fs.writeFileSync(sourceCompose, composeYaml({ appImage: byRole.app.image_id, brokerImage: byRole.broker.image_id, runnerImage: byRole.runner.image_id, runnerDigest: byRole.runner.image_id, volume: sourceVolume, port: sourcePort, secretFile }), { flag: 'wx', mode: 0o444 });
+  fs.writeFileSync(sourceCompose, composeYaml({ appImage: byRole.app.image_id, brokerImage: byRole.broker.image_id, runnerImage: byRole.runner.image_id, runnerDigest: byRole.runner.image_id, volume: sourceVolume, port: sourcePort, secretFile, codexSecretFile, githubSecretFile, githubRepository, githubFixtureSha }), { flag: 'wx', mode: 0o444 });
   const sourceStarted = performance.now();
   run('source-compose-up', 'docker', ['compose', '-p', sourceProject, '-f', sourceCompose, 'up', '-d']);
   sourceUp = true;
@@ -316,7 +424,10 @@ try {
   const startupMs = Math.round(performance.now() - sourceStarted);
   const sourceJourney = await journey(`http://127.0.0.1:${sourcePort}`, 'source', 3);
   const sourcePerformance = await (await fetch(`http://127.0.0.1:${sourcePort}/api/v1/system/performance`)).json();
-  const sourceCapabilities = await (await fetch(`http://127.0.0.1:${sourcePort}/api/v1/system/capabilities`)).json();
+  const sourceCapabilities = await explicitCapabilities(`http://127.0.0.1:${sourcePort}`, 'source');
+  const githubDelivery = sourceCapabilities.github?.status === 'available' && /^[a-f0-9]{40}$/.test(githubFixtureSha)
+    ? await githubDeliveryJourney(`http://127.0.0.1:${sourcePort}`, sourceJourney, 'source', { secretFile: githubSecretFile, repository: githubRepository })
+    : null;
   const rootResponse = await fetch(`http://127.0.0.1:${sourcePort}/`);
   if (!rootResponse.ok || !(await rootResponse.text()).includes('AIWS')) throw new Error('production_web_bundle_unavailable');
   const appContainer = `${sourceProject}-app-1`;
@@ -343,6 +454,7 @@ try {
 
   const externalCapabilities = ['codex', 'github'];
   const unavailableCapabilities = externalCapabilities.filter((name) => sourceCapabilities[name]?.status !== 'available');
+  if (sourceCapabilities.github?.status === 'available' && !githubDelivery) unavailableCapabilities.push('github_delivery');
   const acceptanceStatus = unavailableCapabilities.length ? 'candidate' : 'passed';
   const acceptanceReceipt = writeReceipt(`v3-acceptance-docker-${stamp}.json`, {
     schema_version: 'aiws.v3.docker_acceptance_receipt.v1', status: acceptanceStatus,
@@ -355,11 +467,13 @@ try {
     performance: sourcePerformance,
     capabilities: sourceCapabilities,
     capability_gate: {
-      required: externalCapabilities,
+      required: [...externalCapabilities, 'github_delivery'],
       status: unavailableCapabilities.length ? 'candidate' : 'passed',
       unavailable: unavailableCapabilities
     },
+    runner_adapter: codexSecretConfigured ? 'docker' : 'mock',
     journey: sourceJourney,
+    github_delivery: githubDelivery,
     boundaries: { app_has_docker_cli: false, app_has_docker_socket: false, broker_has_host_port: false },
     volume: sourceVolume,
     archive: { path: path.relative(root, archive).replaceAll('\\', '/'), sha256: sha256File(archive) },
@@ -379,7 +493,7 @@ try {
   if (restoredSqlite.integrity.join(',') !== 'ok' || restoredSqlite.user_version !== 1 || restoredSqlite.foreign_key_violations.length) throw new Error('restored_sqlite_validation_failed');
 
   const restorePort = await allocatePort();
-  fs.writeFileSync(restoreCompose, composeYaml({ appImage: byRole.app.image_id, brokerImage: byRole.broker.image_id, runnerImage: byRole.runner.image_id, runnerDigest: byRole.runner.image_id, volume: restoreVolumeName, port: restorePort, secretFile }), { flag: 'wx', mode: 0o444 });
+  fs.writeFileSync(restoreCompose, composeYaml({ appImage: byRole.app.image_id, brokerImage: byRole.broker.image_id, runnerImage: byRole.runner.image_id, runnerDigest: byRole.runner.image_id, volume: restoreVolumeName, port: restorePort, secretFile, codexSecretFile, githubSecretFile, githubRepository, githubFixtureSha }), { flag: 'wx', mode: 0o444 });
   run('restore-compose-up', 'docker', ['compose', '-p', restoreProject, '-f', restoreCompose, 'up', '-d']);
   restoreUp = true;
   const restoreReady = await waitReady(`http://127.0.0.1:${restorePort}`);

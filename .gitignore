@@ -6,6 +6,8 @@ coverage/
 dist/
 .env
 docker/secrets/broker_hmac
+docker/secrets/codex_api_key
+docker/secrets/github_token
 *.log
 *.tsbuildinfo
 __pycache__/

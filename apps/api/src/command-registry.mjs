@@ -12,10 +12,14 @@ export function createCommandRegistry(domain) {
     ['execution.create', (input, ctx) => domain.createExecution(input.project_id, input, ctx)],
     ['execution.start', (input, ctx) => domain.startExecution(input.execution_id, input, ctx)],
     ['execution.cancel', (input, ctx) => domain.cancelExecution(input.execution_id, input, ctx)],
+    ['execution.evidence.resolve', (input, ctx) => domain.resolveEvidence(input.execution_id, input, ctx)],
     ['review.create', (input, ctx) => domain.createReview(input, ctx)],
     ['review.decide', (input, ctx) => domain.decideReview(input.review_id, input, ctx)],
     ['delivery.create', (input, ctx) => domain.createDelivery(input, ctx)],
-    ['delivery.merge', (input, ctx) => domain.mergeDelivery(input.delivery_id, input, ctx)]
+    ['delivery.merge', (input, ctx) => domain.mergeDelivery(input.delivery_id, input, ctx)],
+    ['delivery.retry', (input, ctx) => domain.retryDelivery(input.delivery_id, input, ctx)],
+    ['integration.codex.probe', (input) => domain.probeCodex({ force: input?.force === true })],
+    ['integration.github.probe', (input) => domain.probeGithub({ force: input?.force === true })]
   ]);
 
   return {
