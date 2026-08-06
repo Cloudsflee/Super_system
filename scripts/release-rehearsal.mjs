@@ -124,6 +124,8 @@ function composeYaml({ appImage, brokerImage, runnerImage, runnerDigest, volume,
       - no-new-privileges:true
     cap_drop:
       - ALL
+    cap_add:
+      - CHOWN
     depends_on:
       - runner-broker
     networks:

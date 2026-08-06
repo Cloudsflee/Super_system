@@ -175,10 +175,12 @@ async function productionJourney() {
 
 function standaloneCompose({ app, broker, runner, volume, secretFile, codexSecretFile = process.env.AIWS_CODEX_SECRET_FILE || '', githubSecretFile = process.env.AIWS_GITHUB_SECRET_FILE || '', githubRepository = process.env.AIWS_GITHUB_REPOSITORY || '', githubFixtureSha = process.env.AIWS_GITHUB_FIXTURE_SHA || '' }) {
   const secret = secretFile.replaceAll('\\', '/');
-  const codexSecret = codexSecretFile && fs.existsSync(codexSecretFile) ? codexSecretFile.replaceAll('\\', '/') : '';
+  const codexPath = codexSecretFile ? path.resolve(root, codexSecretFile) : '';
+  const codexSecret = codexPath && fs.existsSync(codexPath) ? codexPath.replaceAll('\\', '/') : '';
   const codexEnvironment = codexSecret ? `\n      AIWS_CODEX_SECRET_FILE: /run/secrets/codex_api_key` : '';
   const codexDefinition = codexSecret ? `\n  codex_api_key: { file: "${codexSecret}" }` : '';
-  const githubSecret = githubSecretFile && fs.existsSync(githubSecretFile) ? githubSecretFile.replaceAll('\\', '/') : '';
+  const githubPath = githubSecretFile ? path.resolve(root, githubSecretFile) : '';
+  const githubSecret = githubPath && fs.existsSync(githubPath) ? githubPath.replaceAll('\\', '/') : '';
   const githubEnvironment = githubSecret ? `\n      AIWS_GITHUB_SECRET_FILE: /run/secrets/github_token\n      AIWS_GITHUB_REPOSITORY: ${githubRepository}\n      AIWS_GITHUB_FIXTURE_SHA: ${githubFixtureSha}` : '';
   const appSecrets = ['broker_hmac', ...(codexSecret ? ['codex_api_key'] : []), ...(githubSecret ? ['github_token'] : [])];
   const githubDefinition = githubSecret ? `\n  github_token: { file: "${githubSecret}" }` : '';
@@ -202,6 +204,7 @@ function standaloneCompose({ app, broker, runner, volume, secretFile, codexSecre
     tmpfs: [/tmp:size=256m,mode=1777]
     security_opt: [no-new-privileges:true]
     cap_drop: [ALL]
+    cap_add: [CHOWN]
     networks: [internal, edge]
   runner-broker:
     image: ${broker}
