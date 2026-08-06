@@ -7,7 +7,7 @@ import test from 'node:test';
 import { loadConfig } from '../../apps/api/src/config.mjs';
 import { BrokerClient, signedHeaders } from '../../apps/api/src/broker-client.mjs';
 import { stageExecutionInputs, removeExecutionInputs } from '../../apps/api/src/input-staging.mjs';
-import { GitHubIntegration, GitHubIntegrationError } from '../../apps/api/src/github-integration.mjs';
+import { GitHubIntegration, GitHubIntegrationError, repositoryGitArgs } from '../../apps/api/src/github-integration.mjs';
 import { captureDiff, createWorktree, ensureExecutionExcludes, gitHead, gitStatus, initializeFixture, removeWorktree } from '../../apps/api/src/git-fixture.mjs';
 import { normalizeRelativePath, assertReviewablePath, resolveWorkspacePath } from '../../apps/api/src/path-policy.mjs';
 import { buildDockerArgs, redactJobSpec, validateJobSpec, validateTaskBundle } from '../../apps/runner-broker/src/job-spec.mjs';
@@ -227,6 +227,11 @@ test('broker retention, close, and client error paths stay bounded', async () =>
 });
 
 test('GitHub probe and delivery metadata are deterministic with injected API responses', async () => {
+  assert.deepEqual(repositoryGitArgs('/var/lib/aiws/projects/prj_test1234', 'rev-parse', 'HEAD'), [
+    '-c', 'safe.directory=/var/lib/aiws/projects/prj_test1234',
+    '-C', '/var/lib/aiws/projects/prj_test1234',
+    'rev-parse', 'HEAD'
+  ]);
   const calls = [];
   const responses = new Map([
     ['/repos/OWNER/REPO', { full_name: 'OWNER/REPO', permissions: { pull: true, push: true } }],

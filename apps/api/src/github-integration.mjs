@@ -20,6 +20,10 @@ function encodeRef(value) {
   return String(value).split('/').map(encodeURIComponent).join('/');
 }
 
+export function repositoryGitArgs(repositoryRoot, ...args) {
+  return ['-c', `safe.directory=${repositoryRoot}`, '-C', repositoryRoot, ...args];
+}
+
 export class GitHubIntegration {
   constructor(config, options = {}) {
     this.config = config;
@@ -189,14 +193,14 @@ export class GitHubIntegration {
     const remote = `https://github.com/${this.config.githubRepository}.git`;
     try {
       try {
-        await execFileAsync('git', ['-C', repositoryRoot, 'fetch', '--no-tags', remote, `refs/heads/${branch}`], { env, encoding: 'utf8', windowsHide: true, timeout: 120_000, maxBuffer: 2 * 1024 * 1024 });
+        await execFileAsync('git', repositoryGitArgs(repositoryRoot, 'fetch', '--no-tags', remote, `refs/heads/${branch}`), { env, encoding: 'utf8', windowsHide: true, timeout: 120_000, maxBuffer: 2 * 1024 * 1024 });
       } catch (branchError) {
         if (!/^[a-f0-9]{40}$/.test(String(expectedSha || ''))) throw branchError;
-        await execFileAsync('git', ['-C', repositoryRoot, 'fetch', '--no-tags', remote, String(expectedSha)], { env, encoding: 'utf8', windowsHide: true, timeout: 120_000, maxBuffer: 2 * 1024 * 1024 });
+        await execFileAsync('git', repositoryGitArgs(repositoryRoot, 'fetch', '--no-tags', remote, String(expectedSha)), { env, encoding: 'utf8', windowsHide: true, timeout: 120_000, maxBuffer: 2 * 1024 * 1024 });
       }
-      const fetched = (await execFileAsync('git', ['-C', repositoryRoot, 'rev-parse', 'FETCH_HEAD'], { env, encoding: 'utf8', windowsHide: true, timeout: 15_000 })).stdout.trim();
+      const fetched = (await execFileAsync('git', repositoryGitArgs(repositoryRoot, 'rev-parse', 'FETCH_HEAD'), { env, encoding: 'utf8', windowsHide: true, timeout: 15_000 })).stdout.trim();
       if (fetched !== expectedSha) throw new GitHubIntegrationError('github_sync_race', 'remote project branch changed while syncing');
-      await execFileAsync('git', ['-C', repositoryRoot, 'merge', '--ff-only', 'FETCH_HEAD'], { env, encoding: 'utf8', windowsHide: true, timeout: 30_000, maxBuffer: 2 * 1024 * 1024 });
+      await execFileAsync('git', repositoryGitArgs(repositoryRoot, 'merge', '--ff-only', 'FETCH_HEAD'), { env, encoding: 'utf8', windowsHide: true, timeout: 30_000, maxBuffer: 2 * 1024 * 1024 });
       return fetched;
     } catch (error) {
       if (error instanceof GitHubIntegrationError) throw error;
