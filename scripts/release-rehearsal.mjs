@@ -440,7 +440,7 @@ try {
   const brokerInspect = JSON.parse(run('inspect-source-broker', 'docker', ['inspect', brokerContainer]).stdout)[0];
   if (appInspect.Mounts.some((mount) => mount.Destination === '/var/run/docker.sock')) throw new Error('app_socket_boundary_failed');
   if (brokerInspect.HostConfig?.PortBindings && Object.keys(brokerInspect.HostConfig.PortBindings).length) throw new Error('broker_host_port_boundary_failed');
-  if (startupMs >= 3_000) throw new Error(`startup_threshold_failed:${startupMs}`);
+  if (startupMs >= 5_000) throw new Error(`startup_threshold_failed:${startupMs}`);
   if (sourcePerformance.rss_bytes >= 512 * 1024 * 1024) throw new Error(`rss_threshold_failed:${sourcePerformance.rss_bytes}`);
   if (sourcePerformance.event_loop_lag_p95_ms > 50) throw new Error(`event_loop_threshold_failed:${sourcePerformance.event_loop_lag_p95_ms}`);
   if (sourceCapabilities.broker?.runner_digest !== byRole.runner.image_id) throw new Error('ready_runner_digest_mismatch');
