@@ -65,9 +65,9 @@ V2.3 data is not migrated. The source volume is stopped, hashed, cloned as cold 
 | `pnpm check` | syntax, TypeScript, runtime ownership, script count |
 | `pnpm test` | DAG, SQLite, immutability, paths, Broker contracts |
 | `pnpm test:integration` | API, Broker, MCP, restart, execution journey |
-| `pnpm test:e2e` | browser journey across six viewports |
-| `pnpm test:security` | socket/CLI isolation and Job Spec rejection |
-| `pnpm test:release` | version, port, archive, directory governance |
+| `pnpm test:e2e` | unique browser journey and six-viewport layout/error checks |
+| `pnpm test:security` | resolved Compose, App image socket/CLI isolation, signed Broker rejection |
+| `pnpm test:release` | version, port, receipt integrity, image identity, archive, directory governance |
 | `pnpm verify` | all gates in release order |
 
 Formal release runs only from a clean commit:

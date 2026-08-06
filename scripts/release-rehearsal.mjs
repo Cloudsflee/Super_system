@@ -341,8 +341,11 @@ try {
   if (sourceSqlite.integrity.join(',') !== 'ok' || sourceSqlite.user_version !== 1 || sourceSqlite.foreign_key_violations.length) throw new Error('source_sqlite_validation_failed');
   if (sourceSqlite.broker_submission_p95_ms == null || sourceSqlite.broker_submission_p95_ms >= 500) throw new Error(`broker_submission_threshold_failed:${sourceSqlite.broker_submission_p95_ms}`);
 
+  const externalCapabilities = ['codex', 'github'];
+  const unavailableCapabilities = externalCapabilities.filter((name) => sourceCapabilities[name]?.status !== 'available');
+  const acceptanceStatus = unavailableCapabilities.length ? 'candidate' : 'passed';
   const acceptanceReceipt = writeReceipt(`v3-acceptance-docker-${stamp}.json`, {
-    schema_version: 'aiws.v3.docker_acceptance_receipt.v1', status: 'passed',
+    schema_version: 'aiws.v3.docker_acceptance_receipt.v1', status: acceptanceStatus,
     source: imageReceipt.source,
     image_receipt: path.relative(root, imageReceiptPath).replaceAll('\\', '/'),
     images: { app: byRole.app.image_id, broker: byRole.broker.image_id, runner: byRole.runner.image_id },
@@ -351,6 +354,11 @@ try {
     ready: sourceReady,
     performance: sourcePerformance,
     capabilities: sourceCapabilities,
+    capability_gate: {
+      required: externalCapabilities,
+      status: unavailableCapabilities.length ? 'candidate' : 'passed',
+      unavailable: unavailableCapabilities
+    },
     journey: sourceJourney,
     boundaries: { app_has_docker_cli: false, app_has_docker_socket: false, broker_has_host_port: false },
     volume: sourceVolume,
@@ -416,7 +424,7 @@ try {
     },
     commands
   });
-  process.stdout.write(`${JSON.stringify({ status: 'passed', acceptance_receipt: acceptanceReceipt, recovery_receipt: recoveryReceipt, snapshots: [sourceVolume, restoreVolumeName] }, null, 2)}\n`);
+  process.stdout.write(`${JSON.stringify({ status: acceptanceStatus, acceptance_receipt: acceptanceReceipt, recovery_receipt: recoveryReceipt, snapshots: [sourceVolume, restoreVolumeName] }, null, 2)}\n`);
 } catch (error) {
   const failure = writeReceipt(`v3-rehearsal-failure-${stamp}.json`, {
     schema_version: 'aiws.v3.rehearsal_failure_receipt.v1', status: 'failed',

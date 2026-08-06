@@ -7,8 +7,8 @@
 | controlled execution | Execution pinning and Broker Job Spec | Broker integration and security tests |
 | human-machine collaboration | immutable Review plus separate decision | review/delivery integration test |
 | source change inspection | managed Git Diff endpoint | project diff API and Execution page |
-| result management | CAS Asset Versions and Evidence Links | asset API and hash tests |
-| delivery | reviewed GitHub Draft PR record and separate merge gate | delivery integration test |
+| result management | CAS Asset Versions with immutable content hashes | asset API download and hash tests |
+| delivery | reviewed Draft PR delivery record and separate merge gate (GitHub probe required for external submission) | delivery integration test and capability receipt |
 | traceability | SSE execution events and Audit Events | SSE and audit API |
 | local security | loopback bind, internal Broker, isolated Runner | Compose security gate |
 

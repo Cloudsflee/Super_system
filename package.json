@@ -21,7 +21,7 @@
     "check": "node scripts/check.mjs",
     "typecheck": "corepack pnpm --filter @aiws/web typecheck",
     "test": "node --test tests/unit/*.test.mjs && corepack pnpm --filter @aiws/web test",
-    "test:integration": "node --test tests/integration/*.test.mjs",
+    "test:integration": "node --experimental-test-coverage --test-coverage-lines=85 --test-coverage-branches=70 --test-coverage-functions=75 --test tests/integration/*.test.mjs",
     "test:e2e": "node scripts/e2e.mjs",
     "test:security": "node --test tests/security/*.test.mjs",
     "test:release": "node --test tests/release/*.test.mjs",

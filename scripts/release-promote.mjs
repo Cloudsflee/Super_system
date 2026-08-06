@@ -65,6 +65,12 @@ function latest(prefix) {
   return path.join(releaseRoot, names.at(-1));
 }
 
+function assertFormalCapabilities(capabilities, source) {
+  const required = ['codex', 'github'];
+  const unavailable = required.filter((name) => capabilities?.[name]?.status !== 'available');
+  if (unavailable.length) throw new Error(`formal_capability_gate_failed:${source}:${unavailable.join(',')}`);
+}
+
 function inspect(name) {
   return JSON.parse(run(`inspect-${name.replaceAll(/[^A-Za-z0-9]/g, '-')}`, 'docker', ['inspect', name]).stdout)[0];
 }
@@ -223,6 +229,7 @@ const acceptanceReceipt = JSON.parse(fs.readFileSync(acceptanceReceiptPath, 'utf
 const recoveryReceipt = JSON.parse(fs.readFileSync(recoveryReceiptPath, 'utf8'));
 if (imageReceipt.source?.commit !== commit || acceptanceReceipt.source?.commit !== commit || recoveryReceipt.source?.commit !== commit) throw new Error('promotion_receipt_commit_mismatch');
 if (imageReceipt.status !== 'candidate' || acceptanceReceipt.status !== 'passed' || recoveryReceipt.status !== 'passed') throw new Error('promotion_gate_not_passed');
+assertFormalCapabilities(acceptanceReceipt.capabilities, 'acceptance_receipt');
 const byRole = Object.fromEntries(imageReceipt.images.map((image) => [image.role, image]));
 for (const role of ['app', 'broker', 'runner']) run(`verify-candidate-${role}`, 'docker', ['image', 'inspect', byRole[role].image_id]);
 const secretFile = path.join(root, 'docker', 'secrets', 'broker_hmac');
@@ -279,6 +286,7 @@ try {
   const ready = await waitReady();
   const journey = await productionJourney();
   const capabilities = await (await fetch('http://127.0.0.1:4317/api/v1/system/capabilities')).json();
+  assertFormalCapabilities(capabilities, 'production_probe');
   const appPerformance = await (await fetch('http://127.0.0.1:4317/api/v1/system/performance')).json();
   const finalApp = inspect('aiws-v3-app-1');
   const finalBroker = inspect('aiws-v3-runner-broker-1');

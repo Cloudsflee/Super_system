@@ -16,7 +16,7 @@ The Broker intentionally has no host port. Inspect it with `docker compose logs 
 
 From a clean commit, run `corepack pnpm release:build`, `corepack pnpm release:rehearse`, then `corepack pnpm release:promote`. The first command records the full gate output, verifies the reverse source patch, builds `<version>-<shortsha>` candidates, and generates image SBOMs. The second uses dynamically allocated ports and two temporary V3 volumes for real-Runner acceptance and restore. The third backs up production, validates the generated rollback, promotes tags by verified image ID, switches 4317, and removes only the exact V2.2 resources after V3 is healthy.
 
-Never run `release:promote` unless the latest image, Docker acceptance, and recovery receipts all identify the current commit and report their required pass/candidate states.
+Never run `release:promote` unless the latest image, Docker acceptance, and recovery receipts all identify the current commit and report their required pass/candidate states. The acceptance receipt must show `codex.status=available` and `github.status=available`; otherwise rehearsal records `candidate` and promotion fails before it stops or switches the `4317` service.
 
 ## Backup
 

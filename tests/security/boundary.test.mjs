@@ -1,23 +1,61 @@
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
+import { spawnSync } from 'node:child_process';
 import test from 'node:test';
 import { validateJobSpec } from '../../apps/runner-broker/src/job-spec.mjs';
 
 const root = process.cwd();
 
-test('app container has no Docker control plane and broker is the only socket holder', () => {
-  const compose = fs.readFileSync(path.join(root, 'compose.yml'), 'utf8');
-  const app = compose.slice(compose.indexOf('  app:'), compose.indexOf('  runner-broker:'));
-  const broker = compose.slice(compose.indexOf('  runner-broker:'));
-  assert.doesNotMatch(app, /docker\.sock|docker-cli/);
-  assert.match(app, /read_only: true/);
-  assert.match(broker, /docker\.sock/);
-  assert.doesNotMatch(broker, /ports:/);
-  assert.match(app, /aiws\.owner: aiws-v3/);
-  assert.match(broker, /aiws\.owner: aiws-v3/);
-  assert.match(compose, /aiws-data-v3/);
-  assert.doesNotMatch(compose, /4320/);
+test('resolved compose keeps Docker control plane and socket on the broker only', () => {
+  const digest = `sha256:${'e'.repeat(64)}`;
+  const result = spawnSync('docker', ['compose', '-f', path.join(root, 'compose.yml'), 'config', '--format', 'json'], {
+    cwd: root,
+    encoding: 'utf8',
+    windowsHide: true,
+    env: { ...process.env, AIWS_RUNNER_DIGEST: digest, AIWS_RUNNER_IMAGE: `runner@${digest}` }
+  });
+  assert.equal(result.status, 0, result.stderr || result.stdout);
+  const config = JSON.parse(result.stdout);
+  const app = config.services?.app;
+  const broker = config.services?.['runner-broker'];
+  assert.ok(app && broker);
+  assert.equal(app.read_only, true);
+  assert.deepEqual(app.cap_drop, ['ALL']);
+  assert.equal(app.ports[0].host_ip, '127.0.0.1');
+  assert.equal(app.ports[0].target, 4317);
+  assert.equal(app.volumes.some((volume) => String(volume.source).includes('docker.sock')), false);
+  assert.equal(JSON.stringify(app).includes('docker-cli'), false);
+  assert.equal(broker.volumes.filter((volume) => String(volume.source).includes('docker.sock')).length, 1);
+  assert.equal(broker.ports, undefined);
+  assert.deepEqual(broker.cap_drop, ['ALL']);
+  assert.deepEqual(Object.keys(broker.networks), ['internal']);
+  assert.equal(config.volumes['aiws-data-v3'].labels['aiws.owner'], 'aiws-v3');
+  assert.equal(JSON.stringify(config).includes('4320'), false);
+});
+
+test('production App image has no Docker CLI or host socket', () => {
+  const tag = `aiws-security-app:${process.pid}-${Date.now()}`;
+  const build = spawnSync('docker', ['build', '--quiet', '--target', 'production', '--tag', tag, root], {
+    cwd: root,
+    encoding: 'utf8',
+    windowsHide: true,
+    timeout: 180_000
+  });
+  try {
+    assert.equal(build.status, 0, build.stderr || build.stdout);
+    const probe = spawnSync('docker', [
+      'run', '--rm', '--entrypoint', 'sh', tag, '-c',
+      'if command -v docker >/dev/null 2>&1; then exit 42; fi; if [ -e /var/run/docker.sock ]; then exit 43; fi'
+    ], { cwd: root, encoding: 'utf8', windowsHide: true, timeout: 30_000 });
+    assert.equal(probe.status, 0, probe.stderr || probe.stdout);
+    const inspect = spawnSync('docker', ['image', 'inspect', tag, '--format', '{{index .Config.Labels "aiws.component"}}'], { cwd: root, encoding: 'utf8', windowsHide: true });
+    assert.equal(inspect.status, 0, inspect.stderr || inspect.stdout);
+    assert.equal(inspect.stdout.trim(), 'app');
+  } finally {
+    const cleanup = spawnSync('docker', ['image', 'rm', '--force', tag], { cwd: root, encoding: 'utf8', windowsHide: true, timeout: 30_000 });
+    assert.equal(cleanup.status, 0, cleanup.stderr || cleanup.stdout);
+  }
 });
 
 test('production build context excludes live secrets and requires a real Runner digest', () => {
