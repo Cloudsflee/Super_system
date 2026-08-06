@@ -204,7 +204,7 @@ function standaloneCompose({ app, broker, runner, volume, secretFile, codexSecre
     tmpfs: [/tmp:size=256m,mode=1777]
     security_opt: [no-new-privileges:true]
     cap_drop: [ALL]
-    cap_add: [CHOWN]
+    cap_add: [CHOWN, DAC_OVERRIDE]
     networks: [internal, edge]
   runner-broker:
     image: ${broker}

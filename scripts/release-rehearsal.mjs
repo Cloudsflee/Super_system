@@ -126,6 +126,7 @@ function composeYaml({ appImage, brokerImage, runnerImage, runnerDigest, volume,
       - ALL
     cap_add:
       - CHOWN
+      - DAC_OVERRIDE
     depends_on:
       - runner-broker
     networks:

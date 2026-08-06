@@ -47,6 +47,7 @@ services:
       - ALL
     cap_add:
       - CHOWN
+      - DAC_OVERRIDE
     networks:
       - internal
       - edge

@@ -22,7 +22,7 @@ test('resolved compose keeps Docker control plane and socket on the broker only'
   assert.ok(app && broker);
   assert.equal(app.read_only, true);
   assert.deepEqual(app.cap_drop, ['ALL']);
-  assert.deepEqual(app.cap_add, ['CHOWN']);
+  assert.deepEqual(app.cap_add, ['CHOWN', 'DAC_OVERRIDE']);
   assert.equal(app.ports[0].host_ip, '127.0.0.1');
   assert.equal(app.ports[0].target, 4317);
   assert.equal(app.volumes.some((volume) => String(volume.source).includes('docker.sock')), false);

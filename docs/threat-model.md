@@ -24,7 +24,7 @@ The browser is untrusted input. The App is trusted for commands and relational d
 | host path escape | normalized relative path under V3 data root |
 | privileged runner | fixed cap drop, no-new-privileges, read-only root, no ports |
 | Docker takeover from App | no CLI package and no socket mount |
-| workspace ownership drift | App keeps only `CHOWN` after dropping all capabilities so Runner UID 10001 can access execution-scoped files |
+| workspace ownership drift | App keeps only `CHOWN` and `DAC_OVERRIDE` after dropping all other capabilities so Runner UID 10001 can access execution-scoped files while App retains its own project tree |
 | secret disclosure | ephemeral memory reference; no events, logs, or results |
 | model approval spoofing | suggestion state separate from immutable human decision |
 | legacy data contamination | V2 volume name rejection in App and Broker config |
