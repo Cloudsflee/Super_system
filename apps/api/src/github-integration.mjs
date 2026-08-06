@@ -188,7 +188,12 @@ export class GitHubIntegration {
     const env = this.gitEnvironment();
     const remote = `https://github.com/${this.config.githubRepository}.git`;
     try {
-      await execFileAsync('git', ['-C', repositoryRoot, 'fetch', '--no-tags', remote, `refs/heads/${branch}`], { env, encoding: 'utf8', windowsHide: true, timeout: 120_000, maxBuffer: 2 * 1024 * 1024 });
+      try {
+        await execFileAsync('git', ['-C', repositoryRoot, 'fetch', '--no-tags', remote, `refs/heads/${branch}`], { env, encoding: 'utf8', windowsHide: true, timeout: 120_000, maxBuffer: 2 * 1024 * 1024 });
+      } catch (branchError) {
+        if (!/^[a-f0-9]{40}$/.test(String(expectedSha || ''))) throw branchError;
+        await execFileAsync('git', ['-C', repositoryRoot, 'fetch', '--no-tags', remote, String(expectedSha)], { env, encoding: 'utf8', windowsHide: true, timeout: 120_000, maxBuffer: 2 * 1024 * 1024 });
+      }
       const fetched = (await execFileAsync('git', ['-C', repositoryRoot, 'rev-parse', 'FETCH_HEAD'], { env, encoding: 'utf8', windowsHide: true, timeout: 15_000 })).stdout.trim();
       if (fetched !== expectedSha) throw new GitHubIntegrationError('github_sync_race', 'remote project branch changed while syncing');
       await execFileAsync('git', ['-C', repositoryRoot, 'merge', '--ff-only', 'FETCH_HEAD'], { env, encoding: 'utf8', windowsHide: true, timeout: 30_000, maxBuffer: 2 * 1024 * 1024 });
