@@ -10,7 +10,11 @@ export function composeYaml({ appImage, brokerImage, runnerImage, runnerDigest, 
   const codexServiceSecret = codexSecret ? '\n      - codex_api_key' : '';
   const codexSecretDefinition = codexSecret ? `\n  codex_api_key:\n    file: "${codexSecret}"` : '';
   const brokerExecutor = codexSecret ? 'docker' : 'mock';
-  const brokerUser = brokerExecutor === 'mock' ? '\n    user: "10001:10001"' : '';
+  // Mock execution writes the mounted workspace in the Broker process. Keep it
+  // root with the narrow filesystem capability needed to cross the 0700 volume
+  // root; the real Docker executor remains capability-free.
+  const brokerCapability = brokerExecutor === 'mock' ? '\n    cap_add:\n      - DAC_OVERRIDE' : '';
+  const brokerSocket = brokerExecutor === 'docker' ? '\n      - /var/run/docker.sock:/var/run/docker.sock' : '';
   const githubPath = githubSecretFile ? path.resolve(root, githubSecretFile) : '';
   if (githubPath && !fs.existsSync(githubPath)) throw new Error('rehearsal_github_secret_unreadable');
   const githubSecret = githubPath && fs.existsSync(githubPath) ? githubPath.replaceAll('\\', '/') : '';
@@ -54,7 +58,7 @@ export function composeYaml({ appImage, brokerImage, runnerImage, runnerDigest, 
       - internal
       - edge
   runner-broker:
-    image: ${brokerImage}${brokerUser}
+    image: ${brokerImage}
     init: true
     read_only: true
     labels:
@@ -71,14 +75,14 @@ export function composeYaml({ appImage, brokerImage, runnerImage, runnerDigest, 
     secrets:
       - broker_hmac
     volumes:
-      - /var/run/docker.sock:/var/run/docker.sock
+${brokerSocket}
       - data:/var/lib/aiws
     tmpfs:
       - /tmp:size=256m,mode=1777
     security_opt:
       - no-new-privileges:true
     cap_drop:
-      - ALL
+      - ALL${brokerCapability}
     networks:
       - internal
 networks:

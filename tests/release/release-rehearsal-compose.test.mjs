@@ -19,11 +19,12 @@ function brokerService(compose) {
   return compose.split('\n  runner-broker:\n')[1].split('\nnetworks:\n')[0];
 }
 
-test('mock rehearsal broker runs as the runner workspace owner', () => {
+test('mock rehearsal broker can cross the workspace volume boundary without a Docker socket', () => {
   const service = brokerService(composeYaml(base));
-  assert.match(service, /\n    user: "10001:10001"\n/);
   assert.match(service, /AIWS_BROKER_EXECUTOR: mock/);
-  assert.match(service, /- ALL/);
+  assert.doesNotMatch(service, /\n    user:/);
+  assert.doesNotMatch(service, /\/var\/run\/docker\.sock/);
+  assert.match(service, /cap_add:\n      - DAC_OVERRIDE/);
 });
 
 test('docker rehearsal broker retains root socket execution', () => {
@@ -35,6 +36,7 @@ test('docker rehearsal broker retains root socket execution', () => {
     assert.doesNotMatch(service, /\n    user:/);
     assert.match(service, /AIWS_BROKER_EXECUTOR: docker/);
     assert.match(service, /\/var\/run\/docker\.sock:\/var\/run\/docker\.sock/);
+    assert.doesNotMatch(service, /cap_add:\n      - DAC_OVERRIDE/);
   } finally {
     fs.rmSync(directory, { recursive: true, force: true });
   }
