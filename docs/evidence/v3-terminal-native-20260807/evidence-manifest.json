@@ -3,7 +3,7 @@
   "batch": "v3-terminal-native-20260807",
   "branch": "recovery/v3-feature-restore",
   "baseline_commit": "25f6823b066633b31e7db009ea23da81f68d5ba7",
-  "implementation_commit": null,
+  "implementation_commit": "c436d6b",
   "created_at": "2026-08-07T14:33:44.878Z",
   "files": [
     {
