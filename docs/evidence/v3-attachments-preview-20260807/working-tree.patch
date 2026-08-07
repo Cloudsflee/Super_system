@@ -1,0 +1,148 @@
+diff --git a/apps/api/src/http.mjs b/apps/api/src/http.mjs
+index 008720c..b32ee63 100644
+--- a/apps/api/src/http.mjs
++++ b/apps/api/src/http.mjs
+@@ -1,7 +1,7 @@
+ import fs from 'node:fs';
+ import path from 'node:path';
+ import { randomUUID } from 'node:crypto';
+-import { hashJson, now, parseJson } from './crypto.mjs';
++import { hashJson, now, parseJson, sha256 } from './crypto.mjs';
+ import { AppError, asAppError } from './errors.mjs';
+ 
+ const MUTATING = new Set(['POST', 'PATCH', 'DELETE']);
+@@ -250,6 +250,7 @@ export function createHttpHandler({ domain, registry, db, config, performancePro
+         const attachment = await db.get('SELECT * FROM attachments WHERE id=?', [parts[1]]);
+         if (!attachment) throw new AppError('not_found', 'attachment not found');
+         if (parts[2] === 'content') return serveAsset(res, { ...attachment, cas_hash: attachment.sha256 }, config);
++        if (parts[2] === 'preview') return serveAsset(res, { ...attachment, cas_hash: attachment.sha256 }, config, { preview: true });
+         const { cas_path: _casPath, ...metadata } = attachment;
+         result = metadata;
+       } else if (parts[0] === 'deliveries') {
+@@ -317,7 +318,26 @@ function serveWeb(req, res, webRoot, urlPath) {
+   fs.createReadStream(selected).pipe(res);
+ }
+ 
+-function serveAsset(res, asset, config) {
++const PREVIEWABLE_TYPES = new Set([
++  'text/plain', 'text/markdown', 'application/json', 'text/csv', 'application/xml',
++  'image/png', 'image/jpeg', 'image/webp', 'image/gif', 'image/svg+xml', 'text/html'
++]);
++const PREVIEW_MAX_BYTES = 1 * 1024 * 1024;
++
++function sanitizeMarkup(value) {
++  return value
++    .replace(/<script\b[^>]*>[\s\S]*?<\/script\s*>/gi, '')
++    .replace(/<iframe\b[^>]*>[\s\S]*?<\/iframe\s*>/gi, '')
++    .replace(/<object\b[^>]*>[\s\S]*?<\/object\s*>/gi, '')
++    .replace(/<embed\b[^>]*>/gi, '')
++    .replace(/<meta\b[^>]*http-equiv\s*=\s*["']?refresh["']?[^>]*>/gi, '')
++    .replace(/\s+on[a-z0-9_-]+\s*=\s*(?:"[^"]*"|'[^']*'|[^\s>]+)/gi, '')
++    .replace(/(href|src|xlink:href)\s*=\s*("|')\s*javascript:[^"']*\2/gi, '$1=$2#$2')
++    .replace(/(href|src|xlink:href)\s*=\s*javascript:[^\s>]+/gi, '$1="#"')
++    .replace(/url\(\s*javascript:[^)]+\)/gi, 'none');
++}
++
++function serveAsset(res, asset, config, { preview = false } = {}) {
+   const file = path.resolve(config.casRoot, asset.cas_hash.slice(0, 2), asset.cas_hash);
+   const root = path.resolve(config.casRoot);
+   let safe = file.startsWith(`${root}${path.sep}`) && fs.existsSync(file);
+@@ -329,13 +349,39 @@ function serveAsset(res, asset, config) {
+     } catch { safe = false; }
+   }
+   if (!safe) throw new AppError('not_found', 'asset content not found');
++  const stat = fs.statSync(file);
++  if (stat.size !== Number(asset.byte_size)) throw new AppError('asset_corrupt', 'asset size does not match metadata', { status: 500 });
++  if (preview && !PREVIEWABLE_TYPES.has(String(asset.media_type || '').toLowerCase())) {
++    throw new AppError('attachment_preview_unsupported', 'attachment preview is not supported for this media type', { status: 415 });
++  }
++  if (preview && stat.size > PREVIEW_MAX_BYTES) {
++    throw new AppError('attachment_preview_too_large', 'attachment preview exceeds the 1 MiB preview limit', { status: 413, details: { limit: PREVIEW_MAX_BYTES } });
++  }
+   const filename = String(asset.name).replace(/[\r\n"\\/]/g, '_');
++  let body = null;
++  let contentType = asset.media_type || 'application/octet-stream';
++  let entityTag = asset.cas_hash;
++  if (preview) {
++    body = fs.readFileSync(file);
++    const mediaType = String(asset.media_type || '').toLowerCase();
++    if (mediaType === 'text/html' || mediaType === 'image/svg+xml') {
++      body = Buffer.from(sanitizeMarkup(body.toString('utf8')), 'utf8');
++      entityTag = sha256(body);
++    } else if (mediaType === 'application/xml') {
++      contentType = 'text/plain; charset=utf-8';
++    } else if (contentType.startsWith('text/') || mediaType === 'application/json') {
++      contentType = `${contentType}; charset=utf-8`;
++    }
++  }
+   res.writeHead(200, {
+-    'content-type': asset.media_type || 'application/octet-stream',
+-    'content-length': String(asset.byte_size),
+-    'content-disposition': `attachment; filename="${filename}"`,
++    'content-type': contentType,
++    'content-length': String(body?.byteLength ?? asset.byte_size),
++    'content-disposition': `${preview ? 'inline' : 'attachment'}; filename="${filename}"`,
+     'cache-control': 'private, max-age=31536000, immutable',
+-    etag: `"sha256-${asset.cas_hash}"`
++    'x-content-type-options': 'nosniff',
++    ...(preview ? { 'content-security-policy': "default-src 'none'; img-src data: blob:; style-src 'unsafe-inline'" } : {}),
++    etag: `"sha256-${entityTag}"`
+   });
++  if (body) return res.end(body);
+   fs.createReadStream(file).pipe(res);
+ }
+diff --git a/docs/api.md b/docs/api.md
+index d190ff9..9c9f6a6 100644
+--- a/docs/api.md
++++ b/docs/api.md
+@@ -38,6 +38,7 @@ Base URL: `http://127.0.0.1:4317/api/v1`
+ - `GET/POST /projects/{projectId}/assets`
+ - `GET/POST /projects/{projectId}/attachments`
+ - `GET /attachments/{attachmentId}/content` (always a download)
++- `GET /attachments/{attachmentId}/preview` (bounded, sanitized inline preview for supported text/image media)
+ - `GET/POST /projects/{projectId}/quality-reviews`
+ - `GET /projects/{projectId}/diff`
+ - `POST /integrations/codex/probe` (requires `Idempotency-Key`; returns only provider, model, status, timestamp, and fixed error code; `{ "force": true }` bypasses the 15-minute cache)
+diff --git a/feature-catalog.json b/feature-catalog.json
+index 18b46fe..f4ffdae 100644
+--- a/feature-catalog.json
++++ b/feature-catalog.json
+@@ -10,8 +10,8 @@
+     {"id":"REC-D0-GOVERNANCE-000","domain":"governance","name":"Recovery plan, catalog, coverage and impact gates","status":"implemented","source_files":["scripts/v23-plan.mjs","scripts/v23-catalog.mjs","scripts/v23-coverage.mjs","scripts/v23-impact.mjs"],"target_modules":["feature-catalog.json","package.json","README.md","scripts/recovery-governance.mjs","docs/开发计划v3功能恢复.md","docs/测试计划v3功能恢复.md"],"tables":[],"apis":[],"ui":[],"events":["recovery.governance.receipt"],"tests":["T0","tests/unit/recovery-governance.test.mjs"]},
+     {"id":"REC-D1-CONTRACTS-023","domain":"contracts","name":"V3 data layer and public contracts","status":"implemented","source_files":["v2.3 schema and contract history"],"target_modules":["apps/api/src/schema.mjs","packages/contracts/src/index.mjs","docs/data-model.md"],"tables":["users","sessions","connected_accounts","setup_states","codex_profiles","github_app_configs","github_installations","mcp_clients","config_revisions","assist_sessions","workflow_generations","repository_lines","context_nodes","asset_blobs","quality_review_runs"],"apis":["/api/v1"],"ui":[],"events":["audit_events","events"],"tests":["T1","tests/unit/database.test.mjs","tests/unit/contracts.test.mjs"]},
+     {"id":"REC-D10-FRONTEND-024","domain":"frontend","name":"V3 Setup, Workflow and Assist Center surfaces","status":"implemented","source_files":["v2.3 mature web workflows"],"target_modules":["apps/web/src/App.tsx","apps/web/src/pages.tsx","apps/web/src/styles.css"],"tables":[],"apis":["/api/v1/setup","/api/v1/projects","/api/v1/assist/sessions"],"ui":["Setup","Projects","Workflow","Assist","Execution","Assets","Audit","Settings"],"events":["assist.message","execution.completed"],"tests":["T8","apps/web/src/test/workflow.test.tsx"]},
+-    {"id":"REC-D2-IDENTITY-001","domain":"identity","name":"Local owner account and sessions","status":"planned","source_files":["v2.3 account/session modules"],"target_modules":["apps/api/src/schema.mjs","apps/api/src/domain.mjs"],"tables":["users","sessions","connected_accounts"],"apis":["/api/v1/system"],"ui":["Setup"],"events":["audit.account"],"tests":["T2","tests/security/credentials.test.mjs"]},
+-    {"id":"REC-D2-SETUP-002","domain":"setup","name":"Setup readiness, workspace Vault, Codex profiles and integration probes","status":"planned","source_files":["v2.3 setup, Vault and probe services"],"target_modules":["apps/api/src/config.mjs","apps/api/src/credential-vault.mjs","apps/api/src/integration-probes.mjs","apps/api/src/http.mjs","apps/api/src/domain.mjs","apps/api/src/command-registry.mjs","apps/web/src/pages.tsx","apps/web/src/styles.css","docs/api.md"],"tables":["credential_refs","setup_states","codex_profiles","github_app_configs"],"apis":["/api/v1/setup","/api/v1/credentials","/api/v1/profiles/codex","/api/v1/integrations/codex/probe","/api/v1/integrations/github/probe","/readyz"],"ui":["Setup","Codex","GitHub App","Credential"],"events":["credential.created","credential.rotated","credential.revoked","integration.probed"],"tests":["T2","tests/integration/setup-flow.test.mjs","tests/integration/api-flow.test.mjs","tests/security/credentials.test.mjs"]},
++    {"id":"REC-D2-IDENTITY-001","domain":"identity","name":"Local owner account and sessions","status":"implemented","source_files":["v2.3 account/session modules"],"target_modules":["apps/api/src/schema.mjs","apps/api/src/domain.mjs"],"tables":["users","sessions","connected_accounts"],"apis":["/api/v1/system"],"ui":["Setup"],"events":["audit.account"],"tests":["T2","tests/integration/setup-flow.test.mjs","tests/security/credentials.test.mjs"]},
++    {"id":"REC-D2-SETUP-002","domain":"setup","name":"Setup readiness, workspace Vault, Codex profiles and integration probes","status":"implemented","source_files":["v2.3 setup, Vault and probe services"],"target_modules":["apps/api/src/config.mjs","apps/api/src/credential-vault.mjs","apps/api/src/integration-probes.mjs","apps/api/src/http.mjs","apps/api/src/domain.mjs","apps/api/src/command-registry.mjs","apps/web/src/pages.tsx","apps/web/src/styles.css","docs/api.md"],"tables":["credential_refs","setup_states","codex_profiles","github_app_configs"],"apis":["/api/v1/setup","/api/v1/credentials","/api/v1/profiles/codex","/api/v1/integrations/codex/probe","/api/v1/integrations/github/probe","/readyz"],"ui":["Setup","Codex","GitHub App","Credential"],"events":["credential.created","credential.rotated","credential.revoked","integration.probed"],"tests":["T2","tests/integration/setup-flow.test.mjs","tests/integration/api-flow.test.mjs","tests/security/credentials.test.mjs"]},
+     {"id":"REC-D3-RUNNER-003","domain":"runner","name":"Broker isolated runner and signed Job Spec","status":"implemented","source_files":["v2.3 runner services"],"target_modules":["apps/runner-broker/src/job-spec.mjs","apps/runner-broker/src/signature.mjs","apps/api/src/broker-client.mjs"],"tables":["executions","task_attempts"],"apis":["/readyz","/api/v1/executions/{id}/start"],"ui":["Execution"],"events":["runner.started","runner.completed"],"tests":["T3","tests/security/broker-http.test.mjs"]},
+     {"id":"REC-D4-MCP-004","domain":"mcp","name":"MCP gateway and tool registry","status":"implemented","source_files":["v2.3 MCP registry"],"target_modules":["apps/api/src/command-registry.mjs","apps/api/src/http.mjs"],"tables":["mcp_clients","audit_events"],"apis":["/api/v1/mcp"],"ui":["MCP Settings"],"events":["mcp.tool.called"],"tests":["T3","tests/integration/mcp-flow.test.mjs"]},
+     {"id":"REC-D5-PROJECT-005","domain":"project","name":"Project intake and immutable brief","status":"implemented","source_files":["v2.3 project intake and brief"],"target_modules":["apps/api/src/domain.mjs","apps/api/src/http.mjs"],"tables":["projects","project_intakes","brief_revisions","brief_heads"],"apis":["/api/v1/projects","/api/v1/projects/{id}/briefs"],"ui":["Projects","Intake","Brief"],"events":["project.created","brief.created"],"tests":["T4","tests/integration/api-flow.test.mjs"]},
+@@ -20,7 +20,7 @@
+     {"id":"REC-D6-EXECUTION-008","domain":"execution","name":"Persistent DAG dispatcher and seven stages","status":"implemented","source_files":["v2.3 scheduler"],"target_modules":["apps/api/src/domain.mjs","apps/api/src/broker-client.mjs"],"tables":["executions","task_attempts","execution_stage_checkpoints"],"apis":["/api/v1/projects/{id}/executions","/api/v1/executions/{id}/start","/api/v1/executions/{id}/cancel"],"ui":["Execution","Recovery"],"events":["execution.stage.changed","task.completed"],"tests":["T4","tests/integration/scheduler-flow.test.mjs"]},
+     {"id":"REC-D6-OUTCOME-009","domain":"outcome","name":"Outcome contract, rubric, waiver and release gate","status":"implemented","source_files":["v2.3 outcome service"],"target_modules":["apps/api/src/domain.mjs","apps/api/src/http.mjs"],"tables":["outcome_requirements","outcome_evaluations","outcome_waivers"],"apis":["/api/v1/projects/{id}/outcome-requirements","/api/v1/executions/{id}/outcome","/api/v1/executions/{id}/outcome/evaluate","/api/v1/executions/{id}/outcome/waive"],"ui":["Outcome","Quality Review"],"events":["outcome.evaluated","outcome.waived"],"tests":["T4","T6","tests/integration/workflow-recovery.test.mjs"]},
+     {"id":"REC-D8-ASSIST-010","domain":"assist","name":"Four-level Assist sessions and turn events","status":"implemented","source_files":["v2.3 Assist center"],"target_modules":["apps/api/src/schema.mjs","apps/api/src/domain.mjs","apps/api/src/http.mjs","apps/web/src/App.tsx","apps/web/src/pages.tsx","apps/web/src/styles.css"],"tables":["assist_sessions","assist_turns","assist_messages","assist_events","assist_operations"],"apis":["/api/v1/assist/sessions","/api/v1/assist/sessions/{id}/turns","/api/v1/assist/sessions/{id}/events"],"ui":["Assist Center","Composer","Goal","Plan"],"events":["assist.session.created","assist.turn.created","assist.goal","assist.plan","assist.message"],"tests":["T5","tests/integration/assist-flow.test.mjs"]},
+-    {"id":"REC-D8-ATTACHMENTS-011","domain":"assist","name":"Attachments and secure previews","status":"planned","source_files":["v2.3 attachment service"],"target_modules":["apps/api/src/evidence-service.mjs","apps/api/src/path-policy.mjs","apps/api/src/domain.mjs","apps/api/src/http.mjs"],"tables":["attachments"],"apis":["/api/v1/projects/{id}/attachments","/api/v1/attachments/{id}/content"],"ui":["Attachments"],"events":["attachment.created"],"tests":["T5","T6","tests/integration/assist-flow.test.mjs"]},
++    {"id":"REC-D8-ATTACHMENTS-011","domain":"assist","name":"Attachments and secure previews","status":"implemented","source_files":["v2.3 attachment service"],"target_modules":["apps/api/src/evidence-service.mjs","apps/api/src/path-policy.mjs","apps/api/src/domain.mjs","apps/api/src/http.mjs"],"tables":["attachments"],"apis":["/api/v1/projects/{id}/attachments","/api/v1/attachments/{id}/content","/api/v1/attachments/{id}/preview"],"ui":["Attachments"],"events":["attachment.created"],"tests":["T5","T6","tests/integration/assist-flow.test.mjs"]},
+     {"id":"REC-D8-FILES-012","domain":"assist","name":"Monaco files, diff review, change batch and undo","status":"planned","source_files":["v2.3 file workspace"],"target_modules":["apps/api/src/schema.mjs"],"tables":["file_changes","assist_change_batches","assist_checkpoints"],"apis":["/api/v1/change-batches"],"ui":["Monaco","Diff Review"],"events":["file.changed","change_batch.applied","change_batch.rolled_back"],"tests":["T5"]},
+     {"id":"REC-D8-APPROVAL-013","domain":"assist","name":"Terminal and runtime approval center","status":"planned","source_files":["v2.3 terminal and approvals"],"target_modules":["apps/api/src/schema.mjs"],"tables":["runtime_approvals","runtime_user_inputs","ui_action_intents"],"apis":["/api/v1/approvals","/api/v1/user-inputs"],"ui":["Terminal","Approval Center","Proposal"],"events":["approval.requested","approval.decided"],"tests":["T5"]},
+     {"id":"REC-D7-REPOSITORY-014","domain":"repository","name":"Repository lines and managed worktrees","status":"implemented","source_files":["v2.3 repository/worktree"],"target_modules":["apps/api/src/git-fixture.mjs","apps/api/src/domain.mjs"],"tables":["repository_bindings","repository_worktrees","repository_connections","repository_lines"],"apis":["/api/v1/projects/{id}/diff"],"ui":["Repository","Worktree"],"events":["repository.bound","worktree.created"],"tests":["T7","tests/unit/path-policy.test.mjs"]},
+diff --git a/tests/integration/assist-flow.test.mjs b/tests/integration/assist-flow.test.mjs
+index c200721..5643c45 100644
+--- a/tests/integration/assist-flow.test.mjs
++++ b/tests/integration/assist-flow.test.mjs
+@@ -81,6 +81,14 @@ test('four-level Assist sessions persist scope snapshots, native events, and rep
+     assert.equal(download.status, 200);
+     assert.match(download.headers.get('content-disposition'), /^attachment;/);
+     assert.equal(await download.text(), svg);
++    const preview = await fetch(`${env.base}/api/v1/attachments/${attachment.json.id}/preview`);
++    assert.equal(preview.status, 200);
++    assert.match(preview.headers.get('content-disposition'), /^inline;/);
++    assert.equal(preview.headers.get('x-content-type-options'), 'nosniff');
++    assert.match(preview.headers.get('content-security-policy'), /default-src 'none'/);
++    const previewText = await preview.text();
++    assert.doesNotMatch(previewText, /<script|alert\(/i);
++    assert.match(previewText, /<rect/);
+     const unsupported = await mutate(env.base, `/api/v1/projects/${project.json.id}/attachments`, { name: 'archive.zip', media_type: 'application/zip', content: 'fixture' }, 'assist-attachment-unsupported');
+     assert.equal(unsupported.response.status, 415);
+     const lowReview = await mutate(env.base, `/api/v1/projects/${project.json.id}/quality-reviews`, { attachment_id: attachment.json.id, semantic_human_score: 79 }, 'quality-review-low');

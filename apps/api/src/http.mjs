@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { randomUUID } from 'node:crypto';
-import { hashJson, now, parseJson } from './crypto.mjs';
+import { hashJson, now, parseJson, sha256 } from './crypto.mjs';
 import { AppError, asAppError } from './errors.mjs';
 
 const MUTATING = new Set(['POST', 'PATCH', 'DELETE']);
@@ -250,6 +250,7 @@ export function createHttpHandler({ domain, registry, db, config, performancePro
         const attachment = await db.get('SELECT * FROM attachments WHERE id=?', [parts[1]]);
         if (!attachment) throw new AppError('not_found', 'attachment not found');
         if (parts[2] === 'content') return serveAsset(res, { ...attachment, cas_hash: attachment.sha256 }, config);
+        if (parts[2] === 'preview') return serveAsset(res, { ...attachment, cas_hash: attachment.sha256 }, config, { preview: true });
         const { cas_path: _casPath, ...metadata } = attachment;
         result = metadata;
       } else if (parts[0] === 'deliveries') {
@@ -317,7 +318,26 @@ function serveWeb(req, res, webRoot, urlPath) {
   fs.createReadStream(selected).pipe(res);
 }
 
-function serveAsset(res, asset, config) {
+const PREVIEWABLE_TYPES = new Set([
+  'text/plain', 'text/markdown', 'application/json', 'text/csv', 'application/xml',
+  'image/png', 'image/jpeg', 'image/webp', 'image/gif', 'image/svg+xml', 'text/html'
+]);
+const PREVIEW_MAX_BYTES = 1 * 1024 * 1024;
+
+function sanitizeMarkup(value) {
+  return value
+    .replace(/<script\b[^>]*>[\s\S]*?<\/script\s*>/gi, '')
+    .replace(/<iframe\b[^>]*>[\s\S]*?<\/iframe\s*>/gi, '')
+    .replace(/<object\b[^>]*>[\s\S]*?<\/object\s*>/gi, '')
+    .replace(/<embed\b[^>]*>/gi, '')
+    .replace(/<meta\b[^>]*http-equiv\s*=\s*["']?refresh["']?[^>]*>/gi, '')
+    .replace(/\s+on[a-z0-9_-]+\s*=\s*(?:"[^"]*"|'[^']*'|[^\s>]+)/gi, '')
+    .replace(/(href|src|xlink:href)\s*=\s*("|')\s*javascript:[^"']*\2/gi, '$1=$2#$2')
+    .replace(/(href|src|xlink:href)\s*=\s*javascript:[^\s>]+/gi, '$1="#"')
+    .replace(/url\(\s*javascript:[^)]+\)/gi, 'none');
+}
+
+function serveAsset(res, asset, config, { preview = false } = {}) {
   const file = path.resolve(config.casRoot, asset.cas_hash.slice(0, 2), asset.cas_hash);
   const root = path.resolve(config.casRoot);
   let safe = file.startsWith(`${root}${path.sep}`) && fs.existsSync(file);
@@ -329,13 +349,39 @@ function serveAsset(res, asset, config) {
     } catch { safe = false; }
   }
   if (!safe) throw new AppError('not_found', 'asset content not found');
+  const stat = fs.statSync(file);
+  if (stat.size !== Number(asset.byte_size)) throw new AppError('asset_corrupt', 'asset size does not match metadata', { status: 500 });
+  if (preview && !PREVIEWABLE_TYPES.has(String(asset.media_type || '').toLowerCase())) {
+    throw new AppError('attachment_preview_unsupported', 'attachment preview is not supported for this media type', { status: 415 });
+  }
+  if (preview && stat.size > PREVIEW_MAX_BYTES) {
+    throw new AppError('attachment_preview_too_large', 'attachment preview exceeds the 1 MiB preview limit', { status: 413, details: { limit: PREVIEW_MAX_BYTES } });
+  }
   const filename = String(asset.name).replace(/[\r\n"\\/]/g, '_');
+  let body = null;
+  let contentType = asset.media_type || 'application/octet-stream';
+  let entityTag = asset.cas_hash;
+  if (preview) {
+    body = fs.readFileSync(file);
+    const mediaType = String(asset.media_type || '').toLowerCase();
+    if (mediaType === 'text/html' || mediaType === 'image/svg+xml') {
+      body = Buffer.from(sanitizeMarkup(body.toString('utf8')), 'utf8');
+      entityTag = sha256(body);
+    } else if (mediaType === 'application/xml') {
+      contentType = 'text/plain; charset=utf-8';
+    } else if (contentType.startsWith('text/') || mediaType === 'application/json') {
+      contentType = `${contentType}; charset=utf-8`;
+    }
+  }
   res.writeHead(200, {
-    'content-type': asset.media_type || 'application/octet-stream',
-    'content-length': String(asset.byte_size),
-    'content-disposition': `attachment; filename="${filename}"`,
+    'content-type': contentType,
+    'content-length': String(body?.byteLength ?? asset.byte_size),
+    'content-disposition': `${preview ? 'inline' : 'attachment'}; filename="${filename}"`,
     'cache-control': 'private, max-age=31536000, immutable',
-    etag: `"sha256-${asset.cas_hash}"`
+    'x-content-type-options': 'nosniff',
+    ...(preview ? { 'content-security-policy': "default-src 'none'; img-src data: blob:; style-src 'unsafe-inline'" } : {}),
+    etag: `"sha256-${entityTag}"`
   });
+  if (body) return res.end(body);
   fs.createReadStream(file).pipe(res);
 }

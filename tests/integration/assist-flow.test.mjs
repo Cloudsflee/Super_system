@@ -81,6 +81,14 @@ test('four-level Assist sessions persist scope snapshots, native events, and rep
     assert.equal(download.status, 200);
     assert.match(download.headers.get('content-disposition'), /^attachment;/);
     assert.equal(await download.text(), svg);
+    const preview = await fetch(`${env.base}/api/v1/attachments/${attachment.json.id}/preview`);
+    assert.equal(preview.status, 200);
+    assert.match(preview.headers.get('content-disposition'), /^inline;/);
+    assert.equal(preview.headers.get('x-content-type-options'), 'nosniff');
+    assert.match(preview.headers.get('content-security-policy'), /default-src 'none'/);
+    const previewText = await preview.text();
+    assert.doesNotMatch(previewText, /<script|alert\(/i);
+    assert.match(previewText, /<rect/);
     const unsupported = await mutate(env.base, `/api/v1/projects/${project.json.id}/attachments`, { name: 'archive.zip', media_type: 'application/zip', content: 'fixture' }, 'assist-attachment-unsupported');
     assert.equal(unsupported.response.status, 415);
     const lowReview = await mutate(env.base, `/api/v1/projects/${project.json.id}/quality-reviews`, { attachment_id: attachment.json.id, semantic_human_score: 79 }, 'quality-review-low');
