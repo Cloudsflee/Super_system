@@ -73,6 +73,8 @@ Base URL: `http://127.0.0.1:4317/api/v1`
 
 Every POST, PATCH, and action requires `Idempotency-Key`. Reusing a key with the same command returns the recorded response. Reusing it with a different body returns `409 idempotency_conflict`.
 
+Context rebuilds persist a projection job before processing. Startup recovery replays `pending` and `running` jobs by the same job ID and preserves document versions when source hashes are unchanged.
+
 Credential request bodies are hashed for idempotency and are never stored in response receipts. Credential responses contain metadata only. Workspace credentials are AES-256-GCM encrypted below `AIWS_HOME/vault`; bootstrap Docker Secret Bundles remain in memory. Credential mutation commands are intentionally absent from MCP `tools/list` and cannot be invoked through MCP `tools/call`.
 
 Mutable resources require `expected_revision`. A stale value returns `409 revision_conflict`.

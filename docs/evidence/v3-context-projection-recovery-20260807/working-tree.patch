@@ -1,0 +1,111 @@
+diff --git a/apps/api/src/domain.mjs b/apps/api/src/domain.mjs
+index c5fbbc3..ee3cba8 100644
+--- a/apps/api/src/domain.mjs
++++ b/apps/api/src/domain.mjs
+@@ -1204,13 +1204,25 @@ export class Domain {
+ 
+   async rebuildContextMap(projectId, _input, ctx = {}) {
+     await this.requireProject(projectId);
++    const jobId = id('cpj');
++    const timestamp = now();
++    await this.db.transaction([
++      { sql: 'INSERT INTO context_projection_jobs(id,project_id,status,cursor,created_at,updated_at) VALUES(?,?,?,?,?,?)', params: [jobId, projectId, 'pending', '', timestamp, timestamp] },
++      auditStatement('context.projection.queued', 'context_projection_job', jobId, { project_id: projectId }, ctx.actor)
++    ]);
++    return this.withRepositoryLock(`context:${projectId}`, () => this.runContextProjection(jobId, projectId, ctx));
++  }
++
++  async runContextProjection(jobId, projectId, ctx = {}) {
++    const job = await this.db.get('SELECT * FROM context_projection_jobs WHERE id=? AND project_id=?', [jobId, projectId]);
++    if (!job) throw new AppError('not_found', 'context projection job not found');
++    if (job.status === 'completed') return { job, map: await this.contextMap(projectId) };
+     const sources = await this.db.query('SELECT * FROM context_sources WHERE project_id=? ORDER BY created_at,id', [projectId]);
+     const rootId = `ctx_${sha256(`root:${projectId}`).slice(0, 32)}`;
+     const rootUri = `aiws://context/${projectId}`;
+-    const jobId = id('cpj');
+     const timestamp = now();
++    await this.db.run("UPDATE context_projection_jobs SET status='running',error_code=NULL,updated_at=? WHERE id=?", [timestamp, jobId]);
+     const statements = [
+-      { sql: 'INSERT INTO context_projection_jobs(id,project_id,status,cursor,created_at,updated_at) VALUES(?,?,?,?,?,?)', params: [jobId, projectId, 'running', '', timestamp, timestamp] },
+       { sql: `INSERT INTO context_nodes(id,project_id,parent_id,uri,title,kind,sensitivity,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?)
+         ON CONFLICT(uri) DO UPDATE SET title=excluded.title,updated_at=excluded.updated_at`, params: [rootId, projectId, null, rootUri, 'Context', 'root', 'normal', timestamp, timestamp] }
+     ];
+@@ -1229,10 +1241,18 @@ export class Domain {
+     }
+     statements.push(
+       { sql: "UPDATE context_projection_jobs SET status='completed',cursor=?,updated_at=? WHERE id=?", params: [String(sources.length), timestamp, jobId] },
+-      auditStatement('context.rebuilt', 'context_projection_job', jobId, { project_id: projectId, source_count: sources.length }, ctx.actor)
++      auditStatement('context.projection.completed', 'context_projection_job', jobId, { project_id: projectId, source_count: sources.length }, ctx.actor)
+     );
+-    await this.db.transaction(statements);
+-    return { job: await this.db.get('SELECT * FROM context_projection_jobs WHERE id=?', [jobId]), map: await this.contextMap(projectId) };
++    try {
++      await this.db.transaction(statements);
++      return { job: await this.db.get('SELECT * FROM context_projection_jobs WHERE id=?', [jobId]), map: await this.contextMap(projectId) };
++    } catch (error) {
++      await this.db.transaction([
++        { sql: "UPDATE context_projection_jobs SET status='failed',error_code='context_projection_failed',updated_at=? WHERE id=?", params: [now(), jobId] },
++        auditStatement('context.projection.failed', 'context_projection_job', jobId, { project_id: projectId, error_code: 'context_projection_failed' }, ctx.actor)
++      ]).catch(() => undefined);
++      throw error;
++    }
+   }
+ 
+   async contextProjectionStatus(projectId) {
+@@ -1955,6 +1975,10 @@ export class Domain {
+     if (this.config.githubCredential) {
+       await this.db.run('INSERT OR IGNORE INTO credential_refs(id,provider,label,secret_ref,created_at) VALUES(?,?,?,?,?)', [this.config.githubCredential.ref, 'github', 'default', 'docker_secret:github_token', now()]);
+     }
++    const pendingProjections = await this.db.query("SELECT id,project_id FROM context_projection_jobs WHERE status IN ('pending','running') ORDER BY created_at,id");
++    for (const job of pendingProjections) {
++      await this.withRepositoryLock(`context:${job.project_id}`, () => this.runContextProjection(job.id, job.project_id, { actor: 'system-recovery' })).catch(() => undefined);
++    }
+     const committedResiduals = await this.db.query(`SELECT e.id FROM executions e
+       JOIN execution_diffs d ON d.execution_id=e.id
+       LEFT JOIN repository_worktrees w ON w.execution_id=e.id
+diff --git a/docs/api.md b/docs/api.md
+index f3b732d..79d881a 100644
+--- a/docs/api.md
++++ b/docs/api.md
+@@ -73,6 +73,8 @@ Base URL: `http://127.0.0.1:4317/api/v1`
+ 
+ Every POST, PATCH, and action requires `Idempotency-Key`. Reusing a key with the same command returns the recorded response. Reusing it with a different body returns `409 idempotency_conflict`.
+ 
++Context rebuilds persist a projection job before processing. Startup recovery replays `pending` and `running` jobs by the same job ID and preserves document versions when source hashes are unchanged.
++
+ Credential request bodies are hashed for idempotency and are never stored in response receipts. Credential responses contain metadata only. Workspace credentials are AES-256-GCM encrypted below `AIWS_HOME/vault`; bootstrap Docker Secret Bundles remain in memory. Credential mutation commands are intentionally absent from MCP `tools/list` and cannot be invoked through MCP `tools/call`.
+ 
+ Mutable resources require `expected_revision`. A stale value returns `409 revision_conflict`.
+diff --git a/feature-catalog.json b/feature-catalog.json
+index 764c912..f7c2d47 100644
+--- a/feature-catalog.json
++++ b/feature-catalog.json
+@@ -27,7 +27,7 @@
+     {"id":"REC-D7-DELIVERY-015","domain":"delivery","name":"Draft PR intent, delivery retry and merge review","status":"implemented","source_files":["v2.3 delivery"],"target_modules":["apps/api/src/github-integration.mjs","apps/api/src/domain.mjs"],"tables":["deliveries","pull_request_intents","delivery_policies","delivery_events"],"apis":["/api/v1/deliveries","/api/v1/deliveries/{id}/merge","/api/v1/deliveries/{id}/retry"],"ui":["Delivery","Draft PR","Merge Review"],"events":["delivery.submitted","delivery.merged"],"tests":["T7","tests/integration/api-flow.test.mjs"]},
+     {"id":"REC-D4-SCOPE-016","domain":"mcp","name":"Scopes, allowlists, grants and token revocation","status":"implemented","source_files":["v2.3 scope service"],"target_modules":["apps/api/src/command-registry.mjs","apps/api/src/domain.mjs","apps/api/src/http.mjs"],"tables":["exchange_requests","exchange_grants","mcp_clients"],"apis":["/api/v1/mcp/scopes","/api/v1/mcp/scopes/requests","/api/v1/mcp/scopes/requests/{id}/grant","/api/v1/mcp/scopes/grants/{id}/revoke"],"ui":["MCP Settings"],"events":["mcp_scope.requested","mcp_scope.granted","mcp_scope.revoked"],"tests":["T3","tests/integration/mcp-flow.test.mjs"]},
+     {"id":"REC-D9-CONTEXT-017","domain":"context","name":"Context map, ordered tree and controlled search","status":"implemented","source_files":["v2.3 context map"],"target_modules":["apps/api/src/domain.mjs","apps/api/src/http.mjs","apps/api/src/schema.mjs"],"tables":["context_sources","context_nodes","context_document_versions","context_edges","context_selections","context_packs"],"apis":["/api/v1/projects/{id}/context/sources","/api/v1/projects/{id}/context/map","/api/v1/projects/{id}/context/read","/api/v1/projects/{id}/context/selections","/api/v1/projects/{id}/context/packs"],"ui":["Context Map","Context Pack"],"events":["context.rebuilt","context.selection.created"],"tests":["T6","tests/integration/context-recovery.test.mjs","tests/integration/debt-regression.test.mjs"]},
+-    {"id":"REC-D9-PROJECTION-018","domain":"context","name":"Context projection jobs and rebuild recovery","status":"planned","source_files":["v2.3 context projector"],"target_modules":["apps/api/src/schema.mjs","apps/api/src/domain.mjs","apps/api/src/http.mjs"],"tables":["context_projection_jobs","context_policies","context_summaries"],"apis":["/api/v1/projects/{id}/context/rebuild","/api/v1/projects/{id}/context/status"],"ui":["Context Map"],"events":["context.projection.completed","context.projection.failed"],"tests":["T6","T8","tests/integration/context-recovery.test.mjs"]},
++    {"id":"REC-D9-PROJECTION-018","domain":"context","name":"Context projection jobs and rebuild recovery","status":"implemented","source_files":["v2.3 context projector"],"target_modules":["apps/api/src/schema.mjs","apps/api/src/domain.mjs","apps/api/src/http.mjs"],"tables":["context_projection_jobs","context_policies","context_summaries"],"apis":["/api/v1/projects/{id}/context/rebuild","/api/v1/projects/{id}/context/status"],"ui":["Context Map"],"events":["context.projection.queued","context.projection.completed","context.projection.failed"],"tests":["T6","T8","tests/integration/context-recovery.test.mjs"]},
+     {"id":"REC-D9-EVIDENCE-019","domain":"evidence","name":"Asset CAS, trace, digest and attestation","status":"implemented","source_files":["v2.3 Evidence CAS"],"target_modules":["apps/api/src/evidence-service.mjs","apps/api/src/domain.mjs"],"tables":["asset_versions","asset_blobs","asset_attestations","asset_relations","traces","digests"],"apis":["/api/v1/projects/{id}/assets","/api/v1/assets/{id}/content"],"ui":["Assets","Trace","Digest","Audit"],"events":["asset.captured","asset.attested"],"tests":["T6","tests/integration/real-slice.test.mjs"]},
+     {"id":"REC-D9-QUALITY-020","domain":"quality","name":"Quality review parser, rubric and human score","status":"implemented","source_files":["v2.3 quality review"],"target_modules":["apps/api/src/schema.mjs","apps/api/src/domain.mjs","apps/api/src/http.mjs"],"tables":["quality_review_runs","quality_review_reports","quality_review_events","test_results"],"apis":["/api/v1/projects/{id}/quality-reviews"],"ui":["Quality Review","Evidence"],"events":["quality.review.completed"],"tests":["T6","T8","tests/integration/assist-flow.test.mjs"]},
+     {"id":"REC-D9-DEPLOYMENT-021","domain":"evidence","name":"Deployment and browser viewport evidence","status":"implemented","source_files":["v2.3 deployment verifier"],"target_modules":["scripts/e2e.mjs","scripts/release-rehearsal.mjs"],"tables":["asset_versions","evidence_links"],"apis":["/api/v1/system/performance"],"ui":["Evidence"],"events":["deployment.verified"],"tests":["T6","T8","scripts/e2e.mjs"]},
+diff --git a/tests/integration/context-recovery.test.mjs b/tests/integration/context-recovery.test.mjs
+index 3f358d0..e79d5ae 100644
+--- a/tests/integration/context-recovery.test.mjs
++++ b/tests/integration/context-recovery.test.mjs
+@@ -38,7 +38,15 @@ test('Context Map rebuilds ordered aiws URIs and seals Context Pack v5', async (
+     await mutate(env.base, `/api/v1/projects/${project.json.id}/context/rebuild`, {}, 'context-rebuild-repeat');
+     const afterVersions = (await env.app.database.get('SELECT count(*) AS count FROM context_document_versions')).count;
+     assert.equal(afterVersions, beforeVersions);
++    const interruptedJob = 'cpj_interrupted_fixture';
++    const interruptedAt = new Date(Date.now() + 1000).toISOString();
++    await env.app.database.run("INSERT INTO context_projection_jobs(id,project_id,status,cursor,created_at,updated_at) VALUES(?,?,?,?,?,?)", [interruptedJob, project.json.id, 'running', '1', interruptedAt, interruptedAt]);
++    assert.equal(await env.app.domain.recover(), 0);
+     const status = await request(env.base, `/api/v1/projects/${project.json.id}/context/status`);
++    assert.equal(status.json.id, interruptedJob);
+     assert.equal(status.json.status, 'completed');
++    assert.equal(status.json.cursor, '2');
++    const recoveredVersions = (await env.app.database.get('SELECT count(*) AS count FROM context_document_versions')).count;
++    assert.equal(recoveredVersions, beforeVersions);
+   } finally { await env.close(); }
+ });

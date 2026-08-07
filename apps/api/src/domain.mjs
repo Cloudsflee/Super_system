@@ -1204,13 +1204,25 @@ export class Domain {
 
   async rebuildContextMap(projectId, _input, ctx = {}) {
     await this.requireProject(projectId);
+    const jobId = id('cpj');
+    const timestamp = now();
+    await this.db.transaction([
+      { sql: 'INSERT INTO context_projection_jobs(id,project_id,status,cursor,created_at,updated_at) VALUES(?,?,?,?,?,?)', params: [jobId, projectId, 'pending', '', timestamp, timestamp] },
+      auditStatement('context.projection.queued', 'context_projection_job', jobId, { project_id: projectId }, ctx.actor)
+    ]);
+    return this.withRepositoryLock(`context:${projectId}`, () => this.runContextProjection(jobId, projectId, ctx));
+  }
+
+  async runContextProjection(jobId, projectId, ctx = {}) {
+    const job = await this.db.get('SELECT * FROM context_projection_jobs WHERE id=? AND project_id=?', [jobId, projectId]);
+    if (!job) throw new AppError('not_found', 'context projection job not found');
+    if (job.status === 'completed') return { job, map: await this.contextMap(projectId) };
     const sources = await this.db.query('SELECT * FROM context_sources WHERE project_id=? ORDER BY created_at,id', [projectId]);
     const rootId = `ctx_${sha256(`root:${projectId}`).slice(0, 32)}`;
     const rootUri = `aiws://context/${projectId}`;
-    const jobId = id('cpj');
     const timestamp = now();
+    await this.db.run("UPDATE context_projection_jobs SET status='running',error_code=NULL,updated_at=? WHERE id=?", [timestamp, jobId]);
     const statements = [
-      { sql: 'INSERT INTO context_projection_jobs(id,project_id,status,cursor,created_at,updated_at) VALUES(?,?,?,?,?,?)', params: [jobId, projectId, 'running', '', timestamp, timestamp] },
       { sql: `INSERT INTO context_nodes(id,project_id,parent_id,uri,title,kind,sensitivity,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?)
         ON CONFLICT(uri) DO UPDATE SET title=excluded.title,updated_at=excluded.updated_at`, params: [rootId, projectId, null, rootUri, 'Context', 'root', 'normal', timestamp, timestamp] }
     ];
@@ -1229,10 +1241,18 @@ export class Domain {
     }
     statements.push(
       { sql: "UPDATE context_projection_jobs SET status='completed',cursor=?,updated_at=? WHERE id=?", params: [String(sources.length), timestamp, jobId] },
-      auditStatement('context.rebuilt', 'context_projection_job', jobId, { project_id: projectId, source_count: sources.length }, ctx.actor)
+      auditStatement('context.projection.completed', 'context_projection_job', jobId, { project_id: projectId, source_count: sources.length }, ctx.actor)
     );
-    await this.db.transaction(statements);
-    return { job: await this.db.get('SELECT * FROM context_projection_jobs WHERE id=?', [jobId]), map: await this.contextMap(projectId) };
+    try {
+      await this.db.transaction(statements);
+      return { job: await this.db.get('SELECT * FROM context_projection_jobs WHERE id=?', [jobId]), map: await this.contextMap(projectId) };
+    } catch (error) {
+      await this.db.transaction([
+        { sql: "UPDATE context_projection_jobs SET status='failed',error_code='context_projection_failed',updated_at=? WHERE id=?", params: [now(), jobId] },
+        auditStatement('context.projection.failed', 'context_projection_job', jobId, { project_id: projectId, error_code: 'context_projection_failed' }, ctx.actor)
+      ]).catch(() => undefined);
+      throw error;
+    }
   }
 
   async contextProjectionStatus(projectId) {
@@ -1954,6 +1974,10 @@ export class Domain {
     }
     if (this.config.githubCredential) {
       await this.db.run('INSERT OR IGNORE INTO credential_refs(id,provider,label,secret_ref,created_at) VALUES(?,?,?,?,?)', [this.config.githubCredential.ref, 'github', 'default', 'docker_secret:github_token', now()]);
+    }
+    const pendingProjections = await this.db.query("SELECT id,project_id FROM context_projection_jobs WHERE status IN ('pending','running') ORDER BY created_at,id");
+    for (const job of pendingProjections) {
+      await this.withRepositoryLock(`context:${job.project_id}`, () => this.runContextProjection(job.id, job.project_id, { actor: 'system-recovery' })).catch(() => undefined);
     }
     const committedResiduals = await this.db.query(`SELECT e.id FROM executions e
       JOIN execution_diffs d ON d.execution_id=e.id

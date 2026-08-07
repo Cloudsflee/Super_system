@@ -38,7 +38,15 @@ test('Context Map rebuilds ordered aiws URIs and seals Context Pack v5', async (
     await mutate(env.base, `/api/v1/projects/${project.json.id}/context/rebuild`, {}, 'context-rebuild-repeat');
     const afterVersions = (await env.app.database.get('SELECT count(*) AS count FROM context_document_versions')).count;
     assert.equal(afterVersions, beforeVersions);
+    const interruptedJob = 'cpj_interrupted_fixture';
+    const interruptedAt = new Date(Date.now() + 1000).toISOString();
+    await env.app.database.run("INSERT INTO context_projection_jobs(id,project_id,status,cursor,created_at,updated_at) VALUES(?,?,?,?,?,?)", [interruptedJob, project.json.id, 'running', '1', interruptedAt, interruptedAt]);
+    assert.equal(await env.app.domain.recover(), 0);
     const status = await request(env.base, `/api/v1/projects/${project.json.id}/context/status`);
+    assert.equal(status.json.id, interruptedJob);
     assert.equal(status.json.status, 'completed');
+    assert.equal(status.json.cursor, '2');
+    const recoveredVersions = (await env.app.database.get('SELECT count(*) AS count FROM context_document_versions')).count;
+    assert.equal(recoveredVersions, beforeVersions);
   } finally { await env.close(); }
 });

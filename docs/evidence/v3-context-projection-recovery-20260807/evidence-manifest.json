@@ -1,0 +1,77 @@
+{
+  "schema_version": "aiws.v3.recovery_evidence_manifest.v1",
+  "batch": "v3-context-projection-recovery-20260807",
+  "branch": "recovery/v3-feature-restore",
+  "baseline_commit": "3223e1d67e879ead21d98f484a6ed826de0001d0",
+  "implementation_commit": null,
+  "created_at": "2026-08-07T12:09:38.080Z",
+  "files": [
+    {
+      "path": "apps/api/src/domain.mjs",
+      "baseline_sha256": "6d1a5a13f18fdcc01e4aee1f7869a057b6d78e74c9b4315110c564d8a5073f32",
+      "modified_sha256": "30bec0910e2509feec8ea1b25e74b9447b82e55b5025aee20659f1156a738ea2",
+      "baseline_present": true
+    },
+    {
+      "path": "docs/api.md",
+      "baseline_sha256": "6728db07421797e740c68d4a7432387d0ed60662cde93f1f6979454ba15fcaec",
+      "modified_sha256": "5e7d932b7e422b514e10a1d1a851ad699c78c652fca884402054a5187e8a1152",
+      "baseline_present": true
+    },
+    {
+      "path": "feature-catalog.json",
+      "baseline_sha256": "01af97638bb98c4805243fa87d07c7776f4d8b23c3858cd5e2e970d7ebc1fab2",
+      "modified_sha256": "d9f62841edf34a5eb6f0040b6db29e4e472e6461ab44b219b90712d82f6aad5c",
+      "baseline_present": true
+    },
+    {
+      "path": "tests/integration/context-recovery.test.mjs",
+      "baseline_sha256": "b1e3278c42170ca2e1e6365dd091f6c1ebaab18d36a3ecb84352bac4608fff23",
+      "modified_sha256": "1b04c0154dcd1e11bce58f6b2a4e444266ddee035aaa4915cff21f00a6eb48f0",
+      "baseline_present": true
+    }
+  ],
+  "diff": "docs/evidence/v3-context-projection-recovery-20260807/working-tree.patch",
+  "tests": [
+    {
+      "label": "recovery-plan",
+      "command": "pnpm recovery:plan",
+      "log": "docs/evidence/v3-context-projection-recovery-20260807/recovery-plan.log",
+      "exit_status": 0,
+      "output_tail": "    \"repository\",\n    \"runner\",\n    \"setup\",\n    \"workflow\"\n  ],\n  \"feature_count\": 25,\n  \"receipt\": \".ai-workspace/recovery/plan.json\"\n}"
+    },
+    {
+      "label": "recovery-catalog",
+      "command": "pnpm recovery:catalog",
+      "log": "docs/evidence/v3-context-projection-recovery-20260807/recovery-catalog.log",
+      "exit_status": 0,
+      "output_tail": "\n{\n  \"feature_count\": 25,\n  \"implemented\": 24,\n  \"planned\": 1,\n  \"unique_ids\": 25,\n  \"receipt\": \".ai-workspace/recovery/catalog.json\"\n}"
+    },
+    {
+      "label": "recovery-coverage",
+      "command": "pnpm recovery:coverage",
+      "log": "docs/evidence/v3-context-projection-recovery-20260807/recovery-coverage.log",
+      "exit_status": 0,
+      "output_tail": "    \"T4\": 5,\n    \"T5\": 4,\n    \"T6\": 7,\n    \"T7\": 2,\n    \"T8\": 5\n  },\n  \"receipt\": \".ai-workspace/recovery/coverage.json\"\n}"
+    },
+    {
+      "label": "recovery-impact",
+      "command": "pnpm recovery:impact --audit",
+      "log": "docs/evidence/v3-context-projection-recovery-20260807/recovery-impact.log",
+      "exit_status": 0,
+      "output_tail": "    \"tests/integration/workflow-recovery.test.mjs\",\n    \"tests/security/credentials.test.mjs\",\n    \"tests/unit/path-policy.test.mjs\",\n    \"tests/unit/recovery-governance.test.mjs\",\n    \"tests/unit/workflow.test.mjs\"\n  ],\n  \"receipt\": \".ai-workspace/recovery/impact.json\"\n}"
+    },
+    {
+      "label": "verify",
+      "command": "pnpm verify",
+      "log": "docs/evidence/v3-context-projection-recovery-20260807/verify.log",
+      "exit_status": 0,
+      "output_tail": "(node:46756) [DEP0190] DeprecationWarning: Passing args to a child process with shell option true can lead to security vulnerabilities, as the arguments are not escaped, only concatenated.\n(Use `node --trace-deprecation ...` to show where the warning was created)\n(node:21200) [DEP0190] DeprecationWarning: Passing args to a child process with shell option true can lead to security vulnerabilities, as the arguments are not escaped, only concatenated.\n(Use `node --trace-deprecation ...` to show where the warning was created)\n(node:21200) ExperimentalWarning: SQLite is an experimental feature and might change at any time\n(Use `node --trace-warnings ...` to show where the warning was created)\n(node:31976) [DEP0190] DeprecationWarning: Passing args to a child process with shell option true can lead to security vulnerabilities, as the arguments are not escaped, only concatenated.\n(Use `node --trace-deprecation ...` to show where the warning was created)"
+    }
+  ],
+  "rollback": {
+    "command": "git revert --no-edit <implementation_commit>",
+    "script": "docs/evidence/v3-context-projection-recovery-20260807/rollback.ps1",
+    "note": "Run from the recovery branch after replacing <implementation_commit> with the recorded implementation commit."
+  }
+}
