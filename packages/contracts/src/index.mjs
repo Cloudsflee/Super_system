@@ -23,7 +23,15 @@ export const COMMAND_NAMES = Object.freeze([
   'execution.create', 'execution.start', 'execution.cancel',
   'execution.evidence.resolve', 'review.create', 'review.decide',
   'delivery.create', 'delivery.merge', 'delivery.retry',
-  'integration.codex.probe', 'integration.github.probe'
+  'integration.codex.probe', 'integration.github.probe',
+  'credential.create', 'credential.rotate', 'credential.revoke', 'credential.delete',
+  'codex_profile.create', 'codex_profile.update', 'session.create', 'session.revoke',
+  'github_app.create', 'github_installation.create'
+  , 'mcp_client.create', 'mcp_client.revoke', 'node_contract.create', 'workflow.generate',
+  'outcome_requirement.create', 'outcome.evaluate', 'outcome.waive'
+  , 'assist_session.create', 'assist_turn.create', 'assist_session.transition', 'attachment.create'
+  , 'context.rebuild', 'context.selection.create'
+  , 'quality_review.create'
 ]);
 
 export function errorEnvelope({ code, message, retryable = false, requestId, details = {} }) {

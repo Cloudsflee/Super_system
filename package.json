@@ -33,7 +33,11 @@
     "acceptance": "node scripts/acceptance.mjs",
     "release:build": "node scripts/release-build.mjs",
     "release:rehearse": "node scripts/release-rehearsal.mjs",
-    "release:promote": "node scripts/release-promote.mjs"
+    "release:promote": "node scripts/release-promote.mjs",
+    "recovery:plan": "node scripts/recovery-governance.mjs plan",
+    "recovery:catalog": "node scripts/recovery-governance.mjs catalog",
+    "recovery:coverage": "node scripts/recovery-governance.mjs coverage",
+    "recovery:impact": "node scripts/recovery-governance.mjs impact"
   },
   "devDependencies": {
     "@axe-core/playwright": "^4.10.2",

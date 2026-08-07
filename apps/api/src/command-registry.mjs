@@ -19,12 +19,37 @@ export function createCommandRegistry(domain) {
     ['delivery.merge', (input, ctx) => domain.mergeDelivery(input.delivery_id, input, ctx)],
     ['delivery.retry', (input, ctx) => domain.retryDelivery(input.delivery_id, input, ctx)],
     ['integration.codex.probe', (input) => domain.probeCodex({ force: input?.force === true })],
-    ['integration.github.probe', (input) => domain.probeGithub({ force: input?.force === true })]
+    ['integration.github.probe', (input) => domain.probeGithub({ force: input?.force === true })],
+    ['credential.create', (input, ctx) => domain.createCredential(input, ctx)],
+    ['credential.rotate', (input, ctx) => domain.rotateCredential(input.credential_id, input, ctx)],
+    ['credential.revoke', (input, ctx) => domain.revokeCredential(input.credential_id, input, ctx)],
+    ['credential.delete', (input, ctx) => domain.deleteCredential(input.credential_id, input, ctx)],
+    ['codex_profile.create', (input, ctx) => domain.createCodexProfile(input, ctx)],
+    ['codex_profile.update', (input, ctx) => domain.updateCodexProfile(input.profile_id, input, ctx)],
+    ['session.create', (input, ctx) => domain.createSession(input, ctx)],
+    ['session.revoke', (input, ctx) => domain.revokeSession(input.session_id, input, ctx)],
+    ['github_app.create', (input, ctx) => domain.createGithubAppConfig(input, ctx)],
+    ['github_installation.create', (input, ctx) => domain.createGithubInstallation(input.app_config_id, input, ctx)],
+    ['mcp_client.create', (input, ctx) => domain.createMcpClient(input, ctx)],
+    ['mcp_client.revoke', (input, ctx) => domain.revokeMcpClient(input.client_id, input, ctx)],
+    ['node_contract.create', (input, ctx) => domain.createNodeContract(input.project_id, input, ctx)],
+    ['workflow.generate', (input, ctx) => domain.generateWorkflow(input.project_id, input, ctx)],
+    ['outcome_requirement.create', (input, ctx) => domain.createOutcomeRequirement(input.project_id, input, ctx)],
+    ['outcome.evaluate', (input, ctx) => domain.evaluateOutcome(input.execution_id, input, ctx)],
+    ['outcome.waive', (input, ctx) => domain.waiveOutcome(input.execution_id, input, ctx)],
+    ['assist_session.create', (input, ctx) => domain.createAssistSession(input, ctx)],
+    ['assist_turn.create', (input, ctx) => domain.createAssistTurn(input.session_id, input, ctx)],
+    ['assist_session.transition', (input, ctx) => domain.transitionAssistSession(input.session_id, input, ctx)],
+    ['attachment.create', (input, ctx) => domain.createAttachment(input.project_id, input, ctx)],
+    ['context.rebuild', (input, ctx) => domain.rebuildContextMap(input.project_id, input, ctx)],
+    ['context.selection.create', (input, ctx) => domain.createContextSelection(input.project_id, input, ctx)],
+    ['quality_review.create', (input, ctx) => domain.createQualityReview(input.project_id, input, ctx)]
   ]);
+  const privateCommands = new Set(['credential.create', 'credential.rotate', 'credential.revoke', 'credential.delete']);
 
   return {
     list() {
-      return [...commands.keys()].sort();
+      return [...commands.keys()].filter((name) => !privateCommands.has(name)).sort();
     },
     async execute(name, input = {}, ctx = {}) {
       const handler = commands.get(name);

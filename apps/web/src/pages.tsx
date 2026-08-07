@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useMemo, useState, type FormEvent, type ReactNode } from 'react';
 import {
   Activity, ArrowRight, Check, CircleAlert, ClipboardCheck, Code2, Download, ExternalLink, FilePlus2,
-  GitBranch, GitMerge, GitPullRequest, Layers3, LoaderCircle, PackageCheck, Play, Plus, RefreshCw,
-  Save, Search, ShieldCheck, Square, Trash2, Upload, WandSparkles
+  GitBranch, GitMerge, GitPullRequest, Layers3, LoaderCircle, MessageSquare, PackageCheck, Play, Plus, RefreshCw,
+  Save, Search, Send, ShieldCheck, Square, Trash2, Upload, WandSparkles
 } from 'lucide-react';
 import { api, formatBytes, formatTime, mutate, shortHash } from './api';
 import type { PageKey } from './App';
@@ -25,6 +25,22 @@ type Capabilities = {
   codex: { status: string; model?: string; checked_at?: string; error_code?: string | null };
   github: { provider?: string; status: string; checked_at?: string | null; error_code?: string | null };
   broker: { status: string; runner_digest: string };
+};
+
+type CredentialMetadata = {
+  id: string; provider: 'codex' | 'github'; label: string; status: 'active' | 'revoked'; vault_backed: boolean; created_at: string;
+};
+
+type CodexProfileMetadata = {
+  id: string; label: string; provider: string; model: string; base_url: string; wire_api: string; reasoning: string;
+  timeout_ms: number; credential_ref: string; status: string; revision: number;
+};
+
+type SetupState = {
+  status: string;
+  checks: Record<string, boolean>;
+  credentials: CredentialMetadata[];
+  codex_profiles: CodexProfileMetadata[];
 };
 
 function SectionTitle({ title, meta, action }: { title: string; meta?: string; action?: ReactNode }) {
@@ -62,14 +78,25 @@ function useProjectBundle(projectId: string) {
 export function SetupPage({ navigate, notify }: WorkspacePageProps) {
   const [capabilities, setCapabilities] = useState<Capabilities | null>(null);
   const [readiness, setReadiness] = useState<{ status: string; checks?: Record<string, unknown> } | null>(null);
+  const [setup, setSetup] = useState<SetupState | null>(null);
   const [probing, setProbing] = useState(false);
+  const [busy, setBusy] = useState('');
+  const [credentialLabel, setCredentialLabel] = useState('');
+  const [credentialProvider, setCredentialProvider] = useState<'codex' | 'github'>('codex');
+  const [credentialSecret, setCredentialSecret] = useState('');
+  const [profileLabel, setProfileLabel] = useState('');
+  const [profileProvider, setProfileProvider] = useState('openai');
+  const [profileModel, setProfileModel] = useState('gpt-5.5');
+  const [profileBaseUrl, setProfileBaseUrl] = useState('');
   const load = useCallback(async () => {
-    const [caps, ready] = await Promise.all([
+    const [caps, ready, state] = await Promise.all([
       api<Capabilities>('/api/v1/system/capabilities'),
-      api<{ status: string; checks?: Record<string, unknown> }>('/readyz')
+      api<{ status: string; checks?: Record<string, unknown> }>('/readyz'),
+      api<SetupState>('/api/v1/setup')
     ]);
     setCapabilities(caps);
     setReadiness(ready);
+    setSetup(state);
   }, []);
   useEffect(() => { void load(); }, [load]);
   const probe = async () => {
@@ -80,6 +107,36 @@ export function SetupPage({ navigate, notify }: WorkspacePageProps) {
     } catch (error) { notify(error instanceof Error ? error.message : 'Probe failed', 'error'); }
     finally { setProbing(false); }
   };
+  const createCredential = async (event: FormEvent) => {
+    event.preventDefault();
+    setBusy('credential');
+    try {
+      await mutate('/api/v1/credentials', { provider: credentialProvider, label: credentialLabel, secret: credentialSecret });
+      setCredentialLabel(''); setCredentialSecret(''); await load(); notify('Credential stored');
+    } catch (error) { notify(error instanceof Error ? error.message : 'Credential failed', 'error'); }
+    finally { setBusy(''); }
+  };
+  const revokeCredential = async (credential: CredentialMetadata) => {
+    setBusy(credential.id);
+    try { await mutate(`/api/v1/credentials/${credential.id}/revoke`, {}); await load(); notify('Credential revoked'); }
+    catch (error) { notify(error instanceof Error ? error.message : 'Revoke failed', 'error'); }
+    finally { setBusy(''); }
+  };
+  const createProfile = async (event: FormEvent) => {
+    event.preventDefault();
+    const credential = setup?.credentials.find((item) => item.provider === 'codex' && item.status === 'active');
+    if (!credential) return;
+    setBusy('profile');
+    try {
+      await mutate('/api/v1/profiles/codex', {
+        label: profileLabel, provider: profileProvider, model: profileModel, base_url: profileBaseUrl,
+        wire_api: 'responses', reasoning: 'medium', timeout_ms: 120000, credential_ref: credential.id
+      });
+      setProfileLabel(''); await load(); notify('Codex profile created');
+    } catch (error) { notify(error instanceof Error ? error.message : 'Profile failed', 'error'); }
+    finally { setBusy(''); }
+  };
+  const activeCodexCredential = setup?.credentials.some((item) => item.provider === 'codex' && item.status === 'active');
   return (
     <div className="page page-setup">
       <div className="page-heading"><div><p className="eyebrow">Instance</p><h1>AIWS 3.0 workspace</h1></div><button className="icon-button" title="刷新" aria-label="刷新" disabled={probing} onClick={() => void probe()}><RefreshCw className={probing ? 'spin' : ''} size={18} /></button></div>
@@ -106,8 +163,106 @@ export function SetupPage({ navigate, notify }: WorkspacePageProps) {
           <button className="button primary setup-action" onClick={() => navigate('projects')}>Open projects<ArrowRight size={16} /></button>
         </section>
       </div>
+      <div className="two-column setup-config-grid">
+        <section className="panel">
+          <SectionTitle title="Credential vault" meta={`${setup?.credentials.length || 0} metadata records`} />
+          <form className="setup-inline-form" onSubmit={(event) => void createCredential(event)}>
+            <label><span>Provider</span><select value={credentialProvider} onChange={(event) => setCredentialProvider(event.target.value as 'codex' | 'github')}><option value="codex">Codex</option><option value="github">GitHub</option></select></label>
+            <label><span>Label</span><input value={credentialLabel} onChange={(event) => setCredentialLabel(event.target.value)} maxLength={120} required /></label>
+            <label className="secret-field"><span>Secret</span><input type="password" autoComplete="new-password" value={credentialSecret} onChange={(event) => setCredentialSecret(event.target.value)} required /></label>
+            <button className="button primary" disabled={busy === 'credential'}>{busy === 'credential' ? <LoaderCircle className="spin" size={16} /> : <Save size={16} />}Store</button>
+          </form>
+          <div className="config-list">
+            {setup?.credentials.map((credential) => <div key={credential.id}><div><strong>{credential.label}</strong><small>{credential.provider} · {credential.vault_backed ? 'workspace vault' : 'bootstrap'}</small></div><Status value={credential.status} />{credential.vault_backed && credential.status === 'active' && <button className="icon-button" title="撤销凭据" aria-label={`撤销 ${credential.label}`} disabled={busy === credential.id} onClick={() => void revokeCredential(credential)}><Trash2 size={15} /></button>}</div>)}
+            {!setup?.credentials.length && <div className="list-empty">No credential metadata</div>}
+          </div>
+        </section>
+        <section className="panel">
+          <SectionTitle title="Codex profiles" meta={`${setup?.codex_profiles.length || 0} configured`} />
+          <form className="setup-inline-form profile-form" onSubmit={(event) => void createProfile(event)}>
+            <label><span>Label</span><input value={profileLabel} onChange={(event) => setProfileLabel(event.target.value)} required /></label>
+            <label><span>Provider</span><input value={profileProvider} onChange={(event) => setProfileProvider(event.target.value)} required /></label>
+            <label><span>Model</span><input value={profileModel} onChange={(event) => setProfileModel(event.target.value)} required /></label>
+            <label className="profile-endpoint"><span>Base URL</span><input value={profileBaseUrl} onChange={(event) => setProfileBaseUrl(event.target.value)} placeholder="OpenAI default" /></label>
+            <button className="button primary" disabled={!activeCodexCredential || busy === 'profile'}>{busy === 'profile' ? <LoaderCircle className="spin" size={16} /> : <Plus size={16} />}Add</button>
+          </form>
+          <div className="config-list">
+            {setup?.codex_profiles.map((profile) => <div key={profile.id}><div><strong>{profile.label}</strong><small>{profile.provider} · {profile.model} · r{profile.revision}</small></div><Status value={profile.status} /></div>)}
+            {!setup?.codex_profiles.length && <div className="list-empty">No Codex profiles</div>}
+          </div>
+        </section>
+      </div>
     </div>
   );
+}
+
+type AssistSessionMetadata = {
+  id: string; project_id: string; scope: string; scope_id: string; status: string;
+  snapshot: { brief_revision?: number | null; workflow_revision?: number | null };
+};
+
+type AssistSessionBundle = AssistSessionMetadata & {
+  turns: Array<{ id: string; turn_no: number; status: string; messages: Array<{ id: string; role: string; content: string }> }>;
+};
+
+export function AssistPage({ projectId, notify }: WorkspacePageProps) {
+  const [sessions, setSessions] = useState<AssistSessionMetadata[]>([]);
+  const [selectedId, setSelectedId] = useState('');
+  const [bundle, setBundle] = useState<AssistSessionBundle | null>(null);
+  const [message, setMessage] = useState('');
+  const [goal, setGoal] = useState('');
+  const [plan, setPlan] = useState('Inspect inputs\nVerify outcome');
+  const [busy, setBusy] = useState('');
+  const loadSessions = useCallback(async () => {
+    if (!projectId) return;
+    const rows = await api<AssistSessionMetadata[]>(`/api/v1/assist/sessions?project_id=${projectId}`);
+    setSessions(rows);
+    setSelectedId((current) => rows.some((row) => row.id === current) ? current : rows[0]?.id || '');
+  }, [projectId]);
+  const loadBundle = useCallback(async () => {
+    if (!selectedId) { setBundle(null); return; }
+    setBundle(await api<AssistSessionBundle>(`/api/v1/assist/sessions/${selectedId}`));
+  }, [selectedId]);
+  useEffect(() => { void loadSessions(); }, [loadSessions]);
+  useEffect(() => { void loadBundle(); }, [loadBundle]);
+  if (!projectId) return <div className="empty-state"><MessageSquare size={28} /><h2>Select a project to open Assist</h2></div>;
+  const createSession = async () => {
+    setBusy('session');
+    try { const created = await mutate<AssistSessionMetadata>('/api/v1/assist/sessions', { project_id: projectId, scope: 'project', scope_id: projectId }); setSelectedId(created.id); await loadSessions(); notify('Assist session created'); }
+    catch (error) { notify(error instanceof Error ? error.message : 'Assist session failed', 'error'); }
+    finally { setBusy(''); }
+  };
+  const sendTurn = async (event: FormEvent) => {
+    event.preventDefault();
+    if (!selectedId || !message.trim()) return;
+    setBusy('turn');
+    try { await mutate(`/api/v1/assist/sessions/${selectedId}/turns`, { message, goal: goal.trim() ? { objective: goal.trim() } : {}, plan: plan.split('\n').map((step) => ({ step: step.trim(), status: 'pending' })).filter((item) => item.step) }); setMessage(''); await loadBundle(); await loadSessions(); }
+    catch (error) { notify(error instanceof Error ? error.message : 'Assist turn failed', 'error'); }
+    finally { setBusy(''); }
+  };
+  const transition = async (action: 'interrupt' | 'resume' | 'cancel') => {
+    if (!selectedId) return;
+    setBusy(action);
+    try { await mutate(`/api/v1/assist/sessions/${selectedId}/${action}`, {}); await loadBundle(); await loadSessions(); }
+    catch (error) { notify(error instanceof Error ? error.message : 'Assist state change failed', 'error'); }
+    finally { setBusy(''); }
+  };
+  return <div className="page assist-page">
+    <div className="page-heading"><div><p className="eyebrow">Project Assist</p><h1>Assist Center</h1></div><button className="button primary" disabled={busy === 'session'} onClick={() => void createSession()}><Plus size={16} />New session</button></div>
+    <div className="assist-layout">
+      <section className="panel assist-sessions"><SectionTitle title="Sessions" meta={`${sessions.length} scopes`} /><div className="assist-session-list">
+        {sessions.map((session) => <button key={session.id} className={session.id === selectedId ? 'assist-session selected' : 'assist-session'} onClick={() => setSelectedId(session.id)}><span><strong>{session.scope}</strong><small>{session.scope_id}</small></span><Status value={session.status} /></button>)}
+        {!sessions.length && <div className="list-empty">Create a session to start</div>}
+      </div></section>
+      <section className="panel assist-workspace">
+        {bundle ? <>
+          <SectionTitle title={`${bundle.scope} scope`} meta={`Brief r${bundle.snapshot.brief_revision || 0} · Workflow r${bundle.snapshot.workflow_revision || 0}`} action={<div className="assist-actions"><button className="icon-button" title="暂停 Assist" aria-label="暂停 Assist" disabled={busy === 'interrupt' || bundle.status !== 'active'} onClick={() => void transition('interrupt')}><Square size={14} /></button><button className="icon-button" title="恢复 Assist" aria-label="恢复 Assist" disabled={busy === 'resume' || bundle.status !== 'paused'} onClick={() => void transition('resume')}><Play size={14} /></button><button className="icon-button" title="取消 Assist" aria-label="取消 Assist" disabled={busy === 'cancel' || bundle.status === 'cancelled'} onClick={() => void transition('cancel')}><Trash2 size={14} /></button></div>} />
+          <div className="assist-turns">{bundle.turns.flatMap((turn) => turn.messages.map((item) => <div className={`assist-message ${item.role}`} key={item.id}><span>{item.role}</span><p>{item.content}</p></div>))}{!bundle.turns.length && <div className="list-empty">No turns yet</div>}</div>
+          <form className="assist-composer" onSubmit={(event) => void sendTurn(event)}><label><span>Goal</span><input value={goal} onChange={(event) => setGoal(event.target.value)} placeholder="What should this turn achieve?" /></label><label><span>Plan</span><textarea rows={2} value={plan} onChange={(event) => setPlan(event.target.value)} /></label><div className="assist-compose-row"><textarea rows={3} value={message} onChange={(event) => setMessage(event.target.value)} placeholder="Ask Assist to inspect, plan, or propose a change" required /><button className="button primary" disabled={busy === 'turn' || bundle.status !== 'active'}>{busy === 'turn' ? <LoaderCircle className="spin" size={16} /> : <Send size={16} />}Send turn</button></div></form>
+        </> : <div className="empty-state"><MessageSquare size={24} /><h2>Select an Assist session</h2></div>}
+      </section>
+    </div>
+  </div>;
 }
 
 export function ProjectsPage(props: WorkspacePageProps) {

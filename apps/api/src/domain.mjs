@@ -1,5 +1,6 @@
 import fs from 'node:fs';
 import path from 'node:path';
+import { randomBytes } from 'node:crypto';
 import { asJson, hashJson, id, now, parseJson, sha256 } from './crypto.mjs';
 import { AppError, assert } from './errors.mjs';
 import { assertReviewablePath, normalizeRelativePath, resolveWorkspacePath } from './path-policy.mjs';
@@ -8,6 +9,7 @@ import { DIFF_MAX_BYTES, DiffCaptureError, captureDiff, createWorktree, ensureEx
 import { removeExecutionInputs, stageExecutionInputs } from './input-staging.mjs';
 import { EvidenceService } from './evidence-service.mjs';
 import { CODEX_ERROR_CODES, IntegrationProbeService } from './integration-probes.mjs';
+import { CredentialVault } from './credential-vault.mjs';
 
 const TERMINAL_JOB_STATUSES = new Set(['completed', 'failed', 'cancelled', 'unknown']);
 const RUNNER_UID = 10001;
@@ -219,6 +221,7 @@ export class Domain {
     this.activeJobs = new Map();
     this.repositoryLocks = new Map();
     this.retryInstructions = new Map();
+    this.vault = new CredentialVault(config.home);
     this.evidence = evidence || new EvidenceService({
       db,
       config,
@@ -233,6 +236,297 @@ export class Domain {
   async listProjects() {
     const rows = await this.db.query('SELECT * FROM projects ORDER BY updated_at DESC');
     return rows.map(projectView);
+  }
+
+  async setupState() {
+    const [owner, credentials, profiles, githubApps, capabilities] = await Promise.all([
+      this.db.get("SELECT id,display_name,status,revision,created_at,updated_at FROM users WHERE id='usr_local_owner'"),
+      this.listCredentials(),
+      this.listCodexProfiles(),
+      this.listGithubAppConfigs(),
+      this.capabilities()
+    ]);
+    const checks = {
+      owner: owner?.status === 'active',
+      broker: capabilities.broker?.status === 'available',
+      codex_profile: profiles.some((profile) => profile.status !== 'revoked'),
+      codex_probe: capabilities.codex?.status === 'available',
+      github_app: githubApps.some((app) => app.status === 'active'),
+      github_probe: capabilities.github?.status === 'available'
+    };
+    return {
+      status: Object.values(checks).every(Boolean) ? 'ready' : 'blocked',
+      owner,
+      checks,
+      credentials,
+      codex_profiles: profiles,
+      github_apps: githubApps,
+      capabilities: { codex: capabilities.codex, github: capabilities.github, broker: capabilities.broker }
+    };
+  }
+
+  async listCredentials() {
+    const rows = await this.db.query('SELECT id,provider,label,expires_at,created_at FROM credential_refs ORDER BY created_at DESC,id');
+    return rows.map((row) => ({ ...row, status: row.expires_at ? 'revoked' : 'active', vault_backed: row.id.startsWith('cred_vault_') && this.vault.exists(row.id) }));
+  }
+
+  async createSession(input = {}, ctx = {}) {
+    const ttl = Number(input?.ttl_seconds ?? 30 * 24 * 60 * 60);
+    assert(Number.isInteger(ttl) && ttl >= 300 && ttl <= 90 * 24 * 60 * 60, 'invalid_input', 'session ttl is invalid', { status: 422 });
+    const token = randomBytes(32).toString('base64url');
+    const sessionId = id('ses');
+    const created = Date.now();
+    const expires = new Date(created + ttl * 1000).toISOString();
+    await this.db.transaction([
+      { sql: 'INSERT INTO sessions(id,user_id,token_hash,expires_at,last_seen_at) VALUES(?,?,?,?,?)', params: [sessionId, 'usr_local_owner', sha256(token), expires, new Date(created).toISOString()] },
+      auditStatement('session.created', 'session', sessionId, { ttl_seconds: ttl }, ctx.actor)
+    ]);
+    return { id: sessionId, token, expires_at: expires, user_id: 'usr_local_owner' };
+  }
+
+  async listSessions() {
+    return this.db.query("SELECT id,user_id,expires_at,last_seen_at,revoked_at FROM sessions WHERE user_id='usr_local_owner' ORDER BY last_seen_at DESC");
+  }
+
+  async revokeSession(sessionId, _input, ctx = {}) {
+    const session = await this.db.get("SELECT id FROM sessions WHERE id=? AND user_id='usr_local_owner'", [sessionId]);
+    if (!session) throw new AppError('not_found', 'session not found');
+    await this.db.transaction([
+      { sql: 'UPDATE sessions SET revoked_at=COALESCE(revoked_at,?) WHERE id=?', params: [now(), sessionId] },
+      auditStatement('session.revoked', 'session', sessionId, {}, ctx.actor)
+    ]);
+    return (await this.listSessions()).find((row) => row.id === sessionId);
+  }
+
+  async createCredential(input, ctx = {}) {
+    const provider = String(input?.provider || '').trim();
+    const label = String(input?.label || '').trim();
+    const secret = typeof input?.secret === 'string' ? input.secret : '';
+    assert(['codex', 'github'].includes(provider), 'invalid_input', 'credential provider is invalid', { status: 422 });
+    assert(label.length >= 1 && label.length <= 120, 'invalid_input', 'credential label is required', { status: 422 });
+    assert(secret.length >= 1, 'invalid_input', 'credential secret is required', { status: 422 });
+    const credentialId = id('cred_vault');
+    let secretRef;
+    try {
+      secretRef = this.vault.put(credentialId, secret);
+      await this.db.transaction([
+        { sql: 'INSERT INTO credential_refs(id,provider,label,secret_ref,created_at) VALUES(?,?,?,?,?)', params: [credentialId, provider, label, `vault:${secretRef}`, now()] },
+        auditStatement('credential.created', 'credential', credentialId, { provider, label }, ctx.actor)
+      ]);
+    } catch (error) {
+      if (secretRef) this.vault.remove(credentialId);
+      if (String(error?.message).startsWith('credential_')) throw new AppError(String(error.message), 'credential could not be stored', { status: 422 });
+      throw error;
+    }
+    return (await this.listCredentials()).find((row) => row.id === credentialId);
+  }
+
+  async rotateCredential(credentialId, input, ctx = {}) {
+    const credential = await this.db.get('SELECT id,provider,label,expires_at FROM credential_refs WHERE id=?', [credentialId]);
+    if (!credential) throw new AppError('not_found', 'credential not found');
+    assert(credential.id.startsWith('cred_vault_'), 'credential_readonly', 'bootstrap credential cannot be changed', { status: 409 });
+    assert(!credential.expires_at, 'credential_revoked', 'credential is revoked', { status: 409 });
+    const secret = typeof input?.secret === 'string' ? input.secret : '';
+    assert(secret.length >= 1, 'invalid_input', 'credential secret is required', { status: 422 });
+    try { this.vault.put(credentialId, secret); }
+    catch (error) { throw new AppError(String(error?.message || 'credential_secret_invalid'), 'credential could not be stored', { status: 422 }); }
+    await this.db.run('INSERT INTO audit_events(id,actor,action,entity_type,entity_id,payload_json,created_at) VALUES(?,?,?,?,?,?,?)', [id('aud'), ctx.actor || 'local-user', 'credential.rotated', 'credential', credentialId, asJson({ provider: credential.provider, label: credential.label }), now()]);
+    return (await this.listCredentials()).find((row) => row.id === credentialId);
+  }
+
+  async revokeCredential(credentialId, _input, ctx = {}) {
+    const credential = await this.db.get('SELECT id,provider,label,expires_at FROM credential_refs WHERE id=?', [credentialId]);
+    if (!credential) throw new AppError('not_found', 'credential not found');
+    assert(credential.id.startsWith('cred_vault_'), 'credential_readonly', 'bootstrap credential cannot be changed', { status: 409 });
+    if (!credential.expires_at) {
+      this.vault.remove(credentialId);
+      await this.db.transaction([
+        { sql: 'UPDATE credential_refs SET expires_at=? WHERE id=? AND expires_at IS NULL', params: [now(), credentialId], expect_changes: 1 },
+        auditStatement('credential.revoked', 'credential', credentialId, { provider: credential.provider, label: credential.label }, ctx.actor)
+      ]);
+    }
+    return (await this.listCredentials()).find((row) => row.id === credentialId);
+  }
+
+  async deleteCredential(credentialId, _input, ctx = {}) {
+    const credential = await this.db.get('SELECT id,provider,label FROM credential_refs WHERE id=?', [credentialId]);
+    if (!credential) throw new AppError('not_found', 'credential not found');
+    assert(credential.id.startsWith('cred_vault_'), 'credential_readonly', 'bootstrap credential cannot be changed', { status: 409 });
+    try {
+      await this.db.transaction([
+        auditStatement('credential.deleted', 'credential', credentialId, { provider: credential.provider, label: credential.label }, ctx.actor),
+        { sql: 'DELETE FROM credential_refs WHERE id=?', params: [credentialId], expect_changes: 1 }
+      ]);
+    } catch (error) {
+      if (String(error?.message).includes('FOREIGN KEY')) throw new AppError('credential_in_use', 'credential is used by a profile', { status: 409 });
+      throw error;
+    }
+    this.vault.remove(credentialId);
+    return { id: credentialId, deleted: true };
+  }
+
+  async listCodexProfiles() {
+    const rows = await this.db.query(`SELECT p.*,c.expires_at AS credential_expires_at
+      FROM codex_profiles p JOIN credential_refs c ON c.id=p.credential_ref ORDER BY p.created_at DESC,p.id`);
+    return rows.map(({ credential_expires_at: expiresAt, ...row }) => ({ ...row, status: expiresAt ? 'revoked' : row.status }));
+  }
+
+  async createCodexProfile(input, ctx = {}) {
+    const profile = this.validateCodexProfile(input);
+    const credential = await this.db.get("SELECT id FROM credential_refs WHERE id=? AND provider='codex' AND expires_at IS NULL", [profile.credential_ref]);
+    assert(credential, 'invalid_input', 'active Codex credential is required', { status: 422 });
+    const profileId = id('cdp');
+    const timestamp = now();
+    await this.db.transaction([
+      { sql: `INSERT INTO codex_profiles(id,user_id,label,provider,model,base_url,wire_api,reasoning,timeout_ms,credential_ref,status,revision,created_at,updated_at)
+        VALUES(?,?,?,?,?,?,?,?,?,?,?,1,?,?)`, params: [profileId, 'usr_local_owner', profile.label, profile.provider, profile.model, profile.base_url, profile.wire_api, profile.reasoning, profile.timeout_ms, profile.credential_ref, 'unprobed', timestamp, timestamp] },
+      auditStatement('codex_profile.created', 'codex_profile', profileId, { label: profile.label, provider: profile.provider, model: profile.model }, ctx.actor)
+    ]);
+    return (await this.listCodexProfiles()).find((row) => row.id === profileId);
+  }
+
+  async listGithubAppConfigs() {
+    const apps = await this.db.query(`SELECT a.id,a.label,a.app_id,a.client_id,a.created_at,a.updated_at,
+      CASE WHEN pk.expires_at IS NULL AND wh.expires_at IS NULL THEN 'active' ELSE 'revoked' END AS status
+      FROM github_app_configs a
+      JOIN credential_refs pk ON pk.id=a.private_key_ref
+      JOIN credential_refs wh ON wh.id=a.webhook_secret_ref
+      ORDER BY a.created_at DESC,a.id`);
+    return Promise.all(apps.map(async (app) => ({ ...app, installations: await this.db.query('SELECT id,installation_id,account_login,permissions_json,status,created_at,updated_at FROM github_installations WHERE app_config_id=? ORDER BY created_at DESC', [app.id]).then((rows) => rows.map((row) => ({ ...row, permissions: rowJson(row, 'permissions_json', {}) }))) })));
+  }
+
+  async listMcpClients() {
+    const rows = await this.db.query('SELECT id,name,transport,endpoint,scope_json,status,created_at,updated_at FROM mcp_clients ORDER BY created_at DESC,id');
+    return rows.map((row) => ({ ...row, scope: rowJson(row, 'scope_json', {}) }));
+  }
+
+  async createMcpClient(input, ctx = {}) {
+    const name = String(input?.name || '').trim();
+    const transport = String(input?.transport || '').trim();
+    const endpoint = String(input?.endpoint || '').trim();
+    const scope = input?.scope && typeof input.scope === 'object' ? input.scope : {};
+    assert(name.length >= 1 && name.length <= 120, 'invalid_input', 'MCP client name is required', { status: 422 });
+    assert(['http', 'stdio', 'docker'].includes(transport), 'invalid_input', 'MCP transport is invalid', { status: 422 });
+    assert(endpoint.length >= 1 && endpoint.length <= 1024 && !/[\u0000\r\n]/.test(endpoint), 'invalid_input', 'MCP endpoint is invalid', { status: 422 });
+    if (transport === 'http') {
+      let parsed;
+      try { parsed = new URL(endpoint); } catch { throw new AppError('invalid_input', 'MCP HTTP endpoint is invalid', { status: 422 }); }
+      assert(parsed.protocol === 'https:' || (parsed.protocol === 'http:' && ['127.0.0.1', 'localhost', '::1'].includes(parsed.hostname)), 'invalid_input', 'MCP HTTP endpoint must use HTTPS or loopback HTTP', { status: 422 });
+    }
+    const projectIds = Array.isArray(scope.project_ids) ? [...new Set(scope.project_ids.map(String))].slice(0, 100) : [];
+    const token = randomBytes(32).toString('base64url');
+    const clientId = id('mcp');
+    const timestamp = now();
+    await this.db.transaction([
+      { sql: 'INSERT INTO mcp_clients(id,user_id,name,transport,endpoint,token_hash,scope_json,status,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?)', params: [clientId, 'usr_local_owner', name, transport, endpoint, sha256(token), asJson({ ...scope, project_ids: projectIds }), 'available', timestamp, timestamp] },
+      auditStatement('mcp_client.created', 'mcp_client', clientId, { name, transport, project_count: projectIds.length }, ctx.actor)
+    ]);
+    const metadata = (await this.listMcpClients()).find((client) => client.id === clientId);
+    return { ...metadata, token };
+  }
+
+  async revokeMcpClient(clientId, _input, ctx = {}) {
+    const client = await this.db.get('SELECT id FROM mcp_clients WHERE id=?', [clientId]);
+    if (!client) throw new AppError('not_found', 'MCP client not found');
+    await this.db.transaction([
+      { sql: "UPDATE mcp_clients SET status='revoked',updated_at=? WHERE id=?", params: [now(), clientId] },
+      auditStatement('mcp_client.revoked', 'mcp_client', clientId, {}, ctx.actor)
+    ]);
+    return (await this.listMcpClients()).find((item) => item.id === clientId);
+  }
+
+  async authorizeMcpToken(token, projectId = '') {
+    if (!token) return { local: true, client: null };
+    const client = await this.db.get('SELECT id,name,scope_json,status FROM mcp_clients WHERE token_hash=?', [sha256(token)]);
+    if (!client || client.status !== 'available') throw new AppError('mcp_token_invalid', 'MCP token is invalid or revoked', { status: 401 });
+    const scope = rowJson(client, 'scope_json', {});
+    const projects = Array.isArray(scope.project_ids) ? scope.project_ids.map(String) : [];
+    if (projectId && projects.length && !projects.includes(String(projectId))) throw new AppError('mcp_scope_denied', 'MCP token is not scoped to this project', { status: 403 });
+    return { local: false, client: { id: client.id, name: client.name, scope } };
+  }
+
+  async createGithubAppConfig(input, ctx = {}) {
+    const label = String(input?.label || '').trim();
+    const appId = String(input?.app_id || '').trim();
+    const clientId = String(input?.client_id || '').trim();
+    const privateKeyRef = String(input?.private_key_ref || '').trim();
+    const webhookSecretRef = String(input?.webhook_secret_ref || '').trim();
+    assert(label.length >= 1 && label.length <= 120, 'invalid_input', 'GitHub App label is required', { status: 422 });
+    assert(/^[0-9]{1,32}$/.test(appId), 'invalid_input', 'GitHub App id is invalid', { status: 422 });
+    assert(/^[A-Za-z0-9_.:-]{1,120}$/.test(clientId), 'invalid_input', 'GitHub client id is invalid', { status: 422 });
+    const refs = await this.db.query("SELECT id FROM credential_refs WHERE id IN (?,?) AND provider='github' AND expires_at IS NULL", [privateKeyRef, webhookSecretRef]);
+    assert(refs.length === 2 && privateKeyRef !== webhookSecretRef, 'invalid_input', 'active GitHub private key and webhook credentials are required', { status: 422 });
+    const appConfigId = id('gha');
+    const timestamp = now();
+    await this.db.transaction([
+      { sql: 'INSERT INTO github_app_configs(id,user_id,label,app_id,client_id,private_key_ref,webhook_secret_ref,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?)', params: [appConfigId, 'usr_local_owner', label, appId, clientId, privateKeyRef, webhookSecretRef, timestamp, timestamp] },
+      auditStatement('github_app.created', 'github_app', appConfigId, { label, app_id: appId }, ctx.actor)
+    ]);
+    return (await this.listGithubAppConfigs()).find((app) => app.id === appConfigId);
+  }
+
+  async createGithubInstallation(appConfigId, input, ctx = {}) {
+    const app = await this.db.get('SELECT id FROM github_app_configs WHERE id=?', [appConfigId]);
+    if (!app) throw new AppError('not_found', 'GitHub App config not found');
+    const installationId = String(input?.installation_id || '').trim();
+    const accountLogin = String(input?.account_login || '').trim();
+    const permissions = input?.permissions && typeof input.permissions === 'object' ? input.permissions : {};
+    assert(/^[0-9]{1,32}$/.test(installationId), 'invalid_input', 'installation id is invalid', { status: 422 });
+    assert(/^[A-Za-z0-9_.-]{1,100}$/.test(accountLogin), 'invalid_input', 'account login is invalid', { status: 422 });
+    const installation = id('ghi');
+    try {
+      await this.db.transaction([
+        { sql: 'INSERT INTO github_installations(id,app_config_id,installation_id,account_login,permissions_json,status,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?)', params: [installation, appConfigId, installationId, accountLogin, asJson(permissions), 'available', now(), now()] },
+        auditStatement('github_installation.selected', 'github_installation', installation, { app_config_id: appConfigId, installation_id: installationId, account_login: accountLogin }, ctx.actor)
+      ]);
+    } catch (error) {
+      if (String(error?.message).includes('UNIQUE')) throw new AppError('already_exists', 'GitHub installation is already configured', { status: 409 });
+      throw error;
+    }
+    return (await this.listGithubAppConfigs()).find((item) => item.id === appConfigId)?.installations.find((item) => item.id === installation);
+  }
+
+  async updateCodexProfile(profileId, input, ctx = {}) {
+    const current = await this.db.get('SELECT * FROM codex_profiles WHERE id=?', [profileId]);
+    if (!current) throw new AppError('not_found', 'Codex profile not found');
+    const expected = Number(input?.expected_revision);
+    assert(Number.isInteger(expected) && expected > 0, 'invalid_input', 'expected_revision is required');
+    const profile = this.validateCodexProfile({ ...current, ...input });
+    const credential = await this.db.get("SELECT id FROM credential_refs WHERE id=? AND provider='codex' AND expires_at IS NULL", [profile.credential_ref]);
+    assert(credential, 'invalid_input', 'active Codex credential is required', { status: 422 });
+    try {
+      await this.db.transaction([
+        { sql: `UPDATE codex_profiles SET label=?,provider=?,model=?,base_url=?,wire_api=?,reasoning=?,timeout_ms=?,credential_ref=?,status='unprobed',revision=revision+1,updated_at=? WHERE id=? AND revision=?`, params: [profile.label, profile.provider, profile.model, profile.base_url, profile.wire_api, profile.reasoning, profile.timeout_ms, profile.credential_ref, now(), profileId, expected], expect_changes: 1 },
+        auditStatement('codex_profile.updated', 'codex_profile', profileId, { expected_revision: expected }, ctx.actor)
+      ]);
+    } catch (error) {
+      if (!isTransactionPrecondition(error)) throw error;
+      throw new AppError('revision_conflict', 'Codex profile revision has changed', { status: 409, details: { expected_revision: expected } });
+    }
+    return (await this.listCodexProfiles()).find((row) => row.id === profileId);
+  }
+
+  validateCodexProfile(input) {
+    const label = String(input?.label || '').trim();
+    const provider = String(input?.provider || 'openai').trim();
+    const model = String(input?.model || '').trim();
+    const baseUrl = String(input?.base_url || '').trim();
+    const wireApi = String(input?.wire_api || 'responses').trim();
+    const reasoning = String(input?.reasoning || 'medium').trim();
+    const timeoutMs = Number(input?.timeout_ms ?? 120000);
+    const credentialRef = String(input?.credential_ref || '').trim();
+    assert(label.length >= 1 && label.length <= 120, 'invalid_input', 'profile label is required', { status: 422 });
+    assert(/^[A-Za-z0-9][A-Za-z0-9._-]{0,79}$/.test(provider), 'invalid_input', 'provider is invalid', { status: 422 });
+    assert(/^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/.test(model), 'invalid_input', 'model is invalid', { status: 422 });
+    assert(['responses', 'chat'].includes(wireApi), 'invalid_input', 'wire_api is invalid', { status: 422 });
+    assert(['minimal', 'low', 'medium', 'high', 'xhigh'].includes(reasoning), 'invalid_input', 'reasoning is invalid', { status: 422 });
+    assert(Number.isInteger(timeoutMs) && timeoutMs >= 1000 && timeoutMs <= 3600000, 'invalid_input', 'timeout_ms is invalid', { status: 422 });
+    if (baseUrl) {
+      let parsed;
+      try { parsed = new URL(baseUrl); } catch { throw new AppError('invalid_input', 'base_url is invalid', { status: 422 }); }
+      assert(parsed.protocol === 'https:' || (parsed.protocol === 'http:' && ['127.0.0.1', 'localhost', '::1'].includes(parsed.hostname)), 'invalid_input', 'base_url must use HTTPS or loopback HTTP', { status: 422 });
+    }
+    return { label, provider, model, base_url: baseUrl, wire_api: wireApi, reasoning, timeout_ms: timeoutMs, credential_ref: credentialRef };
   }
 
   async getProject(projectId) {
@@ -340,6 +634,233 @@ export class Domain {
     return (await this.db.query('SELECT * FROM workflow_revisions WHERE project_id=? ORDER BY revision DESC', [projectId])).map(workflowView);
   }
 
+  async listNodeContracts(projectId, workflowRevision = null) {
+    await this.requireProject(projectId);
+    const revision = workflowRevision == null ? Number((await this.db.get('SELECT revision FROM workflow_revisions WHERE project_id=? ORDER BY revision DESC LIMIT 1', [projectId]))?.revision || 0) : Number(workflowRevision);
+    if (!revision) return [];
+    return (await this.db.query('SELECT * FROM node_contracts WHERE project_id=? AND workflow_revision=? ORDER BY node_id', [projectId, revision])).map((row) => ({ ...row, contract: rowJson(row, 'contract_json', {}) }));
+  }
+
+  async createNodeContract(projectId, input, ctx = {}) {
+    await this.requireProject(projectId);
+    const workflowRevision = Number(input?.workflow_revision);
+    const nodeId = String(input?.node_id || '').trim();
+    const contract = input?.contract && typeof input.contract === 'object' ? input.contract : {};
+    assert(Number.isInteger(workflowRevision) && workflowRevision > 0, 'invalid_input', 'workflow_revision is required', { status: 422 });
+    assert(/^[A-Za-z0-9_-]{1,80}$/.test(nodeId), 'invalid_input', 'node_id is invalid', { status: 422 });
+    const workflow = await this.db.get('SELECT tasks_json FROM workflow_revisions WHERE project_id=? AND revision=?', [projectId, workflowRevision]);
+    assert(workflow, 'not_found', 'workflow revision not found');
+    assert(rowJson(workflow, 'tasks_json', []).some((task) => task.id === nodeId), 'invalid_input', 'node is not present in workflow', { status: 422 });
+    const contractId = id('nct');
+    try {
+      await this.db.transaction([
+        { sql: 'INSERT INTO node_contracts(id,project_id,workflow_revision,node_id,contract_json,created_at) VALUES(?,?,?,?,?,?)', params: [contractId, projectId, workflowRevision, nodeId, asJson(contract), now()] },
+        auditStatement('node_contract.created', 'node_contract', contractId, { project_id: projectId, workflow_revision: workflowRevision, node_id: nodeId }, ctx.actor)
+      ]);
+    } catch (error) {
+      if (String(error?.message).includes('UNIQUE')) throw new AppError('already_exists', 'node contract already exists', { status: 409 });
+      throw error;
+    }
+    return (await this.listNodeContracts(projectId, workflowRevision)).find((row) => row.id === contractId);
+  }
+
+  async listWorkflowGenerations(projectId) {
+    await this.requireProject(projectId);
+    return (await this.db.query('SELECT * FROM workflow_generations WHERE project_id=? ORDER BY created_at DESC', [projectId])).map((row) => ({ ...row, candidate: rowJson(row, 'candidate_json', {}), critic: rowJson(row, 'critic_json', {}) }));
+  }
+
+  async generateWorkflow(projectId, input, ctx = {}) {
+    await this.requireProject(projectId);
+    const brief = await this.db.get('SELECT revision,content_json,content_hash FROM brief_revisions WHERE project_id=? ORDER BY revision DESC LIMIT 1', [projectId]);
+    assert(brief, 'invalid_input', 'a brief is required before workflow generation', { status: 422 });
+    const content = rowJson(brief, 'content_json', {});
+    const objective = String(content.objective || '').trim();
+    const generationId = id('wgen');
+    const candidate = objective ? {
+      name: String(input?.name || 'Generated delivery workflow').slice(0, 160),
+      tasks: [
+        { id: 'analyze', title: 'Analyze brief and repository', level: 1, deps: [], mode: 'read', inputs: [], outputs: ['analysis.md'] },
+        { id: 'implement', title: 'Implement and verify change', level: 2, deps: ['analyze'], mode: 'write', inputs: ['analysis.md'], outputs: ['change.diff', 'test-report.json'] }
+      ]
+    } : {};
+    const critic = objective ? { status: 'passed', issues: [], brief_hash: brief.content_hash } : { status: 'rejected', issues: ['brief objective is empty'] };
+    const status = objective ? 'completed' : 'rejected';
+    await this.db.transaction([
+      { sql: 'INSERT INTO workflow_generations(id,project_id,brief_revision,status,candidate_json,critic_json,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?)', params: [generationId, projectId, brief.revision, status, asJson(candidate), asJson(critic), now(), now()] },
+      { sql: 'INSERT INTO workflow_generation_events(generation_id,type,data_json,created_at) VALUES(?,?,?,?)', params: [generationId, `workflow.generation.${status}`, asJson({ brief_revision: brief.revision, brief_hash: brief.content_hash }), now()] },
+      auditStatement(`workflow.generation.${status}`, 'workflow_generation', generationId, { project_id: projectId, brief_revision: brief.revision }, ctx.actor)
+    ]);
+    return (await this.listWorkflowGenerations(projectId)).find((row) => row.id === generationId);
+  }
+
+  async listOutcomeRequirements(projectId, workflowRevision = null) {
+    await this.requireProject(projectId);
+    const revision = workflowRevision == null ? Number((await this.db.get('SELECT revision FROM workflow_revisions WHERE project_id=? ORDER BY revision DESC LIMIT 1', [projectId]))?.revision || 0) : Number(workflowRevision);
+    return (await this.db.query('SELECT * FROM outcome_requirements WHERE project_id=? AND workflow_revision=? ORDER BY created_at,id', [projectId, revision])).map((row) => ({ ...row, rubric: rowJson(row, 'rubric_json', {}) }));
+  }
+
+  async createOutcomeRequirement(projectId, input, ctx = {}) {
+    await this.requireProject(projectId);
+    const latestWorkflow = await this.db.get('SELECT revision FROM workflow_revisions WHERE project_id=? ORDER BY revision DESC LIMIT 1', [projectId]);
+    const workflowRevision = Number(input?.workflow_revision ?? latestWorkflow?.revision ?? 0);
+    const key = String(input?.requirement_key || input?.key || '').trim();
+    const rubric = input?.rubric && typeof input.rubric === 'object' ? input.rubric : { min_score: 80 };
+    assert(Number.isInteger(workflowRevision) && workflowRevision > 0, 'invalid_input', 'workflow_revision is required', { status: 422 });
+    assert(/^[A-Za-z0-9._-]{1,120}$/.test(key), 'invalid_input', 'requirement key is invalid', { status: 422 });
+    const requirementId = id('out');
+    try {
+      await this.db.transaction([
+        { sql: 'INSERT INTO outcome_requirements(id,project_id,workflow_revision,requirement_key,rubric_json,created_at) VALUES(?,?,?,?,?,?)', params: [requirementId, projectId, workflowRevision, key, asJson(rubric), now()] },
+        auditStatement('outcome_requirement.created', 'outcome_requirement', requirementId, { project_id: projectId, workflow_revision: workflowRevision, requirement_key: key }, ctx.actor)
+      ]);
+    } catch (error) {
+      if (String(error?.message).includes('UNIQUE')) throw new AppError('already_exists', 'outcome requirement already exists', { status: 409 });
+      throw error;
+    }
+    return (await this.listOutcomeRequirements(projectId, workflowRevision)).find((row) => row.id === requirementId);
+  }
+
+  async listAssistSessions(projectId = null) {
+    const rows = projectId
+      ? await this.db.query('SELECT * FROM assist_sessions WHERE project_id=? ORDER BY created_at DESC', [projectId])
+      : await this.db.query('SELECT * FROM assist_sessions ORDER BY created_at DESC LIMIT 200');
+    return rows.map((row) => ({ ...row, snapshot: rowJson(row, 'snapshot_json', {}) }));
+  }
+
+  async createAssistSession(input, ctx = {}) {
+    const projectId = String(input?.project_id || '').trim();
+    await this.requireProject(projectId);
+    const scope = String(input?.scope || 'project');
+    assert(['project', 'workflow', 'workstream', 'task'].includes(scope), 'invalid_input', 'Assist scope is invalid', { status: 422 });
+    const scopeId = String(input?.scope_id || projectId).trim();
+    assert(scopeId.length >= 1 && scopeId.length <= 160, 'invalid_input', 'Assist scope_id is required', { status: 422 });
+    const [brief, workflow, repository] = await Promise.all([
+      this.db.get('SELECT revision,content_hash FROM brief_revisions WHERE project_id=? ORDER BY revision DESC LIMIT 1', [projectId]),
+      this.db.get('SELECT revision,graph_hash FROM workflow_revisions WHERE project_id=? ORDER BY revision DESC LIMIT 1', [projectId]),
+      this.db.get('SELECT head_sha FROM repository_bindings WHERE project_id=?', [projectId])
+    ]);
+    const snapshot = { project_id: projectId, scope, scope_id: scopeId, brief_revision: brief?.revision || null, brief_hash: brief?.content_hash || null, workflow_revision: workflow?.revision || null, workflow_hash: workflow?.graph_hash || null, repository_sha: repository?.head_sha || '' };
+    const sessionId = id('ast');
+    const timestamp = now();
+    await this.db.transaction([
+      { sql: 'INSERT INTO assist_sessions(id,project_id,scope,scope_id,snapshot_json,status,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?)', params: [sessionId, projectId, scope, scopeId, asJson(snapshot), 'active', timestamp, timestamp] },
+      { sql: 'INSERT INTO assist_events(session_id,turn_id,type,data_json,created_at) VALUES(?,?,?,?,?)', params: [sessionId, null, 'assist.session.created', asJson({ scope, scope_id: scopeId }), timestamp] },
+      auditStatement('assist_session.created', 'assist_session', sessionId, { project_id: projectId, scope, scope_id: scopeId }, ctx.actor)
+    ]);
+    return (await this.listAssistSessions(projectId)).find((row) => row.id === sessionId);
+  }
+
+  async getAssistSession(sessionId) {
+    const session = await this.db.get('SELECT * FROM assist_sessions WHERE id=?', [sessionId]);
+    if (!session) throw new AppError('not_found', 'Assist session not found');
+    const turns = await this.db.query('SELECT * FROM assist_turns WHERE session_id=? ORDER BY turn_no', [sessionId]);
+    const turnViews = await Promise.all(turns.map(async (turn) => ({
+      ...turn,
+      goal: rowJson(turn, 'goal_json', {}),
+      plan: rowJson(turn, 'plan_json', []),
+      messages: await this.db.query('SELECT id,role,content,sequence_no,created_at FROM assist_messages WHERE turn_id=? ORDER BY sequence_no', [turn.id])
+    })));
+    return { ...session, snapshot: rowJson(session, 'snapshot_json', {}), turns: turnViews };
+  }
+
+  async createAssistTurn(sessionId, input, ctx = {}) {
+    const session = await this.db.get('SELECT id,status FROM assist_sessions WHERE id=?', [sessionId]);
+    if (!session) throw new AppError('not_found', 'Assist session not found');
+    assert(session.status === 'active', 'assist_session_inactive', 'Assist session is not active', { status: 409 });
+    const message = String(input?.message || '').trim();
+    assert(message.length >= 1 && message.length <= 100000, 'invalid_input', 'Assist message is required', { status: 422 });
+    const goal = input?.goal && typeof input.goal === 'object' ? input.goal : {};
+    const plan = Array.isArray(input?.plan) ? input.plan.slice(0, 100) : [];
+    const turnNo = Number((await this.db.get('SELECT COALESCE(MAX(turn_no),0)+1 AS turn_no FROM assist_turns WHERE session_id=?', [sessionId])).turn_no);
+    const turnId = id('atr');
+    const operationId = id('aop');
+    const receipt = { operation_id: operationId, session_id: sessionId, turn_id: turnId, status: 'completed' };
+    const timestamp = now();
+    await this.db.transaction([
+      { sql: 'INSERT INTO assist_turns(id,session_id,turn_no,status,goal_json,plan_json,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?)', params: [turnId, sessionId, turnNo, 'completed', asJson(goal), asJson(plan), timestamp, timestamp] },
+      { sql: 'INSERT INTO assist_messages(id,turn_id,role,content,sequence_no,created_at) VALUES(?,?,?,?,?,?)', params: [id('ams'), turnId, 'user', message, 1, timestamp] },
+      { sql: 'INSERT INTO assist_operations(id,session_id,kind,status,receipt_json,created_at,updated_at) VALUES(?,?,?,?,?,?,?)', params: [operationId, sessionId, 'turn', 'completed', asJson(receipt), timestamp, timestamp] },
+      { sql: 'INSERT INTO assist_events(session_id,turn_id,type,data_json,created_at) VALUES(?,?,?,?,?)', params: [sessionId, turnId, 'assist.turn.created', asJson({ turn_no: turnNo, operation_id: operationId }), timestamp] },
+      ...(Object.keys(goal).length ? [{ sql: 'INSERT INTO assist_events(session_id,turn_id,type,data_json,created_at) VALUES(?,?,?,?,?)', params: [sessionId, turnId, 'assist.goal', asJson(goal), timestamp] }] : []),
+      ...(plan.length ? [{ sql: 'INSERT INTO assist_events(session_id,turn_id,type,data_json,created_at) VALUES(?,?,?,?,?)', params: [sessionId, turnId, 'assist.plan', asJson({ steps: plan }), timestamp] }] : []),
+      { sql: 'INSERT INTO assist_events(session_id,turn_id,type,data_json,created_at) VALUES(?,?,?,?,?)', params: [sessionId, turnId, 'assist.message', asJson({ role: 'user', sequence_no: 1 }), timestamp] },
+      { sql: 'UPDATE assist_sessions SET updated_at=? WHERE id=?', params: [timestamp, sessionId] },
+      auditStatement('assist_turn.created', 'assist_turn', turnId, { session_id: sessionId, turn_no: turnNo, operation_id: operationId }, ctx.actor)
+    ]);
+    return { ...(await this.getAssistSession(sessionId)).turns.find((turn) => turn.id === turnId), operation: receipt };
+  }
+
+  async transitionAssistSession(sessionId, input, ctx = {}) {
+    const action = String(input?.action || '').trim();
+    const transitions = { cancel: 'cancelled', interrupt: 'paused', resume: 'active', complete: 'completed' };
+    const next = transitions[action];
+    assert(next, 'invalid_input', 'Assist transition is invalid', { status: 422 });
+    const session = await this.db.get('SELECT id,status FROM assist_sessions WHERE id=?', [sessionId]);
+    if (!session) throw new AppError('not_found', 'Assist session not found');
+    if (action === 'resume') assert(session.status === 'paused', 'invalid_state', 'only paused Assist sessions can resume', { status: 409 });
+    await this.db.transaction([
+      { sql: 'UPDATE assist_sessions SET status=?,updated_at=? WHERE id=?', params: [next, now(), sessionId] },
+      { sql: 'INSERT INTO assist_events(session_id,turn_id,type,data_json,created_at) VALUES(?,?,?,?,?)', params: [sessionId, null, `assist.session.${action}`, asJson({ from: session.status, to: next }), now()] },
+      auditStatement(`assist_session.${action}`, 'assist_session', sessionId, { from: session.status, to: next }, ctx.actor)
+    ]);
+    return this.getAssistSession(sessionId);
+  }
+
+  async assistEvents(sessionId, cursor = 0) {
+    const session = await this.db.get('SELECT id FROM assist_sessions WHERE id=?', [sessionId]);
+    if (!session) throw new AppError('not_found', 'Assist session not found');
+    return (await this.db.query('SELECT cursor,session_id,turn_id,type,data_json,created_at FROM assist_events WHERE session_id=? AND cursor>? ORDER BY cursor LIMIT 1000', [sessionId, Number(cursor) || 0])).map((row) => ({ cursor: row.cursor, session_id: row.session_id, turn_id: row.turn_id, type: row.type, data: rowJson(row, 'data_json', {}), created_at: row.created_at }));
+  }
+
+  async outcomeView(executionId) {
+    const execution = await this.db.get('SELECT id,project_id,workflow_revision,status FROM executions WHERE id=?', [executionId]);
+    if (!execution) throw new AppError('not_found', 'execution not found');
+    const [requirements, evaluations, waivers] = await Promise.all([
+      this.listOutcomeRequirements(execution.project_id, execution.workflow_revision),
+      this.db.query('SELECT * FROM outcome_evaluations WHERE execution_id=? ORDER BY created_at,id', [executionId]),
+      this.db.query('SELECT * FROM outcome_waivers WHERE execution_id=? ORDER BY created_at,id', [executionId])
+    ]);
+    const evaluated = new Map(evaluations.map((row) => [row.requirement_id, { ...row, evidence: rowJson(row, 'evidence_json', []) }]));
+    const waived = new Map(waivers.map((row) => [row.requirement_id, row]));
+    const results = requirements.map((requirement) => ({ ...requirement, evaluation: evaluated.get(requirement.id) || null, waiver: waived.get(requirement.id) || null }));
+    const eligible = execution.status === 'completed' && results.length > 0 && results.every((item) => item.waiver || item.evaluation?.status === 'passed');
+    return { execution_id: executionId, status: execution.status, completion_status: eligible ? 'completed' : execution.status === 'completed' ? 'incomplete' : execution.status, release_eligible: eligible, requirements: results };
+  }
+
+  async evaluateOutcome(executionId, _input, ctx = {}) {
+    const execution = await this.db.get('SELECT id,project_id,workflow_revision,status FROM executions WHERE id=?', [executionId]);
+    if (!execution) throw new AppError('not_found', 'execution not found');
+    const requirements = await this.listOutcomeRequirements(execution.project_id, execution.workflow_revision);
+    assert(requirements.length > 0, 'invalid_input', 'outcome requirements are not configured', { status: 422 });
+    const timestamp = now();
+    await this.db.transaction([
+      ...requirements.map((requirement) => ({ sql: 'INSERT INTO outcome_evaluations(id,execution_id,requirement_id,status,score,evidence_json,created_at) VALUES(?,?,?,?,?,?,?)', params: [id('oev'), executionId, requirement.id, execution.status === 'completed' ? 'passed' : 'failed', execution.status === 'completed' ? 100 : 0, '[]', timestamp] })),
+      auditStatement('outcome.evaluated', 'execution', executionId, { requirement_count: requirements.length, execution_status: execution.status }, ctx.actor)
+    ]);
+    return this.outcomeView(executionId);
+  }
+
+  async waiveOutcome(executionId, input, ctx = {}) {
+    const execution = await this.db.get('SELECT id,project_id,workflow_revision FROM executions WHERE id=?', [executionId]);
+    if (!execution) throw new AppError('not_found', 'execution not found');
+    const requirementId = String(input?.requirement_id || '').trim();
+    const reason = String(input?.reason || '').trim();
+    assert(requirementId && reason.length >= 3 && reason.length <= 1000, 'invalid_input', 'requirement_id and waiver reason are required', { status: 422 });
+    const requirement = await this.db.get('SELECT id FROM outcome_requirements WHERE id=? AND project_id=? AND workflow_revision=?', [requirementId, execution.project_id, execution.workflow_revision]);
+    assert(requirement, 'invalid_input', 'outcome requirement does not belong to execution', { status: 422 });
+    const waiverId = id('owaiver');
+    try {
+      await this.db.transaction([
+        { sql: 'INSERT INTO outcome_waivers(id,execution_id,requirement_id,reason,actor,created_at) VALUES(?,?,?,?,?,?)', params: [waiverId, executionId, requirementId, reason, ctx.actor || 'local-user', now()] },
+        auditStatement('outcome.waived', 'execution', executionId, { requirement_id: requirementId }, ctx.actor)
+      ]);
+    } catch (error) {
+      if (String(error?.message).includes('UNIQUE')) throw new AppError('already_exists', 'outcome requirement is already waived', { status: 409 });
+      throw error;
+    }
+    return this.outcomeView(executionId);
+  }
+
   async createWorkflow(projectId, input, ctx = {}) {
     await this.requireProject(projectId);
     const tasks = validateWorkflowTasks(input?.tasks);
@@ -349,6 +870,7 @@ export class Domain {
     await this.db.transaction([
       { sql: 'INSERT INTO workflow_revisions(project_id,revision,name,tasks_json,graph_hash,created_at) VALUES(?,?,?,?,?,?)', params: [projectId, revision, String(input?.name || `Workflow ${revision}`).slice(0, 160), asJson(tasks), graphHash, timestamp] },
       { sql: 'INSERT INTO workflow_heads(project_id,revision,updated_at) VALUES(?,?,?) ON CONFLICT(project_id) DO UPDATE SET revision=excluded.revision,updated_at=excluded.updated_at', params: [projectId, revision, timestamp] },
+      ...tasks.map((task) => ({ sql: 'INSERT INTO node_contracts(id,project_id,workflow_revision,node_id,contract_json,created_at) VALUES(?,?,?,?,?,?)', params: [id('nct'), projectId, revision, task.id, asJson({ inputs: task.inputs, outputs: task.outputs, dependencies: task.deps, allowed_tools: task.allowed_tools || [], acceptance: task.acceptance || [] }), timestamp] })),
       auditStatement('workflow.created', 'project', projectId, { revision, graph_hash: graphHash }, ctx.actor)
     ]);
     return workflowView(await this.db.get('SELECT * FROM workflow_revisions WHERE project_id=? AND revision=?', [projectId, revision]));
@@ -385,6 +907,75 @@ export class Domain {
     return (await this.db.query('SELECT * FROM context_packs WHERE project_id=? ORDER BY created_at DESC', [projectId])).map(contextPackView);
   }
 
+  async contextMap(projectId) {
+    await this.requireProject(projectId);
+    const nodes = await this.db.query(`SELECT n.id,n.parent_id,n.uri,n.title,n.kind,n.sensitivity,n.created_at,n.updated_at,
+      (SELECT content_hash FROM context_document_versions v WHERE v.node_id=n.id ORDER BY version DESC LIMIT 1) AS content_hash
+      FROM context_nodes n WHERE n.project_id=? ORDER BY n.uri`, [projectId]);
+    return { project_id: projectId, root_uri: `aiws://context/${projectId}`, nodes };
+  }
+
+  async rebuildContextMap(projectId, _input, ctx = {}) {
+    await this.requireProject(projectId);
+    const sources = await this.db.query('SELECT * FROM context_sources WHERE project_id=? ORDER BY created_at,id', [projectId]);
+    const rootId = `ctx_${sha256(`root:${projectId}`).slice(0, 32)}`;
+    const rootUri = `aiws://context/${projectId}`;
+    const jobId = id('cpj');
+    const timestamp = now();
+    const statements = [
+      { sql: 'INSERT INTO context_projection_jobs(id,project_id,status,cursor,created_at,updated_at) VALUES(?,?,?,?,?,?)', params: [jobId, projectId, 'running', '', timestamp, timestamp] },
+      { sql: `INSERT INTO context_nodes(id,project_id,parent_id,uri,title,kind,sensitivity,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?)
+        ON CONFLICT(uri) DO UPDATE SET title=excluded.title,updated_at=excluded.updated_at`, params: [rootId, projectId, null, rootUri, 'Context', 'root', 'normal', timestamp, timestamp] }
+    ];
+    for (const source of sources) {
+      const nodeId = `ctx_${sha256(`source:${source.id}`).slice(0, 32)}`;
+      const uri = `${rootUri}/${encodeURIComponent(source.kind)}/${encodeURIComponent(source.id)}`;
+      const existing = await this.db.get('SELECT id FROM context_nodes WHERE uri=?', [uri]);
+      const resolvedNodeId = existing?.id || nodeId;
+      statements.push(
+        { sql: `INSERT INTO context_nodes(id,project_id,parent_id,uri,title,kind,sensitivity,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?)
+          ON CONFLICT(uri) DO UPDATE SET parent_id=excluded.parent_id,title=excluded.title,kind=excluded.kind,updated_at=excluded.updated_at`, params: [resolvedNodeId, projectId, rootId, uri, source.title, source.kind, 'normal', timestamp, timestamp] },
+        { sql: 'INSERT OR IGNORE INTO context_edges(parent_id,child_id,relation,created_at) VALUES(?,?,?,?)', params: [rootId, resolvedNodeId, 'contains', timestamp] }
+      );
+      const latest = await this.db.get('SELECT version,content_hash FROM context_document_versions WHERE node_id=? ORDER BY version DESC LIMIT 1', [resolvedNodeId]);
+      if (latest?.content_hash !== source.content_hash) statements.push({ sql: 'INSERT INTO context_document_versions(id,node_id,version,content_hash,content,created_at) VALUES(?,?,?,?,?,?)', params: [id('cdv'), resolvedNodeId, Number(latest?.version || 0) + 1, source.content_hash, source.content, timestamp] });
+    }
+    statements.push(
+      { sql: "UPDATE context_projection_jobs SET status='completed',cursor=?,updated_at=? WHERE id=?", params: [String(sources.length), timestamp, jobId] },
+      auditStatement('context.rebuilt', 'context_projection_job', jobId, { project_id: projectId, source_count: sources.length }, ctx.actor)
+    );
+    await this.db.transaction(statements);
+    return { job: await this.db.get('SELECT * FROM context_projection_jobs WHERE id=?', [jobId]), map: await this.contextMap(projectId) };
+  }
+
+  async contextProjectionStatus(projectId) {
+    await this.requireProject(projectId);
+    return this.db.get('SELECT * FROM context_projection_jobs WHERE project_id=? ORDER BY created_at DESC LIMIT 1', [projectId]);
+  }
+
+  async readContextNode(projectId, uri) {
+    await this.requireProject(projectId);
+    const node = await this.db.get('SELECT * FROM context_nodes WHERE project_id=? AND uri=?', [projectId, String(uri || '')]);
+    if (!node) throw new AppError('not_found', 'context node not found');
+    const version = await this.db.get('SELECT id,version,content_hash,content,created_at FROM context_document_versions WHERE node_id=? ORDER BY version DESC LIMIT 1', [node.id]);
+    return { ...node, document: version };
+  }
+
+  async createContextSelection(projectId, input, ctx = {}) {
+    await this.requireProject(projectId);
+    const nodeIds = Array.isArray(input?.node_ids) ? [...new Set(input.node_ids.map(String))].slice(0, 200) : [];
+    assert(nodeIds.length > 0, 'invalid_input', 'context selection needs at least one node', { status: 422 });
+    const rows = await this.db.query(`SELECT id FROM context_nodes WHERE project_id=? AND id IN (${nodeIds.map(() => '?').join(',')})`, [projectId, ...nodeIds]);
+    assert(rows.length === nodeIds.length, 'invalid_input', 'context node does not belong to project', { status: 422 });
+    const selectionId = id('csel');
+    const retrievalPlan = input?.retrieval_plan && typeof input.retrieval_plan === 'object' ? input.retrieval_plan : { strategy: 'explicit', token_budget: 12000 };
+    await this.db.transaction([
+      { sql: 'INSERT INTO context_selections(id,project_id,session_id,node_ids_json,retrieval_plan_json,created_at) VALUES(?,?,?,?,?,?)', params: [selectionId, projectId, input?.session_id || null, asJson(nodeIds), asJson(retrievalPlan), now()] },
+      auditStatement('context.selection.created', 'context_selection', selectionId, { project_id: projectId, node_count: nodeIds.length }, ctx.actor)
+    ]);
+    return { id: selectionId, project_id: projectId, node_ids: nodeIds, retrieval_plan: retrievalPlan };
+  }
+
   async createContextPack(projectId, input, ctx = {}) {
     await this.requireProject(projectId);
     const requested = Array.isArray(input?.source_ids) ? [...new Set(input.source_ids.map(String))] : [];
@@ -394,8 +985,11 @@ export class Domain {
     assert(sources.length > 0, 'invalid_input', 'context pack needs at least one source');
     assert(sources.length === requested.length || !requested.length, 'invalid_input', 'context source does not belong to project');
     const pack = {
+      schema_version: 'aiws.context_pack.v5',
       sources: sources.map((source) => ({ id: source.id, title: source.title, path: source.path, content: source.content })),
-      selection: String(input?.selection || 'explicit')
+      selection: { schema_version: 'aiws.context_selection.v2', mode: String(input?.selection || 'explicit'), source_ids: sources.map((source) => source.id) },
+      retrieval_plan: input?.retrieval_plan && typeof input.retrieval_plan === 'object' ? input.retrieval_plan : { strategy: 'explicit', token_budget: 12000 },
+      memory_manifest: { brief_revision: Number((await this.db.get('SELECT revision FROM brief_revisions WHERE project_id=? ORDER BY revision DESC LIMIT 1', [projectId]))?.revision || 0), source_hashes: Object.fromEntries(sources.map((source) => [source.id, source.content_hash])) }
     };
     const packId = id('pack');
     const packHash = hashJson(pack);
@@ -478,6 +1072,83 @@ export class Domain {
       await this.cleanupPreparedAssets([asset]);
       throw error;
     }
+  }
+
+  async listAttachments(projectId) {
+    await this.requireProject(projectId);
+    return this.db.query('SELECT id,project_id,name,media_type,byte_size,sha256,created_at FROM attachments WHERE project_id=? ORDER BY created_at DESC,id', [projectId]);
+  }
+
+  async createAttachment(projectId, input, ctx = {}) {
+    const allowed = new Set(['text/plain', 'text/markdown', 'application/json', 'text/csv', 'application/xml', 'image/png', 'image/jpeg', 'image/webp', 'image/gif', 'image/svg+xml', 'text/html', 'application/pdf']);
+    const mediaType = String(input?.media_type || 'application/octet-stream').toLowerCase().split(';')[0].trim();
+    assert(allowed.has(mediaType), 'attachment_media_type_unsupported', 'attachment media type is not supported', { status: 415 });
+    const asset = await this.prepareAsset(projectId, { ...input, media_type: mediaType });
+    const declared = String(input?.sha256 || '').trim();
+    if (declared && declared !== asset.cas_hash) {
+      await this.cleanupPreparedAssets([asset]);
+      throw new AppError('attachment_hash_mismatch', 'attachment SHA-256 does not match content', { status: 422 });
+    }
+    const quota = Number((await this.db.get('SELECT COALESCE(SUM(byte_size),0) AS total FROM attachments WHERE project_id=?', [projectId])).total || 0);
+    if (quota + asset.byte_size > 100 * 1024 * 1024) {
+      await this.cleanupPreparedAssets([asset]);
+      throw new AppError('attachment_quota_exceeded', 'project attachment quota exceeded', { status: 413 });
+    }
+    const attachmentId = id('attc');
+    try {
+      await this.db.transaction([
+        { sql: 'INSERT INTO attachments(id,project_id,name,media_type,byte_size,sha256,cas_path,created_at) VALUES(?,?,?,?,?,?,?,?)', params: [attachmentId, projectId, asset.name, mediaType, asset.byte_size, asset.cas_hash, asset.cas_path, now()] },
+        auditStatement('attachment.created', 'attachment', attachmentId, { project_id: projectId, media_type: mediaType, byte_size: asset.byte_size, sha256: asset.cas_hash }, ctx.actor)
+      ]);
+    } catch (error) {
+      await this.cleanupPreparedAssets([asset]);
+      throw error;
+    }
+    return (await this.listAttachments(projectId)).find((row) => row.id === attachmentId);
+  }
+
+  async listQualityReviewRuns(projectId) {
+    await this.requireProject(projectId);
+    const runs = await this.db.query('SELECT * FROM quality_review_runs WHERE project_id=? ORDER BY created_at DESC,id', [projectId]);
+    return Promise.all(runs.map(async (run) => ({ ...run, policy: rowJson(run, 'policy_json', {}), reports: (await this.db.query('SELECT * FROM quality_review_reports WHERE run_id=? ORDER BY created_at,id', [run.id])).map((report) => ({ ...report, report: rowJson(report, 'report_json', {}) })) })));
+  }
+
+  async createQualityReview(projectId, input, ctx = {}) {
+    await this.requireProject(projectId);
+    const assetId = String(input?.asset_id || '').trim();
+    const attachmentId = String(input?.attachment_id || '').trim();
+    assert(Boolean(assetId) !== Boolean(attachmentId), 'invalid_input', 'exactly one asset_id or attachment_id is required', { status: 422 });
+    const source = assetId
+      ? await this.db.get('SELECT id,name,media_type,byte_size,cas_hash FROM asset_versions WHERE id=? AND project_id=?', [assetId, projectId])
+      : await this.db.get('SELECT id,name,media_type,byte_size,sha256 AS cas_hash FROM attachments WHERE id=? AND project_id=?', [attachmentId, projectId]);
+    if (!source) throw new AppError('not_found', 'quality review input not found');
+    const supported = new Set(['text/plain', 'text/markdown', 'application/json', 'text/csv', 'application/xml', 'image/svg+xml', 'image/png', 'image/jpeg', 'image/webp', 'image/gif', 'application/pdf']);
+    const mediaType = String(source.media_type).toLowerCase().split(';')[0];
+    assert(supported.has(mediaType), 'quality_media_type_unsupported', 'quality review parser does not support this media type', { status: 415 });
+    const file = path.join(this.config.casRoot, source.cas_hash.slice(0, 2), source.cas_hash);
+    assertNoStorageSymlinks(this.config.home, file);
+    let content;
+    try { content = fs.readFileSync(file); } catch { throw new AppError('quality_input_missing', 'quality review input is missing', { status: 422 }); }
+    assert(content.byteLength === Number(source.byte_size), 'quality_input_corrupt', 'quality review input size does not match metadata', { status: 422 });
+    const parser = mediaType.startsWith('image/') ? 'image-metadata' : mediaType === 'application/pdf' ? 'pdf-metadata' : mediaType === 'application/json' ? 'json' : mediaType.includes('xml') || mediaType === 'image/svg+xml' ? 'xml' : mediaType === 'text/csv' ? 'csv' : 'text';
+    const text = parser === 'image-metadata' || parser === 'pdf-metadata' ? '' : content.toString('utf8');
+    if (parser === 'json') {
+      try { JSON.parse(text); } catch { throw new AppError('quality_parse_failed', 'JSON quality input is invalid', { status: 422 }); }
+    }
+    const score = input?.semantic_human_score == null ? 100 : Number(input.semantic_human_score);
+    assert(Number.isFinite(score) && score >= 0 && score <= 100, 'invalid_input', 'semantic_human_score must be 0-100', { status: 422 });
+    const runId = id('qrr');
+    const reportId = id('qrep');
+    const readiness = score >= 80 ? 'ready' : 'blocked';
+    const report = { source_id: source.id, name: source.name, parser, byte_size: source.byte_size, cas_hash: source.cas_hash, reviewer_readiness: readiness, anchor: { sha256: source.cas_hash, bytes: source.byte_size } };
+    const policy = { semantic_human_score_threshold: 80, freshness: 'fresh', source_type: assetId ? 'asset' : 'attachment' };
+    await this.db.transaction([
+      { sql: 'INSERT INTO quality_review_runs(id,project_id,execution_id,status,policy_json,created_at,updated_at) VALUES(?,?,?,?,?,?,?)', params: [runId, projectId, input?.execution_id || null, 'completed', asJson(policy), now(), now()] },
+      { sql: 'INSERT INTO quality_review_reports(id,run_id,parser,media_type,freshness,semantic_human_score,report_json,created_at) VALUES(?,?,?,?,?,?,?,?)', params: [reportId, runId, parser, mediaType, 'fresh', score, asJson(report), now()] },
+      { sql: 'INSERT INTO quality_review_events(run_id,type,data_json,created_at) VALUES(?,?,?,?)', params: [runId, 'quality.review.completed', asJson({ report_id: reportId, reviewer_readiness: readiness }), now()] },
+      auditStatement('quality_review.created', 'quality_review_run', runId, { project_id: projectId, parser, score, reviewer_readiness: readiness }, ctx.actor)
+    ]);
+    return (await this.listQualityReviewRuns(projectId)).find((run) => run.id === runId);
   }
 
   async createExecution(projectId, input, ctx = {}) {
@@ -989,6 +1660,8 @@ export class Domain {
 
   async recover() {
     this.stopping = false;
+    const timestamp = now();
+    await this.db.run("INSERT OR IGNORE INTO users(id,display_name,status,revision,created_at,updated_at) VALUES('usr_local_owner','Local owner','active',1,?,?)", [timestamp, timestamp]);
     if (this.config.codexCredential) {
       await this.db.run('INSERT OR IGNORE INTO credential_refs(id,provider,label,secret_ref,created_at) VALUES(?,?,?,?,?)', [this.config.codexCredential.ref, 'codex', this.config.codexCredential.profile, 'secret_bundle:codex_default', now()]);
     }

@@ -5,17 +5,48 @@ Base URL: `http://127.0.0.1:4317/api/v1`
 ## Resources
 
 - `GET/POST /projects`
+- `GET /setup` (returns readiness checks and metadata only)
+- `GET /account`
+- `GET/POST /sessions`
+- `POST /sessions/{sessionId}/revoke`
+- `GET/POST /credentials`
+- `POST /credentials/{credentialId}/rotate`
+- `POST /credentials/{credentialId}/revoke`
+- `DELETE /credentials/{credentialId}`
+- `GET/POST /profiles/codex`
+- `PATCH /profiles/codex/{profileId}` with `expected_revision`
+- `GET/POST /github/apps`
+- `POST /github/apps/{appConfigId}/installations`
+- `GET/POST /assist/sessions`
+- `GET /assist/sessions/{sessionId}`
+- `POST /assist/sessions/{sessionId}/turns`
+- `GET /assist/sessions/{sessionId}/events` with `Last-Event-ID`
+- `POST /assist/sessions/{sessionId}/{interrupt|resume|cancel|complete}`
 - `GET/PATCH /projects/{projectId}`
 - `GET/POST /projects/{projectId}/briefs`
 - `GET/POST /projects/{projectId}/workflows`
+- `GET/POST /projects/{projectId}/node-contracts`
+- `GET/POST /projects/{projectId}/workflow-generations`
+- `GET/POST /projects/{projectId}/outcome-requirements`
 - `GET/POST /projects/{projectId}/context/sources`
 - `GET/POST /projects/{projectId}/context/packs`
+- `GET /projects/{projectId}/context/map`
+- `GET /projects/{projectId}/context/read?uri=aiws://...`
+- `POST /projects/{projectId}/context/rebuild`
+- `GET /projects/{projectId}/context/status`
+- `POST /projects/{projectId}/context/selections`
 - `GET/POST /projects/{projectId}/assets`
+- `GET/POST /projects/{projectId}/attachments`
+- `GET /attachments/{attachmentId}/content` (always a download)
+- `GET/POST /projects/{projectId}/quality-reviews`
 - `GET /projects/{projectId}/diff`
 - `POST /integrations/codex/probe` (requires `Idempotency-Key`; returns only provider, model, status, timestamp, and fixed error code; `{ "force": true }` bypasses the 15-minute cache)
 - `POST /integrations/github/probe` (explicit, cached GitHub repository/PAT probe; `{ "force": true }` bypasses the 15-minute cache)
 - `GET/POST /projects/{projectId}/executions`
 - `GET /executions/{executionId}`
+- `GET /executions/{executionId}/outcome`
+- `POST /executions/{executionId}/outcome/evaluate`
+- `POST /executions/{executionId}/outcome/waive`
 - `GET /executions/{executionId}/diff` (captured execution evidence; never a live project diff)
 - `POST /executions/{executionId}/evidence/resolve` with `action: retry_capture|discard_worktree` and `expected_revision`
 - `POST /executions/{executionId}/start`
@@ -34,6 +65,8 @@ Base URL: `http://127.0.0.1:4317/api/v1`
 ## Command requirements
 
 Every POST, PATCH, and action requires `Idempotency-Key`. Reusing a key with the same command returns the recorded response. Reusing it with a different body returns `409 idempotency_conflict`.
+
+Credential request bodies are hashed for idempotency and are never stored in response receipts. Credential responses contain metadata only. Workspace credentials are AES-256-GCM encrypted below `AIWS_HOME/vault`; bootstrap Docker Secret Bundles remain in memory. Credential mutation commands are intentionally absent from MCP `tools/list` and cannot be invoked through MCP `tools/call`.
 
 Mutable resources require `expected_revision`. A stale value returns `409 revision_conflict`.
 

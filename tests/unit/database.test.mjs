@@ -22,6 +22,29 @@ test('fresh database uses strict v3 settings and FTS5', async () => {
   await db.close();
 });
 
+test('fresh database creates every recovery contract table as STRICT', async () => {
+  const { db } = await fixture();
+  const expected = [
+    'users', 'sessions', 'connected_accounts', 'setup_states', 'codex_profiles', 'github_app_configs',
+    'github_installations', 'mcp_clients', 'config_revisions', 'assist_sessions', 'assist_turns',
+    'assist_messages', 'assist_events', 'assist_operations', 'assist_change_batches', 'assist_checkpoints',
+    'attachments', 'runtime_approvals', 'runtime_user_inputs', 'ui_action_intents', 'file_changes',
+    'project_intakes', 'workflow_drafts', 'workflow_generations', 'workflow_generation_events', 'node_contracts',
+    'outcome_requirements', 'outcome_evaluations', 'outcome_waivers', 'execution_stage_checkpoints',
+    'repository_connections', 'repository_targets', 'repository_lines', 'pull_request_intents',
+    'delivery_policies', 'delivery_events', 'exchange_requests', 'exchange_grants', 'context_nodes',
+    'context_document_versions', 'context_edges', 'context_selections', 'context_policies',
+    'context_projection_jobs', 'context_summaries', 'asset_blobs', 'asset_attestations', 'asset_relations',
+    'traces', 'digests', 'code_changes', 'test_results', 'quality_review_runs', 'quality_review_reports',
+    'quality_review_events'
+  ];
+  const rows = await db.query(`SELECT name, sql FROM sqlite_master WHERE type='table' AND name IN (${expected.map(() => '?').join(',')})`, expected);
+  assert.equal(rows.length, expected.length);
+  assert.deepEqual(rows.map((row) => row.name).sort(), expected.toSorted());
+  for (const row of rows) assert.match(row.sql, /\) STRICT$/i, row.name);
+  await db.close();
+});
+
 test('transaction rolls back as one unit', async () => {
   const { db } = await fixture();
   await assert.rejects(() => db.transaction([

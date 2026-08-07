@@ -95,10 +95,12 @@ export function createHttpHandler({ domain, registry, db, config, performancePro
     if (body.method === 'tools/call') {
       const name = body.params?.name;
       const args = body.params?.arguments || {};
+      await domain.authorizeMcpToken(req.headers['x-aiws-mcp-token'], args.project_id || args.projectId || '');
       let result;
       if (name === 'projects.list') result = await domain.listProjects();
       else if (name === 'project.get') result = await domain.getProject(args.project_id);
       else {
+        if (!registry.list().includes(name)) throw new AppError('unknown_command', `unknown command: ${name}`, { status: 404 });
         const key = req.headers['idempotency-key'] || `mcp-${rpcId || randomUUID()}`;
         const commandResult = await executeCommand(name, args, req, '/api/v1/mcp', key);
         result = commandResult.body;
@@ -121,6 +123,11 @@ export function createHttpHandler({ domain, registry, db, config, performancePro
       }
       if (!urlPath.startsWith(config.apiPrefix)) return serveWeb(req, res, webRoot, urlPath);
       if (urlPath === `${config.apiPrefix}/mcp` && req.method === 'POST') return send(res, 200, await mcp(req, requestId));
+      if (urlPath === `${config.apiPrefix}/mcp/tools` && req.method === 'GET') return send(res, 200, { tools: [
+        ...registry.list().map((name) => ({ name, description: `AIWS command ${name}`, input_schema: { type: 'object' } })),
+        { name: 'projects.list', description: 'List projects', input_schema: { type: 'object' } },
+        { name: 'project.get', description: 'Get a project bundle', input_schema: { type: 'object', required: ['project_id'] } }
+      ] });
       if (urlPath === `${config.apiPrefix}/system/capabilities` && req.method === 'GET') return send(res, 200, await domain.capabilities());
       if (urlPath === `${config.apiPrefix}/integrations/codex/probe` && req.method === 'POST') {
         const probeBody = await readBody(req);
@@ -144,6 +151,45 @@ export function createHttpHandler({ domain, registry, db, config, performancePro
       const command = (name, input = body) => executeCommand(name, input, req, urlPath);
 
       if (req.method === 'GET' && parts.length === 1 && parts[0] === 'projects') result = await domain.listProjects();
+      else if (req.method === 'GET' && parts.length === 1 && parts[0] === 'setup') result = await domain.setupState();
+      else if (parts[0] === 'sessions') {
+        if (req.method === 'GET' && parts.length === 1) result = await domain.listSessions();
+        else if (req.method === 'POST' && parts.length === 1) ({ status, body: result } = await command('session.create'));
+        else if (req.method === 'POST' && parts[2] === 'revoke') ({ status, body: result } = await command('session.revoke', { ...body, session_id: parts[1] }));
+        else throw new AppError('not_found', 'route not found');
+      } else if (parts[0] === 'account' && req.method === 'GET') result = await domain.db.get("SELECT id,display_name,status,revision,created_at,updated_at FROM users WHERE id='usr_local_owner'");
+      else if (parts[0] === 'github' && parts[1] === 'apps') {
+        if (req.method === 'GET' && parts.length === 2) result = await domain.listGithubAppConfigs();
+        else if (req.method === 'POST' && parts.length === 2) ({ status, body: result } = await command('github_app.create'));
+        else if (req.method === 'POST' && parts[3] === 'installations') ({ status, body: result } = await command('github_installation.create', { ...body, app_config_id: parts[2] }));
+        else throw new AppError('not_found', 'route not found');
+      } else if (parts[0] === 'assist' && parts[1] === 'sessions') {
+        if (req.method === 'GET' && parts.length === 2) result = await domain.listAssistSessions(parsed.searchParams.get('project_id'));
+        else if (req.method === 'POST' && parts.length === 2) ({ status, body: result } = await command('assist_session.create'));
+        else if (req.method === 'GET' && parts.length === 3) result = await domain.getAssistSession(parts[2]);
+        else if (req.method === 'GET' && parts[3] === 'events') return streamAssistEvents(req, res, domain, parts[2]);
+        else if (req.method === 'POST' && parts[3] === 'turns') ({ status, body: result } = await command('assist_turn.create', { ...body, session_id: parts[2] }));
+        else if (req.method === 'POST' && ['cancel', 'interrupt', 'resume', 'complete'].includes(parts[3])) ({ status, body: result } = await command('assist_session.transition', { ...body, session_id: parts[2], action: parts[3] }));
+        else throw new AppError('not_found', 'route not found');
+      } else if (parts[0] === 'mcp' && parts[1] === 'clients') {
+        if (req.method === 'GET' && parts.length === 2) result = await domain.listMcpClients();
+        else if (req.method === 'POST' && parts.length === 2) ({ status, body: result } = await command('mcp_client.create'));
+        else if (req.method === 'POST' && parts[3] === 'revoke') ({ status, body: result } = await command('mcp_client.revoke', { ...body, client_id: parts[2] }));
+        else throw new AppError('not_found', 'route not found');
+      }
+      else if (parts[0] === 'credentials') {
+        if (req.method === 'GET' && parts.length === 1) result = await domain.listCredentials();
+        else if (req.method === 'POST' && parts.length === 1) ({ status, body: result } = await command('credential.create'));
+        else if (req.method === 'POST' && parts[2] === 'rotate') ({ status, body: result } = await command('credential.rotate', { ...body, credential_id: parts[1] }));
+        else if (req.method === 'POST' && parts[2] === 'revoke') ({ status, body: result } = await command('credential.revoke', { ...body, credential_id: parts[1] }));
+        else if (req.method === 'DELETE' && parts.length === 2) ({ status, body: result } = await command('credential.delete', { ...body, credential_id: parts[1] }));
+        else throw new AppError('not_found', 'route not found');
+      } else if (parts[0] === 'profiles' && parts[1] === 'codex') {
+        if (req.method === 'GET' && parts.length === 2) result = await domain.listCodexProfiles();
+        else if (req.method === 'POST' && parts.length === 2) ({ status, body: result } = await command('codex_profile.create'));
+        else if (req.method === 'PATCH' && parts.length === 3) ({ status, body: result } = await command('codex_profile.update', { ...body, profile_id: parts[2] }));
+        else throw new AppError('not_found', 'route not found');
+      }
       else if (req.method === 'POST' && parts.length === 1 && parts[0] === 'projects') ({ status, body: result } = await command('project.create'));
       else if (parts[0] === 'projects' && parts.length >= 2) {
         const projectId = parts[1];
@@ -153,12 +199,27 @@ export function createHttpHandler({ domain, registry, db, config, performancePro
         else if (req.method === 'POST' && parts[2] === 'briefs') ({ status, body: result } = await command('brief.create', { ...body, project_id: projectId }));
         else if (req.method === 'GET' && parts[2] === 'workflows') result = await domain.listWorkflows(projectId);
         else if (req.method === 'POST' && parts[2] === 'workflows') ({ status, body: result } = await command('workflow.create', { ...body, project_id: projectId }));
+        else if (req.method === 'GET' && parts[2] === 'node-contracts') result = await domain.listNodeContracts(projectId, parsed.searchParams.get('workflow_revision'));
+        else if (req.method === 'POST' && parts[2] === 'node-contracts') ({ status, body: result } = await command('node_contract.create', { ...body, project_id: projectId }));
+        else if (req.method === 'GET' && parts[2] === 'workflow-generations') result = await domain.listWorkflowGenerations(projectId);
+        else if (req.method === 'POST' && parts[2] === 'workflow-generations') ({ status, body: result } = await command('workflow.generate', { ...body, project_id: projectId }));
+        else if (req.method === 'GET' && parts[2] === 'outcome-requirements') result = await domain.listOutcomeRequirements(projectId, parsed.searchParams.get('workflow_revision'));
+        else if (req.method === 'POST' && parts[2] === 'outcome-requirements') ({ status, body: result } = await command('outcome_requirement.create', { ...body, project_id: projectId }));
         else if (req.method === 'GET' && parts[2] === 'context' && parts[3] === 'sources') result = await domain.listContextSources(projectId, parsed.searchParams.get('q') || '');
         else if (req.method === 'POST' && parts[2] === 'context' && parts[3] === 'sources') ({ status, body: result } = await command('context.source.create', { ...body, project_id: projectId }));
         else if (req.method === 'GET' && parts[2] === 'context' && parts[3] === 'packs') result = await domain.listContextPacks(projectId);
         else if (req.method === 'POST' && parts[2] === 'context' && parts[3] === 'packs') ({ status, body: result } = await command('context.pack.create', { ...body, project_id: projectId }));
+        else if (req.method === 'GET' && parts[2] === 'context' && parts[3] === 'map') result = await domain.contextMap(projectId);
+        else if (req.method === 'POST' && parts[2] === 'context' && parts[3] === 'rebuild') ({ status, body: result } = await command('context.rebuild', { ...body, project_id: projectId }));
+        else if (req.method === 'GET' && parts[2] === 'context' && parts[3] === 'status') result = await domain.contextProjectionStatus(projectId);
+        else if (req.method === 'GET' && parts[2] === 'context' && parts[3] === 'read') result = await domain.readContextNode(projectId, parsed.searchParams.get('uri'));
+        else if (req.method === 'POST' && parts[2] === 'context' && parts[3] === 'selections') ({ status, body: result } = await command('context.selection.create', { ...body, project_id: projectId }));
         else if (req.method === 'GET' && parts[2] === 'assets') result = await domain.listAssets(projectId);
         else if (req.method === 'POST' && parts[2] === 'assets') ({ status, body: result } = await command('asset.create', { ...body, project_id: projectId }));
+        else if (req.method === 'GET' && parts[2] === 'attachments') result = await domain.listAttachments(projectId);
+        else if (req.method === 'POST' && parts[2] === 'attachments') ({ status, body: result } = await command('attachment.create', { ...body, project_id: projectId }));
+        else if (req.method === 'GET' && parts[2] === 'quality-reviews') result = await domain.listQualityReviewRuns(projectId);
+        else if (req.method === 'POST' && parts[2] === 'quality-reviews') ({ status, body: result } = await command('quality_review.create', { ...body, project_id: projectId }));
         else if (req.method === 'GET' && parts[2] === 'diff') result = await domain.gitDiff(projectId);
         else if (req.method === 'GET' && parts[2] === 'executions') result = await domain.listExecutions(projectId);
         else if (req.method === 'POST' && parts[2] === 'executions') ({ status, body: result } = await command('execution.create', { ...body, project_id: projectId }));
@@ -166,11 +227,14 @@ export function createHttpHandler({ domain, registry, db, config, performancePro
       } else if (parts[0] === 'executions' && parts.length >= 2) {
         const executionId = parts[1];
         if (req.method === 'GET' && parts[2] === 'events') return streamEvents(req, res, domain, executionId);
-        if (req.method === 'GET' && parts[2] === 'diff') result = await domain.executionDiff(executionId);
+        if (req.method === 'GET' && parts[2] === 'outcome') result = await domain.outcomeView(executionId);
+        else if (req.method === 'GET' && parts[2] === 'diff') result = await domain.executionDiff(executionId);
         else if (req.method === 'GET' && parts.length === 2) result = await domain.getExecution(executionId);
         else if (req.method === 'POST' && parts[2] === 'start') ({ status, body: result } = await command('execution.start', { ...body, execution_id: executionId }));
         else if (req.method === 'POST' && parts[2] === 'cancel') ({ status, body: result } = await command('execution.cancel', { ...body, execution_id: executionId }));
         else if (req.method === 'POST' && parts[2] === 'evidence' && parts[3] === 'resolve') ({ status, body: result } = await command('execution.evidence.resolve', { ...body, execution_id: executionId }));
+        else if (req.method === 'POST' && parts[2] === 'outcome' && parts[3] === 'evaluate') ({ status, body: result } = await command('outcome.evaluate', { ...body, execution_id: executionId }));
+        else if (req.method === 'POST' && parts[2] === 'outcome' && parts[3] === 'waive') ({ status, body: result } = await command('outcome.waive', { ...body, execution_id: executionId }));
         else throw new AppError('not_found', 'route not found');
       } else if (parts[0] === 'reviews') {
         if (req.method === 'GET') result = await domain.listReviews(parsed.searchParams.get('project_id') || null);
@@ -182,6 +246,12 @@ export function createHttpHandler({ domain, registry, db, config, performancePro
         if (!asset) throw new AppError('not_found', 'asset not found');
         if (parts[2] === 'content') return serveAsset(res, asset, config);
         result = asset;
+      } else if (parts[0] === 'attachments' && req.method === 'GET') {
+        const attachment = await db.get('SELECT * FROM attachments WHERE id=?', [parts[1]]);
+        if (!attachment) throw new AppError('not_found', 'attachment not found');
+        if (parts[2] === 'content') return serveAsset(res, { ...attachment, cas_hash: attachment.sha256 }, config);
+        const { cas_path: _casPath, ...metadata } = attachment;
+        result = metadata;
       } else if (parts[0] === 'deliveries') {
         if (req.method === 'GET') result = await domain.listDeliveries(parsed.searchParams.get('project_id') || null);
         else if (req.method === 'POST' && parts.length === 1) ({ status, body: result } = await command('delivery.create'));
@@ -222,6 +292,14 @@ async function streamEvents(req, res, domain, executionId) {
   const timer = setInterval(pump, 500);
   req.on('close', () => { closed = true; clearInterval(timer); });
   await pump();
+}
+
+async function streamAssistEvents(req, res, domain, sessionId) {
+  const initial = Number(req.headers['last-event-id'] || 0);
+  const events = await domain.assistEvents(sessionId, initial);
+  res.writeHead(200, { 'content-type': 'text/event-stream; charset=utf-8', 'cache-control': 'no-cache', connection: 'close' });
+  for (const event of events) res.write(`id: ${event.cursor}\nevent: ${event.type}\ndata: ${JSON.stringify(event)}\n\n`);
+  res.end();
 }
 
 function serveWeb(req, res, webRoot, urlPath) {

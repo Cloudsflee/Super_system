@@ -1,21 +1,22 @@
 import { useCallback, useEffect, useMemo, useState, type ComponentType } from 'react';
 import {
   Activity, Archive, Boxes, ChevronDown, ClipboardCheck, FolderGit2, LayoutDashboard,
-  Menu, Settings, Workflow, X
+  Menu, MessageSquare, Settings, Workflow, X
 } from 'lucide-react';
 import { api } from './api';
 import type { Project } from './types';
 import {
-  AssetsPage, AuditPage, ExecutionPage, ProjectsPage, SettingsPage, SetupPage, WorkflowPage,
+  AssetsPage, AssistPage, AuditPage, ExecutionPage, ProjectsPage, SettingsPage, SetupPage, WorkflowPage,
   type WorkspacePageProps
 } from './pages';
 
-export type PageKey = 'setup' | 'projects' | 'workflow' | 'execution' | 'assets' | 'audit' | 'settings';
+export type PageKey = 'setup' | 'projects' | 'workflow' | 'assist' | 'execution' | 'assets' | 'audit' | 'settings';
 
 const NAV: Array<{ key: PageKey; label: string; icon: ComponentType<{ size?: number }> }> = [
   { key: 'setup', label: 'Setup', icon: LayoutDashboard },
   { key: 'projects', label: 'Projects', icon: FolderGit2 },
   { key: 'workflow', label: 'Workflow', icon: Workflow },
+  { key: 'assist', label: 'Assist', icon: MessageSquare },
   { key: 'execution', label: 'Execution', icon: Activity },
   { key: 'assets', label: 'Assets', icon: Boxes },
   { key: 'audit', label: 'Audit', icon: ClipboardCheck },
@@ -26,6 +27,7 @@ const PAGES: Record<PageKey, ComponentType<WorkspacePageProps>> = {
   setup: SetupPage,
   projects: ProjectsPage,
   workflow: WorkflowPage,
+  assist: AssistPage,
   execution: ExecutionPage,
   assets: AssetsPage,
   audit: AuditPage,

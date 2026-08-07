@@ -53,3 +53,45 @@ test('MCP tools use the same command registry as REST', async () => {
     assert.equal(unsupported.json.error.code, 'invalid_input');
   } finally { await env.close(); }
 });
+
+test('MCP client tokens are hashed, scoped, and revoked', async () => {
+  const env = await fixture();
+  try {
+    const project = await mutate(env.base, '/api/v1/projects', { name: 'MCP scoped project' }, 'mcp-scope-project');
+    assert.equal(project.response.status, 201);
+    const invalidEndpoint = await mutate(env.base, '/api/v1/mcp/clients', { name: 'bad', transport: 'http', endpoint: 'http://example.test/mcp', scope: {} }, 'mcp-client-bad');
+    assert.equal(invalidEndpoint.response.status, 422);
+    const created = await mutate(env.base, '/api/v1/mcp/clients', { name: 'Scoped HTTP', transport: 'http', endpoint: 'http://127.0.0.1:9555/mcp', scope: { project_ids: [project.json.id] } }, 'mcp-client-create');
+    assert.equal(created.response.status, 201);
+    assert.match(created.json.token, /^[A-Za-z0-9_-]{40,}$/);
+    assert.equal(created.json.scope.project_ids[0], project.json.id);
+    const listed = await request(env.base, '/api/v1/mcp/clients');
+    assert.equal(listed.json[0].token_hash, undefined);
+    assert.equal(JSON.stringify(listed.json).includes(created.json.token), false);
+    const tools = await request(env.base, '/api/v1/mcp/tools');
+    assert.equal(tools.response.status, 200);
+    assert.ok(tools.json.tools.some((tool) => tool.name === 'project.get'));
+
+    const allowed = await request(env.base, '/api/v1/mcp', {
+      method: 'POST', key: 'mcp-scoped-call', headers: { 'x-aiws-mcp-token': created.json.token },
+      body: { jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name: 'project.get', arguments: { project_id: project.json.id } } }
+    });
+    assert.equal(allowed.response.status, 200);
+    assert.equal(allowed.json.result.structuredContent.id, project.json.id);
+    const denied = await request(env.base, '/api/v1/mcp', {
+      method: 'POST', key: 'mcp-scoped-denied', headers: { 'x-aiws-mcp-token': created.json.token },
+      body: { jsonrpc: '2.0', id: 2, method: 'tools/call', params: { name: 'projects.list', arguments: { project_id: 'prj_other' } } }
+    });
+    assert.equal(denied.response.status, 403);
+    assert.equal(denied.json.error.code, 'mcp_scope_denied');
+    const revoked = await mutate(env.base, `/api/v1/mcp/clients/${created.json.id}/revoke`, {}, 'mcp-client-revoke');
+    assert.equal(revoked.response.status, 201);
+    assert.equal(revoked.json.status, 'revoked');
+    const unauthorized = await request(env.base, '/api/v1/mcp', {
+      method: 'POST', key: 'mcp-revoked-call', headers: { 'x-aiws-mcp-token': created.json.token },
+      body: { jsonrpc: '2.0', id: 3, method: 'tools/call', params: { name: 'projects.list', arguments: {} } }
+    });
+    assert.equal(unauthorized.response.status, 401);
+    assert.equal(unauthorized.json.error.code, 'mcp_token_invalid');
+  } finally { await env.close(); }
+});

@@ -87,6 +87,17 @@ V2.3 data is not migrated. The source volume is stopped, hashed, cloned as cold 
 | `pnpm test:release` | version, port, receipt integrity, image identity, archive, directory governance |
 | `pnpm verify` | all gates in release order |
 
+Recovery planning and impact are executable before the release gates:
+
+```powershell
+corepack pnpm recovery:plan
+corepack pnpm recovery:catalog
+corepack pnpm recovery:coverage
+corepack pnpm recovery:impact --audit
+```
+
+The commands validate `feature-catalog.json` and write metadata receipts below `.ai-workspace/recovery` without touching the formal `4317` service.
+
 Formal release runs only from a clean commit:
 
 ```powershell
