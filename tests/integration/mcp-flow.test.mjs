@@ -93,5 +93,32 @@ test('MCP client tokens are hashed, scoped, and revoked', async () => {
     });
     assert.equal(unauthorized.response.status, 401);
     assert.equal(unauthorized.json.error.code, 'mcp_token_invalid');
+
+    const requested = await mutate(env.base, '/api/v1/mcp/scopes/requests', {
+      project_id: project.json.id, scope: { project_ids: [project.json.id], tools: ['project.get'] }, ttl_seconds: 1800
+    }, 'mcp-scope-request');
+    assert.equal(requested.response.status, 201);
+    assert.equal(requested.json.status, 'pending');
+    const granted = await mutate(env.base, `/api/v1/mcp/scopes/requests/${requested.json.id}/grant`, {}, 'mcp-scope-grant');
+    assert.equal(granted.response.status, 201);
+    assert.match(granted.json.token, /^[A-Za-z0-9_-]{40,}$/);
+    const grantedCall = await request(env.base, '/api/v1/mcp', {
+      method: 'POST', key: 'mcp-grant-call', headers: { 'x-aiws-mcp-token': granted.json.token },
+      body: { jsonrpc: '2.0', id: 8, method: 'tools/call', params: { name: 'project.get', arguments: { project_id: project.json.id } } }
+    });
+    assert.equal(grantedCall.response.status, 200);
+    const deniedTool = await request(env.base, '/api/v1/mcp', {
+      method: 'POST', key: 'mcp-grant-denied-tool', headers: { 'x-aiws-mcp-token': granted.json.token },
+      body: { jsonrpc: '2.0', id: 9, method: 'tools/call', params: { name: 'projects.list', arguments: {} } }
+    });
+    assert.equal(deniedTool.response.status, 403);
+    assert.equal(deniedTool.json.error.code, 'mcp_scope_denied');
+    const grantRevoked = await mutate(env.base, `/api/v1/mcp/scopes/grants/${granted.json.id}/revoke`, {}, 'mcp-scope-revoke');
+    assert.equal(grantRevoked.response.status, 201);
+    const revokedGrantCall = await request(env.base, '/api/v1/mcp', {
+      method: 'POST', key: 'mcp-grant-revoked-call', headers: { 'x-aiws-mcp-token': granted.json.token },
+      body: { jsonrpc: '2.0', id: 10, method: 'tools/call', params: { name: 'project.get', arguments: { project_id: project.json.id } } }
+    });
+    assert.equal(revokedGrantCall.response.status, 401);
   } finally { await env.close(); }
 });

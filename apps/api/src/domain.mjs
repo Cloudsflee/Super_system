@@ -493,14 +493,87 @@ export class Domain {
     return (await this.listMcpClients()).find((item) => item.id === clientId);
   }
 
+  async normalizeMcpScope(projectId, scope = {}) {
+    const projectIds = [...new Set((Array.isArray(scope?.project_ids) ? scope.project_ids : [projectId]).map(String).filter(Boolean))].slice(0, 100);
+    assert(projectIds.length > 0, 'invalid_input', 'scope must include at least one project', { status: 422 });
+    for (const idValue of projectIds) await this.requireProject(idValue);
+    const tools = [...new Set((Array.isArray(scope?.tools) ? scope.tools : []).map(String).filter((name) => /^[A-Za-z0-9_.-]{1,120}$/.test(name)))].slice(0, 200);
+    assert(tools.length === (Array.isArray(scope?.tools) ? new Set(scope.tools.map(String)).size : 0), 'invalid_input', 'scope tools contain an invalid name', { status: 422 });
+    return { project_ids: projectIds, tools };
+  }
+
+  async listMcpScopes(projectId = null) {
+    const requests = projectId
+      ? await this.db.query('SELECT * FROM exchange_requests WHERE project_id=? ORDER BY created_at DESC,id', [projectId])
+      : await this.db.query('SELECT * FROM exchange_requests ORDER BY created_at DESC,id LIMIT 200');
+    return Promise.all(requests.map(async (request) => ({
+      ...request,
+      scope: rowJson(request, 'scope_json', {}),
+      grants: (await this.db.query('SELECT id,request_id,scope_json,expires_at,revoked_at FROM exchange_grants WHERE request_id=? ORDER BY expires_at DESC,id', [request.id])).map((grant) => ({ ...grant, scope: rowJson(grant, 'scope_json', {}) }))
+    })));
+  }
+
+  async createMcpScopeRequest(input, ctx = {}) {
+    const projectId = String(input?.project_id || '').trim();
+    const scope = await this.normalizeMcpScope(projectId, input?.scope || {});
+    const ttl = Number(input?.ttl_seconds ?? 3600);
+    assert(Number.isInteger(ttl) && ttl >= 300 && ttl <= 90 * 24 * 60 * 60, 'invalid_input', 'scope ttl is invalid', { status: 422 });
+    const requestId = id('mreq');
+    const timestamp = now();
+    const expiresAt = new Date(Date.now() + ttl * 1000).toISOString();
+    await this.db.transaction([
+      { sql: 'INSERT INTO exchange_requests(id,project_id,scope_json,status,created_at,expires_at) VALUES(?,?,?,?,?,?)', params: [requestId, projectId, asJson(scope), 'pending', timestamp, expiresAt] },
+      auditStatement('mcp_scope.requested', 'exchange_request', requestId, { project_id: projectId, scope, ttl_seconds: ttl }, ctx.actor)
+    ]);
+    return (await this.listMcpScopes(projectId)).find((item) => item.id === requestId);
+  }
+
+  async grantMcpScope(requestId, input = {}, ctx = {}) {
+    const request = await this.db.get('SELECT * FROM exchange_requests WHERE id=?', [requestId]);
+    if (!request) throw new AppError('not_found', 'MCP scope request not found');
+    assert(request.status === 'pending', 'invalid_state', 'MCP scope request is not pending', { status: 409 });
+    assert(!request.expires_at || new Date(request.expires_at).getTime() > Date.now(), 'scope_expired', 'MCP scope request has expired', { status: 409 });
+    const requested = rowJson(request, 'scope_json', {});
+    const scope = await this.normalizeMcpScope(request.project_id, input?.scope || requested);
+    const ttl = Number(input?.ttl_seconds ?? 3600);
+    assert(Number.isInteger(ttl) && ttl >= 300 && ttl <= 90 * 24 * 60 * 60, 'invalid_input', 'grant ttl is invalid', { status: 422 });
+    const token = randomBytes(32).toString('base64url');
+    const grantId = id('mgrant');
+    const expiresAt = new Date(Date.now() + ttl * 1000).toISOString();
+    const timestamp = now();
+    await this.db.transaction([
+      { sql: "UPDATE exchange_requests SET status='granted' WHERE id=? AND status='pending'", params: [requestId], expect_changes: 1 },
+      { sql: 'INSERT INTO exchange_grants(id,request_id,token_hash,scope_json,expires_at,revoked_at) VALUES(?,?,?,?,?,NULL)', params: [grantId, requestId, sha256(token), asJson(scope), expiresAt] },
+      auditStatement('mcp_scope.granted', 'exchange_grant', grantId, { request_id: requestId, scope, ttl_seconds: ttl }, ctx.actor)
+    ]);
+    return { id: grantId, request_id: requestId, scope, expires_at: expiresAt, revoked_at: null, token };
+  }
+
+  async revokeMcpScope(grantId, _input, ctx = {}) {
+    const grant = await this.db.get('SELECT id,request_id,revoked_at FROM exchange_grants WHERE id=?', [grantId]);
+    if (!grant) throw new AppError('not_found', 'MCP scope grant not found');
+    await this.db.transaction([
+      { sql: 'UPDATE exchange_grants SET revoked_at=COALESCE(revoked_at,?) WHERE id=?', params: [now(), grantId] },
+      auditStatement('mcp_scope.revoked', 'exchange_grant', grantId, { request_id: grant.request_id }, ctx.actor)
+    ]);
+    return this.db.get('SELECT id,request_id,scope_json,expires_at,revoked_at FROM exchange_grants WHERE id=?', [grantId]).then((row) => ({ ...row, scope: rowJson(row, 'scope_json', {}) }));
+  }
+
   async authorizeMcpToken(token, projectId = '') {
     if (!token) return { local: true, client: null };
     const client = await this.db.get('SELECT id,name,scope_json,status FROM mcp_clients WHERE token_hash=?', [sha256(token)]);
-    if (!client || client.status !== 'available') throw new AppError('mcp_token_invalid', 'MCP token is invalid or revoked', { status: 401 });
-    const scope = rowJson(client, 'scope_json', {});
+    if (client && client.status === 'available') {
+      const scope = rowJson(client, 'scope_json', {});
+      const projects = Array.isArray(scope.project_ids) ? scope.project_ids.map(String) : [];
+      if (projectId && projects.length && !projects.includes(String(projectId))) throw new AppError('mcp_scope_denied', 'MCP token is not scoped to this project', { status: 403 });
+      return { local: false, client: { id: client.id, name: client.name, scope } };
+    }
+    const grant = await this.db.get('SELECT g.id,g.scope_json,g.expires_at,g.revoked_at,r.project_id FROM exchange_grants g JOIN exchange_requests r ON r.id=g.request_id WHERE g.token_hash=?', [sha256(token)]);
+    if (!grant || grant.revoked_at || new Date(grant.expires_at).getTime() <= Date.now()) throw new AppError('mcp_token_invalid', 'MCP token is invalid or revoked', { status: 401 });
+    const scope = rowJson(grant, 'scope_json', {});
     const projects = Array.isArray(scope.project_ids) ? scope.project_ids.map(String) : [];
     if (projectId && projects.length && !projects.includes(String(projectId))) throw new AppError('mcp_scope_denied', 'MCP token is not scoped to this project', { status: 403 });
-    return { local: false, client: { id: client.id, name: client.name, scope } };
+    return { local: false, client: { id: grant.id, name: `grant:${grant.id}`, scope } };
   }
 
   async createGithubAppConfig(input, ctx = {}) {

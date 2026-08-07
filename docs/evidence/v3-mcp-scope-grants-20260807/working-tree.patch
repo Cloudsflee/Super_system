@@ -1,0 +1,200 @@
+diff --git a/apps/api/src/command-registry.mjs b/apps/api/src/command-registry.mjs
+index 5d3d5ed..ab9c5b2 100644
+--- a/apps/api/src/command-registry.mjs
++++ b/apps/api/src/command-registry.mjs
+@@ -32,6 +32,9 @@ export function createCommandRegistry(domain) {
+     ['github_installation.create', (input, ctx) => domain.createGithubInstallation(input.app_config_id, input, ctx)],
+     ['mcp_client.create', (input, ctx) => domain.createMcpClient(input, ctx)],
+     ['mcp_client.revoke', (input, ctx) => domain.revokeMcpClient(input.client_id, input, ctx)],
++    ['mcp_scope.request', (input, ctx) => domain.createMcpScopeRequest(input, ctx)],
++    ['mcp_scope.grant', (input, ctx) => domain.grantMcpScope(input.request_id, input, ctx)],
++    ['mcp_scope.revoke', (input, ctx) => domain.revokeMcpScope(input.grant_id, input, ctx)],
+     ['node_contract.create', (input, ctx) => domain.createNodeContract(input.project_id, input, ctx)],
+     ['workflow.generate', (input, ctx) => domain.generateWorkflow(input.project_id, input, ctx)],
+     ['outcome_requirement.create', (input, ctx) => domain.createOutcomeRequirement(input.project_id, input, ctx)],
+diff --git a/apps/api/src/domain.mjs b/apps/api/src/domain.mjs
+index ce1087e..c5fbbc3 100644
+--- a/apps/api/src/domain.mjs
++++ b/apps/api/src/domain.mjs
+@@ -493,14 +493,87 @@ export class Domain {
+     return (await this.listMcpClients()).find((item) => item.id === clientId);
+   }
+ 
++  async normalizeMcpScope(projectId, scope = {}) {
++    const projectIds = [...new Set((Array.isArray(scope?.project_ids) ? scope.project_ids : [projectId]).map(String).filter(Boolean))].slice(0, 100);
++    assert(projectIds.length > 0, 'invalid_input', 'scope must include at least one project', { status: 422 });
++    for (const idValue of projectIds) await this.requireProject(idValue);
++    const tools = [...new Set((Array.isArray(scope?.tools) ? scope.tools : []).map(String).filter((name) => /^[A-Za-z0-9_.-]{1,120}$/.test(name)))].slice(0, 200);
++    assert(tools.length === (Array.isArray(scope?.tools) ? new Set(scope.tools.map(String)).size : 0), 'invalid_input', 'scope tools contain an invalid name', { status: 422 });
++    return { project_ids: projectIds, tools };
++  }
++
++  async listMcpScopes(projectId = null) {
++    const requests = projectId
++      ? await this.db.query('SELECT * FROM exchange_requests WHERE project_id=? ORDER BY created_at DESC,id', [projectId])
++      : await this.db.query('SELECT * FROM exchange_requests ORDER BY created_at DESC,id LIMIT 200');
++    return Promise.all(requests.map(async (request) => ({
++      ...request,
++      scope: rowJson(request, 'scope_json', {}),
++      grants: (await this.db.query('SELECT id,request_id,scope_json,expires_at,revoked_at FROM exchange_grants WHERE request_id=? ORDER BY expires_at DESC,id', [request.id])).map((grant) => ({ ...grant, scope: rowJson(grant, 'scope_json', {}) }))
++    })));
++  }
++
++  async createMcpScopeRequest(input, ctx = {}) {
++    const projectId = String(input?.project_id || '').trim();
++    const scope = await this.normalizeMcpScope(projectId, input?.scope || {});
++    const ttl = Number(input?.ttl_seconds ?? 3600);
++    assert(Number.isInteger(ttl) && ttl >= 300 && ttl <= 90 * 24 * 60 * 60, 'invalid_input', 'scope ttl is invalid', { status: 422 });
++    const requestId = id('mreq');
++    const timestamp = now();
++    const expiresAt = new Date(Date.now() + ttl * 1000).toISOString();
++    await this.db.transaction([
++      { sql: 'INSERT INTO exchange_requests(id,project_id,scope_json,status,created_at,expires_at) VALUES(?,?,?,?,?,?)', params: [requestId, projectId, asJson(scope), 'pending', timestamp, expiresAt] },
++      auditStatement('mcp_scope.requested', 'exchange_request', requestId, { project_id: projectId, scope, ttl_seconds: ttl }, ctx.actor)
++    ]);
++    return (await this.listMcpScopes(projectId)).find((item) => item.id === requestId);
++  }
++
++  async grantMcpScope(requestId, input = {}, ctx = {}) {
++    const request = await this.db.get('SELECT * FROM exchange_requests WHERE id=?', [requestId]);
++    if (!request) throw new AppError('not_found', 'MCP scope request not found');
++    assert(request.status === 'pending', 'invalid_state', 'MCP scope request is not pending', { status: 409 });
++    assert(!request.expires_at || new Date(request.expires_at).getTime() > Date.now(), 'scope_expired', 'MCP scope request has expired', { status: 409 });
++    const requested = rowJson(request, 'scope_json', {});
++    const scope = await this.normalizeMcpScope(request.project_id, input?.scope || requested);
++    const ttl = Number(input?.ttl_seconds ?? 3600);
++    assert(Number.isInteger(ttl) && ttl >= 300 && ttl <= 90 * 24 * 60 * 60, 'invalid_input', 'grant ttl is invalid', { status: 422 });
++    const token = randomBytes(32).toString('base64url');
++    const grantId = id('mgrant');
++    const expiresAt = new Date(Date.now() + ttl * 1000).toISOString();
++    const timestamp = now();
++    await this.db.transaction([
++      { sql: "UPDATE exchange_requests SET status='granted' WHERE id=? AND status='pending'", params: [requestId], expect_changes: 1 },
++      { sql: 'INSERT INTO exchange_grants(id,request_id,token_hash,scope_json,expires_at,revoked_at) VALUES(?,?,?,?,?,NULL)', params: [grantId, requestId, sha256(token), asJson(scope), expiresAt] },
++      auditStatement('mcp_scope.granted', 'exchange_grant', grantId, { request_id: requestId, scope, ttl_seconds: ttl }, ctx.actor)
++    ]);
++    return { id: grantId, request_id: requestId, scope, expires_at: expiresAt, revoked_at: null, token };
++  }
++
++  async revokeMcpScope(grantId, _input, ctx = {}) {
++    const grant = await this.db.get('SELECT id,request_id,revoked_at FROM exchange_grants WHERE id=?', [grantId]);
++    if (!grant) throw new AppError('not_found', 'MCP scope grant not found');
++    await this.db.transaction([
++      { sql: 'UPDATE exchange_grants SET revoked_at=COALESCE(revoked_at,?) WHERE id=?', params: [now(), grantId] },
++      auditStatement('mcp_scope.revoked', 'exchange_grant', grantId, { request_id: grant.request_id }, ctx.actor)
++    ]);
++    return this.db.get('SELECT id,request_id,scope_json,expires_at,revoked_at FROM exchange_grants WHERE id=?', [grantId]).then((row) => ({ ...row, scope: rowJson(row, 'scope_json', {}) }));
++  }
++
+   async authorizeMcpToken(token, projectId = '') {
+     if (!token) return { local: true, client: null };
+     const client = await this.db.get('SELECT id,name,scope_json,status FROM mcp_clients WHERE token_hash=?', [sha256(token)]);
+-    if (!client || client.status !== 'available') throw new AppError('mcp_token_invalid', 'MCP token is invalid or revoked', { status: 401 });
+-    const scope = rowJson(client, 'scope_json', {});
++    if (client && client.status === 'available') {
++      const scope = rowJson(client, 'scope_json', {});
++      const projects = Array.isArray(scope.project_ids) ? scope.project_ids.map(String) : [];
++      if (projectId && projects.length && !projects.includes(String(projectId))) throw new AppError('mcp_scope_denied', 'MCP token is not scoped to this project', { status: 403 });
++      return { local: false, client: { id: client.id, name: client.name, scope } };
++    }
++    const grant = await this.db.get('SELECT g.id,g.scope_json,g.expires_at,g.revoked_at,r.project_id FROM exchange_grants g JOIN exchange_requests r ON r.id=g.request_id WHERE g.token_hash=?', [sha256(token)]);
++    if (!grant || grant.revoked_at || new Date(grant.expires_at).getTime() <= Date.now()) throw new AppError('mcp_token_invalid', 'MCP token is invalid or revoked', { status: 401 });
++    const scope = rowJson(grant, 'scope_json', {});
+     const projects = Array.isArray(scope.project_ids) ? scope.project_ids.map(String) : [];
+     if (projectId && projects.length && !projects.includes(String(projectId))) throw new AppError('mcp_scope_denied', 'MCP token is not scoped to this project', { status: 403 });
+-    return { local: false, client: { id: client.id, name: client.name, scope } };
++    return { local: false, client: { id: grant.id, name: `grant:${grant.id}`, scope } };
+   }
+ 
+   async createGithubAppConfig(input, ctx = {}) {
+diff --git a/apps/api/src/http.mjs b/apps/api/src/http.mjs
+index c930f41..7277e78 100644
+--- a/apps/api/src/http.mjs
++++ b/apps/api/src/http.mjs
+@@ -95,7 +95,9 @@ export function createHttpHandler({ domain, registry, db, config, performancePro
+     if (body.method === 'tools/call') {
+       const name = body.params?.name;
+       const args = body.params?.arguments || {};
+-      await domain.authorizeMcpToken(req.headers['x-aiws-mcp-token'], args.project_id || args.projectId || '');
++      const authorization = await domain.authorizeMcpToken(req.headers['x-aiws-mcp-token'], args.project_id || args.projectId || '');
++      const allowedTools = authorization.client?.scope?.tools;
++      if (Array.isArray(allowedTools) && allowedTools.length && !allowedTools.includes(String(name))) throw new AppError('mcp_scope_denied', 'MCP token is not scoped to this tool', { status: 403 });
+       let result;
+       if (name === 'projects.list') result = await domain.listProjects();
+       else if (name === 'project.get') result = await domain.getProject(args.project_id);
+@@ -176,6 +178,12 @@ export function createHttpHandler({ domain, registry, db, config, performancePro
+         else if (req.method === 'POST' && parts.length === 2) ({ status, body: result } = await command('mcp_client.create'));
+         else if (req.method === 'POST' && parts[3] === 'revoke') ({ status, body: result } = await command('mcp_client.revoke', { ...body, client_id: parts[2] }));
+         else throw new AppError('not_found', 'route not found');
++      } else if (parts[0] === 'mcp' && parts[1] === 'scopes') {
++        if (req.method === 'GET' && parts.length === 2) result = await domain.listMcpScopes(parsed.searchParams.get('project_id') || null);
++        else if (req.method === 'POST' && parts[2] === 'requests' && parts.length === 3) ({ status, body: result } = await command('mcp_scope.request'));
++        else if (req.method === 'POST' && parts[2] === 'requests' && parts[4] === 'grant') ({ status, body: result } = await command('mcp_scope.grant', { ...body, request_id: parts[3] }));
++        else if (req.method === 'POST' && parts[2] === 'grants' && parts[4] === 'revoke') ({ status, body: result } = await command('mcp_scope.revoke', { ...body, grant_id: parts[3] }));
++        else throw new AppError('not_found', 'route not found');
+       }
+       else if (parts[0] === 'credentials') {
+         if (req.method === 'GET' && parts.length === 1) result = await domain.listCredentials();
+diff --git a/docs/api.md b/docs/api.md
+index faf766a..f3b732d 100644
+--- a/docs/api.md
++++ b/docs/api.md
+@@ -66,6 +66,8 @@ Base URL: `http://127.0.0.1:4317/api/v1`
+ - `GET /audit`
+ - `GET /system`, `/system/capabilities`, and `/system/performance`
+ - `POST /mcp`
++- `GET /mcp/scopes?project_id=...`
++- `POST /mcp/scopes/requests`, `POST /mcp/scopes/requests/{requestId}/grant`, `POST /mcp/scopes/grants/{grantId}/revoke`
+ 
+ ## Command requirements
+ 
+diff --git a/feature-catalog.json b/feature-catalog.json
+index b41cbd8..764c912 100644
+--- a/feature-catalog.json
++++ b/feature-catalog.json
+@@ -25,7 +25,7 @@
+     {"id":"REC-D8-APPROVAL-013","domain":"assist","name":"Terminal and runtime approval center","status":"planned","source_files":["v2.3 terminal and approvals"],"target_modules":["apps/api/src/schema.mjs"],"tables":["runtime_approvals","runtime_user_inputs","ui_action_intents"],"apis":["/api/v1/approvals","/api/v1/user-inputs"],"ui":["Terminal","Approval Center","Proposal"],"events":["approval.requested","approval.decided"],"tests":["T5"]},
+     {"id":"REC-D7-REPOSITORY-014","domain":"repository","name":"Repository lines and managed worktrees","status":"implemented","source_files":["v2.3 repository/worktree"],"target_modules":["apps/api/src/git-fixture.mjs","apps/api/src/domain.mjs"],"tables":["repository_bindings","repository_worktrees","repository_connections","repository_lines"],"apis":["/api/v1/projects/{id}/diff"],"ui":["Repository","Worktree"],"events":["repository.bound","worktree.created"],"tests":["T7","tests/unit/path-policy.test.mjs"]},
+     {"id":"REC-D7-DELIVERY-015","domain":"delivery","name":"Draft PR intent, delivery retry and merge review","status":"implemented","source_files":["v2.3 delivery"],"target_modules":["apps/api/src/github-integration.mjs","apps/api/src/domain.mjs"],"tables":["deliveries","pull_request_intents","delivery_policies","delivery_events"],"apis":["/api/v1/deliveries","/api/v1/deliveries/{id}/merge","/api/v1/deliveries/{id}/retry"],"ui":["Delivery","Draft PR","Merge Review"],"events":["delivery.submitted","delivery.merged"],"tests":["T7","tests/integration/api-flow.test.mjs"]},
+-    {"id":"REC-D4-SCOPE-016","domain":"mcp","name":"Scopes, allowlists, grants and token revocation","status":"planned","source_files":["v2.3 scope service"],"target_modules":["apps/api/src/command-registry.mjs"],"tables":["exchange_requests","exchange_grants","mcp_clients"],"apis":["/api/v1/mcp/scopes"],"ui":["MCP Settings"],"events":["scope.granted","scope.revoked"],"tests":["T3"]},
++    {"id":"REC-D4-SCOPE-016","domain":"mcp","name":"Scopes, allowlists, grants and token revocation","status":"implemented","source_files":["v2.3 scope service"],"target_modules":["apps/api/src/command-registry.mjs","apps/api/src/domain.mjs","apps/api/src/http.mjs"],"tables":["exchange_requests","exchange_grants","mcp_clients"],"apis":["/api/v1/mcp/scopes","/api/v1/mcp/scopes/requests","/api/v1/mcp/scopes/requests/{id}/grant","/api/v1/mcp/scopes/grants/{id}/revoke"],"ui":["MCP Settings"],"events":["mcp_scope.requested","mcp_scope.granted","mcp_scope.revoked"],"tests":["T3","tests/integration/mcp-flow.test.mjs"]},
+     {"id":"REC-D9-CONTEXT-017","domain":"context","name":"Context map, ordered tree and controlled search","status":"implemented","source_files":["v2.3 context map"],"target_modules":["apps/api/src/domain.mjs","apps/api/src/http.mjs","apps/api/src/schema.mjs"],"tables":["context_sources","context_nodes","context_document_versions","context_edges","context_selections","context_packs"],"apis":["/api/v1/projects/{id}/context/sources","/api/v1/projects/{id}/context/map","/api/v1/projects/{id}/context/read","/api/v1/projects/{id}/context/selections","/api/v1/projects/{id}/context/packs"],"ui":["Context Map","Context Pack"],"events":["context.rebuilt","context.selection.created"],"tests":["T6","tests/integration/context-recovery.test.mjs","tests/integration/debt-regression.test.mjs"]},
+     {"id":"REC-D9-PROJECTION-018","domain":"context","name":"Context projection jobs and rebuild recovery","status":"planned","source_files":["v2.3 context projector"],"target_modules":["apps/api/src/schema.mjs","apps/api/src/domain.mjs","apps/api/src/http.mjs"],"tables":["context_projection_jobs","context_policies","context_summaries"],"apis":["/api/v1/projects/{id}/context/rebuild","/api/v1/projects/{id}/context/status"],"ui":["Context Map"],"events":["context.projection.completed","context.projection.failed"],"tests":["T6","T8","tests/integration/context-recovery.test.mjs"]},
+     {"id":"REC-D9-EVIDENCE-019","domain":"evidence","name":"Asset CAS, trace, digest and attestation","status":"implemented","source_files":["v2.3 Evidence CAS"],"target_modules":["apps/api/src/evidence-service.mjs","apps/api/src/domain.mjs"],"tables":["asset_versions","asset_blobs","asset_attestations","asset_relations","traces","digests"],"apis":["/api/v1/projects/{id}/assets","/api/v1/assets/{id}/content"],"ui":["Assets","Trace","Digest","Audit"],"events":["asset.captured","asset.attested"],"tests":["T6","tests/integration/real-slice.test.mjs"]},
+diff --git a/tests/integration/mcp-flow.test.mjs b/tests/integration/mcp-flow.test.mjs
+index b7bcd93..ba9d11d 100644
+--- a/tests/integration/mcp-flow.test.mjs
++++ b/tests/integration/mcp-flow.test.mjs
+@@ -93,5 +93,32 @@ test('MCP client tokens are hashed, scoped, and revoked', async () => {
+     });
+     assert.equal(unauthorized.response.status, 401);
+     assert.equal(unauthorized.json.error.code, 'mcp_token_invalid');
++
++    const requested = await mutate(env.base, '/api/v1/mcp/scopes/requests', {
++      project_id: project.json.id, scope: { project_ids: [project.json.id], tools: ['project.get'] }, ttl_seconds: 1800
++    }, 'mcp-scope-request');
++    assert.equal(requested.response.status, 201);
++    assert.equal(requested.json.status, 'pending');
++    const granted = await mutate(env.base, `/api/v1/mcp/scopes/requests/${requested.json.id}/grant`, {}, 'mcp-scope-grant');
++    assert.equal(granted.response.status, 201);
++    assert.match(granted.json.token, /^[A-Za-z0-9_-]{40,}$/);
++    const grantedCall = await request(env.base, '/api/v1/mcp', {
++      method: 'POST', key: 'mcp-grant-call', headers: { 'x-aiws-mcp-token': granted.json.token },
++      body: { jsonrpc: '2.0', id: 8, method: 'tools/call', params: { name: 'project.get', arguments: { project_id: project.json.id } } }
++    });
++    assert.equal(grantedCall.response.status, 200);
++    const deniedTool = await request(env.base, '/api/v1/mcp', {
++      method: 'POST', key: 'mcp-grant-denied-tool', headers: { 'x-aiws-mcp-token': granted.json.token },
++      body: { jsonrpc: '2.0', id: 9, method: 'tools/call', params: { name: 'projects.list', arguments: {} } }
++    });
++    assert.equal(deniedTool.response.status, 403);
++    assert.equal(deniedTool.json.error.code, 'mcp_scope_denied');
++    const grantRevoked = await mutate(env.base, `/api/v1/mcp/scopes/grants/${granted.json.id}/revoke`, {}, 'mcp-scope-revoke');
++    assert.equal(grantRevoked.response.status, 201);
++    const revokedGrantCall = await request(env.base, '/api/v1/mcp', {
++      method: 'POST', key: 'mcp-grant-revoked-call', headers: { 'x-aiws-mcp-token': granted.json.token },
++      body: { jsonrpc: '2.0', id: 10, method: 'tools/call', params: { name: 'project.get', arguments: { project_id: project.json.id } } }
++    });
++    assert.equal(revokedGrantCall.response.status, 401);
+   } finally { await env.close(); }
+ });

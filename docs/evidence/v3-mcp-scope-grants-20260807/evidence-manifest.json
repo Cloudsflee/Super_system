@@ -1,0 +1,89 @@
+{
+  "schema_version": "aiws.v3.recovery_evidence_manifest.v1",
+  "batch": "v3-mcp-scope-grants-20260807",
+  "branch": "recovery/v3-feature-restore",
+  "baseline_commit": "0f8a64f7bcf7db6627ba4bd11fd1cdf4eef935f4",
+  "implementation_commit": null,
+  "created_at": "2026-08-07T12:04:45.615Z",
+  "files": [
+    {
+      "path": "apps/api/src/command-registry.mjs",
+      "baseline_sha256": "f65ee8a5d79336cbbc7e446c31d03f27fc583778df73160b5059504b96ac7e61",
+      "modified_sha256": "f407e29a668d2a809840df17025c0449ee2639cf2ff341c57d2a959d4af1a7d1",
+      "baseline_present": true
+    },
+    {
+      "path": "apps/api/src/domain.mjs",
+      "baseline_sha256": "958e1c711405090c64362642785ca9e6eca56cf13bf6a12056ed659b5bf1bfe1",
+      "modified_sha256": "6d1a5a13f18fdcc01e4aee1f7869a057b6d78e74c9b4315110c564d8a5073f32",
+      "baseline_present": true
+    },
+    {
+      "path": "apps/api/src/http.mjs",
+      "baseline_sha256": "cc672d8a89786e450c0971d12c624f2a3e0dbbf2cff94f8b42254efe05936b48",
+      "modified_sha256": "514671f2022995f10be8429da58a6575c8eec6abc5aac6802bd43692b3903388",
+      "baseline_present": true
+    },
+    {
+      "path": "docs/api.md",
+      "baseline_sha256": "0467d60aba6b8b12ba052fac243ec9c136185a74c8ede868114359c0393446a6",
+      "modified_sha256": "6728db07421797e740c68d4a7432387d0ed60662cde93f1f6979454ba15fcaec",
+      "baseline_present": true
+    },
+    {
+      "path": "feature-catalog.json",
+      "baseline_sha256": "5525e65cab23a9e288f988546cae61d4d1d66501704eb9c964e671c944db0c9d",
+      "modified_sha256": "01af97638bb98c4805243fa87d07c7776f4d8b23c3858cd5e2e970d7ebc1fab2",
+      "baseline_present": true
+    },
+    {
+      "path": "tests/integration/mcp-flow.test.mjs",
+      "baseline_sha256": "b761a5ddbfffe613ebb43584e4ab0de44f6b40dcc7852d48a1c2c8177f2fbd51",
+      "modified_sha256": "de71ad956ba46018f002aa498dcdb5c001b724a17ecdd0a0a58b8c6c399dfed8",
+      "baseline_present": true
+    }
+  ],
+  "diff": "docs/evidence/v3-mcp-scope-grants-20260807/working-tree.patch",
+  "tests": [
+    {
+      "label": "recovery-plan",
+      "command": "pnpm recovery:plan",
+      "log": "docs/evidence/v3-mcp-scope-grants-20260807/recovery-plan.log",
+      "exit_status": 0,
+      "output_tail": "    \"repository\",\n    \"runner\",\n    \"setup\",\n    \"workflow\"\n  ],\n  \"feature_count\": 25,\n  \"receipt\": \".ai-workspace/recovery/plan.json\"\n}"
+    },
+    {
+      "label": "recovery-catalog",
+      "command": "pnpm recovery:catalog",
+      "log": "docs/evidence/v3-mcp-scope-grants-20260807/recovery-catalog.log",
+      "exit_status": 0,
+      "output_tail": "\n{\n  \"feature_count\": 25,\n  \"implemented\": 23,\n  \"planned\": 2,\n  \"unique_ids\": 25,\n  \"receipt\": \".ai-workspace/recovery/catalog.json\"\n}"
+    },
+    {
+      "label": "recovery-coverage",
+      "command": "pnpm recovery:coverage",
+      "log": "docs/evidence/v3-mcp-scope-grants-20260807/recovery-coverage.log",
+      "exit_status": 0,
+      "output_tail": "    \"T4\": 5,\n    \"T5\": 4,\n    \"T6\": 7,\n    \"T7\": 2,\n    \"T8\": 5\n  },\n  \"receipt\": \".ai-workspace/recovery/coverage.json\"\n}"
+    },
+    {
+      "label": "recovery-impact",
+      "command": "pnpm recovery:impact --audit",
+      "log": "docs/evidence/v3-mcp-scope-grants-20260807/recovery-impact.log",
+      "exit_status": 0,
+      "output_tail": "    \"tests/release/release-gate.test.mjs\",\n    \"tests/security/credentials.test.mjs\",\n    \"tests/unit/path-policy.test.mjs\",\n    \"tests/unit/recovery-governance.test.mjs\",\n    \"tests/unit/workflow.test.mjs\"\n  ],\n  \"receipt\": \".ai-workspace/recovery/impact.json\"\n}"
+    },
+    {
+      "label": "verify",
+      "command": "pnpm verify",
+      "log": "docs/evidence/v3-mcp-scope-grants-20260807/verify.log",
+      "exit_status": 0,
+      "output_tail": "(node:39680) [DEP0190] DeprecationWarning: Passing args to a child process with shell option true can lead to security vulnerabilities, as the arguments are not escaped, only concatenated.\n(Use `node --trace-deprecation ...` to show where the warning was created)\n(node:41884) [DEP0190] DeprecationWarning: Passing args to a child process with shell option true can lead to security vulnerabilities, as the arguments are not escaped, only concatenated.\n(Use `node --trace-deprecation ...` to show where the warning was created)\n(node:41884) ExperimentalWarning: SQLite is an experimental feature and might change at any time\n(Use `node --trace-warnings ...` to show where the warning was created)\n(node:47724) [DEP0190] DeprecationWarning: Passing args to a child process with shell option true can lead to security vulnerabilities, as the arguments are not escaped, only concatenated.\n(Use `node --trace-deprecation ...` to show where the warning was created)"
+    }
+  ],
+  "rollback": {
+    "command": "git revert --no-edit <implementation_commit>",
+    "script": "docs/evidence/v3-mcp-scope-grants-20260807/rollback.ps1",
+    "note": "Run from the recovery branch after replacing <implementation_commit> with the recorded implementation commit."
+  }
+}

@@ -95,7 +95,9 @@ export function createHttpHandler({ domain, registry, db, config, performancePro
     if (body.method === 'tools/call') {
       const name = body.params?.name;
       const args = body.params?.arguments || {};
-      await domain.authorizeMcpToken(req.headers['x-aiws-mcp-token'], args.project_id || args.projectId || '');
+      const authorization = await domain.authorizeMcpToken(req.headers['x-aiws-mcp-token'], args.project_id || args.projectId || '');
+      const allowedTools = authorization.client?.scope?.tools;
+      if (Array.isArray(allowedTools) && allowedTools.length && !allowedTools.includes(String(name))) throw new AppError('mcp_scope_denied', 'MCP token is not scoped to this tool', { status: 403 });
       let result;
       if (name === 'projects.list') result = await domain.listProjects();
       else if (name === 'project.get') result = await domain.getProject(args.project_id);
@@ -175,6 +177,12 @@ export function createHttpHandler({ domain, registry, db, config, performancePro
         if (req.method === 'GET' && parts.length === 2) result = await domain.listMcpClients();
         else if (req.method === 'POST' && parts.length === 2) ({ status, body: result } = await command('mcp_client.create'));
         else if (req.method === 'POST' && parts[3] === 'revoke') ({ status, body: result } = await command('mcp_client.revoke', { ...body, client_id: parts[2] }));
+        else throw new AppError('not_found', 'route not found');
+      } else if (parts[0] === 'mcp' && parts[1] === 'scopes') {
+        if (req.method === 'GET' && parts.length === 2) result = await domain.listMcpScopes(parsed.searchParams.get('project_id') || null);
+        else if (req.method === 'POST' && parts[2] === 'requests' && parts.length === 3) ({ status, body: result } = await command('mcp_scope.request'));
+        else if (req.method === 'POST' && parts[2] === 'requests' && parts[4] === 'grant') ({ status, body: result } = await command('mcp_scope.grant', { ...body, request_id: parts[3] }));
+        else if (req.method === 'POST' && parts[2] === 'grants' && parts[4] === 'revoke') ({ status, body: result } = await command('mcp_scope.revoke', { ...body, grant_id: parts[3] }));
         else throw new AppError('not_found', 'route not found');
       }
       else if (parts[0] === 'credentials') {

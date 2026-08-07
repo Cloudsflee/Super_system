@@ -66,6 +66,8 @@ Base URL: `http://127.0.0.1:4317/api/v1`
 - `GET /audit`
 - `GET /system`, `/system/capabilities`, and `/system/performance`
 - `POST /mcp`
+- `GET /mcp/scopes?project_id=...`
+- `POST /mcp/scopes/requests`, `POST /mcp/scopes/requests/{requestId}/grant`, `POST /mcp/scopes/grants/{grantId}/revoke`
 
 ## Command requirements
 
