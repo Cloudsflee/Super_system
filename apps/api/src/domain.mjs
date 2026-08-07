@@ -135,6 +135,64 @@ function isTransactionPrecondition(error) {
   return error?.name === 'TransactionPreconditionError' || error?.message === 'transaction_precondition_failed';
 }
 
+function workspaceFile(root, relative, { missingOk = true } = {}) {
+  const target = resolveWorkspacePath(root, relative);
+  let current = path.resolve(root);
+  const segments = path.relative(current, target).split(path.sep).filter(Boolean);
+  for (const segment of segments) {
+    current = path.join(current, segment);
+    try {
+      if (fs.lstatSync(current).isSymbolicLink()) throw new AppError('file_symlink_forbidden', 'workspace symlinks are not editable', { status: 422, details: { path: relative } });
+    } catch (error) {
+      if (error?.code === 'ENOENT') return missingOk ? null : (() => { throw new AppError('file_not_found', 'workspace file not found', { status: 404, details: { path: relative } }); })();
+      throw error;
+    }
+  }
+  try {
+    const stat = fs.statSync(target);
+    if (!stat.isFile()) throw new AppError('file_not_regular', 'workspace path is not a regular file', { status: 422, details: { path: relative } });
+    return target;
+  } catch (error) {
+    if (error?.code === 'ENOENT' && missingOk) return null;
+    if (error?.code === 'ENOENT') throw new AppError('file_not_found', 'workspace file not found', { status: 404, details: { path: relative } });
+    throw error;
+  }
+}
+
+function workspaceBytes(root, relative) {
+  const file = workspaceFile(root, relative);
+  return file ? fs.readFileSync(file) : null;
+}
+
+function assertWorkspacePathNoSymlink(root, target) {
+  const base = path.resolve(root);
+  let current = base;
+  const segments = path.relative(base, path.resolve(target)).split(path.sep).filter(Boolean);
+  for (const segment of segments) {
+    current = path.join(current, segment);
+    try {
+      if (fs.lstatSync(current).isSymbolicLink()) throw new AppError('file_symlink_forbidden', 'workspace symlinks are not editable', { status: 422 });
+    } catch (error) {
+      if (error?.code !== 'ENOENT') throw error;
+    }
+  }
+}
+
+function writeWorkspaceBytes(root, relative, content) {
+  const target = resolveWorkspacePath(root, relative);
+  const parent = path.dirname(target);
+  fs.mkdirSync(parent, { recursive: true, mode: 0o770 });
+  assertWorkspacePathNoSymlink(root, parent);
+  const temporary = `${target}.aiws-${randomBytes(8).toString('hex')}.tmp`;
+  fs.writeFileSync(temporary, content, { flag: 'wx', mode: 0o660 });
+  try { fs.renameSync(temporary, target); } catch (error) { fs.rmSync(temporary, { force: true }); throw error; }
+}
+
+function removeWorkspaceFile(root, relative) {
+  const file = workspaceFile(root, relative);
+  if (file) fs.rmSync(file, { force: true });
+}
+
 function topologicalOrder(tasks) {
   const pending = new Map(tasks.map((task) => [task.id, new Set(task.deps)]));
   const order = [];
@@ -804,6 +862,162 @@ export class Domain {
       auditStatement(`assist_session.${action}`, 'assist_session', sessionId, { from: session.status, to: next }, ctx.actor)
     ]);
     return this.getAssistSession(sessionId);
+  }
+
+  async projectWorkspace(projectId) {
+    await this.requireProject(projectId);
+    const repository = await this.db.get('SELECT * FROM repository_bindings WHERE project_id=?', [projectId]);
+    const relative = repository?.local_path || `projects/${projectId}`;
+    return { repository, root: resolveWorkspacePath(this.config.home, relative) };
+  }
+
+  async readProjectFile(projectId, relativePath) {
+    const relative = normalizeRelativePath(String(relativePath || ''));
+    const { root } = await this.projectWorkspace(projectId);
+    const bytes = workspaceBytes(root, relative);
+    if (!bytes) throw new AppError('file_not_found', 'workspace file not found', { status: 404, details: { path: relative } });
+    assert(bytes.byteLength <= 5 * 1024 * 1024, 'file_too_large', 'file exceeds the 5 MiB editor limit', { status: 413 });
+    const binary = bytes.includes(0);
+    return { project_id: projectId, path: relative, sha256: sha256(bytes), byte_size: bytes.byteLength, encoding: binary ? 'base64' : 'utf8', content: binary ? bytes.toString('base64') : bytes.toString('utf8') };
+  }
+
+  async getChangeBatch(batchId) {
+    const batch = await this.db.get('SELECT * FROM assist_change_batches WHERE id=?', [batchId]);
+    if (!batch) throw new AppError('not_found', 'change batch not found');
+    return {
+      ...batch,
+      changes: rowJson(batch, 'changes_json', []),
+      checkpoints: await this.db.query('SELECT id,batch_id,revision,created_at FROM assist_checkpoints WHERE batch_id=? ORDER BY revision', [batchId]),
+      file_changes: await this.db.query('SELECT id,path,operation,before_sha256,after_sha256,created_at FROM file_changes WHERE batch_id=? ORDER BY created_at,id', [batchId])
+    };
+  }
+
+  async createChangeBatch(input, ctx = {}) {
+    const projectId = String(input?.project_id || '').trim();
+    const sessionId = String(input?.session_id || '').trim();
+    const session = await this.db.get('SELECT id,project_id,status FROM assist_sessions WHERE id=?', [sessionId]);
+    assert(session && session.project_id === projectId, 'invalid_input', 'Assist session does not belong to project', { status: 422 });
+    assert(['active', 'paused'].includes(session.status), 'assist_session_inactive', 'Assist session is not editable', { status: 409 });
+    const rawChanges = Array.isArray(input?.changes) ? input.changes : [];
+    assert(rawChanges.length > 0 && rawChanges.length <= 64, 'invalid_input', 'change batch must contain 1-64 changes', { status: 422 });
+    const { root, repository } = await this.projectWorkspace(projectId);
+    const changes = [];
+    let totalBytes = 0;
+    for (const raw of rawChanges) {
+      const operation = String(raw?.operation || 'update');
+      assert(['create', 'update', 'delete', 'rename'].includes(operation), 'invalid_input', 'change operation is invalid', { status: 422 });
+      const relative = normalizeRelativePath(String(raw?.path || ''));
+      const before = workspaceBytes(root, relative);
+      const beforeSha = before ? sha256(before) : null;
+      const expected = raw?.expected_sha256 == null ? null : String(raw.expected_sha256);
+      if (expected && expected !== beforeSha) throw new AppError('change_batch_stale', 'file changed since the proposal was created', { status: 409, details: { path: relative, expected_sha256: expected, actual_sha256: beforeSha } });
+      if (operation === 'create') assert(!before, 'file_exists', 'create target already exists', { status: 409, details: { path: relative } });
+      if (operation === 'update' || operation === 'delete') assert(before, 'file_not_found', 'change target does not exist', { status: 404, details: { path: relative } });
+      let content = null;
+      if (operation !== 'delete') {
+        content = raw?.encoding === 'base64' ? Buffer.from(String(raw?.content || ''), 'base64') : Buffer.from(String(raw?.content || ''), 'utf8');
+        assert(content.byteLength <= 2 * 1024 * 1024, 'change_too_large', 'individual change exceeds the 2 MiB limit', { status: 413, details: { path: relative } });
+        totalBytes += content.byteLength;
+      }
+      assert(totalBytes <= 10 * 1024 * 1024, 'change_batch_too_large', 'change batch exceeds the 10 MiB limit', { status: 413 });
+      changes.push({ path: relative, operation, before_sha256: beforeSha, after_sha256: content ? sha256(content) : null, content_base64: content?.toString('base64') || null });
+    }
+    const batchId = id('batch');
+    const timestamp = now();
+    await this.db.transaction([
+      { sql: 'INSERT INTO assist_change_batches(id,session_id,base_revision,changes_json,status,created_at,updated_at) VALUES(?,?,?,?,?,?,?)', params: [batchId, sessionId, Number(input?.base_revision || 1), asJson(changes), 'proposed', timestamp, timestamp] },
+      ...changes.map((change) => ({ sql: 'INSERT INTO file_changes(id,project_id,batch_id,path,operation,before_sha256,after_sha256,created_at) VALUES(?,?,?,?,?,?,?,?)', params: [id('fch'), projectId, batchId, change.path, change.operation, change.before_sha256, change.after_sha256, timestamp] })),
+      { sql: 'INSERT INTO assist_events(session_id,turn_id,type,data_json,created_at) VALUES(?,?,?,?,?)', params: [sessionId, null, 'assist.change_batch.proposed', asJson({ batch_id: batchId, project_id: projectId, change_count: changes.length }), timestamp] },
+      auditStatement('assist_change_batch.proposed', 'assist_change_batch', batchId, { project_id: projectId, session_id: sessionId, change_count: changes.length, repository: repository?.local_path || null }, ctx.actor)
+    ]);
+    return this.getChangeBatch(batchId);
+  }
+
+  async applyChangeBatch(batchId, input = {}, ctx = {}) {
+    const batch = await this.db.get('SELECT * FROM assist_change_batches WHERE id=?', [batchId]);
+    if (!batch) throw new AppError('not_found', 'change batch not found');
+    const session = await this.db.get('SELECT project_id FROM assist_sessions WHERE id=?', [batch.session_id]);
+    const repository = await this.db.get('SELECT local_path FROM repository_bindings WHERE project_id=?', [session.project_id]);
+    return this.withRepositoryLock(repository?.local_path || session.project_id, () => this.applyChangeBatchLocked(batchId, input, ctx));
+  }
+
+  async applyChangeBatchLocked(batchId, input = {}, ctx = {}) {
+    const batch = await this.db.get('SELECT * FROM assist_change_batches WHERE id=?', [batchId]);
+    if (!batch) throw new AppError('not_found', 'change batch not found');
+    assert(['proposed', 'approved'].includes(batch.status), 'invalid_state', 'change batch is not applicable', { status: 409 });
+    const session = await this.db.get('SELECT project_id FROM assist_sessions WHERE id=?', [batch.session_id]);
+    const { root, repository } = await this.projectWorkspace(session.project_id);
+    const changes = rowJson(batch, 'changes_json', []);
+    const snapshots = [];
+    let snapshotBytes = 0;
+    for (const change of changes) {
+      const before = workspaceBytes(root, change.path);
+      const actual = before ? sha256(before) : null;
+      if (actual !== (change.before_sha256 || null)) {
+        await this.db.run("UPDATE assist_change_batches SET status='stale',updated_at=? WHERE id=?", [now(), batchId]);
+        throw new AppError('change_batch_stale', 'workspace changed after proposal', { status: 409, details: { path: change.path, expected_sha256: change.before_sha256 || null, actual_sha256: actual } });
+      }
+      snapshots.push({ path: change.path, operation: change.operation, before_sha256: actual, before_base64: before?.toString('base64') || null, after_sha256: change.after_sha256 || null });
+      snapshotBytes += before?.byteLength || 0;
+      assert(snapshotBytes <= 10 * 1024 * 1024, 'change_batch_too_large', 'rollback checkpoint exceeds the 10 MiB limit', { status: 413 });
+    }
+    try {
+      for (const change of changes) {
+        if (change.operation === 'delete') removeWorkspaceFile(root, change.path);
+        else writeWorkspaceBytes(root, change.path, Buffer.from(change.content_base64 || '', 'base64'));
+      }
+      const timestamp = now();
+      await this.db.transaction([
+        { sql: "UPDATE assist_change_batches SET status='applied',updated_at=? WHERE id=? AND status IN ('proposed','approved')", params: [timestamp, batchId], expect_changes: 1 },
+        { sql: 'INSERT INTO assist_checkpoints(id,batch_id,revision,snapshot_json,created_at) VALUES(?,?,?,?,?)', params: [id('chk'), batchId, 1, asJson({ files: snapshots }), timestamp] },
+        { sql: 'INSERT INTO assist_events(session_id,turn_id,type,data_json,created_at) VALUES(?,?,?,?,?)', params: [batch.session_id, null, 'assist.change_batch.applied', asJson({ batch_id: batchId, change_count: changes.length }), timestamp] },
+        auditStatement('assist_change_batch.applied', 'assist_change_batch', batchId, { project_id: session.project_id, change_count: changes.length, repository: repository?.local_path || null }, ctx.actor)
+      ]);
+    } catch (error) {
+      await this.restoreChangeSnapshot(root, snapshots).catch(() => undefined);
+      throw error;
+    }
+    return this.getChangeBatch(batchId);
+  }
+
+  async restoreChangeSnapshot(root, snapshots) {
+    for (const snapshot of [...snapshots].reverse()) {
+      if (snapshot.before_base64) writeWorkspaceBytes(root, snapshot.path, Buffer.from(snapshot.before_base64, 'base64'));
+      else removeWorkspaceFile(root, snapshot.path);
+    }
+  }
+
+  async rollbackChangeBatch(batchId, input = {}, ctx = {}) {
+    const batch = await this.db.get('SELECT * FROM assist_change_batches WHERE id=?', [batchId]);
+    if (!batch) throw new AppError('not_found', 'change batch not found');
+    const session = await this.db.get('SELECT project_id FROM assist_sessions WHERE id=?', [batch.session_id]);
+    const repository = await this.db.get('SELECT local_path FROM repository_bindings WHERE project_id=?', [session.project_id]);
+    return this.withRepositoryLock(repository?.local_path || session.project_id, () => this.rollbackChangeBatchLocked(batchId, input, ctx));
+  }
+
+  async rollbackChangeBatchLocked(batchId, input = {}, ctx = {}) {
+    const batch = await this.db.get('SELECT * FROM assist_change_batches WHERE id=?', [batchId]);
+    if (!batch) throw new AppError('not_found', 'change batch not found');
+    assert(batch.status === 'applied', 'invalid_state', 'only applied change batches can be rolled back', { status: 409 });
+    const checkpoint = await this.db.get('SELECT * FROM assist_checkpoints WHERE batch_id=? ORDER BY revision DESC LIMIT 1', [batchId]);
+    const session = await this.db.get('SELECT project_id FROM assist_sessions WHERE id=?', [batch.session_id]);
+    const { root } = await this.projectWorkspace(session.project_id);
+    const snapshots = rowJson(checkpoint, 'snapshot_json', {}).files || [];
+    const changes = rowJson(batch, 'changes_json', []);
+    const force = input?.force === true;
+    for (const change of changes) {
+      const current = workspaceBytes(root, change.path);
+      const currentSha = current ? sha256(current) : null;
+      if (currentSha !== change.after_sha256 && !force) throw new AppError('change_batch_stale', 'workspace changed after apply; force is required to undo', { status: 409, details: { path: change.path, expected_sha256: change.after_sha256 || null, actual_sha256: currentSha } });
+    }
+    await this.restoreChangeSnapshot(root, snapshots);
+    const timestamp = now();
+    await this.db.transaction([
+      { sql: "UPDATE assist_change_batches SET status='rolled_back',updated_at=? WHERE id=? AND status='applied'", params: [timestamp, batchId], expect_changes: 1 },
+      { sql: 'INSERT INTO assist_events(session_id,turn_id,type,data_json,created_at) VALUES(?,?,?,?,?)', params: [batch.session_id, null, 'assist.change_batch.rolled_back', asJson({ batch_id: batchId, force }), timestamp] },
+      auditStatement('assist_change_batch.rolled_back', 'assist_change_batch', batchId, { project_id: session.project_id, force }, ctx.actor)
+    ]);
+    return this.getChangeBatch(batchId);
   }
 
   async assistEvents(sessionId, cursor = 0) {

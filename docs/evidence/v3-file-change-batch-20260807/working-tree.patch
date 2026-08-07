@@ -1,0 +1,358 @@
+diff --git a/apps/api/src/command-registry.mjs b/apps/api/src/command-registry.mjs
+index 4484363..5d3d5ed 100644
+--- a/apps/api/src/command-registry.mjs
++++ b/apps/api/src/command-registry.mjs
+@@ -40,6 +40,9 @@ export function createCommandRegistry(domain) {
+     ['assist_session.create', (input, ctx) => domain.createAssistSession(input, ctx)],
+     ['assist_turn.create', (input, ctx) => domain.createAssistTurn(input.session_id, input, ctx)],
+     ['assist_session.transition', (input, ctx) => domain.transitionAssistSession(input.session_id, input, ctx)],
++    ['change_batch.create', (input, ctx) => domain.createChangeBatch(input, ctx)],
++    ['change_batch.apply', (input, ctx) => domain.applyChangeBatch(input.batch_id, input, ctx)],
++    ['change_batch.rollback', (input, ctx) => domain.rollbackChangeBatch(input.batch_id, input, ctx)],
+     ['attachment.create', (input, ctx) => domain.createAttachment(input.project_id, input, ctx)],
+     ['context.rebuild', (input, ctx) => domain.rebuildContextMap(input.project_id, input, ctx)],
+     ['context.selection.create', (input, ctx) => domain.createContextSelection(input.project_id, input, ctx)],
+diff --git a/apps/api/src/domain.mjs b/apps/api/src/domain.mjs
+index 578b7a6..ce1087e 100644
+--- a/apps/api/src/domain.mjs
++++ b/apps/api/src/domain.mjs
+@@ -135,6 +135,64 @@ function isTransactionPrecondition(error) {
+   return error?.name === 'TransactionPreconditionError' || error?.message === 'transaction_precondition_failed';
+ }
+ 
++function workspaceFile(root, relative, { missingOk = true } = {}) {
++  const target = resolveWorkspacePath(root, relative);
++  let current = path.resolve(root);
++  const segments = path.relative(current, target).split(path.sep).filter(Boolean);
++  for (const segment of segments) {
++    current = path.join(current, segment);
++    try {
++      if (fs.lstatSync(current).isSymbolicLink()) throw new AppError('file_symlink_forbidden', 'workspace symlinks are not editable', { status: 422, details: { path: relative } });
++    } catch (error) {
++      if (error?.code === 'ENOENT') return missingOk ? null : (() => { throw new AppError('file_not_found', 'workspace file not found', { status: 404, details: { path: relative } }); })();
++      throw error;
++    }
++  }
++  try {
++    const stat = fs.statSync(target);
++    if (!stat.isFile()) throw new AppError('file_not_regular', 'workspace path is not a regular file', { status: 422, details: { path: relative } });
++    return target;
++  } catch (error) {
++    if (error?.code === 'ENOENT' && missingOk) return null;
++    if (error?.code === 'ENOENT') throw new AppError('file_not_found', 'workspace file not found', { status: 404, details: { path: relative } });
++    throw error;
++  }
++}
++
++function workspaceBytes(root, relative) {
++  const file = workspaceFile(root, relative);
++  return file ? fs.readFileSync(file) : null;
++}
++
++function assertWorkspacePathNoSymlink(root, target) {
++  const base = path.resolve(root);
++  let current = base;
++  const segments = path.relative(base, path.resolve(target)).split(path.sep).filter(Boolean);
++  for (const segment of segments) {
++    current = path.join(current, segment);
++    try {
++      if (fs.lstatSync(current).isSymbolicLink()) throw new AppError('file_symlink_forbidden', 'workspace symlinks are not editable', { status: 422 });
++    } catch (error) {
++      if (error?.code !== 'ENOENT') throw error;
++    }
++  }
++}
++
++function writeWorkspaceBytes(root, relative, content) {
++  const target = resolveWorkspacePath(root, relative);
++  const parent = path.dirname(target);
++  fs.mkdirSync(parent, { recursive: true, mode: 0o770 });
++  assertWorkspacePathNoSymlink(root, parent);
++  const temporary = `${target}.aiws-${randomBytes(8).toString('hex')}.tmp`;
++  fs.writeFileSync(temporary, content, { flag: 'wx', mode: 0o660 });
++  try { fs.renameSync(temporary, target); } catch (error) { fs.rmSync(temporary, { force: true }); throw error; }
++}
++
++function removeWorkspaceFile(root, relative) {
++  const file = workspaceFile(root, relative);
++  if (file) fs.rmSync(file, { force: true });
++}
++
+ function topologicalOrder(tasks) {
+   const pending = new Map(tasks.map((task) => [task.id, new Set(task.deps)]));
+   const order = [];
+@@ -806,6 +864,162 @@ export class Domain {
+     return this.getAssistSession(sessionId);
+   }
+ 
++  async projectWorkspace(projectId) {
++    await this.requireProject(projectId);
++    const repository = await this.db.get('SELECT * FROM repository_bindings WHERE project_id=?', [projectId]);
++    const relative = repository?.local_path || `projects/${projectId}`;
++    return { repository, root: resolveWorkspacePath(this.config.home, relative) };
++  }
++
++  async readProjectFile(projectId, relativePath) {
++    const relative = normalizeRelativePath(String(relativePath || ''));
++    const { root } = await this.projectWorkspace(projectId);
++    const bytes = workspaceBytes(root, relative);
++    if (!bytes) throw new AppError('file_not_found', 'workspace file not found', { status: 404, details: { path: relative } });
++    assert(bytes.byteLength <= 5 * 1024 * 1024, 'file_too_large', 'file exceeds the 5 MiB editor limit', { status: 413 });
++    const binary = bytes.includes(0);
++    return { project_id: projectId, path: relative, sha256: sha256(bytes), byte_size: bytes.byteLength, encoding: binary ? 'base64' : 'utf8', content: binary ? bytes.toString('base64') : bytes.toString('utf8') };
++  }
++
++  async getChangeBatch(batchId) {
++    const batch = await this.db.get('SELECT * FROM assist_change_batches WHERE id=?', [batchId]);
++    if (!batch) throw new AppError('not_found', 'change batch not found');
++    return {
++      ...batch,
++      changes: rowJson(batch, 'changes_json', []),
++      checkpoints: await this.db.query('SELECT id,batch_id,revision,created_at FROM assist_checkpoints WHERE batch_id=? ORDER BY revision', [batchId]),
++      file_changes: await this.db.query('SELECT id,path,operation,before_sha256,after_sha256,created_at FROM file_changes WHERE batch_id=? ORDER BY created_at,id', [batchId])
++    };
++  }
++
++  async createChangeBatch(input, ctx = {}) {
++    const projectId = String(input?.project_id || '').trim();
++    const sessionId = String(input?.session_id || '').trim();
++    const session = await this.db.get('SELECT id,project_id,status FROM assist_sessions WHERE id=?', [sessionId]);
++    assert(session && session.project_id === projectId, 'invalid_input', 'Assist session does not belong to project', { status: 422 });
++    assert(['active', 'paused'].includes(session.status), 'assist_session_inactive', 'Assist session is not editable', { status: 409 });
++    const rawChanges = Array.isArray(input?.changes) ? input.changes : [];
++    assert(rawChanges.length > 0 && rawChanges.length <= 64, 'invalid_input', 'change batch must contain 1-64 changes', { status: 422 });
++    const { root, repository } = await this.projectWorkspace(projectId);
++    const changes = [];
++    let totalBytes = 0;
++    for (const raw of rawChanges) {
++      const operation = String(raw?.operation || 'update');
++      assert(['create', 'update', 'delete', 'rename'].includes(operation), 'invalid_input', 'change operation is invalid', { status: 422 });
++      const relative = normalizeRelativePath(String(raw?.path || ''));
++      const before = workspaceBytes(root, relative);
++      const beforeSha = before ? sha256(before) : null;
++      const expected = raw?.expected_sha256 == null ? null : String(raw.expected_sha256);
++      if (expected && expected !== beforeSha) throw new AppError('change_batch_stale', 'file changed since the proposal was created', { status: 409, details: { path: relative, expected_sha256: expected, actual_sha256: beforeSha } });
++      if (operation === 'create') assert(!before, 'file_exists', 'create target already exists', { status: 409, details: { path: relative } });
++      if (operation === 'update' || operation === 'delete') assert(before, 'file_not_found', 'change target does not exist', { status: 404, details: { path: relative } });
++      let content = null;
++      if (operation !== 'delete') {
++        content = raw?.encoding === 'base64' ? Buffer.from(String(raw?.content || ''), 'base64') : Buffer.from(String(raw?.content || ''), 'utf8');
++        assert(content.byteLength <= 2 * 1024 * 1024, 'change_too_large', 'individual change exceeds the 2 MiB limit', { status: 413, details: { path: relative } });
++        totalBytes += content.byteLength;
++      }
++      assert(totalBytes <= 10 * 1024 * 1024, 'change_batch_too_large', 'change batch exceeds the 10 MiB limit', { status: 413 });
++      changes.push({ path: relative, operation, before_sha256: beforeSha, after_sha256: content ? sha256(content) : null, content_base64: content?.toString('base64') || null });
++    }
++    const batchId = id('batch');
++    const timestamp = now();
++    await this.db.transaction([
++      { sql: 'INSERT INTO assist_change_batches(id,session_id,base_revision,changes_json,status,created_at,updated_at) VALUES(?,?,?,?,?,?,?)', params: [batchId, sessionId, Number(input?.base_revision || 1), asJson(changes), 'proposed', timestamp, timestamp] },
++      ...changes.map((change) => ({ sql: 'INSERT INTO file_changes(id,project_id,batch_id,path,operation,before_sha256,after_sha256,created_at) VALUES(?,?,?,?,?,?,?,?)', params: [id('fch'), projectId, batchId, change.path, change.operation, change.before_sha256, change.after_sha256, timestamp] })),
++      { sql: 'INSERT INTO assist_events(session_id,turn_id,type,data_json,created_at) VALUES(?,?,?,?,?)', params: [sessionId, null, 'assist.change_batch.proposed', asJson({ batch_id: batchId, project_id: projectId, change_count: changes.length }), timestamp] },
++      auditStatement('assist_change_batch.proposed', 'assist_change_batch', batchId, { project_id: projectId, session_id: sessionId, change_count: changes.length, repository: repository?.local_path || null }, ctx.actor)
++    ]);
++    return this.getChangeBatch(batchId);
++  }
++
++  async applyChangeBatch(batchId, input = {}, ctx = {}) {
++    const batch = await this.db.get('SELECT * FROM assist_change_batches WHERE id=?', [batchId]);
++    if (!batch) throw new AppError('not_found', 'change batch not found');
++    const session = await this.db.get('SELECT project_id FROM assist_sessions WHERE id=?', [batch.session_id]);
++    const repository = await this.db.get('SELECT local_path FROM repository_bindings WHERE project_id=?', [session.project_id]);
++    return this.withRepositoryLock(repository?.local_path || session.project_id, () => this.applyChangeBatchLocked(batchId, input, ctx));
++  }
++
++  async applyChangeBatchLocked(batchId, input = {}, ctx = {}) {
++    const batch = await this.db.get('SELECT * FROM assist_change_batches WHERE id=?', [batchId]);
++    if (!batch) throw new AppError('not_found', 'change batch not found');
++    assert(['proposed', 'approved'].includes(batch.status), 'invalid_state', 'change batch is not applicable', { status: 409 });
++    const session = await this.db.get('SELECT project_id FROM assist_sessions WHERE id=?', [batch.session_id]);
++    const { root, repository } = await this.projectWorkspace(session.project_id);
++    const changes = rowJson(batch, 'changes_json', []);
++    const snapshots = [];
++    let snapshotBytes = 0;
++    for (const change of changes) {
++      const before = workspaceBytes(root, change.path);
++      const actual = before ? sha256(before) : null;
++      if (actual !== (change.before_sha256 || null)) {
++        await this.db.run("UPDATE assist_change_batches SET status='stale',updated_at=? WHERE id=?", [now(), batchId]);
++        throw new AppError('change_batch_stale', 'workspace changed after proposal', { status: 409, details: { path: change.path, expected_sha256: change.before_sha256 || null, actual_sha256: actual } });
++      }
++      snapshots.push({ path: change.path, operation: change.operation, before_sha256: actual, before_base64: before?.toString('base64') || null, after_sha256: change.after_sha256 || null });
++      snapshotBytes += before?.byteLength || 0;
++      assert(snapshotBytes <= 10 * 1024 * 1024, 'change_batch_too_large', 'rollback checkpoint exceeds the 10 MiB limit', { status: 413 });
++    }
++    try {
++      for (const change of changes) {
++        if (change.operation === 'delete') removeWorkspaceFile(root, change.path);
++        else writeWorkspaceBytes(root, change.path, Buffer.from(change.content_base64 || '', 'base64'));
++      }
++      const timestamp = now();
++      await this.db.transaction([
++        { sql: "UPDATE assist_change_batches SET status='applied',updated_at=? WHERE id=? AND status IN ('proposed','approved')", params: [timestamp, batchId], expect_changes: 1 },
++        { sql: 'INSERT INTO assist_checkpoints(id,batch_id,revision,snapshot_json,created_at) VALUES(?,?,?,?,?)', params: [id('chk'), batchId, 1, asJson({ files: snapshots }), timestamp] },
++        { sql: 'INSERT INTO assist_events(session_id,turn_id,type,data_json,created_at) VALUES(?,?,?,?,?)', params: [batch.session_id, null, 'assist.change_batch.applied', asJson({ batch_id: batchId, change_count: changes.length }), timestamp] },
++        auditStatement('assist_change_batch.applied', 'assist_change_batch', batchId, { project_id: session.project_id, change_count: changes.length, repository: repository?.local_path || null }, ctx.actor)
++      ]);
++    } catch (error) {
++      await this.restoreChangeSnapshot(root, snapshots).catch(() => undefined);
++      throw error;
++    }
++    return this.getChangeBatch(batchId);
++  }
++
++  async restoreChangeSnapshot(root, snapshots) {
++    for (const snapshot of [...snapshots].reverse()) {
++      if (snapshot.before_base64) writeWorkspaceBytes(root, snapshot.path, Buffer.from(snapshot.before_base64, 'base64'));
++      else removeWorkspaceFile(root, snapshot.path);
++    }
++  }
++
++  async rollbackChangeBatch(batchId, input = {}, ctx = {}) {
++    const batch = await this.db.get('SELECT * FROM assist_change_batches WHERE id=?', [batchId]);
++    if (!batch) throw new AppError('not_found', 'change batch not found');
++    const session = await this.db.get('SELECT project_id FROM assist_sessions WHERE id=?', [batch.session_id]);
++    const repository = await this.db.get('SELECT local_path FROM repository_bindings WHERE project_id=?', [session.project_id]);
++    return this.withRepositoryLock(repository?.local_path || session.project_id, () => this.rollbackChangeBatchLocked(batchId, input, ctx));
++  }
++
++  async rollbackChangeBatchLocked(batchId, input = {}, ctx = {}) {
++    const batch = await this.db.get('SELECT * FROM assist_change_batches WHERE id=?', [batchId]);
++    if (!batch) throw new AppError('not_found', 'change batch not found');
++    assert(batch.status === 'applied', 'invalid_state', 'only applied change batches can be rolled back', { status: 409 });
++    const checkpoint = await this.db.get('SELECT * FROM assist_checkpoints WHERE batch_id=? ORDER BY revision DESC LIMIT 1', [batchId]);
++    const session = await this.db.get('SELECT project_id FROM assist_sessions WHERE id=?', [batch.session_id]);
++    const { root } = await this.projectWorkspace(session.project_id);
++    const snapshots = rowJson(checkpoint, 'snapshot_json', {}).files || [];
++    const changes = rowJson(batch, 'changes_json', []);
++    const force = input?.force === true;
++    for (const change of changes) {
++      const current = workspaceBytes(root, change.path);
++      const currentSha = current ? sha256(current) : null;
++      if (currentSha !== change.after_sha256 && !force) throw new AppError('change_batch_stale', 'workspace changed after apply; force is required to undo', { status: 409, details: { path: change.path, expected_sha256: change.after_sha256 || null, actual_sha256: currentSha } });
++    }
++    await this.restoreChangeSnapshot(root, snapshots);
++    const timestamp = now();
++    await this.db.transaction([
++      { sql: "UPDATE assist_change_batches SET status='rolled_back',updated_at=? WHERE id=? AND status='applied'", params: [timestamp, batchId], expect_changes: 1 },
++      { sql: 'INSERT INTO assist_events(session_id,turn_id,type,data_json,created_at) VALUES(?,?,?,?,?)', params: [batch.session_id, null, 'assist.change_batch.rolled_back', asJson({ batch_id: batchId, force }), timestamp] },
++      auditStatement('assist_change_batch.rolled_back', 'assist_change_batch', batchId, { project_id: session.project_id, force }, ctx.actor)
++    ]);
++    return this.getChangeBatch(batchId);
++  }
++
+   async assistEvents(sessionId, cursor = 0) {
+     const session = await this.db.get('SELECT id FROM assist_sessions WHERE id=?', [sessionId]);
+     if (!session) throw new AppError('not_found', 'Assist session not found');
+diff --git a/apps/api/src/http.mjs b/apps/api/src/http.mjs
+index b32ee63..c930f41 100644
+--- a/apps/api/src/http.mjs
++++ b/apps/api/src/http.mjs
+@@ -218,6 +218,8 @@ export function createHttpHandler({ domain, registry, db, config, performancePro
+         else if (req.method === 'POST' && parts[2] === 'assets') ({ status, body: result } = await command('asset.create', { ...body, project_id: projectId }));
+         else if (req.method === 'GET' && parts[2] === 'attachments') result = await domain.listAttachments(projectId);
+         else if (req.method === 'POST' && parts[2] === 'attachments') ({ status, body: result } = await command('attachment.create', { ...body, project_id: projectId }));
++        else if (req.method === 'GET' && parts[2] === 'files') result = await domain.readProjectFile(projectId, parsed.searchParams.get('path'));
++        else if (req.method === 'POST' && parts[2] === 'change-batches') ({ status, body: result } = await command('change_batch.create', { ...body, project_id: projectId }));
+         else if (req.method === 'GET' && parts[2] === 'quality-reviews') result = await domain.listQualityReviewRuns(projectId);
+         else if (req.method === 'POST' && parts[2] === 'quality-reviews') ({ status, body: result } = await command('quality_review.create', { ...body, project_id: projectId }));
+         else if (req.method === 'GET' && parts[2] === 'diff') result = await domain.gitDiff(projectId);
+@@ -259,6 +261,11 @@ export function createHttpHandler({ domain, registry, db, config, performancePro
+         else if (req.method === 'POST' && parts[2] === 'merge') ({ status, body: result } = await command('delivery.merge', { ...body, delivery_id: parts[1] }));
+         else if (req.method === 'POST' && parts[2] === 'retry') ({ status, body: result } = await command('delivery.retry', { ...body, delivery_id: parts[1] }));
+         else throw new AppError('not_found', 'route not found');
++      } else if (parts[0] === 'change-batches' && parts.length >= 2) {
++        if (req.method === 'GET' && parts.length === 2) result = await domain.getChangeBatch(parts[1]);
++        else if (req.method === 'POST' && parts[2] === 'apply') ({ status, body: result } = await command('change_batch.apply', { ...body, batch_id: parts[1] }));
++        else if (req.method === 'POST' && parts[2] === 'rollback') ({ status, body: result } = await command('change_batch.rollback', { ...body, batch_id: parts[1] }));
++        else throw new AppError('not_found', 'route not found');
+       } else if (parts[0] === 'audit' && req.method === 'GET') result = await domain.listAudit(parsed.searchParams.get('limit'));
+       else throw new AppError('not_found', 'route not found');
+       return send(res, status, result);
+diff --git a/docs/api.md b/docs/api.md
+index 9c9f6a6..faf766a 100644
+--- a/docs/api.md
++++ b/docs/api.md
+@@ -39,6 +39,10 @@ Base URL: `http://127.0.0.1:4317/api/v1`
+ - `GET/POST /projects/{projectId}/attachments`
+ - `GET /attachments/{attachmentId}/content` (always a download)
+ - `GET /attachments/{attachmentId}/preview` (bounded, sanitized inline preview for supported text/image media)
++- `GET /projects/{projectId}/files?path=...` (workspace file metadata and UTF-8/base64 content)
++- `POST /projects/{projectId}/change-batches`
++- `GET /change-batches/{batchId}`
++- `POST /change-batches/{batchId}/{apply|rollback}` (rollback supports `{ "force": true }` for stale worktrees)
+ - `GET/POST /projects/{projectId}/quality-reviews`
+ - `GET /projects/{projectId}/diff`
+ - `POST /integrations/codex/probe` (requires `Idempotency-Key`; returns only provider, model, status, timestamp, and fixed error code; `{ "force": true }` bypasses the 15-minute cache)
+diff --git a/feature-catalog.json b/feature-catalog.json
+index f4ffdae..b41cbd8 100644
+--- a/feature-catalog.json
++++ b/feature-catalog.json
+@@ -21,7 +21,7 @@
+     {"id":"REC-D6-OUTCOME-009","domain":"outcome","name":"Outcome contract, rubric, waiver and release gate","status":"implemented","source_files":["v2.3 outcome service"],"target_modules":["apps/api/src/domain.mjs","apps/api/src/http.mjs"],"tables":["outcome_requirements","outcome_evaluations","outcome_waivers"],"apis":["/api/v1/projects/{id}/outcome-requirements","/api/v1/executions/{id}/outcome","/api/v1/executions/{id}/outcome/evaluate","/api/v1/executions/{id}/outcome/waive"],"ui":["Outcome","Quality Review"],"events":["outcome.evaluated","outcome.waived"],"tests":["T4","T6","tests/integration/workflow-recovery.test.mjs"]},
+     {"id":"REC-D8-ASSIST-010","domain":"assist","name":"Four-level Assist sessions and turn events","status":"implemented","source_files":["v2.3 Assist center"],"target_modules":["apps/api/src/schema.mjs","apps/api/src/domain.mjs","apps/api/src/http.mjs","apps/web/src/App.tsx","apps/web/src/pages.tsx","apps/web/src/styles.css"],"tables":["assist_sessions","assist_turns","assist_messages","assist_events","assist_operations"],"apis":["/api/v1/assist/sessions","/api/v1/assist/sessions/{id}/turns","/api/v1/assist/sessions/{id}/events"],"ui":["Assist Center","Composer","Goal","Plan"],"events":["assist.session.created","assist.turn.created","assist.goal","assist.plan","assist.message"],"tests":["T5","tests/integration/assist-flow.test.mjs"]},
+     {"id":"REC-D8-ATTACHMENTS-011","domain":"assist","name":"Attachments and secure previews","status":"implemented","source_files":["v2.3 attachment service"],"target_modules":["apps/api/src/evidence-service.mjs","apps/api/src/path-policy.mjs","apps/api/src/domain.mjs","apps/api/src/http.mjs"],"tables":["attachments"],"apis":["/api/v1/projects/{id}/attachments","/api/v1/attachments/{id}/content","/api/v1/attachments/{id}/preview"],"ui":["Attachments"],"events":["attachment.created"],"tests":["T5","T6","tests/integration/assist-flow.test.mjs"]},
+-    {"id":"REC-D8-FILES-012","domain":"assist","name":"Monaco files, diff review, change batch and undo","status":"planned","source_files":["v2.3 file workspace"],"target_modules":["apps/api/src/schema.mjs"],"tables":["file_changes","assist_change_batches","assist_checkpoints"],"apis":["/api/v1/change-batches"],"ui":["Monaco","Diff Review"],"events":["file.changed","change_batch.applied","change_batch.rolled_back"],"tests":["T5"]},
++    {"id":"REC-D8-FILES-012","domain":"assist","name":"Monaco files, diff review, change batch and undo","status":"implemented","source_files":["v2.3 file workspace"],"target_modules":["apps/api/src/schema.mjs","apps/api/src/domain.mjs","apps/api/src/http.mjs","apps/api/src/command-registry.mjs"],"tables":["file_changes","assist_change_batches","assist_checkpoints"],"apis":["/api/v1/projects/{id}/files","/api/v1/projects/{id}/change-batches","/api/v1/change-batches/{id}/apply","/api/v1/change-batches/{id}/rollback"],"ui":["Monaco","Diff Review"],"events":["assist.change_batch.proposed","assist.change_batch.applied","assist.change_batch.rolled_back"],"tests":["T5","tests/integration/file-changes.test.mjs"]},
+     {"id":"REC-D8-APPROVAL-013","domain":"assist","name":"Terminal and runtime approval center","status":"planned","source_files":["v2.3 terminal and approvals"],"target_modules":["apps/api/src/schema.mjs"],"tables":["runtime_approvals","runtime_user_inputs","ui_action_intents"],"apis":["/api/v1/approvals","/api/v1/user-inputs"],"ui":["Terminal","Approval Center","Proposal"],"events":["approval.requested","approval.decided"],"tests":["T5"]},
+     {"id":"REC-D7-REPOSITORY-014","domain":"repository","name":"Repository lines and managed worktrees","status":"implemented","source_files":["v2.3 repository/worktree"],"target_modules":["apps/api/src/git-fixture.mjs","apps/api/src/domain.mjs"],"tables":["repository_bindings","repository_worktrees","repository_connections","repository_lines"],"apis":["/api/v1/projects/{id}/diff"],"ui":["Repository","Worktree"],"events":["repository.bound","worktree.created"],"tests":["T7","tests/unit/path-policy.test.mjs"]},
+     {"id":"REC-D7-DELIVERY-015","domain":"delivery","name":"Draft PR intent, delivery retry and merge review","status":"implemented","source_files":["v2.3 delivery"],"target_modules":["apps/api/src/github-integration.mjs","apps/api/src/domain.mjs"],"tables":["deliveries","pull_request_intents","delivery_policies","delivery_events"],"apis":["/api/v1/deliveries","/api/v1/deliveries/{id}/merge","/api/v1/deliveries/{id}/retry"],"ui":["Delivery","Draft PR","Merge Review"],"events":["delivery.submitted","delivery.merged"],"tests":["T7","tests/integration/api-flow.test.mjs"]},
+diff --git a/tests/integration/file-changes.test.mjs b/tests/integration/file-changes.test.mjs
+new file mode 100644
+index 0000000..975089a
+--- /dev/null
++++ b/tests/integration/file-changes.test.mjs
+@@ -0,0 +1,53 @@
++import assert from 'node:assert/strict';
++import { createHash } from 'node:crypto';
++import fs from 'node:fs';
++import path from 'node:path';
++import test from 'node:test';
++import { fixture, mutate, request } from './helpers.mjs';
++
++const digest = (value) => createHash('sha256').update(value).digest('hex');
++
++test('file workspace change batches apply, protect stale edits, and undo with a checkpoint', async () => {
++  const env = await fixture();
++  try {
++    const project = await mutate(env.base, '/api/v1/projects', { name: 'File change fixture', repository: { source: { kind: 'fixture', id: 'designsignal-v1' } } }, 'file-project');
++    const session = await mutate(env.base, '/api/v1/assist/sessions', { project_id: project.json.id, scope: 'project', scope_id: project.json.id }, 'file-session');
++    const initial = await request(env.base, `/api/v1/projects/${project.json.id}/files?path=README.md`);
++    assert.equal(initial.response.status, 200);
++    const original = initial.json.content;
++    const updated = `${original}\n\nChange batch fixture.\n`;
++    const batch = await mutate(env.base, `/api/v1/projects/${project.json.id}/change-batches`, {
++      session_id: session.json.id,
++      changes: [{ path: 'README.md', operation: 'update', expected_sha256: initial.json.sha256, content: updated }]
++    }, 'file-batch');
++    assert.equal(batch.response.status, 201);
++    assert.equal(batch.json.status, 'proposed');
++    assert.equal(batch.json.file_changes[0].before_sha256, initial.json.sha256);
++
++    const applied = await mutate(env.base, `/api/v1/change-batches/${batch.json.id}/apply`, {}, 'file-batch-apply');
++    assert.equal(applied.response.status, 201);
++    assert.equal(applied.json.status, 'applied');
++    const afterApply = await request(env.base, `/api/v1/projects/${project.json.id}/files?path=README.md`);
++    assert.equal(afterApply.json.content, updated);
++    assert.equal(afterApply.json.sha256, digest(updated));
++
++    const rolledBack = await mutate(env.base, `/api/v1/change-batches/${batch.json.id}/rollback`, {}, 'file-batch-rollback');
++    assert.equal(rolledBack.response.status, 201);
++    assert.equal(rolledBack.json.status, 'rolled_back');
++    const afterUndo = await request(env.base, `/api/v1/projects/${project.json.id}/files?path=README.md`);
++    assert.equal(afterUndo.json.content, original);
++    assert.equal(afterUndo.json.sha256, initial.json.sha256);
++
++    const stale = await mutate(env.base, `/api/v1/projects/${project.json.id}/change-batches`, {
++      session_id: session.json.id,
++      changes: [{ path: 'README.md', operation: 'update', expected_sha256: initial.json.sha256, content: `${original}\nexternal\n` }]
++    }, 'file-batch-stale');
++    assert.equal(stale.response.status, 201);
++    fs.appendFileSync(path.join(env.home, 'projects', project.json.id, 'README.md'), 'outside\n');
++    const staleApply = await mutate(env.base, `/api/v1/change-batches/${stale.json.id}/apply`, {}, 'file-batch-stale-apply');
++    assert.equal(staleApply.response.status, 409);
++    assert.equal(staleApply.json.error.code, 'change_batch_stale');
++    const staleView = await request(env.base, `/api/v1/change-batches/${stale.json.id}`);
++    assert.equal(staleView.json.status, 'stale');
++  } finally { await env.close(); }
++});

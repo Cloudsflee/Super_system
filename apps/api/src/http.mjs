@@ -218,6 +218,8 @@ export function createHttpHandler({ domain, registry, db, config, performancePro
         else if (req.method === 'POST' && parts[2] === 'assets') ({ status, body: result } = await command('asset.create', { ...body, project_id: projectId }));
         else if (req.method === 'GET' && parts[2] === 'attachments') result = await domain.listAttachments(projectId);
         else if (req.method === 'POST' && parts[2] === 'attachments') ({ status, body: result } = await command('attachment.create', { ...body, project_id: projectId }));
+        else if (req.method === 'GET' && parts[2] === 'files') result = await domain.readProjectFile(projectId, parsed.searchParams.get('path'));
+        else if (req.method === 'POST' && parts[2] === 'change-batches') ({ status, body: result } = await command('change_batch.create', { ...body, project_id: projectId }));
         else if (req.method === 'GET' && parts[2] === 'quality-reviews') result = await domain.listQualityReviewRuns(projectId);
         else if (req.method === 'POST' && parts[2] === 'quality-reviews') ({ status, body: result } = await command('quality_review.create', { ...body, project_id: projectId }));
         else if (req.method === 'GET' && parts[2] === 'diff') result = await domain.gitDiff(projectId);
@@ -258,6 +260,11 @@ export function createHttpHandler({ domain, registry, db, config, performancePro
         else if (req.method === 'POST' && parts.length === 1) ({ status, body: result } = await command('delivery.create'));
         else if (req.method === 'POST' && parts[2] === 'merge') ({ status, body: result } = await command('delivery.merge', { ...body, delivery_id: parts[1] }));
         else if (req.method === 'POST' && parts[2] === 'retry') ({ status, body: result } = await command('delivery.retry', { ...body, delivery_id: parts[1] }));
+        else throw new AppError('not_found', 'route not found');
+      } else if (parts[0] === 'change-batches' && parts.length >= 2) {
+        if (req.method === 'GET' && parts.length === 2) result = await domain.getChangeBatch(parts[1]);
+        else if (req.method === 'POST' && parts[2] === 'apply') ({ status, body: result } = await command('change_batch.apply', { ...body, batch_id: parts[1] }));
+        else if (req.method === 'POST' && parts[2] === 'rollback') ({ status, body: result } = await command('change_batch.rollback', { ...body, batch_id: parts[1] }));
         else throw new AppError('not_found', 'route not found');
       } else if (parts[0] === 'audit' && req.method === 'GET') result = await domain.listAudit(parsed.searchParams.get('limit'));
       else throw new AppError('not_found', 'route not found');

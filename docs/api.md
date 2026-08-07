@@ -39,6 +39,10 @@ Base URL: `http://127.0.0.1:4317/api/v1`
 - `GET/POST /projects/{projectId}/attachments`
 - `GET /attachments/{attachmentId}/content` (always a download)
 - `GET /attachments/{attachmentId}/preview` (bounded, sanitized inline preview for supported text/image media)
+- `GET /projects/{projectId}/files?path=...` (workspace file metadata and UTF-8/base64 content)
+- `POST /projects/{projectId}/change-batches`
+- `GET /change-batches/{batchId}`
+- `POST /change-batches/{batchId}/{apply|rollback}` (rollback supports `{ "force": true }` for stale worktrees)
 - `GET/POST /projects/{projectId}/quality-reviews`
 - `GET /projects/{projectId}/diff`
 - `POST /integrations/codex/probe` (requires `Idempotency-Key`; returns only provider, model, status, timestamp, and fixed error code; `{ "force": true }` bypasses the 15-minute cache)
