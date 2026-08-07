@@ -1,0 +1,113 @@
+{
+  "schema_version": "aiws.v3.recovery_evidence_manifest.v1",
+  "batch": "v3-approval-center-20260807",
+  "branch": "recovery/v3-feature-restore",
+  "baseline_commit": "3b2229667977293f11121916414c4ae95dab6e49",
+  "implementation_commit": null,
+  "created_at": "2026-08-07T12:19:38.307Z",
+  "files": [
+    {
+      "path": "apps/api/src/command-registry.mjs",
+      "baseline_sha256": "f407e29a668d2a809840df17025c0449ee2639cf2ff341c57d2a959d4af1a7d1",
+      "modified_sha256": "060fac7291706a3573d3542557f51ad12644ea9d21ac289e113bf8f09972221d",
+      "baseline_present": true
+    },
+    {
+      "path": "apps/api/src/domain.mjs",
+      "baseline_sha256": "30bec0910e2509feec8ea1b25e74b9447b82e55b5025aee20659f1156a738ea2",
+      "modified_sha256": "350e6a1a82d4af5960f42b863927382752c616343d51dca7d5e2d2b7b1dc77ea",
+      "baseline_present": true
+    },
+    {
+      "path": "apps/api/src/http.mjs",
+      "baseline_sha256": "514671f2022995f10be8429da58a6575c8eec6abc5aac6802bd43692b3903388",
+      "modified_sha256": "5064e04b19e524ae657e2f7b45e1f74565055e78efa32d8271ebd1bfe47a6a94",
+      "baseline_present": true
+    },
+    {
+      "path": "apps/web/src/App.tsx",
+      "baseline_sha256": "3b5dd62f472d2f526737182152549814f832e73323bacffcffdaa4fbe6b1a838",
+      "modified_sha256": "e899cd2fb118fc52e962c3d0f847895ed2a25058466571e2d9471d5365956ae2",
+      "baseline_present": true
+    },
+    {
+      "path": "apps/web/src/pages.tsx",
+      "baseline_sha256": "a5ed99ca67e3dabd64f57d2dc2dbcc059a66346e374e57a35df963c356de2a9b",
+      "modified_sha256": "1e3356582a0ae329b7c3286a436f8b9183d4981fa63002db28b76609157178a9",
+      "baseline_present": true
+    },
+    {
+      "path": "apps/web/src/styles.css",
+      "baseline_sha256": "b06bf72ef428d2e75bdddf77e050633971973a71567d5ffc8a96277db4f5707d",
+      "modified_sha256": "878f03444026a8236980a9fd438a51ad6afc1933cdcd0e04397cc14902e80c39",
+      "baseline_present": true
+    },
+    {
+      "path": "docs/api.md",
+      "baseline_sha256": "5e7d932b7e422b514e10a1d1a851ad699c78c652fca884402054a5187e8a1152",
+      "modified_sha256": "e8e42680778890d74d0ef7c8190ac9c5de30d9d82e7cad0eea9b4311e3a76aa4",
+      "baseline_present": true
+    },
+    {
+      "path": "feature-catalog.json",
+      "baseline_sha256": "d9f62841edf34a5eb6f0040b6db29e4e472e6461ab44b219b90712d82f6aad5c",
+      "modified_sha256": "d6fa3b90fe5d7530f656327f12460a1cb5818e7637108d834385d65d8ed9bac2",
+      "baseline_present": true
+    },
+    {
+      "path": "scripts/e2e.mjs",
+      "baseline_sha256": "eb4cbdf69f52956e96cba9d23c63bd73bb55b56a4013179f64632d47f7535c51",
+      "modified_sha256": "75de3c00b2d7dc5ceadab9e91d65108d5066af3ab831baef8f9ba795851ec386",
+      "baseline_present": true
+    },
+    {
+      "path": "tests/integration/approval-flow.test.mjs",
+      "baseline_sha256": null,
+      "modified_sha256": "01b99ad89aedec6bf7c897defc5a3fb4409b56952689894bf4522e1cb3f8f707",
+      "baseline_present": false
+    }
+  ],
+  "diff": "docs/evidence/v3-approval-center-20260807/working-tree.patch",
+  "tests": [
+    {
+      "label": "recovery-plan",
+      "command": "pnpm recovery:plan",
+      "log": "docs/evidence/v3-approval-center-20260807/recovery-plan.log",
+      "exit_status": 0,
+      "output_tail": "    \"repository\",\n    \"runner\",\n    \"setup\",\n    \"workflow\"\n  ],\n  \"feature_count\": 26,\n  \"receipt\": \".ai-workspace/recovery/plan.json\"\n}"
+    },
+    {
+      "label": "recovery-catalog",
+      "command": "pnpm recovery:catalog",
+      "log": "docs/evidence/v3-approval-center-20260807/recovery-catalog.log",
+      "exit_status": 0,
+      "output_tail": "\n{\n  \"feature_count\": 26,\n  \"implemented\": 25,\n  \"planned\": 1,\n  \"unique_ids\": 26,\n  \"receipt\": \".ai-workspace/recovery/catalog.json\"\n}"
+    },
+    {
+      "label": "recovery-coverage",
+      "command": "pnpm recovery:coverage",
+      "log": "docs/evidence/v3-approval-center-20260807/recovery-coverage.log",
+      "exit_status": 0,
+      "output_tail": "    \"T4\": 5,\n    \"T5\": 5,\n    \"T6\": 7,\n    \"T7\": 2,\n    \"T8\": 5\n  },\n  \"receipt\": \".ai-workspace/recovery/coverage.json\"\n}"
+    },
+    {
+      "label": "recovery-impact",
+      "command": "pnpm recovery:impact --audit",
+      "log": "docs/evidence/v3-approval-center-20260807/recovery-impact.log",
+      "exit_status": 0,
+      "output_tail": "    \"tests/release/release-gate.test.mjs\",\n    \"tests/security/credentials.test.mjs\",\n    \"tests/unit/path-policy.test.mjs\",\n    \"tests/unit/recovery-governance.test.mjs\",\n    \"tests/unit/workflow.test.mjs\"\n  ],\n  \"receipt\": \".ai-workspace/recovery/impact.json\"\n}"
+    },
+    {
+      "label": "verify",
+      "command": "pnpm verify",
+      "log": "docs/evidence/v3-approval-center-20260807/verify.log",
+      "exit_status": 0,
+      "output_tail": "(node:41376) [DEP0190] DeprecationWarning: Passing args to a child process with shell option true can lead to security vulnerabilities, as the arguments are not escaped, only concatenated.\n(Use `node --trace-deprecation ...` to show where the warning was created)\n(node:49240) [DEP0190] DeprecationWarning: Passing args to a child process with shell option true can lead to security vulnerabilities, as the arguments are not escaped, only concatenated.\n(Use `node --trace-deprecation ...` to show where the warning was created)\n(node:49240) ExperimentalWarning: SQLite is an experimental feature and might change at any time\n(Use `node --trace-warnings ...` to show where the warning was created)\n(node:31932) [DEP0190] DeprecationWarning: Passing args to a child process with shell option true can lead to security vulnerabilities, as the arguments are not escaped, only concatenated.\n(Use `node --trace-deprecation ...` to show where the warning was created)"
+    }
+  ],
+  "rollback": {
+    "command": "git revert --no-edit <implementation_commit>",
+    "script": "docs/evidence/v3-approval-center-20260807/rollback.ps1",
+    "note": "Run from the recovery branch after replacing <implementation_commit> with the recorded implementation commit."
+  }
+}

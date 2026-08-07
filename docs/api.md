@@ -43,6 +43,9 @@ Base URL: `http://127.0.0.1:4317/api/v1`
 - `POST /projects/{projectId}/change-batches`
 - `GET /change-batches/{batchId}`
 - `POST /change-batches/{batchId}/{apply|rollback}` (rollback supports `{ "force": true }` for stale worktrees)
+- `GET /approvals?project_id=...`, `POST /projects/{projectId}/approvals`, `POST /approvals/{approvalId}/decision`
+- `GET /user-inputs?execution_id=...`, `POST /executions/{executionId}/user-inputs`, `POST /user-inputs/{inputId}/{answer|cancel}`
+- `GET /ui-action-intents?project_id=...`, `POST /projects/{projectId}/ui-action-intents`, `POST /ui-action-intents/{intentId}/resolve`
 - `GET/POST /projects/{projectId}/quality-reviews`
 - `GET /projects/{projectId}/diff`
 - `POST /integrations/codex/probe` (requires `Idempotency-Key`; returns only provider, model, status, timestamp, and fixed error code; `{ "force": true }` bypasses the 15-minute cache)

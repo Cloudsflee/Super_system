@@ -593,6 +593,58 @@ export function ExecutionPage({ projectId, navigate, notify }: WorkspacePageProp
   );
 }
 
+type RuntimeApproval = {
+  id: string; project_id: string; execution_id?: string | null; action: string; decision: string;
+  request: Record<string, unknown>; expires_at?: string | null; created_at: string;
+};
+
+type UiActionIntent = {
+  id: string; project_id: string; action: string; status: string; payload: Record<string, unknown>; created_at: string;
+};
+
+export function ApprovalPage({ projectId, navigate, notify }: WorkspacePageProps) {
+  const [approvals, setApprovals] = useState<RuntimeApproval[]>([]);
+  const [intents, setIntents] = useState<UiActionIntent[]>([]);
+  const [busy, setBusy] = useState('');
+  const load = useCallback(async () => {
+    if (!projectId) { setApprovals([]); setIntents([]); return; }
+    const [approvalRows, intentRows] = await Promise.all([
+      api<RuntimeApproval[]>(`/api/v1/approvals?project_id=${projectId}`),
+      api<UiActionIntent[]>(`/api/v1/ui-action-intents?project_id=${projectId}`)
+    ]);
+    setApprovals(approvalRows); setIntents(intentRows);
+  }, [projectId]);
+  useEffect(() => { void load(); }, [load]);
+  if (!projectId) return <EmptyProject navigate={navigate} />;
+  const decide = async (approvalId: string, decision: 'approved' | 'rejected') => {
+    setBusy(approvalId);
+    try { await mutate(`/api/v1/approvals/${approvalId}/decision`, { decision }); await load(); notify(`Approval ${decision}`); }
+    catch (error) { notify(error instanceof Error ? error.message : 'Approval failed', 'error'); }
+    finally { setBusy(''); }
+  };
+  const resolveIntent = async (intentId: string, status: 'accepted' | 'rejected') => {
+    setBusy(intentId);
+    try { await mutate(`/api/v1/ui-action-intents/${intentId}/resolve`, { status }); await load(); notify(`Proposal ${status}`); }
+    catch (error) { notify(error instanceof Error ? error.message : 'Proposal failed', 'error'); }
+    finally { setBusy(''); }
+  };
+  return (
+    <div className="page approval-page">
+      <div className="page-heading"><div><p className="eyebrow">Runtime control</p><h1>Approval Center</h1></div><button className="icon-button" title="刷新" aria-label="刷新" onClick={() => void load()}><RefreshCw size={17} /></button></div>
+      <div className="two-column approval-grid">
+        <section className="panel">
+          <SectionTitle title="Runtime approvals" meta={`${approvals.filter((item) => item.decision === 'pending').length} pending`} />
+          <div className="approval-list">{approvals.map((approval) => <article key={approval.id}><div><strong>{approval.action}</strong><span className="mono">{approval.execution_id?.slice(-12) || 'project'}</span></div><Status value={approval.decision} /><small>{formatTime(approval.created_at)}</small>{approval.decision === 'pending' && <div className="approval-actions"><button className="button" disabled={busy === approval.id} onClick={() => void decide(approval.id, 'rejected')}><CircleAlert size={15} />Reject</button><button className="button primary" disabled={busy === approval.id} onClick={() => void decide(approval.id, 'approved')}><Check size={15} />Approve</button></div>}</article>)}{!approvals.length && <div className="list-empty">No runtime approvals</div>}</div>
+        </section>
+        <section className="panel">
+          <SectionTitle title="UI proposals" meta={`${intents.filter((item) => item.status === 'pending').length} pending`} />
+          <div className="approval-list">{intents.map((intent) => <article key={intent.id}><div><strong>{intent.action}</strong><span className="mono">{intent.id.slice(-12)}</span></div><Status value={intent.status} /><small>{formatTime(intent.created_at)}</small>{intent.status === 'pending' && <div className="approval-actions"><button className="button" disabled={busy === intent.id} onClick={() => void resolveIntent(intent.id, 'rejected')}><CircleAlert size={15} />Reject</button><button className="button primary" disabled={busy === intent.id} onClick={() => void resolveIntent(intent.id, 'accepted')}><Check size={15} />Accept</button></div>}</article>)}{!intents.length && <div className="list-empty">No UI proposals</div>}</div>
+        </section>
+      </div>
+    </div>
+  );
+}
+
 export function AssetsPage({ projectId, navigate, notify }: WorkspacePageProps) {
   const [assets, setAssets] = useState<AssetVersion[]>([]);
   const [file, setFile] = useState<File | null>(null);

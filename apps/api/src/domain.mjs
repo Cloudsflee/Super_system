@@ -1093,6 +1093,126 @@ export class Domain {
     return this.getChangeBatch(batchId);
   }
 
+  async listRuntimeApprovals(projectId = null) {
+    await this.db.run("UPDATE runtime_approvals SET decision='expired',decided_at=COALESCE(decided_at,?) WHERE decision='pending' AND expires_at IS NOT NULL AND expires_at<=?", [now(), now()]);
+    const rows = projectId
+      ? await this.db.query('SELECT * FROM runtime_approvals WHERE project_id=? ORDER BY created_at DESC,id', [projectId])
+      : await this.db.query('SELECT * FROM runtime_approvals ORDER BY created_at DESC,id LIMIT 300');
+    return rows.map((row) => ({ ...row, request: rowJson(row, 'request_json', {}) }));
+  }
+
+  async createRuntimeApproval(projectId, input, ctx = {}) {
+    await this.requireProject(projectId);
+    const executionId = String(input?.execution_id || '').trim() || null;
+    if (executionId) {
+      const execution = await this.db.get('SELECT id FROM executions WHERE id=? AND project_id=?', [executionId, projectId]);
+      assert(execution, 'invalid_input', 'execution does not belong to project', { status: 422 });
+    }
+    const action = String(input?.action || '').trim();
+    assert(/^[A-Za-z0-9._:-]{1,120}$/.test(action), 'invalid_input', 'approval action is invalid', { status: 422 });
+    const request = input?.request && typeof input.request === 'object' && !Array.isArray(input.request) ? input.request : {};
+    const ttl = Number(input?.ttl_seconds ?? 3600);
+    assert(Number.isInteger(ttl) && ttl >= 60 && ttl <= 7 * 24 * 60 * 60, 'invalid_input', 'approval ttl is invalid', { status: 422 });
+    const approvalId = id('rap');
+    const timestamp = now();
+    const expiresAt = new Date(Date.now() + ttl * 1000).toISOString();
+    await this.db.transaction([
+      { sql: 'INSERT INTO runtime_approvals(id,project_id,execution_id,action,request_json,decision,expires_at,created_at,decided_at) VALUES(?,?,?,?,?,?,?,?,NULL)', params: [approvalId, projectId, executionId, action, asJson(request), 'pending', expiresAt, timestamp] },
+      ...(executionId ? [eventStatement('runtime.approval.requested', executionId, null, { approval_id: approvalId, action, expires_at: expiresAt })] : []),
+      auditStatement('runtime_approval.requested', 'runtime_approval', approvalId, { project_id: projectId, execution_id: executionId, action, expires_at: expiresAt }, ctx.actor)
+    ]);
+    return (await this.listRuntimeApprovals(projectId)).find((item) => item.id === approvalId);
+  }
+
+  async decideRuntimeApproval(approvalId, input, ctx = {}) {
+    const decision = String(input?.decision || '');
+    assert(['approved', 'rejected'].includes(decision), 'invalid_input', 'approval decision is invalid', { status: 422 });
+    await this.listRuntimeApprovals();
+    const approval = await this.db.get('SELECT * FROM runtime_approvals WHERE id=?', [approvalId]);
+    if (!approval) throw new AppError('not_found', 'runtime approval not found');
+    assert(approval.decision === 'pending', 'invalid_state', 'runtime approval is already resolved', { status: 409 });
+    const timestamp = now();
+    await this.db.transaction([
+      { sql: "UPDATE runtime_approvals SET decision=?,decided_at=? WHERE id=? AND decision='pending'", params: [decision, timestamp, approvalId], expect_changes: 1 },
+      ...(approval.execution_id ? [eventStatement(`runtime.approval.${decision}`, approval.execution_id, null, { approval_id: approvalId, action: approval.action })] : []),
+      auditStatement('runtime_approval.decided', 'runtime_approval', approvalId, { decision, project_id: approval.project_id, execution_id: approval.execution_id }, ctx.actor)
+    ]);
+    return (await this.listRuntimeApprovals(approval.project_id)).find((item) => item.id === approvalId);
+  }
+
+  async listRuntimeUserInputs(executionId = null) {
+    return executionId
+      ? this.db.query('SELECT * FROM runtime_user_inputs WHERE execution_id=? ORDER BY created_at DESC,id', [executionId])
+      : this.db.query('SELECT * FROM runtime_user_inputs ORDER BY created_at DESC,id LIMIT 300');
+  }
+
+  async createRuntimeUserInput(executionId, input, ctx = {}) {
+    const execution = await this.db.get('SELECT id,project_id FROM executions WHERE id=?', [executionId]);
+    if (!execution) throw new AppError('not_found', 'execution not found');
+    const prompt = String(input?.prompt || '').trim();
+    assert(prompt.length >= 1 && prompt.length <= 10000, 'invalid_input', 'runtime input prompt is required', { status: 422 });
+    const inputId = id('rui');
+    const timestamp = now();
+    await this.db.transaction([
+      { sql: 'INSERT INTO runtime_user_inputs(id,execution_id,prompt,response,status,created_at,answered_at) VALUES(?,?,?,NULL,?,?,NULL)', params: [inputId, executionId, prompt, 'pending', timestamp] },
+      eventStatement('runtime.user_input.requested', executionId, null, { input_id: inputId }),
+      auditStatement('runtime_user_input.requested', 'runtime_user_input', inputId, { execution_id: executionId, project_id: execution.project_id }, ctx.actor)
+    ]);
+    return (await this.listRuntimeUserInputs(executionId)).find((item) => item.id === inputId);
+  }
+
+  async resolveRuntimeUserInput(inputId, input, ctx = {}) {
+    const action = String(input?.action || 'answer');
+    assert(['answer', 'cancel'].includes(action), 'invalid_input', 'runtime input action is invalid', { status: 422 });
+    const current = await this.db.get('SELECT * FROM runtime_user_inputs WHERE id=?', [inputId]);
+    if (!current) throw new AppError('not_found', 'runtime user input not found');
+    assert(current.status === 'pending', 'invalid_state', 'runtime user input is already resolved', { status: 409 });
+    const response = action === 'answer' ? String(input?.response || '').trim() : null;
+    if (action === 'answer') assert(response.length >= 1 && response.length <= 100000, 'invalid_input', 'runtime input response is required', { status: 422 });
+    const status = action === 'answer' ? 'answered' : 'cancelled';
+    const timestamp = now();
+    await this.db.transaction([
+      { sql: "UPDATE runtime_user_inputs SET response=?,status=?,answered_at=? WHERE id=? AND status='pending'", params: [response, status, timestamp, inputId], expect_changes: 1 },
+      eventStatement(`runtime.user_input.${status}`, current.execution_id, null, { input_id: inputId }),
+      auditStatement(`runtime_user_input.${status}`, 'runtime_user_input', inputId, { execution_id: current.execution_id }, ctx.actor)
+    ]);
+    return (await this.listRuntimeUserInputs(current.execution_id)).find((item) => item.id === inputId);
+  }
+
+  async listUiActionIntents(projectId = null) {
+    const rows = projectId
+      ? await this.db.query('SELECT * FROM ui_action_intents WHERE project_id=? ORDER BY created_at DESC,id', [projectId])
+      : await this.db.query('SELECT * FROM ui_action_intents ORDER BY created_at DESC,id LIMIT 300');
+    return rows.map((row) => ({ ...row, payload: rowJson(row, 'payload_json', {}) }));
+  }
+
+  async createUiActionIntent(projectId, input, ctx = {}) {
+    await this.requireProject(projectId);
+    const action = String(input?.action || '').trim();
+    assert(/^[A-Za-z0-9._:-]{1,120}$/.test(action), 'invalid_input', 'UI action is invalid', { status: 422 });
+    const payload = input?.payload && typeof input.payload === 'object' && !Array.isArray(input.payload) ? input.payload : {};
+    const intentId = id('uai');
+    const timestamp = now();
+    await this.db.transaction([
+      { sql: 'INSERT INTO ui_action_intents(id,project_id,action,payload_json,status,created_at,resolved_at) VALUES(?,?,?,?,?,?,NULL)', params: [intentId, projectId, action, asJson(payload), 'pending', timestamp] },
+      auditStatement('ui_action_intent.created', 'ui_action_intent', intentId, { project_id: projectId, action }, ctx.actor)
+    ]);
+    return (await this.listUiActionIntents(projectId)).find((item) => item.id === intentId);
+  }
+
+  async resolveUiActionIntent(intentId, input, ctx = {}) {
+    const status = String(input?.status || '');
+    assert(['accepted', 'rejected'].includes(status), 'invalid_input', 'UI action decision is invalid', { status: 422 });
+    const current = await this.db.get('SELECT * FROM ui_action_intents WHERE id=?', [intentId]);
+    if (!current) throw new AppError('not_found', 'UI action intent not found');
+    assert(current.status === 'pending', 'invalid_state', 'UI action intent is already resolved', { status: 409 });
+    await this.db.transaction([
+      { sql: "UPDATE ui_action_intents SET status=?,resolved_at=? WHERE id=? AND status='pending'", params: [status, now(), intentId], expect_changes: 1 },
+      auditStatement('ui_action_intent.resolved', 'ui_action_intent', intentId, { project_id: current.project_id, action: current.action, status }, ctx.actor)
+    ]);
+    return (await this.listUiActionIntents(current.project_id)).find((item) => item.id === intentId);
+  }
+
   async assistEvents(sessionId, cursor = 0) {
     const session = await this.db.get('SELECT id FROM assist_sessions WHERE id=?', [sessionId]);
     if (!session) throw new AppError('not_found', 'Assist session not found');

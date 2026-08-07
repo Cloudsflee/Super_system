@@ -115,6 +115,17 @@ try {
   const deliveries = await apiRequest(`/api/v1/deliveries?project_id=${project.id}`);
   expect(deliveries.body).toHaveLength(1);
   expect(deliveries.body[0].status).toBe('draft');
+  const executions = await apiRequest(`/api/v1/projects/${project.id}/executions`);
+  const runtimeApproval = await apiRequest(`/api/v1/projects/${project.id}/approvals`, {
+    method: 'POST', headers: { 'Idempotency-Key': 'browser-runtime-approval' },
+    body: { execution_id: executions.body[0].id, action: 'delivery.publish', request: { delivery_id: deliveries.body[0].id } }
+  });
+  expect(runtimeApproval.response.status).toBe(201);
+  await page.goto(`${base}/#/approvals`, { waitUntil: 'networkidle' });
+  await expect(page.getByRole('heading', { name: 'Approval Center' })).toBeVisible();
+  await expect(page.getByText('delivery.publish', { exact: true })).toBeVisible();
+  await page.getByRole('button', { name: 'Approve', exact: true }).click();
+  await expect(page.getByRole('status')).toHaveText('Approval approved');
 
   await page.goto(`${base}/#/assets`, { waitUntil: 'networkidle' });
   await expect(page.getByRole('heading', { name: 'Assets' })).toBeVisible();
@@ -140,6 +151,11 @@ try {
     await expect(page.getByText('execution.completed', { exact: true })).toBeVisible();
     await checkNoOverlap(page, name);
     await page.screenshot({ path: path.join(reportDir, `${name}.png`), fullPage: true });
+    await page.goto(`${base}/#/approvals`, { waitUntil: 'networkidle' });
+    await expect(page.getByRole('heading', { name: 'Approval Center' })).toBeVisible();
+    await expect(page.getByText('delivery.publish', { exact: true })).toBeVisible();
+    await checkNoOverlap(page, `${name}-approvals`);
+    await page.screenshot({ path: path.join(reportDir, `${name}-approvals.png`), fullPage: true });
   }
   if (pageErrors.length) throw new Error(`browser page errors: ${pageErrors.map((error) => error.message).join('; ')}`);
   if (consoleErrors.length) throw new Error(`browser console errors: ${consoleErrors.map((message) => message.text()).join('; ')}`);

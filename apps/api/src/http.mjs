@@ -228,6 +228,8 @@ export function createHttpHandler({ domain, registry, db, config, performancePro
         else if (req.method === 'POST' && parts[2] === 'attachments') ({ status, body: result } = await command('attachment.create', { ...body, project_id: projectId }));
         else if (req.method === 'GET' && parts[2] === 'files') result = await domain.readProjectFile(projectId, parsed.searchParams.get('path'));
         else if (req.method === 'POST' && parts[2] === 'change-batches') ({ status, body: result } = await command('change_batch.create', { ...body, project_id: projectId }));
+        else if (req.method === 'POST' && parts[2] === 'approvals') ({ status, body: result } = await command('runtime_approval.create', { ...body, project_id: projectId }));
+        else if (req.method === 'POST' && parts[2] === 'ui-action-intents') ({ status, body: result } = await command('ui_action_intent.create', { ...body, project_id: projectId }));
         else if (req.method === 'GET' && parts[2] === 'quality-reviews') result = await domain.listQualityReviewRuns(projectId);
         else if (req.method === 'POST' && parts[2] === 'quality-reviews') ({ status, body: result } = await command('quality_review.create', { ...body, project_id: projectId }));
         else if (req.method === 'GET' && parts[2] === 'diff') result = await domain.gitDiff(projectId);
@@ -245,6 +247,7 @@ export function createHttpHandler({ domain, registry, db, config, performancePro
         else if (req.method === 'POST' && parts[2] === 'evidence' && parts[3] === 'resolve') ({ status, body: result } = await command('execution.evidence.resolve', { ...body, execution_id: executionId }));
         else if (req.method === 'POST' && parts[2] === 'outcome' && parts[3] === 'evaluate') ({ status, body: result } = await command('outcome.evaluate', { ...body, execution_id: executionId }));
         else if (req.method === 'POST' && parts[2] === 'outcome' && parts[3] === 'waive') ({ status, body: result } = await command('outcome.waive', { ...body, execution_id: executionId }));
+        else if (req.method === 'POST' && parts[2] === 'user-inputs') ({ status, body: result } = await command('runtime_user_input.create', { ...body, execution_id: executionId }));
         else throw new AppError('not_found', 'route not found');
       } else if (parts[0] === 'reviews') {
         if (req.method === 'GET') result = await domain.listReviews(parsed.searchParams.get('project_id') || null);
@@ -273,6 +276,19 @@ export function createHttpHandler({ domain, registry, db, config, performancePro
         if (req.method === 'GET' && parts.length === 2) result = await domain.getChangeBatch(parts[1]);
         else if (req.method === 'POST' && parts[2] === 'apply') ({ status, body: result } = await command('change_batch.apply', { ...body, batch_id: parts[1] }));
         else if (req.method === 'POST' && parts[2] === 'rollback') ({ status, body: result } = await command('change_batch.rollback', { ...body, batch_id: parts[1] }));
+        else throw new AppError('not_found', 'route not found');
+      } else if (parts[0] === 'approvals') {
+        if (req.method === 'GET' && parts.length === 1) result = await domain.listRuntimeApprovals(parsed.searchParams.get('project_id') || null);
+        else if (req.method === 'POST' && parts[2] === 'decision') ({ status, body: result } = await command('runtime_approval.decide', { ...body, approval_id: parts[1] }));
+        else throw new AppError('not_found', 'route not found');
+      } else if (parts[0] === 'user-inputs') {
+        if (req.method === 'GET' && parts.length === 1) result = await domain.listRuntimeUserInputs(parsed.searchParams.get('execution_id') || null);
+        else if (req.method === 'POST' && parts[2] === 'answer') ({ status, body: result } = await command('runtime_user_input.resolve', { ...body, input_id: parts[1], action: 'answer' }));
+        else if (req.method === 'POST' && parts[2] === 'cancel') ({ status, body: result } = await command('runtime_user_input.resolve', { ...body, input_id: parts[1], action: 'cancel' }));
+        else throw new AppError('not_found', 'route not found');
+      } else if (parts[0] === 'ui-action-intents') {
+        if (req.method === 'GET' && parts.length === 1) result = await domain.listUiActionIntents(parsed.searchParams.get('project_id') || null);
+        else if (req.method === 'POST' && parts[2] === 'resolve') ({ status, body: result } = await command('ui_action_intent.resolve', { ...body, intent_id: parts[1] }));
         else throw new AppError('not_found', 'route not found');
       } else if (parts[0] === 'audit' && req.method === 'GET') result = await domain.listAudit(parsed.searchParams.get('limit'));
       else throw new AppError('not_found', 'route not found');

@@ -1,16 +1,16 @@
 import { useCallback, useEffect, useMemo, useState, type ComponentType } from 'react';
 import {
   Activity, Archive, Boxes, ChevronDown, ClipboardCheck, FolderGit2, LayoutDashboard,
-  Menu, MessageSquare, Settings, Workflow, X
+  Menu, MessageSquare, Settings, ShieldCheck, Workflow, X
 } from 'lucide-react';
 import { api } from './api';
 import type { Project } from './types';
 import {
-  AssetsPage, AssistPage, AuditPage, ExecutionPage, ProjectsPage, SettingsPage, SetupPage, WorkflowPage,
+  ApprovalPage, AssetsPage, AssistPage, AuditPage, ExecutionPage, ProjectsPage, SettingsPage, SetupPage, WorkflowPage,
   type WorkspacePageProps
 } from './pages';
 
-export type PageKey = 'setup' | 'projects' | 'workflow' | 'assist' | 'execution' | 'assets' | 'audit' | 'settings';
+export type PageKey = 'setup' | 'projects' | 'workflow' | 'assist' | 'execution' | 'approvals' | 'assets' | 'audit' | 'settings';
 
 const NAV: Array<{ key: PageKey; label: string; icon: ComponentType<{ size?: number }> }> = [
   { key: 'setup', label: 'Setup', icon: LayoutDashboard },
@@ -18,6 +18,7 @@ const NAV: Array<{ key: PageKey; label: string; icon: ComponentType<{ size?: num
   { key: 'workflow', label: 'Workflow', icon: Workflow },
   { key: 'assist', label: 'Assist', icon: MessageSquare },
   { key: 'execution', label: 'Execution', icon: Activity },
+  { key: 'approvals', label: 'Approvals', icon: ShieldCheck },
   { key: 'assets', label: 'Assets', icon: Boxes },
   { key: 'audit', label: 'Audit', icon: ClipboardCheck },
   { key: 'settings', label: 'Settings', icon: Settings }
@@ -29,6 +30,7 @@ const PAGES: Record<PageKey, ComponentType<WorkspacePageProps>> = {
   workflow: WorkflowPage,
   assist: AssistPage,
   execution: ExecutionPage,
+  approvals: ApprovalPage,
   assets: AssetsPage,
   audit: AuditPage,
   settings: SettingsPage

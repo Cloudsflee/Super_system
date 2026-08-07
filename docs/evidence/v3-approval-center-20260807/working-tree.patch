@@ -1,0 +1,423 @@
+diff --git a/apps/api/src/command-registry.mjs b/apps/api/src/command-registry.mjs
+index ab9c5b2..496d48a 100644
+--- a/apps/api/src/command-registry.mjs
++++ b/apps/api/src/command-registry.mjs
+@@ -46,6 +46,12 @@ export function createCommandRegistry(domain) {
+     ['change_batch.create', (input, ctx) => domain.createChangeBatch(input, ctx)],
+     ['change_batch.apply', (input, ctx) => domain.applyChangeBatch(input.batch_id, input, ctx)],
+     ['change_batch.rollback', (input, ctx) => domain.rollbackChangeBatch(input.batch_id, input, ctx)],
++    ['runtime_approval.create', (input, ctx) => domain.createRuntimeApproval(input.project_id, input, ctx)],
++    ['runtime_approval.decide', (input, ctx) => domain.decideRuntimeApproval(input.approval_id, input, ctx)],
++    ['runtime_user_input.create', (input, ctx) => domain.createRuntimeUserInput(input.execution_id, input, ctx)],
++    ['runtime_user_input.resolve', (input, ctx) => domain.resolveRuntimeUserInput(input.input_id, input, ctx)],
++    ['ui_action_intent.create', (input, ctx) => domain.createUiActionIntent(input.project_id, input, ctx)],
++    ['ui_action_intent.resolve', (input, ctx) => domain.resolveUiActionIntent(input.intent_id, input, ctx)],
+     ['attachment.create', (input, ctx) => domain.createAttachment(input.project_id, input, ctx)],
+     ['context.rebuild', (input, ctx) => domain.rebuildContextMap(input.project_id, input, ctx)],
+     ['context.selection.create', (input, ctx) => domain.createContextSelection(input.project_id, input, ctx)],
+diff --git a/apps/api/src/domain.mjs b/apps/api/src/domain.mjs
+index ee3cba8..370138d 100644
+--- a/apps/api/src/domain.mjs
++++ b/apps/api/src/domain.mjs
+@@ -1093,6 +1093,126 @@ export class Domain {
+     return this.getChangeBatch(batchId);
+   }
+ 
++  async listRuntimeApprovals(projectId = null) {
++    await this.db.run("UPDATE runtime_approvals SET decision='expired',decided_at=COALESCE(decided_at,?) WHERE decision='pending' AND expires_at IS NOT NULL AND expires_at<=?", [now(), now()]);
++    const rows = projectId
++      ? await this.db.query('SELECT * FROM runtime_approvals WHERE project_id=? ORDER BY created_at DESC,id', [projectId])
++      : await this.db.query('SELECT * FROM runtime_approvals ORDER BY created_at DESC,id LIMIT 300');
++    return rows.map((row) => ({ ...row, request: rowJson(row, 'request_json', {}) }));
++  }
++
++  async createRuntimeApproval(projectId, input, ctx = {}) {
++    await this.requireProject(projectId);
++    const executionId = String(input?.execution_id || '').trim() || null;
++    if (executionId) {
++      const execution = await this.db.get('SELECT id FROM executions WHERE id=? AND project_id=?', [executionId, projectId]);
++      assert(execution, 'invalid_input', 'execution does not belong to project', { status: 422 });
++    }
++    const action = String(input?.action || '').trim();
++    assert(/^[A-Za-z0-9._:-]{1,120}$/.test(action), 'invalid_input', 'approval action is invalid', { status: 422 });
++    const request = input?.request && typeof input.request === 'object' && !Array.isArray(input.request) ? input.request : {};
++    const ttl = Number(input?.ttl_seconds ?? 3600);
++    assert(Number.isInteger(ttl) && ttl >= 60 && ttl <= 7 * 24 * 60 * 60, 'invalid_input', 'approval ttl is invalid', { status: 422 });
++    const approvalId = id('rap');
++    const timestamp = now();
++    const expiresAt = new Date(Date.now() + ttl * 1000).toISOString();
++    await this.db.transaction([
++      { sql: 'INSERT INTO runtime_approvals(id,project_id,execution_id,action,request_json,decision,expires_at,created_at,decided_at) VALUES(?,?,?,?,?,?,?,?,NULL)', params: [approvalId, projectId, executionId, action, asJson(request), 'pending', expiresAt, timestamp] },
++      ...(executionId ? [eventStatement('runtime.approval.requested', executionId, null, { approval_id: approvalId, action, expires_at: expiresAt })] : []),
++      auditStatement('runtime_approval.requested', 'runtime_approval', approvalId, { project_id: projectId, execution_id: executionId, action, expires_at: expiresAt }, ctx.actor)
++    ]);
++    return (await this.listRuntimeApprovals(projectId)).find((item) => item.id === approvalId);
++  }
++
++  async decideRuntimeApproval(approvalId, input, ctx = {}) {
++    const decision = String(input?.decision || '');
++    assert(['approved', 'rejected'].includes(decision), 'invalid_input', 'approval decision is invalid', { status: 422 });
++    await this.listRuntimeApprovals();
++    const approval = await this.db.get('SELECT * FROM runtime_approvals WHERE id=?', [approvalId]);
++    if (!approval) throw new AppError('not_found', 'runtime approval not found');
++    assert(approval.decision === 'pending', 'invalid_state', 'runtime approval is already resolved', { status: 409 });
++    const timestamp = now();
++    await this.db.transaction([
++      { sql: "UPDATE runtime_approvals SET decision=?,decided_at=? WHERE id=? AND decision='pending'", params: [decision, timestamp, approvalId], expect_changes: 1 },
++      ...(approval.execution_id ? [eventStatement(`runtime.approval.${decision}`, approval.execution_id, null, { approval_id: approvalId, action: approval.action })] : []),
++      auditStatement('runtime_approval.decided', 'runtime_approval', approvalId, { decision, project_id: approval.project_id, execution_id: approval.execution_id }, ctx.actor)
++    ]);
++    return (await this.listRuntimeApprovals(approval.project_id)).find((item) => item.id === approvalId);
++  }
++
++  async listRuntimeUserInputs(executionId = null) {
++    return executionId
++      ? this.db.query('SELECT * FROM runtime_user_inputs WHERE execution_id=? ORDER BY created_at DESC,id', [executionId])
++      : this.db.query('SELECT * FROM runtime_user_inputs ORDER BY created_at DESC,id LIMIT 300');
++  }
++
++  async createRuntimeUserInput(executionId, input, ctx = {}) {
++    const execution = await this.db.get('SELECT id,project_id FROM executions WHERE id=?', [executionId]);
++    if (!execution) throw new AppError('not_found', 'execution not found');
++    const prompt = String(input?.prompt || '').trim();
++    assert(prompt.length >= 1 && prompt.length <= 10000, 'invalid_input', 'runtime input prompt is required', { status: 422 });
++    const inputId = id('rui');
++    const timestamp = now();
++    await this.db.transaction([
++      { sql: 'INSERT INTO runtime_user_inputs(id,execution_id,prompt,response,status,created_at,answered_at) VALUES(?,?,?,NULL,?,?,NULL)', params: [inputId, executionId, prompt, 'pending', timestamp] },
++      eventStatement('runtime.user_input.requested', executionId, null, { input_id: inputId }),
++      auditStatement('runtime_user_input.requested', 'runtime_user_input', inputId, { execution_id: executionId, project_id: execution.project_id }, ctx.actor)
++    ]);
++    return (await this.listRuntimeUserInputs(executionId)).find((item) => item.id === inputId);
++  }
++
++  async resolveRuntimeUserInput(inputId, input, ctx = {}) {
++    const action = String(input?.action || 'answer');
++    assert(['answer', 'cancel'].includes(action), 'invalid_input', 'runtime input action is invalid', { status: 422 });
++    const current = await this.db.get('SELECT * FROM runtime_user_inputs WHERE id=?', [inputId]);
++    if (!current) throw new AppError('not_found', 'runtime user input not found');
++    assert(current.status === 'pending', 'invalid_state', 'runtime user input is already resolved', { status: 409 });
++    const response = action === 'answer' ? String(input?.response || '').trim() : null;
++    if (action === 'answer') assert(response.length >= 1 && response.length <= 100000, 'invalid_input', 'runtime input response is required', { status: 422 });
++    const status = action === 'answer' ? 'answered' : 'cancelled';
++    const timestamp = now();
++    await this.db.transaction([
++      { sql: "UPDATE runtime_user_inputs SET response=?,status=?,answered_at=? WHERE id=? AND status='pending'", params: [response, status, timestamp, inputId], expect_changes: 1 },
++      eventStatement(`runtime.user_input.${status}`, current.execution_id, null, { input_id: inputId }),
++      auditStatement(`runtime_user_input.${status}`, 'runtime_user_input', inputId, { execution_id: current.execution_id }, ctx.actor)
++    ]);
++    return (await this.listRuntimeUserInputs(current.execution_id)).find((item) => item.id === inputId);
++  }
++
++  async listUiActionIntents(projectId = null) {
++    const rows = projectId
++      ? await this.db.query('SELECT * FROM ui_action_intents WHERE project_id=? ORDER BY created_at DESC,id', [projectId])
++      : await this.db.query('SELECT * FROM ui_action_intents ORDER BY created_at DESC,id LIMIT 300');
++    return rows.map((row) => ({ ...row, payload: rowJson(row, 'payload_json', {}) }));
++  }
++
++  async createUiActionIntent(projectId, input, ctx = {}) {
++    await this.requireProject(projectId);
++    const action = String(input?.action || '').trim();
++    assert(/^[A-Za-z0-9._:-]{1,120}$/.test(action), 'invalid_input', 'UI action is invalid', { status: 422 });
++    const payload = input?.payload && typeof input.payload === 'object' && !Array.isArray(input.payload) ? input.payload : {};
++    const intentId = id('uai');
++    const timestamp = now();
++    await this.db.transaction([
++      { sql: 'INSERT INTO ui_action_intents(id,project_id,action,payload_json,status,created_at,resolved_at) VALUES(?,?,?,?,?,?,NULL)', params: [intentId, projectId, action, asJson(payload), 'pending', timestamp] },
++      auditStatement('ui_action_intent.created', 'ui_action_intent', intentId, { project_id: projectId, action }, ctx.actor)
++    ]);
++    return (await this.listUiActionIntents(projectId)).find((item) => item.id === intentId);
++  }
++
++  async resolveUiActionIntent(intentId, input, ctx = {}) {
++    const status = String(input?.status || '');
++    assert(['accepted', 'rejected'].includes(status), 'invalid_input', 'UI action decision is invalid', { status: 422 });
++    const current = await this.db.get('SELECT * FROM ui_action_intents WHERE id=?', [intentId]);
++    if (!current) throw new AppError('not_found', 'UI action intent not found');
++    assert(current.status === 'pending', 'invalid_state', 'UI action intent is already resolved', { status: 409 });
++    await this.db.transaction([
++      { sql: "UPDATE ui_action_intents SET status=?,resolved_at=? WHERE id=? AND status='pending'", params: [status, now(), intentId], expect_changes: 1 },
++      auditStatement('ui_action_intent.resolved', 'ui_action_intent', intentId, { project_id: current.project_id, action: current.action, status }, ctx.actor)
++    ]);
++    return (await this.listUiActionIntents(current.project_id)).find((item) => item.id === intentId);
++  }
++
+   async assistEvents(sessionId, cursor = 0) {
+     const session = await this.db.get('SELECT id FROM assist_sessions WHERE id=?', [sessionId]);
+     if (!session) throw new AppError('not_found', 'Assist session not found');
+diff --git a/apps/api/src/http.mjs b/apps/api/src/http.mjs
+index 7277e78..997ef4c 100644
+--- a/apps/api/src/http.mjs
++++ b/apps/api/src/http.mjs
+@@ -228,6 +228,8 @@ export function createHttpHandler({ domain, registry, db, config, performancePro
+         else if (req.method === 'POST' && parts[2] === 'attachments') ({ status, body: result } = await command('attachment.create', { ...body, project_id: projectId }));
+         else if (req.method === 'GET' && parts[2] === 'files') result = await domain.readProjectFile(projectId, parsed.searchParams.get('path'));
+         else if (req.method === 'POST' && parts[2] === 'change-batches') ({ status, body: result } = await command('change_batch.create', { ...body, project_id: projectId }));
++        else if (req.method === 'POST' && parts[2] === 'approvals') ({ status, body: result } = await command('runtime_approval.create', { ...body, project_id: projectId }));
++        else if (req.method === 'POST' && parts[2] === 'ui-action-intents') ({ status, body: result } = await command('ui_action_intent.create', { ...body, project_id: projectId }));
+         else if (req.method === 'GET' && parts[2] === 'quality-reviews') result = await domain.listQualityReviewRuns(projectId);
+         else if (req.method === 'POST' && parts[2] === 'quality-reviews') ({ status, body: result } = await command('quality_review.create', { ...body, project_id: projectId }));
+         else if (req.method === 'GET' && parts[2] === 'diff') result = await domain.gitDiff(projectId);
+@@ -245,6 +247,7 @@ export function createHttpHandler({ domain, registry, db, config, performancePro
+         else if (req.method === 'POST' && parts[2] === 'evidence' && parts[3] === 'resolve') ({ status, body: result } = await command('execution.evidence.resolve', { ...body, execution_id: executionId }));
+         else if (req.method === 'POST' && parts[2] === 'outcome' && parts[3] === 'evaluate') ({ status, body: result } = await command('outcome.evaluate', { ...body, execution_id: executionId }));
+         else if (req.method === 'POST' && parts[2] === 'outcome' && parts[3] === 'waive') ({ status, body: result } = await command('outcome.waive', { ...body, execution_id: executionId }));
++        else if (req.method === 'POST' && parts[2] === 'user-inputs') ({ status, body: result } = await command('runtime_user_input.create', { ...body, execution_id: executionId }));
+         else throw new AppError('not_found', 'route not found');
+       } else if (parts[0] === 'reviews') {
+         if (req.method === 'GET') result = await domain.listReviews(parsed.searchParams.get('project_id') || null);
+@@ -274,6 +277,19 @@ export function createHttpHandler({ domain, registry, db, config, performancePro
+         else if (req.method === 'POST' && parts[2] === 'apply') ({ status, body: result } = await command('change_batch.apply', { ...body, batch_id: parts[1] }));
+         else if (req.method === 'POST' && parts[2] === 'rollback') ({ status, body: result } = await command('change_batch.rollback', { ...body, batch_id: parts[1] }));
+         else throw new AppError('not_found', 'route not found');
++      } else if (parts[0] === 'approvals') {
++        if (req.method === 'GET' && parts.length === 1) result = await domain.listRuntimeApprovals(parsed.searchParams.get('project_id') || null);
++        else if (req.method === 'POST' && parts[2] === 'decision') ({ status, body: result } = await command('runtime_approval.decide', { ...body, approval_id: parts[1] }));
++        else throw new AppError('not_found', 'route not found');
++      } else if (parts[0] === 'user-inputs') {
++        if (req.method === 'GET' && parts.length === 1) result = await domain.listRuntimeUserInputs(parsed.searchParams.get('execution_id') || null);
++        else if (req.method === 'POST' && parts[2] === 'answer') ({ status, body: result } = await command('runtime_user_input.resolve', { ...body, input_id: parts[1], action: 'answer' }));
++        else if (req.method === 'POST' && parts[2] === 'cancel') ({ status, body: result } = await command('runtime_user_input.resolve', { ...body, input_id: parts[1], action: 'cancel' }));
++        else throw new AppError('not_found', 'route not found');
++      } else if (parts[0] === 'ui-action-intents') {
++        if (req.method === 'GET' && parts.length === 1) result = await domain.listUiActionIntents(parsed.searchParams.get('project_id') || null);
++        else if (req.method === 'POST' && parts[2] === 'resolve') ({ status, body: result } = await command('ui_action_intent.resolve', { ...body, intent_id: parts[1] }));
++        else throw new AppError('not_found', 'route not found');
+       } else if (parts[0] === 'audit' && req.method === 'GET') result = await domain.listAudit(parsed.searchParams.get('limit'));
+       else throw new AppError('not_found', 'route not found');
+       return send(res, status, result);
+diff --git a/apps/web/src/App.tsx b/apps/web/src/App.tsx
+index d3a2db9..1ee2ceb 100644
+--- a/apps/web/src/App.tsx
++++ b/apps/web/src/App.tsx
+@@ -1,16 +1,16 @@
+ import { useCallback, useEffect, useMemo, useState, type ComponentType } from 'react';
+ import {
+   Activity, Archive, Boxes, ChevronDown, ClipboardCheck, FolderGit2, LayoutDashboard,
+-  Menu, MessageSquare, Settings, Workflow, X
++  Menu, MessageSquare, Settings, ShieldCheck, Workflow, X
+ } from 'lucide-react';
+ import { api } from './api';
+ import type { Project } from './types';
+ import {
+-  AssetsPage, AssistPage, AuditPage, ExecutionPage, ProjectsPage, SettingsPage, SetupPage, WorkflowPage,
++  ApprovalPage, AssetsPage, AssistPage, AuditPage, ExecutionPage, ProjectsPage, SettingsPage, SetupPage, WorkflowPage,
+   type WorkspacePageProps
+ } from './pages';
+ 
+-export type PageKey = 'setup' | 'projects' | 'workflow' | 'assist' | 'execution' | 'assets' | 'audit' | 'settings';
++export type PageKey = 'setup' | 'projects' | 'workflow' | 'assist' | 'execution' | 'approvals' | 'assets' | 'audit' | 'settings';
+ 
+ const NAV: Array<{ key: PageKey; label: string; icon: ComponentType<{ size?: number }> }> = [
+   { key: 'setup', label: 'Setup', icon: LayoutDashboard },
+@@ -18,6 +18,7 @@ const NAV: Array<{ key: PageKey; label: string; icon: ComponentType<{ size?: num
+   { key: 'workflow', label: 'Workflow', icon: Workflow },
+   { key: 'assist', label: 'Assist', icon: MessageSquare },
+   { key: 'execution', label: 'Execution', icon: Activity },
++  { key: 'approvals', label: 'Approvals', icon: ShieldCheck },
+   { key: 'assets', label: 'Assets', icon: Boxes },
+   { key: 'audit', label: 'Audit', icon: ClipboardCheck },
+   { key: 'settings', label: 'Settings', icon: Settings }
+@@ -29,6 +30,7 @@ const PAGES: Record<PageKey, ComponentType<WorkspacePageProps>> = {
+   workflow: WorkflowPage,
+   assist: AssistPage,
+   execution: ExecutionPage,
++  approvals: ApprovalPage,
+   assets: AssetsPage,
+   audit: AuditPage,
+   settings: SettingsPage
+diff --git a/apps/web/src/pages.tsx b/apps/web/src/pages.tsx
+index 1a0c69b..37a3dcd 100644
+--- a/apps/web/src/pages.tsx
++++ b/apps/web/src/pages.tsx
+@@ -593,6 +593,58 @@ export function ExecutionPage({ projectId, navigate, notify }: WorkspacePageProp
+   );
+ }
+ 
++type RuntimeApproval = {
++  id: string; project_id: string; execution_id?: string | null; action: string; decision: string;
++  request: Record<string, unknown>; expires_at?: string | null; created_at: string;
++};
++
++type UiActionIntent = {
++  id: string; project_id: string; action: string; status: string; payload: Record<string, unknown>; created_at: string;
++};
++
++export function ApprovalPage({ projectId, navigate, notify }: WorkspacePageProps) {
++  const [approvals, setApprovals] = useState<RuntimeApproval[]>([]);
++  const [intents, setIntents] = useState<UiActionIntent[]>([]);
++  const [busy, setBusy] = useState('');
++  const load = useCallback(async () => {
++    if (!projectId) { setApprovals([]); setIntents([]); return; }
++    const [approvalRows, intentRows] = await Promise.all([
++      api<RuntimeApproval[]>(`/api/v1/approvals?project_id=${projectId}`),
++      api<UiActionIntent[]>(`/api/v1/ui-action-intents?project_id=${projectId}`)
++    ]);
++    setApprovals(approvalRows); setIntents(intentRows);
++  }, [projectId]);
++  useEffect(() => { void load(); }, [load]);
++  if (!projectId) return <EmptyProject navigate={navigate} />;
++  const decide = async (approvalId: string, decision: 'approved' | 'rejected') => {
++    setBusy(approvalId);
++    try { await mutate(`/api/v1/approvals/${approvalId}/decision`, { decision }); await load(); notify(`Approval ${decision}`); }
++    catch (error) { notify(error instanceof Error ? error.message : 'Approval failed', 'error'); }
++    finally { setBusy(''); }
++  };
++  const resolveIntent = async (intentId: string, status: 'accepted' | 'rejected') => {
++    setBusy(intentId);
++    try { await mutate(`/api/v1/ui-action-intents/${intentId}/resolve`, { status }); await load(); notify(`Proposal ${status}`); }
++    catch (error) { notify(error instanceof Error ? error.message : 'Proposal failed', 'error'); }
++    finally { setBusy(''); }
++  };
++  return (
++    <div className="page approval-page">
++      <div className="page-heading"><div><p className="eyebrow">Runtime control</p><h1>Approval Center</h1></div><button className="icon-button" title="刷新" aria-label="刷新" onClick={() => void load()}><RefreshCw size={17} /></button></div>
++      <div className="two-column approval-grid">
++        <section className="panel">
++          <SectionTitle title="Runtime approvals" meta={`${approvals.filter((item) => item.decision === 'pending').length} pending`} />
++          <div className="approval-list">{approvals.map((approval) => <article key={approval.id}><div><strong>{approval.action}</strong><span className="mono">{approval.execution_id?.slice(-12) || 'project'}</span></div><Status value={approval.decision} /><small>{formatTime(approval.created_at)}</small>{approval.decision === 'pending' && <div className="approval-actions"><button className="button" disabled={busy === approval.id} onClick={() => void decide(approval.id, 'rejected')}><CircleAlert size={15} />Reject</button><button className="button primary" disabled={busy === approval.id} onClick={() => void decide(approval.id, 'approved')}><Check size={15} />Approve</button></div>}</article>)}{!approvals.length && <div className="list-empty">No runtime approvals</div>}</div>
++        </section>
++        <section className="panel">
++          <SectionTitle title="UI proposals" meta={`${intents.filter((item) => item.status === 'pending').length} pending`} />
++          <div className="approval-list">{intents.map((intent) => <article key={intent.id}><div><strong>{intent.action}</strong><span className="mono">{intent.id.slice(-12)}</span></div><Status value={intent.status} /><small>{formatTime(intent.created_at)}</small>{intent.status === 'pending' && <div className="approval-actions"><button className="button" disabled={busy === intent.id} onClick={() => void resolveIntent(intent.id, 'rejected')}><CircleAlert size={15} />Reject</button><button className="button primary" disabled={busy === intent.id} onClick={() => void resolveIntent(intent.id, 'accepted')}><Check size={15} />Accept</button></div>}</article>)}{!intents.length && <div className="list-empty">No UI proposals</div>}</div>
++        </section>
++      </div>
++    </div>
++  );
++}
++
+ export function AssetsPage({ projectId, navigate, notify }: WorkspacePageProps) {
+   const [assets, setAssets] = useState<AssetVersion[]>([]);
+   const [file, setFile] = useState<File | null>(null);
+diff --git a/apps/web/src/styles.css b/apps/web/src/styles.css
+index 98a0b1d..f687237 100644
+--- a/apps/web/src/styles.css
++++ b/apps/web/src/styles.css
+@@ -149,6 +149,7 @@ input:focus, textarea:focus, select:focus { border-color: #39826e; box-shadow: 0
+ .event-list { max-height: 510px; overflow: auto; margin: 0 -4px; }.event-list > div:not(.list-empty) { display: grid; grid-template-columns: 10px minmax(0, 1fr); gap: 2px 8px; border-bottom: 1px solid #edf0ee; padding: 10px 4px; font-size: 11px; }.event-list small, .event-list time { color: var(--muted); font-size: 9px; }.event-list time { text-align: right; }.event-dot { width: 7px; height: 7px; background: #4d8c79; border-radius: 50%; margin-top: 4px; grid-row: 1 / span 2; }
+ .diff-panel pre { margin: 0; padding: 14px; min-height: 112px; border: 1px solid #e1e6e3; border-radius: 5px; background: #202522; color: #dce8e2; font-size: 11px; white-space: pre-wrap; overflow-wrap: anywhere; }
+ .review-state > div { display: flex; align-items: center; gap: 10px; margin-bottom: 12px; font-size: 11px; color: var(--muted); }.review-state .button { margin-right: 8px; }
++.approval-grid { align-items: start; }.approval-list { margin: 0 -18px -18px; }.approval-list article { min-height: 72px; display: grid; grid-template-columns: minmax(0, 1fr) auto auto; align-items: center; gap: 8px 12px; padding: 11px 18px; border-top: 1px solid #edf0ee; }.approval-list article > div:first-child { min-width: 0; }.approval-list strong, .approval-list article > div:first-child span { display: block; }.approval-list strong { font-size: 12px; overflow-wrap: anywhere; }.approval-list article > div:first-child span, .approval-list small { margin-top: 4px; color: var(--muted); font-size: 9px; }.approval-actions { grid-column: 1 / -1; display: flex; justify-content: flex-end; gap: 8px; }.approval-actions .button { height: 32px; }
+ 
+ .upload-band { min-height: 64px; background: #fff; border: 1px solid #9ab9ae; border-radius: 7px; margin-bottom: 16px; padding: 10px 14px; display: flex; align-items: center; gap: 12px; }.upload-band > div { min-width: 0; flex: 1; }.upload-band strong, .upload-band span { display: block; }.upload-band strong { font-size: 12px; overflow: hidden; text-overflow: ellipsis; }.upload-band span { color: var(--muted); font-size: 10px; margin-top: 4px; }
+ .asset-table .table-head, .asset-table .table-row { grid-template-columns: minmax(220px, 1.6fr) .5fr .9fr .6fr 36px; }.asset-table .table-row > span:first-child strong, .asset-table .table-row > span:first-child small { display: block; }.asset-table small { color: var(--muted); margin-top: 3px; }
+diff --git a/docs/api.md b/docs/api.md
+index 79d881a..c5a122e 100644
+--- a/docs/api.md
++++ b/docs/api.md
+@@ -43,6 +43,9 @@ Base URL: `http://127.0.0.1:4317/api/v1`
+ - `POST /projects/{projectId}/change-batches`
+ - `GET /change-batches/{batchId}`
+ - `POST /change-batches/{batchId}/{apply|rollback}` (rollback supports `{ "force": true }` for stale worktrees)
++- `GET /approvals?project_id=...`, `POST /projects/{projectId}/approvals`, `POST /approvals/{approvalId}/decision`
++- `GET /user-inputs?execution_id=...`, `POST /executions/{executionId}/user-inputs`, `POST /user-inputs/{inputId}/{answer|cancel}`
++- `GET /ui-action-intents?project_id=...`, `POST /projects/{projectId}/ui-action-intents`, `POST /ui-action-intents/{intentId}/resolve`
+ - `GET/POST /projects/{projectId}/quality-reviews`
+ - `GET /projects/{projectId}/diff`
+ - `POST /integrations/codex/probe` (requires `Idempotency-Key`; returns only provider, model, status, timestamp, and fixed error code; `{ "force": true }` bypasses the 15-minute cache)
+diff --git a/feature-catalog.json b/feature-catalog.json
+index f7c2d47..c25bba3 100644
+--- a/feature-catalog.json
++++ b/feature-catalog.json
+@@ -22,7 +22,8 @@
+     {"id":"REC-D8-ASSIST-010","domain":"assist","name":"Four-level Assist sessions and turn events","status":"implemented","source_files":["v2.3 Assist center"],"target_modules":["apps/api/src/schema.mjs","apps/api/src/domain.mjs","apps/api/src/http.mjs","apps/web/src/App.tsx","apps/web/src/pages.tsx","apps/web/src/styles.css"],"tables":["assist_sessions","assist_turns","assist_messages","assist_events","assist_operations"],"apis":["/api/v1/assist/sessions","/api/v1/assist/sessions/{id}/turns","/api/v1/assist/sessions/{id}/events"],"ui":["Assist Center","Composer","Goal","Plan"],"events":["assist.session.created","assist.turn.created","assist.goal","assist.plan","assist.message"],"tests":["T5","tests/integration/assist-flow.test.mjs"]},
+     {"id":"REC-D8-ATTACHMENTS-011","domain":"assist","name":"Attachments and secure previews","status":"implemented","source_files":["v2.3 attachment service"],"target_modules":["apps/api/src/evidence-service.mjs","apps/api/src/path-policy.mjs","apps/api/src/domain.mjs","apps/api/src/http.mjs"],"tables":["attachments"],"apis":["/api/v1/projects/{id}/attachments","/api/v1/attachments/{id}/content","/api/v1/attachments/{id}/preview"],"ui":["Attachments"],"events":["attachment.created"],"tests":["T5","T6","tests/integration/assist-flow.test.mjs"]},
+     {"id":"REC-D8-FILES-012","domain":"assist","name":"Monaco files, diff review, change batch and undo","status":"implemented","source_files":["v2.3 file workspace"],"target_modules":["apps/api/src/schema.mjs","apps/api/src/domain.mjs","apps/api/src/http.mjs","apps/api/src/command-registry.mjs"],"tables":["file_changes","assist_change_batches","assist_checkpoints"],"apis":["/api/v1/projects/{id}/files","/api/v1/projects/{id}/change-batches","/api/v1/change-batches/{id}/apply","/api/v1/change-batches/{id}/rollback"],"ui":["Monaco","Diff Review"],"events":["assist.change_batch.proposed","assist.change_batch.applied","assist.change_batch.rolled_back"],"tests":["T5","tests/integration/file-changes.test.mjs"]},
+-    {"id":"REC-D8-APPROVAL-013","domain":"assist","name":"Terminal and runtime approval center","status":"planned","source_files":["v2.3 terminal and approvals"],"target_modules":["apps/api/src/schema.mjs"],"tables":["runtime_approvals","runtime_user_inputs","ui_action_intents"],"apis":["/api/v1/approvals","/api/v1/user-inputs"],"ui":["Terminal","Approval Center","Proposal"],"events":["approval.requested","approval.decided"],"tests":["T5"]},
++    {"id":"REC-D8-APPROVAL-013","domain":"assist","name":"Runtime approval center, user input and proposals","status":"implemented","source_files":["v2.3 approvals and proposal services"],"target_modules":["apps/api/src/schema.mjs","apps/api/src/domain.mjs","apps/api/src/http.mjs","apps/api/src/command-registry.mjs","apps/web/src/App.tsx","apps/web/src/pages.tsx","apps/web/src/styles.css"],"tables":["runtime_approvals","runtime_user_inputs","ui_action_intents"],"apis":["/api/v1/approvals","/api/v1/user-inputs","/api/v1/ui-action-intents"],"ui":["Approval Center","Proposal"],"events":["runtime.approval.requested","runtime.approval.approved","runtime.approval.rejected","runtime.user_input.requested","runtime.user_input.answered"],"tests":["T5","tests/integration/approval-flow.test.mjs"]},
++    {"id":"REC-D8-TERMINAL-025","domain":"assist","name":"Terminal, reconnect recovery and Windows Native Bridge","status":"planned","source_files":["v2.3 terminal, node-pty and Windows bridge services"],"target_modules":["apps/api/src/schema.mjs"],"tables":[],"apis":["/api/v1/terminals"],"ui":["Terminal"],"events":["terminal.opened","terminal.closed"],"tests":["T5"]},
+     {"id":"REC-D7-REPOSITORY-014","domain":"repository","name":"Repository lines and managed worktrees","status":"implemented","source_files":["v2.3 repository/worktree"],"target_modules":["apps/api/src/git-fixture.mjs","apps/api/src/domain.mjs"],"tables":["repository_bindings","repository_worktrees","repository_connections","repository_lines"],"apis":["/api/v1/projects/{id}/diff"],"ui":["Repository","Worktree"],"events":["repository.bound","worktree.created"],"tests":["T7","tests/unit/path-policy.test.mjs"]},
+     {"id":"REC-D7-DELIVERY-015","domain":"delivery","name":"Draft PR intent, delivery retry and merge review","status":"implemented","source_files":["v2.3 delivery"],"target_modules":["apps/api/src/github-integration.mjs","apps/api/src/domain.mjs"],"tables":["deliveries","pull_request_intents","delivery_policies","delivery_events"],"apis":["/api/v1/deliveries","/api/v1/deliveries/{id}/merge","/api/v1/deliveries/{id}/retry"],"ui":["Delivery","Draft PR","Merge Review"],"events":["delivery.submitted","delivery.merged"],"tests":["T7","tests/integration/api-flow.test.mjs"]},
+     {"id":"REC-D4-SCOPE-016","domain":"mcp","name":"Scopes, allowlists, grants and token revocation","status":"implemented","source_files":["v2.3 scope service"],"target_modules":["apps/api/src/command-registry.mjs","apps/api/src/domain.mjs","apps/api/src/http.mjs"],"tables":["exchange_requests","exchange_grants","mcp_clients"],"apis":["/api/v1/mcp/scopes","/api/v1/mcp/scopes/requests","/api/v1/mcp/scopes/requests/{id}/grant","/api/v1/mcp/scopes/grants/{id}/revoke"],"ui":["MCP Settings"],"events":["mcp_scope.requested","mcp_scope.granted","mcp_scope.revoked"],"tests":["T3","tests/integration/mcp-flow.test.mjs"]},
+diff --git a/scripts/e2e.mjs b/scripts/e2e.mjs
+index 143f357..84d7257 100644
+--- a/scripts/e2e.mjs
++++ b/scripts/e2e.mjs
+@@ -115,6 +115,17 @@ try {
+   const deliveries = await apiRequest(`/api/v1/deliveries?project_id=${project.id}`);
+   expect(deliveries.body).toHaveLength(1);
+   expect(deliveries.body[0].status).toBe('draft');
++  const executions = await apiRequest(`/api/v1/projects/${project.id}/executions`);
++  const runtimeApproval = await apiRequest(`/api/v1/projects/${project.id}/approvals`, {
++    method: 'POST', headers: { 'Idempotency-Key': 'browser-runtime-approval' },
++    body: { execution_id: executions.body[0].id, action: 'delivery.publish', request: { delivery_id: deliveries.body[0].id } }
++  });
++  expect(runtimeApproval.response.status).toBe(201);
++  await page.goto(`${base}/#/approvals`, { waitUntil: 'networkidle' });
++  await expect(page.getByRole('heading', { name: 'Approval Center' })).toBeVisible();
++  await expect(page.getByText('delivery.publish', { exact: true })).toBeVisible();
++  await page.getByRole('button', { name: 'Approve', exact: true }).click();
++  await expect(page.getByRole('status')).toHaveText('Approval approved');
+ 
+   await page.goto(`${base}/#/assets`, { waitUntil: 'networkidle' });
+   await expect(page.getByRole('heading', { name: 'Assets' })).toBeVisible();
+@@ -140,6 +151,11 @@ try {
+     await expect(page.getByText('execution.completed', { exact: true })).toBeVisible();
+     await checkNoOverlap(page, name);
+     await page.screenshot({ path: path.join(reportDir, `${name}.png`), fullPage: true });
++    await page.goto(`${base}/#/approvals`, { waitUntil: 'networkidle' });
++    await expect(page.getByRole('heading', { name: 'Approval Center' })).toBeVisible();
++    await expect(page.getByText('delivery.publish', { exact: true })).toBeVisible();
++    await checkNoOverlap(page, `${name}-approvals`);
++    await page.screenshot({ path: path.join(reportDir, `${name}-approvals.png`), fullPage: true });
+   }
+   if (pageErrors.length) throw new Error(`browser page errors: ${pageErrors.map((error) => error.message).join('; ')}`);
+   if (consoleErrors.length) throw new Error(`browser console errors: ${consoleErrors.map((message) => message.text()).join('; ')}`);
+diff --git a/tests/integration/approval-flow.test.mjs b/tests/integration/approval-flow.test.mjs
+new file mode 100644
+index 0000000..0a5ad97
+--- /dev/null
++++ b/tests/integration/approval-flow.test.mjs
+@@ -0,0 +1,51 @@
++import assert from 'node:assert/strict';
++import test from 'node:test';
++import { fixture, mutate, request } from './helpers.mjs';
++
++test('runtime approvals, user inputs, and UI proposals persist decisions and audit events', async () => {
++  const env = await fixture();
++  try {
++    const project = await mutate(env.base, '/api/v1/projects', { name: 'Approval fixture' }, 'approval-project');
++    await mutate(env.base, `/api/v1/projects/${project.json.id}/briefs`, { content: { objective: 'Exercise approval contracts' } }, 'approval-brief');
++    await mutate(env.base, `/api/v1/projects/${project.json.id}/workflows`, { tasks: [{ id: 'inspect', title: 'Inspect', level: 1, mode: 'read', deps: [] }] }, 'approval-workflow');
++    const execution = await mutate(env.base, `/api/v1/projects/${project.json.id}/executions`, {}, 'approval-execution');
++
++    const approval = await mutate(env.base, `/api/v1/projects/${project.json.id}/approvals`, {
++      execution_id: execution.json.id, action: 'runner.network.enable', request: { network: 'model' }, ttl_seconds: 600
++    }, 'approval-create');
++    assert.equal(approval.response.status, 201);
++    assert.equal(approval.json.decision, 'pending');
++    assert.deepEqual(approval.json.request, { network: 'model' });
++    const approved = await mutate(env.base, `/api/v1/approvals/${approval.json.id}/decision`, { decision: 'approved' }, 'approval-decide');
++    assert.equal(approved.response.status, 201);
++    assert.equal(approved.json.decision, 'approved');
++    const duplicateDecision = await mutate(env.base, `/api/v1/approvals/${approval.json.id}/decision`, { decision: 'rejected' }, 'approval-decide-again');
++    assert.equal(duplicateDecision.response.status, 409);
++
++    const expiring = await mutate(env.base, `/api/v1/projects/${project.json.id}/approvals`, { action: 'terminal.open', ttl_seconds: 60 }, 'approval-expiring');
++    await env.app.database.run("UPDATE runtime_approvals SET expires_at='2000-01-01T00:00:00.000Z' WHERE id=?", [expiring.json.id]);
++    const approvalList = await request(env.base, `/api/v1/approvals?project_id=${project.json.id}`);
++    assert.equal(approvalList.json.find((item) => item.id === expiring.json.id).decision, 'expired');
++
++    const input = await mutate(env.base, `/api/v1/executions/${execution.json.id}/user-inputs`, { prompt: 'Select the verification mode' }, 'runtime-input-create');
++    assert.equal(input.response.status, 201);
++    assert.equal(input.json.status, 'pending');
++    const answered = await mutate(env.base, `/api/v1/user-inputs/${input.json.id}/answer`, { response: 'full' }, 'runtime-input-answer');
++    assert.equal(answered.json.status, 'answered');
++    assert.equal(answered.json.response, 'full');
++    const duplicateInput = await mutate(env.base, `/api/v1/user-inputs/${input.json.id}/cancel`, {}, 'runtime-input-cancel-after-answer');
++    assert.equal(duplicateInput.response.status, 409);
++
++    const intent = await mutate(env.base, `/api/v1/projects/${project.json.id}/ui-action-intents`, { action: 'open.diff', payload: { path: 'README.md' } }, 'ui-intent-create');
++    assert.equal(intent.response.status, 201);
++    const accepted = await mutate(env.base, `/api/v1/ui-action-intents/${intent.json.id}/resolve`, { status: 'accepted' }, 'ui-intent-resolve');
++    assert.equal(accepted.json.status, 'accepted');
++
++    const events = await env.app.database.query('SELECT type FROM events WHERE execution_id=? ORDER BY cursor', [execution.json.id]);
++    assert.ok(events.some((event) => event.type === 'runtime.approval.requested'));
++    assert.ok(events.some((event) => event.type === 'runtime.approval.approved'));
++    assert.ok(events.some((event) => event.type === 'runtime.user_input.answered'));
++    const audits = await request(env.base, '/api/v1/audit?limit=100');
++    assert.ok(audits.json.some((event) => event.action === 'ui_action_intent.resolved'));
++  } finally { await env.close(); }
++});
