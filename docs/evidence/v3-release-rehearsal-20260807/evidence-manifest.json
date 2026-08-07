@@ -1,0 +1,165 @@
+{
+  "schema_version": "aiws.v3.recovery_evidence_manifest.v1",
+  "batch": "v3-release-rehearsal-20260807",
+  "branch": "recovery/v3-feature-restore",
+  "baseline_commit": "b64f5134ff30ece5c01e50b2b50d6dae2d112d45",
+  "implementation_commit": "dd7d19a7604f7c01a1866af150da386e9d08daae",
+  "created_at": "2026-08-07T15:52:56.413Z",
+  "modified_artifact": {
+    "commit": "dd7d19a7604f7c01a1866af150da386e9d08daae",
+    "files": [
+      {
+        "path": "scripts/release-rehearsal-compose.mjs",
+        "baseline_sha256": "1dd87a161381d43f6e320d760792b40f47baca4e8a33184c6ac9d31e8c30099d",
+        "modified_sha256": "037de8eb33e7fab9fc236ab87ba128fb654081caf62dcb3d35ef1015f4dff21c",
+        "baseline_present": true
+      },
+      {
+        "path": "tests/release/release-rehearsal-compose.test.mjs",
+        "baseline_sha256": "b2fc972dd11a02bdae83fd7b0c962e68a15f62f2a8ab10444afa56c08f24fa24",
+        "modified_sha256": "95ed32dee20ff95e6e33a99e9197e3707b1f2a1bed1fff8dc6808942b1cd3620",
+        "baseline_present": true
+      }
+    ]
+  },
+  "files": [
+    {
+      "path": "scripts/release-rehearsal-compose.mjs",
+      "baseline_sha256": "1dd87a161381d43f6e320d760792b40f47baca4e8a33184c6ac9d31e8c30099d",
+      "modified_sha256": "037de8eb33e7fab9fc236ab87ba128fb654081caf62dcb3d35ef1015f4dff21c",
+      "baseline_present": true
+    },
+    {
+      "path": "tests/release/release-rehearsal-compose.test.mjs",
+      "baseline_sha256": "b2fc972dd11a02bdae83fd7b0c962e68a15f62f2a8ab10444afa56c08f24fa24",
+      "modified_sha256": "95ed32dee20ff95e6e33a99e9197e3707b1f2a1bed1fff8dc6808942b1cd3620",
+      "baseline_present": true
+    }
+  ],
+  "diff": {
+    "path": "docs/evidence/v3-release-rehearsal-20260807/working-tree.patch",
+    "sha256": "4a46dc0f2193df89e5af44f4683ccb7741f7395e9f45fb38f0573498daf66aa7"
+  },
+  "verification": {
+    "path": "docs/evidence/v3-release-rehearsal-20260807/verification.json",
+    "sha256": "fc1836e08e960f06b5db0c015e034bc05f22aa04a539bc2c07361d07099f80f6",
+    "commands": [
+      {
+        "label": "permission-probe",
+        "command": "docker run --rm --user USER --cap-drop ALL [--cap-add DAC_OVERRIDE] --mount type=volume,src=PERMISSION_VOLUME,dst=/data alpine:3.22 sh -c touch",
+        "inputs": {
+          "volume_fixture": "root 0700; worktree 10001:10001 0755",
+          "users": [
+            "10001:10001",
+            "0:0"
+          ],
+          "capability_variants": [
+            "none",
+            "DAC_OVERRIDE"
+          ]
+        },
+        "log": "docs/evidence/v3-release-rehearsal-20260807/permission-probe.log",
+        "exit_status": 0,
+        "output_tail": "aiws-v3-rehearsal-permission-evidence\ntouch: /data/worktree/nonroot: Permission denied\ntouch: /data/worktree/root-no-cap: Permission denied\nnonroot_exit=1\nroot_no_cap_exit=1\nroot_with_dac_override_exit=0"
+      },
+      {
+        "label": "compose-focused",
+        "command": "node --test tests/release/release-rehearsal-compose.test.mjs",
+        "inputs": {
+          "mock": "no Codex secret",
+          "docker": "temporary Codex secret file"
+        },
+        "log": "docs/evidence/v3-release-rehearsal-20260807/compose-focused.log",
+        "exit_status": 0,
+        "output_tail": "✔ mock rehearsal broker can cross the workspace volume boundary without a Docker socket (1.2413ms)\n✔ docker rehearsal broker retains root socket execution (1.5933ms)\nℹ tests 2\nℹ suites 0\nℹ pass 2\nℹ fail 0\nℹ cancelled 0\nℹ skipped 0\nℹ todo 0\nℹ duration_ms 71.644"
+      },
+      {
+        "label": "impact-audit",
+        "command": "corepack pnpm recovery:impact --audit",
+        "inputs": {
+          "working_tree": "clean before evidence files are written"
+        },
+        "log": "docs/evidence/v3-release-rehearsal-20260807/impact-audit.log",
+        "exit_status": 0,
+        "output_tail": "> ai-workspace-system@3.0.0 recovery:impact E:\\00_desktop\\毕业设计\n> node scripts/recovery-governance.mjs impact \"--audit\"\n\n{\n  \"audit\": true,\n  \"changed_files\": [],\n  \"unmapped_files\": [],\n  \"selected_tests\": [],\n  \"receipt\": \".ai-workspace/recovery/impact.json\"\n}"
+      },
+      {
+        "label": "verify",
+        "command": "corepack pnpm verify",
+        "inputs": {
+          "suite": "unit/web/integration/security/build/e2e/release"
+        },
+        "log": "docs/evidence/v3-release-rehearsal-20260807/verify.log",
+        "exit_status": 0,
+        "output_tail": "ℹ tests 8\nℹ suites 0\nℹ pass 8\nℹ fail 0\nℹ cancelled 0\nℹ skipped 0\nℹ todo 0\nℹ duration_ms 409.8487\n\nAIWS 3.0 verification passed\n(node:46072) [DEP0190] DeprecationWarning: Passing args to a child process with shell option true can lead to security vulnerabilities, as the arguments are not escaped, only concatenated.\n(Use `node --trace-deprecation ...` to show where the warning was created)"
+      },
+      {
+        "label": "release-rehearse",
+        "command": "corepack pnpm release:rehearse",
+        "inputs": {
+          "image_receipt": ".ai-workspace/release/v3-transition/v3-images-20260807154159.json",
+          "codex_secret": "unset",
+          "github_secret": "unset",
+          "port": "dynamically allocated",
+          "volumes": [
+            "aiws-v3-snapshot-20260807155014",
+            "aiws-v3-restored-20260807155014"
+          ]
+        },
+        "log": "docs/evidence/v3-release-rehearsal-20260807/release-rehearse.log",
+        "exit_status": 0,
+        "output_tail": "\n(node:21804) ExperimentalWarning: SQLite is an experimental feature and might change at any time\n(Use `node --trace-warnings ...` to show where the warning was created)\n{\n  \"status\": \"candidate\",\n  \"acceptance_receipt\": \"E:\\\\00_desktop\\\\毕业设计\\\\.ai-workspace\\\\release\\\\v3-transition\\\\v3-acceptance-docker-20260807155014.json\",\n  \"recovery_receipt\": \"E:\\\\00_desktop\\\\毕业设计\\\\.ai-workspace\\\\release\\\\v3-transition\\\\v3-recovery-20260807155014.json\",\n  \"snapshots\": [\n    \"aiws-v3-snapshot-20260807155014\",\n    \"aiws-v3-restored-20260807155014\"\n  ]\n}"
+      }
+    ]
+  },
+  "receipts": [
+    {
+      "path": ".ai-workspace/release/v3-transition/v3-images-20260807154159.json",
+      "sha256": "97720a43df329e2dc461b041605e8dbf5611e3f5905123c738dccd571b6ae29e",
+      "exists": true
+    },
+    {
+      "path": ".ai-workspace/release/v3-transition/v3-gate-20260807154159.json",
+      "sha256": "f529845b2cb084aeb294600a08120e4e2ff9121166900e967642639c5249fdb9",
+      "exists": true
+    },
+    {
+      "path": ".ai-workspace/release/v3-transition/v3-acceptance-docker-20260807155014.json",
+      "sha256": "e6fa8dc85c0539d7b104cca35789a8c1d600f1d11b9a8311a2352053ee5301b8",
+      "exists": true
+    },
+    {
+      "path": ".ai-workspace/release/v3-transition/v3-recovery-20260807155014.json",
+      "sha256": "76ceb0260531b3e3efb8626e2392baedf8aad7de5a76e811c0df81505c365d2e",
+      "exists": true
+    },
+    {
+      "path": ".ai-workspace/release/v3-transition/v3-rehearsal-failure-20260807153730.json",
+      "sha256": "1a68c4c460f8c78d7bca3fdbc3af77ce32ea596eefb5dd71c5331c64c968fbf8",
+      "exists": true
+    },
+    {
+      "path": ".ai-workspace/release/v3-transition/v3-backup-20260807155014.tar.gz",
+      "sha256": "fa5f8438a4dc25b8eb9c5f61739283b0cbd4f1aaedf93a80d8ed84ed29b74ce1",
+      "exists": true
+    },
+    {
+      "path": ".ai-workspace/release/v3-transition/v3-restored-validation-20260807155014.tar.gz",
+      "sha256": "7287141dd7f1f51a27878dd0cc15def54c7c2287c41cc6d4a45d581e6ab73a82",
+      "exists": true
+    }
+  ],
+  "rollback": {
+    "command": "pwsh -NoProfile -ExecutionPolicy Bypass -File docs/evidence/v3-release-rehearsal-20260807/rollback.ps1 -Commit dd7d19a7604f7c01a1866af150da386e9d08daae",
+    "script": "docs/evidence/v3-release-rehearsal-20260807/rollback.ps1",
+    "sha256": "de223e204db8a4571f5321f2c94fae5703067c51f7e671715ae356448056a3b5",
+    "validate_command": "pwsh -NoProfile -ExecutionPolicy Bypass -File docs/evidence/v3-release-rehearsal-20260807/rollback.ps1 -Commit dd7d19a7604f7c01a1866af150da386e9d08daae -ValidateOnly",
+    "validate_status": 0,
+    "validation_output": "rollback validation passed: dd7d19a7604f7c01a1866af150da386e9d08daae parent b64f5134ff30ece5c01e50b2b50d6dae2d112d45"
+  },
+  "outcome": {
+    "acceptance": "candidate_external_capabilities_unavailable",
+    "recovery": "passed",
+    "formal_4317_untouched": true
+  }
+}

@@ -1,0 +1,71 @@
+diff --git a/scripts/release-rehearsal-compose.mjs b/scripts/release-rehearsal-compose.mjs
+index b873224..4bc3e8a 100644
+--- a/scripts/release-rehearsal-compose.mjs
++++ b/scripts/release-rehearsal-compose.mjs
+@@ -10,7 +10,11 @@ export function composeYaml({ appImage, brokerImage, runnerImage, runnerDigest,
+   const codexServiceSecret = codexSecret ? '\n      - codex_api_key' : '';
+   const codexSecretDefinition = codexSecret ? `\n  codex_api_key:\n    file: "${codexSecret}"` : '';
+   const brokerExecutor = codexSecret ? 'docker' : 'mock';
+-  const brokerUser = brokerExecutor === 'mock' ? '\n    user: "10001:10001"' : '';
++  // Mock execution writes the mounted workspace in the Broker process. Keep it
++  // root with the narrow filesystem capability needed to cross the 0700 volume
++  // root; the real Docker executor remains capability-free.
++  const brokerCapability = brokerExecutor === 'mock' ? '\n    cap_add:\n      - DAC_OVERRIDE' : '';
++  const brokerSocket = brokerExecutor === 'docker' ? '\n      - /var/run/docker.sock:/var/run/docker.sock' : '';
+   const githubPath = githubSecretFile ? path.resolve(root, githubSecretFile) : '';
+   if (githubPath && !fs.existsSync(githubPath)) throw new Error('rehearsal_github_secret_unreadable');
+   const githubSecret = githubPath && fs.existsSync(githubPath) ? githubPath.replaceAll('\\', '/') : '';
+@@ -54,7 +58,7 @@ export function composeYaml({ appImage, brokerImage, runnerImage, runnerDigest,
+       - internal
+       - edge
+   runner-broker:
+-    image: ${brokerImage}${brokerUser}
++    image: ${brokerImage}
+     init: true
+     read_only: true
+     labels:
+@@ -71,14 +75,14 @@ export function composeYaml({ appImage, brokerImage, runnerImage, runnerDigest,
+     secrets:
+       - broker_hmac
+     volumes:
+-      - /var/run/docker.sock:/var/run/docker.sock
++${brokerSocket}
+       - data:/var/lib/aiws
+     tmpfs:
+       - /tmp:size=256m,mode=1777
+     security_opt:
+       - no-new-privileges:true
+     cap_drop:
+-      - ALL
++      - ALL${brokerCapability}
+     networks:
+       - internal
+ networks:
+diff --git a/tests/release/release-rehearsal-compose.test.mjs b/tests/release/release-rehearsal-compose.test.mjs
+index 53af67d..45d6fb9 100644
+--- a/tests/release/release-rehearsal-compose.test.mjs
++++ b/tests/release/release-rehearsal-compose.test.mjs
+@@ -19,11 +19,12 @@ function brokerService(compose) {
+   return compose.split('\n  runner-broker:\n')[1].split('\nnetworks:\n')[0];
+ }
+ 
+-test('mock rehearsal broker runs as the runner workspace owner', () => {
++test('mock rehearsal broker can cross the workspace volume boundary without a Docker socket', () => {
+   const service = brokerService(composeYaml(base));
+-  assert.match(service, /\n    user: "10001:10001"\n/);
+   assert.match(service, /AIWS_BROKER_EXECUTOR: mock/);
+-  assert.match(service, /- ALL/);
++  assert.doesNotMatch(service, /\n    user:/);
++  assert.doesNotMatch(service, /\/var\/run\/docker\.sock/);
++  assert.match(service, /cap_add:\n      - DAC_OVERRIDE/);
+ });
+ 
+ test('docker rehearsal broker retains root socket execution', () => {
+@@ -35,6 +36,7 @@ test('docker rehearsal broker retains root socket execution', () => {
+     assert.doesNotMatch(service, /\n    user:/);
+     assert.match(service, /AIWS_BROKER_EXECUTOR: docker/);
+     assert.match(service, /\/var\/run\/docker\.sock:\/var\/run\/docker\.sock/);
++    assert.doesNotMatch(service, /cap_add:\n      - DAC_OVERRIDE/);
+   } finally {
+     fs.rmSync(directory, { recursive: true, force: true });
+   }
