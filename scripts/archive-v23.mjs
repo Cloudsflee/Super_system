@@ -6,7 +6,7 @@ import process from 'node:process';
 
 const SOURCE_VOLUME = 'aiws-data-v23';
 const INSTANCE = 'aiws-v23';
-const EVIDENCE_IMAGE = 'node:24.14.0-alpine3.22';
+const EVIDENCE_IMAGE = process.env.AIWS_EVIDENCE_IMAGE || 'docker.m.daocloud.io/library/node:24.14.0-alpine3.22';
 const startedAt = new Date();
 const stamp = startedAt.toISOString().replace(/[-:.TZ]/g, '').slice(0, 14);
 const cloneVolume = `${SOURCE_VOLUME}-cold-${stamp}`;

@@ -1,4 +1,4 @@
-ARG NODE_IMAGE=node:24.14.0-alpine3.22
+ARG NODE_IMAGE=docker.m.daocloud.io/library/node:24.14.0-alpine3.22
 ARG AIWS_VERSION=3.0.0
 ARG AIWS_COMMIT=unknown
 ARG AIWS_TREE=unknown
