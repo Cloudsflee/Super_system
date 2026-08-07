@@ -41,7 +41,7 @@ test('production App image has no Docker CLI or host socket', () => {
     cwd: root,
     encoding: 'utf8',
     windowsHide: true,
-    timeout: 180_000
+    timeout: 600_000
   });
   try {
     assert.equal(build.status, 0, build.stderr || build.stdout);
@@ -50,6 +50,11 @@ test('production App image has no Docker CLI or host socket', () => {
       'if command -v docker >/dev/null 2>&1; then exit 42; fi; if [ -e /var/run/docker.sock ]; then exit 43; fi'
     ], { cwd: root, encoding: 'utf8', windowsHide: true, timeout: 30_000 });
     assert.equal(probe.status, 0, probe.stderr || probe.stdout);
+    const runtime = spawnSync('docker', [
+      'run', '--rm', '--entrypoint', 'node', tag, '-e',
+      "Promise.all([import('node-pty'), import('ws')]).then(() => process.exit(0)).catch(() => process.exit(44))"
+    ], { cwd: root, encoding: 'utf8', windowsHide: true, timeout: 30_000 });
+    assert.equal(runtime.status, 0, runtime.stderr || runtime.stdout);
     const inspect = spawnSync('docker', ['image', 'inspect', tag, '--format', '{{index .Config.Labels "aiws.component"}}'], { cwd: root, encoding: 'utf8', windowsHide: true });
     assert.equal(inspect.status, 0, inspect.stderr || inspect.stdout);
     assert.equal(inspect.stdout.trim(), 'app');

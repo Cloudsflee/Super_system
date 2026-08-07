@@ -127,6 +127,21 @@ try {
   await page.getByRole('button', { name: 'Approve', exact: true }).click();
   await expect(page.getByRole('status')).toHaveText('Approval approved');
 
+  await page.goto(`${base}/#/terminals`, { waitUntil: 'networkidle' });
+  await expect(page.getByRole('heading', { name: 'Terminal', exact: true })).toBeVisible();
+  await page.getByRole('button', { name: 'Request terminal access', exact: true }).click();
+  await expect(page.getByRole('status')).toHaveText('Terminal access requested');
+  await page.getByRole('button', { name: 'Approve', exact: true }).click();
+  await expect(page.getByRole('status')).toHaveText('Terminal approval approved');
+  await page.getByRole('button', { name: 'Open terminal', exact: true }).click();
+  await expect(page.getByRole('status')).toHaveText('Terminal opened');
+  await expect(page.getByRole('log', { name: 'Terminal output' })).toBeVisible();
+  await page.getByPlaceholder('Run a command').fill('echo AIWS_E2E_TERMINAL');
+  await page.getByRole('button', { name: 'Send', exact: true }).click();
+  await expect(page.getByRole('log', { name: 'Terminal output' })).toContainText('AIWS_E2E_TERMINAL', { timeout: 10_000 });
+  await page.getByRole('button', { name: 'Stop terminal', exact: true }).click();
+  await expect(page.getByText(/stopped|exited/, { exact: false }).first()).toBeVisible({ timeout: 10_000 });
+
   await page.goto(`${base}/#/assets`, { waitUntil: 'networkidle' });
   await expect(page.getByRole('heading', { name: 'Assets' })).toBeVisible();
   await page.locator('input[type="file"]').setInputFiles({ name: 'browser-evidence.json', mimeType: 'application/json', buffer: Buffer.from('{"browser":true}') });
@@ -156,6 +171,11 @@ try {
     await expect(page.getByText('delivery.publish', { exact: true })).toBeVisible();
     await checkNoOverlap(page, `${name}-approvals`);
     await page.screenshot({ path: path.join(reportDir, `${name}-approvals.png`), fullPage: true });
+    await page.goto(`${base}/#/terminals`, { waitUntil: 'networkidle' });
+    await expect(page.getByRole('heading', { name: 'Terminal', exact: true })).toBeVisible();
+    await expect(page.getByText(/stopped|exited/, { exact: false }).first()).toBeVisible();
+    await checkNoOverlap(page, `${name}-terminals`);
+    await page.screenshot({ path: path.join(reportDir, `${name}-terminals.png`), fullPage: true });
   }
   if (pageErrors.length) throw new Error(`browser page errors: ${pageErrors.map((error) => error.message).join('; ')}`);
   if (consoleErrors.length) throw new Error(`browser console errors: ${consoleErrors.map((message) => message.text()).join('; ')}`);

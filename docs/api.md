@@ -46,6 +46,12 @@ Base URL: `http://127.0.0.1:4317/api/v1`
 - `GET /approvals?project_id=...`, `POST /projects/{projectId}/approvals`, `POST /approvals/{approvalId}/decision`
 - `GET /user-inputs?execution_id=...`, `POST /executions/{executionId}/user-inputs`, `POST /user-inputs/{inputId}/{answer|cancel}`
 - `GET /ui-action-intents?project_id=...`, `POST /projects/{projectId}/ui-action-intents`, `POST /ui-action-intents/{intentId}/resolve`
+- `GET /terminals/capabilities`
+- `GET/POST /terminals?project_id=...` (POST requires an approved `terminal.open` runtime approval and accepts `runtime`, `cwd`, `cols`, and `rows`)
+- `GET /terminals/{terminalId}`
+- `GET /terminals/{terminalId}/events?after=...` (cursor replay; `Accept: text/event-stream` returns one SSE replay)
+- `POST /terminals/{terminalId}/{input|resize|signal|stop}`
+- `GET /terminals/{terminalId}/ws?after=...` (local WebSocket frames: `input`, `resize`, `signal`, `stop`, `ping`; output frames contain a cursor and replay flag)
 - `GET/POST /projects/{projectId}/quality-reviews`
 - `GET /projects/{projectId}/diff`
 - `POST /integrations/codex/probe` (requires `Idempotency-Key`; returns only provider, model, status, timestamp, and fixed error code; `{ "force": true }` bypasses the 15-minute cache)

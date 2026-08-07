@@ -143,6 +143,55 @@ export interface AuditEvent {
   created_at: string;
 }
 
+export type TerminalRuntime = 'linux_native' | 'windows_native';
+export type TerminalStatus = 'ready' | 'running' | 'exited' | 'failed' | 'stopped' | 'orphaned';
+
+export interface TerminalCapabilities {
+  available: boolean;
+  transport: string;
+  protocols: string[];
+  default_runtime: TerminalRuntime;
+  max_preview_chars: number;
+  linux_native: { available: boolean; runtime: TerminalRuntime; engine: string; reason?: string | null };
+  windows_native: { available: boolean; runtime: TerminalRuntime; engine: string; git_bundle?: boolean; reason?: string | null };
+}
+
+export interface TerminalSession {
+  id: string;
+  project_id: string;
+  assist_session_id: string | null;
+  approval_id: string;
+  runtime: TerminalRuntime;
+  cwd: string;
+  status: TerminalStatus;
+  cols: number;
+  rows: number;
+  output_preview: string;
+  output_bytes: number;
+  output_sha256: string;
+  output_truncated: boolean;
+  artifact_asset_id: string | null;
+  exit_code: number | null;
+  error_code: string | null;
+  revision: number;
+  latest_cursor: number;
+  created_at: string;
+  updated_at: string;
+  started_at: string | null;
+  completed_at: string | null;
+}
+
+export interface TerminalApproval {
+  id: string;
+  project_id: string;
+  action: string;
+  request: { runtime?: TerminalRuntime; cwd?: string; cols?: number; rows?: number };
+  decision: 'pending' | 'approved' | 'rejected' | 'expired';
+  expires_at: string;
+  created_at: string;
+  decided_at: string | null;
+}
+
 export interface ApiErrorBody {
   error: { code: string; message: string; retryable: boolean; request_id: string; details: Record<string, unknown> };
 }

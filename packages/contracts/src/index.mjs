@@ -13,6 +13,10 @@ export const EXECUTION_STATUSES = Object.freeze([
 
 export const MODEL_SUGGESTION_STATUSES = Object.freeze(['available', 'unavailable', 'invalid']);
 
+export const TERMINAL_STATUSES = Object.freeze([
+  'ready', 'running', 'exited', 'failed', 'stopped', 'orphaned'
+]);
+
 export const SSE_FIELDS = Object.freeze([
   'cursor', 'type', 'execution_id', 'task_id', 'data', 'created_at'
 ]);
@@ -32,6 +36,7 @@ export const COMMAND_NAMES = Object.freeze([
   , 'assist_session.create', 'assist_turn.create', 'assist_session.transition', 'attachment.create'
   , 'context.rebuild', 'context.selection.create'
   , 'quality_review.create'
+  , 'terminal.create', 'terminal.input', 'terminal.resize', 'terminal.signal', 'terminal.stop'
 ]);
 
 export function errorEnvelope({ code, message, retryable = false, requestId, details = {} }) {

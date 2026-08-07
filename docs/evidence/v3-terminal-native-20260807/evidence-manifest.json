@@ -1,0 +1,215 @@
+{
+  "schema_version": "aiws.v3.recovery_evidence_manifest.v1",
+  "batch": "v3-terminal-native-20260807",
+  "branch": "recovery/v3-feature-restore",
+  "baseline_commit": "25f6823b066633b31e7db009ea23da81f68d5ba7",
+  "implementation_commit": null,
+  "created_at": "2026-08-07T14:33:44.878Z",
+  "files": [
+    {
+      "path": "Dockerfile",
+      "baseline_sha256": "b00d93fbfbccf88719030ce8edd6bdc7fa61868d9aaf27653fc5e9a8450a28e7",
+      "modified_sha256": "4dac9f79dc7fa93ad809f3dac99cfa204c54290681990fc0fd83c45a9ff3399f",
+      "baseline_present": true
+    },
+    {
+      "path": "apps/api/server.mjs",
+      "baseline_sha256": "324d934b0f54211765ad788fcb9d09a4a0d1e0518963c2da940167f6533d44ef",
+      "modified_sha256": "8f57be9b64fb5dbfd3ea7c6d2772c9322930b7519e2e373984cd5fa30a937cb8",
+      "baseline_present": true
+    },
+    {
+      "path": "apps/api/src/command-registry.mjs",
+      "baseline_sha256": "060fac7291706a3573d3542557f51ad12644ea9d21ac289e113bf8f09972221d",
+      "modified_sha256": "28beddca103cc414aae300f984beef55e4bc8664ee94ba18f87ee7e2d30f6cef",
+      "baseline_present": true
+    },
+    {
+      "path": "apps/api/src/domain.mjs",
+      "baseline_sha256": "350e6a1a82d4af5960f42b863927382752c616343d51dca7d5e2d2b7b1dc77ea",
+      "modified_sha256": "e1498de5bb90b3ab24fad30c8a7f4ae8dc6554beeb2ead403cbc261ca88e37e4",
+      "baseline_present": true
+    },
+    {
+      "path": "apps/api/src/http.mjs",
+      "baseline_sha256": "5064e04b19e524ae657e2f7b45e1f74565055e78efa32d8271ebd1bfe47a6a94",
+      "modified_sha256": "523a6d9002d90c2f26f89ad91c5ebb998f8473f302c3bbf507021e82416e7cf8",
+      "baseline_present": true
+    },
+    {
+      "path": "apps/api/src/schema.mjs",
+      "baseline_sha256": "bd49d951fe0654c319dcf8540a3246999250e44430ace91de6ffdca58a746d37",
+      "modified_sha256": "e29329ed7f837aa1792b19f8f5171712daa1d269a908afef4fb272a577c467ba",
+      "baseline_present": true
+    },
+    {
+      "path": "apps/web/src/App.tsx",
+      "baseline_sha256": "e899cd2fb118fc52e962c3d0f847895ed2a25058466571e2d9471d5365956ae2",
+      "modified_sha256": "e052a681e393dc102b39cba4ac9d9711af0698ab2540ff4b74e7c1159ebf689e",
+      "baseline_present": true
+    },
+    {
+      "path": "apps/web/src/pages.tsx",
+      "baseline_sha256": "1e3356582a0ae329b7c3286a436f8b9183d4981fa63002db28b76609157178a9",
+      "modified_sha256": "1e873972f75c65e66b4ba04e5f83eaa9277ba023f2ce708e7d2f07bfaf8c9af1",
+      "baseline_present": true
+    },
+    {
+      "path": "apps/web/src/styles.css",
+      "baseline_sha256": "878f03444026a8236980a9fd438a51ad6afc1933cdcd0e04397cc14902e80c39",
+      "modified_sha256": "b71648fe2408426768f3eef2de1b8069b98449264aa9daaddf2e3fdd65a31868",
+      "baseline_present": true
+    },
+    {
+      "path": "apps/web/src/types.ts",
+      "baseline_sha256": "b456973b342eed8d624d98b42b6a4f262358e5483ffe9b21ffa860cfd4d7cab7",
+      "modified_sha256": "e1aa2b3b03aae1ae8f0ec55eb6f55a1b4101420a36fe08e7330fb9d8ab2acc30",
+      "baseline_present": true
+    },
+    {
+      "path": "docs/api.md",
+      "baseline_sha256": "e8e42680778890d74d0ef7c8190ac9c5de30d9d82e7cad0eea9b4311e3a76aa4",
+      "modified_sha256": "cec5ce6600c5cd737d7517f7c0f26ab78bc768e2dc7b56570f8622460330b932",
+      "baseline_present": true
+    },
+    {
+      "path": "docs/architecture.md",
+      "baseline_sha256": "1f524109e964e157cb47e8dff20660e292e43b2eb478dc263f9377b4d30a320b",
+      "modified_sha256": "2c40d571010f8fabf17ab239e27531d79af31ed97669576787b5a4b0b2310005",
+      "baseline_present": true
+    },
+    {
+      "path": "docs/开发计划v3功能恢复.md",
+      "baseline_sha256": "93c2284026aaecc0c385496d5cd7d3868ae70b44db37d86aa574f99e742a5e10",
+      "modified_sha256": "961b27754fb66b4b505c39bc2b08d9a41c54b1f24ede58a92f0903b935f1f69a",
+      "baseline_present": true
+    },
+    {
+      "path": "docs/测试计划v3功能恢复.md",
+      "baseline_sha256": "c41fae129286c8e25a9814dde702bc65b9658d303974a73579d0811902ea5edb",
+      "modified_sha256": "262dcb4398347cc4f24190c64f6bb90fe8127eec6199e61da6dd7d3d47b0c67e",
+      "baseline_present": true
+    },
+    {
+      "path": "feature-catalog.json",
+      "baseline_sha256": "d6fa3b90fe5d7530f656327f12460a1cb5818e7637108d834385d65d8ed9bac2",
+      "modified_sha256": "52d0e47d5951e2f48bce2080e47fc72019857dfd1a8100799a578b4a0530b3ea",
+      "baseline_present": true
+    },
+    {
+      "path": "package.json",
+      "baseline_sha256": "3e0b4feebec420afbe02033823b8aa87719a9f1d99f63565bc02d0ad19dbfcdd",
+      "modified_sha256": "a882c668abb63ac1b26ad072e51a52174281e764856b96d7190193aea2bde47e",
+      "baseline_present": true
+    },
+    {
+      "path": "packages/contracts/src/index.mjs",
+      "baseline_sha256": "7daf8bb46df64bd1fc944c832e6661afd9c39483211d63288c7a5cabdf02773e",
+      "modified_sha256": "9d8f86904f685bc174ed0451ebf32665998f09712d7199995a6b80ba2f166755",
+      "baseline_present": true
+    },
+    {
+      "path": "pnpm-lock.yaml",
+      "baseline_sha256": "d01855efaca6625559a63be0c7979acd0280c9dbcaad82ebe6c92dcba090ea9d",
+      "modified_sha256": "61cb45e21eed754c9ff8b448b060ca3ebe6225113425093c63df5446413ba694",
+      "baseline_present": true
+    },
+    {
+      "path": "scripts/e2e.mjs",
+      "baseline_sha256": "75de3c00b2d7dc5ceadab9e91d65108d5066af3ab831baef8f9ba795851ec386",
+      "modified_sha256": "053ca630406b5fdadf81f5ebab7cb696c70931288f1909b42af5e7f1a6868e4f",
+      "baseline_present": true
+    },
+    {
+      "path": "tests/release/release-gate.test.mjs",
+      "baseline_sha256": "77e6f66d859c1337da9d47b3530942cdba77bf0c89ef603df0926ad1fee36b8b",
+      "modified_sha256": "f3dc43a16778baf87649710e08af574dc563de7472d62eaff40b218b110e15d7",
+      "baseline_present": true
+    },
+    {
+      "path": "tests/security/boundary.test.mjs",
+      "baseline_sha256": "3bf7f700c126acf584f793710ff483b6aa4264b02c1a527bf4e6b7b56b4a666e",
+      "modified_sha256": "76aee877069e60cf47536b979a9af055aa5323689ddc8349f7b5b8453bc7f6ef",
+      "baseline_present": true
+    },
+    {
+      "path": "apps/api/src/terminal-bundle.mjs",
+      "baseline_sha256": null,
+      "modified_sha256": "960fd04b58088b6ccae166b1bafc1539d2f379d10a874d6857933fcbc591222e",
+      "baseline_present": false
+    },
+    {
+      "path": "apps/api/src/terminal-service.mjs",
+      "baseline_sha256": null,
+      "modified_sha256": "026d374151b211a6af5aad8753dd311057166fdfc2ac512ae7bd9e36a2624a68",
+      "baseline_present": false
+    },
+    {
+      "path": "apps/web/src/test/terminal.test.tsx",
+      "baseline_sha256": null,
+      "modified_sha256": "d87573da87761e67fd38edf74781752c9f4873c5b0943b225dd3173cacd9a2ee",
+      "baseline_present": false
+    },
+    {
+      "path": "tests/integration/terminal-flow.test.mjs",
+      "baseline_sha256": null,
+      "modified_sha256": "2da7de5b3de49f330852bde5e8b5b6c71d634212cfd6699a79bbe7acd272c4eb",
+      "baseline_present": false
+    },
+    {
+      "path": "tests/unit/terminal-bundle.test.mjs",
+      "baseline_sha256": null,
+      "modified_sha256": "6463c41cc350fc4919b40f36ba2ccdc7b32d9f8f4e9cec3a1e8ff50f19af6752",
+      "baseline_present": false
+    },
+    {
+      "path": "tests/unit/terminal.test.mjs",
+      "baseline_sha256": null,
+      "modified_sha256": "fdd74501fa03bfe1518caabf0c2193baffe7e9e5c61e8b64f98c916dba8756cb",
+      "baseline_present": false
+    }
+  ],
+  "diff": "docs/evidence/v3-terminal-native-20260807/working-tree.patch",
+  "tests": [
+    {
+      "label": "recovery-plan",
+      "command": "pnpm recovery:plan",
+      "log": "docs/evidence/v3-terminal-native-20260807/recovery-plan.log",
+      "exit_status": 0,
+      "output_tail": "    \"repository\",\n    \"runner\",\n    \"setup\",\n    \"workflow\"\n  ],\n  \"feature_count\": 26,\n  \"receipt\": \".ai-workspace/recovery/plan.json\"\n}"
+    },
+    {
+      "label": "recovery-catalog",
+      "command": "pnpm recovery:catalog",
+      "log": "docs/evidence/v3-terminal-native-20260807/recovery-catalog.log",
+      "exit_status": 0,
+      "output_tail": "\n{\n  \"feature_count\": 26,\n  \"implemented\": 26,\n  \"planned\": 0,\n  \"unique_ids\": 26,\n  \"receipt\": \".ai-workspace/recovery/catalog.json\"\n}"
+    },
+    {
+      "label": "recovery-coverage",
+      "command": "pnpm recovery:coverage",
+      "log": "docs/evidence/v3-terminal-native-20260807/recovery-coverage.log",
+      "exit_status": 0,
+      "output_tail": "    \"T4\": 5,\n    \"T5\": 5,\n    \"T6\": 8,\n    \"T7\": 2,\n    \"T8\": 5\n  },\n  \"receipt\": \".ai-workspace/recovery/coverage.json\"\n}"
+    },
+    {
+      "label": "recovery-impact",
+      "command": "pnpm recovery:impact --audit",
+      "log": "docs/evidence/v3-terminal-native-20260807/recovery-impact.log",
+      "exit_status": 0,
+      "output_tail": "    \"tests/unit/path-policy.test.mjs\",\n    \"tests/unit/recovery-governance.test.mjs\",\n    \"tests/unit/terminal-bundle.test.mjs\",\n    \"tests/unit/terminal.test.mjs\",\n    \"tests/unit/workflow.test.mjs\"\n  ],\n  \"receipt\": \".ai-workspace/recovery/impact.json\"\n}"
+    },
+    {
+      "label": "verify",
+      "command": "pnpm verify",
+      "log": "docs/evidence/v3-terminal-native-20260807/verify.log",
+      "exit_status": 0,
+      "output_tail": "(node:11648) [DEP0190] DeprecationWarning: Passing args to a child process with shell option true can lead to security vulnerabilities, as the arguments are not escaped, only concatenated.\n(Use `node --trace-deprecation ...` to show where the warning was created)\n(node:4532) [DEP0190] DeprecationWarning: Passing args to a child process with shell option true can lead to security vulnerabilities, as the arguments are not escaped, only concatenated.\n(Use `node --trace-deprecation ...` to show where the warning was created)\n(node:4532) ExperimentalWarning: SQLite is an experimental feature and might change at any time\n(Use `node --trace-warnings ...` to show where the warning was created)\n(node:19232) [DEP0190] DeprecationWarning: Passing args to a child process with shell option true can lead to security vulnerabilities, as the arguments are not escaped, only concatenated.\n(Use `node --trace-deprecation ...` to show where the warning was created)"
+    }
+  ],
+  "rollback": {
+    "command": "git revert --no-edit <implementation_commit>",
+    "script": "docs/evidence/v3-terminal-native-20260807/rollback.ps1",
+    "note": "Run from the recovery branch after replacing <implementation_commit> with the recorded implementation commit."
+  }
+}

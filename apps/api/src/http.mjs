@@ -185,6 +185,18 @@ export function createHttpHandler({ domain, registry, db, config, performancePro
         else if (req.method === 'POST' && parts[2] === 'grants' && parts[4] === 'revoke') ({ status, body: result } = await command('mcp_scope.revoke', { ...body, grant_id: parts[3] }));
         else throw new AppError('not_found', 'route not found');
       }
+      else if (parts[0] === 'terminals') {
+        if (req.method === 'GET' && parts.length === 1) result = await domain.listTerminalSessions(parsed.searchParams.get('project_id') || null);
+        else if (req.method === 'POST' && parts.length === 1) ({ status, body: result } = await command('terminal.create'));
+        else if (req.method === 'GET' && parts[1] === 'capabilities' && parts.length === 2) result = domain.terminalCapabilities();
+        else if (req.method === 'GET' && parts.length === 2) result = await domain.getTerminalSession(parts[1]);
+        else if (req.method === 'GET' && parts[2] === 'events') {
+          if (String(req.headers.accept || '').includes('text/event-stream')) return streamTerminalEvents(req, res, domain, parts[1], parsed.searchParams.get('after'));
+          result = await domain.terminalEvents(parts[1], parsed.searchParams.get('after'));
+        }
+        else if (req.method === 'POST' && ['input', 'resize', 'signal', 'stop'].includes(parts[2])) ({ status, body: result } = await command(`terminal.${parts[2]}`, { ...body, terminal_id: parts[1] }));
+        else throw new AppError('not_found', 'route not found');
+      }
       else if (parts[0] === 'credentials') {
         if (req.method === 'GET' && parts.length === 1) result = await domain.listCredentials();
         else if (req.method === 'POST' && parts.length === 1) ({ status, body: result } = await command('credential.create'));
@@ -329,6 +341,14 @@ async function streamEvents(req, res, domain, executionId) {
 async function streamAssistEvents(req, res, domain, sessionId) {
   const initial = Number(req.headers['last-event-id'] || 0);
   const events = await domain.assistEvents(sessionId, initial);
+  res.writeHead(200, { 'content-type': 'text/event-stream; charset=utf-8', 'cache-control': 'no-cache', connection: 'close' });
+  for (const event of events) res.write(`id: ${event.cursor}\nevent: ${event.type}\ndata: ${JSON.stringify(event)}\n\n`);
+  res.end();
+}
+
+async function streamTerminalEvents(req, res, domain, sessionId, queryCursor = null) {
+  const initial = Number(req.headers['last-event-id'] || queryCursor || 0);
+  const events = await domain.terminalEvents(sessionId, initial);
   res.writeHead(200, { 'content-type': 'text/event-stream; charset=utf-8', 'cache-control': 'no-cache', connection: 'close' });
   for (const event of events) res.write(`id: ${event.cursor}\nevent: ${event.type}\ndata: ${JSON.stringify(event)}\n\n`);
   res.end();

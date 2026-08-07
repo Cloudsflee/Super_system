@@ -50,12 +50,14 @@ export async function start(options = {}) {
       response.end(JSON.stringify({ error: { code: 'internal_error', message: error.message, retryable: false } }));
     });
   });
+  app.domain.attachTerminalTransport(server);
   await new Promise((resolve) => server.listen(app.config.port, app.config.host, resolve));
   const address = server.address();
   process.stdout.write(`AIWS 3.0.0 listening on http://${address.address}:${address.port}\n`);
   const close = async () => {
-    await new Promise((resolve) => server.close(resolve));
+    const serverClosed = new Promise((resolve) => server.close(resolve));
     await app.close();
+    await serverClosed;
   };
   return { ...app, server, close };
 }

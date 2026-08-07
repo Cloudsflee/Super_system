@@ -15,7 +15,9 @@ COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 COPY apps/web/package.json apps/web/package.json
 COPY apps/runner-broker/package.json apps/runner-broker/package.json
 COPY packages/contracts/package.json packages/contracts/package.json
-RUN corepack pnpm install --frozen-lockfile
+RUN corepack pnpm install --frozen-lockfile \
+      --registry=https://registry.npmmirror.com \
+      --fetch-timeout=300000 --fetch-retries=1
 
 FROM dependencies AS build
 COPY . .
@@ -41,6 +43,7 @@ RUN apk add --no-cache ca-certificates git || (sed -i "s#https://dl-cdn.alpineli
 WORKDIR /app
 ENV NODE_ENV=production AIWS_BIND_HOST=0.0.0.0 PORT=4317 AIWS_HOME=/var/lib/aiws AIWS_BROKER_HMAC_SECRET_FILE=/run/secrets/broker_hmac
 COPY package.json ./package.json
+COPY --from=dependencies /app/node_modules ./node_modules
 COPY apps/api ./apps/api
 COPY packages/contracts ./packages/contracts
 COPY sbom.spdx.json ./sbom.spdx.json

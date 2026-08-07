@@ -806,6 +806,39 @@ CREATE TABLE IF NOT EXISTS quality_review_events (
   created_at TEXT NOT NULL
 ) STRICT;
 
+CREATE TABLE IF NOT EXISTS terminal_sessions (
+  id TEXT PRIMARY KEY,
+  project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE RESTRICT,
+  assist_session_id TEXT REFERENCES assist_sessions(id) ON DELETE RESTRICT,
+  approval_id TEXT NOT NULL UNIQUE REFERENCES runtime_approvals(id) ON DELETE RESTRICT,
+  runtime TEXT NOT NULL CHECK(runtime IN ('linux_native','windows_native')),
+  cwd TEXT NOT NULL DEFAULT '',
+  status TEXT NOT NULL DEFAULT 'ready' CHECK(status IN ('ready','running','exited','failed','stopped','orphaned')),
+  cols INTEGER NOT NULL DEFAULT 120 CHECK(cols BETWEEN 20 AND 400),
+  rows INTEGER NOT NULL DEFAULT 32 CHECK(rows BETWEEN 5 AND 200),
+  pid INTEGER,
+  output_preview TEXT NOT NULL DEFAULT '',
+  output_bytes INTEGER NOT NULL DEFAULT 0 CHECK(output_bytes >= 0),
+  output_sha256 TEXT NOT NULL DEFAULT '' CHECK(output_sha256 = '' OR length(output_sha256) = 64),
+  output_truncated INTEGER NOT NULL DEFAULT 0 CHECK(output_truncated IN (0,1)),
+  artifact_asset_id TEXT REFERENCES asset_versions(id) ON DELETE RESTRICT,
+  exit_code INTEGER,
+  error_code TEXT NOT NULL DEFAULT '',
+  revision INTEGER NOT NULL DEFAULT 1 CHECK(revision > 0),
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  started_at TEXT,
+  completed_at TEXT
+) STRICT;
+
+CREATE TABLE IF NOT EXISTS terminal_events (
+  cursor INTEGER PRIMARY KEY AUTOINCREMENT,
+  session_id TEXT NOT NULL REFERENCES terminal_sessions(id) ON DELETE RESTRICT,
+  type TEXT NOT NULL,
+  data_json TEXT NOT NULL DEFAULT '{}' CHECK(json_valid(data_json)),
+  created_at TEXT NOT NULL
+) STRICT;
+
 CREATE INDEX IF NOT EXISTS idx_briefs_project ON brief_revisions(project_id, revision DESC);
 CREATE INDEX IF NOT EXISTS idx_workflows_project ON workflow_revisions(project_id, revision DESC);
 CREATE INDEX IF NOT EXISTS idx_sources_project ON context_sources(project_id, created_at DESC);
@@ -816,6 +849,9 @@ CREATE INDEX IF NOT EXISTS idx_events_execution ON events(execution_id, cursor);
 CREATE INDEX IF NOT EXISTS idx_audit_created ON audit_events(created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_evidence_target ON evidence_links(target_type, target_id, created_at);
 CREATE INDEX IF NOT EXISTS idx_worktrees_project ON repository_worktrees(project_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_terminal_project ON terminal_sessions(project_id, updated_at DESC);
+CREATE INDEX IF NOT EXISTS idx_terminal_events_session ON terminal_events(session_id, cursor);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_terminal_active_project ON terminal_sessions(project_id) WHERE status IN ('ready','running');
 
 CREATE TRIGGER IF NOT EXISTS immutable_brief_revisions_update BEFORE UPDATE ON brief_revisions BEGIN SELECT RAISE(ABORT, 'immutable_record'); END;
 CREATE TRIGGER IF NOT EXISTS immutable_brief_revisions_delete BEFORE DELETE ON brief_revisions BEGIN SELECT RAISE(ABORT, 'immutable_record'); END;

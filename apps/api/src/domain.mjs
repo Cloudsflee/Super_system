@@ -10,6 +10,7 @@ import { removeExecutionInputs, stageExecutionInputs } from './input-staging.mjs
 import { EvidenceService } from './evidence-service.mjs';
 import { CODEX_ERROR_CODES, IntegrationProbeService } from './integration-probes.mjs';
 import { CredentialVault } from './credential-vault.mjs';
+import { TerminalService } from './terminal-service.mjs';
 
 const TERMINAL_JOB_STATUSES = new Set(['completed', 'failed', 'cancelled', 'unknown']);
 const RUNNER_UID = 10001;
@@ -268,7 +269,7 @@ export function validateWorkflowTasks(input) {
 }
 
 export class Domain {
-  constructor({ db, config, broker, github = null, evidence = null, integrationProbes = null, emit = () => undefined }) {
+  constructor({ db, config, broker, github = null, evidence = null, integrationProbes = null, terminalService = null, emit = () => undefined }) {
     this.db = db;
     this.config = config;
     this.broker = broker;
@@ -289,6 +290,13 @@ export class Domain {
       sanitizeRunnerResult: safeRunnerResult
     });
     this.integrationProbes = integrationProbes || new IntegrationProbeService({ config, broker, github });
+    this.terminals = terminalService || new TerminalService({
+      db,
+      config,
+      resolveWorkspace: (projectId) => this.projectWorkspace(projectId),
+      secrets: () => this.activeCredentialSecrets(),
+      captureArtifact: (projectId, sessionId, content) => this.captureTerminalArtifact(projectId, sessionId, content)
+    });
   }
 
   async listProjects() {
@@ -1010,6 +1018,7 @@ export class Domain {
     const batch = await this.db.get('SELECT * FROM assist_change_batches WHERE id=?', [batchId]);
     if (!batch) throw new AppError('not_found', 'change batch not found');
     const session = await this.db.get('SELECT project_id FROM assist_sessions WHERE id=?', [batch.session_id]);
+    assert(!(await this.terminals.isProjectLocked(session.project_id)), 'terminal_write_locked', 'an active terminal owns the project write lock', { status: 409 });
     const repository = await this.db.get('SELECT local_path FROM repository_bindings WHERE project_id=?', [session.project_id]);
     return this.withRepositoryLock(repository?.local_path || session.project_id, () => this.applyChangeBatchLocked(batchId, input, ctx));
   }
@@ -1064,6 +1073,7 @@ export class Domain {
     const batch = await this.db.get('SELECT * FROM assist_change_batches WHERE id=?', [batchId]);
     if (!batch) throw new AppError('not_found', 'change batch not found');
     const session = await this.db.get('SELECT project_id FROM assist_sessions WHERE id=?', [batch.session_id]);
+    assert(!(await this.terminals.isProjectLocked(session.project_id)), 'terminal_write_locked', 'an active terminal owns the project write lock', { status: 409 });
     const repository = await this.db.get('SELECT local_path FROM repository_bindings WHERE project_id=?', [session.project_id]);
     return this.withRepositoryLock(repository?.local_path || session.project_id, () => this.rollbackChangeBatchLocked(batchId, input, ctx));
   }
@@ -1091,6 +1101,58 @@ export class Domain {
       auditStatement('assist_change_batch.rolled_back', 'assist_change_batch', batchId, { project_id: session.project_id, force }, ctx.actor)
     ]);
     return this.getChangeBatch(batchId);
+  }
+
+  terminalCapabilities() {
+    return this.terminals.capabilities();
+  }
+
+  listTerminalSessions(projectId = null) {
+    return this.terminals.list(projectId);
+  }
+
+  getTerminalSession(sessionId) {
+    return this.terminals.get(sessionId);
+  }
+
+  createTerminalSession(input, ctx = {}) {
+    return this.terminals.create(String(input?.project_id || ''), input, ctx);
+  }
+
+  terminalEvents(sessionId, cursor = 0) {
+    return this.terminals.events(sessionId, cursor);
+  }
+
+  terminalAction(sessionId, input, ctx = {}) {
+    return this.terminals.action(sessionId, String(input?.action || ''), input, ctx);
+  }
+
+  attachTerminalTransport(server) {
+    return this.terminals.attach(server);
+  }
+
+  async activeCredentialSecrets() {
+    const values = [this.config.codexCredential?.auth, this.config.githubCredential?.token].filter(Boolean);
+    const credentials = await this.db.query("SELECT id FROM credential_refs WHERE id LIKE 'cred_vault_%' AND expires_at IS NULL");
+    for (const credential of credentials) {
+      try { values.push(this.vault.get(credential.id)); } catch { /* Missing or revoked vault entries are ignored. */ }
+    }
+    return values;
+  }
+
+  async captureTerminalArtifact(projectId, sessionId, content) {
+    const asset = await this.prepareAsset(projectId, {
+      name: `terminal/${sessionId}.log`,
+      media_type: 'text/plain',
+      content: Buffer.isBuffer(content) ? content : Buffer.from(content || '')
+    });
+    try {
+      await this.db.transaction(this.assetInsertStatement(asset, 'system'));
+      return this.db.get('SELECT * FROM asset_versions WHERE id=?', [asset.id]);
+    } catch (error) {
+      await this.cleanupPreparedAssets([asset]);
+      throw error;
+    }
   }
 
   async listRuntimeApprovals(projectId = null) {
@@ -2095,6 +2157,7 @@ export class Domain {
     if (this.config.githubCredential) {
       await this.db.run('INSERT OR IGNORE INTO credential_refs(id,provider,label,secret_ref,created_at) VALUES(?,?,?,?,?)', [this.config.githubCredential.ref, 'github', 'default', 'docker_secret:github_token', now()]);
     }
+    await this.terminals.recover();
     const pendingProjections = await this.db.query("SELECT id,project_id FROM context_projection_jobs WHERE status IN ('pending','running') ORDER BY created_at,id");
     for (const job of pendingProjections) {
       await this.withRepositoryLock(`context:${job.project_id}`, () => this.runContextProjection(job.id, job.project_id, { actor: 'system-recovery' })).catch(() => undefined);
@@ -2407,6 +2470,7 @@ export class Domain {
 
   async shutdown() {
     this.stopping = true;
+    await this.terminals.shutdown();
     const running = await this.db.query("SELECT id,broker_job_id FROM task_attempts WHERE status IN ('ready','running')").catch(() => []);
     await Promise.all(running.map(async (attempt) => {
       if (attempt.broker_job_id) await this.broker.cancel(attempt.broker_job_id).catch(() => undefined);

@@ -1,13 +1,15 @@
-import { useCallback, useEffect, useMemo, useState, type FormEvent, type ReactNode } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent, type KeyboardEvent, type ReactNode } from 'react';
 import {
   Activity, ArrowRight, Check, CircleAlert, ClipboardCheck, Code2, Download, ExternalLink, FilePlus2,
   GitBranch, GitMerge, GitPullRequest, Layers3, LoaderCircle, MessageSquare, PackageCheck, Play, Plus, RefreshCw,
-  Save, Search, Send, ShieldCheck, Square, Trash2, Upload, WandSparkles
+  Save, Search, Send, ShieldCheck, Square, Terminal as TerminalIcon, Trash2, Upload, WandSparkles, Wifi, WifiOff,
+  Maximize2, RotateCcw, Keyboard
 } from 'lucide-react';
 import { api, formatBytes, formatTime, mutate, shortHash } from './api';
 import type { PageKey } from './App';
 import type {
-  AssetVersion, AuditEvent, ContextPack, ContextSource, Delivery, Execution, Project, Review, WorkflowTask
+  AssetVersion, AuditEvent, ContextPack, ContextSource, Delivery, Execution, Project, Review, TerminalApproval,
+  TerminalCapabilities, TerminalRuntime, TerminalSession, WorkflowTask
 } from './types';
 
 export interface WorkspacePageProps {
@@ -589,6 +591,261 @@ export function ExecutionPage({ projectId, navigate, notify }: WorkspacePageProp
           </div>
         </section>}
       </div>}
+    </div>
+  );
+}
+
+type TerminalSocketMessage = {
+  type: string;
+  data?: string;
+  cursor?: number | null;
+  replay?: boolean;
+  session?: TerminalSession;
+  event?: { cursor?: number; type?: string; data?: Record<string, unknown>; created_at?: string };
+  action?: string;
+  error?: { code?: string; message?: string };
+};
+
+function terminalStatusIsActive(status?: string) {
+  return status === 'ready' || status === 'running';
+}
+
+function clampTerminalDimension(value: number, minimum: number, maximum: number) {
+  return Math.max(minimum, Math.min(maximum, Math.trunc(value)));
+}
+
+export function TerminalPage({ projectId, navigate, notify }: WorkspacePageProps) {
+  const [capabilities, setCapabilities] = useState<TerminalCapabilities | null>(null);
+  const [sessions, setSessions] = useState<TerminalSession[]>([]);
+  const [selectedId, setSelectedId] = useState('');
+  const [selected, setSelected] = useState<TerminalSession | null>(null);
+  const [approvals, setApprovals] = useState<TerminalApproval[]>([]);
+  const [runtime, setRuntime] = useState<TerminalRuntime>('windows_native');
+  const [cwd, setCwd] = useState('');
+  const [command, setCommand] = useState('');
+  const [output, setOutput] = useState('');
+  const [connected, setConnected] = useState(false);
+  const [busy, setBusy] = useState('');
+  const [connectionNonce, setConnectionNonce] = useState(0);
+  const socketRef = useRef<WebSocket | null>(null);
+  const reconnectTimerRef = useRef<number | null>(null);
+  const reconnectAttemptRef = useRef(0);
+  const cursorRef = useRef(0);
+  const statusRef = useRef<string>('');
+  const closingRef = useRef(false);
+  const outputRef = useRef<HTMLPreElement | null>(null);
+  const terminalViewportRef = useRef<HTMLPreElement | null>(null);
+  const lastSocketErrorRef = useRef('');
+
+  const load = useCallback(async () => {
+    if (!projectId) {
+      setCapabilities(null); setSessions([]); setApprovals([]); setSelected(null); setSelectedId('');
+      return;
+    }
+    const [caps, sessionRows, approvalRows] = await Promise.all([
+      api<TerminalCapabilities>('/api/v1/terminals/capabilities'),
+      api<TerminalSession[]>(`/api/v1/terminals?project_id=${encodeURIComponent(projectId)}`),
+      api<TerminalApproval[]>(`/api/v1/approvals?project_id=${encodeURIComponent(projectId)}`)
+    ]);
+    setCapabilities(caps);
+    setRuntime((current) => caps[current]?.available ? current : caps.default_runtime);
+    setSessions(sessionRows);
+    setApprovals(approvalRows.filter((item) => item.action === 'terminal.open'));
+    setSelectedId((current) => current && sessionRows.some((item) => item.id === current) ? current : sessionRows[0]?.id || '');
+  }, [projectId]);
+
+  const loadSelected = useCallback(async () => {
+    if (!selectedId) { setSelected(null); setOutput(''); cursorRef.current = 0; return; }
+    const session = await api<TerminalSession>(`/api/v1/terminals/${encodeURIComponent(selectedId)}`);
+    setSelected(session);
+    statusRef.current = session.status;
+    cursorRef.current = Math.max(cursorRef.current, Number(session.latest_cursor || 0));
+    setOutput((current) => current || session.output_preview || '');
+  }, [selectedId]);
+
+  useEffect(() => { void load().catch((error) => notify(error instanceof Error ? error.message : 'Terminal load failed', 'error')); }, [load, notify]);
+  useEffect(() => {
+    cursorRef.current = 0;
+    setOutput('');
+    setConnected(false);
+    void loadSelected().catch((error) => notify(error instanceof Error ? error.message : 'Terminal session failed', 'error'));
+  }, [loadSelected, notify]);
+  useEffect(() => {
+    if (!selected) return;
+    statusRef.current = selected.status;
+    setSessions((rows) => rows.map((row) => row.id === selected.id ? selected : row));
+  }, [selected]);
+  useEffect(() => {
+    const element = outputRef.current;
+    if (!element) return;
+    element.scrollTop = element.scrollHeight;
+  }, [output]);
+
+  useEffect(() => {
+    if (!selectedId) return undefined;
+    let disposed = false;
+    closingRef.current = false;
+    reconnectAttemptRef.current = 0;
+    const connect = () => {
+      if (disposed || !terminalStatusIsActive(statusRef.current || selected?.status)) return;
+      const protocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
+      const socket = new WebSocket(`${protocol}//${location.host}/api/v1/terminals/${encodeURIComponent(selectedId)}/ws?after=${cursorRef.current}`);
+      socketRef.current = socket;
+      socket.onopen = () => { reconnectAttemptRef.current = 0; lastSocketErrorRef.current = ''; setConnected(true); };
+      socket.onmessage = (event) => {
+        let message: TerminalSocketMessage;
+        try { message = JSON.parse(String(event.data)) as TerminalSocketMessage; } catch { return; }
+        if (message.type === 'output' && typeof message.data === 'string') {
+          if (Number.isInteger(message.cursor)) cursorRef.current = Math.max(cursorRef.current, Number(message.cursor));
+          setOutput((current) => `${current}${message.data}`.slice(-120_000));
+        } else if (message.type === 'status' && message.session) {
+          statusRef.current = message.session.status; setSelected(message.session);
+        } else if (message.type === 'exit' && message.session) {
+          statusRef.current = message.session.status; setSelected(message.session); setConnected(false);
+        } else if (message.type === 'event' && message.event?.cursor) {
+          cursorRef.current = Math.max(cursorRef.current, Number(message.event.cursor));
+        } else if (message.type === 'error' && message.error?.code && message.error.code !== lastSocketErrorRef.current) {
+          lastSocketErrorRef.current = message.error.code;
+          notify(message.error.message || message.error.code, 'error');
+        }
+      };
+      socket.onerror = () => setConnected(false);
+      socket.onclose = () => {
+        if (socketRef.current === socket) socketRef.current = null;
+        setConnected(false);
+        if (disposed || closingRef.current || !terminalStatusIsActive(statusRef.current || selected?.status)) return;
+        const delay = Math.min(5_000, 250 * (2 ** reconnectAttemptRef.current));
+        reconnectAttemptRef.current += 1;
+        reconnectTimerRef.current = window.setTimeout(connect, delay);
+      };
+    };
+    connect();
+    return () => {
+      disposed = true;
+      closingRef.current = true;
+      if (reconnectTimerRef.current != null) window.clearTimeout(reconnectTimerRef.current);
+      reconnectTimerRef.current = null;
+      socketRef.current?.close();
+      socketRef.current = null;
+      setConnected(false);
+    };
+  }, [connectionNonce, notify, selected?.status, selectedId]);
+
+  const sendFrame = useCallback(async (type: 'input' | 'resize' | 'signal' | 'stop', frame: Record<string, unknown> = {}) => {
+    if (!selectedId) return;
+    const socket = socketRef.current;
+    if (socket?.readyState === WebSocket.OPEN) {
+      socket.send(JSON.stringify({ type, ...frame }));
+      return;
+    }
+    const response = await mutate<TerminalSession>(`/api/v1/terminals/${encodeURIComponent(selectedId)}/${type}`, frame);
+    setSelected(response); statusRef.current = response.status;
+  }, [selectedId]);
+
+  const requestApproval = async () => {
+    if (!projectId) return;
+    setBusy('request');
+    try {
+      await mutate(`/api/v1/projects/${projectId}/approvals`, { action: 'terminal.open', request: { runtime, cwd, cols: 120, rows: 32 }, ttl_seconds: 3600 });
+      await load(); notify('Terminal access requested');
+    } catch (error) { notify(error instanceof Error ? error.message : 'Terminal approval failed', 'error'); }
+    finally { setBusy(''); }
+  };
+
+  const decideApproval = async (approval: TerminalApproval, decision: 'approved' | 'rejected') => {
+    setBusy(approval.id);
+    try { await mutate(`/api/v1/approvals/${approval.id}/decision`, { decision }); await load(); notify(`Terminal approval ${decision}`); }
+    catch (error) { notify(error instanceof Error ? error.message : 'Approval decision failed', 'error'); }
+    finally { setBusy(''); }
+  };
+
+  const openTerminal = async (approval: TerminalApproval) => {
+    setBusy(`open:${approval.id}`);
+    try {
+      const session = await mutate<TerminalSession>('/api/v1/terminals', { project_id: projectId, approval_id: approval.id, runtime: approval.request.runtime || runtime, cwd: approval.request.cwd || cwd, cols: 120, rows: 32 });
+      setSelectedId(session.id); setSelected(session); statusRef.current = session.status; cursorRef.current = 0; setOutput(''); await load(); notify('Terminal opened');
+    } catch (error) { notify(error instanceof Error ? error.message : 'Terminal open failed', 'error'); }
+    finally { setBusy(''); }
+  };
+
+  const submitCommand = async (event: FormEvent) => {
+    event.preventDefault();
+    const value = command.trim();
+    if (!value || !selected || !terminalStatusIsActive(selected.status)) return;
+    setCommand('');
+    try { await sendFrame('input', { data: `${value}\r` }); }
+    catch (error) { notify(error instanceof Error ? error.message : 'Terminal input failed', 'error'); }
+  };
+
+  const handleOutputKeyDown = (event: KeyboardEvent<HTMLPreElement>) => {
+    if (event.ctrlKey && event.key.toLowerCase() === 'c') {
+      event.preventDefault();
+      void sendFrame('signal', { signal: 'SIGINT' }).catch((error) => notify(error instanceof Error ? error.message : 'SIGINT failed', 'error'));
+    }
+  };
+
+  const resizeTerminal = useCallback(() => {
+    const element = terminalViewportRef.current;
+    if (!element || !selected || !terminalStatusIsActive(selected.status)) return;
+    const cols = clampTerminalDimension(element.clientWidth / 8.2, 20, 200);
+    const rows = clampTerminalDimension(Math.max(120, element.clientHeight) / 18, 5, 100);
+    if (cols === selected.cols && rows === selected.rows) return;
+    void sendFrame('resize', { cols, rows }).catch(() => undefined);
+  }, [selected, sendFrame]);
+
+  useEffect(() => {
+    const element = terminalViewportRef.current;
+    if (!element || typeof ResizeObserver === 'undefined') return undefined;
+    const observer = new ResizeObserver(resizeTerminal);
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, [resizeTerminal]);
+
+  if (!projectId) return <EmptyProject navigate={navigate} />;
+  const pendingApprovals = approvals.filter((item) => item.decision === 'pending');
+  const approvedApprovals = approvals.filter((item) => item.decision === 'approved');
+  const activeSession = sessions.find((item) => terminalStatusIsActive(item.status));
+  return (
+    <div className="page terminal-page">
+      <div className="page-heading">
+        <div><p className="eyebrow">Interactive workspace</p><h1>Terminal</h1></div>
+        <button className="icon-button" title="Refresh terminal state" aria-label="Refresh terminal state" onClick={() => void load()}><RefreshCw size={17} /></button>
+      </div>
+      <section className="health-band terminal-capabilities">
+        <div><span>Transport</span><strong className="mono">{capabilities?.transport || 'checking'}</strong></div>
+        <div><span>Host runtime</span><Status value={capabilities?.default_runtime || 'checking'} /></div>
+        <div><span>Linux native</span><Status value={capabilities?.linux_native?.available ? 'available' : 'unavailable'} /></div>
+        <div><span>Windows native</span><Status value={capabilities?.windows_native?.available ? 'available' : 'unavailable'} /></div>
+      </section>
+      <div className="terminal-layout">
+        <section className="panel terminal-session-panel">
+          <SectionTitle title="Sessions" meta={`${sessions.length} recorded`} />
+          <div className="terminal-session-list">
+            {sessions.map((session) => <button key={session.id} className={session.id === selectedId ? 'terminal-session-row selected' : 'terminal-session-row'} onClick={() => setSelectedId(session.id)}>
+              <span><strong>{session.runtime.replace('_', ' ')}</strong><small className="mono">{session.id.slice(-12)}</small></span><Status value={session.status} />
+            </button>)}
+            {!sessions.length && <div className="list-empty">No terminal sessions</div>}
+          </div>
+          {activeSession && <div className="terminal-lock-note"><TerminalIcon size={15} /><span>Project write lock held by <b className="mono">{activeSession.id.slice(-10)}</b></span></div>}
+        </section>
+        <section className="panel terminal-console-panel">
+          <SectionTitle title={selected ? `${selected.runtime.replace('_', ' ')} shell` : 'Open a managed shell'} meta={selected ? `${selected.cwd || '/'} · ${selected.cols}x${selected.rows}` : 'Approval is required before opening'} action={selected && <div className="terminal-toolbar-actions"><span className={connected ? 'terminal-connection connected' : 'terminal-connection'}>{connected ? <Wifi size={14} /> : <WifiOff size={14} />}{connected ? 'connected' : 'reconnecting'}</span><button className="icon-button" title="Reconnect terminal" aria-label="Reconnect terminal" onClick={() => setConnectionNonce((value) => value + 1)}><RotateCcw size={15} /></button><button className="icon-button" title="Send SIGINT" aria-label="Send SIGINT" disabled={!terminalStatusIsActive(selected.status)} onClick={() => void sendFrame('signal', { signal: 'SIGINT' })}><Keyboard size={15} /></button><button className="icon-button" title="Stop terminal" aria-label="Stop terminal" disabled={!terminalStatusIsActive(selected.status) || busy === 'stop'} onClick={() => { setBusy('stop'); void sendFrame('stop').then(() => load()).catch((error) => notify(error instanceof Error ? error.message : 'Terminal stop failed', 'error')).finally(() => setBusy('')); }}><Square size={15} /></button></div>} />
+          {!selected && <>
+            <div className="terminal-open-form">
+              <label><span>Runtime</span><select value={runtime} onChange={(event) => setRuntime(event.target.value as TerminalRuntime)}>{(Object.keys(capabilities || {}).filter((key) => key.endsWith('_native')) as TerminalRuntime[]).map((item) => <option key={item} value={item} disabled={!capabilities?.[item]?.available}>{item.replace('_', ' ')}</option>)}</select></label>
+              <label><span>Working directory</span><input className="mono" value={cwd} onChange={(event) => setCwd(event.target.value)} placeholder="project root" /></label>
+              <button className="button primary" disabled={!capabilities?.available || busy === 'request' || Boolean(activeSession)} onClick={() => void requestApproval()}>{busy === 'request' ? <LoaderCircle className="spin" size={16} /> : <ShieldCheck size={16} />}Request terminal access</button>
+            </div>
+            <div className="terminal-approval-list"><div className="terminal-subheading"><span>Access requests</span><small>{pendingApprovals.length} pending · {approvedApprovals.length} approved</small></div>{approvals.map((approval) => <div className="terminal-approval-row" key={approval.id}><div><strong>{approval.request.runtime || runtime}</strong><small className="mono">{approval.id.slice(-12)}</small></div><Status value={approval.decision} />{approval.decision === 'pending' && <span className="terminal-approval-actions"><button className="button" disabled={busy === approval.id} onClick={() => void decideApproval(approval, 'rejected')}>Reject</button><button className="button primary" disabled={busy === approval.id} onClick={() => void decideApproval(approval, 'approved')}>Approve</button></span>}{approval.decision === 'approved' && <button className="button" disabled={busy === `open:${approval.id}` || Boolean(activeSession)} onClick={() => void openTerminal(approval)}>Open terminal</button>}</div>)}{!approvals.length && <div className="list-empty">Request an approval to begin</div>}</div>
+          </>}
+          {selected && <>
+            <pre className="terminal-output" ref={(element) => { outputRef.current = element; terminalViewportRef.current = element; }} tabIndex={0} role="log" aria-label="Terminal output" onKeyDown={handleOutputKeyDown}>{output || 'Waiting for shell output...'} </pre>
+            <form className="terminal-input-row" onSubmit={(event) => void submitCommand(event)}><label className="terminal-command-field"><span>Command</span><input value={command} onChange={(event) => setCommand(event.target.value)} placeholder="Run a command" autoComplete="off" disabled={!terminalStatusIsActive(selected.status)} /></label><button className="button primary" disabled={!command.trim() || !terminalStatusIsActive(selected.status)}><Send size={16} />Send</button></form>
+            <div className="terminal-meta-grid"><div><span>Output</span><strong>{formatBytes(selected.output_bytes)}</strong></div><div><span>SHA-256</span><strong className="mono">{shortHash(selected.output_sha256)}</strong></div><div><span>Cursor</span><strong>{Math.max(cursorRef.current, selected.latest_cursor)}</strong></div><div><span>Artifact</span>{selected.artifact_asset_id ? <a href={`/api/v1/assets/${selected.artifact_asset_id}/content`} className="icon-button" title="Download terminal artifact" aria-label="Download terminal artifact"><Download size={15} /></a> : <strong>pending</strong>}</div></div>
+          </>}
+        </section>
+      </div>
+      <section className="terminal-footnote"><Maximize2 size={14} /><span>Output is bounded, replayable from a cursor, and persisted as redacted evidence.</span></section>
     </div>
   );
 }
