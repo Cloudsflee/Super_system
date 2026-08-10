@@ -6,7 +6,7 @@ export default defineConfig({
   server: {
     proxy: {
       '/api': { target: 'http://127.0.0.1:4317', ws: true },
-      '/livez': { target: 'http://127.0.0.1:4317' },
+      '/health': { target: 'http://127.0.0.1:4317' },
       '/readyz': { target: 'http://127.0.0.1:4317' }
     }
   },

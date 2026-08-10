@@ -63,9 +63,14 @@ async function initializeGitRepository(directory) {
 test('public API completes the project-to-review delivery journey', async () => {
   const env = await fixture();
   try {
+    const health = await request(env.base, '/health');
+    assert.equal(health.response.status, 200);
+    assert.equal(health.json.status, 'alive');
+    assert.equal((await request(env.base, '/livez')).response.status, 404);
     const ready = await request(env.base, '/readyz');
     assert.equal(ready.response.status, 200);
     assert.equal(ready.json.status, 'ready');
+    assert.equal(ready.json.checks.sqlite.user_version, ready.json.checks.sqlite.migration_version);
     const performance = await request(env.base, '/api/v1/system/performance');
     assert.equal(performance.response.status, 200);
     assert.ok(performance.json.rss_bytes > 0);

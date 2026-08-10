@@ -327,7 +327,7 @@ export function createBroker(options = {}) {
     const parsed = new URL(req.url || '/', `http://${req.headers.host || '127.0.0.1'}`);
     const requestPath = parsed.pathname;
     try {
-      if (req.method === 'GET' && requestPath === '/livez') return send(res, 200, { status: 'alive' });
+      if (req.method === 'GET' && requestPath === '/health') return send(res, 200, { status: 'alive' });
       const parsedBody = req.method === 'POST' ? await readBody(req) : { raw: '', value: {} };
       replay.verify(req.headers, req.method || 'GET', requestPath, parsedBody.raw, config.secret);
       if (req.method === 'GET' && requestPath === '/internal/v1/probe') {

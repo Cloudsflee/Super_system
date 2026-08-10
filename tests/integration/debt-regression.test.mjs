@@ -353,7 +353,7 @@ test('broker HTTP routes enforce the fixed envelope and lifecycle states', async
     bundle: { objective: 'broker route', acceptance: [], input_assets: [], input_paths: [], output_paths: ['out.txt'], checks: ['node_test', 'git_diff_check'] }
   };
   try {
-    assert.equal((await call('GET', '/livez', undefined, false)).json.status, 'alive');
+    assert.equal((await call('GET', '/health', undefined, false)).json.status, 'alive');
     assert.equal((await call('GET', '/internal/v1/probe')).json.ready, true);
     const badProbe = await call('POST', '/internal/v1/integrations/codex/probe', { model: 'codex-mini-latest', credential: null });
     assert.equal(badProbe.response.status, 400);

@@ -1,0 +1,19 @@
+
+> ai-workspace-system@3.0.0 recovery:catalog E:\00_desktop\毕业设计
+> node scripts/recovery-governance.mjs catalog
+
+{
+  "feature_count": 27,
+  "statuses": {
+    "planned": 1,
+    "scaffolded": 23,
+    "implemented": 0,
+    "verified": 3,
+    "released": 0
+  },
+  "module_count": 18,
+  "owned_tables": 80,
+  "owned_commands": 59,
+  "unique_ids": 27,
+  "receipt": ".ai-workspace/recovery/catalog.json"
+}

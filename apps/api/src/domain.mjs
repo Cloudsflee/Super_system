@@ -11,6 +11,8 @@ import { EvidenceService } from './evidence-service.mjs';
 import { CODEX_ERROR_CODES, IntegrationProbeService } from './integration-probes.mjs';
 import { CredentialVault } from './credential-vault.mjs';
 import { TerminalService } from './terminal-service.mjs';
+import { prepareOutcomeEvaluations } from './modules/outcome/evaluation.mjs';
+import { qualityReviewMediaKind } from './modules/quality/media-contract.mjs';
 
 const TERMINAL_JOB_STATUSES = new Set(['completed', 'failed', 'cancelled', 'unknown']);
 const RUNNER_UID = 10001;
@@ -812,18 +814,10 @@ export class Domain {
     await this.requireProject(projectId);
     const brief = await this.db.get('SELECT revision,content_json,content_hash FROM brief_revisions WHERE project_id=? ORDER BY revision DESC LIMIT 1', [projectId]);
     assert(brief, 'invalid_input', 'a brief is required before workflow generation', { status: 422 });
-    const content = rowJson(brief, 'content_json', {});
-    const objective = String(content.objective || '').trim();
     const generationId = id('wgen');
-    const candidate = objective ? {
-      name: String(input?.name || 'Generated delivery workflow').slice(0, 160),
-      tasks: [
-        { id: 'analyze', title: 'Analyze brief and repository', level: 1, deps: [], mode: 'read', inputs: [], outputs: ['analysis.md'] },
-        { id: 'implement', title: 'Implement and verify change', level: 2, deps: ['analyze'], mode: 'write', inputs: ['analysis.md'], outputs: ['change.diff', 'test-report.json'] }
-      ]
-    } : {};
-    const critic = objective ? { status: 'passed', issues: [], brief_hash: brief.content_hash } : { status: 'rejected', issues: ['brief objective is empty'] };
-    const status = objective ? 'completed' : 'rejected';
+    const candidate = {};
+    const critic = { status: 'not_run', issues: ['workflow_generator_unavailable'], brief_hash: brief.content_hash };
+    const status = 'failed';
     await this.db.transaction([
       { sql: 'INSERT INTO workflow_generations(id,project_id,brief_revision,status,candidate_json,critic_json,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?)', params: [generationId, projectId, brief.revision, status, asJson(candidate), asJson(critic), now(), now()] },
       { sql: 'INSERT INTO workflow_generation_events(generation_id,type,data_json,created_at) VALUES(?,?,?,?)', params: [generationId, `workflow.generation.${status}`, asJson({ brief_revision: brief.revision, brief_hash: brief.content_hash }), now()] },
@@ -913,12 +907,12 @@ export class Domain {
     const turnNo = Number((await this.db.get('SELECT COALESCE(MAX(turn_no),0)+1 AS turn_no FROM assist_turns WHERE session_id=?', [sessionId])).turn_no);
     const turnId = id('atr');
     const operationId = id('aop');
-    const receipt = { operation_id: operationId, session_id: sessionId, turn_id: turnId, status: 'completed' };
+    const receipt = { operation_id: operationId, resource_id: turnId, session_id: sessionId, turn_id: turnId, status: 'failed', cursor: 0, error_code: 'assist_runtime_unavailable' };
     const timestamp = now();
     await this.db.transaction([
-      { sql: 'INSERT INTO assist_turns(id,session_id,turn_no,status,goal_json,plan_json,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?)', params: [turnId, sessionId, turnNo, 'completed', asJson(goal), asJson(plan), timestamp, timestamp] },
+      { sql: 'INSERT INTO assist_turns(id,session_id,turn_no,status,goal_json,plan_json,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?)', params: [turnId, sessionId, turnNo, 'failed', asJson(goal), asJson(plan), timestamp, timestamp] },
       { sql: 'INSERT INTO assist_messages(id,turn_id,role,content,sequence_no,created_at) VALUES(?,?,?,?,?,?)', params: [id('ams'), turnId, 'user', message, 1, timestamp] },
-      { sql: 'INSERT INTO assist_operations(id,session_id,kind,status,receipt_json,created_at,updated_at) VALUES(?,?,?,?,?,?,?)', params: [operationId, sessionId, 'turn', 'completed', asJson(receipt), timestamp, timestamp] },
+      { sql: 'INSERT INTO assist_operations(id,session_id,kind,status,receipt_json,created_at,updated_at) VALUES(?,?,?,?,?,?,?)', params: [operationId, sessionId, 'turn', 'failed', asJson(receipt), timestamp, timestamp] },
       { sql: 'INSERT INTO assist_events(session_id,turn_id,type,data_json,created_at) VALUES(?,?,?,?,?)', params: [sessionId, turnId, 'assist.turn.created', asJson({ turn_no: turnNo, operation_id: operationId }), timestamp] },
       ...(Object.keys(goal).length ? [{ sql: 'INSERT INTO assist_events(session_id,turn_id,type,data_json,created_at) VALUES(?,?,?,?,?)', params: [sessionId, turnId, 'assist.goal', asJson(goal), timestamp] }] : []),
       ...(plan.length ? [{ sql: 'INSERT INTO assist_events(session_id,turn_id,type,data_json,created_at) VALUES(?,?,?,?,?)', params: [sessionId, turnId, 'assist.plan', asJson({ steps: plan }), timestamp] }] : []),
@@ -1296,15 +1290,16 @@ export class Domain {
     return { execution_id: executionId, status: execution.status, completion_status: eligible ? 'completed' : execution.status === 'completed' ? 'incomplete' : execution.status, release_eligible: eligible, requirements: results };
   }
 
-  async evaluateOutcome(executionId, _input, ctx = {}) {
+  async evaluateOutcome(executionId, input, ctx = {}) {
     const execution = await this.db.get('SELECT id,project_id,workflow_revision,status FROM executions WHERE id=?', [executionId]);
     if (!execution) throw new AppError('not_found', 'execution not found');
     const requirements = await this.listOutcomeRequirements(execution.project_id, execution.workflow_revision);
     assert(requirements.length > 0, 'invalid_input', 'outcome requirements are not configured', { status: 422 });
+    const normalized = prepareOutcomeEvaluations(requirements, input, (await this.evidence.executionEvidence(executionId)).map((item) => item.asset_version_id));
     const timestamp = now();
     await this.db.transaction([
-      ...requirements.map((requirement) => ({ sql: 'INSERT INTO outcome_evaluations(id,execution_id,requirement_id,status,score,evidence_json,created_at) VALUES(?,?,?,?,?,?,?)', params: [id('oev'), executionId, requirement.id, execution.status === 'completed' ? 'passed' : 'failed', execution.status === 'completed' ? 100 : 0, '[]', timestamp] })),
-      auditStatement('outcome.evaluated', 'execution', executionId, { requirement_count: requirements.length, execution_status: execution.status }, ctx.actor)
+      ...normalized.map((item) => ({ sql: 'INSERT INTO outcome_evaluations(id,execution_id,requirement_id,status,score,evidence_json,created_at) VALUES(?,?,?,?,?,?,?)', params: [id('oev'), executionId, item.requirement.id, item.status, item.score, asJson(item.evidence), timestamp] })),
+      auditStatement('outcome.evaluated', 'execution', executionId, { requirement_count: normalized.length, execution_status: execution.status, evidence_count: new Set(normalized.flatMap((item) => item.evidence)).size }, ctx.actor)
     ]);
     return this.outcomeView(executionId);
   }
@@ -1611,9 +1606,9 @@ export class Domain {
       ? await this.db.get('SELECT id,name,media_type,byte_size,cas_hash FROM asset_versions WHERE id=? AND project_id=?', [assetId, projectId])
       : await this.db.get('SELECT id,name,media_type,byte_size,sha256 AS cas_hash FROM attachments WHERE id=? AND project_id=?', [attachmentId, projectId]);
     if (!source) throw new AppError('not_found', 'quality review input not found');
-    const supported = new Set(['text/plain', 'text/markdown', 'application/json', 'text/csv', 'application/xml', 'image/svg+xml', 'image/png', 'image/jpeg', 'image/webp', 'image/gif', 'application/pdf']);
     const mediaType = String(source.media_type).toLowerCase().split(';')[0];
-    assert(supported.has(mediaType), 'quality_media_type_unsupported', 'quality review parser does not support this media type', { status: 415 });
+    const mediaKind = qualityReviewMediaKind(source.name, mediaType, { hasBody: Number(source.byte_size) > 0 });
+    assert(['text', 'json', 'xml', 'image', 'pdf'].includes(mediaKind), 'quality_media_type_unsupported', 'quality review parser does not support this media type', { status: 415 });
     const file = path.join(this.config.casRoot, source.cas_hash.slice(0, 2), source.cas_hash);
     assertNoStorageSymlinks(this.config.home, file);
     let content;
@@ -1624,7 +1619,8 @@ export class Domain {
     if (parser === 'json') {
       try { JSON.parse(text); } catch { throw new AppError('quality_parse_failed', 'JSON quality input is invalid', { status: 422 }); }
     }
-    const score = input?.semantic_human_score == null ? 100 : Number(input.semantic_human_score);
+    assert(input?.semantic_human_score != null, 'quality_human_score_required', 'semantic_human_score is required', { status: 422 });
+    const score = Number(input.semantic_human_score);
     assert(Number.isFinite(score) && score >= 0 && score <= 100, 'invalid_input', 'semantic_human_score must be 0-100', { status: 422 });
     const runId = id('qrr');
     const reportId = id('qrep');

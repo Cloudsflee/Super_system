@@ -1,0 +1,131 @@
+{
+  "schema_version": "aiws.v3.v23_golden.v1",
+  "source_commit": "e18dc0b",
+  "extraction": {
+    "mode": "detached_read_only_worktree",
+    "executed_runtime": false
+  },
+  "source_files": [
+    {
+      "path": "apps/api/src/quality-review-media.mjs",
+      "sha256": "2c0ade61b11984ee0e1ac9ceb20c0ccd5d208a63ebf9a8bd78e24d46a9d7511b"
+    }
+  ],
+  "contracts": [
+    {
+      "id": "quality-media-classification",
+      "feature_id": "REC-D9-QUALITY-020",
+      "cases": [
+        {
+          "id": "markdown",
+          "input": {
+            "file_path": "notes.md",
+            "media_type": "text/markdown",
+            "has_body": true
+          },
+          "output": "text"
+        },
+        {
+          "id": "json",
+          "input": {
+            "file_path": "data.json",
+            "media_type": "application/json",
+            "has_body": true
+          },
+          "output": "json"
+        },
+        {
+          "id": "svg",
+          "input": {
+            "file_path": "diagram.svg",
+            "media_type": "image/svg+xml",
+            "has_body": true
+          },
+          "output": "xml"
+        },
+        {
+          "id": "png",
+          "input": {
+            "file_path": "image.png",
+            "media_type": "image/png",
+            "has_body": true
+          },
+          "output": "image"
+        },
+        {
+          "id": "pdf",
+          "input": {
+            "file_path": "report.pdf",
+            "media_type": "application/pdf",
+            "has_body": true
+          },
+          "output": "pdf"
+        },
+        {
+          "id": "docx",
+          "input": {
+            "file_path": "document.docx",
+            "media_type": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            "has_body": true
+          },
+          "output": "docx"
+        },
+        {
+          "id": "xlsx",
+          "input": {
+            "file_path": "workbook.xlsx",
+            "media_type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            "has_body": true
+          },
+          "output": "xlsx"
+        },
+        {
+          "id": "pptx-excluded",
+          "input": {
+            "file_path": "slides.pptx",
+            "media_type": "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+            "has_body": true
+          },
+          "output": "out_of_scope"
+        },
+        {
+          "id": "video-excluded",
+          "input": {
+            "file_path": "clip.mp4",
+            "media_type": "video/mp4",
+            "has_body": true
+          },
+          "output": "out_of_scope"
+        },
+        {
+          "id": "archive-excluded",
+          "input": {
+            "file_path": "bundle.zip",
+            "media_type": "application/octet-stream",
+            "has_body": true
+          },
+          "output": "out_of_scope"
+        },
+        {
+          "id": "generic-body",
+          "input": {
+            "file_path": "unknown.bin",
+            "media_type": "application/octet-stream",
+            "has_body": true
+          },
+          "output": "text"
+        },
+        {
+          "id": "generic-probe",
+          "input": {
+            "file_path": "unknown.bin",
+            "media_type": "application/octet-stream",
+            "has_body": false
+          },
+          "output": "probe"
+        }
+      ]
+    }
+  ],
+  "fixture_sha256": "abb9398b0d742e077feca0720651b1caf43d54a6656d249389edfede33237f56"
+}

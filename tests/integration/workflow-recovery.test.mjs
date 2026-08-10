@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { eventually, fixture, mutate, request } from './helpers.mjs';
 
-test('workflow generation preserves candidate, critic, and node contract persistence', async () => {
+test('unavailable workflow generation stays explicit while manual workflow and evidence-backed outcome persist', async () => {
   const env = await fixture();
   try {
     const project = await mutate(env.base, '/api/v1/projects', { name: 'Generated workflow' }, 'generation-project');
@@ -10,12 +10,17 @@ test('workflow generation preserves candidate, critic, and node contract persist
     assert.equal(brief.response.status, 201);
     const generated = await mutate(env.base, `/api/v1/projects/${project.json.id}/workflow-generations`, { name: 'Generated fixture' }, 'generation-run');
     assert.equal(generated.response.status, 201);
-    assert.equal(generated.json.status, 'completed');
-    assert.equal(generated.json.critic.status, 'passed');
-    assert.equal(generated.json.candidate.tasks.length, 2);
+    assert.equal(generated.json.status, 'failed');
+    assert.equal(generated.json.critic.status, 'not_run');
+    assert.deepEqual(generated.json.candidate, {});
+    assert.deepEqual(generated.json.critic.issues, ['workflow_generator_unavailable']);
     assert.equal(generated.json.critic.brief_hash, brief.json.content_hash);
 
-    const workflow = await mutate(env.base, `/api/v1/projects/${project.json.id}/workflows`, { name: 'Persisted workflow', tasks: generated.json.candidate.tasks }, 'generation-workflow');
+    const tasks = [
+      { id: 'analyze', title: 'Analyze brief and repository', level: 1, deps: [], mode: 'read', inputs: [], outputs: ['analysis.md'] },
+      { id: 'implement', title: 'Implement and verify change', level: 2, deps: ['analyze'], mode: 'write', inputs: ['analysis.md'], outputs: ['change.diff', 'test-report.json'] }
+    ];
+    const workflow = await mutate(env.base, `/api/v1/projects/${project.json.id}/workflows`, { name: 'Persisted workflow', tasks }, 'generation-workflow');
     assert.equal(workflow.response.status, 201);
     const contracts = await request(env.base, `/api/v1/projects/${project.json.id}/node-contracts?workflow_revision=${workflow.json.revision}`);
     assert.equal(contracts.response.status, 200);
@@ -39,7 +44,16 @@ test('workflow generation preserves candidate, critic, and node contract persist
     assert.equal(started.response.status, 201);
     const final = await eventually(async () => (await request(env.base, `/api/v1/executions/${execution.json.id}`)).json, (value) => value.status === 'completed', 5000);
     assert.equal(final.status, 'completed');
-    const evaluated = await mutate(env.base, `/api/v1/executions/${execution.json.id}/outcome/evaluate`, {}, 'outcome-evaluate');
+    const missingEvidence = await mutate(env.base, `/api/v1/executions/${execution.json.id}/outcome/evaluate`, {}, 'outcome-evaluate-missing');
+    assert.equal(missingEvidence.response.status, 422);
+    assert.equal(missingEvidence.json.error.code, 'outcome_evidence_required');
+    const evidenceAssetIds = final.evidence.map((item) => item.asset_version_id);
+    assert.ok(evidenceAssetIds.length > 0);
+    const evaluated = await mutate(env.base, `/api/v1/executions/${execution.json.id}/outcome/evaluate`, { evaluations: [requirement.json, secondRequirement.json].map((item) => ({
+      requirement_id: item.id,
+      score: 90,
+      evidence_asset_ids: [evidenceAssetIds[0]]
+    })) }, 'outcome-evaluate');
     assert.equal(evaluated.response.status, 201);
     assert.equal(evaluated.json.release_eligible, true);
     assert.equal(evaluated.json.requirements.every((item) => item.evaluation?.status === 'passed'), true);

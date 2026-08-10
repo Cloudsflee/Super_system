@@ -1,0 +1,479 @@
+
+> ai-workspace-system@3.0.0 recovery:impact E:\00_desktop\毕业设计
+> node scripts/recovery-governance.mjs impact "--audit"
+
+{
+  "audit": true,
+  "changed_files": [
+    {
+      "file": "Dockerfile",
+      "features": [
+        "REC-D3-RUNNER-003",
+        "REC-D11-OPS-022"
+      ]
+    },
+    {
+      "file": "README.md",
+      "features": [
+        "REC-D1-CONTRACTS-023"
+      ]
+    },
+    {
+      "file": "V3功能恢复与架构治理判断.md",
+      "features": []
+    },
+    {
+      "file": "apps/api/src/db-worker.mjs",
+      "features": [
+        "REC-D1-CONTRACTS-023"
+      ]
+    },
+    {
+      "file": "apps/api/src/domain.mjs",
+      "features": [
+        "REC-D6-GENERATION-007",
+        "REC-D6-OUTCOME-009",
+        "REC-D8-ASSIST-010",
+        "REC-D9-QUALITY-020"
+      ]
+    },
+    {
+      "file": "apps/api/src/http.mjs",
+      "features": [
+        "REC-D11-OPS-022"
+      ]
+    },
+    {
+      "file": "apps/api/src/migration-service.mjs",
+      "features": [
+        "REC-D1-CONTRACTS-023"
+      ]
+    },
+    {
+      "file": "apps/api/src/migrations/index.mjs",
+      "features": [
+        "REC-D1-CONTRACTS-023"
+      ]
+    },
+    {
+      "file": "apps/api/src/modules/assist/index.mjs",
+      "features": [
+        "REC-D8-ASSIST-010",
+        "REC-D8-ATTACHMENTS-011",
+        "REC-D8-FILES-012",
+        "REC-D8-APPROVAL-013"
+      ]
+    },
+    {
+      "file": "apps/api/src/modules/bridge/index.mjs",
+      "features": [
+        "REC-D8-BRIDGE-026"
+      ]
+    },
+    {
+      "file": "apps/api/src/modules/context/index.mjs",
+      "features": [
+        "REC-D9-CONTEXT-017",
+        "REC-D9-PROJECTION-018"
+      ]
+    },
+    {
+      "file": "apps/api/src/modules/define-module.mjs",
+      "features": []
+    },
+    {
+      "file": "apps/api/src/modules/delivery/index.mjs",
+      "features": [
+        "REC-D7-DELIVERY-015"
+      ]
+    },
+    {
+      "file": "apps/api/src/modules/evidence/index.mjs",
+      "features": [
+        "REC-D9-EVIDENCE-019",
+        "REC-D9-DEPLOYMENT-021"
+      ]
+    },
+    {
+      "file": "apps/api/src/modules/execution/index.mjs",
+      "features": [
+        "REC-D6-EXECUTION-008"
+      ]
+    },
+    {
+      "file": "apps/api/src/modules/identity/index.mjs",
+      "features": [
+        "REC-D2-IDENTITY-001"
+      ]
+    },
+    {
+      "file": "apps/api/src/modules/mcp/index.mjs",
+      "features": [
+        "REC-D4-MCP-004",
+        "REC-D4-SCOPE-016"
+      ]
+    },
+    {
+      "file": "apps/api/src/modules/operations/index.mjs",
+      "features": [
+        "REC-D11-OPS-022"
+      ]
+    },
+    {
+      "file": "apps/api/src/modules/outcome/evaluation.mjs",
+      "features": [
+        "REC-D6-OUTCOME-009"
+      ]
+    },
+    {
+      "file": "apps/api/src/modules/outcome/index.mjs",
+      "features": [
+        "REC-D6-OUTCOME-009"
+      ]
+    },
+    {
+      "file": "apps/api/src/modules/platform/index.mjs",
+      "features": [
+        "REC-D0-GOVERNANCE-000"
+      ]
+    },
+    {
+      "file": "apps/api/src/modules/project/index.mjs",
+      "features": [
+        "REC-D5-PROJECT-005"
+      ]
+    },
+    {
+      "file": "apps/api/src/modules/quality/index.mjs",
+      "features": [
+        "REC-D9-QUALITY-020"
+      ]
+    },
+    {
+      "file": "apps/api/src/modules/quality/media-contract.mjs",
+      "features": [
+        "REC-D9-QUALITY-020"
+      ]
+    },
+    {
+      "file": "apps/api/src/modules/registry.mjs",
+      "features": [
+        "REC-D0-GOVERNANCE-000"
+      ]
+    },
+    {
+      "file": "apps/api/src/modules/repository/index.mjs",
+      "features": [
+        "REC-D7-REPOSITORY-014"
+      ]
+    },
+    {
+      "file": "apps/api/src/modules/runner/index.mjs",
+      "features": [
+        "REC-D3-RUNNER-003"
+      ]
+    },
+    {
+      "file": "apps/api/src/modules/setup/index.mjs",
+      "features": [
+        "REC-D2-SETUP-002"
+      ]
+    },
+    {
+      "file": "apps/api/src/modules/terminal/index.mjs",
+      "features": [
+        "REC-D8-TERMINAL-025"
+      ]
+    },
+    {
+      "file": "apps/api/src/modules/workflow/index.mjs",
+      "features": [
+        "REC-D5-WORKFLOW-006",
+        "REC-D6-GENERATION-007"
+      ]
+    },
+    {
+      "file": "apps/runner-broker/server.mjs",
+      "features": [
+        "REC-D3-RUNNER-003"
+      ]
+    },
+    {
+      "file": "apps/web/vite.config.ts",
+      "features": [
+        "REC-D11-OPS-022"
+      ]
+    },
+    {
+      "file": "docs/api.md",
+      "features": []
+    },
+    {
+      "file": "docs/architecture.md",
+      "features": []
+    },
+    {
+      "file": "docs/data-model.md",
+      "features": [
+        "REC-D1-CONTRACTS-023"
+      ]
+    },
+    {
+      "file": "docs/evidence/v3-r0-r1-governance-20260810/change.patch",
+      "features": []
+    },
+    {
+      "file": "docs/evidence/v3-r0-r1-governance-20260810/manifest.json",
+      "features": []
+    },
+    {
+      "file": "docs/evidence/v3-r0-r1-governance-20260810/modified-artifact.json",
+      "features": []
+    },
+    {
+      "file": "docs/evidence/v3-r0-r1-governance-20260810/rollback.json",
+      "features": []
+    },
+    {
+      "file": "docs/evidence/v3-r0-r1-governance-20260810/rollback.ps1",
+      "features": []
+    },
+    {
+      "file": "docs/evidence/v3-r0-r1-governance-20260810/screenshots/desktop-approvals.png",
+      "features": []
+    },
+    {
+      "file": "docs/evidence/v3-r0-r1-governance-20260810/screenshots/desktop-terminals.png",
+      "features": []
+    },
+    {
+      "file": "docs/evidence/v3-r0-r1-governance-20260810/screenshots/desktop.png",
+      "features": []
+    },
+    {
+      "file": "docs/evidence/v3-r0-r1-governance-20260810/screenshots/laptop-approvals.png",
+      "features": []
+    },
+    {
+      "file": "docs/evidence/v3-r0-r1-governance-20260810/screenshots/laptop-terminals.png",
+      "features": []
+    },
+    {
+      "file": "docs/evidence/v3-r0-r1-governance-20260810/screenshots/laptop.png",
+      "features": []
+    },
+    {
+      "file": "docs/evidence/v3-r0-r1-governance-20260810/screenshots/mobile-approvals.png",
+      "features": []
+    },
+    {
+      "file": "docs/evidence/v3-r0-r1-governance-20260810/screenshots/mobile-terminals.png",
+      "features": []
+    },
+    {
+      "file": "docs/evidence/v3-r0-r1-governance-20260810/screenshots/mobile-wide-approvals.png",
+      "features": []
+    },
+    {
+      "file": "docs/evidence/v3-r0-r1-governance-20260810/screenshots/mobile-wide-terminals.png",
+      "features": []
+    },
+    {
+      "file": "docs/evidence/v3-r0-r1-governance-20260810/screenshots/mobile-wide.png",
+      "features": []
+    },
+    {
+      "file": "docs/evidence/v3-r0-r1-governance-20260810/screenshots/mobile.png",
+      "features": []
+    },
+    {
+      "file": "docs/evidence/v3-r0-r1-governance-20260810/screenshots/tablet-approvals.png",
+      "features": []
+    },
+    {
+      "file": "docs/evidence/v3-r0-r1-governance-20260810/screenshots/tablet-terminals.png",
+      "features": []
+    },
+    {
+      "file": "docs/evidence/v3-r0-r1-governance-20260810/screenshots/tablet.png",
+      "features": []
+    },
+    {
+      "file": "docs/evidence/v3-r0-r1-governance-20260810/screenshots/wide-approvals.png",
+      "features": []
+    },
+    {
+      "file": "docs/evidence/v3-r0-r1-governance-20260810/screenshots/wide-terminals.png",
+      "features": []
+    },
+    {
+      "file": "docs/evidence/v3-r0-r1-governance-20260810/screenshots/wide.png",
+      "features": []
+    },
+    {
+      "file": "docs/evidence/v3-r0-r1-governance-20260810/verification.json",
+      "features": [
+        "REC-D0-GOVERNANCE-000",
+        "REC-D1-CONTRACTS-023"
+      ]
+    },
+    {
+      "file": "docs/runbook.md",
+      "features": [
+        "REC-D11-OPS-022"
+      ]
+    },
+    {
+      "file": "docs/开发计划v3功能恢复.md",
+      "features": [
+        "REC-D0-GOVERNANCE-000"
+      ]
+    },
+    {
+      "file": "docs/测试计划v3功能恢复.md",
+      "features": [
+        "REC-D0-GOVERNANCE-000"
+      ]
+    },
+    {
+      "file": "feature-catalog.json",
+      "features": [
+        "REC-D0-GOVERNANCE-000"
+      ]
+    },
+    {
+      "file": "scripts/check.mjs",
+      "features": [
+        "REC-D0-GOVERNANCE-000"
+      ]
+    },
+    {
+      "file": "scripts/recovery-evidence.mjs",
+      "features": [
+        "REC-D0-GOVERNANCE-000"
+      ]
+    },
+    {
+      "file": "scripts/recovery-golden.mjs",
+      "features": [
+        "REC-D1-CONTRACTS-023"
+      ]
+    },
+    {
+      "file": "scripts/recovery-governance.mjs",
+      "features": [
+        "REC-D0-GOVERNANCE-000"
+      ]
+    },
+    {
+      "file": "scripts/restore-migration-snapshot.mjs",
+      "features": [
+        "REC-D1-CONTRACTS-023"
+      ]
+    },
+    {
+      "file": "tests/golden/v23/r0-r1.json",
+      "features": [
+        "REC-D1-CONTRACTS-023"
+      ]
+    },
+    {
+      "file": "tests/integration/api-flow.test.mjs",
+      "features": [
+        "REC-D10-FRONTEND-024",
+        "REC-D5-PROJECT-005",
+        "REC-D7-DELIVERY-015",
+        "REC-D11-OPS-022"
+      ]
+    },
+    {
+      "file": "tests/integration/assist-flow.test.mjs",
+      "features": [
+        "REC-D8-ASSIST-010",
+        "REC-D8-ATTACHMENTS-011",
+        "REC-D9-QUALITY-020"
+      ]
+    },
+    {
+      "file": "tests/integration/debt-regression.test.mjs",
+      "features": [
+        "REC-D9-CONTEXT-017"
+      ]
+    },
+    {
+      "file": "tests/integration/workflow-recovery.test.mjs",
+      "features": [
+        "REC-D5-WORKFLOW-006",
+        "REC-D6-GENERATION-007",
+        "REC-D6-OUTCOME-009"
+      ]
+    },
+    {
+      "file": "tests/unit/database.test.mjs",
+      "features": [
+        "REC-D1-CONTRACTS-023"
+      ]
+    },
+    {
+      "file": "tests/unit/migrations.test.mjs",
+      "features": [
+        "REC-D1-CONTRACTS-023"
+      ]
+    },
+    {
+      "file": "tests/unit/recovery-golden.test.mjs",
+      "features": [
+        "REC-D1-CONTRACTS-023"
+      ]
+    },
+    {
+      "file": "tests/unit/recovery-governance.test.mjs",
+      "features": [
+        "REC-D0-GOVERNANCE-000"
+      ]
+    }
+  ],
+  "unmapped_files": [],
+  "selected_tests": [
+    "T0",
+    "T1",
+    "T2",
+    "T3",
+    "T4",
+    "T5",
+    "T6",
+    "T7",
+    "T8",
+    "apps/web/src/test/terminal.test.tsx",
+    "apps/web/src/test/workflow.test.tsx",
+    "scripts/e2e.mjs",
+    "tests/integration/api-flow.test.mjs",
+    "tests/integration/approval-flow.test.mjs",
+    "tests/integration/assist-flow.test.mjs",
+    "tests/integration/context-recovery.test.mjs",
+    "tests/integration/debt-regression.test.mjs",
+    "tests/integration/file-changes.test.mjs",
+    "tests/integration/mcp-flow.test.mjs",
+    "tests/integration/real-slice.test.mjs",
+    "tests/integration/scheduler-flow.test.mjs",
+    "tests/integration/setup-flow.test.mjs",
+    "tests/integration/terminal-flow.test.mjs",
+    "tests/integration/workflow-recovery.test.mjs",
+    "tests/release/release-gate.test.mjs",
+    "tests/release/release-rehearsal-compose.test.mjs",
+    "tests/security/boundary.test.mjs",
+    "tests/security/broker-http.test.mjs",
+    "tests/security/credentials.test.mjs",
+    "tests/unit/contracts.test.mjs",
+    "tests/unit/database.test.mjs",
+    "tests/unit/migrations.test.mjs",
+    "tests/unit/path-policy.test.mjs",
+    "tests/unit/real-runner.test.mjs",
+    "tests/unit/recovery-golden.test.mjs",
+    "tests/unit/recovery-governance.test.mjs",
+    "tests/unit/terminal-bundle.test.mjs",
+    "tests/unit/terminal.test.mjs",
+    "tests/unit/workflow.test.mjs"
+  ],
+  "receipt": ".ai-workspace/recovery/impact.json"
+}

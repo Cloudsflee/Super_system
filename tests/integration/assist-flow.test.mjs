@@ -32,9 +32,10 @@ test('four-level Assist sessions persist scope snapshots, native events, and rep
     }, 'assist-turn');
     assert.equal(turn.response.status, 201);
     assert.equal(turn.json.turn_no, 1);
-    assert.equal(turn.json.status, 'completed');
+    assert.equal(turn.json.status, 'failed');
     assert.equal(turn.json.messages[0].role, 'user');
-    assert.equal(turn.json.operation.status, 'completed');
+    assert.equal(turn.json.operation.status, 'failed');
+    assert.equal(turn.json.operation.error_code, 'assist_runtime_unavailable');
 
     const bundle = await request(env.base, `/api/v1/assist/sessions/${session.id}`);
     assert.equal(bundle.json.turns[0].goal.objective, 'Prepare verified change');
@@ -91,6 +92,9 @@ test('four-level Assist sessions persist scope snapshots, native events, and rep
     assert.match(previewText, /<rect/);
     const unsupported = await mutate(env.base, `/api/v1/projects/${project.json.id}/attachments`, { name: 'archive.zip', media_type: 'application/zip', content: 'fixture' }, 'assist-attachment-unsupported');
     assert.equal(unsupported.response.status, 415);
+    const missingHumanScore = await mutate(env.base, `/api/v1/projects/${project.json.id}/quality-reviews`, { attachment_id: attachment.json.id }, 'quality-review-score-missing');
+    assert.equal(missingHumanScore.response.status, 422);
+    assert.equal(missingHumanScore.json.error.code, 'quality_human_score_required');
     const lowReview = await mutate(env.base, `/api/v1/projects/${project.json.id}/quality-reviews`, { attachment_id: attachment.json.id, semantic_human_score: 79 }, 'quality-review-low');
     assert.equal(lowReview.response.status, 201);
     assert.equal(lowReview.json.reports[0].report.reviewer_readiness, 'blocked');

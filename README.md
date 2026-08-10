@@ -71,7 +71,7 @@ REST, MCP, and UI actions invoke the same Command Registry. See [API](docs/api.m
 
 ## Data Boundary
 
-SQLite starts at `PRAGMA user_version=1`, with foreign keys, WAL, `synchronous=FULL`, strict relational tables, and FTS5. Immutable records are protected by database triggers. An execution pins Workflow revision, Brief hash, repository SHA, Context Pack hash, and input asset hashes.
+SQLite uses ordered forward-only migrations recorded in `schema_migrations`, with checksums tied to source. A current v1 database is registered only after its schema fingerprint matches; any pending upgrade first creates a consistent SQLite snapshot and SHA-256 manifest. Runtime policy keeps foreign keys, WAL, `synchronous=FULL`, strict relational tables, FTS5, and immutable-record triggers. An execution pins Workflow revision, Brief hash, repository SHA, Context Pack hash, and input asset hashes.
 
 V2.3 data is not migrated. The source volume is stopped, hashed, cloned as cold evidence, archived, and recovery-tested. Its immutable revocation and archive receipts are stored under `.ai-workspace/release/v3-transition`.
 

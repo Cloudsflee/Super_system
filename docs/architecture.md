@@ -18,9 +18,11 @@ The Broker owns container lifecycle operations. Every request is HMAC-signed ove
 
 The Runner is temporary and digest-pinned. Its enforced profile drops all capabilities, enables `no-new-privileges`, uses a read-only root filesystem, publishes no port, and limits CPU, memory, PIDs, and tmpfs. The registered project subdirectory is the only writable workspace mount.
 
-### Domain services
+### Domain modules and services
 
-The App keeps transaction orchestration in `Domain` and delegates filesystem and provider boundaries to focused services:
+The executable module registry assigns every table, command and event one owner and checks a directed dependency graph. The required direction is `HTTP -> Command/Query -> Domain Service -> Repository/Adapter`. `domain.mjs`, `http.mjs`, and `pages.tsx` are frozen extraction surfaces; remaining legacy SQL counts may only decrease. New domain code belongs below `apps/api/src/modules/<domain>`.
+
+The current App still keeps inherited transaction orchestration in `Domain` while extraction proceeds, and delegates filesystem and provider boundaries to focused services:
 
 - `InputStaging` validates declared assets and creates the execution-scoped input tree.
 - `EvidenceService` captures bounded Git evidence, prepares CAS blobs, and commits evidence links with the terminal execution state.
@@ -41,4 +43,6 @@ Mutations are commands with idempotency records. Domain changes and audit events
 
 ## Recovery
 
-On process restart, the App reopens SQLite and finds `running` executions and terminal sessions. Unknown runner jobs become retryable failures; native PTYs that no longer exist become `orphaned` terminal sessions. Execution and terminal history is never rewritten.
+Before the SQLite worker accepts requests, `migration-service` validates ordered checksums and the ledger/user-version pair. Pending upgrades take a consistent snapshot with a SHA-256 manifest and apply each DDL unit plus its ledger row in one transaction. A process exit rolls back the active DDL; restart replays only unrecorded versions. Snapshot restore verifies hash, integrity, and the original version.
+
+After migration, the App finds `running` executions and terminal sessions. Unknown runner jobs become retryable failures; native PTYs that no longer exist become `orphaned` terminal sessions. Execution and terminal history is never rewritten.

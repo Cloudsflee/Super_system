@@ -1,0 +1,38 @@
+{
+  "schema_version": "aiws.v3.recovery_rollback_receipt.v1",
+  "status": "passed",
+  "baseline_commit": "c71d0815fb0f88762a2d2f604a97ded70121b001",
+  "patch_sha256": "9f10554f91d26a9275aa6633925ac7b38f90a344eb252a6093b6177f8fdb6465",
+  "workspace": "detached temporary worktree",
+  "commands": [
+    {
+      "command": "git.exe worktree add --detach C:\\Users\\CLOUDS~1\\AppData\\Local\\Temp\\aiws-r0-r1-rollback-30492-fa46bd1f-f4a2-4c07-b208-fef42dd53a17 c71d0815fb0f88762a2d2f604a97ded70121b001",
+      "exit_status": 0,
+      "stdout": "HEAD is now at c71d081 docs: record release rehearsal evidence\n",
+      "stderr": "Preparing worktree (detached HEAD c71d081)\n"
+    },
+    {
+      "command": "git.exe -C C:\\Users\\CLOUDS~1\\AppData\\Local\\Temp\\aiws-r0-r1-rollback-30492-fa46bd1f-f4a2-4c07-b208-fef42dd53a17 apply --check E:\\00_desktop\\毕业设计\\docs\\evidence\\v3-r0-r1-governance-20260810\\change.patch",
+      "exit_status": 0,
+      "stdout": "",
+      "stderr": ""
+    },
+    {
+      "command": "git.exe -C C:\\Users\\CLOUDS~1\\AppData\\Local\\Temp\\aiws-r0-r1-rollback-30492-fa46bd1f-f4a2-4c07-b208-fef42dd53a17 apply E:\\00_desktop\\毕业设计\\docs\\evidence\\v3-r0-r1-governance-20260810\\change.patch",
+      "exit_status": 0,
+      "stdout": "",
+      "stderr": ""
+    },
+    {
+      "command": "powershell.exe -NoProfile -ExecutionPolicy Bypass -File E:\\00_desktop\\毕业设计\\docs\\evidence\\v3-r0-r1-governance-20260810\\rollback.ps1 -Workspace C:\\Users\\CLOUDS~1\\AppData\\Local\\Temp\\aiws-r0-r1-rollback-30492-fa46bd1f-f4a2-4c07-b208-fef42dd53a17 -SkipVerify",
+      "exit_status": 0,
+      "stdout": "rollback passed\r\n",
+      "stderr": ""
+    }
+  ],
+  "modified_status_before_rollback": " M Dockerfile\n M README.md\n M apps/api/src/db-worker.mjs\n M apps/api/src/domain.mjs\n M apps/api/src/http.mjs\n M apps/runner-broker/server.mjs\n M apps/web/vite.config.ts\n M docs/api.md\n M docs/architecture.md\n M docs/data-model.md\n M docs/runbook.md\n M \"docs/\\345\\274\\200\\345\\217\\221\\350\\256\\241\\345\\210\\222v3\\345\\212\\237\\350\\203\\275\\346\\201\\242\\345\\244\\215.md\"\n M \"docs/\\346\\265\\213\\350\\257\\225\\350\\256\\241\\345\\210\\222v3\\345\\212\\237\\350\\203\\275\\346\\201\\242\\345\\244\\215.md\"\n M feature-catalog.json\n M scripts/check.mjs\n M scripts/recovery-evidence.mjs\n M scripts/recovery-governance.mjs\n M tests/integration/api-flow.test.mjs\n M tests/integration/assist-flow.test.mjs\n M tests/integration/debt-regression.test.mjs\n M tests/integration/workflow-recovery.test.mjs\n M tests/unit/database.test.mjs\n M tests/unit/recovery-governance.test.mjs\n?? apps/api/src/migration-service.mjs\n?? apps/api/src/migrations/\n?? apps/api/src/modules/\n?? scripts/recovery-golden.mjs\n?? scripts/restore-migration-snapshot.mjs\n?? tests/golden/\n?? tests/unit/migrations.test.mjs\n?? tests/unit/recovery-golden.test.mjs\n",
+  "final_status": "",
+  "final_diff_exit_status": 0,
+  "data_rollback_probe": "node --test tests/unit/migrations.test.mjs",
+  "created_at": "2026-08-10T12:03:40.199Z"
+}

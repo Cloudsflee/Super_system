@@ -4,28 +4,62 @@ import { spawnSync } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
 import test from 'node:test';
+import { MODULE_REGISTRY, ownerOf } from '../../apps/api/src/modules/registry.mjs';
 
 const root = process.cwd();
+const statusFlow = ['planned', 'scaffolded', 'implemented', 'verified', 'released'];
 
-test('recovery catalog has unique feature and test mappings', () => {
+test('recovery catalog uses the five evidence-derived states and separate Terminal and Bridge items', () => {
   const raw = fs.readFileSync(path.join(root, 'feature-catalog.json'));
   const catalog = JSON.parse(raw);
-  assert.equal(catalog.schema_version, 'aiws.v3.feature_catalog.v1');
+  assert.equal(catalog.schema_version, 'aiws.v3.feature_catalog.v2');
   assert.equal(catalog.product_version, '3.0.0');
-  assert.ok(catalog.features.length >= 20);
+  assert.deepEqual(catalog.status_flow, statusFlow);
+  assert.ok(catalog.features.length >= 27);
   assert.equal(new Set(catalog.features.map((feature) => feature.id)).size, catalog.features.length);
   for (const feature of catalog.features) {
     assert.match(feature.id, /^REC-D\d+-[A-Z]+-\d{3}$/);
+    assert.ok(statusFlow.includes(feature.status), feature.id);
     assert.ok(feature.tests.some((entry) => /^T[0-8]$/.test(entry)), feature.id);
+    for (const table of feature.tables) assert.ok(feature.owner_modules.includes(ownerOf('table', table)), `${feature.id}:${table}`);
+    for (const event of feature.events) assert.ok(feature.owner_modules.includes(ownerOf('event', event)), `${feature.id}:${event}`);
+    if (statusFlow.indexOf(feature.status) >= statusFlow.indexOf('implemented')) {
+      assert.ok(feature.behavior_tests.length, `${feature.id}: behavior tests`);
+      if (feature.ui.length) assert.ok(feature.ui_tests.length, `${feature.id}: UI tests`);
+      assert.ok(feature.evidence.length, `${feature.id}: evidence`);
+    }
   }
+  const terminal = catalog.features.find((feature) => feature.id === 'REC-D8-TERMINAL-025');
+  const bridge = catalog.features.find((feature) => feature.id === 'REC-D8-BRIDGE-026');
+  assert.equal(terminal.domain, 'terminal');
+  assert.equal(bridge.domain, 'bridge');
+  assert.doesNotMatch(terminal.name, /Bridge/);
   assert.match(createHash('sha256').update(raw).digest('hex'), /^[a-f0-9]{64}$/);
 });
 
-test('recovery plan, catalog, and coverage gates emit passed receipts', () => {
+test('module registry gives every table, command, and event one owner without dependency cycles', () => {
+  const ids = new Set(MODULE_REGISTRY.map((module) => module.id));
+  for (const field of ['tables', 'commands', 'events']) {
+    const values = MODULE_REGISTRY.flatMap((module) => module[field]);
+    assert.equal(new Set(values).size, values.length, field);
+  }
+  const visit = (id, trail = []) => {
+    assert.ok(!trail.includes(id), [...trail, id].join(' -> '));
+    const module = MODULE_REGISTRY.find((item) => item.id === id);
+    for (const dependency of module.dependencies) {
+      assert.ok(ids.has(dependency), `${id}:${dependency}`);
+      visit(dependency, [...trail, id]);
+    }
+  };
+  for (const id of ids) visit(id);
+});
+
+test('recovery plan, catalog, and coverage gates emit V2 passed receipts', () => {
   for (const command of ['plan', 'catalog', 'coverage']) {
     const run = spawnSync(process.execPath, ['scripts/recovery-governance.mjs', command], { cwd: root, encoding: 'utf8', windowsHide: true });
     assert.equal(run.status, 0, run.stderr || run.stdout);
     const receipt = JSON.parse(fs.readFileSync(path.join(root, '.ai-workspace', 'recovery', `${command}.json`), 'utf8'));
+    assert.equal(receipt.schema_version, 'aiws.v3.recovery_governance_receipt.v2');
     assert.equal(receipt.command, command);
     assert.equal(receipt.status, 'passed');
     assert.match(receipt.catalog_sha256, /^[a-f0-9]{64}$/);

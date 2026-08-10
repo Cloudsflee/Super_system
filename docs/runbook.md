@@ -10,7 +10,7 @@
 6. Run `corepack pnpm verify`.
 7. Set `AIWS_APP_IMAGE` and `AIWS_BROKER_IMAGE` to verified image IDs or digest-pinned references.
 8. Run `docker compose up -d --no-build`.
-9. Confirm `GET http://127.0.0.1:4317/livez` and `/readyz` both return 200.
+9. Confirm `GET http://127.0.0.1:4317/health` and `/readyz` both return 200.
 
 The Broker intentionally has no host port. Inspect it with `docker compose logs runner-broker` and signed internal probes.
 

@@ -1,0 +1,6 @@
+{
+  "status": "passed",
+  "fixture": "tests/golden/v23/r0-r1.json",
+  "fixture_sha256": "abb9398b0d742e077feca0720651b1caf43d54a6656d249389edfede33237f56",
+  "cases": 12
+}

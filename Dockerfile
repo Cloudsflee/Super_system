@@ -83,7 +83,7 @@ COPY packages/contracts packages/contracts
 COPY sbom.spdx.json ./sbom.spdx.json
 RUN mkdir -p /var/lib/aiws && chmod 700 /var/lib/aiws
 EXPOSE 4321
-HEALTHCHECK --interval=10s --timeout=5s --start-period=10s --retries=6 CMD node -e "fetch('http://127.0.0.1:4321/livez').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
+HEALTHCHECK --interval=10s --timeout=5s --start-period=10s --retries=6 CMD node -e "fetch('http://127.0.0.1:4321/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
 CMD ["node", "apps/runner-broker/server.mjs"]
 
 FROM ${NODE_IMAGE} AS codex-runner

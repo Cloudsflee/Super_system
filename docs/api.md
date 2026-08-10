@@ -122,6 +122,6 @@ The Codex probe returns `error_code: null` only for a Docker-backed Runner with 
 
 ## Health
 
-`/livez` reports only process liveness. `/readyz` checks SQLite integrity/user version, Broker reachability, and exact Runner digest. Codex and GitHub cached probes are returned separately from `/api/v1/system/capabilities`; a restart reports `unknown/not_probed` until an explicit probe.
+`/health` reports only process liveness. `/readyz` checks SQLite integrity, the migration ledger/user version match, Broker reachability, and exact Runner digest. Codex and GitHub cached probes are returned separately from `/api/v1/system/capabilities`; a restart reports `unknown/not_probed` until an explicit probe. `/livez` is not a V3 route.
 
 `/api/v1/system/performance` reports App RSS, event-loop lag p95, and process uptime for release acceptance.

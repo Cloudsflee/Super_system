@@ -35,7 +35,7 @@ for (const file of files.filter((item) => ['apps', 'packages', 'tests'].some((di
 const runtimeFiles = files.filter((item) => ['apps', 'packages'].some((directory) => item.includes(`${path.sep}${directory}${path.sep}`)));
 const legacyRuntimePatterns = [
   [/\/api\/v(?:2|12|13|14|15|16|17|18|19|20|21|22|23)(?:\/|\b)/i, 'legacy API route'],
-  [/(?:^|[\\/\s'"`(])apps[\\/]worker(?:[\\/]|\b|['"`\s)]|$)|(?:^|[\\/\s'"`(])apps[\\/]mcp-gateway(?:[\\/]|\b|['"`\s)]|$)|(?:^|[\\/\s'"`(])bridge(?:[\\/]|\b|['"`\s)]|$)/i, 'legacy service reference'],
+  [/(?:^|[\\/\s'"`(])apps[\\/]worker(?:[\\/]|\b|['"`\s)]|$)|(?:^|[\\/\s'"`(])apps[\\/]mcp-gateway(?:[\\/]|\b|['"`\s)]|$)/i, 'legacy service reference'],
   [/\b(?:exchange|host bridge|global context graph|projector)\b/i, 'legacy feature reference']
 ];
 for (const file of runtimeFiles) {

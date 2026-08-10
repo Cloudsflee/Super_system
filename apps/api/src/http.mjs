@@ -3,7 +3,6 @@ import path from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { hashJson, now, parseJson, sha256 } from './crypto.mjs';
 import { AppError, asAppError } from './errors.mjs';
-
 const MUTATING = new Set(['POST', 'PATCH', 'DELETE']);
 
 function send(res, status, payload, headers = {}) {
@@ -117,10 +116,11 @@ export function createHttpHandler({ domain, registry, db, config, performancePro
     const parsed = new URL(req.url || '/', `http://${req.headers.host || '127.0.0.1'}`);
     const urlPath = parsed.pathname;
     try {
-      if (req.method === 'GET' && urlPath === '/livez') return send(res, 200, { status: 'alive', request_id: requestId });
+      if (urlPath === '/livez') throw new AppError('not_found', 'route not found');
+      if (req.method === 'GET' && urlPath === '/health') return send(res, 200, { status: 'alive', request_id: requestId });
       if (req.method === 'GET' && urlPath === '/readyz') {
         const health = await domain.health();
-        const ready = health.sqlite.integrity?.every((item) => item === 'ok') && health.sqlite.user_version === 1 && health.broker.status === 'available' && health.broker.runner_digest === config.runnerDigest;
+        const ready = health.sqlite.integrity?.every((item) => item === 'ok') && health.sqlite.user_version === health.sqlite.migration_version && health.broker.status === 'available' && health.broker.runner_digest === config.runnerDigest;
         return send(res, ready ? 200 : 503, { status: ready ? 'ready' : 'not_ready', checks: health, request_id: requestId });
       }
       if (!urlPath.startsWith(config.apiPrefix)) return serveWeb(req, res, webRoot, urlPath);

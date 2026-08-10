@@ -1,0 +1,32 @@
+(node:46560) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+✔ fresh database uses strict v3 settings and FTS5 (100.9711ms)
+(node:46560) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+✔ fresh database creates every recovery contract table as STRICT (103.6185ms)
+(node:46560) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+✔ transaction rolls back as one unit (106.6826ms)
+(node:46560) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+✔ brief revisions are immutable (143.7945ms)
+(node:46560) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+✔ human review decisions are immutable (148.3837ms)
+(node:23168) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+✔ empty databases apply every forward migration and record checksums once (78.9063ms)
+✔ startup resumes when an interrupted first run left only an empty migration ledger (73.9057ms)
+✔ a fingerprint-matching V1 database is registered as a baseline with a restorable snapshot (654.0032ms)
+✔ baseline registration rejects a V1 schema whose fingerprint has drifted (450.6155ms)
+✔ applied migration checksum changes are rejected before startup (48.9475ms)
+✔ failed DDL rolls back its schema and ledger row atomically (68.5544ms)
+✔ an interrupted SQLite transaction is rolled back before migration replay (136.3918ms)
+ℹ tests 12
+ℹ suites 0
+ℹ pass 12
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 1575.3515

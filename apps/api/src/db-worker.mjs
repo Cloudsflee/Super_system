@@ -2,24 +2,14 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { parentPort, workerData } from 'node:worker_threads';
 import { DatabaseSync } from 'node:sqlite';
-import { SCHEMA_SQL, SCHEMA_VERSION } from './schema.mjs';
+import { migrateDatabase } from './migration-service.mjs';
+import { SCHEMA_VERSION } from './schema.mjs';
 
 const file = path.resolve(workerData.file);
 fs.mkdirSync(path.dirname(file), { recursive: true, mode: 0o700 });
+const migration = migrateDatabase({ file });
 const db = new DatabaseSync(file);
-db.exec('PRAGMA foreign_keys = ON; PRAGMA busy_timeout = 5000;');
-const currentVersion = Number(db.prepare('PRAGMA user_version').get().user_version);
-const existingTables = Number(
-  db.prepare("SELECT count(*) AS count FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'").get().count
-);
-if (currentVersion !== 0 && currentVersion !== SCHEMA_VERSION) {
-  throw new Error(`legacy_database_rejected:user_version=${currentVersion}`);
-}
-if (currentVersion === 0 && existingTables > 0) {
-  throw new Error('legacy_database_rejected:unversioned_nonempty_database');
-}
-db.exec(SCHEMA_SQL);
-if (currentVersion === 0) db.exec(`PRAGMA user_version = ${SCHEMA_VERSION}`);
+db.exec('PRAGMA foreign_keys = ON; PRAGMA journal_mode = WAL; PRAGMA synchronous = FULL; PRAGMA busy_timeout = 5000;');
 
 function normalize(value) {
   if (typeof value === 'bigint') return Number(value);
@@ -66,7 +56,8 @@ function handle(message) {
       const journal = db.prepare('PRAGMA journal_mode').get().journal_mode;
       const synchronous = db.prepare('PRAGMA synchronous').get().synchronous;
       const userVersion = Number(db.prepare('PRAGMA user_version').get().user_version);
-      return { integrity, journal_mode: journal, synchronous: Number(synchronous), user_version: userVersion };
+      const migrationVersion = Number(db.prepare('SELECT COALESCE(MAX(version),0) AS version FROM schema_migrations').get().version);
+      return { integrity, journal_mode: journal, synchronous: Number(synchronous), user_version: userVersion, migration_version: migrationVersion };
     }
     case 'close':
       db.close();
@@ -76,7 +67,7 @@ function handle(message) {
   }
 }
 
-parentPort.postMessage({ type: 'ready', user_version: SCHEMA_VERSION });
+parentPort.postMessage({ type: 'ready', user_version: SCHEMA_VERSION, migration });
 parentPort.on('message', (message) => {
   if (message.op === 'close') {
     try {
