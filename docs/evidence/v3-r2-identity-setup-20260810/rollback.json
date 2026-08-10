@@ -2,37 +2,37 @@
   "schema_version": "aiws.v3.recovery_rollback_receipt.v1",
   "status": "passed",
   "baseline_commit": "d99d2c9f38a7fa279d0bdc9e855e1e293cc3a032",
-  "patch_sha256": "3f9aa7aa15e6a8923a7c17fbe4c1f6914d4ac01a3a9beaebdfbf364f180bb77a",
+  "patch_sha256": "2d4cb44db9e45da9ab02b0487006428a430102f91195d1afe53918b75c38e3ea",
   "workspace": "detached temporary worktree",
   "commands": [
     {
-      "command": "git.exe worktree add --detach C:\\Users\\CLOUDS~1\\AppData\\Local\\Temp\\aiws-v3-r2-identity-setup-20260810-rollback-29788-29e92f0f-da64-4871-af11-ce9a6861dd21 d99d2c9f38a7fa279d0bdc9e855e1e293cc3a032",
+      "command": "git.exe worktree add --detach C:\\Users\\CLOUDS~1\\AppData\\Local\\Temp\\aiws-v3-r2-identity-setup-20260810-rollback-21484-934487e9-d51b-4b85-9d21-f714af655955 d99d2c9f38a7fa279d0bdc9e855e1e293cc3a032",
       "exit_status": 0,
       "stdout": "HEAD is now at d99d2c9 feat: establish v3 recovery governance baseline\n",
       "stderr": "Preparing worktree (detached HEAD d99d2c9)\n"
     },
     {
-      "command": "git.exe -C C:\\Users\\CLOUDS~1\\AppData\\Local\\Temp\\aiws-v3-r2-identity-setup-20260810-rollback-29788-29e92f0f-da64-4871-af11-ce9a6861dd21 apply --check E:\\00_desktop\\毕业设计\\docs\\evidence\\v3-r2-identity-setup-20260810\\change.patch",
+      "command": "git.exe -C C:\\Users\\CLOUDS~1\\AppData\\Local\\Temp\\aiws-v3-r2-identity-setup-20260810-rollback-21484-934487e9-d51b-4b85-9d21-f714af655955 apply --check E:\\00_desktop\\毕业设计\\docs\\evidence\\v3-r2-identity-setup-20260810\\change.patch",
       "exit_status": 0,
       "stdout": "",
       "stderr": ""
     },
     {
-      "command": "git.exe -C C:\\Users\\CLOUDS~1\\AppData\\Local\\Temp\\aiws-v3-r2-identity-setup-20260810-rollback-29788-29e92f0f-da64-4871-af11-ce9a6861dd21 apply E:\\00_desktop\\毕业设计\\docs\\evidence\\v3-r2-identity-setup-20260810\\change.patch",
+      "command": "git.exe -C C:\\Users\\CLOUDS~1\\AppData\\Local\\Temp\\aiws-v3-r2-identity-setup-20260810-rollback-21484-934487e9-d51b-4b85-9d21-f714af655955 apply E:\\00_desktop\\毕业设计\\docs\\evidence\\v3-r2-identity-setup-20260810\\change.patch",
       "exit_status": 0,
       "stdout": "",
       "stderr": ""
     },
     {
-      "command": "powershell.exe -NoProfile -ExecutionPolicy Bypass -File E:\\00_desktop\\毕业设计\\docs\\evidence\\v3-r2-identity-setup-20260810\\rollback.ps1 -Workspace C:\\Users\\CLOUDS~1\\AppData\\Local\\Temp\\aiws-v3-r2-identity-setup-20260810-rollback-29788-29e92f0f-da64-4871-af11-ce9a6861dd21 -SkipVerify",
+      "command": "powershell.exe -NoProfile -ExecutionPolicy Bypass -File E:\\00_desktop\\毕业设计\\docs\\evidence\\v3-r2-identity-setup-20260810\\rollback.ps1 -Workspace C:\\Users\\CLOUDS~1\\AppData\\Local\\Temp\\aiws-v3-r2-identity-setup-20260810-rollback-21484-934487e9-d51b-4b85-9d21-f714af655955 -SkipVerify",
       "exit_status": 0,
       "stdout": "rollback passed\r\n",
       "stderr": ""
     }
   ],
-  "modified_status_before_rollback": " M apps/api/src/broker-client.mjs\n M apps/api/src/command-registry.mjs\n M apps/api/src/config.mjs\n M apps/api/src/credential-vault.mjs\n M apps/api/src/domain.mjs\n M apps/api/src/http.mjs\n M apps/api/src/migrations/index.mjs\n M apps/api/src/modules/identity/index.mjs\n M apps/api/src/modules/operations/index.mjs\n M apps/api/src/modules/registry.mjs\n M apps/api/src/modules/setup/index.mjs\n M apps/api/src/schema.mjs\n M apps/runner-broker/codex-runner.mjs\n M apps/runner-broker/server.mjs\n M apps/runner-broker/src/codex-config.mjs\n M apps/runner-broker/src/job-spec.mjs\n M apps/web/src/App.tsx\n M apps/web/src/pages.tsx\n M apps/web/src/styles.css\n M apps/web/src/test/terminal.test.tsx\n M apps/web/src/test/workflow.test.tsx\n M feature-catalog.json\n M package.json\n M packages/contracts/src/index.mjs\n M pnpm-lock.yaml\n M scripts/e2e.mjs\n M scripts/recovery-evidence.mjs\n M scripts/recovery-golden.mjs\n M scripts/recovery-governance.mjs\n M tests/integration/debt-regression.test.mjs\n M tests/integration/helpers.mjs\n M tests/integration/real-slice.test.mjs\n M tests/integration/setup-flow.test.mjs\n M tests/security/broker-http.test.mjs\n M tests/security/credentials.test.mjs\n M tests/unit/contracts.test.mjs\n M tests/unit/database.test.mjs\n M tests/unit/migrations.test.mjs\n M tests/unit/recovery-golden.test.mjs\n?? apps/api/src/http-body.mjs\n?? apps/api/src/migrations/002-identity-setup.mjs\n?? apps/api/src/modules/identity/repository.mjs\n?? apps/api/src/modules/identity/service.mjs\n?? apps/api/src/modules/operations/repository.mjs\n?? apps/api/src/modules/operations/service.mjs\n?? apps/api/src/modules/platform/repository.mjs\n?? apps/api/src/modules/query-registry.mjs\n?? apps/api/src/modules/r2-runtime.mjs\n?? apps/api/src/modules/route-registry.mjs\n?? apps/api/src/modules/setup/codex-discovery.mjs\n?? apps/api/src/modules/setup/codex-service.mjs\n?? apps/api/src/modules/setup/github-service.mjs\n?? apps/api/src/modules/setup/repository.mjs\n?? apps/api/src/modules/setup/service.mjs\n?? apps/api/src/secret-registry.mjs\n?? apps/web/src/features/\n?? apps/web/src/test/setup-flow.test.tsx\n?? packages/contracts/src/codex-device-auth.mjs\n?? scripts/r2-migration-evidence.mjs\n?? scripts/r2-provider-real-probe.mjs\n?? tests/golden/r2/\n?? tests/integration/codex-provider-flow.test.mjs\n?? tests/integration/github-operations-flow.test.mjs\n?? tests/integration/github-provider-flow.test.mjs\n?? tests/integration/identity-r2-flow.test.mjs\n?? tests/integration/r2-provider-boundaries.test.mjs\n?? tests/unit/codex-provider.test.mjs\n?? tests/unit/credential-vault.test.mjs\n?? tests/unit/github-provider.test.mjs\n?? tests/unit/identity-operations.test.mjs\n?? tests/unit/setup-service.test.mjs\n",
+  "modified_status_before_rollback": " M .gitattributes\n M apps/api/src/broker-client.mjs\n M apps/api/src/command-registry.mjs\n M apps/api/src/config.mjs\n M apps/api/src/credential-vault.mjs\n M apps/api/src/domain.mjs\n M apps/api/src/http.mjs\n M apps/api/src/migrations/index.mjs\n M apps/api/src/modules/identity/index.mjs\n M apps/api/src/modules/operations/index.mjs\n M apps/api/src/modules/registry.mjs\n M apps/api/src/modules/setup/index.mjs\n M apps/api/src/schema.mjs\n M apps/api/src/terminal-service.mjs\n M apps/runner-broker/codex-runner.mjs\n M apps/runner-broker/server.mjs\n M apps/runner-broker/src/codex-config.mjs\n M apps/runner-broker/src/job-spec.mjs\n M apps/web/src/App.tsx\n M apps/web/src/pages.tsx\n M apps/web/src/styles.css\n M apps/web/src/test/terminal.test.tsx\n M apps/web/src/test/workflow.test.tsx\n M feature-catalog.json\n M package.json\n M packages/contracts/src/index.mjs\n M pnpm-lock.yaml\n M scripts/e2e.mjs\n M scripts/recovery-evidence.mjs\n M scripts/recovery-golden.mjs\n M scripts/recovery-governance.mjs\n M tests/integration/debt-regression.test.mjs\n M tests/integration/helpers.mjs\n M tests/integration/real-slice.test.mjs\n M tests/integration/setup-flow.test.mjs\n M tests/security/broker-http.test.mjs\n M tests/security/credentials.test.mjs\n M tests/unit/contracts.test.mjs\n M tests/unit/database.test.mjs\n M tests/unit/migrations.test.mjs\n M tests/unit/recovery-golden.test.mjs\n?? apps/api/src/http-body.mjs\n?? apps/api/src/migrations/002-identity-setup.mjs\n?? apps/api/src/modules/identity/repository.mjs\n?? apps/api/src/modules/identity/service.mjs\n?? apps/api/src/modules/operations/repository.mjs\n?? apps/api/src/modules/operations/service.mjs\n?? apps/api/src/modules/platform/repository.mjs\n?? apps/api/src/modules/query-registry.mjs\n?? apps/api/src/modules/r2-runtime.mjs\n?? apps/api/src/modules/route-registry.mjs\n?? apps/api/src/modules/setup/codex-discovery.mjs\n?? apps/api/src/modules/setup/codex-service.mjs\n?? apps/api/src/modules/setup/github-service.mjs\n?? apps/api/src/modules/setup/repository.mjs\n?? apps/api/src/modules/setup/service.mjs\n?? apps/api/src/secret-registry.mjs\n?? apps/web/src/features/\n?? apps/web/src/test/setup-flow.test.tsx\n?? packages/contracts/src/codex-device-auth.mjs\n?? scripts/r2-migration-evidence.mjs\n?? scripts/r2-provider-real-probe.mjs\n?? tests/golden/r2/\n?? tests/integration/codex-provider-flow.test.mjs\n?? tests/integration/github-operations-flow.test.mjs\n?? tests/integration/github-provider-flow.test.mjs\n?? tests/integration/identity-r2-flow.test.mjs\n?? tests/integration/r2-provider-boundaries.test.mjs\n?? tests/unit/codex-provider.test.mjs\n?? tests/unit/credential-vault.test.mjs\n?? tests/unit/github-provider.test.mjs\n?? tests/unit/identity-operations.test.mjs\n?? tests/unit/setup-service.test.mjs\n",
   "final_status": "",
   "final_diff_exit_status": 0,
   "data_rollback_probe": "node --test tests/unit/migrations.test.mjs",
-  "created_at": "2026-08-10T17:26:58.003Z"
+  "created_at": "2026-08-10T18:51:23.338Z"
 }

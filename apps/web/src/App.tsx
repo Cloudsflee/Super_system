@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState, type ComponentType } from 'react';
 import {
   Activity, Archive, Boxes, ChevronDown, ClipboardCheck, FolderGit2, LayoutDashboard,
-  Menu, MessageSquare, Settings, ShieldCheck, Terminal as TerminalIcon, Workflow, X
+  LoaderCircle, Menu, MessageSquare, Settings, ShieldCheck, Terminal as TerminalIcon, Workflow, X
 } from 'lucide-react';
 import { api } from './api';
 import { SetupPage, type SetupState } from './features/setup';
@@ -67,17 +67,26 @@ export function App() {
   const refreshSetup = useCallback(async () => {
     const state = await api<SetupState>('/api/v1/setup');
     setSetup({ status: state.status, complete: state.complete, revision: state.revision });
-    if (state.status === 'ready') await loadProjects();
+    if (state.status === 'ready' && state.complete) await loadProjects();
     else { setProjects([]); setProjectId(''); }
   }, [loadProjects]);
 
-  useEffect(() => { void refreshSetup().catch(() => setSetup(null)); }, [refreshSetup]);
   useEffect(() => {
-    if (setup?.status === 'blocked' && SETUP_GATED_PAGES.has(page)) {
+    void refreshSetup().catch(() => {
+      setSetup(null);
+      if (SETUP_GATED_PAGES.has(routeFromHash())) {
+        location.hash = '/setup';
+        setPage('setup');
+      }
+    });
+  }, [refreshSetup]);
+  const setupReady = setup?.status === 'ready' && setup.complete;
+  useEffect(() => {
+    if (setup && !setupReady && SETUP_GATED_PAGES.has(page)) {
       location.hash = '/setup';
       setPage('setup');
     }
-  }, [page, setup?.status]);
+  }, [page, setup, setupReady]);
   useEffect(() => {
     const handler = () => setPage(routeFromHash());
     addEventListener('hashchange', handler);
@@ -90,7 +99,7 @@ export function App() {
   }, [notice]);
 
   const navigate = useCallback((next: PageKey) => {
-    if (setup?.status !== 'ready' && SETUP_GATED_PAGES.has(next)) {
+    if (!setupReady && SETUP_GATED_PAGES.has(next)) {
       location.hash = '/setup';
       setPage('setup');
       setNotice({ tone: 'error', text: 'Complete Setup before using workspace commands.' });
@@ -100,14 +109,15 @@ export function App() {
     location.hash = `/${next}`;
     setPage(next);
     setMenuOpen(false);
-  }, [setup?.status]);
+  }, [setupReady]);
   const selectProject = useCallback((id: string) => {
     setProjectId(id);
     sessionStorage.setItem('aiws:v3:selected-project', id);
   }, []);
   const notify = useCallback((text: string, tone: 'ok' | 'error' = 'ok') => setNotice({ text, tone }), []);
   const selectedProject = useMemo(() => projects.find((project) => project.id === projectId), [projectId, projects]);
-  const Page = PAGES[page];
+  const gatedPagePending = SETUP_GATED_PAGES.has(page) && !setupReady;
+  const Page = gatedPagePending && setup ? SetupPage : PAGES[page];
 
   return (
     <div className="app-shell">
@@ -134,7 +144,7 @@ export function App() {
           <label className="project-switcher">
             <span>Project</span>
             <div>
-              <select value={projectId} disabled={setup?.status !== 'ready'} onChange={(event) => selectProject(event.target.value)} aria-label="当前项目">
+              <select value={projectId} disabled={!setupReady} onChange={(event) => selectProject(event.target.value)} aria-label="当前项目">
                 {!projects.length && <option value="">No project</option>}
                 {projects.map((project) => <option key={project.id} value={project.id}>{project.name}</option>)}
               </select>
@@ -144,16 +154,16 @@ export function App() {
           <span className="local-pill"><span />127.0.0.1</span>
         </header>
         <main>
-          <Page
+          {gatedPagePending && !setup ? <div className="page-loader"><LoaderCircle className="spin" />Loading setup</div> : <Page
             projectId={projectId}
             selectedProject={selectedProject}
             selectProject={selectProject}
             refreshProjects={loadProjects}
             notify={notify}
             navigate={navigate}
-            setupReady={setup?.status === 'ready'}
+            setupReady={setupReady}
             refreshSetup={refreshSetup}
-          />
+          />}
         </main>
       </div>
       {notice && <div className={`toast ${notice.tone}`} role="status">{notice.text}</div>}

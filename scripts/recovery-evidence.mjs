@@ -14,9 +14,10 @@ const corepack = process.platform === 'win32' ? 'corepack.cmd' : 'corepack';
 const powershell = process.platform === 'win32' ? 'powershell.exe' : 'pwsh';
 
 fs.mkdirSync(evidenceRoot, { recursive: true });
-const baselineCommit = run(git, ['rev-parse', 'HEAD']).stdout.trim();
+const baselineRef = String(process.env.RECOVERY_BASELINE || 'HEAD').trim();
+const baselineCommit = run(git, ['rev-parse', '--verify', `${baselineRef}^{commit}`]).stdout.trim();
 const branch = run(git, ['branch', '--show-current']).stdout.trim();
-const changedFiles = listChangedFiles().filter((file) => !file.startsWith(`docs/evidence/${batch}/`) && !excluded.has(file));
+const changedFiles = listChangedFiles(baselineCommit).filter((file) => !file.startsWith(`docs/evidence/${batch}/`) && !excluded.has(file));
 if (!changedFiles.length) throw new Error('recovery_evidence_has_no_changed_files');
 
 const fileRecords = changedFiles.map((file) => {
@@ -375,12 +376,10 @@ function createPatch(files, commit) {
   }
 }
 
-function listChangedFiles() {
+function listChangedFiles(commit) {
   const values = new Set();
-  for (const args of [['diff', '--name-only'], ['diff', '--cached', '--name-only']]) {
-    const result = run(git, ['-c', 'core.quotepath=false', ...args]);
-    for (const file of result.stdout.split(/\r?\n/).filter(Boolean)) values.add(normalize(file));
-  }
+  const changed = run(git, ['-c', 'core.quotepath=false', 'diff', '--name-only', commit, '--']);
+  for (const file of changed.stdout.split(/\r?\n/).filter(Boolean)) values.add(normalize(file));
   const untracked = run(git, ['-c', 'core.quotepath=false', 'ls-files', '--others', '--exclude-standard']);
   for (const file of untracked.stdout.split(/\r?\n/).filter(Boolean)) values.add(normalize(file));
   return [...values].sort();

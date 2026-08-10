@@ -24,8 +24,12 @@ test('fixture execution isolates a worktree and captures diff, output, and evide
     assert.ok(worktree?.worktree_path);
     const worktreePath = path.join(env.home, worktree.worktree_path);
     const writer = setInterval(() => { if (fs.existsSync(worktreePath)) fs.writeFileSync(path.join(worktreePath, 'result.txt'), 'captured\n', 'utf8'); }, 2);
-    const completed = await eventually(async () => (await request(env.base, `/api/v1/executions/${execution.id}`)).json, (value) => value.status === 'completed');
+    await eventually(async () => (await request(env.base, `/api/v1/executions/${execution.id}`)).json, (value) => value.status === 'completed');
     clearInterval(writer);
+    const completed = await eventually(
+      async () => (await request(env.base, `/api/v1/executions/${execution.id}`)).json,
+      (value) => value.status === 'completed' && value.runner.worktree_status === 'removed'
+    );
     assert.equal(completed.runner.worktree_status, 'removed');
     assert.ok(completed.evidence.some((item) => item.name.endsWith('.diff')));
     assert.ok(completed.evidence.some((item) => item.name.endsWith('result.txt')));

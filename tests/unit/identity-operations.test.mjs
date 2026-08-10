@@ -46,6 +46,15 @@ test('operations persist events, redact results, cancel by revision, and recover
     assert.equal(completed.result.summary, '[redacted] done');
     assert.equal(JSON.stringify(await operations.events(complete.operation_id)).includes('operation-secret-sentinel'), false);
 
+    const failedReceipt = await operations.create({
+      kind: 'fixture.failure',
+      executor: async () => { throw new Error('operation-secret-sentinel'); }
+    });
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    const failed = await operations.get(failedReceipt.operation_id);
+    assert.equal(failed.error_code, 'operation_failed');
+    assert.equal(JSON.stringify(await operations.events(failed.id)).includes('operation-secret-sentinel'), false);
+
     const cancellable = await operations.create({ kind: 'fixture.cancel', executor: ({ signal }) => new Promise((resolve) => signal.addEventListener('abort', resolve, { once: true })) });
     await new Promise((resolve) => setTimeout(resolve, 10));
     const running = await operations.get(cancellable.operation_id);

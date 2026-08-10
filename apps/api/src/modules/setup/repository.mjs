@@ -73,7 +73,7 @@ export class SetupRepository {
   }
 
   async expireCredentials(timestamp) {
-    const expired = await this.db.query(`SELECT id FROM credential_refs
+    const expired = await this.db.query(`SELECT id,secret_ref FROM credential_refs
       WHERE status='active' AND expires_at IS NOT NULL AND expires_at<=?`, [timestamp]);
     if (!expired.length) return [];
     await this.db.transaction([
@@ -81,9 +81,12 @@ export class SetupRepository {
         WHERE status='active' AND expires_at IS NOT NULL AND expires_at<=?`, params: [timestamp, timestamp] },
       { sql: `UPDATE codex_profiles SET status='unprobed',probe_status='unknown',probe_hash='',probe_json='{}',updated_at=?
         WHERE credential_ref IN (SELECT id FROM credential_refs WHERE status='expired')`, params: [timestamp] },
+      { sql: `UPDATE github_app_configs SET status='blocked',probe_status='unknown',probe_hash='',probe_json='{}',updated_at=?
+        WHERE private_key_ref IN (SELECT id FROM credential_refs WHERE status='expired')
+           OR webhook_secret_ref IN (SELECT id FROM credential_refs WHERE status='expired')`, params: [timestamp] },
       ...invalidate('credential.expired', { credential_ids: expired.map((row) => row.id) }, timestamp)
     ]);
-    return expired.map((row) => row.id);
+    return expired;
   }
 
   credentials() {
@@ -100,7 +103,8 @@ export class SetupRepository {
   }
 
   referencedVaultFiles() {
-    return this.db.query("SELECT secret_ref FROM credential_refs WHERE secret_ref LIKE 'vault:%'")
+    return this.db.query(`SELECT secret_ref FROM credential_refs
+      WHERE secret_ref LIKE 'vault:%' AND status IN ('pending','active')`)
       .then((rows) => new Set(rows.map((row) => String(row.secret_ref).slice('vault:'.length))));
   }
 
@@ -126,7 +130,12 @@ export class SetupRepository {
         params: [row.secretRef, row.secretVersion, row.timestamp, row.timestamp, row.id, expectedRevision],
         expect_changes: 1
       },
-      staleProfilesForCredential(row.id, row.secretVersion, row.timestamp),
+      ...(row.profileUpdates || []).map((profile) => ({
+        sql: `UPDATE codex_profiles SET status='unprobed',probe_status='unknown',probe_hash='',probe_json='{}',
+          credential_revision=?,config_hash=?,updated_at=? WHERE id=? AND revision=? AND credential_ref=?`,
+        params: [row.credentialRevision, profile.configHash, row.timestamp, profile.id, profile.revision, row.id],
+        expect_changes: 1
+      })),
       staleAppsForCredential(row.id, 'unverified', row.timestamp),
       ...invalidate('credential.rotated', { credential_id: row.id, secret_version: row.secretVersion }, row.timestamp),
       auditStatement('credential.rotated', 'credential', row.id, { expected_revision: expectedRevision, secret_version: row.secretVersion }, actor, row.timestamp)
@@ -254,12 +263,12 @@ export class SetupRepository {
     ]);
   }
 
-  finishCodexProbe({ id, expectedRevision, status, probeHash, result, timestamp }) {
+  finishCodexProbe({ id, expectedRevision, status, probeHash, result, runnerDigest, timestamp }) {
     return this.db.transaction([
       {
         sql: `UPDATE codex_profiles SET status=?,probe_status=?,probe_hash=?,probe_revision=probe_revision+1,
-          probed_at=?,probe_json=?,updated_at=? WHERE id=? AND revision=? AND is_active=1`,
-        params: [status === 'available' ? 'available' : 'unavailable', status, probeHash, timestamp, JSON.stringify(result), timestamp, id, expectedRevision],
+          probed_at=?,probe_json=?,runner_digest=?,updated_at=? WHERE id=? AND revision=? AND is_active=1`,
+        params: [status === 'available' ? 'available' : 'unavailable', status, probeHash, timestamp, JSON.stringify(result), runnerDigest, timestamp, id, expectedRevision],
         expect_changes: 1
       },
       ...invalidate('codex_probe.finished', { profile_id: id, status }, timestamp, { clearCompletion: false })

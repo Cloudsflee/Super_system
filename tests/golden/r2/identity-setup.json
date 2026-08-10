@@ -1,6 +1,6 @@
 {
   "schema_version": "aiws.v3.r2_golden.v1",
-  "source_commit": "d99d2c9f38a7fa279d0bdc9e855e1e293cc3a032",
+  "source_commit": "7a59ca3e82525220ccbf3eaae80da4c0ce87856b",
   "extraction": {
     "mode": "current_read_only_contracts",
     "executed_runtime": false
@@ -12,19 +12,19 @@
     },
     {
       "path": "apps/api/src/modules/setup/codex-discovery.mjs",
-      "sha256": "ac554036ac99b0ae7015e3de4e137bc05b446e99bfabbcd51fb05c3545d26bed"
+      "sha256": "017a50493fb52831cce3737d715846049a6a440f22c702f3c539e28a641400d0"
     },
     {
       "path": "apps/api/src/modules/setup/codex-service.mjs",
-      "sha256": "83b3b8d59dae574e933d6f1c844d590ca50ab7d7e34b9595d4e65b59a2975c1f"
+      "sha256": "cca813dc4fa8c76199557b99a9fd46139175bc24d1923fdc7be3e6d7815c38b4"
     },
     {
       "path": "apps/api/src/modules/setup/service.mjs",
-      "sha256": "ba73e707dc7806da1b8bdab207f6c8c66bd112ac510a1895e9fd0e913f5ce2f8"
+      "sha256": "86c0eac4c3962d786d906185874cfc29cae5e30e598af9659a91f0cc4f5e9ff2"
     },
     {
       "path": "apps/api/src/modules/setup/github-service.mjs",
-      "sha256": "412e2b445ca55dab0253817981870aff3f54575bcd7d7428b184d90ef1ed2ab3"
+      "sha256": "1d44d804f980644ee0c8e4aeaf6ad999471fa9cb8f9451ce1a5fd9bc46cb3de1"
     }
   ],
   "contracts": [
@@ -218,5 +218,5 @@
       ]
     }
   ],
-  "fixture_sha256": "6748e7560fe5d46ab8271db5758ec3afa9b5dc0434a1124f89fe474952555c8d"
+  "fixture_sha256": "7a0544234fae0f10062c335f5e079ec7f50e983b190c8a4104263f615dd7baaa"
 }

@@ -7,18 +7,23 @@ export class SecretRegistry {
   }
 
   remember(label, value) {
+    const key = String(label);
     const secret = String(value ?? '');
     if (secret.length < 4) return false;
-    this.values.set(String(label), secret);
+    this.forget(key);
+    this.values.set(key, secret);
     try {
       const structured = JSON.parse(secret);
-      rememberStructured(this.values, String(label), structured);
+      rememberStructured(this.values, key, structured);
     } catch { /* Most credentials are opaque strings rather than bundles. */ }
     return true;
   }
 
   forget(label) {
-    this.values.delete(String(label));
+    const key = String(label);
+    for (const stored of this.values.keys()) {
+      if (stored === key || stored.startsWith(`${key}:`)) this.values.delete(stored);
+    }
   }
 
   list() {

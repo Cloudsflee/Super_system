@@ -1,3 +1,12 @@
+diff --git a/.gitattributes b/.gitattributes
+index 67d0646..41d0329 100644
+--- a/.gitattributes
++++ b/.gitattributes
+@@ -11,3 +11,4 @@
+ *.sh text eol=lf
+ *.ts text eol=lf
+ *.tsx text eol=lf
++docs/evidence/**/change.patch text eol=lf -whitespace
 diff --git a/apps/api/src/broker-client.mjs b/apps/api/src/broker-client.mjs
 index c0cf789..627bdb6 100644
 --- a/apps/api/src/broker-client.mjs
@@ -1475,10 +1484,10 @@ index 0000000..b1d7dc5
 +}
 diff --git a/apps/api/src/modules/operations/service.mjs b/apps/api/src/modules/operations/service.mjs
 new file mode 100644
-index 0000000..2f8a06e
+index 0000000..0041b18
 --- /dev/null
 +++ b/apps/api/src/modules/operations/service.mjs
-@@ -0,0 +1,150 @@
+@@ -0,0 +1,151 @@
 +import { id, now } from '../../crypto.mjs';
 +import { AppError, assert } from '../../errors.mjs';
 +import { OperationRepository, operationEvent } from './repository.mjs';
@@ -1544,7 +1553,8 @@ index 0000000..2f8a06e
 +    } catch (error) {
 +      const current = await this.repository.get(operationId);
 +      if (current?.status === 'cancelled') return;
-+      const code = String(error?.code || error?.message || 'operation_failed').slice(0, 120);
++      const candidate = String(this.clean(error?.code || ''));
++      const code = /^[a-z][a-z0-9_]{2,119}$/.test(candidate) ? candidate : 'operation_failed';
 +      await this.repository.transition({
 +        id: operationId, fromStatuses: ['pending', 'running'], status: 'failed', timestamp: this.clock(),
 +        errorCode: code, completed: true,
@@ -1824,10 +1834,10 @@ index 0000000..e411b5d
 +}
 diff --git a/apps/api/src/modules/setup/codex-discovery.mjs b/apps/api/src/modules/setup/codex-discovery.mjs
 new file mode 100644
-index 0000000..83ed323
+index 0000000..271ed19
 --- /dev/null
 +++ b/apps/api/src/modules/setup/codex-discovery.mjs
-@@ -0,0 +1,265 @@
+@@ -0,0 +1,266 @@
 +import fs from 'node:fs';
 +import path from 'node:path';
 +import { createHash } from 'node:crypto';
@@ -1849,8 +1859,9 @@ index 0000000..83ed323
 +    const unique = new Map();
 +    for (const input of configured) {
 +      const sourceType = String(input?.type || 'codex_home');
-+      const root = path.resolve(String(input?.path || ''));
-+      if (!SOURCE_TYPES.has(sourceType) || !path.isAbsolute(root)) continue;
++      const configuredPath = String(input?.path || '');
++      if (!SOURCE_TYPES.has(sourceType) || !path.isAbsolute(configuredPath)) continue;
++      const root = path.resolve(configuredPath);
 +      const sourceKey = sha256(`${sourceType}\n${normalizePath(root)}`);
 +      unique.set(sourceKey, {
 +        sourceType,
@@ -2095,10 +2106,10 @@ index 0000000..83ed323
 +}
 diff --git a/apps/api/src/modules/setup/codex-service.mjs b/apps/api/src/modules/setup/codex-service.mjs
 new file mode 100644
-index 0000000..a8073ab
+index 0000000..d0cbe57
 --- /dev/null
 +++ b/apps/api/src/modules/setup/codex-service.mjs
-@@ -0,0 +1,202 @@
+@@ -0,0 +1,203 @@
 +import { parseCodexDeviceAuthOutput } from '../../../../../packages/contracts/src/codex-device-auth.mjs';
 +import { hashJson } from '../../crypto.mjs';
 +import { AppError, assert } from '../../errors.mjs';
@@ -2205,7 +2216,7 @@ index 0000000..a8073ab
 +    const profileId = String(input?.profile_id || current.id);
 +    const profile = profileId === current.id ? current : await this.setup.repository.codexProfile(profileId);
 +    if (!profile) throw new AppError('not_found', 'Codex profile not found');
-+    const expectedRevision = Number(input?.expected_revision || profile.revision);
++    const expectedRevision = Number(input?.expected_revision);
 +    assert(Number.isInteger(expectedRevision) && expectedRevision > 0, 'expected_revision_required', 'expected_revision is required', { status: 400 });
 +    return this.operations.create({
 +      kind: 'codex.probe', resourceType: 'codex_profile', resourceId: profile.id, actor: ctx.actor,
@@ -2220,7 +2231,7 @@ index 0000000..a8073ab
 +    const snapshot = {
 +      profile_id: profile.id,
 +      profile_revision: profile.revision,
-+      profile_hash: profileHash(profile),
++      profile_hash: profileHash(profile, this.config.runnerDigest),
 +      config_hash: profile.config_hash,
 +      label: profile.label,
 +      provider: profile.provider,
@@ -2232,9 +2243,10 @@ index 0000000..a8073ab
 +      auth_kind: profile.auth_kind,
 +      credential_ref: profile.credential_ref,
 +      credential_revision: profile.current_credential_revision,
-+      runner_digest: profile.runner_digest
++      runner_digest: this.config.runnerDigest
 +    };
 +    const result = await runSevenStageProbe({ broker: this.broker, snapshot, credential, signal: operationContext.signal });
++    operationContext.ensureActive?.();
 +    await this.setup.recordCodexProbe(profile.id, expectedRevision, result);
 +    return { profile_id: profile.id, profile_revision: expectedRevision, ...result };
 +  }
@@ -2283,11 +2295,11 @@ index 0000000..a8073ab
 +  };
 +}
 +
-+function profileHash(profile) {
++function profileHash(profile, runnerDigest = profile.runner_digest) {
 +  return hashJson({
 +    id: profile.id, revision: Number(profile.revision), config_hash: profile.config_hash,
 +    credential_ref: profile.credential_ref, credential_revision: Number(profile.current_credential_revision),
-+    runner_digest: profile.runner_digest
++    runner_digest: runnerDigest
 +  });
 +}
 +
@@ -2303,10 +2315,10 @@ index 0000000..a8073ab
 +}
 diff --git a/apps/api/src/modules/setup/github-service.mjs b/apps/api/src/modules/setup/github-service.mjs
 new file mode 100644
-index 0000000..38a05a6
+index 0000000..25c3b9e
 --- /dev/null
 +++ b/apps/api/src/modules/setup/github-service.mjs
-@@ -0,0 +1,314 @@
+@@ -0,0 +1,329 @@
 +import { createHmac, createPrivateKey, sign, timingSafeEqual } from 'node:crypto';
 +import { now, sha256 } from '../../crypto.mjs';
 +import { AppError, assert } from '../../errors.mjs';
@@ -2334,6 +2346,7 @@ index 0000000..38a05a6
 +        const jwt = await this.appJwt(app);
 +        const remote = await this.paginate('/app/installations', jwt, operationContext.signal);
 +        const installations = remote.map((item) => normalizeInstallation(app.id, item));
++        operationContext.ensureActive?.();
 +        await this.setup.repository.discoverGithubInstallations({
 +          appConfigId: app.id, expectedRevision, installations, timestamp: this.clock()
 +        }, ctx.actor);
@@ -2364,6 +2377,7 @@ index 0000000..38a05a6
 +        const remote = await this.paginate('/installation/repositories', token, operationContext.signal, { installationToken: true });
 +        const repositories = remote.map((item) => normalizeRepository(installation.id, item));
 +        const ready = permissionsReady(installation.permissions) && repositories.some((item) => item.selected);
++        operationContext.ensureActive?.();
 +        await this.setup.repository.syncGithubRepositories({
 +          installationId: installation.id,
 +          expectedRevision,
@@ -2382,7 +2396,7 @@ index 0000000..38a05a6
 +    const appId = String(input?.app_config_id || input?.app_id || '');
 +    const app = appId ? await this.requiredApp(appId) : (await this.setup.repository.githubApps())[0];
 +    if (!app) throw new AppError('github_app_missing', 'GitHub App configuration is required', { status: 409 });
-+    const expectedRevision = Number(input?.expected_revision || app.revision);
++    const expectedRevision = Number(input?.expected_revision);
 +    assert(Number.isInteger(expectedRevision) && expectedRevision > 0, 'expected_revision_required', 'expected_revision is required', { status: 400 });
 +    assertRevision(app, expectedRevision);
 +    return this.operations.create({
@@ -2402,15 +2416,27 @@ index 0000000..38a05a6
 +      if (!slug || String(remoteApp?.id || '') !== String(app.app_id)) throw new GithubProviderError('github_app_mismatch');
 +      checks.push(check('app', true));
 +      const installations = await this.setup.repository.githubInstallations(app.id);
-+      const installation = installations.find((item) => item.status === 'available');
-+      if (!installation) throw new GithubProviderError('github_installation_missing');
++      const available = installations.filter((item) => item.status === 'available');
++      if (!available.length) throw new GithubProviderError('github_installation_missing');
 +      checks.push(check('installation', true));
-+      if (!permissionsReady(installation.permissions)) throw new GithubProviderError('github_permission_missing');
++      const permissioned = available.filter((item) => permissionsReady(item.permissions));
++      if (!permissioned.length) throw new GithubProviderError('github_permission_missing');
 +      checks.push(check('permissions', true));
++      let installation = null;
++      let cached = [];
++      for (const candidate of permissioned) {
++        const stored = await this.setup.repository.githubRepositories(candidate.id);
++        const selected = stored.length ? stored : Array.isArray(candidate.repositories) ? candidate.repositories : [];
++        if (selected.some((item) => item.selected !== false)) {
++          installation = candidate;
++          cached = selected;
++          break;
++        }
++      }
++      if (!installation) throw new GithubProviderError('github_repository_missing');
 +      const token = await this.installationToken(installation.installation_id, jwt, operationContext.signal);
 +      const remoteRepositories = await this.request('GET', '/installation/repositories?per_page=1', { token, installationToken: true, signal: operationContext.signal });
-+      const cached = await this.setup.repository.githubRepositories(installation.id);
-+      if (!cached.some((item) => item.selected) || Number(remoteRepositories?.total_count || 0) < 1) throw new GithubProviderError('github_repository_missing');
++      if (!cached.some((item) => item.selected !== false) || Number(remoteRepositories?.total_count || 0) < 1) throw new GithubProviderError('github_repository_missing');
 +      checks.push(check('repositories', true));
 +      result = { status: 'available', error_code: null, slug, checks };
 +    } catch (error) {
@@ -2421,6 +2447,7 @@ index 0000000..38a05a6
 +      for (const phase of phases.slice(checks.length)) checks.push({ phase, status: 'skipped', error_code: code });
 +      result = { status: 'unavailable', error_code: code, slug: '', checks };
 +    }
++    operationContext.ensureActive?.();
 +    await this.setup.recordGithubProbe(app.id, expectedRevision, result);
 +    return { app_config_id: app.id, ...result };
 +  }
@@ -2508,7 +2535,7 @@ index 0000000..38a05a6
 +        signal: signal ? AbortSignal.any([signal, AbortSignal.timeout(30_000)]) : AbortSignal.timeout(30_000)
 +      });
 +    } catch (error) {
-+      if (error?.name === 'AbortError') throw new GithubProviderError('github_request_timeout');
++      if (error?.name === 'AbortError' || error?.name === 'TimeoutError') throw new GithubProviderError('github_request_timeout');
 +      throw new GithubProviderError('github_api_unavailable');
 +    }
 +    const data = await response.json().catch(() => ({}));
@@ -2663,10 +2690,10 @@ index 282f22c..2d4b6c0 100644
  });
 diff --git a/apps/api/src/modules/setup/repository.mjs b/apps/api/src/modules/setup/repository.mjs
 new file mode 100644
-index 0000000..9c595b9
+index 0000000..a0f1ca4
 --- /dev/null
 +++ b/apps/api/src/modules/setup/repository.mjs
-@@ -0,0 +1,523 @@
+@@ -0,0 +1,532 @@
 +import { parseJson } from '../../crypto.mjs';
 +import { auditStatement } from '../platform/repository.mjs';
 +
@@ -2742,7 +2769,7 @@ index 0000000..9c595b9
 +  }
 +
 +  async expireCredentials(timestamp) {
-+    const expired = await this.db.query(`SELECT id FROM credential_refs
++    const expired = await this.db.query(`SELECT id,secret_ref FROM credential_refs
 +      WHERE status='active' AND expires_at IS NOT NULL AND expires_at<=?`, [timestamp]);
 +    if (!expired.length) return [];
 +    await this.db.transaction([
@@ -2750,9 +2777,12 @@ index 0000000..9c595b9
 +        WHERE status='active' AND expires_at IS NOT NULL AND expires_at<=?`, params: [timestamp, timestamp] },
 +      { sql: `UPDATE codex_profiles SET status='unprobed',probe_status='unknown',probe_hash='',probe_json='{}',updated_at=?
 +        WHERE credential_ref IN (SELECT id FROM credential_refs WHERE status='expired')`, params: [timestamp] },
++      { sql: `UPDATE github_app_configs SET status='blocked',probe_status='unknown',probe_hash='',probe_json='{}',updated_at=?
++        WHERE private_key_ref IN (SELECT id FROM credential_refs WHERE status='expired')
++           OR webhook_secret_ref IN (SELECT id FROM credential_refs WHERE status='expired')`, params: [timestamp] },
 +      ...invalidate('credential.expired', { credential_ids: expired.map((row) => row.id) }, timestamp)
 +    ]);
-+    return expired.map((row) => row.id);
++    return expired;
 +  }
 +
 +  credentials() {
@@ -2769,7 +2799,8 @@ index 0000000..9c595b9
 +  }
 +
 +  referencedVaultFiles() {
-+    return this.db.query("SELECT secret_ref FROM credential_refs WHERE secret_ref LIKE 'vault:%'")
++    return this.db.query(`SELECT secret_ref FROM credential_refs
++      WHERE secret_ref LIKE 'vault:%' AND status IN ('pending','active')`)
 +      .then((rows) => new Set(rows.map((row) => String(row.secret_ref).slice('vault:'.length))));
 +  }
 +
@@ -2795,7 +2826,12 @@ index 0000000..9c595b9
 +        params: [row.secretRef, row.secretVersion, row.timestamp, row.timestamp, row.id, expectedRevision],
 +        expect_changes: 1
 +      },
-+      staleProfilesForCredential(row.id, row.secretVersion, row.timestamp),
++      ...(row.profileUpdates || []).map((profile) => ({
++        sql: `UPDATE codex_profiles SET status='unprobed',probe_status='unknown',probe_hash='',probe_json='{}',
++          credential_revision=?,config_hash=?,updated_at=? WHERE id=? AND revision=? AND credential_ref=?`,
++        params: [row.credentialRevision, profile.configHash, row.timestamp, profile.id, profile.revision, row.id],
++        expect_changes: 1
++      })),
 +      staleAppsForCredential(row.id, 'unverified', row.timestamp),
 +      ...invalidate('credential.rotated', { credential_id: row.id, secret_version: row.secretVersion }, row.timestamp),
 +      auditStatement('credential.rotated', 'credential', row.id, { expected_revision: expectedRevision, secret_version: row.secretVersion }, actor, row.timestamp)
@@ -2923,12 +2959,12 @@ index 0000000..9c595b9
 +    ]);
 +  }
 +
-+  finishCodexProbe({ id, expectedRevision, status, probeHash, result, timestamp }) {
++  finishCodexProbe({ id, expectedRevision, status, probeHash, result, runnerDigest, timestamp }) {
 +    return this.db.transaction([
 +      {
 +        sql: `UPDATE codex_profiles SET status=?,probe_status=?,probe_hash=?,probe_revision=probe_revision+1,
-+          probed_at=?,probe_json=?,updated_at=? WHERE id=? AND revision=? AND is_active=1`,
-+        params: [status === 'available' ? 'available' : 'unavailable', status, probeHash, timestamp, JSON.stringify(result), timestamp, id, expectedRevision],
++          probed_at=?,probe_json=?,runner_digest=?,updated_at=? WHERE id=? AND revision=? AND is_active=1`,
++        params: [status === 'available' ? 'available' : 'unavailable', status, probeHash, timestamp, JSON.stringify(result), runnerDigest, timestamp, id, expectedRevision],
 +        expect_changes: 1
 +      },
 +      ...invalidate('codex_probe.finished', { profile_id: id, status }, timestamp, { clearCompletion: false })
@@ -3192,10 +3228,10 @@ index 0000000..9c595b9
 +}
 diff --git a/apps/api/src/modules/setup/service.mjs b/apps/api/src/modules/setup/service.mjs
 new file mode 100644
-index 0000000..8b41487
+index 0000000..a184a84
 --- /dev/null
 +++ b/apps/api/src/modules/setup/service.mjs
-@@ -0,0 +1,619 @@
+@@ -0,0 +1,671 @@
 +import { randomUUID } from 'node:crypto';
 +import { hashJson, id, now } from '../../crypto.mjs';
 +import { AppError, assert } from '../../errors.mjs';
@@ -3249,8 +3285,13 @@ index 0000000..8b41487
 +
 +  async expireCredentials() {
 +    const expired = await this.repository.expireCredentials(this.clock());
-+    for (const credentialId of expired) this.secrets?.forget(`credential:${credentialId}`);
-+    return expired;
++    for (const credential of expired) {
++      this.secrets?.forget(`credential:${credential.id}`);
++      if (String(credential.secret_ref || '').startsWith('vault:')) {
++        queueMicrotask(() => this.vault.removeBySecretRef(credential.secret_ref));
++      }
++    }
++    return expired.map((credential) => credential.id);
 +  }
 +
 +  async cleanupOrphanedSecrets() {
@@ -3335,11 +3376,24 @@ index 0000000..8b41487
 +    assert(current.status === 'active', 'credential_state_invalid', 'only active credentials can rotate', { status: 409 });
 +    const secret = validateSecret(current.kind, input?.secret);
 +    const nextVersion = Number(current.secret_version) + 1;
++    const nextCredentialRevision = Number(current.revision) + 1;
++    const profileUpdates = (await this.repository.codexProfiles())
++      .filter((profile) => profile.credential_ref === credentialId)
++      .map((profile) => ({
++        id: profile.id,
++        revision: profile.revision,
++        configHash: profileConfigurationHash(profile, nextCredentialRevision)
++      }));
 +    let secretRef = '';
 +    try {
 +      secretRef = `vault:${this.vault.putVersion(credentialId, nextVersion, secret)}`;
 +      await this.repository.rotateCredential({
-+        id: credentialId, secretRef, secretVersion: nextVersion, timestamp: this.clock()
++        id: credentialId,
++        secretRef,
++        secretVersion: nextVersion,
++        credentialRevision: nextCredentialRevision,
++        profileUpdates,
++        timestamp: this.clock()
 +      }, expectedRevision, ctx.actor);
 +    } catch (error) {
 +      if (secretRef) this.vault.removeBySecretRef(secretRef);
@@ -3448,11 +3502,11 @@ index 0000000..8b41487
 +
 +  async activeProfileSnapshot({ includeSecret = false } = {}) {
 +    const profile = await this.repository.activeCodexProfile();
-+    if (!profile || profile.credential_status !== 'active' || profile.runner_digest !== this.config.runnerDigest) return null;
++    if (!profile || profile.credential_status !== 'active') return null;
 +    const snapshot = {
 +      profile_id: profile.id,
 +      profile_revision: profile.revision,
-+      profile_hash: stableProfileHash(profile),
++      profile_hash: stableProfileHash(profile, this.config.runnerDigest),
 +      config_hash: profile.config_hash,
 +      label: profile.label,
 +      provider: profile.provider,
@@ -3480,6 +3534,7 @@ index 0000000..8b41487
 +        status: result?.status === 'available' ? 'available' : 'unavailable',
 +        probeHash,
 +        result,
++        runnerDigest: this.config.runnerDigest,
 +        timestamp: this.clock()
 +      });
 +    } catch (error) {
@@ -3583,20 +3638,26 @@ index 0000000..8b41487
 +    const activeCredential = credentials.find((row) => row.provider === 'codex' && row.status === 'active');
 +    const profile = profiles.find((row) => row.is_active && row.credential_status === 'active');
 +    const verifiedApp = apps.find((row) => row.status === 'verified' && row.private_key_status === 'active' && row.webhook_status === 'active');
-+    const installation = installations.find((row) => row.app_config_id === verifiedApp?.id && row.status === 'available');
-+    const installationRepositories = repositories.filter((row) => row.installation_id === installation?.id);
-+    const cachedRepositories = installationRepositories.length
-+      ? installationRepositories
-+      : Array.isArray(installation?.repositories) ? installation.repositories : [];
++    const appInstallations = installations.filter((row) => row.app_config_id === verifiedApp?.id);
++    const appRepositories = appInstallations.flatMap((installation) => {
++      const stored = repositories.filter((row) => row.installation_id === installation.id);
++      return stored.length ? stored : Array.isArray(installation.repositories) ? installation.repositories : [];
++    });
++    const availableInstallations = appInstallations.filter((row) => row.status === 'available');
++    const repositoryReady = availableInstallations.some((installation) => {
++      const stored = repositories.filter((row) => row.installation_id === installation.id);
++      const selected = stored.length ? stored : Array.isArray(installation.repositories) ? installation.repositories : [];
++      return permissionsReady(installation.permissions) && selected.some((row) => row.selected !== false);
++    });
 +    const checks = {
 +      owner: owner?.status === 'active',
 +      active_codex_credential: Boolean(activeCredential),
 +      active_codex_profile: Boolean(profile),
 +      current_codex_probe: Boolean(profile && profile.probe_status === 'available' && profile.probe_hash === this.codexProbeHash(profile)),
 +      verified_github_app: Boolean(verifiedApp),
-+      active_github_installation: Boolean(installation),
-+      repository_permissions: Boolean(installation && cachedRepositories.length > 0 && permissionsReady(installation.permissions)),
-+      current_github_probe: Boolean(verifiedApp && verifiedApp.probe_status === 'available' && verifiedApp.probe_hash === this.githubProbeHash(verifiedApp, installations.filter((row) => row.app_config_id === verifiedApp.id), cachedRepositories))
++      active_github_installation: availableInstallations.length > 0,
++      repository_permissions: repositoryReady,
++      current_github_probe: Boolean(verifiedApp && verifiedApp.probe_status === 'available' && verifiedApp.probe_hash === this.githubProbeHash(verifiedApp, appInstallations, appRepositories))
 +    };
 +    const blockers = Object.entries(checks).filter(([, ready]) => !ready).map(([check]) => check);
 +    const ready = blockers.length === 0;
@@ -3634,15 +3695,15 @@ index 0000000..8b41487
 +
 +  async assertReady(command) {
 +    const state = await this.setupState();
-+    if (state.status !== 'ready') throw new AppError('setup_not_ready', `setup blocks ${command}`, {
++    if (state.status !== 'ready' || !state.complete) throw new AppError('setup_not_ready', `setup blocks ${command}`, {
 +      status: 409,
-+      details: { revision: state.revision, blockers: state.blockers }
++      details: { revision: state.revision, blockers: state.blockers.length ? state.blockers : ['setup_incomplete'] }
 +    });
 +    return state;
 +  }
 +
 +  codexProbeHash(profile) {
-+    return hashJson({ runtime_id: this.runtimeId, profile_hash: stableProfileHash(profile), credential_revision: profile.current_credential_revision, runner_digest: this.config.runnerDigest });
++    return hashJson({ runtime_id: this.runtimeId, profile_hash: stableProfileHash(profile, this.config.runnerDigest), credential_revision: profile.current_credential_revision, runner_digest: this.config.runnerDigest });
 +  }
 +
 +  githubProbeHash(app, installations, repositories) {
@@ -3674,7 +3735,16 @@ index 0000000..8b41487
 +    assert(Number.isInteger(timeoutMs) && timeoutMs >= 5000 && timeoutMs <= 15 * 60 * 1000, 'invalid_input', 'profile timeout is invalid', { status: 422 });
 +    assert(credential.provider === 'codex' && credential.status === 'active', 'invalid_input', 'active Codex credential is required', { status: 422 });
 +    const authKind = credential.kind === 'codex_oauth_bundle' ? 'oauth_bundle' : 'api_key';
-+    const configHash = hashJson({ label, provider, model, base_url: baseUrl, wire_api: wireApi, reasoning, timeout_ms: timeoutMs, credential_ref: credential.id, credential_revision: credential.revision });
++    const configHash = profileConfigurationHash({
++      label,
++      provider,
++      model,
++      base_url: baseUrl,
++      wire_api: wireApi,
++      reasoning,
++      timeout_ms: timeoutMs,
++      credential_ref: credential.id
++    }, credential.revision);
 +    return {
 +      label, provider, model, baseUrl, wireApi, reasoning, timeoutMs,
 +      credentialId: credential.id,
@@ -3686,6 +3756,7 @@ index 0000000..8b41487
 +  }
 +
 +  async requiredCredential(idValue) {
++    await this.expireCredentials();
 +    const value = await this.repository.credential(String(idValue || ''));
 +    if (!value) throw new AppError('not_found', 'credential not found');
 +    return value;
@@ -3715,8 +3786,11 @@ index 0000000..8b41487
 +
 +  async githubBundle(appId) {
 +    const installations = await this.repository.githubInstallations(appId);
-+    const repositories = (await Promise.all(installations.map((row) => this.repository.githubRepositories(row.id)))).flat();
-+    return { installations, repositories: repositories.length ? repositories : installations.flatMap((row) => row.repositories || []) };
++    const repositories = (await Promise.all(installations.map(async (installation) => {
++      const stored = await this.repository.githubRepositories(installation.id);
++      return stored.length ? stored : installation.repositories || [];
++    }))).flat();
++    return { installations, repositories };
 +  }
 +}
 +
@@ -3787,14 +3861,28 @@ index 0000000..8b41487
 +  return url.href.replace(/\/$/, '');
 +}
 +
-+function stableProfileHash(profile) {
++function stableProfileHash(profile, runnerDigest = profile.runner_digest) {
 +  return hashJson({
 +    id: profile.id || profile.profile_id,
 +    revision: Number(profile.revision || profile.profile_revision),
 +    config_hash: profile.config_hash,
 +    credential_ref: profile.credential_ref,
 +    credential_revision: Number(profile.current_credential_revision || profile.credential_revision),
-+    runner_digest: profile.runner_digest
++    runner_digest: runnerDigest
++  });
++}
++
++function profileConfigurationHash(profile, credentialRevision) {
++  return hashJson({
++    label: profile.label,
++    provider: profile.provider,
++    model: profile.model,
++    base_url: profile.base_url ?? profile.baseUrl ?? '',
++    wire_api: profile.wire_api ?? profile.wireApi ?? 'responses',
++    reasoning: profile.reasoning,
++    timeout_ms: Number(profile.timeout_ms ?? profile.timeoutMs),
++    credential_ref: profile.credential_ref ?? profile.credentialId,
++    credential_revision: Number(credentialRevision)
 +  });
 +}
 +
@@ -3827,10 +3915,10 @@ index a9eebc5..9ef65e6 100644
  PRAGMA foreign_keys = ON;
 diff --git a/apps/api/src/secret-registry.mjs b/apps/api/src/secret-registry.mjs
 new file mode 100644
-index 0000000..67f1858
+index 0000000..0c93555
 --- /dev/null
 +++ b/apps/api/src/secret-registry.mjs
-@@ -0,0 +1,100 @@
+@@ -0,0 +1,105 @@
 +const MASK = '[redacted]';
 +
 +export class SecretRegistry {
@@ -3840,18 +3928,23 @@ index 0000000..67f1858
 +  }
 +
 +  remember(label, value) {
++    const key = String(label);
 +    const secret = String(value ?? '');
 +    if (secret.length < 4) return false;
-+    this.values.set(String(label), secret);
++    this.forget(key);
++    this.values.set(key, secret);
 +    try {
 +      const structured = JSON.parse(secret);
-+      rememberStructured(this.values, String(label), structured);
++      rememberStructured(this.values, key, structured);
 +    } catch { /* Most credentials are opaque strings rather than bundles. */ }
 +    return true;
 +  }
 +
 +  forget(label) {
-+    this.values.delete(String(label));
++    const key = String(label);
++    for (const stored of this.values.keys()) {
++      if (stored === key || stored.startsWith(`${key}:`)) this.values.delete(stored);
++    }
 +  }
 +
 +  list() {
@@ -3931,6 +4024,30 @@ index 0000000..67f1858
 +function escapeRegex(value) {
 +  return String(value).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 +}
+diff --git a/apps/api/src/terminal-service.mjs b/apps/api/src/terminal-service.mjs
+index ed3cd3c..94f729e 100644
+--- a/apps/api/src/terminal-service.mjs
++++ b/apps/api/src/terminal-service.mjs
+@@ -612,9 +612,6 @@ export class TerminalService {
+     try { runtime = await this.ensureRuntime(sessionId); }
+     catch (error) { websocket.send(JSON.stringify({ type: 'error', error: { code: safeErrorCode(error?.code), message: 'terminal runtime unavailable' } })); websocket.close(1011, 'terminal_unavailable'); return; }
+     runtime.clients.add(websocket);
+-    session = await this.get(sessionId);
+-    websocket.send(JSON.stringify({ type: 'status', session }));
+-    for (const event of await this.events(sessionId, initial)) this.sendReplay(websocket, event);
+     websocket.on('message', (raw) => {
+       let message;
+       try { message = JSON.parse(String(raw)); }
+@@ -625,6 +622,9 @@ export class TerminalService {
+         .catch((error) => websocket.readyState === 1 && websocket.send(JSON.stringify({ type: 'error', error: { code: safeErrorCode(error?.code, 'terminal_action_failed'), message: String(error?.message || 'terminal action failed').slice(0, 200) } })));
+     });
+     websocket.on('close', () => runtime.clients.delete(websocket));
++    session = await this.get(sessionId);
++    websocket.send(JSON.stringify({ type: 'status', session }));
++    for (const event of await this.events(sessionId, initial)) this.sendReplay(websocket, event);
+   }
+ 
+   sendReplay(websocket, event) {
 diff --git a/apps/runner-broker/codex-runner.mjs b/apps/runner-broker/codex-runner.mjs
 index 67e3414..7c06f25 100644
 --- a/apps/runner-broker/codex-runner.mjs
@@ -4846,11 +4963,15 @@ index 53c873c..1f15eda 100644
    });
  }
 diff --git a/apps/web/src/App.tsx b/apps/web/src/App.tsx
-index 673fae8..e602400 100644
+index 673fae8..d23b691 100644
 --- a/apps/web/src/App.tsx
 +++ b/apps/web/src/App.tsx
-@@ -4,9 +4,10 @@ import {
-   Menu, MessageSquare, Settings, ShieldCheck, Terminal as TerminalIcon, Workflow, X
+@@ -1,12 +1,13 @@
+ import { useCallback, useEffect, useMemo, useState, type ComponentType } from 'react';
+ import {
+   Activity, Archive, Boxes, ChevronDown, ClipboardCheck, FolderGit2, LayoutDashboard,
+-  Menu, MessageSquare, Settings, ShieldCheck, Terminal as TerminalIcon, Workflow, X
++  LoaderCircle, Menu, MessageSquare, Settings, ShieldCheck, Terminal as TerminalIcon, Workflow, X
  } from 'lucide-react';
  import { api } from './api';
 +import { SetupPage, type SetupState } from './features/setup';
@@ -4878,7 +4999,7 @@ index 673fae8..e602400 100644
  
    const loadProjects = useCallback(async () => {
      const rows = await api<Project[]>('/api/v1/projects');
-@@ -60,7 +64,20 @@ export function App() {
+@@ -60,7 +64,29 @@ export function App() {
      });
    }, []);
  
@@ -4886,25 +5007,34 @@ index 673fae8..e602400 100644
 +  const refreshSetup = useCallback(async () => {
 +    const state = await api<SetupState>('/api/v1/setup');
 +    setSetup({ status: state.status, complete: state.complete, revision: state.revision });
-+    if (state.status === 'ready') await loadProjects();
++    if (state.status === 'ready' && state.complete) await loadProjects();
 +    else { setProjects([]); setProjectId(''); }
 +  }, [loadProjects]);
 +
-+  useEffect(() => { void refreshSetup().catch(() => setSetup(null)); }, [refreshSetup]);
 +  useEffect(() => {
-+    if (setup?.status === 'blocked' && SETUP_GATED_PAGES.has(page)) {
++    void refreshSetup().catch(() => {
++      setSetup(null);
++      if (SETUP_GATED_PAGES.has(routeFromHash())) {
++        location.hash = '/setup';
++        setPage('setup');
++      }
++    });
++  }, [refreshSetup]);
++  const setupReady = setup?.status === 'ready' && setup.complete;
++  useEffect(() => {
++    if (setup && !setupReady && SETUP_GATED_PAGES.has(page)) {
 +      location.hash = '/setup';
 +      setPage('setup');
 +    }
-+  }, [page, setup?.status]);
++  }, [page, setup, setupReady]);
    useEffect(() => {
      const handler = () => setPage(routeFromHash());
      addEventListener('hashchange', handler);
-@@ -73,10 +90,17 @@ export function App() {
+@@ -73,17 +99,25 @@ export function App() {
    }, [notice]);
  
    const navigate = useCallback((next: PageKey) => {
-+    if (setup?.status !== 'ready' && SETUP_GATED_PAGES.has(next)) {
++    if (!setupReady && SETUP_GATED_PAGES.has(next)) {
 +      location.hash = '/setup';
 +      setPage('setup');
 +      setNotice({ tone: 'error', text: 'Complete Setup before using workspace commands.' });
@@ -4915,28 +5045,47 @@ index 673fae8..e602400 100644
      setPage(next);
      setMenuOpen(false);
 -  }, []);
-+  }, [setup?.status]);
++  }, [setupReady]);
    const selectProject = useCallback((id: string) => {
      setProjectId(id);
      sessionStorage.setItem('aiws:v3:selected-project', id);
-@@ -110,7 +134,7 @@ export function App() {
+   }, []);
+   const notify = useCallback((text: string, tone: 'ok' | 'error' = 'ok') => setNotice({ text, tone }), []);
+   const selectedProject = useMemo(() => projects.find((project) => project.id === projectId), [projectId, projects]);
+-  const Page = PAGES[page];
++  const gatedPagePending = SETUP_GATED_PAGES.has(page) && !setupReady;
++  const Page = gatedPagePending && setup ? SetupPage : PAGES[page];
+ 
+   return (
+     <div className="app-shell">
+@@ -110,7 +144,7 @@ export function App() {
            <label className="project-switcher">
              <span>Project</span>
              <div>
 -              <select value={projectId} onChange={(event) => selectProject(event.target.value)} aria-label="当前项目">
-+              <select value={projectId} disabled={setup?.status !== 'ready'} onChange={(event) => selectProject(event.target.value)} aria-label="当前项目">
++              <select value={projectId} disabled={!setupReady} onChange={(event) => selectProject(event.target.value)} aria-label="当前项目">
                  {!projects.length && <option value="">No project</option>}
                  {projects.map((project) => <option key={project.id} value={project.id}>{project.name}</option>)}
                </select>
-@@ -127,6 +151,8 @@ export function App() {
+@@ -120,14 +154,16 @@ export function App() {
+           <span className="local-pill"><span />127.0.0.1</span>
+         </header>
+         <main>
+-          <Page
++          {gatedPagePending && !setup ? <div className="page-loader"><LoaderCircle className="spin" />Loading setup</div> : <Page
+             projectId={projectId}
+             selectedProject={selectedProject}
+             selectProject={selectProject}
              refreshProjects={loadProjects}
              notify={notify}
              navigate={navigate}
-+            setupReady={setup?.status === 'ready'}
+-          />
++            setupReady={setupReady}
 +            refreshSetup={refreshSetup}
-           />
++          />}
          </main>
        </div>
+       {notice && <div className={`toast ${notice.tone}`} role="status">{notice.text}</div>}
 diff --git a/apps/web/src/features/setup/SetupPage.tsx b/apps/web/src/features/setup/SetupPage.tsx
 new file mode 100644
 index 0000000..7645fcb
@@ -5716,12 +5865,13 @@ index 6e1ad3c..50ffa47 100644
  }
 diff --git a/apps/web/src/test/setup-flow.test.tsx b/apps/web/src/test/setup-flow.test.tsx
 new file mode 100644
-index 0000000..24a53b3
+index 0000000..b48631a
 --- /dev/null
 +++ b/apps/web/src/test/setup-flow.test.tsx
-@@ -0,0 +1,113 @@
+@@ -0,0 +1,146 @@
 +import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 +import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
++import { App } from '../App';
 +import { SetupPage } from '../features/setup';
 +import type { WorkspacePageProps } from '../pages';
 +
@@ -5750,6 +5900,7 @@ index 0000000..24a53b3
 +
 +beforeEach(() => {
 +  vi.restoreAllMocks();
++  sessionStorage.clear();
 +  location.hash = '#/setup';
 +});
 +
@@ -5831,6 +5982,37 @@ index 0000000..24a53b3
 +    await waitFor(() => expect(refreshSetup).toHaveBeenCalled());
 +    expect(screen.getByText(/^Completed /)).toBeVisible();
 +    expect(screen.getByRole('button', { name: 'Reconfirm setup' })).toBeVisible();
++  });
++
++  it('does not load workspace data until ready checks are explicitly completed', async () => {
++    const readyChecks = Object.fromEntries(Object.keys(checks).map((key) => [key, true]));
++    let completed = false;
++    const projectRequests: string[] = [];
++    location.hash = '#/projects';
++    vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL, options?: RequestInit) => {
++      const url = String(input);
++      const method = options?.method || 'GET';
++      if (url.endsWith('/api/v1/setup') && method === 'GET') return response(setupState({
++        status: 'ready', complete: completed, can_complete: true,
++        completed_at: completed ? '2026-08-10T00:00:00.000Z' : null,
++        checks: readyChecks, blockers: []
++      }));
++      if (url.endsWith('/api/v1/setup/complete')) { completed = true; return response(setupState({ status: 'ready', complete: true, can_complete: true, checks: readyChecks, blockers: [] })); }
++      if (url.endsWith('/api/v1/projects')) { projectRequests.push(url); return response([]); }
++      if (url.endsWith('/api/v1/sessions')) return response([]);
++      if (url.includes('/api/v1/integrations/codex/discovery')) return response([]);
++      if (url.endsWith('/api/v1/system/capabilities')) return response({ version: '3.0.0', api: '/api/v1', codex: { status: 'available' }, github: { status: 'available' }, broker: { status: 'available', runner_digest: 'sha256:fixture' } });
++      if (url.endsWith('/readyz')) return response({ status: 'ready' });
++      return response({});
++    }));
++
++    render(<App />);
++    await screen.findByRole('button', { name: 'Complete setup' });
++    expect(projectRequests).toHaveLength(0);
++    expect(location.hash).toBe('#/setup');
++
++    fireEvent.click(screen.getByRole('button', { name: 'Complete setup' }));
++    await waitFor(() => expect(projectRequests).toHaveLength(1));
 +  });
 +});
 diff --git a/apps/web/src/test/terminal.test.tsx b/apps/web/src/test/terminal.test.tsx
@@ -6541,7 +6723,7 @@ index 0000000..e2df0e3
 +  return /^github_[a-z0-9_]{3,100}$/.test(normalized) ? normalized : 'github_probe_failed';
 +}
 diff --git a/scripts/recovery-evidence.mjs b/scripts/recovery-evidence.mjs
-index 1653011..7ce67a3 100644
+index 1653011..a4b60d7 100644
 --- a/scripts/recovery-evidence.mjs
 +++ b/scripts/recovery-evidence.mjs
 @@ -6,6 +6,7 @@ import path from 'node:path';
@@ -6552,7 +6734,20 @@ index 1653011..7ce67a3 100644
  const evidenceRoot = path.join(root, 'docs', 'evidence', batch);
  const excluded = new Set(String(process.env.RECOVERY_EXCLUDE || '').split(',').map(normalize).filter(Boolean));
  const git = process.platform === 'win32' ? 'git.exe' : 'git';
-@@ -47,11 +48,35 @@ const commandDefinitions = [
+@@ -13,9 +14,10 @@ const corepack = process.platform === 'win32' ? 'corepack.cmd' : 'corepack';
+ const powershell = process.platform === 'win32' ? 'powershell.exe' : 'pwsh';
+ 
+ fs.mkdirSync(evidenceRoot, { recursive: true });
+-const baselineCommit = run(git, ['rev-parse', 'HEAD']).stdout.trim();
++const baselineRef = String(process.env.RECOVERY_BASELINE || 'HEAD').trim();
++const baselineCommit = run(git, ['rev-parse', '--verify', `${baselineRef}^{commit}`]).stdout.trim();
+ const branch = run(git, ['branch', '--show-current']).stdout.trim();
+-const changedFiles = listChangedFiles().filter((file) => !file.startsWith(`docs/evidence/${batch}/`) && !excluded.has(file));
++const changedFiles = listChangedFiles(baselineCommit).filter((file) => !file.startsWith(`docs/evidence/${batch}/`) && !excluded.has(file));
+ if (!changedFiles.length) throw new Error('recovery_evidence_has_no_changed_files');
+ 
+ const fileRecords = changedFiles.map((file) => {
+@@ -47,11 +49,35 @@ const commandDefinitions = [
    { label: 'recovery-plan', executable: corepack, args: ['pnpm', 'recovery:plan'] },
    { label: 'recovery-catalog', executable: corepack, args: ['pnpm', 'recovery:catalog'] },
    { label: 'recovery-coverage', executable: corepack, args: ['pnpm', 'recovery:coverage'] },
@@ -6592,7 +6787,7 @@ index 1653011..7ce67a3 100644
  const commands = commandDefinitions.map(executeAndRecord);
  
  const screenshotRecords = captureScreenshots();
-@@ -61,8 +86,7 @@ const rollback = rehearseRollback({ patchPath, rollbackScriptPath, baselineCommi
+@@ -61,8 +87,7 @@ const rollback = rehearseRollback({ patchPath, rollbackScriptPath, baselineCommi
  const rollbackReceiptPath = path.join(evidenceRoot, 'rollback.json');
  fs.writeFileSync(rollbackReceiptPath, `${JSON.stringify(rollback, null, 2)}\n`);
  
@@ -6602,7 +6797,7 @@ index 1653011..7ce67a3 100644
  const verificationPath = path.join(evidenceRoot, 'verification.json');
  const verification = {
    schema_version: 'aiws.v3.recovery_verification.v1',
-@@ -74,40 +98,16 @@ const verification = {
+@@ -74,40 +99,16 @@ const verification = {
    inputs: {
      recovery_batch: batch,
      excluded_preexisting_files: [...excluded],
@@ -6650,7 +6845,7 @@ index 1653011..7ce67a3 100644
    commands,
    screenshots: screenshotRecords,
    artifacts: {
-@@ -115,7 +115,10 @@ const verification = {
+@@ -115,7 +116,10 @@ const verification = {
      patch: relative(patchPath),
      verification: relative(verificationPath),
      rollback: relative(rollbackScriptPath),
@@ -6662,7 +6857,7 @@ index 1653011..7ce67a3 100644
    },
    patch_sha256: patchSha256,
    rollback_status: rollback.status
-@@ -151,6 +154,109 @@ process.stdout.write(`${JSON.stringify({
+@@ -151,6 +155,109 @@ process.stdout.write(`${JSON.stringify({
    manifest: relative(manifestPath)
  }, null, 2)}\n`);
  
@@ -6772,7 +6967,7 @@ index 1653011..7ce67a3 100644
  function executeAndRecord(definition) {
    const result = runBuffer(definition.executable, definition.args, { allowFailure: true, shell: process.platform === 'win32' && definition.executable === corepack });
    const output = Buffer.concat([result.stdout, result.stderr]);
-@@ -185,7 +291,8 @@ function captureScreenshots() {
+@@ -185,7 +292,8 @@ function captureScreenshots() {
  }
  
  function rehearseRollback({ patchPath: sourcePatch, rollbackScriptPath: script, baselineCommit: commit }) {
@@ -6782,6 +6977,22 @@ index 1653011..7ce67a3 100644
    const commands = [];
    try {
      commands.push(runAndDescribe(git, ['worktree', 'add', '--detach', worktree, commit]));
+@@ -268,12 +376,10 @@ function createPatch(files, commit) {
+   }
+ }
+ 
+-function listChangedFiles() {
++function listChangedFiles(commit) {
+   const values = new Set();
+-  for (const args of [['diff', '--name-only'], ['diff', '--cached', '--name-only']]) {
+-    const result = run(git, ['-c', 'core.quotepath=false', ...args]);
+-    for (const file of result.stdout.split(/\r?\n/).filter(Boolean)) values.add(normalize(file));
+-  }
++  const changed = run(git, ['-c', 'core.quotepath=false', 'diff', '--name-only', commit, '--']);
++  for (const file of changed.stdout.split(/\r?\n/).filter(Boolean)) values.add(normalize(file));
+   const untracked = run(git, ['-c', 'core.quotepath=false', 'ls-files', '--others', '--exclude-standard']);
+   for (const file of untracked.stdout.split(/\r?\n/).filter(Boolean)) values.add(normalize(file));
+   return [...values].sort();
 diff --git a/scripts/recovery-golden.mjs b/scripts/recovery-golden.mjs
 index 05b17ec..1baf842 100644
 --- a/scripts/recovery-golden.mjs
@@ -7064,9 +7275,18 @@ index 05b17ec..1baf842 100644
 +function relative(file) { return path.relative(root, file).replaceAll('\\', '/'); }
 +function sha256(value) { return createHash('sha256').update(value).digest('hex'); }
 diff --git a/scripts/recovery-governance.mjs b/scripts/recovery-governance.mjs
-index afee202..6ff1598 100644
+index afee202..09945dc 100644
 --- a/scripts/recovery-governance.mjs
 +++ b/scripts/recovery-governance.mjs
+@@ -184,7 +184,7 @@ function checkImpact() {
+   const changed = changedFiles();
+   const mappings = [];
+   const unmapped = [];
+-  const governance = /^(?:feature-catalog\.json|package\.json|docs\/|V3功能恢复与架构治理判断\.md|scripts\/(?:recovery-governance|recovery-evidence)\.mjs|apps\/api\/src\/(?:schema|db-worker|migration-service)\.mjs|apps\/api\/src\/(?:migrations|modules)\/(?:index|registry|define-module)\.mjs)/;
++  const governance = /^(?:\.gitattributes|feature-catalog\.json|package\.json|docs\/|V3功能恢复与架构治理判断\.md|scripts\/(?:recovery-governance|recovery-evidence)\.mjs|apps\/api\/src\/(?:schema|db-worker|migration-service)\.mjs|apps\/api\/src\/(?:migrations|modules)\/(?:index|registry|define-module)\.mjs)/;
+   for (const file of [...changed].sort()) {
+     const matched = features.filter((feature) => featurePaths(feature).some((target) => {
+       const normalized = normalize(target);
 @@ -250,15 +250,27 @@ function validateReleaseReceipt(feature, receiptPath) {
  }
  
@@ -7112,13 +7332,13 @@ index afee202..6ff1598 100644
      }
 diff --git a/tests/golden/r2/identity-setup.json b/tests/golden/r2/identity-setup.json
 new file mode 100644
-index 0000000..ed6ce38
+index 0000000..c967186
 --- /dev/null
 +++ b/tests/golden/r2/identity-setup.json
 @@ -0,0 +1,222 @@
 +{
 +  "schema_version": "aiws.v3.r2_golden.v1",
-+  "source_commit": "d99d2c9f38a7fa279d0bdc9e855e1e293cc3a032",
++  "source_commit": "7a59ca3e82525220ccbf3eaae80da4c0ce87856b",
 +  "extraction": {
 +    "mode": "current_read_only_contracts",
 +    "executed_runtime": false
@@ -7130,19 +7350,19 @@ index 0000000..ed6ce38
 +    },
 +    {
 +      "path": "apps/api/src/modules/setup/codex-discovery.mjs",
-+      "sha256": "ac554036ac99b0ae7015e3de4e137bc05b446e99bfabbcd51fb05c3545d26bed"
++      "sha256": "017a50493fb52831cce3737d715846049a6a440f22c702f3c539e28a641400d0"
 +    },
 +    {
 +      "path": "apps/api/src/modules/setup/codex-service.mjs",
-+      "sha256": "83b3b8d59dae574e933d6f1c844d590ca50ab7d7e34b9595d4e65b59a2975c1f"
++      "sha256": "cca813dc4fa8c76199557b99a9fd46139175bc24d1923fdc7be3e6d7815c38b4"
 +    },
 +    {
 +      "path": "apps/api/src/modules/setup/service.mjs",
-+      "sha256": "ba73e707dc7806da1b8bdab207f6c8c66bd112ac510a1895e9fd0e913f5ce2f8"
++      "sha256": "86c0eac4c3962d786d906185874cfc29cae5e30e598af9659a91f0cc4f5e9ff2"
 +    },
 +    {
 +      "path": "apps/api/src/modules/setup/github-service.mjs",
-+      "sha256": "412e2b445ca55dab0253817981870aff3f54575bcd7d7428b184d90ef1ed2ab3"
++      "sha256": "1d44d804f980644ee0c8e4aeaf6ad999471fa9cb8f9451ce1a5fd9bc46cb3de1"
 +    }
 +  ],
 +  "contracts": [
@@ -7336,7 +7556,7 @@ index 0000000..ed6ce38
 +      ]
 +    }
 +  ],
-+  "fixture_sha256": "6748e7560fe5d46ab8271db5758ec3afa9b5dc0434a1124f89fe474952555c8d"
++  "fixture_sha256": "7a0544234fae0f10062c335f5e079ec7f50e983b190c8a4104263f615dd7baaa"
 +}
 diff --git a/tests/integration/codex-provider-flow.test.mjs b/tests/integration/codex-provider-flow.test.mjs
 new file mode 100644
@@ -7698,10 +7918,10 @@ index 0000000..c99131b
 +});
 diff --git a/tests/integration/r2-provider-boundaries.test.mjs b/tests/integration/r2-provider-boundaries.test.mjs
 new file mode 100644
-index 0000000..ff2a7b0
+index 0000000..7ac100e
 --- /dev/null
 +++ b/tests/integration/r2-provider-boundaries.test.mjs
-@@ -0,0 +1,375 @@
+@@ -0,0 +1,422 @@
 +import assert from 'node:assert/strict';
 +import { generateKeyPairSync } from 'node:crypto';
 +import test from 'node:test';
@@ -7852,6 +8072,7 @@ index 0000000..ff2a7b0
 +  });
 +
 +  await assert.rejects(() => service.probe({ profile_id: 'cdp_missing' }), hasCode('not_found'));
++  await assert.rejects(() => service.probe({}), hasCode('expected_revision_required'));
 +  await assert.rejects(() => service.probe({ expected_revision: 'bad' }), hasCode('expected_revision_required'));
 +  await assert.rejects(() => service.runProbe('cdp_missing', 3, {}, {}), hasCode('codex_profile_stale'));
 +  assert.equal(await service.resumeOperation({ kind: 'other', external_ref: 'da_fixture' }), false);
@@ -7899,6 +8120,10 @@ index 0000000..ff2a7b0
 +  );
 +  await assert.rejects(
 +    () => serviceFor(async () => { const error = new Error('aborted'); error.name = 'AbortError'; throw error; }).request('GET', '/app', { token: 'token' }),
++    hasCode('github_request_timeout')
++  );
++  await assert.rejects(
++    () => serviceFor(async () => { const error = new Error('timed out'); error.name = 'TimeoutError'; throw error; }).request('GET', '/app', { token: 'token' }),
 +    hasCode('github_request_timeout')
 +  );
 +
@@ -7976,6 +8201,48 @@ index 0000000..ff2a7b0
 +  });
 +  assert.equal(missingRepository.error_code, 'github_repository_missing');
 +  assert.equal(missingRepository.checks.at(-1).status, 'failed');
++});
++
++test('GitHub Probe selects a repository-ready installation from the full snapshot', async () => {
++  const app = { id: 'gha_fixture', app_id: '12345', revision: 3, private_key_ref: 'cred_key' };
++  const permissions = { metadata: 'read', contents: 'write', pull_requests: 'write' };
++  const installations = [
++    { id: 'ghi_empty', installation_id: '67890', status: 'available', permissions },
++    {
++      id: 'ghi_ready', installation_id: '67891', status: 'available', permissions,
++      repositories: [{ github_id: '9002', full_name: 'fixture/ready' }]
++    }
++  ];
++  const tokenRequests = [];
++  let recorded;
++  const service = new GithubService({
++    config: {},
++    setup: {
++      repository: {
++        githubInstallations: async () => installations,
++        githubRepositories: async (installationId) => installationId === 'ghi_empty'
++          ? [{ github_id: '9001', full_name: 'fixture/empty', selected: false }]
++          : []
++      },
++      recordGithubProbe: async (_id, _revision, result) => { recorded = result; }
++    },
++    operations: {},
++    fetchImpl: async () => json({})
++  });
++  service.appJwt = async () => 'fixture-jwt';
++  service.installationToken = async (installationId) => {
++    tokenRequests.push(installationId);
++    return 'installation-token';
++  };
++  service.request = async (_method, path) => path === '/app'
++    ? { id: 12345, slug: 'fixture-app' }
++    : { total_count: 1 };
++
++  const result = await service.runProbe(app, app.revision, {});
++  assert.equal(result.status, 'available');
++  assert.deepEqual(tokenRequests, ['67891']);
++  assert.equal(recorded.status, 'available');
++  assert.equal(recorded.checks.every((item) => item.status === 'passed'), true);
 +});
 +
 +test('GitHub discovery and repository sync preserve blocked state reasons', async () => {
@@ -8078,10 +8345,24 @@ index 0000000..ff2a7b0
 +  return new Response(JSON.stringify(value), { status, headers: { 'content-type': 'application/json' } });
 +}
 diff --git a/tests/integration/real-slice.test.mjs b/tests/integration/real-slice.test.mjs
-index c9b9f74..1bb62fd 100644
+index c9b9f74..b523d72 100644
 --- a/tests/integration/real-slice.test.mjs
 +++ b/tests/integration/real-slice.test.mjs
-@@ -53,15 +53,16 @@ test('fixture execution isolates a worktree and captures diff, output, and evide
+@@ -24,8 +24,12 @@ test('fixture execution isolates a worktree and captures diff, output, and evide
+     assert.ok(worktree?.worktree_path);
+     const worktreePath = path.join(env.home, worktree.worktree_path);
+     const writer = setInterval(() => { if (fs.existsSync(worktreePath)) fs.writeFileSync(path.join(worktreePath, 'result.txt'), 'captured\n', 'utf8'); }, 2);
+-    const completed = await eventually(async () => (await request(env.base, `/api/v1/executions/${execution.id}`)).json, (value) => value.status === 'completed');
++    await eventually(async () => (await request(env.base, `/api/v1/executions/${execution.id}`)).json, (value) => value.status === 'completed');
+     clearInterval(writer);
++    const completed = await eventually(
++      async () => (await request(env.base, `/api/v1/executions/${execution.id}`)).json,
++      (value) => value.status === 'completed' && value.runner.worktree_status === 'removed'
++    );
+     assert.equal(completed.runner.worktree_status, 'removed');
+     assert.ok(completed.evidence.some((item) => item.name.endsWith('.diff')));
+     assert.ok(completed.evidence.some((item) => item.name.endsWith('result.txt')));
+@@ -53,15 +57,16 @@ test('fixture execution isolates a worktree and captures diff, output, and evide
    }
  });
  
@@ -8470,10 +8751,10 @@ index cfa4405..803ce6d 100644
  });
 diff --git a/tests/unit/credential-vault.test.mjs b/tests/unit/credential-vault.test.mjs
 new file mode 100644
-index 0000000..89bea1f
+index 0000000..e276c1b
 --- /dev/null
 +++ b/tests/unit/credential-vault.test.mjs
-@@ -0,0 +1,31 @@
+@@ -0,0 +1,38 @@
 +import assert from 'node:assert/strict';
 +import fs from 'node:fs';
 +import os from 'node:os';
@@ -8504,6 +8785,13 @@ index 0000000..89bea1f
 +  assert.deepEqual(registry.redactObject({ message: 'Bearer token-value-1234', nested: ['registry-secret-sentinel-1234'] }), {
 +    message: 'Bearer [redacted]', nested: ['[redacted]']
 +  });
++
++  registry.remember('oauth', JSON.stringify({ tokens: { access_token: 'oauth-old-sentinel-1234' } }));
++  assert.equal(registry.redact('oauth-old-sentinel-1234'), '[redacted]');
++  registry.remember('oauth', JSON.stringify({ tokens: { access_token: 'oauth-new-sentinel-5678' } }));
++  assert.equal(registry.redact('oauth-old-sentinel-1234'), 'oauth-old-sentinel-1234');
++  registry.forget('oauth');
++  assert.equal(registry.redact('oauth-new-sentinel-5678'), 'oauth-new-sentinel-5678');
 +});
 diff --git a/tests/unit/database.test.mjs b/tests/unit/database.test.mjs
 index 9eb7aa6..5ac80a3 100644
@@ -8565,10 +8853,10 @@ index 0000000..6867a25
 +});
 diff --git a/tests/unit/identity-operations.test.mjs b/tests/unit/identity-operations.test.mjs
 new file mode 100644
-index 0000000..14c8377
+index 0000000..16ee440
 --- /dev/null
 +++ b/tests/unit/identity-operations.test.mjs
-@@ -0,0 +1,58 @@
+@@ -0,0 +1,67 @@
 +import assert from 'node:assert/strict';
 +import fs from 'node:fs';
 +import os from 'node:os';
@@ -8616,6 +8904,15 @@ index 0000000..14c8377
 +    assert.equal(completed.status, 'completed');
 +    assert.equal(completed.result.summary, '[redacted] done');
 +    assert.equal(JSON.stringify(await operations.events(complete.operation_id)).includes('operation-secret-sentinel'), false);
++
++    const failedReceipt = await operations.create({
++      kind: 'fixture.failure',
++      executor: async () => { throw new Error('operation-secret-sentinel'); }
++    });
++    await new Promise((resolve) => setTimeout(resolve, 20));
++    const failed = await operations.get(failedReceipt.operation_id);
++    assert.equal(failed.error_code, 'operation_failed');
++    assert.equal(JSON.stringify(await operations.events(failed.id)).includes('operation-secret-sentinel'), false);
 +
 +    const cancellable = await operations.create({ kind: 'fixture.cancel', executor: ({ signal }) => new Promise((resolve) => signal.addEventListener('abort', resolve, { once: true })) });
 +    await new Promise((resolve) => setTimeout(resolve, 10));
@@ -8796,27 +9093,28 @@ index ab4d31d..2380cc1 100644
  });
 diff --git a/tests/unit/setup-service.test.mjs b/tests/unit/setup-service.test.mjs
 new file mode 100644
-index 0000000..8c2ec5c
+index 0000000..d37c865
 --- /dev/null
 +++ b/tests/unit/setup-service.test.mjs
-@@ -0,0 +1,105 @@
+@@ -0,0 +1,191 @@
 +import assert from 'node:assert/strict';
 +import fs from 'node:fs';
 +import os from 'node:os';
 +import path from 'node:path';
 +import test from 'node:test';
 +import { openDatabase } from '../../apps/api/src/database.mjs';
++import { hashJson } from '../../apps/api/src/crypto.mjs';
 +import { IdentityService } from '../../apps/api/src/modules/identity/service.mjs';
 +import { SetupService } from '../../apps/api/src/modules/setup/service.mjs';
 +import { SecretRegistry } from '../../apps/api/src/secret-registry.mjs';
 +
-+async function fixture() {
++async function fixture({ clock } = {}) {
 +  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'aiws-r2-setup-'));
 +  const db = await openDatabase(path.join(home, 'state.sqlite'));
 +  const identity = new IdentityService({ db });
 +  await identity.initialize();
 +  const config = { home, runnerDigest: `sha256:${'a'.repeat(64)}`, codexCredential: null, githubCredential: null };
-+  const setup = new SetupService({ db, config, identity, secrets: new SecretRegistry(), runtimeId: 'runtime-a' });
++  const setup = new SetupService({ db, config, identity, secrets: new SecretRegistry(), runtimeId: 'runtime-a', ...(clock ? { clock } : {}) });
 +  await setup.initialize();
 +  return { home, db, identity, config, setup, async close() { await db.close(); fs.rmSync(home, { recursive: true, force: true }); } };
 +}
@@ -8853,15 +9151,30 @@ index 0000000..8c2ec5c
 +      permissions: { metadata: 'read', contents: 'write', pull_requests: 'write' },
 +      repositories: [{ id: '9001', full_name: 'fixture-org/repository', selected: true }]
 +    });
++    const appAfterFirstInstallation = await env.setup.repository.githubApp(app.id);
++    await env.setup.createGithubInstallation(app.id, {
++      expected_revision: appAfterFirstInstallation.revision,
++      installation_id: '67891',
++      account_login: 'fixture-org-secondary',
++      permissions: { metadata: 'read', contents: 'write', pull_requests: 'write' },
++      repositories: [{ id: '9002', full_name: 'fixture-org/secondary', selected: true }]
++    });
 +    const appAfterInstallation = await env.setup.repository.githubApp(app.id);
 +    await env.setup.recordGithubProbe(app.id, appAfterInstallation.revision, { status: 'available', slug: 'workspace-app' });
 +
 +    const ready = await env.setup.setupState();
 +    assert.equal(ready.status, 'ready');
++    assert.equal(ready.complete, false);
 +    assert.ok(Object.values(ready.checks).every(Boolean));
++    await assert.rejects(() => env.setup.assertReady('project.create'), (error) => {
++      assert.equal(error.code, 'setup_not_ready');
++      assert.deepEqual(error.details.blockers, ['setup_incomplete']);
++      return true;
++    });
 +    const completed = await env.setup.completeSetup({ expected_revision: ready.revision });
 +    assert.equal(completed.complete, true);
 +    assert.ok(completed.completed_at);
++    assert.equal((await env.setup.assertReady('project.create')).complete, true);
 +
 +    const restarted = new SetupService({
 +      db: env.db, config: env.config, identity: env.identity, secrets: new SecretRegistry(), runtimeId: 'runtime-b'
@@ -8886,11 +9199,32 @@ index 0000000..8c2ec5c
 +      secret: 'codex-secret-rotated-5678'
 +    });
 +    assert.equal(rotated.secret_version, 2);
++    const rotatedSnapshot = await restarted.activeProfileSnapshot();
++    assert.equal(rotatedSnapshot.credential_revision, 2);
++    assert.equal(rotatedSnapshot.config_hash, hashJson({
++      label: 'Primary', provider: 'openai', model: 'fixture-model', base_url: '', wire_api: 'responses',
++      reasoning: 'medium', timeout_ms: 30000, credential_ref: codex.id, credential_revision: 2
++    }));
 +    await Promise.resolve();
 +    const invalidated = await restarted.setupState();
 +    assert.equal(invalidated.complete, false);
 +    assert.equal(invalidated.completed_at, null);
 +    assert.equal(invalidated.checks.current_codex_probe, false);
++
++    const nextDigest = `sha256:${'b'.repeat(64)}`;
++    const rebound = new SetupService({
++      db: env.db,
++      config: { ...env.config, runnerDigest: nextDigest },
++      identity: env.identity,
++      secrets: new SecretRegistry(),
++      runtimeId: 'runtime-c'
++    });
++    await rebound.initialize();
++    const reboundSnapshot = await rebound.activeProfileSnapshot();
++    assert.equal(reboundSnapshot.runner_digest, nextDigest);
++    const reboundProfile = await rebound.repository.codexProfile(profile.id);
++    await rebound.recordCodexProbe(profile.id, reboundProfile.revision, { status: 'available', checks: [] });
++    assert.equal((await rebound.repository.codexProfile(profile.id)).runner_digest, nextDigest);
 +  } finally { await env.close(); }
 +});
 +
@@ -8903,5 +9237,54 @@ index 0000000..8c2ec5c
 +    const revoked = await env.setup.revokeCredential(credential.id, { expected_revision: 1 });
 +    assert.equal(revoked.status, 'revoked');
 +    await assert.rejects(() => env.setup.credentialSecret(credential.id), (error) => error.code === 'credential_unavailable');
++  } finally { await env.close(); }
++});
++
++test('GitHub snapshots combine each installation cache independently', async () => {
++  const service = Object.create(SetupService.prototype);
++  service.repository = {
++    githubInstallations: async () => [
++      { id: 'ghi_stored', repositories: [{ github_id: 'legacy-ignored' }] },
++      { id: 'ghi_legacy', repositories: [{ github_id: 'legacy-kept' }] }
++    ],
++    githubRepositories: async (installationId) => installationId === 'ghi_stored'
++      ? [{ github_id: 'stored-kept' }]
++      : []
++  };
++
++  const bundle = await service.githubBundle('gha_fixture');
++  assert.deepEqual(bundle.repositories.map((row) => row.github_id), ['stored-kept', 'legacy-kept']);
++});
++
++test('credential expiry removes ciphertext and interrupted revocation is cleaned as orphaned', async () => {
++  let timestamp = '2026-08-11T00:00:00.000Z';
++  const env = await fixture({ clock: () => timestamp });
++  try {
++    const expiring = await env.setup.createCredential({
++      kind: 'codex_api_key', label: 'Expiring', secret: 'expiring-credential-fixture-1234',
++      expires_at: '2026-08-11T00:05:00.000Z'
++    });
++    const expiringRef = (await env.setup.repository.credential(expiring.id)).secret_ref;
++    assert.equal(env.setup.vault.entries().includes(expiringRef.slice('vault:'.length)), true);
++
++    timestamp = '2026-08-11T00:06:00.000Z';
++    assert.deepEqual(await env.setup.expireCredentials(), [expiring.id]);
++    await Promise.resolve();
++    assert.equal((await env.setup.repository.credential(expiring.id)).status, 'expired');
++    assert.equal(env.setup.vault.entries().includes(expiringRef.slice('vault:'.length)), false);
++    await assert.rejects(() => env.setup.rotateCredential(expiring.id, {
++      expected_revision: 2, secret: 'replacement-credential-fixture-5678'
++    }), (error) => error.code === 'credential_state_invalid');
++
++    const revoked = await env.setup.createCredential({
++      kind: 'codex_api_key', label: 'Interrupted revoke', secret: 'revoked-credential-fixture-1234'
++    });
++    const revokedRef = (await env.setup.repository.credential(revoked.id)).secret_ref;
++    await env.setup.repository.revokeCredential({
++      id: revoked.id, expectedRevision: revoked.revision, timestamp, actor: 'usr_local_owner'
++    });
++    assert.equal(env.setup.vault.entries().includes(revokedRef.slice('vault:'.length)), true);
++    assert.deepEqual(await env.setup.cleanupOrphanedSecrets(), [revokedRef.slice('vault:'.length)]);
++    assert.equal(env.setup.vault.entries().includes(revokedRef.slice('vault:'.length)), false);
 +  } finally { await env.close(); }
 +});

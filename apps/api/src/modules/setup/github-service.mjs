@@ -25,6 +25,7 @@ export class GithubService {
         const jwt = await this.appJwt(app);
         const remote = await this.paginate('/app/installations', jwt, operationContext.signal);
         const installations = remote.map((item) => normalizeInstallation(app.id, item));
+        operationContext.ensureActive?.();
         await this.setup.repository.discoverGithubInstallations({
           appConfigId: app.id, expectedRevision, installations, timestamp: this.clock()
         }, ctx.actor);
@@ -55,6 +56,7 @@ export class GithubService {
         const remote = await this.paginate('/installation/repositories', token, operationContext.signal, { installationToken: true });
         const repositories = remote.map((item) => normalizeRepository(installation.id, item));
         const ready = permissionsReady(installation.permissions) && repositories.some((item) => item.selected);
+        operationContext.ensureActive?.();
         await this.setup.repository.syncGithubRepositories({
           installationId: installation.id,
           expectedRevision,
@@ -73,7 +75,7 @@ export class GithubService {
     const appId = String(input?.app_config_id || input?.app_id || '');
     const app = appId ? await this.requiredApp(appId) : (await this.setup.repository.githubApps())[0];
     if (!app) throw new AppError('github_app_missing', 'GitHub App configuration is required', { status: 409 });
-    const expectedRevision = Number(input?.expected_revision || app.revision);
+    const expectedRevision = Number(input?.expected_revision);
     assert(Number.isInteger(expectedRevision) && expectedRevision > 0, 'expected_revision_required', 'expected_revision is required', { status: 400 });
     assertRevision(app, expectedRevision);
     return this.operations.create({
@@ -93,15 +95,27 @@ export class GithubService {
       if (!slug || String(remoteApp?.id || '') !== String(app.app_id)) throw new GithubProviderError('github_app_mismatch');
       checks.push(check('app', true));
       const installations = await this.setup.repository.githubInstallations(app.id);
-      const installation = installations.find((item) => item.status === 'available');
-      if (!installation) throw new GithubProviderError('github_installation_missing');
+      const available = installations.filter((item) => item.status === 'available');
+      if (!available.length) throw new GithubProviderError('github_installation_missing');
       checks.push(check('installation', true));
-      if (!permissionsReady(installation.permissions)) throw new GithubProviderError('github_permission_missing');
+      const permissioned = available.filter((item) => permissionsReady(item.permissions));
+      if (!permissioned.length) throw new GithubProviderError('github_permission_missing');
       checks.push(check('permissions', true));
+      let installation = null;
+      let cached = [];
+      for (const candidate of permissioned) {
+        const stored = await this.setup.repository.githubRepositories(candidate.id);
+        const selected = stored.length ? stored : Array.isArray(candidate.repositories) ? candidate.repositories : [];
+        if (selected.some((item) => item.selected !== false)) {
+          installation = candidate;
+          cached = selected;
+          break;
+        }
+      }
+      if (!installation) throw new GithubProviderError('github_repository_missing');
       const token = await this.installationToken(installation.installation_id, jwt, operationContext.signal);
       const remoteRepositories = await this.request('GET', '/installation/repositories?per_page=1', { token, installationToken: true, signal: operationContext.signal });
-      const cached = await this.setup.repository.githubRepositories(installation.id);
-      if (!cached.some((item) => item.selected) || Number(remoteRepositories?.total_count || 0) < 1) throw new GithubProviderError('github_repository_missing');
+      if (!cached.some((item) => item.selected !== false) || Number(remoteRepositories?.total_count || 0) < 1) throw new GithubProviderError('github_repository_missing');
       checks.push(check('repositories', true));
       result = { status: 'available', error_code: null, slug, checks };
     } catch (error) {
@@ -112,6 +126,7 @@ export class GithubService {
       for (const phase of phases.slice(checks.length)) checks.push({ phase, status: 'skipped', error_code: code });
       result = { status: 'unavailable', error_code: code, slug: '', checks };
     }
+    operationContext.ensureActive?.();
     await this.setup.recordGithubProbe(app.id, expectedRevision, result);
     return { app_config_id: app.id, ...result };
   }
@@ -199,7 +214,7 @@ export class GithubService {
         signal: signal ? AbortSignal.any([signal, AbortSignal.timeout(30_000)]) : AbortSignal.timeout(30_000)
       });
     } catch (error) {
-      if (error?.name === 'AbortError') throw new GithubProviderError('github_request_timeout');
+      if (error?.name === 'AbortError' || error?.name === 'TimeoutError') throw new GithubProviderError('github_request_timeout');
       throw new GithubProviderError('github_api_unavailable');
     }
     const data = await response.json().catch(() => ({}));

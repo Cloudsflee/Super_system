@@ -612,9 +612,6 @@ export class TerminalService {
     try { runtime = await this.ensureRuntime(sessionId); }
     catch (error) { websocket.send(JSON.stringify({ type: 'error', error: { code: safeErrorCode(error?.code), message: 'terminal runtime unavailable' } })); websocket.close(1011, 'terminal_unavailable'); return; }
     runtime.clients.add(websocket);
-    session = await this.get(sessionId);
-    websocket.send(JSON.stringify({ type: 'status', session }));
-    for (const event of await this.events(sessionId, initial)) this.sendReplay(websocket, event);
     websocket.on('message', (raw) => {
       let message;
       try { message = JSON.parse(String(raw)); }
@@ -625,6 +622,9 @@ export class TerminalService {
         .catch((error) => websocket.readyState === 1 && websocket.send(JSON.stringify({ type: 'error', error: { code: safeErrorCode(error?.code, 'terminal_action_failed'), message: String(error?.message || 'terminal action failed').slice(0, 200) } })));
     });
     websocket.on('close', () => runtime.clients.delete(websocket));
+    session = await this.get(sessionId);
+    websocket.send(JSON.stringify({ type: 'status', session }));
+    for (const event of await this.events(sessionId, initial)) this.sendReplay(websocket, event);
   }
 
   sendReplay(websocket, event) {

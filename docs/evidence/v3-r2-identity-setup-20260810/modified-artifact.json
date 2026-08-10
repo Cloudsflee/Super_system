@@ -4,6 +4,13 @@
   "baseline_commit": "d99d2c9f38a7fa279d0bdc9e855e1e293cc3a032",
   "files": [
     {
+      "path": ".gitattributes",
+      "baseline_present": true,
+      "baseline_sha256": "273c6c3ccae91309d0f22e52d61b07f901a100b76ea5f0cccf15adf00ca502e9",
+      "modified_sha256": "c3feb32f73ec33a52daee5ec0335c5d6e2961ac38530923a7bd994df3ce66b86",
+      "modified_bytes": 338
+    },
+    {
       "path": "apps/api/src/broker-client.mjs",
       "baseline_present": true,
       "baseline_sha256": "75f8d1c6579d9490704e9f1249ab329e50b061ec0f14f310f43c5a91a97400ce",
@@ -105,8 +112,8 @@
       "path": "apps/api/src/modules/operations/service.mjs",
       "baseline_present": false,
       "baseline_sha256": null,
-      "modified_sha256": "0c513894d570d172157cb7f1c40a91852c511a872da702644ac7737b601ca347",
-      "modified_bytes": 6643
+      "modified_sha256": "8a124b595207fb5fa56f501f59b4589aa227dc38bac1ea4ec73a6428da608ed2",
+      "modified_bytes": 6707
     },
     {
       "path": "apps/api/src/modules/platform/repository.mjs",
@@ -147,22 +154,22 @@
       "path": "apps/api/src/modules/setup/codex-discovery.mjs",
       "baseline_present": false,
       "baseline_sha256": null,
-      "modified_sha256": "ac554036ac99b0ae7015e3de4e137bc05b446e99bfabbcd51fb05c3545d26bed",
-      "modified_bytes": 10803
+      "modified_sha256": "017a50493fb52831cce3737d715846049a6a440f22c702f3c539e28a641400d0",
+      "modified_bytes": 10858
     },
     {
       "path": "apps/api/src/modules/setup/codex-service.mjs",
       "baseline_present": false,
       "baseline_sha256": null,
-      "modified_sha256": "83b3b8d59dae574e933d6f1c844d590ca50ab7d7e34b9595d4e65b59a2975c1f",
-      "modified_bytes": 10764
+      "modified_sha256": "cca813dc4fa8c76199557b99a9fd46139175bc24d1923fdc7be3e6d7815c38b4",
+      "modified_bytes": 10841
     },
     {
       "path": "apps/api/src/modules/setup/github-service.mjs",
       "baseline_present": false,
       "baseline_sha256": null,
-      "modified_sha256": "412e2b445ca55dab0253817981870aff3f54575bcd7d7428b184d90ef1ed2ab3",
-      "modified_bytes": 17245
+      "modified_sha256": "1d44d804f980644ee0c8e4aeaf6ad999471fa9cb8f9451ce1a5fd9bc46cb3de1",
+      "modified_bytes": 17936
     },
     {
       "path": "apps/api/src/modules/setup/index.mjs",
@@ -175,15 +182,15 @@
       "path": "apps/api/src/modules/setup/repository.mjs",
       "baseline_present": false,
       "baseline_sha256": null,
-      "modified_sha256": "263b9ec269037cbd558c4c0ee7f603b8072b0466edaf00a0d1af8cab2b5a0d13",
-      "modified_bytes": 26096
+      "modified_sha256": "af3d06b3b8419d56dab0808d7fbc4e96e06b86b18f14fc69c8eaa99c0cf978d0",
+      "modified_bytes": 26856
     },
     {
       "path": "apps/api/src/modules/setup/service.mjs",
       "baseline_present": false,
       "baseline_sha256": null,
-      "modified_sha256": "ba73e707dc7806da1b8bdab207f6c8c66bd112ac510a1895e9fd0e913f5ce2f8",
-      "modified_bytes": 29116
+      "modified_sha256": "86c0eac4c3962d786d906185874cfc29cae5e30e598af9659a91f0cc4f5e9ff2",
+      "modified_bytes": 30932
     },
     {
       "path": "apps/api/src/schema.mjs",
@@ -196,8 +203,15 @@
       "path": "apps/api/src/secret-registry.mjs",
       "baseline_present": false,
       "baseline_sha256": null,
-      "modified_sha256": "d0bdc5085f577794ad3db62f7f6a3b05257afd9e236800565ee1350fe7e596d7",
-      "modified_bytes": 3346
+      "modified_sha256": "8cc7978b3e95fe1a41c851832d145cb465d02f64ad85484a13744bc3bf32e14e",
+      "modified_bytes": 3510
+    },
+    {
+      "path": "apps/api/src/terminal-service.mjs",
+      "baseline_present": true,
+      "baseline_sha256": "026d374151b211a6af5aad8753dd311057166fdfc2ac512ae7bd9e36a2624a68",
+      "modified_sha256": "84eb6578d2f2e98ca4fbb5093d9cc85557b9291846b62c1ba7b71fb6a38e3473",
+      "modified_bytes": 32209
     },
     {
       "path": "apps/runner-broker/codex-runner.mjs",
@@ -231,8 +245,8 @@
       "path": "apps/web/src/App.tsx",
       "baseline_present": true,
       "baseline_sha256": "e052a681e393dc102b39cba4ac9d9711af0698ab2540ff4b74e7c1159ebf689e",
-      "modified_sha256": "9bb70c1d0b177d2b55283789bde0fe1a14f47b44c152bbee50b03d80a0e88355",
-      "modified_bytes": 7145
+      "modified_sha256": "43376227b7a2e643a1f2ebc0adc2dc60de79d84c187fb88ac42571b19befe5ca",
+      "modified_bytes": 7561
     },
     {
       "path": "apps/web/src/features/setup/SetupPage.tsx",
@@ -273,8 +287,8 @@
       "path": "apps/web/src/test/setup-flow.test.tsx",
       "baseline_present": false,
       "baseline_sha256": null,
-      "modified_sha256": "b14678d0535774eb98ef6a60383cd245470f7eb845ffce737bf7031dd0547fae",
-      "modified_bytes": 6961
+      "modified_sha256": "e20c0b3dfe4819b782b859869b1ad4224d3767c774a3374165be1cef76b5e00a",
+      "modified_bytes": 8875
     },
     {
       "path": "apps/web/src/test/terminal.test.tsx",
@@ -350,8 +364,8 @@
       "path": "scripts/recovery-evidence.mjs",
       "baseline_present": true,
       "baseline_sha256": "f953f74c84dbe73df58ec5dcd2535a4cb7bb0aa4a8e0f688fae1bfc5294bf583",
-      "modified_sha256": "e282e6a4ba740ca78d0d6695f386fd2b2028979fb01b39c9582cd65edd05b0de",
-      "modified_bytes": 21503
+      "modified_sha256": "0ac00966e6bd0646af83261d580fca75358a4e88108a85b297c94dc6d3718007",
+      "modified_bytes": 21565
     },
     {
       "path": "scripts/recovery-golden.mjs",
@@ -364,14 +378,14 @@
       "path": "scripts/recovery-governance.mjs",
       "baseline_present": true,
       "baseline_sha256": "59c390de89fc35407a3122457ea144d3c373abc6d742c3d5b23acfab3a9e2906",
-      "modified_sha256": "7d9d798f7c73593ef75fd63d53652a5ec55b5e779c081b0bb331082d90603cfd",
-      "modified_bytes": 23141
+      "modified_sha256": "511b5638857d315487b9e4d05c52e6460b523e7ac456103f6cf7b61f8574add5",
+      "modified_bytes": 23157
     },
     {
       "path": "tests/golden/r2/identity-setup.json",
       "baseline_present": false,
       "baseline_sha256": null,
-      "modified_sha256": "d400b9dafe3f8ed02e0d6cec2441ca1bad3ee6579f31bd9323803c00ee8fe0bf",
+      "modified_sha256": "abe8f45cd65951a7160242b0cc57a41013a41a110263573e2bb6a11b117aca8c",
       "modified_bytes": 6320
     },
     {
@@ -420,15 +434,15 @@
       "path": "tests/integration/r2-provider-boundaries.test.mjs",
       "baseline_present": false,
       "baseline_sha256": null,
-      "modified_sha256": "e07c8eeaead7a2e7a06bf5a01aaa952dc2873f93fc98f6a9630965e887a884b2",
-      "modified_bytes": 16925
+      "modified_sha256": "c974719a9866094834a1a0d3ce87f19a2ff07d840ceeabce50aa403f9af0d7be",
+      "modified_bytes": 18931
     },
     {
       "path": "tests/integration/real-slice.test.mjs",
       "baseline_present": true,
       "baseline_sha256": "74414dde7703e2aa5c22386ee7ab742861cd1d0c276cd8416f2cca88475b4552",
-      "modified_sha256": "3b536297e5dd8af22b87a17e189e406a189865490efa9d6e5acb573861f80b44",
-      "modified_bytes": 4763
+      "modified_sha256": "0b583e32bfee9e5b6331df0206645c87ea1fe453122f12d91bd37e460937e4f1",
+      "modified_bytes": 4972
     },
     {
       "path": "tests/integration/setup-flow.test.mjs",
@@ -469,8 +483,8 @@
       "path": "tests/unit/credential-vault.test.mjs",
       "baseline_present": false,
       "baseline_sha256": null,
-      "modified_sha256": "73f416a116af0c936a5f46ed94ce2120f3127fd01a9e96834f33888073b253fe",
-      "modified_bytes": 1645
+      "modified_sha256": "e9dc2280ef523f48676a89a12f437992a2bdda3f90463c2fc1d6f3a404417e33",
+      "modified_bytes": 2128
     },
     {
       "path": "tests/unit/database.test.mjs",
@@ -490,8 +504,8 @@
       "path": "tests/unit/identity-operations.test.mjs",
       "baseline_present": false,
       "baseline_sha256": null,
-      "modified_sha256": "1da6c69bf3788f2d43b6e56943c16aa5a4e8282a59c97dee9b1ceb7c275efa6e",
-      "modified_bytes": 3485
+      "modified_sha256": "0d7cef39756da3464aafb338d915a955ccaebca4a171bdf9fa6af979bf823418",
+      "modified_bytes": 3957
     },
     {
       "path": "tests/unit/migrations.test.mjs",
@@ -511,8 +525,8 @@
       "path": "tests/unit/setup-service.test.mjs",
       "baseline_present": false,
       "baseline_sha256": null,
-      "modified_sha256": "4366dfd6d4a5536a650723440e50d8d4a6fcc9995231cef53fd79a8da8cf682f",
-      "modified_bytes": 5908
+      "modified_sha256": "514bd1e6ddf66dc5a1abcba59c9e719ff81509b461ffc7a6336711a1508f157f",
+      "modified_bytes": 10487
     }
   ]
 }

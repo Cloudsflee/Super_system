@@ -104,7 +104,7 @@ export class CodexService {
     const profileId = String(input?.profile_id || current.id);
     const profile = profileId === current.id ? current : await this.setup.repository.codexProfile(profileId);
     if (!profile) throw new AppError('not_found', 'Codex profile not found');
-    const expectedRevision = Number(input?.expected_revision || profile.revision);
+    const expectedRevision = Number(input?.expected_revision);
     assert(Number.isInteger(expectedRevision) && expectedRevision > 0, 'expected_revision_required', 'expected_revision is required', { status: 400 });
     return this.operations.create({
       kind: 'codex.probe', resourceType: 'codex_profile', resourceId: profile.id, actor: ctx.actor,
@@ -119,7 +119,7 @@ export class CodexService {
     const snapshot = {
       profile_id: profile.id,
       profile_revision: profile.revision,
-      profile_hash: profileHash(profile),
+      profile_hash: profileHash(profile, this.config.runnerDigest),
       config_hash: profile.config_hash,
       label: profile.label,
       provider: profile.provider,
@@ -131,9 +131,10 @@ export class CodexService {
       auth_kind: profile.auth_kind,
       credential_ref: profile.credential_ref,
       credential_revision: profile.current_credential_revision,
-      runner_digest: profile.runner_digest
+      runner_digest: this.config.runnerDigest
     };
     const result = await runSevenStageProbe({ broker: this.broker, snapshot, credential, signal: operationContext.signal });
+    operationContext.ensureActive?.();
     await this.setup.recordCodexProbe(profile.id, expectedRevision, result);
     return { profile_id: profile.id, profile_revision: expectedRevision, ...result };
   }
@@ -182,11 +183,11 @@ function sanitizeDeviceEvent(value) {
   };
 }
 
-function profileHash(profile) {
+function profileHash(profile, runnerDigest = profile.runner_digest) {
   return hashJson({
     id: profile.id, revision: Number(profile.revision), config_hash: profile.config_hash,
     credential_ref: profile.credential_ref, credential_revision: Number(profile.current_credential_revision),
-    runner_digest: profile.runner_digest
+    runner_digest: runnerDigest
   });
 }
 

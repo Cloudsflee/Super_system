@@ -148,6 +148,7 @@ test('Codex service rejects stale profile selections and routes external cancell
   });
 
   await assert.rejects(() => service.probe({ profile_id: 'cdp_missing' }), hasCode('not_found'));
+  await assert.rejects(() => service.probe({}), hasCode('expected_revision_required'));
   await assert.rejects(() => service.probe({ expected_revision: 'bad' }), hasCode('expected_revision_required'));
   await assert.rejects(() => service.runProbe('cdp_missing', 3, {}, {}), hasCode('codex_profile_stale'));
   assert.equal(await service.resumeOperation({ kind: 'other', external_ref: 'da_fixture' }), false);
@@ -195,6 +196,10 @@ test('GitHub request adapter maps transport and HTTP failures to stable codes', 
   );
   await assert.rejects(
     () => serviceFor(async () => { const error = new Error('aborted'); error.name = 'AbortError'; throw error; }).request('GET', '/app', { token: 'token' }),
+    hasCode('github_request_timeout')
+  );
+  await assert.rejects(
+    () => serviceFor(async () => { const error = new Error('timed out'); error.name = 'TimeoutError'; throw error; }).request('GET', '/app', { token: 'token' }),
     hasCode('github_request_timeout')
   );
 
@@ -272,6 +277,48 @@ test('GitHub Probe reports each failed stage without leaking provider diagnostic
   });
   assert.equal(missingRepository.error_code, 'github_repository_missing');
   assert.equal(missingRepository.checks.at(-1).status, 'failed');
+});
+
+test('GitHub Probe selects a repository-ready installation from the full snapshot', async () => {
+  const app = { id: 'gha_fixture', app_id: '12345', revision: 3, private_key_ref: 'cred_key' };
+  const permissions = { metadata: 'read', contents: 'write', pull_requests: 'write' };
+  const installations = [
+    { id: 'ghi_empty', installation_id: '67890', status: 'available', permissions },
+    {
+      id: 'ghi_ready', installation_id: '67891', status: 'available', permissions,
+      repositories: [{ github_id: '9002', full_name: 'fixture/ready' }]
+    }
+  ];
+  const tokenRequests = [];
+  let recorded;
+  const service = new GithubService({
+    config: {},
+    setup: {
+      repository: {
+        githubInstallations: async () => installations,
+        githubRepositories: async (installationId) => installationId === 'ghi_empty'
+          ? [{ github_id: '9001', full_name: 'fixture/empty', selected: false }]
+          : []
+      },
+      recordGithubProbe: async (_id, _revision, result) => { recorded = result; }
+    },
+    operations: {},
+    fetchImpl: async () => json({})
+  });
+  service.appJwt = async () => 'fixture-jwt';
+  service.installationToken = async (installationId) => {
+    tokenRequests.push(installationId);
+    return 'installation-token';
+  };
+  service.request = async (_method, path) => path === '/app'
+    ? { id: 12345, slug: 'fixture-app' }
+    : { total_count: 1 };
+
+  const result = await service.runProbe(app, app.revision, {});
+  assert.equal(result.status, 'available');
+  assert.deepEqual(tokenRequests, ['67891']);
+  assert.equal(recorded.status, 'available');
+  assert.equal(recorded.checks.every((item) => item.status === 'passed'), true);
 });
 
 test('GitHub discovery and repository sync preserve blocked state reasons', async () => {

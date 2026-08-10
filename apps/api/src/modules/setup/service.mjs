@@ -51,8 +51,13 @@ export class SetupService {
 
   async expireCredentials() {
     const expired = await this.repository.expireCredentials(this.clock());
-    for (const credentialId of expired) this.secrets?.forget(`credential:${credentialId}`);
-    return expired;
+    for (const credential of expired) {
+      this.secrets?.forget(`credential:${credential.id}`);
+      if (String(credential.secret_ref || '').startsWith('vault:')) {
+        queueMicrotask(() => this.vault.removeBySecretRef(credential.secret_ref));
+      }
+    }
+    return expired.map((credential) => credential.id);
   }
 
   async cleanupOrphanedSecrets() {
@@ -137,11 +142,24 @@ export class SetupService {
     assert(current.status === 'active', 'credential_state_invalid', 'only active credentials can rotate', { status: 409 });
     const secret = validateSecret(current.kind, input?.secret);
     const nextVersion = Number(current.secret_version) + 1;
+    const nextCredentialRevision = Number(current.revision) + 1;
+    const profileUpdates = (await this.repository.codexProfiles())
+      .filter((profile) => profile.credential_ref === credentialId)
+      .map((profile) => ({
+        id: profile.id,
+        revision: profile.revision,
+        configHash: profileConfigurationHash(profile, nextCredentialRevision)
+      }));
     let secretRef = '';
     try {
       secretRef = `vault:${this.vault.putVersion(credentialId, nextVersion, secret)}`;
       await this.repository.rotateCredential({
-        id: credentialId, secretRef, secretVersion: nextVersion, timestamp: this.clock()
+        id: credentialId,
+        secretRef,
+        secretVersion: nextVersion,
+        credentialRevision: nextCredentialRevision,
+        profileUpdates,
+        timestamp: this.clock()
       }, expectedRevision, ctx.actor);
     } catch (error) {
       if (secretRef) this.vault.removeBySecretRef(secretRef);
@@ -250,11 +268,11 @@ export class SetupService {
 
   async activeProfileSnapshot({ includeSecret = false } = {}) {
     const profile = await this.repository.activeCodexProfile();
-    if (!profile || profile.credential_status !== 'active' || profile.runner_digest !== this.config.runnerDigest) return null;
+    if (!profile || profile.credential_status !== 'active') return null;
     const snapshot = {
       profile_id: profile.id,
       profile_revision: profile.revision,
-      profile_hash: stableProfileHash(profile),
+      profile_hash: stableProfileHash(profile, this.config.runnerDigest),
       config_hash: profile.config_hash,
       label: profile.label,
       provider: profile.provider,
@@ -282,6 +300,7 @@ export class SetupService {
         status: result?.status === 'available' ? 'available' : 'unavailable',
         probeHash,
         result,
+        runnerDigest: this.config.runnerDigest,
         timestamp: this.clock()
       });
     } catch (error) {
@@ -385,20 +404,26 @@ export class SetupService {
     const activeCredential = credentials.find((row) => row.provider === 'codex' && row.status === 'active');
     const profile = profiles.find((row) => row.is_active && row.credential_status === 'active');
     const verifiedApp = apps.find((row) => row.status === 'verified' && row.private_key_status === 'active' && row.webhook_status === 'active');
-    const installation = installations.find((row) => row.app_config_id === verifiedApp?.id && row.status === 'available');
-    const installationRepositories = repositories.filter((row) => row.installation_id === installation?.id);
-    const cachedRepositories = installationRepositories.length
-      ? installationRepositories
-      : Array.isArray(installation?.repositories) ? installation.repositories : [];
+    const appInstallations = installations.filter((row) => row.app_config_id === verifiedApp?.id);
+    const appRepositories = appInstallations.flatMap((installation) => {
+      const stored = repositories.filter((row) => row.installation_id === installation.id);
+      return stored.length ? stored : Array.isArray(installation.repositories) ? installation.repositories : [];
+    });
+    const availableInstallations = appInstallations.filter((row) => row.status === 'available');
+    const repositoryReady = availableInstallations.some((installation) => {
+      const stored = repositories.filter((row) => row.installation_id === installation.id);
+      const selected = stored.length ? stored : Array.isArray(installation.repositories) ? installation.repositories : [];
+      return permissionsReady(installation.permissions) && selected.some((row) => row.selected !== false);
+    });
     const checks = {
       owner: owner?.status === 'active',
       active_codex_credential: Boolean(activeCredential),
       active_codex_profile: Boolean(profile),
       current_codex_probe: Boolean(profile && profile.probe_status === 'available' && profile.probe_hash === this.codexProbeHash(profile)),
       verified_github_app: Boolean(verifiedApp),
-      active_github_installation: Boolean(installation),
-      repository_permissions: Boolean(installation && cachedRepositories.length > 0 && permissionsReady(installation.permissions)),
-      current_github_probe: Boolean(verifiedApp && verifiedApp.probe_status === 'available' && verifiedApp.probe_hash === this.githubProbeHash(verifiedApp, installations.filter((row) => row.app_config_id === verifiedApp.id), cachedRepositories))
+      active_github_installation: availableInstallations.length > 0,
+      repository_permissions: repositoryReady,
+      current_github_probe: Boolean(verifiedApp && verifiedApp.probe_status === 'available' && verifiedApp.probe_hash === this.githubProbeHash(verifiedApp, appInstallations, appRepositories))
     };
     const blockers = Object.entries(checks).filter(([, ready]) => !ready).map(([check]) => check);
     const ready = blockers.length === 0;
@@ -436,15 +461,15 @@ export class SetupService {
 
   async assertReady(command) {
     const state = await this.setupState();
-    if (state.status !== 'ready') throw new AppError('setup_not_ready', `setup blocks ${command}`, {
+    if (state.status !== 'ready' || !state.complete) throw new AppError('setup_not_ready', `setup blocks ${command}`, {
       status: 409,
-      details: { revision: state.revision, blockers: state.blockers }
+      details: { revision: state.revision, blockers: state.blockers.length ? state.blockers : ['setup_incomplete'] }
     });
     return state;
   }
 
   codexProbeHash(profile) {
-    return hashJson({ runtime_id: this.runtimeId, profile_hash: stableProfileHash(profile), credential_revision: profile.current_credential_revision, runner_digest: this.config.runnerDigest });
+    return hashJson({ runtime_id: this.runtimeId, profile_hash: stableProfileHash(profile, this.config.runnerDigest), credential_revision: profile.current_credential_revision, runner_digest: this.config.runnerDigest });
   }
 
   githubProbeHash(app, installations, repositories) {
@@ -476,7 +501,16 @@ export class SetupService {
     assert(Number.isInteger(timeoutMs) && timeoutMs >= 5000 && timeoutMs <= 15 * 60 * 1000, 'invalid_input', 'profile timeout is invalid', { status: 422 });
     assert(credential.provider === 'codex' && credential.status === 'active', 'invalid_input', 'active Codex credential is required', { status: 422 });
     const authKind = credential.kind === 'codex_oauth_bundle' ? 'oauth_bundle' : 'api_key';
-    const configHash = hashJson({ label, provider, model, base_url: baseUrl, wire_api: wireApi, reasoning, timeout_ms: timeoutMs, credential_ref: credential.id, credential_revision: credential.revision });
+    const configHash = profileConfigurationHash({
+      label,
+      provider,
+      model,
+      base_url: baseUrl,
+      wire_api: wireApi,
+      reasoning,
+      timeout_ms: timeoutMs,
+      credential_ref: credential.id
+    }, credential.revision);
     return {
       label, provider, model, baseUrl, wireApi, reasoning, timeoutMs,
       credentialId: credential.id,
@@ -488,6 +522,7 @@ export class SetupService {
   }
 
   async requiredCredential(idValue) {
+    await this.expireCredentials();
     const value = await this.repository.credential(String(idValue || ''));
     if (!value) throw new AppError('not_found', 'credential not found');
     return value;
@@ -517,8 +552,11 @@ export class SetupService {
 
   async githubBundle(appId) {
     const installations = await this.repository.githubInstallations(appId);
-    const repositories = (await Promise.all(installations.map((row) => this.repository.githubRepositories(row.id)))).flat();
-    return { installations, repositories: repositories.length ? repositories : installations.flatMap((row) => row.repositories || []) };
+    const repositories = (await Promise.all(installations.map(async (installation) => {
+      const stored = await this.repository.githubRepositories(installation.id);
+      return stored.length ? stored : installation.repositories || [];
+    }))).flat();
+    return { installations, repositories };
   }
 }
 
@@ -589,14 +627,28 @@ function normalizeBaseUrl(value, provider) {
   return url.href.replace(/\/$/, '');
 }
 
-function stableProfileHash(profile) {
+function stableProfileHash(profile, runnerDigest = profile.runner_digest) {
   return hashJson({
     id: profile.id || profile.profile_id,
     revision: Number(profile.revision || profile.profile_revision),
     config_hash: profile.config_hash,
     credential_ref: profile.credential_ref,
     credential_revision: Number(profile.current_credential_revision || profile.credential_revision),
-    runner_digest: profile.runner_digest
+    runner_digest: runnerDigest
+  });
+}
+
+function profileConfigurationHash(profile, credentialRevision) {
+  return hashJson({
+    label: profile.label,
+    provider: profile.provider,
+    model: profile.model,
+    base_url: profile.base_url ?? profile.baseUrl ?? '',
+    wire_api: profile.wire_api ?? profile.wireApi ?? 'responses',
+    reasoning: profile.reasoning,
+    timeout_ms: Number(profile.timeout_ms ?? profile.timeoutMs),
+    credential_ref: profile.credential_ref ?? profile.credentialId,
+    credential_revision: Number(credentialRevision)
   });
 }
 

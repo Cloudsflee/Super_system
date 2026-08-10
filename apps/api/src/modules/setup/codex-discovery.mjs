@@ -19,8 +19,9 @@ export class CodexDiscoveryService {
     const unique = new Map();
     for (const input of configured) {
       const sourceType = String(input?.type || 'codex_home');
-      const root = path.resolve(String(input?.path || ''));
-      if (!SOURCE_TYPES.has(sourceType) || !path.isAbsolute(root)) continue;
+      const configuredPath = String(input?.path || '');
+      if (!SOURCE_TYPES.has(sourceType) || !path.isAbsolute(configuredPath)) continue;
+      const root = path.resolve(configuredPath);
       const sourceKey = sha256(`${sourceType}\n${normalizePath(root)}`);
       unique.set(sourceKey, {
         sourceType,

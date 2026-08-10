@@ -28,4 +28,11 @@ test('secret registry redacts known values split across chunks and structured va
   assert.deepEqual(registry.redactObject({ message: 'Bearer token-value-1234', nested: ['registry-secret-sentinel-1234'] }), {
     message: 'Bearer [redacted]', nested: ['[redacted]']
   });
+
+  registry.remember('oauth', JSON.stringify({ tokens: { access_token: 'oauth-old-sentinel-1234' } }));
+  assert.equal(registry.redact('oauth-old-sentinel-1234'), '[redacted]');
+  registry.remember('oauth', JSON.stringify({ tokens: { access_token: 'oauth-new-sentinel-5678' } }));
+  assert.equal(registry.redact('oauth-old-sentinel-1234'), 'oauth-old-sentinel-1234');
+  registry.forget('oauth');
+  assert.equal(registry.redact('oauth-new-sentinel-5678'), 'oauth-new-sentinel-5678');
 });

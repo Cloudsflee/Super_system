@@ -63,7 +63,8 @@ export class OperationService {
     } catch (error) {
       const current = await this.repository.get(operationId);
       if (current?.status === 'cancelled') return;
-      const code = String(error?.code || error?.message || 'operation_failed').slice(0, 120);
+      const candidate = String(this.clean(error?.code || ''));
+      const code = /^[a-z][a-z0-9_]{2,119}$/.test(candidate) ? candidate : 'operation_failed';
       await this.repository.transition({
         id: operationId, fromStatuses: ['pending', 'running'], status: 'failed', timestamp: this.clock(),
         errorCode: code, completed: true,

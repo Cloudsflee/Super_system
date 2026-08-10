@@ -184,7 +184,7 @@ function checkImpact() {
   const changed = changedFiles();
   const mappings = [];
   const unmapped = [];
-  const governance = /^(?:feature-catalog\.json|package\.json|docs\/|V3功能恢复与架构治理判断\.md|scripts\/(?:recovery-governance|recovery-evidence)\.mjs|apps\/api\/src\/(?:schema|db-worker|migration-service)\.mjs|apps\/api\/src\/(?:migrations|modules)\/(?:index|registry|define-module)\.mjs)/;
+  const governance = /^(?:\.gitattributes|feature-catalog\.json|package\.json|docs\/|V3功能恢复与架构治理判断\.md|scripts\/(?:recovery-governance|recovery-evidence)\.mjs|apps\/api\/src\/(?:schema|db-worker|migration-service)\.mjs|apps\/api\/src\/(?:migrations|modules)\/(?:index|registry|define-module)\.mjs)/;
   for (const file of [...changed].sort()) {
     const matched = features.filter((feature) => featurePaths(feature).some((target) => {
       const normalized = normalize(target);
