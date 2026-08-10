@@ -3,6 +3,7 @@ import path from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { hashJson, now, parseJson, sha256 } from './crypto.mjs';
 import { AppError, asAppError } from './errors.mjs';
+import { readBody, readRawBody } from './http-body.mjs';
 const MUTATING = new Set(['POST', 'PATCH', 'DELETE']);
 
 function send(res, status, payload, headers = {}) {
@@ -13,19 +14,6 @@ function send(res, status, payload, headers = {}) {
 
 function pathParts(urlPath) {
   return urlPath.split('/').filter(Boolean).map((part) => decodeURIComponent(part));
-}
-
-async function readBody(req) {
-  const chunks = [];
-  let size = 0;
-  for await (const chunk of req) {
-    size += chunk.length;
-    if (size > 25 * 1024 * 1024) throw new AppError('payload_too_large', 'request body is too large', { status: 413 });
-    chunks.push(chunk);
-  }
-  if (!chunks.length) return {};
-  const raw = Buffer.concat(chunks).toString('utf8');
-  try { return JSON.parse(raw); } catch { throw new AppError('invalid_json', 'request body must be JSON', { status: 400 }); }
 }
 
 function errorPayload(error, requestId) {
@@ -41,8 +29,15 @@ function errorPayload(error, requestId) {
   };
 }
 
-function responseForCommand(result) {
-  return result ?? {};
+function responseForCommand(result, domain) {
+  return domain.redact(result ?? {});
+}
+
+function persistableCommandResponse(command, result, domain) {
+  const clean = responseForCommand(result, domain);
+  if (command !== 'session.create' || !clean || typeof clean !== 'object' || Array.isArray(clean)) return clean;
+  const { token: _token, ...persistable } = clean;
+  return { ...persistable, token_issued: false };
 }
 
 export function createHttpHandler({ domain, registry, db, config, performanceProbe = () => ({}), webRoot }) {
@@ -54,7 +49,7 @@ export function createHttpHandler({ domain, registry, db, config, performancePro
     const existing = await db.get('SELECT * FROM idempotency_keys WHERE scope=? AND key=?', [scope, String(key)]);
     if (existing) {
       if (existing.request_hash !== requestHash) throw new AppError('idempotency_conflict', 'Idempotency-Key was used with a different request', { details: { scope } });
-      if (existing.response_json) return { status: Number(existing.response_status) || 200, body: JSON.parse(existing.response_json) };
+      if (existing.response_json) return { status: Number(existing.response_status) || 200, body: JSON.parse(existing.response_json), replayed: true };
       throw new AppError('idempotency_in_progress', 'an identical command is already in progress', { retryable: true, status: 409 });
     }
     try {
@@ -62,13 +57,14 @@ export function createHttpHandler({ domain, registry, db, config, performancePro
     } catch (error) {
       if (!String(error.message).includes('UNIQUE')) throw error;
       const retry = await db.get('SELECT * FROM idempotency_keys WHERE scope=? AND key=?', [scope, String(key)]);
-      if (retry?.response_json) return { status: Number(retry.response_status) || 200, body: JSON.parse(retry.response_json) };
+      if (retry?.response_json) return { status: Number(retry.response_status) || 200, body: JSON.parse(retry.response_json), replayed: true };
       throw new AppError('idempotency_in_progress', 'an identical command is already in progress', { retryable: true, status: 409 });
     }
     try {
-      const result = await registry.execute(command, body, { actor: req.headers['x-aiws-actor'] || 'local-user' });
-      const responseBody = responseForCommand(result);
-      await db.run('UPDATE idempotency_keys SET response_status=?,response_json=? WHERE scope=? AND key=?', [responseStatus, JSON.stringify(responseBody), scope, String(key)]);
+      const result = await registry.execute(command, body, req.aiwsAuth);
+      const responseBody = responseForCommand(result, domain);
+      const persisted = persistableCommandResponse(command, responseBody, domain);
+      await db.run('UPDATE idempotency_keys SET response_status=?,response_json=? WHERE scope=? AND key=?', [responseStatus, JSON.stringify(persisted), scope, String(key)]);
       return { status: responseStatus, body: responseBody };
     } catch (error) {
       await db.run('DELETE FROM idempotency_keys WHERE scope=? AND key=?', [scope, String(key)]).catch(() => undefined);
@@ -124,6 +120,12 @@ export function createHttpHandler({ domain, registry, db, config, performancePro
         return send(res, ready ? 200 : 503, { status: ready ? 'ready' : 'not_ready', checks: health, request_id: requestId });
       }
       if (!urlPath.startsWith(config.apiPrefix)) return serveWeb(req, res, webRoot, urlPath);
+      req.aiwsAuth = await domain.authenticate(req.headers.authorization);
+      if (urlPath === `${config.apiPrefix}/integrations/github/webhook` && req.method === 'POST') {
+        const rawBody = await readRawBody(req);
+        const receipt = await domain.githubWebhook(rawBody, req.headers);
+        return send(res, 200, domain.redact(receipt));
+      }
       if (urlPath === `${config.apiPrefix}/mcp` && req.method === 'POST') return send(res, 200, await mcp(req, requestId));
       if (urlPath === `${config.apiPrefix}/mcp/tools` && req.method === 'GET') return send(res, 200, { tools: [
         ...registry.list().map((name) => ({ name, description: `AIWS command ${name}`, input_schema: { type: 'object' } })),
@@ -131,18 +133,6 @@ export function createHttpHandler({ domain, registry, db, config, performancePro
         { name: 'project.get', description: 'Get a project bundle', input_schema: { type: 'object', required: ['project_id'] } }
       ] });
       if (urlPath === `${config.apiPrefix}/system/capabilities` && req.method === 'GET') return send(res, 200, await domain.capabilities());
-      if (urlPath === `${config.apiPrefix}/integrations/codex/probe` && req.method === 'POST') {
-        const probeBody = await readBody(req);
-        const key = req.headers['idempotency-key'];
-        const probe = await executeCommand('integration.codex.probe', probeBody, req, urlPath, key, 200);
-        return send(res, probe.status, probe.body);
-      }
-      if (urlPath === `${config.apiPrefix}/integrations/github/probe` && req.method === 'POST') {
-        const probeBody = await readBody(req);
-        const key = req.headers['idempotency-key'];
-        const probe = await executeCommand('integration.github.probe', probeBody, req, urlPath, key, 200);
-        return send(res, probe.status, probe.body);
-      }
       if (urlPath === `${config.apiPrefix}/system/performance` && req.method === 'GET') return send(res, 200, performanceProbe());
       if (urlPath === `${config.apiPrefix}/system` && req.method === 'GET') return send(res, 200, { version: config.version, api_prefix: config.apiPrefix, data_volume: config.dataVolume });
 
@@ -152,20 +142,19 @@ export function createHttpHandler({ domain, registry, db, config, performancePro
       let status = 200;
       const command = (name, input = body) => executeCommand(name, input, req, urlPath);
 
+      const r2Route = domain.r2?.routes.match(req.method, parts);
+      if (r2Route) {
+        const input = { ...Object.fromEntries(parsed.searchParams), ...body, ...r2Route.params };
+        if (r2Route.stream && String(req.headers.accept || '').includes('text/event-stream')) {
+          return streamQueryEvents(req, res, domain, r2Route.query, input);
+        }
+        if (r2Route.query) result = await domain.r2.queries.execute(r2Route.query, input, req.aiwsAuth);
+        else ({ status, body: result } = await executeCommand(r2Route.command, input, req, urlPath, null, r2Route.responseStatus));
+        return send(res, status, domain.redact(result));
+      }
+
       if (req.method === 'GET' && parts.length === 1 && parts[0] === 'projects') result = await domain.listProjects();
-      else if (req.method === 'GET' && parts.length === 1 && parts[0] === 'setup') result = await domain.setupState();
-      else if (parts[0] === 'sessions') {
-        if (req.method === 'GET' && parts.length === 1) result = await domain.listSessions();
-        else if (req.method === 'POST' && parts.length === 1) ({ status, body: result } = await command('session.create'));
-        else if (req.method === 'POST' && parts[2] === 'revoke') ({ status, body: result } = await command('session.revoke', { ...body, session_id: parts[1] }));
-        else throw new AppError('not_found', 'route not found');
-      } else if (parts[0] === 'account' && req.method === 'GET') result = await domain.db.get("SELECT id,display_name,status,revision,created_at,updated_at FROM users WHERE id='usr_local_owner'");
-      else if (parts[0] === 'github' && parts[1] === 'apps') {
-        if (req.method === 'GET' && parts.length === 2) result = await domain.listGithubAppConfigs();
-        else if (req.method === 'POST' && parts.length === 2) ({ status, body: result } = await command('github_app.create'));
-        else if (req.method === 'POST' && parts[3] === 'installations') ({ status, body: result } = await command('github_installation.create', { ...body, app_config_id: parts[2] }));
-        else throw new AppError('not_found', 'route not found');
-      } else if (parts[0] === 'assist' && parts[1] === 'sessions') {
+      else if (parts[0] === 'assist' && parts[1] === 'sessions') {
         if (req.method === 'GET' && parts.length === 2) result = await domain.listAssistSessions(parsed.searchParams.get('project_id'));
         else if (req.method === 'POST' && parts.length === 2) ({ status, body: result } = await command('assist_session.create'));
         else if (req.method === 'GET' && parts.length === 3) result = await domain.getAssistSession(parts[2]);
@@ -195,19 +184,6 @@ export function createHttpHandler({ domain, registry, db, config, performancePro
           result = await domain.terminalEvents(parts[1], parsed.searchParams.get('after'));
         }
         else if (req.method === 'POST' && ['input', 'resize', 'signal', 'stop'].includes(parts[2])) ({ status, body: result } = await command(`terminal.${parts[2]}`, { ...body, terminal_id: parts[1] }));
-        else throw new AppError('not_found', 'route not found');
-      }
-      else if (parts[0] === 'credentials') {
-        if (req.method === 'GET' && parts.length === 1) result = await domain.listCredentials();
-        else if (req.method === 'POST' && parts.length === 1) ({ status, body: result } = await command('credential.create'));
-        else if (req.method === 'POST' && parts[2] === 'rotate') ({ status, body: result } = await command('credential.rotate', { ...body, credential_id: parts[1] }));
-        else if (req.method === 'POST' && parts[2] === 'revoke') ({ status, body: result } = await command('credential.revoke', { ...body, credential_id: parts[1] }));
-        else if (req.method === 'DELETE' && parts.length === 2) ({ status, body: result } = await command('credential.delete', { ...body, credential_id: parts[1] }));
-        else throw new AppError('not_found', 'route not found');
-      } else if (parts[0] === 'profiles' && parts[1] === 'codex') {
-        if (req.method === 'GET' && parts.length === 2) result = await domain.listCodexProfiles();
-        else if (req.method === 'POST' && parts.length === 2) ({ status, body: result } = await command('codex_profile.create'));
-        else if (req.method === 'PATCH' && parts.length === 3) ({ status, body: result } = await command('codex_profile.update', { ...body, profile_id: parts[2] }));
         else throw new AppError('not_found', 'route not found');
       }
       else if (req.method === 'POST' && parts.length === 1 && parts[0] === 'projects') ({ status, body: result } = await command('project.create'));
@@ -304,14 +280,25 @@ export function createHttpHandler({ domain, registry, db, config, performancePro
         else throw new AppError('not_found', 'route not found');
       } else if (parts[0] === 'audit' && req.method === 'GET') result = await domain.listAudit(parsed.searchParams.get('limit'));
       else throw new AppError('not_found', 'route not found');
-      return send(res, status, result);
+      return send(res, status, domain.redact(result));
     } catch (error) {
       const appError = asAppError(error);
-      return send(res, appError.status, errorPayload(appError, requestId));
+      return send(res, appError.status, domain.redact(errorPayload(appError, requestId)));
     }
   }
 
   return handler;
+}
+
+async function streamQueryEvents(req, res, domain, query, input) {
+  const initial = Number(req.headers['last-event-id'] || input.after || 0);
+  const events = await domain.r2.queries.execute(query, { ...input, after: initial }, req.aiwsAuth);
+  res.writeHead(200, { 'content-type': 'text/event-stream; charset=utf-8', 'cache-control': 'no-cache', connection: 'close' });
+  for (const event of events) {
+    const clean = domain.redact(event);
+    res.write(`id: ${clean.cursor}\nevent: ${clean.type}\ndata: ${JSON.stringify(clean)}\n\n`);
+  }
+  res.end();
 }
 
 async function streamEvents(req, res, domain, executionId) {

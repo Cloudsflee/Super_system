@@ -44,8 +44,18 @@ export function loadConfig(env = process.env) {
     githubCredential,
     githubRepository,
     githubFixtureSha,
+    codexDiscoveryRoots: readDiscoveryRoots(env.AIWS_CODEX_DISCOVERY_ROOTS),
     cpuCount: os.cpus().length
   };
+}
+
+function readDiscoveryRoots(raw) {
+  if (!raw) return [];
+  try {
+    const parsed = JSON.parse(raw);
+    if (Array.isArray(parsed)) return parsed.filter((item) => item && typeof item === 'object').slice(0, 20);
+  } catch { /* A path-delimited fixture is accepted for local configuration. */ }
+  return String(raw).split(path.delimiter).filter(Boolean).slice(0, 20).map((item) => ({ type: 'codex_home', path: item }));
 }
 
 function readSecret(file) {

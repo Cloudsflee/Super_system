@@ -382,7 +382,7 @@ test('evidence failure can be discarded or retried with retained worktree', asyn
     version: '3.0.0', apiPrefix: '/api/v1', host: '127.0.0.1', port: 0, home,
     databaseFile: path.join(home, 'data', 'state.sqlite'), casRoot: path.join(home, 'cas', 'sha256'),
     dataVolume: 'aiws-data-v3', brokerMode: 'mock', brokerSecret: 'evidence-regression-secret', runnerDigest: digest,
-    codexAvailable: false, githubAvailable: false
+    codexAvailable: false, githubAvailable: false, testOnlyBypassSetupGate: true
   } });
   const env = { app, base: `http://127.0.0.1:${app.server.address().port}`, home, async close() { await app.close(); fs.rmSync(home, { recursive: true, force: true }); } };
   try {

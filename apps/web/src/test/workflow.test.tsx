@@ -16,6 +16,7 @@ beforeEach(() => {
   sessionStorage.clear();
   vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => {
     const url = String(input);
+    if (url.endsWith('/api/v1/setup')) return new Response(JSON.stringify({ status: 'ready', complete: true, revision: 1 }), { status: 200 });
     if (url.endsWith('/api/v1/projects')) return new Response(JSON.stringify([{ ...project, brief: undefined, workflow: undefined }]), { status: 200 });
     if (url.endsWith('/api/v1/projects/prj_test')) return new Response(JSON.stringify(project), { status: 200 });
     if (url.includes('/context/sources') || url.includes('/context/packs')) return new Response('[]', { status: 200 });

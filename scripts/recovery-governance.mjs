@@ -250,15 +250,27 @@ function validateReleaseReceipt(feature, receiptPath) {
 }
 
 function validateRuntimeOwnership() {
-  const schema = fs.readFileSync(path.join(root, 'apps/api/src/schema.mjs'), 'utf8');
-  const schemaTables = new Set([...schema.matchAll(/CREATE TABLE IF NOT EXISTS\s+([a-z_]+)/g)].map((match) => match[1]));
+  const schemaSources = [
+    fs.readFileSync(path.join(root, 'apps/api/src/schema.mjs'), 'utf8'),
+    ...walk(path.join(root, 'apps/api/src/migrations'))
+      .filter((file) => file.endsWith('.mjs'))
+      .map((file) => fs.readFileSync(file, 'utf8'))
+  ];
+  const schemaTables = new Set(schemaSources.flatMap((source) =>
+    [...source.matchAll(/CREATE TABLE(?: IF NOT EXISTS)?\s+([a-z_]+)/g)].map((match) => match[1])));
   schemaTables.add('schema_migrations');
   const registeredTables = new Set(MODULE_REGISTRY.flatMap((module) => module.tables));
   for (const table of schemaTables) if (!registeredTables.has(table)) failures.push(`schema table has no module owner: ${table}`);
   for (const table of registeredTables) if (!schemaTables.has(table)) failures.push(`registered table is absent from schema or migration infrastructure: ${table}`);
 
-  const registrySource = fs.readFileSync(path.join(root, 'apps/api/src/command-registry.mjs'), 'utf8');
-  const runtimeCommands = new Set([...registrySource.matchAll(/\['([^']+)',\s*\(/g)].map((match) => match[1]));
+  const commandSources = [
+    fs.readFileSync(path.join(root, 'apps/api/src/command-registry.mjs'), 'utf8'),
+    fs.readFileSync(path.join(root, 'apps/api/src/modules/r2-runtime.mjs'), 'utf8')
+  ];
+  const runtimeCommands = new Set(commandSources.flatMap((source) => {
+    const commandMap = /const commands = new Map\(\[([\s\S]*?)\]\);/.exec(source)?.[1] || '';
+    return [...commandMap.matchAll(/\['([^']+)',\s*\(/g)].map((match) => match[1]);
+  }));
   const registeredCommands = new Set(MODULE_REGISTRY.flatMap((module) => module.commands));
   for (const runtimeCommand of runtimeCommands) if (!registeredCommands.has(runtimeCommand)) failures.push(`runtime command has no module owner: ${runtimeCommand}`);
   for (const registeredCommand of registeredCommands) if (!runtimeCommands.has(registeredCommand)) failures.push(`registered command has no runtime handler: ${registeredCommand}`);
@@ -282,7 +294,9 @@ function validateSqlBoundaries() {
       if (statements > frozen.get(relativePath)) failures.push(`legacy SQL boundary grew: ${relativePath} (${statements} > ${frozen.get(relativePath)})`);
       continue;
     }
-    if (!SQL_BOUNDARY_SUFFIXES.some((suffix) => `/${relativePath}`.endsWith(suffix))) {
+    if (!SQL_BOUNDARY_SUFFIXES.some((suffix) => suffix.endsWith('/')
+      ? `/${relativePath}/`.includes(suffix)
+      : `/${relativePath}`.endsWith(suffix))) {
       failures.push(`raw SQL outside repository or migration boundary: ${relativePath}`);
       continue;
     }

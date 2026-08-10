@@ -7,9 +7,14 @@ import { normalizeJsonl } from './src/runner-result.mjs';
 import { renderCodexConfig, CODEX_DEFAULT_MODEL } from './src/codex-config.mjs';
 
 const execFileAsync = promisify(execFile);
-const home = '/tmp/codex-home';
-const schemaPath = '/tmp/codex-result-schema.json';
-const lastMessagePath = '/tmp/codex-last-message.json';
+const home = path.resolve(process.env.AIWS_RUNNER_CODEX_HOME || '/tmp/codex-home');
+const workspaceRoot = path.resolve(process.env.AIWS_RUNNER_WORKSPACE_ROOT || '/workspace');
+const inputsRoot = path.resolve(process.env.AIWS_RUNNER_INPUTS_ROOT || '/inputs');
+const outputsRoot = path.resolve(process.env.AIWS_RUNNER_OUTPUTS_ROOT || '/outputs');
+const codexBinary = String(process.env.AIWS_CODEX_BINARY || 'codex');
+const sandboxMode = String(process.env.AIWS_RUNNER_SANDBOX || 'danger-full-access');
+const schemaPath = path.join(home, 'result-schema.json');
+const lastMessagePath = path.join(home, 'last-message.json');
 
 function cleanup() {
   try { fs.rmSync(lastMessagePath, { force: true }); } catch {}
@@ -79,7 +84,7 @@ async function checkGitDiff(baseline, writable = true) {
     if (!whitespace.passed) return { id: 'git_diff_check', passed: false, exit_code: whitespace.exit_code, stdout_sha256: whitespace.stdout_sha256, error_code: 'diff_whitespace_error' };
     return measureGitDiff(baseline || 'HEAD', undefined, { cached: false });
   }
-  const indexFile = `/tmp/aiws-diff-index-${process.pid}`;
+  const indexFile = path.join(home, `diff-index-${process.pid}`);
   const env = { ...process.env, GIT_INDEX_FILE: indexFile };
   try {
     await execFileAsync('git', [...gitPrefix, 'read-tree', baseline || 'HEAD'], { env, encoding: 'utf8', timeout: 30_000, maxBuffer: 256 * 1024, windowsHide: true });
@@ -103,6 +108,7 @@ async function run() {
   const input = await readInput();
   const job = JSON.parse(input || '{}');
   if (!['read', 'write', 'assist', 'test', 'review', 'probe'].includes(job.mode)) throw new Error('runner_mode_invalid');
+  if (!['read-only', 'workspace-write', 'danger-full-access'].includes(sandboxMode)) throw new Error('runner_sandbox_invalid');
   if (!job.bundle || typeof job.bundle !== 'object') throw new Error('runner_bundle_missing');
 
   fs.mkdirSync(home, { recursive: true, mode: 0o700 });
@@ -112,8 +118,19 @@ async function run() {
     required: ['summary'],
     additionalProperties: false
   }), { mode: 0o600 });
-  fs.writeFileSync(`${home}/config.toml`, renderCodexConfig({ model: job.model || CODEX_DEFAULT_MODEL }), { mode: 0o600 });
-  if (job.credential?.auth) fs.writeFileSync(`${home}/auth.json`, JSON.stringify({ OPENAI_API_KEY: String(job.credential.auth) }), { mode: 0o600 });
+  fs.writeFileSync(`${home}/config.toml`, renderCodexConfig({
+    model: job.profile?.model || job.model || CODEX_DEFAULT_MODEL,
+    provider: job.profile?.provider || 'openai',
+    baseUrl: job.profile?.base_url || '',
+    wireApi: job.profile?.wire_api || 'responses',
+    reasoning: job.profile?.reasoning || 'medium'
+  }), { mode: 0o600 });
+  if (job.credential?.auth) {
+    const auth = job.credential.kind === 'codex_oauth_bundle'
+      ? JSON.parse(String(job.credential.auth))
+      : { OPENAI_API_KEY: String(job.credential.auth) };
+    fs.writeFileSync(`${home}/auth.json`, JSON.stringify(auth), { mode: 0o600 });
+  }
 
   const prompt = JSON.stringify({
     task_id: job.task_id,
@@ -125,9 +142,9 @@ async function run() {
     prior_outputs_root: job.bundle.prior_outputs_root || '/outputs',
     output_paths: job.bundle.output_paths,
     checks: job.bundle.checks,
-    workspace: '/workspace',
-    inputs_root: '/inputs',
-    outputs_root: '/outputs',
+    workspace: workspaceRoot,
+    inputs_root: inputsRoot,
+    outputs_root: outputsRoot,
     output_policy: job.mode === 'write' ? 'Modify only declared output_paths in the workspace.' : 'Return the requested analysis in the final summary; the runner persists it in the output directory.',
     retry_context: job.bundle.retry_context || null,
     mode: job.mode
@@ -136,16 +153,16 @@ async function run() {
     'exec', '--skip-git-repo-check',
     // Docker is the enforced sandbox; nested bwrap namespaces are unavailable on
     // the production kernel, so Codex runs without a second user-namespace layer.
-    '--sandbox', 'danger-full-access',
+    '--sandbox', sandboxMode,
     '--ephemeral', '--json',
     '--output-schema', schemaPath,
     '--output-last-message', lastMessagePath,
     ...(job.model ? ['--model', String(job.model)] : []),
     '-'
   ];
-  const runnerEnv = { PATH: process.env.PATH, HOME: home, CODEX_HOME: home };
-  if (job.credential?.auth) runnerEnv.OPENAI_API_KEY = String(job.credential.auth);
-  const child = spawn('codex', args, {
+  const runnerEnv = { PATH: process.env.PATH, SystemRoot: process.env.SystemRoot, HOME: home, CODEX_HOME: home };
+  if (job.credential?.auth && job.credential.kind !== 'codex_oauth_bundle') runnerEnv.OPENAI_API_KEY = String(job.credential.auth);
+  const child = spawn(codexBinary, args, {
     stdio: ['pipe', 'pipe', 'pipe'],
     env: runnerEnv
   });
@@ -174,8 +191,8 @@ async function run() {
     let declaration = fs.readFileSync(lastMessagePath, 'utf8');
     try { declaration = String(JSON.parse(declaration)?.summary || declaration); } catch {}
     for (const relative of job.output_paths) {
-      const target = path.resolve('/outputs', String(relative));
-      if (!target.startsWith(`/outputs${path.sep}`)) continue;
+      const target = path.resolve(outputsRoot, String(relative));
+      if (!target.startsWith(`${outputsRoot}${path.sep}`)) continue;
       fs.mkdirSync(path.dirname(target), { recursive: true, mode: 0o770 });
       fs.writeFileSync(target, `${declaration.trim()}\n`, { encoding: 'utf8', mode: 0o660 });
     }

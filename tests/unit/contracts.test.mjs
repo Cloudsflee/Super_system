@@ -9,7 +9,7 @@ import { renderCodexConfig } from '../../apps/runner-broker/src/codex-config.mjs
 
 test('contracts pin the public version and event shape', () => {
   assert.equal(API_PREFIX, '/api/v1');
-  assert.equal(DATABASE_USER_VERSION, 1);
+  assert.equal(DATABASE_USER_VERSION, 2);
   assert.ok(COMMAND_NAMES.includes('execution.start'));
   assert.deepEqual(SSE_FIELDS, ['cursor', 'type', 'execution_id', 'task_id', 'data', 'created_at']);
 });
@@ -35,12 +35,17 @@ test('Codex Secret Bundle accepts only the fixed API-key profile and stays in me
   }
 });
 
-test('Runner renders the legacy custom Responses provider with the registered model', () => {
-  const config = renderCodexConfig({ model: 'gpt-5.5' });
-  assert.match(config, /^model = "gpt-5\.5"/m);
-  assert.match(config, /^model_provider = "custom"/m);
-  assert.match(config, /^base_url = "http:\/\/172\.93\.218\.157:8080\/v1"/m);
-  assert.match(config, /^wire_api = "responses"/m);
-  assert.match(config, /^requires_openai_auth = false$/m);
-  assert.match(config, /^env_key = "OPENAI_API_KEY"$/m);
+test('Runner renders only the selected Profile provider and has no legacy endpoint', () => {
+  const openai = renderCodexConfig({ model: 'gpt-5.5' });
+  assert.match(openai, /^model = "gpt-5\.5"/m);
+  assert.match(openai, /^model_provider = "openai"/m);
+  assert.doesNotMatch(openai, /model_providers\.|base_url|172\.93\.218\.157/);
+
+  const custom = renderCodexConfig({ model: 'codex-r2', provider: 'fixture', baseUrl: 'https://provider.example/v1' });
+  assert.match(custom, /^model_provider = "fixture"/m);
+  assert.match(custom, /^\[model_providers\.fixture\]$/m);
+  assert.match(custom, /^base_url = "https:\/\/provider\.example\/v1"$/m);
+  assert.match(custom, /^wire_api = "responses"$/m);
+  assert.match(custom, /^requires_openai_auth = false$/m);
+  assert.match(custom, /^env_key = "OPENAI_API_KEY"$/m);
 });

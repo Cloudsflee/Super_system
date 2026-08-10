@@ -9,7 +9,7 @@ import {
   migrateDatabase,
   schemaFingerprint
 } from '../../apps/api/src/migration-service.mjs';
-import { MIGRATIONS, migrationChecksum } from '../../apps/api/src/migrations/index.mjs';
+import { MIGRATIONS, V1_MIGRATION_CHECKSUM, migrationChecksum } from '../../apps/api/src/migrations/index.mjs';
 import { SCHEMA_SQL } from '../../apps/api/src/schema.mjs';
 
 function temporaryDatabase(prefix) {
@@ -36,10 +36,7 @@ function inspect(file, callback) {
 
 test('empty databases apply every forward migration and record checksums once', () => {
   const fixture = temporaryDatabase('aiws-empty-migrations-');
-  const migrations = [
-    MIGRATIONS[0],
-    { version: 2, name: 'add_migration_probe', sql: 'CREATE TABLE migration_probe(id TEXT PRIMARY KEY) STRICT;' }
-  ];
+  const migrations = MIGRATIONS;
   try {
     const first = migrateDatabase({ file: fixture.file, migrations });
     assert.deepEqual(first.applied_versions, [1, 2]);
@@ -70,8 +67,8 @@ test('startup resumes when an interrupted first run left only an empty migration
       checksum TEXT NOT NULL CHECK(length(checksum) = 64), applied_at TEXT NOT NULL,
       duration_ms INTEGER NOT NULL CHECK(duration_ms >= 0)) STRICT;`));
     const replay = migrateDatabase({ file: fixture.file });
-    assert.deepEqual(replay.applied_versions, [1]);
-    assert.equal(inspect(fixture.file, (db) => Number(db.prepare('PRAGMA user_version').get().user_version)), 1);
+    assert.deepEqual(replay.applied_versions, [1, 2]);
+    assert.equal(inspect(fixture.file, (db) => Number(db.prepare('PRAGMA user_version').get().user_version)), 2);
   } finally {
     fs.rmSync(fixture.home, { recursive: true, force: true });
   }
@@ -83,13 +80,13 @@ test('a fingerprint-matching V1 database is registered as a baseline with a rest
     legacyV1(fixture.file, 'Before migration');
     const result = migrateDatabase({ file: fixture.file });
     assert.equal(result.baseline_registered, true);
-    assert.deepEqual(result.applied_versions, []);
+    assert.deepEqual(result.applied_versions, [2]);
     assert.ok(fs.existsSync(result.snapshot.file));
     assert.ok(fs.existsSync(result.snapshot.manifest));
-    const ledger = inspect(fixture.file, (db) => db.prepare('SELECT version,name,checksum FROM schema_migrations').get());
-    assert.equal(Number(ledger.version), 1);
-    assert.equal(ledger.name, MIGRATIONS[0].name);
-    assert.equal(ledger.checksum, migrationChecksum(MIGRATIONS[0]));
+    const ledger = inspect(fixture.file, (db) => db.prepare('SELECT version,name,checksum FROM schema_migrations ORDER BY version').all());
+    assert.deepEqual(ledger.map((row) => Number(row.version)), [1, 2]);
+    assert.equal(ledger[0].name, MIGRATIONS[0].name);
+    assert.equal(ledger[0].checksum, V1_MIGRATION_CHECKSUM);
 
     inspect(fixture.file, (db) => db.prepare('UPDATE projects SET name=? WHERE id=?').run('After migration', 'prj_migration_fixture'));
     const restore = spawnSync(process.execPath, ['scripts/restore-migration-snapshot.mjs', '--database', fixture.file, '--manifest', result.snapshot.manifest], { cwd: process.cwd(), encoding: 'utf8', windowsHide: true });
@@ -120,7 +117,7 @@ test('applied migration checksum changes are rejected before startup', () => {
   const fixture = temporaryDatabase('aiws-checksum-migration-');
   try {
     migrateDatabase({ file: fixture.file });
-    const changed = [{ ...MIGRATIONS[0], sql: `${MIGRATIONS[0].sql}\n-- checksum drift` }];
+    const changed = [{ ...MIGRATIONS[0], sql: `${MIGRATIONS[0].sql}\n-- checksum drift` }, MIGRATIONS[1]];
     assert.throws(() => migrateDatabase({ file: fixture.file, migrations: changed }), /migration_checksum_conflict:version=1/);
   } finally {
     fs.rmSync(fixture.home, { recursive: true, force: true });
@@ -130,7 +127,7 @@ test('applied migration checksum changes are rejected before startup', () => {
 test('failed DDL rolls back its schema and ledger row atomically', () => {
   const fixture = temporaryDatabase('aiws-ddl-migration-');
   try {
-    migrateDatabase({ file: fixture.file });
+    migrateDatabase({ file: fixture.file, migrations: [MIGRATIONS[0]] });
     const migrations = [
       MIGRATIONS[0],
       { version: 2, name: 'failing_transaction_probe', sql: 'CREATE TABLE transaction_probe(id TEXT PRIMARY KEY) STRICT; CREATE TABLE projects(id TEXT);' }
@@ -154,7 +151,7 @@ test('an interrupted SQLite transaction is rolled back before migration replay',
     { version: 2, name: 'interruption_replay_probe', sql: 'CREATE TABLE interruption_probe(id TEXT PRIMARY KEY) STRICT;' }
   ];
   try {
-    migrateDatabase({ file: fixture.file });
+    migrateDatabase({ file: fixture.file, migrations: [MIGRATIONS[0]] });
     const child = spawnSync(process.execPath, ['--input-type=module', '-e', `
       import { DatabaseSync } from 'node:sqlite';
       const db = new DatabaseSync(process.argv[1]);
@@ -172,6 +169,39 @@ test('an interrupted SQLite transaction is rolled back before migration replay',
     assert.equal(state.abandoned, 0);
     assert.equal(state.replayed, 1);
     assert.match(state.fingerprint, /^[a-f0-9]{64}$/);
+  } finally {
+    fs.rmSync(fixture.home, { recursive: true, force: true });
+  }
+});
+
+test('registered V1 checksum is frozen and V2 maps legacy session and credential state', () => {
+  const fixture = temporaryDatabase('aiws-v2-state-map-');
+  const timestamp = '2026-08-10T00:00:00.000Z';
+  try {
+    legacyV1(fixture.file);
+    inspect(fixture.file, (db) => {
+      db.prepare('INSERT INTO users(id,display_name,status,revision,created_at,updated_at) VALUES(?,?,?,?,?,?)')
+        .run('usr_local_owner', 'Local owner', 'active', 1, timestamp, timestamp);
+      db.prepare('INSERT INTO sessions(id,user_id,token_hash,expires_at,last_seen_at,revoked_at) VALUES(?,?,?,?,?,?)')
+        .run('ses_legacy1234', 'usr_local_owner', 'a'.repeat(64), '2026-08-11T00:00:00.000Z', timestamp, null);
+      db.prepare('INSERT INTO credential_refs(id,provider,label,secret_ref,expires_at,created_at) VALUES(?,?,?,?,?,?)')
+        .run('cred_vault_legacy', 'github', 'Legacy', 'vault:legacy.vault', timestamp, timestamp);
+    });
+
+    const result = migrateDatabase({ file: fixture.file });
+    assert.deepEqual(result.applied_versions, [2]);
+    const mapped = inspect(fixture.file, (db) => ({
+      checksum: db.prepare('SELECT checksum FROM schema_migrations WHERE version=1').get().checksum,
+      session: { ...db.prepare('SELECT revision,created_at,updated_at FROM sessions WHERE id=?').get('ses_legacy1234') },
+      credential: { ...db.prepare('SELECT kind,origin,status,revision,secret_version,expires_at,revoked_at,updated_at FROM credential_refs WHERE id=?').get('cred_vault_legacy') }
+    }));
+    assert.equal(mapped.checksum, V1_MIGRATION_CHECKSUM);
+    assert.deepEqual(mapped.session, { revision: 1, created_at: timestamp, updated_at: timestamp });
+    assert.deepEqual(mapped.credential, {
+      kind: 'github_webhook_secret', origin: 'vault', status: 'revoked', revision: 1,
+      secret_version: 1, expires_at: null, revoked_at: timestamp, updated_at: timestamp
+    });
+    assert.deepEqual(migrateDatabase({ file: fixture.file }).applied_versions, []);
   } finally {
     fs.rmSync(fixture.home, { recursive: true, force: true });
   }

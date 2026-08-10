@@ -15,8 +15,8 @@ test('fresh database uses strict v3 settings and FTS5', async () => {
   const { db } = await fixture();
   const integrity = await db.integrity();
   assert.deepEqual(integrity.integrity, ['ok']);
-  assert.equal(integrity.user_version, 1);
-  assert.equal(integrity.migration_version, 1);
+  assert.equal(integrity.user_version, 2);
+  assert.equal(integrity.migration_version, 2);
   assert.equal(integrity.journal_mode, 'wal');
   assert.equal(integrity.synchronous, 2);
   assert.ok((await db.get("SELECT name FROM sqlite_master WHERE name='context_source_fts'")));
@@ -37,7 +37,8 @@ test('fresh database creates every recovery contract table as STRICT', async () 
     'context_document_versions', 'context_edges', 'context_selections', 'context_policies',
     'context_projection_jobs', 'context_summaries', 'asset_blobs', 'asset_attestations', 'asset_relations',
     'traces', 'digests', 'code_changes', 'test_results', 'quality_review_runs', 'quality_review_reports',
-    'quality_review_events'
+    'quality_review_events', 'operations', 'operation_events', 'setup_events', 'codex_discovery_sources',
+    'github_repositories', 'github_webhook_deliveries'
   ];
   const rows = await db.query(`SELECT name, sql FROM sqlite_master WHERE type='table' AND name IN (${expected.map(() => '?').join(',')})`, expected);
   assert.equal(rows.length, expected.length);

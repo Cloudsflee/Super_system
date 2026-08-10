@@ -9,8 +9,14 @@ import { DIFF_MAX_BYTES, DiffCaptureError, captureDiff, createWorktree, ensureEx
 import { removeExecutionInputs, stageExecutionInputs } from './input-staging.mjs';
 import { EvidenceService } from './evidence-service.mjs';
 import { CODEX_ERROR_CODES, IntegrationProbeService } from './integration-probes.mjs';
-import { CredentialVault } from './credential-vault.mjs';
 import { TerminalService } from './terminal-service.mjs';
+import { SecretRegistry } from './secret-registry.mjs';
+import { IdentityService } from './modules/identity/service.mjs';
+import { OperationService } from './modules/operations/service.mjs';
+import { createR2Runtime, SETUP_GATED_COMMANDS } from './modules/r2-runtime.mjs';
+import { SetupService } from './modules/setup/service.mjs';
+import { CodexService } from './modules/setup/codex-service.mjs';
+import { GithubService } from './modules/setup/github-service.mjs';
 import { prepareOutcomeEvaluations } from './modules/outcome/evaluation.mjs';
 import { qualityReviewMediaKind } from './modules/quality/media-contract.mjs';
 
@@ -282,7 +288,23 @@ export class Domain {
     this.activeJobs = new Map();
     this.repositoryLocks = new Map();
     this.retryInstructions = new Map();
-    this.vault = new CredentialVault(config.home);
+    this.secretRegistry = new SecretRegistry([
+      ['bootstrap:codex', config.codexCredential?.auth],
+      ['bootstrap:github', config.githubCredential?.token]
+    ]);
+    this.identityService = new IdentityService({ db });
+    this.operationService = new OperationService({ db, secrets: this.secretRegistry });
+    this.setupService = new SetupService({
+      db, config, identity: this.identityService, operations: this.operationService, secrets: this.secretRegistry
+    });
+    this.codexService = new CodexService({
+      config, broker, setup: this.setupService, operations: this.operationService
+    });
+    this.githubService = new GithubService({ config, setup: this.setupService, operations: this.operationService, github });
+    this.operationService.cancelExternal = (kind, externalRef) => this.codexService.cancelExternal(kind, externalRef);
+    this.operationService.resumeExternal = (operation) => this.codexService.resumeOperation(operation);
+    this.vault = this.setupService.vault;
+    this.r2 = createR2Runtime(this);
     this.evidence = evidence || new EvidenceService({
       db,
       config,
@@ -307,160 +329,96 @@ export class Domain {
   }
 
   async setupState() {
-    const [owner, credentials, profiles, githubApps, capabilities] = await Promise.all([
-      this.db.get("SELECT id,display_name,status,revision,created_at,updated_at FROM users WHERE id='usr_local_owner'"),
-      this.listCredentials(),
-      this.listCodexProfiles(),
-      this.listGithubAppConfigs(),
-      this.capabilities()
-    ]);
-    const checks = {
-      owner: owner?.status === 'active',
-      broker: capabilities.broker?.status === 'available',
-      codex_profile: profiles.some((profile) => profile.status !== 'revoked'),
-      codex_probe: capabilities.codex?.status === 'available',
-      github_app: githubApps.some((app) => app.status === 'active'),
-      github_probe: capabilities.github?.status === 'available'
-    };
-    return {
-      status: Object.values(checks).every(Boolean) ? 'ready' : 'blocked',
-      owner,
-      checks,
-      credentials,
-      codex_profiles: profiles,
-      github_apps: githubApps,
-      capabilities: { codex: capabilities.codex, github: capabilities.github, broker: capabilities.broker }
-    };
+    return this.setupService.setupState();
+  }
+
+  startCodexDeviceAuth(input, ctx = {}) {
+    return this.codexService.startDeviceAuth(input, ctx);
+  }
+
+  discoverCodex(input, ctx = {}) {
+    return this.codexService.discover(input, ctx);
+  }
+
+  importCodexDiscovery(input, ctx = {}) {
+    return this.codexService.importDiscovery(input, ctx);
+  }
+
+  probeCodexProfile(input, ctx = {}) {
+    return this.codexService.probe(input, ctx);
+  }
+
+  discoverGithubInstallations(appConfigId, input, ctx = {}) {
+    return this.githubService.discoverInstallations(appConfigId, input, ctx);
+  }
+
+  syncGithubRepositories(installationId, input, ctx = {}) {
+    return this.githubService.syncRepositories(installationId, input, ctx);
+  }
+
+  probeGithubApp(input, ctx = {}) {
+    return this.githubService.probe(input, ctx);
+  }
+
+  githubWebhook(rawBody, headers) {
+    return this.githubService.webhook(rawBody, headers);
+  }
+
+  authenticate(authorization) {
+    return this.identityService.authenticate(authorization);
+  }
+
+  redact(value) {
+    return this.secretRegistry.redactObject(value);
+  }
+
+  async assertCommandReady(command) {
+    if (this.config.testOnlyBypassSetupGate === true || !SETUP_GATED_COMMANDS.has(command)) return null;
+    return this.setupService.assertReady(command);
   }
 
   async listCredentials() {
-    const rows = await this.db.query('SELECT id,provider,label,expires_at,created_at FROM credential_refs ORDER BY created_at DESC,id');
-    return rows.map((row) => ({ ...row, status: row.expires_at ? 'revoked' : 'active', vault_backed: row.id.startsWith('cred_vault_') && this.vault.exists(row.id) }));
+    return this.setupService.listCredentials();
   }
 
   async createSession(input = {}, ctx = {}) {
-    const ttl = Number(input?.ttl_seconds ?? 30 * 24 * 60 * 60);
-    assert(Number.isInteger(ttl) && ttl >= 300 && ttl <= 90 * 24 * 60 * 60, 'invalid_input', 'session ttl is invalid', { status: 422 });
-    const token = randomBytes(32).toString('base64url');
-    const sessionId = id('ses');
-    const created = Date.now();
-    const expires = new Date(created + ttl * 1000).toISOString();
-    await this.db.transaction([
-      { sql: 'INSERT INTO sessions(id,user_id,token_hash,expires_at,last_seen_at) VALUES(?,?,?,?,?)', params: [sessionId, 'usr_local_owner', sha256(token), expires, new Date(created).toISOString()] },
-      auditStatement('session.created', 'session', sessionId, { ttl_seconds: ttl }, ctx.actor)
-    ]);
-    return { id: sessionId, token, expires_at: expires, user_id: 'usr_local_owner' };
+    return this.identityService.createSession(input, ctx);
   }
 
   async listSessions() {
-    return this.db.query("SELECT id,user_id,expires_at,last_seen_at,revoked_at FROM sessions WHERE user_id='usr_local_owner' ORDER BY last_seen_at DESC");
+    return this.identityService.listSessions();
   }
 
-  async revokeSession(sessionId, _input, ctx = {}) {
-    const session = await this.db.get("SELECT id FROM sessions WHERE id=? AND user_id='usr_local_owner'", [sessionId]);
-    if (!session) throw new AppError('not_found', 'session not found');
-    await this.db.transaction([
-      { sql: 'UPDATE sessions SET revoked_at=COALESCE(revoked_at,?) WHERE id=?', params: [now(), sessionId] },
-      auditStatement('session.revoked', 'session', sessionId, {}, ctx.actor)
-    ]);
-    return (await this.listSessions()).find((row) => row.id === sessionId);
+  async revokeSession(sessionId, input, ctx = {}) {
+    return this.identityService.revokeSession(sessionId, input, ctx);
   }
 
   async createCredential(input, ctx = {}) {
-    const provider = String(input?.provider || '').trim();
-    const label = String(input?.label || '').trim();
-    const secret = typeof input?.secret === 'string' ? input.secret : '';
-    assert(['codex', 'github'].includes(provider), 'invalid_input', 'credential provider is invalid', { status: 422 });
-    assert(label.length >= 1 && label.length <= 120, 'invalid_input', 'credential label is required', { status: 422 });
-    assert(secret.length >= 1, 'invalid_input', 'credential secret is required', { status: 422 });
-    const credentialId = id('cred_vault');
-    let secretRef;
-    try {
-      secretRef = this.vault.put(credentialId, secret);
-      await this.db.transaction([
-        { sql: 'INSERT INTO credential_refs(id,provider,label,secret_ref,created_at) VALUES(?,?,?,?,?)', params: [credentialId, provider, label, `vault:${secretRef}`, now()] },
-        auditStatement('credential.created', 'credential', credentialId, { provider, label }, ctx.actor)
-      ]);
-    } catch (error) {
-      if (secretRef) this.vault.remove(credentialId);
-      if (String(error?.message).startsWith('credential_')) throw new AppError(String(error.message), 'credential could not be stored', { status: 422 });
-      throw error;
-    }
-    return (await this.listCredentials()).find((row) => row.id === credentialId);
+    return this.setupService.createCredential(input, ctx);
   }
 
   async rotateCredential(credentialId, input, ctx = {}) {
-    const credential = await this.db.get('SELECT id,provider,label,expires_at FROM credential_refs WHERE id=?', [credentialId]);
-    if (!credential) throw new AppError('not_found', 'credential not found');
-    assert(credential.id.startsWith('cred_vault_'), 'credential_readonly', 'bootstrap credential cannot be changed', { status: 409 });
-    assert(!credential.expires_at, 'credential_revoked', 'credential is revoked', { status: 409 });
-    const secret = typeof input?.secret === 'string' ? input.secret : '';
-    assert(secret.length >= 1, 'invalid_input', 'credential secret is required', { status: 422 });
-    try { this.vault.put(credentialId, secret); }
-    catch (error) { throw new AppError(String(error?.message || 'credential_secret_invalid'), 'credential could not be stored', { status: 422 }); }
-    await this.db.run('INSERT INTO audit_events(id,actor,action,entity_type,entity_id,payload_json,created_at) VALUES(?,?,?,?,?,?,?)', [id('aud'), ctx.actor || 'local-user', 'credential.rotated', 'credential', credentialId, asJson({ provider: credential.provider, label: credential.label }), now()]);
-    return (await this.listCredentials()).find((row) => row.id === credentialId);
+    return this.setupService.rotateCredential(credentialId, input, ctx);
   }
 
-  async revokeCredential(credentialId, _input, ctx = {}) {
-    const credential = await this.db.get('SELECT id,provider,label,expires_at FROM credential_refs WHERE id=?', [credentialId]);
-    if (!credential) throw new AppError('not_found', 'credential not found');
-    assert(credential.id.startsWith('cred_vault_'), 'credential_readonly', 'bootstrap credential cannot be changed', { status: 409 });
-    if (!credential.expires_at) {
-      this.vault.remove(credentialId);
-      await this.db.transaction([
-        { sql: 'UPDATE credential_refs SET expires_at=? WHERE id=? AND expires_at IS NULL', params: [now(), credentialId], expect_changes: 1 },
-        auditStatement('credential.revoked', 'credential', credentialId, { provider: credential.provider, label: credential.label }, ctx.actor)
-      ]);
-    }
-    return (await this.listCredentials()).find((row) => row.id === credentialId);
+  async revokeCredential(credentialId, input, ctx = {}) {
+    return this.setupService.revokeCredential(credentialId, input, ctx);
   }
 
-  async deleteCredential(credentialId, _input, ctx = {}) {
-    const credential = await this.db.get('SELECT id,provider,label FROM credential_refs WHERE id=?', [credentialId]);
-    if (!credential) throw new AppError('not_found', 'credential not found');
-    assert(credential.id.startsWith('cred_vault_'), 'credential_readonly', 'bootstrap credential cannot be changed', { status: 409 });
-    try {
-      await this.db.transaction([
-        auditStatement('credential.deleted', 'credential', credentialId, { provider: credential.provider, label: credential.label }, ctx.actor),
-        { sql: 'DELETE FROM credential_refs WHERE id=?', params: [credentialId], expect_changes: 1 }
-      ]);
-    } catch (error) {
-      if (String(error?.message).includes('FOREIGN KEY')) throw new AppError('credential_in_use', 'credential is used by a profile', { status: 409 });
-      throw error;
-    }
-    this.vault.remove(credentialId);
-    return { id: credentialId, deleted: true };
+  async deleteCredential(credentialId, input, ctx = {}) {
+    return this.setupService.deleteCredential(credentialId, input, ctx);
   }
 
   async listCodexProfiles() {
-    const rows = await this.db.query(`SELECT p.*,c.expires_at AS credential_expires_at
-      FROM codex_profiles p JOIN credential_refs c ON c.id=p.credential_ref ORDER BY p.created_at DESC,p.id`);
-    return rows.map(({ credential_expires_at: expiresAt, ...row }) => ({ ...row, status: expiresAt ? 'revoked' : row.status }));
+    return this.setupService.listCodexProfiles();
   }
 
   async createCodexProfile(input, ctx = {}) {
-    const profile = this.validateCodexProfile(input);
-    const credential = await this.db.get("SELECT id FROM credential_refs WHERE id=? AND provider='codex' AND expires_at IS NULL", [profile.credential_ref]);
-    assert(credential, 'invalid_input', 'active Codex credential is required', { status: 422 });
-    const profileId = id('cdp');
-    const timestamp = now();
-    await this.db.transaction([
-      { sql: `INSERT INTO codex_profiles(id,user_id,label,provider,model,base_url,wire_api,reasoning,timeout_ms,credential_ref,status,revision,created_at,updated_at)
-        VALUES(?,?,?,?,?,?,?,?,?,?,?,1,?,?)`, params: [profileId, 'usr_local_owner', profile.label, profile.provider, profile.model, profile.base_url, profile.wire_api, profile.reasoning, profile.timeout_ms, profile.credential_ref, 'unprobed', timestamp, timestamp] },
-      auditStatement('codex_profile.created', 'codex_profile', profileId, { label: profile.label, provider: profile.provider, model: profile.model }, ctx.actor)
-    ]);
-    return (await this.listCodexProfiles()).find((row) => row.id === profileId);
+    return this.setupService.createCodexProfile(input, ctx);
   }
 
   async listGithubAppConfigs() {
-    const apps = await this.db.query(`SELECT a.id,a.label,a.app_id,a.client_id,a.created_at,a.updated_at,
-      CASE WHEN pk.expires_at IS NULL AND wh.expires_at IS NULL THEN 'active' ELSE 'revoked' END AS status
-      FROM github_app_configs a
-      JOIN credential_refs pk ON pk.id=a.private_key_ref
-      JOIN credential_refs wh ON wh.id=a.webhook_secret_ref
-      ORDER BY a.created_at DESC,a.id`);
-    return Promise.all(apps.map(async (app) => ({ ...app, installations: await this.db.query('SELECT id,installation_id,account_login,permissions_json,status,created_at,updated_at FROM github_installations WHERE app_config_id=? ORDER BY created_at DESC', [app.id]).then((rows) => rows.map((row) => ({ ...row, permissions: rowJson(row, 'permissions_json', {}) }))) })));
+    return this.setupService.listGithubApps();
   }
 
   async listMcpClients() {
@@ -587,64 +545,15 @@ export class Domain {
   }
 
   async createGithubAppConfig(input, ctx = {}) {
-    const label = String(input?.label || '').trim();
-    const appId = String(input?.app_id || '').trim();
-    const clientId = String(input?.client_id || '').trim();
-    const privateKeyRef = String(input?.private_key_ref || '').trim();
-    const webhookSecretRef = String(input?.webhook_secret_ref || '').trim();
-    assert(label.length >= 1 && label.length <= 120, 'invalid_input', 'GitHub App label is required', { status: 422 });
-    assert(/^[0-9]{1,32}$/.test(appId), 'invalid_input', 'GitHub App id is invalid', { status: 422 });
-    assert(/^[A-Za-z0-9_.:-]{1,120}$/.test(clientId), 'invalid_input', 'GitHub client id is invalid', { status: 422 });
-    const refs = await this.db.query("SELECT id FROM credential_refs WHERE id IN (?,?) AND provider='github' AND expires_at IS NULL", [privateKeyRef, webhookSecretRef]);
-    assert(refs.length === 2 && privateKeyRef !== webhookSecretRef, 'invalid_input', 'active GitHub private key and webhook credentials are required', { status: 422 });
-    const appConfigId = id('gha');
-    const timestamp = now();
-    await this.db.transaction([
-      { sql: 'INSERT INTO github_app_configs(id,user_id,label,app_id,client_id,private_key_ref,webhook_secret_ref,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?)', params: [appConfigId, 'usr_local_owner', label, appId, clientId, privateKeyRef, webhookSecretRef, timestamp, timestamp] },
-      auditStatement('github_app.created', 'github_app', appConfigId, { label, app_id: appId }, ctx.actor)
-    ]);
-    return (await this.listGithubAppConfigs()).find((app) => app.id === appConfigId);
+    return this.setupService.createGithubApp(input, ctx);
   }
 
   async createGithubInstallation(appConfigId, input, ctx = {}) {
-    const app = await this.db.get('SELECT id FROM github_app_configs WHERE id=?', [appConfigId]);
-    if (!app) throw new AppError('not_found', 'GitHub App config not found');
-    const installationId = String(input?.installation_id || '').trim();
-    const accountLogin = String(input?.account_login || '').trim();
-    const permissions = input?.permissions && typeof input.permissions === 'object' ? input.permissions : {};
-    assert(/^[0-9]{1,32}$/.test(installationId), 'invalid_input', 'installation id is invalid', { status: 422 });
-    assert(/^[A-Za-z0-9_.-]{1,100}$/.test(accountLogin), 'invalid_input', 'account login is invalid', { status: 422 });
-    const installation = id('ghi');
-    try {
-      await this.db.transaction([
-        { sql: 'INSERT INTO github_installations(id,app_config_id,installation_id,account_login,permissions_json,status,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?)', params: [installation, appConfigId, installationId, accountLogin, asJson(permissions), 'available', now(), now()] },
-        auditStatement('github_installation.selected', 'github_installation', installation, { app_config_id: appConfigId, installation_id: installationId, account_login: accountLogin }, ctx.actor)
-      ]);
-    } catch (error) {
-      if (String(error?.message).includes('UNIQUE')) throw new AppError('already_exists', 'GitHub installation is already configured', { status: 409 });
-      throw error;
-    }
-    return (await this.listGithubAppConfigs()).find((item) => item.id === appConfigId)?.installations.find((item) => item.id === installation);
+    return this.setupService.createGithubInstallation(appConfigId, input, ctx);
   }
 
   async updateCodexProfile(profileId, input, ctx = {}) {
-    const current = await this.db.get('SELECT * FROM codex_profiles WHERE id=?', [profileId]);
-    if (!current) throw new AppError('not_found', 'Codex profile not found');
-    const expected = Number(input?.expected_revision);
-    assert(Number.isInteger(expected) && expected > 0, 'invalid_input', 'expected_revision is required');
-    const profile = this.validateCodexProfile({ ...current, ...input });
-    const credential = await this.db.get("SELECT id FROM credential_refs WHERE id=? AND provider='codex' AND expires_at IS NULL", [profile.credential_ref]);
-    assert(credential, 'invalid_input', 'active Codex credential is required', { status: 422 });
-    try {
-      await this.db.transaction([
-        { sql: `UPDATE codex_profiles SET label=?,provider=?,model=?,base_url=?,wire_api=?,reasoning=?,timeout_ms=?,credential_ref=?,status='unprobed',revision=revision+1,updated_at=? WHERE id=? AND revision=?`, params: [profile.label, profile.provider, profile.model, profile.base_url, profile.wire_api, profile.reasoning, profile.timeout_ms, profile.credential_ref, now(), profileId, expected], expect_changes: 1 },
-        auditStatement('codex_profile.updated', 'codex_profile', profileId, { expected_revision: expected }, ctx.actor)
-      ]);
-    } catch (error) {
-      if (!isTransactionPrecondition(error)) throw error;
-      throw new AppError('revision_conflict', 'Codex profile revision has changed', { status: 409, details: { expected_revision: expected } });
-    }
-    return (await this.listCodexProfiles()).find((row) => row.id === profileId);
+    return this.setupService.updateCodexProfile(profileId, input, ctx);
   }
 
   validateCodexProfile(input) {
@@ -1126,12 +1035,7 @@ export class Domain {
   }
 
   async activeCredentialSecrets() {
-    const values = [this.config.codexCredential?.auth, this.config.githubCredential?.token].filter(Boolean);
-    const credentials = await this.db.query("SELECT id FROM credential_refs WHERE id LIKE 'cred_vault_%' AND expires_at IS NULL");
-    for (const credential of credentials) {
-      try { values.push(this.vault.get(credential.id)); } catch { /* Missing or revoked vault entries are ignored. */ }
-    }
-    return values;
+    return this.setupService.activeCredentialSecrets();
   }
 
   async captureTerminalArtifact(projectId, sessionId, content) {
@@ -2145,14 +2049,9 @@ export class Domain {
 
   async recover() {
     this.stopping = false;
-    const timestamp = now();
-    await this.db.run("INSERT OR IGNORE INTO users(id,display_name,status,revision,created_at,updated_at) VALUES('usr_local_owner','Local owner','active',1,?,?)", [timestamp, timestamp]);
-    if (this.config.codexCredential) {
-      await this.db.run('INSERT OR IGNORE INTO credential_refs(id,provider,label,secret_ref,created_at) VALUES(?,?,?,?,?)', [this.config.codexCredential.ref, 'codex', this.config.codexCredential.profile, 'secret_bundle:codex_default', now()]);
-    }
-    if (this.config.githubCredential) {
-      await this.db.run('INSERT OR IGNORE INTO credential_refs(id,provider,label,secret_ref,created_at) VALUES(?,?,?,?,?)', [this.config.githubCredential.ref, 'github', 'default', 'docker_secret:github_token', now()]);
-    }
+    await this.identityService.initialize();
+    await this.setupService.initialize();
+    await this.operationService.recover();
     await this.terminals.recover();
     const pendingProjections = await this.db.query("SELECT id,project_id FROM context_projection_jobs WHERE status IN ('pending','running') ORDER BY created_at,id");
     for (const job of pendingProjections) {
@@ -2245,7 +2144,9 @@ export class Domain {
               security_summary: 'credentials are redacted from retry context',
               instruction: String(instruction || this.retryInstructions.get(executionId) || '').slice(0, 2000)
             } : null;
-            job = await this.broker.submit({
+            const activeProfile = await this.setupService.activeProfileSnapshot({ includeSecret: true });
+            const profileEnvelope = activeProfile ? Object.fromEntries(Object.entries(activeProfile).filter(([key]) => key !== 'secret')) : null;
+            const jobSpec = {
               task_id: task.id,
               execution_id: executionId,
               project_id: execution.project_id,
@@ -2254,12 +2155,15 @@ export class Domain {
               baseline_sha: worktree?.baseline_sha || execution.repository_sha || null,
               output_subpath: `projects/${execution.project_id}/outputs/${executionId}`,
               input_subpath: inputSubpath,
-              model: this.config.codexModel || 'gpt-5.5',
+              model: activeProfile?.model || this.config.codexModel || 'gpt-5.5',
               image_digest: this.config.runnerDigest,
               execution_mode: task.mode === 'write' ? 'write' : 'read',
               resource_profile: 'standard',
-              network_profile: this.config.codexCredential ? 'model' : 'none',
-              credential_ref: this.config.codexCredential?.ref || null,
+              network_profile: activeProfile ? 'model' : 'none',
+              credential_ref: activeProfile?.credential_ref || null,
+              profile_id: activeProfile?.profile_id || null,
+              profile_revision: activeProfile?.profile_revision || null,
+              profile_hash: activeProfile?.profile_hash || null,
               bundle: {
                 objective: `${task.title}${rowJson(brief, 'content_json', {}).objective ? `\nProject objective: ${rowJson(brief, 'content_json', {}).objective}` : ''}`,
                 acceptance: Array.isArray(rowJson(brief, 'content_json', {}).acceptance) ? rowJson(brief, 'content_json', {}).acceptance : [],
@@ -2275,6 +2179,15 @@ export class Domain {
               input_paths: task.inputs,
               output_paths: task.outputs,
               deadline_at: new Date(Date.now() + 5 * 60 * 1000).toISOString()
+            };
+            job = await this.broker.submit(jobSpec, {
+              profile: profileEnvelope,
+              credential: activeProfile ? {
+                ref: activeProfile.credential_ref,
+                kind: activeProfile.auth_kind === 'oauth_bundle' ? 'codex_oauth_bundle' : 'codex_api_key',
+                revision: activeProfile.credential_revision,
+                auth: activeProfile.secret
+              } : null
             });
             await this.db.transaction([
               { sql: 'UPDATE task_attempts SET status=\'running\',broker_job_id=? WHERE id=? AND status=\'ready\'', params: [job.job_id, attemptId], expect_changes: 1 },

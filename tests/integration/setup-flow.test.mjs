@@ -14,7 +14,7 @@ test('workspace Vault, Codex profiles, and setup readiness use metadata-only API
     assert.equal(initial.response.status, 200);
     assert.equal(initial.json.owner.id, 'usr_local_owner');
     assert.equal(initial.json.status, 'blocked');
-    assert.equal(initial.json.checks.codex_profile, false);
+    assert.equal(initial.json.checks.active_codex_profile, false);
 
     const badTtl = await mutate(env.base, '/api/v1/sessions', { ttl_seconds: 10 }, 'setup-session-bad');
     assert.equal(badTtl.response.status, 422);
@@ -25,8 +25,8 @@ test('workspace Vault, Codex profiles, and setup readiness use metadata-only API
     const sessions = await request(env.base, '/api/v1/sessions');
     assert.equal(sessions.json[0].id, session.json.id);
     assert.equal(sessions.json[0].token_hash, undefined);
-    const revokedSession = await mutate(env.base, `/api/v1/sessions/${session.json.id}/revoke`, {}, 'setup-session-revoke');
-    assert.equal(revokedSession.response.status, 201);
+    const revokedSession = await mutate(env.base, `/api/v1/sessions/${session.json.id}/revoke`, { expected_revision: session.json.revision }, 'setup-session-revoke');
+    assert.equal(revokedSession.response.status, 200);
     assert.ok(revokedSession.json.revoked_at);
 
     const invalidProvider = await mutate(env.base, '/api/v1/credentials', { provider: 'invalid', label: 'bad', secret: firstSecret }, 'setup-invalid-provider');
@@ -45,11 +45,11 @@ test('workspace Vault, Codex profiles, and setup readiness use metadata-only API
     assert.deepEqual(replay.json, created.json);
 
     const vault = new CredentialVault(env.home);
-    assert.equal(vault.exists(created.json.id), true);
-    assert.equal(vault.get(created.json.id), firstSecret);
+    assert.equal(vault.existsVersion(created.json.id, 1), true);
+    assert.equal(vault.getVersion(created.json.id, 1), firstSecret);
     assert.throws(() => vault.pathFor('../outside'), /credential_reference_invalid/);
 
-    const vaultFile = path.join(env.home, 'vault', `${created.json.id}.vault`);
+    const vaultFile = path.join(env.home, 'vault', `${created.json.id}.v1.vault`);
     assert.equal(fs.readFileSync(vaultFile, 'utf8').includes(firstSecret), false);
     const persisted = [
       path.join(env.home, 'data', 'state.sqlite'),
@@ -84,35 +84,36 @@ test('workspace Vault, Codex profiles, and setup readiness use metadata-only API
       base_url: 'https://api.example.test/v1', wire_api: 'chat', reasoning: 'medium', timeout_ms: 45000,
       credential_ref: created.json.id
     }, 'setup-profile-update', 'PATCH');
-    assert.equal(updated.response.status, 201);
+    assert.equal(updated.response.status, 200);
     assert.equal(updated.json.revision, 2);
     assert.equal(updated.json.status, 'unprobed');
 
-    const rotated = await mutate(env.base, `/api/v1/credentials/${created.json.id}/rotate`, { secret: rotatedSecret }, 'setup-rotate');
-    assert.equal(rotated.response.status, 201);
-    assert.equal(vault.get(created.json.id), rotatedSecret);
-    assert.equal(fs.readFileSync(vaultFile, 'utf8').includes(rotatedSecret), false);
+    const rotated = await mutate(env.base, `/api/v1/credentials/${created.json.id}/rotate`, { expected_revision: created.json.revision, secret: rotatedSecret }, 'setup-rotate');
+    assert.equal(rotated.response.status, 200);
+    assert.equal(vault.getVersion(created.json.id, 2), rotatedSecret);
+    const rotatedVaultFile = path.join(env.home, 'vault', `${created.json.id}.v2.vault`);
+    assert.equal(fs.readFileSync(rotatedVaultFile, 'utf8').includes(rotatedSecret), false);
 
     const setupWithProfile = await request(env.base, '/api/v1/setup');
-    assert.equal(setupWithProfile.json.checks.codex_profile, true);
+    assert.equal(setupWithProfile.json.checks.active_codex_profile, true);
     assert.equal(setupWithProfile.json.status, 'blocked');
 
-    const revoked = await mutate(env.base, `/api/v1/credentials/${created.json.id}/revoke`, {}, 'setup-revoke');
-    assert.equal(revoked.response.status, 201);
+    const revoked = await mutate(env.base, `/api/v1/credentials/${created.json.id}/revoke`, { expected_revision: rotated.json.revision }, 'setup-revoke');
+    assert.equal(revoked.response.status, 200);
     assert.equal(revoked.json.status, 'revoked');
-    assert.equal(vault.exists(created.json.id), false);
+    assert.equal(vault.existsVersion(created.json.id, 2), false);
     const profiles = await request(env.base, '/api/v1/profiles/codex');
-    assert.equal(profiles.json[0].status, 'revoked');
+    assert.equal(profiles.json[0].status, 'unprobed');
 
-    const inUse = await mutate(env.base, `/api/v1/credentials/${created.json.id}`, {}, 'setup-delete-in-use', 'DELETE');
+    const inUse = await mutate(env.base, `/api/v1/credentials/${created.json.id}`, { expected_revision: revoked.json.revision }, 'setup-delete-in-use', 'DELETE');
     assert.equal(inUse.response.status, 409);
     assert.equal(inUse.json.error.code, 'credential_in_use');
 
     const disposable = await mutate(env.base, '/api/v1/credentials', { provider: 'github', label: 'Disposable', secret: 'github-disposable-secret' }, 'setup-disposable');
-    const deleted = await mutate(env.base, `/api/v1/credentials/${disposable.json.id}`, {}, 'setup-delete', 'DELETE');
-    assert.equal(deleted.response.status, 201);
+    const deleted = await mutate(env.base, `/api/v1/credentials/${disposable.json.id}`, { expected_revision: disposable.json.revision }, 'setup-delete', 'DELETE');
+    assert.equal(deleted.response.status, 200);
     assert.deepEqual(deleted.json, { id: disposable.json.id, deleted: true });
-    assert.equal(vault.exists(disposable.json.id), false);
+    assert.equal(vault.existsVersion(disposable.json.id, 1), false);
 
     const privateKey = await mutate(env.base, '/api/v1/credentials', { provider: 'github', label: 'App private key', secret: 'github-private-key-fixture' }, 'setup-github-private');
     const webhookSecret = await mutate(env.base, '/api/v1/credentials', { provider: 'github', label: 'Webhook secret', secret: 'github-webhook-fixture' }, 'setup-github-webhook');
@@ -120,11 +121,11 @@ test('workspace Vault, Codex profiles, and setup readiness use metadata-only API
     assert.equal(badApp.response.status, 422);
     const app = await mutate(env.base, '/api/v1/github/apps', { label: 'Workspace App', app_id: '12345', client_id: 'Iv1.fixture', private_key_ref: privateKey.json.id, webhook_secret_ref: webhookSecret.json.id }, 'setup-github-app');
     assert.equal(app.response.status, 201);
-    assert.equal(app.json.status, 'active');
-    const installation = await mutate(env.base, `/api/v1/github/apps/${app.json.id}/installations`, { installation_id: '67890', account_login: 'fixture-org', permissions: { contents: 'write', pull_requests: 'write' } }, 'setup-github-installation');
+    assert.equal(app.json.status, 'unverified');
+    const installation = await mutate(env.base, `/api/v1/github/apps/${app.json.id}/installations`, { expected_revision: app.json.revision, installation_id: '67890', account_login: 'fixture-org', permissions: { contents: 'write', pull_requests: 'write' } }, 'setup-github-installation');
     assert.equal(installation.response.status, 201);
     assert.equal(installation.json.account_login, 'fixture-org');
-    const duplicateInstallation = await mutate(env.base, `/api/v1/github/apps/${app.json.id}/installations`, { installation_id: '67890', account_login: 'fixture-org' }, 'setup-github-installation-duplicate');
+    const duplicateInstallation = await mutate(env.base, `/api/v1/github/apps/${app.json.id}/installations`, { expected_revision: app.json.revision + 1, installation_id: '67890', account_login: 'fixture-org' }, 'setup-github-installation-duplicate');
     assert.equal(duplicateInstallation.response.status, 409);
     const apps = await request(env.base, '/api/v1/github/apps');
     assert.equal(apps.json[0].installations[0].installation_id, '67890');

@@ -11,6 +11,16 @@ export class CredentialVault {
   }
 
   put(reference, value) {
+    return this.write(reference, value, { immutable: false });
+  }
+
+  putVersion(reference, version, value) {
+    const numericVersion = Number(version);
+    if (!Number.isInteger(numericVersion) || numericVersion < 1) throw new Error('credential_version_invalid');
+    return this.write(`${reference}.v${numericVersion}`, value, { immutable: true });
+  }
+
+  write(reference, value, { immutable }) {
     const secret = Buffer.from(String(value ?? ''), 'utf8');
     if (secret.length < 1 || secret.length > MAX_SECRET_BYTES) throw new Error('credential_secret_invalid');
     const target = this.pathFor(reference);
@@ -28,7 +38,12 @@ export class CredentialVault {
     const temporary = `${target}.${process.pid}.${randomBytes(6).toString('hex')}.tmp`;
     fs.writeFileSync(temporary, payload, { mode: 0o600, flag: 'wx' });
     try {
-      fs.renameSync(temporary, target);
+      if (immutable) {
+        fs.linkSync(temporary, target);
+        fs.rmSync(temporary, { force: true });
+      } else {
+        fs.renameSync(temporary, target);
+      }
       try { fs.chmodSync(target, 0o600); } catch { /* Windows applies ACLs instead. */ }
     } finally {
       try { fs.rmSync(temporary, { force: true }); } catch { /* Atomic rename already consumed it. */ }
@@ -53,17 +68,57 @@ export class CredentialVault {
     finally { key.fill(0); }
   }
 
+  getVersion(reference, version) {
+    const numericVersion = Number(version);
+    if (!Number.isInteger(numericVersion) || numericVersion < 1) throw new Error('credential_version_invalid');
+    return this.get(`${reference}.v${numericVersion}`);
+  }
+
+  getBySecretRef(secretRef) {
+    const value = String(secretRef || '');
+    if (!value.startsWith('vault:')) throw new Error('credential_secret_unavailable');
+    const filename = value.slice('vault:'.length);
+    if (!filename.endsWith('.vault')) throw new Error('credential_secret_unavailable');
+    return this.get(filename.slice(0, -'.vault'.length));
+  }
+
+  removeBySecretRef(secretRef) {
+    const value = String(secretRef || '');
+    if (!value.startsWith('vault:') || !value.endsWith('.vault')) return;
+    const reference = value.slice('vault:'.length, -'.vault'.length);
+    try { this.remove(reference); } catch { /* Invalid or absent references are already unavailable. */ }
+  }
+
   remove(reference) {
     fs.rmSync(this.pathFor(reference), { force: true });
+  }
+
+  removeVersion(reference, version) {
+    const numericVersion = Number(version);
+    if (!Number.isInteger(numericVersion) || numericVersion < 1) return;
+    this.remove(`${reference}.v${numericVersion}`);
   }
 
   exists(reference) {
     return fs.existsSync(this.pathFor(reference));
   }
 
+  existsVersion(reference, version) {
+    const numericVersion = Number(version);
+    return Number.isInteger(numericVersion) && numericVersion > 0 && this.exists(`${reference}.v${numericVersion}`);
+  }
+
+  entries() {
+    fs.mkdirSync(this.root, { recursive: true, mode: 0o700 });
+    return fs.readdirSync(this.root, { withFileTypes: true })
+      .filter((entry) => entry.isFile() && /^[A-Za-z0-9_-]{1,100}(?:\.v[1-9][0-9]*)?\.vault$/.test(entry.name))
+      .map((entry) => entry.name)
+      .sort();
+  }
+
   pathFor(reference) {
     const name = String(reference || '');
-    if (!/^[A-Za-z0-9_-]{1,100}$/.test(name)) throw new Error('credential_reference_invalid');
+    if (!/^[A-Za-z0-9_-]{1,100}(?:\.v[1-9][0-9]*)?$/.test(name)) throw new Error('credential_reference_invalid');
     fs.mkdirSync(this.root, { recursive: true, mode: 0o700 });
     return path.join(this.root, `${name}.vault`);
   }

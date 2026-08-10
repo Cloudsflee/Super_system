@@ -1,0 +1,731 @@
+{
+  "schema_version": "aiws.v3.recovery_evidence_manifest.v2",
+  "batch": "v3-r2-identity-setup-20260810",
+  "status": "passed",
+  "branch": "recovery/v3-feature-restore",
+  "baseline_commit": "d99d2c9f38a7fa279d0bdc9e855e1e293cc3a032",
+  "created_at": "2026-08-10T17:26:58.252Z",
+  "catalog_sha256": "4d7eb075be0b694d75b067ac06c40fbdbaebeb08f96098e21933976d22694504",
+  "files": [
+    {
+      "path": "apps/api/src/broker-client.mjs",
+      "baseline_present": true,
+      "baseline_sha256": "75f8d1c6579d9490704e9f1249ab329e50b061ec0f14f310f43c5a91a97400ce",
+      "modified_sha256": "1d7c21e9d5d9e73274904f4fd0b2077166e990b093afc072e71b875a553d3260",
+      "modified_bytes": 9307
+    },
+    {
+      "path": "apps/api/src/command-registry.mjs",
+      "baseline_present": true,
+      "baseline_sha256": "28beddca103cc414aae300f984beef55e4bc8664ee94ba18f87ee7e2d30f6cef",
+      "modified_sha256": "b57166674b419b29b72da9b7210cf7f5de459c2ec236c97b7660e475938d7d8b",
+      "modified_bytes": 5313
+    },
+    {
+      "path": "apps/api/src/config.mjs",
+      "baseline_present": true,
+      "baseline_sha256": "cd0bd6b530a8976f4aeba21ed530bfbb1f00f2095d99c100538392d04aa309bb",
+      "modified_sha256": "a5553de26b76788fcca2fa036b5ecb95cdd4f9f544b02e9f732288bb331a4a2f",
+      "modified_bytes": 5144
+    },
+    {
+      "path": "apps/api/src/credential-vault.mjs",
+      "baseline_present": true,
+      "baseline_sha256": "9b9be2a273b07a640c6c1723f32292bb7aad64e2c7be840a8e7b97d89b60ff12",
+      "modified_sha256": "48fdcc34eccc93891e282acdc4b34d738e5351dbb3aeacc72636ae946bcebdeb",
+      "modified_bytes": 5457
+    },
+    {
+      "path": "apps/api/src/domain.mjs",
+      "baseline_present": true,
+      "baseline_sha256": "66021ee510841354c87167fccf7cae50a9194ad9f7503404260a0ef43f3d0da5",
+      "modified_sha256": "74657dd3a9152b58e9b2b74058e792866cc41dab931f66f627155307bf2f09b3",
+      "modified_bytes": 162375
+    },
+    {
+      "path": "apps/api/src/http-body.mjs",
+      "baseline_present": false,
+      "baseline_sha256": null,
+      "modified_sha256": "c7567b9ec3e3db6cded6c419bb2dcc78401e4fa1e9c360000e79921f1f483201",
+      "modified_bytes": 718
+    },
+    {
+      "path": "apps/api/src/http.mjs",
+      "baseline_present": true,
+      "baseline_sha256": "6fc93574996be49606a37fb121bf9433ad6048839210607504840ceb8f0c9dc3",
+      "modified_sha256": "4d8434edc3cadb42c15ceb8c23f99871cea9bd2904d81375a7fc6913fa6ab37e",
+      "modified_bytes": 32067
+    },
+    {
+      "path": "apps/api/src/migrations/002-identity-setup.mjs",
+      "baseline_present": false,
+      "baseline_sha256": null,
+      "modified_sha256": "831f75b09013590ba0b5d946c781887db180565ef1651dfc69ce50c2c42ae3a9",
+      "modified_bytes": 8823
+    },
+    {
+      "path": "apps/api/src/migrations/index.mjs",
+      "baseline_present": true,
+      "baseline_sha256": "3c7daab342b8a85082d6b925f6525ea19e0ab9057b9b0e6a79fce29cacd5244d",
+      "modified_sha256": "b3f93865421d71263e4650ed474e2c8c1881fb4df1b9e16bbac2aedd466c91d7",
+      "modified_bytes": 884
+    },
+    {
+      "path": "apps/api/src/modules/identity/index.mjs",
+      "baseline_present": true,
+      "baseline_sha256": "edb048f3f57bc2fa3025d500fcda6cf60e91d135e23c177ce9727b48fd9a3ea5",
+      "modified_sha256": "8318751c2b35f69dea0c51a67e76903f1441940b90e6c079bd79cbbebe43ba85",
+      "modified_bytes": 327
+    },
+    {
+      "path": "apps/api/src/modules/identity/repository.mjs",
+      "baseline_present": false,
+      "baseline_sha256": null,
+      "modified_sha256": "13f88b42fdc03b35576f050aaea9662bdc3a640ebd6ed6cfb68bfeeb1ffbab39",
+      "modified_bytes": 2551
+    },
+    {
+      "path": "apps/api/src/modules/identity/service.mjs",
+      "baseline_present": false,
+      "baseline_sha256": null,
+      "modified_sha256": "6c5d8947957f5f7b43bcfdd47ec4d9accd10b1a7cd71795f2c7b3e0c07c414de",
+      "modified_bytes": 5495
+    },
+    {
+      "path": "apps/api/src/modules/operations/index.mjs",
+      "baseline_present": true,
+      "baseline_sha256": "18d3db80aae9c92be475812b7e71e4e9e7cc43a038b1369032775c442898e180",
+      "modified_sha256": "586c407f2ad111f3d1ab50a9df6e7742e9827bf5b6539e80b0b6752465fd77ad",
+      "modified_bytes": 386
+    },
+    {
+      "path": "apps/api/src/modules/operations/repository.mjs",
+      "baseline_present": false,
+      "baseline_sha256": null,
+      "modified_sha256": "cbfb71d4983d6781c3fc5140af045086a02195f9069d9cdbb60c8ad1e640171d",
+      "modified_bytes": 3550
+    },
+    {
+      "path": "apps/api/src/modules/operations/service.mjs",
+      "baseline_present": false,
+      "baseline_sha256": null,
+      "modified_sha256": "0c513894d570d172157cb7f1c40a91852c511a872da702644ac7737b601ca347",
+      "modified_bytes": 6643
+    },
+    {
+      "path": "apps/api/src/modules/platform/repository.mjs",
+      "baseline_present": false,
+      "baseline_sha256": null,
+      "modified_sha256": "82c2856898c783ecf70345fb9d85775f0efc43a64bb5695de6587cfab8ebe7a9",
+      "modified_bytes": 406
+    },
+    {
+      "path": "apps/api/src/modules/query-registry.mjs",
+      "baseline_present": false,
+      "baseline_sha256": null,
+      "modified_sha256": "8789e60bbcc4f8fffd860ea0962638df2db5fdd12faa818fd9948468989985d8",
+      "modified_bytes": 434
+    },
+    {
+      "path": "apps/api/src/modules/r2-runtime.mjs",
+      "baseline_present": false,
+      "baseline_sha256": null,
+      "modified_sha256": "3ce6b0b72b5c29a21f78c530e33c9db08dfdcd10c8a4a9aeb54f55a3750385ee",
+      "modified_bytes": 7185
+    },
+    {
+      "path": "apps/api/src/modules/registry.mjs",
+      "baseline_present": true,
+      "baseline_sha256": "66c8190236243e0271e0ca88cd079a4f09428e6755fc190dbd01325436c72a62",
+      "modified_sha256": "8879fd5b5a77a2b3c67a5e5d897b1485a647f5160317770de741fb6e5c6ef5fe",
+      "modified_bytes": 2362
+    },
+    {
+      "path": "apps/api/src/modules/route-registry.mjs",
+      "baseline_present": false,
+      "baseline_sha256": null,
+      "modified_sha256": "e6fd80510883072db0d99ea729c015b035933e871d3466c792ecc60b09efe052",
+      "modified_bytes": 903
+    },
+    {
+      "path": "apps/api/src/modules/setup/codex-discovery.mjs",
+      "baseline_present": false,
+      "baseline_sha256": null,
+      "modified_sha256": "ac554036ac99b0ae7015e3de4e137bc05b446e99bfabbcd51fb05c3545d26bed",
+      "modified_bytes": 10803
+    },
+    {
+      "path": "apps/api/src/modules/setup/codex-service.mjs",
+      "baseline_present": false,
+      "baseline_sha256": null,
+      "modified_sha256": "83b3b8d59dae574e933d6f1c844d590ca50ab7d7e34b9595d4e65b59a2975c1f",
+      "modified_bytes": 10764
+    },
+    {
+      "path": "apps/api/src/modules/setup/github-service.mjs",
+      "baseline_present": false,
+      "baseline_sha256": null,
+      "modified_sha256": "412e2b445ca55dab0253817981870aff3f54575bcd7d7428b184d90ef1ed2ab3",
+      "modified_bytes": 17245
+    },
+    {
+      "path": "apps/api/src/modules/setup/index.mjs",
+      "baseline_present": true,
+      "baseline_sha256": "cd34de4c371aeccadef1e4052690151f3ba9751567f766d45b5d9c137ee6d0e6",
+      "modified_sha256": "e57f9d16fb75be3fa5583fa08f7094524f38803a805a032bb1159bfc8e2d3f12",
+      "modified_bytes": 1385
+    },
+    {
+      "path": "apps/api/src/modules/setup/repository.mjs",
+      "baseline_present": false,
+      "baseline_sha256": null,
+      "modified_sha256": "263b9ec269037cbd558c4c0ee7f603b8072b0466edaf00a0d1af8cab2b5a0d13",
+      "modified_bytes": 26096
+    },
+    {
+      "path": "apps/api/src/modules/setup/service.mjs",
+      "baseline_present": false,
+      "baseline_sha256": null,
+      "modified_sha256": "ba73e707dc7806da1b8bdab207f6c8c66bd112ac510a1895e9fd0e913f5ce2f8",
+      "modified_bytes": 29116
+    },
+    {
+      "path": "apps/api/src/schema.mjs",
+      "baseline_present": true,
+      "baseline_sha256": "e29329ed7f837aa1792b19f8f5171712daa1d269a908afef4fb272a577c467ba",
+      "modified_sha256": "08fbb40d3258c64e2c21c4f728975446c3127ebeea807f858c5af39d44becd01",
+      "modified_bytes": 37099
+    },
+    {
+      "path": "apps/api/src/secret-registry.mjs",
+      "baseline_present": false,
+      "baseline_sha256": null,
+      "modified_sha256": "d0bdc5085f577794ad3db62f7f6a3b05257afd9e236800565ee1350fe7e596d7",
+      "modified_bytes": 3346
+    },
+    {
+      "path": "apps/runner-broker/codex-runner.mjs",
+      "baseline_present": true,
+      "baseline_sha256": "197b71514d720dcf9bdec677768954b8a449dbc97326da01ac531072ba4687b8",
+      "modified_sha256": "cf6dbacc10536113f94c4e5b04a195de1930c71c1143585d97f8fa98d9da339b",
+      "modified_bytes": 12468
+    },
+    {
+      "path": "apps/runner-broker/server.mjs",
+      "baseline_present": true,
+      "baseline_sha256": "03dbc648438507b80741fa6ba29d9aa074127fa8b3206321b7ea249886683fac",
+      "modified_sha256": "646f0881505565c04ce3b7e9debe79d6283a64706853d1e976b542b78c9bb5bb",
+      "modified_bytes": 48423
+    },
+    {
+      "path": "apps/runner-broker/src/codex-config.mjs",
+      "baseline_present": true,
+      "baseline_sha256": "0138a87efc8d5ccc6380c56aa1b51df108cc879ec521ac5b3489da0c3dbd5d76",
+      "modified_sha256": "068c1ec10da4b4312a0f8ce2e0b476f6db188afa26a79e37b0a1b8497c9b36e9",
+      "modified_bytes": 1861
+    },
+    {
+      "path": "apps/runner-broker/src/job-spec.mjs",
+      "baseline_present": true,
+      "baseline_sha256": "81ba7312b4527b525fd10c54d05acd1678a2c0fdc56c380b491af0d21aa96cb9",
+      "modified_sha256": "6e9c3f3dfd39997fd937e8f97d21f3743eb583db82a2f3dc0815f04f7305d81d",
+      "modified_bytes": 15631
+    },
+    {
+      "path": "apps/web/src/App.tsx",
+      "baseline_present": true,
+      "baseline_sha256": "e052a681e393dc102b39cba4ac9d9711af0698ab2540ff4b74e7c1159ebf689e",
+      "modified_sha256": "9bb70c1d0b177d2b55283789bde0fe1a14f47b44c152bbee50b03d80a0e88355",
+      "modified_bytes": 7145
+    },
+    {
+      "path": "apps/web/src/features/setup/SetupPage.tsx",
+      "baseline_present": false,
+      "baseline_sha256": null,
+      "modified_sha256": "d383eb98f7b501ea9bfe4c4a82cbccb3eee44cf61839966bf371e30369d1e464",
+      "modified_bytes": 31788
+    },
+    {
+      "path": "apps/web/src/features/setup/index.ts",
+      "baseline_present": false,
+      "baseline_sha256": null,
+      "modified_sha256": "f5eea48a1a2964562b677b10d5f132b562267e5579e559c470c1c414b2c0293b",
+      "modified_bytes": 84
+    },
+    {
+      "path": "apps/web/src/features/setup/types.ts",
+      "baseline_present": false,
+      "baseline_sha256": null,
+      "modified_sha256": "ed19e64e6575a44e0f508480c1010e7c7cd929ed3ebf2e517413b2923f663e37",
+      "modified_bytes": 3532
+    },
+    {
+      "path": "apps/web/src/pages.tsx",
+      "baseline_present": true,
+      "baseline_sha256": "1e873972f75c65e66b4ba04e5f83eaa9277ba023f2ce708e7d2f07bfaf8c9af1",
+      "modified_sha256": "0ab08dafbfac45e4cc37f5c09726cd1b6ad42f6f69392462daa1602970f066ba",
+      "modified_bytes": 66744
+    },
+    {
+      "path": "apps/web/src/styles.css",
+      "baseline_present": true,
+      "baseline_sha256": "b71648fe2408426768f3eef2de1b8069b98449264aa9daaddf2e3fdd65a31868",
+      "modified_sha256": "18619c7c4e8b627147000e288d7fa539155b418ef5418d5c68cdd7b0c83a4b5f",
+      "modified_bytes": 37010
+    },
+    {
+      "path": "apps/web/src/test/setup-flow.test.tsx",
+      "baseline_present": false,
+      "baseline_sha256": null,
+      "modified_sha256": "b14678d0535774eb98ef6a60383cd245470f7eb845ffce737bf7031dd0547fae",
+      "modified_bytes": 6961
+    },
+    {
+      "path": "apps/web/src/test/terminal.test.tsx",
+      "baseline_present": true,
+      "baseline_sha256": "d87573da87761e67fd38edf74781752c9f4873c5b0943b225dd3173cacd9a2ee",
+      "modified_sha256": "8b9bfafa96f3d431e64fad9a6a48b4cd405babb0dfad7ac9064a88816ddbe360",
+      "modified_bytes": 5800
+    },
+    {
+      "path": "apps/web/src/test/workflow.test.tsx",
+      "baseline_present": true,
+      "baseline_sha256": "739ab8a2995289b9d94ee566bdd6eabee0834009321ae7ab8e969a3276c373ab",
+      "modified_sha256": "9ec3d8763b7ff0f825b983b0879301d7c72f2e2cbb4580a6a4d0ac72d7fc1dad",
+      "modified_bytes": 2453
+    },
+    {
+      "path": "feature-catalog.json",
+      "baseline_present": true,
+      "baseline_sha256": "18418499031408addf1af812a8f8ef49eb971d6ea7e7b2d39749f3d9d47dab67",
+      "modified_sha256": "4d7eb075be0b694d75b067ac06c40fbdbaebeb08f96098e21933976d22694504",
+      "modified_bytes": 29013
+    },
+    {
+      "path": "package.json",
+      "baseline_present": true,
+      "baseline_sha256": "a882c668abb63ac1b26ad072e51a52174281e764856b96d7190193aea2bde47e",
+      "modified_sha256": "a92c732734639701b522b63ded6dbce790bb92e993c4c850e3fa7cafdcf8aee3",
+      "modified_bytes": 2153
+    },
+    {
+      "path": "packages/contracts/src/codex-device-auth.mjs",
+      "baseline_present": false,
+      "baseline_sha256": null,
+      "modified_sha256": "701358c64be2f00b82290c079c8974b09fcab041032da818eb9b446475d50023",
+      "modified_bytes": 1815
+    },
+    {
+      "path": "packages/contracts/src/index.mjs",
+      "baseline_present": true,
+      "baseline_sha256": "9d8f86904f685bc174ed0451ebf32665998f09712d7199995a6b80ba2f166755",
+      "modified_sha256": "965ce5391ff57331e1b7d687374872bccb89fea3ca0e3e0762572d68712e424e",
+      "modified_bytes": 2501
+    },
+    {
+      "path": "pnpm-lock.yaml",
+      "baseline_present": true,
+      "baseline_sha256": "61cb45e21eed754c9ff8b448b060ca3ebe6225113425093c63df5446413ba694",
+      "modified_sha256": "3a75bde7a392b394fae1a7c784f332cc9ff1ee35334924feba05c03fce5f8b43",
+      "modified_bytes": 66167
+    },
+    {
+      "path": "scripts/e2e.mjs",
+      "baseline_present": true,
+      "baseline_sha256": "053ca630406b5fdadf81f5ebab7cb696c70931288f1909b42af5e7f1a6868e4f",
+      "modified_sha256": "07e95c98617f54570ccfbcac268dbf3bcdf56540b37fd8e752b816a878fc2b7b",
+      "modified_bytes": 20654
+    },
+    {
+      "path": "scripts/r2-migration-evidence.mjs",
+      "baseline_present": false,
+      "baseline_sha256": null,
+      "modified_sha256": "6fa528f7a5f76ff7782e7556cd188bac7423bf4ced5b71be1a64f881faec09d8",
+      "modified_bytes": 5538
+    },
+    {
+      "path": "scripts/r2-provider-real-probe.mjs",
+      "baseline_present": false,
+      "baseline_sha256": null,
+      "modified_sha256": "3a42ce512e19507427a4244f08a1aaa704980fd0526448080b64539bb6861ed0",
+      "modified_bytes": 4214
+    },
+    {
+      "path": "scripts/recovery-evidence.mjs",
+      "baseline_present": true,
+      "baseline_sha256": "f953f74c84dbe73df58ec5dcd2535a4cb7bb0aa4a8e0f688fae1bfc5294bf583",
+      "modified_sha256": "e282e6a4ba740ca78d0d6695f386fd2b2028979fb01b39c9582cd65edd05b0de",
+      "modified_bytes": 21503
+    },
+    {
+      "path": "scripts/recovery-golden.mjs",
+      "baseline_present": true,
+      "baseline_sha256": "3fa8d036bacd79e4e1a82e87d5dd73ad6c5da421dd1ce96a8b0f6de177a9ddcd",
+      "modified_sha256": "eec4f47402987ccce5cdb435fd3ca691e081a157c1f96303667a0456cd8cf223",
+      "modified_bytes": 18416
+    },
+    {
+      "path": "scripts/recovery-governance.mjs",
+      "baseline_present": true,
+      "baseline_sha256": "59c390de89fc35407a3122457ea144d3c373abc6d742c3d5b23acfab3a9e2906",
+      "modified_sha256": "7d9d798f7c73593ef75fd63d53652a5ec55b5e779c081b0bb331082d90603cfd",
+      "modified_bytes": 23141
+    },
+    {
+      "path": "tests/golden/r2/identity-setup.json",
+      "baseline_present": false,
+      "baseline_sha256": null,
+      "modified_sha256": "d400b9dafe3f8ed02e0d6cec2441ca1bad3ee6579f31bd9323803c00ee8fe0bf",
+      "modified_bytes": 6320
+    },
+    {
+      "path": "tests/integration/codex-provider-flow.test.mjs",
+      "baseline_present": false,
+      "baseline_sha256": null,
+      "modified_sha256": "e6f33e26a387b4a93864864edbad4a3ed24f0b3557f550b7b01ddbd301316e8c",
+      "modified_bytes": 6731
+    },
+    {
+      "path": "tests/integration/debt-regression.test.mjs",
+      "baseline_present": true,
+      "baseline_sha256": "4a7b078b8ff0d9abb50eee0bafd5a9e10334dbb87f80d181d50decaa30e21619",
+      "modified_sha256": "8535ef65d2de43427b39193e2447ab27a14b7dc0aaf3e702b050aab0283315f7",
+      "modified_bytes": 33462
+    },
+    {
+      "path": "tests/integration/github-operations-flow.test.mjs",
+      "baseline_present": false,
+      "baseline_sha256": null,
+      "modified_sha256": "94c1dc3eee3c078b7eccd54889a98bfc8414de62a0c2eee8d3ab7bf891909ae3",
+      "modified_bytes": 4371
+    },
+    {
+      "path": "tests/integration/github-provider-flow.test.mjs",
+      "baseline_present": false,
+      "baseline_sha256": null,
+      "modified_sha256": "aafa415571d0ac7733695e7a651163fd1d949cad7bd6e2e60952d27d868a2e90",
+      "modified_bytes": 2487
+    },
+    {
+      "path": "tests/integration/helpers.mjs",
+      "baseline_present": true,
+      "baseline_sha256": "9db0e718d906d5258a32397e29ae9ee58ca07656f342a69e9008f8aebb9e0069",
+      "modified_sha256": "582fe967b11936a00db88a2ac57c6d9a835d28120cd6abb2ec349f2a93813c51",
+      "modified_bytes": 2364
+    },
+    {
+      "path": "tests/integration/identity-r2-flow.test.mjs",
+      "baseline_present": false,
+      "baseline_sha256": null,
+      "modified_sha256": "736951fb60b37747e809fbff4f497c9e44e9881cb27ea03459eddef67ab32c03",
+      "modified_bytes": 3674
+    },
+    {
+      "path": "tests/integration/r2-provider-boundaries.test.mjs",
+      "baseline_present": false,
+      "baseline_sha256": null,
+      "modified_sha256": "e07c8eeaead7a2e7a06bf5a01aaa952dc2873f93fc98f6a9630965e887a884b2",
+      "modified_bytes": 16925
+    },
+    {
+      "path": "tests/integration/real-slice.test.mjs",
+      "baseline_present": true,
+      "baseline_sha256": "74414dde7703e2aa5c22386ee7ab742861cd1d0c276cd8416f2cca88475b4552",
+      "modified_sha256": "3b536297e5dd8af22b87a17e189e406a189865490efa9d6e5acb573861f80b44",
+      "modified_bytes": 4763
+    },
+    {
+      "path": "tests/integration/setup-flow.test.mjs",
+      "baseline_present": true,
+      "baseline_sha256": "1a077ec904011f44820e77d7eba83b4701122ed4d3aa348114d8089cc88b6053",
+      "modified_sha256": "45d994192e650157c8fd712819661a4170c824a38dcdc74aab9247b496503f71",
+      "modified_bytes": 10719
+    },
+    {
+      "path": "tests/security/broker-http.test.mjs",
+      "baseline_present": true,
+      "baseline_sha256": "4d2017866f5b02593f0417d3a3a3ef5ee6ce1f9833d2480b3371c92d1cf968a0",
+      "modified_sha256": "f6fd9737e3bd852dff4db741cc18cba02e21255ae374721b37862da2c3f3d2c3",
+      "modified_bytes": 11090
+    },
+    {
+      "path": "tests/security/credentials.test.mjs",
+      "baseline_present": true,
+      "baseline_sha256": "e059121ddb1f21251bbddd8564eb114dce6d11a2794884c156b8f9a3ebe3a2d7",
+      "modified_sha256": "e2937da0dd446100a38b4077a06a611a69b6e4e3ad94a6deb4fff8f34535f125",
+      "modified_bytes": 6748
+    },
+    {
+      "path": "tests/unit/codex-provider.test.mjs",
+      "baseline_present": false,
+      "baseline_sha256": null,
+      "modified_sha256": "3ed14718f5c58157a926f6ac8be193755ac9c6ac41dbacfdbecf275763f3339e",
+      "modified_bytes": 2314
+    },
+    {
+      "path": "tests/unit/contracts.test.mjs",
+      "baseline_present": true,
+      "baseline_sha256": "ddbffddbb62c49248991c19c15cbc44ceb9a0f61cfdf7a66d6db428288c77062",
+      "modified_sha256": "6f8e01d526e05b099df8f457b1ff066c156df0d588013247d6decb2a0ae88ac8",
+      "modified_bytes": 3031
+    },
+    {
+      "path": "tests/unit/credential-vault.test.mjs",
+      "baseline_present": false,
+      "baseline_sha256": null,
+      "modified_sha256": "73f416a116af0c936a5f46ed94ce2120f3127fd01a9e96834f33888073b253fe",
+      "modified_bytes": 1645
+    },
+    {
+      "path": "tests/unit/database.test.mjs",
+      "baseline_present": true,
+      "baseline_sha256": "77fbe27db8f990d71051489472bb22ac2b0047c1b00dc18d6e2b4dcee5b45a9d",
+      "modified_sha256": "cdbba3a07b98ae7ea960542bf14f90ac6c56aaa6de787d9a88bda0e43344d6c3",
+      "modified_bytes": 4726
+    },
+    {
+      "path": "tests/unit/github-provider.test.mjs",
+      "baseline_present": false,
+      "baseline_sha256": null,
+      "modified_sha256": "f5b4cd88f8f85287ad4daefcb3771bc98dc687f9d155bc85db4cd7c48e89f891",
+      "modified_bytes": 1611
+    },
+    {
+      "path": "tests/unit/identity-operations.test.mjs",
+      "baseline_present": false,
+      "baseline_sha256": null,
+      "modified_sha256": "1da6c69bf3788f2d43b6e56943c16aa5a4e8282a59c97dee9b1ceb7c275efa6e",
+      "modified_bytes": 3485
+    },
+    {
+      "path": "tests/unit/migrations.test.mjs",
+      "baseline_present": true,
+      "baseline_sha256": "46c4e16d5fef428f9fdc32aa8d587cf8d1af201b89ecbb206806beeaba7f9cbd",
+      "modified_sha256": "5334f5a78af35c791e238505b9228f171f5f90a9c25f8dd2f95a3e319f8b4057",
+      "modified_bytes": 11197
+    },
+    {
+      "path": "tests/unit/recovery-golden.test.mjs",
+      "baseline_present": true,
+      "baseline_sha256": "7ee13b5e7d88b2ec45c695918743e064b7128f5740b596adf66c63240ae017a4",
+      "modified_sha256": "9790f9f50ee5de4717a92a92cce1b038aa8b1c4a3c9b4af820f8dbda71949436",
+      "modified_bytes": 2683
+    },
+    {
+      "path": "tests/unit/setup-service.test.mjs",
+      "baseline_present": false,
+      "baseline_sha256": null,
+      "modified_sha256": "4366dfd6d4a5536a650723440e50d8d4a6fcc9995231cef53fd79a8da8cf682f",
+      "modified_bytes": 5908
+    }
+  ],
+  "artifacts": {
+    "modified_artifact": "docs/evidence/v3-r2-identity-setup-20260810/modified-artifact.json",
+    "patch": "docs/evidence/v3-r2-identity-setup-20260810/change.patch",
+    "verification": "docs/evidence/v3-r2-identity-setup-20260810/verification.json",
+    "rollback": "docs/evidence/v3-r2-identity-setup-20260810/rollback.ps1",
+    "rollback_receipt": "docs/evidence/v3-r2-identity-setup-20260810/rollback.json",
+    "migration_rollback": "docs/evidence/v3-r2-identity-setup-20260810/migration-rollback.json",
+    "provider_codex": "docs/evidence/v3-r2-identity-setup-20260810/provider-codex-real.log",
+    "provider_github": "docs/evidence/v3-r2-identity-setup-20260810/provider-github-real.log"
+  },
+  "screenshots": [
+    {
+      "path": "docs/evidence/v3-r2-identity-setup-20260810/screenshots/desktop-approvals.png",
+      "sha256": "3bb9453cbf7171c51881063060adaa1cb2ef30f8cfdda111aab8b0dfebc833da",
+      "bytes": 45484
+    },
+    {
+      "path": "docs/evidence/v3-r2-identity-setup-20260810/screenshots/desktop-setup-empty.png",
+      "sha256": "e809cb282406d7aa8d77ce68e627e7e7864d75ec0665aa3914429a99f5636322",
+      "bytes": 71843
+    },
+    {
+      "path": "docs/evidence/v3-r2-identity-setup-20260810/screenshots/desktop-setup-failed.png",
+      "sha256": "80bd1b169656013839b3be9ddbb6a64f593a0c0cdc62a1a60db0bc97c8fad305",
+      "bytes": 78534
+    },
+    {
+      "path": "docs/evidence/v3-r2-identity-setup-20260810/screenshots/desktop-setup-ready.png",
+      "sha256": "a291b01f48f396217b1f8af7a2868457e1585414c8f84695f3faaeeb3bc371ae",
+      "bytes": 71814
+    },
+    {
+      "path": "docs/evidence/v3-r2-identity-setup-20260810/screenshots/desktop-terminals.png",
+      "sha256": "a04a4fcba945c7e32f8fef68e8ad350bba2a370f332d6f13ca4b0d8b4dc7f557",
+      "bytes": 77275
+    },
+    {
+      "path": "docs/evidence/v3-r2-identity-setup-20260810/screenshots/desktop.png",
+      "sha256": "cde93d2557b7e41185ba016acb0ac97f5036df5cccf447d4b8f3ef89f8e07c00",
+      "bytes": 165612
+    },
+    {
+      "path": "docs/evidence/v3-r2-identity-setup-20260810/screenshots/laptop-approvals.png",
+      "sha256": "b562fb080d84a1eb3fb051046d255235c68c776b78741bbab8931e26f5274655",
+      "bytes": 43040
+    },
+    {
+      "path": "docs/evidence/v3-r2-identity-setup-20260810/screenshots/laptop-setup-empty.png",
+      "sha256": "36556d8670bb4817c005a63e67a5d0428591258563e65bde0027242a1106b805",
+      "bytes": 72013
+    },
+    {
+      "path": "docs/evidence/v3-r2-identity-setup-20260810/screenshots/laptop-setup-ready.png",
+      "sha256": "36d395337125fe9e635c350a5c64a624fc9a785489773f3b1c116a24899826d2",
+      "bytes": 72642
+    },
+    {
+      "path": "docs/evidence/v3-r2-identity-setup-20260810/screenshots/laptop-terminals.png",
+      "sha256": "8d6132c11c1cb02790cc709f8af7ce742332ce8b81ea5dbcb8eec22fbbcd8a32",
+      "bytes": 72790
+    },
+    {
+      "path": "docs/evidence/v3-r2-identity-setup-20260810/screenshots/laptop.png",
+      "sha256": "1f55d680cdf549f322f86c25ddc515721cbf0c974728916996d469e71b261621",
+      "bytes": 144220
+    },
+    {
+      "path": "docs/evidence/v3-r2-identity-setup-20260810/screenshots/mobile-approvals.png",
+      "sha256": "b742d15d5a4eab73bd0128aa5c53780fdb7cc5512bd6cd024455841cf329d80c",
+      "bytes": 25465
+    },
+    {
+      "path": "docs/evidence/v3-r2-identity-setup-20260810/screenshots/mobile-terminals.png",
+      "sha256": "1062dfc8c569689ab29d1b091e1de834ca095f48f54369702fd0e5db9cafaa2a",
+      "bytes": 49222
+    },
+    {
+      "path": "docs/evidence/v3-r2-identity-setup-20260810/screenshots/mobile-wide-approvals.png",
+      "sha256": "569ce6b239bc506f68996fe08cda0e567d3217cb6e7f2be450b977f2aa0cd347",
+      "bytes": 25833
+    },
+    {
+      "path": "docs/evidence/v3-r2-identity-setup-20260810/screenshots/mobile-wide-setup-empty.png",
+      "sha256": "b81826e5d9812d3d810ec44b6d2c860d9d477f2064e2cfddefa236ae43e01de0",
+      "bytes": 52972
+    },
+    {
+      "path": "docs/evidence/v3-r2-identity-setup-20260810/screenshots/mobile-wide-setup-ready.png",
+      "sha256": "af2d770b71c2ed3cd6268052bc9c50afb3d29bbfcd2a9c366310547915f26c29",
+      "bytes": 54066
+    },
+    {
+      "path": "docs/evidence/v3-r2-identity-setup-20260810/screenshots/mobile-wide-terminals.png",
+      "sha256": "1c53cecd6299b9707652e152b3c6ba137188de2675f448384146f7013d305050",
+      "bytes": 47809
+    },
+    {
+      "path": "docs/evidence/v3-r2-identity-setup-20260810/screenshots/mobile-wide.png",
+      "sha256": "3c6b2078d2a26b8b78462178a06d30b6aae2e9983f750f8b216de6db2ee1b475",
+      "bytes": 119438
+    },
+    {
+      "path": "docs/evidence/v3-r2-identity-setup-20260810/screenshots/mobile.png",
+      "sha256": "e2b45098e2c796f133e74a05d4a3c7bf9822f0b8d12d9c80a69129a4ab0447e9",
+      "bytes": 119674
+    },
+    {
+      "path": "docs/evidence/v3-r2-identity-setup-20260810/screenshots/tablet-approvals.png",
+      "sha256": "1c209a9aed77b24e3754fb093468df95e969bc5e3fe8d17ae744e02df1d25742",
+      "bytes": 43485
+    },
+    {
+      "path": "docs/evidence/v3-r2-identity-setup-20260810/screenshots/tablet-terminals.png",
+      "sha256": "2e53b8d96b2fc3f27ce334a1451be69d7deefd03f3b4621121e80f4867fcf1c6",
+      "bytes": 70656
+    },
+    {
+      "path": "docs/evidence/v3-r2-identity-setup-20260810/screenshots/tablet.png",
+      "sha256": "235336c399cb5f5de3d1a86ea107b1b6ddda481ac069dacf9baf5f1319bd1893",
+      "bytes": 147606
+    },
+    {
+      "path": "docs/evidence/v3-r2-identity-setup-20260810/screenshots/wide-approvals.png",
+      "sha256": "bb7dcc5f6e79d764255d4cc4430ec142a543bcf42c33910182abc7496a31ca3d",
+      "bytes": 48555
+    },
+    {
+      "path": "docs/evidence/v3-r2-identity-setup-20260810/screenshots/wide-terminals.png",
+      "sha256": "cedf7cbfc25ef0f3bcc15527297d80a282385c2421efe8d26664249be2154075",
+      "bytes": 79934
+    },
+    {
+      "path": "docs/evidence/v3-r2-identity-setup-20260810/screenshots/wide.png",
+      "sha256": "aae30c31b5385e78c53fef223bc81468a8d06e2c7783c79dbc77700409c9d0fd",
+      "bytes": 171311
+    }
+  ],
+  "commands": [
+    {
+      "label": "recovery-plan",
+      "command": "corepack pnpm recovery:plan",
+      "exit_status": 0,
+      "log": "docs/evidence/v3-r2-identity-setup-20260810/recovery-plan.log",
+      "output_sha256": "9c6cfd0f6e4ff34e720dbacfe1f309819752a80ccea9c92d28c6581f8fff1b10"
+    },
+    {
+      "label": "recovery-catalog",
+      "command": "corepack pnpm recovery:catalog",
+      "exit_status": 0,
+      "log": "docs/evidence/v3-r2-identity-setup-20260810/recovery-catalog.log",
+      "output_sha256": "3678e11159696d0b135d1941d399ad444f8332e17f6d02e0203fb06be169c50a"
+    },
+    {
+      "label": "recovery-coverage",
+      "command": "corepack pnpm recovery:coverage",
+      "exit_status": 0,
+      "log": "docs/evidence/v3-r2-identity-setup-20260810/recovery-coverage.log",
+      "output_sha256": "c5e7780989d6fa050c33d36281b14b784e039ebb9b598cad13e3934c0f9ff024"
+    },
+    {
+      "label": "recovery-impact",
+      "command": "corepack pnpm recovery:impact --audit",
+      "exit_status": 0,
+      "log": "docs/evidence/v3-r2-identity-setup-20260810/recovery-impact.log",
+      "output_sha256": "230a6aee3b44580605e5ada8c166fbc47ae9abd0d4505c54a619ebec52263432"
+    },
+    {
+      "label": "r2-focused",
+      "command": "node.exe --test --test-concurrency=1 tests/unit/identity-operations.test.mjs tests/unit/setup-service.test.mjs tests/unit/credential-vault.test.mjs tests/unit/codex-provider.test.mjs tests/unit/github-provider.test.mjs tests/unit/recovery-golden.test.mjs tests/integration/identity-r2-flow.test.mjs tests/integration/setup-flow.test.mjs tests/integration/codex-provider-flow.test.mjs tests/integration/github-provider-flow.test.mjs tests/integration/github-operations-flow.test.mjs tests/integration/r2-provider-boundaries.test.mjs tests/security/credentials.test.mjs",
+      "exit_status": 0,
+      "log": "docs/evidence/v3-r2-identity-setup-20260810/r2-focused.log",
+      "output_sha256": "db9087b9e39b4fa7eb8662ea876fe34dc830ba4b27a98a92ce1e25dbf239201c"
+    },
+    {
+      "label": "migration-rollback",
+      "command": "node.exe scripts/r2-migration-evidence.mjs --output E:\\00_desktop\\毕业设计\\docs\\evidence\\v3-r2-identity-setup-20260810\\migration-rollback.json",
+      "exit_status": 0,
+      "log": "docs/evidence/v3-r2-identity-setup-20260810/migration-rollback.log",
+      "output_sha256": "b2e3f062553af25ff7f686996a115554ce0bfa66a7fb70b79ea9e1334105f041"
+    },
+    {
+      "label": "provider-codex-real",
+      "command": "node.exe scripts/runner-real-smoke.mjs",
+      "exit_status": 0,
+      "log": "docs/evidence/v3-r2-identity-setup-20260810/provider-codex-real.log",
+      "output_sha256": "b4768e629e6f25e220fdfadac0406c94c86fc8c84e4b0fa023563ff3f3947b58"
+    },
+    {
+      "label": "provider-github-real",
+      "command": "node.exe scripts/r2-provider-real-probe.mjs",
+      "exit_status": 0,
+      "log": "docs/evidence/v3-r2-identity-setup-20260810/provider-github-real.log",
+      "output_sha256": "bf36624cd630bb645a832ca4a545b0fe83478fa6e1ea3ab08755282f2b46f715"
+    },
+    {
+      "label": "r2-golden",
+      "command": "node.exe scripts/recovery-golden.mjs verify r2-identity-setup",
+      "exit_status": 0,
+      "log": "docs/evidence/v3-r2-identity-setup-20260810/r2-golden.log",
+      "output_sha256": "8398d418bb9abe2a3f3590bfd9e6b213c15bdf422b50df5e21c9edfcd3acdb27"
+    },
+    {
+      "label": "verify",
+      "command": "corepack pnpm verify",
+      "exit_status": 0,
+      "log": "docs/evidence/v3-r2-identity-setup-20260810/verify.log",
+      "output_sha256": "431daa0f8f00b895f9ac174cb783df9fc83ca4c2aa744f426309787ef627e1eb"
+    }
+  ]
+}

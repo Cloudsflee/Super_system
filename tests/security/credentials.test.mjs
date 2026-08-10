@@ -60,8 +60,14 @@ test('ephemeral Codex credentials never enter state, events, errors, Broker stat
       AIWS_CODEX_SECRET_FILE: secretFile,
       AIWS_CODEX_MODEL: 'codex-mini-latest'
     });
-    app = await startApi({ config: { ...config, host: '127.0.0.1', port: 0 } });
+    app = await startApi({ config: { ...config, host: '127.0.0.1', port: 0, testOnlyBypassSetupGate: true } });
     const base = `http://127.0.0.1:${app.server.address().port}`;
+
+    const profile = await mutate(base, '/api/v1/profiles/codex', {
+      label: 'Bootstrap isolation profile', provider: 'openai', model: 'codex-mini-latest', base_url: '',
+      wire_api: 'responses', reasoning: 'medium', timeout_ms: 30000, credential_ref: 'cred_codex_default'
+    }, 'credential-profile');
+    assert.equal(profile.is_active, true);
 
     const project = await mutate(base, '/api/v1/projects', { name: 'Credential boundary', repository: { source: { kind: 'fixture', id: 'designsignal-v1' } } }, 'credential-project');
     await mutate(base, `/api/v1/projects/${project.id}/briefs`, { content: { objective: 'Verify credential isolation', acceptance: ['node_test'] } }, 'credential-brief');

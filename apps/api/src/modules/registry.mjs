@@ -38,7 +38,7 @@ export const LEGACY_SQL_BOUNDARIES = Object.freeze([
 
 export const SQL_BOUNDARY_SUFFIXES = Object.freeze([
   '/repository.mjs', '/database.mjs', '/db-worker.mjs', '/schema.mjs',
-  '/migration-service.mjs', '/migrations/index.mjs'
+  '/migration-service.mjs', '/migrations/'
 ]);
 
 export const PLACEHOLDER_SUCCESS_PATTERNS = Object.freeze([

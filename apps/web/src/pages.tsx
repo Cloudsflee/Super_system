@@ -19,6 +19,8 @@ export interface WorkspacePageProps {
   refreshProjects: () => Promise<void>;
   notify: (text: string, tone?: 'ok' | 'error') => void;
   navigate: (page: PageKey) => void;
+  setupReady: boolean;
+  refreshSetup: () => Promise<void>;
 }
 
 type Capabilities = {
@@ -27,22 +29,6 @@ type Capabilities = {
   codex: { status: string; model?: string; checked_at?: string; error_code?: string | null };
   github: { provider?: string; status: string; checked_at?: string | null; error_code?: string | null };
   broker: { status: string; runner_digest: string };
-};
-
-type CredentialMetadata = {
-  id: string; provider: 'codex' | 'github'; label: string; status: 'active' | 'revoked'; vault_backed: boolean; created_at: string;
-};
-
-type CodexProfileMetadata = {
-  id: string; label: string; provider: string; model: string; base_url: string; wire_api: string; reasoning: string;
-  timeout_ms: number; credential_ref: string; status: string; revision: number;
-};
-
-type SetupState = {
-  status: string;
-  checks: Record<string, boolean>;
-  credentials: CredentialMetadata[];
-  codex_profiles: CodexProfileMetadata[];
 };
 
 function SectionTitle({ title, meta, action }: { title: string; meta?: string; action?: ReactNode }) {
@@ -75,127 +61,6 @@ function useProjectBundle(projectId: string) {
   }, [projectId]);
   useEffect(() => { void load(); }, [load]);
   return { bundle, loading, reload: load };
-}
-
-export function SetupPage({ navigate, notify }: WorkspacePageProps) {
-  const [capabilities, setCapabilities] = useState<Capabilities | null>(null);
-  const [readiness, setReadiness] = useState<{ status: string; checks?: Record<string, unknown> } | null>(null);
-  const [setup, setSetup] = useState<SetupState | null>(null);
-  const [probing, setProbing] = useState(false);
-  const [busy, setBusy] = useState('');
-  const [credentialLabel, setCredentialLabel] = useState('');
-  const [credentialProvider, setCredentialProvider] = useState<'codex' | 'github'>('codex');
-  const [credentialSecret, setCredentialSecret] = useState('');
-  const [profileLabel, setProfileLabel] = useState('');
-  const [profileProvider, setProfileProvider] = useState('openai');
-  const [profileModel, setProfileModel] = useState('gpt-5.5');
-  const [profileBaseUrl, setProfileBaseUrl] = useState('');
-  const load = useCallback(async () => {
-    const [caps, ready, state] = await Promise.all([
-      api<Capabilities>('/api/v1/system/capabilities'),
-      api<{ status: string; checks?: Record<string, unknown> }>('/readyz'),
-      api<SetupState>('/api/v1/setup')
-    ]);
-    setCapabilities(caps);
-    setReadiness(ready);
-    setSetup(state);
-  }, []);
-  useEffect(() => { void load(); }, [load]);
-  const probe = async () => {
-    setProbing(true);
-    try {
-      await Promise.all([mutate('/api/v1/integrations/codex/probe', {}), mutate('/api/v1/integrations/github/probe', {})]);
-      await load();
-    } catch (error) { notify(error instanceof Error ? error.message : 'Probe failed', 'error'); }
-    finally { setProbing(false); }
-  };
-  const createCredential = async (event: FormEvent) => {
-    event.preventDefault();
-    setBusy('credential');
-    try {
-      await mutate('/api/v1/credentials', { provider: credentialProvider, label: credentialLabel, secret: credentialSecret });
-      setCredentialLabel(''); setCredentialSecret(''); await load(); notify('Credential stored');
-    } catch (error) { notify(error instanceof Error ? error.message : 'Credential failed', 'error'); }
-    finally { setBusy(''); }
-  };
-  const revokeCredential = async (credential: CredentialMetadata) => {
-    setBusy(credential.id);
-    try { await mutate(`/api/v1/credentials/${credential.id}/revoke`, {}); await load(); notify('Credential revoked'); }
-    catch (error) { notify(error instanceof Error ? error.message : 'Revoke failed', 'error'); }
-    finally { setBusy(''); }
-  };
-  const createProfile = async (event: FormEvent) => {
-    event.preventDefault();
-    const credential = setup?.credentials.find((item) => item.provider === 'codex' && item.status === 'active');
-    if (!credential) return;
-    setBusy('profile');
-    try {
-      await mutate('/api/v1/profiles/codex', {
-        label: profileLabel, provider: profileProvider, model: profileModel, base_url: profileBaseUrl,
-        wire_api: 'responses', reasoning: 'medium', timeout_ms: 120000, credential_ref: credential.id
-      });
-      setProfileLabel(''); await load(); notify('Codex profile created');
-    } catch (error) { notify(error instanceof Error ? error.message : 'Profile failed', 'error'); }
-    finally { setBusy(''); }
-  };
-  const activeCodexCredential = setup?.credentials.some((item) => item.provider === 'codex' && item.status === 'active');
-  return (
-    <div className="page page-setup">
-      <div className="page-heading"><div><p className="eyebrow">Instance</p><h1>AIWS 3.0 workspace</h1></div><button className="icon-button" title="刷新" aria-label="刷新" disabled={probing} onClick={() => void probe()}><RefreshCw className={probing ? 'spin' : ''} size={18} /></button></div>
-      <section className="health-band">
-        <div><span>Process</span><Status value={readiness?.status || 'checking'} /></div>
-        <div><span>SQLite</span><Status value={readiness?.status === 'ready' ? 'ready' : 'checking'} /></div>
-        <div><span>Runner broker</span><Status value={capabilities?.broker.status || 'checking'} /></div>
-        <div><span>API</span><strong>{capabilities?.api || '/api/v1'}</strong></div>
-      </section>
-      <div className="two-column setup-grid">
-        <section className="panel">
-          <SectionTitle title="Runtime" meta="Local instance" />
-          <dl className="definition-list">
-            <div><dt>Version</dt><dd>{capabilities?.version || '3.0.0'}</dd></div>
-            <div><dt>Bind</dt><dd>127.0.0.1:4317</dd></div>
-            <div><dt>Data</dt><dd>aiws-data-v3</dd></div>
-            <div><dt>Runner</dt><dd className="mono">{shortHash(capabilities?.broker.runner_digest)}</dd></div>
-          </dl>
-        </section>
-        <section className="panel">
-          <SectionTitle title="Integrations" meta="Cached probe" />
-          <div className="integration-row"><div><Code2 size={18} /><span>Codex</span></div><Status value={capabilities?.codex.status || 'checking'} /></div>
-          <div className="integration-row"><div><GitPullRequest size={18} /><span>GitHub App</span></div><Status value={capabilities?.github.status || 'checking'} /></div>
-          <button className="button primary setup-action" onClick={() => navigate('projects')}>Open projects<ArrowRight size={16} /></button>
-        </section>
-      </div>
-      <div className="two-column setup-config-grid">
-        <section className="panel">
-          <SectionTitle title="Credential vault" meta={`${setup?.credentials.length || 0} metadata records`} />
-          <form className="setup-inline-form" onSubmit={(event) => void createCredential(event)}>
-            <label><span>Provider</span><select value={credentialProvider} onChange={(event) => setCredentialProvider(event.target.value as 'codex' | 'github')}><option value="codex">Codex</option><option value="github">GitHub</option></select></label>
-            <label><span>Label</span><input value={credentialLabel} onChange={(event) => setCredentialLabel(event.target.value)} maxLength={120} required /></label>
-            <label className="secret-field"><span>Secret</span><input type="password" autoComplete="new-password" value={credentialSecret} onChange={(event) => setCredentialSecret(event.target.value)} required /></label>
-            <button className="button primary" disabled={busy === 'credential'}>{busy === 'credential' ? <LoaderCircle className="spin" size={16} /> : <Save size={16} />}Store</button>
-          </form>
-          <div className="config-list">
-            {setup?.credentials.map((credential) => <div key={credential.id}><div><strong>{credential.label}</strong><small>{credential.provider} · {credential.vault_backed ? 'workspace vault' : 'bootstrap'}</small></div><Status value={credential.status} />{credential.vault_backed && credential.status === 'active' && <button className="icon-button" title="撤销凭据" aria-label={`撤销 ${credential.label}`} disabled={busy === credential.id} onClick={() => void revokeCredential(credential)}><Trash2 size={15} /></button>}</div>)}
-            {!setup?.credentials.length && <div className="list-empty">No credential metadata</div>}
-          </div>
-        </section>
-        <section className="panel">
-          <SectionTitle title="Codex profiles" meta={`${setup?.codex_profiles.length || 0} configured`} />
-          <form className="setup-inline-form profile-form" onSubmit={(event) => void createProfile(event)}>
-            <label><span>Label</span><input value={profileLabel} onChange={(event) => setProfileLabel(event.target.value)} required /></label>
-            <label><span>Provider</span><input value={profileProvider} onChange={(event) => setProfileProvider(event.target.value)} required /></label>
-            <label><span>Model</span><input value={profileModel} onChange={(event) => setProfileModel(event.target.value)} required /></label>
-            <label className="profile-endpoint"><span>Base URL</span><input value={profileBaseUrl} onChange={(event) => setProfileBaseUrl(event.target.value)} placeholder="OpenAI default" /></label>
-            <button className="button primary" disabled={!activeCodexCredential || busy === 'profile'}>{busy === 'profile' ? <LoaderCircle className="spin" size={16} /> : <Plus size={16} />}Add</button>
-          </form>
-          <div className="config-list">
-            {setup?.codex_profiles.map((profile) => <div key={profile.id}><div><strong>{profile.label}</strong><small>{profile.provider} · {profile.model} · r{profile.revision}</small></div><Status value={profile.status} /></div>)}
-            {!setup?.codex_profiles.length && <div className="list-empty">No Codex profiles</div>}
-          </div>
-        </section>
-      </div>
-    </div>
-  );
 }
 
 type AssistSessionMetadata = {

@@ -17,6 +17,7 @@ const KEYS = new Set([
   'execution_mode', 'resource_profile', 'network_profile', 'input_paths',
   'output_paths', 'deadline_at', 'credential_ref', 'worktree_subpath',
   'baseline_sha', 'bundle', 'output_subpath', 'input_subpath', 'model'
+  , 'profile_id', 'profile_revision', 'profile_hash'
 ]);
 
 export function validateJobSpec(value, options = {}) {
@@ -46,12 +47,23 @@ export function validateJobSpec(value, options = {}) {
   const networkProfile = String(value.network_profile || 'none');
   assert(['none', 'model'].includes(networkProfile), 'invalid_job_spec', 'network profile is not allowed');
   if (networkProfile === 'model') assert(value.credential_ref != null, 'invalid_job_spec', 'model network requires a credential reference');
+  const profileFields = [value.profile_id, value.profile_revision, value.profile_hash];
+  const hasProfile = profileFields.some((item) => item != null);
+  if (hasProfile || networkProfile === 'model') {
+    assert(profileFields.every((item) => item != null), 'invalid_job_spec', 'profile binding is incomplete');
+    assert(/^cdp_[A-Za-z0-9_-]{8,}$/.test(String(value.profile_id)), 'invalid_job_spec', 'profile_id is invalid');
+    assert(Number.isInteger(Number(value.profile_revision)) && Number(value.profile_revision) > 0, 'invalid_job_spec', 'profile_revision is invalid');
+    assert(/^[a-f0-9]{64}$/.test(String(value.profile_hash)), 'invalid_job_spec', 'profile_hash is invalid');
+  }
   const inputPaths = normalizePathList(value.input_paths, 'input_paths');
   const outputPaths = normalizePathList(value.output_paths, 'output_paths');
   const defaultInputSubpath = `inputs/${projectId}/${executionId}`;
   const inputSubpath = value.input_subpath == null ? defaultInputSubpath : normalizeJobPath(value.input_subpath, 'input_subpath');
   assert(inputSubpath === defaultInputSubpath, 'invalid_job_spec', 'input_subpath is not bound to the execution');
-  if (value.model != null) assert(typeof value.model === 'string' && SAFE_MODEL.test(value.model) && value.model === registeredModel, 'invalid_job_spec', 'model is not registered');
+  if (value.model != null) {
+    assert(typeof value.model === 'string' && SAFE_MODEL.test(value.model), 'invalid_job_spec', 'model is invalid');
+    if (!hasProfile) assert(value.model === registeredModel, 'invalid_job_spec', 'model is not registered');
+  }
   const deadline = Date.parse(value.deadline_at || '');
   assert(Number.isFinite(deadline) && deadline > Date.now() && deadline <= Date.now() + 15 * 60 * 1000, 'invalid_job_spec', 'deadline must be within 15 minutes');
   if (value.credential_ref != null) assert(/^cred_[A-Za-z0-9_-]{8,}$/.test(String(value.credential_ref)), 'invalid_job_spec', 'credential_ref is invalid');
@@ -90,6 +102,9 @@ export function validateJobSpec(value, options = {}) {
     output_subpath: outputSubpath,
     input_subpath: inputSubpath,
     model: value.model == null ? registeredModel : value.model,
+    profile_id: hasProfile ? String(value.profile_id) : null,
+    profile_revision: hasProfile ? Number(value.profile_revision) : null,
+    profile_hash: hasProfile ? String(value.profile_hash) : null,
     bundle
   });
 }

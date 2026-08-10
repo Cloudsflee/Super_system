@@ -40,7 +40,7 @@ class FakeWebSocket {
 
 const props: WorkspacePageProps = {
   projectId, selectedProject: undefined, selectProject: vi.fn(), refreshProjects: vi.fn(async () => undefined),
-  notify: vi.fn(), navigate: vi.fn()
+  notify: vi.fn(), navigate: vi.fn(), setupReady: true, refreshSetup: vi.fn(async () => undefined)
 };
 
 beforeEach(() => {

@@ -1,10 +1,12 @@
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import { generateKeyPairSync } from 'node:crypto';
 import { execFile, spawnSync } from 'node:child_process';
 import { promisify } from 'node:util';
 import { chromium, expect } from '@playwright/test';
 import { start as startApi } from '../apps/api/server.mjs';
+import { BrokerClient } from '../apps/api/src/broker-client.mjs';
 import { start as startBroker } from '../apps/runner-broker/server.mjs';
 
 const execFileAsync = promisify(execFile);
@@ -16,7 +18,31 @@ const home = fs.mkdtempSync(path.join(os.tmpdir(), 'aiws-v3-e2e-'));
 const secret = 'e2e-secret';
 const digest = `sha256:${'c'.repeat(64)}`;
 const broker = await startBroker({ config: { host: '127.0.0.1', port: 0, secret, dataRoot: home, dataVolume: 'aiws-data-v3', runnerDigest: digest, executor: 'mock', runnerImage: `runner@${digest}` } });
-const app = await startApi({ config: { version: '3.0.0', apiPrefix: '/api/v1', host: '127.0.0.1', port: 0, home, databaseFile: path.join(home, 'data', 'state.sqlite'), casRoot: path.join(home, 'cas'), dataVolume: 'aiws-data-v3', brokerUrl: `http://127.0.0.1:${broker.server.address().port}`, brokerMode: 'http', brokerSecret: secret, runnerDigest: digest, codexAvailable: false, githubAvailable: false } });
+const brokerUrl = `http://127.0.0.1:${broker.server.address().port}`;
+const apiBroker = new BrokerClient({ brokerUrl, brokerMode: 'http', brokerSecret: secret, runnerDigest: digest });
+apiBroker.codexProfileProbe = async (profile) => ({
+  provider: 'codex', model: profile.model, status: 'available', error_code: null,
+  checks: ['transport', 'protocol', 'model', 'inference'].map((phase) => ({ phase, status: 'passed', error_code: null }))
+});
+
+function githubFixtureFetch(url) {
+  const requestPath = new URL(url).pathname;
+  if (requestPath === '/app/installations') return Promise.resolve(jsonResponse([{ id: 67890, account: { login: 'fixture-org' }, permissions: { metadata: 'read', contents: 'write', pull_requests: 'write' } }]));
+  if (requestPath === '/app') return Promise.resolve(jsonResponse({ id: 12345, slug: 'fixture-app' }));
+  if (requestPath === '/app/installations/67890/access_tokens') return Promise.resolve(jsonResponse({ token: 'fixture-installation-token', expires_at: new Date(Date.now() + 600_000).toISOString() }));
+  if (requestPath === '/installation/repositories') return Promise.resolve(jsonResponse({ total_count: 1, repositories: [{ id: 9001, full_name: 'fixture-org/repository', default_branch: 'main', private: false, permissions: { metadata: 'read', contents: 'write', pull_requests: 'write' } }] }));
+  return Promise.resolve(jsonResponse({ message: 'not found' }, 404));
+}
+
+function jsonResponse(value, status = 200) {
+  return new Response(JSON.stringify(value), { status, headers: { 'content-type': 'application/json' } });
+}
+
+const app = await startApi({
+  broker: apiBroker,
+  githubOptions: { apiRoot: 'http://github.fixture', fetch: githubFixtureFetch },
+  config: { version: '3.0.0', apiPrefix: '/api/v1', host: '127.0.0.1', port: 0, home, databaseFile: path.join(home, 'data', 'state.sqlite'), casRoot: path.join(home, 'cas'), dataVolume: 'aiws-data-v3', brokerUrl, brokerMode: 'http', brokerSecret: secret, runnerDigest: digest, codexAvailable: false, githubAvailable: false }
+});
 const base = `http://127.0.0.1:${app.server.address().port}`;
 
 async function apiRequest(route, options = {}) {
@@ -27,6 +53,66 @@ async function apiRequest(route, options = {}) {
   });
   const body = await response.json().catch(() => ({}));
   return { response, body };
+}
+
+let mutationSequence = 0;
+async function apiMutation(route, body, label) {
+  mutationSequence += 1;
+  const result = await apiRequest(route, {
+    method: 'POST',
+    headers: { 'Idempotency-Key': `e2e-${label}-${mutationSequence}` },
+    body
+  });
+  if (!result.response.ok) throw new Error(`${label}:${result.response.status}:${result.body.error?.code || 'request_failed'}`);
+  return result.body;
+}
+
+async function waitOperation(operationId) {
+  const deadline = Date.now() + 10_000;
+  while (Date.now() < deadline) {
+    const current = (await apiRequest(`/api/v1/operations/${operationId}`)).body;
+    if (['completed', 'failed', 'cancelled'].includes(current.status)) {
+      if (current.status !== 'completed') throw new Error(`setup_operation_${current.status}:${current.error_code || operationId}`);
+      return current;
+    }
+    await new Promise((resolve) => setTimeout(resolve, 50));
+  }
+  throw new Error(`setup_operation_timeout:${operationId}`);
+}
+
+async function prepareSetupProviders() {
+  const codexCredential = await apiMutation('/api/v1/credentials', {
+    kind: 'codex_api_key', label: 'Browser Codex key', secret: 'browser-codex-fixture-secret'
+  }, 'codex-credential');
+  const profile = await apiMutation('/api/v1/profiles/codex', {
+    label: 'Browser profile', provider: 'openai', model: 'gpt-5.5', base_url: '', wire_api: 'responses',
+    reasoning: 'medium', timeout_ms: 30_000, credential_ref: codexCredential.id
+  }, 'codex-profile');
+  const codexProbe = await apiMutation(`/api/v1/profiles/codex/${profile.id}/probe`, {
+    expected_revision: profile.revision, force: true
+  }, 'codex-probe');
+  await waitOperation(codexProbe.operation_id);
+
+  const { privateKey } = generateKeyPairSync('rsa', { modulusLength: 2048 });
+  const privateKeyCredential = await apiMutation('/api/v1/credentials', {
+    kind: 'github_app_private_key', label: 'Browser App key', secret: privateKey.export({ type: 'pkcs8', format: 'pem' })
+  }, 'github-key');
+  const webhookCredential = await apiMutation('/api/v1/credentials', {
+    kind: 'github_webhook_secret', label: 'Browser webhook', secret: 'browser-webhook-fixture-secret'
+  }, 'github-webhook');
+  const githubApp = await apiMutation('/api/v1/github/apps', {
+    label: 'Browser App', app_id: '12345', client_id: 'Iv1.browser',
+    private_key_ref: privateKeyCredential.id, webhook_secret_ref: webhookCredential.id
+  }, 'github-app');
+  const discovery = await apiMutation(`/api/v1/github/apps/${githubApp.id}/installations/discover`, {
+    expected_revision: githubApp.revision
+  }, 'github-discovery');
+  await waitOperation(discovery.operation_id);
+  const installation = (await apiRequest('/api/v1/github/installations')).body[0];
+  const sync = await apiMutation(`/api/v1/github/installations/${installation.id}/repositories/sync`, {
+    expected_revision: installation.revision
+  }, 'github-sync');
+  await waitOperation(sync.operation_id);
 }
 
 async function initializeGitRepository(directory) {
@@ -52,6 +138,11 @@ async function checkNoOverlap(page, viewport) {
   if (overlap) throw new Error(`layout overlap at ${viewport}`);
 }
 
+async function setViewport(page, width, height) {
+  await page.setViewportSize({ width, height });
+  await page.waitForTimeout(250);
+}
+
 const browser = await chromium.launch({ headless: true });
 const reportDir = path.join(process.cwd(), '.ai-workspace', 'e2e-v3');
 fs.mkdirSync(reportDir, { recursive: true });
@@ -67,8 +158,65 @@ try {
   page.on('console', (message) => { if (message.type() === 'error') consoleErrors.push(message); });
 
   await page.goto(`${base}/#/setup`, { waitUntil: 'networkidle' });
-  await expect(page.getByRole('heading', { name: 'AIWS 3.0 workspace' })).toBeVisible();
-  await expect(page.getByText('/api/v1', { exact: true })).toBeVisible();
+  await expect(page.getByText('AIWS 3.0', { exact: true })).toBeVisible();
+  await expect(page.locator('.health-band')).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Workspace configuration' })).toBeVisible();
+  await expect(page.getByText('Codex credential', { exact: true })).toBeVisible();
+
+  const setupViewports = [
+    ['mobile-wide', 390, 844], ['laptop', 1024, 768], ['desktop', 1440, 900]
+  ];
+  for (const [name, width, height] of setupViewports) {
+    await setViewport(page, width, height);
+    await checkNoOverlap(page, `${name}-setup-empty`);
+    await page.screenshot({ path: path.join(reportDir, `${name}-setup-empty.png`), fullPage: true });
+  }
+
+  const blockedProject = await apiRequest('/api/v1/projects', {
+    method: 'POST', headers: { 'Idempotency-Key': 'e2e-project-blocked' },
+    body: { name: 'Blocked before setup' }
+  });
+  expect(blockedProject.response.status).toBe(409);
+  expect(blockedProject.body.error.code).toBe('setup_not_ready');
+
+  await page.goto(`${base}/#/projects`, { waitUntil: 'networkidle' });
+  await expect(page.getByRole('heading', { name: 'Workspace configuration' })).toBeVisible();
+
+  await prepareSetupProviders();
+  await page.reload({ waitUntil: 'networkidle' });
+  await page.getByRole('tab', { name: 'Github' }).click();
+  await expect(page.getByRole('heading', { name: 'GitHub App' })).toBeVisible();
+  let failNextGithubProbe = true;
+  await page.route('**/api/v1/integrations/github/probe', async (route) => {
+    if (failNextGithubProbe) {
+      failNextGithubProbe = false;
+      await route.fulfill({
+        status: 502,
+        contentType: 'application/json',
+        body: JSON.stringify({ error: { code: 'github_api_unavailable', message: 'Provider fixture interrupted', retryable: true } })
+      });
+      return;
+    }
+    await route.continue();
+  });
+  await page.getByRole('button', { name: 'Probe', exact: true }).click();
+  await expect(page.getByRole('alert')).toContainText('Provider fixture interrupted');
+  await setViewport(page, 1440, 900);
+  await page.screenshot({ path: path.join(reportDir, 'desktop-setup-failed.png'), fullPage: true });
+  await page.getByRole('button', { name: 'Retry', exact: true }).click();
+  await expect.poll(async () => (await apiRequest('/api/v1/setup')).body.checks.current_github_probe, { timeout: 10_000 }).toBe(true);
+  await page.unroute('**/api/v1/integrations/github/probe');
+  await page.getByRole('tab', { name: 'Overview' }).click();
+  await expect(page.getByRole('button', { name: 'Complete setup' })).toBeEnabled();
+  await page.getByRole('button', { name: 'Complete setup' }).click();
+  await expect(page.getByRole('button', { name: 'Reconfirm setup' })).toBeVisible();
+  await expect.poll(async () => (await apiRequest('/api/v1/setup')).body.complete).toBe(true);
+
+  for (const [name, width, height] of setupViewports) {
+    await setViewport(page, width, height);
+    await checkNoOverlap(page, `${name}-setup-ready`);
+    await page.screenshot({ path: path.join(reportDir, `${name}-setup-ready.png`), fullPage: true });
+  }
 
   await page.goto(`${base}/#/projects`, { waitUntil: 'networkidle' });
   await expect(page.getByRole('heading', { name: 'Projects' })).toBeVisible();
@@ -159,7 +307,7 @@ try {
   await expect(page.getByText('Isolated broker', { exact: true })).toBeVisible();
 
   for (const [name, width, height] of viewports) {
-    await page.setViewportSize({ width, height });
+    await setViewport(page, width, height);
     await page.goto(`${base}/#/execution`, { waitUntil: 'networkidle' });
     await expect(page.getByRole('heading', { name: 'Execution', exact: true })).toBeVisible();
     await expect(page.getByText('completed', { exact: true }).first()).toBeVisible();
@@ -178,7 +326,10 @@ try {
     await page.screenshot({ path: path.join(reportDir, `${name}-terminals.png`), fullPage: true });
   }
   if (pageErrors.length) throw new Error(`browser page errors: ${pageErrors.map((error) => error.message).join('; ')}`);
-  if (consoleErrors.length) throw new Error(`browser console errors: ${consoleErrors.map((message) => message.text()).join('; ')}`);
+  const unexpectedConsoleErrors = [...consoleErrors];
+  const expectedProviderFailure = unexpectedConsoleErrors.findIndex((message) => /status of 502 \(Bad Gateway\)/.test(message.text()));
+  if (expectedProviderFailure >= 0) unexpectedConsoleErrors.splice(expectedProviderFailure, 1);
+  if (unexpectedConsoleErrors.length) throw new Error(`browser console errors: ${unexpectedConsoleErrors.map((message) => message.text()).join('; ')}`);
   process.stdout.write(`E2E passed: ${viewports.length} viewports, project ${project.id}, execution journey complete\n`);
 } finally {
   await browser.close();

@@ -1,0 +1,74 @@
+{
+  "schema_version": "aiws.v3.r2_migration_evidence.v1",
+  "status": "passed",
+  "inputs": {
+    "database": "temporary SQLite fixture",
+    "production_volume_touched": false,
+    "migration_versions": [
+      1,
+      2
+    ],
+    "v1_checksum": "49e206dad8a7b76051f6561aada0af375c164b5dd8bec7c9a615844f598ce8ca"
+  },
+  "baseline": {
+    "command": "create fingerprint-matching V1 SQLite fixture",
+    "output": {
+      "database_sha256": "c69d662db6ffe537d8b0ee313444479c942af69757fafd405a19de2b2cda965c",
+      "state": {
+        "integrity": "ok",
+        "user_version": 1,
+        "project_name": "baseline fixture",
+        "ledger": [],
+        "has_ledger": false
+      }
+    },
+    "exit_status": 0
+  },
+  "modified": {
+    "command": "migrateDatabase({ file, migrations: [V1, V2] })",
+    "output": {
+      "from_version": 1,
+      "to_version": 2,
+      "applied_versions": [
+        2
+      ],
+      "baseline_registered": true,
+      "schema_fingerprint": "e86295d5b2d43465815bb3cd61cef17b2cf2349a456bc9f6f02eac78847623eb",
+      "ledger": [
+        {
+          "version": 1,
+          "name": "initial_v3_schema",
+          "checksum": "49e206dad8a7b76051f6561aada0af375c164b5dd8bec7c9a615844f598ce8ca"
+        },
+        {
+          "version": 2,
+          "name": "identity_setup_providers",
+          "checksum": "474cd76da2e8be23a5c7b66fd46e5a0f2cb3db03213c20e4241694f677f966bc"
+        }
+      ],
+      "integrity": "ok",
+      "v1_checksum_frozen": true,
+      "v2_checksum": "474cd76da2e8be23a5c7b66fd46e5a0f2cb3db03213c20e4241694f677f966bc",
+      "v2_checksum_expected": "474cd76da2e8be23a5c7b66fd46e5a0f2cb3db03213c20e4241694f677f966bc"
+    },
+    "exit_status": 0
+  },
+  "rollback": {
+    "command": "restoreMigrationSnapshot({ file, manifestPath })",
+    "output": {
+      "status": "restored",
+      "sha256": "48d0cc7fa82a0c153b4ae9f698ebda2ce62fe504feea29a619a62605d91aceb2",
+      "from_version": 1,
+      "integrity": "ok",
+      "user_version": 1,
+      "project_name": "baseline fixture",
+      "ledger_removed": true
+    },
+    "exit_status": 0
+  },
+  "hashes": {
+    "baseline_database_sha256": "c69d662db6ffe537d8b0ee313444479c942af69757fafd405a19de2b2cda965c",
+    "snapshot_sha256": "48d0cc7fa82a0c153b4ae9f698ebda2ce62fe504feea29a619a62605d91aceb2",
+    "restored_database_sha256": "48d0cc7fa82a0c153b4ae9f698ebda2ce62fe504feea29a619a62605d91aceb2"
+  }
+}

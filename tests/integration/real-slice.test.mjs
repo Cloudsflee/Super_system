@@ -53,15 +53,16 @@ test('fixture execution isolates a worktree and captures diff, output, and evide
   }
 });
 
-test('Codex probe is idempotent and never returns credential material', async () => {
+test('Codex probe requires an explicit profile and never falls back to credential material', async () => {
   const env = await fixture();
   try {
     const first = await mutate(env.base, '/api/v1/integrations/codex/probe', {}, 'probe-real-slice');
     const replay = await mutate(env.base, '/api/v1/integrations/codex/probe', {}, 'probe-real-slice');
-    assert.equal(first.response.status, 200);
-    assert.deepEqual(replay.json, first.json);
-    assert.equal(Object.hasOwn(first.json, 'auth'), false);
-    assert.equal(first.json.provider, 'codex');
+    assert.equal(first.response.status, 409);
+    assert.equal(first.json.error.code, 'codex_profile_missing');
+    assert.equal(replay.response.status, 409);
+    assert.equal(replay.json.error.code, first.json.error.code);
+    assert.equal(JSON.stringify(first.json).includes('credential'), false);
   } finally {
     await env.close();
   }

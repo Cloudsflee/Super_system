@@ -18,18 +18,6 @@ export function createCommandRegistry(domain) {
     ['delivery.create', (input, ctx) => domain.createDelivery(input, ctx)],
     ['delivery.merge', (input, ctx) => domain.mergeDelivery(input.delivery_id, input, ctx)],
     ['delivery.retry', (input, ctx) => domain.retryDelivery(input.delivery_id, input, ctx)],
-    ['integration.codex.probe', (input) => domain.probeCodex({ force: input?.force === true })],
-    ['integration.github.probe', (input) => domain.probeGithub({ force: input?.force === true })],
-    ['credential.create', (input, ctx) => domain.createCredential(input, ctx)],
-    ['credential.rotate', (input, ctx) => domain.rotateCredential(input.credential_id, input, ctx)],
-    ['credential.revoke', (input, ctx) => domain.revokeCredential(input.credential_id, input, ctx)],
-    ['credential.delete', (input, ctx) => domain.deleteCredential(input.credential_id, input, ctx)],
-    ['codex_profile.create', (input, ctx) => domain.createCodexProfile(input, ctx)],
-    ['codex_profile.update', (input, ctx) => domain.updateCodexProfile(input.profile_id, input, ctx)],
-    ['session.create', (input, ctx) => domain.createSession(input, ctx)],
-    ['session.revoke', (input, ctx) => domain.revokeSession(input.session_id, input, ctx)],
-    ['github_app.create', (input, ctx) => domain.createGithubAppConfig(input, ctx)],
-    ['github_installation.create', (input, ctx) => domain.createGithubInstallation(input.app_config_id, input, ctx)],
     ['mcp_client.create', (input, ctx) => domain.createMcpClient(input, ctx)],
     ['mcp_client.revoke', (input, ctx) => domain.revokeMcpClient(input.client_id, input, ctx)],
     ['mcp_scope.request', (input, ctx) => domain.createMcpScopeRequest(input, ctx)],
@@ -62,7 +50,8 @@ export function createCommandRegistry(domain) {
     ['context.selection.create', (input, ctx) => domain.createContextSelection(input.project_id, input, ctx)],
     ['quality_review.create', (input, ctx) => domain.createQualityReview(input.project_id, input, ctx)]
   ]);
-  const privateCommands = new Set(['credential.create', 'credential.rotate', 'credential.revoke', 'credential.delete']);
+  for (const [name, handler] of domain.r2?.commands || []) commands.set(name, handler);
+  const privateCommands = new Set(domain.r2?.privateCommands || []);
 
   return {
     list() {
@@ -71,6 +60,7 @@ export function createCommandRegistry(domain) {
     async execute(name, input = {}, ctx = {}) {
       const handler = commands.get(name);
       if (!handler) throw new AppError('unknown_command', `unknown command: ${name}`, { status: 404 });
+      await domain.assertCommandReady(name);
       return handler(input, ctx);
     }
   };

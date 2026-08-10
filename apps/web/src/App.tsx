@@ -4,9 +4,10 @@ import {
   Menu, MessageSquare, Settings, ShieldCheck, Terminal as TerminalIcon, Workflow, X
 } from 'lucide-react';
 import { api } from './api';
+import { SetupPage, type SetupState } from './features/setup';
 import type { Project } from './types';
 import {
-  ApprovalPage, AssetsPage, AssistPage, AuditPage, ExecutionPage, ProjectsPage, SettingsPage, SetupPage, TerminalPage, WorkflowPage,
+  ApprovalPage, AssetsPage, AssistPage, AuditPage, ExecutionPage, ProjectsPage, SettingsPage, TerminalPage, WorkflowPage,
   type WorkspacePageProps
 } from './pages';
 
@@ -38,6 +39,8 @@ const PAGES: Record<PageKey, ComponentType<WorkspacePageProps>> = {
   settings: SettingsPage
 };
 
+const SETUP_GATED_PAGES = new Set<PageKey>(['projects', 'workflow', 'assist', 'execution', 'terminals', 'approvals', 'assets']);
+
 function routeFromHash(): PageKey {
   const route = location.hash.replace(/^#\/?/, '') as PageKey;
   return NAV.some((item) => item.key === route) ? route : 'setup';
@@ -49,6 +52,7 @@ export function App() {
   const [projectId, setProjectId] = useState(() => sessionStorage.getItem('aiws:v3:selected-project') || '');
   const [notice, setNotice] = useState<{ tone: 'ok' | 'error'; text: string } | null>(null);
   const [menuOpen, setMenuOpen] = useState(false);
+  const [setup, setSetup] = useState<Pick<SetupState, 'status' | 'complete' | 'revision'> | null>(null);
 
   const loadProjects = useCallback(async () => {
     const rows = await api<Project[]>('/api/v1/projects');
@@ -60,7 +64,20 @@ export function App() {
     });
   }, []);
 
-  useEffect(() => { void loadProjects().catch(() => undefined); }, [loadProjects]);
+  const refreshSetup = useCallback(async () => {
+    const state = await api<SetupState>('/api/v1/setup');
+    setSetup({ status: state.status, complete: state.complete, revision: state.revision });
+    if (state.status === 'ready') await loadProjects();
+    else { setProjects([]); setProjectId(''); }
+  }, [loadProjects]);
+
+  useEffect(() => { void refreshSetup().catch(() => setSetup(null)); }, [refreshSetup]);
+  useEffect(() => {
+    if (setup?.status === 'blocked' && SETUP_GATED_PAGES.has(page)) {
+      location.hash = '/setup';
+      setPage('setup');
+    }
+  }, [page, setup?.status]);
   useEffect(() => {
     const handler = () => setPage(routeFromHash());
     addEventListener('hashchange', handler);
@@ -73,10 +90,17 @@ export function App() {
   }, [notice]);
 
   const navigate = useCallback((next: PageKey) => {
+    if (setup?.status !== 'ready' && SETUP_GATED_PAGES.has(next)) {
+      location.hash = '/setup';
+      setPage('setup');
+      setNotice({ tone: 'error', text: 'Complete Setup before using workspace commands.' });
+      setMenuOpen(false);
+      return;
+    }
     location.hash = `/${next}`;
     setPage(next);
     setMenuOpen(false);
-  }, []);
+  }, [setup?.status]);
   const selectProject = useCallback((id: string) => {
     setProjectId(id);
     sessionStorage.setItem('aiws:v3:selected-project', id);
@@ -110,7 +134,7 @@ export function App() {
           <label className="project-switcher">
             <span>Project</span>
             <div>
-              <select value={projectId} onChange={(event) => selectProject(event.target.value)} aria-label="当前项目">
+              <select value={projectId} disabled={setup?.status !== 'ready'} onChange={(event) => selectProject(event.target.value)} aria-label="当前项目">
                 {!projects.length && <option value="">No project</option>}
                 {projects.map((project) => <option key={project.id} value={project.id}>{project.name}</option>)}
               </select>
@@ -127,6 +151,8 @@ export function App() {
             refreshProjects={loadProjects}
             notify={notify}
             navigate={navigate}
+            setupReady={setup?.status === 'ready'}
+            refreshSetup={refreshSetup}
           />
         </main>
       </div>

@@ -1,0 +1,222 @@
+{
+  "schema_version": "aiws.v3.r2_golden.v1",
+  "source_commit": "d99d2c9f38a7fa279d0bdc9e855e1e293cc3a032",
+  "extraction": {
+    "mode": "current_read_only_contracts",
+    "executed_runtime": false
+  },
+  "source_files": [
+    {
+      "path": "packages/contracts/src/codex-device-auth.mjs",
+      "sha256": "701358c64be2f00b82290c079c8974b09fcab041032da818eb9b446475d50023"
+    },
+    {
+      "path": "apps/api/src/modules/setup/codex-discovery.mjs",
+      "sha256": "ac554036ac99b0ae7015e3de4e137bc05b446e99bfabbcd51fb05c3545d26bed"
+    },
+    {
+      "path": "apps/api/src/modules/setup/codex-service.mjs",
+      "sha256": "83b3b8d59dae574e933d6f1c844d590ca50ab7d7e34b9595d4e65b59a2975c1f"
+    },
+    {
+      "path": "apps/api/src/modules/setup/service.mjs",
+      "sha256": "ba73e707dc7806da1b8bdab207f6c8c66bd112ac510a1895e9fd0e913f5ce2f8"
+    },
+    {
+      "path": "apps/api/src/modules/setup/github-service.mjs",
+      "sha256": "412e2b445ca55dab0253817981870aff3f54575bcd7d7428b184d90ef1ed2ab3"
+    }
+  ],
+  "contracts": [
+    {
+      "id": "codex-device-auth-public-output",
+      "feature_id": "REC-D2-SETUP-002",
+      "cases": [
+        {
+          "input": "Open https://auth.example.test/device and enter ABCD-EFGH\nSuccessfully logged in",
+          "output": {
+            "verification_url": "https://auth.example.test/device",
+            "user_code": "ABCD-EFGH",
+            "status": "authorized"
+          }
+        }
+      ]
+    },
+    {
+      "id": "codex-discovery-stale-revision",
+      "feature_id": "REC-D2-SETUP-002",
+      "cases": [
+        {
+          "expected_revision": "1b1cd52d0155dd33aa9b8b40b63fb60de18164308945f517484044ec1b536308",
+          "current_revision": "ccac0d22bb9c5ca57a85a24f4f23da43a4baaf177641abac2fef0a888f53889f",
+          "stale_status": "discovery_source_stale"
+        }
+      ]
+    },
+    {
+      "id": "codex-seven-stage-probe",
+      "feature_id": "REC-D2-SETUP-002",
+      "cases": [
+        {
+          "snapshot": {
+            "profile_id": "cdp_golden",
+            "profile_revision": 1,
+            "profile_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+          },
+          "output": {
+            "status": "available",
+            "error_code": null,
+            "checks": [
+              {
+                "phase": "configuration",
+                "status": "passed",
+                "error_code": null
+              },
+              {
+                "phase": "runtime",
+                "status": "passed",
+                "error_code": null
+              },
+              {
+                "phase": "binding",
+                "status": "passed",
+                "error_code": null
+              },
+              {
+                "phase": "transport",
+                "status": "passed",
+                "error_code": null
+              },
+              {
+                "phase": "protocol",
+                "status": "passed",
+                "error_code": null
+              },
+              {
+                "phase": "model",
+                "status": "passed",
+                "error_code": null
+              },
+              {
+                "phase": "inference",
+                "status": "passed",
+                "error_code": null
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "setup-state-machine",
+      "feature_id": "REC-D2-SETUP-002",
+      "cases": [
+        {
+          "blocked": {
+            "status": "blocked",
+            "complete": false,
+            "can_complete": false,
+            "revision": 7,
+            "checks": {
+              "owner": true,
+              "active_codex_credential": false,
+              "active_codex_profile": false,
+              "current_codex_probe": false,
+              "verified_github_app": false,
+              "active_github_installation": false,
+              "repository_permissions": false,
+              "current_github_probe": false
+            },
+            "blockers": [
+              "active_codex_credential",
+              "active_codex_profile",
+              "current_codex_probe",
+              "verified_github_app",
+              "active_github_installation",
+              "repository_permissions",
+              "current_github_probe"
+            ]
+          },
+          "ready": {
+            "status": "ready",
+            "complete": true,
+            "can_complete": true,
+            "revision": 7,
+            "checks": {
+              "owner": true,
+              "active_codex_credential": true,
+              "active_codex_profile": true,
+              "current_codex_probe": true,
+              "verified_github_app": true,
+              "active_github_installation": true,
+              "repository_permissions": true,
+              "current_github_probe": true
+            },
+            "blockers": []
+          }
+        }
+      ]
+    },
+    {
+      "id": "github-app-jwt",
+      "feature_id": "REC-D2-SETUP-002",
+      "cases": [
+        {
+          "header": {
+            "alg": "RS256",
+            "typ": "JWT"
+          },
+          "claims": {
+            "iat": 1786319940,
+            "exp": 1786320540,
+            "iss": "12345"
+          },
+          "signature_length": 342
+        }
+      ]
+    },
+    {
+      "id": "github-permissions",
+      "feature_id": "REC-D2-SETUP-002",
+      "cases": [
+        {
+          "id": "ready",
+          "value": {
+            "metadata": "read",
+            "contents": "write",
+            "pull_requests": "write"
+          },
+          "ready": true
+        },
+        {
+          "id": "missing-contents",
+          "value": {
+            "metadata": "read",
+            "pull_requests": "write"
+          },
+          "ready": false
+        },
+        {
+          "id": "missing-metadata",
+          "value": {
+            "contents": "write",
+            "pull_requests": "write"
+          },
+          "ready": false
+        }
+      ]
+    },
+    {
+      "id": "github-webhook-hmac",
+      "feature_id": "REC-D2-SETUP-002",
+      "cases": [
+        {
+          "body_sha256": "e1669e400bd83551ceca0afe503c93a4d07256314460cd927651f9797e829eda",
+          "valid": true,
+          "tampered": false
+        }
+      ]
+    }
+  ],
+  "fixture_sha256": "6748e7560fe5d46ab8271db5758ec3afa9b5dc0434a1124f89fe474952555c8d"
+}
