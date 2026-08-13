@@ -151,16 +151,29 @@ function applyLedgerBaseline(db, migration, createdAt) {
 
 function applyMigration(db, migration, createdAt) {
   const started = performance.now();
+  const toggleForeignKeys = migration.disableForeignKeys === true;
+  // SQLite does not permit changing foreign_keys inside an open transaction.
+  // R3's projects table replacement therefore opts into a scoped FK pause; the
+  // transaction still gives the DDL and ledger row one atomic commit point.
+  if (toggleForeignKeys) db.exec('PRAGMA foreign_keys = OFF');
   db.exec('BEGIN IMMEDIATE');
   try {
     db.exec(migrationDdl(migration.sql));
     db.prepare('INSERT INTO schema_migrations(version,name,checksum,applied_at,duration_ms) VALUES(?,?,?,?,?)')
       .run(migration.version, migration.name, migrationChecksum(migration), createdAt.toISOString(), elapsed(started));
     db.exec(`PRAGMA user_version = ${migration.version}`);
+    if (toggleForeignKeys) {
+      const violations = db.prepare('PRAGMA foreign_key_check').all();
+      if (violations.length) throw new Error('migration_foreign_key_check_failed');
+    }
     db.exec('COMMIT');
   } catch (error) {
     try { db.exec('ROLLBACK'); } catch { /* retain migration failure */ }
+    if (toggleForeignKeys) db.exec('PRAGMA foreign_keys = ON');
     throw error;
+  }
+  if (toggleForeignKeys) {
+    db.exec('PRAGMA foreign_keys = ON');
   }
 }
 

@@ -26,6 +26,8 @@ export function loadConfig(env = process.env) {
   if (githubRepository && !/^[A-Za-z0-9_.-]{1,100}\/[A-Za-z0-9_.-]{1,100}$/.test(githubRepository)) throw new Error('github_repository_invalid');
   const githubFixtureSha = env.AIWS_GITHUB_FIXTURE_SHA || '';
   if (githubFixtureSha && !/^[a-f0-9]{40}$/.test(githubFixtureSha)) throw new Error('github_fixture_sha_invalid');
+  const projectImportRoots = readPathAllowlist(env.AIWS_PROJECT_IMPORT_ROOTS);
+  const projectGitHosts = readHostAllowlist(env.AIWS_PROJECT_GIT_HOSTS);
   return {
     version: PRODUCT_VERSION,
     apiPrefix: API_PREFIX,
@@ -44,9 +46,31 @@ export function loadConfig(env = process.env) {
     githubCredential,
     githubRepository,
     githubFixtureSha,
+    projectImportRoots,
+    projectGitHosts,
+    projectUploadLimits: Object.freeze({ maxFiles: 1000, maxFileBytes: 10 * 1024 * 1024, maxTotalBytes: 100 * 1024 * 1024 }),
     codexDiscoveryRoots: readDiscoveryRoots(env.AIWS_CODEX_DISCOVERY_ROOTS),
     cpuCount: os.cpus().length
   };
+}
+
+function readPathAllowlist(raw) {
+  if (!raw) return [];
+  try {
+    const parsed = JSON.parse(raw);
+    if (Array.isArray(parsed)) return parsed.map((item) => String(item || '').trim()).filter(Boolean).slice(0, 50).map((item) => path.resolve(item));
+  } catch { /* Accept a platform path-delimited fixture list. */ }
+  return String(raw).split(path.delimiter).map((item) => item.trim()).filter(Boolean).slice(0, 50).map((item) => path.resolve(item));
+}
+
+function readHostAllowlist(raw) {
+  const defaults = ['github.com', 'gitlab.com', 'bitbucket.org'];
+  if (!raw) return Object.freeze(defaults);
+  try {
+    const parsed = JSON.parse(raw);
+    if (Array.isArray(parsed)) return Object.freeze(parsed.map((item) => String(item || '').trim().toLowerCase()).filter((item) => /^[a-z0-9.-]{1,253}$/.test(item)).slice(0, 50));
+  } catch { /* Accept comma/space-delimited local fixture hosts. */ }
+  return Object.freeze(String(raw).split(/[\s,;]+/).map((item) => item.trim().toLowerCase()).filter((item) => /^[a-z0-9.-]{1,253}$/.test(item)).slice(0, 50));
 }
 
 function readDiscoveryRoots(raw) {

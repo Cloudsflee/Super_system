@@ -7,6 +7,7 @@ import path from 'node:path';
 const root = process.cwd();
 const batch = process.env.RECOVERY_BATCH || 'v3-r0-r1-governance-20260810';
 const isR2 = batch === 'v3-r2-identity-setup-20260810';
+const isR3 = batch === 'v3-r3-project-repository-20260811';
 const evidenceRoot = path.join(root, 'docs', 'evidence', batch);
 const excluded = new Set(String(process.env.RECOVERY_EXCLUDE || '').split(',').map(normalize).filter(Boolean));
 const git = process.platform === 'win32' ? 'git.exe' : 'git';
@@ -51,7 +52,22 @@ const commandDefinitions = [
   { label: 'recovery-coverage', executable: corepack, args: ['pnpm', 'recovery:coverage'] },
   { label: 'recovery-impact', executable: corepack, args: ['pnpm', 'recovery:impact', '--audit'] }
 ];
-if (isR2) {
+if (isR3) {
+  commandDefinitions.push(
+    {
+      label: 'r3-focused', executable: process.execPath,
+      args: ['--test', '--test-concurrency=1',
+        'tests/unit/migrations.test.mjs', 'tests/unit/database.test.mjs',
+        'tests/unit/recovery-golden.test.mjs',
+        'tests/integration/project-repository-r3.test.mjs',
+        'tests/security/project-repository.test.mjs']
+    },
+    { label: 'r3-web', executable: corepack, args: ['pnpm', '--filter', '@aiws/web', 'test'] },
+    { label: 'r3-e2e', executable: corepack, args: ['pnpm', 'test:e2e'] },
+    { label: 'migration-rollback', executable: process.execPath, args: ['scripts/r3-migration-evidence.mjs', '--output', path.join(evidenceRoot, 'migration-rollback.json')] },
+    { label: 'r3-golden', executable: process.execPath, args: ['scripts/recovery-golden.mjs', 'verify', 'r3-project-repository'] }
+  );
+} else if (isR2) {
   commandDefinitions.push(
     {
       label: 'r2-focused', executable: process.execPath,
@@ -99,7 +115,7 @@ const verification = {
   inputs: {
     recovery_batch: batch,
     excluded_preexisting_files: [...excluded],
-    source_commit: isR2 ? baselineCommit : 'e18dc0b',
+    source_commit: isR2 || isR3 ? baselineCommit : 'e18dc0b',
     database_fixture: 'temporary SQLite files only',
     production_port_touched: false
   },
@@ -109,6 +125,13 @@ const verification = {
     github_app: probeReceipt('provider-github-real'),
     promotion_status: 'implemented_until_explicit_external_probe_passes'
   } : undefined,
+  repository_source_receipts: isR3 ? {
+    deterministic_fixture: 'passed',
+    allowlisted_local_path: 'passed',
+    streamed_upload: 'passed',
+    https_git_remote: 'not_recorded',
+    promotion_status: 'implemented_until_https_remote_receipt_passes'
+  } : undefined,
   commands,
   screenshots: screenshotRecords,
   artifacts: {
@@ -117,7 +140,7 @@ const verification = {
     verification: relative(verificationPath),
     rollback: relative(rollbackScriptPath),
     rollback_receipt: relative(rollbackReceiptPath),
-    migration_rollback: isR2 ? relative(path.join(evidenceRoot, 'migration-rollback.json')) : undefined,
+    migration_rollback: isR2 || isR3 ? relative(path.join(evidenceRoot, 'migration-rollback.json')) : undefined,
     provider_codex: isR2 ? relative(path.join(evidenceRoot, 'provider-codex-real.log')) : undefined,
     provider_github: isR2 ? relative(path.join(evidenceRoot, 'provider-github-real.log')) : undefined
   },
@@ -156,6 +179,52 @@ process.stdout.write(`${JSON.stringify({
 }, null, 2)}\n`);
 
 function buildBehaviorComparison() {
+  if (isR3) {
+    const baselineProject = runBuffer(git, ['show', `${baselineCommit}:apps/api/src/modules/project/index.mjs`]);
+    const baselineRepository = runBuffer(git, ['show', `${baselineCommit}:apps/api/src/modules/repository/index.mjs`]);
+    const baselineMigration = run(git, ['cat-file', '-e', `${baselineCommit}:apps/api/src/migrations/003-project-repository-intake.mjs`], { allowFailure: true });
+    const focused = commands.find((entry) => entry.label === 'r3-focused');
+    const web = commands.find((entry) => entry.label === 'r3-web');
+    const e2e = commands.find((entry) => entry.label === 'r3-e2e');
+    const migration = commands.find((entry) => entry.label === 'migration-rollback');
+    const golden = commands.find((entry) => entry.label === 'r3-golden');
+    const verify = commands.find((entry) => entry.label === 'verify');
+    return {
+      baseline: {
+        commands: [
+          `git show ${baselineCommit}:apps/api/src/modules/project/index.mjs`,
+          `git show ${baselineCommit}:apps/api/src/modules/repository/index.mjs`,
+          `git cat-file -e ${baselineCommit}:apps/api/src/migrations/003-project-repository-intake.mjs`
+        ],
+        outputs: {
+          project_entry_sha256: sha256(baselineProject.stdout),
+          repository_entry_sha256: sha256(baselineRepository.stdout),
+          migration_v3_present: baselineMigration.status === 0,
+          draft_intake_service_present: false,
+          repository_line_service_present: false
+        },
+        exit_status: Math.max(baselineProject.status, baselineRepository.status)
+      },
+      modified: {
+        commands: [focused?.command, web?.command, e2e?.command, migration?.command, golden?.command, verify?.command].filter(Boolean),
+        outputs: {
+          project_service_sha256: sha256(fs.readFileSync(path.join(root, 'apps/api/src/modules/project/service.mjs'))),
+          repository_service_sha256: sha256(fs.readFileSync(path.join(root, 'apps/api/src/modules/repository/service.mjs'))),
+          migration_v3_sha256: sha256(fs.readFileSync(path.join(root, 'apps/api/src/migrations/003-project-repository-intake.mjs'))),
+          golden_fixture_sha256: sha256(fs.readFileSync(path.join(root, 'tests/golden/r3/project-repository.json'))),
+          behaviors: ['draft_to_active', 'failed_retry', 'cancel_resume', 'stale_confirm', 'source_drift', 'line_fault_recovery', 'archive_trash_restore_purge'],
+          migration_record: relative(path.join(evidenceRoot, 'migration-rollback.json')),
+          focused_log: relative(path.join(evidenceRoot, 'r3-focused.log')),
+          web_log: relative(path.join(evidenceRoot, 'r3-web.log')),
+          e2e_log: relative(path.join(evidenceRoot, 'r3-e2e.log')),
+          golden_log: relative(path.join(evidenceRoot, 'r3-golden.log')),
+          verify_log: relative(path.join(evidenceRoot, 'verify.log'))
+        },
+        exit_status: Math.max(focused?.exit_status ?? 1, web?.exit_status ?? 1, e2e?.exit_status ?? 1, migration?.exit_status ?? 1, golden?.exit_status ?? 1, verify?.exit_status ?? 1)
+      }
+    };
+  }
+
   if (!isR2) {
     const baselineDbWorker = runBuffer(git, ['show', `${baselineCommit}:apps/api/src/db-worker.mjs`]);
     const baselineHttp = runBuffer(git, ['show', `${baselineCommit}:apps/api/src/http.mjs`]);

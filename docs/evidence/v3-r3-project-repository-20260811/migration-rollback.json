@@ -1,0 +1,200 @@
+{
+  "schema_version": "aiws.v3.r3_migration_evidence.v1",
+  "status": "passed",
+  "inputs": {
+    "database": "temporary SQLite V2 fixture",
+    "production_volume_touched": false,
+    "migration_versions": [
+      1,
+      2,
+      3
+    ],
+    "v1_checksum": "49e206dad8a7b76051f6561aada0af375c164b5dd8bec7c9a615844f598ce8ca",
+    "v2_checksum": "474cd76da2e8be23a5c7b66fd46e5a0f2cb3db03213c20e4241694f677f966bc",
+    "v3_checksum": "1c03a0fad89946a23f4dcd4874c2737f6597a002355264cd0412a90e5d86de6f"
+  },
+  "baseline_v2": {
+    "command": "migrateDatabase({ migrations: MIGRATIONS.slice(0, 2) }) plus project/brief/binding fixture",
+    "output": {
+      "from_version": 1,
+      "to_version": 2,
+      "applied_versions": [
+        2
+      ],
+      "baseline_registered": true,
+      "schema_fingerprint": "e86295d5b2d43465815bb3cd61cef17b2cf2349a456bc9f6f02eac78847623eb",
+      "snapshot": {
+        "file": "C:\\Users\\CLOUDS~1\\AppData\\Local\\Temp\\aiws-r3-migration-evidence-ymgwOL\\snapshots\\pre-v1-to-v2-2026-08-11T00-00-00-000Z-706ba738-7a00-4b37-b69b-8260d8e5d286.sqlite",
+        "manifest": "C:\\Users\\CLOUDS~1\\AppData\\Local\\Temp\\aiws-r3-migration-evidence-ymgwOL\\snapshots\\pre-v1-to-v2-2026-08-11T00-00-00-000Z-706ba738-7a00-4b37-b69b-8260d8e5d286.manifest.json",
+        "sha256": "deb2cf7da5c9b3859723d7a6be2b52786b7ce872a3e9d66baf565ae87058a821"
+      },
+      "state": {
+        "integrity": "ok",
+        "foreign_keys": [],
+        "user_version": 2,
+        "project_name": "V2 backfill fixture",
+        "ledger": [
+          {
+            "version": 1,
+            "name": "initial_v3_schema",
+            "checksum": "49e206dad8a7b76051f6561aada0af375c164b5dd8bec7c9a615844f598ce8ca"
+          },
+          {
+            "version": 2,
+            "name": "identity_setup_providers",
+            "checksum": "474cd76da2e8be23a5c7b66fd46e5a0f2cb3db03213c20e4241694f677f966bc"
+          }
+        ]
+      }
+    },
+    "exit_status": 0
+  },
+  "modified_v3": {
+    "command": "migrateDatabase({ migrations: MIGRATIONS })",
+    "output": {
+      "from_version": 2,
+      "to_version": 3,
+      "applied_versions": [
+        3
+      ],
+      "snapshot_manifest": "C:\\Users\\CLOUDS~1\\AppData\\Local\\Temp\\aiws-r3-migration-evidence-ymgwOL\\snapshots\\pre-v2-to-v3-2026-08-11T00-00-00-000Z-01608d1b-66f0-4024-88f6-27e1e398b327.manifest.json",
+      "state": {
+        "integrity": "ok",
+        "foreign_keys": [],
+        "user_version": 3,
+        "project_name": "modified after R3 migration",
+        "project": {
+          "status": "active",
+          "onboarding_state": "confirmed",
+          "confirmed_brief_revision": 1,
+          "confirmed_brief_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "workflow_draft_id": "wfd_r3_migration",
+          "name": "modified after R3 migration"
+        },
+        "intake": {
+          "status": "ready",
+          "mode": "existing",
+          "revision": 1,
+          "attempt": 0,
+          "completed_at": "2026-08-11T00:00:00.000Z"
+        },
+        "brief_head": {
+          "revision": 1,
+          "confirmed_revision": 1,
+          "confirmation_revision": 1,
+          "confirmed_by": "migration",
+          "confirmed_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        },
+        "connection": {
+          "id": "con_repo_r3_migration",
+          "source_kind": "git",
+          "source_locator": "https://HOST/TARGET.git",
+          "revision": 1,
+          "read_only": 1
+        },
+        "target": {
+          "id": "tgt_repo_r3_migration",
+          "baseline_sha": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "managed_relative_path": "projects/prj_r3_migration"
+        },
+        "line": {
+          "id": "lin_repo_r3_migration",
+          "line_kind": "managed_checkout",
+          "baseline_sha": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "managed_relative_path": "projects/prj_r3_migration",
+          "status": "ready"
+        },
+        "ledger": [
+          {
+            "version": 1,
+            "name": "initial_v3_schema",
+            "checksum": "49e206dad8a7b76051f6561aada0af375c164b5dd8bec7c9a615844f598ce8ca"
+          },
+          {
+            "version": 2,
+            "name": "identity_setup_providers",
+            "checksum": "474cd76da2e8be23a5c7b66fd46e5a0f2cb3db03213c20e4241694f677f966bc"
+          },
+          {
+            "version": 3,
+            "name": "project_repository_intake",
+            "checksum": "1c03a0fad89946a23f4dcd4874c2737f6597a002355264cd0412a90e5d86de6f"
+          }
+        ]
+      },
+      "project_backfill": {
+        "status": "active",
+        "onboarding_state": "confirmed",
+        "confirmed_brief_revision": 1,
+        "confirmed_brief_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "workflow_draft_id": "wfd_r3_migration",
+        "name": "modified after R3 migration"
+      },
+      "intake_backfill": {
+        "status": "ready",
+        "mode": "existing",
+        "revision": 1,
+        "attempt": 0,
+        "completed_at": "2026-08-11T00:00:00.000Z"
+      },
+      "brief_backfill": {
+        "revision": 1,
+        "confirmed_revision": 1,
+        "confirmation_revision": 1,
+        "confirmed_by": "migration",
+        "confirmed_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+      },
+      "repository_backfill": {
+        "connection": {
+          "id": "con_repo_r3_migration",
+          "source_kind": "git",
+          "source_locator": "https://HOST/TARGET.git",
+          "revision": 1,
+          "read_only": 1
+        },
+        "target": {
+          "id": "tgt_repo_r3_migration",
+          "baseline_sha": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "managed_relative_path": "projects/prj_r3_migration"
+        },
+        "line": {
+          "id": "lin_repo_r3_migration",
+          "line_kind": "managed_checkout",
+          "baseline_sha": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "managed_relative_path": "projects/prj_r3_migration",
+          "status": "ready"
+        }
+      }
+    },
+    "exit_status": 0
+  },
+  "rollback": {
+    "command": "restoreMigrationSnapshot({ file, manifestPath })",
+    "output": {
+      "status": "restored",
+      "sha256": "dbf0a0706029352caab8f7b0e0a3d594746dda33705185227158eb3affaf5afe",
+      "from_version": 2,
+      "integrity": "ok",
+      "foreign_keys": [],
+      "user_version": 2,
+      "project_name": "V2 backfill fixture",
+      "ledger": [
+        {
+          "version": 1,
+          "name": "initial_v3_schema",
+          "checksum": "49e206dad8a7b76051f6561aada0af375c164b5dd8bec7c9a615844f598ce8ca"
+        },
+        {
+          "version": 2,
+          "name": "identity_setup_providers",
+          "checksum": "474cd76da2e8be23a5c7b66fd46e5a0f2cb3db03213c20e4241694f677f966bc"
+        }
+      ]
+    },
+    "exit_status": 0
+  },
+  "hashes": {
+    "snapshot_sha256": "dbf0a0706029352caab8f7b0e0a3d594746dda33705185227158eb3affaf5afe",
+    "restored_database_sha256": "dbf0a0706029352caab8f7b0e0a3d594746dda33705185227158eb3affaf5afe"
+  }
+}

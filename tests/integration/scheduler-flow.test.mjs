@@ -65,8 +65,13 @@ async function domainFixture(options = {}) {
     runnerDigest: digest, codexAvailable: false, githubAvailable: false
   };
   const domain = new Domain({ db, config, broker });
-  const project = await domain.createProject({ name: 'Scheduler fixture', repository: options.fixtureRepository ? { source: { kind: 'fixture', id: 'designsignal-v1' } } : { local_path: 'projects/shared' } });
-  await domain.createBrief(project.id, { content: { objective: 'Verify repository scheduling' } });
+  let project = await domain.createProject({ name: 'Scheduler fixture', repository: options.fixtureRepository ? { source: { kind: 'fixture', id: 'designsignal-v1' } } : { local_path: 'projects/shared' } });
+  const started = await domain.startIntake(project.id, { expected_revision: project.revision });
+  const intake = await eventually(() => domain.getIntake(started.intake_id), (value) => ['ready', 'failed'].includes(value.status), 10_000);
+  assert.equal(intake.status, 'ready', JSON.stringify(intake));
+  const brief = await domain.createBrief(project.id, { content: { objective: 'Verify repository scheduling' } });
+  project = await domain.getProject(project.id);
+  project = await domain.confirmBrief(project.id, brief.revision, { expected_revision: project.revision, intake_revision: intake.revision });
   return { home, databaseFile, db, broker, config, domain, project };
 }
 

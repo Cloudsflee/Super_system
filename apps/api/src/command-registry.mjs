@@ -5,6 +5,29 @@ export function createCommandRegistry(domain) {
     ['project.create', (input, ctx) => domain.createProject(input, ctx)],
     ['project.update', (input, ctx) => domain.updateProject(input.project_id, input, ctx)],
     ['brief.create', (input, ctx) => domain.createBrief(input.project_id, input, ctx)],
+    ['intake.start', (input, ctx) => domain.startIntake(input.project_id, input, ctx)],
+    ['intake.retry', (input, ctx) => domain.retryIntake(input.intake_id, input, ctx)],
+    ['intake.cancel', (input, ctx) => domain.cancelIntake(input.intake_id, input, ctx)],
+    ['intake.resume', (input, ctx) => domain.resumeIntake(input.intake_id, input, ctx)],
+    ['intake.upload', (input, ctx) => domain.uploadIntake(input.intake_id, input, ctx)],
+    ['brief.confirm', (input, ctx) => domain.confirmBrief(input.project_id, input.brief_revision, input, ctx)],
+    ['project.archive', (input, ctx) => domain.archiveProject(input.project_id, input, ctx)],
+    ['project.trash', (input, ctx) => domain.trashProject(input.project_id, input, ctx)],
+    ['project.restore', (input, ctx) => domain.restoreProject(input.project_id, input, ctx)],
+    ['project.purge', (input, ctx) => domain.purgeProject(input.project_id, input, ctx)],
+    ['repository.connection.create', (input, ctx) => domain.createRepositoryConnection(input.project_id, input, ctx)],
+    ['repository.connection.update', (input, ctx) => domain.updateRepositoryConnection(input.connection_id, input, ctx)],
+    ['repository.connection.delete', (input, ctx) => domain.deleteRepositoryConnection(input.connection_id, input, ctx)],
+    ['repository.target.create', (input, ctx) => domain.createRepositoryTarget(input.connection_id, input, ctx)],
+    ['repository.target.update', (input, ctx) => domain.updateRepositoryTarget(input.target_id, input, ctx)],
+    ['repository.target.delete', (input, ctx) => domain.deleteRepositoryTarget(input.target_id, input, ctx)],
+    ['repository.line.create', (input, ctx) => domain.createRepositoryLine(input.project_id, input, ctx)],
+    ['repository.line.update', (input, ctx) => domain.updateRepositoryLine(input.line_id, input, ctx)],
+    ['repository.line.delete', (input, ctx) => domain.deleteRepositoryLine(input.line_id, input, ctx)],
+    ['repository.line.probe', (input, ctx) => domain.probeRepositoryLine(input.line_id, input, ctx)],
+    ['repository.line.recover', (input, ctx) => domain.recoverRepositoryLine(input.line_id, input, ctx)],
+    ['repository.line.sync', (input, ctx) => domain.syncRepositoryLine(input.line_id, input, ctx)],
+    ['repository.archive', (input, ctx) => domain.archiveRepository(input.project_id, input, ctx)],
     ['workflow.create', (input, ctx) => domain.createWorkflow(input.project_id, input, ctx)],
     ['context.source.create', (input, ctx) => domain.createContextSource(input.project_id, input, ctx)],
     ['context.pack.create', (input, ctx) => domain.createContextPack(input.project_id, input, ctx)],
@@ -60,7 +83,7 @@ export function createCommandRegistry(domain) {
     async execute(name, input = {}, ctx = {}) {
       const handler = commands.get(name);
       if (!handler) throw new AppError('unknown_command', `unknown command: ${name}`, { status: 404 });
-      await domain.assertCommandReady(name);
+      await domain.assertCommandReady(name, input);
       return handler(input, ctx);
     }
   };

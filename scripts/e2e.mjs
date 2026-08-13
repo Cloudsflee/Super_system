@@ -2,14 +2,11 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { generateKeyPairSync } from 'node:crypto';
-import { execFile, spawnSync } from 'node:child_process';
-import { promisify } from 'node:util';
+import { spawnSync } from 'node:child_process';
 import { chromium, expect } from '@playwright/test';
 import { start as startApi } from '../apps/api/server.mjs';
 import { BrokerClient } from '../apps/api/src/broker-client.mjs';
 import { start as startBroker } from '../apps/runner-broker/server.mjs';
-
-const execFileAsync = promisify(execFile);
 
 const build = spawnSync('corepack', ['pnpm', '--filter', '@aiws/web', 'build'], { cwd: process.cwd(), stdio: 'inherit', shell: process.platform === 'win32', windowsHide: true });
 if (build.status !== 0) process.exit(build.status || 1);
@@ -115,16 +112,6 @@ async function prepareSetupProviders() {
   await waitOperation(sync.operation_id);
 }
 
-async function initializeGitRepository(directory) {
-  await execFileAsync('git', ['init', directory], { windowsHide: true });
-  await execFileAsync('git', ['-C', directory, 'config', 'user.email', 'aiws-e2e@example.invalid'], { windowsHide: true });
-  await execFileAsync('git', ['-C', directory, 'config', 'user.name', 'AIWS E2E'], { windowsHide: true });
-  fs.writeFileSync(path.join(directory, 'README.md'), '# browser fixture\n', 'utf8');
-  await execFileAsync('git', ['-C', directory, 'add', 'README.md'], { windowsHide: true });
-  await execFileAsync('git', ['-C', directory, 'commit', '-m', 'browser baseline', '--no-gpg-sign'], { windowsHide: true });
-  fs.appendFileSync(path.join(directory, 'README.md'), 'browser change\n', 'utf8');
-}
-
 async function checkNoOverlap(page, viewport) {
   const overlap = await page.evaluate(() => {
     const elements = [...document.querySelectorAll('.topbar, .page-heading, .panel, .health-band, .execution-toolbar')].filter((element) => {
@@ -223,19 +210,49 @@ try {
   await page.getByLabel('Name', { exact: true }).fill('Browser journey');
   await page.getByLabel('Description', { exact: true }).fill('unique main journey');
   await page.getByRole('button', { name: 'Create project', exact: true }).click();
-  await expect(page.getByRole('status')).toHaveText('Project created');
+  await expect(page.getByRole('status')).toHaveText('Project draft created');
   const projects = await apiRequest('/api/v1/projects');
   const project = projects.body.find((entry) => entry.name === 'Browser journey');
   expect(project).toBeTruthy();
-  const repositoryDirectory = path.join(home, project.id.startsWith('prj_') ? 'projects' : '', project.id);
-  await initializeGitRepository(repositoryDirectory);
 
   await page.goto(`${base}/#/workflow`, { waitUntil: 'networkidle' });
   await expect(page.getByRole('heading', { name: 'Workflow' })).toBeVisible();
+  await expect(page.locator('.project-readiness')).toContainText('Project onboarding pending');
+  await expect(page.getByRole('button', { name: 'Save revision', exact: true })).toBeDisabled();
+  for (const [name, width, height] of setupViewports) {
+    await setViewport(page, width, height);
+    await checkNoOverlap(page, `${name}-project-gated`);
+    await page.screenshot({ path: path.join(reportDir, `${name}-project-gated.png`), fullPage: true });
+  }
+
+  await app.database.run("UPDATE project_intakes SET status='failed',attempt=1,revision=revision+1,error_code='repository_probe_failed',updated_at=? WHERE id=?", [new Date().toISOString(), project.intake.id]);
+  await app.database.run("UPDATE projects SET onboarding_state='failed',revision=revision+1,updated_at=? WHERE id=?", [new Date().toISOString(), project.id]);
+  await page.goto(`${base}/#/projects`, { waitUntil: 'networkidle' });
+  await expect(page.getByRole('button', { name: 'Retry intake', exact: true })).toBeVisible();
+  await expect(page.getByText('repository_probe_failed', { exact: true })).toBeVisible();
+  for (const [name, width, height] of setupViewports) {
+    await setViewport(page, width, height);
+    await checkNoOverlap(page, `${name}-project-failed`);
+    await page.screenshot({ path: path.join(reportDir, `${name}-project-failed.png`), fullPage: true });
+  }
+  await page.getByRole('button', { name: 'Retry intake', exact: true }).click();
+  await expect(page.locator('.intake-actions .inline-success')).toContainText('Ready', { timeout: 10_000 });
   await page.getByLabel('Objective', { exact: true }).fill('Ship a browser-verified change');
   await page.getByLabel('Acceptance', { exact: true }).fill('Execution completes\nDraft PR is reviewed');
-  await page.getByRole('button', { name: 'New revision', exact: true }).click();
-  await expect(page.getByRole('status')).toHaveText('Brief revision created');
+  await page.getByRole('button', { name: 'Save preview', exact: true }).click();
+  await expect(page.getByRole('status')).toHaveText('Brief preview created');
+  await page.getByRole('button', { name: 'Confirm revision', exact: true }).click();
+  await expect(page.getByRole('status')).toHaveText('Brief confirmed');
+  await expect(page.locator('.project-status-stack .status')).toContainText('active');
+  for (const [name, width, height] of setupViewports) {
+    await setViewport(page, width, height);
+    await checkNoOverlap(page, `${name}-project-confirmed`);
+    await page.screenshot({ path: path.join(reportDir, `${name}-project-confirmed.png`), fullPage: true });
+  }
+
+  await page.goto(`${base}/#/workflow`, { waitUntil: 'networkidle' });
+  await expect(page.getByRole('heading', { name: 'Workflow' })).toBeVisible();
+  await expect(page.locator('.project-readiness')).toHaveCount(0);
   await page.getByPlaceholder('Add repository constraint or implementation signal').fill('browser deterministic signal');
   await page.getByPlaceholder('Add repository constraint or implementation signal').press('Enter');
   await expect(page.getByRole('status')).toHaveText('Context source added');
@@ -249,10 +266,11 @@ try {
   await page.getByRole('button', { name: 'New execution', exact: true }).click();
   await expect(page.getByRole('status')).toHaveText('Execution created');
   await page.getByRole('button', { name: 'Run', exact: true }).click();
+  await expect(page.getByRole('status')).toHaveText('Execution started');
   await expect(page.getByText('completed', { exact: true }).first()).toBeVisible({ timeout: 15_000 });
   await expect(page.getByText('execution.completed', { exact: true })).toBeVisible({ timeout: 5_000 });
   await expect(page.getByRole('heading', { name: 'Git Diff' })).toBeVisible();
-  await expect(page.locator('.diff-panel pre')).toContainText('browser change');
+  await expect(page.locator('.diff-panel pre')).toContainText('deterministic runner output');
 
   await page.getByRole('button', { name: 'Open review', exact: true }).click();
   await expect(page.getByRole('status')).toHaveText('Review opened');
@@ -325,12 +343,22 @@ try {
     await checkNoOverlap(page, `${name}-terminals`);
     await page.screenshot({ path: path.join(reportDir, `${name}-terminals.png`), fullPage: true });
   }
+
+  await page.goto(`${base}/#/projects`, { waitUntil: 'networkidle' });
+  await page.getByRole('button', { name: 'Archive project', exact: true }).click();
+  await expect(page.getByRole('status')).toHaveText('archive completed', { timeout: 10_000 });
+  await expect(page.locator('.project-status-stack .status')).toContainText('archived');
+  for (const [name, width, height] of setupViewports) {
+    await setViewport(page, width, height);
+    await checkNoOverlap(page, `${name}-project-archived`);
+    await page.screenshot({ path: path.join(reportDir, `${name}-project-archived.png`), fullPage: true });
+  }
   if (pageErrors.length) throw new Error(`browser page errors: ${pageErrors.map((error) => error.message).join('; ')}`);
   const unexpectedConsoleErrors = [...consoleErrors];
   const expectedProviderFailure = unexpectedConsoleErrors.findIndex((message) => /status of 502 \(Bad Gateway\)/.test(message.text()));
   if (expectedProviderFailure >= 0) unexpectedConsoleErrors.splice(expectedProviderFailure, 1);
   if (unexpectedConsoleErrors.length) throw new Error(`browser console errors: ${unexpectedConsoleErrors.map((message) => message.text()).join('; ')}`);
-  process.stdout.write(`E2E passed: ${viewports.length} viewports, project ${project.id}, execution journey complete\n`);
+  process.stdout.write(`E2E passed: ${viewports.length} viewports, project ${project.id}, R3 onboarding and execution journey complete\n`);
 } finally {
   await browser.close();
   await app.close();

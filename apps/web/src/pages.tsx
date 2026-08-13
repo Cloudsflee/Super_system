@@ -6,6 +6,8 @@ import {
   Maximize2, RotateCcw, Keyboard
 } from 'lucide-react';
 import { api, formatBytes, formatTime, mutate, shortHash } from './api';
+import { ProjectOnboarding } from './features/project';
+import { RepositoryPanel } from './features/repository';
 import type { PageKey } from './App';
 import type {
   AssetVersion, AuditEvent, ContextPack, ContextSource, Delivery, Execution, Project, Review, TerminalApproval,
@@ -51,6 +53,23 @@ function EmptyProject({ navigate }: Pick<WorkspacePageProps, 'navigate'>) {
   );
 }
 
+function projectIsReady(project?: Project) {
+  return !project || (project.status === 'active' && project.onboarding_state === 'confirmed' && project.intake?.status === 'ready' && Boolean(project.confirmed_brief_revision || project.brief_head?.confirmed_revision));
+}
+
+function ProjectReadinessNotice({ project }: { project?: Project }) {
+  if (projectIsReady(project)) return null;
+  return (
+    <div className="project-readiness" role="status">
+      <CircleAlert size={17} />
+      <div>
+        <strong>Project onboarding pending</strong>
+        <span>{project?.intake?.status || project?.onboarding_state || project?.status}</span>
+      </div>
+    </div>
+  );
+}
+
 function useProjectBundle(projectId: string) {
   const [bundle, setBundle] = useState<Project | null>(null);
   const [loading, setLoading] = useState(false);
@@ -72,7 +91,7 @@ type AssistSessionBundle = AssistSessionMetadata & {
   turns: Array<{ id: string; turn_no: number; status: string; messages: Array<{ id: string; role: string; content: string }> }>;
 };
 
-export function AssistPage({ projectId, notify }: WorkspacePageProps) {
+export function AssistPage({ projectId, selectedProject, notify }: WorkspacePageProps) {
   const [sessions, setSessions] = useState<AssistSessionMetadata[]>([]);
   const [selectedId, setSelectedId] = useState('');
   const [bundle, setBundle] = useState<AssistSessionBundle | null>(null);
@@ -115,7 +134,8 @@ export function AssistPage({ projectId, notify }: WorkspacePageProps) {
     finally { setBusy(''); }
   };
   return <div className="page assist-page">
-    <div className="page-heading"><div><p className="eyebrow">Project Assist</p><h1>Assist Center</h1></div><button className="button primary" disabled={busy === 'session'} onClick={() => void createSession()}><Plus size={16} />New session</button></div>
+    <div className="page-heading"><div><p className="eyebrow">Project Assist</p><h1>Assist Center</h1></div><button className="button primary" disabled={busy === 'session' || !projectIsReady(selectedProject)} onClick={() => void createSession()}><Plus size={16} />New session</button></div>
+    <ProjectReadinessNotice project={selectedProject} />
     <div className="assist-layout">
       <section className="panel assist-sessions"><SectionTitle title="Sessions" meta={`${sessions.length} scopes`} /><div className="assist-session-list">
         {sessions.map((session) => <button key={session.id} className={session.id === selectedId ? 'assist-session selected' : 'assist-session'} onClick={() => setSelectedId(session.id)}><span><strong>{session.scope}</strong><small>{session.scope_id}</small></span><Status value={session.status} /></button>)}
@@ -138,6 +158,8 @@ export function ProjectsPage(props: WorkspacePageProps) {
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
   const [repoPath, setRepoPath] = useState('');
+  const [intakeMode, setIntakeMode] = useState<'brainstorm' | 'existing'>('brainstorm');
+  const [sourceKind, setSourceKind] = useState<'fixture' | 'local' | 'git'>('fixture');
   const [saving, setSaving] = useState(false);
   const load = useCallback(async () => setProjects(await api<Project[]>('/api/v1/projects')), []);
   useEffect(() => { void load(); }, [load]);
@@ -145,11 +167,14 @@ export function ProjectsPage(props: WorkspacePageProps) {
     event.preventDefault();
     setSaving(true);
     try {
-      const created = await mutate<Project>('/api/v1/projects', { name, description, repository: { local_path: repoPath || undefined } });
-      setName(''); setDescription(''); setRepoPath('');
+      const source = intakeMode === 'existing'
+        ? sourceKind === 'fixture' ? { kind: sourceKind, id: repoPath.trim() || 'designsignal-v1' } : sourceKind === 'local' ? { kind: sourceKind, path: repoPath.trim() } : { kind: sourceKind, url: repoPath.trim() }
+        : undefined;
+      const created = await mutate<Project>('/api/v1/projects', { name, description, mode: intakeMode, ...(source ? { repository: { source } } : {}) });
+      setName(''); setDescription(''); setRepoPath(''); setIntakeMode('brainstorm');
       selectProject(created.id);
       await Promise.all([load(), refreshProjects()]);
-      notify('Project created');
+      notify('Project draft created');
     } catch (error) { notify(error instanceof Error ? error.message : 'Project creation failed', 'error'); }
     finally { setSaving(false); }
   };
@@ -171,15 +196,20 @@ export function ProjectsPage(props: WorkspacePageProps) {
           </div>
         </section>
         <section className="panel create-project-panel">
-          <SectionTitle title="New project" meta="Local managed workspace" />
+          <SectionTitle title="New project" meta="Starts as a draft" />
           <form className="form-stack" onSubmit={(event) => void submit(event)}>
             <label><span>Name</span><input value={name} onChange={(event) => setName(event.target.value)} required maxLength={160} placeholder="DesignSignal" /></label>
             <label><span>Description</span><textarea value={description} onChange={(event) => setDescription(event.target.value)} rows={4} placeholder="Release validation workspace" /></label>
-            <label><span>Workspace path</span><input className="mono" value={repoPath} onChange={(event) => setRepoPath(event.target.value)} placeholder="projects/designsignal" /></label>
+            <div className="segmented" role="group" aria-label="Project intake mode"><button type="button" className={intakeMode === 'brainstorm' ? 'active' : ''} onClick={() => setIntakeMode('brainstorm')}>Brainstorm</button><button type="button" className={intakeMode === 'existing' ? 'active' : ''} onClick={() => setIntakeMode('existing')}>Existing source</button></div>
+            {intakeMode === 'existing' && <div className="source-controls"><select value={sourceKind} onChange={(event) => setSourceKind(event.target.value as typeof sourceKind)} aria-label="New project source kind"><option value="fixture">Fixture</option><option value="local">Local path</option><option value="git">HTTPS Git</option></select><input className="mono" value={repoPath} onChange={(event) => setRepoPath(event.target.value)} required placeholder={sourceKind === 'fixture' ? 'designsignal-v1' : sourceKind === 'local' ? 'C:\\imports\\repository' : 'https://github.com/ORG/REPO.git'} /></div>}
             <button className="button primary" disabled={saving || !name.trim()}>{saving ? <LoaderCircle className="spin" size={16} /> : <Plus size={16} />}Create project</button>
           </form>
         </section>
       </div>
+      {projects.find((project) => project.id === projectId) && <>
+        <ProjectOnboarding project={projects.find((project) => project.id === projectId)!} onChanged={async () => { await Promise.all([load(), refreshProjects()]); }} notify={notify} />
+        <RepositoryPanel project={projects.find((project) => project.id === projectId)!} onChanged={async () => { await Promise.all([load(), refreshProjects()]); }} notify={notify} />
+      </>}
     </div>
   );
 }
@@ -191,7 +221,7 @@ const DEFAULT_TASKS: WorkflowTask[] = [
   { id: 'implement', title: 'Implement and verify change', level: 2, deps: ['analyze'], mode: 'write', inputs: ['analysis.md'], outputs: ['change.diff', 'test-report.json'] }
 ];
 
-export function WorkflowPage({ projectId, navigate, notify }: WorkspacePageProps) {
+export function WorkflowPage({ projectId, selectedProject, navigate, notify }: WorkspacePageProps) {
   const { bundle, loading, reload } = useProjectBundle(projectId);
   const [objective, setObjective] = useState('');
   const [acceptance, setAcceptance] = useState('');
@@ -251,17 +281,18 @@ export function WorkflowPage({ projectId, navigate, notify }: WorkspacePageProps
   return (
     <div className="page">
       <div className="page-heading"><div><p className="eyebrow">{bundle?.name}</p><h1>Workflow</h1></div><div className="revision-pair"><span>Brief r{bundle?.brief?.revision || 0}</span><span>Workflow r{bundle?.workflow?.revision || 0}</span></div></div>
+      <ProjectReadinessNotice project={selectedProject} />
       <section className="panel brief-editor">
         <SectionTitle title="Project Brief" meta={bundle?.brief ? `Hash ${shortHash(bundle.brief.content_hash)}` : 'No revision'} action={<button className="button" disabled={busy === 'brief' || !objective.trim()} onClick={() => void saveBrief()}><Save size={16} />New revision</button>} />
         <div className="brief-grid"><label><span>Objective</span><textarea rows={4} value={objective} onChange={(event) => setObjective(event.target.value)} /></label><label><span>Acceptance</span><textarea rows={4} value={acceptance} onChange={(event) => setAcceptance(event.target.value)} placeholder={'Tests pass\nDraft PR reviewed'} /></label></div>
       </section>
       <section className="panel context-strip">
-        <SectionTitle title="AI Assist context" meta={`${sources.length} sources · ${packs.length} sealed packs`} action={<button className="button" disabled={!sources.length || busy === 'pack'} onClick={() => void makePack()}><PackageCheck size={16} />Seal pack</button>} />
-        <div className="assist-input"><WandSparkles size={18} /><input value={note} onChange={(event) => setNote(event.target.value)} placeholder="Add repository constraint or implementation signal" onKeyDown={(event) => { if (event.key === 'Enter') void addContext(); }} /><button className="icon-button" title="添加上下文" aria-label="添加上下文" disabled={!note.trim()} onClick={() => void addContext()}><Plus size={17} /></button></div>
+        <SectionTitle title="AI Assist context" meta={`${sources.length} sources · ${packs.length} sealed packs`} action={<button className="button" disabled={!sources.length || busy === 'pack' || !projectIsReady(selectedProject)} onClick={() => void makePack()}><PackageCheck size={16} />Seal pack</button>} />
+        <div className="assist-input"><WandSparkles size={18} /><input value={note} disabled={!projectIsReady(selectedProject)} onChange={(event) => setNote(event.target.value)} placeholder="Add repository constraint or implementation signal" onKeyDown={(event) => { if (event.key === 'Enter') void addContext(); }} /><button className="icon-button" title="添加上下文" aria-label="添加上下文" disabled={!note.trim() || !projectIsReady(selectedProject)} onClick={() => void addContext()}><Plus size={17} /></button></div>
         {packs[0] && <div className="pack-line"><Layers3 size={15} /><span className="mono">{shortHash(packs[0].pack_hash)}</span><span>{packs[0].source_ids.length} sources</span><Status value="sealed" /></div>}
       </section>
       <section className="panel workflow-editor">
-        <SectionTitle title="Dynamic two-level DAG" meta={`${tasks.length} tasks`} action={<button className="button primary" disabled={busy === 'workflow' || !bundle?.brief} onClick={() => void saveWorkflow()}><Save size={16} />Save revision</button>} />
+        <SectionTitle title="Dynamic two-level DAG" meta={`${tasks.length} tasks`} action={<button className="button primary" disabled={busy === 'workflow' || !bundle?.brief || !projectIsReady(selectedProject)} onClick={() => void saveWorkflow()}><Save size={16} />Save revision</button>} />
         <div className="workflow-name"><label><span>Name</span><input value={workflowName} onChange={(event) => setWorkflowName(event.target.value)} /></label></div>
         <div className="dag-workspace">
           <div className="dag-board">
@@ -288,7 +319,7 @@ export function WorkflowPage({ projectId, navigate, notify }: WorkspacePageProps
 
 type ExecutionEvent = { cursor: number; type: string; task_id?: string; created_at: string; data?: { phase?: string; summary?: string; exit_code?: number | null } };
 
-export function ExecutionPage({ projectId, navigate, notify }: WorkspacePageProps) {
+export function ExecutionPage({ projectId, selectedProject, navigate, notify }: WorkspacePageProps) {
   const { bundle } = useProjectBundle(projectId);
   const [executions, setExecutions] = useState<Execution[]>([]);
   const [selectedId, setSelectedId] = useState(() => sessionStorage.getItem(`aiws:v3:execution:${projectId}`) || '');
@@ -412,7 +443,8 @@ export function ExecutionPage({ projectId, navigate, notify }: WorkspacePageProp
   };
   return (
     <div className="page execution-page">
-      <div className="page-heading"><div><p className="eyebrow">{bundle?.name}</p><h1>Execution</h1></div><button className="button primary" disabled={!bundle?.brief || !bundle?.workflow || busy === 'create'} onClick={() => void createExecution()}><Plus size={16} />New execution</button></div>
+      <div className="page-heading"><div><p className="eyebrow">{bundle?.name}</p><h1>Execution</h1></div><button className="button primary" disabled={!bundle?.brief || !bundle?.workflow || busy === 'create' || !projectIsReady(selectedProject)} onClick={() => void createExecution()}><Plus size={16} />New execution</button></div>
+      <ProjectReadinessNotice project={selectedProject} />
       <div className="execution-toolbar">
         <label><span>Run</span><select value={selectedId} onChange={(event) => setSelectedId(event.target.value)}>{!executions.length && <option value="">No execution</option>}{executions.map((execution) => <option key={execution.id} value={execution.id}>{execution.id.slice(-8)} · {execution.status}</option>)}</select></label>
         {selected && <><Status value={selected.status} /><span className="pin"><span>Workflow</span>r{selected.workflow_revision}</span><span className="pin"><span>Brief</span>{shortHash(selected.brief_hash)}</span><span className="pin"><span>Repo</span>{shortHash(selected.repository_sha)}</span></>}
@@ -479,7 +511,7 @@ function clampTerminalDimension(value: number, minimum: number, maximum: number)
   return Math.max(minimum, Math.min(maximum, Math.trunc(value)));
 }
 
-export function TerminalPage({ projectId, navigate, notify }: WorkspacePageProps) {
+export function TerminalPage({ projectId, selectedProject, navigate, notify }: WorkspacePageProps) {
   const [capabilities, setCapabilities] = useState<TerminalCapabilities | null>(null);
   const [sessions, setSessions] = useState<TerminalSession[]>([]);
   const [selectedId, setSelectedId] = useState('');
@@ -676,6 +708,7 @@ export function TerminalPage({ projectId, navigate, notify }: WorkspacePageProps
         <div><p className="eyebrow">Interactive workspace</p><h1>Terminal</h1></div>
         <button className="icon-button" title="Refresh terminal state" aria-label="Refresh terminal state" onClick={() => void load()}><RefreshCw size={17} /></button>
       </div>
+      <ProjectReadinessNotice project={selectedProject} />
       <section className="health-band terminal-capabilities">
         <div><span>Transport</span><strong className="mono">{capabilities?.transport || 'checking'}</strong></div>
         <div><span>Host runtime</span><Status value={capabilities?.default_runtime || 'checking'} /></div>
@@ -699,9 +732,9 @@ export function TerminalPage({ projectId, navigate, notify }: WorkspacePageProps
             <div className="terminal-open-form">
               <label><span>Runtime</span><select value={runtime} onChange={(event) => setRuntime(event.target.value as TerminalRuntime)}>{(Object.keys(capabilities || {}).filter((key) => key.endsWith('_native')) as TerminalRuntime[]).map((item) => <option key={item} value={item} disabled={!capabilities?.[item]?.available}>{item.replace('_', ' ')}</option>)}</select></label>
               <label><span>Working directory</span><input className="mono" value={cwd} onChange={(event) => setCwd(event.target.value)} placeholder="project root" /></label>
-              <button className="button primary" disabled={!capabilities?.available || busy === 'request' || Boolean(activeSession)} onClick={() => void requestApproval()}>{busy === 'request' ? <LoaderCircle className="spin" size={16} /> : <ShieldCheck size={16} />}Request terminal access</button>
+              <button className="button primary" disabled={!capabilities?.available || busy === 'request' || Boolean(activeSession) || !projectIsReady(selectedProject)} onClick={() => void requestApproval()}>{busy === 'request' ? <LoaderCircle className="spin" size={16} /> : <ShieldCheck size={16} />}Request terminal access</button>
             </div>
-            <div className="terminal-approval-list"><div className="terminal-subheading"><span>Access requests</span><small>{pendingApprovals.length} pending · {approvedApprovals.length} approved</small></div>{approvals.map((approval) => <div className="terminal-approval-row" key={approval.id}><div><strong>{approval.request.runtime || runtime}</strong><small className="mono">{approval.id.slice(-12)}</small></div><Status value={approval.decision} />{approval.decision === 'pending' && <span className="terminal-approval-actions"><button className="button" disabled={busy === approval.id} onClick={() => void decideApproval(approval, 'rejected')}>Reject</button><button className="button primary" disabled={busy === approval.id} onClick={() => void decideApproval(approval, 'approved')}>Approve</button></span>}{approval.decision === 'approved' && <button className="button" disabled={busy === `open:${approval.id}` || Boolean(activeSession)} onClick={() => void openTerminal(approval)}>Open terminal</button>}</div>)}{!approvals.length && <div className="list-empty">Request an approval to begin</div>}</div>
+            <div className="terminal-approval-list"><div className="terminal-subheading"><span>Access requests</span><small>{pendingApprovals.length} pending · {approvedApprovals.length} approved</small></div>{approvals.map((approval) => <div className="terminal-approval-row" key={approval.id}><div><strong>{approval.request.runtime || runtime}</strong><small className="mono">{approval.id.slice(-12)}</small></div><Status value={approval.decision} />{approval.decision === 'pending' && <span className="terminal-approval-actions"><button className="button" disabled={busy === approval.id} onClick={() => void decideApproval(approval, 'rejected')}>Reject</button><button className="button primary" disabled={busy === approval.id} onClick={() => void decideApproval(approval, 'approved')}>Approve</button></span>}{approval.decision === 'approved' && <button className="button" disabled={busy === `open:${approval.id}` || Boolean(activeSession) || !projectIsReady(selectedProject)} onClick={() => void openTerminal(approval)}>Open terminal</button>}</div>)}{!approvals.length && <div className="list-empty">Request an approval to begin</div>}</div>
           </>}
           {selected && <>
             <pre className="terminal-output" ref={(element) => { outputRef.current = element; terminalViewportRef.current = element; }} tabIndex={0} role="log" aria-label="Terminal output" onKeyDown={handleOutputKeyDown}>{output || 'Waiting for shell output...'} </pre>

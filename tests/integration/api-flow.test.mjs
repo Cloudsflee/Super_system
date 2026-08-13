@@ -5,7 +5,7 @@ import path from 'node:path';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import test from 'node:test';
-import { eventually, fixture, mutate, request } from './helpers.mjs';
+import { eventually, fixture, mutate, onboardProject, request } from './helpers.mjs';
 
 const execFileAsync = promisify(execFile);
 
@@ -51,12 +51,14 @@ async function readSse(response, count = 1) {
 }
 
 async function initializeGitRepository(directory) {
-  await execFileAsync('git', ['init', directory], { windowsHide: true });
-  await execFileAsync('git', ['-C', directory, 'config', 'user.email', 'aiws-fixture@example.invalid'], { windowsHide: true });
-  await execFileAsync('git', ['-C', directory, 'config', 'user.name', 'AIWS Fixture'], { windowsHide: true });
-  fs.writeFileSync(path.join(directory, 'README.md'), '# fixture\n', 'utf8');
-  await execFileAsync('git', ['-C', directory, 'add', 'README.md'], { windowsHide: true });
-  await execFileAsync('git', ['-C', directory, 'commit', '-m', 'fixture baseline', '--no-gpg-sign'], { windowsHide: true });
+  if (!fs.existsSync(path.join(directory, '.git'))) {
+    await execFileAsync('git', ['init', directory], { windowsHide: true });
+    await execFileAsync('git', ['-C', directory, 'config', 'user.email', 'aiws-fixture@example.invalid'], { windowsHide: true });
+    await execFileAsync('git', ['-C', directory, 'config', 'user.name', 'AIWS Fixture'], { windowsHide: true });
+    fs.writeFileSync(path.join(directory, 'README.md'), '# fixture\n', 'utf8');
+    await execFileAsync('git', ['-C', directory, 'add', 'README.md'], { windowsHide: true });
+    await execFileAsync('git', ['-C', directory, 'commit', '-m', 'fixture baseline', '--no-gpg-sign'], { windowsHide: true });
+  }
   fs.appendFileSync(path.join(directory, 'README.md'), 'changed\n', 'utf8');
 }
 
@@ -81,13 +83,13 @@ test('public API completes the project-to-review delivery journey', async () => 
 
     const projectResponse = await mutate(env.base, '/api/v1/projects', { name: 'Integration project', description: 'fixture' }, 'project-create');
     assert.equal(projectResponse.response.status, 201);
-    const project = projectResponse.json;
+    const draftProject = projectResponse.json;
     const replay = await mutate(env.base, '/api/v1/projects', { name: 'Integration project', description: 'fixture' }, 'project-create');
-    assert.equal(replay.json.id, project.id);
+    assert.equal(replay.json.id, draftProject.id);
     const conflictingReplay = await mutate(env.base, '/api/v1/projects', { name: 'Different project' }, 'project-create');
     assert.equal(conflictingReplay.response.status, 409);
     assert.equal(conflictingReplay.json.error.code, 'idempotency_conflict');
-    await mutate(env.base, `/api/v1/projects/${project.id}/briefs`, { content: { objective: 'Ship a verified change', acceptance: ['passes'] } }, 'brief-create');
+    const { project } = await onboardProject(env.base, draftProject, { content: { objective: 'Ship a verified change', acceptance: ['passes'] }, keyPrefix: 'api-flow-onboarding' });
     await mutate(env.base, `/api/v1/projects/${project.id}/workflows`, { tasks: [{ id: 'inspect', title: 'Inspect', level: 1, mode: 'read' }, { id: 'write', title: 'Write', level: 2, deps: ['inspect'], mode: 'write' }] }, 'workflow-create');
     const source = await mutate(env.base, `/api/v1/projects/${project.id}/context/sources`, { kind: 'note', title: 'Signal', content: 'deterministic fixture' }, 'source-create');
     const fts = await request(env.base, `/api/v1/projects/${project.id}/context/sources?q=deterministic`);
@@ -112,6 +114,7 @@ test('public API completes the project-to-review delivery journey', async () => 
     assert.equal(diff.response.status, 200);
     assert.deepEqual(diff.json.files, ['README.md']);
     assert.match(diff.json.diff, /changed/);
+    await execFileAsync('git', ['-C', repositoryDirectory, 'checkout', '--', 'README.md'], { windowsHide: true });
     const executionResponse = await mutate(env.base, `/api/v1/projects/${project.id}/executions`, { context_pack_id: pack.json.id, asset_ids: [asset.json.id] }, 'execution-create');
     assert.equal(executionResponse.response.status, 201);
     const execution = executionResponse.json;
@@ -123,7 +126,7 @@ test('public API completes the project-to-review delivery journey', async () => 
     assert.equal(firstEvent.fields.event, firstEvent.data.type);
     assert.deepEqual(Object.keys(firstEvent.data).sort(), ['created_at', 'cursor', 'data', 'execution_id', 'task_id', 'type']);
     const started = await mutate(env.base, `/api/v1/executions/${execution.id}/start`, { expected_revision: execution.revision }, 'execution-start');
-    assert.equal(started.response.status, 201);
+    assert.equal(started.response.status, 201, JSON.stringify(started.json));
     const resumedEvents = await readSse(await fetch(`${env.base}/api/v1/executions/${execution.id}/events`, { headers: { 'Last-Event-ID': String(firstEvent.data.cursor) } }), 1);
     assert.ok(resumedEvents.every(({ data }) => data.cursor > firstEvent.data.cursor));
     const completed = await eventually(async () => (await request(env.base, `/api/v1/executions/${execution.id}`)).json, (value) => value.status === 'completed');
@@ -151,9 +154,9 @@ test('public API completes the project-to-review delivery journey', async () => 
     const mergedReplay = await mutate(env.base, `/api/v1/deliveries/${delivery.json.id}/merge`, { review_id: mergeReview.json.id }, 'delivery-merge');
     assert.equal(mergedReplay.response.status, 201);
     assert.equal(mergedReplay.json.status, 'merged');
-    const update = await mutate(env.base, `/api/v1/projects/${project.id}`, { expected_revision: 1, name: 'updated' }, 'project-update', 'PATCH');
-    assert.equal(update.response.status, 201);
-    const conflict = await mutate(env.base, `/api/v1/projects/${project.id}`, { expected_revision: 1, name: 'stale' }, 'project-update-stale', 'PATCH');
+    const update = await mutate(env.base, `/api/v1/projects/${project.id}`, { expected_revision: project.revision, name: 'updated' }, 'project-update', 'PATCH');
+    assert.equal(update.response.status, 200);
+    const conflict = await mutate(env.base, `/api/v1/projects/${project.id}`, { expected_revision: project.revision, name: 'stale' }, 'project-update-stale', 'PATCH');
     assert.equal(conflict.response.status, 409);
     assert.equal(conflict.json.error.code, 'revision_conflict');
     const projectAudit = (await request(env.base, '/api/v1/audit?limit=300')).json.filter((event) => event.action === 'project.updated' && event.entity_id === project.id);

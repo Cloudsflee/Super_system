@@ -13,12 +13,16 @@ import { TerminalService } from './terminal-service.mjs';
 import { SecretRegistry } from './secret-registry.mjs';
 import { IdentityService } from './modules/identity/service.mjs';
 import { OperationService } from './modules/operations/service.mjs';
-import { createR2Runtime, SETUP_GATED_COMMANDS } from './modules/r2-runtime.mjs';
+import { createR2Runtime, PROJECT_READY_COMMANDS, SETUP_GATED_COMMANDS } from './modules/r2-runtime.mjs';
 import { SetupService } from './modules/setup/service.mjs';
 import { CodexService } from './modules/setup/codex-service.mjs';
 import { GithubService } from './modules/setup/github-service.mjs';
 import { prepareOutcomeEvaluations } from './modules/outcome/evaluation.mjs';
 import { qualityReviewMediaKind } from './modules/quality/media-contract.mjs';
+import { ProjectService } from './modules/project/service.mjs';
+import { ProjectRepository } from './modules/project/repository.mjs';
+import { RepositoryService } from './modules/repository/service.mjs';
+import { WorkflowRepository } from './modules/workflow/repository.mjs';
 
 const TERMINAL_JOB_STATUSES = new Set(['completed', 'failed', 'cancelled', 'unknown']);
 const RUNNER_UID = 10001;
@@ -294,6 +298,32 @@ export class Domain {
     ]);
     this.identityService = new IdentityService({ db });
     this.operationService = new OperationService({ db, secrets: this.secretRegistry });
+    const projectRepository = new ProjectRepository(db);
+    const workflowRepository = new WorkflowRepository(db);
+    this.repositoryService = new RepositoryService({
+      db, config, operations: this.operationService,
+      emit: (event) => this.emit(event),
+      projectReader: async (projectId) => {
+        const project = await projectRepository.project(projectId);
+        return project?.status === 'purged' ? null : project;
+      }
+    });
+    this.projectService = new ProjectService({
+      db, config, operations: this.operationService, repositoryService: this.repositoryService,
+      workflowDraft: {
+        createStatement: (input) => workflowRepository.createDraftStatement(input),
+        updateBriefStatement: (input) => workflowRepository.updateDraftBriefStatement(input),
+        get: (workflowDraftId) => workflowRepository.draft(workflowDraftId),
+        latest: (projectId) => workflowRepository.latest(projectId)
+      },
+      executionReader: async (projectId, options = {}) => {
+        const executions = await this.listExecutions(projectId);
+        if (options.active) return executions.filter((item) => ['queued', 'running', 'awaiting_human'].includes(item.status)).length;
+        return options.limit ? executions.slice(0, options.limit) : executions;
+      },
+      eventFactory: (type, data) => eventStatement(type, null, null, data),
+      emit: (event) => this.emit(event)
+    });
     this.setupService = new SetupService({
       db, config, identity: this.identityService, operations: this.operationService, secrets: this.secretRegistry
     });
@@ -324,8 +354,7 @@ export class Domain {
   }
 
   async listProjects() {
-    const rows = await this.db.query('SELECT * FROM projects ORDER BY updated_at DESC');
-    return rows.map(projectView);
+    return this.projectService.listProjects();
   }
 
   async setupState() {
@@ -372,9 +401,15 @@ export class Domain {
     return this.secretRegistry.redactObject(value);
   }
 
-  async assertCommandReady(command) {
-    if (this.config.testOnlyBypassSetupGate === true || !SETUP_GATED_COMMANDS.has(command)) return null;
-    return this.setupService.assertReady(command);
+  async assertCommandReady(command, input = {}) {
+    let setup = null;
+    if (this.config.testOnlyBypassSetupGate !== true && SETUP_GATED_COMMANDS.has(command)) setup = await this.setupService.assertReady(command);
+    if (PROJECT_READY_COMMANDS.has(command)) {
+      let projectId = input.project_id || input.projectId || '';
+      if (!projectId && input.execution_id) projectId = (await this.db.get('SELECT project_id FROM executions WHERE id=?', [input.execution_id]))?.project_id || '';
+      if (projectId) await this.projectService.assertReady(projectId, { command });
+    }
+    return setup;
   }
 
   async listCredentials() {
@@ -580,104 +615,58 @@ export class Domain {
   }
 
   async getProject(projectId) {
-    const project = await this.db.get('SELECT * FROM projects WHERE id=?', [projectId]);
-    if (!project) throw new AppError('not_found', 'project not found');
-    const [brief, workflow, repository, executions] = await Promise.all([
-      this.db.get('SELECT * FROM brief_revisions WHERE project_id=? ORDER BY revision DESC LIMIT 1', [projectId]),
-      this.db.get('SELECT * FROM workflow_revisions WHERE project_id=? ORDER BY revision DESC LIMIT 1', [projectId]),
-      this.db.get('SELECT * FROM repository_bindings WHERE project_id=?', [projectId]),
-      this.db.query('SELECT * FROM executions WHERE project_id=? ORDER BY created_at DESC LIMIT 20', [projectId])
-    ]);
-    const executionViews = await Promise.all(executions.map((execution) => this.getExecution(execution.id, { includeEvidence: false })));
-    return {
-      ...projectView(project),
-      brief: briefView(brief),
-      workflow: workflowView(workflow),
-      repository: repository ? {
-        ...repository,
-        source: repository.remote_url.startsWith('fixture://')
-          ? { kind: 'fixture', id: repository.remote_url.slice('fixture://'.length) }
-          : null
-      } : null,
-      executions: executionViews
-    };
+    return this.projectService.getProject(projectId);
   }
 
   async createProject(input, ctx = {}) {
-    const name = String(input?.name || '').trim();
-    assert(name.length > 0, 'invalid_input', 'project name is required');
-    const projectId = id('prj');
-    const repositoryId = id('repo');
-    const timestamp = now();
-    const source = input?.repository?.source;
-    if (source != null) {
-      assert(source && typeof source === 'object' && !Array.isArray(source) && source.kind === 'fixture' && source.id === 'designsignal-v1', 'invalid_input', 'repository source is not supported', { status: 422 });
-      assert(Object.keys(source).every((key) => key === 'kind' || key === 'id'), 'invalid_input', 'repository source contains unsupported fields', { status: 422 });
-    }
-    const localPath = source?.kind === 'fixture'
-      ? `projects/${projectId}`
-      : input?.repository?.local_path
-        ? normalizeRelativePath(input.repository.local_path)
-        : `projects/${projectId}`;
-    const workspacePath = resolveWorkspacePath(this.config.home, localPath);
-    fs.mkdirSync(workspacePath, { recursive: true, mode: 0o770 });
-    grantRunnerPath(workspacePath, { directory: true });
-    let headSha = '';
-    if (source?.kind === 'fixture') {
-      headSha = await initializeFixture(workspacePath, source.id);
-    } else {
-      headSha = await gitHead(workspacePath);
-    }
-    const statements = [
-      { sql: 'INSERT INTO projects(id,name,description,status,revision,created_at,updated_at) VALUES(?,?,?,?,?,?,?)', params: [projectId, name, String(input.description || ''), 'active', 1, timestamp, timestamp] },
-      { sql: 'INSERT INTO repository_bindings(id,project_id,local_path,remote_url,head_sha,revision,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?)', params: [repositoryId, projectId, localPath, source?.kind === 'fixture' ? `fixture://${source.id}` : String(input?.repository?.remote_url || ''), headSha, 1, timestamp, timestamp] },
-      auditStatement('project.created', 'project', projectId, { name }, ctx.actor)
-    ];
-    await this.db.transaction(statements);
-    return this.getProject(projectId);
+    return this.projectService.createProject(input, ctx);
   }
 
   async updateProject(projectId, input, ctx = {}) {
-    const expected = Number(input?.expected_revision);
-    assert(Number.isInteger(expected) && expected > 0, 'invalid_input', 'expected_revision is required');
-    const timestamp = now();
-    try {
-      await this.db.transaction([
-        { sql: 'UPDATE projects SET name=COALESCE(?,name), description=COALESCE(?,description), revision=revision+1, updated_at=? WHERE id=? AND revision=?', params: [input.name == null ? null : String(input.name).trim(), input.description == null ? null : String(input.description), timestamp, projectId, expected], expect_changes: 1 },
-        auditStatement('project.updated', 'project', projectId, { expected_revision: expected }, ctx.actor)
-      ]);
-    } catch (error) {
-      if (!isTransactionPrecondition(error)) throw error;
-      const exists = await this.db.get('SELECT id FROM projects WHERE id=?', [projectId]);
-      if (!exists) throw new AppError('not_found', 'project not found');
-      throw new AppError('revision_conflict', 'project revision has changed', { details: { expected_revision: expected } });
-    }
-    return this.getProject(projectId);
+    return this.projectService.updateProject(projectId, input, ctx);
   }
 
   async listBriefs(projectId) {
-    await this.requireProject(projectId);
-    return (await this.db.query('SELECT * FROM brief_revisions WHERE project_id=? ORDER BY revision DESC', [projectId])).map(briefView);
+    return this.projectService.listBriefs(projectId);
   }
 
   async createBrief(projectId, input, ctx = {}) {
-    await this.requireProject(projectId);
-    const content = input?.content && typeof input.content === 'object' ? input.content : {
-      objective: String(input?.objective || ''),
-      constraints: Array.isArray(input?.constraints) ? input.constraints : [],
-      acceptance: Array.isArray(input?.acceptance) ? input.acceptance : []
-    };
-    assert(String(content.objective || '').trim().length > 0, 'invalid_input', 'brief objective is required');
-    const revision = Number((await this.db.get('SELECT COALESCE(MAX(revision),0)+1 AS revision FROM brief_revisions WHERE project_id=?', [projectId])).revision);
-    const briefHash = hashJson(content);
-    const timestamp = now();
-    await this.db.transaction([
-      { sql: 'INSERT INTO brief_revisions(project_id,revision,content_json,content_hash,created_at) VALUES(?,?,?,?,?)', params: [projectId, revision, asJson(content), briefHash, timestamp] },
-      { sql: 'INSERT INTO brief_heads(project_id,revision,updated_at) VALUES(?,?,?) ON CONFLICT(project_id) DO UPDATE SET revision=excluded.revision,updated_at=excluded.updated_at', params: [projectId, revision, timestamp] },
-      auditStatement('brief.created', 'project', projectId, { revision, brief_hash: briefHash }, ctx.actor)
-    ]);
-    return briefView(await this.db.get('SELECT * FROM brief_revisions WHERE project_id=? AND revision=?', [projectId, revision]));
+    return this.projectService.createBrief(projectId, input, ctx);
   }
+
+  async listIntakes(projectId) { return this.projectService.listIntakes(projectId); }
+  async getIntake(intakeId) { return this.projectService.getIntake(intakeId); }
+  async startIntake(projectId, input, ctx = {}) { return this.projectService.startIntake(projectId, input, ctx); }
+  async retryIntake(intakeId, input, ctx = {}) { return this.projectService.retryIntake(intakeId, input, ctx); }
+  async cancelIntake(intakeId, input, ctx = {}) { return this.projectService.cancelIntake(intakeId, input, ctx); }
+  async resumeIntake(intakeId, input, ctx = {}) { return this.projectService.resumeIntake(intakeId, input, ctx); }
+  async uploadIntake(intakeId, input, ctx = {}) { return this.projectService.uploadIntake(intakeId, input, ctx); }
+  async getBrief(projectId, revision) { return this.projectService.getBrief(projectId, revision); }
+  async confirmBrief(projectId, revision, input, ctx = {}) { return this.projectService.confirmBrief(projectId, revision, input, ctx); }
+  async archiveProject(projectId, input, ctx = {}) { return this.projectService.archiveProject(projectId, input, ctx); }
+  async trashProject(projectId, input, ctx = {}) { return this.projectService.trashProject(projectId, input, ctx); }
+  async restoreProject(projectId, input, ctx = {}) { return this.projectService.restoreProject(projectId, input, ctx); }
+  async purgeProject(projectId, input, ctx = {}) { return this.projectService.purgeProject(projectId, input, ctx); }
+
+  async listRepositoryConnections(projectId) { return this.repositoryService.listConnections(projectId); }
+  async getRepositoryConnection(connectionId) { return this.repositoryService.getConnection(connectionId); }
+  async createRepositoryConnection(projectId, input, ctx = {}) { return this.repositoryService.createConnection(projectId, input, ctx); }
+  async updateRepositoryConnection(connectionId, input, ctx = {}) { return this.repositoryService.updateConnection(connectionId, input, ctx); }
+  async deleteRepositoryConnection(connectionId, input, ctx = {}) { return this.repositoryService.deleteConnection(connectionId, input, ctx); }
+  async listRepositoryTargets(connectionId) { return this.repositoryService.listTargets(connectionId); }
+  async getRepositoryTarget(targetId) { return this.repositoryService.getTarget(targetId); }
+  async createRepositoryTarget(connectionId, input, ctx = {}) { return this.repositoryService.createTarget(connectionId, input, ctx); }
+  async updateRepositoryTarget(targetId, input, ctx = {}) { return this.repositoryService.updateTarget(targetId, input, ctx); }
+  async deleteRepositoryTarget(targetId, input, ctx = {}) { return this.repositoryService.deleteTarget(targetId, input, ctx); }
+  async listRepositoryLines(projectId) { return this.repositoryService.listLines(projectId); }
+  async getRepositoryLine(lineId) { return this.repositoryService.getLine(lineId); }
+  async createRepositoryLine(projectId, input, ctx = {}) { return this.repositoryService.createLine(projectId, input, ctx); }
+  async updateRepositoryLine(lineId, input, ctx = {}) { return this.repositoryService.updateLine(lineId, input, ctx); }
+  async deleteRepositoryLine(lineId, input, ctx = {}) { return this.repositoryService.deleteLine(lineId, input, ctx); }
+  async probeRepositoryLine(lineId, input, ctx = {}) { return this.repositoryService.probeLine(lineId, input, ctx); }
+  async recoverRepositoryLine(lineId, input, ctx = {}) { return this.repositoryService.recoverLine(lineId, input, ctx); }
+  async syncRepositoryLine(lineId, input, ctx = {}) { return this.repositoryService.syncLine(lineId, input, ctx); }
+  async archiveRepository(projectId, input, ctx = {}) { return this.repositoryService.archiveProject(projectId, input, ctx); }
 
   async listWorkflows(projectId) {
     await this.requireProject(projectId);
@@ -721,7 +710,7 @@ export class Domain {
 
   async generateWorkflow(projectId, input, ctx = {}) {
     await this.requireProject(projectId);
-    const brief = await this.db.get('SELECT revision,content_json,content_hash FROM brief_revisions WHERE project_id=? ORDER BY revision DESC LIMIT 1', [projectId]);
+    const brief = await this.confirmedBrief(projectId);
     assert(brief, 'invalid_input', 'a brief is required before workflow generation', { status: 422 });
     const generationId = id('wgen');
     const candidate = {};
@@ -777,7 +766,7 @@ export class Domain {
     const scopeId = String(input?.scope_id || projectId).trim();
     assert(scopeId.length >= 1 && scopeId.length <= 160, 'invalid_input', 'Assist scope_id is required', { status: 422 });
     const [brief, workflow, repository] = await Promise.all([
-      this.db.get('SELECT revision,content_hash FROM brief_revisions WHERE project_id=? ORDER BY revision DESC LIMIT 1', [projectId]),
+      this.confirmedBrief(projectId),
       this.db.get('SELECT revision,graph_hash FROM workflow_revisions WHERE project_id=? ORDER BY revision DESC LIMIT 1', [projectId]),
       this.db.get('SELECT head_sha FROM repository_bindings WHERE project_id=?', [projectId])
     ]);
@@ -1377,7 +1366,7 @@ export class Domain {
       sources: sources.map((source) => ({ id: source.id, title: source.title, path: source.path, content: source.content })),
       selection: { schema_version: 'aiws.context_selection.v2', mode: String(input?.selection || 'explicit'), source_ids: sources.map((source) => source.id) },
       retrieval_plan: input?.retrieval_plan && typeof input.retrieval_plan === 'object' ? input.retrieval_plan : { strategy: 'explicit', token_budget: 12000 },
-      memory_manifest: { brief_revision: Number((await this.db.get('SELECT revision FROM brief_revisions WHERE project_id=? ORDER BY revision DESC LIMIT 1', [projectId]))?.revision || 0), source_hashes: Object.fromEntries(sources.map((source) => [source.id, source.content_hash])) }
+      memory_manifest: { brief_revision: Number((await this.confirmedBrief(projectId))?.revision || 0), source_hashes: Object.fromEntries(sources.map((source) => [source.id, source.content_hash])) }
     };
     const packId = id('pack');
     const packHash = hashJson(pack);
@@ -1545,12 +1534,14 @@ export class Domain {
     const workflow = input?.workflow_revision
       ? await this.db.get('SELECT * FROM workflow_revisions WHERE project_id=? AND revision=?', [projectId, Number(input.workflow_revision)])
       : await this.db.get('SELECT * FROM workflow_revisions WHERE project_id=? ORDER BY revision DESC LIMIT 1', [projectId]);
-    const brief = input?.brief_revision
-      ? await this.db.get('SELECT * FROM brief_revisions WHERE project_id=? AND revision=?', [projectId, Number(input.brief_revision)])
-      : await this.db.get('SELECT * FROM brief_revisions WHERE project_id=? ORDER BY revision DESC LIMIT 1', [projectId]);
+    const brief = await this.confirmedBrief(projectId);
     const repository = await this.db.get('SELECT * FROM repository_bindings WHERE project_id=?', [projectId]);
     assert(workflow, 'invalid_input', 'a workflow revision is required');
-    assert(brief, 'invalid_input', 'a brief revision is required');
+    assert(brief, 'invalid_input', 'a confirmed brief revision is required');
+    if (input?.brief_revision != null) {
+      const requestedBriefRevision = Number(input.brief_revision);
+      assert(Number.isInteger(requestedBriefRevision) && requestedBriefRevision === Number(brief.revision), 'invalid_input', 'brief_revision must reference the confirmed brief revision', { status: 422 });
+    }
     const contextPack = input?.context_pack_id ? await this.db.get('SELECT * FROM context_packs WHERE id=? AND project_id=?', [input.context_pack_id, projectId]) : null;
     if (input?.context_pack_id && !contextPack) throw new AppError('not_found', 'context pack not found');
     const requestedAssets = Array.isArray(input?.asset_ids) ? [...new Set(input.asset_ids.map(String))] : [];
@@ -2051,7 +2042,9 @@ export class Domain {
     this.stopping = false;
     await this.identityService.initialize();
     await this.setupService.initialize();
+    await this.projectService.recover();
     await this.operationService.recover();
+    await this.repositoryService.recoverInterrupted();
     await this.terminals.recover();
     const pendingProjections = await this.db.query("SELECT id,project_id FROM context_projection_jobs WHERE status IN ('pending','running') ORDER BY created_at,id");
     for (const job of pendingProjections) {
@@ -2083,6 +2076,12 @@ export class Domain {
     const project = await this.db.get('SELECT id FROM projects WHERE id=?', [projectId]);
     if (!project) throw new AppError('not_found', 'project not found');
     return project;
+  }
+
+  async confirmedBrief(projectId) {
+    return this.db.get(`SELECT brief.* FROM projects project
+      JOIN brief_revisions brief ON brief.project_id=project.id AND brief.revision=project.confirmed_brief_revision
+      WHERE project.id=?`, [projectId]);
   }
 
   async driveExecution(executionId, mode, instruction = '') {

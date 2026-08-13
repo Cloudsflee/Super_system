@@ -1,12 +1,12 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { fixture, mutate, request } from './helpers.mjs';
+import { fixture, mutate, onboardProject, request } from './helpers.mjs';
 
 test('runtime approvals, user inputs, and UI proposals persist decisions and audit events', async () => {
   const env = await fixture();
   try {
     const project = await mutate(env.base, '/api/v1/projects', { name: 'Approval fixture' }, 'approval-project');
-    await mutate(env.base, `/api/v1/projects/${project.json.id}/briefs`, { content: { objective: 'Exercise approval contracts' } }, 'approval-brief');
+    await onboardProject(env.base, project, { content: { objective: 'Exercise approval contracts' }, keyPrefix: 'approval-onboarding' });
     await mutate(env.base, `/api/v1/projects/${project.json.id}/workflows`, { tasks: [{ id: 'inspect', title: 'Inspect', level: 1, mode: 'read', deps: [] }] }, 'approval-workflow');
     const execution = await mutate(env.base, `/api/v1/projects/${project.json.id}/executions`, {}, 'approval-execution');
 

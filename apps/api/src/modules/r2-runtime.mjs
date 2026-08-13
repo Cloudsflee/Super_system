@@ -1,7 +1,11 @@
 import { QueryRegistry } from './query-registry.mjs';
 import { RouteRegistry } from './route-registry.mjs';
+import { PROJECT_ROUTES, projectQueries } from './project/runtime.mjs';
+import { REPOSITORY_ROUTES, repositoryQueries } from './repository/runtime.mjs';
 
 const ROUTES = Object.freeze([
+  ...PROJECT_ROUTES,
+  ...REPOSITORY_ROUTES,
   { method: 'GET', path: 'account', query: 'account.get' },
   { method: 'PATCH', path: 'account', command: 'account.update' },
   { method: 'GET', path: 'sessions', query: 'sessions.list' },
@@ -49,8 +53,17 @@ export const SETUP_GATED_COMMANDS = Object.freeze(new Set([
   'delivery.create', 'delivery.merge', 'delivery.retry'
 ]));
 
+export const PROJECT_READY_COMMANDS = Object.freeze(new Set([
+  'workflow.create', 'workflow.generate', 'node_contract.create',
+  'outcome_requirement.create', 'execution.create', 'execution.start',
+  'execution.cancel', 'execution.evidence.resolve', 'outcome.evaluate',
+  'outcome.waive', 'delivery.create', 'delivery.merge', 'delivery.retry'
+]));
+
 export function createR2Runtime(domain) {
   const queries = new QueryRegistry([
+    ...projectQueries(domain),
+    ...repositoryQueries(domain),
     ['account.get', () => domain.identityService.account()],
     ['sessions.list', () => domain.identityService.listSessions()],
     ['setup.get', () => domain.setupService.setupState()],

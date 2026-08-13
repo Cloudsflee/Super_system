@@ -12,6 +12,13 @@ export class OperationService {
     this.cancelExternal = cancelExternal;
     this.resumeExternal = resumeExternal;
     this.active = new Map();
+    this.handlers = new Map();
+  }
+
+  registerHandler(kind, handler = {}) {
+    assert(/^[a-z][a-z0-9._-]{2,100}$/.test(String(kind)), 'invalid_input', 'operation kind is invalid', { status: 422 });
+    this.handlers.set(String(kind), Object.freeze({ cancel: handler.cancel, recover: handler.recover }));
+    return this;
   }
 
   async create({ kind, resourceType = '', resourceId = '', actor = 'usr_local_owner', executor }) {
@@ -46,6 +53,7 @@ export class OperationService {
         });
       }
       const context = {
+        operationId,
         signal: controller.signal,
         emit: (type, data = {}) => this.emit(operationId, type, data),
         setExternalRef: async (value) => this.repository.setExternalRef(operationId, String(value || '').slice(0, 300), this.clock()),
@@ -105,16 +113,21 @@ export class OperationService {
       throw error;
     }
     this.active.get(operationId)?.abort();
-    if (current.external_ref) await this.cancelExternal(current.kind, current.external_ref).catch(() => undefined);
+    const handler = this.handlers.get(current.kind);
+    if (typeof handler?.cancel === 'function') await handler.cancel(current, this).catch(() => undefined);
+    else if (current.external_ref) await this.cancelExternal(current.kind, current.external_ref).catch(() => undefined);
     return this.get(operationId);
   }
 
   async recover() {
     const pending = await this.repository.pending();
     for (const operation of pending) {
-      const resumed = operation.external_ref
-        ? await this.resumeExternal(operation, this).catch(() => false)
-        : false;
+      const handler = this.handlers.get(operation.kind);
+      const resumed = typeof handler?.recover === 'function'
+        ? await handler.recover(operation, this).catch(() => false)
+        : operation.external_ref
+          ? await this.resumeExternal(operation, this).catch(() => false)
+          : false;
       if (typeof resumed === 'function') {
         queueMicrotask(() => this.run(operation.id, resumed, { resume: true }));
         continue;

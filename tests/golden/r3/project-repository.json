@@ -1,0 +1,198 @@
+{
+  "schema_version": "aiws.v3.r3_golden.v1",
+  "source_commit": "7f204dee3684c8a4ce044e9b535ea4563958d902",
+  "extraction": {
+    "mode": "ephemeral_local_runtime",
+    "executed_runtime": true,
+    "network": "loopback_only"
+  },
+  "source_files": [
+    {
+      "path": "apps/api/src/command-registry.mjs",
+      "sha256": "9bfcf264f1c930404a65f54a275fbd7e93f2bbf47b1b5b3d971bc4a1a2416bc1"
+    },
+    {
+      "path": "apps/api/src/http-body.mjs",
+      "sha256": "8753feb2736d75f9ba5c05e9cc8b9fdf2de46bbd3446dff7404339b8b1ac6f86"
+    },
+    {
+      "path": "apps/api/src/http.mjs",
+      "sha256": "1c9cfa5bdf2ec45421d6efe38ee5253d7a1507acc9de742a13f1111adef74847"
+    },
+    {
+      "path": "apps/api/src/modules/operations/service.mjs",
+      "sha256": "e2c989d1e8fd81ee8aa269eb50d81e82af86f37a8317e38f93a909c311d0c9c9"
+    },
+    {
+      "path": "apps/api/src/modules/project/repository.mjs",
+      "sha256": "069981702dc80007e82738706e600db6b33a48e52117a48ecbba0f3d1399f436"
+    },
+    {
+      "path": "apps/api/src/modules/project/service.mjs",
+      "sha256": "ecd8c33f37cd51073839d03976d56e35fda63bcb1f57f1040cbb8a7c44205331"
+    },
+    {
+      "path": "apps/api/src/modules/repository/adapter.mjs",
+      "sha256": "4d579b0d7cee6a1f024b8264216b22938cfb63f8cd466b5e6283107a23c38644"
+    },
+    {
+      "path": "apps/api/src/modules/repository/repository.mjs",
+      "sha256": "c318fd5a693cbe3aa0beba1fb4a4f8db4c54f8ea7fecbac9fd44d96c27e0fcdd"
+    },
+    {
+      "path": "apps/api/src/modules/repository/service.mjs",
+      "sha256": "b9ff667d6fbf8fc3fbfd3405802246b83e8cd8d776f203ea9050ab659db9c489"
+    }
+  ],
+  "contracts": [
+    {
+      "id": "project-create-idempotency",
+      "feature_id": "REC-D5-PROJECT-005",
+      "cases": [
+        {
+          "id": "same-key-replay",
+          "input": {
+            "name": "R3 golden project",
+            "mode": "existing",
+            "source_kind": "local"
+          },
+          "output": {
+            "first_status": 201,
+            "replay_status": 201,
+            "same_project_id": true,
+            "project_status": "draft",
+            "project_revision": 1,
+            "intake_status": "draft",
+            "brief_revision": 1,
+            "workflow_source_brief_revision": 0
+          }
+        }
+      ]
+    },
+    {
+      "id": "intake-recovery",
+      "feature_id": "REC-D5-PROJECT-005",
+      "cases": [
+        {
+          "id": "cancel-resume",
+          "output": {
+            "cancelled_status": "cancelled",
+            "receipt_status": "running",
+            "operation_status": "completed",
+            "same_intake_id": true,
+            "ready_status": "ready",
+            "attempt": 1,
+            "revision_advanced": true
+          }
+        },
+        {
+          "id": "failed-retry",
+          "output": {
+            "prior_status": "failed",
+            "prior_error_code": "repository_probe_failed",
+            "receipt_status": "running",
+            "operation_status": "completed",
+            "same_intake_id": true,
+            "ready_status": "ready",
+            "attempt": 2
+          }
+        }
+      ]
+    },
+    {
+      "id": "brief-confirmation",
+      "feature_id": "REC-D5-PROJECT-005",
+      "cases": [
+        {
+          "id": "stale-and-idempotent-confirm",
+          "output": {
+            "stale_status": 409,
+            "stale_error_code": "revision_conflict",
+            "stale_current_revision": 3,
+            "latest_revision": 3,
+            "confirmed_status": "active",
+            "onboarding_state": "confirmed",
+            "confirmed_brief_revision": 3,
+            "workflow_source_brief_revision": 3,
+            "replay_status": 200,
+            "replay_preserved_project_revision": true
+          }
+        }
+      ]
+    },
+    {
+      "id": "repository-line-recovery",
+      "feature_id": "REC-D7-REPOSITORY-014",
+      "cases": [
+        {
+          "id": "probe-fault-recover",
+          "output": {
+            "line_kinds": [
+              "external_readonly",
+              "managed_checkout",
+              "managed_staging"
+            ],
+            "probe_operation_status": "failed",
+            "probe_error_code": "repository_line_fault",
+            "fault_status": "fault",
+            "fault_code": "repository_line_fault",
+            "recovery_operation_status": "completed",
+            "recovered_status": "ready",
+            "recovered_fault_code": ""
+          }
+        },
+        {
+          "id": "restart-interruption-recover",
+          "output": {
+            "interrupted_operation_status": "failed",
+            "interrupted_operation_error": "operation_interrupted",
+            "interrupted_line_status": "fault",
+            "interrupted_line_fault": "repository_line_interrupted",
+            "recovery_operation_status": "completed",
+            "final_line_status": "ready",
+            "final_fault_code": ""
+          }
+        }
+      ]
+    },
+    {
+      "id": "project-lifecycle",
+      "feature_id": "REC-D5-PROJECT-005",
+      "cases": [
+        {
+          "id": "archive-trash-restore-purge",
+          "output": {
+            "archive_operation_status": "completed",
+            "archived_status": "archived",
+            "trash_operation_status": "completed",
+            "trashed_status": "trashed",
+            "restore_operation_status": "completed",
+            "restored_status": "active",
+            "purge_mismatch_status": 409,
+            "purge_mismatch_error": "project_purge_confirmation_mismatch",
+            "purge_operation_status": "completed",
+            "purged_read_status": 404,
+            "external_source_unchanged": true
+          }
+        }
+      ]
+    },
+    {
+      "id": "repository-source-drift",
+      "feature_id": "REC-D7-REPOSITORY-014",
+      "cases": [
+        {
+          "id": "local-manifest-changed",
+          "output": {
+            "hash_changed": true,
+            "revision_changed": true,
+            "error_code": "intake_source_changed",
+            "error_status": 409,
+            "source_kind": "local"
+          }
+        }
+      ]
+    }
+  ],
+  "fixture_sha256": "3ac41884a2997d7cefc7562117f31c276bb23eadf45fd3eec7f4b7b40faf5173"
+}

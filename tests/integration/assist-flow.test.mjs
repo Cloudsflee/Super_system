@@ -1,13 +1,13 @@
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
 import test from 'node:test';
-import { fixture, mutate, request } from './helpers.mjs';
+import { fixture, mutate, onboardProject, request } from './helpers.mjs';
 
 test('four-level Assist sessions persist scope snapshots, native events, and replay cursors', async () => {
   const env = await fixture();
   try {
     const project = await mutate(env.base, '/api/v1/projects', { name: 'Assist fixture' }, 'assist-project');
-    const brief = await mutate(env.base, `/api/v1/projects/${project.json.id}/briefs`, { content: { objective: 'Exercise Assist', acceptance: ['events replay'] } }, 'assist-brief');
+    const { brief } = await onboardProject(env.base, project, { content: { objective: 'Exercise Assist', acceptance: ['events replay'] }, keyPrefix: 'assist-onboarding' });
     const workflow = await mutate(env.base, `/api/v1/projects/${project.json.id}/workflows`, { tasks: [
       { id: 'inspect', title: 'Inspect', level: 1, mode: 'read', deps: [], outputs: ['analysis.md'] },
       { id: 'change', title: 'Change', level: 2, mode: 'write', deps: ['inspect'], inputs: ['analysis.md'], outputs: ['change.diff'] }
@@ -19,7 +19,7 @@ test('four-level Assist sessions persist scope snapshots, native events, and rep
       const created = await mutate(env.base, '/api/v1/assist/sessions', { project_id: project.json.id, scope, scope_id: scopeId }, `assist-session-${scope}`);
       assert.equal(created.response.status, 201);
       assert.equal(created.json.scope, scope);
-      assert.equal(created.json.snapshot.brief_hash, brief.json.content_hash);
+      assert.equal(created.json.snapshot.brief_hash, brief.content_hash);
       assert.equal(created.json.snapshot.workflow_revision, workflow.json.revision);
       sessions.push(created.json);
     }

@@ -1,20 +1,19 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { eventually, fixture, mutate, request } from './helpers.mjs';
+import { eventually, fixture, mutate, onboardProject, request } from './helpers.mjs';
 
 test('unavailable workflow generation stays explicit while manual workflow and evidence-backed outcome persist', async () => {
   const env = await fixture();
   try {
     const project = await mutate(env.base, '/api/v1/projects', { name: 'Generated workflow' }, 'generation-project');
-    const brief = await mutate(env.base, `/api/v1/projects/${project.json.id}/briefs`, { content: { objective: 'Build a deterministic fixture workflow', acceptance: ['tests pass'] } }, 'generation-brief');
-    assert.equal(brief.response.status, 201);
+    const { brief } = await onboardProject(env.base, project, { content: { objective: 'Build a deterministic fixture workflow', acceptance: ['tests pass'] }, keyPrefix: 'workflow-recovery-onboarding' });
     const generated = await mutate(env.base, `/api/v1/projects/${project.json.id}/workflow-generations`, { name: 'Generated fixture' }, 'generation-run');
     assert.equal(generated.response.status, 201);
     assert.equal(generated.json.status, 'failed');
     assert.equal(generated.json.critic.status, 'not_run');
     assert.deepEqual(generated.json.candidate, {});
     assert.deepEqual(generated.json.critic.issues, ['workflow_generator_unavailable']);
-    assert.equal(generated.json.critic.brief_hash, brief.json.content_hash);
+    assert.equal(generated.json.critic.brief_hash, brief.content_hash);
 
     const tasks = [
       { id: 'analyze', title: 'Analyze brief and repository', level: 1, deps: [], mode: 'read', inputs: [], outputs: ['analysis.md'] },
@@ -63,6 +62,55 @@ test('unavailable workflow generation stays explicit while manual workflow and e
 
     const noBrief = await mutate(env.base, '/api/v1/projects', { name: 'No brief generation' }, 'generation-no-brief-project');
     const rejected = await mutate(env.base, `/api/v1/projects/${noBrief.json.id}/workflow-generations`, {}, 'generation-no-brief');
+    assert.equal(rejected.response.status, 409);
+    assert.equal(rejected.json.error.code, 'project_not_ready');
+  } finally { await env.close(); }
+});
+
+test('unconfirmed brief previews never replace the confirmed business snapshot', async () => {
+  const env = await fixture();
+  try {
+    const draft = await mutate(env.base, '/api/v1/projects', { name: 'Confirmed brief snapshot' }, 'confirmed-snapshot-project');
+    const onboarded = await onboardProject(env.base, draft, {
+      content: { objective: 'Confirmed objective', acceptance: ['confirmed'] },
+      keyPrefix: 'confirmed-snapshot-onboarding'
+    });
+    const preview = await mutate(env.base, `/api/v1/projects/${draft.json.id}/briefs`, {
+      content: { objective: 'Unconfirmed objective', acceptance: ['preview only'] }
+    }, 'confirmed-snapshot-preview');
+    assert.equal(preview.response.status, 201);
+    assert.notEqual(preview.json.content_hash, onboarded.brief.content_hash);
+
+    const generated = await mutate(env.base, `/api/v1/projects/${draft.json.id}/workflow-generations`, {}, 'confirmed-snapshot-generation');
+    assert.equal(generated.response.status, 201);
+    assert.equal(generated.json.brief_revision, onboarded.brief.revision);
+    assert.equal(generated.json.critic.brief_hash, onboarded.brief.content_hash);
+
+    const workflow = await mutate(env.base, `/api/v1/projects/${draft.json.id}/workflows`, {
+      tasks: [{ id: 'inspect', title: 'Inspect', level: 1, mode: 'read' }]
+    }, 'confirmed-snapshot-workflow');
+    const source = await mutate(env.base, `/api/v1/projects/${draft.json.id}/context/sources`, {
+      kind: 'note', title: 'Pinned context', content: 'fixture'
+    }, 'confirmed-snapshot-source');
+    const pack = await mutate(env.base, `/api/v1/projects/${draft.json.id}/context/packs`, {
+      source_ids: [source.json.id]
+    }, 'confirmed-snapshot-pack');
+    assert.equal(pack.json.pack.memory_manifest.brief_revision, onboarded.brief.revision);
+
+    const assist = await mutate(env.base, '/api/v1/assist/sessions', {
+      project_id: draft.json.id, scope: 'workflow', scope_id: String(workflow.json.revision)
+    }, 'confirmed-snapshot-assist');
+    assert.equal(assist.json.snapshot.brief_revision, onboarded.brief.revision);
+    assert.equal(assist.json.snapshot.brief_hash, onboarded.brief.content_hash);
+
+    const rejected = await mutate(env.base, `/api/v1/projects/${draft.json.id}/executions`, {
+      brief_revision: preview.json.revision
+    }, 'confirmed-snapshot-execution-preview');
     assert.equal(rejected.response.status, 422);
+    assert.equal(rejected.json.error.code, 'invalid_input');
+    const execution = await mutate(env.base, `/api/v1/projects/${draft.json.id}/executions`, {}, 'confirmed-snapshot-execution');
+    assert.equal(execution.response.status, 201);
+    assert.equal(execution.json.brief_revision, onboarded.brief.revision);
+    assert.equal(execution.json.brief_hash, onboarded.brief.content_hash);
   } finally { await env.close(); }
 });

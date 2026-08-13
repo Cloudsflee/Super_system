@@ -5,12 +5,44 @@ export interface Project {
   id: string;
   name: string;
   description: string;
-  status: 'active' | 'archived';
+  status: 'draft' | 'active' | 'archived' | 'trashed' | 'purged';
+  onboarding_state?: 'draft' | 'running' | 'ready' | 'failed' | 'cancelled' | 'confirmed';
+  confirmed_brief_revision?: number | null;
+  confirmed_brief_hash?: string;
   revision: number;
   updated_at: string;
   brief?: Brief | null;
+  brief_head?: { revision: number; confirmed_revision?: number | null; confirmation_revision?: number; confirmed_hash?: string; confirmed_at?: string | null; confirmed_by?: string | null } | null;
+  intake?: ProjectIntake | null;
+  workflow_draft?: WorkflowDraft | null;
   workflow?: Workflow | null;
   repository?: RepositoryBinding | null;
+  repository_connections?: RepositoryConnection[];
+  repository_lines?: RepositoryLine[];
+}
+
+export interface ProjectIntake {
+  id: string;
+  project_id: string;
+  status: 'draft' | 'running' | 'ready' | 'failed' | 'cancelled';
+  mode: 'brainstorm' | 'existing';
+  revision: number;
+  attempt: number;
+  operation_id?: string | null;
+  source?: { kind: string; display_label?: string; revision?: string; hash?: string; read_only?: boolean };
+  result?: Record<string, unknown>;
+  error_code?: string;
+  completed_at?: string | null;
+  cancelled_at?: string | null;
+}
+
+export interface WorkflowDraft {
+  id: string;
+  project_id: string;
+  revision: number;
+  source_brief_revision: number;
+  source_brief_hash?: string;
+  status: string;
 }
 
 export interface Brief {
@@ -27,6 +59,49 @@ export interface RepositoryBinding {
   remote_url: string;
   head_sha: string;
   revision: number;
+  status?: string;
+  baseline_sha?: string;
+  connection_id?: string | null;
+  target_id?: string | null;
+  line_id?: string | null;
+  source?: { kind: string; display_label?: string; revision?: string; hash?: string; read_only?: boolean } | null;
+  fault_code?: string;
+  fault?: Record<string, unknown>;
+}
+
+export interface RepositoryConnection {
+  id: string;
+  project_id: string;
+  provider?: string;
+  status: string;
+  revision: number;
+  source_kind?: string;
+  display_label?: string;
+  source_revision?: string;
+  source_hash?: string;
+  read_only?: boolean;
+  fault_code?: string;
+  fault?: Record<string, unknown>;
+}
+
+export interface RepositoryLine {
+  id: string;
+  project_id: string;
+  target_id?: string | null;
+  line_kind: 'external_readonly' | 'managed_staging' | 'managed_checkout';
+  branch?: string;
+  head_sha?: string;
+  baseline_sha?: string;
+  status: string;
+  revision: number;
+  source_revision?: string;
+  source_hash?: string;
+  probe_status?: string;
+  probe?: Record<string, unknown>;
+  fault_code?: string;
+  fault?: Record<string, unknown>;
+  locked?: boolean;
+  last_manifest_hash?: string;
 }
 
 export interface WorkflowTask {

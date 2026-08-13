@@ -29,6 +29,22 @@ async function eventually(read, predicate, timeout = 4_000) {
   return read();
 }
 
+async function onboardProject(base, project) {
+  const started = await mutate(base, `/api/v1/projects/${project.id}/intakes`, { mode: project.intake.mode, expected_revision: project.revision }, 'credential-intake');
+  const operation = await eventually(
+    async () => (await fetch(`${base}/api/v1/operations/${started.operation_id}`)).json(),
+    (value) => ['completed', 'failed', 'cancelled'].includes(value.status),
+    10_000
+  );
+  assert.equal(operation.status, 'completed', JSON.stringify(operation));
+  const brief = await mutate(base, `/api/v1/projects/${project.id}/briefs`, { content: { objective: 'Verify credential isolation', acceptance: ['node_test'] } }, 'credential-brief');
+  const current = await (await fetch(`${base}/api/v1/projects/${project.id}`)).json();
+  return mutate(base, `/api/v1/projects/${project.id}/briefs/${brief.revision}/confirm`, {
+    expected_revision: current.revision,
+    intake_revision: current.intake.revision
+  }, 'credential-confirm');
+}
+
 function walkFiles(directory) {
   if (!fs.existsSync(directory)) return [];
   return fs.readdirSync(directory, { withFileTypes: true }).flatMap((entry) => {
@@ -69,8 +85,8 @@ test('ephemeral Codex credentials never enter state, events, errors, Broker stat
     }, 'credential-profile');
     assert.equal(profile.is_active, true);
 
-    const project = await mutate(base, '/api/v1/projects', { name: 'Credential boundary', repository: { source: { kind: 'fixture', id: 'designsignal-v1' } } }, 'credential-project');
-    await mutate(base, `/api/v1/projects/${project.id}/briefs`, { content: { objective: 'Verify credential isolation', acceptance: ['node_test'] } }, 'credential-brief');
+    const draftProject = await mutate(base, '/api/v1/projects', { name: 'Credential boundary', repository: { source: { kind: 'fixture', id: 'designsignal-v1' } } }, 'credential-project');
+    const project = await onboardProject(base, draftProject);
     await mutate(base, `/api/v1/projects/${project.id}/workflows`, { tasks: [{ id: 'inspect', title: 'Inspect', level: 1, mode: 'read', outputs: ['analysis.md'] }] }, 'credential-workflow');
     const execution = await mutate(base, `/api/v1/projects/${project.id}/executions`, {}, 'credential-execution');
     await mutate(base, `/api/v1/executions/${execution.id}/start`, { expected_revision: execution.revision }, 'credential-start');

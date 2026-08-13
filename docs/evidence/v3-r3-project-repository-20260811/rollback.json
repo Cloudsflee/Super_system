@@ -1,0 +1,38 @@
+{
+  "schema_version": "aiws.v3.recovery_rollback_receipt.v1",
+  "status": "passed",
+  "baseline_commit": "7f204dee3684c8a4ce044e9b535ea4563958d902",
+  "patch_sha256": "6c73fd4b6bd6534dce38bcc0b8e6552fc0d713a14ab1e868037af83e7f6c1c87",
+  "workspace": "detached temporary worktree",
+  "commands": [
+    {
+      "command": "git.exe worktree add --detach C:\\Users\\CLOUDS~1\\AppData\\Local\\Temp\\aiws-v3-r3-project-repository-20260811-rollback-2544-423a7714-04cc-4fe5-999c-412e228da88d 7f204dee3684c8a4ce044e9b535ea4563958d902",
+      "exit_status": 0,
+      "stdout": "HEAD is now at 7f204de fix: harden R2 setup lifecycle\n",
+      "stderr": "Preparing worktree (detached HEAD 7f204de)\n"
+    },
+    {
+      "command": "git.exe -C C:\\Users\\CLOUDS~1\\AppData\\Local\\Temp\\aiws-v3-r3-project-repository-20260811-rollback-2544-423a7714-04cc-4fe5-999c-412e228da88d apply --check E:\\00_desktop\\毕业设计\\docs\\evidence\\v3-r3-project-repository-20260811\\change.patch",
+      "exit_status": 0,
+      "stdout": "",
+      "stderr": ""
+    },
+    {
+      "command": "git.exe -C C:\\Users\\CLOUDS~1\\AppData\\Local\\Temp\\aiws-v3-r3-project-repository-20260811-rollback-2544-423a7714-04cc-4fe5-999c-412e228da88d apply E:\\00_desktop\\毕业设计\\docs\\evidence\\v3-r3-project-repository-20260811\\change.patch",
+      "exit_status": 0,
+      "stdout": "",
+      "stderr": ""
+    },
+    {
+      "command": "powershell.exe -NoProfile -ExecutionPolicy Bypass -File E:\\00_desktop\\毕业设计\\docs\\evidence\\v3-r3-project-repository-20260811\\rollback.ps1 -Workspace C:\\Users\\CLOUDS~1\\AppData\\Local\\Temp\\aiws-v3-r3-project-repository-20260811-rollback-2544-423a7714-04cc-4fe5-999c-412e228da88d -SkipVerify",
+      "exit_status": 0,
+      "stdout": "rollback passed\r\n",
+      "stderr": ""
+    }
+  ],
+  "modified_status_before_rollback": " M apps/api/src/command-registry.mjs\n M apps/api/src/config.mjs\n M apps/api/src/domain.mjs\n M apps/api/src/http-body.mjs\n M apps/api/src/http.mjs\n M apps/api/src/migration-service.mjs\n M apps/api/src/migrations/index.mjs\n M apps/api/src/modules/operations/service.mjs\n M apps/api/src/modules/project/index.mjs\n M apps/api/src/modules/r2-runtime.mjs\n M apps/api/src/modules/repository/index.mjs\n M apps/api/src/schema.mjs\n M apps/web/src/pages.tsx\n M apps/web/src/styles.css\n M apps/web/src/types.ts\n M feature-catalog.json\n M package.json\n M pnpm-lock.yaml\n M scripts/e2e.mjs\n M scripts/recovery-evidence.mjs\n M scripts/recovery-golden.mjs\n M tests/integration/api-flow.test.mjs\n M tests/integration/approval-flow.test.mjs\n M tests/integration/assist-flow.test.mjs\n M tests/integration/context-recovery.test.mjs\n M tests/integration/debt-regression.test.mjs\n M tests/integration/file-changes.test.mjs\n M tests/integration/helpers.mjs\n M tests/integration/real-slice.test.mjs\n M tests/integration/scheduler-flow.test.mjs\n M tests/integration/terminal-flow.test.mjs\n M tests/integration/workflow-recovery.test.mjs\n M tests/security/credentials.test.mjs\n M tests/unit/database.test.mjs\n M tests/unit/migrations.test.mjs\n M tests/unit/recovery-golden.test.mjs\n?? apps/api/src/migrations/003-project-repository-intake.mjs\n?? apps/api/src/modules/project/repository.mjs\n?? apps/api/src/modules/project/runtime.mjs\n?? apps/api/src/modules/project/service.mjs\n?? apps/api/src/modules/repository/adapter.mjs\n?? apps/api/src/modules/repository/repository.mjs\n?? apps/api/src/modules/repository/runtime.mjs\n?? apps/api/src/modules/repository/service.mjs\n?? apps/api/src/modules/workflow/repository.mjs\n?? apps/web/src/features/project/\n?? apps/web/src/features/repository/\n?? apps/web/src/test/project-onboarding.test.tsx\n?? scripts/r3-migration-evidence.mjs\n?? tests/golden/r3/\n?? tests/integration/project-repository-r3.test.mjs\n?? tests/security/project-repository.test.mjs\n",
+  "final_status": "",
+  "final_diff_exit_status": 0,
+  "data_rollback_probe": "node --test tests/unit/migrations.test.mjs",
+  "created_at": "2026-08-13T14:10:03.670Z"
+}

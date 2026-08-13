@@ -10,6 +10,9 @@ import { discoveryRevisionFixture } from '../apps/api/src/modules/setup/codex-di
 import { SetupService } from '../apps/api/src/modules/setup/service.mjs';
 import { createGithubAppJwt, verifyGithubWebhook } from '../apps/api/src/modules/setup/github-service.mjs';
 import { qualityReviewMediaKind as v3QualityReviewMediaKind } from '../apps/api/src/modules/quality/media-contract.mjs';
+import { assertIntakeSourceStable } from '../apps/api/src/modules/project/service.mjs';
+import { manifestDirectory, probeRepositorySource } from '../apps/api/src/modules/repository/adapter.mjs';
+import { eventually, fixture, mutate, request } from '../tests/integration/helpers.mjs';
 
 const root = process.cwd();
 const mode = process.argv[2] || 'verify';
@@ -17,12 +20,24 @@ const requestedBatch = process.argv[3] || null;
 const V23_SOURCE_COMMIT = 'e18dc0b';
 const V23_FIXTURE = path.join(root, 'tests', 'golden', 'v23', 'r0-r1.json');
 const R2_FIXTURE = path.join(root, 'tests', 'golden', 'r2', 'identity-setup.json');
+const R3_FIXTURE = path.join(root, 'tests', 'golden', 'r3', 'project-repository.json');
 const R2_SOURCE_FILES = Object.freeze([
   'packages/contracts/src/codex-device-auth.mjs',
   'apps/api/src/modules/setup/codex-discovery.mjs',
   'apps/api/src/modules/setup/codex-service.mjs',
   'apps/api/src/modules/setup/service.mjs',
   'apps/api/src/modules/setup/github-service.mjs'
+]);
+const R3_SOURCE_FILES = Object.freeze([
+  'apps/api/src/command-registry.mjs',
+  'apps/api/src/http-body.mjs',
+  'apps/api/src/http.mjs',
+  'apps/api/src/modules/operations/service.mjs',
+  'apps/api/src/modules/project/repository.mjs',
+  'apps/api/src/modules/project/service.mjs',
+  'apps/api/src/modules/repository/adapter.mjs',
+  'apps/api/src/modules/repository/repository.mjs',
+  'apps/api/src/modules/repository/service.mjs'
 ]);
 const mediaCases = Object.freeze([
   { id: 'markdown', input: { file_path: 'notes.md', media_type: 'text/markdown', has_body: true } },
@@ -41,7 +56,8 @@ const mediaCases = Object.freeze([
 
 const batches = Object.freeze({
   'v23-r0-r1': { fixture: V23_FIXTURE, kind: 'v23' },
-  'r2-identity-setup': { fixture: R2_FIXTURE, kind: 'r2' }
+  'r2-identity-setup': { fixture: R2_FIXTURE, kind: 'r2' },
+  'r3-project-repository': { fixture: R3_FIXTURE, kind: 'r3' }
 });
 
 if (mode === 'extract') await extract(requestedBatch);
@@ -53,7 +69,9 @@ async function extract(batchName = null) {
   const results = [];
   for (const name of names) {
     const config = batches[name];
-    results.push(config.kind === 'v23' ? await extractV23(config.fixture) : await extractR2(config.fixture));
+    if (config.kind === 'v23') results.push(await extractV23(config.fixture));
+    else if (config.kind === 'r2') results.push(await extractR2(config.fixture));
+    else results.push(await extractR3(config.fixture));
   }
   process.stdout.write(`${JSON.stringify({ status: 'extracted', batches: results }, null, 2)}\n`);
 }
@@ -142,6 +160,23 @@ async function extractR2(fixturePath) {
   return { batch: 'r2-identity-setup', fixture: relative(fixturePath), fixture_sha256: fixture.fixture_sha256, contracts: payload.contracts.length };
 }
 
+async function extractR3(fixturePath) {
+  const sourceCommit = runGit(['rev-parse', 'HEAD']).stdout.trim();
+  const sourceFiles = R3_SOURCE_FILES.map((file) => ({ path: file, sha256: sha256(fs.readFileSync(path.join(root, file))) }));
+  const contracts = await replayR3Contracts();
+  const payload = {
+    schema_version: 'aiws.v3.r3_golden.v1',
+    source_commit: sourceCommit,
+    extraction: { mode: 'ephemeral_local_runtime', executed_runtime: true, network: 'loopback_only' },
+    source_files: sourceFiles,
+    contracts
+  };
+  const fixture = { ...payload, fixture_sha256: sha256(JSON.stringify(payload)) };
+  fs.mkdirSync(path.dirname(fixturePath), { recursive: true });
+  fs.writeFileSync(fixturePath, `${JSON.stringify(fixture, null, 2)}\n`);
+  return { batch: 'r3-project-repository', fixture: relative(fixturePath), fixture_sha256: fixture.fixture_sha256, contracts: contracts.length, cases: contractCaseCount(contracts) };
+}
+
 async function verify(batchName = null) {
   const names = selectBatches(batchName);
   const results = [];
@@ -152,7 +187,9 @@ async function verify(batchName = null) {
 
 async function configureVerify(name) {
   const config = batches[name];
-  return config.kind === 'v23' ? verifyV23(config.fixture) : await verifyR2(config.fixture);
+  if (config.kind === 'v23') return verifyV23(config.fixture);
+  if (config.kind === 'r2') return verifyR2(config.fixture);
+  return verifyR3(config.fixture);
 }
 
 function verifyV23(fixturePath) {
@@ -198,6 +235,301 @@ async function verifyR2(fixturePath) {
   const signatureValue = `sha256=${createHmac('sha256', secret).update(body).digest('hex')}`;
   if (!webhook || sha256(body) !== webhook.body_sha256 || verifyGithubWebhook(secret, body, signatureValue) !== webhook.valid || verifyGithubWebhook(secret, Buffer.from('{"action":"changed"}'), signatureValue) !== webhook.tampered) throw new Error('r2_webhook_golden_mismatch');
   return { batch: 'r2-identity-setup', fixture: relative(fixturePath), fixture_sha256: recorded, contracts: fixture.contracts.length };
+}
+
+async function verifyR3(fixturePath) {
+  const fixture = JSON.parse(fs.readFileSync(fixturePath, 'utf8'));
+  const { fixture_sha256: recorded, ...payload } = fixture;
+  if (fixture.schema_version !== 'aiws.v3.r3_golden.v1' || fixture.extraction?.mode !== 'ephemeral_local_runtime' || fixture.extraction?.executed_runtime !== true || fixture.extraction?.network !== 'loopback_only') throw new Error('r3_golden_identity_invalid');
+  if (sha256(JSON.stringify(payload)) !== recorded) throw new Error('r3_golden_checksum_invalid');
+  for (const source of fixture.source_files || []) if (sha256(fs.readFileSync(path.join(root, source.path))) !== source.sha256) throw new Error(`r3_golden_source_changed:${source.path}`);
+  const serialized = JSON.stringify(fixture);
+  if (/(?:source_locator|managed_relative_path|local_path|remote_url)/i.test(serialized)) throw new Error('r3_golden_private_path_exposed');
+  const actual = await replayR3Contracts();
+  if (JSON.stringify(actual) !== JSON.stringify(fixture.contracts)) throw new Error('r3_golden_behavior_mismatch');
+  return { batch: 'r3-project-repository', fixture: relative(fixturePath), fixture_sha256: recorded, contracts: fixture.contracts.length, cases: contractCaseCount(fixture.contracts) };
+}
+
+async function replayR3Contracts() {
+  const sourceRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'aiws-r3-golden-source-'));
+  fs.writeFileSync(path.join(sourceRoot, 'README.md'), '# R3 golden source\n', 'utf8');
+  fs.mkdirSync(path.join(sourceRoot, 'src'));
+  fs.writeFileSync(path.join(sourceRoot, 'src', 'fixture.txt'), 'stable\n', 'utf8');
+  const originalSourceHash = manifestDirectory(sourceRoot).hash;
+  let env;
+  try {
+    env = await quietFixture({ config: { projectImportRoots: [sourceRoot] } });
+    const createInput = {
+      name: 'R3 golden project',
+      description: 'Deterministic Project and Repository contract',
+      repository: { source: { kind: 'local', path: sourceRoot } }
+    };
+    const created = await mutate(env.base, '/api/v1/projects', createInput, 'r3-golden-create');
+    const createReplay = await mutate(env.base, '/api/v1/projects', createInput, 'r3-golden-create');
+    goldenRequire(created.response.status === 201 && createReplay.response.status === 201, 'create_status');
+    goldenRequire(created.json.id === createReplay.json.id, 'create_idempotency');
+
+    const initialIntakeId = created.json.intake.id;
+    const cancelled = await mutate(env.base, `/api/v1/intakes/${initialIntakeId}/cancel`, {
+      expected_revision: created.json.intake.revision
+    }, 'r3-golden-cancel');
+    goldenRequire(cancelled.response.status === 202 && cancelled.json.status === 'cancelled', 'cancel_state');
+    const resumed = await mutate(env.base, `/api/v1/intakes/${initialIntakeId}/resume`, {
+      expected_revision: cancelled.json.revision
+    }, 'r3-golden-resume');
+    goldenRequire(resumed.response.status === 202, 'resume_receipt');
+    const resumeOperation = await goldenWaitOperation(env.base, resumed.json.operation_id);
+    const ready = (await request(env.base, `/api/v1/projects/${created.json.id}`)).json;
+    goldenRequire(resumeOperation.status === 'completed' && ready.intake.status === 'ready', 'resume_completion');
+
+    const retryDraft = await mutate(env.base, '/api/v1/projects', { name: 'R3 golden retry' }, 'r3-golden-retry-create');
+    goldenRequire(retryDraft.response.status === 201, 'retry_create');
+    await env.app.database.run("UPDATE project_intakes SET status='failed',attempt=1,revision=revision+1,error_code='repository_probe_failed',updated_at=? WHERE id=?", ['2026-08-11T00:00:00.000Z', retryDraft.json.intake.id]);
+    await env.app.database.run("UPDATE projects SET onboarding_state='failed',revision=revision+1,updated_at=? WHERE id=?", ['2026-08-11T00:00:00.000Z', retryDraft.json.id]);
+    const failed = (await request(env.base, `/api/v1/projects/${retryDraft.json.id}`)).json;
+    const retried = await mutate(env.base, `/api/v1/intakes/${failed.intake.id}/retry`, {
+      expected_revision: failed.intake.revision
+    }, 'r3-golden-retry');
+    goldenRequire(retried.response.status === 202, 'retry_receipt');
+    const retryOperation = await goldenWaitOperation(env.base, retried.json.operation_id);
+    const retryReady = (await request(env.base, `/api/v1/projects/${retryDraft.json.id}`)).json;
+    goldenRequire(retryOperation.status === 'completed' && retryReady.intake.status === 'ready', 'retry_completion');
+
+    const firstBrief = await mutate(env.base, `/api/v1/projects/${created.json.id}/briefs`, {
+      content: { objective: 'Superseded preview' }
+    }, 'r3-golden-brief-first');
+    const secondBrief = await mutate(env.base, `/api/v1/projects/${created.json.id}/briefs`, {
+      content: { objective: 'Confirmed preview', acceptance: ['R3 verified'] }
+    }, 'r3-golden-brief-second');
+    const beforeConfirm = (await request(env.base, `/api/v1/projects/${created.json.id}`)).json;
+    const staleConfirm = await mutate(env.base, `/api/v1/projects/${created.json.id}/briefs/${firstBrief.json.revision}/confirm`, {
+      expected_revision: beforeConfirm.revision,
+      intake_revision: beforeConfirm.intake.revision
+    }, 'r3-golden-stale-confirm');
+    goldenRequire(staleConfirm.response.status === 409 && staleConfirm.json.error?.code === 'revision_conflict', 'stale_confirm');
+    const confirmed = await mutate(env.base, `/api/v1/projects/${created.json.id}/briefs/${secondBrief.json.revision}/confirm`, {
+      expected_revision: beforeConfirm.revision,
+      intake_revision: beforeConfirm.intake.revision
+    }, 'r3-golden-confirm');
+    goldenRequire(confirmed.response.status === 200 && confirmed.json.status === 'active', 'brief_confirm');
+    const confirmReplay = await mutate(env.base, `/api/v1/projects/${created.json.id}/briefs/${secondBrief.json.revision}/confirm`, {
+      expected_revision: beforeConfirm.revision,
+      intake_revision: beforeConfirm.intake.revision
+    }, 'r3-golden-confirm-replay');
+    goldenRequire(confirmReplay.response.status === 200 && confirmReplay.json.revision === confirmed.json.revision, 'brief_confirm_idempotency');
+
+    const lines = (await request(env.base, `/api/v1/projects/${created.json.id}/repository-lines`)).json;
+    const checkoutLine = lines.find((line) => line.line_kind === 'managed_checkout');
+    goldenRequire(checkoutLine && lines.length === 3, 'repository_lines');
+    const checkout = path.join(env.home, 'projects', created.json.id);
+    const displaced = path.join(env.home, '.r3-golden-displaced');
+    fs.renameSync(checkout, displaced);
+    const probe = await mutate(env.base, `/api/v1/repository-lines/${checkoutLine.id}/probe`, {
+      expected_revision: checkoutLine.revision
+    }, 'r3-golden-line-probe');
+    const failedProbe = await goldenWaitOperation(env.base, probe.json.operation_id);
+    const faultedLine = (await request(env.base, `/api/v1/repository-lines/${checkoutLine.id}`)).json;
+    goldenRequire(failedProbe.status === 'failed' && faultedLine.fault_code === 'repository_line_fault', 'line_fault');
+    fs.renameSync(displaced, checkout);
+    const recovered = await mutate(env.base, `/api/v1/repository-lines/${checkoutLine.id}/recover`, {
+      expected_revision: faultedLine.revision
+    }, 'r3-golden-line-recover');
+    const recoveryOperation = await goldenWaitOperation(env.base, recovered.json.operation_id);
+    const recoveredLine = (await request(env.base, `/api/v1/repository-lines/${checkoutLine.id}`)).json;
+    goldenRequire(recoveryOperation.status === 'completed' && recoveredLine.status === 'ready' && !recoveredLine.fault_code, 'line_recovery');
+
+    const interrupted = await env.app.domain.operationService.create({
+      kind: 'repository.probe', resourceType: 'repository_line', resourceId: checkoutLine.id
+    });
+    await env.app.database.run("UPDATE repository_lines SET locked_by_operation_id=?,operation_id=?,status='busy',revision=revision+1 WHERE id=?", [interrupted.operation_id, interrupted.operation_id, checkoutLine.id]);
+    await env.app.domain.recover();
+    const interruptedOperation = await env.app.domain.operationService.get(interrupted.operation_id);
+    const interruptedLine = (await request(env.base, `/api/v1/repository-lines/${checkoutLine.id}`)).json;
+    goldenRequire(interruptedOperation.error_code === 'operation_interrupted' && interruptedLine.fault_code === 'repository_line_interrupted', 'restart_recovery');
+    const restartRecovered = await mutate(env.base, `/api/v1/repository-lines/${checkoutLine.id}/recover`, {
+      expected_revision: interruptedLine.revision
+    }, 'r3-golden-restart-recover');
+    const restartRecoveryOperation = await goldenWaitOperation(env.base, restartRecovered.json.operation_id);
+    const finalLine = (await request(env.base, `/api/v1/repository-lines/${checkoutLine.id}`)).json;
+    goldenRequire(restartRecoveryOperation.status === 'completed' && finalLine.status === 'ready', 'restart_line_recovery');
+
+    let lifecycleProject = (await request(env.base, `/api/v1/projects/${created.json.id}`)).json;
+    const archived = await mutate(env.base, `/api/v1/projects/${created.json.id}/archive`, {
+      expected_revision: lifecycleProject.revision
+    }, 'r3-golden-archive');
+    const archiveOperation = await goldenWaitOperation(env.base, archived.json.operation_id);
+    lifecycleProject = (await request(env.base, `/api/v1/projects/${created.json.id}`)).json;
+    const archivedStatus = lifecycleProject.status;
+    const trashed = await mutate(env.base, `/api/v1/projects/${created.json.id}/trash`, {
+      expected_revision: lifecycleProject.revision
+    }, 'r3-golden-trash');
+    const trashOperation = await goldenWaitOperation(env.base, trashed.json.operation_id);
+    lifecycleProject = (await request(env.base, `/api/v1/projects/${created.json.id}`)).json;
+    const trashedStatus = lifecycleProject.status;
+    const restored = await mutate(env.base, `/api/v1/projects/${created.json.id}/restore`, {
+      expected_revision: lifecycleProject.revision
+    }, 'r3-golden-restore');
+    const restoreOperation = await goldenWaitOperation(env.base, restored.json.operation_id);
+    lifecycleProject = (await request(env.base, `/api/v1/projects/${created.json.id}`)).json;
+    const restoredStatus = lifecycleProject.status;
+    const reTrashed = await mutate(env.base, `/api/v1/projects/${created.json.id}/trash`, {
+      expected_revision: lifecycleProject.revision
+    }, 'r3-golden-retrash');
+    await goldenWaitOperation(env.base, reTrashed.json.operation_id);
+    lifecycleProject = (await request(env.base, `/api/v1/projects/${created.json.id}`)).json;
+    const purgeMismatch = await mutate(env.base, `/api/v1/projects/${created.json.id}/purge`, {
+      expected_revision: lifecycleProject.revision,
+      confirm_name: 'mismatched project'
+    }, 'r3-golden-purge-mismatch');
+    const purged = await mutate(env.base, `/api/v1/projects/${created.json.id}/purge`, {
+      expected_revision: lifecycleProject.revision,
+      confirm_name: lifecycleProject.name
+    }, 'r3-golden-purge');
+    const purgeOperation = await goldenWaitOperation(env.base, purged.json.operation_id);
+    const purgedRead = await request(env.base, `/api/v1/projects/${created.json.id}`);
+    const lifecycleSourceHash = manifestDirectory(sourceRoot).hash;
+    goldenRequire([archiveOperation, trashOperation, restoreOperation, purgeOperation].every((operation) => operation.status === 'completed'), 'lifecycle_operations');
+    goldenRequire(purgeMismatch.response.status === 409 && purgedRead.response.status === 404 && lifecycleSourceHash === originalSourceHash, 'lifecycle_integrity');
+
+    const sourceBeforeDrift = await probeRepositorySource({ kind: 'local', path: sourceRoot }, env.app.config);
+    assertIntakeSourceStable(sourceBeforeDrift, sourceBeforeDrift);
+    fs.writeFileSync(path.join(sourceRoot, 'README.md'), '# R3 golden source changed\n', 'utf8');
+    const sourceAfterDrift = await probeRepositorySource({ kind: 'local', path: sourceRoot }, env.app.config);
+    let driftError = null;
+    try { assertIntakeSourceStable(sourceBeforeDrift, sourceAfterDrift); }
+    catch (error) { driftError = { code: error.code, status: error.status, source_kind: error.details?.source_kind }; }
+    goldenRequire(driftError?.code === 'intake_source_changed', 'source_drift');
+
+    return [
+      {
+        id: 'project-create-idempotency', feature_id: 'REC-D5-PROJECT-005', cases: [{
+          id: 'same-key-replay',
+          input: { name: createInput.name, mode: 'existing', source_kind: 'local' },
+          output: {
+            first_status: created.response.status, replay_status: createReplay.response.status,
+            same_project_id: created.json.id === createReplay.json.id, project_status: created.json.status,
+            project_revision: created.json.revision, intake_status: created.json.intake.status,
+            brief_revision: created.json.brief.revision, workflow_source_brief_revision: created.json.workflow_draft.source_brief_revision
+          }
+        }]
+      },
+      {
+        id: 'intake-recovery', feature_id: 'REC-D5-PROJECT-005', cases: [
+          {
+            id: 'cancel-resume',
+            output: {
+              cancelled_status: cancelled.json.status, receipt_status: resumed.json.status,
+              operation_status: resumeOperation.status, same_intake_id: ready.intake.id === initialIntakeId,
+              ready_status: ready.intake.status, attempt: ready.intake.attempt,
+              revision_advanced: ready.intake.revision > cancelled.json.revision
+            }
+          },
+          {
+            id: 'failed-retry',
+            output: {
+              prior_status: failed.intake.status, prior_error_code: failed.intake.error_code,
+              receipt_status: retried.json.status, operation_status: retryOperation.status,
+              same_intake_id: retryReady.intake.id === failed.intake.id,
+              ready_status: retryReady.intake.status, attempt: retryReady.intake.attempt
+            }
+          }
+        ]
+      },
+      {
+        id: 'brief-confirmation', feature_id: 'REC-D5-PROJECT-005', cases: [{
+          id: 'stale-and-idempotent-confirm',
+          output: {
+            stale_status: staleConfirm.response.status, stale_error_code: staleConfirm.json.error.code,
+            stale_current_revision: staleConfirm.json.error.details.current_revision,
+            latest_revision: secondBrief.json.revision, confirmed_status: confirmed.json.status,
+            onboarding_state: confirmed.json.onboarding_state,
+            confirmed_brief_revision: confirmed.json.confirmed_brief_revision,
+            workflow_source_brief_revision: confirmed.json.workflow_draft.source_brief_revision,
+            replay_status: confirmReplay.response.status,
+            replay_preserved_project_revision: confirmReplay.json.revision === confirmed.json.revision
+          }
+        }]
+      },
+      {
+        id: 'repository-line-recovery', feature_id: 'REC-D7-REPOSITORY-014', cases: [
+          {
+            id: 'probe-fault-recover',
+            output: {
+              line_kinds: lines.map((line) => line.line_kind).toSorted(),
+              probe_operation_status: failedProbe.status, probe_error_code: failedProbe.error_code,
+              fault_status: faultedLine.status, fault_code: faultedLine.fault_code,
+              recovery_operation_status: recoveryOperation.status,
+              recovered_status: recoveredLine.status, recovered_fault_code: recoveredLine.fault_code
+            }
+          },
+          {
+            id: 'restart-interruption-recover',
+            output: {
+              interrupted_operation_status: interruptedOperation.status,
+              interrupted_operation_error: interruptedOperation.error_code,
+              interrupted_line_status: interruptedLine.status,
+              interrupted_line_fault: interruptedLine.fault_code,
+              recovery_operation_status: restartRecoveryOperation.status,
+              final_line_status: finalLine.status, final_fault_code: finalLine.fault_code
+            }
+          }
+        ]
+      },
+      {
+        id: 'project-lifecycle', feature_id: 'REC-D5-PROJECT-005', cases: [{
+          id: 'archive-trash-restore-purge',
+          output: {
+            archive_operation_status: archiveOperation.status, archived_status: archivedStatus,
+            trash_operation_status: trashOperation.status, trashed_status: trashedStatus,
+            restore_operation_status: restoreOperation.status, restored_status: restoredStatus,
+            purge_mismatch_status: purgeMismatch.response.status,
+            purge_mismatch_error: purgeMismatch.json.error.code,
+            purge_operation_status: purgeOperation.status, purged_read_status: purgedRead.response.status,
+            external_source_unchanged: lifecycleSourceHash === originalSourceHash
+          }
+        }]
+      },
+      {
+        id: 'repository-source-drift', feature_id: 'REC-D7-REPOSITORY-014', cases: [{
+          id: 'local-manifest-changed',
+          output: {
+            hash_changed: sourceBeforeDrift.hash !== sourceAfterDrift.hash,
+            revision_changed: sourceBeforeDrift.revision !== sourceAfterDrift.revision,
+            error_code: driftError.code, error_status: driftError.status, source_kind: driftError.source_kind
+          }
+        }]
+      }
+    ];
+  } finally {
+    await env?.close().catch(() => undefined);
+    fs.rmSync(sourceRoot, { recursive: true, force: true });
+  }
+}
+
+async function quietFixture(options) {
+  const originalWrite = process.stdout.write;
+  process.stdout.write = function filteredRuntimeBanner(chunk, ...args) {
+    if (/^AIWS (?:runner-broker |3\.0\.0 )listening on /.test(String(chunk))) return true;
+    return originalWrite.call(this, chunk, ...args);
+  };
+  try { return await fixture(options); }
+  finally { process.stdout.write = originalWrite; }
+}
+
+async function goldenWaitOperation(base, operationId) {
+  return eventually(
+    async () => (await request(base, `/api/v1/operations/${operationId}`)).json,
+    (operation) => ['completed', 'failed', 'cancelled'].includes(operation.status),
+    10_000
+  );
+}
+
+function goldenRequire(condition, label) {
+  if (!condition) throw new Error(`r3_golden_setup_failed:${label}`);
+}
+
+function contractCaseCount(contracts) {
+  return contracts.reduce((count, contract) => count + (contract.cases?.length || 0), 0);
 }
 
 async function goldenSetupState(ready) {

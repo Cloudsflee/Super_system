@@ -3,14 +3,14 @@ import fs from 'node:fs';
 import path from 'node:path';
 import test from 'node:test';
 import WebSocket from 'ws';
-import { fixture, mutate, request } from './helpers.mjs';
+import { fixture, mutate, onboardProject, request } from './helpers.mjs';
 
 test('terminal approval, real PTY, cursor replay, redaction, CAS artifact and orphan recovery', async () => {
   const env = await fixture();
   const sockets = new Set();
   try {
     const projectResponse = await mutate(env.base, '/api/v1/projects', { name: 'Terminal fixture' }, 'terminal-project');
-    const project = projectResponse.json;
+    const { project } = await onboardProject(env.base, projectResponse, { content: { objective: 'Exercise terminal lifecycle' }, keyPrefix: 'terminal-onboarding' });
     fs.writeFileSync(path.join(env.home, 'projects', project.id, 'README.md'), '# terminal fixture\n', 'utf8');
 
     const capabilities = await request(env.base, '/api/v1/terminals/capabilities');

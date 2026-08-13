@@ -1,12 +1,12 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { fixture, mutate, request } from './helpers.mjs';
+import { fixture, mutate, onboardProject, request } from './helpers.mjs';
 
 test('Context Map rebuilds ordered aiws URIs and seals Context Pack v5', async () => {
   const env = await fixture();
   try {
     const project = await mutate(env.base, '/api/v1/projects', { name: 'Context fixture' }, 'context-project');
-    await mutate(env.base, `/api/v1/projects/${project.json.id}/briefs`, { content: { objective: 'Project context deterministically', acceptance: ['ordered tree'] } }, 'context-brief');
+    const onboarded = await onboardProject(env.base, project, { content: { objective: 'Project context deterministically', acceptance: ['ordered tree'] }, keyPrefix: 'context-onboarding' });
     const first = await mutate(env.base, `/api/v1/projects/${project.json.id}/context/sources`, { kind: 'note', title: 'Architecture signal', content: 'Broker owns the Docker control plane.' }, 'context-source-first');
     const second = await mutate(env.base, `/api/v1/projects/${project.json.id}/context/sources`, { kind: 'note', title: 'Evidence signal', content: 'Evidence uses SHA-256 CAS.' }, 'context-source-second');
     assert.equal(first.response.status, 201);
@@ -32,7 +32,7 @@ test('Context Map rebuilds ordered aiws URIs and seals Context Pack v5', async (
     assert.equal(pack.json.pack.schema_version, 'aiws.context_pack.v5');
     assert.equal(pack.json.pack.selection.schema_version, 'aiws.context_selection.v2');
     assert.equal(pack.json.pack.retrieval_plan.token_budget, 4096);
-    assert.equal(pack.json.pack.memory_manifest.brief_revision, 1);
+    assert.equal(pack.json.pack.memory_manifest.brief_revision, onboarded.brief.revision);
 
     const beforeVersions = (await env.app.database.get('SELECT count(*) AS count FROM context_document_versions')).count;
     await mutate(env.base, `/api/v1/projects/${project.json.id}/context/rebuild`, {}, 'context-rebuild-repeat');

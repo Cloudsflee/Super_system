@@ -3,7 +3,7 @@ import { createHash } from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 import test from 'node:test';
-import { fixture, mutate, request } from './helpers.mjs';
+import { fixture, mutate, onboardProject, request } from './helpers.mjs';
 
 const digest = (value) => createHash('sha256').update(value).digest('hex');
 
@@ -11,6 +11,7 @@ test('file workspace change batches apply, protect stale edits, and undo with a 
   const env = await fixture();
   try {
     const project = await mutate(env.base, '/api/v1/projects', { name: 'File change fixture', repository: { source: { kind: 'fixture', id: 'designsignal-v1' } } }, 'file-project');
+    await onboardProject(env.base, project, { content: { objective: 'Exercise file change batches' }, keyPrefix: 'file-changes-onboarding' });
     const session = await mutate(env.base, '/api/v1/assist/sessions', { project_id: project.json.id, scope: 'project', scope_id: project.json.id }, 'file-session');
     const initial = await request(env.base, `/api/v1/projects/${project.json.id}/files?path=README.md`);
     assert.equal(initial.response.status, 200);

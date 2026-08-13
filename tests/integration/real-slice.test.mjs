@@ -2,17 +2,19 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
 import test from 'node:test';
-import { eventually, fixture, mutate, request } from './helpers.mjs';
+import { eventually, fixture, mutate, onboardProject, request } from './helpers.mjs';
 
 test('fixture execution isolates a worktree and captures diff, output, and evidence', async () => {
   const env = await fixture();
   try {
-    const project = (await mutate(env.base, '/api/v1/projects', {
+    const draftProject = (await mutate(env.base, '/api/v1/projects', {
       name: 'Real slice fixture', repository: { source: { kind: 'fixture', id: 'designsignal-v1' }, head_sha: '0'.repeat(40) }
     }, 'real-project')).json;
+    const { project } = await onboardProject(env.base, draftProject, { content: { objective: 'capture', acceptance: ['node_test'] }, keyPrefix: 'real-slice-onboarding' });
     assert.match(project.repository.head_sha, /^[a-f0-9]{40}$/);
-    assert.deepEqual(project.repository.source, { kind: 'fixture', id: 'designsignal-v1' });
-    await mutate(env.base, `/api/v1/projects/${project.id}/briefs`, { content: { objective: 'capture', acceptance: ['node_test'] } }, 'real-brief');
+    assert.equal(project.repository.source.kind, 'fixture');
+    assert.equal(project.repository.source.display_label, 'designsignal-v1');
+    assert.equal(project.repository.source.read_only, true);
     await mutate(env.base, `/api/v1/projects/${project.id}/workflows`, { tasks: [{ id: 'write', title: 'Write output', level: 1, mode: 'write', outputs: ['result.txt'] }] }, 'real-workflow');
     const execution = (await mutate(env.base, `/api/v1/projects/${project.id}/executions`, {}, 'real-execution')).json;
     await mutate(env.base, `/api/v1/executions/${execution.id}/start`, { expected_revision: execution.revision }, 'real-start');

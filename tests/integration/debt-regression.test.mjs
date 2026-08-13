@@ -14,7 +14,7 @@ import { buildDockerArgs, redactJobSpec, validateJobSpec, validateTaskBundle } f
 import { normalizeJsonl, normalizeRunnerErrorCode } from '../../apps/runner-broker/src/runner-result.mjs';
 import { brokerConfig, createBroker, start as startBroker } from '../../apps/runner-broker/server.mjs';
 import { start as startApi } from '../../apps/api/server.mjs';
-import { eventually, fixture, request, mutate } from './helpers.mjs';
+import { eventually, fixture, request, mutate, onboardProject } from './helpers.mjs';
 
 const digest = `sha256:${'d'.repeat(64)}`;
 
@@ -386,8 +386,8 @@ test('evidence failure can be discarded or retried with retained worktree', asyn
   } });
   const env = { app, base: `http://127.0.0.1:${app.server.address().port}`, home, async close() { await app.close(); fs.rmSync(home, { recursive: true, force: true }); } };
   try {
-    const project = (await mutate(env.base, '/api/v1/projects', { name: 'Evidence recovery', repository: { source: { kind: 'fixture', id: 'designsignal-v1' } } }, 'ev-project')).json;
-    await mutate(env.base, `/api/v1/projects/${project.id}/briefs`, { content: { objective: 'evidence', acceptance: [] } }, 'ev-brief');
+    const draftProject = (await mutate(env.base, '/api/v1/projects', { name: 'Evidence recovery', repository: { source: { kind: 'fixture', id: 'designsignal-v1' } } }, 'ev-project')).json;
+    const { project } = await onboardProject(env.base, draftProject, { content: { objective: 'evidence', acceptance: [] }, keyPrefix: 'evidence-onboarding' });
     await mutate(env.base, `/api/v1/projects/${project.id}/workflows`, { tasks: [{ id: 'writer', level: 1, mode: 'write', outputs: ['declared.txt'] }] }, 'ev-workflow');
     const first = (await mutate(env.base, `/api/v1/projects/${project.id}/executions`, {}, 'ev-exe-1')).json;
     await mutate(env.base, `/api/v1/executions/${first.id}/start`, { expected_revision: first.revision }, 'ev-start-1');

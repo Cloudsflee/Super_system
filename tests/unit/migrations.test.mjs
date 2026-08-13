@@ -39,15 +39,15 @@ test('empty databases apply every forward migration and record checksums once', 
   const migrations = MIGRATIONS;
   try {
     const first = migrateDatabase({ file: fixture.file, migrations });
-    assert.deepEqual(first.applied_versions, [1, 2]);
+    assert.deepEqual(first.applied_versions, [1, 2, 3]);
     assert.equal(first.from_version, 0);
-    assert.equal(first.to_version, 2);
+    assert.equal(first.to_version, 3);
     assert.equal(first.snapshot, null);
     const rows = inspect(fixture.file, (db) => db.prepare('SELECT * FROM schema_migrations ORDER BY version').all());
-    assert.deepEqual(rows.map((row) => Number(row.version)), [1, 2]);
+    assert.deepEqual(rows.map((row) => Number(row.version)), [1, 2, 3]);
     assert.deepEqual(rows.map((row) => row.checksum), migrations.map(migrationChecksum));
     assert.ok(rows.every((row) => Number(row.duration_ms) >= 0));
-    assert.equal(inspect(fixture.file, (db) => Number(db.prepare('PRAGMA user_version').get().user_version)), 2);
+    assert.equal(inspect(fixture.file, (db) => Number(db.prepare('PRAGMA user_version').get().user_version)), 3);
     assert.throws(() => inspect(fixture.file, (db) => db.prepare('UPDATE schema_migrations SET checksum=? WHERE version=1').run('0'.repeat(64))), /immutable_record/);
     assert.throws(() => inspect(fixture.file, (db) => db.prepare('DELETE FROM schema_migrations WHERE version=1').run()), /immutable_record/);
 
@@ -67,8 +67,8 @@ test('startup resumes when an interrupted first run left only an empty migration
       checksum TEXT NOT NULL CHECK(length(checksum) = 64), applied_at TEXT NOT NULL,
       duration_ms INTEGER NOT NULL CHECK(duration_ms >= 0)) STRICT;`));
     const replay = migrateDatabase({ file: fixture.file });
-    assert.deepEqual(replay.applied_versions, [1, 2]);
-    assert.equal(inspect(fixture.file, (db) => Number(db.prepare('PRAGMA user_version').get().user_version)), 2);
+    assert.deepEqual(replay.applied_versions, [1, 2, 3]);
+    assert.equal(inspect(fixture.file, (db) => Number(db.prepare('PRAGMA user_version').get().user_version)), 3);
   } finally {
     fs.rmSync(fixture.home, { recursive: true, force: true });
   }
@@ -80,11 +80,11 @@ test('a fingerprint-matching V1 database is registered as a baseline with a rest
     legacyV1(fixture.file, 'Before migration');
     const result = migrateDatabase({ file: fixture.file });
     assert.equal(result.baseline_registered, true);
-    assert.deepEqual(result.applied_versions, [2]);
+    assert.deepEqual(result.applied_versions, [2, 3]);
     assert.ok(fs.existsSync(result.snapshot.file));
     assert.ok(fs.existsSync(result.snapshot.manifest));
     const ledger = inspect(fixture.file, (db) => db.prepare('SELECT version,name,checksum FROM schema_migrations ORDER BY version').all());
-    assert.deepEqual(ledger.map((row) => Number(row.version)), [1, 2]);
+    assert.deepEqual(ledger.map((row) => Number(row.version)), [1, 2, 3]);
     assert.equal(ledger[0].name, MIGRATIONS[0].name);
     assert.equal(ledger[0].checksum, V1_MIGRATION_CHECKSUM);
 
@@ -117,7 +117,7 @@ test('applied migration checksum changes are rejected before startup', () => {
   const fixture = temporaryDatabase('aiws-checksum-migration-');
   try {
     migrateDatabase({ file: fixture.file });
-    const changed = [{ ...MIGRATIONS[0], sql: `${MIGRATIONS[0].sql}\n-- checksum drift` }, MIGRATIONS[1]];
+    const changed = [{ ...MIGRATIONS[0], sql: `${MIGRATIONS[0].sql}\n-- checksum drift` }, ...MIGRATIONS.slice(1)];
     assert.throws(() => migrateDatabase({ file: fixture.file, migrations: changed }), /migration_checksum_conflict:version=1/);
   } finally {
     fs.rmSync(fixture.home, { recursive: true, force: true });
@@ -174,7 +174,7 @@ test('an interrupted SQLite transaction is rolled back before migration replay',
   }
 });
 
-test('registered V1 checksum is frozen and V2 maps legacy session and credential state', () => {
+test('registered V1 checksum is frozen while V2 state survives the V3 migration', () => {
   const fixture = temporaryDatabase('aiws-v2-state-map-');
   const timestamp = '2026-08-10T00:00:00.000Z';
   try {
@@ -189,7 +189,7 @@ test('registered V1 checksum is frozen and V2 maps legacy session and credential
     });
 
     const result = migrateDatabase({ file: fixture.file });
-    assert.deepEqual(result.applied_versions, [2]);
+    assert.deepEqual(result.applied_versions, [2, 3]);
     const mapped = inspect(fixture.file, (db) => ({
       checksum: db.prepare('SELECT checksum FROM schema_migrations WHERE version=1').get().checksum,
       session: { ...db.prepare('SELECT revision,created_at,updated_at FROM sessions WHERE id=?').get('ses_legacy1234') },
@@ -201,6 +201,58 @@ test('registered V1 checksum is frozen and V2 maps legacy session and credential
       kind: 'github_webhook_secret', origin: 'vault', status: 'revoked', revision: 1,
       secret_version: 1, expires_at: null, revoked_at: timestamp, updated_at: timestamp
     });
+    assert.deepEqual(migrateDatabase({ file: fixture.file }).applied_versions, []);
+  } finally {
+    fs.rmSync(fixture.home, { recursive: true, force: true });
+  }
+});
+
+test('V2 project, brief, and repository binding backfill into the R3 intake graph', () => {
+  const fixture = temporaryDatabase('aiws-v2-r3-backfill-');
+  const timestamp = '2026-08-10T00:00:00.000Z';
+  try {
+    migrateDatabase({ file: fixture.file, migrations: MIGRATIONS.slice(0, 2) });
+    inspect(fixture.file, (db) => {
+      db.prepare('INSERT INTO projects(id,name,description,status,revision,created_at,updated_at) VALUES(?,?,?,?,?,?,?)')
+        .run('prj_r3_backfill', 'Backfill fixture', '', 'active', 4, timestamp, timestamp);
+      db.prepare('INSERT INTO project_intakes(id,project_id,status,payload_json,created_at,updated_at) VALUES(?,?,?,?,?,?)')
+        .run('int_r3_backfill', 'prj_r3_backfill', 'ready', '{"mode":"existing"}', timestamp, timestamp);
+      db.prepare('INSERT INTO workflow_drafts(id,project_id,revision,graph_json,status,created_at,updated_at) VALUES(?,?,?,?,?,?,?)')
+        .run('wfd_r3_backfill', 'prj_r3_backfill', 3, '{}', 'draft', timestamp, timestamp);
+      db.prepare('INSERT INTO brief_revisions(project_id,revision,content_json,content_hash,created_at) VALUES(?,?,?,?,?)')
+        .run('prj_r3_backfill', 1, '{"objective":"legacy"}', 'a'.repeat(64), timestamp);
+      db.prepare('INSERT INTO brief_heads(project_id,revision,updated_at) VALUES(?,?,?)')
+        .run('prj_r3_backfill', 1, timestamp);
+      db.prepare('INSERT INTO repository_bindings(id,project_id,local_path,remote_url,head_sha,revision,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?)')
+        .run('repo_r3_backfill', 'prj_r3_backfill', 'projects/prj_r3_backfill', 'https://github.com/fixture/repository', 'b'.repeat(40), 2, timestamp, timestamp);
+    });
+
+    const migrated = migrateDatabase({ file: fixture.file });
+    assert.deepEqual(migrated.applied_versions, [3]);
+    assert.ok(migrated.snapshot?.file && migrated.snapshot?.manifest);
+    const state = inspect(fixture.file, (db) => ({
+      project: { ...db.prepare('SELECT status,onboarding_state,confirmed_brief_revision,confirmed_brief_hash,workflow_draft_id FROM projects WHERE id=?').get('prj_r3_backfill') },
+      intake: { ...db.prepare('SELECT status,mode,revision,attempt,completed_at FROM project_intakes WHERE project_id=?').get('prj_r3_backfill') },
+      head: { ...db.prepare('SELECT revision,confirmed_revision,confirmation_revision,confirmed_by,confirmed_hash FROM brief_heads WHERE project_id=?').get('prj_r3_backfill') },
+      connection: { ...db.prepare('SELECT id,source_kind,source_locator,revision,read_only FROM repository_connections WHERE project_id=?').get('prj_r3_backfill') },
+      target: { ...db.prepare('SELECT id,baseline_sha,managed_relative_path FROM repository_targets WHERE connection_id=?').get('con_repo_r3_backfill') },
+      line: { ...db.prepare('SELECT id,line_kind,baseline_sha,managed_relative_path,status FROM repository_lines WHERE project_id=? AND line_kind=?').get('prj_r3_backfill', 'managed_checkout') },
+      ledger: db.prepare('SELECT version,checksum FROM schema_migrations ORDER BY version').all(),
+      version: Number(db.prepare('PRAGMA user_version').get().user_version)
+    }));
+    assert.deepEqual(state.project, { status: 'active', onboarding_state: 'confirmed', confirmed_brief_revision: 1, confirmed_brief_hash: 'a'.repeat(64), workflow_draft_id: 'wfd_r3_backfill' });
+    assert.equal(state.intake.status, 'ready');
+    assert.equal(state.intake.mode, 'existing');
+    assert.equal(state.intake.revision, 1);
+    assert.equal(state.intake.attempt, 0);
+    assert.equal(state.intake.completed_at, timestamp);
+    assert.deepEqual(state.head, { revision: 1, confirmed_revision: 1, confirmation_revision: 1, confirmed_by: 'migration', confirmed_hash: 'a'.repeat(64) });
+    assert.deepEqual(state.connection, { id: 'con_repo_r3_backfill', source_kind: 'git', source_locator: 'https://github.com/fixture/repository', revision: 1, read_only: 1 });
+    assert.deepEqual(state.target, { id: 'tgt_repo_r3_backfill', baseline_sha: 'b'.repeat(40), managed_relative_path: 'projects/prj_r3_backfill' });
+    assert.deepEqual(state.line, { id: 'lin_repo_r3_backfill', line_kind: 'managed_checkout', baseline_sha: 'b'.repeat(40), managed_relative_path: 'projects/prj_r3_backfill', status: 'ready' });
+    assert.equal(state.version, 3);
+    assert.equal(state.ledger[0].checksum, V1_MIGRATION_CHECKSUM);
+    assert.equal(state.ledger[1].checksum, migrationChecksum(MIGRATIONS[1]));
     assert.deepEqual(migrateDatabase({ file: fixture.file }).applied_versions, []);
   } finally {
     fs.rmSync(fixture.home, { recursive: true, force: true });

@@ -3,19 +3,16 @@ import path from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { hashJson, now, parseJson, sha256 } from './crypto.mjs';
 import { AppError, asAppError } from './errors.mjs';
-import { readBody, readRawBody } from './http-body.mjs';
+import { readBody, readMultipartUpload, readRawBody } from './http-body.mjs';
 const MUTATING = new Set(['POST', 'PATCH', 'DELETE']);
-
 function send(res, status, payload, headers = {}) {
   const body = JSON.stringify(payload);
   res.writeHead(status, { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store', ...headers });
   res.end(body);
 }
-
 function pathParts(urlPath) {
   return urlPath.split('/').filter(Boolean).map((part) => decodeURIComponent(part));
 }
-
 function errorPayload(error, requestId) {
   const appError = asAppError(error);
   return {
@@ -28,24 +25,21 @@ function errorPayload(error, requestId) {
     }
   };
 }
-
 function responseForCommand(result, domain) {
   return domain.redact(result ?? {});
 }
-
 function persistableCommandResponse(command, result, domain) {
   const clean = responseForCommand(result, domain);
   if (command !== 'session.create' || !clean || typeof clean !== 'object' || Array.isArray(clean)) return clean;
   const { token: _token, ...persistable } = clean;
   return { ...persistable, token_issued: false };
 }
-
 export function createHttpHandler({ domain, registry, db, config, performanceProbe = () => ({}), webRoot }) {
   async function executeCommand(command, body, req, requestPath, explicitKey = null, responseStatus = 201) {
     const key = explicitKey || req.headers['idempotency-key'];
     if (!key || String(key).length > 200) throw new AppError('idempotency_required', 'Idempotency-Key header is required');
     const scope = `${req.method}:${requestPath}`;
-    const requestHash = hashJson({ command, body });
+    const requestHash = hashJson({ command, body: commandHashBody(command, body) });
     const existing = await db.get('SELECT * FROM idempotency_keys WHERE scope=? AND key=?', [scope, String(key)]);
     if (existing) {
       if (existing.request_hash !== requestHash) throw new AppError('idempotency_conflict', 'Idempotency-Key was used with a different request', { details: { scope } });
@@ -71,7 +65,6 @@ export function createHttpHandler({ domain, registry, db, config, performancePro
       throw error;
     }
   }
-
   async function mcp(req, requestId) {
     const body = await readBody(req);
     const rpcId = body.id ?? null;
@@ -106,7 +99,6 @@ export function createHttpHandler({ domain, registry, db, config, performancePro
     }
     throw new AppError('invalid_input', 'unsupported MCP method');
   }
-
   async function handler(req, res) {
     const requestId = String(req.headers['x-request-id'] || randomUUID());
     const parsed = new URL(req.url || '/', `http://${req.headers.host || '127.0.0.1'}`);
@@ -137,24 +129,35 @@ export function createHttpHandler({ domain, registry, db, config, performancePro
       if (urlPath === `${config.apiPrefix}/system` && req.method === 'GET') return send(res, 200, { version: config.version, api_prefix: config.apiPrefix, data_volume: config.dataVolume });
 
       const parts = pathParts(urlPath.slice(config.apiPrefix.length));
-      const body = MUTATING.has(req.method) ? await readBody(req) : {};
+      const multipartUpload = req.method === 'POST' && parts[0] === 'intakes' && parts[2] === 'upload';
+      const body = MUTATING.has(req.method) && !multipartUpload ? await readBody(req) : {};
       let result;
       let status = 200;
       const command = (name, input = body) => executeCommand(name, input, req, urlPath);
-
       const r2Route = domain.r2?.routes.match(req.method, parts);
       if (r2Route) {
-        const input = { ...Object.fromEntries(parsed.searchParams), ...body, ...r2Route.params };
+        const routeBody = r2Route.multipart
+          ? await readMultipartUpload(req, config.projectUploadLimits, config.home)
+          : body;
+        const input = { ...Object.fromEntries(parsed.searchParams), ...routeBody, ...r2Route.params };
         if (r2Route.stream && String(req.headers.accept || '').includes('text/event-stream')) {
           return streamQueryEvents(req, res, domain, r2Route.query, input);
         }
         if (r2Route.query) result = await domain.r2.queries.execute(r2Route.query, input, req.aiwsAuth);
-        else ({ status, body: result } = await executeCommand(r2Route.command, input, req, urlPath, null, r2Route.responseStatus));
+        else {
+          try {
+            const commandResult = await executeCommand(r2Route.command, input, req, urlPath, null, r2Route.responseStatus);
+            ({ status, body: result } = commandResult);
+            if (r2Route.multipart && commandResult.replayed) cleanupMultipartStaging(routeBody);
+          } catch (error) {
+            if (r2Route.multipart) cleanupMultipartStaging(routeBody);
+            throw error;
+          }
+        }
         return send(res, status, domain.redact(result));
       }
 
-      if (req.method === 'GET' && parts.length === 1 && parts[0] === 'projects') result = await domain.listProjects();
-      else if (parts[0] === 'assist' && parts[1] === 'sessions') {
+      if (parts[0] === 'assist' && parts[1] === 'sessions') {
         if (req.method === 'GET' && parts.length === 2) result = await domain.listAssistSessions(parsed.searchParams.get('project_id'));
         else if (req.method === 'POST' && parts.length === 2) ({ status, body: result } = await command('assist_session.create'));
         else if (req.method === 'GET' && parts.length === 3) result = await domain.getAssistSession(parts[2]);
@@ -186,14 +189,9 @@ export function createHttpHandler({ domain, registry, db, config, performancePro
         else if (req.method === 'POST' && ['input', 'resize', 'signal', 'stop'].includes(parts[2])) ({ status, body: result } = await command(`terminal.${parts[2]}`, { ...body, terminal_id: parts[1] }));
         else throw new AppError('not_found', 'route not found');
       }
-      else if (req.method === 'POST' && parts.length === 1 && parts[0] === 'projects') ({ status, body: result } = await command('project.create'));
       else if (parts[0] === 'projects' && parts.length >= 2) {
         const projectId = parts[1];
-        if (req.method === 'GET' && parts.length === 2) result = await domain.getProject(projectId);
-        else if (req.method === 'PATCH' && parts.length === 2) ({ status, body: result } = await command('project.update', { ...body, project_id: projectId }));
-        else if (req.method === 'GET' && parts[2] === 'briefs') result = await domain.listBriefs(projectId);
-        else if (req.method === 'POST' && parts[2] === 'briefs') ({ status, body: result } = await command('brief.create', { ...body, project_id: projectId }));
-        else if (req.method === 'GET' && parts[2] === 'workflows') result = await domain.listWorkflows(projectId);
+        if (req.method === 'GET' && parts[2] === 'workflows') result = await domain.listWorkflows(projectId);
         else if (req.method === 'POST' && parts[2] === 'workflows') ({ status, body: result } = await command('workflow.create', { ...body, project_id: projectId }));
         else if (req.method === 'GET' && parts[2] === 'node-contracts') result = await domain.listNodeContracts(projectId, parsed.searchParams.get('workflow_revision'));
         else if (req.method === 'POST' && parts[2] === 'node-contracts') ({ status, body: result } = await command('node_contract.create', { ...body, project_id: projectId }));
@@ -288,6 +286,20 @@ export function createHttpHandler({ domain, registry, db, config, performancePro
   }
 
   return handler;
+}
+
+function commandHashBody(command, body) {
+  if (command !== 'intake.upload') return body;
+  return {
+    intake_id: body.intake_id,
+    fields: body.fields || {},
+    files: (body.files || []).map((file) => ({ field: file.field, path: file.path, byte_size: file.byte_size, sha256: file.sha256 }))
+  };
+}
+
+function cleanupMultipartStaging(upload) {
+  const root = String(upload?.staging_root || '');
+  if (root) fs.rmSync(root, { recursive: true, force: true });
 }
 
 async function streamQueryEvents(req, res, domain, query, input) {
