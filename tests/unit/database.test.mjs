@@ -11,12 +11,12 @@ async function fixture() {
   return { db, directory };
 }
 
-test('fresh database uses strict v3 settings and FTS5', async () => {
+test('fresh database uses strict v4 settings and FTS5', async () => {
   const { db } = await fixture();
   const integrity = await db.integrity();
   assert.deepEqual(integrity.integrity, ['ok']);
-  assert.equal(integrity.user_version, 3);
-  assert.equal(integrity.migration_version, 3);
+  assert.equal(integrity.user_version, 4);
+  assert.equal(integrity.migration_version, 4);
   assert.equal(integrity.journal_mode, 'wal');
   assert.equal(integrity.synchronous, 2);
   assert.ok((await db.get("SELECT name FROM sqlite_master WHERE name='context_source_fts'")));
@@ -38,7 +38,9 @@ test('fresh database creates every recovery contract table as STRICT', async () 
     'context_projection_jobs', 'context_summaries', 'asset_blobs', 'asset_attestations', 'asset_relations',
     'traces', 'digests', 'code_changes', 'test_results', 'quality_review_runs', 'quality_review_reports',
     'quality_review_events', 'operations', 'operation_events', 'setup_events', 'codex_discovery_sources',
-    'github_repositories', 'github_webhook_deliveries', 'repository_line_artifacts'
+    'github_repositories', 'github_webhook_deliveries', 'repository_line_artifacts',
+    'workflow_layout_revisions', 'workflow_critic_receipts', 'node_contract_revisions',
+    'workflow_generation_proposals'
   ];
   const rows = await db.query(`SELECT name, sql FROM sqlite_master WHERE type='table' AND name IN (${expected.map(() => '?').join(',')})`, expected);
   assert.equal(rows.length, expected.length);

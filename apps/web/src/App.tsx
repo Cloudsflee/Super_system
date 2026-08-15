@@ -5,9 +5,10 @@ import {
 } from 'lucide-react';
 import { api } from './api';
 import { SetupPage, type SetupState } from './features/setup';
+import { WorkflowPage as R4WorkflowPage } from './features/workflow';
 import type { Project } from './types';
 import {
-  ApprovalPage, AssetsPage, AssistPage, AuditPage, ExecutionPage, ProjectsPage, SettingsPage, TerminalPage, WorkflowPage,
+  ApprovalPage, AssetsPage, AssistPage, AuditPage, ExecutionPage, ProjectsPage, SettingsPage, TerminalPage,
   type WorkspacePageProps
 } from './pages';
 
@@ -29,7 +30,7 @@ const NAV: Array<{ key: PageKey; label: string; icon: ComponentType<{ size?: num
 const PAGES: Record<PageKey, ComponentType<WorkspacePageProps>> = {
   setup: SetupPage,
   projects: ProjectsPage,
-  workflow: WorkflowPage,
+  workflow: R4WorkflowPage,
   assist: AssistPage,
   execution: ExecutionPage,
   terminals: TerminalPage,

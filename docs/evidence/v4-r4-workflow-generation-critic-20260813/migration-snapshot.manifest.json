@@ -1,0 +1,9 @@
+{
+  "schema_version": "aiws.v3.migration_snapshot.v1",
+  "created_at": "2026-08-13T00:00:00.000Z",
+  "source_file": "C:\\Users\\CLOUDS~1\\AppData\\Local\\Temp\\aiws-r4-migration-evidence-OFCd0W\\state.sqlite",
+  "from_version": 3,
+  "to_version": 4,
+  "snapshot_file": "migration-snapshot.sqlite",
+  "snapshot_sha256": "97d8fddae289fc995cfdeacd25094dfd8472589dabd93055cf5e1b89af2684e8"
+}

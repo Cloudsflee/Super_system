@@ -12,7 +12,7 @@ import { createGithubAppJwt, verifyGithubWebhook } from '../apps/api/src/modules
 import { qualityReviewMediaKind as v3QualityReviewMediaKind } from '../apps/api/src/modules/quality/media-contract.mjs';
 import { assertIntakeSourceStable } from '../apps/api/src/modules/project/service.mjs';
 import { manifestDirectory, probeRepositorySource } from '../apps/api/src/modules/repository/adapter.mjs';
-import { eventually, fixture, mutate, request } from '../tests/integration/helpers.mjs';
+import { eventually, fixture, mutate, onboardProject, request } from '../tests/integration/helpers.mjs';
 
 const root = process.cwd();
 const mode = process.argv[2] || 'verify';
@@ -21,6 +21,7 @@ const V23_SOURCE_COMMIT = 'e18dc0b';
 const V23_FIXTURE = path.join(root, 'tests', 'golden', 'v23', 'r0-r1.json');
 const R2_FIXTURE = path.join(root, 'tests', 'golden', 'r2', 'identity-setup.json');
 const R3_FIXTURE = path.join(root, 'tests', 'golden', 'r3', 'project-repository.json');
+const R4_FIXTURE = path.join(root, 'tests', 'golden', 'r4', 'workflow-generation-critic.json');
 const R2_SOURCE_FILES = Object.freeze([
   'packages/contracts/src/codex-device-auth.mjs',
   'apps/api/src/modules/setup/codex-discovery.mjs',
@@ -38,6 +39,16 @@ const R3_SOURCE_FILES = Object.freeze([
   'apps/api/src/modules/repository/adapter.mjs',
   'apps/api/src/modules/repository/repository.mjs',
   'apps/api/src/modules/repository/service.mjs'
+]);
+const R4_SOURCE_FILES = Object.freeze([
+  'apps/api/src/command-registry.mjs',
+  'apps/api/src/domain.mjs',
+  'apps/api/src/http.mjs',
+  'apps/api/src/migrations/004-workflow-generation-critic.mjs',
+  'apps/api/src/modules/operations/service.mjs',
+  'apps/api/src/modules/workflow/repository.mjs',
+  'apps/api/src/modules/workflow/service.mjs',
+  'apps/api/src/modules/workflow/validator.mjs'
 ]);
 const mediaCases = Object.freeze([
   { id: 'markdown', input: { file_path: 'notes.md', media_type: 'text/markdown', has_body: true } },
@@ -57,7 +68,8 @@ const mediaCases = Object.freeze([
 const batches = Object.freeze({
   'v23-r0-r1': { fixture: V23_FIXTURE, kind: 'v23' },
   'r2-identity-setup': { fixture: R2_FIXTURE, kind: 'r2' },
-  'r3-project-repository': { fixture: R3_FIXTURE, kind: 'r3' }
+  'r3-project-repository': { fixture: R3_FIXTURE, kind: 'r3' },
+  'r4-workflow-generation-critic': { fixture: R4_FIXTURE, kind: 'r4' }
 });
 
 if (mode === 'extract') await extract(requestedBatch);
@@ -71,7 +83,8 @@ async function extract(batchName = null) {
     const config = batches[name];
     if (config.kind === 'v23') results.push(await extractV23(config.fixture));
     else if (config.kind === 'r2') results.push(await extractR2(config.fixture));
-    else results.push(await extractR3(config.fixture));
+    else if (config.kind === 'r3') results.push(await extractR3(config.fixture));
+    else results.push(await extractR4(config.fixture));
   }
   process.stdout.write(`${JSON.stringify({ status: 'extracted', batches: results }, null, 2)}\n`);
 }
@@ -177,6 +190,23 @@ async function extractR3(fixturePath) {
   return { batch: 'r3-project-repository', fixture: relative(fixturePath), fixture_sha256: fixture.fixture_sha256, contracts: contracts.length, cases: contractCaseCount(contracts) };
 }
 
+async function extractR4(fixturePath) {
+  const sourceCommit = runGit(['rev-parse', 'HEAD']).stdout.trim();
+  const sourceFiles = R4_SOURCE_FILES.map((file) => ({ path: file, sha256: sha256(fs.readFileSync(path.join(root, file))) }));
+  const contracts = await replayR4Contracts();
+  const payload = {
+    schema_version: 'aiws.v3.r4_golden.v1',
+    source_commit: sourceCommit,
+    extraction: { mode: 'ephemeral_deterministic_fixture', executed_runtime: true, network: 'loopback_only' },
+    source_files: sourceFiles,
+    contracts
+  };
+  const fixture = { ...payload, fixture_sha256: sha256(JSON.stringify(payload)) };
+  fs.mkdirSync(path.dirname(fixturePath), { recursive: true });
+  fs.writeFileSync(fixturePath, `${JSON.stringify(fixture, null, 2)}\n`);
+  return { batch: 'r4-workflow-generation-critic', fixture: relative(fixturePath), fixture_sha256: fixture.fixture_sha256, contracts: contracts.length, cases: contractCaseCount(contracts) };
+}
+
 async function verify(batchName = null) {
   const names = selectBatches(batchName);
   const results = [];
@@ -189,7 +219,8 @@ async function configureVerify(name) {
   const config = batches[name];
   if (config.kind === 'v23') return verifyV23(config.fixture);
   if (config.kind === 'r2') return verifyR2(config.fixture);
-  return verifyR3(config.fixture);
+  if (config.kind === 'r3') return verifyR3(config.fixture);
+  return verifyR4(config.fixture);
 }
 
 function verifyV23(fixturePath) {
@@ -242,12 +273,38 @@ async function verifyR3(fixturePath) {
   const { fixture_sha256: recorded, ...payload } = fixture;
   if (fixture.schema_version !== 'aiws.v3.r3_golden.v1' || fixture.extraction?.mode !== 'ephemeral_local_runtime' || fixture.extraction?.executed_runtime !== true || fixture.extraction?.network !== 'loopback_only') throw new Error('r3_golden_identity_invalid');
   if (sha256(JSON.stringify(payload)) !== recorded) throw new Error('r3_golden_checksum_invalid');
-  for (const source of fixture.source_files || []) if (sha256(fs.readFileSync(path.join(root, source.path))) !== source.sha256) throw new Error(`r3_golden_source_changed:${source.path}`);
+  const sourceDrift = [];
+  for (const source of fixture.source_files || []) {
+    const currentSource = fs.readFileSync(path.join(root, source.path));
+    let baselineHash = '';
+    try { baselineHash = sha256(runGit(['show', `${fixture.source_commit}:${source.path}`]).stdout); } catch { /* R3 source files were captured from the then-working tree. */ }
+    if (baselineHash !== source.sha256 && sha256(currentSource) !== source.sha256) sourceDrift.push(source.path);
+  }
   const serialized = JSON.stringify(fixture);
   if (/(?:source_locator|managed_relative_path|local_path|remote_url)/i.test(serialized)) throw new Error('r3_golden_private_path_exposed');
   const actual = await replayR3Contracts();
   if (JSON.stringify(actual) !== JSON.stringify(fixture.contracts)) throw new Error('r3_golden_behavior_mismatch');
-  return { batch: 'r3-project-repository', fixture: relative(fixturePath), fixture_sha256: recorded, contracts: fixture.contracts.length, cases: contractCaseCount(fixture.contracts) };
+  return { batch: 'r3-project-repository', fixture: relative(fixturePath), fixture_sha256: recorded, contracts: fixture.contracts.length, cases: contractCaseCount(fixture.contracts), source_drift: sourceDrift };
+}
+
+async function verifyR4(fixturePath) {
+  const fixture = JSON.parse(fs.readFileSync(fixturePath, 'utf8'));
+  const { fixture_sha256: recorded, ...payload } = fixture;
+  if (fixture.schema_version !== 'aiws.v3.r4_golden.v1' || fixture.extraction?.mode !== 'ephemeral_deterministic_fixture' || fixture.extraction?.executed_runtime !== true || fixture.extraction?.network !== 'loopback_only') throw new Error('r4_golden_identity_invalid');
+  if (sha256(JSON.stringify(payload)) !== recorded) throw new Error('r4_golden_checksum_invalid');
+  const sourceDrift = [];
+  for (const source of fixture.source_files || []) {
+    const currentHash = sha256(fs.readFileSync(path.join(root, source.path)));
+    let committedHash = '';
+    try { committedHash = sha256(runGit(['show', `${fixture.source_commit}:${source.path}`]).stdout); } catch { /* A new R4 source may only exist in the captured working tree. */ }
+    if (currentHash !== source.sha256 && committedHash !== source.sha256) sourceDrift.push(source.path);
+  }
+  if (sourceDrift.length) throw new Error(`r4_golden_source_changed:${sourceDrift.join(',')}`);
+  const serialized = JSON.stringify(fixture);
+  if (/(?:source_locator|managed_relative_path|local_path|remote_url|prompt|candidate_json|input_snapshot_json)/i.test(serialized)) throw new Error('r4_golden_private_input_exposed');
+  const actual = await replayR4Contracts();
+  if (JSON.stringify(actual) !== JSON.stringify(fixture.contracts)) throw new Error('r4_golden_behavior_mismatch');
+  return { batch: 'r4-workflow-generation-critic', fixture: relative(fixturePath), fixture_sha256: recorded, contracts: fixture.contracts.length, cases: contractCaseCount(fixture.contracts) };
 }
 
 async function replayR3Contracts() {
@@ -504,6 +561,261 @@ async function replayR3Contracts() {
     await env?.close().catch(() => undefined);
     fs.rmSync(sourceRoot, { recursive: true, force: true });
   }
+}
+
+async function replayR4Contracts() {
+  let env;
+  try {
+    env = await quietFixture();
+    const projectId = await r4GoldenProject(env, 'primary');
+    const originalDraft = (await request(env.base, `/api/v1/projects/${projectId}/workflow-draft`)).json;
+    const validGraph = {
+      name: 'R4 golden workflow',
+      workstreams: [
+        {
+          id: 'analysis',
+          tasks: [{ id: 'inspect', goal: 'Inspect', outputs: ['artifacts/analysis.json'], acceptance: ['analysis exists'] }]
+        },
+        {
+          id: 'delivery', deps: ['analysis'],
+          tasks: [{ id: 'implement', goal: 'Implement', deps: ['inspect'], inputs: ['artifacts/analysis.json'], outputs: ['artifacts/result.json'], acceptance: ['tests pass'] }]
+        }
+      ]
+    };
+    const validDraft = await mutate(env.base, `/api/v1/projects/${projectId}/workflow-draft`, {
+      expected_revision: originalDraft.revision, graph: validGraph
+    }, 'r4-golden-valid-draft', 'PATCH');
+    goldenRequire(validDraft.response.status === 201 && validDraft.json.revision === 2, 'r4_valid_draft');
+
+    const crossScope = structuredClone(validGraph);
+    crossScope.workstreams[1].deps = [];
+    const crossScopeResult = await mutate(env.base, `/api/v1/projects/${projectId}/workflow-draft`, {
+      expected_revision: validDraft.json.revision, graph: crossScope
+    }, 'r4-golden-cross-scope', 'PATCH');
+    const cycle = structuredClone(validGraph);
+    cycle.workstreams[0].deps = ['delivery'];
+    const cycleResult = await mutate(env.base, `/api/v1/projects/${projectId}/workflow-draft`, {
+      expected_revision: validDraft.json.revision, graph: cycle
+    }, 'r4-golden-cycle', 'PATCH');
+    const duplicateOutput = structuredClone(validGraph);
+    duplicateOutput.workstreams[1].tasks[0].outputs = ['artifacts/analysis.json'];
+    const duplicateResult = await mutate(env.base, `/api/v1/projects/${projectId}/workflow-draft`, {
+      expected_revision: validDraft.json.revision, graph: duplicateOutput
+    }, 'r4-golden-duplicate-output', 'PATCH');
+
+    const layout = await mutate(env.base, `/api/v1/projects/${projectId}/workflow-draft/layouts`, {
+      expected_revision: 0,
+      draft_revision: validDraft.json.revision,
+      nodes: [
+        { id: 'analysis', position: { x: 20, y: 40 } },
+        { id: 'inspect', position: { x: 60, y: 120 } },
+        { id: 'delivery', position: { x: 420, y: 40 } },
+        { id: 'implement', position: { x: 460, y: 120 } }
+      ],
+      viewport: { x: 0, y: 0, zoom: 1 }
+    }, 'r4-golden-layout');
+    const generated = await r4GoldenGeneration(env, projectId, 'success');
+    const generationEvents = (await request(env.base, `/api/v1/workflow-generations/${generated.state.id}/events`)).json;
+    const applied = await mutate(env.base, `/api/v1/workflow-proposals/${generated.state.proposal.id}/apply`, {
+      async: true
+    }, 'r4-golden-apply');
+    const applyOperation = await goldenWaitOperation(env.base, applied.json.operation_id);
+    const applyReplay = await mutate(env.base, `/api/v1/workflow-proposals/${generated.state.proposal.id}/apply`, {
+      async: true
+    }, 'r4-golden-apply-replay');
+    const initialWorkflows = (await request(env.base, `/api/v1/projects/${projectId}/workflows`)).json;
+    const initialContracts = (await request(env.base, `/api/v1/projects/${projectId}/node-contracts?workflow_revision=${applyOperation.result.workflow_revision}`)).json;
+    goldenRequire(applyOperation.status === 'completed' && initialWorkflows[0].revision === 1, 'r4_initial_apply');
+
+    const execution = await mutate(env.base, `/api/v1/projects/${projectId}/executions`, {}, 'r4-golden-execution');
+    goldenRequire(execution.response.status === 201, 'r4_execution');
+    await env.app.database.run("UPDATE task_attempts SET status='completed',finished_at=? WHERE execution_id=? AND task_id='inspect'", ['2026-08-13T00:00:00.000Z', execution.json.id]);
+    const beforeReplanInspect = initialWorkflows[0].tasks.find((task) => task.id === 'inspect');
+    const replan = await mutate(env.base, `/api/v1/projects/${projectId}/workflow-generations/replan`, {
+      provider: 'fixture', async: true
+    }, 'r4-golden-replan');
+    const replanState = await r4GoldenWaitGeneration(env.base, replan.json.generation_id);
+    const replanApply = await mutate(env.base, `/api/v1/workflow-proposals/${replanState.proposal.id}/apply`, {
+      async: true
+    }, 'r4-golden-replan-apply');
+    const replanOperation = await goldenWaitOperation(env.base, replanApply.json.operation_id);
+    const replannedWorkflows = (await request(env.base, `/api/v1/projects/${projectId}/workflows`)).json;
+    const afterReplanInspect = replannedWorkflows[0].tasks.find((task) => task.id === 'inspect');
+    goldenRequire(replanOperation.status === 'completed' && replannedWorkflows[0].revision === 2, 'r4_replan_apply');
+
+    const criticProjectId = await r4GoldenProject(env, 'critic', {
+      objective: 'Critic golden', feature: 'unmapped golden feature', acceptance: ['tests pass']
+    });
+    const rejected = await r4GoldenGeneration(env, criticProjectId, 'critic');
+    const unavailableProjectId = await r4GoldenProject(env, 'unavailable');
+    const unavailable = await r4GoldenGeneration(env, unavailableProjectId, 'unavailable', { provider: 'unavailable' });
+
+    const cancelProjectId = await r4GoldenProject(env, 'cancel');
+    const cancelStarted = await mutate(env.base, `/api/v1/projects/${cancelProjectId}/workflow-generations`, {
+      provider: 'fixture', fixture_delay_ms: 800, async: true
+    }, 'r4-golden-cancel-start');
+    await eventually(
+      async () => (await request(env.base, `/api/v1/workflow-generations/${cancelStarted.json.generation_id}`)).json,
+      (value) => value.phase === 'running',
+      5_000
+    );
+    const cancelOperationBefore = (await request(env.base, `/api/v1/operations/${cancelStarted.json.operation_id}`)).json;
+    const cancelReceipt = await mutate(env.base, `/api/v1/workflow-generations/${cancelStarted.json.generation_id}/cancel`, {
+      expected_revision: cancelOperationBefore.revision
+    }, 'r4-golden-cancel-action');
+    const cancelledState = await r4GoldenWaitGeneration(env.base, cancelStarted.json.generation_id);
+    const retry = await mutate(env.base, `/api/v1/workflow-generations/${cancelledState.id}/retry`, {
+      provider: 'fixture', async: true
+    }, 'r4-golden-retry');
+    const retryState = await r4GoldenWaitGeneration(env.base, retry.json.generation_id);
+    const interrupted = await env.app.domain.operationService.create({
+      kind: 'workflow.generate', resourceType: 'workflow_generation', resourceId: 'wgen_r4_golden_missing'
+    });
+    await env.app.domain.recover();
+    const interruptedState = await env.app.domain.operationService.get(interrupted.operation_id);
+
+    const staleProjectId = await r4GoldenProject(env, 'stale');
+    const staleDraft = (await request(env.base, `/api/v1/projects/${staleProjectId}/workflow-draft`)).json;
+    await mutate(env.base, `/api/v1/projects/${staleProjectId}/workflow-draft/layouts`, {
+      expected_revision: 0, draft_revision: staleDraft.revision, nodes: [], viewport: { x: 0, y: 0, zoom: 1 }
+    }, 'r4-golden-stale-layout-one');
+    const staleGeneration = await r4GoldenGeneration(env, staleProjectId, 'stale');
+    const newerLayout = await mutate(env.base, `/api/v1/projects/${staleProjectId}/workflow-draft/layouts`, {
+      expected_revision: 1, draft_revision: staleDraft.revision, nodes: [], viewport: { x: 20, y: 20, zoom: 1 }
+    }, 'r4-golden-stale-layout-two');
+    const staleApply = await mutate(env.base, `/api/v1/workflow-proposals/${staleGeneration.state.proposal.id}/apply`, {}, 'r4-golden-stale-apply');
+
+    const eventTypesAfterApply = (await request(env.base, `/api/v1/workflow-generations/${generated.state.id}/events`)).json.map((event) => event.type);
+    return [
+      {
+        id: 'workflow-two-level-validation', feature_id: 'REC-D5-WORKFLOW-006', cases: [
+          {
+            id: 'canonical-two-level-draft',
+            output: {
+              status: validDraft.response.status,
+              hierarchy_mode: validDraft.json.hierarchy_mode,
+              revision: validDraft.json.revision,
+              workstream_count: validDraft.json.graph.workstreams.length,
+              task_count: validDraft.json.graph.tasks.length,
+              graph_hidden: !Object.hasOwn(validDraft.json, 'graph_json')
+            }
+          },
+          { id: 'dependency-scope', output: { status: crossScopeResult.response.status, error_code: crossScopeResult.json.error.code } },
+          { id: 'graph-cycle', output: { status: cycleResult.response.status, error_code: cycleResult.json.error.code } },
+          { id: 'duplicate-output', output: { status: duplicateResult.response.status, error_code: duplicateResult.json.error.code } }
+        ]
+      },
+      {
+        id: 'generation-critic-apply-replan', feature_id: 'REC-D6-GENERATION-007', cases: [
+          {
+            id: 'generate-critic-apply-idempotently',
+            output: {
+              layout_status: layout.response.status,
+              layout_revision: layout.json.revision,
+              queued_status: generated.started.response.status,
+              phase_before_apply: generated.state.phase,
+              critic_status: generated.state.critic.status,
+              candidate_hash_valid: /^[a-f0-9]{64}$/.test(generated.state.candidate_hash),
+              proposal_hash_valid: /^[a-f0-9]{64}$/.test(generated.state.proposal.proposal_hash),
+              event_types_before_apply: generationEvents.map((event) => event.type),
+              event_types_after_apply: eventTypesAfterApply,
+              public_events_redacted: !JSON.stringify(generationEvents).includes('tests pass'),
+              apply_operation_status: applyOperation.status,
+              workflow_revision: applyOperation.result.workflow_revision,
+              replay_same_revision: applyReplay.json.workflow_revision === applyOperation.result.workflow_revision,
+              contract_count: initialContracts.length,
+              contract_payload_hidden: initialContracts.every((contract) => !Object.hasOwn(contract, 'contract_json'))
+            }
+          },
+          {
+            id: 'replan-preserves-completed-node',
+            output: {
+              generation_mode: replanState.mode,
+              generation_phase: replanState.phase,
+              apply_operation_status: replanOperation.status,
+              workflow_revision: replannedWorkflows[0].revision,
+              revision_advanced_once: replannedWorkflows[0].revision === initialWorkflows[0].revision + 1,
+              completed_node_preserved: JSON.stringify(beforeReplanInspect) === JSON.stringify(afterReplanInspect)
+            }
+          }
+        ]
+      },
+      {
+        id: 'generation-failure-and-rejection', feature_id: 'REC-D6-GENERATION-007', cases: [
+          {
+            id: 'critic-rejection',
+            output: {
+              phase: rejected.state.phase,
+              error_code: rejected.state.error_code,
+              critic_status: rejected.state.critic.status,
+              proposal_absent: rejected.state.proposal == null
+            }
+          },
+          {
+            id: 'provider-unavailable',
+            output: { phase: unavailable.state.phase, error_code: unavailable.state.error_code, operation_status: unavailable.operation.status }
+          }
+        ]
+      },
+      {
+        id: 'generation-cancel-retry-recovery', feature_id: 'REC-D6-GENERATION-007', cases: [
+          {
+            id: 'cancel-and-retry-attempt',
+            output: {
+              cancel_status: cancelReceipt.response.status,
+              cancelled_phase: cancelledState.phase,
+              retry_status: retry.response.status,
+              retry_phase: retryState.phase,
+              retry_attempt: retryState.attempt,
+              retry_linked: retryState.retry_of_generation_id === cancelledState.id
+            }
+          },
+          {
+            id: 'restart-interruption',
+            output: { operation_status: interruptedState.status, error_code: interruptedState.error_code }
+          }
+        ]
+      },
+      {
+        id: 'proposal-stale-revision', feature_id: 'REC-D5-WORKFLOW-006', cases: [{
+          id: 'layout-revision-drift',
+          output: {
+            latest_layout_revision: newerLayout.json.revision,
+            apply_status: staleApply.response.status,
+            error_code: staleApply.json.error.code,
+            current_layout_revision: staleApply.json.error.details.current_layout_revision
+          }
+        }]
+      }
+    ];
+  } finally {
+    await env?.close().catch(() => undefined);
+  }
+}
+
+async function r4GoldenProject(env, suffix, content = { objective: 'R4 golden workflow', acceptance: ['tests pass'] }) {
+  const created = await mutate(env.base, '/api/v1/projects', { name: `R4 golden ${suffix}` }, `r4-golden-${suffix}-project`);
+  goldenRequire(created.response.status === 201, `r4_${suffix}_project`);
+  await onboardProject(env.base, created, { content, keyPrefix: `r4-golden-${suffix}-onboard` });
+  return created.json.id;
+}
+
+async function r4GoldenGeneration(env, projectId, suffix, input = {}) {
+  const started = await mutate(env.base, `/api/v1/projects/${projectId}/workflow-generations`, {
+    provider: 'fixture', async: true, ...input
+  }, `r4-golden-${suffix}-generate`);
+  goldenRequire(started.response.status === 202, `r4_${suffix}_generation_start`);
+  const state = await r4GoldenWaitGeneration(env.base, started.json.generation_id);
+  const operation = await goldenWaitOperation(env.base, started.json.operation_id);
+  return { started, state, operation };
+}
+
+async function r4GoldenWaitGeneration(base, generationId) {
+  return eventually(
+    async () => (await request(base, `/api/v1/workflow-generations/${generationId}`)).json,
+    (generation) => ['completed', 'rejected', 'failed', 'cancelled'].includes(generation.phase),
+    10_000
+  );
 }
 
 async function quietFixture(options) {

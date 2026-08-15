@@ -1,0 +1,196 @@
+{
+  "schema_version": "aiws.v3.r4_golden.v1",
+  "source_commit": "9b68033a6a2a22fb5897203978c7902a99ea57e2",
+  "extraction": {
+    "mode": "ephemeral_deterministic_fixture",
+    "executed_runtime": true,
+    "network": "loopback_only"
+  },
+  "source_files": [
+    {
+      "path": "apps/api/src/command-registry.mjs",
+      "sha256": "dffdf9eab6b7eb867668309d55234acbbdf5f488547b4cd9c83baa8e6d6eade8"
+    },
+    {
+      "path": "apps/api/src/domain.mjs",
+      "sha256": "4d40f29b73250442a6e1f9350a450eff32b04aaa255df498973269b3ed39f97e"
+    },
+    {
+      "path": "apps/api/src/http.mjs",
+      "sha256": "69a023d7bcb4bde5b301a05c963ffa7657992b6ce59ad195d46d4a651575a9ab"
+    },
+    {
+      "path": "apps/api/src/migrations/004-workflow-generation-critic.mjs",
+      "sha256": "8f203eadb3e0454f0f39f074da8477492ebcd7df8baf834101345a1a45fa72db"
+    },
+    {
+      "path": "apps/api/src/modules/operations/service.mjs",
+      "sha256": "44f020449cad4d2c185f0ebd0fe792a1cdf4b62baae354bdeb8c38d293610d05"
+    },
+    {
+      "path": "apps/api/src/modules/workflow/repository.mjs",
+      "sha256": "a49510f91875d2ce2f1ca3f1e9f4e5e05f9928096d6676bc282f4d5830b3b3cd"
+    },
+    {
+      "path": "apps/api/src/modules/workflow/service.mjs",
+      "sha256": "b4af6372b7eaf8119837892b76625f3f8398df59c936e4469abccac05b413005"
+    },
+    {
+      "path": "apps/api/src/modules/workflow/validator.mjs",
+      "sha256": "3cf178c0e8ae99ac4a4b7d92742ce1066a13954be327e1337e95f85f7469f6c8"
+    }
+  ],
+  "contracts": [
+    {
+      "id": "workflow-two-level-validation",
+      "feature_id": "REC-D5-WORKFLOW-006",
+      "cases": [
+        {
+          "id": "canonical-two-level-draft",
+          "output": {
+            "status": 201,
+            "hierarchy_mode": "two_level",
+            "revision": 2,
+            "workstream_count": 2,
+            "task_count": 2,
+            "graph_hidden": true
+          }
+        },
+        {
+          "id": "dependency-scope",
+          "output": {
+            "status": 422,
+            "error_code": "workflow_dependency_scope_invalid"
+          }
+        },
+        {
+          "id": "graph-cycle",
+          "output": {
+            "status": 422,
+            "error_code": "workflow_graph_cycle"
+          }
+        },
+        {
+          "id": "duplicate-output",
+          "output": {
+            "status": 422,
+            "error_code": "workflow_duplicate_output"
+          }
+        }
+      ]
+    },
+    {
+      "id": "generation-critic-apply-replan",
+      "feature_id": "REC-D6-GENERATION-007",
+      "cases": [
+        {
+          "id": "generate-critic-apply-idempotently",
+          "output": {
+            "layout_status": 201,
+            "layout_revision": 1,
+            "queued_status": 202,
+            "phase_before_apply": "completed",
+            "critic_status": "passed",
+            "candidate_hash_valid": true,
+            "proposal_hash_valid": true,
+            "event_types_before_apply": [
+              "workflow.generation.queued",
+              "workflow.generation.running",
+              "workflow.generation.critic_pending",
+              "workflow.generation.passed",
+              "workflow.generation.proposal_created"
+            ],
+            "event_types_after_apply": [
+              "workflow.generation.queued",
+              "workflow.generation.running",
+              "workflow.generation.critic_pending",
+              "workflow.generation.passed",
+              "workflow.generation.proposal_created",
+              "workflow.generation.applied"
+            ],
+            "public_events_redacted": true,
+            "apply_operation_status": "completed",
+            "workflow_revision": 1,
+            "replay_same_revision": true,
+            "contract_count": 2,
+            "contract_payload_hidden": true
+          }
+        },
+        {
+          "id": "replan-preserves-completed-node",
+          "output": {
+            "generation_mode": "replan",
+            "generation_phase": "completed",
+            "apply_operation_status": "completed",
+            "workflow_revision": 2,
+            "revision_advanced_once": true,
+            "completed_node_preserved": true
+          }
+        }
+      ]
+    },
+    {
+      "id": "generation-failure-and-rejection",
+      "feature_id": "REC-D6-GENERATION-007",
+      "cases": [
+        {
+          "id": "critic-rejection",
+          "output": {
+            "phase": "rejected",
+            "error_code": "workflow_generation_critic_rejected",
+            "critic_status": "rejected",
+            "proposal_absent": true
+          }
+        },
+        {
+          "id": "provider-unavailable",
+          "output": {
+            "phase": "failed",
+            "error_code": "workflow_generator_unavailable",
+            "operation_status": "failed"
+          }
+        }
+      ]
+    },
+    {
+      "id": "generation-cancel-retry-recovery",
+      "feature_id": "REC-D6-GENERATION-007",
+      "cases": [
+        {
+          "id": "cancel-and-retry-attempt",
+          "output": {
+            "cancel_status": 202,
+            "cancelled_phase": "cancelled",
+            "retry_status": 202,
+            "retry_phase": "completed",
+            "retry_attempt": 2,
+            "retry_linked": true
+          }
+        },
+        {
+          "id": "restart-interruption",
+          "output": {
+            "operation_status": "failed",
+            "error_code": "operation_interrupted"
+          }
+        }
+      ]
+    },
+    {
+      "id": "proposal-stale-revision",
+      "feature_id": "REC-D5-WORKFLOW-006",
+      "cases": [
+        {
+          "id": "layout-revision-drift",
+          "output": {
+            "latest_layout_revision": 2,
+            "apply_status": 409,
+            "error_code": "workflow_proposal_stale",
+            "current_layout_revision": 2
+          }
+        }
+      ]
+    }
+  ],
+  "fixture_sha256": "7b2fa462e04441020733a36bca12023c94f1a2f59d1660645057ee79f8b4278b"
+}

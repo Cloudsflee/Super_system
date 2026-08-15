@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { generateKeyPairSync } from 'node:crypto';
+import { createHash, generateKeyPairSync } from 'node:crypto';
 import { spawnSync } from 'node:child_process';
 import { chromium, expect } from '@playwright/test';
 import { start as startApi } from '../apps/api/server.mjs';
@@ -125,6 +125,44 @@ async function checkNoOverlap(page, viewport) {
   if (overlap) throw new Error(`layout overlap at ${viewport}`);
 }
 
+async function checkWorkflowSurface(page, viewport) {
+  const result = await page.evaluate(() => {
+    const visibleRect = (selector) => {
+      const element = document.querySelector(selector);
+      if (!element) return null;
+      const rect = element.getBoundingClientRect();
+      return rect.width > 0 && rect.height > 0 ? { left: rect.left, right: rect.right, top: rect.top, bottom: rect.bottom, width: rect.width, height: rect.height } : null;
+    };
+    const gridChildren = [...document.querySelectorAll('.workflow-main-grid > *')]
+      .map((element) => element.getBoundingClientRect())
+      .filter((rect) => rect.width > 0 && rect.height > 0);
+    const overlaps = gridChildren.some((left, index) => gridChildren.slice(index + 1).some((right) => (
+      left.left < right.right - 1 && left.right > right.left + 1 && left.top < right.bottom - 1 && left.bottom > right.top + 1
+    )));
+    const nodeRects = [...document.querySelectorAll('.react-flow__node')]
+      .map((element) => element.getBoundingClientRect())
+      .filter((rect) => rect.width > 0 && rect.height > 0);
+    const nodeOverlap = nodeRects.some((left, index) => nodeRects.slice(index + 1).some((right) => (
+      left.left < right.right - 2 && left.right > right.left + 2 && left.top < right.bottom - 2 && left.bottom > right.top + 2
+    )));
+    return {
+      canvas: visibleRect('.workflow-canvas-shell'),
+      renderer: visibleRect('.react-flow__renderer'),
+      node_count: nodeRects.length,
+      edge_count: document.querySelectorAll('.react-flow__edge').length,
+      overlaps,
+      node_overlap: nodeOverlap,
+      horizontal_overflow: document.documentElement.scrollWidth > document.documentElement.clientWidth + 1
+    };
+  });
+  if (!result.canvas || result.canvas.width < 300 || result.canvas.height < 350) throw new Error(`workflow canvas missing at ${viewport}`);
+  if (!result.renderer || result.node_count < 2 || result.edge_count < 1) throw new Error(`workflow topology blank at ${viewport}`);
+  if (result.overlaps || result.node_overlap || result.horizontal_overflow) throw new Error(`workflow layout invalid at ${viewport}:${JSON.stringify(result)}`);
+  const raster = await page.locator('.workflow-canvas-shell').screenshot();
+  if (raster.length < 2_000 || new Set(raster).size < 24) throw new Error(`workflow raster blank at ${viewport}`);
+  return createHash('sha256').update(raster).digest('hex');
+}
+
 async function setViewport(page, width, height) {
   await page.setViewportSize({ width, height });
   await page.waitForTimeout(250);
@@ -218,7 +256,7 @@ try {
   await page.goto(`${base}/#/workflow`, { waitUntil: 'networkidle' });
   await expect(page.getByRole('heading', { name: 'Workflow' })).toBeVisible();
   await expect(page.locator('.project-readiness')).toContainText('Project onboarding pending');
-  await expect(page.getByRole('button', { name: 'Save revision', exact: true })).toBeDisabled();
+  await expect(page.getByRole('button', { name: 'Generate', exact: true })).toBeDisabled();
   for (const [name, width, height] of setupViewports) {
     await setViewport(page, width, height);
     await checkNoOverlap(page, `${name}-project-gated`);
@@ -253,13 +291,84 @@ try {
   await page.goto(`${base}/#/workflow`, { waitUntil: 'networkidle' });
   await expect(page.getByRole('heading', { name: 'Workflow' })).toBeVisible();
   await expect(page.locator('.project-readiness')).toHaveCount(0);
-  await page.getByPlaceholder('Add repository constraint or implementation signal').fill('browser deterministic signal');
-  await page.getByPlaceholder('Add repository constraint or implementation signal').press('Enter');
-  await expect(page.getByRole('status')).toHaveText('Context source added');
-  await page.getByRole('button', { name: 'Seal pack', exact: true }).click();
-  await expect(page.getByRole('status')).toHaveText('Context pack sealed');
-  await page.getByRole('button', { name: 'Save revision', exact: true }).click();
-  await expect(page.getByRole('status')).toHaveText('Workflow revision created');
+  await expect(page.getByRole('region', { name: 'Workflow canvas' })).toBeVisible();
+  await page.getByRole('button', { name: 'Generate', exact: true }).click();
+  await expect(page.getByRole('status')).toHaveText('Generation queued');
+  await expect(page.locator('.generation-row.selected .status')).toHaveText('completed', { timeout: 10_000 });
+  await expect(page.locator('.critic-receipt strong')).toHaveText('passed');
+  const initialGenerations = (await apiRequest(`/api/v1/projects/${project.id}/workflow-generations`)).body;
+  const initialGeneration = initialGenerations[0];
+  expect(initialGeneration.phase).toBe('completed');
+  const sseBeforeApply = await page.evaluate(async (generationId) => {
+    const response = await fetch(`/api/v1/workflow-generations/${generationId}/events`, { headers: { accept: 'text/event-stream' } });
+    const stream = await response.text();
+    const cursors = [...stream.matchAll(/^id: (\d+)$/gm)].map((match) => Number(match[1]));
+    return { status: response.status, count: cursors.length, cursor: cursors.at(-1) || 0, stream };
+  }, initialGeneration.id);
+  expect(sseBeforeApply.status).toBe(200);
+  expect(sseBeforeApply.count).toBeGreaterThanOrEqual(5);
+  expect(sseBeforeApply.stream).toContain('workflow.generation.proposal_created');
+  await page.getByRole('button', { name: 'Apply', exact: true }).click();
+  await expect(page.getByRole('status')).toHaveText('Workflow revision applied', { timeout: 10_000 });
+  await expect(page.locator('.workflow-heading-actions .pin').nth(1)).toContainText('r1');
+  const sseAfterApply = await page.evaluate(async ({ generationId, cursor }) => {
+    const response = await fetch(`/api/v1/workflow-generations/${generationId}/events`, {
+      headers: { accept: 'text/event-stream', 'Last-Event-ID': String(cursor) }
+    });
+    const stream = await response.text();
+    const cursors = [...stream.matchAll(/^id: (\d+)$/gm)].map((match) => Number(match[1]));
+    return { status: response.status, cursors, stream };
+  }, { generationId: initialGeneration.id, cursor: sseBeforeApply.cursor });
+  expect(sseAfterApply.status).toBe(200);
+  expect(sseAfterApply.cursors.every((cursor) => cursor > sseBeforeApply.cursor)).toBe(true);
+  expect(sseAfterApply.stream).toContain('workflow.generation.applied');
+
+  await page.getByRole('button', { name: '保存布局' }).click();
+  await expect(page.getByRole('status')).toHaveText('Layout revision saved');
+  await page.getByRole('button', { name: 'Replan', exact: true }).click();
+  await expect(page.getByRole('status')).toHaveText('Replan queued');
+  await expect(page.locator('.generation-row.selected .status')).toHaveText('completed', { timeout: 10_000 });
+  await page.getByRole('button', { name: 'Apply', exact: true }).click();
+  await expect(page.getByRole('status')).toHaveText('Workflow revision applied', { timeout: 10_000 });
+  await expect(page.locator('.workflow-heading-actions .pin').nth(1)).toContainText('r2');
+
+  const workflowViewports = [
+    ['desktop', 1440, 900], ['laptop', 1024, 768], ['mobile-wide', 390, 844]
+  ];
+  const workflowScreenshotHashes = {};
+  for (const [name, width, height] of workflowViewports) {
+    await setViewport(page, width, height);
+    await checkNoOverlap(page, `${name}-workflow`);
+    workflowScreenshotHashes[name] = await checkWorkflowSurface(page, `${name}-workflow`);
+    await page.screenshot({ path: path.join(reportDir, `${name}-workflow.png`), fullPage: true });
+  }
+  expect(new Set(Object.values(workflowScreenshotHashes)).size).toBe(3);
+
+  const delayedGeneration = await apiMutation(`/api/v1/projects/${project.id}/workflow-generations`, {
+    provider: 'fixture', fixture_delay_ms: 900, async: true
+  }, 'workflow-cancel');
+  await expect.poll(async () => (await apiRequest(`/api/v1/workflow-generations/${delayedGeneration.generation_id}`)).body.phase).toBe('running');
+  await page.reload({ waitUntil: 'networkidle' });
+  await expect(page.locator('.generation-row.selected .status')).toHaveText('running');
+  await page.getByRole('button', { name: 'Cancel', exact: true }).click();
+  await expect(page.locator('.generation-row.selected .status')).toHaveText('cancelled', { timeout: 10_000 });
+  await page.getByRole('button', { name: 'Retry', exact: true }).click();
+  await expect(page.locator('.generation-row.selected .status')).toHaveText('completed', { timeout: 10_000 });
+
+  const rejectedGeneration = await apiMutation(`/api/v1/projects/${project.id}/workflow-generations`, {
+    provider: 'fixture', async: true,
+    candidate: {
+      name: 'Critic browser fixture',
+      workstreams: [{ id: 'review', tasks: [{ id: 'review_only', goal: 'Review topology', outputs: ['artifacts/review.json'], acceptance: ['topology reviewed'] }] }]
+    }
+  }, 'workflow-critic-rejected');
+  await expect.poll(async () => (await apiRequest(`/api/v1/workflow-generations/${rejectedGeneration.generation_id}`)).body.phase).toBe('rejected');
+  await setViewport(page, 1440, 900);
+  await page.reload({ waitUntil: 'networkidle' });
+  await expect(page.locator('.generation-row.selected .status')).toHaveText('rejected');
+  await expect(page.locator('.critic-receipt strong')).toHaveText('rejected');
+  await expect(page.locator('.fault-code')).toHaveText('workflow_generation_critic_rejected');
+  await page.screenshot({ path: path.join(reportDir, 'desktop-workflow-rejected.png'), fullPage: true });
 
   await page.goto(`${base}/#/execution`, { waitUntil: 'networkidle' });
   await expect(page.getByRole('heading', { name: 'Execution', exact: true })).toBeVisible();
@@ -358,7 +467,7 @@ try {
   const expectedProviderFailure = unexpectedConsoleErrors.findIndex((message) => /status of 502 \(Bad Gateway\)/.test(message.text()));
   if (expectedProviderFailure >= 0) unexpectedConsoleErrors.splice(expectedProviderFailure, 1);
   if (unexpectedConsoleErrors.length) throw new Error(`browser console errors: ${unexpectedConsoleErrors.map((message) => message.text()).join('; ')}`);
-  process.stdout.write(`E2E passed: ${viewports.length} viewports, project ${project.id}, R3 onboarding and execution journey complete\n`);
+  process.stdout.write(`E2E passed: ${viewports.length} workspace viewports, 3 R4 Workflow viewports, project ${project.id}, onboarding, generation and execution journey complete\n`);
 } finally {
   await browser.close();
   await app.close();

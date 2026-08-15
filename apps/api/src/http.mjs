@@ -133,7 +133,7 @@ export function createHttpHandler({ domain, registry, db, config, performancePro
       const body = MUTATING.has(req.method) && !multipartUpload ? await readBody(req) : {};
       let result;
       let status = 200;
-      const command = (name, input = body) => executeCommand(name, input, req, urlPath);
+      const command = (name, input = body, explicitKey = null, responseStatus = 201) => executeCommand(name, input, req, urlPath, explicitKey, responseStatus);
       const r2Route = domain.r2?.routes.match(req.method, parts);
       if (r2Route) {
         const routeBody = r2Route.multipart
@@ -191,12 +191,18 @@ export function createHttpHandler({ domain, registry, db, config, performancePro
       }
       else if (parts[0] === 'projects' && parts.length >= 2) {
         const projectId = parts[1];
-        if (req.method === 'GET' && parts[2] === 'workflows') result = await domain.listWorkflows(projectId);
+        if (req.method === 'GET' && parts[2] === 'workflow-draft' && parts[3] === 'layouts') result = await domain.listWorkflowLayouts(projectId, parsed.searchParams.get('draft_id'));
+        else if (req.method === 'POST' && parts[2] === 'workflow-draft' && parts[3] === 'layouts') ({ status, body: result } = await command('workflow.layout.create', { ...body, project_id: projectId }));
+        else if (req.method === 'GET' && parts[2] === 'workflow-draft') result = await domain.getWorkflowDraft(projectId);
+        else if (req.method === 'PATCH' && parts[2] === 'workflow-draft') ({ status, body: result } = await command('workflow.draft.update', { ...body, project_id: projectId }));
+        else if (req.method === 'GET' && parts[2] === 'workflows') result = await domain.listWorkflows(projectId);
         else if (req.method === 'POST' && parts[2] === 'workflows') ({ status, body: result } = await command('workflow.create', { ...body, project_id: projectId }));
         else if (req.method === 'GET' && parts[2] === 'node-contracts') result = await domain.listNodeContracts(projectId, parsed.searchParams.get('workflow_revision'));
         else if (req.method === 'POST' && parts[2] === 'node-contracts') ({ status, body: result } = await command('node_contract.create', { ...body, project_id: projectId }));
+        else if (req.method === 'PATCH' && parts[2] === 'node-contracts' && parts[3]) ({ status, body: result } = await command('node_contract.update', { ...body, project_id: projectId, contract_id: parts[3] }, null, 200));
         else if (req.method === 'GET' && parts[2] === 'workflow-generations') result = await domain.listWorkflowGenerations(projectId);
-        else if (req.method === 'POST' && parts[2] === 'workflow-generations') ({ status, body: result } = await command('workflow.generate', { ...body, project_id: projectId }));
+        else if (req.method === 'POST' && parts[2] === 'workflow-generations' && parts[3] === 'replan') ({ status, body: result } = await command('workflow.replan', { ...body, project_id: projectId }, null, 202));
+        else if (req.method === 'POST' && parts[2] === 'workflow-generations') ({ status, body: result } = await command('workflow.generate', { ...body, project_id: projectId }, null, (body?.provider || body?.async) ? 202 : 201));
         else if (req.method === 'GET' && parts[2] === 'outcome-requirements') result = await domain.listOutcomeRequirements(projectId, parsed.searchParams.get('workflow_revision'));
         else if (req.method === 'POST' && parts[2] === 'outcome-requirements') ({ status, body: result } = await command('outcome_requirement.create', { ...body, project_id: projectId }));
         else if (req.method === 'GET' && parts[2] === 'context' && parts[3] === 'sources') result = await domain.listContextSources(projectId, parsed.searchParams.get('q') || '');
@@ -221,6 +227,38 @@ export function createHttpHandler({ domain, registry, db, config, performancePro
         else if (req.method === 'GET' && parts[2] === 'diff') result = await domain.gitDiff(projectId);
         else if (req.method === 'GET' && parts[2] === 'executions') result = await domain.listExecutions(projectId);
         else if (req.method === 'POST' && parts[2] === 'executions') ({ status, body: result } = await command('execution.create', { ...body, project_id: projectId }));
+        else throw new AppError('not_found', 'route not found');
+      } else if (parts[0] === 'workflow-generations' && parts[1]) {
+        const generationId = parts[1];
+        if (req.method === 'GET' && parts.length === 2) result = await domain.getWorkflowGeneration(generationId);
+        else if (req.method === 'GET' && parts[2] === 'events') {
+          if (String(req.headers.accept || '').includes('text/event-stream')) return streamWorkflowGenerationEvents(req, res, domain, generationId, parsed.searchParams.get('after'));
+          result = await domain.workflowGenerationEvents(generationId, parsed.searchParams.get('after'));
+        }
+        else if (req.method === 'POST' && parts[2] === 'cancel') {
+          const generation = await domain.getWorkflowGeneration(generationId);
+          ({ status, body: result } = await command('workflow.generation.cancel', { ...body, operation_id: generation.operation_id }, null, 202));
+        }
+        else if (req.method === 'POST' && parts[2] === 'retry') ({ status, body: result } = await command('workflow.generation.retry', { ...body, generation_id: generationId }, null, 202));
+        else if (req.method === 'POST' && parts[2] === 'apply') {
+          const generation = await domain.getWorkflowGeneration(generationId);
+          if (!generation.proposal?.id) throw new AppError('workflow_proposal_missing', 'generation has no pending proposal', { status: 409 });
+          ({ status, body: result } = await command('workflow.proposal.apply', { ...body, async: true, proposal_id: generation.proposal.id }, null, 202));
+        }
+        else if (req.method === 'POST' && parts[2] === 'replan') {
+          const generation = await domain.getWorkflowGeneration(generationId);
+          ({ status, body: result } = await command('workflow.replan', { ...body, generation_id: generationId, project_id: generation.project_id }, null, 202));
+        }
+        else throw new AppError('not_found', 'route not found');
+      } else if (parts[0] === 'workflow-proposals' && parts[1]) {
+        const proposalId = parts[1];
+        if (req.method === 'GET' && parts.length === 2) result = await domain.getWorkflowProposal(proposalId);
+        else if (req.method === 'POST' && parts[2] === 'apply') {
+          const proposal = await domain.getWorkflowProposal(proposalId);
+          if (!['pending', 'applied'].includes(proposal.status)) throw new AppError('workflow_proposal_stale', 'workflow proposal is no longer pending', { status: 409 });
+          ({ status, body: result } = await command('workflow.proposal.apply', { ...body, async: true, proposal_id: proposalId }, null, 202));
+        }
+        else if (req.method === 'POST' && parts[2] === 'reject') ({ status, body: result } = await command('workflow.proposal.reject', { ...body, proposal_id: proposalId }));
         else throw new AppError('not_found', 'route not found');
       } else if (parts[0] === 'executions' && parts.length >= 2) {
         const executionId = parts[1];
@@ -335,6 +373,17 @@ async function streamEvents(req, res, domain, executionId) {
   const timer = setInterval(pump, 500);
   req.on('close', () => { closed = true; clearInterval(timer); });
   await pump();
+}
+
+async function streamWorkflowGenerationEvents(req, res, domain, generationId, queryCursor = null) {
+  const initial = Number(req.headers['last-event-id'] || queryCursor || 0);
+  const events = await domain.workflowGenerationEvents(generationId, initial);
+  res.writeHead(200, { 'content-type': 'text/event-stream; charset=utf-8', 'cache-control': 'no-cache', connection: 'close' });
+  for (const event of events) {
+    const clean = domain.redact(event);
+    res.write(`id: ${clean.cursor}\nevent: ${clean.type}\ndata: ${JSON.stringify(clean)}\n\n`);
+  }
+  res.end();
 }
 
 async function streamAssistEvents(req, res, domain, sessionId) {

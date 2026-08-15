@@ -119,6 +119,33 @@ export class OperationService {
     return this.get(operationId);
   }
 
+  async reconcile(operation, outcome = {}) {
+    const current = typeof operation === 'string' ? await this.get(operation) : operation;
+    if (!current || TERMINAL.has(current.status)) return current;
+    const status = ['completed', 'failed', 'cancelled'].includes(outcome.status) ? outcome.status : 'failed';
+    const timestamp = this.clock();
+    if (status === 'cancelled') {
+      await this.repository.cancel({ id: current.id, expectedRevision: Number(current.revision), timestamp });
+    } else {
+      const errorCode = status === 'failed'
+        ? String(outcome.error_code || 'operation_interrupted').slice(0, 120)
+        : '';
+      const result = status === 'completed' ? this.clean(outcome.result || {}) : {};
+      await this.repository.transition({
+        id: current.id,
+        fromStatuses: ['pending', 'running'],
+        status,
+        timestamp,
+        result,
+        errorCode,
+        completed: true,
+        eventType: `operation.${status}`,
+        eventData: status === 'completed' ? { status, result } : { status, error_code: errorCode }
+      });
+    }
+    return this.get(current.id);
+  }
+
   async recover() {
     const pending = await this.repository.pending();
     for (const operation of pending) {

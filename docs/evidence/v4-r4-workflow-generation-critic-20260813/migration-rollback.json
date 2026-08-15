@@ -1,0 +1,135 @@
+{
+  "schema_version": "aiws.v3.r4_migration_evidence.v1",
+  "status": "passed",
+  "inputs": {
+    "database": "temporary SQLite V3 workflow fixture",
+    "production_volume_touched": false,
+    "migration_versions": [
+      1,
+      2,
+      3,
+      4
+    ],
+    "v1_checksum": "49e206dad8a7b76051f6561aada0af375c164b5dd8bec7c9a615844f598ce8ca",
+    "v2_checksum": "474cd76da2e8be23a5c7b66fd46e5a0f2cb3db03213c20e4241694f677f966bc",
+    "v3_checksum": "1c03a0fad89946a23f4dcd4874c2737f6597a002355264cd0412a90e5d86de6f",
+    "v4_checksum": "e5d4ccaef7c0672c6a7ff4aa0d2fd47437696c92e565220cb10f3ff03d1af2e7"
+  },
+  "baseline_v3": {
+    "command": "migrateDatabase({ migrations: MIGRATIONS.slice(0, 3) }) plus legacy workflow/execution fixture",
+    "output": {
+      "user_version": 3,
+      "workflow_revision": 1,
+      "execution_reference": "exe_r4_migration",
+      "task_id": "legacy_task"
+    },
+    "exit_status": 0
+  },
+  "modified_v4": {
+    "command": "migrateDatabase({ migrations: MIGRATIONS })",
+    "output": {
+      "from_version": 3,
+      "to_version": 4,
+      "applied_versions": [
+        4
+      ],
+      "snapshot_sha256": "97d8fddae289fc995cfdeacd25094dfd8472589dabd93055cf5e1b89af2684e8",
+      "state": {
+        "integrity": "ok",
+        "foreign_keys": [],
+        "user_version": 4,
+        "project_name": "modified after R4 migration",
+        "workflow": {
+          "hierarchy_mode": "legacy_compat",
+          "tasks_json": "[{\"id\":\"legacy_task\",\"title\":\"Legacy task\",\"goal\":\"Remain executable\",\"deps\":[],\"mode\":\"read\",\"inputs\":[],\"outputs\":[\"legacy.json\"],\"acceptance\":[\"done\"]}]",
+          "metadata_json": "{\"compatibility\":\"v3\"}"
+        },
+        "draft": {
+          "hierarchy_mode": "legacy_compat",
+          "layout_revision": 1,
+          "draft_hash": "0bee04f021002e5a88ac36da038f3f07b5e31b53ca648dc1b0ef26eb52af7a50"
+        },
+        "layout": {
+          "revision": 1,
+          "source": "legacy_compat",
+          "layout_hash": "0000000000000000000000000000000000000000000000000000000000000000"
+        },
+        "contract": {
+          "revision": 1,
+          "source": "legacy_compat",
+          "contract_hash": "0000000000000000000000000000000000000000000000000000000000000000"
+        },
+        "ledger": [
+          {
+            "version": 1,
+            "name": "initial_v3_schema",
+            "checksum": "49e206dad8a7b76051f6561aada0af375c164b5dd8bec7c9a615844f598ce8ca"
+          },
+          {
+            "version": 2,
+            "name": "identity_setup_providers",
+            "checksum": "474cd76da2e8be23a5c7b66fd46e5a0f2cb3db03213c20e4241694f677f966bc"
+          },
+          {
+            "version": 3,
+            "name": "project_repository_intake",
+            "checksum": "1c03a0fad89946a23f4dcd4874c2737f6597a002355264cd0412a90e5d86de6f"
+          },
+          {
+            "version": 4,
+            "name": "workflow_generation_critic",
+            "checksum": "e5d4ccaef7c0672c6a7ff4aa0d2fd47437696c92e565220cb10f3ff03d1af2e7"
+          }
+        ]
+      },
+      "legacy_workflow": {
+        "hierarchy_mode": "legacy_compat",
+        "layout_revision": 1,
+        "contract_source": "legacy_compat"
+      },
+      "v4_ledger_checksum": "e5d4ccaef7c0672c6a7ff4aa0d2fd47437696c92e565220cb10f3ff03d1af2e7"
+    },
+    "exit_status": 0
+  },
+  "rollback": {
+    "command": "restoreMigrationSnapshot({ file, manifestPath })",
+    "output": {
+      "status": "restored",
+      "sha256": "97d8fddae289fc995cfdeacd25094dfd8472589dabd93055cf5e1b89af2684e8",
+      "from_version": 3,
+      "integrity": "ok",
+      "foreign_keys": [],
+      "user_version": 3,
+      "project_name": "V3 workflow fixture",
+      "workflow_revision": 1,
+      "execution_status": "queued",
+      "task_status": "pending",
+      "ledger": [
+        {
+          "version": 1,
+          "name": "initial_v3_schema",
+          "checksum": "49e206dad8a7b76051f6561aada0af375c164b5dd8bec7c9a615844f598ce8ca"
+        },
+        {
+          "version": 2,
+          "name": "identity_setup_providers",
+          "checksum": "474cd76da2e8be23a5c7b66fd46e5a0f2cb3db03213c20e4241694f677f966bc"
+        },
+        {
+          "version": 3,
+          "name": "project_repository_intake",
+          "checksum": "1c03a0fad89946a23f4dcd4874c2737f6597a002355264cd0412a90e5d86de6f"
+        }
+      ]
+    },
+    "exit_status": 0
+  },
+  "artifacts": {
+    "snapshot": "docs/evidence/v4-r4-workflow-generation-critic-20260813/migration-snapshot.sqlite",
+    "manifest": "docs/evidence/v4-r4-workflow-generation-critic-20260813/migration-snapshot.manifest.json"
+  },
+  "hashes": {
+    "snapshot_sha256": "97d8fddae289fc995cfdeacd25094dfd8472589dabd93055cf5e1b89af2684e8",
+    "restored_database_sha256": "97d8fddae289fc995cfdeacd25094dfd8472589dabd93055cf5e1b89af2684e8"
+  }
+}

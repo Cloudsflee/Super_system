@@ -1,0 +1,344 @@
+{
+  "schema_version": "aiws.v3.recovery_evidence_manifest.v2",
+  "batch": "v4-r4-workflow-generation-critic-20260813",
+  "status": "passed",
+  "branch": "recovery/v3-feature-restore",
+  "baseline_commit": "9b68033a6a2a22fb5897203978c7902a99ea57e2",
+  "created_at": "2026-08-15T21:50:37.535Z",
+  "catalog_sha256": "81e4eeade9740617f22ce16e54481b51c4449338cce7fe32afb62af4c5df2f88",
+  "files": [
+    {
+      "path": "apps/api/src/command-registry.mjs",
+      "baseline_present": true,
+      "baseline_sha256": "9bfcf264f1c930404a65f54a275fbd7e93f2bbf47b1b5b3d971bc4a1a2416bc1",
+      "modified_sha256": "dffdf9eab6b7eb867668309d55234acbbdf5f488547b4cd9c83baa8e6d6eade8",
+      "modified_bytes": 8616
+    },
+    {
+      "path": "apps/api/src/domain.mjs",
+      "baseline_present": true,
+      "baseline_sha256": "67471d08bc3bf7ba927cb84729c7a68a77c2402071242a4fc57f9d802b7aa8bd",
+      "modified_sha256": "4d40f29b73250442a6e1f9350a450eff32b04aaa255df498973269b3ed39f97e",
+      "modified_bytes": 171225
+    },
+    {
+      "path": "apps/api/src/errors.mjs",
+      "baseline_present": true,
+      "baseline_sha256": "f81ecfaaf911a827a31d2326fdb49305f8a356a4b600625f1175bfca4b8a4508",
+      "modified_sha256": "6558a0e784010f23b7f850344c064cab25ffd1ee27079734f28166dd71117020",
+      "modified_bytes": 1422
+    },
+    {
+      "path": "apps/api/src/http.mjs",
+      "baseline_present": true,
+      "baseline_sha256": "1c9cfa5bdf2ec45421d6efe38ee5253d7a1507acc9de742a13f1111adef74847",
+      "modified_sha256": "69a023d7bcb4bde5b301a05c963ffa7657992b6ce59ad195d46d4a651575a9ab",
+      "modified_bytes": 37023
+    },
+    {
+      "path": "apps/api/src/migrations/004-workflow-generation-critic.mjs",
+      "baseline_present": false,
+      "baseline_sha256": null,
+      "modified_sha256": "8f203eadb3e0454f0f39f074da8477492ebcd7df8baf834101345a1a45fa72db",
+      "modified_bytes": 12345
+    },
+    {
+      "path": "apps/api/src/migrations/index.mjs",
+      "baseline_present": true,
+      "baseline_sha256": "a0aed27995f294b03d3542f240880f3263dd22416d091b1d603f74bf57a79a97",
+      "modified_sha256": "b3a24918371cc97d04068cf1ceee29d6614d043f257d6da008fefda8554ea531",
+      "modified_bytes": 1557
+    },
+    {
+      "path": "apps/api/src/modules/operations/service.mjs",
+      "baseline_present": true,
+      "baseline_sha256": "e2c989d1e8fd81ee8aa269eb50d81e82af86f37a8317e38f93a909c311d0c9c9",
+      "modified_sha256": "44f020449cad4d2c185f0ebd0fe792a1cdf4b62baae354bdeb8c38d293610d05",
+      "modified_bytes": 8521
+    },
+    {
+      "path": "apps/api/src/modules/r2-runtime.mjs",
+      "baseline_present": true,
+      "baseline_sha256": "e6a2f658fc35c1d14ca5301975fee355c631a42d248fe73b038a1de6a9810c1c",
+      "modified_sha256": "4d1c23e3d6c10dcc6fb4d8e36172e0830dc245feea5aeba110fa5ea7b1ce60f6",
+      "modified_bytes": 8280
+    },
+    {
+      "path": "apps/api/src/modules/registry.mjs",
+      "baseline_present": true,
+      "baseline_sha256": "8879fd5b5a77a2b3c67a5e5d897b1485a647f5160317770de741fb6e5c6ef5fe",
+      "modified_sha256": "8118f440ee8cc8a389ae45104df3d2683820f60e6923ea72428699ebf32fc88a",
+      "modified_bytes": 2440
+    },
+    {
+      "path": "apps/api/src/modules/workflow/index.mjs",
+      "baseline_present": true,
+      "baseline_sha256": "53407a4b0ac64201981b370e7ef77451de9b9f1552101bd99552b11e6e1f80d3",
+      "modified_sha256": "c8b038a1c9ceebf13e33fb0afc2d6ec1cb44b53179a9503590f18afaff73d802",
+      "modified_bytes": 1199
+    },
+    {
+      "path": "apps/api/src/modules/workflow/repository.mjs",
+      "baseline_present": true,
+      "baseline_sha256": "263a313928b0b37f8d4e5cbee1bd7536da9a83756fd9eb376568cdcbe9267e8c",
+      "modified_sha256": "a49510f91875d2ce2f1ca3f1e9f4e5e05f9928096d6676bc282f4d5830b3b3cd",
+      "modified_bytes": 1258
+    },
+    {
+      "path": "apps/api/src/modules/workflow/service.mjs",
+      "baseline_present": false,
+      "baseline_sha256": null,
+      "modified_sha256": "b4af6372b7eaf8119837892b76625f3f8398df59c936e4469abccac05b413005",
+      "modified_bytes": 57376
+    },
+    {
+      "path": "apps/api/src/modules/workflow/validator.mjs",
+      "baseline_present": false,
+      "baseline_sha256": null,
+      "modified_sha256": "3cf178c0e8ae99ac4a4b7d92742ce1066a13954be327e1337e95f85f7469f6c8",
+      "modified_bytes": 16195
+    },
+    {
+      "path": "apps/api/src/schema.mjs",
+      "baseline_present": true,
+      "baseline_sha256": "c9dee845d4cdd98448954b9e592454a186187197565fe58036cf9e9e66cab39c",
+      "modified_sha256": "296be722c14278857f44df7e9516d53a6c8824f87bd44c65131784517f54c4a9",
+      "modified_bytes": 37189
+    },
+    {
+      "path": "apps/web/package.json",
+      "baseline_present": true,
+      "baseline_sha256": "17dbe28816728ac6cdfb64df2aabf875802e0093c6c3c79d28d75bf132c47387",
+      "modified_sha256": "b58e9f8998d5d9527a7fc8ace347844d2af1552a553aa995f25c1617871644ca",
+      "modified_bytes": 725
+    },
+    {
+      "path": "apps/web/src/App.tsx",
+      "baseline_present": true,
+      "baseline_sha256": "43376227b7a2e643a1f2ebc0adc2dc60de79d84c187fb88ac42571b19befe5ca",
+      "modified_sha256": "5f5bcd6f85246e2ead6bf1f7e087596da584411fafa4f1216efbe6c5abe8c0dc",
+      "modified_bytes": 7619
+    },
+    {
+      "path": "apps/web/src/features/workflow/WorkflowPage.tsx",
+      "baseline_present": false,
+      "baseline_sha256": null,
+      "modified_sha256": "c70564b4a681885ba9e0f550f8e65650552f69bb2ad5ea61abc565356fc1d5ec",
+      "modified_bytes": 20387
+    },
+    {
+      "path": "apps/web/src/features/workflow/index.ts",
+      "baseline_present": false,
+      "baseline_sha256": null,
+      "modified_sha256": "68c15b674729bf6e8ffd07bb710664c7d944477c96147c14b9b5ff7073b4b8d2",
+      "modified_bytes": 104
+    },
+    {
+      "path": "apps/web/src/styles.css",
+      "baseline_present": true,
+      "baseline_sha256": "323117fcc653f4466cfed4744d0fbd97ce0ca56db7ba1b68e70de00de77477d9",
+      "modified_sha256": "b5164f9cc62ceed2e58cd387dffaf41eced83b60cd36e0fb9bda8c0c67d24501",
+      "modified_bytes": 51685
+    },
+    {
+      "path": "apps/web/src/types.ts",
+      "baseline_present": true,
+      "baseline_sha256": "6cced00ac0a4da79bad294af58a2336a9d07675198bd41fff6dde375ee56b240",
+      "modified_sha256": "b076ce4934c8c38cab1d26e494a9b29ad16b42d1018ec8e7a4a56f6e9c128824",
+      "modified_bytes": 10546
+    },
+    {
+      "path": "feature-catalog.json",
+      "baseline_present": true,
+      "baseline_sha256": "c537c5be8e1475afd7f65e4588e6f8e2658a2eeadcc5da09a7b0f75a6f79cfee",
+      "modified_sha256": "81e4eeade9740617f22ce16e54481b51c4449338cce7fe32afb62af4c5df2f88",
+      "modified_bytes": 32087
+    },
+    {
+      "path": "pnpm-lock.yaml",
+      "baseline_present": true,
+      "baseline_sha256": "91ec27319fb70fca6df7aae602a6955e5f9a986448eec9ec7fee85c42fc3281a",
+      "modified_sha256": "a8f4ca38ec753a67601e7cab6423d29f5050310edb2c2e35f91de7b62b465605",
+      "modified_bytes": 72950
+    },
+    {
+      "path": "scripts/e2e.mjs",
+      "baseline_present": true,
+      "baseline_sha256": "26ae35a5d5af80b294388afc1e7392d6bc547b2d40a0426bdc208f563d571786",
+      "modified_sha256": "71938c466d87d3a181e8a9222391feb9a362521af4254cd1ff01ab377a3ac015",
+      "modified_bytes": 29892
+    },
+    {
+      "path": "scripts/r4-migration-evidence.mjs",
+      "baseline_present": false,
+      "baseline_sha256": null,
+      "modified_sha256": "deeba1b00f47fdb73db8a9f2cc69b85035e4b00afa81f7d1004ef394434bd7f4",
+      "modified_bytes": 10495
+    },
+    {
+      "path": "scripts/recovery-evidence.mjs",
+      "baseline_present": true,
+      "baseline_sha256": "81f32d20809a909e0bb7bf60e5d3d0d5a3550e63d6e3b2f35cb3b1b39cde1c1e",
+      "modified_sha256": "ad3d8f7ff3a59e95c51d1f7428cf12b20336a161b2fa43bf3afe32197c9fb158",
+      "modified_bytes": 31284
+    },
+    {
+      "path": "scripts/recovery-golden.mjs",
+      "baseline_present": true,
+      "baseline_sha256": "c68723aa9b4eef1dd5ed46842eacd73d63e05673c6d36fa0e39bda344530b825",
+      "modified_sha256": "ace8b56177cdc42f60fbf4413480e262736467cef655782b0c6a0b257e390b33",
+      "modified_bytes": 56451
+    },
+    {
+      "path": "tests/golden/r4/workflow-generation-critic.json",
+      "baseline_present": false,
+      "baseline_sha256": null,
+      "modified_sha256": "17444c5e0a81545871698fb069964901f8bf148c2c199404446a6a09c019b886",
+      "modified_bytes": 5923
+    },
+    {
+      "path": "tests/integration/workflow-r4.test.mjs",
+      "baseline_present": false,
+      "baseline_sha256": null,
+      "modified_sha256": "1a946d587a6b5b84c9a516f24fe5685355b022f78def19c1d208ded8aec36d4c",
+      "modified_bytes": 29723
+    },
+    {
+      "path": "tests/security/workflow-r4.test.mjs",
+      "baseline_present": false,
+      "baseline_sha256": null,
+      "modified_sha256": "39d0e1fa1c2c62dea1511a9ccf4f2772f8202ba52952007280bd75b3ef07cfb7",
+      "modified_bytes": 3485
+    },
+    {
+      "path": "tests/unit/database.test.mjs",
+      "baseline_present": true,
+      "baseline_sha256": "34b3c2f9bc15651475b2aabe36c1f12d61045726616c8b75e2d944de7440f3b6",
+      "modified_sha256": "91b43e16ce741b1ed0c787f4e5bd9da3f2573a120fe1a9dc1c6ab67f3cfddd5e",
+      "modified_bytes": 4880
+    },
+    {
+      "path": "tests/unit/migrations.test.mjs",
+      "baseline_present": true,
+      "baseline_sha256": "aa2b0e1887ac8b87aeb0992f8f5c520f884e6a473aa81ca5402a443b813e6ca6",
+      "modified_sha256": "020e7b227914371a097f3dcecd6ab00f52211e49cd7862e234d9b41dc3eb4394",
+      "modified_bytes": 21416
+    },
+    {
+      "path": "tests/unit/recovery-golden.test.mjs",
+      "baseline_present": true,
+      "baseline_sha256": "3a1932af34a234c290813a46e52946b5dea3d94ced49d29f0167a13920437476",
+      "modified_sha256": "3a0e4149a5b39a914fb10f10689858e5cd765b50a9ba71d5aabbe145f9b7346d",
+      "modified_bytes": 5074
+    },
+    {
+      "path": "tests/unit/workflow-r4.test.mjs",
+      "baseline_present": false,
+      "baseline_sha256": null,
+      "modified_sha256": "e2a69a6d7dafd8b4c527d17d83b4c38b11f8d57f3ee71e6bcf47f3500c9dc33b",
+      "modified_bytes": 6312
+    }
+  ],
+  "artifacts": {
+    "modified_artifact": "docs/evidence/v4-r4-workflow-generation-critic-20260813/modified-artifact.json",
+    "patch": "docs/evidence/v4-r4-workflow-generation-critic-20260813/change.patch",
+    "verification": "docs/evidence/v4-r4-workflow-generation-critic-20260813/verification.json",
+    "rollback": "docs/evidence/v4-r4-workflow-generation-critic-20260813/rollback.ps1",
+    "rollback_receipt": "docs/evidence/v4-r4-workflow-generation-critic-20260813/rollback.json",
+    "migration_rollback": "docs/evidence/v4-r4-workflow-generation-critic-20260813/migration-rollback.json"
+  },
+  "screenshots": [
+    {
+      "path": "docs/evidence/v4-r4-workflow-generation-critic-20260813/screenshots/desktop-workflow-rejected.png",
+      "sha256": "98b81490c754a82f3136f8dab65beb0519b8b5a041eea1869114105ce7b4cd9b",
+      "bytes": 84380
+    },
+    {
+      "path": "docs/evidence/v4-r4-workflow-generation-critic-20260813/screenshots/desktop-workflow.png",
+      "sha256": "ddbf1626c23eb0b464b0f05490de1b9404265c78493dfa4e9d02a95338d3c507",
+      "bytes": 81454
+    },
+    {
+      "path": "docs/evidence/v4-r4-workflow-generation-critic-20260813/screenshots/laptop-workflow.png",
+      "sha256": "7de5ec87b2548382e2821c68eaad39265060e1224fd1bf76cde2be41e900b4f8",
+      "bytes": 81420
+    },
+    {
+      "path": "docs/evidence/v4-r4-workflow-generation-critic-20260813/screenshots/mobile-wide-workflow.png",
+      "sha256": "5186a1e11d9d00799b15cdb924a3e46dab477bafe6ea3d66424b0b179e3c8e5f",
+      "bytes": 63255
+    }
+  ],
+  "commands": [
+    {
+      "label": "recovery-plan",
+      "command": "corepack pnpm recovery:plan",
+      "exit_status": 0,
+      "log": "docs/evidence/v4-r4-workflow-generation-critic-20260813/recovery-plan.log",
+      "output_sha256": "9c6cfd0f6e4ff34e720dbacfe1f309819752a80ccea9c92d28c6581f8fff1b10"
+    },
+    {
+      "label": "recovery-catalog",
+      "command": "corepack pnpm recovery:catalog",
+      "exit_status": 0,
+      "log": "docs/evidence/v4-r4-workflow-generation-critic-20260813/recovery-catalog.log",
+      "output_sha256": "48cf3773cf6624e4464d980f79bc645a118f813d1b71c0f77338f6c30ad961d8"
+    },
+    {
+      "label": "recovery-coverage",
+      "command": "corepack pnpm recovery:coverage",
+      "exit_status": 0,
+      "log": "docs/evidence/v4-r4-workflow-generation-critic-20260813/recovery-coverage.log",
+      "output_sha256": "c8a589fd5454ddc09ea6515244ab6d609913f619c8427bb9ac388780d3ccdb22"
+    },
+    {
+      "label": "recovery-impact",
+      "command": "corepack pnpm recovery:impact --audit",
+      "exit_status": 0,
+      "log": "docs/evidence/v4-r4-workflow-generation-critic-20260813/recovery-impact.log",
+      "output_sha256": "8e5dca3615db9699594a924985c514a6655d3ca55ea1feeabc3bbf1f57d0635e"
+    },
+    {
+      "label": "r4-focused",
+      "command": "node.exe --test --test-concurrency=1 tests/unit/migrations.test.mjs tests/unit/database.test.mjs tests/unit/workflow-r4.test.mjs tests/unit/recovery-golden.test.mjs tests/integration/workflow-r4.test.mjs tests/security/workflow-r4.test.mjs",
+      "exit_status": 0,
+      "log": "docs/evidence/v4-r4-workflow-generation-critic-20260813/r4-focused.log",
+      "output_sha256": "a0dc5a6a7f3e5e501deba53ba421aa22927db3d4facb9ed7971a6f0ace063411"
+    },
+    {
+      "label": "r4-web",
+      "command": "corepack pnpm --filter @aiws/web test",
+      "exit_status": 0,
+      "log": "docs/evidence/v4-r4-workflow-generation-critic-20260813/r4-web.log",
+      "output_sha256": "88046b3cc67bc7c41e18360fb92897fed9edce35e552f25eb78b57df8dfaa25e"
+    },
+    {
+      "label": "r4-e2e",
+      "command": "node.exe scripts/e2e.mjs",
+      "exit_status": 0,
+      "log": "docs/evidence/v4-r4-workflow-generation-critic-20260813/r4-e2e.log",
+      "output_sha256": "88aec1cbe288f9343bc6dd85e6104c54f917ecd0f248f80452e025452fb4585f"
+    },
+    {
+      "label": "r4-golden",
+      "command": "node.exe scripts/recovery-golden.mjs verify r4-workflow-generation-critic",
+      "exit_status": 0,
+      "log": "docs/evidence/v4-r4-workflow-generation-critic-20260813/r4-golden.log",
+      "output_sha256": "7f51f7fcdf1d3eabf87d9f007c556fe29728bfab777ad8725a4b0f17c579184f"
+    },
+    {
+      "label": "r4-migration",
+      "command": "node.exe scripts/r4-migration-evidence.mjs --output E:\\00_desktop\\毕业设计\\docs\\evidence\\v4-r4-workflow-generation-critic-20260813\\migration-rollback.json",
+      "exit_status": 0,
+      "log": "docs/evidence/v4-r4-workflow-generation-critic-20260813/r4-migration.log",
+      "output_sha256": "343e80bd515704a272529fa14d247dae2957f7aa061fb5c1eddfb6942c2a2705"
+    },
+    {
+      "label": "verify",
+      "command": "corepack pnpm verify",
+      "exit_status": 0,
+      "log": "docs/evidence/v4-r4-workflow-generation-critic-20260813/verify.log",
+      "output_sha256": "738978c967971afbcbe1c14cf8bcf9ea8467e62c4078eb45a673f71fe1469188"
+    }
+  ]
+}

@@ -1,0 +1,38 @@
+{
+  "schema_version": "aiws.v3.recovery_rollback_receipt.v1",
+  "status": "passed",
+  "baseline_commit": "9b68033a6a2a22fb5897203978c7902a99ea57e2",
+  "patch_sha256": "f249cae20bbca322a61a0222f46c42e1703a694312a0aa01e2ca9c1d93a0a452",
+  "workspace": "detached temporary worktree",
+  "commands": [
+    {
+      "command": "git.exe worktree add --detach C:\\Users\\CLOUDS~1\\AppData\\Local\\Temp\\aiws-v4-r4-workflow-generation-critic-20260813-rollback-42764-57a93a33-d1c5-4d44-8424-88d61ceac746 9b68033a6a2a22fb5897203978c7902a99ea57e2",
+      "exit_status": 0,
+      "stdout": "HEAD is now at 9b68033 feat: close R3 project repository intake\n",
+      "stderr": "Preparing worktree (detached HEAD 9b68033)\n"
+    },
+    {
+      "command": "git.exe -C C:\\Users\\CLOUDS~1\\AppData\\Local\\Temp\\aiws-v4-r4-workflow-generation-critic-20260813-rollback-42764-57a93a33-d1c5-4d44-8424-88d61ceac746 apply --check E:\\00_desktop\\毕业设计\\docs\\evidence\\v4-r4-workflow-generation-critic-20260813\\change.patch",
+      "exit_status": 0,
+      "stdout": "",
+      "stderr": ""
+    },
+    {
+      "command": "git.exe -C C:\\Users\\CLOUDS~1\\AppData\\Local\\Temp\\aiws-v4-r4-workflow-generation-critic-20260813-rollback-42764-57a93a33-d1c5-4d44-8424-88d61ceac746 apply E:\\00_desktop\\毕业设计\\docs\\evidence\\v4-r4-workflow-generation-critic-20260813\\change.patch",
+      "exit_status": 0,
+      "stdout": "",
+      "stderr": ""
+    },
+    {
+      "command": "powershell.exe -NoProfile -ExecutionPolicy Bypass -File E:\\00_desktop\\毕业设计\\docs\\evidence\\v4-r4-workflow-generation-critic-20260813\\rollback.ps1 -Workspace C:\\Users\\CLOUDS~1\\AppData\\Local\\Temp\\aiws-v4-r4-workflow-generation-critic-20260813-rollback-42764-57a93a33-d1c5-4d44-8424-88d61ceac746 -SkipVerify",
+      "exit_status": 0,
+      "stdout": "rollback passed\r\n",
+      "stderr": ""
+    }
+  ],
+  "modified_status_before_rollback": " M apps/api/src/command-registry.mjs\n M apps/api/src/domain.mjs\n M apps/api/src/errors.mjs\n M apps/api/src/http.mjs\n M apps/api/src/migrations/index.mjs\n M apps/api/src/modules/operations/service.mjs\n M apps/api/src/modules/r2-runtime.mjs\n M apps/api/src/modules/registry.mjs\n M apps/api/src/modules/workflow/index.mjs\n M apps/api/src/modules/workflow/repository.mjs\n M apps/api/src/schema.mjs\n M apps/web/package.json\n M apps/web/src/App.tsx\n M apps/web/src/styles.css\n M apps/web/src/types.ts\n M feature-catalog.json\n M pnpm-lock.yaml\n M scripts/e2e.mjs\n M scripts/recovery-evidence.mjs\n M scripts/recovery-golden.mjs\n M tests/unit/database.test.mjs\n M tests/unit/migrations.test.mjs\n M tests/unit/recovery-golden.test.mjs\n?? apps/api/src/migrations/004-workflow-generation-critic.mjs\n?? apps/api/src/modules/workflow/service.mjs\n?? apps/api/src/modules/workflow/validator.mjs\n?? apps/web/src/features/workflow/\n?? scripts/r4-migration-evidence.mjs\n?? tests/golden/r4/\n?? tests/integration/workflow-r4.test.mjs\n?? tests/security/workflow-r4.test.mjs\n?? tests/unit/workflow-r4.test.mjs\n",
+  "final_status": "",
+  "final_diff_exit_status": 0,
+  "data_rollback_probe": "node --test tests/unit/migrations.test.mjs",
+  "created_at": "2026-08-15T21:50:37.228Z"
+}

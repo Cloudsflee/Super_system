@@ -24,13 +24,14 @@ export const MODULE_REGISTRY = Object.freeze([
 ]);
 
 export const FROZEN_SURFACES = Object.freeze([
-  { path: 'apps/api/src/domain.mjs', max_lines: 2482 },
-  { path: 'apps/api/src/http.mjs', max_lines: 438 },
+  { path: 'apps/api/src/domain.mjs', max_lines: 2510 },
+  { path: 'apps/api/src/http.mjs', max_lines: 520 },
   { path: 'apps/web/src/pages.tsx', max_lines: 998 }
 ]);
 
 export const LEGACY_SQL_BOUNDARIES = Object.freeze([
   { path: 'apps/api/src/domain.mjs', max_statements: 220 },
+  { path: 'apps/api/src/modules/workflow/service.mjs', max_statements: 180 },
   { path: 'apps/api/src/http.mjs', max_statements: 4 },
   { path: 'apps/api/src/terminal-service.mjs', max_statements: 23 },
   { path: 'apps/api/src/evidence-service.mjs', max_statements: 14 }

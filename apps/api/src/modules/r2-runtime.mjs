@@ -47,14 +47,18 @@ const ROUTES = Object.freeze([
 ]);
 
 export const SETUP_GATED_COMMANDS = Object.freeze(new Set([
-  'project.create', 'project.update', 'brief.create', 'workflow.create', 'node_contract.create',
-  'workflow.generate', 'outcome_requirement.create', 'execution.create', 'execution.start',
+  'project.create', 'project.update', 'brief.create', 'workflow.create', 'node_contract.create', 'node_contract.update',
+  'workflow.generate', 'workflow.draft.update', 'workflow.layout.create', 'workflow.generation.retry',
+  'workflow.generation.cancel', 'workflow.generation.apply', 'workflow.replan', 'workflow.proposal.apply', 'workflow.proposal.reject',
+  'outcome_requirement.create', 'execution.create', 'execution.start',
   'execution.cancel', 'execution.evidence.resolve', 'outcome.evaluate', 'outcome.waive',
   'delivery.create', 'delivery.merge', 'delivery.retry'
 ]));
 
 export const PROJECT_READY_COMMANDS = Object.freeze(new Set([
-  'workflow.create', 'workflow.generate', 'node_contract.create',
+  'workflow.create', 'workflow.generate', 'node_contract.create', 'node_contract.update',
+  'workflow.draft.update', 'workflow.layout.create', 'workflow.generation.retry', 'workflow.generation.cancel',
+  'workflow.generation.apply', 'workflow.replan', 'workflow.proposal.apply', 'workflow.proposal.reject',
   'outcome_requirement.create', 'execution.create', 'execution.start',
   'execution.cancel', 'execution.evidence.resolve', 'outcome.evaluate',
   'outcome.waive', 'delivery.create', 'delivery.merge', 'delivery.retry'

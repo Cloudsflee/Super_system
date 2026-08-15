@@ -23,6 +23,7 @@ import { ProjectService } from './modules/project/service.mjs';
 import { ProjectRepository } from './modules/project/repository.mjs';
 import { RepositoryService } from './modules/repository/service.mjs';
 import { WorkflowRepository } from './modules/workflow/repository.mjs';
+import { WorkflowService } from './modules/workflow/service.mjs';
 
 const TERMINAL_JOB_STATUSES = new Set(['completed', 'failed', 'cancelled', 'unknown']);
 const RUNNER_UID = 10001;
@@ -48,7 +49,9 @@ function briefView(row) {
 }
 
 function workflowView(row) {
-  return row ? { ...row, tasks: rowJson(row, 'tasks_json', []) } : null;
+  if (!row) return null;
+  const { tasks_json: _tasksJson, metadata_json: metadataJson, ...metadata } = row;
+  return { ...metadata, tasks: rowJson(row, 'tasks_json', []), metadata: rowJson(row, 'metadata_json', {}) };
 }
 
 function contextPackView(row) {
@@ -308,6 +311,13 @@ export class Domain {
         return project?.status === 'purged' ? null : project;
       }
     });
+    this.workflowService = new WorkflowService({
+      db,
+      operations: this.operationService,
+      config,
+      projectReader: async (projectId) => projectRepository.project(projectId),
+      emit: (event) => this.emit(event)
+    });
     this.projectService = new ProjectService({
       db, config, operations: this.operationService, repositoryService: this.repositoryService,
       workflowDraft: {
@@ -407,6 +417,14 @@ export class Domain {
     if (PROJECT_READY_COMMANDS.has(command)) {
       let projectId = input.project_id || input.projectId || '';
       if (!projectId && input.execution_id) projectId = (await this.db.get('SELECT project_id FROM executions WHERE id=?', [input.execution_id]))?.project_id || '';
+      if (!projectId && input.generation_id) projectId = (await this.db.get('SELECT project_id FROM workflow_generations WHERE id=?', [input.generation_id]))?.project_id || '';
+      if (!projectId && input.proposal_id) projectId = (await this.db.get('SELECT project_id FROM workflow_generation_proposals WHERE id=?', [input.proposal_id]))?.project_id || '';
+      if (!projectId && input.operation_id) {
+        const operation = await this.db.get('SELECT resource_type,resource_id FROM operations WHERE id=?', [input.operation_id]);
+        if (operation?.resource_type === 'workflow_generation') projectId = (await this.db.get('SELECT project_id FROM workflow_generations WHERE id=?', [operation.resource_id]))?.project_id || '';
+        else if (operation?.resource_type === 'workflow_proposal') projectId = (await this.db.get('SELECT project_id FROM workflow_generation_proposals WHERE id=?', [operation.resource_id]))?.project_id || '';
+        else if (operation?.resource_type === 'execution') projectId = (await this.db.get('SELECT project_id FROM executions WHERE id=?', [operation.resource_id]))?.project_id || '';
+      }
       if (projectId) await this.projectService.assertReady(projectId, { command });
     }
     return setup;
@@ -677,7 +695,12 @@ export class Domain {
     await this.requireProject(projectId);
     const revision = workflowRevision == null ? Number((await this.db.get('SELECT revision FROM workflow_revisions WHERE project_id=? ORDER BY revision DESC LIMIT 1', [projectId]))?.revision || 0) : Number(workflowRevision);
     if (!revision) return [];
-    return (await this.db.query('SELECT * FROM node_contracts WHERE project_id=? AND workflow_revision=? ORDER BY node_id', [projectId, revision])).map((row) => ({ ...row, contract: rowJson(row, 'contract_json', {}) }));
+    const rows = await this.db.query('SELECT * FROM node_contracts WHERE project_id=? AND workflow_revision=? ORDER BY node_id', [projectId, revision]);
+    return Promise.all(rows.map(async (row) => {
+      const latest = await this.db.get('SELECT revision,contract_hash,source,created_at FROM node_contract_revisions WHERE project_id=? AND workflow_revision=? AND node_id=? ORDER BY revision DESC LIMIT 1', [projectId, revision, row.node_id]);
+      const { contract_json: _contractJson, ...metadata } = row;
+      return { ...metadata, revision: Number(latest?.revision || 1), contract_hash: latest?.contract_hash || '', source: latest?.source || 'workflow', contract: rowJson(row, 'contract_json', {}) };
+    }));
   }
 
   async createNodeContract(projectId, input, ctx = {}) {
@@ -687,14 +710,19 @@ export class Domain {
     const contract = input?.contract && typeof input.contract === 'object' ? input.contract : {};
     assert(Number.isInteger(workflowRevision) && workflowRevision > 0, 'invalid_input', 'workflow_revision is required', { status: 422 });
     assert(/^[A-Za-z0-9_-]{1,80}$/.test(nodeId), 'invalid_input', 'node_id is invalid', { status: 422 });
+    assert(!Array.isArray(contract) && Buffer.byteLength(asJson(contract), 'utf8') <= 64 * 1024, 'workflow_contract_invalid', 'node contract is too large', { status: 413 });
     const workflow = await this.db.get('SELECT tasks_json FROM workflow_revisions WHERE project_id=? AND revision=?', [projectId, workflowRevision]);
     assert(workflow, 'not_found', 'workflow revision not found');
     assert(rowJson(workflow, 'tasks_json', []).some((task) => task.id === nodeId), 'invalid_input', 'node is not present in workflow', { status: 422 });
     const contractId = id('nct');
+    const previousRevision = Number((await this.db.get('SELECT MAX(revision) AS revision FROM node_contract_revisions WHERE project_id=? AND workflow_revision=? AND node_id=?', [projectId, workflowRevision, nodeId]))?.revision || 0);
+    const contractRevision = previousRevision + 1;
+    const timestamp = now();
     try {
       await this.db.transaction([
-        { sql: 'INSERT INTO node_contracts(id,project_id,workflow_revision,node_id,contract_json,created_at) VALUES(?,?,?,?,?,?)', params: [contractId, projectId, workflowRevision, nodeId, asJson(contract), now()] },
-        auditStatement('node_contract.created', 'node_contract', contractId, { project_id: projectId, workflow_revision: workflowRevision, node_id: nodeId }, ctx.actor)
+        { sql: 'INSERT INTO node_contracts(id,project_id,workflow_revision,node_id,contract_json,created_at) VALUES(?,?,?,?,?,?)', params: [contractId, projectId, workflowRevision, nodeId, asJson(contract), timestamp] },
+        { sql: 'INSERT INTO node_contract_revisions(id,project_id,workflow_revision,node_id,revision,contract_json,contract_hash,source,created_at) VALUES(?,?,?,?,?,?,?,?,?)', params: [id('ncr'), projectId, workflowRevision, nodeId, contractRevision, asJson(contract), hashJson(contract), 'manual', timestamp] },
+        auditStatement('node_contract.created', 'node_contract', contractId, { project_id: projectId, workflow_revision: workflowRevision, node_id: nodeId }, ctx.actor, timestamp)
       ]);
     } catch (error) {
       if (String(error?.message).includes('UNIQUE')) throw new AppError('already_exists', 'node contract already exists', { status: 409 });
@@ -703,12 +731,49 @@ export class Domain {
     return (await this.listNodeContracts(projectId, workflowRevision)).find((row) => row.id === contractId);
   }
 
-  async listWorkflowGenerations(projectId) {
+  async updateNodeContract(projectId, input = {}, ctx = {}) {
     await this.requireProject(projectId);
-    return (await this.db.query('SELECT * FROM workflow_generations WHERE project_id=? ORDER BY created_at DESC', [projectId])).map((row) => ({ ...row, candidate: rowJson(row, 'candidate_json', {}), critic: rowJson(row, 'critic_json', {}) }));
+    const contractId = String(input.contract_id || '').trim();
+    const current = await this.db.get('SELECT * FROM node_contracts WHERE id=? AND project_id=?', [contractId, projectId]);
+    assert(current, 'not_found', 'node contract not found');
+    const expected = Number(input.expected_revision);
+    const latest = await this.db.get('SELECT revision FROM node_contract_revisions WHERE project_id=? AND workflow_revision=? AND node_id=? ORDER BY revision DESC LIMIT 1', [projectId, current.workflow_revision, current.node_id]);
+    const currentRevision = Number(latest?.revision || 1);
+    assert(Number.isInteger(expected) && expected > 0, 'expected_revision_required', 'expected_revision is required', { status: 400 });
+    if (expected !== currentRevision) throw new AppError('revision_conflict', 'node contract revision changed', { status: 409, details: { current_revision: currentRevision } });
+    const contract = input.contract && typeof input.contract === 'object' && !Array.isArray(input.contract) ? input.contract : {};
+    assert(Buffer.byteLength(asJson(contract), 'utf8') <= 64 * 1024, 'workflow_contract_invalid', 'node contract is too large', { status: 413 });
+    const revision = currentRevision + 1;
+    const timestamp = now();
+    try {
+      await this.db.transaction([
+        {
+          sql: `UPDATE node_contracts SET contract_json=? WHERE id=? AND project_id=? AND
+            ?=(SELECT MAX(revision) FROM node_contract_revisions WHERE project_id=? AND workflow_revision=? AND node_id=?)`,
+          params: [asJson(contract), contractId, projectId, expected, projectId, current.workflow_revision, current.node_id],
+          expect_changes: 1
+        },
+        { sql: 'INSERT INTO node_contract_revisions(id,project_id,workflow_revision,node_id,revision,contract_json,contract_hash,source,created_at) VALUES(?,?,?,?,?,?,?,?,?)', params: [id('ncr'), projectId, current.workflow_revision, current.node_id, revision, asJson(contract), hashJson(contract), 'manual', timestamp] },
+        auditStatement('node_contract.updated', 'node_contract', contractId, { project_id: projectId, workflow_revision: current.workflow_revision, node_id: current.node_id, revision }, ctx.actor, timestamp)
+      ]);
+    } catch (error) {
+      if (!isTransactionPrecondition(error) && !String(error?.message || '').includes('UNIQUE constraint failed')) throw error;
+      const latestRevision = Number((await this.db.get('SELECT MAX(revision) AS revision FROM node_contract_revisions WHERE project_id=? AND workflow_revision=? AND node_id=?', [projectId, current.workflow_revision, current.node_id]))?.revision || currentRevision);
+      throw new AppError('revision_conflict', 'node contract revision changed', { status: 409, details: { current_revision: latestRevision } });
+    }
+    return (await this.listNodeContracts(projectId, current.workflow_revision)).find((row) => row.id === contractId);
+  }
+
+  async listWorkflowGenerations(projectId) {
+    return this.workflowService.listGenerations(projectId);
   }
 
   async generateWorkflow(projectId, input, ctx = {}) {
+    /* R3 kept provider-unavailable generation explicit.  R4's deterministic
+     * adapter is opt-in so legacy clients retain that response contract. */
+    if (input?.provider === 'fixture' || input?.provider === 'deterministic' || this.config.workflowGenerationFixture === true || input?.async === true) {
+      return this.workflowService.generate(projectId, input, ctx);
+    }
     await this.requireProject(projectId);
     const brief = await this.confirmedBrief(projectId);
     assert(brief, 'invalid_input', 'a brief is required before workflow generation', { status: 422 });
@@ -717,12 +782,34 @@ export class Domain {
     const critic = { status: 'not_run', issues: ['workflow_generator_unavailable'], brief_hash: brief.content_hash };
     const status = 'failed';
     await this.db.transaction([
-      { sql: 'INSERT INTO workflow_generations(id,project_id,brief_revision,status,candidate_json,critic_json,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?)', params: [generationId, projectId, brief.revision, status, asJson(candidate), asJson(critic), now(), now()] },
-      { sql: 'INSERT INTO workflow_generation_events(generation_id,type,data_json,created_at) VALUES(?,?,?,?)', params: [generationId, `workflow.generation.${status}`, asJson({ brief_revision: brief.revision, brief_hash: brief.content_hash }), now()] },
+      { sql: 'INSERT INTO workflow_generations(id,project_id,mode,phase,brief_revision,brief_hash,candidate_json,error_code,created_at,updated_at,completed_at) VALUES(?,?,?,?,?,?,?,?,?,?,?)', params: [generationId, projectId, input?.mode === 'replan' ? 'replan' : 'initial', status, brief.revision, brief.content_hash, asJson(candidate), 'workflow_generator_unavailable', now(), now(), now()] },
+      { sql: 'INSERT INTO workflow_generation_events(generation_id,operation_id,type,data_json,created_at) VALUES(?,?,?,?,?)', params: [generationId, null, `workflow.generation.${status}`, asJson({ brief_revision: brief.revision, brief_hash: brief.content_hash, error_code: 'workflow_generator_unavailable' }), now()] },
       auditStatement(`workflow.generation.${status}`, 'workflow_generation', generationId, { project_id: projectId, brief_revision: brief.revision }, ctx.actor)
     ]);
-    return (await this.listWorkflowGenerations(projectId)).find((row) => row.id === generationId);
+    const result = (await this.listWorkflowGenerations(projectId)).find((row) => row.id === generationId);
+    if (result) {
+      // Preserve the pre-R4 synchronous response shape only on the legacy path.
+      result.candidate = candidate;
+      result.critic = critic;
+    }
+    return result;
   }
+
+  async getWorkflowDraft(projectId) { return this.workflowService.getDraft(projectId); }
+  async updateWorkflowDraft(projectId, input, ctx = {}) { return this.workflowService.updateDraft(projectId, input, ctx); }
+  async listWorkflowLayouts(projectId, draftId = null) { return this.workflowService.listLayouts(projectId, draftId); }
+  async saveWorkflowLayout(projectId, input, ctx = {}) { return this.workflowService.saveLayout(projectId, input, ctx); }
+  async getWorkflowGeneration(generationId) { return this.workflowService.getGeneration(generationId); }
+  async workflowGenerationEvents(generationId, cursor = 0) { return this.workflowService.generationEvents(generationId, cursor); }
+  async retryWorkflowGeneration(generationId, input, ctx = {}) { return this.workflowService.retryGeneration(generationId, input, ctx); }
+  async cancelWorkflowGeneration(input = {}, ctx = {}) {
+    const operation = await this.operationService.cancel(input.operation_id, input);
+    return this.operationService.receipt(operation);
+  }
+  async applyWorkflowProposal(proposalId, input, ctx = {}) { return this.workflowService.applyProposal(proposalId, input, ctx); }
+  async getWorkflowProposal(proposalId) { return this.workflowService.getProposal(proposalId); }
+  async rejectWorkflowProposal(proposalId, input, ctx = {}) { return this.workflowService.rejectProposal(proposalId, input, ctx); }
+  async replanWorkflow(projectId, input, ctx = {}) { return this.workflowService.replan(projectId, input, ctx); }
 
   async listOutcomeRequirements(projectId, workflowRevision = null) {
     await this.requireProject(projectId);
@@ -1224,10 +1311,22 @@ export class Domain {
     const revision = Number((await this.db.get('SELECT COALESCE(MAX(revision),0)+1 AS revision FROM workflow_revisions WHERE project_id=?', [projectId])).revision);
     const graphHash = hashJson(tasks);
     const timestamp = now();
+    const contracts = tasks.map((task) => ({
+      task,
+      contract: {
+        goal: task.goal || task.title || task.id,
+        inputs: task.inputs || [],
+        outputs: task.outputs || [],
+        dependencies: task.deps || [],
+        allowed_tools: task.allowed_tools || [],
+        acceptance: task.acceptance || []
+      }
+    }));
     await this.db.transaction([
       { sql: 'INSERT INTO workflow_revisions(project_id,revision,name,tasks_json,graph_hash,created_at) VALUES(?,?,?,?,?,?)', params: [projectId, revision, String(input?.name || `Workflow ${revision}`).slice(0, 160), asJson(tasks), graphHash, timestamp] },
       { sql: 'INSERT INTO workflow_heads(project_id,revision,updated_at) VALUES(?,?,?) ON CONFLICT(project_id) DO UPDATE SET revision=excluded.revision,updated_at=excluded.updated_at', params: [projectId, revision, timestamp] },
-      ...tasks.map((task) => ({ sql: 'INSERT INTO node_contracts(id,project_id,workflow_revision,node_id,contract_json,created_at) VALUES(?,?,?,?,?,?)', params: [id('nct'), projectId, revision, task.id, asJson({ inputs: task.inputs, outputs: task.outputs, dependencies: task.deps, allowed_tools: task.allowed_tools || [], acceptance: task.acceptance || [] }), timestamp] })),
+      ...contracts.map(({ task, contract }) => ({ sql: 'INSERT INTO node_contracts(id,project_id,workflow_revision,node_id,contract_json,created_at) VALUES(?,?,?,?,?,?)', params: [id('nct'), projectId, revision, task.id, asJson(contract), timestamp] })),
+      ...contracts.map(({ task, contract }) => ({ sql: 'INSERT INTO node_contract_revisions(id,project_id,workflow_revision,node_id,revision,contract_json,contract_hash,source,created_at) VALUES(?,?,?,?,?,?,?,?,?)', params: [id('ncr'), projectId, revision, task.id, 1, asJson(contract), hashJson(contract), 'legacy_compat', timestamp] })),
       auditStatement('workflow.created', 'project', projectId, { revision, graph_hash: graphHash }, ctx.actor)
     ]);
     return workflowView(await this.db.get('SELECT * FROM workflow_revisions WHERE project_id=? AND revision=?', [projectId, revision]));

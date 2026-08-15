@@ -1,4 +1,4 @@
-export const SCHEMA_VERSION = 3;
+export const SCHEMA_VERSION = 4;
 
 export const SCHEMA_SQL = `
 PRAGMA foreign_keys = ON;
@@ -882,5 +882,8 @@ export const IMMUTABLE_TABLES = [
   'asset_versions',
   'execution_diffs',
   'evidence_links',
-  'events'
+  'events',
+  'workflow_layout_revisions',
+  'workflow_critic_receipts',
+  'node_contract_revisions'
 ];

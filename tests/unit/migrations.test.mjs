@@ -39,15 +39,15 @@ test('empty databases apply every forward migration and record checksums once', 
   const migrations = MIGRATIONS;
   try {
     const first = migrateDatabase({ file: fixture.file, migrations });
-    assert.deepEqual(first.applied_versions, [1, 2, 3]);
+    assert.deepEqual(first.applied_versions, [1, 2, 3, 4]);
     assert.equal(first.from_version, 0);
-    assert.equal(first.to_version, 3);
+    assert.equal(first.to_version, 4);
     assert.equal(first.snapshot, null);
     const rows = inspect(fixture.file, (db) => db.prepare('SELECT * FROM schema_migrations ORDER BY version').all());
-    assert.deepEqual(rows.map((row) => Number(row.version)), [1, 2, 3]);
+    assert.deepEqual(rows.map((row) => Number(row.version)), [1, 2, 3, 4]);
     assert.deepEqual(rows.map((row) => row.checksum), migrations.map(migrationChecksum));
     assert.ok(rows.every((row) => Number(row.duration_ms) >= 0));
-    assert.equal(inspect(fixture.file, (db) => Number(db.prepare('PRAGMA user_version').get().user_version)), 3);
+    assert.equal(inspect(fixture.file, (db) => Number(db.prepare('PRAGMA user_version').get().user_version)), 4);
     assert.throws(() => inspect(fixture.file, (db) => db.prepare('UPDATE schema_migrations SET checksum=? WHERE version=1').run('0'.repeat(64))), /immutable_record/);
     assert.throws(() => inspect(fixture.file, (db) => db.prepare('DELETE FROM schema_migrations WHERE version=1').run()), /immutable_record/);
 
@@ -67,8 +67,8 @@ test('startup resumes when an interrupted first run left only an empty migration
       checksum TEXT NOT NULL CHECK(length(checksum) = 64), applied_at TEXT NOT NULL,
       duration_ms INTEGER NOT NULL CHECK(duration_ms >= 0)) STRICT;`));
     const replay = migrateDatabase({ file: fixture.file });
-    assert.deepEqual(replay.applied_versions, [1, 2, 3]);
-    assert.equal(inspect(fixture.file, (db) => Number(db.prepare('PRAGMA user_version').get().user_version)), 3);
+    assert.deepEqual(replay.applied_versions, [1, 2, 3, 4]);
+    assert.equal(inspect(fixture.file, (db) => Number(db.prepare('PRAGMA user_version').get().user_version)), 4);
   } finally {
     fs.rmSync(fixture.home, { recursive: true, force: true });
   }
@@ -80,11 +80,11 @@ test('a fingerprint-matching V1 database is registered as a baseline with a rest
     legacyV1(fixture.file, 'Before migration');
     const result = migrateDatabase({ file: fixture.file });
     assert.equal(result.baseline_registered, true);
-    assert.deepEqual(result.applied_versions, [2, 3]);
+    assert.deepEqual(result.applied_versions, [2, 3, 4]);
     assert.ok(fs.existsSync(result.snapshot.file));
     assert.ok(fs.existsSync(result.snapshot.manifest));
     const ledger = inspect(fixture.file, (db) => db.prepare('SELECT version,name,checksum FROM schema_migrations ORDER BY version').all());
-    assert.deepEqual(ledger.map((row) => Number(row.version)), [1, 2, 3]);
+    assert.deepEqual(ledger.map((row) => Number(row.version)), [1, 2, 3, 4]);
     assert.equal(ledger[0].name, MIGRATIONS[0].name);
     assert.equal(ledger[0].checksum, V1_MIGRATION_CHECKSUM);
 
@@ -174,7 +174,7 @@ test('an interrupted SQLite transaction is rolled back before migration replay',
   }
 });
 
-test('registered V1 checksum is frozen while V2 state survives the V3 migration', () => {
+test('registered V1 checksum is frozen while V2 state survives the V4 migration', () => {
   const fixture = temporaryDatabase('aiws-v2-state-map-');
   const timestamp = '2026-08-10T00:00:00.000Z';
   try {
@@ -189,7 +189,7 @@ test('registered V1 checksum is frozen while V2 state survives the V3 migration'
     });
 
     const result = migrateDatabase({ file: fixture.file });
-    assert.deepEqual(result.applied_versions, [2, 3]);
+    assert.deepEqual(result.applied_versions, [2, 3, 4]);
     const mapped = inspect(fixture.file, (db) => ({
       checksum: db.prepare('SELECT checksum FROM schema_migrations WHERE version=1').get().checksum,
       session: { ...db.prepare('SELECT revision,created_at,updated_at FROM sessions WHERE id=?').get('ses_legacy1234') },
@@ -228,7 +228,7 @@ test('V2 project, brief, and repository binding backfill into the R3 intake grap
     });
 
     const migrated = migrateDatabase({ file: fixture.file });
-    assert.deepEqual(migrated.applied_versions, [3]);
+    assert.deepEqual(migrated.applied_versions, [3, 4]);
     assert.ok(migrated.snapshot?.file && migrated.snapshot?.manifest);
     const state = inspect(fixture.file, (db) => ({
       project: { ...db.prepare('SELECT status,onboarding_state,confirmed_brief_revision,confirmed_brief_hash,workflow_draft_id FROM projects WHERE id=?').get('prj_r3_backfill') },
@@ -250,9 +250,72 @@ test('V2 project, brief, and repository binding backfill into the R3 intake grap
     assert.deepEqual(state.connection, { id: 'con_repo_r3_backfill', source_kind: 'git', source_locator: 'https://github.com/fixture/repository', revision: 1, read_only: 1 });
     assert.deepEqual(state.target, { id: 'tgt_repo_r3_backfill', baseline_sha: 'b'.repeat(40), managed_relative_path: 'projects/prj_r3_backfill' });
     assert.deepEqual(state.line, { id: 'lin_repo_r3_backfill', line_kind: 'managed_checkout', baseline_sha: 'b'.repeat(40), managed_relative_path: 'projects/prj_r3_backfill', status: 'ready' });
-    assert.equal(state.version, 3);
+    assert.equal(state.version, 4);
     assert.equal(state.ledger[0].checksum, V1_MIGRATION_CHECKSUM);
     assert.equal(state.ledger[1].checksum, migrationChecksum(MIGRATIONS[1]));
+    assert.deepEqual(migrateDatabase({ file: fixture.file }).applied_versions, []);
+  } finally {
+    fs.rmSync(fixture.home, { recursive: true, force: true });
+  }
+});
+
+test('V3 workflows, generations, contracts, and execution references survive the V4 migration', () => {
+  const fixture = temporaryDatabase('aiws-v3-r4-workflow-backfill-');
+  const timestamp = '2026-08-11T00:00:00.000Z';
+  const tasks = JSON.stringify([{ id: 'legacy_task', title: 'Legacy task', goal: 'Remain executable', deps: [], mode: 'read', inputs: [], outputs: ['legacy.json'], acceptance: ['done'] }]);
+  try {
+    migrateDatabase({ file: fixture.file, migrations: MIGRATIONS.slice(0, 3) });
+    inspect(fixture.file, (db) => {
+      db.prepare('INSERT INTO projects(id,name,description,status,revision,created_at,updated_at) VALUES(?,?,?,?,?,?,?)')
+        .run('prj_v3_workflow', 'V3 workflow fixture', '', 'active', 1, timestamp, timestamp);
+      db.prepare('INSERT INTO brief_revisions(project_id,revision,content_json,content_hash,created_at) VALUES(?,?,?,?,?)')
+        .run('prj_v3_workflow', 1, '{"objective":"legacy"}', 'a'.repeat(64), timestamp);
+      db.prepare('INSERT INTO workflow_drafts(id,project_id,revision,graph_json,status,created_at,updated_at) VALUES(?,?,?,?,?,?,?)')
+        .run('wfd_v3_workflow', 'prj_v3_workflow', 2, `{"tasks":${tasks}}`, 'confirmed', timestamp, timestamp);
+      db.prepare('INSERT INTO workflow_revisions(project_id,revision,name,tasks_json,graph_hash,created_at) VALUES(?,?,?,?,?,?)')
+        .run('prj_v3_workflow', 1, 'Legacy workflow', tasks, 'b'.repeat(64), timestamp);
+      db.prepare('INSERT INTO workflow_heads(project_id,revision,updated_at) VALUES(?,?,?)')
+        .run('prj_v3_workflow', 1, timestamp);
+      db.prepare('INSERT INTO node_contracts(id,project_id,workflow_revision,node_id,contract_json,created_at) VALUES(?,?,?,?,?,?)')
+        .run('nct_v3_workflow', 'prj_v3_workflow', 1, 'legacy_task', '{"goal":"Remain executable"}', timestamp);
+      db.prepare('INSERT INTO workflow_generations(id,project_id,brief_revision,status,candidate_json,critic_json,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?)')
+        .run('wgen_v3_workflow', 'prj_v3_workflow', 1, 'completed', `{"tasks":${tasks}}`, '{"status":"passed"}', timestamp, timestamp);
+      db.prepare('INSERT INTO workflow_generation_events(generation_id,type,data_json,created_at) VALUES(?,?,?,?)')
+        .run('wgen_v3_workflow', 'workflow.generation.completed', '{"status":"completed"}', timestamp);
+      db.prepare('INSERT INTO executions(id,project_id,workflow_revision,brief_revision,brief_hash,status,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?)')
+        .run('exe_v3_workflow', 'prj_v3_workflow', 1, 1, 'a'.repeat(64), 'queued', timestamp, timestamp);
+      db.prepare('INSERT INTO task_attempts(id,execution_id,task_id,attempt_no,status,mode,created_at) VALUES(?,?,?,?,?,?,?)')
+        .run('att_v3_workflow', 'exe_v3_workflow', 'legacy_task', 1, 'pending', 'initial', timestamp);
+    });
+
+    const migrated = migrateDatabase({ file: fixture.file });
+    assert.deepEqual(migrated.applied_versions, [4]);
+    const state = inspect(fixture.file, (db) => ({
+      version: Number(db.prepare('PRAGMA user_version').get().user_version),
+      foreignKeys: db.prepare('PRAGMA foreign_key_check').all(),
+      workflow: { ...db.prepare('SELECT hierarchy_mode,tasks_json,metadata_json FROM workflow_revisions WHERE project_id=? AND revision=1').get('prj_v3_workflow') },
+      draft: { ...db.prepare('SELECT hierarchy_mode,layout_revision,draft_hash FROM workflow_drafts WHERE id=?').get('wfd_v3_workflow') },
+      layout: { ...db.prepare('SELECT revision,source,layout_hash FROM workflow_layout_revisions WHERE draft_id=?').get('wfd_v3_workflow') },
+      contract: { ...db.prepare('SELECT revision,source,contract_json,contract_hash FROM node_contract_revisions WHERE project_id=? AND workflow_revision=1 AND node_id=?').get('prj_v3_workflow', 'legacy_task') },
+      generation: { ...db.prepare('SELECT phase,candidate_json FROM workflow_generations WHERE id=?').get('wgen_v3_workflow') },
+      generationEvent: { ...db.prepare('SELECT type,data_json FROM workflow_generation_events WHERE generation_id=?').get('wgen_v3_workflow') },
+      execution: { ...db.prepare('SELECT workflow_revision,status FROM executions WHERE id=?').get('exe_v3_workflow') },
+      attempt: { ...db.prepare('SELECT task_id,status FROM task_attempts WHERE id=?').get('att_v3_workflow') }
+    }));
+    assert.equal(state.version, 4);
+    assert.deepEqual(state.foreignKeys, []);
+    assert.equal(state.workflow.hierarchy_mode, 'legacy_compat');
+    assert.equal(state.workflow.tasks_json, tasks);
+    assert.equal(state.workflow.metadata_json, '{"compatibility":"v3"}');
+    assert.equal(state.draft.hierarchy_mode, 'legacy_compat');
+    assert.equal(state.draft.layout_revision, 1);
+    assert.match(state.draft.draft_hash, /^[a-f0-9]{64}$/);
+    assert.deepEqual(state.layout, { revision: 1, source: 'legacy_compat', layout_hash: '0'.repeat(64) });
+    assert.deepEqual(state.contract, { revision: 1, source: 'legacy_compat', contract_json: '{"goal":"Remain executable"}', contract_hash: '0'.repeat(64) });
+    assert.deepEqual(state.generation, { phase: 'completed', candidate_json: `{"tasks":${tasks}}` });
+    assert.deepEqual(state.generationEvent, { type: 'workflow.generation.completed', data_json: '{"status":"completed"}' });
+    assert.deepEqual(state.execution, { workflow_revision: 1, status: 'queued' });
+    assert.deepEqual(state.attempt, { task_id: 'legacy_task', status: 'pending' });
     assert.deepEqual(migrateDatabase({ file: fixture.file }).applied_versions, []);
   } finally {
     fs.rmSync(fixture.home, { recursive: true, force: true });

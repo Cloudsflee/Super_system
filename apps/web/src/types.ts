@@ -43,6 +43,14 @@ export interface WorkflowDraft {
   source_brief_revision: number;
   source_brief_hash?: string;
   status: string;
+  hierarchy_mode?: 'two_level' | 'legacy_compat';
+  generation_status?: string;
+  critic_status?: string;
+  last_generation_id?: string | null;
+  applied_workflow_revision?: number;
+  layout_revision?: number;
+  draft_hash?: string;
+  graph?: WorkflowCandidate | Record<string, never>;
 }
 
 export interface Brief {
@@ -112,6 +120,103 @@ export interface WorkflowTask {
   mode: 'read' | 'write';
   inputs: string[];
   outputs: string[];
+  goal?: string;
+  workstream_id?: string;
+  allowed_tools?: string[];
+  acceptance?: string[];
+  input_slots?: WorkflowSlot[];
+  output_slots?: WorkflowSlot[];
+}
+
+export interface WorkflowSlot {
+  name: string;
+  type: string;
+  required: boolean;
+  selector: string;
+  target_output?: string;
+  acceptance: string[];
+}
+
+export interface WorkflowWorkstream {
+  id: string;
+  title: string;
+  goal?: string;
+  deps: string[];
+  tasks: WorkflowTask[];
+  acceptance?: string[];
+}
+
+export interface WorkflowCandidate {
+  hierarchy_mode: 'two_level';
+  name: string;
+  workstreams: WorkflowWorkstream[];
+  tasks: WorkflowTask[];
+  hash?: string;
+}
+
+export interface WorkflowLayoutRevision {
+  id: string;
+  draft_id: string;
+  draft_revision: number;
+  revision: number;
+  nodes: Array<{ id: string; position: { x: number; y: number }; width?: number | null; height?: number | null }>;
+  viewport: { x?: number; y?: number; zoom?: number };
+  layout_hash: string;
+  source: string;
+  created_at: string;
+}
+
+export interface WorkflowCriticReceipt {
+  id: string;
+  status: 'passed' | 'rejected' | 'failed';
+  issues: Array<{ code: string; node_id?: string; field_path?: string }>;
+  node_ids: string[];
+  field_paths: string[];
+  candidate_hash: string;
+}
+
+export interface WorkflowProposal {
+  id: string;
+  status: 'pending' | 'applied' | 'rejected' | 'stale';
+  mode: 'initial' | 'replan';
+  proposal_hash: string;
+  applied_workflow_revision: number;
+  candidate: WorkflowCandidate;
+}
+
+export interface WorkflowGeneration {
+  id: string;
+  project_id: string;
+  operation_id?: string | null;
+  mode: 'initial' | 'replan';
+  phase: string;
+  status: string;
+  brief_revision: number;
+  brief_hash: string;
+  draft_revision: number;
+  layout_revision: number;
+  attempt: number;
+  error_code?: string;
+  candidate_hash?: string;
+  candidate: WorkflowCandidate | Record<string, never>;
+  critic?: WorkflowCriticReceipt | { status?: string; issues?: Array<string | { code: string }> } | null;
+  proposal?: WorkflowProposal;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface NodeContract {
+  id: string;
+  node_id: string;
+  workflow_revision: number;
+  contract: {
+    goal?: string;
+    inputs?: Array<string | WorkflowSlot>;
+    outputs?: Array<string | WorkflowSlot>;
+    dependencies?: string[];
+    allowed_tools?: string[];
+    acceptance?: string[];
+  };
 }
 
 export interface Workflow {
@@ -120,6 +225,9 @@ export interface Workflow {
   name: string;
   graph_hash: string;
   tasks: WorkflowTask[];
+  hierarchy_mode?: 'two_level' | 'legacy_compat';
+  draft_revision?: number;
+  layout_revision?: number;
   created_at: string;
 }
 
