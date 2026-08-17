@@ -1,0 +1,134 @@
+{
+  "schema_version": "aiws.v3.r5_browser_receipt.v1",
+  "status": "passed",
+  "created_at": "2026-08-17T11:14:20.262Z",
+  "fixture": {
+    "project_id": "prj_bb1a10f72b0c49b2acba6251d8116091",
+    "source_node_id": "ctx_8b6447473e591cf19bc1f2cac8b5a664",
+    "context_pack_id": "pack_78ee37c424414afb992bfee8fd16926d",
+    "transport": "loopback_only",
+    "production_volume_touched": false
+  },
+  "checks": {
+    "context_search_policy_selection_pack_rebuild": true,
+    "mcp_create_scope_grant_revoke": true,
+    "page_errors": 0,
+    "console_errors": 0,
+    "horizontal_overflow": false,
+    "sibling_overlap": false,
+    "token_recorded": false,
+    "context_body_recorded": false,
+    "host_path_recorded": false
+  },
+  "viewports": [
+    {
+      "name": "desktop",
+      "width": 1440,
+      "height": 900
+    },
+    {
+      "name": "laptop",
+      "width": 1024,
+      "height": 768
+    },
+    {
+      "name": "mobile",
+      "width": 390,
+      "height": 844
+    }
+  ],
+  "screenshots": [
+    {
+      "file": "desktop-context-1440x900.png",
+      "width": 1440,
+      "height": 900,
+      "sha256": "f3ac47575adc3753b840b494fbd48d79ff9ea25d2ad68bbcd7836b04395fbaf9",
+      "bytes": 108120,
+      "layout": {
+        "roots": 3,
+        "overlaps": false,
+        "clipped_controls": [],
+        "horizontal_overflow": false
+      }
+    },
+    {
+      "file": "laptop-context-1024x768.png",
+      "width": 1024,
+      "height": 768,
+      "sha256": "e61cc80ddd9cf5858c400b339299ced95c7cfeb05f13da0e97d6af48e2369426",
+      "bytes": 104536,
+      "layout": {
+        "roots": 3,
+        "overlaps": false,
+        "clipped_controls": [],
+        "horizontal_overflow": false
+      }
+    },
+    {
+      "file": "mobile-context-390x844-tree.png",
+      "width": 390,
+      "height": 844,
+      "sha256": "ee26dc0122a96735c05abbf4a4d1d7c0cb445bd277fb6adca41e512880e83142",
+      "bytes": 33220,
+      "layout": {
+        "roots": 1,
+        "overlaps": false,
+        "clipped_controls": [],
+        "horizontal_overflow": false
+      }
+    },
+    {
+      "file": "mobile-context-390x844-document.png",
+      "width": 390,
+      "height": 844,
+      "sha256": "711d07be273cfe252a371ba3842b439f784acd69150da6ab3895377ae411e5af",
+      "bytes": 47436,
+      "layout": {
+        "roots": 1,
+        "overlaps": false,
+        "clipped_controls": [],
+        "horizontal_overflow": false
+      }
+    },
+    {
+      "file": "desktop-mcp-1440x900.png",
+      "width": 1440,
+      "height": 900,
+      "sha256": "4d7b29a82f4ea10bb12b4359ec141dae51b296222d718697702dce26092bf1b4",
+      "bytes": 77453,
+      "layout": {
+        "roots": 3,
+        "overlaps": false,
+        "clipped_controls": [],
+        "horizontal_overflow": false
+      }
+    },
+    {
+      "file": "laptop-mcp-1024x768.png",
+      "width": 1024,
+      "height": 768,
+      "sha256": "a57231c639073969fbacd5d0e42e9d6e9eee644e4bbe13c5ed76587894960b6b",
+      "bytes": 76557,
+      "layout": {
+        "roots": 3,
+        "overlaps": false,
+        "clipped_controls": [],
+        "horizontal_overflow": false
+      }
+    },
+    {
+      "file": "mobile-mcp-390x844.png",
+      "width": 390,
+      "height": 844,
+      "sha256": "1e74bc50ff487a0776f5be48639b439de373fef0fa5547547a053bf44603210c",
+      "bytes": 57063,
+      "layout": {
+        "roots": 3,
+        "overlaps": false,
+        "clipped_controls": [],
+        "horizontal_overflow": false
+      }
+    }
+  ],
+  "error": null
+}

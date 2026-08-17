@@ -1,0 +1,35 @@
+
+> ai-workspace-system@3.0.0 recovery:plan <WORKSPACE>
+> node scripts/recovery-governance.mjs plan
+
+{
+  "documents": [
+    "docs/开发计划v3功能恢复.md",
+    "docs/测试计划v3功能恢复.md"
+  ],
+  "domains": [
+    "assist",
+    "bridge",
+    "context",
+    "contracts",
+    "delivery",
+    "evidence",
+    "execution",
+    "frontend",
+    "governance",
+    "identity",
+    "mcp",
+    "operations",
+    "outcome",
+    "project",
+    "quality",
+    "repository",
+    "runner",
+    "setup",
+    "terminal",
+    "workflow"
+  ],
+  "feature_count": 27,
+  "phases": 10,
+  "receipt": ".ai-workspace/recovery/plan.json"
+}

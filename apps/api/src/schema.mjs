@@ -1,4 +1,6 @@
-export const SCHEMA_VERSION = 4;
+// The v1 schema text is intentionally frozen.  Forward changes are owned by
+// numbered migrations so existing baseline fingerprints remain reproducible.
+export const SCHEMA_VERSION = 5;
 
 export const SCHEMA_SQL = `
 PRAGMA foreign_keys = ON;
@@ -885,5 +887,12 @@ export const IMMUTABLE_TABLES = [
   'events',
   'workflow_layout_revisions',
   'workflow_critic_receipts',
-  'node_contract_revisions'
+  'node_contract_revisions',
+  'context_document_versions',
+  'context_policy_revisions',
+  'context_selections',
+  'context_edges',
+  'context_summaries',
+  'context_projection_events',
+  'context_index_snapshots'
 ];

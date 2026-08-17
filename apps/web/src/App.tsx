@@ -1,9 +1,10 @@
 import { useCallback, useEffect, useMemo, useState, type ComponentType } from 'react';
 import {
-  Activity, Archive, Boxes, ChevronDown, ClipboardCheck, FolderGit2, LayoutDashboard,
+  Activity, Archive, BookOpen, Boxes, ChevronDown, ClipboardCheck, FolderGit2, LayoutDashboard,
   LoaderCircle, Menu, MessageSquare, Settings, ShieldCheck, Terminal as TerminalIcon, Workflow, X
 } from 'lucide-react';
 import { api } from './api';
+import { ContextPage } from './features/context';
 import { SetupPage, type SetupState } from './features/setup';
 import { WorkflowPage as R4WorkflowPage } from './features/workflow';
 import type { Project } from './types';
@@ -12,12 +13,13 @@ import {
   type WorkspacePageProps
 } from './pages';
 
-export type PageKey = 'setup' | 'projects' | 'workflow' | 'assist' | 'execution' | 'terminals' | 'approvals' | 'assets' | 'audit' | 'settings';
+export type PageKey = 'setup' | 'projects' | 'workflow' | 'context' | 'assist' | 'execution' | 'terminals' | 'approvals' | 'assets' | 'audit' | 'settings';
 
 const NAV: Array<{ key: PageKey; label: string; icon: ComponentType<{ size?: number }> }> = [
   { key: 'setup', label: 'Setup', icon: LayoutDashboard },
   { key: 'projects', label: 'Projects', icon: FolderGit2 },
   { key: 'workflow', label: 'Workflow', icon: Workflow },
+  { key: 'context', label: 'Context', icon: BookOpen },
   { key: 'assist', label: 'Assist', icon: MessageSquare },
   { key: 'execution', label: 'Execution', icon: Activity },
   { key: 'terminals', label: 'Terminal', icon: TerminalIcon },
@@ -31,6 +33,7 @@ const PAGES: Record<PageKey, ComponentType<WorkspacePageProps>> = {
   setup: SetupPage,
   projects: ProjectsPage,
   workflow: R4WorkflowPage,
+  context: ContextPage,
   assist: AssistPage,
   execution: ExecutionPage,
   terminals: TerminalPage,
@@ -40,7 +43,7 @@ const PAGES: Record<PageKey, ComponentType<WorkspacePageProps>> = {
   settings: SettingsPage
 };
 
-const SETUP_GATED_PAGES = new Set<PageKey>(['projects', 'workflow', 'assist', 'execution', 'terminals', 'approvals', 'assets']);
+const SETUP_GATED_PAGES = new Set<PageKey>(['projects', 'workflow', 'context', 'assist', 'execution', 'terminals', 'approvals', 'assets']);
 
 function routeFromHash(): PageKey {
   const route = location.hash.replace(/^#\/?/, '') as PageKey;

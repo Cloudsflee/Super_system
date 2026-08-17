@@ -1,0 +1,22 @@
+
+> ai-workspace-system@3.0.0 recovery:coverage <WORKSPACE>
+> node scripts/recovery-governance.mjs coverage
+
+{
+  "feature_count": 27,
+  "covered_features": 27,
+  "behavior_covered": 26,
+  "ui_covered": 15,
+  "gates": {
+    "T0": 2,
+    "T1": 2,
+    "T2": 2,
+    "T3": 3,
+    "T4": 5,
+    "T5": 6,
+    "T6": 8,
+    "T7": 2,
+    "T8": 6
+  },
+  "receipt": ".ai-workspace/recovery/coverage.json"
+}

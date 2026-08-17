@@ -80,6 +80,9 @@ export function createCommandRegistry(domain) {
     ['attachment.create', (input, ctx) => domain.createAttachment(input.project_id, input, ctx)],
     ['context.rebuild', (input, ctx) => domain.rebuildContextMap(input.project_id, input, ctx)],
     ['context.selection.create', (input, ctx) => domain.createContextSelection(input.project_id, input, ctx)],
+    ['context.policy.update', (input, ctx) => domain.updateContextPolicy(input.project_id, input, ctx)],
+    ['context.projection.cancel', (input, ctx) => domain.cancelContextProjection(input.project_id, input.job_id, input, ctx)],
+    ['context.projection.retry', (input, ctx) => domain.retryContextProjection(input.project_id, input.job_id, input, ctx)],
     ['quality_review.create', (input, ctx) => domain.createQualityReview(input.project_id, input, ctx)]
   ]);
   for (const [name, handler] of domain.r2?.commands || []) commands.set(name, handler);

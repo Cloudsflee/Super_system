@@ -9,7 +9,7 @@ import {
   migrateDatabase,
   schemaFingerprint
 } from '../../apps/api/src/migration-service.mjs';
-import { MIGRATIONS, V1_MIGRATION_CHECKSUM, migrationChecksum } from '../../apps/api/src/migrations/index.mjs';
+import { MIGRATIONS, V1_MIGRATION_CHECKSUM, V5_MIGRATION_CHECKSUM, migrationChecksum } from '../../apps/api/src/migrations/index.mjs';
 import { SCHEMA_SQL } from '../../apps/api/src/schema.mjs';
 
 function temporaryDatabase(prefix) {
@@ -39,15 +39,15 @@ test('empty databases apply every forward migration and record checksums once', 
   const migrations = MIGRATIONS;
   try {
     const first = migrateDatabase({ file: fixture.file, migrations });
-    assert.deepEqual(first.applied_versions, [1, 2, 3, 4]);
+    assert.deepEqual(first.applied_versions, [1, 2, 3, 4, 5]);
     assert.equal(first.from_version, 0);
-    assert.equal(first.to_version, 4);
+    assert.equal(first.to_version, 5);
     assert.equal(first.snapshot, null);
     const rows = inspect(fixture.file, (db) => db.prepare('SELECT * FROM schema_migrations ORDER BY version').all());
-    assert.deepEqual(rows.map((row) => Number(row.version)), [1, 2, 3, 4]);
+    assert.deepEqual(rows.map((row) => Number(row.version)), [1, 2, 3, 4, 5]);
     assert.deepEqual(rows.map((row) => row.checksum), migrations.map(migrationChecksum));
     assert.ok(rows.every((row) => Number(row.duration_ms) >= 0));
-    assert.equal(inspect(fixture.file, (db) => Number(db.prepare('PRAGMA user_version').get().user_version)), 4);
+  assert.equal(inspect(fixture.file, (db) => Number(db.prepare('PRAGMA user_version').get().user_version)), 5);
     assert.throws(() => inspect(fixture.file, (db) => db.prepare('UPDATE schema_migrations SET checksum=? WHERE version=1').run('0'.repeat(64))), /immutable_record/);
     assert.throws(() => inspect(fixture.file, (db) => db.prepare('DELETE FROM schema_migrations WHERE version=1').run()), /immutable_record/);
 
@@ -67,8 +67,8 @@ test('startup resumes when an interrupted first run left only an empty migration
       checksum TEXT NOT NULL CHECK(length(checksum) = 64), applied_at TEXT NOT NULL,
       duration_ms INTEGER NOT NULL CHECK(duration_ms >= 0)) STRICT;`));
     const replay = migrateDatabase({ file: fixture.file });
-    assert.deepEqual(replay.applied_versions, [1, 2, 3, 4]);
-    assert.equal(inspect(fixture.file, (db) => Number(db.prepare('PRAGMA user_version').get().user_version)), 4);
+    assert.deepEqual(replay.applied_versions, [1, 2, 3, 4, 5]);
+    assert.equal(inspect(fixture.file, (db) => Number(db.prepare('PRAGMA user_version').get().user_version)), 5);
   } finally {
     fs.rmSync(fixture.home, { recursive: true, force: true });
   }
@@ -80,11 +80,11 @@ test('a fingerprint-matching V1 database is registered as a baseline with a rest
     legacyV1(fixture.file, 'Before migration');
     const result = migrateDatabase({ file: fixture.file });
     assert.equal(result.baseline_registered, true);
-    assert.deepEqual(result.applied_versions, [2, 3, 4]);
+    assert.deepEqual(result.applied_versions, [2, 3, 4, 5]);
     assert.ok(fs.existsSync(result.snapshot.file));
     assert.ok(fs.existsSync(result.snapshot.manifest));
     const ledger = inspect(fixture.file, (db) => db.prepare('SELECT version,name,checksum FROM schema_migrations ORDER BY version').all());
-    assert.deepEqual(ledger.map((row) => Number(row.version)), [1, 2, 3, 4]);
+    assert.deepEqual(ledger.map((row) => Number(row.version)), [1, 2, 3, 4, 5]);
     assert.equal(ledger[0].name, MIGRATIONS[0].name);
     assert.equal(ledger[0].checksum, V1_MIGRATION_CHECKSUM);
 
@@ -189,7 +189,7 @@ test('registered V1 checksum is frozen while V2 state survives the V4 migration'
     });
 
     const result = migrateDatabase({ file: fixture.file });
-    assert.deepEqual(result.applied_versions, [2, 3, 4]);
+    assert.deepEqual(result.applied_versions, [2, 3, 4, 5]);
     const mapped = inspect(fixture.file, (db) => ({
       checksum: db.prepare('SELECT checksum FROM schema_migrations WHERE version=1').get().checksum,
       session: { ...db.prepare('SELECT revision,created_at,updated_at FROM sessions WHERE id=?').get('ses_legacy1234') },
@@ -228,7 +228,7 @@ test('V2 project, brief, and repository binding backfill into the R3 intake grap
     });
 
     const migrated = migrateDatabase({ file: fixture.file });
-    assert.deepEqual(migrated.applied_versions, [3, 4]);
+    assert.deepEqual(migrated.applied_versions, [3, 4, 5]);
     assert.ok(migrated.snapshot?.file && migrated.snapshot?.manifest);
     const state = inspect(fixture.file, (db) => ({
       project: { ...db.prepare('SELECT status,onboarding_state,confirmed_brief_revision,confirmed_brief_hash,workflow_draft_id FROM projects WHERE id=?').get('prj_r3_backfill') },
@@ -250,7 +250,7 @@ test('V2 project, brief, and repository binding backfill into the R3 intake grap
     assert.deepEqual(state.connection, { id: 'con_repo_r3_backfill', source_kind: 'git', source_locator: 'https://github.com/fixture/repository', revision: 1, read_only: 1 });
     assert.deepEqual(state.target, { id: 'tgt_repo_r3_backfill', baseline_sha: 'b'.repeat(40), managed_relative_path: 'projects/prj_r3_backfill' });
     assert.deepEqual(state.line, { id: 'lin_repo_r3_backfill', line_kind: 'managed_checkout', baseline_sha: 'b'.repeat(40), managed_relative_path: 'projects/prj_r3_backfill', status: 'ready' });
-    assert.equal(state.version, 4);
+    assert.equal(state.version, 5);
     assert.equal(state.ledger[0].checksum, V1_MIGRATION_CHECKSUM);
     assert.equal(state.ledger[1].checksum, migrationChecksum(MIGRATIONS[1]));
     assert.deepEqual(migrateDatabase({ file: fixture.file }).applied_versions, []);
@@ -289,7 +289,7 @@ test('V3 workflows, generations, contracts, and execution references survive the
     });
 
     const migrated = migrateDatabase({ file: fixture.file });
-    assert.deepEqual(migrated.applied_versions, [4]);
+    assert.deepEqual(migrated.applied_versions, [4, 5]);
     const state = inspect(fixture.file, (db) => ({
       version: Number(db.prepare('PRAGMA user_version').get().user_version),
       foreignKeys: db.prepare('PRAGMA foreign_key_check').all(),
@@ -302,7 +302,7 @@ test('V3 workflows, generations, contracts, and execution references survive the
       execution: { ...db.prepare('SELECT workflow_revision,status FROM executions WHERE id=?').get('exe_v3_workflow') },
       attempt: { ...db.prepare('SELECT task_id,status FROM task_attempts WHERE id=?').get('att_v3_workflow') }
     }));
-    assert.equal(state.version, 4);
+    assert.equal(state.version, 5);
     assert.deepEqual(state.foreignKeys, []);
     assert.equal(state.workflow.hierarchy_mode, 'legacy_compat');
     assert.equal(state.workflow.tasks_json, tasks);
@@ -320,4 +320,57 @@ test('V3 workflows, generations, contracts, and execution references survive the
   } finally {
     fs.rmSync(fixture.home, { recursive: true, force: true });
   }
+});
+
+test('V4 Context, Pack, Selection, MCP client, and grant bytes survive the V5 migration', () => {
+  const fixture = temporaryDatabase('aiws-v4-r5-context-backfill-');
+  const timestamp = '2026-08-16T00:00:00.000Z';
+  const content = 'legacy context bytes';
+  const contentHash = 'c'.repeat(64);
+  const packJson = '{"sources":[{"id":"src_legacy","content":"legacy pack bytes"}]}';
+  const tokenHash = 'd'.repeat(64);
+  const grantHash = 'e'.repeat(64);
+  try {
+    migrateDatabase({ file: fixture.file, migrations: MIGRATIONS.slice(0, 4) });
+    inspect(fixture.file, (db) => {
+      db.prepare('INSERT INTO users(id,display_name,status,revision,created_at,updated_at) VALUES(?,?,?,?,?,?)').run('usr_r5', 'R5 user', 'active', 1, timestamp, timestamp);
+      db.prepare('INSERT INTO projects(id,name,description,status,revision,created_at,updated_at) VALUES(?,?,?,?,?,?,?)').run('prj_r5', 'R5 project', '', 'active', 1, timestamp, timestamp);
+      db.prepare('INSERT INTO context_nodes(id,project_id,parent_id,uri,title,kind,sensitivity,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?)').run('ctx_r5', 'prj_r5', null, 'aiws://context/prj_r5/note/legacy', 'Legacy node', 'note', 'normal', timestamp, timestamp);
+      db.prepare('INSERT INTO context_document_versions(id,node_id,version,content_hash,content,created_at) VALUES(?,?,?,?,?,?)').run('cdv_r5', 'ctx_r5', 1, contentHash, content, timestamp);
+      db.prepare('INSERT INTO context_selections(id,project_id,session_id,node_ids_json,retrieval_plan_json,created_at) VALUES(?,?,?,?,?,?)').run('csel_r5', 'prj_r5', null, '["ctx_r5"]', '{"strategy":"legacy"}', timestamp);
+      db.prepare('INSERT INTO context_packs(id,project_id,source_ids_json,pack_json,pack_hash,created_at) VALUES(?,?,?,?,?,?)').run('pack_r5', 'prj_r5', '["src_legacy"]', packJson, 'f'.repeat(64), timestamp);
+      db.prepare('INSERT INTO mcp_clients(id,user_id,name,transport,endpoint,token_hash,scope_json,status,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?)').run('mcp_r5', 'usr_r5', 'Legacy MCP', 'stdio', '', tokenHash, '{"project_ids":["prj_r5"]}', 'available', timestamp, timestamp);
+      db.prepare('INSERT INTO exchange_requests(id,project_id,scope_json,status,created_at,expires_at) VALUES(?,?,?,?,?,?)').run('mreq_r5', 'prj_r5', '{"project_ids":["prj_r5"]}', 'granted', timestamp, '2027-08-16T00:00:00.000Z');
+      db.prepare('INSERT INTO exchange_grants(id,request_id,token_hash,scope_json,expires_at,revoked_at) VALUES(?,?,?,?,?,?)').run('mgrant_r5', 'mreq_r5', grantHash, '{"project_ids":["prj_r5"]}', '2027-08-16T00:00:00.000Z', null);
+    });
+
+    const migrated = migrateDatabase({ file: fixture.file });
+    assert.deepEqual(migrated.applied_versions, [5]);
+    const state = inspect(fixture.file, (db) => ({
+      version: Number(db.prepare('PRAGMA user_version').get().user_version),
+      integrity: db.prepare('PRAGMA integrity_check').get().integrity_check,
+      foreignKeys: db.prepare('PRAGMA foreign_key_check').all(),
+      versionRow: { ...db.prepare('SELECT content,content_hash,source_hash,storage_kind,renderer_version FROM context_document_versions WHERE id=?').get('cdv_r5') },
+      selection: { ...db.prepare('SELECT node_ids_json,retrieval_plan_json,schema_version,compatibility FROM context_selections WHERE id=?').get('csel_r5') },
+      pack: { ...db.prepare('SELECT source_ids_json,pack_json,compatibility FROM context_packs WHERE id=?').get('pack_r5') },
+      client: { ...db.prepare('SELECT token_hash,compatibility,project_allowlist_json FROM mcp_clients WHERE id=?').get('mcp_r5') },
+      grant: { ...db.prepare('SELECT token_hash,compatibility FROM exchange_grants WHERE id=?').get('mgrant_r5') },
+      checksum: db.prepare('SELECT checksum FROM schema_migrations WHERE version=5').get().checksum
+    }));
+    assert.equal(state.version, 5);
+    assert.equal(state.integrity, 'ok');
+    assert.deepEqual(state.foreignKeys, []);
+    assert.deepEqual(state.versionRow, { content, content_hash: contentHash, source_hash: contentHash, storage_kind: 'inline_legacy', renderer_version: 'legacy-inline-v1' });
+    assert.deepEqual(state.selection, { node_ids_json: '["ctx_r5"]', retrieval_plan_json: '{"strategy":"legacy"}', schema_version: 'aiws.context_selection.v1', compatibility: 'legacy_compat' });
+    assert.deepEqual(state.pack, { source_ids_json: '["src_legacy"]', pack_json: packJson, compatibility: 'legacy_compat' });
+    assert.deepEqual(state.client, { token_hash: tokenHash, compatibility: 'legacy_compat', project_allowlist_json: '[]' });
+    assert.deepEqual(state.grant, { token_hash: grantHash, compatibility: 'legacy_compat' });
+    assert.equal(state.checksum, V5_MIGRATION_CHECKSUM);
+    inspect(fixture.file, (db) => {
+      assert.throws(() => db.prepare("UPDATE context_document_versions SET content='changed' WHERE id='cdv_r5'").run(), /immutable_record/);
+      assert.throws(() => db.prepare("UPDATE context_selections SET compatibility='native_v5' WHERE id='csel_r5'").run(), /immutable_record/);
+      assert.throws(() => db.prepare("UPDATE context_packs SET compatibility='native_v5' WHERE id='pack_r5'").run(), /immutable_record/);
+    });
+    assert.deepEqual(migrateDatabase({ file: fixture.file }).applied_versions, []);
+  } finally { fs.rmSync(fixture.home, { recursive: true, force: true }); }
 });

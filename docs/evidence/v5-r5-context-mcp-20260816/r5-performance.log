@@ -1,0 +1,63 @@
+AIWS runner-broker listening on http://127.0.0.1:64507
+AIWS 3.0.0 listening on http://127.0.0.1:64508
+{
+  "schema_version": "aiws.v3.r5_performance_receipt.v1",
+  "status": "passed",
+  "created_at": "2026-08-17T11:14:28.972Z",
+  "fixture": {
+    "nodes": 1000,
+    "transport": "loopback_only",
+    "production_volume_touched": false
+  },
+  "sample_counts": {
+    "map": 30,
+    "search": 30,
+    "selection": 20,
+    "mcp_read": 100
+  },
+  "thresholds": {
+    "map_p95_ms": 150,
+    "search_p95_ms": 250,
+    "selection_p95_ms": 500
+  },
+  "results": {
+    "rebuild_ms": 1426.87,
+    "projected_nodes": 1000,
+    "map": {
+      "samples": 30,
+      "min_ms": 65.92,
+      "median_ms": 78.8,
+      "p95_ms": 95.72,
+      "max_ms": 103.34
+    },
+    "search": {
+      "samples": 30,
+      "min_ms": 15.87,
+      "median_ms": 18,
+      "p95_ms": 22.9,
+      "max_ms": 29.39
+    },
+    "selection": {
+      "samples": 20,
+      "min_ms": 51.1,
+      "median_ms": 54.93,
+      "p95_ms": 86.28,
+      "max_ms": 90.83
+    },
+    "mcp_read": {
+      "samples": 100,
+      "min_ms": 4.55,
+      "median_ms": 5.07,
+      "p95_ms": 5.93,
+      "max_ms": 6.29
+    }
+  },
+  "checks": {
+    "map_p95": true,
+    "search_p95": true,
+    "selection_p95": true,
+    "mcp_reads_completed": true
+  }
+}
+(node:12696) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)

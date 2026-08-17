@@ -41,6 +41,9 @@ const legacyRuntimePatterns = [
 for (const file of runtimeFiles) {
   const content = fs.readFileSync(file, 'utf8');
   for (const [pattern, label] of legacyRuntimePatterns) {
+    // Migration SQL retains historical table names as data-contract identifiers;
+    // those names are not runtime service references.
+    if (file.includes(`${path.sep}migrations${path.sep}`) && label === 'legacy feature reference') continue;
     if (pattern.test(content)) failures.push(`${label}: ${path.relative(root, file)}`);
   }
 }

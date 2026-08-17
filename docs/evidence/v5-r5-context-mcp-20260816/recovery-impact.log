@@ -1,0 +1,528 @@
+
+> ai-workspace-system@3.0.0 recovery:impact <WORKSPACE>
+> node scripts/recovery-governance.mjs impact "--audit"
+
+{
+  "audit": true,
+  "changed_files": [
+    {
+      "file": "V3功能恢复与架构治理判断.md",
+      "features": []
+    },
+    {
+      "file": "apps/api/src/command-registry.mjs",
+      "features": [
+        "REC-D4-MCP-004",
+        "REC-D5-WORKFLOW-006",
+        "REC-D6-GENERATION-007"
+      ]
+    },
+    {
+      "file": "apps/api/src/domain.mjs",
+      "features": [
+        "REC-D4-MCP-004",
+        "REC-D5-WORKFLOW-006",
+        "REC-D6-GENERATION-007",
+        "REC-D6-OUTCOME-009",
+        "REC-D8-ASSIST-010",
+        "REC-D4-SCOPE-016",
+        "REC-D9-QUALITY-020"
+      ]
+    },
+    {
+      "file": "apps/api/src/http.mjs",
+      "features": [
+        "REC-D4-MCP-004",
+        "REC-D5-WORKFLOW-006",
+        "REC-D6-GENERATION-007",
+        "REC-D4-SCOPE-016",
+        "REC-D11-OPS-022"
+      ]
+    },
+    {
+      "file": "apps/api/src/migrations/005-context-projection-mcp.mjs",
+      "features": [
+        "REC-D1-CONTRACTS-023"
+      ]
+    },
+    {
+      "file": "apps/api/src/migrations/index.mjs",
+      "features": [
+        "REC-D1-CONTRACTS-023"
+      ]
+    },
+    {
+      "file": "apps/api/src/modules/context/adapters.mjs",
+      "features": [
+        "REC-D9-CONTEXT-017",
+        "REC-D9-PROJECTION-018"
+      ]
+    },
+    {
+      "file": "apps/api/src/modules/context/index-runtime.mjs",
+      "features": [
+        "REC-D9-CONTEXT-017",
+        "REC-D9-PROJECTION-018"
+      ]
+    },
+    {
+      "file": "apps/api/src/modules/context/index.mjs",
+      "features": [
+        "REC-D9-CONTEXT-017",
+        "REC-D9-PROJECTION-018"
+      ]
+    },
+    {
+      "file": "apps/api/src/modules/context/pack.mjs",
+      "features": [
+        "REC-D9-CONTEXT-017",
+        "REC-D9-PROJECTION-018"
+      ]
+    },
+    {
+      "file": "apps/api/src/modules/context/projection-worker.mjs",
+      "features": [
+        "REC-D9-CONTEXT-017",
+        "REC-D9-PROJECTION-018"
+      ]
+    },
+    {
+      "file": "apps/api/src/modules/context/repository.mjs",
+      "features": [
+        "REC-D9-CONTEXT-017",
+        "REC-D9-PROJECTION-018"
+      ]
+    },
+    {
+      "file": "apps/api/src/modules/context/selection.mjs",
+      "features": [
+        "REC-D9-CONTEXT-017",
+        "REC-D9-PROJECTION-018"
+      ]
+    },
+    {
+      "file": "apps/api/src/modules/context/service.mjs",
+      "features": [
+        "REC-D9-CONTEXT-017",
+        "REC-D9-PROJECTION-018"
+      ]
+    },
+    {
+      "file": "apps/api/src/modules/define-module.mjs",
+      "features": []
+    },
+    {
+      "file": "apps/api/src/modules/mcp/http.mjs",
+      "features": [
+        "REC-D4-MCP-004",
+        "REC-D4-SCOPE-016"
+      ]
+    },
+    {
+      "file": "apps/api/src/modules/mcp/public-tools.mjs",
+      "features": [
+        "REC-D4-MCP-004",
+        "REC-D4-SCOPE-016"
+      ]
+    },
+    {
+      "file": "apps/api/src/modules/query-registry.mjs",
+      "features": [
+        "REC-D2-SETUP-002"
+      ]
+    },
+    {
+      "file": "apps/api/src/modules/r2-runtime.mjs",
+      "features": [
+        "REC-D2-IDENTITY-001",
+        "REC-D2-SETUP-002"
+      ]
+    },
+    {
+      "file": "apps/api/src/schema.mjs",
+      "features": [
+        "REC-D1-CONTRACTS-023"
+      ]
+    },
+    {
+      "file": "apps/web/src/App.tsx",
+      "features": [
+        "REC-D10-FRONTEND-024",
+        "REC-D5-WORKFLOW-006",
+        "REC-D6-GENERATION-007"
+      ]
+    },
+    {
+      "file": "apps/web/src/features/context/ContextPage.tsx",
+      "features": [
+        "REC-D10-FRONTEND-024",
+        "REC-D9-CONTEXT-017",
+        "REC-D9-PROJECTION-018"
+      ]
+    },
+    {
+      "file": "apps/web/src/features/context/McpSettings.tsx",
+      "features": [
+        "REC-D10-FRONTEND-024",
+        "REC-D4-SCOPE-016",
+        "REC-D9-CONTEXT-017",
+        "REC-D9-PROJECTION-018"
+      ]
+    },
+    {
+      "file": "apps/web/src/features/context/index.ts",
+      "features": [
+        "REC-D10-FRONTEND-024",
+        "REC-D9-CONTEXT-017",
+        "REC-D9-PROJECTION-018"
+      ]
+    },
+    {
+      "file": "apps/web/src/features/context/types.ts",
+      "features": [
+        "REC-D10-FRONTEND-024",
+        "REC-D9-CONTEXT-017",
+        "REC-D9-PROJECTION-018"
+      ]
+    },
+    {
+      "file": "apps/web/src/pages.tsx",
+      "features": [
+        "REC-D10-FRONTEND-024",
+        "REC-D8-TERMINAL-025"
+      ]
+    },
+    {
+      "file": "apps/web/src/styles.css",
+      "features": [
+        "REC-D10-FRONTEND-024",
+        "REC-D5-WORKFLOW-006",
+        "REC-D6-GENERATION-007"
+      ]
+    },
+    {
+      "file": "apps/web/src/test/context.test.tsx",
+      "features": [
+        "REC-D4-MCP-004",
+        "REC-D4-SCOPE-016",
+        "REC-D9-CONTEXT-017",
+        "REC-D9-PROJECTION-018"
+      ]
+    },
+    {
+      "file": "docs/evidence/v5-r5-context-mcp-20260816/browser-receipt.json",
+      "features": []
+    },
+    {
+      "file": "docs/evidence/v5-r5-context-mcp-20260816/change.patch",
+      "features": []
+    },
+    {
+      "file": "docs/evidence/v5-r5-context-mcp-20260816/manifest.json",
+      "features": []
+    },
+    {
+      "file": "docs/evidence/v5-r5-context-mcp-20260816/migration-rollback.json",
+      "features": []
+    },
+    {
+      "file": "docs/evidence/v5-r5-context-mcp-20260816/migration-snapshot-v4.manifest.json",
+      "features": []
+    },
+    {
+      "file": "docs/evidence/v5-r5-context-mcp-20260816/migration-snapshot-v4.sqlite",
+      "features": []
+    },
+    {
+      "file": "docs/evidence/v5-r5-context-mcp-20260816/modified-artifact.json",
+      "features": []
+    },
+    {
+      "file": "docs/evidence/v5-r5-context-mcp-20260816/performance.json",
+      "features": []
+    },
+    {
+      "file": "docs/evidence/v5-r5-context-mcp-20260816/r5-e2e.log",
+      "features": []
+    },
+    {
+      "file": "docs/evidence/v5-r5-context-mcp-20260816/r5-focused.log",
+      "features": []
+    },
+    {
+      "file": "docs/evidence/v5-r5-context-mcp-20260816/r5-golden.log",
+      "features": []
+    },
+    {
+      "file": "docs/evidence/v5-r5-context-mcp-20260816/r5-migration.log",
+      "features": []
+    },
+    {
+      "file": "docs/evidence/v5-r5-context-mcp-20260816/r5-performance.log",
+      "features": []
+    },
+    {
+      "file": "docs/evidence/v5-r5-context-mcp-20260816/r5-web.log",
+      "features": []
+    },
+    {
+      "file": "docs/evidence/v5-r5-context-mcp-20260816/recovery-catalog.log",
+      "features": []
+    },
+    {
+      "file": "docs/evidence/v5-r5-context-mcp-20260816/recovery-coverage.log",
+      "features": []
+    },
+    {
+      "file": "docs/evidence/v5-r5-context-mcp-20260816/recovery-impact.log",
+      "features": []
+    },
+    {
+      "file": "docs/evidence/v5-r5-context-mcp-20260816/recovery-plan.log",
+      "features": []
+    },
+    {
+      "file": "docs/evidence/v5-r5-context-mcp-20260816/rollback.json",
+      "features": []
+    },
+    {
+      "file": "docs/evidence/v5-r5-context-mcp-20260816/rollback.ps1",
+      "features": []
+    },
+    {
+      "file": "docs/evidence/v5-r5-context-mcp-20260816/screenshots/desktop-context-1440x900.png",
+      "features": []
+    },
+    {
+      "file": "docs/evidence/v5-r5-context-mcp-20260816/screenshots/desktop-mcp-1440x900.png",
+      "features": []
+    },
+    {
+      "file": "docs/evidence/v5-r5-context-mcp-20260816/screenshots/laptop-context-1024x768.png",
+      "features": []
+    },
+    {
+      "file": "docs/evidence/v5-r5-context-mcp-20260816/screenshots/laptop-mcp-1024x768.png",
+      "features": []
+    },
+    {
+      "file": "docs/evidence/v5-r5-context-mcp-20260816/screenshots/mobile-context-390x844-document.png",
+      "features": []
+    },
+    {
+      "file": "docs/evidence/v5-r5-context-mcp-20260816/screenshots/mobile-context-390x844-tree.png",
+      "features": []
+    },
+    {
+      "file": "docs/evidence/v5-r5-context-mcp-20260816/screenshots/mobile-mcp-390x844.png",
+      "features": []
+    },
+    {
+      "file": "docs/evidence/v5-r5-context-mcp-20260816/verification.json",
+      "features": [
+        "REC-D4-MCP-004",
+        "REC-D4-SCOPE-016",
+        "REC-D9-CONTEXT-017",
+        "REC-D9-PROJECTION-018"
+      ]
+    },
+    {
+      "file": "docs/evidence/v5-r5-context-mcp-20260816/verify.log",
+      "features": []
+    },
+    {
+      "file": "feature-catalog.json",
+      "features": [
+        "REC-D0-GOVERNANCE-000"
+      ]
+    },
+    {
+      "file": "package.json",
+      "features": []
+    },
+    {
+      "file": "pnpm-lock.yaml",
+      "features": [
+        "REC-D1-CONTRACTS-023"
+      ]
+    },
+    {
+      "file": "scripts/check.mjs",
+      "features": [
+        "REC-D0-GOVERNANCE-000"
+      ]
+    },
+    {
+      "file": "scripts/mcp-stdio.mjs",
+      "features": [
+        "REC-D4-MCP-004"
+      ]
+    },
+    {
+      "file": "scripts/r5-e2e.mjs",
+      "features": [
+        "REC-D4-MCP-004",
+        "REC-D4-SCOPE-016",
+        "REC-D9-CONTEXT-017",
+        "REC-D9-PROJECTION-018"
+      ]
+    },
+    {
+      "file": "scripts/r5-migration-evidence.mjs",
+      "features": [
+        "REC-D1-CONTRACTS-023",
+        "REC-D4-MCP-004",
+        "REC-D4-SCOPE-016",
+        "REC-D9-CONTEXT-017",
+        "REC-D9-PROJECTION-018"
+      ]
+    },
+    {
+      "file": "scripts/r5-performance.mjs",
+      "features": [
+        "REC-D4-MCP-004",
+        "REC-D9-CONTEXT-017",
+        "REC-D9-PROJECTION-018"
+      ]
+    },
+    {
+      "file": "scripts/recovery-evidence.mjs",
+      "features": [
+        "REC-D0-GOVERNANCE-000"
+      ]
+    },
+    {
+      "file": "scripts/recovery-golden.mjs",
+      "features": [
+        "REC-D1-CONTRACTS-023"
+      ]
+    },
+    {
+      "file": "scripts/recovery-governance.mjs",
+      "features": [
+        "REC-D0-GOVERNANCE-000"
+      ]
+    },
+    {
+      "file": "tests/golden/r5/context-projection-mcp.json",
+      "features": [
+        "REC-D1-CONTRACTS-023"
+      ]
+    },
+    {
+      "file": "tests/integration/context-r5.test.mjs",
+      "features": [
+        "REC-D9-CONTEXT-017",
+        "REC-D9-PROJECTION-018"
+      ]
+    },
+    {
+      "file": "tests/integration/context-recovery.test.mjs",
+      "features": [
+        "REC-D9-CONTEXT-017",
+        "REC-D9-PROJECTION-018"
+      ]
+    },
+    {
+      "file": "tests/integration/mcp-flow.test.mjs",
+      "features": [
+        "REC-D4-MCP-004",
+        "REC-D4-SCOPE-016"
+      ]
+    },
+    {
+      "file": "tests/integration/mcp-stdio-r5.test.mjs",
+      "features": [
+        "REC-D4-MCP-004"
+      ]
+    },
+    {
+      "file": "tests/security/context-mcp-r5.test.mjs",
+      "features": [
+        "REC-D4-MCP-004",
+        "REC-D4-SCOPE-016",
+        "REC-D9-CONTEXT-017",
+        "REC-D9-PROJECTION-018"
+      ]
+    },
+    {
+      "file": "tests/unit/context-r5.test.mjs",
+      "features": [
+        "REC-D9-CONTEXT-017",
+        "REC-D9-PROJECTION-018"
+      ]
+    },
+    {
+      "file": "tests/unit/database.test.mjs",
+      "features": [
+        "REC-D1-CONTRACTS-023"
+      ]
+    },
+    {
+      "file": "tests/unit/migrations.test.mjs",
+      "features": [
+        "REC-D1-CONTRACTS-023"
+      ]
+    },
+    {
+      "file": "tests/unit/recovery-golden.test.mjs",
+      "features": [
+        "REC-D1-CONTRACTS-023"
+      ]
+    }
+  ],
+  "unmapped_files": [],
+  "selected_tests": [
+    "T0",
+    "T1",
+    "T2",
+    "T3",
+    "T4",
+    "T5",
+    "T6",
+    "T8",
+    "apps/web/src/test/context.test.tsx",
+    "apps/web/src/test/setup-flow.test.tsx",
+    "apps/web/src/test/terminal.test.tsx",
+    "apps/web/src/test/workflow.test.tsx",
+    "scripts/e2e.mjs",
+    "scripts/r5-e2e.mjs",
+    "tests/integration/api-flow.test.mjs",
+    "tests/integration/assist-flow.test.mjs",
+    "tests/integration/codex-provider-flow.test.mjs",
+    "tests/integration/context-r5.test.mjs",
+    "tests/integration/context-recovery.test.mjs",
+    "tests/integration/github-operations-flow.test.mjs",
+    "tests/integration/github-provider-flow.test.mjs",
+    "tests/integration/identity-r2-flow.test.mjs",
+    "tests/integration/mcp-flow.test.mjs",
+    "tests/integration/mcp-stdio-r5.test.mjs",
+    "tests/integration/r2-provider-boundaries.test.mjs",
+    "tests/integration/setup-flow.test.mjs",
+    "tests/integration/terminal-flow.test.mjs",
+    "tests/integration/workflow-r4.test.mjs",
+    "tests/integration/workflow-recovery.test.mjs",
+    "tests/release/release-gate.test.mjs",
+    "tests/release/release-rehearsal-compose.test.mjs",
+    "tests/security/boundary.test.mjs",
+    "tests/security/context-mcp-r5.test.mjs",
+    "tests/security/credentials.test.mjs",
+    "tests/security/workflow-r4.test.mjs",
+    "tests/unit/codex-provider.test.mjs",
+    "tests/unit/context-r5.test.mjs",
+    "tests/unit/contracts.test.mjs",
+    "tests/unit/credential-vault.test.mjs",
+    "tests/unit/database.test.mjs",
+    "tests/unit/github-provider.test.mjs",
+    "tests/unit/identity-operations.test.mjs",
+    "tests/unit/migrations.test.mjs",
+    "tests/unit/recovery-golden.test.mjs",
+    "tests/unit/recovery-governance.test.mjs",
+    "tests/unit/setup-service.test.mjs",
+    "tests/unit/terminal-bundle.test.mjs",
+    "tests/unit/terminal.test.mjs",
+    "tests/unit/workflow-r4.test.mjs",
+    "tests/unit/workflow.test.mjs"
+  ],
+  "receipt": ".ai-workspace/recovery/impact.json"
+}

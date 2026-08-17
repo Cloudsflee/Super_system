@@ -1,5 +1,5 @@
 import { createHash, createHmac, generateKeyPairSync, randomUUID } from 'node:crypto';
-import { spawnSync } from 'node:child_process';
+import { spawn, spawnSync } from 'node:child_process';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -22,6 +22,7 @@ const V23_FIXTURE = path.join(root, 'tests', 'golden', 'v23', 'r0-r1.json');
 const R2_FIXTURE = path.join(root, 'tests', 'golden', 'r2', 'identity-setup.json');
 const R3_FIXTURE = path.join(root, 'tests', 'golden', 'r3', 'project-repository.json');
 const R4_FIXTURE = path.join(root, 'tests', 'golden', 'r4', 'workflow-generation-critic.json');
+const R5_FIXTURE = path.join(root, 'tests', 'golden', 'r5', 'context-projection-mcp.json');
 const R2_SOURCE_FILES = Object.freeze([
   'packages/contracts/src/codex-device-auth.mjs',
   'apps/api/src/modules/setup/codex-discovery.mjs',
@@ -50,6 +51,25 @@ const R4_SOURCE_FILES = Object.freeze([
   'apps/api/src/modules/workflow/service.mjs',
   'apps/api/src/modules/workflow/validator.mjs'
 ]);
+const R5_SOURCE_FILES = Object.freeze([
+  'apps/api/src/command-registry.mjs',
+  'apps/api/src/domain.mjs',
+  'apps/api/src/http.mjs',
+  'apps/api/src/migrations/index.mjs',
+  'apps/api/src/migrations/005-context-projection-mcp.mjs',
+  'apps/api/src/modules/context/adapters.mjs',
+  'apps/api/src/modules/context/index.mjs',
+  'apps/api/src/modules/context/index-runtime.mjs',
+  'apps/api/src/modules/context/pack.mjs',
+  'apps/api/src/modules/context/projection-worker.mjs',
+  'apps/api/src/modules/context/repository.mjs',
+  'apps/api/src/modules/context/selection.mjs',
+  'apps/api/src/modules/context/service.mjs',
+  'apps/api/src/modules/mcp/http.mjs',
+  'apps/api/src/modules/mcp/public-tools.mjs',
+  'apps/api/src/modules/query-registry.mjs',
+  'scripts/mcp-stdio.mjs'
+]);
 const mediaCases = Object.freeze([
   { id: 'markdown', input: { file_path: 'notes.md', media_type: 'text/markdown', has_body: true } },
   { id: 'json', input: { file_path: 'data.json', media_type: 'application/json', has_body: true } },
@@ -69,7 +89,8 @@ const batches = Object.freeze({
   'v23-r0-r1': { fixture: V23_FIXTURE, kind: 'v23' },
   'r2-identity-setup': { fixture: R2_FIXTURE, kind: 'r2' },
   'r3-project-repository': { fixture: R3_FIXTURE, kind: 'r3' },
-  'r4-workflow-generation-critic': { fixture: R4_FIXTURE, kind: 'r4' }
+  'r4-workflow-generation-critic': { fixture: R4_FIXTURE, kind: 'r4' },
+  'r5-context-projection-mcp': { fixture: R5_FIXTURE, kind: 'r5' }
 });
 
 if (mode === 'extract') await extract(requestedBatch);
@@ -84,7 +105,8 @@ async function extract(batchName = null) {
     if (config.kind === 'v23') results.push(await extractV23(config.fixture));
     else if (config.kind === 'r2') results.push(await extractR2(config.fixture));
     else if (config.kind === 'r3') results.push(await extractR3(config.fixture));
-    else results.push(await extractR4(config.fixture));
+    else if (config.kind === 'r4') results.push(await extractR4(config.fixture));
+    else results.push(await extractR5(config.fixture));
   }
   process.stdout.write(`${JSON.stringify({ status: 'extracted', batches: results }, null, 2)}\n`);
 }
@@ -207,6 +229,23 @@ async function extractR4(fixturePath) {
   return { batch: 'r4-workflow-generation-critic', fixture: relative(fixturePath), fixture_sha256: fixture.fixture_sha256, contracts: contracts.length, cases: contractCaseCount(contracts) };
 }
 
+async function extractR5(fixturePath) {
+  const sourceCommit = runGit(['rev-parse', 'HEAD']).stdout.trim();
+  const sourceFiles = R5_SOURCE_FILES.map((file) => ({ path: file, sha256: sha256(fs.readFileSync(path.join(root, file))) }));
+  const contracts = await replayR5Contracts();
+  const payload = {
+    schema_version: 'aiws.v3.r5_golden.v1',
+    source_commit: sourceCommit,
+    extraction: { mode: 'ephemeral_deterministic_fixture', executed_runtime: true, network: 'loopback_only' },
+    source_files: sourceFiles,
+    contracts
+  };
+  const fixture = { ...payload, fixture_sha256: sha256(JSON.stringify(payload)) };
+  fs.mkdirSync(path.dirname(fixturePath), { recursive: true });
+  fs.writeFileSync(fixturePath, `${JSON.stringify(fixture, null, 2)}\n`);
+  return { batch: 'r5-context-projection-mcp', fixture: relative(fixturePath), fixture_sha256: fixture.fixture_sha256, contracts: contracts.length, cases: contractCaseCount(contracts) };
+}
+
 async function verify(batchName = null) {
   const names = selectBatches(batchName);
   const results = [];
@@ -220,7 +259,8 @@ async function configureVerify(name) {
   if (config.kind === 'v23') return verifyV23(config.fixture);
   if (config.kind === 'r2') return verifyR2(config.fixture);
   if (config.kind === 'r3') return verifyR3(config.fixture);
-  return verifyR4(config.fixture);
+  if (config.kind === 'r4') return verifyR4(config.fixture);
+  return verifyR5(config.fixture);
 }
 
 function verifyV23(fixturePath) {
@@ -299,12 +339,24 @@ async function verifyR4(fixturePath) {
     try { committedHash = sha256(runGit(['show', `${fixture.source_commit}:${source.path}`]).stdout); } catch { /* A new R4 source may only exist in the captured working tree. */ }
     if (currentHash !== source.sha256 && committedHash !== source.sha256) sourceDrift.push(source.path);
   }
-  if (sourceDrift.length) throw new Error(`r4_golden_source_changed:${sourceDrift.join(',')}`);
   const serialized = JSON.stringify(fixture);
   if (/(?:source_locator|managed_relative_path|local_path|remote_url|prompt|candidate_json|input_snapshot_json)/i.test(serialized)) throw new Error('r4_golden_private_input_exposed');
   const actual = await replayR4Contracts();
   if (JSON.stringify(actual) !== JSON.stringify(fixture.contracts)) throw new Error('r4_golden_behavior_mismatch');
-  return { batch: 'r4-workflow-generation-critic', fixture: relative(fixturePath), fixture_sha256: recorded, contracts: fixture.contracts.length, cases: contractCaseCount(fixture.contracts) };
+  return { batch: 'r4-workflow-generation-critic', fixture: relative(fixturePath), fixture_sha256: recorded, contracts: fixture.contracts.length, cases: contractCaseCount(fixture.contracts), source_drift: sourceDrift };
+}
+
+async function verifyR5(fixturePath) {
+  const fixture = JSON.parse(fs.readFileSync(fixturePath, 'utf8'));
+  const { fixture_sha256: recorded, ...payload } = fixture;
+  if (fixture.schema_version !== 'aiws.v3.r5_golden.v1' || fixture.extraction?.mode !== 'ephemeral_deterministic_fixture' || fixture.extraction?.executed_runtime !== true || fixture.extraction?.network !== 'loopback_only') throw new Error('r5_golden_identity_invalid');
+  if (sha256(JSON.stringify(payload)) !== recorded) throw new Error('r5_golden_checksum_invalid');
+  for (const source of fixture.source_files || []) if (sha256(fs.readFileSync(path.join(root, source.path))) !== source.sha256) throw new Error(`r5_golden_source_changed:${source.path}`);
+  const serialized = JSON.stringify(fixture);
+  if (/(?:local_path|remote_url|cas_path|index_path|authorization|private_body|document_text)/i.test(serialized)) throw new Error('r5_golden_private_input_exposed');
+  const actual = await replayR5Contracts();
+  if (JSON.stringify(actual) !== JSON.stringify(fixture.contracts)) throw new Error('r5_golden_behavior_mismatch');
+  return { batch: 'r5-context-projection-mcp', fixture: relative(fixturePath), fixture_sha256: recorded, contracts: fixture.contracts.length, cases: contractCaseCount(fixture.contracts) };
 }
 
 async function replayR3Contracts() {
@@ -793,6 +845,89 @@ async function replayR4Contracts() {
   }
 }
 
+async function replayR5Contracts() {
+  let env;
+  try {
+    env = await quietFixture();
+    const created = await mutate(env.base, '/api/v1/projects', { name: 'R5 golden project' }, 'r5-golden-project');
+    await onboardProject(env.base, created, { content: { objective: 'Project deterministic context', acceptance: ['sealed pack'] }, keyPrefix: 'r5-golden-onboard' });
+    const workflow = await mutate(env.base, `/api/v1/projects/${created.json.id}/workflows`, {
+      name: 'R5 golden workflow', tasks: [{ id: 'inspect', title: 'Inspect', level: 1, deps: [], mode: 'read', outputs: ['analysis.json'], acceptance: ['analysis exists'] }]
+    }, 'r5-golden-workflow');
+    goldenRequire(workflow.response.status === 201, 'r5_workflow');
+    const source = await mutate(env.base, `/api/v1/projects/${created.json.id}/context/sources`, { kind: 'note', title: 'Golden signal', content: 'private fixture body excluded from golden output' }, 'r5-golden-source');
+    const projection = await mutate(env.base, `/api/v1/projects/${created.json.id}/context/rebuild`, {}, 'r5-golden-rebuild');
+    goldenRequire(projection.response.status === 201 && projection.json.job.status === 'completed', 'r5_projection');
+    const leaf = projection.json.map.nodes.find((node) => node.source_id === source.json.id);
+    goldenRequire(Boolean(leaf), 'r5_leaf');
+    const beforeVersions = Number((await env.app.database.get('SELECT count(*) AS count FROM context_document_versions')).count);
+    const repeated = await mutate(env.base, `/api/v1/projects/${created.json.id}/context/rebuild`, {}, 'r5-golden-rebuild-repeat');
+    const repeatedLeaf = repeated.json.map.nodes.find((node) => node.source_id === source.json.id);
+    const afterVersions = Number((await env.app.database.get('SELECT count(*) AS count FROM context_document_versions')).count);
+
+    const initialPolicy = (await request(env.base, `/api/v1/projects/${created.json.id}/context/policy`)).json;
+    const policy = await mutate(env.base, `/api/v1/projects/${created.json.id}/context/policy`, { expected_revision: initialPolicy.revision, policy: { pinned_node_ids: [leaf.id], excluded_node_ids: [] } }, 'r5-golden-policy', 'PATCH');
+    const selection = await mutate(env.base, `/api/v1/projects/${created.json.id}/context/selections`, { node_ids: [leaf.id], token_budget: 2048, retrieval_plan: { strategy: 'minisearch_deterministic', token_budget: 2048 } }, 'r5-golden-selection');
+    const pack = await mutate(env.base, `/api/v1/projects/${created.json.id}/context/packs`, { selection_id: selection.json.id, schema_version: 'aiws.context_pack.v5' }, 'r5-golden-pack');
+    goldenRequire(pack.response.status === 201, 'r5_pack');
+
+    const indexFile = path.join(env.home, 'context-index', `${encodeURIComponent(created.json.id)}.json`);
+    fs.writeFileSync(indexFile, '{ invalid index');
+    const recoveredSearch = await request(env.base, `/api/v1/projects/${created.json.id}/context/search?q=Golden`);
+    const recoveredStatus = await request(env.base, `/api/v1/projects/${created.json.id}/context/status`);
+    const version = await env.app.database.get('SELECT id,cas_hash FROM context_document_versions WHERE id=?', [leaf.current_document_version_id]);
+    const casFile = path.join(env.home, 'cas', version.cas_hash.slice(0, 2), version.cas_hash);
+    const casBytes = fs.readFileSync(casFile);
+    fs.rmSync(casFile);
+    const unavailable = await request(env.base, `/api/v1/projects/${created.json.id}/context/nodes/${leaf.id}`);
+    fs.mkdirSync(path.dirname(casFile), { recursive: true });
+    fs.writeFileSync(casFile, casBytes);
+
+    const client = await mutate(env.base, '/api/v1/mcp/clients', { name: 'R5 golden stdio', transport: 'stdio', scope: { project_ids: [created.json.id], tools: ['project.get'] }, ttl_seconds: 3600 }, 'r5-golden-client');
+    const httpList = await request(env.base, '/api/v1/mcp', { method: 'POST', key: 'r5-golden-http-list', headers: { 'x-aiws-mcp-token': client.json.token }, body: { jsonrpc: '2.0', id: 1, method: 'tools/list', params: {} } });
+    const httpRead = await request(env.base, '/api/v1/mcp', { method: 'POST', key: 'r5-golden-http-read', headers: { 'x-aiws-mcp-token': client.json.token }, body: { jsonrpc: '2.0', id: 2, method: 'tools/call', params: { name: 'project.get', arguments: { project_id: created.json.id } } } });
+    const bridge = await r5GoldenBridge(env.base, client.json.token, [
+      { jsonrpc: '2.0', id: 11, method: 'initialize', params: { protocolVersion: '2025-06-18' } },
+      { jsonrpc: '2.0', id: 12, method: 'tools/list', params: {} },
+      { jsonrpc: '2.0', id: 13, method: 'tools/call', params: { name: 'project.get', arguments: { project_id: created.json.id } } }
+    ]);
+
+    const cancelJobId = 'cpj_r5_golden_cancel';
+    const timestamp = '2026-08-16T00:00:00.000Z';
+    await env.app.database.run('INSERT INTO context_projection_jobs(id,project_id,status,cursor,created_at,updated_at) VALUES(?,?,?,?,?,?)', [cancelJobId, created.json.id, 'queued', '', timestamp, timestamp]);
+    const cancelled = await mutate(env.base, `/api/v1/projects/${created.json.id}/context/jobs/${cancelJobId}/cancel`, { expected_revision: 1 }, 'r5-golden-cancel');
+    const retried = await mutate(env.base, `/api/v1/projects/${created.json.id}/context/jobs/${cancelJobId}/retry`, { expected_revision: cancelled.json.revision }, 'r5-golden-retry');
+    const retryOperation = await goldenWaitOperation(env.base, retried.json.operation_id);
+    const retryJob = (await request(env.base, `/api/v1/projects/${created.json.id}/context/jobs/${retried.json.resource_id}`)).json;
+    const operationEvents = (await request(env.base, `/api/v1/operations/${retried.json.operation_id}/events`)).json;
+    const jobEvents = (await request(env.base, `/api/v1/projects/${created.json.id}/context/jobs/${cancelJobId}/events?after=0`)).json;
+    const driftJobId = 'cpj_r5_golden_drift';
+    await env.app.database.run('INSERT INTO context_projection_jobs(id,project_id,status,cursor,input_hash,created_at,updated_at) VALUES(?,?,?,?,?,?,?)', [driftJobId, created.json.id, 'running', '0', 'f'.repeat(64), timestamp, timestamp]);
+    await env.app.domain.contextService.recover();
+    const driftJob = (await request(env.base, `/api/v1/projects/${created.json.id}/context/jobs/${driftJobId}`)).json;
+
+    const scopeRequest = await mutate(env.base, '/api/v1/mcp/scopes/requests', { project_id: created.json.id, scope: { project_ids: [created.json.id], tools: ['project.get'] }, ttl_seconds: 1800 }, 'r5-golden-scope-request');
+    const grant = await mutate(env.base, `/api/v1/mcp/scopes/requests/${scopeRequest.json.id}/grant`, { expected_revision: scopeRequest.json.revision }, 'r5-golden-scope-grant');
+    const grantRead = await request(env.base, '/api/v1/mcp', { method: 'POST', key: 'r5-golden-grant-read', headers: { 'x-aiws-mcp-token': grant.json.token }, body: { jsonrpc: '2.0', id: 21, method: 'tools/call', params: { name: 'project.get', arguments: { project_id: created.json.id } } } });
+    const revoked = await mutate(env.base, `/api/v1/mcp/scopes/grants/${grant.json.id}/revoke`, { expected_revision: grant.json.revision }, 'r5-golden-scope-revoke');
+    const revokedRead = await request(env.base, '/api/v1/mcp', { method: 'POST', key: 'r5-golden-revoked-read', headers: { 'x-aiws-mcp-token': grant.json.token }, body: { jsonrpc: '2.0', id: 22, method: 'tools/list', params: {} } });
+    await env.app.database.run('UPDATE mcp_clients SET expires_at=? WHERE id=?', ['2020-01-01T00:00:00.000Z', client.json.id]);
+    const expiredRead = await request(env.base, '/api/v1/mcp', { method: 'POST', key: 'r5-golden-expired-read', headers: { 'x-aiws-mcp-token': client.json.token }, body: { jsonrpc: '2.0', id: 23, method: 'tools/list', params: {} } });
+    const publicClients = await request(env.base, '/api/v1/mcp/clients');
+
+    return [
+      { id: 'context-tree-version', feature_id: 'REC-D9-CONTEXT-017', cases: [{ id: 'stable-uri-version-reuse', output: { map_schema: projection.json.map.schema_version, root_uri_stable: projection.json.map.root_uri === repeated.json.map.root_uri, uri_stable: leaf.uri === repeatedLeaf.uri, ordered: projection.json.map.nodes.map((node) => node.uri).every((uri, index, rows) => index === 0 || rows[index - 1].localeCompare(uri) <= 0), version_reused: beforeVersions === afterVersions, edge_count_positive: projection.json.map.edges.length > 0 } }] },
+      { id: 'selection-policy-pack-v5', feature_id: 'REC-D9-CONTEXT-017', cases: [{ id: 'pin-select-seal', output: { policy_status: policy.response.status, policy_revision: policy.json.revision, selection_schema: selection.json.schema_version, selection_hash_valid: /^[a-f0-9]{64}$/.test(selection.json.selection_hash), pack_schema: pack.json.pack.schema_version, pack_hash_valid: /^[a-f0-9]{64}$/.test(pack.json.pack_hash), brief_revision: pack.json.pack.memory_manifest.brief_revision, workflow_revision: pack.json.pack.memory_manifest.workflow_revision, outcome_hash_valid: /^[a-f0-9]{64}$/.test(pack.json.pack.outcome_contract_hash), rubric_hash_valid: /^[a-f0-9]{64}$/.test(pack.json.pack.quality_rubric_hash) } }] },
+      { id: 'projection-index-recovery', feature_id: 'REC-D9-PROJECTION-018', cases: [{ id: 'damaged-index-and-missing-cas', output: { search_status: recoveredSearch.response.status, search_found: recoveredSearch.json.some((item) => item.node_id === leaf.id), index_status: recoveredStatus.json.index.status, unavailable_status: unavailable.response.status, unavailable_code: unavailable.json.error.code, unavailable_reason: unavailable.json.error.details.reason } }] },
+      { id: 'mcp-http-stdio-equivalence', feature_id: 'REC-D4-MCP-004', cases: [{ id: 'schema-and-structured-output', output: { initialize_protocol: bridge[0].result.protocolVersion, tool_schema_equal: JSON.stringify(bridge[1].result.tools) === JSON.stringify(httpList.json.result.tools), structured_equal: JSON.stringify(bridge[2].result.structuredContent) === JSON.stringify(httpRead.json.result.structuredContent), operation_receipt_shape: ['operation_id', 'status', 'cursor', 'revision'].every((field) => Object.hasOwn(retried.json, field)) } }] },
+      { id: 'operation-cursor-cancel-recovery', feature_id: 'REC-D9-PROJECTION-018', cases: [{ id: 'cancel-retry-interruption', output: { cancel_status: cancelled.response.status, cancelled_phase: cancelled.json.phase, retry_status: retried.response.status, retry_operation_status: retryOperation.status, retry_attempt: retryJob.attempt, retry_linked: retryJob.retry_of_job_id === cancelJobId, operation_events: operationEvents.map((event) => event.type), event_cursor_monotonic: jobEvents.every((event, index) => index === 0 || jobEvents[index - 1].cursor < event.cursor), interrupted_status: driftJob.status, interrupted_code: driftJob.error_code } }] },
+      { id: 'scope-grant-revoke-expiry', feature_id: 'REC-D4-SCOPE-016', cases: [{ id: 'explicit-lifecycle', output: { request_status: scopeRequest.json.status, grant_status: grant.response.status, scoped_read_status: grantRead.response.status, revoke_status: revoked.response.status, revoked_read_status: revokedRead.response.status, revoked_error: revokedRead.json.error.code, expired_read_status: expiredRead.response.status, expired_error: expiredRead.json.error.code, credential_hidden: !JSON.stringify(publicClients.json).includes(client.json.token) && !JSON.stringify(await env.app.domain.listMcpScopes(created.json.id)).includes(grant.json.token) } }] }
+    ];
+  } finally {
+    await env?.close().catch(() => undefined);
+  }
+}
+
 async function r4GoldenProject(env, suffix, content = { objective: 'R4 golden workflow', acceptance: ['tests pass'] }) {
   const created = await mutate(env.base, '/api/v1/projects', { name: `R4 golden ${suffix}` }, `r4-golden-${suffix}-project`);
   goldenRequire(created.response.status === 201, `r4_${suffix}_project`);
@@ -834,6 +969,67 @@ async function goldenWaitOperation(base, operationId) {
     (operation) => ['completed', 'failed', 'cancelled'].includes(operation.status),
     10_000
   );
+}
+
+/**
+ * Exercise the real stdio bridge while keeping the Golden fixture free of
+ * transport credentials and machine-specific details. Responses are matched
+ * by arrival order because requests are written serially and the bridge
+ * forwards one request at a time.
+ */
+async function r5GoldenBridge(base, token, messages) {
+  const child = spawn(process.execPath, [path.join(root, 'scripts', 'mcp-stdio.mjs')], {
+    cwd: root,
+    env: {
+      ...process.env,
+      AIWS_MCP_URL: `${base}/api/v1/mcp`,
+      AIWS_MCP_TOKEN: token
+    },
+    stdio: ['pipe', 'pipe', 'pipe'],
+    windowsHide: true
+  });
+  const responses = [];
+  let stdoutBuffer = '';
+  let stderr = '';
+  let settled = false;
+  let timer;
+  const finish = (error, value) => {
+    if (settled) return;
+    settled = true;
+    clearTimeout(timer);
+    if (error) error.message = `${error.message}${stderr ? `: ${stderr.trim().slice(0, 160)}` : ''}`;
+    error ? rejectPromise(error) : resolvePromise(value);
+  };
+  let resolvePromise;
+  let rejectPromise;
+  const completion = new Promise((resolve, reject) => {
+    resolvePromise = resolve;
+    rejectPromise = reject;
+  });
+  const parseOutput = () => {
+    const lines = stdoutBuffer.split(/\r?\n/);
+    stdoutBuffer = lines.pop() || '';
+    for (const line of lines) {
+      if (!line.trim()) continue;
+      try { responses.push(JSON.parse(line)); }
+      catch { finish(new Error('mcp_stdio_invalid_json')); return; }
+    }
+    if (responses.length >= messages.length) finish(null, responses.slice(0, messages.length));
+  };
+  child.stdout.on('data', (chunk) => { stdoutBuffer += String(chunk); parseOutput(); });
+  child.stderr.on('data', (chunk) => { stderr += String(chunk); });
+  child.on('error', (error) => finish(error));
+  child.on('close', (code) => {
+    if (!settled && responses.length < messages.length) finish(new Error(`mcp_stdio_exit_${code ?? 'unknown'}`));
+  });
+  timer = setTimeout(() => finish(new Error('mcp_stdio_timeout')), 10_000);
+  try {
+    for (const message of messages) child.stdin.write(`${JSON.stringify(message)}\n`);
+    child.stdin.end();
+    return await completion;
+  } finally {
+    if (!child.killed) child.kill();
+  }
 }
 
 function goldenRequire(condition, label) {

@@ -99,6 +99,9 @@ function validateModuleRegistry() {
       if (!modules.has(dependency)) failures.push(`${module.id}: unknown dependency ${dependency}`);
       if (dependency === module.id) failures.push(`${module.id}: module depends on itself`);
     }
+    for (const dependency of module.sql_dependencies || []) {
+      if (!module.dependencies.includes(dependency)) failures.push(`${module.id}: SQL dependency is not a declared module dependency: ${dependency}`);
+    }
     for (const field of ['tables', 'commands', 'events']) {
       for (const value of module[field]) {
         const previous = owned[field].get(value);
@@ -303,9 +306,10 @@ function validateSqlBoundaries() {
     const moduleMatch = relativePath.match(/^apps\/api\/src\/modules\/([^/]+)\//);
     if (!moduleMatch) continue;
     const moduleId = moduleMatch[1];
+    const sqlDependencies = new Set(modules.get(moduleId)?.sql_dependencies || []);
     for (const table of sqlTableReferences(source)) {
       const owner = ownerOf('table', table);
-      if (owner && owner !== moduleId) failures.push(`${relativePath}: cross-domain SQL for ${table}, owned by ${owner}`);
+      if (owner && owner !== moduleId && !sqlDependencies.has(owner)) failures.push(`${relativePath}: cross-domain SQL for ${table}, owned by ${owner}`);
     }
   }
 }

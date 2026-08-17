@@ -78,7 +78,12 @@ export function createR2Runtime(domain) {
     ['github_apps.list', () => domain.setupService.listGithubApps()],
     ['github_installations.list', () => domain.setupService.repository.githubInstallations()],
     ['operations.get', (input) => domain.operationService.get(input.operation_id)],
-    ['operations.events', (input) => domain.operationService.events(input.operation_id, input.after)]
+    ['operations.events', (input) => domain.operationService.events(input.operation_id, input.after)],
+    ['context.map', (input) => domain.contextMap(input.project_id)],
+    ['context.search', (input) => domain.contextSearch(input.project_id, input.query || '', { limit: input.limit })],
+    ['context.read', (input) => domain.readContextNode(input.project_id, input.uri, { versionId: input.version_id })],
+    ['context.status', (input) => domain.contextProjectionStatus(input.project_id)],
+    ['context.packs.list', (input) => domain.listContextPacks(input.project_id)]
   ]);
   const commands = new Map([
     ['account.update', (input, ctx) => domain.identityService.updateAccount(input, ctx)],

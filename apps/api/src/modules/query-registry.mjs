@@ -9,6 +9,10 @@ export class QueryRegistry {
     this.queries.set(name, handler);
   }
 
+  list() {
+    return [...this.queries.keys()].sort();
+  }
+
   execute(name, input = {}, ctx = {}) {
     const handler = this.queries.get(name);
     if (!handler) throw new AppError('unknown_query', `unknown query: ${name}`, { status: 404 });

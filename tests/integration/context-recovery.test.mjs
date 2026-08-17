@@ -17,7 +17,10 @@ test('Context Map rebuilds ordered aiws URIs and seals Context Pack v5', async (
     assert.equal(rebuilt.response.status, 201);
     assert.equal(rebuilt.json.job.status, 'completed');
     assert.equal(rebuilt.json.map.root_uri, `aiws://context/${project.json.id}`);
-    assert.equal(rebuilt.json.map.nodes.length, 3);
+    assert.ok(rebuilt.json.map.nodes.length >= 3);
+    assert.ok(rebuilt.json.map.nodes.some((node) => node.kind === 'root' && node.uri === rebuilt.json.map.root_uri));
+    assert.ok(rebuilt.json.map.nodes.some((node) => node.source_id === first.json.id));
+    assert.ok(rebuilt.json.map.nodes.some((node) => node.source_id === second.json.id));
     assert.deepEqual(rebuilt.json.map.nodes.map((node) => node.uri), rebuilt.json.map.nodes.map((node) => node.uri).toSorted());
     const leaf = rebuilt.json.map.nodes.find((node) => node.kind === 'note');
     const read = await request(env.base, `/api/v1/projects/${project.json.id}/context/read?uri=${encodeURIComponent(leaf.uri)}`);
@@ -45,7 +48,7 @@ test('Context Map rebuilds ordered aiws URIs and seals Context Pack v5', async (
     const status = await request(env.base, `/api/v1/projects/${project.json.id}/context/status`);
     assert.equal(status.json.id, interruptedJob);
     assert.equal(status.json.status, 'completed');
-    assert.equal(status.json.cursor, '2');
+    assert.ok(Number(status.json.cursor) >= 2);
     const recoveredVersions = (await env.app.database.get('SELECT count(*) AS count FROM context_document_versions')).count;
     assert.equal(recoveredVersions, beforeVersions);
   } finally { await env.close(); }

@@ -4,6 +4,8 @@ import { randomUUID } from 'node:crypto';
 import { hashJson, now, parseJson, sha256 } from './crypto.mjs';
 import { AppError, asAppError } from './errors.mjs';
 import { readBody, readMultipartUpload, readRawBody } from './http-body.mjs';
+import { createMcpHandler } from './modules/mcp/http.mjs';
+import { MCP_PUBLIC_TOOL_SNAPSHOT } from './modules/mcp/public-tools.mjs';
 const MUTATING = new Set(['POST', 'PATCH', 'DELETE']);
 function send(res, status, payload, headers = {}) {
   const body = JSON.stringify(payload);
@@ -65,40 +67,7 @@ export function createHttpHandler({ domain, registry, db, config, performancePro
       throw error;
     }
   }
-  async function mcp(req, requestId) {
-    const body = await readBody(req);
-    const rpcId = body.id ?? null;
-    if (body.method === 'initialize') {
-      return { jsonrpc: '2.0', id: rpcId, result: { protocolVersion: '2025-06-18', capabilities: { tools: {} }, serverInfo: { name: 'aiws-v3', version: config.version } } };
-    }
-    if (body.method === 'notifications/initialized') return { jsonrpc: '2.0', id: rpcId, result: {} };
-    if (body.method === 'tools/list') {
-      const tools = [
-        ...registry.list().map((name) => ({ name, description: `AIWS command ${name}`, inputSchema: { type: 'object' } })),
-        { name: 'projects.list', description: 'List projects', inputSchema: { type: 'object' } },
-        { name: 'project.get', description: 'Get a project bundle', inputSchema: { type: 'object', properties: { project_id: { type: 'string' } }, required: ['project_id'] } }
-      ];
-      return { jsonrpc: '2.0', id: rpcId, result: { tools } };
-    }
-    if (body.method === 'tools/call') {
-      const name = body.params?.name;
-      const args = body.params?.arguments || {};
-      const authorization = await domain.authorizeMcpToken(req.headers['x-aiws-mcp-token'], args.project_id || args.projectId || '');
-      const allowedTools = authorization.client?.scope?.tools;
-      if (Array.isArray(allowedTools) && allowedTools.length && !allowedTools.includes(String(name))) throw new AppError('mcp_scope_denied', 'MCP token is not scoped to this tool', { status: 403 });
-      let result;
-      if (name === 'projects.list') result = await domain.listProjects();
-      else if (name === 'project.get') result = await domain.getProject(args.project_id);
-      else {
-        if (!registry.list().includes(name)) throw new AppError('unknown_command', `unknown command: ${name}`, { status: 404 });
-        const key = req.headers['idempotency-key'] || `mcp-${rpcId || randomUUID()}`;
-        const commandResult = await executeCommand(name, args, req, '/api/v1/mcp', key);
-        result = commandResult.body;
-      }
-      return { jsonrpc: '2.0', id: rpcId, result: { content: [{ type: 'text', text: JSON.stringify(result) }], structuredContent: result } };
-    }
-    throw new AppError('invalid_input', 'unsupported MCP method');
-  }
+  const mcp = createMcpHandler({ domain, registry, config, executeCommand });
   async function handler(req, res) {
     const requestId = String(req.headers['x-request-id'] || randomUUID());
     const parsed = new URL(req.url || '/', `http://${req.headers.host || '127.0.0.1'}`);
@@ -118,12 +87,25 @@ export function createHttpHandler({ domain, registry, db, config, performancePro
         const receipt = await domain.githubWebhook(rawBody, req.headers);
         return send(res, 200, domain.redact(receipt));
       }
-      if (urlPath === `${config.apiPrefix}/mcp` && req.method === 'POST') return send(res, 200, await mcp(req, requestId));
-      if (urlPath === `${config.apiPrefix}/mcp/tools` && req.method === 'GET') return send(res, 200, { tools: [
-        ...registry.list().map((name) => ({ name, description: `AIWS command ${name}`, input_schema: { type: 'object' } })),
-        { name: 'projects.list', description: 'List projects', input_schema: { type: 'object' } },
-        { name: 'project.get', description: 'Get a project bundle', input_schema: { type: 'object', required: ['project_id'] } }
-      ] });
+      if (urlPath === `${config.apiPrefix}/mcp` && req.method === 'POST') {
+        const payload = await mcp(req, requestId);
+        const headers = payload.__mcp_headers || {};
+        return send(res, 200, payload, headers);
+      }
+      if (urlPath === `${config.apiPrefix}/mcp` && req.method === 'GET') {
+        res.writeHead(405, { allow: 'POST, OPTIONS', 'content-type': 'application/json; charset=utf-8' });
+        return res.end(JSON.stringify(errorPayload(new AppError('invalid_input', 'MCP stream requires a POST JSON-RPC request', { status: 405 }), requestId)));
+      }
+      if (urlPath === `${config.apiPrefix}/mcp` && req.method === 'OPTIONS') {
+        res.writeHead(204, { allow: 'POST, GET, OPTIONS', 'mcp-protocol-version': '2025-06-18' });
+        return res.end();
+      }
+      if (urlPath === `${config.apiPrefix}/mcp/tools` && req.method === 'GET') {
+        const authorization = req.headers['x-aiws-mcp-token'] ? await domain.authorizeMcpToken(req.headers['x-aiws-mcp-token'], '') : { client: null };
+        const allow = authorization.client?.scope && Object.prototype.hasOwnProperty.call(authorization.client.scope, 'tools') ? authorization.client.scope.tools : null;
+        const names = MCP_PUBLIC_TOOL_SNAPSHOT.filter((name) => !Array.isArray(allow) || allow.includes(name));
+        return send(res, 200, { tools: names.sort().map((name) => ({ name, description: `AIWS command ${name}`, input_schema: { type: 'object' } })) });
+      }
       if (urlPath === `${config.apiPrefix}/system/capabilities` && req.method === 'GET') return send(res, 200, await domain.capabilities());
       if (urlPath === `${config.apiPrefix}/system/performance` && req.method === 'GET') return send(res, 200, performanceProbe());
       if (urlPath === `${config.apiPrefix}/system` && req.method === 'GET') return send(res, 200, { version: config.version, api_prefix: config.apiPrefix, data_volume: config.dataVolume });
@@ -207,13 +189,29 @@ export function createHttpHandler({ domain, registry, db, config, performancePro
         else if (req.method === 'POST' && parts[2] === 'outcome-requirements') ({ status, body: result } = await command('outcome_requirement.create', { ...body, project_id: projectId }));
         else if (req.method === 'GET' && parts[2] === 'context' && parts[3] === 'sources') result = await domain.listContextSources(projectId, parsed.searchParams.get('q') || '');
         else if (req.method === 'POST' && parts[2] === 'context' && parts[3] === 'sources') ({ status, body: result } = await command('context.source.create', { ...body, project_id: projectId }));
+        else if (req.method === 'GET' && parts[2] === 'context' && parts[3] === 'packs' && parts[4]) result = await domain.contextPack(projectId, parts[4]);
         else if (req.method === 'GET' && parts[2] === 'context' && parts[3] === 'packs') result = await domain.listContextPacks(projectId);
         else if (req.method === 'POST' && parts[2] === 'context' && parts[3] === 'packs') ({ status, body: result } = await command('context.pack.create', { ...body, project_id: projectId }));
         else if (req.method === 'GET' && parts[2] === 'context' && parts[3] === 'map') result = await domain.contextMap(projectId);
-        else if (req.method === 'POST' && parts[2] === 'context' && parts[3] === 'rebuild') ({ status, body: result } = await command('context.rebuild', { ...body, project_id: projectId }));
+        else if (req.method === 'GET' && parts[2] === 'context' && parts[3] === 'search') result = await domain.contextSearch(projectId, parsed.searchParams.get('q') || parsed.searchParams.get('query') || '', { limit: parsed.searchParams.get('limit') });
+        else if (req.method === 'POST' && parts[2] === 'context' && parts[3] === 'rebuild') ({ status, body: result } = await command('context.rebuild', { ...body, project_id: projectId }, null, body?.async ? 202 : 201));
         else if (req.method === 'GET' && parts[2] === 'context' && parts[3] === 'status') result = await domain.contextProjectionStatus(projectId);
-        else if (req.method === 'GET' && parts[2] === 'context' && parts[3] === 'read') result = await domain.readContextNode(projectId, parsed.searchParams.get('uri'));
+        else if (req.method === 'GET' && parts[2] === 'context' && parts[3] === 'read') result = await domain.readContextNode(projectId, parsed.searchParams.get('uri'), { versionId: parsed.searchParams.get('version_id') });
+        else if (req.method === 'GET' && parts[2] === 'context' && parts[3] === 'policy' && parts[4] === 'history') result = await domain.contextPolicyHistory(projectId);
+        else if (req.method === 'GET' && parts[2] === 'context' && parts[3] === 'policy') result = await domain.contextPolicy(projectId);
+        else if (req.method === 'PATCH' && parts[2] === 'context' && parts[3] === 'policy') ({ status, body: result } = await command('context.policy.update', { ...body, project_id: projectId }, null, 200));
+        else if (req.method === 'GET' && parts[2] === 'context' && parts[3] === 'selections') result = await domain.listContextSelections(projectId);
         else if (req.method === 'POST' && parts[2] === 'context' && parts[3] === 'selections') ({ status, body: result } = await command('context.selection.create', { ...body, project_id: projectId }));
+        else if (req.method === 'GET' && parts[2] === 'context' && parts[3] === 'nodes' && parts[4] && parts[5] === 'versions') result = await domain.contextNodeVersions(projectId, parts[4]);
+        else if (req.method === 'GET' && parts[2] === 'context' && parts[3] === 'nodes' && parts[4]) result = await domain.contextNode(projectId, parts[4], { versionId: parsed.searchParams.get('version_id') });
+        else if (req.method === 'GET' && parts[2] === 'context' && parts[3] === 'jobs' && parts[4] && parts[5] === 'events') {
+          if (String(req.headers.accept || '').includes('text/event-stream')) return streamContextProjectionEvents(req, res, domain, projectId, parts[4], parsed.searchParams.get('after'));
+          result = await domain.contextProjectionEvents(projectId, parts[4], parsed.searchParams.get('after'));
+        }
+        else if (req.method === 'GET' && parts[2] === 'context' && parts[3] === 'jobs' && parts[4] && parts.length === 5) result = await domain.contextProjectionJob(projectId, parts[4]);
+        else if (req.method === 'GET' && parts[2] === 'context' && parts[3] === 'jobs') result = await domain.contextProjectionJobs(projectId);
+        else if (req.method === 'POST' && parts[2] === 'context' && parts[3] === 'jobs' && parts[4] && parts[5] === 'cancel') ({ status, body: result } = await command('context.projection.cancel', { ...body, project_id: projectId, job_id: parts[4] }, null, 202));
+        else if (req.method === 'POST' && parts[2] === 'context' && parts[3] === 'jobs' && parts[4] && parts[5] === 'retry') ({ status, body: result } = await command('context.projection.retry', { ...body, project_id: projectId, job_id: parts[4] }, null, 202));
         else if (req.method === 'GET' && parts[2] === 'assets') result = await domain.listAssets(projectId);
         else if (req.method === 'POST' && parts[2] === 'assets') ({ status, body: result } = await command('asset.create', { ...body, project_id: projectId }));
         else if (req.method === 'GET' && parts[2] === 'attachments') result = await domain.listAttachments(projectId);
@@ -391,6 +389,17 @@ async function streamAssistEvents(req, res, domain, sessionId) {
   const events = await domain.assistEvents(sessionId, initial);
   res.writeHead(200, { 'content-type': 'text/event-stream; charset=utf-8', 'cache-control': 'no-cache', connection: 'close' });
   for (const event of events) res.write(`id: ${event.cursor}\nevent: ${event.type}\ndata: ${JSON.stringify(event)}\n\n`);
+  res.end();
+}
+
+async function streamContextProjectionEvents(req, res, domain, projectId, jobId, queryCursor = null) {
+  const initial = Number(req.headers['last-event-id'] || queryCursor || 0);
+  const events = await domain.contextProjectionEvents(projectId, jobId, initial);
+  res.writeHead(200, { 'content-type': 'text/event-stream; charset=utf-8', 'cache-control': 'no-cache', connection: 'close' });
+  for (const event of events) {
+    const clean = domain.redact(event);
+    res.write(`id: ${clean.cursor}\nevent: ${clean.type}\ndata: ${JSON.stringify(clean)}\n\n`);
+  }
   res.end();
 }
 

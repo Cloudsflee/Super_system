@@ -15,6 +15,8 @@ test('V3 replays the committed sanitized V2.3 golden without loading historical 
   const r3Fixture = JSON.parse(fs.readFileSync(r3FixturePath, 'utf8'));
   const r4FixturePath = path.join(root, 'tests', 'golden', 'r4', 'workflow-generation-critic.json');
   const r4Fixture = JSON.parse(fs.readFileSync(r4FixturePath, 'utf8'));
+  const r5FixturePath = path.join(root, 'tests', 'golden', 'r5', 'context-projection-mcp.json');
+  const r5Fixture = JSON.parse(fs.readFileSync(r5FixturePath, 'utf8'));
   assert.equal(fixture.schema_version, 'aiws.v3.v23_golden.v1');
   assert.equal(fixture.source_commit, 'e18dc0b');
   assert.equal(fixture.extraction.mode, 'detached_read_only_worktree');
@@ -71,6 +73,23 @@ test('V3 replays the committed sanitized V2.3 golden without loading historical 
   const serializedR4 = JSON.stringify(r4Fixture);
   assert.doesNotMatch(serializedR4, /(?:source_locator|managed_relative_path|local_path|remote_url|prompt|candidate_json|input_snapshot_json)/i);
   assert.doesNotMatch(serializedR4, /"(?:token|password|authorization|cookie|secret|private_key|auth_bundle)"\s*:/i);
+  assert.equal(r5Fixture.schema_version, 'aiws.v3.r5_golden.v1');
+  assert.equal(r5Fixture.source_commit, 'f26c6950a0bf266b0114f99fc9dc683430da21a3');
+  assert.equal(r5Fixture.extraction.mode, 'ephemeral_deterministic_fixture');
+  assert.equal(r5Fixture.extraction.executed_runtime, true);
+  assert.equal(r5Fixture.extraction.network, 'loopback_only');
+  assert.deepEqual(r5Fixture.contracts.map((item) => item.id), [
+    'context-tree-version',
+    'selection-policy-pack-v5',
+    'projection-index-recovery',
+    'mcp-http-stdio-equivalence',
+    'operation-cursor-cancel-recovery',
+    'scope-grant-revoke-expiry'
+  ]);
+  const serializedR5 = JSON.stringify(r5Fixture);
+  assert.doesNotMatch(serializedR5, /(?:local_path|remote_url|cas_path|index_path|authorization|private_body|document_text)/i);
+  assert.doesNotMatch(serializedR5, /"(?:token|password|authorization|cookie|secret|private_key|auth_bundle)"\s*:/i);
+  assert.ok(r5Fixture.contracts.every((contract) => contract.cases?.length === 1));
 
   const run = spawnSync(process.execPath, ['scripts/recovery-golden.mjs', 'verify'], { cwd: root, encoding: 'utf8', windowsHide: true });
   assert.equal(run.status, 0, run.stderr || run.stdout);
@@ -78,8 +97,8 @@ test('V3 replays the committed sanitized V2.3 golden without loading historical 
   assert.equal(result.status, 'passed');
   assert.equal(result.fixture_sha256, fixture.fixture_sha256);
   assert.equal(result.cases, 12);
-  assert.equal(result.batch_count, 4);
-  assert.deepEqual(result.batches.map((item) => item.batch), ['v23-r0-r1', 'r2-identity-setup', 'r3-project-repository', 'r4-workflow-generation-critic']);
+  assert.equal(result.batch_count, 5);
+  assert.deepEqual(result.batches.map((item) => item.batch), ['v23-r0-r1', 'r2-identity-setup', 'r3-project-repository', 'r4-workflow-generation-critic', 'r5-context-projection-mcp']);
   assert.equal(result.batches[1].fixture_sha256, r2Fixture.fixture_sha256);
   assert.equal(result.batches[1].contracts, 7);
   assert.equal(result.batches[2].fixture_sha256, r3Fixture.fixture_sha256);
@@ -88,4 +107,7 @@ test('V3 replays the committed sanitized V2.3 golden without loading historical 
   assert.equal(result.batches[3].fixture_sha256, r4Fixture.fixture_sha256);
   assert.equal(result.batches[3].contracts, 5);
   assert.equal(result.batches[3].cases, 11);
+  assert.equal(result.batches[4].fixture_sha256, r5Fixture.fixture_sha256);
+  assert.equal(result.batches[4].contracts, 6);
+  assert.equal(result.batches[4].cases, 6);
 });

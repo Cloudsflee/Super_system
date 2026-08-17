@@ -1,0 +1,72 @@
+AIWS runner-broker listening on http://127.0.0.1:49557
+(node:11124) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+AIWS 3.0.0 listening on http://127.0.0.1:49558
+✔ R5 Context projection preserves versions, rebuilds damaged indexes, and exposes durable cursors (600.6406ms)
+✔ R5 selection, Pack, and index helpers cover policy denials and compatibility defaults (11.2543ms)
+✔ R5 adapters and projection worker preserve allowlists across terminal branches (1.8375ms)
+AIWS runner-broker listening on http://127.0.0.1:49561
+(node:54836) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+AIWS 3.0.0 listening on http://127.0.0.1:54270
+✔ Context Map rebuilds ordered aiws URIs and seals Context Pack v5 (1017.9755ms)
+AIWS runner-broker listening on http://127.0.0.1:50878
+(node:55696) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+AIWS 3.0.0 listening on http://127.0.0.1:50880
+AIWS runner-broker listening on http://127.0.0.1:50884
+✔ MCP tools use the same command registry as REST (378.3783ms)
+(node:55696) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+AIWS 3.0.0 listening on http://127.0.0.1:50886
+✔ MCP client tokens are hashed, scoped, and revoked (378.2292ms)
+AIWS runner-broker listening on http://127.0.0.1:50892
+(node:53060) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+AIWS 3.0.0 listening on http://127.0.0.1:60365
+✔ R5 MCP Streamable HTTP and stdio bridge return equivalent tool schemas and structured reads (487.286ms)
+AIWS runner-broker listening on http://127.0.0.1:55244
+(node:52416) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+AIWS 3.0.0 listening on http://127.0.0.1:55248
+✔ R5 Context and MCP enforce project, path, scope, expiry, and redaction boundaries (500.7851ms)
+✔ R5 selection filters policy before deterministic pin, rank, type, and id ordering (8.513ms)
+✔ R5 Context Pack hashes normalized workflow contracts without executing outcome scoring (0.7428ms)
+✔ R5 MiniSearch snapshot is deterministic, atomic, and rejects tampering (5.181ms)
+(node:22856) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+✔ fresh database uses strict v4 settings and FTS5 (255.6446ms)
+(node:22856) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+✔ fresh database creates every recovery contract table as STRICT (240.9802ms)
+(node:22856) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+✔ transaction rolls back as one unit (253.3809ms)
+(node:22856) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+✔ brief revisions are immutable (272.383ms)
+(node:22856) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+✔ human review decisions are immutable (265.9118ms)
+(node:46628) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+✔ empty databases apply every forward migration and record checksums once (247.594ms)
+✔ startup resumes when an interrupted first run left only an empty migration ledger (312.0486ms)
+✔ a fingerprint-matching V1 database is registered as a baseline with a restorable snapshot (658.9201ms)
+✔ baseline registration rejects a V1 schema whose fingerprint has drifted (442.7501ms)
+✔ applied migration checksum changes are rejected before startup (219.59ms)
+✔ failed DDL rolls back its schema and ledger row atomically (72.1839ms)
+✔ an interrupted SQLite transaction is rolled back before migration replay (144.23ms)
+✔ registered V1 checksum is frozen while V2 state survives the V4 migration (668.3617ms)
+✔ V2 project, brief, and repository binding backfill into the R3 intake graph (346.4183ms)
+✔ V3 workflows, generations, contracts, and execution references survive the V4 migration (329.1135ms)
+✔ V4 Context, Pack, Selection, MCP client, and grant bytes survive the V5 migration (332.9293ms)
+✔ V3 replays the committed sanitized V2.3 golden without loading historical runtime (8674.5773ms)
+ℹ tests 28
+ℹ suites 0
+ℹ pass 28
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 18012.1881

@@ -6,6 +6,7 @@ import {
   Maximize2, RotateCcw, Keyboard
 } from 'lucide-react';
 import { api, formatBytes, formatTime, mutate, shortHash } from './api';
+import { McpSettings } from './features/context';
 import { ProjectOnboarding } from './features/project';
 import { RepositoryPanel } from './features/repository';
 import type { PageKey } from './App';
@@ -848,9 +849,10 @@ export function AuditPage({ notify }: WorkspacePageProps) {
   );
 }
 
-export function SettingsPage({ notify }: WorkspacePageProps) {
+export function SettingsPage({ projectId, notify }: WorkspacePageProps) {
   const [capabilities, setCapabilities] = useState<Capabilities | null>(null);
   const [probing, setProbing] = useState(false);
+  const [tab, setTab] = useState<'runtime' | 'mcp'>('runtime');
   const load = useCallback(() => api<Capabilities>('/api/v1/system/capabilities').then(setCapabilities), []);
   useEffect(() => { void load(); }, [load]);
   const probe = async () => {
@@ -863,7 +865,11 @@ export function SettingsPage({ notify }: WorkspacePageProps) {
   return (
     <div className="page settings-page">
       <div className="page-heading"><div><p className="eyebrow">Instance policy</p><h1>Settings</h1></div></div>
-      <div className="settings-layout">
+      <div className="settings-tabs" role="tablist" aria-label="Settings sections">
+        <button role="tab" aria-selected={tab === 'runtime'} className={tab === 'runtime' ? 'active' : ''} onClick={() => setTab('runtime')}>Runtime</button>
+        <button role="tab" aria-selected={tab === 'mcp'} className={tab === 'mcp' ? 'active' : ''} onClick={() => setTab('mcp')}>MCP</button>
+      </div>
+      {tab === 'runtime' ? <div className="settings-layout">
         <section className="panel">
           <SectionTitle title="Runner security" meta="Fixed profile" action={<button className="icon-button" title="刷新 probe" aria-label="刷新 probe" disabled={probing} onClick={() => void probe()}><RefreshCw className={probing ? 'spin' : ''} size={17} /></button>} />
           <div className="security-summary"><ShieldCheck size={26} /><div><strong>Isolated broker</strong><span className="mono">{capabilities?.broker.runner_digest || 'probing'}</span></div><Status value={capabilities?.broker.status || 'checking'} /></div>
@@ -880,7 +886,7 @@ export function SettingsPage({ notify }: WorkspacePageProps) {
           <label className="toggle-line"><span><strong>Model suggestions</strong><small>Never prefill a decision</small></span><input type="checkbox" checked readOnly /></label>
           <label className="toggle-line"><span><strong>Automatic correction</strong><small>One attempt before human retry</small></span><input type="checkbox" checked readOnly /></label>
         </section>
-      </div>
+      </div> : <McpSettings projectId={projectId} notify={notify} />}
     </div>
   );
 }

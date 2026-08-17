@@ -1,0 +1,165 @@
+{
+  "schema_version": "aiws.v3.r5_migration_evidence.v1",
+  "status": "passed",
+  "created_at": "2026-08-16T00:00:00.000Z",
+  "inputs": {
+    "database": "synthetic SQLite v4 fixture",
+    "production_volume_touched": false,
+    "baseline_commit": "f26c6950a0bf266b0114f99fc9dc683430da21a3",
+    "migration_checksums": {
+      "v1": "49e206dad8a7b76051f6561aada0af375c164b5dd8bec7c9a615844f598ce8ca",
+      "v2": "474cd76da2e8be23a5c7b66fd46e5a0f2cb3db03213c20e4241694f677f966bc",
+      "v3": "1c03a0fad89946a23f4dcd4874c2737f6597a002355264cd0412a90e5d86de6f",
+      "v4": "e5d4ccaef7c0672c6a7ff4aa0d2fd47437696c92e565220cb10f3ff03d1af2e7",
+      "v5": "e4b6a9f85f25d8f604872164454e23c0d2a32004a50fcd7122458145d15de44c"
+    }
+  },
+  "baseline_v4": {
+    "command": "migrateDatabase({ migrations: MIGRATIONS.slice(0, 4) }) plus legacy Context/MCP fixture",
+    "output": {
+      "user_version": 4,
+      "integrity": "ok",
+      "foreign_keys": [],
+      "project_name": "R5 migration fixture",
+      "ledger": [
+        {
+          "version": 1,
+          "name": "initial_v3_schema",
+          "checksum": "49e206dad8a7b76051f6561aada0af375c164b5dd8bec7c9a615844f598ce8ca"
+        },
+        {
+          "version": 2,
+          "name": "identity_setup_providers",
+          "checksum": "474cd76da2e8be23a5c7b66fd46e5a0f2cb3db03213c20e4241694f677f966bc"
+        },
+        {
+          "version": 3,
+          "name": "project_repository_intake",
+          "checksum": "1c03a0fad89946a23f4dcd4874c2737f6597a002355264cd0412a90e5d86de6f"
+        },
+        {
+          "version": 4,
+          "name": "workflow_generation_critic",
+          "checksum": "e5d4ccaef7c0672c6a7ff4aa0d2fd47437696c92e565220cb10f3ff03d1af2e7"
+        }
+      ],
+      "context_version_hash": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+      "pack_hash": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+      "client_hash": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+      "grant_hash": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
+    },
+    "exit_status": 0
+  },
+  "modified_v5": {
+    "command": "migrateDatabase({ migrations: MIGRATIONS })",
+    "output": {
+      "from_version": 4,
+      "to_version": 5,
+      "applied_versions": [
+        5
+      ],
+      "repeated_applied_versions": [],
+      "snapshot_sha256": "7e1805f4e4602a4519b80920b467f35c9ce20d20c53f0da88857983e41902166",
+      "state": {
+        "user_version": 5,
+        "integrity": "ok",
+        "foreign_keys": [],
+        "project_name": "R5 migration fixture",
+        "ledger": [
+          {
+            "version": 1,
+            "name": "initial_v3_schema",
+            "checksum": "49e206dad8a7b76051f6561aada0af375c164b5dd8bec7c9a615844f598ce8ca"
+          },
+          {
+            "version": 2,
+            "name": "identity_setup_providers",
+            "checksum": "474cd76da2e8be23a5c7b66fd46e5a0f2cb3db03213c20e4241694f677f966bc"
+          },
+          {
+            "version": 3,
+            "name": "project_repository_intake",
+            "checksum": "1c03a0fad89946a23f4dcd4874c2737f6597a002355264cd0412a90e5d86de6f"
+          },
+          {
+            "version": 4,
+            "name": "workflow_generation_critic",
+            "checksum": "e5d4ccaef7c0672c6a7ff4aa0d2fd47437696c92e565220cb10f3ff03d1af2e7"
+          },
+          {
+            "version": 5,
+            "name": "context_projection_mcp",
+            "checksum": "e4b6a9f85f25d8f604872164454e23c0d2a32004a50fcd7122458145d15de44c"
+          }
+        ],
+        "v5_checksum": "e4b6a9f85f25d8f604872164454e23c0d2a32004a50fcd7122458145d15de44c",
+        "compatibility": {
+          "version_storage": "inline_legacy",
+          "renderer": "legacy-inline-v1",
+          "selection": "legacy_compat",
+          "selection_schema": "aiws.context_selection.v1",
+          "pack": "legacy_compat",
+          "client": "legacy_compat",
+          "grant": "legacy_compat"
+        },
+        "bytes_preserved": true,
+        "immutable_triggers": {
+          "document_version": true,
+          "selection": true,
+          "pack": true
+        }
+      }
+    },
+    "exit_status": 0
+  },
+  "rollback_v4": {
+    "command": "restoreMigrationSnapshot({ file, manifestPath })",
+    "output": {
+      "status": "restored",
+      "sha256": "7e1805f4e4602a4519b80920b467f35c9ce20d20c53f0da88857983e41902166",
+      "from_version": 4,
+      "ledger_valid": true,
+      "state": {
+        "user_version": 4,
+        "integrity": "ok",
+        "foreign_keys": [],
+        "project_name": "R5 migration fixture",
+        "ledger": [
+          {
+            "version": 1,
+            "name": "initial_v3_schema",
+            "checksum": "49e206dad8a7b76051f6561aada0af375c164b5dd8bec7c9a615844f598ce8ca"
+          },
+          {
+            "version": 2,
+            "name": "identity_setup_providers",
+            "checksum": "474cd76da2e8be23a5c7b66fd46e5a0f2cb3db03213c20e4241694f677f966bc"
+          },
+          {
+            "version": 3,
+            "name": "project_repository_intake",
+            "checksum": "1c03a0fad89946a23f4dcd4874c2737f6597a002355264cd0412a90e5d86de6f"
+          },
+          {
+            "version": 4,
+            "name": "workflow_generation_critic",
+            "checksum": "e5d4ccaef7c0672c6a7ff4aa0d2fd47437696c92e565220cb10f3ff03d1af2e7"
+          }
+        ],
+        "context_version_hash": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+        "pack_hash": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+        "client_hash": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+        "grant_hash": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
+      }
+    },
+    "exit_status": 0
+  },
+  "artifacts": {
+    "snapshot": "docs/evidence/v5-r5-context-mcp-20260816/migration-snapshot-v4.sqlite",
+    "manifest": "docs/evidence/v5-r5-context-mcp-20260816/migration-snapshot-v4.manifest.json"
+  },
+  "hashes": {
+    "snapshot_sha256": "7e1805f4e4602a4519b80920b467f35c9ce20d20c53f0da88857983e41902166",
+    "restored_database_sha256": "7e1805f4e4602a4519b80920b467f35c9ce20d20c53f0da88857983e41902166"
+  }
+}

@@ -1,0 +1,615 @@
+
+> ai-workspace-system@3.0.0 verify <WORKSPACE>
+> node scripts/verify.mjs
+
+
+== check ==
+
+> ai-workspace-system@3.0.0 check <WORKSPACE>
+> node scripts/check.mjs
+
+check passed: 191 source files, 25 scripts
+
+== test ==
+
+> ai-workspace-system@3.0.0 test <WORKSPACE>
+> node --test tests/unit/*.test.mjs && corepack pnpm --filter @aiws/web test
+
+✔ job spec rejects arbitrary command, host path, and digest drift (3.9178ms)
+✔ docker broker configuration requires a real digest, pinned image, and HMAC secret (0.5405ms)
+✔ broker signature expires and rejects nonce replay (1.1161ms)
+✔ Device Auth parser exposes only public verification fields (2.2643ms)
+✔ Codex Probe always reports the seven stable stages (1.0799ms)
+✔ R5 selection filters policy before deterministic pin, rank, type, and id ordering (15.6306ms)
+✔ R5 Context Pack hashes normalized workflow contracts without executing outcome scoring (1.1437ms)
+✔ R5 MiniSearch snapshot is deterministic, atomic, and rejects tampering (8.9435ms)
+✔ contracts pin the public version and event shape (2.879ms)
+✔ production app configuration requires a nonzero Runner digest and HMAC secret (1.9319ms)
+✔ Codex Secret Bundle accepts only the fixed API-key profile and stays in memory (26.4071ms)
+✔ Runner renders only the selected Profile provider and has no legacy endpoint (0.7917ms)
+✔ versioned Vault ciphertext is immutable and addressed by metadata reference (44.3116ms)
+✔ secret registry redacts known values split across chunks and structured values (1.3075ms)
+(node:54388) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+✔ fresh database uses strict v4 settings and FTS5 (481.7218ms)
+(node:54388) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+✔ fresh database creates every recovery contract table as STRICT (400.1585ms)
+(node:54388) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+✔ transaction rolls back as one unit (372.3982ms)
+(node:54388) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+✔ brief revisions are immutable (419.4945ms)
+(node:54388) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+✔ human review decisions are immutable (436.8788ms)
+✔ GitHub App JWT is short-lived RS256 with the App id claim (46.9305ms)
+✔ GitHub webhook HMAC uses the raw body (0.6111ms)
+(node:11552) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+✔ Bearer sessions persist only hashes and enforce expiry, revoke, and revision (548.4912ms)
+(node:11552) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+✔ operations persist events, redact results, cancel by revision, and recover interruptions (555.7094ms)
+(node:41248) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+✔ empty databases apply every forward migration and record checksums once (438.8062ms)
+✔ startup resumes when an interrupted first run left only an empty migration ledger (336.7539ms)
+✔ a fingerprint-matching V1 database is registered as a baseline with a restorable snapshot (1230.4355ms)
+✔ baseline registration rejects a V1 schema whose fingerprint has drifted (643.6768ms)
+✔ applied migration checksum changes are rejected before startup (258.1807ms)
+✔ failed DDL rolls back its schema and ledger row atomically (100.4086ms)
+✔ an interrupted SQLite transaction is rolled back before migration replay (166.8525ms)
+✔ registered V1 checksum is frozen while V2 state survives the V4 migration (794.6132ms)
+✔ V2 project, brief, and repository binding backfill into the R3 intake graph (371.6951ms)
+✔ V3 workflows, generations, contracts, and execution references survive the V4 migration (351.27ms)
+✔ V4 Context, Pack, Selection, MCP client, and grant bytes survive the V5 migration (374.7294ms)
+✔ path policy keeps assets inside workspace and limits review formats (1.6765ms)
+✔ designsignal fixture has a reproducible baseline and worktree diff (2136.539ms)
+✔ task bundle and JSONL normalizer enforce fixed checks and redaction (0.9666ms)
+✔ Docker mounts bind only the execution worktree and fixed output volume (2.843ms)
+✔ Runner image definition pins the musl platform package and records it in SBOM (0.5425ms)
+✔ V3 replays the committed sanitized V2.3 golden without loading historical runtime (9427.8458ms)
+✔ recovery catalog uses the five evidence-derived states and separate Terminal and Bridge items (3.2867ms)
+✔ module registry gives every table, command, and event one owner without dependency cycles (1.1637ms)
+✔ recovery plan, catalog, and coverage gates emit V2 passed receipts (422.6425ms)
+(node:50076) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+✔ setup completion binds all eight checks to current provider snapshots across restart (632.6054ms)
+(node:50076) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+✔ credential revision and read-only origin rules protect Vault lifecycle (414.445ms)
+✔ GitHub snapshots combine each installation cache independently (0.4969ms)
+(node:50076) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+✔ credential expiry removes ciphertext and interrupted revocation is cleaned as orphaned (448.5791ms)
+✔ Git bundle creation records a verified ref, SHA and bounded output (1120.1931ms)
+✔ repository validation rejects symlinks and case-colliding entries (705.9596ms)
+✔ repository validation rejects a tracked submodule entry (648.5232ms)
+✔ bundle verification detects content tampering (751.0155ms)
+✔ terminal redaction masks known secrets split across output chunks (1.7738ms)
+✔ terminal redaction flushes harmless command prompts without changing them (0.3346ms)
+✔ terminal redaction removes control sequences inserted inside a secret (0.8894ms)
+✔ R4 canonicalizes a two-level workflow and keeps executable legacy tasks (4.3961ms)
+✔ R4 rejects hierarchy, dependency, cycle and output conflicts with stable codes (1.3584ms)
+✔ R4 validates typed slots and required contract acceptance (1.9236ms)
+✔ R4 normalizes selectors and resolves typed upstream outputs exactly once (1.0079ms)
+✔ R4 rejects reverse declaration dependencies and covers singular Brief fields (0.6623ms)
+✔ validates a two-level DAG and preserves dependency order (1.7102ms)
+✔ rejects cycles, backwards levels, and multiple write tasks (1.8404ms)
+ℹ tests 61
+ℹ suites 0
+ℹ pass 61
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 9620.8015
+
+> @aiws/web@3.0.0 test <WORKSPACE>\apps\web
+> vitest run
+
+
+[1m[46m RUN [49m[22m [36mv3.2.7 [39m[90m<WORKSPACE>/apps/web[39m
+
+ [32m✓[39m src/test/setup-flow.test.tsx [2m([22m[2m3 tests[22m[2m)[22m[33m 731[2mms[22m[39m
+   [33m[2m✓[22m[39m setup workflow[2m > [22mshows blocked checks and exposes device human input, cancel, and failed retry [33m 575[2mms[22m[39m
+ [32m✓[39m src/test/project-onboarding.test.tsx [2m([22m[2m3 tests[22m[2m)[22m[32m 216[2mms[22m[39m
+ [32m✓[39m src/test/context.test.tsx [2m([22m[2m2 tests[22m[2m)[22m[32m 190[2mms[22m[39m
+ [32m✓[39m src/test/workflow.test.tsx [2m([22m[2m1 test[22m[2m)[22m[32m 160[2mms[22m[39m
+ [32m✓[39m src/test/terminal.test.tsx [2m([22m[2m1 test[22m[2m)[22m[32m 152[2mms[22m[39m
+
+[2m Test Files [22m [1m[32m5 passed[39m[22m[90m (5)[39m
+[2m      Tests [22m [1m[32m10 passed[39m[22m[90m (10)[39m
+[2m   Start at [22m 19:14:49
+[2m   Duration [22m 5.76s[2m (transform 234ms, setup 286ms, collect 1.41s, tests 1.45s, environment 1.70s, prepare 309ms)[22m
+
+
+== test:integration ==
+
+> ai-workspace-system@3.0.0 test:integration <WORKSPACE>
+> node --experimental-test-coverage --test-coverage-lines=85 --test-coverage-branches=70 --test-coverage-functions=75 --test tests/integration/*.test.mjs
+
+AIWS runner-broker listening on http://127.0.0.1:54760
+(node:53824) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+AIWS 3.0.0 listening on http://127.0.0.1:54774
+✔ public API completes the project-to-review delivery journey (4223.9381ms)
+AIWS runner-broker listening on http://127.0.0.1:54761
+(node:45312) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+AIWS 3.0.0 listening on http://127.0.0.1:54778
+✔ runtime approvals, user inputs, and UI proposals persist decisions and audit events (2467.6503ms)
+AIWS runner-broker listening on http://127.0.0.1:54763
+(node:38620) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+AIWS 3.0.0 listening on http://127.0.0.1:54782
+✔ four-level Assist sessions persist scope snapshots, native events, and replay cursors (2703.1819ms)
+AIWS runner-broker listening on http://127.0.0.1:54762
+(node:19900) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+AIWS 3.0.0 listening on http://127.0.0.1:54779
+✔ API-to-broker requests are signed and jobs complete without persisted credentials (806.2441ms)
+AIWS runner-broker listening on http://127.0.0.1:54766
+(node:36936) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+AIWS 3.0.0 listening on http://127.0.0.1:54786
+AIWS runner-broker listening on http://127.0.0.1:65101
+✔ Codex Device Auth returns a durable operation and claims an encrypted OAuth bundle (958.2713ms)
+(node:36936) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+AIWS 3.0.0 listening on http://127.0.0.1:55428
+AIWS runner-broker listening on http://127.0.0.1:55437
+✔ Codex Device Auth cancellation leaves no active credential (770.9668ms)
+(node:36936) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+AIWS 3.0.0 listening on http://127.0.0.1:55456
+AIWS runner-broker listening on http://127.0.0.1:55476
+✔ Codex discovery hides source paths and rejects stale imports (907.9009ms)
+(node:36936) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+AIWS 3.0.0 listening on http://127.0.0.1:55492
+✔ Codex Probe returns the fixed seven-stage sanitized result (764.4759ms)
+AIWS runner-broker listening on http://127.0.0.1:54764
+(node:13900) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+AIWS 3.0.0 listening on http://127.0.0.1:54785
+✔ R5 Context projection preserves versions, rebuilds damaged indexes, and exposes durable cursors (1547.7011ms)
+✔ R5 selection, Pack, and index helpers cover policy denials and compatibility defaults (27.3327ms)
+✔ R5 adapters and projection worker preserve allowlists across terminal branches (3.924ms)
+AIWS runner-broker listening on http://127.0.0.1:54765
+(node:47436) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+AIWS 3.0.0 listening on http://127.0.0.1:54790
+✔ Context Map rebuilds ordered aiws URIs and seals Context Pack v5 (2649.7799ms)
+✔ strict configuration, path policy, and runner contracts reject unsafe values (59.0447ms)
+✔ execution input staging is isolated and uses hard-link or copy fallback (33.5353ms)
+✔ execution input staging rejects symlinked CAS objects and staging roots (6.3228ms)
+✔ Git capture handles excludes, rename/unicode/binary files, and cleanup guards (2492.0227ms)
+AIWS runner-broker listening on http://127.0.0.1:55478
+✔ broker retention, close, and client error paths stay bounded (111.5854ms)
+✔ GitHub probe and delivery metadata are deterministic with injected API responses (3.9253ms)
+✔ GitHub integration maps repository, permission, fixture, and merge failures to fixed states (1.3557ms)
+✔ broker HTTP routes enforce the fixed envelope and lifecycle states (123.1577ms)
+(node:29344) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+AIWS 3.0.0 listening on http://127.0.0.1:55498
+✔ evidence failure can be discarded or retried with retained worktree (3585.5924ms)
+AIWS runner-broker listening on http://127.0.0.1:54767
+(node:55120) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+AIWS 3.0.0 listening on http://127.0.0.1:65075
+✔ file workspace change batches apply, protect stale edits, and undo with a checkpoint (2672.5021ms)
+AIWS runner-broker listening on http://127.0.0.1:54770
+(node:2512) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+AIWS 3.0.0 listening on http://127.0.0.1:65084
+✔ GitHub App discovery, repository sync, and Probe persist revisions and permissions (1275.9789ms)
+AIWS runner-broker listening on http://127.0.0.1:54768
+(node:55896) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+AIWS 3.0.0 listening on http://127.0.0.1:65077
+✔ GitHub webhook verifies raw HMAC and deduplicates delivery ids (998.9733ms)
+AIWS runner-broker listening on http://127.0.0.1:54771
+(node:28004) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+AIWS 3.0.0 listening on http://127.0.0.1:65090
+(node:28004) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+AIWS runner-broker listening on http://127.0.0.1:55424
+✔ HTTP identity authenticates Bearer sessions and never persists issued tokens (1058.9398ms)
+AIWS 3.0.0 listening on http://127.0.0.1:55439
+✔ business mutations are gated while reads and Setup remain available (678.0572ms)
+AIWS runner-broker listening on http://127.0.0.1:54772
+(node:53224) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+AIWS 3.0.0 listening on http://127.0.0.1:65085
+AIWS runner-broker listening on http://127.0.0.1:55423
+✔ MCP tools use the same command registry as REST (994.4242ms)
+(node:53224) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+AIWS 3.0.0 listening on http://127.0.0.1:55434
+✔ MCP client tokens are hashed, scoped, and revoked (963.2182ms)
+AIWS runner-broker listening on http://127.0.0.1:54769
+(node:55912) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+AIWS 3.0.0 listening on http://127.0.0.1:54793
+✔ R5 MCP Streamable HTTP and stdio bridge return equivalent tool schemas and structured reads (1262.1767ms)
+AIWS runner-broker listening on http://127.0.0.1:54773
+✔ repository source normalization and deterministic artifacts enforce adapter boundaries (48.2218ms)
+(node:54444) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+AIWS 3.0.0 listening on http://127.0.0.1:65093
+✔ draft intake resume, stale Brief confirmation, and readiness use explicit revisions (2240.6602ms)
+AIWS runner-broker listening on http://127.0.0.1:55488
+(node:54444) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+AIWS 3.0.0 listening on http://127.0.0.1:55502
+AIWS runner-broker listening on http://127.0.0.1:59351
+✔ allowlisted local intake preserves source, records three Lines, recovers faults, and completes lifecycle (2706.2665ms)
+(node:54444) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+AIWS 3.0.0 listening on http://127.0.0.1:55324
+AIWS runner-broker listening on http://127.0.0.1:55335
+✔ multipart upload streams into a managed checkout and replays by content identity (1042.4242ms)
+(node:54444) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+AIWS 3.0.0 listening on http://127.0.0.1:55337
+AIWS runner-broker listening on http://127.0.0.1:55359
+✔ Repository Connection, Target, and Line commands preserve revision and ownership boundaries (1366.4009ms)
+(node:54444) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+AIWS 3.0.0 listening on http://127.0.0.1:55360
+✔ failed Intake retry reuses its identity and source drift returns the stable conflict (888.0619ms)
+✔ media classification golden covers type, extension, generic, and excluded inputs (2.6321ms)
+✔ Device Auth public parser handles status and hostile URL boundaries (2.9124ms)
+✔ Codex seven-stage Probe maps every provider boundary to stable results (2.2266ms)
+✔ Codex service rejects stale profile selections and routes external cancellation (2.3559ms)
+✔ Codex device-auth timeout cancels the Broker job and revokes its pending credential (0.6982ms)
+✔ GitHub request adapter maps transport and HTTP failures to stable codes (40.6673ms)
+✔ GitHub Probe reports each failed stage without leaking provider diagnostics (1.3319ms)
+✔ GitHub Probe selects a repository-ready installation from the full snapshot (0.5113ms)
+✔ GitHub discovery and repository sync preserve blocked state reasons (3.1369ms)
+✔ GitHub webhook treats a concurrent UNIQUE insert as an idempotent replay (1.7285ms)
+✔ GitHub JWT and webhook helpers reject malformed cryptographic inputs (3.218ms)
+AIWS runner-broker listening on http://127.0.0.1:55427
+(node:52944) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+AIWS 3.0.0 listening on http://127.0.0.1:55443
+AIWS runner-broker listening on http://127.0.0.1:55515
+✔ fixture execution isolates a worktree and captures diff, output, and evidence (2967.6924ms)
+(node:52944) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+AIWS 3.0.0 listening on http://127.0.0.1:55516
+✔ Codex probe requires an explicit profile and never falls back to credential material (485.4434ms)
+(node:49076) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:49076) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+✔ database worker can close and reopen without loading an in-memory snapshot (701.9573ms)
+(node:55180) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+✔ repository scheduler allows two reads and keeps a write exclusive across executions (3973.0243ms)
+(node:55180) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+✔ stale cancellation has no side effects and a committed cancellation releases the repository (2331.9815ms)
+(node:55180) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+✔ a second runner failure pauses for a human retry and creates a new immutable attempt (2107.873ms)
+(node:55180) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+✔ an unknown job after Broker state loss is a retryable failed attempt (1538.6995ms)
+(node:55180) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:55180) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+✔ restart recovery rebuilds repository reservations before dispatching pending work (1295.596ms)
+AIWS runner-broker listening on http://127.0.0.1:55436
+(node:51756) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+AIWS 3.0.0 listening on http://127.0.0.1:55450
+✔ workspace Vault, Codex profiles, and setup readiness use metadata-only APIs (1351.987ms)
+✔ Vault rejects empty values and invalid encrypted payloads (30.2886ms)
+AIWS runner-broker listening on http://127.0.0.1:55442
+(node:50732) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+AIWS 3.0.0 listening on http://127.0.0.1:55469
+✔ terminal approval, real PTY, cursor replay, redaction, CAS artifact and orphan recovery (3131.2513ms)
+AIWS runner-broker listening on http://127.0.0.1:55445
+✔ R4 provider contract accepts compatibility aliases and canonical slot references (6.852ms)
+✔ R4 provider contract reports malformed hierarchy, paths, slots and dependencies (3.0839ms)
+(node:41248) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+AIWS 3.0.0 listening on http://127.0.0.1:55482
+AIWS runner-broker listening on http://127.0.0.1:55507
+✔ R4 generates, critiques, replays events and idempotently applies a proposal (1717.0846ms)
+(node:41248) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+AIWS 3.0.0 listening on http://127.0.0.1:55509
+AIWS runner-broker listening on http://127.0.0.1:59353
+✔ R4 marks stale proposals and retries provider failures as a new attempt (1338.5562ms)
+(node:41248) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+AIWS 3.0.0 listening on http://127.0.0.1:55328
+AIWS runner-broker listening on http://127.0.0.1:55336
+✔ R4 records an independent critic rejection without exposing the brief payload (1135.6415ms)
+(node:41248) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+AIWS 3.0.0 listening on http://127.0.0.1:55343
+AIWS runner-broker listening on http://127.0.0.1:61568
+✔ R4 cancels a running generation and retries as a new attempt (1924.4322ms)
+(node:41248) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+AIWS 3.0.0 listening on http://127.0.0.1:61570
+AIWS runner-broker listening on http://127.0.0.1:61574
+✔ R4 concurrent proposal apply returns one stable operation and contract history is immutable (1067.4023ms)
+(node:41248) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+AIWS 3.0.0 listening on http://127.0.0.1:61575
+AIWS runner-broker listening on http://127.0.0.1:64923
+✔ R4 replan snapshots the current head and preserves completed node definitions (1164.728ms)
+(node:41248) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+AIWS 3.0.0 listening on http://127.0.0.1:64924
+AIWS runner-broker listening on http://127.0.0.1:64928
+✔ R4 restart recovery reconciles terminal resources and reports interrupted operations (1012.2467ms)
+(node:41248) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+AIWS 3.0.0 listening on http://127.0.0.1:64929
+AIWS runner-broker listening on http://127.0.0.1:64934
+✔ R4 serializes concurrent Draft and Layout mutations (905.2186ms)
+(node:41248) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+AIWS 3.0.0 listening on http://127.0.0.1:64935
+AIWS runner-broker listening on http://127.0.0.1:60930
+✔ R4 rejects layout drift and proposal payload tampering (1647.1833ms)
+(node:41248) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+AIWS 3.0.0 listening on http://127.0.0.1:60931
+✔ R4 rejects a replan proposal after the Workflow head advances (1220.5953ms)
+AIWS runner-broker listening on http://127.0.0.1:55453
+(node:52940) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+AIWS 3.0.0 listening on http://127.0.0.1:55486
+AIWS runner-broker listening on http://127.0.0.1:59350
+✔ unavailable workflow generation stays explicit while manual workflow and evidence-backed outcome persist (2670.6764ms)
+(node:52940) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+AIWS 3.0.0 listening on http://127.0.0.1:55320
+✔ unconfirmed brief previews never replace the confirmed business snapshot (1328.0896ms)
+ℹ tests 71
+ℹ suites 0
+ℹ pass 71
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 15675.3986
+ℹ start of coverage report
+ℹ ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ℹ file                                    | line % | branch % | funcs % | uncovered lines
+ℹ ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ℹ apps                                    |        |          |         |
+ℹ  api                                    |        |          |         |
+ℹ   server.mjs                            |  90.00 |    83.33 |   69.23 | 49-50 66-70
+ℹ   src                                   |        |          |         |
+ℹ    broker-client.mjs                    |  74.54 |    76.36 |   75.86 | 61-81 84-87 90-93 96-101 104-110 113-122 172-174
+ℹ    command-registry.mjs                 | 100.00 |    96.39 |   89.53 |
+ℹ    config.mjs                           |  87.50 |    72.50 |   41.18 | 59-61 63 69-71 73 78-80 82 107-109
+ℹ    credential-vault.mjs                 |  97.08 |    65.22 |   82.35 | 97-100
+ℹ    crypto.mjs                           | 100.00 |    94.74 |  100.00 |
+ℹ    database.mjs                         |  95.45 |    90.48 |   85.71 | 31-33
+ℹ    db-worker.mjs                        |  86.05 |    72.73 |   83.33 | 41-42 55-61 66 79-80
+ℹ    domain.mjs                           |  86.45 |    67.26 |   79.19 | 45-48 50-52 60-62 109-114 148-149 166-168 175-178 191-197 210-213 248-249 380-381 443-444 447-448 451-452 455-456 459-460 463-464 467-468 471-472 475-476 479-480 483-484 566 570 637-639 656-667 670-671 674-675 678-679 682-702 717-718 798-800 829-832 904-906 914 1107-1109 1116 1159-1160 1175-1176 1196-1198 1291 1371-1373 1413-1414 1417-1418 1421-1422 1429-1430 1441-1442 1449-1450 1457-1458 1461-1462 1465-1466 1469-1470 1497-1499 1535-1540 1564-1566 1586-1588 1596-1598 1628-1629 1769-1770 1772-1773 1824-1831 1863-1864 1896-1898 1913-1914 1954-1975 1978-1988 1999-2021 2028-2030 2035-2037 2049-2050 2056-2057 2064-2066 2071-2074 2099-2101 2124-2127 2143-2144 2147-2148 2297-2300 2308-2311 2327-2337 2354-2356 2374-2376 2398-2416 2447-2459 2466-2468 2496-2497
+ℹ    errors.mjs                           |  96.77 |    65.63 |  100.00 | 18
+ℹ    evidence-service.mjs                 |  93.50 |    64.86 |   84.21 | 64-71 83-85 175-176
+ℹ    git-fixture.mjs                      |  95.69 |    58.89 |   80.77 | 72-73 200-201 208 241-244 249-250
+ℹ    github-integration.mjs               |  70.95 |    73.61 |   75.00 | 66-68 90-99 105-110 133-141 144-147 149-150 152-158 184-185 192-209
+ℹ    http-body.mjs                        |  79.31 |    32.61 |   60.00 | 53-55 58-60 71-73 88-91 95-98 106-107 116-120 133-134 164-167 171-173 175-177 186-188 190-192
+ℹ    http.mjs                             |  89.09 |    91.96 |   82.76 | 54-58 96-98 100-102 126-127 341-350 367-369 395-404 414-427 463-464 466-467
+ℹ    input-staging.mjs                    |  98.35 |    85.42 |  100.00 | 17-18
+ℹ    integration-probes.mjs               |  56.48 |    50.00 |   55.56 | 18-23 65-92 95-107
+ℹ    migration-service.mjs                |  59.60 |    51.28 |   63.64 | 39-47 50-57 87-113 129-136 138-150 171-174 180-199 208-213 215-218 226-227
+ℹ    migrations                           |        |          |         |
+ℹ     002-identity-setup.mjs              | 100.00 |   100.00 |  100.00 |
+ℹ     003-project-repository-intake.mjs   | 100.00 |   100.00 |  100.00 |
+ℹ     004-workflow-generation-critic.mjs  | 100.00 |   100.00 |  100.00 |
+ℹ     005-context-projection-mcp.mjs      | 100.00 |   100.00 |  100.00 |
+ℹ     index.mjs                           | 100.00 |    25.00 |  100.00 |
+ℹ    modules                              |        |          |         |
+ℹ     context                             |        |          |         |
+ℹ      adapters.mjs                       | 100.00 |    98.67 |  100.00 |
+ℹ      index-runtime.mjs                  | 100.00 |    84.13 |   95.65 |
+ℹ      pack.mjs                           | 100.00 |    86.11 |  100.00 |
+ℹ      projection-worker.mjs              | 100.00 |    88.89 |  100.00 |
+ℹ      repository.mjs                     |  88.66 |    71.26 |   76.19 | 62-66 94-97 120-121 132-139 226-230 274-282
+ℹ      selection.mjs                      |  97.14 |    88.17 |  100.00 | 57-59
+ℹ      service.mjs                        |  84.10 |    50.89 |   80.70 | 34-44 47-50 96-97 100-102 127-131 142-152 155-157 163 171-172 181-183 186-190 198 223-224 266-268 285-290 402-404 407-408 410 412-416
+ℹ     identity                            |        |          |         |
+ℹ      repository.mjs                     | 100.00 |   100.00 |  100.00 |
+ℹ      service.mjs                        |  90.76 |    54.05 |   90.00 | 44-46 84-86 115-119
+ℹ     mcp                                 |        |          |         |
+ℹ      http.mjs                           |  81.25 |    80.77 |   71.43 | 36-38 56-64
+ℹ      public-tools.mjs                   | 100.00 |   100.00 |  100.00 |
+ℹ     operations                          |        |          |         |
+ℹ      repository.mjs                     |  91.30 |    80.95 |   87.50 | 30-33 89-92
+ℹ      service.mjs                        |  90.05 |    62.50 |   62.50 | 39-48 93-95 110-114 128
+ℹ     outcome                             |        |          |         |
+ℹ      evaluation.mjs                     | 100.00 |    70.00 |  100.00 |
+ℹ     platform                            |        |          |         |
+ℹ      repository.mjs                     | 100.00 |    66.67 |  100.00 |
+ℹ     project                             |        |          |         |
+ℹ      repository.mjs                     |  89.68 |    75.00 |   69.23 | 113-117 129-134 137-141
+ℹ      runtime.mjs                        | 100.00 |   100.00 |   71.43 |
+ℹ      service.mjs                        |  92.10 |    69.86 |   72.31 | 99-101 153-154 184-186 193-195 249-256 261-266 312-315 332-337 425 443 492-495
+ℹ     quality                             |        |          |         |
+ℹ      media-contract.mjs                 | 100.00 |    85.42 |  100.00 |
+ℹ     query-registry.mjs                  |  90.48 |    80.00 |   75.00 | 9-10
+ℹ     r2-runtime.mjs                      |  95.97 |   100.00 |   70.00 | 120-124
+ℹ     repository                          |        |          |         |
+ℹ      adapter.mjs                        |  89.36 |    74.00 |   86.21 | 85-87 102-106 127-135 183 202-208
+ℹ      repository.mjs                     |  97.56 |    69.35 |   86.05 | 61-64
+ℹ      runtime.mjs                        | 100.00 |   100.00 |  100.00 |
+ℹ      service.mjs                        |  94.14 |    60.56 |   83.82 | 52-53 100-101 144-145 224 246-249 268-271 280-282 307-312 462 483 486-488
+ℹ     route-registry.mjs                  | 100.00 |   100.00 |  100.00 |
+ℹ     setup                               |        |          |         |
+ℹ      codex-discovery.mjs                |  90.98 |    41.79 |   83.33 | 83-85 130-132 158-173 265-266
+ℹ      codex-service.mjs                  | 100.00 |    89.16 |   83.33 |
+ℹ      github-service.mjs                 | 100.00 |    79.33 |  100.00 |
+ℹ      repository.mjs                     |  86.28 |    73.17 |   80.00 | 22-25 28-31 34-36 54-64 67-73 79-89 102-103 241-252 255-264 513-516 518-522
+ℹ      service.mjs                        |  84.35 |    58.60 |   80.00 | 27-36 38-47 55-59 92-94 132-134 165-167 181-182 196-197 209-210 258-267 272-290 307-308 368-369 388-389 409-410 414-416 447-456 459-460 468 592 607 610-614 662-666
+ℹ     workflow                            |        |          |         |
+ℹ      repository.mjs                     | 100.00 |    85.71 |  100.00 |
+ℹ      service.mjs                        |  93.34 |    59.55 |   84.71 | 198 204-211 215-223 229 237-246 307 432-434 441-442 491-494 707-708 713 722-723 760-761 801-808 888-894
+ℹ      validator.mjs                      |  98.59 |    92.37 |  100.00 | 173-174 182-183
+ℹ    path-policy.mjs                      | 100.00 |   100.00 |  100.00 |
+ℹ    schema.mjs                           | 100.00 |   100.00 |  100.00 |
+ℹ    secret-registry.mjs                  |  81.90 |    95.12 |   66.67 | 56-57 62-64 67-73 76-79 103-105
+ℹ    terminal-service.mjs                 |  85.14 |    60.22 |   78.79 | 62-65 88 105-120 122-124 135-136 149-150 156-158 196 203-204 215-217 244-246 320-326 350-352 370-371 404-407 437-444 506-509 518-520 531-532 551-568 606-610
+ℹ  runner-broker                          |        |          |         |
+ℹ   server.mjs                            |  59.77 |    48.18 |   50.70 | 27-29 31-40 42-44 46-59 109-113 131 134 199-201 207-210 220-230 238-245 271-291 294-316 354-373 382-388 396-400 429-435 442-445 448-452 454-457 465-483 487-497 504-505 509-511 517-550 561-571 573-578 584-589 593-596 623-668 673-674 677-690 693-700 765 769-773 784-791 810 830-837 856 876-880
+ℹ   src                                   |        |          |         |
+ℹ    job-spec.mjs                         |  98.58 |    71.15 |  100.00 | 168-170
+ℹ    runner-result.mjs                    | 100.00 |    64.71 |   83.33 |
+ℹ    signature.mjs                        |  93.10 |    50.00 |   80.00 | 18-19
+ℹ packages                                |        |          |         |
+ℹ  contracts                              |        |          |         |
+ℹ   src                                   |        |          |         |
+ℹ    codex-device-auth.mjs                |  95.45 |    97.14 |  100.00 | 42-43
+ℹ    index.mjs                            |  92.45 |   100.00 |    0.00 | 48-49 52-53
+ℹ scripts                                 |        |          |         |
+ℹ  mcp-stdio.mjs                          |  93.55 |    30.77 |    0.00 | 29-30
+ℹ tests                                   |        |          |         |
+ℹ  integration                            |        |          |         |
+ℹ   helpers.mjs                           |  98.61 |    72.41 |   90.00 | 40
+ℹ ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ℹ all files                               |  88.74 |    71.27 |   80.49 |
+ℹ ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ℹ end of coverage report
+
+== test:security ==
+
+> ai-workspace-system@3.0.0 test:security <WORKSPACE>
+> node --test --test-concurrency=1 tests/security/*.test.mjs
+
+✔ resolved compose keeps Docker control plane and socket on the broker only (166.8842ms)
+✔ production App image has no Docker CLI or host socket (16909.807ms)
+✔ production build context excludes live secrets and requires a real Runner digest (1.1851ms)
+✔ broker readiness inspects the registered Runner image instead of echoing configuration (0.4134ms)
+✔ broker spec cannot carry command, host volume, or arbitrary environment (1.89ms)
+AIWS runner-broker listening on http://127.0.0.1:54638
+AIWS runner-broker listening on http://127.0.0.1:54641
+✔ broker HTTP boundary verifies signatures, rejects unsafe specs, and redacts credentials (55.0504ms)
+AIWS runner-broker listening on http://127.0.0.1:54644
+✔ broker accepts a dynamic model only with an exact Profile snapshot (15.1043ms)
+✔ explicit Host executor runs the bound Profile and removes its Codex home (674.4352ms)
+AIWS runner-broker listening on http://127.0.0.1:50827
+(node:23124) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+AIWS 3.0.0 listening on http://127.0.0.1:56215
+✔ R5 Context and MCP enforce project, path, scope, expiry, and redaction boundaries (531.0695ms)
+AIWS runner-broker listening on http://127.0.0.1:56218
+(node:52976) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+AIWS 3.0.0 listening on http://127.0.0.1:56219
+✔ ephemeral Codex credentials never enter state, events, errors, Broker status, or CAS (5812.1571ms)
+✔ repository source adapters enforce HTTPS and canonical local allowlists (3.9985ms)
+✔ multipart intake rejects traversal and enforces file and byte limits (24.8537ms)
+AIWS runner-broker listening on http://127.0.0.1:64592
+(node:4208) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+AIWS 3.0.0 listening on http://127.0.0.1:64593
+AIWS runner-broker listening on http://127.0.0.1:64599
+✔ workflow generation public records and streams expose only stable metadata (906.548ms)
+(node:4208) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+AIWS 3.0.0 listening on http://127.0.0.1:64601
+✔ workflow candidates enforce the bounded public input contract (874.5781ms)
+ℹ tests 14
+ℹ suites 0
+ℹ pass 14
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 26599.8883
+
+== build ==
+
+> ai-workspace-system@3.0.0 build <WORKSPACE>
+> corepack pnpm --filter @aiws/web build
+
+
+> @aiws/web@3.0.0 build <WORKSPACE>\apps\web
+> tsc -b && vite build
+
+[36mvite v7.3.6 [32mbuilding client environment for production...[36m[39m
+transforming...
+[32m✓[39m 1820 modules transformed.
+rendering chunks...
+computing gzip size...
+[2mdist/[22m[32m.vite/manifest.json              [39m[1m[2m  0.56 kB[22m[1m[22m[2m │ gzip:   0.22 kB[22m
+[2mdist/[22m[32mindex.html                       [39m[1m[2m  0.61 kB[22m[1m[22m[2m │ gzip:   0.34 kB[22m
+[2mdist/[22m[35massets/index-DSktqy4m.css        [39m[1m[2m 71.48 kB[22m[1m[22m[2m │ gzip:  12.66 kB[22m
+[2mdist/[22m[36massets/vendor-react-DmzDgpBG.js  [39m[1m[2m  3.66 kB[22m[1m[22m[2m │ gzip:   1.38 kB[22m
+[2mdist/[22m[36massets/vendor-icons-BLlBeFMa.js  [39m[1m[2m 21.60 kB[22m[1m[22m[2m │ gzip:   8.00 kB[22m
+[2mdist/[22m[36massets/index-BxxlOsgW.js         [39m[1m[2m480.04 kB[22m[1m[22m[2m │ gzip: 145.02 kB[22m
+[32m✓ built in 2.96s[39m
+
+== test:e2e ==
+
+> ai-workspace-system@3.0.0 test:e2e <WORKSPACE>
+> node scripts/e2e.mjs
+
+
+> @aiws/web@3.0.0 build <WORKSPACE>\apps\web
+> tsc -b && vite build
+
+[36mvite v7.3.6 [32mbuilding client environment for production...[36m[39m
+transforming...
+[32m✓[39m 1820 modules transformed.
+rendering chunks...
+computing gzip size...
+[2mdist/[22m[32m.vite/manifest.json              [39m[1m[2m  0.56 kB[22m[1m[22m[2m │ gzip:   0.22 kB[22m
+[2mdist/[22m[32mindex.html                       [39m[1m[2m  0.61 kB[22m[1m[22m[2m │ gzip:   0.34 kB[22m
+[2mdist/[22m[35massets/index-DSktqy4m.css        [39m[1m[2m 71.48 kB[22m[1m[22m[2m │ gzip:  12.66 kB[22m
+[2mdist/[22m[36massets/vendor-react-DmzDgpBG.js  [39m[1m[2m  3.66 kB[22m[1m[22m[2m │ gzip:   1.38 kB[22m
+[2mdist/[22m[36massets/vendor-icons-BLlBeFMa.js  [39m[1m[2m 21.60 kB[22m[1m[22m[2m │ gzip:   8.00 kB[22m
+[2mdist/[22m[36massets/index-BxxlOsgW.js         [39m[1m[2m480.04 kB[22m[1m[22m[2m │ gzip: 145.02 kB[22m
+[32m✓ built in 2.77s[39m
+AIWS runner-broker listening on http://127.0.0.1:54270
+AIWS 3.0.0 listening on http://127.0.0.1:54271
+E2E passed: 6 workspace viewports, 3 R4 Workflow viewports, project prj_41eb43180df44baeacbb63a1ce9086c7, onboarding, generation and execution journey complete
+
+== test:release ==
+
+> ai-workspace-system@3.0.0 test:release <WORKSPACE>
+> node --test tests/release/*.test.mjs
+
+✔ release identity is V3 and formal service remains 4317 (0.9721ms)
+✔ legacy runtime directories and versioned runner tests are absent (4.2363ms)
+✔ V2.3 archive and revocation receipts are immutable and verifiable (28.929ms)
+✔ candidate builds carry reproducible source labels, image identity, and an embedded SBOM (230.3218ms)
+✔ release rehearsal and promotion use dynamic acceptance ports and targeted cleanup only (0.6378ms)
+✔ latest acceptance and final receipts expose capability state explicitly (2.1509ms)
+✔ mock rehearsal broker can cross the workspace volume boundary without a Docker socket (0.6328ms)
+✔ docker rehearsal broker retains root socket execution (1.1155ms)
+ℹ tests 8
+ℹ suites 0
+ℹ pass 8
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 333.4818
+
+AIWS 3.0 verification passed
+(node:46628) [DEP0190] DeprecationWarning: Passing args to a child process with shell option true can lead to security vulnerabilities, as the arguments are not escaped, only concatenated.
+(Use `node --trace-deprecation ...` to show where the warning was created)
+(node:51604) [DEP0190] DeprecationWarning: Passing args to a child process with shell option true can lead to security vulnerabilities, as the arguments are not escaped, only concatenated.
+(Use `node --trace-deprecation ...` to show where the warning was created)
+(node:51604) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:42444) [DEP0190] DeprecationWarning: Passing args to a child process with shell option true can lead to security vulnerabilities, as the arguments are not escaped, only concatenated.
+(Use `node --trace-deprecation ...` to show where the warning was created)

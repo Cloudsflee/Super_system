@@ -84,7 +84,7 @@ test('MCP client tokens are hashed, scoped, and revoked', async () => {
     });
     assert.equal(denied.response.status, 403);
     assert.equal(denied.json.error.code, 'mcp_scope_denied');
-    const revoked = await mutate(env.base, `/api/v1/mcp/clients/${created.json.id}/revoke`, {}, 'mcp-client-revoke');
+    const revoked = await mutate(env.base, `/api/v1/mcp/clients/${created.json.id}/revoke`, { expected_revision: created.json.revision }, 'mcp-client-revoke');
     assert.equal(revoked.response.status, 201);
     assert.equal(revoked.json.status, 'revoked');
     const unauthorized = await request(env.base, '/api/v1/mcp', {
@@ -99,7 +99,7 @@ test('MCP client tokens are hashed, scoped, and revoked', async () => {
     }, 'mcp-scope-request');
     assert.equal(requested.response.status, 201);
     assert.equal(requested.json.status, 'pending');
-    const granted = await mutate(env.base, `/api/v1/mcp/scopes/requests/${requested.json.id}/grant`, {}, 'mcp-scope-grant');
+    const granted = await mutate(env.base, `/api/v1/mcp/scopes/requests/${requested.json.id}/grant`, { expected_revision: requested.json.revision }, 'mcp-scope-grant');
     assert.equal(granted.response.status, 201);
     assert.match(granted.json.token, /^[A-Za-z0-9_-]{40,}$/);
     const grantedCall = await request(env.base, '/api/v1/mcp', {
@@ -113,7 +113,7 @@ test('MCP client tokens are hashed, scoped, and revoked', async () => {
     });
     assert.equal(deniedTool.response.status, 403);
     assert.equal(deniedTool.json.error.code, 'mcp_scope_denied');
-    const grantRevoked = await mutate(env.base, `/api/v1/mcp/scopes/grants/${granted.json.id}/revoke`, {}, 'mcp-scope-revoke');
+    const grantRevoked = await mutate(env.base, `/api/v1/mcp/scopes/grants/${granted.json.id}/revoke`, { expected_revision: granted.json.revision }, 'mcp-scope-revoke');
     assert.equal(grantRevoked.response.status, 201);
     const revokedGrantCall = await request(env.base, '/api/v1/mcp', {
       method: 'POST', key: 'mcp-grant-revoked-call', headers: { 'x-aiws-mcp-token': granted.json.token },

@@ -1,0 +1,38 @@
+{
+  "schema_version": "aiws.v3.recovery_rollback_receipt.v1",
+  "status": "passed",
+  "baseline_commit": "f26c6950a0bf266b0114f99fc9dc683430da21a3",
+  "patch_sha256": "7e5c65860e3adeb352a9ce6f76ef9aed045f0469b26196ae256b3b354214dfcf",
+  "workspace": "detached temporary worktree",
+  "commands": [
+    {
+      "command": "git.exe worktree add --detach <ROLLBACK_WORKTREE> f26c6950a0bf266b0114f99fc9dc683430da21a3",
+      "exit_status": 0,
+      "stdout": "HEAD is now at f26c695 feat: close R4 workflow generation critic\n",
+      "stderr": "Preparing worktree (detached HEAD f26c695)\n"
+    },
+    {
+      "command": "git.exe -C <ROLLBACK_WORKTREE> apply --check <WORKSPACE>\\docs\\evidence\\v5-r5-context-mcp-20260816\\change.patch",
+      "exit_status": 0,
+      "stdout": "",
+      "stderr": ""
+    },
+    {
+      "command": "git.exe -C <ROLLBACK_WORKTREE> apply <WORKSPACE>\\docs\\evidence\\v5-r5-context-mcp-20260816\\change.patch",
+      "exit_status": 0,
+      "stdout": "",
+      "stderr": ""
+    },
+    {
+      "command": "powershell.exe -NoProfile -ExecutionPolicy Bypass -File <WORKSPACE>\\docs\\evidence\\v5-r5-context-mcp-20260816\\rollback.ps1 -Workspace <ROLLBACK_WORKTREE> -SkipVerify",
+      "exit_status": 0,
+      "stdout": "rollback passed\n",
+      "stderr": ""
+    }
+  ],
+  "modified_status_before_rollback": " M apps/api/src/command-registry.mjs\n M apps/api/src/domain.mjs\n M apps/api/src/http.mjs\n M apps/api/src/migrations/index.mjs\n M apps/api/src/modules/context/index.mjs\n M apps/api/src/modules/define-module.mjs\n M apps/api/src/modules/query-registry.mjs\n M apps/api/src/modules/r2-runtime.mjs\n M apps/api/src/schema.mjs\n M apps/web/src/App.tsx\n M apps/web/src/pages.tsx\n M apps/web/src/styles.css\n M feature-catalog.json\n M package.json\n M pnpm-lock.yaml\n M scripts/check.mjs\n M scripts/recovery-evidence.mjs\n M scripts/recovery-golden.mjs\n M scripts/recovery-governance.mjs\n M tests/integration/context-recovery.test.mjs\n M tests/integration/mcp-flow.test.mjs\n M tests/unit/database.test.mjs\n M tests/unit/migrations.test.mjs\n M tests/unit/recovery-golden.test.mjs\n?? apps/api/src/migrations/005-context-projection-mcp.mjs\n?? apps/api/src/modules/context/adapters.mjs\n?? apps/api/src/modules/context/index-runtime.mjs\n?? apps/api/src/modules/context/pack.mjs\n?? apps/api/src/modules/context/projection-worker.mjs\n?? apps/api/src/modules/context/repository.mjs\n?? apps/api/src/modules/context/selection.mjs\n?? apps/api/src/modules/context/service.mjs\n?? apps/api/src/modules/mcp/http.mjs\n?? apps/api/src/modules/mcp/public-tools.mjs\n?? apps/web/src/features/context/\n?? apps/web/src/test/context.test.tsx\n?? scripts/mcp-stdio.mjs\n?? scripts/r5-e2e.mjs\n?? scripts/r5-migration-evidence.mjs\n?? scripts/r5-performance.mjs\n?? tests/golden/r5/\n?? tests/integration/context-r5.test.mjs\n?? tests/integration/mcp-stdio-r5.test.mjs\n?? tests/security/context-mcp-r5.test.mjs\n?? tests/unit/context-r5.test.mjs\n",
+  "final_status": "",
+  "final_diff_exit_status": 0,
+  "data_rollback_probe": "node --test tests/unit/migrations.test.mjs",
+  "created_at": "2026-08-17T11:16:21.446Z"
+}

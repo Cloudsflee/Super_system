@@ -24,11 +24,14 @@ import { ProjectRepository } from './modules/project/repository.mjs';
 import { RepositoryService } from './modules/repository/service.mjs';
 import { WorkflowRepository } from './modules/workflow/repository.mjs';
 import { WorkflowService } from './modules/workflow/service.mjs';
+import { ContextService } from './modules/context/service.mjs';
+import { MCP_PUBLIC_TOOL_SNAPSHOT } from './modules/mcp/public-tools.mjs';
 
 const TERMINAL_JOB_STATUSES = new Set(['completed', 'failed', 'cancelled', 'unknown']);
 const RUNNER_UID = 10001;
 const RUNNER_GID = 10001;
 const RUNNER_RESULT_ERRORS = new Set(['runner_failed', 'runner_setup_failed', 'runner_spawn_failed', 'runner_deadline_exceeded', 'runner_output_too_large', 'broker_job_unknown', 'invalid_job_spec', 'cancelled', 'evidence_diff_too_large', 'evidence_capture_failed', 'evidence_output_missing', 'evidence_output_too_large', 'evidence_output_contains_secret', 'diff_whitespace_error', 'diff_size_check_failed', ...CODEX_ERROR_CODES]);
+export { MCP_PUBLIC_TOOL_SNAPSHOT };
 
 function grantRunnerPath(target, { directory = false } = {}) {
   try { fs.chownSync(target, RUNNER_UID, RUNNER_GID); } catch { /* Rootless and Windows hosts keep their native ownership. */ }
@@ -361,6 +364,12 @@ export class Domain {
       secrets: () => this.activeCredentialSecrets(),
       captureArtifact: (projectId, sessionId, content) => this.captureTerminalArtifact(projectId, sessionId, content)
     });
+    this.contextService = new ContextService({
+      db,
+      config,
+      operations: this.operationService,
+      projectWorkspace: (projectId) => this.projectWorkspace(projectId)
+    });
   }
 
   async listProjects() {
@@ -475,8 +484,18 @@ export class Domain {
   }
 
   async listMcpClients() {
-    const rows = await this.db.query('SELECT id,name,transport,endpoint,scope_json,status,created_at,updated_at FROM mcp_clients ORDER BY created_at DESC,id');
-    return rows.map((row) => ({ ...row, scope: rowJson(row, 'scope_json', {}) }));
+    const rows = await this.db.query(`SELECT id,name,transport,endpoint,scope_json,status,revision,subject,token_prefix,
+      project_allowlist_json,tool_allowlist_json,expires_at,last_used_at,revoked_at,revoked_by,usage_count,created_at,updated_at
+      FROM mcp_clients ORDER BY created_at DESC,id`);
+    return rows.map((row) => {
+      const scope = rowJson(row, 'scope_json', {});
+      return {
+        ...row,
+        scope,
+        project_allowlist: rowJson(row, 'project_allowlist_json', scope.project_ids || []),
+        tool_allowlist: rowJson(row, 'tool_allowlist_json', scope.tools || [])
+      };
+    });
   }
 
   async createMcpClient(input, ctx = {}) {
@@ -486,18 +505,29 @@ export class Domain {
     const scope = input?.scope && typeof input.scope === 'object' ? input.scope : {};
     assert(name.length >= 1 && name.length <= 120, 'invalid_input', 'MCP client name is required', { status: 422 });
     assert(['http', 'stdio', 'docker'].includes(transport), 'invalid_input', 'MCP transport is invalid', { status: 422 });
-    assert(endpoint.length >= 1 && endpoint.length <= 1024 && !/[\u0000\r\n]/.test(endpoint), 'invalid_input', 'MCP endpoint is invalid', { status: 422 });
+    assert((transport === 'stdio' || (endpoint.length >= 1 && endpoint.length <= 1024)) && !/[\u0000\r\n]/.test(endpoint), 'invalid_input', 'MCP endpoint is invalid', { status: 422 });
     if (transport === 'http') {
       let parsed;
       try { parsed = new URL(endpoint); } catch { throw new AppError('invalid_input', 'MCP HTTP endpoint is invalid', { status: 422 }); }
       assert(parsed.protocol === 'https:' || (parsed.protocol === 'http:' && ['127.0.0.1', 'localhost', '::1'].includes(parsed.hostname)), 'invalid_input', 'MCP HTTP endpoint must use HTTPS or loopback HTTP', { status: 422 });
     }
-    const projectIds = Array.isArray(scope.project_ids) ? [...new Set(scope.project_ids.map(String))].slice(0, 100) : [];
-    const token = randomBytes(32).toString('base64url');
+    const allowAllProjects = input?.allow_all_projects === true || scope.allow_all_projects === true;
+    const projectIds = Array.isArray(scope.project_ids) ? [...new Set(scope.project_ids.map(String).filter(Boolean))].slice(0, 100) : [];
+    assert(projectIds.length > 0 || allowAllProjects, 'invalid_input', 'MCP project allowlist is required', { status: 422 });
+    for (const projectId of projectIds) await this.requireProject(projectId);
+    const toolsProvided = Object.prototype.hasOwnProperty.call(scope, 'tools') || Object.prototype.hasOwnProperty.call(input || {}, 'tools');
+    const requestedTools = toolsProvided ? (Array.isArray(scope.tools) ? scope.tools : Array.isArray(input.tools) ? input.tools : []) : MCP_PUBLIC_TOOL_SNAPSHOT;
+    const tools = [...new Set(requestedTools.map(String).filter((name) => /^[A-Za-z0-9_.-]{1,120}$/.test(name)))].filter((name) => MCP_PUBLIC_TOOL_SNAPSHOT.includes(name)).sort();
+    if (toolsProvided && tools.length !== new Set(requestedTools.map(String)).size) throw new AppError('invalid_input', 'MCP tool allowlist contains an unknown command', { status: 422 });
+    const ttl = input?.ttl_seconds == null ? null : Number(input.ttl_seconds);
+    assert(ttl == null || (Number.isInteger(ttl) && ttl >= 60 && ttl <= 366 * 24 * 60 * 60), 'invalid_input', 'MCP client TTL is invalid', { status: 422 });
+    const expiresAt = ttl == null ? null : new Date(Date.now() + ttl * 1000).toISOString();
+    const token = `aiws_mcp_${randomBytes(32).toString('base64url')}`;
     const clientId = id('mcp');
     const timestamp = now();
     await this.db.transaction([
-      { sql: 'INSERT INTO mcp_clients(id,user_id,name,transport,endpoint,token_hash,scope_json,status,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?)', params: [clientId, 'usr_local_owner', name, transport, endpoint, sha256(token), asJson({ ...scope, project_ids: projectIds }), 'available', timestamp, timestamp] },
+      { sql: `INSERT INTO mcp_clients(id,user_id,name,transport,endpoint,token_hash,scope_json,status,created_at,updated_at,revision,subject,token_prefix,project_allowlist_json,tool_allowlist_json,expires_at,last_used_at,revoked_at,revoked_by,usage_count)
+        VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`, params: [clientId, 'usr_local_owner', name, transport, endpoint, sha256(token), asJson({ ...scope, allow_all_projects: allowAllProjects, project_ids: projectIds, tools }), 'available', timestamp, timestamp, 1, String(input?.subject || ctx.actor || 'local-user'), token.slice(0, 16), asJson(projectIds), asJson(tools), expiresAt, null, null, null, 0] },
       auditStatement('mcp_client.created', 'mcp_client', clientId, { name, transport, project_count: projectIds.length }, ctx.actor)
     ]);
     const metadata = (await this.listMcpClients()).find((client) => client.id === clientId);
@@ -505,10 +535,14 @@ export class Domain {
   }
 
   async revokeMcpClient(clientId, _input, ctx = {}) {
-    const client = await this.db.get('SELECT id FROM mcp_clients WHERE id=?', [clientId]);
+    const client = await this.db.get('SELECT id,revision,status FROM mcp_clients WHERE id=?', [clientId]);
     if (!client) throw new AppError('not_found', 'MCP client not found');
+    assert(Number.isInteger(Number(_input?.expected_revision)) && Number(_input.expected_revision) > 0, 'expected_revision_required', 'expected_revision is required', { status: 400 });
+    if (Number(_input.expected_revision) !== Number(client.revision)) throw new AppError('revision_conflict', 'MCP client revision changed', { status: 409, details: { current_revision: client.revision } });
+    const expected = Number(_input.expected_revision);
+    const timestamp = now();
     await this.db.transaction([
-      { sql: "UPDATE mcp_clients SET status='revoked',updated_at=? WHERE id=?", params: [now(), clientId] },
+      { sql: "UPDATE mcp_clients SET status='revoked',revoked_at=COALESCE(revoked_at,?),revoked_by=?,revision=revision+1,updated_at=? WHERE id=? AND revision=?", params: [timestamp, ctx.actor || 'local-user', timestamp, clientId, expected], expect_changes: 1 },
       auditStatement('mcp_client.revoked', 'mcp_client', clientId, {}, ctx.actor)
     ]);
     return (await this.listMcpClients()).find((item) => item.id === clientId);
@@ -518,8 +552,10 @@ export class Domain {
     const projectIds = [...new Set((Array.isArray(scope?.project_ids) ? scope.project_ids : [projectId]).map(String).filter(Boolean))].slice(0, 100);
     assert(projectIds.length > 0, 'invalid_input', 'scope must include at least one project', { status: 422 });
     for (const idValue of projectIds) await this.requireProject(idValue);
-    const tools = [...new Set((Array.isArray(scope?.tools) ? scope.tools : []).map(String).filter((name) => /^[A-Za-z0-9_.-]{1,120}$/.test(name)))].slice(0, 200);
-    assert(tools.length === (Array.isArray(scope?.tools) ? new Set(scope.tools.map(String)).size : 0), 'invalid_input', 'scope tools contain an invalid name', { status: 422 });
+    const toolsProvided = Object.prototype.hasOwnProperty.call(scope || {}, 'tools');
+    const requested = toolsProvided && Array.isArray(scope.tools) ? scope.tools.map(String) : toolsProvided ? [] : [...MCP_PUBLIC_TOOL_SNAPSHOT];
+    const tools = [...new Set(requested.filter((name) => /^[A-Za-z0-9_.-]{1,120}$/.test(name) && MCP_PUBLIC_TOOL_SNAPSHOT.includes(name)))].sort().slice(0, 200);
+    assert(tools.length === new Set(requested).size, 'invalid_input', 'scope tools contain an invalid name', { status: 422 });
     return { project_ids: projectIds, tools };
   }
 
@@ -530,7 +566,7 @@ export class Domain {
     return Promise.all(requests.map(async (request) => ({
       ...request,
       scope: rowJson(request, 'scope_json', {}),
-      grants: (await this.db.query('SELECT id,request_id,scope_json,expires_at,revoked_at FROM exchange_grants WHERE request_id=? ORDER BY expires_at DESC,id', [request.id])).map((grant) => ({ ...grant, scope: rowJson(grant, 'scope_json', {}) }))
+      grants: (await this.db.query('SELECT id,request_id,scope_json,expires_at,revoked_at,revision,subject,transport,token_prefix,last_used_at,revoked_by FROM exchange_grants WHERE request_id=? ORDER BY expires_at DESC,id', [request.id])).map((grant) => ({ ...grant, scope: rowJson(grant, 'scope_json', {}) }))
     })));
   }
 
@@ -542,8 +578,11 @@ export class Domain {
     const requestId = id('mreq');
     const timestamp = now();
     const expiresAt = new Date(Date.now() + ttl * 1000).toISOString();
+    const transport = ['http', 'stdio', 'docker'].includes(String(input?.transport || 'http')) ? String(input?.transport || 'http') : 'http';
+    const tools = Array.isArray(scope.tools) ? [...new Set(scope.tools.map(String))].sort() : [];
     await this.db.transaction([
-      { sql: 'INSERT INTO exchange_requests(id,project_id,scope_json,status,created_at,expires_at) VALUES(?,?,?,?,?,?)', params: [requestId, projectId, asJson(scope), 'pending', timestamp, expiresAt] },
+      { sql: `INSERT INTO exchange_requests(id,project_id,scope_json,status,created_at,expires_at,revision,subject,transport,project_allowlist_json,tool_allowlist_json,requested_ttl_seconds)
+        VALUES(?,?,?,?,?,?,?,?,?,?,?,?)`, params: [requestId, projectId, asJson(scope), 'pending', timestamp, expiresAt, 1, String(input?.subject || ctx.actor || 'local-user'), transport, asJson(scope.project_ids), asJson(tools), ttl] },
       auditStatement('mcp_scope.requested', 'exchange_request', requestId, { project_id: projectId, scope, ttl_seconds: ttl }, ctx.actor)
     ]);
     return (await this.listMcpScopes(projectId)).find((item) => item.id === requestId);
@@ -552,10 +591,16 @@ export class Domain {
   async grantMcpScope(requestId, input = {}, ctx = {}) {
     const request = await this.db.get('SELECT * FROM exchange_requests WHERE id=?', [requestId]);
     if (!request) throw new AppError('not_found', 'MCP scope request not found');
+    assert(Number.isInteger(Number(input?.expected_revision)) && Number(input.expected_revision) > 0, 'expected_revision_required', 'expected_revision is required', { status: 400 });
+    if (Number(input.expected_revision) !== Number(request.revision)) throw new AppError('revision_conflict', 'MCP scope request revision changed', { status: 409, details: { current_revision: request.revision } });
     assert(request.status === 'pending', 'invalid_state', 'MCP scope request is not pending', { status: 409 });
     assert(!request.expires_at || new Date(request.expires_at).getTime() > Date.now(), 'scope_expired', 'MCP scope request has expired', { status: 409 });
     const requested = rowJson(request, 'scope_json', {});
     const scope = await this.normalizeMcpScope(request.project_id, input?.scope || requested);
+    const requestedProjects = new Set((requested.project_ids || []).map(String));
+    const requestedTools = new Set((requested.tools || []).map(String));
+    assert(scope.project_ids.every((projectId) => requestedProjects.has(String(projectId))), 'mcp_scope_escalation', 'grant project scope exceeds request', { status: 422 });
+    assert(scope.tools.every((tool) => requestedTools.has(String(tool))), 'mcp_scope_escalation', 'grant tool scope exceeds request', { status: 422 });
     const ttl = Number(input?.ttl_seconds ?? 3600);
     assert(Number.isInteger(ttl) && ttl >= 300 && ttl <= 90 * 24 * 60 * 60, 'invalid_input', 'grant ttl is invalid', { status: 422 });
     const token = randomBytes(32).toString('base64url');
@@ -563,38 +608,62 @@ export class Domain {
     const expiresAt = new Date(Date.now() + ttl * 1000).toISOString();
     const timestamp = now();
     await this.db.transaction([
-      { sql: "UPDATE exchange_requests SET status='granted' WHERE id=? AND status='pending'", params: [requestId], expect_changes: 1 },
-      { sql: 'INSERT INTO exchange_grants(id,request_id,token_hash,scope_json,expires_at,revoked_at) VALUES(?,?,?,?,?,NULL)', params: [grantId, requestId, sha256(token), asJson(scope), expiresAt] },
+      { sql: "UPDATE exchange_requests SET status='granted',revision=revision+1 WHERE id=? AND status='pending' AND revision=?", params: [requestId, Number(input.expected_revision)], expect_changes: 1 },
+      { sql: `INSERT INTO exchange_grants(id,request_id,token_hash,scope_json,expires_at,revoked_at,revision,subject,transport,token_prefix,project_allowlist_json,tool_allowlist_json,last_used_at,revoked_by)
+        VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)`, params: [grantId, requestId, sha256(token), asJson(scope), expiresAt, null, 1, request.subject || ctx.actor || 'local-user', request.transport || 'http', token.slice(0, 16), asJson(scope.project_ids), asJson(scope.tools || []), null, null] },
       auditStatement('mcp_scope.granted', 'exchange_grant', grantId, { request_id: requestId, scope, ttl_seconds: ttl }, ctx.actor)
     ]);
-    return { id: grantId, request_id: requestId, scope, expires_at: expiresAt, revoked_at: null, token };
+    return { id: grantId, request_id: requestId, scope, expires_at: expiresAt, revoked_at: null, revision: 1, token };
   }
 
   async revokeMcpScope(grantId, _input, ctx = {}) {
-    const grant = await this.db.get('SELECT id,request_id,revoked_at FROM exchange_grants WHERE id=?', [grantId]);
+    const grant = await this.db.get('SELECT id,request_id,revoked_at,revision FROM exchange_grants WHERE id=?', [grantId]);
     if (!grant) throw new AppError('not_found', 'MCP scope grant not found');
+    assert(Number.isInteger(Number(_input?.expected_revision)) && Number(_input.expected_revision) > 0, 'expected_revision_required', 'expected_revision is required', { status: 400 });
+    if (Number(_input.expected_revision) !== Number(grant.revision)) throw new AppError('revision_conflict', 'MCP scope grant revision changed', { status: 409, details: { current_revision: grant.revision } });
+    const expected = Number(_input.expected_revision);
     await this.db.transaction([
-      { sql: 'UPDATE exchange_grants SET revoked_at=COALESCE(revoked_at,?) WHERE id=?', params: [now(), grantId] },
+      { sql: 'UPDATE exchange_grants SET revoked_at=COALESCE(revoked_at,?),revoked_by=?,revision=revision+1 WHERE id=? AND revision=?', params: [now(), ctx.actor || 'local-user', grantId, expected], expect_changes: 1 },
       auditStatement('mcp_scope.revoked', 'exchange_grant', grantId, { request_id: grant.request_id }, ctx.actor)
     ]);
-    return this.db.get('SELECT id,request_id,scope_json,expires_at,revoked_at FROM exchange_grants WHERE id=?', [grantId]).then((row) => ({ ...row, scope: rowJson(row, 'scope_json', {}) }));
+    return this.db.get('SELECT id,request_id,scope_json,expires_at,revoked_at,revision,subject,transport,token_prefix,last_used_at,revoked_by FROM exchange_grants WHERE id=?', [grantId]).then((row) => ({ ...row, scope: rowJson(row, 'scope_json', {}) }));
   }
 
   async authorizeMcpToken(token, projectId = '') {
     if (!token) return { local: true, client: null };
-    const client = await this.db.get('SELECT id,name,scope_json,status FROM mcp_clients WHERE token_hash=?', [sha256(token)]);
+    const client = await this.db.get('SELECT id,name,scope_json,status,revision,project_allowlist_json,tool_allowlist_json,expires_at FROM mcp_clients WHERE token_hash=?', [sha256(token)]);
     if (client && client.status === 'available') {
+      if (client.expires_at && new Date(client.expires_at).getTime() <= Date.now()) {
+        await this.db.run("UPDATE mcp_clients SET status='revoked',revoked_at=?,revision=revision+1,updated_at=? WHERE id=? AND status='available'", [now(), now(), client.id]);
+        throw new AppError('mcp_token_invalid', 'MCP token is expired or revoked', { status: 401 });
+      }
       const scope = rowJson(client, 'scope_json', {});
-      const projects = Array.isArray(scope.project_ids) ? scope.project_ids.map(String) : [];
-      if (projectId && projects.length && !projects.includes(String(projectId))) throw new AppError('mcp_scope_denied', 'MCP token is not scoped to this project', { status: 403 });
-      return { local: false, client: { id: client.id, name: client.name, scope } };
+      const projects = rowJson(client, 'project_allowlist_json', scope.project_ids || []).map(String);
+      if (projectId && !scope.allow_all_projects && (!projects.length || !projects.includes(String(projectId)))) throw new AppError('mcp_scope_denied', 'MCP token is not scoped to this project', { status: 403 });
+      await this.db.run('UPDATE mcp_clients SET last_used_at=?,usage_count=usage_count+1,updated_at=? WHERE id=?', [now(), now(), client.id]);
+      return { local: false, client: { id: client.id, name: client.name, scope: { ...scope, project_ids: projects, tools: rowJson(client, 'tool_allowlist_json', scope.tools || []) }, revision: client.revision } };
     }
-    const grant = await this.db.get('SELECT g.id,g.scope_json,g.expires_at,g.revoked_at,r.project_id FROM exchange_grants g JOIN exchange_requests r ON r.id=g.request_id WHERE g.token_hash=?', [sha256(token)]);
+    const grant = await this.db.get('SELECT g.id,g.scope_json,g.expires_at,g.revoked_at,g.revision,r.project_id FROM exchange_grants g JOIN exchange_requests r ON r.id=g.request_id WHERE g.token_hash=?', [sha256(token)]);
     if (!grant || grant.revoked_at || new Date(grant.expires_at).getTime() <= Date.now()) throw new AppError('mcp_token_invalid', 'MCP token is invalid or revoked', { status: 401 });
     const scope = rowJson(grant, 'scope_json', {});
     const projects = Array.isArray(scope.project_ids) ? scope.project_ids.map(String) : [];
-    if (projectId && projects.length && !projects.includes(String(projectId))) throw new AppError('mcp_scope_denied', 'MCP token is not scoped to this project', { status: 403 });
-    return { local: false, client: { id: grant.id, name: `grant:${grant.id}`, scope } };
+    if (projectId && !scope.allow_all_projects && (!projects.length || !projects.includes(String(projectId)))) throw new AppError('mcp_scope_denied', 'MCP token is not scoped to this project', { status: 403 });
+    await this.db.run('UPDATE exchange_grants SET last_used_at=? WHERE id=?', [now(), grant.id]);
+    return { local: false, client: { id: grant.id, name: `grant:${grant.id}`, scope, revision: grant.revision } };
+  }
+
+  async assertMcpOperationScope(authorization, operationId) {
+    if (authorization?.local) return;
+    const scope = authorization?.client?.scope || {};
+    if (scope.allow_all_projects === true) return;
+    const operation = await this.operationService.get(operationId);
+    let projectId = operation.resource_type === 'project' ? operation.resource_id : '';
+    if (!projectId && operation.resource_type === 'context_projection_job') projectId = (await this.db.get('SELECT project_id FROM context_projection_jobs WHERE id=?', [operation.resource_id]))?.project_id || '';
+    if (!projectId && operation.resource_type === 'project_intake') projectId = (await this.db.get('SELECT project_id FROM project_intakes WHERE id=?', [operation.resource_id]))?.project_id || '';
+    if (!projectId && operation.resource_type === 'repository_line') projectId = (await this.db.get('SELECT project_id FROM repository_lines WHERE id=?', [operation.resource_id]))?.project_id || '';
+    if (!projectId && operation.resource_type === 'workflow_generation') projectId = (await this.db.get('SELECT project_id FROM workflow_generations WHERE id=?', [operation.resource_id]))?.project_id || '';
+    const projects = Array.isArray(scope.project_ids) ? scope.project_ids.map(String) : [];
+    if (!projectId || !projects.includes(String(projectId))) throw new AppError('mcp_scope_denied', 'MCP token is not scoped to this operation', { status: 403 });
   }
 
   async createGithubAppConfig(input, ctx = {}) {
@@ -1333,148 +1402,95 @@ export class Domain {
   }
 
   async listContextSources(projectId, query = '') {
-    await this.requireProject(projectId);
-    if (query.trim()) {
-      return this.db.query('SELECT s.* FROM context_source_fts f JOIN context_sources s ON s.id=f.source_id WHERE f.context_source_fts MATCH ? AND s.project_id=? ORDER BY s.created_at DESC', [query.trim(), projectId]);
-    }
-    return this.db.query('SELECT * FROM context_sources WHERE project_id=? ORDER BY created_at DESC', [projectId]);
+    return this.contextService.listSources(projectId, query);
   }
 
   async createContextSource(projectId, input, ctx = {}) {
-    await this.requireProject(projectId);
-    const kind = ['brief', 'repository', 'file', 'diff', 'test_report', 'image', 'note'].includes(input?.kind) ? input.kind : 'note';
-    const sourcePath = input?.path ? normalizeRelativePath(String(input.path)) : '';
-    if (kind === 'file' || kind === 'diff' || kind === 'test_report') assertReviewablePath(sourcePath);
-    const content = String(input?.content || '');
-    assert(content.length <= 2_000_000, 'invalid_input', 'context source is too large');
-    const sourceId = id('src');
-    const timestamp = now();
-    const hash = sha256(content);
-    await this.db.transaction([
-      { sql: 'INSERT INTO context_sources(id,project_id,kind,path,title,content,content_hash,created_at) VALUES(?,?,?,?,?,?,?,?)', params: [sourceId, projectId, kind, sourcePath, String(input?.title || sourcePath || kind).slice(0, 200), content, hash, timestamp] },
-      { sql: 'INSERT INTO context_source_fts(source_id,title,content) VALUES(?,?,?)', params: [sourceId, String(input?.title || sourcePath || kind), content] },
-      auditStatement('context_source.created', 'context_source', sourceId, { project_id: projectId, kind }, ctx.actor)
-    ]);
-    return this.db.get('SELECT * FROM context_sources WHERE id=?', [sourceId]);
+    return this.contextService.createSource(projectId, input, ctx.actor);
   }
 
   async listContextPacks(projectId) {
-    await this.requireProject(projectId);
-    return (await this.db.query('SELECT * FROM context_packs WHERE project_id=? ORDER BY created_at DESC', [projectId])).map(contextPackView);
+    return this.contextService.packs(projectId);
+  }
+
+  async contextPack(projectId, packId) {
+    return this.contextService.pack(projectId, packId);
   }
 
   async contextMap(projectId) {
-    await this.requireProject(projectId);
-    const nodes = await this.db.query(`SELECT n.id,n.parent_id,n.uri,n.title,n.kind,n.sensitivity,n.created_at,n.updated_at,
-      (SELECT content_hash FROM context_document_versions v WHERE v.node_id=n.id ORDER BY version DESC LIMIT 1) AS content_hash
-      FROM context_nodes n WHERE n.project_id=? ORDER BY n.uri`, [projectId]);
-    return { project_id: projectId, root_uri: `aiws://context/${projectId}`, nodes };
+    return this.contextService.map(projectId);
   }
 
   async rebuildContextMap(projectId, _input, ctx = {}) {
-    await this.requireProject(projectId);
-    const jobId = id('cpj');
-    const timestamp = now();
-    await this.db.transaction([
-      { sql: 'INSERT INTO context_projection_jobs(id,project_id,status,cursor,created_at,updated_at) VALUES(?,?,?,?,?,?)', params: [jobId, projectId, 'pending', '', timestamp, timestamp] },
-      auditStatement('context.projection.queued', 'context_projection_job', jobId, { project_id: projectId }, ctx.actor)
-    ]);
-    return this.withRepositoryLock(`context:${projectId}`, () => this.runContextProjection(jobId, projectId, ctx));
+    return this.contextService.rebuild(projectId, _input || {}, ctx.actor);
   }
 
   async runContextProjection(jobId, projectId, ctx = {}) {
-    const job = await this.db.get('SELECT * FROM context_projection_jobs WHERE id=? AND project_id=?', [jobId, projectId]);
-    if (!job) throw new AppError('not_found', 'context projection job not found');
-    if (job.status === 'completed') return { job, map: await this.contextMap(projectId) };
-    const sources = await this.db.query('SELECT * FROM context_sources WHERE project_id=? ORDER BY created_at,id', [projectId]);
-    const rootId = `ctx_${sha256(`root:${projectId}`).slice(0, 32)}`;
-    const rootUri = `aiws://context/${projectId}`;
-    const timestamp = now();
-    await this.db.run("UPDATE context_projection_jobs SET status='running',error_code=NULL,updated_at=? WHERE id=?", [timestamp, jobId]);
-    const statements = [
-      { sql: `INSERT INTO context_nodes(id,project_id,parent_id,uri,title,kind,sensitivity,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?)
-        ON CONFLICT(uri) DO UPDATE SET title=excluded.title,updated_at=excluded.updated_at`, params: [rootId, projectId, null, rootUri, 'Context', 'root', 'normal', timestamp, timestamp] }
-    ];
-    for (const source of sources) {
-      const nodeId = `ctx_${sha256(`source:${source.id}`).slice(0, 32)}`;
-      const uri = `${rootUri}/${encodeURIComponent(source.kind)}/${encodeURIComponent(source.id)}`;
-      const existing = await this.db.get('SELECT id FROM context_nodes WHERE uri=?', [uri]);
-      const resolvedNodeId = existing?.id || nodeId;
-      statements.push(
-        { sql: `INSERT INTO context_nodes(id,project_id,parent_id,uri,title,kind,sensitivity,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?)
-          ON CONFLICT(uri) DO UPDATE SET parent_id=excluded.parent_id,title=excluded.title,kind=excluded.kind,updated_at=excluded.updated_at`, params: [resolvedNodeId, projectId, rootId, uri, source.title, source.kind, 'normal', timestamp, timestamp] },
-        { sql: 'INSERT OR IGNORE INTO context_edges(parent_id,child_id,relation,created_at) VALUES(?,?,?,?)', params: [rootId, resolvedNodeId, 'contains', timestamp] }
-      );
-      const latest = await this.db.get('SELECT version,content_hash FROM context_document_versions WHERE node_id=? ORDER BY version DESC LIMIT 1', [resolvedNodeId]);
-      if (latest?.content_hash !== source.content_hash) statements.push({ sql: 'INSERT INTO context_document_versions(id,node_id,version,content_hash,content,created_at) VALUES(?,?,?,?,?,?)', params: [id('cdv'), resolvedNodeId, Number(latest?.version || 0) + 1, source.content_hash, source.content, timestamp] });
-    }
-    statements.push(
-      { sql: "UPDATE context_projection_jobs SET status='completed',cursor=?,updated_at=? WHERE id=?", params: [String(sources.length), timestamp, jobId] },
-      auditStatement('context.projection.completed', 'context_projection_job', jobId, { project_id: projectId, source_count: sources.length }, ctx.actor)
-    );
-    try {
-      await this.db.transaction(statements);
-      return { job: await this.db.get('SELECT * FROM context_projection_jobs WHERE id=?', [jobId]), map: await this.contextMap(projectId) };
-    } catch (error) {
-      await this.db.transaction([
-        { sql: "UPDATE context_projection_jobs SET status='failed',error_code='context_projection_failed',updated_at=? WHERE id=?", params: [now(), jobId] },
-        auditStatement('context.projection.failed', 'context_projection_job', jobId, { project_id: projectId, error_code: 'context_projection_failed' }, ctx.actor)
-      ]).catch(() => undefined);
-      throw error;
-    }
+    return this.contextService.worker.run(jobId, projectId, { actor: ctx.actor });
   }
 
   async contextProjectionStatus(projectId) {
-    await this.requireProject(projectId);
-    return this.db.get('SELECT * FROM context_projection_jobs WHERE project_id=? ORDER BY created_at DESC LIMIT 1', [projectId]);
+    return this.contextService.status(projectId);
   }
 
-  async readContextNode(projectId, uri) {
-    await this.requireProject(projectId);
-    const node = await this.db.get('SELECT * FROM context_nodes WHERE project_id=? AND uri=?', [projectId, String(uri || '')]);
-    if (!node) throw new AppError('not_found', 'context node not found');
-    const version = await this.db.get('SELECT id,version,content_hash,content,created_at FROM context_document_versions WHERE node_id=? ORDER BY version DESC LIMIT 1', [node.id]);
-    return { ...node, document: version };
+  async contextProjectionJob(projectId, jobId) {
+    return this.contextService.job(projectId, jobId);
+  }
+
+  async contextPolicyHistory(projectId) {
+    return this.contextService.policyHistory(projectId);
+  }
+
+  async contextSearch(projectId, query, options = {}) {
+    return this.contextService.search(projectId, query, options);
+  }
+
+  async contextNodeVersions(projectId, nodeId) {
+    return this.contextService.versions(projectId, nodeId);
+  }
+
+  async contextNode(projectId, nodeId, options = {}) {
+    return this.contextService.readById(projectId, nodeId, options);
+  }
+
+  async contextPolicy(projectId) {
+    return this.contextService.policy(projectId);
+  }
+
+  async updateContextPolicy(projectId, input, ctx = {}) {
+    return this.contextService.updatePolicy(projectId, input, { expectedRevision: input?.expected_revision, actor: ctx.actor });
+  }
+
+  async listContextSelections(projectId) {
+    return this.contextService.selections(projectId);
+  }
+
+  async contextProjectionJobs(projectId) {
+    return this.contextService.status(projectId);
+  }
+
+  async contextProjectionEvents(projectId, jobId, after = 0) {
+    return this.contextService.events(projectId, jobId, after);
+  }
+
+  async cancelContextProjection(projectId, jobId, input, ctx = {}) {
+    return this.contextService.cancel(projectId, jobId, input?.expected_revision, ctx.actor);
+  }
+
+  async retryContextProjection(projectId, jobId, input, ctx = {}) {
+    return this.contextService.retry(projectId, jobId, input?.expected_revision, ctx.actor);
+  }
+
+  async readContextNode(projectId, uri, options = {}) {
+    return this.contextService.read(projectId, uri, options);
   }
 
   async createContextSelection(projectId, input, ctx = {}) {
-    await this.requireProject(projectId);
-    const nodeIds = Array.isArray(input?.node_ids) ? [...new Set(input.node_ids.map(String))].slice(0, 200) : [];
-    assert(nodeIds.length > 0, 'invalid_input', 'context selection needs at least one node', { status: 422 });
-    const rows = await this.db.query(`SELECT id FROM context_nodes WHERE project_id=? AND id IN (${nodeIds.map(() => '?').join(',')})`, [projectId, ...nodeIds]);
-    assert(rows.length === nodeIds.length, 'invalid_input', 'context node does not belong to project', { status: 422 });
-    const selectionId = id('csel');
-    const retrievalPlan = input?.retrieval_plan && typeof input.retrieval_plan === 'object' ? input.retrieval_plan : { strategy: 'explicit', token_budget: 12000 };
-    await this.db.transaction([
-      { sql: 'INSERT INTO context_selections(id,project_id,session_id,node_ids_json,retrieval_plan_json,created_at) VALUES(?,?,?,?,?,?)', params: [selectionId, projectId, input?.session_id || null, asJson(nodeIds), asJson(retrievalPlan), now()] },
-      auditStatement('context.selection.created', 'context_selection', selectionId, { project_id: projectId, node_count: nodeIds.length }, ctx.actor)
-    ]);
-    return { id: selectionId, project_id: projectId, node_ids: nodeIds, retrieval_plan: retrievalPlan };
+    return this.contextService.createSelection(projectId, input, ctx.actor);
   }
 
   async createContextPack(projectId, input, ctx = {}) {
-    await this.requireProject(projectId);
-    const requested = Array.isArray(input?.source_ids) ? [...new Set(input.source_ids.map(String))] : [];
-    const sources = requested.length
-      ? await this.db.query(`SELECT * FROM context_sources WHERE project_id=? AND id IN (${requested.map(() => '?').join(',')})`, [projectId, ...requested])
-      : await this.db.query('SELECT * FROM context_sources WHERE project_id=? ORDER BY created_at DESC LIMIT 20', [projectId]);
-    assert(sources.length > 0, 'invalid_input', 'context pack needs at least one source');
-    assert(sources.length === requested.length || !requested.length, 'invalid_input', 'context source does not belong to project');
-    const pack = {
-      schema_version: 'aiws.context_pack.v5',
-      sources: sources.map((source) => ({ id: source.id, title: source.title, path: source.path, content: source.content })),
-      selection: { schema_version: 'aiws.context_selection.v2', mode: String(input?.selection || 'explicit'), source_ids: sources.map((source) => source.id) },
-      retrieval_plan: input?.retrieval_plan && typeof input.retrieval_plan === 'object' ? input.retrieval_plan : { strategy: 'explicit', token_budget: 12000 },
-      memory_manifest: { brief_revision: Number((await this.confirmedBrief(projectId))?.revision || 0), source_hashes: Object.fromEntries(sources.map((source) => [source.id, source.content_hash])) }
-    };
-    const packId = id('pack');
-    const packHash = hashJson(pack);
-    const timestamp = now();
-    await this.db.transaction([
-      { sql: 'INSERT INTO context_packs(id,project_id,source_ids_json,pack_json,pack_hash,created_at) VALUES(?,?,?,?,?,?)', params: [packId, projectId, asJson(sources.map((source) => source.id)), asJson(pack), packHash, timestamp] },
-      auditStatement('context_pack.created', 'context_pack', packId, { project_id: projectId, pack_hash: packHash }, ctx.actor)
-    ]);
-    return contextPackView(await this.db.get('SELECT * FROM context_packs WHERE id=?', [packId]));
+    return this.contextService.createPack(projectId, input, ctx.actor);
   }
 
   async listAssets(projectId) {
@@ -2145,10 +2161,7 @@ export class Domain {
     await this.operationService.recover();
     await this.repositoryService.recoverInterrupted();
     await this.terminals.recover();
-    const pendingProjections = await this.db.query("SELECT id,project_id FROM context_projection_jobs WHERE status IN ('pending','running') ORDER BY created_at,id");
-    for (const job of pendingProjections) {
-      await this.withRepositoryLock(`context:${job.project_id}`, () => this.runContextProjection(job.id, job.project_id, { actor: 'system-recovery' })).catch(() => undefined);
-    }
+    await this.contextService.recover();
     const committedResiduals = await this.db.query(`SELECT e.id FROM executions e
       JOIN execution_diffs d ON d.execution_id=e.id
       LEFT JOIN repository_worktrees w ON w.execution_id=e.id

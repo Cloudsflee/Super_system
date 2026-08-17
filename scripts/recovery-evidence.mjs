@@ -9,6 +9,7 @@ const batch = process.env.RECOVERY_BATCH || 'v3-r0-r1-governance-20260810';
 const isR2 = batch === 'v3-r2-identity-setup-20260810';
 const isR3 = batch === 'v3-r3-project-repository-20260811';
 const isR4 = batch === 'v4-r4-workflow-generation-critic-20260813';
+const isR5 = batch === 'v5-r5-context-mcp-20260816';
 const evidenceRoot = path.join(root, 'docs', 'evidence', batch);
 const excluded = new Set(String(process.env.RECOVERY_EXCLUDE || '').split(',').map(normalize).filter(Boolean));
 const git = process.platform === 'win32' ? 'git.exe' : 'git';
@@ -16,7 +17,7 @@ const corepack = process.platform === 'win32' ? 'corepack.cmd' : 'corepack';
 const powershell = process.platform === 'win32' ? 'powershell.exe' : 'pwsh';
 
 fs.mkdirSync(evidenceRoot, { recursive: true });
-if (isR4) {
+if (isR4 || isR5) {
   const provisionalVerification = path.join(evidenceRoot, 'verification.json');
   if (!fs.existsSync(provisionalVerification)) {
     fs.writeFileSync(provisionalVerification, `${JSON.stringify({
@@ -70,7 +71,24 @@ const commandDefinitions = [
   { label: 'recovery-coverage', executable: corepack, args: ['pnpm', 'recovery:coverage'] },
   { label: 'recovery-impact', executable: corepack, args: ['pnpm', 'recovery:impact', '--audit'] }
 ];
-if (isR3) {
+if (isR5) {
+  commandDefinitions.push(
+    {
+      label: 'r5-focused', executable: process.execPath,
+      args: ['--test', '--test-concurrency=1',
+        'tests/unit/context-r5.test.mjs', 'tests/unit/migrations.test.mjs',
+        'tests/unit/database.test.mjs', 'tests/unit/recovery-golden.test.mjs',
+        'tests/integration/context-r5.test.mjs', 'tests/integration/context-recovery.test.mjs',
+        'tests/integration/mcp-flow.test.mjs', 'tests/integration/mcp-stdio-r5.test.mjs',
+        'tests/security/context-mcp-r5.test.mjs']
+    },
+    { label: 'r5-web', executable: corepack, args: ['pnpm', '--filter', '@aiws/web', 'test'] },
+    { label: 'r5-e2e', executable: process.execPath, args: ['scripts/r5-e2e.mjs'] },
+    { label: 'r5-golden', executable: process.execPath, args: ['scripts/recovery-golden.mjs', 'verify', 'r5-context-projection-mcp'] },
+    { label: 'r5-migration', executable: process.execPath, args: ['scripts/r5-migration-evidence.mjs', '--output', path.join(evidenceRoot, 'migration-rollback.json')] },
+    { label: 'r5-performance', executable: process.execPath, args: ['scripts/r5-performance.mjs', '--output', path.join(evidenceRoot, 'performance.json')] }
+  );
+} else if (isR3) {
   commandDefinitions.push(
     {
       label: 'r3-focused', executable: process.execPath,
@@ -129,6 +147,7 @@ commandDefinitions.push(
 const commands = commandDefinitions.map(executeAndRecord);
 
 const screenshotRecords = captureScreenshots();
+const browserReceipt = captureBrowserReceipt();
 const rollback = rehearseRollback({ patchPath, rollbackScriptPath, baselineCommit });
 const rollbackReceiptPath = path.join(evidenceRoot, 'rollback.json');
 fs.writeFileSync(rollbackReceiptPath, `${JSON.stringify(rollback, null, 2)}\n`);
@@ -145,7 +164,7 @@ const verification = {
   inputs: {
     recovery_batch: batch,
     excluded_preexisting_files: [...excluded],
-    source_commit: isR2 || isR3 || isR4 ? baselineCommit : 'e18dc0b',
+    source_commit: isR2 || isR3 || isR4 || isR5 ? baselineCommit : 'e18dc0b',
     database_fixture: 'temporary SQLite files only',
     production_port_touched: false
   },
@@ -162,6 +181,13 @@ const verification = {
     https_git_remote: 'not_recorded',
     promotion_status: 'implemented_until_https_remote_receipt_passes'
   } : undefined,
+  r5_receipts: isR5 ? {
+    golden_fixture: 'tests/golden/r5/context-projection-mcp.json',
+    browser: browserReceipt,
+    performance: readReceiptSummary(path.join(evidenceRoot, 'performance.json')),
+    migration: readReceiptSummary(path.join(evidenceRoot, 'migration-rollback.json')),
+    promotion_status: 'implemented_until_independent_external_mcp_client_receipt_passes'
+  } : undefined,
   commands,
   screenshots: screenshotRecords,
   artifacts: {
@@ -170,7 +196,11 @@ const verification = {
     verification: relative(verificationPath),
     rollback: relative(rollbackScriptPath),
     rollback_receipt: relative(rollbackReceiptPath),
-    migration_rollback: isR2 || isR3 || isR4 ? relative(path.join(evidenceRoot, 'migration-rollback.json')) : undefined,
+    migration_rollback: isR2 || isR3 || isR4 || isR5 ? relative(path.join(evidenceRoot, 'migration-rollback.json')) : undefined,
+    migration_snapshot: isR5 ? relative(path.join(evidenceRoot, 'migration-snapshot-v4.sqlite')) : undefined,
+    migration_snapshot_manifest: isR5 ? relative(path.join(evidenceRoot, 'migration-snapshot-v4.manifest.json')) : undefined,
+    performance: isR5 ? relative(path.join(evidenceRoot, 'performance.json')) : undefined,
+    browser_receipt: isR5 ? relative(path.join(evidenceRoot, 'browser-receipt.json')) : undefined,
     provider_codex: isR2 ? relative(path.join(evidenceRoot, 'provider-codex-real.log')) : undefined,
     provider_github: isR2 ? relative(path.join(evidenceRoot, 'provider-github-real.log')) : undefined
   },
@@ -313,6 +343,81 @@ function buildBehaviorComparison() {
     };
   }
 
+  if (isR5) {
+    const baselineContext = runBuffer(git, ['show', `${baselineCommit}:apps/api/src/modules/context/index.mjs`]);
+    const baselineMcp = runBuffer(git, ['show', `${baselineCommit}:apps/api/src/modules/mcp/index.mjs`]);
+    const baselineMigration = run(git, ['cat-file', '-e', `${baselineCommit}:apps/api/src/migrations/005-context-projection-mcp.mjs`], { allowFailure: true });
+    const baselineContextService = run(git, ['cat-file', '-e', `${baselineCommit}:apps/api/src/modules/context/service.mjs`], { allowFailure: true });
+    const baselineMcpHttp = run(git, ['cat-file', '-e', `${baselineCommit}:apps/api/src/modules/mcp/http.mjs`], { allowFailure: true });
+    const focused = commands.find((entry) => entry.label === 'r5-focused');
+    const web = commands.find((entry) => entry.label === 'r5-web');
+    const e2e = commands.find((entry) => entry.label === 'r5-e2e');
+    const golden = commands.find((entry) => entry.label === 'r5-golden');
+    const migration = commands.find((entry) => entry.label === 'r5-migration');
+    const performance = commands.find((entry) => entry.label === 'r5-performance');
+    const verify = commands.find((entry) => entry.label === 'verify');
+    const performanceReceipt = JSON.parse(fs.readFileSync(path.join(evidenceRoot, 'performance.json'), 'utf8'));
+    const migrationReceipt = JSON.parse(fs.readFileSync(path.join(evidenceRoot, 'migration-rollback.json'), 'utf8'));
+    return {
+      baseline: {
+        commands: [
+          `git show ${baselineCommit}:apps/api/src/modules/context/index.mjs`,
+          `git show ${baselineCommit}:apps/api/src/modules/mcp/index.mjs`,
+          `git cat-file -e ${baselineCommit}:apps/api/src/migrations/005-context-projection-mcp.mjs`,
+          `git cat-file -e ${baselineCommit}:apps/api/src/modules/context/service.mjs`,
+          `git cat-file -e ${baselineCommit}:apps/api/src/modules/mcp/http.mjs`
+        ],
+        outputs: {
+          context_entry_sha256: sha256(baselineContext.stdout),
+          mcp_entry_sha256: sha256(baselineMcp.stdout),
+          migration_v5_present: baselineMigration.status === 0,
+          context_service_present: baselineContextService.status === 0,
+          mcp_http_present: baselineMcpHttp.status === 0,
+          user_version: 4
+        },
+        exit_status: Math.max(baselineContext.status, baselineMcp.status)
+      },
+      modified: {
+        commands: [focused?.command, web?.command, e2e?.command, golden?.command, migration?.command, performance?.command, verify?.command].filter(Boolean),
+        outputs: {
+          context_service_sha256: sha256(fs.readFileSync(path.join(root, 'apps/api/src/modules/context/service.mjs'))),
+          projection_worker_sha256: sha256(fs.readFileSync(path.join(root, 'apps/api/src/modules/context/projection-worker.mjs'))),
+          mcp_http_sha256: sha256(fs.readFileSync(path.join(root, 'apps/api/src/modules/mcp/http.mjs'))),
+          migration_v5_sha256: sha256(fs.readFileSync(path.join(root, 'apps/api/src/migrations/005-context-projection-mcp.mjs'))),
+          golden_fixture_sha256: sha256(fs.readFileSync(path.join(root, 'tests/golden/r5/context-projection-mcp.json'))),
+          user_version: migrationReceipt.modified_v5?.output?.to_version,
+          rollback_user_version: migrationReceipt.rollback_v4?.output?.state?.user_version,
+          performance_thresholds: performanceReceipt.thresholds,
+          performance_results: performanceReceipt.results,
+          browser_viewports: browserReceipt?.viewports,
+          behaviors: [
+            'stable_context_uri_and_immutable_document_versions',
+            'recoverable_projection_and_atomic_minisearch_index',
+            'policy_acl_scope_freshness_and_budget_selection',
+            'context_pack_v5_hash_contract',
+            'streamable_http_and_stdio_mcp_equivalence',
+            'durable_operation_cursor_cancel_and_retry',
+            'explicit_project_tool_scope_expiry_and_revocation',
+            'responsive_context_and_mcp_surfaces'
+          ],
+          migration_record: relative(path.join(evidenceRoot, 'migration-rollback.json')),
+          performance_record: relative(path.join(evidenceRoot, 'performance.json')),
+          browser_record: relative(path.join(evidenceRoot, 'browser-receipt.json')),
+          focused_log: relative(path.join(evidenceRoot, 'r5-focused.log')),
+          web_log: relative(path.join(evidenceRoot, 'r5-web.log')),
+          e2e_log: relative(path.join(evidenceRoot, 'r5-e2e.log')),
+          golden_log: relative(path.join(evidenceRoot, 'r5-golden.log')),
+          verify_log: relative(path.join(evidenceRoot, 'verify.log'))
+        },
+        exit_status: Math.max(
+          focused?.exit_status ?? 1, web?.exit_status ?? 1, e2e?.exit_status ?? 1,
+          golden?.exit_status ?? 1, migration?.exit_status ?? 1,
+          performance?.exit_status ?? 1, verify?.exit_status ?? 1
+        )
+      }
+    };
+  }
+
   if (!isR2) {
     const baselineDbWorker = runBuffer(git, ['show', `${baselineCommit}:apps/api/src/db-worker.mjs`]);
     const baselineHttp = runBuffer(git, ['show', `${baselineCommit}:apps/api/src/http.mjs`]);
@@ -415,18 +520,30 @@ function parseJsonStatus(output) {
   return null;
 }
 
+function readReceiptSummary(file) {
+  if (!fs.existsSync(file)) return { status: 'missing' };
+  const receipt = JSON.parse(fs.readFileSync(file, 'utf8'));
+  return {
+    status: receipt.status || 'unknown',
+    schema_version: receipt.schema_version || 'unknown',
+    sha256: sha256(fs.readFileSync(file))
+  };
+}
+
 function executeAndRecord(definition) {
   const result = runBuffer(definition.executable, definition.args, { allowFailure: true, shell: process.platform === 'win32' && definition.executable === corepack });
-  const output = Buffer.concat([result.stdout, result.stderr]);
+  const stdout = isR5 ? sanitizeEvidenceText(result.stdout.toString('utf8')) : result.stdout.toString('utf8');
+  const stderr = isR5 ? sanitizeEvidenceText(result.stderr.toString('utf8')) : result.stderr.toString('utf8');
+  const output = Buffer.from(`${stdout}${stderr}`);
   const logPath = path.join(evidenceRoot, `${definition.label}.log`);
   fs.writeFileSync(logPath, output);
   return {
     label: definition.label,
-    command: displayCommand(definition.executable, definition.args),
-    cwd: root,
+    command: isR5 ? sanitizeEvidenceText(displayCommand(definition.executable, definition.args)) : displayCommand(definition.executable, definition.args),
+    cwd: isR5 ? '<WORKSPACE>' : root,
     input: null,
-    stdout: result.stdout.toString('utf8'),
-    stderr: result.stderr.toString('utf8'),
+    stdout,
+    stderr,
     exit_status: result.status,
     output_sha256: sha256(output),
     log: relative(logPath)
@@ -434,7 +551,7 @@ function executeAndRecord(definition) {
 }
 
 function captureScreenshots() {
-  const source = path.join(root, '.ai-workspace', 'e2e-v3');
+  const source = path.join(root, '.ai-workspace', isR5 ? 'e2e-r5' : 'e2e-v3');
   const target = path.join(evidenceRoot, 'screenshots');
   if (!fs.existsSync(source)) return [];
   fs.mkdirSync(target, { recursive: true });
@@ -448,6 +565,31 @@ function captureScreenshots() {
     if (!bytes.subarray(1, 4).equals(Buffer.from('PNG'))) throw new Error(`invalid_e2e_screenshot:${name}`);
     return { path: relative(targetFile), sha256: sha256(bytes), bytes: bytes.byteLength };
   });
+}
+
+function captureBrowserReceipt() {
+  if (!isR5) return undefined;
+  const source = path.join(root, '.ai-workspace', 'e2e-r5', 'receipt.json');
+  if (!fs.existsSync(source)) throw new Error('r5_browser_receipt_missing');
+  const receipt = JSON.parse(fs.readFileSync(source, 'utf8'));
+  if (receipt.status !== 'passed'
+    || receipt.checks?.page_errors !== 0
+    || receipt.checks?.console_errors !== 0
+    || receipt.checks?.token_recorded !== false
+    || receipt.checks?.context_body_recorded !== false
+    || receipt.checks?.host_path_recorded !== false
+    || receipt.screenshots?.length !== 7) {
+    throw new Error('r5_browser_receipt_invalid');
+  }
+  const target = path.join(evidenceRoot, 'browser-receipt.json');
+  fs.copyFileSync(source, target);
+  return {
+    status: receipt.status,
+    schema_version: receipt.schema_version,
+    viewports: receipt.viewports,
+    screenshots: receipt.screenshots.length,
+    sha256: sha256(fs.readFileSync(target))
+  };
 }
 
 function rehearseRollback({ patchPath: sourcePatch, rollbackScriptPath: script, baselineCommit: commit }) {
@@ -464,7 +606,7 @@ function rehearseRollback({ patchPath: sourcePatch, rollbackScriptPath: script, 
     const finalStatus = run(git, ['-C', worktree, 'status', '--porcelain'], { allowFailure: true });
     const diff = run(git, ['-C', worktree, 'diff', '--exit-code', commit], { allowFailure: true });
     const status = commands.every((entry) => entry.exit_status === 0) && finalStatus.status === 0 && !finalStatus.stdout.trim() && diff.status === 0 ? 'passed' : 'failed';
-    return {
+    const receipt = {
       schema_version: 'aiws.v3.recovery_rollback_receipt.v1',
       status,
       baseline_commit: commit,
@@ -477,11 +619,35 @@ function rehearseRollback({ patchPath: sourcePatch, rollbackScriptPath: script, 
       data_rollback_probe: 'node --test tests/unit/migrations.test.mjs',
       created_at: new Date().toISOString()
     };
+    return isR5 ? sanitizeEvidenceValue(receipt, [[worktree, '<ROLLBACK_WORKTREE>']]) : receipt;
   } finally {
     run(git, ['worktree', 'remove', '--force', worktree], { allowFailure: true });
     run(git, ['worktree', 'prune'], { allowFailure: true });
     fs.rmSync(worktree, { recursive: true, force: true });
   }
+}
+
+function sanitizeEvidenceText(value, replacements = []) {
+  let output = String(value);
+  const hasLineBreak = /\r?\n/.test(output);
+  const values = [[root, '<WORKSPACE>'], ...replacements]
+    .flatMap(([source, replacement]) => {
+      const text = String(source);
+      return [[text, replacement], [text.replaceAll('\\', '/'), replacement]];
+    })
+    .filter(([source]) => source)
+    .sort((left, right) => right[0].length - left[0].length);
+  for (const [source, replacement] of values) output = output.split(source).join(replacement);
+  output = output.replace(/[ \t]+(?=\r?\n|$)/g, '');
+  if (output && hasLineBreak) output = `${output.replace(/(?:\r?\n)+$/, '')}\n`;
+  return output;
+}
+
+function sanitizeEvidenceValue(value, replacements = []) {
+  if (typeof value === 'string') return sanitizeEvidenceText(value, replacements);
+  if (Array.isArray(value)) return value.map((item) => sanitizeEvidenceValue(item, replacements));
+  if (value && typeof value === 'object') return Object.fromEntries(Object.entries(value).map(([key, item]) => [key, sanitizeEvidenceValue(item, replacements)]));
+  return value;
 }
 
 function rollbackScript(expectedPatchHash) {

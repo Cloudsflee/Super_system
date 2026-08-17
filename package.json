@@ -45,6 +45,8 @@
   },
   "dependencies": {
     "busboy": "1.6.0",
+    "@modelcontextprotocol/sdk": "1.29.0",
+    "minisearch": "7.1.2",
     "node-pty": "^1.1.0",
     "smol-toml": "1.7.0",
     "ws": "^8.21.0"

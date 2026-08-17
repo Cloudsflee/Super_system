@@ -1,0 +1,27 @@
+
+> @aiws/web@3.0.0 build <WORKSPACE>\apps\web
+> tsc -b && vite build
+
+[36mvite v7.3.6 [32mbuilding client environment for production...[36m[39m
+transforming...
+[32m✓[39m 1820 modules transformed.
+rendering chunks...
+computing gzip size...
+[2mdist/[22m[32m.vite/manifest.json              [39m[1m[2m  0.56 kB[22m[1m[22m[2m │ gzip:   0.22 kB[22m
+[2mdist/[22m[32mindex.html                       [39m[1m[2m  0.61 kB[22m[1m[22m[2m │ gzip:   0.34 kB[22m
+[2mdist/[22m[35massets/index-DSktqy4m.css        [39m[1m[2m 71.48 kB[22m[1m[22m[2m │ gzip:  12.66 kB[22m
+[2mdist/[22m[36massets/vendor-react-DmzDgpBG.js  [39m[1m[2m  3.66 kB[22m[1m[22m[2m │ gzip:   1.38 kB[22m
+[2mdist/[22m[36massets/vendor-icons-BLlBeFMa.js  [39m[1m[2m 21.60 kB[22m[1m[22m[2m │ gzip:   8.00 kB[22m
+[2mdist/[22m[36massets/index-BxxlOsgW.js         [39m[1m[2m480.04 kB[22m[1m[22m[2m │ gzip: 145.02 kB[22m
+[32m✓ built in 2.75s[39m
+AIWS runner-broker listening on http://127.0.0.1:61085
+AIWS 3.0.0 listening on http://127.0.0.1:61086
+{
+  "status": "passed",
+  "screenshots": 7,
+  "receipt": ".ai-workspace/e2e-r5/receipt.json"
+}
+(node:50732) [DEP0190] DeprecationWarning: Passing args to a child process with shell option true can lead to security vulnerabilities, as the arguments are not escaped, only concatenated.
+(Use `node --trace-deprecation ...` to show where the warning was created)
+(node:50732) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)

@@ -1,0 +1,15 @@
+{
+  "status": "passed",
+  "batches": [
+    {
+      "batch": "r5-context-projection-mcp",
+      "fixture": "tests/golden/r5/context-projection-mcp.json",
+      "fixture_sha256": "846fac09b23c00dea3451552da375313dd8fa291e1eb7e8bb6bd0d9e34874974",
+      "contracts": 6,
+      "cases": 6
+    }
+  ],
+  "batch_count": 1
+}
+(node:54384) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
