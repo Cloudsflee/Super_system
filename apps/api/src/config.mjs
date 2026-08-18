@@ -36,6 +36,7 @@ export function loadConfig(env = process.env) {
     home,
     databaseFile: path.join(home, 'data', 'state.sqlite'),
     casRoot: path.join(home, 'cas', 'sha256'),
+    assistNativeV6: String(env.ASSIST_NATIVE_V6 || 'off').toLowerCase() === 'on',
     dataVolume,
     brokerUrl: env.AIWS_BROKER_URL || 'http://127.0.0.1:4321',
     brokerMode,

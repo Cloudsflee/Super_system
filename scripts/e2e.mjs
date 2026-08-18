@@ -38,7 +38,7 @@ function jsonResponse(value, status = 200) {
 const app = await startApi({
   broker: apiBroker,
   githubOptions: { apiRoot: 'http://github.fixture', fetch: githubFixtureFetch },
-  config: { version: '3.0.0', apiPrefix: '/api/v1', host: '127.0.0.1', port: 0, home, databaseFile: path.join(home, 'data', 'state.sqlite'), casRoot: path.join(home, 'cas'), dataVolume: 'aiws-data-v3', brokerUrl, brokerMode: 'http', brokerSecret: secret, runnerDigest: digest, codexAvailable: false, githubAvailable: false }
+  config: { version: '3.0.0', apiPrefix: '/api/v1', host: '127.0.0.1', port: 0, home, databaseFile: path.join(home, 'data', 'state.sqlite'), casRoot: path.join(home, 'cas'), dataVolume: 'aiws-data-v3', brokerUrl, brokerMode: 'http', brokerSecret: secret, runnerDigest: digest, codexAvailable: false, githubAvailable: false, assistNativeV6: true }
 });
 const base = `http://127.0.0.1:${app.server.address().port}`;
 
@@ -343,6 +343,30 @@ try {
     await page.screenshot({ path: path.join(reportDir, `${name}-workflow.png`), fullPage: true });
   }
   expect(new Set(Object.values(workflowScreenshotHashes)).size).toBe(3);
+
+  if (process.env.R6_ASSIST_SCREENSHOT_DIR) {
+    const assistOutput = path.resolve(process.env.R6_ASSIST_SCREENSHOT_DIR);
+    fs.mkdirSync(assistOutput, { recursive: true });
+    const source = await apiMutation(`/api/v1/projects/${project.id}/context/sources`, { kind: 'note', title: 'Assist evidence', content: 'Hashed evidence context.' }, 'assist-context-source');
+    const rebuilt = await apiMutation(`/api/v1/projects/${project.id}/context/rebuild`, {}, 'assist-context-rebuild');
+    const node = rebuilt.map.nodes.find((item) => item.source_id === source.id);
+    const selection = await apiMutation(`/api/v1/projects/${project.id}/context/selections`, { node_ids: [node.id], retrieval_plan: { strategy: 'explicit', token_budget: 1024 } }, 'assist-context-selection');
+    const pack = await apiMutation(`/api/v1/projects/${project.id}/context/packs`, { selection_id: selection.id, schema_version: 'aiws.context_pack.v5' }, 'assist-context-pack');
+    const session = await apiMutation('/api/v1/assist/sessions', { project_id: project.id, scope: 'project', scope_id: project.id, context_pack_id: pack.id, mode: 'native', expected_revision: 0 }, 'assist-session');
+    const receipt = await apiMutation(`/api/v1/assist/sessions/${session.id}/turns`, { message: 'Produce the deterministic Assist evidence response.', expected_revision: session.revision, goal: { objective: 'verify' }, plan: [{ step: 'run' }] }, 'assist-turn');
+    await waitOperation(receipt.operation_id);
+    await page.goto(`${base}/#/assist`, { waitUntil: 'networkidle' });
+    await expect(page.getByRole('heading', { name: 'Assist Center' })).toBeVisible();
+    await expect(page.getByText('deterministic runner completed')).toBeVisible({ timeout: 10_000 });
+    for (const [name, width, height] of [['desktop', 1440, 900], ['laptop', 1024, 768], ['mobile-wide', 390, 844]]) {
+      await setViewport(page, width, height);
+      await checkNoOverlap(page, `${name}-assist`);
+      const overflow = await page.evaluate(() => document.documentElement.scrollWidth > document.documentElement.clientWidth);
+      if (overflow) throw new Error(`${name}-assist-horizontal-overflow`);
+      await page.screenshot({ path: path.join(assistOutput, `${name}-assist.png`), fullPage: true });
+    }
+    await page.goto(`${base}/#/workflow`, { waitUntil: 'networkidle' });
+  }
 
   const delayedGeneration = await apiMutation(`/api/v1/projects/${project.id}/workflow-generations`, {
     provider: 'fixture', fixture_delay_ms: 900, async: true

@@ -15,8 +15,8 @@ test('fresh database uses strict v4 settings and FTS5', async () => {
   const { db } = await fixture();
   const integrity = await db.integrity();
   assert.deepEqual(integrity.integrity, ['ok']);
-  assert.equal(integrity.user_version, 5);
-  assert.equal(integrity.migration_version, 5);
+  assert.equal(integrity.user_version, 6);
+  assert.equal(integrity.migration_version, 6);
   assert.equal(integrity.journal_mode, 'wal');
   assert.equal(integrity.synchronous, 2);
   assert.ok((await db.get("SELECT name FROM sqlite_master WHERE name='context_source_fts'")));

@@ -4,6 +4,7 @@ export class ApiError extends Error {
   code: string;
   status: number;
   retryable: boolean;
+  details: Record<string, unknown>;
 
   constructor(status: number, body: ApiErrorBody) {
     super(body.error?.message || `Request failed (${status})`);
@@ -11,6 +12,7 @@ export class ApiError extends Error {
     this.status = status;
     this.code = body.error?.code || 'request_failed';
     this.retryable = Boolean(body.error?.retryable);
+    this.details = body.error?.details || {};
   }
 }
 

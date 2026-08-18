@@ -9,19 +9,19 @@
   "source_files": [
     {
       "path": "apps/api/src/command-registry.mjs",
-      "sha256": "632fe27b858ee1d8c7eb62a802ca6d3fcceae7736d33b7f2fd9bfa2509883a13"
+      "sha256": "f0a7e61594a200acd01f9dfe794426cd3aca1fa38d02700cdd51fa254e2d6283"
     },
     {
       "path": "apps/api/src/domain.mjs",
-      "sha256": "54d821f6da743a1134e830bc3d23d94157f9ec9043d7579f5b496b48ec4e148f"
+      "sha256": "adde2fbbd4dcec8a9c20b986d50c73387eb91db4a139d8beb57c8a863572b042"
     },
     {
       "path": "apps/api/src/http.mjs",
-      "sha256": "0bde12f591799439912e83f07992228a4902f20985cf5ef458eea70b847bbe71"
+      "sha256": "e12d9c269cc2e7325092f5fd9ac63764324d7b36e3424ac75faf76e0a5e80338"
     },
     {
       "path": "apps/api/src/migrations/index.mjs",
-      "sha256": "bfed6ea031a4236bbb72d174a9d1a07404300ef0ecae3bc2df0dbcf6802684fa"
+      "sha256": "ad7d6bcec7fb6bce92d04cf0284d08d717af7a2dccd2c0b922797055fe4ef93c"
     },
     {
       "path": "apps/api/src/migrations/005-context-projection-mcp.mjs",
@@ -193,5 +193,5 @@
       ]
     }
   ],
-  "fixture_sha256": "846fac09b23c00dea3451552da375313dd8fa291e1eb7e8bb6bd0d9e34874974"
+  "fixture_sha256": "ef94997d79186d8eb832cb2ad7d83cf0c6c64affcc7873dfb747a80016ac7da9"
 }

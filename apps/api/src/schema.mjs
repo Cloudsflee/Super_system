@@ -1,6 +1,6 @@
 // The v1 schema text is intentionally frozen.  Forward changes are owned by
 // numbered migrations so existing baseline fingerprints remain reproducible.
-export const SCHEMA_VERSION = 5;
+export const SCHEMA_VERSION = 6;
 
 export const SCHEMA_SQL = `
 PRAGMA foreign_keys = ON;

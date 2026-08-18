@@ -5,11 +5,12 @@ import {
 } from 'lucide-react';
 import { api } from './api';
 import { ContextPage } from './features/context';
+import { AssistPage } from './features/assist';
 import { SetupPage, type SetupState } from './features/setup';
 import { WorkflowPage as R4WorkflowPage } from './features/workflow';
 import type { Project } from './types';
 import {
-  ApprovalPage, AssetsPage, AssistPage, AuditPage, ExecutionPage, ProjectsPage, SettingsPage, TerminalPage,
+  ApprovalPage, AssetsPage, AuditPage, ExecutionPage, ProjectsPage, SettingsPage, TerminalPage,
   type WorkspacePageProps
 } from './pages';
 

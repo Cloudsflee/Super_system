@@ -6,7 +6,7 @@ import { AppError, asAppError } from './errors.mjs';
 import { readBody, readMultipartUpload, readRawBody } from './http-body.mjs';
 import { createMcpHandler } from './modules/mcp/http.mjs';
 import { MCP_PUBLIC_TOOL_SNAPSHOT } from './modules/mcp/public-tools.mjs';
-const MUTATING = new Set(['POST', 'PATCH', 'DELETE']);
+const MUTATING = new Set(['POST', 'PUT', 'PATCH', 'DELETE']);
 function send(res, status, payload, headers = {}) {
   const body = JSON.stringify(payload);
   res.writeHead(status, { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store', ...headers });
@@ -139,13 +139,24 @@ export function createHttpHandler({ domain, registry, db, config, performancePro
         return send(res, status, domain.redact(result));
       }
 
-      if (parts[0] === 'assist' && parts[1] === 'sessions') {
+      if (parts[0] === 'assist' && parts[1] === 'turns') {
+        if (req.method === 'GET' && parts.length === 3) result = await domain.getAssistTurn(parts[2]);
+        else if (req.method === 'POST' && parts.length === 4 && parts[3] === 'retry') ({ status, body: result } = await command('assist.turn.retry', { ...body, turn_id: parts[2] }, null, 202));
+        else if (req.method === 'POST' && parts.length === 4 && parts[3] === 'cancel') ({ status, body: result } = await command('assist.turn.cancel', { ...body, turn_id: parts[2] }, null, 202));
+        else throw new AppError('not_found', 'route not found');
+      } else if (parts[0] === 'assist' && parts[1] === 'sessions') {
         if (req.method === 'GET' && parts.length === 2) result = await domain.listAssistSessions(parsed.searchParams.get('project_id'));
         else if (req.method === 'POST' && parts.length === 2) ({ status, body: result } = await command('assist_session.create'));
         else if (req.method === 'GET' && parts.length === 3) result = await domain.getAssistSession(parts[2]);
-        else if (req.method === 'GET' && parts[3] === 'events') return streamAssistEvents(req, res, domain, parts[2]);
-        else if (req.method === 'POST' && parts[3] === 'turns') ({ status, body: result } = await command('assist_turn.create', { ...body, session_id: parts[2] }));
-        else if (req.method === 'POST' && ['cancel', 'interrupt', 'resume', 'complete'].includes(parts[3])) ({ status, body: result } = await command('assist_session.transition', { ...body, session_id: parts[2], action: parts[3] }));
+        else if (req.method === 'PATCH' && parts.length === 3) ({ status, body: result } = await command('assist_session.transition', { ...body, session_id: parts[2] }, null, 200));
+        else if (req.method === 'GET' && parts[3] === 'events' && !String(req.headers.accept || '').includes('application/json')) return streamAssistEvents(req, res, domain, parts[2], parsed.searchParams.get('after'));
+        else if (req.method === 'GET' && parts[3] === 'events') result = await domain.assistEvents(parts[2], parsed.searchParams.get('after') || 0, parsed.searchParams.get('consumer_id') || 'default');
+        else if (req.method === 'PUT' && parts[3] === 'events' && parts[4] === 'cursor') ({ status, body: result } = await command('assist.events.cursor', { ...body, session_id: parts[2] }, null, 200));
+        else if (req.method === 'POST' && parts[3] === 'turns') {
+          const session = await db.get('SELECT compatibility FROM assist_sessions WHERE id=?', [parts[2]]);
+          ({ status, body: result } = await command('assist_turn.create', { ...body, session_id: parts[2] }, null, session?.compatibility === 'native_v6' ? 202 : 201));
+        }
+        else if (req.method === 'POST' && ['cancel', 'interrupt', 'resume', 'complete'].includes(parts[3])) ({ status, body: result } = await command('assist_session.transition', { ...body, session_id: parts[2], action: parts[3] }, null, 200));
         else throw new AppError('not_found', 'route not found');
       } else if (parts[0] === 'mcp' && parts[1] === 'clients') {
         if (req.method === 'GET' && parts.length === 2) result = await domain.listMcpClients();
@@ -384,12 +395,23 @@ async function streamWorkflowGenerationEvents(req, res, domain, generationId, qu
   res.end();
 }
 
-async function streamAssistEvents(req, res, domain, sessionId) {
-  const initial = Number(req.headers['last-event-id'] || 0);
-  const events = await domain.assistEvents(sessionId, initial);
-  res.writeHead(200, { 'content-type': 'text/event-stream; charset=utf-8', 'cache-control': 'no-cache', connection: 'close' });
-  for (const event of events) res.write(`id: ${event.cursor}\nevent: ${event.type}\ndata: ${JSON.stringify(event)}\n\n`);
-  res.end();
+async function streamAssistEvents(req, res, domain, sessionId, queryCursor = null) {
+  let cursor = Number(req.headers['last-event-id'] || queryCursor || 0);
+  let closed = false;
+  req.once('close', () => { closed = true; });
+  res.writeHead(200, { 'content-type': 'text/event-stream; charset=utf-8', 'cache-control': 'no-cache, no-transform', connection: 'keep-alive', 'x-accel-buffering': 'no' });
+  res.write(': assist event stream\n\n');
+  const deadline = Date.now() + 2_000;
+  while (!closed && Date.now() < deadline) {
+    const events = await domain.assistEvents(sessionId, cursor);
+    for (const event of events) {
+      cursor = Number(event.cursor);
+      res.write(`id: ${event.cursor}\nevent: ${event.type}\ndata: ${JSON.stringify(event)}\n\n`);
+    }
+    if (!events.length) res.write(': keepalive\n\n');
+    await new Promise((resolve) => setTimeout(resolve, 500));
+  }
+  if (!closed) res.end();
 }
 
 async function streamContextProjectionEvents(req, res, domain, projectId, jobId, queryCursor = null) {

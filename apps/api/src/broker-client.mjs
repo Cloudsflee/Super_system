@@ -23,6 +23,7 @@ class MockBroker {
     this.digest = digest;
     this.jobs = new Map();
     this.deviceAuth = new Map();
+    this.executions = new Map();
   }
 
   async probe() {
@@ -30,9 +31,16 @@ class MockBroker {
   }
 
   async submit(spec) {
+    const specHash = sha256(JSON.stringify(spec));
+    const previous = spec.execution_mode === 'assist' ? this.executions.get(spec.execution_id) : null;
+    if (previous) {
+      if (previous.spec_hash !== specHash) throw new AppError('execution_conflict', 'execution_id was submitted with a different specification', { status: 409 });
+      return { job_id: previous.job_id, status: this.jobs.get(previous.job_id)?.status || 'unknown' };
+    }
     const jobId = `job_${randomUUID().replaceAll('-', '')}`;
     const job = { job_id: jobId, status: 'queued', spec: { ...spec, credential_ref: undefined }, created_at: new Date().toISOString() };
     this.jobs.set(jobId, job);
+    if (spec.execution_mode === 'assist') this.executions.set(spec.execution_id, { job_id: jobId, spec_hash: specHash });
     setTimeout(() => {
       const current = this.jobs.get(jobId);
       if (!current || current.status === 'cancelled') return;
@@ -186,6 +194,14 @@ export class BrokerClient {
 
   status(jobId) {
     return this.mock ? this.mock.status(jobId) : this.request('GET', `/internal/v1/jobs/${encodeURIComponent(jobId)}`);
+  }
+
+  statusExecution(executionId) {
+    if (this.mock) {
+      const execution = this.mock.executions.get(executionId);
+      return Promise.resolve(execution ? { job_id: execution.job_id, status: this.mock.jobs.get(execution.job_id)?.status || 'unknown', spec_hash: execution.spec_hash } : { status: 'unknown' });
+    }
+    return this.request('GET', `/internal/v1/executions/${encodeURIComponent(executionId)}`);
   }
 
   cancel(jobId) {

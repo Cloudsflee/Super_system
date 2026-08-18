@@ -23,6 +23,7 @@ export function migrateDatabase({ file, migrations = MIGRATIONS, snapshotRoot, n
   fs.mkdirSync(path.dirname(databaseFile), { recursive: true, mode: 0o700 });
   validateMigrationSet(migrations);
   const db = new DatabaseSync(databaseFile);
+  registerMigrationFunctions(db);
   db.exec('PRAGMA foreign_keys = ON; PRAGMA journal_mode = WAL; PRAGMA synchronous = FULL; PRAGMA busy_timeout = 5000;');
   let snapshot = null;
   try {
@@ -81,6 +82,23 @@ export function migrateDatabase({ file, migrations = MIGRATIONS, snapshotRoot, n
   } finally {
     db.close();
   }
+}
+
+function registerMigrationFunctions(db) {
+  db.function('aiws_sha256', { deterministic: true }, (value) => sha256(String(value ?? '')));
+  db.function('aiws_canonical_hash', { deterministic: true }, (value) => {
+    let parsed;
+    try { parsed = JSON.parse(String(value ?? 'null')); } catch { parsed = String(value ?? ''); }
+    return sha256(JSON.stringify(canonicalize(parsed)));
+  });
+}
+
+function canonicalize(value) {
+  if (Array.isArray(value)) return value.map(canonicalize);
+  if (value && typeof value === 'object') {
+    return Object.fromEntries(Object.keys(value).sort().map((key) => [key, canonicalize(value[key])]));
+  }
+  return value;
 }
 
 export function restoreMigrationSnapshot({ file, manifestPath }) {

@@ -25,6 +25,7 @@ import { RepositoryService } from './modules/repository/service.mjs';
 import { WorkflowRepository } from './modules/workflow/repository.mjs';
 import { WorkflowService } from './modules/workflow/service.mjs';
 import { ContextService } from './modules/context/service.mjs';
+import { AssistService } from './modules/assist/service.mjs';
 import { MCP_PUBLIC_TOOL_SNAPSHOT } from './modules/mcp/public-tools.mjs';
 
 const TERMINAL_JOB_STATUSES = new Set(['completed', 'failed', 'cancelled', 'unknown']);
@@ -370,6 +371,7 @@ export class Domain {
       operations: this.operationService,
       projectWorkspace: (projectId) => this.projectWorkspace(projectId)
     });
+    this.assistService = new AssistService({ db, config, broker, operations: this.operationService, setup: this.setupService, auditStatement });
   }
 
   async listProjects() {
@@ -908,89 +910,23 @@ export class Domain {
   }
 
   async listAssistSessions(projectId = null) {
-    const rows = projectId
-      ? await this.db.query('SELECT * FROM assist_sessions WHERE project_id=? ORDER BY created_at DESC', [projectId])
-      : await this.db.query('SELECT * FROM assist_sessions ORDER BY created_at DESC LIMIT 200');
-    return rows.map((row) => ({ ...row, snapshot: rowJson(row, 'snapshot_json', {}) }));
+    return this.assistService.list(projectId);
   }
 
   async createAssistSession(input, ctx = {}) {
-    const projectId = String(input?.project_id || '').trim();
-    await this.requireProject(projectId);
-    const scope = String(input?.scope || 'project');
-    assert(['project', 'workflow', 'workstream', 'task'].includes(scope), 'invalid_input', 'Assist scope is invalid', { status: 422 });
-    const scopeId = String(input?.scope_id || projectId).trim();
-    assert(scopeId.length >= 1 && scopeId.length <= 160, 'invalid_input', 'Assist scope_id is required', { status: 422 });
-    const [brief, workflow, repository] = await Promise.all([
-      this.confirmedBrief(projectId),
-      this.db.get('SELECT revision,graph_hash FROM workflow_revisions WHERE project_id=? ORDER BY revision DESC LIMIT 1', [projectId]),
-      this.db.get('SELECT head_sha FROM repository_bindings WHERE project_id=?', [projectId])
-    ]);
-    const snapshot = { project_id: projectId, scope, scope_id: scopeId, brief_revision: brief?.revision || null, brief_hash: brief?.content_hash || null, workflow_revision: workflow?.revision || null, workflow_hash: workflow?.graph_hash || null, repository_sha: repository?.head_sha || '' };
-    const sessionId = id('ast');
-    const timestamp = now();
-    await this.db.transaction([
-      { sql: 'INSERT INTO assist_sessions(id,project_id,scope,scope_id,snapshot_json,status,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?)', params: [sessionId, projectId, scope, scopeId, asJson(snapshot), 'active', timestamp, timestamp] },
-      { sql: 'INSERT INTO assist_events(session_id,turn_id,type,data_json,created_at) VALUES(?,?,?,?,?)', params: [sessionId, null, 'assist.session.created', asJson({ scope, scope_id: scopeId }), timestamp] },
-      auditStatement('assist_session.created', 'assist_session', sessionId, { project_id: projectId, scope, scope_id: scopeId }, ctx.actor)
-    ]);
-    return (await this.listAssistSessions(projectId)).find((row) => row.id === sessionId);
+    return this.assistService.createSession(input, ctx);
   }
 
   async getAssistSession(sessionId) {
-    const session = await this.db.get('SELECT * FROM assist_sessions WHERE id=?', [sessionId]);
-    if (!session) throw new AppError('not_found', 'Assist session not found');
-    const turns = await this.db.query('SELECT * FROM assist_turns WHERE session_id=? ORDER BY turn_no', [sessionId]);
-    const turnViews = await Promise.all(turns.map(async (turn) => ({
-      ...turn,
-      goal: rowJson(turn, 'goal_json', {}),
-      plan: rowJson(turn, 'plan_json', []),
-      messages: await this.db.query('SELECT id,role,content,sequence_no,created_at FROM assist_messages WHERE turn_id=? ORDER BY sequence_no', [turn.id])
-    })));
-    return { ...session, snapshot: rowJson(session, 'snapshot_json', {}), turns: turnViews };
+    return this.assistService.get(sessionId);
   }
 
   async createAssistTurn(sessionId, input, ctx = {}) {
-    const session = await this.db.get('SELECT id,status FROM assist_sessions WHERE id=?', [sessionId]);
-    if (!session) throw new AppError('not_found', 'Assist session not found');
-    assert(session.status === 'active', 'assist_session_inactive', 'Assist session is not active', { status: 409 });
-    const message = String(input?.message || '').trim();
-    assert(message.length >= 1 && message.length <= 100000, 'invalid_input', 'Assist message is required', { status: 422 });
-    const goal = input?.goal && typeof input.goal === 'object' ? input.goal : {};
-    const plan = Array.isArray(input?.plan) ? input.plan.slice(0, 100) : [];
-    const turnNo = Number((await this.db.get('SELECT COALESCE(MAX(turn_no),0)+1 AS turn_no FROM assist_turns WHERE session_id=?', [sessionId])).turn_no);
-    const turnId = id('atr');
-    const operationId = id('aop');
-    const receipt = { operation_id: operationId, resource_id: turnId, session_id: sessionId, turn_id: turnId, status: 'failed', cursor: 0, error_code: 'assist_runtime_unavailable' };
-    const timestamp = now();
-    await this.db.transaction([
-      { sql: 'INSERT INTO assist_turns(id,session_id,turn_no,status,goal_json,plan_json,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?)', params: [turnId, sessionId, turnNo, 'failed', asJson(goal), asJson(plan), timestamp, timestamp] },
-      { sql: 'INSERT INTO assist_messages(id,turn_id,role,content,sequence_no,created_at) VALUES(?,?,?,?,?,?)', params: [id('ams'), turnId, 'user', message, 1, timestamp] },
-      { sql: 'INSERT INTO assist_operations(id,session_id,kind,status,receipt_json,created_at,updated_at) VALUES(?,?,?,?,?,?,?)', params: [operationId, sessionId, 'turn', 'failed', asJson(receipt), timestamp, timestamp] },
-      { sql: 'INSERT INTO assist_events(session_id,turn_id,type,data_json,created_at) VALUES(?,?,?,?,?)', params: [sessionId, turnId, 'assist.turn.created', asJson({ turn_no: turnNo, operation_id: operationId }), timestamp] },
-      ...(Object.keys(goal).length ? [{ sql: 'INSERT INTO assist_events(session_id,turn_id,type,data_json,created_at) VALUES(?,?,?,?,?)', params: [sessionId, turnId, 'assist.goal', asJson(goal), timestamp] }] : []),
-      ...(plan.length ? [{ sql: 'INSERT INTO assist_events(session_id,turn_id,type,data_json,created_at) VALUES(?,?,?,?,?)', params: [sessionId, turnId, 'assist.plan', asJson({ steps: plan }), timestamp] }] : []),
-      { sql: 'INSERT INTO assist_events(session_id,turn_id,type,data_json,created_at) VALUES(?,?,?,?,?)', params: [sessionId, turnId, 'assist.message', asJson({ role: 'user', sequence_no: 1 }), timestamp] },
-      { sql: 'UPDATE assist_sessions SET updated_at=? WHERE id=?', params: [timestamp, sessionId] },
-      auditStatement('assist_turn.created', 'assist_turn', turnId, { session_id: sessionId, turn_no: turnNo, operation_id: operationId }, ctx.actor)
-    ]);
-    return { ...(await this.getAssistSession(sessionId)).turns.find((turn) => turn.id === turnId), operation: receipt };
+    return this.assistService.createTurn(sessionId, input, ctx);
   }
 
   async transitionAssistSession(sessionId, input, ctx = {}) {
-    const action = String(input?.action || '').trim();
-    const transitions = { cancel: 'cancelled', interrupt: 'paused', resume: 'active', complete: 'completed' };
-    const next = transitions[action];
-    assert(next, 'invalid_input', 'Assist transition is invalid', { status: 422 });
-    const session = await this.db.get('SELECT id,status FROM assist_sessions WHERE id=?', [sessionId]);
-    if (!session) throw new AppError('not_found', 'Assist session not found');
-    if (action === 'resume') assert(session.status === 'paused', 'invalid_state', 'only paused Assist sessions can resume', { status: 409 });
-    await this.db.transaction([
-      { sql: 'UPDATE assist_sessions SET status=?,updated_at=? WHERE id=?', params: [next, now(), sessionId] },
-      { sql: 'INSERT INTO assist_events(session_id,turn_id,type,data_json,created_at) VALUES(?,?,?,?,?)', params: [sessionId, null, `assist.session.${action}`, asJson({ from: session.status, to: next }), now()] },
-      auditStatement(`assist_session.${action}`, 'assist_session', sessionId, { from: session.status, to: next }, ctx.actor)
-    ]);
-    return this.getAssistSession(sessionId);
+    return this.assistService.transition(sessionId, input, ctx);
   }
 
   async projectWorkspace(projectId) {
@@ -1318,10 +1254,24 @@ export class Domain {
     return (await this.listUiActionIntents(current.project_id)).find((item) => item.id === intentId);
   }
 
-  async assistEvents(sessionId, cursor = 0) {
-    const session = await this.db.get('SELECT id FROM assist_sessions WHERE id=?', [sessionId]);
-    if (!session) throw new AppError('not_found', 'Assist session not found');
-    return (await this.db.query('SELECT cursor,session_id,turn_id,type,data_json,created_at FROM assist_events WHERE session_id=? AND cursor>? ORDER BY cursor LIMIT 1000', [sessionId, Number(cursor) || 0])).map((row) => ({ cursor: row.cursor, session_id: row.session_id, turn_id: row.turn_id, type: row.type, data: rowJson(row, 'data_json', {}), created_at: row.created_at }));
+  async assistEvents(sessionId, cursor = 0, consumerId = null) {
+    return this.assistService.events(sessionId, cursor, consumerId);
+  }
+
+  async getAssistTurn(turnId) {
+    return this.assistService.getTurn(turnId);
+  }
+
+  async retryAssistTurn(turnId, input = {}, ctx = {}) {
+    return this.assistService.retry(turnId, input, ctx);
+  }
+
+  async cancelAssistTurn(turnId, input = {}) {
+    return this.assistService.cancel(turnId, input);
+  }
+
+  async ackAssistCursor(sessionId, input) {
+    return this.assistService.ack(sessionId, input);
   }
 
   async outcomeView(executionId) {

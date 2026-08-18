@@ -178,20 +178,50 @@ export function createBroker(options = {}) {
   if (config.executor === 'host' && !path.isAbsolute(String(config.codexBinary || ''))) throw new Error('host_codex_binary_absolute_path_required');
   const replay = createReplayGuard();
   const jobs = new Map();
+  const executions = new Map();
   const credentials = new WeakMap();
   const activeProbes = new Map();
   const deviceAuth = new Map();
   const deviceSecrets = new WeakMap();
   const deviceAuthRoot = path.resolve(config.dataRoot, '.codex-device-auth');
   const hostRuntimeRoot = path.resolve(config.dataRoot, '.codex-host');
+  const jobRoot = path.resolve(config.dataRoot, '.runner-jobs');
   let accepting = true;
   const retentionMs = Number(options.retentionMs ?? JOB_RETENTION_MS);
   const maxTerminalJobs = Number(options.maxTerminalJobs ?? MAX_TERMINAL_JOBS);
   resetDeviceAuthRoot();
   resetHostRuntimeRoot();
+  restoreJobs();
   const cleanupTimer = setInterval(() => { pruneJobs(); pruneDeviceAuth(); }, 60_000);
   cleanupTimer.unref?.();
   const validate = (spec) => validateJobSpec(spec, { dataRoot: config.dataRoot, runnerDigest: config.runnerDigest, model: config.model });
+
+  function restoreJobs() {
+    fs.mkdirSync(jobRoot, { recursive: true, mode: 0o700 });
+    for (const entry of fs.readdirSync(jobRoot)) {
+      if (!/^job_[a-f0-9]{32}\.json$/.test(entry)) continue;
+      try {
+        const job = JSON.parse(fs.readFileSync(path.join(jobRoot, entry), 'utf8'));
+        if (!job?.job_id || !job?.spec?.execution_id || !job.spec_hash) continue;
+        if (!['completed', 'failed', 'cancelled'].includes(job.status)) { job.status = 'unknown'; job.error_code = 'broker_restarted'; }
+        jobs.set(job.job_id, job);
+        if (job.spec.execution_mode === 'assist') executions.set(job.spec.execution_id, { job_id: job.job_id, spec_hash: job.spec_hash });
+      } catch { /* Invalid recovery records are ignored and never executed. */ }
+    }
+  }
+
+  function persistJob(job) {
+    if (!accepting) return;
+    const target = path.join(jobRoot, `${job.job_id}.json`);
+    const temporary = `${target}.${process.pid}.tmp`;
+    try {
+      fs.writeFileSync(temporary, JSON.stringify(job), { mode: 0o600 });
+      fs.renameSync(temporary, target);
+    } catch (error) {
+      if (!accepting && error?.code === 'ENOENT') return;
+      throw error;
+    }
+  }
 
   function resetDeviceAuthRoot() {
     fs.mkdirSync(deviceAuthRoot, { recursive: true, mode: 0o700 });
@@ -760,6 +790,7 @@ export function createBroker(options = {}) {
         if (!accepting) throw new AppError('broker_shutting_down', 'broker is shutting down', { status: 503, retryable: true });
         const envelope = parsedBody.value?.spec ? parsedBody.value : { spec: parsedBody.value, credential: null };
         const spec = validate(envelope.spec);
+        const specHash = hashJson(spec);
         const profile = envelope.profile == null ? null : validateProviderProfile(envelope.profile);
         if (spec.profile_id) {
           if (!profile || profile.profile_id !== spec.profile_id || profile.profile_revision !== spec.profile_revision || profile.profile_hash !== spec.profile_hash || profile.model !== spec.model || profile.runner_digest !== spec.image_digest) throw new AppError('invalid_job_spec', 'profile envelope does not match the job spec');
@@ -772,14 +803,23 @@ export function createBroker(options = {}) {
           credential = { ref: spec.credential_ref, kind, revision: Number(envelope.credential.revision || 1), auth: envelope.credential.auth, profile };
         }
         if (spec.network_profile === 'model' && !credential) throw new AppError('invalid_job_spec', 'model network requires an ephemeral credential');
+        const prior = spec.execution_mode === 'assist' ? executions.get(spec.execution_id) : null;
+        if (prior) {
+          if (prior.spec_hash !== specHash) throw new AppError('execution_conflict', 'execution_id was submitted with a different specification', { status: 409 });
+          const existing = jobs.get(prior.job_id);
+          return send(res, 200, { job_id: prior.job_id, status: existing?.status || 'unknown' });
+        }
         const jobId = `job_${randomUUID().replaceAll('-', '')}`;
-        const job = { job_id: jobId, status: 'queued', spec: redactJobSpec(spec), created_at: new Date().toISOString(), result: null };
+        const job = { job_id: jobId, status: 'queued', spec: redactJobSpec(spec), spec_hash: specHash, created_at: new Date().toISOString(), result: null };
         if (credential) credentials.set(job, credential);
         jobs.set(jobId, job);
+        if (spec.execution_mode === 'assist') executions.set(spec.execution_id, { job_id: jobId, spec_hash: specHash });
+        persistJob(job);
         setImmediate(async () => {
           if (job.status === 'cancelled') return;
           job.status = 'running';
           job.started_at = new Date().toISOString();
+          persistJob(job);
           try { await execute(job); } catch {
             if (job.status !== 'cancelled') {
               job.status = 'failed';
@@ -789,8 +829,16 @@ export function createBroker(options = {}) {
             credentials.delete(job);
             cleanupHostHome(job);
           }
+          persistJob(job);
         });
         return send(res, 201, { job_id: jobId, status: job.status });
+      }
+      const executionMatch = requestPath.match(/^\/internal\/v1\/executions\/([^/]+)$/);
+      if (req.method === 'GET' && executionMatch) {
+        const execution = executions.get(decodeURIComponent(executionMatch[1]));
+        if (!execution) throw new AppError('not_found', 'execution checkpoint not found', { status: 404 });
+        const job = jobs.get(execution.job_id);
+        return send(res, 200, { job_id: execution.job_id, status: job?.status || 'unknown', result: job?.result || null, spec_hash: execution.spec_hash });
       }
       const match = requestPath.match(/^\/internal\/v1\/jobs\/([^/]+)(?:\/cancel)?$/);
       if (match) {
@@ -804,6 +852,7 @@ export function createBroker(options = {}) {
             job.finished_at = new Date().toISOString();
           }
           credentials.delete(job);
+          persistJob(job);
           return send(res, 200, { job_id: job.job_id, status: job.status });
         }
       }
@@ -817,6 +866,7 @@ export function createBroker(options = {}) {
   return {
     config,
     jobs,
+    executions,
     deviceAuth,
     replay,
     handler,
