@@ -1,0 +1,9 @@
+{
+  "schema_version": "aiws.v3.rollback_receipt.v1",
+  "status": "reverse_check_passed",
+  "command": "git apply -R --check E:\\00_desktop\\毕业设计\\docs\\evidence\\v6-r6-assist-20260817\\change.patch",
+  "exit_status": 0,
+  "stdout": "",
+  "stderr": "",
+  "apply": "powershell -File rollback.ps1 -Apply"
+}

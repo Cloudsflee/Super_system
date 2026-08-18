@@ -1,0 +1,30 @@
+{
+  "schema_version": "aiws.v3.r6_assist_golden.v1",
+  "status": "passed",
+  "created_at": "2026-08-18T16:17:15.735Z",
+  "viewports": [
+    "1440x900",
+    "1024x768",
+    "390x844"
+  ],
+  "tests": [
+    {
+      "command": "node --test tests/integration/assist-r6.test.mjs",
+      "exit_status": 0,
+      "stdout": "AIWS runner-broker listening on http://127.0.0.1:61380\n(node:53916) ExperimentalWarning: SQLite is an experimental feature and might change at any time\n(Use `node --trace-warnings ...` to show where the warning was created)\nAIWS 3.0.0 listening on http://127.0.0.1:61382\nAIWS runner-broker listening on http://127.0.0.1:62532\n✔ R6 native Assist completes through Broker, CAS, operation, retry, and cursor CAS (1447.5341ms)\n(node:53916) ExperimentalWarning: SQLite is an experimental feature and might change at any time\n(Use `node --trace-warnings ...` to show where the warning was created)\nAIWS 3.0.0 listening on http://127.0.0.1:62533\n✔ R6 native Assist remains feature-gated by default (337.1864ms)\nℹ tests 2\nℹ suites 0\nℹ pass 2\nℹ fail 0\nℹ cancelled 0\nℹ skipped 0\nℹ todo 0\nℹ duration_ms 1933.2943\n",
+      "stderr": ""
+    },
+    {
+      "command": "corepack pnpm --filter @aiws/web exec vitest run src/test/assist.test.tsx",
+      "exit_status": 0,
+      "stdout": "\n\u001b[1m\u001b[46m RUN \u001b[49m\u001b[22m \u001b[36mv3.2.7 \u001b[39m\u001b[90mE:/00_desktop/毕业设计/apps/web\u001b[39m\n\n \u001b[32m✓\u001b[39m src/test/assist.test.tsx \u001b[2m(\u001b[22m\u001b[2m2 tests\u001b[22m\u001b[2m)\u001b[22m\u001b[32m 125\u001b[2mms\u001b[22m\u001b[39m\n\n\u001b[2m Test Files \u001b[22m \u001b[1m\u001b[32m1 passed\u001b[39m\u001b[22m\u001b[90m (1)\u001b[39m\n\u001b[2m      Tests \u001b[22m \u001b[1m\u001b[32m2 passed\u001b[39m\u001b[22m\u001b[90m (2)\u001b[39m\n\u001b[2m   Start at \u001b[22m 00:16:42\n\u001b[2m   Duration \u001b[22m 1.01s\u001b[2m (transform 60ms, setup 94ms, collect 261ms, tests 125ms, environment 331ms, prepare 69ms)\u001b[22m\n\n",
+      "stderr": ""
+    },
+    {
+      "command": "node scripts/e2e.mjs",
+      "exit_status": 0,
+      "stdout": "\n> @aiws/web@3.0.0 build E:\\00_desktop\\毕业设计\\apps\\web\n> tsc -b && vite build\n\n\u001b[36mvite v7.3.6 \u001b[32mbuilding client environment for production...\u001b[36m\u001b[39m\ntransforming...\n\u001b[32m✓\u001b[39m 1822 modules transformed.\nrendering chunks...\ncomputing gzip size...\n\u001b[2mdist/\u001b[22m\u001b[32m.vite/manifest.json              \u001b[39m\u001b[1m\u001b[2m  0.56 kB\u001b[22m\u001b[1m\u001b[22m\u001b[2m │ gzip:   0.22 kB\u001b[22m\n\u001b[2mdist/\u001b[22m\u001b[32mindex.html                       \u001b[39m\u001b[1m\u001b[2m  0.61 kB\u001b[22m\u001b[1m\u001b[22m\u001b[2m │ gzip:   0.33 kB\u001b[22m\n\u001b[2mdist/\u001b[22m\u001b[35massets/index-Dp45ZbVv.css        \u001b[39m\u001b[1m\u001b[2m 73.12 kB\u001b[22m\u001b[1m\u001b[22m\u001b[2m │ gzip:  12.95 kB\u001b[22m\n\u001b[2mdist/\u001b[22m\u001b[36massets/vendor-react-WhtP5qr0.js  \u001b[39m\u001b[1m\u001b[2m  3.66 kB\u001b[22m\u001b[1m\u001b[22m\u001b[2m │ gzip:   1.39 kB\u001b[22m\n\u001b[2mdist/\u001b[22m\u001b[36massets/vendor-icons-DE88EeEX.js  \u001b[39m\u001b[1m\u001b[2m 21.77 kB\u001b[22m\u001b[1m\u001b[22m\u001b[2m │ gzip:   8.05 kB\u001b[22m\n\u001b[2mdist/\u001b[22m\u001b[36massets/index-BcAtZcWi.js         \u001b[39m\u001b[1m\u001b[2m486.10 kB\u001b[22m\u001b[1m\u001b[22m\u001b[2m │ gzip: 146.41 kB\u001b[22m\n\u001b[32m✓ built in 2.76s\u001b[39m\nAIWS runner-broker listening on http://127.0.0.1:60962\nAIWS 3.0.0 listening on http://127.0.0.1:60963\nE2E passed: 6 workspace viewports, 3 R4 Workflow viewports, project prj_1463f9164afb4a1484c19d31add328aa, onboarding, generation and execution journey complete\n",
+      "stderr": "(node:21672) [DEP0190] DeprecationWarning: Passing args to a child process with shell option true can lead to security vulnerabilities, as the arguments are not escaped, only concatenated.\n(Use `node --trace-deprecation ...` to show where the warning was created)\n(node:21672) ExperimentalWarning: SQLite is an experimental feature and might change at any time\n(Use `node --trace-warnings ...` to show where the warning was created)\n"
+    }
+  ]
+}

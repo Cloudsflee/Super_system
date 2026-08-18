@@ -1,0 +1,105 @@
+{
+  "schema_version": "aiws.v3.r6_assist_manifest.v1",
+  "feature": "REC-D8-ASSIST-010",
+  "created_at": "2026-08-18T16:19:10.823Z",
+  "baseline": {
+    "commit": "db10e972a498c3eeae3fbbabbd8faa2e8b363f7a",
+    "files": {
+      "apps/api/src/migrations/006-assist-runtime.mjs": null,
+      "apps/api/src/modules/assist/repository.mjs": null,
+      "apps/api/src/modules/assist/runtime.mjs": null,
+      "apps/api/src/modules/assist/service.mjs": null,
+      "apps/web/src/features/assist/index.ts": null,
+      "apps/web/src/features/assist/AssistPage.tsx": null,
+      "apps/web/src/test/assist.test.tsx": null,
+      "tests/integration/assist-r6.test.mjs": null,
+      "scripts/r6-e2e.mjs": null,
+      "scripts/r6-evidence.mjs": null,
+      "apps/api/src/http.mjs": null,
+      "apps/api/src/broker-client.mjs": null,
+      "apps/runner-broker/server.mjs": null,
+      "feature-catalog.json": null
+    }
+  },
+  "modified": {
+    "apps/api/src/migrations/006-assist-runtime.mjs": {
+      "path": "docs/evidence/v6-r6-assist-20260817/006-assist-runtime.mjs",
+      "sha256": "d33328e2e5f2f130e9a065757e902a4ff35c27beaf5ee2bf79eb55f541e51a55",
+      "baseline_sha256": null
+    },
+    "apps/api/src/modules/assist/repository.mjs": {
+      "path": "docs/evidence/v6-r6-assist-20260817/repository.mjs",
+      "sha256": "65bb3c5b6caabc419478a3ddb80f803b028d28b02ec4a99910f76f365a1b0ccc",
+      "baseline_sha256": null
+    },
+    "apps/api/src/modules/assist/runtime.mjs": {
+      "path": "docs/evidence/v6-r6-assist-20260817/runtime.mjs",
+      "sha256": "1d65cc5b38635ca819c1c630bd34a318c9516fdc53eb2059340bcb606ef26cd3",
+      "baseline_sha256": null
+    },
+    "apps/api/src/modules/assist/service.mjs": {
+      "path": "docs/evidence/v6-r6-assist-20260817/service.mjs",
+      "sha256": "bbbb8bc9b6d070f790f51d9b8a120808931e3d5076902fa8b4fa55d09f4c01a1",
+      "baseline_sha256": null
+    },
+    "apps/web/src/features/assist/index.ts": {
+      "path": "docs/evidence/v6-r6-assist-20260817/index.ts",
+      "sha256": "538b28d0630e13f1955e6a6c325eb1332a05fb3c48eede5b4261adeba92be2d3",
+      "baseline_sha256": null
+    },
+    "apps/web/src/features/assist/AssistPage.tsx": {
+      "path": "docs/evidence/v6-r6-assist-20260817/AssistPage.tsx",
+      "sha256": "feb309a48edfcca85698bd024bd2de5d1f0e18c761c5c32b39440b801cf2b52e",
+      "baseline_sha256": null
+    },
+    "apps/web/src/test/assist.test.tsx": {
+      "path": "docs/evidence/v6-r6-assist-20260817/assist.test.tsx",
+      "sha256": "0e9a8806c6891f3993cf29e75a026fa33525e5ff86cf13bc8c8dae7f199fe5d6",
+      "baseline_sha256": null
+    },
+    "tests/integration/assist-r6.test.mjs": {
+      "path": "docs/evidence/v6-r6-assist-20260817/assist-r6.test.mjs",
+      "sha256": "d3b2aa4fa81447a6484edd909b82e1db235eac63e678743a5cf9e9c736ad65eb",
+      "baseline_sha256": null
+    },
+    "scripts/r6-e2e.mjs": {
+      "path": "docs/evidence/v6-r6-assist-20260817/r6-e2e.mjs",
+      "sha256": "e5317e7edebb480566cfdbbd9126e6beea171837f3fd72c2a4d8186ed1371575",
+      "baseline_sha256": null
+    },
+    "scripts/r6-evidence.mjs": {
+      "path": "docs/evidence/v6-r6-assist-20260817/r6-evidence.mjs",
+      "sha256": "264b550872e0fe8e9007888aa12c2ff2b8cdc1a721f7512f586da69440e2b767",
+      "baseline_sha256": null
+    },
+    "apps/api/src/http.mjs": {
+      "path": "docs/evidence/v6-r6-assist-20260817/http.mjs",
+      "sha256": "e12d9c269cc2e7325092f5fd9ac63764324d7b36e3424ac75faf76e0a5e80338",
+      "baseline_sha256": null
+    },
+    "apps/api/src/broker-client.mjs": {
+      "path": "docs/evidence/v6-r6-assist-20260817/broker-client.mjs",
+      "sha256": "7ff8b74fa34493c97905bbe8c62951ddc107edcf359a5973662244a911af4435",
+      "baseline_sha256": null
+    },
+    "apps/runner-broker/server.mjs": {
+      "path": "docs/evidence/v6-r6-assist-20260817/server.mjs",
+      "sha256": "29380763d5f5735a24640ebd9150daa2783b7c4a0e3e12973620f8f64e775a4e",
+      "baseline_sha256": null
+    },
+    "feature-catalog.json": {
+      "path": "docs/evidence/v6-r6-assist-20260817/feature-catalog.json",
+      "sha256": "582ac473797639b11fabaf61e8297ae21613b2225ca391e420732b91dc775650",
+      "baseline_sha256": null
+    }
+  },
+  "patch": "change.patch",
+  "verification": "verification.json",
+  "rollback": "rollback.ps1",
+  "rollback_receipt": "rollback.json",
+  "screenshots": [
+    "desktop-assist.png",
+    "laptop-assist.png",
+    "mobile-wide-assist.png"
+  ]
+}

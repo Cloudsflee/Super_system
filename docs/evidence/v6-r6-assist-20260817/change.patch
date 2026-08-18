@@ -1,0 +1,2116 @@
+diff --git a/apps/api/src/broker-client.mjs b/apps/api/src/broker-client.mjs
+index 627bdb6..a819c35 100644
+--- a/apps/api/src/broker-client.mjs
++++ b/apps/api/src/broker-client.mjs
+@@ -23,6 +23,7 @@ class MockBroker {
+     this.digest = digest;
+     this.jobs = new Map();
+     this.deviceAuth = new Map();
++    this.executions = new Map();
+   }
+ 
+   async probe() {
+@@ -30,9 +31,16 @@ class MockBroker {
+   }
+ 
+   async submit(spec) {
++    const specHash = sha256(JSON.stringify(spec));
++    const previous = spec.execution_mode === 'assist' ? this.executions.get(spec.execution_id) : null;
++    if (previous) {
++      if (previous.spec_hash !== specHash) throw new AppError('execution_conflict', 'execution_id was submitted with a different specification', { status: 409 });
++      return { job_id: previous.job_id, status: this.jobs.get(previous.job_id)?.status || 'unknown' };
++    }
+     const jobId = `job_${randomUUID().replaceAll('-', '')}`;
+     const job = { job_id: jobId, status: 'queued', spec: { ...spec, credential_ref: undefined }, created_at: new Date().toISOString() };
+     this.jobs.set(jobId, job);
++    if (spec.execution_mode === 'assist') this.executions.set(spec.execution_id, { job_id: jobId, spec_hash: specHash });
+     setTimeout(() => {
+       const current = this.jobs.get(jobId);
+       if (!current || current.status === 'cancelled') return;
+@@ -188,6 +196,14 @@ export class BrokerClient {
+     return this.mock ? this.mock.status(jobId) : this.request('GET', `/internal/v1/jobs/${encodeURIComponent(jobId)}`);
+   }
+ 
++  statusExecution(executionId) {
++    if (this.mock) {
++      const execution = this.mock.executions.get(executionId);
++      return Promise.resolve(execution ? { job_id: execution.job_id, status: this.mock.jobs.get(execution.job_id)?.status || 'unknown', spec_hash: execution.spec_hash } : { status: 'unknown' });
++    }
++    return this.request('GET', `/internal/v1/executions/${encodeURIComponent(executionId)}`);
++  }
++
+   cancel(jobId) {
+     return this.mock ? this.mock.cancel(jobId) : this.request('POST', `/internal/v1/jobs/${encodeURIComponent(jobId)}/cancel`, {});
+   }
+diff --git a/apps/api/src/command-registry.mjs b/apps/api/src/command-registry.mjs
+index f919f77..4e85d4b 100644
+--- a/apps/api/src/command-registry.mjs
++++ b/apps/api/src/command-registry.mjs
+@@ -63,6 +63,9 @@ export function createCommandRegistry(domain) {
+     ['assist_session.create', (input, ctx) => domain.createAssistSession(input, ctx)],
+     ['assist_turn.create', (input, ctx) => domain.createAssistTurn(input.session_id, input, ctx)],
+     ['assist_session.transition', (input, ctx) => domain.transitionAssistSession(input.session_id, input, ctx)],
++    ['assist.turn.retry', (input, ctx) => domain.retryAssistTurn(input.turn_id, input, ctx)],
++    ['assist.turn.cancel', (input, ctx) => domain.cancelAssistTurn(input.turn_id, input, ctx)],
++    ['assist.events.cursor', (input, ctx) => domain.ackAssistCursor(input.session_id, input, ctx)],
+     ['change_batch.create', (input, ctx) => domain.createChangeBatch(input, ctx)],
+     ['change_batch.apply', (input, ctx) => domain.applyChangeBatch(input.batch_id, input, ctx)],
+     ['change_batch.rollback', (input, ctx) => domain.rollbackChangeBatch(input.batch_id, input, ctx)],
+diff --git a/apps/api/src/config.mjs b/apps/api/src/config.mjs
+index deb56ac..204db7b 100644
+--- a/apps/api/src/config.mjs
++++ b/apps/api/src/config.mjs
+@@ -36,6 +36,7 @@ export function loadConfig(env = process.env) {
+     home,
+     databaseFile: path.join(home, 'data', 'state.sqlite'),
+     casRoot: path.join(home, 'cas', 'sha256'),
++    assistNativeV6: String(env.ASSIST_NATIVE_V6 || 'off').toLowerCase() === 'on',
+     dataVolume,
+     brokerUrl: env.AIWS_BROKER_URL || 'http://127.0.0.1:4321',
+     brokerMode,
+diff --git a/apps/api/src/domain.mjs b/apps/api/src/domain.mjs
+index 81c329b..dd454aa 100644
+--- a/apps/api/src/domain.mjs
++++ b/apps/api/src/domain.mjs
+@@ -25,6 +25,7 @@ import { RepositoryService } from './modules/repository/service.mjs';
+ import { WorkflowRepository } from './modules/workflow/repository.mjs';
+ import { WorkflowService } from './modules/workflow/service.mjs';
+ import { ContextService } from './modules/context/service.mjs';
++import { AssistService } from './modules/assist/service.mjs';
+ import { MCP_PUBLIC_TOOL_SNAPSHOT } from './modules/mcp/public-tools.mjs';
+ 
+ const TERMINAL_JOB_STATUSES = new Set(['completed', 'failed', 'cancelled', 'unknown']);
+@@ -370,6 +371,7 @@ export class Domain {
+       operations: this.operationService,
+       projectWorkspace: (projectId) => this.projectWorkspace(projectId)
+     });
++    this.assistService = new AssistService({ db, config, broker, operations: this.operationService, setup: this.setupService, auditStatement });
+   }
+ 
+   async listProjects() {
+@@ -908,89 +910,23 @@ export class Domain {
+   }
+ 
+   async listAssistSessions(projectId = null) {
+-    const rows = projectId
+-      ? await this.db.query('SELECT * FROM assist_sessions WHERE project_id=? ORDER BY created_at DESC', [projectId])
+-      : await this.db.query('SELECT * FROM assist_sessions ORDER BY created_at DESC LIMIT 200');
+-    return rows.map((row) => ({ ...row, snapshot: rowJson(row, 'snapshot_json', {}) }));
++    return this.assistService.list(projectId);
+   }
+ 
+   async createAssistSession(input, ctx = {}) {
+-    const projectId = String(input?.project_id || '').trim();
+-    await this.requireProject(projectId);
+-    const scope = String(input?.scope || 'project');
+-    assert(['project', 'workflow', 'workstream', 'task'].includes(scope), 'invalid_input', 'Assist scope is invalid', { status: 422 });
+-    const scopeId = String(input?.scope_id || projectId).trim();
+-    assert(scopeId.length >= 1 && scopeId.length <= 160, 'invalid_input', 'Assist scope_id is required', { status: 422 });
+-    const [brief, workflow, repository] = await Promise.all([
+-      this.confirmedBrief(projectId),
+-      this.db.get('SELECT revision,graph_hash FROM workflow_revisions WHERE project_id=? ORDER BY revision DESC LIMIT 1', [projectId]),
+-      this.db.get('SELECT head_sha FROM repository_bindings WHERE project_id=?', [projectId])
+-    ]);
+-    const snapshot = { project_id: projectId, scope, scope_id: scopeId, brief_revision: brief?.revision || null, brief_hash: brief?.content_hash || null, workflow_revision: workflow?.revision || null, workflow_hash: workflow?.graph_hash || null, repository_sha: repository?.head_sha || '' };
+-    const sessionId = id('ast');
+-    const timestamp = now();
+-    await this.db.transaction([
+-      { sql: 'INSERT INTO assist_sessions(id,project_id,scope,scope_id,snapshot_json,status,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?)', params: [sessionId, projectId, scope, scopeId, asJson(snapshot), 'active', timestamp, timestamp] },
+-      { sql: 'INSERT INTO assist_events(session_id,turn_id,type,data_json,created_at) VALUES(?,?,?,?,?)', params: [sessionId, null, 'assist.session.created', asJson({ scope, scope_id: scopeId }), timestamp] },
+-      auditStatement('assist_session.created', 'assist_session', sessionId, { project_id: projectId, scope, scope_id: scopeId }, ctx.actor)
+-    ]);
+-    return (await this.listAssistSessions(projectId)).find((row) => row.id === sessionId);
++    return this.assistService.createSession(input, ctx);
+   }
+ 
+   async getAssistSession(sessionId) {
+-    const session = await this.db.get('SELECT * FROM assist_sessions WHERE id=?', [sessionId]);
+-    if (!session) throw new AppError('not_found', 'Assist session not found');
+-    const turns = await this.db.query('SELECT * FROM assist_turns WHERE session_id=? ORDER BY turn_no', [sessionId]);
+-    const turnViews = await Promise.all(turns.map(async (turn) => ({
+-      ...turn,
+-      goal: rowJson(turn, 'goal_json', {}),
+-      plan: rowJson(turn, 'plan_json', []),
+-      messages: await this.db.query('SELECT id,role,content,sequence_no,created_at FROM assist_messages WHERE turn_id=? ORDER BY sequence_no', [turn.id])
+-    })));
+-    return { ...session, snapshot: rowJson(session, 'snapshot_json', {}), turns: turnViews };
++    return this.assistService.get(sessionId);
+   }
+ 
+   async createAssistTurn(sessionId, input, ctx = {}) {
+-    const session = await this.db.get('SELECT id,status FROM assist_sessions WHERE id=?', [sessionId]);
+-    if (!session) throw new AppError('not_found', 'Assist session not found');
+-    assert(session.status === 'active', 'assist_session_inactive', 'Assist session is not active', { status: 409 });
+-    const message = String(input?.message || '').trim();
+-    assert(message.length >= 1 && message.length <= 100000, 'invalid_input', 'Assist message is required', { status: 422 });
+-    const goal = input?.goal && typeof input.goal === 'object' ? input.goal : {};
+-    const plan = Array.isArray(input?.plan) ? input.plan.slice(0, 100) : [];
+-    const turnNo = Number((await this.db.get('SELECT COALESCE(MAX(turn_no),0)+1 AS turn_no FROM assist_turns WHERE session_id=?', [sessionId])).turn_no);
+-    const turnId = id('atr');
+-    const operationId = id('aop');
+-    const receipt = { operation_id: operationId, resource_id: turnId, session_id: sessionId, turn_id: turnId, status: 'failed', cursor: 0, error_code: 'assist_runtime_unavailable' };
+-    const timestamp = now();
+-    await this.db.transaction([
+-      { sql: 'INSERT INTO assist_turns(id,session_id,turn_no,status,goal_json,plan_json,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?)', params: [turnId, sessionId, turnNo, 'failed', asJson(goal), asJson(plan), timestamp, timestamp] },
+-      { sql: 'INSERT INTO assist_messages(id,turn_id,role,content,sequence_no,created_at) VALUES(?,?,?,?,?,?)', params: [id('ams'), turnId, 'user', message, 1, timestamp] },
+-      { sql: 'INSERT INTO assist_operations(id,session_id,kind,status,receipt_json,created_at,updated_at) VALUES(?,?,?,?,?,?,?)', params: [operationId, sessionId, 'turn', 'failed', asJson(receipt), timestamp, timestamp] },
+-      { sql: 'INSERT INTO assist_events(session_id,turn_id,type,data_json,created_at) VALUES(?,?,?,?,?)', params: [sessionId, turnId, 'assist.turn.created', asJson({ turn_no: turnNo, operation_id: operationId }), timestamp] },
+-      ...(Object.keys(goal).length ? [{ sql: 'INSERT INTO assist_events(session_id,turn_id,type,data_json,created_at) VALUES(?,?,?,?,?)', params: [sessionId, turnId, 'assist.goal', asJson(goal), timestamp] }] : []),
+-      ...(plan.length ? [{ sql: 'INSERT INTO assist_events(session_id,turn_id,type,data_json,created_at) VALUES(?,?,?,?,?)', params: [sessionId, turnId, 'assist.plan', asJson({ steps: plan }), timestamp] }] : []),
+-      { sql: 'INSERT INTO assist_events(session_id,turn_id,type,data_json,created_at) VALUES(?,?,?,?,?)', params: [sessionId, turnId, 'assist.message', asJson({ role: 'user', sequence_no: 1 }), timestamp] },
+-      { sql: 'UPDATE assist_sessions SET updated_at=? WHERE id=?', params: [timestamp, sessionId] },
+-      auditStatement('assist_turn.created', 'assist_turn', turnId, { session_id: sessionId, turn_no: turnNo, operation_id: operationId }, ctx.actor)
+-    ]);
+-    return { ...(await this.getAssistSession(sessionId)).turns.find((turn) => turn.id === turnId), operation: receipt };
++    return this.assistService.createTurn(sessionId, input, ctx);
+   }
+ 
+   async transitionAssistSession(sessionId, input, ctx = {}) {
+-    const action = String(input?.action || '').trim();
+-    const transitions = { cancel: 'cancelled', interrupt: 'paused', resume: 'active', complete: 'completed' };
+-    const next = transitions[action];
+-    assert(next, 'invalid_input', 'Assist transition is invalid', { status: 422 });
+-    const session = await this.db.get('SELECT id,status FROM assist_sessions WHERE id=?', [sessionId]);
+-    if (!session) throw new AppError('not_found', 'Assist session not found');
+-    if (action === 'resume') assert(session.status === 'paused', 'invalid_state', 'only paused Assist sessions can resume', { status: 409 });
+-    await this.db.transaction([
+-      { sql: 'UPDATE assist_sessions SET status=?,updated_at=? WHERE id=?', params: [next, now(), sessionId] },
+-      { sql: 'INSERT INTO assist_events(session_id,turn_id,type,data_json,created_at) VALUES(?,?,?,?,?)', params: [sessionId, null, `assist.session.${action}`, asJson({ from: session.status, to: next }), now()] },
+-      auditStatement(`assist_session.${action}`, 'assist_session', sessionId, { from: session.status, to: next }, ctx.actor)
+-    ]);
+-    return this.getAssistSession(sessionId);
++    return this.assistService.transition(sessionId, input, ctx);
+   }
+ 
+   async projectWorkspace(projectId) {
+@@ -1318,10 +1254,24 @@ export class Domain {
+     return (await this.listUiActionIntents(current.project_id)).find((item) => item.id === intentId);
+   }
+ 
+-  async assistEvents(sessionId, cursor = 0) {
+-    const session = await this.db.get('SELECT id FROM assist_sessions WHERE id=?', [sessionId]);
+-    if (!session) throw new AppError('not_found', 'Assist session not found');
+-    return (await this.db.query('SELECT cursor,session_id,turn_id,type,data_json,created_at FROM assist_events WHERE session_id=? AND cursor>? ORDER BY cursor LIMIT 1000', [sessionId, Number(cursor) || 0])).map((row) => ({ cursor: row.cursor, session_id: row.session_id, turn_id: row.turn_id, type: row.type, data: rowJson(row, 'data_json', {}), created_at: row.created_at }));
++  async assistEvents(sessionId, cursor = 0, consumerId = null) {
++    return this.assistService.events(sessionId, cursor, consumerId);
++  }
++
++  async getAssistTurn(turnId) {
++    return this.assistService.getTurn(turnId);
++  }
++
++  async retryAssistTurn(turnId, input = {}, ctx = {}) {
++    return this.assistService.retry(turnId, input, ctx);
++  }
++
++  async cancelAssistTurn(turnId, input = {}) {
++    return this.assistService.cancel(turnId, input);
++  }
++
++  async ackAssistCursor(sessionId, input) {
++    return this.assistService.ack(sessionId, input);
+   }
+ 
+   async outcomeView(executionId) {
+diff --git a/apps/api/src/http.mjs b/apps/api/src/http.mjs
+index 52479c1..f29d997 100644
+--- a/apps/api/src/http.mjs
++++ b/apps/api/src/http.mjs
+@@ -6,7 +6,7 @@ import { AppError, asAppError } from './errors.mjs';
+ import { readBody, readMultipartUpload, readRawBody } from './http-body.mjs';
+ import { createMcpHandler } from './modules/mcp/http.mjs';
+ import { MCP_PUBLIC_TOOL_SNAPSHOT } from './modules/mcp/public-tools.mjs';
+-const MUTATING = new Set(['POST', 'PATCH', 'DELETE']);
++const MUTATING = new Set(['POST', 'PUT', 'PATCH', 'DELETE']);
+ function send(res, status, payload, headers = {}) {
+   const body = JSON.stringify(payload);
+   res.writeHead(status, { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store', ...headers });
+@@ -139,13 +139,24 @@ export function createHttpHandler({ domain, registry, db, config, performancePro
+         return send(res, status, domain.redact(result));
+       }
+ 
+-      if (parts[0] === 'assist' && parts[1] === 'sessions') {
++      if (parts[0] === 'assist' && parts[1] === 'turns') {
++        if (req.method === 'GET' && parts.length === 3) result = await domain.getAssistTurn(parts[2]);
++        else if (req.method === 'POST' && parts.length === 4 && parts[3] === 'retry') ({ status, body: result } = await command('assist.turn.retry', { ...body, turn_id: parts[2] }, null, 202));
++        else if (req.method === 'POST' && parts.length === 4 && parts[3] === 'cancel') ({ status, body: result } = await command('assist.turn.cancel', { ...body, turn_id: parts[2] }, null, 202));
++        else throw new AppError('not_found', 'route not found');
++      } else if (parts[0] === 'assist' && parts[1] === 'sessions') {
+         if (req.method === 'GET' && parts.length === 2) result = await domain.listAssistSessions(parsed.searchParams.get('project_id'));
+         else if (req.method === 'POST' && parts.length === 2) ({ status, body: result } = await command('assist_session.create'));
+         else if (req.method === 'GET' && parts.length === 3) result = await domain.getAssistSession(parts[2]);
+-        else if (req.method === 'GET' && parts[3] === 'events') return streamAssistEvents(req, res, domain, parts[2]);
+-        else if (req.method === 'POST' && parts[3] === 'turns') ({ status, body: result } = await command('assist_turn.create', { ...body, session_id: parts[2] }));
+-        else if (req.method === 'POST' && ['cancel', 'interrupt', 'resume', 'complete'].includes(parts[3])) ({ status, body: result } = await command('assist_session.transition', { ...body, session_id: parts[2], action: parts[3] }));
++        else if (req.method === 'PATCH' && parts.length === 3) ({ status, body: result } = await command('assist_session.transition', { ...body, session_id: parts[2] }, null, 200));
++        else if (req.method === 'GET' && parts[3] === 'events' && !String(req.headers.accept || '').includes('application/json')) return streamAssistEvents(req, res, domain, parts[2], parsed.searchParams.get('after'));
++        else if (req.method === 'GET' && parts[3] === 'events') result = await domain.assistEvents(parts[2], parsed.searchParams.get('after') || 0, parsed.searchParams.get('consumer_id') || 'default');
++        else if (req.method === 'PUT' && parts[3] === 'events' && parts[4] === 'cursor') ({ status, body: result } = await command('assist.events.cursor', { ...body, session_id: parts[2] }, null, 200));
++        else if (req.method === 'POST' && parts[3] === 'turns') {
++          const session = await db.get('SELECT compatibility FROM assist_sessions WHERE id=?', [parts[2]]);
++          ({ status, body: result } = await command('assist_turn.create', { ...body, session_id: parts[2] }, null, session?.compatibility === 'native_v6' ? 202 : 201));
++        }
++        else if (req.method === 'POST' && ['cancel', 'interrupt', 'resume', 'complete'].includes(parts[3])) ({ status, body: result } = await command('assist_session.transition', { ...body, session_id: parts[2], action: parts[3] }, null, 200));
+         else throw new AppError('not_found', 'route not found');
+       } else if (parts[0] === 'mcp' && parts[1] === 'clients') {
+         if (req.method === 'GET' && parts.length === 2) result = await domain.listMcpClients();
+@@ -384,12 +395,23 @@ async function streamWorkflowGenerationEvents(req, res, domain, generationId, qu
+   res.end();
+ }
+ 
+-async function streamAssistEvents(req, res, domain, sessionId) {
+-  const initial = Number(req.headers['last-event-id'] || 0);
+-  const events = await domain.assistEvents(sessionId, initial);
+-  res.writeHead(200, { 'content-type': 'text/event-stream; charset=utf-8', 'cache-control': 'no-cache', connection: 'close' });
+-  for (const event of events) res.write(`id: ${event.cursor}\nevent: ${event.type}\ndata: ${JSON.stringify(event)}\n\n`);
+-  res.end();
++async function streamAssistEvents(req, res, domain, sessionId, queryCursor = null) {
++  let cursor = Number(req.headers['last-event-id'] || queryCursor || 0);
++  let closed = false;
++  req.once('close', () => { closed = true; });
++  res.writeHead(200, { 'content-type': 'text/event-stream; charset=utf-8', 'cache-control': 'no-cache, no-transform', connection: 'keep-alive', 'x-accel-buffering': 'no' });
++  res.write(': assist event stream\n\n');
++  const deadline = Date.now() + 2_000;
++  while (!closed && Date.now() < deadline) {
++    const events = await domain.assistEvents(sessionId, cursor);
++    for (const event of events) {
++      cursor = Number(event.cursor);
++      res.write(`id: ${event.cursor}\nevent: ${event.type}\ndata: ${JSON.stringify(event)}\n\n`);
++    }
++    if (!events.length) res.write(': keepalive\n\n');
++    await new Promise((resolve) => setTimeout(resolve, 500));
++  }
++  if (!closed) res.end();
+ }
+ 
+ async function streamContextProjectionEvents(req, res, domain, projectId, jobId, queryCursor = null) {
+diff --git a/apps/api/src/migration-service.mjs b/apps/api/src/migration-service.mjs
+index 49ab914..96ab7b0 100644
+--- a/apps/api/src/migration-service.mjs
++++ b/apps/api/src/migration-service.mjs
+@@ -23,6 +23,7 @@ export function migrateDatabase({ file, migrations = MIGRATIONS, snapshotRoot, n
+   fs.mkdirSync(path.dirname(databaseFile), { recursive: true, mode: 0o700 });
+   validateMigrationSet(migrations);
+   const db = new DatabaseSync(databaseFile);
++  registerMigrationFunctions(db);
+   db.exec('PRAGMA foreign_keys = ON; PRAGMA journal_mode = WAL; PRAGMA synchronous = FULL; PRAGMA busy_timeout = 5000;');
+   let snapshot = null;
+   try {
+@@ -83,6 +84,23 @@ export function migrateDatabase({ file, migrations = MIGRATIONS, snapshotRoot, n
+   }
+ }
+ 
++function registerMigrationFunctions(db) {
++  db.function('aiws_sha256', { deterministic: true }, (value) => sha256(String(value ?? '')));
++  db.function('aiws_canonical_hash', { deterministic: true }, (value) => {
++    let parsed;
++    try { parsed = JSON.parse(String(value ?? 'null')); } catch { parsed = String(value ?? ''); }
++    return sha256(JSON.stringify(canonicalize(parsed)));
++  });
++}
++
++function canonicalize(value) {
++  if (Array.isArray(value)) return value.map(canonicalize);
++  if (value && typeof value === 'object') {
++    return Object.fromEntries(Object.keys(value).sort().map((key) => [key, canonicalize(value[key])]));
++  }
++  return value;
++}
++
+ export function restoreMigrationSnapshot({ file, manifestPath }) {
+   const databaseFile = path.resolve(String(file || ''));
+   const fullManifestPath = path.resolve(String(manifestPath || ''));
+diff --git a/apps/api/src/migrations/index.mjs b/apps/api/src/migrations/index.mjs
+index f9e842c..a3b8f55 100644
+--- a/apps/api/src/migrations/index.mjs
++++ b/apps/api/src/migrations/index.mjs
+@@ -4,19 +4,22 @@ import { IDENTITY_SETUP_V2_SQL } from './002-identity-setup.mjs';
+ import { PROJECT_REPOSITORY_INTAKE_V3 } from './003-project-repository-intake.mjs';
+ import { WORKFLOW_GENERATION_CRITIC_V4 } from './004-workflow-generation-critic.mjs';
+ import { CONTEXT_PROJECTION_MCP_V5 } from './005-context-projection-mcp.mjs';
++import { ASSIST_RUNTIME_V6 } from './006-assist-runtime.mjs';
+ 
+ export const V1_MIGRATION_CHECKSUM = '49e206dad8a7b76051f6561aada0af375c164b5dd8bec7c9a615844f598ce8ca';
+ export const V2_MIGRATION_CHECKSUM = '474cd76da2e8be23a5c7b66fd46e5a0f2cb3db03213c20e4241694f677f966bc';
+ export const V3_MIGRATION_CHECKSUM = '1c03a0fad89946a23f4dcd4874c2737f6597a002355264cd0412a90e5d86de6f';
+ export const V4_MIGRATION_CHECKSUM = 'e5d4ccaef7c0672c6a7ff4aa0d2fd47437696c92e565220cb10f3ff03d1af2e7';
+ export const V5_MIGRATION_CHECKSUM = 'e4b6a9f85f25d8f604872164454e23c0d2a32004a50fcd7122458145d15de44c';
++export const V6_MIGRATION_CHECKSUM = '3d415a3d8c0f23d4586e653ebb5c40fb2a281b7136ebd44c74ba3386310b2b8f';
+ 
+ export const MIGRATIONS = Object.freeze([
+   Object.freeze({ version: 1, name: 'initial_v3_schema', sql: SCHEMA_SQL }),
+   Object.freeze({ version: 2, name: 'identity_setup_providers', sql: IDENTITY_SETUP_V2_SQL }),
+   PROJECT_REPOSITORY_INTAKE_V3,
+   WORKFLOW_GENERATION_CRITIC_V4,
+-  CONTEXT_PROJECTION_MCP_V5
++  CONTEXT_PROJECTION_MCP_V5,
++  ASSIST_RUNTIME_V6
+ ]);
+ 
+ if (MIGRATIONS.at(-1).version !== SCHEMA_VERSION) throw new Error('schema_version_migration_mismatch');
+@@ -25,6 +28,7 @@ if (migrationChecksum(MIGRATIONS[1]) !== V2_MIGRATION_CHECKSUM) throw new Error(
+ if (migrationChecksum(MIGRATIONS[2]) !== V3_MIGRATION_CHECKSUM) throw new Error('v3_migration_checksum_changed');
+ if (migrationChecksum(MIGRATIONS[3]) !== V4_MIGRATION_CHECKSUM) throw new Error('v4_migration_checksum_changed');
+ if (migrationChecksum(MIGRATIONS[4]) !== V5_MIGRATION_CHECKSUM) throw new Error('v5_migration_checksum_changed');
++if (migrationChecksum(MIGRATIONS[5]) !== V6_MIGRATION_CHECKSUM) throw new Error('v6_migration_checksum_changed');
+ 
+ export function migrationChecksum(migration) {
+   return createHash('sha256')
+diff --git a/apps/api/src/modules/assist/index.mjs b/apps/api/src/modules/assist/index.mjs
+index 168faf1..0f460d4 100644
+--- a/apps/api/src/modules/assist/index.mjs
++++ b/apps/api/src/modules/assist/index.mjs
+@@ -2,14 +2,16 @@ import { defineModule } from '../define-module.mjs';
+ 
+ export default defineModule({
+   id: 'assist',
+-  dependencies: ['platform', 'project', 'workflow', 'context'],
++  dependencies: ['platform', 'project', 'workflow', 'repository', 'context', 'operations'],
++  sql_dependencies: ['project', 'workflow', 'repository', 'context'],
+   tables: [
+     'assist_sessions', 'assist_turns', 'assist_messages', 'assist_events',
+-    'assist_operations', 'assist_change_batches', 'assist_checkpoints', 'attachments',
++    'assist_operations', 'assist_session_snapshots', 'assist_turn_snapshots', 'assist_session_heads',
++    'assist_turn_heads', 'assist_operation_links', 'assist_event_cursors', 'assist_change_batches', 'assist_checkpoints', 'attachments',
+     'runtime_approvals', 'runtime_user_inputs', 'ui_action_intents', 'file_changes'
+   ],
+   commands: [
+-    'assist_session.create', 'assist_turn.create', 'assist_session.transition',
++    'assist_session.create', 'assist_turn.create', 'assist_session.transition', 'assist.turn.retry', 'assist.turn.cancel', 'assist.events.cursor',
+     'change_batch.create', 'change_batch.apply', 'change_batch.rollback',
+     'runtime_approval.create', 'runtime_approval.decide',
+     'runtime_user_input.create', 'runtime_user_input.resolve',
+@@ -17,7 +19,7 @@ export default defineModule({
+   ],
+   events: [
+     'assist.session.created', 'assist.turn.created', 'assist.turn.failed',
+-    'assist.goal', 'assist.plan', 'assist.message',
++    'assist.goal', 'assist.plan', 'assist.message', 'assist.turn.queued', 'assist.turn.running', 'assist.turn.completed', 'assist.turn.cancelled', 'assist.session.cancel', 'assist.session.interrupt', 'assist.session.resume', 'assist.session.complete',
+     'assist.change_batch.proposed', 'assist.change_batch.applied',
+     'assist.change_batch.rolled_back', 'attachment.created',
+     'runtime.approval.requested', 'runtime.approval.approved',
+diff --git a/apps/api/src/modules/registry.mjs b/apps/api/src/modules/registry.mjs
+index d816ea7..d3719d6 100644
+--- a/apps/api/src/modules/registry.mjs
++++ b/apps/api/src/modules/registry.mjs
+@@ -24,12 +24,14 @@ export const MODULE_REGISTRY = Object.freeze([
+ ]);
+ 
+ export const FROZEN_SURFACES = Object.freeze([
+-  { path: 'apps/api/src/domain.mjs', max_lines: 2510 },
++  { path: 'apps/api/src/domain.mjs', max_lines: 2600 },
++  { path: 'apps/api/src/modules/assist/service.mjs', max_lines: 386 },
+   { path: 'apps/api/src/http.mjs', max_lines: 520 },
+   { path: 'apps/web/src/pages.tsx', max_lines: 998 }
+ ]);
+ 
+ export const LEGACY_SQL_BOUNDARIES = Object.freeze([
++  { path: 'apps/api/src/modules/assist/service.mjs', max_statements: 51 },
+   { path: 'apps/api/src/domain.mjs', max_statements: 220 },
+   { path: 'apps/api/src/modules/workflow/service.mjs', max_statements: 180 },
+   { path: 'apps/api/src/http.mjs', max_statements: 4 },
+diff --git a/apps/api/src/schema.mjs b/apps/api/src/schema.mjs
+index d23337e..c1f4416 100644
+--- a/apps/api/src/schema.mjs
++++ b/apps/api/src/schema.mjs
+@@ -1,6 +1,6 @@
+ // The v1 schema text is intentionally frozen.  Forward changes are owned by
+ // numbered migrations so existing baseline fingerprints remain reproducible.
+-export const SCHEMA_VERSION = 5;
++export const SCHEMA_VERSION = 6;
+ 
+ export const SCHEMA_SQL = `
+ PRAGMA foreign_keys = ON;
+diff --git a/apps/runner-broker/server.mjs b/apps/runner-broker/server.mjs
+index a078e38..dcb8fd3 100644
+--- a/apps/runner-broker/server.mjs
++++ b/apps/runner-broker/server.mjs
+@@ -178,21 +178,51 @@ export function createBroker(options = {}) {
+   if (config.executor === 'host' && !path.isAbsolute(String(config.codexBinary || ''))) throw new Error('host_codex_binary_absolute_path_required');
+   const replay = createReplayGuard();
+   const jobs = new Map();
++  const executions = new Map();
+   const credentials = new WeakMap();
+   const activeProbes = new Map();
+   const deviceAuth = new Map();
+   const deviceSecrets = new WeakMap();
+   const deviceAuthRoot = path.resolve(config.dataRoot, '.codex-device-auth');
+   const hostRuntimeRoot = path.resolve(config.dataRoot, '.codex-host');
++  const jobRoot = path.resolve(config.dataRoot, '.runner-jobs');
+   let accepting = true;
+   const retentionMs = Number(options.retentionMs ?? JOB_RETENTION_MS);
+   const maxTerminalJobs = Number(options.maxTerminalJobs ?? MAX_TERMINAL_JOBS);
+   resetDeviceAuthRoot();
+   resetHostRuntimeRoot();
++  restoreJobs();
+   const cleanupTimer = setInterval(() => { pruneJobs(); pruneDeviceAuth(); }, 60_000);
+   cleanupTimer.unref?.();
+   const validate = (spec) => validateJobSpec(spec, { dataRoot: config.dataRoot, runnerDigest: config.runnerDigest, model: config.model });
+ 
++  function restoreJobs() {
++    fs.mkdirSync(jobRoot, { recursive: true, mode: 0o700 });
++    for (const entry of fs.readdirSync(jobRoot)) {
++      if (!/^job_[a-f0-9]{32}\.json$/.test(entry)) continue;
++      try {
++        const job = JSON.parse(fs.readFileSync(path.join(jobRoot, entry), 'utf8'));
++        if (!job?.job_id || !job?.spec?.execution_id || !job.spec_hash) continue;
++        if (!['completed', 'failed', 'cancelled'].includes(job.status)) { job.status = 'unknown'; job.error_code = 'broker_restarted'; }
++        jobs.set(job.job_id, job);
++        if (job.spec.execution_mode === 'assist') executions.set(job.spec.execution_id, { job_id: job.job_id, spec_hash: job.spec_hash });
++      } catch { /* Invalid recovery records are ignored and never executed. */ }
++    }
++  }
++
++  function persistJob(job) {
++    if (!accepting) return;
++    const target = path.join(jobRoot, `${job.job_id}.json`);
++    const temporary = `${target}.${process.pid}.tmp`;
++    try {
++      fs.writeFileSync(temporary, JSON.stringify(job), { mode: 0o600 });
++      fs.renameSync(temporary, target);
++    } catch (error) {
++      if (!accepting && error?.code === 'ENOENT') return;
++      throw error;
++    }
++  }
++
+   function resetDeviceAuthRoot() {
+     fs.mkdirSync(deviceAuthRoot, { recursive: true, mode: 0o700 });
+     for (const entry of fs.readdirSync(deviceAuthRoot, { withFileTypes: true })) {
+@@ -760,6 +790,7 @@ export function createBroker(options = {}) {
+         if (!accepting) throw new AppError('broker_shutting_down', 'broker is shutting down', { status: 503, retryable: true });
+         const envelope = parsedBody.value?.spec ? parsedBody.value : { spec: parsedBody.value, credential: null };
+         const spec = validate(envelope.spec);
++        const specHash = hashJson(spec);
+         const profile = envelope.profile == null ? null : validateProviderProfile(envelope.profile);
+         if (spec.profile_id) {
+           if (!profile || profile.profile_id !== spec.profile_id || profile.profile_revision !== spec.profile_revision || profile.profile_hash !== spec.profile_hash || profile.model !== spec.model || profile.runner_digest !== spec.image_digest) throw new AppError('invalid_job_spec', 'profile envelope does not match the job spec');
+@@ -772,14 +803,23 @@ export function createBroker(options = {}) {
+           credential = { ref: spec.credential_ref, kind, revision: Number(envelope.credential.revision || 1), auth: envelope.credential.auth, profile };
+         }
+         if (spec.network_profile === 'model' && !credential) throw new AppError('invalid_job_spec', 'model network requires an ephemeral credential');
++        const prior = spec.execution_mode === 'assist' ? executions.get(spec.execution_id) : null;
++        if (prior) {
++          if (prior.spec_hash !== specHash) throw new AppError('execution_conflict', 'execution_id was submitted with a different specification', { status: 409 });
++          const existing = jobs.get(prior.job_id);
++          return send(res, 200, { job_id: prior.job_id, status: existing?.status || 'unknown' });
++        }
+         const jobId = `job_${randomUUID().replaceAll('-', '')}`;
+-        const job = { job_id: jobId, status: 'queued', spec: redactJobSpec(spec), created_at: new Date().toISOString(), result: null };
++        const job = { job_id: jobId, status: 'queued', spec: redactJobSpec(spec), spec_hash: specHash, created_at: new Date().toISOString(), result: null };
+         if (credential) credentials.set(job, credential);
+         jobs.set(jobId, job);
++        if (spec.execution_mode === 'assist') executions.set(spec.execution_id, { job_id: jobId, spec_hash: specHash });
++        persistJob(job);
+         setImmediate(async () => {
+           if (job.status === 'cancelled') return;
+           job.status = 'running';
+           job.started_at = new Date().toISOString();
++          persistJob(job);
+           try { await execute(job); } catch {
+             if (job.status !== 'cancelled') {
+               job.status = 'failed';
+@@ -789,9 +829,17 @@ export function createBroker(options = {}) {
+             credentials.delete(job);
+             cleanupHostHome(job);
+           }
++          persistJob(job);
+         });
+         return send(res, 201, { job_id: jobId, status: job.status });
+       }
++      const executionMatch = requestPath.match(/^\/internal\/v1\/executions\/([^/]+)$/);
++      if (req.method === 'GET' && executionMatch) {
++        const execution = executions.get(decodeURIComponent(executionMatch[1]));
++        if (!execution) throw new AppError('not_found', 'execution checkpoint not found', { status: 404 });
++        const job = jobs.get(execution.job_id);
++        return send(res, 200, { job_id: execution.job_id, status: job?.status || 'unknown', result: job?.result || null, spec_hash: execution.spec_hash });
++      }
+       const match = requestPath.match(/^\/internal\/v1\/jobs\/([^/]+)(?:\/cancel)?$/);
+       if (match) {
+         const job = jobs.get(decodeURIComponent(match[1]));
+@@ -804,6 +852,7 @@ export function createBroker(options = {}) {
+             job.finished_at = new Date().toISOString();
+           }
+           credentials.delete(job);
++          persistJob(job);
+           return send(res, 200, { job_id: job.job_id, status: job.status });
+         }
+       }
+@@ -817,6 +866,7 @@ export function createBroker(options = {}) {
+   return {
+     config,
+     jobs,
++    executions,
+     deviceAuth,
+     replay,
+     handler,
+diff --git a/apps/web/src/App.tsx b/apps/web/src/App.tsx
+index df8ee54..a5fce22 100644
+--- a/apps/web/src/App.tsx
++++ b/apps/web/src/App.tsx
+@@ -5,11 +5,12 @@ import {
+ } from 'lucide-react';
+ import { api } from './api';
+ import { ContextPage } from './features/context';
++import { AssistPage } from './features/assist';
+ import { SetupPage, type SetupState } from './features/setup';
+ import { WorkflowPage as R4WorkflowPage } from './features/workflow';
+ import type { Project } from './types';
+ import {
+-  ApprovalPage, AssetsPage, AssistPage, AuditPage, ExecutionPage, ProjectsPage, SettingsPage, TerminalPage,
++  ApprovalPage, AssetsPage, AuditPage, ExecutionPage, ProjectsPage, SettingsPage, TerminalPage,
+   type WorkspacePageProps
+ } from './pages';
+ 
+diff --git a/apps/web/src/api.ts b/apps/web/src/api.ts
+index 035255e..50f78f1 100644
+--- a/apps/web/src/api.ts
++++ b/apps/web/src/api.ts
+@@ -4,6 +4,7 @@ export class ApiError extends Error {
+   code: string;
+   status: number;
+   retryable: boolean;
++  details: Record<string, unknown>;
+ 
+   constructor(status: number, body: ApiErrorBody) {
+     super(body.error?.message || `Request failed (${status})`);
+@@ -11,6 +12,7 @@ export class ApiError extends Error {
+     this.status = status;
+     this.code = body.error?.code || 'request_failed';
+     this.retryable = Boolean(body.error?.retryable);
++    this.details = body.error?.details || {};
+   }
+ }
+ 
+diff --git a/apps/web/src/styles.css b/apps/web/src/styles.css
+index 6d1019b..0354f50 100644
+--- a/apps/web/src/styles.css
++++ b/apps/web/src/styles.css
+@@ -104,6 +104,9 @@ input:focus, textarea:focus, select:focus { border-color: #39826e; box-shadow: 0
+ .integration-row > div { display: flex; align-items: center; gap: 9px; font-size: 12px; font-weight: 650; }
+ .setup-action { margin-top: 18px; }
+ .assist-layout { display: grid; grid-template-columns: 280px minmax(0, 1fr); gap: 16px; align-items: start; }.assist-sessions { padding-bottom: 8px; }.assist-session-list { margin: 0 -18px; }.assist-session { width: 100%; min-height: 58px; border: 0; border-top: 1px solid #edf0ee; background: #fff; display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 9px 18px; text-align: left; }.assist-session:hover { background: #f8faf9; }.assist-session.selected { background: #edf6f2; box-shadow: inset 3px 0 #24765e; }.assist-session strong, .assist-session small { display: block; }.assist-session strong { font-size: 12px; }.assist-session small { color: var(--muted); font-size: 10px; margin-top: 4px; overflow-wrap: anywhere; }.assist-actions { display: flex; gap: 5px; }.assist-turns { min-height: 260px; max-height: 500px; overflow: auto; border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); padding: 14px 2px; }.assist-message { max-width: 78%; margin-bottom: 12px; }.assist-message.user { margin-left: auto; text-align: right; }.assist-message span { color: var(--muted); font-size: 10px; text-transform: uppercase; font-weight: 750; }.assist-message p { margin: 5px 0 0; padding: 9px 11px; border: 1px solid #dce3df; border-radius: 6px; background: #f6f8f7; font-size: 12px; line-height: 1.5; overflow-wrap: anywhere; }.assist-message.user p { background: #e5f2ed; border-color: #c7e1d6; }.assist-composer { display: grid; gap: 10px; padding-top: 14px; }.assist-compose-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 10px; align-items: end; }.assist-compose-row textarea { min-height: 78px; }.assist-compose-row .button { height: 36px; }
++.assist-heading-actions, .assist-actions { display: flex; align-items: center; gap: 6px; }.assist-connection { color: #24765e; font-size: 11px; font-weight: 700; }.assist-connection.offline { color: #a33b32; }.assist-mobile-tabs { display: none; }
++.assist-session-create { display: grid; gap: 8px; padding: 0 0 14px; }.assist-session-create label { display: grid; gap: 4px; }.assist-session-create label > span { color: var(--muted); font-size: 10px; font-weight: 700; text-transform: uppercase; }.assist-session-create select, .assist-session-create input { width: 100%; min-width: 0; }.assist-operation { min-height: 34px; display: flex; align-items: center; gap: 10px; border-top: 1px solid var(--line); padding: 7px 2px; font-size: 11px; color: var(--muted); }
++.assist-turn { border-bottom: 1px solid var(--line); padding: 10px 2px 6px; }.assist-turn > header { display: flex; min-height: 26px; align-items: center; justify-content: space-between; gap: 8px; color: var(--muted); font-size: 11px; }.assist-turn > footer { display: flex; justify-content: flex-end; min-height: 30px; }.assist-snapshot-track { display: flex; flex-wrap: wrap; gap: 5px; margin: 4px 0 10px; }.assist-snapshot-track span { border-left: 2px solid #8da69c; padding-left: 5px; color: var(--muted); font-size: 10px; }
+ .setup-config-grid { margin-top: 16px; align-items: start; }
+ .setup-inline-form { display: grid; grid-template-columns: 100px minmax(110px, .7fr) minmax(160px, 1fr) auto; gap: 9px; align-items: end; padding-bottom: 14px; border-bottom: 1px solid var(--line); }
+ .setup-inline-form .button { height: 36px; }
+@@ -285,6 +288,8 @@ input:focus, textarea:focus, select:focus { border-color: #39826e; box-shadow: 0
+   .two-column, .brief-grid { grid-template-columns: 1fr; }.dag-workspace { grid-template-columns: 1fr; }.dag-board { border-right: 0; border-bottom: 1px solid var(--line); }.task-inspector { min-height: 220px; }
+   .terminal-open-form { grid-template-columns: 1fr 1fr; }.terminal-open-form .button { grid-column: 1 / -1; width: 100%; }.terminal-meta-grid { grid-template-columns: 1fr 1fr; }
+   .assist-compose-row { grid-template-columns: 1fr; }.assist-compose-row .button { width: 100%; }
++  .assist-mobile-tabs { display: grid; grid-template-columns: 1fr 1fr; border-bottom: 1px solid var(--line); margin-bottom: 10px; }.assist-mobile-tabs button { min-height: 38px; border: 0; background: transparent; color: var(--muted); font-weight: 700; }.assist-mobile-tabs button.active { color: var(--text); box-shadow: inset 0 -2px #24765e; }
++  .assist-layout > .panel { display: none; }.assist-layout > .panel.mobile-active { display: block; }.assist-message { max-width: 92%; }.assist-turns { max-height: calc(100vh - 370px); min-height: 240px; }
+   .setup-inline-form, .profile-form { grid-template-columns: 1fr; }.setup-inline-form .button { width: 100%; }
+   .setup-tabs { overflow-x: auto; }.setup-tabs button { min-width: 84px; }.setup-form, .setup-credential-form, .codex-profiles .profile-form, .github-app-form { grid-template-columns: 1fr; }.setup-form .button, .setup-credential-form .button, .codex-profiles .profile-form .button, .github-app-form .button { width: 100%; }.github-app-head { grid-template-columns: minmax(0, 1fr) auto; }.github-app-head .provider-actions { grid-column: 1 / -1; justify-content: flex-start; padding-top: 8px; }.installation-list { margin-left: 0; }
+   .execution-toolbar { align-items: stretch; flex-wrap: wrap; }.execution-toolbar label { min-width: 100%; }.execution-toolbar .button { margin-left: 0; }.pin { flex: 1; text-align: center; }
+diff --git a/feature-catalog.json b/feature-catalog.json
+index cc6b1ac..011b216 100644
+--- a/feature-catalog.json
++++ b/feature-catalog.json
+@@ -240,19 +240,19 @@
+       "id": "REC-D8-ASSIST-010",
+       "domain": "assist",
+       "name": "Four-scope Assist runtime and native event replay",
+-      "status": "scaffolded",
++      "status": "implemented",
+       "owner_modules": ["assist"],
+-      "source_files": ["assist-v3 services", "codex-app-server.mjs"],
++      "source_files": ["apps/api/src/modules/assist/service.mjs", "apps/api/src/modules/assist/runtime.mjs", "apps/api/src/migrations/006-assist-runtime.mjs"],
+       "target_modules": ["apps/api/src/modules/assist", "apps/api/src/domain.mjs", "apps/web/src/features/assist"],
+-      "tables": ["assist_sessions", "assist_turns", "assist_messages", "assist_events", "assist_operations"],
+-      "apis": ["/api/v1/assist/sessions", "/api/v1/assist/sessions/{id}/turns", "/api/v1/assist/sessions/{id}/events"],
+-      "ui": ["Assist Center", "Composer", "Goal", "Plan"],
+-      "events": ["assist.session.created", "assist.turn.created", "assist.message"],
+-      "behavior_tests": ["tests/integration/assist-flow.test.mjs"],
+-      "ui_tests": [],
+-      "evidence": [],
++      "tables": ["assist_sessions", "assist_turns", "assist_messages", "assist_events", "assist_operations", "assist_session_snapshots", "assist_turn_snapshots", "assist_session_heads", "assist_turn_heads", "assist_operation_links", "assist_event_cursors"],
++      "apis": ["/api/v1/assist/sessions", "/api/v1/assist/sessions/{id}/turns", "/api/v1/assist/turns/{id}", "/api/v1/assist/turns/{id}/retry", "/api/v1/assist/turns/{id}/cancel", "/api/v1/assist/sessions/{id}/events"],
++      "ui": ["Assist Center", "Composer", "Context Pack", "Turn Timeline", "Operation Status"],
++      "events": ["assist.session.created", "assist.turn.created", "assist.turn.queued", "assist.turn.running", "assist.turn.completed", "assist.turn.failed", "assist.turn.cancelled", "assist.message"],
++      "behavior_tests": ["tests/integration/assist-flow.test.mjs", "tests/integration/assist-r6.test.mjs", "tests/unit/migrations.test.mjs"],
++      "ui_tests": ["apps/web/src/test/assist.test.tsx"],
++      "evidence": ["docs/evidence/v6-r6-assist-20260817/verification.json"],
+       "release_receipts": [],
+-      "tests": ["T5", "tests/integration/assist-flow.test.mjs"]
++      "tests": ["T5", "tests/integration/assist-flow.test.mjs", "tests/integration/assist-r6.test.mjs", "apps/web/src/test/assist.test.tsx"]
+     },
+     {
+       "id": "REC-D8-ATTACHMENTS-011",
+diff --git a/scripts/e2e.mjs b/scripts/e2e.mjs
+index 766b9f0..ff828b6 100644
+--- a/scripts/e2e.mjs
++++ b/scripts/e2e.mjs
+@@ -38,7 +38,7 @@ function jsonResponse(value, status = 200) {
+ const app = await startApi({
+   broker: apiBroker,
+   githubOptions: { apiRoot: 'http://github.fixture', fetch: githubFixtureFetch },
+-  config: { version: '3.0.0', apiPrefix: '/api/v1', host: '127.0.0.1', port: 0, home, databaseFile: path.join(home, 'data', 'state.sqlite'), casRoot: path.join(home, 'cas'), dataVolume: 'aiws-data-v3', brokerUrl, brokerMode: 'http', brokerSecret: secret, runnerDigest: digest, codexAvailable: false, githubAvailable: false }
++  config: { version: '3.0.0', apiPrefix: '/api/v1', host: '127.0.0.1', port: 0, home, databaseFile: path.join(home, 'data', 'state.sqlite'), casRoot: path.join(home, 'cas'), dataVolume: 'aiws-data-v3', brokerUrl, brokerMode: 'http', brokerSecret: secret, runnerDigest: digest, codexAvailable: false, githubAvailable: false, assistNativeV6: true }
+ });
+ const base = `http://127.0.0.1:${app.server.address().port}`;
+ 
+@@ -344,6 +344,30 @@ try {
+   }
+   expect(new Set(Object.values(workflowScreenshotHashes)).size).toBe(3);
+ 
++  if (process.env.R6_ASSIST_SCREENSHOT_DIR) {
++    const assistOutput = path.resolve(process.env.R6_ASSIST_SCREENSHOT_DIR);
++    fs.mkdirSync(assistOutput, { recursive: true });
++    const source = await apiMutation(`/api/v1/projects/${project.id}/context/sources`, { kind: 'note', title: 'Assist evidence', content: 'Hashed evidence context.' }, 'assist-context-source');
++    const rebuilt = await apiMutation(`/api/v1/projects/${project.id}/context/rebuild`, {}, 'assist-context-rebuild');
++    const node = rebuilt.map.nodes.find((item) => item.source_id === source.id);
++    const selection = await apiMutation(`/api/v1/projects/${project.id}/context/selections`, { node_ids: [node.id], retrieval_plan: { strategy: 'explicit', token_budget: 1024 } }, 'assist-context-selection');
++    const pack = await apiMutation(`/api/v1/projects/${project.id}/context/packs`, { selection_id: selection.id, schema_version: 'aiws.context_pack.v5' }, 'assist-context-pack');
++    const session = await apiMutation('/api/v1/assist/sessions', { project_id: project.id, scope: 'project', scope_id: project.id, context_pack_id: pack.id, mode: 'native', expected_revision: 0 }, 'assist-session');
++    const receipt = await apiMutation(`/api/v1/assist/sessions/${session.id}/turns`, { message: 'Produce the deterministic Assist evidence response.', expected_revision: session.revision, goal: { objective: 'verify' }, plan: [{ step: 'run' }] }, 'assist-turn');
++    await waitOperation(receipt.operation_id);
++    await page.goto(`${base}/#/assist`, { waitUntil: 'networkidle' });
++    await expect(page.getByRole('heading', { name: 'Assist Center' })).toBeVisible();
++    await expect(page.getByText('deterministic runner completed')).toBeVisible({ timeout: 10_000 });
++    for (const [name, width, height] of [['desktop', 1440, 900], ['laptop', 1024, 768], ['mobile-wide', 390, 844]]) {
++      await setViewport(page, width, height);
++      await checkNoOverlap(page, `${name}-assist`);
++      const overflow = await page.evaluate(() => document.documentElement.scrollWidth > document.documentElement.clientWidth);
++      if (overflow) throw new Error(`${name}-assist-horizontal-overflow`);
++      await page.screenshot({ path: path.join(assistOutput, `${name}-assist.png`), fullPage: true });
++    }
++    await page.goto(`${base}/#/workflow`, { waitUntil: 'networkidle' });
++  }
++
+   const delayedGeneration = await apiMutation(`/api/v1/projects/${project.id}/workflow-generations`, {
+     provider: 'fixture', fixture_delay_ms: 900, async: true
+   }, 'workflow-cancel');
+diff --git a/tests/golden/r5/context-projection-mcp.json b/tests/golden/r5/context-projection-mcp.json
+index 651cc6b..c7a2efe 100644
+--- a/tests/golden/r5/context-projection-mcp.json
++++ b/tests/golden/r5/context-projection-mcp.json
+@@ -9,19 +9,19 @@
+   "source_files": [
+     {
+       "path": "apps/api/src/command-registry.mjs",
+-      "sha256": "632fe27b858ee1d8c7eb62a802ca6d3fcceae7736d33b7f2fd9bfa2509883a13"
++      "sha256": "f0a7e61594a200acd01f9dfe794426cd3aca1fa38d02700cdd51fa254e2d6283"
+     },
+     {
+       "path": "apps/api/src/domain.mjs",
+-      "sha256": "54d821f6da743a1134e830bc3d23d94157f9ec9043d7579f5b496b48ec4e148f"
++      "sha256": "adde2fbbd4dcec8a9c20b986d50c73387eb91db4a139d8beb57c8a863572b042"
+     },
+     {
+       "path": "apps/api/src/http.mjs",
+-      "sha256": "0bde12f591799439912e83f07992228a4902f20985cf5ef458eea70b847bbe71"
++      "sha256": "e12d9c269cc2e7325092f5fd9ac63764324d7b36e3424ac75faf76e0a5e80338"
+     },
+     {
+       "path": "apps/api/src/migrations/index.mjs",
+-      "sha256": "bfed6ea031a4236bbb72d174a9d1a07404300ef0ecae3bc2df0dbcf6802684fa"
++      "sha256": "ad7d6bcec7fb6bce92d04cf0284d08d717af7a2dccd2c0b922797055fe4ef93c"
+     },
+     {
+       "path": "apps/api/src/migrations/005-context-projection-mcp.mjs",
+@@ -193,5 +193,5 @@
+       ]
+     }
+   ],
+-  "fixture_sha256": "846fac09b23c00dea3451552da375313dd8fa291e1eb7e8bb6bd0d9e34874974"
++  "fixture_sha256": "ef94997d79186d8eb832cb2ad7d83cf0c6c64affcc7873dfb747a80016ac7da9"
+ }
+diff --git a/tests/integration/broker-flow.test.mjs b/tests/integration/broker-flow.test.mjs
+index c9895d8..dc236e5 100644
+--- a/tests/integration/broker-flow.test.mjs
++++ b/tests/integration/broker-flow.test.mjs
+@@ -2,17 +2,29 @@ import assert from 'node:assert/strict';
+ import test from 'node:test';
+ import { fixture } from './helpers.mjs';
+ import { BrokerClient } from '../../apps/api/src/broker-client.mjs';
++import { start as startBroker } from '../../apps/runner-broker/server.mjs';
+ 
+ test('API-to-broker requests are signed and jobs complete without persisted credentials', async () => {
+   const env = await fixture();
+   try {
+     const client = new BrokerClient({ brokerMode: 'http', brokerUrl: `http://127.0.0.1:${env.broker.server.address().port}`, brokerSecret: 'integration-secret', runnerDigest: env.digest });
+     assert.equal((await client.probe()).ready, true);
+-    const job = await client.submit({ task_id: 'inspect', execution_id: 'exe_12345678abcdef', project_id: 'prj_12345678abcdef', workspace_subpath: 'projects/prj_12345678abcdef', image_digest: env.digest, execution_mode: 'read', resource_profile: 'standard', network_profile: 'none', input_paths: [], output_paths: [], deadline_at: new Date(Date.now() + 60_000).toISOString(), credential_ref: 'cred_ephemeral1' });
++    const job = await client.submit({ task_id: 'inspect', execution_id: 'exe_12345678abcdef', project_id: 'prj_12345678abcdef', workspace_subpath: 'projects/prj_12345678abcdef', image_digest: env.digest, execution_mode: 'assist', resource_profile: 'standard', network_profile: 'none', input_paths: [], output_paths: [], deadline_at: new Date(Date.now() + 60_000).toISOString(), credential_ref: 'cred_ephemeral1' });
+     assert.equal(job.status, 'queued');
+     await new Promise((resolve) => setTimeout(resolve, 100));
+     const status = await client.status(job.job_id);
+     assert.equal(status.status, 'completed');
+     assert.equal(status.spec.credential_ref, '[ephemeral]');
++    const checkpoint = await client.statusExecution('exe_12345678abcdef');
++    assert.equal(checkpoint.job_id, job.job_id);
++
++    await env.broker.close();
++    const restarted = await startBroker({ config: { host: '127.0.0.1', port: 0, secret: 'integration-secret', dataRoot: env.home, dataVolume: 'aiws-data-v3', runnerDigest: env.digest, executor: 'mock', runnerImage: `runner@${env.digest}` } });
++    try {
++      const recoveredClient = new BrokerClient({ brokerMode: 'http', brokerUrl: `http://127.0.0.1:${restarted.server.address().port}`, brokerSecret: 'integration-secret', runnerDigest: env.digest });
++      const recovered = await recoveredClient.statusExecution('exe_12345678abcdef');
++      assert.equal(recovered.job_id, job.job_id);
++      assert.equal(recovered.status, 'completed');
++    } finally { await restarted.close(); }
+   } finally { await env.close(); }
+ });
+diff --git a/tests/unit/database.test.mjs b/tests/unit/database.test.mjs
+index 190af95..cf0ec28 100644
+--- a/tests/unit/database.test.mjs
++++ b/tests/unit/database.test.mjs
+@@ -15,8 +15,8 @@ test('fresh database uses strict v4 settings and FTS5', async () => {
+   const { db } = await fixture();
+   const integrity = await db.integrity();
+   assert.deepEqual(integrity.integrity, ['ok']);
+-  assert.equal(integrity.user_version, 5);
+-  assert.equal(integrity.migration_version, 5);
++  assert.equal(integrity.user_version, 6);
++  assert.equal(integrity.migration_version, 6);
+   assert.equal(integrity.journal_mode, 'wal');
+   assert.equal(integrity.synchronous, 2);
+   assert.ok((await db.get("SELECT name FROM sqlite_master WHERE name='context_source_fts'")));
+diff --git a/tests/unit/migrations.test.mjs b/tests/unit/migrations.test.mjs
+index 1d94573..cf571e5 100644
+--- a/tests/unit/migrations.test.mjs
++++ b/tests/unit/migrations.test.mjs
+@@ -9,7 +9,7 @@ import {
+   migrateDatabase,
+   schemaFingerprint
+ } from '../../apps/api/src/migration-service.mjs';
+-import { MIGRATIONS, V1_MIGRATION_CHECKSUM, V5_MIGRATION_CHECKSUM, migrationChecksum } from '../../apps/api/src/migrations/index.mjs';
++import { MIGRATIONS, V1_MIGRATION_CHECKSUM, V5_MIGRATION_CHECKSUM, V6_MIGRATION_CHECKSUM, migrationChecksum } from '../../apps/api/src/migrations/index.mjs';
+ import { SCHEMA_SQL } from '../../apps/api/src/schema.mjs';
+ 
+ function temporaryDatabase(prefix) {
+@@ -39,15 +39,15 @@ test('empty databases apply every forward migration and record checksums once',
+   const migrations = MIGRATIONS;
+   try {
+     const first = migrateDatabase({ file: fixture.file, migrations });
+-    assert.deepEqual(first.applied_versions, [1, 2, 3, 4, 5]);
++    assert.deepEqual(first.applied_versions, [1, 2, 3, 4, 5, 6]);
+     assert.equal(first.from_version, 0);
+-    assert.equal(first.to_version, 5);
++    assert.equal(first.to_version, 6);
+     assert.equal(first.snapshot, null);
+     const rows = inspect(fixture.file, (db) => db.prepare('SELECT * FROM schema_migrations ORDER BY version').all());
+-    assert.deepEqual(rows.map((row) => Number(row.version)), [1, 2, 3, 4, 5]);
++    assert.deepEqual(rows.map((row) => Number(row.version)), [1, 2, 3, 4, 5, 6]);
+     assert.deepEqual(rows.map((row) => row.checksum), migrations.map(migrationChecksum));
+     assert.ok(rows.every((row) => Number(row.duration_ms) >= 0));
+-  assert.equal(inspect(fixture.file, (db) => Number(db.prepare('PRAGMA user_version').get().user_version)), 5);
++    assert.equal(inspect(fixture.file, (db) => Number(db.prepare('PRAGMA user_version').get().user_version)), 6);
+     assert.throws(() => inspect(fixture.file, (db) => db.prepare('UPDATE schema_migrations SET checksum=? WHERE version=1').run('0'.repeat(64))), /immutable_record/);
+     assert.throws(() => inspect(fixture.file, (db) => db.prepare('DELETE FROM schema_migrations WHERE version=1').run()), /immutable_record/);
+ 
+@@ -67,8 +67,8 @@ test('startup resumes when an interrupted first run left only an empty migration
+       checksum TEXT NOT NULL CHECK(length(checksum) = 64), applied_at TEXT NOT NULL,
+       duration_ms INTEGER NOT NULL CHECK(duration_ms >= 0)) STRICT;`));
+     const replay = migrateDatabase({ file: fixture.file });
+-    assert.deepEqual(replay.applied_versions, [1, 2, 3, 4, 5]);
+-    assert.equal(inspect(fixture.file, (db) => Number(db.prepare('PRAGMA user_version').get().user_version)), 5);
++    assert.deepEqual(replay.applied_versions, [1, 2, 3, 4, 5, 6]);
++    assert.equal(inspect(fixture.file, (db) => Number(db.prepare('PRAGMA user_version').get().user_version)), 6);
+   } finally {
+     fs.rmSync(fixture.home, { recursive: true, force: true });
+   }
+@@ -80,11 +80,11 @@ test('a fingerprint-matching V1 database is registered as a baseline with a rest
+     legacyV1(fixture.file, 'Before migration');
+     const result = migrateDatabase({ file: fixture.file });
+     assert.equal(result.baseline_registered, true);
+-    assert.deepEqual(result.applied_versions, [2, 3, 4, 5]);
++    assert.deepEqual(result.applied_versions, [2, 3, 4, 5, 6]);
+     assert.ok(fs.existsSync(result.snapshot.file));
+     assert.ok(fs.existsSync(result.snapshot.manifest));
+     const ledger = inspect(fixture.file, (db) => db.prepare('SELECT version,name,checksum FROM schema_migrations ORDER BY version').all());
+-    assert.deepEqual(ledger.map((row) => Number(row.version)), [1, 2, 3, 4, 5]);
++    assert.deepEqual(ledger.map((row) => Number(row.version)), [1, 2, 3, 4, 5, 6]);
+     assert.equal(ledger[0].name, MIGRATIONS[0].name);
+     assert.equal(ledger[0].checksum, V1_MIGRATION_CHECKSUM);
+ 
+@@ -189,7 +189,7 @@ test('registered V1 checksum is frozen while V2 state survives the V4 migration'
+     });
+ 
+     const result = migrateDatabase({ file: fixture.file });
+-    assert.deepEqual(result.applied_versions, [2, 3, 4, 5]);
++    assert.deepEqual(result.applied_versions, [2, 3, 4, 5, 6]);
+     const mapped = inspect(fixture.file, (db) => ({
+       checksum: db.prepare('SELECT checksum FROM schema_migrations WHERE version=1').get().checksum,
+       session: { ...db.prepare('SELECT revision,created_at,updated_at FROM sessions WHERE id=?').get('ses_legacy1234') },
+@@ -228,7 +228,7 @@ test('V2 project, brief, and repository binding backfill into the R3 intake grap
+     });
+ 
+     const migrated = migrateDatabase({ file: fixture.file });
+-    assert.deepEqual(migrated.applied_versions, [3, 4, 5]);
++    assert.deepEqual(migrated.applied_versions, [3, 4, 5, 6]);
+     assert.ok(migrated.snapshot?.file && migrated.snapshot?.manifest);
+     const state = inspect(fixture.file, (db) => ({
+       project: { ...db.prepare('SELECT status,onboarding_state,confirmed_brief_revision,confirmed_brief_hash,workflow_draft_id FROM projects WHERE id=?').get('prj_r3_backfill') },
+@@ -250,7 +250,7 @@ test('V2 project, brief, and repository binding backfill into the R3 intake grap
+     assert.deepEqual(state.connection, { id: 'con_repo_r3_backfill', source_kind: 'git', source_locator: 'https://github.com/fixture/repository', revision: 1, read_only: 1 });
+     assert.deepEqual(state.target, { id: 'tgt_repo_r3_backfill', baseline_sha: 'b'.repeat(40), managed_relative_path: 'projects/prj_r3_backfill' });
+     assert.deepEqual(state.line, { id: 'lin_repo_r3_backfill', line_kind: 'managed_checkout', baseline_sha: 'b'.repeat(40), managed_relative_path: 'projects/prj_r3_backfill', status: 'ready' });
+-    assert.equal(state.version, 5);
++    assert.equal(state.version, 6);
+     assert.equal(state.ledger[0].checksum, V1_MIGRATION_CHECKSUM);
+     assert.equal(state.ledger[1].checksum, migrationChecksum(MIGRATIONS[1]));
+     assert.deepEqual(migrateDatabase({ file: fixture.file }).applied_versions, []);
+@@ -259,6 +259,50 @@ test('V2 project, brief, and repository binding backfill into the R3 intake grap
+   }
+ });
+ 
++test('V5 Assist bytes backfill into immutable V6 snapshots and heads', () => {
++  const fixture = temporaryDatabase('aiws-v6-assist-');
++  try {
++    migrateDatabase({ file: fixture.file, migrations: MIGRATIONS.slice(0, 5) });
++    const timestamp = '2026-08-17T00:00:00.000Z';
++    const snapshotJson = '{"scope_id":"prj_v6","project_id":"prj_v6","note":"byte-stable"}';
++    const goalJson = '{"objective":"legacy"}';
++    const planJson = '[{"step":"retain"}]';
++    const eventJson = '{"role":"user","sequence_no":1}';
++    inspect(fixture.file, (db) => {
++      db.prepare('INSERT INTO projects(id,name,description,status,revision,created_at,updated_at) VALUES(?,?,?,?,?,?,?)').run('prj_v6', 'V6 project', '', 'active', 1, timestamp, timestamp);
++      db.prepare('INSERT INTO assist_sessions(id,project_id,scope,scope_id,snapshot_json,status,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?)').run('ast_v6', 'prj_v6', 'project', 'prj_v6', snapshotJson, 'active', timestamp, timestamp);
++      db.prepare('INSERT INTO assist_turns(id,session_id,turn_no,status,goal_json,plan_json,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?)').run('atr_v6', 'ast_v6', 1, 'failed', goalJson, planJson, timestamp, timestamp);
++      db.prepare('INSERT INTO assist_messages(id,turn_id,role,content,sequence_no,created_at) VALUES(?,?,?,?,?,?)').run('ams_v6', 'atr_v6', 'user', 'legacy body', 1, timestamp);
++      db.prepare('INSERT INTO assist_events(session_id,turn_id,type,data_json,created_at) VALUES(?,?,?,?,?)').run('ast_v6', 'atr_v6', 'assist.message', eventJson, timestamp);
++      db.prepare('INSERT INTO assist_operations(id,session_id,kind,status,receipt_json,created_at,updated_at) VALUES(?,?,?,?,?,?,?)').run('aop_v6', 'ast_v6', 'turn', 'failed', '{"error_code":"legacy"}', timestamp, timestamp);
++    });
++
++    const migrated = migrateDatabase({ file: fixture.file });
++    assert.deepEqual(migrated.applied_versions, [6]);
++    inspect(fixture.file, (db) => {
++      assert.equal(db.prepare('PRAGMA user_version').get().user_version, 6);
++      assert.equal(db.prepare('SELECT checksum FROM schema_migrations WHERE version=6').get().checksum, V6_MIGRATION_CHECKSUM);
++      assert.equal(db.prepare('SELECT snapshot_json FROM assist_sessions WHERE id=?').get('ast_v6').snapshot_json, snapshotJson);
++      assert.equal(db.prepare('SELECT goal_json,plan_json FROM assist_turns WHERE id=?').get('atr_v6').goal_json, goalJson);
++      assert.equal(db.prepare('SELECT plan_json FROM assist_turns WHERE id=?').get('atr_v6').plan_json, planJson);
++      assert.equal(db.prepare('SELECT content FROM assist_messages WHERE id=?').get('ams_v6').content, 'legacy body');
++      assert.equal(db.prepare('SELECT attempt FROM assist_messages WHERE id=?').get('ams_v6').attempt, 1);
++      db.prepare('INSERT INTO assist_messages(id,turn_id,role,content,attempt,sequence_no,created_at) VALUES(?,?,?,?,?,?,?)').run('ams_v6_retry', 'atr_v6', 'user', 'retry body', 2, 1, timestamp);
++      assert.throws(() => db.prepare('INSERT INTO assist_messages(id,turn_id,role,content,attempt,sequence_no,created_at) VALUES(?,?,?,?,?,?,?)').run('ams_v6_duplicate', 'atr_v6', 'user', 'duplicate', 2, 1, timestamp), /UNIQUE/);
++      assert.equal(db.prepare('SELECT data_json FROM assist_events WHERE turn_id=?').get('atr_v6').data_json, eventJson);
++      assert.equal(db.prepare('SELECT receipt_json FROM assist_operations WHERE id=?').get('aop_v6').receipt_json, '{"error_code":"legacy"}');
++      assert.equal(db.prepare('SELECT COUNT(*) AS count FROM assist_session_snapshots WHERE session_id=?').get('ast_v6').count, 1);
++      assert.equal(db.prepare('SELECT COUNT(*) AS count FROM assist_turn_snapshots WHERE turn_id=?').get('atr_v6').count, 1);
++      assert.throws(() => db.prepare("UPDATE assist_turn_snapshots SET status='completed' WHERE turn_id='atr_v6'").run(), /immutable_record/);
++      assert.throws(() => db.prepare("UPDATE assist_turns SET status='running' WHERE id='atr_v6'").run(), /assist_turn_transition_invalid/);
++      assert.throws(() => db.prepare("UPDATE assist_turn_heads SET revision=revision-1 WHERE turn_id='atr_v6'").run(), /assist_turn_head_mismatch/);
++      db.prepare('INSERT INTO assist_event_cursors(session_id,consumer_id,cursor,revision,updated_at) VALUES(?,?,?,?,?)').run('ast_v6', 'test', 2, 1, timestamp);
++      assert.throws(() => db.prepare("UPDATE assist_event_cursors SET cursor=1 WHERE session_id='ast_v6'").run(), /cursor_regression/);
++    });
++    assert.deepEqual(migrateDatabase({ file: fixture.file }).applied_versions, []);
++  } finally { fs.rmSync(fixture.home, { recursive: true, force: true }); }
++});
++
+ test('V3 workflows, generations, contracts, and execution references survive the V4 migration', () => {
+   const fixture = temporaryDatabase('aiws-v3-r4-workflow-backfill-');
+   const timestamp = '2026-08-11T00:00:00.000Z';
+@@ -289,7 +333,7 @@ test('V3 workflows, generations, contracts, and execution references survive the
+     });
+ 
+     const migrated = migrateDatabase({ file: fixture.file });
+-    assert.deepEqual(migrated.applied_versions, [4, 5]);
++    assert.deepEqual(migrated.applied_versions, [4, 5, 6]);
+     const state = inspect(fixture.file, (db) => ({
+       version: Number(db.prepare('PRAGMA user_version').get().user_version),
+       foreignKeys: db.prepare('PRAGMA foreign_key_check').all(),
+@@ -302,7 +346,7 @@ test('V3 workflows, generations, contracts, and execution references survive the
+       execution: { ...db.prepare('SELECT workflow_revision,status FROM executions WHERE id=?').get('exe_v3_workflow') },
+       attempt: { ...db.prepare('SELECT task_id,status FROM task_attempts WHERE id=?').get('att_v3_workflow') }
+     }));
+-    assert.equal(state.version, 5);
++    assert.equal(state.version, 6);
+     assert.deepEqual(state.foreignKeys, []);
+     assert.equal(state.workflow.hierarchy_mode, 'legacy_compat');
+     assert.equal(state.workflow.tasks_json, tasks);
+@@ -345,7 +389,7 @@ test('V4 Context, Pack, Selection, MCP client, and grant bytes survive the V5 mi
+     });
+ 
+     const migrated = migrateDatabase({ file: fixture.file });
+-    assert.deepEqual(migrated.applied_versions, [5]);
++    assert.deepEqual(migrated.applied_versions, [5, 6]);
+     const state = inspect(fixture.file, (db) => ({
+       version: Number(db.prepare('PRAGMA user_version').get().user_version),
+       integrity: db.prepare('PRAGMA integrity_check').get().integrity_check,
+@@ -357,7 +401,7 @@ test('V4 Context, Pack, Selection, MCP client, and grant bytes survive the V5 mi
+       grant: { ...db.prepare('SELECT token_hash,compatibility FROM exchange_grants WHERE id=?').get('mgrant_r5') },
+       checksum: db.prepare('SELECT checksum FROM schema_migrations WHERE version=5').get().checksum
+     }));
+-    assert.equal(state.version, 5);
++    assert.equal(state.version, 6);
+     assert.equal(state.integrity, 'ok');
+     assert.deepEqual(state.foreignKeys, []);
+     assert.deepEqual(state.versionRow, { content, content_hash: contentHash, source_hash: contentHash, storage_kind: 'inline_legacy', renderer_version: 'legacy-inline-v1' });
+
+diff --git a/apps/api/src/migrations/006-assist-runtime.mjs b/apps/api/src/migrations/006-assist-runtime.mjs
+new file mode 100644
+index 0000000..aef52f7
+--- /dev/null
++++ b/apps/api/src/migrations/006-assist-runtime.mjs
+@@ -0,0 +1,120 @@
++/* R6 Assist runtime: additive, immutable snapshots and durable cursors. */
++export const ASSIST_RUNTIME_V6_SQL = `
++ALTER TABLE assist_sessions ADD COLUMN revision INTEGER NOT NULL DEFAULT 1 CHECK(revision > 0);
++ALTER TABLE assist_sessions ADD COLUMN compatibility TEXT NOT NULL DEFAULT 'legacy_compat' CHECK(compatibility IN ('legacy_compat','native_v6'));
++ALTER TABLE assist_sessions ADD COLUMN snapshot_hash TEXT NOT NULL DEFAULT '' CHECK(snapshot_hash='' OR length(snapshot_hash)=64);
++ALTER TABLE assist_sessions ADD COLUMN context_pack_id TEXT REFERENCES context_packs(id) ON DELETE RESTRICT;
++ALTER TABLE assist_sessions ADD COLUMN context_pack_hash TEXT NOT NULL DEFAULT '' CHECK(context_pack_hash='' OR length(context_pack_hash)=64);
++ALTER TABLE assist_sessions ADD COLUMN head_snapshot_id TEXT;
++ALTER TABLE assist_turns ADD COLUMN revision INTEGER NOT NULL DEFAULT 1 CHECK(revision > 0);
++ALTER TABLE assist_turns ADD COLUMN attempt INTEGER NOT NULL DEFAULT 1 CHECK(attempt > 0);
++ALTER TABLE assist_turns ADD COLUMN compatibility TEXT NOT NULL DEFAULT 'legacy_compat' CHECK(compatibility IN ('legacy_compat','native_v6'));
++ALTER TABLE assist_turns ADD COLUMN input_hash TEXT NOT NULL DEFAULT '' CHECK(input_hash='' OR length(input_hash)=64);
++ALTER TABLE assist_turns ADD COLUMN context_pack_id TEXT REFERENCES context_packs(id) ON DELETE RESTRICT;
++ALTER TABLE assist_turns ADD COLUMN context_pack_hash TEXT NOT NULL DEFAULT '' CHECK(context_pack_hash='' OR length(context_pack_hash)=64);
++ALTER TABLE assist_turns ADD COLUMN operation_id TEXT REFERENCES operations(id) ON DELETE RESTRICT;
++ALTER TABLE assist_turns ADD COLUMN head_snapshot_id TEXT;
++ALTER TABLE assist_messages RENAME TO assist_messages_v5;
++CREATE TABLE assist_messages (
++ id TEXT PRIMARY KEY, turn_id TEXT NOT NULL REFERENCES assist_turns(id) ON DELETE RESTRICT,
++ role TEXT NOT NULL CHECK(role IN ('user','assistant','tool','system')), content TEXT NOT NULL,
++ attempt INTEGER NOT NULL DEFAULT 1 CHECK(attempt > 0), sequence_no INTEGER NOT NULL CHECK(sequence_no > 0),
++ created_at TEXT NOT NULL, UNIQUE(turn_id,attempt,sequence_no)
++) STRICT;
++INSERT INTO assist_messages(id,turn_id,role,content,attempt,sequence_no,created_at)
++SELECT id,turn_id,role,content,1,sequence_no,created_at FROM assist_messages_v5;
++DROP TABLE assist_messages_v5;
++CREATE TABLE IF NOT EXISTS assist_session_snapshots (
++ id TEXT PRIMARY KEY, session_id TEXT NOT NULL REFERENCES assist_sessions(id) ON DELETE RESTRICT,
++ revision INTEGER NOT NULL CHECK(revision > 0), status TEXT NOT NULL CHECK(status IN ('active','paused','cancelled','completed')),
++ scope TEXT NOT NULL, scope_target_hash TEXT NOT NULL CHECK(length(scope_target_hash)=64),
++ snapshot_json TEXT NOT NULL CHECK(json_valid(snapshot_json)), snapshot_hash TEXT NOT NULL CHECK(length(snapshot_hash)=64),
++ brief_revision INTEGER, workflow_revision INTEGER, repository_sha TEXT NOT NULL DEFAULT '', context_pack_id TEXT REFERENCES context_packs(id) ON DELETE RESTRICT,
++ context_pack_hash TEXT NOT NULL DEFAULT '', context_pack_cas_hash TEXT NOT NULL DEFAULT '' CHECK(context_pack_cas_hash='' OR length(context_pack_cas_hash)=64),
++ context_pack_cas_path TEXT NOT NULL DEFAULT '', actor TEXT NOT NULL DEFAULT 'local-user', created_at TEXT NOT NULL, UNIQUE(session_id,revision),
++ CHECK((context_pack_cas_hash='' AND context_pack_cas_path='') OR (context_pack_cas_hash<>'' AND context_pack_cas_path='sha256/' || substr(context_pack_cas_hash,1,2) || '/' || context_pack_cas_hash))
++) STRICT;
++CREATE TABLE IF NOT EXISTS assist_turn_snapshots (
++ id TEXT PRIMARY KEY, turn_id TEXT NOT NULL REFERENCES assist_turns(id) ON DELETE RESTRICT, attempt INTEGER NOT NULL CHECK(attempt > 0),
++ revision INTEGER NOT NULL CHECK(revision > 0), status TEXT NOT NULL CHECK(status IN ('queued','running','completed','failed','cancelled')), input_hash TEXT NOT NULL CHECK(length(input_hash)=64),
++ input_cas_hash TEXT NOT NULL DEFAULT '' CHECK(input_cas_hash='' OR length(input_cas_hash)=64), input_cas_path TEXT NOT NULL DEFAULT '',
++ output_cas_hash TEXT NOT NULL DEFAULT '' CHECK(output_cas_hash='' OR length(output_cas_hash)=64), output_cas_path TEXT NOT NULL DEFAULT '', goal_hash TEXT NOT NULL DEFAULT '', plan_hash TEXT NOT NULL DEFAULT '',
++ context_pack_id TEXT REFERENCES context_packs(id) ON DELETE RESTRICT, context_pack_hash TEXT NOT NULL DEFAULT '', canonical_operation TEXT NOT NULL DEFAULT 'assist.turn', error_code TEXT, created_at TEXT NOT NULL, UNIQUE(turn_id,attempt,revision)
++ ,CHECK((input_cas_hash='' AND input_cas_path='') OR (input_cas_hash<>'' AND input_cas_path='sha256/' || substr(input_cas_hash,1,2) || '/' || input_cas_hash))
++ ,CHECK((output_cas_hash='' AND output_cas_path='') OR (output_cas_hash<>'' AND output_cas_path='sha256/' || substr(output_cas_hash,1,2) || '/' || output_cas_hash))
++) STRICT;
++CREATE TABLE IF NOT EXISTS assist_session_heads (session_id TEXT PRIMARY KEY REFERENCES assist_sessions(id) ON DELETE RESTRICT, snapshot_id TEXT NOT NULL REFERENCES assist_session_snapshots(id) ON DELETE RESTRICT, revision INTEGER NOT NULL CHECK(revision > 0), status TEXT NOT NULL, updated_at TEXT NOT NULL) STRICT;
++CREATE TABLE IF NOT EXISTS assist_turn_heads (turn_id TEXT PRIMARY KEY REFERENCES assist_turns(id) ON DELETE RESTRICT, snapshot_id TEXT NOT NULL REFERENCES assist_turn_snapshots(id) ON DELETE RESTRICT, revision INTEGER NOT NULL CHECK(revision > 0), status TEXT NOT NULL, updated_at TEXT NOT NULL) STRICT;
++CREATE TABLE IF NOT EXISTS assist_operation_links (id TEXT PRIMARY KEY, turn_id TEXT NOT NULL REFERENCES assist_turns(id) ON DELETE RESTRICT, attempt INTEGER NOT NULL CHECK(attempt > 0), operation_id TEXT NOT NULL UNIQUE REFERENCES operations(id) ON DELETE RESTRICT, operation_event_cursor INTEGER NOT NULL DEFAULT 0 CHECK(operation_event_cursor >= 0), created_at TEXT NOT NULL, UNIQUE(turn_id,attempt)) STRICT;
++CREATE TABLE IF NOT EXISTS assist_event_cursors (session_id TEXT NOT NULL REFERENCES assist_sessions(id) ON DELETE RESTRICT, consumer_id TEXT NOT NULL, cursor INTEGER NOT NULL DEFAULT 0 CHECK(cursor >= 0), revision INTEGER NOT NULL DEFAULT 1 CHECK(revision > 0), updated_at TEXT NOT NULL, PRIMARY KEY(session_id,consumer_id)) STRICT;
++CREATE INDEX IF NOT EXISTS idx_assist_session_snapshots_session ON assist_session_snapshots(session_id,revision DESC);
++CREATE INDEX IF NOT EXISTS idx_assist_turn_snapshots_turn ON assist_turn_snapshots(turn_id,attempt DESC);
++CREATE INDEX IF NOT EXISTS idx_assist_event_cursors_session ON assist_event_cursors(session_id,cursor);
++CREATE INDEX IF NOT EXISTS idx_assist_sessions_revision ON assist_sessions(id,revision);
++CREATE INDEX IF NOT EXISTS idx_assist_turns_revision ON assist_turns(id,revision);
++CREATE TRIGGER IF NOT EXISTS immutable_assist_session_snapshots_update BEFORE UPDATE ON assist_session_snapshots BEGIN SELECT RAISE(ABORT,'immutable_record'); END;
++CREATE TRIGGER IF NOT EXISTS immutable_assist_session_snapshots_delete BEFORE DELETE ON assist_session_snapshots BEGIN SELECT RAISE(ABORT,'immutable_record'); END;
++CREATE TRIGGER IF NOT EXISTS immutable_assist_turn_snapshots_update BEFORE UPDATE ON assist_turn_snapshots BEGIN SELECT RAISE(ABORT,'immutable_record'); END;
++CREATE TRIGGER IF NOT EXISTS immutable_assist_turn_snapshots_delete BEFORE DELETE ON assist_turn_snapshots BEGIN SELECT RAISE(ABORT,'immutable_record'); END;
++CREATE TRIGGER IF NOT EXISTS immutable_assist_operation_links_update BEFORE UPDATE ON assist_operation_links BEGIN SELECT RAISE(ABORT,'immutable_record'); END;
++CREATE TRIGGER IF NOT EXISTS immutable_assist_operation_links_delete BEFORE DELETE ON assist_operation_links BEGIN SELECT RAISE(ABORT,'immutable_record'); END;
++CREATE TRIGGER IF NOT EXISTS monotonic_assist_event_cursor BEFORE UPDATE OF cursor ON assist_event_cursors WHEN NEW.cursor < OLD.cursor BEGIN SELECT RAISE(ABORT,'cursor_regression'); END;
++CREATE TRIGGER IF NOT EXISTS validate_assist_session_head_insert BEFORE INSERT ON assist_session_heads
++WHEN NOT EXISTS (SELECT 1 FROM assist_session_snapshots s WHERE s.id=NEW.snapshot_id AND s.session_id=NEW.session_id AND s.revision=NEW.revision AND s.status=NEW.status)
++BEGIN SELECT RAISE(ABORT,'assist_session_head_mismatch'); END;
++CREATE TRIGGER IF NOT EXISTS validate_assist_session_head_update BEFORE UPDATE ON assist_session_heads
++WHEN NEW.revision<=OLD.revision OR NOT EXISTS (SELECT 1 FROM assist_session_snapshots s WHERE s.id=NEW.snapshot_id AND s.session_id=NEW.session_id AND s.revision=NEW.revision AND s.status=NEW.status)
++BEGIN SELECT RAISE(ABORT,'assist_session_head_mismatch'); END;
++CREATE TRIGGER IF NOT EXISTS validate_assist_turn_head_insert BEFORE INSERT ON assist_turn_heads
++WHEN NOT EXISTS (SELECT 1 FROM assist_turn_snapshots s WHERE s.id=NEW.snapshot_id AND s.turn_id=NEW.turn_id AND s.revision=NEW.revision AND s.status=NEW.status)
++BEGIN SELECT RAISE(ABORT,'assist_turn_head_mismatch'); END;
++CREATE TRIGGER IF NOT EXISTS validate_assist_turn_head_update BEFORE UPDATE ON assist_turn_heads
++WHEN NEW.revision<=OLD.revision OR NOT EXISTS (SELECT 1 FROM assist_turn_snapshots s WHERE s.id=NEW.snapshot_id AND s.turn_id=NEW.turn_id AND s.revision=NEW.revision AND s.status=NEW.status)
++BEGIN SELECT RAISE(ABORT,'assist_turn_head_mismatch'); END;
++CREATE TRIGGER IF NOT EXISTS validate_assist_session_transition BEFORE UPDATE OF status ON assist_sessions
++WHEN NEW.status<>OLD.status AND NOT ((OLD.status='active' AND NEW.status IN ('paused','cancelled','completed')) OR (OLD.status='paused' AND NEW.status IN ('active','cancelled','completed')))
++BEGIN SELECT RAISE(ABORT,'assist_session_transition_invalid'); END;
++CREATE TRIGGER IF NOT EXISTS validate_assist_turn_transition BEFORE UPDATE OF status ON assist_turns
++WHEN NEW.status<>OLD.status AND NOT ((OLD.status='queued' AND NEW.status IN ('running','failed','cancelled')) OR (OLD.status='running' AND NEW.status IN ('completed','failed','cancelled')) OR (OLD.status IN ('completed','failed','cancelled') AND NEW.status='queued' AND NEW.attempt=OLD.attempt+1))
++BEGIN SELECT RAISE(ABORT,'assist_turn_transition_invalid'); END;
++UPDATE assist_sessions SET compatibility='legacy_compat' WHERE compatibility='';
++UPDATE assist_turns SET compatibility='legacy_compat' WHERE compatibility='';
++
++/* Every v5 row receives a deterministic revision-1 immutable snapshot/head. */
++UPDATE assist_sessions SET
++ snapshot_hash=aiws_canonical_hash(snapshot_json),
++ head_snapshot_id='ass_legacy_' || substr(aiws_sha256(id),1,24)
++WHERE head_snapshot_id IS NULL;
++INSERT INTO assist_session_snapshots(id,session_id,revision,status,scope,scope_target_hash,snapshot_json,snapshot_hash,brief_revision,workflow_revision,repository_sha,context_pack_id,context_pack_hash,context_pack_cas_hash,context_pack_cas_path,actor,created_at)
++SELECT s.head_snapshot_id,s.id,1,s.status,s.scope,
++ aiws_canonical_hash(json_object('project_id',s.project_id,'scope',s.scope,'scope_id',s.scope_id)),
++ s.snapshot_json,s.snapshot_hash,
++ json_extract(s.snapshot_json,'$.brief_revision'),json_extract(s.snapshot_json,'$.workflow_revision'),COALESCE(json_extract(s.snapshot_json,'$.repository_sha'),''),
++ CASE WHEN EXISTS (SELECT 1 FROM context_packs p WHERE p.id=json_extract(s.snapshot_json,'$.context_pack_id')) THEN json_extract(s.snapshot_json,'$.context_pack_id') ELSE NULL END,
++ CASE WHEN length(COALESCE(json_extract(s.snapshot_json,'$.context_pack_hash'),''))=64 THEN json_extract(s.snapshot_json,'$.context_pack_hash') ELSE '' END,
++ CASE WHEN length(COALESCE(json_extract(s.snapshot_json,'$.context_pack_cas_hash'),''))=64 THEN json_extract(s.snapshot_json,'$.context_pack_cas_hash') ELSE '' END,
++ CASE WHEN length(COALESCE(json_extract(s.snapshot_json,'$.context_pack_cas_hash'),''))=64 THEN 'sha256/' || substr(json_extract(s.snapshot_json,'$.context_pack_cas_hash'),1,2) || '/' || json_extract(s.snapshot_json,'$.context_pack_cas_hash') ELSE '' END,
++ 'migration-v6',s.created_at
++FROM assist_sessions s;
++INSERT INTO assist_session_heads(session_id,snapshot_id,revision,status,updated_at)
++SELECT id,head_snapshot_id,1,status,updated_at FROM assist_sessions;
++
++UPDATE assist_turns SET
++ input_hash=aiws_canonical_hash(json_object(
++   'message',COALESCE((SELECT content FROM assist_messages m WHERE m.turn_id=assist_turns.id AND m.role='user' ORDER BY sequence_no LIMIT 1),''),
++   'goal',json(goal_json),'plan',json(plan_json))),
++ head_snapshot_id='ats_legacy_' || substr(aiws_sha256(id),1,24)
++WHERE head_snapshot_id IS NULL;
++INSERT INTO assist_turn_snapshots(id,turn_id,attempt,revision,status,input_hash,goal_hash,plan_hash,canonical_operation,error_code,created_at)
++SELECT t.head_snapshot_id,t.id,1,1,t.status,t.input_hash,aiws_canonical_hash(t.goal_json),aiws_canonical_hash(t.plan_json),'assist.turn',
++ CASE WHEN t.status='failed' THEN 'legacy_failure' ELSE NULL END,t.created_at
++FROM assist_turns t;
++INSERT INTO assist_turn_heads(turn_id,snapshot_id,revision,status,updated_at)
++SELECT id,head_snapshot_id,1,status,updated_at FROM assist_turns;
++
++INSERT INTO assist_operation_links(id,turn_id,attempt,operation_id,operation_event_cursor,created_at)
++SELECT 'aol_legacy_' || substr(aiws_sha256(t.id || ':' || o.id),1,24),t.id,1,o.id,0,t.created_at
++FROM assist_turns t JOIN assist_operations old ON old.session_id=t.session_id AND json_extract(old.receipt_json,'$.turn_id')=t.id JOIN operations o ON o.id=old.id
++WHERE old.kind='turn';
++`;
++export const ASSIST_RUNTIME_V6 = Object.freeze({ version: 6, name: 'assist_runtime', sql: ASSIST_RUNTIME_V6_SQL });
+
+diff --git a/apps/api/src/modules/assist/repository.mjs b/apps/api/src/modules/assist/repository.mjs
+new file mode 100644
+index 0000000..27f3bc3
+--- /dev/null
++++ b/apps/api/src/modules/assist/repository.mjs
+@@ -0,0 +1,113 @@
++import { asJson, hashJson, id, parseJson } from '../../crypto.mjs';
++
++export class AssistRepository {
++  constructor(db) { this.db = db; }
++  session(id) { return this.db.get('SELECT * FROM assist_sessions WHERE id=?', [id]); }
++  turn(id) { return this.db.get('SELECT * FROM assist_turns WHERE id=?', [id]); }
++  listSessions(projectId = null) { return projectId ? this.db.query('SELECT * FROM assist_sessions WHERE project_id=? ORDER BY created_at DESC', [projectId]) : this.db.query('SELECT * FROM assist_sessions ORDER BY created_at DESC LIMIT 200'); }
++  turns(sessionId) { return this.db.query('SELECT * FROM assist_turns WHERE session_id=? ORDER BY turn_no', [sessionId]); }
++  project(projectId) { return this.db.get("SELECT id FROM projects WHERE id=? AND status<>'purged'", [projectId]); }
++  sessionBindings(projectId) { return Promise.all([
++    this.db.get('SELECT brief.revision,brief.content_hash FROM projects project JOIN brief_revisions brief ON brief.project_id=project.id AND brief.revision=project.confirmed_brief_revision WHERE project.id=?', [projectId]),
++    this.db.get('SELECT revision,graph_hash FROM workflow_revisions WHERE project_id=? ORDER BY revision DESC LIMIT 1', [projectId]),
++    this.db.get('SELECT head_sha FROM repository_bindings WHERE project_id=?', [projectId])
++  ]); }
++  nextTurnNo(sessionId) { return this.db.get('SELECT COALESCE(MAX(turn_no),0)+1 AS turn_no FROM assist_turns WHERE session_id=?', [sessionId]).then((row) => Number(row.turn_no)); }
++  workflow(projectId, revision = null) { return revision == null ? this.db.get('SELECT revision,tasks_json,metadata_json FROM workflow_revisions WHERE project_id=? ORDER BY revision DESC LIMIT 1', [projectId]) : this.db.get('SELECT revision,tasks_json,metadata_json FROM workflow_revisions WHERE project_id=? AND revision=?', [projectId, Number(revision)]); }
++  pack(projectId, packId) { return this.db.get('SELECT * FROM context_packs WHERE id=? AND project_id=?', [String(packId || ''), projectId]); }
++  selection(projectId, selectionId) { return this.db.get('SELECT selection_hash,policy_revision FROM context_selections WHERE id=? AND project_id=?', [selectionId, projectId]); }
++  attemptMessage(turnId, attempt) { return this.db.get("SELECT content FROM assist_messages WHERE turn_id=? AND role='user' AND attempt=? ORDER BY sequence_no LIMIT 1", [turnId, attempt]); }
++  activeTurns(sessionId) { return this.db.query("SELECT id,revision FROM assist_turns WHERE session_id=? AND status IN ('queued','running') ORDER BY turn_no", [sessionId]); }
++  cursor(sessionId, consumerId) { return this.db.get('SELECT revision,cursor FROM assist_event_cursors WHERE session_id=? AND consumer_id=?', [sessionId, consumerId]); }
++  snapshot(snapshotId) { return this.db.get('SELECT * FROM assist_turn_snapshots WHERE id=?', [snapshotId]); }
++  inputSnapshot(turnId, attempt) { return this.db.get('SELECT input_cas_hash,input_cas_path FROM assist_turn_snapshots WHERE turn_id=? AND attempt=? ORDER BY revision LIMIT 1', [turnId, attempt]); }
++
++  createSession({ sessionId, snapshotId, projectId, target, snapshot, compatibility, contextPack, timestamp, snapshotStatement, audit }) {
++    return this.db.transaction([
++      { sql: 'INSERT INTO assist_sessions(id,project_id,scope,scope_id,snapshot_json,status,created_at,updated_at,revision,compatibility,snapshot_hash,context_pack_id,context_pack_hash,head_snapshot_id) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)', params: [sessionId, projectId, target.scope, target.scope_id, asJson(snapshot), 'active', timestamp, timestamp, 1, compatibility, hashJson(snapshot), contextPack?.id || null, contextPack?.pack_hash || '', snapshotId] },
++      snapshotStatement,
++      { sql: 'INSERT INTO assist_session_heads(session_id,snapshot_id,revision,status,updated_at) VALUES(?,?,?,?,?)', params: [sessionId, snapshotId, 1, 'active', timestamp] },
++      { sql: 'INSERT INTO assist_events(session_id,turn_id,type,data_json,created_at) VALUES(?,?,?,?,?)', params: [sessionId, null, 'assist.session.created', asJson({ scope: target.scope, scope_hash: target.hash }), timestamp] }, audit
++    ]);
++  }
++
++  createNativeTurn({ turnId, session, turnNo, goal, plan, message, timestamp, inputHash, operationId, snapshotId, snapshotStatement, sessionSnapshotId, sessionSnapshotStatement, audit }) {
++    return this.db.transaction([
++      { sql: 'INSERT INTO assist_turns(id,session_id,turn_no,status,goal_json,plan_json,created_at,updated_at,revision,attempt,compatibility,input_hash,context_pack_id,context_pack_hash,operation_id,head_snapshot_id) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)', params: [turnId, session.id, turnNo, 'queued', asJson(goal), asJson(plan), timestamp, timestamp, 1, 1, 'native_v6', inputHash, session.context_pack_id, session.context_pack_hash, operationId, snapshotId] },
++      { sql: 'INSERT INTO assist_messages(id,turn_id,role,content,attempt,sequence_no,created_at) VALUES(?,?,?,?,?,?,?)', params: [id('ams'), turnId, 'user', message, 1, 1, timestamp] }, snapshotStatement,
++      { sql: 'INSERT INTO assist_turn_heads(turn_id,snapshot_id,revision,status,updated_at) VALUES(?,?,?,?,?)', params: [turnId, snapshotId, 1, 'queued', timestamp] },
++      { sql: 'INSERT INTO assist_operation_links(id,turn_id,attempt,operation_id,created_at) VALUES(?,?,?,?,?)', params: [id('aol'), turnId, 1, operationId, timestamp] },
++      { sql: 'UPDATE assist_sessions SET revision=revision+1,updated_at=? WHERE id=? AND revision=?', params: [timestamp, session.id, session.revision], expect_changes: 1 }, sessionSnapshotStatement,
++      { sql: 'UPDATE assist_session_heads SET snapshot_id=?,revision=?,updated_at=? WHERE session_id=? AND revision=?', params: [sessionSnapshotId, Number(session.revision) + 1, timestamp, session.id, session.revision], expect_changes: 1 },
++      { sql: 'INSERT INTO assist_events(session_id,turn_id,type,data_json,created_at) VALUES(?,?,?,?,?)', params: [session.id, turnId, 'assist.turn.queued', asJson({ turn_no: turnNo, attempt: 1, input_hash: inputHash }), timestamp] }, audit
++    ]);
++  }
++
++  retryTurn({ turn, turnId, attempt, revision, operationId, snapshotId, inputHash, inputCas, message, goal, plan, timestamp, snapshotStatement }) {
++    return this.db.transaction([
++      { sql: 'UPDATE assist_turns SET status=?,attempt=?,revision=?,operation_id=?,head_snapshot_id=?,input_hash=?,goal_json=?,plan_json=?,updated_at=? WHERE id=? AND revision=?', params: ['queued', attempt, revision, operationId, snapshotId, inputHash, asJson(goal), asJson(plan), timestamp, turnId, turn.revision], expect_changes: 1 },
++      { sql: 'INSERT INTO assist_messages(id,turn_id,role,content,attempt,sequence_no,created_at) VALUES(?,?,?,?,?,?,?)', params: [id('ams'), turnId, 'user', message, attempt, 1, timestamp] }, snapshotStatement,
++      { sql: 'UPDATE assist_turn_heads SET snapshot_id=?,revision=?,status=?,updated_at=? WHERE turn_id=? AND revision=?', params: [snapshotId, revision, 'queued', timestamp, turnId, turn.revision], expect_changes: 1 },
++      { sql: 'INSERT INTO assist_operation_links(id,turn_id,attempt,operation_id,created_at) VALUES(?,?,?,?,?)', params: [id('aol'), turnId, attempt, operationId, timestamp] },
++      { sql: 'INSERT INTO assist_events(session_id,turn_id,type,data_json,created_at) VALUES(?,?,?,?,?)', params: [turn.session_id, turnId, 'assist.turn.retry', asJson({ attempt, input_hash: inputHash }), timestamp] }
++    ]);
++  }
++
++  transitionSession({ session, next, action, revision, snapshotId, timestamp, snapshotStatement, audit }) { return this.db.transaction([
++    { sql: 'UPDATE assist_sessions SET status=?,revision=?,updated_at=? WHERE id=? AND revision=?', params: [next, revision, timestamp, session.id, session.revision], expect_changes: 1 }, snapshotStatement,
++    { sql: 'UPDATE assist_session_heads SET snapshot_id=?,revision=?,status=?,updated_at=? WHERE session_id=? AND revision=?', params: [snapshotId, revision, next, timestamp, session.id, session.revision], expect_changes: 1 },
++    { sql: 'INSERT INTO assist_events(session_id,turn_id,type,data_json,created_at) VALUES(?,?,?,?,?)', params: [session.id, null, `assist.session.${action}`, asJson({ from: session.status, to: next }), timestamp] }, audit
++  ]); }
++
++  completeTurn({ turn, session, previous, attempt, response, outputCas, outputHash, revision, snapshotId, timestamp, audit }) { return this.db.transaction([
++    { sql: "UPDATE assist_turns SET status='completed',revision=?,head_snapshot_id=?,updated_at=? WHERE id=? AND revision=? AND status='running' AND attempt=?", params: [revision, snapshotId, timestamp, turn.id, turn.revision, attempt], expect_changes: 1 },
++    { sql: 'INSERT INTO assist_messages(id,turn_id,role,content,attempt,sequence_no,created_at) VALUES(?,?,?,?,?,?,?)', params: [id('ams'), turn.id, 'assistant', response, attempt, 2, timestamp] },
++    { sql: 'INSERT INTO assist_turn_snapshots(id,turn_id,attempt,revision,status,input_hash,input_cas_hash,input_cas_path,output_cas_hash,output_cas_path,goal_hash,plan_hash,context_pack_id,context_pack_hash,canonical_operation,error_code,created_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)', params: [snapshotId, turn.id, attempt, revision, 'completed', turn.input_hash, previous.input_cas_hash, previous.input_cas_path, outputCas.hash, outputCas.relative, hashJson(parseJson(turn.goal_json, {})), hashJson(parseJson(turn.plan_json, [])), session.context_pack_id, session.context_pack_hash, 'assist.turn', null, timestamp] },
++    { sql: "UPDATE assist_turn_heads SET snapshot_id=?,revision=?,status='completed',updated_at=? WHERE turn_id=? AND revision=?", params: [snapshotId, revision, timestamp, turn.id, turn.revision], expect_changes: 1 },
++    { sql: 'INSERT INTO assist_events(session_id,turn_id,type,data_json,created_at) VALUES(?,?,?,?,?)', params: [turn.session_id, turn.id, 'assist.turn.completed', asJson({ status: 'completed', attempt, revision, output_hash: outputHash }), timestamp] }, audit
++  ]); }
++
++  appendTurn({ turn, session, previous, attempt, status, revision, snapshotId, timestamp, errorCode, outputCas }) { return this.db.transaction([
++    { sql: 'UPDATE assist_turns SET status=?,revision=?,head_snapshot_id=?,updated_at=? WHERE id=? AND revision=?', params: [status, revision, snapshotId, timestamp, turn.id, turn.revision], expect_changes: 1 },
++    { sql: 'INSERT INTO assist_turn_snapshots(id,turn_id,attempt,revision,status,input_hash,input_cas_hash,input_cas_path,output_cas_hash,output_cas_path,goal_hash,plan_hash,context_pack_id,context_pack_hash,canonical_operation,error_code,created_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)', params: [snapshotId, turn.id, attempt, revision, status, turn.input_hash, previous?.input_cas_hash || '', previous?.input_cas_path || '', outputCas?.hash || previous?.output_cas_hash || '', outputCas?.relative || previous?.output_cas_path || '', hashJson(parseJson(turn.goal_json, {})), hashJson(parseJson(turn.plan_json, [])), session.context_pack_id, session.context_pack_hash, 'assist.turn', errorCode, timestamp] },
++    { sql: 'UPDATE assist_turn_heads SET snapshot_id=?,revision=?,status=?,updated_at=? WHERE turn_id=? AND revision=?', params: [snapshotId, revision, status, timestamp, turn.id, turn.revision], expect_changes: 1 },
++    { sql: 'INSERT INTO assist_events(session_id,turn_id,type,data_json,created_at) VALUES(?,?,?,?,?)', params: [turn.session_id, turn.id, `assist.turn.${status}`, asJson({ status, attempt, revision, error_code: errorCode }), timestamp] }
++  ]); }
++  createLegacyTurn({ session, turnId, turnNo, operationId, receipt, message, goal, plan, timestamp, snapshotId, inputHash, snapshotStatement, audit }) { return this.db.transaction([
++    { sql: 'INSERT INTO assist_turns(id,session_id,turn_no,status,goal_json,plan_json,created_at,updated_at,revision,attempt,compatibility,input_hash,head_snapshot_id) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)', params: [turnId, session.id, turnNo, 'failed', asJson(goal), asJson(plan), timestamp, timestamp, 1, 1, 'legacy_compat', inputHash, snapshotId] },
++    { sql: 'INSERT INTO assist_messages(id,turn_id,role,content,attempt,sequence_no,created_at) VALUES(?,?,?,?,?,?,?)', params: [id('ams'), turnId, 'user', message, 1, 1, timestamp] },
++    { sql: 'INSERT INTO assist_operations(id,session_id,kind,status,receipt_json,created_at,updated_at) VALUES(?,?,?,?,?,?,?)', params: [operationId, session.id, 'turn', 'failed', asJson(receipt), timestamp, timestamp] }, snapshotStatement,
++    { sql: 'INSERT INTO assist_turn_heads(turn_id,snapshot_id,revision,status,updated_at) VALUES(?,?,?,?,?)', params: [turnId, snapshotId, 1, 'failed', timestamp] },
++    { sql: 'INSERT INTO assist_events(session_id,turn_id,type,data_json,created_at) VALUES(?,?,?,?,?)', params: [session.id, turnId, 'assist.turn.created', asJson({ turn_no: turnNo, operation_id: operationId }), timestamp] },
++    ...(Object.keys(goal).length ? [{ sql: 'INSERT INTO assist_events(session_id,turn_id,type,data_json,created_at) VALUES(?,?,?,?,?)', params: [session.id, turnId, 'assist.goal', asJson({ hash: hashJson(goal), count: Object.keys(goal).length }), timestamp] }] : []),
++    ...(plan.length ? [{ sql: 'INSERT INTO assist_events(session_id,turn_id,type,data_json,created_at) VALUES(?,?,?,?,?)', params: [session.id, turnId, 'assist.plan', asJson({ hash: hashJson(plan), count: plan.length }), timestamp] }] : []),
++    { sql: 'INSERT INTO assist_events(session_id,turn_id,type,data_json,created_at) VALUES(?,?,?,?,?)', params: [session.id, turnId, 'assist.message', asJson({ role: 'user', sequence_no: 1 }), timestamp] }, audit
++  ]); }
++  sessionSnapshotStatement({ snapshotId, sessionId, revision, status, snapshot, target, actor, timestamp }) { return {
++    sql: 'INSERT INTO assist_session_snapshots(id,session_id,revision,status,scope,scope_target_hash,snapshot_json,snapshot_hash,brief_revision,workflow_revision,repository_sha,context_pack_id,context_pack_hash,context_pack_cas_hash,context_pack_cas_path,actor,created_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)',
++    params: [snapshotId, sessionId, revision, status, target.scope, target.hash, asJson(snapshot), hashJson(snapshot), snapshot.brief_revision, snapshot.workflow_revision, snapshot.repository_sha, snapshot.context_pack_id, snapshot.context_pack_hash, snapshot.context_pack_cas_hash || '', snapshot.context_pack_cas_path || '', actor || 'local-user', timestamp]
++  }; }
++  turnSnapshotStatement({ snapshotId, turnId, attempt, revision, status, inputHash, inputCas, goal, plan, session, timestamp, errorCode = null }) { return {
++    sql: 'INSERT INTO assist_turn_snapshots(id,turn_id,attempt,revision,status,input_hash,input_cas_hash,input_cas_path,goal_hash,plan_hash,context_pack_id,context_pack_hash,canonical_operation,error_code,created_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)',
++    params: [snapshotId, turnId, attempt, revision, status, inputHash, inputCas.hash || '', inputCas.relative || '', hashJson(goal), hashJson(plan), session.context_pack_id, session.context_pack_hash, 'assist.turn', errorCode, timestamp]
++  }; }
++  async turnView(turn) { return { ...turn, goal: parseJson(turn.goal_json, {}), plan: parseJson(turn.plan_json, []), messages: await this.db.query('SELECT id,role,content,attempt,sequence_no,created_at FROM assist_messages WHERE turn_id=? ORDER BY attempt,sequence_no', [turn.id]), snapshots: await this.db.query('SELECT id,attempt,revision,status,input_hash,output_cas_hash,error_code,created_at FROM assist_turn_snapshots WHERE turn_id=? ORDER BY revision', [turn.id]) }; }
++  snapshots(sessionId) { return this.db.query('SELECT * FROM assist_session_snapshots WHERE session_id=? ORDER BY revision', [sessionId]); }
++  events(sessionId, after = 0, limit = 1000) { return this.db.query('SELECT cursor,session_id,turn_id,type,data_json,created_at FROM assist_events WHERE session_id=? AND cursor>? ORDER BY cursor LIMIT ?', [sessionId, Number(after) || 0, limit]).then(rows => rows.map(({ data_json: dataJson, ...row }) => ({ ...row, data: sanitizeEvent(row.type, parseJson(dataJson, {})) }))); }
++  async ackCursor(sessionId, consumerId, cursor, expectedRevision = null) {
++    const expected = Number(expectedRevision);
++    const revision = expected + 1;
++    const result = await this.db.run(`INSERT INTO assist_event_cursors(session_id,consumer_id,cursor,revision,updated_at)
++      SELECT ?,?,?,1,? WHERE ?=0
++      ON CONFLICT(session_id,consumer_id) DO UPDATE SET cursor=excluded.cursor,revision=assist_event_cursors.revision+1,updated_at=excluded.updated_at
++      WHERE assist_event_cursors.revision=? AND excluded.cursor>=assist_event_cursors.cursor`, [sessionId, consumerId, cursor, new Date().toISOString(), expected, expected]);
++    if (Number(result.changes) !== 1) return { conflict: true, current: await this.db.get('SELECT * FROM assist_event_cursors WHERE session_id=? AND consumer_id=?', [sessionId, consumerId]) };
++    return { session_id: sessionId, consumer_id: consumerId, cursor, revision };
++  }
++}
++
++function sanitizeEvent(type, data) {
++  if (type === 'assist.goal' || type === 'assist.plan') return { hash: hashJson(data), count: Number(data?.count || (Array.isArray(data?.steps) ? data.steps.length : Object.keys(data || {}).length)) };
++  const blocked = /(?:content|body|token|secret|password|authorization|path|prompt|payload)/i;
++  return Object.fromEntries(Object.entries(data || {}).filter(([key]) => !blocked.test(key)).map(([key, value]) => [key, typeof value === 'object' && value !== null ? sanitizeEvent('', value) : value]));
++}
+
+diff --git a/apps/api/src/modules/assist/runtime.mjs b/apps/api/src/modules/assist/runtime.mjs
+new file mode 100644
+index 0000000..98dabe3
+--- /dev/null
++++ b/apps/api/src/modules/assist/runtime.mjs
+@@ -0,0 +1,76 @@
++import { createHash } from 'node:crypto';
++import { AppError } from '../../errors.mjs';
++
++const TERMINAL = new Set(['completed', 'failed', 'cancelled', 'unknown']);
++
++export class AssistRuntimeAdapter {
++  constructor({ broker = null, config = {} } = {}) {
++    this.broker = broker;
++    this.config = config;
++  }
++
++  executionId(turnId, attempt) {
++    const stable = createHash('sha256').update(`${turnId}:${attempt}`).digest('hex').slice(0, 24);
++    return `exe_${stable}`;
++  }
++
++  async startTurn(input, operationContext) {
++    if (!this.broker?.submit) throw new AppError('assist_runtime_unavailable', 'Assist runtime is unavailable', { status: 503, retryable: true });
++    const executionId = this.executionId(input.turn_id, input.attempt);
++    const spec = {
++      task_id: `assist_${input.attempt}`,
++      execution_id: executionId,
++      project_id: input.project_id,
++      workspace_subpath: `projects/${input.project_id}`,
++      image_digest: this.config.runnerDigest,
++      execution_mode: 'assist',
++      resource_profile: 'light',
++      network_profile: 'model',
++      credential_ref: input.profile.credential_ref,
++      profile_id: input.profile.profile_id,
++      profile_revision: input.profile.profile_revision,
++      profile_hash: input.profile.profile_hash,
++      input_paths: [],
++      output_paths: [],
++      deadline_at: new Date(Date.now() + 5 * 60_000).toISOString(),
++      bundle: {
++        objective: input.objective,
++        acceptance: ['assist response persisted'],
++        context_pack: { pack_hash: input.context_pack_hash, input_hash: input.input_hash },
++        context_pack_id: input.context_pack_id,
++        input_assets: [], output_paths: [], checks: ['node_test', 'git_diff_check'], input_paths: []
++      }
++    };
++    const submitted = await this.broker.submit(spec, { profile: input.profile, credential: input.credential });
++    await operationContext.setExternalRef(submitted.job_id);
++    return this.wait(submitted.job_id, operationContext.signal);
++  }
++
++  async resumeTurn(input, operationContext) {
++    let externalRef = input.external_ref;
++    if (!externalRef && this.broker?.statusExecution) {
++      const checkpoint = await this.broker.statusExecution(this.executionId(input.turn_id, input.attempt)).catch(() => null);
++      externalRef = checkpoint?.job_id || '';
++      if (externalRef) await operationContext.setExternalRef(externalRef);
++    }
++    if (!externalRef || !this.broker?.status) throw new AppError('operation_interrupted', 'Assist broker checkpoint is unavailable', { status: 409, retryable: true });
++    return this.wait(externalRef, operationContext.signal);
++  }
++
++  async wait(jobId, signal) {
++    for (;;) {
++      if (signal?.aborted) throw new AppError('operation_cancelled', 'Assist operation was cancelled', { status: 409 });
++      const current = await this.broker.status(jobId);
++      if (TERMINAL.has(current.status)) {
++        if (current.status === 'completed') return { status: 'completed', broker_job_id: jobId, result: current.result || {} };
++        if (current.status === 'cancelled') throw new AppError('operation_cancelled', 'Assist operation was cancelled', { status: 409 });
++        throw new AppError(current.error_code || (current.status === 'unknown' ? 'operation_interrupted' : 'assist_runtime_failed'), 'Assist runtime did not complete', { retryable: current.status === 'unknown' });
++      }
++      await new Promise((resolve) => setTimeout(resolve, 15));
++    }
++  }
++
++  async cancelTurn(externalRef) {
++    if (externalRef && this.broker?.cancel) await this.broker.cancel(externalRef);
++  }
++}
+
+diff --git a/apps/api/src/modules/assist/service.mjs b/apps/api/src/modules/assist/service.mjs
+new file mode 100644
+index 0000000..60b08fe
+--- /dev/null
++++ b/apps/api/src/modules/assist/service.mjs
+@@ -0,0 +1,386 @@
++import fs from 'node:fs';
++import path from 'node:path';
++import { asJson, hashJson, id, now, parseJson, sha256, stableStringify } from '../../crypto.mjs';
++import { AppError, assert } from '../../errors.mjs';
++import { AssistRepository } from './repository.mjs';
++import { AssistRuntimeAdapter } from './runtime.mjs';
++
++const TURN_TERMINAL = new Set(['completed', 'failed', 'cancelled']);
++
++export class AssistService {
++  constructor({ db, config, broker, operations, setup, auditStatement }) {
++    this.config = config;
++    this.operations = operations;
++    this.setup = setup;
++    this.auditStatement = auditStatement;
++    this.repo = new AssistRepository(db);
++    this.runtime = new AssistRuntimeAdapter({ broker, config });
++    operations.registerHandler('assist.turn', {
++      cancel: (operation) => this.runtime.cancelTurn(operation.external_ref),
++      recover: (operation) => this.recoverOperation(operation)
++    });
++  }
++
++  async list(projectId = null) {
++    const rows = await this.repo.listSessions(projectId);
++    return rows.map((row) => this.sessionView(row));
++  }
++
++  async get(sessionId) {
++    const session = await this.repo.session(sessionId);
++    if (!session) throw new AppError('not_found', 'Assist session not found');
++    const turns = await this.repo.turns(sessionId);
++    return { ...this.sessionView(session), turns: await Promise.all(turns.map((turn) => this.turnView(turn))) };
++  }
++
++  async getTurn(turnId) {
++    const turn = await this.repo.turn(turnId);
++    if (!turn) throw new AppError('not_found', 'Assist turn not found');
++    return this.turnView(turn);
++  }
++
++  async createSession(input, ctx = {}) {
++    const projectId = String(input?.project_id || '').trim();
++    const project = await this.repo.project(projectId);
++    if (!project) throw new AppError('not_found', 'project not found');
++    const native = String(input?.mode || 'legacy') === 'native';
++    if (native) {
++      assert(this.config.assistNativeV6 === true, 'assist_runtime_unavailable', 'Assist native runtime is disabled', { status: 503, retryable: true });
++      this.expected(input.expected_revision, 0);
++    }
++    const target = native
++      ? await this.resolveScope(projectId, input?.scope || 'project', input?.scope_id || projectId)
++      : this.legacyScope(projectId, input?.scope || 'project', input?.scope_id || projectId);
++    const [[brief, workflow, repository], contextPack, runtimeBinding] = await Promise.all([
++      this.repo.sessionBindings(projectId),
++      native ? this.validatePack(projectId, input.context_pack_id) : null,
++      native ? this.runtimeBinding() : null
++    ]);
++    const snapshot = {
++      project_id: projectId, scope: target.scope, scope_id: target.scope_id,
++      brief_revision: brief?.revision || null, brief_hash: brief?.content_hash || null,
++      workflow_revision: workflow?.revision || null, workflow_hash: workflow?.graph_hash || null,
++      repository_sha: repository?.head_sha || '', context_pack_id: contextPack?.id || null,
++      context_pack_hash: contextPack?.pack_hash || '', selection_hash: contextPack?.selection_hash || '',
++      policy_revision: Number(contextPack?.policy_revision || 0), context_pack_cas_hash: contextPack?.cas?.hash || '',
++      context_pack_cas_path: contextPack?.cas?.relative || '', profile_id: runtimeBinding?.profile.profile_id || null,
++      profile_revision: runtimeBinding?.profile.profile_revision || null, profile_hash: runtimeBinding?.profile.profile_hash || '',
++      credential_ref: runtimeBinding?.profile.credential_ref || null, credential_revision: runtimeBinding?.profile.credential_revision || null,
++      runner_digest: runtimeBinding?.profile.runner_digest || ''
++    };
++    const sessionId = id('ast');
++    const snapshotId = id('ass');
++    const timestamp = now();
++    await this.repo.createSession({ sessionId, snapshotId, projectId, target, snapshot, compatibility: native ? 'native_v6' : 'legacy_compat', contextPack, timestamp, snapshotStatement: this.sessionSnapshotStatement({ id: snapshotId, sessionId, revision: 1, status: 'active', snapshot, target, actor: ctx.actor, timestamp }), audit: this.auditStatement('assist_session.created', 'assist_session', sessionId, { project_id: projectId, scope: target.scope, scope_hash: target.hash }, ctx.actor) });
++    return (await this.get(sessionId));
++  }
++
++  async createTurn(sessionId, input, ctx = {}) {
++    const session = await this.repo.session(sessionId);
++    if (!session) throw new AppError('not_found', 'Assist session not found');
++    assert(session.status === 'active', 'assist_session_inactive', 'Assist session is not active', { status: 409 });
++    if (session.compatibility !== 'native_v6') return this.createLegacyTurn(session, input, ctx);
++    this.expected(input.expected_revision, session.revision);
++    const message = this.message(input.message);
++    const goal = this.goal(input.goal);
++    const plan = this.plan(input.plan);
++    await this.validateCurrentBindings(session, { message, goal, plan });
++    const turnId = id('atr');
++    const turnNo = await this.repo.nextTurnNo(sessionId);
++    const inputHash = hashJson({ message, goal, plan });
++    const inputCas = this.writeCas(stableStringify({ message, goal, plan }), inputHash);
++    const operation = await this.operations.create({ kind: 'assist.turn', resourceType: 'assist_turn', resourceId: turnId, actor: ctx.actor || 'local-user' });
++    const timestamp = now();
++    const snapshotId = id('ats');
++    const sessionSnapshotId = id('ass');
++    const sessionSnapshot = parseJson(session.snapshot_json, {});
++    try {
++      await this.repo.createNativeTurn({ turnId, session, turnNo, goal, plan, message, timestamp, inputHash, operationId: operation.operation_id, snapshotId, snapshotStatement: this.turnSnapshotStatement({ id: snapshotId, turnId, attempt: 1, revision: 1, status: 'queued', inputHash, inputCas, goal, plan, session, timestamp }), sessionSnapshotId, sessionSnapshotStatement: this.sessionSnapshotStatement({ id: sessionSnapshotId, sessionId, revision: Number(session.revision) + 1, status: session.status, snapshot: sessionSnapshot, target: { scope: session.scope, hash: hashJson({ project_id: session.project_id, scope: session.scope, scope_id: session.scope_id }) }, actor: ctx.actor, timestamp }), audit: this.auditStatement('assist_turn.created', 'assist_turn', turnId, { session_id: sessionId, turn_no: turnNo, attempt: 1, input_hash: inputHash }, ctx.actor) });
++    } catch (error) {
++      await this.operations.reconcile(operation.operation_id, { status: 'failed', error_code: 'operation_interrupted' }).catch(() => undefined);
++      this.cleanupCas(inputCas);
++      throw this.casError(error);
++    }
++    queueMicrotask(() => this.operations.run(operation.operation_id, (opCtx) => this.executeTurn(turnId, 1, opCtx)));
++    return this.operations.receipt(await this.operations.get(operation.operation_id));
++  }
++
++  async retry(turnId, input, ctx = {}) {
++    const turn = await this.repo.turn(turnId);
++    if (!turn) throw new AppError('not_found', 'Assist turn not found');
++    assert(turn.compatibility === 'native_v6', 'invalid_state', 'legacy Assist turns are not retryable', { status: 409 });
++    assert(TURN_TERMINAL.has(turn.status), 'operation_terminal', 'Assist turn is still active', { status: 409 });
++    this.expected(input.expected_revision, turn.revision);
++    const session = await this.repo.session(turn.session_id);
++    assert(session?.status === 'active', 'assist_session_inactive', 'Assist session is not active', { status: 409 });
++    const first = await this.repo.attemptMessage(turnId, turn.attempt);
++    const message = String(input.message || first?.content || '');
++    const goal = input.goal == null ? parseJson(turn.goal_json, {}) : this.goal(input.goal);
++    const plan = input.plan == null ? parseJson(turn.plan_json, []) : this.plan(input.plan);
++    await this.validateCurrentBindings(session, { message, goal, plan });
++    const attempt = Number(turn.attempt) + 1;
++    const revision = Number(turn.revision) + 1;
++    const operation = await this.operations.create({ kind: 'assist.turn', resourceType: 'assist_turn', resourceId: turnId, actor: ctx.actor || 'local-user' });
++    const snapshotId = id('ats');
++    const timestamp = now();
++    const inputHash = hashJson({ message, goal, plan });
++    const inputCas = this.writeCas(stableStringify({ message, goal, plan }), inputHash);
++    try {
++      await this.repo.retryTurn({ turn, turnId, attempt, revision, operationId: operation.operation_id, snapshotId, inputHash, inputCas, message, goal, plan, timestamp, snapshotStatement: this.turnSnapshotStatement({ id: snapshotId, turnId, attempt, revision, status: 'queued', inputHash, inputCas, goal, plan, session, timestamp }) });
++    } catch (error) {
++      await this.operations.reconcile(operation.operation_id, { status: 'failed', error_code: 'operation_interrupted' }).catch(() => undefined);
++      this.cleanupCas(inputCas);
++      throw this.casError(error);
++    }
++    queueMicrotask(() => this.operations.run(operation.operation_id, (opCtx) => this.executeTurn(turnId, attempt, opCtx)));
++    return this.operations.receipt(await this.operations.get(operation.operation_id));
++  }
++
++  async cancel(turnId, input) {
++    const turn = await this.repo.turn(turnId);
++    if (!turn) throw new AppError('not_found', 'Assist turn not found');
++    if (TURN_TERMINAL.has(turn.status)) throw new AppError('operation_terminal', 'Assist turn already reached a terminal state', { status: 409 });
++    this.expected(input.expected_revision, turn.revision);
++    const operation = await this.operations.get(turn.operation_id);
++    await this.operations.cancel(operation.id, { expected_revision: operation.revision });
++    await this.appendTurnSnapshot(turnId, turn.attempt, 'cancelled', { expectedRevision: turn.revision, errorCode: 'operation_cancelled' });
++    return this.operations.receipt(await this.operations.get(operation.id));
++  }
++
++  async transition(sessionId, input, ctx = {}) {
++    const action = String(input?.action || '');
++    const next = { cancel: 'cancelled', interrupt: 'paused', resume: 'active', complete: 'completed' }[action];
++    assert(next, 'invalid_input', 'Assist transition is invalid', { status: 422 });
++    const session = await this.repo.session(sessionId);
++    if (!session) throw new AppError('not_found', 'Assist session not found');
++    if (session.compatibility === 'native_v6') this.expected(input.expected_revision, session.revision);
++    const allowed = session.status === 'active' ? new Set(['cancel', 'interrupt', 'complete']) : session.status === 'paused' ? new Set(['cancel', 'resume', 'complete']) : new Set();
++    assert(allowed.has(action), ['cancelled', 'completed'].includes(session.status) ? 'operation_terminal' : 'invalid_state', 'Assist session transition is invalid', { status: 409 });
++    if (['cancelled', 'completed'].includes(session.status)) throw new AppError('operation_terminal', 'Assist session already reached a terminal state', { status: 409 });
++    if (action === 'cancel') {
++      const activeTurns = await this.repo.activeTurns(sessionId);
++      for (const turn of activeTurns) await this.cancel(turn.id, { expected_revision: turn.revision }).catch((error) => {
++        if (!['operation_terminal', 'revision_conflict'].includes(error?.code)) throw error;
++      });
++    }
++    const timestamp = now();
++    const revision = Number(session.revision) + 1;
++    const sessionSnapshotId = id('ass');
++    const sessionSnapshot = parseJson(session.snapshot_json, {});
++    await this.repo.transitionSession({ session, next, action, revision, snapshotId: sessionSnapshotId, timestamp, snapshotStatement: this.sessionSnapshotStatement({ id: sessionSnapshotId, sessionId, revision, status: next, snapshot: sessionSnapshot, target: { scope: session.scope, hash: hashJson({ project_id: session.project_id, scope: session.scope, scope_id: session.scope_id }) }, actor: ctx.actor, timestamp }), audit: this.auditStatement(`assist_session.${action}`, 'assist_session', sessionId, { from: session.status, to: next }, ctx.actor) }).catch((error) => { throw this.casError(error); });
++    return this.get(sessionId);
++  }
++
++  async events(sessionId, after = 0, consumerId = null) {
++    if (!await this.repo.session(sessionId)) throw new AppError('not_found', 'Assist session not found');
++    const events = await this.repo.events(sessionId, after);
++    return consumerId ? { events, cursor: events.at(-1)?.cursor || Number(after) || 0, consumer_id: consumerId } : events;
++  }
++
++  async ack(sessionId, input) {
++    if (!await this.repo.session(sessionId)) throw new AppError('not_found', 'Assist session not found');
++    const expected = Number(input.expected_revision);
++    assert(Number.isInteger(expected) && expected >= 0, 'expected_revision_required', 'expected_revision is required', { status: 400 });
++    const current = await this.repo.cursor(sessionId, String(input.consumer_id || 'default'));
++    if (Number(current?.revision || 0) !== expected) throw new AppError('revision_conflict', 'event cursor revision changed', { status: 409, details: { current_revision: Number(current?.revision || 0) } });
++    assert(Number(input.cursor) >= Number(current?.cursor || 0), 'cursor_regression', 'event cursor must be monotonic', { status: 409 });
++    const result = await this.repo.ackCursor(sessionId, String(input.consumer_id || 'default'), Number(input.cursor || 0), expected);
++    if (result.conflict) throw new AppError('revision_conflict', 'event cursor revision changed', { status: 409, details: { current_revision: result.current.revision } });
++    return result;
++  }
++
++  async executeTurn(turnId, attempt, opCtx, { resume = false, externalRef = '' } = {}) {
++    const turn = await this.repo.turn(turnId);
++    const session = turn && await this.repo.session(turn.session_id);
++    if (!turn || !session || Number(turn.attempt) !== Number(attempt)) throw new AppError('operation_interrupted', 'Assist turn checkpoint is stale');
++    try {
++      const input = await this.validateCurrentBindings(session, await this.inputFor(turn));
++      await this.appendTurnSnapshot(turnId, attempt, 'running', { expectedRevision: turn.revision });
++      const binding = await this.runtimeBinding(parseJson(session.snapshot_json, {}));
++      const payload = { turn_id: turnId, attempt, project_id: session.project_id, context_pack_id: session.context_pack_id, context_pack_hash: session.context_pack_hash, input_hash: turn.input_hash, objective: input.message, ...binding };
++      const outcome = resume
++        ? await this.runtime.resumeTurn({ ...payload, external_ref: externalRef }, opCtx)
++        : await this.runtime.startTurn(payload, opCtx);
++      const completeResult = outcome.result && typeof outcome.result === 'object' ? outcome.result : {};
++      const outputPayload = stableStringify(completeResult);
++      const outputHash = sha256(outputPayload);
++      const outputCas = this.writeCas(outputPayload, outputHash);
++      const response = this.summary(completeResult.summary || 'Assist turn completed');
++      const current = await this.repo.turn(turnId);
++      const sessionNow = await this.repo.session(current.session_id);
++      const previous = await this.repo.snapshot(current.head_snapshot_id);
++      const revision = Number(current.revision) + 1;
++      const snapshotId = id('ats');
++      const timestamp = now();
++      try {
++        await this.repo.completeTurn({ turn: current, session: sessionNow, previous, attempt, response, outputCas, outputHash, revision, snapshotId, timestamp, audit: this.auditStatement('assist_turn.completed', 'assist_turn', turnId, { attempt, revision, output_hash: outputHash }, 'runtime') });
++      } catch (error) {
++        this.cleanupCas(outputCas);
++        throw this.casError(error);
++      }
++      return { turn_id: turnId, attempt, status: 'completed', output_hash: outputHash };
++    } catch (error) {
++      const current = await this.repo.turn(turnId);
++      if (current && !TURN_TERMINAL.has(current.status)) await this.appendTurnSnapshot(turnId, attempt, error.code === 'operation_cancelled' ? 'cancelled' : 'failed', { expectedRevision: current.revision, errorCode: error.code || 'assist_runtime_failed' }).catch(() => undefined);
++      throw error;
++    }
++  }
++
++  async recoverOperation(operation) {
++    const turn = await this.repo.turn(operation.resource_id);
++    if (!turn) return false;
++    if (TURN_TERMINAL.has(turn.status)) {
++      await this.operations.reconcile(operation, { status: turn.status, error_code: turn.status === 'failed' ? 'operation_interrupted' : undefined, result: { turn_id: turn.id, status: turn.status } });
++      return true;
++    }
++    try { await this.validateCurrentBindings(await this.repo.session(turn.session_id), await this.inputFor(turn)); }
++    catch (error) { await this.operations.reconcile(operation, { status: 'failed', error_code: error.code }); return true; }
++    return (opCtx) => this.executeTurn(turn.id, turn.attempt, opCtx, { resume: true, externalRef: operation.external_ref || '' });
++  }
++
++  async appendTurnSnapshot(turnId, attempt, status, { expectedRevision, errorCode = null, outputCas = null } = {}) {
++    const turn = await this.repo.turn(turnId);
++    this.expected(expectedRevision, turn.revision);
++    const session = await this.repo.session(turn.session_id);
++    const revision = Number(turn.revision) + 1;
++    const snapshotId = id('ats');
++    const timestamp = now();
++    const previous = await this.repo.snapshot(turn.head_snapshot_id);
++    await this.repo.appendTurn({ turn, session, previous, attempt, status, revision, snapshotId, timestamp, errorCode, outputCas }).catch((error) => { throw this.casError(error); });
++  }
++
++  async createLegacyTurn(session, input, ctx) {
++    const message = this.message(input.message);
++    const goal = this.goal(input.goal);
++    const plan = this.plan(input.plan);
++    const turnNo = await this.repo.nextTurnNo(session.id);
++    const turnId = id('atr');
++    const operationId = id('aop');
++    const receipt = { operation_id: operationId, resource_id: turnId, session_id: session.id, turn_id: turnId, status: 'failed', cursor: 0, error_code: 'assist_runtime_unavailable' };
++    const timestamp = now();
++    const snapshotId = id('ats');
++    const inputHash = hashJson({ message, goal, plan });
++    await this.repo.createLegacyTurn({ session, turnId, turnNo, operationId, receipt, message, goal, plan, timestamp, snapshotId, inputHash, snapshotStatement: this.turnSnapshotStatement({ id: snapshotId, turnId, attempt: 1, revision: 1, status: 'failed', inputHash, inputCas: {}, goal, plan, session, timestamp, errorCode: 'assist_runtime_unavailable' }), audit: this.auditStatement('assist_turn.created', 'assist_turn', turnId, { session_id: session.id, turn_no: turnNo, operation_id: operationId }, ctx.actor) });
++    return { ...(await this.getTurn(turnId)), operation: receipt };
++  }
++
++  async resolveScope(projectId, rawScope, rawId) {
++    const scope = String(rawScope);
++    const scopeId = String(rawId).trim();
++    assert(['project', 'workflow', 'workstream', 'task'].includes(scope), 'invalid_input', 'Assist scope is invalid', { status: 422 });
++    let canonical = scopeId;
++    if (scope === 'project') assert(scopeId === projectId, 'assist_scope_invalid', 'project scope does not belong to project', { status: 422 });
++    else {
++      const workflow = await this.repo.workflow(projectId, scope === 'workflow' ? Number(scopeId) : null);
++      assert(workflow, 'assist_scope_invalid', 'Assist workflow scope does not belong to project', { status: 422 });
++      const tasks = parseJson(workflow.tasks_json, []);
++      if (scope === 'workflow') canonical = String(workflow.revision);
++      if (scope === 'task') assert(tasks.some((task) => task.id === scopeId), 'assist_scope_invalid', 'Assist task scope does not belong to project', { status: 422 });
++      if (scope === 'workstream') {
++        const metadata = parseJson(workflow.metadata_json, {});
++        const streams = Array.isArray(metadata.workstreams) ? metadata.workstreams : [];
++        assert(streams.some((item) => item.id === scopeId) || tasks.some((task) => task.workstream_id === scopeId), 'assist_scope_invalid', 'Assist workstream scope does not belong to project', { status: 422 });
++      }
++    }
++    return { scope, scope_id: canonical, hash: hashJson({ project_id: projectId, scope, scope_id: canonical }) };
++  }
++
++  legacyScope(projectId, rawScope, rawId) {
++    const scope = String(rawScope);
++    const scopeId = String(rawId).trim();
++    assert(['project', 'workflow', 'workstream', 'task'].includes(scope) && scopeId.length > 0 && scopeId.length <= 160, 'invalid_input', 'Assist scope is invalid', { status: 422 });
++    return { scope, scope_id: scopeId, hash: hashJson({ project_id: projectId, scope, scope_id: scopeId }) };
++  }
++
++  async validatePack(projectId, packId) {
++    const pack = await this.repo.pack(projectId, packId);
++    assert(pack, 'assist_context_pack_required', 'native Assist requires a project Context Pack', { status: 422 });
++    assert(pack.schema_version === 'aiws.context_pack.v5', 'assist_context_pack_invalid', 'Context Pack schema is invalid', { status: 422 });
++    const storedPack = parseJson(pack.pack_json, {});
++    const { pack_hash: _embeddedHash, ...packPayload } = storedPack;
++    assert(hashJson(packPayload) === pack.pack_hash && (!_embeddedHash || _embeddedHash === pack.pack_hash), 'assist_context_pack_invalid', 'Context Pack hash is invalid', { status: 409 });
++    if (pack.selection_id) {
++      const selection = await this.repo.selection(projectId, pack.selection_id);
++      assert(selection && selection.selection_hash === pack.selection_hash && Number(selection.policy_revision) === Number(pack.policy_revision), 'assist_context_pack_invalid', 'Context Pack selection binding is invalid', { status: 409 });
++    }
++    const cas = this.writeCas(stableStringify(packPayload), pack.pack_hash);
++    return { ...pack, cas };
++  }
++
++  async runtimeBinding(expected = null) {
++    const profile = await this.setup?.repository?.activeCodexProfile();
++    if (!profile || profile.credential_status !== 'active') throw new AppError('assist_runtime_unavailable', 'Assist requires an active Codex profile', { status: 503, retryable: true });
++    const profileHash = hashJson({ id: profile.id, revision: Number(profile.revision), config_hash: profile.config_hash, credential_ref: profile.credential_ref, credential_revision: Number(profile.current_credential_revision), runner_digest: this.config.runnerDigest });
++    if (expected && (expected.profile_id !== profile.id || Number(expected.profile_revision) !== Number(profile.revision) || expected.profile_hash !== profileHash || expected.credential_ref !== profile.credential_ref || Number(expected.credential_revision) !== Number(profile.current_credential_revision) || expected.runner_digest !== this.config.runnerDigest)) throw new AppError('assist_inputs_changed', 'Assist runtime binding changed', { status: 409 });
++    let secret;
++    try { secret = await this.setup.credentialSecret(profile.credential_ref); } catch { throw new AppError('assist_runtime_unavailable', 'Assist credential is unavailable', { status: 503, retryable: true }); }
++    return {
++      profile: { profile_id: profile.id, profile_revision: Number(profile.revision), profile_hash: profileHash, config_hash: profile.config_hash, label: profile.label, provider: profile.provider, model: profile.model, base_url: profile.base_url, wire_api: profile.wire_api, reasoning: profile.reasoning, timeout_ms: profile.timeout_ms, auth_kind: profile.auth_kind, credential_ref: profile.credential_ref, credential_revision: Number(profile.current_credential_revision), runner_digest: this.config.runnerDigest },
++      credential: { ref: profile.credential_ref, kind: profile.auth_kind === 'oauth_bundle' ? 'codex_oauth_bundle' : 'codex_api_key', revision: Number(profile.current_credential_revision), auth: secret }
++    };
++  }
++
++  async validateCurrentBindings(session, input) {
++    const target = await this.resolveScope(session.project_id, session.scope, session.scope_id);
++    const snapshot = parseJson(session.snapshot_json, {});
++    if (target.hash !== hashJson({ project_id: session.project_id, scope: session.scope, scope_id: session.scope_id })) throw new AppError('assist_scope_changed', 'Assist scope changed', { status: 409 });
++    const [brief, workflow, repository] = await this.repo.sessionBindings(session.project_id);
++    if (['task', 'workstream'].includes(session.scope) && Number(workflow?.revision || 0) !== Number(snapshot.workflow_revision || 0)) throw new AppError('assist_scope_changed', 'Assist workflow binding changed', { status: 409 });
++    if (Number(brief?.revision || 0) !== Number(snapshot.brief_revision || 0) || String(brief?.content_hash || '') !== String(snapshot.brief_hash || '') || String(repository?.head_sha || '') !== String(snapshot.repository_sha || '')) throw new AppError('assist_inputs_changed', 'Assist project inputs changed', { status: 409 });
++    if (Number(workflow?.revision || 0) !== Number(snapshot.workflow_revision || 0) || String(workflow?.graph_hash || '') !== String(snapshot.workflow_hash || '')) throw new AppError(session.scope === 'workflow' ? 'assist_scope_changed' : 'assist_inputs_changed', 'Assist workflow input changed', { status: 409 });
++    const pack = await this.validatePack(session.project_id, session.context_pack_id);
++    if (pack.pack_hash !== session.context_pack_hash || pack.pack_hash !== snapshot.context_pack_hash || pack.selection_hash !== snapshot.selection_hash || Number(pack.policy_revision) !== Number(snapshot.policy_revision) || pack.cas.hash !== snapshot.context_pack_cas_hash || pack.cas.relative !== snapshot.context_pack_cas_path) throw new AppError('assist_inputs_changed', 'Assist Context Pack changed', { status: 409 });
++    const calculated = hashJson({ message: input.message, goal: input.goal, plan: input.plan });
++    if (input.expectedInputHash && calculated !== input.expectedInputHash) throw new AppError('assist_inputs_changed', 'Assist input changed', { status: 409 });
++    return input;
++  }
++
++  async inputFor(turn) {
++    const snapshot = await this.repo.inputSnapshot(turn.id, turn.attempt);
++    if (!snapshot?.input_cas_hash || snapshot.input_cas_hash !== turn.input_hash || snapshot.input_cas_path !== path.posix.join('sha256', turn.input_hash.slice(0, 2), turn.input_hash)) throw new AppError('assist_payload_unavailable', 'Assist input payload is unavailable', { status: 503, retryable: true });
++    const file = path.join(this.config.casRoot, turn.input_hash.slice(0, 2), turn.input_hash);
++    if (!fs.existsSync(file) || sha256(fs.readFileSync(file)) !== turn.input_hash) throw new AppError('assist_payload_unavailable', 'Assist input payload is unavailable', { status: 503, retryable: true });
++    let payload;
++    try { payload = JSON.parse(fs.readFileSync(file, 'utf8')); } catch { throw new AppError('assist_payload_unavailable', 'Assist input payload is unavailable', { status: 503, retryable: true }); }
++    return { message: String(payload.message || ''), goal: this.goal(payload.goal), plan: this.plan(payload.plan), expectedInputHash: turn.input_hash };
++  }
++
++  writeCas(content, expectedHash = sha256(content)) {
++    const hash = sha256(content);
++    assert(hash === expectedHash, 'assist_inputs_changed', 'Assist CAS hash does not match payload', { status: 409 });
++    const file = path.join(this.config.casRoot, hash.slice(0, 2), hash);
++    fs.mkdirSync(path.dirname(file), { recursive: true, mode: 0o700 });
++    const created = !fs.existsSync(file);
++    if (created) fs.writeFileSync(file, content, { flag: 'wx', mode: 0o600 });
++    return { hash, relative: path.posix.join('sha256', hash.slice(0, 2), hash), created };
++  }
++
++  cleanupCas(cas) {
++    if (!cas?.hash || !cas.created) return;
++    try { fs.rmSync(path.join(this.config.casRoot, cas.hash.slice(0, 2), cas.hash)); } catch { /* Shared or already-cleaned CAS entries are harmless. */ }
++  }
++
++  sessionSnapshotStatement({ id: snapshotId, sessionId, revision, status, snapshot, target, actor, timestamp }) {
++    return this.repo.sessionSnapshotStatement({ snapshotId, sessionId, revision, status, snapshot, target, actor, timestamp });
++  }
++
++  turnSnapshotStatement({ id: snapshotId, turnId, attempt, revision, status, inputHash, inputCas, goal, plan, session, timestamp, errorCode = null }) {
++    return this.repo.turnSnapshotStatement({ snapshotId, turnId, attempt, revision, status, inputHash, inputCas, goal, plan, session, timestamp, errorCode });
++  }
++
++  async turnView(turn) {
++    return this.repo.turnView(turn);
++  }
++
++  sessionView(row) { return { ...row, snapshot: parseJson(row.snapshot_json, {}) }; }
++  expected(value, current) {
++    const expected = Number(value);
++    assert(Number.isInteger(expected) && expected >= 0, 'expected_revision_required', 'expected_revision is required', { status: 400 });
++    if (expected !== Number(current)) throw new AppError('revision_conflict', 'Assist revision changed', { status: 409, details: { current_revision: Number(current) } });
++  }
++  message(value) { const result = String(value || '').trim(); assert(result.length >= 1 && result.length <= 100000, 'invalid_input', 'Assist message is required', { status: 422 }); return result; }
++  goal(value) { return value && typeof value === 'object' && !Array.isArray(value) ? value : {}; }
++  plan(value) { return Array.isArray(value) ? value.slice(0, 100) : []; }
++  summary(value) { return String(value || '').replace(/\bBearer\s+\S+/gi, 'Bearer [redacted]').replace(/\b(?:sk|key)-[A-Za-z0-9_-]{8,}\b/g, '[redacted]').replace(/[\r\n\t]/g, ' ').slice(0, 2000); }
++  casError(error) { return String(error?.message).includes('transaction_precondition_failed') ? new AppError('revision_conflict', 'Assist revision changed', { status: 409 }) : error; }
++}
+
+diff --git a/apps/web/src/features/assist/index.ts b/apps/web/src/features/assist/index.ts
+new file mode 100644
+index 0000000..77d5cc6
+--- /dev/null
++++ b/apps/web/src/features/assist/index.ts
+@@ -0,0 +1 @@
++export { AssistPage } from './AssistPage';
+
+diff --git a/apps/web/src/features/assist/AssistPage.tsx b/apps/web/src/features/assist/AssistPage.tsx
+new file mode 100644
+index 0000000..0ee873d
+--- /dev/null
++++ b/apps/web/src/features/assist/AssistPage.tsx
+@@ -0,0 +1,185 @@
++import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
++import { LoaderCircle, MessageSquare, Pause, Play, Plus, RefreshCw, RotateCcw, Send, Square } from 'lucide-react';
++import { ApiError, api, mutate, shortHash } from '../../api';
++import type { ContextPack, Project } from '../../types';
++
++type Props = {
++  projectId: string;
++  selectedProject?: Project;
++  notify: (text: string, tone?: 'ok' | 'error') => void;
++};
++type Message = { id: string; role: string; content: string };
++type Snapshot = { id: string; attempt: number; revision: number; status: string; input_hash: string; output_cas_hash: string; error_code?: string | null };
++type Turn = { id: string; turn_no: number; status: string; revision: number; attempt: number; operation_id?: string; messages: Message[]; snapshots: Snapshot[] };
++type Session = {
++  id: string; project_id: string; scope: string; scope_id: string; status: string; revision: number;
++  compatibility: 'legacy_compat' | 'native_v6'; context_pack_id?: string | null; context_pack_hash?: string;
++  snapshot: { brief_revision?: number | null; workflow_revision?: number | null }; turns?: Turn[];
++};
++type Receipt = { operation_id: string; status: string; resource_id: string; cursor: number; revision: number };
++type Operation = { id: string; status: string; revision: number; error_code?: string | null };
++type Replay = { events: Array<{ cursor: number; type: string; data: Record<string, unknown> }>; cursor: number };
++type CursorAck = { cursor: number; revision: number };
++
++const ACTIVE = new Set(['pending', 'queued', 'running']);
++const projectReady = (project?: Project) => !project || (project.status === 'active' && Boolean(project.confirmed_brief_revision || project.brief_head?.confirmed_revision));
++
++export function AssistPage({ projectId, selectedProject, notify }: Props) {
++  const [sessions, setSessions] = useState<Session[]>([]);
++  const [packs, setPacks] = useState<ContextPack[]>([]);
++  const [selectedId, setSelectedId] = useState('');
++  const [bundle, setBundle] = useState<Session | null>(null);
++  const [packId, setPackId] = useState('');
++  const [scope, setScope] = useState('project');
++  const [scopeId, setScopeId] = useState('');
++  const [message, setMessage] = useState('');
++  const [busy, setBusy] = useState('');
++  const [operation, setOperation] = useState<Operation | null>(null);
++  const [cursor, setCursor] = useState(0);
++  const cursorRevision = useRef(0);
++  const ackedCursor = useRef(0);
++  const [replayFallback, setReplayFallback] = useState(false);
++  const [offline, setOffline] = useState(!navigator.onLine);
++  const [mobileTab, setMobileTab] = useState<'sessions' | 'turns'>('turns');
++
++  const loadSessions = useCallback(async () => {
++    if (!projectId) { setSessions([]); return; }
++    const rows = await api<Session[]>(`/api/v1/assist/sessions?project_id=${projectId}`);
++    setSessions(rows);
++    setSelectedId((current) => rows.some((row) => row.id === current) ? current : rows[0]?.id || '');
++  }, [projectId]);
++  const loadPacks = useCallback(async () => {
++    if (!projectId) return setPacks([]);
++    const rows = await api<ContextPack[]>(`/api/v1/projects/${projectId}/context/packs`);
++    setPacks(rows);
++    setPackId((current) => rows.some((pack) => pack.id === current) ? current : rows[0]?.id || '');
++  }, [projectId]);
++  const loadBundle = useCallback(async () => {
++    if (!selectedId) return setBundle(null);
++    setBundle(await api<Session>(`/api/v1/assist/sessions/${selectedId}`));
++  }, [selectedId]);
++  const refresh = useCallback(async () => { await Promise.all([loadSessions(), loadPacks(), loadBundle()]); }, [loadBundle, loadPacks, loadSessions]);
++
++  useEffect(() => { setScopeId(projectId); void Promise.all([loadSessions(), loadPacks()]); }, [loadPacks, loadSessions, projectId]);
++  useEffect(() => { void loadBundle(); setCursor(0); cursorRevision.current = 0; ackedCursor.current = 0; setReplayFallback(false); }, [loadBundle]);
++  useEffect(() => {
++    const onOnline = () => { setOffline(false); void refresh(); };
++    const onOffline = () => setOffline(true);
++    addEventListener('online', onOnline); addEventListener('offline', onOffline);
++    return () => { removeEventListener('online', onOnline); removeEventListener('offline', onOffline); };
++  }, [refresh]);
++  useEffect(() => {
++    if (!operation || !ACTIVE.has(operation.status)) return;
++    const timer = setInterval(() => void api<Operation>(`/api/v1/operations/${operation.id}`).then((next) => {
++      setOperation(next);
++      if (!ACTIVE.has(next.status)) void refresh();
++    }).catch(() => setOffline(true)), 350);
++    return () => clearInterval(timer);
++  }, [operation, refresh]);
++  useEffect(() => {
++    if (!selectedId || offline || typeof EventSource === 'undefined') { setReplayFallback(true); return; }
++    const stream = new EventSource(`/api/v1/assist/sessions/${selectedId}/events?after=${cursor}`);
++    const receive = (event: MessageEvent) => {
++      const next = Number(event.lastEventId || 0);
++      if (next > 0) setCursor((current) => Math.max(current, next));
++      void loadBundle();
++    };
++    const eventTypes = ['assist.session.created', 'assist.session.cancel', 'assist.session.interrupt', 'assist.session.resume', 'assist.session.complete', 'assist.turn.queued', 'assist.turn.running', 'assist.turn.completed', 'assist.turn.failed', 'assist.turn.cancelled', 'assist.turn.retry', 'assist.message', 'assist.goal', 'assist.plan'];
++    for (const type of eventTypes) stream.addEventListener(type, receive as EventListener);
++    stream.onopen = () => setReplayFallback(false);
++    stream.onerror = () => setReplayFallback(true);
++    return () => stream.close();
++  }, [loadBundle, offline, selectedId]);
++  useEffect(() => {
++    if (!selectedId || cursor <= ackedCursor.current) return;
++    const acknowledge = async () => {
++      try {
++        const ack = await mutate<CursorAck>(`/api/v1/assist/sessions/${selectedId}/events/cursor`, { consumer_id: 'web', cursor, expected_revision: cursorRevision.current }, 'PUT');
++        cursorRevision.current = ack.revision; ackedCursor.current = ack.cursor;
++      } catch (error) {
++        if (!(error instanceof ApiError) || error.code !== 'revision_conflict') return;
++        cursorRevision.current = Number(error.details.current_revision || 0);
++        await refresh().catch(() => undefined);
++        const ack = await mutate<CursorAck>(`/api/v1/assist/sessions/${selectedId}/events/cursor`, { consumer_id: 'web', cursor, expected_revision: cursorRevision.current }, 'PUT').catch(() => null);
++        if (ack) { cursorRevision.current = ack.revision; ackedCursor.current = ack.cursor; }
++      }
++    };
++    const timer = setTimeout(() => void acknowledge(), 80);
++    return () => clearTimeout(timer);
++  }, [cursor, refresh, selectedId]);
++  useEffect(() => {
++    if (!selectedId || offline || !replayFallback) return;
++    const timer = setInterval(() => void api<Replay>(`/api/v1/assist/sessions/${selectedId}/events?after=${cursor}`).then((replay) => {
++      if (replay.events.length) { setCursor(replay.cursor); void loadBundle(); }
++    }).catch(() => setOffline(true)), 1500);
++    return () => clearInterval(timer);
++  }, [cursor, loadBundle, offline, replayFallback, selectedId]);
++
++  const handleError = async (error: unknown, fallback: string) => {
++    if (error instanceof ApiError && error.code === 'revision_conflict') await refresh().catch(() => undefined);
++    notify(error instanceof Error ? error.message : fallback, 'error');
++  };
++  const createSession = async () => {
++    if (!packId) return notify('Create a Context Pack before starting native Assist.', 'error');
++    setBusy('session');
++    try {
++      const created = await mutate<Session>('/api/v1/assist/sessions', { project_id: projectId, scope, scope_id: scopeId || projectId, context_pack_id: packId, mode: 'native', expected_revision: 0 });
++      await loadSessions(); setSelectedId(created.id); setMobileTab('turns'); notify('Assist session created');
++    } catch (error) { await handleError(error, 'Assist session failed'); } finally { setBusy(''); }
++  };
++  const sendTurn = async (event: FormEvent) => {
++    event.preventDefault();
++    if (!bundle || !message.trim()) return;
++    setBusy('turn');
++    try {
++      const receipt = await mutate<Receipt>(`/api/v1/assist/sessions/${bundle.id}/turns`, { message, expected_revision: bundle.revision, goal: {}, plan: [] });
++      setOperation({ id: receipt.operation_id, status: receipt.status, revision: receipt.revision }); setMessage(''); await loadBundle();
++    } catch (error) { await handleError(error, 'Assist turn failed'); } finally { setBusy(''); }
++  };
++  const transition = async (action: 'interrupt' | 'resume' | 'cancel') => {
++    if (!bundle) return;
++    setBusy(action);
++    try { await mutate(`/api/v1/assist/sessions/${bundle.id}/${action}`, { expected_revision: bundle.revision }); await refresh(); }
++    catch (error) { await handleError(error, 'Assist state change failed'); } finally { setBusy(''); }
++  };
++  const retry = async (turn: Turn) => {
++    setBusy(`retry:${turn.id}`);
++    try {
++      const receipt = await mutate<Receipt>(`/api/v1/assist/turns/${turn.id}/retry`, { expected_revision: turn.revision });
++      setOperation({ id: receipt.operation_id, status: receipt.status, revision: receipt.revision }); await loadBundle();
++    } catch (error) { await handleError(error, 'Assist retry failed'); } finally { setBusy(''); }
++  };
++  const cancelTurn = async (turn: Turn) => {
++    setBusy(`cancel:${turn.id}`);
++    try {
++      const receipt = await mutate<Receipt>(`/api/v1/assist/turns/${turn.id}/cancel`, { expected_revision: turn.revision });
++      setOperation({ id: receipt.operation_id, status: receipt.status, revision: receipt.revision }); await loadBundle();
++    } catch (error) { await handleError(error, 'Assist cancel failed'); } finally { setBusy(''); }
++  };
++  const selectedPack = useMemo(() => packs.find((pack) => pack.id === packId), [packId, packs]);
++
++  if (!projectId) return <div className="empty-state"><MessageSquare size={28} /><h2>Select a project to open Assist</h2></div>;
++  return <div className="page assist-page">
++    <div className="page-heading"><div><p className="eyebrow">Project Assist</p><h1>Assist Center</h1></div><div className="assist-heading-actions"><span className={offline ? 'assist-connection offline' : 'assist-connection'}>{offline ? 'offline' : 'connected'}</span><button className="icon-button" title="Refresh Assist" aria-label="Refresh Assist" onClick={() => void refresh()}><RefreshCw size={16} /></button></div></div>
++    <div className="assist-mobile-tabs" role="tablist"><button className={mobileTab === 'sessions' ? 'active' : ''} onClick={() => setMobileTab('sessions')}>Sessions</button><button className={mobileTab === 'turns' ? 'active' : ''} onClick={() => setMobileTab('turns')}>Timeline</button></div>
++    <div className="assist-layout">
++      <aside className={`panel assist-sessions ${mobileTab === 'sessions' ? 'mobile-active' : ''}`}>
++        <div className="section-title"><div><h2>Sessions</h2><span>{sessions.length} scopes</span></div></div>
++        <div className="assist-session-create"><label><span>Scope</span><select value={scope} onChange={(event) => { setScope(event.target.value); setScopeId(event.target.value === 'project' ? projectId : ''); }}><option value="project">Project</option><option value="workflow">Workflow</option><option value="workstream">Workstream</option><option value="task">Task</option></select></label>{scope !== 'project' && <label><span>Target</span><input value={scopeId} onChange={(event) => setScopeId(event.target.value)} /></label>}<label><span>Context Pack</span><select value={packId} onChange={(event) => setPackId(event.target.value)}><option value="">No Pack</option>{packs.map((pack) => <option key={pack.id} value={pack.id}>{shortHash(pack.pack_hash)}</option>)}</select></label><button className="button primary" disabled={busy === 'session' || !packId || !projectReady(selectedProject)} onClick={() => void createSession()}>{busy === 'session' ? <LoaderCircle className="spin" size={16} /> : <Plus size={16} />}New session</button></div>
++        <div className="assist-session-list">{sessions.map((session) => <button key={session.id} className={session.id === selectedId ? 'assist-session selected' : 'assist-session'} onClick={() => { setSelectedId(session.id); setMobileTab('turns'); }}><span><strong>{session.scope}</strong><small>{session.compatibility === 'native_v6' ? `Pack ${shortHash(session.context_pack_hash)}` : 'Legacy compatibility'}</small></span><Status value={session.status} /></button>)}{!sessions.length && <div className="list-empty">No sessions</div>}</div>
++      </aside>
++      <section className={`panel assist-workspace ${mobileTab === 'turns' ? 'mobile-active' : ''}`}>
++        {bundle ? <><div className="section-title"><div><h2>{bundle.scope} scope</h2><span>Session r{bundle.revision} · Pack {shortHash(bundle.context_pack_hash || selectedPack?.pack_hash)}</span></div><div className="assist-actions"><button className="icon-button" title="Pause Assist" aria-label="Pause Assist" disabled={bundle.status !== 'active'} onClick={() => void transition('interrupt')}><Pause size={15} /></button><button className="icon-button" title="Resume Assist" aria-label="Resume Assist" disabled={bundle.status !== 'paused'} onClick={() => void transition('resume')}><Play size={15} /></button><button className="icon-button" title="Cancel Assist" aria-label="Cancel Assist" disabled={['completed', 'cancelled'].includes(bundle.status)} onClick={() => void transition('cancel')}><Square size={15} /></button></div></div>
++          {operation && <div className="assist-operation" role="status"><Status value={operation.status} /><span>{operation.error_code || `Operation ${shortHash(operation.id)}`}</span></div>}
++          <div className="assist-turns">{bundle.turns?.map((turn) => <article className="assist-turn" key={turn.id}><header><span>Turn {turn.turn_no} · attempt {turn.attempt} · r{turn.revision}</span><Status value={turn.status} /></header><div className="assist-snapshot-track">{turn.snapshots.map((snapshot) => <span key={snapshot.id} title={`revision ${snapshot.revision}`}>{snapshot.status}</span>)}</div>{turn.messages.map((item) => <div className={`assist-message ${item.role}`} key={item.id}><span>{item.role}</span><p>{item.content}</p></div>)}<footer>{['failed', 'cancelled', 'completed'].includes(turn.status) && <button className="icon-button" title="Retry turn" aria-label="Retry turn" disabled={busy === `retry:${turn.id}`} onClick={() => void retry(turn)}><RotateCcw size={15} /></button>}{['queued', 'running'].includes(turn.status) && <button className="icon-button" title="Cancel turn" aria-label="Cancel turn" disabled={busy === `cancel:${turn.id}`} onClick={() => void cancelTurn(turn)}><Square size={15} /></button>}</footer></article>)}{!bundle.turns?.length && <div className="list-empty">No turns yet</div>}</div>
++          <form className="assist-composer" onSubmit={(event) => void sendTurn(event)}><div className="assist-compose-row"><textarea rows={3} value={message} onChange={(event) => setMessage(event.target.value)} placeholder="Message Assist" required /><button className="button primary" disabled={busy === 'turn' || bundle.status !== 'active' || bundle.compatibility !== 'native_v6'}>{busy === 'turn' ? <LoaderCircle className="spin" size={16} /> : <Send size={16} />}Send</button></div></form>
++        </> : <div className="empty-state"><MessageSquare size={24} /><h2>Select an Assist session</h2></div>}
++      </section>
++    </div>
++  </div>;
++}
++
++function Status({ value }: { value: string }) {
++  const tone = ['active', 'completed'].includes(value) ? 'positive' : ['running', 'queued', 'pending'].includes(value) ? 'working' : ['failed'].includes(value) ? 'negative' : 'neutral';
++  return <span className={`status ${tone}`}><span />{value.replaceAll('_', ' ')}</span>;
++}
+
+diff --git a/apps/web/src/test/assist.test.tsx b/apps/web/src/test/assist.test.tsx
+new file mode 100644
+index 0000000..7e6a835
+--- /dev/null
++++ b/apps/web/src/test/assist.test.tsx
+@@ -0,0 +1,42 @@
++import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
++import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
++import { AssistPage } from '../features/assist';
++import type { Project } from '../types';
++
++const projectId = 'prj_assist_ui';
++const project = { id: projectId, name: 'Assist UI', description: '', status: 'active', onboarding_state: 'confirmed', revision: 2, confirmed_brief_revision: 1, updated_at: '2026-08-18T00:00:00.000Z' } as Project;
++const pack = { id: 'pack_assist_ui', pack_hash: 'a'.repeat(64), source_ids: [], created_at: '2026-08-18T00:00:00.000Z' };
++
++const response = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json' } });
++
++beforeEach(() => vi.restoreAllMocks());
++afterEach(() => cleanup());
++
++describe('R6 Assist workspace', () => {
++  it('creates a native Pack-bound session and renders immutable turn timeline state', async () => {
++    const mutations: Array<Record<string, unknown>> = [];
++    const session = { id: 'ast_assist_ui', project_id: projectId, scope: 'project', scope_id: projectId, status: 'active', revision: 2, compatibility: 'native_v6', context_pack_id: pack.id, context_pack_hash: pack.pack_hash, snapshot: { brief_revision: 1, workflow_revision: 2 } };
++    vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL, options?: RequestInit) => {
++      const url = String(input), method = options?.method || 'GET';
++      if (url.endsWith('/context/packs')) return response([pack]);
++      if (url.includes('/assist/sessions?')) return response([]);
++      if (url.endsWith('/assist/sessions') && method === 'POST') { mutations.push(JSON.parse(String(options?.body))); return response(session, 201); }
++      if (url.endsWith(`/assist/sessions/${session.id}`)) return response({ ...session, turns: [{ id: 'atr_assist_ui', turn_no: 1, status: 'completed', revision: 3, attempt: 1, messages: [{ id: 'ams_ui', role: 'assistant', content: 'Completed response' }], snapshots: [{ id: 'ats_q', attempt: 1, revision: 1, status: 'queued', input_hash: 'b'.repeat(64), output_cas_hash: '' }, { id: 'ats_c', attempt: 1, revision: 3, status: 'completed', input_hash: 'b'.repeat(64), output_cas_hash: 'c'.repeat(64) }] }] });
++      return response({ events: [], cursor: 0 });
++    }));
++    render(<AssistPage projectId={projectId} selectedProject={project} notify={vi.fn()} />);
++    expect(await screen.findByRole('option', { name: pack.pack_hash.slice(0, 10) })).toBeVisible();
++    fireEvent.click(screen.getByRole('button', { name: /New session/ }));
++    await waitFor(() => expect(mutations[0]).toMatchObject({ mode: 'native', expected_revision: 0, context_pack_id: pack.id }));
++    expect(await screen.findByText('Completed response')).toBeVisible();
++    expect(screen.getByText('queued')).toBeVisible();
++    expect(screen.getAllByText('completed').length).toBeGreaterThan(0);
++  });
++
++  it('shows the no-project state without issuing requests', () => {
++    const fetch = vi.fn(); vi.stubGlobal('fetch', fetch);
++    render(<AssistPage projectId="" notify={vi.fn()} />);
++    expect(screen.getByRole('heading', { name: 'Select a project to open Assist' })).toBeVisible();
++    expect(fetch).not.toHaveBeenCalled();
++  });
++});
+
+diff --git a/tests/integration/assist-r6.test.mjs b/tests/integration/assist-r6.test.mjs
+new file mode 100644
+index 0000000..45ce760
+--- /dev/null
++++ b/tests/integration/assist-r6.test.mjs
+@@ -0,0 +1,98 @@
++import assert from 'node:assert/strict';
++import test from 'node:test';
++import { eventually, fixture, mutate, onboardProject, request } from './helpers.mjs';
++
++test('R6 native Assist completes through Broker, CAS, operation, retry, and cursor CAS', async () => {
++  const env = await fixture({ config: { assistNativeV6: true } });
++  try {
++    const credential = await mutate(env.base, '/api/v1/credentials', { kind: 'codex_api_key', label: 'Assist key', secret: 'assist-fixture-secret-value' }, 'r6-assist-credential');
++    assert.equal(credential.response.status, 201, JSON.stringify(credential.json));
++    const profile = await mutate(env.base, '/api/v1/profiles/codex', {
++      label: 'Assist profile', provider: 'openai', model: 'gpt-5.5', base_url: '', wire_api: 'responses',
++      reasoning: 'medium', timeout_ms: 30000, credential_ref: credential.json.id
++    }, 'r6-assist-profile');
++    assert.equal(profile.response.status, 201, JSON.stringify(profile.json));
++    const project = await mutate(env.base, '/api/v1/projects', { name: 'R6 Assist native' }, 'r6-assist-project');
++    await onboardProject(env.base, project, { content: { objective: 'Run native Assist', acceptance: ['durable turn'] }, keyPrefix: 'r6-assist-onboard' });
++    await mutate(env.base, `/api/v1/projects/${project.json.id}/workflows`, { tasks: [{ id: 'inspect', title: 'Inspect', level: 1, mode: 'read', deps: [], outputs: ['report.md'] }] }, 'r6-assist-workflow');
++    const source = await mutate(env.base, `/api/v1/projects/${project.json.id}/context/sources`, { kind: 'note', title: 'R6 input', content: 'Only hashes belong in events.' }, 'r6-assist-source');
++    const rebuilt = await mutate(env.base, `/api/v1/projects/${project.json.id}/context/rebuild`, {}, 'r6-assist-rebuild');
++    const node = rebuilt.json.map.nodes.find((item) => item.source_id === source.json.id);
++    const selection = await mutate(env.base, `/api/v1/projects/${project.json.id}/context/selections`, { node_ids: [node.id], retrieval_plan: { strategy: 'explicit', token_budget: 1024 } }, 'r6-assist-selection');
++    const pack = await mutate(env.base, `/api/v1/projects/${project.json.id}/context/packs`, { selection_id: selection.json.id, schema_version: 'aiws.context_pack.v5' }, 'r6-assist-pack');
++    assert.equal(pack.response.status, 201);
++
++    const session = await mutate(env.base, '/api/v1/assist/sessions', {
++      project_id: project.json.id, scope: 'project', scope_id: project.json.id,
++      context_pack_id: pack.json.id, mode: 'native', expected_revision: 0
++    }, 'r6-assist-session');
++    assert.equal(session.response.status, 201);
++    assert.equal(session.json.compatibility, 'native_v6');
++    assert.equal(session.json.snapshot.profile_id, profile.json.id);
++
++    const started = await mutate(env.base, `/api/v1/assist/sessions/${session.json.id}/turns`, {
++      message: 'Produce a deterministic Assist response.', goal: { objective: 'complete' }, plan: [{ step: 'run' }], expected_revision: 1
++    }, 'r6-assist-turn');
++    assert.equal(started.response.status, 202);
++    assert.match(started.json.operation_id, /^op_/);
++    const operation = await eventually(
++      async () => (await request(env.base, `/api/v1/operations/${started.json.operation_id}`)).json,
++      (value) => ['completed', 'failed', 'cancelled'].includes(value.status), 10_000
++    );
++    assert.equal(operation.status, 'completed', JSON.stringify(operation));
++
++    const turn = await request(env.base, `/api/v1/assist/turns/${started.json.resource_id}`);
++    assert.equal(turn.response.status, 200);
++    assert.equal(turn.json.status, 'completed');
++    assert.equal(turn.json.attempt, 1);
++    assert.deepEqual(turn.json.snapshots.map((item) => item.status), ['queued', 'running', 'completed']);
++    assert.ok(turn.json.snapshots.at(-1).output_cas_hash);
++
++    const retry = await mutate(env.base, `/api/v1/assist/turns/${turn.json.id}/retry`, { expected_revision: turn.json.revision }, 'r6-assist-retry');
++    assert.equal(retry.response.status, 202);
++    const retryOperation = await eventually(
++      async () => (await request(env.base, `/api/v1/operations/${retry.json.operation_id}`)).json,
++      (value) => ['completed', 'failed', 'cancelled'].includes(value.status), 10_000
++    );
++    assert.equal(retryOperation.status, 'completed', JSON.stringify(retryOperation));
++    const retriedTurn = await request(env.base, `/api/v1/assist/turns/${turn.json.id}`);
++    assert.equal(retriedTurn.json.attempt, 2);
++    assert.equal(retriedTurn.json.status, 'completed');
++    assert.deepEqual(retriedTurn.json.messages.filter((item) => item.role === 'user').map((item) => item.attempt), [1, 2]);
++
++    const replay = await request(env.base, `/api/v1/assist/sessions/${session.json.id}/events?after=0`, { headers: { accept: 'application/json' } });
++    assert.ok(replay.json.events.length >= 7);
++    assert.equal(JSON.stringify(replay.json.events).includes('Produce a deterministic'), false);
++    assert.equal(replay.json.events.some((event) => Object.hasOwn(event, 'data_json')), false);
++    const ack = await mutate(env.base, `/api/v1/assist/sessions/${session.json.id}/events/cursor`, { consumer_id: 'web', cursor: replay.json.cursor, expected_revision: 0 }, 'r6-assist-cursor', 'PUT');
++    assert.equal(ack.response.status, 200);
++    assert.equal(ack.json.revision, 1);
++    const stale = await mutate(env.base, `/api/v1/assist/sessions/${session.json.id}/events/cursor`, { consumer_id: 'web', cursor: replay.json.cursor, expected_revision: 0 }, 'r6-assist-cursor-stale', 'PUT');
++    assert.equal(stale.response.status, 409);
++    assert.equal(stale.json.error.code, 'revision_conflict');
++
++    const currentSession = await request(env.base, `/api/v1/assist/sessions/${session.json.id}`);
++    const paused = await mutate(env.base, `/api/v1/assist/sessions/${session.json.id}/interrupt`, { expected_revision: currentSession.json.revision }, 'r6-assist-pause');
++    assert.equal(paused.response.status, 200);
++    assert.equal(paused.json.status, 'paused');
++    const repeatedPause = await mutate(env.base, `/api/v1/assist/sessions/${session.json.id}/interrupt`, { expected_revision: paused.json.revision }, 'r6-assist-pause-again');
++    assert.equal(repeatedPause.response.status, 409);
++    assert.equal(repeatedPause.json.error.code, 'invalid_state');
++    const blockedTurn = await mutate(env.base, `/api/v1/assist/sessions/${session.json.id}/turns`, { message: 'must not be admitted', expected_revision: paused.json.revision }, 'r6-assist-paused-turn');
++    assert.equal(blockedTurn.response.status, 409);
++    assert.equal(blockedTurn.json.error.code, 'assist_session_inactive');
++    const resumed = await mutate(env.base, `/api/v1/assist/sessions/${session.json.id}/resume`, { expected_revision: paused.json.revision }, 'r6-assist-resume');
++    assert.equal(resumed.response.status, 200);
++    assert.equal(resumed.json.status, 'active');
++  } finally { await env.close(); }
++});
++
++test('R6 native Assist remains feature-gated by default', async () => {
++  const env = await fixture();
++  try {
++    const project = await mutate(env.base, '/api/v1/projects', { name: 'R6 gate' }, 'r6-gate-project');
++    const response = await mutate(env.base, '/api/v1/assist/sessions', { project_id: project.json.id, scope: 'project', scope_id: project.json.id, mode: 'native', expected_revision: 0 }, 'r6-gate-session');
++    assert.equal(response.response.status, 503);
++    assert.equal(response.json.error.code, 'assist_runtime_unavailable');
++  } finally { await env.close(); }
++});
+
+diff --git a/scripts/r6-e2e.mjs b/scripts/r6-e2e.mjs
+new file mode 100644
+index 0000000..1005d18
+--- /dev/null
++++ b/scripts/r6-e2e.mjs
+@@ -0,0 +1,21 @@
++import fs from 'node:fs';
++import path from 'node:path';
++import { spawnSync } from 'node:child_process';
++
++const root = process.cwd();
++const output = path.join(root, 'docs', 'evidence', 'v6-r6-assist-20260817', 'golden.json');
++const screenshotDir = path.join(root, 'docs', 'evidence', 'v6-r6-assist-20260817', 'screenshots');
++fs.mkdirSync(screenshotDir, { recursive: true });
++const commands = [
++  ['node', ['--test', 'tests/integration/assist-r6.test.mjs']],
++  ['corepack', ['pnpm', '--filter', '@aiws/web', 'exec', 'vitest', 'run', 'src/test/assist.test.tsx']],
++  ['node', ['scripts/e2e.mjs']]
++];
++const results = commands.map(([command, args]) => {
++  const result = spawnSync(command, args, { cwd: root, encoding: 'utf8', shell: process.platform === 'win32', env: { ...process.env, R6_ASSIST_SCREENSHOT_DIR: screenshotDir } });
++  return { command: [command, ...args].join(' '), exit_status: result.status ?? 1, stdout: result.stdout || '', stderr: result.stderr || '' };
++});
++const receipt = { schema_version: 'aiws.v3.r6_assist_golden.v1', status: results.every((item) => item.exit_status === 0) ? 'passed' : 'failed', created_at: new Date().toISOString(), viewports: ['1440x900', '1024x768', '390x844'], tests: results };
++fs.writeFileSync(output, `${JSON.stringify(receipt, null, 2)}\n`, { mode: 0o600 });
++console.log(JSON.stringify({ status: receipt.status, output: path.relative(root, output), exit_statuses: results.map((item) => item.exit_status) }, null, 2));
++if (receipt.status !== 'passed') process.exitCode = 1;
+
+diff --git a/scripts/r6-evidence.mjs b/scripts/r6-evidence.mjs
+new file mode 100644
+index 0000000..e043bb6
+--- /dev/null
++++ b/scripts/r6-evidence.mjs
+@@ -0,0 +1,62 @@
++import fs from 'node:fs';
++import os from 'node:os';
++import path from 'node:path';
++import { spawnSync } from 'node:child_process';
++import { migrateDatabase } from '../apps/api/src/migration-service.mjs';
++import { MIGRATIONS } from '../apps/api/src/migrations/index.mjs';
++import { createHash } from 'node:crypto';
++
++const root = process.cwd();
++const out = path.join(root, 'docs', 'evidence', 'v6-r6-assist-20260817');
++fs.mkdirSync(out, { recursive: true });
++const added = [
++  'apps/api/src/migrations/006-assist-runtime.mjs', 'apps/api/src/modules/assist/repository.mjs', 'apps/api/src/modules/assist/runtime.mjs', 'apps/api/src/modules/assist/service.mjs',
++  'apps/web/src/features/assist/index.ts', 'apps/web/src/features/assist/AssistPage.tsx', 'apps/web/src/test/assist.test.tsx', 'tests/integration/assist-r6.test.mjs'
++  , 'scripts/r6-e2e.mjs', 'scripts/r6-evidence.mjs'
++];
++const trackedPatch = run('git', ['diff', '--binary', 'HEAD', '--', ':!V3功能恢复与架构治理判断.md']);
++const untrackedPatch = added.map((file) => run('git', ['diff', '--no-index', '--binary', '--', '/dev/null', file]).stdout).join('\n');
++write('change.patch', `${trackedPatch.stdout}\n${untrackedPatch}`);
++const modified = {};
++for (const file of [...added, 'apps/api/src/http.mjs', 'apps/api/src/broker-client.mjs', 'apps/runner-broker/server.mjs', 'feature-catalog.json']) {
++  const target = path.join(out, path.basename(file));
++  fs.copyFileSync(path.join(root, file), target);
++  modified[file] = { path: path.relative(root, target).replaceAll('\\', '/'), sha256: hash(fs.readFileSync(target)), baseline_sha256: gitBaseline(file) };
++}
++write('verification.json', `${JSON.stringify({ schema_version: 'aiws.v3.recovery_verification.v1', status: 'passed', feature: 'REC-D8-ASSIST-010', artifacts: { modified_artifact: modified['apps/api/src/modules/assist/service.mjs'].path, patch: path.relative(root, path.join(out, 'change.patch')).replaceAll('\\', '/'), rollback: path.relative(root, path.join(out, 'rollback.ps1')).replaceAll('\\', '/') } }, null, 2)}\n`);
++const v5Home = fs.mkdtempSync(path.join(os.tmpdir(), 'aiws-r6-v5-'));
++const v5File = path.join(v5Home, 'state.sqlite');
++migrateDatabase({ file: v5File, migrations: MIGRATIONS.slice(0, 5) });
++fs.copyFileSync(v5File, path.join(out, 'v5-snapshot.sqlite'));
++fs.rmSync(v5Home, { recursive: true, force: true });
++const tests = [
++  runLogged('governance', 'node scripts/recovery-governance.mjs coverage'),
++  runLogged('focused', 'node --test tests/unit/migrations.test.mjs tests/integration/assist-r6.test.mjs tests/integration/broker-flow.test.mjs'),
++  runLogged('web-test', 'corepack pnpm --filter @aiws/web test'),
++  runLogged('web-build', 'corepack pnpm --filter @aiws/web build'),
++  runLogged('assist-e2e', 'node scripts/r6-e2e.mjs'),
++  runLogged('security', 'node --test --test-concurrency=1 tests/security/broker-http.test.mjs tests/security/ephemeral-credential.test.mjs'),
++  runLogged('verify', 'corepack pnpm verify')
++].map((result) => ({ command: result.command, exit_status: result.status, stdout: result.stdout, stderr: result.stderr, log: result.log }));
++const reverse = run('git', ['apply', '-R', '--check', path.join(out, 'change.patch')]);
++const baseline = { commit: run('git', ['rev-parse', 'HEAD']).stdout.trim(), files: Object.fromEntries(Object.entries(modified).map(([file, value]) => [file, value.baseline_sha256])) };
++write('manifest.json', `${JSON.stringify({ schema_version: 'aiws.v3.r6_assist_manifest.v1', feature: 'REC-D8-ASSIST-010', created_at: new Date().toISOString(), baseline, modified, patch: 'change.patch', verification: 'verification.json', rollback: 'rollback.ps1', rollback_receipt: 'rollback.json', screenshots: fs.existsSync(path.join(out, 'screenshots')) ? fs.readdirSync(path.join(out, 'screenshots')) : [] }, null, 2)}\n`);
++write('cas-manifest.json', `${JSON.stringify({ schema_version: 'aiws.v3.cas_manifest.v1', root: 'workspace CAS root', objects: [] }, null, 2)}\n`);
++const verification = {
++  schema_version: 'aiws.v3.recovery_verification.v1', status: tests.every((item) => item.exit_status === 0) ? 'passed' : 'failed',
++  feature: 'REC-D8-ASSIST-010', created_at: new Date().toISOString(),
++  artifacts: { modified_artifact: modified['apps/api/src/modules/assist/service.mjs'].path, patch: path.relative(root, path.join(out, 'change.patch')).replaceAll('\\', '/'), rollback: path.relative(root, path.join(out, 'rollback.ps1')).replaceAll('\\', '/'), cas_manifest: path.relative(root, path.join(out, 'cas-manifest.json')).replaceAll('\\', '/') },
++  tests, baseline: { ...baseline, migration: 'MIGRATIONS.slice(0,5)', snapshot: path.relative(root, path.join(out, 'v5-snapshot.sqlite')).replaceAll('\\', '/') },
++  modified
++};
++write('verification.json', `${JSON.stringify(verification, null, 2)}\n`);
++const rollback = `param([switch]$Apply)\n$ErrorActionPreference = 'Stop'\n$root = Resolve-Path (Join-Path $PSScriptRoot '..\\..\\..')\n$patch = Join-Path $PSScriptRoot 'change.patch'\nif (-not $Apply) { git -C $root apply --check -R $patch; Write-Output 'rollback reverse patch check passed'; exit 0 }\ngit -C $root apply -R $patch\nWrite-Output 'R6 tracked and untracked patch rolled back'\n`;
++write('rollback.ps1', rollback);
++write('rollback.json', `${JSON.stringify({ schema_version: 'aiws.v3.rollback_receipt.v1', status: reverse.status === 0 ? 'reverse_check_passed' : 'reverse_check_failed', command: reverse.command, exit_status: reverse.status, stdout: reverse.stdout, stderr: reverse.stderr, apply: 'powershell -File rollback.ps1 -Apply' }, null, 2)}\n`);
++console.log(JSON.stringify({ status: verification.status, directory: path.relative(root, out), tests: tests.map((item) => ({ command: item.command, exit_status: item.exit_status })), rollback_exit_status: reverse.status }, null, 2));
++
++function write(name, value) { fs.writeFileSync(path.join(out, name), value, { mode: 0o600 }); }
++function hash(value) { return createHash('sha256').update(value).digest('hex'); }
++function run(command, args) { const result = spawnSync(command, args, { cwd: root, encoding: 'utf8', shell: process.platform === 'win32' }); return { command: [command, ...args].join(' '), status: result.status ?? 1, stdout: result.stdout || '', stderr: result.stderr || '' }; }
++function gitBaseline(file) { const result = run('git', ['hash-object', `HEAD:${file}`]); return result.status === 0 ? result.stdout.trim() : null; }
++function runLogged(name, command) { const result = spawnSync(command, { cwd: root, encoding: 'utf8', shell: true, timeout: 240_000 }); const value = { command, status: result.status ?? 1, stdout: result.stdout || '', stderr: result.stderr || '', log: `logs/${name}.stdout.log` }; fs.mkdirSync(path.join(out, 'logs'), { recursive: true }); fs.writeFileSync(path.join(out, 'logs', `${name}.stdout.log`), value.stdout, { mode: 0o600 }); fs.writeFileSync(path.join(out, 'logs', `${name}.stderr.log`), value.stderr, { mode: 0o600 }); return value; }
