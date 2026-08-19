@@ -1,0 +1,64 @@
+{
+  "schema_version": "aiws.v3-clean.original-hashes.v1",
+  "baseline_commit": "8edefc7",
+  "files": {
+    "apps/api/server.mjs": {
+      "baseline_commit": "8edefc7",
+      "sha256": "8f57be9b64fb5dbfd3ea7c6d2772c9322930b7519e2e373984cd5fa30a937cb8"
+    },
+    "package.json": {
+      "baseline_commit": "8edefc7",
+      "sha256": "66b875f92cfd059efd91b137541969ce37c659f6c5963a0a641447f97c39e651"
+    },
+    "scripts/check.mjs": {
+      "baseline_commit": "8edefc7",
+      "sha256": "f044adb3234a1728479b3e50fdc2c77a2841b22859ded24fa1aa661d60be4202"
+    },
+    "apps/api/clean-server.mjs": {
+      "baseline_commit": "8edefc7",
+      "sha256": null,
+      "existed_at_baseline": false
+    },
+    "apps/api/server-clean.mjs": {
+      "baseline_commit": "8edefc7",
+      "sha256": null,
+      "existed_at_baseline": false
+    },
+    "apps/api/server-legacy.mjs": {
+      "baseline_commit": "8edefc7",
+      "sha256": null,
+      "existed_at_baseline": false
+    },
+    "apps/api/src/clean": {
+      "baseline_commit": "8edefc7",
+      "sha256": null,
+      "existed_at_baseline": false
+    },
+    "tests/p1": {
+      "baseline_commit": "8edefc7",
+      "sha256": null,
+      "existed_at_baseline": false
+    },
+    "tests/integration/v3-clean-p1.test.mjs": {
+      "baseline_commit": "8edefc7",
+      "sha256": null,
+      "existed_at_baseline": false
+    },
+    "tests/security/v3-clean-p1.test.mjs": {
+      "baseline_commit": "8edefc7",
+      "sha256": null,
+      "existed_at_baseline": false
+    },
+    "scripts/v3-clean-p1-evidence.mjs": {
+      "baseline_commit": "8edefc7",
+      "sha256": null,
+      "existed_at_baseline": false
+    },
+    "scripts/v3-clean-architecture-scan.mjs": {
+      "baseline_commit": "8edefc7",
+      "sha256": null,
+      "existed_at_baseline": false
+    }
+  },
+  "note": "Staged pre-existing worktree changes were preserved; the patch below contains only this P1 working-tree delta."
+}

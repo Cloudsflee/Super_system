@@ -1,0 +1,677 @@
+{
+  "schema_version": "aiws.v3-clean.p2-route-inventory.v1",
+  "count": 41,
+  "routes": [
+    {
+      "command_id": "operations.get",
+      "method": "GET",
+      "path": "/api/v2/operations/{id}",
+      "owner": "Operations",
+      "scope": "operations:read",
+      "project_scoped": true,
+      "idempotency": "forbidden",
+      "expected_revision": "none",
+      "input_schema": "operation.id.v2",
+      "output_schema": "operation.receipt.v2",
+      "long_running": false,
+      "events": [
+        "operation.*"
+      ]
+    },
+    {
+      "command_id": "operations.events",
+      "method": "GET",
+      "path": "/api/v2/operations/{id}/events",
+      "owner": "Operations",
+      "scope": "operations:read",
+      "project_scoped": true,
+      "idempotency": "forbidden",
+      "expected_revision": "none",
+      "input_schema": "operation.events.query.v2",
+      "output_schema": "event.replay.v2",
+      "long_running": false,
+      "events": [
+        "operation.*"
+      ]
+    },
+    {
+      "command_id": "operations.cancel",
+      "method": "POST",
+      "path": "/api/v2/operations/{id}/cancel",
+      "owner": "Operations",
+      "scope": "operations:control",
+      "project_scoped": true,
+      "idempotency": "required",
+      "expected_revision": "operation",
+      "input_schema": "operation.cancel.v2",
+      "output_schema": "operation.receipt.v2",
+      "long_running": true,
+      "events": [
+        "operation.cancel_requested",
+        "operation.cancelled"
+      ]
+    },
+    {
+      "command_id": "setup.get",
+      "method": "GET",
+      "path": "/api/v2/setup",
+      "owner": "Setup",
+      "scope": "identity:read",
+      "project_scoped": false,
+      "idempotency": "forbidden",
+      "expected_revision": "none",
+      "input_schema": "setup.query.v2",
+      "output_schema": "setup.state.v2",
+      "long_running": false,
+      "events": [
+        "setup.state.read"
+      ]
+    },
+    {
+      "command_id": "setup.complete",
+      "method": "POST",
+      "path": "/api/v2/setup",
+      "owner": "Identity",
+      "scope": "identity:write",
+      "project_scoped": false,
+      "idempotency": "required",
+      "expected_revision": "parent",
+      "input_schema": "setup.complete.v2",
+      "output_schema": "setup.receipt.v2",
+      "long_running": false,
+      "events": [
+        "setup.completed",
+        "actor.created",
+        "team.created",
+        "team.membership.granted",
+        "session.created"
+      ]
+    },
+    {
+      "command_id": "account.get",
+      "method": "GET",
+      "path": "/api/v2/account",
+      "owner": "Identity",
+      "scope": "identity:read",
+      "project_scoped": false,
+      "idempotency": "forbidden",
+      "expected_revision": "none",
+      "input_schema": "account.query.v2",
+      "output_schema": "actor.receipt.v2",
+      "long_running": false,
+      "events": [
+        "actor.*"
+      ]
+    },
+    {
+      "command_id": "account.update",
+      "method": "PATCH",
+      "path": "/api/v2/account",
+      "owner": "Identity",
+      "scope": "identity:write",
+      "project_scoped": false,
+      "idempotency": "required",
+      "expected_revision": "resource",
+      "input_schema": "account.update.v2",
+      "output_schema": "actor.receipt.v2",
+      "long_running": false,
+      "events": [
+        "actor.updated"
+      ]
+    },
+    {
+      "command_id": "actor.list",
+      "method": "GET",
+      "path": "/api/v2/actors",
+      "owner": "Identity",
+      "scope": "identity:read",
+      "project_scoped": false,
+      "idempotency": "forbidden",
+      "expected_revision": "none",
+      "input_schema": "actor.list.v2",
+      "output_schema": "actor.list.v2",
+      "long_running": false,
+      "events": [
+        "actor.*"
+      ]
+    },
+    {
+      "command_id": "actor.create",
+      "method": "POST",
+      "path": "/api/v2/actors",
+      "owner": "Identity",
+      "scope": "identity:write",
+      "project_scoped": false,
+      "idempotency": "required",
+      "expected_revision": "parent",
+      "input_schema": "actor.create.v2",
+      "output_schema": "actor.receipt.v2",
+      "long_running": false,
+      "events": [
+        "actor.created"
+      ]
+    },
+    {
+      "command_id": "actor.update",
+      "method": "PATCH",
+      "path": "/api/v2/actors/{id}",
+      "owner": "Identity",
+      "scope": "identity:write",
+      "project_scoped": false,
+      "idempotency": "required",
+      "expected_revision": "resource",
+      "input_schema": "actor.update.v2",
+      "output_schema": "actor.receipt.v2",
+      "long_running": false,
+      "events": [
+        "actor.updated"
+      ]
+    },
+    {
+      "command_id": "actor.suspend",
+      "method": "POST",
+      "path": "/api/v2/actors/{id}/suspend",
+      "owner": "Identity",
+      "scope": "identity:write",
+      "project_scoped": false,
+      "idempotency": "required",
+      "expected_revision": "resource",
+      "input_schema": "actor.lifecycle.v2",
+      "output_schema": "actor.receipt.v2",
+      "long_running": false,
+      "events": [
+        "actor.suspended"
+      ]
+    },
+    {
+      "command_id": "actor.activate",
+      "method": "POST",
+      "path": "/api/v2/actors/{id}/activate",
+      "owner": "Identity",
+      "scope": "identity:write",
+      "project_scoped": false,
+      "idempotency": "required",
+      "expected_revision": "resource",
+      "input_schema": "actor.lifecycle.v2",
+      "output_schema": "actor.receipt.v2",
+      "long_running": false,
+      "events": [
+        "actor.activated"
+      ]
+    },
+    {
+      "command_id": "actor.revoke",
+      "method": "POST",
+      "path": "/api/v2/actors/{id}/revoke",
+      "owner": "Identity",
+      "scope": "identity:write",
+      "project_scoped": false,
+      "idempotency": "required",
+      "expected_revision": "resource",
+      "input_schema": "actor.lifecycle.v2",
+      "output_schema": "actor.receipt.v2",
+      "long_running": false,
+      "events": [
+        "actor.revoked"
+      ]
+    },
+    {
+      "command_id": "actor.switch",
+      "method": "POST",
+      "path": "/api/v2/sessions/{id}/switch",
+      "owner": "Identity",
+      "scope": "identity:write",
+      "project_scoped": false,
+      "idempotency": "required",
+      "expected_revision": "resource",
+      "input_schema": "actor.switch.v2",
+      "output_schema": "actor.receipt.v2",
+      "long_running": false,
+      "events": [
+        "actor.switched"
+      ]
+    },
+    {
+      "command_id": "session.list",
+      "method": "GET",
+      "path": "/api/v2/sessions",
+      "owner": "Identity",
+      "scope": "identity:read",
+      "project_scoped": false,
+      "idempotency": "forbidden",
+      "expected_revision": "none",
+      "input_schema": "session.list.v2",
+      "output_schema": "session.list.v2",
+      "long_running": false,
+      "events": [
+        "session.*"
+      ]
+    },
+    {
+      "command_id": "session.create",
+      "method": "POST",
+      "path": "/api/v2/sessions",
+      "owner": "Identity",
+      "scope": "identity:write",
+      "project_scoped": false,
+      "idempotency": "required",
+      "expected_revision": "parent",
+      "input_schema": "session.create.v2",
+      "output_schema": "session.receipt.v2",
+      "long_running": false,
+      "events": [
+        "session.created"
+      ]
+    },
+    {
+      "command_id": "session.revoke",
+      "method": "POST",
+      "path": "/api/v2/sessions/{id}/revoke",
+      "owner": "Identity",
+      "scope": "identity:write",
+      "project_scoped": false,
+      "idempotency": "required",
+      "expected_revision": "resource",
+      "input_schema": "session.lifecycle.v2",
+      "output_schema": "session.receipt.v2",
+      "long_running": false,
+      "events": [
+        "session.revoked"
+      ]
+    },
+    {
+      "command_id": "team.list",
+      "method": "GET",
+      "path": "/api/v2/teams",
+      "owner": "Identity",
+      "scope": "team:read",
+      "project_scoped": false,
+      "idempotency": "forbidden",
+      "expected_revision": "none",
+      "input_schema": "team.list.v2",
+      "output_schema": "team.list.v2",
+      "long_running": false,
+      "events": [
+        "team.*"
+      ]
+    },
+    {
+      "command_id": "team.create",
+      "method": "POST",
+      "path": "/api/v2/teams",
+      "owner": "Identity",
+      "scope": "team:write",
+      "project_scoped": false,
+      "idempotency": "required",
+      "expected_revision": "parent",
+      "input_schema": "team.create.v2",
+      "output_schema": "team.receipt.v2",
+      "long_running": false,
+      "events": [
+        "team.created",
+        "team.membership.granted"
+      ]
+    },
+    {
+      "command_id": "team.get",
+      "method": "GET",
+      "path": "/api/v2/teams/{id}",
+      "owner": "Identity",
+      "scope": "team:read",
+      "project_scoped": false,
+      "idempotency": "forbidden",
+      "expected_revision": "none",
+      "input_schema": "team.id.v2",
+      "output_schema": "team.receipt.v2",
+      "long_running": false,
+      "events": [
+        "team.*"
+      ]
+    },
+    {
+      "command_id": "team.status",
+      "method": "PATCH",
+      "path": "/api/v2/teams/{id}",
+      "owner": "Identity",
+      "scope": "team:write",
+      "project_scoped": false,
+      "idempotency": "required",
+      "expected_revision": "resource",
+      "input_schema": "team.lifecycle.v2",
+      "output_schema": "team.receipt.v2",
+      "long_running": false,
+      "events": [
+        "team.*"
+      ]
+    },
+    {
+      "command_id": "team.members.list",
+      "method": "GET",
+      "path": "/api/v2/teams/{id}/memberships",
+      "owner": "Identity",
+      "scope": "team:read",
+      "project_scoped": false,
+      "idempotency": "forbidden",
+      "expected_revision": "none",
+      "input_schema": "membership.list.v2",
+      "output_schema": "membership.list.v2",
+      "long_running": false,
+      "events": [
+        "team.membership.*"
+      ]
+    },
+    {
+      "command_id": "team.member.grant",
+      "method": "POST",
+      "path": "/api/v2/teams/{id}/memberships",
+      "owner": "Identity",
+      "scope": "team:write",
+      "project_scoped": false,
+      "idempotency": "required",
+      "expected_revision": "parent",
+      "input_schema": "membership.grant.v2",
+      "output_schema": "membership.receipt.v2",
+      "long_running": false,
+      "events": [
+        "team.membership.granted"
+      ]
+    },
+    {
+      "command_id": "team.member.status",
+      "method": "PATCH",
+      "path": "/api/v2/teams/{id}/memberships/{membership_id}",
+      "owner": "Identity",
+      "scope": "team:write",
+      "project_scoped": false,
+      "idempotency": "required",
+      "expected_revision": "resource",
+      "input_schema": "membership.status.v2",
+      "output_schema": "membership.receipt.v2",
+      "long_running": false,
+      "events": [
+        "team.membership.*"
+      ]
+    },
+    {
+      "command_id": "project.members.list",
+      "method": "GET",
+      "path": "/api/v2/projects/{project_id}/members",
+      "owner": "Identity",
+      "scope": "project:read",
+      "project_scoped": true,
+      "idempotency": "forbidden",
+      "expected_revision": "none",
+      "input_schema": "membership.list.v2",
+      "output_schema": "membership.list.v2",
+      "long_running": false,
+      "events": [
+        "membership.*"
+      ]
+    },
+    {
+      "command_id": "membership.grant",
+      "method": "POST",
+      "path": "/api/v2/projects/{project_id}/members",
+      "owner": "Identity",
+      "scope": "project:write",
+      "project_scoped": true,
+      "idempotency": "required",
+      "expected_revision": "parent",
+      "input_schema": "membership.grant.v2",
+      "output_schema": "membership.receipt.v2",
+      "long_running": false,
+      "events": [
+        "membership.granted"
+      ]
+    },
+    {
+      "command_id": "membership.status",
+      "method": "PATCH",
+      "path": "/api/v2/projects/{project_id}/members/{membership_id}",
+      "owner": "Identity",
+      "scope": "project:write",
+      "project_scoped": true,
+      "idempotency": "required",
+      "expected_revision": "resource",
+      "input_schema": "membership.status.v2",
+      "output_schema": "membership.receipt.v2",
+      "long_running": false,
+      "events": [
+        "membership.*"
+      ]
+    },
+    {
+      "command_id": "project.invitations.list",
+      "method": "GET",
+      "path": "/api/v2/projects/{project_id}/invitations",
+      "owner": "Identity",
+      "scope": "project:read",
+      "project_scoped": true,
+      "idempotency": "forbidden",
+      "expected_revision": "none",
+      "input_schema": "invitation.list.v2",
+      "output_schema": "invitation.list.v2",
+      "long_running": false,
+      "events": [
+        "invitation.*"
+      ]
+    },
+    {
+      "command_id": "invitation.create",
+      "method": "POST",
+      "path": "/api/v2/projects/{project_id}/invitations",
+      "owner": "Identity",
+      "scope": "project:write",
+      "project_scoped": true,
+      "idempotency": "required",
+      "expected_revision": "parent",
+      "input_schema": "invitation.create.v2",
+      "output_schema": "invitation.receipt.v2",
+      "long_running": false,
+      "events": [
+        "invitation.created"
+      ]
+    },
+    {
+      "command_id": "invitation.accept",
+      "method": "POST",
+      "path": "/api/v2/projects/{project_id}/invitations/{invitation_id}/accept",
+      "owner": "Identity",
+      "scope": "project:write",
+      "project_scoped": true,
+      "idempotency": "required",
+      "expected_revision": "resource",
+      "input_schema": "invitation.lifecycle.v2",
+      "output_schema": "invitation.receipt.v2",
+      "long_running": false,
+      "events": [
+        "invitation.accepted",
+        "membership.granted"
+      ]
+    },
+    {
+      "command_id": "invitation.revoke",
+      "method": "POST",
+      "path": "/api/v2/projects/{project_id}/invitations/{invitation_id}/revoke",
+      "owner": "Identity",
+      "scope": "project:write",
+      "project_scoped": true,
+      "idempotency": "required",
+      "expected_revision": "resource",
+      "input_schema": "invitation.lifecycle.v2",
+      "output_schema": "invitation.receipt.v2",
+      "long_running": false,
+      "events": [
+        "invitation.revoked"
+      ]
+    },
+    {
+      "command_id": "project.permissions.list",
+      "method": "GET",
+      "path": "/api/v2/projects/{project_id}/permissions",
+      "owner": "Identity",
+      "scope": "project:read",
+      "project_scoped": true,
+      "idempotency": "forbidden",
+      "expected_revision": "none",
+      "input_schema": "acl.list.v2",
+      "output_schema": "acl.list.v2",
+      "long_running": false,
+      "events": [
+        "acl.*"
+      ]
+    },
+    {
+      "command_id": "acl.set",
+      "method": "POST",
+      "path": "/api/v2/projects/{project_id}/permissions",
+      "owner": "Identity",
+      "scope": "project:write",
+      "project_scoped": true,
+      "idempotency": "required",
+      "expected_revision": "parent",
+      "input_schema": "acl.set.v2",
+      "output_schema": "acl.receipt.v2",
+      "long_running": false,
+      "events": [
+        "acl.allowed",
+        "acl.denied",
+        "acl.policy.updated"
+      ]
+    },
+    {
+      "command_id": "credential.list",
+      "method": "GET",
+      "path": "/api/v2/credentials",
+      "owner": "Setup",
+      "scope": "credential:read",
+      "project_scoped": false,
+      "idempotency": "forbidden",
+      "expected_revision": "none",
+      "input_schema": "credential.list.v2",
+      "output_schema": "credential.list.v2",
+      "long_running": false,
+      "events": [
+        "credential.*"
+      ]
+    },
+    {
+      "command_id": "credential.create",
+      "method": "POST",
+      "path": "/api/v2/credentials",
+      "owner": "Setup",
+      "scope": "credential:write",
+      "project_scoped": false,
+      "idempotency": "required",
+      "expected_revision": "parent",
+      "input_schema": "credential.create.v2",
+      "output_schema": "credential.receipt.v2",
+      "long_running": false,
+      "events": [
+        "credential.created"
+      ]
+    },
+    {
+      "command_id": "credential.rebind",
+      "method": "POST",
+      "path": "/api/v2/credentials/{id}/rebind",
+      "owner": "Setup",
+      "scope": "credential:write",
+      "project_scoped": false,
+      "idempotency": "required",
+      "expected_revision": "resource",
+      "input_schema": "credential.rebind.v2",
+      "output_schema": "operation.receipt.v2",
+      "long_running": true,
+      "events": [
+        "credential.rebind.queued",
+        "credential.rebound",
+        "credential.failed"
+      ]
+    },
+    {
+      "command_id": "credential.rotate",
+      "method": "POST",
+      "path": "/api/v2/credentials/{id}/rotate",
+      "owner": "Setup",
+      "scope": "credential:write",
+      "project_scoped": false,
+      "idempotency": "required",
+      "expected_revision": "resource",
+      "input_schema": "credential.rotate.v2",
+      "output_schema": "operation.receipt.v2",
+      "long_running": true,
+      "events": [
+        "credential.rotate.queued",
+        "credential.rotated",
+        "credential.failed"
+      ]
+    },
+    {
+      "command_id": "credential.revoke",
+      "method": "POST",
+      "path": "/api/v2/credentials/{id}/revoke",
+      "owner": "Setup",
+      "scope": "credential:write",
+      "project_scoped": false,
+      "idempotency": "required",
+      "expected_revision": "resource",
+      "input_schema": "credential.lifecycle.v2",
+      "output_schema": "credential.receipt.v2",
+      "long_running": false,
+      "events": [
+        "credential.revoked"
+      ]
+    },
+    {
+      "command_id": "profile.list",
+      "method": "GET",
+      "path": "/api/v2/profiles",
+      "owner": "Setup",
+      "scope": "credential:read",
+      "project_scoped": false,
+      "idempotency": "forbidden",
+      "expected_revision": "none",
+      "input_schema": "profile.list.v2",
+      "output_schema": "profile.list.v2",
+      "long_running": false,
+      "events": [
+        "profile.*"
+      ]
+    },
+    {
+      "command_id": "profile.create",
+      "method": "POST",
+      "path": "/api/v2/profiles",
+      "owner": "Setup",
+      "scope": "credential:write",
+      "project_scoped": false,
+      "idempotency": "required",
+      "expected_revision": "parent",
+      "input_schema": "profile.create.v2",
+      "output_schema": "profile.receipt.v2",
+      "long_running": false,
+      "events": [
+        "profile.created"
+      ]
+    },
+    {
+      "command_id": "profile.probe",
+      "method": "POST",
+      "path": "/api/v2/profiles/{id}/probe",
+      "owner": "Setup",
+      "scope": "credential:write",
+      "project_scoped": false,
+      "idempotency": "required",
+      "expected_revision": "resource",
+      "input_schema": "profile.probe.v2",
+      "output_schema": "operation.receipt.v2",
+      "long_running": true,
+      "events": [
+        "profile.probe.queued",
+        "profile.probed",
+        "profile.probe.failed"
+      ]
+    }
+  ]
+}

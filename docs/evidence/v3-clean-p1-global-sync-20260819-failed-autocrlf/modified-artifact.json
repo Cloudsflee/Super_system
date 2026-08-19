@@ -1,0 +1,70 @@
+{
+  "schema_version": "aiws.v3-clean.global-sync-modified-artifact.v1",
+  "parent_evidence": "docs/evidence/v3-clean-p1-sync-20260819",
+  "baseline_receipt": ".ai-workspace/v3-clean-p1-global-sync-baseline-20260819/original-hashes.json",
+  "runtime_entry": "apps/api/server.mjs",
+  "workspace_inventory_sha256": "16da313624ec3c43e6d737ef3ca37138167b16ee08850ac012b6f6878ce71e89",
+  "files": [
+    {
+      "path": ".github/PULL_REQUEST_TEMPLATE.md",
+      "sha256": "c3f4a5654ddbefd7efad5e5fc42d86eb873438e21041dbe8b3f96caa7f3d709e"
+    },
+    {
+      "path": "README.md",
+      "sha256": "028ee48ed5974420aeb03ff626dda458ad3baa625286ba04f5c2d62f264f69a8"
+    },
+    {
+      "path": "docs/architecture/v23-capability-matrix.md",
+      "sha256": "ab01479e9f71ccd3dc2da1dd5147c67b6d61ebb0a4ea78ec2f80bc37f377f81f"
+    },
+    {
+      "path": "docs/architecture/v3-clean-development-plan.md",
+      "sha256": "c99290fd5f843cc4b216fc6a659b952cdc6a2f384cd0b06da666ff9491f407e3"
+    },
+    {
+      "path": "docs/document-index.md",
+      "sha256": "62acca3c721886b5277d11ec50fefd1fe7ab20cc0b66f3f0cd11d58f839d343f"
+    },
+    {
+      "path": "docs/testing.md",
+      "sha256": "05f92519793e8c8ef598798b26b0b5c2b1b5b30ddcd58804cd98c786b860ad59"
+    },
+    {
+      "path": "feature-catalog.json",
+      "sha256": "456dd0ee4ded87f97cd5be48cf04684f3c02ef5f30d40afa0c63f6615a96fdb9"
+    },
+    {
+      "path": "package.json",
+      "sha256": "bc104c7fae2600c21bfee7107f37a7a979be2e3347b77a6faa90de4ab0f75b5d"
+    },
+    {
+      "path": "scripts/lib/v3-clean-p1-scope.mjs",
+      "sha256": "ee1d038c45862ea6d336d1ad5a2d2a4c68775b96bd80d090b4b32e5d6fb1038b"
+    },
+    {
+      "path": "scripts/recovery-governance.mjs",
+      "sha256": "13d793edcec991b750a334f60bb073d617b59434129291cbb30d754961f2a42d"
+    },
+    {
+      "path": "scripts/v3-clean-architecture-scan.mjs",
+      "sha256": "cd7eb58ebde026fc90f0677e223ac6f72cc6bbb9f94bf038d94af94267334212"
+    },
+    {
+      "path": "scripts/v3-clean-p1-global-sync-evidence.mjs",
+      "sha256": "3e1d50b6f7c56be06fcd846f0a698e8c42ef83f09b712ea69a732d2d0052e885"
+    },
+    {
+      "path": "scripts/v3-clean-workspace-audit.mjs",
+      "sha256": "1d5d0657e7d2c51fa1cc49020f8c93c997054dcac189c2e34aec419ae944cc61"
+    },
+    {
+      "path": "scripts/verify.mjs",
+      "sha256": "f49d1ed7701beb50b6b9db82ba069af683a0b9fff8fc7f26b319eec25612b223"
+    },
+    {
+      "path": "tests/p1/workspace-sync.test.mjs",
+      "sha256": "23c905361385f631cae74a3c2cba090ed7d1e1e798ea84092adb413b76bc60ef"
+    }
+  ],
+  "deleted_files": []
+}

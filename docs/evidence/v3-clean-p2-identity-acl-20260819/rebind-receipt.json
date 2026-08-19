@@ -1,0 +1,14 @@
+{
+  "schema_version": "aiws.v3-clean.p2-rebind-receipt.v1",
+  "status": "passed",
+  "credential_status": "active",
+  "operation_status": "succeeded",
+  "vault_entry_count": 1,
+  "proof_persisted": false,
+  "redactions": [
+    "proof",
+    "ciphertext",
+    "session_cookie",
+    "absolute_paths"
+  ]
+}

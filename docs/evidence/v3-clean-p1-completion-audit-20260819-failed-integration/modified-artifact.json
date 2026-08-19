@@ -1,0 +1,71 @@
+{
+  "schema_version": "aiws.v3-clean.completion-audit-modified-artifact.v1",
+  "parent_evidence": "docs/evidence/v3-clean-p1-global-sync-20260819",
+  "baseline_receipt": ".ai-workspace/v3-clean-p1-completion-audit-baseline-20260819/original-hashes.json",
+  "runtime_entry": "apps/api/server.mjs",
+  "workspace_inventory_sha256": "e4406ff20d3630aa0d0f03ae55b720c23bc17fc35f204d31e9204707af5c9f9c",
+  "workspace_scope_inventory_sha256": "9c3068b77a7a5c590e30eb534b7389edb0794a6dfa8494ea38bffeff70ee1e13",
+  "files": [
+    {
+      "path": "README.md",
+      "sha256": "088319883bc96f1c06ec284d28b2e3e1b972fe5b0fcb0e801e18be81a9ada960"
+    },
+    {
+      "path": "docs/architecture/v23-capability-matrix.md",
+      "sha256": "05f312c757ca0de6777ba1b30b1cb3033342e8180dcab998e355b76b199ec932"
+    },
+    {
+      "path": "docs/architecture/v3-clean-development-plan.md",
+      "sha256": "2e95150e55b2d9939cb91bad921b33270d1f6b34e6e6e47a528e9120a4a0dfca"
+    },
+    {
+      "path": "docs/document-index.md",
+      "sha256": "f891dbe66b0c4b8eb36b632895fbc6ad377c9dac157898463fbfb209308c09d2"
+    },
+    {
+      "path": "docs/testing.md",
+      "sha256": "c04283348f841d16217f48d998ba7c05625a10a0bbe1ad76e797c6b94af1ce31"
+    },
+    {
+      "path": "docs/v2-retrospective.md",
+      "sha256": "7cdc42e578c682f0fe9de24aee9ccf4dde41c096feadbf00a3bf4f25f77f9869"
+    },
+    {
+      "path": "feature-catalog.json",
+      "sha256": "e9575a46a76856e7a68197f7d3ce6b4c4eb2a11a0046a68099cc2defb7e12cc3"
+    },
+    {
+      "path": "scripts/lib/v3-clean-p1-scope.mjs",
+      "sha256": "57c510f2a09d7f2815a0a170bbf872029d60cdb1574975e344337b36c735a9d7"
+    },
+    {
+      "path": "scripts/recovery-governance.mjs",
+      "sha256": "fa9b25610befafccfa040321b4e84116982243de425c540f1d9dbe91cf298b86"
+    },
+    {
+      "path": "scripts/v3-clean-architecture-scan.mjs",
+      "sha256": "036d6000f4b34e188b12e64ee54ed5a52f182dc77916947f405702f22cbdfbeb"
+    },
+    {
+      "path": "scripts/v3-clean-p1-global-sync-evidence.mjs",
+      "sha256": "4edebbf829a25eac0a2403bb467ee0b68b4b0806a28af683c18e5885251c2fbd"
+    },
+    {
+      "path": "scripts/v3-clean-workspace-audit.mjs",
+      "sha256": "9fdcd0cfec413cb520c857a4fac2dcf3a21068614dfc14c0ffe64bd2b521110c"
+    },
+    {
+      "path": "scripts/verify.mjs",
+      "sha256": "3d8cab64ee78eb3e0262c2ab3b21abd6b2d302be1a24a84bf03854945f135cac"
+    },
+    {
+      "path": "tests/p1/workspace-sync.test.mjs",
+      "sha256": "d2356fcb1a56e3f7ff67013b8ceecdc6273460f51c557cd54905cbf6b2f2ae04"
+    },
+    {
+      "path": "tests/unit/recovery-governance.test.mjs",
+      "sha256": "0f0121e4a4b07a2340ac1cd1652288c2f51633bcadf89ac2b6de339fc8036e3e"
+    }
+  ],
+  "deleted_files": []
+}

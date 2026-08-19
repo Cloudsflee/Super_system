@@ -1,0 +1,25 @@
+{
+  "schema_version": "aiws.v3-clean.p3-authorization-inventory.v1",
+  "predicate": "authorize(principal, action, project, resource, policy_revision)",
+  "order": [
+    "authentication",
+    "scope",
+    "project_resolver",
+    "team_or_project_membership",
+    "explicit_deny",
+    "explicit_allow",
+    "role_ceiling",
+    "exchange_narrowing",
+    "client_allowlist",
+    "operation_ownership"
+  ],
+  "explicit_deny_precedence": true,
+  "exchange_can_expand": false,
+  "operation_ownership_rechecked": true,
+  "p3_project_resolver": "projects table plus injected resolver fixture",
+  "fake_adapters": [
+    "repository.fixture",
+    "workflow.fake-generator",
+    "workflow.fake-critic"
+  ]
+}

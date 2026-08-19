@@ -17,18 +17,19 @@ under docs/architecture/ are the source of truth for V3-Clean.
 
 ## Scope of this phase
 
-The current architecture phase writes only:
+Decision `D-030` activates the P3 Project/Workflow implementation phase over
+the verified P1/P2 baseline. This phase may update the synchronized P3 surface:
 
-- docs/architecture/v3-clean-break.md
-- docs/architecture/v23-capability-matrix.md
-- docs/architecture/clean-schema.md
-- docs/architecture/import-contract.md
-- docs/architecture/api-v2-contract.md
-- docs/architecture/decision-log.md
-- this file
+- `003-project-workflow`, its clean runtime services, registry, contracts, and
+  focused tests;
+- the component-level Project/Workflow Web slice, using `/api/v2` only;
+- the architecture documents, testing policy, Catalog/matrix, package gates,
+  and P3 Evidence required by GS-001 through GS-007;
+- this file.
 
-Schema, runtime, test, Catalog, and application edits belong to later phases
-unless a new decision explicitly changes this scope.
+P1/P2 migrations and verified Evidence are read-only. P4 and later runtime,
+real provider calls, complete Outcome evaluation, and release-level Web/E2E
+remain outside P3.
 
 ## Required preflight
 
@@ -128,6 +129,53 @@ Later phases add clean-baseline migration tests, importer inspect/dry-run/run/
 resume/verify/cutover tests, route/MCP parity tests, redaction scans, and
 actual rollback verification. A failing gate leaves the related Catalog entry
 at its current status.
+
+## Gate synchronization contract
+
+The following stable rules are one cross-phase contract. They apply whenever a
+phase changes a test plan or any gate surface; updating a test plan alone is not
+a complete change.
+
+| ID | Requirement |
+| --- | --- |
+| GS-001 | A change to tests, gate commands, routes, schemas, ownership, phase scope, status rules, or receipt shapes MUST trigger gate-sync review. |
+| GS-002 | The phase plan, testing policy, package/CI commands, gate implementation, tests, Catalog/matrix, and Evidence references MUST update atomically. |
+| GS-003 | Every governed inventory MUST be bidirectional and MUST reject missing, stale, duplicate, and orphan entries. |
+| GS-004 | Every Git-visible non-build path MUST be classified; every new governance file MUST declare an owner and phase and be registered in the Catalog. |
+| GS-005 | Only final verified, non-provisional receipts MAY promote status; failed and checkpoint receipts remain immutable. |
+| GS-006 | Rollback verification MUST include a runnable dry-run and an isolated actual apply with byte-exact comparison. |
+| GS-007 | Any gate failure MUST freeze the affected Catalog status and block dependent phases. |
+
+The synchronized P1 governance command inventory is:
+
+~~~text
+pnpm check
+pnpm audit:p1
+pnpm scan:clean
+pnpm test:p1
+pnpm recovery:plan
+pnpm recovery:catalog
+pnpm recovery:coverage
+pnpm recovery:impact -- --audit
+pnpm verify
+~~~
+
+The additive P3 implementation inventory is:
+
+~~~text
+pnpm check
+pnpm scan:clean
+pnpm test:p1
+pnpm test:p2
+pnpm test:p3
+pnpm evidence:p3
+pnpm --filter @aiws/web test
+pnpm test
+pnpm test:integration
+pnpm test:security
+pnpm verify
+git diff --check
+~~~
 
 ## Capability status
 

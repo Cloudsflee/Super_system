@@ -1,0 +1,26 @@
+{
+  "schema_version": "aiws.v3-clean.p3-schema-diff.v1",
+  "from_user_version": 2,
+  "to_user_version": 3,
+  "added_tables": [
+    "brief_revisions",
+    "briefs",
+    "node_contracts",
+    "outcome_requirements",
+    "project_intakes",
+    "projects",
+    "repository_connections",
+    "repository_lines",
+    "repository_locks",
+    "repository_targets",
+    "repository_workspaces",
+    "workflow_critic_receipts",
+    "workflow_generation_proposals",
+    "workflow_generations",
+    "workflow_nodes",
+    "workflow_revisions",
+    "workflows"
+  ],
+  "removed_tables": [],
+  "migration": "003-project-workflow"
+}

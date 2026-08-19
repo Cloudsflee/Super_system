@@ -1,0 +1,29 @@
+{
+  "schema_version": "aiws.v3-clean.global-sync-manifest.v1",
+  "batch": "v3-clean-p1-global-sync-20260819",
+  "phase": "P1",
+  "status": "checkpoint",
+  "parent": "docs/evidence/v3-clean-p1-sync-20260819",
+  "artifacts": {
+    "architecture-scan.json": "613c5633448c8915aabaa3eda62b4741fd1b9dfe6671266c2cd0608f1cd58bd6",
+    "cas-manifest.json": "38729f185949559073e569286a558053e20675a7024cd9f19700aef715f19057",
+    "change.patch": "a7c6db85e18650e6d1a47eda9b9d36ef1a1636c895376ca483cfb12230bee90d",
+    "golden-receipt.json": "ee0f658ce5111db006ccfcc50281908d60a865410bab43cc68163dad67669acb",
+    "modified-artifact.json": "b66b3e90212a16218a7ca44e016ef7d18a6bc381819e675e0e4bbc5b35327ac7",
+    "original-hashes.json": "4c62d6f8de822ba51b542183613004d7de10f0580466f922dd9c43a62989ef04",
+    "owner-manifest.json": "9df6ae22c398a392170b2bfc16e0d5387f61022d651083e72016ad5f3e23e3d4",
+    "parent-receipt.json": "319eb9f9f3246dd06c120345dad491b7ee262b3986b9556398ece681c3c9c00d",
+    "rollback.ps1": "bea7488a2a77de84cff64bb9a949efe47ae4f4ed559663ec2955593dff129066",
+    "route-inventory.json": "4467edc6310bea4a5e7c1e7f13c7d5c6788b1e045b5a331904604de757835662",
+    "schema-inventory.json": "285c78509d8e9a1cf7afaa58eab79a680cfd8f25de2e7674e513ae0a19895cb7",
+    "schema-snapshot.json": "a037123f2629b8ef54d56452a1390ee9160755a36d4f92f2fa84109d66ddb82d",
+    "task-manifest.json": "44eee6c77b2b69d99e95672ba3a3af53bf80ef639a2f43788cf55ad95cce463a",
+    "verification.json": "1bd5d1a338d0224af687a2ad8e2d879268ba1d7d7fd4e61e8d1b407e50db6e34",
+    "workspace-audit.json": "99b8cf049ef2a5666347498a1b91b08faeb5247782e97f09cc6b289d20aa3590",
+    "workspace-inventory.json": "adcd6102fa78501c3b20fd2b6c93af74e426068fd379b2cf86df4a83dbeb5d07"
+  },
+  "modified_artifact": "modified-artifact.json",
+  "patch": "change.patch",
+  "verification": "verification.json",
+  "rollback": "rollback.ps1"
+}

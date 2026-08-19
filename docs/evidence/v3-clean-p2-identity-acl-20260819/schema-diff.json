@@ -1,0 +1,18 @@
+{
+  "schema_version": "aiws.v3-clean.p2-schema-diff.v1",
+  "from_user_version": 1,
+  "to_user_version": 2,
+  "added_tables": [
+    "credential_refs",
+    "exchange_grants",
+    "project_acl_entries",
+    "project_invitations",
+    "project_memberships",
+    "provider_profiles",
+    "sessions",
+    "team_memberships",
+    "teams"
+  ],
+  "removed_tables": [],
+  "migration": "002-identity-acl"
+}

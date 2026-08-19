@@ -1,0 +1,6 @@
+{
+  "schema_version": "aiws.v3-clean.completion-audit-failure.v1",
+  "status": "failed",
+  "failed_at": "2026-08-19T02:12:50.415Z",
+  "error": "Error: parent_boundary_invalid:parent_boundary_file_mismatch:docs/v2-retrospective.md\n    at generateEvidence (HOST_PATH\n    at process.processTicksAndRejections (node:internal/process/task_queues:104:5)\n    at async HOST_PATH"
+}

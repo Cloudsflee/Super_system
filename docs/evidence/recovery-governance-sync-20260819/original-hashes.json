@@ -1,0 +1,11 @@
+{
+  "schema_version": "aiws.v3-clean.governance-sync-original-hashes.v1",
+  "baseline_commit": "8edefc7d110dca80958e3ef0fe9115dd62a8751a",
+  "files": {
+    "apps/api/src/modules/registry.mjs": "bd9a85fa9c9858c7716e1664c1dbb7b8a6998a2e3cef4ad4a3021f489bf833c9",
+    "feature-catalog.json": "582ac473797639b11fabaf61e8297ae21613b2225ca391e420732b91dc775650",
+    "scripts/r6-evidence.mjs": "264b550872e0fe8e9007888aa12c2ff2b8cdc1a721f7512f586da69440e2b767",
+    "scripts/recovery-governance.mjs": "2cb88c9946e706d561e1bca86fb8911675e5f77b7736ffe45eab1c6f5ece5b56",
+    "tests/unit/recovery-governance.test.mjs": "98aecae9e50c76e29e1824df90ddc12e667f3b54c5958f61e6fa072f42096a9d"
+  }
+}

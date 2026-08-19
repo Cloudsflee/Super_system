@@ -13,7 +13,7 @@ import { normalizeRelativePath, assertReviewablePath, resolveWorkspacePath } fro
 import { buildDockerArgs, redactJobSpec, validateJobSpec, validateTaskBundle } from '../../apps/runner-broker/src/job-spec.mjs';
 import { normalizeJsonl, normalizeRunnerErrorCode } from '../../apps/runner-broker/src/runner-result.mjs';
 import { brokerConfig, createBroker, start as startBroker } from '../../apps/runner-broker/server.mjs';
-import { start as startApi } from '../../apps/api/server.mjs';
+import { start as startApi } from '../../apps/api/server-legacy.mjs';
 import { eventually, fixture, request, mutate, onboardProject } from './helpers.mjs';
 
 const digest = `sha256:${'d'.repeat(64)}`;

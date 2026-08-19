@@ -1,0 +1,31 @@
+{
+  "schema_version": "aiws.v3-clean.owner-manifest.v2",
+  "tables": {
+    "schema_meta": "Platform",
+    "schema_migrations": "Platform",
+    "actors": "Platform",
+    "aggregate_heads": "Platform",
+    "aggregate_revisions": "Platform",
+    "operations": "Operations",
+    "operation_links": "Operations",
+    "events": "Operations",
+    "event_cursors": "Operations",
+    "idempotency_keys": "Operations",
+    "audit_events": "Operations",
+    "cas_objects": "CAS",
+    "receipt_manifests": "CAS"
+  },
+  "commands": {
+    "operations.get": "Operations",
+    "operations.events": "Operations",
+    "operations.cancel": "Operations"
+  },
+  "events": {
+    "operation.*": "Operations",
+    "route.retired": "Platform",
+    "migration.*": "Platform",
+    "cas.*": "CAS"
+  },
+  "second_operation_model": false,
+  "shadow_head_model": false
+}

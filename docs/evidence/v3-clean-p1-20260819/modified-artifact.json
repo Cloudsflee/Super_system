@@ -1,0 +1,158 @@
+{
+  "schema_version": "aiws.v3-clean.modified-artifact.v1",
+  "runtime_entry": "apps/api/clean-server.mjs",
+  "files": [
+    {
+      "path": "apps/api/clean-server.mjs",
+      "sha256": "fc23a03fb7820c5d5fb259825deaef63a18375892cbedd336ec7c68067b72ea4"
+    },
+    {
+      "path": "apps/api/server-clean.mjs",
+      "sha256": "5af204881b20e9e60e60fc34647ca6b49deef84968543e381ebe5b063643be11"
+    },
+    {
+      "path": "apps/api/server.mjs",
+      "sha256": "6b12e2e77a85da07156fceab7fd3329f156b339a131d26b7632e8dbf97432a98"
+    },
+    {
+      "path": "apps/api/server-legacy.mjs",
+      "sha256": "6924ec2683003a9ec3fc1159fc8519933541a5194748d9f835de4e33c1417150"
+    },
+    {
+      "path": "apps/api/src/clean/canonical.mjs",
+      "sha256": "8fe16cd88979d179f637f03181d73f10ac1f6522e277bbb0087a2ebff7516b70"
+    },
+    {
+      "path": "apps/api/src/clean/cas-store.mjs",
+      "sha256": "1747be3078c071c23095a13d3f069a3ea01f3be1810c6364dbce5b334bd063c9"
+    },
+    {
+      "path": "apps/api/src/clean/cas.mjs",
+      "sha256": "ed4a9f879e957af2ce9e7f64a92317dd4eee8632dc187c27c9710abcabbb7005"
+    },
+    {
+      "path": "apps/api/src/clean/command-registry.mjs",
+      "sha256": "f918bd1ba867634ecf92a606ca653f80a588da448171ddae9ffb7b2f8a44e4cd"
+    },
+    {
+      "path": "apps/api/src/clean/config.mjs",
+      "sha256": "d66fab7c31851257104e66911edbdf0d82893af98fcea2dd678ec19c4b273bb6"
+    },
+    {
+      "path": "apps/api/src/clean/cursor.mjs",
+      "sha256": "d49258742cd7e123e9ec4df8eea2bd86083188fd5bf74a6bedfb263b39fad218"
+    },
+    {
+      "path": "apps/api/src/clean/database.mjs",
+      "sha256": "2af1f024ecb7e665de0213d0e1b953ada88f5395fce1b4c7e9a34aef06234458"
+    },
+    {
+      "path": "apps/api/src/clean/event-service.mjs",
+      "sha256": "e0d2311f5f345015ab1d332f59cef15aae1b54c5a54798d32852bb7fa2ce0ab0"
+    },
+    {
+      "path": "apps/api/src/clean/events.mjs",
+      "sha256": "c11c632cffe33f36d6a04c1ccd213f2826f644b9e93fcad0e4666564f45586a5"
+    },
+    {
+      "path": "apps/api/src/clean/http.mjs",
+      "sha256": "b6a16e4bbb11489f260bf084639d76a6c4cd1629bd7fd1f4ccdebc216c8f97aa"
+    },
+    {
+      "path": "apps/api/src/clean/index.mjs",
+      "sha256": "8869198a6d1afeb9ec1c3d723f43b38c7e9fdfc281dca922b3e444843f71b1b8"
+    },
+    {
+      "path": "apps/api/src/clean/migration-service.mjs",
+      "sha256": "1f0a7744e17dedd953e01153ae43538edf5ca3c9e82692382b211d38d7e75044"
+    },
+    {
+      "path": "apps/api/src/clean/migrations/001-clean-baseline.mjs",
+      "sha256": "8dda91ef9e9ff008d4a98a4e38c370922e6511bdc3de9f6a468b0ee7d0f53a89"
+    },
+    {
+      "path": "apps/api/src/clean/operation-service.mjs",
+      "sha256": "ca3846616b0b8e58ce727e4f15c095b4ff8f8f31ce2311a028fe469a68dbf294"
+    },
+    {
+      "path": "apps/api/src/clean/operations.mjs",
+      "sha256": "fe9c2f8e1a0c9c6d06ca03b91dbb6208f0e9e87c357927de8ba32f224fe51ac8"
+    },
+    {
+      "path": "apps/api/src/clean/platform-error.mjs",
+      "sha256": "820d5d9af532f13a46153e0e58a0ba68791a4994236a53eec3bd563bd03163e7"
+    },
+    {
+      "path": "apps/api/src/clean/platform.mjs",
+      "sha256": "362e6a05bb173a9717b88cf51efd7a7e3ec84bec4e2072cd8615e1d7cfdbb130"
+    },
+    {
+      "path": "apps/api/src/clean/principal.mjs",
+      "sha256": "94e4e823735e54a0ff9c966d48c82a6d19298b87bd7b267fa53a4cb4efa2db9f"
+    },
+    {
+      "path": "apps/api/src/clean/receipts.mjs",
+      "sha256": "82ed3a7a11c65f32797ed8ad202d574cbf672a9c5dba65fe54fbd24303a62281"
+    },
+    {
+      "path": "apps/api/src/clean/redaction-policy.mjs",
+      "sha256": "5eb61307e9b698846765acdea7b8087d952025fccb4a862c15dd2f39aac8d529"
+    },
+    {
+      "path": "apps/api/src/clean/redaction.mjs",
+      "sha256": "44e08d45fe5d818011b2b97ba22014ccfd58e20ca1892ad762339ec27b375c28"
+    },
+    {
+      "path": "apps/api/src/clean/registry.mjs",
+      "sha256": "5279307abb4981e4c66f0065690fd94a5a5cbc6f03ad63ccf13ce968cd531964"
+    },
+    {
+      "path": "apps/api/src/clean/runtime.mjs",
+      "sha256": "395029dd5943e8192a2fdad1e3755ce1fd4670b8f1229c754a580163d1fa6ba6"
+    },
+    {
+      "path": "apps/api/src/clean/schema.mjs",
+      "sha256": "72238a96da5ae83754389df9554ada1a76af22572bb9c522370a54f11b9f7761"
+    },
+    {
+      "path": "tests/p1/clean-platform.test.mjs",
+      "sha256": "865091a55860e02004ad49b4a5c490681833e08a22c02498b60d2072e72c3489"
+    },
+    {
+      "path": "tests/integration/v3-clean-p1.test.mjs",
+      "sha256": "7f4052b0c54f8d707661220780cada70ee5a9a1438abed03df90c3f6ec24235f"
+    },
+    {
+      "path": "tests/security/v3-clean-p1.test.mjs",
+      "sha256": "5a1c189cf8011cb8257460cf8db288361da3cf9fab191dc04f9613ccd773bdb3"
+    },
+    {
+      "path": "scripts/check.mjs",
+      "sha256": "1b1d244b65e0b3694692097038db0897d6198f5cc8068078695aaa23150f7f65"
+    },
+    {
+      "path": "package.json",
+      "sha256": "0ba5b2413e31d842196d30693174a406654ee98a8a997efe0267d034023b6633"
+    },
+    {
+      "path": "README.md",
+      "sha256": "d3535431bdc3bb51acce6a1c7887863a016ddecff28fe788f7ea360b450704be"
+    },
+    {
+      "path": "docs/architecture/v3-clean-development-plan.md",
+      "sha256": "2b435b7ee7e08a6ad86ba5a25a2072d7d54554f58f417f1b97411fdd06c78652"
+    },
+    {
+      "path": "docs/architecture/v23-capability-matrix.md",
+      "sha256": "23b4b16fa4f2cf1dd7919b03845097ada459bf3760ea018579de5434dc6368a6"
+    },
+    {
+      "path": "scripts/v3-clean-p1-evidence.mjs",
+      "sha256": "3b8cf5a634e4683919d8a8ef01d393fa76977631ff77d7ff39f90f600ff2cc57"
+    },
+    {
+      "path": "scripts/v3-clean-architecture-scan.mjs",
+      "sha256": "30d99f49410e3f1245b88dbfc036c68c25afe4c1765ab281aee4aed41c16398d"
+    }
+  ]
+}

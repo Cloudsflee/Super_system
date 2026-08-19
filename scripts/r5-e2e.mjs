@@ -4,7 +4,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { chromium, expect } from '@playwright/test';
-import { start as startApi } from '../apps/api/server.mjs';
+import { start as startApi } from '../apps/api/server-legacy.mjs';
 import { start as startBroker } from '../apps/runner-broker/server.mjs';
 
 const root = process.cwd();

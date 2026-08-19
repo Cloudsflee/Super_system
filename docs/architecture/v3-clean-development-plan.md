@@ -1,6 +1,11 @@
 # V3-Clean 分阶段开发计划
 
-状态：实施规划，不是功能完成声明。
+状态：P3 Evidence 已验证；`REC-D5-PROJECT-005`、`REC-D5-WORKFLOW-006`、
+`REC-D6-GENERATION-007` 和 `REC-D7-REPOSITORY-014` 为 `verified`，
+`REC-D6-OUTCOME-009` 仍为 `scaffolded`（仅 requirement scaffolding）。
+P2 `REC-D2-IDENTITY-001` 为 `verified`，`REC-D2-SETUP-002` 为 `implemented`，
+`REC-D10-FRONTEND-024` 为 `scaffolded`；P3 receipt 为
+`docs/evidence/v3-clean-p3-project-workflow-20260819/verification.json`。
 计划基线：`8edefc7`。
 规范来源：同目录下的 `v3-clean-break.md`、`clean-schema.md`、
 `api-v2-contract.md`、`import-contract.md`、`v23-capability-matrix.md` 和
@@ -55,7 +60,8 @@ HTTP/API v2 + SSE/JSON replay + MCP HTTP/stdio/Gateway
 - 不把 parser 输出直接当成人工质量结论；
 - 不把 Gateway 做成业务数据库或 Docker 控制面；
 - 不在没有 receipt 的情况下手工提升 Catalog 状态；
-- 本文档阶段不改源码、schema、测试或 Catalog。
+- P0 文档阶段不改源码、schema、测试或 Catalog；P1-P9 实施阶段按本计划
+  的 gate synchronization contract 同步修改这些工件。
 
 ## 2. 工作单元与完成定义
 
@@ -101,6 +107,40 @@ Evidence 和权限边界。跨域写入只能经过 domain service 或显式 rep
 
 阶段失败时，失败 artifact 保留但不可挂载为生产；修复后从 checkpoint 或
    新批次继续，不覆盖失败报告。
+
+### 2.4 门禁同步契约
+
+测试计划不是独立工件。下列稳定规则与根目录 `AGENTS.md`、`docs/testing.md`、
+package/CI 命令、门禁实现、Catalog、能力矩阵和 Evidence 构成同一个跨阶段契约。
+
+| ID | Requirement |
+| --- | --- |
+| GS-001 | A change to tests, gate commands, routes, schemas, ownership, phase scope, status rules, or receipt shapes MUST trigger gate-sync review. |
+| GS-002 | The phase plan, testing policy, package/CI commands, gate implementation, tests, Catalog/matrix, and Evidence references MUST update atomically. |
+| GS-003 | Every governed inventory MUST be bidirectional and MUST reject missing, stale, duplicate, and orphan entries. |
+| GS-004 | Every Git-visible non-build path MUST be classified; every new governance file MUST declare an owner and phase and be registered in the Catalog. |
+| GS-005 | Only final verified, non-provisional receipts MAY promote status; failed and checkpoint receipts remain immutable. |
+| GS-006 | Rollback verification MUST include a runnable dry-run and an isolated actual apply with byte-exact comparison. |
+| GS-007 | Any gate failure MUST freeze the affected Catalog status and block dependent phases. |
+
+P1 的同步命令清单固定为：
+
+```text
+pnpm check
+pnpm audit:p1
+pnpm scan:clean
+pnpm test:p1
+pnpm recovery:plan
+pnpm recovery:catalog
+pnpm recovery:coverage
+pnpm recovery:impact -- --audit
+pnpm verify
+```
+
+门禁实现必须从 package script 清单双向核对上述命令；新增、删除或改名都要在
+同一变更中更新三份规则文档、测试、Catalog/矩阵和 Evidence。当前 P1
+gate-contract receipt 为
+`docs/evidence/v3-clean-p1-gate-contract-complete-20260819/verification.json`。
 
 ## 3. 阶段总览
 
@@ -154,7 +194,7 @@ operation/event/CAS/authorization 基础设施。
 ### 数据与迁移
 
 - 建立 `v3-clean` family marker，`PRAGMA user_version=1` 的 clean baseline；
-- 定义 `schema_meta`、`schema_migrations`、`aggregate_heads`、`operations`、
+- 定义 `schema_meta`、`schema_migrations`、`actors`、`aggregate_heads`、`aggregate_revisions`、`operations`、
   `operation_links`、`events`、`event_cursors`、`idempotency_keys`、
   `audit_events`、`cas_objects` 和 `receipt_manifests`；
 - 每次 migration 记录 checksum、snapshot、foreign-key check 和 rollback；
@@ -187,6 +227,11 @@ contract probe 与 SSE/JSON replay 等价；失败 migration 和 rollback 均有
 
 ## 6. P2：Identity、Team、Actor、Credential 和 ACL
 
+决策：D-029。P1 `001-clean-baseline` 和
+`docs/evidence/v3-clean-p1-gate-contract-complete-20260819/` 保持不可变；P2
+只通过 forward-only `002-identity-acl` 把 clean volume 从 `user_version=1`
+升级到 `2`。
+
 ### 目标
 
 恢复 V2.3 多主体能力，把同一个授权谓词接入 HTTP、MCP、Importer、Replay、
@@ -194,8 +239,10 @@ Evidence 和 Gateway。
 
 ### 领域范围
 
-- `actors`、`teams`、`team_memberships`、`sessions`、`project_acl_entries`、
-  `invitations`、`exchange_grants` 的 clean 实体和 revision；
+- `actors`、`teams`、`team_memberships`、`sessions`、`project_memberships`、
+  `project_invitations`、`project_acl_entries` 的 clean 实体和 revision；
+- `exchange_grants` 由 Exchange/MCP owner 负责写入，P2 Identity 只读并缩小
+  已有权限；P3 前用注入的 `ProjectScopeResolver` 验证项目引用；
 - owner/admin/member/observer 等角色和项目 scope；
 - session 只保存 hash、expiry、revoke 和 revision；
 - credential/profile 只保存 provider、scope、revision、external reference、
@@ -211,7 +258,8 @@ Evidence 和 Gateway。
   operation/audit receipt；
 - Web 提供 Team/Member/Credential/Scope 管理的 loading、empty、denied 和
   rebind-required 状态；
-- Gateway 只验证签名、scope 和 project allowlist，业务写入仍回到 API。
+- Gateway 只验证签名、scope 和 project allowlist，业务写入仍回到 API；P2
+  使用确定性 denial fixture，不宣称独立 Gateway 已实现。
 
 ### 验收
 
@@ -220,6 +268,38 @@ Evidence 和 Gateway。
 - secret/token/cookie 不出现在 DB、event、audit、error、CAS 或 Evidence；
 - restart 后 session revoke、credential rebind 状态正确恢复；
 - 形成 identity/ACL isolation、credential rebind 和 Gateway denial receipt。
+
+### P2 固定门禁和 Evidence
+
+```text
+pnpm check
+pnpm scan:clean
+pnpm test:p2
+pnpm test:p1
+pnpm --filter @aiws/web test
+pnpm test
+pnpm test:integration
+pnpm test:security
+pnpm verify
+git diff --check
+```
+
+P2 Evidence 固定为
+`docs/evidence/v3-clean-p2-identity-acl-20260819/`，并包含 schema
+diff/snapshot、owner/route/authorization inventory、isolation/rebind/Gateway
+denial receipts、modified artifact、patch、literal verification output 和
+可执行 rollback。Rollback 封存 P2 DB/CAS/Vault 后恢复 P1 artifact/volume；
+验证必须在隔离副本实际 apply 并逐字节比较，不能运行 down migration。
+
+### P2 execution receipt
+
+`docs/evidence/v3-clean-p2-identity-acl-20260819/manifest.json` 和
+`verification.json` 均为 `verified`，`provisional=false`；10 个固定命令、
+P2/P1/Web/全量 integration/security 验收均通过。Rollback dry-run 和隔离
+副本 actual apply 通过，`byte_exact_mismatches=0`；Evidence 路径、凭据和
+主机路径扫描均为零命中。P2 的 fake-provider、组件级 Web 和 Gateway denial
+边界按既定非目标保持在 `implemented`/`scaffolded`，真实 provider、独立
+Gateway、完整 Web 发布与 P3 Project/Workflow 仍由后续阶段承接。
 
 ## 7. P3：Project、Brief、Repository、Workflow、Generation、Critic
 
@@ -230,13 +310,28 @@ Runner。
 
 ### 领域顺序
 
-1. Project draft/intake、owner/team/ACL 和 lifecycle；
-2. Brief revision、confirm/preview/template、CAS hash；
-3. Repository Connection/Target/Line、只读 source、managed workspace、
-   single-writer lock、fault/archive/restore；
-4. Workstream/Task 两级 DAG、Node Contract、proposal before/after/hash；
-5. Generation operation、候选版本、critic 独立决策和 stale/retry/cancel；
-6. Outcome requirement 只记录目标和验收规则，不伪造评分结果。
+1. 通过 forward-only `003-project-workflow` 支持空库 `0 -> 3`、P1
+   `1 -> 3` 和 P2 `2 -> 3`，不改 `001`/`002`，不提供 down migration；
+2. Project draft/intake、owner/team/统一 ACL 和 archive/restore lifecycle；
+3. Brief revision、confirm/preview/template、canonical CAS hash；
+4. Repository Connection/Target/Line、只读 source、managed workspace、
+   single-writer lock/fencing、fault/recovery；
+5. Workstream/Task 两级 DAG、Node Contract、proposal before/after/hash；
+6. Generation operation、候选版本、critic 独立决策和 stale/retry/cancel；
+7. Outcome requirement 只记录目标和验收规则，不伪造评分结果。
+
+### Owner 与边界
+
+- Project 独占 `projects`、`project_intakes`、`briefs`、`brief_revisions` 和
+  requirement-only `outcome_requirements`；
+- Repository 独占 connection/target/line/workspace/lock；Workflow 独占
+  workflow/revision/node/contract/generation/proposal；Critic 独占 immutable
+  critic receipt；
+- 所有 owner 复用 P1 generic operations/events/CAS/aggregate heads 和 P2
+  `authorize()`，不得创建影子 ledger/head；
+- repository/generator/critic 使用 deterministic fake adapter；真实 GitHub、
+  Codex、Gateway、Runner 和 Outcome evaluation 不属于 P3 状态声明；
+- P1/P2 Evidence 和 migrations 是只读输入，P3 Evidence 使用独立目录和卷。
 
 ### 交付面
 
@@ -244,7 +339,11 @@ Runner。
 - 事件包含 aggregate revision、operation link、actor/project scope 和
   redacted payload hash；
 - Repository adapter 负责 HTTPS、local allowlist、Git bundle、source drift；
-- Web 支持 intake、Brief confirm、DAG canvas、proposal review 和 critic 状态；
+- P3 adapter 以 fixture probe 覆盖 source revision/hash、generator candidate
+  和 critic decision；真实 provider receipt 延后；
+- Web 组件切片支持 loading、empty、denied、revision conflict、source drift/
+  retry、intake、Brief confirm、repository、workflow、proposal 和 critic 状态，
+  且所有请求只使用 `/api/v2`；完整多视口/offline/跨域 E2E 延后到 P9；
 - V2.3 project/workflow golden 与 clean domain service 逐项对照。
 
 ### 退出条件
@@ -252,7 +351,42 @@ Runner。
 项目可在没有 Runner 的情况下完成 Draft → Brief → Workflow → Critic 的
 可审查闭环；重复提交幂等，旧 revision 被拒，repository source drift 可恢复；
 generation 不再同步返回固定节点；project/workflow golden、UI receipt 和
-security scope receipt 均通过。
+security scope receipt 均通过。Migration 覆盖 DDL/ledger/receipt/commit 故障、
+checksum/snapshot 漂移、重复启动和中断恢复；generation/intake restart 在无法
+确认外部结果时保守落为 failed/retryable。最终执行 P3 command inventory，
+并对 rollback 做 dry-run、隔离 actual apply 和逐字节比对。
+
+### P3 固定门禁和 Evidence
+
+```text
+pnpm check
+pnpm scan:clean
+pnpm test:p1
+pnpm test:p2
+pnpm test:p3
+pnpm evidence:p3
+pnpm --filter @aiws/web test
+pnpm test
+pnpm test:integration
+pnpm test:security
+pnpm verify
+git diff --check
+```
+
+### P3 execution receipt
+
+`docs/evidence/v3-clean-p3-project-workflow-20260819/manifest.json` 和
+`verification.json` 均为 `verified`，`provisional=false`。空库、P1 和 P2
+卷均完成 `001 -> 002 -> 003`，migration/DDL/ledger/receipt/commit fault、
+checksum/snapshot drift、lifecycle/CAS、restart、跨项目隔离和 deterministic
+fixture adapter probes 均通过。active `apps/api/server.mjs` 默认启动
+`targetVersion=3`，并由
+`tests/p3/active-entrypoint.test.mjs` 与 `tests/p3/http-contract.test.mjs`
+验证 `/readyz`、API v2、retired route 和 session/ACL 边界。隔离副本执行 rollback dry-run 与 actual apply，
+`byte_exact_mismatches=[]`；failure checkpoint 保存在独立的
+`docs/evidence/v3-clean-p3-project-workflow-20260819-failed-baseline/`，不属于
+最终批次。P3 只提升 Project、Workflow、Generation 和 Repository 四行；Outcome
+评分/waiver、真实 provider、完整 Web 发布和 P9 E2E 仍保持原状态。
 
 ## 8. P4：Context、Projection、Pack、MCP、Exchange、Gateway
 
@@ -489,3 +623,26 @@ UI 骨架、fixture 准备、parser characterization 和外部 probe 可以在�
 5. 才能进入代码实现。
 
 本计划是执行顺序的唯一入口；旧的恢复计划仅保留在归档目录作为历史材料。
+
+## 18. P1 execution receipt
+
+The first platform slice is implemented under `apps/api/src/clean/` and is
+bootstrapped only by `apps/api/server.mjs`; `apps/api/clean-server.mjs` is an
+internal HTTP composition module, not a second process entry. It owns the clean baseline,
+generic operations/events/cursors, registry-backed API v2 probes, redaction,
+and the local CAS. The historical server and migration modules remain fixture
+inputs and are not imported by this clean entry.
+
+Superseding receipt directory: `docs/evidence/v3-clean-p1-gate-contract-complete-20260819/`.
+
+| Capability | Receipt/test | Status |
+| --- | --- | --- |
+| 001-clean-baseline, family/checksum/FK/WAL | `schema-snapshot.json`, `tests/p1/clean-platform.test.mjs` | verified |
+| operation state machine and atomic head/event/audit | `golden-receipt.json`, `tests/p1/clean-platform.test.mjs` | verified |
+| API v2 envelope, retired route, JSON/SSE replay | `route-inventory.json`, `tests/p1/clean-platform.test.mjs` | verified |
+| canonical CAS, tamper and redaction receipts | `cas-manifest.json`, `tests/p1/clean-platform.test.mjs` | verified |
+| global active/deferred surface, all-path classification and final Evidence synchronization | `workspace-audit.json`, `workspace-scope-inventory.json`, `tests/p1/workspace-sync.test.mjs` | verified |
+
+P2 was gated on the receipt above. The rollback and architecture checks were
+re-run on an isolated destination volume and passed; the immutable P1 receipt
+remains the parent input for P2.

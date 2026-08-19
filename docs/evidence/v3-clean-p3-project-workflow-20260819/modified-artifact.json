@@ -1,0 +1,210 @@
+{
+  "schema_version": "aiws.v3-clean.p3-modified-artifact.v1",
+  "phase": "P3",
+  "parent_evidence": "docs/evidence/v3-clean-p2-identity-acl-20260819",
+  "files": [
+    {
+      "path": "AGENTS.md",
+      "sha256": "dc49203e916ca37b18fe9d91e4124e60426a6a15137b51bbdb15d5818cb78721",
+      "bytes": 7473
+    },
+    {
+      "path": "apps/api/server-legacy.mjs",
+      "sha256": "9d42a63e17385f02242c6c0efdb14a576b6329aa15e8191d437d75ac2a379373",
+      "bytes": 2994
+    },
+    {
+      "path": "apps/api/server.mjs",
+      "sha256": "f335435c7c57dd268a6881787ab6771b22051e89950d1d7d4e76c2686b1f3c8b",
+      "bytes": 1033
+    },
+    {
+      "path": "apps/api/src/clean/cas-store.mjs",
+      "sha256": "041937c35728c636b6bbe44f76c731a261b754164d36fafd788328f7e61bee1b",
+      "bytes": 27
+    },
+    {
+      "path": "apps/api/src/clean/command-registry.mjs",
+      "sha256": "77ff3c2778271f3dbd4babf9076bd5d5ad70329d53c9654faf19ab33752947d5",
+      "bytes": 124
+    },
+    {
+      "path": "apps/api/src/clean/database.mjs",
+      "sha256": "8417749388cc4eec6fa74cb474c05550749f49ee207653571b57839aff386583",
+      "bytes": 22050
+    },
+    {
+      "path": "apps/api/src/clean/event-service.mjs",
+      "sha256": "f8328f6de621560aa3434384873795459526263977e39bcf21fdf55d3308f78c",
+      "bytes": 30
+    },
+    {
+      "path": "apps/api/src/clean/http.mjs",
+      "sha256": "1fa10e9cdc097f342e194a6ad778e9df9c027b181a3240e42e49bc642b5a722c",
+      "bytes": 37685
+    },
+    {
+      "path": "apps/api/src/clean/index.mjs",
+      "sha256": "98d3c1294a9a835cf1265a03be67a198f57a281bc87d8638e3977e33f0978c54",
+      "bytes": 679
+    },
+    {
+      "path": "apps/api/src/clean/migration-service.mjs",
+      "sha256": "92d5af8adcda08b949aec87335bc2823e5342a9199f77a125c1a01529873fda5",
+      "bytes": 614
+    },
+    {
+      "path": "apps/api/src/clean/migrations/003-project-workflow.mjs",
+      "sha256": "598d3c159dd75c8a84fa391655e7d6cc09001b01129b2d6afe40a4c9423744b2",
+      "bytes": 16832
+    },
+    {
+      "path": "apps/api/src/clean/operation-service.mjs",
+      "sha256": "37b3b0a581264d906c4fc3099afcaf4f8f84e638d24fbf02a7ca8d3a2a5e0c41",
+      "bytes": 34
+    },
+    {
+      "path": "apps/api/src/clean/ownership.mjs",
+      "sha256": "ed10f63be564f5884d20ac98da887e67ee821d8c8975c5b1219af710d6530977",
+      "bytes": 8047
+    },
+    {
+      "path": "apps/api/src/clean/project-workflow.mjs",
+      "sha256": "78529004ebe02122b297ca28adc9fec67af8a7381ba7a41930c206415dc2512c",
+      "bytes": 130137
+    },
+    {
+      "path": "apps/api/src/clean/provider-adapters.mjs",
+      "sha256": "4ea47c08a47d96e554225d15bb9b253b0a77ca131ae89f131ef851efa5bb5197",
+      "bytes": 1120
+    },
+    {
+      "path": "apps/api/src/clean/redaction-policy.mjs",
+      "sha256": "b6eaf8d35290cefd46783cccc51d173035474a2b12e8cb0a418dcc302f973ff1",
+      "bytes": 33
+    },
+    {
+      "path": "apps/api/src/clean/registry.mjs",
+      "sha256": "973d9ee3992671e58364d5a61f75d525a8aeb3a79eba09cd93a01e362eabbb41",
+      "bytes": 29626
+    },
+    {
+      "path": "apps/api/src/clean/runtime.mjs",
+      "sha256": "db04c9f21d66d8ec847f7ef7a799b07beea60a7443b931d2e3ade6ec578badcf",
+      "bytes": 8893
+    },
+    {
+      "path": "apps/api/src/clean/schema.mjs",
+      "sha256": "7216d74397c21dcb5a18513a4c963589ad360ff4683f45681039eee6a7440385",
+      "bytes": 731
+    },
+    {
+      "path": "apps/api/src/clean/vault.mjs",
+      "sha256": "b2a0462362fbba2ec2cf7cabd4f5084c2f45f921c73035537b5d0bf70cccc58e",
+      "bytes": 3928
+    },
+    {
+      "path": "apps/api/src/modules/critic/index.mjs",
+      "sha256": "f760eaa5c855ede7aef84941db38a2794f5d2094fc2140e69d86d416022ced53",
+      "bytes": 407
+    },
+    {
+      "path": "apps/api/src/modules/registry.mjs",
+      "sha256": "e92312ac017b3537417ab9230dc324793117af01d890d4939863a8487bb01cad",
+      "bytes": 3757
+    },
+    {
+      "path": "apps/web/src/features/project/ProjectWorkflowPage.tsx",
+      "sha256": "10c3e92425f2cf54e6d9b49616480d94bf6cbb78a00fdbdbecc412b3f4e7e4c0",
+      "bytes": 25781
+    },
+    {
+      "path": "apps/web/src/features/project/index.ts",
+      "sha256": "b0928cb657c9ec76fe89ebf91cdded9a59603f9270ae5046fefee2294d280f0a",
+      "bytes": 217
+    },
+    {
+      "path": "apps/web/src/styles.css",
+      "sha256": "d7fd18dcfe71086fa2f4e121474443531e2fb7cde082aad95e32312605f6b71a",
+      "bytes": 71690
+    },
+    {
+      "path": "apps/web/src/test/project-workflow-clean.test.tsx",
+      "sha256": "1fd8289976db919edcff87686726e9708fa73fc752ec5afcac64b47cdddaabde",
+      "bytes": 6459
+    },
+    {
+      "path": "docs/architecture/api-v2-contract.md",
+      "sha256": "bc885f2e152928717e59c3927cb308df14b1997b5ee6a82c470ce9b08053f720",
+      "bytes": 17513
+    },
+    {
+      "path": "docs/architecture/clean-schema.md",
+      "sha256": "3526a31b9cc461a18bb2db751c79139e229817da9096d40178b7a435244b700f",
+      "bytes": 20350
+    },
+    {
+      "path": "docs/architecture/decision-log.md",
+      "sha256": "6aa3290a75f6b0617f2ba3298e3fb6936d0260bf1ab934f00ac7c41a8342895d",
+      "bytes": 8308
+    },
+    {
+      "path": "docs/architecture/v23-capability-matrix.md",
+      "sha256": "6a6336eab7d69c73b6845e2715ac1d6f46c594b6f84636f9df144fc4cf46e5d1",
+      "bytes": 49164
+    },
+    {
+      "path": "docs/architecture/v3-clean-development-plan.md",
+      "sha256": "ac760a985c50b1b5eed9542299480903c1442ee9f0a03dee7c9a86ef5a3c945e",
+      "bytes": 31594
+    },
+    {
+      "path": "docs/testing.md",
+      "sha256": "8936254816012a43ea5014ed172f3043230e4b5c319e5eb72466461777080d59",
+      "bytes": 8966
+    },
+    {
+      "path": "feature-catalog.json",
+      "sha256": "9b0937c3b6fee5b20011f7468fd952554fa309a6bbc7e5db8ac1d96b6b25a013",
+      "bytes": 35961
+    },
+    {
+      "path": "package.json",
+      "sha256": "7d15c53d81b27a85aa9a6bb8ad6fc8ccc633478854a997cb6d8bdeca757c5cb3",
+      "bytes": 2916
+    },
+    {
+      "path": "packages/contracts/src/clean-v2.mjs",
+      "sha256": "e8596a75a007236c99340ed1c91397b42558943bc757d772ba9c1eb80ca4a710",
+      "bytes": 28358
+    },
+    {
+      "path": "scripts/v3-clean-p3-evidence.mjs",
+      "sha256": "2e67d07f4c025b3b53e616a9ef78768ff5e03ea1a942a339ff3ee4aa3e5e82cb",
+      "bytes": 29326
+    },
+    {
+      "path": "tests/p3/active-entrypoint.test.mjs",
+      "sha256": "17e00c3df5a3a76cfcd93809ac7d1eaf894640d03d3e63168daef719349aa9b5",
+      "bytes": 2606
+    },
+    {
+      "path": "tests/p3/http-contract.test.mjs",
+      "sha256": "5a344521c10daf88ee726ae1bbf48801921a19cb50921703226d991de6285ea4",
+      "bytes": 6869
+    },
+    {
+      "path": "tests/p3/migration.test.mjs",
+      "sha256": "0645ce99c9a27e0a02f0d290b2be2968abb0ecc6973ae4d6ab6d5f1256dbd75d",
+      "bytes": 5329
+    },
+    {
+      "path": "tests/p3/project-workflow.test.mjs",
+      "sha256": "f72fd53586c33016cda166916c2c8bc747deba44a24f481b35e2ca7986930942",
+      "bytes": 28360
+    }
+  ],
+  "deleted_files": [],
+  "file_count": 40,
+  "scope_sha256": "be4b97d983ea7c5aab5a79d4e115e6ff6ea9f2f34d67499bc2c1de69f72003a5"
+}

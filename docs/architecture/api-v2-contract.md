@@ -94,6 +94,31 @@ The body may repeat idempotency_key or expected_revision for MCP and offline
 clients. Header and body values must agree. A mutation without its required
 key/revision returns a structured validation error before domain code runs.
 
+### 2.1 P2 principal and session binding
+
+Public business requests authenticate only through the `aiws_session` cookie.
+Setup emits at least 256 bits of random proof in
+`HttpOnly; SameSite=Strict; Path=/`; the proof is absent from JSON, logs, and
+Evidence. Authorization and `X-Session-Proof` headers do not authenticate a
+browser request, and there is no system-bootstrap fallback after setup.
+
+`X-Actor-ID` is ignored when it names the internal system actor. For any other
+different effective actor it is accepted only with a valid Vault-backed
+`X-Service-Credential` (or `X-Credential-Proof`) whose scope covers the call.
+The target must be a service or agent in a Team managed by the session subject;
+another user or cross-Team target is denied. `X-Scopes` is never a trusted
+permission source.
+
+### 2.2 Unified authorization order
+
+`authorize(principal, action, project, resource, policy_revision)` evaluates:
+authentication, credential scope, active Team/project membership, explicit
+deny then allow, role ceiling, Exchange narrowing, client allowlist, and
+operation ownership. Explicit deny wins. Explicit allow cannot exceed the
+role ceiling. Exchange grants and MCP/Gateway allowlists only narrow an
+already granted action. P2 project routes require `ProjectScopeResolver`; they
+do not create or own a Project business record.
+
 ## 3. Operation receipts
 
 Long work returns HTTP 202:
@@ -132,12 +157,12 @@ stable public addresses.
 | Family | API v2 paths | Representative commands/events | Owner |
 | --- | --- | --- | --- |
 | probes/operations | /livez, /readyz, /api/v2/operations/{id}, /api/v2/operations/{id}/events, /api/v2/operations/{id}/cancel | operations.get, operations.cancel; operation.* | Operations |
-| identity/team | /api/v2/account, /api/v2/sessions, /api/v2/teams, /api/v2/teams/{id}/memberships | actor.update, session.revoke, team.member.grant; actor.*, team.* | Identity |
-| setup/credentials | /api/v2/setup, /api/v2/credentials, /api/v2/profiles, /api/v2/integrations/{provider}/* | setup.complete, credential.rotate, profile.probe; setup.*, credential.* | Setup |
-| projects/briefs | /api/v2/projects, /api/v2/projects/{id}, /api/v2/projects/{id}/intake, /api/v2/projects/{id}/briefs | project.create, intake.retry, brief.confirm; project.*, brief.* | Project |
-| ACL/exchange | /api/v2/projects/{id}/members, /api/v2/projects/{id}/permissions, /api/v2/projects/{id}/exchange-requests, /api/v2/exchange-grants/{id} | membership.grant, exchange.approve, exchange.revoke; acl.*, exchange.* | Identity/Exchange |
-| repositories | /api/v2/projects/{id}/repository-connections, /repository-lines, /repository-workspaces, /api/v2/repository-workspaces/{id}/* | repository.bind, workspace.refresh, line.reconcile; repository.*, workspace.* | Repository |
-| workflow | /api/v2/projects/{id}/workflows, /workflow-drafts, /workflow-generations, /api/v2/workflows/{id}/* | workflow.revise, generation.start, proposal.apply; workflow.*, generation.* | Workflow |
+| identity/team | /api/v2/account, /api/v2/actors, /api/v2/sessions, /api/v2/teams, /api/v2/teams/{id}/memberships | actor.update/switch, session.create/revoke, team.member.grant/status; actor.*, session.*, team.* | Identity |
+| setup/credentials | /api/v2/setup, /api/v2/credentials, /api/v2/credentials/{id}/rebind, /rotate, /revoke, /api/v2/profiles, /api/v2/profiles/{id}/probe | setup.complete, credential.rebind/rotate/revoke, profile.probe; setup.*, credential.*, profile.* | Setup |
+| projects/briefs | /api/v2/projects, /api/v2/projects/{id}, /api/v2/projects/{id}/archive, /restore, /api/v2/projects/{id}/intake, /intake/retry, /intake/cancel, /api/v2/projects/{id}/briefs, /briefs/{revision}/confirm, /preview | project.create/update/archive/restore, intake.submit/retry/cancel, brief.create/confirm; project.*, intake.*, brief.* | Project |
+| ACL/exchange | /api/v2/projects/{id}/members, /invitations, /permissions, /api/v2/projects/{id}/exchange-requests, /api/v2/exchange-grants/{id} | membership.grant/status, invitation.create/accept/revoke, acl.set, exchange.approve/revoke; membership.*, invitation.*, acl.*, exchange.* | Identity/Exchange |
+| repositories | /api/v2/projects/{id}/repository-connections, /repository-lines, /repository-workspaces, /api/v2/repository-connections/{id}, /repository-connections/{id}/targets, /repository-lines/{id}/reconcile, /repository-workspaces/{id}/refresh, /lock, /release | repository.connection.create/update, repository.target.create, repository.line.reconcile, repository.workspace.create/refresh/lock/release; repository.*, workspace.* | Repository |
+| workflow | /api/v2/projects/{id}/workflows, /workflow-draft, /workflow-generations, /api/v2/workflow-generations/{id}, /retry, /cancel, /critic, /api/v2/workflow-proposals/{id}, /apply | workflow.revise, generation.start/retry/cancel, critic.evaluate, workflow.proposal.apply; workflow.*, generation.*, critic.* | Workflow/Critic |
 | context | /api/v2/projects/{id}/context/map, /search, /read, /policy, /selections, /packs | context.select, context.pack.create; context.* | Context |
 | projection | /api/v2/projects/{id}/context/jobs, /context/jobs/{id}/events, /context/rebuild | projection.rebuild, projection.cancel; projection.* | Projection |
 | MCP/client | /api/v2/mcp, /api/v2/mcp/tools, /api/v2/mcp/clients, /api/v2/mcp/clients/{id} | mcp.tool.call, mcp.client.revoke; mcp.* | MCP |
@@ -148,13 +173,36 @@ stable public addresses.
 | terminal/bridge | /api/v2/terminals, /terminals/{id}/events, /terminals/{id}/ws, /api/v2/bridge/pairing | terminal.open, terminal.stop, bridge.pair; terminal.*, bridge.* | Terminal/Bridge |
 | execution/runner | /api/v2/projects/{id}/executions, /api/v2/executions/{id}/start, /pause, /resume, /cancel, /stages/{stage}/replay | execution.start, stage.replay; execution.*, runner.* | Execution/Runner |
 | evidence/assets | /api/v2/projects/{id}/assets, /api/v2/assets/{id}/versions, /api/v2/assets/{id}/content, /api/v2/executions/{id}/evidence | asset.capture, asset.attest; asset.*, evidence.* | Evidence |
-| quality/outcome | /api/v2/executions/{id}/quality-reviews, /api/v2/quality-reviews/{id}, /outcome, /waivers | quality.start, quality.decision, outcome.evaluate, waiver.revoke; quality.*, outcome.* | Quality/Outcome |
+| quality/outcome | /api/v2/projects/{id}/outcome-requirements, /api/v2/executions/{id}/quality-reviews, /api/v2/quality-reviews/{id}, /outcome, /waivers | outcome.requirement.create, quality.start, quality.decision, outcome.evaluate, waiver.revoke; quality.*, outcome.* | Project/Quality/Outcome |
 | delivery | /api/v2/deliveries, /api/v2/pull-request-intents, /api/v2/deliveries/{id}/* | delivery.submit, pr.ready, pr.merge, delivery.reconcile; delivery.* | Delivery |
 | deployment/ops | /api/v2/system/deployment, /api/v2/backups, /restore, /reset, /imports | deploy.verify, backup.restore, import.cutover; deployment.*, operations.* | Operations |
 
 All project-scoped patterns resolve a project before authorization. Collection
 queries return only resources visible to the actor, Exchange grant, and MCP
 allowlist.
+
+### 4.1 P3 Project/Workflow boundary
+
+P3 mounts only the registry paths above and advances the clean schema to
+`user_version=3`. Synchronous mutations return the resource revision, ETag,
+terminal operation reference, and audit reference. Intake submit/retry and
+generation start/retry return `202 operation.receipt.v2`; the external
+repository/generator call runs after the enqueue transaction and terminal state
+is committed in a second revision-checked transaction.
+
+The active process entrypoint `apps/api/server.mjs` defaults to
+`targetVersion=3`. Lower target versions remain available only through
+explicit lower-level fixture calls used by P1/P2 migration and regression
+tests.
+
+Repository, generator, and critic adapters are deterministic fixture probes in
+P3. Their receipts establish adapter invocation, source drift handling, retry
+lineage, and restart recovery, but do not establish real GitHub/Codex provider
+availability. Proposal apply checks captured Brief, Workflow, and Repository
+revision/hash inputs. A mismatch commits the proposal as `stale` and returns a
+revision conflict without changing the workflow head. Outcome routes in P3
+create/list requirements only; evaluation, score, waiver, and Evidence binding
+remain later-phase commands.
 
 ## 5. Command contract
 
@@ -281,6 +329,7 @@ account:read/write
 team:read/manage
 project:read/write/run/approve
 repository:read/write/admin
+workflow:read/write/run/approve
 context:read/write
 assist:read/write
 execution:read/run/control

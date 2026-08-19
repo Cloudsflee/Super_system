@@ -1,0 +1,31 @@
+{
+  "schema_version": "aiws.v3-clean.governance-sync-modified-artifact.v1",
+  "baseline_commit": "8edefc7d110dca80958e3ef0fe9115dd62a8751a",
+  "files": [
+    {
+      "path": "apps/api/src/modules/registry.mjs",
+      "original_sha256": "bd9a85fa9c9858c7716e1664c1dbb7b8a6998a2e3cef4ad4a3021f489bf833c9",
+      "modified_sha256": "125d09d4f6ffc77616d0121b679f2443d12c758a67ec096684beff1cdb76918e"
+    },
+    {
+      "path": "feature-catalog.json",
+      "original_sha256": "582ac473797639b11fabaf61e8297ae21613b2225ca391e420732b91dc775650",
+      "modified_sha256": "ea2a628bbf5626a3b73f68e2d3c67bd1ca3cb48aceb15c493754e7764aa39853"
+    },
+    {
+      "path": "scripts/r6-evidence.mjs",
+      "original_sha256": "264b550872e0fe8e9007888aa12c2ff2b8cdc1a721f7512f586da69440e2b767",
+      "modified_sha256": "41ca7270f1c653b80442275b9bfeaafd57e85e86120889d174e0800d626a1d83"
+    },
+    {
+      "path": "scripts/recovery-governance.mjs",
+      "original_sha256": "2cb88c9946e706d561e1bca86fb8911675e5f77b7736ffe45eab1c6f5ece5b56",
+      "modified_sha256": "cf6e2e8199c2d72ced2816c25acb811301452162e5c21d1be96a3fd5f89bb0ea"
+    },
+    {
+      "path": "tests/unit/recovery-governance.test.mjs",
+      "original_sha256": "98aecae9e50c76e29e1824df90ddc12e667f3b54c5958f61e6fa072f42096a9d",
+      "modified_sha256": "be227336029b0de35997a1de3294f1154045fb8bb1e4b431a6776b9f5da89c12"
+    }
+  ]
+}

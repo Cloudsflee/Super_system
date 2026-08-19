@@ -1,0 +1,18 @@
+{
+  "schema_version": "aiws.v3-clean.p3-migration-receipt.v1",
+  "status": "passed",
+  "user_version": 3,
+  "versions": [
+    1,
+    2,
+    3
+  ],
+  "checksum_count": 3,
+  "restart_reapplied": true,
+  "down_migration": false,
+  "redactions": [
+    "absolute_paths",
+    "session_proof",
+    "tokens"
+  ]
+}

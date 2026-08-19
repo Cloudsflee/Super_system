@@ -1,0 +1,26 @@
+{
+  "schema_version": "aiws.v3-clean.owner-manifest.v1",
+  "owners": {
+    "Platform": [
+      "schema_meta",
+      "schema_migrations",
+      "actors",
+      "aggregate_heads",
+      "aggregate_revisions"
+    ],
+    "Operations": [
+      "operations",
+      "operation_links",
+      "events",
+      "event_cursors",
+      "idempotency_keys",
+      "audit_events"
+    ],
+    "CAS": [
+      "cas_objects",
+      "receipt_manifests"
+    ]
+  },
+  "second_operation_model": false,
+  "shadow_head_model": false
+}

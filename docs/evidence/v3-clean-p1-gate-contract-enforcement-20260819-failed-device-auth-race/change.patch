@@ -1,0 +1,358 @@
+diff --git a/docs/architecture/v23-capability-matrix.md b/docs/architecture/v23-capability-matrix.md
+index 37fc202..bdde63f 100644
+--- a/docs/architecture/v23-capability-matrix.md
++++ b/docs/architecture/v23-capability-matrix.md
+@@ -79,7 +79,7 @@ route omitted it.
+ 
+ | ID / capability | API v2 | Command | Event / state | Clean tables (historical source) | UI | External | Tests / Evidence | Status |
+ | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+-| C-01 REC-D0 Governance | /api/v2/system/catalog, /api/v2/system/architecture | governance.plan, governance.catalog, governance.coverage, governance.impact | governance.receipt; inspect -> classified -> passed/failed | schema_meta, schema_migrations, audit_events (scripts/v23-* and feature catalog) | Operations/Governance | Git, CI, receipt store | P1 gate sync, recovery governance and architecture audit; docs/evidence/v3-clean-p1-gate-contract-sync-20260819/verification.json | verified; GS-001 through GS-007 require synchronized plan, tests, gates, Catalog/matrix and Evidence |
++| C-01 REC-D0 Governance | /api/v2/system/catalog, /api/v2/system/architecture | governance.plan, governance.catalog, governance.coverage, governance.impact | governance.receipt; inspect -> classified -> passed/failed | schema_meta, schema_migrations, audit_events (scripts/v23-* and feature catalog) | Operations/Governance | Git, CI, receipt store | P1 gate sync, recovery governance and architecture audit; docs/evidence/v3-clean-p1-gate-contract-enforcement-20260819/verification.json | verified; GS-001 through GS-007 require synchronized plan, tests, gates, Catalog/matrix and Evidence |
+ | C-02 REC-D1 Contracts | /api/v2/system/schema, /api/v2/operations/{id} | schema.inspect, migration.apply, migration.verify | migration.applied; pending -> applied -> verified/rolled_back | schema_meta, schema_migrations, aggregate_heads (source schema 23 and migration modules) | none | SQLite WAL, CAS | tests/unit/database.test.mjs, migrations.test.mjs, contracts.test.mjs, recovery-golden.test.mjs; same governance Evidence | verified; clean baseline replaces historical chain |
+ | C-03 REC-D10 Frontend | /api/v2/setup, /api/v2/projects, /api/v2/assist/sessions, /api/v2/events | web.bootstrap, web.route.load, web.replay | ui.session.opened, ui.event.replayed; loading -> ready/error/offline | none (read model over every owned domain) | Setup, Projects, Workflow, Assist, Execution, Assets, Audit, Settings | Browser, offline cache, SSE | apps/web/src/test/workflow.test.tsx, project-onboarding.test.tsx, assist.test.tsx; target browser receipts under docs/evidence/v3-clean | scaffolded; every surface needs behavior, mobile, offline, and Evidence |
+ | C-04 REC-D2 Identity | /api/v2/account, /api/v2/sessions, /api/v2/actors | actor.update, session.create, session.revoke | actor.updated, session.created, session.revoked; active -> revoked/expired | actors, sessions, connected_accounts (users, sessions, connected_accounts) | Setup and account menu | session store, provider identity | identity-r2-flow, identity-operations, setup-flow tests; docs/evidence/v3-r2-identity-setup-20260810/verification.json | implemented; clean gate adds Team/Actor ACL parity |
+@@ -134,7 +134,7 @@ intentional and keeps a scaffolded capability below implemented.
+ 
+ | Current Catalog id | Current Evidence | Promotion gap |
+ | --- | --- | --- |
+-| REC-D0-GOVERNANCE-000 | docs/evidence/v3-clean-p1-gate-contract-sync-20260819/verification.json | GS-001 through GS-007 gate synchronization, clean architecture scan and byte-exact rollback |
++| REC-D0-GOVERNANCE-000 | docs/evidence/v3-clean-p1-gate-contract-enforcement-20260819/verification.json | GS-001 through GS-007 gate synchronization, clean architecture scan and byte-exact rollback |
+ | REC-D1-CONTRACTS-023 | docs/evidence/v3-r0-r1-governance-20260810/verification.json | clean baseline checksum and importer proof |
+ | REC-D10-FRONTEND-024 | none | complete Web workflow, mobile/offline, SSE receipt |
+ | REC-D2-IDENTITY-001 | docs/evidence/v3-r2-identity-setup-20260810/verification.json | Team/Actor and API v2 parity |
+@@ -391,10 +391,10 @@ P1's cross-phase gate synchronization contract is composed of `GS-001`,
+ command inventory, owner/phase/path inventories, and Evidence references update
+ with `AGENTS.md`, `docs/testing.md`, the development plan, Catalog, and this
+ matrix in one change. Machine verification is recorded in
+-`docs/evidence/v3-clean-p1-gate-contract-sync-20260819/gate-sync-contract.json`.
++`docs/evidence/v3-clean-p1-gate-contract-enforcement-20260819/gate-sync-contract.json`.
+ 
+ | P1 row | Clean owner | API/command surface | Tables/events | Test and Evidence | Status |
+ | --- | --- | --- | --- | --- | --- |
+-| P1-PLATFORM-001 | Platform | `/livez`, `/readyz`, `operations.get`, `operations.events`, `operations.cancel` | `schema_meta`, `schema_migrations`, `actors`, `aggregate_heads`, `aggregate_revisions`, `operations`, `operation_links`, `events`, `event_cursors`, `idempotency_keys`, `audit_events`, `cas_objects`, `receipt_manifests` | `tests/p1/clean-platform.test.mjs`; `docs/evidence/v3-clean-p1-gate-contract-sync-20260819/verification.json` | verified |
+-| P1-PLATFORM-002 | CAS/Redaction | registry receipt and replay envelopes | `cas_objects`, `receipt_manifests`, `events`, `audit_events` | `tests/p1/clean-platform.test.mjs`; `docs/evidence/v3-clean-p1-gate-contract-sync-20260819/cas-manifest.json` | verified |
+-| P1-GOVERNANCE-003 | Platform | GS-001 through GS-007 gate, document, Catalog/matrix and Evidence synchronization | no domain tables; one governed hash inventory plus one all-path classification inventory | `tests/p1/workspace-sync.test.mjs`; `docs/evidence/v3-clean-p1-gate-contract-sync-20260819/workspace-audit.json` | verified |
++| P1-PLATFORM-001 | Platform | `/livez`, `/readyz`, `operations.get`, `operations.events`, `operations.cancel` | `schema_meta`, `schema_migrations`, `actors`, `aggregate_heads`, `aggregate_revisions`, `operations`, `operation_links`, `events`, `event_cursors`, `idempotency_keys`, `audit_events`, `cas_objects`, `receipt_manifests` | `tests/p1/clean-platform.test.mjs`; `docs/evidence/v3-clean-p1-gate-contract-enforcement-20260819/verification.json` | verified |
++| P1-PLATFORM-002 | CAS/Redaction | registry receipt and replay envelopes | `cas_objects`, `receipt_manifests`, `events`, `audit_events` | `tests/p1/clean-platform.test.mjs`; `docs/evidence/v3-clean-p1-gate-contract-enforcement-20260819/cas-manifest.json` | verified |
++| P1-GOVERNANCE-003 | Platform | GS-001 through GS-007 gate, document, Catalog/matrix and Evidence synchronization | no domain tables; one governed hash inventory plus one all-path classification inventory | `tests/p1/workspace-sync.test.mjs`; `docs/evidence/v3-clean-p1-gate-contract-enforcement-20260819/workspace-audit.json` | verified |
+diff --git a/docs/architecture/v3-clean-development-plan.md b/docs/architecture/v3-clean-development-plan.md
+index 92ece45..e88bcd4 100644
+--- a/docs/architecture/v3-clean-development-plan.md
++++ b/docs/architecture/v3-clean-development-plan.md
+@@ -134,7 +134,7 @@ pnpm verify
+ 门禁实现必须从 package script 清单双向核对上述命令；新增、删除或改名都要在
+ 同一变更中更新三份规则文档、测试、Catalog/矩阵和 Evidence。当前 P1
+ gate-contract receipt 为
+-`docs/evidence/v3-clean-p1-gate-contract-sync-20260819/verification.json`。
++`docs/evidence/v3-clean-p1-gate-contract-enforcement-20260819/verification.json`。
+ 
+ ## 3. 阶段总览
+ 
+@@ -533,7 +533,7 @@ generic operations/events/cursors, registry-backed API v2 probes, redaction,
+ and the local CAS. The historical server and migration modules remain fixture
+ inputs and are not imported by this clean entry.
+ 
+-Superseding receipt directory: `docs/evidence/v3-clean-p1-gate-contract-sync-20260819/`.
++Superseding receipt directory: `docs/evidence/v3-clean-p1-gate-contract-enforcement-20260819/`.
+ 
+ | Capability | Receipt/test | Status |
+ | --- | --- | --- |
+diff --git a/docs/testing.md b/docs/testing.md
+index 88a8083..f6b3027 100644
+--- a/docs/testing.md
++++ b/docs/testing.md
+@@ -102,4 +102,4 @@ pnpm verify
+ ```
+ 
+ Current P1 gate-contract receipt:
+-`docs/evidence/v3-clean-p1-gate-contract-sync-20260819/verification.json`.
++`docs/evidence/v3-clean-p1-gate-contract-enforcement-20260819/verification.json`.
+diff --git a/docs/v2-retrospective.md b/docs/v2-retrospective.md
+new file mode 100644
+index 0000000..630208d
+--- /dev/null
++++ b/docs/v2-retrospective.md
+@@ -0,0 +1,9 @@
++# V2 Retrospective
++
++V2 accumulated versioned services, migrations, compatibility facades, large in-memory state snapshots, a global context projector, standalone MCP infrastructure, team and Exchange concepts, terminal/host bridges, and broad document parsers. The number of runtime collections and release scripts made ownership and recovery difficult to demonstrate.
++
++V3 treats Git history as the archive for source implementations. Runtime directories contain one implementation per domain. V2.3 state remains cold evidence and is not a compatibility input.
++
++The final V2.3 cutover receipt was revoked by a new immutable receipt because its declared rollback image tag was absent and the observed runtime image identified a later working-tree build. The old receipt was not edited. After writes stopped, the source volume was fully hashed, copied to a cold evidence volume, compressed, restored to a temporary volume, and verified with matching manifests and SQLite integrity.
++
++No generic V2-to-V3 migrator exists. The DesignSignal demonstration project is recreated through the public V3 API with sanitized content.
+diff --git a/feature-catalog.json b/feature-catalog.json
+index 298d3d6..febac21 100644
+--- a/feature-catalog.json
++++ b/feature-catalog.json
+@@ -36,7 +36,7 @@
+       "events": ["recovery.governance.receipt"],
+       "behavior_tests": ["tests/unit/recovery-governance.test.mjs", "tests/p1/workspace-sync.test.mjs"],
+       "ui_tests": [],
+-      "evidence": ["docs/evidence/v3-clean-p1-gate-contract-sync-20260819/verification.json"],
++      "evidence": ["docs/evidence/v3-clean-p1-gate-contract-enforcement-20260819/verification.json"],
+       "release_receipts": [],
+       "tests": ["T0", "tests/unit/recovery-governance.test.mjs"]
+     },
+diff --git a/scripts/lib/v3-clean-p1-scope.mjs b/scripts/lib/v3-clean-p1-scope.mjs
+index a9e70c2..4af6cf8 100644
+--- a/scripts/lib/v3-clean-p1-scope.mjs
++++ b/scripts/lib/v3-clean-p1-scope.mjs
+@@ -1,6 +1,6 @@
+-export const P1_EVIDENCE_DIRECTORY = 'docs/evidence/v3-clean-p1-gate-contract-sync-20260819';
+-export const P1_PARENT_EVIDENCE_DIRECTORY = 'docs/evidence/v3-clean-p1-completion-audit-20260819';
+-export const P1_BASELINE_DIRECTORY = '.ai-workspace/v3-clean-p1-gate-contract-sync-baseline-20260819';
++export const P1_EVIDENCE_DIRECTORY = 'docs/evidence/v3-clean-p1-gate-contract-enforcement-20260819';
++export const P1_PARENT_EVIDENCE_DIRECTORY = 'docs/evidence/v3-clean-p1-gate-contract-sync-20260819';
++export const P1_BASELINE_DIRECTORY = '.ai-workspace/v3-clean-p1-gate-contract-enforcement-baseline-20260819';
+ export const P1_COMPLETION_BASELINE_DIRECTORY = '.ai-workspace/v3-clean-p1-completion-audit-baseline-20260819';
+ 
+ export const P1_GATE_SYNC_RULES = Object.freeze([
+diff --git a/scripts/v3-clean-p1-global-sync-evidence.mjs b/scripts/v3-clean-p1-global-sync-evidence.mjs
+index 3ababa8..377a7ec 100644
+--- a/scripts/v3-clean-p1-global-sync-evidence.mjs
++++ b/scripts/v3-clean-p1-global-sync-evidence.mjs
+@@ -11,7 +11,6 @@ import { registryParity } from '../apps/api/src/clean/registry.mjs';
+ import { auditWorkspace, evidenceCompletionFindings, governedWorkspaceFiles, workspaceScopeFiles } from './v3-clean-workspace-audit.mjs';
+ import {
+   P1_BASELINE_DIRECTORY,
+-  P1_COMPLETION_BASELINE_DIRECTORY,
+   P1_EVIDENCE_DIRECTORY,
+   P1_EVIDENCE_REQUIRED_FILES,
+   P1_GATE_SYNC_CATALOG_PATHS,
+@@ -27,7 +26,6 @@ const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
+ const outputArgument = process.argv.find((value) => value.startsWith('--output='));
+ const evidence = path.resolve(root, outputArgument ? outputArgument.slice('--output='.length) : P1_EVIDENCE_DIRECTORY);
+ const baseline = path.resolve(root, P1_BASELINE_DIRECTORY);
+-const parentBaseline = path.resolve(root, P1_COMPLETION_BASELINE_DIRECTORY);
+ const parentEvidence = path.resolve(root, P1_PARENT_EVIDENCE_DIRECTORY);
+ const verifyOnly = process.argv.includes('--verify');
+ const required = P1_EVIDENCE_REQUIRED_FILES;
+@@ -143,21 +141,21 @@ async function generateEvidence() {
+   if (!parent.valid) throw new Error(`parent_boundary_invalid:${parent.errors.join(',')}`);
+   writeJson('parent-receipt.json', parent);
+   writeJson('task-manifest.json', {
+-    schema_version: 'aiws.v3-clean.completion-audit-task.v1',
+-    target: 'P1 completion audit across every Git-visible path, active runtime, governance, documentation, tests, Catalog, and Evidence',
++    schema_version: 'aiws.v3-clean.gate-contract-enforcement-task.v1',
++    target: 'P1 gate synchronization contract across plans, commands, implementations, tests, Catalog/matrix, Evidence, and rollback',
+     non_target: ['P2 Identity/Team behavior', 'P3 Project behavior', 'P4-P7 adapters and domains', 'P8 importer/release implementation', 'P9 clean Web workflow'],
+     preflight: {
+-      active_object: 'V3-Clean P1 whole-workspace completion gate',
+-      last_confirmed_result: 'parent global-sync receipt passed at the pre-change boundary',
+-      next_action: 'review the P2 entry gate without activating deferred fixtures',
++      active_object: 'V3-Clean P1 gate synchronization enforcement',
++      last_confirmed_result: 'parent gate-contract sync receipt passed with a byte-exact rollback',
++      next_action: 'verify exact rule text, duplicate rejection, receipt binding, and the ordinary P1 gate sequence',
+       forbidden: ['legacy runtime in clean dependency graph', 'active pre-clean release command', 'second operation/head/CAS model', 'Catalog promotion without behavior Evidence'],
+       reuse: [P1_PARENT_EVIDENCE_DIRECTORY, P1_BASELINE_DIRECTORY],
+-      delete_retire: ['stale P1 Catalog paths and incomplete all-workspace classifications']
++      delete_retire: ['stale, duplicate, missing, and orphan gate inventory entries']
+     },
+     acceptance_commands: [
+       'pnpm check', 'pnpm audit:p1', 'pnpm scan:clean', 'pnpm test:p1',
+       'pnpm recovery:plan', 'pnpm recovery:catalog', 'pnpm recovery:coverage',
+-      'pnpm recovery:impact --audit', 'pnpm test:integration -- --test-concurrency=1', 'pnpm test:security',
++      'pnpm recovery:impact -- --audit', 'pnpm test:integration -- --test-concurrency=1', 'pnpm test:security',
+       'pnpm test:release', 'pnpm verify', 'git diff --check'
+     ],
+     rollback_artifact: 'rollback.ps1',
+@@ -362,14 +360,14 @@ function verifyParentBoundary() {
+   }
+   const parentCompletion = evidenceCompletionFindings({ manifest, verification });
+   if (parentCompletion.length) errors.push(...parentCompletion.map((entry) => `parent_${entry.code}`));
+-  const reverse = run('git', ['-c', 'core.autocrlf=false', 'apply', '--reverse', '--check', path.join(parentEvidence, 'change.patch')], { cwd: parentBaseline, timeout: 120000 });
++  const reverse = run('git', ['-c', 'core.autocrlf=false', 'apply', '--reverse', '--check', path.join(parentEvidence, 'change.patch')], { cwd: baseline, timeout: 120000 });
+   if (!reverse.ok) errors.push('parent_rollback_check_failed');
+   return {
+     schema_version: 'aiws.v3-clean.parent-boundary-receipt.v1',
+     parent: P1_PARENT_EVIDENCE_DIRECTORY,
+     parent_manifest_sha256: hashFile(path.join(parentEvidence, 'manifest.json')),
+-    boundary: P1_COMPLETION_BASELINE_DIRECTORY,
+-    boundary_receipt_sha256: hashFile(path.join(parentBaseline, 'original-hashes.json')),
++    boundary: P1_BASELINE_DIRECTORY,
++    boundary_receipt_sha256: hashFile(path.join(baseline, 'original-hashes.json')),
+     modified_files_checked: (modified.files || []).length,
+     deleted_files_checked: (modified.deleted_files || []).length,
+     rollback_check: reverse,
+diff --git a/scripts/v3-clean-workspace-audit.mjs b/scripts/v3-clean-workspace-audit.mjs
+index fbc419e..c8f4b09 100644
+--- a/scripts/v3-clean-workspace-audit.mjs
++++ b/scripts/v3-clean-workspace-audit.mjs
+@@ -144,7 +144,8 @@ export function auditWorkspace(options = {}) {
+   }
+   const plan = readText(path.join(root, 'docs', 'architecture', 'v3-clean-development-plan.md'), addFinding, 'development_plan_missing');
+   const matrix = readText(path.join(root, 'docs', 'architecture', 'v23-capability-matrix.md'), addFinding, 'capability_matrix_missing');
+-  verifyGateSyncContract({ root, catalog, governance, plan, matrix, addFinding });
++  verifyGateSyncContract({ root, governance, plan, matrix, addFinding });
++  checks.push({ id: 'gate-sync-contract', valid: !findings.some((entry) => entry.code.startsWith('gate_sync_')) });
+   if (plan && !plan.includes(`\`${P1_EVIDENCE_DIRECTORY}/\``)) addFinding('plan_p1_evidence_mismatch', { expected: P1_EVIDENCE_DIRECTORY });
+   if (matrix) {
+     const p1Lines = matrix.split(/\r?\n/).filter((line) => line.startsWith('| P1-'));
+@@ -168,7 +169,7 @@ export function auditWorkspace(options = {}) {
+   checks.push({ id: 'workspace-inventory', valid: unclassified.length === 0 });
+ 
+   return {
+-    schema_version: 'aiws.v3-clean.workspace-audit.v2',
++    schema_version: 'aiws.v3-clean.workspace-audit.v3',
+     phase: 'P1',
+     active: {
+       runtime_entrypoint: P1_RUNTIME_ENTRYPOINT,
+@@ -190,33 +191,36 @@ export function auditWorkspace(options = {}) {
+   };
+ }
+ 
+-function verifyGateSyncContract({ root, catalog, governance, plan, matrix, addFinding }) {
+-  const documents = [
++function verifyGateSyncContract({ root, governance, plan, matrix, addFinding }) {
++  const documentSources = new Map([
+     ['AGENTS.md', readText(path.join(root, 'AGENTS.md'), addFinding, 'agents_missing')],
+     ['docs/testing.md', readText(path.join(root, 'docs', 'testing.md'), addFinding, 'testing_policy_missing')],
+     ['docs/architecture/v3-clean-development-plan.md', plan]
+-  ];
++  ]);
++  const documents = P1_GATE_SYNC_DOCUMENTS.map((file) => [file, documentSources.get(file) || '']);
+   const expectedIds = P1_GATE_SYNC_RULES.map((rule) => rule.id);
+   for (const [file, source] of documents) {
+-    for (const id of expectedIds) if (!source.includes(id)) addFinding('gate_sync_rule_missing', { file, id });
+-    for (const command of P1_GATE_SYNC_COMMANDS) if (!source.includes(command)) addFinding('gate_sync_command_missing', { file, command });
++    for (const finding of gateSyncDocumentFindings(source, file)) {
++      const { code, ...details } = finding;
++      addFinding(code, details);
++    }
+   }
+   for (const file of P1_GATE_SYNC_EVIDENCE_DOCUMENTS) {
+     const source = file === 'docs/architecture/v23-capability-matrix.md' ? matrix : documents.find(([name]) => name === file)?.[1] || '';
+     if (!source.includes(P1_EVIDENCE_DIRECTORY)) addFinding('gate_sync_evidence_reference_missing', { file, expected: P1_EVIDENCE_DIRECTORY });
+   }
+-  const catalogPaths = new Set([
++  const allCatalogPaths = [
+     ...(governance?.source_files || []),
+     ...(governance?.target_modules || []),
+     ...(governance?.behavior_tests || []),
+     ...(governance?.ui_tests || [])
+-  ]);
+-  const expectedCatalogPathSets = Object.fromEntries(Object.entries(P1_GATE_SYNC_CATALOG_PATHS)
+-    .map(([field, values]) => [field, new Set(values)]));
+-  for (const [field, expected] of Object.entries(expectedCatalogPathSets)) {
+-    const actual = new Set(governance?.[field] || []);
+-    for (const file of expected) if (!actual.has(file)) addFinding('gate_sync_catalog_path_missing', { field, file });
+-    for (const file of actual) if (!expected.has(file)) addFinding('gate_sync_catalog_path_orphan', { field, file });
++  ];
++  const catalogPaths = new Set(allCatalogPaths);
++  for (const [field, expected] of Object.entries(P1_GATE_SYNC_CATALOG_PATHS)) {
++    const actual = governance?.[field] || [];
++    if (JSON.stringify(actual) !== JSON.stringify(expected)) {
++      addFinding('gate_sync_catalog_path_inventory_mismatch', { field, expected, actual });
++    }
+   }
+   for (const field of Object.keys(P1_GATE_SYNC_CATALOG_PATHS)) {
+     for (const file of P1_GATE_SYNC_CATALOG_PATHS[field]) {
+@@ -226,7 +230,6 @@ function verifyGateSyncContract({ root, catalog, governance, plan, matrix, addFi
+       if (!classification) addFinding('gate_sync_path_unclassified', { file });
+     }
+   }
+-  const allCatalogPaths = [...catalogPaths];
+   const duplicatePaths = allCatalogPaths.filter((file, index) => allCatalogPaths.indexOf(file) !== index);
+   for (const file of [...new Set(duplicatePaths)]) addFinding('gate_sync_catalog_path_duplicate', { file });
+   const catalogEvidence = governance?.evidence || [];
+@@ -250,16 +253,34 @@ function verifyGateSyncContract({ root, catalog, governance, plan, matrix, addFi
+   if (matrixP1.length && matrixP1.some((line) => !line.includes(P1_EVIDENCE_DIRECTORY))) {
+     addFinding('gate_sync_matrix_evidence_mismatch', { expected: P1_EVIDENCE_DIRECTORY });
+   }
+-  const governedIds = documents.flatMap(([, source]) => expectedIds.filter((id) => source.includes(id)));
+-  if (new Set(governedIds).size !== expectedIds.length) addFinding('gate_sync_rule_inventory_mismatch', { expected: expectedIds, actual: [...new Set(governedIds)] });
+-  for (const [file, source] of documents) {
+-    const found = [...new Set([...source.matchAll(/\bGS-\d{3}\b/g)].map((match) => match[0]))].sort();
+-    const expected = [...expectedIds].sort();
+-    if (JSON.stringify(found) !== JSON.stringify(expected)) addFinding('gate_sync_rule_orphan_or_duplicate', { file, expected, actual: found });
+-  }
+   for (const id of expectedIds) if (!String(matrix || '').includes(id)) addFinding('gate_sync_matrix_rule_missing', { id });
+ }
+ 
++export function gateSyncDocumentFindings(source, file = 'document') {
++  const findings = [];
++  const rows = gateSyncRuleRows(source);
++  const expectedIds = P1_GATE_SYNC_RULES.map((rule) => rule.id);
++  const rowIds = rows.map((row) => row.id);
++  for (const id of expectedIds) {
++    const count = rowIds.filter((actual) => actual === id).length;
++    if (count === 0) findings.push({ code: 'gate_sync_rule_missing', file, id });
++    if (count > 1) findings.push({ code: 'gate_sync_rule_duplicate', file, id, count });
++  }
++  for (const id of new Set(rowIds)) if (!expectedIds.includes(id)) findings.push({ code: 'gate_sync_rule_orphan', file, id });
++  if (JSON.stringify(rows) !== JSON.stringify(P1_GATE_SYNC_RULES)) {
++    findings.push({ code: 'gate_sync_rule_table_mismatch', file, expected: P1_GATE_SYNC_RULES, actual: rows });
++  }
++  for (const command of P1_GATE_SYNC_COMMANDS) if (!String(source || '').includes(command)) findings.push({ code: 'gate_sync_command_missing', file, command });
++  return findings;
++}
++
++function gateSyncRuleRows(source) {
++  return String(source || '').split(/\r?\n/).flatMap((line) => {
++    const match = line.match(/^\|\s*(GS-\d{3})\s*\|\s*(.*?)\s*\|\s*$/);
++    return match ? [{ id: match[1], requirement: match[2] }] : [];
++  });
++}
++
+ function verifyEvidenceDirectory(root, addFinding) {
+   const directory = path.join(root, P1_EVIDENCE_DIRECTORY);
+   if (!fs.existsSync(directory)) {
+diff --git a/tests/p1/workspace-sync.test.mjs b/tests/p1/workspace-sync.test.mjs
+index 2931587..b343f13 100644
+--- a/tests/p1/workspace-sync.test.mjs
++++ b/tests/p1/workspace-sync.test.mjs
+@@ -2,8 +2,9 @@ import assert from 'node:assert/strict';
+ import fs from 'node:fs';
+ import path from 'node:path';
+ import test from 'node:test';
+-import { auditWorkspace, evidenceCompletionFindings, workspaceScopeFiles } from '../../scripts/v3-clean-workspace-audit.mjs';
++import { auditWorkspace, evidenceCompletionFindings, gateSyncDocumentFindings, workspaceScopeFiles } from '../../scripts/v3-clean-workspace-audit.mjs';
+ import {
++  P1_BASELINE_DIRECTORY,
+   P1_COMPLETION_BASELINE_DIRECTORY,
+   P1_DEFERRED_PACKAGE_SCRIPTS,
+   P1_EVIDENCE_DIRECTORY,
+@@ -50,12 +51,23 @@ test('gate synchronization contract is present in every governing surface', () =
+   for (const group of Object.values(P1_GATE_SYNC_CATALOG_PATHS)) {
+     for (const file of group) assert.ok(paths.has(file), file);
+   }
+-  assert.deepEqual(governance.evidence, ['docs/evidence/v3-clean-p1-gate-contract-sync-20260819/verification.json']);
++  assert.deepEqual(governance.evidence, ['docs/evidence/v3-clean-p1-gate-contract-enforcement-20260819/verification.json']);
+   assert.deepEqual(governance.gate_sync_rules, P1_GATE_SYNC_RULES.map((rule) => rule.id));
+   assert.deepEqual(governance.gate_sync_commands, [...P1_GATE_SYNC_COMMANDS]);
+   for (const rule of P1_GATE_SYNC_RULES) assert.match(matrix, new RegExp(rule.id));
+ });
+ 
++test('gate synchronization parser rejects duplicate ids and rule text drift', () => {
++  const source = fs.readFileSync(path.join(root, 'docs/testing.md'), 'utf8');
++  assert.deepEqual(gateSyncDocumentFindings(source, 'docs/testing.md'), []);
++  const ruleLine = source.split(/\r?\n/).find((line) => line.startsWith('| GS-001 |'));
++  const duplicateCodes = new Set(gateSyncDocumentFindings(`${source}\n${ruleLine}\n`, 'duplicate.md').map((entry) => entry.code));
++  assert.ok(duplicateCodes.has('gate_sync_rule_duplicate'));
++  assert.ok(duplicateCodes.has('gate_sync_rule_table_mismatch'));
++  const drifted = source.replace('MUST trigger gate-sync review.', 'MUST trigger review.');
++  assert.ok(gateSyncDocumentFindings(drifted, 'drifted.md').some((entry) => entry.code === 'gate_sync_rule_table_mismatch'));
++});
++
+ test('completion baseline records the remaining pre-fix synchronization gaps', () => {
+   const baseline = path.join(root, P1_COMPLETION_BASELINE_DIRECTORY);
+   assert.ok(fs.existsSync(path.join(baseline, 'original-hashes.json')));
+@@ -75,6 +87,16 @@ test('completion baseline records the remaining pre-fix synchronization gaps', (
+   ]) assert.ok(codes.has(code), code);
+ });
+ 
++test('gate enforcement baseline records the pre-hardening synchronization gap', () => {
++  const baseline = path.join(root, P1_BASELINE_DIRECTORY);
++  assert.ok(fs.existsSync(path.join(baseline, 'original-hashes.json')));
++  const audit = auditWorkspace({ root: baseline, verifyEvidence: false });
++  const codes = new Set(audit.findings.map((entry) => entry.code));
++  assert.equal(audit.valid, false);
++  assert.ok(codes.has('catalog_p1_evidence_mismatch'));
++  assert.ok(codes.has('gate_sync_evidence_reference_missing'));
++});
++
+ test('workspace path classifier keeps later phases separate from P1', () => {
+   assert.deepEqual(classifyWorkspacePath('apps/api/src/clean/runtime.mjs').rows, ['P1-PLATFORM-001', 'P1-PLATFORM-002']);
+   assert.deepEqual(classifyWorkspacePath('scripts/v3-clean-workspace-audit.mjs').rows, P1_GOVERNANCE_ROWS);

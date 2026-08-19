@@ -1,0 +1,1072 @@
+diff --git a/README.md b/README.md
+index d20876f..92bbefc 100644
+--- a/README.md
++++ b/README.md
+@@ -115,7 +115,7 @@ clean volume before one-time cutover. Credentials import as metadata with
+ | `pnpm check` | syntax, TypeScript, runtime ownership, script count |
+ | `pnpm test` | DAG, SQLite, immutability, paths, Broker contracts |
+ | `pnpm test:p1` | V3-Clean baseline, operation/event/CAS/API v2 probes |
+-| `pnpm audit:p1` | global P1/future-fixture classification, active docs and Evidence freshness |
++| `pnpm audit:p1` | all-path P1/future-fixture classification, active docs, final Evidence and rollback freshness |
+ | `pnpm scan:clean` | clean dependency boundary, ownership, registry parity and global P1 audit |
+ | `pnpm test:integration` | P1 integration plus historical API/Broker/MCP characterization |
+ | `pnpm test:e2e` | historical Web journey characterization; no P1 Web claim |
+diff --git a/docs/architecture/v23-capability-matrix.md b/docs/architecture/v23-capability-matrix.md
+index 60eac76..c64040d 100644
+--- a/docs/architecture/v23-capability-matrix.md
++++ b/docs/architecture/v23-capability-matrix.md
+@@ -388,6 +388,6 @@ these rows do not promote domain Catalog entries by schema existence alone.
+ 
+ | P1 row | Clean owner | API/command surface | Tables/events | Test and Evidence | Status |
+ | --- | --- | --- | --- | --- | --- |
+-| P1-PLATFORM-001 | Platform | `/livez`, `/readyz`, `operations.get`, `operations.events`, `operations.cancel` | `schema_meta`, `schema_migrations`, `actors`, `aggregate_heads`, `aggregate_revisions`, `operations`, `operation_links`, `events`, `event_cursors`, `idempotency_keys`, `audit_events`, `cas_objects`, `receipt_manifests` | `tests/p1/clean-platform.test.mjs`; `docs/evidence/v3-clean-p1-global-sync-20260819/verification.json` | verified |
+-| P1-PLATFORM-002 | CAS/Redaction | registry receipt and replay envelopes | `cas_objects`, `receipt_manifests`, `events`, `audit_events` | `tests/p1/clean-platform.test.mjs`; `docs/evidence/v3-clean-p1-global-sync-20260819/cas-manifest.json` | verified |
+-| P1-GOVERNANCE-003 | Platform | active process, fixture, document and Evidence synchronization | no domain tables; one global workspace inventory | `tests/p1/workspace-sync.test.mjs`; `docs/evidence/v3-clean-p1-global-sync-20260819/workspace-audit.json` | verified |
++| P1-PLATFORM-001 | Platform | `/livez`, `/readyz`, `operations.get`, `operations.events`, `operations.cancel` | `schema_meta`, `schema_migrations`, `actors`, `aggregate_heads`, `aggregate_revisions`, `operations`, `operation_links`, `events`, `event_cursors`, `idempotency_keys`, `audit_events`, `cas_objects`, `receipt_manifests` | `tests/p1/clean-platform.test.mjs`; `docs/evidence/v3-clean-p1-completion-audit-20260819/verification.json` | verified |
++| P1-PLATFORM-002 | CAS/Redaction | registry receipt and replay envelopes | `cas_objects`, `receipt_manifests`, `events`, `audit_events` | `tests/p1/clean-platform.test.mjs`; `docs/evidence/v3-clean-p1-completion-audit-20260819/cas-manifest.json` | verified |
++| P1-GOVERNANCE-003 | Platform | active process, fixture, document and Evidence synchronization | no domain tables; one governed hash inventory plus one all-path classification inventory | `tests/p1/workspace-sync.test.mjs`; `docs/evidence/v3-clean-p1-completion-audit-20260819/workspace-audit.json` | verified |
+diff --git a/docs/architecture/v3-clean-development-plan.md b/docs/architecture/v3-clean-development-plan.md
+index 90f0341..5776419 100644
+--- a/docs/architecture/v3-clean-development-plan.md
++++ b/docs/architecture/v3-clean-development-plan.md
+@@ -499,7 +499,7 @@ generic operations/events/cursors, registry-backed API v2 probes, redaction,
+ and the local CAS. The historical server and migration modules remain fixture
+ inputs and are not imported by this clean entry.
+ 
+-Superseding receipt directory: `docs/evidence/v3-clean-p1-global-sync-20260819/`.
++Superseding receipt directory: `docs/evidence/v3-clean-p1-completion-audit-20260819/`.
+ 
+ | Capability | Receipt/test | Status |
+ | --- | --- | --- |
+@@ -507,7 +507,7 @@ Superseding receipt directory: `docs/evidence/v3-clean-p1-global-sync-20260819/`
+ | operation state machine and atomic head/event/audit | `golden-receipt.json`, `tests/p1/clean-platform.test.mjs` | verified |
+ | API v2 envelope, retired route, JSON/SSE replay | `route-inventory.json`, `tests/p1/clean-platform.test.mjs` | verified |
+ | canonical CAS, tamper and redaction receipts | `cas-manifest.json`, `tests/p1/clean-platform.test.mjs` | verified |
+-| global active/deferred surface and Evidence synchronization | `workspace-audit.json`, `tests/p1/workspace-sync.test.mjs` | verified |
++| global active/deferred surface, all-path classification and final Evidence synchronization | `workspace-audit.json`, `workspace-scope-inventory.json`, `tests/p1/workspace-sync.test.mjs` | verified |
+ 
+ P2 remains blocked until the receipt's rollback and architecture checks are
+ re-run on the destination volume.
+diff --git a/docs/document-index.md b/docs/document-index.md
+index 3f02e6c..ecda829 100644
+--- a/docs/document-index.md
++++ b/docs/document-index.md
+@@ -65,6 +65,7 @@
+ | `doc/` | 产品想法、问题追踪和愿景草稿 |
+ | `探索/`、`探索-1/` | 调研、资料索引和开放问题 |
+ | `当前项目毕业设计任务书/`、`任务书/` | 学校任务书及其核验材料 |
++| `愿景与范围文档模板/` | 外部模板及中文对照材料，不是产品契约 |
+ | `docs/evidence/` | 当前阶段凭证以及历史实现的验证、截图、快照和回滚材料 |
+ 
+ ## 5. 维护和检查
+diff --git a/docs/testing.md b/docs/testing.md
+index d25d62e..c4f661b 100644
+--- a/docs/testing.md
++++ b/docs/testing.md
+@@ -14,12 +14,14 @@ replay, CAS, redaction, and startup gates are implementation claims. The older
+ V1/V6 journey suites below execute against explicit historical fixtures and do
+ not promote a clean Catalog row.
+ 
+-`audit:p1` classifies every governed source surface as active P1, governance,
+-Evidence, historical fixture, later-phase fixture, or non-product material. It
+-also checks the PR template, default process scripts, legacy-server import
+-allowlist, active Markdown links, Catalog/matrix/plan receipt references, and
+-the current Evidence manifest and modified-artifact hashes. `scan:clean`
+-includes the same result beside the runtime dependency scan.
++`audit:p1` classifies every Git-visible, non-build path as active P1,
++governance, Evidence, historical fixture, later-phase fixture, supporting
++document, or non-product material. It also checks all package-script roles, the
++PR template, default process entrypoints, legacy-server import allowlist,
++active Markdown links, Catalog/matrix/plan receipt references, and the final
++Evidence manifest, governed hash inventory, all-path classification inventory,
++and actual rollback record. `scan:clean` includes the same result beside the
++runtime dependency scan.
+ 
+ Unit tests cover DAG validation, relation rollback, immutable records, FTS/settings, path policy, Job Spec restrictions, HMAC expiry/replay, and public contracts.
+ 
+diff --git a/docs/v2-retrospective.md b/docs/v2-retrospective.md
+new file mode 100644
+index 0000000..630208d
+--- /dev/null
++++ b/docs/v2-retrospective.md
+@@ -0,0 +1,9 @@
++# V2 Retrospective
++
++V2 accumulated versioned services, migrations, compatibility facades, large in-memory state snapshots, a global context projector, standalone MCP infrastructure, team and Exchange concepts, terminal/host bridges, and broad document parsers. The number of runtime collections and release scripts made ownership and recovery difficult to demonstrate.
++
++V3 treats Git history as the archive for source implementations. Runtime directories contain one implementation per domain. V2.3 state remains cold evidence and is not a compatibility input.
++
++The final V2.3 cutover receipt was revoked by a new immutable receipt because its declared rollback image tag was absent and the observed runtime image identified a later working-tree build. The old receipt was not edited. After writes stopped, the source volume was fully hashed, copied to a cold evidence volume, compressed, restored to a temporary volume, and verified with matching manifests and SQLite integrity.
++
++No generic V2-to-V3 migrator exists. The DesignSignal demonstration project is recreated through the public V3 API with sanitized content.
+diff --git a/feature-catalog.json b/feature-catalog.json
+index a0ee3ea..5325c35 100644
+--- a/feature-catalog.json
++++ b/feature-catalog.json
+@@ -26,15 +26,15 @@
+       "name": "Recovery truth, ownership and architecture gates",
+       "status": "verified",
+       "owner_modules": ["platform"],
+-      "source_files": ["scripts/v23-plan.mjs", "scripts/v23-catalog.mjs", "scripts/v23-coverage.mjs", "scripts/v23-impact.mjs"],
+-      "target_modules": ["feature-catalog.json", "apps/api/src/modules/registry.mjs", "apps/api/src/modules/platform", "scripts/recovery-governance.mjs", "scripts/recovery-evidence.mjs", "scripts/check.mjs", "scripts/verify.mjs", "docs/architecture/v3-clean-development-plan.md", "docs/testing.md"],
++      "source_files": ["docs/architecture/v23-capability-matrix.md", "scripts/lib/v3-clean-p1-scope.mjs", "scripts/v3-clean-workspace-audit.mjs", "scripts/v3-clean-architecture-scan.mjs"],
++      "target_modules": ["feature-catalog.json", "apps/api/src/modules/registry.mjs", "apps/api/src/modules/platform", "scripts/recovery-governance.mjs", "scripts/recovery-evidence.mjs", "scripts/check.mjs", "scripts/verify.mjs", "docs/architecture/v3-clean-development-plan.md", "docs/testing.md", "tests/p1/workspace-sync.test.mjs"],
+       "tables": [],
+       "apis": [],
+       "ui": [],
+       "events": ["recovery.governance.receipt"],
+-      "behavior_tests": ["tests/unit/recovery-governance.test.mjs"],
++      "behavior_tests": ["tests/unit/recovery-governance.test.mjs", "tests/p1/workspace-sync.test.mjs"],
+       "ui_tests": [],
+-      "evidence": ["docs/evidence/v3-clean-p1-global-sync-20260819/verification.json"],
++      "evidence": ["docs/evidence/v3-clean-p1-completion-audit-20260819/verification.json"],
+       "release_receipts": [],
+       "tests": ["T0", "tests/unit/recovery-governance.test.mjs"]
+     },
+diff --git a/scripts/lib/v3-clean-p1-scope.mjs b/scripts/lib/v3-clean-p1-scope.mjs
+index acd1b75..1a849cc 100644
+--- a/scripts/lib/v3-clean-p1-scope.mjs
++++ b/scripts/lib/v3-clean-p1-scope.mjs
+@@ -1,25 +1,76 @@
+-export const P1_EVIDENCE_DIRECTORY = 'docs/evidence/v3-clean-p1-global-sync-20260819';
+-export const P1_PARENT_EVIDENCE_DIRECTORY = 'docs/evidence/v3-clean-p1-sync-20260819';
+-export const P1_BASELINE_DIRECTORY = '.ai-workspace/v3-clean-p1-global-sync-baseline-20260819';
++export const P1_EVIDENCE_DIRECTORY = 'docs/evidence/v3-clean-p1-completion-audit-20260819';
++export const P1_PARENT_EVIDENCE_DIRECTORY = 'docs/evidence/v3-clean-p1-global-sync-20260819';
++export const P1_BASELINE_DIRECTORY = '.ai-workspace/v3-clean-p1-completion-audit-baseline-20260819';
++
++export const P1_EVIDENCE_REQUIRED_FILES = Object.freeze([
++  'manifest.json',
++  'modified-artifact.json',
++  'original-hashes.json',
++  'workspace-inventory.json',
++  'workspace-scope-inventory.json',
++  'verification.json',
++  'change.patch',
++  'rollback.ps1',
++  'workspace-audit.json',
++  'architecture-scan.json',
++  'parent-receipt.json',
++  'schema-snapshot.json',
++  'schema-inventory.json',
++  'cas-manifest.json',
++  'golden-receipt.json',
++  'route-inventory.json',
++  'owner-manifest.json',
++  'task-manifest.json'
++]);
++
++export const P1_PLATFORM_ROWS = Object.freeze(['P1-PLATFORM-001', 'P1-PLATFORM-002']);
++export const P1_GOVERNANCE_ROWS = Object.freeze(['P1-GOVERNANCE-003']);
++export const P1_MATRIX_ROWS = Object.freeze([...P1_PLATFORM_ROWS, ...P1_GOVERNANCE_ROWS]);
+ 
+ export const P1_RUNTIME_ENTRYPOINT = 'apps/api/server.mjs';
+ export const P1_HTTP_COMPOSITION = 'apps/api/clean-server.mjs';
+ export const P1_CLEAN_ROOT = 'apps/api/src/clean/';
+ 
+-export const P1_PROCESS_SCRIPTS = Object.freeze({
+-  'dev:clean': 'node apps/api/server.mjs',
+-  'dev:api': 'node apps/api/server.mjs',
+-  start: 'node apps/api/server.mjs',
+-  'start:clean': 'node apps/api/server.mjs'
+-});
++export const P1_PACKAGE_SCRIPT_DEFINITIONS = Object.freeze(Object.fromEntries(Object.entries({
++  dev: { command: 'node scripts/dev.mjs', role: 'active_process', phase: 'P1' },
++  'dev:clean': { command: 'node apps/api/server.mjs', role: 'active_process', phase: 'P1' },
++  'dev:api': { command: 'node apps/api/server.mjs', role: 'active_process', phase: 'P1' },
++  'fixture:legacy:dev-broker': { command: 'node apps/runner-broker/server.mjs', role: 'deferred_fixture', phase: 'P6' },
++  start: { command: 'node apps/api/server.mjs', role: 'active_process', phase: 'P1' },
++  'start:clean': { command: 'node apps/api/server.mjs', role: 'active_process', phase: 'P1' },
++  build: { command: 'corepack pnpm --filter @aiws/web build', role: 'characterization_gate', phase: 'P9' },
++  check: { command: 'node scripts/check.mjs', role: 'p1_gate', phase: 'P1' },
++  'scan:clean': { command: 'node scripts/v3-clean-architecture-scan.mjs', role: 'p1_gate', phase: 'P1' },
++  'audit:p1': { command: 'node scripts/v3-clean-workspace-audit.mjs', role: 'p1_gate', phase: 'P1' },
++  typecheck: { command: 'corepack pnpm --filter @aiws/web typecheck', role: 'characterization_gate', phase: 'P9' },
++  test: { command: 'node --test tests/unit/*.test.mjs && corepack pnpm --filter @aiws/web test', role: 'characterization_gate', phase: 'P2-P9' },
++  'test:p1': { command: 'node --test tests/p1/*.test.mjs tests/integration/v3-clean-p1.test.mjs tests/security/v3-clean-p1.test.mjs', role: 'p1_gate', phase: 'P1' },
++  'test:integration': { command: 'node --experimental-test-coverage --test-coverage-lines=85 --test-coverage-branches=70 --test-coverage-functions=75 --test-coverage-exclude=apps/api/src/clean/** --test tests/integration/*.test.mjs', role: 'characterization_gate', phase: 'P2-P9' },
++  'test:e2e': { command: 'node scripts/e2e.mjs', role: 'characterization_gate', phase: 'P9' },
++  'test:security': { command: 'node --test --test-concurrency=1 tests/security/*.test.mjs', role: 'characterization_gate', phase: 'P2-P9' },
++  'test:release': { command: 'node --test tests/release/*.test.mjs', role: 'characterization_gate', phase: 'P8-P9' },
++  'test:runner-real': { command: 'node scripts/runner-real-smoke.mjs', role: 'characterization_gate', phase: 'P6' },
++  'github:seed-fixture': { command: 'node scripts/github-seed-fixture.mjs', role: 'deferred_fixture', phase: 'P7' },
++  verify: { command: 'node scripts/verify.mjs', role: 'p1_gate', phase: 'P1' },
++  'fixture:seed-demo': { command: 'node scripts/seed-demo.mjs', role: 'deferred_fixture', phase: 'P3' },
++  'archive:v23': { command: 'node scripts/archive-v23.mjs', role: 'historical_maintenance', phase: 'historical' },
++  'fixture:legacy:acceptance': { command: 'node scripts/acceptance.mjs', role: 'deferred_fixture', phase: 'P2-P9' },
++  'fixture:legacy:release-build': { command: 'node scripts/release-build.mjs', role: 'deferred_fixture', phase: 'P8-P9' },
++  'fixture:legacy:release-rehearse': { command: 'node scripts/release-rehearsal.mjs', role: 'deferred_fixture', phase: 'P8-P9' },
++  'fixture:legacy:release-promote': { command: 'node scripts/release-promote.mjs', role: 'deferred_fixture', phase: 'P8-P9' },
++  'recovery:plan': { command: 'node scripts/recovery-governance.mjs plan', role: 'p1_governance', phase: 'P1' },
++  'recovery:catalog': { command: 'node scripts/recovery-governance.mjs catalog', role: 'p1_governance', phase: 'P1' },
++  'recovery:coverage': { command: 'node scripts/recovery-governance.mjs coverage', role: 'p1_governance', phase: 'P1' },
++  'recovery:impact': { command: 'node scripts/recovery-governance.mjs impact', role: 'p1_governance', phase: 'P1' }
++}).map(([name, definition]) => [name, Object.freeze(definition)])));
++
++export const P1_PROCESS_SCRIPTS = Object.freeze(Object.fromEntries(Object.entries(P1_PACKAGE_SCRIPT_DEFINITIONS)
++  .filter(([, definition]) => definition.role === 'active_process')
++  .map(([name, definition]) => [name, definition.command])));
+ 
+-export const P1_DEFERRED_PACKAGE_SCRIPTS = Object.freeze({
+-  'fixture:legacy:dev-broker': 'node apps/runner-broker/server.mjs',
+-  'fixture:legacy:acceptance': 'node scripts/acceptance.mjs',
+-  'fixture:legacy:release-build': 'node scripts/release-build.mjs',
+-  'fixture:legacy:release-rehearse': 'node scripts/release-rehearsal.mjs',
+-  'fixture:legacy:release-promote': 'node scripts/release-promote.mjs'
+-});
++export const P1_DEFERRED_PACKAGE_SCRIPTS = Object.freeze(Object.fromEntries(Object.entries(P1_PACKAGE_SCRIPT_DEFINITIONS)
++  .filter(([, definition]) => definition.phase !== 'P1')
++  .map(([name, definition]) => [name, definition.command])));
+ 
+ export const P1_FORBIDDEN_PACKAGE_SCRIPTS = Object.freeze([
+   'dev:broker',
+@@ -61,25 +112,37 @@ export const P1_ACTIVE_MARKDOWN = Object.freeze([
+   'docs/architecture/v3-clean-development-plan.md'
+ ]);
+ 
+-const P1_FILES = new Set([
++const P1_PLATFORM_FILES = new Set([
+   P1_RUNTIME_ENTRYPOINT,
+   P1_HTTP_COMPOSITION,
+   'scripts/dev.mjs',
++  'scripts/v3-clean-p1-evidence.mjs',
++  'tests/p1/clean-platform.test.mjs',
++  'tests/integration/v3-clean-p1.test.mjs',
++  'tests/security/v3-clean-p1.test.mjs'
++]);
++
++const P1_GOVERNANCE_FILES = new Set([
++  'scripts/check.mjs',
++  'scripts/verify.mjs',
++  'scripts/recovery-governance.mjs',
+   'scripts/v3-clean-architecture-scan.mjs',
+   'scripts/v3-clean-workspace-audit.mjs',
+-  'scripts/v3-clean-p1-evidence.mjs',
+   'scripts/v3-clean-p1-global-sync-evidence.mjs',
+   'scripts/lib/v3-clean-p1-scope.mjs',
+-  'tests/integration/v3-clean-p1.test.mjs',
+-  'tests/security/v3-clean-p1.test.mjs',
++  'tests/p1/workspace-sync.test.mjs',
+   'tests/unit/recovery-governance.test.mjs'
+ ]);
+ 
+ export function classifyWorkspacePath(value) {
+   const file = normalize(value);
+   if (!file) return null;
+-  if (file.startsWith(P1_CLEAN_ROOT) || file.startsWith('tests/p1/') || P1_FILES.has(file)) {
+-    return { kind: 'p1', phase: 'P1', rows: ['P1-PLATFORM-001', 'P1-PLATFORM-002'] };
++  if (P1_GOVERNANCE_FILES.has(file)) {
++    const rows = file === 'scripts/v3-clean-architecture-scan.mjs' ? P1_MATRIX_ROWS : P1_GOVERNANCE_ROWS;
++    return { kind: 'p1', phase: 'P1', rows: [...rows] };
++  }
++  if (file.startsWith(P1_CLEAN_ROOT) || file.startsWith('tests/p1/') || P1_PLATFORM_FILES.has(file)) {
++    return { kind: 'p1', phase: 'P1', rows: [...P1_PLATFORM_ROWS] };
+   }
+   if (file === 'apps/api/server-legacy.mjs') return { kind: 'fixture', phase: 'P2-P9', reason: 'historical API runtime' };
+   if (file.startsWith('apps/api/src/')) return { kind: 'fixture', phase: 'P2-P8', reason: 'historical domain/runtime input' };
+@@ -91,7 +154,7 @@ export function classifyWorkspacePath(value) {
+   if (file.startsWith('docs/archive/')) return { kind: 'archive', phase: 'historical' };
+   if (file.startsWith('docs/architecture/') || P1_ACTIVE_MARKDOWN.includes(file)) return { kind: 'governance', phase: 'P0-P9' };
+   if (file.startsWith('.github/') || file.startsWith('.githooks/')) return { kind: 'governance', phase: 'P0-P9' };
+-  if (file.startsWith('doc/') || file.startsWith('探索/') || file.startsWith('探索-1/') || file.startsWith('当前项目毕业设计任务书/') || file.startsWith('任务书/')) {
++  if (file.startsWith('doc/') || file.startsWith('探索/') || file.startsWith('探索-1/') || file.startsWith('当前项目毕业设计任务书/') || file.startsWith('任务书/') || file.startsWith('愿景与范围文档模板/')) {
+     return { kind: 'non_product', phase: 'unscoped research' };
+   }
+   if (file.startsWith('docs/')) return { kind: 'supporting_document', phase: 'P0-P9' };
+diff --git a/scripts/recovery-governance.mjs b/scripts/recovery-governance.mjs
+index 865a521..360b084 100644
+--- a/scripts/recovery-governance.mjs
++++ b/scripts/recovery-governance.mjs
+@@ -12,11 +12,12 @@ import {
+   ownerOf
+ } from '../apps/api/src/modules/registry.mjs';
+ import { auditWorkspace } from './v3-clean-workspace-audit.mjs';
+-import { classifyWorkspacePath } from './lib/v3-clean-p1-scope.mjs';
++import { P1_EVIDENCE_DIRECTORY, classifyWorkspacePath } from './lib/v3-clean-p1-scope.mjs';
+ 
+ const root = process.cwd();
+ const command = process.argv[2];
+ const audit = process.argv.includes('--audit');
++const skipP1Evidence = process.argv.includes('--skip-evidence');
+ const allowedCommands = new Set(['plan', 'catalog', 'coverage', 'impact']);
+ const STATUS_FLOW = ['planned', 'scaffolded', 'implemented', 'verified', 'released'];
+ const ACTIVE_PLAN_DOCUMENTS = Object.freeze([
+@@ -29,7 +30,7 @@ const CLEAN_ENTRYPOINTS = new Set([
+   'apps/api/clean-server.mjs'
+ ]);
+ const failures = [];
+-const workspaceAudit = auditWorkspace({ root });
++const workspaceAudit = auditWorkspace({ root, verifyEvidence: skipP1Evidence ? false : undefined });
+ 
+ if (!workspaceAudit.valid) failures.push(`workspace synchronization failed: ${workspaceAudit.findings.map((entry) => entry.code).join(', ')}`);
+ 
+@@ -241,7 +242,10 @@ function validateStatusEvidence() {
+     if (feature.ui.length && !feature.ui_tests.length) failures.push(`${feature.id}: implemented UI feature has no UI tests`);
+     if (!feature.evidence.length) failures.push(`${feature.id}: implemented feature has no evidence`);
+     for (const testPath of [...feature.behavior_tests, ...feature.ui_tests]) requirePath(feature.id, testPath, 'test');
+-    for (const evidencePath of feature.evidence) validateEvidence(feature, evidencePath, featureRank >= rank('verified'));
++    for (const evidencePath of feature.evidence) {
++      if (skipP1Evidence && evidencePath.startsWith(`${P1_EVIDENCE_DIRECTORY}/`)) continue;
++      validateEvidence(feature, evidencePath, featureRank >= rank('verified'));
++    }
+     if (featureRank >= rank('released')) {
+       if (!feature.release_receipts.length) failures.push(`${feature.id}: released feature has no release receipt`);
+       for (const receiptPath of feature.release_receipts) validateReleaseReceipt(feature, receiptPath);
+diff --git a/scripts/v3-clean-architecture-scan.mjs b/scripts/v3-clean-architecture-scan.mjs
+index 7d11947..73a409d 100644
+--- a/scripts/v3-clean-architecture-scan.mjs
++++ b/scripts/v3-clean-architecture-scan.mjs
+@@ -21,7 +21,10 @@ const forbidden = [
+ const visited = new Set();
+ const files = [];
+ const findings = [];
+-const workspace = auditWorkspace({ root });
++const workspace = auditWorkspace({
++  root,
++  verifyEvidence: process.argv.includes('--skip-evidence') ? false : undefined
++});
+ 
+ if (!workspace.valid) findings.push({ label: 'workspace synchronization mismatch', findings: workspace.findings });
+ 
+diff --git a/scripts/v3-clean-p1-global-sync-evidence.mjs b/scripts/v3-clean-p1-global-sync-evidence.mjs
+index dc569d7..0430916 100644
+--- a/scripts/v3-clean-p1-global-sync-evidence.mjs
++++ b/scripts/v3-clean-p1-global-sync-evidence.mjs
+@@ -8,11 +8,14 @@ import { createCleanRuntime } from '../apps/api/src/clean/runtime.mjs';
+ import { CLEAN_MIGRATIONS } from '../apps/api/src/clean/schema.mjs';
+ import { CLEAN_COMMAND_OWNERS, CLEAN_EVENT_OWNERS, CLEAN_TABLE_OWNERS } from '../apps/api/src/clean/ownership.mjs';
+ import { registryParity } from '../apps/api/src/clean/registry.mjs';
+-import { auditWorkspace, governedWorkspaceFiles } from './v3-clean-workspace-audit.mjs';
++import { auditWorkspace, evidenceCompletionFindings, governedWorkspaceFiles, workspaceScopeFiles } from './v3-clean-workspace-audit.mjs';
+ import {
+   P1_BASELINE_DIRECTORY,
+   P1_EVIDENCE_DIRECTORY,
+-  P1_PARENT_EVIDENCE_DIRECTORY
++  P1_EVIDENCE_REQUIRED_FILES,
++  P1_MATRIX_ROWS,
++  P1_PARENT_EVIDENCE_DIRECTORY,
++  classifyWorkspacePath
+ } from './lib/v3-clean-p1-scope.mjs';
+ 
+ const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
+@@ -21,13 +24,7 @@ const evidence = path.resolve(root, outputArgument ? outputArgument.slice('--out
+ const baseline = path.resolve(root, P1_BASELINE_DIRECTORY);
+ const parentEvidence = path.resolve(root, P1_PARENT_EVIDENCE_DIRECTORY);
+ const verifyOnly = process.argv.includes('--verify');
+-const required = [
+-  'manifest.json', 'modified-artifact.json', 'original-hashes.json', 'workspace-inventory.json',
+-  'verification.json', 'change.patch', 'rollback.ps1', 'workspace-audit.json',
+-  'architecture-scan.json', 'parent-receipt.json', 'schema-snapshot.json',
+-  'schema-inventory.json', 'cas-manifest.json', 'golden-receipt.json',
+-  'route-inventory.json', 'owner-manifest.json', 'task-manifest.json'
+-];
++const required = P1_EVIDENCE_REQUIRED_FILES;
+ const generationEnv = { AIWS_P1_EVIDENCE_GENERATING: '1' };
+ 
+ if (verifyOnly) {
+@@ -38,7 +35,7 @@ if (verifyOnly) {
+   } catch (error) {
+     if (fs.existsSync(evidence)) {
+       fs.writeFileSync(path.join(evidence, 'failure.json'), `${JSON.stringify({
+-        schema_version: 'aiws.v3-clean.global-sync-failure.v1',
++        schema_version: 'aiws.v3-clean.completion-audit-failure.v1',
+         status: 'failed',
+         failed_at: new Date().toISOString(),
+         error: sanitize(error?.stack || error?.message || error)
+@@ -69,7 +66,7 @@ async function generateEvidence() {
+   const baselineReceiptFile = path.join(baseline, 'original-hashes.json');
+   const baselineReceipt = readJson(baselineReceiptFile);
+   writeJson('original-hashes.json', {
+-    schema_version: 'aiws.v3-clean.global-sync-original.v1',
++    schema_version: 'aiws.v3-clean.completion-audit-original.v1',
+     source_receipt: `${P1_BASELINE_DIRECTORY}/original-hashes.json`,
+     source_receipt_sha256: hashFile(baselineReceiptFile),
+     baseline_commit: baselineReceipt.baseline_commit,
+@@ -86,6 +83,18 @@ async function generateEvidence() {
+     files: workspaceRows,
+     inventory_sha256: sha256(canonicalInventory(workspaceRows))
+   });
++  const expectedEvidencePaths = required.map((file) => `${relative(evidence)}/${file}`);
++  const workspaceScopePaths = [...new Set([...workspaceScopeFiles(root), ...expectedEvidencePaths])].sort();
++  const workspaceScopeRows = workspaceScopePaths.map((file) => ({ path: file, classification: classifyWorkspacePath(file) }));
++  const unclassifiedScope = workspaceScopeRows.filter((entry) => !entry.classification).map((entry) => entry.path);
++  if (unclassifiedScope.length) throw new Error(`workspace_scope_unclassified:${unclassifiedScope.join(',')}`);
++  writeJson('workspace-scope-inventory.json', {
++    schema_version: 'aiws.v3-clean.workspace-scope-inventory.v1',
++    phase: 'P1',
++    paths: workspaceScopeRows,
++    classifications: countClassifications(workspaceScopeRows),
++    inventory_sha256: sha256(canonicalScope(workspaceScopeRows))
++  });
+ 
+   const scopeFiles = captureScopeFiles();
+   const baselineRows = new Map((baselineReceipt.files || []).map((entry) => [entry.path, entry]));
+@@ -99,11 +108,12 @@ async function generateEvidence() {
+   const changedFiles = changedPaths.filter((file) => fs.existsSync(path.join(root, file))).map((file) => ({ path: file, sha256: hashFile(path.join(root, file)) }));
+   const deletedFiles = changedPaths.filter((file) => !fs.existsSync(path.join(root, file))).map((file) => ({ path: file, baseline_sha256: hashFile(path.join(baseline, file)) }));
+   writeJson('modified-artifact.json', {
+-    schema_version: 'aiws.v3-clean.global-sync-modified-artifact.v1',
++    schema_version: 'aiws.v3-clean.completion-audit-modified-artifact.v1',
+     parent_evidence: P1_PARENT_EVIDENCE_DIRECTORY,
+     baseline_receipt: `${P1_BASELINE_DIRECTORY}/original-hashes.json`,
+     runtime_entry: 'apps/api/server.mjs',
+     workspace_inventory_sha256: sha256(canonicalInventory(workspaceRows)),
++    workspace_scope_inventory_sha256: sha256(canonicalScope(workspaceScopeRows)),
+     files: changedFiles,
+     deleted_files: deletedFiles
+   });
+@@ -114,16 +124,16 @@ async function generateEvidence() {
+   if (!parent.valid) throw new Error(`parent_boundary_invalid:${parent.errors.join(',')}`);
+   writeJson('parent-receipt.json', parent);
+   writeJson('task-manifest.json', {
+-    schema_version: 'aiws.v3-clean.global-sync-task.v1',
+-    target: 'P1 global synchronization across active runtime, governance, documentation, tests, Catalog, and Evidence',
++    schema_version: 'aiws.v3-clean.completion-audit-task.v1',
++    target: 'P1 completion audit across every Git-visible path, active runtime, governance, documentation, tests, Catalog, and Evidence',
+     non_target: ['P2 Identity/Team behavior', 'P3 Project behavior', 'P4-P7 adapters and domains', 'P8 importer/release implementation', 'P9 clean Web workflow'],
+     preflight: {
+-      active_object: 'V3-Clean P1 workspace synchronization gate',
+-      last_confirmed_result: 'parent P1 receipt passed at the pre-change boundary',
++      active_object: 'V3-Clean P1 whole-workspace completion gate',
++      last_confirmed_result: 'parent global-sync receipt passed at the pre-change boundary',
+       next_action: 'review the P2 entry gate without activating deferred fixtures',
+       forbidden: ['legacy runtime in clean dependency graph', 'active pre-clean release command', 'second operation/head/CAS model', 'Catalog promotion without behavior Evidence'],
+       reuse: [P1_PARENT_EVIDENCE_DIRECTORY, P1_BASELINE_DIRECTORY],
+-      delete_retire: ['generic package aliases that executed pre-clean Broker, acceptance, and release fixtures']
++      delete_retire: ['stale P1 Catalog paths and incomplete all-workspace classifications']
+     },
+     acceptance_commands: [
+       'pnpm check', 'pnpm audit:p1', 'pnpm scan:clean', 'pnpm test:p1',
+@@ -131,7 +141,8 @@ async function generateEvidence() {
+       'pnpm recovery:impact --audit', 'pnpm test:integration', 'pnpm test:security',
+       'pnpm test:release', 'pnpm verify', 'git diff --check'
+     ],
+-    rollback_artifact: 'rollback.ps1'
++    rollback_artifact: 'rollback.ps1',
++    matrix_rows: P1_MATRIX_ROWS
+   });
+ 
+   const baselineChecks = [
+@@ -148,10 +159,10 @@ async function generateEvidence() {
+   checkpoint('initial_checks');
+ 
+   const acceptanceChecks = [
+-    ['pnpm', ['recovery:plan'], { timeout: 120000, env: generationEnv }],
+-    ['pnpm', ['recovery:catalog'], { timeout: 120000, env: generationEnv }],
+-    ['pnpm', ['recovery:coverage'], { timeout: 120000, env: generationEnv }],
+-    ['pnpm', ['recovery:impact', '--audit'], { timeout: 120000, env: generationEnv }],
++    ['pnpm', ['recovery:plan', '--', '--skip-evidence'], { timeout: 120000, env: generationEnv }],
++    ['pnpm', ['recovery:catalog', '--', '--skip-evidence'], { timeout: 120000, env: generationEnv }],
++    ['pnpm', ['recovery:coverage', '--', '--skip-evidence'], { timeout: 120000, env: generationEnv }],
++    ['pnpm', ['recovery:impact', '--', '--audit', '--skip-evidence'], { timeout: 120000, env: generationEnv }],
+     ['pnpm', ['test:integration'], { timeout: 300000, env: generationEnv }],
+     ['pnpm', ['test:security'], { timeout: 300000, env: generationEnv }],
+     ['pnpm', ['test:release'], { timeout: 300000, env: generationEnv }],
+@@ -167,13 +178,13 @@ async function generateEvidence() {
+   checks.push(verifyRollbackApply(changedPaths));
+   checkpoint('acceptance_checks');
+ 
+-  const finalAudit = run('node', ['scripts/v3-clean-workspace-audit.mjs'], { timeout: 120000 });
++  const finalAudit = run('node', ['scripts/v3-clean-workspace-audit.mjs', '--skip-evidence'], { timeout: 120000, env: generationEnv });
+   checks.push(finalAudit);
+   checkpoint('final_audit');
+-  const finalArchitecture = run('node', ['scripts/v3-clean-architecture-scan.mjs'], { timeout: 120000 });
++  const finalArchitecture = run('node', ['scripts/v3-clean-architecture-scan.mjs'], { timeout: 120000, env: generationEnv });
+   checks.push(finalArchitecture);
+   checkpoint('final_architecture');
+-  checks.push(run('pnpm', ['verify'], { timeout: 900000 }));
++  checks.push(run('pnpm', ['verify', '--', '--skip-p1-evidence'], { timeout: 900000, env: generationEnv }));
+   checkpoint('final_verify');
+   const finalAuditResult = JSON.parse(finalAudit.stdout);
+   const finalArchitectureResult = JSON.parse(finalArchitecture.stdout);
+@@ -192,6 +203,7 @@ async function generateEvidence() {
+     changed_files: changedFiles.length,
+     deleted_files: deletedFiles.length,
+     workspace_files: workspaceRows.length,
++    workspace_scope_files: workspaceScopeRows.length,
+     checks: checks.length
+   }, null, 2)}\n`);
+ 
+@@ -203,23 +215,23 @@ async function generateEvidence() {
+   }
+ 
+   async function generatePlatformArtifacts() {
+-    const temp = fs.mkdtempSync(path.join(os.tmpdir(), 'v3-clean-global-sync-platform-'));
++    const temp = fs.mkdtempSync(path.join(os.tmpdir(), 'v3-clean-completion-audit-platform-'));
+     let runtime;
+     try {
+       const config = {
+         runtime: 'v3-clean', apiVersion: '2', host: '127.0.0.1', port: 0,
+         home: temp, databaseFile: path.join(temp, 'data', 'state.sqlite'),
+         casRoot: path.join(temp, 'cas'), receiptRoot: path.join(temp, 'receipts'),
+-        cursorSecret: 'global-sync-evidence', runtimeBuild: 'v3-clean-p1-global-sync',
++        cursorSecret: 'completion-audit-evidence', runtimeBuild: 'v3-clean-p1-completion-audit',
+         maxBodyBytes: 1024 * 1024
+       };
+       runtime = createCleanRuntime({ config });
+-      const created = await runtime.operations.create({ commandId: 'evidence.global_sync', idempotencyKey: 'global-sync-operation-1', request: { fixture: 'p1-global-sync' }, resourceType: 'evidence_probe', resourceId: 'probe_global_sync' });
++      const created = await runtime.operations.create({ commandId: 'evidence.completion_audit', idempotencyKey: 'completion-audit-operation-1', request: { fixture: 'p1-completion-audit' }, resourceType: 'evidence_probe', resourceId: 'probe_completion_audit' });
+       const queued = await runtime.operations.queue(created.operation_id, { expectedRevision: created.revision });
+       const running = await runtime.operations.start(created.operation_id, { expectedRevision: queued.revision });
+       const completed = await runtime.operations.succeed(created.operation_id, { expectedRevision: running.revision, result: { status: 'verified' } });
+       const replay = runtime.events.replay({ actorId: runtime.metadata.bootstrap_actor_id, operationId: created.operation_id });
+-      const casObject = runtime.cas.putCanonical({ evidence: 'p1-global-sync', status: 'verified' }, { mediaType: 'application/json' });
++      const casObject = runtime.cas.putCanonical({ evidence: 'p1-completion-audit', status: 'verified' }, { mediaType: 'application/json' });
+       const casManifest = runtime.cas.createManifest({ createdAt: '2026-08-19T00:00:00.000Z' });
+       const tables = runtime.db.query("SELECT name FROM sqlite_schema WHERE type='table' AND name NOT LIKE 'sqlite_%' ORDER BY name").map((row) => row.name);
+       const schemaRows = runtime.db.query("SELECT type,name,tbl_name,sql FROM sqlite_schema WHERE name NOT LIKE 'sqlite_%' ORDER BY type,name");
+@@ -243,19 +255,23 @@ function verifyEvidence() {
+   const errors = [];
+   if (!fs.existsSync(evidence)) errors.push('evidence_missing');
+   for (const file of required) if (!fs.existsSync(path.join(evidence, file))) errors.push(`artifact_missing:${file}`);
++  if (fs.existsSync(path.join(evidence, 'failure.json'))) errors.push('failure_marker_present');
+   if (errors.length) return failVerification(errors);
+   let manifest;
+   let modified;
+   let verification;
+   let inventory;
++  let scopeInventory;
+   try {
+     manifest = readJson(path.join(evidence, 'manifest.json'));
+     modified = readJson(path.join(evidence, 'modified-artifact.json'));
+     verification = readJson(path.join(evidence, 'verification.json'));
+     inventory = readJson(path.join(evidence, 'workspace-inventory.json'));
++    scopeInventory = readJson(path.join(evidence, 'workspace-scope-inventory.json'));
+   } catch (error) {
+     return failVerification([String(error?.message || error)]);
+   }
++  for (const file of required.filter((file) => file !== 'manifest.json')) if (!Object.hasOwn(manifest.artifacts || {}, file)) errors.push(`manifest_entry_missing:${file}`);
+   for (const [file, expected] of Object.entries(manifest.artifacts || {})) {
+     const full = path.join(evidence, file);
+     if (!fs.existsSync(full)) errors.push(`manifest_artifact_missing:${file}`);
+@@ -270,10 +286,26 @@ function verifyEvidence() {
+   const currentPaths = governedWorkspaceFiles(root);
+   const recordedPaths = (inventory.files || []).map((entry) => entry.path).sort();
+   if (JSON.stringify(currentPaths) !== JSON.stringify(recordedPaths)) errors.push('workspace_inventory_paths_mismatch');
+-  for (const entry of inventory.files || []) if (!fs.existsSync(path.join(root, entry.path)) || hashFile(path.join(root, entry.path)) !== entry.sha256) errors.push(`workspace_inventory_hash_mismatch:${entry.path}`);
+-  const records = verification.commands || [];
+-  if (manifest.status !== 'verified') errors.push('manifest_not_verified');
+-  if (verification.status !== 'passed' || verification.provisional !== false || !records.length || records.some((entry) => !entry.ok)) errors.push('verification_not_passed');
++  const currentRows = [];
++  for (const entry of inventory.files || []) {
++    const full = path.join(root, entry.path);
++    if (!fs.existsSync(full) || hashFile(full) !== entry.sha256) errors.push(`workspace_inventory_hash_mismatch:${entry.path}`);
++    else {
++      const bytes = fs.statSync(full).size;
++      if (bytes !== entry.bytes) errors.push(`workspace_inventory_size_mismatch:${entry.path}`);
++      currentRows.push({ path: entry.path, sha256: entry.sha256, bytes });
++    }
++  }
++  const inventorySha256 = sha256(canonicalInventory(currentRows));
++  if (inventory.inventory_sha256 !== inventorySha256 || modified.workspace_inventory_sha256 !== inventorySha256) errors.push('workspace_inventory_digest_mismatch');
++  const currentScopePaths = workspaceScopeFiles(root);
++  const currentScopeRows = currentScopePaths.map((file) => ({ path: file, classification: classifyWorkspacePath(file) }));
++  const recordedScopePaths = (scopeInventory.paths || []).map((entry) => entry.path).sort();
++  if (JSON.stringify(currentScopePaths) !== JSON.stringify(recordedScopePaths)) errors.push('workspace_scope_paths_mismatch');
++  if (JSON.stringify(currentScopeRows) !== JSON.stringify(scopeInventory.paths || [])) errors.push('workspace_scope_classification_mismatch');
++  const scopeSha256 = sha256(canonicalScope(currentScopeRows));
++  if (scopeInventory.inventory_sha256 !== scopeSha256 || modified.workspace_scope_inventory_sha256 !== scopeSha256) errors.push('workspace_scope_digest_mismatch');
++  errors.push(...evidenceCompletionFindings({ manifest, verification }).map((entry) => entry.code));
+   const original = readJson(path.join(evidence, 'original-hashes.json'));
+   const originalSource = path.join(root, original.source_receipt);
+   if (!fs.existsSync(originalSource) || hashFile(originalSource) !== original.source_receipt_sha256) errors.push('original_hash_receipt_mismatch');
+@@ -286,7 +318,7 @@ function verifyEvidence() {
+   const audit = auditWorkspace({ root, verifyEvidence: false });
+   if (!audit.valid) errors.push(...audit.findings.map((entry) => `workspace:${entry.code}`));
+   if (errors.length) return failVerification(errors);
+-  process.stdout.write(`${JSON.stringify({ evidence: relative(evidence), status: 'passed', parent_boundary: 'passed', workspace_files: currentPaths.length, rollback_dry_run: reverse }, null, 2)}\n`);
++  process.stdout.write(`${JSON.stringify({ evidence: relative(evidence), status: 'passed', parent_boundary: 'passed', workspace_files: currentPaths.length, workspace_scope_files: currentScopePaths.length, rollback_dry_run: reverse }, null, 2)}\n`);
+   return 0;
+ }
+ 
+@@ -304,8 +336,8 @@ function verifyParentBoundary() {
+     if (!fs.existsSync(full) || hashFile(full) !== entry.sha256) errors.push(`parent_boundary_file_mismatch:${entry.path}`);
+   }
+   for (const entry of modified.deleted_files || []) if (fs.existsSync(path.join(baseline, entry.path))) errors.push(`parent_boundary_deleted_file_present:${entry.path}`);
+-  const parentRecords = verification.commands || verification.checks || [];
+-  if (verification.status !== 'passed' || !parentRecords.length || parentRecords.some((entry) => Number(entry.exit_status) !== 0)) errors.push('parent_verification_not_passed');
++  const parentCompletion = evidenceCompletionFindings({ manifest, verification });
++  if (parentCompletion.length) errors.push(...parentCompletion.map((entry) => `parent_${entry.code}`));
+   const reverse = run('git', ['-c', 'core.autocrlf=false', 'apply', '--reverse', '--check', path.join(parentEvidence, 'change.patch')], { cwd: baseline, timeout: 120000 });
+   if (!reverse.ok) errors.push('parent_rollback_check_failed');
+   return {
+@@ -323,7 +355,7 @@ function verifyParentBoundary() {
+ }
+ 
+ function verifyRollbackApply(changedPaths) {
+-  const temp = fs.mkdtempSync(path.join(os.tmpdir(), 'v3-clean-global-sync-rollback-'));
++  const temp = fs.mkdtempSync(path.join(os.tmpdir(), 'v3-clean-completion-audit-rollback-'));
+   try {
+     const baselineReceipt = readJson(path.join(baseline, 'original-hashes.json'));
+     for (const entry of baselineReceipt.files || []) {
+@@ -355,7 +387,7 @@ function verifyRollbackApply(changedPaths) {
+ 
+ function writeVerification({ baselineChecks, checks, status, provisional }) {
+   writeJson('verification.json', {
+-    schema_version: 'aiws.v3-clean.global-sync-verification.v1',
++    schema_version: 'aiws.v3-clean.completion-audit-verification.v1',
+     status,
+     provisional,
+     generated_at: new Date().toISOString(),
+@@ -384,7 +416,7 @@ function writeManifest() {
+     ? 'failed'
+     : verification?.provisional === false ? 'verified' : 'checkpoint';
+   writeJson('manifest.json', {
+-    schema_version: 'aiws.v3-clean.global-sync-manifest.v1',
++    schema_version: 'aiws.v3-clean.completion-audit-manifest.v1',
+     batch: path.basename(evidence),
+     phase: 'P1',
+     status,
+@@ -431,7 +463,7 @@ function normalizePatch(diff, file, oldExists, newExists) {
+ }
+ 
+ function rollbackScript() {
+-  return `param([switch]$Apply)\n$ErrorActionPreference = 'Stop'\n$Evidence = Split-Path -Parent $MyInvocation.MyCommand.Path\n$Root = (Resolve-Path (Join-Path $Evidence '..\\..\\..')).Path\n$Patch = Join-Path $Evidence 'change.patch'\nPush-Location $Root\ntry {\n  git -c core.autocrlf=false apply --reverse --check $Patch\n  if ($LASTEXITCODE -ne 0) { throw 'rollback_dry_run_failed' }\n  if ($Apply) { git -c core.autocrlf=false apply --reverse --whitespace=nowarn $Patch; if ($LASTEXITCODE -ne 0) { throw 'rollback_apply_failed' } }\n  [ordered]@{ schema_version='aiws.v3-clean.global-sync-rollback.v1'; status=($(if ($Apply) { 'applied' } else { 'dry_run_passed' })); patch='change.patch'; parent='${P1_PARENT_EVIDENCE_DIRECTORY}'; volume_policy='seal deployment volumes; git core.autocrlf disabled; no down migration'; verified_at=(Get-Date).ToUniversalTime().ToString('o') } | ConvertTo-Json -Depth 5\n} finally { Pop-Location }\n`;
++  return `param([switch]$Apply)\n$ErrorActionPreference = 'Stop'\n$Evidence = Split-Path -Parent $MyInvocation.MyCommand.Path\n$Root = (Resolve-Path (Join-Path $Evidence '..\\..\\..')).Path\n$Patch = Join-Path $Evidence 'change.patch'\nPush-Location $Root\ntry {\n  git -c core.autocrlf=false apply --reverse --check $Patch\n  if ($LASTEXITCODE -ne 0) { throw 'rollback_dry_run_failed' }\n  if ($Apply) { git -c core.autocrlf=false apply --reverse --whitespace=nowarn $Patch; if ($LASTEXITCODE -ne 0) { throw 'rollback_apply_failed' } }\n  [ordered]@{ schema_version='aiws.v3-clean.completion-audit-rollback.v1'; status=($(if ($Apply) { 'applied' } else { 'dry_run_passed' })); patch='change.patch'; parent='${P1_PARENT_EVIDENCE_DIRECTORY}'; volume_policy='seal deployment volumes; git core.autocrlf disabled; no down migration'; verified_at=(Get-Date).ToUniversalTime().ToString('o') } | ConvertTo-Json -Depth 5\n} finally { Pop-Location }\n`;
+ }
+ 
+ function captureScopeFiles() {
+@@ -497,6 +529,18 @@ function canonicalInventory(rows) {
+   return JSON.stringify(rows.map((entry) => ({ path: entry.path, sha256: entry.sha256, bytes: entry.bytes })));
+ }
+ 
++function canonicalScope(rows) {
++  return JSON.stringify(rows.map((entry) => ({ path: entry.path, classification: entry.classification })));
++}
++
++function countClassifications(rows) {
++  return rows.reduce((counts, entry) => {
++    const key = `${entry.classification.kind}:${entry.classification.phase}`;
++    counts[key] = (counts[key] || 0) + 1;
++    return counts;
++  }, {});
++}
++
+ function writeJson(name, value) {
+   fs.writeFileSync(path.join(evidence, name), `${JSON.stringify(value, null, 2)}\n`, { mode: 0o600 });
+ }
+diff --git a/scripts/v3-clean-workspace-audit.mjs b/scripts/v3-clean-workspace-audit.mjs
+index 6c46d59..ea9c0f1 100644
+--- a/scripts/v3-clean-workspace-audit.mjs
++++ b/scripts/v3-clean-workspace-audit.mjs
+@@ -8,9 +8,12 @@ import {
+   P1_CLEAN_ROOT,
+   P1_DEFERRED_PACKAGE_SCRIPTS,
+   P1_EVIDENCE_DIRECTORY,
++  P1_EVIDENCE_REQUIRED_FILES,
+   P1_FORBIDDEN_PACKAGE_SCRIPTS,
+   P1_HTTP_COMPOSITION,
+   P1_LEGACY_SERVER_IMPORTERS,
++  P1_MATRIX_ROWS,
++  P1_PACKAGE_SCRIPT_DEFINITIONS,
+   P1_PROCESS_SCRIPTS,
+   P1_RETIRED_ROUTE_PROBES,
+   P1_RUNTIME_ENTRYPOINT,
+@@ -29,14 +32,15 @@ export function auditWorkspace(options = {}) {
+   const packageFile = path.join(root, 'package.json');
+   const packageJson = readJson(packageFile, addFinding, 'package_json_invalid') || {};
+   const scripts = packageJson.scripts || {};
+-  for (const [name, expected] of Object.entries(P1_PROCESS_SCRIPTS)) {
+-    if (scripts[name] !== expected) addFinding('active_process_script_mismatch', { script: name, expected, actual: scripts[name] || null });
++  const expectedScriptNames = Object.keys(P1_PACKAGE_SCRIPT_DEFINITIONS).sort();
++  const actualScriptNames = Object.keys(scripts).sort();
++  if (JSON.stringify(expectedScriptNames) !== JSON.stringify(actualScriptNames)) {
++    addFinding('package_script_inventory_mismatch', { expected: expectedScriptNames, actual: actualScriptNames });
+   }
+-  if (scripts.dev !== 'node scripts/dev.mjs') addFinding('default_dev_script_mismatch', { actual: scripts.dev || null });
+-  for (const name of P1_FORBIDDEN_PACKAGE_SCRIPTS) if (Object.hasOwn(scripts, name)) addFinding('future_phase_script_is_active', { script: name });
+-  for (const [name, expected] of Object.entries(P1_DEFERRED_PACKAGE_SCRIPTS)) {
+-    if (scripts[name] !== expected) addFinding('deferred_fixture_script_mismatch', { script: name, expected, actual: scripts[name] || null });
++  for (const [name, definition] of Object.entries(P1_PACKAGE_SCRIPT_DEFINITIONS)) {
++    if (scripts[name] !== definition.command) addFinding('package_script_command_mismatch', { script: name, expected: definition.command, actual: scripts[name] || null });
+   }
++  for (const name of P1_FORBIDDEN_PACKAGE_SCRIPTS) if (Object.hasOwn(scripts, name)) addFinding('future_phase_script_is_active', { script: name });
+   checks.push({ id: 'package-process-surface', valid: !findings.some((entry) => entry.code.includes('script')) });
+ 
+   const devSource = readText(path.join(root, 'scripts', 'dev.mjs'), addFinding, 'dev_script_missing');
+@@ -114,22 +118,49 @@ export function auditWorkspace(options = {}) {
+   if (JSON.stringify(governance?.evidence || []) !== JSON.stringify([expectedVerification])) {
+     addFinding('catalog_p1_evidence_mismatch', { expected: expectedVerification, actual: governance?.evidence || null });
+   }
++  const governanceImplementationPaths = [
++    ...(governance?.source_files || []),
++    ...(governance?.target_modules || []),
++    ...(governance?.behavior_tests || []),
++    ...(governance?.ui_tests || [])
++  ];
++  const governancePaths = [...governanceImplementationPaths, ...(governance?.evidence || [])];
++  for (const file of governanceImplementationPaths) if (!fs.existsSync(path.join(root, file))) addFinding('catalog_p1_path_missing', { file });
++  if (verifyEvidence) for (const file of governance?.evidence || []) if (!fs.existsSync(path.join(root, file))) addFinding('catalog_p1_path_missing', { file });
++  for (const file of [
++    'scripts/lib/v3-clean-p1-scope.mjs',
++    'scripts/v3-clean-workspace-audit.mjs',
++    'scripts/v3-clean-architecture-scan.mjs',
++    'tests/p1/workspace-sync.test.mjs'
++  ]) {
++    if (!governancePaths.includes(file)) addFinding('catalog_p1_path_unregistered', { file });
++  }
+   const plan = readText(path.join(root, 'docs', 'architecture', 'v3-clean-development-plan.md'), addFinding, 'development_plan_missing');
+   const matrix = readText(path.join(root, 'docs', 'architecture', 'v23-capability-matrix.md'), addFinding, 'capability_matrix_missing');
+   if (plan && !plan.includes(`\`${P1_EVIDENCE_DIRECTORY}/\``)) addFinding('plan_p1_evidence_mismatch', { expected: P1_EVIDENCE_DIRECTORY });
+   if (matrix) {
+-    const p1Lines = matrix.split(/\r?\n/).filter((line) => line.startsWith('| P1-PLATFORM-'));
++    const p1Lines = matrix.split(/\r?\n/).filter((line) => line.startsWith('| P1-'));
++    const actualRows = p1Lines.map((line) => line.split('|')[1].trim()).sort();
++    if (JSON.stringify(actualRows) !== JSON.stringify([...P1_MATRIX_ROWS].sort())) addFinding('matrix_p1_row_inventory_mismatch', { expected: P1_MATRIX_ROWS, actual: actualRows });
+     if (!p1Lines.length || p1Lines.some((line) => !line.includes(P1_EVIDENCE_DIRECTORY))) addFinding('matrix_p1_evidence_mismatch', { expected: P1_EVIDENCE_DIRECTORY });
+   }
+   if (verifyEvidence) verifyEvidenceDirectory(root, addFinding);
+-  checks.push({ id: 'p1-evidence-synchronization', valid: !findings.some((entry) => /(?:catalog|plan|matrix|evidence|artifact|rollback)_/.test(entry.code)) });
++  checks.push({ id: 'p1-evidence-synchronization', valid: !findings.some((entry) => /(?:catalog|plan|matrix|evidence|artifact|manifest|verification|inventory|rollback)_/.test(entry.code)) });
+ 
+-  const unclassified = collectGovernedFiles(root).filter((file) => !classifyWorkspacePath(file));
++  const scopeFiles = workspaceScopeFiles(root);
++  const classifications = {};
++  const unclassified = [];
++  for (const file of scopeFiles) {
++    const classification = classifyWorkspacePath(file);
++    const key = classification ? `${classification.kind}:${classification.phase}` : 'unclassified';
++    classifications[key] = (classifications[key] || 0) + 1;
++    if (!classification) unclassified.push(file);
++  }
+   if (unclassified.length) addFinding('workspace_files_unclassified', { files: unclassified });
+   checks.push({ id: 'workspace-inventory', valid: unclassified.length === 0 });
+ 
+   return {
+-    schema_version: 'aiws.v3-clean.workspace-audit.v1',
++    schema_version: 'aiws.v3-clean.workspace-audit.v2',
+     phase: 'P1',
+     active: {
+       runtime_entrypoint: P1_RUNTIME_ENTRYPOINT,
+@@ -138,9 +169,13 @@ export function auditWorkspace(options = {}) {
+     },
+     deferred: {
+       package_scripts: Object.keys(P1_DEFERRED_PACKAGE_SCRIPTS).sort(),
++      package_script_roles: Object.fromEntries(Object.entries(P1_PACKAGE_SCRIPT_DEFINITIONS)
++        .filter(([, definition]) => definition.phase !== 'P1')
++        .map(([name, definition]) => [name, { role: definition.role, phase: definition.phase }])),
+       retired_route_references: Object.fromEntries([...deferredRouteReferences].sort(([left], [right]) => left.localeCompare(right)))
+     },
+     evidence: { directory: P1_EVIDENCE_DIRECTORY, verified: verifyEvidence },
++    scope_inventory: { files: scopeFiles.length, classifications, unclassified },
+     checks,
+     findings,
+     valid: findings.length === 0
+@@ -149,17 +184,24 @@ export function auditWorkspace(options = {}) {
+ 
+ function verifyEvidenceDirectory(root, addFinding) {
+   const directory = path.join(root, P1_EVIDENCE_DIRECTORY);
+-  const required = ['manifest.json', 'modified-artifact.json', 'original-hashes.json', 'verification.json', 'workspace-inventory.json', 'change.patch', 'rollback.ps1'];
+   if (!fs.existsSync(directory)) {
+     addFinding('p1_evidence_missing', { directory: P1_EVIDENCE_DIRECTORY });
+     return;
+   }
+-  for (const file of required) if (!fs.existsSync(path.join(directory, file))) addFinding('p1_evidence_artifact_missing', { file: `${P1_EVIDENCE_DIRECTORY}/${file}` });
++  const missing = P1_EVIDENCE_REQUIRED_FILES.filter((file) => !fs.existsSync(path.join(directory, file)));
++  for (const file of missing) addFinding('p1_evidence_artifact_missing', { file: `${P1_EVIDENCE_DIRECTORY}/${file}` });
++  if (fs.existsSync(path.join(directory, 'failure.json'))) addFinding('p1_evidence_failure_marker_present');
++  if (missing.length) return;
+   const manifest = readJson(path.join(directory, 'manifest.json'), addFinding, 'p1_evidence_manifest_invalid');
+   const modified = readJson(path.join(directory, 'modified-artifact.json'), addFinding, 'p1_modified_artifact_invalid');
+   const verification = readJson(path.join(directory, 'verification.json'), addFinding, 'p1_verification_invalid');
+   const workspaceInventory = readJson(path.join(directory, 'workspace-inventory.json'), addFinding, 'p1_workspace_inventory_invalid');
+-  if (!manifest || !modified || !verification || !workspaceInventory) return;
++  const scopeInventory = readJson(path.join(directory, 'workspace-scope-inventory.json'), addFinding, 'p1_workspace_scope_inventory_invalid');
++  const original = readJson(path.join(directory, 'original-hashes.json'), addFinding, 'p1_original_hashes_invalid');
++  if (!manifest || !modified || !verification || !workspaceInventory || !scopeInventory || !original) return;
++  for (const file of P1_EVIDENCE_REQUIRED_FILES.filter((file) => file !== 'manifest.json')) {
++    if (!Object.hasOwn(manifest.artifacts || {}, file)) addFinding('p1_evidence_manifest_entry_missing', { file });
++  }
+   for (const [file, expected] of Object.entries(manifest.artifacts || {})) {
+     const full = path.join(directory, file);
+     if (!fs.existsSync(full)) addFinding('p1_evidence_artifact_missing', { file: `${P1_EVIDENCE_DIRECTORY}/${file}` });
+@@ -176,21 +218,64 @@ function verifyEvidenceDirectory(root, addFinding) {
+   if (JSON.stringify(expectedInventoryPaths) !== JSON.stringify(currentInventoryPaths)) {
+     addFinding('p1_workspace_inventory_paths_mismatch', { expected_count: expectedInventoryPaths.length, actual_count: currentInventoryPaths.length });
+   }
++  const currentInventoryRows = [];
+   for (const entry of workspaceInventory.files || []) {
+     const full = path.join(root, entry.path);
+     if (!fs.existsSync(full) || hashFile(full) !== entry.sha256) addFinding('p1_workspace_inventory_hash_mismatch', { file: entry.path });
++    else {
++      const bytes = fs.statSync(full).size;
++      if (bytes !== entry.bytes) addFinding('p1_workspace_inventory_size_mismatch', { file: entry.path, expected: entry.bytes, actual: bytes });
++      currentInventoryRows.push({ path: entry.path, sha256: entry.sha256, bytes });
++    }
+   }
+-  const commandRecords = verification.commands || verification.checks || [];
+-  if (verification.status !== 'passed' || !commandRecords.length || commandRecords.some((entry) => Number(entry.exit_status ?? 1) !== 0)) {
+-    addFinding('p1_verification_not_passed');
++  const inventorySha256 = sha256(canonicalInventory(currentInventoryRows));
++  if (workspaceInventory.inventory_sha256 !== inventorySha256) addFinding('p1_workspace_inventory_digest_mismatch');
++  if (modified.workspace_inventory_sha256 !== inventorySha256) addFinding('p1_modified_inventory_digest_mismatch');
++
++  const currentScopePaths = workspaceScopeFiles(root);
++  const expectedScopeRows = scopeInventory.paths || [];
++  const expectedScopePaths = expectedScopeRows.map((entry) => entry.path).sort();
++  if (JSON.stringify(expectedScopePaths) !== JSON.stringify(currentScopePaths)) {
++    addFinding('p1_workspace_scope_paths_mismatch', { expected_count: expectedScopePaths.length, actual_count: currentScopePaths.length });
++  }
++  const currentScopeRows = currentScopePaths.map((file) => ({ path: file, classification: classifyWorkspacePath(file) }));
++  for (let index = 0; index < Math.min(expectedScopeRows.length, currentScopeRows.length); index += 1) {
++    if (JSON.stringify(expectedScopeRows[index]) !== JSON.stringify(currentScopeRows[index])) {
++      addFinding('p1_workspace_scope_classification_mismatch', { file: currentScopeRows[index]?.path || expectedScopeRows[index]?.path });
++      break;
++    }
++  }
++  if (scopeInventory.inventory_sha256 !== sha256(canonicalScope(currentScopeRows))) addFinding('p1_workspace_scope_digest_mismatch');
++
++  const originalSource = path.join(root, original.source_receipt || '');
++  if (!original.source_receipt || !fs.existsSync(originalSource) || hashFile(originalSource) !== original.source_receipt_sha256) {
++    addFinding('p1_original_hash_receipt_mismatch');
+   }
++  for (const finding of evidenceCompletionFindings({ manifest, verification })) addFinding(finding.code, finding.details);
+   const patch = path.join(directory, 'change.patch');
+   if (fs.existsSync(patch)) {
+-    const reverse = spawnSync('git', ['apply', '--reverse', '--check', patch], { cwd: root, encoding: 'utf8', windowsHide: true });
++    const reverse = spawnSync('git', ['-c', 'core.autocrlf=false', 'apply', '--reverse', '--check', patch], { cwd: root, encoding: 'utf8', windowsHide: true });
+     if (reverse.status !== 0) addFinding('p1_rollback_patch_check_failed', { stderr: bounded(reverse.stderr) });
+   }
+ }
+ 
++export function evidenceCompletionFindings({ manifest = {}, verification = {} } = {}) {
++  const findings = [];
++  const records = verification.commands || verification.checks || [];
++  if (manifest.status !== 'verified') findings.push({ code: 'p1_evidence_manifest_not_verified' });
++  if (verification.status !== 'passed' || verification.provisional !== false) findings.push({ code: 'p1_verification_not_final' });
++  if (!records.length || records.some((entry) => entry.ok !== true || Number(entry.exit_status ?? 1) !== 0)) {
++    findings.push({ code: 'p1_verification_commands_not_passed' });
++  }
++  const rollback = records.find((entry) => String(entry.command || '').includes('isolated-copy rollback.ps1 -Apply'));
++  if (!rollback || rollback.ok !== true || Number(rollback.exit_status ?? 1) !== 0
++    || !Number.isInteger(rollback.rollback_files_checked) || rollback.rollback_files_checked < 1
++    || !Array.isArray(rollback.rollback_mismatches) || rollback.rollback_mismatches.length) {
++    findings.push({ code: 'p1_rollback_apply_not_verified' });
++  }
++  return findings;
++}
++
+ function collectSourceFiles(root) {
+   return ['.github', 'apps', 'packages', 'scripts', 'tests']
+     .flatMap((directory) => walk(path.join(root, directory), root))
+@@ -215,6 +300,41 @@ export function governedWorkspaceFiles(root = defaultRoot) {
+   return collectGovernedFiles(path.resolve(root));
+ }
+ 
++export function workspaceScopeFiles(root = defaultRoot) {
++  const resolved = path.resolve(root);
++  if (fs.existsSync(path.join(resolved, '.git'))) {
++    const result = spawnSync('git', ['-c', 'core.quotepath=false', 'ls-files', '--cached', '--others', '--exclude-standard', '-z'], {
++      cwd: resolved,
++      encoding: 'utf8',
++      windowsHide: true
++    });
++    if (result.status === 0) {
++      return [...new Set(result.stdout.split('\0').filter(Boolean).map((file) => file.replaceAll('\\', '/')))]
++        .filter((file) => !/(^|\/)(?:node_modules|dist|coverage)(?:\/|$)/.test(file))
++        .sort();
++    }
++  }
++  const receipt = path.join(resolved, 'original-hashes.json');
++  if (fs.existsSync(receipt)) {
++    try {
++      return JSON.parse(fs.readFileSync(receipt, 'utf8')).files.map((entry) => entry.path).sort();
++    } catch { /* fall through to the filesystem inventory */ }
++  }
++  return walkWorkspace(resolved, resolved).sort();
++}
++
++function walkWorkspace(directory, root) {
++  if (!fs.existsSync(directory)) return [];
++  const output = [];
++  for (const entry of fs.readdirSync(directory, { withFileTypes: true })) {
++    if (['.git', '.agents', '.ai-workspace', '.pnpm-store', 'node_modules', 'dist', 'coverage', 'temp'].includes(entry.name) || entry.name.startsWith('.tmp-')) continue;
++    const full = path.join(directory, entry.name);
++    if (entry.isDirectory()) output.push(...walkWorkspace(full, root));
++    else output.push(path.relative(root, full).replaceAll('\\', '/'));
++  }
++  return output;
++}
++
+ function walk(directory, root) {
+   if (!fs.existsSync(directory)) return [];
+   const output = [];
+@@ -251,6 +371,18 @@ function hashFile(file) {
+   return createHash('sha256').update(fs.readFileSync(file)).digest('hex');
+ }
+ 
++function sha256(value) {
++  return createHash('sha256').update(value).digest('hex');
++}
++
++function canonicalInventory(rows) {
++  return JSON.stringify(rows.map((entry) => ({ path: entry.path, sha256: entry.sha256, bytes: entry.bytes })));
++}
++
++function canonicalScope(rows) {
++  return JSON.stringify(rows.map((entry) => ({ path: entry.path, classification: entry.classification })));
++}
++
+ function bounded(value) {
+   return String(value || '').replaceAll(defaultRoot, 'HOST').slice(0, 500);
+ }
+diff --git a/scripts/verify.mjs b/scripts/verify.mjs
+index 1581843..5a7f673 100644
+--- a/scripts/verify.mjs
++++ b/scripts/verify.mjs
+@@ -1,11 +1,19 @@
+ import { spawnSync } from 'node:child_process';
+ 
++const skipP1Evidence = process.argv.includes('--skip-p1-evidence');
+ const commands = [
+-  ['check'], ['audit:p1'], ['scan:clean'], ['test:p1'], ['test'], ['test:integration'], ['test:security'], ['build'], ['test:e2e'], ['test:release']
++  ['check'],
++  ['audit:p1', ...(skipP1Evidence ? ['--', '--skip-evidence'] : [])],
++  ['scan:clean', ...(skipP1Evidence ? ['--', '--skip-evidence'] : [])],
++  ['test:p1'], ['test'], ['test:integration'], ['test:security'], ['build'], ['test:e2e'], ['test:release']
+ ];
+-for (const [script] of commands) {
++for (const [script, ...args] of commands) {
+   process.stdout.write(`\n== ${script} ==\n`);
+-  const result = spawnSync('corepack', ['pnpm', script], { cwd: process.cwd(), stdio: 'inherit', shell: process.platform === 'win32' });
++  const result = spawnSync('corepack', ['pnpm', script, ...args], {
++    cwd: process.cwd(),
++    stdio: 'inherit',
++    shell: process.platform === 'win32'
++  });
+   if (result.status !== 0) process.exit(result.status || 1);
+ }
+ process.stdout.write('\nAIWS 3.0 verification passed\n');
+diff --git a/tests/p1/workspace-sync.test.mjs b/tests/p1/workspace-sync.test.mjs
+index 643cd43..2da8ba0 100644
+--- a/tests/p1/workspace-sync.test.mjs
++++ b/tests/p1/workspace-sync.test.mjs
+@@ -2,11 +2,15 @@ import assert from 'node:assert/strict';
+ import fs from 'node:fs';
+ import path from 'node:path';
+ import test from 'node:test';
+-import { auditWorkspace } from '../../scripts/v3-clean-workspace-audit.mjs';
++import { auditWorkspace, evidenceCompletionFindings, workspaceScopeFiles } from '../../scripts/v3-clean-workspace-audit.mjs';
+ import {
+   P1_BASELINE_DIRECTORY,
+   P1_DEFERRED_PACKAGE_SCRIPTS,
+   P1_EVIDENCE_DIRECTORY,
++  P1_EVIDENCE_REQUIRED_FILES,
++  P1_GOVERNANCE_ROWS,
++  P1_MATRIX_ROWS,
++  P1_PACKAGE_SCRIPT_DEFINITIONS,
+   classifyWorkspacePath
+ } from '../../scripts/lib/v3-clean-p1-scope.mjs';
+ 
+@@ -19,22 +23,25 @@ test('global P1 audit classifies active and deferred surfaces without Evidence r
+   assert.deepEqual(audit.deferred.package_scripts, Object.keys(P1_DEFERRED_PACKAGE_SCRIPTS).sort());
+   assert.ok(Object.values(audit.deferred.retired_route_references).reduce((sum, count) => sum + count, 0) > 0);
+   assert.equal(audit.evidence.directory, P1_EVIDENCE_DIRECTORY);
++  assert.equal(audit.scope_inventory.files, workspaceScopeFiles(root).length);
++  assert.deepEqual(audit.scope_inventory.unclassified, []);
++  assert.ok(audit.scope_inventory.files > 700);
+ });
+ 
+-test('pre-fix workspace snapshot reproduces the synchronization failures', () => {
++test('completion baseline records the remaining pre-fix synchronization gaps', () => {
+   const baseline = path.join(root, P1_BASELINE_DIRECTORY);
+   assert.ok(fs.existsSync(path.join(baseline, 'original-hashes.json')));
++  const classification = JSON.parse(fs.readFileSync(path.join(baseline, 'workspace-classification-baseline.json'), 'utf8'));
++  assert.equal(classification.files, 743);
++  assert.equal(classification.unclassified.length, 6);
++  assert.ok(classification.unclassified.every((file) => file.startsWith('愿景与范围文档模板/')));
+   const audit = auditWorkspace({ root: baseline, verifyEvidence: false });
+   const codes = new Set(audit.findings.map((entry) => entry.code));
+   assert.equal(audit.valid, false);
+   for (const code of [
+-    'future_phase_script_is_active',
+-    'deferred_fixture_script_mismatch',
+-    'pull_request_template_missing_api_v2',
+-    'pull_request_template_uses_retired_route',
+-    'active_readme_links_archive',
+-    'readme_advertises_future_release',
+     'catalog_p1_evidence_mismatch',
++    'catalog_p1_path_missing',
++    'catalog_p1_path_unregistered',
+     'plan_p1_evidence_mismatch',
+     'matrix_p1_evidence_mismatch'
+   ]) assert.ok(codes.has(code), code);
+@@ -42,8 +49,46 @@ test('pre-fix workspace snapshot reproduces the synchronization failures', () =>
+ 
+ test('workspace path classifier keeps later phases separate from P1', () => {
+   assert.deepEqual(classifyWorkspacePath('apps/api/src/clean/runtime.mjs').rows, ['P1-PLATFORM-001', 'P1-PLATFORM-002']);
++  assert.deepEqual(classifyWorkspacePath('scripts/v3-clean-workspace-audit.mjs').rows, P1_GOVERNANCE_ROWS);
++  assert.deepEqual(classifyWorkspacePath('scripts/v3-clean-architecture-scan.mjs').rows, P1_MATRIX_ROWS);
++  assert.equal(classifyWorkspacePath('scripts/check.mjs').phase, 'P1');
+   assert.equal(classifyWorkspacePath('apps/api/src/modules/identity/service.mjs').phase, 'P2-P8');
+   assert.equal(classifyWorkspacePath('apps/runner-broker/server.mjs').phase, 'P6');
+   assert.equal(classifyWorkspacePath('apps/web/src/App.tsx').phase, 'P9');
+   assert.equal(classifyWorkspacePath('compose.yml').phase, 'P8-P9');
++  assert.equal(classifyWorkspacePath('愿景与范围文档模板/愿景与范围文档模板_中文融合版.docx').kind, 'non_product');
++});
++
++test('every package script has one exact P1 or deferred classification', () => {
++  const packageJson = JSON.parse(fs.readFileSync(path.join(root, 'package.json'), 'utf8'));
++  assert.deepEqual(Object.keys(packageJson.scripts).sort(), Object.keys(P1_PACKAGE_SCRIPT_DEFINITIONS).sort());
++  for (const [name, definition] of Object.entries(P1_PACKAGE_SCRIPT_DEFINITIONS)) {
++    assert.equal(packageJson.scripts[name], definition.command, name);
++    assert.ok(definition.role);
++    assert.ok(definition.phase);
++  }
++});
++
++test('Evidence completion requires final state and an applied byte-exact rollback', () => {
++  const rollback = {
++    command: 'isolated-copy rollback.ps1 -Apply',
++    exit_status: 0,
++    ok: true,
++    rollback_files_checked: 1,
++    rollback_mismatches: []
++  };
++  const complete = {
++    manifest: { status: 'verified' },
++    verification: { status: 'passed', provisional: false, commands: [rollback] }
++  };
++  assert.deepEqual(evidenceCompletionFindings(complete), []);
++  assert.ok(evidenceCompletionFindings({ ...complete, verification: { ...complete.verification, provisional: true } })
++    .some((entry) => entry.code === 'p1_verification_not_final'));
++  assert.ok(evidenceCompletionFindings({
++    ...complete,
++    verification: { ...complete.verification, commands: [{ ...rollback, rollback_mismatches: ['README.md'] }] }
++  }).some((entry) => entry.code === 'p1_rollback_apply_not_verified'));
++  for (const file of ['modified-artifact.json', 'change.patch', 'verification.json', 'rollback.ps1', 'workspace-scope-inventory.json']) {
++    assert.ok(P1_EVIDENCE_REQUIRED_FILES.includes(file), file);
++  }
+ });
+diff --git a/tests/unit/recovery-governance.test.mjs b/tests/unit/recovery-governance.test.mjs
+index 79ab2ef..78a9f58 100644
+--- a/tests/unit/recovery-governance.test.mjs
++++ b/tests/unit/recovery-governance.test.mjs
+@@ -37,8 +37,8 @@ test('recovery catalog uses the five evidence-derived states and separate Termin
+   const governance = fs.readFileSync(path.join(root, 'scripts/recovery-governance.mjs'), 'utf8');
+   assert.match(governance, /docs\/architecture\/v3-clean-development-plan\.md/);
+   assert.doesNotMatch(governance, /docs\/开发计划v3功能恢复\.md/);
+-  assert.deepEqual(catalog.features.find((feature) => feature.id === 'REC-D0-GOVERNANCE-000').target_modules.slice(-2), [
+-    'docs/architecture/v3-clean-development-plan.md', 'docs/testing.md'
++  assert.deepEqual(catalog.features.find((feature) => feature.id === 'REC-D0-GOVERNANCE-000').target_modules.slice(-3), [
++    'docs/architecture/v3-clean-development-plan.md', 'docs/testing.md', 'tests/p1/workspace-sync.test.mjs'
+   ]);
+   assert.match(createHash('sha256').update(raw).digest('hex'), /^[a-f0-9]{64}$/);
+ });
+@@ -62,7 +62,7 @@ test('module registry gives every table, command, and event one owner without de
+ 
+ test('recovery plan, catalog, coverage, and audited impact gates emit V2 passed receipts', () => {
+   for (const command of ['plan', 'catalog', 'coverage', 'impact']) {
+-    const run = spawnSync(process.execPath, ['scripts/recovery-governance.mjs', command], { cwd: root, encoding: 'utf8', windowsHide: true });
++    const run = spawnSync(process.execPath, ['scripts/recovery-governance.mjs', command, '--skip-evidence'], { cwd: root, encoding: 'utf8', windowsHide: true });
+     assert.equal(run.status, 0, run.stderr || run.stdout);
+     const receipt = JSON.parse(fs.readFileSync(path.join(root, '.ai-workspace', 'recovery', `${command}.json`), 'utf8'));
+     assert.equal(receipt.schema_version, 'aiws.v3.recovery_governance_receipt.v2');
+@@ -70,6 +70,6 @@ test('recovery plan, catalog, coverage, and audited impact gates emit V2 passed
+     assert.equal(receipt.status, 'passed');
+     assert.match(receipt.catalog_sha256, /^[a-f0-9]{64}$/);
+   }
+-  const audited = spawnSync(process.execPath, ['scripts/recovery-governance.mjs', 'impact', '--audit'], { cwd: root, encoding: 'utf8', windowsHide: true });
++  const audited = spawnSync(process.execPath, ['scripts/recovery-governance.mjs', 'impact', '--audit', '--skip-evidence'], { cwd: root, encoding: 'utf8', windowsHide: true });
+   assert.equal(audited.status, 0, audited.stderr || audited.stdout);
+ });

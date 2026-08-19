@@ -1,0 +1,6 @@
+{
+  "schema_version": "aiws.v3-clean.p3-failure.v1",
+  "status": "failed",
+  "error": "Error: p2_boundary_apply_failed:error: patch failed: docs/architecture/v23-capability-matrix.md:81\nerror: docs/architecture/v23-capability-matrix.md: patch does not apply\nerror: patch failed: docs/testing.md:103\nerror: docs/testing.md: patch does not apply\n\n    at prepareBaseline (HOST_PATH\n    at HOST_PATH\n    at ModuleJob.run (node:internal/modules/esm/module_job:430:25)\n    at process.processTicksAndRejections (node:internal/process/task_queues:104:5)\n    at async onImport.tracePromise.__proto__ (node:internal/modules/esm/loader:661:26)\n    at async asyncRunEntryPointWithESMLoader (node:internal/modules/run_main:101:5)",
+  "generated_at": "2026-08-19T14:28:17.206Z"
+}

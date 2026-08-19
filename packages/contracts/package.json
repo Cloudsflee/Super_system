@@ -3,5 +3,11 @@
   "version": "3.0.0",
   "private": true,
   "type": "module",
-  "exports": "./src/index.mjs"
+  "exports": {
+    ".": "./src/index.mjs",
+    "./clean-v2": "./src/clean-v2.mjs"
+  },
+  "dependencies": {
+    "ajv": "8.20.0"
+  }
 }

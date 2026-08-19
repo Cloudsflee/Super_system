@@ -1,0 +1,98 @@
+{
+  "schema_version": "aiws.v3-clean.global-sync-verification.v1",
+  "status": "passed",
+  "provisional": true,
+  "generated_at": "2026-08-19T00:25:58.181Z",
+  "environment": {
+    "node": "v24.14.0",
+    "platform": "win32",
+    "cwd": "repository-root"
+  },
+  "baseline": {
+    "boundary": ".ai-workspace/v3-clean-p1-global-sync-baseline-20260819",
+    "expected_failure": "workspace synchronization audit exits 1 before the fix",
+    "commands": [
+      {
+        "command": "node scripts/v3-clean-workspace-audit.mjs --root=.ai-workspace/v3-clean-p1-global-sync-baseline-20260819 --skip-evidence",
+        "cwd": "repository-root",
+        "stdout": "{\n  \"schema_version\": \"aiws.v3-clean.workspace-audit.v1\",\n  \"phase\": \"P1\",\n  \"active\": {\n    \"runtime_entrypoint\": \"apps/api/server.mjs\",\n    \"http_composition\": \"apps/api/clean-server.mjs\",\n    \"process_scripts\": [\n      \"dev:api\",\n      \"dev:clean\",\n      \"start\",\n      \"start:clean\"\n    ]\n  },\n  \"deferred\": {\n    \"package_scripts\": [\n      \"fixture:legacy:acceptance\",\n      \"fixture:legacy:dev-broker\",\n      \"fixture:legacy:release-build\",\n      \"fixture:legacy:release-promote\",\n      \"fixture:legacy:release-rehearse\"\n    ],\n    \"retired_route_references\": {\n      \"P2-P8:historical domain/runtime input\": 2,\n      \"P2-P9:historical behavior or future-phase tool\": 675,\n      \"P2-P9:pre-clean shared contract\": 1,\n      \"P9:pre-clean Web characterization\": 193\n    }\n  },\n  \"evidence\": {\n    \"directory\": \"docs/evidence/v3-clean-p1-global-sync-20260819\",\n    \"verified\": false\n  },\n  \"checks\": [\n    {\n      \"id\": \"package-process-surface\",\n      \"valid\": false\n    },\n    {\n      \"id\": \"runtime-entrypoints\",\n      \"valid\": true\n    },\n    {\n      \"id\": \"legacy-server-containment\",\n      \"valid\": true\n    },\n    {\n      \"id\": \"retired-route-containment\",\n      \"valid\": false\n    },\n    {\n      \"id\": \"active-document-contracts\",\n      \"valid\": false\n    },\n    {\n      \"id\": \"p1-evidence-synchronization\",\n      \"valid\": false\n    },\n    {\n      \"id\": \"workspace-inventory\",\n      \"valid\": true\n    }\n  ],\n  \"findings\": [\n    {\n      \"code\": \"future_phase_script_is_active\",\n      \"script\": \"dev:broker\"\n    },\n    {\n      \"code\": \"future_phase_script_is_active\",\n      \"script\": \"acceptance\"\n    },\n    {\n      \"code\": \"future_phase_script_is_active\",\n      \"script\": \"release:build\"\n    },\n    {\n      \"code\": \"future_phase_script_is_active\",\n      \"script\": \"release:rehearse\"\n    },\n    {\n      \"code\": \"future_phase_script_is_active\",\n      \"script\": \"release:promote\"\n    },\n    {\n      \"code\": \"deferred_fixture_script_mismatch\",\n      \"script\": \"fixture:legacy:dev-broker\",\n      \"expected\": \"node apps/runner-broker/server.mjs\",\n      \"actual\": null\n    },\n    {\n      \"code\": \"deferred_fixture_script_mismatch\",\n      \"script\": \"fixture:legacy:acceptance\",\n      \"expected\": \"node scripts/acceptance.mjs\",\n      \"actual\": null\n    },\n    {\n      \"code\": \"deferred_fixture_script_mismatch\",\n      \"script\": \"fixture:legacy:release-build\",\n      \"expected\": \"node scripts/release-build.mjs\",\n      \"actual\": null\n    },\n    {\n      \"code\": \"deferred_fixture_script_mismatch\",\n      \"script\": \"fixture:legacy:release-rehearse\",\n      \"expected\": \"node scripts/release-rehearsal.mjs\",\n      \"actual\": null\n    },\n    {\n      \"code\": \"deferred_fixture_script_mismatch\",\n      \"script\": \"fixture:legacy:release-promote\",\n      \"expected\": \"node scripts/release-promote.mjs\",\n      \"actual\": null\n    },\n    {\n      \"code\": \"retired_route_on_active_surface\",\n      \"files\": [\n        {\n          \"file\": \".github/PULL_REQUEST_TEMPLATE.md\",\n          \"count\": 1\n        }\n      ]\n    },\n    {\n      \"code\": \"markdown_link_missing\",\n      \"file\": \"README.md\",\n      \"target\": \"docs/archive/legacy-code-docs/\"\n    },\n    {\n      \"code\": \"markdown_link_missing\",\n      \"file\": \"docs/document-index.md\",\n      \"target\": \"archive/legacy-code-docs/\"\n    },\n    {\n      \"code\": \"pull_request_template_missing_api_v2\"\n    },\n    {\n      \"code\": \"pull_request_template_uses_retired_route\"\n    },\n    {\n      \"code\": \"active_readme_links_archive\"\n    },\n    {\n      \"code\": \"readme_advertises_future_release\"\n    },\n    {\n      \"code\": \"catalog_p1_evidence_mismatch\",\n      \"expected\": \"docs/evidence/v3-clean-p1-global-sync-20260819/verification.json\",\n      \"actual\": [\n        \"docs/evidence/v3-clean-p1-sync-20260819/verification.json\"\n      ]\n    },\n    {\n      \"code\": \"plan_p1_evidence_mismatch\",\n      \"expected\": \"docs/evidence/v3-clean-p1-global-sync-20260819\"\n    },\n    {\n      \"code\": \"matrix_p1_evidence_mismatch\",\n      \"expected\": \"docs/evidence/v3-clean-p1-global-sync-20260819\"\n    }\n  ],\n  \"valid\": false\n}\n",
+        "stderr": "",
+        "exit_status": 1,
+        "expected_exit_statuses": [
+          1
+        ],
+        "signal": null,
+        "ok": true
+      },
+      {
+        "command": "git apply --reverse --check HOST\\docs\\evidence\\v3-clean-p1-sync-20260819\\change.patch",
+        "cwd": ".ai-workspace/v3-clean-p1-global-sync-baseline-20260819",
+        "stdout": "",
+        "stderr": "",
+        "exit_status": 0,
+        "expected_exit_statuses": [
+          0
+        ],
+        "signal": null,
+        "ok": true
+      }
+    ]
+  },
+  "commands": [
+    {
+      "command": "pnpm check",
+      "cwd": "repository-root",
+      "stdout": "\n> ai-workspace-system@3.0.0 check HOST\n> node scripts/check.mjs\n\ncheck passed: 237 source files, 30 scripts\n",
+      "stderr": "(node:43180) [DEP0190] DeprecationWarning: Passing args to a child process with shell option true can lead to security vulnerabilities, as the arguments are not escaped, only concatenated.\n(Use `node --trace-deprecation ...` to show where the warning was created)\n",
+      "exit_status": 0,
+      "expected_exit_statuses": [
+        0
+      ],
+      "signal": null,
+      "ok": true
+    },
+    {
+      "command": "node scripts/v3-clean-workspace-audit.mjs --skip-evidence",
+      "cwd": "repository-root",
+      "stdout": "{\n  \"schema_version\": \"aiws.v3-clean.workspace-audit.v1\",\n  \"phase\": \"P1\",\n  \"active\": {\n    \"runtime_entrypoint\": \"apps/api/server.mjs\",\n    \"http_composition\": \"apps/api/clean-server.mjs\",\n    \"process_scripts\": [\n      \"dev:api\",\n      \"dev:clean\",\n      \"start\",\n      \"start:clean\"\n    ]\n  },\n  \"deferred\": {\n    \"package_scripts\": [\n      \"fixture:legacy:acceptance\",\n      \"fixture:legacy:dev-broker\",\n      \"fixture:legacy:release-build\",\n      \"fixture:legacy:release-promote\",\n      \"fixture:legacy:release-rehearse\"\n    ],\n    \"retired_route_references\": {\n      \"P2-P8:historical domain/runtime input\": 2,\n      \"P2-P9:historical behavior or future-phase tool\": 675,\n      \"P2-P9:pre-clean shared contract\": 1,\n      \"P9:pre-clean Web characterization\": 193\n    }\n  },\n  \"evidence\": {\n    \"directory\": \"docs/evidence/v3-clean-p1-global-sync-20260819\",\n    \"verified\": false\n  },\n  \"checks\": [\n    {\n      \"id\": \"package-process-surface\",\n      \"valid\": true\n    },\n    {\n      \"id\": \"runtime-entrypoints\",\n      \"valid\": true\n    },\n    {\n      \"id\": \"legacy-server-containment\",\n      \"valid\": true\n    },\n    {\n      \"id\": \"retired-route-containment\",\n      \"valid\": true\n    },\n    {\n      \"id\": \"active-document-contracts\",\n      \"valid\": true\n    },\n    {\n      \"id\": \"p1-evidence-synchronization\",\n      \"valid\": true\n    },\n    {\n      \"id\": \"workspace-inventory\",\n      \"valid\": true\n    }\n  ],\n  \"findings\": [],\n  \"valid\": true\n}\n",
+      "stderr": "",
+      "exit_status": 0,
+      "expected_exit_statuses": [
+        0
+      ],
+      "signal": null,
+      "ok": true
+    },
+    {
+      "command": "node scripts/v3-clean-architecture-scan.mjs",
+      "cwd": "repository-root",
+      "stdout": "{\n  \"schema_version\": \"aiws.v3-clean.architecture-scan.v3\",\n  \"entrypoints\": [\n    \"apps/api/server.mjs\"\n  ],\n  \"files\": [\n    \"apps/api/server.mjs\",\n    \"apps/api/clean-server.mjs\",\n    \"apps/api/src/clean/runtime.mjs\",\n    \"apps/api/src/clean/config.mjs\",\n    \"apps/api/src/clean/database.mjs\",\n    \"apps/api/src/clean/canonical.mjs\",\n    \"apps/api/src/clean/migrations/001-clean-baseline.mjs\",\n    \"apps/api/src/clean/redaction.mjs\",\n    \"apps/api/src/clean/cas.mjs\",\n    \"apps/api/src/clean/events.mjs\",\n    \"apps/api/src/clean/cursor.mjs\",\n    \"apps/api/src/clean/operations.mjs\",\n    \"apps/api/src/clean/platform.mjs\",\n    \"apps/api/src/clean/principal.mjs\",\n    \"apps/api/src/clean/platform-error.mjs\",\n    \"apps/api/src/clean/registry.mjs\",\n    \"apps/api/src/clean/receipts.mjs\",\n    \"apps/api/src/clean/ownership.mjs\",\n    \"apps/api/src/clean/http.mjs\"\n  ],\n  \"registry\": {\n    \"valid\": true,\n    \"mismatches\": [],\n    \"rest_count\": 3,\n    \"mcp_count\": 3,\n    \"web_count\": 3\n  },\n  \"ownership\": {\n    \"valid\": true,\n    \"missing_tables\": [],\n    \"unexpected_tables\": [],\n    \"missing_commands\": [],\n    \"mismatched_commands\": [],\n    \"missing_events\": [],\n    \"mismatched_events\": []\n  },\n  \"workspace\": {\n    \"schema_version\": \"aiws.v3-clean.workspace-audit.v1\",\n    \"phase\": \"P1\",\n    \"active\": {\n      \"runtime_entrypoint\": \"apps/api/server.mjs\",\n      \"http_composition\": \"apps/api/clean-server.mjs\",\n      \"process_scripts\": [\n        \"dev:api\",\n        \"dev:clean\",\n        \"start\",\n        \"start:clean\"\n      ]\n    },\n    \"deferred\": {\n      \"package_scripts\": [\n        \"fixture:legacy:acceptance\",\n        \"fixture:legacy:dev-broker\",\n        \"fixture:legacy:release-build\",\n        \"fixture:legacy:release-promote\",\n        \"fixture:legacy:release-rehearse\"\n      ],\n      \"retired_route_references\": {\n        \"P2-P8:historical domain/runtime input\": 2,\n        \"P2-P9:historical behavior or future-phase tool\": 675,\n        \"P2-P9:pre-clean shared contract\": 1,\n        \"P9:pre-clean Web characterization\": 193\n      }\n    },\n    \"evidence\": {\n      \"directory\": \"docs/evidence/v3-clean-p1-global-sync-20260819\",\n      \"verified\": false\n    },\n    \"checks\": [\n      {\n        \"id\": \"package-process-surface\",\n        \"valid\": true\n      },\n      {\n        \"id\": \"runtime-entrypoints\",\n        \"valid\": true\n      },\n      {\n        \"id\": \"legacy-server-containment\",\n        \"valid\": true\n      },\n      {\n        \"id\": \"retired-route-containment\",\n        \"valid\": true\n      },\n      {\n        \"id\": \"active-document-contracts\",\n        \"valid\": true\n      },\n      {\n        \"id\": \"p1-evidence-synchronization\",\n        \"valid\": true\n      },\n      {\n        \"id\": \"workspace-inventory\",\n        \"valid\": true\n      }\n    ],\n    \"findings\": [],\n    \"valid\": true\n  },\n  \"forbidden_findings\": [],\n  \"valid\": true\n}\n",
+      "stderr": "",
+      "exit_status": 0,
+      "expected_exit_statuses": [
+        0
+      ],
+      "signal": null,
+      "ok": true
+    },
+    {
+      "command": "pnpm test:p1",
+      "cwd": "repository-root",
+      "stdout": "\n> ai-workspace-system@3.0.0 test:p1 HOST\n> node --test tests/p1/*.test.mjs tests/integration/v3-clean-p1.test.mjs tests/security/v3-clean-p1.test.mjs\n\n(node:13412) ExperimentalWarning: SQLite is an experimental feature and might change at any time\n(Use `node --trace-warnings ...` to show where the warning was created)\n✔ clean restart preserves terminal operation and SSE/JSON replay parity (158.259ms)\n✔ clean boundary validates readiness, aggregate CAS, cursors, and live SSE heartbeat (107.5752ms)\n✔ CAS manifest drift keeps probes alive but blocks readiness (100.2767ms)\n✔ non-terminal SSE follows committed events and closes on terminal state (86.7501ms)\n(node:51372) ExperimentalWarning: SQLite is an experimental feature and might change at any time\n(Use `node --trace-warnings ...` to show where the warning was created)\n✔ canonical JSON and SHA-256 are stable (1.2021ms)\n✔ clean baseline is idempotent and has one bootstrap actor (80.825ms)\n✔ historical schema is held for importer and emits a receipt (38.1716ms)\n✔ nonzero user_version without a clean family is held for importer (22.1481ms)\n✔ baseline DDL and ledger faults roll back as one transaction (258.8275ms)\n✔ operation transitions atomically update head, revision, event and audit (59.604ms)\n✔ operation state machine requires queued before running (36.5584ms)\n✔ startup rejects a tampered aggregate head semantic hash (62.9113ms)\n✔ checksum drift leaves the process live but not ready (64.585ms)\n✔ concurrent duplicate idempotency requests produce one operation (36.8753ms)\n✔ expired idempotency keys can be reused after retention (40.6489ms)\n✔ expired aggregate idempotency keys are replaced before replay (54.271ms)\n✔ operation executor emits durable progress before terminal success (53.0873ms)\n✔ cancel is accepted once and the worker writes the terminal event (52.2405ms)\n✔ retry creates a linked operation without rewriting the failed receipt (51.1105ms)\n✔ cursor scope, expiry and redaction are enforced (0.7802ms)\n✔ event replay authorization and durable cursor expiry are stable (44.5514ms)\n✔ 1000-event replay is complete, ordered, and duplicate-free (120.2779ms)\n✔ CAS promotion and tamper verification use content hashes (85.8793ms)\n✔ download receipts bind actor, project, hash, expiry, and single use (82.0348ms)\n✔ download receipt expiry uses the injected platform clock (65.2164ms)\n✔ API v2 probes, retired route, replay and cancel use one envelope (100.5438ms)\n✔ registry metadata, ownership, and transaction callback contract are enforced (33.9506ms)\n✔ CAS content scanner blocks secrets and missing manifests never self-heal (61.3843ms)\n✔ expired cursors return a scope-bound restart cursor (0.3723ms)\n✔ process-level startup failure remains probeable and blocks API v2 (10.2093ms)\n✔ global P1 audit classifies active and deferred surfaces without Evidence recursion (46.1446ms)\n✔ pre-fix workspace snapshot reproduces the synchronization failures (35.6518ms)\n✔ workspace path classifier keeps later phases separate from P1 (0.123ms)\n(node:28088) ExperimentalWarning: SQLite is an experimental feature and might change at any time\n(Use `node --trace-warnings ...` to show where the warning was created)\n✔ clean boundary rejects stale metadata and removes restricted values (166.1299ms)\nℹ tests 34\nℹ suites 0\nℹ pass 34\nℹ fail 0\nℹ cancelled 0\nℹ skipped 0\nℹ todo 0\nℹ duration_ms 1615.0194\n",
+      "stderr": "",
+      "exit_status": 0,
+      "expected_exit_statuses": [
+        0
+      ],
+      "signal": null,
+      "ok": true
+    }
+  ],
+  "literal_failure_notes": [],
+  "artifacts": {
+    "modified_artifact": "modified-artifact.json",
+    "patch": "change.patch",
+    "verification": "verification.json",
+    "rollback": "rollback.ps1"
+  }
+}

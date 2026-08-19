@@ -1,0 +1,12 @@
+{
+  "schema_version": "aiws.v3-clean.cas-manifest.v1",
+  "objects": [
+    {
+      "sha256": "92c3811a029a205d15f7c5558151e29acc6ae1b588ebe2f5d6a26a8fe0c2b377",
+      "byte_length": 49,
+      "relative_key": "92/92c3811a029a205d15f7c5558151e29acc6ae1b588ebe2f5d6a26a8fe0c2b377"
+    }
+  ],
+  "created_at": "2026-08-19T00:00:00.000Z",
+  "manifest_sha256": "a0677536aa2df5a6688283f9b2d2b96d4dfa18532c67a9dfab80bcbf220562e8"
+}

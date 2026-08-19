@@ -1,0 +1,39 @@
+{
+  "schema_version": "aiws.v3-clean.completion-audit-modified-artifact.v1",
+  "parent_evidence": "docs/evidence/v3-clean-p1-gate-contract-enforcement-20260819",
+  "baseline_receipt": ".ai-workspace/v3-clean-p1-gate-contract-final-baseline-20260819/original-hashes.json",
+  "runtime_entry": "apps/api/server.mjs",
+  "workspace_inventory_sha256": "8bc6d71d48c623c09f869290cd549702b42bdfba58573792c2825c83b2951506",
+  "workspace_scope_inventory_sha256": "d3dbdde973b840afa9ea6fe452942015b28aab68a155baa788366dddbb82b062",
+  "files": [
+    {
+      "path": "docs/architecture/v23-capability-matrix.md",
+      "sha256": "828b60a49c227b44c210b88b3b6fed6a47cc4cfe2de9e3d77778ac0feb4bebd5"
+    },
+    {
+      "path": "docs/architecture/v3-clean-development-plan.md",
+      "sha256": "31590b494b234f647e8de2cdd66e1698085f800af2f792e4c4ae6126cd16f557"
+    },
+    {
+      "path": "docs/testing.md",
+      "sha256": "e542197221554116d2afee59a5b4a87bde44fc20c22ba78a01a7b4795ec5f72a"
+    },
+    {
+      "path": "feature-catalog.json",
+      "sha256": "6557b0f94323ecd3cfa24ad4f9a68f057415617b3ca7104a401b6e8e4d5c8112"
+    },
+    {
+      "path": "scripts/lib/v3-clean-p1-scope.mjs",
+      "sha256": "58746b2bc21392014edd46812017ddf75764bb6912eeab85585480343a30a7a8"
+    },
+    {
+      "path": "scripts/v3-clean-workspace-audit.mjs",
+      "sha256": "8ce8a1fde6bdca9510588f8319cbfa63d4a35e6ef5c387fe6e17b1c7e1a3a05f"
+    },
+    {
+      "path": "tests/p1/workspace-sync.test.mjs",
+      "sha256": "f37af363bfdcc265af4a7d99b7109a1249fca8fa8813474f1e5a51a779acee01"
+    }
+  ],
+  "deleted_files": []
+}

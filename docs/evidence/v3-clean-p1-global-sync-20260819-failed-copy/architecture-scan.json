@@ -1,0 +1,110 @@
+{
+  "schema_version": "aiws.v3-clean.architecture-scan.v3",
+  "entrypoints": [
+    "apps/api/server.mjs"
+  ],
+  "files": [
+    "apps/api/server.mjs",
+    "apps/api/clean-server.mjs",
+    "apps/api/src/clean/runtime.mjs",
+    "apps/api/src/clean/config.mjs",
+    "apps/api/src/clean/database.mjs",
+    "apps/api/src/clean/canonical.mjs",
+    "apps/api/src/clean/migrations/001-clean-baseline.mjs",
+    "apps/api/src/clean/redaction.mjs",
+    "apps/api/src/clean/cas.mjs",
+    "apps/api/src/clean/events.mjs",
+    "apps/api/src/clean/cursor.mjs",
+    "apps/api/src/clean/operations.mjs",
+    "apps/api/src/clean/platform.mjs",
+    "apps/api/src/clean/principal.mjs",
+    "apps/api/src/clean/platform-error.mjs",
+    "apps/api/src/clean/registry.mjs",
+    "apps/api/src/clean/receipts.mjs",
+    "apps/api/src/clean/ownership.mjs",
+    "apps/api/src/clean/http.mjs"
+  ],
+  "registry": {
+    "valid": true,
+    "mismatches": [],
+    "rest_count": 3,
+    "mcp_count": 3,
+    "web_count": 3
+  },
+  "ownership": {
+    "valid": true,
+    "missing_tables": [],
+    "unexpected_tables": [],
+    "missing_commands": [],
+    "mismatched_commands": [],
+    "missing_events": [],
+    "mismatched_events": []
+  },
+  "workspace": {
+    "schema_version": "aiws.v3-clean.workspace-audit.v1",
+    "phase": "P1",
+    "active": {
+      "runtime_entrypoint": "apps/api/server.mjs",
+      "http_composition": "apps/api/clean-server.mjs",
+      "process_scripts": [
+        "dev:api",
+        "dev:clean",
+        "start",
+        "start:clean"
+      ]
+    },
+    "deferred": {
+      "package_scripts": [
+        "fixture:legacy:acceptance",
+        "fixture:legacy:dev-broker",
+        "fixture:legacy:release-build",
+        "fixture:legacy:release-promote",
+        "fixture:legacy:release-rehearse"
+      ],
+      "retired_route_references": {
+        "P2-P8:historical domain/runtime input": 2,
+        "P2-P9:historical behavior or future-phase tool": 675,
+        "P2-P9:pre-clean shared contract": 1,
+        "P9:pre-clean Web characterization": 193
+      }
+    },
+    "evidence": {
+      "directory": "docs/evidence/v3-clean-p1-global-sync-20260819",
+      "verified": false
+    },
+    "checks": [
+      {
+        "id": "package-process-surface",
+        "valid": true
+      },
+      {
+        "id": "runtime-entrypoints",
+        "valid": true
+      },
+      {
+        "id": "legacy-server-containment",
+        "valid": true
+      },
+      {
+        "id": "retired-route-containment",
+        "valid": true
+      },
+      {
+        "id": "active-document-contracts",
+        "valid": true
+      },
+      {
+        "id": "p1-evidence-synchronization",
+        "valid": true
+      },
+      {
+        "id": "workspace-inventory",
+        "valid": true
+      }
+    ],
+    "findings": [],
+    "valid": true
+  },
+  "forbidden_findings": [],
+  "valid": true
+}

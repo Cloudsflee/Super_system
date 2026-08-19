@@ -1,0 +1,257 @@
+{
+  "schema_version": "aiws.v3-clean.p2-original-hashes.v1",
+  "source": ".ai-workspace/v3-clean-p1-gate-contract-complete-baseline-20260819",
+  "parent_patch": "docs/evidence/v3-clean-p1-gate-contract-complete-20260819/change.patch",
+  "files": [
+    {
+      "path": "apps/api/clean-server.mjs",
+      "sha256": "534506f0b407653b8ce8aa232efcb0091c94b2bfd00e606ad5a65ac474b143a6",
+      "bytes": 1677
+    },
+    {
+      "path": "apps/api/server.mjs",
+      "sha256": "a1083b97419c1d0a8b1bff0b876545983140921f0494bdf871e91db48d98541e",
+      "bytes": 637
+    },
+    {
+      "path": "apps/api/src/clean/canonical.mjs",
+      "sha256": "28448281388ff74c5a5cd50e125febb31b3fb29acf7097b43b913ba0855b600e",
+      "bytes": 2193
+    },
+    {
+      "path": "apps/api/src/clean/cas-store.mjs",
+      "sha256": "1747be3078c071c23095a13d3f069a3ea01f3be1810c6364dbce5b334bd063c9",
+      "bytes": 28
+    },
+    {
+      "path": "apps/api/src/clean/cas.mjs",
+      "sha256": "ddc7d103538dfbc66850a6353a27a2024daa6ec685df0f2704d0055ebe68c362",
+      "bytes": 12939
+    },
+    {
+      "path": "apps/api/src/clean/command-registry.mjs",
+      "sha256": "f918bd1ba867634ecf92a606ca653f80a588da448171ddae9ffb7b2f8a44e4cd",
+      "bytes": 125
+    },
+    {
+      "path": "apps/api/src/clean/config.mjs",
+      "sha256": "ce583114ff8ec3391f742a25ec2953fecd36875ce9ba39b362f17d2a9a8bb50d",
+      "bytes": 1256
+    },
+    {
+      "path": "apps/api/src/clean/cursor.mjs",
+      "sha256": "6f4caa290a93dfa0f0315b094e46d327c494bee8b0ee99c5db84633bef7b20c8",
+      "bytes": 3831
+    },
+    {
+      "path": "apps/api/src/clean/database.mjs",
+      "sha256": "8248ccf096c77ce5c4e8478833f02ae89034ea167475199aa44e043e3bfae240",
+      "bytes": 16103
+    },
+    {
+      "path": "apps/api/src/clean/event-service.mjs",
+      "sha256": "e0d2311f5f345015ab1d332f59cef15aae1b54c5a54798d32852bb7fa2ce0ab0",
+      "bytes": 31
+    },
+    {
+      "path": "apps/api/src/clean/events.mjs",
+      "sha256": "848fd4f33e0962e5524f3f1939fca8459bc2151fd4b2545ef426949756a387dc",
+      "bytes": 12093
+    },
+    {
+      "path": "apps/api/src/clean/http.mjs",
+      "sha256": "9561ebf53f849942f10f8cfb2755de02186f6efd82371146101697a5ea759244",
+      "bytes": 15195
+    },
+    {
+      "path": "apps/api/src/clean/index.mjs",
+      "sha256": "ad6a618f2c5b4002afe8944352a3e00da6189e6545896745b5d1ec86cead23d4",
+      "bytes": 500
+    },
+    {
+      "path": "apps/api/src/clean/migration-service.mjs",
+      "sha256": "1f0a7744e17dedd953e01153ae43538edf5ca3c9e82692382b211d38d7e75044",
+      "bytes": 255
+    },
+    {
+      "path": "apps/api/src/clean/migrations/001-clean-baseline.mjs",
+      "sha256": "8725879e26fcd3703e6494775b1e86d161a904ab8d10c26adbb1991a787a2a5c",
+      "bytes": 10015
+    },
+    {
+      "path": "apps/api/src/clean/operation-service.mjs",
+      "sha256": "ca3846616b0b8e58ce727e4f15c095b4ff8f8f31ce2311a028fe469a68dbf294",
+      "bytes": 35
+    },
+    {
+      "path": "apps/api/src/clean/operations.mjs",
+      "sha256": "e0b6f0f5ba558b4a28ffedcdb00643d4eb51258ba5b5c97a1a597b1c3703708f",
+      "bytes": 26778
+    },
+    {
+      "path": "apps/api/src/clean/ownership.mjs",
+      "sha256": "d7df1a6e0de5312c65239bb65519a6fa7864929c2e71b688798e3c4965e13cad",
+      "bytes": 3429
+    },
+    {
+      "path": "apps/api/src/clean/platform-error.mjs",
+      "sha256": "820d5d9af532f13a46153e0e58a0ba68791a4994236a53eec3bd563bd03163e7",
+      "bytes": 323
+    },
+    {
+      "path": "apps/api/src/clean/platform.mjs",
+      "sha256": "236475179a889aeadb6da62b6aca694f42e83603523c807c7d911998d84a17ed",
+      "bytes": 10176
+    },
+    {
+      "path": "apps/api/src/clean/principal.mjs",
+      "sha256": "94e4e823735e54a0ff9c966d48c82a6d19298b87bd7b267fa53a4cb4efa2db9f",
+      "bytes": 1061
+    },
+    {
+      "path": "apps/api/src/clean/receipts.mjs",
+      "sha256": "82ed3a7a11c65f32797ed8ad202d574cbf672a9c5dba65fe54fbd24303a62281",
+      "bytes": 3666
+    },
+    {
+      "path": "apps/api/src/clean/redaction-policy.mjs",
+      "sha256": "5eb61307e9b698846765acdea7b8087d952025fccb4a862c15dd2f39aac8d529",
+      "bytes": 34
+    },
+    {
+      "path": "apps/api/src/clean/redaction.mjs",
+      "sha256": "a4f1dd53a9d8b690be2545b734e55907b10806694ab54ef4df4753d3d92fd9ce",
+      "bytes": 4208
+    },
+    {
+      "path": "apps/api/src/clean/registry.mjs",
+      "sha256": "170c7c93c30f60e1b36693218f39756e382ec1420c043ce2d19cec389ac14035",
+      "bytes": 8275
+    },
+    {
+      "path": "apps/api/src/clean/runtime.mjs",
+      "sha256": "358e2168ddd8d6d8cd6a80c8e589df4d0c9962fd287322eb26b93e2740245ad7",
+      "bytes": 5456
+    },
+    {
+      "path": "apps/api/src/clean/schema.mjs",
+      "sha256": "72238a96da5ae83754389df9554ada1a76af22572bb9c522370a54f11b9f7761",
+      "bytes": 212
+    },
+    {
+      "path": "apps/api/src/modules/registry.mjs",
+      "sha256": "125d09d4f6ffc77616d0121b679f2443d12c758a67ec096684beff1cdb76918e",
+      "bytes": 3046
+    },
+    {
+      "path": "apps/web/src/App.tsx",
+      "sha256": "d05d7a850ecdb01f4820407286af4c8ed762bb58ac20d36e3f387796c44fdc40",
+      "bytes": 7818
+    },
+    {
+      "path": "apps/web/src/api.ts",
+      "sha256": "5331c935d15bac38addaf5be03bb4cb3e6eaca376d9adab8ccaea5246907421e",
+      "bytes": 1716
+    },
+    {
+      "path": "apps/web/src/styles.css",
+      "sha256": "37ed9e3fd738a5f0df502caa3213d2e16c7c74e5e80e059de5e69380865e43e6",
+      "bytes": 64892
+    },
+    {
+      "path": "docs/architecture/api-v2-contract.md",
+      "sha256": "1a8b6d81c43dcd07436d45a381fe17292da6867835ca63622fefce4444031a9e",
+      "bytes": 14116
+    },
+    {
+      "path": "docs/architecture/clean-schema.md",
+      "sha256": "5e0df99587cbde1b2c1e959f9c6433674891c6fcfb9c0480da7e093247a8d011",
+      "bytes": 16313
+    },
+    {
+      "path": "docs/architecture/decision-log.md",
+      "sha256": "d0fef4adab8bc6136d1ef41c149b9ee9dcb3dacd0e6ecdd5bfe450048f72140f",
+      "bytes": 6998
+    },
+    {
+      "path": "docs/architecture/import-contract.md",
+      "sha256": "8c701bc5442156ffe2ccc8f966bdb559967eb2f53691cf5a8d75cb47bbf27ec1",
+      "bytes": 13096
+    },
+    {
+      "path": "docs/architecture/v23-capability-matrix.md",
+      "sha256": "b0e7ed252b37825d9aae8b2cb7a3219143b329dc5d2c0508b070f59e9614d603",
+      "bytes": 47505
+    },
+    {
+      "path": "docs/architecture/v3-clean-break.md",
+      "sha256": "0fe4363f27d5f9a9a32a01d8f28fdf19fbbb632b6f635b2a20a32adeb747ad5c",
+      "bytes": 12950
+    },
+    {
+      "path": "docs/architecture/v3-clean-development-plan.md",
+      "sha256": "03cb777b58d6d8df2913f86d84fa65fc64d374a8b24d96e18bc00464bc7256c4",
+      "bytes": 26584
+    },
+    {
+      "path": "docs/testing.md",
+      "sha256": "bd34d25253d8e4df3b242e01dc86d604c5829e1540a3d9ed67b9f5d1344cb877",
+      "bytes": 5464
+    },
+    {
+      "path": "feature-catalog.json",
+      "sha256": "3f269e8ac23f93caa67d267ae48ef07b10c44fe5be1d30fb6c8e9de1fce2f464",
+      "bytes": 36583
+    },
+    {
+      "path": "package.json",
+      "sha256": "bc104c7fae2600c21bfee7107f37a7a979be2e3347b77a6faa90de4ab0f75b5d",
+      "bytes": 2718
+    },
+    {
+      "path": "packages/contracts/package.json",
+      "sha256": "e291f46cb9b2aa6c1895732251c8728f7881fd5041abd772d5fe0ae3f4c64db9",
+      "bytes": 125
+    },
+    {
+      "path": "scripts/check.mjs",
+      "sha256": "1b1d244b65e0b3694692097038db0897d6198f5cc8068078695aaa23150f7f65",
+      "bytes": 4657
+    },
+    {
+      "path": "scripts/lib/v3-clean-p1-scope.mjs",
+      "sha256": "60a1080221e506c6664c9e75a4bd3dfd6a2009a30a1502036475ded8f11d9f4a",
+      "bytes": 12690
+    },
+    {
+      "path": "scripts/recovery-governance.mjs",
+      "sha256": "fa9b25610befafccfa040321b4e84116982243de425c540f1d9dbe91cf298b86",
+      "bytes": 25041
+    },
+    {
+      "path": "scripts/v3-clean-architecture-scan.mjs",
+      "sha256": "036d6000f4b34e188b12e64ee54ed5a52f182dc77916947f405702f22cbdfbeb",
+      "bytes": 5616
+    },
+    {
+      "path": "scripts/verify.mjs",
+      "sha256": "b3339685e05e4e60ec7d248bf29665455aa8c64fab3a675cc7e67a3c60245780",
+      "bytes": 827
+    }
+  ],
+  "missing": [
+    "apps/api/src/clean/authorization.mjs",
+    "apps/api/src/clean/identity.mjs",
+    "apps/api/src/clean/migrations/002-identity-acl.mjs",
+    "apps/api/src/clean/provider-adapters.mjs",
+    "apps/api/src/clean/vault.mjs",
+    "apps/web/src/features/identity/IdentityAccessPage.tsx",
+    "apps/web/src/features/identity/index.ts",
+    "apps/web/src/test/identity-access.test.tsx",
+    "packages/contracts/src/clean-v2.mjs",
+    "scripts/v3-clean-p2-evidence.mjs",
+    "tests/p2/identity-acl-security.test.mjs",
+    "tests/p2/identity-acl.test.mjs"
+  ],
+  "file_count": 47
+}

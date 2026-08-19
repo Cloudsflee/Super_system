@@ -21,8 +21,10 @@ test('recovery catalog uses the five evidence-derived states and separate Termin
     assert.match(feature.id, /^REC-D\d+-[A-Z]+-\d{3}$/);
     assert.ok(statusFlow.includes(feature.status), feature.id);
     assert.ok(feature.tests.some((entry) => /^T[0-8]$/.test(entry)), feature.id);
-    for (const table of feature.tables) assert.ok(feature.owner_modules.includes(ownerOf('table', table)), `${feature.id}:${table}`);
-    for (const event of feature.events) assert.ok(feature.owner_modules.includes(ownerOf('event', event)), `${feature.id}:${event}`);
+    const clean = feature.target_modules.some((target) => target.startsWith('apps/api/src/clean/'))
+      || feature.evidence.some((entry) => entry.includes('/v3-clean-p2-'));
+    for (const table of feature.tables) assert.ok(feature.owner_modules.includes(ownerOf('table', table, { clean })), `${feature.id}:${table}`);
+    for (const event of feature.events) assert.ok(feature.owner_modules.includes(ownerOf('event', event, { clean })), `${feature.id}:${event}`);
     if (statusFlow.indexOf(feature.status) >= statusFlow.indexOf('implemented')) {
       assert.ok(feature.behavior_tests.length, `${feature.id}: behavior tests`);
       if (feature.ui.length) assert.ok(feature.ui_tests.length, `${feature.id}: UI tests`);
@@ -34,6 +36,14 @@ test('recovery catalog uses the five evidence-derived states and separate Termin
   assert.equal(terminal.domain, 'terminal');
   assert.equal(bridge.domain, 'bridge');
   assert.doesNotMatch(terminal.name, /Bridge/);
+  const governance = fs.readFileSync(path.join(root, 'scripts/recovery-governance.mjs'), 'utf8');
+  assert.match(governance, /docs\/architecture\/v3-clean-development-plan\.md/);
+  assert.doesNotMatch(governance, /docs\/开发计划v3功能恢复\.md/);
+  const governanceFeature = catalog.features.find((feature) => feature.id === 'REC-D0-GOVERNANCE-000');
+  assert.ok(governanceFeature.source_files.includes('AGENTS.md'));
+  assert.ok(governanceFeature.target_modules.includes('package.json'));
+  assert.ok(governanceFeature.target_modules.includes('scripts/v3-clean-p1-global-sync-evidence.mjs'));
+  assert.deepEqual(governanceFeature.gate_sync_rules, ['GS-001', 'GS-002', 'GS-003', 'GS-004', 'GS-005', 'GS-006', 'GS-007']);
   assert.match(createHash('sha256').update(raw).digest('hex'), /^[a-f0-9]{64}$/);
 });
 
@@ -54,9 +64,9 @@ test('module registry gives every table, command, and event one owner without de
   for (const id of ids) visit(id);
 });
 
-test('recovery plan, catalog, and coverage gates emit V2 passed receipts', () => {
-  for (const command of ['plan', 'catalog', 'coverage']) {
-    const run = spawnSync(process.execPath, ['scripts/recovery-governance.mjs', command], { cwd: root, encoding: 'utf8', windowsHide: true });
+test('recovery plan, catalog, coverage, and audited impact gates emit V2 passed receipts', () => {
+  for (const command of ['plan', 'catalog', 'coverage', 'impact']) {
+    const run = spawnSync(process.execPath, ['scripts/recovery-governance.mjs', command, '--skip-evidence'], { cwd: root, encoding: 'utf8', windowsHide: true });
     assert.equal(run.status, 0, run.stderr || run.stdout);
     const receipt = JSON.parse(fs.readFileSync(path.join(root, '.ai-workspace', 'recovery', `${command}.json`), 'utf8'));
     assert.equal(receipt.schema_version, 'aiws.v3.recovery_governance_receipt.v2');
@@ -64,4 +74,6 @@ test('recovery plan, catalog, and coverage gates emit V2 passed receipts', () =>
     assert.equal(receipt.status, 'passed');
     assert.match(receipt.catalog_sha256, /^[a-f0-9]{64}$/);
   }
+  const audited = spawnSync(process.execPath, ['scripts/recovery-governance.mjs', 'impact', '--audit', '--skip-evidence'], { cwd: root, encoding: 'utf8', windowsHide: true });
+  assert.equal(audited.status, 0, audited.stderr || audited.stdout);
 });

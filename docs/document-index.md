@@ -17,7 +17,7 @@
    把规范拆为可验收的实施阶段，不改变规范本身。
 3. 本页列出的运行、测试、威胁和需求文档：解释执行方式，不能新增与规范
    冲突的 API、表或状态。
-4. `docs/evidence/`：不可变验证材料，只能证明已经发生的行为，不能替代
+4. `docs/evidence/`：不可变阶段凭证和历史验证材料，只能证明已经发生的行为，不能替代
    规范或提升 Catalog 状态。
 5. [`archive/legacy-code-docs/`](archive/legacy-code-docs/)：历史参考，禁止
    作为活动代码文档引用。
@@ -50,6 +50,9 @@
 - 修改 artifact、patch、验证记录和 rollback receipt；
 - Catalog 状态（只能由 receipt 推导）。
 
+根目录 README、`AGENTS.md` 和 `.github/PULL_REQUEST_TEMPLATE.md` 也属于
+活动治理面，必须与当前 P 阶段、API 和 Evidence 引用同步。
+
 活动文档不得出现 `/api/v1`、`assist_operations`、`native_v5`、
 `native_v6`、旧 runtime import、双写或共享旧/新写卷等活动实现指引。
 
@@ -62,7 +65,8 @@
 | `doc/` | 产品想法、问题追踪和愿景草稿 |
 | `探索/`、`探索-1/` | 调研、资料索引和开放问题 |
 | `当前项目毕业设计任务书/`、`任务书/` | 学校任务书及其核验材料 |
-| `docs/evidence/` | 历史实现的验证、截图、快照和回滚材料 |
+| `愿景与范围文档模板/` | 外部模板及中文对照材料，不是产品契约 |
+| `docs/evidence/` | 当前阶段凭证以及历史实现的验证、截图、快照和回滚材料 |
 
 ## 5. 维护和检查
 
@@ -71,6 +75,8 @@
 
 ```powershell
 rg -n "V3-Clean|v3-clean|/api/v2|V23-L[0-7]|REC-D" docs/architecture docs/document-index.md AGENTS.md
+corepack pnpm audit:p1
+corepack pnpm scan:clean
 git diff --check
 git status --short --branch
 ```

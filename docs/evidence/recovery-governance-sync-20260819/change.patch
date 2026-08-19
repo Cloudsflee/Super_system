@@ -1,0 +1,171 @@
+diff --git a/apps/api/src/modules/registry.mjs b/apps/api/src/modules/registry.mjs
+index d3719d6..aa7b58e 100644
+--- a/apps/api/src/modules/registry.mjs
++++ b/apps/api/src/modules/registry.mjs
+@@ -44,6 +44,18 @@ export const SQL_BOUNDARY_SUFFIXES = Object.freeze([
+   '/migration-service.mjs', '/migrations/'
+ ]);
+ 
++// The clean platform has explicit SQL boundaries. New clean files must be
++// reviewed and added here instead of inheriting a package-wide exemption.
++export const CLEAN_SQL_BOUNDARIES = Object.freeze([
++  'apps/api/src/clean/cas.mjs',
++  'apps/api/src/clean/events.mjs',
++  'apps/api/src/clean/operations.mjs',
++  'apps/api/src/clean/platform.mjs',
++  'apps/api/src/clean/principal.mjs',
++  'apps/api/src/clean/receipts.mjs',
++  'apps/api/src/clean/runtime.mjs'
++]);
++
+ export const PLACEHOLDER_SUCCESS_PATTERNS = Object.freeze([
+   { id: 'fixed-workflow-generation', pattern: /Generated delivery workflow/ },
+   { id: 'immediate-assist-completion', pattern: /receipt\s*=\s*\{[^}]*status:\s*'completed'/s },
+diff --git a/feature-catalog.json b/feature-catalog.json
+index 011b216..5fb6797 100644
+--- a/feature-catalog.json
++++ b/feature-catalog.json
+@@ -27,7 +27,7 @@
+       "status": "verified",
+       "owner_modules": ["platform"],
+       "source_files": ["scripts/v23-plan.mjs", "scripts/v23-catalog.mjs", "scripts/v23-coverage.mjs", "scripts/v23-impact.mjs"],
+-      "target_modules": ["feature-catalog.json", "apps/api/src/modules/registry.mjs", "apps/api/src/modules/platform", "scripts/recovery-governance.mjs", "scripts/recovery-evidence.mjs", "scripts/check.mjs", "docs/开发计划v3功能恢复.md", "docs/测试计划v3功能恢复.md"],
++      "target_modules": ["feature-catalog.json", "apps/api/src/modules/registry.mjs", "apps/api/src/modules/platform", "scripts/recovery-governance.mjs", "scripts/recovery-evidence.mjs", "scripts/check.mjs", "docs/architecture/v3-clean-development-plan.md", "docs/testing.md"],
+       "tables": [],
+       "apis": [],
+       "ui": [],
+diff --git a/scripts/r6-evidence.mjs b/scripts/r6-evidence.mjs
+index e043bb6..cde69d8 100644
+--- a/scripts/r6-evidence.mjs
++++ b/scripts/r6-evidence.mjs
+@@ -14,7 +14,7 @@ const added = [
+   'apps/web/src/features/assist/index.ts', 'apps/web/src/features/assist/AssistPage.tsx', 'apps/web/src/test/assist.test.tsx', 'tests/integration/assist-r6.test.mjs'
+   , 'scripts/r6-e2e.mjs', 'scripts/r6-evidence.mjs'
+ ];
+-const trackedPatch = run('git', ['diff', '--binary', 'HEAD', '--', ':!V3功能恢复与架构治理判断.md']);
++const trackedPatch = run('git', ['diff', '--binary', 'HEAD', '--', ':!docs/archive/legacy-code-docs/V3功能恢复与架构治理判断-pre-clean.md']);
+ const untrackedPatch = added.map((file) => run('git', ['diff', '--no-index', '--binary', '--', '/dev/null', file]).stdout).join('\n');
+ write('change.patch', `${trackedPatch.stdout}\n${untrackedPatch}`);
+ const modified = {};
+diff --git a/scripts/recovery-governance.mjs b/scripts/recovery-governance.mjs
+index b99e38f..1cf7367 100644
+--- a/scripts/recovery-governance.mjs
++++ b/scripts/recovery-governance.mjs
+@@ -3,6 +3,7 @@ import { spawnSync } from 'node:child_process';
+ import fs from 'node:fs';
+ import path from 'node:path';
+ import {
++  CLEAN_SQL_BOUNDARIES,
+   FROZEN_SURFACES,
+   LEGACY_SQL_BOUNDARIES,
+   MODULE_REGISTRY,
+@@ -16,6 +17,17 @@ const command = process.argv[2];
+ const audit = process.argv.includes('--audit');
+ const allowedCommands = new Set(['plan', 'catalog', 'coverage', 'impact']);
+ const STATUS_FLOW = ['planned', 'scaffolded', 'implemented', 'verified', 'released'];
++const ACTIVE_PLAN_DOCUMENTS = Object.freeze([
++  'docs/architecture/v3-clean-development-plan.md',
++  'docs/testing.md'
++]);
++const CLEAN_RUNTIME_PREFIX = 'apps/api/src/clean/';
++const CLEAN_ENTRYPOINTS = new Set([
++  'apps/api/server.mjs',
++  'apps/api/clean-server.mjs',
++  'apps/api/server-clean.mjs',
++  'apps/api/server-legacy.mjs'
++]);
+ const failures = [];
+ 
+ if (!allowedCommands.has(command)) fail(`unknown recovery governance command: ${command || '<empty>'}`);
+@@ -117,14 +129,14 @@ function validateModuleRegistry() {
+ }
+ 
+ function checkPlan() {
+-  const documents = ['docs/开发计划v3功能恢复.md', 'docs/测试计划v3功能恢复.md'];
++  const documents = [...ACTIVE_PLAN_DOCUMENTS];
+   for (const document of documents) {
+     const full = path.join(root, document);
+     if (!fs.existsSync(full) || fs.statSync(full).size < 1000) failures.push(`missing or incomplete plan: ${document}`);
+   }
+   const developmentPlan = fs.existsSync(path.join(root, documents[0])) ? fs.readFileSync(path.join(root, documents[0]), 'utf8') : '';
+-  for (const release of Array.from({ length: 10 }, (_, index) => `R${index}`)) {
+-    if (!developmentPlan.includes(release)) failures.push(`development plan is missing ${release}`);
++  for (const phase of Array.from({ length: 10 }, (_, index) => `P${index}`)) {
++    if (!developmentPlan.includes(phase)) failures.push(`development plan is missing ${phase}`);
+   }
+   const requiredDomains = [
+     'identity', 'setup', 'runner', 'mcp', 'project', 'workflow', 'execution', 'outcome',
+@@ -138,7 +150,7 @@ function checkPlan() {
+   if (!terminal || !bridge || terminal.name.includes('Bridge') || terminal.tables.some((table) => table.startsWith('bridge_'))) {
+     failures.push('Terminal and Windows Bridge must be separate catalog features');
+   }
+-  return { documents, domains: [...domains].sort(), feature_count: features?.length || 0, phases: 10 };
++  return { documents, domains: [...domains].sort(), feature_count: features?.length || 0, phases: 10, phase_prefix: 'P' };
+ }
+ 
+ function checkCatalog() {
+@@ -187,7 +199,9 @@ function checkImpact() {
+   const changed = changedFiles();
+   const mappings = [];
+   const unmapped = [];
+-  const governance = /^(?:\.gitattributes|feature-catalog\.json|package\.json|docs\/|V3功能恢复与架构治理判断\.md|scripts\/(?:recovery-governance|recovery-evidence)\.mjs|apps\/api\/src\/(?:schema|db-worker|migration-service)\.mjs|apps\/api\/src\/(?:migrations|modules)\/(?:index|registry|define-module)\.mjs)/;
++  // P1 clean-platform files are tracked by the dedicated P1 rows in the
++  // capability matrix, rather than by a historical REC-D feature row.
++  const governance = /^(?:\.gitattributes|feature-catalog\.json|package\.json|docs\/|doc\/|探索(?:-1)?\/|当前项目毕业设计任务书\/|任务书\/|scripts\/(?:recovery-governance|recovery-evidence|r6-evidence|v3-clean-(?:architecture-scan|p1-evidence))\.mjs|apps\/api\/server\.mjs|apps\/api\/(?:clean-server|server-clean|server-legacy)\.mjs|apps\/api\/src\/clean(?:\/|$)|apps\/api\/src\/(?:schema|db-worker|migration-service)\.mjs|apps\/api\/src\/(?:migrations|modules)\/(?:index|registry|define-module)\.mjs|tests\/(?:p1\/|integration\/v3-clean-p1\.test\.mjs|security\/v3-clean-p1\.test\.mjs))/;
+   for (const file of [...changed].sort()) {
+     const matched = features.filter((feature) => featurePaths(feature).some((target) => {
+       const normalized = normalize(target);
+@@ -297,6 +311,7 @@ function validateSqlBoundaries() {
+       if (statements > frozen.get(relativePath)) failures.push(`legacy SQL boundary grew: ${relativePath} (${statements} > ${frozen.get(relativePath)})`);
+       continue;
+     }
++    if (CLEAN_SQL_BOUNDARIES.includes(relativePath)) continue;
+     if (!SQL_BOUNDARY_SUFFIXES.some((suffix) => suffix.endsWith('/')
+       ? `/${relativePath}/`.includes(suffix)
+       : `/${relativePath}`.endsWith(suffix))) {
+@@ -334,7 +349,9 @@ function validateLegacyRuntime() {
+     const basename = path.basename(file);
+     const source = fs.readFileSync(file, 'utf8');
+     if (/v(?:12|13|14|15|16|17|175|18|19|20|21|22|23)/i.test(basename)) failures.push(`versioned runtime filename: ${relativePath}`);
+-    if (/\/api\/v(?:2|12|13|14|15|16|17|18|19|20|21|22|23)(?:\/|\b)/i.test(source)) failures.push(`legacy API route: ${relativePath}`);
++    const cleanRuntime = relativePath.startsWith(CLEAN_RUNTIME_PREFIX) || CLEAN_ENTRYPOINTS.has(relativePath);
++    if (!cleanRuntime && /\/api\/v(?:2|12|13|14|15|16|17|18|19|20|21|22|23)(?:\/|\b)/i.test(source)) failures.push(`legacy API route: ${relativePath}`);
++    if (cleanRuntime && /\/api\/v1(?:\/|\b)/i.test(source)) failures.push(`clean runtime registered legacy API route: ${relativePath}`);
+     if (/state-migration-v\d+|global state snapshot/i.test(source)) failures.push(`legacy state runtime reference: ${relativePath}`);
+   }
+ }
+diff --git a/tests/unit/recovery-governance.test.mjs b/tests/unit/recovery-governance.test.mjs
+index d772d7f..79ab2ef 100644
+--- a/tests/unit/recovery-governance.test.mjs
++++ b/tests/unit/recovery-governance.test.mjs
+@@ -34,6 +34,12 @@ test('recovery catalog uses the five evidence-derived states and separate Termin
+   assert.equal(terminal.domain, 'terminal');
+   assert.equal(bridge.domain, 'bridge');
+   assert.doesNotMatch(terminal.name, /Bridge/);
++  const governance = fs.readFileSync(path.join(root, 'scripts/recovery-governance.mjs'), 'utf8');
++  assert.match(governance, /docs\/architecture\/v3-clean-development-plan\.md/);
++  assert.doesNotMatch(governance, /docs\/开发计划v3功能恢复\.md/);
++  assert.deepEqual(catalog.features.find((feature) => feature.id === 'REC-D0-GOVERNANCE-000').target_modules.slice(-2), [
++    'docs/architecture/v3-clean-development-plan.md', 'docs/testing.md'
++  ]);
+   assert.match(createHash('sha256').update(raw).digest('hex'), /^[a-f0-9]{64}$/);
+ });
+ 
+@@ -54,8 +60,8 @@ test('module registry gives every table, command, and event one owner without de
+   for (const id of ids) visit(id);
+ });
+ 
+-test('recovery plan, catalog, and coverage gates emit V2 passed receipts', () => {
+-  for (const command of ['plan', 'catalog', 'coverage']) {
++test('recovery plan, catalog, coverage, and audited impact gates emit V2 passed receipts', () => {
++  for (const command of ['plan', 'catalog', 'coverage', 'impact']) {
+     const run = spawnSync(process.execPath, ['scripts/recovery-governance.mjs', command], { cwd: root, encoding: 'utf8', windowsHide: true });
+     assert.equal(run.status, 0, run.stderr || run.stdout);
+     const receipt = JSON.parse(fs.readFileSync(path.join(root, '.ai-workspace', 'recovery', `${command}.json`), 'utf8'));
+@@ -64,4 +70,6 @@ test('recovery plan, catalog, and coverage gates emit V2 passed receipts', () =>
+     assert.equal(receipt.status, 'passed');
+     assert.match(receipt.catalog_sha256, /^[a-f0-9]{64}$/);
+   }
++  const audited = spawnSync(process.execPath, ['scripts/recovery-governance.mjs', 'impact', '--audit'], { cwd: root, encoding: 'utf8', windowsHide: true });
++  assert.equal(audited.status, 0, audited.stderr || audited.stdout);
+ });

@@ -1,0 +1,21 @@
+{
+  "schema_version": "aiws.v3-clean.schema-inventory.v2",
+  "owner": "Platform",
+  "family": "v3-clean",
+  "baseline": "001-clean-baseline",
+  "tables": [
+    "actors",
+    "aggregate_heads",
+    "aggregate_revisions",
+    "audit_events",
+    "cas_objects",
+    "event_cursors",
+    "events",
+    "idempotency_keys",
+    "operation_links",
+    "operations",
+    "receipt_manifests",
+    "schema_meta",
+    "schema_migrations"
+  ]
+}

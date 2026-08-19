@@ -1,0 +1,30 @@
+{
+  "schema_version": "aiws.v3-clean.completion-audit-manifest.v1",
+  "batch": "v3-clean-p1-completion-audit-20260819",
+  "phase": "P1",
+  "status": "failed",
+  "parent": "docs/evidence/v3-clean-p1-global-sync-20260819",
+  "artifacts": {
+    "architecture-scan.json": "075233ef5bb3473e72956fa7fef32ace97b75a52f5aff70737203ec226f09e3b",
+    "cas-manifest.json": "ff04b6315ebcfd37243d7cab8e37f0c0d47905b55beb8ed2e62e6808a97144f4",
+    "change.patch": "425c6537ea8812322601a69aa1d5340c5fecca537bd0417c15a59c978ced79ad",
+    "golden-receipt.json": "3dc9dd8830349aad282ac8ccc40d5ec9b8c4ae11ac34fdc8bd3e8a7186be4c39",
+    "modified-artifact.json": "58e06f35e5b464dff4a9efaf26af31856238afb125cf2499530fb4c624198671",
+    "original-hashes.json": "f9404e3d6e7dda0685316b6a40e354c4829897d6ea070ae3cc6ff2b4baf3e2b8",
+    "owner-manifest.json": "9df6ae22c398a392170b2bfc16e0d5387f61022d651083e72016ad5f3e23e3d4",
+    "parent-receipt.json": "85426206f499a420890060c3bf8a46ce9a2123cd5ee6837707b2f9691e4ad159",
+    "rollback.ps1": "511f7469ca71d9076bb676cd7259cf1aee74f9764d032e62eef2160d572f9e43",
+    "route-inventory.json": "4467edc6310bea4a5e7c1e7f13c7d5c6788b1e045b5a331904604de757835662",
+    "schema-inventory.json": "285c78509d8e9a1cf7afaa58eab79a680cfd8f25de2e7674e513ae0a19895cb7",
+    "schema-snapshot.json": "a037123f2629b8ef54d56452a1390ee9160755a36d4f92f2fa84109d66ddb82d",
+    "task-manifest.json": "c35468ad380b12e915b959fcb8660f9a6d6163330bb9972d19e54e40823bcad4",
+    "verification.json": "90016a52eec4bc4074083050f8fd2fcf8dcdad15d3b0e1e0a6e0a1dfb2c05e70",
+    "workspace-audit.json": "54af09f7587f0cc8da975932f3848c1cf0e42294a0ed7536b25bc030ce42526b",
+    "workspace-inventory.json": "a95e6a8a47e1e75dfc741a5403d23b9cedd56ccf3d8c27876e59cc4fa850e719",
+    "workspace-scope-inventory.json": "341569be79cf7a4080492b12800de22a00f9f92a727dad62116bc109115f34d6"
+  },
+  "modified_artifact": "modified-artifact.json",
+  "patch": "change.patch",
+  "verification": "verification.json",
+  "rollback": "rollback.ps1"
+}

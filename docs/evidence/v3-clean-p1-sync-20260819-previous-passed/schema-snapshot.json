@@ -1,0 +1,213 @@
+{
+  "schema_version": "aiws.v3-clean.schema-snapshot.v2",
+  "family": "v3-clean",
+  "baseline_id": "001-clean-baseline",
+  "user_version": 1,
+  "migration": {
+    "version": 1,
+    "id": "001-clean-baseline",
+    "name": "001-clean-baseline",
+    "family": "v3-clean",
+    "sql": "\nPRAGMA foreign_keys = ON;\nPRAGMA journal_mode = WAL;\nPRAGMA synchronous = FULL;\nPRAGMA busy_timeout = 5000;\n\nCREATE TABLE IF NOT EXISTS schema_meta (\n  id INTEGER PRIMARY KEY CHECK(id = 1),\n  family TEXT NOT NULL CHECK(family = 'v3-clean'),\n  baseline_id TEXT NOT NULL,\n  runtime_build TEXT NOT NULL,\n  canonicalization_version TEXT NOT NULL,\n  created_at TEXT NOT NULL,\n  updated_at TEXT NOT NULL\n) STRICT;\n\nCREATE TABLE IF NOT EXISTS schema_migrations (\n  migration_id TEXT PRIMARY KEY,\n  version INTEGER NOT NULL UNIQUE CHECK(version > 0),\n  family TEXT NOT NULL CHECK(family = 'v3-clean'),\n  name TEXT NOT NULL UNIQUE,\n  checksum TEXT NOT NULL CHECK(length(checksum) = 64),\n  tool_version TEXT NOT NULL,\n  snapshot_sha256 TEXT NOT NULL CHECK(length(snapshot_sha256) = 64),\n  verification_receipt_sha256 TEXT NOT NULL CHECK(length(verification_receipt_sha256) = 64),\n  applied_at TEXT NOT NULL\n) STRICT;\n\nCREATE TABLE IF NOT EXISTS actors (\n  id TEXT PRIMARY KEY,\n  kind TEXT NOT NULL CHECK(kind IN ('system','user','service','agent')),\n  display_name TEXT NOT NULL CHECK(length(display_name) BETWEEN 1 AND 160),\n  status TEXT NOT NULL CHECK(status IN ('active','suspended','revoked')),\n  metadata_json TEXT NOT NULL DEFAULT '{}' CHECK(json_valid(metadata_json)),\n  metadata_sha256 TEXT NOT NULL CHECK(length(metadata_sha256) = 64),\n  revision INTEGER NOT NULL DEFAULT 1 CHECK(revision > 0),\n  created_at TEXT NOT NULL,\n  updated_at TEXT NOT NULL,\n  created_by_actor_id TEXT REFERENCES actors(id) ON DELETE RESTRICT,\n  updated_by_actor_id TEXT REFERENCES actors(id) ON DELETE RESTRICT\n) STRICT;\n\nCREATE TABLE IF NOT EXISTS operations (\n  id TEXT PRIMARY KEY,\n  command_id TEXT NOT NULL,\n  command_version INTEGER NOT NULL CHECK(command_version > 0),\n  kind TEXT NOT NULL,\n  status TEXT NOT NULL CHECK(status IN ('accepted','queued','running','paused','succeeded','failed','cancelled','expired')),\n  resource_type TEXT NOT NULL DEFAULT '',\n  resource_id TEXT NOT NULL DEFAULT '',\n  project_id TEXT,\n  actor_id TEXT NOT NULL REFERENCES actors(id) ON DELETE RESTRICT,\n  request_hash TEXT NOT NULL CHECK(length(request_hash) = 64),\n  external_ref TEXT NOT NULL DEFAULT '',\n  result_json TEXT NOT NULL DEFAULT '{}' CHECK(json_valid(result_json)),\n  error_code TEXT NOT NULL DEFAULT '',\n  error_details_json TEXT NOT NULL DEFAULT '{}' CHECK(json_valid(error_details_json)),\n  revision INTEGER NOT NULL DEFAULT 1 CHECK(revision > 0),\n  created_at TEXT NOT NULL,\n  updated_at TEXT NOT NULL,\n  started_at TEXT,\n  cancel_requested_at TEXT,\n  cancel_requested_by_actor_id TEXT REFERENCES actors(id) ON DELETE RESTRICT,\n  completed_at TEXT\n) STRICT;\n\nCREATE TABLE IF NOT EXISTS aggregate_heads (\n  aggregate_type TEXT NOT NULL,\n  aggregate_id TEXT NOT NULL,\n  current_revision INTEGER NOT NULL CHECK(current_revision > 0),\n  current_hash TEXT NOT NULL CHECK(length(current_hash) = 64),\n  last_event_sequence INTEGER NOT NULL DEFAULT 0 CHECK(last_event_sequence >= 0),\n  updated_at TEXT NOT NULL,\n  PRIMARY KEY(aggregate_type, aggregate_id)\n) STRICT;\n\nCREATE TABLE IF NOT EXISTS aggregate_revisions (\n  id TEXT PRIMARY KEY,\n  aggregate_type TEXT NOT NULL,\n  aggregate_id TEXT NOT NULL,\n  revision INTEGER NOT NULL CHECK(revision > 0),\n  payload_json TEXT NOT NULL CHECK(json_valid(payload_json)),\n  payload_sha256 TEXT NOT NULL CHECK(length(payload_sha256) = 64),\n  operation_id TEXT REFERENCES operations(id) ON DELETE RESTRICT,\n  actor_id TEXT NOT NULL REFERENCES actors(id) ON DELETE RESTRICT,\n  created_at TEXT NOT NULL,\n  UNIQUE(aggregate_type, aggregate_id, revision)\n) STRICT;\n\nCREATE TABLE IF NOT EXISTS operation_links (\n  id TEXT PRIMARY KEY,\n  operation_id TEXT NOT NULL REFERENCES operations(id) ON DELETE RESTRICT,\n  aggregate_type TEXT NOT NULL,\n  aggregate_id TEXT NOT NULL,\n  relation TEXT NOT NULL CHECK(relation IN ('target','retry_of','replay_of','parent','related')),\n  created_at TEXT NOT NULL,\n  UNIQUE(operation_id, aggregate_type, aggregate_id, relation)\n) STRICT;\n\nCREATE TABLE IF NOT EXISTS events (\n  id TEXT NOT NULL UNIQUE,\n  sequence INTEGER PRIMARY KEY AUTOINCREMENT,\n  type TEXT NOT NULL,\n  aggregate_type TEXT NOT NULL,\n  aggregate_id TEXT NOT NULL,\n  aggregate_revision INTEGER NOT NULL CHECK(aggregate_revision > 0),\n  operation_id TEXT REFERENCES operations(id) ON DELETE RESTRICT,\n  actor_id TEXT NOT NULL REFERENCES actors(id) ON DELETE RESTRICT,\n  project_id TEXT,\n  occurred_at TEXT NOT NULL,\n  data_json TEXT NOT NULL CHECK(json_valid(data_json)),\n  data_sha256 TEXT NOT NULL CHECK(length(data_sha256) = 64),\n  redactions_json TEXT NOT NULL DEFAULT '[]' CHECK(json_valid(redactions_json))\n) STRICT;\n\nCREATE TABLE IF NOT EXISTS event_cursors (\n  actor_id TEXT NOT NULL REFERENCES actors(id) ON DELETE RESTRICT,\n  consumer_id TEXT NOT NULL,\n  stream TEXT NOT NULL,\n  project_id TEXT,\n  cursor_sequence INTEGER NOT NULL DEFAULT 0 CHECK(cursor_sequence >= 0),\n  revision INTEGER NOT NULL DEFAULT 1 CHECK(revision > 0),\n  expires_at TEXT NOT NULL,\n  updated_at TEXT NOT NULL,\n  PRIMARY KEY(actor_id, consumer_id, stream)\n) STRICT;\n\nCREATE TABLE IF NOT EXISTS idempotency_keys (\n  actor_id TEXT NOT NULL REFERENCES actors(id) ON DELETE RESTRICT,\n  command_id TEXT NOT NULL,\n  idempotency_key TEXT NOT NULL,\n  request_hash TEXT NOT NULL CHECK(length(request_hash) = 64),\n  response_status INTEGER,\n  response_json TEXT CHECK(response_json IS NULL OR json_valid(response_json)),\n  operation_id TEXT REFERENCES operations(id) ON DELETE RESTRICT,\n  expires_at TEXT NOT NULL,\n  created_at TEXT NOT NULL,\n  PRIMARY KEY(actor_id, command_id, idempotency_key)\n) STRICT;\n\nCREATE TABLE IF NOT EXISTS audit_events (\n  id TEXT PRIMARY KEY,\n  event_id TEXT REFERENCES events(id) ON DELETE RESTRICT,\n  operation_id TEXT REFERENCES operations(id) ON DELETE RESTRICT,\n  actor_id TEXT NOT NULL REFERENCES actors(id) ON DELETE RESTRICT,\n  action TEXT NOT NULL,\n  entity_type TEXT NOT NULL,\n  entity_id TEXT NOT NULL,\n  data_json TEXT NOT NULL CHECK(json_valid(data_json)),\n  data_sha256 TEXT NOT NULL CHECK(length(data_sha256) = 64),\n  created_at TEXT NOT NULL\n) STRICT;\n\nCREATE TABLE IF NOT EXISTS cas_objects (\n  sha256 TEXT PRIMARY KEY CHECK(length(sha256) = 64),\n  byte_length INTEGER NOT NULL CHECK(byte_length >= 0),\n  media_type TEXT NOT NULL DEFAULT 'application/octet-stream',\n  relative_key TEXT NOT NULL UNIQUE,\n  metadata_json TEXT NOT NULL DEFAULT '{}' CHECK(json_valid(metadata_json)),\n  status TEXT NOT NULL DEFAULT 'active' CHECK(status IN ('active','tombstoned')),\n  created_at TEXT NOT NULL,\n  tombstoned_at TEXT\n) STRICT;\n\nCREATE TABLE IF NOT EXISTS receipt_manifests (\n  id TEXT PRIMARY KEY,\n  kind TEXT NOT NULL,\n  status TEXT NOT NULL CHECK(status IN ('created','verified','failed','expired')),\n  payload_json TEXT NOT NULL CHECK(json_valid(payload_json)),\n  payload_sha256 TEXT NOT NULL CHECK(length(payload_sha256) = 64),\n  cas_sha256 TEXT CHECK(cas_sha256 IS NULL OR length(cas_sha256) = 64),\n  created_at TEXT NOT NULL,\n  expires_at TEXT\n) STRICT;\n\nCREATE INDEX IF NOT EXISTS idx_operations_status ON operations(status, updated_at);\nCREATE INDEX IF NOT EXISTS idx_events_aggregate ON events(aggregate_type, aggregate_id, sequence);\nCREATE INDEX IF NOT EXISTS idx_events_operation ON events(operation_id, sequence);\nCREATE INDEX IF NOT EXISTS idx_events_project ON events(project_id, sequence);\nCREATE INDEX IF NOT EXISTS idx_revisions_aggregate ON aggregate_revisions(aggregate_type, aggregate_id, revision);\n\nCREATE TRIGGER IF NOT EXISTS immutable_schema_meta_update\n  BEFORE UPDATE ON schema_meta BEGIN SELECT RAISE(ABORT, 'immutable_schema_meta'); END;\nCREATE TRIGGER IF NOT EXISTS immutable_schema_meta_delete\n  BEFORE DELETE ON schema_meta BEGIN SELECT RAISE(ABORT, 'immutable_schema_meta'); END;\nCREATE TRIGGER IF NOT EXISTS immutable_schema_migrations_update\n  BEFORE UPDATE ON schema_migrations BEGIN SELECT RAISE(ABORT, 'immutable_schema_migrations'); END;\nCREATE TRIGGER IF NOT EXISTS immutable_schema_migrations_delete\n  BEFORE DELETE ON schema_migrations BEGIN SELECT RAISE(ABORT, 'immutable_schema_migrations'); END;\nCREATE TRIGGER IF NOT EXISTS immutable_aggregate_revisions_update\n  BEFORE UPDATE ON aggregate_revisions BEGIN SELECT RAISE(ABORT, 'immutable_aggregate_revision'); END;\nCREATE TRIGGER IF NOT EXISTS immutable_aggregate_revisions_delete\n  BEFORE DELETE ON aggregate_revisions BEGIN SELECT RAISE(ABORT, 'immutable_aggregate_revision'); END;\nCREATE TRIGGER IF NOT EXISTS immutable_events_update\n  BEFORE UPDATE ON events BEGIN SELECT RAISE(ABORT, 'immutable_event'); END;\nCREATE TRIGGER IF NOT EXISTS immutable_events_delete\n  BEFORE DELETE ON events BEGIN SELECT RAISE(ABORT, 'immutable_event'); END;\nCREATE TRIGGER IF NOT EXISTS immutable_audit_events_update\n  BEFORE UPDATE ON audit_events BEGIN SELECT RAISE(ABORT, 'immutable_audit_event'); END;\nCREATE TRIGGER IF NOT EXISTS immutable_audit_events_delete\n  BEFORE DELETE ON audit_events BEGIN SELECT RAISE(ABORT, 'immutable_audit_event'); END;\nCREATE TRIGGER IF NOT EXISTS immutable_receipt_manifests_update\n  BEFORE UPDATE ON receipt_manifests BEGIN SELECT RAISE(ABORT, 'immutable_receipt_manifest'); END;\nCREATE TRIGGER IF NOT EXISTS immutable_receipt_manifests_delete\n  BEFORE DELETE ON receipt_manifests BEGIN SELECT RAISE(ABORT, 'immutable_receipt_manifest'); END;\n",
+    "checksum": "cca3488f5328cb66e030dab0fed7fad023980e7178b78e60256777fbb8dde424",
+    "toolVersion": "v3-clean-p1"
+  },
+  "schema_sha256": "29a8103754a9d5aea1b6d23c2e6c36ed578698bb15a961299bb3eed4a8e53abe",
+  "tables": [
+    "actors",
+    "aggregate_heads",
+    "aggregate_revisions",
+    "audit_events",
+    "cas_objects",
+    "event_cursors",
+    "events",
+    "idempotency_keys",
+    "operation_links",
+    "operations",
+    "receipt_manifests",
+    "schema_meta",
+    "schema_migrations"
+  ],
+  "sqlite_schema": [
+    {
+      "type": "index",
+      "name": "idx_events_aggregate",
+      "tbl_name": "events",
+      "sql": "CREATE INDEX idx_events_aggregate ON events(aggregate_type, aggregate_id, sequence)"
+    },
+    {
+      "type": "index",
+      "name": "idx_events_operation",
+      "tbl_name": "events",
+      "sql": "CREATE INDEX idx_events_operation ON events(operation_id, sequence)"
+    },
+    {
+      "type": "index",
+      "name": "idx_events_project",
+      "tbl_name": "events",
+      "sql": "CREATE INDEX idx_events_project ON events(project_id, sequence)"
+    },
+    {
+      "type": "index",
+      "name": "idx_operations_status",
+      "tbl_name": "operations",
+      "sql": "CREATE INDEX idx_operations_status ON operations(status, updated_at)"
+    },
+    {
+      "type": "index",
+      "name": "idx_revisions_aggregate",
+      "tbl_name": "aggregate_revisions",
+      "sql": "CREATE INDEX idx_revisions_aggregate ON aggregate_revisions(aggregate_type, aggregate_id, revision)"
+    },
+    {
+      "type": "table",
+      "name": "actors",
+      "tbl_name": "actors",
+      "sql": "CREATE TABLE actors (\n  id TEXT PRIMARY KEY,\n  kind TEXT NOT NULL CHECK(kind IN ('system','user','service','agent')),\n  display_name TEXT NOT NULL CHECK(length(display_name) BETWEEN 1 AND 160),\n  status TEXT NOT NULL CHECK(status IN ('active','suspended','revoked')),\n  metadata_json TEXT NOT NULL DEFAULT '{}' CHECK(json_valid(metadata_json)),\n  metadata_sha256 TEXT NOT NULL CHECK(length(metadata_sha256) = 64),\n  revision INTEGER NOT NULL DEFAULT 1 CHECK(revision > 0),\n  created_at TEXT NOT NULL,\n  updated_at TEXT NOT NULL,\n  created_by_actor_id TEXT REFERENCES actors(id) ON DELETE RESTRICT,\n  updated_by_actor_id TEXT REFERENCES actors(id) ON DELETE RESTRICT\n) STRICT"
+    },
+    {
+      "type": "table",
+      "name": "aggregate_heads",
+      "tbl_name": "aggregate_heads",
+      "sql": "CREATE TABLE aggregate_heads (\n  aggregate_type TEXT NOT NULL,\n  aggregate_id TEXT NOT NULL,\n  current_revision INTEGER NOT NULL CHECK(current_revision > 0),\n  current_hash TEXT NOT NULL CHECK(length(current_hash) = 64),\n  last_event_sequence INTEGER NOT NULL DEFAULT 0 CHECK(last_event_sequence >= 0),\n  updated_at TEXT NOT NULL,\n  PRIMARY KEY(aggregate_type, aggregate_id)\n) STRICT"
+    },
+    {
+      "type": "table",
+      "name": "aggregate_revisions",
+      "tbl_name": "aggregate_revisions",
+      "sql": "CREATE TABLE aggregate_revisions (\n  id TEXT PRIMARY KEY,\n  aggregate_type TEXT NOT NULL,\n  aggregate_id TEXT NOT NULL,\n  revision INTEGER NOT NULL CHECK(revision > 0),\n  payload_json TEXT NOT NULL CHECK(json_valid(payload_json)),\n  payload_sha256 TEXT NOT NULL CHECK(length(payload_sha256) = 64),\n  operation_id TEXT REFERENCES operations(id) ON DELETE RESTRICT,\n  actor_id TEXT NOT NULL REFERENCES actors(id) ON DELETE RESTRICT,\n  created_at TEXT NOT NULL,\n  UNIQUE(aggregate_type, aggregate_id, revision)\n) STRICT"
+    },
+    {
+      "type": "table",
+      "name": "audit_events",
+      "tbl_name": "audit_events",
+      "sql": "CREATE TABLE audit_events (\n  id TEXT PRIMARY KEY,\n  event_id TEXT REFERENCES events(id) ON DELETE RESTRICT,\n  operation_id TEXT REFERENCES operations(id) ON DELETE RESTRICT,\n  actor_id TEXT NOT NULL REFERENCES actors(id) ON DELETE RESTRICT,\n  action TEXT NOT NULL,\n  entity_type TEXT NOT NULL,\n  entity_id TEXT NOT NULL,\n  data_json TEXT NOT NULL CHECK(json_valid(data_json)),\n  data_sha256 TEXT NOT NULL CHECK(length(data_sha256) = 64),\n  created_at TEXT NOT NULL\n) STRICT"
+    },
+    {
+      "type": "table",
+      "name": "cas_objects",
+      "tbl_name": "cas_objects",
+      "sql": "CREATE TABLE cas_objects (\n  sha256 TEXT PRIMARY KEY CHECK(length(sha256) = 64),\n  byte_length INTEGER NOT NULL CHECK(byte_length >= 0),\n  media_type TEXT NOT NULL DEFAULT 'application/octet-stream',\n  relative_key TEXT NOT NULL UNIQUE,\n  metadata_json TEXT NOT NULL DEFAULT '{}' CHECK(json_valid(metadata_json)),\n  status TEXT NOT NULL DEFAULT 'active' CHECK(status IN ('active','tombstoned')),\n  created_at TEXT NOT NULL,\n  tombstoned_at TEXT\n) STRICT"
+    },
+    {
+      "type": "table",
+      "name": "event_cursors",
+      "tbl_name": "event_cursors",
+      "sql": "CREATE TABLE event_cursors (\n  actor_id TEXT NOT NULL REFERENCES actors(id) ON DELETE RESTRICT,\n  consumer_id TEXT NOT NULL,\n  stream TEXT NOT NULL,\n  project_id TEXT,\n  cursor_sequence INTEGER NOT NULL DEFAULT 0 CHECK(cursor_sequence >= 0),\n  revision INTEGER NOT NULL DEFAULT 1 CHECK(revision > 0),\n  expires_at TEXT NOT NULL,\n  updated_at TEXT NOT NULL,\n  PRIMARY KEY(actor_id, consumer_id, stream)\n) STRICT"
+    },
+    {
+      "type": "table",
+      "name": "events",
+      "tbl_name": "events",
+      "sql": "CREATE TABLE events (\n  id TEXT NOT NULL UNIQUE,\n  sequence INTEGER PRIMARY KEY AUTOINCREMENT,\n  type TEXT NOT NULL,\n  aggregate_type TEXT NOT NULL,\n  aggregate_id TEXT NOT NULL,\n  aggregate_revision INTEGER NOT NULL CHECK(aggregate_revision > 0),\n  operation_id TEXT REFERENCES operations(id) ON DELETE RESTRICT,\n  actor_id TEXT NOT NULL REFERENCES actors(id) ON DELETE RESTRICT,\n  project_id TEXT,\n  occurred_at TEXT NOT NULL,\n  data_json TEXT NOT NULL CHECK(json_valid(data_json)),\n  data_sha256 TEXT NOT NULL CHECK(length(data_sha256) = 64),\n  redactions_json TEXT NOT NULL DEFAULT '[]' CHECK(json_valid(redactions_json))\n) STRICT"
+    },
+    {
+      "type": "table",
+      "name": "idempotency_keys",
+      "tbl_name": "idempotency_keys",
+      "sql": "CREATE TABLE idempotency_keys (\n  actor_id TEXT NOT NULL REFERENCES actors(id) ON DELETE RESTRICT,\n  command_id TEXT NOT NULL,\n  idempotency_key TEXT NOT NULL,\n  request_hash TEXT NOT NULL CHECK(length(request_hash) = 64),\n  response_status INTEGER,\n  response_json TEXT CHECK(response_json IS NULL OR json_valid(response_json)),\n  operation_id TEXT REFERENCES operations(id) ON DELETE RESTRICT,\n  expires_at TEXT NOT NULL,\n  created_at TEXT NOT NULL,\n  PRIMARY KEY(actor_id, command_id, idempotency_key)\n) STRICT"
+    },
+    {
+      "type": "table",
+      "name": "operation_links",
+      "tbl_name": "operation_links",
+      "sql": "CREATE TABLE operation_links (\n  id TEXT PRIMARY KEY,\n  operation_id TEXT NOT NULL REFERENCES operations(id) ON DELETE RESTRICT,\n  aggregate_type TEXT NOT NULL,\n  aggregate_id TEXT NOT NULL,\n  relation TEXT NOT NULL CHECK(relation IN ('target','retry_of','replay_of','parent','related')),\n  created_at TEXT NOT NULL,\n  UNIQUE(operation_id, aggregate_type, aggregate_id, relation)\n) STRICT"
+    },
+    {
+      "type": "table",
+      "name": "operations",
+      "tbl_name": "operations",
+      "sql": "CREATE TABLE operations (\n  id TEXT PRIMARY KEY,\n  command_id TEXT NOT NULL,\n  command_version INTEGER NOT NULL CHECK(command_version > 0),\n  kind TEXT NOT NULL,\n  status TEXT NOT NULL CHECK(status IN ('accepted','queued','running','paused','succeeded','failed','cancelled','expired')),\n  resource_type TEXT NOT NULL DEFAULT '',\n  resource_id TEXT NOT NULL DEFAULT '',\n  project_id TEXT,\n  actor_id TEXT NOT NULL REFERENCES actors(id) ON DELETE RESTRICT,\n  request_hash TEXT NOT NULL CHECK(length(request_hash) = 64),\n  external_ref TEXT NOT NULL DEFAULT '',\n  result_json TEXT NOT NULL DEFAULT '{}' CHECK(json_valid(result_json)),\n  error_code TEXT NOT NULL DEFAULT '',\n  error_details_json TEXT NOT NULL DEFAULT '{}' CHECK(json_valid(error_details_json)),\n  revision INTEGER NOT NULL DEFAULT 1 CHECK(revision > 0),\n  created_at TEXT NOT NULL,\n  updated_at TEXT NOT NULL,\n  started_at TEXT,\n  cancel_requested_at TEXT,\n  cancel_requested_by_actor_id TEXT REFERENCES actors(id) ON DELETE RESTRICT,\n  completed_at TEXT\n) STRICT"
+    },
+    {
+      "type": "table",
+      "name": "receipt_manifests",
+      "tbl_name": "receipt_manifests",
+      "sql": "CREATE TABLE receipt_manifests (\n  id TEXT PRIMARY KEY,\n  kind TEXT NOT NULL,\n  status TEXT NOT NULL CHECK(status IN ('created','verified','failed','expired')),\n  payload_json TEXT NOT NULL CHECK(json_valid(payload_json)),\n  payload_sha256 TEXT NOT NULL CHECK(length(payload_sha256) = 64),\n  cas_sha256 TEXT CHECK(cas_sha256 IS NULL OR length(cas_sha256) = 64),\n  created_at TEXT NOT NULL,\n  expires_at TEXT\n) STRICT"
+    },
+    {
+      "type": "table",
+      "name": "schema_meta",
+      "tbl_name": "schema_meta",
+      "sql": "CREATE TABLE schema_meta (\n  id INTEGER PRIMARY KEY CHECK(id = 1),\n  family TEXT NOT NULL CHECK(family = 'v3-clean'),\n  baseline_id TEXT NOT NULL,\n  runtime_build TEXT NOT NULL,\n  canonicalization_version TEXT NOT NULL,\n  created_at TEXT NOT NULL,\n  updated_at TEXT NOT NULL\n) STRICT"
+    },
+    {
+      "type": "table",
+      "name": "schema_migrations",
+      "tbl_name": "schema_migrations",
+      "sql": "CREATE TABLE schema_migrations (\n  migration_id TEXT PRIMARY KEY,\n  version INTEGER NOT NULL UNIQUE CHECK(version > 0),\n  family TEXT NOT NULL CHECK(family = 'v3-clean'),\n  name TEXT NOT NULL UNIQUE,\n  checksum TEXT NOT NULL CHECK(length(checksum) = 64),\n  tool_version TEXT NOT NULL,\n  snapshot_sha256 TEXT NOT NULL CHECK(length(snapshot_sha256) = 64),\n  verification_receipt_sha256 TEXT NOT NULL CHECK(length(verification_receipt_sha256) = 64),\n  applied_at TEXT NOT NULL\n) STRICT"
+    },
+    {
+      "type": "trigger",
+      "name": "immutable_aggregate_revisions_delete",
+      "tbl_name": "aggregate_revisions",
+      "sql": "CREATE TRIGGER immutable_aggregate_revisions_delete\n  BEFORE DELETE ON aggregate_revisions BEGIN SELECT RAISE(ABORT, 'immutable_aggregate_revision'); END"
+    },
+    {
+      "type": "trigger",
+      "name": "immutable_aggregate_revisions_update",
+      "tbl_name": "aggregate_revisions",
+      "sql": "CREATE TRIGGER immutable_aggregate_revisions_update\n  BEFORE UPDATE ON aggregate_revisions BEGIN SELECT RAISE(ABORT, 'immutable_aggregate_revision'); END"
+    },
+    {
+      "type": "trigger",
+      "name": "immutable_audit_events_delete",
+      "tbl_name": "audit_events",
+      "sql": "CREATE TRIGGER immutable_audit_events_delete\n  BEFORE DELETE ON audit_events BEGIN SELECT RAISE(ABORT, 'immutable_audit_event'); END"
+    },
+    {
+      "type": "trigger",
+      "name": "immutable_audit_events_update",
+      "tbl_name": "audit_events",
+      "sql": "CREATE TRIGGER immutable_audit_events_update\n  BEFORE UPDATE ON audit_events BEGIN SELECT RAISE(ABORT, 'immutable_audit_event'); END"
+    },
+    {
+      "type": "trigger",
+      "name": "immutable_events_delete",
+      "tbl_name": "events",
+      "sql": "CREATE TRIGGER immutable_events_delete\n  BEFORE DELETE ON events BEGIN SELECT RAISE(ABORT, 'immutable_event'); END"
+    },
+    {
+      "type": "trigger",
+      "name": "immutable_events_update",
+      "tbl_name": "events",
+      "sql": "CREATE TRIGGER immutable_events_update\n  BEFORE UPDATE ON events BEGIN SELECT RAISE(ABORT, 'immutable_event'); END"
+    },
+    {
+      "type": "trigger",
+      "name": "immutable_receipt_manifests_delete",
+      "tbl_name": "receipt_manifests",
+      "sql": "CREATE TRIGGER immutable_receipt_manifests_delete\n  BEFORE DELETE ON receipt_manifests BEGIN SELECT RAISE(ABORT, 'immutable_receipt_manifest'); END"
+    },
+    {
+      "type": "trigger",
+      "name": "immutable_receipt_manifests_update",
+      "tbl_name": "receipt_manifests",
+      "sql": "CREATE TRIGGER immutable_receipt_manifests_update\n  BEFORE UPDATE ON receipt_manifests BEGIN SELECT RAISE(ABORT, 'immutable_receipt_manifest'); END"
+    },
+    {
+      "type": "trigger",
+      "name": "immutable_schema_meta_delete",
+      "tbl_name": "schema_meta",
+      "sql": "CREATE TRIGGER immutable_schema_meta_delete\n  BEFORE DELETE ON schema_meta BEGIN SELECT RAISE(ABORT, 'immutable_schema_meta'); END"
+    },
+    {
+      "type": "trigger",
+      "name": "immutable_schema_meta_update",
+      "tbl_name": "schema_meta",
+      "sql": "CREATE TRIGGER immutable_schema_meta_update\n  BEFORE UPDATE ON schema_meta BEGIN SELECT RAISE(ABORT, 'immutable_schema_meta'); END"
+    },
+    {
+      "type": "trigger",
+      "name": "immutable_schema_migrations_delete",
+      "tbl_name": "schema_migrations",
+      "sql": "CREATE TRIGGER immutable_schema_migrations_delete\n  BEFORE DELETE ON schema_migrations BEGIN SELECT RAISE(ABORT, 'immutable_schema_migrations'); END"
+    },
+    {
+      "type": "trigger",
+      "name": "immutable_schema_migrations_update",
+      "tbl_name": "schema_migrations",
+      "sql": "CREATE TRIGGER immutable_schema_migrations_update\n  BEFORE UPDATE ON schema_migrations BEGIN SELECT RAISE(ABORT, 'immutable_schema_migrations'); END"
+    }
+  ]
+}

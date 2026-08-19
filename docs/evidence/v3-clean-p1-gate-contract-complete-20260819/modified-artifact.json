@@ -1,0 +1,55 @@
+{
+  "schema_version": "aiws.v3-clean.completion-audit-modified-artifact.v1",
+  "parent_evidence": "docs/evidence/v3-clean-p1-completion-audit-20260819",
+  "baseline_receipt": ".ai-workspace/v3-clean-p1-gate-contract-complete-baseline-20260819/original-hashes.json",
+  "runtime_entry": "apps/api/server.mjs",
+  "workspace_inventory_sha256": "b44172a6cb471c5baba03158359d8333c0ccd94868aa0fcc71b0381689f0701c",
+  "workspace_scope_inventory_sha256": "cb4bb6b320470534af8aef3ea97b3807673c058e4538dde68f621882b363770a",
+  "files": [
+    {
+      "path": "AGENTS.md",
+      "sha256": "9bafebdc5b35fe409e56a92c6a8f906be26d348fab9d2ee81250677427bcb7f3"
+    },
+    {
+      "path": "docs/architecture/v23-capability-matrix.md",
+      "sha256": "b0e7ed252b37825d9aae8b2cb7a3219143b329dc5d2c0508b070f59e9614d603"
+    },
+    {
+      "path": "docs/architecture/v3-clean-development-plan.md",
+      "sha256": "03cb777b58d6d8df2913f86d84fa65fc64d374a8b24d96e18bc00464bc7256c4"
+    },
+    {
+      "path": "docs/testing.md",
+      "sha256": "bd34d25253d8e4df3b242e01dc86d604c5829e1540a3d9ed67b9f5d1344cb877"
+    },
+    {
+      "path": "feature-catalog.json",
+      "sha256": "3f269e8ac23f93caa67d267ae48ef07b10c44fe5be1d30fb6c8e9de1fce2f464"
+    },
+    {
+      "path": "scripts/lib/v3-clean-p1-scope.mjs",
+      "sha256": "60a1080221e506c6664c9e75a4bd3dfd6a2009a30a1502036475ded8f11d9f4a"
+    },
+    {
+      "path": "scripts/v3-clean-p1-global-sync-evidence.mjs",
+      "sha256": "f47ca494d8099500a0ddcde962035eb04d34b38de0aea18b756e8ec8140e37c6"
+    },
+    {
+      "path": "scripts/v3-clean-workspace-audit.mjs",
+      "sha256": "8ce8a1fde6bdca9510588f8319cbfa63d4a35e6ef5c387fe6e17b1c7e1a3a05f"
+    },
+    {
+      "path": "scripts/verify.mjs",
+      "sha256": "b3339685e05e4e60ec7d248bf29665455aa8c64fab3a675cc7e67a3c60245780"
+    },
+    {
+      "path": "tests/p1/workspace-sync.test.mjs",
+      "sha256": "cac402ba34f68e9bfe32aa26fce4a2d4ea1cdf09b6a998966768248ac9ded5ac"
+    },
+    {
+      "path": "tests/unit/recovery-governance.test.mjs",
+      "sha256": "853cea8f1bbd0769060f49fb3b057f1d63ca23f8c6f51cfe7e24da84f04feaa6"
+    }
+  ],
+  "deleted_files": []
+}

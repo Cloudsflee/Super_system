@@ -1,0 +1,51 @@
+{
+  "schema_version": "aiws.v3-clean.p1-task-manifest.v2",
+  "target": "P1 clean baseline, API v2, platform kernel",
+  "non_target": [
+    "Identity/Team business behavior",
+    "Project business behavior",
+    "online importer",
+    "runner/parser adapters",
+    "full Web workflow"
+  ],
+  "preflight": {
+    "target": "v3-clean P1 platform kernel, API v2, startup recovery, and Evidence batch",
+    "non_target": [
+      "Identity/Team business behavior",
+      "Project business behavior",
+      "online importer",
+      "runner/parser adapters",
+      "full Web workflow"
+    ],
+    "forbidden": [
+      "legacy runtime/API v1 facade",
+      "second operation/head/CAS model",
+      "online migration",
+      "overwriting existing dirty worktree"
+    ],
+    "reuse": [
+      "8edefc7 baseline",
+      ".ai-workspace/v3-clean-p1-sync-baseline-20260819 original hashes",
+      "clean fixtures and P1 tests"
+    ],
+    "delete_retire": [
+      "apps/api/server-clean.mjs alias",
+      "legacy entrypoint dynamic switching; historical handlers remain fixtures"
+    ]
+  },
+  "active_object": "v3-clean temporary volume",
+  "last_confirmed_result": "9/9 acceptance commands passed",
+  "next_action": "preserve the receipt and review the P2 entry gate",
+  "acceptance_commands": [
+    "pnpm check",
+    "pnpm scan:clean",
+    "pnpm test:p1",
+    "pnpm test:integration",
+    "pnpm test:security",
+    "pnpm test:release",
+    "pnpm verify",
+    "git diff --check",
+    "git apply --reverse --check change.patch"
+  ],
+  "rollback_artifact": "rollback.ps1"
+}

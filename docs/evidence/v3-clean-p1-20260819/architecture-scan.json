@@ -1,0 +1,31 @@
+{
+  "schema_version": "aiws.v3-clean.architecture-scan.v1",
+  "entrypoints": [
+    "apps/api/server.mjs",
+    "apps/api/clean-server.mjs",
+    "apps/api/server-clean.mjs"
+  ],
+  "files": [
+    "apps/api/server.mjs",
+    "apps/api/clean-server.mjs",
+    "apps/api/src/clean/runtime.mjs",
+    "apps/api/src/clean/config.mjs",
+    "apps/api/src/clean/database.mjs",
+    "apps/api/src/clean/canonical.mjs",
+    "apps/api/src/clean/migrations/001-clean-baseline.mjs",
+    "apps/api/src/clean/redaction.mjs",
+    "apps/api/src/clean/cas.mjs",
+    "apps/api/src/clean/events.mjs",
+    "apps/api/src/clean/cursor.mjs",
+    "apps/api/src/clean/operations.mjs",
+    "apps/api/src/clean/platform.mjs",
+    "apps/api/src/clean/principal.mjs",
+    "apps/api/src/clean/platform-error.mjs",
+    "apps/api/src/clean/registry.mjs",
+    "apps/api/src/clean/receipts.mjs",
+    "apps/api/src/clean/http.mjs",
+    "apps/api/server-clean.mjs"
+  ],
+  "forbidden_findings": [],
+  "valid": true
+}

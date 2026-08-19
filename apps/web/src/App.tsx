@@ -1,23 +1,25 @@
 import { useCallback, useEffect, useMemo, useState, type ComponentType } from 'react';
 import {
   Activity, Archive, BookOpen, Boxes, ChevronDown, ClipboardCheck, FolderGit2, LayoutDashboard,
-  LoaderCircle, Menu, MessageSquare, Settings, ShieldCheck, Terminal as TerminalIcon, Workflow, X
+  LoaderCircle, Menu, MessageSquare, Settings, ShieldCheck, Terminal as TerminalIcon, Users, Workflow, X
 } from 'lucide-react';
 import { api } from './api';
 import { ContextPage } from './features/context';
 import { AssistPage } from './features/assist';
 import { SetupPage, type SetupState } from './features/setup';
 import { WorkflowPage as R4WorkflowPage } from './features/workflow';
+import { IdentityAccessPage } from './features/identity';
 import type { Project } from './types';
 import {
   ApprovalPage, AssetsPage, AuditPage, ExecutionPage, ProjectsPage, SettingsPage, TerminalPage,
   type WorkspacePageProps
 } from './pages';
 
-export type PageKey = 'setup' | 'projects' | 'workflow' | 'context' | 'assist' | 'execution' | 'terminals' | 'approvals' | 'assets' | 'audit' | 'settings';
+export type PageKey = 'setup' | 'identity' | 'projects' | 'workflow' | 'context' | 'assist' | 'execution' | 'terminals' | 'approvals' | 'assets' | 'audit' | 'settings';
 
 const NAV: Array<{ key: PageKey; label: string; icon: ComponentType<{ size?: number }> }> = [
   { key: 'setup', label: 'Setup', icon: LayoutDashboard },
+  { key: 'identity', label: 'Identity', icon: Users },
   { key: 'projects', label: 'Projects', icon: FolderGit2 },
   { key: 'workflow', label: 'Workflow', icon: Workflow },
   { key: 'context', label: 'Context', icon: BookOpen },
@@ -32,6 +34,7 @@ const NAV: Array<{ key: PageKey; label: string; icon: ComponentType<{ size?: num
 
 const PAGES: Record<PageKey, ComponentType<WorkspacePageProps>> = {
   setup: SetupPage,
+  identity: IdentityAccessPage,
   projects: ProjectsPage,
   workflow: R4WorkflowPage,
   context: ContextPage,
@@ -44,7 +47,7 @@ const PAGES: Record<PageKey, ComponentType<WorkspacePageProps>> = {
   settings: SettingsPage
 };
 
-const SETUP_GATED_PAGES = new Set<PageKey>(['projects', 'workflow', 'context', 'assist', 'execution', 'terminals', 'approvals', 'assets']);
+const SETUP_GATED_PAGES = new Set<PageKey>(['identity', 'projects', 'workflow', 'context', 'assist', 'execution', 'terminals', 'approvals', 'assets']);
 
 function routeFromHash(): PageKey {
   const route = location.hash.replace(/^#\/?/, '') as PageKey;

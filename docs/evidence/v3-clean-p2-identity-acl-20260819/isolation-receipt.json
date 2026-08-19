@@ -1,0 +1,14 @@
+{
+  "schema_version": "aiws.v3-clean.p2-isolation-receipt.v1",
+  "status": "passed",
+  "checks": {
+    "team_project_allowed_before_deny": true,
+    "explicit_deny_after_owner": true,
+    "cross_project_denied": true,
+    "membership_revision": 1
+  },
+  "redactions": [
+    "session_proof",
+    "absolute_paths"
+  ]
+}

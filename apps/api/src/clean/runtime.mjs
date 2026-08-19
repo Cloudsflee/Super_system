@@ -1,0 +1,171 @@
+import { loadCleanConfig } from './config.mjs';
+import { initializeCleanDatabase, CleanNotReadyError } from './database.mjs';
+import { RedactionPolicy } from './redaction.mjs';
+import { CasStore } from './cas.mjs';
+import { EventService } from './events.mjs';
+import { OperationService } from './operations.mjs';
+import { CleanPlatform } from './platform.mjs';
+import { createCleanCommandRegistry } from './registry.mjs';
+import { ReceiptService } from './receipts.mjs';
+import { canonicalJson } from './canonical.mjs';
+import { validateCleanOwnership } from './ownership.mjs';
+import { AuthorizationService } from './authorization.mjs';
+import { IdentityService } from './identity.mjs';
+import { VaultAdapter } from './vault.mjs';
+import { createFakeProviderAdapters } from './provider-adapters.mjs';
+import { ProjectWorkflowService } from './project-workflow.mjs';
+
+export function createCleanRuntime(options = {}) {
+  const config = options.config || loadCleanConfig(options.env || process.env);
+  const targetVersion = Number(options.targetVersion || options.schemaVersion || (options.p3 || options.phase === 'p3' || options.cleanPhase === 'p3' ? 3 : 2));
+  const vaultMasterKey = options.vaultMasterKey || config.vaultMasterKey;
+  if (typeof vaultMasterKey !== 'string' || vaultMasterKey.length < 16) throw new CleanNotReadyError('credential vault key is required', { reason: 'vault_key_missing', schema_family: 'v3-clean' });
+  let initialized;
+  try {
+    initialized = initializeCleanDatabase({ file: options.databaseFile || config.databaseFile, options: { receiptRoot: options.receiptRoot || config.receiptRoot, runtimeBuild: config.runtimeBuild, bootstrapActorId: options.bootstrapActorId, failAt: options.failAt, now: options.now, targetVersion, projectScopeResolver: options.projectScopeResolver } });
+  } catch (error) {
+    if (error instanceof CleanNotReadyError) throw error;
+    throw error;
+  }
+  const db = initialized.database;
+  const projectScopeResolver = targetVersion >= 3
+    ? (projectId, resource = {}) => Boolean(db.get('SELECT 1 AS ok FROM projects WHERE id=?', [String(projectId)])) && (typeof options.projectScopeResolver !== 'function' || options.projectScopeResolver(String(projectId), resource) !== false)
+    : options.projectScopeResolver;
+  const policy = options.policy || new RedactionPolicy();
+  const events = new EventService({ db, policy, cursorSecret: config.cursorSecret, clock: options.now || undefined });
+  const authorization = new AuthorizationService({ db, projectScopeResolver, clock: options.now || undefined });
+  const platform = new CleanPlatform({ db, events, policy, bootstrapActorId: initialized.metadata.bootstrap_actor_id, authorize: authorization ? (context) => authorization.authorize(context, context.action, context.projectId, context.resource).allowed : null });
+  const operations = new OperationService({ db, events, policy, bootstrapActorId: initialized.metadata.bootstrap_actor_id, clock: options.now || undefined });
+  const cas = new CasStore({ root: options.casRoot || config.casRoot, db, policy });
+  const receipts = new ReceiptService({ platform });
+  const vault = new VaultAdapter({ root: options.vaultRoot || config.vaultRoot, masterKey: vaultMasterKey });
+  const identity = new IdentityService({ db, events, operations, policy, bootstrapActorId: initialized.metadata.bootstrap_actor_id, sessionSecret: options.sessionSecret || config.sessionSecret, authorization, vault, clock: options.now || undefined, projectScopeResolver, providerAdapters: options.providerAdapters || createFakeProviderAdapters() });
+  const projectWorkflow = targetVersion >= 3 ? new ProjectWorkflowService({ db, events, operations, policy, authorization, clock: options.now || undefined, repositoryAdapter: options.repositoryAdapter, generator: options.generator, critic: options.critic }) : null;
+  const recovery = Promise.all([identity.recoverPending(), projectWorkflow?.recoverPending?.() || 0]);
+  events.authorize = (context) => authorization.authorize({ actorId: context.actorId, effectiveActorId: context.actorId, scopes: ['*'] }, 'read', context.projectId, { events: context.events }).allowed;
+  let casManifest;
+  let ready = false;
+  let readinessReason = null;
+  try {
+    casManifest = cas.verifyManifest(options.casManifest || null);
+    ready = true;
+  } catch (error) {
+    readinessReason = String(error?.code || error?.message || 'cas_manifest_invalid');
+  }
+  const existingRetired = db.get("SELECT id FROM receipt_manifests WHERE kind='route.retired' ORDER BY created_at,id LIMIT 1");
+  const retiredRouteReceipt = existingRetired?.id || platform.createReceipt({ kind: 'route.retired', payload: { code: 'route_retired', importer_command: 'import.inspect', schema_family: 'v3-clean' }, status: 'verified' }).receipt_id;
+  const readinessReceipt = ready ? null : platform.createReceipt({ kind: 'startup.not_ready', payload: { reason: readinessReason, schema_family: 'v3-clean' }, status: 'failed' }).receipt_id;
+  const registry = createCleanCommandRegistry({ targetVersion });
+  const ownership = validateCleanOwnership({
+    tables: db.query("SELECT name FROM sqlite_schema WHERE type='table' AND name NOT LIKE 'sqlite_%' ORDER BY name").map((row) => row.name),
+    registry
+  });
+  if (!ownership.valid) {
+    db.close();
+    throw new CleanNotReadyError('clean ownership manifest is invalid', { reason: 'ownership_mismatch', ownership });
+  }
+  const runtime = {
+    config,
+    db,
+    database: db,
+    metadata: initialized.metadata,
+    integrity: initialized.integrity,
+    policy,
+    events,
+    platform,
+    operations,
+    cas,
+    receipts,
+    identity,
+    projectWorkflow,
+    project: projectWorkflow,
+    repository: projectWorkflow,
+    workflow: projectWorkflow,
+    authorization,
+    vault,
+    recovery,
+    casManifest,
+    registry,
+    ownership,
+    retiredRouteReceipt,
+    readinessReceipt,
+    ready,
+    readinessReason,
+    runtime: 'v3-clean',
+    apiVersion: '2',
+    p2: true,
+    p3: targetVersion >= 3,
+    health() {
+      return { runtime: 'v3-clean', ready: this.ready, readiness_reason: this.readinessReason, readiness_receipt: this.readinessReceipt, schema_family: this.metadata.family, user_version: this.metadata.user_version, cas_manifest: this.casManifest || null, p2: this.p2, p3: this.p3 };
+    },
+    close() { this.db.close(); }
+  };
+  runtime.ready = false;
+  runtime.recovery = Promise.resolve(recovery).then((result) => {
+    runtime.ready = !readinessReason;
+    return result;
+  }).catch((error) => {
+    runtime.ready = false;
+    runtime.readinessReason = String(error?.code || 'recovery_failed');
+    throw error;
+  });
+  return runtime;
+}
+
+// A process-level startup failure still needs to expose /livez and /readyz.
+// The degraded object deliberately has no repository, operation, or CAS
+// service, so a not-ready process cannot accidentally accept business writes.
+export function createNotReadyRuntime(options = {}, failure = null) {
+  const config = options.config || loadCleanConfig(options.env || process.env);
+  const policy = options.policy || new RedactionPolicy();
+  const targetVersion = Number(options.targetVersion || options.schemaVersion || (options.p3 || options.phase === 'p3' || options.cleanPhase === 'p3' ? 3 : 2));
+  const registry = createCleanCommandRegistry({ targetVersion });
+  const details = failure?.details && typeof failure.details === 'object' ? failure.details : {};
+  const reason = String(details.reason || failure?.code || 'startup_failed');
+  const metadata = Object.freeze({
+    family: String(details.schema_family || 'v3-clean'),
+    baseline_id: '001-clean-baseline',
+    user_version: Number(details.actual_version || 0),
+    bootstrap_actor_id: options.bootstrapActorId || 'actor_system_bootstrap'
+  });
+  return {
+    config,
+    db: null,
+    database: null,
+    metadata,
+    integrity: null,
+    policy,
+    events: null,
+    platform: null,
+    operations: null,
+    cas: null,
+    receipts: null,
+    identity: null,
+    projectWorkflow: null,
+    project: null,
+    repository: null,
+    workflow: null,
+    authorization: null,
+    vault: null,
+    recovery: Promise.resolve([]),
+    registry,
+    ownership: { valid: true, degraded: true },
+    casManifest: null,
+    retiredRouteReceipt: details.receipt_reference || null,
+    readinessReceipt: details.receipt_reference || null,
+    ready: false,
+    readinessReason: reason,
+    runtime: 'v3-clean',
+    apiVersion: '2',
+    p2: false,
+    p3: false,
+    health() {
+      return { runtime: 'v3-clean', ready: false, readiness_reason: this.readinessReason, readiness_receipt: this.readinessReceipt, schema_family: this.metadata.family, user_version: this.metadata.user_version, cas_manifest: null, p2: false, p3: false };
+    },
+    close() {}
+  };
+}
+
+export function readinessEnvelope(runtime) {
+  return JSON.parse(canonicalJson(runtime.health()));
+}

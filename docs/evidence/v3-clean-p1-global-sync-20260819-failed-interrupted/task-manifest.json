@@ -1,0 +1,45 @@
+{
+  "schema_version": "aiws.v3-clean.global-sync-task.v1",
+  "target": "P1 global synchronization across active runtime, governance, documentation, tests, Catalog, and Evidence",
+  "non_target": [
+    "P2 Identity/Team behavior",
+    "P3 Project behavior",
+    "P4-P7 adapters and domains",
+    "P8 importer/release implementation",
+    "P9 clean Web workflow"
+  ],
+  "preflight": {
+    "active_object": "V3-Clean P1 workspace synchronization gate",
+    "last_confirmed_result": "parent P1 receipt passed at the pre-change boundary",
+    "next_action": "review the P2 entry gate without activating deferred fixtures",
+    "forbidden": [
+      "legacy runtime in clean dependency graph",
+      "active pre-clean release command",
+      "second operation/head/CAS model",
+      "Catalog promotion without behavior Evidence"
+    ],
+    "reuse": [
+      "docs/evidence/v3-clean-p1-sync-20260819",
+      ".ai-workspace/v3-clean-p1-global-sync-baseline-20260819"
+    ],
+    "delete_retire": [
+      "generic package aliases that executed pre-clean Broker, acceptance, and release fixtures"
+    ]
+  },
+  "acceptance_commands": [
+    "pnpm check",
+    "pnpm audit:p1",
+    "pnpm scan:clean",
+    "pnpm test:p1",
+    "pnpm recovery:plan",
+    "pnpm recovery:catalog",
+    "pnpm recovery:coverage",
+    "pnpm recovery:impact --audit",
+    "pnpm test:integration",
+    "pnpm test:security",
+    "pnpm test:release",
+    "pnpm verify",
+    "git diff --check"
+  ],
+  "rollback_artifact": "rollback.ps1"
+}

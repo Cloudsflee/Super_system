@@ -1,0 +1,220 @@
+{
+  "schema_version": "aiws.v3-clean.route-inventory.v1",
+  "routes": [
+    {
+      "command_id": "operations.get",
+      "version": 2,
+      "method": "GET",
+      "path": "/api/v2/operations/{id}",
+      "owner": "Operations",
+      "scope": "operations:read",
+      "project_scoped": true,
+      "idempotency": "forbidden",
+      "expected_revision": "none",
+      "input_schema": "operation.id.v2",
+      "output_schema": "operation.receipt.v2",
+      "long_running": false,
+      "events": [
+        "operation.*"
+      ],
+      "mcp": {
+        "mapping": "resource",
+        "name": "operation_get"
+      },
+      "pattern": "/api/v2/operations/{id}",
+      "required_scopes": [
+        "operations:read"
+      ]
+    },
+    {
+      "command_id": "operations.events",
+      "version": 2,
+      "method": "GET",
+      "path": "/api/v2/operations/{id}/events",
+      "owner": "Operations",
+      "scope": "operations:read",
+      "project_scoped": true,
+      "idempotency": "forbidden",
+      "expected_revision": "none",
+      "input_schema": "operation.events.query.v2",
+      "output_schema": "event.replay.v2",
+      "long_running": false,
+      "events": [
+        "operation.*"
+      ],
+      "mcp": {
+        "mapping": "resource",
+        "name": "operation_events"
+      },
+      "pattern": "/api/v2/operations/{id}/events",
+      "required_scopes": [
+        "operations:read"
+      ]
+    },
+    {
+      "command_id": "operations.cancel",
+      "version": 2,
+      "method": "POST",
+      "path": "/api/v2/operations/{id}/cancel",
+      "owner": "Operations",
+      "scope": "operations:control",
+      "project_scoped": true,
+      "idempotency": "required",
+      "expected_revision": "operation",
+      "input_schema": "operation.cancel.v2",
+      "output_schema": "operation.receipt.v2",
+      "long_running": true,
+      "events": [
+        "operation.cancelled"
+      ],
+      "mcp": {
+        "mapping": "tool",
+        "name": "operation_cancel"
+      },
+      "pattern": "/api/v2/operations/{id}/cancel",
+      "required_scopes": [
+        "operations:control"
+      ]
+    }
+  ],
+  "mcp": [
+    {
+      "name": "operation_get",
+      "mapping": "resource",
+      "command_id": "operations.get",
+      "version": 2,
+      "method": "GET",
+      "path": "/api/v2/operations/{id}",
+      "owner": "Operations",
+      "scope": "operations:read",
+      "project_scoped": true,
+      "idempotency": "forbidden",
+      "expected_revision": "none",
+      "long_running": false,
+      "input_schema": "operation.id.v2",
+      "output_schema": "operation.receipt.v2",
+      "events": [
+        "operation.*"
+      ],
+      "required_scopes": [
+        "operations:read"
+      ]
+    },
+    {
+      "name": "operation_events",
+      "mapping": "resource",
+      "command_id": "operations.events",
+      "version": 2,
+      "method": "GET",
+      "path": "/api/v2/operations/{id}/events",
+      "owner": "Operations",
+      "scope": "operations:read",
+      "project_scoped": true,
+      "idempotency": "forbidden",
+      "expected_revision": "none",
+      "long_running": false,
+      "input_schema": "operation.events.query.v2",
+      "output_schema": "event.replay.v2",
+      "events": [
+        "operation.*"
+      ],
+      "required_scopes": [
+        "operations:read"
+      ]
+    },
+    {
+      "name": "operation_cancel",
+      "mapping": "tool",
+      "command_id": "operations.cancel",
+      "version": 2,
+      "method": "POST",
+      "path": "/api/v2/operations/{id}/cancel",
+      "owner": "Operations",
+      "scope": "operations:control",
+      "project_scoped": true,
+      "idempotency": "required",
+      "expected_revision": "operation",
+      "long_running": true,
+      "input_schema": "operation.cancel.v2",
+      "output_schema": "operation.receipt.v2",
+      "events": [
+        "operation.cancelled"
+      ],
+      "required_scopes": [
+        "operations:control"
+      ]
+    }
+  ],
+  "web": [
+    {
+      "command_id": "operations.get",
+      "version": 2,
+      "method": "GET",
+      "path": "/api/v2/operations/{id}",
+      "owner": "Operations",
+      "scope": "operations:read",
+      "project_scoped": true,
+      "idempotency": "forbidden",
+      "expected_revision": "none",
+      "long_running": false,
+      "input_schema": "operation.id.v2",
+      "output_schema": "operation.receipt.v2",
+      "events": [
+        "operation.*"
+      ],
+      "mcp": {
+        "mapping": "resource",
+        "name": "operation_get"
+      }
+    },
+    {
+      "command_id": "operations.events",
+      "version": 2,
+      "method": "GET",
+      "path": "/api/v2/operations/{id}/events",
+      "owner": "Operations",
+      "scope": "operations:read",
+      "project_scoped": true,
+      "idempotency": "forbidden",
+      "expected_revision": "none",
+      "long_running": false,
+      "input_schema": "operation.events.query.v2",
+      "output_schema": "event.replay.v2",
+      "events": [
+        "operation.*"
+      ],
+      "mcp": {
+        "mapping": "resource",
+        "name": "operation_events"
+      }
+    },
+    {
+      "command_id": "operations.cancel",
+      "version": 2,
+      "method": "POST",
+      "path": "/api/v2/operations/{id}/cancel",
+      "owner": "Operations",
+      "scope": "operations:control",
+      "project_scoped": true,
+      "idempotency": "required",
+      "expected_revision": "operation",
+      "long_running": true,
+      "input_schema": "operation.cancel.v2",
+      "output_schema": "operation.receipt.v2",
+      "events": [
+        "operation.cancelled"
+      ],
+      "mcp": {
+        "mapping": "tool",
+        "name": "operation_cancel"
+      }
+    }
+  ],
+  "parity": {
+    "valid": true,
+    "mismatches": [],
+    "rest_count": 3,
+    "mcp_count": 3,
+    "web_count": 3
+  }
+}

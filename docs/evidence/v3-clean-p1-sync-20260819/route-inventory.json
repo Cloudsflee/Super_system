@@ -1,0 +1,316 @@
+{
+  "schema_version": "aiws.v3-clean.route-inventory.v2",
+  "routes": [
+    {
+      "command_id": "operations.get",
+      "version": 2,
+      "method": "GET",
+      "path": "/api/v2/operations/{id}",
+      "pattern": "/api/v2/operations/{id}",
+      "owner": "Operations",
+      "scope": "operations:read",
+      "required_scopes": [
+        "operations:read"
+      ],
+      "project_scoped": true,
+      "idempotency": "forbidden",
+      "expected_revision": "none",
+      "input_schema": "operation.id.v2",
+      "output_schema": "operation.receipt.v2",
+      "long_running": false,
+      "events": [
+        "operation.*"
+      ],
+      "redaction_policy": "v3-clean-default",
+      "external_adapter": null,
+      "ui_metadata": {
+        "surface": "operations",
+        "state": "receipt"
+      },
+      "evidence_metadata": {
+        "receipt_kind": "operation.receipt.v2",
+        "verification": "p1-platform"
+      }
+    },
+    {
+      "command_id": "operations.events",
+      "version": 2,
+      "method": "GET",
+      "path": "/api/v2/operations/{id}/events",
+      "pattern": "/api/v2/operations/{id}/events",
+      "owner": "Operations",
+      "scope": "operations:read",
+      "required_scopes": [
+        "operations:read"
+      ],
+      "project_scoped": true,
+      "idempotency": "forbidden",
+      "expected_revision": "none",
+      "input_schema": "operation.events.query.v2",
+      "output_schema": "event.replay.v2",
+      "long_running": false,
+      "events": [
+        "operation.*"
+      ],
+      "redaction_policy": "v3-clean-default",
+      "external_adapter": null,
+      "ui_metadata": {
+        "surface": "operations",
+        "state": "event-replay"
+      },
+      "evidence_metadata": {
+        "receipt_kind": "event.replay.v2",
+        "verification": "p1-platform"
+      }
+    },
+    {
+      "command_id": "operations.cancel",
+      "version": 2,
+      "method": "POST",
+      "path": "/api/v2/operations/{id}/cancel",
+      "pattern": "/api/v2/operations/{id}/cancel",
+      "owner": "Operations",
+      "scope": "operations:control",
+      "required_scopes": [
+        "operations:control"
+      ],
+      "project_scoped": true,
+      "idempotency": "required",
+      "expected_revision": "operation",
+      "input_schema": "operation.cancel.v2",
+      "output_schema": "operation.receipt.v2",
+      "long_running": true,
+      "events": [
+        "operation.cancel_requested",
+        "operation.cancelled"
+      ],
+      "redaction_policy": "v3-clean-default",
+      "external_adapter": null,
+      "ui_metadata": {
+        "surface": "operations",
+        "state": "cancel"
+      },
+      "evidence_metadata": {
+        "receipt_kind": "operation.receipt.v2",
+        "verification": "p1-platform"
+      }
+    }
+  ],
+  "mcp": [
+    {
+      "command_id": "operations.get",
+      "version": 2,
+      "method": "GET",
+      "path": "/api/v2/operations/{id}",
+      "pattern": "/api/v2/operations/{id}",
+      "owner": "Operations",
+      "scope": "operations:read",
+      "required_scopes": [
+        "operations:read"
+      ],
+      "project_scoped": true,
+      "idempotency": "forbidden",
+      "expected_revision": "none",
+      "input_schema": "operation.id.v2",
+      "output_schema": "operation.receipt.v2",
+      "long_running": false,
+      "events": [
+        "operation.*"
+      ],
+      "redaction_policy": "v3-clean-default",
+      "external_adapter": null,
+      "ui_metadata": {
+        "surface": "operations",
+        "state": "receipt"
+      },
+      "evidence_metadata": {
+        "receipt_kind": "operation.receipt.v2",
+        "verification": "p1-platform"
+      },
+      "name": "operation_get",
+      "mapping": "resource"
+    },
+    {
+      "command_id": "operations.events",
+      "version": 2,
+      "method": "GET",
+      "path": "/api/v2/operations/{id}/events",
+      "pattern": "/api/v2/operations/{id}/events",
+      "owner": "Operations",
+      "scope": "operations:read",
+      "required_scopes": [
+        "operations:read"
+      ],
+      "project_scoped": true,
+      "idempotency": "forbidden",
+      "expected_revision": "none",
+      "input_schema": "operation.events.query.v2",
+      "output_schema": "event.replay.v2",
+      "long_running": false,
+      "events": [
+        "operation.*"
+      ],
+      "redaction_policy": "v3-clean-default",
+      "external_adapter": null,
+      "ui_metadata": {
+        "surface": "operations",
+        "state": "event-replay"
+      },
+      "evidence_metadata": {
+        "receipt_kind": "event.replay.v2",
+        "verification": "p1-platform"
+      },
+      "name": "operation_events",
+      "mapping": "resource"
+    },
+    {
+      "command_id": "operations.cancel",
+      "version": 2,
+      "method": "POST",
+      "path": "/api/v2/operations/{id}/cancel",
+      "pattern": "/api/v2/operations/{id}/cancel",
+      "owner": "Operations",
+      "scope": "operations:control",
+      "required_scopes": [
+        "operations:control"
+      ],
+      "project_scoped": true,
+      "idempotency": "required",
+      "expected_revision": "operation",
+      "input_schema": "operation.cancel.v2",
+      "output_schema": "operation.receipt.v2",
+      "long_running": true,
+      "events": [
+        "operation.cancel_requested",
+        "operation.cancelled"
+      ],
+      "redaction_policy": "v3-clean-default",
+      "external_adapter": null,
+      "ui_metadata": {
+        "surface": "operations",
+        "state": "cancel"
+      },
+      "evidence_metadata": {
+        "receipt_kind": "operation.receipt.v2",
+        "verification": "p1-platform"
+      },
+      "name": "operation_cancel",
+      "mapping": "tool"
+    }
+  ],
+  "web": [
+    {
+      "command_id": "operations.get",
+      "version": 2,
+      "method": "GET",
+      "path": "/api/v2/operations/{id}",
+      "pattern": "/api/v2/operations/{id}",
+      "owner": "Operations",
+      "scope": "operations:read",
+      "required_scopes": [
+        "operations:read"
+      ],
+      "project_scoped": true,
+      "idempotency": "forbidden",
+      "expected_revision": "none",
+      "input_schema": "operation.id.v2",
+      "output_schema": "operation.receipt.v2",
+      "long_running": false,
+      "events": [
+        "operation.*"
+      ],
+      "redaction_policy": "v3-clean-default",
+      "external_adapter": null,
+      "ui_metadata": {
+        "surface": "operations",
+        "state": "receipt"
+      },
+      "evidence_metadata": {
+        "receipt_kind": "operation.receipt.v2",
+        "verification": "p1-platform"
+      },
+      "mcp": {
+        "mapping": "resource",
+        "name": "operation_get"
+      }
+    },
+    {
+      "command_id": "operations.events",
+      "version": 2,
+      "method": "GET",
+      "path": "/api/v2/operations/{id}/events",
+      "pattern": "/api/v2/operations/{id}/events",
+      "owner": "Operations",
+      "scope": "operations:read",
+      "required_scopes": [
+        "operations:read"
+      ],
+      "project_scoped": true,
+      "idempotency": "forbidden",
+      "expected_revision": "none",
+      "input_schema": "operation.events.query.v2",
+      "output_schema": "event.replay.v2",
+      "long_running": false,
+      "events": [
+        "operation.*"
+      ],
+      "redaction_policy": "v3-clean-default",
+      "external_adapter": null,
+      "ui_metadata": {
+        "surface": "operations",
+        "state": "event-replay"
+      },
+      "evidence_metadata": {
+        "receipt_kind": "event.replay.v2",
+        "verification": "p1-platform"
+      },
+      "mcp": {
+        "mapping": "resource",
+        "name": "operation_events"
+      }
+    },
+    {
+      "command_id": "operations.cancel",
+      "version": 2,
+      "method": "POST",
+      "path": "/api/v2/operations/{id}/cancel",
+      "pattern": "/api/v2/operations/{id}/cancel",
+      "owner": "Operations",
+      "scope": "operations:control",
+      "required_scopes": [
+        "operations:control"
+      ],
+      "project_scoped": true,
+      "idempotency": "required",
+      "expected_revision": "operation",
+      "input_schema": "operation.cancel.v2",
+      "output_schema": "operation.receipt.v2",
+      "long_running": true,
+      "events": [
+        "operation.cancel_requested",
+        "operation.cancelled"
+      ],
+      "redaction_policy": "v3-clean-default",
+      "external_adapter": null,
+      "ui_metadata": {
+        "surface": "operations",
+        "state": "cancel"
+      },
+      "evidence_metadata": {
+        "receipt_kind": "operation.receipt.v2",
+        "verification": "p1-platform"
+      },
+      "mcp": {
+        "mapping": "tool",
+        "name": "operation_cancel"
+      }
+    }
+  ],
+  "parity": {
+    "valid": true,
+    "mismatches": [],
+    "rest_count": 3,
+    "mcp_count": 3,
+    "web_count": 3
+  }
+}

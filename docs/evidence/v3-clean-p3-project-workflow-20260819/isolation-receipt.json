@@ -1,0 +1,12 @@
+{
+  "schema_version": "aiws.v3-clean.p3-isolation-receipt.v1",
+  "status": "passed",
+  "project_allowed": true,
+  "foreign_denied": true,
+  "exchange_expands": false,
+  "explicit_deny_precedence": true,
+  "redactions": [
+    "session_proof",
+    "absolute_paths"
+  ]
+}

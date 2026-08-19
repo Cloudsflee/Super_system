@@ -1,0 +1,50 @@
+{
+  "schema_version": "aiws.v3-clean.gate-contract-enforcement-task.v1",
+  "target": "P1 gate synchronization contract across plans, commands, implementations, tests, Catalog/matrix, Evidence, and rollback",
+  "non_target": [
+    "P2 Identity/Team behavior",
+    "P3 Project behavior",
+    "P4-P7 adapters and domains",
+    "P8 importer/release implementation",
+    "P9 clean Web workflow"
+  ],
+  "preflight": {
+    "active_object": "V3-Clean P1 gate synchronization enforcement",
+    "last_confirmed_result": "parent gate-contract sync receipt passed with a byte-exact rollback",
+    "next_action": "verify exact rule text, duplicate rejection, receipt binding, and the ordinary P1 gate sequence",
+    "forbidden": [
+      "legacy runtime in clean dependency graph",
+      "active pre-clean release command",
+      "second operation/head/CAS model",
+      "Catalog promotion without behavior Evidence"
+    ],
+    "reuse": [
+      "docs/evidence/v3-clean-p1-completion-audit-20260819",
+      ".ai-workspace/v3-clean-p1-gate-contract-complete-baseline-20260819"
+    ],
+    "delete_retire": [
+      "stale, duplicate, missing, and orphan gate inventory entries"
+    ]
+  },
+  "acceptance_commands": [
+    "pnpm check",
+    "pnpm audit:p1",
+    "pnpm scan:clean",
+    "pnpm test:p1",
+    "pnpm recovery:plan",
+    "pnpm recovery:catalog",
+    "pnpm recovery:coverage",
+    "pnpm recovery:impact -- --audit",
+    "pnpm test:integration -- --test-concurrency=1",
+    "pnpm test:security",
+    "pnpm test:release",
+    "pnpm verify",
+    "git diff --check"
+  ],
+  "rollback_artifact": "rollback.ps1",
+  "matrix_rows": [
+    "P1-PLATFORM-001",
+    "P1-PLATFORM-002",
+    "P1-GOVERNANCE-003"
+  ]
+}

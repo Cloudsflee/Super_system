@@ -26,6 +26,33 @@ export async function api<T>(path: string, options: RequestInit = {}): Promise<T
   return body as T;
 }
 
+export type ApiV2Envelope<T> = {
+  request_id: string;
+  data: T;
+  meta: { api_version: string; resource_type?: string; resource_revision?: number; etag?: string; redactions?: string[] };
+};
+
+/** Clean-break client. It unwraps the v2 envelope and never falls back to v1. */
+export async function apiV2<T>(path: string, options: RequestInit = {}): Promise<ApiV2Envelope<T>> {
+  const normalized = path.startsWith('/api/v2/') ? path : `/api/v2/${path.replace(/^\//, '')}`;
+  const response = await fetch(normalized, {
+    ...options,
+    headers: { accept: 'application/json', ...options.headers }
+  });
+  const body = await response.json().catch(() => ({}));
+  if (!response.ok) throw new ApiError(response.status, body as ApiErrorBody);
+  return body as ApiV2Envelope<T>;
+}
+
+export function mutateV2<T>(path: string, body: Record<string, unknown> = {}, method = 'POST', expectedRevision?: number): Promise<ApiV2Envelope<T>> {
+  const headers: Record<string, string> = {
+    'content-type': 'application/json',
+    'Idempotency-Key': crypto.randomUUID()
+  };
+  if (expectedRevision != null) headers['X-Expected-Revision'] = String(expectedRevision);
+  return apiV2<T>(path, { method, headers, body: JSON.stringify(body) });
+}
+
 export function mutate<T>(path: string, body: unknown, method = 'POST'): Promise<T> {
   return api<T>(path, {
     method,

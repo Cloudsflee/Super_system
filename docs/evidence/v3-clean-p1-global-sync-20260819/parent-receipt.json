@@ -1,0 +1,23 @@
+{
+  "schema_version": "aiws.v3-clean.parent-boundary-receipt.v1",
+  "parent": "docs/evidence/v3-clean-p1-sync-20260819",
+  "parent_manifest_sha256": "587690adbe8024ec2a85ec463e5f3a62cfcba1dacba19ab4d7aa75f369f7e880",
+  "boundary": ".ai-workspace/v3-clean-p1-global-sync-baseline-20260819",
+  "boundary_receipt_sha256": "59297a312f3d7c45aa23d3c96a457c71590730daff0ef1714732d8cc0c61b964",
+  "modified_files_checked": 50,
+  "deleted_files_checked": 1,
+  "rollback_check": {
+    "command": "git -c core.autocrlf=false apply --reverse --check HOST\\docs\\evidence\\v3-clean-p1-sync-20260819\\change.patch",
+    "cwd": ".ai-workspace/v3-clean-p1-global-sync-baseline-20260819",
+    "stdout": "",
+    "stderr": "",
+    "exit_status": 0,
+    "expected_exit_statuses": [
+      0
+    ],
+    "signal": null,
+    "ok": true
+  },
+  "errors": [],
+  "valid": true
+}

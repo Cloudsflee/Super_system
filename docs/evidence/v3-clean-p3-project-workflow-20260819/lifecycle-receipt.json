@@ -1,0 +1,18 @@
+{
+  "schema_version": "aiws.v3-clean.p3-lifecycle-receipt.v1",
+  "status": "passed",
+  "project_revision": 5,
+  "intake_status": "ready",
+  "connection_status": "ready",
+  "line_status": "ready",
+  "workflow_revision": 2,
+  "generation_phase": "critic_pending",
+  "critic_status": "passed",
+  "proposal_status": "applied",
+  "requirement_count": 1,
+  "redactions": [
+    "session_proof",
+    "absolute_paths",
+    "provider_secrets"
+  ]
+}

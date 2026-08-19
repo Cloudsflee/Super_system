@@ -1,0 +1,30 @@
+{
+  "schema_version": "aiws.v3-clean.completion-audit-manifest.v1",
+  "batch": "v3-clean-p1-completion-audit-20260819",
+  "phase": "P1",
+  "status": "verified",
+  "parent": "docs/evidence/v3-clean-p1-global-sync-20260819",
+  "artifacts": {
+    "architecture-scan.json": "c8bf371b36db14667c2b314c15ce04066eed36de5a7288b4eab99f1f1db25d84",
+    "cas-manifest.json": "ff04b6315ebcfd37243d7cab8e37f0c0d47905b55beb8ed2e62e6808a97144f4",
+    "change.patch": "667ca92d6997474b4ce31ed585d4c7367191d896b2ee1fff8aa66eea35220fa1",
+    "golden-receipt.json": "68a413446897f39a3be87a80d3aacbddb463a864432f51ad5475a09bca94615e",
+    "modified-artifact.json": "15fed7ba987a9d55e67e15edd3aa26d700c979e2fbcffe180a673ae7242e4b5a",
+    "original-hashes.json": "f9404e3d6e7dda0685316b6a40e354c4829897d6ea070ae3cc6ff2b4baf3e2b8",
+    "owner-manifest.json": "9df6ae22c398a392170b2bfc16e0d5387f61022d651083e72016ad5f3e23e3d4",
+    "parent-receipt.json": "85426206f499a420890060c3bf8a46ce9a2123cd5ee6837707b2f9691e4ad159",
+    "rollback.ps1": "511f7469ca71d9076bb676cd7259cf1aee74f9764d032e62eef2160d572f9e43",
+    "route-inventory.json": "4467edc6310bea4a5e7c1e7f13c7d5c6788b1e045b5a331904604de757835662",
+    "schema-inventory.json": "285c78509d8e9a1cf7afaa58eab79a680cfd8f25de2e7674e513ae0a19895cb7",
+    "schema-snapshot.json": "a037123f2629b8ef54d56452a1390ee9160755a36d4f92f2fa84109d66ddb82d",
+    "task-manifest.json": "737ab213e05ff5dee36f85a18b17b99cbf780cd7699f3b320ee5954a25814a5e",
+    "verification.json": "91afcf1ced904f72f4db38d484a7a03ebf018a7364bee5fafee721d78955d2f4",
+    "workspace-audit.json": "8f2e4dbe8fdbe4d22c285593eb87cb7300f4d0d6300d6e83f8e5963d38604e33",
+    "workspace-inventory.json": "f72e7acc6bd870a085453bc5d035321cb782ecee3f05e37dc94b32b4a68eb0ce",
+    "workspace-scope-inventory.json": "a46fa2fe6a92f1fe18b83348b4a5a6dad0267039f4896474d7e680a3686ca3b1"
+  },
+  "modified_artifact": "modified-artifact.json",
+  "patch": "change.patch",
+  "verification": "verification.json",
+  "rollback": "rollback.ps1"
+}

@@ -1,0 +1,14 @@
+{
+  "schema_version": "aiws.v3-clean.p2-gateway-denial-receipt.v1",
+  "status": "passed",
+  "decision": {
+    "allowed": false,
+    "code": "permission_denied",
+    "message": "client allowlist denied the resource"
+  },
+  "persistence": "no Gateway business table or write path",
+  "redactions": [
+    "proof",
+    "absolute_paths"
+  ]
+}

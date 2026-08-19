@@ -8,6 +8,9 @@ importers:
 
   .:
     dependencies:
+      '@aiws/contracts':
+        specifier: workspace:*
+        version: link:packages/contracts
       '@modelcontextprotocol/sdk':
         specifier: 1.29.0
         version: 1.29.0(zod@4.4.3)
@@ -79,7 +82,11 @@ importers:
         specifier: ^3.2.4
         version: 3.2.7(@types/debug@4.1.13)(jsdom@26.1.0)
 
-  packages/contracts: {}
+  packages/contracts:
+    dependencies:
+      ajv:
+        specifier: 8.20.0
+        version: 8.20.0
 
 packages:
 

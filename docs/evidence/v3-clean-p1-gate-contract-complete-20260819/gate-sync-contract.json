@@ -1,0 +1,86 @@
+{
+  "schema_version": "aiws.v3-clean.p1-gate-sync-contract.v1",
+  "phase": "P1",
+  "rules": [
+    {
+      "id": "GS-001",
+      "requirement": "A change to tests, gate commands, routes, schemas, ownership, phase scope, status rules, or receipt shapes MUST trigger gate-sync review."
+    },
+    {
+      "id": "GS-002",
+      "requirement": "The phase plan, testing policy, package/CI commands, gate implementation, tests, Catalog/matrix, and Evidence references MUST update atomically."
+    },
+    {
+      "id": "GS-003",
+      "requirement": "Every governed inventory MUST be bidirectional and MUST reject missing, stale, duplicate, and orphan entries."
+    },
+    {
+      "id": "GS-004",
+      "requirement": "Every Git-visible non-build path MUST be classified; every new governance file MUST declare an owner and phase and be registered in the Catalog."
+    },
+    {
+      "id": "GS-005",
+      "requirement": "Only final verified, non-provisional receipts MAY promote status; failed and checkpoint receipts remain immutable."
+    },
+    {
+      "id": "GS-006",
+      "requirement": "Rollback verification MUST include a runnable dry-run and an isolated actual apply with byte-exact comparison."
+    },
+    {
+      "id": "GS-007",
+      "requirement": "Any gate failure MUST freeze the affected Catalog status and block dependent phases."
+    }
+  ],
+  "commands": [
+    "pnpm check",
+    "pnpm audit:p1",
+    "pnpm scan:clean",
+    "pnpm test:p1",
+    "pnpm recovery:plan",
+    "pnpm recovery:catalog",
+    "pnpm recovery:coverage",
+    "pnpm recovery:impact -- --audit",
+    "pnpm verify"
+  ],
+  "governing_documents": [
+    "AGENTS.md",
+    "docs/testing.md",
+    "docs/architecture/v3-clean-development-plan.md"
+  ],
+  "catalog_paths": {
+    "source_files": [
+      "AGENTS.md",
+      "docs/architecture/v23-capability-matrix.md",
+      "docs/architecture/v3-clean-development-plan.md",
+      "docs/testing.md",
+      "scripts/lib/v3-clean-p1-scope.mjs",
+      "scripts/v3-clean-workspace-audit.mjs",
+      "scripts/v3-clean-architecture-scan.mjs"
+    ],
+    "target_modules": [
+      "feature-catalog.json",
+      "package.json",
+      "apps/api/src/modules/registry.mjs",
+      "apps/api/src/modules/platform",
+      "scripts/recovery-governance.mjs",
+      "scripts/recovery-evidence.mjs",
+      "scripts/check.mjs",
+      "scripts/verify.mjs",
+      "scripts/v3-clean-p1-global-sync-evidence.mjs"
+    ],
+    "behavior_tests": [
+      "tests/unit/recovery-governance.test.mjs",
+      "tests/p1/workspace-sync.test.mjs"
+    ],
+    "ui_tests": []
+  },
+  "catalog_id": "REC-D0-GOVERNANCE-000",
+  "matrix_rows": [
+    "P1-PLATFORM-001",
+    "P1-PLATFORM-002",
+    "P1-GOVERNANCE-003"
+  ],
+  "evidence": "docs/evidence/v3-clean-p1-gate-contract-complete-20260819/verification.json",
+  "parent_evidence": "docs/evidence/v3-clean-p1-completion-audit-20260819",
+  "baseline": ".ai-workspace/v3-clean-p1-gate-contract-complete-baseline-20260819"
+}

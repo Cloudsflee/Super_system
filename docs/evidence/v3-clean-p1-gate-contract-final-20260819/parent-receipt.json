@@ -1,0 +1,23 @@
+{
+  "schema_version": "aiws.v3-clean.parent-boundary-receipt.v1",
+  "parent": "docs/evidence/v3-clean-p1-gate-contract-enforcement-20260819",
+  "parent_manifest_sha256": "023856cde659fb02cca49c0e4f322c0e257e2474aa95e87f10e12b5aac140a6e",
+  "boundary": ".ai-workspace/v3-clean-p1-gate-contract-final-baseline-20260819",
+  "boundary_receipt_sha256": "3d957aea2b40a6785ee399d44c22b3b2073a90eb8858c7e2e1610792cebb3708",
+  "modified_files_checked": 9,
+  "deleted_files_checked": 0,
+  "rollback_check": {
+    "command": "git -c core.autocrlf=false apply --reverse --check HOST\\docs\\evidence\\v3-clean-p1-gate-contract-enforcement-20260819\\change.patch",
+    "cwd": ".ai-workspace/v3-clean-p1-gate-contract-final-baseline-20260819",
+    "stdout": "",
+    "stderr": "",
+    "exit_status": 0,
+    "expected_exit_statuses": [
+      0
+    ],
+    "signal": null,
+    "ok": true
+  },
+  "errors": [],
+  "valid": true
+}

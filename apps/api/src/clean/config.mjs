@@ -1,0 +1,25 @@
+import path from 'node:path';
+
+export function loadCleanConfig(env = process.env) {
+  const home = path.resolve(String(env.AIWS_CLEAN_HOME || env.AIWS_HOME || path.join(process.cwd(), '.ai-workspace', 'v3-clean')));
+  const port = Number(env.AIWS_CLEAN_PORT || env.PORT || 4317);
+  if (!Number.isInteger(port) || port < 1 || port > 65535) throw new Error('clean_port_invalid');
+  const requestedMaxBody = Number(env.AIWS_CLEAN_MAX_BODY || 1024 * 1024);
+  if (!Number.isInteger(requestedMaxBody) || requestedMaxBody < 1) throw new Error('clean_max_body_invalid');
+  return Object.freeze({
+    runtime: 'v3-clean',
+    apiVersion: '2',
+    host: env.AIWS_CLEAN_BIND_HOST || env.AIWS_BIND_HOST || '127.0.0.1',
+    port,
+    home,
+    databaseFile: path.resolve(String(env.AIWS_CLEAN_DATABASE || path.join(home, 'data', 'state.sqlite'))),
+    casRoot: path.resolve(String(env.AIWS_CLEAN_CAS || path.join(home, 'cas', 'sha256'))),
+    receiptRoot: path.resolve(String(env.AIWS_CLEAN_RECEIPTS || path.join(home, 'receipts'))),
+    cursorSecret: String(env.AIWS_CLEAN_CURSOR_SECRET || 'v3-clean-local-cursor'),
+    sessionSecret: String(env.AIWS_CLEAN_SESSION_SECRET || env.AIWS_CLEAN_CURSOR_SECRET || 'v3-clean-local-session'),
+    vaultRoot: path.resolve(String(env.AIWS_CLEAN_VAULT || path.join(home, 'vault'))),
+    vaultMasterKey: env.AIWS_CLEAN_VAULT_KEY == null ? null : String(env.AIWS_CLEAN_VAULT_KEY),
+    runtimeBuild: String(env.AIWS_CLEAN_BUILD || 'v3-clean-p2'),
+    maxBodyBytes: Math.max(1024, Math.min(10 * 1024 * 1024, requestedMaxBody))
+  });
+}

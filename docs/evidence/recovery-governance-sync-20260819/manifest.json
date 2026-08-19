@@ -1,0 +1,35 @@
+{
+  "schema_version": "aiws.v3-clean.governance-sync-manifest.v1",
+  "batch": "recovery-governance-sync-20260819",
+  "status": "passed",
+  "baseline_commit": "8edefc7d110dca80958e3ef0fe9115dd62a8751a",
+  "artifacts": {
+    "original-hashes.json": {
+      "sha256": "675ccf2b55961b72a141bdf4193bab612dfad82ff3d1132b836ef356fa1e187a",
+      "bytes": 683
+    },
+    "modified-artifact.json": {
+      "sha256": "b7e3d3e77e811b8d4eed4eb7befd7ed019cedfb289c93af32c52727537f8538c",
+      "bytes": 1385
+    },
+    "change.patch": {
+      "sha256": "63d2f8a144c09809f375171e8c2d03632f6252e95f766e8b2c53a83aef058a46",
+      "bytes": 10695
+    },
+    "verification.json": {
+      "sha256": "c8c1204d84dceea0250a09cb6725d838b33eb90d752eb8e600a1d4126952ecc8",
+      "bytes": 82150
+    },
+    "rollback.ps1": {
+      "sha256": "e50b16a5c2c1a1f4e5f87543ec403885c70228663104d3d376a6985f69a9e319",
+      "bytes": 1466
+    }
+  },
+  "roles": {
+    "modified_artifact": "modified-artifact.json",
+    "patch": "change.patch",
+    "verification": "verification.json",
+    "rollback": "rollback.ps1",
+    "original_hashes": "original-hashes.json"
+  }
+}

@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { performance } from 'node:perf_hooks';
-import { start as startApi } from '../apps/api/server.mjs';
+import { start as startApi } from '../apps/api/server-legacy.mjs';
 import { start as startBroker } from '../apps/runner-broker/server.mjs';
 
 const home = fs.mkdtempSync(path.join(os.tmpdir(), 'aiws-v3-acceptance-'));

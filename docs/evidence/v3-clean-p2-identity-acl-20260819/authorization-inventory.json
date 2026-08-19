@@ -1,0 +1,35 @@
+{
+  "schema_version": "aiws.v3-clean.p2-authorization-inventory.v1",
+  "predicate": "authorize(principal, action, project, resource, policy_revision)",
+  "order": [
+    "authentication",
+    "scope",
+    "project_resolver",
+    "team_or_project_membership",
+    "explicit_deny",
+    "explicit_allow",
+    "role_ceiling",
+    "exchange_narrowing",
+    "client_allowlist",
+    "operation_ownership"
+  ],
+  "roles": {
+    "team": [
+      "owner",
+      "admin",
+      "member",
+      "observer"
+    ],
+    "project": [
+      "owner",
+      "admin",
+      "editor",
+      "runner",
+      "reviewer",
+      "viewer"
+    ]
+  },
+  "explicit_deny_precedence": true,
+  "exchange_can_expand": false,
+  "gateway_business_persistence": false
+}

@@ -1,0 +1,6 @@
+{
+  "schema_version": "aiws.v3-clean.completion-audit-failure.v1",
+  "status": "failed",
+  "failed_at": "2026-08-19T02:14:12.353Z",
+  "error": "Error: parent_boundary_invalid:parent_boundary_file_mismatch:README.md,parent_boundary_file_mismatch:docs/architecture/v23-capability-matrix.md,parent_boundary_file_mismatch:docs/architecture/v3-clean-development-plan.md,parent_boundary_file_mismatch:docs/document-index.md,parent_boundary_file_mismatch:docs/testing.md,parent_boundary_file_mismatch:docs/v2-retrospective.md,parent_boundary_file_mismatch:feature-catalog.json,parent_boundary_file_mismatch:scripts/lib/v3-clean-p1-scope.mjs,parent_boundary_file_mismatch:scripts/recovery-governance.mjs,parent_boundary_file_mismatch:scripts/v3-clean-architecture-scan.mjs,parent_boundary_file_mismatch:scripts/v3-clean-p1-global-sync-evidence.mjs,parent_boundary_file_mismatch:scripts/v3-clean-workspace-audit.mjs,parent_boundary_file_mismatch:scripts/verify.mjs,parent_boundary_file_mismatch:tests/p1/workspace-sync.test.mjs,parent_boundary_file_mismatch:tests/unit/recovery-governance.test.mjs\n    at generateEvidence (HOST_PATH\n    at process.processTicksAndRejections (node:internal/process/task_queues:104:5)\n    at async HOST_PATH"
+}

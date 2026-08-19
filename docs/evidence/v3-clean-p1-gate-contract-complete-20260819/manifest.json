@@ -1,0 +1,31 @@
+{
+  "schema_version": "aiws.v3-clean.completion-audit-manifest.v1",
+  "batch": "v3-clean-p1-gate-contract-complete-20260819",
+  "phase": "P1",
+  "status": "verified",
+  "parent": "docs/evidence/v3-clean-p1-completion-audit-20260819",
+  "artifacts": {
+    "architecture-scan.json": "1cac93a492dcafb93b64a310450abe3dbc6148214294f18688e893a41cd671e8",
+    "cas-manifest.json": "ff04b6315ebcfd37243d7cab8e37f0c0d47905b55beb8ed2e62e6808a97144f4",
+    "change.patch": "769809740f4521c0793ad0c33049ed8aaad38bb1fb943b0575d1ab72e54157b6",
+    "gate-sync-contract.json": "594fe3528ddfa946665ba57a752729938807b7af8069b77e45842aea70623926",
+    "golden-receipt.json": "a1176f5e2b85f52f86120030ba09fc2da8d2cc8a1bcde715ff6dc6c9776f3565",
+    "modified-artifact.json": "5630630e161e70c1d2a5c912978912d9494b79ffb35c9eaec233df05fba091ec",
+    "original-hashes.json": "300f0c5ea5dc75ffbdfe2b477515c2491fb2022d6a8827b5ae9b70fca72fd611",
+    "owner-manifest.json": "9df6ae22c398a392170b2bfc16e0d5387f61022d651083e72016ad5f3e23e3d4",
+    "parent-receipt.json": "6372869f31a473579c90a979d4c03c7d94beeac0b608dd49770bc54cf23332ac",
+    "rollback.ps1": "154b75b08448d2d7450ffae03972f9631b6a41ad73dbfc438703db94153b3478",
+    "route-inventory.json": "4467edc6310bea4a5e7c1e7f13c7d5c6788b1e045b5a331904604de757835662",
+    "schema-inventory.json": "285c78509d8e9a1cf7afaa58eab79a680cfd8f25de2e7674e513ae0a19895cb7",
+    "schema-snapshot.json": "a037123f2629b8ef54d56452a1390ee9160755a36d4f92f2fa84109d66ddb82d",
+    "task-manifest.json": "9a1634e10648a6250426d007f7bb4f1c7ac2c4c2d564ba0918b6e2bceeedac5b",
+    "verification.json": "16efc4c8ef7b2f1c49aae5672b59c4a17e51e9456a71343432eda875fdbe7066",
+    "workspace-audit.json": "522700d2d572fffd9a80b9f08d41dac4f8c03776402a508e1dc3b3f3232dfb3e",
+    "workspace-inventory.json": "9a82ebdadd223cae679f43df0f03861fe6052f36d0ff1e7894740ac23ae52562",
+    "workspace-scope-inventory.json": "7dffab4759cc59f1a0dbf1a8211fa0cf97994cd7cc273d416b0038de691f79f1"
+  },
+  "modified_artifact": "modified-artifact.json",
+  "patch": "change.patch",
+  "verification": "verification.json",
+  "rollback": "rollback.ps1"
+}

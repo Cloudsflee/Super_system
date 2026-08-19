@@ -1,0 +1,13 @@
+{
+  "schema_version": "aiws.v3-clean.p3-restart-receipt.v1",
+  "status": "passed",
+  "project_revision_after_restart": 1,
+  "session_reauthenticated": true,
+  "migration_version": 3,
+  "pending_operations_settled": true,
+  "unknown_external_result": "not inferred",
+  "redactions": [
+    "session_proof",
+    "absolute_paths"
+  ]
+}

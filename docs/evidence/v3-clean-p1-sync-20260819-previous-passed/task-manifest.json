@@ -1,0 +1,25 @@
+{
+  "schema_version": "aiws.v3-clean.p1-task-manifest.v2",
+  "target": "P1 clean baseline, API v2, platform kernel",
+  "non_target": [
+    "Identity/Team business behavior",
+    "Project business behavior",
+    "online importer",
+    "runner/parser adapters",
+    "full Web workflow"
+  ],
+  "active_object": "v3-clean temporary volume",
+  "last_confirmed_result": "9/9 acceptance commands passed",
+  "next_action": "run --verify after preserving the receipt",
+  "acceptance_commands": [
+    "pnpm check",
+    "pnpm scan:clean",
+    "pnpm test:p1",
+    "pnpm test:integration",
+    "pnpm test:security",
+    "pnpm test:release",
+    "pnpm verify",
+    "git apply --reverse --check change.patch"
+  ],
+  "rollback_artifact": "rollback.ps1"
+}

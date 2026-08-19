@@ -1,0 +1,1422 @@
+diff --git a/.github/PULL_REQUEST_TEMPLATE.md b/.github/PULL_REQUEST_TEMPLATE.md
+index 86ee855..5dfe6bf 100644
+--- a/.github/PULL_REQUEST_TEMPLATE.md
++++ b/.github/PULL_REQUEST_TEMPLATE.md
+@@ -1,10 +1,13 @@
+ ## Traceability
+ 
+ - [ ] Change maps to `docs/requirements-traceability.md`
++- [ ] Active P phase and deferred P2-P9 surfaces are identified
+ - [ ] One domain implementation and one state model remain
+-- [ ] Public changes stay under `/api/v1`
++- [ ] Public business changes stay under `/api/v2`
++- [ ] Historical routes and runtime modules remain fixture-only
+ - [ ] Mutations enforce idempotency and revision policy
+ - [ ] New execution evidence is immutable
++- [ ] Modified artifact, patch, verification, and rollback are synchronized
+ - [ ] `corepack pnpm verify` passes
+ - [ ] App image has no Docker CLI or socket
+ - [ ] Logs, events, and results contain no credentials
+diff --git a/README.md b/README.md
+index a19a13b..d20876f 100644
+--- a/README.md
++++ b/README.md
+@@ -9,13 +9,15 @@ plan and capability matrix are the authority for what has actually been restored
+ 
+ ## Runtime
+ 
+-The eventual production topology has two long-running services and one temporary workload:
++The target production topology has two long-running services and one temporary workload:
+ 
+ - `app`: HTTP API, web UI, SQLite worker, command registry, Git and CAS services.
+ - `runner-broker`: the only service with Docker CLI and `/var/run/docker.sock`.
+ - `codex-runner`: a short-lived container created from a pinned image digest.
+ 
+-The deterministic gates use the mock adapter. Run `pnpm test:runner-real` for the explicit Docker/Codex smoke path; without a pinned Runner digest and an ignored `AIWS_CODEX_SECRET_FILE`, it records `candidate` instead of a formal pass. The smoke verifies the CLI identity and ephemeral authentication cleanup before calling the model.
++Broker, Runner, external provider, and browser journeys remain characterization
++fixtures during P1. Their implementation and release claims begin in P2-P9 as
++listed in the development plan.
+ 
+ The eventual clean deployment is published only at `http://127.0.0.1:4317`. The
+ Broker is reachable only on the internal Compose network. V3-Clean uses a
+@@ -35,33 +37,23 @@ It creates `001-clean-baseline` (`PRAGMA user_version = 1`), exposes `/livez`,
+ `/readyz`, and the operation/replay routes under `/api/v2`, and keeps a local
+ CAS and receipt volume beside the database.
+ 
+-## Start
++## P1 Start
+ 
+ ```powershell
+ corepack pnpm install --frozen-lockfile
+ corepack pnpm verify
+-$env:AIWS_RUNNER_DIGEST = "sha256:<built-runner-digest>"
+-$env:AIWS_RUNNER_IMAGE = $env:AIWS_RUNNER_DIGEST
+-$env:AIWS_GITHUB_REPOSITORY = "OWNER/REPO"
+-$env:AIWS_GITHUB_FIXTURE_SHA = "<40-character-fixture-commit>"
+-docker compose up -d --no-build
++corepack pnpm start
+ ```
+ 
+-Before Compose startup, provide the ignored instance files `docker/secrets/broker_hmac`, `docker/secrets/codex_api_key`, and `docker/secrets/github_token`; the checked-in `.example` files define their formats. The GitHub token must be a fine-grained PAT for `AIWS_GITHUB_REPOSITORY` with Metadata read, Contents read/write, and Pull requests read/write. The Codex bundle supports only an OpenAI API key, fixed profile, and registered model. Credential material is read by the App into memory and never enters the browser.
+-
+-Seed the GitHub fixture only into a pre-created empty repository, then retain the emitted SHA as the configured fixture identity:
++From another shell, probe the clean process:
+ 
+ ```powershell
+-$env:AIWS_GITHUB_SECRET_FILE = (Resolve-Path docker/secrets/github_token)
+-$env:AIWS_GITHUB_REPOSITORY = "OWNER/REPO"
+-corepack pnpm github:seed-fixture
+-$env:AIWS_GITHUB_FIXTURE_SHA = "<fixture_sha from the command>"
++Invoke-RestMethod http://127.0.0.1:4317/livez
++Invoke-RestMethod http://127.0.0.1:4317/readyz
+ ```
+ 
+-The seed command accepts an empty repository or the exact existing fixture refs. It never overwrites different history.
+-
+-Open `http://127.0.0.1:4317`. During P1, local source development starts the
+-clean API only; Broker and Web remain later-phase fixtures:
++During P1, local source development starts the clean API only; Broker and Web
++remain later-phase fixtures:
+ 
+ ```powershell
+ corepack pnpm dev
+@@ -74,6 +66,14 @@ fixture runs; clean project creation enters in P3:
+ corepack pnpm fixture:seed-demo
+ ```
+ 
++## Deferred Fixtures
++
++The checked-in Web, Broker, MCP stdio, Compose, deployment, importer-adjacent,
++and release tooling are inputs to P2-P9. Commands that can execute the old
++runtime are registered under `fixture:legacy:*`; their output characterizes
++historical behavior and is not a clean release receipt. P1 has no active
++build/rehearse/promote command.
++
+ ## API
+ 
+ The V3-Clean target exposes business routes only under `/api/v2`. Mutating requests
+@@ -94,8 +94,8 @@ envelope:
+ ```
+ 
+ REST, MCP, and UI actions must invoke the same Command/Query Registry. See the
+-[API v2 contract](docs/architecture/api-v2-contract.md). The old `/api/v1`
+-description is retained only in [`docs/archive/legacy-code-docs/`](docs/archive/legacy-code-docs/).
++[API v2 contract](docs/architecture/api-v2-contract.md). Historical routes are
++retired at the clean boundary and remain characterization inputs only.
+ 
+ ## Data Boundary
+ 
+@@ -115,12 +115,13 @@ clean volume before one-time cutover. Credentials import as metadata with
+ | `pnpm check` | syntax, TypeScript, runtime ownership, script count |
+ | `pnpm test` | DAG, SQLite, immutability, paths, Broker contracts |
+ | `pnpm test:p1` | V3-Clean baseline, operation/event/CAS/API v2 probes |
+-| `pnpm scan:clean` | unique clean entrypoint, dependency boundary, ownership and registry parity |
+-| `pnpm test:integration` | API, Broker, MCP, restart, execution journey |
+-| `pnpm test:e2e` | unique browser journey and six-viewport layout/error checks |
+-| `pnpm test:security` | Compose and socket isolation, Broker rejection, credential scans across SQLite/SSE/CAS/errors |
+-| `pnpm test:release` | version, port, receipt integrity, image identity, archive, directory governance |
+-| `pnpm verify` | all gates in release order |
++| `pnpm audit:p1` | global P1/future-fixture classification, active docs and Evidence freshness |
++| `pnpm scan:clean` | clean dependency boundary, ownership, registry parity and global P1 audit |
++| `pnpm test:integration` | P1 integration plus historical API/Broker/MCP characterization |
++| `pnpm test:e2e` | historical Web journey characterization; no P1 Web claim |
++| `pnpm test:security` | P1 security plus deferred Compose/Broker/provider characterization |
++| `pnpm test:release` | historical release receipt and deferred deployment characterization |
++| `pnpm verify` | P1 gates plus explicitly classified historical regression gates |
+ 
+ Recovery planning and impact are executable before the release gates:
+ 
+@@ -133,15 +134,9 @@ corepack pnpm recovery:impact --audit
+ 
+ The commands validate `feature-catalog.json` and write metadata receipts below `.ai-workspace/recovery` without touching the formal `4317` service.
+ 
+-Formal release runs only from a clean commit:
+-
+-```powershell
+-corepack pnpm release:build
+-corepack pnpm release:rehearse
+-corepack pnpm release:promote
+-```
+-
+-These commands create immutable gate, image/SBOM, temporary-volume acceptance, recovery, rollback, promotion, and targeted cleanup receipts under `.ai-workspace/release/v3-transition`. Rehearsal without both external configurations remains `candidate`; formal promotion requires fresh available Codex and GitHub probes plus evidence of a real Runner journey and a merged GitHub Draft PR with synchronized local baseline.
++Clean deployment build, rehearsal, promotion, temporary-volume import, and
++actual deployment rollback enter in P8-P9. Existing pre-clean scripts and
++receipts remain read-only fixtures until those phase gates replace them.
+ 
+ ## Documentation
+ 
+diff --git a/docs/architecture/v23-capability-matrix.md b/docs/architecture/v23-capability-matrix.md
+index 9268bba..60eac76 100644
+--- a/docs/architecture/v23-capability-matrix.md
++++ b/docs/architecture/v23-capability-matrix.md
+@@ -388,5 +388,6 @@ these rows do not promote domain Catalog entries by schema existence alone.
+ 
+ | P1 row | Clean owner | API/command surface | Tables/events | Test and Evidence | Status |
+ | --- | --- | --- | --- | --- | --- |
+-| P1-PLATFORM-001 | Platform | `/livez`, `/readyz`, `operations.get`, `operations.events`, `operations.cancel` | `schema_meta`, `schema_migrations`, `actors`, `aggregate_heads`, `aggregate_revisions`, `operations`, `operation_links`, `events`, `event_cursors`, `idempotency_keys`, `audit_events`, `cas_objects`, `receipt_manifests` | `tests/p1/clean-platform.test.mjs`; `docs/evidence/v3-clean-p1-sync-20260819/verification.json` | verified |
+-| P1-PLATFORM-002 | CAS/Redaction | registry receipt and replay envelopes | `cas_objects`, `receipt_manifests`, `events`, `audit_events` | `tests/p1/clean-platform.test.mjs`; `docs/evidence/v3-clean-p1-sync-20260819/cas-manifest.json` | verified |
++| P1-PLATFORM-001 | Platform | `/livez`, `/readyz`, `operations.get`, `operations.events`, `operations.cancel` | `schema_meta`, `schema_migrations`, `actors`, `aggregate_heads`, `aggregate_revisions`, `operations`, `operation_links`, `events`, `event_cursors`, `idempotency_keys`, `audit_events`, `cas_objects`, `receipt_manifests` | `tests/p1/clean-platform.test.mjs`; `docs/evidence/v3-clean-p1-global-sync-20260819/verification.json` | verified |
++| P1-PLATFORM-002 | CAS/Redaction | registry receipt and replay envelopes | `cas_objects`, `receipt_manifests`, `events`, `audit_events` | `tests/p1/clean-platform.test.mjs`; `docs/evidence/v3-clean-p1-global-sync-20260819/cas-manifest.json` | verified |
++| P1-GOVERNANCE-003 | Platform | active process, fixture, document and Evidence synchronization | no domain tables; one global workspace inventory | `tests/p1/workspace-sync.test.mjs`; `docs/evidence/v3-clean-p1-global-sync-20260819/workspace-audit.json` | verified |
+diff --git a/docs/architecture/v3-clean-development-plan.md b/docs/architecture/v3-clean-development-plan.md
+index 1a64201..90f0341 100644
+--- a/docs/architecture/v3-clean-development-plan.md
++++ b/docs/architecture/v3-clean-development-plan.md
+@@ -499,7 +499,7 @@ generic operations/events/cursors, registry-backed API v2 probes, redaction,
+ and the local CAS. The historical server and migration modules remain fixture
+ inputs and are not imported by this clean entry.
+ 
+-Superseding receipt directory: `docs/evidence/v3-clean-p1-sync-20260819/`.
++Superseding receipt directory: `docs/evidence/v3-clean-p1-global-sync-20260819/`.
+ 
+ | Capability | Receipt/test | Status |
+ | --- | --- | --- |
+@@ -507,6 +507,7 @@ Superseding receipt directory: `docs/evidence/v3-clean-p1-sync-20260819/`.
+ | operation state machine and atomic head/event/audit | `golden-receipt.json`, `tests/p1/clean-platform.test.mjs` | verified |
+ | API v2 envelope, retired route, JSON/SSE replay | `route-inventory.json`, `tests/p1/clean-platform.test.mjs` | verified |
+ | canonical CAS, tamper and redaction receipts | `cas-manifest.json`, `tests/p1/clean-platform.test.mjs` | verified |
++| global active/deferred surface and Evidence synchronization | `workspace-audit.json`, `tests/p1/workspace-sync.test.mjs` | verified |
+ 
+ P2 remains blocked until the receipt's rollback and architecture checks are
+ re-run on the destination volume.
+diff --git a/docs/document-index.md b/docs/document-index.md
+index d9d9935..3f02e6c 100644
+--- a/docs/document-index.md
++++ b/docs/document-index.md
+@@ -17,7 +17,7 @@
+    把规范拆为可验收的实施阶段，不改变规范本身。
+ 3. 本页列出的运行、测试、威胁和需求文档：解释执行方式，不能新增与规范
+    冲突的 API、表或状态。
+-4. `docs/evidence/`：不可变验证材料，只能证明已经发生的行为，不能替代
++4. `docs/evidence/`：不可变阶段凭证和历史验证材料，只能证明已经发生的行为，不能替代
+    规范或提升 Catalog 状态。
+ 5. [`archive/legacy-code-docs/`](archive/legacy-code-docs/)：历史参考，禁止
+    作为活动代码文档引用。
+@@ -50,6 +50,9 @@
+ - 修改 artifact、patch、验证记录和 rollback receipt；
+ - Catalog 状态（只能由 receipt 推导）。
+ 
++根目录 README、`AGENTS.md` 和 `.github/PULL_REQUEST_TEMPLATE.md` 也属于
++活动治理面，必须与当前 P 阶段、API 和 Evidence 引用同步。
++
+ 活动文档不得出现 `/api/v1`、`assist_operations`、`native_v5`、
+ `native_v6`、旧 runtime import、双写或共享旧/新写卷等活动实现指引。
+ 
+@@ -62,7 +65,7 @@
+ | `doc/` | 产品想法、问题追踪和愿景草稿 |
+ | `探索/`、`探索-1/` | 调研、资料索引和开放问题 |
+ | `当前项目毕业设计任务书/`、`任务书/` | 学校任务书及其核验材料 |
+-| `docs/evidence/` | 历史实现的验证、截图、快照和回滚材料 |
++| `docs/evidence/` | 当前阶段凭证以及历史实现的验证、截图、快照和回滚材料 |
+ 
+ ## 5. 维护和检查
+ 
+@@ -71,6 +74,8 @@
+ 
+ ```powershell
+ rg -n "V3-Clean|v3-clean|/api/v2|V23-L[0-7]|REC-D" docs/architecture docs/document-index.md AGENTS.md
++corepack pnpm audit:p1
++corepack pnpm scan:clean
+ git diff --check
+ git status --short --branch
+ ```
+diff --git a/docs/testing.md b/docs/testing.md
+index 54cca6c..d25d62e 100644
+--- a/docs/testing.md
++++ b/docs/testing.md
+@@ -6,7 +6,7 @@ this document does not promote a Catalog item by itself.
+ 
+ ## Gates
+ 
+-`check`, `scan:clean`, `test:p1`, `test`, `test:integration`, `test:e2e`,
++`check`, `audit:p1`, `scan:clean`, `test:p1`, `test`, `test:integration`, `test:e2e`,
+ `test:security`, and `test:release` are first-class gates. `verify` runs them in
+ that order (with the Web build before E2E) and stops at the first failure.
+ During P1, only the clean baseline, platform ledger, API v2 operation routes,
+@@ -14,6 +14,13 @@ replay, CAS, redaction, and startup gates are implementation claims. The older
+ V1/V6 journey suites below execute against explicit historical fixtures and do
+ not promote a clean Catalog row.
+ 
++`audit:p1` classifies every governed source surface as active P1, governance,
++Evidence, historical fixture, later-phase fixture, or non-product material. It
++also checks the PR template, default process scripts, legacy-server import
++allowlist, active Markdown links, Catalog/matrix/plan receipt references, and
++the current Evidence manifest and modified-artifact hashes. `scan:clean`
++includes the same result beside the runtime dependency scan.
++
+ Unit tests cover DAG validation, relation rollback, immutable records, FTS/settings, path policy, Job Spec restrictions, HMAC expiry/replay, and public contracts.
+ 
+ P1 integration tests cover API v2 idempotency and conflicts, revision locks,
+@@ -49,14 +56,12 @@ is not recorded as a formal pass.
+ - event loop lag p95 no greater than 50 ms
+ - idle App RSS no greater than 512 MB with demonstration data
+ 
+-Acceptance receipts record observed startup and execution status. Codex and GitHub capability probes are mandatory for a formal promotion: when either is unavailable, rehearsal writes a `candidate` receipt and promotion exits before stopping the current service. Release promotion additionally records image digests, source commit/tree, lockfile hash, gate fingerprint, and SBOM path.
+-
+-`release:rehearse` enforces the startup, Broker submission, event-loop lag, RSS,
+-temporary-volume import, CAS manifest, event replay and rollback thresholds against
+-digest-pinned production images. It freezes source volumes, compares full manifests
+-after restore, runs SQLite integrity/foreign-key/ACL checks, starts the restored
+-clean volume, and executes the generated rehearsal rollback. A green test run is
+-not a cutover receipt until an actual deployment rollback has also passed.
++P8-P9 acceptance receipts will record observed startup and execution status.
++Those phases require fresh Codex/GitHub capability probes, image and source
++identity, SBOM, temporary-volume import, CAS/event/ACL verification, health
++probes, and an actual deployment rollback. The current release scripts and
++receipts characterize the pre-clean runtime and cannot promote a clean Catalog
++row.
+ 
+ ## Phase gate rule
+ 
+diff --git a/feature-catalog.json b/feature-catalog.json
+index 67b0474..a0ee3ea 100644
+--- a/feature-catalog.json
++++ b/feature-catalog.json
+@@ -34,7 +34,7 @@
+       "events": ["recovery.governance.receipt"],
+       "behavior_tests": ["tests/unit/recovery-governance.test.mjs"],
+       "ui_tests": [],
+-      "evidence": ["docs/evidence/v3-clean-p1-sync-20260819/verification.json"],
++      "evidence": ["docs/evidence/v3-clean-p1-global-sync-20260819/verification.json"],
+       "release_receipts": [],
+       "tests": ["T0", "tests/unit/recovery-governance.test.mjs"]
+     },
+diff --git a/package.json b/package.json
+index 765daf0..380d4cb 100644
+--- a/package.json
++++ b/package.json
+@@ -16,12 +16,13 @@
+     "dev": "node scripts/dev.mjs",
+     "dev:clean": "node apps/api/server.mjs",
+     "dev:api": "node apps/api/server.mjs",
+-    "dev:broker": "node apps/runner-broker/server.mjs",
++    "fixture:legacy:dev-broker": "node apps/runner-broker/server.mjs",
+     "start": "node apps/api/server.mjs",
+     "start:clean": "node apps/api/server.mjs",
+     "build": "corepack pnpm --filter @aiws/web build",
+     "check": "node scripts/check.mjs",
+     "scan:clean": "node scripts/v3-clean-architecture-scan.mjs",
++    "audit:p1": "node scripts/v3-clean-workspace-audit.mjs",
+     "typecheck": "corepack pnpm --filter @aiws/web typecheck",
+     "test": "node --test tests/unit/*.test.mjs && corepack pnpm --filter @aiws/web test",
+     "test:p1": "node --test tests/p1/*.test.mjs tests/integration/v3-clean-p1.test.mjs tests/security/v3-clean-p1.test.mjs",
+@@ -34,10 +35,10 @@
+     "verify": "node scripts/verify.mjs",
+     "fixture:seed-demo": "node scripts/seed-demo.mjs",
+     "archive:v23": "node scripts/archive-v23.mjs",
+-    "acceptance": "node scripts/acceptance.mjs",
+-    "release:build": "node scripts/release-build.mjs",
+-    "release:rehearse": "node scripts/release-rehearsal.mjs",
+-    "release:promote": "node scripts/release-promote.mjs",
++    "fixture:legacy:acceptance": "node scripts/acceptance.mjs",
++    "fixture:legacy:release-build": "node scripts/release-build.mjs",
++    "fixture:legacy:release-rehearse": "node scripts/release-rehearsal.mjs",
++    "fixture:legacy:release-promote": "node scripts/release-promote.mjs",
+     "recovery:plan": "node scripts/recovery-governance.mjs plan",
+     "recovery:catalog": "node scripts/recovery-governance.mjs catalog",
+     "recovery:coverage": "node scripts/recovery-governance.mjs coverage",
+diff --git a/scripts/lib/v3-clean-p1-scope.mjs b/scripts/lib/v3-clean-p1-scope.mjs
+new file mode 100644
+index 0000000..acd1b75
+--- /dev/null
++++ b/scripts/lib/v3-clean-p1-scope.mjs
+@@ -0,0 +1,109 @@
++export const P1_EVIDENCE_DIRECTORY = 'docs/evidence/v3-clean-p1-global-sync-20260819';
++export const P1_PARENT_EVIDENCE_DIRECTORY = 'docs/evidence/v3-clean-p1-sync-20260819';
++export const P1_BASELINE_DIRECTORY = '.ai-workspace/v3-clean-p1-global-sync-baseline-20260819';
++
++export const P1_RUNTIME_ENTRYPOINT = 'apps/api/server.mjs';
++export const P1_HTTP_COMPOSITION = 'apps/api/clean-server.mjs';
++export const P1_CLEAN_ROOT = 'apps/api/src/clean/';
++
++export const P1_PROCESS_SCRIPTS = Object.freeze({
++  'dev:clean': 'node apps/api/server.mjs',
++  'dev:api': 'node apps/api/server.mjs',
++  start: 'node apps/api/server.mjs',
++  'start:clean': 'node apps/api/server.mjs'
++});
++
++export const P1_DEFERRED_PACKAGE_SCRIPTS = Object.freeze({
++  'fixture:legacy:dev-broker': 'node apps/runner-broker/server.mjs',
++  'fixture:legacy:acceptance': 'node scripts/acceptance.mjs',
++  'fixture:legacy:release-build': 'node scripts/release-build.mjs',
++  'fixture:legacy:release-rehearse': 'node scripts/release-rehearsal.mjs',
++  'fixture:legacy:release-promote': 'node scripts/release-promote.mjs'
++});
++
++export const P1_FORBIDDEN_PACKAGE_SCRIPTS = Object.freeze([
++  'dev:broker',
++  'acceptance',
++  'release:build',
++  'release:rehearse',
++  'release:promote'
++]);
++
++export const P1_LEGACY_SERVER_IMPORTERS = Object.freeze([
++  'scripts/acceptance.mjs',
++  'scripts/e2e.mjs',
++  'scripts/r5-e2e.mjs',
++  'tests/integration/debt-regression.test.mjs',
++  'tests/integration/helpers.mjs',
++  'tests/security/credentials.test.mjs'
++]);
++
++export const P1_RETIRED_ROUTE_PROBES = Object.freeze([
++  'tests/p1/clean-platform.test.mjs',
++  'tests/security/v3-clean-p1.test.mjs'
++]);
++
++export const P1_ACTIVE_MARKDOWN = Object.freeze([
++  'AGENTS.md',
++  'README.md',
++  '.github/PULL_REQUEST_TEMPLATE.md',
++  'docs/document-index.md',
++  'docs/requirements-traceability.md',
++  'docs/runbook.md',
++  'docs/testing.md',
++  'docs/threat-model.md',
++  'docs/architecture/api-v2-contract.md',
++  'docs/architecture/clean-schema.md',
++  'docs/architecture/decision-log.md',
++  'docs/architecture/import-contract.md',
++  'docs/architecture/v23-capability-matrix.md',
++  'docs/architecture/v3-clean-break.md',
++  'docs/architecture/v3-clean-development-plan.md'
++]);
++
++const P1_FILES = new Set([
++  P1_RUNTIME_ENTRYPOINT,
++  P1_HTTP_COMPOSITION,
++  'scripts/dev.mjs',
++  'scripts/v3-clean-architecture-scan.mjs',
++  'scripts/v3-clean-workspace-audit.mjs',
++  'scripts/v3-clean-p1-evidence.mjs',
++  'scripts/v3-clean-p1-global-sync-evidence.mjs',
++  'scripts/lib/v3-clean-p1-scope.mjs',
++  'tests/integration/v3-clean-p1.test.mjs',
++  'tests/security/v3-clean-p1.test.mjs',
++  'tests/unit/recovery-governance.test.mjs'
++]);
++
++export function classifyWorkspacePath(value) {
++  const file = normalize(value);
++  if (!file) return null;
++  if (file.startsWith(P1_CLEAN_ROOT) || file.startsWith('tests/p1/') || P1_FILES.has(file)) {
++    return { kind: 'p1', phase: 'P1', rows: ['P1-PLATFORM-001', 'P1-PLATFORM-002'] };
++  }
++  if (file === 'apps/api/server-legacy.mjs') return { kind: 'fixture', phase: 'P2-P9', reason: 'historical API runtime' };
++  if (file.startsWith('apps/api/src/')) return { kind: 'fixture', phase: 'P2-P8', reason: 'historical domain/runtime input' };
++  if (file.startsWith('apps/web/')) return { kind: 'fixture', phase: 'P9', reason: 'pre-clean Web characterization' };
++  if (file.startsWith('apps/runner-broker/')) return { kind: 'fixture', phase: 'P6', reason: 'runner adapter characterization' };
++  if (file.startsWith('packages/')) return { kind: 'fixture', phase: 'P2-P9', reason: 'pre-clean shared contract' };
++  if (file.startsWith('tests/') || file.startsWith('scripts/')) return { kind: 'fixture', phase: 'P2-P9', reason: 'historical behavior or future-phase tool' };
++  if (file.startsWith('docs/evidence/')) return { kind: 'evidence', phase: 'P0-P9' };
++  if (file.startsWith('docs/archive/')) return { kind: 'archive', phase: 'historical' };
++  if (file.startsWith('docs/architecture/') || P1_ACTIVE_MARKDOWN.includes(file)) return { kind: 'governance', phase: 'P0-P9' };
++  if (file.startsWith('.github/') || file.startsWith('.githooks/')) return { kind: 'governance', phase: 'P0-P9' };
++  if (file.startsWith('doc/') || file.startsWith('探索/') || file.startsWith('探索-1/') || file.startsWith('当前项目毕业设计任务书/') || file.startsWith('任务书/')) {
++    return { kind: 'non_product', phase: 'unscoped research' };
++  }
++  if (file.startsWith('docs/')) return { kind: 'supporting_document', phase: 'P0-P9' };
++  if (['Dockerfile', 'compose.yml', 'docker/'].some((prefix) => file === prefix || file.startsWith(prefix))) {
++    return { kind: 'fixture', phase: 'P8-P9', reason: 'deferred deployment surface' };
++  }
++  if (/^(?:AGENTS\.md|README\.md|feature-catalog\.json|package\.json|pnpm-lock\.yaml|pnpm-workspace\.yaml|sbom\.spdx\.json|eslint\.config\.mjs|\.[^/]+)$/.test(file)) {
++    return { kind: 'governance', phase: 'P0-P9' };
++  }
++  return null;
++}
++
++function normalize(value) {
++  return String(value || '').replaceAll('\\', '/').replace(/^\.\//, '');
++}
+diff --git a/scripts/recovery-governance.mjs b/scripts/recovery-governance.mjs
+index b809aeb..865a521 100644
+--- a/scripts/recovery-governance.mjs
++++ b/scripts/recovery-governance.mjs
+@@ -11,6 +11,8 @@ import {
+   SQL_BOUNDARY_SUFFIXES,
+   ownerOf
+ } from '../apps/api/src/modules/registry.mjs';
++import { auditWorkspace } from './v3-clean-workspace-audit.mjs';
++import { classifyWorkspacePath } from './lib/v3-clean-p1-scope.mjs';
+ 
+ const root = process.cwd();
+ const command = process.argv[2];
+@@ -27,6 +29,9 @@ const CLEAN_ENTRYPOINTS = new Set([
+   'apps/api/clean-server.mjs'
+ ]);
+ const failures = [];
++const workspaceAudit = auditWorkspace({ root });
++
++if (!workspaceAudit.valid) failures.push(`workspace synchronization failed: ${workspaceAudit.findings.map((entry) => entry.code).join(', ')}`);
+ 
+ if (!allowedCommands.has(command)) fail(`unknown recovery governance command: ${command || '<empty>'}`);
+ 
+@@ -148,7 +153,7 @@ function checkPlan() {
+   if (!terminal || !bridge || terminal.name.includes('Bridge') || terminal.tables.some((table) => table.startsWith('bridge_'))) {
+     failures.push('Terminal and Windows Bridge must be separate catalog features');
+   }
+-  return { documents, domains: [...domains].sort(), feature_count: features?.length || 0, phases: 10, phase_prefix: 'P' };
++  return { documents, domains: [...domains].sort(), feature_count: features?.length || 0, phases: 10, phase_prefix: 'P', workspace_sync: summarizeWorkspaceAudit() };
+ }
+ 
+ function checkCatalog() {
+@@ -165,7 +170,8 @@ function checkCatalog() {
+     module_count: MODULE_REGISTRY.length,
+     owned_tables: MODULE_REGISTRY.reduce((count, module) => count + module.tables.length, 0),
+     owned_commands: MODULE_REGISTRY.reduce((count, module) => count + module.commands.length, 0),
+-    unique_ids: ids.size
++    unique_ids: ids.size,
++    workspace_sync: summarizeWorkspaceAudit()
+   };
+ }
+ 
+@@ -197,22 +203,31 @@ function checkImpact() {
+   const changed = changedFiles();
+   const mappings = [];
+   const unmapped = [];
+-  // P1 clean-platform files are tracked by the dedicated P1 rows in the
+-  // capability matrix, rather than by a historical REC-D feature row.
+-  const governance = /^(?:\.gitattributes|feature-catalog\.json|package\.json|docs\/|doc\/|探索(?:-1)?\/|当前项目毕业设计任务书\/|任务书\/|scripts\/(?:dev|acceptance|e2e|r5-e2e|recovery-governance|recovery-evidence|r6-evidence|v3-clean-(?:architecture-scan|p1-evidence))\.mjs|apps\/api\/server\.mjs|apps\/api\/(?:clean-server|server-legacy)\.mjs|apps\/api\/src\/clean(?:\/|$)|apps\/api\/src\/(?:schema|db-worker|migration-service)\.mjs|apps\/api\/src\/(?:migrations|modules)\/(?:index|registry|define-module)\.mjs|tests\/(?:p1\/|integration\/(?:v3-clean-p1\.test|helpers|debt-regression\.test|scheduler-flow\.test)\.mjs|security\/(?:v3-clean-p1\.test|credentials\.test)\.mjs))/;
+   for (const file of [...changed].sort()) {
+     const matched = features.filter((feature) => featurePaths(feature).some((target) => {
+       const normalized = normalize(target);
+       return file === normalized || file.startsWith(`${normalized}/`) || normalized.startsWith(`${file}/`);
+     })).map((feature) => feature.id);
+-    if (!matched.length && !governance.test(file)) unmapped.push(file);
+-    mappings.push({ file, features: matched });
++    const classification = classifyWorkspacePath(file);
++    if (!matched.length && !classification) unmapped.push(file);
++    mappings.push({ file, features: matched, classification: classification?.kind || 'unmapped', phase: classification?.phase || null, phase_rows: classification?.rows || [] });
+   }
+   if (audit && unmapped.length) failures.push(`unmapped changed files: ${unmapped.join(', ')}`);
+   const selectedTests = [...new Set(mappings
+     .flatMap((mapping) => mapping.features)
+     .flatMap((featureId) => features.find((feature) => feature.id === featureId)?.tests || []))].sort();
+-  return { audit, changed_files: mappings, unmapped_files: unmapped, selected_tests: selectedTests };
++  return { audit, changed_files: mappings, unmapped_files: unmapped, selected_tests: selectedTests, workspace_sync: summarizeWorkspaceAudit() };
++}
++
++function summarizeWorkspaceAudit() {
++  return {
++    schema_version: workspaceAudit.schema_version,
++    phase: workspaceAudit.phase,
++    valid: workspaceAudit.valid,
++    checks: workspaceAudit.checks.map((entry) => ({ id: entry.id, valid: entry.valid })),
++    deferred_route_references: workspaceAudit.deferred.retired_route_references,
++    evidence_directory: workspaceAudit.evidence.directory
++  };
+ }
+ 
+ function validateStatusEvidence() {
+diff --git a/scripts/v3-clean-architecture-scan.mjs b/scripts/v3-clean-architecture-scan.mjs
+index 4f0adde..7d11947 100644
+--- a/scripts/v3-clean-architecture-scan.mjs
++++ b/scripts/v3-clean-architecture-scan.mjs
+@@ -3,6 +3,7 @@ import path from 'node:path';
+ import { fileURLToPath } from 'node:url';
+ import { createCleanCommandRegistry, registryParity } from '../apps/api/src/clean/registry.mjs';
+ import { validateCleanOwnership } from '../apps/api/src/clean/ownership.mjs';
++import { auditWorkspace } from './v3-clean-workspace-audit.mjs';
+ 
+ const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
+ const cleanRoot = path.join(root, 'apps', 'api', 'src', 'clean');
+@@ -20,6 +21,9 @@ const forbidden = [
+ const visited = new Set();
+ const files = [];
+ const findings = [];
++const workspace = auditWorkspace({ root });
++
++if (!workspace.valid) findings.push({ label: 'workspace synchronization mismatch', findings: workspace.findings });
+ 
+ if (!fs.existsSync(entrypoint)) findings.push({ label: 'clean entrypoint missing', file: 'apps/api/server.mjs' });
+ if (!fs.existsSync(cleanServer)) findings.push({ label: 'clean server module missing', file: 'apps/api/clean-server.mjs' });
+@@ -50,11 +54,12 @@ try {
+ }
+ 
+ const result = {
+-  schema_version: 'aiws.v3-clean.architecture-scan.v2',
++  schema_version: 'aiws.v3-clean.architecture-scan.v3',
+   entrypoints: ['apps/api/server.mjs'],
+   files: files.map(relative),
+   registry: registryReport,
+   ownership: ownershipReport,
++  workspace,
+   forbidden_findings: findings,
+   valid: findings.length === 0
+ };
+diff --git a/scripts/v3-clean-p1-global-sync-evidence.mjs b/scripts/v3-clean-p1-global-sync-evidence.mjs
+new file mode 100644
+index 0000000..b25a68e
+--- /dev/null
++++ b/scripts/v3-clean-p1-global-sync-evidence.mjs
+@@ -0,0 +1,528 @@
++import { createHash } from 'node:crypto';
++import { spawnSync } from 'node:child_process';
++import fs from 'node:fs';
++import os from 'node:os';
++import path from 'node:path';
++import { fileURLToPath } from 'node:url';
++import { createCleanRuntime } from '../apps/api/src/clean/runtime.mjs';
++import { CLEAN_MIGRATIONS } from '../apps/api/src/clean/schema.mjs';
++import { CLEAN_COMMAND_OWNERS, CLEAN_EVENT_OWNERS, CLEAN_TABLE_OWNERS } from '../apps/api/src/clean/ownership.mjs';
++import { registryParity } from '../apps/api/src/clean/registry.mjs';
++import { auditWorkspace, governedWorkspaceFiles } from './v3-clean-workspace-audit.mjs';
++import {
++  P1_BASELINE_DIRECTORY,
++  P1_EVIDENCE_DIRECTORY,
++  P1_PARENT_EVIDENCE_DIRECTORY
++} from './lib/v3-clean-p1-scope.mjs';
++
++const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
++const outputArgument = process.argv.find((value) => value.startsWith('--output='));
++const evidence = path.resolve(root, outputArgument ? outputArgument.slice('--output='.length) : P1_EVIDENCE_DIRECTORY);
++const baseline = path.resolve(root, P1_BASELINE_DIRECTORY);
++const parentEvidence = path.resolve(root, P1_PARENT_EVIDENCE_DIRECTORY);
++const verifyOnly = process.argv.includes('--verify');
++const required = [
++  'manifest.json', 'modified-artifact.json', 'original-hashes.json', 'workspace-inventory.json',
++  'verification.json', 'change.patch', 'rollback.ps1', 'workspace-audit.json',
++  'architecture-scan.json', 'parent-receipt.json', 'schema-snapshot.json',
++  'schema-inventory.json', 'cas-manifest.json', 'golden-receipt.json',
++  'route-inventory.json', 'owner-manifest.json', 'task-manifest.json'
++];
++const generationEnv = { AIWS_P1_EVIDENCE_GENERATING: '1' };
++
++if (verifyOnly) {
++  process.exitCode = verifyEvidence();
++} else {
++  try {
++    await generateEvidence();
++  } catch (error) {
++    if (fs.existsSync(evidence)) {
++      fs.writeFileSync(path.join(evidence, 'failure.json'), `${JSON.stringify({
++        schema_version: 'aiws.v3-clean.global-sync-failure.v1',
++        status: 'failed',
++        failed_at: new Date().toISOString(),
++        error: sanitize(error?.stack || error?.message || error)
++      }, null, 2)}\n`);
++    }
++    process.stderr.write(`${sanitize(error?.stack || error?.message || error)}\n`);
++    process.exitCode = 1;
++  }
++}
++
++async function generateEvidence() {
++  if (!fs.existsSync(baseline)) throw new Error(`baseline_missing:${relative(baseline)}`);
++  if (!fs.existsSync(parentEvidence)) throw new Error(`parent_evidence_missing:${relative(parentEvidence)}`);
++  if (fs.existsSync(evidence) && fs.readdirSync(evidence).length) throw new Error(`evidence_exists:${relative(evidence)}`);
++  fs.mkdirSync(evidence, { recursive: true, mode: 0o700 });
++
++  await generatePlatformArtifacts();
++  const workspaceAudit = auditWorkspace({ root, verifyEvidence: false });
++  if (!workspaceAudit.valid) throw new Error(`workspace_audit_failed:${workspaceAudit.findings.map((entry) => entry.code).join(',')}`);
++  writeJson('workspace-audit.json', workspaceAudit);
++
++  const architecture = run('node', ['scripts/v3-clean-architecture-scan.mjs'], { timeout: 120000, env: generationEnv });
++  if (!architecture.ok) throw new Error(`architecture_scan_failed:${architecture.stderr}`);
++  const architectureResult = JSON.parse(architecture.stdout);
++  if (!architectureResult.valid) throw new Error('architecture_scan_invalid');
++  writeJson('architecture-scan.json', architectureResult);
++
++  const baselineReceiptFile = path.join(baseline, 'original-hashes.json');
++  const baselineReceipt = readJson(baselineReceiptFile);
++  writeJson('original-hashes.json', {
++    schema_version: 'aiws.v3-clean.global-sync-original.v1',
++    source_receipt: `${P1_BASELINE_DIRECTORY}/original-hashes.json`,
++    source_receipt_sha256: hashFile(baselineReceiptFile),
++    baseline_commit: baselineReceipt.baseline_commit,
++    captured_at: baselineReceipt.captured_at,
++    scope: baselineReceipt.scope,
++    files: baselineReceipt.files
++  });
++
++  const workspaceFiles = governedWorkspaceFiles(root);
++  const workspaceRows = workspaceFiles.map((file) => ({ path: file, sha256: hashFile(path.join(root, file)), bytes: fs.statSync(path.join(root, file)).size }));
++  writeJson('workspace-inventory.json', {
++    schema_version: 'aiws.v3-clean.workspace-inventory.v1',
++    phase: 'P1',
++    files: workspaceRows,
++    inventory_sha256: sha256(canonicalInventory(workspaceRows))
++  });
++
++  const scopeFiles = captureScopeFiles();
++  const baselineRows = new Map((baselineReceipt.files || []).map((entry) => [entry.path, entry]));
++  const changedPaths = [...new Set([...baselineRows.keys(), ...scopeFiles])].filter((file) => {
++    const baselineFile = path.join(baseline, file);
++    const currentFile = path.join(root, file);
++    const before = fs.existsSync(baselineFile) ? hashFile(baselineFile) : null;
++    const after = fs.existsSync(currentFile) ? hashFile(currentFile) : null;
++    return before !== after;
++  }).sort();
++  const changedFiles = changedPaths.filter((file) => fs.existsSync(path.join(root, file))).map((file) => ({ path: file, sha256: hashFile(path.join(root, file)) }));
++  const deletedFiles = changedPaths.filter((file) => !fs.existsSync(path.join(root, file))).map((file) => ({ path: file, baseline_sha256: hashFile(path.join(baseline, file)) }));
++  writeJson('modified-artifact.json', {
++    schema_version: 'aiws.v3-clean.global-sync-modified-artifact.v1',
++    parent_evidence: P1_PARENT_EVIDENCE_DIRECTORY,
++    baseline_receipt: `${P1_BASELINE_DIRECTORY}/original-hashes.json`,
++    runtime_entry: 'apps/api/server.mjs',
++    workspace_inventory_sha256: sha256(canonicalInventory(workspaceRows)),
++    files: changedFiles,
++    deleted_files: deletedFiles
++  });
++  fs.writeFileSync(path.join(evidence, 'change.patch'), buildPatch(changedPaths), { mode: 0o600 });
++  fs.writeFileSync(path.join(evidence, 'rollback.ps1'), rollbackScript(), { mode: 0o600 });
++
++  const parent = verifyParentBoundary();
++  if (!parent.valid) throw new Error(`parent_boundary_invalid:${parent.errors.join(',')}`);
++  writeJson('parent-receipt.json', parent);
++  writeJson('task-manifest.json', {
++    schema_version: 'aiws.v3-clean.global-sync-task.v1',
++    target: 'P1 global synchronization across active runtime, governance, documentation, tests, Catalog, and Evidence',
++    non_target: ['P2 Identity/Team behavior', 'P3 Project behavior', 'P4-P7 adapters and domains', 'P8 importer/release implementation', 'P9 clean Web workflow'],
++    preflight: {
++      active_object: 'V3-Clean P1 workspace synchronization gate',
++      last_confirmed_result: 'parent P1 receipt passed at the pre-change boundary',
++      next_action: 'review the P2 entry gate without activating deferred fixtures',
++      forbidden: ['legacy runtime in clean dependency graph', 'active pre-clean release command', 'second operation/head/CAS model', 'Catalog promotion without behavior Evidence'],
++      reuse: [P1_PARENT_EVIDENCE_DIRECTORY, P1_BASELINE_DIRECTORY],
++      delete_retire: ['generic package aliases that executed pre-clean Broker, acceptance, and release fixtures']
++    },
++    acceptance_commands: [
++      'pnpm check', 'pnpm audit:p1', 'pnpm scan:clean', 'pnpm test:p1',
++      'pnpm recovery:plan', 'pnpm recovery:catalog', 'pnpm recovery:coverage',
++      'pnpm recovery:impact --audit', 'pnpm test:integration', 'pnpm test:security',
++      'pnpm test:release', 'pnpm verify', 'git diff --check'
++    ],
++    rollback_artifact: 'rollback.ps1'
++  });
++
++  const baselineChecks = [
++    run('node', ['scripts/v3-clean-workspace-audit.mjs', `--root=${P1_BASELINE_DIRECTORY}`, '--skip-evidence'], { timeout: 120000, allowed: [1] }),
++    run('git', ['apply', '--reverse', '--check', path.join(parentEvidence, 'change.patch')], { cwd: baseline, timeout: 120000 })
++  ];
++  const checks = [
++    run('pnpm', ['check'], { timeout: 300000, env: generationEnv }),
++    run('node', ['scripts/v3-clean-workspace-audit.mjs', '--skip-evidence'], { timeout: 120000, env: generationEnv }),
++    architecture,
++    run('pnpm', ['test:p1'], { timeout: 300000, env: generationEnv })
++  ];
++  ensurePassed(baselineChecks, 'baseline_checks');
++  checkpoint('initial_checks');
++
++  const acceptanceChecks = [
++    ['pnpm', ['recovery:plan'], { timeout: 120000, env: generationEnv }],
++    ['pnpm', ['recovery:catalog'], { timeout: 120000, env: generationEnv }],
++    ['pnpm', ['recovery:coverage'], { timeout: 120000, env: generationEnv }],
++    ['pnpm', ['recovery:impact', '--audit'], { timeout: 120000, env: generationEnv }],
++    ['pnpm', ['test:integration'], { timeout: 300000, env: generationEnv }],
++    ['pnpm', ['test:security'], { timeout: 300000, env: generationEnv }],
++    ['pnpm', ['test:release'], { timeout: 300000, env: generationEnv }],
++    ['git', ['diff', '--check'], { timeout: 120000 }],
++    ['git', ['apply', '--reverse', '--check', path.join(evidence, 'change.patch')], { timeout: 120000 }],
++    ['git', ['apply', '--check', path.join(evidence, 'change.patch')], { cwd: baseline, timeout: 120000 }],
++    [powershellExecutable(), ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', path.join(evidence, 'rollback.ps1')], { timeout: 120000 }]
++  ];
++  for (const [command, args, options] of acceptanceChecks) {
++    checks.push(run(command, args, options));
++    checkpoint('acceptance_checks');
++  }
++  checks.push(verifyRollbackApply(changedPaths));
++  checkpoint('acceptance_checks');
++
++  const finalAudit = run('node', ['scripts/v3-clean-workspace-audit.mjs'], { timeout: 120000 });
++  checks.push(finalAudit);
++  checkpoint('final_audit');
++  const finalArchitecture = run('node', ['scripts/v3-clean-architecture-scan.mjs'], { timeout: 120000 });
++  checks.push(finalArchitecture);
++  checkpoint('final_architecture');
++  checks.push(run('pnpm', ['verify'], { timeout: 900000 }));
++  checkpoint('final_verify');
++  const finalAuditResult = JSON.parse(finalAudit.stdout);
++  const finalArchitectureResult = JSON.parse(finalArchitecture.stdout);
++  if (!finalAuditResult.valid || !finalArchitectureResult.valid) throw new Error('final_audit_invalid');
++  writeJson('workspace-audit.json', finalAuditResult);
++  writeJson('architecture-scan.json', finalArchitectureResult);
++  writeVerification({ baselineChecks, checks, status: 'passed', provisional: false });
++  writeManifest();
++
++  const verified = verifyEvidence();
++  if (verified !== 0) throw new Error('generated_evidence_verification_failed');
++  process.stdout.write(`${JSON.stringify({
++    evidence: relative(evidence),
++    status: 'passed',
++    parent: P1_PARENT_EVIDENCE_DIRECTORY,
++    changed_files: changedFiles.length,
++    deleted_files: deletedFiles.length,
++    workspace_files: workspaceRows.length,
++    checks: checks.length
++  }, null, 2)}\n`);
++
++  function checkpoint(label) {
++    const failed = checks.filter((entry) => !entry.ok);
++    writeVerification({ baselineChecks, checks, status: failed.length ? 'failed' : 'passed', provisional: true });
++    writeManifest();
++    ensurePassed(checks, label);
++  }
++
++  async function generatePlatformArtifacts() {
++    const temp = fs.mkdtempSync(path.join(os.tmpdir(), 'v3-clean-global-sync-platform-'));
++    let runtime;
++    try {
++      const config = {
++        runtime: 'v3-clean', apiVersion: '2', host: '127.0.0.1', port: 0,
++        home: temp, databaseFile: path.join(temp, 'data', 'state.sqlite'),
++        casRoot: path.join(temp, 'cas'), receiptRoot: path.join(temp, 'receipts'),
++        cursorSecret: 'global-sync-evidence', runtimeBuild: 'v3-clean-p1-global-sync',
++        maxBodyBytes: 1024 * 1024
++      };
++      runtime = createCleanRuntime({ config });
++      const created = await runtime.operations.create({ commandId: 'evidence.global_sync', idempotencyKey: 'global-sync-operation-1', request: { fixture: 'p1-global-sync' }, resourceType: 'evidence_probe', resourceId: 'probe_global_sync' });
++      const queued = await runtime.operations.queue(created.operation_id, { expectedRevision: created.revision });
++      const running = await runtime.operations.start(created.operation_id, { expectedRevision: queued.revision });
++      const completed = await runtime.operations.succeed(created.operation_id, { expectedRevision: running.revision, result: { status: 'verified' } });
++      const replay = runtime.events.replay({ actorId: runtime.metadata.bootstrap_actor_id, operationId: created.operation_id });
++      const casObject = runtime.cas.putCanonical({ evidence: 'p1-global-sync', status: 'verified' }, { mediaType: 'application/json' });
++      const casManifest = runtime.cas.createManifest({ createdAt: '2026-08-19T00:00:00.000Z' });
++      const tables = runtime.db.query("SELECT name FROM sqlite_schema WHERE type='table' AND name NOT LIKE 'sqlite_%' ORDER BY name").map((row) => row.name);
++      const schemaRows = runtime.db.query("SELECT type,name,tbl_name,sql FROM sqlite_schema WHERE name NOT LIKE 'sqlite_%' ORDER BY type,name");
++      writeJson('schema-snapshot.json', { schema_version: 'aiws.v3-clean.schema-snapshot.v3', family: runtime.metadata.family, baseline_id: runtime.metadata.baseline_id, user_version: runtime.metadata.user_version, migration: CLEAN_MIGRATIONS[0], schema_sha256: runtime.metadata.schema_sha256, tables, sqlite_schema: schemaRows });
++      writeJson('schema-inventory.json', { schema_version: 'aiws.v3-clean.schema-inventory.v3', owner: 'Platform', family: runtime.metadata.family, baseline: runtime.metadata.baseline_id, tables });
++      writeJson('cas-manifest.json', casManifest);
++      writeJson('golden-receipt.json', { schema_version: 'aiws.v3-clean.golden-receipt.v3', operation: completed, replay: { events: replay.events, terminal: replay.terminal, next_cursor: replay.next_cursor }, cas_object: casObject, cas_manifest_sha256: casManifest.manifest_sha256, redactions: [] });
++      writeJson('route-inventory.json', { schema_version: 'aiws.v3-clean.route-inventory.v3', routes: runtime.registry.inventory(), mcp: runtime.registry.mcp(), web: runtime.registry.web(), parity: registryParity(runtime.registry) });
++      writeJson('owner-manifest.json', { schema_version: 'aiws.v3-clean.owner-manifest.v3', tables: CLEAN_TABLE_OWNERS, commands: CLEAN_COMMAND_OWNERS, events: CLEAN_EVENT_OWNERS, second_operation_model: false, shadow_head_model: false });
++    } finally {
++      try {
++        runtime?.close();
++      } finally {
++        fs.rmSync(temp, { recursive: true, force: true });
++      }
++    }
++  }
++}
++
++function verifyEvidence() {
++  const errors = [];
++  if (!fs.existsSync(evidence)) errors.push('evidence_missing');
++  for (const file of required) if (!fs.existsSync(path.join(evidence, file))) errors.push(`artifact_missing:${file}`);
++  if (errors.length) return failVerification(errors);
++  let manifest;
++  let modified;
++  let verification;
++  let inventory;
++  try {
++    manifest = readJson(path.join(evidence, 'manifest.json'));
++    modified = readJson(path.join(evidence, 'modified-artifact.json'));
++    verification = readJson(path.join(evidence, 'verification.json'));
++    inventory = readJson(path.join(evidence, 'workspace-inventory.json'));
++  } catch (error) {
++    return failVerification([String(error?.message || error)]);
++  }
++  for (const [file, expected] of Object.entries(manifest.artifacts || {})) {
++    const full = path.join(evidence, file);
++    if (!fs.existsSync(full)) errors.push(`manifest_artifact_missing:${file}`);
++    else if (hashFile(full) !== expected) errors.push(`manifest_hash_mismatch:${file}`);
++  }
++  for (const entry of modified.files || []) {
++    const full = path.join(root, entry.path);
++    if (!fs.existsSync(full)) errors.push(`modified_artifact_missing:${entry.path}`);
++    else if (hashFile(full) !== entry.sha256) errors.push(`modified_artifact_hash_mismatch:${entry.path}`);
++  }
++  for (const entry of modified.deleted_files || []) if (fs.existsSync(path.join(root, entry.path))) errors.push(`deleted_artifact_restored:${entry.path}`);
++  const currentPaths = governedWorkspaceFiles(root);
++  const recordedPaths = (inventory.files || []).map((entry) => entry.path).sort();
++  if (JSON.stringify(currentPaths) !== JSON.stringify(recordedPaths)) errors.push('workspace_inventory_paths_mismatch');
++  for (const entry of inventory.files || []) if (!fs.existsSync(path.join(root, entry.path)) || hashFile(path.join(root, entry.path)) !== entry.sha256) errors.push(`workspace_inventory_hash_mismatch:${entry.path}`);
++  const records = verification.commands || [];
++  if (manifest.status !== 'verified') errors.push('manifest_not_verified');
++  if (verification.status !== 'passed' || verification.provisional !== false || !records.length || records.some((entry) => !entry.ok)) errors.push('verification_not_passed');
++  const original = readJson(path.join(evidence, 'original-hashes.json'));
++  const originalSource = path.join(root, original.source_receipt);
++  if (!fs.existsSync(originalSource) || hashFile(originalSource) !== original.source_receipt_sha256) errors.push('original_hash_receipt_mismatch');
++  const reverse = run('git', ['apply', '--reverse', '--check', path.join(evidence, 'change.patch')], { timeout: 120000 });
++  if (!reverse.ok) errors.push('rollback_reverse_check_failed');
++  const forward = run('git', ['apply', '--check', path.join(evidence, 'change.patch')], { cwd: baseline, timeout: 120000 });
++  if (!forward.ok) errors.push('patch_forward_check_failed');
++  const parent = verifyParentBoundary();
++  if (!parent.valid) errors.push(...parent.errors.map((entry) => `parent:${entry}`));
++  const audit = auditWorkspace({ root, verifyEvidence: false });
++  if (!audit.valid) errors.push(...audit.findings.map((entry) => `workspace:${entry.code}`));
++  if (errors.length) return failVerification(errors);
++  process.stdout.write(`${JSON.stringify({ evidence: relative(evidence), status: 'passed', parent_boundary: 'passed', workspace_files: currentPaths.length, rollback_dry_run: reverse }, null, 2)}\n`);
++  return 0;
++}
++
++function verifyParentBoundary() {
++  const errors = [];
++  const manifest = readJson(path.join(parentEvidence, 'manifest.json'));
++  const modified = readJson(path.join(parentEvidence, 'modified-artifact.json'));
++  const verification = readJson(path.join(parentEvidence, 'verification.json'));
++  for (const [file, expected] of Object.entries(manifest.artifacts || {})) {
++    const full = path.join(parentEvidence, file);
++    if (!fs.existsSync(full) || hashFile(full) !== expected) errors.push(`parent_artifact_invalid:${file}`);
++  }
++  for (const entry of modified.files || []) {
++    const full = path.join(baseline, entry.path);
++    if (!fs.existsSync(full) || hashFile(full) !== entry.sha256) errors.push(`parent_boundary_file_mismatch:${entry.path}`);
++  }
++  for (const entry of modified.deleted_files || []) if (fs.existsSync(path.join(baseline, entry.path))) errors.push(`parent_boundary_deleted_file_present:${entry.path}`);
++  const parentRecords = verification.commands || verification.checks || [];
++  if (verification.status !== 'passed' || !parentRecords.length || parentRecords.some((entry) => Number(entry.exit_status) !== 0)) errors.push('parent_verification_not_passed');
++  const reverse = run('git', ['apply', '--reverse', '--check', path.join(parentEvidence, 'change.patch')], { cwd: baseline, timeout: 120000 });
++  if (!reverse.ok) errors.push('parent_rollback_check_failed');
++  return {
++    schema_version: 'aiws.v3-clean.parent-boundary-receipt.v1',
++    parent: P1_PARENT_EVIDENCE_DIRECTORY,
++    parent_manifest_sha256: hashFile(path.join(parentEvidence, 'manifest.json')),
++    boundary: P1_BASELINE_DIRECTORY,
++    boundary_receipt_sha256: hashFile(path.join(baseline, 'original-hashes.json')),
++    modified_files_checked: (modified.files || []).length,
++    deleted_files_checked: (modified.deleted_files || []).length,
++    rollback_check: reverse,
++    errors,
++    valid: errors.length === 0
++  };
++}
++
++function verifyRollbackApply(changedPaths) {
++  const temp = fs.mkdtempSync(path.join(os.tmpdir(), 'v3-clean-global-sync-rollback-'));
++  try {
++    fs.cpSync(baseline, temp, { recursive: true });
++    let record = run('git', ['apply', path.join(evidence, 'change.patch')], { cwd: temp, timeout: 120000 });
++    if (!record.ok) return { ...record, command: 'isolated rollback setup', ok: false };
++    const isolatedEvidence = path.join(temp, P1_EVIDENCE_DIRECTORY);
++    fs.mkdirSync(isolatedEvidence, { recursive: true });
++    fs.copyFileSync(path.join(evidence, 'change.patch'), path.join(isolatedEvidence, 'change.patch'));
++    fs.copyFileSync(path.join(evidence, 'rollback.ps1'), path.join(isolatedEvidence, 'rollback.ps1'));
++    record = run(powershellExecutable(), ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', path.join(isolatedEvidence, 'rollback.ps1'), '-Apply'], { cwd: temp, timeout: 120000 });
++    const mismatches = [];
++    for (const file of changedPaths) {
++      const before = path.join(baseline, file);
++      const after = path.join(temp, file);
++      if (fs.existsSync(before) !== fs.existsSync(after)) mismatches.push(file);
++      else if (fs.existsSync(before) && hashFile(before) !== hashFile(after)) mismatches.push(file);
++    }
++    return { ...record, command: 'isolated-copy rollback.ps1 -Apply', rollback_files_checked: changedPaths.length, rollback_mismatches: mismatches, ok: record.ok && mismatches.length === 0 };
++  } finally {
++    fs.rmSync(temp, { recursive: true, force: true });
++  }
++}
++
++function writeVerification({ baselineChecks, checks, status, provisional }) {
++  writeJson('verification.json', {
++    schema_version: 'aiws.v3-clean.global-sync-verification.v1',
++    status,
++    provisional,
++    generated_at: new Date().toISOString(),
++    environment: { node: process.version, platform: process.platform, cwd: 'repository-root' },
++    baseline: {
++      boundary: P1_BASELINE_DIRECTORY,
++      expected_failure: 'workspace synchronization audit exits 1 before the fix',
++      commands: baselineChecks
++    },
++    commands: checks,
++    literal_failure_notes: checks.filter((entry) => !entry.ok).map((entry) => `${entry.command} exited ${entry.exit_status}`),
++    artifacts: { modified_artifact: 'modified-artifact.json', patch: 'change.patch', verification: 'verification.json', rollback: 'rollback.ps1' }
++  });
++}
++
++function writeManifest() {
++  const hashes = {};
++  for (const file of fs.readdirSync(evidence).sort()) {
++    if (file === 'manifest.json' || file === 'failure.json') continue;
++    const full = path.join(evidence, file);
++    if (fs.statSync(full).isFile()) hashes[file] = hashFile(full);
++  }
++  const verificationFile = path.join(evidence, 'verification.json');
++  const verification = fs.existsSync(verificationFile) ? readJson(verificationFile) : null;
++  const status = verification?.status === 'failed'
++    ? 'failed'
++    : verification?.provisional === false ? 'verified' : 'checkpoint';
++  writeJson('manifest.json', {
++    schema_version: 'aiws.v3-clean.global-sync-manifest.v1',
++    batch: path.basename(evidence),
++    phase: 'P1',
++    status,
++    parent: P1_PARENT_EVIDENCE_DIRECTORY,
++    artifacts: hashes,
++    modified_artifact: 'modified-artifact.json',
++    patch: 'change.patch',
++    verification: 'verification.json',
++    rollback: 'rollback.ps1'
++  });
++}
++
++function buildPatch(paths) {
++  const chunks = [];
++  for (const file of paths) {
++    const oldFile = path.join(baseline, file);
++    const newFile = path.join(root, file);
++    const oldExists = fs.existsSync(oldFile) && fs.statSync(oldFile).isFile();
++    const newExists = fs.existsSync(newFile) && fs.statSync(newFile).isFile();
++    const oldArgument = oldExists ? oldFile : '/dev/null';
++    const newArgument = newExists ? newFile : '/dev/null';
++    const result = spawnSync('git', ['diff', '--no-index', '--binary', '--', oldArgument, newArgument], { cwd: root, encoding: 'utf8', windowsHide: true, maxBuffer: 64 * 1024 * 1024 });
++    if (![0, 1].includes(result.status)) throw new Error(`patch_file_failed:${file}:${result.stderr || result.status}`);
++    if (result.stdout) chunks.push(normalizePatch(result.stdout, file, oldExists, newExists));
++  }
++  return chunks.join('').replace(/\n+$/u, '') + (chunks.length ? '\n' : '');
++}
++
++function normalizePatch(diff, file, oldExists, newExists) {
++  let oldHeader = false;
++  let newHeader = false;
++  return diff.split('\n').map((line) => {
++    if (line.startsWith('diff --git ')) return `diff --git a/${file} b/${file}`;
++    if (!oldHeader && line.startsWith('--- ')) {
++      oldHeader = true;
++      return oldExists ? `--- a/${file}` : '--- /dev/null';
++    }
++    if (!newHeader && line.startsWith('+++ ')) {
++      newHeader = true;
++      return newExists ? `+++ b/${file}` : '+++ /dev/null';
++    }
++    return line;
++  }).join('\n');
++}
++
++function rollbackScript() {
++  return `param([switch]$Apply)\n$ErrorActionPreference = 'Stop'\n$Evidence = Split-Path -Parent $MyInvocation.MyCommand.Path\n$Root = (Resolve-Path (Join-Path $Evidence '..\\..\\..')).Path\n$Patch = Join-Path $Evidence 'change.patch'\nPush-Location $Root\ntry {\n  git apply --reverse --check $Patch\n  if ($LASTEXITCODE -ne 0) { throw 'rollback_dry_run_failed' }\n  if ($Apply) { git apply --reverse --whitespace=nowarn $Patch; if ($LASTEXITCODE -ne 0) { throw 'rollback_apply_failed' } }\n  [ordered]@{ schema_version='aiws.v3-clean.global-sync-rollback.v1'; status=($(if ($Apply) { 'applied' } else { 'dry_run_passed' })); patch='change.patch'; parent='${P1_PARENT_EVIDENCE_DIRECTORY}'; volume_policy='seal deployment volumes; no down migration'; verified_at=(Get-Date).ToUniversalTime().ToString('o') } | ConvertTo-Json -Depth 5\n} finally { Pop-Location }\n`;
++}
++
++function captureScopeFiles() {
++  const tracked = gitLines(['-c', 'core.quotepath=false', 'ls-files']);
++  const untracked = gitLines(['-c', 'core.quotepath=false', 'ls-files', '--others', '--exclude-standard']);
++  const roots = /^(?:\.github\/|\.githooks\/|apps\/|packages\/|scripts\/|tests\/|docs\/architecture\/)/;
++  const exact = new Set([
++    'AGENTS.md', 'README.md', 'Dockerfile', 'compose.yml', 'package.json', 'pnpm-lock.yaml',
++    'pnpm-workspace.yaml', 'feature-catalog.json', 'sbom.spdx.json', '.dockerignore',
++    '.gitattributes', '.gitignore', '.prettierignore', '.prettierrc.json', 'eslint.config.mjs',
++    'docs/document-index.md', 'docs/requirements-traceability.md', 'docs/runbook.md',
++    'docs/testing.md', 'docs/threat-model.md', 'docs/v2-retrospective.md'
++  ]);
++  return [...new Set([...tracked, ...untracked].map(normalize))]
++    .filter((file) => file && (roots.test(file) || exact.has(file)))
++    .filter((file) => !file.startsWith('docs/evidence/') && !file.includes('/dist/') && !file.includes('/coverage/'))
++    .filter((file) => fs.existsSync(path.join(root, file)) && fs.statSync(path.join(root, file)).isFile())
++    .sort();
++}
++
++function run(command, args, options = {}) {
++  const cwd = options.cwd || root;
++  const allowed = options.allowed || [0];
++  const result = spawnSync(command, args, {
++    cwd,
++    encoding: 'utf8',
++    windowsHide: true,
++    shell: process.platform === 'win32' && command === 'pnpm',
++    timeout: options.timeout || 120000,
++    maxBuffer: 64 * 1024 * 1024,
++    env: { ...process.env, ...(options.env || {}) }
++  });
++  const exitStatus = result.status == null ? 1 : result.status;
++  return {
++    command: sanitize([command, ...args].join(' ')),
++    cwd: cwd === root ? 'repository-root' : sanitize(relative(cwd)),
++    stdout: sanitize(result.stdout || ''),
++    stderr: sanitize(result.stderr || result.error?.message || ''),
++    exit_status: exitStatus,
++    expected_exit_statuses: allowed,
++    signal: result.signal || null,
++    ok: allowed.includes(exitStatus)
++  };
++}
++
++function powershellExecutable() {
++  const probe = spawnSync('pwsh', ['-NoProfile', '-Command', 'exit 0'], { windowsHide: true });
++  return probe.status === 0 ? 'pwsh' : 'powershell.exe';
++}
++
++function ensurePassed(records, label) {
++  const failed = records.filter((entry) => !entry.ok);
++  if (failed.length) throw new Error(`${label}:${failed.map((entry) => `${entry.command}:${entry.exit_status}`).join(',')}`);
++}
++
++function gitLines(args) {
++  const result = spawnSync('git', args, { cwd: root, encoding: 'utf8', windowsHide: true });
++  if (result.status !== 0) throw new Error(`git_failed:${args.join(' ')}:${result.stderr}`);
++  return result.stdout.split(/\r?\n/).filter(Boolean);
++}
++
++function canonicalInventory(rows) {
++  return JSON.stringify(rows.map((entry) => ({ path: entry.path, sha256: entry.sha256, bytes: entry.bytes })));
++}
++
++function writeJson(name, value) {
++  fs.writeFileSync(path.join(evidence, name), `${JSON.stringify(value, null, 2)}\n`, { mode: 0o600 });
++}
++
++function readJson(file) {
++  return JSON.parse(fs.readFileSync(file, 'utf8'));
++}
++
++function hashFile(file) {
++  return createHash('sha256').update(fs.readFileSync(file)).digest('hex');
++}
++
++function sha256(value) {
++  return createHash('sha256').update(value).digest('hex');
++}
++
++function normalize(value) {
++  return String(value || '').replaceAll('\\', '/').replace(/^\.\//, '');
++}
++
++function relative(file) {
++  return path.relative(root, file).replaceAll('\\', '/');
++}
++
++function sanitize(value) {
++  return String(value || '')
++    .replaceAll(root, 'HOST')
++    .replaceAll(baseline, 'BASELINE_COPY')
++    .replace(/(?:file:\/\/\/)?\b[A-Za-z]:[\\/][^\r\n"']+/g, 'HOST_PATH')
++    .replace(/(?:\/Users\/|\/home\/|\/tmp\/|\/var\/)[^\s"']+/g, 'HOST_PATH');
++}
++
++function failVerification(errors) {
++  process.stderr.write(`${errors.join('\n')}\n`);
++  return 1;
++}
+diff --git a/scripts/v3-clean-workspace-audit.mjs b/scripts/v3-clean-workspace-audit.mjs
+new file mode 100644
+index 0000000..6c46d59
+--- /dev/null
++++ b/scripts/v3-clean-workspace-audit.mjs
+@@ -0,0 +1,266 @@
++import { createHash } from 'node:crypto';
++import { spawnSync } from 'node:child_process';
++import fs from 'node:fs';
++import path from 'node:path';
++import { fileURLToPath } from 'node:url';
++import {
++  P1_ACTIVE_MARKDOWN,
++  P1_CLEAN_ROOT,
++  P1_DEFERRED_PACKAGE_SCRIPTS,
++  P1_EVIDENCE_DIRECTORY,
++  P1_FORBIDDEN_PACKAGE_SCRIPTS,
++  P1_HTTP_COMPOSITION,
++  P1_LEGACY_SERVER_IMPORTERS,
++  P1_PROCESS_SCRIPTS,
++  P1_RETIRED_ROUTE_PROBES,
++  P1_RUNTIME_ENTRYPOINT,
++  classifyWorkspacePath
++} from './lib/v3-clean-p1-scope.mjs';
++
++const defaultRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
++
++export function auditWorkspace(options = {}) {
++  const root = path.resolve(options.root || defaultRoot);
++  const verifyEvidence = options.verifyEvidence ?? process.env.AIWS_P1_EVIDENCE_GENERATING !== '1';
++  const findings = [];
++  const checks = [];
++  const addFinding = (code, details = {}) => findings.push({ code, ...details });
++
++  const packageFile = path.join(root, 'package.json');
++  const packageJson = readJson(packageFile, addFinding, 'package_json_invalid') || {};
++  const scripts = packageJson.scripts || {};
++  for (const [name, expected] of Object.entries(P1_PROCESS_SCRIPTS)) {
++    if (scripts[name] !== expected) addFinding('active_process_script_mismatch', { script: name, expected, actual: scripts[name] || null });
++  }
++  if (scripts.dev !== 'node scripts/dev.mjs') addFinding('default_dev_script_mismatch', { actual: scripts.dev || null });
++  for (const name of P1_FORBIDDEN_PACKAGE_SCRIPTS) if (Object.hasOwn(scripts, name)) addFinding('future_phase_script_is_active', { script: name });
++  for (const [name, expected] of Object.entries(P1_DEFERRED_PACKAGE_SCRIPTS)) {
++    if (scripts[name] !== expected) addFinding('deferred_fixture_script_mismatch', { script: name, expected, actual: scripts[name] || null });
++  }
++  checks.push({ id: 'package-process-surface', valid: !findings.some((entry) => entry.code.includes('script')) });
++
++  const devSource = readText(path.join(root, 'scripts', 'dev.mjs'), addFinding, 'dev_script_missing');
++  if (devSource) {
++    if (!devSource.includes("['apps/api/server.mjs']")) addFinding('default_dev_missing_clean_entrypoint');
++    if (devSource.includes('apps/runner-broker/server.mjs') || devSource.includes("'@aiws/web'")) addFinding('default_dev_starts_future_surface');
++  }
++  const dockerfile = readText(path.join(root, 'Dockerfile'), addFinding, 'dockerfile_missing');
++  if (dockerfile && !dockerfile.includes('CMD ["node", "apps/api/server.mjs"]')) addFinding('container_entrypoint_mismatch');
++  if (fs.existsSync(path.join(root, 'apps', 'api', 'server-clean.mjs'))) addFinding('duplicate_clean_entrypoint_alias', { file: 'apps/api/server-clean.mjs' });
++  checks.push({ id: 'runtime-entrypoints', valid: !findings.some((entry) => ['default_dev_missing_clean_entrypoint', 'default_dev_starts_future_surface', 'container_entrypoint_mismatch', 'duplicate_clean_entrypoint_alias'].includes(entry.code)) });
++
++  const sourceFiles = collectSourceFiles(root);
++  const legacyImporters = [];
++  const legacyImportPattern = /(?:from\s+|import\s*\(\s*)['"]([^'"]*server-legacy\.mjs)['"]/g;
++  for (const file of sourceFiles) {
++    const source = fs.readFileSync(path.join(root, file), 'utf8');
++    if ([...source.matchAll(legacyImportPattern)].length) legacyImporters.push(file);
++  }
++  const expectedLegacyImporters = [...P1_LEGACY_SERVER_IMPORTERS].sort();
++  if (JSON.stringify(legacyImporters.sort()) !== JSON.stringify(expectedLegacyImporters)) {
++    addFinding('legacy_fixture_import_inventory_mismatch', { expected: expectedLegacyImporters, actual: legacyImporters.sort() });
++  }
++  checks.push({ id: 'legacy-server-containment', valid: !findings.some((entry) => entry.code === 'legacy_fixture_import_inventory_mismatch') });
++
++  const retiredRoutePattern = new RegExp('/api/' + 'v1(?:/|\\b)', 'g');
++  const deferredRouteReferences = new Map();
++  const activeRouteReferences = [];
++  for (const file of sourceFiles) {
++    const source = fs.readFileSync(path.join(root, file), 'utf8');
++    const count = [...source.matchAll(retiredRoutePattern)].length;
++    if (!count) continue;
++    if (P1_RETIRED_ROUTE_PROBES.includes(file)) continue;
++    const classification = classifyWorkspacePath(file);
++    const active = file.startsWith(P1_CLEAN_ROOT)
++      || [P1_RUNTIME_ENTRYPOINT, P1_HTTP_COMPOSITION, 'scripts/dev.mjs', '.github/PULL_REQUEST_TEMPLATE.md'].includes(file);
++    if (active) activeRouteReferences.push({ file, count });
++    else {
++      const key = `${classification?.phase || 'unclassified'}:${classification?.reason || classification?.kind || 'unknown'}`;
++      deferredRouteReferences.set(key, (deferredRouteReferences.get(key) || 0) + count);
++    }
++  }
++  if (activeRouteReferences.length) addFinding('retired_route_on_active_surface', { files: activeRouteReferences });
++  checks.push({ id: 'retired-route-containment', valid: activeRouteReferences.length === 0 });
++
++  const markdown = [];
++  for (const file of P1_ACTIVE_MARKDOWN) {
++    const full = path.join(root, file);
++    if (!fs.existsSync(full)) {
++      addFinding('active_markdown_missing', { file });
++      continue;
++    }
++    const source = fs.readFileSync(full, 'utf8');
++    markdown.push({ file, source });
++    for (const target of markdownTargets(source)) {
++      if (!target || /^[a-z]+:/i.test(target) || target.startsWith('#')) continue;
++      const withoutFragment = decodeURIComponent(target.split('#')[0].replace(/^<|>$/g, ''));
++      if (!withoutFragment) continue;
++      if (!fs.existsSync(path.resolve(path.dirname(full), withoutFragment))) addFinding('markdown_link_missing', { file, target });
++    }
++  }
++  const pullRequestTemplate = markdown.find((entry) => entry.file === '.github/PULL_REQUEST_TEMPLATE.md')?.source || '';
++  if (!pullRequestTemplate.includes('/api/v2')) addFinding('pull_request_template_missing_api_v2');
++  if (retiredRoutePattern.test(pullRequestTemplate)) addFinding('pull_request_template_uses_retired_route');
++  const readme = markdown.find((entry) => entry.file === 'README.md')?.source || '';
++  if (/\]\(docs\/archive\//.test(readme)) addFinding('active_readme_links_archive');
++  if (/docker\s+compose\s+up|pnpm\s+release:(?:build|rehearse|promote)/.test(readme)) addFinding('readme_advertises_future_release');
++  const staleNames = /docs\/(?:api|architecture|data-model)\.md|V3功能恢复与架构治理判断\.md|开发计划v3功能恢复\.md|测试计划v3功能恢复\.md/;
++  for (const entry of markdown) if (staleNames.test(entry.source)) addFinding('stale_active_document_reference', { file: entry.file });
++  checks.push({ id: 'active-document-contracts', valid: !findings.some((entry) => ['active_markdown_missing', 'markdown_link_missing', 'pull_request_template_missing_api_v2', 'pull_request_template_uses_retired_route', 'active_readme_links_archive', 'readme_advertises_future_release', 'stale_active_document_reference'].includes(entry.code)) });
++
++  const catalog = readJson(path.join(root, 'feature-catalog.json'), addFinding, 'feature_catalog_invalid');
++  const governance = catalog?.features?.find((feature) => feature.id === 'REC-D0-GOVERNANCE-000');
++  const expectedVerification = `${P1_EVIDENCE_DIRECTORY}/verification.json`;
++  if (JSON.stringify(governance?.evidence || []) !== JSON.stringify([expectedVerification])) {
++    addFinding('catalog_p1_evidence_mismatch', { expected: expectedVerification, actual: governance?.evidence || null });
++  }
++  const plan = readText(path.join(root, 'docs', 'architecture', 'v3-clean-development-plan.md'), addFinding, 'development_plan_missing');
++  const matrix = readText(path.join(root, 'docs', 'architecture', 'v23-capability-matrix.md'), addFinding, 'capability_matrix_missing');
++  if (plan && !plan.includes(`\`${P1_EVIDENCE_DIRECTORY}/\``)) addFinding('plan_p1_evidence_mismatch', { expected: P1_EVIDENCE_DIRECTORY });
++  if (matrix) {
++    const p1Lines = matrix.split(/\r?\n/).filter((line) => line.startsWith('| P1-PLATFORM-'));
++    if (!p1Lines.length || p1Lines.some((line) => !line.includes(P1_EVIDENCE_DIRECTORY))) addFinding('matrix_p1_evidence_mismatch', { expected: P1_EVIDENCE_DIRECTORY });
++  }
++  if (verifyEvidence) verifyEvidenceDirectory(root, addFinding);
++  checks.push({ id: 'p1-evidence-synchronization', valid: !findings.some((entry) => /(?:catalog|plan|matrix|evidence|artifact|rollback)_/.test(entry.code)) });
++
++  const unclassified = collectGovernedFiles(root).filter((file) => !classifyWorkspacePath(file));
++  if (unclassified.length) addFinding('workspace_files_unclassified', { files: unclassified });
++  checks.push({ id: 'workspace-inventory', valid: unclassified.length === 0 });
++
++  return {
++    schema_version: 'aiws.v3-clean.workspace-audit.v1',
++    phase: 'P1',
++    active: {
++      runtime_entrypoint: P1_RUNTIME_ENTRYPOINT,
++      http_composition: P1_HTTP_COMPOSITION,
++      process_scripts: Object.keys(P1_PROCESS_SCRIPTS).sort()
++    },
++    deferred: {
++      package_scripts: Object.keys(P1_DEFERRED_PACKAGE_SCRIPTS).sort(),
++      retired_route_references: Object.fromEntries([...deferredRouteReferences].sort(([left], [right]) => left.localeCompare(right)))
++    },
++    evidence: { directory: P1_EVIDENCE_DIRECTORY, verified: verifyEvidence },
++    checks,
++    findings,
++    valid: findings.length === 0
++  };
++}
++
++function verifyEvidenceDirectory(root, addFinding) {
++  const directory = path.join(root, P1_EVIDENCE_DIRECTORY);
++  const required = ['manifest.json', 'modified-artifact.json', 'original-hashes.json', 'verification.json', 'workspace-inventory.json', 'change.patch', 'rollback.ps1'];
++  if (!fs.existsSync(directory)) {
++    addFinding('p1_evidence_missing', { directory: P1_EVIDENCE_DIRECTORY });
++    return;
++  }
++  for (const file of required) if (!fs.existsSync(path.join(directory, file))) addFinding('p1_evidence_artifact_missing', { file: `${P1_EVIDENCE_DIRECTORY}/${file}` });
++  const manifest = readJson(path.join(directory, 'manifest.json'), addFinding, 'p1_evidence_manifest_invalid');
++  const modified = readJson(path.join(directory, 'modified-artifact.json'), addFinding, 'p1_modified_artifact_invalid');
++  const verification = readJson(path.join(directory, 'verification.json'), addFinding, 'p1_verification_invalid');
++  const workspaceInventory = readJson(path.join(directory, 'workspace-inventory.json'), addFinding, 'p1_workspace_inventory_invalid');
++  if (!manifest || !modified || !verification || !workspaceInventory) return;
++  for (const [file, expected] of Object.entries(manifest.artifacts || {})) {
++    const full = path.join(directory, file);
++    if (!fs.existsSync(full)) addFinding('p1_evidence_artifact_missing', { file: `${P1_EVIDENCE_DIRECTORY}/${file}` });
++    else if (hashFile(full) !== expected) addFinding('p1_evidence_artifact_hash_mismatch', { file: `${P1_EVIDENCE_DIRECTORY}/${file}` });
++  }
++  for (const entry of modified.files || []) {
++    const full = path.join(root, entry.path);
++    if (!fs.existsSync(full)) addFinding('p1_modified_artifact_missing', { file: entry.path });
++    else if (hashFile(full) !== entry.sha256) addFinding('p1_modified_artifact_hash_mismatch', { file: entry.path });
++  }
++  for (const entry of modified.deleted_files || []) if (fs.existsSync(path.join(root, entry.path))) addFinding('p1_deleted_artifact_restored', { file: entry.path });
++  const expectedInventoryPaths = (workspaceInventory.files || []).map((entry) => entry.path).sort();
++  const currentInventoryPaths = governedWorkspaceFiles(root);
++  if (JSON.stringify(expectedInventoryPaths) !== JSON.stringify(currentInventoryPaths)) {
++    addFinding('p1_workspace_inventory_paths_mismatch', { expected_count: expectedInventoryPaths.length, actual_count: currentInventoryPaths.length });
++  }
++  for (const entry of workspaceInventory.files || []) {
++    const full = path.join(root, entry.path);
++    if (!fs.existsSync(full) || hashFile(full) !== entry.sha256) addFinding('p1_workspace_inventory_hash_mismatch', { file: entry.path });
++  }
++  const commandRecords = verification.commands || verification.checks || [];
++  if (verification.status !== 'passed' || !commandRecords.length || commandRecords.some((entry) => Number(entry.exit_status ?? 1) !== 0)) {
++    addFinding('p1_verification_not_passed');
++  }
++  const patch = path.join(directory, 'change.patch');
++  if (fs.existsSync(patch)) {
++    const reverse = spawnSync('git', ['apply', '--reverse', '--check', patch], { cwd: root, encoding: 'utf8', windowsHide: true });
++    if (reverse.status !== 0) addFinding('p1_rollback_patch_check_failed', { stderr: bounded(reverse.stderr) });
++  }
++}
++
++function collectSourceFiles(root) {
++  return ['.github', 'apps', 'packages', 'scripts', 'tests']
++    .flatMap((directory) => walk(path.join(root, directory), root))
++    .filter((file) => /\.(?:md|mjs|js|ts|tsx|json|ya?ml)$/i.test(file));
++}
++
++function collectGovernedFiles(root) {
++  const files = ['.github', '.githooks', 'apps', 'packages', 'scripts', 'tests', 'docs/architecture']
++    .flatMap((directory) => walk(path.join(root, directory), root));
++  for (const file of P1_ACTIVE_MARKDOWN) if (fs.existsSync(path.join(root, file))) files.push(file);
++  for (const file of [
++    'AGENTS.md', 'README.md', 'Dockerfile', 'compose.yml', 'feature-catalog.json', 'package.json',
++    'pnpm-lock.yaml', 'pnpm-workspace.yaml', 'sbom.spdx.json', 'eslint.config.mjs',
++    '.dockerignore', '.gitattributes', '.gitignore', '.prettierignore', '.prettierrc.json'
++  ]) {
++    if (fs.existsSync(path.join(root, file))) files.push(file);
++  }
++  return [...new Set(files)].sort();
++}
++
++export function governedWorkspaceFiles(root = defaultRoot) {
++  return collectGovernedFiles(path.resolve(root));
++}
++
++function walk(directory, root) {
++  if (!fs.existsSync(directory)) return [];
++  const output = [];
++  for (const entry of fs.readdirSync(directory, { withFileTypes: true })) {
++    if (['node_modules', 'dist', 'coverage'].includes(entry.name)) continue;
++    const full = path.join(directory, entry.name);
++    if (entry.isDirectory()) output.push(...walk(full, root));
++    else output.push(path.relative(root, full).replaceAll('\\', '/'));
++  }
++  return output;
++}
++
++function markdownTargets(source) {
++  return [...source.matchAll(/\[[^\]]*\]\(([^)]+)\)/g)].map((match) => match[1].trim());
++}
++
++function readText(file, addFinding, code) {
++  if (!fs.existsSync(file)) {
++    addFinding(code, { file: path.relative(defaultRoot, file).replaceAll('\\', '/') });
++    return '';
++  }
++  return fs.readFileSync(file, 'utf8');
++}
++
++function readJson(file, addFinding, code) {
++  try { return JSON.parse(fs.readFileSync(file, 'utf8')); }
++  catch (error) {
++    addFinding(code, { file: path.basename(file), error: bounded(error?.message || error) });
++    return null;
++  }
++}
++
++function hashFile(file) {
++  return createHash('sha256').update(fs.readFileSync(file)).digest('hex');
++}
++
++function bounded(value) {
++  return String(value || '').replaceAll(defaultRoot, 'HOST').slice(0, 500);
++}
++
++if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
++  const rootArgument = process.argv.find((value) => value.startsWith('--root='));
++  const result = auditWorkspace({
++    root: rootArgument ? path.resolve(rootArgument.slice('--root='.length)) : defaultRoot,
++    verifyEvidence: !process.argv.includes('--skip-evidence')
++  });
++  process.stdout.write(`${JSON.stringify(result, null, 2)}\n`);
++  if (!result.valid) process.exitCode = 1;
++}
+diff --git a/scripts/verify.mjs b/scripts/verify.mjs
+index b71a937..1581843 100644
+--- a/scripts/verify.mjs
++++ b/scripts/verify.mjs
+@@ -1,7 +1,7 @@
+ import { spawnSync } from 'node:child_process';
+ 
+ const commands = [
+-  ['check'], ['scan:clean'], ['test:p1'], ['test'], ['test:integration'], ['test:security'], ['build'], ['test:e2e'], ['test:release']
++  ['check'], ['audit:p1'], ['scan:clean'], ['test:p1'], ['test'], ['test:integration'], ['test:security'], ['build'], ['test:e2e'], ['test:release']
+ ];
+ for (const [script] of commands) {
+   process.stdout.write(`\n== ${script} ==\n`);
+diff --git a/tests/p1/workspace-sync.test.mjs b/tests/p1/workspace-sync.test.mjs
+new file mode 100644
+index 0000000..643cd43
+--- /dev/null
++++ b/tests/p1/workspace-sync.test.mjs
+@@ -0,0 +1,49 @@
++import assert from 'node:assert/strict';
++import fs from 'node:fs';
++import path from 'node:path';
++import test from 'node:test';
++import { auditWorkspace } from '../../scripts/v3-clean-workspace-audit.mjs';
++import {
++  P1_BASELINE_DIRECTORY,
++  P1_DEFERRED_PACKAGE_SCRIPTS,
++  P1_EVIDENCE_DIRECTORY,
++  classifyWorkspacePath
++} from '../../scripts/lib/v3-clean-p1-scope.mjs';
++
++const root = process.cwd();
++
++test('global P1 audit classifies active and deferred surfaces without Evidence recursion', () => {
++  const audit = auditWorkspace({ root, verifyEvidence: false });
++  assert.equal(audit.valid, true, JSON.stringify(audit.findings));
++  assert.equal(audit.active.runtime_entrypoint, 'apps/api/server.mjs');
++  assert.deepEqual(audit.deferred.package_scripts, Object.keys(P1_DEFERRED_PACKAGE_SCRIPTS).sort());
++  assert.ok(Object.values(audit.deferred.retired_route_references).reduce((sum, count) => sum + count, 0) > 0);
++  assert.equal(audit.evidence.directory, P1_EVIDENCE_DIRECTORY);
++});
++
++test('pre-fix workspace snapshot reproduces the synchronization failures', () => {
++  const baseline = path.join(root, P1_BASELINE_DIRECTORY);
++  assert.ok(fs.existsSync(path.join(baseline, 'original-hashes.json')));
++  const audit = auditWorkspace({ root: baseline, verifyEvidence: false });
++  const codes = new Set(audit.findings.map((entry) => entry.code));
++  assert.equal(audit.valid, false);
++  for (const code of [
++    'future_phase_script_is_active',
++    'deferred_fixture_script_mismatch',
++    'pull_request_template_missing_api_v2',
++    'pull_request_template_uses_retired_route',
++    'active_readme_links_archive',
++    'readme_advertises_future_release',
++    'catalog_p1_evidence_mismatch',
++    'plan_p1_evidence_mismatch',
++    'matrix_p1_evidence_mismatch'
++  ]) assert.ok(codes.has(code), code);
++});
++
++test('workspace path classifier keeps later phases separate from P1', () => {
++  assert.deepEqual(classifyWorkspacePath('apps/api/src/clean/runtime.mjs').rows, ['P1-PLATFORM-001', 'P1-PLATFORM-002']);
++  assert.equal(classifyWorkspacePath('apps/api/src/modules/identity/service.mjs').phase, 'P2-P8');
++  assert.equal(classifyWorkspacePath('apps/runner-broker/server.mjs').phase, 'P6');
++  assert.equal(classifyWorkspacePath('apps/web/src/App.tsx').phase, 'P9');
++  assert.equal(classifyWorkspacePath('compose.yml').phase, 'P8-P9');
++});

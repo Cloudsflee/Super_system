@@ -1,0 +1,6 @@
+{
+  "schema_version": "aiws.v3-clean.global-sync-failure.v1",
+  "status": "failed",
+  "failed_at": "2026-08-19T00:39:59.897Z",
+  "error": "Error: acceptance_checks:isolated-copy rollback.ps1 -Apply:0\n    at ensurePassed (HOST_PATH\n    at checkpoint (HOST_PATH\n    at generateEvidence (HOST_PATH\n    at process.processTicksAndRejections (node:internal/process/task_queues:104:5)\n    at async HOST_PATH"
+}

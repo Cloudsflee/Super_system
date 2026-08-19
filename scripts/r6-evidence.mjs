@@ -14,7 +14,7 @@ const added = [
   'apps/web/src/features/assist/index.ts', 'apps/web/src/features/assist/AssistPage.tsx', 'apps/web/src/test/assist.test.tsx', 'tests/integration/assist-r6.test.mjs'
   , 'scripts/r6-e2e.mjs', 'scripts/r6-evidence.mjs'
 ];
-const trackedPatch = run('git', ['diff', '--binary', 'HEAD', '--', ':!V3功能恢复与架构治理判断.md']);
+const trackedPatch = run('git', ['diff', '--binary', 'HEAD', '--', ':!docs/archive/legacy-code-docs/V3功能恢复与架构治理判断-pre-clean.md']);
 const untrackedPatch = added.map((file) => run('git', ['diff', '--no-index', '--binary', '--', '/dev/null', file]).stdout).join('\n');
 write('change.patch', `${trackedPatch.stdout}\n${untrackedPatch}`);
 const modified = {};

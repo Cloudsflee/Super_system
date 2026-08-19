@@ -1,0 +1,10 @@
+{
+  "schema_version": "aiws.v3-clean.global-sync-failure.v1",
+  "status": "failed",
+  "failed_step": "acceptance checkpoint",
+  "observed_exit_status": 1,
+  "observed_duration_seconds": 137.4,
+  "last_complete_checkpoint": "initial_checks",
+  "reason": "generator process ended before the acceptance command list was persisted",
+  "retained_for_diagnosis": true
+}

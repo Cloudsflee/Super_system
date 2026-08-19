@@ -1,0 +1,670 @@
+{
+  "schema_version": "aiws.v3-clean.p3-route-inventory.v1",
+  "count": 81,
+  "routes": [
+    {
+      "command_id": "project.list",
+      "method": "GET",
+      "path": "/api/v2/projects",
+      "owner": "Project",
+      "scope": "project:read",
+      "project_scoped": false,
+      "idempotency": "forbidden",
+      "expected_revision": "none",
+      "input_schema": "account.query.v2",
+      "output_schema": "project.list.v2",
+      "long_running": false,
+      "events": [
+        "project.*"
+      ]
+    },
+    {
+      "command_id": "project.create",
+      "method": "POST",
+      "path": "/api/v2/projects",
+      "owner": "Project",
+      "scope": "project:write",
+      "project_scoped": false,
+      "idempotency": "required",
+      "expected_revision": "parent",
+      "input_schema": "project.create.v2",
+      "output_schema": "project.receipt.v2",
+      "long_running": false,
+      "events": [
+        "project.created",
+        "intake.created",
+        "brief.created",
+        "project.workflow_initialized"
+      ]
+    },
+    {
+      "command_id": "project.get",
+      "method": "GET",
+      "path": "/api/v2/projects/{id}",
+      "owner": "Project",
+      "scope": "project:read",
+      "project_scoped": true,
+      "idempotency": "forbidden",
+      "expected_revision": "none",
+      "input_schema": "project.id.v2",
+      "output_schema": "project.get.v2",
+      "long_running": false,
+      "events": [
+        "project.*"
+      ]
+    },
+    {
+      "command_id": "project.update",
+      "method": "PATCH",
+      "path": "/api/v2/projects/{id}",
+      "owner": "Project",
+      "scope": "project:write",
+      "project_scoped": true,
+      "idempotency": "required",
+      "expected_revision": "resource",
+      "input_schema": "project.update.v2",
+      "output_schema": "project.receipt.v2",
+      "long_running": false,
+      "events": [
+        "project.updated"
+      ]
+    },
+    {
+      "command_id": "project.archive",
+      "method": "POST",
+      "path": "/api/v2/projects/{id}/archive",
+      "owner": "Project",
+      "scope": "project:write",
+      "project_scoped": true,
+      "idempotency": "required",
+      "expected_revision": "resource",
+      "input_schema": "project.lifecycle.v2",
+      "output_schema": "project.receipt.v2",
+      "long_running": false,
+      "events": [
+        "project.archived"
+      ]
+    },
+    {
+      "command_id": "project.restore",
+      "method": "POST",
+      "path": "/api/v2/projects/{id}/restore",
+      "owner": "Project",
+      "scope": "project:write",
+      "project_scoped": true,
+      "idempotency": "required",
+      "expected_revision": "resource",
+      "input_schema": "project.lifecycle.v2",
+      "output_schema": "project.receipt.v2",
+      "long_running": false,
+      "events": [
+        "project.restored"
+      ]
+    },
+    {
+      "command_id": "intake.get",
+      "method": "GET",
+      "path": "/api/v2/projects/{project_id}/intake",
+      "owner": "Project",
+      "scope": "project:read",
+      "project_scoped": true,
+      "idempotency": "forbidden",
+      "expected_revision": "none",
+      "input_schema": "project.id.v2",
+      "output_schema": "intake.receipt.v2",
+      "long_running": false,
+      "events": [
+        "intake.*"
+      ]
+    },
+    {
+      "command_id": "intake.submit",
+      "method": "POST",
+      "path": "/api/v2/projects/{project_id}/intake",
+      "owner": "Project",
+      "scope": "project:write",
+      "project_scoped": true,
+      "idempotency": "required",
+      "expected_revision": "resource",
+      "input_schema": "intake.submit.v2",
+      "output_schema": "operation.receipt.v2",
+      "long_running": true,
+      "events": [
+        "intake.submitted",
+        "intake.ready",
+        "intake.source_drift",
+        "intake.failed"
+      ]
+    },
+    {
+      "command_id": "intake.retry",
+      "method": "POST",
+      "path": "/api/v2/projects/{project_id}/intake/retry",
+      "owner": "Project",
+      "scope": "project:write",
+      "project_scoped": true,
+      "idempotency": "required",
+      "expected_revision": "resource",
+      "input_schema": "intake.lifecycle.v2",
+      "output_schema": "operation.receipt.v2",
+      "long_running": true,
+      "events": [
+        "intake.submitted",
+        "intake.ready",
+        "intake.source_drift",
+        "intake.failed"
+      ]
+    },
+    {
+      "command_id": "intake.cancel",
+      "method": "POST",
+      "path": "/api/v2/projects/{project_id}/intake/cancel",
+      "owner": "Project",
+      "scope": "project:write",
+      "project_scoped": true,
+      "idempotency": "required",
+      "expected_revision": "resource",
+      "input_schema": "intake.lifecycle.v2",
+      "output_schema": "intake.receipt.v2",
+      "long_running": false,
+      "events": [
+        "intake.cancelled"
+      ]
+    },
+    {
+      "command_id": "brief.list",
+      "method": "GET",
+      "path": "/api/v2/projects/{project_id}/briefs",
+      "owner": "Project",
+      "scope": "project:read",
+      "project_scoped": true,
+      "idempotency": "forbidden",
+      "expected_revision": "none",
+      "input_schema": "project.id.v2",
+      "output_schema": "brief.list.v2",
+      "long_running": false,
+      "events": [
+        "brief.*"
+      ]
+    },
+    {
+      "command_id": "brief.create",
+      "method": "POST",
+      "path": "/api/v2/projects/{project_id}/briefs",
+      "owner": "Project",
+      "scope": "project:write",
+      "project_scoped": true,
+      "idempotency": "required",
+      "expected_revision": "resource",
+      "input_schema": "brief.create.v2",
+      "output_schema": "brief.receipt.v2",
+      "long_running": false,
+      "events": [
+        "brief.revised",
+        "brief.revision.created",
+        "project.brief_updated"
+      ]
+    },
+    {
+      "command_id": "brief.get",
+      "method": "GET",
+      "path": "/api/v2/projects/{project_id}/briefs/{revision}",
+      "owner": "Project",
+      "scope": "project:read",
+      "project_scoped": true,
+      "idempotency": "forbidden",
+      "expected_revision": "none",
+      "input_schema": "brief.preview.v2",
+      "output_schema": "brief.receipt.v2",
+      "long_running": false,
+      "events": [
+        "brief.*"
+      ]
+    },
+    {
+      "command_id": "brief.confirm",
+      "method": "POST",
+      "path": "/api/v2/projects/{project_id}/briefs/{revision}/confirm",
+      "owner": "Project",
+      "scope": "project:approve",
+      "project_scoped": true,
+      "idempotency": "required",
+      "expected_revision": "resource",
+      "input_schema": "brief.confirm.v2",
+      "output_schema": "brief.receipt.v2",
+      "long_running": false,
+      "events": [
+        "brief.confirmed",
+        "project.confirmed"
+      ]
+    },
+    {
+      "command_id": "brief.preview",
+      "method": "GET",
+      "path": "/api/v2/projects/{project_id}/briefs/{revision}/preview",
+      "owner": "Project",
+      "scope": "project:read",
+      "project_scoped": true,
+      "idempotency": "forbidden",
+      "expected_revision": "none",
+      "input_schema": "brief.preview.v2",
+      "output_schema": "brief.receipt.v2",
+      "long_running": false,
+      "events": [
+        "brief.*"
+      ]
+    },
+    {
+      "command_id": "repository.connection.list",
+      "method": "GET",
+      "path": "/api/v2/projects/{project_id}/repository-connections",
+      "owner": "Repository",
+      "scope": "repository:read",
+      "project_scoped": true,
+      "idempotency": "forbidden",
+      "expected_revision": "none",
+      "input_schema": "project.id.v2",
+      "output_schema": "repository.connection.list.v2",
+      "long_running": false,
+      "events": [
+        "repository.*"
+      ]
+    },
+    {
+      "command_id": "repository.connection.create",
+      "method": "POST",
+      "path": "/api/v2/projects/{project_id}/repository-connections",
+      "owner": "Repository",
+      "scope": "repository:write",
+      "project_scoped": true,
+      "idempotency": "required",
+      "expected_revision": "parent",
+      "input_schema": "repository.connection.create.v2",
+      "output_schema": "repository.connection.receipt.v2",
+      "long_running": false,
+      "events": [
+        "repository.connection.created",
+        "repository.target.created",
+        "repository.line.created"
+      ]
+    },
+    {
+      "command_id": "repository.connection.update",
+      "method": "PATCH",
+      "path": "/api/v2/repository-connections/{id}",
+      "owner": "Repository",
+      "scope": "repository:write",
+      "project_scoped": true,
+      "idempotency": "required",
+      "expected_revision": "resource",
+      "input_schema": "repository.connection.update.v2",
+      "output_schema": "repository.connection.receipt.v2",
+      "long_running": false,
+      "events": [
+        "repository.connection.updated"
+      ]
+    },
+    {
+      "command_id": "repository.target.list",
+      "method": "GET",
+      "path": "/api/v2/repository-connections/{id}/targets",
+      "owner": "Repository",
+      "scope": "repository:read",
+      "project_scoped": true,
+      "idempotency": "forbidden",
+      "expected_revision": "none",
+      "input_schema": "project.id.v2",
+      "output_schema": "repository.target.list.v2",
+      "long_running": false,
+      "events": [
+        "repository.*"
+      ]
+    },
+    {
+      "command_id": "repository.target.create",
+      "method": "POST",
+      "path": "/api/v2/repository-connections/{id}/targets",
+      "owner": "Repository",
+      "scope": "repository:write",
+      "project_scoped": true,
+      "idempotency": "required",
+      "expected_revision": "parent",
+      "input_schema": "repository.target.create.v2",
+      "output_schema": "repository.target.receipt.v2",
+      "long_running": false,
+      "events": [
+        "repository.target.created"
+      ]
+    },
+    {
+      "command_id": "repository.line.list",
+      "method": "GET",
+      "path": "/api/v2/projects/{project_id}/repository-lines",
+      "owner": "Repository",
+      "scope": "repository:read",
+      "project_scoped": true,
+      "idempotency": "forbidden",
+      "expected_revision": "none",
+      "input_schema": "project.id.v2",
+      "output_schema": "repository.line.list.v2",
+      "long_running": false,
+      "events": [
+        "repository.*"
+      ]
+    },
+    {
+      "command_id": "repository.line.reconcile",
+      "method": "POST",
+      "path": "/api/v2/repository-lines/{id}/reconcile",
+      "owner": "Repository",
+      "scope": "repository:write",
+      "project_scoped": true,
+      "idempotency": "required",
+      "expected_revision": "resource",
+      "input_schema": "repository.line.reconcile.v2",
+      "output_schema": "repository.line.receipt.v2",
+      "long_running": false,
+      "events": [
+        "repository.line.reconciled",
+        "repository.line.drifted"
+      ]
+    },
+    {
+      "command_id": "repository.workspace.list",
+      "method": "GET",
+      "path": "/api/v2/projects/{project_id}/repository-workspaces",
+      "owner": "Repository",
+      "scope": "repository:read",
+      "project_scoped": true,
+      "idempotency": "forbidden",
+      "expected_revision": "none",
+      "input_schema": "project.id.v2",
+      "output_schema": "repository.workspace.list.v2",
+      "long_running": false,
+      "events": [
+        "workspace.*"
+      ]
+    },
+    {
+      "command_id": "repository.workspace.create",
+      "method": "POST",
+      "path": "/api/v2/projects/{project_id}/repository-workspaces",
+      "owner": "Repository",
+      "scope": "repository:write",
+      "project_scoped": true,
+      "idempotency": "required",
+      "expected_revision": "parent",
+      "input_schema": "repository.workspace.create.v2",
+      "output_schema": "repository.workspace.receipt.v2",
+      "long_running": false,
+      "events": [
+        "workspace.created"
+      ]
+    },
+    {
+      "command_id": "repository.workspace.refresh",
+      "method": "POST",
+      "path": "/api/v2/repository-workspaces/{id}/refresh",
+      "owner": "Repository",
+      "scope": "repository:write",
+      "project_scoped": true,
+      "idempotency": "required",
+      "expected_revision": "resource",
+      "input_schema": "repository.workspace.lifecycle.v2",
+      "output_schema": "repository.workspace.receipt.v2",
+      "long_running": false,
+      "events": [
+        "workspace.refreshed"
+      ]
+    },
+    {
+      "command_id": "repository.workspace.lock",
+      "method": "POST",
+      "path": "/api/v2/repository-workspaces/{id}/lock",
+      "owner": "Repository",
+      "scope": "repository:write",
+      "project_scoped": true,
+      "idempotency": "required",
+      "expected_revision": "resource",
+      "input_schema": "repository.workspace.lifecycle.v2",
+      "output_schema": "repository.workspace.receipt.v2",
+      "long_running": false,
+      "events": [
+        "workspace.locked"
+      ]
+    },
+    {
+      "command_id": "repository.workspace.release",
+      "method": "POST",
+      "path": "/api/v2/repository-workspaces/{id}/release",
+      "owner": "Repository",
+      "scope": "repository:write",
+      "project_scoped": true,
+      "idempotency": "required",
+      "expected_revision": "resource",
+      "input_schema": "repository.workspace.lifecycle.v2",
+      "output_schema": "repository.workspace.receipt.v2",
+      "long_running": false,
+      "events": [
+        "workspace.released"
+      ]
+    },
+    {
+      "command_id": "workflow.list",
+      "method": "GET",
+      "path": "/api/v2/projects/{project_id}/workflows",
+      "owner": "Workflow",
+      "scope": "workflow:read",
+      "project_scoped": true,
+      "idempotency": "forbidden",
+      "expected_revision": "none",
+      "input_schema": "project.id.v2",
+      "output_schema": "workflow.list.v2",
+      "long_running": false,
+      "events": [
+        "workflow.*"
+      ]
+    },
+    {
+      "command_id": "workflow.get",
+      "method": "GET",
+      "path": "/api/v2/projects/{project_id}/workflow-draft",
+      "owner": "Workflow",
+      "scope": "workflow:read",
+      "project_scoped": true,
+      "idempotency": "forbidden",
+      "expected_revision": "none",
+      "input_schema": "project.id.v2",
+      "output_schema": "workflow.receipt.v2",
+      "long_running": false,
+      "events": [
+        "workflow.*"
+      ]
+    },
+    {
+      "command_id": "workflow.revise",
+      "method": "POST",
+      "path": "/api/v2/projects/{project_id}/workflow-draft",
+      "owner": "Workflow",
+      "scope": "workflow:write",
+      "project_scoped": true,
+      "idempotency": "required",
+      "expected_revision": "resource",
+      "input_schema": "workflow.revise.v2",
+      "output_schema": "workflow.receipt.v2",
+      "long_running": false,
+      "events": [
+        "workflow.revised",
+        "workflow.revision.created",
+        "workflow.node.created",
+        "workflow.contract.created"
+      ]
+    },
+    {
+      "command_id": "workflow.generation.list",
+      "method": "GET",
+      "path": "/api/v2/projects/{project_id}/workflow-generations",
+      "owner": "Workflow",
+      "scope": "workflow:read",
+      "project_scoped": true,
+      "idempotency": "forbidden",
+      "expected_revision": "none",
+      "input_schema": "project.id.v2",
+      "output_schema": "generation.list.v2",
+      "long_running": false,
+      "events": [
+        "generation.*"
+      ]
+    },
+    {
+      "command_id": "generation.start",
+      "method": "POST",
+      "path": "/api/v2/projects/{project_id}/workflow-generations",
+      "owner": "Workflow",
+      "scope": "workflow:run",
+      "project_scoped": true,
+      "idempotency": "required",
+      "expected_revision": "resource",
+      "input_schema": "generation.start.v2",
+      "output_schema": "operation.receipt.v2",
+      "long_running": true,
+      "events": [
+        "generation.queued",
+        "generation.running",
+        "generation.critic_pending",
+        "generation.failed"
+      ]
+    },
+    {
+      "command_id": "workflow.generation.get",
+      "method": "GET",
+      "path": "/api/v2/workflow-generations/{id}",
+      "owner": "Workflow",
+      "scope": "workflow:read",
+      "project_scoped": true,
+      "idempotency": "forbidden",
+      "expected_revision": "none",
+      "input_schema": "project.id.v2",
+      "output_schema": "generation.receipt.v2",
+      "long_running": false,
+      "events": [
+        "generation.*"
+      ]
+    },
+    {
+      "command_id": "generation.retry",
+      "method": "POST",
+      "path": "/api/v2/workflow-generations/{id}/retry",
+      "owner": "Workflow",
+      "scope": "workflow:run",
+      "project_scoped": true,
+      "idempotency": "required",
+      "expected_revision": "resource",
+      "input_schema": "generation.lifecycle.v2",
+      "output_schema": "operation.receipt.v2",
+      "long_running": true,
+      "events": [
+        "generation.queued",
+        "generation.running",
+        "generation.critic_pending",
+        "generation.failed"
+      ]
+    },
+    {
+      "command_id": "generation.cancel",
+      "method": "POST",
+      "path": "/api/v2/workflow-generations/{id}/cancel",
+      "owner": "Workflow",
+      "scope": "workflow:run",
+      "project_scoped": true,
+      "idempotency": "required",
+      "expected_revision": "resource",
+      "input_schema": "generation.lifecycle.v2",
+      "output_schema": "generation.receipt.v2",
+      "long_running": false,
+      "events": [
+        "generation.cancelled"
+      ]
+    },
+    {
+      "command_id": "critic.evaluate",
+      "method": "POST",
+      "path": "/api/v2/workflow-generations/{id}/critic",
+      "owner": "Critic",
+      "scope": "workflow:approve",
+      "project_scoped": true,
+      "idempotency": "required",
+      "expected_revision": "resource",
+      "input_schema": "critic.evaluate.v2",
+      "output_schema": "critic.receipt.v2",
+      "long_running": false,
+      "events": [
+        "critic.evaluated"
+      ]
+    },
+    {
+      "command_id": "workflow.proposal.get",
+      "method": "GET",
+      "path": "/api/v2/workflow-proposals/{id}",
+      "owner": "Workflow",
+      "scope": "workflow:read",
+      "project_scoped": true,
+      "idempotency": "forbidden",
+      "expected_revision": "none",
+      "input_schema": "project.id.v2",
+      "output_schema": "proposal.receipt.v2",
+      "long_running": false,
+      "events": [
+        "workflow.*"
+      ]
+    },
+    {
+      "command_id": "workflow.proposal.apply",
+      "method": "POST",
+      "path": "/api/v2/workflow-proposals/{id}/apply",
+      "owner": "Workflow",
+      "scope": "workflow:write",
+      "project_scoped": true,
+      "idempotency": "required",
+      "expected_revision": "resource",
+      "input_schema": "proposal.apply.v2",
+      "output_schema": "proposal.receipt.v2",
+      "long_running": false,
+      "events": [
+        "workflow.proposal.applied"
+      ]
+    },
+    {
+      "command_id": "outcome.requirement.list",
+      "method": "GET",
+      "path": "/api/v2/projects/{project_id}/outcome-requirements",
+      "owner": "Project",
+      "scope": "project:read",
+      "project_scoped": true,
+      "idempotency": "forbidden",
+      "expected_revision": "none",
+      "input_schema": "project.id.v2",
+      "output_schema": "outcome.requirement.list.v2",
+      "long_running": false,
+      "events": [
+        "outcome.*"
+      ]
+    },
+    {
+      "command_id": "outcome.requirement.create",
+      "method": "POST",
+      "path": "/api/v2/projects/{project_id}/outcome-requirements",
+      "owner": "Project",
+      "scope": "project:write",
+      "project_scoped": true,
+      "idempotency": "required",
+      "expected_revision": "parent",
+      "input_schema": "outcome.requirement.create.v2",
+      "output_schema": "outcome.requirement.receipt.v2",
+      "long_running": false,
+      "events": [
+        "outcome.requirement.created"
+      ]
+    }
+  ]
+}

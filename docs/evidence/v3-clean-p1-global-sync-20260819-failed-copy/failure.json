@@ -1,0 +1,11 @@
+{
+  "schema_version": "aiws.v3-clean.global-sync-failure.v1",
+  "status": "failed",
+  "failed_step": "isolated rollback baseline copy",
+  "observed_exit_status": 1,
+  "last_complete_checkpoint": "rollback dry-run",
+  "last_complete_command_count": 15,
+  "root_cause": "Node 24 fs.cpSync terminated during a recursive cross-volume baseline copy before returning or throwing",
+  "reproduction": "copy:start was emitted; copy:done and the finally cleanup marker were not emitted",
+  "retained_for_diagnosis": true
+}

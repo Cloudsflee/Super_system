@@ -1,8 +1,14 @@
 # V3-Clean Schema Contract
 
-Status: normative clean-baseline design.
+Status: normative through the P3 Project/Workflow implementation.
 Schema family: v3-clean.
-Baseline: 001 (PRAGMA user_version = 1).
+Baseline: 001 (PRAGMA user_version = 1); P2 forward migration: 002-identity-acl
+(PRAGMA user_version = 2); P3 forward migration: 003-project-workflow
+(PRAGMA user_version = 3).
+
+The active `apps/api/server.mjs` entrypoint defaults the migration target to P3.
+Explicit lower targets are retained only for isolated phase fixtures and
+forward-upgrade tests.
 Storage: SQLite WAL with a separate content-addressed store (CAS).
 
 This schema is a replacement, not a continuation of the V1-V6 migration
@@ -57,6 +63,14 @@ deferred foreign-key check verifies that the revision/hash pair agrees.
 
 ## 3. Identity, Team, and permission tables
 
+P2 owns `teams`, `team_memberships`, `sessions`, `project_memberships`,
+`project_invitations`, and `project_acl_entries`. Setup owns
+`credential_refs` and `provider_profiles`. The Identity service may read
+`exchange_grants` as a narrowing input, while the Exchange/MCP owner remains
+responsible for creating, revising, and revoking those grants. P2 deliberately
+does not create a `projects` table; a `ProjectScopeResolver` must validate an
+opaque project reference before any project-scoped read or write.
+
 | Table | Purpose |
 | --- | --- |
 | project_memberships | actor membership and role (owner, admin, editor, runner, reviewer, viewer) |
@@ -72,7 +86,34 @@ is called from HTTP, MCP, Gateway, importer verification, replay, and
 Evidence reads. An Exchange grant is evaluated after the actor's project
 membership and before resource selection.
 
+### 3.1 P2 state and secret rules
+
+- Actor: `active <-> suspended -> revoked`; the system actor is immutable.
+- Session: `active -> revoked|expired`; SQLite stores only a keyed proof hash.
+- Team: `active <-> suspended -> archived`.
+- Team membership: `invited -> active <-> suspended -> revoked|expired`.
+- Credential: `rebind_required -> pending -> active|failed -> revoked`; profile
+  probes use a deterministic fake adapter in P2 and never infer external state
+  from a fixture receipt.
+- Session proofs are delivered only as `HttpOnly; SameSite=Strict` cookies.
+  Proofs, master keys, and ciphertext are excluded from SQLite, WAL, CAS,
+  events, audit rows, error envelopes, and Evidence.
+
+Every grant, revoke, suspend, accept, rebind, rotate, or probe transition
+updates the mutable row, revision/head, generic operation link, event, audit
+reference, and idempotency response in one transaction. External adapter calls
+run outside that transaction; an unknown result remains failed/retryable after
+restart.
+
 ## 4. Project and repository tables
+
+P3 Project owns `projects`, `project_intakes`, `briefs`, `brief_revisions`, and
+the requirement-only `outcome_requirements` scaffold. Repository owns
+`repository_connections`, `repository_targets`, `repository_lines`,
+`repository_workspaces`, and `repository_locks`. P3 resolves every opaque P2
+project reference to the canonical `projects` row before calling the same
+authorization predicate. Neither owner creates a private head, operation,
+event, or CAS ledger.
 
 | Table | Purpose |
 | --- | --- |
@@ -85,13 +126,31 @@ membership and before resource selection.
 | repository_lines | project-to-target line, health/fault state, expected head SHA |
 | repository_workspaces | managed checkout/worktree, owner operation, lock and cleanup state |
 | repository_locks | single-writer lease, holder operation, expiry and fencing token |
-| repository_deletion_intents | archive/trash/restore/purge workflow and confirmations |
+| repository_deletion_intents | deferred archive/trash/purge intent table; not created by P3 |
 
 Repository paths are relative workspace references. Host absolute paths are
 kept in an adapter-local receipt and are excluded from database, event, CAS,
 and Evidence payloads.
 
+Project lifecycle is `draft -> confirming -> active <-> archived`; archive and
+restore use expected revision and idempotent terminal operations. Intake is
+`collecting -> submitted -> processing -> ready|failed|cancelled`; a failed
+intake may retry with an incremented attempt, but source revision/hash drift is
+recorded rather than accepted. Repository connection is
+`pending -> ready|faulted -> archived`, line is
+`pending -> ready|faulted <-> recovering -> removed`, and workspace is
+`requested -> provisioning -> ready <-> locked -> released|orphaned`. Only one
+active lock exists per workspace; released/expired lock history remains
+appendable and every reacquisition receives a new fencing token.
+
 ## 5. Workflow, generation, and execution tables
+
+P3 Workflow owns `workflows`, `workflow_revisions`, `workflow_nodes`,
+`node_contracts`, `workflow_generations`, and
+`workflow_generation_proposals`. Critic exclusively owns immutable
+`workflow_critic_receipts`. Execution and full Outcome tables remain later
+phase schema; P3 creates only `outcome_requirements` and never infers a score,
+evaluation, or waiver.
 
 | Table | Purpose |
 | --- | --- |
@@ -114,6 +173,17 @@ and Evidence payloads.
 The seven stages are prepare, context, run, check, review, finalize, and
 deliver. Stage checkpoints are replayable only when the input hash and
 expected execution revision still match.
+
+Workflow lifecycle is `draft -> proposed -> active -> superseded|archived`.
+Generation is
+`queued -> running -> critic_pending -> proposed -> applied|rejected` with
+`failed|cancelled` terminal branches. Retry creates a new generation row with
+an incremented `attempt` and `retry_of_generation_id`; it does not rewrite the
+failed generation. Proposal apply compares the captured Brief, Repository, and
+Workflow revisions/hashes and commits `stale` before returning a conflict.
+Startup recovery resumes queued/running fake-adapter operations and settles any
+unverifiable terminal mismatch as failed or cancelled rather than guessing
+success.
 
 ## 6. Context, projection, and MCP tables
 

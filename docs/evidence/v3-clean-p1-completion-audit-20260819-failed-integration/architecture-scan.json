@@ -1,0 +1,205 @@
+{
+  "schema_version": "aiws.v3-clean.architecture-scan.v3",
+  "entrypoints": [
+    "apps/api/server.mjs"
+  ],
+  "files": [
+    "apps/api/server.mjs",
+    "apps/api/clean-server.mjs",
+    "apps/api/src/clean/runtime.mjs",
+    "apps/api/src/clean/config.mjs",
+    "apps/api/src/clean/database.mjs",
+    "apps/api/src/clean/canonical.mjs",
+    "apps/api/src/clean/migrations/001-clean-baseline.mjs",
+    "apps/api/src/clean/redaction.mjs",
+    "apps/api/src/clean/cas.mjs",
+    "apps/api/src/clean/events.mjs",
+    "apps/api/src/clean/cursor.mjs",
+    "apps/api/src/clean/operations.mjs",
+    "apps/api/src/clean/platform.mjs",
+    "apps/api/src/clean/principal.mjs",
+    "apps/api/src/clean/platform-error.mjs",
+    "apps/api/src/clean/registry.mjs",
+    "apps/api/src/clean/receipts.mjs",
+    "apps/api/src/clean/ownership.mjs",
+    "apps/api/src/clean/http.mjs"
+  ],
+  "registry": {
+    "valid": true,
+    "mismatches": [],
+    "rest_count": 3,
+    "mcp_count": 3,
+    "web_count": 3
+  },
+  "ownership": {
+    "valid": true,
+    "missing_tables": [],
+    "unexpected_tables": [],
+    "missing_commands": [],
+    "mismatched_commands": [],
+    "missing_events": [],
+    "mismatched_events": []
+  },
+  "workspace": {
+    "schema_version": "aiws.v3-clean.workspace-audit.v2",
+    "phase": "P1",
+    "active": {
+      "runtime_entrypoint": "apps/api/server.mjs",
+      "http_composition": "apps/api/clean-server.mjs",
+      "process_scripts": [
+        "dev",
+        "dev:api",
+        "dev:clean",
+        "start",
+        "start:clean"
+      ]
+    },
+    "deferred": {
+      "package_scripts": [
+        "archive:v23",
+        "build",
+        "fixture:legacy:acceptance",
+        "fixture:legacy:dev-broker",
+        "fixture:legacy:release-build",
+        "fixture:legacy:release-promote",
+        "fixture:legacy:release-rehearse",
+        "fixture:seed-demo",
+        "github:seed-fixture",
+        "test",
+        "test:e2e",
+        "test:integration",
+        "test:release",
+        "test:runner-real",
+        "test:security",
+        "typecheck"
+      ],
+      "package_script_roles": {
+        "fixture:legacy:dev-broker": {
+          "role": "deferred_fixture",
+          "phase": "P6"
+        },
+        "build": {
+          "role": "characterization_gate",
+          "phase": "P9"
+        },
+        "typecheck": {
+          "role": "characterization_gate",
+          "phase": "P9"
+        },
+        "test": {
+          "role": "characterization_gate",
+          "phase": "P2-P9"
+        },
+        "test:integration": {
+          "role": "characterization_gate",
+          "phase": "P2-P9"
+        },
+        "test:e2e": {
+          "role": "characterization_gate",
+          "phase": "P9"
+        },
+        "test:security": {
+          "role": "characterization_gate",
+          "phase": "P2-P9"
+        },
+        "test:release": {
+          "role": "characterization_gate",
+          "phase": "P8-P9"
+        },
+        "test:runner-real": {
+          "role": "characterization_gate",
+          "phase": "P6"
+        },
+        "github:seed-fixture": {
+          "role": "deferred_fixture",
+          "phase": "P7"
+        },
+        "fixture:seed-demo": {
+          "role": "deferred_fixture",
+          "phase": "P3"
+        },
+        "archive:v23": {
+          "role": "historical_maintenance",
+          "phase": "historical"
+        },
+        "fixture:legacy:acceptance": {
+          "role": "deferred_fixture",
+          "phase": "P2-P9"
+        },
+        "fixture:legacy:release-build": {
+          "role": "deferred_fixture",
+          "phase": "P8-P9"
+        },
+        "fixture:legacy:release-rehearse": {
+          "role": "deferred_fixture",
+          "phase": "P8-P9"
+        },
+        "fixture:legacy:release-promote": {
+          "role": "deferred_fixture",
+          "phase": "P8-P9"
+        }
+      },
+      "retired_route_references": {
+        "P2-P8:historical domain/runtime input": 2,
+        "P2-P9:historical behavior or future-phase tool": 675,
+        "P2-P9:pre-clean shared contract": 1,
+        "P9:pre-clean Web characterization": 193
+      }
+    },
+    "evidence": {
+      "directory": "docs/evidence/v3-clean-p1-completion-audit-20260819",
+      "verified": false
+    },
+    "scope_inventory": {
+      "files": 750,
+      "classifications": {
+        "governance:P0-P9": 27,
+        "fixture:P8-P9": 5,
+        "p1:P1": 41,
+        "fixture:P2-P9": 82,
+        "fixture:P2-P8": 85,
+        "fixture:P6": 7,
+        "fixture:P9": 32,
+        "non_product:unscoped research": 88,
+        "archive:historical": 8,
+        "evidence:P0-P9": 374,
+        "supporting_document:P0-P9": 1
+      },
+      "unclassified": []
+    },
+    "checks": [
+      {
+        "id": "package-process-surface",
+        "valid": true
+      },
+      {
+        "id": "runtime-entrypoints",
+        "valid": true
+      },
+      {
+        "id": "legacy-server-containment",
+        "valid": true
+      },
+      {
+        "id": "retired-route-containment",
+        "valid": true
+      },
+      {
+        "id": "active-document-contracts",
+        "valid": true
+      },
+      {
+        "id": "p1-evidence-synchronization",
+        "valid": true
+      },
+      {
+        "id": "workspace-inventory",
+        "valid": true
+      }
+    ],
+    "findings": [],
+    "valid": true
+  },
+  "forbidden_findings": [],
+  "valid": true
+}

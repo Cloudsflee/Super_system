@@ -3,6 +3,7 @@ import { spawnSync } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
 import {
+  CLEAN_SQL_BOUNDARIES,
   FROZEN_SURFACES,
   LEGACY_SQL_BOUNDARIES,
   MODULE_REGISTRY,
@@ -10,13 +11,28 @@ import {
   SQL_BOUNDARY_SUFFIXES,
   ownerOf
 } from '../apps/api/src/modules/registry.mjs';
+import { auditWorkspace } from './v3-clean-workspace-audit.mjs';
+import { classifyWorkspacePath } from './lib/v3-clean-p1-scope.mjs';
 
 const root = process.cwd();
 const command = process.argv[2];
 const audit = process.argv.includes('--audit');
+const skipEvidence = process.argv.includes('--skip-evidence');
 const allowedCommands = new Set(['plan', 'catalog', 'coverage', 'impact']);
 const STATUS_FLOW = ['planned', 'scaffolded', 'implemented', 'verified', 'released'];
+const ACTIVE_PLAN_DOCUMENTS = Object.freeze([
+  'docs/architecture/v3-clean-development-plan.md',
+  'docs/testing.md'
+]);
+const CLEAN_RUNTIME_PREFIX = 'apps/api/src/clean/';
+const CLEAN_ENTRYPOINTS = new Set([
+  'apps/api/server.mjs',
+  'apps/api/clean-server.mjs'
+]);
 const failures = [];
+const workspaceAudit = auditWorkspace({ root, verifyEvidence: skipEvidence ? false : undefined });
+
+if (!workspaceAudit.valid) failures.push(`workspace synchronization failed: ${workspaceAudit.findings.map((entry) => entry.code).join(', ')}`);
 
 if (!allowedCommands.has(command)) fail(`unknown recovery governance command: ${command || '<empty>'}`);
 
@@ -77,12 +93,12 @@ function validateCatalogShape() {
       if (!modules.has(moduleId)) failures.push(`${feature.id}: unknown owner module ${moduleId}`);
     }
     for (const table of feature.tables || []) {
-      const owner = ownerOf('table', table);
+      const owner = catalogOwnerOf('table', table, feature);
       if (!owner) failures.push(`${feature.id}: table has no registered owner: ${table}`);
       else if (!feature.owner_modules.includes(owner)) failures.push(`${feature.id}: table ${table} is owned by ${owner}, which is not a feature owner`);
     }
     for (const event of feature.events || []) {
-      const owner = ownerOf('event', event);
+      const owner = catalogOwnerOf('event', event, feature);
       if (!owner) failures.push(`${feature.id}: event has no registered owner: ${event}`);
       else if (!feature.owner_modules.includes(owner)) failures.push(`${feature.id}: event ${event} is owned by ${owner}, which is not a feature owner`);
     }
@@ -117,14 +133,14 @@ function validateModuleRegistry() {
 }
 
 function checkPlan() {
-  const documents = ['docs/开发计划v3功能恢复.md', 'docs/测试计划v3功能恢复.md'];
+  const documents = [...ACTIVE_PLAN_DOCUMENTS];
   for (const document of documents) {
     const full = path.join(root, document);
     if (!fs.existsSync(full) || fs.statSync(full).size < 1000) failures.push(`missing or incomplete plan: ${document}`);
   }
   const developmentPlan = fs.existsSync(path.join(root, documents[0])) ? fs.readFileSync(path.join(root, documents[0]), 'utf8') : '';
-  for (const release of Array.from({ length: 10 }, (_, index) => `R${index}`)) {
-    if (!developmentPlan.includes(release)) failures.push(`development plan is missing ${release}`);
+  for (const phase of Array.from({ length: 10 }, (_, index) => `P${index}`)) {
+    if (!developmentPlan.includes(phase)) failures.push(`development plan is missing ${phase}`);
   }
   const requiredDomains = [
     'identity', 'setup', 'runner', 'mcp', 'project', 'workflow', 'execution', 'outcome',
@@ -138,7 +154,7 @@ function checkPlan() {
   if (!terminal || !bridge || terminal.name.includes('Bridge') || terminal.tables.some((table) => table.startsWith('bridge_'))) {
     failures.push('Terminal and Windows Bridge must be separate catalog features');
   }
-  return { documents, domains: [...domains].sort(), feature_count: features?.length || 0, phases: 10 };
+  return { documents, domains: [...domains].sort(), feature_count: features?.length || 0, phases: 10, phase_prefix: 'P', workspace_sync: summarizeWorkspaceAudit() };
 }
 
 function checkCatalog() {
@@ -155,7 +171,8 @@ function checkCatalog() {
     module_count: MODULE_REGISTRY.length,
     owned_tables: MODULE_REGISTRY.reduce((count, module) => count + module.tables.length, 0),
     owned_commands: MODULE_REGISTRY.reduce((count, module) => count + module.commands.length, 0),
-    unique_ids: ids.size
+    unique_ids: ids.size,
+    workspace_sync: summarizeWorkspaceAudit()
   };
 }
 
@@ -187,20 +204,31 @@ function checkImpact() {
   const changed = changedFiles();
   const mappings = [];
   const unmapped = [];
-  const governance = /^(?:\.gitattributes|feature-catalog\.json|package\.json|docs\/|V3功能恢复与架构治理判断\.md|scripts\/(?:recovery-governance|recovery-evidence)\.mjs|apps\/api\/src\/(?:schema|db-worker|migration-service)\.mjs|apps\/api\/src\/(?:migrations|modules)\/(?:index|registry|define-module)\.mjs)/;
   for (const file of [...changed].sort()) {
     const matched = features.filter((feature) => featurePaths(feature).some((target) => {
       const normalized = normalize(target);
       return file === normalized || file.startsWith(`${normalized}/`) || normalized.startsWith(`${file}/`);
     })).map((feature) => feature.id);
-    if (!matched.length && !governance.test(file)) unmapped.push(file);
-    mappings.push({ file, features: matched });
+    const classification = classifyWorkspacePath(file);
+    if (!matched.length && !classification) unmapped.push(file);
+    mappings.push({ file, features: matched, classification: classification?.kind || 'unmapped', phase: classification?.phase || null, phase_rows: classification?.rows || [] });
   }
   if (audit && unmapped.length) failures.push(`unmapped changed files: ${unmapped.join(', ')}`);
   const selectedTests = [...new Set(mappings
     .flatMap((mapping) => mapping.features)
     .flatMap((featureId) => features.find((feature) => feature.id === featureId)?.tests || []))].sort();
-  return { audit, changed_files: mappings, unmapped_files: unmapped, selected_tests: selectedTests };
+  return { audit, changed_files: mappings, unmapped_files: unmapped, selected_tests: selectedTests, workspace_sync: summarizeWorkspaceAudit() };
+}
+
+function summarizeWorkspaceAudit() {
+  return {
+    schema_version: workspaceAudit.schema_version,
+    phase: workspaceAudit.phase,
+    valid: workspaceAudit.valid,
+    checks: workspaceAudit.checks.map((entry) => ({ id: entry.id, valid: entry.valid })),
+    deferred_route_references: workspaceAudit.deferred.retired_route_references,
+    evidence_directory: workspaceAudit.evidence.directory
+  };
 }
 
 function validateStatusEvidence() {
@@ -214,7 +242,10 @@ function validateStatusEvidence() {
     if (feature.ui.length && !feature.ui_tests.length) failures.push(`${feature.id}: implemented UI feature has no UI tests`);
     if (!feature.evidence.length) failures.push(`${feature.id}: implemented feature has no evidence`);
     for (const testPath of [...feature.behavior_tests, ...feature.ui_tests]) requirePath(feature.id, testPath, 'test');
-    for (const evidencePath of feature.evidence) validateEvidence(feature, evidencePath, featureRank >= rank('verified'));
+    for (const evidencePath of feature.evidence) {
+      if (skipEvidence) continue;
+      validateEvidence(feature, evidencePath, featureRank >= rank('verified'));
+    }
     if (featureRank >= rank('released')) {
       if (!feature.release_receipts.length) failures.push(`${feature.id}: released feature has no release receipt`);
       for (const receiptPath of feature.release_receipts) validateReleaseReceipt(feature, receiptPath);
@@ -297,6 +328,7 @@ function validateSqlBoundaries() {
       if (statements > frozen.get(relativePath)) failures.push(`legacy SQL boundary grew: ${relativePath} (${statements} > ${frozen.get(relativePath)})`);
       continue;
     }
+    if (CLEAN_SQL_BOUNDARIES.includes(relativePath)) continue;
     if (!SQL_BOUNDARY_SUFFIXES.some((suffix) => suffix.endsWith('/')
       ? `/${relativePath}/`.includes(suffix)
       : `/${relativePath}`.endsWith(suffix))) {
@@ -334,7 +366,12 @@ function validateLegacyRuntime() {
     const basename = path.basename(file);
     const source = fs.readFileSync(file, 'utf8');
     if (/v(?:12|13|14|15|16|17|175|18|19|20|21|22|23)/i.test(basename)) failures.push(`versioned runtime filename: ${relativePath}`);
-    if (/\/api\/v(?:2|12|13|14|15|16|17|18|19|20|21|22|23)(?:\/|\b)/i.test(source)) failures.push(`legacy API route: ${relativePath}`);
+    const cleanRuntime = relativePath.startsWith(CLEAN_RUNTIME_PREFIX) || CLEAN_ENTRYPOINTS.has(relativePath);
+    // The clean-break public contract is v2. Deferred historical clients may
+    // still contain v1 fixtures; reject only later versioned runtime routes
+    // here and let the clean entrypoint scan enforce the v1 retirement rule.
+    if (!cleanRuntime && /\/api\/v(?:12|13|14|15|16|17|18|19|20|21|22|23)(?:\/|\b)/i.test(source)) failures.push(`legacy API route: ${relativePath}`);
+    if (cleanRuntime && /\/api\/v1(?:\/|\b)/i.test(source)) failures.push(`clean runtime registered legacy API route: ${relativePath}`);
     if (/state-migration-v\d+|global state snapshot/i.test(source)) failures.push(`legacy state runtime reference: ${relativePath}`);
   }
 }
@@ -432,6 +469,12 @@ function sqlTableReferences(source) {
 
 function rank(status) {
   return STATUS_FLOW.indexOf(status);
+}
+
+function catalogOwnerOf(kind, value, feature) {
+  const cleanP2 = (feature.target_modules || []).some((target) => normalize(target).startsWith(CLEAN_RUNTIME_PREFIX))
+    || (feature.evidence || []).some((entry) => normalize(entry).includes('/v3-clean-p2-'));
+  return ownerOf(kind, value, { clean: cleanP2 });
 }
 
 function requirePath(featureId, value, label) {

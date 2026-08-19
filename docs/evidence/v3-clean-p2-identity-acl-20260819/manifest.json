@@ -1,0 +1,26 @@
+{
+  "schema_version": "aiws.v3-clean.p2-identity-acl-manifest.v1",
+  "batch": "v3-clean-p2-identity-acl-20260819",
+  "phase": "P2",
+  "status": "verified",
+  "parent": "docs/evidence/v3-clean-p1-gate-contract-complete-20260819",
+  "artifacts": {
+    "authorization-inventory.json": "8a9c073f77a807cb82dca41f96e81e220dac32139df4e52d23e5579113fc2ab4",
+    "change.patch": "d9d8deac20dfaea2e29b873eea1608fb0811303f76d6bb928e9f2eaaa5f6cb75",
+    "gateway-denial-receipt.json": "a6add3b7297dbc8f46ef0fb1dd2dba563fab79bf3692c25e175916f7a9f559c6",
+    "isolation-receipt.json": "f415797855663f272294cb7fc2c8503420dae44c9add3aeebaa112b630e99221",
+    "modified-artifact.json": "585d2f14d18927271dc97ad45e0017defc04d98ccf0bb759e9802fb7ed9d2741",
+    "original-hashes.json": "41e98f72727709e9416a334deb059d517021b6d91e5cdc15470c7ef211de4fae",
+    "owner-inventory.json": "58f227e39a27989f6ddf4418627b2225b45e3f34b571ccb16163ec6dc41835d3",
+    "rebind-receipt.json": "5a6a344bd17e907e92b3d6685819be1bb64dc9cf949ebc84b2275aec5711ae99",
+    "rollback.ps1": "bf4065057815706ed99ec5fa485f21067c2055d1a7b3056b5b98cfea8f8cb434",
+    "route-inventory.json": "f7299c5be341e1f3f6b0d07a00c99011b37b8db3f4d2d4ebe112926cdeb8ef94",
+    "schema-diff.json": "3c178fb599b70c980b4e6e80b6de4aa6b2d438d006e69ce5b09dd5dc27010f40",
+    "schema-snapshot.json": "73d4b35b95554091696ce18caa52c46059ae3bc4c2dabe548e1e8464ebb15fc6",
+    "verification.json": "6885f3a62e984769abb7933e6c37fe871015013723f9c61ab8c46dc395919c6d"
+  },
+  "modified_artifact": "modified-artifact.json",
+  "patch": "change.patch",
+  "verification": "verification.json",
+  "rollback": "rollback.ps1"
+}

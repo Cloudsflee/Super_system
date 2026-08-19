@@ -3,7 +3,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
-import { start as startApi } from '../../apps/api/server.mjs';
+import { start as startApi } from '../../apps/api/server-legacy.mjs';
 import { signedHeaders } from '../../apps/api/src/broker-client.mjs';
 import { loadConfig } from '../../apps/api/src/config.mjs';
 import { start as startBroker } from '../../apps/runner-broker/server.mjs';

@@ -1,0 +1,27 @@
+{
+  "schema_version": "aiws.v3-clean.p3-project-workflow-manifest.v1",
+  "batch": "v3-clean-p3-project-workflow-20260819",
+  "phase": "P3",
+  "status": "verified",
+  "parent": "docs/evidence/v3-clean-p2-identity-acl-20260819",
+  "artifacts": {
+    "authorization-inventory.json": "be2c73490c14caf3f412d9014ae33d470201676e276d525e5ce58a49c8b39f20",
+    "change.patch": "16c7667061a72217197db4350b8f36c8ca26ebdffa7297f769fb88ce11c36bfb",
+    "isolation-receipt.json": "6d7510da959f83fa455c17521ad4380d3edda8ff9905b05163ec937d25282500",
+    "lifecycle-receipt.json": "24583bcb1d73e7019348cea68b88c9c017420e8a16931188909a18f73ca6f63e",
+    "migration-receipt.json": "f6b518fa64fa1a50dbd6500ba2ca1433660b89e9d7d574d9ed46867c83717fd9",
+    "modified-artifact.json": "03263ee7e55d24b685438599df7d911947bae885af2795f60cc85e9fb458bb57",
+    "original-hashes.json": "ed3fa6b79e6d54e66fc1743d5d7f2fbc1dffb99102bbcb162f6a36fde1fb7c29",
+    "owner-inventory.json": "a1fb3cdd81e8972cb99dbaa8a5b77c09642144a708ff2c4e62762bc823a236c3",
+    "restart-receipt.json": "06fa9d5f998f13053358e3d58c7fb81887703fc2010c454664f7593eea068c12",
+    "rollback.ps1": "97f0b66004c90aa13519175176f65fb0cb523763c9db80d400d3b53e9ac88df0",
+    "route-inventory.json": "e25b94d0106e11c56caf7d82f9d07fd8938a9da8826d53340da2c00dd5b79eee",
+    "schema-diff.json": "de7e9cb1b0903ee4824488fab8d7e326f8a5ea737d623069245f258a7b067eca",
+    "schema-snapshot.json": "117b1d7ec363569605481224e467358adb88853627dcac5f182750aa1f786936",
+    "verification.json": "e59c46f3e03f2d1d09a8759440e4d82c2a46a4b97d8f406918cf234cd2d5334f"
+  },
+  "modified_artifact": "modified-artifact.json",
+  "patch": "change.patch",
+  "verification": "verification.json",
+  "rollback": "rollback.ps1"
+}

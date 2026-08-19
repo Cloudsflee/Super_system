@@ -1,6 +1,7 @@
 import assist from './assist/index.mjs';
 import bridge from './bridge/index.mjs';
 import context from './context/index.mjs';
+import critic from './critic/index.mjs';
 import delivery from './delivery/index.mjs';
 import evidence from './evidence/index.mjs';
 import execution from './execution/index.mjs';
@@ -16,10 +17,11 @@ import runner from './runner/index.mjs';
 import setup from './setup/index.mjs';
 import terminal from './terminal/index.mjs';
 import workflow from './workflow/index.mjs';
+import { CLEAN_EVENT_OWNERS, CLEAN_P3_TABLE_OWNERS } from '../clean/ownership.mjs';
 
 export const MODULE_REGISTRY = Object.freeze([
   platform, identity, setup, project, workflow, mcp, context, repository,
-  runner, evidence, quality, execution, outcome, assist, terminal, delivery,
+  runner, evidence, quality, execution, outcome, critic, assist, terminal, delivery,
   bridge, operations
 ]);
 
@@ -44,6 +46,21 @@ export const SQL_BOUNDARY_SUFFIXES = Object.freeze([
   '/migration-service.mjs', '/migrations/'
 ]);
 
+// The clean platform has explicit SQL boundaries. New clean files must be
+// reviewed and added here instead of inheriting a package-wide exemption.
+export const CLEAN_SQL_BOUNDARIES = Object.freeze([
+  'apps/api/src/clean/authorization.mjs',
+  'apps/api/src/clean/cas.mjs',
+  'apps/api/src/clean/events.mjs',
+  'apps/api/src/clean/identity.mjs',
+  'apps/api/src/clean/operations.mjs',
+  'apps/api/src/clean/platform.mjs',
+  'apps/api/src/clean/principal.mjs',
+  'apps/api/src/clean/project-workflow.mjs',
+  'apps/api/src/clean/receipts.mjs',
+  'apps/api/src/clean/runtime.mjs'
+]);
+
 export const PLACEHOLDER_SUCCESS_PATTERNS = Object.freeze([
   { id: 'fixed-workflow-generation', pattern: /Generated delivery workflow/ },
   { id: 'immediate-assist-completion', pattern: /receipt\s*=\s*\{[^}]*status:\s*'completed'/s },
@@ -51,7 +68,13 @@ export const PLACEHOLDER_SUCCESS_PATTERNS = Object.freeze([
   { id: 'default-perfect-quality', pattern: /semantic_human_score\s*==\s*null\s*\?\s*100/ }
 ]);
 
-export function ownerOf(kind, value) {
+export function ownerOf(kind, value, { clean = false } = {}) {
+  if (clean && kind === 'table' && CLEAN_P3_TABLE_OWNERS[value]) return CLEAN_P3_TABLE_OWNERS[value].toLowerCase();
+  if (clean && kind === 'event') {
+    const exact = CLEAN_EVENT_OWNERS[value];
+    const wildcard = Object.entries(CLEAN_EVENT_OWNERS).find(([pattern]) => pattern.endsWith('*') && String(value).startsWith(pattern.slice(0, -1)))?.[1];
+    if (exact || wildcard) return String(exact || wildcard).toLowerCase();
+  }
   const field = kind === 'table' ? 'tables' : kind === 'command' ? 'commands' : 'events';
   return MODULE_REGISTRY.find((module) => module[field].includes(value))?.id || null;
 }

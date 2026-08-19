@@ -9,55 +9,70 @@ plan and capability matrix are the authority for what has actually been restored
 
 ## Runtime
 
-The production topology has two long-running services and one temporary workload:
+The target production topology has two long-running services and one temporary workload:
 
 - `app`: HTTP API, web UI, SQLite worker, command registry, Git and CAS services.
 - `runner-broker`: the only service with Docker CLI and `/var/run/docker.sock`.
 - `codex-runner`: a short-lived container created from a pinned image digest.
 
-The deterministic gates use the mock adapter. Run `pnpm test:runner-real` for the explicit Docker/Codex smoke path; without a pinned Runner digest and an ignored `AIWS_CODEX_SECRET_FILE`, it records `candidate` instead of a formal pass. The smoke verifies the CLI identity and ephemeral authentication cleanup before calling the model.
+Broker, Runner, external provider, and browser journeys remain characterization
+fixtures during P1. Their implementation and release claims begin in P2-P9 as
+listed in the development plan.
 
 The eventual clean deployment is published only at `http://127.0.0.1:4317`. The
 Broker is reachable only on the internal Compose network. V3-Clean uses a
 `v3-clean` database/CAS volume; historical V2.3 and pre-clean V3 volumes are
 read-only importer inputs and are forbidden as runtime write volumes.
 
-## Start
+The P1 clean platform is the default API entrypoint and can be started without
+the historical adapters:
+
+```powershell
+corepack pnpm start
+```
+
+`corepack pnpm start:clean` is an explicit alias for the same clean entrypoint.
+
+It creates `001-clean-baseline` (`PRAGMA user_version = 1`), exposes `/livez`,
+`/readyz`, and the operation/replay routes under `/api/v2`, and keeps a local
+CAS and receipt volume beside the database.
+
+## P1 Start
 
 ```powershell
 corepack pnpm install --frozen-lockfile
 corepack pnpm verify
-$env:AIWS_RUNNER_DIGEST = "sha256:<built-runner-digest>"
-$env:AIWS_RUNNER_IMAGE = $env:AIWS_RUNNER_DIGEST
-$env:AIWS_GITHUB_REPOSITORY = "OWNER/REPO"
-$env:AIWS_GITHUB_FIXTURE_SHA = "<40-character-fixture-commit>"
-docker compose up -d --no-build
+corepack pnpm start
 ```
 
-Before Compose startup, provide the ignored instance files `docker/secrets/broker_hmac`, `docker/secrets/codex_api_key`, and `docker/secrets/github_token`; the checked-in `.example` files define their formats. The GitHub token must be a fine-grained PAT for `AIWS_GITHUB_REPOSITORY` with Metadata read, Contents read/write, and Pull requests read/write. The Codex bundle supports only an OpenAI API key, fixed profile, and registered model. Credential material is read by the App into memory and never enters the browser.
-
-Seed the GitHub fixture only into a pre-created empty repository, then retain the emitted SHA as the configured fixture identity:
+From another shell, probe the clean process:
 
 ```powershell
-$env:AIWS_GITHUB_SECRET_FILE = (Resolve-Path docker/secrets/github_token)
-$env:AIWS_GITHUB_REPOSITORY = "OWNER/REPO"
-corepack pnpm github:seed-fixture
-$env:AIWS_GITHUB_FIXTURE_SHA = "<fixture_sha from the command>"
+Invoke-RestMethod http://127.0.0.1:4317/livez
+Invoke-RestMethod http://127.0.0.1:4317/readyz
 ```
 
-The seed command accepts an empty repository or the exact existing fixture refs. It never overwrites different history.
-
-Open `http://127.0.0.1:4317`. Local source development runs the API and Broker plus Vite at `http://127.0.0.1:5173`:
+During P1, local source development starts the clean API only; Broker and Web
+remain later-phase fixtures:
 
 ```powershell
 corepack pnpm dev
 ```
 
-Create the sanitized DesignSignal fixture through the public API:
+The pre-clean demonstration seeder is retained only for explicit historical
+fixture runs; clean project creation enters in P3:
 
 ```powershell
-corepack pnpm seed:demo
+corepack pnpm fixture:seed-demo
 ```
+
+## Deferred Fixtures
+
+The checked-in Web, Broker, MCP stdio, Compose, deployment, importer-adjacent,
+and release tooling are inputs to P2-P9. Commands that can execute the old
+runtime are registered under `fixture:legacy:*`; their output characterizes
+historical behavior and is not a clean release receipt. P1 has no active
+build/rehearse/promote command.
 
 ## API
 
@@ -68,19 +83,19 @@ envelope:
 
 ```json
 {
+  "request_id": "...",
   "error": {
     "code": "revision_conflict",
     "message": "project revision has changed",
     "retryable": false,
-    "request_id": "...",
     "details": {}
   }
 }
 ```
 
 REST, MCP, and UI actions must invoke the same Command/Query Registry. See the
-[API v2 contract](docs/architecture/api-v2-contract.md). The old `/api/v1`
-description is retained only in [`docs/archive/legacy-code-docs/`](docs/archive/legacy-code-docs/).
+[API v2 contract](docs/architecture/api-v2-contract.md). Historical routes are
+retired at the clean boundary and remain characterization inputs only.
 
 ## Data Boundary
 
@@ -99,11 +114,14 @@ clean volume before one-time cutover. Credentials import as metadata with
 | --- | --- |
 | `pnpm check` | syntax, TypeScript, runtime ownership, script count |
 | `pnpm test` | DAG, SQLite, immutability, paths, Broker contracts |
-| `pnpm test:integration` | API, Broker, MCP, restart, execution journey |
-| `pnpm test:e2e` | unique browser journey and six-viewport layout/error checks |
-| `pnpm test:security` | Compose and socket isolation, Broker rejection, credential scans across SQLite/SSE/CAS/errors |
-| `pnpm test:release` | version, port, receipt integrity, image identity, archive, directory governance |
-| `pnpm verify` | all gates in release order |
+| `pnpm test:p1` | V3-Clean baseline, operation/event/CAS/API v2 probes |
+| `pnpm audit:p1` | all-path P1/future-fixture classification, active docs, final Evidence and rollback freshness |
+| `pnpm scan:clean` | clean dependency boundary, ownership, registry parity and global P1 audit |
+| `pnpm test:integration` | P1 integration plus historical API/Broker/MCP characterization |
+| `pnpm test:e2e` | historical Web journey characterization; no P1 Web claim |
+| `pnpm test:security` | P1 security plus deferred Compose/Broker/provider characterization |
+| `pnpm test:release` | historical release receipt and deferred deployment characterization |
+| `pnpm verify` | P1 gates plus explicitly classified historical regression gates |
 
 Recovery planning and impact are executable before the release gates:
 
@@ -116,15 +134,9 @@ corepack pnpm recovery:impact --audit
 
 The commands validate `feature-catalog.json` and write metadata receipts below `.ai-workspace/recovery` without touching the formal `4317` service.
 
-Formal release runs only from a clean commit:
-
-```powershell
-corepack pnpm release:build
-corepack pnpm release:rehearse
-corepack pnpm release:promote
-```
-
-These commands create immutable gate, image/SBOM, temporary-volume acceptance, recovery, rollback, promotion, and targeted cleanup receipts under `.ai-workspace/release/v3-transition`. Rehearsal without both external configurations remains `candidate`; formal promotion requires fresh available Codex and GitHub probes plus evidence of a real Runner journey and a merged GitHub Draft PR with synchronized local baseline.
+Clean deployment build, rehearsal, promotion, temporary-volume import, and
+actual deployment rollback enter in P8-P9. Existing pre-clean scripts and
+receipts remain read-only fixtures until those phase gates replace them.
 
 ## Documentation
 

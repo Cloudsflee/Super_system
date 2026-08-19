@@ -11,9 +11,8 @@ const environment = {
   PORT: '4317'
 };
 const children = [
-  spawn(process.execPath, ['apps/runner-broker/server.mjs'], { cwd: root, env: environment, stdio: 'inherit', windowsHide: true }),
-  spawn(process.execPath, ['apps/api/server.mjs'], { cwd: root, env: environment, stdio: 'inherit', windowsHide: true }),
-  spawn('corepack', ['pnpm', '--filter', '@aiws/web', 'dev'], { cwd: root, env: environment, stdio: 'inherit', shell: process.platform === 'win32', windowsHide: true })
+  // P1 runs the clean API only; broker and Web are later-phase fixtures.
+  spawn(process.execPath, ['apps/api/server.mjs'], { cwd: root, env: environment, stdio: 'inherit', windowsHide: true })
 ];
 let stopping = false;
 const stop = () => {

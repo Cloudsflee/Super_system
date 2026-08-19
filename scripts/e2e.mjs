@@ -4,7 +4,7 @@ import path from 'node:path';
 import { createHash, generateKeyPairSync } from 'node:crypto';
 import { spawnSync } from 'node:child_process';
 import { chromium, expect } from '@playwright/test';
-import { start as startApi } from '../apps/api/server.mjs';
+import { start as startApi } from '../apps/api/server-legacy.mjs';
 import { BrokerClient } from '../apps/api/src/broker-client.mjs';
 import { start as startBroker } from '../apps/runner-broker/server.mjs';
 
