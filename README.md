@@ -2,6 +2,11 @@
 
 AIWS is a local, single-user workspace for AI-assisted software delivery. Version 3.0 keeps one product journey: register a project, seal a Project Brief and workflow revision, build a Context Pack, execute a two-level DAG, review immutable evidence, and create a GitHub Draft PR delivery.
 
+The target architecture is **V3-Clean**. Its normative public contract is `/api/v2`
+and its database starts from a clean baseline. The current branch still contains
+the pre-clean V6/R6 implementation as a historical fixture; the implementation
+plan and capability matrix are the authority for what has actually been restored.
+
 ## Runtime
 
 The production topology has two long-running services and one temporary workload:
@@ -12,7 +17,10 @@ The production topology has two long-running services and one temporary workload
 
 The deterministic gates use the mock adapter. Run `pnpm test:runner-real` for the explicit Docker/Codex smoke path; without a pinned Runner digest and an ignored `AIWS_CODEX_SECRET_FILE`, it records `candidate` instead of a formal pass. The smoke verifies the CLI identity and ephemeral authentication cleanup before calling the model.
 
-The App is published only at `http://127.0.0.1:4317`. The Broker is reachable only on the internal Compose network. V3 always uses `aiws-data-v3`; V2.3 volumes are forbidden by configuration.
+The eventual clean deployment is published only at `http://127.0.0.1:4317`. The
+Broker is reachable only on the internal Compose network. V3-Clean uses a
+`v3-clean` database/CAS volume; historical V2.3 and pre-clean V3 volumes are
+read-only importer inputs and are forbidden as runtime write volumes.
 
 ## Start
 
@@ -53,7 +61,10 @@ corepack pnpm seed:demo
 
 ## API
 
-All public routes are under `/api/v1`. Mutating requests require `Idempotency-Key`; revisioned updates require `expected_revision`. Errors use one envelope:
+The V3-Clean target exposes business routes only under `/api/v2`. Mutating requests
+require `Idempotency-Key`; lifecycle updates require `expected_revision` (or the
+equivalent revision header). The clean contract uses one redacted success/error
+envelope:
 
 ```json
 {
@@ -67,13 +78,20 @@ All public routes are under `/api/v1`. Mutating requests require `Idempotency-Ke
 }
 ```
 
-REST, MCP, and UI actions invoke the same Command Registry. See [API](docs/api.md).
+REST, MCP, and UI actions must invoke the same Command/Query Registry. See the
+[API v2 contract](docs/architecture/api-v2-contract.md). The old `/api/v1`
+description is retained only in [`docs/archive/legacy-code-docs/`](docs/archive/legacy-code-docs/).
 
 ## Data Boundary
 
-SQLite uses ordered forward-only migrations recorded in `schema_migrations`, with checksums tied to source. A current v1 database is registered only after its schema fingerprint matches; any pending upgrade first creates a consistent SQLite snapshot and SHA-256 manifest. Runtime policy keeps foreign keys, WAL, `synchronous=FULL`, strict relational tables, FTS5, and immutable-record triggers. An execution pins Workflow revision, Brief hash, repository SHA, Context Pack hash, and input asset hashes.
-
-V2.3 data is not migrated. The source volume is stopped, hashed, cloned as cold evidence, archived, and recovery-tested. Its immutable revocation and archive receipts are stored under `.ai-workspace/release/v3-transition`.
+The clean runtime opens only the `v3-clean` schema family. It uses ordered
+forward-only migrations, checksums, foreign keys, WAL, strict tables, canonical
+CAS hashes and immutable receipts. A historical V1-V6 database is not opened by
+startup; it is an input to the offline importer described in
+[`architecture/import-contract.md`](docs/architecture/import-contract.md).
+V2.3 and current V3 sources are stopped, hashed and imported into a temporary
+clean volume before one-time cutover. Credentials import as metadata with
+`rebind_required`; secret material is never copied.
 
 ## Gates
 
@@ -110,8 +128,13 @@ These commands create immutable gate, image/SBOM, temporary-volume acceptance, r
 
 ## Documentation
 
-- [Architecture](docs/architecture.md)
-- [Data model](docs/data-model.md)
+- [Code document index](docs/document-index.md)
+- [V3-Clean architecture](docs/architecture/v3-clean-break.md)
+- [Clean schema](docs/architecture/clean-schema.md)
+- [API v2 and events](docs/architecture/api-v2-contract.md)
+- [Capability matrix](docs/architecture/v23-capability-matrix.md)
+- [Development plan](docs/architecture/v3-clean-development-plan.md)
+- [Import contract](docs/architecture/import-contract.md)
 - [Threat model](docs/threat-model.md)
 - [Runbook](docs/runbook.md)
 - [Testing and evaluation](docs/testing.md)

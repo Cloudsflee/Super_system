@@ -1,0 +1,19 @@
+{
+  "schema": "aiws.docs-cleanup.receipt.v1",
+  "baseline_commit": "8edefc7d110dca80958e3ef0fe9115dd62a8751a",
+  "captured_at": "2026-08-19",
+  "files": {
+    "README.md": "e81805e66ae4f71f8aab17ca9d328f061aa2f0007b5010e4618b4ea34c7be5f7",
+    "docs/testing.md": "dee3b630a77f0626aea6eea52b4e06e1b3b827898d21b9807c53e542cdb7e6be",
+    "docs/threat-model.md": "cbfd5bff5695583f855a2fc177867ffd04d8f1fefd7c3d0201e02993b6b50347",
+    "docs/requirements-traceability.md": "1418a297478d20a952cb22c0a0737e2d3f4a42a7888f5716f0160455f149dd97",
+    "docs/api.md": "f272a6de094bed4d3d864771d54c2f1bdbb1ed84d32f6182204a5f4643a0c6d7",
+    "docs/architecture.md": "5b44538afb6ee28d5c051c40edefaddbcadadae3fc852cf50767e77f5cf10e4f",
+    "docs/data-model.md": "ff4d9a9907725fabf234d77c6c5524fde51dbfcd3c6e97a76d9d699200fac8ba",
+    "docs/开发计划v3功能恢复.md": "0181297ec76a1c7f52f12bc238e9df539af388e1432a30a2d0acb72c8ce664c9",
+    "docs/测试计划v3功能恢复.md": "37d8b67bf503e8719e107d1d580187cb8f22545040383e128d9772628c67193a",
+    "docs/runbook.md": "a0d0bbf0d3b146ade6b01067b6a8bf0f8182377e41c03e5039cfa72590f3744d",
+    "V3功能恢复与架构治理判断.md": "8dce41bdc54afe302bdbd3108c43e4456c15fe6a682af28ed8117a8e13f2ea28",
+    "探索-1/01_记忆机制与上下文包头脑风暴.md": "58b83b32782a40f970c3ee161a792f56e7b3dab4ee30d0c4695cefba958703cd"
+  }
+}

@@ -1,0 +1,48 @@
+{
+  "schema": "aiws.docs-cleanup.verification.v1",
+  "baseline_commit": "8edefc7d110dca80958e3ef0fe9115dd62a8751a",
+  "scope": "documentation-only",
+  "commands": [
+    {
+      "command": "git diff --cached --check -- . ':(exclude)docs/evidence/docs-cleanup-20260819/change.patch'",
+      "exit_status": 0,
+      "literal_output": ""
+    },
+    {
+      "command": "markdown relative-link scan over docs/**/*.md",
+      "exit_status": 0,
+      "literal_output": "markdown_links=all_resolved"
+    },
+    {
+      "command": "active docs legacy-directive scan excluding archive and evidence",
+      "exit_status": 0,
+      "literal_output": "active_legacy_directives=0"
+    },
+    {
+      "command": "git diff --cached --name-only -- apps packages scripts tests",
+      "exit_status": 0,
+      "literal_output": "code_files_changed=0"
+    },
+    {
+      "command": "SHA-256 comparison of seven archived files against baseline",
+      "exit_status": 0,
+      "literal_output": "archive_hash_match=7/7"
+    },
+    {
+      "command": "pwsh -NoProfile -ExecutionPolicy Bypass -File docs/evidence/docs-cleanup-20260819/rollback.ps1 -WhatIf",
+      "exit_status": 0,
+      "literal_output": "evidence directory is retained as the rollback record"
+    },
+    {
+      "command": "isolated worktree rollback rehearsal using fixture commit b996147e513f58c23b418cf8f2df640cb3ee6d2a",
+      "exit_status": 0,
+      "literal_output": "rollback_actual=passed; baseline docs restored; new docs removed; code_files_changed=0"
+    },
+    {
+      "command": "git -C <baseline-worktree> apply --check --whitespace=nowarn docs/evidence/docs-cleanup-20260819/change.patch",
+      "exit_status": 0,
+      "literal_output": "patch_apply_check=passed"
+    }
+  ],
+  "tests_not_run": "Application test suites were intentionally not run because this change is documentation-only."
+}

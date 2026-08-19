@@ -1,0 +1,40 @@
+{
+  "schema": "aiws.docs-cleanup.modified-artifact.v1",
+  "baseline_commit": "8edefc7d110dca80958e3ef0fe9115dd62a8751a",
+  "scope": "documentation-only",
+  "archived_directory": "docs/archive/legacy-code-docs",
+  "archived_files": [
+    "api-v1.md",
+    "architecture-pre-clean.md",
+    "data-model-pre-clean.md",
+    "开发计划-v3-recovery-pre-clean.md",
+    "测试计划-v3-recovery-pre-clean.md",
+    "runbook-pre-clean.md",
+    "V3功能恢复与架构治理判断-pre-clean.md"
+  ],
+  "active_additions": [
+    "docs/document-index.md",
+    "docs/architecture/v3-clean-development-plan.md",
+    "docs/runbook.md"
+  ],
+  "active_revisions": [
+    "README.md",
+    "docs/testing.md",
+    "docs/threat-model.md",
+    "docs/requirements-traceability.md",
+    "探索-1/01_记忆机制与上下文包头脑风暴.md"
+  ],
+  "sha256": {
+    "README.md": "a8c573a4dd668f8b9aab0b99b5ff8322d0b9c0e7daea9147477f41469ec54ce1",
+    "docs/testing.md": "1561ed6e77a6efc96a55a4fd8548589bce25dc49069d2a8c7f2a48afe540b088",
+    "docs/threat-model.md": "8c243259a0218f3a265954b3bf8e8aef2c1e51fd3177528890d643f79c376d75",
+    "docs/requirements-traceability.md": "0356288dc33829a46eb056944c4027a1e6757a4ac263661e43c2515dd3c4734a",
+    "docs/runbook.md": "528ddd4d485c1b1057238aa33ab3efbc9adc638a06f0f591d87d5eaa4b8b277a",
+    "docs/document-index.md": "0d4f3246bdd1de3894390e196e592543ea671137dd5ccc697de52f2141e010e7",
+    "docs/architecture/v3-clean-development-plan.md": "b678499d917e3a14c8ed4e4d7a9c693945619872aa934a950e27468fc3a30d90",
+    "docs/archive/legacy-code-docs/README.md": "388bfa3188543192d7f21ae8f393cd0edcbc6c5ca62f5b4e3dc6e7d4441232db",
+    "探索-1/01_记忆机制与上下文包头脑风暴.md": "19e8153a668437fd00d0b44192d6b4f1c9cfe20db9b6c6db523a549c1e1ff538",
+    "docs/evidence/docs-cleanup-20260819/rollback.ps1": "4a887fa1d716b32a1f7e7ca8446cb5f530b0c4555ba08fbce82451ac00f8eaad"
+  },
+  "code_files_changed": false
+}

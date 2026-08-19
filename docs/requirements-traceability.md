@@ -1,15 +1,23 @@
 # Requirements Traceability
 
-| Graduation project requirement | V3 capability | Executable evidence |
-| --- | --- | --- |
-| project access and requirement definition | Project plus immutable Brief revisions | API integration journey |
-| AI-assisted planning | two-level DAG plus Context Pack | DAG unit tests and Workflow UI |
-| controlled execution | Execution pinning and Broker Job Spec | Broker integration and security tests |
-| human-machine collaboration | immutable Review plus separate decision | review/delivery integration test |
-| source change inspection | managed Git Diff endpoint | project diff API and Execution page |
-| result management | CAS Asset Versions with immutable content hashes | asset API download and hash tests |
-| delivery | reviewed Draft PR delivery record and separate merge gate (GitHub probe required for external submission) | delivery integration test and capability receipt |
-| traceability | SSE execution events and Audit Events | SSE and audit API |
-| local security | loopback bind, internal Broker, isolated Runner | Compose security gate |
+本表是毕设需求的入口，不是 Catalog 状态表。每一行必须映射到
+[`architecture/v23-capability-matrix.md`](architecture/v23-capability-matrix.md)
+中的能力行；状态只能由行为测试、UI 测试、集成 probe 和 Evidence receipt
+推导。
 
-New features must add a row here, map to the core journey, and add executable acceptance evidence before entering the main branch.
+| Graduation project requirement | V3-Clean capability/matrix area | Executable evidence |
+| --- | --- | --- |
+| project access and requirement definition | Project, Team/Actor, ACL, Brief revisions (`C-01`-`C-05`) | API/domain flow, ACL isolation and Brief CAS receipt |
+| AI-assisted planning | Workflow, Generation, Critic, Context Pack (`C-06`-`C-12`) | DAG behavior, proposal/critic UI and golden workflow |
+| controlled execution | Runner, seven-stage Execution, checkpoints (`C-19`-`C-22`) | signed Job Spec, restart/replay and runner security receipt |
+| human-machine collaboration | Assist, Approval, User Input, Terminal, Bridge (`C-13`-`C-18`) | event replay, UI/manual-input and Bridge probe |
+| source change inspection | Repository Connection/Target/Line and managed Git Diff (`C-07`, `C-24`) | source drift, bundle and diff Evidence tests |
+| result management | CAS Assets, Trace, Digest, Quality and Outcome (`C-24`-`C-26`) | CAS hash/tamper, parser, human score and waiver receipts |
+| delivery | Draft PR, merge recovery, Deployment (`C-27`) | GitHub integration, health probe and deployment Evidence |
+| traceability | generic Operations, Events, cursors and Audit (`C-01`, `C-27`) | SSE/JSON replay parity and audit redaction |
+| local security | API boundary, Broker isolation, parser sandbox, Gateway scope (`C-01`, `C-23`-`C-27`) | architecture, security, parser and Gateway probes |
+
+New features must add or update a matrix row, map to the core journey, and add
+executable acceptance evidence before entering the release branch. A schema-only
+row remains `scaffolded`; a historical Evidence file does not prove clean-runtime
+behavior.

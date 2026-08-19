@@ -1,37 +1,58 @@
 # Threat Model
 
+状态：V3-Clean 支撑文档。规范细节以 `v3-clean-break.md`、`api-v2-contract.md`
+和 `clean-schema.md` 为准。
+
 ## Protected assets
 
-- managed repository content and generated diffs
-- Codex and GitHub credential material
-- immutable execution, review, delivery, and audit evidence
-- Docker daemon control capability
-- V2.3 cold evidence and V3 production data
+- project, team and ACL metadata;
+- managed repository content, workspace bundles and generated diffs;
+- credential metadata and the external proof used for rebind (not secret values);
+- immutable operations, events, execution, review, delivery and audit Evidence;
+- clean SQLite, CAS objects, parser outputs and import manifests;
+- Docker/Host/Windows execution capability and Gateway scope decisions;
+- read-only V2.3/V3 source snapshots used by the offline importer.
 
 ## Trust boundaries
 
-The browser is untrusted input. The App is trusted for commands and relational data. The App-to-Broker network is authenticated but treated as replayable transport. The Broker is the only Docker control boundary. Runner output is untrusted evidence until a human Review accepts it.
+The browser and all uploaded/parser input are untrusted. The API authenticates an
+actor and evaluates the project ACL before dispatching a typed command. The
+App-to-Broker and Gateway transports are authenticated but replayable. The Broker
+is the only Docker control boundary; the Gateway is a forwarding boundary with no
+Docker socket and no business tables. Runner and parser output is untrusted
+Evidence until policy and, where required, a human review accept it. The importer
+is offline and writes only an isolated temporary volume.
 
 ## Controls
 
-| Threat | Control |
+| Threat | V3-Clean control |
 | --- | --- |
-| command replay | `Idempotency-Key` plus request hash |
-| stale write | integer revision and `expected_revision` |
-| Broker impersonation | HMAC method/path/timestamp/nonce/body signature |
-| replayed Broker request | 30-second expiry and nonce cache |
-| arbitrary container | registered image digest and closed Job Spec |
-| host path escape | normalized relative path under V3 data root |
-| privileged runner | fixed cap drop, no-new-privileges, read-only root, no ports |
-| Docker takeover from App | no CLI package and no socket mount |
-| workspace ownership drift | App keeps only `CHOWN` and `DAC_OVERRIDE` after dropping all other capabilities so Runner UID 10001 can access execution-scoped files while App retains its own project tree |
-| secret disclosure | ephemeral memory reference; no events, logs, or results |
-| model approval spoofing | suggestion state separate from immutable human decision |
-| legacy data contamination | V2 volume name rejection in App and Broker config |
-| archive deletion | cold clone, compressed archive, manifest hash, restore drill |
+| command replay | `Idempotency-Key`, request hash and one operation receipt |
+| stale write or state jump | expected revision/CAS plus atomic state/event/head transaction |
+| actor/project scope escape | one authorization predicate reused by HTTP, MCP, importer, replay and Evidence |
+| Broker/Gateway impersonation | signed method/path/timestamp/nonce/body or forwarding receipt |
+| replayed adapter request | expiry, nonce cache, operation revision and bounded retry |
+| arbitrary container or parser | fixed digest/profile, closed Job Spec, quotas, sandbox and output contract |
+| host path escape | relative workspace reference, canonical CAS bytes and adapter path policy |
+| privileged runner | dropped capabilities, no-new-privileges, read-only root, no public port |
+| Docker takeover from App/Gateway | Docker CLI/socket exists only at the Broker boundary |
+| secret disclosure | metadata-only credentials, temporary rebind proof, redaction before event/audit/CAS commit |
+| approval spoofing | model suggestion, operation state and immutable human decision are separate records |
+| import contamination | schema-family check, read-only source manifests, semantic-conflict batch failure and sealed target on verify failure |
+| CAS tamper | canonical bytes, SHA-256 manifest, lineage/attestation and closed-snapshot verification |
+| rollback ambiguity | deployment-level receipt naming old image, old volume, target health and actual rollback output |
 
 ## Residual risks
 
-The Docker daemon remains a high-privilege dependency for the Broker. A compromised Broker can control local containers, so it is not host-published and accepts only signed requests. GitHub and Codex probes are capability states, not readiness exceptions. External integration success must be evidenced before a formal release receipt is marked passed.
+The Docker daemon remains a high-privilege dependency for the Broker. A compromised
+Broker can control local containers, so it is not host-published and accepts only
+signed requests. External Codex, GitHub, Gateway, Bridge and parser availability
+are capability states; they cannot be silently treated as readiness. Public provider
+egress remains an accepted local-deployment risk and must be reflected in the
+Runner profile and release receipt.
 
-The only model egress is the fixed `aiws-runner-model` network. Public provider egress is an accepted residual risk: the Broker does not add a general-purpose proxy or a mutable domain allowlist. Credentials are delivered over the signed App-to-Broker request and exist only in the probe/Runner process lifetime.
+Imported credentials require a new proof and start as `rebind_required`. Historical
+source data may contain malformed paths, stale permissions or incompatible meaning;
+the importer blocks those batches rather than silently selecting a source. A formal
+release requires fresh external probes, temporary-volume verification and an actual
+deployment rollback.

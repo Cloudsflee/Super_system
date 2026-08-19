@@ -1,0 +1,1106 @@
+diff --git a/README.md b/README.md
+index 9d1a093..35672a8 100644
+--- a/README.md
++++ b/README.md
+@@ -2,6 +2,11 @@
+ 
+ AIWS is a local, single-user workspace for AI-assisted software delivery. Version 3.0 keeps one product journey: register a project, seal a Project Brief and workflow revision, build a Context Pack, execute a two-level DAG, review immutable evidence, and create a GitHub Draft PR delivery.
+ 
++The target architecture is **V3-Clean**. Its normative public contract is `/api/v2`
++and its database starts from a clean baseline. The current branch still contains
++the pre-clean V6/R6 implementation as a historical fixture; the implementation
++plan and capability matrix are the authority for what has actually been restored.
++
+ ## Runtime
+ 
+ The production topology has two long-running services and one temporary workload:
+@@ -12,7 +17,10 @@ The production topology has two long-running services and one temporary workload
+ 
+ The deterministic gates use the mock adapter. Run `pnpm test:runner-real` for the explicit Docker/Codex smoke path; without a pinned Runner digest and an ignored `AIWS_CODEX_SECRET_FILE`, it records `candidate` instead of a formal pass. The smoke verifies the CLI identity and ephemeral authentication cleanup before calling the model.
+ 
+-The App is published only at `http://127.0.0.1:4317`. The Broker is reachable only on the internal Compose network. V3 always uses `aiws-data-v3`; V2.3 volumes are forbidden by configuration.
++The eventual clean deployment is published only at `http://127.0.0.1:4317`. The
++Broker is reachable only on the internal Compose network. V3-Clean uses a
++`v3-clean` database/CAS volume; historical V2.3 and pre-clean V3 volumes are
++read-only importer inputs and are forbidden as runtime write volumes.
+ 
+ ## Start
+ 
+@@ -53,7 +61,10 @@ corepack pnpm seed:demo
+ 
+ ## API
+ 
+-All public routes are under `/api/v1`. Mutating requests require `Idempotency-Key`; revisioned updates require `expected_revision`. Errors use one envelope:
++The V3-Clean target exposes business routes only under `/api/v2`. Mutating requests
++require `Idempotency-Key`; lifecycle updates require `expected_revision` (or the
++equivalent revision header). The clean contract uses one redacted success/error
++envelope:
+ 
+ ```json
+ {
+@@ -67,13 +78,20 @@ All public routes are under `/api/v1`. Mutating requests require `Idempotency-Ke
+ }
+ ```
+ 
+-REST, MCP, and UI actions invoke the same Command Registry. See [API](docs/api.md).
++REST, MCP, and UI actions must invoke the same Command/Query Registry. See the
++[API v2 contract](docs/architecture/api-v2-contract.md). The old `/api/v1`
++description is retained only in [`docs/archive/legacy-code-docs/`](docs/archive/legacy-code-docs/).
+ 
+ ## Data Boundary
+ 
+-SQLite uses ordered forward-only migrations recorded in `schema_migrations`, with checksums tied to source. A current v1 database is registered only after its schema fingerprint matches; any pending upgrade first creates a consistent SQLite snapshot and SHA-256 manifest. Runtime policy keeps foreign keys, WAL, `synchronous=FULL`, strict relational tables, FTS5, and immutable-record triggers. An execution pins Workflow revision, Brief hash, repository SHA, Context Pack hash, and input asset hashes.
+-
+-V2.3 data is not migrated. The source volume is stopped, hashed, cloned as cold evidence, archived, and recovery-tested. Its immutable revocation and archive receipts are stored under `.ai-workspace/release/v3-transition`.
++The clean runtime opens only the `v3-clean` schema family. It uses ordered
++forward-only migrations, checksums, foreign keys, WAL, strict tables, canonical
++CAS hashes and immutable receipts. A historical V1-V6 database is not opened by
++startup; it is an input to the offline importer described in
++[`architecture/import-contract.md`](docs/architecture/import-contract.md).
++V2.3 and current V3 sources are stopped, hashed and imported into a temporary
++clean volume before one-time cutover. Credentials import as metadata with
++`rebind_required`; secret material is never copied.
+ 
+ ## Gates
+ 
+@@ -110,8 +128,13 @@ These commands create immutable gate, image/SBOM, temporary-volume acceptance, r
+ 
+ ## Documentation
+ 
+-- [Architecture](docs/architecture.md)
+-- [Data model](docs/data-model.md)
++- [Code document index](docs/document-index.md)
++- [V3-Clean architecture](docs/architecture/v3-clean-break.md)
++- [Clean schema](docs/architecture/clean-schema.md)
++- [API v2 and events](docs/architecture/api-v2-contract.md)
++- [Capability matrix](docs/architecture/v23-capability-matrix.md)
++- [Development plan](docs/architecture/v3-clean-development-plan.md)
++- [Import contract](docs/architecture/import-contract.md)
+ - [Threat model](docs/threat-model.md)
+ - [Runbook](docs/runbook.md)
+ - [Testing and evaluation](docs/testing.md)
+diff --git a/docs/architecture/v3-clean-development-plan.md b/docs/architecture/v3-clean-development-plan.md
+new file mode 100644
+index 0000000..727aab8
+--- /dev/null
++++ b/docs/architecture/v3-clean-development-plan.md
+@@ -0,0 +1,491 @@
++# V3-Clean 分阶段开发计划
++
++状态：实施规划，不是功能完成声明。
++计划基线：`8edefc7`。
++规范来源：同目录下的 `v3-clean-break.md`、`clean-schema.md`、
++`api-v2-contract.md`、`import-contract.md`、`v23-capability-matrix.md` 和
++`decision-log.md`。
++责任人：工程负责人；每个阶段由对应领域 owner 对行为、数据、权限、测试
++和 Evidence 共同负责。
++
++本计划只定义如何实施 V3-Clean。当前分支已经存在的 V6/R6 代码、旧
++migration、旧数据库和旧 Evidence 是行为/迁移 fixture，不因本计划而成为
++clean runtime 的启动依赖。
++
++## 1. 目标与当前基线
++
++### 1.1 目标
++
++最终系统只有一个 V3-Clean runtime：
++
++```text
++HTTP/API v2 + SSE/JSON replay + MCP HTTP/stdio/Gateway
++                         ->
++                 Command/Query Registry
++                         ->
++                    Domain Services
++                         ->
++             Canonical Repository + one transaction
++                         ->
++        Runner / Parser / GitHub / Bridge / CAS adapters
++                         ->
++             clean SQLite + CAS + immutable receipts
++```
++
++目标必须同时恢复 V2.3 的业务面和 V3 的执行隔离、CAS、审计、回滚能力。所有
++表、Command、Event、权限判断和 aggregate head 只有一个 owner；所有长任务
++共享 `operations`、`events`、cursor 和 CAS 模型。
++
++### 1.2 已确认基线
++
++| 项目 | 当前事实 | 对实施的含义 |
++| --- | --- | --- |
++| 架构决策 | 6 份 clean-break 规范已落盘 | 代码实现必须先对照规范和决策日志 |
++| 当前运行时 | V6/R6 代码仍在工作树中 | 作为只读 fixture；不能直接延伸为 clean runtime |
++| 当前 Catalog | 27 项；部分项只有 scaffold/Evidence | 状态必须由新行为、UI、集成和 Evidence 推导 |
++| V2.3 输入 | 14 个 L0-L7 catalog 项、历史 route/schema/UI | 作为 characterization 和 importer 输入 |
++| API | 目标固定为 `/api/v2` | 不保留 `/api/v1` 兼容路由 |
++| 数据 | clean schema family 从 `user_version=1` 开始 | V1-V6 migration 只供离线 importer/历史证据使用 |
++| 切换 | 离线一次性 cutover | 不做双写、共享写卷或长期双运行 |
++
++### 1.3 非目标
++
++- 不在阶段中逐步开放旧 API、旧 session 分支或兼容 flag；
++- 不把旧表逐张复制成新表后宣称完成，所有迁移必须有语义映射和验证；
++- 不把 parser 输出直接当成人工质量结论；
++- 不把 Gateway 做成业务数据库或 Docker 控制面；
++- 不在没有 receipt 的情况下手工提升 Catalog 状态；
++- 本文档阶段不改源码、schema、测试或 Catalog。
++
++## 2. 工作单元与完成定义
++
++### 2.1 能力闭环
++
++每个能力以一条可追踪闭环交付，而不是以文件数量交付：
++
++```text
++V2.3 行为 fixture
++  -> capability matrix row
++  -> clean schema/API/Command/Event
++  -> domain service + repository + adapter
++  -> UI/MCP surface
++  -> unit + integration + security + UI test
++  -> Evidence + rollback receipt
++  -> Catalog 状态推导
++```
++
++矩阵行必须包含 API、Command、Event、表、状态机、UI、外部依赖、测试、
++Evidence 和权限边界。跨域写入只能经过 domain service 或显式 repository
++接口。
++
++### 2.2 状态门槛
++
++| 状态 | 必须存在 | 不足时的处理 |
++| --- | --- | --- |
++| `planned` | 矩阵行、依赖和验收定义 | 只允许设计和 fixture 分析 |
++| `scaffolded` | schema/contract/interface | 不得对外宣称可用 |
++| `implemented` | domain 行为、适用 UI、行为测试和 Evidence | 缺一项保持 scaffolded |
++| `verified` | 集成测试或独立外部 probe receipt | 记录实际命令、输入、输出、退出码 |
++| `released` | 临时卷发布、健康探针和实际 rollback receipt | 只能在切换门禁中提升 |
++
++### 2.3 每个阶段的固定工件
++
++每个阶段目录必须留下：
++
++1. 修改后的 artifact（schema、代码、UI 或配置）；
++2. patch/diff、schema diff 或 import mapping；
++3. verification record，包含 baseline/modified 命令、输入、字面输出和
++   退出状态；
++4. runnable rollback receipt；
++5. 更新后的 capability matrix 行和 Evidence 索引。
++
++阶段失败时，失败 artifact 保留但不可挂载为生产；修复后从 checkpoint 或
++   新批次继续，不覆盖失败报告。
++
++## 3. 阶段总览
++
++| 阶段 | 名称 | 依赖 | 主要产出 | 退出凭证 |
++| --- | --- | --- | --- | --- |
++| P0 | 文档、治理和行为基线 | 无 | 规范、索引、V2.3 characterization 清单 | architecture/document gate |
++| P1 | Clean baseline、API v2 和平台内核 | P0 | 新 schema family、registry、operations/events/CAS、错误 envelope | clean-start receipt |
++| P2 | Identity、Team、Actor、Credential 和 ACL | P1 | 会话、成员关系、项目权限、rebind 流程 | identity/ACL isolation receipt |
++| P3 | Project、Brief、Repository、Workflow、Generation、Critic | P1/P2 | 项目入口到可审查工作流草案 | project/workflow golden |
++| P4 | Context、Projection、Pack、MCP、Exchange、Gateway | P2/P3 | 受权限约束的上下文和工具边界 | context/MCP parity receipt |
++| P5 | Assist、Files、Attachments、Approval、Terminal、Bridge | P2/P4 | 人机协作和本地执行交互 | Assist/Bridge replay receipt |
++| P6 | Runner、七阶段 Execution、Checkpoint、Replay | P3/P4/P5 | 可暂停、恢复、重试的执行链 | runner/restart receipt |
++| P7 | CAS、Evidence、Trace、Quality、Parser、Outcome | P4/P6 | 证据链、全格式解析和人工裁决 | quality/CAS tamper receipt |
++| P8 | Delivery、Deployment、Backup/Restore、Importer、Operations | P2-P7 | 外部交付、离线导入和部署回滚 | import/cutover/rollback receipt |
++| P9 | Web 完整闭环、移动/Offline、发布 | P1-P8 | 全视口产品流程和 release gate | release promotion receipt |
++
++P1-P7 是业务依赖顺序；P8 的 importer 只能在所有目标域模型冻结后实现。Web
++组件可以在各阶段做薄 UI 骨架，但 P9 才能把跨域流程、Offline、Gateway 管理
++和运维视图作为完整能力验收。
++
++## 4. P0：文档、治理和行为基线（已完成）
++
++### 目标
++
++锁定 clean-break 决策、V2.3 L0-L7 能力矩阵、clean schema、API v2、import
++contract、决策日志和文档索引，防止实现过程中重新引入兼容模式。
++
++### 工作项
++
++- 从 V2.3 commit、route registry、schema、UI 和 catalog 生成净化行为输入；
++- 为当前 27 个 Catalog 条目和 V2.3 14 个 L0-L7 条目建立双向矩阵行；
++- 标记当前代码中的旧 API、旧 migration、shadow head、second operation
++  model 和 parser exclusion；
++- 建立架构扫描、preflight、receipt 和 rollback 的固定格式；
++- 将失效代码文档归档，并把活动入口统一到 `docs/document-index.md`。
++
++### 退出条件
++
++- `27/27` 当前 Catalog、`14/14` V2.3 Catalog 和 L0-L7 全覆盖；
++- 文档之间没有 API、schema family、parser 范围或 import 策略矛盾；
++- 归档文件不再被活动 README 或代码契约链接；
++- 架构 gate 命令和失败解释已写入 receipt。
++
++## 5. P1：Clean baseline、API v2 和平台内核
++
++### 目标
++
++先建立不依赖旧 runtime 的空库、事务和公共边界。后续领域只能使用这一套
++operation/event/CAS/authorization 基础设施。
++
++### 数据与迁移
++
++- 建立 `v3-clean` family marker，`PRAGMA user_version=1` 的 clean baseline；
++- 定义 `schema_meta`、`schema_migrations`、`aggregate_heads`、`operations`、
++  `operation_links`、`events`、`event_cursors`、`idempotency_keys`、
++  `audit_events`、`cas_objects` 和 `receipt_manifests`；
++- 每次 migration 记录 checksum、snapshot、foreign-key check 和 rollback；
++- 空库重复启动、半成事务重启、checksum 漂移和 DDL 回滚必须可验证；
++- 启动遇到历史 family 时只产生 importer request receipt，并拒绝业务流量。
++
++### API、Command 和 Event
++
++- 实现统一 success/error redacted envelope、request id、idempotency 和
++  expected revision 校验；
++- 从 registry 生成/校验 REST `/api/v2`、MCP binding 和 query metadata；
++- 实现 operation receipt、`202` 长任务、稳定 error code、分页和 download
++  receipt；
++- 实现同一 `events` 表支持 SSE `Last-Event-ID` 和 JSON replay；
++- 历史 `/api/v1` 地址返回明确 retired-route 结果或不注册，不做 facade。
++
++### 测试与凭证
++
++- clean empty DB、重复启动、事务原子性、CAS canonical hash、redaction；
++- route/command/MCP parity、unknown field、missing idempotency/revision、
++  cursor reconnect；
++- 运行 architecture scan，确保没有旧 runtime import、compat flag、
++  `assist_operations` 或第二 head model。
++
++### 退出条件
++
++有一份可从空目录启动的 clean baseline receipt；所有基础表一 owner；API v2
++contract probe 与 SSE/JSON replay 等价；失败 migration 和 rollback 均有字面
++输出；P2 只能在该 receipt 通过后开始。
++
++## 6. P2：Identity、Team、Actor、Credential 和 ACL
++
++### 目标
++
++恢复 V2.3 多主体能力，把同一个授权谓词接入 HTTP、MCP、Importer、Replay、
++Evidence 和 Gateway。
++
++### 领域范围
++
++- `actors`、`teams`、`team_memberships`、`sessions`、`project_acl_entries`、
++  `invitations`、`exchange_grants` 的 clean 实体和 revision；
++- owner/admin/member/observer 等角色和项目 scope；
++- session 只保存 hash、expiry、revoke 和 revision；
++- credential/profile 只保存 provider、scope、revision、external reference、
++  probe 状态和 `rebind_required`；
++- Codex/GitHub/MCP/session secret 重新绑定或轮换，不导入旧密文；
++- ACL decision、team membership 和 exchange narrowing 的统一 predicate。
++
++### API、UI 和适配器
++
++- `/api/v2/actors`、`/teams`、`/projects/{id}/members`、`/permissions`、
++  `/sessions`、`/credentials`、`/profiles`；
++- actor switch、邀请、grant/revoke、credential rebind 和 probe 都返回
++  operation/audit receipt；
++- Web 提供 Team/Member/Credential/Scope 管理的 loading、empty、denied 和
++  rebind-required 状态；
++- Gateway 只验证签名、scope 和 project allowlist，业务写入仍回到 API。
++
++### 验收
++
++- 不同 team/project 的读写、MCP、Evidence、Replay 和 importer 查询隔离；
++- stale membership/ACL revision 返回 `revision_conflict`；
++- secret/token/cookie 不出现在 DB、event、audit、error、CAS 或 Evidence；
++- restart 后 session revoke、credential rebind 状态正确恢复；
++- 形成 identity/ACL isolation、credential rebind 和 Gateway denial receipt。
++
++## 7. P3：Project、Brief、Repository、Workflow、Generation、Critic
++
++### 目标
++
++恢复从项目入口到可执行、可审查 Workflow Draft 的业务链，不提前运行未验收的
++Runner。
++
++### 领域顺序
++
++1. Project draft/intake、owner/team/ACL 和 lifecycle；
++2. Brief revision、confirm/preview/template、CAS hash；
++3. Repository Connection/Target/Line、只读 source、managed workspace、
++   single-writer lock、fault/archive/restore；
++4. Workstream/Task 两级 DAG、Node Contract、proposal before/after/hash；
++5. Generation operation、候选版本、critic 独立决策和 stale/retry/cancel；
++6. Outcome requirement 只记录目标和验收规则，不伪造评分结果。
++
++### 交付面
++
++- 所有 mutation 使用 API v2 command registry、idempotency 和 expected revision；
++- 事件包含 aggregate revision、operation link、actor/project scope 和
++  redacted payload hash；
++- Repository adapter 负责 HTTPS、local allowlist、Git bundle、source drift；
++- Web 支持 intake、Brief confirm、DAG canvas、proposal review 和 critic 状态；
++- V2.3 project/workflow golden 与 clean domain service 逐项对照。
++
++### 退出条件
++
++项目可在没有 Runner 的情况下完成 Draft → Brief → Workflow → Critic 的
++可审查闭环；重复提交幂等，旧 revision 被拒，repository source drift 可恢复；
++generation 不再同步返回固定节点；project/workflow golden、UI receipt 和
++security scope receipt 均通过。
++
++## 8. P4：Context、Projection、Pack、MCP、Exchange、Gateway
++
++### 目标
++
++把项目上下文和工具能力接到统一 ACL、事件和 operation 模型，保证 projection
++是可重建的派生物而不是第二个业务 head。
++
++### 领域范围
++
++- Context source/node/document version/edge、sensitivity、freshness、policy；
++- projection job 的 lease、checkpoint、stale recovery、cancel/retry；
++- deterministic selection、Context Pack hash、Memory Manifest、Outcome/Rubric
++  hash 和 token budget；
++- MCP client/tool/resource registry、health、HTTP/stdio transport；
++- Exchange request/grant/revoke/expiry 和跨项目 scope narrowing；
++- Gateway forwarding receipt、签名验证、destination ACL re-check、无业务持久化。
++
++### 验收
++
++- 1000 context nodes 的稳定排序、索引重建和 hash/tamper 检查；
++- 同一 command 在 REST、MCP HTTP、stdio 和 Gateway 的 schema/result 等价；
++- project ACL、sensitivity、grant expiry 和 source allowlist 全路径一致；
++- SSE 断线后从 durable cursor replay，不重复或越权；
++- Context/MCP parity、Gateway independent probe、security boundary 和性能
++  receipt 通过。
++
++## 9. P5：Assist、Files、Attachments、Approval、Terminal、Bridge
++
++### 目标
++
++恢复完整的人机协作面，同时严格使用 generic `operations` 和 `events`；Assist
++不能重新创建独立 operation ledger。
++
++### 领域范围
++
++- Assist session/turn/message/goal/plan/assistant response/tool call/reasoning
++  的状态机和 operation link；
++- files、attachments、CAS preview/download、change batch、diff review；
++- runtime approval、user input、pause/await/resume；
++- Terminal PTY capability、cursor replay、write lock、redaction；
++- Windows Bridge pairing、DPAPI、ConPTY、Git bundle 往返和 revoke；
++- 四层 Assist 行为（规划、工具、文件/diff、执行反馈）和失败恢复。
++
++### 验收
++
++- 没有 assistant response、工具结果或完整事件链时，Turn 不得标记 completed；
++- attachment/path/scope/size 校验和 preview 均不能泄露绝对路径或 secret；
++- approval/user-input/terminal/bridge 的 stale revision、cancel、resume、
++  reconnect 和 replay 具备集成测试；
++- Windows Bridge 通过独立外部 probe，Docker socket 仍只在 Broker；
++- Assist UI、mobile layout、event cursor 和 Evidence receipt 全部关联矩阵行。
++
++## 10. P6：Runner、七阶段 Execution、Checkpoint、Replay
++
++### 目标
++
++把已验收的 Workflow/Context/Assist 接入签名 Runner，并实现可恢复的七阶段
++执行：`prepare -> context -> run -> check -> review -> finalize -> deliver`。
++
++### 实施要点
++
++- immutable signed Job Spec、固定 image digest、runner profile、独立
++  `CODEX_HOME`、temporary credential 和 capability allowlist；
++- Docker Broker、Host Runner、Windows Bridge 各自返回统一 runner receipt；
++- execution pins Brief/workflow/repository/context/asset revisions；
++- stage checkpoint、task attempt、lease、pause/resume/replan/replay；
++- SIGTERM、Broker restart、unknown job、parser/runner timeout 都产生可重试
++  operation 状态，不重写历史 event；
++- 任务输出只存 redacted summary、hash、CAS reference 和 bounded metadata。
++
++### 验收
++
++- 任意阶段注入中断后可从最近 checkpoint 恢复；
++- 同一 execution id/spec 重复提交幂等，spec drift 返回 conflict；
++- stale execution/repository/context revision 被阻断；
++- Docker/Host/Bridge 的安全边界、签名、digest、资源配额和 credential cleanup
++  通过独立 probe；
++- 形成 1000-event replay、restart/recovery、runner HTTP 和 real-runner receipt。
++
++## 11. P7：CAS、Evidence、Trace、Quality、Parser、Outcome
++
++### 目标
++
++建立从执行产物到人工质量裁决和 Outcome 的可信证据链，纳入所有 parser 格式，
++包括音视频、PPTX 和通用压缩包。
++
++### 领域与 worker
++
++- canonical CAS bytes、asset version、relation、attestation、trace、digest、
++  code change、test result；
++- parser format registry 和 isolated worker protocol，包含 quota、timeout、
++  sandbox、checkpoint、retry、unsupported/invalid/resource_exceeded；
++- Quality Review run/report/event、rubric、逐维人工评分、stale/waiver/revoke；
++- parser 只生成 Evidence/asset，不能直接写人类 verdict；
++- Outcome 根据 Evidence、Quality、policy 和 waiver 计算，任何证据变化触发
++  重新评估。
++
++### 验收
++
++- 每种注册格式都有正例、坏输入、资源超限、重试和 CAS tamper case；
++- DOCX/XLSX、PDF、图片、音视频、PPTX、压缩包均走同一 worker envelope；
++- secret/path/prompt sentinel 扫描覆盖 parser 输出、CAS、event、audit；
++- quality threshold、人工决策、waiver/revoke 和 outcome 联动可重放；
++- 形成 CAS manifest、tamper、quality human-review、parser isolation 和
++  outcome golden receipt。
++
++## 12. P8：Delivery、Deployment、Backup/Restore、Importer、Operations
++
++### 目标
++
++完成外部交付和一次性数据导入，把所有业务域放入 clean 卷后再切换，不把
++importer 混入 API runtime。
++
++### Delivery 与运维
++
++- GitHub App/Installation、repo discovery、Webhook HMAC/dedup、PR Intent、
++  Delivery Policy、Draft PR、merge recovery 和 baseline synchronization；
++- Deployment candidate/verification、browser/viewport evidence、health gate；
++- backup/restore/reset、operations list/cancel/replay、receipt retention；
++- temporary volume、SBOM、image/source identity 和 deployment rollback。
++
++### Importer 实施顺序
++
++1. `inspect`：V2.3 schema 23、当前 V3 schema 6、CAS、Context Index、附件和
++   release manifest 的只读完整性；
++2. `dry-run`：实体计数、ID mapping、引用翻译、语义冲突、credential rebind；
++3. `run`：按 dependency order 写临时 clean DB/CAS，并在每个 domain 后 fsync
++   checkpoint；
++4. `resume`：校验 source/plan/mapping/target hash，只重放未完成 domain；
++5. `verify`：row/relation/head/event/ACL/CAS/golden/secret 全检查；
++6. `cutover`：通过 operator approval、health probe 后原子切换；
++7. `rollback`：恢复旧部署 artifact，目标卷保持 sealed，不恢复旧 API/runtime。
++
++### 退出条件
++
++- 两个输入源均通过 byte-level manifest 和 schema fingerprint；
++- dry-run 可重复，零未决语义冲突，所有字段/引用都有显式结果；
++- 每个 domain 边界注入中断后 resume 一致；
++- verify、cutover 和实际 rollback 均有字面输出和退出状态；
++- 生产卷只含 clean schema/CAS，旧卷只读保存为 rollback artifact。
++
++## 13. P9：Web 完整闭环、移动/Offline、SSE reconnect、发布
++
++### 目标
++
++让 Web、MCP 管理和运维视图消费同一 API/Command contract，完成跨阶段用户流程，
++并以三视口和离线重连证据作为发布门槛。
++
++### 工作项
++
++- Web router、query cache、mutation/idempotency、operation center、error/empty/
++  loading/manual-input 状态；
++- Project → Brief → Workflow → Context → Assist → Execution → Evidence →
++  Outcome → Delivery 全链路；
++- Team/ACL/Exchange/Gateway/Runner/Parser/Operations 管理界面；
++- desktop/tablet/mobile（至少 1440x900、1024x768、390x844）布局和无障碍；
++- Offline queue、cursor replay、SSE reconnect、duplicate event 和 stale UI；
++- 浏览器 console/layout overlap、下载 receipt、CAS preview 和 redacted error。
++
++### 发布门禁
++
++- `pnpm check`、`pnpm test`、`pnpm test:integration`、`pnpm test:security`、
++  `pnpm test:e2e`、`pnpm test:release`、`pnpm verify` 全部通过；
++- Catalog 每项达到 `released` 所需 Evidence，而不是仅 schema/接口存在；
++- 临时卷发布、健康探针、备份恢复 hash 和实际 rollback 通过；
++- 三视口截图、SSE reconnect、offline 和人工输入场景无错误/重叠；
++- 外部 Codex、GitHub、Gateway、Runner、Bridge、parser probe 按要求有新 receipt。
++
++## 14. 跨阶段测试矩阵
++
++| 测试层 | 重点 | 触发阶段 |
++| --- | --- | --- |
++| Architecture gate | 旧符号、旧 import、第二 operation/head、owner 唯一性 | 全阶段 |
++| Schema/migration | clean empty DB、checksum、FK、snapshot、rollback、CAS | P1、P8 |
++| Contract | API v2 envelope、idempotency、revision、MCP/REST parity | P1-P9 |
++| Domain | 状态机、事务原子性、ACL、redaction、canonical hash | P2-P8 |
++| Integration | restart、operation、event replay、adapter recovery、golden journey | P2-P9 |
++| Security | secret/path/token、Docker boundary、scope、Gateway、parser sandbox | P1-P9 |
++| UI/browser | loading/empty/error/manual input、三视口、offline、a11y | P3-P9 |
++| Performance | 1000 events、1000 context nodes、多文件 parser、并发 operation | P4-P9 |
++| Release | temp volume、SBOM、cutover、health、backup/restore、实际 rollback | P8-P9 |
++
++任何层失败都保持对应 Catalog 状态，不允许用后续阶段的文件存在替代缺失
++行为证据。
++
++## 15. 依赖、并行和停止规则
++
++### 依赖图
++
++```text
++P0 -> P1 -> P2 -> P3 -> P4 -> P5 -> P6 -> P7 -> P8 -> P9
++              \----------------------> P8 importer ------------------/
++```
++
++UI 骨架、fixture 准备、parser characterization 和外部 probe 可以在依赖满足
++后并行，但不能写入尚未冻结的业务表或绕过 owner。Importer 不能与生产 API
++并行写入，P9 不能把 scaffold 状态包装成 release。
++
++### 停止条件
++
++出现以下任一情况，停止当前阶段并回到决策日志：
++
++- 需要保留 `/api/v1`、旧 session、compatibility flag 或双写才能继续；
++- 一个表、Command、Event 或权限判断出现两个 owner；
++- 语义冲突被提议静默选择来源；
++- receipt 缺少字面命令、输入、输出或退出状态；
++- secret、token、完整 prompt 或宿主绝对路径进入公共 envelope/Evidence；
++- 测试只证明 schema 存在，没有证明用户行为和失败恢复。
++
++## 16. 首批实现任务（P1 backlog）
++
++代码阶段开始后，按以下顺序拆成独立小提交；本轮不执行这些任务：
++
++1. 建立 `v3-clean` schema family marker 和空库 migration harness；
++2. 建立 `operations/events/event_cursors/aggregate_heads` 事务 API；
++3. 建立 API v2 envelope、request metadata、route/query/command registry；
++4. 实现 startup family/checksum/FK/CAS gate 和 historical-schema importer receipt；
++5. 写 clean baseline、rollback、route parity、redaction 和 replay 测试；
++6. 更新 capability matrix 的 P1 行并生成第一份 clean-start Evidence；
++7. 只有 P1 exit receipt 通过后，开始 P2 Identity/Team/Actor/ACL。
++
++每个小提交都要遵循根目录 `AGENTS.md` 的 preflight，并在提交前更新本计划
++对应的阶段状态和 Evidence 路径。
++
++## 17. 变更控制
++
++任何对阶段顺序、API、schema、import mapping、权限或 parser 范围的提议，必须：
++
++1. 在 `decision-log.md` 建立新决策 id；
++2. 更新受影响的 capability matrix 行；
++3. 提供 schema diff、API/MCP 影响、测试和 rollback 影响；
++4. 通过文档一致性和 architecture gate；
++5. 才能进入代码实现。
++
++本计划是执行顺序的唯一入口；旧的恢复计划仅保留在归档目录作为历史材料。
+diff --git a/docs/archive/legacy-code-docs/README.md b/docs/archive/legacy-code-docs/README.md
+new file mode 100644
+index 0000000..c8c4e32
+--- /dev/null
++++ b/docs/archive/legacy-code-docs/README.md
+@@ -0,0 +1,30 @@
++# 失效代码文档归档
++
++本目录保存与 V3-Clean 决策冲突、但仍有历史审计价值的代码文档。归档
++表示它们不再是当前实现、接口、数据模型或发布流程的依据；原文保留，不能
++重新挂回活动文档入口。
++
++归档基线：`8edefc7d110dca80958e3ef0fe9115dd62a8751a`
++归档日期：2026-08-19
++当前规范入口：[`docs/document-index.md`](../../document-index.md)
++
++## 文件映射
++
++| 归档文件 | 失效原因 | 当前替代文档 |
++| --- | --- | --- |
++| [`api-v1.md`](api-v1.md) | 固定 `/api/v1`，没有 clean-break envelope、API v2 和统一 MCP 映射 | [`api-v2-contract.md`](../../architecture/api-v2-contract.md) |
++| [`architecture-pre-clean.md`](architecture-pre-clean.md) | 描述旧 V3 单用户运行时、旧路由和旧迁移启动链 | [`v3-clean-break.md`](../../architecture/v3-clean-break.md) |
++| [`data-model-pre-clean.md`](data-model-pre-clean.md) | 包含 `assist_operations`、旧表指针和 V1-V6 运行时迁移假设 | [`clean-schema.md`](../../architecture/clean-schema.md) |
++| [`开发计划-v3-recovery-pre-clean.md`](开发计划-v3-recovery-pre-clean.md) | 使用 `/api/v1`，把音视频/PPTX/压缩包列为排除项，阶段边界早于 clean baseline 决策 | [`v3-clean-development-plan.md`](../../architecture/v3-clean-development-plan.md) |
++| [`测试计划-v3-recovery-pre-clean.md`](测试计划-v3-recovery-pre-clean.md) | 验收对象是旧 V3 运行时，parser 范围和 release/cutover 规则已过时 | [`v3-clean-development-plan.md`](../../architecture/v3-clean-development-plan.md) |
++| [`runbook-pre-clean.md`](runbook-pre-clean.md) | 面向旧 `aiws-data-v3` 卷和旧 V2.2 清理流程，未定义离线 importer | [`docs/runbook.md`](../../runbook.md) |
++| [`V3功能恢复与架构治理判断-pre-clean.md`](V3功能恢复与架构治理判断-pre-clean.md) | 早期审计判断已被 clean-break 决策、能力矩阵和决策日志取代 | [`v3-clean-break.md`](../../architecture/v3-clean-break.md)、[`v23-capability-matrix.md`](../../architecture/v23-capability-matrix.md) |
++
++## 使用规则
++
++1. 归档文件只用于理解历史行为、迁移来源和决策背景，不得作为新代码的
++   API、schema、状态机或发布依据。
++2. 需要恢复历史行为时，先在能力矩阵中建立对应行，再引用归档文件和
++   V2.3 fixture；不得直接复制旧 runtime 分支。
++3. 若归档内容仍有可复用的安全控制或测试阈值，应复制为新的、明确标注
++   V3-Clean 目标的文档，并在决策日志中记录来源。
+diff --git "a/V3\345\212\237\350\203\275\346\201\242\345\244\215\344\270\216\346\236\266\346\236\204\346\262\273\347\220\206\345\210\244\346\226\255.md" "b/docs/archive/legacy-code-docs/V3\345\212\237\350\203\275\346\201\242\345\244\215\344\270\216\346\236\266\346\236\204\346\262\273\347\220\206\345\210\244\346\226\255-pre-clean.md"
+similarity index 100%
+rename from "V3\345\212\237\350\203\275\346\201\242\345\244\215\344\270\216\346\236\266\346\236\204\346\262\273\347\220\206\345\210\244\346\226\255.md"
+rename to "docs/archive/legacy-code-docs/V3\345\212\237\350\203\275\346\201\242\345\244\215\344\270\216\346\236\266\346\236\204\346\262\273\347\220\206\345\210\244\346\226\255-pre-clean.md"
+diff --git a/docs/api.md b/docs/archive/legacy-code-docs/api-v1.md
+similarity index 100%
+rename from docs/api.md
+rename to docs/archive/legacy-code-docs/api-v1.md
+diff --git a/docs/architecture.md b/docs/archive/legacy-code-docs/architecture-pre-clean.md
+similarity index 100%
+rename from docs/architecture.md
+rename to docs/archive/legacy-code-docs/architecture-pre-clean.md
+diff --git a/docs/data-model.md b/docs/archive/legacy-code-docs/data-model-pre-clean.md
+similarity index 100%
+rename from docs/data-model.md
+rename to docs/archive/legacy-code-docs/data-model-pre-clean.md
+diff --git a/docs/archive/legacy-code-docs/runbook-pre-clean.md b/docs/archive/legacy-code-docs/runbook-pre-clean.md
+new file mode 100644
+index 0000000..ac68c87
+--- /dev/null
++++ b/docs/archive/legacy-code-docs/runbook-pre-clean.md
+@@ -0,0 +1,37 @@
++# Runbook
++
++## Local production
++
++1. Set a 32-byte or longer secret in `docker/secrets/broker_hmac`.
++2. Build the Runner and record its digest.
++3. Set `AIWS_RUNNER_DIGEST` and `AIWS_RUNNER_IMAGE` in the local environment or ignored `.env`.
++4. Put the Codex bundle and fine-grained GitHub PAT in the ignored `docker/secrets/codex_api_key` and `docker/secrets/github_token` files.
++5. Set `AIWS_GITHUB_REPOSITORY=OWNER/REPO` and `AIWS_GITHUB_FIXTURE_SHA` to the SHA emitted by `corepack pnpm github:seed-fixture` against a pre-created empty repository.
++6. Run `corepack pnpm verify`.
++7. Set `AIWS_APP_IMAGE` and `AIWS_BROKER_IMAGE` to verified image IDs or digest-pinned references.
++8. Run `docker compose up -d --no-build`.
++9. Confirm `GET http://127.0.0.1:4317/health` and `/readyz` both return 200.
++
++The Broker intentionally has no host port. Inspect it with `docker compose logs runner-broker` and signed internal probes.
++
++## Formal release
++
++From a clean commit, run `corepack pnpm release:build`, `corepack pnpm release:rehearse`, then `corepack pnpm release:promote`. The first command records the full gate output, verifies the reverse source patch, builds `<version>-<shortsha>` candidates, and generates image SBOMs. The second uses dynamically allocated ports and two temporary V3 volumes for real-Runner acceptance and restore. The third backs up production, validates the generated rollback, promotes tags by verified image ID, switches 4317, and removes only the exact V2.2 resources after V3 is healthy.
++
++Never run `release:promote` unless the latest image, Docker acceptance, and recovery receipts all identify the current commit and report their required pass/candidate states. The acceptance receipt must show `codex.status=available`, `github.status=available`, Docker Runner job IDs, and a merged Draft PR whose project branch SHA was fast-forwarded into the local binding. Otherwise rehearsal records `candidate` and promotion fails before it stops or switches the `4317` service.
++
++## Backup
++
++Stop App writes before a byte-level backup. Hash every file, copy `aiws-data-v3` to a specifically named snapshot volume, create a compressed archive, and restore it to a temporary volume. Run SQLite `integrity_check` against a tmpfs copy and compare the full manifest before marking the receipt passed.
++
++## Recovery
++
++Do not mount a V2 volume into V3. For V3 recovery, restore an accepted V3 archive to a new V3 volume, verify manifest and SQLite, then start the same App/Broker/Runner digests on a dynamically allocated port. Switch 4317 only after `/readyz` and the core journey pass.
++
++## Rollback
++
++Rollback is digest and snapshot based. Stop the current App, preserve the failed V3 volume, restore the previous accepted V3 snapshot, and recreate App/Broker with the previous digests. The rollback script must name only `aiws-v3` resources and must not use global prune.
++
++## Cleanup
++
++Cleanup filters exact AIWS names and `aiws.owner` labels. Never run global image, volume, container, or build-cache prune. Retain the current and previous V3 digest, two snapshots, and 14 days of logs. CAS deletion requires dry-run, quarantine, and delayed removal.
+diff --git "a/docs/\345\274\200\345\217\221\350\256\241\345\210\222v3\345\212\237\350\203\275\346\201\242\345\244\215.md" "b/docs/archive/legacy-code-docs/\345\274\200\345\217\221\350\256\241\345\210\222-v3-recovery-pre-clean.md"
+similarity index 100%
+rename from "docs/\345\274\200\345\217\221\350\256\241\345\210\222v3\345\212\237\350\203\275\346\201\242\345\244\215.md"
+rename to "docs/archive/legacy-code-docs/\345\274\200\345\217\221\350\256\241\345\210\222-v3-recovery-pre-clean.md"
+diff --git "a/docs/\346\265\213\350\257\225\350\256\241\345\210\222v3\345\212\237\350\203\275\346\201\242\345\244\215.md" "b/docs/archive/legacy-code-docs/\346\265\213\350\257\225\350\256\241\345\210\222-v3-recovery-pre-clean.md"
+similarity index 100%
+rename from "docs/\346\265\213\350\257\225\350\256\241\345\210\222v3\345\212\237\350\203\275\346\201\242\345\244\215.md"
+rename to "docs/archive/legacy-code-docs/\346\265\213\350\257\225\350\256\241\345\210\222-v3-recovery-pre-clean.md"
+diff --git a/docs/document-index.md b/docs/document-index.md
+new file mode 100644
+index 0000000..d9d9935
+--- /dev/null
++++ b/docs/document-index.md
+@@ -0,0 +1,79 @@
++# 代码文档索引
++
++状态：V3-Clean 文档整理后的活动入口。
++基线：`8edefc7`。
++范围：本索引只管理产品代码、运行时、测试、发布、数据和架构文档；毕设
++任务书、调研材料和头脑风暴不在本轮归档范围内。
++
++## 1. 规范层级
++
++文档优先级从高到低如下：
++
++1. `docs/architecture/`：V3-Clean 的规范契约。冲突时以
++   `v3-clean-break.md`、`clean-schema.md`、`api-v2-contract.md`、
++   `import-contract.md`、`v23-capability-matrix.md` 和 `decision-log.md`
++   为准。
++2. [`v3-clean-development-plan.md`](architecture/v3-clean-development-plan.md)：
++   把规范拆为可验收的实施阶段，不改变规范本身。
++3. 本页列出的运行、测试、威胁和需求文档：解释执行方式，不能新增与规范
++   冲突的 API、表或状态。
++4. `docs/evidence/`：不可变验证材料，只能证明已经发生的行为，不能替代
++   规范或提升 Catalog 状态。
++5. [`archive/legacy-code-docs/`](archive/legacy-code-docs/)：历史参考，禁止
++   作为活动代码文档引用。
++
++## 2. 活动文档
++
++| 文档 | 责任 | 用途 | 状态 |
++| --- | --- | --- | --- |
++| [`architecture/v3-clean-break.md`](architecture/v3-clean-break.md) | 平台架构 | 总体目标、非目标、模块所有权和禁止模式 | 规范 |
++| [`architecture/clean-schema.md`](architecture/clean-schema.md) | 数据平台 | clean baseline、实体、revision/CAS、状态机和事务 | 规范 |
++| [`architecture/api-v2-contract.md`](architecture/api-v2-contract.md) | API 平台 | `/api/v2`、envelope、operation、SSE/JSON replay、MCP 映射 | 规范 |
++| [`architecture/import-contract.md`](architecture/import-contract.md) | Importer | inspect/dry-run/run/resume/verify/cutover、ID mapping 和 rollback | 规范 |
++| [`architecture/v23-capability-matrix.md`](architecture/v23-capability-matrix.md) | 产品架构 | V2.3 L0-L7、Catalog、API/Command/Event/Table/UI/Test/Evidence 对照 | 规范 |
++| [`architecture/decision-log.md`](architecture/decision-log.md) | 架构委员会 | 决策、拒绝模式和变更流程 | 规范 |
++| [`architecture/v3-clean-development-plan.md`](architecture/v3-clean-development-plan.md) | 工程负责人 | 分阶段任务、依赖、门禁、交付物和完成条件 | 实施计划 |
++| [`testing.md`](testing.md) | 质量工程 | 测试层级、性能、安全和 release gate | 支撑 |
++| [`threat-model.md`](threat-model.md) | 安全负责人 | 资产、信任边界、控制和残余风险 | 支撑 |
++| [`runbook.md`](runbook.md) | 运维负责人 | clean 部署、离线导入、cutover、备份和部署级回滚 | 支撑 |
++| [`requirements-traceability.md`](requirements-traceability.md) | 产品/毕设负责人 | 毕设需求到能力矩阵和证据的追踪 | 支撑 |
++| [`v2-retrospective.md`](v2-retrospective.md) | 架构历史 | V2 经验和已撤销 receipt 的背景 | 历史参考 |
++
++## 3. 代码与文档的对应规则
++
++每个实现阶段必须同时更新以下五类记录：
++
++- 能力矩阵行：API、Command、Event、Table、状态机、UI、外部依赖、测试和
++  Evidence；
++- clean schema/API diff；
++- 行为、集成、安全和 UI 测试 receipt；
++- 修改 artifact、patch、验证记录和 rollback receipt；
++- Catalog 状态（只能由 receipt 推导）。
++
++活动文档不得出现 `/api/v1`、`assist_operations`、`native_v5`、
++`native_v6`、旧 runtime import、双写或共享旧/新写卷等活动实现指引。
++
++## 4. 非代码资料
++
++以下资料仍保留原位置，不冒充代码契约：
++
++| 位置 | 性质 |
++| --- | --- |
++| `doc/` | 产品想法、问题追踪和愿景草稿 |
++| `探索/`、`探索-1/` | 调研、资料索引和开放问题 |
++| `当前项目毕业设计任务书/`、`任务书/` | 学校任务书及其核验材料 |
++| `docs/evidence/` | 历史实现的验证、截图、快照和回滚材料 |
++
++## 5. 维护和检查
++
++新增代码文档前，先在本索引登记责任人、规范层级和对应能力行。提交前
++执行：
++
++```powershell
++rg -n "V3-Clean|v3-clean|/api/v2|V23-L[0-7]|REC-D" docs/architecture docs/document-index.md AGENTS.md
++git diff --check
++git status --short --branch
++```
++
++失效文档只移动到归档目录，不删除、不覆盖；归档动作必须在归档 README
++中写明原因和替代入口。
+diff --git a/docs/requirements-traceability.md b/docs/requirements-traceability.md
+index 790387b..8267b33 100644
+--- a/docs/requirements-traceability.md
++++ b/docs/requirements-traceability.md
+@@ -1,15 +1,23 @@
+ # Requirements Traceability
+ 
+-| Graduation project requirement | V3 capability | Executable evidence |
++本表是毕设需求的入口，不是 Catalog 状态表。每一行必须映射到
++[`architecture/v23-capability-matrix.md`](architecture/v23-capability-matrix.md)
++中的能力行；状态只能由行为测试、UI 测试、集成 probe 和 Evidence receipt
++推导。
++
++| Graduation project requirement | V3-Clean capability/matrix area | Executable evidence |
+ | --- | --- | --- |
+-| project access and requirement definition | Project plus immutable Brief revisions | API integration journey |
+-| AI-assisted planning | two-level DAG plus Context Pack | DAG unit tests and Workflow UI |
+-| controlled execution | Execution pinning and Broker Job Spec | Broker integration and security tests |
+-| human-machine collaboration | immutable Review plus separate decision | review/delivery integration test |
+-| source change inspection | managed Git Diff endpoint | project diff API and Execution page |
+-| result management | CAS Asset Versions with immutable content hashes | asset API download and hash tests |
+-| delivery | reviewed Draft PR delivery record and separate merge gate (GitHub probe required for external submission) | delivery integration test and capability receipt |
+-| traceability | SSE execution events and Audit Events | SSE and audit API |
+-| local security | loopback bind, internal Broker, isolated Runner | Compose security gate |
++| project access and requirement definition | Project, Team/Actor, ACL, Brief revisions (`C-01`-`C-05`) | API/domain flow, ACL isolation and Brief CAS receipt |
++| AI-assisted planning | Workflow, Generation, Critic, Context Pack (`C-06`-`C-12`) | DAG behavior, proposal/critic UI and golden workflow |
++| controlled execution | Runner, seven-stage Execution, checkpoints (`C-19`-`C-22`) | signed Job Spec, restart/replay and runner security receipt |
++| human-machine collaboration | Assist, Approval, User Input, Terminal, Bridge (`C-13`-`C-18`) | event replay, UI/manual-input and Bridge probe |
++| source change inspection | Repository Connection/Target/Line and managed Git Diff (`C-07`, `C-24`) | source drift, bundle and diff Evidence tests |
++| result management | CAS Assets, Trace, Digest, Quality and Outcome (`C-24`-`C-26`) | CAS hash/tamper, parser, human score and waiver receipts |
++| delivery | Draft PR, merge recovery, Deployment (`C-27`) | GitHub integration, health probe and deployment Evidence |
++| traceability | generic Operations, Events, cursors and Audit (`C-01`, `C-27`) | SSE/JSON replay parity and audit redaction |
++| local security | API boundary, Broker isolation, parser sandbox, Gateway scope (`C-01`, `C-23`-`C-27`) | architecture, security, parser and Gateway probes |
+ 
+-New features must add a row here, map to the core journey, and add executable acceptance evidence before entering the main branch.
++New features must add or update a matrix row, map to the core journey, and add
++executable acceptance evidence before entering the release branch. A schema-only
++row remains `scaffolded`; a historical Evidence file does not prove clean-runtime
++behavior.
+diff --git a/docs/runbook.md b/docs/runbook.md
+index ac68c87..c912f00 100644
+--- a/docs/runbook.md
++++ b/docs/runbook.md
+@@ -1,37 +1,106 @@
+-# Runbook
++# V3-Clean 运维 Runbook
+ 
+-## Local production
++状态：目标运行手册。代码尚未完成 clean runtime 实施时，本手册中的命令只
++能作为接口和发布验收约定，不能被解释为当前 V6/R6 运行时已经支持。
+ 
+-1. Set a 32-byte or longer secret in `docker/secrets/broker_hmac`.
+-2. Build the Runner and record its digest.
+-3. Set `AIWS_RUNNER_DIGEST` and `AIWS_RUNNER_IMAGE` in the local environment or ignored `.env`.
+-4. Put the Codex bundle and fine-grained GitHub PAT in the ignored `docker/secrets/codex_api_key` and `docker/secrets/github_token` files.
+-5. Set `AIWS_GITHUB_REPOSITORY=OWNER/REPO` and `AIWS_GITHUB_FIXTURE_SHA` to the SHA emitted by `corepack pnpm github:seed-fixture` against a pre-created empty repository.
+-6. Run `corepack pnpm verify`.
+-7. Set `AIWS_APP_IMAGE` and `AIWS_BROKER_IMAGE` to verified image IDs or digest-pinned references.
+-8. Run `docker compose up -d --no-build`.
+-9. Confirm `GET http://127.0.0.1:4317/health` and `/readyz` both return 200.
++规范依据：[`architecture/v3-clean-break.md`](architecture/v3-clean-break.md)、
++[`architecture/import-contract.md`](architecture/import-contract.md) 和
++[`architecture/api-v2-contract.md`](architecture/api-v2-contract.md)。
+ 
+-The Broker intentionally has no host port. Inspect it with `docker compose logs runner-broker` and signed internal probes.
++## 1. 运行边界
+ 
+-## Formal release
++- 生产业务只挂载 `v3-clean` schema family 和 clean CAS root。
++- 历史 V2.3/V3 数据卷、旧 migration、旧 CAS 和旧 runtime 只能作为离线
++  importer 输入，不能被 App 启动时打开。
++- App、Broker、Runner、Parser Worker、Windows Bridge 和 MCP Gateway 使用
++  独立 profile；Gateway 不持久化业务数据，也不挂 Docker socket。
++- 所有公开业务请求走 `/api/v2`。健康探针是 `/livez` 和 `/readyz`；历史
++  路由不作为兼容入口恢复。
+ 
+-From a clean commit, run `corepack pnpm release:build`, `corepack pnpm release:rehearse`, then `corepack pnpm release:promote`. The first command records the full gate output, verifies the reverse source patch, builds `<version>-<shortsha>` candidates, and generates image SBOMs. The second uses dynamically allocated ports and two temporary V3 volumes for real-Runner acceptance and restore. The third backs up production, validates the generated rollback, promotes tags by verified image ID, switches 4317, and removes only the exact V2.2 resources after V3 is healthy.
++## 2. 发布前 preflight
+ 
+-Never run `release:promote` unless the latest image, Docker acceptance, and recovery receipts all identify the current commit and report their required pass/candidate states. The acceptance receipt must show `codex.status=available`, `github.status=available`, Docker Runner job IDs, and a merged Draft PR whose project branch SHA was fast-forwarded into the local binding. Otherwise rehearsal records `candidate` and promotion fails before it stops or switches the `4317` service.
++1. 确认旧系统已停止写入，保存 V2.3 和当前 V3 的 byte-level snapshot、
++   CAS manifest、schema fingerprint 和 source receipt。
++2. 确认目标镜像、Runner digest、Parser worker profile、锁文件和 SBOM
++   绑定同一 source commit。
++3. 确认凭据只提供重新绑定所需的元数据；secret、token、cookie 和旧 Vault
++   密文不进入输入卷。
++4. 在临时卷执行架构扫描、schema checksum、外键和 CAS manifest 检查。
++5. 只有所有报告为 `passed` 才能进入 importer。
+ 
+-## Backup
++## 3. 一次性 Importer 流程
+ 
+-Stop App writes before a byte-level backup. Hash every file, copy `aiws-data-v3` to a specifically named snapshot volume, create a compressed archive, and restore it to a temporary volume. Run SQLite `integrity_check` against a tmpfs copy and compare the full manifest before marking the receipt passed.
++以下是离线工具的规范命令；实现完成前不得把它们伪装成现有 `pnpm` 脚本。
+ 
+-## Recovery
++```text
++aiws-import inspect --manifest INPUT.json --report INSPECT.json
++aiws-import dry-run --sources SOURCES.json --merge MERGE.json --out PLAN.json
++aiws-import run --plan PLAN.json --target TEMP_VOLUME --checkpoint CHECKPOINT.json
++aiws-import resume --checkpoint CHECKPOINT.json --target TEMP_VOLUME
++aiws-import verify --checkpoint CHECKPOINT.json --report VERIFY.json
++aiws-import cutover --verify VERIFY.json --deployment CUTOVER.json
++```
+ 
+-Do not mount a V2 volume into V3. For V3 recovery, restore an accepted V3 archive to a new V3 volume, verify manifest and SQLite, then start the same App/Broker/Runner digests on a dynamically allocated port. Switch 4317 only after `/readyz` and the core journey pass.
++执行要求：
+ 
+-## Rollback
++- `inspect` 只读并验证来源完整性；
++- `dry-run` 生成实体计数、ID mapping、引用翻译、凭据 rebind 清单和冲突
++  清单，不写业务行；
++- `run/resume` 只写临时 clean 卷，按 identity → ACL → project → workflow →
++  context → Assist → execution → Evidence → delivery 顺序 checkpoint；
++- 语义冲突整批失败；纯技术 ID 碰撞使用确定性重映射并记录算法版本；
++- `verify` 在封闭快照上检查行数、关系闭合、revision/head、event 顺序、
++  ACL、CAS、credential 状态和 golden workflow；
++- `cutover` 只接受通过的 verify receipt，执行部署级原子切换并记录操作员
++  审批。
+ 
+-Rollback is digest and snapshot based. Stop the current App, preserve the failed V3 volume, restore the previous accepted V3 snapshot, and recreate App/Broker with the previous digests. The rollback script must name only `aiws-v3` resources and must not use global prune.
++失败目标卷必须保持不可挂载生产，保留 checkpoint、输入 hash、mapping hash
++和失败报告供修复后 resume。
+ 
+-## Cleanup
++## 4. 日常健康检查
+ 
+-Cleanup filters exact AIWS names and `aiws.owner` labels. Never run global image, volume, container, or build-cache prune. Retain the current and previous V3 digest, two snapshots, and 14 days of logs. CAS deletion requires dry-run, quarantine, and delayed removal.
++1. `GET /livez` 只证明进程存活。
++2. `GET /readyz` 必须同时通过 schema family、migration checksum、SQLite
++   integrity/foreign-key、CAS manifest、Broker/Runner profile 和必要适配器
++   检查。
++3. 长任务通过 `/api/v2/operations/{id}` 查询；SSE 与 JSON replay 必须从同一
++   durable cursor 读取。
++4. 业务故障先保存 request id、operation receipt、event cursor 和 redacted
++   error envelope，不收集 secret、完整 prompt 或宿主绝对路径。
++
++## 5. 备份与恢复
++
++- 停止业务写入后，对 clean SQLite、CAS、配置元数据和 receipt 做逐字节哈希；
++- 备份 manifest 必须记录 schema family、source commit、CAS root hash 和
++  parent receipt；
++- 恢复到新的临时卷，执行 `integrity_check`、外键、CAS、event 顺序和核心
++  golden journey，再切换正式卷；
++- 恢复过程不运行旧 migration，不把旧卷重新挂为 clean runtime。
++
++## 6. 回滚
++
++回滚是部署级操作：停止当前 clean deployment，封存失败卷，恢复上一份已验收
++的镜像、数据库/CAS 卷和 deployment receipt，重新执行 `livez`、`readyz` 和
++核心业务探针。回滚不会在 clean runtime 内恢复 `/api/v1`、旧 session 分支或
++旧 schema 兼容开关。
++
++## 7. 凭据重新绑定
++
++导入后的 credential 状态必须是 `rebind_required`。操作员通过新的 provider
++proof、scope 和 profile revision 完成 rebind/rotation；旧 token、cookie、
++Vault ciphertext 和 session secret 永不复制。probe 结果是新的 Evidence，
++不能沿用旧的 `active` 状态。
++
++## 8. 事故矩阵
++
++| 现象 | 首个动作 | 允许的恢复路径 |
++| --- | --- | --- |
++| schema/checksum 不匹配 | 停止业务流量并封存卷 | 修复镜像或从 receipt 恢复 |
++| CAS hash 不匹配 | 隔离受影响对象 | 从可信 manifest 恢复或重跑 importer |
++| ACL/replay 越界 | 阻断请求并保留审计 receipt | 修复权限策略后重新验证 |
++| Runner/Parser 超时 | 保留 operation/checkpoint | 同一输入 hash 重试 |
++| importer 语义冲突 | 整批标记 failed | 新 merge manifest 后新批次 |
++| cutover 健康检查失败 | 不挂载目标卷 | 执行部署级 rollback |
++
++所有事故处理都要生成四项工件：修改/目标 artifact、patch 或 mapping、带
++字面输出和退出码的 verification record、可执行 rollback receipt。
+diff --git a/docs/testing.md b/docs/testing.md
+index b254c9b..f13cd79 100644
+--- a/docs/testing.md
++++ b/docs/testing.md
+@@ -1,20 +1,41 @@
+ # Testing and Evaluation
+ 
++Status: supporting test policy for V3-Clean implementation phases. The detailed
++phase-to-gate mapping is in [`architecture/v3-clean-development-plan.md`](architecture/v3-clean-development-plan.md);
++this document does not promote a Catalog item by itself.
++
+ ## Gates
+ 
+-`check`, `test:integration`, `test:e2e`, `test:security`, and `test:release` are first-class gates. `verify` runs every gate in a fixed order and stops at the first failure.
++`check`, `test`, `test:integration`, `test:e2e`, `test:security`, and `test:release`
++are first-class gates. `verify` runs every gate in a fixed order and stops at the
++first failure. Clean-baseline and importer phases add dedicated schema, mapping,
++checkpoint, CAS and rollback suites before their Catalog rows can move beyond
++`scaffolded`.
+ 
+ Unit tests cover DAG validation, relation rollback, immutable records, FTS/settings, path policy, Job Spec restrictions, HMAC expiry/replay, and public contracts.
+ 
+-Integration tests cover API idempotency and conflicts, revision locks, execution scheduling/recovery, REST/MCP result equivalence and audit parity, Broker completion, ephemeral credential redaction, parsed SSE frames with `Last-Event-ID` replay, Context FTS, CAS hashes, Git Diff, the separate create/merge Review gates, and database restart.
++Integration tests cover API v2 idempotency and conflicts, revision locks,
++operation scheduling/recovery, REST/MCP/Gateway result equivalence and audit
++parity, Broker/Host/Bridge completion, ephemeral credential redaction, parsed SSE
++frames with `Last-Event-ID` replay and JSON replay equivalence, Context FTS, CAS
++hashes, Git Diff, Review gates, ACL/Exchange isolation, importer checkpoint/resume,
++and database restart.
+ 
+ Browser E2E builds the production bundle, drives the unique browser journey from Setup through project creation, Brief/DAG/Context Pack, Execution/SSE, Git Diff, Review, Draft PR, Assets, Audit, and Settings, then captures the final Execution state at six viewports: 360x800, 390x844, 768x1024, 1024x768, 1440x900, and 1920x1080. It fails on page errors, console errors, or sibling layout overlap. Screenshots are written to `.ai-workspace/e2e-v3`.
+ 
+-Security tests resolve Compose as structured JSON, build and probe a production App image to prove it has neither Docker socket nor Docker CLI, and exercise signed Broker HTTP requests. The Broker rejects command, host path, arbitrary volume, environment, privilege, capability, digest drift, body tampering, and signature replay inputs; credentials are redacted in returned Job Specs.
++Security tests resolve Compose as structured JSON, build and probe a production App
++image to prove it has neither Docker socket nor Docker CLI, and exercise signed
++Broker/Gateway HTTP requests. The boundaries reject command, host path, arbitrary
++volume, environment, privilege, capability, digest drift, body tampering, scope
++escape and signature replay inputs; credentials are redacted in Job Specs,
++operations, events, audit, CAS and Evidence.
+ 
+ ## AI evaluation
+ 
+-Formal model evaluation fixes Brief, repository SHA, model, prompt, and capability set. Each scenario runs three times. When Codex or GitHub is unavailable, the result remains a candidate and is not recorded as a formal pass.
++Formal model evaluation fixes Brief, repository SHA, model, prompt, capability set
++and policy revision. Each scenario runs three times. When Codex, GitHub, Gateway,
++Runner or parser dependencies are unavailable, the result remains a candidate and
++is not recorded as a formal pass.
+ 
+ ## Performance thresholds
+ 
+@@ -25,4 +46,16 @@ Formal model evaluation fixes Brief, repository SHA, model, prompt, and capabili
+ 
+ Acceptance receipts record observed startup and execution status. Codex and GitHub capability probes are mandatory for a formal promotion: when either is unavailable, rehearsal writes a `candidate` receipt and promotion exits before stopping the current service. Release promotion additionally records image digests, source commit/tree, lockfile hash, gate fingerprint, and SBOM path.
+ 
+-`release:rehearse` enforces the startup, Broker submission, event-loop lag, and RSS thresholds against digest-pinned production images. It freezes the temporary source volume, compares full file manifests after restore, runs SQLite integrity and foreign-key checks, starts the restored volume, and executes the generated rehearsal rollback.
++`release:rehearse` enforces the startup, Broker submission, event-loop lag, RSS,
++temporary-volume import, CAS manifest, event replay and rollback thresholds against
++digest-pinned production images. It freezes source volumes, compares full manifests
++after restore, runs SQLite integrity/foreign-key/ACL checks, starts the restored
++clean volume, and executes the generated rehearsal rollback. A green test run is
++not a cutover receipt until an actual deployment rollback has also passed.
++
++## Phase gate rule
++
++Every phase records baseline and modified commands, literal outputs, exit statuses,
++input hashes and a rollback receipt. A failure keeps the affected capability at
++its current status and blocks dependent phases. A schema or interface stub alone is
++never sufficient for `implemented`.
+diff --git a/docs/threat-model.md b/docs/threat-model.md
+index 1b8e661..e6cfad8 100644
+--- a/docs/threat-model.md
++++ b/docs/threat-model.md
+@@ -1,37 +1,58 @@
+ # Threat Model
+ 
++状态：V3-Clean 支撑文档。规范细节以 `v3-clean-break.md`、`api-v2-contract.md`
++和 `clean-schema.md` 为准。
++
+ ## Protected assets
+ 
+-- managed repository content and generated diffs
+-- Codex and GitHub credential material
+-- immutable execution, review, delivery, and audit evidence
+-- Docker daemon control capability
+-- V2.3 cold evidence and V3 production data
++- project, team and ACL metadata;
++- managed repository content, workspace bundles and generated diffs;
++- credential metadata and the external proof used for rebind (not secret values);
++- immutable operations, events, execution, review, delivery and audit Evidence;
++- clean SQLite, CAS objects, parser outputs and import manifests;
++- Docker/Host/Windows execution capability and Gateway scope decisions;
++- read-only V2.3/V3 source snapshots used by the offline importer.
+ 
+ ## Trust boundaries
+ 
+-The browser is untrusted input. The App is trusted for commands and relational data. The App-to-Broker network is authenticated but treated as replayable transport. The Broker is the only Docker control boundary. Runner output is untrusted evidence until a human Review accepts it.
++The browser and all uploaded/parser input are untrusted. The API authenticates an
++actor and evaluates the project ACL before dispatching a typed command. The
++App-to-Broker and Gateway transports are authenticated but replayable. The Broker
++is the only Docker control boundary; the Gateway is a forwarding boundary with no
++Docker socket and no business tables. Runner and parser output is untrusted
++Evidence until policy and, where required, a human review accept it. The importer
++is offline and writes only an isolated temporary volume.
+ 
+ ## Controls
+ 
+-| Threat | Control |
++| Threat | V3-Clean control |
+ | --- | --- |
+-| command replay | `Idempotency-Key` plus request hash |
+-| stale write | integer revision and `expected_revision` |
+-| Broker impersonation | HMAC method/path/timestamp/nonce/body signature |
+-| replayed Broker request | 30-second expiry and nonce cache |
+-| arbitrary container | registered image digest and closed Job Spec |
+-| host path escape | normalized relative path under V3 data root |
+-| privileged runner | fixed cap drop, no-new-privileges, read-only root, no ports |
+-| Docker takeover from App | no CLI package and no socket mount |
+-| workspace ownership drift | App keeps only `CHOWN` and `DAC_OVERRIDE` after dropping all other capabilities so Runner UID 10001 can access execution-scoped files while App retains its own project tree |
+-| secret disclosure | ephemeral memory reference; no events, logs, or results |
+-| model approval spoofing | suggestion state separate from immutable human decision |
+-| legacy data contamination | V2 volume name rejection in App and Broker config |
+-| archive deletion | cold clone, compressed archive, manifest hash, restore drill |
++| command replay | `Idempotency-Key`, request hash and one operation receipt |
++| stale write or state jump | expected revision/CAS plus atomic state/event/head transaction |
++| actor/project scope escape | one authorization predicate reused by HTTP, MCP, importer, replay and Evidence |
++| Broker/Gateway impersonation | signed method/path/timestamp/nonce/body or forwarding receipt |
++| replayed adapter request | expiry, nonce cache, operation revision and bounded retry |
++| arbitrary container or parser | fixed digest/profile, closed Job Spec, quotas, sandbox and output contract |
++| host path escape | relative workspace reference, canonical CAS bytes and adapter path policy |
++| privileged runner | dropped capabilities, no-new-privileges, read-only root, no public port |
++| Docker takeover from App/Gateway | Docker CLI/socket exists only at the Broker boundary |
++| secret disclosure | metadata-only credentials, temporary rebind proof, redaction before event/audit/CAS commit |
++| approval spoofing | model suggestion, operation state and immutable human decision are separate records |
++| import contamination | schema-family check, read-only source manifests, semantic-conflict batch failure and sealed target on verify failure |
++| CAS tamper | canonical bytes, SHA-256 manifest, lineage/attestation and closed-snapshot verification |
++| rollback ambiguity | deployment-level receipt naming old image, old volume, target health and actual rollback output |
+ 
+ ## Residual risks
+ 
+-The Docker daemon remains a high-privilege dependency for the Broker. A compromised Broker can control local containers, so it is not host-published and accepts only signed requests. GitHub and Codex probes are capability states, not readiness exceptions. External integration success must be evidenced before a formal release receipt is marked passed.
+-
+-The only model egress is the fixed `aiws-runner-model` network. Public provider egress is an accepted residual risk: the Broker does not add a general-purpose proxy or a mutable domain allowlist. Credentials are delivered over the signed App-to-Broker request and exist only in the probe/Runner process lifetime.
++The Docker daemon remains a high-privilege dependency for the Broker. A compromised
++Broker can control local containers, so it is not host-published and accepts only
++signed requests. External Codex, GitHub, Gateway, Bridge and parser availability
++are capability states; they cannot be silently treated as readiness. Public provider
++egress remains an accepted local-deployment risk and must be reflected in the
++Runner profile and release receipt.
++
++Imported credentials require a new proof and start as `rebind_required`. Historical
++source data may contain malformed paths, stale permissions or incompatible meaning;
++the importer blocks those batches rather than silently selecting a source. A formal
++release requires fresh external probes, temporary-volume verification and an actual
++deployment rollback.
+diff --git "a/\346\216\242\347\264\242-1/01_\350\256\260\345\277\206\346\234\272\345\210\266\344\270\216\344\270\212\344\270\213\346\226\207\345\214\205\345\244\264\350\204\221\351\243\216\346\232\264.md" "b/\346\216\242\347\264\242-1/01_\350\256\260\345\277\206\346\234\272\345\210\266\344\270\216\344\270\212\344\270\213\346\226\207\345\214\205\345\244\264\350\204\221\351\243\216\346\232\264.md"
+index 7c96654..8c0bfdb 100644
+--- "a/\346\216\242\347\264\242-1/01_\350\256\260\345\277\206\346\234\272\345\210\266\344\270\216\344\270\212\344\270\213\346\226\207\345\214\205\345\244\264\350\204\221\351\243\216\346\232\264.md"
++++ "b/\346\216\242\347\264\242-1/01_\350\256\260\345\277\206\346\234\272\345\210\266\344\270\216\344\270\212\344\270\213\346\226\207\345\214\205\345\244\264\350\204\221\351\243\216\346\232\264.md"
+@@ -222,7 +222,7 @@ inputs:
+     - asset_api_notes
+   files:
+     - src/integrations/github/
+-    - docs/architecture.md
++    - docs/architecture/v3-clean-break.md
+ 
+ available_tools:
+   - filesystem.read
