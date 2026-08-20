@@ -13,6 +13,7 @@ export type ContextNode = {
   uri: string;
   title: string;
   kind: string;
+  node_kind?: string;
   source_type: string;
   source_id: string;
   source_revision: string;
@@ -81,7 +82,8 @@ export type ContextPackView = {
   policy_revision: number;
   schema_version: string;
   created_at: string;
-  pack: { schema_version?: string; memory_manifest?: { document_version_ids?: string[]; brief_revision?: number; workflow_revision?: number } };
+  memory_manifest?: { document_version_ids?: string[]; brief_revision?: number; workflow_revision?: number };
+  pack?: { schema_version?: string; memory_manifest?: { document_version_ids?: string[]; brief_revision?: number; workflow_revision?: number } };
 };
 
 export type ProjectionJob = {
@@ -119,23 +121,28 @@ export type McpClient = {
   token?: string;
 };
 
-export type McpGrant = {
+export type ExchangeGrant = {
   id: string;
   request_id: string;
+  source_project_id: string;
+  target_project_id: string;
+  grantee_actor_id?: string | null;
+  status: string;
   revision: number;
   expires_at: string;
   revoked_at?: string | null;
-  token_prefix?: string;
   scope: { project_ids?: string[]; tools?: string[] };
-  token?: string;
 };
 
-export type McpScopeRequest = {
+export type ExchangeRequest = {
   id: string;
-  project_id: string;
+  source_project_id: string;
+  target_project_id: string;
+  source_approver_actor_id?: string | null;
+  target_approver_actor_id?: string | null;
+  grant_id?: string | null;
   status: string;
   revision: number;
   expires_at: string;
   scope: { project_ids?: string[]; tools?: string[] };
-  grants: McpGrant[];
 };

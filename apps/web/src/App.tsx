@@ -4,7 +4,7 @@ import {
   LoaderCircle, Menu, MessageSquare, Settings, ShieldCheck, Terminal as TerminalIcon, Users, Workflow, X
 } from 'lucide-react';
 import { apiV2 } from './api';
-import { ContextPage } from './features/context';
+import { ContextPage, McpSettingsPage } from './features/context';
 import { AssistPage } from './features/assist';
 import { CleanSetupPage, SetupPage, type SetupState } from './features/setup';
 import { ProjectWorkflowPage } from './features/project';
@@ -12,7 +12,7 @@ import { WorkflowPage as R4WorkflowPage } from './features/workflow';
 import { IdentityAccessPage } from './features/identity';
 import type { Project } from './types';
 import {
-  ApprovalPage, AssetsPage, AuditPage, ExecutionPage, ProjectsPage, SettingsPage, TerminalPage,
+  ApprovalPage, AssetsPage, AuditPage, ExecutionPage, ProjectsPage, TerminalPage,
   type WorkspacePageProps
 } from './pages';
 
@@ -22,7 +22,9 @@ const NAV: Array<{ key: PageKey; label: string; icon: ComponentType<{ size?: num
   { key: 'setup', label: 'Setup', icon: LayoutDashboard },
   { key: 'identity', label: 'Identity', icon: Users },
   { key: 'projects', label: 'Projects', icon: FolderGit2 },
-  { key: 'workflow', label: 'Workflow', icon: Workflow }
+  { key: 'workflow', label: 'Workflow', icon: Workflow },
+  { key: 'context', label: 'Context', icon: BookOpen },
+  { key: 'settings', label: 'MCP & Exchange', icon: Settings }
 ];
 
 const PAGES: Record<PageKey, ComponentType<WorkspacePageProps>> = {
@@ -37,10 +39,10 @@ const PAGES: Record<PageKey, ComponentType<WorkspacePageProps>> = {
   approvals: ApprovalPage,
   assets: AssetsPage,
   audit: AuditPage,
-  settings: SettingsPage
+  settings: McpSettingsPage
 };
 
-const SETUP_GATED_PAGES = new Set<PageKey>(['identity', 'projects', 'workflow', 'context', 'assist', 'execution', 'terminals', 'approvals', 'assets']);
+const SETUP_GATED_PAGES = new Set<PageKey>(['identity', 'projects', 'workflow', 'context', 'assist', 'execution', 'terminals', 'approvals', 'assets', 'settings']);
 
 function routeFromHash(): PageKey {
   const route = location.hash.replace(/^#\/?/, '') as PageKey;
