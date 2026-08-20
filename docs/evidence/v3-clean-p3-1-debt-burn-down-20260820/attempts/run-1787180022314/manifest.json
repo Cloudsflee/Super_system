@@ -1,0 +1,34 @@
+{
+  "schema_version": "aiws.v3-clean.p31-manifest.v2",
+  "status": "failed",
+  "provisional": true,
+  "run_id": "run-1787180022314",
+  "files": [
+    "advisory-tests.json",
+    "catalog-diff.json",
+    "change.patch",
+    "gate-results.json",
+    "modified-artifact.json",
+    "original-hashes.json",
+    "preflight.json",
+    "rollback.ps1",
+    "route-inventory.json",
+    "secret-scan.json",
+    "service-inventory.json",
+    "verification.json"
+  ],
+  "hashes": {
+    "advisory-tests.json": "c9f65a070f4feb79cf7eecd35eb17535937946cb5ea1f5048691c91c0f8fb517",
+    "catalog-diff.json": "d0a8b535dae3eaa51ae7a71e1654df9fec1aa73cc837e1ad517b4d75fba74631",
+    "change.patch": "c615d0456bab5493ddbb0a7e49cb5eadb834a72741076547b9c1d3e7dbd9b653",
+    "gate-results.json": "27893d10b71781e53adcb2575c17e2f5eb05b3179476064ca8829769f176df2f",
+    "modified-artifact.json": "026d2183c168f6496f1b49f34d87a649dc1a976d534df9d530e78dbd4e123399",
+    "original-hashes.json": "b75d4ab4832136460c1bad02989206ba9552a8b899e705ebe1051cf83d6a69ff",
+    "preflight.json": "5aab66dfbb64c6626712713f2f4586e7047ccabeb9935ebaf52f34d68b23dc01",
+    "rollback.ps1": "8f91bc042a5aa92e02992f5cf3088753254a265c94cf7003798ab084933d29c3",
+    "route-inventory.json": "a6c459a76d9a996249cbc3e149aac26769e7a3888f10d35cc48d6d8425c46570",
+    "secret-scan.json": "1d6c220c96040110d3a1ec139dae97aeaa6a2d46033b1509a52ee280643a57e8",
+    "service-inventory.json": "2afbec8c55a4eda061ea6be830622fb54899c26d9438053c5a8306e20afba551",
+    "verification.json": "bccceb2cb39ffc693b7648d200fc5f06dddc86e8224dc858a09d280ec6a8543c"
+  }
+}

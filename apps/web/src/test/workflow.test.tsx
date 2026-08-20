@@ -11,31 +11,39 @@ const project = {
   ] }
 };
 
+function envelope(data: unknown, status = 200) {
+  return new Response(JSON.stringify({ request_id: 'req_clean_workflow', data, meta: { api_version: '2' } }), {
+    status, headers: { 'content-type': 'application/json' }
+  });
+}
+
 beforeEach(() => {
   location.hash = '/workflow';
   sessionStorage.clear();
-  vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => {
+  vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL, options?: RequestInit) => {
     const url = String(input);
-    if (url.endsWith('/api/v1/setup')) return new Response(JSON.stringify({ status: 'ready', complete: true, revision: 1 }), { status: 200 });
-    if (url.endsWith('/api/v1/projects')) return new Response(JSON.stringify([{ ...project, brief: undefined, workflow: undefined }]), { status: 200 });
-    if (url.endsWith('/api/v1/projects/prj_test')) return new Response(JSON.stringify(project), { status: 200 });
-    if (url.includes('/context/sources') || url.includes('/context/packs')) return new Response('[]', { status: 200 });
-    return new Response('{}', { status: 200 });
+    if (url.endsWith('/api/v2/setup')) return envelope({ needs_setup: false, actor_count: 1 });
+    if (url.endsWith('/api/v2/projects') && (options?.method || 'GET') === 'GET') return envelope({ projects: [{ ...project, brief: undefined, workflow: undefined }] });
+    if (url.endsWith('/api/v2/projects/prj_test')) return envelope({ project });
+    if (url.endsWith('/intake')) return envelope({ intake: null });
+    if (url.endsWith('/briefs')) return envelope({ briefs: [] });
+    if (url.endsWith('/repository-connections')) return envelope({ connections: [] });
+    if (url.endsWith('/repository-lines')) return envelope({ lines: [] });
+    if (url.endsWith('/workflow-draft')) return envelope({ workflow: project.workflow });
+    if (url.endsWith('/workflow-generations')) return envelope({ generations: [] });
+    if (url.endsWith('/outcome-requirements')) return envelope({ requirements: [] });
+    return envelope({});
   }));
 });
 
 describe('workflow inspector', () => {
-  it('changes task details on click while hover only highlights topology', async () => {
+  it('loads the Clean workflow surface and keeps its graph controls on v2', async () => {
     render(<App />);
-    await screen.findByRole('heading', { name: 'Workflow' });
-    const inspect = await screen.findByRole('button', { name: /Inspect repository/ });
-    const write = await screen.findByRole('button', { name: /Write change/ });
-    fireEvent.click(inspect);
-    await waitFor(() => expect(screen.getByDisplayValue('Inspect repository')).toBeVisible());
-    fireEvent.mouseEnter(write);
-    expect(screen.getByDisplayValue('Inspect repository')).toBeVisible();
-    fireEvent.mouseLeave(write);
-    fireEvent.click(write);
-    await waitFor(() => expect(screen.getByDisplayValue('Write change')).toBeVisible());
+    await screen.findByRole('heading', { name: 'Test project' });
+    expect(screen.getByText('Workflow draft')).toBeVisible();
+    const graph = screen.getByLabelText('Graph JSON');
+    fireEvent.change(graph, { target: { value: '{"nodes":[{"id":"inspect"}]}' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Save draft' }));
+    await waitFor(() => expect(screen.getByDisplayValue('{"nodes":[{"id":"inspect"}]}')).toBeVisible());
   });
 });

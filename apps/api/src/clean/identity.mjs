@@ -2,6 +2,11 @@ import { createHmac, randomBytes, timingSafeEqual } from 'node:crypto';
 import { canonicalJson, opaqueId, sha256Hex, utcNow, parseCanonicalJson } from './canonical.mjs';
 import { PlatformError } from './platform-error.mjs';
 import { AuthorizationService, PROJECT_ROLES, TEAM_ROLES } from './authorization.mjs';
+import { ActorService } from './actor-service.mjs';
+import { SessionService } from './session-service.mjs';
+import { TeamAccessService } from './team-access-service.mjs';
+import { CredentialProfileService } from './credential-profile-service.mjs';
+import { IDENTITY_OWNER_TABLES } from './identity-helpers.mjs';
 
 const ACTOR_KINDS = new Set(['user', 'service', 'agent']);
 const ACTOR_STATES = new Set(['active', 'suspended', 'revoked']);
@@ -33,7 +38,7 @@ const PROJECT_MEMBERSHIP_TRANSITIONS = Object.freeze({
   expired: new Set()
 });
 
-export class IdentityService {
+class IdentityCoreService {
   constructor({ db, events, operations = null, policy = null, clock = utcNow, bootstrapActorId = 'actor_system_bootstrap', sessionSecret = 'v3-clean-local-session', authorization = null, projectScopeResolver = null, vault = null, providerAdapters = {} } = {}) {
     if (!db) throw new TypeError('identity_database_required');
     this.db = db;
@@ -47,6 +52,8 @@ export class IdentityService {
     this.projectScopeResolver = projectScopeResolver;
     this.vault = vault;
     this.providerAdapters = providerAdapters;
+    if (this.db && operations) this.db.__cleanOperations = operations;
+    if (this.events) this.events.operations = operations;
   }
 
   account(principal = null) {
@@ -1019,42 +1026,125 @@ export class IdentityService {
   #time() { const value = typeof this.clock === 'function' ? this.clock() : this.clock; return typeof value === 'string' ? value : new Date(value).toISOString(); }
 }
 
+/**
+ * Stable Identity facade.  Setup remains a cross-owner transaction on the
+ * core; all other public calls are routed to an explicit owner service.
+ */
+export class IdentityService {
+  constructor(options = {}) {
+    this.core = new IdentityCoreService(options);
+    for (const key of ['db', 'events', 'operations', 'policy', 'clock', 'bootstrapActorId', 'sessionSecret', 'authorization', 'projectScopeResolver', 'vault', 'providerAdapters']) {
+      this[key] = this.core[key];
+    }
+    this.actorService = new ActorService({ core: this.core });
+    this.sessionService = new SessionService({ core: this.core });
+    this.teamAccessService = new TeamAccessService({ core: this.core });
+    this.credentialProfileService = new CredentialProfileService({ core: this.core });
+  }
+
+  ownerForCommand(commandId) {
+    const command = String(commandId || '');
+    if (command.startsWith('session.')) return 'Session';
+    if (command.startsWith('team.') || command.startsWith('membership.') || command.startsWith('invitation.') || command.startsWith('acl.') || command.startsWith('project.')) return 'TeamAccess';
+    if (command.startsWith('credential.') || command.startsWith('profile.')) return 'CredentialProfile';
+    return 'Actor';
+  }
+
+  ownerInventory() {
+    return Object.freeze({
+      Actor: this.actorService.tables,
+      Session: this.sessionService.tables,
+      TeamAccess: this.teamAccessService.tables,
+      CredentialProfile: this.credentialProfileService.tables
+    });
+  }
+
+  account(...args) { return this.actorService.account(...args); }
+  actors(...args) { return this.actorService.list(...args); }
+  setupState(...args) { return this.core.setupState(...args); }
+  setupComplete(...args) { return this.core.setupComplete(...args); }
+
+  authenticateProof(...args) { return this.sessionService.authenticateProof(...args); }
+  principalFromRequest(...args) { return this.sessionService.principalFromRequest(...args); }
+  session(...args) { return this.sessionService.get(...args); }
+  sessions(...args) { return this.sessionService.list(...args); }
+  createSession(...args) { return this.sessionService.create(...args); }
+  revokeSession(...args) { return this.sessionService.revoke(...args); }
+
+  actorSwitch(...args) { return this.actorService.switch(...args); }
+  createActor(...args) { return this.actorService.create(...args); }
+  updateActor(...args) { return this.actorService.update(...args); }
+  setActorStatus(...args) { return this.actorService.setStatus(...args); }
+
+  createTeam(...args) { return this.teamAccessService.createTeam(...args); }
+  teams(...args) { return this.teamAccessService.listTeams(...args); }
+  team(...args) { return this.teamAccessService.getTeam(...args); }
+  setTeamStatus(...args) { return this.teamAccessService.setTeamStatus(...args); }
+  memberships(...args) { return this.teamAccessService.memberships(...args); }
+  grantMembership(...args) { return this.teamAccessService.grantMembership(...args); }
+  setMembershipStatus(...args) { return this.teamAccessService.setMembershipStatus(...args); }
+  grantProjectMembership(...args) { return this.teamAccessService.grantProjectMembership(...args); }
+  projectMembers(...args) { return this.teamAccessService.projectMembers(...args); }
+  projectInvitations(...args) { return this.teamAccessService.projectInvitations(...args); }
+  createProjectInvitation(...args) { return this.teamAccessService.createInvitation(...args); }
+  acceptProjectInvitation(...args) { return this.teamAccessService.acceptInvitation(...args); }
+  revokeProjectInvitation(...args) { return this.teamAccessService.revokeInvitation(...args); }
+  setProjectMembershipStatus(...args) { return this.teamAccessService.setProjectMembershipStatus(...args); }
+  aclEntries(...args) { return this.teamAccessService.aclEntries(...args); }
+  setAclEntry(...args) { return this.teamAccessService.setAclEntry(...args); }
+
+  createCredential(...args) { return this.credentialProfileService.createCredential(...args); }
+  credentials(...args) { return this.credentialProfileService.listCredentials(...args); }
+  profiles(...args) { return this.credentialProfileService.listProfiles(...args); }
+  recoverPending(...args) { return this.core.recoverPending(...args); }
+  createProfile(...args) { return this.credentialProfileService.createProfile(...args); }
+  rebindCredential(...args) { return this.credentialProfileService.rebind(...args); }
+  rotateCredential(...args) { return this.credentialProfileService.rotate(...args); }
+  revokeCredential(...args) { return this.credentialProfileService.revoke(...args); }
+  probeProfile(...args) { return this.credentialProfileService.probeProfile(...args); }
+}
+
 export const IdentityDomainService = IdentityService;
 
 function appendAggregate(tx, events, { aggregateType, aggregateId, revision, operationId, actorId, projectId = null, type, data, payload, now }) {
-  const payloadJson = canonicalJson(payload);
-  const payloadHash = sha256Hex(payloadJson);
-  tx.run(`INSERT INTO aggregate_revisions(id,aggregate_type,aggregate_id,revision,payload_json,payload_sha256,operation_id,actor_id,created_at) VALUES(?,?,?,?,?,?,?,?,?)`, [opaqueId('rev'), aggregateType, aggregateId, revision, payloadJson, payloadHash, operationId || null, actorId, now]);
-  const event = events.appendInTransaction(tx, { aggregateType, aggregateId, aggregateRevision: revision, aggregateHash: payloadHash, operationId: operationId || null, actorId, projectId, type, data, occurredAt: now });
-  return event;
+  if (!events || typeof events.appendAggregateInTransaction !== 'function') throw new TypeError('clean_event_service_required');
+  return events.appendAggregateInTransaction(tx, { aggregateType, aggregateId, revision, operationId: operationId || null, actorId, projectId, type, data, payload, now });
 }
 
 function createInlineOperation(tx, { events, actorId, commandId, resourceType, resourceId, projectId = null, requestHash, now }) {
-  const id = opaqueId('op');
-  const payload = { id, command_id: commandId, command_version: 2, kind: commandId, status: 'succeeded', resource_type: resourceType, resource_id: resourceId, project_id: projectId, actor_id: actorId, request_hash: requestHash, revision: 1, result: {}, created_at: now, updated_at: now };
-  const json = canonicalJson(payload);
-  tx.run(`INSERT INTO operations(id,command_id,command_version,kind,status,resource_type,resource_id,project_id,actor_id,request_hash,external_ref,result_json,error_code,error_details_json,revision,created_at,updated_at,started_at,completed_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`, [id, commandId, 2, commandId, 'succeeded', resourceType, resourceId, projectId, actorId, requestHash, '', '{}', '', '{}', 1, now, now, now, now]);
-  tx.run(`INSERT INTO operation_links(id,operation_id,aggregate_type,aggregate_id,relation,created_at) VALUES(?,?,?,?,?,?)`, [opaqueId('link'), id, resourceType, resourceId, 'target', now]);
-  tx.run(`INSERT INTO aggregate_revisions(id,aggregate_type,aggregate_id,revision,payload_json,payload_sha256,operation_id,actor_id,created_at) VALUES(?,?,?,?,?,?,?,?,?)`, [opaqueId('rev'), 'operation', id, 1, json, sha256Hex(json), id, actorId, now]);
-  const event = events?.appendInTransaction(tx, { aggregateType: 'operation', aggregateId: id, aggregateRevision: 1, aggregateHash: sha256Hex(json), operationId: id, actorId, projectId, type: 'operation.succeeded', data: { status: 'succeeded', operation_id: id, resource_id: resourceId || null }, occurredAt: now });
-  const auditReference = event ? tx.get('SELECT id FROM audit_events WHERE event_id=?', [event.id])?.id || null : null;
-  return { id, revision: 1, event_sequence: Number(event?.sequence || 0), resourceType, resourceId, audit_reference: auditReference };
+  const operations = events?.operations;
+  if (!operations || typeof operations.createInTransaction !== 'function') throw new TypeError('clean_operation_service_required');
+  tx.__cleanOperations = operations;
+  return operations.createInTransaction(tx, {
+    actorId,
+    commandId,
+    kind: commandId,
+    resourceType,
+    resourceId,
+    projectId,
+    requestHash,
+    request: { resource_type: resourceType, resource_id: resourceId, project_id: projectId },
+    idempotencyKey: `inline-${opaqueId('key')}`,
+    status: 'succeeded'
+  }, now);
 }
 
 function linkOperation(tx, operationId, aggregateType, aggregateId, now) {
-  tx.run(`INSERT OR IGNORE INTO operation_links(id,operation_id,aggregate_type,aggregate_id,relation,created_at) VALUES(?,?,?,?,?,?)`, [opaqueId('link'), operationId, aggregateType, aggregateId, 'target', now]);
+  const operations = tx?.__cleanOperations;
+  if (!operations || typeof operations.linkInTransaction !== 'function') throw new TypeError('clean_operation_service_required');
+  return operations.linkInTransaction(tx, operationId, [[aggregateType, aggregateId]], now);
 }
 
 function getIdempotency(tx, actorId, commandId, key, requestHash, now) {
-  const row = tx.get('SELECT * FROM idempotency_keys WHERE actor_id=? AND command_id=? AND idempotency_key=?', [String(actorId), String(commandId), String(key)]);
-  if (!row) return null;
-  if (Date.parse(row.expires_at) <= Date.parse(now)) { tx.run('DELETE FROM idempotency_keys WHERE actor_id=? AND command_id=? AND idempotency_key=?', [actorId, commandId, key]); return null; }
-  if (row.request_hash !== requestHash) throw new PlatformError('idempotency_conflict', 'idempotency key request hash differs', { command_id: commandId }, 409);
-  return row.response_json ? row : null;
+  const operations = tx?.__cleanOperations;
+  if (!operations || typeof operations.getIdempotencyInTransaction !== 'function') throw new TypeError('clean_operation_service_required');
+  return operations.getIdempotencyInTransaction(tx, { actorId, commandId, idempotencyKey: key, requestHash, now });
 }
 
 function saveIdempotency(tx, actorId, commandId, key, requestHash, response, operationId, now) {
-  tx.run(`INSERT INTO idempotency_keys(actor_id,command_id,idempotency_key,request_hash,response_status,response_json,operation_id,expires_at,created_at) VALUES(?,?,?,?,?,?,?,?,?)`, [actorId, commandId, key, requestHash, 200, canonicalJson(response), operationId, expiry(now, 24 * 60 * 60), now]);
+  const operations = tx?.__cleanOperations;
+  if (!operations || typeof operations.saveIdempotencyInTransaction !== 'function') throw new TypeError('clean_operation_service_required');
+  return operations.saveIdempotencyInTransaction(tx, { actorId, commandId, idempotencyKey: key, requestHash, response, operationId, now });
 }
 
 function operationView(value) { return { operation_id: value.id, status: 'succeeded', revision: Number(value.revision || 1), resource_type: value.resourceType || null, resource_id: value.resourceId || null, audit_reference: value.audit_reference || null, terminal: true }; }

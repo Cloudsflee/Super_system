@@ -90,8 +90,9 @@ function ErrorState({ state, message, onRetry }: { state: LoadState; message: st
 
 function unwrap<T>(envelope: { data: T }): T { return envelope.data; }
 
-export function ProjectWorkflowPage({ projectId, selectedProject, refreshProjects, notify, setupReady }: WorkspacePageProps & { initialSection?: Section }) {
-  const [section, setSection] = useState<Section>('overview');
+export function ProjectWorkflowPage({ projectId, selectedProject, refreshProjects, notify, setupReady, initialSection }: WorkspacePageProps & { initialSection?: Section }) {
+  const [section, setSection] = useState<Section>(initialSection || 'overview');
+  useEffect(() => { if (initialSection) setSection(initialSection); }, [initialSection]);
   const [projects, setProjects] = useState<P3Project[]>([]);
   const [project, setProject] = useState<P3Project | null>(null);
   const [intake, setIntake] = useState<Intake | null>(null);

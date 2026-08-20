@@ -1,0 +1,10 @@
+{
+  "schema_version": "aiws.v3-clean.p31-advisory-tests.v1",
+  "commands": [
+    "pnpm fixture:legacy:integration",
+    "pnpm fixture:legacy:security",
+    "pnpm fixture:legacy:e2e"
+  ],
+  "policy": "historical failures remain visible and do not promote Clean status",
+  "status": "advisory"
+}

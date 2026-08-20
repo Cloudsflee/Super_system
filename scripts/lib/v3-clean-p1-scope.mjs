@@ -45,7 +45,12 @@ export const P1_GATE_SYNC_CATALOG_PATHS = Object.freeze({
     'docs/testing.md',
     'scripts/lib/v3-clean-p1-scope.mjs',
     'scripts/v3-clean-workspace-audit.mjs',
-    'scripts/v3-clean-architecture-scan.mjs'
+    'scripts/v3-clean-architecture-scan.mjs',
+    'scripts/catalog-loader.mjs',
+    'scripts/layered-gate.mjs',
+    'scripts/lib/immutable-evidence-writer.mjs',
+    'scripts/v3-clean-p31-evidence.mjs',
+    'docs/architecture/decision-log.md'
   ]),
   target_modules: Object.freeze([
     'feature-catalog.json',
@@ -57,11 +62,17 @@ export const P1_GATE_SYNC_CATALOG_PATHS = Object.freeze({
     'scripts/check.mjs',
     'scripts/verify.mjs',
     'scripts/v3-clean-p1-global-sync-evidence.mjs',
-    'scripts/v3-clean-p3-evidence.mjs'
+    'scripts/v3-clean-p3-evidence.mjs',
+    'feature-catalog.index.json',
+    'feature-catalog.clean.json',
+    'feature-catalog.historical.json'
   ]),
   behavior_tests: Object.freeze([
     'tests/unit/recovery-governance.test.mjs',
-    'tests/p1/workspace-sync.test.mjs'
+    'tests/p1/workspace-sync.test.mjs',
+    'tests/p31/catalog-split.test.mjs',
+    'tests/p31/layered-gates.test.mjs',
+    'tests/p31/evidence-immutability.test.mjs'
   ]),
   ui_tests: Object.freeze([])
 });
@@ -112,10 +123,16 @@ export const P1_PACKAGE_SCRIPT_DEFINITIONS = Object.freeze(Object.fromEntries(Ob
   'test:p1': { command: 'node --test tests/p1/*.test.mjs tests/integration/v3-clean-p1.test.mjs tests/security/v3-clean-p1.test.mjs', role: 'p1_gate', phase: 'P1' },
   'test:p2': { command: 'node --test tests/p2/*.test.mjs', role: 'characterization_gate', phase: 'P2' },
   'test:p3': { command: 'node --test tests/p3/*.test.mjs', role: 'p3_gate', phase: 'P3' },
+  'test:p31': { command: 'node --test tests/p31/*.test.mjs', role: 'p31_gate', phase: 'P3.1' },
   'evidence:p3': { command: 'node scripts/v3-clean-p3-evidence.mjs', role: 'p3_evidence', phase: 'P3' },
-  'test:integration': { command: 'node --experimental-test-coverage --test-coverage-lines=85 --test-coverage-branches=70 --test-coverage-functions=75 --test-coverage-exclude=apps/api/src/clean/** --test tests/integration/*.test.mjs', role: 'characterization_gate', phase: 'P2-P9' },
+  'evidence:p31': { command: 'node scripts/v3-clean-p31-evidence.mjs', role: 'p31_evidence', phase: 'P3.1' },
+  'test:integration': { command: 'node scripts/layered-gate.mjs integration', role: 'layered_gate', phase: 'P3.1' },
+  'test:integration:clean': { command: 'node scripts/layered-gate.mjs integration --clean', role: 'p31_gate', phase: 'P3.1' },
+  'fixture:legacy:integration': { command: 'node scripts/layered-gate.mjs integration --historical', role: 'deferred_fixture', phase: 'historical' },
   'test:e2e': { command: 'node scripts/e2e.mjs', role: 'characterization_gate', phase: 'P9' },
-  'test:security': { command: 'node --test --test-concurrency=1 tests/security/*.test.mjs', role: 'characterization_gate', phase: 'P2-P9' },
+  'test:security': { command: 'node scripts/layered-gate.mjs security', role: 'layered_gate', phase: 'P3.1' },
+  'test:security:clean': { command: 'node scripts/layered-gate.mjs security --clean', role: 'p31_gate', phase: 'P3.1' },
+  'fixture:legacy:security': { command: 'node scripts/layered-gate.mjs security --historical', role: 'deferred_fixture', phase: 'historical' },
   'test:release': { command: 'node --test tests/release/*.test.mjs', role: 'characterization_gate', phase: 'P8-P9' },
   'test:runner-real': { command: 'node scripts/runner-real-smoke.mjs', role: 'characterization_gate', phase: 'P6' },
   'github:seed-fixture': { command: 'node scripts/github-seed-fixture.mjs', role: 'deferred_fixture', phase: 'P7' },
@@ -123,6 +140,7 @@ export const P1_PACKAGE_SCRIPT_DEFINITIONS = Object.freeze(Object.fromEntries(Ob
   'fixture:seed-demo': { command: 'node scripts/seed-demo.mjs', role: 'deferred_fixture', phase: 'P3' },
   'archive:v23': { command: 'node scripts/archive-v23.mjs', role: 'historical_maintenance', phase: 'historical' },
   'fixture:legacy:acceptance': { command: 'node scripts/acceptance.mjs', role: 'deferred_fixture', phase: 'P2-P9' },
+  'fixture:legacy:e2e': { command: 'node scripts/e2e-legacy.mjs', role: 'deferred_fixture', phase: 'historical' },
   'fixture:legacy:release-build': { command: 'node scripts/release-build.mjs', role: 'deferred_fixture', phase: 'P8-P9' },
   'fixture:legacy:release-rehearse': { command: 'node scripts/release-rehearsal.mjs', role: 'deferred_fixture', phase: 'P8-P9' },
   'fixture:legacy:release-promote': { command: 'node scripts/release-promote.mjs', role: 'deferred_fixture', phase: 'P8-P9' },
@@ -150,7 +168,7 @@ export const P1_FORBIDDEN_PACKAGE_SCRIPTS = Object.freeze([
 
 export const P1_LEGACY_SERVER_IMPORTERS = Object.freeze([
   'scripts/acceptance.mjs',
-  'scripts/e2e.mjs',
+  'scripts/e2e-legacy.mjs',
   'scripts/r5-e2e.mjs',
   'tests/integration/debt-regression.test.mjs',
   'tests/integration/helpers.mjs',
@@ -229,7 +247,7 @@ export function classifyWorkspacePath(value) {
   if (['Dockerfile', 'compose.yml', 'docker/'].some((prefix) => file === prefix || file.startsWith(prefix))) {
     return { kind: 'fixture', phase: 'P8-P9', reason: 'deferred deployment surface' };
   }
-  if (/^(?:AGENTS\.md|README\.md|feature-catalog\.json|package\.json|pnpm-lock\.yaml|pnpm-workspace\.yaml|sbom\.spdx\.json|eslint\.config\.mjs|\.[^/]+)$/.test(file)) {
+  if (/^(?:AGENTS\.md|README\.md|feature-catalog(?:\.(?:clean|historical|index))?\.json|package\.json|pnpm-lock\.yaml|pnpm-workspace\.yaml|sbom\.spdx\.json|eslint\.config\.mjs|\.[^/]+)$/.test(file)) {
     return { kind: 'governance', phase: 'P0-P9' };
   }
   return null;

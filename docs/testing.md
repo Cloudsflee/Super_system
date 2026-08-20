@@ -6,8 +6,8 @@ this document does not promote a Catalog item by itself.
 
 ## Gates
 
-`check`, `audit:p1`, `scan:clean`, `test:p1`, `test:p2`, `test`,
-`test:integration`, `test:e2e`, `test:security`, and `test:release` are
+`check`, `audit:p1`, `scan:clean`, `test:p1`, `test:p2`, `test:p3`, `test:p31`,
+`test`, `test:integration`, `test:e2e`, `test:security`, and `test:release` are
 first-class gates. `verify` runs the repository-wide sequence in
 that order (with the Web build before E2E) and stops at the first failure.
 During P1, only the clean baseline, platform ledger, API v2 operation routes,
@@ -111,6 +111,54 @@ P3 Evidence is immutable at
 non-provisional verification receipt may promote the four P3 implementation
 rows. That receipt is now `verified` with `provisional=false`; P1/P2 receipts
 are parent inputs and are never regenerated.
+
+## P3.1 Clean debt burn-down
+
+P3.1 keeps the P3 wire contracts while making the domain boundaries and shared
+transaction ledger explicit. `ProjectWorkflowService` and `IdentityService`
+are facades over owner modules; all operation inserts, idempotency records,
+operation links, aggregate revisions, event heads, and audit rows use the
+single Clean `OperationService`/`EventService` instances. `tests/p31/` covers
+ledger parity, owner-to-command mapping, Catalog split validation, immutable
+receipt resume, Clean Web entrypoints, and layered gate policy.
+
+The active Web navigation and `scripts/e2e.mjs` use only `/api/v2`; the legacy
+journey is retained as `scripts/e2e-legacy.mjs` and runs only through
+`fixture:legacy:e2e`. `test:integration` and `test:security` are layered
+wrappers: Clean failures are blocking, while historical failures produce an
+advisory redacted receipt and do not change Clean Catalog status.
+
+The P3.1 command inventory is:
+
+```text
+pnpm check
+pnpm scan:clean
+pnpm test:p1
+pnpm test:p2
+pnpm test:p3
+pnpm test:p31
+pnpm evidence:p31
+pnpm test:integration:clean
+pnpm test:security:clean
+pnpm fixture:legacy:integration
+pnpm fixture:legacy:security
+pnpm fixture:legacy:e2e
+pnpm --filter @aiws/web test
+pnpm test
+pnpm test:integration
+pnpm test:security
+pnpm build
+pnpm test:e2e
+pnpm verify
+git diff --check
+```
+
+P3.1 receipts are written under
+`docs/evidence/v3-clean-p3-1-debt-burn-down-20260820/`; each run has an
+append-only `attempts/<run-id>/` directory. A final verified receipt is created
+exclusively, and rollback verification records both a dry-run and an isolated
+actual apply with `byte_exact_mismatches=[]`. P1/P2/P3 Evidence remains
+read-only, and the four existing P3 rows retain their prior status.
 
 ## AI evaluation
 

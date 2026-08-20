@@ -1,5 +1,10 @@
 import { canonicalJson, opaqueId, parseCanonicalJson, sha256Hex, utcNow } from './canonical.mjs';
 import { PlatformError } from './platform-error.mjs';
+import { projectCommandOwner } from './project-domain-helpers.mjs';
+import { ProjectService } from './project-service.mjs';
+import { RepositoryService } from './repository-service.mjs';
+import { WorkflowService } from './workflow-service.mjs';
+import { OutcomeService } from './outcome-service.mjs';
 
 const PROJECT_STATUSES = new Set(['draft', 'confirming', 'active', 'archived']);
 const GENERATION_TERMINAL = new Set(['applied', 'rejected', 'failed', 'cancelled']);
@@ -9,7 +14,7 @@ const GENERATION_TERMINAL = new Set(['applied', 'rejected', 'failed', 'cancelled
  * generator and critic calls behind small deterministic adapters; only their
  * bounded hashes and lifecycle results enter the clean database.
  */
-export class ProjectWorkflowService {
+class ProjectWorkflowCore {
   constructor({
     db,
     events,
@@ -31,6 +36,8 @@ export class ProjectWorkflowService {
     this.repositoryAdapter = repositoryAdapter || deterministicRepositoryAdapter();
     this.generator = generator || deterministicGenerator;
     this.critic = critic || deterministicCritic;
+    this.db.__cleanOperations = operations;
+    if (this.events) this.events.operations = operations;
   }
 
   // ----- Project and intake -------------------------------------------------
@@ -2886,6 +2893,82 @@ export class ProjectWorkflowService {
   }
 }
 
+/**
+ * Stable P3 facade.  It owns dependency assembly and the public method names;
+ * domain SQL and transaction choreography live in ProjectWorkflowCore, while
+ * the owner services provide the explicit command/table boundaries.
+ */
+export class ProjectWorkflowService {
+  constructor(options = {}) {
+    this.core = new ProjectWorkflowCore(options);
+    this.db = this.core.db;
+    this.events = this.core.events;
+    this.operations = this.core.operations;
+    this.policy = this.core.policy;
+    this.authorization = this.core.authorization;
+    this.clock = this.core.clock;
+    this.projectService = new ProjectService({ core: this.core });
+    this.repositoryService = new RepositoryService({ core: this.core });
+    this.workflowService = new WorkflowService({ core: this.core });
+    this.outcomeService = new OutcomeService({ core: this.core });
+  }
+
+  ownerForCommand(commandId) { return projectCommandOwner(commandId); }
+  ownerInventory() {
+    return Object.freeze({
+      Project: this.projectService.tables,
+      Repository: this.repositoryService.tables,
+      Workflow: this.workflowService.tables,
+      Outcome: this.outcomeService.tables
+    });
+  }
+
+  listProjects(...args) { return this.projectService.list(...args); }
+  getProject(...args) { return this.projectService.get(...args); }
+  createProject(...args) { return this.projectService.create(...args); }
+  updateProject(...args) { return this.projectService.update(...args); }
+  archiveProject(...args) { return this.projectService.archive(...args); }
+  restoreProject(...args) { return this.projectService.restore(...args); }
+  getIntake(...args) { return this.projectService.intake(...args); }
+  submitIntake(...args) { return this.projectService.submitIntake(...args); }
+  retryIntake(...args) { return this.projectService.retryIntake(...args); }
+  cancelIntake(...args) { return this.projectService.cancelIntake(...args); }
+  listBriefs(...args) { return this.projectService.briefs(...args); }
+  getBrief(...args) { return this.projectService.brief(...args); }
+  createBrief(...args) { return this.projectService.createBrief(...args); }
+  confirmBrief(...args) { return this.projectService.confirmBrief(...args); }
+  previewBrief(...args) { return this.projectService.previewBrief(...args); }
+
+  listRepositoryConnections(...args) { return this.repositoryService.listConnections(...args); }
+  createRepositoryConnection(...args) { return this.repositoryService.createConnection(...args); }
+  updateRepositoryConnection(...args) { return this.repositoryService.updateConnection(...args); }
+  listRepositoryTargets(...args) { return this.repositoryService.listTargets(...args); }
+  createRepositoryTarget(...args) { return this.repositoryService.createTarget(...args); }
+  listRepositoryLines(...args) { return this.repositoryService.listLines(...args); }
+  reconcileRepositoryLine(...args) { return this.repositoryService.reconcileLine(...args); }
+  listRepositoryWorkspaces(...args) { return this.repositoryService.listWorkspaces(...args); }
+  createRepositoryWorkspace(...args) { return this.repositoryService.createWorkspace(...args); }
+  refreshRepositoryWorkspace(...args) { return this.repositoryService.refreshWorkspace(...args); }
+  lockRepositoryWorkspace(...args) { return this.repositoryService.lockWorkspace(...args); }
+  releaseRepositoryWorkspace(...args) { return this.repositoryService.releaseWorkspace(...args); }
+
+  listWorkflows(...args) { return this.workflowService.list(...args); }
+  getWorkflow(...args) { return this.workflowService.get(...args); }
+  reviseWorkflow(...args) { return this.workflowService.revise(...args); }
+  listGenerations(...args) { return this.workflowService.listGenerations(...args); }
+  getGeneration(...args) { return this.workflowService.getGeneration(...args); }
+  startGeneration(...args) { return this.workflowService.startGeneration(...args); }
+  retryGeneration(...args) { return this.workflowService.retryGeneration(...args); }
+  cancelGeneration(...args) { return this.workflowService.cancelGeneration(...args); }
+  evaluateCritic(...args) { return this.workflowService.evaluateCritic(...args); }
+  getProposal(...args) { return this.workflowService.getProposal(...args); }
+  applyProposal(...args) { return this.workflowService.applyProposal(...args); }
+
+  listOutcomeRequirements(...args) { return this.outcomeService.list(...args); }
+  createOutcomeRequirement(...args) { return this.outcomeService.create(...args); }
+  recoverPending(...args) { return this.core.recoverPending(...args); }
+}
+
 export const ProjectDomainService = ProjectWorkflowService;
 
 function createInlineOperation(
@@ -2893,77 +2976,19 @@ function createInlineOperation(
   events,
   { actorId, commandId, resourceType, resourceId, projectId = null, requestHash, now }
 ) {
-  const id = opaqueId('op');
-  const payload = {
-    id,
-    command_id: commandId,
-    command_version: 2,
-    kind: commandId,
-    status: 'succeeded',
-    resource_type: resourceType,
-    resource_id: resourceId,
-    project_id: projectId,
-    actor_id: actorId,
-    request_hash: requestHash,
-    revision: 1,
-    result: {},
-    created_at: now,
-    updated_at: now
-  };
-  const json = canonicalJson(payload);
-  tx.run(
-    `INSERT INTO operations(id,command_id,command_version,kind,status,resource_type,resource_id,project_id,actor_id,request_hash,external_ref,result_json,error_code,error_details_json,revision,created_at,updated_at,started_at,completed_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
-    [
-      id,
-      commandId,
-      2,
-      commandId,
-      'succeeded',
-      resourceType,
-      resourceId,
-      projectId,
-      actorId,
-      requestHash,
-      '',
-      '{}',
-      '',
-      '{}',
-      1,
-      now,
-      now,
-      now,
-      now
-    ]
-  );
-  tx.run(
-    `INSERT INTO operation_links(id,operation_id,aggregate_type,aggregate_id,relation,created_at) VALUES(?,?,?,?,?,?)`,
-    [opaqueId('link'), id, resourceType, resourceId, 'target', now]
-  );
-  tx.run(
-    `INSERT INTO aggregate_revisions(id,aggregate_type,aggregate_id,revision,payload_json,payload_sha256,operation_id,actor_id,created_at) VALUES(?,?,?,?,?,?,?,?,?)`,
-    [opaqueId('rev'), 'operation', id, 1, json, sha256Hex(json), id, actorId, now]
-  );
-  const event = events.appendInTransaction(tx, {
-    aggregateType: 'operation',
-    aggregateId: id,
-    aggregateRevision: 1,
-    aggregateHash: sha256Hex(json),
-    operationId: id,
+  const operations = operationLedger(tx, events);
+  return operations.createInTransaction(tx, {
     actorId,
-    projectId,
-    type: 'operation.succeeded',
-    data: { status: 'succeeded', operation_id: id, resource_id: resourceId },
-    occurredAt: now
-  });
-  return {
-    id,
-    operation_id: id,
-    revision: 1,
-    status: 'succeeded',
+    commandId,
+    kind: commandId,
     resourceType,
     resourceId,
-    audit_reference: tx.get('SELECT id FROM audit_events WHERE event_id=?', [event.id])?.id || null
-  };
+    projectId,
+    requestHash,
+    request: { resource_type: resourceType, resource_id: resourceId, project_id: projectId },
+    idempotencyKey: `inline-${opaqueId('key')}`,
+    status: 'succeeded'
+  }, now);
 }
 
 function appendAggregate(
@@ -2971,31 +2996,23 @@ function appendAggregate(
   events,
   { aggregateType, aggregateId, revision, operationId, actorId, projectId, type, data, payload, now }
 ) {
-  const payloadJson = typeof payload === 'string' ? payload : canonicalJson(payload);
-  const payloadHash = sha256Hex(payloadJson);
-  tx.run(
-    `INSERT INTO aggregate_revisions(id,aggregate_type,aggregate_id,revision,payload_json,payload_sha256,operation_id,actor_id,created_at) VALUES(?,?,?,?,?,?,?,?,?)`,
-    [opaqueId('rev'), aggregateType, aggregateId, revision, payloadJson, payloadHash, operationId || null, actorId, now]
-  );
-  return events.appendInTransaction(tx, {
+  if (!events || typeof events.appendAggregateInTransaction !== 'function') throw new TypeError('clean_event_service_required');
+  return events.appendAggregateInTransaction(tx, {
     aggregateType,
     aggregateId,
-    aggregateRevision: revision,
-    aggregateHash: payloadHash,
+    revision,
     operationId: operationId || null,
     actorId,
     projectId,
     type,
     data,
-    occurredAt: now
+    payload,
+    now
   });
 }
 function linkOperation(tx, operationId, links, now) {
-  for (const [type, id] of links)
-    tx.run(
-      `INSERT OR IGNORE INTO operation_links(id,operation_id,aggregate_type,aggregate_id,relation,created_at) VALUES(?,?,?,?,?,?)`,
-      [opaqueId('link'), operationId, type, id, 'target', now]
-    );
+  const operations = operationLedger(tx);
+  return operations.linkInTransaction(tx, operationId, links, now);
 }
 function operationView(op) {
   return {
@@ -3025,44 +3042,40 @@ function operationReceipt(op) {
   };
 }
 function getIdempotency(tx, actorId, commandId, key, hash, now) {
-  const row = tx.get('SELECT * FROM idempotency_keys WHERE actor_id=? AND command_id=? AND idempotency_key=?', [
+  return operationLedger(tx).getIdempotencyInTransaction(tx, {
     actorId,
     commandId,
-    key
-  ]);
-  if (!row) return null;
-  if (Date.parse(row.expires_at) <= Date.parse(now)) {
-    tx.run('DELETE FROM idempotency_keys WHERE actor_id=? AND command_id=? AND idempotency_key=?', [
-      actorId,
-      commandId,
-      key
-    ]);
-    return null;
-  }
-  if (row.request_hash !== hash)
-    throw new PlatformError(
-      'idempotency_conflict',
-      'idempotency key request hash differs',
-      { command_id: commandId },
-      409
-    );
-  return row.response_json ? row : null;
+    idempotencyKey: key,
+    requestHash: hash,
+    now
+  });
 }
 function saveIdempotency(tx, actorId, commandId, key, hash, response, operationId, now) {
-  tx.run(
-    `INSERT INTO idempotency_keys(actor_id,command_id,idempotency_key,request_hash,response_status,response_json,operation_id,expires_at,created_at) VALUES(?,?,?,?,?,?,?,?,?)`,
-    [
-      actorId,
-      commandId,
-      key,
-      hash,
-      200,
-      canonicalJson(response),
-      operationId,
-      new Date(Date.parse(now) + 86400000).toISOString(),
-      now
-    ]
-  );
+  return operationLedger(tx).saveIdempotencyInTransaction(tx, {
+    actorId,
+    commandId,
+    idempotencyKey: key,
+    requestHash: hash,
+    response,
+    operationId,
+    responseStatus: 200,
+    now
+  });
+}
+
+function operationLedger(tx, events = null) {
+  const operations = tx?.__cleanOperations || events?.operations;
+  if (!operations
+    || typeof operations.createInTransaction !== 'function'
+    || typeof operations.linkInTransaction !== 'function'
+    || typeof operations.getIdempotencyInTransaction !== 'function'
+    || typeof operations.saveIdempotencyInTransaction !== 'function') {
+    throw new TypeError('clean_operation_service_required');
+  }
+  // CleanDatabase passes the same transaction object to every domain call;
+  // cache the one shared ledger instance for helpers invoked before creation.
+  tx.__cleanOperations = operations;
+  return operations;
 }
 function requestHash(value) {
   return sha256Hex(canonicalJson(value));

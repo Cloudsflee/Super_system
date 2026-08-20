@@ -1,0 +1,52 @@
+{
+  "schema_version": "aiws.v3-clean.p31-catalog-diff.v2",
+  "index": {
+    "schema_version": "aiws.v3.feature_catalog.index.v1",
+    "product_version": "3.0.0",
+    "active_runtime": "v3-clean",
+    "catalogs": {
+      "clean": "feature-catalog.clean.json",
+      "historical": "feature-catalog.historical.json"
+    }
+  },
+  "validation": {
+    "valid": true,
+    "failures": [],
+    "counts": {
+      "clean": 9,
+      "historical": 18,
+      "total": 27
+    }
+  },
+  "clean_ids": [
+    "REC-D0-GOVERNANCE-000",
+    "REC-D10-FRONTEND-024",
+    "REC-D2-IDENTITY-001",
+    "REC-D2-SETUP-002",
+    "REC-D5-PROJECT-005",
+    "REC-D5-WORKFLOW-006",
+    "REC-D6-GENERATION-007",
+    "REC-D6-OUTCOME-009",
+    "REC-D7-REPOSITORY-014"
+  ],
+  "historical_ids": [
+    "REC-D1-CONTRACTS-023",
+    "REC-D3-RUNNER-003",
+    "REC-D4-MCP-004",
+    "REC-D6-EXECUTION-008",
+    "REC-D8-ASSIST-010",
+    "REC-D8-ATTACHMENTS-011",
+    "REC-D8-FILES-012",
+    "REC-D8-APPROVAL-013",
+    "REC-D8-TERMINAL-025",
+    "REC-D8-BRIDGE-026",
+    "REC-D7-DELIVERY-015",
+    "REC-D4-SCOPE-016",
+    "REC-D9-CONTEXT-017",
+    "REC-D9-PROJECTION-018",
+    "REC-D9-EVIDENCE-019",
+    "REC-D9-QUALITY-020",
+    "REC-D9-DEPLOYMENT-021",
+    "REC-D11-OPS-022"
+  ]
+}

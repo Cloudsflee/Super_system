@@ -7,13 +7,14 @@ import { PlatformError } from './platform-error.mjs';
 export { PlatformError } from './platform-error.mjs';
 
 export class CleanPlatform {
-  constructor({ db, events = null, policy = DEFAULT_REDACTION_POLICY, clock = utcNow, bootstrapActorId = 'actor_system_bootstrap', authorize = null, principalResolver = null } = {}) {
+  constructor({ db, events = null, operations = null, policy = DEFAULT_REDACTION_POLICY, clock = utcNow, bootstrapActorId = 'actor_system_bootstrap', authorize = null, principalResolver = null } = {}) {
     if (!db) throw new TypeError('platform_database_required');
     this.db = db;
     this.policy = policy;
     this.clock = clock;
     this.bootstrapActorId = bootstrapActorId;
     this.events = events || new EventService({ db, policy, clock });
+    this.operations = operations || db.__cleanOperations || null;
     this.principalResolver = principalResolver || new PrincipalResolver({ db, bootstrapActorId });
     this.authorize = typeof authorize === 'function' ? authorize : ((context) => context.actorId === this.bootstrapActorId);
   }
@@ -48,17 +49,24 @@ export class CleanPlatform {
     const aggregateId = String(input.aggregateId || opaqueId(aggregateType));
     const timestamp = this.#time();
     this.assertAuthorized(actor, input.action || 'operations:control', { projectId: input.projectId });
+    const operations = this.operations || this.db.__cleanOperations;
+    if (!operations
+      || typeof operations.getIdempotencyInTransaction !== 'function'
+      || typeof operations.saveIdempotencyInTransaction !== 'function'
+      || typeof operations.linkInTransaction !== 'function') {
+      throw new TypeError('clean_operation_service_required');
+    }
     return this.db.withTransaction((tx) => {
-      let existing = tx.get('SELECT * FROM idempotency_keys WHERE actor_id=? AND command_id=? AND idempotency_key=?', [actor.actorId, commandId, idempotencyKey]);
+      tx.__cleanOperations = operations;
+      const existing = operations.getIdempotencyInTransaction(tx, {
+        actorId: actor.actorId,
+        commandId,
+        idempotencyKey,
+        requestHash,
+        now: timestamp
+      });
       if (existing) {
-        if (isExpired(existing.expires_at, timestamp)) {
-          tx.run('DELETE FROM idempotency_keys WHERE actor_id=? AND command_id=? AND idempotency_key=?', [actor.actorId, commandId, idempotencyKey]);
-          existing = null;
-        }
-        else {
-          if (existing.request_hash !== requestHash) throw new PlatformError('idempotency_conflict', 'Idempotency-Key request hash differs', { command_id: commandId }, 409);
-          if (existing.response_json) return { ...JSON.parse(existing.response_json), replayed: true };
-        }
+        if (existing.response_json) return { ...JSON.parse(existing.response_json), replayed: true };
       }
       const current = tx.get('SELECT * FROM aggregate_heads WHERE aggregate_type=? AND aggregate_id=?', [aggregateType, aggregateId]);
       const currentRevision = Number(current?.current_revision || 0);
@@ -69,13 +77,11 @@ export class CleanPlatform {
       const payload = this.policy.redact(applied?.payload ?? input.payload ?? {}).value;
       const payloadJson = canonicalJson(payload);
       const payloadHash = sha256Hex(payloadJson);
-      tx.run(`INSERT INTO aggregate_revisions(id,aggregate_type,aggregate_id,revision,payload_json,payload_sha256,operation_id,actor_id,created_at)
-        VALUES(?,?,?,?,?,?,?,?,?)`, [opaqueId('rev'), aggregateType, aggregateId, nextRevision, payloadJson, payloadHash, input.operationId || null, actor.actorId, timestamp]);
-      const event = this.events.appendInTransaction(tx, {
+      const event = this.events.appendAggregateInTransaction(tx, {
         aggregateType,
         aggregateId,
-        aggregateRevision: nextRevision,
-        aggregateHash: payloadHash,
+        revision: nextRevision,
+        payload,
         operationId: input.operationId || null,
         actorId: actor.actorId,
         projectId: input.projectId || actor.projectId,
@@ -85,8 +91,7 @@ export class CleanPlatform {
         auditAction: input.auditAction || commandId
       });
       if (input.operationId) {
-        tx.run(`INSERT OR IGNORE INTO operation_links(id,operation_id,aggregate_type,aggregate_id,relation,created_at)
-          VALUES(?,?,?,?,?,?)`, [opaqueId('link'), String(input.operationId), aggregateType, aggregateId, 'target', timestamp]);
+        operations.linkInTransaction(tx, input.operationId, [[aggregateType, aggregateId]], timestamp);
       }
       const response = {
         id: aggregateId,
@@ -98,9 +103,17 @@ export class CleanPlatform {
         data: this.policy.redact(applied?.result ?? input.result ?? { id: aggregateId, revision: nextRevision }).value,
         redactions: event.redactions
       };
-      if (!existing) tx.run(`INSERT INTO idempotency_keys(actor_id,command_id,idempotency_key,request_hash,response_status,response_json,operation_id,expires_at,created_at)
-        VALUES(?,?,?,?,?,?,?,?,?)`, [actor.actorId, commandId, idempotencyKey, requestHash, Number(input.responseStatus || 200), canonicalJson(response), input.operationId || null, input.expiresAt || new Date(Date.parse(timestamp) + 24 * 60 * 60 * 1000).toISOString(), timestamp]);
-      else tx.run('UPDATE idempotency_keys SET response_status=?,response_json=? WHERE actor_id=? AND command_id=? AND idempotency_key=?', [Number(input.responseStatus || 200), canonicalJson(response), actor.actorId, commandId, idempotencyKey]);
+      operations.saveIdempotencyInTransaction(tx, {
+        actorId: actor.actorId,
+        commandId,
+        idempotencyKey,
+        requestHash,
+        response,
+        operationId: input.operationId || null,
+        responseStatus: Number(input.responseStatus || 200),
+        expiresAt: input.expiresAt,
+        now: timestamp
+      });
       return response;
     });
   }
@@ -150,10 +163,4 @@ function awaitMaybe(value, argument) {
   const result = typeof value === 'function' ? value(argument) : value;
   if (result && typeof result.then === 'function') throw new PlatformError('invalid_request', 'transaction callback must be synchronous', {}, 400);
   return result || {};
-}
-
-function isExpired(value, now) {
-  const expiry = Date.parse(String(value || ''));
-  const current = Date.parse(String(now || ''));
-  return Number.isFinite(expiry) && Number.isFinite(current) && expiry <= current;
 }

@@ -1,0 +1,9 @@
+{
+  "schema_version": "aiws.v3.feature_catalog.index.v1",
+  "product_version": "3.0.0",
+  "active_runtime": "v3-clean",
+  "catalogs": {
+    "clean": "feature-catalog.clean.json",
+    "historical": "feature-catalog.historical.json"
+  }
+}

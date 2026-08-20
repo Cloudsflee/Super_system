@@ -89,6 +89,30 @@ export class EventService {
     return event;
   }
 
+  /**
+   * Append an aggregate revision, event/head update, and audit record through
+   * one shared transaction entry point.  Domain services must not duplicate
+   * this SQL because aggregate CAS semantics belong to the event ledger.
+   */
+  appendAggregateInTransaction(tx, input = {}) {
+    const aggregateType = String(input.aggregateType || '');
+    const aggregateId = String(input.aggregateId || '');
+    const revision = Number(input.revision ?? input.aggregateRevision);
+    if (!aggregateType || !aggregateId || !Number.isInteger(revision) || revision < 1) throw new Error('aggregate_revision_invalid');
+    const payloadValue = input.payload == null ? {} : input.payload;
+    const payloadJson = typeof payloadValue === 'string' ? payloadValue : canonicalJson(payloadValue);
+    const payloadHash = sha256Hex(payloadJson);
+    tx.run('INSERT INTO aggregate_revisions(id,aggregate_type,aggregate_id,revision,payload_json,payload_sha256,operation_id,actor_id,created_at) VALUES(?,?,?,?,?,?,?,?,?)', [opaqueId('rev'), aggregateType, aggregateId, revision, payloadJson, payloadHash, input.operationId || null, String(input.actorId || 'actor_system_bootstrap'), input.now || input.occurredAt || this.clock()]);
+    return this.appendInTransaction(tx, {
+      ...input,
+      aggregateType,
+      aggregateId,
+      aggregateRevision: revision,
+      aggregateHash: payloadHash,
+      occurredAt: input.now || input.occurredAt || this.clock()
+    });
+  }
+
   replay({ actorId = 'actor_system_bootstrap', projectId = null, operationId = null, aggregateType = null, aggregateId = null, cursor = null, limit = 500, consumerId = null, now = new Date() } = {}) {
     const query = { operation_id: operationId, aggregate_type: aggregateType, aggregate_id: aggregateId };
     let after = 0;

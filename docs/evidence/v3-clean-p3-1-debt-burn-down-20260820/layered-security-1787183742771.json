@@ -1,0 +1,45 @@
+{
+  "schema_version": "aiws.v3-clean.layered-gate-receipt.v1",
+  "suite": "security",
+  "status": "failed",
+  "blocking_layer": "clean",
+  "generated_at": "2026-08-19T23:55:42.770Z",
+  "clean": {
+    "layer": "clean",
+    "command": "node --test --test-concurrency=1 tests/security/v3-clean-p1.test.mjs tests/security/boundary.test.mjs",
+    "exit_status": 1,
+    "signal": null,
+    "ok": false,
+    "summary": "at async startSubtestAfterBootstrap (node:internal/test_runner/harness:358:3) {\ngeneratedMessage: false,\ncode: 'ERR_ASSERTION',\nactual: 1,\nexpected: 0,\noperator: 'strictEqual',\ndiff: 'simple'\n}",
+    "output": {
+      "stdout": "✔ resolved compose keeps Docker control plane and socket on the broker only (501.7668ms)\n✖ production App image has no Docker CLI or host socket (25664.2906ms)\n✔ production build context excludes live secrets and requires a real Runner digest (8.1957ms)\n✔ broker readiness inspects the registered Runner image instead of echoing configuration (1.893ms)\n✔ broker spec cannot carry command, host volume, or arbitrary environment (24.9873ms)\n(node:18852) ExperimentalWarning: SQLite is an experimental feature and might change at any time\n(Use `node --trace-warnings ...` to show where the warning was created)\n✔ clean boundary rejects stale metadata and removes restricted values (265.6495ms)\nℹ tests 6\nℹ suites 0\nℹ pass 5\nℹ fail 1\nℹ cancelled 0\nℹ skipped 0\nℹ todo 0\nℹ duration_ms 27738.898\n\n✖ failing tests:\n\ntest at tests\\security\\boundary.test.mjs:38:1\n✖ production App image has no Docker CLI or host socket (25664.2906ms)\n  AssertionError [ERR_ASSERTION]: Dockerfile:26\n  --------------------\n    24 |     RUN corepack pnpm --filter @aiws/web build\n    25 |     \n    26 | >>> FROM ${NODE_IMAGE} AS production\n    27 |     ARG ALPINE_MIRROR=https://mirrors.aliyun.com/alpine\n    28 |     ARG AIWS_VERSION\n  --------------------\n  ERROR: failed to build: failed to solve: docker.m.daocloud.io/library/node:24.14.0-alpine3.22: failed to resolve source metadata for docker.m.daocloud.io/library/node:24.14.0-alpine3.22: failed to do request: Head \"https://docker.m.daocloud.io/v2/library/node/manifests/24.14.0-alpine3.22\": net/http: TLS handshake timeout\n  \n  \n  1 !== 0\n  \n      at TestContext.<anonymous> (file:///E:/00_desktop/%E6%AF%95%E4%B8%9A%E8%AE%BE%E8%AE%A1/tests/security/boundary.test.mjs:47:12)\n      at Test.runInAsyncScope (node:async_hooks:228:14)\n      at Test.run (node:internal/test_runner/test:1118:25)\n      at Test.processPendingSubtests (node:internal/test_runner/test:787:18)\n      at Test.postRun (node:internal/test_runner/test:1247:19)\n      at Test.run (node:internal/test_runner/test:1175:12)\n      at async startSubtestAfterBootstrap (node:internal/test_runner/harness:358:3) {\n    generatedMessage: false,\n    code: 'ERR_ASSERTION',\n    actual: 1,\n    expected: 0,\n    operator: 'strictEqual',\n    diff: 'simple'\n  }\n",
+      "stderr": ""
+    },
+    "redaction": {
+      "passed": true,
+      "removed": 0
+    }
+  },
+  "historical": {
+    "layer": "historical",
+    "command": "node --test --test-concurrency=1 tests/security/*.test.mjs",
+    "exit_status": 0,
+    "signal": null,
+    "ok": true,
+    "summary": "ℹ tests 15\nℹ suites 0\nℹ pass 15\nℹ fail 0\nℹ cancelled 0\nℹ skipped 0\nℹ todo 0\nℹ duration_ms 52515.0136",
+    "output": {
+      "stdout": "✔ resolved compose keeps Docker control plane and socket on the broker only (497.1308ms)\n✔ production App image has no Docker CLI or host socket (39836.8889ms)\n✔ production build context excludes live secrets and requires a real Runner digest (10.9994ms)\n✔ broker readiness inspects the registered Runner image instead of echoing configuration (0.9036ms)\n✔ broker spec cannot carry command, host volume, or arbitrary environment (12.9823ms)\nAIWS runner-broker listening on http://127.0.0.1:62113\nAIWS runner-broker listening on http://127.0.0.1:62117\n✔ broker HTTP boundary verifies signatures, rejects unsafe specs, and redacts credentials (113.4638ms)\nAIWS runner-broker listening on http://127.0.0.1:56389\n✔ broker accepts a dynamic model only with an exact Profile snapshot (51.3789ms)\n✔ explicit Host executor runs the bound Profile and removes its Codex home (953.055ms)\nAIWS runner-broker listening on http://127.0.0.1:56392\n(node:41280) ExperimentalWarning: SQLite is an experimental feature and might change at any time\n(Use `node --trace-warnings ...` to show where the warning was created)\nAIWS 3.0.0 listening on http://127.0.0.1:56393\n✔ R5 Context and MCP enforce project, path, scope, expiry, and redaction boundaries (690.9315ms)\nAIWS runner-broker listening on http://127.0.0.1:52637\n(node:56132) ExperimentalWarning: SQLite is an experimental feature and might change at any time\n(Use `node --trace-warnings ...` to show where the warning was created)\nAIWS 3.0.0 listening on http://127.0.0.1:52638\n✔ ephemeral Codex credentials never enter state, events, errors, Broker status, or CAS (6388.2066ms)\n✔ repository source adapters enforce HTTPS and canonical local allowlists (7.6114ms)\n✔ multipart intake rejects traversal and enforces file and byte limits (30.7444ms)\n(node:34944) ExperimentalWarning: SQLite is an experimental feature and might change at any time\n(Use `node --trace-warnings ...` to show where the warning was created)\n✔ clean boundary rejects stale metadata and removes restricted values (193.8303ms)\nAIWS runner-broker listening on http://127.0.0.1:57127\n(node:17656) ExperimentalWarning: SQLite is an experimental feature and might change at any time\n(Use `node --trace-warnings ...` to show where the warning was created)\nAIWS 3.0.0 listening on http://127.0.0.1:57128\nAIWS runner-broker listening on http://127.0.0.1:57135\n✔ workflow generation public records and streams expose only stable metadata (1131.8686ms)\n(node:17656) ExperimentalWarning: SQLite is an experimental feature and might change at any time\n(Use `node --trace-warnings ...` to show where the warning was created)\nAIWS 3.0.0 listening on http://127.0.0.1:57136\n✔ workflow candidates enforce the bounded public input contract (963.5011ms)\nℹ tests 15\nℹ suites 0\nℹ pass 15\nℹ fail 0\nℹ cancelled 0\nℹ skipped 0\nℹ todo 0\nℹ duration_ms 52515.0136\n",
+      "stderr": ""
+    },
+    "redaction": {
+      "passed": true,
+      "removed": 0
+    },
+    "advisory": true
+  },
+  "policy": {
+    "clean_failure_blocks": true,
+    "historical_failure_advisory": true,
+    "redaction": "paths-and-secret-shaped-values"
+  }
+}

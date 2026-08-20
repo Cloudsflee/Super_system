@@ -1,0 +1,574 @@
+{
+  "schema_version": "aiws.v3-clean.p31-route-inventory.v2",
+  "active_api": "/api/v2",
+  "retired_api": "/api/v1",
+  "routes": [
+    {
+      "command_id": "operations.get",
+      "method": "GET",
+      "path": "/api/v2/operations/{id}",
+      "owner": "Operations",
+      "phase": "p2"
+    },
+    {
+      "command_id": "operations.events",
+      "method": "GET",
+      "path": "/api/v2/operations/{id}/events",
+      "owner": "Operations",
+      "phase": "p2"
+    },
+    {
+      "command_id": "operations.cancel",
+      "method": "POST",
+      "path": "/api/v2/operations/{id}/cancel",
+      "owner": "Operations",
+      "phase": "p2"
+    },
+    {
+      "command_id": "setup.get",
+      "method": "GET",
+      "path": "/api/v2/setup",
+      "owner": "Setup",
+      "phase": "p2"
+    },
+    {
+      "command_id": "setup.complete",
+      "method": "POST",
+      "path": "/api/v2/setup",
+      "owner": "Identity",
+      "phase": "p2"
+    },
+    {
+      "command_id": "account.get",
+      "method": "GET",
+      "path": "/api/v2/account",
+      "owner": "Identity",
+      "phase": "p2"
+    },
+    {
+      "command_id": "account.update",
+      "method": "PATCH",
+      "path": "/api/v2/account",
+      "owner": "Identity",
+      "phase": "p2"
+    },
+    {
+      "command_id": "actor.list",
+      "method": "GET",
+      "path": "/api/v2/actors",
+      "owner": "Identity",
+      "phase": "p2"
+    },
+    {
+      "command_id": "actor.create",
+      "method": "POST",
+      "path": "/api/v2/actors",
+      "owner": "Identity",
+      "phase": "p2"
+    },
+    {
+      "command_id": "actor.update",
+      "method": "PATCH",
+      "path": "/api/v2/actors/{id}",
+      "owner": "Identity",
+      "phase": "p2"
+    },
+    {
+      "command_id": "actor.suspend",
+      "method": "POST",
+      "path": "/api/v2/actors/{id}/suspend",
+      "owner": "Identity",
+      "phase": "p2"
+    },
+    {
+      "command_id": "actor.activate",
+      "method": "POST",
+      "path": "/api/v2/actors/{id}/activate",
+      "owner": "Identity",
+      "phase": "p2"
+    },
+    {
+      "command_id": "actor.revoke",
+      "method": "POST",
+      "path": "/api/v2/actors/{id}/revoke",
+      "owner": "Identity",
+      "phase": "p2"
+    },
+    {
+      "command_id": "actor.switch",
+      "method": "POST",
+      "path": "/api/v2/sessions/{id}/switch",
+      "owner": "Identity",
+      "phase": "p2"
+    },
+    {
+      "command_id": "session.list",
+      "method": "GET",
+      "path": "/api/v2/sessions",
+      "owner": "Identity",
+      "phase": "p2"
+    },
+    {
+      "command_id": "session.create",
+      "method": "POST",
+      "path": "/api/v2/sessions",
+      "owner": "Identity",
+      "phase": "p2"
+    },
+    {
+      "command_id": "session.revoke",
+      "method": "POST",
+      "path": "/api/v2/sessions/{id}/revoke",
+      "owner": "Identity",
+      "phase": "p2"
+    },
+    {
+      "command_id": "team.list",
+      "method": "GET",
+      "path": "/api/v2/teams",
+      "owner": "Identity",
+      "phase": "p2"
+    },
+    {
+      "command_id": "team.create",
+      "method": "POST",
+      "path": "/api/v2/teams",
+      "owner": "Identity",
+      "phase": "p2"
+    },
+    {
+      "command_id": "team.get",
+      "method": "GET",
+      "path": "/api/v2/teams/{id}",
+      "owner": "Identity",
+      "phase": "p2"
+    },
+    {
+      "command_id": "team.status",
+      "method": "PATCH",
+      "path": "/api/v2/teams/{id}",
+      "owner": "Identity",
+      "phase": "p2"
+    },
+    {
+      "command_id": "team.members.list",
+      "method": "GET",
+      "path": "/api/v2/teams/{id}/memberships",
+      "owner": "Identity",
+      "phase": "p2"
+    },
+    {
+      "command_id": "team.member.grant",
+      "method": "POST",
+      "path": "/api/v2/teams/{id}/memberships",
+      "owner": "Identity",
+      "phase": "p2"
+    },
+    {
+      "command_id": "team.member.status",
+      "method": "PATCH",
+      "path": "/api/v2/teams/{id}/memberships/{membership_id}",
+      "owner": "Identity",
+      "phase": "p2"
+    },
+    {
+      "command_id": "project.members.list",
+      "method": "GET",
+      "path": "/api/v2/projects/{project_id}/members",
+      "owner": "Identity",
+      "phase": "p2"
+    },
+    {
+      "command_id": "membership.grant",
+      "method": "POST",
+      "path": "/api/v2/projects/{project_id}/members",
+      "owner": "Identity",
+      "phase": "p2"
+    },
+    {
+      "command_id": "membership.status",
+      "method": "PATCH",
+      "path": "/api/v2/projects/{project_id}/members/{membership_id}",
+      "owner": "Identity",
+      "phase": "p2"
+    },
+    {
+      "command_id": "project.invitations.list",
+      "method": "GET",
+      "path": "/api/v2/projects/{project_id}/invitations",
+      "owner": "Identity",
+      "phase": "p2"
+    },
+    {
+      "command_id": "invitation.create",
+      "method": "POST",
+      "path": "/api/v2/projects/{project_id}/invitations",
+      "owner": "Identity",
+      "phase": "p2"
+    },
+    {
+      "command_id": "invitation.accept",
+      "method": "POST",
+      "path": "/api/v2/projects/{project_id}/invitations/{invitation_id}/accept",
+      "owner": "Identity",
+      "phase": "p2"
+    },
+    {
+      "command_id": "invitation.revoke",
+      "method": "POST",
+      "path": "/api/v2/projects/{project_id}/invitations/{invitation_id}/revoke",
+      "owner": "Identity",
+      "phase": "p2"
+    },
+    {
+      "command_id": "project.permissions.list",
+      "method": "GET",
+      "path": "/api/v2/projects/{project_id}/permissions",
+      "owner": "Identity",
+      "phase": "p2"
+    },
+    {
+      "command_id": "acl.set",
+      "method": "POST",
+      "path": "/api/v2/projects/{project_id}/permissions",
+      "owner": "Identity",
+      "phase": "p2"
+    },
+    {
+      "command_id": "credential.list",
+      "method": "GET",
+      "path": "/api/v2/credentials",
+      "owner": "Setup",
+      "phase": "p2"
+    },
+    {
+      "command_id": "credential.create",
+      "method": "POST",
+      "path": "/api/v2/credentials",
+      "owner": "Setup",
+      "phase": "p2"
+    },
+    {
+      "command_id": "credential.rebind",
+      "method": "POST",
+      "path": "/api/v2/credentials/{id}/rebind",
+      "owner": "Setup",
+      "phase": "p2"
+    },
+    {
+      "command_id": "credential.rotate",
+      "method": "POST",
+      "path": "/api/v2/credentials/{id}/rotate",
+      "owner": "Setup",
+      "phase": "p2"
+    },
+    {
+      "command_id": "credential.revoke",
+      "method": "POST",
+      "path": "/api/v2/credentials/{id}/revoke",
+      "owner": "Setup",
+      "phase": "p2"
+    },
+    {
+      "command_id": "profile.list",
+      "method": "GET",
+      "path": "/api/v2/profiles",
+      "owner": "Setup",
+      "phase": "p2"
+    },
+    {
+      "command_id": "profile.create",
+      "method": "POST",
+      "path": "/api/v2/profiles",
+      "owner": "Setup",
+      "phase": "p2"
+    },
+    {
+      "command_id": "profile.probe",
+      "method": "POST",
+      "path": "/api/v2/profiles/{id}/probe",
+      "owner": "Setup",
+      "phase": "p2"
+    },
+    {
+      "command_id": "project.list",
+      "method": "GET",
+      "path": "/api/v2/projects",
+      "owner": "Project",
+      "phase": "p3"
+    },
+    {
+      "command_id": "project.create",
+      "method": "POST",
+      "path": "/api/v2/projects",
+      "owner": "Project",
+      "phase": "p3"
+    },
+    {
+      "command_id": "project.get",
+      "method": "GET",
+      "path": "/api/v2/projects/{id}",
+      "owner": "Project",
+      "phase": "p3"
+    },
+    {
+      "command_id": "project.update",
+      "method": "PATCH",
+      "path": "/api/v2/projects/{id}",
+      "owner": "Project",
+      "phase": "p3"
+    },
+    {
+      "command_id": "project.archive",
+      "method": "POST",
+      "path": "/api/v2/projects/{id}/archive",
+      "owner": "Project",
+      "phase": "p3"
+    },
+    {
+      "command_id": "project.restore",
+      "method": "POST",
+      "path": "/api/v2/projects/{id}/restore",
+      "owner": "Project",
+      "phase": "p3"
+    },
+    {
+      "command_id": "intake.get",
+      "method": "GET",
+      "path": "/api/v2/projects/{project_id}/intake",
+      "owner": "Project",
+      "phase": "p3"
+    },
+    {
+      "command_id": "intake.submit",
+      "method": "POST",
+      "path": "/api/v2/projects/{project_id}/intake",
+      "owner": "Project",
+      "phase": "p3"
+    },
+    {
+      "command_id": "intake.retry",
+      "method": "POST",
+      "path": "/api/v2/projects/{project_id}/intake/retry",
+      "owner": "Project",
+      "phase": "p3"
+    },
+    {
+      "command_id": "intake.cancel",
+      "method": "POST",
+      "path": "/api/v2/projects/{project_id}/intake/cancel",
+      "owner": "Project",
+      "phase": "p3"
+    },
+    {
+      "command_id": "brief.list",
+      "method": "GET",
+      "path": "/api/v2/projects/{project_id}/briefs",
+      "owner": "Project",
+      "phase": "p3"
+    },
+    {
+      "command_id": "brief.create",
+      "method": "POST",
+      "path": "/api/v2/projects/{project_id}/briefs",
+      "owner": "Project",
+      "phase": "p3"
+    },
+    {
+      "command_id": "brief.get",
+      "method": "GET",
+      "path": "/api/v2/projects/{project_id}/briefs/{revision}",
+      "owner": "Project",
+      "phase": "p3"
+    },
+    {
+      "command_id": "brief.confirm",
+      "method": "POST",
+      "path": "/api/v2/projects/{project_id}/briefs/{revision}/confirm",
+      "owner": "Project",
+      "phase": "p3"
+    },
+    {
+      "command_id": "brief.preview",
+      "method": "GET",
+      "path": "/api/v2/projects/{project_id}/briefs/{revision}/preview",
+      "owner": "Project",
+      "phase": "p3"
+    },
+    {
+      "command_id": "repository.connection.list",
+      "method": "GET",
+      "path": "/api/v2/projects/{project_id}/repository-connections",
+      "owner": "Repository",
+      "phase": "p3"
+    },
+    {
+      "command_id": "repository.connection.create",
+      "method": "POST",
+      "path": "/api/v2/projects/{project_id}/repository-connections",
+      "owner": "Repository",
+      "phase": "p3"
+    },
+    {
+      "command_id": "repository.connection.update",
+      "method": "PATCH",
+      "path": "/api/v2/repository-connections/{id}",
+      "owner": "Repository",
+      "phase": "p3"
+    },
+    {
+      "command_id": "repository.target.list",
+      "method": "GET",
+      "path": "/api/v2/repository-connections/{id}/targets",
+      "owner": "Repository",
+      "phase": "p3"
+    },
+    {
+      "command_id": "repository.target.create",
+      "method": "POST",
+      "path": "/api/v2/repository-connections/{id}/targets",
+      "owner": "Repository",
+      "phase": "p3"
+    },
+    {
+      "command_id": "repository.line.list",
+      "method": "GET",
+      "path": "/api/v2/projects/{project_id}/repository-lines",
+      "owner": "Repository",
+      "phase": "p3"
+    },
+    {
+      "command_id": "repository.line.reconcile",
+      "method": "POST",
+      "path": "/api/v2/repository-lines/{id}/reconcile",
+      "owner": "Repository",
+      "phase": "p3"
+    },
+    {
+      "command_id": "repository.workspace.list",
+      "method": "GET",
+      "path": "/api/v2/projects/{project_id}/repository-workspaces",
+      "owner": "Repository",
+      "phase": "p3"
+    },
+    {
+      "command_id": "repository.workspace.create",
+      "method": "POST",
+      "path": "/api/v2/projects/{project_id}/repository-workspaces",
+      "owner": "Repository",
+      "phase": "p3"
+    },
+    {
+      "command_id": "repository.workspace.refresh",
+      "method": "POST",
+      "path": "/api/v2/repository-workspaces/{id}/refresh",
+      "owner": "Repository",
+      "phase": "p3"
+    },
+    {
+      "command_id": "repository.workspace.lock",
+      "method": "POST",
+      "path": "/api/v2/repository-workspaces/{id}/lock",
+      "owner": "Repository",
+      "phase": "p3"
+    },
+    {
+      "command_id": "repository.workspace.release",
+      "method": "POST",
+      "path": "/api/v2/repository-workspaces/{id}/release",
+      "owner": "Repository",
+      "phase": "p3"
+    },
+    {
+      "command_id": "workflow.list",
+      "method": "GET",
+      "path": "/api/v2/projects/{project_id}/workflows",
+      "owner": "Workflow",
+      "phase": "p3"
+    },
+    {
+      "command_id": "workflow.get",
+      "method": "GET",
+      "path": "/api/v2/projects/{project_id}/workflow-draft",
+      "owner": "Workflow",
+      "phase": "p3"
+    },
+    {
+      "command_id": "workflow.revise",
+      "method": "POST",
+      "path": "/api/v2/projects/{project_id}/workflow-draft",
+      "owner": "Workflow",
+      "phase": "p3"
+    },
+    {
+      "command_id": "workflow.generation.list",
+      "method": "GET",
+      "path": "/api/v2/projects/{project_id}/workflow-generations",
+      "owner": "Workflow",
+      "phase": "p3"
+    },
+    {
+      "command_id": "generation.start",
+      "method": "POST",
+      "path": "/api/v2/projects/{project_id}/workflow-generations",
+      "owner": "Workflow",
+      "phase": "p3"
+    },
+    {
+      "command_id": "workflow.generation.get",
+      "method": "GET",
+      "path": "/api/v2/workflow-generations/{id}",
+      "owner": "Workflow",
+      "phase": "p3"
+    },
+    {
+      "command_id": "generation.retry",
+      "method": "POST",
+      "path": "/api/v2/workflow-generations/{id}/retry",
+      "owner": "Workflow",
+      "phase": "p3"
+    },
+    {
+      "command_id": "generation.cancel",
+      "method": "POST",
+      "path": "/api/v2/workflow-generations/{id}/cancel",
+      "owner": "Workflow",
+      "phase": "p3"
+    },
+    {
+      "command_id": "critic.evaluate",
+      "method": "POST",
+      "path": "/api/v2/workflow-generations/{id}/critic",
+      "owner": "Critic",
+      "phase": "p3"
+    },
+    {
+      "command_id": "workflow.proposal.get",
+      "method": "GET",
+      "path": "/api/v2/workflow-proposals/{id}",
+      "owner": "Workflow",
+      "phase": "p3"
+    },
+    {
+      "command_id": "workflow.proposal.apply",
+      "method": "POST",
+      "path": "/api/v2/workflow-proposals/{id}/apply",
+      "owner": "Workflow",
+      "phase": "p3"
+    },
+    {
+      "command_id": "outcome.requirement.list",
+      "method": "GET",
+      "path": "/api/v2/projects/{project_id}/outcome-requirements",
+      "owner": "Project",
+      "phase": "p3"
+    },
+    {
+      "command_id": "outcome.requirement.create",
+      "method": "POST",
+      "path": "/api/v2/projects/{project_id}/outcome-requirements",
+      "owner": "Project",
+      "phase": "p3"
+    }
+  ]
+}

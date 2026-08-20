@@ -1,0 +1,61 @@
+{
+  "schema_version": "aiws.v3-clean.p31-service-inventory.v2",
+  "project": [
+    "Project",
+    "Repository",
+    "Workflow",
+    "Outcome"
+  ],
+  "identity": [
+    "Actor",
+    "Session",
+    "TeamAccess",
+    "CredentialProfile"
+  ],
+  "shared": [
+    "OperationService",
+    "EventService",
+    "AuthorizationService"
+  ],
+  "table_owners": {
+    "schema_meta": "Platform",
+    "schema_migrations": "Platform",
+    "actors": "Identity",
+    "aggregate_heads": "Platform",
+    "aggregate_revisions": "Platform",
+    "operations": "Operations",
+    "operation_links": "Operations",
+    "events": "Operations",
+    "event_cursors": "Operations",
+    "idempotency_keys": "Operations",
+    "audit_events": "Operations",
+    "cas_objects": "CAS",
+    "receipt_manifests": "CAS",
+    "teams": "Identity",
+    "team_memberships": "Identity",
+    "sessions": "Identity",
+    "project_memberships": "Identity",
+    "project_invitations": "Identity",
+    "project_acl_entries": "Identity",
+    "credential_refs": "Setup",
+    "provider_profiles": "Setup",
+    "exchange_grants": "Exchange",
+    "projects": "Project",
+    "project_intakes": "Project",
+    "briefs": "Project",
+    "brief_revisions": "Project",
+    "repository_connections": "Repository",
+    "repository_targets": "Repository",
+    "repository_lines": "Repository",
+    "repository_workspaces": "Repository",
+    "repository_locks": "Repository",
+    "workflows": "Workflow",
+    "workflow_revisions": "Workflow",
+    "workflow_nodes": "Workflow",
+    "node_contracts": "Workflow",
+    "workflow_generations": "Workflow",
+    "workflow_critic_receipts": "Critic",
+    "workflow_generation_proposals": "Workflow",
+    "outcome_requirements": "Project"
+  }
+}

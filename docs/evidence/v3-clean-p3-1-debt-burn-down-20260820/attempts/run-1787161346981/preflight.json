@@ -1,0 +1,40 @@
+{
+  "schema_version": "aiws.v3-clean.p31-preflight.v1",
+  "phase": "P3.1",
+  "baseline": "b860d0b",
+  "generated_at": "2026-08-19T17:42:26.982Z",
+  "Target": "P3.1 Clean debt burn-down",
+  "NonTarget": "P1/P2/P3 migrations and verified Evidence; P4+ runtime",
+  "Forbidden": [
+    "/api/v1 active routes",
+    "second ledger",
+    "dual writes",
+    "mutable verified receipts"
+  ],
+  "Reuse": [
+    "v3-clean runtime",
+    "API v2",
+    "ACL/CAS/redaction",
+    "P1/P2/P3 Evidence"
+  ],
+  "Delete_retire": [
+    "legacy default Web/E2E mounting only; historical fixtures remain explicit"
+  ],
+  "Acceptance_commands": [
+    "pnpm check",
+    "pnpm scan:clean",
+    "pnpm test:p1",
+    "pnpm test:p2",
+    "pnpm test:p3",
+    "pnpm test:p31",
+    "pnpm test",
+    "pnpm test:integration:clean",
+    "pnpm test:security:clean",
+    "pnpm build",
+    "pnpm test:e2e",
+    "git diff --check"
+  ],
+  "Rollback_artifact": "rollback.ps1",
+  "last_confirmed_result": "P1/P2/P3 and Web baseline gates passed",
+  "next_action": "run Clean P3.1 gates and publish immutable receipt"
+}

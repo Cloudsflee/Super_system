@@ -6,11 +6,15 @@ const commands = [
   ['check'],
   ['audit:p1', ...(skipP1Evidence ? ['--', '--skip-evidence'] : [])],
   ['scan:clean', ...(skipP1Evidence ? ['--', '--skip-evidence'] : [])],
-  ['test:p1'], ['test'], ['test:integration'], ['test:security'], ['build'], ['test:e2e'], ['test:release']
+  ['test:p1'], ['test:p2'], ['test:p3'], ['test:p31'], ['test'],
+  ['test:integration'], ['test:security'], ['build'], ['test:e2e'], ['git diff --check']
 ];
 for (const [script, ...args] of commands) {
   process.stdout.write(`\n== ${script} ==\n`);
-  const result = spawnSync('corepack', ['pnpm', script, ...args], {
+  const command = script === 'git diff --check'
+    ? ['git', 'diff', '--check']
+    : ['corepack', 'pnpm', script, ...args];
+  const result = spawnSync(command[0], command.slice(1), {
     cwd: process.cwd(),
     stdio: 'inherit',
     shell: process.platform === 'win32'

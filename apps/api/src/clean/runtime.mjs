@@ -36,6 +36,12 @@ export function createCleanRuntime(options = {}) {
   const authorization = new AuthorizationService({ db, projectScopeResolver, clock: options.now || undefined });
   const platform = new CleanPlatform({ db, events, policy, bootstrapActorId: initialized.metadata.bootstrap_actor_id, authorize: authorization ? (context) => authorization.authorize(context, context.action, context.projectId, context.resource).allowed : null });
   const operations = new OperationService({ db, events, policy, bootstrapActorId: initialized.metadata.bootstrap_actor_id, clock: options.now || undefined });
+  // The event service is the shared ledger coordinator.  Domain compatibility
+  // adapters receive the same OperationService instance rather than issuing
+  // inline operation SQL of their own.
+  events.operations = operations;
+  db.__cleanOperations = operations;
+  platform.operations = operations;
   const cas = new CasStore({ root: options.casRoot || config.casRoot, db, policy });
   const receipts = new ReceiptService({ platform });
   const vault = new VaultAdapter({ root: options.vaultRoot || config.vaultRoot, masterKey: vaultMasterKey });

@@ -1,0 +1,633 @@
+{
+  "schema_version": "aiws.v3.feature_catalog.layer.v1",
+  "product_version": "3.0.0",
+  "layer": "clean",
+  "runtime_surface": "v3-clean",
+  "status_flow": [
+    "planned",
+    "scaffolded",
+    "implemented",
+    "verified",
+    "released"
+  ],
+  "features": [
+    {
+      "id": "REC-D0-GOVERNANCE-000",
+      "domain": "governance",
+      "name": "Recovery truth, ownership and synchronized architecture gates",
+      "status": "verified",
+      "owner_modules": [
+        "platform"
+      ],
+      "gate_sync_rules": [
+        "GS-001",
+        "GS-002",
+        "GS-003",
+        "GS-004",
+        "GS-005",
+        "GS-006",
+        "GS-007"
+      ],
+      "gate_sync_commands": [
+        "pnpm check",
+        "pnpm audit:p1",
+        "pnpm scan:clean",
+        "pnpm test:p1",
+        "pnpm recovery:plan",
+        "pnpm recovery:catalog",
+        "pnpm recovery:coverage",
+        "pnpm recovery:impact -- --audit",
+        "pnpm verify"
+      ],
+      "source_files": [
+        "AGENTS.md",
+        "docs/architecture/v23-capability-matrix.md",
+        "docs/architecture/v3-clean-development-plan.md",
+        "docs/testing.md",
+        "scripts/lib/v3-clean-p1-scope.mjs",
+        "scripts/v3-clean-workspace-audit.mjs",
+        "scripts/v3-clean-architecture-scan.mjs",
+        "scripts/catalog-loader.mjs",
+        "scripts/layered-gate.mjs",
+        "scripts/lib/immutable-evidence-writer.mjs",
+        "scripts/v3-clean-p31-evidence.mjs",
+        "docs/architecture/decision-log.md"
+      ],
+      "target_modules": [
+        "feature-catalog.json",
+        "package.json",
+        "apps/api/src/modules/registry.mjs",
+        "apps/api/src/modules/platform",
+        "scripts/recovery-governance.mjs",
+        "scripts/recovery-evidence.mjs",
+        "scripts/check.mjs",
+        "scripts/verify.mjs",
+        "scripts/v3-clean-p1-global-sync-evidence.mjs",
+        "scripts/v3-clean-p3-evidence.mjs",
+        "feature-catalog.index.json",
+        "feature-catalog.clean.json",
+        "feature-catalog.historical.json"
+      ],
+      "tables": [],
+      "apis": [],
+      "ui": [],
+      "events": [
+        "recovery.governance.receipt"
+      ],
+      "behavior_tests": [
+        "tests/unit/recovery-governance.test.mjs",
+        "tests/p1/workspace-sync.test.mjs",
+        "tests/p31/catalog-split.test.mjs",
+        "tests/p31/layered-gates.test.mjs",
+        "tests/p31/evidence-immutability.test.mjs"
+      ],
+      "ui_tests": [],
+      "evidence": [
+        "docs/evidence/v3-clean-p1-gate-contract-complete-20260819/verification.json",
+        "docs/evidence/v3-clean-p3-1-debt-burn-down-20260820/verification.json"
+      ],
+      "release_receipts": [],
+      "tests": [
+        "T0",
+        "tests/unit/recovery-governance.test.mjs"
+      ],
+      "runtime_surface": "v3-clean"
+    },
+    {
+      "id": "REC-D10-FRONTEND-024",
+      "domain": "frontend",
+      "name": "Complete V3 operational web workflows",
+      "status": "scaffolded",
+      "owner_modules": [
+        "identity",
+        "setup",
+        "project",
+        "workflow",
+        "assist",
+        "execution",
+        "evidence",
+        "operations"
+      ],
+      "source_files": [
+        "V2.3 mature web workflows"
+      ],
+      "target_modules": [
+        "apps/web/src/App.tsx",
+        "apps/web/src/api.ts",
+        "apps/web/src/features/identity/IdentityAccessPage.tsx",
+        "apps/web/src/features/identity/index.ts",
+        "apps/web/src/styles.css",
+        "apps/web/src/test/identity-access.test.tsx",
+        "apps/web/package.json"
+      ],
+      "tables": [],
+      "apis": [
+        "/api/v2/account",
+        "/api/v2/actors",
+        "/api/v2/teams",
+        "/api/v2/projects/{id}/permissions",
+        "/api/v2/credentials",
+        "/api/v2/profiles"
+      ],
+      "ui": [
+        "Identity",
+        "Teams",
+        "Members",
+        "Permissions",
+        "Credentials",
+        "Profiles"
+      ],
+      "events": [
+        "actor.updated",
+        "team.created",
+        "team.membership.granted",
+        "acl.policy.updated",
+        "credential.rebound",
+        "profile.probed"
+      ],
+      "behavior_tests": [
+        "tests/p2/identity-acl.test.mjs",
+        "tests/p2/identity-acl-security.test.mjs"
+      ],
+      "ui_tests": [
+        "apps/web/src/test/identity-access.test.tsx"
+      ],
+      "evidence": [
+        "docs/evidence/v3-clean-p2-identity-acl-20260819/verification.json"
+      ],
+      "release_receipts": [],
+      "tests": [
+        "T8",
+        "tests/p2/identity-acl.test.mjs",
+        "tests/p2/identity-acl-security.test.mjs",
+        "apps/web/src/test/identity-access.test.tsx"
+      ],
+      "runtime_surface": "v3-clean"
+    },
+    {
+      "id": "REC-D2-IDENTITY-001",
+      "domain": "identity",
+      "name": "Local owner account and sessions",
+      "status": "verified",
+      "owner_modules": [
+        "identity"
+      ],
+      "source_files": [
+        "V2.3 account and session modules"
+      ],
+      "target_modules": [
+        "apps/api/src/clean/identity.mjs",
+        "apps/api/src/clean/authorization.mjs",
+        "apps/api/src/clean/http.mjs",
+        "apps/api/src/clean/registry.mjs",
+        "apps/api/src/clean/migrations/002-identity-acl.mjs",
+        "apps/web/src/features/identity/IdentityAccessPage.tsx",
+        "scripts/v3-clean-p2-evidence.mjs"
+      ],
+      "tables": [
+        "actors",
+        "teams",
+        "team_memberships",
+        "sessions",
+        "project_memberships",
+        "project_invitations",
+        "project_acl_entries"
+      ],
+      "apis": [
+        "GET /api/v2/account",
+        "PATCH /api/v2/account",
+        "/api/v2/actors",
+        "/api/v2/sessions",
+        "/api/v2/teams",
+        "/api/v2/teams/{id}/memberships",
+        "/api/v2/projects/{id}/members",
+        "/api/v2/projects/{id}/invitations",
+        "/api/v2/projects/{id}/permissions"
+      ],
+      "ui": [
+        "Identity",
+        "Teams",
+        "Members",
+        "Permissions"
+      ],
+      "events": [
+        "actor.created",
+        "actor.updated",
+        "actor.switched",
+        "session.created",
+        "session.revoked",
+        "team.created",
+        "team.membership.granted",
+        "membership.granted",
+        "invitation.created",
+        "invitation.accepted",
+        "acl.allowed",
+        "acl.denied",
+        "acl.policy.updated"
+      ],
+      "behavior_tests": [
+        "tests/p2/identity-acl.test.mjs",
+        "tests/p2/identity-acl-security.test.mjs"
+      ],
+      "ui_tests": [
+        "apps/web/src/test/identity-access.test.tsx"
+      ],
+      "evidence": [
+        "docs/evidence/v3-clean-p2-identity-acl-20260819/verification.json"
+      ],
+      "release_receipts": [],
+      "tests": [
+        "T2",
+        "tests/p2/identity-acl.test.mjs",
+        "tests/p2/identity-acl-security.test.mjs",
+        "apps/web/src/test/identity-access.test.tsx"
+      ],
+      "runtime_surface": "v3-clean"
+    },
+    {
+      "id": "REC-D2-SETUP-002",
+      "domain": "setup",
+      "name": "Setup, Vault, credentials, profiles and provider probes",
+      "status": "implemented",
+      "owner_modules": [
+        "identity",
+        "setup",
+        "operations"
+      ],
+      "source_files": [
+        "V2.3 credential, profile and provider modules"
+      ],
+      "target_modules": [
+        "apps/api/src/clean/identity.mjs",
+        "apps/api/src/clean/vault.mjs",
+        "apps/api/src/clean/provider-adapters.mjs",
+        "apps/api/src/clean/runtime.mjs",
+        "apps/api/src/clean/http.mjs",
+        "apps/api/src/clean/registry.mjs",
+        "packages/contracts/src/clean-v2.mjs",
+        "apps/web/src/features/identity/IdentityAccessPage.tsx"
+      ],
+      "tables": [
+        "credential_refs",
+        "provider_profiles",
+        "operations",
+        "operation_links"
+      ],
+      "apis": [
+        "GET /api/v2/setup",
+        "POST /api/v2/setup",
+        "/api/v2/credentials",
+        "/api/v2/credentials/{id}/rebind",
+        "/api/v2/credentials/{id}/rotate",
+        "/api/v2/credentials/{id}/revoke",
+        "/api/v2/profiles",
+        "/api/v2/profiles/{id}/probe",
+        "/api/v2/operations/{id}"
+      ],
+      "ui": [
+        "Setup",
+        "Credentials",
+        "Profiles"
+      ],
+      "events": [
+        "setup.completed",
+        "credential.created",
+        "credential.rebind.queued",
+        "credential.rebound",
+        "credential.rotate.queued",
+        "credential.rotated",
+        "credential.failed",
+        "credential.revoked",
+        "profile.created",
+        "profile.probe.queued",
+        "profile.probed",
+        "profile.probe.failed",
+        "operation.succeeded",
+        "operation.failed"
+      ],
+      "behavior_tests": [
+        "tests/p2/identity-acl.test.mjs",
+        "tests/p2/identity-acl-security.test.mjs"
+      ],
+      "ui_tests": [
+        "apps/web/src/test/identity-access.test.tsx"
+      ],
+      "evidence": [
+        "docs/evidence/v3-clean-p2-identity-acl-20260819/verification.json"
+      ],
+      "release_receipts": [],
+      "tests": [
+        "T2",
+        "tests/p2/identity-acl.test.mjs",
+        "tests/p2/identity-acl-security.test.mjs",
+        "apps/web/src/test/identity-access.test.tsx"
+      ],
+      "runtime_surface": "v3-clean"
+    },
+    {
+      "id": "REC-D5-PROJECT-005",
+      "domain": "project",
+      "name": "Draft project, retryable intake and confirmed brief",
+      "status": "verified",
+      "owner_modules": [
+        "project",
+        "platform"
+      ],
+      "source_files": [
+        "apps/api/src/clean/migrations/003-project-workflow.mjs",
+        "apps/api/src/clean/project-workflow.mjs",
+        "packages/contracts/src/clean-v2.mjs"
+      ],
+      "target_modules": [
+        "apps/api/server.mjs",
+        "apps/api/src/clean/project-workflow.mjs",
+        "apps/api/src/clean/http.mjs",
+        "apps/api/src/clean/registry.mjs",
+        "apps/web/src/features/project/ProjectWorkflowPage.tsx"
+      ],
+      "tables": [
+        "projects",
+        "project_intakes",
+        "briefs",
+        "brief_revisions",
+        "aggregate_heads"
+      ],
+      "apis": [
+        "/api/v2/projects",
+        "/api/v2/projects/{id}",
+        "/api/v2/projects/{id}/intake",
+        "/api/v2/projects/{id}/intake/retry",
+        "/api/v2/projects/{id}/intake/cancel",
+        "/api/v2/projects/{id}/briefs",
+        "/api/v2/projects/{id}/briefs/{revision}/confirm"
+      ],
+      "ui": [
+        "Projects",
+        "Intake",
+        "Brief",
+        "ProjectWorkflowPage"
+      ],
+      "events": [
+        "project.created",
+        "intake.*",
+        "brief.*"
+      ],
+      "behavior_tests": [
+        "tests/p3/active-entrypoint.test.mjs",
+        "tests/p3/http-contract.test.mjs",
+        "tests/p3/migration.test.mjs",
+        "tests/p3/project-workflow.test.mjs"
+      ],
+      "ui_tests": [
+        "apps/web/src/test/project-workflow-clean.test.tsx"
+      ],
+      "evidence": [
+        "docs/evidence/v3-clean-p3-project-workflow-20260819/verification.json"
+      ],
+      "release_receipts": [],
+      "tests": [
+        "T4",
+        "tests/p3/active-entrypoint.test.mjs",
+        "tests/p3/http-contract.test.mjs",
+        "tests/p3/migration.test.mjs",
+        "tests/p3/project-workflow.test.mjs",
+        "apps/web/src/test/project-workflow-clean.test.tsx"
+      ],
+      "runtime_surface": "v3-clean"
+    },
+    {
+      "id": "REC-D5-WORKFLOW-006",
+      "domain": "workflow",
+      "name": "Workstream and Task workflow canvas with node contracts",
+      "status": "verified",
+      "owner_modules": [
+        "workflow",
+        "platform"
+      ],
+      "source_files": [
+        "apps/api/src/clean/migrations/003-project-workflow.mjs",
+        "apps/api/src/clean/project-workflow.mjs",
+        "packages/contracts/src/clean-v2.mjs"
+      ],
+      "target_modules": [
+        "apps/api/src/clean/project-workflow.mjs",
+        "apps/api/src/clean/http.mjs",
+        "apps/api/src/clean/registry.mjs",
+        "apps/web/src/features/project/ProjectWorkflowPage.tsx"
+      ],
+      "tables": [
+        "workflows",
+        "workflow_revisions",
+        "workflow_nodes",
+        "node_contracts",
+        "workflow_generation_proposals",
+        "aggregate_heads"
+      ],
+      "apis": [
+        "/api/v2/projects/{id}/workflows",
+        "/api/v2/projects/{id}/workflow-draft",
+        "/api/v2/workflow-proposals/{id}/apply"
+      ],
+      "ui": [
+        "Workflow Canvas",
+        "Task Contract",
+        "ProjectWorkflowPage"
+      ],
+      "events": [
+        "workflow.*",
+        "generation.*"
+      ],
+      "behavior_tests": [
+        "tests/p3/migration.test.mjs",
+        "tests/p3/project-workflow.test.mjs"
+      ],
+      "ui_tests": [
+        "apps/web/src/test/project-workflow-clean.test.tsx"
+      ],
+      "evidence": [
+        "docs/evidence/v3-clean-p3-project-workflow-20260819/verification.json"
+      ],
+      "release_receipts": [],
+      "tests": [
+        "T4",
+        "tests/p3/migration.test.mjs",
+        "tests/p3/project-workflow.test.mjs",
+        "apps/web/src/test/project-workflow-clean.test.tsx"
+      ],
+      "runtime_surface": "v3-clean"
+    },
+    {
+      "id": "REC-D6-GENERATION-007",
+      "domain": "workflow",
+      "name": "Asynchronous workflow generator and independent critic",
+      "status": "verified",
+      "owner_modules": [
+        "workflow",
+        "critic",
+        "operations"
+      ],
+      "source_files": [
+        "apps/api/src/clean/project-workflow.mjs",
+        "apps/api/src/clean/provider-adapters.mjs",
+        "packages/contracts/src/clean-v2.mjs"
+      ],
+      "target_modules": [
+        "apps/api/src/clean/project-workflow.mjs",
+        "apps/api/src/clean/http.mjs",
+        "apps/api/src/clean/registry.mjs",
+        "apps/web/src/features/project/ProjectWorkflowPage.tsx"
+      ],
+      "tables": [
+        "workflow_generations",
+        "workflow_critic_receipts",
+        "workflow_generation_proposals",
+        "operations"
+      ],
+      "apis": [
+        "/api/v2/projects/{id}/workflow-generations",
+        "/api/v2/workflow-generations/{id}",
+        "/api/v2/workflow-generations/{id}/retry",
+        "/api/v2/workflow-generations/{id}/cancel",
+        "/api/v2/workflow-generations/{id}/critic",
+        "/api/v2/workflow-proposals/{id}/apply"
+      ],
+      "ui": [
+        "Workflow",
+        "ProjectWorkflowPage"
+      ],
+      "events": [
+        "generation.*",
+        "critic.*"
+      ],
+      "behavior_tests": [
+        "tests/p3/project-workflow.test.mjs",
+        "tests/p3/migration.test.mjs"
+      ],
+      "ui_tests": [
+        "apps/web/src/test/project-workflow-clean.test.tsx"
+      ],
+      "evidence": [
+        "docs/evidence/v3-clean-p3-project-workflow-20260819/verification.json"
+      ],
+      "release_receipts": [],
+      "tests": [
+        "T4",
+        "tests/p3/project-workflow.test.mjs",
+        "tests/p3/migration.test.mjs",
+        "apps/web/src/test/project-workflow-clean.test.tsx"
+      ],
+      "runtime_surface": "v3-clean"
+    },
+    {
+      "id": "REC-D6-OUTCOME-009",
+      "domain": "outcome",
+      "name": "Evidence-driven outcome, rubric and revocable waiver",
+      "status": "scaffolded",
+      "owner_modules": [
+        "outcome",
+        "project"
+      ],
+      "source_files": [
+        "apps/api/src/clean/migrations/003-project-workflow.mjs",
+        "apps/api/src/clean/project-workflow.mjs",
+        "packages/contracts/src/clean-v2.mjs"
+      ],
+      "target_modules": [
+        "apps/api/src/clean/project-workflow.mjs",
+        "apps/api/src/clean/http.mjs",
+        "apps/api/src/clean/registry.mjs"
+      ],
+      "tables": [
+        "outcome_requirements"
+      ],
+      "apis": [
+        "/api/v2/projects/{id}/outcome-requirements"
+      ],
+      "ui": [
+        "Outcome",
+        "Quality Review"
+      ],
+      "events": [
+        "outcome.*"
+      ],
+      "behavior_tests": [
+        "tests/p3/project-workflow.test.mjs"
+      ],
+      "ui_tests": [],
+      "evidence": [
+        "docs/evidence/v3-clean-p3-project-workflow-20260819/verification.json"
+      ],
+      "release_receipts": [],
+      "tests": [
+        "T4",
+        "tests/p3/project-workflow.test.mjs"
+      ],
+      "runtime_surface": "v3-clean"
+    },
+    {
+      "id": "REC-D7-REPOSITORY-014",
+      "domain": "repository",
+      "name": "Repository connections, targets, lines and managed worktrees",
+      "status": "verified",
+      "owner_modules": [
+        "repository"
+      ],
+      "source_files": [
+        "apps/api/src/clean/migrations/003-project-workflow.mjs",
+        "apps/api/src/clean/project-workflow.mjs",
+        "apps/api/src/clean/provider-adapters.mjs"
+      ],
+      "target_modules": [
+        "apps/api/src/clean/project-workflow.mjs",
+        "apps/api/src/clean/http.mjs",
+        "apps/api/src/clean/registry.mjs",
+        "apps/web/src/features/project/ProjectWorkflowPage.tsx"
+      ],
+      "tables": [
+        "repository_connections",
+        "repository_targets",
+        "repository_lines",
+        "repository_workspaces",
+        "repository_locks"
+      ],
+      "apis": [
+        "/api/v2/projects/{id}/repository-connections",
+        "/api/v2/repository-connections/{id}",
+        "/api/v2/repository-connections/{id}/targets",
+        "/api/v2/projects/{id}/repository-lines",
+        "/api/v2/repository-lines/{id}/reconcile",
+        "/api/v2/projects/{id}/repository-workspaces",
+        "/api/v2/repository-workspaces/{id}/refresh",
+        "/api/v2/repository-workspaces/{id}/lock",
+        "/api/v2/repository-workspaces/{id}/release"
+      ],
+      "ui": [
+        "Repository",
+        "Worktree",
+        "ProjectWorkflowPage"
+      ],
+      "events": [
+        "repository.*",
+        "workspace.*"
+      ],
+      "behavior_tests": [
+        "tests/p3/migration.test.mjs",
+        "tests/p3/project-workflow.test.mjs"
+      ],
+      "ui_tests": [
+        "apps/web/src/test/project-workflow-clean.test.tsx"
+      ],
+      "evidence": [
+        "docs/evidence/v3-clean-p3-project-workflow-20260819/verification.json"
+      ],
+      "release_receipts": [],
+      "tests": [
+        "T7",
+        "tests/p3/migration.test.mjs",
+        "tests/p3/project-workflow.test.mjs",
+        "apps/web/src/test/project-workflow-clean.test.tsx"
+      ],
+      "runtime_surface": "v3-clean"
+    }
+  ]
+}

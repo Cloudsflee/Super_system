@@ -2,7 +2,7 @@
 
 Status: accepted for the architecture phase.
 Decision owners: product architecture and platform engineering.
-Last reviewed: 2026-08-19.
+Last reviewed: 2026-08-20.
 
 This log is the change-control source for the clean-break documents. A later
 proposal must name the decision id it changes, show affected capability rows,
@@ -42,6 +42,7 @@ and include migration, test, and rollback impact before implementation starts.
 | D-028 | Release requires temporary-volume verification and actual rollback | image-only checks do not prove data safety | release receipt names both target and rollback behavior |
 | D-029 | P2 identity and ACL use forward-only `002-identity-acl` over the frozen `001-clean-baseline` | actor/session, Team membership, project ACL, and credential metadata need one owner and one revision ledger without introducing a Project business table early | P2 upgrades clean volumes `1 -> 2`, reads Exchange grants for narrowing only, and leaves the P1 Evidence immutable |
 | D-030 | P3 Project/Workflow uses forward-only `003-project-workflow` over the frozen P1/P2 migrations | Project, Brief, Repository, Workflow, Generation, Critic, and requirement scaffolding need owned aggregates with one operations/events/CAS/head model | P3 upgrades clean volumes `0/1/2 -> 3`; the active process entrypoint defaults to target version 3 while explicit lower targets remain fixture-only; Project owns projects/intakes/briefs/requirements, Repository owns connection/target/line/workspace/lock records, Workflow owns workflow/generation/proposal records, and Critic owns immutable critic receipts; deterministic repository/generator/critic adapters prove the boundary without claiming real provider state; revision CAS, retry lineage, single-writer fencing, and restart recovery are mandatory; P1/P2 Evidence stays immutable and P3 receipts live under `docs/evidence/v3-clean-p3-project-workflow-20260819/` |
+| D-031 | P3.1 is a forward-only Clean debt burn-down and gate-synchronization phase | Domain facades can remain stable while ownership, ledger entrypoints, default Web/E2E entrypoints, Catalog layers, and receipt publication are made explicit | No new schema/table/migration/API version is introduced; Project/Repository/Workflow/Outcome and Identity owners delegate to the shared operations/events/aggregate-head/idempotency services; active Web/E2E use `/api/v2` and historical suites run only through explicit fixture commands; Clean and historical Catalogs are disjoint; failed/checkpoint Evidence is append-only and isolated rollback is byte-exact; P1/P2/P3 Evidence and four P3 status rows remain unchanged except for synchronized references |
 
 ## Source and evidence references
 

@@ -1,0 +1,29 @@
+{
+  "schema_version": "aiws.v3-clean.layered-gate-receipt.v1",
+  "suite": "integration",
+  "status": "passed",
+  "blocking_layer": null,
+  "generated_at": "2026-08-19T17:43:11.398Z",
+  "clean": {
+    "layer": "clean",
+    "command": "node --test tests/integration/v3-clean-p1.test.mjs tests/p3/*.test.mjs",
+    "exit_status": 0,
+    "signal": null,
+    "ok": true,
+    "summary": "ℹ tests 19\nℹ suites 0\nℹ pass 19\nℹ fail 0\nℹ cancelled 0\nℹ skipped 0\nℹ todo 0\nℹ duration_ms 2597.3954",
+    "output": {
+      "stdout": "(node:38388) ExperimentalWarning: SQLite is an experimental feature and might change at any time\n(Use `node --trace-warnings ...` to show where the warning was created)\n✔ clean restart preserves terminal operation and SSE/JSON replay parity (264.2186ms)\n✔ clean boundary validates readiness, aggregate CAS, cursors, and live SSE heartbeat (192.5554ms)\n✔ CAS manifest drift keeps probes alive but blocks readiness (97.5251ms)\n✔ non-terminal SSE follows committed events and closes on terminal state (107.7914ms)\n(node:56484) ExperimentalWarning: SQLite is an experimental feature and might change at any time\n(Use `node --trace-warnings ...` to show where the warning was created)\nV3-Clean listening on http://127.0.0.1:51252\n✔ active API entrypoint boots the P3 schema and serves V3-Clean health (126.026ms)\n✔ active API HTTP wrapper exposes only the P3 clean health and API surfaces (133.4048ms)\n(node:44336) ExperimentalWarning: SQLite is an experimental feature and might change at any time\n(Use `node --trace-warnings ...` to show where the warning was created)\n✔ P3 HTTP uses the session cookie, closed contracts, and equivalent operation replay (297.0664ms)\n✔ P3 project access remains resolver- and ACL-scoped (120.7367ms)\n(node:18176) ExperimentalWarning: SQLite is an experimental feature and might change at any time\n(Use `node --trace-warnings ...` to show where the warning was created)\n✔ 003 registry upgrades empty, P1 and P2 volumes without rewriting prior ledgers (271.7638ms)\n✔ 003 DDL, ledger, receipt and commit faults roll back and restart cleanly (437.2537ms)\n✔ 003 checksum and latest schema snapshot drift stop restart before serving (274.1521ms)\n(node:15736) ExperimentalWarning: SQLite is an experimental feature and might change at any time\n(Use `node --trace-warnings ...` to show where the warning was created)\n✔ P3 complete project workflow keeps every aggregate head and audit aligned (345.5767ms)\n✔ P3 stale proposal is committed before conflict and retry paths honor supplied revisions (395.9861ms)\n✔ P3 domain cancellation propagates to a delayed generator operation (353.7633ms)\n✔ P3 project archive and restore replay exactly one mutation per idempotency key (80.0158ms)\n✔ P3 intake drift is retryable with CAS and cancellation reaches the operation (213.4947ms)\n✔ P3 repository source, target, line recovery and repeated workspace leases preserve CAS heads (122.6084ms)\n✔ P3 generator failures become retryable domain state with explicit lineage (179.4346ms)\n✔ P3 restart resumes a running generation only after recovery settles (186.1065ms)\nℹ tests 19\nℹ suites 0\nℹ pass 19\nℹ fail 0\nℹ cancelled 0\nℹ skipped 0\nℹ todo 0\nℹ duration_ms 2597.3954\n",
+      "stderr": ""
+    },
+    "redaction": {
+      "passed": true,
+      "removed": 0
+    }
+  },
+  "historical": null,
+  "policy": {
+    "clean_failure_blocks": true,
+    "historical_failure_advisory": true,
+    "redaction": "paths-and-secret-shaped-values"
+  }
+}

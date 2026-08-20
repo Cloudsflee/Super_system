@@ -78,9 +78,102 @@ export class OperationService {
     tx.run(`INSERT INTO idempotency_keys(actor_id,command_id,idempotency_key,request_hash,response_status,response_json,operation_id,expires_at,created_at)
       VALUES(?,?,?,?,?,?,?,?,?)`, [actorId, commandId, idempotencyKey, requestHash, 202, null, operationId, input.expiresAt || new Date(Date.parse(now) + 24 * 60 * 60 * 1000).toISOString(), now]);
     const receipt = this.receiptFromRow(tx.get('SELECT * FROM operations WHERE id=?', [operationId]), event.sequence);
-    const response = { ...receipt, cursor: event.sequence };
+    // Keep the canonical receipt shape while exposing the small aliases used
+    // by domain facades.  The aliases are projections, not a second ledger.
+    const response = {
+      ...receipt,
+      id: operationId,
+      resourceType,
+      resourceId,
+      event_sequence: event.sequence,
+      cursor: event.sequence
+    };
     tx.run('UPDATE idempotency_keys SET response_json=? WHERE actor_id=? AND command_id=? AND idempotency_key=?', [canonicalJson(response), actorId, commandId, idempotencyKey]);
     return response;
+  }
+
+  /**
+   * Shared idempotency primitives for domain transactions.  Domain facades
+   * may inspect and persist their response through this service, but never
+   * write the idempotency table directly.
+   */
+  getIdempotencyInTransaction(tx, { actorId, commandId, idempotencyKey, requestHash, now = this.#time() } = {}) {
+    const actor = String(actorId || this.bootstrapActorId);
+    const command = String(commandId || 'operation.execute');
+    const key = String(idempotencyKey || '');
+    const hash = normalizeHash(requestHash || sha256Hex(canonicalJson({ actor, command, key })));
+    const row = tx.get('SELECT * FROM idempotency_keys WHERE actor_id=? AND command_id=? AND idempotency_key=?', [actor, command, key]);
+    if (!row) return null;
+    if (isExpired(row.expires_at, now)) {
+      tx.run('DELETE FROM idempotency_keys WHERE actor_id=? AND command_id=? AND idempotency_key=?', [actor, command, key]);
+      return null;
+    }
+    if (row.request_hash !== hash) throw new OperationError('idempotency_conflict', 'idempotency key was used with a different request', { command_id: command }, 409);
+    return row.response_json ? row : null;
+  }
+
+  saveIdempotencyInTransaction(tx, { actorId, commandId, idempotencyKey, requestHash, response, operationId = null, responseStatus = 200, expiresAt, now = this.#time() } = {}) {
+    const actor = String(actorId || this.bootstrapActorId);
+    const command = String(commandId || 'operation.execute');
+    const key = String(idempotencyKey || '');
+    const hash = normalizeHash(requestHash || sha256Hex(canonicalJson(response || {})));
+    const payload = canonicalJson(response || {});
+    const expiry = expiresAt || new Date(Date.parse(now) + 24 * 60 * 60 * 1000).toISOString();
+    const existing = tx.get('SELECT actor_id FROM idempotency_keys WHERE actor_id=? AND command_id=? AND idempotency_key=?', [actor, command, key]);
+    if (existing) {
+      tx.run('UPDATE idempotency_keys SET request_hash=?,response_status=?,response_json=?,operation_id=?,expires_at=? WHERE actor_id=? AND command_id=? AND idempotency_key=?', [hash, Number(responseStatus), payload, operationId, expiry, actor, command, key], 1);
+      return;
+    }
+    tx.run('INSERT INTO idempotency_keys(actor_id,command_id,idempotency_key,request_hash,response_status,response_json,operation_id,expires_at,created_at) VALUES(?,?,?,?,?,?,?,?,?)', [actor, command, key, hash, Number(responseStatus), payload, operationId, expiry, now]);
+  }
+
+  /**
+   * Add aggregate links from inside the caller's transaction.  All domains
+   * use this entry point so link deduplication and redaction boundaries stay
+   * identical for setup, identity, and project workflows.
+   */
+  linkInTransaction(tx, operationId, links = [], now = this.#time()) {
+    const id = String(operationId || '');
+    if (!id) throw new OperationError('operation_required', 'operation id is required', {}, 400);
+    const values = Array.isArray(links) ? links : [links];
+    const inserted = [];
+    for (const value of values) {
+      const [aggregateType, aggregateId, relation = 'target'] = Array.isArray(value)
+        ? value
+        : [value?.aggregateType || value?.aggregate_type, value?.aggregateId || value?.aggregate_id, value?.relation || 'target'];
+      const type = String(aggregateType || '');
+      const aggregate = String(aggregateId || '');
+      const rel = String(relation || 'target');
+      if (!type || !aggregate) throw new OperationError('link_invalid', 'operation link target is required', {}, 400);
+      const existing = tx.get('SELECT id FROM operation_links WHERE operation_id=? AND aggregate_type=? AND aggregate_id=? AND relation=? LIMIT 1', [id, type, aggregate, rel]);
+      if (existing) continue;
+      const linkId = opaqueId('link');
+      tx.run('INSERT INTO operation_links(id,operation_id,aggregate_type,aggregate_id,relation,created_at) VALUES(?,?,?,?,?,?)', [linkId, id, type, aggregate, rel, now]);
+      inserted.push({ id: linkId, operation_id: id, aggregate_type: type, aggregate_id: aggregate, relation: rel, created_at: now });
+    }
+    return inserted;
+  }
+
+  /** Return a stable, redacted summary for envelopes and Evidence. */
+  summary(operationIdOrRow) {
+    const row = typeof operationIdOrRow === 'object' && operationIdOrRow
+      ? operationIdOrRow
+      : this.db.get('SELECT * FROM operations WHERE id=?', [String(operationIdOrRow || '')]);
+    if (!row) return null;
+    const receipt = this.receiptFromRow(row);
+    return {
+      operation_id: receipt.operation_id,
+      command_id: receipt.command_id,
+      status: receipt.status,
+      revision: receipt.revision,
+      resource_type: receipt.resource_type,
+      resource_id: receipt.resource_id,
+      project_id: receipt.project_id,
+      terminal: TERMINAL_OPERATION_STATUSES.has(receipt.status),
+      retryable: receipt.retryable,
+      poll_uri: receipt.poll_uri,
+      events_uri: receipt.events_uri
+    };
   }
 
   get(operationId, { actorId = null, projectId = null } = {}) {

@@ -5,7 +5,10 @@ Source commit: e18dc0b (V2.3.0, state schema 23).
 Target runtime: V3-Clean, API v2, schema family v3-clean.
 
 This matrix is derived from the V2.3 route registry, state collection list,
-tests/v23/catalog.json, Web router/features, and the current feature-catalog.json.
+tests/v23/catalog.json, Web router/features, and the Clean/Historical Catalog
+layers (`feature-catalog.index.json`, `feature-catalog.clean.json`, and
+`feature-catalog.historical.json`). The compatibility aggregate
+`feature-catalog.json` remains available to P1 governance tests.
 It is deliberately wider than the current implementation Catalog: every
 capability is described as an API, command, event, table, state machine, UI,
 external dependency, test, and Evidence obligation.
@@ -14,7 +17,9 @@ external dependency, test, and Evidence obligation.
 
 | Source | Coverage recorded here |
 | --- | --- |
-| Current feature-catalog.json | 27 rows, REC-D0 through REC-D11 |
+| Clean Catalog layer | 9 active rows: REC-D0-GOVERNANCE-000, REC-D2-IDENTITY-001, REC-D2-SETUP-002, REC-D5-PROJECT-005, REC-D5-WORKFLOW-006, REC-D6-GENERATION-007, REC-D6-OUTCOME-009, REC-D7-REPOSITORY-014, REC-D10-FRONTEND-024 |
+| Historical Catalog layer | 18 explicit fixture rows; `runtime_surface=historical-fixture` |
+| Compatibility feature-catalog.json | 27 aggregate rows, REC-D0 through REC-D11 |
 | V2.3 tests/v23/catalog.json | 14 cases across every layer L0-L7 |
 | V2.3 optimization packages | OPT21-01, OPT21-02, OPT21-03, OPT21-04, OPT21-05, OPT22-01, OPT23-01 |
 | Historical state inventory | 98 source collections at e18dc0b, mapped to clean tables |
@@ -79,9 +84,9 @@ route omitted it.
 
 | ID / capability | API v2 | Command | Event / state | Clean tables (historical source) | UI | External | Tests / Evidence | Status |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| C-01 REC-D0 Governance | /api/v2/system/catalog, /api/v2/system/architecture | governance.plan, governance.catalog, governance.coverage, governance.impact | governance.receipt; inspect -> classified -> passed/failed | schema_meta, schema_migrations, audit_events (scripts/v23-* and feature catalog) | Operations/Governance | Git, CI, receipt store | P1 gate sync, recovery governance and architecture audit; docs/evidence/v3-clean-p1-gate-contract-complete-20260819/verification.json | verified; GS-001 through GS-007 require synchronized plan, tests, gates, Catalog/matrix and Evidence |
+| C-01 REC-D0 Governance | /api/v2/system/catalog, /api/v2/system/architecture | governance.plan, governance.catalog, governance.coverage, governance.impact | governance.receipt; inspect -> classified -> passed/failed | schema_meta, schema_migrations, audit_events (scripts/v23-* and feature layers) | Operations/Governance | Git, CI, receipt store | P1 gate sync and recovery governance; `tests/p31/catalog-split.test.mjs`, `tests/p31/layered-gates.test.mjs`; docs/evidence/v3-clean-p1-gate-contract-complete-20260819/verification.json and docs/evidence/v3-clean-p3-1-debt-burn-down-20260820/verification.json | verified; GS-001 through GS-007 and Clean/Historical bidirectional Catalog checks are required |
 | C-02 REC-D1 Contracts | /api/v2/system/schema, /api/v2/operations/{id} | schema.inspect, migration.apply, migration.verify | migration.applied; pending -> applied -> verified/rolled_back | schema_meta, schema_migrations, aggregate_heads (source schema 23 and migration modules) | none | SQLite WAL, CAS | tests/unit/database.test.mjs, migrations.test.mjs, contracts.test.mjs, recovery-golden.test.mjs; same governance Evidence | verified; clean baseline replaces historical chain |
-| C-03 REC-D10 Frontend | /api/v2/account, /api/v2/actors, /api/v2/teams, /api/v2/projects/{id}/permissions, /api/v2/credentials, /api/v2/profiles | web.identity.load, web.team.load, web.acl.set, web.credential.probe | ui.identity.loaded, ui.permission.updated; loading -> ready/empty/denied/conflict/rebind_required | none (clean-v2 read model) | Identity, Teams, Members, Permissions, Credentials, Profiles | Browser and API v2 session cookie | apps/web/src/test/identity-access.test.tsx; tests/p2 identity/ACL receipts | scaffolded; broader project/workflow/offline/mobile/SSE surfaces remain P9 |
+| C-03 REC-D10 Frontend | /api/v2/setup, /api/v2/account, /api/v2/actors, /api/v2/teams, /api/v2/projects, /api/v2/projects/{id}/permissions, /api/v2/credentials, /api/v2/profiles | web.setup.load/complete, web.identity.load, web.team.load, web.acl.set, web.credential.probe | ui.setup.loaded, ui.identity.loaded, ui.permission.updated; loading -> ready/empty/denied/conflict/rebind_required | none (clean-v2 read model) | Clean Setup, Identity, Projects, Workflow | Browser, HttpOnly session cookie, API v2 | apps/web/src/test/identity-access.test.tsx, apps/web/src/test/project-workflow-clean.test.tsx, apps/web/src/test/setup-flow.test.tsx, apps/web/src/test/workflow.test.tsx, tests/p31/clean-entrypoint-web.test.mjs; docs/evidence/v3-clean-p3-1-debt-burn-down-20260820/verification.json | scaffolded; complete project/workflow/offline/mobile/SSE/release promotion remains deferred |
 | C-04 REC-D2 Identity | /api/v2/account, /api/v2/actors, /api/v2/sessions, /api/v2/teams, /api/v2/projects/{id}/members, /api/v2/projects/{id}/invitations, /api/v2/projects/{id}/permissions | actor.update/switch, session.create/revoke, team.create, membership.grant/status, invitation.create/accept/revoke, acl.set | actor.*, session.*, team.*, membership.*, invitation.*, acl.*; active <-> suspended -> revoked/expired/archived | actors, teams, team_memberships, sessions, project_memberships, project_invitations, project_acl_entries | Identity, Teams, Members, Permissions | HttpOnly session cookie, service credential delegation, ProjectScopeResolver | tests/p2/identity-acl.test.mjs, identity-acl-security.test.mjs, apps/web/src/test/identity-access.test.tsx; docs/evidence/v3-clean-p2-identity-acl-20260819/verification.json | verified; P2 clean ACL/session/team isolation, registry parity, and rollback receipt passed |
 | C-05 REC-D2 Setup/Credential | /api/v2/setup, /api/v2/credentials, /api/v2/credentials/{id}/rebind, /api/v2/credentials/{id}/rotate, /api/v2/profiles, /api/v2/profiles/{id}/probe | setup.complete, credential.create/rebind/rotate/revoke, profile.create/probe | setup.completed, credential.*, profile.*; rebind_required -> pending -> active/failed -> revoked; unprobed -> probing -> available/unavailable | credential_refs, provider_profiles, operations, operation_links | Setup, Credentials, Profiles | AES-256-GCM Vault and deterministic Codex/GitHub/MCP fake adapters | tests/p2/identity-acl.test.mjs, identity-acl-security.test.mjs, apps/web/src/test/identity-access.test.tsx; docs/evidence/v3-clean-p2-identity-acl-20260819/verification.json | implemented; real external provider receipts remain deferred |
 | C-06 REC-D3 Runner | /api/v2/executions/{id}/start, /api/v2/runners/profiles | execution.start, runner.claim, runner.finish | runner.started/completed; job accepted -> leased -> running -> succeeded/failed/expired | runner_profiles, job_specs, runner_receipts, executions, task_attempts (executions, task_attempts) | Execution | Docker Broker, Host Runner, signed Job Spec, fixed digest | tests/security/broker-http.test.mjs, tests/unit/real-runner.test.mjs; target runner receipts | scaffolded; Docker, Host, and credential isolation probes required |
@@ -398,3 +403,17 @@ matrix in one change. Machine verification is recorded in
 | P1-PLATFORM-001 | Platform | `/livez`, `/readyz`, `operations.get`, `operations.events`, `operations.cancel` | `schema_meta`, `schema_migrations`, `actors`, `aggregate_heads`, `aggregate_revisions`, `operations`, `operation_links`, `events`, `event_cursors`, `idempotency_keys`, `audit_events`, `cas_objects`, `receipt_manifests` | `tests/p1/clean-platform.test.mjs`; `docs/evidence/v3-clean-p1-gate-contract-complete-20260819/verification.json` | verified |
 | P1-PLATFORM-002 | CAS/Redaction | registry receipt and replay envelopes | `cas_objects`, `receipt_manifests`, `events`, `audit_events` | `tests/p1/clean-platform.test.mjs`; `docs/evidence/v3-clean-p1-gate-contract-complete-20260819/cas-manifest.json` | verified |
 | P1-GOVERNANCE-003 | Platform | GS-001 through GS-007 gate, document, Catalog/matrix and Evidence synchronization | no domain tables; one governed hash inventory plus one all-path classification inventory | `tests/p1/workspace-sync.test.mjs`; `docs/evidence/v3-clean-p1-gate-contract-complete-20260819/workspace-audit.json` | verified |
+
+## 16. P3.1 Clean debt-burn-down receipt
+
+P3.1 does not add a schema or business capability row. It synchronizes the
+owners, active entrypoints, layered gates, Catalog references, and immutable
+rollback artifacts for the existing P3 rows. The receipt directory is
+`docs/evidence/v3-clean-p3-1-debt-burn-down-20260820/`.
+
+| P3.1 surface | Owner | Required inventory/behavior | Test and Evidence | Status effect |
+| --- | --- | --- | --- | --- |
+| service boundaries and ledger parity | Operations + domain owners | one operation/event/head/idempotency implementation; no owner SQL writes | `tests/p31/ledger-parity.test.mjs`, `tests/p31/service-boundaries.test.mjs`; P3.1 verification receipt | preserves P3 statuses |
+| Clean Web and E2E entrypoint | Frontend | Setup/Identity/Projects/Workflow use `/api/v2`; active request count has `/api/v1=0`; three viewports | `tests/p31/clean-entrypoint-web.test.mjs`, Web suite, `scripts/e2e.mjs` | `REC-D10-FRONTEND-024` remains `scaffolded` until final Web Evidence |
+| Catalog layers and gate wrappers | Platform/Governance | index references, disjoint ids, matrix bidirectional coverage, Clean blocking and historical advisory receipts | `tests/p31/catalog-split.test.mjs`, `tests/p31/layered-gates.test.mjs`, `scripts/catalog-loader.mjs`, `scripts/layered-gate.mjs` | failed advisory cannot promote Clean |
+| immutable Evidence and rollback | Evidence/CAS | append-only attempts, exclusive final receipt, dry-run plus isolated apply and byte comparison | `tests/p31/evidence-immutability.test.mjs`, `rollback.ps1`, `verification.json` | only final non-provisional receipt may promote |

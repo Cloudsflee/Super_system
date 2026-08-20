@@ -1,0 +1,3156 @@
+diff --git a/apps/api/src/clean/events.mjs b/apps/api/src/clean/events.mjs
+index f322419..b3db0f5 100644
+--- a/apps/api/src/clean/events.mjs
++++ b/apps/api/src/clean/events.mjs
+@@ -89,6 +89,30 @@ export class EventService {
+     return event;
+   }
+ 
++  /**
++   * Append an aggregate revision, event/head update, and audit record through
++   * one shared transaction entry point.  Domain services must not duplicate
++   * this SQL because aggregate CAS semantics belong to the event ledger.
++   */
++  appendAggregateInTransaction(tx, input = {}) {
++    const aggregateType = String(input.aggregateType || '');
++    const aggregateId = String(input.aggregateId || '');
++    const revision = Number(input.revision ?? input.aggregateRevision);
++    if (!aggregateType || !aggregateId || !Number.isInteger(revision) || revision < 1) throw new Error('aggregate_revision_invalid');
++    const payloadValue = input.payload == null ? {} : input.payload;
++    const payloadJson = typeof payloadValue === 'string' ? payloadValue : canonicalJson(payloadValue);
++    const payloadHash = sha256Hex(payloadJson);
++    tx.run('INSERT INTO aggregate_revisions(id,aggregate_type,aggregate_id,revision,payload_json,payload_sha256,operation_id,actor_id,created_at) VALUES(?,?,?,?,?,?,?,?,?)', [opaqueId('rev'), aggregateType, aggregateId, revision, payloadJson, payloadHash, input.operationId || null, String(input.actorId || 'actor_system_bootstrap'), input.now || input.occurredAt || this.clock()]);
++    return this.appendInTransaction(tx, {
++      ...input,
++      aggregateType,
++      aggregateId,
++      aggregateRevision: revision,
++      aggregateHash: payloadHash,
++      occurredAt: input.now || input.occurredAt || this.clock()
++    });
++  }
++
+   replay({ actorId = 'actor_system_bootstrap', projectId = null, operationId = null, aggregateType = null, aggregateId = null, cursor = null, limit = 500, consumerId = null, now = new Date() } = {}) {
+     const query = { operation_id: operationId, aggregate_type: aggregateType, aggregate_id: aggregateId };
+     let after = 0;
+diff --git a/apps/api/src/clean/identity.mjs b/apps/api/src/clean/identity.mjs
+index 0efbbe1..9762fba 100644
+--- a/apps/api/src/clean/identity.mjs
++++ b/apps/api/src/clean/identity.mjs
+@@ -2,6 +2,11 @@ import { createHmac, randomBytes, timingSafeEqual } from 'node:crypto';
+ import { canonicalJson, opaqueId, sha256Hex, utcNow, parseCanonicalJson } from './canonical.mjs';
+ import { PlatformError } from './platform-error.mjs';
+ import { AuthorizationService, PROJECT_ROLES, TEAM_ROLES } from './authorization.mjs';
++import { ActorService } from './actor-service.mjs';
++import { SessionService } from './session-service.mjs';
++import { TeamAccessService } from './team-access-service.mjs';
++import { CredentialProfileService } from './credential-profile-service.mjs';
++import { IDENTITY_OWNER_TABLES } from './identity-helpers.mjs';
+ 
+ const ACTOR_KINDS = new Set(['user', 'service', 'agent']);
+ const ACTOR_STATES = new Set(['active', 'suspended', 'revoked']);
+@@ -47,6 +52,28 @@ export class IdentityService {
+     this.projectScopeResolver = projectScopeResolver;
+     this.vault = vault;
+     this.providerAdapters = providerAdapters;
++    this.actorService = new ActorService({ facade: this });
++    this.sessionService = new SessionService({ facade: this });
++    this.teamAccessService = new TeamAccessService({ facade: this });
++    this.credentialProfileService = new CredentialProfileService({ facade: this });
++    if (this.events) this.events.operations = operations;
++  }
++
++  ownerForCommand(commandId) {
++    const command = String(commandId || '');
++    if (command.startsWith('session.')) return 'Session';
++    if (command.startsWith('team.') || command.startsWith('membership.') || command.startsWith('invitation.') || command.startsWith('acl.') || command.startsWith('project.')) return 'TeamAccess';
++    if (command.startsWith('credential.') || command.startsWith('profile.')) return 'CredentialProfile';
++    return 'Actor';
++  }
++
++  ownerInventory() {
++    return Object.freeze({
++      Actor: IDENTITY_OWNER_TABLES.Actor,
++      Session: IDENTITY_OWNER_TABLES.Session,
++      TeamAccess: IDENTITY_OWNER_TABLES.TeamAccess,
++      CredentialProfile: IDENTITY_OWNER_TABLES.CredentialProfile
++    });
+   }
+ 
+   account(principal = null) {
+@@ -1022,27 +1049,32 @@ export class IdentityService {
+ export const IdentityDomainService = IdentityService;
+ 
+ function appendAggregate(tx, events, { aggregateType, aggregateId, revision, operationId, actorId, projectId = null, type, data, payload, now }) {
+-  const payloadJson = canonicalJson(payload);
+-  const payloadHash = sha256Hex(payloadJson);
+-  tx.run(`INSERT INTO aggregate_revisions(id,aggregate_type,aggregate_id,revision,payload_json,payload_sha256,operation_id,actor_id,created_at) VALUES(?,?,?,?,?,?,?,?,?)`, [opaqueId('rev'), aggregateType, aggregateId, revision, payloadJson, payloadHash, operationId || null, actorId, now]);
+-  const event = events.appendInTransaction(tx, { aggregateType, aggregateId, aggregateRevision: revision, aggregateHash: payloadHash, operationId: operationId || null, actorId, projectId, type, data, occurredAt: now });
+-  return event;
++  if (!events || typeof events.appendAggregateInTransaction !== 'function') throw new TypeError('clean_event_service_required');
++  return events.appendAggregateInTransaction(tx, { aggregateType, aggregateId, revision, operationId: operationId || null, actorId, projectId, type, data, payload, now });
+ }
+ 
+ function createInlineOperation(tx, { events, actorId, commandId, resourceType, resourceId, projectId = null, requestHash, now }) {
+-  const id = opaqueId('op');
+-  const payload = { id, command_id: commandId, command_version: 2, kind: commandId, status: 'succeeded', resource_type: resourceType, resource_id: resourceId, project_id: projectId, actor_id: actorId, request_hash: requestHash, revision: 1, result: {}, created_at: now, updated_at: now };
+-  const json = canonicalJson(payload);
+-  tx.run(`INSERT INTO operations(id,command_id,command_version,kind,status,resource_type,resource_id,project_id,actor_id,request_hash,external_ref,result_json,error_code,error_details_json,revision,created_at,updated_at,started_at,completed_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`, [id, commandId, 2, commandId, 'succeeded', resourceType, resourceId, projectId, actorId, requestHash, '', '{}', '', '{}', 1, now, now, now, now]);
+-  tx.run(`INSERT INTO operation_links(id,operation_id,aggregate_type,aggregate_id,relation,created_at) VALUES(?,?,?,?,?,?)`, [opaqueId('link'), id, resourceType, resourceId, 'target', now]);
+-  tx.run(`INSERT INTO aggregate_revisions(id,aggregate_type,aggregate_id,revision,payload_json,payload_sha256,operation_id,actor_id,created_at) VALUES(?,?,?,?,?,?,?,?,?)`, [opaqueId('rev'), 'operation', id, 1, json, sha256Hex(json), id, actorId, now]);
+-  const event = events?.appendInTransaction(tx, { aggregateType: 'operation', aggregateId: id, aggregateRevision: 1, aggregateHash: sha256Hex(json), operationId: id, actorId, projectId, type: 'operation.succeeded', data: { status: 'succeeded', operation_id: id, resource_id: resourceId || null }, occurredAt: now });
+-  const auditReference = event ? tx.get('SELECT id FROM audit_events WHERE event_id=?', [event.id])?.id || null : null;
+-  return { id, revision: 1, event_sequence: Number(event?.sequence || 0), resourceType, resourceId, audit_reference: auditReference };
++  const operations = events?.operations;
++  if (!operations || typeof operations.createInTransaction !== 'function') throw new TypeError('clean_operation_service_required');
++  tx.__cleanOperations = operations;
++  return operations.createInTransaction(tx, {
++    actorId,
++    commandId,
++    kind: commandId,
++    resourceType,
++    resourceId,
++    projectId,
++    requestHash,
++    request: { resource_type: resourceType, resource_id: resourceId, project_id: projectId },
++    idempotencyKey: `inline-${opaqueId('key')}`,
++    status: 'succeeded'
++  }, now);
+ }
+ 
+ function linkOperation(tx, operationId, aggregateType, aggregateId, now) {
+-  tx.run(`INSERT OR IGNORE INTO operation_links(id,operation_id,aggregate_type,aggregate_id,relation,created_at) VALUES(?,?,?,?,?,?)`, [opaqueId('link'), operationId, aggregateType, aggregateId, 'target', now]);
++  const operations = tx?.__cleanOperations;
++  if (!operations || typeof operations.linkInTransaction !== 'function') throw new TypeError('clean_operation_service_required');
++  return operations.linkInTransaction(tx, operationId, [[aggregateType, aggregateId]], now);
+ }
+ 
+ function getIdempotency(tx, actorId, commandId, key, requestHash, now) {
+diff --git a/apps/api/src/clean/operations.mjs b/apps/api/src/clean/operations.mjs
+index 7c723cd..b2268a6 100644
+--- a/apps/api/src/clean/operations.mjs
++++ b/apps/api/src/clean/operations.mjs
+@@ -78,11 +78,69 @@ export class OperationService {
+     tx.run(`INSERT INTO idempotency_keys(actor_id,command_id,idempotency_key,request_hash,response_status,response_json,operation_id,expires_at,created_at)
+       VALUES(?,?,?,?,?,?,?,?,?)`, [actorId, commandId, idempotencyKey, requestHash, 202, null, operationId, input.expiresAt || new Date(Date.parse(now) + 24 * 60 * 60 * 1000).toISOString(), now]);
+     const receipt = this.receiptFromRow(tx.get('SELECT * FROM operations WHERE id=?', [operationId]), event.sequence);
+-    const response = { ...receipt, cursor: event.sequence };
++    // Keep the canonical receipt shape while exposing the small aliases used
++    // by domain facades.  The aliases are projections, not a second ledger.
++    const response = {
++      ...receipt,
++      id: operationId,
++      resourceType,
++      resourceId,
++      event_sequence: event.sequence,
++      cursor: event.sequence
++    };
+     tx.run('UPDATE idempotency_keys SET response_json=? WHERE actor_id=? AND command_id=? AND idempotency_key=?', [canonicalJson(response), actorId, commandId, idempotencyKey]);
+     return response;
+   }
+ 
++  /**
++   * Add aggregate links from inside the caller's transaction.  All domains
++   * use this entry point so link deduplication and redaction boundaries stay
++   * identical for setup, identity, and project workflows.
++   */
++  linkInTransaction(tx, operationId, links = [], now = this.#time()) {
++    const id = String(operationId || '');
++    if (!id) throw new OperationError('operation_required', 'operation id is required', {}, 400);
++    const values = Array.isArray(links) ? links : [links];
++    const inserted = [];
++    for (const value of values) {
++      const [aggregateType, aggregateId, relation = 'target'] = Array.isArray(value)
++        ? value
++        : [value?.aggregateType || value?.aggregate_type, value?.aggregateId || value?.aggregate_id, value?.relation || 'target'];
++      const type = String(aggregateType || '');
++      const aggregate = String(aggregateId || '');
++      const rel = String(relation || 'target');
++      if (!type || !aggregate) throw new OperationError('link_invalid', 'operation link target is required', {}, 400);
++      const existing = tx.get('SELECT id FROM operation_links WHERE operation_id=? AND aggregate_type=? AND aggregate_id=? AND relation=? LIMIT 1', [id, type, aggregate, rel]);
++      if (existing) continue;
++      const linkId = opaqueId('link');
++      tx.run('INSERT INTO operation_links(id,operation_id,aggregate_type,aggregate_id,relation,created_at) VALUES(?,?,?,?,?,?)', [linkId, id, type, aggregate, rel, now]);
++      inserted.push({ id: linkId, operation_id: id, aggregate_type: type, aggregate_id: aggregate, relation: rel, created_at: now });
++    }
++    return inserted;
++  }
++
++  /** Return a stable, redacted summary for envelopes and Evidence. */
++  summary(operationIdOrRow) {
++    const row = typeof operationIdOrRow === 'object' && operationIdOrRow
++      ? operationIdOrRow
++      : this.db.get('SELECT * FROM operations WHERE id=?', [String(operationIdOrRow || '')]);
++    if (!row) return null;
++    const receipt = this.receiptFromRow(row);
++    return {
++      operation_id: receipt.operation_id,
++      command_id: receipt.command_id,
++      status: receipt.status,
++      revision: receipt.revision,
++      resource_type: receipt.resource_type,
++      resource_id: receipt.resource_id,
++      project_id: receipt.project_id,
++      terminal: TERMINAL_OPERATION_STATUSES.has(receipt.status),
++      retryable: receipt.retryable,
++      poll_uri: receipt.poll_uri,
++      events_uri: receipt.events_uri
++    };
++  }
++
+   get(operationId, { actorId = null, projectId = null } = {}) {
+     const row = this.db.get('SELECT * FROM operations WHERE id=?', [String(operationId)]);
+     if (!row) throw new OperationError('operation_not_found', 'operation not found', { operation_id: operationId }, 404);
+diff --git a/apps/api/src/clean/project-workflow.mjs b/apps/api/src/clean/project-workflow.mjs
+index 2ea8854..cf6ab53 100644
+--- a/apps/api/src/clean/project-workflow.mjs
++++ b/apps/api/src/clean/project-workflow.mjs
+@@ -1,5 +1,10 @@
+ import { canonicalJson, opaqueId, parseCanonicalJson, sha256Hex, utcNow } from './canonical.mjs';
+ import { PlatformError } from './platform-error.mjs';
++import { ProjectService } from './project-service.mjs';
++import { RepositoryService } from './repository-service.mjs';
++import { WorkflowService } from './workflow-service.mjs';
++import { OutcomeService } from './outcome-service.mjs';
++import { projectCommandOwner } from './project-domain-helpers.mjs';
+ 
+ const PROJECT_STATUSES = new Set(['draft', 'confirming', 'active', 'archived']);
+ const GENERATION_TERMINAL = new Set(['applied', 'rejected', 'failed', 'cancelled']);
+@@ -31,6 +36,25 @@ export class ProjectWorkflowService {
+     this.repositoryAdapter = repositoryAdapter || deterministicRepositoryAdapter();
+     this.generator = generator || deterministicGenerator;
+     this.critic = critic || deterministicCritic;
++    // Stable owner facades compose this implementation.  HTTP and registry
++    // callers continue to use the historical method names while command
++    // ownership is explicit and inspectable for P3.1 gates.
++    this.projectService = new ProjectService({ facade: this });
++    this.repositoryService = new RepositoryService({ facade: this });
++    this.workflowService = new WorkflowService({ facade: this });
++    this.outcomeService = new OutcomeService({ facade: this });
++    if (this.events) this.events.operations = operations;
++  }
++
++  ownerForCommand(commandId) { return projectCommandOwner(commandId); }
++
++  ownerInventory() {
++    return Object.freeze({
++      Project: this.projectService.tables,
++      Repository: this.repositoryService.tables,
++      Workflow: this.workflowService.tables,
++      Outcome: this.outcomeService.tables
++    });
+   }
+ 
+   // ----- Project and intake <TOKEN>
+@@ -2893,77 +2917,21 @@ function createInlineOperation(
+   events,
+   { actorId, commandId, resourceType, resourceId, projectId = null, requestHash, now }
+ ) {
+-  const id = opaqueId('op');
+-  const payload = {
+-    id,
+-    command_id: commandId,
+-    command_version: 2,
+-    kind: commandId,
+-    status: 'succeeded',
+-    resource_type: resourceType,
+-    resource_id: resourceId,
+-    project_id: projectId,
+-    actor_id: actorId,
+-    request_hash: requestHash,
+-    revision: 1,
+-    result: {},
+-    created_at: now,
+-    updated_at: now
+-  };
+-  const json = canonicalJson(payload);
+-  tx.run(
+-    `INSERT INTO operations(id,command_id,command_version,kind,status,resource_type,resource_id,project_id,actor_id,request_hash,external_ref,result_json,error_code,error_details_json,revision,created_at,updated_at,started_at,completed_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+-    [
+-      id,
+-      commandId,
+-      2,
+-      commandId,
+-      'succeeded',
+-      resourceType,
+-      resourceId,
+-      projectId,
+-      actorId,
+-      requestHash,
+-      '',
+-      '{}',
+-      '',
+-      '{}',
+-      1,
+-      now,
+-      now,
+-      now,
+-      now
+-    ]
+-  );
+-  tx.run(
+-    `INSERT INTO operation_links(id,operation_id,aggregate_type,aggregate_id,relation,created_at) VALUES(?,?,?,?,?,?)`,
+-    [opaqueId('link'), id, resourceType, resourceId, 'target', now]
+-  );
+-  tx.run(
+-    `INSERT INTO aggregate_revisions(id,aggregate_type,aggregate_id,revision,payload_json,payload_sha256,operation_id,actor_id,created_at) VALUES(?,?,?,?,?,?,?,?,?)`,
+-    [opaqueId('rev'), 'operation', id, 1, json, sha256Hex(json), id, actorId, now]
+-  );
+-  const event = events.appendInTransaction(tx, {
+-    aggregateType: 'operation',
+-    aggregateId: id,
+-    aggregateRevision: 1,
+-    aggregateHash: sha256Hex(json),
+-    operationId: id,
++  const operations = events?.operations;
++  if (!operations || typeof operations.createInTransaction !== 'function') throw new TypeError('clean_operation_service_required');
++  tx.__cleanOperations = operations;
++  return operations.createInTransaction(tx, {
+     actorId,
+-    projectId,
+-    type: 'operation.succeeded',
+-    data: { status: 'succeeded', operation_id: id, resource_id: resourceId },
+-    occurredAt: now
+-  });
+-  return {
+-    id,
+-    operation_id: id,
+-    revision: 1,
+-    status: 'succeeded',
++    commandId,
++    kind: commandId,
+     resourceType,
+     resourceId,
+-    audit_reference: tx.get('SELECT id FROM audit_events WHERE event_id=?', [event.id])?.id || null
+-  };
++    projectId,
++    requestHash,
++    request: { resource_type: resourceType, resource_id: resourceId, project_id: projectId },
++    idempotencyKey: `inline-${opaqueId('key')}`,
++    status: 'succeeded'
++  }, now);
+ }
+ 
+ function appendAggregate(
+@@ -2971,31 +2939,24 @@ function appendAggregate(
+   events,
+   { aggregateType, aggregateId, revision, operationId, actorId, projectId, type, data, payload, now }
+ ) {
+-  const payloadJson = typeof payload === 'string' ? payload : canonicalJson(payload);
+-  const payloadHash = sha256Hex(payloadJson);
+-  tx.run(
+-    `INSERT INTO aggregate_revisions(id,aggregate_type,aggregate_id,revision,payload_json,payload_sha256,operation_id,actor_id,created_at) VALUES(?,?,?,?,?,?,?,?,?)`,
+-    [opaqueId('rev'), aggregateType, aggregateId, revision, payloadJson, payloadHash, operationId || null, actorId, now]
+-  );
+-  return events.appendInTransaction(tx, {
++  if (!events || typeof events.appendAggregateInTransaction !== 'function') throw new TypeError('clean_event_service_required');
++  return events.appendAggregateInTransaction(tx, {
+     aggregateType,
+     aggregateId,
+-    aggregateRevision: revision,
+-    aggregateHash: payloadHash,
++    revision,
+     operationId: operationId || null,
+     actorId,
+     projectId,
+     type,
+     data,
+-    occurredAt: now
++    payload,
++    now
+   });
+ }
+ function linkOperation(tx, operationId, links, now) {
+-  for (const [type, id] of links)
+-    tx.run(
+-      `INSERT OR IGNORE INTO operation_links(id,operation_id,aggregate_type,aggregate_id,relation,created_at) VALUES(?,?,?,?,?,?)`,
+-      [opaqueId('link'), operationId, type, id, 'target', now]
+-    );
++  const operations = tx?.__cleanOperations;
++  if (!operations || typeof operations.linkInTransaction !== 'function') throw new TypeError('clean_operation_service_required');
++  return operations.linkInTransaction(tx, operationId, links, now);
+ }
+ function operationView(op) {
+   return {
+diff --git a/apps/api/src/clean/runtime.mjs b/apps/api/src/clean/runtime.mjs
+index 8171ce8..50c1ba2 100644
+--- a/apps/api/src/clean/runtime.mjs
++++ b/apps/api/src/clean/runtime.mjs
+@@ -36,6 +36,10 @@ export function createCleanRuntime(options = {}) {
+   const authorization = new AuthorizationService({ db, projectScopeResolver, clock: options.now || undefined });
+   const platform = new CleanPlatform({ db, events, policy, bootstrapActorId: initialized.metadata.bootstrap_actor_id, authorize: authorization ? (context) => authorization.authorize(context, context.action, context.projectId, context.resource).allowed : null });
+   const operations = new OperationService({ db, events, policy, bootstrapActorId: initialized.metadata.bootstrap_actor_id, clock: options.now || undefined });
++  // The event service is the shared ledger coordinator.  Domain compatibility
++  // adapters receive the same OperationService instance rather than issuing
++  // inline operation SQL of their own.
++  events.operations = operations;
+   const cas = new CasStore({ root: options.casRoot || config.casRoot, db, policy });
+   const receipts = new ReceiptService({ platform });
+   const vault = new VaultAdapter({ root: options.vaultRoot || config.vaultRoot, masterKey: vaultMasterKey });
+diff --git a/apps/web/src/App.tsx b/apps/web/src/App.tsx
+index 9bd78e7..5535743 100644
+--- a/apps/web/src/App.tsx
++++ b/apps/web/src/App.tsx
+@@ -3,10 +3,11 @@ import {
+   Activity, Archive, BookOpen, Boxes, ChevronDown, ClipboardCheck, FolderGit2, LayoutDashboard,
+   LoaderCircle, Menu, MessageSquare, Settings, ShieldCheck, Terminal as TerminalIcon, Users, Workflow, X
+ } from 'lucide-react';
+-import { api } from './api';
++import { apiV2 } from './api';
+ import { ContextPage } from './features/context';
+ import { AssistPage } from './features/assist';
+-import { SetupPage, type SetupState } from './features/setup';
++import { CleanSetupPage, SetupPage, type SetupState } from './features/setup';
++import { ProjectWorkflowPage } from './features/project';
+ import { WorkflowPage as R4WorkflowPage } from './features/workflow';
+ import { IdentityAccessPage } from './features/identity';
+ import type { Project } from './types';
+@@ -21,22 +22,14 @@ const NAV: Array<{ key: PageKey; label: string; icon: ComponentType<{ size?: num
+   { key: 'setup', label: 'Setup', icon: LayoutDashboard },
+   { key: 'identity', label: 'Identity', icon: Users },
+   { key: 'projects', label: 'Projects', icon: FolderGit2 },
+-  { key: 'workflow', label: 'Workflow', icon: Workflow },
+-  { key: 'context', label: 'Context', icon: BookOpen },
+-  { key: 'assist', label: 'Assist', icon: MessageSquare },
+-  { key: 'execution', label: 'Execution', icon: Activity },
+-  { key: 'terminals', label: 'Terminal', icon: TerminalIcon },
+-  { key: 'approvals', label: 'Approvals', icon: ShieldCheck },
+-  { key: 'assets', label: 'Assets', icon: Boxes },
+-  { key: 'audit', label: 'Audit', icon: ClipboardCheck },
+-  { key: 'settings', label: 'Settings', icon: Settings }
++  { key: 'workflow', label: 'Workflow', icon: Workflow }
+ ];
+ 
+ const PAGES: Record<PageKey, ComponentType<WorkspacePageProps>> = {
+-  setup: SetupPage,
++  setup: CleanSetupPage,
+   identity: IdentityAccessPage,
+-  projects: ProjectsPage,
+-  workflow: R4WorkflowPage,
++  projects: (props) => <ProjectWorkflowPage {...props} initialSection="overview" />,
++  workflow: (props) => <ProjectWorkflowPage {...props} initialSection="workflow" />,
+   context: ContextPage,
+   assist: AssistPage,
+   execution: ExecutionPage,
+@@ -63,7 +56,8 @@ export function App() {
+   const [setup, setSetup] = useState<Pick<SetupState, 'status' | 'complete' | 'revision'> | null>(null);
+ 
+   const loadProjects = useCallback(async () => {
+-    const rows = await api<Project[]>('/api/v1/projects');
++    const response = await apiV2<{ projects: Project[] }>('/api/v2/projects');
++    const rows = response.data.projects || [];
+     setProjects(rows);
+     setProjectId((current) => {
+       const selected = rows.some((project) => project.id === current) ? current : rows[0]?.id || '';
+@@ -73,9 +67,15 @@ export function App() {
+   }, []);
+ 
+   const refreshSetup = useCallback(async () => {
+-    const state = await api<SetupState>('/api/v1/setup');
+-    setSetup({ status: state.status, complete: state.complete, revision: state.revision });
+-    if (state.status === 'ready' && state.complete) await loadProjects();
++    const response = await apiV2<{ needs_setup: boolean; actor_count: number }>('/api/v2/setup');
++    const state = response.data;
++    const cleanState: Pick<SetupState, 'status' | 'complete' | 'revision'> = {
++      status: state.needs_setup ? 'blocked' : 'ready',
++      complete: !state.needs_setup,
++      revision: 0
++    };
++    setSetup(cleanState);
++    if (cleanState.status === 'ready' && cleanState.complete) await loadProjects();
+     else { setProjects([]); setProjectId(''); }
+   }, [loadProjects]);
+ 
+diff --git a/apps/web/src/api.ts b/apps/web/src/api.ts
+index 9df7927..7419290 100644
+--- a/apps/web/src/api.ts
++++ b/apps/web/src/api.ts
+@@ -32,25 +32,38 @@ export type ApiV2Envelope<T> = {
+   meta: { api_version: string; resource_type?: string; resource_revision?: number; etag?: string; redactions?: string[] };
+ };
+ 
++export type ApiV2Options = RequestInit & {
++  idempotencyKey?: string;
++  expectedRevision?: number;
++};
++
+ /** Clean-break client. It unwraps the v2 envelope and never falls back to v1. */
+-export async function apiV2<T>(path: string, options: RequestInit = {}): Promise<ApiV2Envelope<T>> {
++export async function apiV2<T>(path: string, options: ApiV2Options = {}): Promise<ApiV2Envelope<T>> {
+   const normalized = path.startsWith('/api/v2/') ? path : `/api/v2/${path.replace(/^\//, '')}`;
++  const { idempotencyKey, expectedRevision, ...request } = options;
++  const headers: Record<string, string> = { accept: 'application/json', ...(request.headers as Record<string, string> || {}) };
++  if (idempotencyKey) headers['Idempotency-Key'] = idempotencyKey;
++  if (expectedRevision != null) headers['X-Expected-Revision'] = String(expectedRevision);
+   const response = await fetch(normalized, {
+-    ...options,
+-    headers: { accept: 'application/json', ...options.headers }
++    ...request,
++    credentials: request.credentials || 'same-origin',
++    headers
+   });
+   const body = await response.json().catch(() => ({}));
+   if (!response.ok) throw new ApiError(response.status, body as ApiErrorBody);
+   return body as ApiV2Envelope<T>;
+ }
+ 
+-export function mutateV2<T>(path: string, body: Record<string, unknown> = {}, method = 'POST', expectedRevision?: number): Promise<ApiV2Envelope<T>> {
++export function mutateV2<T>(path: string, body: Record<string, unknown> = {}, method = 'POST', expectedRevisionOrOptions?: number | { expectedRevision?: number; idempotencyKey?: string }, explicitIdempotencyKey?: string): Promise<ApiV2Envelope<T>> {
++  const mutation = typeof expectedRevisionOrOptions === 'object'
++    ? expectedRevisionOrOptions
++    : { expectedRevision: expectedRevisionOrOptions, idempotencyKey: explicitIdempotencyKey };
+   const headers: Record<string, string> = {
+     'content-type': 'application/json',
+-    'Idempotency-Key': crypto.randomUUID()
++    'Idempotency-Key': mutation.idempotencyKey || crypto.randomUUID()
+   };
+-  if (expectedRevision != null) headers['X-Expected-Revision'] = String(expectedRevision);
+-  return apiV2<T>(path, { method, headers, body: JSON.stringify(body) });
++  if (mutation.expectedRevision != null) headers['X-Expected-Revision'] = String(mutation.expectedRevision);
++  return apiV2<T>(path, { method, headers, body: JSON.stringify(body), credentials: 'same-origin' });
+ }
+ 
+ export function mutate<T>(path: string, body: unknown, method = 'POST'): Promise<T> {
+diff --git a/apps/web/src/features/project/ProjectWorkflowPage.tsx b/apps/web/src/features/project/ProjectWorkflowPage.tsx
+index 379a586..2bd654f 100644
+--- a/apps/web/src/features/project/ProjectWorkflowPage.tsx
++++ b/apps/web/src/features/project/ProjectWorkflowPage.tsx
+@@ -90,8 +90,9 @@ function ErrorState({ state, message, onRetry }: { state: LoadState; message: st
+ 
+ function unwrap<T>(envelope: { data: T }): T { return envelope.data; }
+ 
+-export function ProjectWorkflowPage({ projectId, selectedProject, refreshProjects, notify, setupReady }: WorkspacePageProps & { initialSection?: Section }) {
+-  const [section, setSection] = useState<Section>('overview');
++export function ProjectWorkflowPage({ projectId, selectedProject, refreshProjects, notify, setupReady, initialSection }: WorkspacePageProps & { initialSection?: Section }) {
++  const [section, setSection] = useState<Section>(initialSection || 'overview');
++  useEffect(() => { if (initialSection) setSection(initialSection); }, [initialSection]);
+   const [projects, setProjects] = useState<P3Project[]>([]);
+   const [project, setProject] = useState<P3Project | null>(null);
+   const [intake, setIntake] = useState<Intake | null>(null);
+diff --git a/apps/web/src/features/setup/index.ts b/apps/web/src/features/setup/index.ts
+index 3f0a504..de106c6 100644
+--- a/apps/web/src/features/setup/index.ts
++++ b/apps/web/src/features/setup/index.ts
+@@ -1,2 +1,3 @@
+ export { SetupPage } from './SetupPage';
++export { CleanSetupPage } from './CleanSetupPage';
+ export type { SetupState } from './types';
+diff --git a/apps/web/vite.config.ts b/apps/web/vite.config.ts
+index c6ce9ca..ee3c2ae 100644
+--- a/apps/web/vite.config.ts
++++ b/apps/web/vite.config.ts
+@@ -1,18 +1,23 @@
+ import react from '@vitejs/plugin-react';
+-import { defineConfig } from 'vite';
++import { defineConfig, loadEnv } from 'vite';
+ 
+-export default defineConfig({
+-  plugins: [react()],
+-  server: {
+-    proxy: {
+-      '/api': { target: 'http://127.0.0.1:4317', ws: true },
+-      '/health': { target: 'http://127.0.0.1:4317' },
+-      '/readyz': { target: 'http://127.0.0.1:4317' }
+-    }
+-  },
+-  build: {
+-    manifest: true,
+-    rollupOptions: { output: { manualChunks: { 'vendor-react': ['react', 'react-dom'], 'vendor-icons': ['lucide-react'] } } }
+-  },
+-  test: { environment: 'jsdom', setupFiles: './src/test/setup.ts', fileParallelism: false }
++export default defineConfig(({ mode }) => {
++  const env = loadEnv(mode, '.', '');
++  const runtimeEnv = (globalThis as unknown as { process?: { env?: Record<string, string | undefined> } }).process?.env || {};
++  const target = runtimeEnv.AIWS_WEB_API_TARGET || env.AIWS_WEB_API_TARGET || 'http://127.0.0.1:4317';
++  return {
++    plugins: [react()],
++    server: {
++      proxy: {
++        '/api': { target, ws: true },
++        '/health': { target },
++        '/readyz': { target }
++      }
++    },
++    build: {
++      manifest: true,
++      rollupOptions: { output: { manualChunks: { 'vendor-react': ['react', 'react-dom'], 'vendor-icons': ['lucide-react'] } } }
++    },
++    test: { environment: 'jsdom', setupFiles: './src/test/setup.ts', fileParallelism: false }
++  };
+ });
+diff --git a/feature-catalog.json b/feature-catalog.json
+index 8db4493..bea1a14 100644
+--- a/feature-catalog.json
++++ b/feature-catalog.json
+@@ -1,13 +1,34 @@
+ {
+   "schema_version": "aiws.v3.feature_catalog.v2",
+   "product_version": "3.0.0",
+-  "status_flow": ["planned", "scaffolded", "implemented", "verified", "released"],
++  "status_flow": [
++    "planned",
++    "scaffolded",
++    "implemented",
++    "verified",
++    "released"
++  ],
+   "status_requirements": {
+-    "planned": ["behavior contract is identified"],
+-    "scaffolded": ["schema, contract, or interface exists", "capability is not advertised as ready"],
+-    "implemented": ["real domain behavior", "behavior and UI tests", "verification evidence"],
+-    "verified": ["integration or external probe passed", "verification record passed"],
+-    "released": ["temporary-volume release and rollback passed", "release receipt passed"]
++    "planned": [
++      "behavior contract is identified"
++    ],
++    "scaffolded": [
++      "schema, contract, or interface exists",
++      "capability is not advertised as ready"
++    ],
++    "implemented": [
++      "real domain behavior",
++      "behavior and UI tests",
++      "verification evidence"
++    ],
++    "verified": [
++      "integration or external probe passed",
++      "verification record passed"
++    ],
++    "released": [
++      "temporary-volume release and rollback passed",
++      "release receipt passed"
++    ]
+   },
+   "source": {
+     "v23_commit": "e18dc0b",
+@@ -15,9 +36,18 @@
+     "policy": "historical files are read-only behavior references; runtime imports target only current V3 modules"
+   },
+   "exclusions": [
+-    {"id": "media-audio-video", "reason": "automatic parsing is excluded"},
+-    {"id": "office-pptx", "reason": "automatic parsing is excluded"},
+-    {"id": "generic-archives", "reason": "automatic parsing is excluded"}
++    {
++      "id": "media-audio-video",
++      "reason": "automatic parsing is excluded"
++    },
++    {
++      "id": "office-pptx",
++      "reason": "automatic parsing is excluded"
++    },
++    {
++      "id": "generic-archives",
++      "reason": "automatic parsing is excluded"
++    }
+   ],
+   "features": [
+     {
+@@ -25,488 +55,1586 @@
+       "domain": "governance",
+       "name": "Recovery truth, ownership and synchronized architecture gates",
+       "status": "verified",
+-      "owner_modules": ["platform"],
+-      "gate_sync_rules": ["GS-001", "GS-002", "GS-003", "GS-004", "GS-005", "GS-006", "GS-007"],
+-      "gate_sync_commands": ["pnpm check", "pnpm audit:p1", "pnpm scan:clean", "pnpm test:p1", "pnpm recovery:plan", "pnpm recovery:catalog", "pnpm recovery:coverage", "pnpm recovery:impact -- --audit", "pnpm verify"],
+-      "source_files": ["AGENTS.md", "docs/architecture/v23-capability-matrix.md", "docs/architecture/v3-clean-development-plan.md", "docs/testing.md", "scripts/lib/v3-clean-p1-scope.mjs", "scripts/v3-clean-workspace-audit.mjs", "scripts/v3-clean-architecture-scan.mjs"],
+-      "target_modules": ["feature-catalog.json", "package.json", "apps/api/src/modules/registry.mjs", "apps/api/src/modules/platform", "scripts/recovery-governance.mjs", "scripts/recovery-evidence.mjs", "scripts/check.mjs", "scripts/verify.mjs", "scripts/v3-clean-p1-global-sync-evidence.mjs", "scripts/v3-clean-p3-evidence.mjs"],
++      "owner_modules": [
++        "platform"
++      ],
++      "gate_sync_rules": [
++        "GS-001",
++        "GS-002",
++        "GS-003",
++        "GS-004",
++        "GS-005",
++        "GS-006",
++        "GS-007"
++      ],
++      "gate_sync_commands": [
++        "pnpm check",
++        "pnpm audit:p1",
++        "pnpm scan:clean",
++        "pnpm test:p1",
++        "pnpm recovery:plan",
++        "pnpm recovery:catalog",
++        "pnpm recovery:coverage",
++        "pnpm recovery:impact -- --audit",
++        "pnpm verify"
++      ],
++      "source_files": [
++        "AGENTS.md",
++        "docs/architecture/v23-capability-matrix.md",
++        "docs/architecture/v3-clean-development-plan.md",
++        "docs/testing.md",
++        "scripts/lib/v3-clean-p1-scope.mjs",
++        "scripts/v3-clean-workspace-audit.mjs",
++        "scripts/v3-clean-architecture-scan.mjs"
++      ],
++      "target_modules": [
++        "feature-catalog.json",
++        "package.json",
++        "apps/api/src/modules/registry.mjs",
++        "apps/api/src/modules/platform",
++        "scripts/recovery-governance.mjs",
++        "scripts/recovery-evidence.mjs",
++        "scripts/check.mjs",
++        "scripts/verify.mjs",
++        "scripts/v3-clean-p1-global-sync-evidence.mjs",
++        "scripts/v3-clean-p3-evidence.mjs"
++      ],
+       "tables": [],
+       "apis": [],
+       "ui": [],
+-      "events": ["recovery.governance.receipt"],
+-      "behavior_tests": ["tests/unit/recovery-governance.test.mjs", "tests/p1/workspace-sync.test.mjs"],
++      "events": [
++        "recovery.governance.receipt"
++      ],
++      "behavior_tests": [
++        "tests/unit/recovery-governance.test.mjs",
++        "tests/p1/workspace-sync.test.mjs"
++      ],
+       "ui_tests": [],
+-      "evidence": ["docs/evidence/<TOKEN>/verification.json"],
++      "evidence": [
++        "docs/evidence/<TOKEN>/verification.json"
++      ],
+       "release_receipts": [],
+-      "tests": ["T0", "tests/unit/recovery-governance.test.mjs"]
++      "tests": [
++        "T0",
++        "tests/unit/recovery-governance.test.mjs"
++      ]
+     },
+     {
+       "id": "REC-D1-CONTRACTS-023",
+       "domain": "contracts",
+       "name": "Forward-only migrations and V3 public contracts",
+       "status": "verified",
+-      "owner_modules": ["platform"],
+-      "source_files": ["current V3 schema fingerprint"],
+-      "target_modules": ["apps/api/src/schema.mjs", "apps/api/src/migrations", "apps/api/src/migrations/index.mjs", "apps/api/src/migration-service.mjs", "apps/api/src/db-worker.mjs", "packages/contracts/src/index.mjs", "scripts/recovery-golden.mjs", "scripts/r2-migration-evidence.mjs", "scripts/r3-migration-evidence.mjs", "scripts/r4-migration-evidence.mjs", "scripts/r5-migration-evidence.mjs", "scripts/restore-migration-snapshot.mjs", "tests/golden/v23", "tests/golden/r2", "tests/golden/r3", "tests/golden/r4", "tests/golden/r5", "tests/integration/helpers.mjs", "pnpm-lock.yaml", "README.md", "docs/archive/legacy-code-docs/data-model-pre-clean.md"],
+-      "tables": ["schema_migrations"],
+-      "apis": ["/api/v1"],
++      "owner_modules": [
++        "platform"
++      ],
++      "source_files": [
++        "current V3 schema fingerprint"
++      ],
++      "target_modules": [
++        "apps/api/src/schema.mjs",
++        "apps/api/src/migrations",
++        "apps/api/src/migrations/index.mjs",
++        "apps/api/src/migration-service.mjs",
++        "apps/api/src/db-worker.mjs",
++        "packages/contracts/src/index.mjs",
++        "scripts/recovery-golden.mjs",
++        "scripts/r2-migration-evidence.mjs",
++        "scripts/r3-migration-evidence.mjs",
++        "scripts/r4-migration-evidence.mjs",
++        "scripts/r5-migration-evidence.mjs",
++        "scripts/restore-migration-snapshot.mjs",
++        "tests/golden/v23",
++        "tests/golden/r2",
++        "tests/golden/r3",
++        "tests/golden/r4",
++        "tests/golden/r5",
++        "tests/integration/helpers.mjs",
++        "pnpm-lock.yaml",
++        "README.md",
++        "docs/archive/legacy-code-docs/data-model-pre-clean.md"
++      ],
++      "tables": [
++        "schema_migrations"
++      ],
++      "apis": [
++        "/api/v1"
++      ],
+       "ui": [],
+-      "events": ["migration.applied"],
+-      "behavior_tests": ["tests/unit/database.test.mjs", "tests/unit/migrations.test.mjs", "tests/unit/contracts.test.mjs", "tests/unit/recovery-golden.test.mjs"],
++      "events": [
++        "migration.applied"
++      ],
++      "behavior_tests": [
++        "tests/unit/database.test.mjs",
++        "tests/unit/migrations.test.mjs",
++        "tests/unit/contracts.test.mjs",
++        "tests/unit/recovery-golden.test.mjs"
++      ],
+       "ui_tests": [],
+-      "evidence": ["docs/evidence/v3-r0-r1-governance-20260810/verification.json"],
++      "evidence": [
++        "docs/evidence/v3-r0-r1-governance-20260810/verification.json"
++      ],
+       "release_receipts": [],
+-      "tests": ["T1", "tests/unit/database.test.mjs", "tests/unit/migrations.test.mjs", "tests/unit/contracts.test.mjs", "tests/unit/recovery-golden.test.mjs"]
++      "tests": [
++        "T1",
++        "tests/unit/database.test.mjs",
++        "tests/unit/migrations.test.mjs",
++        "tests/unit/contracts.test.mjs",
++        "tests/unit/recovery-golden.test.mjs"
++      ]
+     },
+     {
+       "id": "REC-D10-FRONTEND-024",
+       "domain": "frontend",
+       "name": "Complete V3 operational web workflows",
+       "status": "scaffolded",
+-      "owner_modules": ["identity", "setup", "project", "workflow", "assist", "execution", "evidence", "operations"],
+-      "source_files": ["V2.3 mature web workflows"],
+-      "target_modules": ["apps/web/src/App.tsx", "apps/web/src/api.ts", "apps/web/src/features/identity/IdentityAccessPage.tsx", "apps/web/src/features/identity/index.ts", "apps/web/src/styles.css", "apps/web/src/test/identity-access.test.tsx", "apps/web/package.json"],
++      "owner_modules": [
++        "identity",
++        "setup",
++        "project",
++        "workflow",
++        "assist",
++        "execution",
++        "evidence",
++        "operations"
++      ],
++      "source_files": [
++        "V2.3 mature web workflows"
++      ],
++      "target_modules": [
++        "apps/web/src/App.tsx",
++        "apps/web/src/api.ts",
++        "apps/web/src/features/identity/IdentityAccessPage.tsx",
++        "apps/web/src/features/identity/index.ts",
++        "apps/web/src/styles.css",
++        "apps/web/src/test/identity-access.test.tsx",
++        "apps/web/package.json"
++      ],
+       "tables": [],
+-      "apis": ["/api/v2/account", "/api/v2/actors", "/api/v2/teams", "/api/v2/projects/{id}/permissions", "/api/v2/credentials", "/api/v2/profiles"],
+-      "ui": ["Identity", "Teams", "Members", "Permissions", "Credentials", "Profiles"],
+-      "events": ["actor.updated", "team.created", "team.membership.granted", "acl.policy.updated", "credential.rebound", "profile.probed"],
+-      "behavior_tests": ["tests/p2/identity-acl.test.mjs", "tests/p2/identity-acl-security.test.mjs"],
+-      "ui_tests": ["apps/web/src/test/identity-access.test.tsx"],
+-      "evidence": ["docs/evidence/v3-clean-p2-identity-acl-20260819/verification.json"],
++      "apis": [
++        "/api/v2/account",
++        "/api/v2/actors",
++        "/api/v2/teams",
++        "/api/v2/projects/{id}/permissions",
++        "/api/v2/credentials",
++        "/api/v2/profiles"
++      ],
++      "ui": [
++        "Identity",
++        "Teams",
++        "Members",
++        "Permissions",
++        "Credentials",
++        "Profiles"
++      ],
++      "events": [
++        "actor.updated",
++        "team.created",
++        "team.membership.granted",
++        "acl.policy.updated",
++        "credential.rebound",
++        "profile.probed"
++      ],
++      "behavior_tests": [
++        "tests/p2/identity-acl.test.mjs",
++        "tests/p2/identity-acl-security.test.mjs"
++      ],
++      "ui_tests": [
++        "apps/web/src/test/identity-access.test.tsx"
++      ],
++      "evidence": [
++        "docs/evidence/v3-clean-p2-identity-acl-20260819/verification.json"
++      ],
+       "release_receipts": [],
+-      "tests": ["T8", "tests/p2/identity-acl.test.mjs", "tests/p2/identity-acl-security.test.mjs", "apps/web/src/test/identity-access.test.tsx"]
++      "tests": [
++        "T8",
++        "tests/p2/identity-acl.test.mjs",
++        "tests/p2/identity-acl-security.test.mjs",
++        "apps/web/src/test/identity-access.test.tsx"
++      ]
+     },
+     {
+       "id": "REC-D2-IDENTITY-001",
+       "domain": "identity",
+       "name": "Local owner account and sessions",
+       "status": "verified",
+-      "owner_modules": ["identity"],
+-      "source_files": ["V2.3 account and session modules"],
+-      "target_modules": ["apps/api/src/clean/identity.mjs", "apps/api/src/clean/authorization.mjs", "apps/api/src/clean/http.mjs", "apps/api/src/clean/registry.mjs", "apps/api/src/clean/migrations/002-identity-acl.mjs", "apps/web/src/features/identity/IdentityAccessPage.tsx", "scripts/v3-clean-p2-evidence.mjs"],
+-      "tables": ["actors", "teams", "team_memberships", "sessions", "project_memberships", "project_invitations", "project_acl_entries"],
+-      "apis": ["GET /api/v2/account", "PATCH /api/v2/account", "/api/v2/actors", "/api/v2/sessions", "/api/v2/teams", "/api/v2/teams/{id}/memberships", "/api/v2/projects/{id}/members", "/api/v2/projects/{id}/invitations", "/api/v2/projects/{id}/permissions"],
+-      "ui": ["Identity", "Teams", "Members", "Permissions"],
+-      "events": ["actor.created", "actor.updated", "actor.switched", "session.created", "session.revoked", "team.created", "team.membership.granted", "membership.granted", "invitation.created", "invitation.accepted", "acl.allowed", "acl.denied", "acl.policy.updated"],
+-      "behavior_tests": ["tests/p2/identity-acl.test.mjs", "tests/p2/identity-acl-security.test.mjs"],
+-      "ui_tests": ["apps/web/src/test/identity-access.test.tsx"],
+-      "evidence": ["docs/evidence/v3-clean-p2-identity-acl-20260819/verification.json"],
++      "owner_modules": [
++        "identity"
++      ],
++      "source_files": [
++        "V2.3 account and session modules"
++      ],
++      "target_modules": [
++        "apps/api/src/clean/identity.mjs",
++        "apps/api/src/clean/authorization.mjs",
++        "apps/api/src/clean/http.mjs",
++        "apps/api/src/clean/registry.mjs",
++        "apps/api/src/clean/migrations/002-identity-acl.mjs",
++        "apps/web/src/features/identity/IdentityAccessPage.tsx",
++        "scripts/v3-clean-p2-evidence.mjs"
++      ],
++      "tables": [
++        "actors",
++        "teams",
++        "team_memberships",
++        "sessions",
++        "project_memberships",
++        "project_invitations",
++        "project_acl_entries"
++      ],
++      "apis": [
++        "GET /api/v2/account",
++        "PATCH /api/v2/account",
++        "/api/v2/actors",
++        "/api/v2/sessions",
++        "/api/v2/teams",
++        "/api/v2/teams/{id}/memberships",
++        "/api/v2/projects/{id}/members",
++        "/api/v2/projects/{id}/invitations",
++        "/api/v2/projects/{id}/permissions"
++      ],
++      "ui": [
++        "Identity",
++        "Teams",
++        "Members",
++        "Permissions"
++      ],
++      "events": [
++        "actor.created",
++        "actor.updated",
++        "actor.switched",
++        "session.created",
++        "session.revoked",
++        "team.created",
++        "team.membership.granted",
++        "membership.granted",
++        "invitation.created",
++        "invitation.accepted",
++        "acl.allowed",
++        "acl.denied",
++        "acl.policy.updated"
++      ],
++      "behavior_tests": [
++        "tests/p2/identity-acl.test.mjs",
++        "tests/p2/identity-acl-security.test.mjs"
++      ],
++      "ui_tests": [
++        "apps/web/src/test/identity-access.test.tsx"
++      ],
++      "evidence": [
++        "docs/evidence/v3-clean-p2-identity-acl-20260819/verification.json"
++      ],
+       "release_receipts": [],
+-      "tests": ["T2", "tests/p2/identity-acl.test.mjs", "tests/p2/identity-acl-security.test.mjs", "apps/web/src/test/identity-access.test.tsx"]
++      "tests": [
++        "T2",
++        "tests/p2/identity-acl.test.mjs",
++        "tests/p2/identity-acl-security.test.mjs",
++        "apps/web/src/test/identity-access.test.tsx"
++      ]
+     },
+     {
+       "id": "REC-D2-SETUP-002",
+       "domain": "setup",
+       "name": "Setup, Vault, credentials, profiles and provider probes",
+       "status": "implemented",
+-      "owner_modules": ["identity", "setup", "operations"],
+-      "source_files": ["V2.3 credential, profile and provider modules"],
+-      "target_modules": ["apps/api/src/clean/identity.mjs", "apps/api/src/clean/vault.mjs", "apps/api/src/clean/providers.mjs", "apps/api/src/clean/runtime.mjs", "apps/api/src/clean/http.mjs", "apps/api/src/clean/registry.mjs", "packages/contracts/src/clean-v2.mjs", "apps/web/src/features/identity/IdentityAccessPage.tsx"],
+-      "tables": ["credential_refs", "provider_profiles", "operations", "operation_links"],
+-      "apis": ["GET /api/v2/setup", "POST /api/v2/setup", "/api/v2/credentials", "/api/v2/credentials/{id}/rebind", "/api/v2/credentials/{id}/rotate", "/api/v2/credentials/{id}/revoke", "/api/v2/profiles", "/api/v2/profiles/{id}/probe", "/api/v2/operations/{id}"],
+-      "ui": ["Setup", "Credentials", "Profiles"],
+-      "events": ["setup.completed", "credential.created", "credential.rebind.queued", "credential.rebound", "credential.rotate.queued", "credential.rotated", "credential.failed", "credential.revoked", "profile.created", "profile.probe.queued", "profile.probed", "profile.probe.failed", "operation.succeeded", "operation.failed"],
+-      "behavior_tests": ["tests/p2/identity-acl.test.mjs", "tests/p2/identity-acl-security.test.mjs"],
+-      "ui_tests": ["apps/web/src/test/identity-access.test.tsx"],
+-      "evidence": ["docs/evidence/v3-clean-p2-identity-acl-20260819/verification.json"],
++      "owner_modules": [
++        "identity",
++        "setup",
++        "operations"
++      ],
++      "source_files": [
++        "V2.3 credential, profile and provider modules"
++      ],
++      "target_modules": [
++        "apps/api/src/clean/identity.mjs",
++        "apps/api/src/clean/vault.mjs",
++        "apps/api/src/clean/providers.mjs",
++        "apps/api/src/clean/runtime.mjs",
++        "apps/api/src/clean/http.mjs",
++        "apps/api/src/clean/registry.mjs",
++        "packages/contracts/src/clean-v2.mjs",
++        "apps/web/src/features/identity/IdentityAccessPage.tsx"
++      ],
++      "tables": [
++        "credential_refs",
++        "provider_profiles",
++        "operations",
++        "operation_links"
++      ],
++      "apis": [
++        "GET /api/v2/setup",
++        "POST /api/v2/setup",
++        "/api/v2/credentials",
++        "/api/v2/credentials/{id}/rebind",
++        "/api/v2/credentials/{id}/rotate",
++        "/api/v2/credentials/{id}/revoke",
++        "/api/v2/profiles",
++        "/api/v2/profiles/{id}/probe",
++        "/api/v2/operations/{id}"
++      ],
++      "ui": [
++        "Setup",
++        "Credentials",
++        "Profiles"
++      ],
++      "events": [
++        "setup.completed",
++        "credential.created",
++        "credential.rebind.queued",
++        "credential.rebound",
++        "credential.rotate.queued",
++        "credential.rotated",
++        "credential.failed",
++        "credential.revoked",
++        "profile.created",
++        "profile.probe.queued",
++        "profile.probed",
++        "profile.probe.failed",
++        "operation.succeeded",
++        "operation.failed"
++      ],
++      "behavior_tests": [
++        "tests/p2/identity-acl.test.mjs",
++        "tests/p2/identity-acl-security.test.mjs"
++      ],
++      "ui_tests": [
++        "apps/web/src/test/identity-access.test.tsx"
++      ],
++      "evidence": [
++        "docs/evidence/v3-clean-p2-identity-acl-20260819/verification.json"
++      ],
+       "release_receipts": [],
+-      "tests": ["T2", "tests/p2/identity-acl.test.mjs", "tests/p2/identity-acl-security.test.mjs", "apps/web/src/test/identity-access.test.tsx"]
++      "tests": [
++        "T2",
++        "tests/p2/identity-acl.test.mjs",
++        "tests/p2/identity-acl-security.test.mjs",
++        "apps/web/src/test/identity-access.test.tsx"
++      ]
+     },
+     {
+       "id": "REC-D3-RUNNER-003",
+       "domain": "runner",
+       "name": "Broker-isolated Docker and Host runners with signed Job Spec",
+       "status": "scaffolded",
+-      "owner_modules": ["runner", "execution"],
+-      "source_files": ["V2.3 provider and runner services"],
+-      "target_modules": ["apps/api/src/modules/runner", "apps/runner-broker/src/job-spec.mjs", "apps/runner-broker/src/codex-config.mjs", "apps/runner-broker/src/signature.mjs", "apps/runner-broker/codex-runner.mjs", "apps/runner-broker/server.mjs", "apps/api/src/broker-client.mjs", "Dockerfile"],
+-      "tables": ["executions", "task_attempts"],
+-      "apis": ["/api/v1/executions/{id}/start"],
+-      "ui": ["Execution"],
+-      "events": ["runner.started", "runner.completed"],
+-      "behavior_tests": ["tests/security/broker-http.test.mjs", "tests/unit/real-runner.test.mjs"],
++      "owner_modules": [
++        "runner",
++        "execution"
++      ],
++      "source_files": [
++        "V2.3 provider and runner services"
++      ],
++      "target_modules": [
++        "apps/api/src/modules/runner",
++        "apps/runner-broker/src/job-spec.mjs",
++        "apps/runner-broker/src/codex-config.mjs",
++        "apps/runner-broker/src/signature.mjs",
++        "apps/runner-broker/codex-runner.mjs",
++        "apps/runner-broker/server.mjs",
++        "apps/api/src/broker-client.mjs",
++        "Dockerfile"
++      ],
++      "tables": [
++        "executions",
++        "task_attempts"
++      ],
++      "apis": [
++        "/api/v1/executions/{id}/start"
++      ],
++      "ui": [
++        "Execution"
++      ],
++      "events": [
++        "runner.started",
++        "runner.completed"
++      ],
++      "behavior_tests": [
++        "tests/security/broker-http.test.mjs",
++        "tests/unit/real-runner.test.mjs"
++      ],
+       "ui_tests": [],
+       "evidence": [],
+       "release_receipts": [],
+-      "tests": ["T3", "tests/security/broker-http.test.mjs", "tests/unit/real-runner.test.mjs"]
++      "tests": [
++        "T3",
++        "tests/security/broker-http.test.mjs",
++        "tests/unit/real-runner.test.mjs"
++      ]
+     },
+     {
+       "id": "REC-D4-MCP-004",
+       "domain": "mcp",
+       "name": "MCP clients, tools and operation lifecycle over HTTP and stdio",
+       "status": "implemented",
+-      "owner_modules": ["mcp"],
+-      "source_files": ["apps/api/src/http.mjs", "apps/api/src/domain.mjs", "scripts/mcp-stdio.mjs"],
+-      "target_modules": ["apps/api/src/modules/mcp", "apps/api/src/command-registry.mjs", "apps/api/src/http.mjs", "apps/api/src/domain.mjs", "scripts/mcp-stdio.mjs", "scripts/r5-migration-evidence.mjs", "scripts/r5-performance.mjs", "scripts/r5-e2e.mjs"],
+-      "tables": ["mcp_clients", "exchange_requests", "exchange_grants"],
+-      "apis": ["/api/v1/mcp", "/api/v1/mcp/tools", "/api/v1/mcp/clients", "/api/v1/operations/{id}", "/api/v1/operations/{id}/events", "/api/v1/operations/{id}/cancel"],
+-      "ui": ["MCP Settings"],
+-      "events": ["mcp.tool.called", "mcp_client.created", "mcp_client.revoked"],
+-      "behavior_tests": ["tests/integration/mcp-flow.test.mjs", "tests/integration/mcp-stdio-r5.test.mjs", "tests/security/context-mcp-r5.test.mjs"],
+-      "ui_tests": ["apps/web/src/test/context.test.tsx", "scripts/r5-e2e.mjs"],
+-      "evidence": ["docs/evidence/v5-r5-context-mcp-20260816/verification.json"],
++      "owner_modules": [
++        "mcp"
++      ],
++      "source_files": [
++        "apps/api/src/http.mjs",
++        "apps/api/src/domain.mjs",
++        "scripts/mcp-stdio.mjs"
++      ],
++      "target_modules": [
++        "apps/api/src/modules/mcp",
++        "apps/api/src/command-registry.mjs",
++        "apps/api/src/http.mjs",
++        "apps/api/src/domain.mjs",
++        "scripts/mcp-stdio.mjs",
++        "scripts/r5-migration-evidence.mjs",
++        "scripts/r5-performance.mjs",
++        "scripts/r5-e2e.mjs"
++      ],
++      "tables": [
++        "mcp_clients",
++        "exchange_requests",
++        "exchange_grants"
++      ],
++      "apis": [
++        "/api/v1/mcp",
++        "/api/v1/mcp/tools",
++        "/api/v1/mcp/clients",
++        "/api/v1/operations/{id}",
++        "/api/v1/operations/{id}/events",
++        "/api/v1/operations/{id}/cancel"
++      ],
++      "ui": [
++        "MCP Settings"
++      ],
++      "events": [
++        "mcp.tool.called",
++        "mcp_client.created",
++        "mcp_client.revoked"
++      ],
++      "behavior_tests": [
++        "tests/integration/mcp-flow.test.mjs",
++        "tests/integration/mcp-stdio-r5.test.mjs",
++        "tests/security/context-mcp-r5.test.mjs"
++      ],
++      "ui_tests": [
++        "apps/web/src/test/context.test.tsx",
++        "scripts/r5-e2e.mjs"
++      ],
++      "evidence": [
++        "docs/evidence/v5-r5-context-mcp-20260816/verification.json"
++      ],
+       "release_receipts": [],
+-      "tests": ["T3", "tests/integration/mcp-flow.test.mjs", "tests/integration/mcp-stdio-r5.test.mjs", "tests/security/context-mcp-r5.test.mjs", "apps/web/src/test/context.test.tsx", "scripts/r5-e2e.mjs"]
++      "tests": [
++        "T3",
++        "tests/integration/mcp-flow.test.mjs",
++        "tests/integration/mcp-stdio-r5.test.mjs",
++        "tests/security/context-mcp-r5.test.mjs",
++        "apps/web/src/test/context.test.tsx",
++        "scripts/r5-e2e.mjs"
++      ]
+     },
+     {
+       "id": "REC-D5-PROJECT-005",
+       "domain": "project",
+       "name": "Draft project, retryable intake and confirmed brief",
+       "status": "verified",
+-      "owner_modules": ["project", "platform"],
+-      "source_files": ["apps/api/src/clean/migrations/003-project-workflow.mjs", "apps/api/src/clean/project-workflow.mjs", "packages/contracts/src/clean-v2.mjs"],
+-      "target_modules": ["apps/api/server.mjs", "apps/api/src/clean/project-workflow.mjs", "apps/api/src/clean/http.mjs", "apps/api/src/clean/registry.mjs", "apps/web/src/features/project/ProjectWorkflowPage.tsx"],
+-      "tables": ["projects", "project_intakes", "briefs", "brief_revisions", "aggregate_heads"],
+-      "apis": ["/api/v2/projects", "/api/v2/projects/{id}", "/api/v2/projects/{id}/intake", "/api/v2/projects/{id}/intake/retry", "/api/v2/projects/{id}/intake/cancel", "/api/v2/projects/{id}/briefs", "/api/v2/projects/{id}/briefs/{revision}/confirm"],
+-      "ui": ["Projects", "Intake", "Brief", "ProjectWorkflowPage"],
+-      "events": ["project.created", "intake.*", "brief.*"],
+-      "behavior_tests": ["tests/p3/active-entrypoint.test.mjs", "tests/p3/http-contract.test.mjs", "tests/p3/migration.test.mjs", "tests/p3/project-workflow.test.mjs"],
+-      "ui_tests": ["apps/web/src/test/project-workflow-clean.test.tsx"],
+-      "evidence": ["docs/evidence/v3-clean-p3-project-workflow-20260819/verification.json"],
++      "owner_modules": [
++        "project",
++        "platform"
++      ],
++      "source_files": [
++        "apps/api/src/clean/migrations/003-project-workflow.mjs",
++        "apps/api/src/clean/project-workflow.mjs",
++        "packages/contracts/src/clean-v2.mjs"
++      ],
++      "target_modules": [
++        "apps/api/server.mjs",
++        "apps/api/src/clean/project-workflow.mjs",
++        "apps/api/src/clean/http.mjs",
++        "apps/api/src/clean/registry.mjs",
++        "apps/web/src/features/project/ProjectWorkflowPage.tsx"
++      ],
++      "tables": [
++        "projects",
++        "project_intakes",
++        "briefs",
++        "brief_revisions",
++        "aggregate_heads"
++      ],
++      "apis": [
++        "/api/v2/projects",
++        "/api/v2/projects/{id}",
++        "/api/v2/projects/{id}/intake",
++        "/api/v2/projects/{id}/intake/retry",
++        "/api/v2/projects/{id}/intake/cancel",
++        "/api/v2/projects/{id}/briefs",
++        "/api/v2/projects/{id}/briefs/{revision}/confirm"
++      ],
++      "ui": [
++        "Projects",
++        "Intake",
++        "Brief",
++        "ProjectWorkflowPage"
++      ],
++      "events": [
++        "project.created",
++        "intake.*",
++        "brief.*"
++      ],
++      "behavior_tests": [
++        "tests/p3/active-entrypoint.test.mjs",
++        "tests/p3/http-contract.test.mjs",
++        "tests/p3/migration.test.mjs",
++        "tests/p3/project-workflow.test.mjs"
++      ],
++      "ui_tests": [
++        "apps/web/src/test/project-workflow-clean.test.tsx"
++      ],
++      "evidence": [
++        "docs/evidence/v3-clean-p3-project-workflow-20260819/verification.json"
++      ],
+       "release_receipts": [],
+-      "tests": ["T4", "tests/p3/active-entrypoint.test.mjs", "tests/p3/http-contract.test.mjs", "tests/p3/migration.test.mjs", "tests/p3/project-workflow.test.mjs", "apps/web/src/test/project-workflow-clean.test.tsx"]
++      "tests": [
++        "T4",
++        "tests/p3/active-entrypoint.test.mjs",
++        "tests/p3/http-contract.test.mjs",
++        "tests/p3/migration.test.mjs",
++        "tests/p3/project-workflow.test.mjs",
++        "apps/web/src/test/project-workflow-clean.test.tsx"
++      ]
+     },
+     {
+       "id": "REC-D5-WORKFLOW-006",
+       "domain": "workflow",
+       "name": "Workstream and Task workflow canvas with node contracts",
+       "status": "verified",
+-      "owner_modules": ["workflow", "platform"],
+-      "source_files": ["apps/api/src/clean/migrations/003-project-workflow.mjs", "apps/api/src/clean/project-workflow.mjs", "packages/contracts/src/clean-v2.mjs"],
+-      "target_modules": ["apps/api/src/clean/project-workflow.mjs", "apps/api/src/clean/http.mjs", "apps/api/src/clean/registry.mjs", "apps/web/src/features/project/ProjectWorkflowPage.tsx"],
+-      "tables": ["workflows", "workflow_revisions", "workflow_nodes", "node_contracts", "workflow_generation_proposals", "aggregate_heads"],
+-      "apis": ["/api/v2/projects/{id}/workflows", "/api/v2/projects/{id}/workflow-draft", "/api/v2/workflow-proposals/{id}/apply"],
+-      "ui": ["Workflow Canvas", "Task Contract", "ProjectWorkflowPage"],
+-      "events": ["workflow.*", "generation.*"],
+-      "behavior_tests": ["tests/p3/migration.test.mjs", "tests/p3/project-workflow.test.mjs"],
+-      "ui_tests": ["apps/web/src/test/project-workflow-clean.test.tsx"],
+-      "evidence": ["docs/evidence/v3-clean-p3-project-workflow-20260819/verification.json"],
++      "owner_modules": [
++        "workflow",
++        "platform"
++      ],
++      "source_files": [
++        "apps/api/src/clean/migrations/003-project-workflow.mjs",
++        "apps/api/src/clean/project-workflow.mjs",
++        "packages/contracts/src/clean-v2.mjs"
++      ],
++      "target_modules": [
++        "apps/api/src/clean/project-workflow.mjs",
++        "apps/api/src/clean/http.mjs",
++        "apps/api/src/clean/registry.mjs",
++        "apps/web/src/features/project/ProjectWorkflowPage.tsx"
++      ],
++      "tables": [
++        "workflows",
++        "workflow_revisions",
++        "workflow_nodes",
++        "node_contracts",
++        "workflow_generation_proposals",
++        "aggregate_heads"
++      ],
++      "apis": [
++        "/api/v2/projects/{id}/workflows",
++        "/api/v2/projects/{id}/workflow-draft",
++        "/api/v2/workflow-proposals/{id}/apply"
++      ],
++      "ui": [
++        "Workflow Canvas",
++        "Task Contract",
++        "ProjectWorkflowPage"
++      ],
++      "events": [
++        "workflow.*",
++        "generation.*"
++      ],
++      "behavior_tests": [
++        "tests/p3/migration.test.mjs",
++        "tests/p3/project-workflow.test.mjs"
++      ],
++      "ui_tests": [
++        "apps/web/src/test/project-workflow-clean.test.tsx"
++      ],
++      "evidence": [
++        "docs/evidence/v3-clean-p3-project-workflow-20260819/verification.json"
++      ],
+       "release_receipts": [],
+-      "tests": ["T4", "tests/p3/migration.test.mjs", "tests/p3/project-workflow.test.mjs", "apps/web/src/test/project-workflow-clean.test.tsx"]
++      "tests": [
++        "T4",
++        "tests/p3/migration.test.mjs",
++        "tests/p3/project-workflow.test.mjs",
++        "apps/web/src/test/project-workflow-clean.test.tsx"
++      ]
+     },
+     {
+       "id": "REC-D6-GENERATION-007",
+       "domain": "workflow",
+       "name": "Asynchronous workflow generator and independent critic",
+       "status": "verified",
+-      "owner_modules": ["workflow", "critic", "operations"],
+-      "source_files": ["apps/api/src/clean/project-workflow.mjs", "apps/api/src/clean/provider-adapters.mjs", "packages/contracts/src/clean-v2.mjs"],
+-      "target_modules": ["apps/api/src/clean/project-workflow.mjs", "apps/api/src/clean/http.mjs", "apps/api/src/clean/registry.mjs", "apps/web/src/features/project/ProjectWorkflowPage.tsx"],
+-      "tables": ["workflow_generations", "workflow_critic_receipts", "workflow_generation_proposals", "operations"],
+-      "apis": ["/api/v2/projects/{id}/workflow-generations", "/api/v2/workflow-generations/{id}", "/api/v2/workflow-generations/{id}/retry", "/api/v2/workflow-generations/{id}/cancel", "/api/v2/workflow-generations/{id}/critic", "/api/v2/workflow-proposals/{id}/apply"],
+-      "ui": ["Workflow", "ProjectWorkflowPage"],
+-      "events": ["generation.*", "critic.*"],
+-      "behavior_tests": ["tests/p3/project-workflow.test.mjs", "tests/p3/migration.test.mjs"],
+-      "ui_tests": ["apps/web/src/test/project-workflow-clean.test.tsx"],
+-      "evidence": ["docs/evidence/v3-clean-p3-project-workflow-20260819/verification.json"],
++      "owner_modules": [
++        "workflow",
++        "critic",
++        "operations"
++      ],
++      "source_files": [
++        "apps/api/src/clean/project-workflow.mjs",
++        "apps/api/src/clean/provider-adapters.mjs",
++        "packages/contracts/src/clean-v2.mjs"
++      ],
++      "target_modules": [
++        "apps/api/src/clean/project-workflow.mjs",
++        "apps/api/src/clean/http.mjs",
++        "apps/api/src/clean/registry.mjs",
++        "apps/web/src/features/project/ProjectWorkflowPage.tsx"
++      ],
++      "tables": [
++        "workflow_generations",
++        "workflow_critic_receipts",
++        "workflow_generation_proposals",
++        "operations"
++      ],
++      "apis": [
++        "/api/v2/projects/{id}/workflow-generations",
++        "/api/v2/workflow-generations/{id}",
++        "/api/v2/workflow-generations/{id}/retry",
++        "/api/v2/workflow-generations/{id}/cancel",
++        "/api/v2/workflow-generations/{id}/critic",
++        "/api/v2/workflow-proposals/{id}/apply"
++      ],
++      "ui": [
++        "Workflow",
++        "ProjectWorkflowPage"
++      ],
++      "events": [
++        "generation.*",
++        "critic.*"
++      ],
++      "behavior_tests": [
++        "tests/p3/project-workflow.test.mjs",
++        "tests/p3/migration.test.mjs"
++      ],
++      "ui_tests": [
++        "apps/web/src/test/project-workflow-clean.test.tsx"
++      ],
++      "evidence": [
++        "docs/evidence/v3-clean-p3-project-workflow-20260819/verification.json"
++      ],
+       "release_receipts": [],
+-      "tests": ["T4", "tests/p3/project-workflow.test.mjs", "tests/p3/migration.test.mjs", "apps/web/src/test/project-workflow-clean.test.tsx"]
++      "tests": [
++        "T4",
++        "tests/p3/project-workflow.test.mjs",
++        "tests/p3/migration.test.mjs",
++        "apps/web/src/test/project-workflow-clean.test.tsx"
++      ]
+     },
+     {
+       "id": "REC-D6-EXECUTION-008",
+       "domain": "execution",
+       "name": "Persistent DAG dispatcher and seven replayable stages",
+       "status": "scaffolded",
+-      "owner_modules": ["execution"],
+-      "source_files": ["workflow-dispatcher.mjs", "execution-stage-service.mjs"],
+-      "target_modules": ["apps/api/src/modules/execution", "apps/web/src/features/execution"],
+-      "tables": ["executions", "task_attempts", "execution_inputs", "execution_stage_checkpoints"],
+-      "apis": ["/api/v1/projects/{id}/executions", "/api/v1/executions/{id}/start", "/api/v1/executions/{id}/cancel"],
+-      "ui": ["Execution", "Recovery"],
+-      "events": ["execution.stage.changed", "task.completed"],
+-      "behavior_tests": ["tests/integration/scheduler-flow.test.mjs"],
++      "owner_modules": [
++        "execution"
++      ],
++      "source_files": [
++        "workflow-dispatcher.mjs",
++        "execution-stage-service.mjs"
++      ],
++      "target_modules": [
++        "apps/api/src/modules/execution",
++        "apps/web/src/features/execution"
++      ],
++      "tables": [
++        "executions",
++        "task_attempts",
++        "execution_inputs",
++        "execution_stage_checkpoints"
++      ],
++      "apis": [
++        "/api/v1/projects/{id}/executions",
++        "/api/v1/executions/{id}/start",
++        "/api/v1/executions/{id}/cancel"
++      ],
++      "ui": [
++        "Execution",
++        "Recovery"
++      ],
++      "events": [
++        "execution.stage.changed",
++        "task.completed"
++      ],
++      "behavior_tests": [
++        "tests/integration/scheduler-flow.test.mjs"
++      ],
+       "ui_tests": [],
+       "evidence": [],
+       "release_receipts": [],
+-      "tests": ["T4", "tests/integration/scheduler-flow.test.mjs"]
++      "tests": [
++        "T4",
++        "tests/integration/scheduler-flow.test.mjs"
++      ]
+     },
+     {
+       "id": "REC-D6-OUTCOME-009",
+       "domain": "outcome",
+       "name": "Evidence-driven outcome, rubric and revocable waiver",
+       "status": "scaffolded",
+-      "owner_modules": ["outcome", "project"],
+-      "source_files": ["apps/api/src/clean/migrations/003-project-workflow.mjs", "apps/api/src/clean/project-workflow.mjs", "packages/contracts/src/clean-v2.mjs"],
+-      "target_modules": ["apps/api/src/clean/project-workflow.mjs", "apps/api/src/clean/http.mjs", "apps/api/src/clean/registry.mjs"],
+-      "tables": ["outcome_requirements"],
+-      "apis": ["/api/v2/projects/{id}/outcome-requirements"],
+-      "ui": ["Outcome", "Quality Review"],
+-      "events": ["outcome.*"],
+-      "behavior_tests": ["tests/p3/project-workflow.test.mjs"],
++      "owner_modules": [
++        "outcome",
++        "project"
++      ],
++      "source_files": [
++        "apps/api/src/clean/migrations/003-project-workflow.mjs",
++        "apps/api/src/clean/project-workflow.mjs",
++        "packages/contracts/src/clean-v2.mjs"
++      ],
++      "target_modules": [
++        "apps/api/src/clean/project-workflow.mjs",
++        "apps/api/src/clean/http.mjs",
++        "apps/api/src/clean/registry.mjs"
++      ],
++      "tables": [
++        "outcome_requirements"
++      ],
++      "apis": [
++        "/api/v2/projects/{id}/outcome-requirements"
++      ],
++      "ui": [
++        "Outcome",
++        "Quality Review"
++      ],
++      "events": [
++        "outcome.*"
++      ],
++      "behavior_tests": [
++        "tests/p3/project-workflow.test.mjs"
++      ],
+       "ui_tests": [],
+-      "evidence": ["docs/evidence/v3-clean-p3-project-workflow-20260819/verification.json"],
++      "evidence": [
++        "docs/evidence/v3-clean-p3-project-workflow-20260819/verification.json"
++      ],
+       "release_receipts": [],
+-      "tests": ["T4", "tests/p3/project-workflow.test.mjs"]
++      "tests": [
++        "T4",
++        "tests/p3/project-workflow.test.mjs"
++      ]
+     },
+     {
+       "id": "REC-D8-ASSIST-010",
+       "domain": "assist",
+       "name": "Four-scope Assist runtime and native event replay",
+       "status": "implemented",
+-      "owner_modules": ["assist"],
+-      "source_files": ["apps/api/src/modules/assist/service.mjs", "apps/api/src/modules/assist/runtime.mjs", "apps/api/src/migrations/006-assist-runtime.mjs"],
+-      "target_modules": ["apps/api/src/modules/assist", "apps/api/src/domain.mjs", "apps/web/src/features/assist"],
+-      "tables": ["assist_sessions", "assist_turns", "assist_messages", "assist_events", "assist_operations", "assist_session_snapshots", "assist_turn_snapshots", "assist_session_heads", "assist_turn_heads", "assist_operation_links", "assist_event_cursors"],
+-      "apis": ["/api/v1/assist/sessions", "/api/v1/assist/sessions/{id}/turns", "/api/v1/assist/turns/{id}", "/api/v1/assist/turns/{id}/retry", "/api/v1/assist/turns/{id}/cancel", "/api/v1/assist/sessions/{id}/events"],
+-      "ui": ["Assist Center", "Composer", "Context Pack", "Turn Timeline", "Operation Status"],
+-      "events": ["assist.session.created", "assist.turn.created", "assist.turn.queued", "assist.turn.running", "assist.turn.completed", "assist.turn.failed", "assist.turn.cancelled", "assist.message"],
+-      "behavior_tests": ["tests/integration/assist-flow.test.mjs", "tests/integration/assist-r6.test.mjs", "tests/unit/migrations.test.mjs"],
+-      "ui_tests": ["apps/web/src/test/assist.test.tsx"],
+-      "evidence": ["docs/evidence/v6-r6-assist-20260817/verification.json"],
++      "owner_modules": [
++        "assist"
++      ],
++      "source_files": [
++        "apps/api/src/modules/assist/service.mjs",
++        "apps/api/src/modules/assist/runtime.mjs",
++        "apps/api/src/migrations/006-assist-runtime.mjs"
++      ],
++      "target_modules": [
++        "apps/api/src/modules/assist",
++        "apps/api/src/domain.mjs",
++        "apps/web/src/features/assist"
++      ],
++      "tables": [
++        "assist_sessions",
++        "assist_turns",
++        "assist_messages",
++        "assist_events",
++        "assist_operations",
++        "assist_session_snapshots",
++        "assist_turn_snapshots",
++        "assist_session_heads",
++        "assist_turn_heads",
++        "assist_operation_links",
++        "assist_event_cursors"
++      ],
++      "apis": [
++        "/api/v1/assist/sessions",
++        "/api/v1/assist/sessions/{id}/turns",
++        "/api/v1/assist/turns/{id}",
++        "/api/v1/assist/turns/{id}/retry",
++        "/api/v1/assist/turns/{id}/cancel",
++        "/api/v1/assist/sessions/{id}/events"
++      ],
++      "ui": [
++        "Assist Center",
++        "Composer",
++        "Context Pack",
++        "Turn Timeline",
++        "Operation Status"
++      ],
++      "events": [
++        "assist.session.created",
++        "assist.turn.created",
++        "assist.turn.queued",
++        "assist.turn.running",
++        "assist.turn.completed",
++        "assist.turn.failed",
++        "assist.turn.cancelled",
++        "assist.message"
++      ],
++      "behavior_tests": [
++        "tests/integration/assist-flow.test.mjs",
++        "tests/integration/assist-r6.test.mjs",
++        "tests/unit/migrations.test.mjs"
++      ],
++      "ui_tests": [
++        "apps/web/src/test/assist.test.tsx"
++      ],
++      "evidence": [
++        "docs/evidence/v6-r6-assist-20260817/verification.json"
++      ],
+       "release_receipts": [],
+-      "tests": ["T5", "tests/integration/assist-flow.test.mjs", "tests/integration/assist-r6.test.mjs", "apps/web/src/test/assist.test.tsx"]
++      "tests": [
++        "T5",
++        "tests/integration/assist-flow.test.mjs",
++        "tests/integration/assist-r6.test.mjs",
++        "apps/web/src/test/assist.test.tsx"
++      ]
+     },
+     {
+       "id": "REC-D8-ATTACHMENTS-011",
+       "domain": "assist",
+       "name": "Attachments and secure previews",
+       "status": "scaffolded",
+-      "owner_modules": ["assist"],
+-      "source_files": ["assist-attachments.mjs"],
+-      "target_modules": ["apps/api/src/modules/assist", "apps/web/src/features/assist"],
+-      "tables": ["attachments"],
+-      "apis": ["/api/v1/projects/{id}/attachments", "/api/v1/attachments/{id}/content", "/api/v1/attachments/{id}/preview"],
+-      "ui": ["Attachments"],
+-      "events": ["attachment.created"],
+-      "behavior_tests": ["tests/integration/assist-flow.test.mjs"],
++      "owner_modules": [
++        "assist"
++      ],
++      "source_files": [
++        "assist-attachments.mjs"
++      ],
++      "target_modules": [
++        "apps/api/src/modules/assist",
++        "apps/web/src/features/assist"
++      ],
++      "tables": [
++        "attachments"
++      ],
++      "apis": [
++        "/api/v1/projects/{id}/attachments",
++        "/api/v1/attachments/{id}/content",
++        "/api/v1/attachments/{id}/preview"
++      ],
++      "ui": [
++        "Attachments"
++      ],
++      "events": [
++        "attachment.created"
++      ],
++      "behavior_tests": [
++        "tests/integration/assist-flow.test.mjs"
++      ],
+       "ui_tests": [],
+       "evidence": [],
+       "release_receipts": [],
+-      "tests": ["T5", "T6", "tests/integration/assist-flow.test.mjs"]
++      "tests": [
++        "T5",
++        "T6",
++        "tests/integration/assist-flow.test.mjs"
++      ]
+     },
+     {
+       "id": "REC-D8-FILES-012",
+       "domain": "assist",
+       "name": "Monaco files, controlled tests and reversible change batches",
+       "status": "scaffolded",
+-      "owner_modules": ["assist"],
+-      "source_files": ["assist-change-batches.mjs"],
+-      "target_modules": ["apps/api/src/modules/assist", "apps/web/src/features/assist"],
+-      "tables": ["file_changes", "assist_change_batches", "assist_checkpoints"],
+-      "apis": ["/api/v1/projects/{id}/files", "/api/v1/projects/{id}/change-batches"],
+-      "ui": ["Monaco", "Diff Review"],
+-      "events": ["assist.change_batch.proposed", "assist.change_batch.applied", "assist.change_batch.rolled_back"],
+-      "behavior_tests": ["tests/integration/file-changes.test.mjs"],
++      "owner_modules": [
++        "assist"
++      ],
++      "source_files": [
++        "assist-change-batches.mjs"
++      ],
++      "target_modules": [
++        "apps/api/src/modules/assist",
++        "apps/web/src/features/assist"
++      ],
++      "tables": [
++        "file_changes",
++        "assist_change_batches",
++        "assist_checkpoints"
++      ],
++      "apis": [
++        "/api/v1/projects/{id}/files",
++        "/api/v1/projects/{id}/change-batches"
++      ],
++      "ui": [
++        "Monaco",
++        "Diff Review"
++      ],
++      "events": [
++        "assist.change_batch.proposed",
++        "assist.change_batch.applied",
++        "assist.change_batch.rolled_back"
++      ],
++      "behavior_tests": [
++        "tests/integration/file-changes.test.mjs"
++      ],
+       "ui_tests": [],
+       "evidence": [],
+       "release_receipts": [],
+-      "tests": ["T5", "tests/integration/file-changes.test.mjs"]
++      "tests": [
++        "T5",
++        "tests/integration/file-changes.test.mjs"
++      ]
+     },
+     {
+       "id": "REC-D8-APPROVAL-013",
+       "domain": "assist",
+       "name": "Runtime approval, user input and semantic proposals",
+       "status": "scaffolded",
+-      "owner_modules": ["assist"],
+-      "source_files": ["run-approval.mjs"],
+-      "target_modules": ["apps/api/src/modules/assist", "apps/web/src/features/assist"],
+-      "tables": ["runtime_approvals", "runtime_user_inputs", "ui_action_intents"],
+-      "apis": ["/api/v1/approvals", "/api/v1/user-inputs", "/api/v1/ui-action-intents"],
+-      "ui": ["Approval Center", "Proposal"],
+-      "events": ["runtime.approval.requested", "runtime.approval.approved", "runtime.approval.rejected", "runtime.user_input.requested", "runtime.user_input.answered"],
+-      "behavior_tests": ["tests/integration/approval-flow.test.mjs"],
++      "owner_modules": [
++        "assist"
++      ],
++      "source_files": [
++        "run-approval.mjs"
++      ],
++      "target_modules": [
++        "apps/api/src/modules/assist",
++        "apps/web/src/features/assist"
++      ],
++      "tables": [
++        "runtime_approvals",
++        "runtime_user_inputs",
++        "ui_action_intents"
++      ],
++      "apis": [
++        "/api/v1/approvals",
++        "/api/v1/user-inputs",
++        "/api/v1/ui-action-intents"
++      ],
++      "ui": [
++        "Approval Center",
++        "Proposal"
++      ],
++      "events": [
++        "runtime.approval.requested",
++        "runtime.approval.approved",
++        "runtime.approval.rejected",
++        "runtime.user_input.requested",
++        "runtime.user_input.answered"
++      ],
++      "behavior_tests": [
++        "tests/integration/approval-flow.test.mjs"
++      ],
+       "ui_tests": [],
+       "evidence": [],
+       "release_receipts": [],
+-      "tests": ["T5", "tests/integration/approval-flow.test.mjs"]
++      "tests": [
++        "T5",
++        "tests/integration/approval-flow.test.mjs"
++      ]
+     },
+     {
+       "id": "REC-D8-TERMINAL-025",
+       "domain": "terminal",
+       "name": "Native Terminal, reconnect and cursor recovery",
+       "status": "verified",
+-      "owner_modules": ["terminal"],
+-      "source_files": ["V2.3 terminal and node-pty services"],
+-      "target_modules": ["apps/api/src/modules/terminal", "apps/api/src/terminal-service.mjs", "apps/api/src/terminal-bundle.mjs", "apps/web/src/pages.tsx"],
+-      "tables": ["terminal_sessions", "terminal_events"],
+-      "apis": ["/api/v1/terminals", "/api/v1/terminals/{id}/events", "/api/v1/terminals/{id}/ws"],
+-      "ui": ["Terminal"],
+-      "events": ["terminal.opened", "terminal.started", "terminal.output", "terminal.resized", "terminal.signalled", "terminal.orphaned", "terminal.closed", "terminal.failed"],
+-      "behavior_tests": ["tests/unit/terminal.test.mjs", "tests/unit/terminal-bundle.test.mjs", "tests/integration/terminal-flow.test.mjs"],
+-      "ui_tests": ["apps/web/src/test/terminal.test.tsx"],
+-      "evidence": ["docs/evidence/v3-terminal-native-20260807/evidence-manifest.json"],
++      "owner_modules": [
++        "terminal"
++      ],
++      "source_files": [
++        "V2.3 terminal and node-pty services"
++      ],
++      "target_modules": [
++        "apps/api/src/modules/terminal",
++        "apps/api/src/terminal-service.mjs",
++        "apps/api/src/terminal-bundle.mjs",
++        "apps/web/src/pages.tsx"
++      ],
++      "tables": [
++        "terminal_sessions",
++        "terminal_events"
++      ],
++      "apis": [
++        "/api/v1/terminals",
++        "/api/v1/terminals/{id}/events",
++        "/api/v1/terminals/{id}/ws"
++      ],
++      "ui": [
++        "Terminal"
++      ],
++      "events": [
++        "terminal.opened",
++        "terminal.started",
++        "terminal.output",
++        "terminal.resized",
++        "terminal.signalled",
++        "terminal.orphaned",
++        "terminal.closed",
++        "terminal.failed"
++      ],
++      "behavior_tests": [
++        "tests/unit/terminal.test.mjs",
++        "tests/unit/terminal-bundle.test.mjs",
++        "tests/integration/terminal-flow.test.mjs"
++      ],
++      "ui_tests": [
++        "apps/web/src/test/terminal.test.tsx"
++      ],
++      "evidence": [
++        "docs/evidence/v3-terminal-native-20260807/evidence-manifest.json"
++      ],
+       "release_receipts": [],
+-      "tests": ["T5", "T6", "tests/unit/terminal.test.mjs", "tests/unit/terminal-bundle.test.mjs", "tests/integration/terminal-flow.test.mjs", "apps/web/src/test/terminal.test.tsx", "scripts/e2e.mjs"]
++      "tests": [
++        "T5",
++        "T6",
++        "tests/unit/terminal.test.mjs",
++        "tests/unit/terminal-bundle.test.mjs",
++        "tests/integration/terminal-flow.test.mjs",
++        "apps/web/src/test/terminal.test.tsx",
++        "scripts/e2e.mjs"
++      ]
+     },
+     {
+       "id": "REC-D8-BRIDGE-026",
+       "domain": "bridge",
+       "name": "Independent Windows Native Bridge pairing and Git bundle transport",
+       "status": "planned",
+-      "owner_modules": ["bridge"],
+-      "source_files": ["host-bridge-service.mjs"],
+-      "target_modules": ["apps/windows-native-bridge", "apps/api/src/modules/bridge"],
++      "owner_modules": [
++        "bridge"
++      ],
++      "source_files": [
++        "host-bridge-service.mjs"
++      ],
++      "target_modules": [
++        "apps/windows-native-bridge",
++        "apps/api/src/modules/bridge"
++      ],
+       "tables": [],
+-      "apis": ["/api/v1/bridge/pairing"],
+-      "ui": ["Bridge Settings"],
+-      "events": ["bridge.paired", "bridge.bundle.transferred"],
++      "apis": [
++        "/api/v1/bridge/pairing"
++      ],
++      "ui": [
++        "Bridge Settings"
++      ],
++      "events": [
++        "bridge.paired",
++        "bridge.bundle.transferred"
++      ],
+       "behavior_tests": [],
+       "ui_tests": [],
+       "evidence": [],
+       "release_receipts": [],
+-      "tests": ["T5", "T8"]
++      "tests": [
++        "T5",
++        "T8"
++      ]
+     },
+     {
+       "id": "REC-D7-REPOSITORY-014",
+       "domain": "repository",
+       "name": "Repository connections, targets, lines and managed worktrees",
+       "status": "verified",
+-      "owner_modules": ["repository"],
+-      "source_files": ["apps/api/src/clean/migrations/003-project-workflow.mjs", "apps/api/src/clean/project-workflow.mjs", "apps/api/src/clean/provider-adapters.mjs"],
+-      "target_modules": ["apps/api/src/clean/project-workflow.mjs", "apps/api/src/clean/http.mjs", "apps/api/src/clean/registry.mjs", "apps/web/src/features/project/ProjectWorkflowPage.tsx"],
+-      "tables": ["repository_connections", "repository_targets", "repository_lines", "repository_workspaces", "repository_locks"],
+-      "apis": ["/api/v2/projects/{id}/repository-connections", "/api/v2/repository-connections/{id}", "/api/v2/repository-connections/{id}/targets", "/api/v2/projects/{id}/repository-lines", "/api/v2/repository-lines/{id}/reconcile", "/api/v2/projects/{id}/repository-workspaces", "/api/v2/repository-workspaces/{id}/refresh", "/api/v2/repository-workspaces/{id}/lock", "/api/v2/repository-workspaces/{id}/release"],
+-      "ui": ["Repository", "Worktree", "ProjectWorkflowPage"],
+-      "events": ["repository.*", "workspace.*"],
+-      "behavior_tests": ["tests/p3/migration.test.mjs", "tests/p3/project-workflow.test.mjs"],
+-      "ui_tests": ["apps/web/src/test/project-workflow-clean.test.tsx"],
+-      "evidence": ["docs/evidence/v3-clean-p3-project-workflow-20260819/verification.json"],
++      "owner_modules": [
++        "repository"
++      ],
++      "source_files": [
++        "apps/api/src/clean/migrations/003-project-workflow.mjs",
++        "apps/api/src/clean/project-workflow.mjs",
++        "apps/api/src/clean/provider-adapters.mjs"
++      ],
++      "target_modules": [
++        "apps/api/src/clean/project-workflow.mjs",
++        "apps/api/src/clean/http.mjs",
++        "apps/api/src/clean/registry.mjs",
++        "apps/web/src/features/project/ProjectWorkflowPage.tsx"
++      ],
++      "tables": [
++        "repository_connections",
++        "repository_targets",
++        "repository_lines",
++        "repository_workspaces",
++        "repository_locks"
++      ],
++      "apis": [
++        "/api/v2/projects/{id}/repository-connections",
++        "/api/v2/repository-connections/{id}",
++        "/api/v2/repository-connections/{id}/targets",
++        "/api/v2/projects/{id}/repository-lines",
++        "/api/v2/repository-lines/{id}/reconcile",
++        "/api/v2/projects/{id}/repository-workspaces",
++        "/api/v2/repository-workspaces/{id}/refresh",
++        "/api/v2/repository-workspaces/{id}/lock",
++        "/api/v2/repository-workspaces/{id}/release"
++      ],
++      "ui": [
++        "Repository",
++        "Worktree",
++        "ProjectWorkflowPage"
++      ],
++      "events": [
++        "repository.*",
++        "workspace.*"
++      ],
++      "behavior_tests": [
++        "tests/p3/migration.test.mjs",
++        "tests/p3/project-workflow.test.mjs"
++      ],
++      "ui_tests": [
++        "apps/web/src/test/project-workflow-clean.test.tsx"
++      ],
++      "evidence": [
++        "docs/evidence/v3-clean-p3-project-workflow-20260819/verification.json"
++      ],
+       "release_receipts": [],
+-      "tests": ["T7", "tests/p3/migration.test.mjs", "tests/p3/project-workflow.test.mjs", "apps/web/src/test/project-workflow-clean.test.tsx"]
++      "tests": [
++        "T7",
++        "tests/p3/migration.test.mjs",
++        "tests/p3/project-workflow.test.mjs",
++        "apps/web/src/test/project-workflow-clean.test.tsx"
++      ]
+     },
+     {
+       "id": "REC-D7-DELIVERY-015",
+       "domain": "delivery",
+       "name": "GitHub App Draft PR delivery and merge recovery",
+       "status": "scaffolded",
+-      "owner_modules": ["delivery"],
+-      "source_files": ["delivery-service.mjs", "delivery-state-domain.mjs", "delivery-recovery.mjs", "delivery-pr-intent.mjs"],
+-      "target_modules": ["apps/api/src/modules/delivery", "apps/api/src/github-integration.mjs", "apps/web/src/features/delivery"],
+-      "tables": ["deliveries", "pull_request_intents", "delivery_policies", "delivery_events"],
+-      "apis": ["/api/v1/deliveries"],
+-      "ui": ["Delivery", "Draft PR", "Merge Review"],
+-      "events": ["delivery.submitted", "delivery.merged"],
+-      "behavior_tests": ["tests/integration/api-flow.test.mjs"],
++      "owner_modules": [
++        "delivery"
++      ],
++      "source_files": [
++        "delivery-service.mjs",
++        "delivery-state-domain.mjs",
++        "delivery-recovery.mjs",
++        "delivery-pr-intent.mjs"
++      ],
++      "target_modules": [
++        "apps/api/src/modules/delivery",
++        "apps/api/src/github-integration.mjs",
++        "apps/web/src/features/delivery"
++      ],
++      "tables": [
++        "deliveries",
++        "pull_request_intents",
++        "delivery_policies",
++        "delivery_events"
++      ],
++      "apis": [
++        "/api/v1/deliveries"
++      ],
++      "ui": [
++        "Delivery",
++        "Draft PR",
++        "Merge Review"
++      ],
++      "events": [
++        "delivery.submitted",
++        "delivery.merged"
++      ],
++      "behavior_tests": [
++        "tests/integration/api-flow.test.mjs"
++      ],
+       "ui_tests": [],
+       "evidence": [],
+       "release_receipts": [],
+-      "tests": ["T7", "tests/integration/api-flow.test.mjs"]
++      "tests": [
++        "T7",
++        "tests/integration/api-flow.test.mjs"
++      ]
+     },
+     {
+       "id": "REC-D4-SCOPE-016",
+       "domain": "mcp",
+       "name": "MCP scope requests, grants, allowlists and revocation",
+       "status": "implemented",
+-      "owner_modules": ["mcp"],
+-      "source_files": ["apps/api/src/domain.mjs", "apps/api/src/http.mjs"],
+-      "target_modules": ["apps/api/src/modules/mcp", "apps/api/src/domain.mjs", "apps/api/src/http.mjs", "apps/web/src/features/context/McpSettings.tsx", "scripts/r5-migration-evidence.mjs", "scripts/r5-e2e.mjs"],
+-      "tables": ["exchange_requests", "exchange_grants", "mcp_clients"],
+-      "apis": ["/api/v1/mcp/scopes/requests", "/api/v1/mcp/scopes/requests/{id}/grant", "/api/v1/mcp/scopes/grants/{id}/revoke", "/api/v1/mcp/clients/{id}/revoke"],
+-      "ui": ["MCP Settings"],
+-      "events": ["mcp_scope.requested", "mcp_scope.granted", "mcp_scope.revoked"],
+-      "behavior_tests": ["tests/integration/mcp-flow.test.mjs", "tests/security/context-mcp-r5.test.mjs"],
+-      "ui_tests": ["apps/web/src/test/context.test.tsx", "scripts/r5-e2e.mjs"],
+-      "evidence": ["docs/evidence/v5-r5-context-mcp-20260816/verification.json"],
++      "owner_modules": [
++        "mcp"
++      ],
++      "source_files": [
++        "apps/api/src/domain.mjs",
++        "apps/api/src/http.mjs"
++      ],
++      "target_modules": [
++        "apps/api/src/modules/mcp",
++        "apps/api/src/domain.mjs",
++        "apps/api/src/http.mjs",
++        "apps/web/src/features/context/McpSettings.tsx",
++        "scripts/r5-migration-evidence.mjs",
++        "scripts/r5-e2e.mjs"
++      ],
++      "tables": [
++        "exchange_requests",
++        "exchange_grants",
++        "mcp_clients"
++      ],
++      "apis": [
++        "/api/v1/mcp/scopes/requests",
++        "/api/v1/mcp/scopes/requests/{id}/grant",
++        "/api/v1/mcp/scopes/grants/{id}/revoke",
++        "/api/v1/mcp/clients/{id}/revoke"
++      ],
++      "ui": [
++        "MCP Settings"
++      ],
++      "events": [
++        "mcp_scope.requested",
++        "mcp_scope.granted",
++        "mcp_scope.revoked"
++      ],
++      "behavior_tests": [
++        "tests/integration/mcp-flow.test.mjs",
++        "tests/security/context-mcp-r5.test.mjs"
++      ],
++      "ui_tests": [
++        "apps/web/src/test/context.test.tsx",
++        "scripts/r5-e2e.mjs"
++      ],
++      "evidence": [
++        "docs/evidence/v5-r5-context-mcp-20260816/verification.json"
++      ],
+       "release_receipts": [],
+-      "tests": ["T3", "tests/integration/mcp-flow.test.mjs", "tests/security/context-mcp-r5.test.mjs", "apps/web/src/test/context.test.tsx", "scripts/r5-e2e.mjs"]
++      "tests": [
++        "T3",
++        "tests/integration/mcp-flow.test.mjs",
++        "tests/security/context-mcp-r5.test.mjs",
++        "apps/web/src/test/context.test.tsx",
++        "scripts/r5-e2e.mjs"
++      ]
+     },
+     {
+       "id": "REC-D9-CONTEXT-017",
+       "domain": "context",
+       "name": "Context tree, versions, selection, policy and Context Pack v5",
+       "status": "implemented",
+-      "owner_modules": ["context"],
+-      "source_files": ["apps/api/src/modules/context/adapters.mjs", "apps/api/src/modules/context/repository.mjs", "apps/api/src/modules/context/selection.mjs", "apps/api/src/modules/context/pack.mjs", "apps/api/src/modules/context/service.mjs"],
+-      "target_modules": ["apps/api/src/modules/context", "apps/web/src/features/context", "scripts/r5-migration-evidence.mjs", "scripts/r5-performance.mjs", "scripts/r5-e2e.mjs"],
+-      "tables": ["context_sources", "context_nodes", "context_document_versions", "context_edges", "context_selections", "context_packs", "context_policies", "context_policy_revisions", "context_policy_heads", "context_selection_heads"],
+-      "apis": ["/api/v1/projects/{id}/context/map", "/api/v1/projects/{id}/context/search", "/api/v1/projects/{id}/context/read", "/api/v1/projects/{id}/context/nodes/{node_id}", "/api/v1/projects/{id}/context/policy", "/api/v1/projects/{id}/context/selections", "/api/v1/projects/{id}/context/packs"],
+-      "ui": ["Context Map", "Context Pack"],
+-      "events": ["context_source.created", "context_pack.created", "context.rebuilt", "context.selection.created", "context.policy.updated"],
+-      "behavior_tests": ["tests/unit/context-r5.test.mjs", "tests/integration/context-recovery.test.mjs", "tests/integration/context-r5.test.mjs", "tests/security/context-mcp-r5.test.mjs"],
+-      "ui_tests": ["apps/web/src/test/context.test.tsx", "scripts/r5-e2e.mjs"],
+-      "evidence": ["docs/evidence/v5-r5-context-mcp-20260816/verification.json"],
++      "owner_modules": [
++        "context"
++      ],
++      "source_files": [
++        "apps/api/src/modules/context/adapters.mjs",
++        "apps/api/src/modules/context/repository.mjs",
++        "apps/api/src/modules/context/selection.mjs",
++        "apps/api/src/modules/context/pack.mjs",
++        "apps/api/src/modules/context/service.mjs"
++      ],
++      "target_modules": [
++        "apps/api/src/modules/context",
++        "apps/web/src/features/context",
++        "scripts/r5-migration-evidence.mjs",
++        "scripts/r5-performance.mjs",
++        "scripts/r5-e2e.mjs"
++      ],
++      "tables": [
++        "context_sources",
++        "context_nodes",
++        "context_document_versions",
++        "context_edges",
++        "context_selections",
++        "context_packs",
++        "context_policies",
++        "context_policy_revisions",
++        "context_policy_heads",
++        "context_selection_heads"
++      ],
++      "apis": [
++        "/api/v1/projects/{id}/context/map",
++        "/api/v1/projects/{id}/context/search",
++        "/api/v1/projects/{id}/context/read",
++        "/api/v1/projects/{id}/context/nodes/{node_id}",
++        "/api/v1/projects/{id}/context/policy",
++        "/api/v1/projects/{id}/context/selections",
++        "/api/v1/projects/{id}/context/packs"
++      ],
++      "ui": [
++        "Context Map",
++        "Context Pack"
++      ],
++      "events": [
++        "context_source.created",
++        "context_pack.created",
++        "context.rebuilt",
++        "context.selection.created",
++        "context.policy.updated"
++      ],
++      "behavior_tests": [
++        "tests/unit/context-r5.test.mjs",
++        "tests/integration/context-recovery.test.mjs",
++        "tests/integration/context-r5.test.mjs",
++        "tests/security/context-mcp-r5.test.mjs"
++      ],
++      "ui_tests": [
++        "apps/web/src/test/context.test.tsx",
++        "scripts/r5-e2e.mjs"
++      ],
++      "evidence": [
++        "docs/evidence/v5-r5-context-mcp-20260816/verification.json"
++      ],
+       "release_receipts": [],
+-      "tests": ["T6", "tests/unit/context-r5.test.mjs", "tests/integration/context-recovery.test.mjs", "tests/integration/context-r5.test.mjs", "tests/security/context-mcp-r5.test.mjs", "apps/web/src/test/context.test.tsx", "scripts/r5-e2e.mjs"]
++      "tests": [
++        "T6",
++        "tests/unit/context-r5.test.mjs",
++        "tests/integration/context-recovery.test.mjs",
++        "tests/integration/context-r5.test.mjs",
++        "tests/security/context-mcp-r5.test.mjs",
++        "apps/web/src/test/context.test.tsx",
++        "scripts/r5-e2e.mjs"
++      ]
+     },
+     {
+       "id": "REC-D9-PROJECTION-018",
+       "domain": "context",
+       "name": "Recoverable Context projection worker and index rebuild",
+       "status": "implemented",
+-      "owner_modules": ["context"],
+-      "source_files": ["apps/api/src/modules/context/projection-worker.mjs", "apps/api/src/modules/context/index-runtime.mjs"],
+-      "target_modules": ["apps/api/src/modules/context", "apps/web/src/features/context", "scripts/r5-migration-evidence.mjs", "scripts/r5-performance.mjs", "scripts/r5-e2e.mjs"],
+-      "tables": ["context_projection_jobs", "context_projection_events", "context_index_snapshots", "context_index_heads", "context_policies", "context_summaries"],
+-      "apis": ["/api/v1/projects/{id}/context/status", "/api/v1/projects/{id}/context/rebuild", "/api/v1/projects/{id}/context/jobs/{id}", "/api/v1/projects/{id}/context/jobs/{id}/events", "/api/v1/projects/{id}/context/jobs/{id}/cancel", "/api/v1/projects/{id}/context/jobs/{id}/retry"],
+-      "ui": ["Context Map"],
+-      "events": ["context.projection.queued", "context.projection.completed", "context.projection.failed", "context.projection.cancelled"],
+-      "behavior_tests": ["tests/unit/context-r5.test.mjs", "tests/integration/context-recovery.test.mjs", "tests/integration/context-r5.test.mjs", "tests/security/context-mcp-r5.test.mjs"],
+-      "ui_tests": ["apps/web/src/test/context.test.tsx", "scripts/r5-e2e.mjs"],
+-      "evidence": ["docs/evidence/v5-r5-context-mcp-20260816/verification.json"],
++      "owner_modules": [
++        "context"
++      ],
++      "source_files": [
++        "apps/api/src/modules/context/projection-worker.mjs",
++        "apps/api/src/modules/context/index-runtime.mjs"
++      ],
++      "target_modules": [
++        "apps/api/src/modules/context",
++        "apps/web/src/features/context",
++        "scripts/r5-migration-evidence.mjs",
++        "scripts/r5-performance.mjs",
++        "scripts/r5-e2e.mjs"
++      ],
++      "tables": [
++        "context_projection_jobs",
++        "context_projection_events",
++        "context_index_snapshots",
++        "context_index_heads",
++        "context_policies",
++        "context_summaries"
++      ],
++      "apis": [
++        "/api/v1/projects/{id}/context/status",
++        "/api/v1/projects/{id}/context/rebuild",
++        "/api/v1/projects/{id}/context/jobs/{id}",
++        "/api/v1/projects/{id}/context/jobs/{id}/events",
++        "/api/v1/projects/{id}/context/jobs/{id}/cancel",
++        "/api/v1/projects/{id}/context/jobs/{id}/retry"
++      ],
++      "ui": [
++        "Context Map"
++      ],
++      "events": [
++        "context.projection.queued",
++        "context.projection.completed",
++        "context.projection.failed",
++        "context.projection.cancelled"
++      ],
++      "behavior_tests": [
++        "tests/unit/context-r5.test.mjs",
++        "tests/integration/context-recovery.test.mjs",
++        "tests/integration/context-r5.test.mjs",
++        "tests/security/context-mcp-r5.test.mjs"
++      ],
++      "ui_tests": [
++        "apps/web/src/test/context.test.tsx",
++        "scripts/r5-e2e.mjs"
++      ],
++      "evidence": [
++        "docs/evidence/v5-r5-context-mcp-20260816/verification.json"
++      ],
+       "release_receipts": [],
+-      "tests": ["T6", "T8", "tests/unit/context-r5.test.mjs", "tests/integration/context-recovery.test.mjs", "tests/integration/context-r5.test.mjs", "tests/security/context-mcp-r5.test.mjs", "apps/web/src/test/context.test.tsx", "scripts/r5-e2e.mjs"]
++      "tests": [
++        "T6",
++        "T8",
++        "tests/unit/context-r5.test.mjs",
++        "tests/integration/context-recovery.test.mjs",
++        "tests/integration/context-r5.test.mjs",
++        "tests/security/context-mcp-r5.test.mjs",
++        "apps/web/src/test/context.test.tsx",
++        "scripts/r5-e2e.mjs"
++      ]
+     },
+     {
+       "id": "REC-D9-EVIDENCE-019",
+       "domain": "evidence",
+       "name": "CAS asset, attestation, relation, trace, digest and code evidence",
+       "status": "scaffolded",
+-      "owner_modules": ["evidence"],
+-      "source_files": ["deployment-evidence-verifier.mjs"],
+-      "target_modules": ["apps/api/src/modules/evidence", "apps/api/src/evidence-service.mjs", "apps/web/src/features/evidence"],
+-      "tables": ["asset_versions", "asset_blobs", "asset_attestations", "asset_relations", "traces", "digests", "code_changes"],
+-      "apis": ["/api/v1/projects/{id}/assets", "/api/v1/executions/{id}/evidence"],
+-      "ui": ["Assets", "Trace", "Digest", "Audit"],
+-      "events": ["asset.captured", "asset.attested"],
+-      "behavior_tests": ["tests/integration/real-slice.test.mjs"],
++      "owner_modules": [
++        "evidence"
++      ],
++      "source_files": [
++        "deployment-evidence-verifier.mjs"
++      ],
++      "target_modules": [
++        "apps/api/src/modules/evidence",
++        "apps/api/src/evidence-service.mjs",
++        "apps/web/src/features/evidence"
++      ],
++      "tables": [
++        "asset_versions",
++        "asset_blobs",
++        "asset_attestations",
++        "asset_relations",
++        "traces",
++        "digests",
++        "code_changes"
++      ],
++      "apis": [
++        "/api/v1/projects/{id}/assets",
++        "/api/v1/executions/{id}/evidence"
++      ],
++      "ui": [
++        "Assets",
++        "Trace",
++        "Digest",
++        "Audit"
++      ],
++      "events": [
++        "asset.captured",
++        "asset.attested"
++      ],
++      "behavior_tests": [
++        "tests/integration/real-slice.test.mjs"
++      ],
+       "ui_tests": [],
+       "evidence": [],
+       "release_receipts": [],
+-      "tests": ["T6", "tests/integration/real-slice.test.mjs"]
++      "tests": [
++        "T6",
++        "tests/integration/real-slice.test.mjs"
++      ]
+     },
+     {
+       "id": "REC-D9-QUALITY-020",
+       "domain": "quality",
+       "name": "Isolated multi-format quality review and human semantic threshold",
+       "status": "scaffolded",
+-      "owner_modules": ["quality"],
+-      "source_files": ["quality-review services"],
+-      "target_modules": ["apps/api/src/modules/quality", "apps/api/src/domain.mjs", "apps/web/src/features/quality"],
+-      "tables": ["quality_review_runs", "quality_review_reports", "quality_review_events", "test_results"],
+-      "apis": ["/api/v1/projects/{id}/quality-reviews"],
+-      "ui": ["Quality Review", "Evidence"],
+-      "events": ["quality.review.completed"],
+-      "behavior_tests": ["tests/integration/assist-flow.test.mjs"],
++      "owner_modules": [
++        "quality"
++      ],
++      "source_files": [
++        "quality-review services"
++      ],
++      "target_modules": [
++        "apps/api/src/modules/quality",
++        "apps/api/src/domain.mjs",
++        "apps/web/src/features/quality"
++      ],
++      "tables": [
++        "quality_review_runs",
++        "quality_review_reports",
++        "quality_review_events",
++        "test_results"
++      ],
++      "apis": [
++        "/api/v1/projects/{id}/quality-reviews"
++      ],
++      "ui": [
++        "Quality Review",
++        "Evidence"
++      ],
++      "events": [
++        "quality.review.completed"
++      ],
++      "behavior_tests": [
++        "tests/integration/assist-flow.test.mjs"
++      ],
+       "ui_tests": [],
+       "evidence": [],
+       "release_receipts": [],
+-      "tests": ["T6", "T8", "tests/integration/assist-flow.test.mjs"]
++      "tests": [
++        "T6",
++        "T8",
++        "tests/integration/assist-flow.test.mjs"
++      ]
+     },
+     {
+       "id": "REC-D9-DEPLOYMENT-021",
+       "domain": "evidence",
+       "name": "Deployment, browser and viewport evidence in CAS",
+       "status": "scaffolded",
+-      "owner_modules": ["evidence"],
+-      "source_files": ["deployment-evidence-verifier.mjs"],
+-      "target_modules": ["apps/api/src/modules/evidence", "scripts/e2e.mjs"],
+-      "tables": ["asset_versions", "evidence_links"],
+-      "apis": ["/api/v1/executions/{id}/evidence"],
+-      "ui": ["Evidence"],
+-      "events": ["deployment.verified"],
+-      "behavior_tests": ["scripts/e2e.mjs"],
+-      "ui_tests": ["scripts/e2e.mjs"],
++      "owner_modules": [
++        "evidence"
++      ],
++      "source_files": [
++        "deployment-evidence-verifier.mjs"
++      ],
++      "target_modules": [
++        "apps/api/src/modules/evidence",
++        "scripts/e2e.mjs"
++      ],
++      "tables": [
++        "asset_versions",
++        "evidence_links"
++      ],
++      "apis": [
++        "/api/v1/executions/{id}/evidence"
++      ],
++      "ui": [
++        "Evidence"
++      ],
++      "events": [
++        "deployment.verified"
++      ],
++      "behavior_tests": [
++        "scripts/e2e.mjs"
++      ],
++      "ui_tests": [
++        "scripts/e2e.mjs"
++      ],
+       "evidence": [],
+       "release_receipts": [],
+-      "tests": ["T6", "T8", "scripts/e2e.mjs"]
++      "tests": [
++        "T6",
++        "T8",
++        "scripts/e2e.mjs"
++      ]
+     },
+     {
+       "id": "REC-D11-OPS-022",
+       "domain": "operations",
+       "name": "Deployment API, backup, restore, reset, import and release rollback",
+       "status": "scaffolded",
+-      "owner_modules": ["operations", "platform"],
+-      "source_files": ["V2.3 operations and import commands"],
+-      "target_modules": ["apps/api/src/modules/operations", "apps/api/src/http.mjs", "apps/web/vite.config.ts", "Dockerfile", "scripts/release-rehearsal.mjs", "docs/runbook.md"],
+-      "tables": ["audit_events", "operations", "operation_events"],
+-      "apis": ["/health", "/readyz", "/api/v1/system/deployment", "/api/v1/operations/{id}", "/api/v1/operations/{id}/events", "/api/v1/operations/{id}/cancel"],
+-      "ui": ["Setup", "Recovery"],
+-      "events": ["operation.pending", "operation.running", "operation.completed", "operation.failed", "operation.cancelled", "release.gate"],
+-      "behavior_tests": ["tests/unit/identity-operations.test.mjs", "tests/integration/api-flow.test.mjs", "tests/release/release-gate.test.mjs", "tests/release/release-rehearsal-compose.test.mjs", "tests/security/boundary.test.mjs"],
++      "owner_modules": [
++        "operations",
++        "platform"
++      ],
++      "source_files": [
++        "V2.3 operations and import commands"
++      ],
++      "target_modules": [
++        "apps/api/src/modules/operations",
++        "apps/api/src/http.mjs",
++        "apps/web/vite.config.ts",
++        "Dockerfile",
++        "scripts/release-rehearsal.mjs",
++        "docs/runbook.md"
++      ],
++      "tables": [
++        "audit_events",
++        "operations",
++        "operation_events"
++      ],
++      "apis": [
++        "/health",
++        "/readyz",
++        "/api/v1/system/deployment",
++        "/api/v1/operations/{id}",
++        "/api/v1/operations/{id}/events",
++        "/api/v1/operations/{id}/cancel"
++      ],
++      "ui": [
++        "Setup",
++        "Recovery"
++      ],
++      "events": [
++        "operation.pending",
++        "operation.running",
++        "operation.completed",
++        "operation.failed",
++        "operation.cancelled",
++        "release.gate"
++      ],
++      "behavior_tests": [
++        "tests/unit/identity-operations.test.mjs",
++        "tests/integration/api-flow.test.mjs",
++        "tests/release/release-gate.test.mjs",
++        "tests/release/release-rehearsal-compose.test.mjs",
++        "tests/security/boundary.test.mjs"
++      ],
+       "ui_tests": [],
+       "evidence": [],
+       "release_receipts": [],
+-      "tests": ["T0", "T1", "T8", "tests/unit/identity-operations.test.mjs", "tests/integration/api-flow.test.mjs", "tests/release/release-gate.test.mjs", "tests/release/release-rehearsal-compose.test.mjs", "tests/security/boundary.test.mjs"]
++      "tests": [
++        "T0",
++        "T1",
++        "T8",
++        "tests/unit/identity-operations.test.mjs",
++        "tests/integration/api-flow.test.mjs",
++        "tests/release/release-gate.test.mjs",
++        "tests/release/release-rehearsal-compose.test.mjs",
++        "tests/security/boundary.test.mjs"
++      ]
+     }
+-  ]
++  ],
++  "active_runtime": "v3-clean",
++  "index_schema_version": "aiws.v3.feature_catalog.index.v1",
++  "catalogs": {
++    "clean": "feature-catalog.clean.json",
++    "historical": "feature-catalog.historical.json"
++  }
+ }
+diff --git a/package.json b/package.json
+index 4358171..2ce7d5e 100644
+--- a/package.json
++++ b/package.json
+@@ -28,10 +28,17 @@
+     "test:p1": "node --test tests/p1/*.test.mjs tests/integration/v3-clean-p1.test.mjs tests/security/v3-clean-p1.test.mjs",
+     "test:p2": "node --test tests/p2/*.test.mjs",
+     "test:p3": "node --test tests/p3/*.test.mjs",
++    "test:p31": "node --test tests/p31/*.test.mjs",
+     "evidence:p3": "node scripts/v3-clean-p3-evidence.mjs",
+-    "test:integration": "node --experimental-test-coverage --test-coverage-lines=85 --test-coverage-branches=70 --test-coverage-functions=75 --test-coverage-exclude=apps/api/src/clean/** --test tests/integration/*.test.mjs",
++    "evidence:p31": "node scripts/v3-clean-p31-evidence.mjs",
++    "test:integration:clean": "node scripts/layered-gate.mjs integration --clean",
++    "test:security:clean": "node scripts/layered-gate.mjs security --clean",
++    "fixture:legacy:integration": "node scripts/layered-gate.mjs integration --historical",
++    "fixture:legacy:security": "node scripts/layered-gate.mjs security --historical",
++    "fixture:legacy:e2e": "node scripts/e2e-legacy.mjs",
++    "test:integration": "node scripts/layered-gate.mjs integration",
+     "test:e2e": "node scripts/e2e.mjs",
+-    "test:security": "node --test --test-concurrency=1 tests/security/*.test.mjs",
++    "test:security": "node scripts/layered-gate.mjs security",
+     "test:release": "node --test tests/release/*.test.mjs",
+     "test:runner-real": "node scripts/runner-real-smoke.mjs",
+     "github:seed-fixture": "node scripts/github-seed-fixture.mjs",
+diff --git a/scripts/e2e.mjs b/scripts/e2e.mjs
+index be9b0ce..7c842e5 100644
+--- a/scripts/e2e.mjs
++++ b/scripts/e2e.mjs
+@@ -1,500 +1,155 @@
+ import fs from 'node:fs';
+ import os from 'node:os';
+ import path from 'node:path';
+-import { createHash, generateKeyPairSync } from 'node:crypto';
+-import { spawnSync } from 'node:child_process';
+-import { chromium, expect } from '@playwright/test';
+-import { start as startApi } from '../apps/api/server-legacy.mjs';
+-import { BrokerClient } from '../apps/api/src/broker-client.mjs';
+-import { start as startBroker } from '../apps/runner-broker/server.mjs';
+-
+-const build = spawnSync('corepack', ['pnpm', '--filter', '@aiws/web', 'build'], { cwd: process.cwd(), stdio: 'inherit', shell: process.platform === 'win32', windowsHide: true });
+-if (build.status !== 0) process.exit(build.status || 1);
+-
+-const home = fs.mkdtempSync(path.join(os.tmpdir(), 'aiws-v3-e2e-'));
+-const secret = 'e2e-secret';
+-const digest = `sha256:${'c'.repeat(64)}`;
+-const broker = await startBroker({ config: { host: '127.0.0.1', port: 0, secret, dataRoot: home, dataVolume: 'aiws-data-v3', runnerDigest: digest, executor: 'mock', runnerImage: `runner@${digest}` } });
+-const brokerUrl = `http://127.0.0.1:${broker.server.address().port}`;
+-const apiBroker = new BrokerClient({ brokerUrl, brokerMode: 'http', brokerSecret: secret, runnerDigest: digest });
+-apiBroker.codexProfileProbe = async (profile) => ({
+-  provider: 'codex', model: profile.model, status: 'available', error_code: null,
+-  checks: ['transport', 'protocol', 'model', 'inference'].map((phase) => ({ phase, status: 'passed', error_code: null }))
+-});
+-
+-function githubFixtureFetch(url) {
+-  const requestPath = new URL(url).pathname;
+-  if (requestPath === '/app/installations') return Promise.resolve(jsonResponse([{ id: 67890, account: { login: 'fixture-org' }, permissions: { metadata: 'read', contents: 'write', pull_requests: 'write' } }]));
+-  if (requestPath === '/app') return Promise.resolve(jsonResponse({ id: 12345, slug: 'fixture-app' }));
+-  if (requestPath === '/app/installations/67890/access_tokens') return Promise.resolve(jsonResponse({ token: 'fixture-installation-token', expires_at: new Date(Date.now() + 600_000).toISOString() }));
+-  if (requestPath === '/installation/repositories') return Promise.resolve(jsonResponse({ total_count: 1, repositories: [{ id: 9001, full_name: 'fixture-org/repository', default_branch: 'main', private: false, permissions: { metadata: 'read', contents: 'write', pull_requests: 'write' } }] }));
+-  return Promise.resolve(jsonResponse({ message: 'not found' }, 404));
+-}
+-
+-function jsonResponse(value, status = 200) {
+-  return new Response(JSON.stringify(value), { status, headers: { 'content-type': 'application/json' } });
+-}
++import net from 'node:net';
++import { spawn } from 'node:child_process';
++import { chromium } from '@playwright/test';
++
++const root = process.cwd();
++const home = fs.mkdtempSync(path.join(os.tmpdir(), 'aiws-p31-e2e-'));
++const apiPort = await freePort();
++const webPort = await freePort();
++const vaultKey = 'p31-clean-e2e-vault-key';
++const reportDir = path.join(root, '.ai-workspace', 'e2e-clean-p31');
++fs.mkdirSync(reportDir, { recursive: true });
++const children = [];
++const requests = [];
+ 
+-const app = await startApi({
+-  broker: apiBroker,
+-  githubOptions: { apiRoot: 'http://github.fixture', fetch: githubFixtureFetch },
+-  config: { version: '3.0.0', apiPrefix: '/api/v1', host: '127.0.0.1', port: 0, home, databaseFile: path.join(home, 'data', 'state.sqlite'), casRoot: path.join(home, 'cas'), dataVolume: 'aiws-data-v3', brokerUrl, brokerMode: 'http', brokerSecret: secret, runnerDigest: digest, codexAvailable: false, githubAvailable: false, assistNativeV6: true }
++const api = start(process.execPath, ['apps/api/server.mjs'], {
++  AIWS_CLEAN_PORT: String(apiPort), AIWS_CLEAN_HOME: home,
++  AIWS_CLEAN_VAULT_KEY: vaultKey, AIWS_CLEAN_RUNTIME_BUILD: 'v3-clean-p31-e2e'
+ });
+-const base = `http://127.0.0.1:${app.server.address().port}`;
+-
+-async function apiRequest(route, options = {}) {
+-  const response = await fetch(`${base}${route}`, {
+-    ...options,
+-    headers: { accept: 'application/json', ...(options.body ? { 'content-type': 'application/json' } : {}), ...(options.headers || {}) },
+-    body: options.body === undefined ? undefined : JSON.stringify(options.body)
+-  });
+-  const body = await response.json().catch(() => ({}));
+-  return { response, body };
+-}
+-
+-let mutationSequence = 0;
+-async function apiMutation(route, body, label) {
+-  mutationSequence += 1;
+-  const result = await apiRequest(route, {
+-    method: 'POST',
+-    headers: { 'Idempotency-Key': `e2e-${label}-${mutationSequence}` },
+-    body
+-  });
+-  if (!result.response.ok) throw new Error(`${label}:${result.response.status}:${result.body.error?.code || 'request_failed'}`);
+-  return result.body;
+-}
+-
+-async function waitOperation(operationId) {
+-  const deadline = Date.now() + 10_000;
+-  while (Date.now() < deadline) {
+-    const current = (await apiRequest(`/api/v1/operations/${operationId}`)).body;
+-    if (['completed', 'failed', 'cancelled'].includes(current.status)) {
+-      if (current.status !== 'completed') throw new Error(`setup_operation_${current.status}:${current.error_code || operationId}`);
+-      return current;
+-    }
+-    await new Promise((resolve) => setTimeout(resolve, 50));
+-  }
+-  throw new Error(`setup_operation_timeout:${operationId}`);
+-}
++children.push(api);
++await waitFor(`http://127.0.0.1:${apiPort}/readyz`);
+ 
+-async function prepareSetupProviders() {
+-  const codexCredential = await apiMutation('/api/v1/credentials', {
+-    kind: 'codex_api_key', label: 'Browser Codex key', secret: 'browser-codex-fixture-secret'
+-  }, 'codex-credential');
+-  const profile = await apiMutation('/api/v1/profiles/codex', {
+-    label: 'Browser profile', provider: 'openai', model: 'gpt-5.5', base_url: '', wire_api: 'responses',
+-    reasoning: 'medium', timeout_ms: 30_000, credential_ref: codexCredential.id
+-  }, 'codex-profile');
+-  const codexProbe = await apiMutation(`/api/v1/profiles/codex/${profile.id}/probe`, {
+-    expected_revision: profile.revision, force: true
+-  }, 'codex-probe');
+-  await waitOperation(codexProbe.operation_id);
++const viteEntry = path.join(root, 'apps', 'web', 'node_modules', 'vite', 'bin', 'vite.js');
++const web = start(process.execPath, [viteEntry, '--host', '127.0.0.1', '--port', String(webPort), '--strictPort'], {
++  AIWS_WEB_API_TARGET: `http://127.0.0.1:${apiPort}`
++}, path.join(root, 'apps', 'web'));
++children.push(web);
++const base = `http://127.0.0.1:${webPort}`;
++await waitFor(`${base}/`);
+ 
+-  const { privateKey } = generateKeyPairSync('rsa', { modulusLength: 2048 });
+-  const privateKeyCredential = await apiMutation('/api/v1/credentials', {
+-    kind: 'github_app_private_key', label: 'Browser App key', secret: privateKey.export({ type: 'pkcs8', format: 'pem' })
+-  }, 'github-key');
+-  const webhookCredential = await apiMutation('/api/v1/credentials', {
+-    kind: 'github_webhook_secret', label: 'Browser webhook', secret: 'browser-webhook-fixture-secret'
+-  }, 'github-webhook');
+-  const githubApp = await apiMutation('/api/v1/github/apps', {
+-    label: 'Browser App', app_id: '12345', client_id: 'Iv1.browser',
+-    private_key_ref: privateKeyCredential.id, webhook_secret_ref: webhookCredential.id
+-  }, 'github-app');
+-  const discovery = await apiMutation(`/api/v1/github/apps/${githubApp.id}/installations/discover`, {
+-    expected_revision: githubApp.revision
+-  }, 'github-discovery');
+-  await waitOperation(discovery.operation_id);
+-  const installation = (await apiRequest('/api/v1/github/installations')).body[0];
+-  const sync = await apiMutation(`/api/v1/github/installations/${installation.id}/repositories/sync`, {
+-    expected_revision: installation.revision
+-  }, 'github-sync');
+-  await waitOperation(sync.operation_id);
+-}
+-
+-async function checkNoOverlap(page, viewport) {
+-  const overlap = await page.evaluate(() => {
+-    const elements = [...document.querySelectorAll('.topbar, .page-heading, .panel, .health-band, .execution-toolbar')].filter((element) => {
+-      const rect = element.getBoundingClientRect(); return rect.width > 0 && rect.height > 0;
++const browser = await chromium.launch({ headless: true });
++const page = await browser.newPage({ viewport: { width: 390, height: 844 } });
++page.on('request', (request) => requests.push(request.url()));
++page.on('pageerror', (error) => { throw error; });
++
++async function pageApi(pathname, options = {}) {
++  return page.evaluate(async ({ pathname, options }) => {
++    const response = await fetch(pathname, {
++      ...options,
++      credentials: 'same-origin',
++      headers: { accept: 'application/json', ...(options.body ? { 'content-type': 'application/json' } : {}), ...(options.headers || {}) },
++      body: options.body == null ? undefined : JSON.stringify(options.body)
+     });
+-    return elements.some((left, index) => elements.slice(index + 1).some((right) => {
+-      const a = left.getBoundingClientRect(); const b = right.getBoundingClientRect();
+-      return a.left < b.right && a.right > b.left && a.top < b.bottom && a.bottom > b.top && left.parentElement === right.parentElement;
+-    }));
+-  });
+-  if (overlap) throw new Error(`layout overlap at ${viewport}`);
+-}
+-
+-async function checkWorkflowSurface(page, viewport) {
+-  const result = await page.evaluate(() => {
+-    const visibleRect = (selector) => {
+-      const element = document.querySelector(selector);
+-      if (!element) return null;
+-      const rect = element.getBoundingClientRect();
+-      return rect.width > 0 && rect.height > 0 ? { left: rect.left, right: rect.right, top: rect.top, bottom: rect.bottom, width: rect.width, height: rect.height } : null;
+-    };
+-    const gridChildren = [...document.querySelectorAll('.workflow-main-grid > *')]
+-      .map((element) => element.getBoundingClientRect())
+-      .filter((rect) => rect.width > 0 && rect.height > 0);
+-    const overlaps = gridChildren.some((left, index) => gridChildren.slice(index + 1).some((right) => (
+-      left.left < right.right - 1 && left.right > right.left + 1 && left.top < right.bottom - 1 && left.bottom > right.top + 1
+-    )));
+-    const nodeRects = [...document.querySelectorAll('.react-flow__node')]
+-      .map((element) => element.getBoundingClientRect())
+-      .filter((rect) => rect.width > 0 && rect.height > 0);
+-    const nodeOverlap = nodeRects.some((left, index) => nodeRects.slice(index + 1).some((right) => (
+-      left.left < right.right - 2 && left.right > right.left + 2 && left.top < right.bottom - 2 && left.bottom > right.top + 2
+-    )));
+-    return {
+-      canvas: visibleRect('.workflow-canvas-shell'),
+-      renderer: visibleRect('.react-flow__renderer'),
+-      node_count: nodeRects.length,
+-      edge_count: document.querySelectorAll('.react-flow__edge').length,
+-      overlaps,
+-      node_overlap: nodeOverlap,
+-      horizontal_overflow: document.documentElement.scrollWidth > document.documentElement.clientWidth + 1
+-    };
+-  });
+-  if (!result.canvas || result.canvas.width < 300 || result.canvas.height < 350) throw new Error(`workflow canvas missing at ${viewport}`);
+-  if (!result.renderer || result.node_count < 2 || result.edge_count < 1) throw new Error(`workflow topology blank at ${viewport}`);
+-  if (result.overlaps || result.node_overlap || result.horizontal_overflow) throw new Error(`workflow layout invalid at ${viewport}:${JSON.stringify(result)}`);
+-  const raster = await page.locator('.workflow-canvas-shell').screenshot();
+-  if (raster.length < 2_000 || new Set(raster).size < 24) throw new Error(`workflow raster blank at ${viewport}`);
+-  return createHash('sha256').update(raster).digest('hex');
+-}
+-
+-async function setViewport(page, width, height) {
+-  await page.setViewportSize({ width, height });
+-  await page.waitForTimeout(250);
++    const body = await response.json().catch(() => ({}));
++    return { status: response.status, body };
++  }, { pathname, options });
+ }
+ 
+-const browser = await chromium.launch({ headless: true });
+-const reportDir = path.join(process.cwd(), '.ai-workspace', 'e2e-v3');
+-fs.mkdirSync(reportDir, { recursive: true });
+-const viewports = [
+-  ['mobile', 360, 800], ['mobile-wide', 390, 844], ['tablet', 768, 1024],
+-  ['laptop', 1024, 768], ['desktop', 1440, 900], ['wide', 1920, 1080]
+-];
+-const pageErrors = [];
+-const consoleErrors = [];
+ try {
+-  const page = await browser.newPage();
+-  page.on('pageerror', (error) => pageErrors.push(error));
+-  page.on('console', (message) => { if (message.type() === 'error') consoleErrors.push(message); });
+-
+   await page.goto(`${base}/#/setup`, { waitUntil: 'networkidle' });
+-  await expect(page.getByText('AIWS 3.0', { exact: true })).toBeVisible();
+-  await expect(page.locator('.health-band')).toBeVisible();
+-  await expect(page.getByRole('heading', { name: 'Workspace configuration' })).toBeVisible();
+-  await expect(page.getByText('Codex credential', { exact: true })).toBeVisible();
+-
+-  const setupViewports = [
+-    ['mobile-wide', 390, 844], ['laptop', 1024, 768], ['desktop', 1440, 900]
+-  ];
+-  for (const [name, width, height] of setupViewports) {
+-    await setViewport(page, width, height);
+-    await checkNoOverlap(page, `${name}-setup-empty`);
+-    await page.screenshot({ path: path.join(reportDir, `${name}-setup-empty.png`), fullPage: true });
+-  }
+-
+-  const blockedProject = await apiRequest('/api/v1/projects', {
+-    method: 'POST', headers: { 'Idempotency-Key': 'e2e-project-blocked' },
+-    body: { name: 'Blocked before setup' }
+-  });
+-  expect(blockedProject.response.status).toBe(409);
+-  expect(blockedProject.body.error.code).toBe('setup_not_ready');
++  try { await page.getByRole('heading', { name: 'Setup', exact: true }).waitFor({ timeout: 8_000 }); }
++  catch (error) { process.stderr.write(`Clean Web bootstrap bod<PATH> page.locator('body').innerText()}\nURL=${page.url()}\nRequests=${JSON.stringify(requests)}\n`); throw error; }
++  await page.getByLabel('Display name').fill('P31 E2E owner');
++  await page.getByLabel('Team name').fill('P31 E2E team');
++  await page.getByRole('button', { name: 'Complete setup', exact: true }).click();
++  await page.getByText('Workspace is ready', { exact: true }).waitFor();
+ 
+   await page.goto(`${base}/#/projects`, { waitUntil: 'networkidle' });
+-  await expect(page.getByRole('heading', { name: 'Workspace configuration' })).toBeVisible();
+-
+-  await prepareSetupProviders();
+-  await page.reload({ waitUntil: 'networkidle' });
+-  await page.getByRole('tab', { name: 'Github' }).click();
+-  await expect(page.getByRole('heading', { name: 'GitHub App' })).toBeVisible();
+-  let failNextGithubProbe = true;
+-  await page.route('**/api/v1/integrations/github/probe', async (route) => {
+-    if (failNextGithubProbe) {
+-      failNextGithubProbe = false;
+-      await route.fulfill({
+-        status: 502,
+-        contentType: 'application/json',
+-        body: JSON.stringify({ error: { code: 'github_api_unavailable', message: 'Provider fixture interrupted', retryable: true } })
+-      });
+-      return;
+-    }
+-    await route.continue();
+-  });
+-  await page.getByRole('button', { name: 'Probe', exact: true }).click();
+-  await expect(page.getByRole('alert')).toContainText('Provider fixture interrupted');
+-  await setViewport(page, 1440, 900);
+-  await page.screenshot({ path: path.join(reportDir, 'desktop-setup-failed.png'), fullPage: true });
+-  await page.getByRole('button', { name: 'Retry', exact: true }).click();
+-  await expect.poll(async () => (await apiRequest('/api/v1/setup')).body.checks.current_github_probe, { timeout: 10_000 }).toBe(true);
+-  await page.unroute('**/api/v1/integrations/github/probe');
+-  await page.getByRole('tab', { name: 'Overview' }).click();
+-  await expect(page.getByRole('button', { name: 'Complete setup' })).toBeEnabled();
+-  await page.getByRole('button', { name: 'Complete setup' }).click();
+-  await expect(page.getByRole('button', { name: 'Reconfirm setup' })).toBeVisible();
+-  await expect.poll(async () => (await apiRequest('/api/v1/setup')).body.complete).toBe(true);
+-
+-  for (const [name, width, height] of setupViewports) {
+-    await setViewport(page, width, height);
+-    await checkNoOverlap(page, `${name}-setup-ready`);
+-    await page.screenshot({ path: path.join(reportDir, `${name}-setup-ready.png`), fullPage: true });
+-  }
+-
+-  await page.goto(`${base}/#/projects`, { waitUntil: 'networkidle' });
+-  await expect(page.getByRole('heading', { name: 'Projects' })).toBeVisible();
+-  await page.getByLabel('Name', { exact: true }).fill('Browser journey');
+-  await page.getByLabel('Description', { exact: true }).fill('unique main journey');
++  await page.getByRole('heading', { name: 'Projects', exact: true }).waitFor();
++  await page.getByLabel('Name').fill('P31 Clean project');
++  await page.getByLabel('Description').fill('Clean E2E fixture');
+   await page.getByRole('button', { name: 'Create project', exact: true }).click();
+-  await expect(page.getByRole('status')).toHaveText('Project draft created');
+-  const projects = await apiRequest('/api/v1/projects');
+-  const project = projects.body.find((entry) => entry.name === 'Browser journey');
+-  expect(project).toBeTruthy();
++  await page.getByRole('heading', { name: 'P31 Clean project', exact: true }).waitFor();
+ 
+-  await page.goto(`${base}/#/workflow`, { waitUntil: 'networkidle' });
+-  await expect(page.getByRole('heading', { name: 'Workflow' })).toBeVisible();
+-  await expect(page.locator('.project-readiness')).toContainText('Project onboarding pending');
+-  await expect(page.getByRole('button', { name: 'Generate', exact: true })).toBeDisabled();
+-  for (const [name, width, height] of setupViewports) {
+-    await setViewport(page, width, height);
+-    await checkNoOverlap(page, `${name}-project-gated`);
+-    await page.screenshot({ path: path.join(reportDir, `${name}-project-gated.png`), fullPage: true });
+-  }
++  const setup = await pageApi('/api/v2/setup');
++  assert(setup.status === 200 && setup.body.data?.needs_setup === false, 'setup cookie/session');
++  const projects = await pageApi('/api/v2/projects');
++  const project = projects.body.data?.projects?.[0];
++  assert(project?.id, 'project create');
+ 
+-  await app.database.run("UPDATE project_intakes SET status='failed',attempt=1,revision=revision+1,error_code='repository_probe_failed',updated_at=? WHERE id=?", [new Date().toISOString(), project.intake.id]);
+-  await app.database.run("UPDATE projects SET onboarding_state='failed',revision=revision+1,updated_at=? WHERE id=?", [new Date().toISOString(), project.id]);
+-  await page.goto(`${base}/#/projects`, { waitUntil: 'networkidle' });
+-  await expect(page.getByRole('button', { name: 'Retry intake', exact: true })).toBeVisible();
+-  await expect(page.getByText('repository_probe_failed', { exact: true })).toBeVisible();
+-  for (const [name, width, height] of setupViewports) {
+-    await setViewport(page, width, height);
+-    await checkNoOverlap(page, `${name}-project-failed`);
+-    await page.screenshot({ path: path.join(reportDir, `${name}-project-failed.png`), fullPage: true });
+-  }
+-  await page.getByRole('button', { name: 'Retry intake', exact: true }).click();
+-  await expect(page.locator('.intake-actions .inline-success')).toContainText('Ready', { timeout: 10_000 });
+-  await page.getByLabel('Objective', { exact: true }).fill('Ship a browser-verified change');
+-  await page.getByLabel('Acceptance', { exact: true }).fill('Execution completes\nDraft PR is reviewed');
+-  await page.getByRole('button', { name: 'Save preview', exact: true }).click();
+-  await expect(page.getByRole('status')).toHaveText('Brief preview created');
+-  await page.getByRole('button', { name: 'Confirm revision', exact: true }).click();
+-  await expect(page.getByRole('status')).toHaveText('Brief confirmed');
+-  await expect(page.locator('.project-status-stack .status')).toContainText('active');
+-  for (const [name, width, height] of setupViewports) {
+-    await setViewport(page, width, height);
+-    await checkNoOverlap(page, `${name}-project-confirmed`);
+-    await page.screenshot({ path: path.join(reportDir, `${name}-project-confirmed.png`), fullPage: true });
+-  }
+-
+-  await page.goto(`${base}/#/workflow`, { waitUntil: 'networkidle' });
+-  await expect(page.getByRole('heading', { name: 'Workflow' })).toBeVisible();
+-  await expect(page.locator('.project-readiness')).toHaveCount(0);
+-  await expect(page.getByRole('region', { name: 'Workflow canvas' })).toBeVisible();
+-  await page.getByRole('button', { name: 'Generate', exact: true }).click();
+-  await expect(page.getByRole('status')).toHaveText('Generation queued');
+-  await expect(page.locator('.generation-row.selected .status')).toHaveText('completed', { timeout: 10_000 });
+-  await expect(page.locator('.critic-receipt strong')).toHaveText('passed');
+-  const initialGenerations = (await apiRequest(`/api/v1/projects/${project.id}/workflow-generations`)).body;
+-  const initialGeneration = initialGenerations[0];
+-  expect(initialGeneration.phase).toBe('completed');
+-  const sseBeforeApply = await page.evaluate(async (generationId) => {
+-    const response = await fetch(`/api/v1/workflow-generations/${generationId}/events`, { headers: { accept: 'text/event-stream' } });
+-    const stream = await response.text();
+-    const cursors = [...stream.matchAll(/^id: (\d+)$/gm)].map((match) => Number(match[1]));
+-    return { status: response.status, count: cursors.length, cursor: cursors.at(-1) || 0, stream };
+-  }, initialGeneration.id);
+-  expect(sseBeforeApply.status).toBe(200);
+-  expect(sseBeforeApply.count).toBeGreaterThanOrEqual(5);
+-  expect(sseBeforeApply.stream).toContain('workflow.generation.proposal_created');
+-  await page.getByRole('button', { name: 'Apply', exact: true }).click();
+-  await expect(page.getByRole('status')).toHaveText('Workflow revision applied', { timeout: 10_000 });
+-  await expect(page.locator('.workflow-heading-actions .pin').nth(1)).toContainText('r1');
+-  const sseAfterApply = await page.evaluate(async ({ generationId, cursor }) => {
+-    const response = await fetch(`/api/v1/workflow-generations/${generationId}/events`, {
+-      headers: { accept: 'text/event-stream', 'Last-Event-ID': String(cursor) }
+-    });
+-    const stream = await response.text();
+-    const cursors = [...stream.matchAll(/^id: (\d+)$/gm)].map((match) => Number(match[1]));
+-    return { status: response.status, cursors, stream };
+-  }, { generationId: initialGeneration.id, cursor: sseBeforeApply.cursor });
+-  expect(sseAfterApply.status).toBe(200);
+-  expect(sseAfterApply.cursors.every((cursor) => cursor > sseBeforeApply.cursor)).toBe(true);
+-  expect(sseAfterApply.stream).toContain('workflow.generation.applied');
++  const intake = await pageApi(`/api/v2/projects/${project.id}/intake`, {
++    method: 'POST', headers: { 'Idempotency-Key': 'p31-e2e-intake-01', 'X-Expected-Revision': String(project.revision) },
++    body: { mode: 'brainstorm', content: {}, expected_revision: project.revision }
++  });
++  assert([201, 202].includes(intake.status), `intake:${intake.status}`);
++  const brief = await pageApi(`/api/v2/projects/${project.id}/briefs`, {
++    method: 'POST', headers: { 'Idempotency-Key': 'p31-e2e-brief-01', 'X-Expected-Revision': String(project.revision) },
++    body: { objective: 'Verify clean workflow', acceptance: ['replay'], constraints: [], expected_revision: project.revision }
++  });
++  assert([200, 201].includes(brief.status), `brief:${brief.status}`);
+ 
+-  await page.getByRole('button', { name: '保存布局' }).click();
+-  await expect(page.getByRole('status')).toHaveText('Layout revision saved');
+-  await page.getByRole('button', { name: 'Replan', exact: true }).click();
+-  await expect(page.getByRole('status')).toHaveText('Replan queued');
+-  await expect(page.locator('.generation-row.selected .status')).toHaveText('completed', { timeout: 10_000 });
+-  await page.getByRole('button', { name: 'Apply', exact: true }).click();
+-  await expect(page.getByRole('status')).toHaveText('Workflow revision applied', { timeout: 10_000 });
+-  await expect(page.locator('.workflow-heading-actions .pin').nth(1)).toContainText('r2');
++  const workflow = await pageApi(`/api/v2/projects/${project.id}/workflow-draft`, {
++    method: 'POST', headers: { 'Idempotency-Key': 'p31-e2e-workflow-01', 'X-Expected-Revision': '1' },
++    body: { graph: { nodes: [{ id: 'inspect', kind: 'workstream', title: 'Inspect' }] }, nodes: [], layout: {}, expected_revision: 1 }
++  });
++  assert([200, 201].includes(workflow.status), `workflow:${workflow.status}`);
+ 
+-  const workflowViewports = [
+-    ['desktop', 1440, 900], ['laptop', 1024, 768], ['mobile-wide', 390, 844]
+-  ];
+-  const workflowScreenshotHashes = {};
+-  for (const [name, width, height] of workflowViewports) {
+-    await setViewport(page, width, height);
+-    await checkNoOverlap(page, `${name}-workflow`);
+-    workflowScreenshotHashes[name] = await checkWorkflowSurface(page, `${name}-workflow`);
+-    await page.screenshot({ path: path.join(reportDir, `${name}-workflow.png`), fullPage: true });
+-  }
+-  expect(new Set(Object.values(workflowScreenshotHashes)).size).toBe(3);
++  const replay = await pageApi('/api/v2/projects', { method: 'GET' });
++  assert(replay.status === 200 && replay.body.data?.projects?.some((item) => item.id === project.id), 'reload/replay');
++  const denied = await pageApi(`/api/v2/projects/${project.id}/permissions`);
++  assert([200, 403].includes(denied.status), `ACL probe:${denied.status}`);
+ 
+-  if (process.env.R6_ASSIST_SCREENSHOT_DIR) {
+-    const assistOutput = path.resolve(process.env.R6_ASSIST_SCREENSHOT_DIR);
+-    fs.mkdirSync(assistOutput, { recursive: true });
+-    const source = await apiMutation(`/api/v1/projects/${project.id}/context/sources`, { kind: 'note', title: 'Assist evidence', content: 'Hashed evidence context.' }, 'assist-context-source');
+-    const rebuilt = await apiMutation(`/api/v1/projects/${project.id}/context/rebuild`, {}, 'assist-context-rebuild');
+-    const node = rebuilt.map.nodes.find((item) => item.source_id === source.id);
+-    const selection = await apiMutation(`/api/v1/projects/${project.id}/context/selections`, { node_ids: [node.id], retrieval_plan: { strategy: 'explicit', token_budget: 1024 } }, 'assist-context-selection');
+-    const pack = await apiMutation(`/api/v1/projects/${project.id}/context/packs`, { selection_id: selection.id, schema_version: 'aiws.context_pack.v5' }, 'assist-context-pack');
+-    const session = await apiMutation('/api/v1/assist/sessions', { project_id: project.id, scope: 'project', scope_id: project.id, context_pack_id: pack.id, mode: 'native', expected_revision: 0 }, 'assist-session');
+-    const receipt = await apiMutation(`/api/v1/assist/sessions/${session.id}/turns`, { message: 'Produce the deterministic Assist evidence response.', expected_revision: session.revision, goal: { objective: 'verify' }, plan: [{ step: 'run' }] }, 'assist-turn');
+-    await waitOperation(receipt.operation_id);
+-    await page.goto(`${base}/#/assist`, { waitUntil: 'networkidle' });
+-    await expect(page.getByRole('heading', { name: 'Assist Center' })).toBeVisible();
+-    await expect(page.getByText('deterministic runner completed')).toBeVisible({ timeout: 10_000 });
+-    for (const [name, width, height] of [['desktop', 1440, 900], ['laptop', 1024, 768], ['mobile-wide', 390, 844]]) {
+-      await setViewport(page, width, height);
+-      await checkNoOverlap(page, `${name}-assist`);
+-      const overflow = await page.evaluate(() => document.documentElement.scrollWidth > document.documentElement.clientWidth);
+-      if (overflow) throw new Error(`${name}-assist-horizontal-overflow`);
+-      await page.screenshot({ path: path.join(assistOutput, `${name}-assist.png`), fullPage: true });
+-    }
++  for (const [name, width, height] of [['mobile', 390, 844], ['laptop', 1024, 768], ['desktop', 1440, 900]]) {
++    await page.setViewportSize({ width, height });
+     await page.goto(`${base}/#/workflow`, { waitUntil: 'networkidle' });
++    await page.screenshot({ path: path.join(reportDir, `${name}.png`), fullPage: true });
++    const overflow = await page.evaluate(() => document.documentElement.scrollWidth > document.documentElement.clientWidth + 1);
++    assert(!overflow, `${name} horizontal overflow`);
+   }
+ 
+-  const delayedGeneration = await apiMutation(`/api/v1/projects/${project.id}/workflow-generations`, {
+-    provider: 'fixture', fixture_delay_ms: 900, async: true
+-  }, 'workflow-cancel');
+-  await expect.poll(async () => (await apiRequest(`/api/v1/workflow-generations/${delayedGeneration.generation_id}`)).body.phase).toBe('running');
+-  await page.reload({ waitUntil: 'networkidle' });
+-  await expect(page.locator('.generation-row.selected .status')).toHaveText('running');
+-  await page.getByRole('button', { name: 'Cancel', exact: true }).click();
+-  await expect(page.locator('.generation-row.selected .status')).toHaveText('cancelled', { timeout: 10_000 });
+-  await page.getByRole('button', { name: 'Retry', exact: true }).click();
+-  await expect(page.locator('.generation-row.selected .status')).toHaveText('completed', { timeout: 10_000 });
+-
+-  const rejectedGeneration = await apiMutation(`/api/v1/projects/${project.id}/workflow-generations`, {
+-    provider: 'fixture', async: true,
+-    candidate: {
+-      name: 'Critic browser fixture',
+-      workstreams: [{ id: 'review', tasks: [{ id: 'review_only', goal: 'Review topology', outputs: ['artifacts/review.json'], acceptance: ['topology reviewed'] }] }]
+-    }
+-  }, 'workflow-critic-rejected');
+-  await expect.poll(async () => (await apiRequest(`/api/v1/workflow-generations/${rejectedGeneration.generation_id}`)).body.phase).toBe('rejected');
+-  await setViewport(page, 1440, 900);
+-  await page.reload({ waitUntil: 'networkidle' });
+-  await expect(page.locator('.generation-row.selected .status')).toHaveText('rejected');
+-  await expect(page.locator('.critic-receipt strong')).toHaveText('rejected');
+-  await expect(page.locator('.fault-code')).toHaveText('workflow_generation_critic_rejected');
+-  await page.screenshot({ path: path.join(reportDir, 'desktop-workflow-rejected.png'), fullPage: true });
+-
+-  await page.goto(`${base}/#/execution`, { waitUntil: 'networkidle' });
+-  await expect(page.getByRole('heading', { name: 'Execution', exact: true })).toBeVisible();
+-  await page.getByRole('button', { name: 'New execution', exact: true }).click();
+-  await expect(page.getByRole('status')).toHaveText('Execution created');
+-  await page.getByRole('button', { name: 'Run', exact: true }).click();
+-  await expect(page.getByRole('status')).toHaveText('Execution started');
+-  await expect(page.getByText('completed', { exact: true }).first()).toBeVisible({ timeout: 15_000 });
+-  await expect(page.getByText('execution.completed', { exact: true })).toBeVisible({ timeout: 5_000 });
+-  await expect(page.getByRole('heading', { name: 'Git Diff' })).toBeVisible();
+-  await expect(page.locator('.diff-panel pre')).toContainText('deterministic runner output');
++  const legacyRequests = requests.filter((url) => /\/api\/v1(?:\/|$)/.test(url));
++  if (legacyRequests.length) throw new Error(`active Clean Web emitted /api/v1: ${legacyRequests.join(', ')}`);
++  fs.writeFileSync(path.join(reportDir, 'receipt.json'), `${JSON.stringify({ schema_version: 'aiws.v3-clean.p31-e2e-receipt.v1', status: 'passed', api_port: apiPort, web_port: webPort, viewports: ['mobile', 'laptop', 'desktop'], request_count: requests.length, legacy_api_v1_requests: legacyRequests }, null, 2)}\n`);
++  process.stdout.write(`P3.1 Clean E2E passed: project ${project.id}, setup cookie, intake, brief, workflow, ACL probe, and 3 viewports; /api/v1 requests=0\n`);
++} finally {
++  await browser.close();
++  for (const child of children.reverse()) await stop(child);
++  removeTree(home);
++}
+ 
+-  await page.getByRole('button', { name: 'Open review', exact: true }).click();
+-  await expect(page.getByRole('status')).toHaveText('Review opened');
+-  await page.getByRole('button', { name: 'Approve', exact: true }).click();
+-  await expect(page.getByRole('status')).toHaveText('Review approved');
+-  await page.getByRole('button', { name: 'Create draft PR', exact: true }).click();
+-  await expect(page.getByRole('status')).toHaveText('Draft PR delivery created');
+-  const deliveries = await apiRequest(`/api/v1/deliveries?project_id=${project.id}`);
+-  expect(deliveries.body).toHaveLength(1);
+-  expect(deliveries.body[0].status).toBe('draft');
+-  const executions = await apiRequest(`/api/v1/projects/${project.id}/executions`);
+-  const runtimeApproval = await apiRequest(`/api/v1/projects/${project.id}/approvals`, {
+-    method: 'POST', headers: { 'Idempotency-Key': 'browser-runtime-approval' },
+-    body: { execution_id: executions.body[0].id, action: 'delivery.publish', request: { delivery_id: deliveries.body[0].id } }
+-  });
+-  expect(runtimeApproval.response.status).toBe(201);
+-  await page.goto(`${base}/#/approvals`, { waitUntil: 'networkidle' });
+-  await expect(page.getByRole('heading', { name: 'Approval Center' })).toBeVisible();
+-  await expect(page.getByText('delivery.publish', { exact: true })).toBeVisible();
+-  await page.getByRole('button', { name: 'Approve', exact: true }).click();
+-  await expect(page.getByRole('status')).toHaveText('Approval approved');
++function start(command, args, env = {}, cwd = root) {
++  const child = spawn(command, args, { cwd, env: { ...process.env, ...env }, stdio: ['ignore', 'pipe', 'pipe'], windowsHide: true, shell: process.platform === 'win32' && command !== process.execPath });
++  child.stdout.on('data', (chunk) => process.stdout.write(`[${path.basename(command)}] ${chunk}`));
++  child.stderr.on('data', (chunk) => process.stderr.write(`[${path.basename(command)}] ${chunk}`));
++  return child;
++}
+ 
+-  await page.goto(`${base}/#/terminals`, { waitUntil: 'networkidle' });
+-  await expect(page.getByRole('heading', { name: 'Terminal', exact: true })).toBeVisible();
+-  await page.getByRole('button', { name: 'Request terminal access', exact: true }).click();
+-  await expect(page.getByRole('status')).toHaveText('Terminal access requested');
+-  await page.getByRole('button', { name: 'Approve', exact: true }).click();
+-  await expect(page.getByRole('status')).toHaveText('Terminal approval approved');
+-  await page.getByRole('button', { name: 'Open terminal', exact: true }).click();
+-  await expect(page.getByRole('status')).toHaveText('Terminal opened');
+-  await expect(page.getByRole('log', { name: 'Terminal output' })).toBeVisible();
+-  await page.getByPlaceholder('Run a command').fill('echo AIWS_E2E_TERMINAL');
+-  await page.getByRole('button', { name: 'Send', exact: true }).click();
+-  await expect(page.getByRole('log', { name: 'Terminal output' })).toContainText('AIWS_E2E_TERMINAL', { timeout: 10_000 });
+-  await page.getByRole('button', { name: 'Stop terminal', exact: true }).click();
+-  await expect(page.getByText(/stopped|exited/, { exact: false }).first()).toBeVisible({ timeout: 10_000 });
++async function stop(child) {
++  if (!child || child.exitCode != null) return;
++  child.kill();
++  await new Promise((resolve) => { const timer = setTimeout(resolve, 1500); child.once('exit', () => { clearTimeout(timer); resolve(); }); });
++  if (child.exitCode == null && process.platform === 'win32') {
++    const killer = spawn('taskkill', ['/PID', String(child.pid), '/T', '/F'], { windowsHide: true, stdio: 'ignore' });
++    await new Promise((resolve) => killer.once('exit', resolve));
++  }
++}
+ 
+-  await page.goto(`${base}/#/assets`, { waitUntil: 'networkidle' });
+-  await expect(page.getByRole('heading', { name: 'Assets' })).toBeVisible();
+-  await page.locator('input[type="file"]').setInputFiles({ name: 'browser-evidence.json', mimeType: 'application/json', buffer: Buffer.from('{"browser":true}') });
+-  await expect(page.getByText('browser-evidence.json', { exact: true })).toBeVisible();
+-  await page.getByRole('button', { name: 'Upload', exact: true }).click();
+-  await expect(page.getByRole('status')).toHaveText('Asset version stored');
+-  await expect(page.getByText('browser-evidence.json', { exact: true })).toBeVisible();
++async function waitFor(url, timeout = 30_000) {
++  const deadline = Date.now() + timeout;
++  while (Date.now() < deadline) {
++    try { const response = await fetch(url); if (response.ok || response.status === 404) return; } catch { /* process is still starting */ }
++    await new Promise((resolve) => setTimeout(resolve, 150));
++  }
++  throw new Error(`startup_timeout:${url}`);
++}
+ 
+-  await page.goto(`${base}/#/audit`, { waitUntil: 'networkidle' });
+-  await expect(page.getByRole('heading', { name: 'Audit' })).toBeVisible();
+-  await expect(page.getByText('project.created', { exact: true })).toBeVisible();
+-  await expect(page.getByText('delivery.created', { exact: true })).toBeVisible();
+-  await page.goto(`${base}/#/settings`, { waitUntil: 'networkidle' });
+-  await expect(page.getByRole('heading', { name: 'Settings' })).toBeVisible();
+-  await expect(page.getByText('Isolated broker', { exact: true })).toBeVisible();
++async function freePort() {
++  const server = net.createServer();
++  await new Promise((resolve, reject) => { server.once('error', reject); server.listen(0, '127.0.0.1', resolve); });
++  const port = server.address().port;
++  await new Promise((resolve) => server.close(resolve));
++  return port;
++}
+ 
+-  for (const [name, width, height] of viewports) {
+-    await setViewport(page, width, height);
+-    await page.goto(`${base}/#/execution`, { waitUntil: 'networkidle' });
+-    await expect(page.getByRole('heading', { name: 'Execution', exact: true })).toBeVisible();
+-    await expect(page.getByText('completed', { exact: true }).first()).toBeVisible();
+-    await expect(page.getByText('execution.completed', { exact: true })).toBeVisible();
+-    await checkNoOverlap(page, name);
+-    await page.screenshot({ path: path.join(reportDir, `${name}.png`), fullPage: true });
+-    await page.goto(`${base}/#/approvals`, { waitUntil: 'networkidle' });
+-    await expect(page.getByRole('heading', { name: 'Approval Center' })).toBeVisible();
+-    await expect(page.getByText('delivery.publish', { exact: true })).toBeVisible();
+-    await checkNoOverlap(page, `${name}-approvals`);
+-    await page.screenshot({ path: path.join(reportDir, `${name}-approvals.png`), fullPage: true });
+-    await page.goto(`${base}/#/terminals`, { waitUntil: 'networkidle' });
+-    await expect(page.getByRole('heading', { name: 'Terminal', exact: true })).toBeVisible();
+-    await expect(page.getByText(/stopped|exited/, { exact: false }).first()).toBeVisible();
+-    await checkNoOverlap(page, `${name}-terminals`);
+-    await page.screenshot({ path: path.join(reportDir, `${name}-terminals.png`), fullPage: true });
+-  }
++function assert(condition, message) { if (!condition) throw new Error(`e2e_assertion_failed:${message}`); }
+ 
+-  await page.goto(`${base}/#/projects`, { waitUntil: 'networkidle' });
+-  await page.getByRole('button', { name: 'Archive project', exact: true }).click();
+-  await expect(page.getByRole('status')).toHaveText('archive completed', { timeout: 10_000 });
+-  await expect(page.locator('.project-status-stack .status')).toContainText('archived');
+-  for (const [name, width, height] of setupViewports) {
+-    await setViewport(page, width, height);
+-    await checkNoOverlap(page, `${name}-project-archived`);
+-    await page.screenshot({ path: path.join(reportDir, `${name}-project-archived.png`), fullPage: true });
++function removeTree(target) {
++  for (let attempt = 0; attempt < 5; attempt += 1) {
++    try { fs.rmSync(target, { recursive: true, force: true }); return; }
++    catch { /* SQLite handles may release just after a child exits on Windows. */ }
++    Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 100);
+   }
+-  if (pageErrors.length) throw new Error(`browser page errors: ${pageErrors.map((error) => error.message).join('; ')}`);
+-  const unexpectedConsoleErrors = [...consoleErrors];
+-  const expectedProviderFailure = unexpectedConsoleErrors.findIndex((message) => /status of 502 \(Bad Gateway\)/.test(message.text()));
+-  if (expectedProviderFailure >= 0) unexpectedConsoleErrors.splice(expectedProviderFailure, 1);
+-  if (unexpectedConsoleErrors.length) throw new Error(`browser console errors: ${unexpectedConsoleErrors.map((message) => message.text()).join('; ')}`);
+-  process.stdout.write(`E2E passed: ${viewports.length} workspace viewports, 3 R4 Workflow viewports, project ${project.id}, onboarding, generation and execution journey complete\n`);
+-} finally {
+-  await browser.close();
+-  await app.close();
+-  await broker.close();
+-  fs.rmSync(home, { recursive: true, force: true });
+ }

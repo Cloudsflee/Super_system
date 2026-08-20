@@ -32,25 +32,38 @@ export type ApiV2Envelope<T> = {
   meta: { api_version: string; resource_type?: string; resource_revision?: number; etag?: string; redactions?: string[] };
 };
 
+export type ApiV2Options = RequestInit & {
+  idempotencyKey?: string;
+  expectedRevision?: number;
+};
+
 /** Clean-break client. It unwraps the v2 envelope and never falls back to v1. */
-export async function apiV2<T>(path: string, options: RequestInit = {}): Promise<ApiV2Envelope<T>> {
+export async function apiV2<T>(path: string, options: ApiV2Options = {}): Promise<ApiV2Envelope<T>> {
   const normalized = path.startsWith('/api/v2/') ? path : `/api/v2/${path.replace(/^\//, '')}`;
+  const { idempotencyKey, expectedRevision, ...request } = options;
+  const headers: Record<string, string> = { accept: 'application/json', ...(request.headers as Record<string, string> || {}) };
+  if (idempotencyKey) headers['Idempotency-Key'] = idempotencyKey;
+  if (expectedRevision != null) headers['X-Expected-Revision'] = String(expectedRevision);
   const response = await fetch(normalized, {
-    ...options,
-    headers: { accept: 'application/json', ...options.headers }
+    ...request,
+    credentials: request.credentials || 'same-origin',
+    headers
   });
   const body = await response.json().catch(() => ({}));
   if (!response.ok) throw new ApiError(response.status, body as ApiErrorBody);
   return body as ApiV2Envelope<T>;
 }
 
-export function mutateV2<T>(path: string, body: Record<string, unknown> = {}, method = 'POST', expectedRevision?: number): Promise<ApiV2Envelope<T>> {
+export function mutateV2<T>(path: string, body: Record<string, unknown> = {}, method = 'POST', expectedRevisionOrOptions?: number | { expectedRevision?: number; idempotencyKey?: string }, explicitIdempotencyKey?: string): Promise<ApiV2Envelope<T>> {
+  const mutation = typeof expectedRevisionOrOptions === 'object'
+    ? expectedRevisionOrOptions
+    : { expectedRevision: expectedRevisionOrOptions, idempotencyKey: explicitIdempotencyKey };
   const headers: Record<string, string> = {
     'content-type': 'application/json',
-    'Idempotency-Key': crypto.randomUUID()
+    'Idempotency-Key': mutation.idempotencyKey || crypto.randomUUID()
   };
-  if (expectedRevision != null) headers['X-Expected-Revision'] = String(expectedRevision);
-  return apiV2<T>(path, { method, headers, body: JSON.stringify(body) });
+  if (mutation.expectedRevision != null) headers['X-Expected-Revision'] = String(mutation.expectedRevision);
+  return apiV2<T>(path, { method, headers, body: JSON.stringify(body), credentials: 'same-origin' });
 }
 
 export function mutate<T>(path: string, body: unknown, method = 'POST'): Promise<T> {

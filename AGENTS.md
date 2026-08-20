@@ -17,19 +17,22 @@ under docs/architecture/ are the source of truth for V3-Clean.
 
 ## Scope of this phase
 
-Decision `D-030` activates the P3 Project/Workflow implementation phase over
-the verified P1/P2 baseline. This phase may update the synchronized P3 surface:
+Decision `D-031` activates the P3.1 Clean debt burn-down phase over the
+verified P1/P2/P3 baseline. This phase may update the synchronized P3.1
+surface:
 
 - `003-project-workflow`, its clean runtime services, registry, contracts, and
-  focused tests;
-- the component-level Project/Workflow Web slice, using `/api/v2` only;
-- the architecture documents, testing policy, Catalog/matrix, package gates,
-  and P3 Evidence required by GS-001 through GS-007;
+  focused tests, including owner/facade decomposition and shared ledger APIs;
+- the component-level Project/Workflow Web slice and default Clean E2E, using
+  `/api/v2` only;
+- the architecture documents, testing policy, layered Catalogs, package gates,
+  immutable P3.1 Evidence, and rollback receipts required by GS-001 through
+  GS-007;
 - this file.
 
-P1/P2 migrations and verified Evidence are read-only. P4 and later runtime,
+P1/P2/P3 migrations and verified Evidence are read-only. P4 and later runtime,
 real provider calls, complete Outcome evaluation, and release-level Web/E2E
-remain outside P3.
+remain outside P3.1.
 
 ## Required preflight
 
@@ -176,6 +179,39 @@ pnpm test:security
 pnpm verify
 git diff --check
 ~~~
+
+The additive P3.1 implementation inventory is:
+
+~~~text
+pnpm check
+pnpm scan:clean
+pnpm test:p1
+pnpm test:p2
+pnpm test:p3
+pnpm test:p31
+pnpm evidence:p31
+pnpm test:integration:clean
+pnpm test:security:clean
+pnpm fixture:legacy:integration
+pnpm fixture:legacy:security
+pnpm fixture:legacy:e2e
+pnpm --filter @aiws/web test
+pnpm test
+pnpm test:integration
+pnpm test:security
+pnpm build
+pnpm test:e2e
+pnpm verify
+git diff --check
+~~~
+
+P3.1 uses `feature-catalog.index.json` with disjoint Clean and historical
+layers (`feature-catalog.clean.json` and `feature-catalog.historical.json`).
+`scripts/catalog-loader.mjs` is the validation owner; the root
+`feature-catalog.json` remains a compatibility aggregate for P1 governance
+tests and carries the same index references. `scripts/e2e.mjs` is the active
+Clean journey, while `scripts/e2e-legacy.mjs` and `fixture:legacy:*` commands
+are explicit historical fixtures.
 
 ## Capability status
 

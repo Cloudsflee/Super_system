@@ -3,10 +3,11 @@ import {
   Activity, Archive, BookOpen, Boxes, ChevronDown, ClipboardCheck, FolderGit2, LayoutDashboard,
   LoaderCircle, Menu, MessageSquare, Settings, ShieldCheck, Terminal as TerminalIcon, Users, Workflow, X
 } from 'lucide-react';
-import { api } from './api';
+import { apiV2 } from './api';
 import { ContextPage } from './features/context';
 import { AssistPage } from './features/assist';
-import { SetupPage, type SetupState } from './features/setup';
+import { CleanSetupPage, SetupPage, type SetupState } from './features/setup';
+import { ProjectWorkflowPage } from './features/project';
 import { WorkflowPage as R4WorkflowPage } from './features/workflow';
 import { IdentityAccessPage } from './features/identity';
 import type { Project } from './types';
@@ -21,22 +22,14 @@ const NAV: Array<{ key: PageKey; label: string; icon: ComponentType<{ size?: num
   { key: 'setup', label: 'Setup', icon: LayoutDashboard },
   { key: 'identity', label: 'Identity', icon: Users },
   { key: 'projects', label: 'Projects', icon: FolderGit2 },
-  { key: 'workflow', label: 'Workflow', icon: Workflow },
-  { key: 'context', label: 'Context', icon: BookOpen },
-  { key: 'assist', label: 'Assist', icon: MessageSquare },
-  { key: 'execution', label: 'Execution', icon: Activity },
-  { key: 'terminals', label: 'Terminal', icon: TerminalIcon },
-  { key: 'approvals', label: 'Approvals', icon: ShieldCheck },
-  { key: 'assets', label: 'Assets', icon: Boxes },
-  { key: 'audit', label: 'Audit', icon: ClipboardCheck },
-  { key: 'settings', label: 'Settings', icon: Settings }
+  { key: 'workflow', label: 'Workflow', icon: Workflow }
 ];
 
 const PAGES: Record<PageKey, ComponentType<WorkspacePageProps>> = {
-  setup: SetupPage,
+  setup: CleanSetupPage,
   identity: IdentityAccessPage,
-  projects: ProjectsPage,
-  workflow: R4WorkflowPage,
+  projects: (props) => <ProjectWorkflowPage {...props} initialSection="overview" />,
+  workflow: (props) => <ProjectWorkflowPage {...props} initialSection="workflow" />,
   context: ContextPage,
   assist: AssistPage,
   execution: ExecutionPage,
@@ -63,7 +56,8 @@ export function App() {
   const [setup, setSetup] = useState<Pick<SetupState, 'status' | 'complete' | 'revision'> | null>(null);
 
   const loadProjects = useCallback(async () => {
-    const rows = await api<Project[]>('/api/v1/projects');
+    const response = await apiV2<{ projects: Project[] }>('/api/v2/projects');
+    const rows = response.data.projects || [];
     setProjects(rows);
     setProjectId((current) => {
       const selected = rows.some((project) => project.id === current) ? current : rows[0]?.id || '';
@@ -73,9 +67,15 @@ export function App() {
   }, []);
 
   const refreshSetup = useCallback(async () => {
-    const state = await api<SetupState>('/api/v1/setup');
-    setSetup({ status: state.status, complete: state.complete, revision: state.revision });
-    if (state.status === 'ready' && state.complete) await loadProjects();
+    const response = await apiV2<{ needs_setup: boolean; actor_count: number }>('/api/v2/setup');
+    const state = response.data;
+    const cleanState: Pick<SetupState, 'status' | 'complete' | 'revision'> = {
+      status: state.needs_setup ? 'blocked' : 'ready',
+      complete: !state.needs_setup,
+      revision: 0
+    };
+    setSetup(cleanState);
+    if (cleanState.status === 'ready' && cleanState.complete) await loadProjects();
     else { setProjects([]); setProjectId(''); }
   }, [loadProjects]);
 

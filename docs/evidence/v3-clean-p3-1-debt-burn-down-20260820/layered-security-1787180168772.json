@@ -1,0 +1,45 @@
+{
+  "schema_version": "aiws.v3-clean.layered-gate-receipt.v1",
+  "suite": "security",
+  "status": "passed",
+  "blocking_layer": null,
+  "generated_at": "2026-08-19T22:56:08.772Z",
+  "clean": {
+    "layer": "clean",
+    "command": "node --test --test-concurrency=1 tests/security/v3-clean-p1.test.mjs tests/security/boundary.test.mjs",
+    "exit_status": 0,
+    "signal": null,
+    "ok": true,
+    "summary": "ℹ tests 6\nℹ suites 0\nℹ pass 6\nℹ fail 0\nℹ cancelled 0\nℹ skipped 0\nℹ todo 0\nℹ duration_ms 31280.7395",
+    "output": {
+      "stdout": "✔ resolved compose keeps Docker control plane and socket on the broker only (250.1589ms)\n✔ production App image has no Docker CLI or host socket (30003.1165ms)\n✔ production build context excludes live secrets and requires a real Runner digest (1.6495ms)\n✔ broker readiness inspects the registered Runner image instead of echoing configuration (0.8116ms)\n✔ broker spec cannot carry command, host volume, or arbitrary environment (3.0689ms)\n(node:37044) ExperimentalWarning: SQLite is an experimental feature and might change at any time\n(Use `node --trace-warnings ...` to show where the warning was created)\n✔ clean boundary rejects stale metadata and removes restricted values (244.3907ms)\nℹ tests 6\nℹ suites 0\nℹ pass 6\nℹ fail 0\nℹ cancelled 0\nℹ skipped 0\nℹ todo 0\nℹ duration_ms 31280.7395\n",
+      "stderr": ""
+    },
+    "redaction": {
+      "passed": true,
+      "removed": 0
+    }
+  },
+  "historical": {
+    "layer": "historical",
+    "command": "node --test --test-concurrency=1 tests/security/*.test.mjs",
+    "exit_status": 0,
+    "signal": null,
+    "ok": true,
+    "summary": "ℹ tests 15\nℹ suites 0\nℹ pass 15\nℹ fail 0\nℹ cancelled 0\nℹ skipped 0\nℹ todo 0\nℹ duration_ms 20953.7199",
+    "output": {
+      "stdout": "✔ resolved compose keeps Docker control plane and socket on the broker only (247.664ms)\n✔ production App image has no Docker CLI or host socket (9701.7994ms)\n✔ production build context excludes live secrets and requires a real Runner digest (1.1512ms)\n✔ broker readiness inspects the registered Runner image instead of echoing configuration (0.4975ms)\n✔ broker spec cannot carry command, host volume, or arbitrary environment (1.945ms)\nAIWS runner-broker listening on http://127.0.0.1:52918\nAIWS runner-broker listening on http://127.0.0.1:52921\n✔ broker HTTP boundary verifies signatures, rejects unsafe specs, and redacts credentials (68.0941ms)\nAIWS runner-broker listening on http://127.0.0.1:52924\n✔ broker accepts a dynamic model only with an exact Profile snapshot (20.8169ms)\n✔ explicit Host executor runs the bound Profile and removes its Codex home (797.6276ms)\nAIWS runner-broker listening on http://127.0.0.1:52932\n(node:52856) ExperimentalWarning: SQLite is an experimental feature and might change at any time\n(Use `node --trace-warnings ...` to show where the warning was created)\nAIWS 3.0.0 listening on http://127.0.0.1:52933\n✔ R5 Context and MCP enforce project, path, scope, expiry, and redaction boundaries (718.881ms)\nAIWS runner-broker listening on http://127.0.0.1:52938\n(node:26108) ExperimentalWarning: SQLite is an experimental feature and might change at any time\n(Use `node --trace-warnings ...` to show where the warning was created)\nAIWS 3.0.0 listening on http://127.0.0.1:52940\n✔ ephemeral Codex credentials never enter state, events, errors, Broker status, or CAS (6147.062ms)\n✔ repository source adapters enforce HTTPS and canonical local allowlists (4.2486ms)\n✔ multipart intake rejects traversal and enforces file and byte limits (25.0109ms)\n(node:19196) ExperimentalWarning: SQLite is an experimental feature and might change at any time\n(Use `node --trace-warnings ...` to show where the warning was created)\n✔ clean boundary rejects stale metadata and removes restricted values (170.5725ms)\nAIWS runner-broker listening on http://127.0.0.1:49611\n(node:28244) ExperimentalWarning: SQLite is an experimental feature and might change at any time\n(Use `node --trace-warnings ...` to show where the warning was created)\nAIWS 3.0.0 listening on http://127.0.0.1:52203\nAIWS runner-broker listening on http://127.0.0.1:55799\n✔ workflow generation public records and streams expose only stable metadata (969.2287ms)\n(node:28244) ExperimentalWarning: SQLite is an experimental feature and might change at any time\n(Use `node --trace-warnings ...` to show where the warning was created)\nAIWS 3.0.0 listening on http://127.0.0.1:55800\n✔ workflow candidates enforce the bounded public input contract (875.8435ms)\nℹ tests 15\nℹ suites 0\nℹ pass 15\nℹ fail 0\nℹ cancelled 0\nℹ skipped 0\nℹ todo 0\nℹ duration_ms 20953.7199\n",
+      "stderr": ""
+    },
+    "redaction": {
+      "passed": true,
+      "removed": 0
+    },
+    "advisory": true
+  },
+  "policy": {
+    "clean_failure_blocks": true,
+    "historical_failure_advisory": true,
+    "redaction": "paths-and-secret-shaped-values"
+  }
+}

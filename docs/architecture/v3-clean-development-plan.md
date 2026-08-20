@@ -1,12 +1,12 @@
 # V3-Clean 分阶段开发计划
 
-状态：P3 Evidence 已验证；`REC-D5-PROJECT-005`、`REC-D5-WORKFLOW-006`、
+状态：P3 Evidence 已验证，P3.1 Clean debt burn-down 正在执行；`REC-D5-PROJECT-005`、`REC-D5-WORKFLOW-006`、
 `REC-D6-GENERATION-007` 和 `REC-D7-REPOSITORY-014` 为 `verified`，
 `REC-D6-OUTCOME-009` 仍为 `scaffolded`（仅 requirement scaffolding）。
 P2 `REC-D2-IDENTITY-001` 为 `verified`，`REC-D2-SETUP-002` 为 `implemented`，
 `REC-D10-FRONTEND-024` 为 `scaffolded`；P3 receipt 为
 `docs/evidence/v3-clean-p3-project-workflow-20260819/verification.json`。
-计划基线：`8edefc7`。
+计划基线：`b860d0b`；P3.1 决策：`D-031`。
 规范来源：同目录下的 `v3-clean-break.md`、`clean-schema.md`、
 `api-v2-contract.md`、`import-contract.md`、`v23-capability-matrix.md` 和
 `decision-log.md`。
@@ -388,7 +388,73 @@ fixture adapter probes 均通过。active `apps/api/server.mjs` 默认启动
 最终批次。P3 只提升 Project、Workflow、Generation 和 Repository 四行；Outcome
 评分/waiver、真实 provider、完整 Web 发布和 P9 E2E 仍保持原状态。
 
-## 8. P4：Context、Projection、Pack、MCP、Exchange、Gateway
+## 8. P3.1：Clean debt burn-down（D-031）
+
+### 目标与边界
+
+P3.1 是 forward-only 的代码、入口、门禁、Catalog 和 Evidence 整理阶段，
+不创建新业务表、migration 或 API 版本。P1/P2/P3 migration 与已验证
+Evidence 只读；P4 以后 runtime、真实 provider、完整 Outcome evaluation、
+release Web/E2E 仍不在本阶段。
+
+### 领域 owner 与统一账本
+
+- `ProjectWorkflowService` 继续是 HTTP/runtime facade，并把 Project、
+  Repository、Workflow、Outcome 责任转发到各自 owner；`IdentityService`
+  同样转发 Actor、Session、TeamAccess、CredentialProfile。
+- 所有 owner 共享同一 `db/events/operations/authorization` 实例；
+  `OperationService.createInTransaction/linkInTransaction/receiptFromRow`
+  和 `EventService.appendAggregateInTransaction` 是唯一账本入口。
+- 状态更新、operation、aggregate revision、event/head、audit 和
+  idempotency response 保持一个事务；外部 fixture adapter 在事务外执行，
+  不确定结果保留 `failed/retryable`。
+
+### Clean Web、E2E 与分层门禁
+
+默认 Web 导航只挂载 Setup、Identity、Projects、Workflow，所有请求走
+`/api/v2`，Setup 通过 HttpOnly cookie 接收 session proof。`scripts/e2e.mjs`
+启动 Clean API 与临时 Vite proxy，覆盖 setup/cookie、project/intake/brief/
+workflow/generation、ACL denial、replay 和 mobile/laptop/desktop 三视口；
+`scripts/e2e-legacy.mjs` 仅由 `fixture:legacy:e2e` 显式调用。
+
+`test:integration`/`test:security` 是 Clean + historical 分层 wrapper：
+Clean 失败阻断并返回非零，历史失败写入 advisory receipt（含命令、退出码、
+摘要和 redaction 结果）但不提升 Clean 状态。`verify` 的阻断顺序固定为：
+
+```text
+check -> audit:p1 -> scan:clean -> test:p1 -> test:p2 -> test:p3 -> test:p31
+  -> test -> test:integration -> test:security -> build -> test:e2e
+  -> git diff --check
+```
+
+### Catalog 与 Evidence
+
+`feature-catalog.index.json` 引用 disjoint 的
+`feature-catalog.clean.json`（固定九个 Clean id）和
+`feature-catalog.historical.json`（其余 fixture id）；根
+`feature-catalog.json` 保留 P1 兼容聚合并携带同一引用。`scripts/catalog-loader.mjs`
+拒绝缺失、重复、stale、orphan 的 id、矩阵覆盖、owner/test/Evidence 路径，
+以及把 historical status 当作 Clean 可用的解释。
+
+P3.1 Evidence 目录为
+`docs/evidence/v3-clean-p3-1-debt-burn-down-20260820/`。每次运行写入
+`attempts/<run-id>/`，failed/checkpoint receipt 不覆盖；final
+`verification.json`/`manifest.json` 独占创建。必须提供 preflight、原始/修改
+hash、artifact、patch、verification、manifest、rollback、service/route
+inventory、catalog diff、gate/advisory/secret scan。rollback 先 dry-run，
+再在隔离副本 apply，并输出 `byte_exact_mismatches=[]`。
+
+### P3.1 退出条件
+
+- `tests/p31/`、Clean Web tests、Clean integration/security gates 和三视口
+  E2E 通过，活动请求计数中 `/api/v1=0`；
+- Clean/Historical Catalog 双向覆盖、workspace classification 和 gate-sync
+  通过；历史失败只保留可见 advisory receipt；
+- final P3.1 receipt 为 verified、非 provisional，rollback dry-run 与隔离
+  actual apply 均有字面输出和退出码；P3 四行状态保持原值，Frontend 仍为
+  `scaffolded`，不宣称 release。
+
+## 9. P4：Context、Projection、Pack、MCP、Exchange、Gateway
 
 ### 目标
 
@@ -414,7 +480,7 @@ fixture adapter probes 均通过。active `apps/api/server.mjs` 默认启动
 - Context/MCP parity、Gateway independent probe、security boundary 和性能
   receipt 通过。
 
-## 9. P5：Assist、Files、Attachments、Approval、Terminal、Bridge
+## 10. P5：Assist、Files、Attachments、Approval、Terminal、Bridge
 
 ### 目标
 
@@ -440,7 +506,7 @@ fixture adapter probes 均通过。active `apps/api/server.mjs` 默认启动
 - Windows Bridge 通过独立外部 probe，Docker socket 仍只在 Broker；
 - Assist UI、mobile layout、event cursor 和 Evidence receipt 全部关联矩阵行。
 
-## 10. P6：Runner、七阶段 Execution、Checkpoint、Replay
+## 11. P6：Runner、七阶段 Execution、Checkpoint、Replay
 
 ### 目标
 
@@ -467,7 +533,7 @@ fixture adapter probes 均通过。active `apps/api/server.mjs` 默认启动
   通过独立 probe；
 - 形成 1000-event replay、restart/recovery、runner HTTP 和 real-runner receipt。
 
-## 11. P7：CAS、Evidence、Trace、Quality、Parser、Outcome
+## 12. P7：CAS、Evidence、Trace、Quality、Parser、Outcome
 
 ### 目标
 
@@ -494,7 +560,7 @@ fixture adapter probes 均通过。active `apps/api/server.mjs` 默认启动
 - 形成 CAS manifest、tamper、quality human-review、parser isolation 和
   outcome golden receipt。
 
-## 12. P8：Delivery、Deployment、Backup/Restore、Importer、Operations
+## 13. P8：Delivery、Deployment、Backup/Restore、Importer、Operations
 
 ### 目标
 
@@ -529,7 +595,7 @@ importer 混入 API runtime。
 - verify、cutover 和实际 rollback 均有字面输出和退出状态；
 - 生产卷只含 clean schema/CAS，旧卷只读保存为 rollback artifact。
 
-## 13. P9：Web 完整闭环、移动/Offline、SSE reconnect、发布
+## 14. P9：Web 完整闭环、移动/Offline、SSE reconnect、发布
 
 ### 目标
 
@@ -556,7 +622,7 @@ importer 混入 API runtime。
 - 三视口截图、SSE reconnect、offline 和人工输入场景无错误/重叠；
 - 外部 Codex、GitHub、Gateway、Runner、Bridge、parser probe 按要求有新 receipt。
 
-## 14. 跨阶段测试矩阵
+## 15. 跨阶段测试矩阵
 
 | 测试层 | 重点 | 触发阶段 |
 | --- | --- | --- |
@@ -573,7 +639,7 @@ importer 混入 API runtime。
 任何层失败都保持对应 Catalog 状态，不允许用后续阶段的文件存在替代缺失
 行为证据。
 
-## 15. 依赖、并行和停止规则
+## 16. 依赖、并行和停止规则
 
 ### 依赖图
 
@@ -597,7 +663,7 @@ UI 骨架、fixture 准备、parser characterization 和外部 probe 可以在�
 - secret、token、完整 prompt 或宿主绝对路径进入公共 envelope/Evidence；
 - 测试只证明 schema 存在，没有证明用户行为和失败恢复。
 
-## 16. 首批实现任务（P1 backlog）
+## 17. 首批实现任务（P1 backlog）
 
 代码阶段开始后，按以下顺序拆成独立小提交；本轮不执行这些任务：
 
@@ -612,7 +678,7 @@ UI 骨架、fixture 准备、parser characterization 和外部 probe 可以在�
 每个小提交都要遵循根目录 `AGENTS.md` 的 preflight，并在提交前更新本计划
 对应的阶段状态和 Evidence 路径。
 
-## 17. 变更控制
+## 18. 变更控制
 
 任何对阶段顺序、API、schema、import mapping、权限或 parser 范围的提议，必须：
 
@@ -624,7 +690,7 @@ UI 骨架、fixture 准备、parser characterization 和外部 probe 可以在�
 
 本计划是执行顺序的唯一入口；旧的恢复计划仅保留在归档目录作为历史材料。
 
-## 18. P1 execution receipt
+## 19. P1 execution receipt
 
 The first platform slice is implemented under `apps/api/src/clean/` and is
 bootstrapped only by `apps/api/server.mjs`; `apps/api/clean-server.mjs` is an
