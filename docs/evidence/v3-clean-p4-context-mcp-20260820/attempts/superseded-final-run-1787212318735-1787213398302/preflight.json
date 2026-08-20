@@ -1,0 +1,65 @@
+{
+  "schema_version": "aiws.v3-clean.p4-preflight.v1",
+  "phase": "P4",
+  "supersedes_run_id": "run-1787211564594",
+  "baseline": "3f1d9e7",
+  "generated_at": "2026-08-20T07:51:58.736Z",
+  "Target": "P4 Clean Context/Projection/Pack/MCP/Exchange/Gateway, baseline=3f1d9e7",
+  "Non-target": "P5+ runtime, real providers, Runner, Parser, Outcome evaluation, release, production cutover",
+  "NonTarget": "Complete operations/Gateway administration UI, offline/cross-origin, production cutover",
+  "Forbidden": [
+    "/api/v1 active route",
+    "historical runtime import",
+    "shadow heads",
+    "second event or operation ledger",
+    "Gateway business persistence",
+    "Gateway Docker socket access",
+    "secret/token/full prompt/host absolute path in public or Evidence envelopes"
+  ],
+  "Reuse": [
+    "P1-P3.1 ACL",
+    "generic CAS/operations/events/aggregate_heads",
+    "registry",
+    "redaction",
+    "immutable Evidence writer"
+  ],
+  "Delete/retire": [
+    "active Web dependency on historical Context/MCP APIs",
+    "context_policy_heads",
+    "context_selection_heads",
+    "context_index_heads",
+    "context_projection_events"
+  ],
+  "Delete_retire": [
+    "historical Context/MCP remains characterization-only"
+  ],
+  "Acceptance_commands": [
+    "pnpm check",
+    "pnpm audit:p1",
+    "pnpm scan:clean",
+    "pnpm recovery:plan",
+    "pnpm recovery:catalog",
+    "pnpm recovery:coverage",
+    "pnpm recovery:impact -- --audit",
+    "pnpm test:p1",
+    "pnpm test:p2",
+    "pnpm test:p3",
+    "pnpm test:p31",
+    "pnpm test:p4",
+    "node scripts/v3-clean-p4-performance.mjs",
+    "node scripts/v3-clean-p4-gateway-probe.mjs",
+    "pnpm --filter @aiws/web test",
+    "pnpm test",
+    "pnpm test:integration:clean",
+    "pnpm test:security:clean",
+    "pnpm test:integration",
+    "pnpm test:security",
+    "pnpm build",
+    "pnpm test:e2e",
+    "pnpm verify",
+    "git diff --check"
+  ],
+  "Rollback_artifact": "docs/evidence/v3-clean-p4-context-mcp-20260820/rollback.ps1",
+  "last_confirmed_result": "P1/P2/P3/P3.1 baseline verified; P4 runtime, performance, Gateway, and browser probes passed before final Evidence generation",
+  "next_action": "publish synchronized P4 Catalog and immutable verification only after every blocking command and isolated rollback pass"
+}

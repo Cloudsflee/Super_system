@@ -1,0 +1,41 @@
+{
+  "schema_version": "aiws.v3-clean.p4-behavior-comparison.v1",
+  "baseline": {
+    "command": "git show 3f1d9e7:apps/api/src/clean/migration-service.mjs",
+    "input": {
+      "revision": "3f1d9e7",
+      "object": "apps/api/src/clean/migration-service.mjs"
+    },
+    "literal_output_sha256": "92d5af8adcda08b949aec87335bc2823e5342a9199f77a125c1a01529873fda5",
+    "exit_status": 0,
+    "behavior": {
+      "migration_004_registered": false
+    }
+  },
+  "modified": {
+    "command": "openCleanDatabase(TARGET,{targetVersion:4}); createCleanCommandRegistry({targetVersion:4})",
+    "input": {
+      "schema_family": "v3-clean",
+      "target_version": 4
+    },
+    "literal_output": "{\"user_version\":4,\"p4_tables\":[\"context_projection_jobs\",\"context_sources\",\"gateway_forward_receipts\",\"mcp_clients\"],\"registry_has_context_map\":true,\"registry_has_gateway_forward\":true}",
+    "exit_status": 0,
+    "behavior": {
+      "user_version": 4,
+      "p4_tables": [
+        "context_projection_jobs",
+        "context_sources",
+        "gateway_forward_receipts",
+        "mcp_clients"
+      ],
+      "registry_has_context_map": true,
+      "registry_has_gateway_forward": true
+    }
+  },
+  "expected_transition": {
+    "baseline_p4_registered": false,
+    "modified_user_version": 4,
+    "modified_p4_registered": true
+  },
+  "status": "passed"
+}

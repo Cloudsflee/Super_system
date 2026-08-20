@@ -1,0 +1,5230 @@
+{
+  "schema_version": "aiws.v3-clean.p4-schema-inventory.v1",
+  "family": "v3-clean",
+  "user_version": 4,
+  "migration_id": "004-context-projection-mcp",
+  "snapshot_sha256": "c15aba67f32eadf00424d8d13945b224bc6d0f1141a7ef7bec554120a224c541",
+  "tables": [
+    {
+      "name": "actors",
+      "owner": "Identity",
+      "columns": [
+        {
+          "name": "id",
+          "type": "TEXT",
+          "not_null": true,
+          "primary_key": 1
+        },
+        {
+          "name": "kind",
+          "type": "TEXT",
+          "not_null": true,
+          "primary_key": 0
+        },
+        {
+          "name": "display_name",
+          "type": "TEXT",
+          "not_null": true,
+          "primary_key": 0
+        },
+        {
+          "name": "status",
+          "type": "TEXT",
+          "not_null": true,
+          "primary_key": 0
+        },
+        {
+          "name": "metadata_json",
+          "type": "TEXT",
+          "not_null": true,
+          "primary_key": 0
+        },
+        {
+          "name": "metadata_sha256",
+          "type": "TEXT",
+          "not_null": true,
+          "primary_key": 0
+        },
+        {
+          "name": "revision",
+          "type": "INTEGER",
+          "not_null": true,
+          "primary_key": 0
+        },
+        {
+          "name": "created_at",
+          "type": "TEXT",
+          "not_null": true,
+          "primary_key": 0
+        },
+        {
+          "name": "updated_at",
+          "type": "TEXT",
+          "not_null": true,
+          "primary_key": 0
+        },
+        {
+          "name": "created_by_actor_id",
+          "type": "TEXT",
+          "not_null": false,
+          "primary_key": 0
+        },
+        {
+          "name": "updated_by_actor_id",
+          "type": "TEXT",
+          "not_null": false,
+          "primary_key": 0
+        }
+      ],
+      "foreign_keys": [
+        {
+          "from": "updated_by_actor_id",
+          "table": "actors",
+          "to": "id",
+          "on_delete": "RESTRICT"
+        },
+        {
+          "from": "created_by_actor_id",
+          "table": "actors",
+          "to": "id",
+          "on_delete": "RESTRICT"
+        }
+      ]
+    },
+    {
+      "name": "aggregate_heads",
+      "owner": "Platform",
+      "columns": [
+        {
+          "name": "aggregate_type",
+          "type": "TEXT",
+          "not_null": true,
+          "primary_key": 1
+        },
+        {
+          "name": "aggregate_id",
+          "type": "TEXT",
+          "not_null": true,
+          "primary_key": 2
+        },
+        {
+          "name": "current_revision",
+          "type": "INTEGER",
+          "not_null": true,
+          "primary_key": 0
+        },
+        {
+          "name": "current_hash",
+          "type": "TEXT",
+          "not_null": true,
+          "primary_key": 0
+        },
+        {
+          "name": "last_event_sequence",
+          "type": "INTEGER",
+          "not_null": true,
+          "primary_key": 0
+        },
+        {
+          "name": "updated_at",
+          "type": "TEXT",
+          "not_null": true,
+          "primary_key": 0
+        }
+      ],
+      "foreign_keys": []
+    },
+    {
+      "name": "aggregate_revisions",
+      "owner": "Platform",
+      "columns": [
+        {
+          "name": "id",
+          "type": "TEXT",
+          "not_null": true,
+          "primary_key": 1
+        },
+        {
+          "name": "aggregate_type",
+          "type": "TEXT",
+          "not_null": true,
+          "primary_key": 0
+        },
+        {
+          "name": "aggregate_id",
+          "type": "TEXT",
+          "not_null": true,
+          "primary_key": 0
+        },
+        {
+          "name": "revision",
+          "type": "INTEGER",
+          "not_null": true,
+          "primary_key": 0
+        },
+        {
+          "name": "payload_json",
+          "type": "TEXT",
+          "not_null": true,
+          "primary_key": 0
+        },
+        {
+          "name": "payload_sha256",
+          "type": "TEXT",
+          "not_null": true,
+          "primary_key": 0
+        },
+        {
+          "name": "operation_id",
+          "type": "TEXT",
+          "not_null": false,
+          "primary_key": 0
+        },
+        {
+          "name": "actor_id",
+          "type": "TEXT",
+          "not_null": true,
+          "primary_key": 0
+        },
+        {
+          "name": "created_at",
+          "type": "TEXT",
+          "not_null": true,
+          "primary_key": 0
+        }
+      ],
+      "foreign_keys": [
+        {
+          "from": "actor_id",
+          "table": "actors",
+          "to": "id",
+          "on_delete": "RESTRICT"
+        },
+        {
+          "from": "operation_id",
+          "table": "operations",
+          "to": "id",
+          "on_delete": "RESTRICT"
+        }
+      ]
+    },
+    {
+      "name": "audit_events",
+      "owner": "Operations",
+      "columns": [
+        {
+          "name": "id",
+          "type": "TEXT",
+          "not_null": true,
+          "primary_key": 1
+        },
+        {
+          "name": "event_id",
+          "type": "TEXT",
+          "not_null": false,
+          "primary_key": 0
+        },
+        {
+          "name": "operation_id",
+          "type": "TEXT",
+          "not_null": false,
+          "primary_key": 0
+        },
+        {
+          "name": "actor_id",
+          "type": "TEXT",
+          "not_null": true,
+          "primary_key": 0
+        },
+        {
+          "name": "action",
+          "type": "TEXT",
+          "not_null": true,
+          "primary_key": 0
+        },
+        {
+          "name": "entity_type",
+          "type": "TEXT",
+          "not_null": true,
+          "primary_key": 0
+        },
+        {
+          "name": "entity_id",
+          "type": "TEXT",
+          "not_null": true,
+          "primary_key": 0
+        },
+        {
+          "name": "data_json",
+          "type": "TEXT",
+          "not_null": true,
+          "primary_key": 0
+        },
+        {
+          "name": "data_sha256",
+          "type": "TEXT",
+          "not_null": true,
+          "primary_key": 0
+        },
+        {
+          "name": "created_at",
+          "type": "TEXT",
+          "not_null": true,
+          "primary_key": 0
+        }
+      ],
+      "foreign_keys": [
+        {
+          "from": "actor_id",
+          "table": "actors",
+          "to": "id",
+          "on_delete": "RESTRICT"
+        },
+        {
+          "from": "operation_id",
+          "table": "operations",
+          "to": "id",
+          "on_delete": "RESTRICT"
+        },
+        {
+          "from": "event_id",
+          "table": "events",
+          "to": "id",
+          "on_delete": "RESTRICT"
+        }
+      ]
+    },
+    {
+      "name": "brief_revisions",
+      "owner": "Project",
+      "columns": [
+        {
+          "name": "id",
+          "type": "TEXT",
+          "not_null": true,
+          "primary_key": 1
+        },
+        {
+          "name": "brief_id",
+          "type": "TEXT",
+          "not_null": true,
+          "primary_key": 0
+        },
+        {
+          "name": "project_id",
+          "type": "TEXT",
+          "not_null": true,
+          "primary_key": 0
+        },
+        {
+          "name": "revision",
+          "type": "INTEGER",
+          "not_null": true,
+          "primary_key": 0
+        },
+        {
+          "name": "content_json",
+          "type": "TEXT",
+          "not_null": true,
+          "primary_key": 0
+        },
+        {
+          "name": "content_sha256",
+          "type": "TEXT",
+          "not_null": true,
+          "primary_key": 0
+        },
+        {
+          "name": "template",
+          "type": "TEXT",
+          "not_null": true,
+          "primary_key": 0
+        },
+        {
+          "name": "created_at",
+          "type": "TEXT",
+          "not_null": true,
+          "primary_key": 0
+        },
+        {
+          "name": "created_by_actor_id",
+          "type": "TEXT",
+          "not_null": true,
+          "primary_key": 0
+        }
+      ],
+      "foreign_keys": [
+        {
+          "from": "created_by_actor_id",
+          "table": "actors",
+          "to": "id",
+          "on_delete": "RESTRICT"
+        },
+        {
+          "from": "project_id",
+          "table": "projects",
+          "to": "id",
+          "on_delete": "RESTRICT"
+        },
+        {
+          "from": "brief_id",
+          "table": "briefs",
+          "to": "id",
+          "on_delete": "RESTRICT"
+        }
+      ]
+    },
+    {
+      "name": "briefs",
+      "owner": "Project",
+      "columns": [
+        {
+          "name": "id",
+          "type": "TEXT",
+          "not_null": true,
+          "primary_key": 1
+        },
+        {
+          "name": "project_id",
+          "type": "TEXT",
+          "not_null": true,
+          "primary_key": 0
+        },
+        {
+          "name": "status",
+          "type": "TEXT",
+          "not_null": true,
+          "primary_key": 0
+        },
+        {
+          "name": "current_revision",
+          "type": "INTEGER",
+          "not_null": true,
+          "primary_key": 0
+        },
+        {
+          "name": "confirmed_revision",
+          "type": "INTEGER",
+          "not_null": false,
+          "primary_key": 0
+        },
+        {
+          "name": "confirmed_hash",
+          "type": "TEXT",
+          "not_null": true,
+          "primary_key": 0
+        },
+        {
+          "name": "revision",
+          "type": "INTEGER",
+          "not_null": true,
+          "primary_key": 0
+        },
+        {
+          "name": "created_at",
+          "type": "TEXT",
+          "not_null": true,
+          "primary_key": 0
+        },
+        {
+          "name": "updated_at",
+          "type": "TEXT",
+          "not_null": true,
+          "primary_key": 0
+        },
+        {
+          "name": "created_by_actor_id",
+          "type": "TEXT",
+          "not_null": true,
+          "primary_key": 0
+        },
+        {
+          "name": "updated_by_actor_id",
+          "type": "TEXT",
+          "not_null": true,
+          "primary_key": 0
+        }
+      ],
+      "foreign_keys": [
+        {
+          "from": "updated_by_actor_id",
+          "table": "actors",
+          "to": "id",
+          "on_delete": "RESTRICT"
+        },
+        {
+          "from": "created_by_actor_id",
+          "table": "actors",
+          "to": "id",
+          "on_delete": "RESTRICT"
+        },
+        {
+          "from": "project_id",
+          "table": "projects",
+          "to": "id",
+          "on_delete": "RESTRICT"
+        }
+      ]
+    },
+    {
+      "name": "cas_objects",
+      "owner": "CAS",
+      "columns": [
+        {
+          "name": "sha256",
+          "type": "TEXT",
+          "not_null": true,
+          "primary_key": 1
+        },
+        {
+          "name": "byte_length",
+          "type": "INTEGER",
+          "not_null": true,
+          "primary_key": 0
+        },
+        {
+          "name": "media_type",
+          "type": "TEXT",
+          "not_null": true,
+          "primary_key": 0
+        },
+        {
+          "name": "relative_key",
+          "type": "TEXT",
+          "not_null": true,
+          "primary_key": 0
+        },
+        {
+          "name": "metadata_json",
+          "type": "TEXT",
+          "not_null": true,
+          "primary_key": 0
+        },
+        {
+          "name": "status",
+          "type": "TEXT",
+          "not_null": true,
+          "primary_key": 0
+        },
+        {
+          "name": "created_at",
+          "type": "TEXT",
+          "not_null": true,
+          "primary_key": 0
+        },
+        {
+          "name": "tombstoned_at",
+          "type": "TEXT",
+          "not_null": false,
+          "primary_key": 0
+        }
+      ],
+      "foreign_keys": []
+    },
+    {
+      "name": "context_document_versions",
+      "owner": "Context",
+      "columns": [
+        {
+          "name": "id",
+          "type": "TEXT",
+          "not_null": true,
+          "primary_key": 1
+        },
+        {
+          "name": "project_id",
+          "type": "TEXT",
+          "not_null": true,
+          "primary_key": 0
+        },
+        {
+          "name": "node_id",
+          "type": "TEXT",
+          "not_null": true,
+          "primary_key": 0
+        },
+        {
+          "name": "version",
+          "type": "INTEGER",
+          "not_null": true,
+          "primary_key": 0
+        },
+        {
+          "name": "source_revision",
+          "type": "TEXT",
+          "not_null": true,
+          "primary_key": 0
+        },
+        {
+          "name": "source_hash",
+          "type": "TEXT",
+          "not_null": true,
+          "primary_key": 0
+        },
+        {
+          "name": "content_hash",
+          "type": "TEXT",
+          "not_null": true,
+          "primary_key": 0
+        },
+        {
+          "name": "cas_hash",
+          "type": "TEXT",
+          "not_null": true,
+          "primary_key": 0
+        },
+        {
+          "name": "cas_relative_key",
+          "type": "TEXT",
+          "not_null": true,
+          "primary_key": 0
+        },
+        {
+          "name": "token_estimate",
+          "type": "INTEGER",
+          "not_null": true,
+          "primary_key": 0
+        },
+        {
+          "name": "renderer_version",
+          "type": "TEXT",
+          "not_null": true,
+          "primary_key": 0
+        },
+        {
+          "name": "created_at",
+          "type": "TEXT",
+          "not_null": true,
+          "primary_key": 0
+        },
+        {
+          "name": "created_by_actor_id",
+          "type": "TEXT",
+          "not_null": true,
+          "primary_key": 0
+        }
+      ],
+      "foreign_keys": [
+        {
+          "from": "created_by_actor_id",
+          "table": "actors",
+          "to": "id",
+          "on_delete": "RESTRICT"
+        },
+        {
+          "from": "node_id",
+          "table": "context_nodes",
+          "to": "id",
+          "on_delete": "RESTRICT"
+        },
+        {
+          "from": "project_id",
+          "table": "projects",
+          "to": "id",
+          "on_delete": "RESTRICT"
+        }
+      ]
+    },
+    {
+      "name": "context_edges",
+      "owner": "Context",
+      "columns": [
+        {
+          "name": "id",
+          "type": "TEXT",
+          "not_null": true,
+          "primary_key": 1
+        },
+        {
+          "name": "project_id",
+          "type": "TEXT",
+          "not_null": true,
+          "primary_key": 0
+        },
+        {
+          "name": "parent_node_id",
+          "type": "TEXT",
+          "not_null": true,
+          "primary_key": 0
+        },
+        {
+          "name": "child_node_id",
+          "type": "TEXT",
+          "not_null": true,
+          "primary_key": 0
+        },
+        {
+          "name": "relation",
+          "type": "TEXT",
+          "not_null": true,
+          "primary_key": 0
+        },
+        {
+          "name": "order_index",
+          "type": "INTEGER",
+          "not_null": true,
+          "primary_key": 0
+        },
+        {
+          "name": "metadata_json",
+          "type": "TEXT",
+          "not_null": true,
+          "primary_key": 0
+        },
+        {
+          "name": "created_at",
+          "type": "TEXT",
+          "not_null": true,
+          "primary_key": 0
+        }
+      ],
+      "foreign_keys": [
+        {
+          "from": "child_node_id",
+          "table": "context_nodes",
+          "to": "id",
+          "on_delete": "RESTRICT"
+        },
+        {
+          "from": "parent_node_id",
+          "table": "context_nodes",
+          "to": "id",
+          "on_delete": "RESTRICT"
+        },
+        {
+          "from": "project_id",
+          "table": "projects",
+          "to": "id",
+          "on_delete": "RESTRICT"
+        }
+      ]
+    },
+    {
+      "name": "context_index_snapshots",
+      "owner": "Projection",
+      "columns": [
+        {
+          "name": "id",
+          "type": "TEXT",
+          "not_null": true,
+          "primary_key": 1
+        },
+        {
+          "name": "project_id",
+          "type": "TEXT",
+          "not_null": true,
+          "primary_key": 0
+        },
+        {
+          "name": "schema_version",
+          "type": "TEXT",
+          "not_null": true,
+          "primary_key": 0
+        },
+        {
+          "name": "snapshot_hash",
+          "type": "TEXT",
+          "not_null": true,
+          "primary_key": 0
+        },
+        {
+          "name": "index_hash",
+          "type": "TEXT",
+          "not_null": true,
+          "primary_key": 0
+        },
+        {
+          "name": "payload_cas_hash",
+          "type": "TEXT",
+          "not_null": true,
+          "primary_key": 0
+        },
+        {
+          "name": "document_count",
+          "type": "INTEGER",
+          "not_null": true,
+          "primary_key": 0
+        },
+        {
+          "name": "created_at",
+          "type": "TEXT",
+          "not_null": true,
+          "primary_key": 0
+        }
+      ],
+      "foreign_keys": [
+        {
+          "from": "project_id",
+          "table": "projects",
+          "to": "id",
+          "on_delete": "RESTRICT"
+        }
+      ]
+    },
+    {
+      "name": "context_nodes",
+      "owner": "Context",
+      "columns": [
+        {
+          "name": "id",
+          "type": "TEXT",
+          "not_null": true,
+          "primary_key": 1
+        },
+        {
+          "name": "project_id",
+          "type": "TEXT",
+          "not_null": true,
+          "primary_key": 0
+        },
+        {
+          "name": "stable_uri",
+          "type": "TEXT",
+          "not_null": true,
+          "primary_key": 0
+        },
+        {
+          "name": "source_id",
+          "type": "TEXT",
+          "not_null": true,
+          "primary_key": 0
+        },
+        {
+          "name": "parent_id",
+          "type": "TEXT",
+          "not_null": false,
+          "primary_key": 0
+        },
+        {
+          "name": "node_kind",
+          "type": "TEXT",
+          "not_null": true,
+          "primary_key": 0
+        },
+        {
+          "name": "title",
+          "type": "TEXT",
+          "not_null": true,
+          "primary_key": 0
+        },
+        {
+          "name": "source_revision",
+          "type": "TEXT",
+          "not_null": true,
+          "primary_key": 0
+        },
+        {
+          "name": "source_hash",
+          "type": "TEXT",
+          "not_null": true,
+          "primary_key": 0
+        },
+        {
+          "name": "sensitivity",
+          "type": "TEXT",
+          "not_null": true,
+          "primary_key": 0
+        },
+        {
+          "name": "freshness_status",
+          "type": "TEXT",
+          "not_null": true,
+          "primary_key": 0
+        },
+        {
+          "name": "required_scopes_json",
+          "type": "TEXT",
+          "not_null": true,
+          "primary_key": 0
+        },
+        {
+          "name": "sort_json",
+          "type": "TEXT",
+          "not_null": true,
+          "primary_key": 0
+        },
+        {
+          "name": "current_document_version_id",
+          "type": "TEXT",
+          "not_null": false,
+          "primary_key": 0
+        },
+        {
+          "name": "status",
+          "type": "TEXT",
+          "not_null": true,
+          "primary_key": 0
+        },
+        {
+          "name": "revision",
+          "type": "INTEGER",
+          "not_null": true,
+          "primary_key": 0
+        },
+        {
+          "name": "created_at",
+          "type": "TEXT",
+          "not_null": true,
+          "primary_key": 0
+        },
+        {
+          "name": "updated_at",
+          "type": "TEXT",
+          "not_null": true,
+          "primary_key": 0
+        },
+        {
+          "name": "created_by_actor_id",
+          "type": "TEXT",
+          "not_null": true,
+          "primary_key": 0
+        },
+        {
+          "name": "updated_by_actor_id",
+          "type": "TEXT",
+          "not_null": true,
+          "primary_key": 0
+        }
+      ],
+      "foreign_keys": [
+        {
+          "from": "updated_by_actor_id",
+          "table": "actors",
+          "to": "id",
+          "on_delete": "RESTRICT"
+        },
+        {
+          "from": "created_by_actor_id",
+          "table": "actors",
+          "to": "id",
+          "on_delete": "RESTRICT"
+        },
+        {
+          "from": "parent_id",
+          "table": "context_nodes",
+          "to": "id",
+          "on_delete": "RESTRICT"
+        },
+        {
+          "from": "source_id",
+          "table": "context_sources",
+          "to": "id",
+          "on_delete": "RESTRICT"
+        },
+        {
+          "from": "project_id",
+          "table": "projects",
+          "to": "id",
+          "on_delete": "RESTRICT"
+        }
+      ]
+    },
+    {
+      "name": "context_packs",
+      "owner": "Context",
+      "columns": [
+        {
+          "name": "id",
+          "type": "TEXT",
+          "not_null": true,
+          "primary_key": 1
+        },
+        {
+          "name": "project_id",
+          "type": "TEXT",
+          "not_null": true,
+          "primary_key": 0
+        },
+        {
+          "name": "selection_id",
+          "type": "TEXT",
+          "not_null": true,
+          "primary_key": 0
+        },
+        {
+          "name": "schema_version",
+          "type": "TEXT",
+          "not_null": true,
+          "primary_key": 0
+        },
+        {
+          "name": "pack_hash",
+          "type": "TEXT",
+          "not_null": true,
+          "primary_key": 0
+        },
+        {
+          "name": "payload_cas_hash",
+          "type": "TEXT",
+          "not_null": true,
+          "primary_key": 0
+        },
+        {
+          "name": "memory_manifest_json",
+          "type": "TEXT",
+          "not_null": true,
+          "primary_key": 0
+        },
+        {
+          "name": "status",
+          "type": "TEXT",
+          "not_null": true,
+          "primary_key": 0
+        },
+        {
+          "name": "revision",
+          "type": "INTEGER",
+          "not_null": true,
+          "primary_key": 0
+        },
+        {
+          "name": "created_at",
+          "type": "TEXT",
+          "not_null": true,
+          "primary_key": 0
+        },
+        {
+          "name": "created_by_actor_id",
+          "type": "TEXT",
+          "not_null": true,
+          "primary_key": 0
+        }
+      ],
+      "foreign_keys": [
+        {
+          "from": "created_by_actor_id",
+          "table": "actors",
+          "to": "id",
+          "on_delete": "RESTRICT"
+        },
+        {
+          "from": "selection_id",
+          "table": "context_selections",
+          "to": "id",
+          "on_delete": "RESTRICT"
+        },
+        {
+          "from": "project_id",
+          "table": "projects",
+          "to": "id",
+          "on_delete": "RESTRICT"
+        }
+      ]
+    },
+    {
+      "name": "context_policies",
+      "owner": "Context",
+      "columns": [
+        {
+          "name": "id",
+          "type": "TEXT",
+          "not_null": true,
+          "primary_key": 1
+        },
+        {
+          "name": "project_id",
+          "type": "TEXT",
+          "not_null": true,
+          "primary_key": 0
+        },
+        {
+          "name": "policy_json",
+          "type": "TEXT",
+          "not_null": true,
+          "primary_key": 0
+        },
+        {
+          "name": "policy_sha256",
+          "type": "TEXT",
+          "not_null": true,
+          "primary_key": 0
+        },
+        {
+          "name": "revision",
+          "type": "INTEGER",
+          "not_null": true,
+          "primary_key": 0
+        },
+        {
+          "name": "created_at",
+          "type": "TEXT",
+          "not_null": true,
+          "primary_key": 0
+        },
+        {
+          "name": "updated_at",
+          "type": "TEXT",
+          "not_null": true,
+          "primary_key": 0
+        },
+        {
+          "name": "created_by_actor_id",
+          "type": "TEXT",
+          "not_null": true,
+          "primary_key": 0
+        },
+        {
+          "name": "updated_by_actor_id",
+          "type": "TEXT",
+          "not_null": true,
+          "primary_key": 0
+        }
+      ],
+      "foreign_keys": [
+        {
+          "from": "updated_by_actor_id",
+          "table": "actors",
+          "to": "id",
+          "on_delete": "RESTRICT"
+        },
+        {
+          "from": "created_by_actor_id",
+          "table": "actors",
+          "to": "id",
+          "on_delete": "RESTRICT"
+        },
+        {
+          "from": "project_id",
+          "table": "projects",
+          "to": "id",
+          "on_delete": "RESTRICT"
+        }
+      ]
+    },
+    {
+      "name": "context_projection_jobs",
+      "owner": "Projection",
+      "columns": [
+        {
+          "name": "id",
+          "type": "TEXT",
+          "not_null": true,
+          "primary_key": 1
+        },
+        {
+          "name": "project_id",
+          "type": "TEXT",
+          "not_null": true,
+          "primary_key": 0
+        },
+        {
+          "name": "operation_id",
+          "type": "TEXT",
+          "not_null": false,
+          "primary_key": 0
+        },
+        {
+          "name": "status",
+          "type": "TEXT",
+          "not_null": true,
+          "primary_key": 0
+        },
+        {
+          "name": "mode",
+          "type": "TEXT",
+          "not_null": true,
+          "primary_key": 0
+        },
+        {
+          "name": "input_hash",
+          "type": "TEXT",
+          "not_null": true,
+          "primary_key": 0
+        },
+        {
+          "name": "snapshot_hash",
+          "type": "TEXT",
+          "not_null": true,
+          "primary_key": 0
+        },
+        {
+          "name": "index_hash",
+          "type": "TEXT",
+          "not_null": true,
+          "primary_key": 0
+        },
+        {
+          "name": "cursor",
+          "type": "INTEGER",
+          "not_null": true,
+          "primary_key": 0
+        },
+        {
+          "name": "lease_owner",
+          "type": "TEXT",
+          "not_null": true,
+          "primary_key": 0
+        },
+        {
+          "name": "fencing_token",
+          "type": "TEXT",
+          "not_null": true,
+          "primary_key": 0
+        },
+        {
+          "name": "lease_expires_at",
+          "type": "TEXT",
+          "not_null": false,
+          "primary_key": 0
+        },
+        {
+          "name": "attempt",
+          "type": "INTEGER",
+          "not_null": true,
+          "primary_key": 0
+        },
+        {
+          "name": "retry_of_job_id",
+          "type": "TEXT",
+          "not_null": false,
+          "primary_key": 0
+        },
+        {
+          "name": "stats_json",
+          "type": "TEXT",
+          "not_null": true,
+          "primary_key": 0
+        },
+        {
+          "name": "error_code",
+          "type": "TEXT",
+          "not_null": true,
+          "primary_key": 0
+        },
+        {
+          "name": "error_details_json",
+          "type": "TEXT",
+          "not_null": true,
+          "primary_key": 0
+        },
+        {
+          "name": "revision",
+          "type": "INTEGER",
+          "not_null": true,
+          "primary_key": 0
+        },
+        {
+          "name": "created_at",
+          "type": "TEXT",
+          "not_null": true,
+          "primary_key": 0
+        },
+        {
+          "name": "updated_at",
+          "type": "TEXT",
+          "not_null": true,
+          "primary_key": 0
+        },
+        {
+          "name": "completed_at",
+          "type": "TEXT",
+          "not_null": false,
+          "primary_key": 0
+        },
+        {
+          "name": "cancelled_at",
+          "type": "TEXT",
+          "not_null": false,
+          "primary_key": 0
+        },
+        {
+          "name": "created_by_actor_id",
+          "type": "TEXT",
+          "not_null": true,
+          "primary_key": 0
+        },
+        {
+          "name": "updated_by_actor_id",
+          "type": "TEXT",
+          "not_null": true,
+          "primary_key": 0
+        }
+      ],
+      "foreign_keys": [
+        {
+          "from": "updated_by_actor_id",
+          "table": "actors",
+          "to": "id",
+          "on_delete": "RESTRICT"
+        },
+        {
+          "from": "created_by_actor_id",
+          "table": "actors",
+          "to": "id",
+          "on_delete": "RESTRICT"
+        },
+        {
+          "from": "retry_of_job_id",
+          "table": "context_projection_jobs",
+          "to": "id",
+          "on_delete": "RESTRICT"
+        },
+        {
+          "from": "operation_id",
+          "table": "operations",
+          "to": "id",
+          "on_delete": "RESTRICT"
+        },
+        {
+          "from": "project_id",
+          "table": "projects",
+          "to": "id",
+          "on_delete": "RESTRICT"
+        }
+      ]
+    },
+    {
+      "name": "context_selections",
+      "owner": "Context",
+      "columns": [
+        {
+          "name": "id",
+          "type": "TEXT",
+          "not_null": true,
+          "primary_key": 1
+        },
+        {
+          "name": "project_id",
+          "type": "TEXT",
+          "not_null": true,
+          "primary_key": 0
+        },
+        {
+          "name": "query",
+          "type": "TEXT",
+          "not_null": true,
+          "primary_key": 0
+        },
+        {
+          "name": "token_budget",
+          "type": "INTEGER",
+          "not_null": true,
+          "primary_key": 0
+        },
+        {
+          "name": "policy_revision",
+          "type": "INTEGER",
+          "not_null": true,
+          "primary_key": 0
+        },
+        {
+          "name": "input_snapshot_hash",
+          "type": "TEXT",
+          "not_null": true,
+          "primary_key": 0
+        },
+        {
+          "name": "included_json",
+          "type": "TEXT",
+          "not_null": true,
+          "primary_key": 0
+        },
+        {
+          "name": "excluded_json",
+          "type": "TEXT",
+          "not_null": true,
+          "primary_key": 0
+        },
+        {
+          "name": "token_used",
+          "type": "INTEGER",
+          "not_null": true,
+          "primary_key": 0
+        },
+        {
+          "name": "selection_hash",
+          "type": "TEXT",
+          "not_null": true,
+          "primary_key": 0
+        },
+        {
+          "name": "revision",
+          "type": "INTEGER",
+          "not_null": true,
+          "primary_key": 0
+        },
+        {
+          "name": "created_at",
+          "type": "TEXT",
+          "not_null": true,
+          "primary_key": 0
+        },
+        {
+          "name": "created_by_actor_id",
+          "type": "TEXT",
+          "not_null": true,
+          "primary_key": 0
+        }
+      ],
+      "foreign_keys": [
+        {
+          "from": "created_by_actor_id",
+          "table": "actors",
+          "to": "id",
+          "on_delete": "RESTRICT"
+        },
+        {
+          "from": "project_id",
+          "table": "projects",
+          "to": "id",
+          "on_delete": "RESTRICT"
+        }
+      ]
+    },
+    {
+      "name": "context_sources",
+      "owner": "Context",
+      "columns": [
+        {
+          "name": "id",
+          "type": "TEXT",
+          "not_null": true,
+          "primary_key": 1
+        },
+        {
+          "name": "project_id",
+          "type": "TEXT",
+          "not_null": true,
+          "primary_key": 0
+        },
+        {
+          "name": "source_type",
+          "type": "TEXT",
+          "not_null": true,
+          "primary_key": 0
+        },
+        {
+          "name": "canonical_uri",
+          "type": "TEXT",
+          "not_null": true,
+          "primary_key": 0
+        },
+        {
+          "name": "title",
+          "type": "TEXT",
+          "not_null": true,
+          "primary_key": 0
+        },
+        {
+          "name": "adapter",
+          "type": "TEXT",
+          "not_null": true,
+          "primary_key": 0
+        },
+        {
+          "name": "source_revision",
+          "type": "TEXT",
+          "not_null": true,
+          "primary_key": 0
+        },
+        {
+          "name": "source_hash",
+          "type": "TEXT",
+          "not_null": true,
+          "primary_key": 0
+        },
+        {
+          "name": "cas_hash",
+          "type": "TEXT",
+          "not_null": true,
+          "primary_key": 0
+        },
+        {
+          "name": "sensitivity",
+          "type": "TEXT",
+          "not_null": true,
+          "primary_key": 0
+        },
+        {
+          "name": "freshness_status",
+          "type": "TEXT",
+          "not_null": true,
+          "primary_key": 0
+        },
+        {
+          "name": "metadata_json",
+          "type": "TEXT",
+          "not_null": true,
+          "primary_key": 0
+        },
+        {
+          "name": "metadata_sha256",
+          "type": "TEXT",
+          "not_null": true,
+          "primary_key": 0
+        },
+        {
+          "name": "status",
+          "type": "TEXT",
+          "not_null": true,
+          "primary_key": 0
+        },
+        {
+          "name": "revision",
+          "type": "INTEGER",
+          "not_null": true,
+          "primary_key": 0
+        },
+        {
+          "name": "created_at",
+          "type": "TEXT",
+          "not_null": true,
+          "primary_key": 0
+        },
+        {
+          "name": "updated_at",
+          "type": "TEXT",
+          "not_null": true,
+          "primary_key": 0
+        },
+        {
+          "name": "created_by_actor_id",
+          "type": "TEXT",
+          "not_null": true,
+          "primary_key": 0
+        },
+        {
+          "name": "updated_by_actor_id",
+          "type": "TEXT",
+          "not_null": true,
+          "primary_key": 0
+        }
+      ],
+      "foreign_keys": [
+        {
+          "from": "updated_by_actor_id",
+          "table": "actors",
+          "to": "id",
+          "on_delete": "RESTRICT"
+        },
+        {
+          "from": "created_by_actor_id",
+          "table": "actors",
+          "to": "id",
+          "on_delete": "RESTRICT"
+        },
+        {
+          "from": "project_id",
+          "table": "projects",
+          "to": "id",
+          "on_delete": "RESTRICT"
+        }
+      ]
+    },
+    {
+      "name": "credential_refs",
+      "owner": "Setup",
+      "columns": [
+        {
+          "name": "id",
+          "type": "TEXT",
+          "not_null": true,
+          "primary_key": 1
+        },
+        {
+          "name": "owner_actor_id",
+          "type": "TEXT",
+          "not_null": true,
+          "primary_key": 0
+        },
+        {
+          "name": "provider",
+          "type": "TEXT",
+          "not_null": true,
+          "primary_key": 0
+        },
+        {
+          "name": "scope_json",
+          "type": "TEXT",
+          "not_null": true,
+          "primary_key": 0
+        },
+        {
+          "name": "status",
+          "type": "TEXT",
+          "not_null": true,
+          "primary_key": 0
+        },
+        {
+          "name": "external_ref",
+          "type": "TEXT",
+          "not_null": true,
+          "primary_key": 0
+        },
+        {
+          "name": "metadata_json",
+          "type": "TEXT",
+          "not_null": true,
+          "primary_key": 0
+        },
+        {
+          "name": "metadata_sha256",
+          "type": "TEXT",
+          "not_null": true,
+          "primary_key": 0
+        },
+        {
+          "name": "revision",
+          "type": "INTEGER",
+          "not_null": true,
+          "primary_key": 0
+        },
+        {
+          "name": "created_at",
+          "type": "TEXT",
+          "not_null": true,
+          "primary_key": 0
+        },
+        {
+          "name": "updated_at",
+          "type": "TEXT",
+          "not_null": true,
+          "primary_key": 0
+        },
+        {
+          "name": "created_by_actor_id",
+          "type": "TEXT",
+          "not_null": false,
+          "primary_key": 0
+        },
+        {
+          "name": "updated_by_actor_id",
+          "type": "TEXT",
+          "not_null": false,
+          "primary_key": 0
+        },
+        {
+          "name": "deleted_at",
+          "type": "TEXT",
+          "not_null": false,
+          "primary_key": 0
+        }
+      ],
+      "foreign_keys": [
+        {
+          "from": "updated_by_actor_id",
+          "table": "actors",
+          "to": "id",
+          "on_delete": "RESTRICT"
+        },
+        {
+          "from": "created_by_actor_id",
+          "table": "actors",
+          "to": "id",
+          "on_delete": "RESTRICT"
+        },
+        {
+          "from": "owner_actor_id",
+          "table": "actors",
+          "to": "id",
+          "on_delete": "RESTRICT"
+        }
+      ]
+    },
+    {
+      "name": "event_cursors",
+      "owner": "Operations",
+      "columns": [
+        {
+          "name": "actor_id",
+          "type": "TEXT",
+          "not_null": true,
+          "primary_key": 1
+        },
+        {
+          "name": "consumer_id",
+          "type": "TEXT",
+          "not_null": true,
+          "primary_key": 2
+        },
+        {
+          "name": "stream",
+          "type": "TEXT",
+          "not_null": true,
+          "primary_key": 3
+        },
+        {
+          "name": "project_id",
+          "type": "TEXT",
+          "not_null": false,
+          "primary_key": 0
+        },
+        {
+          "name": "cursor_sequence",
+          "type": "INTEGER",
+          "not_null": true,
+          "primary_key": 0
+        },
+        {
+          "name": "revision",
+          "type": "INTEGER",
+          "not_null": true,
+          "primary_key": 0
+        },
+        {
+          "name": "expires_at",
+          "type": "TEXT",
+          "not_null": true,
+          "primary_key": 0
+        },
+        {
+          "name": "updated_at",
+          "type": "TEXT",
+          "not_null": true,
+          "primary_key": 0
+        }
+      ],
+      "foreign_keys": [
+        {
+          "from": "actor_id",
+          "table": "actors",
+          "to": "id",
+          "on_delete": "RESTRICT"
+        }
+      ]
+    },
+    {
+      "name": "events",
+      "owner": "Operations",
+      "columns": [
+        {
+          "name": "id",
+          "type": "TEXT",
+          "not_null": true,
+          "primary_key": 0
+        },
+        {
+          "name": "sequence",
+          "type": "INTEGER",
+          "not_null": false,
+          "primary_key": 1
+        },
+        {
+          "name": "type",
+          "type": "TEXT",
+          "not_null": true,
+          "primary_key": 0
+        },
+        {
+          "name": "aggregate_type",
+          "type": "TEXT",
+          "not_null": true,
+          "primary_key": 0
+        },
+        {
+          "name": "aggregate_id",
+          "type": "TEXT",
+          "not_null": true,
+          "primary_key": 0
+        },
+        {
+          "name": "aggregate_revision",
+          "type": "INTEGER",
+          "not_null": true,
+          "primary_key": 0
+        },
+        {
+          "name": "operation_id",
+          "type": "TEXT",
+          "not_null": false,
+          "primary_key": 0
+        },
+        {
+          "name": "actor_id",
+          "type": "TEXT",
+          "not_null": true,
+          "primary_key": 0
+        },
+        {
+          "name": "project_id",
+          "type": "TEXT",
+          "not_null": false,
+          "primary_key": 0
+        },
+        {
+          "name": "occurred_at",
+          "type": "TEXT",
+          "not_null": true,
+          "primary_key": 0
+        },
+        {
+          "name": "data_json",
+          "type": "TEXT",
+          "not_null": true,
+          "primary_key": 0
+        },
+        {
+          "name": "data_sha256",
+          "type": "TEXT",
+          "not_null": true,
+          "primary_key": 0
+        },
+        {
+          "name": "redactions_json",
+          "type": "TEXT",
+          "not_null": true,
+          "primary_key": 0
+        }
+      ],
+      "foreign_keys": [
+        {
+          "from": "actor_id",
+          "table": "actors",
+          "to": "id",
+          "on_delete": "RESTRICT"
+        },
+        {
+          "from": "operation_id",
+          "table": "operations",
+          "to": "id",
+          "on_delete": "RESTRICT"
+        }
+      ]
+    },
+    {
+      "name": "exchange_grants",
+      "owner": "Exchange",
+      "columns": [
+        {
+          "name": "id",
+          "type": "TEXT",
+          "not_null": true,
+          "primary_key": 1
+        },
+        {
+          "name": "source_project_id",
+          "type": "TEXT",
+          "not_null": true,
+          "primary_key": 0
+        },
+        {
+          "name": "target_project_id",
+          "type": "TEXT",
+          "not_null": true,
+          "primary_key": 0
+        },
+        {
+          "name": "grantee_actor_id",
+          "type": "TEXT",
+          "not_null": false,
+          "primary_key": 0
+        },
+        {
+          "name": "scope_json",
+          "type": "TEXT",
+          "not_null": true,
+          "primary_key": 0
+        },
+        {
+          "name": "status",
+          "type": "TEXT",
+          "not_null": true,
+          "primary_key": 0
+        },
+        {
+          "name": "expires_at",
+          "type": "TEXT",
+          "not_null": false,
+          "primary_key": 0
+        },
+        {
+          "name": "revision",
+          "type": "INTEGER",
+          "not_null": true,
+          "primary_key": 0
+        },
+        {
+          "name": "created_at",
+          "type": "TEXT",
+          "not_null": true,
+          "primary_key": 0
+        },
+        {
+          "name": "updated_at",
+          "type": "TEXT",
+          "not_null": true,
+          "primary_key": 0
+        },
+        {
+          "name": "created_by_actor_id",
+          "type": "TEXT",
+          "not_null": false,
+          "primary_key": 0
+        },
+        {
+          "name": "updated_by_actor_id",
+          "type": "TEXT",
+          "not_null": false,
+          "primary_key": 0
+        },
+        {
+          "name": "deleted_at",
+          "type": "TEXT",
+          "not_null": false,
+          "primary_key": 0
+        },
+        {
+          "name": "request_id",
+          "type": "TEXT",
+          "not_null": false,
+          "primary_key": 0
+        },
+        {
+          "name": "source_approver_actor_id",
+          "type": "TEXT",
+          "not_null": false,
+          "primary_key": 0
+        },
+        {
+          "name": "target_approver_actor_id",
+          "type": "TEXT",
+          "not_null": false,
+          "primary_key": 0
+        },
+        {
+          "name": "source_approved_at",
+          "type": "TEXT",
+          "not_null": false,
+          "primary_key": 0
+        },
+        {
+          "name": "target_approved_at",
+          "type": "TEXT",
+          "not_null": false,
+          "primary_key": 0
+        },
+        {
+          "name": "revoked_at",
+          "type": "TEXT",
+          "not_null": false,
+          "primary_key": 0
+        },
+        {
+          "name": "revoked_by_actor_id",
+          "type": "TEXT",
+          "not_null": false,
+          "primary_key": 0
+        }
+      ],
+      "foreign_keys": [
+        {
+          "from": "revoked_by_actor_id",
+          "table": "actors",
+          "to": "id",
+          "on_delete": "RESTRICT"
+        },
+        {
+          "from": "target_approver_actor_id",
+          "table": "actors",
+          "to": "id",
+          "on_delete": "RESTRICT"
+        },
+        {
+          "from": "source_approver_actor_id",
+          "table": "actors",
+          "to": "id",
+          "on_delete": "RESTRICT"
+        },
+        {
+          "from": "request_id",
+          "table": "exchange_requests",
+          "to": "id",
+          "on_delete": "RESTRICT"
+        },
+        {
+          "from": "updated_by_actor_id",
+          "table": "actors",
+          "to": "id",
+          "on_delete": "RESTRICT"
+        },
+        {
+          "from": "created_by_actor_id",
+          "table": "actors",
+          "to": "id",
+          "on_delete": "RESTRICT"
+        },
+        {
+          "from": "grantee_actor_id",
+          "table": "actors",
+          "to": "id",
+          "on_delete": "RESTRICT"
+        }
+      ]
+    },
+    {
+      "name": "exchange_requests",
+      "owner": "Exchange",
+      "columns": [
+        {
+          "name": "id",
+          "type": "TEXT",
+          "not_null": true,
+          "primary_key": 1
+        },
+        {
+          "name": "source_project_id",
+          "type": "TEXT",
+          "not_null": true,
+          "primary_key": 0
+        },
+        {
+          "name": "target_project_id",
+          "type": "TEXT",
+          "not_null": true,
+          "primary_key": 0
+        },
+        {
+          "name": "requester_actor_id",
+          "type": "TEXT",
+          "not_null": true,
+          "primary_key": 0
+        },
+        {
+          "name": "source_approver_actor_id",
+          "type": "TEXT",
+          "not_null": false,
+          "primary_key": 0
+        },
+        {
+          "name": "target_approver_actor_id",
+          "type": "TEXT",
+          "not_null": false,
+          "primary_key": 0
+        },
+        {
+          "name": "source_approved_at",
+          "type": "TEXT",
+          "not_null": false,
+          "primary_key": 0
+        },
+        {
+          "name": "target_approved_at",
+          "type": "TEXT",
+          "not_null": false,
+          "primary_key": 0
+        },
+        {
+          "name": "scope_json",
+          "type": "TEXT",
+          "not_null": true,
+          "primary_key": 0
+        },
+        {
+          "name": "status",
+          "type": "TEXT",
+          "not_null": true,
+          "primary_key": 0
+        },
+        {
+          "name": "expires_at",
+          "type": "TEXT",
+          "not_null": false,
+          "primary_key": 0
+        },
+        {
+          "name": "grant_id",
+          "type": "TEXT",
+          "not_null": false,
+          "primary_key": 0
+        },
+        {
+          "name": "revision",
+          "type": "INTEGER",
+          "not_null": true,
+          "primary_key": 0
+        },
+        {
+          "name": "created_at",
+          "type": "TEXT",
+          "not_null": true,
+          "primary_key": 0
+        },
+        {
+          "name": "updated_at",
+          "type": "TEXT",
+          "not_null": true,
+          "primary_key": 0
+        },
+        {
+          "name": "created_by_actor_id",
+          "type": "TEXT",
+          "not_null": true,
+          "primary_key": 0
+        },
+        {
+          "name": "updated_by_actor_id",
+          "type": "TEXT",
+          "not_null": true,
+          "primary_key": 0
+        }
+      ],
+      "foreign_keys": [
+        {
+          "from": "updated_by_actor_id",
+          "table": "actors",
+          "to": "id",
+          "on_delete": "RESTRICT"
+        },
+        {
+          "from": "created_by_actor_id",
+          "table": "actors",
+          "to": "id",
+          "on_delete": "RESTRICT"
+        },
+        {
+          "from": "target_approver_actor_id",
+          "table": "actors",
+          "to": "id",
+          "on_delete": "RESTRICT"
+        },
+        {
+          "from": "source_approver_actor_id",
+          "table": "actors",
+          "to": "id",
+          "on_delete": "RESTRICT"
+        },
+        {
+          "from": "requester_actor_id",
+          "table": "actors",
+          "to": "id",
+          "on_delete": "RESTRICT"
+        },
+        {
+          "from": "target_project_id",
+          "table": "projects",
+          "to": "id",
+          "on_delete": "RESTRICT"
+        },
+        {
+          "from": "source_project_id",
+          "table": "projects",
+          "to": "id",
+          "on_delete": "RESTRICT"
+        }
+      ]
+    },
+    {
+      "name": "gateway_forward_receipts",
+      "owner": "Gateway",
+      "columns": [
+        {
+          "name": "id",
+          "type": "TEXT",
+          "not_null": true,
+          "primary_key": 1
+        },
+        {
+          "name": "gateway_id",
+          "type": "TEXT",
+          "not_null": true,
+          "primary_key": 0
+        },
+        {
+          "name": "nonce_hash",
+          "type": "TEXT",
+          "not_null": true,
+          "primary_key": 0
+        },
+        {
+          "name": "command_id",
+          "type": "TEXT",
+          "not_null": true,
+          "primary_key": 0
+        },
+        {
+          "name": "request_hash",
+          "type": "TEXT",
+          "not_null": true,
+          "primary_key": 0
+        },
+        {
+          "name": "response_hash",
+          "type": "TEXT",
+          "not_null": true,
+          "primary_key": 0
+        },
+        {
+          "name": "decision",
+          "type": "TEXT",
+          "not_null": true,
+          "primary_key": 0
+        },
+        {
+          "name": "operation_id",
+          "type": "TEXT",
+          "not_null": false,
+          "primary_key": 0
+        },
+        {
+          "name": "created_at",
+          "type": "TEXT",
+          "not_null": true,
+          "primary_key": 0
+        }
+      ],
+      "foreign_keys": [
+        {
+          "from": "operation_id",
+          "table": "operations",
+          "to": "id",
+          "on_delete": "RESTRICT"
+        }
+      ]
+    },
+    {
+      "name": "idempotency_keys",
+      "owner": "Operations",
+      "columns": [
+        {
+          "name": "actor_id",
+          "type": "TEXT",
+          "not_null": true,
+          "primary_key": 1
+        },
+        {
+          "name": "command_id",
+          "type": "TEXT",
+          "not_null": true,
+          "primary_key": 2
+        },
+        {
+          "name": "idempotency_key",
+          "type": "TEXT",
+          "not_null": true,
+          "primary_key": 3
+        },
+        {
+          "name": "request_hash",
+          "type": "TEXT",
+          "not_null": true,
+          "primary_key": 0
+        },
+        {
+          "name": "response_status",
+          "type": "INTEGER",
+          "not_null": false,
+          "primary_key": 0
+        },
+        {
+          "name": "response_json",
+          "type": "TEXT",
+          "not_null": false,
+          "primary_key": 0
+        },
+        {
+          "name": "operation_id",
+          "type": "TEXT",
+          "not_null": false,
+          "primary_key": 0
+        },
+        {
+          "name": "expires_at",
+          "type": "TEXT",
+          "not_null": true,
+          "primary_key": 0
+        },
+        {
+          "name": "created_at",
+          "type": "TEXT",
+          "not_null": true,
+          "primary_key": 0
+        }
+      ],
+      "foreign_keys": [
+        {
+          "from": "operation_id",
+          "table": "operations",
+          "to": "id",
+          "on_delete": "RESTRICT"
+        },
+        {
+          "from": "actor_id",
+          "table": "actors",
+          "to": "id",
+          "on_delete": "RESTRICT"
+        }
+      ]
+    },
+    {
+      "name": "mcp_clients",
+      "owner": "MCP",
+      "columns": [
+        {
+          "name": "id",
+          "type": "TEXT",
+          "not_null": true,
+          "primary_key": 1
+        },
+        {
+          "name": "actor_id",
+          "type": "TEXT",
+          "not_null": true,
+          "primary_key": 0
+        },
+        {
+          "name": "name",
+          "type": "TEXT",
+          "not_null": true,
+          "primary_key": 0
+        },
+        {
+          "name": "transport",
+          "type": "TEXT",
+          "not_null": true,
+          "primary_key": 0
+        },
+        {
+          "name": "endpoint",
+          "type": "TEXT",
+          "not_null": true,
+          "primary_key": 0
+        },
+        {
+          "name": "token_hmac",
+          "type": "TEXT",
+          "not_null": true,
+          "primary_key": 0
+        },
+        {
+          "name": "token_prefix",
+          "type": "TEXT",
+          "not_null": true,
+          "primary_key": 0
+        },
+        {
+          "name": "project_allowlist_json",
+          "type": "TEXT",
+          "not_null": true,
+          "primary_key": 0
+        },
+        {
+          "name": "tool_allowlist_json",
+          "type": "TEXT",
+          "not_null": true,
+          "primary_key": 0
+        },
+        {
+          "name": "expires_at",
+          "type": "TEXT",
+          "not_null": true,
+          "primary_key": 0
+        },
+        {
+          "name": "last_used_at",
+          "type": "TEXT",
+          "not_null": false,
+          "primary_key": 0
+        },
+        {
+          "name": "status",
+          "type": "TEXT",
+          "not_null": true,
+          "primary_key": 0
+        },
+        {
+          "name": "revision",
+          "type": "INTEGER",
+          "not_null": true,
+          "primary_key": 0
+        },
+        {
+          "name": "created_at",
+          "type": "TEXT",
+          "not_null": true,
+          "primary_key": 0
+        },
+        {
+          "name": "updated_at",
+          "type": "TEXT",
+          "not_null": true,
+          "primary_key": 0
+        },
+        {
+          "name": "revoked_at",
+          "type": "TEXT",
+          "not_null": false,
+          "primary_key": 0
+        },
+        {
+          "name": "revoked_by_actor_id",
+          "type": "TEXT",
+          "not_null": false,
+          "primary_key": 0
+        },
+        {
+          "name": "usage_count",
+          "type": "INTEGER",
+          "not_null": true,
+          "primary_key": 0
+        }
+      ],
+      "foreign_keys": [
+        {
+          "from": "revoked_by_actor_id",
+          "table": "actors",
+          "to": "id",
+          "on_delete": "RESTRICT"
+        },
+        {
+          "from": "actor_id",
+          "table": "actors",
+          "to": "id",
+          "on_delete": "RESTRICT"
+        }
+      ]
+    },
+    {
+      "name": "node_contracts",
+      "owner": "Workflow",
+      "columns": [
+        {
+          "name": "id",
+          "type": "TEXT",
+          "not_null": true,
+          "primary_key": 1
+        },
+        {
+          "name": "workflow_revision_id",
+          "type": "TEXT",
+          "not_null": true,
+          "primary_key": 0
+        },
+        {
+          "name": "node_id",
+          "type": "TEXT",
+          "not_null": true,
+          "primary_key": 0
+        },
+        {
+          "name": "contract_json",
+          "type": "TEXT",
+          "not_null": true,
+          "primary_key": 0
+        },
+        {
+          "name": "contract_sha256",
+          "type": "TEXT",
+          "not_null": true,
+          "primary_key": 0
+        },
+        {
+          "name": "revision",
+          "type": "INTEGER",
+          "not_null": true,
+          "primary_key": 0
+        },
+        {
+          "name": "created_at",
+          "type": "TEXT",
+          "not_null": true,
+          "primary_key": 0
+        }
+      ],
+      "foreign_keys": [
+        {
+          "from": "node_id",
+          "table": "workflow_nodes",
+          "to": "id",
+          "on_delete": "RESTRICT"
+        },
+        {
+          "from": "workflow_revision_id",
+          "table": "workflow_revisions",
+          "to": "id",
+          "on_delete": "RESTRICT"
+        }
+      ]
+    },
+    {
+      "name": "operation_links",
+      "owner": "Operations",
+      "columns": [
+        {
+          "name": "id",
+          "type": "TEXT",
+          "not_null": true,
+          "primary_key": 1
+        },
+        {
+          "name": "operation_id",
+          "type": "TEXT",
+          "not_null": true,
+          "primary_key": 0
+        },
+        {
+          "name": "aggregate_type",
+          "type": "TEXT",
+          "not_null": true,
+          "primary_key": 0
+        },
+        {
+          "name": "aggregate_id",
+          "type": "TEXT",
+          "not_null": true,
+          "primary_key": 0
+        },
+        {
+          "name": "relation",
+          "type": "TEXT",
+          "not_null": true,
+          "primary_key": 0
+        },
+        {
+          "name": "created_at",
+          "type": "TEXT",
+          "not_null": true,
+          "primary_key": 0
+        }
+      ],
+      "foreign_keys": [
+        {
+          "from": "operation_id",
+          "table": "operations",
+          "to": "id",
+          "on_delete": "RESTRICT"
+        }
+      ]
+    },
+    {
+      "name": "operations",
+      "owner": "Operations",
+      "columns": [
+        {
+          "name": "id",
+          "type": "TEXT",
+          "not_null": true,
+          "primary_key": 1
+        },
+        {
+          "name": "command_id",
+          "type": "TEXT",
+          "not_null": true,
+          "primary_key": 0
+        },
+        {
+          "name": "command_version",
+          "type": "INTEGER",
+          "not_null": true,
+          "primary_key": 0
+        },
+        {
+          "name": "kind",
+          "type": "TEXT",
+          "not_null": true,
+          "primary_key": 0
+        },
+        {
+          "name": "status",
+          "type": "TEXT",
+          "not_null": true,
+          "primary_key": 0
+        },
+        {
+          "name": "resource_type",
+          "type": "TEXT",
+          "not_null": true,
+          "primary_key": 0
+        },
+        {
+          "name": "resource_id",
+          "type": "TEXT",
+          "not_null": true,
+          "primary_key": 0
+        },
+        {
+          "name": "project_id",
+          "type": "TEXT",
+          "not_null": false,
+          "primary_key": 0
+        },
+        {
+          "name": "actor_id",
+          "type": "TEXT",
+          "not_null": true,
+          "primary_key": 0
+        },
+        {
+          "name": "request_hash",
+          "type": "TEXT",
+          "not_null": true,
+          "primary_key": 0
+        },
+        {
+          "name": "external_ref",
+          "type": "TEXT",
+          "not_null": true,
+          "primary_key": 0
+        },
+        {
+          "name": "result_json",
+          "type": "TEXT",
+          "not_null": true,
+          "primary_key": 0
+        },
+        {
+          "name": "error_code",
+          "type": "TEXT",
+          "not_null": true,
+          "primary_key": 0
+        },
+        {
+          "name": "error_details_json",
+          "type": "TEXT",
+          "not_null": true,
+          "primary_key": 0
+        },
+        {
+          "name": "revision",
+          "type": "INTEGER",
+          "not_null": true,
+          "primary_key": 0
+        },
+        {
+          "name": "created_at",
+          "type": "TEXT",
+          "not_null": true,
+          "primary_key": 0
+        },
+        {
+          "name": "updated_at",
+          "type": "TEXT",
+          "not_null": true,
+          "primary_key": 0
+        },
+        {
+          "name": "started_at",
+          "type": "TEXT",
+          "not_null": false,
+          "primary_key": 0
+        },
+        {
+          "name": "cancel_requested_at",
+          "type": "TEXT",
+          "not_null": false,
+          "primary_key": 0
+        },
+        {
+          "name": "cancel_requested_by_actor_id",
+          "type": "TEXT",
+          "not_null": false,
+          "primary_key": 0
+        },
+        {
+          "name": "completed_at",
+          "type": "TEXT",
+          "not_null": false,
+          "primary_key": 0
+        }
+      ],
+      "foreign_keys": [
+        {
+          "from": "cancel_requested_by_actor_id",
+          "table": "actors",
+          "to": "id",
+          "on_delete": "RESTRICT"
+        },
+        {
+          "from": "actor_id",
+          "table": "actors",
+          "to": "id",
+          "on_delete": "RESTRICT"
+        }
+      ]
+    },
+    {
+      "name": "outcome_requirements",
+      "owner": "Project",
+      "columns": [
+        {
+          "name": "id",
+          "type": "TEXT",
+          "not_null": true,
+          "primary_key": 1
+        },
+        {
+          "name": "project_id",
+          "type": "TEXT",
+          "not_null": true,
+          "primary_key": 0
+        },
+        {
+          "name": "workflow_revision",
+          "type": "INTEGER",
+          "not_null": true,
+          "primary_key": 0
+        },
+        {
+          "name": "requirement_key",
+          "type": "TEXT",
+          "not_null": true,
+          "primary_key": 0
+        },
+        {
+          "name": "rubric_json",
+          "type": "TEXT",
+          "not_null": true,
+          "primary_key": 0
+        },
+        {
+          "name": "rubric_sha256",
+          "type": "TEXT",
+          "not_null": true,
+          "primary_key": 0
+        },
+        {
+          "name": "revision",
+          "type": "INTEGER",
+          "not_null": true,
+          "primary_key": 0
+        },
+        {
+          "name": "created_at",
+          "type": "TEXT",
+          "not_null": true,
+          "primary_key": 0
+        },
+        {
+          "name": "created_by_actor_id",
+          "type": "TEXT",
+          "not_null": true,
+          "primary_key": 0
+        }
+      ],
+      "foreign_keys": [
+        {
+          "from": "created_by_actor_id",
+          "table": "actors",
+          "to": "id",
+          "on_delete": "RESTRICT"
+        },
+        {
+          "from": "project_id",
+          "table": "projects",
+          "to": "id",
+          "on_delete": "RESTRICT"
+        }
+      ]
+    },
+    {
+      "name": "project_acl_entries",
+      "owner": "Identity",
+      "columns": [
+        {
+          "name": "id",
+          "type": "TEXT",
+          "not_null": true,
+          "primary_key": 1
+        },
+        {
+          "name": "project_id",
+          "type": "TEXT",
+          "not_null": true,
+          "primary_key": 0
+        },
+        {
+          "name": "principal_actor_id",
+          "type": "TEXT",
+          "not_null": false,
+          "primary_key": 0
+        },
+        {
+          "name": "principal_team_id",
+          "type": "TEXT",
+          "not_null": false,
+          "primary_key": 0
+        },
+        {
+          "name": "resource",
+          "type": "TEXT",
+          "not_null": true,
+          "primary_key": 0
+        },
+        {
+          "name": "action",
+          "type": "TEXT",
+          "not_null": true,
+          "primary_key": 0
+        },
+        {
+          "name": "effect",
+          "type": "TEXT",
+          "not_null": true,
+          "primary_key": 0
+        },
+        {
+          "name": "policy_revision",
+          "type": "INTEGER",
+          "not_null": true,
+          "primary_key": 0
+        },
+        {
+          "name": "revision",
+          "type": "INTEGER",
+          "not_null": true,
+          "primary_key": 0
+        },
+        {
+          "name": "created_at",
+          "type": "TEXT",
+          "not_null": true,
+          "primary_key": 0
+        },
+        {
+          "name": "updated_at",
+          "type": "TEXT",
+          "not_null": true,
+          "primary_key": 0
+        },
+        {
+          "name": "created_by_actor_id",
+          "type": "TEXT",
+          "not_null": true,
+          "primary_key": 0
+        },
+        {
+          "name": "updated_by_actor_id",
+          "type": "TEXT",
+          "not_null": false,
+          "primary_key": 0
+        },
+        {
+          "name": "deleted_at",
+          "type": "TEXT",
+          "not_null": false,
+          "primary_key": 0
+        }
+      ],
+      "foreign_keys": [
+        {
+          "from": "updated_by_actor_id",
+          "table": "actors",
+          "to": "id",
+          "on_delete": "RESTRICT"
+        },
+        {
+          "from": "created_by_actor_id",
+          "table": "actors",
+          "to": "id",
+          "on_delete": "RESTRICT"
+        },
+        {
+          "from": "principal_team_id",
+          "table": "teams",
+          "to": "id",
+          "on_delete": "RESTRICT"
+        },
+        {
+          "from": "principal_actor_id",
+          "table": "actors",
+          "to": "id",
+          "on_delete": "RESTRICT"
+        }
+      ]
+    },
+    {
+      "name": "project_intakes",
+      "owner": "Project",
+      "columns": [
+        {
+          "name": "id",
+          "type": "TEXT",
+          "not_null": true,
+          "primary_key": 1
+        },
+        {
+          "name": "project_id",
+          "type": "TEXT",
+          "not_null": true,
+          "primary_key": 0
+        },
+        {
+          "name": "status",
+          "type": "TEXT",
+          "not_null": true,
+          "primary_key": 0
+        },
+        {
+          "name": "mode",
+          "type": "TEXT",
+          "not_null": true,
+          "primary_key": 0
+        },
+        {
+          "name": "source_kind",
+          "type": "TEXT",
+          "not_null": true,
+          "primary_key": 0
+        },
+        {
+          "name": "source_locator",
+          "type": "TEXT",
+          "not_null": true,
+          "primary_key": 0
+        },
+        {
+          "name": "source_revision",
+          "type": "TEXT",
+          "not_null": true,
+          "primary_key": 0
+        },
+        {
+          "name": "source_hash",
+          "type": "TEXT",
+          "not_null": true,
+          "primary_key": 0
+        },
+        {
+          "name": "payload_json",
+          "type": "TEXT",
+          "not_null": true,
+          "primary_key": 0
+        },
+        {
+          "name": "payload_sha256",
+          "type": "TEXT",
+          "not_null": true,
+          "primary_key": 0
+        },
+        {
+          "name": "result_json",
+          "type": "TEXT",
+          "not_null": true,
+          "primary_key": 0
+        },
+        {
+          "name": "error_code",
+          "type": "TEXT",
+          "not_null": true,
+          "primary_key": 0
+        },
+        {
+          "name": "operation_id",
+          "type": "TEXT",
+          "not_null": false,
+          "primary_key": 0
+        },
+        {
+          "name": "attempt",
+          "type": "INTEGER",
+          "not_null": true,
+          "primary_key": 0
+        },
+        {
+          "name": "revision",
+          "type": "INTEGER",
+          "not_null": true,
+          "primary_key": 0
+        },
+        {
+          "name": "created_at",
+          "type": "TEXT",
+          "not_null": true,
+          "primary_key": 0
+        },
+        {
+          "name": "updated_at",
+          "type": "TEXT",
+          "not_null": true,
+          "primary_key": 0
+        },
+        {
+          "name": "completed_at",
+          "type": "TEXT",
+          "not_null": false,
+          "primary_key": 0
+        },
+        {
+          "name": "created_by_actor_id",
+          "type": "TEXT",
+          "not_null": true,
+          "primary_key": 0
+        },
+        {
+          "name": "updated_by_actor_id",
+          "type": "TEXT",
+          "not_null": true,
+          "primary_key": 0
+        }
+      ],
+      "foreign_keys": [
+        {
+          "from": "updated_by_actor_id",
+          "table": "actors",
+          "to": "id",
+          "on_delete": "RESTRICT"
+        },
+        {
+          "from": "created_by_actor_id",
+          "table": "actors",
+          "to": "id",
+          "on_delete": "RESTRICT"
+        },
+        {
+          "from": "operation_id",
+          "table": "operations",
+          "to": "id",
+          "on_delete": "RESTRICT"
+        },
+        {
+          "from": "project_id",
+          "table": "projects",
+          "to": "id",
+          "on_delete": "RESTRICT"
+        }
+      ]
+    },
+    {
+      "name": "project_invitations",
+      "owner": "Identity",
+      "columns": [
+        {
+          "name": "id",
+          "type": "TEXT",
+          "not_null": true,
+          "primary_key": 1
+        },
+        {
+          "name": "project_id",
+          "type": "TEXT",
+          "not_null": true,
+          "primary_key": 0
+        },
+        {
+          "name": "invitee_actor_id",
+          "type": "TEXT",
+          "not_null": false,
+          "primary_key": 0
+        },
+        {
+          "name": "invitee_ref",
+          "type": "TEXT",
+          "not_null": true,
+          "primary_key": 0
+        },
+        {
+          "name": "role",
+          "type": "TEXT",
+          "not_null": true,
+          "primary_key": 0
+        },
+        {
+          "name": "status",
+          "type": "TEXT",
+          "not_null": true,
+          "primary_key": 0
+        },
+        {
+          "name": "expires_at",
+          "type": "TEXT",
+          "not_null": false,
+          "primary_key": 0
+        },
+        {
+          "name": "revision",
+          "type": "INTEGER",
+          "not_null": true,
+          "primary_key": 0
+        },
+        {
+          "name": "created_at",
+          "type": "TEXT",
+          "not_null": true,
+          "primary_key": 0
+        },
+        {
+          "name": "updated_at",
+          "type": "TEXT",
+          "not_null": true,
+          "primary_key": 0
+        },
+        {
+          "name": "created_by_actor_id",
+          "type": "TEXT",
+          "not_null": true,
+          "primary_key": 0
+        },
+        {
+          "name": "accepted_by_actor_id",
+          "type": "TEXT",
+          "not_null": false,
+          "primary_key": 0
+        },
+        {
+          "name": "updated_by_actor_id",
+          "type": "TEXT",
+          "not_null": false,
+          "primary_key": 0
+        },
+        {
+          "name": "deleted_at",
+          "type": "TEXT",
+          "not_null": false,
+          "primary_key": 0
+        }
+      ],
+      "foreign_keys": [
+        {
+          "from": "updated_by_actor_id",
+          "table": "actors",
+          "to": "id",
+          "on_delete": "RESTRICT"
+        },
+        {
+          "from": "accepted_by_actor_id",
+          "table": "actors",
+          "to": "id",
+          "on_delete": "RESTRICT"
+        },
+        {
+          "from": "created_by_actor_id",
+          "table": "actors",
+          "to": "id",
+          "on_delete": "RESTRICT"
+        },
+        {
+          "from": "invitee_actor_id",
+          "table": "actors",
+          "to": "id",
+          "on_delete": "RESTRICT"
+        }
+      ]
+    },
+    {
+      "name": "project_memberships",
+      "owner": "Identity",
+      "columns": [
+        {
+          "name": "id",
+          "type": "TEXT",
+          "not_null": true,
+          "primary_key": 1
+        },
+        {
+          "name": "project_id",
+          "type": "TEXT",
+          "not_null": true,
+          "primary_key": 0
+        },
+        {
+          "name": "actor_id",
+          "type": "TEXT",
+          "not_null": true,
+          "primary_key": 0
+        },
+        {
+          "name": "role",
+          "type": "TEXT",
+          "not_null": true,
+          "primary_key": 0
+        },
+        {
+          "name": "status",
+          "type": "TEXT",
+          "not_null": true,
+          "primary_key": 0
+        },
+        {
+          "name": "revision",
+          "type": "INTEGER",
+          "not_null": true,
+          "primary_key": 0
+        },
+        {
+          "name": "created_at",
+          "type": "TEXT",
+          "not_null": true,
+          "primary_key": 0
+        },
+        {
+          "name": "updated_at",
+          "type": "TEXT",
+          "not_null": true,
+          "primary_key": 0
+        },
+        {
+          "name": "created_by_actor_id",
+          "type": "TEXT",
+          "not_null": false,
+          "primary_key": 0
+        },
+        {
+          "name": "updated_by_actor_id",
+          "type": "TEXT",
+          "not_null": false,
+          "primary_key": 0
+        },
+        {
+          "name": "deleted_at",
+          "type": "TEXT",
+          "not_null": false,
+          "primary_key": 0
+        }
+      ],
+      "foreign_keys": [
+        {
+          "from": "updated_by_actor_id",
+          "table": "actors",
+          "to": "id",
+          "on_delete": "RESTRICT"
+        },
+        {
+          "from": "created_by_actor_id",
+          "table": "actors",
+          "to": "id",
+          "on_delete": "RESTRICT"
+        },
+        {
+          "from": "actor_id",
+          "table": "actors",
+          "to": "id",
+          "on_delete": "RESTRICT"
+        }
+      ]
+    },
+    {
+      "name": "projects",
+      "owner": "Project",
+      "columns": [
+        {
+          "name": "id",
+          "type": "TEXT",
+          "not_null": true,
+          "primary_key": 1
+        },
+        {
+          "name": "team_id",
+          "type": "TEXT",
+          "not_null": true,
+          "primary_key": 0
+        },
+        {
+          "name": "owner_actor_id",
+          "type": "TEXT",
+          "not_null": true,
+          "primary_key": 0
+        },
+        {
+          "name": "name",
+          "type": "TEXT",
+          "not_null": true,
+          "primary_key": 0
+        },
+        {
+          "name": "description",
+          "type": "TEXT",
+          "not_null": true,
+          "primary_key": 0
+        },
+        {
+          "name": "status",
+          "type": "TEXT",
+          "not_null": true,
+          "primary_key": 0
+        },
+        {
+          "name": "onboarding_state",
+          "type": "TEXT",
+          "not_null": true,
+          "primary_key": 0
+        },
+        {
+          "name": "current_brief_revision",
+          "type": "INTEGER",
+          "not_null": true,
+          "primary_key": 0
+        },
+        {
+          "name": "confirmed_brief_revision",
+          "type": "INTEGER",
+          "not_null": false,
+          "primary_key": 0
+        },
+        {
+          "name": "confirmed_brief_hash",
+          "type": "TEXT",
+          "not_null": true,
+          "primary_key": 0
+        },
+        {
+          "name": "current_workflow_revision",
+          "type": "INTEGER",
+          "not_null": true,
+          "primary_key": 0
+        },
+        {
+          "name": "metadata_json",
+          "type": "TEXT",
+          "not_null": true,
+          "primary_key": 0
+        },
+        {
+          "name": "metadata_sha256",
+          "type": "TEXT",
+          "not_null": true,
+          "primary_key": 0
+        },
+        {
+          "name": "revision",
+          "type": "INTEGER",
+          "not_null": true,
+          "primary_key": 0
+        },
+        {
+          "name": "created_at",
+          "type": "TEXT",
+          "not_null": true,
+          "primary_key": 0
+        },
+        {
+          "name": "updated_at",
+          "type": "TEXT",
+          "not_null": true,
+          "primary_key": 0
+        },
+        {
+          "name": "created_by_actor_id",
+          "type": "TEXT",
+          "not_null": true,
+          "primary_key": 0
+        },
+        {
+          "name": "updated_by_actor_id",
+          "type": "TEXT",
+          "not_null": true,
+          "primary_key": 0
+        },
+        {
+          "name": "archived_at",
+          "type": "TEXT",
+          "not_null": false,
+          "primary_key": 0
+        },
+        {
+          "name": "deleted_at",
+          "type": "TEXT",
+          "not_null": false,
+          "primary_key": 0
+        }
+      ],
+      "foreign_keys": [
+        {
+          "from": "updated_by_actor_id",
+          "table": "actors",
+          "to": "id",
+          "on_delete": "RESTRICT"
+        },
+        {
+          "from": "created_by_actor_id",
+          "table": "actors",
+          "to": "id",
+          "on_delete": "RESTRICT"
+        },
+        {
+          "from": "owner_actor_id",
+          "table": "actors",
+          "to": "id",
+          "on_delete": "RESTRICT"
+        },
+        {
+          "from": "team_id",
+          "table": "teams",
+          "to": "id",
+          "on_delete": "RESTRICT"
+        }
+      ]
+    },
+    {
+      "name": "provider_profiles",
+      "owner": "Setup",
+      "columns": [
+        {
+          "name": "id",
+          "type": "TEXT",
+          "not_null": true,
+          "primary_key": 1
+        },
+        {
+          "name": "owner_actor_id",
+          "type": "TEXT",
+          "not_null": true,
+          "primary_key": 0
+        },
+        {
+          "name": "provider",
+          "type": "TEXT",
+          "not_null": true,
+          "primary_key": 0
+        },
+        {
+          "name": "label",
+          "type": "TEXT",
+          "not_null": true,
+          "primary_key": 0
+        },
+        {
+          "name": "credential_ref_id",
+          "type": "TEXT",
+          "not_null": false,
+          "primary_key": 0
+        },
+        {
+          "name": "config_json",
+          "type": "TEXT",
+          "not_null": true,
+          "primary_key": 0
+        },
+        {
+          "name": "config_sha256",
+          "type": "TEXT",
+          "not_null": true,
+          "primary_key": 0
+        },
+        {
+          "name": "status",
+          "type": "TEXT",
+          "not_null": true,
+          "primary_key": 0
+        },
+        {
+          "name": "last_probe_at",
+          "type": "TEXT",
+          "not_null": false,
+          "primary_key": 0
+        },
+        {
+          "name": "revision",
+          "type": "INTEGER",
+          "not_null": true,
+          "primary_key": 0
+        },
+        {
+          "name": "created_at",
+          "type": "TEXT",
+          "not_null": true,
+          "primary_key": 0
+        },
+        {
+          "name": "updated_at",
+          "type": "TEXT",
+          "not_null": true,
+          "primary_key": 0
+        },
+        {
+          "name": "created_by_actor_id",
+          "type": "TEXT",
+          "not_null": false,
+          "primary_key": 0
+        },
+        {
+          "name": "updated_by_actor_id",
+          "type": "TEXT",
+          "not_null": false,
+          "primary_key": 0
+        },
+        {
+          "name": "deleted_at",
+          "type": "TEXT",
+          "not_null": false,
+          "primary_key": 0
+        }
+      ],
+      "foreign_keys": [
+        {
+          "from": "updated_by_actor_id",
+          "table": "actors",
+          "to": "id",
+          "on_delete": "RESTRICT"
+        },
+        {
+          "from": "created_by_actor_id",
+          "table": "actors",
+          "to": "id",
+          "on_delete": "RESTRICT"
+        },
+        {
+          "from": "credential_ref_id",
+          "table": "credential_refs",
+          "to": "id",
+          "on_delete": "RESTRICT"
+        },
+        {
+          "from": "owner_actor_id",
+          "table": "actors",
+          "to": "id",
+          "on_delete": "RESTRICT"
+        }
+      ]
+    },
+    {
+      "name": "receipt_manifests",
+      "owner": "CAS",
+      "columns": [
+        {
+          "name": "id",
+          "type": "TEXT",
+          "not_null": true,
+          "primary_key": 1
+        },
+        {
+          "name": "kind",
+          "type": "TEXT",
+          "not_null": true,
+          "primary_key": 0
+        },
+        {
+          "name": "status",
+          "type": "TEXT",
+          "not_null": true,
+          "primary_key": 0
+        },
+        {
+          "name": "payload_json",
+          "type": "TEXT",
+          "not_null": true,
+          "primary_key": 0
+        },
+        {
+          "name": "payload_sha256",
+          "type": "TEXT",
+          "not_null": true,
+          "primary_key": 0
+        },
+        {
+          "name": "cas_sha256",
+          "type": "TEXT",
+          "not_null": false,
+          "primary_key": 0
+        },
+        {
+          "name": "created_at",
+          "type": "TEXT",
+          "not_null": true,
+          "primary_key": 0
+        },
+        {
+          "name": "expires_at",
+          "type": "TEXT",
+          "not_null": false,
+          "primary_key": 0
+        }
+      ],
+      "foreign_keys": []
+    },
+    {
+      "name": "repository_connections",
+      "owner": "Repository",
+      "columns": [
+        {
+          "name": "id",
+          "type": "TEXT",
+          "not_null": true,
+          "primary_key": 1
+        },
+        {
+          "name": "project_id",
+          "type": "TEXT",
+          "not_null": true,
+          "primary_key": 0
+        },
+        {
+          "name": "provider",
+          "type": "TEXT",
+          "not_null": true,
+          "primary_key": 0
+        },
+        {
+          "name": "credential_ref_id",
+          "type": "TEXT",
+          "not_null": false,
+          "primary_key": 0
+        },
+        {
+          "name": "status",
+          "type": "TEXT",
+          "not_null": true,
+          "primary_key": 0
+        },
+        {
+          "name": "source_kind",
+          "type": "TEXT",
+          "not_null": true,
+          "primary_key": 0
+        },
+        {
+          "name": "source_locator",
+          "type": "TEXT",
+          "not_null": true,
+          "primary_key": 0
+        },
+        {
+          "name": "source_revision",
+          "type": "TEXT",
+          "not_null": true,
+          "primary_key": 0
+        },
+        {
+          "name": "source_hash",
+          "type": "TEXT",
+          "not_null": true,
+          "primary_key": 0
+        },
+        {
+          "name": "read_only",
+          "type": "INTEGER",
+          "not_null": true,
+          "primary_key": 0
+        },
+        {
+          "name": "metadata_json",
+          "type": "TEXT",
+          "not_null": true,
+          "primary_key": 0
+        },
+        {
+          "name": "metadata_sha256",
+          "type": "TEXT",
+          "not_null": true,
+          "primary_key": 0
+        },
+        {
+          "name": "fault_code",
+          "type": "TEXT",
+          "not_null": true,
+          "primary_key": 0
+        },
+        {
+          "name": "revision",
+          "type": "INTEGER",
+          "not_null": true,
+          "primary_key": 0
+        },
+        {
+          "name": "created_at",
+          "type": "TEXT",
+          "not_null": true,
+          "primary_key": 0
+        },
+        {
+          "name": "updated_at",
+          "type": "TEXT",
+          "not_null": true,
+          "primary_key": 0
+        },
+        {
+          "name": "created_by_actor_id",
+          "type": "TEXT",
+          "not_null": true,
+          "primary_key": 0
+        },
+        {
+          "name": "updated_by_actor_id",
+          "type": "TEXT",
+          "not_null": true,
+          "primary_key": 0
+        }
+      ],
+      "foreign_keys": [
+        {
+          "from": "updated_by_actor_id",
+          "table": "actors",
+          "to": "id",
+          "on_delete": "RESTRICT"
+        },
+        {
+          "from": "created_by_actor_id",
+          "table": "actors",
+          "to": "id",
+          "on_delete": "RESTRICT"
+        },
+        {
+          "from": "credential_ref_id",
+          "table": "credential_refs",
+          "to": "id",
+          "on_delete": "RESTRICT"
+        },
+        {
+          "from": "project_id",
+          "table": "projects",
+          "to": "id",
+          "on_delete": "RESTRICT"
+        }
+      ]
+    },
+    {
+      "name": "repository_lines",
+      "owner": "Repository",
+      "columns": [
+        {
+          "name": "id",
+          "type": "TEXT",
+          "not_null": true,
+          "primary_key": 1
+        },
+        {
+          "name": "project_id",
+          "type": "TEXT",
+          "not_null": true,
+          "primary_key": 0
+        },
+        {
+          "name": "target_id",
+          "type": "TEXT",
+          "not_null": true,
+          "primary_key": 0
+        },
+        {
+          "name": "line_kind",
+          "type": "TEXT",
+          "not_null": true,
+          "primary_key": 0
+        },
+        {
+          "name": "status",
+          "type": "TEXT",
+          "not_null": true,
+          "primary_key": 0
+        },
+        {
+          "name": "source_revision",
+          "type": "TEXT",
+          "not_null": true,
+          "primary_key": 0
+        },
+        {
+          "name": "source_hash",
+          "type": "TEXT",
+          "not_null": true,
+          "primary_key": 0
+        },
+        {
+          "name": "expected_head_sha",
+          "type": "TEXT",
+          "not_null": true,
+          "primary_key": 0
+        },
+        {
+          "name": "fault_code",
+          "type": "TEXT",
+          "not_null": true,
+          "primary_key": 0
+        },
+        {
+          "name": "fault_json",
+          "type": "TEXT",
+          "not_null": true,
+          "primary_key": 0
+        },
+        {
+          "name": "revision",
+          "type": "INTEGER",
+          "not_null": true,
+          "primary_key": 0
+        },
+        {
+          "name": "created_at",
+          "type": "TEXT",
+          "not_null": true,
+          "primary_key": 0
+        },
+        {
+          "name": "updated_at",
+          "type": "TEXT",
+          "not_null": true,
+          "primary_key": 0
+        },
+        {
+          "name": "created_by_actor_id",
+          "type": "TEXT",
+          "not_null": true,
+          "primary_key": 0
+        },
+        {
+          "name": "updated_by_actor_id",
+          "type": "TEXT",
+          "not_null": true,
+          "primary_key": 0
+        }
+      ],
+      "foreign_keys": [
+        {
+          "from": "updated_by_actor_id",
+          "table": "actors",
+          "to": "id",
+          "on_delete": "RESTRICT"
+        },
+        {
+          "from": "created_by_actor_id",
+          "table": "actors",
+          "to": "id",
+          "on_delete": "RESTRICT"
+        },
+        {
+          "from": "target_id",
+          "table": "repository_targets",
+          "to": "id",
+          "on_delete": "RESTRICT"
+        },
+        {
+          "from": "project_id",
+          "table": "projects",
+          "to": "id",
+          "on_delete": "RESTRICT"
+        }
+      ]
+    },
+    {
+      "name": "repository_locks",
+      "owner": "Repository",
+      "columns": [
+        {
+          "name": "id",
+          "type": "TEXT",
+          "not_null": true,
+          "primary_key": 1
+        },
+        {
+          "name": "workspace_id",
+          "type": "TEXT",
+          "not_null": true,
+          "primary_key": 0
+        },
+        {
+          "name": "holder_operation_id",
+          "type": "TEXT",
+          "not_null": true,
+          "primary_key": 0
+        },
+        {
+          "name": "fencing_token",
+          "type": "TEXT",
+          "not_null": true,
+          "primary_key": 0
+        },
+        {
+          "name": "status",
+          "type": "TEXT",
+          "not_null": true,
+          "primary_key": 0
+        },
+        {
+          "name": "expires_at",
+          "type": "TEXT",
+          "not_null": true,
+          "primary_key": 0
+        },
+        {
+          "name": "revision",
+          "type": "INTEGER",
+          "not_null": true,
+          "primary_key": 0
+        },
+        {
+          "name": "created_at",
+          "type": "TEXT",
+          "not_null": true,
+          "primary_key": 0
+        },
+        {
+          "name": "updated_at",
+          "type": "TEXT",
+          "not_null": true,
+          "primary_key": 0
+        }
+      ],
+      "foreign_keys": [
+        {
+          "from": "holder_operation_id",
+          "table": "operations",
+          "to": "id",
+          "on_delete": "RESTRICT"
+        },
+        {
+          "from": "workspace_id",
+          "table": "repository_workspaces",
+          "to": "id",
+          "on_delete": "RESTRICT"
+        }
+      ]
+    },
+    {
+      "name": "repository_targets",
+      "owner": "Repository",
+      "columns": [
+        {
+          "name": "id",
+          "type": "TEXT",
+          "not_null": true,
+          "primary_key": 1
+        },
+        {
+          "name": "connection_id",
+          "type": "TEXT",
+          "not_null": true,
+          "primary_key": 0
+        },
+        {
+          "name": "name",
+          "type": "TEXT",
+          "not_null": true,
+          "primary_key": 0
+        },
+        {
+          "name": "branch",
+          "type": "TEXT",
+          "not_null": true,
+          "primary_key": 0
+        },
+        {
+          "name": "remote_ref",
+          "type": "TEXT",
+          "not_null": true,
+          "primary_key": 0
+        },
+        {
+          "name": "expected_head_sha",
+          "type": "TEXT",
+          "not_null": true,
+          "primary_key": 0
+        },
+        {
+          "name": "revision",
+          "type": "INTEGER",
+          "not_null": true,
+          "primary_key": 0
+        },
+        {
+          "name": "created_at",
+          "type": "TEXT",
+          "not_null": true,
+          "primary_key": 0
+        },
+        {
+          "name": "updated_at",
+          "type": "TEXT",
+          "not_null": true,
+          "primary_key": 0
+        },
+        {
+          "name": "created_by_actor_id",
+          "type": "TEXT",
+          "not_null": true,
+          "primary_key": 0
+        },
+        {
+          "name": "updated_by_actor_id",
+          "type": "TEXT",
+          "not_null": true,
+          "primary_key": 0
+        }
+      ],
+      "foreign_keys": [
+        {
+          "from": "updated_by_actor_id",
+          "table": "actors",
+          "to": "id",
+          "on_delete": "RESTRICT"
+        },
+        {
+          "from": "created_by_actor_id",
+          "table": "actors",
+          "to": "id",
+          "on_delete": "RESTRICT"
+        },
+        {
+          "from": "connection_id",
+          "table": "repository_connections",
+          "to": "id",
+          "on_delete": "RESTRICT"
+        }
+      ]
+    },
+    {
+      "name": "repository_workspaces",
+      "owner": "Repository",
+      "columns": [
+        {
+          "name": "id",
+          "type": "TEXT",
+          "not_null": true,
+          "primary_key": 1
+        },
+        {
+          "name": "project_id",
+          "type": "TEXT",
+          "not_null": true,
+          "primary_key": 0
+        },
+        {
+          "name": "line_id",
+          "type": "TEXT",
+          "not_null": true,
+          "primary_key": 0
+        },
+        {
+          "name": "status",
+          "type": "TEXT",
+          "not_null": true,
+          "primary_key": 0
+        },
+        {
+          "name": "relative_path",
+          "type": "TEXT",
+          "not_null": true,
+          "primary_key": 0
+        },
+        {
+          "name": "owner_operation_id",
+          "type": "TEXT",
+          "not_null": false,
+          "primary_key": 0
+        },
+        {
+          "name": "revision",
+          "type": "INTEGER",
+          "not_null": true,
+          "primary_key": 0
+        },
+        {
+          "name": "created_at",
+          "type": "TEXT",
+          "not_null": true,
+          "primary_key": 0
+        },
+        {
+          "name": "updated_at",
+          "type": "TEXT",
+          "not_null": true,
+          "primary_key": 0
+        },
+        {
+          "name": "created_by_actor_id",
+          "type": "TEXT",
+          "not_null": true,
+          "primary_key": 0
+        },
+        {
+          "name": "updated_by_actor_id",
+          "type": "TEXT",
+          "not_null": true,
+          "primary_key": 0
+        }
+      ],
+      "foreign_keys": [
+        {
+          "from": "updated_by_actor_id",
+          "table": "actors",
+          "to": "id",
+          "on_delete": "RESTRICT"
+        },
+        {
+          "from": "created_by_actor_id",
+          "table": "actors",
+          "to": "id",
+          "on_delete": "RESTRICT"
+        },
+        {
+          "from": "owner_operation_id",
+          "table": "operations",
+          "to": "id",
+          "on_delete": "RESTRICT"
+        },
+        {
+          "from": "line_id",
+          "table": "repository_lines",
+          "to": "id",
+          "on_delete": "RESTRICT"
+        },
+        {
+          "from": "project_id",
+          "table": "projects",
+          "to": "id",
+          "on_delete": "RESTRICT"
+        }
+      ]
+    },
+    {
+      "name": "schema_meta",
+      "owner": "Platform",
+      "columns": [
+        {
+          "name": "id",
+          "type": "INTEGER",
+          "not_null": false,
+          "primary_key": 1
+        },
+        {
+          "name": "family",
+          "type": "TEXT",
+          "not_null": true,
+          "primary_key": 0
+        },
+        {
+          "name": "baseline_id",
+          "type": "TEXT",
+          "not_null": true,
+          "primary_key": 0
+        },
+        {
+          "name": "runtime_build",
+          "type": "TEXT",
+          "not_null": true,
+          "primary_key": 0
+        },
+        {
+          "name": "canonicalization_version",
+          "type": "TEXT",
+          "not_null": true,
+          "primary_key": 0
+        },
+        {
+          "name": "created_at",
+          "type": "TEXT",
+          "not_null": true,
+          "primary_key": 0
+        },
+        {
+          "name": "updated_at",
+          "type": "TEXT",
+          "not_null": true,
+          "primary_key": 0
+        }
+      ],
+      "foreign_keys": []
+    },
+    {
+      "name": "schema_migrations",
+      "owner": "Platform",
+      "columns": [
+        {
+          "name": "migration_id",
+          "type": "TEXT",
+          "not_null": true,
+          "primary_key": 1
+        },
+        {
+          "name": "version",
+          "type": "INTEGER",
+          "not_null": true,
+          "primary_key": 0
+        },
+        {
+          "name": "family",
+          "type": "TEXT",
+          "not_null": true,
+          "primary_key": 0
+        },
+        {
+          "name": "name",
+          "type": "TEXT",
+          "not_null": true,
+          "primary_key": 0
+        },
+        {
+          "name": "checksum",
+          "type": "TEXT",
+          "not_null": true,
+          "primary_key": 0
+        },
+        {
+          "name": "tool_version",
+          "type": "TEXT",
+          "not_null": true,
+          "primary_key": 0
+        },
+        {
+          "name": "snapshot_sha256",
+          "type": "TEXT",
+          "not_null": true,
+          "primary_key": 0
+        },
+        {
+          "name": "verification_receipt_sha256",
+          "type": "TEXT",
+          "not_null": true,
+          "primary_key": 0
+        },
+        {
+          "name": "applied_at",
+          "type": "TEXT",
+          "not_null": true,
+          "primary_key": 0
+        }
+      ],
+      "foreign_keys": []
+    },
+    {
+      "name": "sessions",
+      "owner": "Identity",
+      "columns": [
+        {
+          "name": "id",
+          "type": "TEXT",
+          "not_null": true,
+          "primary_key": 1
+        },
+        {
+          "name": "subject_actor_id",
+          "type": "TEXT",
+          "not_null": true,
+          "primary_key": 0
+        },
+        {
+          "name": "effective_actor_id",
+          "type": "TEXT",
+          "not_null": true,
+          "primary_key": 0
+        },
+        {
+          "name": "proof_hash",
+          "type": "TEXT",
+          "not_null": true,
+          "primary_key": 0
+        },
+        {
+          "name": "expires_at",
+          "type": "TEXT",
+          "not_null": true,
+          "primary_key": 0
+        },
+        {
+          "name": "last_seen_at",
+          "type": "TEXT",
+          "not_null": true,
+          "primary_key": 0
+        },
+        {
+          "name": "revoked_at",
+          "type": "TEXT",
+          "not_null": false,
+          "primary_key": 0
+        },
+        {
+          "name": "revision",
+          "type": "INTEGER",
+          "not_null": true,
+          "primary_key": 0
+        },
+        {
+          "name": "created_at",
+          "type": "TEXT",
+          "not_null": true,
+          "primary_key": 0
+        },
+        {
+          "name": "updated_at",
+          "type": "TEXT",
+          "not_null": true,
+          "primary_key": 0
+        },
+        {
+          "name": "created_by_actor_id",
+          "type": "TEXT",
+          "not_null": false,
+          "primary_key": 0
+        },
+        {
+          "name": "updated_by_actor_id",
+          "type": "TEXT",
+          "not_null": false,
+          "primary_key": 0
+        },
+        {
+          "name": "deleted_at",
+          "type": "TEXT",
+          "not_null": false,
+          "primary_key": 0
+        }
+      ],
+      "foreign_keys": [
+        {
+          "from": "updated_by_actor_id",
+          "table": "actors",
+          "to": "id",
+          "on_delete": "RESTRICT"
+        },
+        {
+          "from": "created_by_actor_id",
+          "table": "actors",
+          "to": "id",
+          "on_delete": "RESTRICT"
+        },
+        {
+          "from": "effective_actor_id",
+          "table": "actors",
+          "to": "id",
+          "on_delete": "RESTRICT"
+        },
+        {
+          "from": "subject_actor_id",
+          "table": "actors",
+          "to": "id",
+          "on_delete": "RESTRICT"
+        }
+      ]
+    },
+    {
+      "name": "team_memberships",
+      "owner": "Identity",
+      "columns": [
+        {
+          "name": "id",
+          "type": "TEXT",
+          "not_null": true,
+          "primary_key": 1
+        },
+        {
+          "name": "team_id",
+          "type": "TEXT",
+          "not_null": true,
+          "primary_key": 0
+        },
+        {
+          "name": "actor_id",
+          "type": "TEXT",
+          "not_null": true,
+          "primary_key": 0
+        },
+        {
+          "name": "role",
+          "type": "TEXT",
+          "not_null": true,
+          "primary_key": 0
+        },
+        {
+          "name": "status",
+          "type": "TEXT",
+          "not_null": true,
+          "primary_key": 0
+        },
+        {
+          "name": "revision",
+          "type": "INTEGER",
+          "not_null": true,
+          "primary_key": 0
+        },
+        {
+          "name": "invited_by_actor_id",
+          "type": "TEXT",
+          "not_null": false,
+          "primary_key": 0
+        },
+        {
+          "name": "accepted_by_actor_id",
+          "type": "TEXT",
+          "not_null": false,
+          "primary_key": 0
+        },
+        {
+          "name": "created_at",
+          "type": "TEXT",
+          "not_null": true,
+          "primary_key": 0
+        },
+        {
+          "name": "updated_at",
+          "type": "TEXT",
+          "not_null": true,
+          "primary_key": 0
+        },
+        {
+          "name": "created_by_actor_id",
+          "type": "TEXT",
+          "not_null": false,
+          "primary_key": 0
+        },
+        {
+          "name": "updated_by_actor_id",
+          "type": "TEXT",
+          "not_null": false,
+          "primary_key": 0
+        },
+        {
+          "name": "deleted_at",
+          "type": "TEXT",
+          "not_null": false,
+          "primary_key": 0
+        }
+      ],
+      "foreign_keys": [
+        {
+          "from": "updated_by_actor_id",
+          "table": "actors",
+          "to": "id",
+          "on_delete": "RESTRICT"
+        },
+        {
+          "from": "created_by_actor_id",
+          "table": "actors",
+          "to": "id",
+          "on_delete": "RESTRICT"
+        },
+        {
+          "from": "accepted_by_actor_id",
+          "table": "actors",
+          "to": "id",
+          "on_delete": "RESTRICT"
+        },
+        {
+          "from": "invited_by_actor_id",
+          "table": "actors",
+          "to": "id",
+          "on_delete": "RESTRICT"
+        },
+        {
+          "from": "actor_id",
+          "table": "actors",
+          "to": "id",
+          "on_delete": "RESTRICT"
+        },
+        {
+          "from": "team_id",
+          "table": "teams",
+          "to": "id",
+          "on_delete": "RESTRICT"
+        }
+      ]
+    },
+    {
+      "name": "teams",
+      "owner": "Identity",
+      "columns": [
+        {
+          "name": "id",
+          "type": "TEXT",
+          "not_null": true,
+          "primary_key": 1
+        },
+        {
+          "name": "name",
+          "type": "TEXT",
+          "not_null": true,
+          "primary_key": 0
+        },
+        {
+          "name": "status",
+          "type": "TEXT",
+          "not_null": true,
+          "primary_key": 0
+        },
+        {
+          "name": "metadata_json",
+          "type": "TEXT",
+          "not_null": true,
+          "primary_key": 0
+        },
+        {
+          "name": "metadata_sha256",
+          "type": "TEXT",
+          "not_null": true,
+          "primary_key": 0
+        },
+        {
+          "name": "revision",
+          "type": "INTEGER",
+          "not_null": true,
+          "primary_key": 0
+        },
+        {
+          "name": "created_at",
+          "type": "TEXT",
+          "not_null": true,
+          "primary_key": 0
+        },
+        {
+          "name": "updated_at",
+          "type": "TEXT",
+          "not_null": true,
+          "primary_key": 0
+        },
+        {
+          "name": "created_by_actor_id",
+          "type": "TEXT",
+          "not_null": false,
+          "primary_key": 0
+        },
+        {
+          "name": "updated_by_actor_id",
+          "type": "TEXT",
+          "not_null": false,
+          "primary_key": 0
+        },
+        {
+          "name": "deleted_at",
+          "type": "TEXT",
+          "not_null": false,
+          "primary_key": 0
+        }
+      ],
+      "foreign_keys": [
+        {
+          "from": "updated_by_actor_id",
+          "table": "actors",
+          "to": "id",
+          "on_delete": "RESTRICT"
+        },
+        {
+          "from": "created_by_actor_id",
+          "table": "actors",
+          "to": "id",
+          "on_delete": "RESTRICT"
+        }
+      ]
+    },
+    {
+      "name": "workflow_critic_receipts",
+      "owner": "Critic",
+      "columns": [
+        {
+          "name": "id",
+          "type": "TEXT",
+          "not_null": true,
+          "primary_key": 1
+        },
+        {
+          "name": "generation_id",
+          "type": "TEXT",
+          "not_null": true,
+          "primary_key": 0
+        },
+        {
+          "name": "project_id",
+          "type": "TEXT",
+          "not_null": true,
+          "primary_key": 0
+        },
+        {
+          "name": "status",
+          "type": "TEXT",
+          "not_null": true,
+          "primary_key": 0
+        },
+        {
+          "name": "candidate_sha256",
+          "type": "TEXT",
+          "not_null": true,
+          "primary_key": 0
+        },
+        {
+          "name": "input_sha256",
+          "type": "TEXT",
+          "not_null": true,
+          "primary_key": 0
+        },
+        {
+          "name": "issues_json",
+          "type": "TEXT",
+          "not_null": true,
+          "primary_key": 0
+        },
+        {
+          "name": "issues_sha256",
+          "type": "TEXT",
+          "not_null": true,
+          "primary_key": 0
+        },
+        {
+          "name": "policy_revision",
+          "type": "INTEGER",
+          "not_null": true,
+          "primary_key": 0
+        },
+        {
+          "name": "provider",
+          "type": "TEXT",
+          "not_null": true,
+          "primary_key": 0
+        },
+        {
+          "name": "created_at",
+          "type": "TEXT",
+          "not_null": true,
+          "primary_key": 0
+        },
+        {
+          "name": "created_by_actor_id",
+          "type": "TEXT",
+          "not_null": true,
+          "primary_key": 0
+        }
+      ],
+      "foreign_keys": [
+        {
+          "from": "created_by_actor_id",
+          "table": "actors",
+          "to": "id",
+          "on_delete": "RESTRICT"
+        },
+        {
+          "from": "project_id",
+          "table": "projects",
+          "to": "id",
+          "on_delete": "RESTRICT"
+        },
+        {
+          "from": "generation_id",
+          "table": "workflow_generations",
+          "to": "id",
+          "on_delete": "RESTRICT"
+        }
+      ]
+    },
+    {
+      "name": "workflow_generation_proposals",
+      "owner": "Workflow",
+      "columns": [
+        {
+          "name": "id",
+          "type": "TEXT",
+          "not_null": true,
+          "primary_key": 1
+        },
+        {
+          "name": "generation_id",
+          "type": "TEXT",
+          "not_null": true,
+          "primary_key": 0
+        },
+        {
+          "name": "project_id",
+          "type": "TEXT",
+          "not_null": true,
+          "primary_key": 0
+        },
+        {
+          "name": "base_workflow_revision",
+          "type": "INTEGER",
+          "not_null": true,
+          "primary_key": 0
+        },
+        {
+          "name": "candidate_json",
+          "type": "TEXT",
+          "not_null": true,
+          "primary_key": 0
+        },
+        {
+          "name": "candidate_sha256",
+          "type": "TEXT",
+          "not_null": true,
+          "primary_key": 0
+        },
+        {
+          "name": "critic_receipt_id",
+          "type": "TEXT",
+          "not_null": true,
+          "primary_key": 0
+        },
+        {
+          "name": "proposal_sha256",
+          "type": "TEXT",
+          "not_null": true,
+          "primary_key": 0
+        },
+        {
+          "name": "status",
+          "type": "TEXT",
+          "not_null": true,
+          "primary_key": 0
+        },
+        {
+          "name": "applied_workflow_revision",
+          "type": "INTEGER",
+          "not_null": true,
+          "primary_key": 0
+        },
+        {
+          "name": "revision",
+          "type": "INTEGER",
+          "not_null": true,
+          "primary_key": 0
+        },
+        {
+          "name": "created_at",
+          "type": "TEXT",
+          "not_null": true,
+          "primary_key": 0
+        },
+        {
+          "name": "updated_at",
+          "type": "TEXT",
+          "not_null": true,
+          "primary_key": 0
+        },
+        {
+          "name": "created_by_actor_id",
+          "type": "TEXT",
+          "not_null": true,
+          "primary_key": 0
+        },
+        {
+          "name": "updated_by_actor_id",
+          "type": "TEXT",
+          "not_null": true,
+          "primary_key": 0
+        }
+      ],
+      "foreign_keys": [
+        {
+          "from": "updated_by_actor_id",
+          "table": "actors",
+          "to": "id",
+          "on_delete": "RESTRICT"
+        },
+        {
+          "from": "created_by_actor_id",
+          "table": "actors",
+          "to": "id",
+          "on_delete": "RESTRICT"
+        },
+        {
+          "from": "critic_receipt_id",
+          "table": "workflow_critic_receipts",
+          "to": "id",
+          "on_delete": "RESTRICT"
+        },
+        {
+          "from": "project_id",
+          "table": "projects",
+          "to": "id",
+          "on_delete": "RESTRICT"
+        },
+        {
+          "from": "generation_id",
+          "table": "workflow_generations",
+          "to": "id",
+          "on_delete": "RESTRICT"
+        }
+      ]
+    },
+    {
+      "name": "workflow_generations",
+      "owner": "Workflow",
+      "columns": [
+        {
+          "name": "id",
+          "type": "TEXT",
+          "not_null": true,
+          "primary_key": 1
+        },
+        {
+          "name": "project_id",
+          "type": "TEXT",
+          "not_null": true,
+          "primary_key": 0
+        },
+        {
+          "name": "workflow_id",
+          "type": "TEXT",
+          "not_null": true,
+          "primary_key": 0
+        },
+        {
+          "name": "operation_id",
+          "type": "TEXT",
+          "not_null": false,
+          "primary_key": 0
+        },
+        {
+          "name": "phase",
+          "type": "TEXT",
+          "not_null": true,
+          "primary_key": 0
+        },
+        {
+          "name": "source_brief_revision",
+          "type": "INTEGER",
+          "not_null": true,
+          "primary_key": 0
+        },
+        {
+          "name": "source_brief_hash",
+          "type": "TEXT",
+          "not_null": true,
+          "primary_key": 0
+        },
+        {
+          "name": "source_workflow_revision",
+          "type": "INTEGER",
+          "not_null": true,
+          "primary_key": 0
+        },
+        {
+          "name": "source_workflow_hash",
+          "type": "TEXT",
+          "not_null": true,
+          "primary_key": 0
+        },
+        {
+          "name": "source_repository_revision",
+          "type": "INTEGER",
+          "not_null": true,
+          "primary_key": 0
+        },
+        {
+          "name": "source_repository_hash",
+          "type": "TEXT",
+          "not_null": true,
+          "primary_key": 0
+        },
+        {
+          "name": "input_json",
+          "type": "TEXT",
+          "not_null": true,
+          "primary_key": 0
+        },
+        {
+          "name": "input_sha256",
+          "type": "TEXT",
+          "not_null": true,
+          "primary_key": 0
+        },
+        {
+          "name": "candidate_json",
+          "type": "TEXT",
+          "not_null": true,
+          "primary_key": 0
+        },
+        {
+          "name": "candidate_sha256",
+          "type": "TEXT",
+          "not_null": true,
+          "primary_key": 0
+        },
+        {
+          "name": "attempt",
+          "type": "INTEGER",
+          "not_null": true,
+          "primary_key": 0
+        },
+        {
+          "name": "retry_of_generation_id",
+          "type": "TEXT",
+          "not_null": false,
+          "primary_key": 0
+        },
+        {
+          "name": "critic_receipt_id",
+          "type": "TEXT",
+          "not_null": false,
+          "primary_key": 0
+        },
+        {
+          "name": "proposal_id",
+          "type": "TEXT",
+          "not_null": false,
+          "primary_key": 0
+        },
+        {
+          "name": "error_code",
+          "type": "TEXT",
+          "not_null": true,
+          "primary_key": 0
+        },
+        {
+          "name": "revision",
+          "type": "INTEGER",
+          "not_null": true,
+          "primary_key": 0
+        },
+        {
+          "name": "created_at",
+          "type": "TEXT",
+          "not_null": true,
+          "primary_key": 0
+        },
+        {
+          "name": "updated_at",
+          "type": "TEXT",
+          "not_null": true,
+          "primary_key": 0
+        },
+        {
+          "name": "completed_at",
+          "type": "TEXT",
+          "not_null": false,
+          "primary_key": 0
+        },
+        {
+          "name": "cancelled_at",
+          "type": "TEXT",
+          "not_null": false,
+          "primary_key": 0
+        },
+        {
+          "name": "created_by_actor_id",
+          "type": "TEXT",
+          "not_null": true,
+          "primary_key": 0
+        },
+        {
+          "name": "updated_by_actor_id",
+          "type": "TEXT",
+          "not_null": true,
+          "primary_key": 0
+        }
+      ],
+      "foreign_keys": [
+        {
+          "from": "updated_by_actor_id",
+          "table": "actors",
+          "to": "id",
+          "on_delete": "RESTRICT"
+        },
+        {
+          "from": "created_by_actor_id",
+          "table": "actors",
+          "to": "id",
+          "on_delete": "RESTRICT"
+        },
+        {
+          "from": "retry_of_generation_id",
+          "table": "workflow_generations",
+          "to": "id",
+          "on_delete": "RESTRICT"
+        },
+        {
+          "from": "operation_id",
+          "table": "operations",
+          "to": "id",
+          "on_delete": "RESTRICT"
+        },
+        {
+          "from": "workflow_id",
+          "table": "workflows",
+          "to": "id",
+          "on_delete": "RESTRICT"
+        },
+        {
+          "from": "project_id",
+          "table": "projects",
+          "to": "id",
+          "on_delete": "RESTRICT"
+        }
+      ]
+    },
+    {
+      "name": "workflow_nodes",
+      "owner": "Workflow",
+      "columns": [
+        {
+          "name": "id",
+          "type": "TEXT",
+          "not_null": true,
+          "primary_key": 1
+        },
+        {
+          "name": "workflow_revision_id",
+          "type": "TEXT",
+          "not_null": true,
+          "primary_key": 0
+        },
+        {
+          "name": "node_key",
+          "type": "TEXT",
+          "not_null": true,
+          "primary_key": 0
+        },
+        {
+          "name": "parent_key",
+          "type": "TEXT",
+          "not_null": false,
+          "primary_key": 0
+        },
+        {
+          "name": "node_kind",
+          "type": "TEXT",
+          "not_null": true,
+          "primary_key": 0
+        },
+        {
+          "name": "title",
+          "type": "TEXT",
+          "not_null": true,
+          "primary_key": 0
+        },
+        {
+          "name": "config_json",
+          "type": "TEXT",
+          "not_null": true,
+          "primary_key": 0
+        },
+        {
+          "name": "config_sha256",
+          "type": "TEXT",
+          "not_null": true,
+          "primary_key": 0
+        },
+        {
+          "name": "revision",
+          "type": "INTEGER",
+          "not_null": true,
+          "primary_key": 0
+        },
+        {
+          "name": "created_at",
+          "type": "TEXT",
+          "not_null": true,
+          "primary_key": 0
+        }
+      ],
+      "foreign_keys": [
+        {
+          "from": "workflow_revision_id",
+          "table": "workflow_revisions",
+          "to": "id",
+          "on_delete": "RESTRICT"
+        }
+      ]
+    },
+    {
+      "name": "workflow_revisions",
+      "owner": "Workflow",
+      "columns": [
+        {
+          "name": "id",
+          "type": "TEXT",
+          "not_null": true,
+          "primary_key": 1
+        },
+        {
+          "name": "workflow_id",
+          "type": "TEXT",
+          "not_null": true,
+          "primary_key": 0
+        },
+        {
+          "name": "project_id",
+          "type": "TEXT",
+          "not_null": true,
+          "primary_key": 0
+        },
+        {
+          "name": "revision",
+          "type": "INTEGER",
+          "not_null": true,
+          "primary_key": 0
+        },
+        {
+          "name": "graph_json",
+          "type": "TEXT",
+          "not_null": true,
+          "primary_key": 0
+        },
+        {
+          "name": "graph_sha256",
+          "type": "TEXT",
+          "not_null": true,
+          "primary_key": 0
+        },
+        {
+          "name": "layout_json",
+          "type": "TEXT",
+          "not_null": true,
+          "primary_key": 0
+        },
+        {
+          "name": "layout_sha256",
+          "type": "TEXT",
+          "not_null": true,
+          "primary_key": 0
+        },
+        {
+          "name": "source_brief_revision",
+          "type": "INTEGER",
+          "not_null": true,
+          "primary_key": 0
+        },
+        {
+          "name": "source_brief_hash",
+          "type": "TEXT",
+          "not_null": true,
+          "primary_key": 0
+        },
+        {
+          "name": "proposal_id",
+          "type": "TEXT",
+          "not_null": false,
+          "primary_key": 0
+        },
+        {
+          "name": "created_at",
+          "type": "TEXT",
+          "not_null": true,
+          "primary_key": 0
+        },
+        {
+          "name": "created_by_actor_id",
+          "type": "TEXT",
+          "not_null": true,
+          "primary_key": 0
+        }
+      ],
+      "foreign_keys": [
+        {
+          "from": "created_by_actor_id",
+          "table": "actors",
+          "to": "id",
+          "on_delete": "RESTRICT"
+        },
+        {
+          "from": "project_id",
+          "table": "projects",
+          "to": "id",
+          "on_delete": "RESTRICT"
+        },
+        {
+          "from": "workflow_id",
+          "table": "workflows",
+          "to": "id",
+          "on_delete": "RESTRICT"
+        }
+      ]
+    },
+    {
+      "name": "workflows",
+      "owner": "Workflow",
+      "columns": [
+        {
+          "name": "id",
+          "type": "TEXT",
+          "not_null": true,
+          "primary_key": 1
+        },
+        {
+          "name": "project_id",
+          "type": "TEXT",
+          "not_null": true,
+          "primary_key": 0
+        },
+        {
+          "name": "status",
+          "type": "TEXT",
+          "not_null": true,
+          "primary_key": 0
+        },
+        {
+          "name": "current_revision",
+          "type": "INTEGER",
+          "not_null": true,
+          "primary_key": 0
+        },
+        {
+          "name": "revision",
+          "type": "INTEGER",
+          "not_null": true,
+          "primary_key": 0
+        },
+        {
+          "name": "created_at",
+          "type": "TEXT",
+          "not_null": true,
+          "primary_key": 0
+        },
+        {
+          "name": "updated_at",
+          "type": "TEXT",
+          "not_null": true,
+          "primary_key": 0
+        },
+        {
+          "name": "created_by_actor_id",
+          "type": "TEXT",
+          "not_null": true,
+          "primary_key": 0
+        },
+        {
+          "name": "updated_by_actor_id",
+          "type": "TEXT",
+          "not_null": true,
+          "primary_key": 0
+        }
+      ],
+      "foreign_keys": [
+        {
+          "from": "updated_by_actor_id",
+          "table": "actors",
+          "to": "id",
+          "on_delete": "RESTRICT"
+        },
+        {
+          "from": "created_by_actor_id",
+          "table": "actors",
+          "to": "id",
+          "on_delete": "RESTRICT"
+        },
+        {
+          "from": "project_id",
+          "table": "projects",
+          "to": "id",
+          "on_delete": "RESTRICT"
+        }
+      ]
+    }
+  ],
+  "indexes": [
+    "idx_brief_revisions_project",
+    "idx_context_edges_parent",
+    "idx_context_index_snapshots_project",
+    "idx_context_nodes_project_uri",
+    "idx_context_nodes_source",
+    "idx_context_packs_project",
+    "idx_context_projection_jobs_lease",
+    "idx_context_projection_jobs_project",
+    "idx_context_selections_project",
+    "idx_context_sources_project",
+    "idx_context_versions_node",
+    "idx_credential_refs_owner",
+    "idx_events_aggregate",
+    "idx_events_operation",
+    "idx_events_project",
+    "idx_exchange_grants_request",
+    "idx_exchange_grants_target",
+    "idx_exchange_requests_source",
+    "idx_exchange_requests_target",
+    "idx_gateway_receipts_gateway",
+    "idx_mcp_clients_actor",
+    "idx_operations_status",
+    "idx_project_acl_lookup",
+    "idx_project_intakes_status",
+    "idx_project_invitations_project",
+    "idx_project_memberships_actor",
+    "idx_project_memberships_project",
+    "idx_projects_team",
+    "idx_provider_profiles_owner",
+    "idx_repository_locks_active",
+    "idx_revisions_aggregate",
+    "idx_sessions_subject",
+    "idx_team_memberships_actor",
+    "idx_team_memberships_team",
+    "idx_workflow_generations_project"
+  ],
+  "triggers": [
+    "immutable_aggregate_revisions_delete",
+    "immutable_aggregate_revisions_update",
+    "immutable_audit_events_delete",
+    "immutable_audit_events_update",
+    "immutable_context_document_versions_delete",
+    "immutable_context_document_versions_update",
+    "immutable_context_index_snapshots_delete",
+    "immutable_context_index_snapshots_update",
+    "immutable_context_packs_delete",
+    "immutable_context_packs_update",
+    "immutable_context_selections_delete",
+    "immutable_context_selections_update",
+    "immutable_events_delete",
+    "immutable_events_update",
+    "immutable_receipt_manifests_delete",
+    "immutable_receipt_manifests_update",
+    "immutable_schema_meta_delete",
+    "immutable_schema_meta_update",
+    "immutable_schema_migrations_delete",
+    "immutable_schema_migrations_update"
+  ],
+  "forbidden_shadow_tables": [
+    "context_policy_heads",
+    "context_selection_heads",
+    "context_index_heads",
+    "context_projection_events"
+  ],
+  "forbidden_shadow_tables_present": []
+}

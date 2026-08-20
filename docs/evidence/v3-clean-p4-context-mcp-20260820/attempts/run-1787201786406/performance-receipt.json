@@ -1,0 +1,42 @@
+{
+  "schema_version": "aiws.v3-clean.p4-performance-record.v1",
+  "status": "passed",
+  "command": {
+    "command": "node scripts/v3-clean-p4-performance.mjs",
+    "cwd": "repository-root",
+    "input": {
+      "args": [
+        "scripts/v3-clean-p4-performance.mjs"
+      ]
+    },
+    "stdout": "{\n  \"schema_version\": \"aiws.v3-clean.p4-performance.v1\",\n  \"status\": \"passed\",\n  \"fixture_nodes\": 1000,\n  \"metrics\": {\n    \"map_p95_ms\": 13.59,\n    \"search_p95_ms\": 25.02,\n    \"selection_p95_ms\": 41.28,\n    \"rebuild_ms\": 624.78,\n    \"mcp_reads\": 100,\n    \"mcp_reads_total_ms\": 792.22,\n    \"projected_nodes\": 1001\n  },\n  \"thresholds\": {\n    \"map_p95_ms\": 150,\n    \"search_p95_ms\": 250,\n    \"selection_p95_ms\": 500\n  },\n  \"failures\": []\n}\n",
+    "stderr": "(node:53020) ExperimentalWarning: SQLite is an experimental feature and might change at any time\n(Use `node --trace-warnings ...` to show where the warning was created)\n",
+    "exit_status": 0,
+    "expected_exit_statuses": [
+      0
+    ],
+    "signal": null,
+    "ok": true,
+    "summary": "\"mcp_reads_total_ms\": 792.22,\n\"projected_nodes\": 1001\n},\n\"thresholds\": {\n\"map_p95_ms\": 150,\n\"search_p95_ms\": 250,\n\"selection_p95_ms\": 500\n},\n\"failures\": []\n}\n(node:53020) ExperimentalWarning: SQLite is an experimental feature and might change at any time\n(Use `node --trace-warnings ...` to show where the warning was created)"
+  },
+  "receipt": {
+    "schema_version": "aiws.v3-clean.p4-performance.v1",
+    "status": "passed",
+    "fixture_nodes": 1000,
+    "metrics": {
+      "map_p95_ms": 13.59,
+      "search_p95_ms": 25.02,
+      "selection_p95_ms": 41.28,
+      "rebuild_ms": 624.78,
+      "mcp_reads": 100,
+      "mcp_reads_total_ms": 792.22,
+      "projected_nodes": 1001
+    },
+    "thresholds": {
+      "map_p95_ms": 150,
+      "search_p95_ms": 250,
+      "selection_p95_ms": 500
+    },
+    "failures": []
+  }
+}

@@ -1,0 +1,89 @@
+{
+  "schema_version": "aiws.v3-clean.p4-rollback-receipt.v1",
+  "status": "failed",
+  "commands": [
+    {
+      "command": "powershell.exe -NoProfile -ExecutionPolicy Bypass -File <ROOT>\\docs\\evidence\\v3-clean-p4-context-mcp-20260820\\attempts\\run-1787201786406\\rollback.ps1 -DryRun",
+      "cwd": "repository-root",
+      "input": {
+        "args": [
+          "-NoProfile",
+          "-ExecutionPolicy",
+          "Bypass",
+          "-File",
+          "<ROOT>\\docs\\evidence\\v3-clean-p4-context-mcp-20260820\\attempts\\run-1787201786406\\rollback.ps1",
+          "-DryRun"
+        ]
+      },
+      "stdout": "",
+      "stderr": "[eval]:8\r\n  p4_tables: Number(db.prepare(SELECT\r\n                               ^^^^^^\r\nExpected ',', got '<eof>'\r\n\r\nSyntaxError: missing ) after argument list\r\n    at makeContextifyScript (node:internal/vm:194:14)\r\n    at compileScript (node:internal/process/execution:388:10)\r\n    at evalTypeScript (node:internal/process/execution:260:22)\r\n    at node:internal/main/eval_string:71:3\r\n\r\nNode.js v24.14.0\r\nrollback_database_probe_failed\r\n����λ�� <PATH>\r\n102 �ַ�: 28\r\n+ if ($LASTEXITCODE -ne 0) { throw 'rollback_database_probe_failed' }\r\n+                            ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~\r\n    + CategoryInfo          : OperationStopped: (rollback_database_probe_failed:String) [], RuntimeException\r\n    + FullyQualifiedErrorId : rollback_database_probe_failed\r\n \r\n",
+      "exit_status": 1,
+      "expected_exit_statuses": [
+        0
+      ],
+      "signal": null,
+      "ok": false,
+      "summary": "at makeContextifyScript (node:internal/vm:194:14)\nat compileScript (node:internal/process/execution:388:10)\nat evalTypeScript (node:internal/process/execution:260:22)\nat node:internal/main/eval_string:71:3\nNode.js v24.14.0\nrollback_database_probe_failed\n����λ�� <PATH>\n102 �ַ�: 28\n+ if ($LASTEXITCODE -ne 0) { throw 'rollback_database_probe_failed' }\n+                            ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~\n+ CategoryInfo          : OperationStopped: (rollback_database_probe_failed:String) [], RuntimeException\n+ FullyQualifiedErrorId : rollback_database_probe_failed"
+    },
+    {
+      "command": "git -c core.autocrlf=false apply --whitespace=nowarn <ROOT>\\docs\\evidence\\v3-clean-p4-context-mcp-20260820\\attempts\\run-1787201786406\\change.patch",
+      "cwd": "ISOLATED_TARGET",
+      "input": {
+        "args": [
+          "-c",
+          "core.autocrlf=false",
+          "apply",
+          "--whitespace=nowarn",
+          "<ROOT>\\docs\\evidence\\v3-clean-p4-context-mcp-20260820\\attempts\\run-1787201786406\\change.patch"
+        ]
+      },
+      "stdout": "",
+      "stderr": "",
+      "exit_status": 0,
+      "expected_exit_statuses": [
+        0
+      ],
+      "signal": null,
+      "ok": true,
+      "summary": ""
+    },
+    {
+      "command": "powershell.exe -NoProfile -ExecutionPolicy Bypass -File <ROOT>\\docs\\evidence\\v3-clean-p4-context-mcp-20260820\\attempts\\run-1787201786406\\rollback.ps1 -Apply -SourceRoot <PATH>",
+      "cwd": "repository-root",
+      "input": {
+        "args": [
+          "-NoProfile",
+          "-ExecutionPolicy",
+          "Bypass",
+          "-File",
+          "<ROOT>\\docs\\evidence\\v3-clean-p4-context-mcp-20260820\\attempts\\run-1787201786406\\rollback.ps1",
+          "-Apply",
+          "-SourceRoot",
+          "<PATH>",
+          "-IsolatedRoot",
+          "<PATH>"
+        ]
+      },
+      "stdout": "",
+      "stderr": "[eval]:8\r\n  p4_tables: Number(db.prepare(SELECT\r\n                               ^^^^^^\r\nExpected ',', got '<eof>'\r\n\r\nSyntaxError: missing ) after argument list\r\n    at makeContextifyScript (node:internal/vm:194:14)\r\n    at compileScript (node:internal/process/execution:388:10)\r\n    at evalTypeScript (node:internal/process/execution:260:22)\r\n    at node:internal/main/eval_string:71:3\r\n\r\nNode.js v24.14.0\r\nrollback_database_probe_failed\r\n����λ�� <PATH>\r\n102 �ַ�: 28\r\n+ if ($LASTEXITCODE -ne 0) { throw 'rollback_database_probe_failed' }\r\n+                            ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~\r\n    + CategoryInfo          : OperationStopped: (rollback_database_probe_failed:String) [], RuntimeException\r\n    + FullyQualifiedErrorId : rollback_database_probe_failed\r\n \r\n",
+      "exit_status": 1,
+      "expected_exit_statuses": [
+        0
+      ],
+      "signal": null,
+      "ok": false,
+      "summary": "at makeContextifyScript (node:internal/vm:194:14)\nat compileScript (node:internal/process/execution:388:10)\nat evalTypeScript (node:internal/process/execution:260:22)\nat node:internal/main/eval_string:71:3\nNode.js v24.14.0\nrollback_database_probe_failed\n����λ�� <PATH>\n102 �ַ�: 28\n+ if ($LASTEXITCODE -ne 0) { throw 'rollback_database_probe_failed' }\n+                            ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~\n+ CategoryInfo          : OperationStopped: (rollback_database_probe_failed:String) [], RuntimeException\n+ FullyQualifiedErrorId : rollback_database_probe_failed"
+    }
+  ],
+  "source_reverse_check": false,
+  "isolated_actual_apply": true,
+  "down_migration": false,
+  "restored_user_version": 0,
+  "foreign_key_check": [],
+  "migration_ledger": [],
+  "role_artifacts": [],
+  "byte_exact_mismatches": [
+    "rollback_apply_failed",
+    "rollback_mismatch_receipt_missing"
+  ]
+}

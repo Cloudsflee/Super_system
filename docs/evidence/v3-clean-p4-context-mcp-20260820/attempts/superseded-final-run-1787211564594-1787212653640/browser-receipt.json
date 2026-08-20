@@ -1,0 +1,92 @@
+{
+  "schema_version": "aiws.v3-clean.p4-browser-record.v1",
+  "status": "passed",
+  "command": {
+    "command": "pnpm test:e2e",
+    "cwd": "repository-root",
+    "input": {
+      "args": [
+        "test:e2e"
+      ]
+    },
+    "stdout": "\n> ai-workspace-system@3.0.0 test:e2e <ROOT>\n> node scripts/e2e.mjs\n\n[node.exe] V3-Clean listening on http://127.0.0.1:49323\n[node.exe] \n  \u001b[32m\u001b[1mVITE\u001b[22m v7.3.6\u001b[39m  \u001b[2mready in \u001b[0m\u001b[1m222\u001b[22m\u001b[2m\u001b[0m ms\u001b[22m\n\n[node.exe]   \u001b[32m➜\u001b[39m  \u001b[1mLocal\u001b[22m:   \u001b[36mhttp://127.0.0.1:\u001b[1m49324\u001b[22m/\u001b[39m\nP4 Clean E2E passed: Context/Projection/Pack/MCP/Exchange across 3 viewports; overlaps=0; /api/v1 requests=0\n",
+    "stderr": "[node.exe] (node:28520) ExperimentalWarning: SQLite is an experimental feature and might change at any time\n(Use `node --trace-warnings ...` to show where the warning was created)\n",
+    "exit_status": 0,
+    "expected_exit_statuses": [
+      0
+    ],
+    "signal": null,
+    "ok": true,
+    "summary": "> ai-workspace-system@3.0.0 test:e2e <ROOT>\n> node scripts/e2e.mjs\n[node.exe] V3-Clean listening on http://127.0.0.1:49323\n[node.exe]\n\u001b[32m\u001b[1mVITE\u001b[22m v7.3.6\u001b[39m  \u001b[2mready in \u001b[0m\u001b[1m222\u001b[22m\u001b[2m\u001b[0m ms\u001b[22m\n[node.exe]   \u001b[32m➜\u001b[39m  \u001b[1mLocal\u001b[22m:   \u001b[36mhttp://127.0.0.1:\u001b[1m49324\u001b[22m/\u001b[39m\nP4 Clean E2E passed: Context/Projection/Pack/MCP/Exchange across 3 viewports; overlaps=0; /api/v1 requests=0\n[node.exe] (node:28520) ExperimentalWarning: SQLite is an experimental feature and might change at any time\n(Use `node --trace-warnings ...` to show where the warning was created)"
+  },
+  "receipt": {
+    "schema_version": "aiws.v3-clean.p4-e2e-receipt.v1",
+    "status": "passed",
+    "api_port": 60987,
+    "web_port": 60988,
+    "viewports": [
+      "mobile",
+      "laptop",
+      "desktop"
+    ],
+    "routes": [
+      "context",
+      "settings"
+    ],
+    "request_count": 213,
+    "legacy_api_v1_requests": [],
+    "browser_errors": [],
+    "http_errors": [],
+    "layouts": [
+      {
+        "viewport": "mobile",
+        "route": "context",
+        "horizontal_overflow": false,
+        "scroll_width": 390,
+        "client_width": 390,
+        "overlaps": []
+      },
+      {
+        "viewport": "mobile",
+        "route": "settings",
+        "horizontal_overflow": false,
+        "scroll_width": 390,
+        "client_width": 390,
+        "overlaps": []
+      },
+      {
+        "viewport": "laptop",
+        "route": "context",
+        "horizontal_overflow": false,
+        "scroll_width": 1024,
+        "client_width": 1024,
+        "overlaps": []
+      },
+      {
+        "viewport": "laptop",
+        "route": "settings",
+        "horizontal_overflow": false,
+        "scroll_width": 1024,
+        "client_width": 1024,
+        "overlaps": []
+      },
+      {
+        "viewport": "desktop",
+        "route": "context",
+        "horizontal_overflow": false,
+        "scroll_width": 1440,
+        "client_width": 1440,
+        "overlaps": []
+      },
+      {
+        "viewport": "desktop",
+        "route": "settings",
+        "horizontal_overflow": false,
+        "scroll_width": 1440,
+        "client_width": 1440,
+        "overlaps": []
+      }
+    ],
+    "context_pack_hash": "7258950d0c5457851d56a411763273730d08f257dd20f2e479492d6722389285"
+  }
+}

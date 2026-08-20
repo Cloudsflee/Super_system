@@ -1,0 +1,38 @@
+{
+  "schema_version": "aiws.v3-clean.p4-gateway-record.v1",
+  "status": "passed",
+  "command": {
+    "command": "node scripts/v3-clean-p4-gateway-probe.mjs",
+    "cwd": "repository-root",
+    "input": {
+      "args": [
+        "scripts/v3-clean-p4-gateway-probe.mjs"
+      ]
+    },
+    "stdout": "{\n  \"schema_version\": \"aiws.v3-clean.p4-gateway-probe.v1\",\n  \"status\": \"passed\",\n  \"boundaries\": [\n    \"independent-http-process\",\n    \"signed-forward\",\n    \"mcp-client-scope\",\n    \"nonce-replay\",\n    \"receipt-redaction\"\n  ],\n  \"api_user_version\": 4,\n  \"gateway_health\": \"ready\",\n  \"command_id\": \"context.map\",\n  \"receipt_decision\": \"accepted\",\n  \"replay_error\": \"gateway_replay\"\n}\n",
+    "stderr": "",
+    "exit_status": 0,
+    "expected_exit_statuses": [
+      0
+    ],
+    "signal": null,
+    "ok": true,
+    "summary": "\"independent-http-process\",\n\"signed-forward\",\n\"mcp-client-scope\",\n\"nonce-replay\",\n\"receipt-redaction\"\n],\n\"api_user_version\": 4,\n\"gateway_health\": \"ready\",\n\"command_id\": \"context.map\",\n\"receipt_decision\": \"accepted\",\n\"replay_error\": \"gateway_replay\"\n}"
+  },
+  "receipt": {
+    "schema_version": "aiws.v3-clean.p4-gateway-probe.v1",
+    "status": "passed",
+    "boundaries": [
+      "independent-http-process",
+      "signed-forward",
+      "mcp-client-scope",
+      "nonce-replay",
+      "receipt-redaction"
+    ],
+    "api_user_version": 4,
+    "gateway_health": "ready",
+    "command_id": "context.map",
+    "receipt_decision": "accepted",
+    "replay_error": "gateway_replay"
+  }
+}

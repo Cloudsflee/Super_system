@@ -1,0 +1,497 @@
+{
+  "schema_version": "aiws.v3-clean.p4-route-inventory.v1",
+  "active_api": "/api/v2",
+  "retired_api": "/api/v1",
+  "routes": [
+    {
+      "command_id": "context.source.list",
+      "method": "GET",
+      "path": "/api/v2/projects/{project_id}/context/sources",
+      "owner": "Context",
+      "input_schema": "context.project.query.v2",
+      "output_schema": "context.sources.v2",
+      "mcp": {
+        "mapping": "resource",
+        "name": "context_source_list"
+      },
+      "idempotency": "forbidden",
+      "expected_revision": "none"
+    },
+    {
+      "command_id": "context.source.create",
+      "method": "POST",
+      "path": "/api/v2/projects/{project_id}/context/sources",
+      "owner": "Context",
+      "input_schema": "context.source.create.v2",
+      "output_schema": "context.source.receipt.v2",
+      "mcp": {
+        "mapping": "tool",
+        "name": "context_source_create"
+      },
+      "idempotency": "required",
+      "expected_revision": "resource"
+    },
+    {
+      "command_id": "context.map",
+      "method": "GET",
+      "path": "/api/v2/projects/{project_id}/context/map",
+      "owner": "Context",
+      "input_schema": "context.project.query.v2",
+      "output_schema": "context.map.v2",
+      "mcp": {
+        "mapping": "resource",
+        "name": "context_map"
+      },
+      "idempotency": "forbidden",
+      "expected_revision": "none"
+    },
+    {
+      "command_id": "context.search",
+      "method": "GET",
+      "path": "/api/v2/projects/{project_id}/context/search",
+      "owner": "Context",
+      "input_schema": "context.search.query.v2",
+      "output_schema": "context.search.v2",
+      "mcp": {
+        "mapping": "resource",
+        "name": "context_search"
+      },
+      "idempotency": "forbidden",
+      "expected_revision": "none"
+    },
+    {
+      "command_id": "context.read",
+      "method": "GET",
+      "path": "/api/v2/projects/{project_id}/context/read",
+      "owner": "Context",
+      "input_schema": "context.read.query.v2",
+      "output_schema": "context.node.v2",
+      "mcp": {
+        "mapping": "resource",
+        "name": "context_read"
+      },
+      "idempotency": "forbidden",
+      "expected_revision": "none"
+    },
+    {
+      "command_id": "context.node.get",
+      "method": "GET",
+      "path": "/api/v2/projects/{project_id}/context/nodes/{node_id}",
+      "owner": "Context",
+      "input_schema": "context.node.query.v2",
+      "output_schema": "context.node.v2",
+      "mcp": {
+        "mapping": "resource",
+        "name": "context_node_get"
+      },
+      "idempotency": "forbidden",
+      "expected_revision": "none"
+    },
+    {
+      "command_id": "context.node.versions",
+      "method": "GET",
+      "path": "/api/v2/projects/{project_id}/context/nodes/{node_id}/versions",
+      "owner": "Context",
+      "input_schema": "context.node.query.v2",
+      "output_schema": "context.versions.v2",
+      "mcp": {
+        "mapping": "resource",
+        "name": "context_node_versions"
+      },
+      "idempotency": "forbidden",
+      "expected_revision": "none"
+    },
+    {
+      "command_id": "context.policy.get",
+      "method": "GET",
+      "path": "/api/v2/projects/{project_id}/context/policy",
+      "owner": "Context",
+      "input_schema": "context.project.query.v2",
+      "output_schema": "context.policy.v2",
+      "mcp": {
+        "mapping": "resource",
+        "name": "context_policy_get"
+      },
+      "idempotency": "forbidden",
+      "expected_revision": "none"
+    },
+    {
+      "command_id": "context.policy.update",
+      "method": "PATCH",
+      "path": "/api/v2/projects/{project_id}/context/policy",
+      "owner": "Context",
+      "input_schema": "context.policy.update.v2",
+      "output_schema": "context.policy.v2",
+      "mcp": {
+        "mapping": "tool",
+        "name": "context_policy_update"
+      },
+      "idempotency": "required",
+      "expected_revision": "resource"
+    },
+    {
+      "command_id": "context.selection.list",
+      "method": "GET",
+      "path": "/api/v2/projects/{project_id}/context/selections",
+      "owner": "Context",
+      "input_schema": "context.project.query.v2",
+      "output_schema": "context.selections.v2",
+      "mcp": {
+        "mapping": "resource",
+        "name": "context_selection_list"
+      },
+      "idempotency": "forbidden",
+      "expected_revision": "none"
+    },
+    {
+      "command_id": "context.selection.create",
+      "method": "POST",
+      "path": "/api/v2/projects/{project_id}/context/selections",
+      "owner": "Context",
+      "input_schema": "context.selection.create.v2",
+      "output_schema": "context.selection.receipt.v2",
+      "mcp": {
+        "mapping": "tool",
+        "name": "context_selection_create"
+      },
+      "idempotency": "required",
+      "expected_revision": "resource"
+    },
+    {
+      "command_id": "context.pack.list",
+      "method": "GET",
+      "path": "/api/v2/projects/{project_id}/context/packs",
+      "owner": "Context",
+      "input_schema": "context.project.query.v2",
+      "output_schema": "context.packs.v2",
+      "mcp": {
+        "mapping": "resource",
+        "name": "context_packs_list"
+      },
+      "idempotency": "forbidden",
+      "expected_revision": "none"
+    },
+    {
+      "command_id": "context.pack.get",
+      "method": "GET",
+      "path": "/api/v2/projects/{project_id}/context/packs/{pack_id}",
+      "owner": "Context",
+      "input_schema": "context.pack.query.v2",
+      "output_schema": "context.pack.v2",
+      "mcp": {
+        "mapping": "resource",
+        "name": "context_pack_get"
+      },
+      "idempotency": "forbidden",
+      "expected_revision": "none"
+    },
+    {
+      "command_id": "context.pack.create",
+      "method": "POST",
+      "path": "/api/v2/projects/{project_id}/context/packs",
+      "owner": "Context",
+      "input_schema": "context.pack.create.v2",
+      "output_schema": "context.pack.receipt.v2",
+      "mcp": {
+        "mapping": "tool",
+        "name": "context_pack_create"
+      },
+      "idempotency": "required",
+      "expected_revision": "resource"
+    },
+    {
+      "command_id": "context.projection.status",
+      "method": "GET",
+      "path": "/api/v2/projects/{project_id}/context/status",
+      "owner": "Projection",
+      "input_schema": "context.project.query.v2",
+      "output_schema": "context.status.v2",
+      "mcp": {
+        "mapping": "resource",
+        "name": "context_status"
+      },
+      "idempotency": "forbidden",
+      "expected_revision": "none"
+    },
+    {
+      "command_id": "context.projection.rebuild",
+      "method": "POST",
+      "path": "/api/v2/projects/{project_id}/context/rebuild",
+      "owner": "Projection",
+      "input_schema": "context.rebuild.v2",
+      "output_schema": "operation.receipt.v2",
+      "mcp": {
+        "mapping": "tool",
+        "name": "context_rebuild"
+      },
+      "idempotency": "required",
+      "expected_revision": "resource"
+    },
+    {
+      "command_id": "context.projection.jobs",
+      "method": "GET",
+      "path": "/api/v2/projects/{project_id}/context/jobs",
+      "owner": "Projection",
+      "input_schema": "context.project.query.v2",
+      "output_schema": "context.jobs.v2",
+      "mcp": {
+        "mapping": "resource",
+        "name": "context_projection_jobs"
+      },
+      "idempotency": "forbidden",
+      "expected_revision": "none"
+    },
+    {
+      "command_id": "context.projection.job",
+      "method": "GET",
+      "path": "/api/v2/projects/{project_id}/context/jobs/{job_id}",
+      "owner": "Projection",
+      "input_schema": "context.job.query.v2",
+      "output_schema": "context.job.v2",
+      "mcp": {
+        "mapping": "resource",
+        "name": "context_projection_job"
+      },
+      "idempotency": "forbidden",
+      "expected_revision": "none"
+    },
+    {
+      "command_id": "context.projection.events",
+      "method": "GET",
+      "path": "/api/v2/projects/{project_id}/context/jobs/{job_id}/events",
+      "owner": "Projection",
+      "input_schema": "context.events.query.v2",
+      "output_schema": "event.replay.v2",
+      "mcp": {
+        "mapping": "resource",
+        "name": "context_projection_events"
+      },
+      "idempotency": "forbidden",
+      "expected_revision": "none"
+    },
+    {
+      "command_id": "context.projection.cancel",
+      "method": "POST",
+      "path": "/api/v2/projects/{project_id}/context/jobs/{job_id}/cancel",
+      "owner": "Projection",
+      "input_schema": "context.job.mutation.v2",
+      "output_schema": "operation.receipt.v2",
+      "mcp": {
+        "mapping": "tool",
+        "name": "context_projection_cancel"
+      },
+      "idempotency": "required",
+      "expected_revision": "resource"
+    },
+    {
+      "command_id": "context.projection.retry",
+      "method": "POST",
+      "path": "/api/v2/projects/{project_id}/context/jobs/{job_id}/retry",
+      "owner": "Projection",
+      "input_schema": "context.job.mutation.v2",
+      "output_schema": "operation.receipt.v2",
+      "mcp": {
+        "mapping": "tool",
+        "name": "context_projection_retry"
+      },
+      "idempotency": "required",
+      "expected_revision": "resource"
+    },
+    {
+      "command_id": "mcp.rpc",
+      "method": "POST",
+      "path": "/api/v2/mcp",
+      "owner": "MCP",
+      "input_schema": "mcp.rpc.v2",
+      "output_schema": "mcp.rpc.response.v2",
+      "mcp": {
+        "mapping": "tool",
+        "name": "mcp_rpc"
+      },
+      "idempotency": "required",
+      "expected_revision": "resource"
+    },
+    {
+      "command_id": "mcp.tools.list",
+      "method": "GET",
+      "path": "/api/v2/mcp/tools",
+      "owner": "MCP",
+      "input_schema": "mcp.list.query.v2",
+      "output_schema": "mcp.tools.v2",
+      "mcp": {
+        "mapping": "resource",
+        "name": "mcp_tools"
+      },
+      "idempotency": "forbidden",
+      "expected_revision": "none"
+    },
+    {
+      "command_id": "mcp.client.list",
+      "method": "GET",
+      "path": "/api/v2/mcp/clients",
+      "owner": "MCP",
+      "input_schema": "mcp.list.query.v2",
+      "output_schema": "mcp.clients.v2",
+      "mcp": {
+        "mapping": "resource",
+        "name": "mcp_client_list"
+      },
+      "idempotency": "forbidden",
+      "expected_revision": "none"
+    },
+    {
+      "command_id": "mcp.client.create",
+      "method": "POST",
+      "path": "/api/v2/mcp/clients",
+      "owner": "MCP",
+      "input_schema": "mcp.client.create.v2",
+      "output_schema": "mcp.client.receipt.v2",
+      "mcp": {
+        "mapping": "tool",
+        "name": "mcp_client_create"
+      },
+      "idempotency": "required",
+      "expected_revision": "resource"
+    },
+    {
+      "command_id": "mcp.client.revoke",
+      "method": "POST",
+      "path": "/api/v2/mcp/clients/{id}/revoke",
+      "owner": "MCP",
+      "input_schema": "mcp.client.mutation.v2",
+      "output_schema": "mcp.client.receipt.v2",
+      "mcp": {
+        "mapping": "tool",
+        "name": "mcp_client_revoke"
+      },
+      "idempotency": "required",
+      "expected_revision": "resource"
+    },
+    {
+      "command_id": "exchange.request.list",
+      "method": "GET",
+      "path": "/api/v2/projects/{project_id}/exchange-requests",
+      "owner": "Exchange",
+      "input_schema": "context.project.query.v2",
+      "output_schema": "exchange.requests.v2",
+      "mcp": {
+        "mapping": "resource",
+        "name": "exchange_request_list"
+      },
+      "idempotency": "forbidden",
+      "expected_revision": "none"
+    },
+    {
+      "command_id": "exchange.request.create",
+      "method": "POST",
+      "path": "/api/v2/projects/{project_id}/exchange-requests",
+      "owner": "Exchange",
+      "input_schema": "exchange.request.create.v2",
+      "output_schema": "exchange.request.receipt.v2",
+      "mcp": {
+        "mapping": "tool",
+        "name": "exchange_request_create"
+      },
+      "idempotency": "required",
+      "expected_revision": "resource"
+    },
+    {
+      "command_id": "exchange.request.approve",
+      "method": "POST",
+      "path": "/api/v2/exchange-requests/{id}/approve",
+      "owner": "Exchange",
+      "input_schema": "exchange.approval.v2",
+      "output_schema": "exchange.approval.receipt.v2",
+      "mcp": {
+        "mapping": "tool",
+        "name": "exchange_request_approve"
+      },
+      "idempotency": "required",
+      "expected_revision": "resource"
+    },
+    {
+      "command_id": "exchange.request.reject",
+      "method": "POST",
+      "path": "/api/v2/exchange-requests/{id}/reject",
+      "owner": "Exchange",
+      "input_schema": "exchange.approval.v2",
+      "output_schema": "exchange.approval.receipt.v2",
+      "mcp": {
+        "mapping": "tool",
+        "name": "exchange_request_reject"
+      },
+      "idempotency": "required",
+      "expected_revision": "resource"
+    },
+    {
+      "command_id": "exchange.grant.list",
+      "method": "GET",
+      "path": "/api/v2/projects/{project_id}/exchange-grants",
+      "owner": "Exchange",
+      "input_schema": "context.project.query.v2",
+      "output_schema": "exchange.grants.v2",
+      "mcp": {
+        "mapping": "resource",
+        "name": "exchange_grant_list"
+      },
+      "idempotency": "forbidden",
+      "expected_revision": "none"
+    },
+    {
+      "command_id": "exchange.grant.revoke",
+      "method": "POST",
+      "path": "/api/v2/exchange-grants/{id}/revoke",
+      "owner": "Exchange",
+      "input_schema": "exchange.grant.mutation.v2",
+      "output_schema": "exchange.grant.receipt.v2",
+      "mcp": {
+        "mapping": "tool",
+        "name": "exchange_grant_revoke"
+      },
+      "idempotency": "required",
+      "expected_revision": "resource"
+    },
+    {
+      "command_id": "exchange.grant.pack.create",
+      "method": "POST",
+      "path": "/api/v2/exchange-grants/{id}/context-packs",
+      "owner": "Exchange",
+      "input_schema": "exchange.pack.create.v2",
+      "output_schema": "context.pack.receipt.v2",
+      "mcp": {
+        "mapping": "tool",
+        "name": "exchange_grant_pack_create"
+      },
+      "idempotency": "required",
+      "expected_revision": "resource"
+    },
+    {
+      "command_id": "gateway.forward",
+      "method": "POST",
+      "path": "/api/v2/gateway/forward",
+      "owner": "Gateway",
+      "input_schema": "gateway.forward.v2",
+      "output_schema": "gateway.forward.receipt.v2",
+      "mcp": {
+        "mapping": "tool",
+        "name": "gateway_forward"
+      },
+      "idempotency": "required",
+      "expected_revision": "resource"
+    },
+    {
+      "command_id": "gateway.receipt.get",
+      "method": "GET",
+      "path": "/api/v2/gateway/receipts/{id}",
+      "owner": "Gateway",
+      "input_schema": "gateway.receipt.query.v2",
+      "output_schema": "gateway.receipt.v2",
+      "mcp": {
+        "mapping": "resource",
+        "name": "gateway_receipt"
+      },
+      "idempotency": "forbidden",
+      "expected_revision": "none"
+    }
+  ]
+}

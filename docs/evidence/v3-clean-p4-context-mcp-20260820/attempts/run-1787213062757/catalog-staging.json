@@ -1,0 +1,8 @@
+{
+  "schema_version": "aiws.v3-clean.p4-catalog-staging.v1",
+  "phase": "P4",
+  "status": "staging",
+  "provisional": true,
+  "run_id": "run-1787213062757",
+  "final_reference": "docs/evidence/v3-clean-p4-context-mcp-20260820/verification.json"
+}

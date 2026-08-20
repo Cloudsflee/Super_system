@@ -1,0 +1,61 @@
+{
+  "schema_version": "aiws.v3-clean.p4-advisory-tests.v1",
+  "status": "advisory",
+  "policy": "Historical fixture failures are diagnostic and do not promote Clean Catalog rows.",
+  "commands": [
+    {
+      "command": "pnpm fixture:legacy:integration",
+      "cwd": "repository-root",
+      "input": {
+        "args": [
+          "fixture:legacy:integration"
+        ]
+      },
+      "stdout": "\n> ai-workspace-system@3.0.0 fixture:legacy:integration <ROOT>\n> node scripts/layered-gate.mjs integration --historical\n\n{\n  \"schema_version\": \"aiws.v3-clean.layered-gate-result.v2\",\n  \"suite\": \"integration\",\n  \"status\": \"advisory\",\n  \"blocking_layer\": null,\n  \"commands\": [\n    {\n      \"layer\": \"historical\",\n      \"command\": \"node --experimental-test-coverage --test-coverage-lines=85 --test-coverage-branches=70 --test-coverage-functions=75 --test-coverage-exclude=apps/api/src/clean/** --test tests/integration/*.test.mjs tests/unit/recovery-golden.test.mjs\",\n      \"exit_status\": 1,\n      \"signal\": null,\n      \"ok\": false,\n      \"summary\": \"at startSubtestAfterBootstrap (node:internal/test_runner/harness:358:17) {\\ngeneratedMessage: false,\\ncode: 'ERR_ASSERTION',\\nactual: 1,\\nexpected: 0,\\noperator: 'strictEqual',\\ndiff: 'simple'\\n}\",\n      \"redaction\": {\n        \"passed\": true,\n        \"removed\": 7\n      }\n    }\n  ],\n  \"clean_exit\": null,\n  \"historical_exit\": 1,\n  \"advisory_failures\": [\n    \"node --experimental-test-coverage --test-coverage-lines=85 --test-coverage-branches=70 --test-coverage-functions=75 --test-coverage-exclude=apps/api/src/clean/** --test tests/integration/*.test.mjs tests/unit/recovery-golden.test.mjs\"\n  ],\n  \"redaction\": [\n    {\n      \"layer\": \"historical\",\n      \"passed\": true,\n      \"removed\": 7\n    }\n  ],\n  \"receipt\": \".ai-workspace/gate-receipts/layered-integration-1787211917133-23036.json\"\n}\n",
+      "stderr": "(node:23036) [DEP0190] DeprecationWarning: Passing args to a child process with shell option true can lead to security vulnerabilities, as the arguments are not escaped, only concatenated.\n(Use `node --trace-deprecation ...` to show where the warning was created)\n",
+      "exit_status": 0,
+      "expected_exit_statuses": [
+        0
+      ],
+      "signal": null,
+      "ok": true,
+      "summary": "],\n\"redaction\": [\n{\n\"layer\": \"historical\",\n\"passed\": true,\n\"removed\": 7\n}\n],\n\"receipt\": \".ai-workspace/gate-receipts/layered-integration-1787211917133-23036.json\"\n}\n(node:23036) [DEP0190] DeprecationWarning: Passing args to a child process with shell option true can lead to security vulnerabilities, as the arguments are not escaped, only concatenated.\n(Use `node --trace-deprecation ...` to show where the warning was created)"
+    },
+    {
+      "command": "pnpm fixture:legacy:security",
+      "cwd": "repository-root",
+      "input": {
+        "args": [
+          "fixture:legacy:security"
+        ]
+      },
+      "stdout": "\n> ai-workspace-system@3.0.0 fixture:legacy:security <ROOT>\n> node scripts/layered-gate.mjs security --historical\n\n{\n  \"schema_version\": \"aiws.v3-clean.layered-gate-result.v2\",\n  \"suite\": \"security\",\n  \"status\": \"passed\",\n  \"blocking_layer\": null,\n  \"commands\": [\n    {\n      \"layer\": \"historical\",\n      \"command\": \"node --test --test-concurrency=1 tests/security/*.test.mjs\",\n      \"exit_status\": 0,\n      \"signal\": null,\n      \"ok\": true,\n      \"summary\": \"ℹ tests 15\\nℹ suites 0\\nℹ pass 15\\nℹ fail 0\\nℹ cancelled 0\\nℹ skipped 0\\nℹ todo 0\\nℹ duration_ms 17638.229\",\n      \"redaction\": {\n        \"passed\": true,\n        \"removed\": 0\n      }\n    }\n  ],\n  \"clean_exit\": null,\n  \"historical_exit\": 0,\n  \"advisory_failures\": [],\n  \"redaction\": [\n    {\n      \"layer\": \"historical\",\n      \"passed\": true,\n      \"removed\": 0\n    }\n  ],\n  \"receipt\": null\n}\n",
+      "stderr": "(node:3612) [DEP0190] DeprecationWarning: Passing args to a child process with shell option true can lead to security vulnerabilities, as the arguments are not escaped, only concatenated.\n(Use `node --trace-deprecation ...` to show where the warning was created)\n",
+      "exit_status": 0,
+      "expected_exit_statuses": [
+        0
+      ],
+      "signal": null,
+      "ok": true,
+      "summary": "\"advisory_failures\": [],\n\"redaction\": [\n{\n\"layer\": \"historical\",\n\"passed\": true,\n\"removed\": 0\n}\n],\n\"receipt\": null\n}\n(node:3612) [DEP0190] DeprecationWarning: Passing args to a child process with shell option true can lead to security vulnerabilities, as the arguments are not escaped, only concatenated.\n(Use `node --trace-deprecation ...` to show where the warning was created)"
+    },
+    {
+      "command": "pnpm fixture:legacy:e2e",
+      "cwd": "repository-root",
+      "input": {
+        "args": [
+          "fixture:legacy:e2e"
+        ]
+      },
+      "stdout": "\n> ai-workspace-system@3.0.0 fixture:legacy:e2e <ROOT>\n> node scripts/e2e-legacy.mjs\n\n\n> @aiws/web@3.0.0 build <ROOT>\\apps\\web\n> tsc -b && vite build\n\n\u001b[36mvite v7.3.6 \u001b[32mbuilding client environment for production...\u001b[36m\u001b[39m\ntransforming...\n\u001b[32m✓\u001b[39m 1664 modules transformed.\nrendering chunks...\ncomputing gzip size...\n\u001b[2mdist/\u001b[22m\u001b[32m.vite/manifest.json              \u001b[39m\u001b[1m\u001b[2m  0.56 kB\u001b[22m\u001b[1m\u001b[22m\u001b[2m │ gzip:  0.22 kB\u001b[22m\n\u001b[2mdist/\u001b[22m\u001b[32mindex.html                       \u001b[39m\u001b[1m\u001b[2m  0.61 kB\u001b[22m\u001b[1m\u001b[22m\u001b[2m │ gzip:  0.33 kB\u001b[22m\n\u001b[2mdist/\u001b[22m\u001b[35massets/index-WoTzio3Y.css        \u001b[39m\u001b[1m\u001b[2m 63.58 kB\u001b[22m\u001b[1m\u001b[22m\u001b[2m │ gzip: 11.54 kB\u001b[22m\n\u001b[2mdist/\u001b[22m\u001b[36massets/vendor-react-CfJcXwCc.js  \u001b[39m\u001b[1m\u001b[2m  3.66 kB\u001b[22m\u001b[1m\u001b[22m\u001b[2m │ gzip:  1.38 kB\u001b[22m\n\u001b[2mdist/\u001b[22m\u001b[36massets/vendor-icons-Cf3xxsPo.js  \u001b[39m\u001b[1m\u001b[2m 21.55 kB\u001b[22m\u001b[1m\u001b[22m\u001b[2m │ gzip:  7.85 kB\u001b[22m\n\u001b[2mdist/\u001b[22m\u001b[36massets/index-DqKL9yN9.js         \u001b[39m\u001b[1m\u001b[2m318.62 kB\u001b[22m\u001b[1m\u001b[22m\u001b[2m │ gzip: 88.51 kB\u001b[22m\n\u001b[32m✓ built in 1.51s\u001b[39m\nAIWS runner-broker listening on http://127.0.0.1:62753\nAIWS 3.0.0 listening on http://127.0.0.1:62754\n ELIFECYCLE  Command failed with exit code 1.\n",
+      "stderr": "(node:21544) [DEP0190] DeprecationWarning: Passing args to a child process with shell option true can lead to security vulnerabilities, as the arguments are not escaped, only concatenated.\n(Use `node --trace-deprecation ...` to show where the warning was created)\n(node:21544) ExperimentalWarning: SQLite is an experimental feature and might change at any time\n(Use `node --trace-warnings ...` to show where the warning was created)\nnode:internal/modules/run_main:107\r\n    triggerUncaughtException(\r\n    ^\r\n\r\nExpectError: expect(locator).toBeVisible() failed\r\n\r\nLocator: locator('.health-band')\r\nExpected: visible\r\nTimeout: 5000ms\r\nError: element(s) not found\r\n\r\nCall log:\r\n  - Expect \"to.be.visible\" with timeout 5000ms\r\n  - waiting for locator('.health-band')\r\n\r\n    at captureRawStack (<ROOT>\\node_modules\\.pnpm\\playwright-core@1.61.1\\node_modules\\playwright-core\\lib\\coreBundle.js:3172:17)\r\n    at callMatcherAsStep (<ROOT>\\node_modules\\.pnpm\\playwright@1.61.1\\node_modules\\playwright\\lib\\matchers\\expect.js:12877:57)\r\n    at Object.toBeVisible (<ROOT>\\node_modules\\.pnpm\\playwright@1.61.1\\node_modules\\playwright\\lib\\matchers\\expect.js:12867:23)\r\n    at <ROOT>\\scripts\\e2e-legacy.mjs:187:46 {\r\n  matcherResult: {\r\n    message: 'expect(locator).toBeVisible() failed\\n' +\r\n      '\\n' +\r\n      \"Locator: locator('.health-band')\\n\" +\r\n      'Expected: visible\\n' +\r\n      'Timeout: 5000ms\\n' +\r\n      'Error: element(s) not found\\n' +\r\n      '\\n' +\r\n      'Call log:\\n' +\r\n      '  - Expect \"to.be.visible\" with timeout 5000ms\\n' +\r\n      \"  - waiting for locator('.health-band')\\n\",\r\n    pass: false,\r\n    actual: undefined,\r\n    name: 'toBeVisible',\r\n    expected: 'visible',\r\n    log: [\r\n      '  - Expect \"to.be.visible\" with timeout 5000ms',\r\n      \"  - waiting for locator('.health-band')\"\r\n    ],\r\n    timeout: 5000,\r\n    ariaSnapshot: '- complementary:\\n' +\r\n      '  - text: A3\\n' +\r\n      '  - strong: AIWS 3.0\\n' +\r\n      '  - text: Local workspace\\n' +\r\n      '  - navigation \"主导航\":\\n' +\r\n      '    - button \"Setup\"\\n' +\r\n      '    - button \"Identity\"\\n' +\r\n      '    - button \"Projects\"\\n' +\r\n      '    - button \"Workflow\"\\n' +\r\n      '    - button \"Context\"\\n' +\r\n      '    - button \"MCP & Exchange\"\\n' +\r\n      '  - text: V2.3 cold archive\\n' +\r\n      '- banner:\\n' +\r\n      '  - text: Setup Project\\n' +\r\n      '  - combobox \"当前项目\" [disabled]:\\n' +\r\n      '    - option \"No project\" [selected]\\n' +\r\n      '  - text: 127.0.0.1\\n' +\r\n      '- main: Loading setup'\r\n  }\r\n}\r\n\r\nNode.js v24.14.0\r\n",
+      "exit_status": 1,
+      "expected_exit_statuses": [
+        0
+      ],
+      "signal": null,
+      "ok": false,
+      "summary": "'    - button \"Context\"\\n' +\n'    - button \"MCP & Exchange\"\\n' +\n'  - text: V2.3 cold archive\\n' +\n'- banner:\\n' +\n'  - text: Setup Project\\n' +\n'  - combobox \"当前项目\" [disabled]:\\n' +\n'    - option \"No project\" [selected]\\n' +\n'  - text: 127.0.0.1\\n' +\n'- main: Loading setup'\n}\n}\nNode.js v24.14.0"
+    }
+  ]
+}
