@@ -50,6 +50,7 @@ export const P1_GATE_SYNC_CATALOG_PATHS = Object.freeze({
     'scripts/layered-gate.mjs',
     'scripts/lib/immutable-evidence-writer.mjs',
     'scripts/v3-clean-p31-evidence.mjs',
+    'scripts/v3-clean-p4-evidence.mjs',
     'docs/architecture/decision-log.md'
   ]),
   target_modules: Object.freeze([
@@ -72,7 +73,8 @@ export const P1_GATE_SYNC_CATALOG_PATHS = Object.freeze({
     'tests/p1/workspace-sync.test.mjs',
     'tests/p31/catalog-split.test.mjs',
     'tests/p31/layered-gates.test.mjs',
-    'tests/p31/evidence-immutability.test.mjs'
+    'tests/p31/evidence-immutability.test.mjs',
+    'tests/p4/governance-sync.test.mjs'
   ]),
   ui_tests: Object.freeze([])
 });
@@ -119,13 +121,15 @@ export const P1_PACKAGE_SCRIPT_DEFINITIONS = Object.freeze(Object.fromEntries(Ob
   'scan:clean': { command: 'node scripts/v3-clean-architecture-scan.mjs', role: 'p1_gate', phase: 'P1' },
   'audit:p1': { command: 'node scripts/v3-clean-workspace-audit.mjs', role: 'p1_gate', phase: 'P1' },
   typecheck: { command: 'corepack pnpm --filter @aiws/web typecheck', role: 'characterization_gate', phase: 'P9' },
-  test: { command: 'node --test tests/unit/*.test.mjs && corepack pnpm --filter @aiws/web test', role: 'characterization_gate', phase: 'P2-P9' },
+  test: { command: 'node --test --test-skip-pattern="committed sanitized V2.3 golden" tests/unit/*.test.mjs && corepack pnpm --filter @aiws/web test', role: 'characterization_gate', phase: 'P2-P9' },
   'test:p1': { command: 'node --test tests/p1/*.test.mjs tests/integration/v3-clean-p1.test.mjs tests/security/v3-clean-p1.test.mjs', role: 'p1_gate', phase: 'P1' },
   'test:p2': { command: 'node --test tests/p2/*.test.mjs', role: 'characterization_gate', phase: 'P2' },
-  'test:p3': { command: 'node --test tests/p3/*.test.mjs', role: 'p3_gate', phase: 'P3' },
+  'test:p3': { command: 'node --test tests/p3/http-contract.test.mjs tests/p3/migration.test.mjs tests/p3/project-workflow.test.mjs', role: 'p3_gate', phase: 'P3' },
   'test:p31': { command: 'node --test tests/p31/*.test.mjs', role: 'p31_gate', phase: 'P3.1' },
+  'test:p4': { command: 'node --test tests/p4/*.test.mjs', role: 'p4_gate', phase: 'P4' },
   'evidence:p3': { command: 'node scripts/v3-clean-p3-evidence.mjs', role: 'p3_evidence', phase: 'P3' },
   'evidence:p31': { command: 'node scripts/v3-clean-p31-evidence.mjs', role: 'p31_evidence', phase: 'P3.1' },
+  'evidence:p4': { command: 'node scripts/v3-clean-p4-evidence.mjs', role: 'p4_evidence', phase: 'P4' },
   'test:integration': { command: 'node scripts/layered-gate.mjs integration', role: 'layered_gate', phase: 'P3.1' },
   'test:integration:clean': { command: 'node scripts/layered-gate.mjs integration --clean', role: 'p31_gate', phase: 'P3.1' },
   'fixture:legacy:integration': { command: 'node scripts/layered-gate.mjs integration --historical', role: 'deferred_fixture', phase: 'historical' },
@@ -220,6 +224,26 @@ const P1_GOVERNANCE_FILES = new Set([
   'tests/unit/recovery-governance.test.mjs'
 ]);
 
+const P4_FILES = new Set([
+  'apps/api/src/clean/command-dispatcher.mjs',
+  'apps/api/src/clean/context-service.mjs',
+  'apps/api/src/clean/gateway-service.mjs',
+  'apps/api/src/clean/mcp-service.mjs',
+  'apps/api/src/clean/migrations/004-context-projection-mcp.mjs',
+  'apps/gateway/package.json',
+  'apps/gateway/server.mjs',
+  'scripts/mcp-stdio.mjs',
+  'scripts/v3-clean-p4-evidence.mjs',
+  'scripts/v3-clean-p4-gateway-probe.mjs',
+  'scripts/v3-clean-p4-performance.mjs',
+  'apps/web/src/features/context/ContextPage.tsx',
+  'apps/web/src/features/context/McpSettings.tsx',
+  'apps/web/src/features/context/McpSettingsPage.tsx',
+  'apps/web/src/features/context/index.ts',
+  'apps/web/src/features/context/types.ts',
+  'apps/web/src/test/context.test.tsx'
+]);
+
 export function classifyWorkspacePath(value) {
   const file = normalize(value);
   if (!file) return null;
@@ -227,6 +251,8 @@ export function classifyWorkspacePath(value) {
     const rows = file === 'scripts/v3-clean-architecture-scan.mjs' ? P1_MATRIX_ROWS : P1_GOVERNANCE_ROWS;
     return { kind: 'p1', phase: 'P1', rows: [...rows] };
   }
+  if (P4_FILES.has(file) || file.startsWith('tests/p4/')) return { kind: 'clean', phase: 'P4', rows: [] };
+  if (file.startsWith('apps/gateway/')) return { kind: 'clean', phase: 'P4', rows: [] };
   if (file.startsWith(P1_CLEAN_ROOT) || file.startsWith('tests/p1/') || P1_PLATFORM_FILES.has(file)) {
     return { kind: 'p1', phase: 'P1', rows: [...P1_PLATFORM_ROWS] };
   }

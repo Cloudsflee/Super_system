@@ -160,12 +160,12 @@ stable public addresses.
 | identity/team | /api/v2/account, /api/v2/actors, /api/v2/sessions, /api/v2/teams, /api/v2/teams/{id}/memberships | actor.update/switch, session.create/revoke, team.member.grant/status; actor.*, session.*, team.* | Identity |
 | setup/credentials | /api/v2/setup, /api/v2/credentials, /api/v2/credentials/{id}/rebind, /rotate, /revoke, /api/v2/profiles, /api/v2/profiles/{id}/probe | setup.complete, credential.rebind/rotate/revoke, profile.probe; setup.*, credential.*, profile.* | Setup |
 | projects/briefs | /api/v2/projects, /api/v2/projects/{id}, /api/v2/projects/{id}/archive, /restore, /api/v2/projects/{id}/intake, /intake/retry, /intake/cancel, /api/v2/projects/{id}/briefs, /briefs/{revision}/confirm, /preview | project.create/update/archive/restore, intake.submit/retry/cancel, brief.create/confirm; project.*, intake.*, brief.* | Project |
-| ACL/exchange | /api/v2/projects/{id}/members, /invitations, /permissions, /api/v2/projects/{id}/exchange-requests, /api/v2/exchange-grants/{id} | membership.grant/status, invitation.create/accept/revoke, acl.set, exchange.approve/revoke; membership.*, invitation.*, acl.*, exchange.* | Identity/Exchange |
+| ACL/exchange | /api/v2/projects/{id}/members, /invitations, /permissions, /exchange-requests, /exchange-grants, /api/v2/exchange-requests/{id}/approve, /reject, /api/v2/exchange-grants/{id}/revoke, /context-packs | membership.grant/status, invitation.create/accept/revoke, acl.set, exchange.request.create/approve/reject, exchange.grant.revoke/pack.create; membership.*, invitation.*, acl.*, exchange_* | Identity/Exchange |
 | repositories | /api/v2/projects/{id}/repository-connections, /repository-lines, /repository-workspaces, /api/v2/repository-connections/{id}, /repository-connections/{id}/targets, /repository-lines/{id}/reconcile, /repository-workspaces/{id}/refresh, /lock, /release | repository.connection.create/update, repository.target.create, repository.line.reconcile, repository.workspace.create/refresh/lock/release; repository.*, workspace.* | Repository |
 | workflow | /api/v2/projects/{id}/workflows, /workflow-draft, /workflow-generations, /api/v2/workflow-generations/{id}, /retry, /cancel, /critic, /api/v2/workflow-proposals/{id}, /apply | workflow.revise, generation.start/retry/cancel, critic.evaluate, workflow.proposal.apply; workflow.*, generation.*, critic.* | Workflow/Critic |
-| context | /api/v2/projects/{id}/context/map, /search, /read, /policy, /selections, /packs | context.select, context.pack.create; context.* | Context |
-| projection | /api/v2/projects/{id}/context/jobs, /context/jobs/{id}/events, /context/rebuild | projection.rebuild, projection.cancel; projection.* | Projection |
-| MCP/client | /api/v2/mcp, /api/v2/mcp/tools, /api/v2/mcp/clients, /api/v2/mcp/clients/{id} | mcp.tool.call, mcp.client.revoke; mcp.* | MCP |
+| context | /api/v2/projects/{id}/context/sources, /map, /search, /read, /nodes/{node_id}, /nodes/{node_id}/versions, /policy, /selections, /packs, /packs/{pack_id} | context.source.create, context.policy.update, context.selection.create, context.pack.create; context_source.*, context_policy.*, context_selection.*, context_pack.* | Context |
+| projection | /api/v2/projects/{id}/context/status, /rebuild, /jobs, /jobs/{job_id}, /jobs/{job_id}/events, /cancel, /retry | context.projection.rebuild/cancel/retry; context_projection.* | Projection |
+| MCP/client | /api/v2/mcp, /api/v2/mcp/tools, /api/v2/mcp/clients, /api/v2/mcp/clients/{id}/revoke | mcp.rpc, mcp.client.create/revoke; mcp.*, mcp_client.* | MCP |
 | gateway | /api/v2/gateway/forward, /api/v2/gateway/receipts/{id} | gateway.forward; gateway.* | Gateway |
 | Assist | /api/v2/assist/sessions, /turns, /events, /follow-ups, /goal, /references | assist.turn.create, assist.turn.retry, assist.turn.cancel; assist.* | Assist |
 | files/attachments | /api/v2/projects/{id}/files, /change-batches, /attachments, /api/v2/attachments/{id}/* | file.batch.apply, file.batch.undo, attachment.create; file.*, attachment.* | Files |
@@ -190,10 +190,9 @@ generation start/retry return `202 operation.receipt.v2`; the external
 repository/generator call runs after the enqueue transaction and terminal state
 is committed in a second revision-checked transaction.
 
-The active process entrypoint `apps/api/server.mjs` defaults to
-`targetVersion=3`. Lower target versions remain available only through
-explicit lower-level fixture calls used by P1/P2 migration and regression
-tests.
+The P3 receipt fixed `targetVersion=3` for that phase. The active process now
+defaults to `targetVersion=4`; lower target versions remain available only
+through explicit lower-level migration/regression fixture calls.
 
 Repository, generator, and critic adapters are deterministic fixture probes in
 P3. Their receipts establish adapter invocation, source drift handling, retry
@@ -203,6 +202,37 @@ revision/hash inputs. A mismatch commits the proposal as `stale` and returns a
 revision conflict without changing the workflow head. Outcome routes in P3
 create/list requirements only; evaluation, score, waiver, and Evidence binding
 remain later-phase commands.
+
+### 4.2 P4 Context/MCP/Gateway boundary
+
+P4 mounts the registry paths above and advances the active schema to
+`user_version=4`. Every P4 mutation requires `Idempotency-Key` and
+`X-Expected-Revision` (or their identical body fields). Context source,
+selection, Pack, MCP client, and Exchange request creation return 201;
+projection rebuild/cancel/retry return 202 with the canonical
+`operation.receipt.v2`; reads return 200. Stable P4 errors include
+`revision_conflict`, `context_inputs_changed`, `context_policy_conflict`,
+`evidence_incomplete`, `mcp_scope_denied`, `exchange_grant_expired`,
+`gateway_signature_invalid`, and `gateway_replay`.
+
+REST, MCP Streamable HTTP (`2025-06-18`), stdio, and Gateway all validate the
+same closed schema and invoke `CleanCommandDispatcher`. MCP client proof is a
+one-time 256-bit token; only a peppered HMAC/prefix/expiry/actor/project/tool
+allowlist is durable. Exchange source and target approval create a grant that
+only narrows the existing ACL. Every MCP/Gateway request rechecks client,
+grant, project, tool, and resource scope at dispatch time.
+
+Gateway forwarding signs:
+
+```text
+HMAC-SHA256(method + "\n" + path + "\n" + timestamp + "\n" +
+            nonce + "\n" + sha256(canonical_body))
+```
+
+The API permits 60 seconds of clock skew and rejects a repeated gateway/nonce
+hash. Forward receipts contain command id, request/response hashes, decision,
+operation link, and time only. Projection job SSE and `format=json` use the
+same generic event rows/cursor and repeat authorization during live delivery.
 
 ## 5. Command contract
 

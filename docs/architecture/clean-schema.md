@@ -1,12 +1,13 @@
 # V3-Clean Schema Contract
 
-Status: normative through the P3 Project/Workflow implementation.
+Status: normative through the P4 Context/MCP/Gateway implementation.
 Schema family: v3-clean.
 Baseline: 001 (PRAGMA user_version = 1); P2 forward migration: 002-identity-acl
 (PRAGMA user_version = 2); P3 forward migration: 003-project-workflow
-(PRAGMA user_version = 3).
+(PRAGMA user_version = 3); P4 forward migration: 004-context-projection-mcp
+(PRAGMA user_version = 4).
 
-The active `apps/api/server.mjs` entrypoint defaults the migration target to P3.
+The active `apps/api/server.mjs` entrypoint defaults the migration target to P4.
 Explicit lower targets are retained only for isolated phase fixtures and
 forward-upgrade tests.
 Storage: SQLite WAL with a separate content-addressed store (CAS).
@@ -185,7 +186,15 @@ Startup recovery resumes queued/running fake-adapter operations and settles any
 unverifiable terminal mismatch as failed or cancelled rather than guessing
 success.
 
-## 6. Context, projection, and MCP tables
+## 6. Context, projection, MCP, Exchange, and Gateway tables
+
+Migration `004-context-projection-mcp` creates twelve P4 tables and extends
+the P2-owned shape of `exchange_grants` without replacing it. Context owns
+source, node, document version, edge, policy, selection, and pack state;
+Projection owns jobs and index snapshots; Exchange owns requests and grants;
+MCP owns clients; Gateway owns forwarding receipts. These owners share the
+generic operation, event, aggregate revision/head, idempotency, ACL, and CAS
+services rather than creating domain-specific ledgers.
 
 | Table | Purpose |
 | --- | --- |
@@ -198,11 +207,38 @@ success.
 | context_policies | current allowlist, retention, and redaction policy |
 | context_projection_jobs | projection lifecycle, lease, checkpoint, retry count |
 | context_index_snapshots | immutable CAS-backed search index snapshot, hash, and source projection revision |
+| exchange_requests | source/target approval state, requested narrowed scope, expiry, and resulting grant reference |
+| exchange_grants | active narrowed Exchange scope plus request, dual-approver, revoke, and expiry metadata |
+| mcp_clients | actor-bound client, peppered token HMAC/prefix, expiry, project/tool allowlists, usage, and revision |
+| gateway_forward_receipts | nonce, command, request/response hashes, decision, operation link, and timestamp; no arguments or result payload |
 
 Historical context-index head metadata is imported as the source projection
 revision on an immutable context_index_snapshots row. It is an index cache
 value, not a business head. It may be rebuilt or discarded, and it never
 authorizes a write or changes the canonical context revision.
+
+The current Context policy lives in `context_policies`; every accepted policy
+revision is snapshotted in generic `aggregate_revisions`. Projection lifecycle
+events are rows in generic `events`. The current index is derived from the
+latest successful projection job and its immutable snapshot. There are no
+`context_policy_heads`, `context_selection_heads`, `context_index_heads`, or
+`context_projection_events` tables.
+
+Projection claims use a lease, expected revision, and fencing token. Publishing
+a projection rechecks the input hash, lease, fencing token, aggregate revision,
+and referenced CAS objects in one transaction. Drift, cycles, CAS mismatch, or
+lease loss leave no partially published map or index. A retry creates a new job
+and operation linked by `retry_of_job_id`; startup recovery only resumes queued
+jobs and expired leases.
+
+Exchange requests move through `requested -> partially_approved -> active` and
+then `revoked|expired`, with `rejected` as a terminal request branch. Both source
+and target approval are required before a grant becomes active. An Exchange
+grant narrows existing Team/Project ACL and is re-evaluated by MCP, Gateway,
+collection reads, and event replay. MCP tokens are returned only at creation;
+SQLite stores a peppered HMAC and display prefix. Gateway remains a separate
+stateless forwarding process. Its API receipt table contains only hashes and a
+decision, never a token, request arguments, response body, or business state.
 
 ## 7. Assist, files, approval, terminal, and bridge tables
 
@@ -362,8 +398,10 @@ back the transaction and leaves the operation in a retryable failed state.
 
 ## 13. Baseline and migration policy
 
-The clean baseline creates all tables above in migration 001-clean-baseline.
-Later migrations are forward-only and carry a checksum. Each migration must
+The clean schema family begins with `001-clean-baseline`; migrations
+`002-identity-acl`, `003-project-workflow`, and
+`004-context-projection-mcp` add their phase-owned tables and indexes in order.
+All migrations are forward-only and carry a checksum. Each migration must
 provide a precondition, SQL/application change, postcondition, snapshot
 receipt, and rollback rehearsal for deployment artifacts. Rollback restores a
 volume and receipt; it does not execute a down migration or recreate a legacy

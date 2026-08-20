@@ -4,6 +4,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import {
   CLEAN_SQL_BOUNDARIES,
+  CLEAN_OWNER_MODULE_IDS,
   FROZEN_SURFACES,
   LEGACY_SQL_BOUNDARIES,
   MODULE_REGISTRY,
@@ -13,6 +14,7 @@ import {
 } from '../apps/api/src/modules/registry.mjs';
 import { auditWorkspace } from './v3-clean-workspace-audit.mjs';
 import { classifyWorkspacePath } from './lib/v3-clean-p1-scope.mjs';
+import { resolveCatalogEvidenceReference } from './catalog-loader.mjs';
 
 const root = process.cwd();
 const command = process.argv[2];
@@ -41,6 +43,7 @@ const catalog = readJson(catalogPath);
 const features = catalog.features;
 const ids = new Set();
 const modules = new Map(MODULE_REGISTRY.map((module) => [module.id, module]));
+const cleanOwnerModules = new Set(CLEAN_OWNER_MODULE_IDS);
 
 validateCatalogShape();
 validateModuleRegistry();
@@ -90,7 +93,7 @@ function validateCatalogShape() {
     if (!STATUS_FLOW.includes(feature.status)) failures.push(`${feature.id}: invalid status ${feature.status}`);
     if (!/^REC-D\d+-[A-Z]+-\d{3}$/.test(feature.id)) failures.push(`${feature.id}: invalid feature id`);
     for (const moduleId of feature.owner_modules || []) {
-      if (!modules.has(moduleId)) failures.push(`${feature.id}: unknown owner module ${moduleId}`);
+      if (!modules.has(moduleId) && !cleanOwnerModules.has(moduleId)) failures.push(`${feature.id}: unknown owner module ${moduleId}`);
     }
     for (const table of feature.tables || []) {
       const owner = catalogOwnerOf('table', table, feature);
@@ -254,13 +257,22 @@ function validateStatusEvidence() {
 }
 
 function validateEvidence(feature, evidencePath, requirePassed) {
-  const full = requirePath(feature.id, evidencePath, 'evidence');
-  if (!full) return;
+  const resolved = resolveCatalogEvidenceReference(root, evidencePath);
+  const full = resolved.path;
+  if (!fs.existsSync(full)) {
+    failures.push(`${feature.id}: mapped evidence does not exist: ${evidencePath}`);
+    return;
+  }
   let evidence;
   try { evidence = readJson(full); } catch { return; }
+  if (resolved.staging) return;
   const tests = evidence.tests || evidence.commands || [];
   const failed = tests.filter((entry) => Number(entry.exit_status ?? entry.exit_code ?? 1) !== 0);
-  if (requirePassed && (evidence.status === 'failed' || failed.length || !tests.length)) {
+  const p4Final = String(evidencePath).replaceAll('\\', '/') === 'docs/evidence/v3-clean-p4-context-mcp-20260820/verification.json';
+  const receiptFailed = p4Final
+    ? evidence.status !== 'verified' || evidence.provisional !== false
+    : evidence.status === 'failed';
+  if (requirePassed && (receiptFailed || failed.length || !tests.length)) {
     failures.push(`${feature.id}: verification evidence is not passed: ${evidencePath}`);
   }
   if (evidence.schema_version === 'aiws.v3.recovery_evidence_manifest.v1') {

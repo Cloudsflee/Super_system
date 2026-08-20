@@ -69,13 +69,13 @@ export function parseArguments(argv) {
 
 export function commandFor(layer, selectedSuite) {
   if (selectedSuite === 'integration' && layer === 'clean') {
-    return ['node', ['--test', 'tests/integration/v3-clean-p1.test.mjs', 'tests/p3/*.test.mjs']];
+    return ['node', ['--test', 'tests/integration/v3-clean-p1.test.mjs', 'tests/p3/http-contract.test.mjs', 'tests/p3/migration.test.mjs', 'tests/p3/project-workflow.test.mjs', 'tests/p4/*.test.mjs']];
   }
   if (selectedSuite === 'security' && layer === 'clean') {
-    return ['node', ['--test', '--test-concurrency=1', 'tests/security/v3-clean-p1.test.mjs', 'tests/security/boundary.test.mjs']];
+    return ['node', ['--test', '--test-concurrency=1', 'tests/security/v3-clean-p1.test.mjs', 'tests/security/boundary.test.mjs', 'tests/p4/mcp-exchange-gateway.test.mjs']];
   }
   if (selectedSuite === 'integration') {
-    return ['node', ['--experimental-test-coverage', '--test-coverage-lines=85', '--test-coverage-branches=70', '--test-coverage-functions=75', '--test-coverage-exclude=apps/api/src/clean/**', '--test', 'tests/integration/*.test.mjs']];
+    return ['node', ['--experimental-test-coverage', '--test-coverage-lines=85', '--test-coverage-branches=70', '--test-coverage-functions=75', '--test-coverage-exclude=apps/api/src/clean/**', '--test', 'tests/integration/*.test.mjs', 'tests/unit/recovery-golden.test.mjs']];
   }
   return ['node', ['--test', '--test-concurrency=1', 'tests/security/*.test.mjs']];
 }

@@ -51,6 +51,7 @@
         "scripts/layered-gate.mjs",
         "scripts/lib/immutable-evidence-writer.mjs",
         "scripts/v3-clean-p31-evidence.mjs",
+        "scripts/v3-clean-p4-evidence.mjs",
         "docs/architecture/decision-log.md"
       ],
       "target_modules": [
@@ -79,7 +80,8 @@
         "tests/p1/workspace-sync.test.mjs",
         "tests/p31/catalog-split.test.mjs",
         "tests/p31/layered-gates.test.mjs",
-        "tests/p31/evidence-immutability.test.mjs"
+        "tests/p31/evidence-immutability.test.mjs",
+        "tests/p4/governance-sync.test.mjs"
       ],
       "ui_tests": [],
       "evidence": [
@@ -322,6 +324,75 @@
         "tests/p2/identity-acl.test.mjs",
         "tests/p2/identity-acl-security.test.mjs",
         "apps/web/src/test/identity-access.test.tsx"
+      ],
+      "runtime_surface": "v3-clean"
+    },
+    {
+      "id": "REC-D4-MCP-004",
+      "domain": "mcp",
+      "name": "MCP clients, tools and operation lifecycle over HTTP, stdio and Gateway",
+      "status": "verified",
+      "owner_modules": [
+        "mcp",
+        "operations"
+      ],
+      "source_files": [
+        "packages/contracts/src/clean-v2.mjs",
+        "apps/api/src/clean/registry.mjs",
+        "apps/api/src/clean/command-dispatcher.mjs",
+        "apps/api/src/clean/mcp-service.mjs"
+      ],
+      "target_modules": [
+        "apps/api/src/clean/mcp-service.mjs",
+        "apps/api/src/clean/command-dispatcher.mjs",
+        "apps/api/src/clean/registry.mjs",
+        "apps/api/src/clean/http.mjs",
+        "scripts/mcp-stdio.mjs",
+        "apps/gateway/server.mjs"
+      ],
+      "tables": [
+        "mcp_clients",
+        "operations",
+        "operation_links",
+        "events"
+      ],
+      "apis": [
+        "/api/v2/mcp",
+        "/api/v2/mcp/tools",
+        "/api/v2/mcp/clients",
+        "/api/v2/mcp/clients/{id}/revoke",
+        "/api/v2/operations/{id}"
+      ],
+      "ui": [
+        "MCP Settings"
+      ],
+      "events": [
+        "mcp.tool.called",
+        "mcp_client.created",
+        "mcp_client.revoked"
+      ],
+      "behavior_tests": [
+        "tests/p4/mcp-exchange-gateway.test.mjs",
+        "tests/p4/transport-parity.test.mjs",
+        "tests/p4/active-entrypoint.test.mjs",
+        "tests/p4/governance-sync.test.mjs"
+      ],
+      "ui_tests": [
+        "apps/web/src/test/context.test.tsx",
+        "scripts/e2e.mjs"
+      ],
+      "evidence": [
+        "docs/evidence/v3-clean-p4-context-mcp-20260820/verification.json"
+      ],
+      "release_receipts": [],
+      "tests": [
+        "T3",
+        "tests/p4/mcp-exchange-gateway.test.mjs",
+        "tests/p4/transport-parity.test.mjs",
+        "tests/p4/active-entrypoint.test.mjs",
+        "tests/p4/governance-sync.test.mjs",
+        "apps/web/src/test/context.test.tsx",
+        "scripts/e2e.mjs"
       ],
       "runtime_surface": "v3-clean"
     },
@@ -627,6 +698,243 @@
         "tests/p3/migration.test.mjs",
         "tests/p3/project-workflow.test.mjs",
         "apps/web/src/test/project-workflow-clean.test.tsx"
+      ],
+      "runtime_surface": "v3-clean"
+    },
+    {
+      "id": "REC-D4-SCOPE-016",
+      "domain": "mcp",
+      "name": "MCP and Exchange scopes, dual approval, allowlists and revocation",
+      "status": "verified",
+      "owner_modules": [
+        "exchange",
+        "mcp",
+        "gateway"
+      ],
+      "source_files": [
+        "apps/api/src/clean/mcp-service.mjs",
+        "apps/api/src/clean/gateway-service.mjs",
+        "apps/api/src/clean/authorization.mjs",
+        "apps/api/src/clean/migrations/004-context-projection-mcp.mjs"
+      ],
+      "target_modules": [
+        "apps/api/src/clean/mcp-service.mjs",
+        "apps/api/src/clean/gateway-service.mjs",
+        "apps/api/src/clean/command-dispatcher.mjs",
+        "apps/gateway/server.mjs",
+        "apps/web/src/features/context/McpSettingsPage.tsx"
+      ],
+      "tables": [
+        "exchange_requests",
+        "exchange_grants",
+        "mcp_clients",
+        "gateway_forward_receipts"
+      ],
+      "apis": [
+        "/api/v2/projects/{id}/exchange-requests",
+        "/api/v2/exchange-requests/{id}/approve",
+        "/api/v2/exchange-requests/{id}/reject",
+        "/api/v2/exchange-grants/{id}/revoke",
+        "/api/v2/exchange-grants/{id}/context-packs",
+        "/api/v2/gateway/forward",
+        "/api/v2/gateway/receipts/{id}"
+      ],
+      "ui": [
+        "MCP Settings",
+        "Exchange approvals"
+      ],
+      "events": [
+        "exchange_request.created",
+        "exchange_request.approved",
+        "exchange_request.rejected",
+        "exchange_grant.created",
+        "exchange_grant.revoked",
+        "gateway.forwarded",
+        "gateway.denied"
+      ],
+      "behavior_tests": [
+        "tests/p4/mcp-exchange-gateway.test.mjs",
+        "tests/p4/transport-parity.test.mjs",
+        "tests/p4/active-entrypoint.test.mjs",
+        "tests/p4/governance-sync.test.mjs"
+      ],
+      "ui_tests": [
+        "apps/web/src/test/context.test.tsx",
+        "scripts/e2e.mjs"
+      ],
+      "evidence": [
+        "docs/evidence/v3-clean-p4-context-mcp-20260820/verification.json"
+      ],
+      "release_receipts": [],
+      "tests": [
+        "T3",
+        "tests/p4/mcp-exchange-gateway.test.mjs",
+        "tests/p4/transport-parity.test.mjs",
+        "tests/p4/active-entrypoint.test.mjs",
+        "tests/p4/governance-sync.test.mjs",
+        "apps/web/src/test/context.test.tsx",
+        "scripts/e2e.mjs"
+      ],
+      "runtime_surface": "v3-clean"
+    },
+    {
+      "id": "REC-D9-CONTEXT-017",
+      "domain": "context",
+      "name": "Context tree, versions, policy, selection and Context Pack v5",
+      "status": "verified",
+      "owner_modules": [
+        "context",
+        "platform",
+        "operations"
+      ],
+      "source_files": [
+        "apps/api/src/clean/context-service.mjs",
+        "apps/api/src/clean/cas.mjs",
+        "apps/api/src/clean/migrations/004-context-projection-mcp.mjs",
+        "packages/contracts/src/clean-v2.mjs"
+      ],
+      "target_modules": [
+        "apps/api/src/clean/context-service.mjs",
+        "apps/api/src/clean/command-dispatcher.mjs",
+        "apps/api/src/clean/http.mjs",
+        "apps/web/src/features/context/ContextPage.tsx",
+        "apps/web/src/features/context/types.ts",
+        "apps/api/src/modules/context/index.mjs"
+      ],
+      "tables": [
+        "context_sources",
+        "context_nodes",
+        "context_document_versions",
+        "context_edges",
+        "context_policies",
+        "context_selections",
+        "context_packs",
+        "aggregate_revisions",
+        "aggregate_heads",
+        "events"
+      ],
+      "apis": [
+        "/api/v2/projects/{id}/context/sources",
+        "/api/v2/projects/{id}/context/map",
+        "/api/v2/projects/{id}/context/search",
+        "/api/v2/projects/{id}/context/read",
+        "/api/v2/projects/{id}/context/nodes/{node_id}",
+        "/api/v2/projects/{id}/context/nodes/{node_id}/versions",
+        "/api/v2/projects/{id}/context/policy",
+        "/api/v2/projects/{id}/context/selections",
+        "/api/v2/projects/{id}/context/packs"
+      ],
+      "ui": [
+        "Context Map",
+        "Document History",
+        "Context Policy",
+        "Context Pack"
+      ],
+      "events": [
+        "context_source.created",
+        "context_source.updated",
+        "context_policy.updated",
+        "context_selection.created",
+        "context_pack.created"
+      ],
+      "behavior_tests": [
+        "tests/p4/context-projection.test.mjs",
+        "tests/p4/migration.test.mjs",
+        "tests/p4/active-entrypoint.test.mjs",
+        "tests/p4/governance-sync.test.mjs"
+      ],
+      "ui_tests": [
+        "apps/web/src/test/context.test.tsx",
+        "scripts/e2e.mjs"
+      ],
+      "evidence": [
+        "docs/evidence/v3-clean-p4-context-mcp-20260820/verification.json"
+      ],
+      "release_receipts": [],
+      "tests": [
+        "T6",
+        "tests/p4/context-projection.test.mjs",
+        "tests/p4/migration.test.mjs",
+        "tests/p4/active-entrypoint.test.mjs",
+        "tests/p4/governance-sync.test.mjs",
+        "apps/web/src/test/context.test.tsx",
+        "scripts/e2e.mjs"
+      ],
+      "runtime_surface": "v3-clean"
+    },
+    {
+      "id": "REC-D9-PROJECTION-018",
+      "domain": "context",
+      "name": "Recoverable Context projection worker and deterministic index rebuild",
+      "status": "verified",
+      "owner_modules": [
+        "projection",
+        "context",
+        "platform",
+        "operations"
+      ],
+      "source_files": [
+        "apps/api/src/clean/context-service.mjs",
+        "apps/api/src/clean/operations.mjs",
+        "apps/api/src/clean/migrations/004-context-projection-mcp.mjs"
+      ],
+      "target_modules": [
+        "apps/api/src/clean/context-service.mjs",
+        "apps/api/src/clean/operations.mjs",
+        "apps/api/src/clean/http.mjs",
+        "apps/web/src/features/context/ContextPage.tsx",
+        "scripts/v3-clean-p4-performance.mjs"
+      ],
+      "tables": [
+        "context_projection_jobs",
+        "context_index_snapshots",
+        "operations",
+        "operation_links",
+        "events",
+        "aggregate_heads"
+      ],
+      "apis": [
+        "/api/v2/projects/{id}/context/status",
+        "/api/v2/projects/{id}/context/rebuild",
+        "/api/v2/projects/{id}/context/jobs",
+        "/api/v2/projects/{id}/context/jobs/{job_id}",
+        "/api/v2/projects/{id}/context/jobs/{job_id}/events",
+        "/api/v2/projects/{id}/context/jobs/{job_id}/cancel",
+        "/api/v2/projects/{id}/context/jobs/{job_id}/retry"
+      ],
+      "ui": [
+        "Context projection status",
+        "Projection recovery"
+      ],
+      "events": [
+        "context_projection.queued",
+        "context_projection.completed",
+        "context_projection.failed",
+        "context_projection.cancelled"
+      ],
+      "behavior_tests": [
+        "tests/p4/context-projection.test.mjs",
+        "tests/p4/migration.test.mjs",
+        "tests/p4/active-entrypoint.test.mjs",
+        "tests/p4/governance-sync.test.mjs"
+      ],
+      "ui_tests": [
+        "apps/web/src/test/context.test.tsx",
+        "scripts/e2e.mjs"
+      ],
+      "evidence": [
+        "docs/evidence/v3-clean-p4-context-mcp-20260820/verification.json"
+      ],
+      "release_receipts": [],
+      "tests": [
+        "T6",
+        "T8",
+        "tests/p4/context-projection.test.mjs",
+        "tests/p4/migration.test.mjs",
+        "tests/p4/active-entrypoint.test.mjs",
+        "tests/p4/governance-sync.test.mjs",
+        "apps/web/src/test/context.test.tsx",
+        "scripts/e2e.mjs"
       ],
       "runtime_surface": "v3-clean"
     }

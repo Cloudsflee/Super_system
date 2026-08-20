@@ -8,11 +8,14 @@ const environment = {
   AIWS_BROKER_MODE: 'http',
   AIWS_BROKER_URL: 'http://127.0.0.1:4321',
   AIWS_BIND_HOST: '127.0.0.1',
-  PORT: '4317'
+  PORT: '4317',
+  AIWS_GATEWAY_PORT: process.env.AIWS_GATEWAY_PORT || '4320',
+  AIWS_GATEWAY_API_URL: process.env.AIWS_GATEWAY_API_URL || 'http://127.0.0.1:4317',
+  AIWS_GATEWAY_SECRET: process.env.AIWS_GATEWAY_SECRET || 'p4-gateway-fixture-secret'
 };
 const children = [
-  // P1 runs the clean API only; broker and Web are later-phase fixtures.
-  spawn(process.execPath, ['apps/api/server.mjs'], { cwd: root, env: environment, stdio: 'inherit', windowsHide: true })
+  spawn(process.execPath, ['apps/api/server.mjs'], { cwd: root, env: environment, stdio: 'inherit', windowsHide: true }),
+  spawn(process.execPath, ['apps/gateway/server.mjs'], { cwd: root, env: environment, stdio: 'inherit', windowsHide: true })
 ];
 let stopping = false;
 const stop = () => {

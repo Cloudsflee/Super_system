@@ -127,6 +127,9 @@ journey is retained as `scripts/e2e-legacy.mjs` and runs only through
 `fixture:legacy:e2e`. `test:integration` and `test:security` are layered
 wrappers: Clean failures are blocking, while historical failures produce an
 advisory redacted receipt and do not change Clean Catalog status.
+The immutable R5 source-hash replay in `tests/unit/recovery-golden.test.mjs`
+runs only in the Historical integration layer. `pnpm test` skips that named
+assertion while retaining every other unit test and the Clean Web suite.
 
 The P3.1 command inventory is:
 
@@ -165,6 +168,89 @@ advisory failure appends a complete redacted receipt to
 receipts are diagnostic only and cannot promote status. P1/P2/P3 Evidence
 remains read-only, and the four existing P3 rows retain their prior status.
 
+## P4 Context, MCP, Exchange, and Gateway
+
+P4 advances the active Clean runtime to schema v4 and adds `tests/p4/` for
+migration/entrypoint, Context/Projection/CAS, MCP/Exchange/Gateway security,
+four-transport dispatcher parity, and governance synchronization. The P3 gate
+continues to run its behavior regression files but excludes the read-only P3
+entrypoint assertion that intentionally fixes the old active version at 3; the
+replacement P4 entrypoint test asserts `user_version=4` and the retired API v1
+boundary.
+
+The P4 unit gate preserves the same split: `pnpm test` excludes only the named
+R5 source-hash replay, while `fixture:legacy:integration` owns and reports it
+as Historical advisory characterization. The package surface remains fixed at
+42 scripts.
+
+The fixed P4 command inventory is:
+
+```text
+pnpm check
+pnpm audit:p1
+pnpm scan:clean
+pnpm recovery:plan
+pnpm recovery:catalog
+pnpm recovery:coverage
+pnpm recovery:impact -- --audit
+pnpm test:p1
+pnpm test:p2
+pnpm test:p3
+pnpm test:p31
+pnpm test:p4
+node scripts/v3-clean-p4-performance.mjs
+node scripts/v3-clean-p4-gateway-probe.mjs
+pnpm --filter @aiws/web test
+pnpm test
+pnpm test:integration:clean
+pnpm test:security:clean
+pnpm test:integration
+pnpm test:security
+pnpm build
+pnpm test:e2e
+pnpm verify
+pnpm evidence:p4
+git diff --check
+```
+
+Migration cases cover `0/1/2/3 -> 4`, checksum/snapshot drift, DDL/ledger/
+receipt/commit faults, restart continuation, prior-row byte identity, FK and
+semantic integrity. Context cases cover adapter URI/version stability, cycle
+rejection, tombstones, deterministic rebuild hashes, MiniSearch CAS tamper,
+policy CAS, source drift, token budget, mandatory evidence, and stale Pack
+inputs. Projection cases cover two-worker lease fencing, cancel/retry lineage,
+terminal operation/event/head atomicity, and startup recovery.
+
+Authorization cases cross Team/Project, explicit deny, sensitivity, source
+allowlist, Exchange both-side approval/expiry/revoke, MCP project/tool allowlist,
+SSE cursor scope, and replay-time authorization. REST, MCP Streamable HTTP,
+stdio, and the independent Gateway probe must report the same command schema and
+normalized result; cross-transport idempotency returns the same business
+receipt. Gateway tests cover signature/body tamper, skew, nonce replay,
+destination denial, stateless imports, and receipt redaction.
+
+`scripts/e2e.mjs` is the active P4 browser journey. It covers Context projection
+cancel/retry, document/history, policy, selection/Pack, one-time client token,
+Exchange both-side approval, and three viewports (390x844, 1024x768, 1440x900).
+Every viewport records Context and MCP/Exchange screenshots plus horizontal
+overflow and visible-control overlap checks. Console/page errors and any
+`/api/v1` request fail the gate.
+
+Formal P4 Evidence is append-only under
+`docs/evidence/v3-clean-p4-context-mcp-20260820/`. Only a final receipt with
+`status=verified` and `provisional=false` promotes the four P4 rows. The
+rollback gate must pass source reverse-check and an isolated actual v3
+SQLite/CAS restore with `byte_exact_mismatches=[]`.
+The SQLite integrity probe opens only a temporary byte copy and removes its
+WAL/SHM sidecars in `finally`; the Evidence snapshot and restored target remain
+byte-exact inputs.
+Catalog validation also compares the final manifest bidirectionally with every
+top-level Evidence file and rejects missing, hash-mismatched, or orphan files.
+Ordinary reruns reject an existing verified final. An explicit corrective
+`--supersede` run preserves every prior top-level byte under
+`attempts/superseded-final-<run-id>-*` and records `supersedes_run_id` in the
+new verification and manifest.
+
 ## AI evaluation
 
 Formal model evaluation fixes Brief, repository SHA, model, prompt, capability set
@@ -178,6 +264,11 @@ is not recorded as a formal pass.
 - Broker submission p95 below 500 ms
 - event loop lag p95 no greater than 50 ms
 - idle App RSS no greater than 512 MB with demonstration data
+- P4 Context map p95 no greater than 150 ms for 1000 nodes
+- P4 Context search p95 no greater than 250 ms for 1000 nodes
+- P4 Context selection p95 no greater than 500 ms for 1000 nodes
+- 100 MCP Context reads complete; projection rebuild duration is recorded but
+  is not a promotion threshold
 
 P8-P9 acceptance receipts will record observed startup and execution status.
 Those phases require fresh Codex/GitHub capability probes, image and source

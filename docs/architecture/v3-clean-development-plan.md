@@ -1,12 +1,14 @@
 # V3-Clean 分阶段开发计划
 
-状态：P3 Evidence 已验证，P3.1 Clean debt burn-down 正在执行；`REC-D5-PROJECT-005`、`REC-D5-WORKFLOW-006`、
-`REC-D6-GENERATION-007` 和 `REC-D7-REPOSITORY-014` 为 `verified`，
+状态：P1-P3.1 Evidence 已验证，P4 Context/MCP/Gateway 已完成最终门禁；
+`REC-D4-MCP-004`、`REC-D4-SCOPE-016`、`REC-D9-CONTEXT-017` 和
+`REC-D9-PROJECTION-018` 为 `verified`；`REC-D5-PROJECT-005`、
+`REC-D5-WORKFLOW-006`、`REC-D6-GENERATION-007` 和 `REC-D7-REPOSITORY-014` 维持 `verified`，
 `REC-D6-OUTCOME-009` 仍为 `scaffolded`（仅 requirement scaffolding）。
 P2 `REC-D2-IDENTITY-001` 为 `verified`，`REC-D2-SETUP-002` 为 `implemented`，
 `REC-D10-FRONTEND-024` 为 `scaffolded`；P3 receipt 为
 `docs/evidence/v3-clean-p3-project-workflow-20260819/verification.json`。
-计划基线：`b860d0b`；P3.1 决策：`D-031`。
+P4 计划基线：`3f1d9e7`；P4 决策：`D-033`。
 规范来源：同目录下的 `v3-clean-break.md`、`clean-schema.md`、
 `api-v2-contract.md`、`import-contract.md`、`v23-capability-matrix.md` 和
 `decision-log.md`。
@@ -379,8 +381,8 @@ git diff --check
 `verification.json` 均为 `verified`，`provisional=false`。空库、P1 和 P2
 卷均完成 `001 -> 002 -> 003`，migration/DDL/ledger/receipt/commit fault、
 checksum/snapshot drift、lifecycle/CAS、restart、跨项目隔离和 deterministic
-fixture adapter probes 均通过。active `apps/api/server.mjs` 默认启动
-`targetVersion=3`，并由
+fixture adapter probes 均通过。P3 receipt 当时验证 `apps/api/server.mjs`
+以 `targetVersion=3` 启动，并由
 `tests/p3/active-entrypoint.test.mjs` 与 `tests/p3/http-contract.test.mjs`
 验证 `/readyz`、API v2、retired route 和 session/ACL 边界。隔离副本执行 rollback dry-run 与 actual apply，
 `byte_exact_mismatches=[]`；failure checkpoint 保存在独立的
@@ -421,6 +423,10 @@ workflow/generation、ACL denial、replay 和 mobile/laptop/desktop 三视口；
 Clean 失败阻断并返回非零，历史失败写入 advisory receipt（含命令、退出码、
 摘要和 redaction 结果）但不提升 Clean 状态。`verify` 的阻断顺序固定为：
 
+历史 R5 source-hash replay 由 `fixture:legacy:integration` 显式执行；`pnpm test`
+只按名称跳过该断言，并继续执行其余 unit 与 Clean Web tests。package script
+总数保持 42。
+
 D-032 further fixes the publication boundary: a fully successful wrapper emits
 only `aiws.v3-clean.layered-gate-result.v2` with `receipt: null`; a Clean or
 Historical failure appends its complete redacted output to the ignored local
@@ -437,8 +443,9 @@ check -> audit:p1 -> scan:clean -> test:p1 -> test:p2 -> test:p3 -> test:p31
 ### Catalog 与 Evidence
 
 `feature-catalog.index.json` 引用 disjoint 的
-`feature-catalog.clean.json`（固定九个 Clean id）和
-`feature-catalog.historical.json`（其余 fixture id）；根
+`feature-catalog.clean.json`（P3.1 receipt 固定九个 Clean id）和
+`feature-catalog.historical.json`（其余 fixture id）；P4 在最终 receipt 后
+原子迁移四行而不改变总数；根
 `feature-catalog.json` 保留 P1 兼容聚合并携带同一引用。`scripts/catalog-loader.mjs`
 拒绝缺失、重复、stale、orphan 的 id、矩阵覆盖、owner/test/Evidence 路径，
 以及把 historical status 当作 Clean 可用的解释。
@@ -468,29 +475,103 @@ Evidence 或 P1 兼容 Catalog。
 
 ## 9. P4：Context、Projection、Pack、MCP、Exchange、Gateway
 
-### 目标
+### 目标与边界
 
-把项目上下文和工具能力接到统一 ACL、事件和 operation 模型，保证 projection
-是可重建的派生物而不是第二个业务 head。
+D-033 以 `3f1d9e7` 为基线，用 forward-only
+`004-context-projection-mcp` 把活动 schema 升至 `user_version=4`。P4 只交付
+Context/Projection/Pack、MCP/Exchange、独立 Gateway 和对应 Clean Web slice；
+真实 Codex/GitHub、Assist、Runner、Parser、Outcome evaluation、Offline、完整
+Gateway 运维和 release workflow 留在 P5-P9。
 
-### 领域范围
+### Schema、owner 与 projection
 
-- Context source/node/document version/edge、sensitivity、freshness、policy；
-- projection job 的 lease、checkpoint、stale recovery、cancel/retry；
-- deterministic selection、Context Pack hash、Memory Manifest、Outcome/Rubric
-  hash 和 token budget；
-- MCP client/tool/resource registry、health、HTTP/stdio transport；
-- Exchange request/grant/revoke/expiry 和跨项目 scope narrowing；
-- Gateway forwarding receipt、签名验证、destination ACL re-check、无业务持久化。
+- Context 独占 source/node/document version/edge/policy/selection/pack；Projection
+  独占 job/index snapshot；MCP 独占 client；Exchange 独占 request/grant；Gateway
+  独占 forwarding receipt。Policy 历史写 generic `aggregate_revisions`，projection
+  event 只写 generic `events`，不创建 domain head/event ledger。
+- Project、Brief、Repository、Workflow、Node Contract 和 Note adapter 生成稳定
+  URI、版本、contains/reference edge；正文和 MiniSearch serialization 写 Clean
+  CAS。Secret 在排序和索引前排除，allowlist/freshness/sensitivity/ACL 在检索前
+  统一过滤。
+- Worker 以 lease、revision 和 fencing token 发布；最终事务重检输入 hash、CAS、
+  lease 和 revision。漂移、cycle、tamper 或 lease 丢失不发布部分结果；retry 新建
+  job/operation 并保留 lineage，cancel/retry 均做 revision CAS。
+- Selection 固定按 pinned、score、type、stable URI/id 排序，token budget 为
+  256-128000。`aiws.context_pack.v5` 的 CAS payload 固化 selection snapshot；公共
+  envelope 只返回 hash/revision/manifest 元数据，mandatory evidence 缺失返回
+  `evidence_incomplete`。
 
-### 验收
+### Transport、Exchange 与 Gateway
 
-- 1000 context nodes 的稳定排序、索引重建和 hash/tamper 检查；
-- 同一 command 在 REST、MCP HTTP、stdio 和 Gateway 的 schema/result 等价；
-- project ACL、sensitivity、grant expiry 和 source allowlist 全路径一致；
-- SSE 断线后从 durable cursor replay，不重复或越权；
-- Context/MCP parity、Gateway independent probe、security boundary 和性能
-  receipt 通过。
+`CleanCommandDispatcher` 是 REST、MCP Streamable HTTP、MCP stdio 和 Gateway 的
+唯一 handler inventory；MCP protocol 固定 `2025-06-18`。Client token 仅创建时
+返回一次，SQLite 只保存 peppered HMAC、prefix、expiry、actor、project/tool
+allowlist 和 revision。Exchange 采用
+`requested -> partially_approved -> active -> revoked|expired`，source/target 双侧
+批准后才创建 grant；grant 只收窄现有 ACL，Pack 仍由 Context owner 创建。
+
+`apps/gateway` 是独立无状态进程，只负责 HTTP forward、stdio bridge、签名和
+health；它不导入 SQLite、CAS/domain repository，不访问 Docker。API 校验
+HMAC-SHA256(method/path/timestamp/nonce/canonical-body-hash)、60 秒时钟偏差和
+nonce replay，再重检 client/grant/project/tool scope。Receipt 只保留 command、
+request/response hash、decision、operation link 和时间。
+
+### Web、门禁与 Evidence
+
+默认 Clean Web 增加 Context Map/history/policy/selection/Pack 和 MCP/Exchange
+controls；`scripts/e2e.mjs` 覆盖 390x844、1024x768、1440x900，要求无 overlap、
+overflow、console/page error 且 `/api/v1=0`。P4 固定门禁为：
+
+其中 `pnpm test` 排除只读 R5 source-hash replay；该断言在现有
+`fixture:legacy:integration` Historical advisory 层执行，不参与 Clean 状态提升。
+
+```text
+pnpm check
+pnpm audit:p1
+pnpm scan:clean
+pnpm recovery:plan
+pnpm recovery:catalog
+pnpm recovery:coverage
+pnpm recovery:impact -- --audit
+pnpm test:p1
+pnpm test:p2
+pnpm test:p3
+pnpm test:p31
+pnpm test:p4
+node scripts/v3-clean-p4-performance.mjs
+node scripts/v3-clean-p4-gateway-probe.mjs
+pnpm --filter @aiws/web test
+pnpm test
+pnpm test:integration:clean
+pnpm test:security:clean
+pnpm test:integration
+pnpm test:security
+pnpm build
+pnpm test:e2e
+pnpm verify
+pnpm evidence:p4
+git diff --check
+```
+
+Formal Evidence 位于
+`docs/evidence/v3-clean-p4-context-mcp-20260820/`，包含 preflight、原始/修改
+hash、binary patch、schema/owner/route/parity inventory、migration、1000-node
+performance、独立 Gateway probe、browser、secret scan、verification、manifest
+和 runnable rollback。Rollback 不执行 down migration；它 reverse-check 源码
+patch，在隔离目录恢复 v3 SQLite/CAS 快照并验证 `user_version=3`、FK、migration
+ledger 和四份 artifact，最终输出 `byte_exact_mismatches=[]`。
+SQLite integrity probe 只打开系统临时目录中的 snapshot 字节副本并在 `finally`
+清理 WAL/SHM；Evidence snapshot 与恢复目标只参与 hash 比较。
+Catalog gate 对 final manifest 与顶层 Evidence 文件做双向 SHA-256 校验，拒绝
+missing、hash mismatch 和 WAL/SHM 等 orphan 文件。
+普通 rerun 不得覆盖 verified final；显式纠错 `--supersede` 必须先把旧顶层
+Evidence 原字节归档到 `attempts/superseded-final-<run-id>-*`，并在新
+verification/manifest 写入 `supersedes_run_id`。
+
+最终非 provisional receipt 统一提升 `REC-D4-MCP-004`、
+`REC-D4-SCOPE-016`、`REC-D9-CONTEXT-017` 和
+`REC-D9-PROJECTION-018`。Clean/Historical 数量为 13/14，总数保持 27；Frontend
+和 Outcome 仍为 `scaffolded`，P5 只在上述四行和 final receipt 一致后解锁。
 
 ## 10. P5：Assist、Files、Attachments、Approval、Terminal、Bridge
 

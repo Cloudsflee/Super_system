@@ -17,16 +17,18 @@ under docs/architecture/ are the source of truth for V3-Clean.
 
 ## Scope of this phase
 
-Decision `D-031` activates the P3.1 Clean debt burn-down phase over the
-verified P1/P2/P3 baseline. This phase may update the synchronized P3.1
+Decision `D-033` activates P4 Context/Projection/MCP over the verified
+P1/P2/P3/P3.1 baseline at `3f1d9e7`. This phase may update the synchronized P4
 surface:
 
-- `003-project-workflow`, its clean runtime services, registry, contracts, and
-  focused tests, including owner/facade decomposition and shared ledger APIs;
-- the component-level Project/Workflow Web slice and default Clean E2E, using
-  `/api/v2` only;
-- the architecture documents, testing policy, layered Catalogs, package gates,
-  immutable P3.1 Evidence, and rollback receipts required by GS-001 through
+- forward-only `004-context-projection-mcp`, schema ownership, clean runtime
+  services, dispatcher, registry, contracts, and focused P4 tests;
+- the independent stateless `apps/gateway` process, MCP HTTP/stdio transports,
+  Exchange scope narrowing, and independent performance/Gateway probes;
+- the component-level Context/MCP/Exchange Web slice and default Clean E2E,
+  using `/api/v2` only;
+- architecture documents, testing policy, layered Catalogs, package gates,
+  immutable P4 Evidence, and rollback receipts required by GS-001 through
   GS-007;
 - this file.
 
@@ -36,9 +38,10 @@ is appended to the ignored local `.ai-workspace/gate-receipts/` store. Local
 receipts are diagnostic evidence only; Catalog status promotion continues to
 use the immutable final `verification.json` receipt.
 
-P1/P2/P3 migrations and verified Evidence are read-only. P4 and later runtime,
-real provider calls, complete Outcome evaluation, and release-level Web/E2E
-remain outside P3.1.
+P1/P2/P3 migrations and P1-P3.1 verified Evidence are read-only. P5 and later
+runtime, real provider calls, Runner, Parser, complete Outcome evaluation,
+offline/cross-origin behavior, production cutover, and release-level Web/E2E
+remain outside P4.
 
 ## Required preflight
 
@@ -211,6 +214,36 @@ pnpm verify
 git diff --check
 ~~~
 
+The additive P4 implementation inventory is:
+
+~~~text
+pnpm check
+pnpm audit:p1
+pnpm scan:clean
+pnpm recovery:plan
+pnpm recovery:catalog
+pnpm recovery:coverage
+pnpm recovery:impact -- --audit
+pnpm test:p1
+pnpm test:p2
+pnpm test:p3
+pnpm test:p31
+pnpm test:p4
+node scripts/v3-clean-p4-performance.mjs
+node scripts/v3-clean-p4-gateway-probe.mjs
+pnpm --filter @aiws/web test
+pnpm test
+pnpm test:integration:clean
+pnpm test:security:clean
+pnpm test:integration
+pnpm test:security
+pnpm build
+pnpm test:e2e
+pnpm verify
+pnpm evidence:p4
+git diff --check
+~~~
+
 P3.1 uses `feature-catalog.index.json` with disjoint Clean and historical
 layers (`feature-catalog.clean.json` and `feature-catalog.historical.json`).
 `scripts/catalog-loader.mjs` is the validation owner; the root
@@ -218,12 +251,25 @@ layers (`feature-catalog.clean.json` and `feature-catalog.historical.json`).
 tests and carries the same index references. `scripts/e2e.mjs` is the active
 Clean journey, while `scripts/e2e-legacy.mjs` and `fixture:legacy:*` commands
 are explicit historical fixtures.
+The immutable R5 source-hash replay is owned by
+`fixture:legacy:integration`; `pnpm test` skips only that named Historical
+assertion and retains all other unit and Clean Web tests.
 
 Layered gate success emits the structured
 `aiws.v3-clean.layered-gate-result.v2` summary without touching Git-visible
 Evidence. Failed Clean and Historical runs append complete redacted command
 outputs under `.ai-workspace/gate-receipts/` with exclusive file creation;
 these local receipts never promote a Catalog row.
+
+P4 advances the active schema to `user_version=4`; HTTP, MCP HTTP, stdio, and
+Gateway share `CleanCommandDispatcher`. The four P4 ids are Clean-only after a
+final verified receipt, yielding 13 Clean and 14 Historical rows while the
+total remains 27. Formal Evidence is
+`docs/evidence/v3-clean-p4-context-mcp-20260820/`; local failed attempts remain
+append-only and never promote status.
+An explicit corrective P4 Evidence supersession preserves the prior verified
+top-level files under `attempts/superseded-final-<run-id>-*` and records
+`supersedes_run_id`; an ordinary rerun still rejects a verified final.
 
 ## Capability status
 

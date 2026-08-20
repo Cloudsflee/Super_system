@@ -1,13 +1,14 @@
 # V3-Clean Break Architecture
 
-Status: decision document for the documentation-only architecture phase.
+Status: normative clean-break contract, implemented through P4.
 Owner: platform architecture.
 Effective runtime name: `V3-Clean`.
 
 This document is the top-level contract for the clean break. It governs the
 schema, service, importer, API, event, deployment, and release documents in
-this directory. A later implementation task must update the decision log and
-the capability matrix before changing one of these contracts.
+this directory. Decisions through D-033 implement the P1-P4 runtime surface;
+later phases must update the decision log and capability matrix before changing
+one of these contracts.
 
 ## 1. Objective
 

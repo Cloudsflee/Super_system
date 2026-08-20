@@ -6,7 +6,7 @@ const commands = [
   ['check'],
   ['audit:p1', ...(skipP1Evidence ? ['--', '--skip-evidence'] : [])],
   ['scan:clean', ...(skipP1Evidence ? ['--', '--skip-evidence'] : [])],
-  ['test:p1'], ['test:p2'], ['test:p3'], ['test:p31'], ['test'],
+  ['test:p1'], ['test:p2'], ['test:p3'], ['test:p31'], ['test:p4'], ['test'],
   ['test:integration'], ['test:security'], ['build'], ['test:e2e'], ['git diff --check']
 ];
 for (const [script, ...args] of commands) {
