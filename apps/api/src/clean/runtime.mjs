@@ -14,10 +14,14 @@ import { IdentityService } from './identity.mjs';
 import { VaultAdapter } from './vault.mjs';
 import { createFakeProviderAdapters } from './provider-adapters.mjs';
 import { ProjectWorkflowService } from './project-workflow.mjs';
+import { CleanContextService } from './context-service.mjs';
+import { CleanMcpExchangeService } from './mcp-service.mjs';
+import { CleanGatewayService } from './gateway-service.mjs';
+import { CleanCommandDispatcher } from './command-dispatcher.mjs';
 
 export function createCleanRuntime(options = {}) {
   const config = options.config || loadCleanConfig(options.env || process.env);
-  const targetVersion = Number(options.targetVersion || options.schemaVersion || (options.p3 || options.phase === 'p3' || options.cleanPhase === 'p3' ? 3 : 2));
+  const targetVersion = Number(options.targetVersion || options.schemaVersion || (options.p4 || options.phase === 'p4' || options.cleanPhase === 'p4' ? 4 : (options.p3 || options.phase === 'p3' || options.cleanPhase === 'p3' ? 3 : 2)));
   const vaultMasterKey = options.vaultMasterKey || config.vaultMasterKey;
   if (typeof vaultMasterKey !== 'string' || vaultMasterKey.length < 16) throw new CleanNotReadyError('credential vault key is required', { reason: 'vault_key_missing', schema_family: 'v3-clean' });
   let initialized;
@@ -47,7 +51,13 @@ export function createCleanRuntime(options = {}) {
   const vault = new VaultAdapter({ root: options.vaultRoot || config.vaultRoot, masterKey: vaultMasterKey });
   const identity = new IdentityService({ db, events, operations, policy, bootstrapActorId: initialized.metadata.bootstrap_actor_id, sessionSecret: options.sessionSecret || config.sessionSecret, authorization, vault, clock: options.now || undefined, projectScopeResolver, providerAdapters: options.providerAdapters || createFakeProviderAdapters() });
   const projectWorkflow = targetVersion >= 3 ? new ProjectWorkflowService({ db, events, operations, policy, authorization, clock: options.now || undefined, repositoryAdapter: options.repositoryAdapter, generator: options.generator, critic: options.critic }) : null;
-  const recovery = Promise.all([identity.recoverPending(), projectWorkflow?.recoverPending?.() || 0]);
+  const registry = createCleanCommandRegistry({ targetVersion });
+  const context = targetVersion >= 4 ? new CleanContextService({ db, cas, events, operations, authorization, policy, clock: options.now || undefined, bootstrapActorId: initialized.metadata.bootstrap_actor_id }) : null;
+  const mcp = targetVersion >= 4 ? new CleanMcpExchangeService({ db, context, operations, authorization, registry, policy, clock: options.now || undefined, pepper: options.mcpPepper || config.mcpPepper, bootstrapActorId: initialized.metadata.bootstrap_actor_id }) : null;
+  const gateway = targetVersion >= 4 ? new CleanGatewayService({ db, policy, clock: options.now || undefined, secret: options.gatewaySecret || config.gatewaySecret, gatewayId: options.gatewayId || config.gatewayId || 'gateway-local' }) : null;
+  const dispatcher = targetVersion >= 4 ? new CleanCommandDispatcher({ registry, context, mcp, gateway, projectWorkflow, operations, events }) : null;
+  if (mcp) mcp.dispatcher = dispatcher;
+  const recovery = Promise.all([identity.recoverPending(), projectWorkflow?.recoverPending?.() || 0, context?.recover() || 0]);
   events.authorize = (context) => authorization.authorize({ actorId: context.actorId, effectiveActorId: context.actorId, scopes: ['*'] }, 'read', context.projectId, { events: context.events }).allowed;
   let casManifest;
   let ready = false;
@@ -61,7 +71,6 @@ export function createCleanRuntime(options = {}) {
   const existingRetired = db.get("SELECT id FROM receipt_manifests WHERE kind='route.retired' ORDER BY created_at,id LIMIT 1");
   const retiredRouteReceipt = existingRetired?.id || platform.createReceipt({ kind: 'route.retired', payload: { code: 'route_retired', importer_command: 'import.inspect', schema_family: 'v3-clean' }, status: 'verified' }).receipt_id;
   const readinessReceipt = ready ? null : platform.createReceipt({ kind: 'startup.not_ready', payload: { reason: readinessReason, schema_family: 'v3-clean' }, status: 'failed' }).receipt_id;
-  const registry = createCleanCommandRegistry({ targetVersion });
   const ownership = validateCleanOwnership({
     tables: db.query("SELECT name FROM sqlite_schema WHERE type='table' AND name NOT LIKE 'sqlite_%' ORDER BY name").map((row) => row.name),
     registry
@@ -84,6 +93,10 @@ export function createCleanRuntime(options = {}) {
     receipts,
     identity,
     projectWorkflow,
+    context,
+    mcp,
+    gateway,
+    dispatcher,
     project: projectWorkflow,
     repository: projectWorkflow,
     workflow: projectWorkflow,
@@ -101,8 +114,9 @@ export function createCleanRuntime(options = {}) {
     apiVersion: '2',
     p2: true,
     p3: targetVersion >= 3,
+    p4: targetVersion >= 4,
     health() {
-      return { runtime: 'v3-clean', ready: this.ready, readiness_reason: this.readinessReason, readiness_receipt: this.readinessReceipt, schema_family: this.metadata.family, user_version: this.metadata.user_version, cas_manifest: this.casManifest || null, p2: this.p2, p3: this.p3 };
+      return { runtime: 'v3-clean', ready: this.ready, readiness_reason: this.readinessReason, readiness_receipt: this.readinessReceipt, schema_family: this.metadata.family, user_version: this.metadata.user_version, cas_manifest: this.casManifest || null, p2: this.p2, p3: this.p3, p4: this.p4 };
     },
     close() { this.db.close(); }
   };
@@ -124,7 +138,7 @@ export function createCleanRuntime(options = {}) {
 export function createNotReadyRuntime(options = {}, failure = null) {
   const config = options.config || loadCleanConfig(options.env || process.env);
   const policy = options.policy || new RedactionPolicy();
-  const targetVersion = Number(options.targetVersion || options.schemaVersion || (options.p3 || options.phase === 'p3' || options.cleanPhase === 'p3' ? 3 : 2));
+  const targetVersion = Number(options.targetVersion || options.schemaVersion || (options.p4 || options.phase === 'p4' || options.cleanPhase === 'p4' ? 4 : (options.p3 || options.phase === 'p3' || options.cleanPhase === 'p3' ? 3 : 2)));
   const registry = createCleanCommandRegistry({ targetVersion });
   const details = failure?.details && typeof failure.details === 'object' ? failure.details : {};
   const reason = String(details.reason || failure?.code || 'startup_failed');
@@ -148,6 +162,10 @@ export function createNotReadyRuntime(options = {}, failure = null) {
     receipts: null,
     identity: null,
     projectWorkflow: null,
+    context: null,
+    mcp: null,
+    gateway: null,
+    dispatcher: null,
     project: null,
     repository: null,
     workflow: null,
@@ -165,8 +183,9 @@ export function createNotReadyRuntime(options = {}, failure = null) {
     apiVersion: '2',
     p2: false,
     p3: false,
+    p4: false,
     health() {
-      return { runtime: 'v3-clean', ready: false, readiness_reason: this.readinessReason, readiness_receipt: this.readinessReceipt, schema_family: this.metadata.family, user_version: this.metadata.user_version, cas_manifest: null, p2: false, p3: false };
+      return { runtime: 'v3-clean', ready: false, readiness_reason: this.readinessReason, readiness_receipt: this.readinessReceipt, schema_family: this.metadata.family, user_version: this.metadata.user_version, cas_manifest: null, p2: false, p3: false, p4: false };
     },
     close() {}
   };

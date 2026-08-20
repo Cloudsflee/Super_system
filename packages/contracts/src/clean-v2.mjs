@@ -39,6 +39,14 @@ const criticReceipt = closed({ id, generation_id: id, project_id: id, status: { 
 const workflowProposal = closed({ id, generation_id: id, project_id: id, base_workflow_revision: { type: 'integer', minimum: 0 }, candidate: looseObject, candidate_sha256: { type: 'string' }, critic_receipt_id: id, proposal_sha256: { type: 'string' }, status: { enum: ['pending', 'applied', 'rejected', 'stale'] }, applied_workflow_revision: { type: 'integer', minimum: 0 }, revision, created_at: timestamp, updated_at: timestamp }, ['id', 'generation_id', 'project_id', 'status', 'revision']);
 const outcomeRequirement = closed({ id, project_id: id, workflow_revision: { type: 'integer', minimum: 0 }, requirement_key: { type: 'string' }, rubric: looseObject, rubric_sha256: { type: 'string' }, revision, created_at: timestamp }, ['id', 'project_id', 'requirement_key', 'rubric', 'revision']);
 const receipt = (properties = {}, required = []) => closed({ actor, team, membership, invitation, project, entry: aclEntry, credential, profile, session, operation: operationEnvelope, revision, replayed: { type: 'boolean' }, status: { type: 'string' }, ...properties }, required);
+const p4Revision = { type: 'integer', minimum: 0 };
+const p4String = { type: 'string' };
+const p4StringArray = { type: 'array', items: p4String, uniqueItems: true };
+const p4Items = { type: 'array', items: looseObject };
+const p4Operation = { anyOf: [looseObject, { type: 'null' }] };
+const p4Mutation = (properties = {}, required = []) => closed({ ...properties, idempotency_key: idempotency, expected_revision: p4Revision }, [...required, 'idempotency_key', 'expected_revision']);
+const p4List = (name) => closed({ [name]: p4Items }, [name]);
+const p4DomainReceipt = (name, extra = {}) => closed({ [name]: looseObject, operation: p4Operation, replayed: { type: 'boolean' }, ...extra }, [name]);
 
 export const CLEAN_V2_SCHEMAS = Object.freeze({
   'setup.complete.v2': closed({ display_name: { type: 'string', minLength: 1, maxLength: 160 }, team_name: { type: 'string', minLength: 1, maxLength: 160 }, ttl_seconds: { type: 'integer', minimum: 300, maximum: 7776000 }, idempotency_key: idempotency, expected_revision: { type: 'integer', minimum: 0, maximum: 0 } }, ['display_name', 'team_name']),
@@ -86,6 +94,59 @@ export const CLEAN_V2_SCHEMAS = Object.freeze({
   'critic.evaluate.v2': closed({ candidate: looseObject, status: { enum: ['passed', 'rejected', 'failed'] }, issues: { type: 'array', items: looseObject }, idempotency_key: idempotency, expected_revision: revision }, ['status', 'expected_revision']),
   'proposal.apply.v2': closed({ idempotency_key: idempotency, expected_revision: revision }, ['expected_revision']),
   'outcome.requirement.create.v2': closed({ requirement_key: { type: 'string', minLength: 1, maxLength: 160 }, rubric: looseObject, workflow_revision: { type: 'integer', minimum: 0 }, idempotency_key: idempotency, expected_revision: { type: 'integer', minimum: 0 } }, ['requirement_key']),
+
+  // P4 Context, Projection, MCP, Exchange and Gateway contracts. Every
+  // command boundary is closed; named metadata and domain payloads remain
+  // owner-defined objects behind their explicit top-level fields.
+  'context.project.query.v2': closed({ project_id: id }, ['project_id']),
+  'context.search.query.v2': closed({ project_id: id, q: p4String, query: p4String, limit: { type: 'integer', minimum: 1, maximum: 500 } }, ['project_id']),
+  'context.read.query.v2': closed({ project_id: id, node_id: id, version_id: id }, ['project_id', 'node_id']),
+  'context.node.query.v2': closed({ project_id: id, node_id: id, version_id: id }, ['project_id', 'node_id']),
+  'context.pack.query.v2': closed({ project_id: id, pack_id: id }, ['project_id', 'pack_id']),
+  'context.events.query.v2': closed({ project_id: id, job_id: id, cursor: { anyOf: [{ type: 'integer', minimum: 0 }, p4String] }, limit: { type: 'integer', minimum: 1, maximum: 500 }, format: { const: 'json' } }, ['project_id', 'job_id']),
+  'context.job.query.v2': closed({ project_id: id, job_id: id }, ['project_id', 'job_id']),
+  'context.source.create.v2': p4Mutation({ project_id: id, source_type: p4String, kind: p4String, title: p4String, name: p4String, canonical_uri: p4String, uri: p4String, path: p4String, content: p4String, body: p4String, sensitivity: p4String, metadata: looseObject, media_type: p4String, adapter: p4String, source_revision: p4String }, ['project_id']),
+  'context.policy.update.v2': p4Mutation({ project_id: id, policy: looseObject, pinned_node_ids: p4StringArray, excluded_node_ids: p4StringArray, source_allowlist: p4StringArray, sensitivity_max: p4String, freshness: p4String }, ['project_id']),
+  'context.selection.create.v2': p4Mutation({ project_id: id, query: p4String, token_budget: { type: 'integer', minimum: 256, maximum: 128000 }, retrieval_plan: looseObject, node_ids: p4StringArray, mandatory_node_ids: p4StringArray }, ['project_id']),
+  'context.pack.create.v2': p4Mutation({ project_id: id, selection_id: id, require_authoritative: { type: 'boolean' }, grant_id: id, scope: looseObject }, ['project_id']),
+  'context.rebuild.v2': p4Mutation({ project_id: id, mode: { enum: ['full', 'incremental', 'index_rebuild'] }, defer: { type: 'boolean' }, retry_of_job_id: id }, ['project_id']),
+  'context.job.mutation.v2': p4Mutation({ project_id: id, job_id: id, mode: p4String }, ['project_id', 'job_id']),
+  'mcp.rpc.v2': closed({ jsonrpc: { const: '2.0' }, id: { anyOf: [p4String, { type: 'integer' }, { type: 'null' }] }, method: p4String, params: looseObject }, ['jsonrpc', 'method']),
+  'mcp.list.query.v2': closed({ project_id: id }),
+  'mcp.client.create.v2': p4Mutation({ name: p4String, transport: { enum: ['http', 'stdio'] }, endpoint: p4String, ttl_seconds: { type: 'integer', minimum: 300, maximum: 31622400 }, scope: looseObject, project_ids: p4StringArray, tools: p4StringArray }, ['name']),
+  'mcp.client.mutation.v2': p4Mutation({ id, client_id: id }),
+  'exchange.request.create.v2': p4Mutation({ project_id: id, source_project_id: id, source_project: id, target_project_id: id, target_project: id, ttl_seconds: { type: 'integer', minimum: 60, maximum: 31622400 }, scope: looseObject, project_ids: p4StringArray, tools: p4StringArray, actions: p4StringArray, resources: p4StringArray }, ['source_project_id', 'target_project_id']),
+  'exchange.approval.v2': p4Mutation({ id, request_id: id, side: { enum: ['source', 'target'] }, approver_side: { enum: ['source', 'target'] }, reason: p4String }),
+  'exchange.grant.mutation.v2': p4Mutation({ id, grant_id: id, reason: p4String }),
+  'exchange.pack.create.v2': p4Mutation({ id, grant_id: id, selection_id: id, require_authoritative: { type: 'boolean' } }),
+  'gateway.forward.v2': closed({ name: p4String, command: p4String, tool: p4String, command_id: p4String, arguments: looseObject, args: looseObject, mcp_token: p4String }),
+  'gateway.receipt.query.v2': closed({ id }, ['id']),
+  'context.sources.v2': p4List('sources'),
+  'context.source.receipt.v2': p4DomainReceipt('source'),
+  'context.map.v2': closed({ schema_version: p4String, project_id: id, root_uri: p4String, nodes: p4Items, edges: p4Items, index: looseObject }, ['schema_version', 'project_id', 'nodes', 'edges', 'index']),
+  'context.search.v2': p4List('results'),
+  'context.node.v2': looseObject,
+  'context.versions.v2': p4List('versions'),
+  'context.policy.v2': closed({ project_id: id, revision: p4Revision, hash: sha256, policy: looseObject, operation: p4Operation, replayed: { type: 'boolean' } }, ['project_id', 'revision', 'hash', 'policy']),
+  'context.selections.v2': p4List('selections'),
+  'context.selection.receipt.v2': p4DomainReceipt('selection'),
+  'context.packs.v2': p4List('packs'),
+  'context.pack.v2': looseObject,
+  'context.pack.receipt.v2': p4DomainReceipt('pack', { grant: looseObject }),
+  'context.status.v2': looseObject,
+  'context.jobs.v2': p4List('jobs'),
+  'context.job.v2': looseObject,
+  'mcp.rpc.response.v2': closed({ jsonrpc: { const: '2.0' }, id: { anyOf: [p4String, { type: 'integer' }, { type: 'null' }] }, result: looseObject, error: looseObject, request_id: id }, ['jsonrpc', 'id']),
+  'mcp.tools.v2': p4List('tools'),
+  'mcp.clients.v2': p4List('clients'),
+  'mcp.client.receipt.v2': p4DomainReceipt('client', { token: p4String, protocol_version: p4String }),
+  'exchange.requests.v2': p4List('requests'),
+  'exchange.request.receipt.v2': p4DomainReceipt('request'),
+  'exchange.approval.receipt.v2': p4DomainReceipt('request', { grant: { anyOf: [looseObject, { type: 'null' }] } }),
+  'exchange.grants.v2': p4List('grants'),
+  'exchange.grant.receipt.v2': p4DomainReceipt('grant'),
+  'gateway.forward.receipt.v2': closed({ result: looseObject, receipt: looseObject }, ['result', 'receipt']),
+  'gateway.receipt.v2': closed({ id, gateway_id: id, nonce_hash: sha256, command_id: p4String, request_hash: sha256, response_hash: sha256, decision: p4String, operation_id: nullableString, created_at: timestamp }, ['id', 'gateway_id', 'nonce_hash', 'command_id', 'request_hash', 'response_hash', 'decision', 'created_at']),
 
   // P1 query/input contracts.
   'operation.id.v2': closed({ id: id }, ['id']),

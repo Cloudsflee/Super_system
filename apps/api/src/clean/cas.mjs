@@ -219,11 +219,13 @@ function scanContent(bytes, policy) {
     return [];
   }
   if (!text || text.includes('\u0000')) return [];
-  const findings = [...policy.redact(text).redactions];
+  const findings = [];
   try {
     const structured = JSON.parse(text);
     findings.push(...policy.redact(structured).redactions);
-  } catch { /* plain text and binary-like UTF-8 are scanned as strings */ }
+  } catch {
+    findings.push(...policy.redact(text).redactions);
+  }
   if (/(?:^|\n)\s*(?:system|developer|user|assistant)\s*:/i.test(text)) findings.push({ path: '$', reason: 'prompt_envelope' });
   if (/(?:^|[\s(])(?:[A-Za-z]:\\|\/(?!(?:\/|api(?:\/|$)|livez(?:[/?#]|$)|readyz(?:[/?#]|$))))[^\r\n\t"']{2,}/.test(text)) findings.push({ path: '$', reason: 'host_path' });
   return findings;

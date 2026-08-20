@@ -6,6 +6,11 @@ export function loadCleanConfig(env = process.env) {
   if (!Number.isInteger(port) || port < 1 || port > 65535) throw new Error('clean_port_invalid');
   const requestedMaxBody = Number(env.AIWS_CLEAN_MAX_BODY || 1024 * 1024);
   if (!Number.isInteger(requestedMaxBody) || requestedMaxBody < 1) throw new Error('clean_max_body_invalid');
+  const production = String(env.NODE_ENV || '').toLowerCase() === 'production';
+  const mcpPepper = String(env.AIWS_CLEAN_MCP_PEPPER || (production ? '' : 'p4-mcp-fixture-pepper'));
+  const gatewaySecret = String(env.AIWS_GATEWAY_SECRET || (production ? '' : 'p4-gateway-fixture-secret'));
+  if (production && mcpPepper.length < 32) throw new Error('mcp_pepper_required');
+  if (production && gatewaySecret.length < 32) throw new Error('gateway_secret_required');
   return Object.freeze({
     runtime: 'v3-clean',
     apiVersion: '2',
@@ -17,6 +22,9 @@ export function loadCleanConfig(env = process.env) {
     receiptRoot: path.resolve(String(env.AIWS_CLEAN_RECEIPTS || path.join(home, 'receipts'))),
     cursorSecret: String(env.AIWS_CLEAN_CURSOR_SECRET || 'v3-clean-local-cursor'),
     sessionSecret: String(env.AIWS_CLEAN_SESSION_SECRET || env.AIWS_CLEAN_CURSOR_SECRET || 'v3-clean-local-session'),
+    mcpPepper,
+    gatewaySecret,
+    gatewayId: String(env.AIWS_GATEWAY_ID || 'gateway-local'),
     vaultRoot: path.resolve(String(env.AIWS_CLEAN_VAULT || path.join(home, 'vault'))),
     vaultMasterKey: env.AIWS_CLEAN_VAULT_KEY == null ? null : String(env.AIWS_CLEAN_VAULT_KEY),
     runtimeBuild: String(env.AIWS_CLEAN_BUILD || 'v3-clean-p2'),

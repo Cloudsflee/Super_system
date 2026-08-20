@@ -62,7 +62,8 @@ const entries = [
     evidence_metadata: { receipt_kind: 'operation.receipt.v2', verification: 'p1-platform' }
   },
   ...identityEntries(),
-  ...p3Entries()
+  ...p3Entries(),
+  ...p4Entries()
 ];
 
 function identityEntries() {
@@ -175,6 +176,57 @@ function p3Entries() {
   ];
 }
 
+function p4Entries() {
+  const common = (command_id, method, path, owner, scope, input_schema, output_schema, events, options = {}) => ({
+    command_id, version: 2, method, path, owner, scope, phase: 'p4',
+    project_scoped: options.project_scoped !== false,
+    idempotency: method === 'GET' ? 'forbidden' : 'required',
+    expected_revision: method === 'GET' ? 'none' : (options.expected_revision || 'resource'),
+    input_schema, output_schema, long_running: Boolean(options.long_running), events,
+    mcp: { mapping: method === 'GET' ? 'resource' : 'tool', name: options.mcp_name || command_id.replaceAll('.', '_') },
+    redaction_policy: 'v3-clean-default', external_adapter: null,
+    ui_metadata: { surface: options.surface || 'context', state: options.state || command_id },
+    evidence_metadata: { receipt_kind: options.long_running ? 'operation.receipt.v2' : 'resource.receipt.v2', verification: 'p4-context-mcp-gateway' }
+  });
+  return [
+    common('context.source.list', 'GET', '/api/v2/projects/{project_id}/context/sources', 'Context', 'context:read', 'context.project.query.v2', 'context.sources.v2', ['context_source.*'], { state: 'sources' }),
+    common('context.source.create', 'POST', '/api/v2/projects/{project_id}/context/sources', 'Context', 'context:write', 'context.source.create.v2', 'context.source.receipt.v2', ['context_source.created', 'context_source.updated'], { state: 'source-create' }),
+    common('context.map', 'GET', '/api/v2/projects/{project_id}/context/map', 'Context', 'context:read', 'context.project.query.v2', 'context.map.v2', ['context.map.read'], { state: 'map', mcp_name: 'context_map' }),
+    common('context.search', 'GET', '/api/v2/projects/{project_id}/context/search', 'Context', 'context:read', 'context.search.query.v2', 'context.search.v2', ['context.*'], { state: 'search', mcp_name: 'context_search' }),
+    common('context.read', 'GET', '/api/v2/projects/{project_id}/context/read', 'Context', 'context:read', 'context.read.query.v2', 'context.node.v2', ['context.*'], { state: 'read', mcp_name: 'context_read' }),
+    common('context.node.get', 'GET', '/api/v2/projects/{project_id}/context/nodes/{node_id}', 'Context', 'context:read', 'context.node.query.v2', 'context.node.v2', ['context.*'], { state: 'node' }),
+    common('context.node.versions', 'GET', '/api/v2/projects/{project_id}/context/nodes/{node_id}/versions', 'Context', 'context:read', 'context.node.query.v2', 'context.versions.v2', ['context.*'], { state: 'versions' }),
+    common('context.policy.get', 'GET', '/api/v2/projects/{project_id}/context/policy', 'Context', 'context:read', 'context.project.query.v2', 'context.policy.v2', ['context_policy.*'], { state: 'policy' }),
+    common('context.policy.update', 'PATCH', '/api/v2/projects/{project_id}/context/policy', 'Context', 'context:write', 'context.policy.update.v2', 'context.policy.v2', ['context_policy.updated'], { state: 'policy-update' }),
+    common('context.selection.list', 'GET', '/api/v2/projects/{project_id}/context/selections', 'Context', 'context:read', 'context.project.query.v2', 'context.selections.v2', ['context_selection.*'], { state: 'selections' }),
+    common('context.selection.create', 'POST', '/api/v2/projects/{project_id}/context/selections', 'Context', 'context:read', 'context.selection.create.v2', 'context.selection.receipt.v2', ['context_selection.created'], { state: 'selection-create' }),
+    common('context.pack.list', 'GET', '/api/v2/projects/{project_id}/context/packs', 'Context', 'context:read', 'context.project.query.v2', 'context.packs.v2', ['context_pack.*'], { state: 'packs', mcp_name: 'context_packs_list' }),
+    common('context.pack.get', 'GET', '/api/v2/projects/{project_id}/context/packs/{pack_id}', 'Context', 'context:read', 'context.pack.query.v2', 'context.pack.v2', ['context_pack.*'], { state: 'pack', mcp_name: 'context_pack_get' }),
+    common('context.pack.create', 'POST', '/api/v2/projects/{project_id}/context/packs', 'Context', 'context:read', 'context.pack.create.v2', 'context.pack.receipt.v2', ['context_pack.created'], { state: 'pack-create' }),
+    common('context.projection.status', 'GET', '/api/v2/projects/{project_id}/context/status', 'Projection', 'context:read', 'context.project.query.v2', 'context.status.v2', ['context_projection.*'], { state: 'status', mcp_name: 'context_status' }),
+    common('context.projection.rebuild', 'POST', '/api/v2/projects/{project_id}/context/rebuild', 'Projection', 'context:write', 'context.rebuild.v2', 'operation.receipt.v2', ['context_projection.queued', 'context_projection.completed', 'context_projection.failed'], { state: 'rebuild', long_running: true, mcp_name: 'context_rebuild' }),
+    common('context.projection.jobs', 'GET', '/api/v2/projects/{project_id}/context/jobs', 'Projection', 'context:read', 'context.project.query.v2', 'context.jobs.v2', ['context_projection.*'], { state: 'jobs' }),
+    common('context.projection.job', 'GET', '/api/v2/projects/{project_id}/context/jobs/{job_id}', 'Projection', 'context:read', 'context.job.query.v2', 'context.job.v2', ['context_projection.*'], { state: 'job' }),
+    common('context.projection.events', 'GET', '/api/v2/projects/{project_id}/context/jobs/{job_id}/events', 'Projection', 'context:read', 'context.events.query.v2', 'event.replay.v2', ['context_projection.*'], { state: 'events' }),
+    common('context.projection.cancel', 'POST', '/api/v2/projects/{project_id}/context/jobs/{job_id}/cancel', 'Projection', 'context:write', 'context.job.mutation.v2', 'operation.receipt.v2', ['context_projection.cancelled'], { state: 'cancel', long_running: true }),
+    common('context.projection.retry', 'POST', '/api/v2/projects/{project_id}/context/jobs/{job_id}/retry', 'Projection', 'context:write', 'context.job.mutation.v2', 'operation.receipt.v2', ['context_projection.queued'], { state: 'retry', long_running: true }),
+    common('mcp.rpc', 'POST', '/api/v2/mcp', 'MCP', 'mcp:call', 'mcp.rpc.v2', 'mcp.rpc.response.v2', ['mcp.tool.called'], { project_scoped: false, mcp_name: 'mcp_rpc' }),
+    common('mcp.tools.list', 'GET', '/api/v2/mcp/tools', 'MCP', 'mcp:read', 'mcp.list.query.v2', 'mcp.tools.v2', ['mcp.*'], { project_scoped: false, state: 'tools', mcp_name: 'mcp_tools' }),
+    common('mcp.client.list', 'GET', '/api/v2/mcp/clients', 'MCP', 'mcp:read', 'mcp.list.query.v2', 'mcp.clients.v2', ['mcp_client.*'], { project_scoped: false, state: 'clients' }),
+    common('mcp.client.create', 'POST', '/api/v2/mcp/clients', 'MCP', 'mcp:write', 'mcp.client.create.v2', 'mcp.client.receipt.v2', ['mcp_client.created'], { project_scoped: false, state: 'client-create' }),
+    common('mcp.client.revoke', 'POST', '/api/v2/mcp/clients/{id}/revoke', 'MCP', 'mcp:write', 'mcp.client.mutation.v2', 'mcp.client.receipt.v2', ['mcp_client.revoked'], { project_scoped: false, state: 'client-revoke' }),
+    common('exchange.request.list', 'GET', '/api/v2/projects/{project_id}/exchange-requests', 'Exchange', 'exchange:read', 'context.project.query.v2', 'exchange.requests.v2', ['exchange_request.*'], { state: 'requests' }),
+    common('exchange.request.create', 'POST', '/api/v2/projects/{project_id}/exchange-requests', 'Exchange', 'exchange:write', 'exchange.request.create.v2', 'exchange.request.receipt.v2', ['exchange_request.created'], { state: 'request-create' }),
+    common('exchange.request.approve', 'POST', '/api/v2/exchange-requests/{id}/approve', 'Exchange', 'exchange:approve', 'exchange.approval.v2', 'exchange.approval.receipt.v2', ['exchange_request.approved', 'exchange_grant.created'], { project_scoped: false, state: 'approve' }),
+    common('exchange.request.reject', 'POST', '/api/v2/exchange-requests/{id}/reject', 'Exchange', 'exchange:approve', 'exchange.approval.v2', 'exchange.approval.receipt.v2', ['exchange_request.rejected'], { project_scoped: false, state: 'reject' }),
+    common('exchange.grant.list', 'GET', '/api/v2/projects/{project_id}/exchange-grants', 'Exchange', 'exchange:read', 'context.project.query.v2', 'exchange.grants.v2', ['exchange_grant.*'], { state: 'grants' }),
+    common('exchange.grant.revoke', 'POST', '/api/v2/exchange-grants/{id}/revoke', 'Exchange', 'exchange:approve', 'exchange.grant.mutation.v2', 'exchange.grant.receipt.v2', ['exchange_grant.revoked'], { project_scoped: false, state: 'grant-revoke' }),
+    common('exchange.grant.pack.create', 'POST', '/api/v2/exchange-grants/{id}/context-packs', 'Exchange', 'exchange:read', 'exchange.pack.create.v2', 'context.pack.receipt.v2', ['exchange_grant.pack_created'], { project_scoped: false, state: 'grant-pack' }),
+    common('gateway.forward', 'POST', '/api/v2/gateway/forward', 'Gateway', 'gateway:forward', 'gateway.forward.v2', 'gateway.forward.receipt.v2', ['gateway.forwarded'], { project_scoped: false, state: 'forward', mcp_name: 'gateway_forward' }),
+    common('gateway.receipt.get', 'GET', '/api/v2/gateway/receipts/{id}', 'Gateway', 'gateway:read', 'gateway.receipt.query.v2', 'gateway.receipt.v2', ['gateway.*'], { project_scoped: false, state: 'receipt', mcp_name: 'gateway_receipt' })
+  ];
+}
+
 export const CLEAN_COMMAND_REGISTRY = Object.freeze(entries.map((entry) => Object.freeze({
   ...entry,
   phase: entry.phase || 'p2',
@@ -189,7 +241,8 @@ export const CLEAN_COMMAND_REGISTRY = Object.freeze(entries.map((entry) => Objec
 export function createCleanCommandRegistry(options = {}) {
   validateRegistry(CLEAN_COMMAND_REGISTRY);
   const includeP3 = options.phase === 'p3' || options.cleanPhase === 'p3' || Number(options.targetVersion || 0) >= 3;
-  const selected = includeP3 ? CLEAN_COMMAND_REGISTRY : CLEAN_COMMAND_REGISTRY.filter((entry) => entry.phase !== 'p3');
+  const includeP4 = options.phase === 'p4' || options.cleanPhase === 'p4' || Number(options.targetVersion || 0) >= 4;
+  const selected = includeP4 ? CLEAN_COMMAND_REGISTRY : includeP3 ? CLEAN_COMMAND_REGISTRY.filter((entry) => entry.phase !== 'p4') : CLEAN_COMMAND_REGISTRY.filter((entry) => !['p3', 'p4'].includes(entry.phase));
   return {
     entries: selected,
     get(commandId) { return selected.find((entry) => entry.command_id === commandId) || null; },

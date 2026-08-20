@@ -5,12 +5,16 @@ import { CleanDatabaseError } from './database.mjs';
 import { CursorError } from './cursor.mjs';
 import { OperationError } from './operations.mjs';
 import { PlatformError } from './platform.mjs';
-import { assertCleanV2 } from '@aiws/contracts/clean-v2';
+import { Server as McpSdkServer } from '@modelcontextprotocol/sdk/server/index.js';
+import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
+import { CallToolRequestSchema, ListResourcesRequestSchema, ListToolsRequestSchema, ReadResourceRequestSchema } from '@modelcontextprotocol/sdk/types.js';
+import { assertCleanV2, CLEAN_V2_SCHEMAS } from '@aiws/contracts/clean-v2';
 
 const RETIRED_API_PREFIX = ['/api', 'v1'].join('/');
 
 export function createCleanHttpHandler({ runtime, registry, maxBodyBytes = runtime?.config?.maxBodyBytes || 1024 * 1024 } = {}) {
   if (!runtime || !registry) throw new TypeError('clean_http_runtime_required');
+  const mcpBoundary = runtime.p4 ? createMcpSdkBoundary(runtime) : null;
   return async function cleanHttpHandler(req, res) {
     const requestId = requestIdFor(req);
     const url = new URL(req.url || '/', 'http://v3-clean.local');
@@ -47,9 +51,16 @@ export function createCleanHttpHandler({ runtime, registry, maxBodyBytes = runti
         const proof = result?.session?.proof;
         return sendSuccess(res, requestId, safe, { status: 201, resourceType: 'setup', outputSchema: entry.output_schema, revision: 1, etag: etagFor(safe, 1), policy: runtime.policy, setCookie: proof ? sessionCookie(proof) : null });
       }
-      const actor = runtime.p2 && runtime.identity
-        ? runtime.identity.principalFromRequest(req)
-        : runtime.platform.actorContext({ actorId: req.headers['x-actor-id'], projectId: req.headers['x-project-id'], scopes: parseScopes(req.headers['x-scopes']) });
+      // MCP and Gateway have their own proof at the transport boundary.  All
+      // other Clean routes continue to use the session principal resolver.
+      const actor = runtime.p4 && entry.phase === 'p4' && ['mcp.rpc', 'gateway.forward'].includes(entry.command_id)
+        ? null
+        : runtime.p2 && runtime.identity
+          ? runtime.identity.principalFromRequest(req)
+          : runtime.platform.actorContext({ actorId: req.headers['x-actor-id'], projectId: req.headers['x-project-id'], scopes: parseScopes(req.headers['x-scopes']) });
+      if (runtime.p4 && entry.phase === 'p4') {
+        return await handleP4Route({ entry, params, url, req, res, requestId, runtime, actor, mcpBoundary, bodyReader: () => readJson(req, maxBodyBytes) });
+      }
       if (runtime.p3 && runtime.projectWorkflow && entry.phase === 'p3') {
         return await handleP3Route({ entry, params, url, req, res, requestId, runtime, actor, bodyReader: () => readJson(req, maxBodyBytes) });
       }
@@ -139,6 +150,340 @@ export function createCleanHttpHandler({ runtime, registry, maxBodyBytes = runti
       return sendError(res, requestId, error, runtime);
     }
   };
+}
+
+async function handleP4Route({ entry, params, url, req, res, requestId, runtime, actor, mcpBoundary, bodyReader }) {
+  const command = entry.command_id;
+  let body = {};
+  let principal = actor;
+
+  // Protocol transports carry their own envelope and proof.  The MCP token is
+  // deliberately never copied into a domain argument or a receipt.
+  if (command === 'mcp.rpc') {
+    body = await bodyReader();
+    return handleMcpRpc({ body, req, res, requestId, runtime, mcpBoundary });
+  }
+  if (command === 'gateway.forward') {
+    body = await bodyReader();
+    return handleGatewayForward({ entry, body, req, res, requestId, runtime });
+  }
+  if (!principal) throw new HttpError('authentication_required', 'active session proof is required', {}, 401, false);
+
+  const allowedQuery = p4QueryFields(command);
+  validateQuery(url, allowedQuery);
+  if (req.method !== 'GET') {
+    body = await bodyReader();
+    // Header values are authoritative and are also accepted by the browser
+    // adapter, which intentionally keeps them out of JSON payloads.
+    hydrateP4MutationHeaders(entry, req, body);
+  }
+  const args = p4DispatchArguments(command, params, url, body);
+  if (command === 'context.read' && !args.node_id) throw new HttpError('schema_invalid', 'node_id is required', {}, 400, false);
+  if (command === 'context.projection.events' && args.format !== 'json' && String(req.headers.accept || '').toLowerCase().includes('text/event-stream')) {
+    assertCleanV2(entry.input_schema, args);
+    return handleProjectionEventsSse({ args, req, res, runtime, principal });
+  }
+  const dispatched = await runtime.dispatcher.dispatch(command, args, principal);
+  let data = dispatched.result;
+  let status = p4Status(command, data);
+
+  const operationId = data?.operation?.operation_id || data?.operation_id;
+  const revision = p4Revision(data);
+  // Long-running commands expose the canonical shared operation receipt.  The
+  // domain job remains available through the project-scoped job endpoint.
+  if (entry.long_running && operationId) {
+    const operation = runtime.operations.get(operationId, { actorId: principal.actorId, projectId: params.project_id || data?.project_id || null });
+    data = operation;
+    status = 202;
+  }
+  return sendSuccess(res, requestId, data, { status, resourceType: p4ResourceType(command), outputSchema: entry.output_schema, revision: revision ?? p4Revision(data), etag: etagFor(data, revision), policy: runtime.policy, preserveKeys: command === 'mcp.client.create' && !data.replayed ? ['token'] : [] });
+}
+
+function p4DispatchArguments(command, params, url, body) {
+  const args = { ...body, ...params };
+  for (const key of ['q', 'query', 'node_id', 'version_id', 'project_id', 'status']) {
+    const value = queryValue(url, key);
+    if (value != null && args[key] == null) args[key] = value;
+  }
+  if (['context.search'].includes(command)) args.limit = queryNumber(url, 'limit', 100);
+  if (command === 'context.projection.events') {
+    args.cursor = queryNumber(url, 'cursor', 0);
+    args.limit = queryNumber(url, 'limit', 500);
+    const format = queryValue(url, 'format');
+    if (format != null) args.format = format;
+  }
+  if (command === 'mcp.client.revoke') args.client_id = params.id;
+  if (command.startsWith('exchange.request.') && params.id) args.request_id = params.id;
+  if (command.startsWith('exchange.grant.') && params.id) args.grant_id = params.id;
+  if (command === 'exchange.request.create') args.source_project_id ||= params.project_id;
+  return args;
+}
+
+function handleProjectionEventsSse({ args, req, res, runtime, principal }) {
+  let initialized = false;
+  let closed = false;
+  let lastSequence = 0;
+  let heartbeat = null;
+  const buffered = [];
+  const close = () => {
+    if (closed) return;
+    closed = true;
+    if (heartbeat) clearInterval(heartbeat);
+    unsubscribe();
+    if (!res.writableEnded) res.end();
+  };
+  const writeEvent = (event) => {
+    if (closed || event.sequence <= lastSequence) return;
+    try { runtime.context.job(args.project_id, args.job_id, principal); } catch { close(); return; }
+    lastSequence = event.sequence;
+    res.write(runtime.events.sseFrames({ events: [event], terminal: false }, { heartbeat: false }));
+    if (/context_projection\.(?:completed|failed|cancelled)$/.test(event.type)) close();
+  };
+  const unsubscribe = runtime.events.subscribe({ aggregateType: 'context_projection_job', aggregateId: args.job_id }, (event) => {
+    if (!initialized) buffered.push(event);
+    else writeEvent(event);
+  });
+  let replay;
+  try { replay = runtime.context.eventsForJob(args.project_id, args.job_id, principal, args.cursor, args.limit); }
+  catch (error) { unsubscribe(); throw error; }
+  res.writeHead(200, { 'content-type': 'text/event-stream; charset=utf-8', 'cache-control': 'no-cache, no-store', connection: 'keep-alive' });
+  res.flushHeaders?.();
+  res.write(runtime.events.sseFrames(replay, { heartbeat: false }));
+  lastSequence = replay.events.at(-1)?.sequence || Number(args.cursor || 0);
+  initialized = true;
+  for (const event of buffered.sort((left, right) => left.sequence - right.sequence)) writeEvent(event);
+  if (replay.terminal) close();
+  else if (!closed) {
+    res.write(': heartbeat\n\n');
+    heartbeat = setInterval(() => { if (!closed) res.write(': heartbeat\n\n'); }, 15_000);
+    heartbeat.unref?.();
+    req.once('close', close);
+  }
+}
+
+function p4Status(command, data) {
+  if (['context.projection.rebuild', 'context.projection.cancel', 'context.projection.retry'].includes(command)) return 202;
+  if (['context.source.create', 'context.selection.create', 'context.pack.create', 'mcp.client.create', 'exchange.request.create', 'exchange.grant.pack.create'].includes(command)) return data?.replayed ? 200 : 201;
+  return 200;
+}
+
+async function handleMcpRpc({ body, req, res, requestId, runtime, mcpBoundary }) {
+  if (!body || typeof body !== 'object' || Array.isArray(body)) throw new HttpError('schema_invalid', 'MCP request must be an object', {}, 400, false);
+  const id = Object.prototype.hasOwnProperty.call(body, 'id') ? body.id : null;
+  const params = body.params && typeof body.params === 'object' ? body.params : {};
+  const token = mcpTokenFromRequest(req);
+  let auth;
+  try {
+    auth = runtime.mcp.authenticate(token, { projectId: params.arguments?.project_id || params.project_id || null, tool: params.name || null });
+  } catch (error) {
+    return sendMcpError(res, requestId, id, error);
+  }
+  if (!mcpBoundary) return sendMcpError(res, requestId, id, new HttpError('not_ready', 'MCP transport is unavailable', {}, 503, true));
+  const requestedVersion = String(req.headers['mcp-protocol-version'] || '2025-06-18');
+  if (requestedVersion !== '2025-06-18') return sendMcpError(res, requestId, id, new HttpError('mcp_protocol_unsupported', 'MCP protocol version is not supported', { supported: '2025-06-18' }, 400, false));
+  req.auth = {
+    token,
+    clientId: auth.client.id,
+    scopes: ['mcp:call'],
+    expiresAt: Math.floor(Date.parse(auth.client.expires_at) / 1000),
+    extra: { actor_id: auth.actor_id, project_ids: auth.project_ids, tools: auth.tools }
+  };
+  res.setHeader('x-request-id', requestId);
+  res.setHeader('mcp-protocol-version', '2025-06-18');
+  try {
+    await mcpBoundary.handle(req, res, body);
+    return;
+  } catch (error) {
+    if (res.headersSent) throw error;
+    return sendMcpError(res, requestId, id, error);
+  }
+}
+
+function createMcpSdkBoundary(runtime) {
+  const sessions = new Map();
+  const createSession = (clientId) => {
+    const server = new McpSdkServer({ name: 'aiws-v3-clean', version: '4' }, { capabilities: { tools: {}, resources: {} } });
+    server.setRequestHandler(ListToolsRequestSchema, async (_request, extra) => {
+      const auth = authFromMcpExtra(extra);
+      return { tools: filteredMcpTools(runtime.dispatcher.tools(), auth).map((tool) => ({
+        name: tool.name,
+        description: tool.description,
+        inputSchema: CLEAN_V2_SCHEMAS[tool.input_schema],
+        outputSchema: CLEAN_V2_SCHEMAS[tool.output_schema],
+        annotations: { readOnlyHint: tool.mapping === 'resource', openWorldHint: false }
+      })) };
+    });
+    server.setRequestHandler(CallToolRequestSchema, async (request, extra) => {
+      const auth = authFromMcpExtra(extra);
+      const name = String(request.params.name || '');
+      const args = request.params.arguments && typeof request.params.arguments === 'object' ? { ...request.params.arguments } : {};
+      const projectId = args.project_id || null;
+      runtime.mcp.authenticate(extra.authInfo?.token, { projectId, tool: name });
+      const dispatched = await runtime.mcp.dispatch(name, args, mcpPrincipal(auth, projectId), { events: runtime.events, projectWorkflow: runtime.projectWorkflow });
+      return {
+        command_id: dispatched.command_id,
+        command_version: dispatched.command_version,
+        structuredContent: dispatched.result,
+        content: [{ type: 'text', text: JSON.stringify(dispatched.result) }],
+        _meta: { command_id: dispatched.command_id, command_version: dispatched.command_version }
+      };
+    });
+    server.setRequestHandler(ListResourcesRequestSchema, async (_request, extra) => {
+      const auth = authFromMcpExtra(extra);
+      return { resources: auth.project_ids.map((projectId) => ({ uri: `aiws://context/${projectId}/map`, name: `Context map ${projectId}`, mimeType: 'application/json' })) };
+    });
+    server.setRequestHandler(ReadResourceRequestSchema, async (request, extra) => {
+      const auth = authFromMcpExtra(extra);
+      const uri = String(request.params.uri || '');
+      const match = uri.match(/^aiws:\/\/context\/([^/]+)\/map$/);
+      if (!match) throw new PlatformError('not_found', 'MCP resource not found', {}, 404);
+      runtime.mcp.authenticate(extra.authInfo?.token, { projectId: match[1], tool: 'context_map' });
+      const dispatched = await runtime.mcp.dispatch('context_map', { project_id: match[1] }, mcpPrincipal(auth, match[1]));
+      return { contents: [{ uri, mimeType: 'application/json', text: JSON.stringify(dispatched.result) }], _meta: { command_id: dispatched.command_id } };
+    });
+    const transport = new StreamableHTTPServerTransport({ sessionIdGenerator: randomUUID, enableJsonResponse: true });
+    const connected = server.connect(transport);
+    return { server, transport, connected, clientId };
+  };
+  return {
+    async handle(req, res, body) {
+      const sessionId = String(req.headers['mcp-session-id'] || '');
+      let state = sessionId ? sessions.get(sessionId) : null;
+      if (!state) {
+        if (String(body?.method || '') !== 'initialize') throw new PlatformError('mcp_session_required', 'MCP initialize is required', {}, 400);
+        state = createSession(req.auth.clientId);
+      } else if (state.clientId !== req.auth.clientId) {
+        throw new PlatformError('mcp_scope_denied', 'MCP session belongs to another client', {}, 403);
+      }
+      await state.connected;
+      await state.transport.handleRequest(req, res, body);
+      if (state.transport.sessionId && !sessions.has(state.transport.sessionId)) {
+        sessions.set(state.transport.sessionId, state);
+        state.transport.onclose = () => sessions.delete(state.transport.sessionId);
+      }
+    }
+  };
+}
+
+function authFromMcpExtra(extra) {
+  const info = extra?.authInfo;
+  if (!info?.clientId || !info?.extra?.actor_id) throw new PlatformError('mcp_token_invalid', 'MCP authentication context is missing', {}, 401);
+  return { client: { id: String(info.clientId) }, actor_id: String(info.extra.actor_id), project_ids: (info.extra.project_ids || []).map(String), tools: (info.extra.tools || []).map(String) };
+}
+
+function mcpPrincipal(auth, projectId) {
+  return { actorId: auth.actor_id, effectiveActorId: auth.actor_id, subjectActorId: auth.actor_id, scopes: ['*'], projectId: projectId || null, mcpClientId: auth.client.id };
+}
+
+async function handleGatewayForward({ entry, body, req, res, requestId, runtime }) {
+  const destination = body && typeof body === 'object' ? body : {};
+  assertCleanV2(entry.input_schema, destination);
+  const commandName = destination.name || destination.command || destination.tool || destination.command_id;
+  const args = destination.arguments && typeof destination.arguments === 'object' ? destination.arguments : (destination.args && typeof destination.args === 'object' ? destination.args : {});
+  const token = destination.mcp_token || mcpTokenFromRequest(req);
+  const dispatch = async (payload) => {
+    const name = payload.name || payload.command || payload.tool || payload.command_id;
+    const callArgs = payload.arguments && typeof payload.arguments === 'object' ? payload.arguments : (payload.args && typeof payload.args === 'object' ? payload.args : {});
+    const auth = runtime.mcp.authenticate(token, { projectId: callArgs.project_id || null, tool: name });
+    const principal = { actorId: auth.actor_id, effectiveActorId: auth.actor_id, subjectActorId: auth.actor_id, scopes: ['*'], projectId: callArgs.project_id || null, mcpClientId: auth.client.id };
+    return runtime.mcp.dispatch(name, callArgs, principal, { events: runtime.events, projectWorkflow: runtime.projectWorkflow });
+  };
+  // The signature covers the complete forwarding body, including the command
+  // and arguments, but the token is only used in memory by the dispatcher.
+  const forwarded = { ...destination, ...(commandName ? { name: commandName } : {}), arguments: args };
+  const result = await runtime.gateway.forward({ headers: req.headers, method: req.method, path: new URL(req.url, 'http://v3-clean.local').pathname, body: destination, dispatch: () => dispatch(forwarded) });
+  return sendSuccess(res, requestId, result, { resourceType: 'gateway_forward', outputSchema: entry.output_schema, policy: runtime.policy });
+}
+
+function sendMcpResult(res, requestId, id, result) {
+  const payload = { jsonrpc: '2.0', id, result, request_id: requestId };
+  res.writeHead(200, { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store', 'x-request-id': requestId, 'mcp-protocol-version': '2025-06-18' });
+  res.end(JSON.stringify(payload));
+  return payload;
+}
+
+function sendMcpError(res, requestId, id, error) {
+  const mapped = mapError(error);
+  const payload = { jsonrpc: '2.0', id, error: { code: mcpErrorNumber(mapped.code), message: mapped.message, data: { code: mapped.code, details: mapped.details || {} } }, request_id: requestId };
+  res.writeHead(200, { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store', 'x-request-id': requestId, 'mcp-protocol-version': '2025-06-18' });
+  res.end(JSON.stringify(payload));
+  return payload;
+}
+
+function filteredMcpTools(tools, auth) {
+  const allow = new Set((auth?.tools || []).map(String));
+  if (!allow.size) return tools;
+  return tools.filter((tool) => allow.has(tool.name) || allow.has(tool.command_id));
+}
+
+function mcpTokenFromRequest(req) {
+  const direct = req.headers['x-aiws-mcp-token'];
+  if (direct) return String(direct);
+  const authorization = String(req.headers.authorization || '');
+  return /^Bearer\s+/i.test(authorization) ? authorization.replace(/^Bearer\s+/i, '').trim() : '';
+}
+
+function mcpErrorNumber(code) {
+  if (code === 'mcp_method_not_found' || code === 'unknown_command') return -32601;
+  if (code === 'schema_invalid' || code === 'unknown_field') return -32602;
+  if (code === 'mcp_token_invalid' || code === 'authentication_required') return -32001;
+  return -32000;
+}
+
+function p4QueryFields(command) {
+  const common = new Set();
+  if (command === 'context.source.list') return new Set(['q', 'query']);
+  if (command === 'context.search') return new Set(['q', 'query', 'limit']);
+  if (command === 'context.read' || command === 'context.node.get') return new Set(['node_id', 'version_id']);
+  if (command === 'context.projection.events') return new Set(['cursor', 'limit', 'format']);
+  if (command === 'mcp.client.list') return new Set(['project_id']);
+  if (command === 'exchange.request.list' || command === 'exchange.grant.list') return new Set(['status']);
+  return common;
+}
+
+function queryValue(url, name) {
+  const value = url.searchParams.getAll(name);
+  if (value.length > 1) throw new HttpError('schema_invalid', `${name} must be provided once`, {}, 400, false);
+  return value[0] ?? null;
+}
+
+function queryNumber(url, name, fallback) {
+  const value = queryValue(url, name);
+  if (value == null || value === '') return fallback;
+  if (!/^\d+$/.test(value)) throw new HttpError('schema_invalid', `${name} must be an integer`, {}, 400, false);
+  return Number(value);
+}
+
+function hydrateP4MutationHeaders(entry, req, body) {
+  const idempotencyKey = requireIdempotency(req, body);
+  if (body.idempotency_key == null) body.idempotency_key = idempotencyKey;
+  if (body.expected_revision == null) {
+    const raw = req.headers['x-expected-revision'] || req.headers['if-match'];
+    if (raw == null) throw new HttpError('expected_revision_required', 'expected revision is required', {}, 400, false);
+    const value = parseRevision(String(raw));
+    if (!Number.isInteger(value) || value < 0) throw new HttpError('invalid_request', 'revision header is invalid', {}, 400, false);
+    body.expected_revision = value;
+  } else if (!Number.isInteger(Number(body.expected_revision)) || Number(body.expected_revision) < 0) {
+    throw new HttpError('schema_invalid', 'expected_revision must be a non-negative integer', {}, 400, false);
+  } else body.expected_revision = Number(body.expected_revision);
+  return body;
+}
+
+function p4Revision(value) {
+  return value?.revision ?? value?.resource_revision ?? value?.job?.revision ?? value?.source?.revision ?? value?.selection?.revision ?? value?.pack?.revision ?? value?.client?.revision ?? value?.request?.revision ?? value?.grant?.revision ?? value?.operation?.revision ?? null;
+}
+
+function p4ResourceType(command) {
+  if (command.startsWith('context.projection')) return 'context_projection';
+  if (command.startsWith('context.source')) return 'context_source';
+  if (command.startsWith('context.selection')) return 'context_selection';
+  if (command.startsWith('context.pack') || command === 'exchange.grant.pack.create') return 'context_pack';
+  if (command.startsWith('context.')) return 'context';
+  if (command.startsWith('mcp.')) return 'mcp';
+  if (command.startsWith('exchange.request')) return 'exchange_request';
+  if (command.startsWith('exchange.grant')) return 'exchange_grant';
+  if (command.startsWith('gateway.')) return 'gateway';
+  return 'resource';
 }
 
 async function handleP3Route({ entry, params, url, req, res, requestId, runtime, actor, bodyReader }) {
@@ -232,8 +577,8 @@ export class HttpError extends Error {
   }
 }
 
-function sendSuccess(res, requestId, data, { status = 200, resourceType = 'resource', revision = null, etag = null, policy = null, setCookie = null, outputSchema = null } = {}) {
-  const scanned = policy?.redact(data) || { value: data, redactions: [] };
+function sendSuccess(res, requestId, data, { status = 200, resourceType = 'resource', revision = null, etag = null, policy = null, setCookie = null, outputSchema = null, preserveKeys = [] } = {}) {
+  const scanned = redactResponse(data, policy, preserveKeys);
   data = scanned.value;
   if (outputSchema) {
     try {
@@ -252,6 +597,45 @@ function sendSuccess(res, requestId, data, { status = 200, resourceType = 'resou
   res.writeHead(status, headers);
   res.end(JSON.stringify(payload));
   return payload;
+}
+
+function redactResponse(value, policy, preserveKeys = []) {
+  if (!policy) return { value, redactions: [] };
+  const keys = new Set(preserveKeys.map(String));
+  if (!keys.size) return policy.redact(value);
+  const preserved = [];
+  const clone = structuredCloneSafe(value);
+  const walk = (node, path = '$') => {
+    if (!node || typeof node !== 'object') return;
+    if (Array.isArray(node)) return node.forEach((item, index) => walk(item, `${path}[${index}]`));
+    for (const [key, item] of Object.entries(node)) {
+      const current = `${path}.${key}`;
+      if (keys.has(key) && typeof item === 'string') {
+        preserved.push([current, item]);
+        delete node[key];
+      } else walk(item, current);
+    }
+  };
+  walk(clone);
+  const scanned = policy.redact(clone);
+  for (const [path, original] of preserved) setPath(scanned.value, path, original);
+  return scanned;
+}
+
+function structuredCloneSafe(value) {
+  if (value === undefined) return value;
+  try { return structuredClone(value); } catch { return JSON.parse(JSON.stringify(value)); }
+}
+
+function setPath(root, path, value) {
+  const parts = path.replace(/^\$\./, '').split('.');
+  let current = root;
+  for (let index = 0; index < parts.length - 1; index += 1) {
+    const part = parts[index];
+    if (current == null) return;
+    current = current[part];
+  }
+  if (current && parts.length) current[parts[parts.length - 1]] = value;
 }
 
 async function handleIdentityRoute({ entry, params, url, req, res, requestId, runtime, actor, bodyReader }) {
@@ -451,6 +835,12 @@ function mapError(error) {
   if (code === 'schema_invalid' || code === 'unknown_field') return new HttpError(code, code === 'unknown_field' ? 'request contains unknown fields' : 'request does not match schema', error.details || {}, Number(error.status || 400), false);
   if (code === 'transaction_precondition_failed') return new HttpError('revision_conflict', 'revision precondition failed', {}, 409, true);
   if (code === 'redaction_blocked') return new HttpError('redaction_blocked', 'payload was rejected by the redaction policy', error.details || {}, 422, false);
+  // Domain owners use small purpose-specific Error subclasses (CAS, vault,
+  // projection and provider adapters). Preserve their public code/status so a
+  // transport cannot turn a deterministic conflict into an opaque 500.
+  if (error && typeof error === 'object' && /^[a-z][a-z0-9_.-]{2,80}$/.test(code) && Number.isInteger(Number(error.status)) && Number(error.status) >= 400 && Number(error.status) <= 599) {
+    return new HttpError(code, String(error.message || code).slice(0, 240), error.details || {}, Number(error.status), Boolean(error.retryable));
+  }
   return new HttpError('internal_error', 'internal error', {}, 500, false);
 }
 

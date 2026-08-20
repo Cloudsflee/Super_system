@@ -13,11 +13,14 @@ import {
 } from './migrations/001-clean-baseline.mjs';
 import { IDENTITY_MIGRATION, IDENTITY_MIGRATION_VERSION, IDENTITY_TOOL_VERSION } from './migrations/002-identity-acl.mjs';
 import { PROJECT_WORKFLOW_MIGRATION, PROJECT_WORKFLOW_MIGRATION_VERSION, PROJECT_WORKFLOW_TOOL_VERSION } from './migrations/003-project-workflow.mjs';
+import { CONTEXT_PROJECTION_MCP_MIGRATION, CONTEXT_PROJECTION_MCP_MIGRATION_VERSION, CONTEXT_PROJECTION_MCP_TOOL_VERSION } from './migrations/004-context-projection-mcp.mjs';
 
 export const CLEAN_P2_USER_VERSION = IDENTITY_MIGRATION_VERSION;
 export const CLEAN_P2_TOOL_VERSION = IDENTITY_TOOL_VERSION;
 export const CLEAN_P3_USER_VERSION = PROJECT_WORKFLOW_MIGRATION_VERSION;
 export const CLEAN_P3_TOOL_VERSION = PROJECT_WORKFLOW_TOOL_VERSION;
+export const CLEAN_P4_USER_VERSION = CONTEXT_PROJECTION_MCP_MIGRATION_VERSION;
+export const CLEAN_P4_TOOL_VERSION = CONTEXT_PROJECTION_MCP_TOOL_VERSION;
 
 export class CleanDatabaseError extends Error {
   constructor(code, message, details = {}, status = 503) {
@@ -143,6 +146,7 @@ function targetVersionFor(options = {}) {
   if (options.phase === 'p1' || options.cleanPhase === 'p1') return CLEAN_USER_VERSION;
   if (options.phase === 'p2' || options.cleanPhase === 'p2') return CLEAN_P2_USER_VERSION;
   if (options.phase === 'p3' || options.cleanPhase === 'p3') return CLEAN_P3_USER_VERSION;
+  if (options.phase === 'p4' || options.cleanPhase === 'p4') return CLEAN_P4_USER_VERSION;
   // The low-level database helper remains useful for reproducing the frozen
   // baseline.  The runtime always supplies its current target explicitly.
   return CLEAN_USER_VERSION;
@@ -208,8 +212,8 @@ function ensureBaseline(db, options) {
   const suppliedTimestamp = now();
   const timestamp = typeof suppliedTimestamp === 'string' ? suppliedTimestamp : new Date(suppliedTimestamp).toISOString();
   const targetVersion = Number(options.targetVersion ?? CLEAN_USER_VERSION);
-  if (![CLEAN_USER_VERSION, CLEAN_P2_USER_VERSION, CLEAN_P3_USER_VERSION].includes(targetVersion)) {
-    throw new CleanNotReadyError('clean schema version is unsupported', { reason: 'version_mismatch', expected: CLEAN_P3_USER_VERSION, actual: targetVersion });
+  if (![CLEAN_USER_VERSION, CLEAN_P2_USER_VERSION, CLEAN_P3_USER_VERSION, CLEAN_P4_USER_VERSION].includes(targetVersion)) {
+    throw new CleanNotReadyError('clean schema version is unsupported', { reason: 'version_mismatch', expected: CLEAN_P4_USER_VERSION, actual: targetVersion });
   }
   const tables = db.prepare("SELECT name FROM sqlite_schema WHERE type='table' AND name NOT LIKE 'sqlite_%' ORDER BY name").all().map((row) => row.name);
   if (tables.length === 0) return applyFreshMigrations(db, options, timestamp, targetVersion);
@@ -219,7 +223,7 @@ function ensureBaseline(db, options) {
     throw new CleanNotReadyError('clean schema family marker is invalid', { reason: 'family_mismatch', observed: meta || null });
   }
   let version = Number(db.prepare('PRAGMA user_version').get().user_version);
-  if (version < CLEAN_USER_VERSION || version > CLEAN_P3_USER_VERSION) {
+  if (version < CLEAN_USER_VERSION || version > CLEAN_P4_USER_VERSION) {
     throw new CleanNotReadyError('clean schema version is unsupported', { reason: 'version_mismatch', expected: targetVersion, actual: version });
   }
   verifyMigrationRow(db, version);
@@ -268,7 +272,7 @@ function applyFreshMigrations(db, options, timestamp, targetVersion) {
       VALUES(?,?,?,?,?,?,?,?,?,?,?)`).run(bootstrapId, 'system', 'System Bootstrap', 'active', metadataJson, sha256Hex(metadataJson), 1, timestamp, timestamp, null, null);
     db.prepare(`INSERT INTO receipt_manifests(id,kind,status,payload_json,payload_sha256,cas_sha256,created_at,expires_at)
       VALUES(?,?,?,?,?,?,?,?)`).run('receipt_migration_001_clean_baseline', 'migration.baseline', 'verified', canonicalJson(baselineVerification), baselineVerificationSha, null, timestamp, null);
-    for (const migration of [IDENTITY_MIGRATION, PROJECT_WORKFLOW_MIGRATION]) {
+    for (const migration of [IDENTITY_MIGRATION, PROJECT_WORKFLOW_MIGRATION, CONTEXT_PROJECTION_MCP_MIGRATION]) {
       if (targetVersion >= migration.version) applyMigrationInTransaction(db, migration, timestamp, options);
     }
     if (options.failAt === 'commit') throw new Error('injected_commit_failure');
@@ -291,7 +295,7 @@ function applyFreshMigrations(db, options, timestamp, targetVersion) {
     try { db.exec('ROLLBACK'); } catch { /* preserve migration failure */ }
     throw new CleanNotReadyError('clean migration rolled back', {
       reason: 'migration_failed',
-      migration_id: targetVersion >= CLEAN_P3_USER_VERSION ? PROJECT_WORKFLOW_MIGRATION.id : (targetVersion >= CLEAN_P2_USER_VERSION ? IDENTITY_MIGRATION.id : CLEAN_BASELINE_ID),
+      migration_id: targetVersion >= CLEAN_P4_USER_VERSION ? CONTEXT_PROJECTION_MCP_MIGRATION.id : (targetVersion >= CLEAN_P3_USER_VERSION ? PROJECT_WORKFLOW_MIGRATION.id : (targetVersion >= CLEAN_P2_USER_VERSION ? IDENTITY_MIGRATION.id : CLEAN_BASELINE_ID)),
       cause: String(error?.message || error)
     });
   }
@@ -353,7 +357,8 @@ function migrationForVersion(version) {
   if (Number(version) === CLEAN_USER_VERSION) return CLEAN_MIGRATIONS[0];
   if (Number(version) === CLEAN_P2_USER_VERSION) return IDENTITY_MIGRATION;
   if (Number(version) === CLEAN_P3_USER_VERSION) return PROJECT_WORKFLOW_MIGRATION;
-  throw new CleanNotReadyError('clean schema version is unsupported', { reason: 'version_mismatch', expected: CLEAN_P3_USER_VERSION, actual: version });
+  if (Number(version) === CLEAN_P4_USER_VERSION) return CONTEXT_PROJECTION_MCP_MIGRATION;
+  throw new CleanNotReadyError('clean schema version is unsupported', { reason: 'version_mismatch', expected: CLEAN_P4_USER_VERSION, actual: version });
 }
 
 function checkSqliteIntegrity(db) {

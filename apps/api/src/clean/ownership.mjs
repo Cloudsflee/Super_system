@@ -54,6 +54,22 @@ export const CLEAN_P3_TABLE_OWNERS = Object.freeze({
   outcome_requirements: 'Project'
 });
 
+export const CLEAN_P4_TABLE_OWNERS = Object.freeze({
+  ...CLEAN_P3_TABLE_OWNERS,
+  context_sources: 'Context',
+  context_nodes: 'Context',
+  context_document_versions: 'Context',
+  context_edges: 'Context',
+  context_policies: 'Context',
+  context_selections: 'Context',
+  context_packs: 'Context',
+  context_projection_jobs: 'Projection',
+  context_index_snapshots: 'Projection',
+  exchange_requests: 'Exchange',
+  mcp_clients: 'MCP',
+  gateway_forward_receipts: 'Gateway'
+});
+
 export const CLEAN_COMMAND_OWNERS = Object.freeze({
   'operations.get': 'Operations',
   'operations.events': 'Operations',
@@ -136,6 +152,41 @@ export const CLEAN_COMMAND_OWNERS = Object.freeze({
   'workflow.proposal.apply': 'Workflow',
   'outcome.requirement.list': 'Project',
   'outcome.requirement.create': 'Project'
+  , 'context.source.create': 'Context'
+  , 'context.source.list': 'Context'
+  , 'context.map': 'Context'
+  , 'context.search': 'Context'
+  , 'context.read': 'Context'
+  , 'context.node.get': 'Context'
+  , 'context.node.versions': 'Context'
+  , 'context.policy.get': 'Context'
+  , 'context.policy.update': 'Context'
+  , 'context.selection.list': 'Context'
+  , 'context.selection.create': 'Context'
+  , 'context.pack.list': 'Context'
+  , 'context.pack.get': 'Context'
+  , 'context.pack.create': 'Context'
+  , 'context.projection.status': 'Projection'
+  , 'context.projection.rebuild': 'Projection'
+  , 'context.projection.jobs': 'Projection'
+  , 'context.projection.job': 'Projection'
+  , 'context.projection.events': 'Projection'
+  , 'context.projection.cancel': 'Projection'
+  , 'context.projection.retry': 'Projection'
+  , 'mcp.client.list': 'MCP'
+  , 'mcp.client.create': 'MCP'
+  , 'mcp.client.revoke': 'MCP'
+  , 'mcp.rpc': 'MCP'
+  , 'mcp.tools.list': 'MCP'
+  , 'exchange.request.list': 'Exchange'
+  , 'exchange.request.create': 'Exchange'
+  , 'exchange.request.approve': 'Exchange'
+  , 'exchange.request.reject': 'Exchange'
+  , 'exchange.grant.list': 'Exchange'
+  , 'exchange.grant.revoke': 'Exchange'
+  , 'exchange.grant.pack.create': 'Exchange'
+  , 'gateway.forward': 'Gateway'
+  , 'gateway.receipt.get': 'Gateway'
 });
 
 export const CLEAN_EVENT_OWNERS = Object.freeze({
@@ -162,18 +213,30 @@ export const CLEAN_EVENT_OWNERS = Object.freeze({
   'generation.*': 'Workflow',
   'critic.*': 'Critic',
   'outcome.*': 'Project'
+  , 'context_source.*': 'Context'
+  , 'context_policy.*': 'Context'
+  , 'context_selection.*': 'Context'
+  , 'context_pack.*': 'Context'
+  , 'context_projection.*': 'Projection'
+  , 'context.*': 'Context'
+  , 'context.map.read': 'Context'
+  , 'exchange_request.*': 'Exchange'
+  , 'exchange_grant.*': 'Exchange'
+  , 'mcp_client.*': 'MCP'
+  , 'mcp.*': 'MCP'
+  , 'gateway.*': 'Gateway'
 });
 
 export const CLEAN_PLATFORM_OWNERSHIP = Object.freeze({
   schema_version: 'aiws.v3-clean.owner-manifest.v3',
-  tables: CLEAN_P3_TABLE_OWNERS,
+  tables: CLEAN_P4_TABLE_OWNERS,
   commands: CLEAN_COMMAND_OWNERS,
   events: CLEAN_EVENT_OWNERS
 });
 
 export function validateCleanOwnership({ tables = [], registry = null } = {}) {
   const actualTables = [...new Set(tables.map((table) => String(table)))].sort();
-  const tableOwners = actualTables.includes('projects') ? CLEAN_P3_TABLE_OWNERS : (actualTables.includes('teams') ? CLEAN_P2_TABLE_OWNERS : CLEAN_TABLE_OWNERS);
+  const tableOwners = actualTables.includes('context_sources') ? CLEAN_P4_TABLE_OWNERS : (actualTables.includes('projects') ? CLEAN_P3_TABLE_OWNERS : (actualTables.includes('teams') ? CLEAN_P2_TABLE_OWNERS : CLEAN_TABLE_OWNERS));
   const expectedTables = Object.keys(tableOwners).sort();
   const missingTables = expectedTables.filter((table) => !actualTables.includes(table));
   const unexpectedTables = actualTables.filter((table) => !expectedTables.includes(table));
@@ -194,8 +257,11 @@ export function validateCleanOwnership({ tables = [], registry = null } = {}) {
       }
     }
     const p3Owners = new Set(['Project', 'Repository', 'Workflow', 'Critic']);
+    const p4Owners = new Set(['Context', 'Projection', 'Exchange', 'MCP', 'Gateway']);
+    const hasP4Tables = actualTables.includes('context_sources');
+    const hasP3Tables = actualTables.includes('projects');
     const expectedCommandIds = Object.entries(CLEAN_COMMAND_OWNERS)
-      .filter(([, owner]) => actualTables.includes('projects') || !p3Owners.has(owner))
+      .filter(([, owner]) => hasP4Tables || (hasP3Tables ? !p4Owners.has(owner) : (!p3Owners.has(owner) && !p4Owners.has(owner))))
       .map(([commandId]) => commandId);
     for (const commandId of expectedCommandIds) {
       if (!entries.some((entry) => entry.command_id === commandId)) missingCommands.push(commandId);

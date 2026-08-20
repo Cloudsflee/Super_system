@@ -2,7 +2,7 @@ import { canonicalize, canonicalJson, sha256Ref } from './canonical.mjs';
 
 const SENSITIVE_KEY = /(?:^|_)(?:secret|token|password|passwd|cookie|authorization|api[_-]?key|private[_-]?key|credential|prompt|full[_-]?prompt|parser_text|parser_output|extracted_text|raw_text)(?:$|_)/i;
 const BEARER = /\bBearer\s+[A-Za-z0-9._~+/=-]{8,}/gi;
-const KEY_TOKEN = /\b(?:sk|rk|key|token|ghp|gho|xox[baprs])-?[A-Za-z0-9_-]{8,}\b/gi;
+const KEY_TOKEN = /\b(?:sk|rk|key|token|ghp|gho|xox[baprs])[-_][A-Za-z0-9_-]{16,}\b/gi;
 const WINDOWS_PATH = /\b[A-Za-z]:\\[^\r\n\t"']{2,}\b/g;
 // Public API-relative URIs are contract data, not host filesystem paths.
 const POSIX_PATH = /(^|[\s(])\/(?!(?:\/|api(?:\/|$)|livez(?:[/?#]|$)|readyz(?:[/?#]|$)))[^\r\n\t"']{2,}/g;
@@ -99,6 +99,7 @@ export class RedactionPolicy {
 function isSensitiveKey(key) {
   const normalized = String(key).replace(/[A-Z]/g, (letter) => `_${letter.toLowerCase()}`);
   if (/^credential_(?:id|ref|ref_id)$/.test(normalized)) return false;
+  if (/^token_(?:budget|estimate|used|count|prefix)$/.test(normalized)) return false;
   return SENSITIVE_KEY.test(normalized);
 }
 

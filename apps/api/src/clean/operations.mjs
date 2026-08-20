@@ -236,13 +236,16 @@ export class OperationService {
   }
 
   requestCancel(operationId, input = {}) {
-    const actorId = String(input.actorId || this.bootstrapActorId);
-    const commandId = 'operations.cancel';
-    const idempotencyKey = String(input.idempotencyKey || '');
-    const requestHash = input.requestHash ? normalizeHash(input.requestHash) : null;
     const now = this.#time();
-    if (!/^[A-Za-z0-9][A-Za-z0-9._~-]{7,127}$/.test(idempotencyKey) || !requestHash) throw new OperationError('idempotency_required', 'idempotency request metadata is invalid', {}, 400);
-    return this.db.withTransaction((tx) => {
+    return this.db.withTransaction((tx) => this.requestCancelInTransaction(tx, operationId, input, now));
+  }
+
+  requestCancelInTransaction(tx, operationId, input = {}, now = this.#time()) {
+      const actorId = String(input.actorId || this.bootstrapActorId);
+      const commandId = String(input.commandId || 'operations.cancel');
+      const idempotencyKey = String(input.idempotencyKey || '');
+      const requestHash = input.requestHash ? normalizeHash(input.requestHash) : null;
+      if (!/^[A-Za-z0-9][A-Za-z0-9._~-]{7,127}$/.test(idempotencyKey) || !requestHash) throw new OperationError('idempotency_required', 'idempotency request metadata is invalid', {}, 400);
       const priorRequest = tx.get('SELECT * FROM idempotency_keys WHERE actor_id=? AND command_id=? AND idempotency_key=?', [actorId, commandId, idempotencyKey]);
       if (priorRequest) {
         if (isExpired(priorRequest.expires_at, now)) tx.run('DELETE FROM idempotency_keys WHERE actor_id=? AND command_id=? AND idempotency_key=?', [actorId, commandId, idempotencyKey]);
@@ -275,7 +278,6 @@ export class OperationService {
       else tx.run(`INSERT INTO idempotency_keys(actor_id,command_id,idempotency_key,request_hash,response_status,response_json,operation_id,expires_at,created_at)
         VALUES(?,?,?,?,?,?,?,?,?)`, [actorId, commandId, idempotencyKey, requestHash, 202, canonicalJson(response), String(operationId), expiresAt, now]);
       return response;
-    });
   }
 
   queue(operationId, input = {}) { return this.transition(operationId, 'queued', input); }

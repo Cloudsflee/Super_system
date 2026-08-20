@@ -17,13 +17,18 @@ import runner from './runner/index.mjs';
 import setup from './setup/index.mjs';
 import terminal from './terminal/index.mjs';
 import workflow from './workflow/index.mjs';
-import { CLEAN_EVENT_OWNERS, CLEAN_P3_TABLE_OWNERS } from '../clean/ownership.mjs';
+import { CLEAN_EVENT_OWNERS, CLEAN_P4_TABLE_OWNERS } from '../clean/ownership.mjs';
 
 export const MODULE_REGISTRY = Object.freeze([
   platform, identity, setup, project, workflow, mcp, context, repository,
   runner, evidence, quality, execution, outcome, critic, assist, terminal, delivery,
   bridge, operations
 ]);
+
+export const CLEAN_OWNER_MODULE_IDS = Object.freeze([...new Set([
+  ...Object.values(CLEAN_P4_TABLE_OWNERS),
+  ...Object.values(CLEAN_EVENT_OWNERS)
+].map((owner) => String(owner).toLowerCase()))].sort());
 
 export const FROZEN_SURFACES = Object.freeze([
   { path: 'apps/api/src/domain.mjs', max_lines: 2600 },
@@ -52,7 +57,10 @@ export const CLEAN_SQL_BOUNDARIES = Object.freeze([
   'apps/api/src/clean/authorization.mjs',
   'apps/api/src/clean/cas.mjs',
   'apps/api/src/clean/events.mjs',
+  'apps/api/src/clean/context-service.mjs',
+  'apps/api/src/clean/gateway-service.mjs',
   'apps/api/src/clean/identity.mjs',
+  'apps/api/src/clean/mcp-service.mjs',
   'apps/api/src/clean/operations.mjs',
   'apps/api/src/clean/platform.mjs',
   'apps/api/src/clean/principal.mjs',
@@ -69,7 +77,7 @@ export const PLACEHOLDER_SUCCESS_PATTERNS = Object.freeze([
 ]);
 
 export function ownerOf(kind, value, { clean = false } = {}) {
-  if (clean && kind === 'table' && CLEAN_P3_TABLE_OWNERS[value]) return CLEAN_P3_TABLE_OWNERS[value].toLowerCase();
+  if (clean && kind === 'table' && CLEAN_P4_TABLE_OWNERS[value]) return CLEAN_P4_TABLE_OWNERS[value].toLowerCase();
   if (clean && kind === 'event') {
     const exact = CLEAN_EVENT_OWNERS[value];
     const wildcard = Object.entries(CLEAN_EVENT_OWNERS).find(([pattern]) => pattern.endsWith('*') && String(value).startsWith(pattern.slice(0, -1)))?.[1];
