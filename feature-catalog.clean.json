@@ -84,7 +84,8 @@
       "ui_tests": [],
       "evidence": [
         "docs/evidence/v3-clean-p1-gate-contract-complete-20260819/verification.json",
-        "docs/evidence/v3-clean-p3-1-debt-burn-down-20260820/verification.json"
+        "docs/evidence/v3-clean-p3-1-debt-burn-down-20260820/verification.json",
+        "docs/evidence/v3-clean-p3-1-gate-receipt-hygiene-20260820/verification.json"
       ],
       "release_receipts": [],
       "tests": [

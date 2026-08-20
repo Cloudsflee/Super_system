@@ -1,0 +1,7 @@
+{
+  "schema_version": "aiws.v3-clean.p31-gate-receipt-hygiene-catalog-diff.v1",
+  "clean_governance_evidence_added": "docs/evidence/v3-clean-p3-1-gate-receipt-hygiene-20260820/verification.json",
+  "compatibility_catalog_unchanged": true,
+  "package_scripts_unchanged": true,
+  "decision": "D-032"
+}

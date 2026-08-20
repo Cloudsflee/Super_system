@@ -1,0 +1,78 @@
+{
+  "schema_version": "aiws.v3-clean.p31-gate-receipt-hygiene-artifact.v1",
+  "baseline": "9c78e9f",
+  "files": [
+    {
+      "path": "AGENTS.md",
+      "sha256": "2bab8848ec127303cbcc2fb13797a9d86192c6fab3667f5a8c1a42eaffec685f",
+      "bytes": 9183
+    },
+    {
+      "path": "docs/architecture/decision-log.md",
+      "sha256": "330f7cbec523ed4c50c8088e0b51d541d753657182d5fb9b0b75d44ee0c22c3b",
+      "bytes": 9632
+    },
+    {
+      "path": "docs/architecture/v23-capability-matrix.md",
+      "sha256": "006be40cb3f7ab1d99c60dac619a5ec5fe04dc2ec5b4db05f2f8813d32fad960",
+      "bytes": 51978
+    },
+    {
+      "path": "docs/architecture/v3-clean-development-plan.md",
+      "sha256": "8e11492433f55bf0bfa5800c66f82b66a86b9e7fd0a962e2528c056354b8b44f",
+      "bytes": 35767
+    },
+    {
+      "path": "docs/testing.md",
+      "sha256": "b55ab6e51a48167fee6e7146fb280f3a6b61b81ca0e63d797eb0e68ca1b991bd",
+      "bytes": 11103
+    },
+    {
+      "path": "feature-catalog.clean.json",
+      "sha256": "af33f147413279be5ca8abbddf88ac84182ab75a571f86d3f4e0c6189ad44f00",
+      "bytes": 18463
+    },
+    {
+      "path": "scripts/layered-gate.mjs",
+      "sha256": "8eda1805b024cfaec1b1652d8aae611c615b9dce5e29d0ea4d7ca136a86d084e",
+      "bytes": 9668
+    },
+    {
+      "path": "tests/p31/layered-gates.test.mjs",
+      "sha256": "60aed44af28dfb712614dbbd5cb7197985c53ce8a14584296fef07379d40ece1",
+      "bytes": 6747
+    }
+  ],
+  "migrated_receipts": [
+    {
+      "name": "layered-integration-1787186552537.json",
+      "local_path": ".ai-workspace/gate-receipts/layered-integration-1787186552537.json",
+      "sha256": "e8e7924db49612cc51f162059caa18a97a95ab1d00c52ffd384daf0e1d855e3f",
+      "bytes": 37704
+    },
+    {
+      "name": "layered-integration-1787186723120.json",
+      "local_path": ".ai-workspace/gate-receipts/layered-integration-1787186723120.json",
+      "sha256": "4d58eb7739576316f9db6bebf21ea3f178c94af0e01d8f0f4ae94a3e52314183",
+      "bytes": 37709
+    },
+    {
+      "name": "layered-security-1787186602557.json",
+      "local_path": ".ai-workspace/gate-receipts/layered-security-1787186602557.json",
+      "sha256": "cffa84387fadf1a8fe33bb59b485fb172c258f69b01e279c17192fb7f1258744",
+      "bytes": 5055
+    },
+    {
+      "name": "layered-security-1787186769362.json",
+      "local_path": ".ai-workspace/gate-receipts/layered-security-1787186769362.json",
+      "sha256": "ee22b201fe1c6bab6f7747474367b1596e3ea337f47339eb174b2e8a8e002d13",
+      "bytes": 5056
+    }
+  ],
+  "source_receipts_retired": [
+    "docs/evidence/v3-clean-p3-1-debt-burn-down-20260820/layered-integration-1787186552537.json",
+    "docs/evidence/v3-clean-p3-1-debt-burn-down-20260820/layered-integration-1787186723120.json",
+    "docs/evidence/v3-clean-p3-1-debt-burn-down-20260820/layered-security-1787186602557.json",
+    "docs/evidence/v3-clean-p3-1-debt-burn-down-20260820/layered-security-1787186769362.json"
+  ]
+}

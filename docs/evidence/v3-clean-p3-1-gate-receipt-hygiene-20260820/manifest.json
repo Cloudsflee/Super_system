@@ -1,0 +1,31 @@
+{
+  "schema_version": "aiws.v3-clean.p31-gate-receipt-hygiene-manifest.v1",
+  "status": "verified",
+  "provisional": false,
+  "files": [
+    "catalog-diff.json",
+    "change.patch",
+    "gate-results.json",
+    "modified-artifact.json",
+    "original-hashes.json",
+    "preflight.json",
+    "receipt-migration.json",
+    "rollback.json",
+    "rollback.ps1",
+    "secret-scan.json",
+    "verification.json"
+  ],
+  "hashes": {
+    "catalog-diff.json": "096e59dc148d2031741ca3c395af657dd948c7b71f8c8097f52e2a99e963b168",
+    "change.patch": "c9e6e5476774d8502b7508d8f7c79a8f0608038adea4aa446f0510fda84b1cd3",
+    "gate-results.json": "d6b01bd438573924e519f3c2819ee978830d6c61928804074b60167ab2354239",
+    "modified-artifact.json": "838b86d414998ded81abf53cf6d6a754faf0413c13a039de385a6a9aac8d3116",
+    "original-hashes.json": "986782422e4e026a262f84823b4ebaf727a050fd36fa632d432749cd8c9fd66b",
+    "preflight.json": "77b31f1bc21f2273d672a2f6dd8444b3f27413609078427068f4313d4a292361",
+    "receipt-migration.json": "198dba42718f36eb75dcb54151fd920a4d130aa28f8b0399b0d4823f917bc4b0",
+    "rollback.json": "f3acff7c080ac97a734e0db3f12f687e0a5f55e4319084223884513d1dd93a4d",
+    "rollback.ps1": "6cf16ef3be6ff2db0eb0976b2b1687255e4517338a2ab1cc74971b81db1cf7b2",
+    "secret-scan.json": "3416cfb5b5bbea91fe02ff4762b536a023db7b5445c4a9d6b0bdf181be5168be",
+    "verification.json": "b7bd9876f48a04d878e3f6f48a668a591ecbf78ebc623ae57b40d9e2d3ad0a5e"
+  }
+}

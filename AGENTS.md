@@ -30,6 +30,12 @@ surface:
   GS-007;
 - this file.
 
+Decision `D-032` governs layered-gate receipt hygiene: a fully successful
+wrapper is stdout-only, while a Clean failure or Historical advisory failure
+is appended to the ignored local `.ai-workspace/gate-receipts/` store. Local
+receipts are diagnostic evidence only; Catalog status promotion continues to
+use the immutable final `verification.json` receipt.
+
 P1/P2/P3 migrations and verified Evidence are read-only. P4 and later runtime,
 real provider calls, complete Outcome evaluation, and release-level Web/E2E
 remain outside P3.1.
@@ -212,6 +218,12 @@ layers (`feature-catalog.clean.json` and `feature-catalog.historical.json`).
 tests and carries the same index references. `scripts/e2e.mjs` is the active
 Clean journey, while `scripts/e2e-legacy.mjs` and `fixture:legacy:*` commands
 are explicit historical fixtures.
+
+Layered gate success emits the structured
+`aiws.v3-clean.layered-gate-result.v2` summary without touching Git-visible
+Evidence. Failed Clean and Historical runs append complete redacted command
+outputs under `.ai-workspace/gate-receipts/` with exclusive file creation;
+these local receipts never promote a Catalog row.
 
 ## Capability status
 

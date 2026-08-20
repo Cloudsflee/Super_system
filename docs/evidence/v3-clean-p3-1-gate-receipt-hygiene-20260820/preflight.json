@@ -1,0 +1,31 @@
+{
+  "schema_version": "aiws.v3-clean.p31-gate-receipt-hygiene-preflight.v1",
+  "phase": "P3.1",
+  "decision": "D-032",
+  "baseline": "9c78e9f",
+  "Target": "Layered gate receipt hygiene and Git-stable verify/pre-push",
+  "Non-target": "P1/P2/P3 runtime, migrations, package commands, and verified Evidence",
+  "Forbidden": [
+    "absolute host paths in receipts",
+    "mutable failure receipts",
+    "local receipt status promotion"
+  ],
+  "Reuse": [
+    "layered gate command inventory",
+    "Clean/Historical policy",
+    "immutable Evidence and rollback conventions"
+  ],
+  "Delete/retire": [
+    "four untracked top-level layered receipts"
+  ],
+  "Acceptance_commands": [
+    "pnpm test:p31",
+    "pnpm test:integration:clean",
+    "pnpm test:security:clean",
+    "pnpm verify",
+    "git diff --check"
+  ],
+  "Rollback_artifact": "rollback.ps1",
+  "last_confirmed_result": "Clean wrappers passed with receipt: null; four migration hashes matched",
+  "next_action": "run synchronized gates and isolated rollback, then publish final verification.json"
+}

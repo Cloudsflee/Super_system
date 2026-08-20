@@ -388,7 +388,7 @@ fixture adapter probes 均通过。active `apps/api/server.mjs` 默认启动
 最终批次。P3 只提升 Project、Workflow、Generation 和 Repository 四行；Outcome
 评分/waiver、真实 provider、完整 Web 发布和 P9 E2E 仍保持原状态。
 
-## 8. P3.1：Clean debt burn-down（D-031）
+## 8. P3.1：Clean debt burn-down（D-031、D-032）
 
 ### 目标与边界
 
@@ -421,6 +421,13 @@ workflow/generation、ACL denial、replay 和 mobile/laptop/desktop 三视口；
 Clean 失败阻断并返回非零，历史失败写入 advisory receipt（含命令、退出码、
 摘要和 redaction 结果）但不提升 Clean 状态。`verify` 的阻断顺序固定为：
 
+D-032 further fixes the publication boundary: a fully successful wrapper emits
+only `aiws.v3-clean.layered-gate-result.v2` with `receipt: null`; a Clean or
+Historical failure appends its complete redacted output to the ignored local
+`.ai-workspace/gate-receipts/` directory using a timestamp/PID filename and
+exclusive creation. The local diagnostic receipt is never a Catalog promotion
+input; promotion still requires the immutable final `verification.json`.
+
 ```text
 check -> audit:p1 -> scan:clean -> test:p1 -> test:p2 -> test:p3 -> test:p31
   -> test -> test:integration -> test:security -> build -> test:e2e
@@ -436,13 +443,18 @@ check -> audit:p1 -> scan:clean -> test:p1 -> test:p2 -> test:p3 -> test:p31
 拒绝缺失、重复、stale、orphan 的 id、矩阵覆盖、owner/test/Evidence 路径，
 以及把 historical status 当作 Clean 可用的解释。
 
-P3.1 Evidence 目录为
+P3.1 formal Evidence 目录为
 `docs/evidence/v3-clean-p3-1-debt-burn-down-20260820/`。每次运行写入
 `attempts/<run-id>/`，failed/checkpoint receipt 不覆盖；final
 `verification.json`/`manifest.json` 独占创建。必须提供 preflight、原始/修改
 hash、artifact、patch、verification、manifest、rollback、service/route
 inventory、catalog diff、gate/advisory/secret scan。rollback 先 dry-run，
 再在隔离副本 apply，并输出 `byte_exact_mismatches=[]`。
+
+门禁收据卫生 Evidence 为
+`docs/evidence/v3-clean-p3-1-gate-receipt-hygiene-20260820/`；它记录源码
+patch、四份历史成功收据迁移的 SHA-256、验证输出和隔离回滚，不改变 P1/P2/P3
+Evidence 或 P1 兼容 Catalog。
 
 ### P3.1 退出条件
 

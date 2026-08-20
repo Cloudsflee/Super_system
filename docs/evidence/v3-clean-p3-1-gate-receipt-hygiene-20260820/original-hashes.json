@@ -1,0 +1,64 @@
+{
+  "schema_version": "aiws.v3-clean.p31-gate-receipt-hygiene-hashes.v1",
+  "baseline": "9c78e9f",
+  "files": [
+    {
+      "path": "AGENTS.md",
+      "sha256": "654fb5d8815c02b7d99131cda1dd4c00d5334ccd1af2f15c1245cb45ec96d204"
+    },
+    {
+      "path": "docs/architecture/decision-log.md",
+      "sha256": "75a2130be90a078144fa4f4be821a2d9c5b6676b46a4b8766aa127708fe0a001"
+    },
+    {
+      "path": "docs/architecture/v23-capability-matrix.md",
+      "sha256": "e16941ad7686b17a10d80446460046139d472c2b44a566f4dc1ace157d37d38b"
+    },
+    {
+      "path": "docs/architecture/v3-clean-development-plan.md",
+      "sha256": "8cab68a013d06dacbc3a0b6400a74dcf6521cefb0cc64017903a9fefe205b1d9"
+    },
+    {
+      "path": "docs/testing.md",
+      "sha256": "b8173b17371ceea33316eacd8d5b99c0f87f2bd048f7f51a6d654da724b6b322"
+    },
+    {
+      "path": "feature-catalog.clean.json",
+      "sha256": "dc451998c60097e95084440efb7742f222024525b19aa9302d69e412bb9e8ec7"
+    },
+    {
+      "path": "scripts/layered-gate.mjs",
+      "sha256": "afcf4ff93a1bec19f7c91bb68ad1ddd5dbebf7f06eed034028e98caeee99be79"
+    },
+    {
+      "path": "tests/p31/layered-gates.test.mjs",
+      "sha256": "a7b3ca5c707c1f257e87c55c80fef5af248efacde895ecb1b7e19fad5c1fa99b"
+    }
+  ],
+  "migrated_receipts": [
+    {
+      "name": "layered-integration-1787186552537.json",
+      "source_path": "docs/evidence/v3-clean-p3-1-debt-burn-down-20260820/layered-integration-1787186552537.json",
+      "sha256": "e8e7924db49612cc51f162059caa18a97a95ab1d00c52ffd384daf0e1d855e3f",
+      "bytes": 37704
+    },
+    {
+      "name": "layered-integration-1787186723120.json",
+      "source_path": "docs/evidence/v3-clean-p3-1-debt-burn-down-20260820/layered-integration-1787186723120.json",
+      "sha256": "4d58eb7739576316f9db6bebf21ea3f178c94af0e01d8f0f4ae94a3e52314183",
+      "bytes": 37709
+    },
+    {
+      "name": "layered-security-1787186602557.json",
+      "source_path": "docs/evidence/v3-clean-p3-1-debt-burn-down-20260820/layered-security-1787186602557.json",
+      "sha256": "cffa84387fadf1a8fe33bb59b485fb172c258f69b01e279c17192fb7f1258744",
+      "bytes": 5055
+    },
+    {
+      "name": "layered-security-1787186769362.json",
+      "source_path": "docs/evidence/v3-clean-p3-1-debt-burn-down-20260820/layered-security-1787186769362.json",
+      "sha256": "ee22b201fe1c6bab6f7747474367b1596e3ea337f47339eb174b2e8a8e002d13",
+      "bytes": 5056
+    }
+  ]
+}

@@ -153,12 +153,17 @@ pnpm verify
 git diff --check
 ```
 
-P3.1 receipts are written under
+Formal P3.1 Evidence is written under
 `docs/evidence/v3-clean-p3-1-debt-burn-down-20260820/`; each run has an
 append-only `attempts/<run-id>/` directory. A final verified receipt is created
 exclusively, and rollback verification records both a dry-run and an isolated
-actual apply with `byte_exact_mismatches=[]`. P1/P2/P3 Evidence remains
-read-only, and the four existing P3 rows retain their prior status.
+actual apply with `byte_exact_mismatches=[]`. Routine layered-gate success
+prints only `aiws.v3-clean.layered-gate-result.v2` with `receipt: null`, so
+`verify` and pre-push do not dirty the worktree. A Clean failure or Historical
+advisory failure appends a complete redacted receipt to
+`.ai-workspace/gate-receipts/` using a timestamp/PID name and `wx`; local
+receipts are diagnostic only and cannot promote status. P1/P2/P3 Evidence
+remains read-only, and the four existing P3 rows retain their prior status.
 
 ## AI evaluation
 

@@ -1,0 +1,9 @@
+{
+  "schema_version": "aiws.v3-clean.p31-gate-receipt-hygiene-verification.v1",
+  "phase": "P3.1",
+  "decision": "D-032",
+  "status": "checkpoint",
+  "provisional": true,
+  "baseline": "9c78e9f",
+  "note": "checkpoint is immutable and cannot promote Catalog status"
+}

@@ -1,0 +1,42 @@
+{
+  "schema_version": "aiws.v3-clean.p31-gate-receipt-migration.v1",
+  "policy": "byte-exact move into ignored local diagnostics store",
+  "receipts": [
+    {
+      "name": "layered-integration-1787186552537.json",
+      "source_path": "docs/evidence/v3-clean-p3-1-debt-burn-down-20260820/layered-integration-1787186552537.json",
+      "local_path": ".ai-workspace/gate-receipts/layered-integration-1787186552537.json",
+      "sha256": "e8e7924db49612cc51f162059caa18a97a95ab1d00c52ffd384daf0e1d855e3f",
+      "bytes": 37704,
+      "source_absent_after_migration": true,
+      "local_hash_verified": true
+    },
+    {
+      "name": "layered-integration-1787186723120.json",
+      "source_path": "docs/evidence/v3-clean-p3-1-debt-burn-down-20260820/layered-integration-1787186723120.json",
+      "local_path": ".ai-workspace/gate-receipts/layered-integration-1787186723120.json",
+      "sha256": "4d58eb7739576316f9db6bebf21ea3f178c94af0e01d8f0f4ae94a3e52314183",
+      "bytes": 37709,
+      "source_absent_after_migration": true,
+      "local_hash_verified": true
+    },
+    {
+      "name": "layered-security-1787186602557.json",
+      "source_path": "docs/evidence/v3-clean-p3-1-debt-burn-down-20260820/layered-security-1787186602557.json",
+      "local_path": ".ai-workspace/gate-receipts/layered-security-1787186602557.json",
+      "sha256": "cffa84387fadf1a8fe33bb59b485fb172c258f69b01e279c17192fb7f1258744",
+      "bytes": 5055,
+      "source_absent_after_migration": true,
+      "local_hash_verified": true
+    },
+    {
+      "name": "layered-security-1787186769362.json",
+      "source_path": "docs/evidence/v3-clean-p3-1-debt-burn-down-20260820/layered-security-1787186769362.json",
+      "local_path": ".ai-workspace/gate-receipts/layered-security-1787186769362.json",
+      "sha256": "ee22b201fe1c6bab6f7747474367b1596e3ea337f47339eb174b2e8a8e002d13",
+      "bytes": 5056,
+      "source_absent_after_migration": true,
+      "local_hash_verified": true
+    }
+  ]
+}

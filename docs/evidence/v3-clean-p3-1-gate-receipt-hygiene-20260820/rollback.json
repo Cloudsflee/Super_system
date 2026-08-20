@@ -1,0 +1,30 @@
+{
+  "schema_version": "aiws.v3-clean.p31-gate-receipt-hygiene-rollback.v1",
+  "commands": [
+    {
+      "command": "powershell.exe -NoProfile -ExecutionPolicy Bypass -File <WORKSPACE>\\docs\\evidence\\v3-clean-p3-1-gate-receipt-hygiene-20260820\\rollback.ps1 -DryRun",
+      "exit_status": 0,
+      "ok": true,
+      "stdout": "rollback dry-run passed; byte_exact_mismatches=[]\r\n",
+      "stderr": "",
+      "summary": "rollback dry-run passed; byte_exact_mismatches=[]",
+      "redaction": {
+        "passed": true,
+        "removed": 0
+      }
+    },
+    {
+      "command": "powershell.exe -NoProfile -ExecutionPolicy Bypass -File <WORKSPACE>\\docs\\evidence\\v3-clean-p3-1-gate-receipt-hygiene-20260820\\rollback.ps1 -Apply",
+      "exit_status": 0,
+      "ok": true,
+      "stdout": "rollback applied in isolated root; byte_exact_mismatches=[]\r\n",
+      "stderr": "",
+      "summary": "rollback applied in isolated root; byte_exact_mismatches=[]",
+      "redaction": {
+        "passed": true,
+        "removed": 0
+      }
+    }
+  ],
+  "byte_exact_mismatches": []
+}
