@@ -52,6 +52,10 @@ const p5Mutation = (properties = {}, required = []) => closed({ ...properties, i
 const p5Query = (properties = {}, required = []) => closed(properties, required);
 const p5List = (name) => closed({ [name]: { type: 'array', items: looseObject } }, [name]);
 const p5Receipt = (name, extra = {}) => closed({ [name]: looseObject, operation: p4Operation, replayed: { type: 'boolean' }, ...extra }, [name]);
+const p6Mutation = p5Mutation;
+const p6Query = p5Query;
+const p6List = p5List;
+const p6Receipt = p5Receipt;
 
 export const CLEAN_V2_SCHEMAS = Object.freeze({
   'setup.complete.v2': closed({ display_name: { type: 'string', minLength: 1, maxLength: 160 }, team_name: { type: 'string', minLength: 1, maxLength: 160 }, ttl_seconds: { type: 'integer', minimum: 300, maximum: 7776000 }, idempotency_key: idempotency, expected_revision: { type: 'integer', minimum: 0, maximum: 0 } }, ['display_name', 'team_name']),
@@ -220,6 +224,28 @@ export const CLEAN_V2_SCHEMAS = Object.freeze({
   'bridge.device.receipt.v2': p5Receipt('device'),
   'bridge.transfer.receipt.v2': p5Receipt('transfer'),
 
+  // P6 Runner and Execution contracts. Public payloads contain opaque refs,
+  // bounded metadata and hashes; adapter credentials and host paths are absent.
+  'runner.profile.query.v2': p6Query({ profile_id: id }),
+  'runner.profile.create.v2': p6Mutation({ label: { type: 'string', minLength: 1, maxLength: 160 }, runner_type: { enum: ['docker', 'host', 'windows_bridge'] }, endpoint_ref: { type: 'string', maxLength: 256 }, image_digest: { type: 'string', maxLength: 71 }, bridge_device_id: id, capabilities: p5StringArray, limits: looseObject }, ['label', 'runner_type']),
+  'runner.profile.update.v2': p6Mutation({ profile_id: id, label: { type: 'string', minLength: 1, maxLength: 160 }, endpoint_ref: { type: 'string', maxLength: 256 }, image_digest: { type: 'string', maxLength: 71 }, capabilities: p5StringArray, limits: looseObject }, ['profile_id']),
+  'runner.profile.mutation.v2': p6Mutation({ profile_id: id }, ['profile_id']),
+  'runner.profiles.v2': p6List('profiles'),
+  'runner.profile.v2': closed({ profile: looseObject }, ['profile']),
+  'runner.profile.receipt.v2': p6Receipt('profile'),
+
+  'execution.project.query.v2': p6Query({ project_id: id, status: p4String }),
+  'execution.create.v2': p6Mutation({ project_id: id, workflow_id: id, workflow_revision: revision, repository_workspace_id: id, context_pack_id: id, runner_profile_id: id, tasks: { type: 'array', maxItems: 100, items: looseObject }, plan: looseObject, input_refs: { type: 'array', maxItems: 256, items: looseObject }, requires_approval: { type: 'boolean' }, check_ids: p5StringArray }, ['project_id', 'runner_profile_id']),
+  'execution.query.v2': p6Query({ execution_id: id, cursor: { anyOf: [{ type: 'integer', minimum: 0 }, p4String] }, limit: { type: 'integer', minimum: 1, maximum: 500 }, format: { enum: ['json'] } }),
+  'execution.mutation.v2': p6Mutation({ execution_id: id }, ['execution_id']),
+  'execution.replan.v2': p6Mutation({ execution_id: id, tasks: { type: 'array', maxItems: 100, items: looseObject }, plan: looseObject }, ['execution_id']),
+  'execution.stage.replay.v2': p6Mutation({ execution_id: id, stage: { enum: ['prepare', 'context', 'run', 'check', 'review', 'finalize', 'deliver'] }, generation: { type: 'integer', minimum: 1 }, checkpoint_token: { type: 'string', minLength: 32, maxLength: 256 }, workspace_hash: sha256, pins_hash: sha256 }, ['execution_id', 'stage', 'generation', 'checkpoint_token']),
+  'executions.v2': p6List('executions'),
+  'execution.v2': closed({ execution: looseObject }, ['execution']),
+  'execution.receipt.v2': p6Receipt('execution'),
+  'execution.attempts.v2': p6List('attempts'),
+  'execution.checkpoints.v2': p6List('checkpoints'),
+
   // P1 query/input contracts.
   'operation.id.v2': closed({ id: id }, ['id']),
   'operation.events.query.v2': closed({ format: { const: 'json' }, cursor: { type: 'string' }, limit: { type: 'integer', minimum: 1, maximum: 500 } }),
@@ -263,7 +289,7 @@ export const CLEAN_V2_SCHEMAS = Object.freeze({
 
   // P1/P2 receipts. These are data payloads inside the common API envelope.
   'operation.receipt.v2': operation,
-  'event.replay.v2': closed({ events: { type: 'array', items: looseObject }, next_cursor: { anyOf: [{ type: 'string' }, { type: 'integer', minimum: 0 }, { type: 'null' }] }, cursor_sequence: { type: 'integer', minimum: 0 }, terminal: { type: 'boolean' }, resource: closed({ id, type: { type: 'string' }, revision }, ['id', 'type', 'revision']) }, ['events', 'next_cursor', 'terminal', 'resource']),
+  'event.replay.v2': closed({ events: { type: 'array', items: looseObject }, next_cursor: { anyOf: [{ type: 'string' }, { type: 'integer', minimum: 0 }, { type: 'null' }] }, cursor_sequence: { type: 'integer', minimum: 0 }, cursor: { anyOf: [looseObject, { type: 'null' }] }, terminal: { type: 'boolean' }, resource: closed({ id, type: { type: 'string' }, revision }, ['id', 'type', 'revision']) }, ['events', 'next_cursor', 'terminal', 'resource']),
   'resource.receipt.v2': receipt(),
   'setup.receipt.v2': receipt({ actor, team, membership, session, operation: operationEnvelope }, ['actor', 'team', 'membership', 'session', 'operation']),
   'actor.receipt.v2': receipt({ account: actor, actor, session, operation: operationEnvelope }, []),

@@ -4,8 +4,8 @@ import { createApp as createCleanApp, start as startClean } from './clean-server
 
 // The process entrypoint is the released V3-Clean surface.  The lower-level
 // clean runtime keeps its P2 default for phase-specific fixture tests, while
-// this wrapper is the released P5 Clean process surface.
-export const ACTIVE_TARGET_VERSION = 5;
+// this wrapper is the released P6 Clean process surface.
+export const ACTIVE_TARGET_VERSION = 6;
 
 function activeOptions(options = {}) {
   return { targetVersion: ACTIVE_TARGET_VERSION, ...options };

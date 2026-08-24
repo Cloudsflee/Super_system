@@ -91,6 +91,18 @@ export const CLEAN_P5_TABLE_OWNERS = Object.freeze({
   bridge_transfers: 'Bridge'
 });
 
+export const CLEAN_P6_TABLE_OWNERS = Object.freeze({
+  ...CLEAN_P5_TABLE_OWNERS,
+  runner_profiles: 'Runner',
+  job_specs: 'Runner',
+  runner_receipts: 'Runner',
+  executions: 'Execution',
+  execution_inputs: 'Execution',
+  task_attempts: 'Execution',
+  execution_stage_checkpoints: 'Execution',
+  execution_events: 'Execution'
+});
+
 export const CLEAN_COMMAND_OWNERS = Object.freeze({
   'operations.get': 'Operations',
   'operations.events': 'Operations',
@@ -266,6 +278,24 @@ export const CLEAN_COMMAND_OWNERS = Object.freeze({
   , 'bridge.device.revoke': 'Bridge'
   , 'bridge.transfer.list': 'Bridge'
   , 'bridge.transfer.create': 'Bridge'
+  , 'runner.profile.list': 'Runner'
+  , 'runner.profile.create': 'Runner'
+  , 'runner.profile.get': 'Runner'
+  , 'runner.profile.update': 'Runner'
+  , 'runner.profile.probe': 'Runner'
+  , 'runner.profile.disable': 'Runner'
+  , 'execution.list': 'Execution'
+  , 'execution.create': 'Execution'
+  , 'execution.get': 'Execution'
+  , 'execution.events': 'Execution'
+  , 'execution.attempts': 'Execution'
+  , 'execution.checkpoints': 'Execution'
+  , 'execution.start': 'Execution'
+  , 'execution.pause': 'Execution'
+  , 'execution.resume': 'Execution'
+  , 'execution.cancel': 'Execution'
+  , 'execution.replan': 'Execution'
+  , 'execution.stage.replay': 'Execution'
 });
 
 export const CLEAN_EVENT_OWNERS = Object.freeze({
@@ -318,18 +348,24 @@ export const CLEAN_EVENT_OWNERS = Object.freeze({
   , 'terminal.*': 'Terminal'
   , 'bridge_device.*': 'Bridge'
   , 'bridge_transfer.*': 'Bridge'
+  , 'runner_profile.*': 'Runner'
+  , 'runner_job.*': 'Runner'
+  , 'runner_receipt.*': 'Runner'
+  , 'execution.*': 'Execution'
+  , 'execution_stage.*': 'Execution'
+  , 'task_attempt.*': 'Execution'
 });
 
 export const CLEAN_PLATFORM_OWNERSHIP = Object.freeze({
-  schema_version: 'aiws.v3-clean.owner-manifest.v4',
-  tables: CLEAN_P5_TABLE_OWNERS,
+  schema_version: 'aiws.v3-clean.owner-manifest.v6',
+  tables: CLEAN_P6_TABLE_OWNERS,
   commands: CLEAN_COMMAND_OWNERS,
   events: CLEAN_EVENT_OWNERS
 });
 
 export function validateCleanOwnership({ tables = [], registry = null } = {}) {
   const actualTables = [...new Set(tables.map((table) => String(table)))].sort();
-  const tableOwners = actualTables.includes('assist_sessions') ? CLEAN_P5_TABLE_OWNERS : (actualTables.includes('context_sources') ? CLEAN_P4_TABLE_OWNERS : (actualTables.includes('projects') ? CLEAN_P3_TABLE_OWNERS : (actualTables.includes('teams') ? CLEAN_P2_TABLE_OWNERS : CLEAN_TABLE_OWNERS)));
+  const tableOwners = actualTables.includes('runner_profiles') ? CLEAN_P6_TABLE_OWNERS : (actualTables.includes('assist_sessions') ? CLEAN_P5_TABLE_OWNERS : (actualTables.includes('context_sources') ? CLEAN_P4_TABLE_OWNERS : (actualTables.includes('projects') ? CLEAN_P3_TABLE_OWNERS : (actualTables.includes('teams') ? CLEAN_P2_TABLE_OWNERS : CLEAN_TABLE_OWNERS))));
   const expectedTables = Object.keys(tableOwners).sort();
   const missingTables = expectedTables.filter((table) => !actualTables.includes(table));
   const unexpectedTables = actualTables.filter((table) => !expectedTables.includes(table));
@@ -352,15 +388,18 @@ export function validateCleanOwnership({ tables = [], registry = null } = {}) {
     const p3Owners = new Set(['Project', 'Repository', 'Workflow', 'Critic']);
     const p4Owners = new Set(['Context', 'Projection', 'Exchange', 'MCP', 'Gateway']);
     const p5Owners = new Set(['Assist', 'Files', 'Terminal', 'Bridge']);
+    const p6Owners = new Set(['Runner', 'Execution']);
+    const hasP6Tables = actualTables.includes('runner_profiles');
     const hasP5Tables = actualTables.includes('assist_sessions');
     const hasP4Tables = actualTables.includes('context_sources');
     const hasP3Tables = actualTables.includes('projects');
     const expectedCommandIds = Object.entries(CLEAN_COMMAND_OWNERS)
       .filter(([, owner]) => {
-        if (hasP5Tables) return true;
-        if (hasP4Tables) return !p5Owners.has(owner);
-        if (hasP3Tables) return !p4Owners.has(owner) && !p5Owners.has(owner);
-        return !p3Owners.has(owner) && !p4Owners.has(owner) && !p5Owners.has(owner);
+        if (hasP6Tables) return true;
+        if (hasP5Tables) return !p6Owners.has(owner);
+        if (hasP4Tables) return !p5Owners.has(owner) && !p6Owners.has(owner);
+        if (hasP3Tables) return !p4Owners.has(owner) && !p5Owners.has(owner) && !p6Owners.has(owner);
+        return !p3Owners.has(owner) && !p4Owners.has(owner) && !p5Owners.has(owner) && !p6Owners.has(owner);
       })
       .map(([commandId]) => commandId);
     for (const commandId of expectedCommandIds) {

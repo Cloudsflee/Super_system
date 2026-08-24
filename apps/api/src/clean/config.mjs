@@ -12,7 +12,9 @@ export function loadCleanConfig(env = process.env) {
   const providerMode = String(env.AIWS_CLEAN_PROVIDER_MODE || 'process').toLowerCase();
   if (!['process', 'deterministic'].includes(providerMode)) throw new Error('clean_provider_mode_invalid');
   const providerTimeoutMs = Number(env.AIWS_CLEAN_PROVIDER_TIMEOUT_MS || 30_000);
+  const runnerPollIntervalMs = Number(env.AIWS_RUNNER_POLL_INTERVAL_MS || 50);
   if (!Number.isInteger(providerTimeoutMs) || providerTimeoutMs < 1000 || providerTimeoutMs > 300_000) throw new Error('clean_provider_timeout_invalid');
+  if (!Number.isInteger(runnerPollIntervalMs) || runnerPollIntervalMs < 1 || runnerPollIntervalMs > 5000) throw new Error('runner_poll_interval_invalid');
   if (production && mcpPepper.length < 32) throw new Error('mcp_pepper_required');
   if (production && gatewaySecret.length < 32) throw new Error('gateway_secret_required');
   return Object.freeze({
@@ -34,6 +36,10 @@ export function loadCleanConfig(env = process.env) {
     providerTimeoutMs,
     providerHomeRoot: path.resolve(String(env.AIWS_CLEAN_PROVIDER_HOME || path.join(home, 'provider-homes'))),
     bridgeUrl: env.AIWS_WINDOWS_BRIDGE_URL ? String(env.AIWS_WINDOWS_BRIDGE_URL).replace(/\/$/, '') : null,
+    runnerBrokerUrl: env.AIWS_RUNNER_BROKER_URL ? String(env.AIWS_RUNNER_BROKER_URL).replace(/\/$/, '') : null,
+    runnerBrokerSecret: String(env.AIWS_RUNNER_BROKER_SECRET || (production ? '' : 'p6-clean-broker-fixture-secret')),
+    runnerPollIntervalMs,
+    runnerHomeRoot: path.resolve(String(env.AIWS_HOST_RUNNER_HOME || path.join(home, 'runner-homes'))),
     workspaceRoot: path.resolve(String(env.AIWS_CLEAN_WORKSPACES || path.join(home, 'workspaces'))),
     vaultRoot: path.resolve(String(env.AIWS_CLEAN_VAULT || path.join(home, 'vault'))),
     vaultMasterKey: env.AIWS_CLEAN_VAULT_KEY == null ? null : String(env.AIWS_CLEAN_VAULT_KEY),
