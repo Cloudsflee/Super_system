@@ -1,0 +1,30 @@
+{
+  "schema_version": "aiws.v3-clean.p5-artifact-reopen.v1",
+  "status": "failed",
+  "checks": [
+    {
+      "role": "modified_artifact",
+      "file": "modified-artifact.json",
+      "exists": true,
+      "sha256": "0b2f771e925bdddf1f1e838af4fdf6729e5d16b875ca8fab0dbfc1d6a834009f"
+    },
+    {
+      "role": "patch",
+      "file": "change.patch",
+      "exists": true,
+      "sha256": "8bab0480d5bcf8b24ed2838d55db3428de6168c4c3ffdde56d3a1c678ecb2981"
+    },
+    {
+      "role": "verification",
+      "file": "verification.json",
+      "exists": false,
+      "sha256": null
+    },
+    {
+      "role": "rollback",
+      "file": "rollback.ps1",
+      "exists": true,
+      "sha256": "74950954487c587caf3155d96b4fb359201954ec8601b43535974a96781c9bfe"
+    }
+  ]
+}

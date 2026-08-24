@@ -1,0 +1,25 @@
+{
+  "schema_version": "aiws.v3-clean.p5-browser-record.v1",
+  "status": "failed",
+  "command": {
+    "command": "pnpm --filter @aiws/web test",
+    "cwd": "repository-root",
+    "input": {
+      "args": [
+        "--filter",
+        "@aiws/web",
+        "test"
+      ]
+    },
+    "stdout": "\n> @aiws/web@3.0.0 test <ROOT>\\apps\\web\n> vitest run\n\n\n\u001b[1m\u001b[46m RUN \u001b[49m\u001b[22m \u001b[36mv3.2.7 \u001b[39m\u001b[90m<ROOT>/apps/web\u001b[39m\n\n \u001b[32m✓\u001b[39m src/test/setup-flow.test.tsx \u001b[2m(\u001b[22m\u001b[2m3 tests\u001b[22m\u001b[2m)\u001b[22m\u001b[33m 762\u001b[2mms\u001b[22m\u001b[39m\n   \u001b[33m\u001b[2m✓\u001b[22m\u001b[39m setup workflow\u001b[2m > \u001b[22mshows blocked checks and exposes device human input, cancel, and failed retry \u001b[33m 598\u001b[2mms\u001b[22m\u001b[39m\n \u001b[32m✓\u001b[39m src/test/identity-access.test.tsx \u001b[2m(\u001b[22m\u001b[2m6 tests\u001b[22m\u001b[2m)\u001b[22m\u001b[33m 371\u001b[2mms\u001b[22m\u001b[39m\n \u001b[32m✓\u001b[39m src/test/project-onboarding.test.tsx \u001b[2m(\u001b[22m\u001b[2m3 tests\u001b[22m\u001b[2m)\u001b[22m\u001b[32m 270\u001b[2mms\u001b[22m\u001b[39m\n \u001b[32m✓\u001b[39m src/test/context.test.tsx \u001b[2m(\u001b[22m\u001b[2m2 tests\u001b[22m\u001b[2m)\u001b[22m\u001b[32m 228\u001b[2mms\u001b[22m\u001b[39m\n \u001b[32m✓\u001b[39m src/test/project-workflow-clean.test.tsx \u001b[2m(\u001b[22m\u001b[2m5 tests\u001b[22m\u001b[2m)\u001b[22m\u001b[32m 192\u001b[2mms\u001b[22m\u001b[39m\n \u001b[32m✓\u001b[39m src/test/terminal.test.tsx \u001b[2m(\u001b[22m\u001b[2m1 test\u001b[22m\u001b[2m)\u001b[22m\u001b[32m 171\u001b[2mms\u001b[22m\u001b[39m\n \u001b[32m✓\u001b[39m src/test/workflow.test.tsx \u001b[2m(\u001b[22m\u001b[2m1 test\u001b[22m\u001b[2m)\u001b[22m\u001b[32m 133\u001b[2mms\u001b[22m\u001b[39m\n \u001b[32m✓\u001b[39m src/test/assist.test.tsx \u001b[2m(\u001b[22m\u001b[2m2 tests\u001b[22m\u001b[2m)\u001b[22m\u001b[32m 134\u001b[2mms\u001b[22m\u001b[39m\n\n\u001b[2m Test Files \u001b[22m \u001b[1m\u001b[32m8 passed\u001b[39m\u001b[22m\u001b[90m (8)\u001b[39m\n\u001b[2m      Tests \u001b[22m \u001b[1m\u001b[32m23 passed\u001b[39m\u001b[22m\u001b[90m (23)\u001b[39m\n\u001b[2m   Start at \u001b[22m 00:15:21\n\u001b[2m   Duration \u001b[22m 9.51s\u001b[2m (transform 332ms, setup 518ms, collect 2.16s, tests 2.26s, environment 2.99s, prepare 556ms)\u001b[22m\n\n",
+    "stderr": "",
+    "exit_status": 0,
+    "expected_exit_statuses": [
+      0
+    ],
+    "signal": null,
+    "ok": true,
+    "summary": "\u001b[33m\u001b[2m✓\u001b[22m\u001b[39m setup workflow\u001b[2m > \u001b[22mshows blocked checks and exposes device human input, cancel, and failed retry \u001b[33m 598\u001b[2mms\u001b[22m\u001b[39m\n\u001b[32m✓\u001b[39m src/test/identity-access.test.tsx \u001b[2m(\u001b[22m\u001b[2m6 tests\u001b[22m\u001b[2m)\u001b[22m\u001b[33m 371\u001b[2mms\u001b[22m\u001b[39m\n\u001b[32m✓\u001b[39m src/test/project-onboarding.test.tsx \u001b[2m(\u001b[22m\u001b[2m3 tests\u001b[22m\u001b[2m)\u001b[22m\u001b[32m 270\u001b[2mms\u001b[22m\u001b[39m\n\u001b[32m✓\u001b[39m src/test/context.test.tsx \u001b[2m(\u001b[22m\u001b[2m2 tests\u001b[22m\u001b[2m)\u001b[22m\u001b[32m 228\u001b[2mms\u001b[22m\u001b[39m\n\u001b[32m✓\u001b[39m src/test/project-workflow-clean.test.tsx \u001b[2m(\u001b[22m\u001b[2m5 tests\u001b[22m\u001b[2m)\u001b[22m\u001b[32m 192\u001b[2mms\u001b[22m\u001b[39m\n\u001b[32m✓\u001b[39m src/test/terminal.test.tsx \u001b[2m(\u001b[22m\u001b[2m1 test\u001b[22m\u001b[2m)\u001b[22m\u001b[32m 171\u001b[2mms\u001b[22m\u001b[39m\n\u001b[32m✓\u001b[39m src/test/workflow.test.tsx \u001b[2m(\u001b[22m\u001b[2m1 test\u001b[22m\u001b[2m)\u001b[22m\u001b[32m 133\u001b[2mms\u001b[22m\u001b[39m\n\u001b[32m✓\u001b[39m src/test/assist.test.tsx \u001b[2m(\u001b[22m\u001b[2m2 tests\u001b[22m\u001b[2m)\u001b[22m\u001b[32m 134\u001b[2mms\u001b[22m\u001b[39m\n\u001b[2m Test Files \u001b[22m \u001b[1m\u001b[32m8 passed\u001b[39m\u001b[22m\u001b[90m (8)\u001b[39m\n\u001b[2m      Tests \u001b[22m \u001b[1m\u001b[32m23 passed\u001b[39m\u001b[22m\u001b[90m (23)\u001b[39m\n\u001b[2m   Start at \u001b[22m 00:15:21\n\u001b[2m   Duration \u001b[22m 9.51s\u001b[2m (transform 332ms, setup 518ms, collect 2.16s, tests 2.26s, environment 2.99s, prepare 556ms)\u001b[22m"
+  },
+  "receipt": null
+}

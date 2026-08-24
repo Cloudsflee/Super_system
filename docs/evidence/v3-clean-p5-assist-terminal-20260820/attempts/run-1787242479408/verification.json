@@ -1,0 +1,284 @@
+{
+  "schema_version": "aiws.v3-clean.p5-verification.v1",
+  "phase": "P5",
+  "status": "failed",
+  "provisional": true,
+  "generated_at": "2026-08-20T16:16:40.943Z",
+  "run_id": "run-1787242479408",
+  "baseline": "b270ff7d86d200b55a83dfdfa4a4db0e38fed050",
+  "target_schema_version": 5,
+  "catalog_promotion": [
+    "REC-D8-ASSIST-010",
+    "REC-D8-FILES-012",
+    "REC-D8-APPROVAL-013",
+    "REC-D8-TERMINAL-025",
+    "REC-D8-BRIDGE-026"
+  ],
+  "implemented_only": [
+    "REC-D8-ATTACHMENTS-011"
+  ],
+  "unchanged_statuses": {
+    "REC-D10-FRONTEND-024": "scaffolded",
+    "REC-D6-OUTCOME-009": "scaffolded"
+  },
+  "blocking_failure": {
+    "command": "secret-scan",
+    "exit_status": 1,
+    "summary": "assist-probe.json:prompt_or_credential_field,change.patch:prompt_or_credential_field,change.patch:secret_like_value,gate-results.json:prompt_or_credential_field"
+  },
+  "commands": [
+    {
+      "command": "pnpm check",
+      "cwd": "repository-root",
+      "input": {
+        "args": [
+          "check"
+        ]
+      },
+      "stdout": "\n> ai-workspace-system@3.0.0 check <ROOT>\n> node scripts/check.mjs\n\ncheck passed: 319 source files, 44 scripts\n",
+      "stderr": "(node:28532) [DEP0190] DeprecationWarning: Passing args to a child process with shell option true can lead to security vulnerabilities, as the arguments are not escaped, only concatenated.\n(Use `node --trace-deprecation ...` to show where the warning was created)\n",
+      "exit_status": 0,
+      "expected_exit_statuses": [
+        0
+      ],
+      "signal": null,
+      "ok": true,
+      "summary": "> ai-workspace-system@3.0.0 check <ROOT>\n> node scripts/check.mjs\ncheck passed: 319 source files, 44 scripts\n(node:28532) [DEP0190] DeprecationWarning: Passing args to a child process with shell option true can lead to security vulnerabilities, as the arguments are not escaped, only concatenated.\n(Use `node --trace-deprecation ...` to show where the warning was created)"
+    },
+    {
+      "command": "pnpm scan:clean",
+      "cwd": "repository-root",
+      "input": {
+        "args": [
+          "scan:clean"
+        ]
+      },
+      "stdout": "\n> ai-workspace-system@3.0.0 scan:clean <ROOT>\n> node scripts/v3-clean-architecture-scan.mjs\n\n{\n  \"schema_version\": \"aiws.v3-clean.architecture-scan.v4\",\n  \"entrypoints\": [\n    \"apps/api/server.mjs\",\n    \"apps/gateway/server.mjs\"\n  ],\n  \"files\": [\n    \"apps/api/server.mjs\",\n    \"apps/api/clean-server.mjs\",\n    \"apps/api/src/clean/runtime.mjs\",\n    \"apps/api/src/clean/config.mjs\",\n    \"apps/api/src/clean/database.mjs\",\n    \"apps/api/src/clean/canonical.mjs\",\n    \"apps/api/src/clean/migrations/001-clean-baseline.mjs\",\n    \"apps/api/src/clean/migrations/002-identity-acl.mjs\",\n    \"apps/api/src/clean/migrations/003-project-workflow.mjs\",\n    \"apps/api/src/clean/migrations/004-context-projection-mcp.mjs\",\n    \"apps/api/src/clean/migrations/005-assist-files-terminal-bridge.mjs\",\n    \"apps/api/src/clean/redaction.mjs\",\n    \"apps/api/src/clean/cas.mjs\",\n    \"apps/api/src/clean/events.mjs\",\n    \"apps/api/src/clean/cursor.mjs\",\n    \"apps/api/src/clean/operations.mjs\",\n    \"apps/api/src/clean/platform.mjs\",\n    \"apps/api/src/clean/principal.mjs\",\n    \"apps/api/src/clean/platform-error.mjs\",\n    \"apps/api/src/clean/registry.mjs\",\n    \"apps/api/src/clean/receipts.mjs\",\n    \"apps/api/src/clean/ownership.mjs\",\n    \"apps/api/src/clean/authorization.mjs\",\n    \"apps/api/src/clean/identity.mjs\",\n    \"apps/api/src/clean/actor-service.mjs\",\n    \"apps/api/src/clean/identity-helpers.mjs\",\n    \"apps/api/src/clean/session-service.mjs\",\n    \"apps/api/src/clean/team-access-service.mjs\",\n    \"apps/api/src/clean/credential-profile-service.mjs\",\n    \"apps/api/src/clean/vault.mjs\",\n    \"apps/api/src/clean/provider-adapters.mjs\",\n    \"apps/api/src/clean/project-workflow.mjs\",\n    \"apps/api/src/clean/project-domain-helpers.mjs\",\n    \"apps/api/src/clean/project-service.mjs\",\n    \"apps/api/src/clean/repository-service.mjs\",\n    \"apps/api/src/clean/workflow-service.mjs\",\n    \"apps/api/src/clean/outcome-service.mjs\",\n    \"apps/api/src/clean/context-service.mjs\",\n    \"apps/api/src/clean/mcp-service.mjs\",\n    \"apps/api/src/clean/gateway-service.mjs\",\n    \"apps/api/src/clean/command-dispatcher.mjs\",\n    \"apps/api/src/clean/assist-service.mjs\",\n    \"apps/api/src/clean/app-server-adapter.mjs\",\n    \"apps/api/src/clean/p5-domain-helpers.mjs\",\n    \"apps/api/src/clean/files-service.mjs\",\n    \"apps/api/src/clean/terminal-service.mjs\",\n    \"apps/api/src/clean/bridge-service.mjs\",\n    \"apps/api/src/clean/windows-bridge-adapter.mjs\",\n    \"apps/api/src/clean/http.mjs\"\n  ],\n  \"registry\": {\n    \"valid\": true,\n    \"mismatches\": [],\n    \"rest_count\": 173,\n    \"mcp_count\": 173,\n    \"web_count\": 173\n  },\n  \"ownership\": {\n    \"valid\": true,\n    \"missing_tables\": [],\n    \"unexpected_tables\": [],\n    \"missing_commands\": [],\n    \"mismatched_commands\": [],\n    \"missing_events\": [],\n    \"mismatched_events\": []\n  },\n  \"phase_metadata\": {\n    \"baseline_phase\": \"P1\",\n    \"active_phase\": \"P5\",\n    \"migration_registry\": [\n      {\n        \"id\": \"001-clean-baseline\",\n        \"version\": 1\n      },\n      {\n        \"id\": \"002-identity-acl\",\n        \"version\": 2\n      },\n      {\n        \"id\": \"003-project-workflow\",\n        \"version\": 3\n      },\n      {\n        \"id\": \"004-context-projection-mcp\",\n        \"version\": 4\n      },\n      {\n        \"id\": \"005-assist-files-terminal-bridge\",\n        \"version\": 5\n      }\n    ],\n    \"p5_table_owners\": [\n      \"actors\",\n      \"aggregate_heads\",\n      \"aggregate_revisions\",\n      \"assist_configurations\",\n      \"assist_goals\",\n      \"assist_messages\",\n      \"assist_references\",\n      \"assist_sessions\",\n      \"assist_turns\",\n      \"attachments\",\n      \"audit_events\",\n      \"bridge_devices\",\n      \"bridge_transfers\",\n      \"brief_revisions\",\n      \"briefs\",\n      \"cas_objects\",\n      \"context_document_versions\",\n      \"context_edges\",\n      \"context_index_snapshots\",\n      \"context_nodes\",\n      \"context_packs\",\n      \"context_policies\",\n      \"context_projection_jobs\",\n      \"context_selections\",\n      \"context_sources\",\n      \"credential_refs\",\n      \"event_cursors\",\n      \"events\",\n      \"exchange_grants\",\n      \"exchange_requests\",\n      \"file_change_batches\",\n      \"file_change_items\",\n      \"file_refs\",\n      \"gateway_forward_receipts\",\n      \"idempotency_keys\",\n      \"mcp_clients\",\n      \"node_contracts\",\n      \"operation_links\",\n      \"operations\",\n      \"outcome_requirements\",\n      \"project_acl_entries\",\n      \"project_intakes\",\n      \"project_invitations\",\n      \"project_memberships\",\n      \"projects\",\n      \"provider_profiles\",\n      \"receipt_manifests\",\n      \"repository_connections\",\n      \"repository_lines\",\n      \"repository_locks\",\n      \"repository_targets\",\n      \"repository_workspaces\",\n      \"runtime_approvals\",\n      \"runtime_user_inputs\",\n      \"schema_meta\",\n      \"schema_migrations\",\n      \"semantic_proposals\",\n      \"sessions\",\n      \"team_memberships\",\n      \"teams\",\n      \"terminal_events\",\n      \"terminal_sessions\",\n      \"workflow_critic_receipts\",\n      \"workflow_generation_proposals\",\n      \"workflow_generations\",\n      \"workflow_nodes\",\n      \"workflow_revisions\",\n      \"workflows\"\n    ],\n    \"authorization_predicate\": \"authorize(principal, action, project, resource, policy_revision)\",\n    \"evidence_directory\": \"docs/evidence/v3-clean-p5-assist-terminal-20260820\",\n    \"evidence_present\": true\n  },\n  \"workspace\": {\n    \"schema_version\": \"aiws.v3-clean.workspace-audit.v3\",\n    \"phase\": \"P1\",\n    \"active\": {\n      \"runtime_entrypoint\": \"apps/api/server.mjs\",\n      \"http_composition\": \"apps/api/clean-server.mjs\",\n      \"process_scripts\": [\n        \"dev\",\n        \"dev:api\",\n        \"dev:clean\",\n        \"start\",\n        \"start:clean\"\n      ]\n    },\n    \"deferred\": {\n      \"package_scripts\": [\n        \"archive:v23\",\n        \"build\",\n        \"evidence:p3\",\n        \"evidence:p31\",\n        \"evidence:p4\",\n        \"evidence:p5\",\n        \"fixture:legacy:acceptance\",\n        \"fixture:legacy:dev-broker\",\n        \"fixture:legacy:e2e\",\n        \"fixture:legacy:integration\",\n        \"fixture:legacy:release-build\",\n        \"fixture:legacy:release-promote\",\n        \"fixture:legacy:release-rehearse\",\n        \"fixture:legacy:security\",\n        \"fixture:seed-demo\",\n        \"github:seed-fixture\",\n        \"test\",\n        \"test:e2e\",\n        \"test:integration\",\n        \"test:integration:clean\",\n        \"test:p2\",\n        \"test:p3\",\n        \"test:p31\",\n        \"test:p4\",\n        \"test:p5\",\n        \"test:release\",\n        \"test:runner-real\",\n        \"test:security\",\n        \"test:security:clean\",\n        \"typecheck\"\n      ],\n      \"package_script_roles\": {\n        \"fixture:legacy:dev-broker\": {\n          \"role\": \"deferred_fixture\",\n          \"phase\": \"P6\"\n        },\n        \"build\": {\n          \"role\": \"characterization_gate\",\n          \"phase\": \"P9\"\n        },\n        \"typecheck\": {\n          \"role\": \"characterization_gate\",\n          \"phase\": \"P9\"\n        },\n        \"test\": {\n          \"role\": \"characterization_gate\",\n          \"phase\": \"P2-P9\"\n        },\n        \"test:p2\": {\n          \"role\": \"characterization_gate\",\n          \"phase\": \"P2\"\n        },\n        \"test:p3\": {\n          \"role\": \"p3_gate\",\n          \"phase\": \"P3\"\n        },\n        \"test:p31\": {\n          \"role\": \"p31_gate\",\n          \"phase\": \"P3.1\"\n        },\n        \"test:p4\": {\n          \"role\": \"p4_gate\",\n          \"phase\": \"P4\"\n        },\n        \"test:p5\": {\n          \"role\": \"p5_gate\",\n          \"phase\": \"P5\"\n        },\n        \"evidence:p3\": {\n          \"role\": \"p3_evidence\",\n          \"phase\": \"P3\"\n        },\n        \"evidence:p31\": {\n          \"role\": \"p31_evidence\",\n          \"phase\": \"P3.1\"\n        },\n        \"evidence:p4\": {\n          \"role\": \"p4_evidence\",\n          \"phase\": \"P4\"\n        },\n        \"evidence:p5\": {\n          \"role\": \"p5_evidence\",\n          \"phase\": \"P5\"\n        },\n        \"test:integration\": {\n          \"role\": \"layered_gate\",\n          \"phase\": \"P3.1\"\n        },\n        \"test:integration:clean\": {\n          \"role\": \"p31_gate\",\n          \"phase\": \"P3.1\"\n        },\n        \"fixture:legacy:integration\": {\n          \"role\": \"deferred_fixture\",\n          \"phase\": \"historical\"\n        },\n        \"test:e2e\": {\n          \"role\": \"characterization_gate\",\n          \"phase\": \"P9\"\n        },\n        \"test:security\": {\n          \"role\": \"layered_gate\",\n          \"phase\": \"P3.1\"\n        },\n        \"test:security:clean\": {\n          \"role\": \"p31_gate\",\n          \"phase\": \"P3.1\"\n        },\n        \"fixture:legacy:security\": {\n          \"role\": \"deferred_fixture\",\n          \"phase\": \"historical\"\n        },\n        \"test:release\": {\n          \"role\": \"characterization_gate\",\n          \"phase\": \"P8-P9\"\n        },\n        \"test:runner-real\": {\n          \"role\": \"characterization_gate\",\n          \"phase\": \"P6\"\n        },\n        \"github:seed-fixture\": {\n          \"role\": \"deferred_fixture\",\n          \"phase\": \"P7\"\n        },\n        \"fixture:seed-demo\": {\n          \"role\": \"deferred_fixture\",\n          \"phase\": \"P3\"\n        },\n        \"archive:v23\": {\n          \"role\": \"historical_maintenance\",\n          \"phase\": \"historical\"\n        },\n        \"fixture:legacy:acceptance\": {\n          \"role\": \"deferred_fixture\",\n          \"phase\": \"P2-P9\"\n        },\n        \"fixture:legacy:e2e\": {\n          \"role\": \"deferred_fixture\",\n          \"phase\": \"historical\"\n        },\n        \"fixture:legacy:release-build\": {\n          \"role\": \"deferred_fixture\",\n          \"phase\": \"P8-P9\"\n        },\n        \"fixture:legacy:release-rehearse\": {\n          \"role\": \"deferred_fixture\",\n          \"phase\": \"P8-P9\"\n        },\n        \"fixture:legacy:release-promote\": {\n          \"role\": \"deferred_fixture\",\n          \"phase\": \"P8-P9\"\n        }\n      },\n      \"retired_route_references\": {\n        \"P1:p1\": 1,\n        \"P2-P8:historical domain/runtime input\": 2,\n        \"P2-P9:historical behavior or future-phase tool\": 681,\n        \"P2-P9:pre-clean shared contract\": 1,\n        \"P4:clean\": 4,\n        \"P5:clean\": 2,\n        \"P9:pre-clean Web characterization\": 153\n      }\n    },\n    \"evidence\": {\n      \"directory\": \"docs/evidence/v3-clean-p1-gate-contract-complete-20260819\",\n      \"verified\": true,\n      \"workspace_comparison\": false\n    },\n    \"scope_inventory\": {\n      \"files\": 1676,\n      \"classifications\": {\n        \"governance:P0-P9\": 30,\n        \"fixture:P8-P9\": 5,\n        \"p1:P1\": 58,\n        \"fixture:P2-P9\": 102,\n        \"fixture:P2-P8\": 86,\n        \"clean:P5\": 21,\n        \"clean:P4\": 24,\n        \"fixture:P6\": 7,\n        \"fixture:P9\": 33,\n        \"non_product:unscoped research\": 88,\n        \"archive:historical\": 8,\n        \"evidence:P0-P9\": 1213,\n        \"supporting_document:P0-P9\": 1\n      },\n      \"unclassified\": []\n    },\n    \"checks\": [\n      {\n        \"id\": \"package-process-surface\",\n        \"valid\": true\n      },\n      {\n        \"id\": \"runtime-entrypoints\",\n        \"valid\": true\n      },\n      {\n        \"id\": \"legacy-server-containment\",\n        \"valid\": true\n      },\n      {\n        \"id\": \"retired-route-containment\",\n        \"valid\": true\n      },\n      {\n        \"id\": \"active-document-contracts\",\n        \"valid\": true\n      },\n      {\n        \"id\": \"gate-sync-contract\",\n        \"valid\": true\n      },\n      {\n        \"id\": \"p1-evidence-synchronization\",\n        \"valid\": true\n      },\n      {\n        \"id\": \"workspace-inventory\",\n        \"valid\": true\n      }\n    ],\n    \"findings\": [],\n    \"valid\": true\n  },\n  \"forbidden_findings\": [],\n  \"valid\": true\n}\n",
+      "stderr": "(node:33376) ExperimentalWarning: SQLite is an experimental feature and might change at any time\n(Use `node --trace-warnings ...` to show where the warning was created)\n",
+      "exit_status": 0,
+      "expected_exit_statuses": [
+        0
+      ],
+      "signal": null,
+      "ok": true,
+      "summary": "\"id\": \"workspace-inventory\",\n\"valid\": true\n}\n],\n\"findings\": [],\n\"valid\": true\n},\n\"forbidden_findings\": [],\n\"valid\": true\n}\n(node:33376) ExperimentalWarning: SQLite is an experimental feature and might change at any time\n(Use `node --trace-warnings ...` to show where the warning was created)"
+    },
+    {
+      "command": "pnpm test:p5",
+      "cwd": "repository-root",
+      "input": {
+        "args": [
+          "test:p5"
+        ]
+      },
+      "stdout": "\n> ai-workspace-system@3.0.0 test:p5 <ROOT>\n> node --test tests/p5/*.test.mjs\n\n(node:30824) ExperimentalWarning: SQLite is an experimental feature and might change at any time\n(Use `node --trace-warnings ...` to show where the warning was created)\n✔ Assist persists opaque provider lineage and enforces completion, interaction and retry invariants (980.2148ms)\n✔ Attachments enforce bounded previews and file batches apply and undo under Repository fencing (410.9761ms)\n(node:30060) ExperimentalWarning: SQLite is an experimental feature and might change at any time\n(Use `node --trace-warnings ...` to show where the warning was created)\n✔ P5 HTTP uses one v2 envelope, strict mutation headers and operation receipts (685.8008ms)\n✔ P5 attachment content supports negotiated binary and JSON representations (220.2937ms)\nV3-Clean listening on http://127.0.0.1:62110\n✔ P5 terminal HTTP route keeps revision and replay cursor contracts (253.2719ms)\n✔ P5 terminal WebSocket upgrades, replays cursor and acknowledges sequenced input (326.965ms)\n(node:3692) ExperimentalWarning: SQLite is an experimental feature and might change at any time\n(Use `node --trace-warnings ...` to show where the warning was created)\n✔ 005 upgrades Clean versions 0 through 4 without rewriting prior migration rows (614.2424ms)\n✔ 005 DDL, ledger, receipt and commit faults preserve the v4 logical volume (592.0879ms)\n✔ 005 checksum and live schema snapshot drift stop startup (267.1301ms)\n(node:30412) ExperimentalWarning: SQLite is an experimental feature and might change at any time\n(Use `node --trace-warnings ...` to show where the warning was created)\n✔ Terminal consumes one approval, replays by idempotency and persists redacted cursor output (350.562ms)\n✔ Windows Bridge pairing shares one secret, rejects nonce replay, rotates and revokes both stores (4605.0986ms)\nℹ tests 11\nℹ suites 0\nℹ pass 11\nℹ fail 0\nℹ cancelled 0\nℹ skipped 0\nℹ todo 0\nℹ duration_ms 5912.3768\n",
+      "stderr": "",
+      "exit_status": 0,
+      "expected_exit_statuses": [
+        0
+      ],
+      "signal": null,
+      "ok": true,
+      "summary": "(node:30412) ExperimentalWarning: SQLite is an experimental feature and might change at any time\n(Use `node --trace-warnings ...` to show where the warning was created)\n✔ Terminal consumes one approval, replays by idempotency and persists redacted cursor output (350.562ms)\n✔ Windows Bridge pairing shares one secret, rejects nonce replay, rotates and revokes both stores (4605.0986ms)\nℹ tests 11\nℹ suites 0\nℹ pass 11\nℹ fail 0\nℹ cancelled 0\nℹ skipped 0\nℹ todo 0\nℹ duration_ms 5912.3768"
+    },
+    {
+      "command": "node scripts/v3-clean-p5-assist-probe.mjs",
+      "cwd": "repository-root",
+      "input": {
+        "args": [
+          "scripts/v3-clean-p5-assist-probe.mjs"
+        ]
+      },
+      "stdout": "{\n  \"schema_version\": \"aiws.v3-clean.p5-assist-probe.v1\",\n  \"status\": \"passed\",\n  \"provisional\": false,\n  \"protocol_version\": \"2\",\n  \"schema_sha256\": \"9f43ce69dd8feb8b68d03e4d3a1ace72e28f382f9dcef7442cd271e6207453d2\",\n  \"methods\": [\n    \"initialize\",\n    \"thread/start\",\n    \"thread/resume\",\n    \"turn/start\",\n    \"turn/steer\",\n    \"turn/interrupt\",\n    \"turn/completed\",\n    \"turn/failed\",\n    \"item/started\",\n    \"item/completed\",\n    \"approval/request\",\n    \"userInput/request\"\n  ],\n  \"event_count\": 5,\n  \"adapter\": \"deterministic-app-server\",\n  \"isolated_codex_home\": true,\n  \"credential_lease\": \"memory_only\",\n  \"redactions\": [\n    \"credential\",\n    \"assembled_prompt\",\n    \"host_absolute_path\"\n  ]\n}\n",
+      "stderr": "(node:27660) ExperimentalWarning: SQLite is an experimental feature and might change at any time\n(Use `node --trace-warnings ...` to show where the warning was created)\n",
+      "exit_status": 0,
+      "expected_exit_statuses": [
+        0
+      ],
+      "signal": null,
+      "ok": true,
+      "summary": "\"event_count\": 5,\n\"adapter\": \"deterministic-app-server\",\n\"isolated_codex_home\": true,\n\"credential_lease\": \"memory_only\",\n\"redactions\": [\n\"credential\",\n\"assembled_prompt\",\n\"host_absolute_path\"\n]\n}\n(node:27660) ExperimentalWarning: SQLite is an experimental feature and might change at any time\n(Use `node --trace-warnings ...` to show where the warning was created)"
+    },
+    {
+      "command": "node scripts/v3-clean-p5-bridge-probe.mjs",
+      "cwd": "repository-root",
+      "input": {
+        "args": [
+          "scripts/v3-clean-p5-bridge-probe.mjs"
+        ]
+      },
+      "stdout": "{\n  \"schema_version\": \"aiws.v3-clean.p5-bridge-probe.v1\",\n  \"status\": \"passed\",\n  \"provisional\": false,\n  \"independent_process\": true,\n  \"loopback_only\": true,\n  \"pairing\": \"ed25519+x25519+hkdf+aes-gcm\",\n  \"rotation\": \"hmac-derived-secret\",\n  \"nonce_replay_status\": 409,\n  \"revoke_cleanup\": true,\n  \"capabilities\": {\n    \"conpty\": true,\n    \"dpapi\": true,\n    \"git_bundle\": true\n  },\n  \"redactions\": [\n    \"shared_secret\",\n    \"confirmation_code\",\n    \"host_absolute_path\"\n  ]\n}\n",
+      "stderr": "(node:18692) ExperimentalWarning: SQLite is an experimental feature and might change at any time\n(Use `node --trace-warnings ...` to show where the warning was created)\n",
+      "exit_status": 0,
+      "expected_exit_statuses": [
+        0
+      ],
+      "signal": null,
+      "ok": true,
+      "summary": "\"conpty\": true,\n\"dpapi\": true,\n\"git_bundle\": true\n},\n\"redactions\": [\n\"shared_secret\",\n\"confirmation_code\",\n\"host_absolute_path\"\n]\n}\n(node:18692) ExperimentalWarning: SQLite is an experimental feature and might change at any time\n(Use `node --trace-warnings ...` to show where the warning was created)"
+    },
+    {
+      "command": "node scripts/v3-clean-p5-performance.mjs",
+      "cwd": "repository-root",
+      "input": {
+        "args": [
+          "scripts/v3-clean-p5-performance.mjs"
+        ]
+      },
+      "stdout": "{\n  \"schema_version\": \"aiws.v3-clean.p5-performance.v1\",\n  \"status\": \"passed\",\n  \"provisional\": false,\n  \"metrics\": {\n    \"assist_events_replay_p95_ms\": 0.37,\n    \"file_list_100_p95_ms\": 0.92,\n    \"change_review_10_p95_ms\": 0.17,\n    \"terminal_replay_1mib_p95_ms\": 0.61,\n    \"assist_event_count\": 1000,\n    \"file_count\": 100,\n    \"terminal_replay_bytes\": 1048576\n  },\n  \"thresholds\": {\n    \"assist_events_replay_p95_ms\": 200,\n    \"file_list_100_p95_ms\": 150,\n    \"change_review_10_p95_ms\": 500,\n    \"terminal_replay_1mib_p95_ms\": 500\n  },\n  \"failures\": []\n}\n",
+      "stderr": "(node:868) ExperimentalWarning: SQLite is an experimental feature and might change at any time\n(Use `node --trace-warnings ...` to show where the warning was created)\n",
+      "exit_status": 0,
+      "expected_exit_statuses": [
+        0
+      ],
+      "signal": null,
+      "ok": true,
+      "summary": "\"terminal_replay_bytes\": 1048576\n},\n\"thresholds\": {\n\"assist_events_replay_p95_ms\": 200,\n\"file_list_100_p95_ms\": 150,\n\"change_review_10_p95_ms\": 500,\n\"terminal_replay_1mib_p95_ms\": 500\n},\n\"failures\": []\n}\n(node:868) ExperimentalWarning: SQLite is an experimental feature and might change at any time\n(Use `node --trace-warnings ...` to show where the warning was created)"
+    },
+    {
+      "command": "pnpm --filter @aiws/web test",
+      "cwd": "repository-root",
+      "input": {
+        "args": [
+          "--filter",
+          "@aiws/web",
+          "test"
+        ]
+      },
+      "stdout": "\n> @aiws/web@3.0.0 test <ROOT>\\apps\\web\n> vitest run\n\n\n\u001b[1m\u001b[46m RUN \u001b[49m\u001b[22m \u001b[36mv3.2.7 \u001b[39m\u001b[90m<ROOT>/apps/web\u001b[39m\n\n \u001b[32m✓\u001b[39m src/test/setup-flow.test.tsx \u001b[2m(\u001b[22m\u001b[2m3 tests\u001b[22m\u001b[2m)\u001b[22m\u001b[33m 762\u001b[2mms\u001b[22m\u001b[39m\n   \u001b[33m\u001b[2m✓\u001b[22m\u001b[39m setup workflow\u001b[2m > \u001b[22mshows blocked checks and exposes device human input, cancel, and failed retry \u001b[33m 598\u001b[2mms\u001b[22m\u001b[39m\n \u001b[32m✓\u001b[39m src/test/identity-access.test.tsx \u001b[2m(\u001b[22m\u001b[2m6 tests\u001b[22m\u001b[2m)\u001b[22m\u001b[33m 371\u001b[2mms\u001b[22m\u001b[39m\n \u001b[32m✓\u001b[39m src/test/project-onboarding.test.tsx \u001b[2m(\u001b[22m\u001b[2m3 tests\u001b[22m\u001b[2m)\u001b[22m\u001b[32m 270\u001b[2mms\u001b[22m\u001b[39m\n \u001b[32m✓\u001b[39m src/test/context.test.tsx \u001b[2m(\u001b[22m\u001b[2m2 tests\u001b[22m\u001b[2m)\u001b[22m\u001b[32m 228\u001b[2mms\u001b[22m\u001b[39m\n \u001b[32m✓\u001b[39m src/test/project-workflow-clean.test.tsx \u001b[2m(\u001b[22m\u001b[2m5 tests\u001b[22m\u001b[2m)\u001b[22m\u001b[32m 192\u001b[2mms\u001b[22m\u001b[39m\n \u001b[32m✓\u001b[39m src/test/terminal.test.tsx \u001b[2m(\u001b[22m\u001b[2m1 test\u001b[22m\u001b[2m)\u001b[22m\u001b[32m 171\u001b[2mms\u001b[22m\u001b[39m\n \u001b[32m✓\u001b[39m src/test/workflow.test.tsx \u001b[2m(\u001b[22m\u001b[2m1 test\u001b[22m\u001b[2m)\u001b[22m\u001b[32m 133\u001b[2mms\u001b[22m\u001b[39m\n \u001b[32m✓\u001b[39m src/test/assist.test.tsx \u001b[2m(\u001b[22m\u001b[2m2 tests\u001b[22m\u001b[2m)\u001b[22m\u001b[32m 134\u001b[2mms\u001b[22m\u001b[39m\n\n\u001b[2m Test Files \u001b[22m \u001b[1m\u001b[32m8 passed\u001b[39m\u001b[22m\u001b[90m (8)\u001b[39m\n\u001b[2m      Tests \u001b[22m \u001b[1m\u001b[32m23 passed\u001b[39m\u001b[22m\u001b[90m (23)\u001b[39m\n\u001b[2m   Start at \u001b[22m 00:15:21\n\u001b[2m   Duration \u001b[22m 9.51s\u001b[2m (transform 332ms, setup 518ms, collect 2.16s, tests 2.26s, environment 2.99s, prepare 556ms)\u001b[22m\n\n",
+      "stderr": "",
+      "exit_status": 0,
+      "expected_exit_statuses": [
+        0
+      ],
+      "signal": null,
+      "ok": true,
+      "summary": "\u001b[33m\u001b[2m✓\u001b[22m\u001b[39m setup workflow\u001b[2m > \u001b[22mshows blocked checks and exposes device human input, cancel, and failed retry \u001b[33m 598\u001b[2mms\u001b[22m\u001b[39m\n\u001b[32m✓\u001b[39m src/test/identity-access.test.tsx \u001b[2m(\u001b[22m\u001b[2m6 tests\u001b[22m\u001b[2m)\u001b[22m\u001b[33m 371\u001b[2mms\u001b[22m\u001b[39m\n\u001b[32m✓\u001b[39m src/test/project-onboarding.test.tsx \u001b[2m(\u001b[22m\u001b[2m3 tests\u001b[22m\u001b[2m)\u001b[22m\u001b[32m 270\u001b[2mms\u001b[22m\u001b[39m\n\u001b[32m✓\u001b[39m src/test/context.test.tsx \u001b[2m(\u001b[22m\u001b[2m2 tests\u001b[22m\u001b[2m)\u001b[22m\u001b[32m 228\u001b[2mms\u001b[22m\u001b[39m\n\u001b[32m✓\u001b[39m src/test/project-workflow-clean.test.tsx \u001b[2m(\u001b[22m\u001b[2m5 tests\u001b[22m\u001b[2m)\u001b[22m\u001b[32m 192\u001b[2mms\u001b[22m\u001b[39m\n\u001b[32m✓\u001b[39m src/test/terminal.test.tsx \u001b[2m(\u001b[22m\u001b[2m1 test\u001b[22m\u001b[2m)\u001b[22m\u001b[32m 171\u001b[2mms\u001b[22m\u001b[39m\n\u001b[32m✓\u001b[39m src/test/workflow.test.tsx \u001b[2m(\u001b[22m\u001b[2m1 test\u001b[22m\u001b[2m)\u001b[22m\u001b[32m 133\u001b[2mms\u001b[22m\u001b[39m\n\u001b[32m✓\u001b[39m src/test/assist.test.tsx \u001b[2m(\u001b[22m\u001b[2m2 tests\u001b[22m\u001b[2m)\u001b[22m\u001b[32m 134\u001b[2mms\u001b[22m\u001b[39m\n\u001b[2m Test Files \u001b[22m \u001b[1m\u001b[32m8 passed\u001b[39m\u001b[22m\u001b[90m (8)\u001b[39m\n\u001b[2m      Tests \u001b[22m \u001b[1m\u001b[32m23 passed\u001b[39m\u001b[22m\u001b[90m (23)\u001b[39m\n\u001b[2m   Start at \u001b[22m 00:15:21\n\u001b[2m   Duration \u001b[22m 9.51s\u001b[2m (transform 332ms, setup 518ms, collect 2.16s, tests 2.26s, environment 2.99s, prepare 556ms)\u001b[22m"
+    },
+    {
+      "command": "git diff --check",
+      "cwd": "repository-root",
+      "input": {
+        "args": [
+          "diff",
+          "--check"
+        ]
+      },
+      "stdout": "",
+      "stderr": "warning: in the working copy of 'docs/architecture/decision-log.md', LF will be replaced by CRLF the next time Git touches it\nwarning: in the working copy of 'docs/architecture/v23-capability-matrix.md', LF will be replaced by CRLF the next time Git touches it\nwarning: in the working copy of 'docs/architecture/v3-clean-development-plan.md', LF will be replaced by CRLF the next time Git touches it\nwarning: in the working copy of 'docs/testing.md', LF will be replaced by CRLF the next time Git touches it\nwarning: in the working copy of 'feature-catalog.clean.json', LF will be replaced by CRLF the next time Git touches it\nwarning: in the working copy of 'feature-catalog.historical.json', LF will be replaced by CRLF the next time Git touches it\nwarning: in the working copy of 'feature-catalog.json', LF will be replaced by CRLF the next time Git touches it\n",
+      "exit_status": 0,
+      "expected_exit_statuses": [
+        0
+      ],
+      "signal": null,
+      "ok": true,
+      "summary": "warning: in the working copy of 'docs/architecture/decision-log.md', LF will be replaced by CRLF the next time Git touches it\nwarning: in the working copy of 'docs/architecture/v23-capability-matrix.md', LF will be replaced by CRLF the next time Git touches it\nwarning: in the working copy of 'docs/architecture/v3-clean-development-plan.md', LF will be replaced by CRLF the next time Git touches it\nwarning: in the working copy of 'docs/testing.md', LF will be replaced by CRLF the next time Git touches it\nwarning: in the working copy of 'feature-catalog.clean.json', LF will be replaced by CRLF the next time Git touches it\nwarning: in the working copy of 'feature-catalog.historical.json', LF will be replaced by CRLF the next time Git touches it\nwarning: in the working copy of 'feature-catalog.json', LF will be replaced by CRLF the next time Git touches it"
+    }
+  ],
+  "probes": {
+    "assist": {
+      "artifact": "assist-probe.json",
+      "status": "passed"
+    },
+    "bridge": {
+      "artifact": "bridge-probe.json",
+      "status": "passed"
+    },
+    "performance": {
+      "artifact": "performance-receipt.json",
+      "status": "passed"
+    },
+    "browser": {
+      "artifact": "browser-receipt.json",
+      "status": "failed"
+    },
+    "migration": {
+      "artifact": "migration-receipt.json",
+      "status": "passed"
+    },
+    "rollback": {
+      "artifact": "rollback-receipt.json",
+      "status": "passed"
+    },
+    "secret_scan": {
+      "artifact": "secret-scan.json",
+      "status": "failed"
+    }
+  },
+  "changed_paths": [
+    "apps/api/clean-server.mjs",
+    "apps/api/server.mjs",
+    "apps/api/src/clean/app-server-adapter.mjs",
+    "apps/api/src/clean/assist-service.mjs",
+    "apps/api/src/clean/bridge-service.mjs",
+    "apps/api/src/clean/command-dispatcher.mjs",
+    "apps/api/src/clean/config.mjs",
+    "apps/api/src/clean/database.mjs",
+    "apps/api/src/clean/files-service.mjs",
+    "apps/api/src/clean/http.mjs",
+    "apps/api/src/clean/migration-service.mjs",
+    "apps/api/src/clean/migrations/005-assist-files-terminal-bridge.mjs",
+    "apps/api/src/clean/ownership.mjs",
+    "apps/api/src/clean/p5-domain-helpers.mjs",
+    "apps/api/src/clean/registry.mjs",
+    "apps/api/src/clean/runtime.mjs",
+    "apps/api/src/clean/terminal-service.mjs",
+    "apps/api/src/clean/windows-bridge-adapter.mjs",
+    "apps/windows-native-bridge/package.json",
+    "apps/windows-native-bridge/probe.mjs",
+    "apps/windows-native-bridge/server.mjs",
+    "apps/windows-native-bridge/src/protocol.mjs",
+    "docs/architecture/decision-log.md",
+    "docs/architecture/v23-capability-matrix.md",
+    "docs/architecture/v3-clean-development-plan.md",
+    "docs/testing.md",
+    "feature-catalog.clean.json",
+    "feature-catalog.historical.json",
+    "feature-catalog.json",
+    "package.json",
+    "packages/contracts/src/clean-v2.mjs",
+    "scripts/catalog-loader.mjs",
+    "scripts/check.mjs",
+    "scripts/lib/v3-clean-p1-scope.mjs",
+    "scripts/v3-clean-architecture-scan.mjs",
+    "scripts/v3-clean-p5-assist-probe.mjs",
+    "scripts/v3-clean-p5-bridge-probe.mjs",
+    "scripts/v3-clean-p5-evidence.mjs",
+    "scripts/v3-clean-p5-performance.mjs",
+    "scripts/verify.mjs",
+    "tests/p5/assist-files.test.mjs",
+    "tests/p5/helpers.mjs",
+    "tests/p5/http-contract.test.mjs",
+    "tests/p5/migration.test.mjs",
+    "tests/p5/terminal-bridge.test.mjs"
+  ],
+  "artifacts": {
+    "modified_artifact": "modified-artifact.json",
+    "patch": "change.patch",
+    "verification": "verification.json",
+    "rollback": "rollback.ps1"
+  },
+  "rollback": {
+    "dry_run_command": "powershell -NoProfile -ExecutionPolicy Bypass -File rollback.ps1 -DryRun",
+    "isolated_apply_command": "powershell -NoProfile -ExecutionPolicy Bypass -File rollback.ps1 -Apply -IsolatedRoot <TARGET>",
+    "down_migration": false,
+    "source_reverse_check": "passed",
+    "restored_user_version": 4,
+    "foreign_key_check": [],
+    "migration_ledger": [
+      1,
+      2,
+      3,
+      4
+    ],
+    "byte_exact_mismatches": []
+  },
+  "redactions": [
+    "host_absolute_paths",
+    "cookies",
+    "session_proofs",
+    "tokens",
+    "full_prompts",
+    "provider_credentials"
+  ]
+}

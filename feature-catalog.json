@@ -267,6 +267,72 @@
       ]
     },
     {
+      "id": "REC-D11-OPS-022",
+      "domain": "operations",
+      "name": "Deployment API, backup, restore, reset, import and release rollback",
+      "status": "scaffolded",
+      "owner_modules": [
+        "operations",
+        "platform"
+      ],
+      "source_files": [
+        "V2.3 operations and import commands"
+      ],
+      "target_modules": [
+        "apps/api/src/modules/operations",
+        "apps/api/src/http.mjs",
+        "apps/web/vite.config.ts",
+        "Dockerfile",
+        "scripts/release-rehearsal.mjs",
+        "docs/runbook.md"
+      ],
+      "tables": [
+        "audit_events",
+        "operations",
+        "operation_events"
+      ],
+      "apis": [
+        "/health",
+        "/readyz",
+        "/api/v1/system/deployment",
+        "/api/v1/operations/{id}",
+        "/api/v1/operations/{id}/events",
+        "/api/v1/operations/{id}/cancel"
+      ],
+      "ui": [
+        "Setup",
+        "Recovery"
+      ],
+      "events": [
+        "operation.pending",
+        "operation.running",
+        "operation.completed",
+        "operation.failed",
+        "operation.cancelled",
+        "release.gate"
+      ],
+      "behavior_tests": [
+        "tests/unit/identity-operations.test.mjs",
+        "tests/integration/api-flow.test.mjs",
+        "tests/release/release-gate.test.mjs",
+        "tests/release/release-rehearsal-compose.test.mjs",
+        "tests/security/boundary.test.mjs"
+      ],
+      "ui_tests": [],
+      "evidence": [],
+      "release_receipts": [],
+      "tests": [
+        "T0",
+        "T1",
+        "T8",
+        "tests/unit/identity-operations.test.mjs",
+        "tests/integration/api-flow.test.mjs",
+        "tests/release/release-gate.test.mjs",
+        "tests/release/release-rehearsal-compose.test.mjs",
+        "tests/security/boundary.test.mjs"
+      ]
+    },
+    {
       "id": "REC-D2-IDENTITY-001",
       "domain": "identity",
       "name": "Local owner account and sessions",
@@ -542,6 +608,81 @@
       ]
     },
     {
+      "id": "REC-D4-SCOPE-016",
+      "domain": "mcp",
+      "name": "MCP and Exchange scopes, dual approval, allowlists and revocation",
+      "status": "verified",
+      "owner_modules": [
+        "exchange",
+        "mcp",
+        "gateway"
+      ],
+      "source_files": [
+        "apps/api/src/clean/mcp-service.mjs",
+        "apps/api/src/clean/gateway-service.mjs",
+        "apps/api/src/clean/authorization.mjs",
+        "apps/api/src/clean/migrations/004-context-projection-mcp.mjs"
+      ],
+      "target_modules": [
+        "apps/api/src/clean/mcp-service.mjs",
+        "apps/api/src/clean/gateway-service.mjs",
+        "apps/api/src/clean/command-dispatcher.mjs",
+        "apps/gateway/server.mjs",
+        "apps/web/src/features/context/McpSettingsPage.tsx"
+      ],
+      "tables": [
+        "exchange_requests",
+        "exchange_grants",
+        "mcp_clients",
+        "gateway_forward_receipts"
+      ],
+      "apis": [
+        "/api/v2/projects/{id}/exchange-requests",
+        "/api/v2/exchange-requests/{id}/approve",
+        "/api/v2/exchange-requests/{id}/reject",
+        "/api/v2/exchange-grants/{id}/revoke",
+        "/api/v2/exchange-grants/{id}/context-packs",
+        "/api/v2/gateway/forward",
+        "/api/v2/gateway/receipts/{id}"
+      ],
+      "ui": [
+        "MCP Settings",
+        "Exchange approvals"
+      ],
+      "events": [
+        "exchange_request.created",
+        "exchange_request.approved",
+        "exchange_request.rejected",
+        "exchange_grant.created",
+        "exchange_grant.revoked",
+        "gateway.forwarded",
+        "gateway.denied"
+      ],
+      "behavior_tests": [
+        "tests/p4/mcp-exchange-gateway.test.mjs",
+        "tests/p4/transport-parity.test.mjs",
+        "tests/p4/active-entrypoint.test.mjs",
+        "tests/p4/governance-sync.test.mjs"
+      ],
+      "ui_tests": [
+        "apps/web/src/test/context.test.tsx",
+        "scripts/e2e.mjs"
+      ],
+      "evidence": [
+        "docs/evidence/v3-clean-p4-context-mcp-20260820/verification.json"
+      ],
+      "release_receipts": [],
+      "tests": [
+        "T3",
+        "tests/p4/mcp-exchange-gateway.test.mjs",
+        "tests/p4/transport-parity.test.mjs",
+        "tests/p4/active-entrypoint.test.mjs",
+        "tests/p4/governance-sync.test.mjs",
+        "apps/web/src/test/context.test.tsx",
+        "scripts/e2e.mjs"
+      ]
+    },
+    {
       "id": "REC-D5-PROJECT-005",
       "domain": "project",
       "name": "Draft project, retryable intake and confirmed brief",
@@ -672,6 +813,52 @@
       ]
     },
     {
+      "id": "REC-D6-EXECUTION-008",
+      "domain": "execution",
+      "name": "Persistent DAG dispatcher and seven replayable stages",
+      "status": "scaffolded",
+      "owner_modules": [
+        "execution"
+      ],
+      "source_files": [
+        "workflow-dispatcher.mjs",
+        "execution-stage-service.mjs"
+      ],
+      "target_modules": [
+        "apps/api/src/modules/execution",
+        "apps/web/src/features/execution"
+      ],
+      "tables": [
+        "executions",
+        "task_attempts",
+        "execution_inputs",
+        "execution_stage_checkpoints"
+      ],
+      "apis": [
+        "/api/v1/projects/{id}/executions",
+        "/api/v1/executions/{id}/start",
+        "/api/v1/executions/{id}/cancel"
+      ],
+      "ui": [
+        "Execution",
+        "Recovery"
+      ],
+      "events": [
+        "execution.stage.changed",
+        "task.completed"
+      ],
+      "behavior_tests": [
+        "tests/integration/scheduler-flow.test.mjs"
+      ],
+      "ui_tests": [],
+      "evidence": [],
+      "release_receipts": [],
+      "tests": [
+        "T4",
+        "tests/integration/scheduler-flow.test.mjs"
+      ]
+    },
+    {
       "id": "REC-D6-GENERATION-007",
       "domain": "workflow",
       "name": "Asynchronous workflow generator and independent critic",
@@ -733,52 +920,6 @@
       ]
     },
     {
-      "id": "REC-D6-EXECUTION-008",
-      "domain": "execution",
-      "name": "Persistent DAG dispatcher and seven replayable stages",
-      "status": "scaffolded",
-      "owner_modules": [
-        "execution"
-      ],
-      "source_files": [
-        "workflow-dispatcher.mjs",
-        "execution-stage-service.mjs"
-      ],
-      "target_modules": [
-        "apps/api/src/modules/execution",
-        "apps/web/src/features/execution"
-      ],
-      "tables": [
-        "executions",
-        "task_attempts",
-        "execution_inputs",
-        "execution_stage_checkpoints"
-      ],
-      "apis": [
-        "/api/v1/projects/{id}/executions",
-        "/api/v1/executions/{id}/start",
-        "/api/v1/executions/{id}/cancel"
-      ],
-      "ui": [
-        "Execution",
-        "Recovery"
-      ],
-      "events": [
-        "execution.stage.changed",
-        "task.completed"
-      ],
-      "behavior_tests": [
-        "tests/integration/scheduler-flow.test.mjs"
-      ],
-      "ui_tests": [],
-      "evidence": [],
-      "release_receipts": [],
-      "tests": [
-        "T4",
-        "tests/integration/scheduler-flow.test.mjs"
-      ]
-    },
-    {
       "id": "REC-D6-OUTCOME-009",
       "domain": "outcome",
       "name": "Evidence-driven outcome, rubric and revocable waiver",
@@ -824,306 +965,51 @@
       ]
     },
     {
-      "id": "REC-D8-ASSIST-010",
-      "domain": "assist",
-      "name": "Four-scope Assist runtime and native event replay",
-      "status": "implemented",
-      "owner_modules": [
-        "assist"
-      ],
-      "source_files": [
-        "apps/api/src/modules/assist/service.mjs",
-        "apps/api/src/modules/assist/runtime.mjs",
-        "apps/api/src/migrations/006-assist-runtime.mjs"
-      ],
-      "target_modules": [
-        "apps/api/src/modules/assist",
-        "apps/api/src/domain.mjs",
-        "apps/web/src/features/assist"
-      ],
-      "tables": [
-        "assist_sessions",
-        "assist_turns",
-        "assist_messages",
-        "assist_events",
-        "assist_operations",
-        "assist_session_snapshots",
-        "assist_turn_snapshots",
-        "assist_session_heads",
-        "assist_turn_heads",
-        "assist_operation_links",
-        "assist_event_cursors"
-      ],
-      "apis": [
-        "/api/v1/assist/sessions",
-        "/api/v1/assist/sessions/{id}/turns",
-        "/api/v1/assist/turns/{id}",
-        "/api/v1/assist/turns/{id}/retry",
-        "/api/v1/assist/turns/{id}/cancel",
-        "/api/v1/assist/sessions/{id}/events"
-      ],
-      "ui": [
-        "Assist Center",
-        "Composer",
-        "Context Pack",
-        "Turn Timeline",
-        "Operation Status"
-      ],
-      "events": [
-        "assist.session.created",
-        "assist.turn.created",
-        "assist.turn.queued",
-        "assist.turn.running",
-        "assist.turn.completed",
-        "assist.turn.failed",
-        "assist.turn.cancelled",
-        "assist.message"
-      ],
-      "behavior_tests": [
-        "tests/integration/assist-flow.test.mjs",
-        "tests/integration/assist-r6.test.mjs",
-        "tests/unit/migrations.test.mjs"
-      ],
-      "ui_tests": [
-        "apps/web/src/test/assist.test.tsx"
-      ],
-      "evidence": [
-        "docs/evidence/v6-r6-assist-20260817/verification.json"
-      ],
-      "release_receipts": [],
-      "tests": [
-        "T5",
-        "tests/integration/assist-flow.test.mjs",
-        "tests/integration/assist-r6.test.mjs",
-        "apps/web/src/test/assist.test.tsx"
-      ]
-    },
-    {
-      "id": "REC-D8-ATTACHMENTS-011",
-      "domain": "assist",
-      "name": "Attachments and secure previews",
+      "id": "REC-D7-DELIVERY-015",
+      "domain": "delivery",
+      "name": "GitHub App Draft PR delivery and merge recovery",
       "status": "scaffolded",
       "owner_modules": [
-        "assist"
+        "delivery"
       ],
       "source_files": [
-        "assist-attachments.mjs"
+        "delivery-service.mjs",
+        "delivery-state-domain.mjs",
+        "delivery-recovery.mjs",
+        "delivery-pr-intent.mjs"
       ],
       "target_modules": [
-        "apps/api/src/modules/assist",
-        "apps/web/src/features/assist"
+        "apps/api/src/modules/delivery",
+        "apps/api/src/github-integration.mjs",
+        "apps/web/src/features/delivery"
       ],
       "tables": [
-        "attachments"
+        "deliveries",
+        "pull_request_intents",
+        "delivery_policies",
+        "delivery_events"
       ],
       "apis": [
-        "/api/v1/projects/{id}/attachments",
-        "/api/v1/attachments/{id}/content",
-        "/api/v1/attachments/{id}/preview"
+        "/api/v1/deliveries"
       ],
       "ui": [
-        "Attachments"
+        "Delivery",
+        "Draft PR",
+        "Merge Review"
       ],
       "events": [
-        "attachment.created"
+        "delivery.submitted",
+        "delivery.merged"
       ],
       "behavior_tests": [
-        "tests/integration/assist-flow.test.mjs"
+        "tests/integration/api-flow.test.mjs"
       ],
       "ui_tests": [],
       "evidence": [],
       "release_receipts": [],
       "tests": [
-        "T5",
-        "T6",
-        "tests/integration/assist-flow.test.mjs"
-      ]
-    },
-    {
-      "id": "REC-D8-FILES-012",
-      "domain": "assist",
-      "name": "Monaco files, controlled tests and reversible change batches",
-      "status": "scaffolded",
-      "owner_modules": [
-        "assist"
-      ],
-      "source_files": [
-        "assist-change-batches.mjs"
-      ],
-      "target_modules": [
-        "apps/api/src/modules/assist",
-        "apps/web/src/features/assist"
-      ],
-      "tables": [
-        "file_changes",
-        "assist_change_batches",
-        "assist_checkpoints"
-      ],
-      "apis": [
-        "/api/v1/projects/{id}/files",
-        "/api/v1/projects/{id}/change-batches"
-      ],
-      "ui": [
-        "Monaco",
-        "Diff Review"
-      ],
-      "events": [
-        "assist.change_batch.proposed",
-        "assist.change_batch.applied",
-        "assist.change_batch.rolled_back"
-      ],
-      "behavior_tests": [
-        "tests/integration/file-changes.test.mjs"
-      ],
-      "ui_tests": [],
-      "evidence": [],
-      "release_receipts": [],
-      "tests": [
-        "T5",
-        "tests/integration/file-changes.test.mjs"
-      ]
-    },
-    {
-      "id": "REC-D8-APPROVAL-013",
-      "domain": "assist",
-      "name": "Runtime approval, user input and semantic proposals",
-      "status": "scaffolded",
-      "owner_modules": [
-        "assist"
-      ],
-      "source_files": [
-        "run-approval.mjs"
-      ],
-      "target_modules": [
-        "apps/api/src/modules/assist",
-        "apps/web/src/features/assist"
-      ],
-      "tables": [
-        "runtime_approvals",
-        "runtime_user_inputs",
-        "ui_action_intents"
-      ],
-      "apis": [
-        "/api/v1/approvals",
-        "/api/v1/user-inputs",
-        "/api/v1/ui-action-intents"
-      ],
-      "ui": [
-        "Approval Center",
-        "Proposal"
-      ],
-      "events": [
-        "runtime.approval.requested",
-        "runtime.approval.approved",
-        "runtime.approval.rejected",
-        "runtime.user_input.requested",
-        "runtime.user_input.answered"
-      ],
-      "behavior_tests": [
-        "tests/integration/approval-flow.test.mjs"
-      ],
-      "ui_tests": [],
-      "evidence": [],
-      "release_receipts": [],
-      "tests": [
-        "T5",
-        "tests/integration/approval-flow.test.mjs"
-      ]
-    },
-    {
-      "id": "REC-D8-TERMINAL-025",
-      "domain": "terminal",
-      "name": "Native Terminal, reconnect and cursor recovery",
-      "status": "verified",
-      "owner_modules": [
-        "terminal"
-      ],
-      "source_files": [
-        "V2.3 terminal and node-pty services"
-      ],
-      "target_modules": [
-        "apps/api/src/modules/terminal",
-        "apps/api/src/terminal-service.mjs",
-        "apps/api/src/terminal-bundle.mjs",
-        "apps/web/src/pages.tsx"
-      ],
-      "tables": [
-        "terminal_sessions",
-        "terminal_events"
-      ],
-      "apis": [
-        "/api/v1/terminals",
-        "/api/v1/terminals/{id}/events",
-        "/api/v1/terminals/{id}/ws"
-      ],
-      "ui": [
-        "Terminal"
-      ],
-      "events": [
-        "terminal.opened",
-        "terminal.started",
-        "terminal.output",
-        "terminal.resized",
-        "terminal.signalled",
-        "terminal.orphaned",
-        "terminal.closed",
-        "terminal.failed"
-      ],
-      "behavior_tests": [
-        "tests/unit/terminal.test.mjs",
-        "tests/unit/terminal-bundle.test.mjs",
-        "tests/integration/terminal-flow.test.mjs"
-      ],
-      "ui_tests": [
-        "apps/web/src/test/terminal.test.tsx"
-      ],
-      "evidence": [
-        "docs/evidence/v3-terminal-native-20260807/evidence-manifest.json"
-      ],
-      "release_receipts": [],
-      "tests": [
-        "T5",
-        "T6",
-        "tests/unit/terminal.test.mjs",
-        "tests/unit/terminal-bundle.test.mjs",
-        "tests/integration/terminal-flow.test.mjs",
-        "apps/web/src/test/terminal.test.tsx",
-        "scripts/e2e.mjs"
-      ]
-    },
-    {
-      "id": "REC-D8-BRIDGE-026",
-      "domain": "bridge",
-      "name": "Independent Windows Native Bridge pairing and Git bundle transport",
-      "status": "planned",
-      "owner_modules": [
-        "bridge"
-      ],
-      "source_files": [
-        "host-bridge-service.mjs"
-      ],
-      "target_modules": [
-        "apps/windows-native-bridge",
-        "apps/api/src/modules/bridge"
-      ],
-      "tables": [],
-      "apis": [
-        "/api/v1/bridge/pairing"
-      ],
-      "ui": [
-        "Bridge Settings"
-      ],
-      "events": [
-        "bridge.paired",
-        "bridge.bundle.transferred"
-      ],
-      "behavior_tests": [],
-      "ui_tests": [],
-      "evidence": [],
-      "release_receipts": [],
-      "tests": [
-        "T5",
-        "T8"
+        "T7",
+        "tests/integration/api-flow.test.mjs"
       ]
     },
     {
@@ -1191,127 +1077,360 @@
       ]
     },
     {
-      "id": "REC-D7-DELIVERY-015",
-      "domain": "delivery",
-      "name": "GitHub App Draft PR delivery and merge recovery",
-      "status": "scaffolded",
-      "owner_modules": [
-        "delivery"
-      ],
-      "source_files": [
-        "delivery-service.mjs",
-        "delivery-state-domain.mjs",
-        "delivery-recovery.mjs",
-        "delivery-pr-intent.mjs"
-      ],
-      "target_modules": [
-        "apps/api/src/modules/delivery",
-        "apps/api/src/github-integration.mjs",
-        "apps/web/src/features/delivery"
-      ],
-      "tables": [
-        "deliveries",
-        "pull_request_intents",
-        "delivery_policies",
-        "delivery_events"
-      ],
-      "apis": [
-        "/api/v1/deliveries"
-      ],
-      "ui": [
-        "Delivery",
-        "Draft PR",
-        "Merge Review"
-      ],
-      "events": [
-        "delivery.submitted",
-        "delivery.merged"
-      ],
-      "behavior_tests": [
-        "tests/integration/api-flow.test.mjs"
-      ],
-      "ui_tests": [],
-      "evidence": [],
-      "release_receipts": [],
-      "tests": [
-        "T7",
-        "tests/integration/api-flow.test.mjs"
-      ]
-    },
-    {
-      "id": "REC-D4-SCOPE-016",
-      "domain": "mcp",
-      "name": "MCP and Exchange scopes, dual approval, allowlists and revocation",
+      "id": "REC-D8-APPROVAL-013",
+      "domain": "assist",
+      "name": "Runtime approval, user input and semantic proposals",
       "status": "verified",
       "owner_modules": [
-        "exchange",
-        "mcp",
-        "gateway"
+        "assist"
       ],
       "source_files": [
-        "apps/api/src/clean/mcp-service.mjs",
-        "apps/api/src/clean/gateway-service.mjs",
-        "apps/api/src/clean/authorization.mjs",
-        "apps/api/src/clean/migrations/004-context-projection-mcp.mjs"
+        "apps/api/src/clean/assist-service.mjs",
+        "apps/api/src/clean/migrations/005-assist-files-terminal-bridge.mjs"
       ],
       "target_modules": [
-        "apps/api/src/clean/mcp-service.mjs",
-        "apps/api/src/clean/gateway-service.mjs",
-        "apps/api/src/clean/command-dispatcher.mjs",
-        "apps/gateway/server.mjs",
-        "apps/web/src/features/context/McpSettingsPage.tsx"
+        "apps/api/src/clean/assist-service.mjs",
+        "apps/web/src/features/approvals"
       ],
       "tables": [
-        "exchange_requests",
-        "exchange_grants",
-        "mcp_clients",
-        "gateway_forward_receipts"
+        "runtime_approvals",
+        "runtime_user_inputs",
+        "semantic_proposals"
       ],
       "apis": [
-        "/api/v2/projects/{id}/exchange-requests",
-        "/api/v2/exchange-requests/{id}/approve",
-        "/api/v2/exchange-requests/{id}/reject",
-        "/api/v2/exchange-grants/{id}/revoke",
-        "/api/v2/exchange-grants/{id}/context-packs",
-        "/api/v2/gateway/forward",
-        "/api/v2/gateway/receipts/{id}"
+        "/api/v2/approvals",
+        "/api/v2/user-inputs",
+        "/api/v2/proposals"
       ],
       "ui": [
-        "MCP Settings",
-        "Exchange approvals"
+        "Approval Center",
+        "Proposal"
       ],
       "events": [
-        "exchange_request.created",
-        "exchange_request.approved",
-        "exchange_request.rejected",
-        "exchange_grant.created",
-        "exchange_grant.revoked",
-        "gateway.forwarded",
-        "gateway.denied"
+        "runtime_approval.requested",
+        "runtime_approval.approved",
+        "runtime_approval.rejected",
+        "runtime_user_input.requested",
+        "runtime_user_input.answered",
+        "semantic_proposal.created"
       ],
       "behavior_tests": [
-        "tests/p4/mcp-exchange-gateway.test.mjs",
-        "tests/p4/transport-parity.test.mjs",
-        "tests/p4/active-entrypoint.test.mjs",
-        "tests/p4/governance-sync.test.mjs"
+        "tests/p5/assist-files.test.mjs",
+        "tests/p5/mutation-recovery.test.mjs"
       ],
       "ui_tests": [
-        "apps/web/src/test/context.test.tsx",
-        "scripts/e2e.mjs"
+        "apps/web/src/test/approvals-p5.test.tsx"
       ],
       "evidence": [
-        "docs/evidence/v3-clean-p4-context-mcp-20260820/verification.json"
+        "docs/evidence/v3-clean-p5-assist-terminal-20260820/verification.json"
       ],
       "release_receipts": [],
       "tests": [
-        "T3",
-        "tests/p4/mcp-exchange-gateway.test.mjs",
-        "tests/p4/transport-parity.test.mjs",
-        "tests/p4/active-entrypoint.test.mjs",
-        "tests/p4/governance-sync.test.mjs",
-        "apps/web/src/test/context.test.tsx",
-        "scripts/e2e.mjs"
-      ]
+        "T5",
+        "tests/p5/assist-files.test.mjs",
+        "tests/p5/mutation-recovery.test.mjs",
+        "apps/web/src/test/approvals-p5.test.tsx"
+      ],
+      "runtime_surface": "v3-clean"
+    },
+    {
+      "id": "REC-D8-ASSIST-010",
+      "domain": "assist",
+      "name": "Four-scope Assist runtime and native event replay",
+      "status": "verified",
+      "owner_modules": [
+        "assist"
+      ],
+      "source_files": [
+        "apps/api/src/clean/assist-service.mjs",
+        "apps/api/src/clean/app-server-adapter.mjs",
+        "apps/api/src/clean/command-dispatcher.mjs",
+        "apps/api/src/clean/migrations/005-assist-files-terminal-bridge.mjs"
+      ],
+      "target_modules": [
+        "apps/api/src/clean/assist-service.mjs",
+        "apps/api/src/clean/app-server-adapter.mjs",
+        "apps/web/src/features/assist"
+      ],
+      "tables": [
+        "assist_sessions",
+        "assist_turns",
+        "assist_messages",
+        "assist_goals",
+        "assist_configurations",
+        "assist_references"
+      ],
+      "apis": [
+        "/api/v2/assist/sessions",
+        "/api/v2/assist/sessions/{id}/turns",
+        "/api/v2/assist/sessions/{id}/events",
+        "/api/v2/assist/turns/{id}/retry"
+      ],
+      "ui": [
+        "Assist Center",
+        "Composer",
+        "Context Pack",
+        "Turn Timeline",
+        "Operation Status"
+      ],
+      "events": [
+        "assist_session.created",
+        "assist_turn.queued",
+        "assist_turn.running",
+        "assist_turn.awaiting_input",
+        "assist_turn.completed",
+        "assist_turn.failed"
+      ],
+      "behavior_tests": [
+        "tests/p5/assist-files.test.mjs",
+        "tests/p5/mutation-recovery.test.mjs",
+        "tests/p5/provider-probe.test.mjs"
+      ],
+      "ui_tests": [
+        "apps/web/src/test/assist.test.tsx"
+      ],
+      "evidence": [
+        "docs/evidence/v3-clean-p5-assist-terminal-20260820/verification.json"
+      ],
+      "release_receipts": [],
+      "tests": [
+        "T5",
+        "tests/p5/assist-files.test.mjs",
+        "tests/p5/mutation-recovery.test.mjs",
+        "tests/p5/provider-probe.test.mjs",
+        "apps/web/src/test/assist.test.tsx",
+        "scripts/v3-clean-p5-assist-probe.mjs"
+      ],
+      "runtime_surface": "v3-clean"
+    },
+    {
+      "id": "REC-D8-ATTACHMENTS-011",
+      "domain": "assist",
+      "name": "Attachments and secure previews",
+      "status": "implemented",
+      "owner_modules": [
+        "files"
+      ],
+      "source_files": [
+        "apps/api/src/clean/files-service.mjs",
+        "apps/api/src/clean/migrations/005-assist-files-terminal-bridge.mjs"
+      ],
+      "target_modules": [
+        "apps/api/src/clean/files-service.mjs",
+        "apps/web/src/features/assist"
+      ],
+      "tables": [
+        "attachments"
+      ],
+      "apis": [
+        "/api/v2/projects/{id}/attachments",
+        "/api/v2/attachments/{id}/content",
+        "/api/v2/attachments/{id}/preview"
+      ],
+      "ui": [
+        "Attachments"
+      ],
+      "events": [
+        "attachment.created",
+        "attachment.quarantined",
+        "attachment.deleted"
+      ],
+      "behavior_tests": [
+        "tests/p5/assist-files.test.mjs",
+        "tests/p5/http-contract.test.mjs"
+      ],
+      "ui_tests": [
+        "apps/web/src/test/files-p5.test.tsx"
+      ],
+      "evidence": [
+        "docs/evidence/v3-clean-p5-assist-terminal-20260820/verification.json"
+      ],
+      "release_receipts": [],
+      "tests": [
+        "T5",
+        "tests/p5/assist-files.test.mjs",
+        "tests/p5/http-contract.test.mjs",
+        "apps/web/src/test/files-p5.test.tsx"
+      ],
+      "runtime_surface": "v3-clean"
+    },
+    {
+      "id": "REC-D8-BRIDGE-026",
+      "domain": "bridge",
+      "name": "Independent Windows Native Bridge pairing and Git bundle transport",
+      "status": "verified",
+      "owner_modules": [
+        "bridge"
+      ],
+      "source_files": [
+        "apps/api/src/clean/bridge-service.mjs",
+        "apps/api/src/clean/windows-bridge-adapter.mjs",
+        "apps/windows-native-bridge/server.mjs",
+        "apps/windows-native-bridge/src/protocol.mjs",
+        "apps/api/src/clean/migrations/005-assist-files-terminal-bridge.mjs"
+      ],
+      "target_modules": [
+        "apps/api/src/clean/bridge-service.mjs",
+        "apps/api/src/clean/windows-bridge-adapter.mjs",
+        "apps/windows-native-bridge"
+      ],
+      "tables": [
+        "bridge_devices",
+        "bridge_transfers"
+      ],
+      "apis": [
+        "/api/v2/bridge/pairing",
+        "/api/v2/bridge/devices/{id}/probe",
+        "/api/v2/bridge/devices/{id}/rotate",
+        "/api/v2/bridge/devices/{id}/revoke",
+        "/api/v2/bridge/devices/{id}/transfers"
+      ],
+      "ui": [
+        "Connections",
+        "Bridge Settings"
+      ],
+      "events": [
+        "bridge_device.paired",
+        "bridge_device.probed",
+        "bridge_device.rotated",
+        "bridge_device.revoked",
+        "bridge_transfer.verified",
+        "bridge_transfer.failed"
+      ],
+      "behavior_tests": [
+        "tests/p5/terminal-bridge.test.mjs",
+        "tests/p5/mutation-recovery.test.mjs"
+      ],
+      "ui_tests": [
+        "apps/web/src/test/connections-p5.test.tsx"
+      ],
+      "evidence": [
+        "docs/evidence/v3-clean-p5-assist-terminal-20260820/verification.json"
+      ],
+      "release_receipts": [],
+      "tests": [
+        "T5",
+        "tests/p5/terminal-bridge.test.mjs",
+        "tests/p5/mutation-recovery.test.mjs",
+        "apps/web/src/test/connections-p5.test.tsx",
+        "scripts/v3-clean-p5-bridge-probe.mjs"
+      ],
+      "runtime_surface": "v3-clean"
+    },
+    {
+      "id": "REC-D8-FILES-012",
+      "domain": "assist",
+      "name": "Managed files and reversible change batches",
+      "status": "verified",
+      "owner_modules": [
+        "files"
+      ],
+      "source_files": [
+        "apps/api/src/clean/files-service.mjs",
+        "apps/api/src/clean/migrations/005-assist-files-terminal-bridge.mjs"
+      ],
+      "target_modules": [
+        "apps/api/src/clean/files-service.mjs",
+        "apps/web/src/features/files"
+      ],
+      "tables": [
+        "file_refs",
+        "file_change_batches",
+        "file_change_items"
+      ],
+      "apis": [
+        "/api/v2/projects/{id}/files",
+        "/api/v2/projects/{id}/change-batches",
+        "/api/v2/change-batches/{id}/apply",
+        "/api/v2/change-batches/{id}/undo"
+      ],
+      "ui": [
+        "Files",
+        "Diff Review"
+      ],
+      "events": [
+        "file_change_batch.proposed",
+        "file_change_batch.approved",
+        "file_change_batch.applied",
+        "file_change_batch.undone"
+      ],
+      "behavior_tests": [
+        "tests/p5/assist-files.test.mjs",
+        "tests/p5/mutation-recovery.test.mjs"
+      ],
+      "ui_tests": [
+        "apps/web/src/test/files-p5.test.tsx"
+      ],
+      "evidence": [
+        "docs/evidence/v3-clean-p5-assist-terminal-20260820/verification.json"
+      ],
+      "release_receipts": [],
+      "tests": [
+        "T5",
+        "tests/p5/assist-files.test.mjs",
+        "tests/p5/mutation-recovery.test.mjs",
+        "apps/web/src/test/files-p5.test.tsx",
+        "scripts/v3-clean-p5-performance.mjs"
+      ],
+      "runtime_surface": "v3-clean"
+    },
+    {
+      "id": "REC-D8-TERMINAL-025",
+      "domain": "terminal",
+      "name": "Native Terminal, reconnect and cursor recovery",
+      "status": "verified",
+      "owner_modules": [
+        "terminal"
+      ],
+      "source_files": [
+        "apps/api/src/clean/terminal-service.mjs",
+        "apps/api/clean-server.mjs",
+        "apps/api/src/clean/migrations/005-assist-files-terminal-bridge.mjs"
+      ],
+      "target_modules": [
+        "apps/api/src/clean/terminal-service.mjs",
+        "apps/api/clean-server.mjs",
+        "apps/web/src/features/terminal"
+      ],
+      "tables": [
+        "terminal_sessions",
+        "terminal_events"
+      ],
+      "apis": [
+        "/api/v2/terminals",
+        "/api/v2/terminals/{id}/events",
+        "/api/v2/terminals/{id}/ws"
+      ],
+      "ui": [
+        "Terminal"
+      ],
+      "events": [
+        "terminal.opened",
+        "terminal.output",
+        "terminal.resized",
+        "terminal.signalled",
+        "terminal.orphaned",
+        "terminal.stopped"
+      ],
+      "behavior_tests": [
+        "tests/p5/terminal-bridge.test.mjs",
+        "tests/p5/http-contract.test.mjs"
+      ],
+      "ui_tests": [
+        "apps/web/src/test/terminal.test.tsx"
+      ],
+      "evidence": [
+        "docs/evidence/v3-clean-p5-assist-terminal-20260820/verification.json"
+      ],
+      "release_receipts": [],
+      "tests": [
+        "T5",
+        "tests/p5/terminal-bridge.test.mjs",
+        "tests/p5/http-contract.test.mjs",
+        "apps/web/src/test/terminal.test.tsx",
+        "scripts/v3-clean-p5-performance.mjs"
+      ],
+      "runtime_surface": "v3-clean"
     },
     {
       "id": "REC-D9-CONTEXT-017",
@@ -1398,6 +1517,98 @@
       ]
     },
     {
+      "id": "REC-D9-DEPLOYMENT-021",
+      "domain": "evidence",
+      "name": "Deployment, browser and viewport evidence in CAS",
+      "status": "scaffolded",
+      "owner_modules": [
+        "evidence"
+      ],
+      "source_files": [
+        "deployment-evidence-verifier.mjs"
+      ],
+      "target_modules": [
+        "apps/api/src/modules/evidence",
+        "scripts/e2e.mjs"
+      ],
+      "tables": [
+        "asset_versions",
+        "evidence_links"
+      ],
+      "apis": [
+        "/api/v1/executions/{id}/evidence"
+      ],
+      "ui": [
+        "Evidence"
+      ],
+      "events": [
+        "deployment.verified"
+      ],
+      "behavior_tests": [
+        "scripts/e2e.mjs"
+      ],
+      "ui_tests": [
+        "scripts/e2e.mjs"
+      ],
+      "evidence": [],
+      "release_receipts": [],
+      "tests": [
+        "T6",
+        "T8",
+        "scripts/e2e.mjs"
+      ]
+    },
+    {
+      "id": "REC-D9-EVIDENCE-019",
+      "domain": "evidence",
+      "name": "CAS asset, attestation, relation, trace, digest and code evidence",
+      "status": "scaffolded",
+      "owner_modules": [
+        "evidence"
+      ],
+      "source_files": [
+        "deployment-evidence-verifier.mjs"
+      ],
+      "target_modules": [
+        "apps/api/src/modules/evidence",
+        "apps/api/src/evidence-service.mjs",
+        "apps/web/src/features/evidence"
+      ],
+      "tables": [
+        "asset_versions",
+        "asset_blobs",
+        "asset_attestations",
+        "asset_relations",
+        "traces",
+        "digests",
+        "code_changes"
+      ],
+      "apis": [
+        "/api/v1/projects/{id}/assets",
+        "/api/v1/executions/{id}/evidence"
+      ],
+      "ui": [
+        "Assets",
+        "Trace",
+        "Digest",
+        "Audit"
+      ],
+      "events": [
+        "asset.captured",
+        "asset.attested"
+      ],
+      "behavior_tests": [
+        "tests/integration/real-slice.test.mjs"
+      ],
+      "ui_tests": [],
+      "evidence": [],
+      "release_receipts": [],
+      "tests": [
+        "T6",
+        "tests/integration/real-slice.test.mjs"
+      ]
+    },
+    {
       "id": "REC-D9-PROJECTION-018",
       "domain": "context",
       "name": "Recoverable Context projection worker and deterministic index rebuild",
@@ -1473,56 +1684,6 @@
       ]
     },
     {
-      "id": "REC-D9-EVIDENCE-019",
-      "domain": "evidence",
-      "name": "CAS asset, attestation, relation, trace, digest and code evidence",
-      "status": "scaffolded",
-      "owner_modules": [
-        "evidence"
-      ],
-      "source_files": [
-        "deployment-evidence-verifier.mjs"
-      ],
-      "target_modules": [
-        "apps/api/src/modules/evidence",
-        "apps/api/src/evidence-service.mjs",
-        "apps/web/src/features/evidence"
-      ],
-      "tables": [
-        "asset_versions",
-        "asset_blobs",
-        "asset_attestations",
-        "asset_relations",
-        "traces",
-        "digests",
-        "code_changes"
-      ],
-      "apis": [
-        "/api/v1/projects/{id}/assets",
-        "/api/v1/executions/{id}/evidence"
-      ],
-      "ui": [
-        "Assets",
-        "Trace",
-        "Digest",
-        "Audit"
-      ],
-      "events": [
-        "asset.captured",
-        "asset.attested"
-      ],
-      "behavior_tests": [
-        "tests/integration/real-slice.test.mjs"
-      ],
-      "ui_tests": [],
-      "evidence": [],
-      "release_receipts": [],
-      "tests": [
-        "T6",
-        "tests/integration/real-slice.test.mjs"
-      ]
-    },
-    {
       "id": "REC-D9-QUALITY-020",
       "domain": "quality",
       "name": "Isolated multi-format quality review and human semantic threshold",
@@ -1564,114 +1725,6 @@
         "T6",
         "T8",
         "tests/integration/assist-flow.test.mjs"
-      ]
-    },
-    {
-      "id": "REC-D9-DEPLOYMENT-021",
-      "domain": "evidence",
-      "name": "Deployment, browser and viewport evidence in CAS",
-      "status": "scaffolded",
-      "owner_modules": [
-        "evidence"
-      ],
-      "source_files": [
-        "deployment-evidence-verifier.mjs"
-      ],
-      "target_modules": [
-        "apps/api/src/modules/evidence",
-        "scripts/e2e.mjs"
-      ],
-      "tables": [
-        "asset_versions",
-        "evidence_links"
-      ],
-      "apis": [
-        "/api/v1/executions/{id}/evidence"
-      ],
-      "ui": [
-        "Evidence"
-      ],
-      "events": [
-        "deployment.verified"
-      ],
-      "behavior_tests": [
-        "scripts/e2e.mjs"
-      ],
-      "ui_tests": [
-        "scripts/e2e.mjs"
-      ],
-      "evidence": [],
-      "release_receipts": [],
-      "tests": [
-        "T6",
-        "T8",
-        "scripts/e2e.mjs"
-      ]
-    },
-    {
-      "id": "REC-D11-OPS-022",
-      "domain": "operations",
-      "name": "Deployment API, backup, restore, reset, import and release rollback",
-      "status": "scaffolded",
-      "owner_modules": [
-        "operations",
-        "platform"
-      ],
-      "source_files": [
-        "V2.3 operations and import commands"
-      ],
-      "target_modules": [
-        "apps/api/src/modules/operations",
-        "apps/api/src/http.mjs",
-        "apps/web/vite.config.ts",
-        "Dockerfile",
-        "scripts/release-rehearsal.mjs",
-        "docs/runbook.md"
-      ],
-      "tables": [
-        "audit_events",
-        "operations",
-        "operation_events"
-      ],
-      "apis": [
-        "/health",
-        "/readyz",
-        "/api/v1/system/deployment",
-        "/api/v1/operations/{id}",
-        "/api/v1/operations/{id}/events",
-        "/api/v1/operations/{id}/cancel"
-      ],
-      "ui": [
-        "Setup",
-        "Recovery"
-      ],
-      "events": [
-        "operation.pending",
-        "operation.running",
-        "operation.completed",
-        "operation.failed",
-        "operation.cancelled",
-        "release.gate"
-      ],
-      "behavior_tests": [
-        "tests/unit/identity-operations.test.mjs",
-        "tests/integration/api-flow.test.mjs",
-        "tests/release/release-gate.test.mjs",
-        "tests/release/release-rehearsal-compose.test.mjs",
-        "tests/security/boundary.test.mjs"
-      ],
-      "ui_tests": [],
-      "evidence": [],
-      "release_receipts": [],
-      "tests": [
-        "T0",
-        "T1",
-        "T8",
-        "tests/unit/identity-operations.test.mjs",
-        "tests/integration/api-flow.test.mjs",
-        "tests/release/release-gate.test.mjs",
-        "tests/release/release-rehearsal-compose.test.mjs",
-        "tests/security/boundary.test.mjs"
       ]
     }
   ],

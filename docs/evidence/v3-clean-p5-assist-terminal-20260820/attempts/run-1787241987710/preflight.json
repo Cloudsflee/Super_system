@@ -1,0 +1,38 @@
+{
+  "schema_version": "aiws.v3-clean.p5-preflight.v1",
+  "phase": "P5",
+  "baseline": "b270ff7d86d200b55a83dfdfa4a4db0e38fed050",
+  "generated_at": "2026-08-20T16:06:27.711Z",
+  "Target": "P5 Assist/Files/Attachments/Approval/Terminal/Bridge, baseline=b270ff7d86d200b55a83dfdfa4a4db0e38fed050",
+  "Non-target": "P6 Runner/Execution, P7 Parser/Quality/Outcome, real GitHub Delivery, P9 Offline/Release",
+  "Forbidden": [
+    "/api/v1 active route",
+    "legacy runtime import",
+    "assist_operations",
+    "domain heads/cursors",
+    "API Docker socket",
+    "Bridge business database",
+    "secret/token/full prompt/host absolute path in public or Evidence envelope"
+  ],
+  "Reuse": [
+    "P1-P4 operations/events/heads/idempotency/ACL/Vault/CAS/dispatcher",
+    "Context Pack",
+    "repository workspace lease"
+  ],
+  "Delete/retire": [
+    "active Web dependency on historical Assist/Terminal/Approval APIs"
+  ],
+  "Acceptance_commands": [
+    "pnpm check",
+    "pnpm scan:clean",
+    "pnpm test:p5",
+    "node scripts/v3-clean-p5-assist-probe.mjs",
+    "node scripts/v3-clean-p5-bridge-probe.mjs",
+    "node scripts/v3-clean-p5-performance.mjs",
+    "pnpm --filter @aiws/web test",
+    "git diff --check"
+  ],
+  "Rollback_artifact": "docs/evidence/v3-clean-p5-assist-terminal-20260820/rollback.ps1",
+  "last_confirmed_result": "P5 domain tests, Bridge flow and pnpm check passed",
+  "next_action": "run synchronized P5 probes and publish immutable Evidence"
+}

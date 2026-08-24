@@ -3,7 +3,7 @@ import { PlatformError } from './platform-error.mjs';
 
 /** Shared P4 command boundary used by REST, MCP HTTP, stdio and Gateway. */
 export class CleanCommandDispatcher {
-  constructor({ registry, context, mcp, gateway, projectWorkflow, operations, events } = {}) {
+  constructor({ registry, context, mcp, gateway, projectWorkflow, operations, events, assist = null, files = null, terminal = null, bridge = null } = {}) {
     if (!registry || !context || !mcp || !operations || !events) throw new TypeError('clean_dispatcher_dependencies_required');
     this.registry = registry;
     this.context = context;
@@ -12,6 +12,10 @@ export class CleanCommandDispatcher {
     this.projectWorkflow = projectWorkflow;
     this.operations = operations;
     this.events = events;
+    this.assist = assist;
+    this.files = files;
+    this.terminal = terminal;
+    this.bridge = bridge;
     this.handlers = new Map();
     this.exposed = new Set();
     this.#registerHandlers();
@@ -44,7 +48,12 @@ export class CleanCommandDispatcher {
     if (!entry) throw new PlatformError('unknown_command', `unknown Clean command: ${String(name || '')}`, {}, 404);
     const input = normalizeInput(entry.command_id, args);
     assertCleanV2(entry.input_schema, input);
-    const result = await this.handlers.get(entry.command_id)(args, principal);
+    let result = await this.handlers.get(entry.command_id)(args, principal);
+    // Keep domain adapters ergonomic for direct callers while exposing the
+    // registered receipt shape consistently to every transport.
+    if (entry.command_id === 'assist.session.create' && result && result.id && !result.session) {
+      result = { session: result, operation: null };
+    }
     assertCleanV2(entry.output_schema, result);
     return { command_id: entry.command_id, command_version: entry.version, result };
   }
@@ -104,6 +113,75 @@ export class CleanCommandDispatcher {
       const operation = this.operations.get(args.operation_id, { actorId: actorOf(principal), projectId: args.project_id || null });
       return this.events.replay({ actorId: actorOf(principal), projectId: operation.project_id, operationId: operation.operation_id, cursor: args.cursor || 0, limit: args.limit || 500 });
     });
+    if (this.assist && this.files && this.terminal && this.bridge) this.#registerP5Handlers(add);
+  }
+
+  #registerP5Handlers(add) {
+    const exposed = (id) => ({ exposed: this.registry.get(id)?.mcp?.exposed === true });
+    const bind = (id, handler) => add(id, handler, exposed(id));
+
+    bind('assist.session.list', (args, principal) => this.assist.listSessions(args, principal));
+    bind('assist.session.create', (args, principal) => this.assist.createSession(args, principal));
+    bind('assist.session.get', (args, principal) => this.assist.getSession(args.id || args.session_id, principal));
+    bind('assist.turn.create', (args, principal) => this.assist.createTurn(args, principal));
+    bind('assist.session.events', (args, principal) => this.assist.listEvents(args.id || args.session_id, args, principal));
+    bind('assist.goal.get', (args, principal) => this.assist.getGoal(args.id || args.session_id, principal));
+    bind('assist.goal.update', (args, principal) => this.assist.updateGoal(args.id || args.session_id, args, principal));
+    bind('assist.reference.list', (args, principal) => this.assist.listReferences(args.id || args.session_id, principal));
+    bind('assist.reference.create', (args, principal) => this.assist.createReference(args.id || args.session_id, args, principal));
+    bind('assist.session.pause', (args, principal) => this.assist.pauseSession(args.id || args.session_id, args, principal));
+    bind('assist.session.resume', (args, principal) => this.assist.resumeSession(args.id || args.session_id, args, principal));
+    bind('assist.session.cancel', (args, principal) => this.assist.cancelSession(args.id || args.session_id, args, principal));
+    bind('assist.turn.retry', (args, principal) => this.assist.retryTurn(args.id || args.turn_id, args, principal));
+    bind('assist.turn.cancel', (args, principal) => this.assist.cancelTurn(args.id || args.turn_id, args, principal));
+    bind('assist.turn.steer', (args, principal) => this.assist.steerTurn(args.id || args.turn_id, args, principal));
+    bind('assist.turn.interrupt', (args, principal) => this.assist.interruptTurn(args.id || args.turn_id, args, principal));
+    bind('assist.turn.follow-ups', (args, principal) => this.assist.steerTurn(args.id || args.turn_id, args, principal, 'assist.turn.follow-ups'));
+
+    bind('file.list', (args, principal) => this.files.listFiles(args.project_id, args, principal));
+    bind('file.get', (args, principal) => this.files.getFile(args.project_id, args.file_id || args.id, args, principal));
+    bind('attachment.list', (args, principal) => this.files.listAttachments(args.project_id, args, principal));
+    bind('attachment.create', (args, principal) => this.files.createAttachment(args, principal));
+    bind('attachment.content', (args, principal) => this.files.attachmentContent(args.id || args.attachment_id, principal));
+    bind('attachment.preview', (args, principal) => this.files.attachmentContent(args.id || args.attachment_id, principal, { preview: true }));
+    bind('attachment.delete', (args, principal) => this.files.deleteAttachment(args.id || args.attachment_id, args, principal));
+    bind('change.batch.list', (args, principal) => this.files.listBatches(args.project_id, principal));
+    bind('change.batch.create', (args, principal) => this.files.createBatch(args, principal));
+    bind('change.batch.review', (args, principal) => this.files.reviewBatch(args.id || args.batch_id, principal));
+    bind('change.batch.approve', (args, principal) => this.files.approveBatch(args.id || args.batch_id, args, principal));
+    bind('change.batch.apply', (args, principal) => this.files.applyBatch(args.id || args.batch_id, args, principal));
+    bind('change.batch.undo', (args, principal) => this.files.undoBatch(args.id || args.batch_id, args, principal));
+
+    bind('approval.list', (args, principal) => this.assist.listApprovals(args, principal));
+    bind('approval.create', (args, principal) => this.assist.createApproval(args, principal));
+    bind('approval.decide', (args, principal) => this.assist.decideApproval(args.id || args.approval_id, args, principal));
+    bind('user.input.list', (args, principal) => this.assist.listInputs(args, principal));
+    bind('user.input.create', (args, principal) => this.assist.createInput(args, principal));
+    bind('user.input.answer', (args, principal) => this.assist.answerInput(args.id || args.input_id, args, principal));
+    bind('user.input.cancel', (args, principal) => this.assist.cancelInput(args.id || args.input_id, args, principal));
+    bind('proposal.list', (args, principal) => this.assist.listProposals(args, principal));
+    bind('proposal.create', (args, principal) => this.assist.createProposal(args, principal));
+    bind('proposal.apply', (args, principal) => this.assist.mutateProposal(args.id || args.proposal_id, 'apply', args, principal));
+    bind('proposal.reject', (args, principal) => this.assist.mutateProposal(args.id || args.proposal_id, 'reject', args, principal));
+    bind('proposal.undo', (args, principal) => this.assist.mutateProposal(args.id || args.proposal_id, 'undo', args, principal));
+
+    bind('terminal.capabilities', () => this.terminal.capabilities());
+    bind('terminal.list', (args, principal) => this.terminal.list(args, principal));
+    bind('terminal.open', (args, principal) => this.terminal.open(args, principal));
+    bind('terminal.get', (args, principal) => this.terminal.get(args.id || args.terminal_id, principal));
+    bind('terminal.events', (args, principal) => this.terminal.eventsFor(args.id || args.terminal_id, args, principal));
+    bind('terminal.ws', (args, principal) => this.terminal.get(args.id || args.terminal_id, principal));
+    bind('terminal.resize', (args, principal) => this.terminal.resize(args.id || args.terminal_id, args, principal));
+    bind('terminal.signal', (args, principal) => this.terminal.signal(args.id || args.terminal_id, args, principal));
+    bind('terminal.stop', (args, principal) => this.terminal.stop(args.id || args.terminal_id, args, principal));
+
+    bind('bridge.device.list', (args, principal) => this.bridge.list(args, principal));
+    bind('bridge.pair', (args, principal) => this.bridge.pair(args, principal));
+    bind('bridge.device.probe', (args, principal) => this.bridge.probe(args.id || args.device_id, args, principal));
+    bind('bridge.device.rotate', (args, principal) => this.bridge.rotate(args.id || args.device_id, args, principal));
+    bind('bridge.device.revoke', (args, principal) => this.bridge.revoke(args.id || args.device_id, args, principal));
+    bind('bridge.transfer.list', (args, principal) => this.bridge.listTransfers(args.id || args.device_id, args, principal));
+    bind('bridge.transfer.create', (args, principal) => this.bridge.createTransfer(args.id || args.device_id, args, principal));
   }
 
   #validateInventory() {

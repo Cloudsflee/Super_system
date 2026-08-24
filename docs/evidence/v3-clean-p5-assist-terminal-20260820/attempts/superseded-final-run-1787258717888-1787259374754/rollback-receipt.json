@@ -1,0 +1,66 @@
+{
+  "schema_version": "aiws.v3-clean.p5-rollback-receipt.v1",
+  "status": "passed",
+  "dry_run": {
+    "command": "powershell.exe -NoProfile -ExecutionPolicy Bypass -File <ROOT>\\docs\\evidence\\v3-clean-p5-assist-terminal-20260820\\attempts\\run-1787258717888\\rollback.ps1 -DryRun -SourceRoot <ROOT>",
+    "cwd": "repository-root",
+    "input": {
+      "args": [
+        "-NoProfile",
+        "-ExecutionPolicy",
+        "Bypass",
+        "-File",
+        "<ROOT>\\docs\\evidence\\v3-clean-p5-assist-terminal-20260820\\attempts\\run-1787258717888\\rollback.ps1",
+        "-DryRun",
+        "-SourceRoot",
+        "<ROOT>"
+      ]
+    },
+    "stdout": "rollback_mode=dry-run\r\nsource_reverse_check=passed\r\nbyte_exact_mismatches=[]\r\n",
+    "stderr": "",
+    "exit_status": 0,
+    "expected_exit_statuses": [
+      0
+    ],
+    "signal": null,
+    "ok": true,
+    "summary": "rollback_mode=dry-run\nsource_reverse_check=passed\nbyte_exact_mismatches=[]"
+  },
+  "isolated_apply": {
+    "command": "powershell.exe -NoProfile -ExecutionPolicy Bypass -File <ROOT>\\docs\\evidence\\v3-clean-p5-assist-terminal-20260820\\attempts\\run-1787258717888\\rollback.ps1 -Apply -SourceRoot <PATH> -IsolatedRoot <PATH>",
+    "cwd": "repository-root",
+    "input": {
+      "args": [
+        "-NoProfile",
+        "-ExecutionPolicy",
+        "Bypass",
+        "-File",
+        "<ROOT>\\docs\\evidence\\v3-clean-p5-assist-terminal-20260820\\attempts\\run-1787258717888\\rollback.ps1",
+        "-Apply",
+        "-SourceRoot",
+        "<PATH>",
+        "-IsolatedRoot",
+        "<PATH>"
+      ]
+    },
+    "stdout": "rollback_mode=apply\r\nsource_reverse_check=passed\r\nuser_version=4\r\nforeign_key_check=[]\r\nmigration_ledger=[{\"version\":1},{\"version\":2},{\"version\":3},{\"version\":4}]\r\nbyte_exact_mismatches=[]\r\n",
+    "stderr": "(node:15856) ExperimentalWarning: SQLite is an experimental feature and might change at any time\n(Use `node --trace-warnings ...` to show where the warning was created)\n",
+    "exit_status": 0,
+    "expected_exit_statuses": [
+      0
+    ],
+    "signal": null,
+    "ok": true,
+    "summary": "rollback_mode=apply\nsource_reverse_check=passed\nuser_version=4\nforeign_key_check=[]\nmigration_ledger=[{\"version\":1},{\"version\":2},{\"version\":3},{\"version\":4}]\nbyte_exact_mismatches=[]\n(node:15856) ExperimentalWarning: SQLite is an experimental feature and might change at any time\n(Use `node --trace-warnings ...` to show where the warning was created)"
+  },
+  "source_reverse_check": "passed",
+  "restored_user_version": 4,
+  "foreign_key_check": [],
+  "migration_ledger": [
+    1,
+    2,
+    3,
+    4
+  ],
+  "byte_exact_mismatches": []
+}

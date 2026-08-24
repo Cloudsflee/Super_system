@@ -63,7 +63,8 @@ const entries = [
   },
   ...identityEntries(),
   ...p3Entries(),
-  ...p4Entries()
+  ...p4Entries(),
+  ...p5Entries()
 ];
 
 function identityEntries() {
@@ -227,6 +228,75 @@ function p4Entries() {
   ];
 }
 
+function p5Entries() {
+  const common = (command_id, method, path, owner, scope, input_schema, output_schema, events, options = {}) => ({
+    command_id, version: 2, method, path, owner, scope, phase: 'p5',
+    project_scoped: options.project_scoped !== false,
+    idempotency: method === 'GET' ? 'forbidden' : 'required',
+    expected_revision: method === 'GET' ? 'none' : (options.expected_revision || 'resource'),
+    input_schema, output_schema, long_running: Boolean(options.long_running), events,
+    mcp: { mapping: options.mcp_exposed === false ? 'rest-only' : (method === 'GET' ? 'resource' : 'tool'), name: options.mcp_name || command_id.replaceAll('.', '_'), exposed: options.mcp_exposed !== false },
+    transport_allowlist: Object.freeze(options.transport_allowlist || (options.mcp_exposed === false ? ['rest', 'web'] : ['rest', 'web', 'mcp', 'gateway'])),
+    redaction_policy: 'v3-clean-default', external_adapter: options.external_adapter || null,
+    ui_metadata: { surface: options.surface || owner.toLowerCase(), state: options.state || command_id },
+    evidence_metadata: { receipt_kind: options.long_running ? 'operation.receipt.v2' : 'resource.receipt.v2', verification: 'p5-assist-files-terminal-bridge' }
+  });
+  return [
+    common('assist.session.list', 'GET', '/api/v2/assist/sessions', 'Assist', 'assist:read', 'assist.sessions.query.v2', 'assist.sessions.v2', ['assist_session.*'], { project_scoped: false, surface: 'assist', state: 'sessions' }),
+    common('assist.session.create', 'POST', '/api/v2/assist/sessions', 'Assist', 'assist:write', 'assist.session.create.v2', 'assist.session.receipt.v2', ['assist_session.created'], { project_scoped: false, surface: 'assist', state: 'session-create', expected_revision: 'parent', external_adapter: 'codex.app-server.v2' }),
+    common('assist.session.get', 'GET', '/api/v2/assist/sessions/{id}', 'Assist', 'assist:read', 'assist.session.query.v2', 'assist.session.v2', ['assist_session.*'], { project_scoped: false, surface: 'assist', state: 'session' }),
+    common('assist.turn.create', 'POST', '/api/v2/assist/sessions/{id}/turns', 'Assist', 'assist:run', 'assist.turn.create.v2', 'operation.receipt.v2', ['assist_turn.queued', 'assist_turn.running', 'assist_turn.awaiting_input', 'assist_turn.completed', 'assist_turn.failed'], { project_scoped: false, long_running: true, surface: 'assist', state: 'turn', external_adapter: 'codex.app-server.v2' }),
+    common('assist.session.events', 'GET', '/api/v2/assist/sessions/{id}/events', 'Assist', 'assist:read', 'assist.events.query.v2', 'event.replay.v2', ['assist_turn.*', 'assist_message.*'], { project_scoped: false, surface: 'assist', state: 'events' }),
+    common('assist.goal.get', 'GET', '/api/v2/assist/sessions/{id}/goal', 'Assist', 'assist:read', 'assist.session.query.v2', 'assist.goal.v2', ['assist_goal.*'], { project_scoped: false, surface: 'assist', state: 'goal' }),
+    common('assist.goal.update', 'PATCH', '/api/v2/assist/sessions/{id}/goal', 'Assist', 'assist:write', 'assist.goal.update.v2', 'assist.goal.v2', ['assist_goal.updated'], { project_scoped: false, surface: 'assist', state: 'goal' }),
+    common('assist.reference.list', 'GET', '/api/v2/assist/sessions/{id}/references', 'Assist', 'assist:read', 'assist.session.query.v2', 'assist.references.v2', ['assist_reference.*'], { project_scoped: false, surface: 'assist', state: 'references' }),
+    common('assist.reference.create', 'POST', '/api/v2/assist/sessions/{id}/references', 'Assist', 'assist:write', 'assist.reference.create.v2', 'assist.references.v2', ['assist_reference.created'], { project_scoped: false, surface: 'assist', state: 'reference-create' }),
+    ...['pause', 'resume', 'cancel'].map((action) => common(`assist.session.${action}`, 'POST', `/api/v2/assist/sessions/{id}/${action}`, 'Assist', 'assist:write', 'assist.session.mutation.v2', 'assist.session.receipt.v2', [`assist_session.${action === 'pause' ? 'paused' : action === 'resume' ? 'resumed' : 'cancelled'}`], { project_scoped: false, surface: 'assist', state: action })),
+    common('assist.turn.retry', 'POST', '/api/v2/assist/turns/{id}/retry', 'Assist', 'assist:run', 'assist.turn.mutation.v2', 'operation.receipt.v2', ['assist_turn.queued', 'assist_turn.running', 'assist_turn.completed', 'assist_turn.failed'], { project_scoped: false, long_running: true, surface: 'assist', state: 'retry', external_adapter: 'codex.app-server.v2' }),
+    common('assist.turn.cancel', 'POST', '/api/v2/assist/turns/{id}/cancel', 'Assist', 'assist:run', 'assist.turn.mutation.v2', 'assist.turn.receipt.v2', ['assist_turn.cancelled'], { project_scoped: false, surface: 'assist', state: 'turn-cancel' }),
+    common('assist.turn.steer', 'POST', '/api/v2/assist/turns/{id}/steer', 'Assist', 'assist:run', 'assist.turn.mutation.v2', 'assist.turn.receipt.v2', ['assist_turn.steered'], { project_scoped: false, surface: 'assist', state: 'steer', external_adapter: 'codex.app-server.v2' }),
+    common('assist.turn.interrupt', 'POST', '/api/v2/assist/turns/{id}/interrupt', 'Assist', 'assist:run', 'assist.turn.mutation.v2', 'assist.turn.receipt.v2', ['assist_turn.interrupted'], { project_scoped: false, surface: 'assist', state: 'interrupt', external_adapter: 'codex.app-server.v2' }),
+    common('assist.turn.follow-ups', 'POST', '/api/v2/assist/turns/{id}/follow-ups', 'Assist', 'assist:run', 'assist.turn.mutation.v2', 'assist.turn.receipt.v2', ['assist_turn.follow_up'], { project_scoped: false, surface: 'assist', state: 'follow-up', external_adapter: 'codex.app-server.v2' }),
+
+    common('file.list', 'GET', '/api/v2/projects/{project_id}/files', 'Files', 'files:read', 'files.query.v2', 'files.v2', ['file_ref.*'], { surface: 'files', state: 'list' }),
+    common('file.get', 'GET', '/api/v2/projects/{project_id}/files/{file_id}', 'Files', 'files:read', 'files.query.v2', 'file.content.v2', ['file_ref.*'], { surface: 'files', state: 'content' }),
+    common('attachment.list', 'GET', '/api/v2/projects/{project_id}/attachments', 'Files', 'files:read', 'files.query.v2', 'attachments.v2', ['attachment.*'], { surface: 'assist', state: 'attachments' }),
+    common('attachment.create', 'POST', '/api/v2/projects/{project_id}/attachments', 'Files', 'files:write', 'attachment.create.v2', 'attachment.receipt.v2', ['attachment.created', 'attachment.quarantined'], { surface: 'assist', state: 'attachment-create', mcp_exposed: false, expected_revision: 'parent' }),
+    common('attachment.content', 'GET', '/api/v2/attachments/{id}/content', 'Files', 'files:read', 'attachment.query.v2', 'attachment.content.v2', ['attachment.*'], { project_scoped: false, surface: 'assist', state: 'attachment-content', mcp_exposed: false }),
+    common('attachment.preview', 'GET', '/api/v2/attachments/{id}/preview', 'Files', 'files:read', 'attachment.query.v2', 'attachment.content.v2', ['attachment.*'], { project_scoped: false, surface: 'assist', state: 'attachment-preview', mcp_exposed: false }),
+    common('attachment.delete', 'DELETE', '/api/v2/attachments/{id}', 'Files', 'files:write', 'attachment.lifecycle.v2', 'attachment.receipt.v2', ['attachment.deleted'], { project_scoped: false, surface: 'assist', state: 'attachment-delete' }),
+    common('change.batch.list', 'GET', '/api/v2/projects/{project_id}/change-batches', 'Files', 'files:read', 'files.query.v2', 'change.batches.v2', ['file_change_batch.*'], { surface: 'files', state: 'batches' }),
+    common('change.batch.create', 'POST', '/api/v2/projects/{project_id}/change-batches', 'Files', 'files:write', 'change.batch.create.v2', 'change.batch.receipt.v2', ['file_change_batch.proposed'], { surface: 'files', state: 'batch-create' }),
+    common('change.batch.review', 'GET', '/api/v2/change-batches/{id}/review', 'Files', 'files:read', 'change.batch.query.v2', 'change.batch.v2', ['file_change_batch.*'], { project_scoped: false, surface: 'files', state: 'review' }),
+    ...['approve', 'apply', 'undo'].map((action) => common(`change.batch.${action}`, 'POST', `/api/v2/change-batches/{id}/${action}`, 'Files', action === 'approve' ? 'files:approve' : 'files:write', 'change.batch.mutation.v2', action === 'approve' ? 'change.batch.receipt.v2' : 'operation.receipt.v2', [`file_change_batch.${action === 'approve' ? 'approved' : action === 'apply' ? 'applied' : 'undone'}`], { project_scoped: false, surface: 'files', state: action, long_running: action !== 'approve' })),
+
+    common('approval.list', 'GET', '/api/v2/approvals', 'Assist', 'assist:approve', 'interaction.query.v2', 'approvals.v2', ['runtime_approval.*'], { project_scoped: false, surface: 'approvals', state: 'list', mcp_exposed: false }),
+    common('approval.create', 'POST', '/api/v2/approvals', 'Assist', 'assist:run', 'approval.create.v2', 'approval.receipt.v2', ['runtime_approval.requested'], { project_scoped: false, surface: 'approvals', state: 'create', mcp_exposed: false, expected_revision: 'parent' }),
+    common('approval.decide', 'POST', '/api/v2/approvals/{id}/decide', 'Assist', 'assist:approve', 'approval.decide.v2', 'approval.receipt.v2', ['runtime_approval.approved', 'runtime_approval.rejected'], { project_scoped: false, surface: 'approvals', state: 'decide', mcp_exposed: false }),
+    common('user.input.list', 'GET', '/api/v2/user-inputs', 'Assist', 'assist:read', 'interaction.query.v2', 'user.inputs.v2', ['runtime_user_input.*'], { project_scoped: false, surface: 'approvals', state: 'input-list', mcp_exposed: false }),
+    common('user.input.create', 'POST', '/api/v2/user-inputs', 'Assist', 'assist:run', 'user.input.create.v2', 'user.input.receipt.v2', ['runtime_user_input.requested'], { project_scoped: false, surface: 'approvals', state: 'input-create', mcp_exposed: false, expected_revision: 'parent' }),
+    common('user.input.answer', 'POST', '/api/v2/user-inputs/{id}/answer', 'Assist', 'assist:write', 'user.input.answer.v2', 'user.input.receipt.v2', ['runtime_user_input.answered'], { project_scoped: false, surface: 'approvals', state: 'answer', mcp_exposed: false }),
+    common('user.input.cancel', 'POST', '/api/v2/user-inputs/{id}/cancel', 'Assist', 'assist:write', 'user.input.lifecycle.v2', 'user.input.receipt.v2', ['runtime_user_input.cancelled'], { project_scoped: false, surface: 'approvals', state: 'input-cancel', mcp_exposed: false }),
+    common('proposal.list', 'GET', '/api/v2/proposals', 'Assist', 'assist:read', 'interaction.query.v2', 'proposals.v2', ['semantic_proposal.*'], { project_scoped: false, surface: 'approvals', state: 'proposals' }),
+    common('proposal.create', 'POST', '/api/v2/proposals', 'Assist', 'assist:run', 'proposal.create.v2', 'proposal.p5.receipt.v2', ['semantic_proposal.created'], { project_scoped: false, surface: 'approvals', state: 'proposal-create', expected_revision: 'parent' }),
+    ...['apply', 'reject', 'undo'].map((action) => common(`proposal.${action}`, 'POST', `/api/v2/proposals/{id}/${action}`, 'Assist', action === 'reject' ? 'assist:approve' : 'assist:write', 'proposal.mutation.p5.v2', 'proposal.p5.receipt.v2', [`semantic_proposal.${action === 'apply' ? 'applied' : action === 'reject' ? 'rejected' : 'undone'}`], { project_scoped: false, surface: 'approvals', state: `proposal-${action}` })),
+
+    common('terminal.capabilities', 'GET', '/api/v2/terminals/capabilities', 'Terminal', 'terminal:read', 'terminal.capabilities.query.v2', 'terminal.capabilities.v2', ['terminal.*'], { project_scoped: false, surface: 'terminal', state: 'capabilities', mcp_exposed: false }),
+    common('terminal.list', 'GET', '/api/v2/terminals', 'Terminal', 'terminal:read', 'terminal.query.v2', 'terminals.v2', ['terminal.*'], { project_scoped: false, surface: 'terminal', state: 'list', mcp_exposed: false }),
+    common('terminal.open', 'POST', '/api/v2/terminals', 'Terminal', 'terminal:run', 'terminal.open.v2', 'terminal.receipt.v2', ['terminal.opened'], { project_scoped: false, surface: 'terminal', state: 'open', mcp_exposed: false, expected_revision: 'parent', external_adapter: 'node-pty' }),
+    common('terminal.get', 'GET', '/api/v2/terminals/{id}', 'Terminal', 'terminal:read', 'terminal.query.v2', 'terminal.v2', ['terminal.*'], { project_scoped: false, surface: 'terminal', state: 'session', mcp_exposed: false }),
+    common('terminal.events', 'GET', '/api/v2/terminals/{id}/events', 'Terminal', 'terminal:read', 'terminal.query.v2', 'event.replay.v2', ['terminal.*'], { project_scoped: false, surface: 'terminal', state: 'events', mcp_exposed: false }),
+    common('terminal.ws', 'GET', '/api/v2/terminals/{id}/ws', 'Terminal', 'terminal:run', 'terminal.query.v2', 'terminal.v2', ['terminal.*'], { project_scoped: false, surface: 'terminal', state: 'websocket', mcp_exposed: false }),
+    ...['resize', 'signal', 'stop'].map((action) => common(`terminal.${action}`, 'POST', `/api/v2/terminals/{id}/${action}`, 'Terminal', 'terminal:run', 'terminal.action.v2', 'terminal.receipt.v2', [`terminal.${action === 'stop' ? 'stopped' : action === 'resize' ? 'resized' : 'signalled'}`], { project_scoped: false, surface: 'terminal', state: action, mcp_exposed: false })),
+
+    common('bridge.device.list', 'GET', '/api/v2/bridge/devices', 'Bridge', 'bridge:read', 'bridge.query.v2', 'bridge.devices.v2', ['bridge_device.*'], { project_scoped: false, surface: 'connections', state: 'bridge-devices', mcp_exposed: false, external_adapter: 'windows-native-bridge' }),
+    common('bridge.pair', 'POST', '/api/v2/bridge/pairing', 'Bridge', 'bridge:write', 'bridge.pair.v2', 'bridge.device.receipt.v2', ['bridge_device.paired'], { project_scoped: false, surface: 'connections', state: 'bridge-pair', mcp_exposed: false, expected_revision: 'parent', external_adapter: 'windows-native-bridge' }),
+    ...['probe', 'rotate', 'revoke'].map((action) => common(`bridge.device.${action}`, 'POST', `/api/v2/bridge/devices/{id}/${action}`, 'Bridge', action === 'probe' ? 'bridge:read' : 'bridge:write', 'bridge.device.mutation.v2', 'bridge.device.receipt.v2', [`bridge_device.${action === 'probe' ? 'probed' : action === 'rotate' ? 'rotated' : 'revoked'}`], { project_scoped: false, surface: 'connections', state: `bridge-${action}`, mcp_exposed: false, external_adapter: 'windows-native-bridge' })),
+    common('bridge.transfer.list', 'GET', '/api/v2/bridge/devices/{id}/transfers', 'Bridge', 'bridge:read', 'bridge.query.v2', 'bridge.transfer.receipt.v2', ['bridge_transfer.*'], { project_scoped: false, surface: 'connections', state: 'bridge-transfers', mcp_exposed: false, external_adapter: 'windows-native-bridge' }),
+    common('bridge.transfer.create', 'POST', '/api/v2/bridge/devices/{id}/transfers', 'Bridge', 'bridge:write', 'bridge.transfer.create.v2', 'bridge.transfer.receipt.v2', ['bridge_transfer.verified', 'bridge_transfer.failed'], { project_scoped: false, surface: 'connections', state: 'bridge-transfer', mcp_exposed: false, external_adapter: 'windows-native-bridge' })
+  ];
+}
+
 export const CLEAN_COMMAND_REGISTRY = Object.freeze(entries.map((entry) => Object.freeze({
   ...entry,
   phase: entry.phase || 'p2',
@@ -242,7 +312,8 @@ export function createCleanCommandRegistry(options = {}) {
   validateRegistry(CLEAN_COMMAND_REGISTRY);
   const includeP3 = options.phase === 'p3' || options.cleanPhase === 'p3' || Number(options.targetVersion || 0) >= 3;
   const includeP4 = options.phase === 'p4' || options.cleanPhase === 'p4' || Number(options.targetVersion || 0) >= 4;
-  const selected = includeP4 ? CLEAN_COMMAND_REGISTRY : includeP3 ? CLEAN_COMMAND_REGISTRY.filter((entry) => entry.phase !== 'p4') : CLEAN_COMMAND_REGISTRY.filter((entry) => !['p3', 'p4'].includes(entry.phase));
+  const includeP5 = options.phase === 'p5' || options.cleanPhase === 'p5' || Number(options.targetVersion || 0) >= 5;
+  const selected = includeP5 ? CLEAN_COMMAND_REGISTRY : includeP4 ? CLEAN_COMMAND_REGISTRY.filter((entry) => entry.phase !== 'p5') : includeP3 ? CLEAN_COMMAND_REGISTRY.filter((entry) => !['p4', 'p5'].includes(entry.phase)) : CLEAN_COMMAND_REGISTRY.filter((entry) => !['p3', 'p4', 'p5'].includes(entry.phase));
   return {
     entries: selected,
     get(commandId) { return selected.find((entry) => entry.command_id === commandId) || null; },

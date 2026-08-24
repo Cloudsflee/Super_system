@@ -1,0 +1,577 @@
+{
+  "schema_version": "aiws.v3-clean.p5-route-inventory.v1",
+  "active_api": "/api/v2",
+  "retired_api": "/api/v1",
+  "routes": [
+    {
+      "command_id": "assist.session.list",
+      "method": "GET",
+      "path": "/api/v2/assist/sessions",
+      "owner": "Assist",
+      "input_schema": "assist.sessions.query.v2",
+      "output_schema": "assist.sessions.v2",
+      "idempotency": "forbidden",
+      "expected_revision": "none"
+    },
+    {
+      "command_id": "assist.session.create",
+      "method": "POST",
+      "path": "/api/v2/assist/sessions",
+      "owner": "Assist",
+      "input_schema": "assist.session.create.v2",
+      "output_schema": "assist.session.receipt.v2",
+      "idempotency": "required",
+      "expected_revision": "parent"
+    },
+    {
+      "command_id": "assist.session.get",
+      "method": "GET",
+      "path": "/api/v2/assist/sessions/{id}",
+      "owner": "Assist",
+      "input_schema": "assist.session.query.v2",
+      "output_schema": "assist.session.v2",
+      "idempotency": "forbidden",
+      "expected_revision": "none"
+    },
+    {
+      "command_id": "assist.turn.create",
+      "method": "POST",
+      "path": "/api/v2/assist/sessions/{id}/turns",
+      "owner": "Assist",
+      "input_schema": "assist.turn.create.v2",
+      "output_schema": "operation.receipt.v2",
+      "idempotency": "required",
+      "expected_revision": "resource"
+    },
+    {
+      "command_id": "assist.session.events",
+      "method": "GET",
+      "path": "/api/v2/assist/sessions/{id}/events",
+      "owner": "Assist",
+      "input_schema": "assist.events.query.v2",
+      "output_schema": "event.replay.v2",
+      "idempotency": "forbidden",
+      "expected_revision": "none"
+    },
+    {
+      "command_id": "assist.goal.get",
+      "method": "GET",
+      "path": "/api/v2/assist/sessions/{id}/goal",
+      "owner": "Assist",
+      "input_schema": "assist.session.query.v2",
+      "output_schema": "assist.goal.v2",
+      "idempotency": "forbidden",
+      "expected_revision": "none"
+    },
+    {
+      "command_id": "assist.goal.update",
+      "method": "PATCH",
+      "path": "/api/v2/assist/sessions/{id}/goal",
+      "owner": "Assist",
+      "input_schema": "assist.goal.update.v2",
+      "output_schema": "assist.goal.v2",
+      "idempotency": "required",
+      "expected_revision": "resource"
+    },
+    {
+      "command_id": "assist.reference.list",
+      "method": "GET",
+      "path": "/api/v2/assist/sessions/{id}/references",
+      "owner": "Assist",
+      "input_schema": "assist.session.query.v2",
+      "output_schema": "assist.references.v2",
+      "idempotency": "forbidden",
+      "expected_revision": "none"
+    },
+    {
+      "command_id": "assist.reference.create",
+      "method": "POST",
+      "path": "/api/v2/assist/sessions/{id}/references",
+      "owner": "Assist",
+      "input_schema": "assist.reference.create.v2",
+      "output_schema": "assist.references.v2",
+      "idempotency": "required",
+      "expected_revision": "resource"
+    },
+    {
+      "command_id": "assist.session.pause",
+      "method": "POST",
+      "path": "/api/v2/assist/sessions/{id}/pause",
+      "owner": "Assist",
+      "input_schema": "assist.session.mutation.v2",
+      "output_schema": "assist.session.receipt.v2",
+      "idempotency": "required",
+      "expected_revision": "resource"
+    },
+    {
+      "command_id": "assist.session.resume",
+      "method": "POST",
+      "path": "/api/v2/assist/sessions/{id}/resume",
+      "owner": "Assist",
+      "input_schema": "assist.session.mutation.v2",
+      "output_schema": "assist.session.receipt.v2",
+      "idempotency": "required",
+      "expected_revision": "resource"
+    },
+    {
+      "command_id": "assist.session.cancel",
+      "method": "POST",
+      "path": "/api/v2/assist/sessions/{id}/cancel",
+      "owner": "Assist",
+      "input_schema": "assist.session.mutation.v2",
+      "output_schema": "assist.session.receipt.v2",
+      "idempotency": "required",
+      "expected_revision": "resource"
+    },
+    {
+      "command_id": "assist.turn.retry",
+      "method": "POST",
+      "path": "/api/v2/assist/turns/{id}/retry",
+      "owner": "Assist",
+      "input_schema": "assist.turn.mutation.v2",
+      "output_schema": "operation.receipt.v2",
+      "idempotency": "required",
+      "expected_revision": "resource"
+    },
+    {
+      "command_id": "assist.turn.cancel",
+      "method": "POST",
+      "path": "/api/v2/assist/turns/{id}/cancel",
+      "owner": "Assist",
+      "input_schema": "assist.turn.mutation.v2",
+      "output_schema": "assist.turn.receipt.v2",
+      "idempotency": "required",
+      "expected_revision": "resource"
+    },
+    {
+      "command_id": "assist.turn.steer",
+      "method": "POST",
+      "path": "/api/v2/assist/turns/{id}/steer",
+      "owner": "Assist",
+      "input_schema": "assist.turn.mutation.v2",
+      "output_schema": "assist.turn.receipt.v2",
+      "idempotency": "required",
+      "expected_revision": "resource"
+    },
+    {
+      "command_id": "assist.turn.interrupt",
+      "method": "POST",
+      "path": "/api/v2/assist/turns/{id}/interrupt",
+      "owner": "Assist",
+      "input_schema": "assist.turn.mutation.v2",
+      "output_schema": "assist.turn.receipt.v2",
+      "idempotency": "required",
+      "expected_revision": "resource"
+    },
+    {
+      "command_id": "assist.turn.follow-ups",
+      "method": "POST",
+      "path": "/api/v2/assist/turns/{id}/follow-ups",
+      "owner": "Assist",
+      "input_schema": "assist.turn.mutation.v2",
+      "output_schema": "assist.turn.receipt.v2",
+      "idempotency": "required",
+      "expected_revision": "resource"
+    },
+    {
+      "command_id": "file.list",
+      "method": "GET",
+      "path": "/api/v2/projects/{project_id}/files",
+      "owner": "Files",
+      "input_schema": "files.query.v2",
+      "output_schema": "files.v2",
+      "idempotency": "forbidden",
+      "expected_revision": "none"
+    },
+    {
+      "command_id": "file.get",
+      "method": "GET",
+      "path": "/api/v2/projects/{project_id}/files/{file_id}",
+      "owner": "Files",
+      "input_schema": "files.query.v2",
+      "output_schema": "file.content.v2",
+      "idempotency": "forbidden",
+      "expected_revision": "none"
+    },
+    {
+      "command_id": "attachment.list",
+      "method": "GET",
+      "path": "/api/v2/projects/{project_id}/attachments",
+      "owner": "Files",
+      "input_schema": "files.query.v2",
+      "output_schema": "attachments.v2",
+      "idempotency": "forbidden",
+      "expected_revision": "none"
+    },
+    {
+      "command_id": "attachment.create",
+      "method": "POST",
+      "path": "/api/v2/projects/{project_id}/attachments",
+      "owner": "Files",
+      "input_schema": "attachment.create.v2",
+      "output_schema": "attachment.receipt.v2",
+      "idempotency": "required",
+      "expected_revision": "parent"
+    },
+    {
+      "command_id": "attachment.content",
+      "method": "GET",
+      "path": "/api/v2/attachments/{id}/content",
+      "owner": "Files",
+      "input_schema": "attachment.query.v2",
+      "output_schema": "attachment.content.v2",
+      "idempotency": "forbidden",
+      "expected_revision": "none"
+    },
+    {
+      "command_id": "attachment.preview",
+      "method": "GET",
+      "path": "/api/v2/attachments/{id}/preview",
+      "owner": "Files",
+      "input_schema": "attachment.query.v2",
+      "output_schema": "attachment.content.v2",
+      "idempotency": "forbidden",
+      "expected_revision": "none"
+    },
+    {
+      "command_id": "attachment.delete",
+      "method": "DELETE",
+      "path": "/api/v2/attachments/{id}",
+      "owner": "Files",
+      "input_schema": "attachment.lifecycle.v2",
+      "output_schema": "attachment.receipt.v2",
+      "idempotency": "required",
+      "expected_revision": "resource"
+    },
+    {
+      "command_id": "change.batch.list",
+      "method": "GET",
+      "path": "/api/v2/projects/{project_id}/change-batches",
+      "owner": "Files",
+      "input_schema": "files.query.v2",
+      "output_schema": "change.batches.v2",
+      "idempotency": "forbidden",
+      "expected_revision": "none"
+    },
+    {
+      "command_id": "change.batch.create",
+      "method": "POST",
+      "path": "/api/v2/projects/{project_id}/change-batches",
+      "owner": "Files",
+      "input_schema": "change.batch.create.v2",
+      "output_schema": "change.batch.receipt.v2",
+      "idempotency": "required",
+      "expected_revision": "resource"
+    },
+    {
+      "command_id": "change.batch.review",
+      "method": "GET",
+      "path": "/api/v2/change-batches/{id}/review",
+      "owner": "Files",
+      "input_schema": "change.batch.query.v2",
+      "output_schema": "change.batch.v2",
+      "idempotency": "forbidden",
+      "expected_revision": "none"
+    },
+    {
+      "command_id": "change.batch.approve",
+      "method": "POST",
+      "path": "/api/v2/change-batches/{id}/approve",
+      "owner": "Files",
+      "input_schema": "change.batch.mutation.v2",
+      "output_schema": "change.batch.receipt.v2",
+      "idempotency": "required",
+      "expected_revision": "resource"
+    },
+    {
+      "command_id": "change.batch.apply",
+      "method": "POST",
+      "path": "/api/v2/change-batches/{id}/apply",
+      "owner": "Files",
+      "input_schema": "change.batch.mutation.v2",
+      "output_schema": "operation.receipt.v2",
+      "idempotency": "required",
+      "expected_revision": "resource"
+    },
+    {
+      "command_id": "change.batch.undo",
+      "method": "POST",
+      "path": "/api/v2/change-batches/{id}/undo",
+      "owner": "Files",
+      "input_schema": "change.batch.mutation.v2",
+      "output_schema": "operation.receipt.v2",
+      "idempotency": "required",
+      "expected_revision": "resource"
+    },
+    {
+      "command_id": "approval.list",
+      "method": "GET",
+      "path": "/api/v2/approvals",
+      "owner": "Assist",
+      "input_schema": "interaction.query.v2",
+      "output_schema": "approvals.v2",
+      "idempotency": "forbidden",
+      "expected_revision": "none"
+    },
+    {
+      "command_id": "approval.create",
+      "method": "POST",
+      "path": "/api/v2/approvals",
+      "owner": "Assist",
+      "input_schema": "approval.create.v2",
+      "output_schema": "approval.receipt.v2",
+      "idempotency": "required",
+      "expected_revision": "parent"
+    },
+    {
+      "command_id": "approval.decide",
+      "method": "POST",
+      "path": "/api/v2/approvals/{id}/decide",
+      "owner": "Assist",
+      "input_schema": "approval.decide.v2",
+      "output_schema": "approval.receipt.v2",
+      "idempotency": "required",
+      "expected_revision": "resource"
+    },
+    {
+      "command_id": "user.input.create",
+      "method": "POST",
+      "path": "/api/v2/user-inputs",
+      "owner": "Assist",
+      "input_schema": "user.input.create.v2",
+      "output_schema": "user.input.receipt.v2",
+      "idempotency": "required",
+      "expected_revision": "parent"
+    },
+    {
+      "command_id": "user.input.answer",
+      "method": "POST",
+      "path": "/api/v2/user-inputs/{id}/answer",
+      "owner": "Assist",
+      "input_schema": "user.input.answer.v2",
+      "output_schema": "user.input.receipt.v2",
+      "idempotency": "required",
+      "expected_revision": "resource"
+    },
+    {
+      "command_id": "user.input.cancel",
+      "method": "POST",
+      "path": "/api/v2/user-inputs/{id}/cancel",
+      "owner": "Assist",
+      "input_schema": "user.input.lifecycle.v2",
+      "output_schema": "user.input.receipt.v2",
+      "idempotency": "required",
+      "expected_revision": "resource"
+    },
+    {
+      "command_id": "proposal.list",
+      "method": "GET",
+      "path": "/api/v2/proposals",
+      "owner": "Assist",
+      "input_schema": "interaction.query.v2",
+      "output_schema": "proposals.v2",
+      "idempotency": "forbidden",
+      "expected_revision": "none"
+    },
+    {
+      "command_id": "proposal.create",
+      "method": "POST",
+      "path": "/api/v2/proposals",
+      "owner": "Assist",
+      "input_schema": "proposal.create.v2",
+      "output_schema": "proposal.p5.receipt.v2",
+      "idempotency": "required",
+      "expected_revision": "parent"
+    },
+    {
+      "command_id": "proposal.apply",
+      "method": "POST",
+      "path": "/api/v2/proposals/{id}/apply",
+      "owner": "Assist",
+      "input_schema": "proposal.mutation.p5.v2",
+      "output_schema": "proposal.p5.receipt.v2",
+      "idempotency": "required",
+      "expected_revision": "resource"
+    },
+    {
+      "command_id": "proposal.reject",
+      "method": "POST",
+      "path": "/api/v2/proposals/{id}/reject",
+      "owner": "Assist",
+      "input_schema": "proposal.mutation.p5.v2",
+      "output_schema": "proposal.p5.receipt.v2",
+      "idempotency": "required",
+      "expected_revision": "resource"
+    },
+    {
+      "command_id": "proposal.undo",
+      "method": "POST",
+      "path": "/api/v2/proposals/{id}/undo",
+      "owner": "Assist",
+      "input_schema": "proposal.mutation.p5.v2",
+      "output_schema": "proposal.p5.receipt.v2",
+      "idempotency": "required",
+      "expected_revision": "resource"
+    },
+    {
+      "command_id": "terminal.capabilities",
+      "method": "GET",
+      "path": "/api/v2/terminals/capabilities",
+      "owner": "Terminal",
+      "input_schema": "terminal.capabilities.query.v2",
+      "output_schema": "terminal.capabilities.v2",
+      "idempotency": "forbidden",
+      "expected_revision": "none"
+    },
+    {
+      "command_id": "terminal.list",
+      "method": "GET",
+      "path": "/api/v2/terminals",
+      "owner": "Terminal",
+      "input_schema": "terminal.query.v2",
+      "output_schema": "terminals.v2",
+      "idempotency": "forbidden",
+      "expected_revision": "none"
+    },
+    {
+      "command_id": "terminal.open",
+      "method": "POST",
+      "path": "/api/v2/terminals",
+      "owner": "Terminal",
+      "input_schema": "terminal.open.v2",
+      "output_schema": "terminal.receipt.v2",
+      "idempotency": "required",
+      "expected_revision": "parent"
+    },
+    {
+      "command_id": "terminal.get",
+      "method": "GET",
+      "path": "/api/v2/terminals/{id}",
+      "owner": "Terminal",
+      "input_schema": "terminal.query.v2",
+      "output_schema": "terminal.v2",
+      "idempotency": "forbidden",
+      "expected_revision": "none"
+    },
+    {
+      "command_id": "terminal.events",
+      "method": "GET",
+      "path": "/api/v2/terminals/{id}/events",
+      "owner": "Terminal",
+      "input_schema": "terminal.query.v2",
+      "output_schema": "event.replay.v2",
+      "idempotency": "forbidden",
+      "expected_revision": "none"
+    },
+    {
+      "command_id": "terminal.ws",
+      "method": "GET",
+      "path": "/api/v2/terminals/{id}/ws",
+      "owner": "Terminal",
+      "input_schema": "terminal.query.v2",
+      "output_schema": "terminal.v2",
+      "idempotency": "forbidden",
+      "expected_revision": "none"
+    },
+    {
+      "command_id": "terminal.resize",
+      "method": "POST",
+      "path": "/api/v2/terminals/{id}/resize",
+      "owner": "Terminal",
+      "input_schema": "terminal.action.v2",
+      "output_schema": "terminal.receipt.v2",
+      "idempotency": "required",
+      "expected_revision": "resource"
+    },
+    {
+      "command_id": "terminal.signal",
+      "method": "POST",
+      "path": "/api/v2/terminals/{id}/signal",
+      "owner": "Terminal",
+      "input_schema": "terminal.action.v2",
+      "output_schema": "terminal.receipt.v2",
+      "idempotency": "required",
+      "expected_revision": "resource"
+    },
+    {
+      "command_id": "terminal.stop",
+      "method": "POST",
+      "path": "/api/v2/terminals/{id}/stop",
+      "owner": "Terminal",
+      "input_schema": "terminal.action.v2",
+      "output_schema": "terminal.receipt.v2",
+      "idempotency": "required",
+      "expected_revision": "resource"
+    },
+    {
+      "command_id": "bridge.device.list",
+      "method": "GET",
+      "path": "/api/v2/bridge/devices",
+      "owner": "Bridge",
+      "input_schema": "bridge.query.v2",
+      "output_schema": "bridge.devices.v2",
+      "idempotency": "forbidden",
+      "expected_revision": "none"
+    },
+    {
+      "command_id": "bridge.pair",
+      "method": "POST",
+      "path": "/api/v2/bridge/pairing",
+      "owner": "Bridge",
+      "input_schema": "bridge.pair.v2",
+      "output_schema": "bridge.device.receipt.v2",
+      "idempotency": "required",
+      "expected_revision": "parent"
+    },
+    {
+      "command_id": "bridge.device.probe",
+      "method": "POST",
+      "path": "/api/v2/bridge/devices/{id}/probe",
+      "owner": "Bridge",
+      "input_schema": "bridge.device.mutation.v2",
+      "output_schema": "bridge.device.receipt.v2",
+      "idempotency": "required",
+      "expected_revision": "resource"
+    },
+    {
+      "command_id": "bridge.device.rotate",
+      "method": "POST",
+      "path": "/api/v2/bridge/devices/{id}/rotate",
+      "owner": "Bridge",
+      "input_schema": "bridge.device.mutation.v2",
+      "output_schema": "bridge.device.receipt.v2",
+      "idempotency": "required",
+      "expected_revision": "resource"
+    },
+    {
+      "command_id": "bridge.device.revoke",
+      "method": "POST",
+      "path": "/api/v2/bridge/devices/{id}/revoke",
+      "owner": "Bridge",
+      "input_schema": "bridge.device.mutation.v2",
+      "output_schema": "bridge.device.receipt.v2",
+      "idempotency": "required",
+      "expected_revision": "resource"
+    },
+    {
+      "command_id": "bridge.transfer.list",
+      "method": "GET",
+      "path": "/api/v2/bridge/devices/{id}/transfers",
+      "owner": "Bridge",
+      "input_schema": "bridge.query.v2",
+      "output_schema": "bridge.transfer.receipt.v2",
+      "idempotency": "forbidden",
+      "expected_revision": "none"
+    },
+    {
+      "command_id": "bridge.transfer.create",
+      "method": "POST",
+      "path": "/api/v2/bridge/devices/{id}/transfers",
+      "owner": "Bridge",
+      "input_schema": "bridge.transfer.create.v2",
+      "output_schema": "bridge.transfer.receipt.v2",
+      "idempotency": "required",
+      "expected_revision": "resource"
+    }
+  ]
+}

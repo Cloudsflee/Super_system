@@ -1,0 +1,52 @@
+{
+  "schema_version": "aiws.v3-clean.p5-assist-probe-record.v1",
+  "status": "passed",
+  "command": {
+    "command": "node scripts/v3-clean-p5-assist-probe.mjs",
+    "cwd": "repository-root",
+    "input": {
+      "args": [
+        "scripts/v3-clean-p5-assist-probe.mjs"
+      ]
+    },
+    "stdout": "{\n  \"schema_version\": \"aiws.v3-clean.p5-assist-probe.v1\",\n  \"status\": \"passed\",\n  \"provisional\": false,\n  \"protocol_version\": \"2\",\n  \"schema_sha256\": \"9f43ce69dd8feb8b68d03e4d3a1ace72e28f382f9dcef7442cd271e6207453d2\",\n  \"methods\": [\n    \"initialize\",\n    \"thread/start\",\n    \"thread/resume\",\n    \"turn/start\",\n    \"turn/steer\",\n    \"turn/interrupt\",\n    \"turn/completed\",\n    \"turn/failed\",\n    \"item/started\",\n    \"item/completed\",\n    \"approval/request\",\n    \"userInput/request\"\n  ],\n  \"event_count\": 5,\n  \"adapter\": \"deterministic-app-server\",\n  \"isolated_codex_home\": true,\n  \"credential_lease\": \"memory_only\",\n  \"redactions\": [\n    \"credential\",\n    \"assembled_prompt\",\n    \"host_absolute_path\"\n  ]\n}\n",
+    "stderr": "(node:20064) ExperimentalWarning: SQLite is an experimental feature and might change at any time\n(Use `node --trace-warnings ...` to show where the warning was created)\n",
+    "exit_status": 0,
+    "expected_exit_statuses": [
+      0
+    ],
+    "signal": null,
+    "ok": true,
+    "summary": "\"event_count\": 5,\n\"adapter\": \"deterministic-app-server\",\n\"isolated_codex_home\": true,\n\"credential_lease\": \"memory_only\",\n\"redactions\": [\n\"credential\",\n\"assembled_prompt\",\n\"host_absolute_path\"\n]\n}\n(node:20064) ExperimentalWarning: SQLite is an experimental feature and might change at any time\n(Use `node --trace-warnings ...` to show where the warning was created)"
+  },
+  "receipt": {
+    "schema_version": "aiws.v3-clean.p5-assist-probe.v1",
+    "status": "passed",
+    "provisional": false,
+    "protocol_version": "2",
+    "schema_sha256": "9f43ce69dd8feb8b68d03e4d3a1ace72e28f382f9dcef7442cd271e6207453d2",
+    "methods": [
+      "initialize",
+      "thread/start",
+      "thread/resume",
+      "turn/start",
+      "turn/steer",
+      "turn/interrupt",
+      "turn/completed",
+      "turn/failed",
+      "item/started",
+      "item/completed",
+      "approval/request",
+      "userInput/request"
+    ],
+    "event_count": 5,
+    "adapter": "deterministic-app-server",
+    "isolated_codex_home": true,
+    "credential_lease": "memory_only",
+    "redactions": [
+      "credential",
+      "assembled_prompt",
+      "host_absolute_path"
+    ]
+  }
+}

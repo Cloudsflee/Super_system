@@ -590,6 +590,15 @@ verification/manifest 写入 `supersedes_run_id`。
 - Windows Bridge pairing、DPAPI、ConPTY、Git bundle 往返和 revoke；
 - 四层 Assist 行为（规划、工具、文件/diff、执行反馈）和失败恢复。
 
+P5 使用 `005-assist-files-terminal-bridge` 将活动 schema 升至
+`user_version=5`。Assist adapter 协商 app-server v2 schema hash，session 固定
+scope/Brief/Workflow/Repository/Context Pack/Profile/Credential revision；
+数据库只保留 provider opaque ids，assembled prompt 和 credential lease 只在调用
+内存中存在。Terminal 的 `terminal_events` 只投影 generic `events` 与 CAS chunk，
+canonical cursor/head 仍由共享服务维护。Windows Bridge 是独立 loopback 进程，
+不加载 SQLite、Clean CAS 或 Docker API；pairing 使用 Ed25519/X25519/HKDF/AES-GCM，
+请求使用 timestamp/nonce/body-hash HMAC。
+
 ### 验收
 
 - 没有 assistant response、工具结果或完整事件链时，Turn 不得标记 completed；
@@ -597,7 +606,57 @@ verification/manifest 写入 `supersedes_run_id`。
 - approval/user-input/terminal/bridge 的 stale revision、cancel、resume、
   reconnect 和 replay 具备集成测试；
 - Windows Bridge 通过独立外部 probe，Docker socket 仍只在 Broker；
-- Assist UI、mobile layout、event cursor 和 Evidence receipt 全部关联矩阵行。
+- Assist 外部 probe 必须把 credential 作为可清零 Buffer 注入隔离
+  `CODEX_HOME`，实际完成固定回复契约的最小 turn，并收到连续事件、assistant item、
+  全部 terminal tool result 和 `turn/completed`；缺凭据或缺任一项只生成
+  provisional candidate；
+- Assist/Files/Approval/Terminal/Connections UI、mobile layout、event cursor 和
+  Evidence receipt 全部关联矩阵行；活动 Web 请求中的 `/api/v1` 计数为零。
+
+P5 固定验收清单：
+
+```text
+pnpm check
+pnpm audit:p1
+pnpm scan:clean
+pnpm recovery:plan
+pnpm recovery:catalog
+pnpm recovery:coverage
+pnpm recovery:impact -- --audit
+pnpm test:p1
+pnpm test:p2
+pnpm test:p3
+pnpm test:p31
+pnpm test:p4
+pnpm test:p5
+node scripts/v3-clean-p5-performance.mjs
+node scripts/v3-clean-p5-assist-probe.mjs
+node scripts/v3-clean-p5-bridge-probe.mjs
+pnpm --filter @aiws/web test
+pnpm test
+pnpm test:integration:clean
+pnpm test:security:clean
+pnpm test:integration
+pnpm test:security
+pnpm build
+pnpm test:e2e
+pnpm verify
+pnpm evidence:p5
+git diff --check
+```
+
+P5 Evidence 记录 schema/owner/route/protocol inventory、migration、真实
+app-server/Windows Bridge probe、性能、browser、secret scan、四角色工件和
+rollback。Rollback 在隔离目录恢复 v4 SQLite/CAS/Vault/workspace/Bridge fixture
+snapshot，并验证 `1,2,3,4`、`user_version=4`、FK 空集和
+`byte_exact_mismatches=[]`。最终 receipt 为 `verified` 且
+`provisional=false` 时才原子迁移六个 D8 条目；Assist/Files/Approval/Terminal/
+Bridge 晋级 `verified`，Attachments 晋级 `implemented`，Clean/Historical 为
+`19/8`，Frontend/Outcome 保持 `scaffolded`。
+Final Evidence is immutable after publication: the regular `verify` gate uses
+the read-only `pnpm evidence:p5 -- --verify` check, which also reopens the
+Assist probe and rejects skipped/provisional model turns, while a corrective receipt
+must use the explicit `--supersede` path.
 
 ## 11. P6：Runner、七阶段 Execution、Checkpoint、Replay
 

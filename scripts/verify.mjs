@@ -6,13 +6,20 @@ const commands = [
   ['check'],
   ['audit:p1', ...(skipP1Evidence ? ['--', '--skip-evidence'] : [])],
   ['scan:clean', ...(skipP1Evidence ? ['--', '--skip-evidence'] : [])],
-  ['test:p1'], ['test:p2'], ['test:p3'], ['test:p31'], ['test:p4'], ['test'],
-  ['test:integration'], ['test:security'], ['build'], ['test:e2e'], ['git diff --check']
+  ['test:p1'], ['test:p2'], ['test:p3'], ['test:p31'], ['test:p4'], ['test:p5'],
+  ['node scripts/v3-clean-p5-performance.mjs'],
+  ['node scripts/v3-clean-p5-assist-probe.mjs'],
+  ['node scripts/v3-clean-p5-bridge-probe.mjs'],
+  ['test'], ['test:integration'], ['test:security'], ['build'], ['test:e2e'],
+  ['evidence:p5', '--', '--verify'], ['git diff --check']
 ];
 for (const [script, ...args] of commands) {
   process.stdout.write(`\n== ${script} ==\n`);
+  const direct = script.startsWith('node ');
   const command = script === 'git diff --check'
     ? ['git', 'diff', '--check']
+    : direct
+      ? script.split(/\s+/)
     : ['corepack', 'pnpm', script, ...args];
   const result = spawnSync(command[0], command.slice(1), {
     cwd: process.cwd(),

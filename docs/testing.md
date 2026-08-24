@@ -181,7 +181,7 @@ boundary.
 The P4 unit gate preserves the same split: `pnpm test` excludes only the named
 R5 source-hash replay, while `fixture:legacy:integration` owns and reports it
 as Historical advisory characterization. The package surface remains fixed at
-42 scripts.
+44 scripts after the P5 gate additions.
 
 The fixed P4 command inventory is:
 
@@ -250,6 +250,70 @@ Ordinary reruns reject an existing verified final. An explicit corrective
 `--supersede` run preserves every prior top-level byte under
 `attempts/superseded-final-<run-id>-*` and records `supersedes_run_id` in the
 new verification and manifest.
+
+## P5 Assist, Files, Terminal, and Bridge
+
+P5 advances the active Clean runtime to schema v5 with forward-only
+`005-assist-files-terminal-bridge`. `tests/p5/` covers provider protocol and
+completion invariants, attachment quarantine/preview, managed workspace change
+batches, approval/input pause-resume, terminal redaction/cursor replay and the
+independent Windows Bridge pairing/nonce/revoke flow. `terminal_events` is only
+a one-to-one projection of the generic event stream; Assist does not create a
+second operation ledger. Clean Web coverage in `apps/web/src/test/assist.test.tsx`,
+`approvals-p5.test.tsx`, `files-p5.test.tsx`, `terminal.test.tsx`, and
+`connections-p5.test.tsx` fixes the `/api/v2` envelopes, expected revisions,
+terminal client sequence/reconnect cursor, batch undo, and Bridge revoke flows.
+
+The synchronized P5 inventory is:
+
+```text
+pnpm check
+pnpm audit:p1
+pnpm scan:clean
+pnpm recovery:plan
+pnpm recovery:catalog
+pnpm recovery:coverage
+pnpm recovery:impact -- --audit
+pnpm test:p1
+pnpm test:p2
+pnpm test:p3
+pnpm test:p31
+pnpm test:p4
+pnpm test:p5
+node scripts/v3-clean-p5-performance.mjs
+node scripts/v3-clean-p5-assist-probe.mjs
+node scripts/v3-clean-p5-bridge-probe.mjs
+pnpm --filter @aiws/web test
+pnpm test
+pnpm test:integration:clean
+pnpm test:security:clean
+pnpm test:integration
+pnpm test:security
+pnpm build
+pnpm test:e2e
+pnpm verify
+pnpm evidence:p5
+git diff --check
+```
+
+P5 performance thresholds are Assist event replay p95 <=200 ms, 100-file list
+p95 <=150 ms, 10-file review p95 <=500 ms, and 1 MiB terminal replay p95 <=500
+ms. The independent provider and Bridge probes are hard gates for a final
+non-provisional receipt. The provider probe loads a credential into a zeroable
+Buffer, maps it only to the isolated app-server child, and must observe a
+contiguous real turn with the fixed response contract, an assistant item, all
+tool calls terminal, and `turn/completed`; response content is discarded.
+Missing credentials or any incomplete turn exits non-zero and writes only a
+provisional candidate attempt. Evidence is append-only at
+`docs/evidence/v3-clean-p5-assist-terminal-20260820/`; only that receipt can
+promote five D8 rows to `verified` and Attachments to `implemented`. Clean and
+Historical layers remain disjoint at 19/8, while Frontend and Outcome remain
+`scaffolded`.
+After publication, `pnpm verify` invokes `pnpm evidence:p5 -- --verify` to
+validate the immutable final receipt, manifest hashes, and layered Catalog
+without creating or replacing Evidence files, including reopening the nested
+Assist probe receipt and rechecking its real-turn invariants. Publishing a corrective run
+continues to require the explicit `pnpm evidence:p5 -- --supersede` option.
 
 ## AI evaluation
 

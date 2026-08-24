@@ -1,0 +1,42 @@
+{
+  "schema_version": "aiws.v3-clean.p5-rollback-snapshot.v1",
+  "status": "passed",
+  "database": {
+    "file": "rollback-v4.sqlite",
+    "sha256": "42b05f156b4d6bf20f1cc03ef8551b6e46d7c8ecb745e69bd7236763321d72da",
+    "bytes": 765952,
+    "user_version": 4,
+    "foreign_key_check": []
+  },
+  "cas": {
+    "file": "rollback-cas-v4-manifest.json",
+    "sha256": "bf5817ffd0fd53286897168dde9ccf88ba28e9645018898213cdc59d744c05f8",
+    "object_count": 0
+  },
+  "migration_ledger": [
+    {
+      "migration_id": "001-clean-baseline",
+      "version": 1,
+      "checksum": "cca3488f5328cb66e030dab0fed7fad023980e7178b78e60256777fbb8dde424",
+      "snapshot_sha256": "29a8103754a9d5aea1b6d23c2e6c36ed578698bb15a961299bb3eed4a8e53abe"
+    },
+    {
+      "migration_id": "002-identity-acl",
+      "version": 2,
+      "checksum": "b8bcbda157aadda8eaafbebf20830297ba9be74abec2782c5ff1141192fce103",
+      "snapshot_sha256": "cf6a799dd5ef3ae49e547799ae2a4e084fded5e55c2991fabbf8143d0a6c8f49"
+    },
+    {
+      "migration_id": "003-project-workflow",
+      "version": 3,
+      "checksum": "57a93d5fc8bf041d9ab350cc0ab4449bd4d520df9f2b5a7cc767859885a8d18e",
+      "snapshot_sha256": "70b159e6403055136c0f1cd71d4a8d4a6d781e880fa4ba33a9eafcf5c2d4f32d"
+    },
+    {
+      "migration_id": "004-context-projection-mcp",
+      "version": 4,
+      "checksum": "396bd5a18f19e6eaf0dc762aff78861319e448085915eaacf956fbed13ff49bd",
+      "snapshot_sha256": "c15aba67f32eadf00424d8d13945b224bc6d0f1141a7ef7bec554120a224c541"
+    }
+  ]
+}

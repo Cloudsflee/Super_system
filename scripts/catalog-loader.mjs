@@ -4,6 +4,8 @@ import { createHash } from 'node:crypto';
 
 const P4_EVIDENCE_REFERENCE = 'docs/evidence/v3-clean-p4-context-mcp-20260820/verification.json';
 const P4_EVIDENCE_ATTEMPTS = 'docs/evidence/v3-clean-p4-context-mcp-20260820/attempts';
+const P5_EVIDENCE_REFERENCE = 'docs/evidence/v3-clean-p5-assist-terminal-20260820/verification.json';
+const P5_EVIDENCE_ATTEMPTS = 'docs/evidence/v3-clean-p5-assist-terminal-20260820/attempts';
 
 export const CLEAN_CATALOG_IDS = Object.freeze([
   'REC-D0-GOVERNANCE-000', 'REC-D2-IDENTITY-001', 'REC-D2-SETUP-002',
@@ -11,6 +13,11 @@ export const CLEAN_CATALOG_IDS = Object.freeze([
   'REC-D5-PROJECT-005', 'REC-D5-WORKFLOW-006', 'REC-D6-GENERATION-007',
   'REC-D6-OUTCOME-009', 'REC-D7-REPOSITORY-014',
   'REC-D9-CONTEXT-017', 'REC-D9-PROJECTION-018', 'REC-D10-FRONTEND-024'
+]);
+
+export const P5_CLEAN_CATALOG_IDS = Object.freeze([
+  'REC-D8-ASSIST-010', 'REC-D8-ATTACHMENTS-011', 'REC-D8-FILES-012',
+  'REC-D8-APPROVAL-013', 'REC-D8-TERMINAL-025', 'REC-D8-BRIDGE-026'
 ]);
 
 export function loadCatalogIndex(root = process.cwd()) {
@@ -117,6 +124,11 @@ export function validateCatalogLayers({ root = process.cwd(), index = loadCatalo
     const receipt = readJson(p4Evidence.path);
     for (const failure of validateP4EvidenceManifest(path.dirname(p4Evidence.path), receipt)) failures.push(`p4_evidence:${failure}`);
   }
+  const p5Evidence = resolveCatalogEvidenceReference(resolvedRoot, P5_EVIDENCE_REFERENCE);
+  if (!p5Evidence.staging && fs.existsSync(p5Evidence.path)) {
+    const receipt = readJson(p5Evidence.path);
+    for (const failure of validateP5EvidenceManifest(path.dirname(p5Evidence.path), receipt)) failures.push(`p5_evidence:${failure}`);
+  }
   const matrixPath = path.join(root, 'docs', 'architecture', 'v23-capability-matrix.md');
   if (!fs.existsSync(matrixPath)) failures.push('matrix_missing');
   else {
@@ -126,6 +138,7 @@ export function validateCatalogLayers({ root = process.cwd(), index = loadCatalo
   }
   const cleanIds = new Set((layers.clean?.features || []).map((feature) => feature.id));
   for (const id of CLEAN_CATALOG_IDS) if (!cleanIds.has(id)) failures.push(`clean_required:${id}`);
+  for (const id of P5_CLEAN_CATALOG_IDS) if (!cleanIds.has(id)) failures.push(`p5_clean_required:${id}`);
   for (const feature of layers.clean?.features || []) {
     if (feature.runtime_surface !== 'v3-clean') failures.push(`clean_runtime_surface:${feature.id}`);
   }
@@ -139,30 +152,95 @@ export function resolveCatalogEvidenceReference(root = process.cwd(), value = ''
   const resolvedRoot = path.resolve(root);
   const reference = String(value || '').replaceAll('\\', '/');
   const ordinary = path.resolve(resolvedRoot, reference);
-  if (fs.existsSync(ordinary) || reference !== P4_EVIDENCE_REFERENCE) return { path: ordinary, staging: false };
-  const configured = String(process.env.AIWS_P4_EVIDENCE_STAGING_ROOT || '').trim();
+  if (![P4_EVIDENCE_REFERENCE, P5_EVIDENCE_REFERENCE].includes(reference)) return { path: ordinary, staging: false };
+  const isP5 = reference === P5_EVIDENCE_REFERENCE;
+  const configured = String(process.env[isP5 ? 'AIWS_P5_EVIDENCE_STAGING_ROOT' : 'AIWS_P4_EVIDENCE_STAGING_ROOT'] || '').trim();
   if (!configured) return { path: ordinary, staging: false };
   const attemptRoot = path.resolve(configured);
-  const attemptsRoot = path.resolve(resolvedRoot, P4_EVIDENCE_ATTEMPTS);
+  const attemptsRoot = path.resolve(resolvedRoot, isP5 ? P5_EVIDENCE_ATTEMPTS : P4_EVIDENCE_ATTEMPTS);
   const relative = path.relative(attemptsRoot, attemptRoot);
   if (!relative || relative.startsWith('..') || path.isAbsolute(relative) || relative.includes(path.sep)) return { path: ordinary, staging: false };
   const candidate = path.join(attemptRoot, 'catalog-staging.json');
   const receipt = readJson(candidate);
-  if (receipt?.schema_version !== 'aiws.v3-clean.p4-catalog-staging.v1'
-      || receipt?.phase !== 'P4'
+  if (receipt?.schema_version !== `aiws.v3-clean.${isP5 ? 'p5' : 'p4'}-catalog-staging.v1`
+      || receipt?.phase !== (isP5 ? 'P5' : 'P4')
       || receipt?.status !== 'staging'
       || receipt?.provisional !== true
-      || receipt?.final_reference !== P4_EVIDENCE_REFERENCE
+      || receipt?.final_reference !== reference
       || receipt?.run_id !== path.basename(attemptRoot)) return { path: ordinary, staging: false };
   return { path: candidate, staging: true };
 }
 
+export function validateP5EvidenceManifest(evidenceRoot, verification = readJson(path.join(evidenceRoot, 'verification.json'))) {
+  const failures = validateEvidenceManifest(evidenceRoot, verification, 'aiws.v3-clean.p5-manifest.v1');
+  if (verification?.schema_version !== 'aiws.v3-clean.p5-verification.v1') failures.push('verification_schema');
+  if (verification?.status !== 'verified' || verification?.provisional !== false) failures.push('verification_not_final');
+  const commands = Array.isArray(verification?.commands) ? verification.commands : [];
+  if (!commands.length) failures.push('verification_commands_missing');
+  if (commands.some((entry) => Number(entry?.exit_status ?? 1) !== 0 || entry?.ok !== true)) failures.push('verification_command_failed');
+  for (const probe of ['assist', 'bridge', 'performance', 'browser', 'migration', 'rollback', 'secret_scan']) {
+    if (verification?.probes?.[probe]?.status !== 'passed') failures.push(`probe_failed:${probe}`);
+  }
+  const assistProbe = readJson(path.join(evidenceRoot, 'assist-probe.json'));
+  for (const failure of validateP5AssistProbeReceipt(assistProbe)) failures.push(`assist_probe:${failure}`);
+
+  const expectedRoles = {
+    modified_artifact: 'modified-artifact.json',
+    patch: 'change.patch',
+    verification: 'verification.json',
+    rollback: 'rollback.ps1'
+  };
+  const reopen = readJson(path.join(evidenceRoot, 'artifact-reopen.json'));
+  if (reopen?.status !== 'passed') failures.push('artifact_reopen_status');
+  const reopenChecks = new Map((Array.isArray(reopen?.checks) ? reopen.checks : []).map((entry) => [entry?.role, entry]));
+  for (const [role, file] of Object.entries(expectedRoles)) {
+    if (verification?.artifacts?.[role] !== file) failures.push(`artifact_role_mismatch:${role}`);
+    const check = reopenChecks.get(role);
+    const target = path.join(evidenceRoot, file);
+    if (!check || check.file !== file || check.exists !== true || !fs.existsSync(target)) {
+      failures.push(`artifact_reopen_missing:${role}`);
+    } else if (check.sha256 !== sha256File(target)) {
+      failures.push(`artifact_reopen_hash_mismatch:${role}`);
+    }
+  }
+
+  const rollback = readJson(path.join(evidenceRoot, 'rollback-receipt.json'));
+  if (rollback?.status !== 'passed' || rollback?.dry_run?.exit_status !== 0 || rollback?.isolated_apply?.exit_status !== 0) failures.push('rollback_status');
+  if (rollback?.source_reverse_check !== 'passed') failures.push('rollback_source_reverse_check');
+  if (rollback?.restored_user_version !== 4) failures.push('rollback_user_version');
+  if (JSON.stringify(rollback?.migration_ledger) !== JSON.stringify([1, 2, 3, 4])) failures.push('rollback_migration_ledger');
+  if (!Array.isArray(rollback?.foreign_key_check) || rollback.foreign_key_check.length) failures.push('rollback_foreign_key_check');
+  if (!Array.isArray(rollback?.byte_exact_mismatches) || rollback.byte_exact_mismatches.length) failures.push('rollback_byte_exact_mismatches');
+  return [...new Set(failures)].sort();
+}
+
+export function validateP5AssistProbeReceipt(value) {
+  const failures = [];
+  if (value?.schema_version !== 'aiws.v3-clean.p5-assist-probe-record.v1') failures.push('record_schema');
+  if (value?.status !== 'passed') failures.push('record_status');
+  const receipt = value?.receipt;
+  if (receipt?.schema_version !== 'aiws.v3-clean.p5-assist-probe.v1') failures.push('receipt_schema');
+  if (receipt?.status !== 'passed' || receipt?.provisional !== false) failures.push('receipt_not_final');
+  if (receipt?.adapter !== 'process-app-server' || receipt?.isolated_codex_home !== true) failures.push('process_adapter_missing');
+  if (receipt?.thread_started !== true || receipt?.model_turn !== 'completed') failures.push('real_turn_missing');
+  if (receipt?.credential_lease !== 'memory_only_zeroed') failures.push('credential_lease_not_zeroed');
+  const turn = receipt?.real_turn;
+  if (turn?.valid !== true || turn?.sequence_contiguous !== true || turn?.terminal_notification !== true
+      || turn?.assistant_item !== true || turn?.assistant_response_contract !== true || turn?.tool_calls_terminal !== true) failures.push('turn_invariants');
+  if (!Number.isFinite(Number(receipt?.provider_latency_ms)) || Number(receipt?.provider_latency_ms) < 0) failures.push('provider_latency_missing');
+  return [...new Set(failures)].sort();
+}
+
 export function validateP4EvidenceManifest(evidenceRoot, verification = readJson(path.join(evidenceRoot, 'verification.json'))) {
+  return validateEvidenceManifest(evidenceRoot, verification, 'aiws.v3-clean.p4-manifest.v1');
+}
+
+function validateEvidenceManifest(evidenceRoot, verification, expectedSchema) {
   const failures = [];
   const manifestPath = path.join(evidenceRoot, 'manifest.json');
   const manifest = readJson(manifestPath);
   if (!manifest) return ['manifest_missing_or_invalid'];
-  if (manifest.schema_version !== 'aiws.v3-clean.p4-manifest.v1') failures.push('manifest_schema');
+  if (manifest.schema_version !== expectedSchema) failures.push('manifest_schema');
   if (manifest.status !== verification?.status || manifest.provisional !== verification?.provisional) failures.push('manifest_status_mismatch');
   if (manifest.run_id !== verification?.run_id) failures.push('manifest_run_id_mismatch');
   if ((manifest.supersedes_run_id || null) !== (verification?.supersedes_run_id || null)) failures.push('manifest_supersession_mismatch');

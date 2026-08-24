@@ -107,7 +107,7 @@ test('workspace path classifier keeps later phases separate from P1', () => {
   assert.equal(classifyWorkspacePath('scripts/check.mjs').phase, 'P1');
   assert.equal(classifyWorkspacePath('apps/api/src/modules/identity/service.mjs').phase, 'P2-P8');
   assert.equal(classifyWorkspacePath('apps/runner-broker/server.mjs').phase, 'P6');
-  assert.equal(classifyWorkspacePath('apps/web/src/App.tsx').phase, 'P9');
+  assert.equal(classifyWorkspacePath('apps/web/src/App.tsx').phase, 'P5');
   assert.equal(classifyWorkspacePath('compose.yml').phase, 'P8-P9');
   assert.equal(classifyWorkspacePath('愿景与范围文档模板/愿景与范围文档模板_中文融合版.docx').kind, 'non_product');
 });

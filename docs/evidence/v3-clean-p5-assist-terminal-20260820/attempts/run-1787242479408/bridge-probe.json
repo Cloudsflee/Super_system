@@ -1,0 +1,43 @@
+{
+  "schema_version": "aiws.v3-clean.p5-bridge-probe-record.v1",
+  "status": "passed",
+  "command": {
+    "command": "node scripts/v3-clean-p5-bridge-probe.mjs",
+    "cwd": "repository-root",
+    "input": {
+      "args": [
+        "scripts/v3-clean-p5-bridge-probe.mjs"
+      ]
+    },
+    "stdout": "{\n  \"schema_version\": \"aiws.v3-clean.p5-bridge-probe.v1\",\n  \"status\": \"passed\",\n  \"provisional\": false,\n  \"independent_process\": true,\n  \"loopback_only\": true,\n  \"pairing\": \"ed25519+x25519+hkdf+aes-gcm\",\n  \"rotation\": \"hmac-derived-secret\",\n  \"nonce_replay_status\": 409,\n  \"revoke_cleanup\": true,\n  \"capabilities\": {\n    \"conpty\": true,\n    \"dpapi\": true,\n    \"git_bundle\": true\n  },\n  \"redactions\": [\n    \"shared_secret\",\n    \"confirmation_code\",\n    \"host_absolute_path\"\n  ]\n}\n",
+    "stderr": "(node:18692) ExperimentalWarning: SQLite is an experimental feature and might change at any time\n(Use `node --trace-warnings ...` to show where the warning was created)\n",
+    "exit_status": 0,
+    "expected_exit_statuses": [
+      0
+    ],
+    "signal": null,
+    "ok": true,
+    "summary": "\"conpty\": true,\n\"dpapi\": true,\n\"git_bundle\": true\n},\n\"redactions\": [\n\"shared_secret\",\n\"confirmation_code\",\n\"host_absolute_path\"\n]\n}\n(node:18692) ExperimentalWarning: SQLite is an experimental feature and might change at any time\n(Use `node --trace-warnings ...` to show where the warning was created)"
+  },
+  "receipt": {
+    "schema_version": "aiws.v3-clean.p5-bridge-probe.v1",
+    "status": "passed",
+    "provisional": false,
+    "independent_process": true,
+    "loopback_only": true,
+    "pairing": "ed25519+x25519+hkdf+aes-gcm",
+    "rotation": "hmac-derived-secret",
+    "nonce_replay_status": 409,
+    "revoke_cleanup": true,
+    "capabilities": {
+      "conpty": true,
+      "dpapi": true,
+      "git_bundle": true
+    },
+    "redactions": [
+      "shared_secret",
+      "confirmation_code",
+      "host_absolute_path"
+    ]
+  }
+}

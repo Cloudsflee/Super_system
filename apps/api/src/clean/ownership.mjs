@@ -70,6 +70,27 @@ export const CLEAN_P4_TABLE_OWNERS = Object.freeze({
   gateway_forward_receipts: 'Gateway'
 });
 
+export const CLEAN_P5_TABLE_OWNERS = Object.freeze({
+  ...CLEAN_P4_TABLE_OWNERS,
+  assist_sessions: 'Assist',
+  assist_turns: 'Assist',
+  assist_messages: 'Assist',
+  assist_goals: 'Assist',
+  assist_configurations: 'Assist',
+  assist_references: 'Assist',
+  attachments: 'Files',
+  file_refs: 'Files',
+  file_change_batches: 'Files',
+  file_change_items: 'Files',
+  runtime_approvals: 'Assist',
+  runtime_user_inputs: 'Assist',
+  semantic_proposals: 'Assist',
+  terminal_sessions: 'Terminal',
+  terminal_events: 'Terminal',
+  bridge_devices: 'Bridge',
+  bridge_transfers: 'Bridge'
+});
+
 export const CLEAN_COMMAND_OWNERS = Object.freeze({
   'operations.get': 'Operations',
   'operations.events': 'Operations',
@@ -187,6 +208,64 @@ export const CLEAN_COMMAND_OWNERS = Object.freeze({
   , 'exchange.grant.pack.create': 'Exchange'
   , 'gateway.forward': 'Gateway'
   , 'gateway.receipt.get': 'Gateway'
+  , 'assist.session.list': 'Assist'
+  , 'assist.session.create': 'Assist'
+  , 'assist.session.get': 'Assist'
+  , 'assist.turn.create': 'Assist'
+  , 'assist.session.events': 'Assist'
+  , 'assist.goal.get': 'Assist'
+  , 'assist.goal.update': 'Assist'
+  , 'assist.reference.list': 'Assist'
+  , 'assist.reference.create': 'Assist'
+  , 'assist.session.pause': 'Assist'
+  , 'assist.session.resume': 'Assist'
+  , 'assist.session.cancel': 'Assist'
+  , 'assist.turn.retry': 'Assist'
+  , 'assist.turn.cancel': 'Assist'
+  , 'assist.turn.steer': 'Assist'
+  , 'assist.turn.interrupt': 'Assist'
+  , 'assist.turn.follow-ups': 'Assist'
+  , 'file.list': 'Files'
+  , 'file.get': 'Files'
+  , 'attachment.list': 'Files'
+  , 'attachment.create': 'Files'
+  , 'attachment.content': 'Files'
+  , 'attachment.preview': 'Files'
+  , 'attachment.delete': 'Files'
+  , 'change.batch.list': 'Files'
+  , 'change.batch.create': 'Files'
+  , 'change.batch.review': 'Files'
+  , 'change.batch.approve': 'Files'
+  , 'change.batch.apply': 'Files'
+  , 'change.batch.undo': 'Files'
+  , 'approval.list': 'Assist'
+  , 'approval.create': 'Assist'
+  , 'approval.decide': 'Assist'
+  , 'user.input.list': 'Assist'
+  , 'user.input.create': 'Assist'
+  , 'user.input.answer': 'Assist'
+  , 'user.input.cancel': 'Assist'
+  , 'proposal.list': 'Assist'
+  , 'proposal.create': 'Assist'
+  , 'proposal.apply': 'Assist'
+  , 'proposal.reject': 'Assist'
+  , 'proposal.undo': 'Assist'
+  , 'terminal.capabilities': 'Terminal'
+  , 'terminal.list': 'Terminal'
+  , 'terminal.open': 'Terminal'
+  , 'terminal.get': 'Terminal'
+  , 'terminal.events': 'Terminal'
+  , 'terminal.ws': 'Terminal'
+  , 'terminal.resize': 'Terminal'
+  , 'terminal.signal': 'Terminal'
+  , 'terminal.stop': 'Terminal'
+  , 'bridge.device.list': 'Bridge'
+  , 'bridge.pair': 'Bridge'
+  , 'bridge.device.probe': 'Bridge'
+  , 'bridge.device.rotate': 'Bridge'
+  , 'bridge.device.revoke': 'Bridge'
+  , 'bridge.transfer.list': 'Bridge'
+  , 'bridge.transfer.create': 'Bridge'
 });
 
 export const CLEAN_EVENT_OWNERS = Object.freeze({
@@ -225,18 +304,32 @@ export const CLEAN_EVENT_OWNERS = Object.freeze({
   , 'mcp_client.*': 'MCP'
   , 'mcp.*': 'MCP'
   , 'gateway.*': 'Gateway'
+  , 'assist_session.*': 'Assist'
+  , 'assist_turn.*': 'Assist'
+  , 'assist_message.*': 'Assist'
+  , 'assist_goal.*': 'Assist'
+  , 'assist_reference.*': 'Assist'
+  , 'runtime_approval.*': 'Assist'
+  , 'runtime_user_input.*': 'Assist'
+  , 'semantic_proposal.*': 'Assist'
+  , 'attachment.*': 'Files'
+  , 'file_ref.*': 'Files'
+  , 'file_change_batch.*': 'Files'
+  , 'terminal.*': 'Terminal'
+  , 'bridge_device.*': 'Bridge'
+  , 'bridge_transfer.*': 'Bridge'
 });
 
 export const CLEAN_PLATFORM_OWNERSHIP = Object.freeze({
-  schema_version: 'aiws.v3-clean.owner-manifest.v3',
-  tables: CLEAN_P4_TABLE_OWNERS,
+  schema_version: 'aiws.v3-clean.owner-manifest.v4',
+  tables: CLEAN_P5_TABLE_OWNERS,
   commands: CLEAN_COMMAND_OWNERS,
   events: CLEAN_EVENT_OWNERS
 });
 
 export function validateCleanOwnership({ tables = [], registry = null } = {}) {
   const actualTables = [...new Set(tables.map((table) => String(table)))].sort();
-  const tableOwners = actualTables.includes('context_sources') ? CLEAN_P4_TABLE_OWNERS : (actualTables.includes('projects') ? CLEAN_P3_TABLE_OWNERS : (actualTables.includes('teams') ? CLEAN_P2_TABLE_OWNERS : CLEAN_TABLE_OWNERS));
+  const tableOwners = actualTables.includes('assist_sessions') ? CLEAN_P5_TABLE_OWNERS : (actualTables.includes('context_sources') ? CLEAN_P4_TABLE_OWNERS : (actualTables.includes('projects') ? CLEAN_P3_TABLE_OWNERS : (actualTables.includes('teams') ? CLEAN_P2_TABLE_OWNERS : CLEAN_TABLE_OWNERS)));
   const expectedTables = Object.keys(tableOwners).sort();
   const missingTables = expectedTables.filter((table) => !actualTables.includes(table));
   const unexpectedTables = actualTables.filter((table) => !expectedTables.includes(table));
@@ -258,10 +351,17 @@ export function validateCleanOwnership({ tables = [], registry = null } = {}) {
     }
     const p3Owners = new Set(['Project', 'Repository', 'Workflow', 'Critic']);
     const p4Owners = new Set(['Context', 'Projection', 'Exchange', 'MCP', 'Gateway']);
+    const p5Owners = new Set(['Assist', 'Files', 'Terminal', 'Bridge']);
+    const hasP5Tables = actualTables.includes('assist_sessions');
     const hasP4Tables = actualTables.includes('context_sources');
     const hasP3Tables = actualTables.includes('projects');
     const expectedCommandIds = Object.entries(CLEAN_COMMAND_OWNERS)
-      .filter(([, owner]) => hasP4Tables || (hasP3Tables ? !p4Owners.has(owner) : (!p3Owners.has(owner) && !p4Owners.has(owner))))
+      .filter(([, owner]) => {
+        if (hasP5Tables) return true;
+        if (hasP4Tables) return !p5Owners.has(owner);
+        if (hasP3Tables) return !p4Owners.has(owner) && !p5Owners.has(owner);
+        return !p3Owners.has(owner) && !p4Owners.has(owner) && !p5Owners.has(owner);
+      })
       .map(([commandId]) => commandId);
     for (const commandId of expectedCommandIds) {
       if (!entries.some((entry) => entry.command_id === commandId)) missingCommands.push(commandId);

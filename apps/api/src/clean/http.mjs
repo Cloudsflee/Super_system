@@ -58,6 +58,9 @@ export function createCleanHttpHandler({ runtime, registry, maxBodyBytes = runti
         : runtime.p2 && runtime.identity
           ? runtime.identity.principalFromRequest(req)
           : runtime.platform.actorContext({ actorId: req.headers['x-actor-id'], projectId: req.headers['x-project-id'], scopes: parseScopes(req.headers['x-scopes']) });
+      if (runtime.p5 && entry.phase === 'p5') {
+        return await handleP5Route({ entry, params, url, req, res, requestId, runtime, actor, bodyReader: () => readJson(req, Math.max(maxBodyBytes, entry.command_id === 'attachment.create' ? 15 * 1024 * 1024 : maxBodyBytes)) });
+      }
       if (runtime.p4 && entry.phase === 'p4') {
         return await handleP4Route({ entry, params, url, req, res, requestId, runtime, actor, mcpBoundary, bodyReader: () => readJson(req, maxBodyBytes) });
       }
@@ -151,6 +154,116 @@ export function createCleanHttpHandler({ runtime, registry, maxBodyBytes = runti
     }
   };
 }
+
+async function handleP5Route({ entry, params, url, req, res, requestId, runtime, actor, bodyReader }) {
+  if (!actor) throw new HttpError('authentication_required', 'active session proof is required', {}, 401, false);
+  const command = entry.command_id;
+  const schema = CLEAN_V2_SCHEMAS[entry.input_schema] || { properties: {} };
+  const allowedQuery = new Set(req.method === 'GET' ? Object.keys(schema.properties || {}) : []);
+  validateQuery(url, allowedQuery);
+  let body = {};
+  if (req.method !== 'GET') {
+    body = await bodyReader();
+    hydrateP5MutationHeaders(entry, req, body);
+  }
+  const args = p5DispatchArguments(command, params, url, body, schema);
+  const dispatched = await runtime.dispatcher.dispatch(command, args, actor);
+  let data = dispatched.result;
+  // Domain services keep ergonomic direct views for their in-process callers;
+  // the public transport normalizes those views to the registered receipt
+  // shape without changing the service contract.
+  if (command === 'assist.session.create' && data && data.id && !data.session) data = { session: data, operation: null };
+  let status = p5Status(command, data);
+  const operationId = data?.operation?.operation_id || data?.operation_id;
+  if (entry.long_running && operationId) {
+    data = runtime.operations.get(operationId, { actorId: actor.actorId, projectId: data?.project_id || null });
+    status = 202;
+  }
+  if (['attachment.content', 'attachment.preview'].includes(command)
+      && /(?:^|,)\s*application\/octet-stream(?:\s*;|\s*,|$)/i.test(String(req.headers.accept || ''))) {
+    return sendBinaryAttachment(res, requestId, data, runtime);
+  }
+  const revision = p5Revision(data);
+  return sendSuccess(res, requestId, data, { status, resourceType: p5ResourceType(command), outputSchema: entry.output_schema, revision, etag: etagFor(data, revision), policy: runtime.policy });
+}
+
+function sendBinaryAttachment(res, requestId, value, runtime) {
+  const encoded = String(value?.content_base64 || '');
+  let bytes;
+  try { bytes = Buffer.from(encoded, 'base64'); } catch { throw new HttpError('attachment_unavailable', 'attachment content is unavailable', {}, 410, false); }
+  const mediaType = String(value?.media_type || 'application/octet-stream').split(';', 1)[0] || 'application/octet-stream';
+  const hash = value?.attachment?.content_sha256 || value?.attachment?.preview_sha256 || sha256Hex(bytes);
+  const headers = {
+    'content-type': mediaType,
+    'content-length': String(bytes.byteLength),
+    'cache-control': 'no-store',
+    'x-content-type-options': 'nosniff',
+    'x-request-id': requestId,
+    etag: `sha256:${hash}`
+  };
+  res.writeHead(200, headers);
+  res.end(bytes);
+  return null;
+}
+
+function p5DispatchArguments(command, params, url, body, schema) {
+  const args = { ...body, ...params };
+  if (args.id) {
+    if (command === 'assist.turn.create' || command.startsWith('assist.session') || command.startsWith('assist.goal') || command.startsWith('assist.reference')) args.session_id ||= args.id;
+    else if (command.startsWith('assist.turn')) args.turn_id ||= args.id;
+    else if (command.startsWith('attachment.')) args.attachment_id ||= args.id;
+    else if (command.startsWith('change.batch')) args.batch_id ||= args.id;
+    else if (command.startsWith('approval.')) args.approval_id ||= args.id;
+    else if (command.startsWith('user.input')) args.input_id ||= args.id;
+    else if (command.startsWith('proposal.')) args.proposal_id ||= args.id;
+    else if (command.startsWith('terminal.')) args.terminal_id ||= args.id;
+    else if (command.startsWith('bridge.')) args.device_id ||= args.id;
+  }
+  const properties = schema.properties || {};
+  if (reqIsGetSchema(schema)) {
+    for (const key of Object.keys(properties)) {
+      if (args[key] != null) continue;
+      const value = queryValue(url, key);
+      if (value == null) continue;
+      const definition = properties[key] || {};
+      if (definition.type === 'integer' || definition.anyOf?.some((item) => item.type === 'integer')) {
+        if (!/^\d+$/.test(value)) throw new HttpError('schema_invalid', `${key} must be an integer`, {}, 400, false);
+        args[key] = Number(value);
+      } else args[key] = value;
+    }
+  }
+  // Path aliases are transport details. Keep only fields declared by the
+  // command schema before the dispatcher performs its strict validation.
+  for (const key of Object.keys(args)) if (!Object.hasOwn(properties, key)) delete args[key];
+  return args;
+}
+
+function reqIsGetSchema(schema) { return schema && !Object.hasOwn(schema.properties || {}, 'idempotency_key'); }
+
+function hydrateP5MutationHeaders(entry, req, body) {
+  const key = requireIdempotency(req, body); if (body.idempotency_key == null) body.idempotency_key = key;
+  if (body.expected_revision == null) {
+    const raw = req.headers['x-expected-revision'] || req.headers['if-match'];
+    if (raw == null && entry.expected_revision === 'parent') body.expected_revision = 0;
+    else {
+      const value = parseRevision(String(raw || ''));
+      if (!Number.isInteger(value) || value < 0 || (entry.expected_revision !== 'parent' && value < 1)) throw new HttpError('expected_revision_required', 'expected revision is required', {}, 400, false);
+      body.expected_revision = value;
+    }
+  } else {
+    const value = Number(body.expected_revision); if (!Number.isInteger(value) || value < 0 || (entry.expected_revision !== 'parent' && value < 1)) throw new HttpError('schema_invalid', 'expected_revision is invalid', {}, 400, false); body.expected_revision = value;
+  }
+  return body;
+}
+
+function p5Status(command, value) {
+  if (['assist.turn.create', 'assist.turn.retry', 'change.batch.apply', 'change.batch.undo'].includes(command)) return 202;
+  if (['assist.session.create', 'assist.reference.create', 'attachment.create', 'change.batch.create', 'approval.create', 'user.input.create', 'proposal.create', 'terminal.open', 'bridge.pair', 'bridge.transfer.create'].includes(command)) return value?.replayed ? 200 : 201;
+  return 200;
+}
+
+function p5Revision(value) { return value?.revision ?? value?.session?.revision ?? value?.turn?.revision ?? value?.goal?.revision ?? value?.attachment?.revision ?? value?.batch?.revision ?? value?.approval?.revision ?? value?.input?.revision ?? value?.proposal?.revision ?? value?.terminal?.revision ?? value?.device?.revision ?? value?.transfer?.revision ?? value?.operation?.revision ?? null; }
+function p5ResourceType(command) { if (command.startsWith('assist.')) return command.startsWith('assist.turn') ? 'assist_turn' : 'assist_session'; if (command.startsWith('attachment.')) return 'attachment'; if (command.startsWith('file.')) return 'file_ref'; if (command.startsWith('change.batch')) return 'file_change_batch'; if (command.startsWith('approval.')) return 'runtime_approval'; if (command.startsWith('user.input')) return 'runtime_user_input'; if (command.startsWith('proposal.')) return 'semantic_proposal'; if (command.startsWith('terminal.')) return 'terminal_session'; if (command.startsWith('bridge.transfer')) return 'bridge_transfer'; if (command.startsWith('bridge.')) return 'bridge_device'; return 'resource'; }
 
 async function handleP4Route({ entry, params, url, req, res, requestId, runtime, actor, mcpBoundary, bodyReader }) {
   const command = entry.command_id;

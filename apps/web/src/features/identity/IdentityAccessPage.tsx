@@ -4,7 +4,7 @@ import {
   RotateCw, Save, ShieldCheck, Users, UserRound, X
 } from 'lucide-react';
 import { ApiError, apiV2, mutateV2 } from '../../api';
-import type { WorkspacePageProps } from '../../pages';
+import type { WorkspacePageProps } from '../../workspace';
 
 type Actor = { id: string; kind: 'system' | 'user' | 'service' | 'agent'; display_name: string; status: string; revision: number };
 type Team = { id: string; name: string; status: string; revision: number };

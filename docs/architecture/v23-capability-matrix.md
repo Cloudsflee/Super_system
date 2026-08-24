@@ -47,12 +47,12 @@ requires the evidence-derived progression in AGENTS.md.
 | REC-D6-GENERATION-007 | workflow | asynchronous generator and critic | verified | C-10 |
 | REC-D6-EXECUTION-008 | execution | persistent DAG and seven stages | scaffolded | C-11 |
 | REC-D6-OUTCOME-009 | outcome | Evidence outcome and revocable waiver | scaffolded | C-12 |
-| REC-D8-ASSIST-010 | assist | four-scope runtime and event replay | implemented | C-13 |
-| REC-D8-ATTACHMENTS-011 | assist | attachments and secure previews | scaffolded | C-14 |
-| REC-D8-FILES-012 | assist | files, tests, reversible change batches | scaffolded | C-15 |
-| REC-D8-APPROVAL-013 | assist | approval, user input, semantic proposals | scaffolded | C-16 |
+| REC-D8-ASSIST-010 | assist | four-scope runtime and event replay | verified | C-13 |
+| REC-D8-ATTACHMENTS-011 | assist | attachments and secure previews | implemented | C-14 |
+| REC-D8-FILES-012 | assist | files, tests, reversible change batches | verified | C-15 |
+| REC-D8-APPROVAL-013 | assist | approval, user input, semantic proposals | verified | C-16 |
 | REC-D8-TERMINAL-025 | terminal | native terminal and cursor recovery | verified | C-17 |
-| REC-D8-BRIDGE-026 | bridge | Windows Bridge pairing and Git bundle | planned | C-18 |
+| REC-D8-BRIDGE-026 | bridge | Windows Bridge pairing and Git bundle | verified | C-18 |
 | REC-D7-REPOSITORY-014 | repository | connections, targets, lines, worktrees | verified | C-19 |
 | REC-D7-DELIVERY-015 | delivery | GitHub Draft PR and merge recovery | scaffolded | C-20 |
 | REC-D4-SCOPE-016 | mcp | scope requests, grants, allowlists, revoke | verified | C-21 |
@@ -151,12 +151,12 @@ intentional and keeps a scaffolded capability below implemented.
 | REC-D6-GENERATION-007 | docs/evidence/v3-clean-p3-project-workflow-20260819/verification.json | fake generator/critic failure, retry lineage, cancellation and restart receipt; real provider deferred |
 | REC-D6-EXECUTION-008 | none | seven-stage dispatcher, replay, pause/resume |
 | REC-D6-OUTCOME-009 | docs/evidence/v3-clean-p3-project-workflow-20260819/verification.json | requirement scaffold only; Evidence-bound score, waiver, and stale reevaluation remain later |
-| REC-D8-ASSIST-010 | docs/evidence/v6-r6-assist-20260817/verification.json | generic operations/event model and ACL replay |
-| REC-D8-ATTACHMENTS-011 | none | all-format parser, quota, preview, and redaction proof |
-| REC-D8-FILES-012 | none | CAS change batch, stale protection, apply/undo proof |
-| REC-D8-APPROVAL-013 | none | wait/resume, expected revision, and audit proof |
-| REC-D8-TERMINAL-025 | docs/evidence/v3-terminal-native-20260807/evidence-manifest.json | Bridge separation and clean event cursor |
-| REC-D8-BRIDGE-026 | none | independent Windows process, pairing, bundle, rollback |
+| REC-D8-ASSIST-010 | docs/evidence/v3-clean-p5-assist-terminal-20260820/verification.json | generic operations/event model and ACL replay |
+| REC-D8-ATTACHMENTS-011 | docs/evidence/v3-clean-p5-assist-terminal-20260820/verification.json | bounded attachment quota, preview, quarantine, and redaction proof |
+| REC-D8-FILES-012 | docs/evidence/v3-clean-p5-assist-terminal-20260820/verification.json | CAS change batch, stale protection, apply/undo proof |
+| REC-D8-APPROVAL-013 | docs/evidence/v3-clean-p5-assist-terminal-20260820/verification.json | wait/resume, expected revision, and audit proof |
+| REC-D8-TERMINAL-025 | docs/evidence/v3-clean-p5-assist-terminal-20260820/verification.json | Bridge separation and clean event cursor |
+| REC-D8-BRIDGE-026 | docs/evidence/v3-clean-p5-assist-terminal-20260820/verification.json | independent Windows process, pairing, bundle, rollback |
 | REC-D7-REPOSITORY-014 | docs/evidence/v3-clean-p3-project-workflow-20260819/verification.json | clean lease/path policy, source drift/recovery and deterministic provider probe |
 | REC-D7-DELIVERY-015 | none | GitHub App, webhook, merge race, recovery |
 | REC-D4-SCOPE-016 | docs/evidence/v3-clean-p4-context-mcp-20260820/verification.json | production Gateway secret provisioning and release remain deferred |
@@ -435,3 +435,18 @@ production cutover.
 | MCP/Exchange/Gateway parity | MCP + Exchange + Gateway | one registry/validator/dispatcher across REST, MCP HTTP, stdio, and signed Gateway; dual approval and immediate authorization recheck | `tests/p4/mcp-exchange-gateway.test.mjs`, `tests/p4/transport-parity.test.mjs`, `scripts/v3-clean-p4-gateway-probe.mjs` | `REC-D4-MCP-004` and `REC-D4-SCOPE-016` verified |
 | Clean Web and browser | Frontend | Context, policy, selection, Pack, one-time token, dual approval, cancel/retry; three viewports, no overlap/overflow, `/api/v1=0` | `apps/web/src/test/context.test.tsx`, `scripts/e2e.mjs`; browser receipt | `REC-D10-FRONTEND-024` remains scaffolded |
 | immutable Evidence and rollback | Evidence/CAS | original/modified hashes, binary patch, literal gate output, secret scan, reverse-check, isolated v3 SQLite/CAS restore, four-artifact and byte comparison | `scripts/v3-clean-p4-evidence.mjs`, `rollback.ps1`, `verification.json` | only final `verified`, `provisional=false` receipt promotes |
+
+## 18. P5 Assist, Files, Terminal, and Bridge receipt
+
+Decision D-034 advances the active schema to `user_version=5`. Five P5 rows
+move to `verified` and Attachments moves to `implemented` only after the final
+non-provisional receipt at
+`docs/evidence/v3-clean-p5-assist-terminal-20260820/verification.json` passes.
+
+| P5 surface | Owner | Required inventory/behavior | Test and Evidence | Status effect |
+| --- | --- | --- | --- | --- |
+| schema v5 and ownership | Platform + Assist/Files/Terminal/Bridge | migration 005 from targets 0/1/2/3/4, fault rollback, seventeen owned tables, one operations/events/head/CAS model | `tests/p5/migration.test.mjs`, `tests/p5/mutation-recovery.test.mjs`; migration/schema/owner receipts | enables the six P5 rows only |
+| Assist and provider | Assist | bound profile/credential revision, isolated `CODEX_HOME`, zeroable credential lease, real fixed-response turn, contiguous events, assistant item, terminal tools and `turn/completed` | `tests/p5/assist-files.test.mjs`, `tests/p5/provider-probe.test.mjs`, `scripts/v3-clean-p5-assist-probe.mjs`; Assist probe receipt | `REC-D8-ASSIST-010` verified; missing credential or incomplete turn remains provisional |
+| Attachments and Files | Files | bounded MIME preview/quarantine, managed relative paths, atomic change batch, stale fencing, apply/recovery/undo | `tests/p5/assist-files.test.mjs`, `tests/p5/http-contract.test.mjs`, `tests/p5/mutation-recovery.test.mjs` | Files verified; Attachments implemented pending P7 parsers |
+| Approval, Terminal, and Bridge | Assist + Terminal + Bridge | revision-bound decisions, pause/resume, PTY cursor/redaction, independent pairing/nonce/rotate/revoke and bundle verification | `tests/p5/terminal-bridge.test.mjs`, `scripts/v3-clean-p5-bridge-probe.mjs` | Approval, Terminal, and Bridge verified |
+| immutable Evidence and rollback | Evidence/CAS | real probes, literal commands, secret scan, four roles, reverse-check and isolated byte-exact v4 restore | `scripts/v3-clean-p5-evidence.mjs`, `rollback.ps1`, `verification.json` | only final `verified`, `provisional=false` receipt promotes; Clean/Historical is 19/8 |

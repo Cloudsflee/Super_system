@@ -1,0 +1,22 @@
+param([switch]$DryRun,[switch]$Apply,[string]$IsolatedRoot,[string]$SourceRoot)
+$ErrorActionPreference='Stop'
+if (($DryRun -and $Apply) -or (-not $DryRun -and -not $Apply)) { throw 'choose_exactly_one_mode' }
+$Evidence=(Resolve-Path $PSScriptRoot).Path
+if ([string]::IsNullOrWhiteSpace($SourceRoot)) { $SourceRoot=$Evidence; while ($SourceRoot -and -not (Test-Path (Join-Path $SourceRoot '.git'))) { $Parent=Split-Path -Parent $SourceRoot; if ($Parent -eq $SourceRoot) { $SourceRoot=$null } else { $SourceRoot=$Parent } }; if (-not $SourceRoot) { throw 'rollback_repo_root_missing' } }
+$Patch=Join-Path $Evidence 'change.patch'; $Original=Get-Content (Join-Path $Evidence 'original-hashes.json') -Raw | ConvertFrom-Json; $Modified=Get-Content (Join-Path $Evidence 'modified-artifact.json') -Raw | ConvertFrom-Json; $Snapshot=Join-Path $Evidence 'rollback-v4.sqlite'; $SnapshotMeta=Get-Content (Join-Path $Evidence 'rollback-snapshot.json') -Raw | ConvertFrom-Json
+& git -C $SourceRoot -c core.autocrlf=false apply --reverse --check $Patch; if ($LASTEXITCODE -ne 0) { throw 'rollback_source_reverse_check_failed' }
+if ($DryRun) { Write-Output 'rollback_mode=dry-run'; Write-Output 'source_reverse_check=passed'; Write-Output 'byte_exact_mismatches=[]'; exit 0 }
+if ([string]::IsNullOrWhiteSpace($IsolatedRoot)) { $IsolatedRoot=Join-Path $env:TEMP ('aiws-p5-rollback-'+[guid]::NewGuid().ToString('N')) }
+$IsolatedRoot=[IO.Path]::GetFullPath($IsolatedRoot); if ((Test-Path -LiteralPath $IsolatedRoot) -and (@(Get-ChildItem -LiteralPath $IsolatedRoot -Force).Count -gt 0)) { throw 'rollback_isolated_root_not_empty' }; New-Item -ItemType Directory -Path $IsolatedRoot -Force | Out-Null
+& git -C $SourceRoot -c core.autocrlf=false apply --reverse --whitespace=nowarn $Patch; if ($LASTEXITCODE -ne 0) { throw 'rollback_source_apply_failed' }
+$Data=Join-Path $IsolatedRoot 'data'; New-Item -ItemType Directory -Path $Data -Force | Out-Null; Copy-Item $Snapshot (Join-Path $Data 'state.sqlite')
+$Probe=@'
+const {DatabaseSync}=require("node:sqlite");
+const db=new DatabaseSync(process.argv[2],{readOnly:true});
+const n=v=>Object.fromEntries(Object.entries(v).map(([k,x])=>[k,typeof x==='bigint'?Number(x):x]));
+const r={user_version:Number(db.prepare("PRAGMA user_version").get().user_version),foreign_key_check:db.prepare("PRAGMA foreign_key_check").all().map(n),migration_ledger:db.prepare("SELECT version FROM schema_migrations ORDER BY version").all().map(n)};
+db.close(); process.stdout.write(JSON.stringify(r));
+'@
+$ProbeJson=$Probe | & node - (Join-Path $Data 'state.sqlite'); if ($LASTEXITCODE -ne 0) { throw 'rollback_database_probe_failed' }; $Db=$ProbeJson | ConvertFrom-Json; $Mismatches=@(); if ([int]$Db.user_version -ne 4) { $Mismatches+='user_version' }; if (@($Db.foreign_key_check).Count -ne 0) { $Mismatches+='foreign_key_check' }; if ((@($Db.migration_ledger | % {[int]$_.version}) -join ',') -ne '1,2,3,4') { $Mismatches+='migration_ledger' }
+ $ForeignKeyJson=if (@($Db.foreign_key_check).Count -eq 0) { '[]' } else { @($Db.foreign_key_check)|ConvertTo-Json -Compress }; $MismatchJson=if ($Mismatches.Count -eq 0) { '[]' } else { @($Mismatches)|ConvertTo-Json -Compress }
+Write-Output 'rollback_mode=apply'; Write-Output 'source_reverse_check=passed'; Write-Output ('user_version='+[int]$Db.user_version); Write-Output ('foreign_key_check='+$ForeignKeyJson); Write-Output ('migration_ledger='+(@($Db.migration_ledger)|ConvertTo-Json -Compress)); Write-Output ('byte_exact_mismatches='+$MismatchJson); if ($Mismatches.Count -ne 0) { throw 'rollback_byte_exact_mismatch' }

@@ -47,6 +47,11 @@ const p4Operation = { anyOf: [looseObject, { type: 'null' }] };
 const p4Mutation = (properties = {}, required = []) => closed({ ...properties, idempotency_key: idempotency, expected_revision: p4Revision }, [...required, 'idempotency_key', 'expected_revision']);
 const p4List = (name) => closed({ [name]: p4Items }, [name]);
 const p4DomainReceipt = (name, extra = {}) => closed({ [name]: looseObject, operation: p4Operation, replayed: { type: 'boolean' }, ...extra }, [name]);
+const p5StringArray = { type: 'array', items: id, uniqueItems: true };
+const p5Mutation = (properties = {}, required = []) => closed({ ...properties, idempotency_key: idempotency, expected_revision: p4Revision }, [...required, 'idempotency_key', 'expected_revision']);
+const p5Query = (properties = {}, required = []) => closed(properties, required);
+const p5List = (name) => closed({ [name]: { type: 'array', items: looseObject } }, [name]);
+const p5Receipt = (name, extra = {}) => closed({ [name]: looseObject, operation: p4Operation, replayed: { type: 'boolean' }, ...extra }, [name]);
 
 export const CLEAN_V2_SCHEMAS = Object.freeze({
   'setup.complete.v2': closed({ display_name: { type: 'string', minLength: 1, maxLength: 160 }, team_name: { type: 'string', minLength: 1, maxLength: 160 }, ttl_seconds: { type: 'integer', minimum: 300, maximum: 7776000 }, idempotency_key: idempotency, expected_revision: { type: 'integer', minimum: 0, maximum: 0 } }, ['display_name', 'team_name']),
@@ -148,6 +153,73 @@ export const CLEAN_V2_SCHEMAS = Object.freeze({
   'gateway.forward.receipt.v2': closed({ result: looseObject, receipt: looseObject }, ['result', 'receipt']),
   'gateway.receipt.v2': closed({ id, gateway_id: id, nonce_hash: sha256, command_id: p4String, request_hash: sha256, response_hash: sha256, decision: p4String, operation_id: nullableString, created_at: timestamp }, ['id', 'gateway_id', 'nonce_hash', 'command_id', 'request_hash', 'response_hash', 'decision', 'created_at']),
 
+  // P5 Assist, Files, Interaction, Terminal and Windows Bridge contracts.
+  // Provider payloads remain opaque only below explicitly named fields.
+  'assist.sessions.query.v2': p5Query({ project_id: id, status: p4String }),
+  'assist.session.query.v2': p5Query({ id, session_id: id }, ['session_id']),
+  'assist.session.create.v2': p5Mutation({ project_id: id, scope: { enum: ['project', 'workflow', 'workstream', 'task'] }, scope_id: id, context_pack_id: id, profile_id: id, repository_workspace_id: id }, ['project_id', 'scope', 'scope_id', 'context_pack_id', 'profile_id']),
+  'assist.session.mutation.v2': p5Mutation({ session_id: id, reason: { type: 'string', maxLength: 500 } }, ['session_id']),
+  'assist.turn.create.v2': p5Mutation({ session_id: id, message: { type: 'string', minLength: 1, maxLength: 262144 }, goal: looseObject, references: p5StringArray, defer: { type: 'boolean' }, fixture: looseObject }, ['session_id', 'message']),
+  'assist.turn.mutation.v2': p5Mutation({ turn_id: id, message: { type: 'string', maxLength: 262144 }, reason: { type: 'string', maxLength: 500 }, fixture: looseObject }, ['turn_id']),
+  'assist.events.query.v2': p5Query({ session_id: id, cursor: { anyOf: [{ type: 'integer', minimum: 0 }, p4String] }, limit: { type: 'integer', minimum: 1, maximum: 500 }, format: { enum: ['json'] } }, ['session_id']),
+  'assist.goal.update.v2': p5Mutation({ session_id: id, goal: looseObject }, ['session_id', 'goal']),
+  'assist.reference.create.v2': p5Mutation({ session_id: id, reference_type: p4String, reference_id: id, reference_revision: { type: 'integer', minimum: 0 }, reference_hash: sha256, metadata: looseObject }, ['session_id', 'reference_type', 'reference_id']),
+  'assist.sessions.v2': p5List('sessions'),
+  'assist.session.v2': looseObject,
+  'assist.session.receipt.v2': p5Receipt('session'),
+  'assist.turn.receipt.v2': p5Receipt('turn'),
+  'assist.goal.v2': closed({ goal: { anyOf: [looseObject, { type: 'null' }] }, operation: p4Operation, replayed: { type: 'boolean' } }, ['goal']),
+  'assist.references.v2': closed({ references: { type: 'array', items: looseObject }, operation: p4Operation, replayed: { type: 'boolean' } }, ['references']),
+
+  'files.query.v2': p5Query({ project_id: id, path: p4String, workspace_id: id }, ['project_id']),
+  'files.v2': p5List('files'),
+  'file.content.v2': looseObject,
+  'attachment.query.v2': p5Query({ project_id: id, attachment_id: id }, ['attachment_id']),
+  'attachment.create.v2': p5Mutation({ project_id: id, session_id: id, filename: { type: 'string', minLength: 1, maxLength: 240 }, media_type: { type: 'string', minLength: 1, maxLength: 160 }, content_base64: { type: 'string', maxLength: 13981016 }, content_sha256: sha256 }, ['project_id', 'filename', 'content_base64']),
+  'attachment.lifecycle.v2': p5Mutation({ attachment_id: id }, ['attachment_id']),
+  'attachments.v2': p5List('attachments'),
+  'attachment.receipt.v2': p5Receipt('attachment'),
+  'attachment.content.v2': looseObject,
+  'change.batch.query.v2': p5Query({ project_id: id, batch_id: id }, ['batch_id']),
+  'change.batch.create.v2': p5Mutation({ project_id: id, workspace_id: id, assist_turn_id: id, changes: { type: 'array', minItems: 1, maxItems: 100, items: closed({ path: { type: 'string', minLength: 1, maxLength: 1024 }, action: { enum: ['create', 'replace', 'delete'] }, content: { type: 'string', maxLength: 1048576 }, content_base64: { type: 'string', maxLength: 1398104 }, before_sha256: sha256 }, ['path', 'action']) } }, ['project_id', 'workspace_id', 'changes']),
+  'change.batch.mutation.v2': p5Mutation({ batch_id: id }, ['batch_id']),
+  'change.batches.v2': p5List('batches'),
+  'change.batch.v2': looseObject,
+  'change.batch.receipt.v2': p5Receipt('batch'),
+
+  'interaction.query.v2': p5Query({ project_id: id, status: p4String }),
+  'approval.create.v2': p5Mutation({ project_id: id, operation_id: id, assist_turn_id: id, action: { type: 'string', minLength: 1, maxLength: 160 }, request: looseObject, ttl_seconds: { type: 'integer', minimum: 1, maximum: 86400 } }, ['project_id', 'action']),
+  'approval.decide.v2': p5Mutation({ approval_id: id, decision: { enum: ['approved', 'rejected'] }, reason: { type: 'string', maxLength: 500 } }, ['approval_id', 'decision']),
+  'approval.lifecycle.v2': p5Mutation({ approval_id: id }, ['approval_id']),
+  'approvals.v2': p5List('approvals'),
+  'approval.receipt.v2': p5Receipt('approval'),
+  'user.input.create.v2': p5Mutation({ project_id: id, operation_id: id, assist_turn_id: id, prompt_summary: { type: 'string', minLength: 1, maxLength: 1000 }, input_schema: looseObject, ttl_seconds: { type: 'integer', minimum: 1, maximum: 86400 } }, ['project_id', 'prompt_summary']),
+  'user.input.answer.v2': p5Mutation({ input_id: id, response: looseObject }, ['input_id', 'response']),
+  'user.input.lifecycle.v2': p5Mutation({ input_id: id }, ['input_id']),
+  'user.inputs.v2': p5List('inputs'),
+  'user.input.receipt.v2': p5Receipt('input'),
+  'proposal.create.v2': p5Mutation({ project_id: id, operation_id: id, assist_turn_id: id, proposal_type: p4String, target_type: p4String, target_id: id, target_revision: { type: 'integer', minimum: 0 }, payload: looseObject }, ['project_id', 'proposal_type', 'target_type', 'target_id', 'payload']),
+  'proposal.mutation.p5.v2': p5Mutation({ proposal_id: id }, ['proposal_id']),
+  'proposals.v2': p5List('proposals'),
+  'proposal.p5.receipt.v2': p5Receipt('proposal'),
+
+  'terminal.capabilities.query.v2': p5Query({}),
+  'terminal.query.v2': p5Query({ project_id: id, terminal_id: id, cursor: { anyOf: [{ type: 'integer', minimum: 0 }, p4String] }, limit: { type: 'integer', minimum: 1, maximum: 500 }, format: { enum: ['json'] } }),
+  'terminal.open.v2': p5Mutation({ project_id: id, workspace_id: id, approval_id: id, assist_session_id: id, runtime: { enum: ['windows_native', 'linux_native'] }, cwd: { type: 'string', maxLength: 1024 }, cols: { type: 'integer', minimum: 20, maximum: 400 }, rows: { type: 'integer', minimum: 5, maximum: 200 } }, ['project_id', 'workspace_id', 'approval_id']),
+  'terminal.action.v2': p5Mutation({ terminal_id: id, client_sequence: { type: 'integer', minimum: 1 }, data: { type: 'string', maxLength: 65536 }, cols: { type: 'integer', minimum: 20, maximum: 400 }, rows: { type: 'integer', minimum: 5, maximum: 200 }, signal: { enum: ['SIGINT'] } }, ['terminal_id']),
+  'terminal.capabilities.v2': looseObject,
+  'terminals.v2': p5List('terminals'),
+  'terminal.v2': looseObject,
+  'terminal.receipt.v2': p5Receipt('terminal', { lease: { anyOf: [looseObject, { type: 'null' }] } }),
+
+  'bridge.query.v2': p5Query({ device_id: id }),
+  'bridge.pair.v2': p5Mutation({ label: { type: 'string', minLength: 1, maxLength: 160 }, identity_public_key: p4String, transport_public_key: p4String, confirmation_code: { type: 'string', minLength: 6, maxLength: 12 }, transcript: looseObject, encrypted_secret: looseObject }, ['label']),
+  'bridge.device.mutation.v2': p5Mutation({ device_id: id }, ['device_id']),
+  'bridge.transfer.create.v2': p5Mutation({ device_id: id, direction: { enum: ['send', 'receive'] }, transfer_type: { enum: ['git_bundle', 'terminal_control'] }, repository_ref: p4String, head_sha: p4String, bundle_sha256: sha256, byte_length: { type: 'integer', minimum: 0, maximum: 1073741824 } }, ['device_id', 'direction', 'transfer_type']),
+  'bridge.devices.v2': p5List('devices'),
+  'bridge.device.receipt.v2': p5Receipt('device'),
+  'bridge.transfer.receipt.v2': p5Receipt('transfer'),
+
   // P1 query/input contracts.
   'operation.id.v2': closed({ id: id }, ['id']),
   'operation.events.query.v2': closed({ format: { const: 'json' }, cursor: { type: 'string' }, limit: { type: 'integer', minimum: 1, maximum: 500 } }),
@@ -191,7 +263,7 @@ export const CLEAN_V2_SCHEMAS = Object.freeze({
 
   // P1/P2 receipts. These are data payloads inside the common API envelope.
   'operation.receipt.v2': operation,
-  'event.replay.v2': closed({ events: { type: 'array', items: looseObject }, next_cursor: { anyOf: [{ type: 'string' }, { type: 'null' }] }, terminal: { type: 'boolean' }, resource: closed({ id, type: { type: 'string' }, revision }, ['id', 'type', 'revision']) }, ['events', 'next_cursor', 'terminal', 'resource']),
+  'event.replay.v2': closed({ events: { type: 'array', items: looseObject }, next_cursor: { anyOf: [{ type: 'string' }, { type: 'integer', minimum: 0 }, { type: 'null' }] }, cursor_sequence: { type: 'integer', minimum: 0 }, terminal: { type: 'boolean' }, resource: closed({ id, type: { type: 'string' }, revision }, ['id', 'type', 'revision']) }, ['events', 'next_cursor', 'terminal', 'resource']),
   'resource.receipt.v2': receipt(),
   'setup.receipt.v2': receipt({ actor, team, membership, session, operation: operationEnvelope }, ['actor', 'team', 'membership', 'session', 'operation']),
   'actor.receipt.v2': receipt({ account: actor, actor, session, operation: operationEnvelope }, []),

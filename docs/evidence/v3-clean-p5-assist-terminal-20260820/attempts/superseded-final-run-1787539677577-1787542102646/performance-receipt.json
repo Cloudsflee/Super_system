@@ -1,0 +1,43 @@
+{
+  "schema_version": "aiws.v3-clean.p5-performance-record.v1",
+  "status": "passed",
+  "command": {
+    "command": "node scripts/v3-clean-p5-performance.mjs",
+    "cwd": "repository-root",
+    "input": {
+      "args": [
+        "scripts/v3-clean-p5-performance.mjs"
+      ]
+    },
+    "stdout": "{\n  \"schema_version\": \"aiws.v3-clean.p5-performance.v1\",\n  \"status\": \"passed\",\n  \"provisional\": false,\n  \"metrics\": {\n    \"assist_events_replay_p95_ms\": 0.48,\n    \"file_list_100_p95_ms\": 1.21,\n    \"change_review_10_p95_ms\": 0.18,\n    \"terminal_replay_1mib_p95_ms\": 0.37,\n    \"assist_event_count\": 1000,\n    \"file_count\": 100,\n    \"terminal_replay_bytes\": 1048576\n  },\n  \"thresholds\": {\n    \"assist_events_replay_p95_ms\": 200,\n    \"file_list_100_p95_ms\": 150,\n    \"change_review_10_p95_ms\": 500,\n    \"terminal_replay_1mib_p95_ms\": 500\n  },\n  \"failures\": []\n}\n",
+    "stderr": "(node:30060) ExperimentalWarning: SQLite is an experimental feature and might change at any time\n(Use `node --trace-warnings ...` to show where the warning was created)\n",
+    "exit_status": 0,
+    "expected_exit_statuses": [
+      0
+    ],
+    "signal": null,
+    "ok": true,
+    "summary": "\"terminal_replay_bytes\": 1048576\n},\n\"thresholds\": {\n\"assist_events_replay_p95_ms\": 200,\n\"file_list_100_p95_ms\": 150,\n\"change_review_10_p95_ms\": 500,\n\"terminal_replay_1mib_p95_ms\": 500\n},\n\"failures\": []\n}\n(node:30060) ExperimentalWarning: SQLite is an experimental feature and might change at any time\n(Use `node --trace-warnings ...` to show where the warning was created)"
+  },
+  "receipt": {
+    "schema_version": "aiws.v3-clean.p5-performance.v1",
+    "status": "passed",
+    "provisional": false,
+    "metrics": {
+      "assist_events_replay_p95_ms": 0.48,
+      "file_list_100_p95_ms": 1.21,
+      "change_review_10_p95_ms": 0.18,
+      "terminal_replay_1mib_p95_ms": 0.37,
+      "assist_event_count": 1000,
+      "file_count": 100,
+      "terminal_replay_bytes": 1048576
+    },
+    "thresholds": {
+      "assist_events_replay_p95_ms": 200,
+      "file_list_100_p95_ms": 150,
+      "change_review_10_p95_ms": 500,
+      "terminal_replay_1mib_p95_ms": 500
+    },
+    "failures": []
+  }
+}

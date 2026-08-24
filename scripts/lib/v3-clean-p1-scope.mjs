@@ -127,9 +127,11 @@ export const P1_PACKAGE_SCRIPT_DEFINITIONS = Object.freeze(Object.fromEntries(Ob
   'test:p3': { command: 'node --test tests/p3/http-contract.test.mjs tests/p3/migration.test.mjs tests/p3/project-workflow.test.mjs', role: 'p3_gate', phase: 'P3' },
   'test:p31': { command: 'node --test tests/p31/*.test.mjs', role: 'p31_gate', phase: 'P3.1' },
   'test:p4': { command: 'node --test tests/p4/*.test.mjs', role: 'p4_gate', phase: 'P4' },
+  'test:p5': { command: 'node --test tests/p5/*.test.mjs', role: 'p5_gate', phase: 'P5' },
   'evidence:p3': { command: 'node scripts/v3-clean-p3-evidence.mjs', role: 'p3_evidence', phase: 'P3' },
   'evidence:p31': { command: 'node scripts/v3-clean-p31-evidence.mjs', role: 'p31_evidence', phase: 'P3.1' },
   'evidence:p4': { command: 'node scripts/v3-clean-p4-evidence.mjs', role: 'p4_evidence', phase: 'P4' },
+  'evidence:p5': { command: 'node scripts/v3-clean-p5-evidence.mjs', role: 'p5_evidence', phase: 'P5' },
   'test:integration': { command: 'node scripts/layered-gate.mjs integration', role: 'layered_gate', phase: 'P3.1' },
   'test:integration:clean': { command: 'node scripts/layered-gate.mjs integration --clean', role: 'p31_gate', phase: 'P3.1' },
   'fixture:legacy:integration': { command: 'node scripts/layered-gate.mjs integration --historical', role: 'deferred_fixture', phase: 'historical' },
@@ -244,6 +246,49 @@ const P4_FILES = new Set([
   'apps/web/src/test/context.test.tsx'
 ]);
 
+const P5_FILES = new Set([
+  'apps/api/src/clean/assist-service.mjs',
+  'apps/api/src/clean/app-server-adapter.mjs',
+  'apps/api/src/clean/bridge-service.mjs',
+  'apps/api/src/clean/files-service.mjs',
+  'apps/api/src/clean/p5-domain-helpers.mjs',
+  'apps/api/src/clean/terminal-service.mjs',
+  'apps/api/src/clean/windows-bridge-adapter.mjs',
+  'apps/api/src/clean/migrations/005-assist-files-terminal-bridge.mjs',
+  'apps/windows-native-bridge/package.json',
+  'apps/windows-native-bridge/probe.mjs',
+  'apps/windows-native-bridge/server.mjs',
+  'apps/windows-native-bridge/src/protocol.mjs',
+  'scripts/v3-clean-p5-assist-probe.mjs',
+  'scripts/v3-clean-p5-bridge-probe.mjs',
+  'scripts/v3-clean-p5-performance.mjs',
+  'scripts/v3-clean-p5-evidence.mjs',
+  'tests/p5/assist-files.test.mjs',
+  'tests/p5/helpers.mjs',
+  'tests/p5/migration.test.mjs',
+  'tests/p5/terminal-bridge.test.mjs'
+]);
+
+const P5_WEB_FILES = new Set([
+  'apps/web/src/App.tsx',
+  'apps/web/src/styles.css',
+  'apps/web/src/workspace.ts',
+  'apps/web/src/features/context/McpSettingsPage.tsx',
+  'apps/web/src/test/assist.test.tsx',
+  'apps/web/src/test/approvals-p5.test.tsx',
+  'apps/web/src/test/connections-p5.test.tsx',
+  'apps/web/src/test/files-p5.test.tsx',
+  'apps/web/src/test/terminal.test.tsx'
+]);
+
+const P5_WEB_PREFIXES = Object.freeze([
+  'apps/web/src/features/assist/',
+  'apps/web/src/features/approvals/',
+  'apps/web/src/features/connections/',
+  'apps/web/src/features/files/',
+  'apps/web/src/features/terminal/'
+]);
+
 export function classifyWorkspacePath(value) {
   const file = normalize(value);
   if (!file) return null;
@@ -251,6 +296,8 @@ export function classifyWorkspacePath(value) {
     const rows = file === 'scripts/v3-clean-architecture-scan.mjs' ? P1_MATRIX_ROWS : P1_GOVERNANCE_ROWS;
     return { kind: 'p1', phase: 'P1', rows: [...rows] };
   }
+  if (P5_FILES.has(file) || P5_WEB_FILES.has(file) || P5_WEB_PREFIXES.some((prefix) => file.startsWith(prefix)) || file.startsWith('tests/p5/')) return { kind: 'clean', phase: 'P5', rows: [] };
+  if (file.startsWith('apps/windows-native-bridge/')) return { kind: 'clean', phase: 'P5', rows: [] };
   if (P4_FILES.has(file) || file.startsWith('tests/p4/')) return { kind: 'clean', phase: 'P4', rows: [] };
   if (file.startsWith('apps/gateway/')) return { kind: 'clean', phase: 'P4', rows: [] };
   if (file.startsWith(P1_CLEAN_ROOT) || file.startsWith('tests/p1/') || P1_PLATFORM_FILES.has(file)) {

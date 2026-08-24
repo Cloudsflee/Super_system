@@ -17,18 +17,19 @@ under docs/architecture/ are the source of truth for V3-Clean.
 
 ## Scope of this phase
 
-Decision `D-033` activates P4 Context/Projection/MCP over the verified
-P1/P2/P3/P3.1 baseline at `3f1d9e7`. This phase may update the synchronized P4
+Decision `D-034` activates P5 Assist/Files/Attachments/Approval/Terminal/Bridge
+over the verified P4 baseline at `b270ff7d86d200b55a83dfdfa4a4db0e38fed050`.
+This phase may update the synchronized P5
 surface:
 
-- forward-only `004-context-projection-mcp`, schema ownership, clean runtime
-  services, dispatcher, registry, contracts, and focused P4 tests;
-- the independent stateless `apps/gateway` process, MCP HTTP/stdio transports,
-  Exchange scope narrowing, and independent performance/Gateway probes;
-- the component-level Context/MCP/Exchange Web slice and default Clean E2E,
-  using `/api/v2` only;
+- forward-only `005-assist-files-terminal-bridge`, schema ownership, clean
+  runtime services, dispatcher, registry, contracts, and focused P5 tests;
+- the real app-server adapter, independent `apps/windows-native-bridge`
+  process, managed files/change batches, PTY transport, and external probes;
+- the component-level Assist/Files/Approval/Terminal/Connections Web slice and
+  default Clean E2E, using `/api/v2` only;
 - architecture documents, testing policy, layered Catalogs, package gates,
-  immutable P4 Evidence, and rollback receipts required by GS-001 through
+  immutable P5 Evidence, and rollback receipts required by GS-001 through
   GS-007;
 - this file.
 
@@ -38,10 +39,9 @@ is appended to the ignored local `.ai-workspace/gate-receipts/` store. Local
 receipts are diagnostic evidence only; Catalog status promotion continues to
 use the immutable final `verification.json` receipt.
 
-P1/P2/P3 migrations and P1-P3.1 verified Evidence are read-only. P5 and later
-runtime, real provider calls, Runner, Parser, complete Outcome evaluation,
-offline/cross-origin behavior, production cutover, and release-level Web/E2E
-remain outside P4.
+P1/P2/P3/P4 migrations and P1-P4 verified Evidence are read-only. Runner,
+Parser, complete Outcome evaluation, real GitHub Delivery, offline/cross-origin
+behavior, production cutover, and release-level Web/E2E remain outside P5.
 
 ## Required preflight
 
@@ -244,6 +244,38 @@ pnpm evidence:p4
 git diff --check
 ~~~
 
+The additive P5 implementation inventory is:
+
+~~~text
+pnpm check
+pnpm audit:p1
+pnpm scan:clean
+pnpm recovery:plan
+pnpm recovery:catalog
+pnpm recovery:coverage
+pnpm recovery:impact -- --audit
+pnpm test:p1
+pnpm test:p2
+pnpm test:p3
+pnpm test:p31
+pnpm test:p4
+pnpm test:p5
+node scripts/v3-clean-p5-performance.mjs
+node scripts/v3-clean-p5-assist-probe.mjs
+node scripts/v3-clean-p5-bridge-probe.mjs
+pnpm --filter @aiws/web test
+pnpm test
+pnpm test:integration:clean
+pnpm test:security:clean
+pnpm test:integration
+pnpm test:security
+pnpm build
+pnpm test:e2e
+pnpm verify
+pnpm evidence:p5
+git diff --check
+~~~
+
 P3.1 uses `feature-catalog.index.json` with disjoint Clean and historical
 layers (`feature-catalog.clean.json` and `feature-catalog.historical.json`).
 `scripts/catalog-loader.mjs` is the validation owner; the root
@@ -270,6 +302,19 @@ append-only and never promote status.
 An explicit corrective P4 Evidence supersession preserves the prior verified
 top-level files under `attempts/superseded-final-<run-id>-*` and records
 `supersedes_run_id`; an ordinary rerun still rejects a verified final.
+
+P5 advances the active schema to `user_version=5`. Assist, Files, Terminal,
+and Bridge retain the shared operation/event/head/CAS model, while the Windows
+Bridge remains an independent loopback process without business persistence.
+The final Assist probe must lease a provider credential into a zeroable Buffer
+inside an isolated `CODEX_HOME` and complete a real fixed-response turn with
+contiguous events, an assistant item, terminal tool results, and
+`turn/completed`. Missing credentials or incomplete output produce only a
+provisional candidate attempt and freeze Catalog promotion.
+The six P5 ids are Clean-only after a final verified, non-provisional receipt,
+yielding 19 Clean and 8 Historical rows while the total remains 27. Formal
+Evidence is `docs/evidence/v3-clean-p5-assist-terminal-20260820/`; failed
+attempts remain append-only and never promote status.
 
 ## Capability status
 

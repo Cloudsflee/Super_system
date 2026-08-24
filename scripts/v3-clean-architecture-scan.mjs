@@ -3,8 +3,8 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createCleanCommandRegistry, registryParity } from '../apps/api/src/clean/registry.mjs';
 import { validateCleanOwnership } from '../apps/api/src/clean/ownership.mjs';
-import { CLEAN_P4_TABLE_OWNERS } from '../apps/api/src/clean/ownership.mjs';
-import { CLEAN_P4_MIGRATION_REGISTRY } from '../apps/api/src/clean/migration-service.mjs';
+import { CLEAN_P5_TABLE_OWNERS } from '../apps/api/src/clean/ownership.mjs';
+import { CLEAN_P5_MIGRATION_REGISTRY } from '../apps/api/src/clean/migration-service.mjs';
 import { auditWorkspace } from './v3-clean-workspace-audit.mjs';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
@@ -15,7 +15,7 @@ const gatewayServer = path.join(root, 'apps', 'gateway', 'server.mjs');
 const forbidden = [
   { pattern: /legacy_compat|native_v5|native_v6|ASSIST_NATIVE_V6/i, label: 'legacy runtime switch' },
   { pattern: /assist_operations/i, label: 'second operation ledger' },
-  { pattern: /(?:^|[\\/])(?:src[\\/])?migrations[\\/](?:00[5-9]|0[1-9][0-9])/i, label: 'unregistered future migration import' },
+  { pattern: /(?:^|[\\/])(?:src[\\/])?migrations[\\/](?:00[6-9]|0[1-9][0-9])/i, label: 'unregistered future migration import' },
   { pattern: /(?:^|[\\/])apps[\\/](?:worker|mcp-gateway)(?:[\\/]|$)/i, label: 'historical service import' },
   { pattern: /\/api\/v1(?:\/|['"`]|$)/i, label: 'legacy API route registration' },
   { pattern: /server-legacy\.mjs|server-clean\.mjs/i, label: 'historical or alias entry import' }
@@ -47,21 +47,21 @@ const tableText = files.map((file) => fs.readFileSync(file, 'utf8')).join('\n');
 if (/CREATE\s+TABLE[^;]*\b(?:assist|project|workflow|execution|domain)_heads\b/i.test(tableText)) findings.push({ label: 'shadow head model', file: 'clean schema' });
 if (/CREATE\s+TABLE[^;]*\bassist_operations\b/i.test(tableText)) findings.push({ label: 'second operation ledger', file: 'clean schema' });
 
-const migrationIds = CLEAN_P4_MIGRATION_REGISTRY.map((migration) => migration.id);
-if (JSON.stringify(migrationIds) !== JSON.stringify(['001-clean-baseline', '002-identity-acl', '003-project-workflow', '004-context-projection-mcp'])) {
-  findings.push({ label: 'P4 migration registry is not exactly forward-only 001 -> 002 -> 003 -> 004', migrations: migrationIds });
+const migrationIds = CLEAN_P5_MIGRATION_REGISTRY.map((migration) => migration.id);
+if (JSON.stringify(migrationIds) !== JSON.stringify(['001-clean-baseline', '002-identity-acl', '003-project-workflow', '004-context-projection-mcp', '005-assist-files-terminal-bridge'])) {
+  findings.push({ label: 'P5 migration registry is not exactly forward-only 001 -> 002 -> 003 -> 004 -> 005', migrations: migrationIds });
 }
 if (!files.some((file) => relative(file) === 'apps/api/src/clean/authorization.mjs') || !/authorize\s*\(/.test(tableText)) {
   findings.push({ label: 'unified authorization predicate missing', expected: 'authorize(principal, action, project, resource, policy_revision)' });
 }
-if (!Object.hasOwn(CLEAN_P4_TABLE_OWNERS, 'project_invitations') || Object.hasOwn(CLEAN_P4_TABLE_OWNERS, 'invitations')) {
+if (!Object.hasOwn(CLEAN_P5_TABLE_OWNERS, 'project_invitations') || Object.hasOwn(CLEAN_P5_TABLE_OWNERS, 'invitations')) {
   findings.push({ label: 'P2 invitation table ownership is not canonical', expected: 'project_invitations' });
 }
 
 let registryReport = { valid: false, mismatches: ['registry_unavailable'] };
 let ownershipReport = { valid: false, missing_tables: ['ownership_unavailable'] };
 try {
-  const registry = createCleanCommandRegistry({ targetVersion: 4 });
+  const registry = createCleanCommandRegistry({ targetVersion: 5 });
   registryReport = registryParity(registry);
   const tables = extractTables(tableText);
   ownershipReport = validateCleanOwnership({ tables, registry });
@@ -88,12 +88,12 @@ const result = {
   ownership: ownershipReport,
   phase_metadata: {
     baseline_phase: 'P1',
-    active_phase: 'P4',
-    migration_registry: CLEAN_P4_MIGRATION_REGISTRY.map((migration) => ({ id: migration.id, version: migration.version })),
-    p4_table_owners: Object.keys(CLEAN_P4_TABLE_OWNERS).sort(),
+    active_phase: 'P5',
+    migration_registry: CLEAN_P5_MIGRATION_REGISTRY.map((migration) => ({ id: migration.id, version: migration.version })),
+    p5_table_owners: Object.keys(CLEAN_P5_TABLE_OWNERS).sort(),
     authorization_predicate: 'authorize(principal, action, project, resource, policy_revision)',
-    evidence_directory: 'docs/evidence/v3-clean-p4-context-mcp-20260820',
-    evidence_present: fs.existsSync(path.join(root, 'docs', 'evidence', 'v3-clean-p4-context-mcp-20260820'))
+    evidence_directory: 'docs/evidence/v3-clean-p5-assist-terminal-20260820',
+    evidence_present: fs.existsSync(path.join(root, 'docs', 'evidence', 'v3-clean-p5-assist-terminal-20260820'))
   },
   workspace,
   forbidden_findings: findings,

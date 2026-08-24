@@ -1,0 +1,57 @@
+{
+  "schema_version": "aiws.v3-clean.p5-assist-probe-record.v1",
+  "status": "passed",
+  "command": {
+    "command": "node scripts/v3-clean-p5-assist-probe.mjs",
+    "cwd": "repository-root",
+    "input": {
+      "args": [
+        "scripts/v3-clean-p5-assist-probe.mjs"
+      ]
+    },
+    "stdout": "{\n  \"schema_version\": \"aiws.v3-clean.p5-assist-probe.v1\",\n  \"status\": \"passed\",\n  \"provisional\": false,\n  \"protocol_version\": \"2\",\n  \"schema_sha256\": \"34fb0f9d81a1a8438f0603d73901560a1f19b0e66af7ef9ef20cc2a3fcc04aca\",\n  \"generated_schema_sha256\": \"3fd7923d2ddd3be06daa0f338914bd4c989c22ef802a473efe3d6a2250afc293\",\n  \"methods\": [\n    \"initialize\",\n    \"thread/start\",\n    \"thread/resume\",\n    \"turn/start\",\n    \"turn/steer\",\n    \"turn/interrupt\",\n    \"thread/started\",\n    \"turn/started\",\n    \"turn/completed\",\n    \"item/started\",\n    \"item/completed\",\n    \"item/commandExecution/requestApproval\",\n    \"item/fileChange/requestApproval\",\n    \"item/tool/requestUserInput\"\n  ],\n  \"thread_started\": true,\n  \"thread_resume_probe\": \"deferred_until_persisted_turn\",\n  \"model_turn\": \"skipped_provider_credential_not_configured\",\n  \"adapter\": \"process-app-server\",\n  \"isolated_codex_home\": true,\n  \"credential_lease\": \"memory_only\",\n  \"redactions\": [\n    \"credential\",\n    \"assembled_prompt\",\n    \"host_absolute_path\"\n  ]\n}\n",
+    "stderr": "(node:27148) ExperimentalWarning: SQLite is an experimental feature and might change at any time\n(Use `node --trace-warnings ...` to show where the warning was created)\n(node:27148) [DEP0190] DeprecationWarning: Passing args to a child process with shell option true can lead to security vulnerabilities, as the arguments are not escaped, only concatenated.\n",
+    "exit_status": 0,
+    "expected_exit_statuses": [
+      0
+    ],
+    "signal": null,
+    "ok": true,
+    "summary": "\"adapter\": \"process-app-server\",\n\"isolated_codex_home\": true,\n\"credential_lease\": \"memory_only\",\n\"redactions\": [\n\"credential\",\n\"assembled_prompt\",\n\"host_absolute_path\"\n]\n}\n(node:27148) ExperimentalWarning: SQLite is an experimental feature and might change at any time\n(Use `node --trace-warnings ...` to show where the warning was created)\n(node:27148) [DEP0190] DeprecationWarning: Passing args to a child process with shell option true can lead to security vulnerabilities, as the arguments are not escaped, only concatenated."
+  },
+  "receipt": {
+    "schema_version": "aiws.v3-clean.p5-assist-probe.v1",
+    "status": "passed",
+    "provisional": false,
+    "protocol_version": "2",
+    "schema_sha256": "34fb0f9d81a1a8438f0603d73901560a1f19b0e66af7ef9ef20cc2a3fcc04aca",
+    "generated_schema_sha256": "3fd7923d2ddd3be06daa0f338914bd4c989c22ef802a473efe3d6a2250afc293",
+    "methods": [
+      "initialize",
+      "thread/start",
+      "thread/resume",
+      "turn/start",
+      "turn/steer",
+      "turn/interrupt",
+      "thread/started",
+      "turn/started",
+      "turn/completed",
+      "item/started",
+      "item/completed",
+      "item/commandExecution/requestApproval",
+      "item/fileChange/requestApproval",
+      "item/tool/requestUserInput"
+    ],
+    "thread_started": true,
+    "thread_resume_probe": "deferred_until_persisted_turn",
+    "model_turn": "skipped_provider_credential_not_configured",
+    "adapter": "process-app-server",
+    "isolated_codex_home": true,
+    "credential_lease": "memory_only",
+    "redactions": [
+      "credential",
+      "assembled_prompt",
+      "host_absolute_path"
+    ]
+  }
+}

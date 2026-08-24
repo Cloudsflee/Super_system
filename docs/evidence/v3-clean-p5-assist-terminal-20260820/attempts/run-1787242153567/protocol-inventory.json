@@ -1,0 +1,20 @@
+{
+  "schema_version": "aiws.v3-clean.p5-protocol-inventory.v1",
+  "status": "passed",
+  "transports": [
+    "REST",
+    "MCP Streamable HTTP",
+    "MCP stdio",
+    "Gateway HTTP"
+  ],
+  "registry_parity": {
+    "valid": true,
+    "mismatches": [],
+    "rest_count": 173,
+    "mcp_count": 173,
+    "web_count": 173
+  },
+  "app_server_schema_sha256": "9f43ce69dd8feb8b68d03e4d3a1ace72e28f382f9dcef7442cd271e6207453d2",
+  "bridge_protocol": "aiws.bridge.pairing.v1",
+  "websocket": "/api/v2/terminals/{id}/ws"
+}

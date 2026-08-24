@@ -4,7 +4,7 @@ import {
   LoaderCircle, LogOut, Plus, RefreshCw, RotateCw, Search, ShieldCheck, Trash2, UserRound, X
 } from 'lucide-react';
 import { api, ApiError, formatTime, mutate, shortHash } from '../../api';
-import type { WorkspacePageProps } from '../../pages';
+import type { WorkspacePageProps } from '../../workspace';
 import type {
   Account, Capabilities, CodexProfile, Credential, DiscoverySource, GithubApp,
   GithubInstallation, Operation, OperationEvent, Session, SetupCheck, SetupState

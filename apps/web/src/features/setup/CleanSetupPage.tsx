@@ -1,7 +1,7 @@
 import { useEffect, useState, type FormEvent } from 'react';
 import { Check, LoaderCircle, ShieldCheck } from 'lucide-react';
 import { ApiError, apiV2, mutateV2 } from '../../api';
-import type { WorkspacePageProps } from '../../pages';
+import type { WorkspacePageProps } from '../../workspace';
 
 type CleanSetupState = { needs_setup: boolean; actor_count: number; bootstrap_actor_id?: string };
 

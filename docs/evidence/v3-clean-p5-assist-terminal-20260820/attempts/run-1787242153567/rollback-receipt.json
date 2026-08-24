@@ -1,0 +1,68 @@
+{
+  "schema_version": "aiws.v3-clean.p5-rollback-receipt.v1",
+  "status": "failed",
+  "dry_run": {
+    "command": "powershell.exe -NoProfile -ExecutionPolicy Bypass -File <ROOT>\\docs\\evidence\\v3-clean-p5-assist-terminal-20260820\\attempts\\run-1787242153567\\rollback.ps1 -DryRun -SourceRoot <ROOT>",
+    "cwd": "repository-root",
+    "input": {
+      "args": [
+        "-NoProfile",
+        "-ExecutionPolicy",
+        "Bypass",
+        "-File",
+        "<ROOT>\\docs\\evidence\\v3-clean-p5-assist-terminal-20260820\\attempts\\run-1787242153567\\rollback.ps1",
+        "-DryRun",
+        "-SourceRoot",
+        "<ROOT>"
+      ]
+    },
+    "stdout": "rollback_mode=dry-run\r\nsource_reverse_check=passed\r\nbyte_exact_mismatches=[]\r\n",
+    "stderr": "",
+    "exit_status": 0,
+    "expected_exit_statuses": [
+      0
+    ],
+    "signal": null,
+    "ok": true,
+    "summary": "rollback_mode=dry-run\nsource_reverse_check=passed\nbyte_exact_mismatches=[]"
+  },
+  "isolated_apply": {
+    "command": "powershell.exe -NoProfile -ExecutionPolicy Bypass -File <ROOT>\\docs\\evidence\\v3-clean-p5-assist-terminal-20260820\\attempts\\run-1787242153567\\rollback.ps1 -Apply -SourceRoot <PATH> -IsolatedRoot <PATH>",
+    "cwd": "repository-root",
+    "input": {
+      "args": [
+        "-NoProfile",
+        "-ExecutionPolicy",
+        "Bypass",
+        "-File",
+        "<ROOT>\\docs\\evidence\\v3-clean-p5-assist-terminal-20260820\\attempts\\run-1787242153567\\rollback.ps1",
+        "-Apply",
+        "-SourceRoot",
+        "<PATH>",
+        "-IsolatedRoot",
+        "<PATH>"
+      ]
+    },
+    "stdout": "",
+    "stderr": "[stdin]:2\r\nconst db=new DatabaseSync(process.argv[1],{readOnly:true});\r\n         ^\r\n\r\nError: unable to open database file\r\n    at [stdin]:2:10\r\n    at runScriptInThisContext (node:internal/vm:219:10)\r\n    at node:internal/process/execution:451:12\r\n    at [stdin]-wrapper:6:24\r\n    at runScriptInContext (node:internal/process/execution:449:60)\r\n    at evalFunction (node:internal/process/execution:283:30)\r\n    at evalTypeScript (node:internal/process/execution:295:3)\r\n    at node:internal/main/eval_stdin:51:5\r\n    at Socket.<anonymous> (node:internal/process/execution:205:5)\r\n    at Socket.emit (node:events:520:35) {\r\n  code: 'ERR_SQLITE_ERROR',\r\n  errcode: 14,\r\n  errstr: 'unable to open database file'\r\n}\r\n\r\nNode.js v24.14.0\r\nrollback_database_probe_failed\r\n����λ�� <PATH>\r\nps1:20 �ַ�: 91\r\n+ ... $LASTEXITCODE -ne 0) { throw 'rollback_database_probe_failed' }; $Db= ...\r\n+                            ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~\r\n    + CategoryInfo          : OperationStopped: (rollback_database_probe_failed:String) [], RuntimeException\r\n    + FullyQualifiedErrorId : rollback_database_probe_failed\r\n \r\n",
+    "exit_status": 1,
+    "expected_exit_statuses": [
+      0
+    ],
+    "signal": null,
+    "ok": false,
+    "summary": "code: 'ERR_SQLITE_ERROR',\nerrcode: 14,\nerrstr: 'unable to open database file'\n}\nNode.js v24.14.0\nrollback_database_probe_failed\n����λ�� <PATH>\nps1:20 �ַ�: 91\n+ ... $LASTEXITCODE -ne 0) { throw 'rollback_database_probe_failed' }; $Db= ...\n+                            ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~\n+ CategoryInfo          : OperationStopped: (rollback_database_probe_failed:String) [], RuntimeException\n+ FullyQualifiedErrorId : rollback_database_probe_failed"
+  },
+  "source_reverse_check": "failed",
+  "restored_user_version": 4,
+  "foreign_key_check": [],
+  "migration_ledger": [
+    1,
+    2,
+    3,
+    4
+  ],
+  "byte_exact_mismatches": [
+    "rollback_execution"
+  ]
+}

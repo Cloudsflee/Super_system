@@ -4,7 +4,7 @@ import {
   RotateCcw, Save, ShieldAlert, Square, Workflow as WorkflowIcon
 } from 'lucide-react';
 import { ApiError, apiV2, mutateV2 } from '../../api';
-import type { WorkspacePageProps } from '../../pages';
+import type { WorkspacePageProps } from '../../workspace';
 
 type Section = 'overview' | 'intake' | 'brief' | 'repository' | 'workflow';
 type LoadState = 'loading' | 'ready' | 'empty' | 'denied' | 'error';

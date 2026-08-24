@@ -1,0 +1,8 @@
+{
+  "schema_version": "aiws.v3-clean.p5-catalog-staging.v1",
+  "phase": "P5",
+  "status": "staging",
+  "provisional": true,
+  "run_id": "run-1787541952189",
+  "final_reference": "docs/evidence/v3-clean-p5-assist-terminal-20260820/verification.json"
+}

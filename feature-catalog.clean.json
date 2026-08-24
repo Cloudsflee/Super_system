@@ -397,6 +397,82 @@
       "runtime_surface": "v3-clean"
     },
     {
+      "id": "REC-D4-SCOPE-016",
+      "domain": "mcp",
+      "name": "MCP and Exchange scopes, dual approval, allowlists and revocation",
+      "status": "verified",
+      "owner_modules": [
+        "exchange",
+        "mcp",
+        "gateway"
+      ],
+      "source_files": [
+        "apps/api/src/clean/mcp-service.mjs",
+        "apps/api/src/clean/gateway-service.mjs",
+        "apps/api/src/clean/authorization.mjs",
+        "apps/api/src/clean/migrations/004-context-projection-mcp.mjs"
+      ],
+      "target_modules": [
+        "apps/api/src/clean/mcp-service.mjs",
+        "apps/api/src/clean/gateway-service.mjs",
+        "apps/api/src/clean/command-dispatcher.mjs",
+        "apps/gateway/server.mjs",
+        "apps/web/src/features/context/McpSettingsPage.tsx"
+      ],
+      "tables": [
+        "exchange_requests",
+        "exchange_grants",
+        "mcp_clients",
+        "gateway_forward_receipts"
+      ],
+      "apis": [
+        "/api/v2/projects/{id}/exchange-requests",
+        "/api/v2/exchange-requests/{id}/approve",
+        "/api/v2/exchange-requests/{id}/reject",
+        "/api/v2/exchange-grants/{id}/revoke",
+        "/api/v2/exchange-grants/{id}/context-packs",
+        "/api/v2/gateway/forward",
+        "/api/v2/gateway/receipts/{id}"
+      ],
+      "ui": [
+        "MCP Settings",
+        "Exchange approvals"
+      ],
+      "events": [
+        "exchange_request.created",
+        "exchange_request.approved",
+        "exchange_request.rejected",
+        "exchange_grant.created",
+        "exchange_grant.revoked",
+        "gateway.forwarded",
+        "gateway.denied"
+      ],
+      "behavior_tests": [
+        "tests/p4/mcp-exchange-gateway.test.mjs",
+        "tests/p4/transport-parity.test.mjs",
+        "tests/p4/active-entrypoint.test.mjs",
+        "tests/p4/governance-sync.test.mjs"
+      ],
+      "ui_tests": [
+        "apps/web/src/test/context.test.tsx",
+        "scripts/e2e.mjs"
+      ],
+      "evidence": [
+        "docs/evidence/v3-clean-p4-context-mcp-20260820/verification.json"
+      ],
+      "release_receipts": [],
+      "tests": [
+        "T3",
+        "tests/p4/mcp-exchange-gateway.test.mjs",
+        "tests/p4/transport-parity.test.mjs",
+        "tests/p4/active-entrypoint.test.mjs",
+        "tests/p4/governance-sync.test.mjs",
+        "apps/web/src/test/context.test.tsx",
+        "scripts/e2e.mjs"
+      ],
+      "runtime_surface": "v3-clean"
+    },
+    {
       "id": "REC-D5-PROJECT-005",
       "domain": "project",
       "name": "Draft project, retryable intake and confirmed brief",
@@ -702,78 +778,358 @@
       "runtime_surface": "v3-clean"
     },
     {
-      "id": "REC-D4-SCOPE-016",
-      "domain": "mcp",
-      "name": "MCP and Exchange scopes, dual approval, allowlists and revocation",
+      "id": "REC-D8-APPROVAL-013",
+      "domain": "assist",
+      "name": "Runtime approval, user input and semantic proposals",
       "status": "verified",
       "owner_modules": [
-        "exchange",
-        "mcp",
-        "gateway"
+        "assist"
       ],
       "source_files": [
-        "apps/api/src/clean/mcp-service.mjs",
-        "apps/api/src/clean/gateway-service.mjs",
-        "apps/api/src/clean/authorization.mjs",
-        "apps/api/src/clean/migrations/004-context-projection-mcp.mjs"
+        "apps/api/src/clean/assist-service.mjs",
+        "apps/api/src/clean/migrations/005-assist-files-terminal-bridge.mjs"
       ],
       "target_modules": [
-        "apps/api/src/clean/mcp-service.mjs",
-        "apps/api/src/clean/gateway-service.mjs",
-        "apps/api/src/clean/command-dispatcher.mjs",
-        "apps/gateway/server.mjs",
-        "apps/web/src/features/context/McpSettingsPage.tsx"
+        "apps/api/src/clean/assist-service.mjs",
+        "apps/web/src/features/approvals"
       ],
       "tables": [
-        "exchange_requests",
-        "exchange_grants",
-        "mcp_clients",
-        "gateway_forward_receipts"
+        "runtime_approvals",
+        "runtime_user_inputs",
+        "semantic_proposals"
       ],
       "apis": [
-        "/api/v2/projects/{id}/exchange-requests",
-        "/api/v2/exchange-requests/{id}/approve",
-        "/api/v2/exchange-requests/{id}/reject",
-        "/api/v2/exchange-grants/{id}/revoke",
-        "/api/v2/exchange-grants/{id}/context-packs",
-        "/api/v2/gateway/forward",
-        "/api/v2/gateway/receipts/{id}"
+        "/api/v2/approvals",
+        "/api/v2/user-inputs",
+        "/api/v2/proposals"
       ],
       "ui": [
-        "MCP Settings",
-        "Exchange approvals"
+        "Approval Center",
+        "Proposal"
       ],
       "events": [
-        "exchange_request.created",
-        "exchange_request.approved",
-        "exchange_request.rejected",
-        "exchange_grant.created",
-        "exchange_grant.revoked",
-        "gateway.forwarded",
-        "gateway.denied"
+        "runtime_approval.requested",
+        "runtime_approval.approved",
+        "runtime_approval.rejected",
+        "runtime_user_input.requested",
+        "runtime_user_input.answered",
+        "semantic_proposal.created"
       ],
       "behavior_tests": [
-        "tests/p4/mcp-exchange-gateway.test.mjs",
-        "tests/p4/transport-parity.test.mjs",
-        "tests/p4/active-entrypoint.test.mjs",
-        "tests/p4/governance-sync.test.mjs"
+        "tests/p5/assist-files.test.mjs",
+        "tests/p5/mutation-recovery.test.mjs"
       ],
       "ui_tests": [
-        "apps/web/src/test/context.test.tsx",
-        "scripts/e2e.mjs"
+        "apps/web/src/test/approvals-p5.test.tsx"
       ],
       "evidence": [
-        "docs/evidence/v3-clean-p4-context-mcp-20260820/verification.json"
+        "docs/evidence/v3-clean-p5-assist-terminal-20260820/verification.json"
       ],
       "release_receipts": [],
       "tests": [
-        "T3",
-        "tests/p4/mcp-exchange-gateway.test.mjs",
-        "tests/p4/transport-parity.test.mjs",
-        "tests/p4/active-entrypoint.test.mjs",
-        "tests/p4/governance-sync.test.mjs",
-        "apps/web/src/test/context.test.tsx",
-        "scripts/e2e.mjs"
+        "T5",
+        "tests/p5/assist-files.test.mjs",
+        "tests/p5/mutation-recovery.test.mjs",
+        "apps/web/src/test/approvals-p5.test.tsx"
+      ],
+      "runtime_surface": "v3-clean"
+    },
+    {
+      "id": "REC-D8-ASSIST-010",
+      "domain": "assist",
+      "name": "Four-scope Assist runtime and native event replay",
+      "status": "verified",
+      "owner_modules": [
+        "assist"
+      ],
+      "source_files": [
+        "apps/api/src/clean/assist-service.mjs",
+        "apps/api/src/clean/app-server-adapter.mjs",
+        "apps/api/src/clean/command-dispatcher.mjs",
+        "apps/api/src/clean/migrations/005-assist-files-terminal-bridge.mjs"
+      ],
+      "target_modules": [
+        "apps/api/src/clean/assist-service.mjs",
+        "apps/api/src/clean/app-server-adapter.mjs",
+        "apps/web/src/features/assist"
+      ],
+      "tables": [
+        "assist_sessions",
+        "assist_turns",
+        "assist_messages",
+        "assist_goals",
+        "assist_configurations",
+        "assist_references"
+      ],
+      "apis": [
+        "/api/v2/assist/sessions",
+        "/api/v2/assist/sessions/{id}/turns",
+        "/api/v2/assist/sessions/{id}/events",
+        "/api/v2/assist/turns/{id}/retry"
+      ],
+      "ui": [
+        "Assist Center",
+        "Composer",
+        "Context Pack",
+        "Turn Timeline",
+        "Operation Status"
+      ],
+      "events": [
+        "assist_session.created",
+        "assist_turn.queued",
+        "assist_turn.running",
+        "assist_turn.awaiting_input",
+        "assist_turn.completed",
+        "assist_turn.failed"
+      ],
+      "behavior_tests": [
+        "tests/p5/assist-files.test.mjs",
+        "tests/p5/mutation-recovery.test.mjs",
+        "tests/p5/provider-probe.test.mjs"
+      ],
+      "ui_tests": [
+        "apps/web/src/test/assist.test.tsx"
+      ],
+      "evidence": [
+        "docs/evidence/v3-clean-p5-assist-terminal-20260820/verification.json"
+      ],
+      "release_receipts": [],
+      "tests": [
+        "T5",
+        "tests/p5/assist-files.test.mjs",
+        "tests/p5/mutation-recovery.test.mjs",
+        "tests/p5/provider-probe.test.mjs",
+        "apps/web/src/test/assist.test.tsx",
+        "scripts/v3-clean-p5-assist-probe.mjs"
+      ],
+      "runtime_surface": "v3-clean"
+    },
+    {
+      "id": "REC-D8-ATTACHMENTS-011",
+      "domain": "assist",
+      "name": "Attachments and secure previews",
+      "status": "implemented",
+      "owner_modules": [
+        "files"
+      ],
+      "source_files": [
+        "apps/api/src/clean/files-service.mjs",
+        "apps/api/src/clean/migrations/005-assist-files-terminal-bridge.mjs"
+      ],
+      "target_modules": [
+        "apps/api/src/clean/files-service.mjs",
+        "apps/web/src/features/assist"
+      ],
+      "tables": [
+        "attachments"
+      ],
+      "apis": [
+        "/api/v2/projects/{id}/attachments",
+        "/api/v2/attachments/{id}/content",
+        "/api/v2/attachments/{id}/preview"
+      ],
+      "ui": [
+        "Attachments"
+      ],
+      "events": [
+        "attachment.created",
+        "attachment.quarantined",
+        "attachment.deleted"
+      ],
+      "behavior_tests": [
+        "tests/p5/assist-files.test.mjs",
+        "tests/p5/http-contract.test.mjs"
+      ],
+      "ui_tests": [
+        "apps/web/src/test/files-p5.test.tsx"
+      ],
+      "evidence": [
+        "docs/evidence/v3-clean-p5-assist-terminal-20260820/verification.json"
+      ],
+      "release_receipts": [],
+      "tests": [
+        "T5",
+        "tests/p5/assist-files.test.mjs",
+        "tests/p5/http-contract.test.mjs",
+        "apps/web/src/test/files-p5.test.tsx"
+      ],
+      "runtime_surface": "v3-clean"
+    },
+    {
+      "id": "REC-D8-BRIDGE-026",
+      "domain": "bridge",
+      "name": "Independent Windows Native Bridge pairing and Git bundle transport",
+      "status": "verified",
+      "owner_modules": [
+        "bridge"
+      ],
+      "source_files": [
+        "apps/api/src/clean/bridge-service.mjs",
+        "apps/api/src/clean/windows-bridge-adapter.mjs",
+        "apps/windows-native-bridge/server.mjs",
+        "apps/windows-native-bridge/src/protocol.mjs",
+        "apps/api/src/clean/migrations/005-assist-files-terminal-bridge.mjs"
+      ],
+      "target_modules": [
+        "apps/api/src/clean/bridge-service.mjs",
+        "apps/api/src/clean/windows-bridge-adapter.mjs",
+        "apps/windows-native-bridge"
+      ],
+      "tables": [
+        "bridge_devices",
+        "bridge_transfers"
+      ],
+      "apis": [
+        "/api/v2/bridge/pairing",
+        "/api/v2/bridge/devices/{id}/probe",
+        "/api/v2/bridge/devices/{id}/rotate",
+        "/api/v2/bridge/devices/{id}/revoke",
+        "/api/v2/bridge/devices/{id}/transfers"
+      ],
+      "ui": [
+        "Connections",
+        "Bridge Settings"
+      ],
+      "events": [
+        "bridge_device.paired",
+        "bridge_device.probed",
+        "bridge_device.rotated",
+        "bridge_device.revoked",
+        "bridge_transfer.verified",
+        "bridge_transfer.failed"
+      ],
+      "behavior_tests": [
+        "tests/p5/terminal-bridge.test.mjs",
+        "tests/p5/mutation-recovery.test.mjs"
+      ],
+      "ui_tests": [
+        "apps/web/src/test/connections-p5.test.tsx"
+      ],
+      "evidence": [
+        "docs/evidence/v3-clean-p5-assist-terminal-20260820/verification.json"
+      ],
+      "release_receipts": [],
+      "tests": [
+        "T5",
+        "tests/p5/terminal-bridge.test.mjs",
+        "tests/p5/mutation-recovery.test.mjs",
+        "apps/web/src/test/connections-p5.test.tsx",
+        "scripts/v3-clean-p5-bridge-probe.mjs"
+      ],
+      "runtime_surface": "v3-clean"
+    },
+    {
+      "id": "REC-D8-FILES-012",
+      "domain": "assist",
+      "name": "Managed files and reversible change batches",
+      "status": "verified",
+      "owner_modules": [
+        "files"
+      ],
+      "source_files": [
+        "apps/api/src/clean/files-service.mjs",
+        "apps/api/src/clean/migrations/005-assist-files-terminal-bridge.mjs"
+      ],
+      "target_modules": [
+        "apps/api/src/clean/files-service.mjs",
+        "apps/web/src/features/files"
+      ],
+      "tables": [
+        "file_refs",
+        "file_change_batches",
+        "file_change_items"
+      ],
+      "apis": [
+        "/api/v2/projects/{id}/files",
+        "/api/v2/projects/{id}/change-batches",
+        "/api/v2/change-batches/{id}/apply",
+        "/api/v2/change-batches/{id}/undo"
+      ],
+      "ui": [
+        "Files",
+        "Diff Review"
+      ],
+      "events": [
+        "file_change_batch.proposed",
+        "file_change_batch.approved",
+        "file_change_batch.applied",
+        "file_change_batch.undone"
+      ],
+      "behavior_tests": [
+        "tests/p5/assist-files.test.mjs",
+        "tests/p5/mutation-recovery.test.mjs"
+      ],
+      "ui_tests": [
+        "apps/web/src/test/files-p5.test.tsx"
+      ],
+      "evidence": [
+        "docs/evidence/v3-clean-p5-assist-terminal-20260820/verification.json"
+      ],
+      "release_receipts": [],
+      "tests": [
+        "T5",
+        "tests/p5/assist-files.test.mjs",
+        "tests/p5/mutation-recovery.test.mjs",
+        "apps/web/src/test/files-p5.test.tsx",
+        "scripts/v3-clean-p5-performance.mjs"
+      ],
+      "runtime_surface": "v3-clean"
+    },
+    {
+      "id": "REC-D8-TERMINAL-025",
+      "domain": "terminal",
+      "name": "Native Terminal, reconnect and cursor recovery",
+      "status": "verified",
+      "owner_modules": [
+        "terminal"
+      ],
+      "source_files": [
+        "apps/api/src/clean/terminal-service.mjs",
+        "apps/api/clean-server.mjs",
+        "apps/api/src/clean/migrations/005-assist-files-terminal-bridge.mjs"
+      ],
+      "target_modules": [
+        "apps/api/src/clean/terminal-service.mjs",
+        "apps/api/clean-server.mjs",
+        "apps/web/src/features/terminal"
+      ],
+      "tables": [
+        "terminal_sessions",
+        "terminal_events"
+      ],
+      "apis": [
+        "/api/v2/terminals",
+        "/api/v2/terminals/{id}/events",
+        "/api/v2/terminals/{id}/ws"
+      ],
+      "ui": [
+        "Terminal"
+      ],
+      "events": [
+        "terminal.opened",
+        "terminal.output",
+        "terminal.resized",
+        "terminal.signalled",
+        "terminal.orphaned",
+        "terminal.stopped"
+      ],
+      "behavior_tests": [
+        "tests/p5/terminal-bridge.test.mjs",
+        "tests/p5/http-contract.test.mjs"
+      ],
+      "ui_tests": [
+        "apps/web/src/test/terminal.test.tsx"
+      ],
+      "evidence": [
+        "docs/evidence/v3-clean-p5-assist-terminal-20260820/verification.json"
+      ],
+      "release_receipts": [],
+      "tests": [
+        "T5",
+        "tests/p5/terminal-bridge.test.mjs",
+        "tests/p5/http-contract.test.mjs",
+        "apps/web/src/test/terminal.test.tsx",
+        "scripts/v3-clean-p5-performance.mjs"
       ],
       "runtime_surface": "v3-clean"
     },
