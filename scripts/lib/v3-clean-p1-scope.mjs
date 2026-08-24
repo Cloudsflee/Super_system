@@ -113,6 +113,7 @@ export const P1_PACKAGE_SCRIPT_DEFINITIONS = Object.freeze(Object.fromEntries(Ob
   dev: { command: 'node scripts/dev.mjs', role: 'active_process', phase: 'P1' },
   'dev:clean': { command: 'node apps/api/server.mjs', role: 'active_process', phase: 'P1' },
   'dev:api': { command: 'node apps/api/server.mjs', role: 'active_process', phase: 'P1' },
+  'dev:broker': { command: 'node apps/runner-broker/clean-server.mjs', role: 'active_process', phase: 'P6' },
   'fixture:legacy:dev-broker': { command: 'node apps/runner-broker/server.mjs', role: 'deferred_fixture', phase: 'P6' },
   start: { command: 'node apps/api/server.mjs', role: 'active_process', phase: 'P1' },
   'start:clean': { command: 'node apps/api/server.mjs', role: 'active_process', phase: 'P1' },
@@ -128,10 +129,12 @@ export const P1_PACKAGE_SCRIPT_DEFINITIONS = Object.freeze(Object.fromEntries(Ob
   'test:p31': { command: 'node --test tests/p31/*.test.mjs', role: 'p31_gate', phase: 'P3.1' },
   'test:p4': { command: 'node --test tests/p4/*.test.mjs', role: 'p4_gate', phase: 'P4' },
   'test:p5': { command: 'node --test tests/p5/*.test.mjs', role: 'p5_gate', phase: 'P5' },
+  'test:p6': { command: 'node --test tests/p6/*.test.mjs', role: 'p6_gate', phase: 'P6' },
   'evidence:p3': { command: 'node scripts/v3-clean-p3-evidence.mjs', role: 'p3_evidence', phase: 'P3' },
   'evidence:p31': { command: 'node scripts/v3-clean-p31-evidence.mjs', role: 'p31_evidence', phase: 'P3.1' },
   'evidence:p4': { command: 'node scripts/v3-clean-p4-evidence.mjs', role: 'p4_evidence', phase: 'P4' },
   'evidence:p5': { command: 'node scripts/v3-clean-p5-evidence.mjs', role: 'p5_evidence', phase: 'P5' },
+  'evidence:p6': { command: 'node scripts/v3-clean-p6-evidence.mjs', role: 'p6_evidence', phase: 'P6' },
   'test:integration': { command: 'node scripts/layered-gate.mjs integration', role: 'layered_gate', phase: 'P3.1' },
   'test:integration:clean': { command: 'node scripts/layered-gate.mjs integration --clean', role: 'p31_gate', phase: 'P3.1' },
   'fixture:legacy:integration': { command: 'node scripts/layered-gate.mjs integration --historical', role: 'deferred_fixture', phase: 'historical' },
@@ -165,7 +168,6 @@ export const P1_DEFERRED_PACKAGE_SCRIPTS = Object.freeze(Object.fromEntries(Obje
   .map(([name, definition]) => [name, definition.command])));
 
 export const P1_FORBIDDEN_PACKAGE_SCRIPTS = Object.freeze([
-  'dev:broker',
   'acceptance',
   'release:build',
   'release:rehearse',
@@ -289,6 +291,38 @@ const P5_WEB_PREFIXES = Object.freeze([
   'apps/web/src/features/terminal/'
 ]);
 
+const P6_FILES = new Set([
+  'apps/api/src/clean/execution-service.mjs',
+  'apps/api/src/clean/runner-adapters.mjs',
+  'apps/api/src/clean/runner-protocol.mjs',
+  'apps/api/src/clean/runner-service.mjs',
+  'apps/api/src/clean/windows-bridge-adapter.mjs',
+  'apps/api/src/clean/migrations/006-runner-execution-checkpoint-replay.mjs',
+  'apps/runner-broker/package.json',
+  'apps/runner-broker/clean-server.mjs',
+  'apps/windows-native-bridge/server.mjs',
+  'apps/windows-native-bridge/src/protocol.mjs',
+  'packages/contracts/src/clean-v2.mjs',
+  'scripts/lib/v3-clean-p6-runner-probe.mjs',
+  'scripts/v3-clean-p6-performance.mjs',
+  'scripts/v3-clean-p6-docker-runner-probe.mjs',
+  'scripts/v3-clean-p6-host-runner-probe.mjs',
+  'scripts/v3-clean-p6-bridge-runner-probe.mjs',
+  'scripts/v3-clean-p6-restart-probe.mjs',
+  'scripts/v3-clean-p6-evidence.mjs',
+  'apps/web/src/App.tsx',
+  'apps/web/src/styles.css',
+  'apps/web/src/workspace.ts',
+  'apps/web/src/features/connections/ConnectionsPage.tsx',
+  'apps/web/src/test/connections-p6.test.tsx',
+  'apps/web/src/test/execution-p6.test.tsx'
+]);
+
+const P6_PREFIXES = Object.freeze([
+  'apps/web/src/features/execution/',
+  'tests/p6/'
+]);
+
 export function classifyWorkspacePath(value) {
   const file = normalize(value);
   if (!file) return null;
@@ -296,6 +330,7 @@ export function classifyWorkspacePath(value) {
     const rows = file === 'scripts/v3-clean-architecture-scan.mjs' ? P1_MATRIX_ROWS : P1_GOVERNANCE_ROWS;
     return { kind: 'p1', phase: 'P1', rows: [...rows] };
   }
+  if (P6_FILES.has(file) || P6_PREFIXES.some((prefix) => file.startsWith(prefix))) return { kind: 'clean', phase: 'P6', rows: [] };
   if (P5_FILES.has(file) || P5_WEB_FILES.has(file) || P5_WEB_PREFIXES.some((prefix) => file.startsWith(prefix)) || file.startsWith('tests/p5/')) return { kind: 'clean', phase: 'P5', rows: [] };
   if (file.startsWith('apps/windows-native-bridge/')) return { kind: 'clean', phase: 'P5', rows: [] };
   if (P4_FILES.has(file) || file.startsWith('tests/p4/')) return { kind: 'clean', phase: 'P4', rows: [] };

@@ -1,0 +1,135 @@
+{
+  "schema_version": "aiws.v3-clean.p6-migration-receipt.v1",
+  "status": "passed",
+  "registry": [
+    {
+      "version": 1,
+      "id": "001-clean-baseline",
+      "checksum": "cca3488f5328cb66e030dab0fed7fad023980e7178b78e60256777fbb8dde424"
+    },
+    {
+      "version": 2,
+      "id": "002-identity-acl",
+      "checksum": "b8bcbda157aadda8eaafbebf20830297ba9be74abec2782c5ff1141192fce103"
+    },
+    {
+      "version": 3,
+      "id": "003-project-workflow",
+      "checksum": "57a93d5fc8bf041d9ab350cc0ab4449bd4d520df9f2b5a7cc767859885a8d18e"
+    },
+    {
+      "version": 4,
+      "id": "004-context-projection-mcp",
+      "checksum": "396bd5a18f19e6eaf0dc762aff78861319e448085915eaacf956fbed13ff49bd"
+    },
+    {
+      "version": 5,
+      "id": "005-assist-files-terminal-bridge",
+      "checksum": "0b4fb2faafc281d85dafb48226065bd9873609fd6d027bb8e3bee6201c4f8fcb"
+    },
+    {
+      "version": 6,
+      "id": "006-runner-execution-checkpoint-replay",
+      "checksum": "b358e0939590b4935ceea55e173a485ec02b20abed79e3a747d5b33a8608b804"
+    }
+  ],
+  "upgrades": [
+    {
+      "start_version": 0,
+      "end_version": 6,
+      "p6_tables": [
+        "execution_events",
+        "execution_inputs",
+        "execution_stage_checkpoints",
+        "executions",
+        "job_specs",
+        "runner_profiles",
+        "runner_receipts",
+        "task_attempts"
+      ],
+      "snapshot_sha256": "8846854ff28d9118ad3a9822d9dcbf8ffaea4e4ec56dc981a9ca6e593a629174",
+      "status": "passed"
+    },
+    {
+      "start_version": 1,
+      "end_version": 6,
+      "p6_tables": [
+        "execution_events",
+        "execution_inputs",
+        "execution_stage_checkpoints",
+        "executions",
+        "job_specs",
+        "runner_profiles",
+        "runner_receipts",
+        "task_attempts"
+      ],
+      "snapshot_sha256": "8846854ff28d9118ad3a9822d9dcbf8ffaea4e4ec56dc981a9ca6e593a629174",
+      "status": "passed"
+    },
+    {
+      "start_version": 2,
+      "end_version": 6,
+      "p6_tables": [
+        "execution_events",
+        "execution_inputs",
+        "execution_stage_checkpoints",
+        "executions",
+        "job_specs",
+        "runner_profiles",
+        "runner_receipts",
+        "task_attempts"
+      ],
+      "snapshot_sha256": "8846854ff28d9118ad3a9822d9dcbf8ffaea4e4ec56dc981a9ca6e593a629174",
+      "status": "passed"
+    },
+    {
+      "start_version": 3,
+      "end_version": 6,
+      "p6_tables": [
+        "execution_events",
+        "execution_inputs",
+        "execution_stage_checkpoints",
+        "executions",
+        "job_specs",
+        "runner_profiles",
+        "runner_receipts",
+        "task_attempts"
+      ],
+      "snapshot_sha256": "8846854ff28d9118ad3a9822d9dcbf8ffaea4e4ec56dc981a9ca6e593a629174",
+      "status": "passed"
+    },
+    {
+      "start_version": 4,
+      "end_version": 6,
+      "p6_tables": [
+        "execution_events",
+        "execution_inputs",
+        "execution_stage_checkpoints",
+        "executions",
+        "job_specs",
+        "runner_profiles",
+        "runner_receipts",
+        "task_attempts"
+      ],
+      "snapshot_sha256": "8846854ff28d9118ad3a9822d9dcbf8ffaea4e4ec56dc981a9ca6e593a629174",
+      "status": "passed"
+    },
+    {
+      "start_version": 5,
+      "end_version": 6,
+      "p6_tables": [
+        "execution_events",
+        "execution_inputs",
+        "execution_stage_checkpoints",
+        "executions",
+        "job_specs",
+        "runner_profiles",
+        "runner_receipts",
+        "task_attempts"
+      ],
+      "snapshot_sha256": "8846854ff28d9118ad3a9822d9dcbf8ffaea4e4ec56dc981a9ca6e593a629174",
+      "status": "passed"
+    }
+  ],
+  "failures": []
+}

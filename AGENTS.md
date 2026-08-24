@@ -17,19 +17,20 @@ under docs/architecture/ are the source of truth for V3-Clean.
 
 ## Scope of this phase
 
-Decision `D-034` activates P5 Assist/Files/Attachments/Approval/Terminal/Bridge
-over the verified P4 baseline at `b270ff7d86d200b55a83dfdfa4a4db0e38fed050`.
-This phase may update the synchronized P5
+Decision `D-035` activates P6 Runner/Execution/Checkpoint/Replay over the
+verified P5 baseline at `54381746da0f01fd60da2e11ed247f2ed2f11c8b`.
+This phase may update the synchronized P6
 surface:
 
-- forward-only `005-assist-files-terminal-bridge`, schema ownership, clean
-  runtime services, dispatcher, registry, contracts, and focused P5 tests;
-- the real app-server adapter, independent `apps/windows-native-bridge`
-  process, managed files/change batches, PTY transport, and external probes;
-- the component-level Assist/Files/Approval/Terminal/Connections Web slice and
-  default Clean E2E, using `/api/v2` only;
+- forward-only `006-runner-execution-checkpoint-replay`, schema ownership,
+  Clean Runner and Execution services, dispatcher, registry, contracts, and
+  focused P6 tests;
+- the Clean Broker entrypoint, Docker/Host/Windows Bridge adapters, signed Job
+  Spec/receipt protocol, restart reconciliation, and independent probes;
+- the component-level Execution and Runner Profiles Web slice plus default
+  Clean E2E, using `/api/v2` only;
 - architecture documents, testing policy, layered Catalogs, package gates,
-  immutable P5 Evidence, and rollback receipts required by GS-001 through
+  immutable P6 Evidence, and rollback receipts required by GS-001 through
   GS-007;
 - this file.
 
@@ -39,9 +40,9 @@ is appended to the ignored local `.ai-workspace/gate-receipts/` store. Local
 receipts are diagnostic evidence only; Catalog status promotion continues to
 use the immutable final `verification.json` receipt.
 
-P1/P2/P3/P4 migrations and P1-P4 verified Evidence are read-only. Runner,
-Parser, complete Outcome evaluation, real GitHub Delivery, offline/cross-origin
-behavior, production cutover, and release-level Web/E2E remain outside P5.
+P1/P2/P3/P4/P5 migrations and verified Evidence are read-only. Parser,
+complete Outcome evaluation, real GitHub Delivery, offline/cross-origin
+behavior, production cutover, and release-level Web/E2E remain outside P6.
 
 ## Required preflight
 
@@ -276,6 +277,41 @@ pnpm evidence:p5
 git diff --check
 ~~~
 
+The additive P6 implementation inventory is:
+
+~~~text
+pnpm check
+pnpm audit:p1
+pnpm scan:clean
+pnpm recovery:plan
+pnpm recovery:catalog
+pnpm recovery:coverage
+pnpm recovery:impact -- --audit
+pnpm test:p1
+pnpm test:p2
+pnpm test:p3
+pnpm test:p31
+pnpm test:p4
+pnpm test:p5
+pnpm test:p6
+node scripts/v3-clean-p6-performance.mjs
+node scripts/v3-clean-p6-docker-runner-probe.mjs
+node scripts/v3-clean-p6-host-runner-probe.mjs
+node scripts/v3-clean-p6-bridge-runner-probe.mjs
+node scripts/v3-clean-p6-restart-probe.mjs
+pnpm --filter @aiws/web test
+pnpm test
+pnpm test:integration:clean
+pnpm test:security:clean
+pnpm test:integration
+pnpm test:security
+pnpm build
+pnpm test:e2e
+pnpm verify
+pnpm evidence:p6
+git diff --check
+~~~
+
 P3.1 uses `feature-catalog.index.json` with disjoint Clean and historical
 layers (`feature-catalog.clean.json` and `feature-catalog.historical.json`).
 `scripts/catalog-loader.mjs` is the validation owner; the root
@@ -315,6 +351,20 @@ The six P5 ids are Clean-only after a final verified, non-provisional receipt,
 yielding 19 Clean and 8 Historical rows while the total remains 27. Formal
 Evidence is `docs/evidence/v3-clean-p5-assist-terminal-20260820/`; failed
 attempts remain append-only and never promote status.
+
+P6 advances the active schema to `user_version=6`. Runner owns profiles, Job
+Specs, and terminal receipts; Execution owns executions, pinned inputs, task
+attempts, stage checkpoints, and the one-to-one generic-event projection.
+Docker, Host, and Windows Bridge use the same signed `runner.job-spec.v2` and
+`runner.receipt.v2` contracts. The seven stages are `prepare`, `context`,
+`run`, `check`, `review`, `finalize`, and `deliver`; the last stage produces a
+delivery-ready handoff manifest and does not perform GitHub Delivery.
+The two P6 ids are Clean-only after a final verified, non-provisional receipt,
+yielding 21 Clean and 6 Historical rows while the total remains 27. Frontend
+and Outcome remain `scaffolded`. Formal Evidence is
+`docs/evidence/v3-clean-p6-runner-execution-20260824/`; failed attempts remain
+append-only and never promote status. Rollback restores v5 SQLite, CAS, Vault,
+workspace, Broker, and Bridge snapshots in isolation with byte-exact checks.
 
 ## Capability status
 

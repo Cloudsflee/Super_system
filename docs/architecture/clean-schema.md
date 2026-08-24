@@ -1,13 +1,15 @@
 # V3-Clean Schema Contract
 
-Status: normative through the P4 Context/MCP/Gateway implementation.
+Status: normative through the P6 Runner/Execution/Replay implementation.
 Schema family: v3-clean.
 Baseline: 001 (PRAGMA user_version = 1); P2 forward migration: 002-identity-acl
 (PRAGMA user_version = 2); P3 forward migration: 003-project-workflow
 (PRAGMA user_version = 3); P4 forward migration: 004-context-projection-mcp
-(PRAGMA user_version = 4).
+(PRAGMA user_version = 4); P5 forward migration:
+005-assist-files-terminal-bridge (PRAGMA user_version = 5); P6 forward
+migration: 006-runner-execution-checkpoint-replay (PRAGMA user_version = 6).
 
-The active `apps/api/server.mjs` entrypoint defaults the migration target to P4.
+The active `apps/api/server.mjs` entrypoint defaults the migration target to P6.
 Explicit lower targets are retained only for isolated phase fixtures and
 forward-upgrade tests.
 Storage: SQLite WAL with a separate content-addressed store (CAS).
@@ -149,8 +151,10 @@ appendable and every reacquisition receives a new fencing token.
 P3 Workflow owns `workflows`, `workflow_revisions`, `workflow_nodes`,
 `node_contracts`, `workflow_generations`, and
 `workflow_generation_proposals`. Critic exclusively owns immutable
-`workflow_critic_receipts`. Execution and full Outcome tables remain later
-phase schema; P3 creates only `outcome_requirements` and never infers a score,
+`workflow_critic_receipts`. P6 Execution owns `executions`, immutable
+`execution_inputs`, `task_attempts`, immutable stage checkpoints, and the
+one-to-one generic-event projection. Full Outcome tables remain later-phase
+schema; P3 creates only `outcome_requirements` and never infers a score,
 evaluation, or waiver.
 
 | Table | Purpose |
@@ -162,11 +166,11 @@ evaluation, or waiver.
 | workflow_generations | asynchronous generator operation and candidate state |
 | workflow_generation_proposals | candidate graph, critic input/output hashes, apply decision |
 | workflow_critic_receipts | independent critic result and policy revision |
-| executions | workflow execution aggregate, runner profile, current stage, revision |
-| execution_inputs | resolved Context Pack and artifact references |
-| task_attempts | task attempt number, signed job hash, runner receipt, status |
-| execution_stage_checkpoints | seven-stage checkpoint, input/output hashes, replay token |
-| execution_events | projection view of generic events; never a second source of truth |
+| executions | pinned Brief/Workflow/Repository/Context/Runner inputs, plan, generation, stage, handoff and revision |
+| execution_inputs | immutable ordered opaque references, revisions, hashes, and bounded metadata |
+| task_attempts | generation/task/attempt, lease/fencing, operation, workspace/output hashes, terminal status |
+| execution_stage_checkpoints | immutable generation/stage boundary, operation, pins/workspace hashes, replay token hash |
+| execution_events | one-to-one projection of generic execution events; never a cursor/head/source of truth |
 | outcome_requirements | required evidence and score rules |
 | outcome_evaluations | immutable evaluation snapshot and decision |
 | outcome_waivers | grant/revoke/expiry with actor and evidence snapshot |
@@ -270,9 +274,9 @@ project aggregate without explicit links and authorization.
 
 | Table | Purpose |
 | --- | --- |
-| runner_profiles | Docker/Host/Windows profile, image digest, capability policy |
-| job_specs | signed immutable job specification and credential reference |
-| runner_receipts | start/finish/exit code/stdout hash/stderr hash, redacted |
+| runner_profiles | Docker/Host/Windows Bridge profile, digest, capabilities, limits, identity, probe status and revision |
+| job_specs | signed immutable `runner.job-spec.v2`, service key id, opaque refs, deadline and relative paths |
+| runner_receipts | signed immutable `runner.receipt.v2`, terminal status, bounded byte counts and output hashes |
 | parser_formats | registered format, worker version, limits, supported status |
 | parser_runs | isolated worker operation, input/output hashes, quota and retry |
 | assets | logical Evidence asset and project scope |
@@ -287,6 +291,22 @@ project aggregate without explicit links and authorization.
 | quality_review_events | projection view of generic events for report UI |
 | human_reviews | immutable per-criterion score and decision snapshot |
 | test_results | controlled test result, command hash, output asset reference |
+
+Runner and Execution reuse `operations`, `operation_links`, `events`,
+`event_cursors`, `aggregate_heads`, and CAS. `execution_events` cannot diverge
+from its referenced generic event, and there is no Runner- or Execution-private
+cursor/head ledger. Job Specs, receipts, inputs, terminal attempts, and
+checkpoints are immutable. Checkpoint uniqueness is
+`(execution_id, generation, stage)` so replay creates a new generation rather
+than rewriting old bytes.
+
+An execution permits at most 100 tasks and 500 dependency edges. Read tasks run
+with concurrency at most four; write tasks are serial. Attempts are limited to
+three and only known transient failures use 1-second then 4-second backoff.
+Deadline, relative path, Context Pack, stdout/stderr, and output quotas are
+enforced before dispatch. Docker and Host resource profiles are fixed to
+`light` or `standard`; adapters never place credentials, prompts, host paths,
+or unbounded output in the Job Spec, receipt, event, or audit row.
 
 Supported parser registrations include text, Markdown, JSON, CSV, XML/SVG,
 PDF, DOCX, XLSX, PNG, JPEG, WebP, GIF, audio/video, PPTX, and generic archive
@@ -339,8 +359,10 @@ workspace: requested -> provisioning -> ready -> locked -> released | orphaned
 workflow: draft -> proposed -> active -> superseded | archived
 generation: queued -> running -> critic_pending -> proposed -> applied
              -> rejected | failed | cancelled
-execution: created -> ready -> running -> paused -> completed
-           -> completed_with_gaps | failed | cancelled
+execution: draft -> queued -> running -> pause_requested | awaiting_approval
+           -> paused -> running -> completed | failed | cancelled
+task attempt: pending -> ready -> leased -> running
+              -> succeeded | failed | cancelled | expired | external_result_unknown
 outcome: pending -> evaluating -> passed | completed_with_gaps | waived | blocked
 ~~~
 
@@ -399,8 +421,10 @@ back the transaction and leaves the operation in a retryable failed state.
 ## 13. Baseline and migration policy
 
 The clean schema family begins with `001-clean-baseline`; migrations
-`002-identity-acl`, `003-project-workflow`, and
-`004-context-projection-mcp` add their phase-owned tables and indexes in order.
+`002-identity-acl`, `003-project-workflow`, `004-context-projection-mcp`,
+`005-assist-files-terminal-bridge`, and
+`006-runner-execution-checkpoint-replay` add their phase-owned tables, indexes,
+and immutable triggers in order.
 All migrations are forward-only and carry a checksum. Each migration must
 provide a precondition, SQL/application change, postcondition, snapshot
 receipt, and rollback rehearsal for deployment artifacts. Rollback restores a

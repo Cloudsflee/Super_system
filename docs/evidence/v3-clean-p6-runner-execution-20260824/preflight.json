@@ -1,0 +1,62 @@
+{
+  "schema_version": "aiws.v3-clean.p6-preflight.v1",
+  "phase": "P6",
+  "baseline": "54381746da0f01fd60da2e11ed247f2ed2f11c8b",
+  "generated_at": "2026-08-24T09:42:46.544Z",
+  "Target": "P6 Runner/Execution/Checkpoint/Replay synchronized receipt, baseline=54381746da0f01fd60da2e11ed247f2ed2f11c8b",
+  "目标": "schema v6, three real Runner adapters, recoverable seven-stage execution, Catalog 21/6/27, and immutable P6 Evidence",
+  "Goal": "schema v6, Docker/Host/Windows Bridge runners, recoverable seven-stage execution and non-provisional P6 Evidence",
+  "Non-target": "P7 Parser/Quality/Outcome, P8 GitHub Delivery/Importer, P9 Offline/Release",
+  "非目标": "complete Evidence asset chain, real pull request, production cutover, and release claim",
+  "Forbidden": [
+    "/api/v1 active route",
+    "legacy runtime import",
+    "second operation/event/CAS/head model",
+    "API Docker socket",
+    "secret/token/full prompt/host absolute path in public or Evidence envelope"
+  ],
+  "禁止项": [
+    "modify P1-P5 migrations or verified Evidence",
+    "overwrite existing worktree changes",
+    "promote a provisional receipt"
+  ],
+  "Reuse": [
+    "P1-P5 operations/events/heads/idempotency/ACL/Vault/CAS/dispatcher/approval",
+    "Context Pack",
+    "repository workspace lease",
+    "Windows Bridge pairing"
+  ],
+  "复用项": [
+    "verified P5 runtime",
+    "generic ledger and CAS",
+    "Approval owner",
+    "Repository fencing lease",
+    "Bridge pairing"
+  ],
+  "Delete/retire": [
+    "active runtime dependency on historical Broker/execution contracts",
+    "active Web dependency on historical Runner/Execution APIs"
+  ],
+  "删除/退役": [
+    "historical Broker runtime dependency",
+    "historical Execution/Runner API dependency"
+  ],
+  "Acceptance_commands": [
+    "pnpm check",
+    "pnpm scan:clean",
+    "pnpm test:p6",
+    "node scripts/v3-clean-p6-docker-runner-probe.mjs",
+    "node scripts/v3-clean-p6-host-runner-probe.mjs",
+    "node scripts/v3-clean-p6-bridge-runner-probe.mjs",
+    "node scripts/v3-clean-p6-restart-probe.mjs",
+    "node scripts/v3-clean-p6-performance.mjs",
+    "pnpm --filter @aiws/web test",
+    "pnpm test:e2e",
+    "git diff --check"
+  ],
+  "验收命令": "P1-P6 gates, P6 performance/probes, Web/Clean/full gates, evidence:p6, verify, and git diff --check",
+  "Rollback_artifact": "docs/evidence/v3-clean-p6-runner-execution-20260824/rollback.ps1",
+  "回滚工件": "docs/evidence/v3-clean-p6-runner-execution-20260824/rollback.ps1",
+  "last_confirmed_result": "Docker, Host, Windows Bridge and restart probes passed non-provisionally",
+  "next_action": "run synchronized P6 gates and publish immutable Evidence"
+}

@@ -1,0 +1,50 @@
+{
+  "schema_version": "aiws.v3-clean.p6-protocol-inventory.v1",
+  "status": "passed",
+  "transports": [
+    "REST",
+    "Web",
+    "MCP Streamable HTTP",
+    "MCP stdio",
+    "Gateway HTTP"
+  ],
+  "registry_parity": {
+    "valid": true,
+    "mismatches": [],
+    "rest_count": 192,
+    "mcp_count": 192,
+    "web_count": 192
+  },
+  "app_server_schema_sha256": "34fb0f9d81a1a8438f0603d73901560a1f19b0e66af7ef9ef20cc2a3fcc04aca",
+  "job_spec": "runner.job-spec.v2",
+  "runner_receipt": "runner.receipt.v2",
+  "stages": [
+    "prepare",
+    "context",
+    "run",
+    "check",
+    "review",
+    "finalize",
+    "deliver"
+  ],
+  "resource_profiles": {
+    "light": {
+      "cpus": 1,
+      "memory_bytes": 1073741824,
+      "pids": 256,
+      "tmpfs_bytes": 268435456
+    },
+    "standard": {
+      "cpus": 2,
+      "memory_bytes": 4294967296,
+      "pids": 512,
+      "tmpfs_bytes": 1073741824
+    }
+  },
+  "broker_transport": "timestamp-nonce-body-sha256-hmac",
+  "bridge_protocols": [
+    "aiws.bridge.pairing.v1",
+    "aiws.windows-bridge.identity.v1",
+    "runner.job.submit/status/cancel.v1"
+  ]
+}

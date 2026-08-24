@@ -1,0 +1,44 @@
+{
+  "schema_version": "aiws.v3-clean.p6-bridge-runner-probe-record.v1",
+  "status": "passed",
+  "command": {
+    "command": "node scripts/v3-clean-p6-bridge-runner-probe.mjs",
+    "cwd": "repository-root",
+    "input": {
+      "args": [
+        "scripts/v3-clean-p6-bridge-runner-probe.mjs"
+      ]
+    },
+    "stdout": "{\n  \"schema_version\": \"aiws.v3-clean.p6-bridge-runner-probe.v1\",\n  \"status\": \"passed\",\n  \"provisional\": false,\n  \"runner_type\": \"windows_bridge\",\n  \"independent_loopback_process\": true,\n  \"dpapi\": true,\n  \"conpty\": true,\n  \"credential_lease\": \"memory_only_zeroed\",\n  \"transport\": \"timestamp+nonce+body-hash+hmac\",\n  \"receipt\": {\n    \"status\": \"succeeded\",\n    \"receipt_id\": \"bridge_receipt_f9ef23c134a4928a2f3981bdf145145a\",\n    \"job_spec_hash\": \"81f2bd8ee2de9ef7f420b9490bf82c6fc1d612f343a671713bd4584cd4a360a2\",\n    \"stdout_sha256\": \"3489257d9acdd08496751f85ca3f3f7fd5a673a3ccf0bcc27f540fd60faa0e92\",\n    \"stderr_sha256\": \"\",\n    \"output_sha256\": \"\",\n    \"exit_code\": 0,\n    \"output_paths\": []\n  },\n  \"cancel_status\": \"cancelled\"\n}\n",
+    "stderr": "",
+    "exit_status": 0,
+    "expected_exit_statuses": [
+      0
+    ],
+    "signal": null,
+    "ok": true,
+    "summary": "\"receipt\": {\n\"status\": \"succeeded\",\n\"receipt_id\": \"bridge_receipt_f9ef23c134a4928a2f3981bdf145145a\",\n\"job_spec_hash\": \"81f2bd8ee2de9ef7f420b9490bf82c6fc1d612f343a671713bd4584cd4a360a2\",\n\"stdout_sha256\": \"3489257d9acdd08496751f85ca3f3f7fd5a673a3ccf0bcc27f540fd60faa0e92\",\n\"stderr_sha256\": \"\",\n\"output_sha256\": \"\",\n\"exit_code\": 0,\n\"output_paths\": []\n},\n\"cancel_status\": \"cancelled\"\n}"
+  },
+  "receipt": {
+    "schema_version": "aiws.v3-clean.p6-bridge-runner-probe.v1",
+    "status": "passed",
+    "provisional": false,
+    "runner_type": "windows_bridge",
+    "independent_loopback_process": true,
+    "dpapi": true,
+    "conpty": true,
+    "credential_lease": "memory_only_zeroed",
+    "transport": "timestamp+nonce+body-hash+hmac",
+    "receipt": {
+      "status": "succeeded",
+      "receipt_id": "bridge_receipt_f9ef23c134a4928a2f3981bdf145145a",
+      "job_spec_hash": "81f2bd8ee2de9ef7f420b9490bf82c6fc1d612f343a671713bd4584cd4a360a2",
+      "stdout_sha256": "3489257d9acdd08496751f85ca3f3f7fd5a673a3ccf0bcc27f540fd60faa0e92",
+      "stderr_sha256": "",
+      "output_sha256": "",
+      "exit_code": 0,
+      "output_paths": []
+    },
+    "cancel_status": "cancelled"
+  }
+}

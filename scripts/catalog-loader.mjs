@@ -2,10 +2,25 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { createHash } from 'node:crypto';
 
-const P4_EVIDENCE_REFERENCE = 'docs/evidence/v3-clean-p4-context-mcp-20260820/verification.json';
-const P4_EVIDENCE_ATTEMPTS = 'docs/evidence/v3-clean-p4-context-mcp-20260820/attempts';
-const P5_EVIDENCE_REFERENCE = 'docs/evidence/v3-clean-p5-assist-terminal-20260820/verification.json';
-const P5_EVIDENCE_ATTEMPTS = 'docs/evidence/v3-clean-p5-assist-terminal-20260820/attempts';
+export const EVIDENCE_POLICIES = Object.freeze([
+  Object.freeze({
+    key: 'p4', phase: 'P4', reference: 'docs/evidence/v3-clean-p4-context-mcp-20260820/verification.json',
+    attempts: 'docs/evidence/v3-clean-p4-context-mcp-20260820/attempts', staging_env: 'AIWS_P4_EVIDENCE_STAGING_ROOT',
+    staging_schema: 'aiws.v3-clean.p4-catalog-staging.v1', manifest_schema: 'aiws.v3-clean.p4-manifest.v1', validate: validateP4EvidenceManifest
+  }),
+  Object.freeze({
+    key: 'p5', phase: 'P5', reference: 'docs/evidence/v3-clean-p5-assist-terminal-20260820/verification.json',
+    attempts: 'docs/evidence/v3-clean-p5-assist-terminal-20260820/attempts', staging_env: 'AIWS_P5_EVIDENCE_STAGING_ROOT',
+    staging_schema: 'aiws.v3-clean.p5-catalog-staging.v1', manifest_schema: 'aiws.v3-clean.p5-manifest.v1', validate: validateP5EvidenceManifest
+  }),
+  Object.freeze({
+    key: 'p6', phase: 'P6', reference: 'docs/evidence/v3-clean-p6-runner-execution-20260824/verification.json',
+    attempts: 'docs/evidence/v3-clean-p6-runner-execution-20260824/attempts', staging_env: 'AIWS_P6_EVIDENCE_STAGING_ROOT',
+    staging_schema: 'aiws.v3-clean.p6-catalog-staging.v1', manifest_schema: 'aiws.v3-clean.p6-manifest.v1', validate: validateP6EvidenceManifest
+  })
+]);
+
+const EVIDENCE_POLICY_BY_REFERENCE = new Map(EVIDENCE_POLICIES.map((policy) => [policy.reference, policy]));
 
 export const CLEAN_CATALOG_IDS = Object.freeze([
   'REC-D0-GOVERNANCE-000', 'REC-D2-IDENTITY-001', 'REC-D2-SETUP-002',
@@ -18,6 +33,15 @@ export const CLEAN_CATALOG_IDS = Object.freeze([
 export const P5_CLEAN_CATALOG_IDS = Object.freeze([
   'REC-D8-ASSIST-010', 'REC-D8-ATTACHMENTS-011', 'REC-D8-FILES-012',
   'REC-D8-APPROVAL-013', 'REC-D8-TERMINAL-025', 'REC-D8-BRIDGE-026'
+]);
+
+export const P6_CLEAN_CATALOG_IDS = Object.freeze([
+  'REC-D3-RUNNER-003', 'REC-D6-EXECUTION-008'
+]);
+
+const P6_TABLES = Object.freeze([
+  'execution_events', 'execution_inputs', 'execution_stage_checkpoints', 'executions',
+  'job_specs', 'runner_profiles', 'runner_receipts', 'task_attempts'
 ]);
 
 export function loadCatalogIndex(root = process.cwd()) {
@@ -111,7 +135,7 @@ export function validateCatalogLayers({ root = process.cwd(), index = loadCatalo
           const relative = path.relative(resolvedRoot, target);
           if (relative.startsWith('..') || path.isAbsolute(relative)) failures.push(`${feature.id}:${field}_outside_root:${value}`);
           else if (!fs.existsSync(target)) failures.push(`${feature.id}:${field}_missing:${value}`);
-          else if (layer === 'clean' && field === 'evidence' && feature.status === 'verified' && String(value).replaceAll('\\', '/') === P4_EVIDENCE_REFERENCE && !resolved.staging) {
+          else if (layer === 'clean' && field === 'evidence' && feature.status === 'verified' && EVIDENCE_POLICY_BY_REFERENCE.has(String(value).replaceAll('\\', '/')) && !resolved.staging) {
             const receipt = readJson(target);
             if (receipt?.status !== 'verified' || receipt?.provisional !== false) failures.push(`${feature.id}:evidence_not_final:${value}`);
           }
@@ -119,15 +143,12 @@ export function validateCatalogLayers({ root = process.cwd(), index = loadCatalo
       }
     }
   }
-  const p4Evidence = resolveCatalogEvidenceReference(resolvedRoot, P4_EVIDENCE_REFERENCE);
-  if (!p4Evidence.staging && fs.existsSync(p4Evidence.path)) {
-    const receipt = readJson(p4Evidence.path);
-    for (const failure of validateP4EvidenceManifest(path.dirname(p4Evidence.path), receipt)) failures.push(`p4_evidence:${failure}`);
-  }
-  const p5Evidence = resolveCatalogEvidenceReference(resolvedRoot, P5_EVIDENCE_REFERENCE);
-  if (!p5Evidence.staging && fs.existsSync(p5Evidence.path)) {
-    const receipt = readJson(p5Evidence.path);
-    for (const failure of validateP5EvidenceManifest(path.dirname(p5Evidence.path), receipt)) failures.push(`p5_evidence:${failure}`);
+  for (const policy of EVIDENCE_POLICIES) {
+    const evidence = resolveCatalogEvidenceReference(resolvedRoot, policy.reference);
+    if (!evidence.staging && fs.existsSync(evidence.path)) {
+      const receipt = readJson(evidence.path);
+      for (const failure of policy.validate(path.dirname(evidence.path), receipt)) failures.push(`${policy.key}_evidence:${failure}`);
+    }
   }
   const matrixPath = path.join(root, 'docs', 'architecture', 'v23-capability-matrix.md');
   if (!fs.existsSync(matrixPath)) failures.push('matrix_missing');
@@ -139,6 +160,7 @@ export function validateCatalogLayers({ root = process.cwd(), index = loadCatalo
   const cleanIds = new Set((layers.clean?.features || []).map((feature) => feature.id));
   for (const id of CLEAN_CATALOG_IDS) if (!cleanIds.has(id)) failures.push(`clean_required:${id}`);
   for (const id of P5_CLEAN_CATALOG_IDS) if (!cleanIds.has(id)) failures.push(`p5_clean_required:${id}`);
+  for (const id of P6_CLEAN_CATALOG_IDS) if (!cleanIds.has(id)) failures.push(`p6_clean_required:${id}`);
   for (const feature of layers.clean?.features || []) {
     if (feature.runtime_surface !== 'v3-clean') failures.push(`clean_runtime_surface:${feature.id}`);
   }
@@ -152,23 +174,102 @@ export function resolveCatalogEvidenceReference(root = process.cwd(), value = ''
   const resolvedRoot = path.resolve(root);
   const reference = String(value || '').replaceAll('\\', '/');
   const ordinary = path.resolve(resolvedRoot, reference);
-  if (![P4_EVIDENCE_REFERENCE, P5_EVIDENCE_REFERENCE].includes(reference)) return { path: ordinary, staging: false };
-  const isP5 = reference === P5_EVIDENCE_REFERENCE;
-  const configured = String(process.env[isP5 ? 'AIWS_P5_EVIDENCE_STAGING_ROOT' : 'AIWS_P4_EVIDENCE_STAGING_ROOT'] || '').trim();
+  const policy = EVIDENCE_POLICY_BY_REFERENCE.get(reference);
+  if (!policy) return { path: ordinary, staging: false };
+  const configured = String(process.env[policy.staging_env] || '').trim();
   if (!configured) return { path: ordinary, staging: false };
   const attemptRoot = path.resolve(configured);
-  const attemptsRoot = path.resolve(resolvedRoot, isP5 ? P5_EVIDENCE_ATTEMPTS : P4_EVIDENCE_ATTEMPTS);
+  const attemptsRoot = path.resolve(resolvedRoot, policy.attempts);
   const relative = path.relative(attemptsRoot, attemptRoot);
   if (!relative || relative.startsWith('..') || path.isAbsolute(relative) || relative.includes(path.sep)) return { path: ordinary, staging: false };
   const candidate = path.join(attemptRoot, 'catalog-staging.json');
   const receipt = readJson(candidate);
-  if (receipt?.schema_version !== `aiws.v3-clean.${isP5 ? 'p5' : 'p4'}-catalog-staging.v1`
-      || receipt?.phase !== (isP5 ? 'P5' : 'P4')
+  if (receipt?.schema_version !== policy.staging_schema
+      || receipt?.phase !== policy.phase
       || receipt?.status !== 'staging'
       || receipt?.provisional !== true
       || receipt?.final_reference !== reference
       || receipt?.run_id !== path.basename(attemptRoot)) return { path: ordinary, staging: false };
   return { path: candidate, staging: true };
+}
+
+export function validateP6EvidenceManifest(evidenceRoot, verification = readJson(path.join(evidenceRoot, 'verification.json'))) {
+  const failures = validateEvidenceManifest(evidenceRoot, verification, 'aiws.v3-clean.p6-manifest.v1');
+  if (verification?.schema_version !== 'aiws.v3-clean.p6-verification.v1') failures.push('verification_schema');
+  if (verification?.status !== 'verified' || verification?.provisional !== false) failures.push('verification_not_final');
+  if (JSON.stringify(verification?.catalog_promotion) !== JSON.stringify(P6_CLEAN_CATALOG_IDS)) failures.push('catalog_promotion');
+  if (verification?.unchanged_statuses?.['REC-D10-FRONTEND-024'] !== 'scaffolded'
+      || verification?.unchanged_statuses?.['REC-D6-OUTCOME-009'] !== 'scaffolded') failures.push('unchanged_statuses');
+  const commands = Array.isArray(verification?.commands) ? verification.commands : [];
+  if (!commands.length) failures.push('verification_commands_missing');
+  if (commands.some((entry) => Number(entry?.exit_status ?? 1) !== 0 || entry?.ok !== true)) failures.push('verification_command_failed');
+
+  const probeFiles = {
+    docker: 'docker-runner-probe.json', host: 'host-runner-probe.json', bridge: 'bridge-runner-probe.json',
+    restart: 'restart-probe.json', performance: 'performance-receipt.json', browser: 'browser-receipt.json'
+  };
+  for (const [probe, file] of Object.entries(probeFiles)) {
+    if (verification?.probes?.[probe]?.status !== 'passed') failures.push(`probe_failed:${probe}`);
+    const record = readJson(path.join(evidenceRoot, file));
+    if (record?.status !== 'passed' || record?.receipt?.status !== 'passed' || record?.receipt?.provisional !== false) failures.push(`probe_record_failed:${probe}`);
+  }
+  for (const probe of ['migration', 'rollback', 'secret_scan']) {
+    if (verification?.probes?.[probe]?.status !== 'passed') failures.push(`probe_failed:${probe}`);
+  }
+  const docker = readJson(path.join(evidenceRoot, probeFiles.docker))?.receipt;
+  if (docker?.real_container !== true || !['digest-pinned', 'cap-drop-all', 'read-only-root', 'no-new-privileges', 'bounded-tmpfs', 'bounded-network'].every((item) => docker?.isolation?.includes(item))) failures.push('docker_probe_invariants');
+  const host = readJson(path.join(evidenceRoot, probeFiles.host))?.receipt;
+  if (host?.real_process !== true || host?.isolated_codex_home !== true || host?.process_tree_cleanup !== true || host?.credential_lease !== 'memory_only_zeroed') failures.push('host_probe_invariants');
+  const bridge = readJson(path.join(evidenceRoot, probeFiles.bridge))?.receipt;
+  if (bridge?.independent_loopback_process !== true || bridge?.dpapi !== true || bridge?.conpty !== true || bridge?.credential_lease !== 'memory_only_zeroed') failures.push('bridge_probe_invariants');
+  const restart = readJson(path.join(evidenceRoot, probeFiles.restart))?.receipt;
+  if (restart?.persistent_identity !== true || restart?.terminal_receipt_recovered !== true || restart?.running_container_reconciled !== true || restart?.unknown_external_result !== 'external_result_unknown') failures.push('restart_probe_invariants');
+
+  const schema = readJson(path.join(evidenceRoot, 'schema-inventory.json'));
+  if (schema?.schema_version !== 'aiws.v3-clean.p6-schema-inventory.v1' || schema?.family !== 'v3-clean' || schema?.user_version !== 6 || schema?.migration_id !== '006-runner-execution-checkpoint-replay') failures.push('schema_inventory');
+  if (JSON.stringify(schema?.p6_tables) !== JSON.stringify(P6_TABLES)) failures.push('schema_p6_tables');
+  const tableRows = new Map((Array.isArray(schema?.tables) ? schema.tables : []).map((entry) => [entry?.name, entry]));
+  for (const table of P6_TABLES) if (!tableRows.has(table)) failures.push(`schema_table_missing:${table}`);
+
+  const owners = readJson(path.join(evidenceRoot, 'owner-inventory.json'));
+  if (owners?.schema_version !== 'aiws.v3-clean.p6-owner-inventory.v1' || owners?.status !== 'passed' || owners?.validation?.valid !== true) failures.push('owner_inventory');
+  if (JSON.stringify(Object.keys(owners?.table_owners || {}).sort()) !== JSON.stringify(P6_TABLES)) failures.push('owner_table_inventory');
+  if (Object.keys(owners?.command_owners || {}).length !== 18) failures.push('owner_command_inventory');
+
+  const routes = readJson(path.join(evidenceRoot, 'route-inventory.json'));
+  const routeRows = Array.isArray(routes?.routes) ? routes.routes : [];
+  if (routes?.schema_version !== 'aiws.v3-clean.p6-route-inventory.v1' || routes?.active_api !== '/api/v2' || routes?.retired_api !== '/api/v1' || routeRows.length !== 18 || new Set(routeRows.map((entry) => entry?.command_id)).size !== 18 || routeRows.some((entry) => !String(entry?.path || '').startsWith('/api/v2/'))) failures.push('route_inventory');
+  const protocols = readJson(path.join(evidenceRoot, 'protocol-inventory.json'));
+  if (protocols?.schema_version !== 'aiws.v3-clean.p6-protocol-inventory.v1' || protocols?.status !== 'passed' || protocols?.job_spec !== 'runner.job-spec.v2' || protocols?.runner_receipt !== 'runner.receipt.v2' || JSON.stringify(protocols?.stages) !== JSON.stringify(['prepare', 'context', 'run', 'check', 'review', 'finalize', 'deliver'])) failures.push('protocol_inventory');
+
+  const migration = readJson(path.join(evidenceRoot, 'migration-receipt.json'));
+  if (migration?.schema_version !== 'aiws.v3-clean.p6-migration-receipt.v1' || migration?.status !== 'passed') failures.push('migration_receipt');
+  if (JSON.stringify((migration?.registry || []).map((entry) => entry?.version)) !== JSON.stringify([1, 2, 3, 4, 5, 6])) failures.push('migration_registry');
+  if (JSON.stringify((migration?.upgrades || []).map((entry) => entry?.start_version)) !== JSON.stringify([0, 1, 2, 3, 4, 5]) || (migration?.upgrades || []).some((entry) => entry?.end_version !== 6 || entry?.status !== 'passed' || JSON.stringify(entry?.p6_tables) !== JSON.stringify(P6_TABLES))) failures.push('migration_upgrades');
+
+  const catalog = readJson(path.join(evidenceRoot, 'catalog-inventory.json'));
+  if (catalog?.schema_version !== 'aiws.v3-clean.p6-catalog-inventory.v1' || catalog?.status !== 'passed' || catalog?.validation?.valid !== true || JSON.stringify(catalog?.validation?.counts) !== JSON.stringify({ clean: 21, historical: 6, total: 27 }) || JSON.stringify(catalog?.promoted_ids) !== JSON.stringify(P6_CLEAN_CATALOG_IDS)) failures.push('catalog_inventory');
+
+  const expectedRoles = { modified_artifact: 'modified-artifact.json', patch: 'change.patch', verification: 'verification.json', rollback: 'rollback.ps1' };
+  const reopen = readJson(path.join(evidenceRoot, 'artifact-reopen.json'));
+  if (reopen?.status !== 'passed') failures.push('artifact_reopen_status');
+  const reopenChecks = new Map((Array.isArray(reopen?.checks) ? reopen.checks : []).map((entry) => [entry?.role, entry]));
+  for (const [role, file] of Object.entries(expectedRoles)) {
+    if (verification?.artifacts?.[role] !== file) failures.push(`artifact_role_mismatch:${role}`);
+    const check = reopenChecks.get(role); const target = path.join(evidenceRoot, file);
+    if (!check || check.file !== file || check.exists !== true || !fs.existsSync(target)) failures.push(`artifact_reopen_missing:${role}`);
+    else if (check.sha256 !== sha256File(target)) failures.push(`artifact_reopen_hash_mismatch:${role}`);
+  }
+
+  const rollback = readJson(path.join(evidenceRoot, 'rollback-receipt.json'));
+  if (rollback?.status !== 'passed' || rollback?.dry_run?.exit_status !== 0 || rollback?.isolated_apply?.exit_status !== 0) failures.push('rollback_status');
+  if (rollback?.source_reverse_check !== 'passed' || rollback?.restored_user_version !== 5) failures.push('rollback_source_or_version');
+  if (JSON.stringify(rollback?.migration_ledger) !== JSON.stringify([1, 2, 3, 4, 5])) failures.push('rollback_migration_ledger');
+  if (!Array.isArray(rollback?.foreign_key_check) || rollback.foreign_key_check.length) failures.push('rollback_foreign_key_check');
+  if (JSON.stringify(rollback?.p6_tables_absent) !== JSON.stringify(P6_TABLES)) failures.push('rollback_p6_tables');
+  if (!Array.isArray(rollback?.byte_exact_mismatches) || rollback.byte_exact_mismatches.length) failures.push('rollback_byte_exact_mismatches');
+  for (const component of ['sqlite', 'cas', 'vault', 'workspace', 'broker', 'bridge']) if (rollback?.restored_components?.[component] !== true) failures.push(`rollback_component:${component}`);
+  return [...new Set(failures)].sort();
 }
 
 export function validateP5EvidenceManifest(evidenceRoot, verification = readJson(path.join(evidenceRoot, 'verification.json'))) {

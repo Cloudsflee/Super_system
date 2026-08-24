@@ -1,0 +1,51 @@
+{
+  "schema_version": "aiws.v3-clean.p6-host-runner-probe-record.v1",
+  "status": "passed",
+  "command": {
+    "command": "node scripts/v3-clean-p6-host-runner-probe.mjs",
+    "cwd": "repository-root",
+    "input": {
+      "args": [
+        "scripts/v3-clean-p6-host-runner-probe.mjs"
+      ]
+    },
+    "stdout": "{\n  \"schema_version\": \"aiws.v3-clean.p6-host-runner-probe.v1\",\n  \"status\": \"passed\",\n  \"provisional\": false,\n  \"runner_type\": \"host\",\n  \"runtime\": \"v24.14.0\",\n  \"real_process\": true,\n  \"isolated_codex_home\": true,\n  \"process_tree_cleanup\": true,\n  \"credential_lease\": \"memory_only_zeroed\",\n  \"capabilities\": [\n    \"workspace:read\",\n    \"workspace:write\",\n    \"network:none\",\n    \"check:node_test\",\n    \"check:git_diff_check\"\n  ],\n  \"receipt\": {\n    \"status\": \"succeeded\",\n    \"receipt_id\": \"runner_receipt_502011a852274dd5a56e974ea8915960\",\n    \"job_spec_hash\": \"372f0f447013d3bd34f43e0187bf450688c1c44eba73fbbc2332b84ef00f5f62\",\n    \"stdout_sha256\": \"b7d73300555893094665f0ce0e4ebbc2232505266ffb3dc4d311c290245e6c27\",\n    \"stderr_sha256\": \"\",\n    \"output_sha256\": \"\",\n    \"exit_code\": 0,\n    \"output_paths\": []\n  },\n  \"cancel_status\": \"cancelled\"\n}\n",
+    "stderr": "",
+    "exit_status": 0,
+    "expected_exit_statuses": [
+      0
+    ],
+    "signal": null,
+    "ok": true,
+    "summary": "\"receipt\": {\n\"status\": \"succeeded\",\n\"receipt_id\": \"runner_receipt_502011a852274dd5a56e974ea8915960\",\n\"job_spec_hash\": \"372f0f447013d3bd34f43e0187bf450688c1c44eba73fbbc2332b84ef00f5f62\",\n\"stdout_sha256\": \"b7d73300555893094665f0ce0e4ebbc2232505266ffb3dc4d311c290245e6c27\",\n\"stderr_sha256\": \"\",\n\"output_sha256\": \"\",\n\"exit_code\": 0,\n\"output_paths\": []\n},\n\"cancel_status\": \"cancelled\"\n}"
+  },
+  "receipt": {
+    "schema_version": "aiws.v3-clean.p6-host-runner-probe.v1",
+    "status": "passed",
+    "provisional": false,
+    "runner_type": "host",
+    "runtime": "v24.14.0",
+    "real_process": true,
+    "isolated_codex_home": true,
+    "process_tree_cleanup": true,
+    "credential_lease": "memory_only_zeroed",
+    "capabilities": [
+      "workspace:read",
+      "workspace:write",
+      "network:none",
+      "check:node_test",
+      "check:git_diff_check"
+    ],
+    "receipt": {
+      "status": "succeeded",
+      "receipt_id": "runner_receipt_502011a852274dd5a56e974ea8915960",
+      "job_spec_hash": "372f0f447013d3bd34f43e0187bf450688c1c44eba73fbbc2332b84ef00f5f62",
+      "stdout_sha256": "b7d73300555893094665f0ce0e4ebbc2232505266ffb3dc4d311c290245e6c27",
+      "stderr_sha256": "",
+      "output_sha256": "",
+      "exit_code": 0,
+      "output_paths": []
+    },
+    "cancel_status": "cancelled"
+  }
+}

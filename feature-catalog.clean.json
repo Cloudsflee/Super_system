@@ -328,6 +328,75 @@
       "runtime_surface": "v3-clean"
     },
     {
+      "id": "REC-D3-RUNNER-003",
+      "domain": "runner",
+      "name": "Broker-isolated Docker, Host, and Windows Bridge runners with signed Job Spec",
+      "status": "verified",
+      "owner_modules": [
+        "runner"
+      ],
+      "source_files": [
+        "apps/api/src/clean/migrations/006-runner-execution-checkpoint-replay.mjs",
+        "apps/api/src/clean/runner-protocol.mjs",
+        "apps/api/src/clean/runner-adapters.mjs",
+        "apps/api/src/clean/runner-service.mjs",
+        "apps/runner-broker/clean-server.mjs",
+        "apps/windows-native-bridge/src/protocol.mjs"
+      ],
+      "target_modules": [
+        "apps/api/src/clean/runner-protocol.mjs",
+        "apps/api/src/clean/runner-adapters.mjs",
+        "apps/api/src/clean/runner-service.mjs",
+        "apps/runner-broker/clean-server.mjs",
+        "apps/windows-native-bridge/server.mjs",
+        "apps/web/src/features/connections/ConnectionsPage.tsx"
+      ],
+      "tables": [
+        "runner_profiles",
+        "job_specs",
+        "runner_receipts"
+      ],
+      "apis": [
+        "/api/v2/runners/profiles",
+        "/api/v2/runners/profiles/{id}",
+        "/api/v2/runners/profiles/{id}/probe",
+        "/api/v2/runners/profiles/{id}/disable"
+      ],
+      "ui": [
+        "Connections / Runner Profiles",
+        "Execution runner readiness"
+      ],
+      "events": [
+        "runner_profile.*",
+        "runner_job.*",
+        "runner_receipt.*"
+      ],
+      "behavior_tests": [
+        "tests/p6/runner-execution.test.mjs",
+        "tests/p6/runner-transports.test.mjs",
+        "tests/p6/http-security.test.mjs"
+      ],
+      "ui_tests": [
+        "apps/web/src/test/connections-p6.test.tsx"
+      ],
+      "evidence": [
+        "docs/evidence/v3-clean-p6-runner-execution-20260824/verification.json"
+      ],
+      "release_receipts": [],
+      "tests": [
+        "T3",
+        "tests/p6/runner-execution.test.mjs",
+        "tests/p6/runner-transports.test.mjs",
+        "tests/p6/http-security.test.mjs",
+        "apps/web/src/test/connections-p6.test.tsx",
+        "scripts/v3-clean-p6-docker-runner-probe.mjs",
+        "scripts/v3-clean-p6-host-runner-probe.mjs",
+        "scripts/v3-clean-p6-bridge-runner-probe.mjs",
+        "scripts/v3-clean-p6-restart-probe.mjs"
+      ],
+      "runtime_surface": "v3-clean"
+    },
+    {
       "id": "REC-D4-MCP-004",
       "domain": "mcp",
       "name": "MCP clients, tools and operation lifecycle over HTTP, stdio and Gateway",
@@ -601,6 +670,85 @@
         "tests/p3/migration.test.mjs",
         "tests/p3/project-workflow.test.mjs",
         "apps/web/src/test/project-workflow-clean.test.tsx"
+      ],
+      "runtime_surface": "v3-clean"
+    },
+    {
+      "id": "REC-D6-EXECUTION-008",
+      "domain": "execution",
+      "name": "Persistent DAG dispatcher and seven replayable stages",
+      "status": "verified",
+      "owner_modules": [
+        "execution"
+      ],
+      "source_files": [
+        "apps/api/src/clean/migrations/006-runner-execution-checkpoint-replay.mjs",
+        "apps/api/src/clean/execution-service.mjs",
+        "apps/api/src/clean/command-dispatcher.mjs",
+        "apps/api/src/clean/registry.mjs"
+      ],
+      "target_modules": [
+        "apps/api/src/clean/execution-service.mjs",
+        "apps/api/src/clean/http.mjs",
+        "apps/api/src/clean/registry.mjs",
+        "apps/web/src/features/execution"
+      ],
+      "tables": [
+        "executions",
+        "execution_inputs",
+        "task_attempts",
+        "execution_stage_checkpoints",
+        "execution_events"
+      ],
+      "apis": [
+        "/api/v2/projects/{project_id}/executions",
+        "/api/v2/executions/{id}",
+        "/api/v2/executions/{id}/events",
+        "/api/v2/executions/{id}/attempts",
+        "/api/v2/executions/{id}/checkpoints",
+        "/api/v2/executions/{id}/start",
+        "/api/v2/executions/{id}/pause",
+        "/api/v2/executions/{id}/resume",
+        "/api/v2/executions/{id}/cancel",
+        "/api/v2/executions/{id}/replan",
+        "/api/v2/executions/{id}/stages/{stage}/replay"
+      ],
+      "ui": [
+        "Execution list",
+        "Seven-stage rail",
+        "Task attempts",
+        "Checkpoint replay",
+        "Recovery controls"
+      ],
+      "events": [
+        "execution.*",
+        "execution_stage.*",
+        "task_attempt.*"
+      ],
+      "behavior_tests": [
+        "tests/p6/runner-execution.test.mjs",
+        "tests/p6/execution-recovery.test.mjs",
+        "tests/p6/http-security.test.mjs",
+        "tests/p6/transport-parity.test.mjs",
+        "tests/p6/migration.test.mjs"
+      ],
+      "ui_tests": [
+        "apps/web/src/test/execution-p6.test.tsx"
+      ],
+      "evidence": [
+        "docs/evidence/v3-clean-p6-runner-execution-20260824/verification.json"
+      ],
+      "release_receipts": [],
+      "tests": [
+        "T4",
+        "tests/p6/runner-execution.test.mjs",
+        "tests/p6/execution-recovery.test.mjs",
+        "tests/p6/http-security.test.mjs",
+        "tests/p6/transport-parity.test.mjs",
+        "tests/p6/migration.test.mjs",
+        "apps/web/src/test/execution-p6.test.tsx",
+        "scripts/v3-clean-p6-performance.mjs",
+        "scripts/e2e.mjs"
       ],
       "runtime_surface": "v3-clean"
     },

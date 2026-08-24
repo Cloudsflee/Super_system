@@ -1,0 +1,51 @@
+{
+  "schema_version": "aiws.v3-clean.p6-docker-runner-probe-record.v1",
+  "status": "passed",
+  "command": {
+    "command": "node scripts/v3-clean-p6-docker-runner-probe.mjs",
+    "cwd": "repository-root",
+    "input": {
+      "args": [
+        "scripts/v3-clean-p6-docker-runner-probe.mjs"
+      ]
+    },
+    "stdout": "{\n  \"schema_version\": \"aiws.v3-clean.p6-docker-runner-probe.v1\",\n  \"status\": \"passed\",\n  \"provisional\": false,\n  \"runner_type\": \"docker\",\n  \"docker_server_version\": \"29.4.1\",\n  \"image_digest\": \"sha256:d649c27dae7ba0137b3cef5dd75baa422c08dc3d9e3fc0c23dfb172dc3cc6436\",\n  \"real_container\": true,\n  \"isolation\": [\n    \"digest-pinned\",\n    \"cap-drop-all\",\n    \"read-only-root\",\n    \"no-new-privileges\",\n    \"bounded-tmpfs\",\n    \"bounded-network\"\n  ],\n  \"transport\": \"timestamp+nonce+body-hash+hmac\",\n  \"receipt\": {\n    \"status\": \"succeeded\",\n    \"receipt_id\": \"broker_receipt_706150739f3b36adf5e1ce0656cce5fd\",\n    \"job_spec_hash\": \"d30888d3e35a1f4bf5421955d45654d045dfe1630798eff2788b741cb01b7591\",\n    \"stdout_sha256\": \"\",\n    \"stderr_sha256\": \"\",\n    \"output_sha256\": \"\",\n    \"exit_code\": 0,\n    \"output_paths\": []\n  },\n  \"cancel_status\": \"cancelled\"\n}\n",
+    "stderr": "",
+    "exit_status": 0,
+    "expected_exit_statuses": [
+      0
+    ],
+    "signal": null,
+    "ok": true,
+    "summary": "\"receipt\": {\n\"status\": \"succeeded\",\n\"receipt_id\": \"broker_receipt_706150739f3b36adf5e1ce0656cce5fd\",\n\"job_spec_hash\": \"d30888d3e35a1f4bf5421955d45654d045dfe1630798eff2788b741cb01b7591\",\n\"stdout_sha256\": \"\",\n\"stderr_sha256\": \"\",\n\"output_sha256\": \"\",\n\"exit_code\": 0,\n\"output_paths\": []\n},\n\"cancel_status\": \"cancelled\"\n}"
+  },
+  "receipt": {
+    "schema_version": "aiws.v3-clean.p6-docker-runner-probe.v1",
+    "status": "passed",
+    "provisional": false,
+    "runner_type": "docker",
+    "docker_server_version": "29.4.1",
+    "image_digest": "sha256:d649c27dae7ba0137b3cef5dd75baa422c08dc3d9e3fc0c23dfb172dc3cc6436",
+    "real_container": true,
+    "isolation": [
+      "digest-pinned",
+      "cap-drop-all",
+      "read-only-root",
+      "no-new-privileges",
+      "bounded-tmpfs",
+      "bounded-network"
+    ],
+    "transport": "timestamp+nonce+body-hash+hmac",
+    "receipt": {
+      "status": "succeeded",
+      "receipt_id": "broker_receipt_706150739f3b36adf5e1ce0656cce5fd",
+      "job_spec_hash": "d30888d3e35a1f4bf5421955d45654d045dfe1630798eff2788b741cb01b7591",
+      "stdout_sha256": "",
+      "stderr_sha256": "",
+      "output_sha256": "",
+      "exit_code": 0,
+      "output_paths": []
+    },
+    "cancel_status": "cancelled"
+  }
+}

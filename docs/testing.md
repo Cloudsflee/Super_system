@@ -181,7 +181,7 @@ boundary.
 The P4 unit gate preserves the same split: `pnpm test` excludes only the named
 R5 source-hash replay, while `fixture:legacy:integration` owns and reports it
 as Historical advisory characterization. The package surface remains fixed at
-44 scripts after the P5 gate additions.
+47 scripts after the P6 gate additions.
 
 The fixed P4 command inventory is:
 
@@ -315,6 +315,78 @@ without creating or replacing Evidence files, including reopening the nested
 Assist probe receipt and rechecking its real-turn invariants. Publishing a corrective run
 continues to require the explicit `pnpm evidence:p5 -- --supersede` option.
 
+## P6 Runner, Execution, Checkpoint, and Replay
+
+P6 advances the active Clean runtime to schema v6 with forward-only
+`006-runner-execution-checkpoint-replay`. `tests/p6/` covers upgrades from
+`0/1/2/3/4/5`, checksum and snapshot drift, DDL/ledger/receipt/commit rollback,
+signed Job Spec and receipt tamper, bounded resources, stable DAG scheduling,
+read concurrency, write serialization, all seven stages, pause/resume/cancel,
+approval wait, replan, replay generations, restart reconciliation, transport
+parity, redaction, and governance synchronization.
+
+The synchronized P6 inventory is:
+
+```text
+pnpm check
+pnpm audit:p1
+pnpm scan:clean
+pnpm recovery:plan
+pnpm recovery:catalog
+pnpm recovery:coverage
+pnpm recovery:impact -- --audit
+pnpm test:p1
+pnpm test:p2
+pnpm test:p3
+pnpm test:p31
+pnpm test:p4
+pnpm test:p5
+pnpm test:p6
+node scripts/v3-clean-p6-performance.mjs
+node scripts/v3-clean-p6-docker-runner-probe.mjs
+node scripts/v3-clean-p6-host-runner-probe.mjs
+node scripts/v3-clean-p6-bridge-runner-probe.mjs
+node scripts/v3-clean-p6-restart-probe.mjs
+pnpm --filter @aiws/web test
+pnpm test
+pnpm test:integration:clean
+pnpm test:security:clean
+pnpm test:integration
+pnpm test:security
+pnpm build
+pnpm test:e2e
+pnpm verify
+pnpm evidence:p6
+git diff --check
+```
+
+P6 performance thresholds are 1000-event replay p95 <=200 ms, 100-task DAG
+planning p95 <=150 ms, 100-attempt execution detail p95 <=200 ms, and
+checkpoint replay validation p95 <=500 ms. Docker, Host, Windows Bridge, and
+Broker restart probes are hard gates and must each report `status=passed`,
+`provisional=false`. Restart verification includes a real running container
+discovered by label, terminal receipt recovery, persistent Broker identity,
+and the `external_result_unknown` pause path.
+
+The Clean browser journey covers Host profile creation/probe, approval wait and
+resume, a completed execution, `deliver` replay to generation 2, Execution and
+Runner Profiles views, and 390x844, 1024x768, and 1440x900 layouts. Console
+errors, HTTP errors, overlap, horizontal overflow, or any `/api/v1` request fail
+the gate.
+
+Formal P6 Evidence is append-only at
+`docs/evidence/v3-clean-p6-runner-execution-20260824/`. Final promotion requires
+`status=verified`, `provisional=false`, all four external/restart probes, the
+performance and browser receipts, six migration paths, a redacted manifest,
+and a runnable dry-run plus isolated actual rollback. Rollback restores the v5
+SQLite ledger `[1,2,3,4,5]`, proves all eight P6 tables absent, and byte-compares
+SQLite, CAS, Vault, workspace, Broker, and Bridge components. The final receipt
+moves only Runner and Execution into Clean, yielding 21/6/27; Frontend and
+Outcome remain `scaffolded`. After publication, `pnpm verify` validates both
+immutable P5 and P6 final receipts in phase order without publishing a rerun. A
+corrective P6 final still requires the explicit
+`pnpm evidence:p6 -- --supersede` option.
+
 ## AI evaluation
 
 Formal model evaluation fixes Brief, repository SHA, model, prompt, capability set
@@ -333,6 +405,10 @@ is not recorded as a formal pass.
 - P4 Context selection p95 no greater than 500 ms for 1000 nodes
 - 100 MCP Context reads complete; projection rebuild duration is recorded but
   is not a promotion threshold
+- P6 1000-event replay p95 no greater than 200 ms
+- P6 100-task DAG planning p95 no greater than 150 ms
+- P6 100-attempt detail p95 no greater than 200 ms
+- P6 checkpoint replay validation p95 no greater than 500 ms
 
 P8-P9 acceptance receipts will record observed startup and execution status.
 Those phases require fresh Codex/GitHub capability probes, image and source

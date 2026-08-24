@@ -1,0 +1,51 @@
+{
+  "schema_version": "aiws.v3-clean.p6-owner-inventory.v1",
+  "status": "passed",
+  "validation": {
+    "valid": true,
+    "missing_tables": [],
+    "unexpected_tables": [],
+    "missing_commands": [],
+    "mismatched_commands": [],
+    "missing_events": [],
+    "mismatched_events": []
+  },
+  "table_owners": {
+    "execution_events": "Execution",
+    "execution_inputs": "Execution",
+    "execution_stage_checkpoints": "Execution",
+    "executions": "Execution",
+    "job_specs": "Runner",
+    "runner_profiles": "Runner",
+    "runner_receipts": "Runner",
+    "task_attempts": "Execution"
+  },
+  "command_owners": {
+    "runner.profile.list": "Runner",
+    "runner.profile.create": "Runner",
+    "runner.profile.get": "Runner",
+    "runner.profile.update": "Runner",
+    "runner.profile.probe": "Runner",
+    "runner.profile.disable": "Runner",
+    "execution.list": "Execution",
+    "execution.create": "Execution",
+    "execution.get": "Execution",
+    "execution.events": "Execution",
+    "execution.attempts": "Execution",
+    "execution.checkpoints": "Execution",
+    "execution.start": "Execution",
+    "execution.pause": "Execution",
+    "execution.resume": "Execution",
+    "execution.cancel": "Execution",
+    "execution.replan": "Execution",
+    "execution.stage.replay": "Execution"
+  },
+  "event_owners": {
+    "runner_profile.*": "Runner",
+    "runner_job.*": "Runner",
+    "runner_receipt.*": "Runner",
+    "execution.*": "Execution",
+    "execution_stage.*": "Execution",
+    "task_attempt.*": "Execution"
+  }
+}

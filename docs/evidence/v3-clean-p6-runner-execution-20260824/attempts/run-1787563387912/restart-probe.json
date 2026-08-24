@@ -1,0 +1,47 @@
+{
+  "schema_version": "aiws.v3-clean.p6-restart-probe-record.v1",
+  "status": "passed",
+  "command": {
+    "command": "node scripts/v3-clean-p6-restart-probe.mjs",
+    "cwd": "repository-root",
+    "input": {
+      "args": [
+        "scripts/v3-clean-p6-restart-probe.mjs"
+      ]
+    },
+    "stdout": "{\n  \"schema_version\": \"aiws.v3-clean.p6-restart-probe.v1\",\n  \"status\": \"passed\",\n  \"provisional\": false,\n  \"adapter\": \"clean-broker\",\n  \"persistent_identity\": true,\n  \"terminal_receipt_recovered\": true,\n  \"running_container_reconciled\": true,\n  \"unknown_external_result\": \"external_result_unknown\",\n  \"docker_label_query\": {\n    \"status\": \"passed\",\n    \"owner\": \"v3-clean\",\n    \"job_spec_id\": \"job_restart_running\"\n  },\n  \"receipt\": {\n    \"status\": \"succeeded\",\n    \"receipt_id\": \"broker_receipt_6609bc79134c0ea5f108508a335a9703\",\n    \"job_spec_hash\": \"0c786529a1c294d4f27d161762e00285db37d9ca4f2d165b7eef577b4ec6d677\",\n    \"stdout_sha256\": \"\",\n    \"stderr_sha256\": \"\",\n    \"output_sha256\": \"\",\n    \"exit_code\": 0,\n    \"output_paths\": []\n  }\n}\n",
+    "stderr": "",
+    "exit_status": 0,
+    "expected_exit_statuses": [
+      0
+    ],
+    "signal": null,
+    "ok": true,
+    "summary": "},\n\"receipt\": {\n\"status\": \"succeeded\",\n\"receipt_id\": \"broker_receipt_6609bc79134c0ea5f108508a335a9703\",\n\"job_spec_hash\": \"0c786529a1c294d4f27d161762e00285db37d9ca4f2d165b7eef577b4ec6d677\",\n\"stdout_sha256\": \"\",\n\"stderr_sha256\": \"\",\n\"output_sha256\": \"\",\n\"exit_code\": 0,\n\"output_paths\": []\n}\n}"
+  },
+  "receipt": {
+    "schema_version": "aiws.v3-clean.p6-restart-probe.v1",
+    "status": "passed",
+    "provisional": false,
+    "adapter": "clean-broker",
+    "persistent_identity": true,
+    "terminal_receipt_recovered": true,
+    "running_container_reconciled": true,
+    "unknown_external_result": "external_result_unknown",
+    "docker_label_query": {
+      "status": "passed",
+      "owner": "v3-clean",
+      "job_spec_id": "job_restart_running"
+    },
+    "receipt": {
+      "status": "succeeded",
+      "receipt_id": "broker_receipt_6609bc79134c0ea5f108508a335a9703",
+      "job_spec_hash": "0c786529a1c294d4f27d161762e00285db37d9ca4f2d165b7eef577b4ec6d677",
+      "stdout_sha256": "",
+      "stderr_sha256": "",
+      "output_sha256": "",
+      "exit_code": 0,
+      "output_paths": []
+    }
+  }
+}

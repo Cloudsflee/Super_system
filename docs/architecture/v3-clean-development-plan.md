@@ -662,28 +662,98 @@ must use the explicit `--supersede` path.
 
 ### 目标
 
-把已验收的 Workflow/Context/Assist 接入签名 Runner，并实现可恢复的七阶段
+以 verified P5 `54381746da0f01fd60da2e11ed247f2ed2f11c8b`
+为固定基线，把 Workflow/Context/Assist 接入签名 Runner，并实现可恢复的七阶段
 执行：`prepare -> context -> run -> check -> review -> finalize -> deliver`。
 
-### 实施要点
+### Schema、所有权和状态机
+
+`006-runner-execution-checkpoint-replay` 将 `0/1/2/3/4/5` forward-only
+升级到 `user_version=6`。Runner 独占 `runner_profiles`、`job_specs`、
+`runner_receipts`；Execution 独占 `executions`、`execution_inputs`、
+`task_attempts`、`execution_stage_checkpoints`、`execution_events`。最后一张表
+只是一对一 generic-event 投影；operation、event、cursor、aggregate head 和 CAS
+仍各只有一个 canonical owner。Job Spec、receipt、execution input、terminal
+attempt 和 checkpoint 均由 trigger 保持不可变；checkpoint 唯一键包含 execution、
+generation 和 stage。
+
+Execution 状态固定为 `draft -> queued -> running -> pause_requested |
+awaiting_approval -> paused -> running -> completed | failed | cancelled`。
+Attempt 状态固定为 `pending -> ready -> leased -> running -> succeeded | failed |
+cancelled | expired | external_result_unknown`。每个阶段先在一个事务中创建
+operation/checkpoint/event/head，再执行外部动作，并用第二个 revision-checked
+事务提交结果。
+
+### 阶段、调度和恢复
+
+- `prepare` 固定 Brief、Workflow、Repository、Context Pack、input refs 和 Runner
+  profile revision/hash；`context` 生成受限 CAS staging；
+- `run` 按稳定拓扑顺序调度，read 并行度最多 4，write 串行；`check` 只运行
+  allowlisted check id；
+- `review` 复用 P5 Approval owner；`finalize` 校验全部 attempt/receipt/checkpoint；
+  `deliver` 只生成 delivery-ready handoff manifest，不创建 PR；
+- pause 停止新调度并在安全边界释放 lease；resume 重新校验 workspace 和 pins；
+  replan 创建带 lineage 的新 execution；stage replay 在原 execution 中增加
+  generation 并保留旧 checkpoint 字节；
+- restart 查询 Docker label、Host process 或 Bridge job。terminal receipt 正常提交，
+  running job 续租，未知结果记录 `external_result_unknown` 并暂停 execution。
+
+每个 execution 最多 100 tasks、500 dependency edges；每 task 最多 3 attempts，
+仅已知 transient failure 按 1 秒、4 秒退避。deadline 上限 15 分钟，输入/输出
+路径各 64 个，Context Pack 512 KiB，redacted stdout/stderr 合计 2 MiB，输出文件
+合计 10 MiB。`light` 固定为 1 CPU/1 GiB/256 pids/256 MiB tmpfs，`standard`
+固定为 2 CPU/4 GiB/512 pids/1 GiB tmpfs。
+
+### Runner、Broker 和协议
 
 - immutable signed Job Spec、固定 image digest、runner profile、独立
   `CODEX_HOME`、temporary credential 和 capability allowlist；
 - Docker Broker、Host Runner、Windows Bridge 各自返回统一 runner receipt；
-- execution pins Brief/workflow/repository/context/asset revisions；
-- stage checkpoint、task attempt、lease、pause/resume/replan/replay；
-- SIGTERM、Broker restart、unknown job、parser/runner timeout 都产生可重试
-  operation 状态，不重写历史 event；
-- 任务输出只存 redacted summary、hash、CAS reference 和 bounded metadata。
+- canonical contract 为 `runner.job-spec.v2` 和 `runner.receipt.v2`。Job Spec 只含
+  opaque refs、revision/hash、digest、deadline、capabilities 和相对路径，由 Clean
+  Vault Ed25519 service key 签名；Broker/Bridge 用各自 Ed25519 identity 签 receipt；
+- 传输另用 timestamp/nonce/body-hash HMAC。Docker 固定 digest、drop all
+  capabilities、read-only root、no-new-privileges、受限 tmpfs/mount/network；Host
+  使用独立 `CODEX_HOME`、受管 workspace 和完整 process-tree cleanup；Bridge
+  提供 submit/status/cancel 且只保存 DPAPI lease、nonce journal 和本地进程状态；
+- 历史 `apps/runner-broker/server.mjs` 只作 fixture；`dev:broker` 指向不导入历史
+  contract/API 的 `clean-server.mjs`。API 不接触 Docker socket，只调用 adapter；
+- write attempt 在 disposable task workspace 中运行，成功后由 Repository owner
+  和 fencing lease 合并，中断恢复最近 checkpoint hash。
+
+### Public API 与 Web
+
+Runner registry 固定 6 条命令：profile list/create/get/update/probe/disable。
+Execution registry 固定 12 条命令：list/create/get/events/attempts/checkpoints、
+start/pause/resume/cancel/replan/stage replay。Create 返回 201，长任务返回 202，
+query 返回 200；mutation 要求 Idempotency-Key 和 registry 指定的 expected
+revision。Profile mutation/probe 仅 REST/Web，profile read 和全部 Execution
+保持 REST/Web/MCP/Gateway 双向登记。
+
+默认 Web 导航加入 Execution；页面展示 execution list、七阶段 rail、task/
+attempt、checkpoint/event 与 pause/resume/cancel/replan/replay。Connections 加入
+Runner Profiles，展示 Docker/Host/Bridge readiness、digest、capabilities、limits、
+probe 和 disable。Clean E2E 覆盖 approval wait/resume、deliver generation 2 replay、
+cursor/duplicate/partial event 处理，以及 390x844、1024x768、1440x900 无重叠和
+无横向溢出。
 
 ### 验收
 
-- 任意阶段注入中断后可从最近 checkpoint 恢复；
-- 同一 execution id/spec 重复提交幂等，spec drift 返回 conflict；
-- stale execution/repository/context revision 被阻断；
-- Docker/Host/Bridge 的安全边界、签名、digest、资源配额和 credential cleanup
-  通过独立 probe；
-- 形成 1000-event replay、restart/recovery、runner HTTP 和 real-runner receipt。
+- migration 覆盖 `0..5 -> 6`、drift、重复启动和 DDL/ledger/receipt/commit fault；
+- execution 覆盖 DAG cycle/missing dependency、稳定调度、pause/resume/cancel、
+  approval、replan、任意阶段 replay、stale revision/pins 和 restart；
+- Runner 覆盖签名/digest/path/deadline/capability tamper、nonce replay、quota、
+  SIGTERM/kill、credential zeroization、CAS/output tamper 和三 adapter parity；
+- performance 门槛为 1000-event replay p95 <=200 ms、100-task planning p95
+  <=150 ms、100-attempt detail p95 <=200 ms、replay validation p95 <=500 ms；
+- 最终 Evidence 位于
+  `docs/evidence/v3-clean-p6-runner-execution-20260824/`，含 schema/owner/route/
+  protocol/Catalog inventory、migration、四类 probe、performance/browser/secret
+  scan、四角色工件和 runnable rollback。isolated apply 必须恢复 v5 SQLite/CAS/
+  Vault/workspace/Broker/Bridge，确认 ledger `[1,2,3,4,5]`、FK 空集、八张 P6 表
+  缺席和 `byte_exact_mismatches=[]`；
+- 仅 final `verified`、`provisional=false` receipt 把 Runner/Execution 晋级
+  `verified`，Catalog 为 `21/6/27`；Frontend/Outcome 保持 `scaffolded`。
 
 ## 12. P7：CAS、Evidence、Trace、Quality、Parser、Outcome
 

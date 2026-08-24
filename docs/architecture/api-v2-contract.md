@@ -171,7 +171,8 @@ stable public addresses.
 | files/attachments | /api/v2/projects/{id}/files, /change-batches, /attachments, /api/v2/attachments/{id}/* | file.batch.apply, file.batch.undo, attachment.create; file.*, attachment.* | Files |
 | approval/input | /api/v2/approvals, /api/v2/user-inputs, /api/v2/proposals | approval.decide, user-input.answer, proposal.apply; approval.*, input.* | Assist |
 | terminal/bridge | /api/v2/terminals, /terminals/{id}/events, /terminals/{id}/ws, /api/v2/bridge/pairing | terminal.open, terminal.stop, bridge.pair; terminal.*, bridge.* | Terminal/Bridge |
-| execution/runner | /api/v2/projects/{id}/executions, /api/v2/executions/{id}/start, /pause, /resume, /cancel, /stages/{stage}/replay | execution.start, stage.replay; execution.*, runner.* | Execution/Runner |
+| runner profiles | /api/v2/runners/profiles, /api/v2/runners/profiles/{id}, /probe, /disable | runner.profile.list/create/get/update/probe/disable; runner_profile.* | Runner |
+| execution | /api/v2/projects/{project_id}/executions, /api/v2/executions/{id}, /events, /attempts, /checkpoints, /start, /pause, /resume, /cancel, /replan, /stages/{stage}/replay | execution.list/create/get/start/pause/resume/cancel/replan/stage.replay; execution.*, execution_stage.*, task_attempt.* | Execution |
 | evidence/assets | /api/v2/projects/{id}/assets, /api/v2/assets/{id}/versions, /api/v2/assets/{id}/content, /api/v2/executions/{id}/evidence | asset.capture, asset.attest; asset.*, evidence.* | Evidence |
 | quality/outcome | /api/v2/projects/{id}/outcome-requirements, /api/v2/executions/{id}/quality-reviews, /api/v2/quality-reviews/{id}, /outcome, /waivers | outcome.requirement.create, quality.start, quality.decision, outcome.evaluate, waiver.revoke; quality.*, outcome.* | Project/Quality/Outcome |
 | delivery | /api/v2/deliveries, /api/v2/pull-request-intents, /api/v2/deliveries/{id}/* | delivery.submit, pr.ready, pr.merge, delivery.reconcile; delivery.* | Delivery |
@@ -191,7 +192,7 @@ repository/generator call runs after the enqueue transaction and terminal state
 is committed in a second revision-checked transaction.
 
 The P3 receipt fixed `targetVersion=3` for that phase. The active process now
-defaults to `targetVersion=4`; lower target versions remain available only
+defaults to `targetVersion=6`; lower target versions remain available only
 through explicit lower-level migration/regression fixture calls.
 
 Repository, generator, and critic adapters are deterministic fixture probes in
@@ -233,6 +234,50 @@ The API permits 60 seconds of clock skew and rejects a repeated gateway/nonce
 hash. Forward receipts contain command id, request/response hashes, decision,
 operation link, and time only. Projection job SSE and `format=json` use the
 same generic event rows/cursor and repeat authorization during live delivery.
+
+### 4.3 P5 Assist/Files/Terminal/Bridge boundary
+
+P5 advances the schema to `user_version=5` and mounts Assist, Files,
+Attachments, Approval/Input, Terminal, and Bridge routes through the same
+registry and dispatcher. Assist has no private operation ledger, terminal
+events are a one-to-one generic-event projection, and the loopback Windows
+Bridge stores pairing/nonce/process state but no business data. Provider,
+terminal, and Bridge envelopes contain opaque references and bounded redacted
+metadata only.
+
+### 4.4 P6 Runner/Execution boundary
+
+P6 advances the active schema to `user_version=6`. Runner profile create
+returns 201; profile reads return 200; profile update/probe/disable return their
+resource or operation envelope. Execution create returns 201, reads return
+200, and start/pause/resume/cancel/replan/stage replay return 202
+`operation.receipt.v2`. Every mutation requires `Idempotency-Key`; lifecycle
+commands use the execution/profile revision declared by the registry.
+
+Runner profile list/get are available through REST, Web, MCP HTTP, MCP stdio,
+and Gateway. Profile create/update/probe/disable are REST/Web-only so external
+transports cannot mutate local execution infrastructure. Execution commands
+and queries use all four registered transports through
+`CleanCommandDispatcher`, with identical closed schemas, ACL, idempotency,
+revision checks, redaction, operation links, and event results.
+
+Stage replay validates the requested stage, current generation, opaque
+checkpoint token, pinned Brief/Workflow/Repository/Context/Runner hashes,
+workspace hash, expected revision, and absence of an active job. A successful
+replay increments generation and appends new operation, checkpoint, attempt,
+head, and event rows; it never updates prior checkpoint bytes. Stable conflicts
+include `checkpoint_token_invalid`, `checkpoint_replay_conflict`,
+`execution_inputs_changed`, `workspace_hash_mismatch`, `revision_conflict`,
+`lease_busy`, and `external_result_unknown`.
+
+The Runner boundary signs canonical `runner.job-spec.v2` with the Clean Vault
+Ed25519 service key and verifies a `runner.receipt.v2` signed by the Broker or
+Bridge identity. Transport authentication separately signs timestamp, nonce,
+body SHA-256, method, and route with HMAC. Job Specs contain opaque refs,
+revision/hash pins, digest, deadline, capabilities, resource profile, and
+relative paths only. Docker/Host/Bridge submit, status, and cancel produce the
+same terminal receipt shape; an unknown restart result pauses the execution
+with `external_result_unknown`.
 
 ## 5. Command contract
 

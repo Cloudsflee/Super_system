@@ -1,0 +1,65 @@
+{
+  "schema_version": "aiws.v3-clean.p6-rollback-components.v1",
+  "components": {
+    "cas": {
+      "root": "data/cas",
+      "files": [
+        {
+          "path": "objects/p5-baseline-object",
+          "bytes": 14,
+          "sha256": "6c45ec4f4ceafab2e9f4a2674b49e6aad9a107f787e669a84d250e47d268e48a",
+          "base64": "cDUtY2FzLW9iamVjdAo="
+        }
+      ],
+      "tree_sha256": "0c9be000a4e5e7745a9b38a6d0ae4f4b3c60da1807d1526899cb4af26b8c2178"
+    },
+    "vault": {
+      "root": "data/vault",
+      "files": [
+        {
+          "path": "metadata.json",
+          "bytes": 90,
+          "sha256": "305b1526c6d4185e14ca64e95ec67af81cc766700673a2d21addf34a35613bc2",
+          "base64": "eyJzY2hlbWFfdmVyc2lvbiI6ImFpd3MudjMtY2xlYW4ucm9sbGJhY2stdmF1bHQudjEiLCJjcmVkZW50aWFsX3N0YXRlIjoicmViaW5kX3JlcXVpcmVkIn0K"
+        }
+      ],
+      "tree_sha256": "fcf3dfd3fcb01fcc1f399b2330e8ecfaf153ed9c4274a60a5dbd04aeab58b2be"
+    },
+    "workspace": {
+      "root": "workspace",
+      "files": [
+        {
+          "path": "checkpoint.json",
+          "bytes": 70,
+          "sha256": "f44ef73b968159e156ac4543ad438e78c83e3eb5b17831d1978fac86bdebf300",
+          "base64": "eyJzY2hlbWFfdmVyc2lvbiI6ImFpd3MudjMtY2xlYW4ucm9sbGJhY2std29ya3NwYWNlLnYxIiwicmV2aXNpb24iOjV9Cg=="
+        }
+      ],
+      "tree_sha256": "ede0cff881dc7195266b2741aed28cfbb5c637422e9f75f7d5028ee6019f15ed"
+    },
+    "broker": {
+      "root": "broker",
+      "files": [
+        {
+          "path": "identity.json",
+          "bytes": 88,
+          "sha256": "d37865cfc9326b3f186f62a420301fdb97971a9fd8435a64a8bae864b6caf03b",
+          "base64": "eyJzY2hlbWFfdmVyc2lvbiI6ImFpd3MudjMtY2xlYW4ucm9sbGJhY2stYnJva2VyLnYxIiwiaWRlbnRpdHkiOiJwdWJsaWMtbWV0YWRhdGEtb25seSJ9Cg=="
+        }
+      ],
+      "tree_sha256": "38a5eafc296d4c616582a236281d87c127f13c1d353edff1fab92d08f61388cc"
+    },
+    "bridge": {
+      "root": "bridge",
+      "files": [
+        {
+          "path": "state.json",
+          "bytes": 85,
+          "sha256": "bcc697d92ae8e3fba991eba91d84d4db46ffb54e2aed4aece53c8bca5c9b89b3",
+          "base64": "eyJzY2hlbWFfdmVyc2lvbiI6ImFpd3MudjMtY2xlYW4ucm9sbGJhY2stYnJpZGdlLnYxIiwibm9uY2Vfam91cm5hbCI6W10sImxlYXNlcyI6W119Cg=="
+        }
+      ],
+      "tree_sha256": "9a5ccc21ba86852079b0ea19f2910d5b20c73835ae5e6e937f005661ccecff70"
+    }
+  }
+}
