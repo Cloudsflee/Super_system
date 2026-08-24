@@ -20,6 +20,10 @@ export function createBridge(options = {}) {
       const auth = protocol.authenticate(req.headers, body);
       if (req.method === 'POST' && url.pathname === '/v1/probe') return send(res, 200, { status: 'ready', authenticated: true, nonce: auth.nonce, capabilities: protocol.publicIdentity().capabilities });
       if (req.method === 'POST' && url.pathname === '/v1/git-bundle/verify') return send(res, 200, protocol.verifyBundle(body));
+      if (req.method === 'POST' && url.pathname === '/v1/jobs') return send(res, 201, protocol.submitJob(body));
+      const jobMatch = url.pathname.match(/^\/v1\/jobs\/([^/]+)(?:\/(cancel))?$/);
+      if (jobMatch && req.method === 'GET' && !jobMatch[2]) return send(res, 200, protocol.jobStatus(decodeURIComponent(jobMatch[1])));
+      if (jobMatch && req.method === 'POST' && jobMatch[2] === 'cancel') return send(res, 200, protocol.cancelJob(decodeURIComponent(jobMatch[1])));
       if (req.method === 'POST' && url.pathname === '/v1/rotate') return send(res, 200, protocol.rotate(auth.secretRef));
       if (req.method === 'POST' && url.pathname === '/v1/revoke') return send(res, 200, protocol.revoke(auth.secretRef));
       return send(res, 404, { error: { code: 'not_found' } });

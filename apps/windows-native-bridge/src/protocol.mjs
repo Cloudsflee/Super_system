@@ -1,10 +1,11 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import { spawnSync } from 'node:child_process';
+import { spawn, spawnSync } from 'node:child_process';
 import {
   createCipheriv, createDecipheriv, createHash, createHmac, createPrivateKey, createPublicKey, diffieHellman,
   generateKeyPairSync, hkdfSync, randomBytes, sign, timingSafeEqual, verify
 } from 'node:crypto';
+import { validateRunnerJobSpec, validateRunnerReceipt } from '../../api/src/clean/runner-protocol.mjs';
 
 const WINDOW_MS = 60_000;
 const NONCE = /^[A-Za-z0-9_-]{16,160}$/;
@@ -17,9 +18,10 @@ export class BridgeProtocol {
     this.protector = new DpapiProtector({ root: this.root });
     this.identity = this.loadIdentity(); this.pending = new Map();
     this.nonces = this.loadNonces();
+    this.jobs = new Map();
   }
 
-  publicIdentity() { return { schema_version: 'aiws.windows-bridge.identity.v1', identity_public_key: this.identity.identity.publicKey, transport_public_key: this.identity.transport.publicKey, capabilities: { conpty: process.platform === 'win32', dpapi: this.protector.available, git_bundle: true } }; }
+  publicIdentity() { return { schema_version: 'aiws.windows-bridge.identity.v1', identity_public_key: this.identity.identity.publicKey, transport_public_key: this.identity.transport.publicKey, capabilities: { conpty: process.platform === 'win32', dpapi: this.protector.available, git_bundle: true, runner_jobs: true } }; }
 
   beginPairing(input = {}) {
     const clientIdentity = normalizePublicKey(input.identity_public_key, 'ed25519');
@@ -69,6 +71,33 @@ export class BridgeProtocol {
     return { verified: true, bundle_sha256: digest, byte_length: size, heads: rows };
   }
 
+  submitJob(input = {}) {
+    const spec = validateRunnerJobSpec(input.spec);
+    const servicePublicKey = normalizePublicKey(input.service_public_key, 'ed25519'); const json = canonical(spec); const signature = Buffer.from(String(input.signature || ''), 'base64url');
+    if (!verify(null, Buffer.from(json), createPublicKey(servicePublicKey), signature)) throw protocolError('runner_signature_invalid', 403);
+    const specHash = hash(json); const prior = [...this.jobs.values()].find((item) => item.spec.job_spec_id === spec.job_spec_id);
+    if (prior) { if (prior.spec_hash !== specHash) throw protocolError('runner_job_conflict', 409); return { job_id: prior.job_id, status: prior.status }; }
+    const jobId = `bridge_job_${randomBytes(16).toString('hex')}`; const job = { job_id: jobId, status: 'queued', spec: JSON.parse(json), spec_hash: specHash, created_at: this.now(), child: null, receipt: null, signature: null };
+    this.jobs.set(jobId, job); queueMicrotask(() => this.executeJob(job).catch(() => undefined)); return { job_id: jobId, status: 'queued' };
+  }
+
+  jobStatus(jobId) { const job = this.jobs.get(String(jobId)); if (!job) return { job_id: String(jobId), status: 'unknown' }; return { job_id: job.job_id, status: job.status, ...(job.receipt ? { receipt: job.receipt, signature: job.signature, signer_public_key: this.identity.identity.publicKey } : {}) }; }
+
+  cancelJob(jobId) { const job = this.jobs.get(String(jobId)); if (!job) return { job_id: String(jobId), status: 'unknown' }; if (!['succeeded', 'failed', 'cancelled', 'expired'].includes(job.status)) { job.status = 'cancelled'; terminate(job.child); this.finishJob(job, 'cancelled', null, Buffer.alloc(0), Buffer.alloc(0), 'cancelled'); } return this.jobStatus(job.job_id); }
+
+  async executeJob(job) {
+    if (job.status === 'cancelled') return; job.status = 'running'; job.started_at = this.now(); const home = path.join(this.root, 'jobs', job.job_id, 'codex-home'); fs.mkdirSync(home, { recursive: true, mode: 0o700 });
+    try {
+      const child = spawn(process.execPath, ['-e', "process.stdout.write('bridge runner completed\\n')"], { env: { PATH: process.env.PATH || '', SystemRoot: process.env.SystemRoot || '', CODEX_HOME: home }, stdio: ['ignore', 'pipe', 'pipe'], windowsHide: true, detached: process.platform !== 'win32' }); job.child = child; const stdout = []; const stderr = []; child.stdout.on('data', (chunk) => stdout.push(Buffer.from(chunk))); child.stderr.on('data', (chunk) => stderr.push(Buffer.from(chunk))); const deadline = Math.max(1, Date.parse(job.spec.deadline_at) - Date.now()); const timer = setTimeout(() => { job.timed_out = true; terminate(child); }, deadline); timer.unref?.(); const result = await new Promise((resolve, reject) => { child.once('error', reject); child.once('exit', (code) => resolve({ code })); }); clearTimeout(timer); const streams = boundedStreams(stdout, stderr); const status = job.status === 'cancelled' ? 'cancelled' : job.timed_out ? 'expired' : result.code === 0 ? 'succeeded' : 'failed'; this.finishJob(job, status, result.code, streams.stdout, streams.stderr, status === 'expired' ? 'runner_deadline_exceeded' : status === 'failed' ? 'runner_failed' : status === 'cancelled' ? 'cancelled' : '');
+    } catch (error) { this.finishJob(job, job.status === 'cancelled' ? 'cancelled' : 'failed', 1, Buffer.alloc(0), Buffer.alloc(0), String(error?.code || 'runner_spawn_failed')); }
+    finally { job.child = null; fs.rmSync(path.join(this.root, 'jobs', job.job_id), { recursive: true, force: true }); }
+  }
+
+  finishJob(job, status, exitCode, stdout, stderr, errorCode) {
+    if (job.receipt && ['succeeded', 'failed', 'cancelled', 'expired'].includes(job.status)) return job;
+    const finished = this.now(); const outputs = Array.isArray(job.spec.output_paths) ? job.spec.output_paths : []; const receipt = validateRunnerReceipt({ schema_version: 'runner.receipt.v2', receipt_id: `bridge_receipt_${randomBytes(16).toString('hex')}`, job_spec_id: job.spec.job_spec_id, job_spec_hash: job.spec_hash, runner_profile_ref: job.spec.runner_profile_ref, runner_job_ref: job.job_id, status, exit_code: exitCode, stdout_sha256: stdout.length ? hash(stdout) : '', stderr_sha256: stderr.length ? hash(stderr) : '', output_sha256: outputs.length ? hash(canonical(outputs)) : '', stdout_bytes: stdout.length, stderr_bytes: stderr.length, output_bytes: 0, output_paths: outputs, error_code: errorCode, started_at: job.started_at || job.created_at, finished_at: finished }, { expectedJobSpecId: job.spec.job_spec_id, expectedJobSpecHash: job.spec_hash }); const privateKey = this.protector.unprotect(this.identity.identity.privateRef).toString('utf8'); job.receipt = receipt; job.signature = sign(null, Buffer.from(canonical(receipt)), createPrivateKey(privateKey)).toString('base64url'); job.status = status; job.finished_at = finished; return job;
+  }
+
   revoke(secretRef) { this.protector.remove(String(secretRef || '')); return { revoked: true }; }
   rotate(secretRef) { const ref = String(secretRef || ''); const current = this.protector.unprotect(ref); const salt = randomBytes(32); const secret = createHmac('sha256', current).update(Buffer.from('aiws-bridge-rotate-v1')).update(salt).digest(); this.protector.protect(ref, secret); return { rotated: true, rotation_salt: salt.toString('base64url'), rotation_proof: createHmac('sha256', secret).update('rotated').digest('hex') }; }
   now() { const value = this.clock(); return typeof value === 'string' ? value : new Date(value).toISOString(); }
@@ -101,4 +130,6 @@ function hash(value) { return createHash('sha256').update(value).digest('hex'); 
 function safeEqual(left, right) { const a = Buffer.from(String(left)); const b = Buffer.from(String(right)); return a.length === b.length && timingSafeEqual(a, b); }
 function validateRef(value) { if (!/^[A-Za-z0-9][A-Za-z0-9._~-]{0,160}$/.test(String(value || ''))) throw protocolError('protected_ref_invalid', 400); }
 function bounded(value) { return String(value || '').replace(/(?:[A-Za-z]:\\|\/(?:home|Users|root)\/)[^\s]+/g, '[path]').slice(0, 1000); }
+function boundedStreams(output, errors) { const stdout = Buffer.concat(output).subarray(0, 2 * 1024 * 1024); const remaining = Math.max(0, 2 * 1024 * 1024 - stdout.length); return { stdout, stderr: Buffer.concat(errors).subarray(0, remaining) }; }
+function terminate(child) { if (!child || child.exitCode != null) return; try { if (process.platform === 'win32') spawn('taskkill', ['/pid', String(child.pid), '/T', '/F'], { windowsHide: true, stdio: 'ignore' }); else process.kill(-child.pid, 'SIGTERM'); } catch { try { child.kill('SIGKILL'); } catch { /* already exited */ } } }
 function protocolError(code, status = 400, details = {}) { const error = new Error(code); error.code = code; error.status = status; error.details = details; return error; }

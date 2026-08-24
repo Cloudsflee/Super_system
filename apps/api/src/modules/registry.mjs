@@ -17,7 +17,7 @@ import runner from './runner/index.mjs';
 import setup from './setup/index.mjs';
 import terminal from './terminal/index.mjs';
 import workflow from './workflow/index.mjs';
-import { CLEAN_EVENT_OWNERS, CLEAN_P5_TABLE_OWNERS } from '../clean/ownership.mjs';
+import { CLEAN_EVENT_OWNERS, CLEAN_P6_TABLE_OWNERS } from '../clean/ownership.mjs';
 
 export const MODULE_REGISTRY = Object.freeze([
   platform, identity, setup, project, workflow, mcp, context, repository,
@@ -26,7 +26,7 @@ export const MODULE_REGISTRY = Object.freeze([
 ]);
 
 export const CLEAN_OWNER_MODULE_IDS = Object.freeze([...new Set([
-  ...Object.values(CLEAN_P5_TABLE_OWNERS),
+  ...Object.values(CLEAN_P6_TABLE_OWNERS),
   ...Object.values(CLEAN_EVENT_OWNERS)
 ].map((owner) => String(owner).toLowerCase()))].sort());
 
@@ -70,7 +70,9 @@ export const CLEAN_SQL_BOUNDARIES = Object.freeze([
   'apps/api/src/clean/assist-service.mjs',
   'apps/api/src/clean/files-service.mjs',
   'apps/api/src/clean/terminal-service.mjs',
-  'apps/api/src/clean/bridge-service.mjs'
+  'apps/api/src/clean/bridge-service.mjs',
+  'apps/api/src/clean/runner-service.mjs',
+  'apps/api/src/clean/execution-service.mjs'
 ]);
 
 export const PLACEHOLDER_SUCCESS_PATTERNS = Object.freeze([
@@ -81,7 +83,7 @@ export const PLACEHOLDER_SUCCESS_PATTERNS = Object.freeze([
 ]);
 
 export function ownerOf(kind, value, { clean = false } = {}) {
-  if (clean && kind === 'table' && CLEAN_P5_TABLE_OWNERS[value]) return CLEAN_P5_TABLE_OWNERS[value].toLowerCase();
+  if (clean && kind === 'table' && CLEAN_P6_TABLE_OWNERS[value]) return CLEAN_P6_TABLE_OWNERS[value].toLowerCase();
   if (clean && kind === 'event') {
     const exact = CLEAN_EVENT_OWNERS[value];
     const wildcard = Object.entries(CLEAN_EVENT_OWNERS).find(([pattern]) => pattern.endsWith('*') && String(value).startsWith(pattern.slice(0, -1)))?.[1];

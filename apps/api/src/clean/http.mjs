@@ -58,6 +58,9 @@ export function createCleanHttpHandler({ runtime, registry, maxBodyBytes = runti
         : runtime.p2 && runtime.identity
           ? runtime.identity.principalFromRequest(req)
           : runtime.platform.actorContext({ actorId: req.headers['x-actor-id'], projectId: req.headers['x-project-id'], scopes: parseScopes(req.headers['x-scopes']) });
+      if (runtime.p6 && entry.phase === 'p6') {
+        return await handleP5Route({ entry, params, url, req, res, requestId, runtime, actor, bodyReader: () => readJson(req, maxBodyBytes) });
+      }
       if (runtime.p5 && entry.phase === 'p5') {
         return await handleP5Route({ entry, params, url, req, res, requestId, runtime, actor, bodyReader: () => readJson(req, Math.max(maxBodyBytes, entry.command_id === 'attachment.create' ? 15 * 1024 * 1024 : maxBodyBytes)) });
       }
@@ -218,6 +221,8 @@ function p5DispatchArguments(command, params, url, body, schema) {
     else if (command.startsWith('proposal.')) args.proposal_id ||= args.id;
     else if (command.startsWith('terminal.')) args.terminal_id ||= args.id;
     else if (command.startsWith('bridge.')) args.device_id ||= args.id;
+    else if (command.startsWith('runner.profile')) args.profile_id ||= args.id;
+    else if (command.startsWith('execution.')) args.execution_id ||= args.id;
   }
   const properties = schema.properties || {};
   if (reqIsGetSchema(schema)) {
@@ -257,13 +262,13 @@ function hydrateP5MutationHeaders(entry, req, body) {
 }
 
 function p5Status(command, value) {
-  if (['assist.turn.create', 'assist.turn.retry', 'change.batch.apply', 'change.batch.undo'].includes(command)) return 202;
-  if (['assist.session.create', 'assist.reference.create', 'attachment.create', 'change.batch.create', 'approval.create', 'user.input.create', 'proposal.create', 'terminal.open', 'bridge.pair', 'bridge.transfer.create'].includes(command)) return value?.replayed ? 200 : 201;
+  if (['assist.turn.create', 'assist.turn.retry', 'change.batch.apply', 'change.batch.undo', 'runner.profile.probe', 'execution.start', 'execution.resume', 'execution.stage.replay'].includes(command)) return 202;
+  if (['assist.session.create', 'assist.reference.create', 'attachment.create', 'change.batch.create', 'approval.create', 'user.input.create', 'proposal.create', 'terminal.open', 'bridge.pair', 'bridge.transfer.create', 'runner.profile.create', 'execution.create', 'execution.replan'].includes(command)) return value?.replayed ? 200 : 201;
   return 200;
 }
 
-function p5Revision(value) { return value?.revision ?? value?.session?.revision ?? value?.turn?.revision ?? value?.goal?.revision ?? value?.attachment?.revision ?? value?.batch?.revision ?? value?.approval?.revision ?? value?.input?.revision ?? value?.proposal?.revision ?? value?.terminal?.revision ?? value?.device?.revision ?? value?.transfer?.revision ?? value?.operation?.revision ?? null; }
-function p5ResourceType(command) { if (command.startsWith('assist.')) return command.startsWith('assist.turn') ? 'assist_turn' : 'assist_session'; if (command.startsWith('attachment.')) return 'attachment'; if (command.startsWith('file.')) return 'file_ref'; if (command.startsWith('change.batch')) return 'file_change_batch'; if (command.startsWith('approval.')) return 'runtime_approval'; if (command.startsWith('user.input')) return 'runtime_user_input'; if (command.startsWith('proposal.')) return 'semantic_proposal'; if (command.startsWith('terminal.')) return 'terminal_session'; if (command.startsWith('bridge.transfer')) return 'bridge_transfer'; if (command.startsWith('bridge.')) return 'bridge_device'; return 'resource'; }
+function p5Revision(value) { return value?.revision ?? value?.session?.revision ?? value?.turn?.revision ?? value?.goal?.revision ?? value?.attachment?.revision ?? value?.batch?.revision ?? value?.approval?.revision ?? value?.input?.revision ?? value?.proposal?.revision ?? value?.terminal?.revision ?? value?.device?.revision ?? value?.transfer?.revision ?? value?.profile?.revision ?? value?.execution?.revision ?? value?.operation?.revision ?? null; }
+function p5ResourceType(command) { if (command.startsWith('assist.')) return command.startsWith('assist.turn') ? 'assist_turn' : 'assist_session'; if (command.startsWith('attachment.')) return 'attachment'; if (command.startsWith('file.')) return 'file_ref'; if (command.startsWith('change.batch')) return 'file_change_batch'; if (command.startsWith('approval.')) return 'runtime_approval'; if (command.startsWith('user.input')) return 'runtime_user_input'; if (command.startsWith('proposal.')) return 'semantic_proposal'; if (command.startsWith('terminal.')) return 'terminal_session'; if (command.startsWith('bridge.transfer')) return 'bridge_transfer'; if (command.startsWith('bridge.')) return 'bridge_device'; if (command.startsWith('runner.profile')) return 'runner_profile'; if (command.startsWith('execution.')) return 'execution'; return 'resource'; }
 
 async function handleP4Route({ entry, params, url, req, res, requestId, runtime, actor, mcpBoundary, bodyReader }) {
   const command = entry.command_id;

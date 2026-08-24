@@ -3,7 +3,7 @@ import { PlatformError } from './platform-error.mjs';
 
 /** Shared P4 command boundary used by REST, MCP HTTP, stdio and Gateway. */
 export class CleanCommandDispatcher {
-  constructor({ registry, context, mcp, gateway, projectWorkflow, operations, events, assist = null, files = null, terminal = null, bridge = null } = {}) {
+  constructor({ registry, context, mcp, gateway, projectWorkflow, operations, events, assist = null, files = null, terminal = null, bridge = null, runner = null, execution = null } = {}) {
     if (!registry || !context || !mcp || !operations || !events) throw new TypeError('clean_dispatcher_dependencies_required');
     this.registry = registry;
     this.context = context;
@@ -16,6 +16,8 @@ export class CleanCommandDispatcher {
     this.files = files;
     this.terminal = terminal;
     this.bridge = bridge;
+    this.runner = runner;
+    this.execution = execution;
     this.handlers = new Map();
     this.exposed = new Set();
     this.#registerHandlers();
@@ -114,6 +116,7 @@ export class CleanCommandDispatcher {
       return this.events.replay({ actorId: actorOf(principal), projectId: operation.project_id, operationId: operation.operation_id, cursor: args.cursor || 0, limit: args.limit || 500 });
     });
     if (this.assist && this.files && this.terminal && this.bridge) this.#registerP5Handlers(add);
+    if (this.runner && this.execution) this.#registerP6Handlers(add);
   }
 
   #registerP5Handlers(add) {
@@ -182,6 +185,30 @@ export class CleanCommandDispatcher {
     bind('bridge.device.revoke', (args, principal) => this.bridge.revoke(args.id || args.device_id, args, principal));
     bind('bridge.transfer.list', (args, principal) => this.bridge.listTransfers(args.id || args.device_id, args, principal));
     bind('bridge.transfer.create', (args, principal) => this.bridge.createTransfer(args.id || args.device_id, args, principal));
+  }
+
+  #registerP6Handlers(add) {
+    const exposed = (id) => ({ exposed: this.registry.get(id)?.mcp?.exposed === true });
+    const bind = (id, handler) => add(id, handler, exposed(id));
+    bind('runner.profile.list', (args, principal) => this.runner.listProfiles(args, principal));
+    bind('runner.profile.create', (args, principal) => this.runner.createProfile(args, principal));
+    bind('runner.profile.get', (args, principal) => ({ profile: this.runner.getProfile(args.profile_id || args.id, principal) }));
+    bind('runner.profile.update', (args, principal) => this.runner.updateProfile(args.profile_id || args.id, args, principal));
+    bind('runner.profile.probe', async (args, principal) => this.#operationResult(await this.runner.probeProfile(args.profile_id || args.id, args, principal), principal));
+    bind('runner.profile.disable', (args, principal) => this.runner.disableProfile(args.profile_id || args.id, args, principal));
+
+    bind('execution.list', (args, principal) => this.execution.list(args.project_id, args, principal));
+    bind('execution.create', (args, principal) => this.execution.create(args.project_id, args, principal));
+    bind('execution.get', (args, principal) => ({ execution: this.execution.get(args.execution_id || args.id, principal) }));
+    bind('execution.events', (args, principal) => this.execution.eventsFor(args.execution_id || args.id, args, principal));
+    bind('execution.attempts', (args, principal) => this.execution.attemptsFor(args.execution_id || args.id, args, principal));
+    bind('execution.checkpoints', (args, principal) => this.execution.checkpointsFor(args.execution_id || args.id, args, principal));
+    bind('execution.start', async (args, principal) => this.#operationResult(await this.execution.start(args.execution_id || args.id, args, principal), principal));
+    bind('execution.pause', (args, principal) => this.execution.pause(args.execution_id || args.id, args, principal));
+    bind('execution.resume', async (args, principal) => this.#operationResult(await this.execution.resume(args.execution_id || args.id, args, principal), principal));
+    bind('execution.cancel', (args, principal) => this.execution.cancel(args.execution_id || args.id, args, principal));
+    bind('execution.replan', (args, principal) => this.execution.replan(args.execution_id || args.id, args, principal));
+    bind('execution.stage.replay', async (args, principal) => this.#operationResult(await this.execution.replayStage(args.execution_id || args.id, args.stage, args, principal), principal));
   }
 
   #validateInventory() {

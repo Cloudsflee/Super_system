@@ -64,7 +64,8 @@ const entries = [
   ...identityEntries(),
   ...p3Entries(),
   ...p4Entries(),
-  ...p5Entries()
+  ...p5Entries(),
+  ...p6Entries()
 ];
 
 function identityEntries() {
@@ -297,6 +298,42 @@ function p5Entries() {
   ];
 }
 
+function p6Entries() {
+  const common = (command_id, method, path, owner, scope, input_schema, output_schema, events, options = {}) => ({
+    command_id, version: 2, method, path, owner, scope, phase: 'p6',
+    project_scoped: options.project_scoped !== false,
+    idempotency: method === 'GET' ? 'forbidden' : 'required',
+    expected_revision: method === 'GET' ? 'none' : (options.expected_revision || 'resource'),
+    input_schema, output_schema, long_running: Boolean(options.long_running), events,
+    mcp: { mapping: options.mcp_exposed === false ? 'rest-only' : (method === 'GET' ? 'resource' : 'tool'), name: options.mcp_name || command_id.replaceAll('.', '_'), exposed: options.mcp_exposed !== false },
+    transport_allowlist: Object.freeze(options.transport_allowlist || (options.mcp_exposed === false ? ['rest', 'web'] : ['rest', 'web', 'mcp', 'gateway'])),
+    redaction_policy: 'v3-clean-default', external_adapter: options.external_adapter || null,
+    ui_metadata: { surface: options.surface || owner.toLowerCase(), state: options.state || command_id },
+    evidence_metadata: { receipt_kind: options.long_running ? 'operation.receipt.v2' : 'resource.receipt.v2', verification: 'p6-runner-execution-replay' }
+  });
+  return [
+    common('runner.profile.list', 'GET', '/api/v2/runners/profiles', 'Runner', 'runner:read', 'runner.profile.query.v2', 'runner.profiles.v2', ['runner_profile.*'], { project_scoped: false, surface: 'connections', state: 'runner-profiles' }),
+    common('runner.profile.create', 'POST', '/api/v2/runners/profiles', 'Runner', 'runner:write', 'runner.profile.create.v2', 'runner.profile.receipt.v2', ['runner_profile.created'], { project_scoped: false, surface: 'connections', state: 'runner-create', expected_revision: 'parent', mcp_exposed: false }),
+    common('runner.profile.get', 'GET', '/api/v2/runners/profiles/{id}', 'Runner', 'runner:read', 'runner.profile.query.v2', 'runner.profile.v2', ['runner_profile.*'], { project_scoped: false, surface: 'connections', state: 'runner-profile' }),
+    common('runner.profile.update', 'PATCH', '/api/v2/runners/profiles/{id}', 'Runner', 'runner:write', 'runner.profile.update.v2', 'runner.profile.receipt.v2', ['runner_profile.updated'], { project_scoped: false, surface: 'connections', state: 'runner-update', mcp_exposed: false }),
+    common('runner.profile.probe', 'POST', '/api/v2/runners/profiles/{id}/probe', 'Runner', 'runner:write', 'runner.profile.mutation.v2', 'operation.receipt.v2', ['runner_profile.probe_queued', 'runner_profile.probed', 'runner_profile.probe_failed'], { project_scoped: false, surface: 'connections', state: 'runner-probe', long_running: true, mcp_exposed: false, external_adapter: 'runner-adapter.v2' }),
+    common('runner.profile.disable', 'POST', '/api/v2/runners/profiles/{id}/disable', 'Runner', 'runner:write', 'runner.profile.mutation.v2', 'runner.profile.receipt.v2', ['runner_profile.disabled'], { project_scoped: false, surface: 'connections', state: 'runner-disable', mcp_exposed: false }),
+
+    common('execution.list', 'GET', '/api/v2/projects/{project_id}/executions', 'Execution', 'execution:read', 'execution.project.query.v2', 'executions.v2', ['execution.*'], { surface: 'execution', state: 'list' }),
+    common('execution.create', 'POST', '/api/v2/projects/{project_id}/executions', 'Execution', 'execution:run', 'execution.create.v2', 'execution.receipt.v2', ['execution.created'], { surface: 'execution', state: 'create', expected_revision: 'parent' }),
+    common('execution.get', 'GET', '/api/v2/executions/{id}', 'Execution', 'execution:read', 'execution.query.v2', 'execution.v2', ['execution.*'], { project_scoped: false, surface: 'execution', state: 'detail' }),
+    common('execution.events', 'GET', '/api/v2/executions/{id}/events', 'Execution', 'execution:read', 'execution.query.v2', 'event.replay.v2', ['execution.*'], { project_scoped: false, surface: 'execution', state: 'events' }),
+    common('execution.attempts', 'GET', '/api/v2/executions/{id}/attempts', 'Execution', 'execution:read', 'execution.query.v2', 'execution.attempts.v2', ['execution.*'], { project_scoped: false, surface: 'execution', state: 'attempts' }),
+    common('execution.checkpoints', 'GET', '/api/v2/executions/{id}/checkpoints', 'Execution', 'execution:read', 'execution.query.v2', 'execution.checkpoints.v2', ['execution.*'], { project_scoped: false, surface: 'execution', state: 'checkpoints' }),
+    common('execution.start', 'POST', '/api/v2/executions/{id}/start', 'Execution', 'execution:run', 'execution.mutation.v2', 'operation.receipt.v2', ['execution.queued', 'execution.completed', 'execution.failed'], { project_scoped: false, surface: 'execution', state: 'start', long_running: true, external_adapter: 'runner.job-spec.v2' }),
+    common('execution.pause', 'POST', '/api/v2/executions/{id}/pause', 'Execution', 'execution:run', 'execution.mutation.v2', 'execution.receipt.v2', ['execution.pause_requested', 'execution.paused'], { project_scoped: false, surface: 'execution', state: 'pause' }),
+    common('execution.resume', 'POST', '/api/v2/executions/{id}/resume', 'Execution', 'execution:run', 'execution.mutation.v2', 'operation.receipt.v2', ['execution.resumed', 'execution.completed', 'execution.failed'], { project_scoped: false, surface: 'execution', state: 'resume', long_running: true, external_adapter: 'runner.job-spec.v2' }),
+    common('execution.cancel', 'POST', '/api/v2/executions/{id}/cancel', 'Execution', 'execution:run', 'execution.mutation.v2', 'execution.receipt.v2', ['execution.cancelled'], { project_scoped: false, surface: 'execution', state: 'cancel' }),
+    common('execution.replan', 'POST', '/api/v2/executions/{id}/replan', 'Execution', 'execution:run', 'execution.replan.v2', 'execution.receipt.v2', ['execution.replanned'], { project_scoped: false, surface: 'execution', state: 'replan' }),
+    common('execution.stage.replay', 'POST', '/api/v2/executions/{id}/stages/{stage}/replay', 'Execution', 'execution:run', 'execution.stage.replay.v2', 'operation.receipt.v2', ['execution.stage_replay_queued', 'execution.completed', 'execution.failed'], { project_scoped: false, surface: 'execution', state: 'replay', long_running: true, external_adapter: 'runner.job-spec.v2' })
+  ];
+}
+
 export const CLEAN_COMMAND_REGISTRY = Object.freeze(entries.map((entry) => Object.freeze({
   ...entry,
   phase: entry.phase || 'p2',
@@ -313,7 +350,8 @@ export function createCleanCommandRegistry(options = {}) {
   const includeP3 = options.phase === 'p3' || options.cleanPhase === 'p3' || Number(options.targetVersion || 0) >= 3;
   const includeP4 = options.phase === 'p4' || options.cleanPhase === 'p4' || Number(options.targetVersion || 0) >= 4;
   const includeP5 = options.phase === 'p5' || options.cleanPhase === 'p5' || Number(options.targetVersion || 0) >= 5;
-  const selected = includeP5 ? CLEAN_COMMAND_REGISTRY : includeP4 ? CLEAN_COMMAND_REGISTRY.filter((entry) => entry.phase !== 'p5') : includeP3 ? CLEAN_COMMAND_REGISTRY.filter((entry) => !['p4', 'p5'].includes(entry.phase)) : CLEAN_COMMAND_REGISTRY.filter((entry) => !['p3', 'p4', 'p5'].includes(entry.phase));
+  const includeP6 = options.phase === 'p6' || options.cleanPhase === 'p6' || Number(options.targetVersion || 0) >= 6;
+  const selected = includeP6 ? CLEAN_COMMAND_REGISTRY : includeP5 ? CLEAN_COMMAND_REGISTRY.filter((entry) => entry.phase !== 'p6') : includeP4 ? CLEAN_COMMAND_REGISTRY.filter((entry) => !['p5', 'p6'].includes(entry.phase)) : includeP3 ? CLEAN_COMMAND_REGISTRY.filter((entry) => !['p4', 'p5', 'p6'].includes(entry.phase)) : CLEAN_COMMAND_REGISTRY.filter((entry) => !['p3', 'p4', 'p5', 'p6'].includes(entry.phase));
   return {
     entries: selected,
     get(commandId) { return selected.find((entry) => entry.command_id === commandId) || null; },

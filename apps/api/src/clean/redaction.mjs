@@ -100,6 +100,9 @@ function isSensitiveKey(key) {
   const normalized = String(key).replace(/[A-Z]/g, (letter) => `_${letter.toLowerCase()}`);
   if (/^credential_(?:id|ref|ref_id)$/.test(normalized)) return false;
   if (/^token_(?:budget|estimate|used|count|prefix)$/.test(normalized)) return false;
+  // This is a checkpoint-bound integrity proof, not an authentication or
+  // provider credential. The replay API also requires session ACL and CAS.
+  if (normalized === 'checkpoint_token') return false;
   return SENSITIVE_KEY.test(normalized);
 }
 

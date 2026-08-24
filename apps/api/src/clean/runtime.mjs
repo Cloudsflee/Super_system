@@ -23,10 +23,13 @@ import { CleanFilesService } from './files-service.mjs';
 import { CleanTerminalService } from './terminal-service.mjs';
 import { CleanBridgeService } from './bridge-service.mjs';
 import { DeterministicAppServerAdapter, ProcessAppServerAdapter } from './app-server-adapter.mjs';
+import { CleanRunnerService } from './runner-service.mjs';
+import { CleanExecutionService } from './execution-service.mjs';
+import { BrokerRunnerAdapter, BridgeJobAdapter, HostRunnerAdapter } from './runner-adapters.mjs';
 
 export function createCleanRuntime(options = {}) {
   const config = options.config || loadCleanConfig(options.env || process.env);
-  const targetVersion = Number(options.targetVersion || options.schemaVersion || (options.p5 || options.phase === 'p5' || options.cleanPhase === 'p5' ? 5 : (options.p4 || options.phase === 'p4' || options.cleanPhase === 'p4' ? 4 : (options.p3 || options.phase === 'p3' || options.cleanPhase === 'p3' ? 3 : 2))));
+  const targetVersion = Number(options.targetVersion || options.schemaVersion || (options.p6 || options.phase === 'p6' || options.cleanPhase === 'p6' ? 6 : (options.p5 || options.phase === 'p5' || options.cleanPhase === 'p5' ? 5 : (options.p4 || options.phase === 'p4' || options.cleanPhase === 'p4' ? 4 : (options.p3 || options.phase === 'p3' || options.cleanPhase === 'p3' ? 3 : 2)))));
   const vaultMasterKey = options.vaultMasterKey || config.vaultMasterKey;
   if (typeof vaultMasterKey !== 'string' || vaultMasterKey.length < 16) throw new CleanNotReadyError('credential vault key is required', { reason: 'vault_key_missing', schema_family: 'v3-clean' });
   let initialized;
@@ -67,7 +70,10 @@ export function createCleanRuntime(options = {}) {
   const files = targetVersion >= 5 ? new CleanFilesService({ db, cas, events, operations, authorization, projectWorkflow, clock: options.now || undefined, bootstrapActorId: initialized.metadata.bootstrap_actor_id, config }) : null;
   const terminal = targetVersion >= 5 ? new CleanTerminalService({ db, cas, events, operations, authorization, projectWorkflow, clock: options.now || undefined, config, pty: options.pty }) : null;
   const bridge = targetVersion >= 5 ? new CleanBridgeService({ db, events, operations, authorization, vault, clock: options.now || undefined, adapter: options.bridgeAdapter, config }) : null;
-  const dispatcher = targetVersion >= 4 ? new CleanCommandDispatcher({ registry, context, mcp, gateway, projectWorkflow, operations, events, assist, files, terminal, bridge }) : null;
+  const runnerAdapters = targetVersion >= 6 ? createRunnerAdapters({ options, config, bridge, db, vault }) : null;
+  const runner = targetVersion >= 6 ? new CleanRunnerService({ db, events, operations, authorization, vault, adapters: runnerAdapters, clock: options.now || undefined, pollIntervalMs: options.runnerPollIntervalMs || config.runnerPollIntervalMs, config }) : null;
+  const execution = targetVersion >= 6 ? new CleanExecutionService({ db, events, operations, authorization, runner, projectWorkflow, assist, clock: options.now || undefined, config, sleep: options.runnerSleep, retryDelays: options.runnerRetryDelays }) : null;
+  const dispatcher = targetVersion >= 4 ? new CleanCommandDispatcher({ registry, context, mcp, gateway, projectWorkflow, operations, events, assist, files, terminal, bridge, runner, execution }) : null;
   if (mcp) mcp.dispatcher = dispatcher;
   const recovery = (async () => {
     const identityResult = await identity.recoverPending();
@@ -77,7 +83,8 @@ export function createCleanRuntime(options = {}) {
     const filesResult = await (files?.recoverPending?.() || 0);
     const terminalResult = await (terminal?.recoverPending?.() || 0);
     const bridgeResult = await (bridge?.recoverPending?.() || 0);
-    return [identityResult, projectResult, contextResult, assistResult, filesResult, terminalResult, bridgeResult];
+    const executionResult = await (execution?.recoverPending?.() || 0);
+    return [identityResult, projectResult, contextResult, assistResult, filesResult, terminalResult, bridgeResult, executionResult];
   })();
   events.authorize = (context) => authorization.authorize({ actorId: context.actorId, effectiveActorId: context.actorId, scopes: ['*'] }, 'read', context.projectId, { events: context.events }).allowed;
   let casManifest;
@@ -121,6 +128,8 @@ export function createCleanRuntime(options = {}) {
     files,
     terminal,
     bridge,
+    runner,
+    execution,
     dispatcher,
     project: projectWorkflow,
     repository: projectWorkflow,
@@ -141,8 +150,9 @@ export function createCleanRuntime(options = {}) {
     p3: targetVersion >= 3,
     p4: targetVersion >= 4,
     p5: targetVersion >= 5,
+    p6: targetVersion >= 6,
     health() {
-      return { runtime: 'v3-clean', ready: this.ready, readiness_reason: this.readinessReason, readiness_receipt: this.readinessReceipt, schema_family: this.metadata.family, user_version: this.metadata.user_version, cas_manifest: this.casManifest || null, p2: this.p2, p3: this.p3, p4: this.p4, p5: this.p5 };
+      return { runtime: 'v3-clean', ready: this.ready, readiness_reason: this.readinessReason, readiness_receipt: this.readinessReceipt, schema_family: this.metadata.family, user_version: this.metadata.user_version, cas_manifest: this.casManifest || null, p2: this.p2, p3: this.p3, p4: this.p4, p5: this.p5, p6: this.p6 };
     },
     close() {
       this.terminal?.close?.();
@@ -181,7 +191,7 @@ function createAssistProvider(options, config) {
 export function createNotReadyRuntime(options = {}, failure = null) {
   const config = options.config || loadCleanConfig(options.env || process.env);
   const policy = options.policy || new RedactionPolicy();
-  const targetVersion = Number(options.targetVersion || options.schemaVersion || (options.p5 || options.phase === 'p5' || options.cleanPhase === 'p5' ? 5 : (options.p4 || options.phase === 'p4' || options.cleanPhase === 'p4' ? 4 : (options.p3 || options.phase === 'p3' || options.cleanPhase === 'p3' ? 3 : 2))));
+  const targetVersion = Number(options.targetVersion || options.schemaVersion || (options.p6 || options.phase === 'p6' || options.cleanPhase === 'p6' ? 6 : (options.p5 || options.phase === 'p5' || options.cleanPhase === 'p5' ? 5 : (options.p4 || options.phase === 'p4' || options.cleanPhase === 'p4' ? 4 : (options.p3 || options.phase === 'p3' || options.cleanPhase === 'p3' ? 3 : 2)))));
   const registry = createCleanCommandRegistry({ targetVersion });
   const details = failure?.details && typeof failure.details === 'object' ? failure.details : {};
   const reason = String(details.reason || failure?.code || 'startup_failed');
@@ -212,6 +222,8 @@ export function createNotReadyRuntime(options = {}, failure = null) {
     files: null,
     terminal: null,
     bridge: null,
+    runner: null,
+    execution: null,
     dispatcher: null,
     project: null,
     repository: null,
@@ -232,8 +244,9 @@ export function createNotReadyRuntime(options = {}, failure = null) {
     p3: false,
     p4: false,
     p5: false,
+    p6: false,
     health() {
-      return { runtime: 'v3-clean', ready: false, readiness_reason: this.readinessReason, readiness_receipt: this.readinessReceipt, schema_family: this.metadata.family, user_version: this.metadata.user_version, cas_manifest: null, p2: false, p3: false, p4: false, p5: false };
+      return { runtime: 'v3-clean', ready: false, readiness_reason: this.readinessReason, readiness_receipt: this.readinessReceipt, schema_family: this.metadata.family, user_version: this.metadata.user_version, cas_manifest: null, p2: false, p3: false, p4: false, p5: false, p6: false };
     },
     close() {}
   };
@@ -241,4 +254,21 @@ export function createNotReadyRuntime(options = {}, failure = null) {
 
 export function readinessEnvelope(runtime) {
   return JSON.parse(canonicalJson(runtime.health()));
+}
+
+function createRunnerAdapters({ options, config, bridge, db, vault }) {
+  if (options.runnerAdapters) return options.runnerAdapters;
+  const bridgeJobs = bridge ? new BridgeJobAdapter({
+    bridgeAdapter: bridge.adapter,
+    leaseForProfile(profile) {
+      const device = db.get('SELECT * FROM bridge_devices WHERE id=?', [String(profile?.bridge_device_id || '')]);
+      if (!device || device.status !== 'paired') throw new CleanNotReadyError('paired Windows Bridge device is unavailable', { reason: 'bridge_unavailable' });
+      return { secretRef: device.shared_secret_ref, secret: vault.read(device.shared_secret_ref) };
+    }
+  }) : null;
+  return {
+    host: options.hostRunnerAdapter || new HostRunnerAdapter({ homeRoot: config.runnerHomeRoot, clock: options.now || undefined }),
+    docker: options.dockerRunnerAdapter || new BrokerRunnerAdapter({ baseUrl: config.runnerBrokerUrl, secret: config.runnerBrokerSecret, clock: options.runnerClock }),
+    ...(bridgeJobs ? { windows_bridge: options.bridgeRunnerAdapter || bridgeJobs } : {})
+  };
 }
