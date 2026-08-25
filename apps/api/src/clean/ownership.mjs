@@ -103,6 +103,27 @@ export const CLEAN_P6_TABLE_OWNERS = Object.freeze({
   execution_events: 'Execution'
 });
 
+export const CLEAN_P7_TABLE_OWNERS = Object.freeze({
+  ...CLEAN_P6_TABLE_OWNERS,
+  parser_formats: 'Parser',
+  parser_runs: 'Parser',
+  assets: 'Evidence',
+  asset_versions: 'Evidence',
+  asset_blobs: 'Evidence',
+  asset_relations: 'Evidence',
+  asset_attestations: 'Evidence',
+  traces: 'Evidence',
+  digests: 'Evidence',
+  code_changes: 'Evidence',
+  test_results: 'Evidence',
+  quality_review_runs: 'Quality',
+  quality_review_reports: 'Quality',
+  quality_review_events: 'Quality',
+  human_reviews: 'Quality',
+  outcome_evaluations: 'Outcome',
+  outcome_waivers: 'Outcome'
+});
+
 export const CLEAN_COMMAND_OWNERS = Object.freeze({
   'operations.get': 'Operations',
   'operations.events': 'Operations',
@@ -296,6 +317,38 @@ export const CLEAN_COMMAND_OWNERS = Object.freeze({
   , 'execution.cancel': 'Execution'
   , 'execution.replan': 'Execution'
   , 'execution.stage.replay': 'Execution'
+  , 'parser.format.list': 'Parser'
+  , 'parser.run.start': 'Parser'
+  , 'parser.run.get': 'Parser'
+  , 'parser.run.retry': 'Parser'
+  , 'parser.run.cancel': 'Parser'
+  , 'asset.list': 'Evidence'
+  , 'asset.capture': 'Evidence'
+  , 'asset.get': 'Evidence'
+  , 'asset.version.list': 'Evidence'
+  , 'asset.content': 'Evidence'
+  , 'asset.relation.list': 'Evidence'
+  , 'asset.relation.create': 'Evidence'
+  , 'asset.attestation.list': 'Evidence'
+  , 'asset.attest': 'Evidence'
+  , 'asset.tombstone': 'Evidence'
+  , 'evidence.execution.get': 'Evidence'
+  , 'evidence.trace.list': 'Evidence'
+  , 'evidence.digest.list': 'Evidence'
+  , 'evidence.test-result.list': 'Evidence'
+  , 'evidence.code-change.list': 'Evidence'
+  , 'quality.list': 'Quality'
+  , 'quality.start': 'Quality'
+  , 'quality.get': 'Quality'
+  , 'quality.events': 'Quality'
+  , 'quality.report.get': 'Quality'
+  , 'quality.decision': 'Quality'
+  , 'quality.cancel': 'Quality'
+  , 'quality.retry': 'Quality'
+  , 'outcome.get': 'Outcome'
+  , 'outcome.evaluate': 'Outcome'
+  , 'outcome.waiver.create': 'Outcome'
+  , 'outcome.waiver.revoke': 'Outcome'
 });
 
 export const CLEAN_EVENT_OWNERS = Object.freeze({
@@ -321,7 +374,7 @@ export const CLEAN_EVENT_OWNERS = Object.freeze({
   'workflow.*': 'Workflow',
   'generation.*': 'Workflow',
   'critic.*': 'Critic',
-  'outcome.*': 'Project'
+  'outcome.requirement.*': 'Project'
   , 'context_source.*': 'Context'
   , 'context_policy.*': 'Context'
   , 'context_selection.*': 'Context'
@@ -354,18 +407,28 @@ export const CLEAN_EVENT_OWNERS = Object.freeze({
   , 'execution.*': 'Execution'
   , 'execution_stage.*': 'Execution'
   , 'task_attempt.*': 'Execution'
+  , 'parser_format.*': 'Parser'
+  , 'parser_run.*': 'Parser'
+  , 'asset.*': 'Evidence'
+  , 'evidence.*': 'Evidence'
+  , 'trace.*': 'Evidence'
+  , 'digest.*': 'Evidence'
+  , 'code_change.*': 'Evidence'
+  , 'test_result.*': 'Evidence'
+  , 'quality_review.*': 'Quality'
+  , 'outcome.*': 'Outcome'
 });
 
 export const CLEAN_PLATFORM_OWNERSHIP = Object.freeze({
-  schema_version: 'aiws.v3-clean.owner-manifest.v6',
-  tables: CLEAN_P6_TABLE_OWNERS,
+  schema_version: 'aiws.v3-clean.owner-manifest.v7',
+  tables: CLEAN_P7_TABLE_OWNERS,
   commands: CLEAN_COMMAND_OWNERS,
   events: CLEAN_EVENT_OWNERS
 });
 
 export function validateCleanOwnership({ tables = [], registry = null } = {}) {
   const actualTables = [...new Set(tables.map((table) => String(table)))].sort();
-  const tableOwners = actualTables.includes('runner_profiles') ? CLEAN_P6_TABLE_OWNERS : (actualTables.includes('assist_sessions') ? CLEAN_P5_TABLE_OWNERS : (actualTables.includes('context_sources') ? CLEAN_P4_TABLE_OWNERS : (actualTables.includes('projects') ? CLEAN_P3_TABLE_OWNERS : (actualTables.includes('teams') ? CLEAN_P2_TABLE_OWNERS : CLEAN_TABLE_OWNERS))));
+  const tableOwners = actualTables.includes('parser_formats') ? CLEAN_P7_TABLE_OWNERS : (actualTables.includes('runner_profiles') ? CLEAN_P6_TABLE_OWNERS : (actualTables.includes('assist_sessions') ? CLEAN_P5_TABLE_OWNERS : (actualTables.includes('context_sources') ? CLEAN_P4_TABLE_OWNERS : (actualTables.includes('projects') ? CLEAN_P3_TABLE_OWNERS : (actualTables.includes('teams') ? CLEAN_P2_TABLE_OWNERS : CLEAN_TABLE_OWNERS)))));
   const expectedTables = Object.keys(tableOwners).sort();
   const missingTables = expectedTables.filter((table) => !actualTables.includes(table));
   const unexpectedTables = actualTables.filter((table) => !expectedTables.includes(table));
@@ -389,17 +452,20 @@ export function validateCleanOwnership({ tables = [], registry = null } = {}) {
     const p4Owners = new Set(['Context', 'Projection', 'Exchange', 'MCP', 'Gateway']);
     const p5Owners = new Set(['Assist', 'Files', 'Terminal', 'Bridge']);
     const p6Owners = new Set(['Runner', 'Execution']);
+    const p7Owners = new Set(['Parser', 'Evidence', 'Quality', 'Outcome']);
+    const hasP7Tables = actualTables.includes('parser_formats');
     const hasP6Tables = actualTables.includes('runner_profiles');
     const hasP5Tables = actualTables.includes('assist_sessions');
     const hasP4Tables = actualTables.includes('context_sources');
     const hasP3Tables = actualTables.includes('projects');
     const expectedCommandIds = Object.entries(CLEAN_COMMAND_OWNERS)
       .filter(([, owner]) => {
-        if (hasP6Tables) return true;
-        if (hasP5Tables) return !p6Owners.has(owner);
-        if (hasP4Tables) return !p5Owners.has(owner) && !p6Owners.has(owner);
-        if (hasP3Tables) return !p4Owners.has(owner) && !p5Owners.has(owner) && !p6Owners.has(owner);
-        return !p3Owners.has(owner) && !p4Owners.has(owner) && !p5Owners.has(owner) && !p6Owners.has(owner);
+        if (hasP7Tables) return true;
+        if (hasP6Tables) return !p7Owners.has(owner);
+        if (hasP5Tables) return !p6Owners.has(owner) && !p7Owners.has(owner);
+        if (hasP4Tables) return !p5Owners.has(owner) && !p6Owners.has(owner) && !p7Owners.has(owner);
+        if (hasP3Tables) return !p4Owners.has(owner) && !p5Owners.has(owner) && !p6Owners.has(owner) && !p7Owners.has(owner);
+        return !p3Owners.has(owner) && !p4Owners.has(owner) && !p5Owners.has(owner) && !p6Owners.has(owner) && !p7Owners.has(owner);
       })
       .map(([commandId]) => commandId);
     for (const commandId of expectedCommandIds) {

@@ -56,6 +56,10 @@ const p6Mutation = p5Mutation;
 const p6Query = p5Query;
 const p6List = p5List;
 const p6Receipt = p5Receipt;
+const p7Mutation = p5Mutation;
+const p7Query = p5Query;
+const p7List = p5List;
+const p7Receipt = p5Receipt;
 
 export const CLEAN_V2_SCHEMAS = Object.freeze({
   'setup.complete.v2': closed({ display_name: { type: 'string', minLength: 1, maxLength: 160 }, team_name: { type: 'string', minLength: 1, maxLength: 160 }, ttl_seconds: { type: 'integer', minimum: 300, maximum: 7776000 }, idempotency_key: idempotency, expected_revision: { type: 'integer', minimum: 0, maximum: 0 } }, ['display_name', 'team_name']),
@@ -245,6 +249,57 @@ export const CLEAN_V2_SCHEMAS = Object.freeze({
   'execution.receipt.v2': p6Receipt('execution'),
   'execution.attempts.v2': p6List('attempts'),
   'execution.checkpoints.v2': p6List('checkpoints'),
+
+  // P7 Evidence, isolated Parser, Quality and deterministic Outcome contracts.
+  // Public values are bounded metadata and hashes. Raw parser text, worker
+  // paths, prompts and credentials are not members of these schemas.
+  'parser.formats.query.v2': p7Query({ format_key: id, family: p4String, status: p4String }),
+  'parser.formats.v2': p7List('formats'),
+  'parser.run.query.v2': p7Query({ parser_run_id: id }, ['parser_run_id']),
+  'parser.run.start.v2': p7Mutation({ asset_id: id, version_id: id, format_key: id, limits: looseObject, fixture: looseObject }, ['asset_id', 'version_id']),
+  'parser.run.mutation.v2': p7Mutation({ parser_run_id: id, reason: { type: 'string', maxLength: 500 }, fixture: looseObject }, ['parser_run_id']),
+  'parser.run.v2': closed({ parser_run: looseObject }, ['parser_run']),
+  'parser.run.receipt.v2': p7Receipt('parser_run'),
+
+  'asset.project.query.v2': p7Query({ project_id: id, status: p4String, asset_kind: p4String }, ['project_id']),
+  'asset.query.v2': p7Query({ asset_id: id, version_id: id }, ['asset_id']),
+  'asset.capture.v2': p7Mutation({ project_id: id, execution_id: id, logical_name: { type: 'string', minLength: 1, maxLength: 512 }, asset_kind: p4String, source_type: { enum: ['execution', 'attachment', 'file_ref', 'managed_output', 'parser', 'quality', 'manual'] }, source_ref: { type: 'string', minLength: 1, maxLength: 512 }, attachment_id: id, file_ref_id: id, relative_path: { type: 'string', maxLength: 1024 }, media_type: { type: 'string', maxLength: 160 }, content_base64: { type: 'string', maxLength: 34952536 }, content_sha256: sha256, metadata: looseObject }, ['project_id', 'logical_name', 'source_type', 'source_ref']),
+  'asset.relation.create.v2': p7Mutation({ asset_id: id, from_version_id: id, to_asset_id: id, to_version_id: id, relation_type: { enum: ['derived_from', 'generated_by', 'contains', 'references', 'attests', 'supersedes', 'tests', 'changes'] }, execution_id: id, task_attempt_id: id, input_sha256: sha256, output_sha256: sha256, metadata: looseObject }, ['asset_id', 'from_version_id', 'to_asset_id', 'to_version_id', 'relation_type']),
+  'asset.attestation.create.v2': p7Mutation({ asset_id: id, version_id: id, attestation_type: { type: 'string', minLength: 1, maxLength: 120 }, policy_revision: revision, statement: looseObject, signature: { type: 'string', maxLength: 4096 }, validity: { enum: ['valid', 'invalid', 'revoked', 'expired'] }, expires_at: timestamp }, ['asset_id', 'version_id', 'attestation_type', 'statement', 'validity']),
+  'asset.tombstone.v2': p7Mutation({ asset_id: id, reason: { type: 'string', maxLength: 500 } }, ['asset_id']),
+  'assets.v2': p7List('assets'),
+  'asset.v2': closed({ asset: looseObject }, ['asset']),
+  'asset.receipt.v2': p7Receipt('asset'),
+  'asset.versions.v2': p7List('versions'),
+  'asset.content.v2': looseObject,
+  'asset.relations.v2': p7List('relations'),
+  'asset.relation.receipt.v2': p7Receipt('relation'),
+  'asset.attestations.v2': p7List('attestations'),
+  'asset.attestation.receipt.v2': p7Receipt('attestation'),
+  'execution.evidence.query.v2': p7Query({ execution_id: id, cursor: { anyOf: [{ type: 'integer', minimum: 0 }, p4String] }, limit: { type: 'integer', minimum: 1, maximum: 500 } }, ['execution_id']),
+  'execution.evidence.v2': closed({ assets: p4Items, traces: p4Items, digests: p4Items, code_changes: p4Items, test_results: p4Items }, ['assets', 'traces', 'digests', 'code_changes', 'test_results']),
+  'execution.traces.v2': p7List('traces'),
+  'execution.digests.v2': p7List('digests'),
+  'execution.code_changes.v2': p7List('code_changes'),
+  'execution.test_results.v2': p7List('test_results'),
+
+  'quality.list.query.v2': p7Query({ execution_id: id, status: p4String }, ['execution_id']),
+  'quality.query.v2': p7Query({ quality_review_id: id, cursor: { anyOf: [{ type: 'integer', minimum: 0 }, p4String] }, limit: { type: 'integer', minimum: 1, maximum: 500 }, format: { enum: ['json'] } }, ['quality_review_id']),
+  'quality.start.v2': p7Mutation({ execution_id: id, asset_ids: { type: 'array', minItems: 1, maxItems: 16, uniqueItems: true, items: id }, rubric: looseObject, threshold: { type: 'number', minimum: 0, maximum: 100 }, fixture: looseObject }, ['execution_id', 'asset_ids', 'rubric']),
+  'quality.mutation.v2': p7Mutation({ quality_review_id: id, reason: { type: 'string', maxLength: 500 }, fixture: looseObject }, ['quality_review_id']),
+  'quality.decision.v2': p7Mutation({ quality_review_id: id, decision: { enum: ['approved', 'rejected'] }, dimensions: { type: 'array', minItems: 1, maxItems: 20, items: closed({ key: { type: 'string', minLength: 1, maxLength: 120 }, score: { type: 'number', minimum: 0, maximum: 100 }, reasoning: { type: 'string', minLength: 1, maxLength: 2000 } }, ['key', 'score', 'reasoning']) }, reasoning: { type: 'string', minLength: 1, maxLength: 4000 }, report_sha256: sha256, input_sha256: sha256, rubric_sha256: sha256 }, ['quality_review_id', 'decision', 'dimensions', 'reasoning', 'report_sha256', 'input_sha256', 'rubric_sha256']),
+  'quality.reviews.v2': p7List('quality_reviews'),
+  'quality.review.v2': closed({ quality_review: looseObject }, ['quality_review']),
+  'quality.review.receipt.v2': p7Receipt('quality_review'),
+  'quality.report.v2': closed({ report: looseObject }, ['report']),
+
+  'outcome.query.v2': p7Query({ execution_id: id }, ['execution_id']),
+  'outcome.evaluate.v2': p7Mutation({ execution_id: id }, ['execution_id']),
+  'outcome.waiver.create.v2': p7Mutation({ execution_id: id, requirement_id: id, reason: { type: 'string', minLength: 1, maxLength: 2000 }, expires_at: timestamp }, ['execution_id', 'reason']),
+  'outcome.waiver.revoke.v2': p7Mutation({ waiver_id: id, reason: { type: 'string', minLength: 1, maxLength: 2000 } }, ['waiver_id', 'reason']),
+  'outcome.v2': closed({ evaluation: { anyOf: [looseObject, { type: 'null' }] }, waivers: p4Items }, ['evaluation', 'waivers']),
+  'outcome.receipt.v2': p7Receipt('evaluation', { waivers: p4Items }),
+  'outcome.waiver.receipt.v2': p7Receipt('waiver'),
 
   // P1 query/input contracts.
   'operation.id.v2': closed({ id: id }, ['id']),

@@ -65,7 +65,8 @@ const entries = [
   ...p3Entries(),
   ...p4Entries(),
   ...p5Entries(),
-  ...p6Entries()
+  ...p6Entries(),
+  ...p7Entries()
 ];
 
 function identityEntries() {
@@ -173,7 +174,7 @@ function p3Entries() {
     common('critic.evaluate', 'POST', '/api/v2/workflow-generations/{id}/critic', 'Critic', 'workflow:approve', 'critic.evaluate.v2', 'critic.receipt.v2', ['critic.evaluated'], { external_adapter: 'workflow.fake-critic', surface: 'workflow', state: 'critic' }),
     common('workflow.proposal.get', 'GET', '/api/v2/workflow-proposals/{id}', 'Workflow', 'workflow:read', 'project.id.v2', 'proposal.receipt.v2', ['workflow.*'], { surface: 'workflow', state: 'proposal' }),
     common('workflow.proposal.apply', 'POST', '/api/v2/workflow-proposals/{id}/apply', 'Workflow', 'workflow:write', 'proposal.apply.v2', 'proposal.receipt.v2', ['workflow.proposal.applied'], { surface: 'workflow', state: 'proposal-apply' }),
-    common('outcome.requirement.list', 'GET', '/api/v2/projects/{project_id}/outcome-requirements', 'Project', 'project:read', 'project.id.v2', 'outcome.requirement.list.v2', ['outcome.*'], { surface: 'workflow', state: 'requirements' }),
+    common('outcome.requirement.list', 'GET', '/api/v2/projects/{project_id}/outcome-requirements', 'Project', 'project:read', 'project.id.v2', 'outcome.requirement.list.v2', ['outcome.requirement.*'], { surface: 'workflow', state: 'requirements' }),
     common('outcome.requirement.create', 'POST', '/api/v2/projects/{project_id}/outcome-requirements', 'Project', 'project:write', 'outcome.requirement.create.v2', 'outcome.requirement.receipt.v2', ['outcome.requirement.created'], { expected_revision: 'parent', surface: 'workflow', state: 'requirement-create' })
   ];
 }
@@ -334,6 +335,58 @@ function p6Entries() {
   ];
 }
 
+function p7Entries() {
+  const common = (command_id, method, path, owner, scope, input_schema, output_schema, events, options = {}) => ({
+    command_id, version: 2, method, path, owner, scope, phase: 'p7',
+    project_scoped: options.project_scoped !== false,
+    idempotency: method === 'GET' ? 'forbidden' : 'required',
+    expected_revision: method === 'GET' ? 'none' : (options.expected_revision || 'resource'),
+    input_schema, output_schema, long_running: Boolean(options.long_running), events,
+    mcp: { mapping: options.mcp_exposed === false ? 'rest-only' : (method === 'GET' ? 'resource' : 'tool'), name: options.mcp_name || command_id.replaceAll('.', '_').replaceAll('-', '_'), exposed: options.mcp_exposed !== false },
+    transport_allowlist: Object.freeze(options.transport_allowlist || (options.mcp_exposed === false ? ['rest', 'web'] : ['rest', 'web', 'mcp', 'gateway'])),
+    redaction_policy: 'v3-clean-default', external_adapter: options.external_adapter || null,
+    ui_metadata: { surface: options.surface || owner.toLowerCase(), state: options.state || command_id },
+    evidence_metadata: { receipt_kind: options.long_running ? 'operation.receipt.v2' : 'resource.receipt.v2', verification: 'p7-evidence-quality-parser-outcome' }
+  });
+  return [
+    common('parser.format.list', 'GET', '/api/v2/parser/formats', 'Parser', 'parser:read', 'parser.formats.query.v2', 'parser.formats.v2', ['parser_format.*'], { project_scoped: false, surface: 'evidence', state: 'parser-formats', external_adapter: 'parser.worker.v1' }),
+    common('parser.run.start', 'POST', '/api/v2/assets/{id}/versions/{version_id}/parse', 'Parser', 'parser:run', 'parser.run.start.v2', 'operation.receipt.v2', ['parser_run.queued', 'parser_run.parsed', 'parser_run.failed'], { project_scoped: false, surface: 'evidence', state: 'parse-start', long_running: true, external_adapter: 'parser.job.v1' }),
+    common('parser.run.get', 'GET', '/api/v2/parser-runs/{id}', 'Parser', 'parser:read', 'parser.run.query.v2', 'parser.run.v2', ['parser_run.*'], { project_scoped: false, surface: 'evidence', state: 'parser-run', external_adapter: 'parser.worker.v1' }),
+    common('parser.run.retry', 'POST', '/api/v2/parser-runs/{id}/retry', 'Parser', 'parser:run', 'parser.run.mutation.v2', 'operation.receipt.v2', ['parser_run.retry_queued', 'parser_run.parsed', 'parser_run.failed'], { project_scoped: false, surface: 'evidence', state: 'parse-retry', long_running: true, external_adapter: 'parser.job.v1' }),
+    common('parser.run.cancel', 'POST', '/api/v2/parser-runs/{id}/cancel', 'Parser', 'parser:run', 'parser.run.mutation.v2', 'parser.run.receipt.v2', ['parser_run.cancel_requested', 'parser_run.cancelled'], { project_scoped: false, surface: 'evidence', state: 'parse-cancel', external_adapter: 'parser.job.v1' }),
+
+    common('asset.list', 'GET', '/api/v2/projects/{project_id}/assets', 'Evidence', 'evidence:read', 'asset.project.query.v2', 'assets.v2', ['asset.*'], { surface: 'evidence', state: 'asset-list' }),
+    common('asset.capture', 'POST', '/api/v2/projects/{project_id}/assets', 'Evidence', 'evidence:write', 'asset.capture.v2', 'asset.receipt.v2', ['asset.captured'], { surface: 'evidence', state: 'asset-capture', expected_revision: 'parent' }),
+    common('asset.get', 'GET', '/api/v2/assets/{id}', 'Evidence', 'evidence:read', 'asset.query.v2', 'asset.v2', ['asset.*'], { project_scoped: false, surface: 'evidence', state: 'asset-detail' }),
+    common('asset.version.list', 'GET', '/api/v2/assets/{id}/versions', 'Evidence', 'evidence:read', 'asset.query.v2', 'asset.versions.v2', ['asset.*'], { project_scoped: false, surface: 'evidence', state: 'asset-versions' }),
+    common('asset.content', 'GET', '/api/v2/assets/{id}/versions/{version_id}/content', 'Evidence', 'evidence:read', 'asset.query.v2', 'asset.content.v2', ['asset.*'], { project_scoped: false, surface: 'evidence', state: 'asset-content', mcp_exposed: false }),
+    common('asset.relation.list', 'GET', '/api/v2/assets/{id}/relations', 'Evidence', 'evidence:read', 'asset.query.v2', 'asset.relations.v2', ['asset.*'], { project_scoped: false, surface: 'evidence', state: 'asset-lineage' }),
+    common('asset.relation.create', 'POST', '/api/v2/assets/{id}/relations', 'Evidence', 'evidence:write', 'asset.relation.create.v2', 'asset.relation.receipt.v2', ['asset.relation.created'], { project_scoped: false, surface: 'evidence', state: 'relation-create' }),
+    common('asset.attestation.list', 'GET', '/api/v2/assets/{id}/attestations', 'Evidence', 'evidence:read', 'asset.query.v2', 'asset.attestations.v2', ['asset.*'], { project_scoped: false, surface: 'evidence', state: 'asset-attestations' }),
+    common('asset.attest', 'POST', '/api/v2/assets/{id}/attestations', 'Evidence', 'evidence:write', 'asset.attestation.create.v2', 'asset.attestation.receipt.v2', ['asset.attested'], { project_scoped: false, surface: 'evidence', state: 'asset-attest' }),
+    common('asset.tombstone', 'POST', '/api/v2/assets/{id}/tombstone', 'Evidence', 'evidence:write', 'asset.tombstone.v2', 'asset.receipt.v2', ['asset.tombstoned'], { project_scoped: false, surface: 'evidence', state: 'asset-tombstone', mcp_exposed: false }),
+    common('evidence.execution.get', 'GET', '/api/v2/executions/{id}/evidence', 'Evidence', 'evidence:read', 'execution.evidence.query.v2', 'execution.evidence.v2', ['evidence.*'], { project_scoped: false, surface: 'execution', state: 'evidence' }),
+    common('evidence.trace.list', 'GET', '/api/v2/executions/{id}/traces', 'Evidence', 'evidence:read', 'execution.evidence.query.v2', 'execution.traces.v2', ['trace.*'], { project_scoped: false, surface: 'execution', state: 'traces' }),
+    common('evidence.digest.list', 'GET', '/api/v2/executions/{id}/digests', 'Evidence', 'evidence:read', 'execution.evidence.query.v2', 'execution.digests.v2', ['digest.*'], { project_scoped: false, surface: 'execution', state: 'digests' }),
+    common('evidence.test-result.list', 'GET', '/api/v2/executions/{id}/test-results', 'Evidence', 'evidence:read', 'execution.evidence.query.v2', 'execution.test_results.v2', ['test_result.*'], { project_scoped: false, surface: 'execution', state: 'test-results' }),
+    common('evidence.code-change.list', 'GET', '/api/v2/executions/{id}/code-changes', 'Evidence', 'evidence:read', 'execution.evidence.query.v2', 'execution.code_changes.v2', ['code_change.*'], { project_scoped: false, surface: 'execution', state: 'code-changes' }),
+
+    common('quality.list', 'GET', '/api/v2/executions/{id}/quality-reviews', 'Quality', 'quality:read', 'quality.list.query.v2', 'quality.reviews.v2', ['quality_review.*'], { project_scoped: false, surface: 'execution', state: 'quality-list' }),
+    common('quality.start', 'POST', '/api/v2/executions/{id}/quality-reviews', 'Quality', 'quality:run', 'quality.start.v2', 'operation.receipt.v2', ['quality_review.queued', 'quality_review.awaiting_human', 'quality_review.failed'], { project_scoped: false, surface: 'execution', state: 'quality-start', long_running: true, external_adapter: 'quality.checker.v1' }),
+    common('quality.get', 'GET', '/api/v2/quality-reviews/{id}', 'Quality', 'quality:read', 'quality.query.v2', 'quality.review.v2', ['quality_review.*'], { project_scoped: false, surface: 'execution', state: 'quality-detail' }),
+    common('quality.events', 'GET', '/api/v2/quality-reviews/{id}/events', 'Quality', 'quality:read', 'quality.query.v2', 'event.replay.v2', ['quality_review.*'], { project_scoped: false, surface: 'execution', state: 'quality-events' }),
+    common('quality.report.get', 'GET', '/api/v2/quality-reviews/{id}/report', 'Quality', 'quality:read', 'quality.query.v2', 'quality.report.v2', ['quality_review.*'], { project_scoped: false, surface: 'execution', state: 'quality-report' }),
+    common('quality.decision', 'POST', '/api/v2/quality-reviews/{id}/decision', 'Quality', 'quality:approve', 'quality.decision.v2', 'quality.review.receipt.v2', ['quality_review.decided'], { project_scoped: false, surface: 'execution', state: 'quality-decision', mcp_exposed: false }),
+    common('quality.cancel', 'POST', '/api/v2/quality-reviews/{id}/cancel', 'Quality', 'quality:run', 'quality.mutation.v2', 'quality.review.receipt.v2', ['quality_review.cancelled'], { project_scoped: false, surface: 'execution', state: 'quality-cancel' }),
+    common('quality.retry', 'POST', '/api/v2/quality-reviews/{id}/retry', 'Quality', 'quality:run', 'quality.mutation.v2', 'operation.receipt.v2', ['quality_review.retry_queued', 'quality_review.awaiting_human', 'quality_review.failed'], { project_scoped: false, surface: 'execution', state: 'quality-retry', long_running: true, external_adapter: 'quality.checker.v1' }),
+
+    common('outcome.get', 'GET', '/api/v2/executions/{id}/outcome', 'Outcome', 'outcome:read', 'outcome.query.v2', 'outcome.v2', ['outcome.*'], { project_scoped: false, surface: 'execution', state: 'outcome' }),
+    common('outcome.evaluate', 'POST', '/api/v2/executions/{id}/outcome/evaluate', 'Outcome', 'outcome:run', 'outcome.evaluate.v2', 'operation.receipt.v2', ['outcome.evaluation.queued', 'outcome.evaluated'], { project_scoped: false, surface: 'execution', state: 'outcome-evaluate', long_running: true }),
+    common('outcome.waiver.create', 'POST', '/api/v2/executions/{id}/outcome/waivers', 'Outcome', 'outcome:approve', 'outcome.waiver.create.v2', 'outcome.waiver.receipt.v2', ['outcome.waiver.created'], { project_scoped: false, surface: 'execution', state: 'waiver-create', mcp_exposed: false }),
+    common('outcome.waiver.revoke', 'POST', '/api/v2/outcome-waivers/{id}/revoke', 'Outcome', 'outcome:approve', 'outcome.waiver.revoke.v2', 'outcome.waiver.receipt.v2', ['outcome.waiver.revoked'], { project_scoped: false, surface: 'execution', state: 'waiver-revoke', mcp_exposed: false })
+  ];
+}
+
 export const CLEAN_COMMAND_REGISTRY = Object.freeze(entries.map((entry) => Object.freeze({
   ...entry,
   phase: entry.phase || 'p2',
@@ -351,7 +404,8 @@ export function createCleanCommandRegistry(options = {}) {
   const includeP4 = options.phase === 'p4' || options.cleanPhase === 'p4' || Number(options.targetVersion || 0) >= 4;
   const includeP5 = options.phase === 'p5' || options.cleanPhase === 'p5' || Number(options.targetVersion || 0) >= 5;
   const includeP6 = options.phase === 'p6' || options.cleanPhase === 'p6' || Number(options.targetVersion || 0) >= 6;
-  const selected = includeP6 ? CLEAN_COMMAND_REGISTRY : includeP5 ? CLEAN_COMMAND_REGISTRY.filter((entry) => entry.phase !== 'p6') : includeP4 ? CLEAN_COMMAND_REGISTRY.filter((entry) => !['p5', 'p6'].includes(entry.phase)) : includeP3 ? CLEAN_COMMAND_REGISTRY.filter((entry) => !['p4', 'p5', 'p6'].includes(entry.phase)) : CLEAN_COMMAND_REGISTRY.filter((entry) => !['p3', 'p4', 'p5', 'p6'].includes(entry.phase));
+  const includeP7 = options.phase === 'p7' || options.cleanPhase === 'p7' || Number(options.targetVersion || 0) >= 7;
+  const selected = includeP7 ? CLEAN_COMMAND_REGISTRY : includeP6 ? CLEAN_COMMAND_REGISTRY.filter((entry) => entry.phase !== 'p7') : includeP5 ? CLEAN_COMMAND_REGISTRY.filter((entry) => !['p6', 'p7'].includes(entry.phase)) : includeP4 ? CLEAN_COMMAND_REGISTRY.filter((entry) => !['p5', 'p6', 'p7'].includes(entry.phase)) : includeP3 ? CLEAN_COMMAND_REGISTRY.filter((entry) => !['p4', 'p5', 'p6', 'p7'].includes(entry.phase)) : CLEAN_COMMAND_REGISTRY.filter((entry) => !['p3', 'p4', 'p5', 'p6', 'p7'].includes(entry.phase));
   return {
     entries: selected,
     get(commandId) { return selected.find((entry) => entry.command_id === commandId) || null; },
@@ -384,6 +438,11 @@ export function validateRegistry(registry = CLEAN_COMMAND_REGISTRY) {
     if (!CLEAN_V2_SCHEMAS[entry.input_schema]) throw new Error(`registry_input_schema_missing:${entry.command_id}:${entry.input_schema}`);
     if (!CLEAN_V2_SCHEMAS[entry.output_schema]) throw new Error(`registry_output_schema_missing:${entry.command_id}:${entry.output_schema}`);
     if (!entry.mcp?.name) throw new Error(`registry_mcp_mapping_missing:${entry.command_id}`);
+    if (['p5', 'p6', 'p7'].includes(entry.phase)) {
+      if (!Array.isArray(entry.transport_allowlist) || entry.transport_allowlist.length === 0) throw new Error(`registry_transport_allowlist_missing:${entry.command_id}`);
+      if (new Set(entry.transport_allowlist).size !== entry.transport_allowlist.length || entry.transport_allowlist.some((transport) => !['rest', 'web', 'mcp', 'gateway'].includes(transport))) throw new Error(`registry_transport_allowlist_invalid:${entry.command_id}`);
+      if (entry.mcp.exposed === false && (entry.transport_allowlist.includes('mcp') || entry.transport_allowlist.includes('gateway'))) throw new Error(`registry_transport_exposure_mismatch:${entry.command_id}`);
+    }
     if (typeof entry.redaction_policy !== 'string' || !entry.redaction_policy) throw new Error(`registry_redaction_policy_missing:${entry.command_id}`);
     if (entry.external_adapter !== null && typeof entry.external_adapter !== 'string') throw new Error(`registry_external_adapter_invalid:${entry.command_id}`);
     if (!entry.ui_metadata || typeof entry.ui_metadata !== 'object') throw new Error(`registry_ui_metadata_missing:${entry.command_id}`);
