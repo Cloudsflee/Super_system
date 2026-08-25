@@ -3,7 +3,7 @@ import { PlatformError } from './platform-error.mjs';
 
 /** Shared P4 command boundary used by REST, MCP HTTP, stdio and Gateway. */
 export class CleanCommandDispatcher {
-  constructor({ registry, context, mcp, gateway, projectWorkflow, operations, events, assist = null, files = null, terminal = null, bridge = null, runner = null, execution = null } = {}) {
+  constructor({ registry, context, mcp, gateway, projectWorkflow, operations, events, assist = null, files = null, terminal = null, bridge = null, runner = null, execution = null, evidence = null, parser = null, quality = null, outcomeEvaluation = null } = {}) {
     if (!registry || !context || !mcp || !operations || !events) throw new TypeError('clean_dispatcher_dependencies_required');
     this.registry = registry;
     this.context = context;
@@ -18,6 +18,10 @@ export class CleanCommandDispatcher {
     this.bridge = bridge;
     this.runner = runner;
     this.execution = execution;
+    this.evidence = evidence;
+    this.parser = parser;
+    this.quality = quality;
+    this.outcomeEvaluation = outcomeEvaluation;
     this.handlers = new Map();
     this.exposed = new Set();
     this.#registerHandlers();
@@ -45,9 +49,16 @@ export class CleanCommandDispatcher {
     )) || null;
   }
 
-  async dispatch(name, args = {}, principal) {
+  async dispatch(name, args = {}, principal, options = {}) {
     const entry = this.entryFor(name);
     if (!entry) throw new PlatformError('unknown_command', `unknown Clean command: ${String(name || '')}`, {}, 404);
+    const transport = String(options.transport || 'internal');
+    if (!['internal', 'rest', 'web', 'mcp', 'gateway'].includes(transport)) {
+      throw new PlatformError('transport_invalid', 'Clean command transport is invalid', { transport }, 400);
+    }
+    if (transport !== 'internal' && Array.isArray(entry.transport_allowlist) && !entry.transport_allowlist.includes(transport)) {
+      throw new PlatformError('transport_not_allowed', 'Clean command is not available on this transport', { command_id: entry.command_id, transport }, 403);
+    }
     const input = normalizeInput(entry.command_id, args);
     assertCleanV2(entry.input_schema, input);
     let result = await this.handlers.get(entry.command_id)(args, principal);
@@ -64,6 +75,7 @@ export class CleanCommandDispatcher {
     return [...this.handlers.keys()].sort().map((commandId) => ({
       command_id: commandId,
       exposed: this.exposed.has(commandId),
+      transport_allowlist: [...(this.registry.get(commandId)?.transport_allowlist || ['rest', 'web', 'mcp', 'gateway'])],
       handler: 'CleanCommandDispatcher'
     }));
   }
@@ -117,6 +129,7 @@ export class CleanCommandDispatcher {
     });
     if (this.assist && this.files && this.terminal && this.bridge) this.#registerP5Handlers(add);
     if (this.runner && this.execution) this.#registerP6Handlers(add);
+    if (this.evidence && this.parser && this.quality && this.outcomeEvaluation) this.#registerP7Handlers(add);
   }
 
   #registerP5Handlers(add) {
@@ -211,6 +224,47 @@ export class CleanCommandDispatcher {
     bind('execution.stage.replay', async (args, principal) => this.#operationResult(await this.execution.replayStage(args.execution_id || args.id, args.stage, args, principal), principal));
   }
 
+  #registerP7Handlers(add) {
+    const exposed = (id) => ({ exposed: this.registry.get(id)?.mcp?.exposed === true });
+    const bind = (id, handler) => add(id, handler, exposed(id));
+
+    bind('parser.format.list', (args, principal) => this.parser.listFormats(args, principal));
+    bind('parser.run.start', async (args, principal) => this.#operationResult(await this.parser.start(args.asset_id, args.version_id, args, principal), principal));
+    bind('parser.run.get', (args, principal) => this.parser.get(args.parser_run_id, principal));
+    bind('parser.run.retry', async (args, principal) => this.#operationResult(await this.parser.retry(args.parser_run_id, args, principal), principal));
+    bind('parser.run.cancel', (args, principal) => this.parser.cancel(args.parser_run_id, args, principal));
+
+    bind('asset.list', (args, principal) => this.evidence.listAssets(args.project_id, args, principal));
+    bind('asset.capture', (args, principal) => this.evidence.capture(args, principal));
+    bind('asset.get', (args, principal) => this.evidence.getAsset(args.asset_id, principal));
+    bind('asset.version.list', (args, principal) => this.evidence.listVersions(args.asset_id, principal));
+    bind('asset.content', (args, principal) => this.evidence.content(args.asset_id, args.version_id, principal));
+    bind('asset.relation.list', (args, principal) => this.evidence.listRelations(args.asset_id, principal));
+    bind('asset.relation.create', (args, principal) => this.evidence.createRelation(args.asset_id, args, principal));
+    bind('asset.attestation.list', (args, principal) => this.evidence.listAttestations(args.asset_id, principal));
+    bind('asset.attest', (args, principal) => this.evidence.attest(args.asset_id, args, principal));
+    bind('asset.tombstone', (args, principal) => this.evidence.tombstone(args.asset_id, args, principal));
+    bind('evidence.execution.get', (args, principal) => this.evidence.executionEvidence(args.execution_id, principal));
+    bind('evidence.trace.list', (args, principal) => this.evidence.listTraces(args.execution_id, principal));
+    bind('evidence.digest.list', (args, principal) => this.evidence.listDigests(args.execution_id, principal));
+    bind('evidence.test-result.list', (args, principal) => this.evidence.listTestResults(args.execution_id, principal));
+    bind('evidence.code-change.list', (args, principal) => this.evidence.listCodeChanges(args.execution_id, principal));
+
+    bind('quality.list', (args, principal) => this.quality.list(args.execution_id, args, principal));
+    bind('quality.start', async (args, principal) => this.#operationResult(await this.quality.start(args.execution_id, args, principal), principal));
+    bind('quality.get', (args, principal) => this.quality.get(args.quality_review_id, principal));
+    bind('quality.events', (args, principal) => this.quality.eventsFor(args.quality_review_id, args, principal));
+    bind('quality.report.get', (args, principal) => this.quality.report(args.quality_review_id, principal));
+    bind('quality.decision', (args, principal) => this.quality.decision(args.quality_review_id, args, principal));
+    bind('quality.cancel', (args, principal) => this.quality.cancel(args.quality_review_id, args, principal));
+    bind('quality.retry', async (args, principal) => this.#operationResult(await this.quality.retry(args.quality_review_id, args, principal), principal));
+
+    bind('outcome.get', (args, principal) => this.outcomeEvaluation.get(args.execution_id, principal));
+    bind('outcome.evaluate', async (args, principal) => this.#operationResult(await this.outcomeEvaluation.evaluate(args.execution_id, args, principal), principal));
+    bind('outcome.waiver.create', (args, principal) => this.outcomeEvaluation.createWaiver(args.execution_id, args, principal));
+    bind('outcome.waiver.revoke', (args, principal) => this.outcomeEvaluation.revokeWaiver(args.waiver_id, args, principal));
+  }
+
   #validateInventory() {
     for (const commandId of this.handlers.keys()) {
       if (!this.registry.get(commandId)) throw new Error(`dispatcher_orphan_handler:${commandId}`);
@@ -224,7 +278,7 @@ export class CleanCommandDispatcher {
   #operationResult(value, principal) {
     const operationId = value?.operation?.operation_id || value?.operation_id;
     if (!operationId) throw new PlatformError('operation_required', 'long-running command did not return an operation', {}, 500);
-    return this.operations.get(operationId, { actorId: actorOf(principal), projectId: value?.job?.project_id || value?.project_id || null });
+    return this.operations.get(operationId, { actorId: actorOf(principal), projectId: value?.job?.project_id || value?.parser_run?.project_id || value?.quality_review?.project_id || value?.evaluation?.project_id || value?.project_id || null });
   }
 }
 

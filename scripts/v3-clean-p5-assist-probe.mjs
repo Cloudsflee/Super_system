@@ -5,7 +5,7 @@ import { fileURLToPath } from 'node:url';
 import { parse as parseToml } from 'smol-toml';
 import {
   ProcessAppServerAdapter, APP_SERVER_METHODS, APP_SERVER_SCHEMA_SHA256,
-  isolateProviderConfiguration
+  isolateProviderConfiguration, removeIsolatedProviderTree
 } from '../apps/api/src/clean/app-server-adapter.mjs';
 import { createCleanRuntime } from '../apps/api/src/clean/runtime.mjs';
 
@@ -171,7 +171,7 @@ export async function runAssistProbe({ env = process.env, codexHome = path.join(
     lease?.release();
     try { await runtime?.close?.(); } catch { exitCode = 1; }
     try { await provider.close(); } catch { exitCode = 1; }
-    fs.rmSync(root, { recursive: true, force: true });
+    await removeIsolatedProviderTree(root);
   }
   return { receipt, exitCode };
 }

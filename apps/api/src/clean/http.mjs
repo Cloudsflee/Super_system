@@ -58,6 +58,9 @@ export function createCleanHttpHandler({ runtime, registry, maxBodyBytes = runti
         : runtime.p2 && runtime.identity
           ? runtime.identity.principalFromRequest(req)
           : runtime.platform.actorContext({ actorId: req.headers['x-actor-id'], projectId: req.headers['x-project-id'], scopes: parseScopes(req.headers['x-scopes']) });
+      if (runtime.p7 && entry.phase === 'p7') {
+        return await handleP5Route({ entry, params, url, req, res, requestId, runtime, actor, bodyReader: () => readJson(req, Math.max(maxBodyBytes, entry.command_id === 'asset.capture' ? 36 * 1024 * 1024 : maxBodyBytes)) });
+      }
       if (runtime.p6 && entry.phase === 'p6') {
         return await handleP5Route({ entry, params, url, req, res, requestId, runtime, actor, bodyReader: () => readJson(req, maxBodyBytes) });
       }
@@ -170,7 +173,7 @@ async function handleP5Route({ entry, params, url, req, res, requestId, runtime,
     hydrateP5MutationHeaders(entry, req, body);
   }
   const args = p5DispatchArguments(command, params, url, body, schema);
-  const dispatched = await runtime.dispatcher.dispatch(command, args, actor);
+  const dispatched = await runtime.dispatcher.dispatch(command, args, actor, { transport: 'rest' });
   let data = dispatched.result;
   // Domain services keep ergonomic direct views for their in-process callers;
   // the public transport normalizes those views to the registered receipt
@@ -186,6 +189,7 @@ async function handleP5Route({ entry, params, url, req, res, requestId, runtime,
       && /(?:^|,)\s*application\/octet-stream(?:\s*;|\s*,|$)/i.test(String(req.headers.accept || ''))) {
     return sendBinaryAttachment(res, requestId, data, runtime);
   }
+  if (command === 'asset.content') return sendBinaryAsset(res, requestId, data);
   const revision = p5Revision(data);
   return sendSuccess(res, requestId, data, { status, resourceType: p5ResourceType(command), outputSchema: entry.output_schema, revision, etag: etagFor(data, revision), policy: runtime.policy });
 }
@@ -209,6 +213,18 @@ function sendBinaryAttachment(res, requestId, value, runtime) {
   return null;
 }
 
+function sendBinaryAsset(res, requestId, value) {
+  const encoded = String(value?.content_base64 || '');
+  let bytes;
+  try { bytes = Buffer.from(encoded, 'base64'); } catch { throw new HttpError('asset_unavailable', 'asset content is unavailable', {}, 410, false); }
+  if (bytes.toString('base64').replace(/=+$/, '') !== encoded.replace(/=+$/, '')) throw new HttpError('asset_tamper', 'asset content encoding changed', {}, 503, false);
+  const mediaType = String(value?.media_type || 'application/octet-stream').split(';', 1)[0] || 'application/octet-stream';
+  const hash = value?.version?.content_sha256 || sha256Hex(bytes);
+  res.writeHead(200, { 'content-type': mediaType, 'content-length': String(bytes.byteLength), 'cache-control': 'no-store', 'x-content-type-options': 'nosniff', 'x-request-id': requestId, etag: `sha256:${hash}` });
+  res.end(bytes);
+  return null;
+}
+
 function p5DispatchArguments(command, params, url, body, schema) {
   const args = { ...body, ...params };
   if (args.id) {
@@ -223,6 +239,14 @@ function p5DispatchArguments(command, params, url, body, schema) {
     else if (command.startsWith('bridge.')) args.device_id ||= args.id;
     else if (command.startsWith('runner.profile')) args.profile_id ||= args.id;
     else if (command.startsWith('execution.')) args.execution_id ||= args.id;
+    else if (command === 'parser.run.start') args.asset_id ||= args.id;
+    else if (command.startsWith('parser.run')) args.parser_run_id ||= args.id;
+    else if (command.startsWith('asset.')) args.asset_id ||= args.id;
+    else if (command.startsWith('evidence.')) args.execution_id ||= args.id;
+    else if (command === 'quality.list' || command === 'quality.start') args.execution_id ||= args.id;
+    else if (command.startsWith('quality.')) args.quality_review_id ||= args.id;
+    else if (command.startsWith('outcome.waiver.revoke')) args.waiver_id ||= args.id;
+    else if (command.startsWith('outcome.')) args.execution_id ||= args.id;
   }
   const properties = schema.properties || {};
   if (reqIsGetSchema(schema)) {
@@ -262,13 +286,13 @@ function hydrateP5MutationHeaders(entry, req, body) {
 }
 
 function p5Status(command, value) {
-  if (['assist.turn.create', 'assist.turn.retry', 'change.batch.apply', 'change.batch.undo', 'runner.profile.probe', 'execution.start', 'execution.resume', 'execution.stage.replay'].includes(command)) return 202;
-  if (['assist.session.create', 'assist.reference.create', 'attachment.create', 'change.batch.create', 'approval.create', 'user.input.create', 'proposal.create', 'terminal.open', 'bridge.pair', 'bridge.transfer.create', 'runner.profile.create', 'execution.create', 'execution.replan'].includes(command)) return value?.replayed ? 200 : 201;
+  if (['assist.turn.create', 'assist.turn.retry', 'change.batch.apply', 'change.batch.undo', 'runner.profile.probe', 'execution.start', 'execution.resume', 'execution.stage.replay', 'parser.run.start', 'parser.run.retry', 'quality.start', 'quality.retry', 'outcome.evaluate'].includes(command)) return 202;
+  if (['assist.session.create', 'assist.reference.create', 'attachment.create', 'change.batch.create', 'approval.create', 'user.input.create', 'proposal.create', 'terminal.open', 'bridge.pair', 'bridge.transfer.create', 'runner.profile.create', 'execution.create', 'execution.replan', 'asset.capture', 'asset.relation.create', 'asset.attest', 'outcome.waiver.create', 'outcome.waiver.revoke'].includes(command)) return value?.replayed ? 200 : 201;
   return 200;
 }
 
-function p5Revision(value) { return value?.revision ?? value?.session?.revision ?? value?.turn?.revision ?? value?.goal?.revision ?? value?.attachment?.revision ?? value?.batch?.revision ?? value?.approval?.revision ?? value?.input?.revision ?? value?.proposal?.revision ?? value?.terminal?.revision ?? value?.device?.revision ?? value?.transfer?.revision ?? value?.profile?.revision ?? value?.execution?.revision ?? value?.operation?.revision ?? null; }
-function p5ResourceType(command) { if (command.startsWith('assist.')) return command.startsWith('assist.turn') ? 'assist_turn' : 'assist_session'; if (command.startsWith('attachment.')) return 'attachment'; if (command.startsWith('file.')) return 'file_ref'; if (command.startsWith('change.batch')) return 'file_change_batch'; if (command.startsWith('approval.')) return 'runtime_approval'; if (command.startsWith('user.input')) return 'runtime_user_input'; if (command.startsWith('proposal.')) return 'semantic_proposal'; if (command.startsWith('terminal.')) return 'terminal_session'; if (command.startsWith('bridge.transfer')) return 'bridge_transfer'; if (command.startsWith('bridge.')) return 'bridge_device'; if (command.startsWith('runner.profile')) return 'runner_profile'; if (command.startsWith('execution.')) return 'execution'; return 'resource'; }
+function p5Revision(value) { return value?.revision ?? value?.session?.revision ?? value?.turn?.revision ?? value?.goal?.revision ?? value?.attachment?.revision ?? value?.batch?.revision ?? value?.approval?.revision ?? value?.input?.revision ?? value?.proposal?.revision ?? value?.terminal?.revision ?? value?.device?.revision ?? value?.transfer?.revision ?? value?.profile?.revision ?? value?.execution?.revision ?? value?.asset?.revision ?? value?.parser_run?.revision ?? value?.quality_review?.revision ?? value?.evaluation?.revision ?? value?.waiver?.revision ?? value?.operation?.revision ?? null; }
+function p5ResourceType(command) { if (command.startsWith('assist.')) return command.startsWith('assist.turn') ? 'assist_turn' : 'assist_session'; if (command.startsWith('attachment.')) return 'attachment'; if (command.startsWith('file.')) return 'file_ref'; if (command.startsWith('change.batch')) return 'file_change_batch'; if (command.startsWith('approval.')) return 'runtime_approval'; if (command.startsWith('user.input')) return 'runtime_user_input'; if (command.startsWith('proposal.')) return 'semantic_proposal'; if (command.startsWith('terminal.')) return 'terminal_session'; if (command.startsWith('bridge.transfer')) return 'bridge_transfer'; if (command.startsWith('bridge.')) return 'bridge_device'; if (command.startsWith('runner.profile')) return 'runner_profile'; if (command.startsWith('execution.')) return 'execution'; if (command.startsWith('asset.') || command.startsWith('evidence.')) return 'asset'; if (command.startsWith('parser.')) return 'parser_run'; if (command.startsWith('quality.')) return 'quality_review'; if (command.startsWith('outcome.')) return 'outcome_evaluation'; return 'resource'; }
 
 async function handleP4Route({ entry, params, url, req, res, requestId, runtime, actor, mcpBoundary, bodyReader }) {
   const command = entry.command_id;
@@ -301,7 +325,7 @@ async function handleP4Route({ entry, params, url, req, res, requestId, runtime,
     assertCleanV2(entry.input_schema, args);
     return handleProjectionEventsSse({ args, req, res, runtime, principal });
   }
-  const dispatched = await runtime.dispatcher.dispatch(command, args, principal);
+  const dispatched = await runtime.dispatcher.dispatch(command, args, principal, { transport: 'rest' });
   let data = dispatched.result;
   let status = p4Status(command, data);
 
@@ -504,7 +528,7 @@ async function handleGatewayForward({ entry, body, req, res, requestId, runtime 
     const callArgs = payload.arguments && typeof payload.arguments === 'object' ? payload.arguments : (payload.args && typeof payload.args === 'object' ? payload.args : {});
     const auth = runtime.mcp.authenticate(token, { projectId: callArgs.project_id || null, tool: name });
     const principal = { actorId: auth.actor_id, effectiveActorId: auth.actor_id, subjectActorId: auth.actor_id, scopes: ['*'], projectId: callArgs.project_id || null, mcpClientId: auth.client.id };
-    return runtime.mcp.dispatch(name, callArgs, principal, { events: runtime.events, projectWorkflow: runtime.projectWorkflow });
+    return runtime.mcp.dispatch(name, callArgs, principal, { events: runtime.events, projectWorkflow: runtime.projectWorkflow, transport: 'gateway' });
   };
   // The signature covers the complete forwarding body, including the command
   // and arguments, but the token is only used in memory by the dispatcher.

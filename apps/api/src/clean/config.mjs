@@ -13,8 +13,10 @@ export function loadCleanConfig(env = process.env) {
   if (!['process', 'deterministic'].includes(providerMode)) throw new Error('clean_provider_mode_invalid');
   const providerTimeoutMs = Number(env.AIWS_CLEAN_PROVIDER_TIMEOUT_MS || 30_000);
   const runnerPollIntervalMs = Number(env.AIWS_RUNNER_POLL_INTERVAL_MS || 50);
+  const parserPollIntervalMs = Number(env.AIWS_PARSER_POLL_INTERVAL_MS || 50);
   if (!Number.isInteger(providerTimeoutMs) || providerTimeoutMs < 1000 || providerTimeoutMs > 300_000) throw new Error('clean_provider_timeout_invalid');
   if (!Number.isInteger(runnerPollIntervalMs) || runnerPollIntervalMs < 1 || runnerPollIntervalMs > 5000) throw new Error('runner_poll_interval_invalid');
+  if (!Number.isInteger(parserPollIntervalMs) || parserPollIntervalMs < 1 || parserPollIntervalMs > 5000) throw new Error('parser_poll_interval_invalid');
   if (production && mcpPepper.length < 32) throw new Error('mcp_pepper_required');
   if (production && gatewaySecret.length < 32) throw new Error('gateway_secret_required');
   return Object.freeze({
@@ -39,6 +41,10 @@ export function loadCleanConfig(env = process.env) {
     runnerBrokerUrl: env.AIWS_RUNNER_BROKER_URL ? String(env.AIWS_RUNNER_BROKER_URL).replace(/\/$/, '') : null,
     runnerBrokerSecret: String(env.AIWS_RUNNER_BROKER_SECRET || (production ? '' : 'p6-clean-broker-fixture-secret')),
     runnerPollIntervalMs,
+    parserBrokerUrl: env.AIWS_PARSER_BROKER_URL ? String(env.AIWS_PARSER_BROKER_URL).replace(/\/$/, '') : (env.AIWS_RUNNER_BROKER_URL ? String(env.AIWS_RUNNER_BROKER_URL).replace(/\/$/, '') : null),
+    parserBrokerSecret: String(env.AIWS_PARSER_BROKER_SECRET || env.AIWS_RUNNER_BROKER_SECRET || (production ? '' : 'p7-clean-parser-broker-fixture-secret')),
+    parserImageDigest: String(env.AIWS_PARSER_IMAGE_DIGEST || 'sha256:bc69569bc471a27833b7f1174ac1634b5760614c6742237c443641ac5da808e4').toLowerCase(),
+    parserPollIntervalMs,
     runnerHomeRoot: path.resolve(String(env.AIWS_HOST_RUNNER_HOME || path.join(home, 'runner-homes'))),
     workspaceRoot: path.resolve(String(env.AIWS_CLEAN_WORKSPACES || path.join(home, 'workspaces'))),
     vaultRoot: path.resolve(String(env.AIWS_CLEAN_VAULT || path.join(home, 'vault'))),

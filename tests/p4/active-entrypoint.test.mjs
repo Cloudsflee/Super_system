@@ -22,31 +22,35 @@ function fixture() {
   };
 }
 
-test('active API entrypoint boots schema v6 with the complete P6 owner surface', async () => {
+test('active API entrypoint boots schema v7 with the complete P7 owner surface', async () => {
   const f = fixture();
   const app = await createApp({ config: f.config });
   try {
     await app.recovery;
-    assert.equal(ACTIVE_TARGET_VERSION, 6);
+    assert.equal(ACTIVE_TARGET_VERSION, 7);
     assert.equal(app.p3, true);
     assert.equal(app.p4, true);
     assert.equal(app.p5, true);
     assert.equal(app.p6, true);
-    assert.equal(app.metadata.user_version, 6);
-    assert.equal(app.db.integrity().user_version, 6);
+    assert.equal(app.p7, true);
+    assert.equal(app.metadata.user_version, 7);
+    assert.equal(app.db.integrity().user_version, 7);
     assert.equal(app.ownership.valid, true);
     assert.ok(app.registry.get('context.map'));
     assert.ok(app.registry.get('gateway.forward'));
     assert.ok(app.registry.get('assist.session.create'));
     assert.ok(app.registry.get('runner.profile.list'));
     assert.ok(app.registry.get('execution.create'));
+    assert.ok(app.registry.get('asset.capture'));
+    assert.ok(app.registry.get('quality.start'));
+    assert.ok(app.registry.get('outcome.evaluate'));
   } finally {
     await app.close();
     fs.rmSync(f.root, { recursive: true, force: true });
   }
 });
 
-test('active HTTP wrapper serves schema v6 health and keeps API v1 retired', async () => {
+test('active HTTP wrapper serves schema v7 health and keeps API v1 retired', async () => {
   const f = fixture();
   const running = await start({ config: f.config });
   const base = `http://127.0.0.1:${running.server.address().port}`;
@@ -54,7 +58,7 @@ test('active HTTP wrapper serves schema v6 health and keeps API v1 retired', asy
     const ready = await fetch(`${base}/readyz`);
     const readyBody = await ready.json();
     assert.equal(ready.status, 200);
-    assert.equal(readyBody.data.user_version, 6);
+    assert.equal(readyBody.data.user_version, 7);
     assert.equal(readyBody.data.schema_family, 'v3-clean');
 
     const retired = await fetch(`${base}/api/v1/projects`);

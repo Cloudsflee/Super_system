@@ -239,7 +239,7 @@ export class CleanMcpExchangeService {
 
   async dispatch(name, args = {}, principal, options = {}) {
     if (!this.dispatcher) throw new PlatformError('dispatcher_unavailable', 'Clean command dispatcher is unavailable', {}, 503);
-    const dispatched = await this.dispatcher.dispatch(name, args, principal);
+    const dispatched = await this.dispatcher.dispatch(name, args, principal, { transport: options.transport || 'mcp' });
     return { ...dispatched, result: this.policy?.redact(dispatched.result).value || dispatched.result };
   }
 

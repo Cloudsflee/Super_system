@@ -8,12 +8,14 @@ ARG AIWS_SBOM_SHA256=unknown
 
 FROM ${NODE_IMAGE} AS dependencies
 ARG ALPINE_MIRROR=https://mirrors.aliyun.com/alpine
+ENV COREPACK_NPM_REGISTRY=https://registry.npmmirror.com
 RUN apk add --no-cache python3 make g++ git ca-certificates || (sed -i "s#https://dl-cdn.alpinelinux.org/alpine#${ALPINE_MIRROR}#g" /etc/apk/repositories && apk add --no-cache python3 make g++ git ca-certificates)
 RUN corepack enable
 WORKDIR /app
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 COPY apps/web/package.json apps/web/package.json
 COPY apps/runner-broker/package.json apps/runner-broker/package.json
+COPY apps/parser-worker/package.json apps/parser-worker/package.json
 COPY packages/contracts/package.json packages/contracts/package.json
 RUN corepack pnpm install --frozen-lockfile \
       --registry=https://registry.npmmirror.com \
@@ -71,20 +73,16 @@ LABEL org.opencontainers.image.title="AIWS runner broker" \
       aiws.component="runner-broker"
 RUN apk add --no-cache ca-certificates docker-cli || (sed -i "s#https://dl-cdn.alpinelinux.org/alpine#${ALPINE_MIRROR}#g" /etc/apk/repositories && apk add --no-cache ca-certificates docker-cli)
 WORKDIR /app
-ENV NODE_ENV=production AIWS_BROKER_HOST=0.0.0.0 AIWS_BROKER_PORT=4321 AIWS_BROKER_DATA_ROOT=/var/lib/aiws AIWS_BROKER_HMAC_SECRET_FILE=/run/secrets/broker_hmac
+ENV NODE_ENV=production AIWS_BROKER_HOST=0.0.0.0 AIWS_BROKER_PORT=4321 AIWS_BROKER_STATE=/var/lib/aiws AIWS_BROKER_HMAC_SECRET_FILE=/run/secrets/broker_hmac
 COPY package.json ./package.json
-COPY apps/api/src/crypto.mjs apps/api/src/crypto.mjs
-COPY apps/api/src/errors.mjs apps/api/src/errors.mjs
-COPY apps/api/src/path-policy.mjs apps/api/src/path-policy.mjs
 COPY apps/runner-broker/package.json apps/runner-broker/package.json
-COPY apps/runner-broker/src apps/runner-broker/src
-COPY apps/runner-broker/server.mjs apps/runner-broker/server.mjs
-COPY packages/contracts packages/contracts
+COPY apps/runner-broker/clean-server.mjs apps/runner-broker/clean-server.mjs
+COPY apps/api/src/clean apps/api/src/clean
 COPY sbom.spdx.json ./sbom.spdx.json
 RUN mkdir -p /var/lib/aiws && chmod 700 /var/lib/aiws
 EXPOSE 4321
-HEALTHCHECK --interval=10s --timeout=5s --start-period=10s --retries=6 CMD node -e "fetch('http://127.0.0.1:4321/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
-CMD ["node", "apps/runner-broker/server.mjs"]
+HEALTHCHECK --interval=10s --timeout=5s --start-period=10s --retries=6 CMD node -e "fetch('http://127.0.0.1:4321/livez').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
+CMD ["node", "apps/runner-broker/clean-server.mjs"]
 
 FROM ${NODE_IMAGE} AS codex-runner
 ARG ALPINE_MIRROR=https://mirrors.aliyun.com/alpine
@@ -128,3 +126,34 @@ COPY apps/runner-broker/src/codex-config.mjs ./src/codex-config.mjs
 COPY sbom.spdx.json ./sbom.spdx.json
 USER 10001:10001
 ENTRYPOINT ["node", "/runner/codex-runner.mjs"]
+
+FROM ${NODE_IMAGE} AS parser-worker
+ARG AIWS_VERSION
+ARG AIWS_COMMIT
+ARG AIWS_TREE
+ARG AIWS_LOCKFILE_SHA256
+ARG AIWS_GATE_FINGERPRINT
+ARG AIWS_SBOM_SHA256
+LABEL org.opencontainers.image.title="AIWS isolated parser worker" \
+      org.opencontainers.image.version="${AIWS_VERSION}" \
+      org.opencontainers.image.revision="${AIWS_COMMIT}" \
+      aiws.source.tree="${AIWS_TREE}" \
+      aiws.source.lockfile-sha256="${AIWS_LOCKFILE_SHA256}" \
+      aiws.gate.fingerprint="${AIWS_GATE_FINGERPRINT}" \
+      aiws.sbom.sha256="${AIWS_SBOM_SHA256}" \
+      aiws.component="parser-worker" \
+      aiws.parser.protocol="parser.job.v1" \
+      aiws.parser.worker-version="node24-p7"
+WORKDIR /app/apps/parser-worker
+ENV NODE_ENV=production HOME=/tmp/parser-home
+COPY --from=dependencies /app/node_modules /app/node_modules
+COPY --from=dependencies /app/apps/parser-worker/node_modules ./node_modules
+COPY package.json /app/package.json
+COPY apps/parser-worker/package.json ./package.json
+COPY apps/parser-worker/worker.mjs ./worker.mjs
+COPY apps/parser-worker/parser-engine.mjs ./parser-engine.mjs
+COPY apps/api/src/clean/canonical.mjs /app/apps/api/src/clean/canonical.mjs
+COPY apps/api/src/clean/parser-limits.mjs /app/apps/api/src/clean/parser-limits.mjs
+RUN mkdir -p /input /output /tmp/parser-home && chown -R 10001:10001 /input /output /tmp/parser-home /app/apps/parser-worker
+USER 10001:10001
+ENTRYPOINT ["node", "/app/apps/parser-worker/worker.mjs"]

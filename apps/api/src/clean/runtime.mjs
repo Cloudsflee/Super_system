@@ -26,10 +26,16 @@ import { DeterministicAppServerAdapter, ProcessAppServerAdapter } from './app-se
 import { CleanRunnerService } from './runner-service.mjs';
 import { CleanExecutionService } from './execution-service.mjs';
 import { BrokerRunnerAdapter, BridgeJobAdapter, HostRunnerAdapter } from './runner-adapters.mjs';
+import { CleanEvidenceService } from './evidence-service.mjs';
+import { CleanParserService } from './parser-service.mjs';
+import { CleanQualityService } from './quality-service.mjs';
+import { CleanOutcomeEvaluationService } from './outcome-evaluation-service.mjs';
+import { BrokerParserAdapter, DeterministicParserAdapter } from './parser-adapters.mjs';
+import { P7_PARSER_IMAGE_DIGEST } from './migrations/007-evidence-quality-parser-outcome.mjs';
 
 export function createCleanRuntime(options = {}) {
   const config = options.config || loadCleanConfig(options.env || process.env);
-  const targetVersion = Number(options.targetVersion || options.schemaVersion || (options.p6 || options.phase === 'p6' || options.cleanPhase === 'p6' ? 6 : (options.p5 || options.phase === 'p5' || options.cleanPhase === 'p5' ? 5 : (options.p4 || options.phase === 'p4' || options.cleanPhase === 'p4' ? 4 : (options.p3 || options.phase === 'p3' || options.cleanPhase === 'p3' ? 3 : 2)))));
+  const targetVersion = targetVersionFromOptions(options);
   const vaultMasterKey = options.vaultMasterKey || config.vaultMasterKey;
   if (typeof vaultMasterKey !== 'string' || vaultMasterKey.length < 16) throw new CleanNotReadyError('credential vault key is required', { reason: 'vault_key_missing', schema_family: 'v3-clean' });
   let initialized;
@@ -73,7 +79,12 @@ export function createCleanRuntime(options = {}) {
   const runnerAdapters = targetVersion >= 6 ? createRunnerAdapters({ options, config, bridge, db, vault }) : null;
   const runner = targetVersion >= 6 ? new CleanRunnerService({ db, events, operations, authorization, vault, adapters: runnerAdapters, clock: options.now || undefined, pollIntervalMs: options.runnerPollIntervalMs || config.runnerPollIntervalMs, config }) : null;
   const execution = targetVersion >= 6 ? new CleanExecutionService({ db, events, operations, authorization, runner, projectWorkflow, assist, clock: options.now || undefined, config, sleep: options.runnerSleep, retryDelays: options.runnerRetryDelays }) : null;
-  const dispatcher = targetVersion >= 4 ? new CleanCommandDispatcher({ registry, context, mcp, gateway, projectWorkflow, operations, events, assist, files, terminal, bridge, runner, execution }) : null;
+  const evidence = targetVersion >= 7 ? new CleanEvidenceService({ db, cas, events, operations, authorization, files, clock: options.now || undefined, config, bootstrapActorId: initialized.metadata.bootstrap_actor_id }) : null;
+  const parserAdapter = targetVersion >= 7 ? createParserAdapter(options, config) : null;
+  const parser = targetVersion >= 7 ? new CleanParserService({ db, cas, events, operations, authorization, evidence, adapter: parserAdapter, clock: options.now || undefined, pollIntervalMs: options.parserPollIntervalMs || config.parserPollIntervalMs, sleep: options.parserSleep, retryDelays: options.parserRetryDelays, serviceIdentity: options.parserServiceIdentity, bootstrapActorId: initialized.metadata.bootstrap_actor_id }) : null;
+  const quality = targetVersion >= 7 ? new CleanQualityService({ db, cas, events, operations, authorization, evidence, clock: options.now || undefined, bootstrapActorId: initialized.metadata.bootstrap_actor_id }) : null;
+  const outcomeEvaluation = targetVersion >= 7 ? new CleanOutcomeEvaluationService({ db, events, operations, authorization, clock: options.now || undefined, bootstrapActorId: initialized.metadata.bootstrap_actor_id }) : null;
+  const dispatcher = targetVersion >= 4 ? new CleanCommandDispatcher({ registry, context, mcp, gateway, projectWorkflow, operations, events, assist, files, terminal, bridge, runner, execution, evidence, parser, quality, outcomeEvaluation }) : null;
   if (mcp) mcp.dispatcher = dispatcher;
   const recovery = (async () => {
     const identityResult = await identity.recoverPending();
@@ -84,7 +95,11 @@ export function createCleanRuntime(options = {}) {
     const terminalResult = await (terminal?.recoverPending?.() || 0);
     const bridgeResult = await (bridge?.recoverPending?.() || 0);
     const executionResult = await (execution?.recoverPending?.() || 0);
-    return [identityResult, projectResult, contextResult, assistResult, filesResult, terminalResult, bridgeResult, executionResult];
+    const evidenceResult = await (evidence?.recoverPending?.() || 0);
+    const parserResult = await (parser?.recoverPending?.() || 0);
+    const qualityResult = await (quality?.recoverPending?.() || 0);
+    const outcomeResult = await (outcomeEvaluation?.recoverPending?.() || 0);
+    return [identityResult, projectResult, contextResult, assistResult, filesResult, terminalResult, bridgeResult, executionResult, evidenceResult, parserResult, qualityResult, outcomeResult];
   })();
   events.authorize = (context) => authorization.authorize({ actorId: context.actorId, effectiveActorId: context.actorId, scopes: ['*'] }, 'read', context.projectId, { events: context.events }).allowed;
   let casManifest;
@@ -130,6 +145,11 @@ export function createCleanRuntime(options = {}) {
     bridge,
     runner,
     execution,
+    evidence,
+    parser,
+    parserAdapter,
+    quality,
+    outcomeEvaluation,
     dispatcher,
     project: projectWorkflow,
     repository: projectWorkflow,
@@ -151,11 +171,14 @@ export function createCleanRuntime(options = {}) {
     p4: targetVersion >= 4,
     p5: targetVersion >= 5,
     p6: targetVersion >= 6,
+    p7: targetVersion >= 7,
     health() {
-      return { runtime: 'v3-clean', ready: this.ready, readiness_reason: this.readinessReason, readiness_receipt: this.readinessReceipt, schema_family: this.metadata.family, user_version: this.metadata.user_version, cas_manifest: this.casManifest || null, p2: this.p2, p3: this.p3, p4: this.p4, p5: this.p5, p6: this.p6 };
+      return { runtime: 'v3-clean', ready: this.ready, readiness_reason: this.readinessReason, readiness_receipt: this.readinessReceipt, schema_family: this.metadata.family, user_version: this.metadata.user_version, cas_manifest: this.casManifest || null, p2: this.p2, p3: this.p3, p4: this.p4, p5: this.p5, p6: this.p6, p7: this.p7 };
     },
     close() {
       this.terminal?.close?.();
+      this.evidence?.close?.();
+      this.outcomeEvaluation?.close?.();
       const providerClose = this.assist?.close?.();
       this.db.close();
       return Promise.resolve(providerClose);
@@ -191,7 +214,7 @@ function createAssistProvider(options, config) {
 export function createNotReadyRuntime(options = {}, failure = null) {
   const config = options.config || loadCleanConfig(options.env || process.env);
   const policy = options.policy || new RedactionPolicy();
-  const targetVersion = Number(options.targetVersion || options.schemaVersion || (options.p6 || options.phase === 'p6' || options.cleanPhase === 'p6' ? 6 : (options.p5 || options.phase === 'p5' || options.cleanPhase === 'p5' ? 5 : (options.p4 || options.phase === 'p4' || options.cleanPhase === 'p4' ? 4 : (options.p3 || options.phase === 'p3' || options.cleanPhase === 'p3' ? 3 : 2)))));
+  const targetVersion = targetVersionFromOptions(options);
   const registry = createCleanCommandRegistry({ targetVersion });
   const details = failure?.details && typeof failure.details === 'object' ? failure.details : {};
   const reason = String(details.reason || failure?.code || 'startup_failed');
@@ -224,6 +247,11 @@ export function createNotReadyRuntime(options = {}, failure = null) {
     bridge: null,
     runner: null,
     execution: null,
+    evidence: null,
+    parser: null,
+    parserAdapter: null,
+    quality: null,
+    outcomeEvaluation: null,
     dispatcher: null,
     project: null,
     repository: null,
@@ -245,8 +273,9 @@ export function createNotReadyRuntime(options = {}, failure = null) {
     p4: false,
     p5: false,
     p6: false,
+    p7: false,
     health() {
-      return { runtime: 'v3-clean', ready: false, readiness_reason: this.readinessReason, readiness_receipt: this.readinessReceipt, schema_family: this.metadata.family, user_version: this.metadata.user_version, cas_manifest: null, p2: false, p3: false, p4: false, p5: false, p6: false };
+      return { runtime: 'v3-clean', ready: false, readiness_reason: this.readinessReason, readiness_receipt: this.readinessReceipt, schema_family: this.metadata.family, user_version: this.metadata.user_version, cas_manifest: null, p2: false, p3: false, p4: false, p5: false, p6: false, p7: false };
     },
     close() {}
   };
@@ -271,4 +300,16 @@ function createRunnerAdapters({ options, config, bridge, db, vault }) {
     docker: options.dockerRunnerAdapter || new BrokerRunnerAdapter({ baseUrl: config.runnerBrokerUrl, secret: config.runnerBrokerSecret, clock: options.runnerClock }),
     ...(bridgeJobs ? { windows_bridge: options.bridgeRunnerAdapter || bridgeJobs } : {})
   };
+}
+
+function createParserAdapter(options, config) {
+  if (options.parserAdapter) return options.parserAdapter;
+  if (config.parserBrokerUrl) return new BrokerParserAdapter({ baseUrl: config.parserBrokerUrl, secret: config.parserBrokerSecret, clock: options.parserClock });
+  return new DeterministicParserAdapter({ clock: options.parserClock || options.now || undefined, execute: options.parserExecute, identity: options.parserWorkerIdentity, imageDigest: config.parserImageDigest || P7_PARSER_IMAGE_DIGEST });
+}
+
+function targetVersionFromOptions(options = {}) {
+  if (options.targetVersion != null || options.schemaVersion != null) return Number(options.targetVersion ?? options.schemaVersion);
+  for (const version of [7, 6, 5, 4, 3]) if (options[`p${version}`] || options.phase === `p${version}` || options.cleanPhase === `p${version}`) return version;
+  return 2;
 }

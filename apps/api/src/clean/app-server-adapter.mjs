@@ -175,7 +175,7 @@ export class DeterministicAppServerAdapter {
 }
 
 export class ProcessAppServerAdapter {
-  constructor({ command = 'codex', args = ['app-server', '--stdio'], timeoutMs = 30_000, env = process.env, homeRoot = null } = {}) {
+  constructor({ command = 'codex', args = ['--disable', 'plugins', '--disable', 'remote_plugin', 'app-server', '--stdio'], timeoutMs = 30_000, env = process.env, homeRoot = null } = {}) {
     this.command = resolveCodexCommand(command);
     this.args = [...args];
     this.timeoutMs = timeoutMs;
@@ -205,7 +205,7 @@ export class ProcessAppServerAdapter {
       };
     } finally {
       await connection?.close();
-      await removeTree(home);
+      await removeIsolatedProviderTree(home);
     }
   }
 
@@ -222,7 +222,7 @@ export class ProcessAppServerAdapter {
       return await connection.request(payload.method, payload.params || {});
     } finally {
       await connection?.close();
-      if (!home) await removeTree(ownedHome);
+      if (!home) await removeIsolatedProviderTree(ownedHome);
     }
   }
 
@@ -247,7 +247,7 @@ export class ProcessAppServerAdapter {
       return { thread_id: threadId };
     } catch (error) {
       await connection?.close();
-      await removeTree(home);
+      await removeIsolatedProviderTree(home);
       throw error;
     }
   }
@@ -267,7 +267,7 @@ export class ProcessAppServerAdapter {
         this.connections.set(threadId, state);
       } catch (error) {
         await connection?.close();
-        await removeTree(home);
+        await removeIsolatedProviderTree(home);
         throw error;
       }
     } else if (!state.pending) {
@@ -323,7 +323,7 @@ export class ProcessAppServerAdapter {
     this.connections.clear();
     await Promise.all(states.map(async (state) => {
       await state.connection.close();
-      await removeTree(state.home);
+      await removeIsolatedProviderTree(state.home);
     }));
   }
 
@@ -339,7 +339,7 @@ export class ProcessAppServerAdapter {
       this.schemaInfo = { methods, sha256: sha256Hex(chunks.join('\n')) };
       return this.schemaInfo;
     } finally {
-      await removeTree(output);
+      await removeIsolatedProviderTree(output);
     }
   }
 
@@ -570,21 +570,45 @@ function runChild(command, args, env, timeoutMs) {
 function listFiles(root) { const result = []; for (const entry of fs.readdirSync(root, { withFileTypes: true })) { const file = path.join(root, entry.name); if (entry.isDirectory()) result.push(...listFiles(file)); else result.push(file); } return result; }
 function collectProtocolMethods(value, methods) { if (Array.isArray(value)) { for (const item of value) collectProtocolMethods(item, methods); return; } if (!value || typeof value !== 'object') return; for (const [key, item] of Object.entries(value)) { if ((key === 'const' || key === 'enum') && (typeof item === 'string' || Array.isArray(item))) { for (const candidate of Array.isArray(item) ? item : [item]) if (/^(?:initialize|thread\/|turn\/|item\/)/.test(String(candidate))) methods.add(String(candidate)); } else collectProtocolMethods(item, methods); } }
 async function waitFor(promise, timeoutMs) { let timer; try { return await Promise.race([promise, new Promise((resolve) => { timer = setTimeout(resolve, timeoutMs); })]); } finally { clearTimeout(timer); } }
-async function removeTree(target) {
+export async function removeIsolatedProviderTree(target) {
   const value = String(target || '');
   if (!value) return;
+  const deadline = Date.now() + 30_000;
   let lastError;
-  for (let attempt = 0; attempt < 12; attempt += 1) {
+  while (Date.now() <= deadline) {
     try {
       await fs.promises.rm(value, { recursive: true, force: true, maxRetries: 2, retryDelay: 50 });
       return;
     } catch (error) {
       lastError = error;
-      if (!['EPERM', 'EBUSY', 'ENOTEMPTY', 'EACCES'].includes(String(error?.code || '')) || attempt === 11) throw error;
-      await new Promise((resolve) => setTimeout(resolve, 100 * (attempt + 1)));
+      if (!['EPERM', 'EBUSY', 'ENOTEMPTY', 'EACCES'].includes(String(error?.code || ''))) throw error;
+      if (process.platform === 'win32' && ['EPERM', 'EACCES'].includes(String(error?.code || ''))) {
+        await makeTreeWritable(value);
+        try {
+          await fs.promises.rm(value, { recursive: true, force: true, maxRetries: 2, retryDelay: 50 });
+          return;
+        } catch (retryError) {
+          lastError = retryError;
+          if (!['EPERM', 'EBUSY', 'ENOTEMPTY', 'EACCES'].includes(String(retryError?.code || ''))) throw retryError;
+        }
+      }
+      const remaining = deadline - Date.now();
+      if (remaining <= 0) break;
+      await new Promise((resolve) => setTimeout(resolve, Math.min(250, remaining)));
     }
   }
   if (lastError) throw lastError;
+}
+
+async function makeTreeWritable(target) {
+  let entries = [];
+  try { entries = await fs.promises.readdir(target, { withFileTypes: true }); } catch { return; }
+  for (const entry of entries) {
+    const child = path.join(target, entry.name);
+    if (entry.isDirectory() && !entry.isSymbolicLink()) await makeTreeWritable(child);
+    try { await fs.promises.chmod(child, entry.isDirectory() ? 0o700 : 0o600); } catch { /* retry reports the original cleanup failure */ }
+  }
+  try { await fs.promises.chmod(target, 0o700); } catch { /* retry reports the original cleanup failure */ }
 }
 
 function defaultEvents({ turnId, message, calls, assistant }) {

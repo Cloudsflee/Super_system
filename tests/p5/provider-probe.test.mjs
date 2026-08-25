@@ -6,7 +6,7 @@ import test from 'node:test';
 import { stringify as stringifyToml } from 'smol-toml';
 import {
   DeterministicAppServerAdapter, ProcessAppServerAdapter,
-  isolateProviderConfiguration, writeIsolatedProviderConfiguration
+  isolateProviderConfiguration, removeIsolatedProviderTree, writeIsolatedProviderConfiguration
 } from '../../apps/api/src/clean/app-server-adapter.mjs';
 import {
   acquireProviderCredentialLease, loadCodexProviderConfiguration,
@@ -53,6 +53,17 @@ test('process adapter does not inherit parent session or provider credentials', 
     }
   });
   assert.deepEqual(adapter.env, { PATH: 'fixture-path', SYSTEMROOT: 'fixture-system-root', JAVA_HOME: 'fixture-java-home' });
+  assert.deepEqual(adapter.args, ['--disable', 'plugins', '--disable', 'remote_plugin', 'app-server', '--stdio']);
+});
+
+test('isolated provider cleanup removes read-only Git pack files', async () => {
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'p5-provider-cleanup-'));
+  const pack = path.join(home, '.tmp', 'plugins-clone-fixture', '.git', 'objects', 'pack', 'fixture.pack');
+  fs.mkdirSync(path.dirname(pack), { recursive: true });
+  fs.writeFileSync(pack, 'fixture');
+  fs.chmodSync(pack, 0o400);
+  await removeIsolatedProviderTree(home);
+  assert.equal(fs.existsSync(home), false);
 });
 
 test('Codex login credential is leased into a zeroable Buffer and host inline auth is not copied', () => {
