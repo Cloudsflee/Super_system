@@ -1,0 +1,219 @@
+{
+  "schema_version": "aiws.v3-clean.p7-migration-receipt.v1",
+  "status": "passed",
+  "registry": [
+    {
+      "version": 1,
+      "id": "001-clean-baseline",
+      "checksum": "cca3488f5328cb66e030dab0fed7fad023980e7178b78e60256777fbb8dde424"
+    },
+    {
+      "version": 2,
+      "id": "002-identity-acl",
+      "checksum": "b8bcbda157aadda8eaafbebf20830297ba9be74abec2782c5ff1141192fce103"
+    },
+    {
+      "version": 3,
+      "id": "003-project-workflow",
+      "checksum": "57a93d5fc8bf041d9ab350cc0ab4449bd4d520df9f2b5a7cc767859885a8d18e"
+    },
+    {
+      "version": 4,
+      "id": "004-context-projection-mcp",
+      "checksum": "396bd5a18f19e6eaf0dc762aff78861319e448085915eaacf956fbed13ff49bd"
+    },
+    {
+      "version": 5,
+      "id": "005-assist-files-terminal-bridge",
+      "checksum": "0b4fb2faafc281d85dafb48226065bd9873609fd6d027bb8e3bee6201c4f8fcb"
+    },
+    {
+      "version": 6,
+      "id": "006-runner-execution-checkpoint-replay",
+      "checksum": "b358e0939590b4935ceea55e173a485ec02b20abed79e3a747d5b33a8608b804"
+    },
+    {
+      "version": 7,
+      "id": "007-evidence-quality-parser-outcome",
+      "checksum": "14efe0ff90348ff54c1b9691c39a28b0a4955e8eb609e973d3190123c7adcbd3"
+    }
+  ],
+  "upgrades": [
+    {
+      "start_version": 0,
+      "end_version": 7,
+      "p7_tables": [
+        "asset_attestations",
+        "asset_blobs",
+        "asset_relations",
+        "asset_versions",
+        "assets",
+        "code_changes",
+        "digests",
+        "human_reviews",
+        "outcome_evaluations",
+        "outcome_waivers",
+        "parser_formats",
+        "parser_runs",
+        "quality_review_events",
+        "quality_review_reports",
+        "quality_review_runs",
+        "test_results",
+        "traces"
+      ],
+      "snapshot_sha256": "16c9e436ac6f821b33502c401b899f33c92760ccf5063170b23a400afcdfda75",
+      "status": "passed"
+    },
+    {
+      "start_version": 1,
+      "end_version": 7,
+      "p7_tables": [
+        "asset_attestations",
+        "asset_blobs",
+        "asset_relations",
+        "asset_versions",
+        "assets",
+        "code_changes",
+        "digests",
+        "human_reviews",
+        "outcome_evaluations",
+        "outcome_waivers",
+        "parser_formats",
+        "parser_runs",
+        "quality_review_events",
+        "quality_review_reports",
+        "quality_review_runs",
+        "test_results",
+        "traces"
+      ],
+      "snapshot_sha256": "16c9e436ac6f821b33502c401b899f33c92760ccf5063170b23a400afcdfda75",
+      "status": "passed"
+    },
+    {
+      "start_version": 2,
+      "end_version": 7,
+      "p7_tables": [
+        "asset_attestations",
+        "asset_blobs",
+        "asset_relations",
+        "asset_versions",
+        "assets",
+        "code_changes",
+        "digests",
+        "human_reviews",
+        "outcome_evaluations",
+        "outcome_waivers",
+        "parser_formats",
+        "parser_runs",
+        "quality_review_events",
+        "quality_review_reports",
+        "quality_review_runs",
+        "test_results",
+        "traces"
+      ],
+      "snapshot_sha256": "16c9e436ac6f821b33502c401b899f33c92760ccf5063170b23a400afcdfda75",
+      "status": "passed"
+    },
+    {
+      "start_version": 3,
+      "end_version": 7,
+      "p7_tables": [
+        "asset_attestations",
+        "asset_blobs",
+        "asset_relations",
+        "asset_versions",
+        "assets",
+        "code_changes",
+        "digests",
+        "human_reviews",
+        "outcome_evaluations",
+        "outcome_waivers",
+        "parser_formats",
+        "parser_runs",
+        "quality_review_events",
+        "quality_review_reports",
+        "quality_review_runs",
+        "test_results",
+        "traces"
+      ],
+      "snapshot_sha256": "16c9e436ac6f821b33502c401b899f33c92760ccf5063170b23a400afcdfda75",
+      "status": "passed"
+    },
+    {
+      "start_version": 4,
+      "end_version": 7,
+      "p7_tables": [
+        "asset_attestations",
+        "asset_blobs",
+        "asset_relations",
+        "asset_versions",
+        "assets",
+        "code_changes",
+        "digests",
+        "human_reviews",
+        "outcome_evaluations",
+        "outcome_waivers",
+        "parser_formats",
+        "parser_runs",
+        "quality_review_events",
+        "quality_review_reports",
+        "quality_review_runs",
+        "test_results",
+        "traces"
+      ],
+      "snapshot_sha256": "16c9e436ac6f821b33502c401b899f33c92760ccf5063170b23a400afcdfda75",
+      "status": "passed"
+    },
+    {
+      "start_version": 5,
+      "end_version": 7,
+      "p7_tables": [
+        "asset_attestations",
+        "asset_blobs",
+        "asset_relations",
+        "asset_versions",
+        "assets",
+        "code_changes",
+        "digests",
+        "human_reviews",
+        "outcome_evaluations",
+        "outcome_waivers",
+        "parser_formats",
+        "parser_runs",
+        "quality_review_events",
+        "quality_review_reports",
+        "quality_review_runs",
+        "test_results",
+        "traces"
+      ],
+      "snapshot_sha256": "16c9e436ac6f821b33502c401b899f33c92760ccf5063170b23a400afcdfda75",
+      "status": "passed"
+    },
+    {
+      "start_version": 6,
+      "end_version": 7,
+      "p7_tables": [
+        "asset_attestations",
+        "asset_blobs",
+        "asset_relations",
+        "asset_versions",
+        "assets",
+        "code_changes",
+        "digests",
+        "human_reviews",
+        "outcome_evaluations",
+        "outcome_waivers",
+        "parser_formats",
+        "parser_runs",
+        "quality_review_events",
+        "quality_review_reports",
+        "quality_review_runs",
+        "test_results",
+        "traces"
+      ],
+      "snapshot_sha256": "16c9e436ac6f821b33502c401b899f33c92760ccf5063170b23a400afcdfda75",
+      "status": "passed"
+    }
+  ],
+  "failures": []
+}

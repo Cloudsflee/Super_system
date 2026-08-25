@@ -1,0 +1,62 @@
+{
+  "schema_version": "aiws.v3-clean.p7-parser-probe-record.v1",
+  "status": "passed",
+  "command": {
+    "command": "node scripts/v3-clean-p7-parser-probe.mjs",
+    "cwd": "repository-root",
+    "input": {
+      "args": [
+        "scripts/v3-clean-p7-parser-probe.mjs"
+      ]
+    },
+    "stdout": "{\n  \"schema_version\": \"aiws.v3-clean.p7-parser-probe.v1\",\n  \"status\": \"passed\",\n  \"provisional\": false,\n  \"image_build_command\": \"docker build --provenance=false --target parser-worker\",\n  \"image_build_count\": 2,\n  \"image_ids\": [\n    \"sha256:bc69569bc471a27833b7f1174ac1634b5760614c6742237c443641ac5da808e4\",\n    \"sha256:bc69569bc471a27833b7f1174ac1634b5760614c6742237c443641ac5da808e4\"\n  ],\n  \"image_digest\": \"sha256:bc69569bc471a27833b7f1174ac1634b5760614c6742237c443641ac5da808e4\",\n  \"digest_reproducible\": true,\n  \"real_container\": true,\n  \"worker_probe\": {\n    \"schema_version\": \"parser.worker-probe.v1\",\n    \"status\": \"parsed\",\n    \"runtime\": \"v24.14.0\"\n  },\n  \"broker_protocol\": \"parser.job.v1\",\n  \"receipt_protocol\": \"parser.receipt.v1\",\n  \"isolation\": [\n    \"network:none\",\n    \"read-only-root\",\n    \"cap-drop-all\",\n    \"no-new-privileges\",\n    \"bounded-tmpfs\"\n  ],\n  \"receipt\": {\n    \"receipt_id\": \"parser_receipt_a5d6ad7e2c9fd939086c6378c073dd26\",\n    \"status\": \"parsed\",\n    \"job_sha256\": \"d70e5943bf95a7456562d55a721d18dd28b085440494625e3e667f93e08f3964\",\n    \"input_sha256\": \"3c4bd601da233f0d3603b4da4131341a8ec06764e2fd95f8525d6ab4fbb631c2\",\n    \"format_sha256\": \"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\n    \"limits_sha256\": \"55384144948a34b8f295d3f2871095b3e0e647ab01b92e8c2c59c6cdb15fa0bc\",\n    \"checkpoint_token_hash\": \"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\",\n    \"output_manifest_sha256\": \"35429f831d7a1b7635cbbe75591d2ac3d633e5058a26c869562dd70d4de300d6\",\n    \"error_code\": \"\"\n  },\n  \"output_sha256\": \"3c4bd601da233f0d3603b4da4131341a8ec06764e2fd95f8525d6ab4fbb631c2\"\n}\n",
+    "stderr": "",
+    "exit_status": 0,
+    "expected_exit_statuses": [
+      0
+    ],
+    "signal": null,
+    "ok": true,
+    "summary": "\"receipt_id\": \"parser_receipt_a5d6ad7e2c9fd939086c6378c073dd26\",\n\"status\": \"parsed\",\n\"job_sha256\": \"d70e5943bf95a7456562d55a721d18dd28b085440494625e3e667f93e08f3964\",\n\"input_sha256\": \"3c4bd601da233f0d3603b4da4131341a8ec06764e2fd95f8525d6ab4fbb631c2\",\n\"format_sha256\": \"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\n\"limits_sha256\": \"55384144948a34b8f295d3f2871095b3e0e647ab01b92e8c2c59c6cdb15fa0bc\",\n\"checkpoint_token_hash\": \"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\",\n\"output_manifest_sha256\": \"35429f831d7a1b7635cbbe75591d2ac3d633e5058a26c869562dd70d4de300d6\",\n\"error_code\": \"\"\n},\n\"output_sha256\": \"3c4bd601da233f0d3603b4da4131341a8ec06764e2fd95f8525d6ab4fbb631c2\"\n}"
+  },
+  "receipt": {
+    "schema_version": "aiws.v3-clean.p7-parser-probe.v1",
+    "status": "passed",
+    "provisional": false,
+    "image_build_command": "docker build --provenance=false --target parser-worker",
+    "image_build_count": 2,
+    "image_ids": [
+      "sha256:bc69569bc471a27833b7f1174ac1634b5760614c6742237c443641ac5da808e4",
+      "sha256:bc69569bc471a27833b7f1174ac1634b5760614c6742237c443641ac5da808e4"
+    ],
+    "image_digest": "sha256:bc69569bc471a27833b7f1174ac1634b5760614c6742237c443641ac5da808e4",
+    "digest_reproducible": true,
+    "real_container": true,
+    "worker_probe": {
+      "schema_version": "parser.worker-probe.v1",
+      "status": "parsed",
+      "runtime": "v24.14.0"
+    },
+    "broker_protocol": "parser.job.v1",
+    "receipt_protocol": "parser.receipt.v1",
+    "isolation": [
+      "network:none",
+      "read-only-root",
+      "cap-drop-all",
+      "no-new-privileges",
+      "bounded-tmpfs"
+    ],
+    "receipt": {
+      "receipt_id": "parser_receipt_a5d6ad7e2c9fd939086c6378c073dd26",
+      "status": "parsed",
+      "job_sha256": "d70e5943bf95a7456562d55a721d18dd28b085440494625e3e667f93e08f3964",
+      "input_sha256": "3c4bd601da233f0d3603b4da4131341a8ec06764e2fd95f8525d6ab4fbb631c2",
+      "format_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "limits_sha256": "55384144948a34b8f295d3f2871095b3e0e647ab01b92e8c2c59c6cdb15fa0bc",
+      "checkpoint_token_hash": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "output_manifest_sha256": "35429f831d7a1b7635cbbe75591d2ac3d633e5058a26c869562dd70d4de300d6",
+      "error_code": ""
+    },
+    "output_sha256": "3c4bd601da233f0d3603b4da4131341a8ec06764e2fd95f8525d6ab4fbb631c2"
+  }
+}

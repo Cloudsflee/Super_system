@@ -1,0 +1,33 @@
+{
+  "schema_version": "aiws.v3-clean.p7-cas-tamper-probe-record.v1",
+  "status": "passed",
+  "command": {
+    "command": "node scripts/v3-clean-p7-cas-tamper-probe.mjs",
+    "cwd": "repository-root",
+    "input": {
+      "args": [
+        "scripts/v3-clean-p7-cas-tamper-probe.mjs"
+      ]
+    },
+    "stdout": "{\n  \"schema_version\": \"aiws.v3-clean.p7-cas-tamper-probe.v1\",\n  \"status\": \"passed\",\n  \"provisional\": false,\n  \"asset_id\": \"asset_7030f647a6c9463cba09b158bc0822aa\",\n  \"content_sha256\": \"df5528282dce37df99c73ebf7b01956123d5a8706d7bbbcaa84f4a74d6757504\",\n  \"tamper_error_code\": \"cas_tamper\",\n  \"restored_byte_length\": 19,\n  \"restored_sha256_matches\": true,\n  \"public_envelope_contains_content\": false\n}\n",
+    "stderr": "(node:18756) ExperimentalWarning: SQLite is an experimental feature and might change at any time\n(Use `node --trace-warnings ...` to show where the warning was created)\n",
+    "exit_status": 0,
+    "expected_exit_statuses": [
+      0
+    ],
+    "signal": null,
+    "ok": true,
+    "summary": "\"schema_version\": \"aiws.v3-clean.p7-cas-tamper-probe.v1\",\n\"status\": \"passed\",\n\"provisional\": false,\n\"asset_id\": \"asset_7030f647a6c9463cba09b158bc0822aa\",\n\"content_sha256\": \"df5528282dce37df99c73ebf7b01956123d5a8706d7bbbcaa84f4a74d6757504\",\n\"tamper_error_code\": \"cas_tamper\",\n\"restored_byte_length\": 19,\n\"restored_sha256_matches\": true,\n\"public_envelope_contains_content\": false\n}\n(node:18756) ExperimentalWarning: SQLite is an experimental feature and might change at any time\n(Use `node --trace-warnings ...` to show where the warning was created)"
+  },
+  "receipt": {
+    "schema_version": "aiws.v3-clean.p7-cas-tamper-probe.v1",
+    "status": "passed",
+    "provisional": false,
+    "asset_id": "asset_7030f647a6c9463cba09b158bc0822aa",
+    "content_sha256": "df5528282dce37df99c73ebf7b01956123d5a8706d7bbbcaa84f4a74d6757504",
+    "tamper_error_code": "cas_tamper",
+    "restored_byte_length": 19,
+    "restored_sha256_matches": true,
+    "public_envelope_contains_content": false
+  }
+}

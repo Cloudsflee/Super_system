@@ -1,0 +1,260 @@
+{
+  "schema_version": "aiws.v3-clean.p7-browser-record.v1",
+  "status": "passed",
+  "command": {
+    "command": "pnpm test:e2e",
+    "cwd": "repository-root",
+    "input": {
+      "args": [
+        "test:e2e"
+      ]
+    },
+    "stdout": "\n> ai-workspace-system@3.0.0 test:e2e <ROOT>\n> node scripts/e2e.mjs\n\n[node.exe] V3-Clean listening on htt<PATH>\n[node.exe] \n  \u001b[32m\u001b[1mVITE\u001b[22m v7.3.6\u001b[39m  \u001b[2mready in \u001b[0m\u001b[1m227\u001b[22m\u001b[2m\u001b[0m ms\u001b[22m\n\n[node.exe]   \u001b[32m➜\u001b[39m  \u001b[1mLocal\u001b[22m:   \u001b[36mhtt<PATH>\nP7 Clean E2E passed: Evidence/Parser/Quality/Outcome and Runner replay across 3 viewports; overlaps=0; /api/v1 requests=0\n",
+    "stderr": "[node.exe] (node:37344) ExperimentalWarning: SQLite is an experimental feature and might change at any time\n(Use `node --trace-warnings ...` to show where the warning was created)\n",
+    "exit_status": 0,
+    "expected_exit_statuses": [
+      0
+    ],
+    "signal": null,
+    "ok": true,
+    "summary": "> ai-workspace-system@3.0.0 test:e2e <ROOT>\n> node scripts/e2e.mjs\n[node.exe] V3-Clean listening on htt<PATH>\n[node.exe]\n\u001b[32m\u001b[1mVITE\u001b[22m v7.3.6\u001b[39m  \u001b[2mready in \u001b[0m\u001b[1m227\u001b[22m\u001b[2m\u001b[0m ms\u001b[22m\n[node.exe]   \u001b[32m➜\u001b[39m  \u001b[1mLocal\u001b[22m:   \u001b[36mhtt<PATH>\nP7 Clean E2E passed: Evidence/Parser/Quality/Outcome and Runner replay across 3 viewports; overlaps=0; /api/v1 requests=0\n[node.exe] (node:37344) ExperimentalWarning: SQLite is an experimental feature and might change at any time\n(Use `node --trace-warnings ...` to show where the warning was created)"
+  },
+  "receipt": {
+    "schema_version": "aiws.v3-clean.p7-e2e-receipt.v1",
+    "status": "passed",
+    "provisional": false,
+    "api_port": 59109,
+    "web_port": 59110,
+    "viewports": [
+      "mobile",
+      "laptop",
+      "desktop"
+    ],
+    "routes": [
+      "context",
+      "settings",
+      "execution",
+      "execution-quality",
+      "execution-outcome",
+      "evidence",
+      "connections"
+    ],
+    "request_count": 672,
+    "legacy_api_v1_requests": [],
+    "browser_errors": [],
+    "http_errors": [],
+    "layouts": [
+      {
+        "viewport": "mobile",
+        "route": "context",
+        "horizontal_overflow": false,
+        "scroll_width": 390,
+        "client_width": 390,
+        "overlaps": []
+      },
+      {
+        "viewport": "mobile",
+        "route": "settings",
+        "horizontal_overflow": false,
+        "scroll_width": 390,
+        "client_width": 390,
+        "overlaps": []
+      },
+      {
+        "viewport": "mobile",
+        "route": "execution",
+        "horizontal_overflow": false,
+        "scroll_width": 390,
+        "client_width": 390,
+        "overlaps": []
+      },
+      {
+        "viewport": "mobile",
+        "route": "execution-quality",
+        "horizontal_overflow": false,
+        "scroll_width": 390,
+        "client_width": 390,
+        "overlaps": []
+      },
+      {
+        "viewport": "mobile",
+        "route": "execution-outcome",
+        "horizontal_overflow": false,
+        "scroll_width": 390,
+        "client_width": 390,
+        "overlaps": []
+      },
+      {
+        "viewport": "mobile",
+        "route": "evidence",
+        "horizontal_overflow": false,
+        "scroll_width": 390,
+        "client_width": 390,
+        "overlaps": []
+      },
+      {
+        "viewport": "mobile",
+        "route": "connections",
+        "horizontal_overflow": false,
+        "scroll_width": 390,
+        "client_width": 390,
+        "overlaps": []
+      },
+      {
+        "viewport": "laptop",
+        "route": "context",
+        "horizontal_overflow": false,
+        "scroll_width": 1024,
+        "client_width": 1024,
+        "overlaps": []
+      },
+      {
+        "viewport": "laptop",
+        "route": "settings",
+        "horizontal_overflow": false,
+        "scroll_width": 1024,
+        "client_width": 1024,
+        "overlaps": []
+      },
+      {
+        "viewport": "laptop",
+        "route": "execution",
+        "horizontal_overflow": false,
+        "scroll_width": 1024,
+        "client_width": 1024,
+        "overlaps": []
+      },
+      {
+        "viewport": "laptop",
+        "route": "execution-quality",
+        "horizontal_overflow": false,
+        "scroll_width": 1024,
+        "client_width": 1024,
+        "overlaps": []
+      },
+      {
+        "viewport": "laptop",
+        "route": "execution-outcome",
+        "horizontal_overflow": false,
+        "scroll_width": 1024,
+        "client_width": 1024,
+        "overlaps": []
+      },
+      {
+        "viewport": "laptop",
+        "route": "evidence",
+        "horizontal_overflow": false,
+        "scroll_width": 1024,
+        "client_width": 1024,
+        "overlaps": []
+      },
+      {
+        "viewport": "laptop",
+        "route": "connections",
+        "horizontal_overflow": false,
+        "scroll_width": 1024,
+        "client_width": 1024,
+        "overlaps": []
+      },
+      {
+        "viewport": "desktop",
+        "route": "context",
+        "horizontal_overflow": false,
+        "scroll_width": 1440,
+        "client_width": 1440,
+        "overlaps": []
+      },
+      {
+        "viewport": "desktop",
+        "route": "settings",
+        "horizontal_overflow": false,
+        "scroll_width": 1440,
+        "client_width": 1440,
+        "overlaps": []
+      },
+      {
+        "viewport": "desktop",
+        "route": "execution",
+        "horizontal_overflow": false,
+        "scroll_width": 1440,
+        "client_width": 1440,
+        "overlaps": []
+      },
+      {
+        "viewport": "desktop",
+        "route": "execution-quality",
+        "horizontal_overflow": false,
+        "scroll_width": 1440,
+        "client_width": 1440,
+        "overlaps": []
+      },
+      {
+        "viewport": "desktop",
+        "route": "execution-outcome",
+        "horizontal_overflow": false,
+        "scroll_width": 1440,
+        "client_width": 1440,
+        "overlaps": []
+      },
+      {
+        "viewport": "desktop",
+        "route": "evidence",
+        "horizontal_overflow": false,
+        "scroll_width": 1440,
+        "client_width": 1440,
+        "overlaps": []
+      },
+      {
+        "viewport": "desktop",
+        "route": "connections",
+        "horizontal_overflow": false,
+        "scroll_width": 1440,
+        "client_width": 1440,
+        "overlaps": []
+      }
+    ],
+    "context_pack_hash": "21e638b4918507d1c12680bcc9abef6503271151a3afda055f8640d861caff2b",
+    "runner_profile": {
+      "id": "runner_profile_64a4d6267c5046e29fa479a79a3ee9e5",
+      "type": "host",
+      "status": "ready"
+    },
+    "execution": {
+      "id": "execution_d606e55d16564024af53dfc36f9438ff",
+      "status": "completed",
+      "generation": 2,
+      "checkpoint_count": 8,
+      "attempt_count": 1,
+      "delivery_ready": true,
+      "approval_wait_resumed": true,
+      "replayed_stage": "deliver"
+    },
+    "evidence": {
+      "asset_id": "asset_33cf95373bef42e8af8c7a4491dab0c2",
+      "status": "active",
+      "source_version_count": 1,
+      "parser_status": "parsed",
+      "output_asset_version_id": "asset_version_2368757b34cb42f39a7c042b91192272",
+      "attestation_count": 1
+    },
+    "quality": {
+      "review_id": "quality_review_41e0dd1891a749ea937f8764660262c5",
+      "status": "completed",
+      "weighted_score": 90.4,
+      "report_sha256": "cf51a390e5db6b6fe08a4ef5dc4f6687d7e46b415513f5599efbee3955b2658f"
+    },
+    "outcome": {
+      "requirement_count": 2,
+      "terminal_statuses": {
+        "blocked": "blocked",
+        "waived": "waived",
+        "revoked": "blocked"
+      },
+      "generations": {
+        "blocked": 10,
+        "waived": 11,
+        "revoked": 12
+      }
+    }
+  }
+}

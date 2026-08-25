@@ -1,0 +1,35 @@
+{
+  "schema_version": "aiws.v3-clean.p7-restart-probe-record.v1",
+  "status": "passed",
+  "command": {
+    "command": "node scripts/v3-clean-p7-restart-probe.mjs",
+    "cwd": "repository-root",
+    "input": {
+      "args": [
+        "scripts/v3-clean-p7-restart-probe.mjs"
+      ]
+    },
+    "stdout": "{\n  \"schema_version\": \"aiws.v3-clean.p7-restart-probe.v1\",\n  \"status\": \"passed\",\n  \"provisional\": false,\n  \"adapter\": \"clean-broker-parser\",\n  \"operation_status\": \"succeeded\",\n  \"parser_status\": \"parsed\",\n  \"broker_job_id_preserved\": true,\n  \"pinned_hashes_preserved\": true,\n  \"output_asset_created\": true,\n  \"runtime_restart\": true,\n  \"foreign_key_check\": []\n}\n",
+    "stderr": "(node:39340) ExperimentalWarning: SQLite is an experimental feature and might change at any time\n(Use `node --trace-warnings ...` to show where the warning was created)\n",
+    "exit_status": 0,
+    "expected_exit_statuses": [
+      0
+    ],
+    "signal": null,
+    "ok": true,
+    "summary": "\"provisional\": false,\n\"adapter\": \"clean-broker-parser\",\n\"operation_status\": \"succeeded\",\n\"parser_status\": \"parsed\",\n\"broker_job_id_preserved\": true,\n\"pinned_hashes_preserved\": true,\n\"output_asset_created\": true,\n\"runtime_restart\": true,\n\"foreign_key_check\": []\n}\n(node:39340) ExperimentalWarning: SQLite is an experimental feature and might change at any time\n(Use `node --trace-warnings ...` to show where the warning was created)"
+  },
+  "receipt": {
+    "schema_version": "aiws.v3-clean.p7-restart-probe.v1",
+    "status": "passed",
+    "provisional": false,
+    "adapter": "clean-broker-parser",
+    "operation_status": "succeeded",
+    "parser_status": "parsed",
+    "broker_job_id_preserved": true,
+    "pinned_hashes_preserved": true,
+    "output_asset_created": true,
+    "runtime_restart": true,
+    "foreign_key_check": []
+  }
+}

@@ -1,0 +1,47 @@
+{
+  "schema_version": "aiws.v3-clean.p7-performance-record.v1",
+  "status": "passed",
+  "command": {
+    "command": "node scripts/v3-clean-p7-performance.mjs",
+    "cwd": "repository-root",
+    "input": {
+      "args": [
+        "scripts/v3-clean-p7-performance.mjs"
+      ]
+    },
+    "stdout": "{\n  \"schema_version\": \"aiws.v3-clean.p7-performance.v1\",\n  \"status\": \"passed\",\n  \"provisional\": false,\n  \"metrics\": {\n    \"evidence_replay_1000_p95_ms\": 0.4,\n    \"asset_lineage_100_p95_ms\": 0.92,\n    \"quality_detail_16_assets_500_anchors_p95_ms\": 0.79,\n    \"outcome_evaluation_100_requirements_p95_ms\": 32.73,\n    \"event_count\": 1000,\n    \"asset_count\": 100,\n    \"relation_count\": 99,\n    \"quality_asset_count\": 16,\n    \"quality_anchor_count\": 500,\n    \"outcome_requirement_count\": 100\n  },\n  \"thresholds\": {\n    \"evidence_replay_1000_p95_ms\": 200,\n    \"asset_lineage_100_p95_ms\": 200,\n    \"quality_detail_16_assets_500_anchors_p95_ms\": 300,\n    \"outcome_evaluation_100_requirements_p95_ms\": 200\n  },\n  \"parser_latency\": \"recorded_by_parser_probe\",\n  \"failures\": []\n}\n",
+    "stderr": "(node:33500) ExperimentalWarning: SQLite is an experimental feature and might change at any time\n(Use `node --trace-warnings ...` to show where the warning was created)\n",
+    "exit_status": 0,
+    "expected_exit_statuses": [
+      0
+    ],
+    "signal": null,
+    "ok": true,
+    "summary": "},\n\"thresholds\": {\n\"evidence_replay_1000_p95_ms\": 200,\n\"asset_lineage_100_p95_ms\": 200,\n\"quality_detail_16_assets_500_anchors_p95_ms\": 300,\n\"outcome_evaluation_100_requirements_p95_ms\": 200\n},\n\"parser_latency\": \"recorded_by_parser_probe\",\n\"failures\": []\n}\n(node:33500) ExperimentalWarning: SQLite is an experimental feature and might change at any time\n(Use `node --trace-warnings ...` to show where the warning was created)"
+  },
+  "receipt": {
+    "schema_version": "aiws.v3-clean.p7-performance.v1",
+    "status": "passed",
+    "provisional": false,
+    "metrics": {
+      "evidence_replay_1000_p95_ms": 0.4,
+      "asset_lineage_100_p95_ms": 0.92,
+      "quality_detail_16_assets_500_anchors_p95_ms": 0.79,
+      "outcome_evaluation_100_requirements_p95_ms": 32.73,
+      "event_count": 1000,
+      "asset_count": 100,
+      "relation_count": 99,
+      "quality_asset_count": 16,
+      "quality_anchor_count": 500,
+      "outcome_requirement_count": 100
+    },
+    "thresholds": {
+      "evidence_replay_1000_p95_ms": 200,
+      "asset_lineage_100_p95_ms": 200,
+      "quality_detail_16_assets_500_anchors_p95_ms": 300,
+      "outcome_evaluation_100_requirements_p95_ms": 200
+    },
+    "parser_latency": "recorded_by_parser_probe",
+    "failures": []
+  }
+}

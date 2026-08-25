@@ -1,0 +1,87 @@
+{
+  "schema_version": "aiws.v3-clean.p7-preflight.v1",
+  "phase": "P7",
+  "baseline": "af8fcaf2f5df7a0667a7f31c5784afbdc9a48ceb",
+  "generated_at": "2026-08-25T13:52:53.407Z",
+  "Target": "P7 CAS/Evidence/Trace/Quality/Parser/Outcome synchronized receipt, baseline=af8fcaf2f5df7a0667a7f31c5784afbdc9a48ceb",
+  "目标": "schema v7, trusted asset lineage, isolated all-format parsing, human quality decisions, deterministic Outcome, Catalog 23/4/27, and immutable P7 Evidence",
+  "Goal": "schema v7, signed parser boundary, immutable Evidence/Quality/Outcome generations, and non-provisional P7 Evidence",
+  "Non-target": "P8 Delivery/Importer/Deployment and P9 Offline/Release",
+  "非目标": "real pull request, production cutover, physical CAS GC, and release claim",
+  "Forbidden": [
+    "/api/v1 active route",
+    "historical runtime import",
+    "second operation/event/CAS/head model",
+    "API Docker socket",
+    "parser-authored human verdict",
+    "secret/token/full prompt/host absolute path/parser body in public or Evidence envelope"
+  ],
+  "禁止项": [
+    "modify P1-P6 migrations or verified Evidence",
+    "overwrite existing worktree changes",
+    "promote a provisional receipt"
+  ],
+  "Reuse": [
+    "P1-P6 operations/events/heads/idempotency/ACL/Vault/CAS/dispatcher",
+    "Runner/Broker/Execution/Attachments",
+    "HMAC/nonce/workspace pin/restart reconciliation"
+  ],
+  "复用项": [
+    "verified P6 runtime",
+    "generic ledger and CAS",
+    "Execution handoff receipts",
+    "Broker signing boundary"
+  ],
+  "Delete/retire": [
+    "active runtime dependency on historical Evidence/Quality/Outcome/parser contracts",
+    "active Web dependency on historical Evidence/Quality APIs"
+  ],
+  "删除/退役": [
+    "historical Evidence and Quality runtime dependency",
+    "historical parser contract dependency"
+  ],
+  "Acceptance_commands": [
+    "pnpm check",
+    "pnpm audit:p1",
+    "pnpm scan:clean",
+    "pnpm recovery:plan",
+    "pnpm recovery:catalog",
+    "pnpm recovery:coverage",
+    "pnpm recovery:impact -- --audit",
+    "pnpm test:p1",
+    "pnpm test:p2",
+    "pnpm test:p3",
+    "pnpm test:p31",
+    "pnpm test:p4",
+    "pnpm test:p5",
+    "pnpm test:p6",
+    "pnpm test:p7",
+    "node scripts/v3-clean-p5-performance.mjs",
+    "node scripts/v3-clean-p5-assist-probe.mjs",
+    "node scripts/v3-clean-p5-bridge-probe.mjs",
+    "node scripts/v3-clean-p6-performance.mjs",
+    "node scripts/v3-clean-p6-docker-runner-probe.mjs",
+    "node scripts/v3-clean-p6-host-runner-probe.mjs",
+    "node scripts/v3-clean-p6-bridge-runner-probe.mjs",
+    "node scripts/v3-clean-p6-restart-probe.mjs",
+    "node scripts/v3-clean-p7-performance.mjs",
+    "node scripts/v3-clean-p7-cas-tamper-probe.mjs",
+    "node scripts/v3-clean-p7-parser-probe.mjs",
+    "node scripts/v3-clean-p7-quality-outcome-probe.mjs",
+    "node scripts/v3-clean-p7-restart-probe.mjs",
+    "pnpm --filter @aiws/web test",
+    "pnpm test",
+    "pnpm test:integration:clean",
+    "pnpm test:security:clean",
+    "pnpm test:integration",
+    "pnpm test:security",
+    "pnpm build",
+    "pnpm test:e2e",
+    "git diff --check"
+  ],
+  "验收命令": "P1-P7 gates, P7 performance/probes, Web/Clean/full gates, evidence:p7, verify, and git diff --check",
+  "Rollback_artifact": "docs/evidence/v3-clean-p7-evidence-quality-outcome-20260824/rollback.ps1",
+  "回滚工件": "docs/evidence/v3-clean-p7-evidence-quality-outcome-20260824/rollback.ps1",
+  "last_confirmed_result": "P7 core and Web tests passed with signed parser and deterministic Quality/Outcome probes",
+  "next_action": "run synchronized P7 gates and publish immutable Evidence"
+}

@@ -1,0 +1,57 @@
+{
+  "schema_version": "aiws.v3-clean.p7-catalog-inventory.v1",
+  "status": "passed",
+  "validation": {
+    "valid": true,
+    "failures": [],
+    "counts": {
+      "clean": 23,
+      "historical": 4,
+      "total": 27
+    }
+  },
+  "clean_ids": [
+    "REC-D0-GOVERNANCE-000",
+    "REC-D10-FRONTEND-024",
+    "REC-D2-IDENTITY-001",
+    "REC-D2-SETUP-002",
+    "REC-D3-RUNNER-003",
+    "REC-D4-MCP-004",
+    "REC-D4-SCOPE-016",
+    "REC-D5-PROJECT-005",
+    "REC-D5-WORKFLOW-006",
+    "REC-D6-EXECUTION-008",
+    "REC-D6-GENERATION-007",
+    "REC-D6-OUTCOME-009",
+    "REC-D7-REPOSITORY-014",
+    "REC-D8-APPROVAL-013",
+    "REC-D8-ASSIST-010",
+    "REC-D8-ATTACHMENTS-011",
+    "REC-D8-BRIDGE-026",
+    "REC-D8-FILES-012",
+    "REC-D8-TERMINAL-025",
+    "REC-D9-CONTEXT-017",
+    "REC-D9-PROJECTION-018",
+    "REC-D9-EVIDENCE-019",
+    "REC-D9-QUALITY-020"
+  ],
+  "historical_ids": [
+    "REC-D1-CONTRACTS-023",
+    "REC-D11-OPS-022",
+    "REC-D7-DELIVERY-015",
+    "REC-D9-DEPLOYMENT-021"
+  ],
+  "promoted_ids": [
+    "REC-D9-EVIDENCE-019",
+    "REC-D9-QUALITY-020",
+    "REC-D6-OUTCOME-009",
+    "REC-D8-ATTACHMENTS-011"
+  ],
+  "moved_ids": [
+    "REC-D9-EVIDENCE-019",
+    "REC-D9-QUALITY-020"
+  ],
+  "unchanged_statuses": {
+    "REC-D10-FRONTEND-024": "scaffolded"
+  }
+}

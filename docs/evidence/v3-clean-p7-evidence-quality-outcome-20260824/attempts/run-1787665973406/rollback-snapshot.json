@@ -1,0 +1,81 @@
+{
+  "schema_version": "aiws.v3-clean.p7-rollback-snapshot.v1",
+  "status": "passed",
+  "database": {
+    "file": "rollback-v6.sqlite",
+    "sha256": "acabf0b6b2eaba94303c5cff0a39e4edd5f5c633cbd35aa3cada742b0908969f",
+    "bytes": 1249280,
+    "user_version": 6,
+    "foreign_key_check": []
+  },
+  "components": {
+    "file": "rollback-components-v6.json",
+    "sha256": "789bc610d06d70cd26a6c7731de61f448b58fb14da311154b4e9898aff865189",
+    "roles": [
+      "cas",
+      "vault",
+      "workspace",
+      "broker",
+      "bridge",
+      "parser"
+    ]
+  },
+  "migration_ledger": [
+    {
+      "migration_id": "001-clean-baseline",
+      "version": 1,
+      "checksum": "cca3488f5328cb66e030dab0fed7fad023980e7178b78e60256777fbb8dde424",
+      "snapshot_sha256": "29a8103754a9d5aea1b6d23c2e6c36ed578698bb15a961299bb3eed4a8e53abe"
+    },
+    {
+      "migration_id": "002-identity-acl",
+      "version": 2,
+      "checksum": "b8bcbda157aadda8eaafbebf20830297ba9be74abec2782c5ff1141192fce103",
+      "snapshot_sha256": "cf6a799dd5ef3ae49e547799ae2a4e084fded5e55c2991fabbf8143d0a6c8f49"
+    },
+    {
+      "migration_id": "003-project-workflow",
+      "version": 3,
+      "checksum": "57a93d5fc8bf041d9ab350cc0ab4449bd4d520df9f2b5a7cc767859885a8d18e",
+      "snapshot_sha256": "70b159e6403055136c0f1cd71d4a8d4a6d781e880fa4ba33a9eafcf5c2d4f32d"
+    },
+    {
+      "migration_id": "004-context-projection-mcp",
+      "version": 4,
+      "checksum": "396bd5a18f19e6eaf0dc762aff78861319e448085915eaacf956fbed13ff49bd",
+      "snapshot_sha256": "c15aba67f32eadf00424d8d13945b224bc6d0f1141a7ef7bec554120a224c541"
+    },
+    {
+      "migration_id": "005-assist-files-terminal-bridge",
+      "version": 5,
+      "checksum": "0b4fb2faafc281d85dafb48226065bd9873609fd6d027bb8e3bee6201c4f8fcb",
+      "snapshot_sha256": "bf8055883b1460d565b2939a9d06f8790454fdad2ee2420640717a777025cc85"
+    },
+    {
+      "migration_id": "006-runner-execution-checkpoint-replay",
+      "version": 6,
+      "checksum": "b358e0939590b4935ceea55e173a485ec02b20abed79e3a747d5b33a8608b804",
+      "snapshot_sha256": "8846854ff28d9118ad3a9822d9dcbf8ffaea4e4ec56dc981a9ca6e593a629174"
+    }
+  ],
+  "present_p7_tables": [],
+  "p7_tables_absent": [
+    "asset_attestations",
+    "asset_blobs",
+    "asset_relations",
+    "asset_versions",
+    "assets",
+    "code_changes",
+    "digests",
+    "human_reviews",
+    "outcome_evaluations",
+    "outcome_waivers",
+    "parser_formats",
+    "parser_runs",
+    "quality_review_events",
+    "quality_review_reports",
+    "quality_review_runs",
+    "test_results",
+    "traces"
+  ]
+}

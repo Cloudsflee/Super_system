@@ -1,0 +1,45 @@
+{
+  "schema_version": "aiws.v3-clean.p7-protocol-inventory.v1",
+  "status": "passed",
+  "transports": [
+    "REST",
+    "Web",
+    "MCP Streamable HTTP",
+    "MCP stdio",
+    "Gateway HTTP"
+  ],
+  "registry_parity": {
+    "valid": true,
+    "mismatches": [],
+    "rest_count": 224,
+    "mcp_count": 224,
+    "web_count": 224
+  },
+  "app_server_schema_sha256": "34fb0f9d81a1a8438f0603d73901560a1f19b0e66af7ef9ef20cc2a3fcc04aca",
+  "parser_job": "parser.job.v1",
+  "parser_receipt": "parser.receipt.v1",
+  "evidence_asset": "evidence.asset.v2",
+  "parser_image_digest": "sha256:bc69569bc471a27833b7f1174ac1634b5760614c6742237c443641ac5da808e4",
+  "limits": {
+    "deadline_seconds": 120,
+    "max_archive_entries": 1024,
+    "max_cells": 100000,
+    "max_compression_ratio": 1000,
+    "max_expanded_bytes": 104857600,
+    "max_images": 20,
+    "max_input_bytes": 26214400,
+    "max_media_seconds": 900,
+    "max_pdf_pages": 500,
+    "max_recursion_depth": 3,
+    "max_slides": 500,
+    "max_text_chars": 240000
+  },
+  "limits_sha256": "55384144948a34b8f295d3f2871095b3e0e647ab01b92e8c2c59c6cdb15fa0bc",
+  "format_count": 21,
+  "broker_transport": "timestamp-nonce-body-sha256-hmac",
+  "broker_endpoints": [
+    "/internal/v2/parser-jobs",
+    "/internal/v2/parser-jobs/{id}",
+    "/internal/v2/parser-jobs/{id}/cancel"
+  ]
+}

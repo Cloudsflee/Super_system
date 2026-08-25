@@ -1,0 +1,450 @@
+{
+  "schema_version": "aiws.v3-clean.p7-format-inventory.v1",
+  "status": "passed",
+  "count": 21,
+  "formats": [
+    {
+      "format_key": "7z",
+      "family": "archive",
+      "label": "7-Zip",
+      "extensions_json": "[\"7z\"]",
+      "media_types_json": "[\"application/x-7z-compressed\"]",
+      "signatures_json": "[\"377abcaf271c\"]",
+      "worker_version": "node24-p7",
+      "worker_image_digest": "sha256:bc69569bc471a27833b7f1174ac1634b5760614c6742237c443641ac5da808e4",
+      "limits_sha256": "55384144948a34b8f295d3f2871095b3e0e647ab01b92e8c2c59c6cdb15fa0bc",
+      "status": "supported",
+      "extensions": [
+        "7z"
+      ],
+      "media_types": [
+        "application/x-7z-compressed"
+      ],
+      "signatures": [
+        "377abcaf271c"
+      ]
+    },
+    {
+      "format_key": "audio",
+      "family": "media",
+      "label": "Audio",
+      "extensions_json": "[\"mp3\",\"wav\",\"m4a\",\"ogg\",\"flac\"]",
+      "media_types_json": "[\"audio/mpeg\",\"audio/wav\",\"audio/mp4\",\"audio/ogg\",\"audio/flac\"]",
+      "signatures_json": "[]",
+      "worker_version": "node24-p7",
+      "worker_image_digest": "sha256:bc69569bc471a27833b7f1174ac1634b5760614c6742237c443641ac5da808e4",
+      "limits_sha256": "55384144948a34b8f295d3f2871095b3e0e647ab01b92e8c2c59c6cdb15fa0bc",
+      "status": "supported",
+      "extensions": [
+        "mp3",
+        "wav",
+        "m4a",
+        "ogg",
+        "flac"
+      ],
+      "media_types": [
+        "audio/mpeg",
+        "audio/wav",
+        "audio/mp4",
+        "audio/ogg",
+        "audio/flac"
+      ],
+      "signatures": []
+    },
+    {
+      "format_key": "csv",
+      "family": "spreadsheet",
+      "label": "CSV",
+      "extensions_json": "[\"csv\"]",
+      "media_types_json": "[\"text/csv\"]",
+      "signatures_json": "[]",
+      "worker_version": "node24-p7",
+      "worker_image_digest": "sha256:bc69569bc471a27833b7f1174ac1634b5760614c6742237c443641ac5da808e4",
+      "limits_sha256": "55384144948a34b8f295d3f2871095b3e0e647ab01b92e8c2c59c6cdb15fa0bc",
+      "status": "supported",
+      "extensions": [
+        "csv"
+      ],
+      "media_types": [
+        "text/csv"
+      ],
+      "signatures": []
+    },
+    {
+      "format_key": "docx",
+      "family": "document",
+      "label": "DOCX",
+      "extensions_json": "[\"docx\"]",
+      "media_types_json": "[\"application/vnd.openxmlformats-officedocument.wordprocessingml.document\"]",
+      "signatures_json": "[\"504b0304\"]",
+      "worker_version": "node24-p7",
+      "worker_image_digest": "sha256:bc69569bc471a27833b7f1174ac1634b5760614c6742237c443641ac5da808e4",
+      "limits_sha256": "55384144948a34b8f295d3f2871095b3e0e647ab01b92e8c2c59c6cdb15fa0bc",
+      "status": "supported",
+      "extensions": [
+        "docx"
+      ],
+      "media_types": [
+        "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+      ],
+      "signatures": [
+        "504b0304"
+      ]
+    },
+    {
+      "format_key": "gif",
+      "family": "image",
+      "label": "GIF",
+      "extensions_json": "[\"gif\"]",
+      "media_types_json": "[\"image/gif\"]",
+      "signatures_json": "[\"47494638\"]",
+      "worker_version": "node24-p7",
+      "worker_image_digest": "sha256:bc69569bc471a27833b7f1174ac1634b5760614c6742237c443641ac5da808e4",
+      "limits_sha256": "55384144948a34b8f295d3f2871095b3e0e647ab01b92e8c2c59c6cdb15fa0bc",
+      "status": "supported",
+      "extensions": [
+        "gif"
+      ],
+      "media_types": [
+        "image/gif"
+      ],
+      "signatures": [
+        "47494638"
+      ]
+    },
+    {
+      "format_key": "gzip",
+      "family": "archive",
+      "label": "GZIP",
+      "extensions_json": "[\"gz\",\"tgz\"]",
+      "media_types_json": "[\"application/gzip\"]",
+      "signatures_json": "[\"1f8b08\"]",
+      "worker_version": "node24-p7",
+      "worker_image_digest": "sha256:bc69569bc471a27833b7f1174ac1634b5760614c6742237c443641ac5da808e4",
+      "limits_sha256": "55384144948a34b8f295d3f2871095b3e0e647ab01b92e8c2c59c6cdb15fa0bc",
+      "status": "supported",
+      "extensions": [
+        "gz",
+        "tgz"
+      ],
+      "media_types": [
+        "application/gzip"
+      ],
+      "signatures": [
+        "1f8b08"
+      ]
+    },
+    {
+      "format_key": "jpeg",
+      "family": "image",
+      "label": "JPEG",
+      "extensions_json": "[\"jpg\",\"jpeg\"]",
+      "media_types_json": "[\"image/jpeg\"]",
+      "signatures_json": "[\"ffd8ff\"]",
+      "worker_version": "node24-p7",
+      "worker_image_digest": "sha256:bc69569bc471a27833b7f1174ac1634b5760614c6742237c443641ac5da808e4",
+      "limits_sha256": "55384144948a34b8f295d3f2871095b3e0e647ab01b92e8c2c59c6cdb15fa0bc",
+      "status": "supported",
+      "extensions": [
+        "jpg",
+        "jpeg"
+      ],
+      "media_types": [
+        "image/jpeg"
+      ],
+      "signatures": [
+        "ffd8ff"
+      ]
+    },
+    {
+      "format_key": "json",
+      "family": "text",
+      "label": "JSON",
+      "extensions_json": "[\"json\"]",
+      "media_types_json": "[\"application/json\"]",
+      "signatures_json": "[]",
+      "worker_version": "node24-p7",
+      "worker_image_digest": "sha256:bc69569bc471a27833b7f1174ac1634b5760614c6742237c443641ac5da808e4",
+      "limits_sha256": "55384144948a34b8f295d3f2871095b3e0e647ab01b92e8c2c59c6cdb15fa0bc",
+      "status": "supported",
+      "extensions": [
+        "json"
+      ],
+      "media_types": [
+        "application/json"
+      ],
+      "signatures": []
+    },
+    {
+      "format_key": "markdown",
+      "family": "text",
+      "label": "Markdown",
+      "extensions_json": "[\"md\",\"markdown\"]",
+      "media_types_json": "[\"text/markdown\"]",
+      "signatures_json": "[]",
+      "worker_version": "node24-p7",
+      "worker_image_digest": "sha256:bc69569bc471a27833b7f1174ac1634b5760614c6742237c443641ac5da808e4",
+      "limits_sha256": "55384144948a34b8f295d3f2871095b3e0e647ab01b92e8c2c59c6cdb15fa0bc",
+      "status": "supported",
+      "extensions": [
+        "md",
+        "markdown"
+      ],
+      "media_types": [
+        "text/markdown"
+      ],
+      "signatures": []
+    },
+    {
+      "format_key": "pdf",
+      "family": "document",
+      "label": "PDF",
+      "extensions_json": "[\"pdf\"]",
+      "media_types_json": "[\"application/pdf\"]",
+      "signatures_json": "[\"25504446\"]",
+      "worker_version": "node24-p7",
+      "worker_image_digest": "sha256:bc69569bc471a27833b7f1174ac1634b5760614c6742237c443641ac5da808e4",
+      "limits_sha256": "55384144948a34b8f295d3f2871095b3e0e647ab01b92e8c2c59c6cdb15fa0bc",
+      "status": "supported",
+      "extensions": [
+        "pdf"
+      ],
+      "media_types": [
+        "application/pdf"
+      ],
+      "signatures": [
+        "25504446"
+      ]
+    },
+    {
+      "format_key": "png",
+      "family": "image",
+      "label": "PNG",
+      "extensions_json": "[\"png\"]",
+      "media_types_json": "[\"image/png\"]",
+      "signatures_json": "[\"89504e470d0a1a0a\"]",
+      "worker_version": "node24-p7",
+      "worker_image_digest": "sha256:bc69569bc471a27833b7f1174ac1634b5760614c6742237c443641ac5da808e4",
+      "limits_sha256": "55384144948a34b8f295d3f2871095b3e0e647ab01b92e8c2c59c6cdb15fa0bc",
+      "status": "supported",
+      "extensions": [
+        "png"
+      ],
+      "media_types": [
+        "image/png"
+      ],
+      "signatures": [
+        "89504e470d0a1a0a"
+      ]
+    },
+    {
+      "format_key": "pptx",
+      "family": "presentation",
+      "label": "PPTX",
+      "extensions_json": "[\"pptx\"]",
+      "media_types_json": "[\"application/vnd.openxmlformats-officedocument.presentationml.presentation\"]",
+      "signatures_json": "[\"504b0304\"]",
+      "worker_version": "node24-p7",
+      "worker_image_digest": "sha256:bc69569bc471a27833b7f1174ac1634b5760614c6742237c443641ac5da808e4",
+      "limits_sha256": "55384144948a34b8f295d3f2871095b3e0e647ab01b92e8c2c59c6cdb15fa0bc",
+      "status": "supported",
+      "extensions": [
+        "pptx"
+      ],
+      "media_types": [
+        "application/vnd.openxmlformats-officedocument.presentationml.presentation"
+      ],
+      "signatures": [
+        "504b0304"
+      ]
+    },
+    {
+      "format_key": "rar",
+      "family": "archive",
+      "label": "RAR",
+      "extensions_json": "[\"rar\"]",
+      "media_types_json": "[\"application/vnd.rar\",\"application/x-rar-compressed\"]",
+      "signatures_json": "[\"526172211a07\"]",
+      "worker_version": "node24-p7",
+      "worker_image_digest": "sha256:bc69569bc471a27833b7f1174ac1634b5760614c6742237c443641ac5da808e4",
+      "limits_sha256": "55384144948a34b8f295d3f2871095b3e0e647ab01b92e8c2c59c6cdb15fa0bc",
+      "status": "supported",
+      "extensions": [
+        "rar"
+      ],
+      "media_types": [
+        "application/vnd.rar",
+        "application/x-rar-compressed"
+      ],
+      "signatures": [
+        "526172211a07"
+      ]
+    },
+    {
+      "format_key": "svg",
+      "family": "image",
+      "label": "SVG",
+      "extensions_json": "[\"svg\"]",
+      "media_types_json": "[\"image/svg+xml\"]",
+      "signatures_json": "[]",
+      "worker_version": "node24-p7",
+      "worker_image_digest": "sha256:bc69569bc471a27833b7f1174ac1634b5760614c6742237c443641ac5da808e4",
+      "limits_sha256": "55384144948a34b8f295d3f2871095b3e0e647ab01b92e8c2c59c6cdb15fa0bc",
+      "status": "supported",
+      "extensions": [
+        "svg"
+      ],
+      "media_types": [
+        "image/svg+xml"
+      ],
+      "signatures": []
+    },
+    {
+      "format_key": "tar",
+      "family": "archive",
+      "label": "TAR",
+      "extensions_json": "[\"tar\"]",
+      "media_types_json": "[\"application/x-tar\"]",
+      "signatures_json": "[]",
+      "worker_version": "node24-p7",
+      "worker_image_digest": "sha256:bc69569bc471a27833b7f1174ac1634b5760614c6742237c443641ac5da808e4",
+      "limits_sha256": "55384144948a34b8f295d3f2871095b3e0e647ab01b92e8c2c59c6cdb15fa0bc",
+      "status": "supported",
+      "extensions": [
+        "tar"
+      ],
+      "media_types": [
+        "application/x-tar"
+      ],
+      "signatures": []
+    },
+    {
+      "format_key": "text",
+      "family": "text",
+      "label": "Plain text",
+      "extensions_json": "[\"txt\",\"log\"]",
+      "media_types_json": "[\"text/plain\"]",
+      "signatures_json": "[]",
+      "worker_version": "node24-p7",
+      "worker_image_digest": "sha256:bc69569bc471a27833b7f1174ac1634b5760614c6742237c443641ac5da808e4",
+      "limits_sha256": "55384144948a34b8f295d3f2871095b3e0e647ab01b92e8c2c59c6cdb15fa0bc",
+      "status": "supported",
+      "extensions": [
+        "txt",
+        "log"
+      ],
+      "media_types": [
+        "text/plain"
+      ],
+      "signatures": []
+    },
+    {
+      "format_key": "video",
+      "family": "media",
+      "label": "Video",
+      "extensions_json": "[\"mp4\",\"webm\",\"mov\",\"mkv\"]",
+      "media_types_json": "[\"video/mp4\",\"video/webm\",\"video/quicktime\",\"video/x-matroska\"]",
+      "signatures_json": "[]",
+      "worker_version": "node24-p7",
+      "worker_image_digest": "sha256:bc69569bc471a27833b7f1174ac1634b5760614c6742237c443641ac5da808e4",
+      "limits_sha256": "55384144948a34b8f295d3f2871095b3e0e647ab01b92e8c2c59c6cdb15fa0bc",
+      "status": "supported",
+      "extensions": [
+        "mp4",
+        "webm",
+        "mov",
+        "mkv"
+      ],
+      "media_types": [
+        "video/mp4",
+        "video/webm",
+        "video/quicktime",
+        "video/x-matroska"
+      ],
+      "signatures": []
+    },
+    {
+      "format_key": "webp",
+      "family": "image",
+      "label": "WebP",
+      "extensions_json": "[\"webp\"]",
+      "media_types_json": "[\"image/webp\"]",
+      "signatures_json": "[\"52494646\"]",
+      "worker_version": "node24-p7",
+      "worker_image_digest": "sha256:bc69569bc471a27833b7f1174ac1634b5760614c6742237c443641ac5da808e4",
+      "limits_sha256": "55384144948a34b8f295d3f2871095b3e0e647ab01b92e8c2c59c6cdb15fa0bc",
+      "status": "supported",
+      "extensions": [
+        "webp"
+      ],
+      "media_types": [
+        "image/webp"
+      ],
+      "signatures": [
+        "52494646"
+      ]
+    },
+    {
+      "format_key": "xlsx",
+      "family": "spreadsheet",
+      "label": "XLSX",
+      "extensions_json": "[\"xlsx\"]",
+      "media_types_json": "[\"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet\"]",
+      "signatures_json": "[\"504b0304\"]",
+      "worker_version": "node24-p7",
+      "worker_image_digest": "sha256:bc69569bc471a27833b7f1174ac1634b5760614c6742237c443641ac5da808e4",
+      "limits_sha256": "55384144948a34b8f295d3f2871095b3e0e647ab01b92e8c2c59c6cdb15fa0bc",
+      "status": "supported",
+      "extensions": [
+        "xlsx"
+      ],
+      "media_types": [
+        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+      ],
+      "signatures": [
+        "504b0304"
+      ]
+    },
+    {
+      "format_key": "xml",
+      "family": "text",
+      "label": "XML",
+      "extensions_json": "[\"xml\"]",
+      "media_types_json": "[\"application/xml\",\"text/xml\"]",
+      "signatures_json": "[]",
+      "worker_version": "node24-p7",
+      "worker_image_digest": "sha256:bc69569bc471a27833b7f1174ac1634b5760614c6742237c443641ac5da808e4",
+      "limits_sha256": "55384144948a34b8f295d3f2871095b3e0e647ab01b92e8c2c59c6cdb15fa0bc",
+      "status": "supported",
+      "extensions": [
+        "xml"
+      ],
+      "media_types": [
+        "application/xml",
+        "text/xml"
+      ],
+      "signatures": []
+    },
+    {
+      "format_key": "zip",
+      "family": "archive",
+      "label": "ZIP",
+      "extensions_json": "[\"zip\"]",
+      "media_types_json": "[\"application/zip\"]",
+      "signatures_json": "[\"504b0304\"]",
+      "worker_version": "node24-p7",
+      "worker_image_digest": "sha256:bc69569bc471a27833b7f1174ac1634b5760614c6742237c443641ac5da808e4",
+      "limits_sha256": "55384144948a34b8f295d3f2871095b3e0e647ab01b92e8c2c59c6cdb15fa0bc",
+      "status": "supported",
+      "extensions": [
+        "zip"
+      ],
+      "media_types": [
+        "application/zip"
+      ],
+      "signatures": [
+        "504b0304"
+      ]
+    }
+  ]
+}

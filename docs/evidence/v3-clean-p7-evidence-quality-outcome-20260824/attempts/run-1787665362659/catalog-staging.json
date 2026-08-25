@@ -1,0 +1,8 @@
+{
+  "schema_version": "aiws.v3-clean.p7-catalog-staging.v1",
+  "phase": "P7",
+  "status": "staging",
+  "provisional": true,
+  "run_id": "run-1787665362659",
+  "final_reference": "docs/evidence/v3-clean-p7-evidence-quality-outcome-20260824/verification.json"
+}

@@ -1,0 +1,53 @@
+{
+  "schema_version": "aiws.v3-clean.p7-quality-outcome-probe-record.v1",
+  "status": "passed",
+  "command": {
+    "command": "node scripts/v3-clean-p7-quality-outcome-probe.mjs",
+    "cwd": "repository-root",
+    "input": {
+      "args": [
+        "scripts/v3-clean-p7-quality-outcome-probe.mjs"
+      ]
+    },
+    "stdout": "{\n  \"schema_version\": \"aiws.v3-clean.p7-quality-outcome-probe.v1\",\n  \"status\": \"passed\",\n  \"provisional\": false,\n  \"quality_status\": \"completed\",\n  \"weighted_score\": 90.8,\n  \"report_sha256\": \"24efb4713de85cd4a4997ca7a72992e8b57ed0d39b8365d960be767e54bb671f\",\n  \"decision_sha256\": \"440ed0ac2ffe3bc5741e18c3d9e1b55f07d5f2e31b8aa6c87d901011fb333685\",\n  \"quality_event_projection\": {\n    \"generic\": 6,\n    \"projected\": 6,\n    \"one_to_one\": true\n  },\n  \"evaluators\": [\n    \"digest_match\",\n    \"evidence_count\",\n    \"human_score\",\n    \"test_pass\"\n  ],\n  \"generations\": {\n    \"blocked\": 4,\n    \"waived\": 5,\n    \"revoked\": 6\n  },\n  \"terminal_statuses\": {\n    \"blocked\": \"blocked\",\n    \"waived\": \"waived\",\n    \"revoked\": \"blocked\"\n  },\n  \"requirement_count\": 4\n}\n",
+    "stderr": "(node:38956) ExperimentalWarning: SQLite is an experimental feature and might change at any time\n(Use `node --trace-warnings ...` to show where the warning was created)\n",
+    "exit_status": 0,
+    "expected_exit_statuses": [
+      0
+    ],
+    "signal": null,
+    "ok": true,
+    "summary": "\"waived\": 5,\n\"revoked\": 6\n},\n\"terminal_statuses\": {\n\"blocked\": \"blocked\",\n\"waived\": \"waived\",\n\"revoked\": \"blocked\"\n},\n\"requirement_count\": 4\n}\n(node:38956) ExperimentalWarning: SQLite is an experimental feature and might change at any time\n(Use `node --trace-warnings ...` to show where the warning was created)"
+  },
+  "receipt": {
+    "schema_version": "aiws.v3-clean.p7-quality-outcome-probe.v1",
+    "status": "passed",
+    "provisional": false,
+    "quality_status": "completed",
+    "weighted_score": 90.8,
+    "report_sha256": "24efb4713de85cd4a4997ca7a72992e8b57ed0d39b8365d960be767e54bb671f",
+    "decision_sha256": "440ed0ac2ffe3bc5741e18c3d9e1b55f07d5f2e31b8aa6c87d901011fb333685",
+    "quality_event_projection": {
+      "generic": 6,
+      "projected": 6,
+      "one_to_one": true
+    },
+    "evaluators": [
+      "digest_match",
+      "evidence_count",
+      "human_score",
+      "test_pass"
+    ],
+    "generations": {
+      "blocked": 4,
+      "waived": 5,
+      "revoked": 6
+    },
+    "terminal_statuses": {
+      "blocked": "blocked",
+      "waived": "waived",
+      "revoked": "blocked"
+    },
+    "requirement_count": 4
+  }
+}

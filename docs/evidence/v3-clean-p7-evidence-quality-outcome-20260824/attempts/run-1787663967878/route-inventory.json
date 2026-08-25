@@ -1,0 +1,669 @@
+{
+  "schema_version": "aiws.v3-clean.p7-route-inventory.v1",
+  "active_api": "/api/v2",
+  "retired_api": "/api/v1",
+  "routes": [
+    {
+      "command_id": "parser.format.list",
+      "method": "GET",
+      "path": "/api/v2/parser/formats",
+      "owner": "Parser",
+      "input_schema": "parser.formats.query.v2",
+      "output_schema": "parser.formats.v2",
+      "idempotency": "forbidden",
+      "expected_revision": "none",
+      "transport_allowlist": [
+        "rest",
+        "web",
+        "mcp",
+        "gateway"
+      ],
+      "mcp": {
+        "mapping": "resource",
+        "name": "parser_format_list",
+        "exposed": true
+      }
+    },
+    {
+      "command_id": "parser.run.start",
+      "method": "POST",
+      "path": "/api/v2/assets/{id}/versions/{version_id}/parse",
+      "owner": "Parser",
+      "input_schema": "parser.run.start.v2",
+      "output_schema": "operation.receipt.v2",
+      "idempotency": "required",
+      "expected_revision": "resource",
+      "transport_allowlist": [
+        "rest",
+        "web",
+        "mcp",
+        "gateway"
+      ],
+      "mcp": {
+        "mapping": "tool",
+        "name": "parser_run_start",
+        "exposed": true
+      }
+    },
+    {
+      "command_id": "parser.run.get",
+      "method": "GET",
+      "path": "/api/v2/parser-runs/{id}",
+      "owner": "Parser",
+      "input_schema": "parser.run.query.v2",
+      "output_schema": "parser.run.v2",
+      "idempotency": "forbidden",
+      "expected_revision": "none",
+      "transport_allowlist": [
+        "rest",
+        "web",
+        "mcp",
+        "gateway"
+      ],
+      "mcp": {
+        "mapping": "resource",
+        "name": "parser_run_get",
+        "exposed": true
+      }
+    },
+    {
+      "command_id": "parser.run.retry",
+      "method": "POST",
+      "path": "/api/v2/parser-runs/{id}/retry",
+      "owner": "Parser",
+      "input_schema": "parser.run.mutation.v2",
+      "output_schema": "operation.receipt.v2",
+      "idempotency": "required",
+      "expected_revision": "resource",
+      "transport_allowlist": [
+        "rest",
+        "web",
+        "mcp",
+        "gateway"
+      ],
+      "mcp": {
+        "mapping": "tool",
+        "name": "parser_run_retry",
+        "exposed": true
+      }
+    },
+    {
+      "command_id": "parser.run.cancel",
+      "method": "POST",
+      "path": "/api/v2/parser-runs/{id}/cancel",
+      "owner": "Parser",
+      "input_schema": "parser.run.mutation.v2",
+      "output_schema": "parser.run.receipt.v2",
+      "idempotency": "required",
+      "expected_revision": "resource",
+      "transport_allowlist": [
+        "rest",
+        "web",
+        "mcp",
+        "gateway"
+      ],
+      "mcp": {
+        "mapping": "tool",
+        "name": "parser_run_cancel",
+        "exposed": true
+      }
+    },
+    {
+      "command_id": "asset.list",
+      "method": "GET",
+      "path": "/api/v2/projects/{project_id}/assets",
+      "owner": "Evidence",
+      "input_schema": "asset.project.query.v2",
+      "output_schema": "assets.v2",
+      "idempotency": "forbidden",
+      "expected_revision": "none",
+      "transport_allowlist": [
+        "rest",
+        "web",
+        "mcp",
+        "gateway"
+      ],
+      "mcp": {
+        "mapping": "resource",
+        "name": "asset_list",
+        "exposed": true
+      }
+    },
+    {
+      "command_id": "asset.capture",
+      "method": "POST",
+      "path": "/api/v2/projects/{project_id}/assets",
+      "owner": "Evidence",
+      "input_schema": "asset.capture.v2",
+      "output_schema": "asset.receipt.v2",
+      "idempotency": "required",
+      "expected_revision": "parent",
+      "transport_allowlist": [
+        "rest",
+        "web",
+        "mcp",
+        "gateway"
+      ],
+      "mcp": {
+        "mapping": "tool",
+        "name": "asset_capture",
+        "exposed": true
+      }
+    },
+    {
+      "command_id": "asset.get",
+      "method": "GET",
+      "path": "/api/v2/assets/{id}",
+      "owner": "Evidence",
+      "input_schema": "asset.query.v2",
+      "output_schema": "asset.v2",
+      "idempotency": "forbidden",
+      "expected_revision": "none",
+      "transport_allowlist": [
+        "rest",
+        "web",
+        "mcp",
+        "gateway"
+      ],
+      "mcp": {
+        "mapping": "resource",
+        "name": "asset_get",
+        "exposed": true
+      }
+    },
+    {
+      "command_id": "asset.version.list",
+      "method": "GET",
+      "path": "/api/v2/assets/{id}/versions",
+      "owner": "Evidence",
+      "input_schema": "asset.query.v2",
+      "output_schema": "asset.versions.v2",
+      "idempotency": "forbidden",
+      "expected_revision": "none",
+      "transport_allowlist": [
+        "rest",
+        "web",
+        "mcp",
+        "gateway"
+      ],
+      "mcp": {
+        "mapping": "resource",
+        "name": "asset_version_list",
+        "exposed": true
+      }
+    },
+    {
+      "command_id": "asset.content",
+      "method": "GET",
+      "path": "/api/v2/assets/{id}/versions/{version_id}/content",
+      "owner": "Evidence",
+      "input_schema": "asset.query.v2",
+      "output_schema": "asset.content.v2",
+      "idempotency": "forbidden",
+      "expected_revision": "none",
+      "transport_allowlist": [
+        "rest",
+        "web"
+      ],
+      "mcp": {
+        "mapping": "rest-only",
+        "name": "asset_content",
+        "exposed": false
+      }
+    },
+    {
+      "command_id": "asset.relation.list",
+      "method": "GET",
+      "path": "/api/v2/assets/{id}/relations",
+      "owner": "Evidence",
+      "input_schema": "asset.query.v2",
+      "output_schema": "asset.relations.v2",
+      "idempotency": "forbidden",
+      "expected_revision": "none",
+      "transport_allowlist": [
+        "rest",
+        "web",
+        "mcp",
+        "gateway"
+      ],
+      "mcp": {
+        "mapping": "resource",
+        "name": "asset_relation_list",
+        "exposed": true
+      }
+    },
+    {
+      "command_id": "asset.relation.create",
+      "method": "POST",
+      "path": "/api/v2/assets/{id}/relations",
+      "owner": "Evidence",
+      "input_schema": "asset.relation.create.v2",
+      "output_schema": "asset.relation.receipt.v2",
+      "idempotency": "required",
+      "expected_revision": "resource",
+      "transport_allowlist": [
+        "rest",
+        "web",
+        "mcp",
+        "gateway"
+      ],
+      "mcp": {
+        "mapping": "tool",
+        "name": "asset_relation_create",
+        "exposed": true
+      }
+    },
+    {
+      "command_id": "asset.attestation.list",
+      "method": "GET",
+      "path": "/api/v2/assets/{id}/attestations",
+      "owner": "Evidence",
+      "input_schema": "asset.query.v2",
+      "output_schema": "asset.attestations.v2",
+      "idempotency": "forbidden",
+      "expected_revision": "none",
+      "transport_allowlist": [
+        "rest",
+        "web",
+        "mcp",
+        "gateway"
+      ],
+      "mcp": {
+        "mapping": "resource",
+        "name": "asset_attestation_list",
+        "exposed": true
+      }
+    },
+    {
+      "command_id": "asset.attest",
+      "method": "POST",
+      "path": "/api/v2/assets/{id}/attestations",
+      "owner": "Evidence",
+      "input_schema": "asset.attestation.create.v2",
+      "output_schema": "asset.attestation.receipt.v2",
+      "idempotency": "required",
+      "expected_revision": "resource",
+      "transport_allowlist": [
+        "rest",
+        "web",
+        "mcp",
+        "gateway"
+      ],
+      "mcp": {
+        "mapping": "tool",
+        "name": "asset_attest",
+        "exposed": true
+      }
+    },
+    {
+      "command_id": "asset.tombstone",
+      "method": "POST",
+      "path": "/api/v2/assets/{id}/tombstone",
+      "owner": "Evidence",
+      "input_schema": "asset.tombstone.v2",
+      "output_schema": "asset.receipt.v2",
+      "idempotency": "required",
+      "expected_revision": "resource",
+      "transport_allowlist": [
+        "rest",
+        "web"
+      ],
+      "mcp": {
+        "mapping": "rest-only",
+        "name": "asset_tombstone",
+        "exposed": false
+      }
+    },
+    {
+      "command_id": "evidence.execution.get",
+      "method": "GET",
+      "path": "/api/v2/executions/{id}/evidence",
+      "owner": "Evidence",
+      "input_schema": "execution.evidence.query.v2",
+      "output_schema": "execution.evidence.v2",
+      "idempotency": "forbidden",
+      "expected_revision": "none",
+      "transport_allowlist": [
+        "rest",
+        "web",
+        "mcp",
+        "gateway"
+      ],
+      "mcp": {
+        "mapping": "resource",
+        "name": "evidence_execution_get",
+        "exposed": true
+      }
+    },
+    {
+      "command_id": "evidence.trace.list",
+      "method": "GET",
+      "path": "/api/v2/executions/{id}/traces",
+      "owner": "Evidence",
+      "input_schema": "execution.evidence.query.v2",
+      "output_schema": "execution.traces.v2",
+      "idempotency": "forbidden",
+      "expected_revision": "none",
+      "transport_allowlist": [
+        "rest",
+        "web",
+        "mcp",
+        "gateway"
+      ],
+      "mcp": {
+        "mapping": "resource",
+        "name": "evidence_trace_list",
+        "exposed": true
+      }
+    },
+    {
+      "command_id": "evidence.digest.list",
+      "method": "GET",
+      "path": "/api/v2/executions/{id}/digests",
+      "owner": "Evidence",
+      "input_schema": "execution.evidence.query.v2",
+      "output_schema": "execution.digests.v2",
+      "idempotency": "forbidden",
+      "expected_revision": "none",
+      "transport_allowlist": [
+        "rest",
+        "web",
+        "mcp",
+        "gateway"
+      ],
+      "mcp": {
+        "mapping": "resource",
+        "name": "evidence_digest_list",
+        "exposed": true
+      }
+    },
+    {
+      "command_id": "evidence.test-result.list",
+      "method": "GET",
+      "path": "/api/v2/executions/{id}/test-results",
+      "owner": "Evidence",
+      "input_schema": "execution.evidence.query.v2",
+      "output_schema": "execution.test_results.v2",
+      "idempotency": "forbidden",
+      "expected_revision": "none",
+      "transport_allowlist": [
+        "rest",
+        "web",
+        "mcp",
+        "gateway"
+      ],
+      "mcp": {
+        "mapping": "resource",
+        "name": "evidence_test_result_list",
+        "exposed": true
+      }
+    },
+    {
+      "command_id": "evidence.code-change.list",
+      "method": "GET",
+      "path": "/api/v2/executions/{id}/code-changes",
+      "owner": "Evidence",
+      "input_schema": "execution.evidence.query.v2",
+      "output_schema": "execution.code_changes.v2",
+      "idempotency": "forbidden",
+      "expected_revision": "none",
+      "transport_allowlist": [
+        "rest",
+        "web",
+        "mcp",
+        "gateway"
+      ],
+      "mcp": {
+        "mapping": "resource",
+        "name": "evidence_code_change_list",
+        "exposed": true
+      }
+    },
+    {
+      "command_id": "quality.list",
+      "method": "GET",
+      "path": "/api/v2/executions/{id}/quality-reviews",
+      "owner": "Quality",
+      "input_schema": "quality.list.query.v2",
+      "output_schema": "quality.reviews.v2",
+      "idempotency": "forbidden",
+      "expected_revision": "none",
+      "transport_allowlist": [
+        "rest",
+        "web",
+        "mcp",
+        "gateway"
+      ],
+      "mcp": {
+        "mapping": "resource",
+        "name": "quality_list",
+        "exposed": true
+      }
+    },
+    {
+      "command_id": "quality.start",
+      "method": "POST",
+      "path": "/api/v2/executions/{id}/quality-reviews",
+      "owner": "Quality",
+      "input_schema": "quality.start.v2",
+      "output_schema": "operation.receipt.v2",
+      "idempotency": "required",
+      "expected_revision": "resource",
+      "transport_allowlist": [
+        "rest",
+        "web",
+        "mcp",
+        "gateway"
+      ],
+      "mcp": {
+        "mapping": "tool",
+        "name": "quality_start",
+        "exposed": true
+      }
+    },
+    {
+      "command_id": "quality.get",
+      "method": "GET",
+      "path": "/api/v2/quality-reviews/{id}",
+      "owner": "Quality",
+      "input_schema": "quality.query.v2",
+      "output_schema": "quality.review.v2",
+      "idempotency": "forbidden",
+      "expected_revision": "none",
+      "transport_allowlist": [
+        "rest",
+        "web",
+        "mcp",
+        "gateway"
+      ],
+      "mcp": {
+        "mapping": "resource",
+        "name": "quality_get",
+        "exposed": true
+      }
+    },
+    {
+      "command_id": "quality.events",
+      "method": "GET",
+      "path": "/api/v2/quality-reviews/{id}/events",
+      "owner": "Quality",
+      "input_schema": "quality.query.v2",
+      "output_schema": "event.replay.v2",
+      "idempotency": "forbidden",
+      "expected_revision": "none",
+      "transport_allowlist": [
+        "rest",
+        "web",
+        "mcp",
+        "gateway"
+      ],
+      "mcp": {
+        "mapping": "resource",
+        "name": "quality_events",
+        "exposed": true
+      }
+    },
+    {
+      "command_id": "quality.report.get",
+      "method": "GET",
+      "path": "/api/v2/quality-reviews/{id}/report",
+      "owner": "Quality",
+      "input_schema": "quality.query.v2",
+      "output_schema": "quality.report.v2",
+      "idempotency": "forbidden",
+      "expected_revision": "none",
+      "transport_allowlist": [
+        "rest",
+        "web",
+        "mcp",
+        "gateway"
+      ],
+      "mcp": {
+        "mapping": "resource",
+        "name": "quality_report_get",
+        "exposed": true
+      }
+    },
+    {
+      "command_id": "quality.decision",
+      "method": "POST",
+      "path": "/api/v2/quality-reviews/{id}/decision",
+      "owner": "Quality",
+      "input_schema": "quality.decision.v2",
+      "output_schema": "quality.review.receipt.v2",
+      "idempotency": "required",
+      "expected_revision": "resource",
+      "transport_allowlist": [
+        "rest",
+        "web"
+      ],
+      "mcp": {
+        "mapping": "rest-only",
+        "name": "quality_decision",
+        "exposed": false
+      }
+    },
+    {
+      "command_id": "quality.cancel",
+      "method": "POST",
+      "path": "/api/v2/quality-reviews/{id}/cancel",
+      "owner": "Quality",
+      "input_schema": "quality.mutation.v2",
+      "output_schema": "quality.review.receipt.v2",
+      "idempotency": "required",
+      "expected_revision": "resource",
+      "transport_allowlist": [
+        "rest",
+        "web",
+        "mcp",
+        "gateway"
+      ],
+      "mcp": {
+        "mapping": "tool",
+        "name": "quality_cancel",
+        "exposed": true
+      }
+    },
+    {
+      "command_id": "quality.retry",
+      "method": "POST",
+      "path": "/api/v2/quality-reviews/{id}/retry",
+      "owner": "Quality",
+      "input_schema": "quality.mutation.v2",
+      "output_schema": "operation.receipt.v2",
+      "idempotency": "required",
+      "expected_revision": "resource",
+      "transport_allowlist": [
+        "rest",
+        "web",
+        "mcp",
+        "gateway"
+      ],
+      "mcp": {
+        "mapping": "tool",
+        "name": "quality_retry",
+        "exposed": true
+      }
+    },
+    {
+      "command_id": "outcome.get",
+      "method": "GET",
+      "path": "/api/v2/executions/{id}/outcome",
+      "owner": "Outcome",
+      "input_schema": "outcome.query.v2",
+      "output_schema": "outcome.v2",
+      "idempotency": "forbidden",
+      "expected_revision": "none",
+      "transport_allowlist": [
+        "rest",
+        "web",
+        "mcp",
+        "gateway"
+      ],
+      "mcp": {
+        "mapping": "resource",
+        "name": "outcome_get",
+        "exposed": true
+      }
+    },
+    {
+      "command_id": "outcome.evaluate",
+      "method": "POST",
+      "path": "/api/v2/executions/{id}/outcome/evaluate",
+      "owner": "Outcome",
+      "input_schema": "outcome.evaluate.v2",
+      "output_schema": "operation.receipt.v2",
+      "idempotency": "required",
+      "expected_revision": "resource",
+      "transport_allowlist": [
+        "rest",
+        "web",
+        "mcp",
+        "gateway"
+      ],
+      "mcp": {
+        "mapping": "tool",
+        "name": "outcome_evaluate",
+        "exposed": true
+      }
+    },
+    {
+      "command_id": "outcome.waiver.create",
+      "method": "POST",
+      "path": "/api/v2/executions/{id}/outcome/waivers",
+      "owner": "Outcome",
+      "input_schema": "outcome.waiver.create.v2",
+      "output_schema": "outcome.waiver.receipt.v2",
+      "idempotency": "required",
+      "expected_revision": "resource",
+      "transport_allowlist": [
+        "rest",
+        "web"
+      ],
+      "mcp": {
+        "mapping": "rest-only",
+        "name": "outcome_waiver_create",
+        "exposed": false
+      }
+    },
+    {
+      "command_id": "outcome.waiver.revoke",
+      "method": "POST",
+      "path": "/api/v2/outcome-waivers/{id}/revoke",
+      "owner": "Outcome",
+      "input_schema": "outcome.waiver.revoke.v2",
+      "output_schema": "outcome.waiver.receipt.v2",
+      "idempotency": "required",
+      "expected_revision": "resource",
+      "transport_allowlist": [
+        "rest",
+        "web"
+      ],
+      "mcp": {
+        "mapping": "rest-only",
+        "name": "outcome_waiver_revoke",
+        "exposed": false
+      }
+    }
+  ]
+}
