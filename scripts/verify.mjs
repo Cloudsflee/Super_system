@@ -6,7 +6,7 @@ const commands = [
   ['check'],
   ['audit:p1', ...(skipP1Evidence ? ['--', '--skip-evidence'] : [])],
   ['scan:clean', ...(skipP1Evidence ? ['--', '--skip-evidence'] : [])],
-  ['test:p1'], ['test:p2'], ['test:p3'], ['test:p31'], ['test:p4'], ['test:p5'], ['test:p6'],
+  ['test:p1'], ['test:p2'], ['test:p3'], ['test:p31'], ['test:p4'], ['test:p5'], ['test:p6'], ['test:p7'],
   ['node scripts/v3-clean-p5-performance.mjs'],
   ['node scripts/v3-clean-p5-assist-probe.mjs'],
   ['node scripts/v3-clean-p5-bridge-probe.mjs'],
@@ -15,8 +15,13 @@ const commands = [
   ['node scripts/v3-clean-p6-host-runner-probe.mjs'],
   ['node scripts/v3-clean-p6-bridge-runner-probe.mjs'],
   ['node scripts/v3-clean-p6-restart-probe.mjs'],
+  ['node scripts/v3-clean-p7-performance.mjs'],
+  ['node scripts/v3-clean-p7-cas-tamper-probe.mjs'],
+  ['node scripts/v3-clean-p7-parser-probe.mjs'],
+  ['node scripts/v3-clean-p7-quality-outcome-probe.mjs'],
+  ['node scripts/v3-clean-p7-restart-probe.mjs'],
   ['test'], ['test:integration'], ['test:security'], ['build'], ['test:e2e'],
-  ['evidence:p5', '--', '--verify'], ['evidence:p6', '--', '--verify'],
+  ['evidence:p5', '--', '--verify'], ['evidence:p6', '--', '--verify'], ['evidence:p7', '--', '--verify'],
   ['git diff --check']
 ];
 for (const [script, ...args] of commands) {

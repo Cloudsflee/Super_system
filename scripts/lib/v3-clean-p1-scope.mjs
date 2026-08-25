@@ -130,11 +130,13 @@ export const P1_PACKAGE_SCRIPT_DEFINITIONS = Object.freeze(Object.fromEntries(Ob
   'test:p4': { command: 'node --test tests/p4/*.test.mjs', role: 'p4_gate', phase: 'P4' },
   'test:p5': { command: 'node --test tests/p5/*.test.mjs', role: 'p5_gate', phase: 'P5' },
   'test:p6': { command: 'node --test tests/p6/*.test.mjs', role: 'p6_gate', phase: 'P6' },
+  'test:p7': { command: 'node --test tests/p7/*.test.mjs', role: 'p7_gate', phase: 'P7' },
   'evidence:p3': { command: 'node scripts/v3-clean-p3-evidence.mjs', role: 'p3_evidence', phase: 'P3' },
   'evidence:p31': { command: 'node scripts/v3-clean-p31-evidence.mjs', role: 'p31_evidence', phase: 'P3.1' },
   'evidence:p4': { command: 'node scripts/v3-clean-p4-evidence.mjs', role: 'p4_evidence', phase: 'P4' },
   'evidence:p5': { command: 'node scripts/v3-clean-p5-evidence.mjs', role: 'p5_evidence', phase: 'P5' },
   'evidence:p6': { command: 'node scripts/v3-clean-p6-evidence.mjs', role: 'p6_evidence', phase: 'P6' },
+  'evidence:p7': { command: 'node scripts/v3-clean-p7-evidence.mjs', role: 'p7_evidence', phase: 'P7' },
   'test:integration': { command: 'node scripts/layered-gate.mjs integration', role: 'layered_gate', phase: 'P3.1' },
   'test:integration:clean': { command: 'node scripts/layered-gate.mjs integration --clean', role: 'p31_gate', phase: 'P3.1' },
   'fixture:legacy:integration': { command: 'node scripts/layered-gate.mjs integration --historical', role: 'deferred_fixture', phase: 'historical' },
@@ -323,6 +325,39 @@ const P6_PREFIXES = Object.freeze([
   'tests/p6/'
 ]);
 
+const P7_FILES = new Set([
+  'Dockerfile',
+  'apps/web/src/features/execution/ExecutionPage.tsx',
+  'apps/web/src/features/execution/ExecutionP7Panels.tsx',
+  'apps/web/src/test/evidence-p7.test.tsx',
+  'apps/web/src/test/execution-p7.test.tsx',
+  'apps/api/src/clean/evidence-service.mjs',
+  'apps/api/src/clean/migrations/007-evidence-quality-parser-outcome.mjs',
+  'apps/api/src/clean/outcome-evaluation-service.mjs',
+  'apps/api/src/clean/parser-adapters.mjs',
+  'apps/api/src/clean/parser-docker.mjs',
+  'apps/api/src/clean/parser-limits.mjs',
+  'apps/api/src/clean/parser-protocol.mjs',
+  'apps/api/src/clean/parser-service.mjs',
+  'apps/api/src/clean/quality-service.mjs',
+  'apps/api/src/modules/registry.mjs',
+  'apps/runner-broker/clean-server.mjs',
+  'packages/contracts/src/clean-v2.mjs',
+  'scripts/lib/v3-clean-p7-parser-probe.mjs',
+  'scripts/v3-clean-p7-cas-tamper-probe.mjs',
+  'scripts/v3-clean-p7-parser-probe.mjs',
+  'scripts/v3-clean-p7-performance.mjs',
+  'scripts/v3-clean-p7-quality-outcome-probe.mjs',
+  'scripts/v3-clean-p7-restart-probe.mjs',
+  'scripts/v3-clean-p7-evidence.mjs'
+]);
+
+const P7_PREFIXES = Object.freeze([
+  'apps/parser-worker/',
+  'apps/web/src/features/evidence/',
+  'tests/p7/'
+]);
+
 export function classifyWorkspacePath(value) {
   const file = normalize(value);
   if (!file) return null;
@@ -330,6 +365,7 @@ export function classifyWorkspacePath(value) {
     const rows = file === 'scripts/v3-clean-architecture-scan.mjs' ? P1_MATRIX_ROWS : P1_GOVERNANCE_ROWS;
     return { kind: 'p1', phase: 'P1', rows: [...rows] };
   }
+  if (P7_FILES.has(file) || P7_PREFIXES.some((prefix) => file.startsWith(prefix))) return { kind: 'clean', phase: 'P7', rows: [] };
   if (P6_FILES.has(file) || P6_PREFIXES.some((prefix) => file.startsWith(prefix))) return { kind: 'clean', phase: 'P6', rows: [] };
   if (P5_FILES.has(file) || P5_WEB_FILES.has(file) || P5_WEB_PREFIXES.some((prefix) => file.startsWith(prefix)) || file.startsWith('tests/p5/')) return { kind: 'clean', phase: 'P5', rows: [] };
   if (file.startsWith('apps/windows-native-bridge/')) return { kind: 'clean', phase: 'P5', rows: [] };

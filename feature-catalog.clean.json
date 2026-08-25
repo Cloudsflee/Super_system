@@ -818,45 +818,64 @@
       "id": "REC-D6-OUTCOME-009",
       "domain": "outcome",
       "name": "Evidence-driven outcome, rubric and revocable waiver",
-      "status": "scaffolded",
+      "status": "verified",
       "owner_modules": [
         "outcome",
-        "project"
+        "project",
+        "evidence"
       ],
       "source_files": [
         "apps/api/src/clean/migrations/003-project-workflow.mjs",
-        "apps/api/src/clean/project-workflow.mjs",
+        "apps/api/src/clean/migrations/007-evidence-quality-parser-outcome.mjs",
+        "apps/api/src/clean/outcome-evaluation-service.mjs",
+        "apps/api/src/clean/registry.mjs",
         "packages/contracts/src/clean-v2.mjs"
       ],
       "target_modules": [
-        "apps/api/src/clean/project-workflow.mjs",
+        "apps/api/src/clean/outcome-evaluation-service.mjs",
         "apps/api/src/clean/http.mjs",
-        "apps/api/src/clean/registry.mjs"
+        "apps/api/src/clean/registry.mjs",
+        "apps/web/src/features/execution/ExecutionP7Panels.tsx"
       ],
       "tables": [
-        "outcome_requirements"
+        "outcome_requirements",
+        "outcome_evaluations",
+        "outcome_waivers",
+        "digests"
       ],
       "apis": [
-        "/api/v2/projects/{id}/outcome-requirements"
+        "/api/v2/projects/{project_id}/outcome-requirements",
+        "/api/v2/executions/{id}/outcome",
+        "/api/v2/executions/{id}/outcome/evaluate",
+        "/api/v2/executions/{id}/outcome/waivers",
+        "/api/v2/outcome-waivers/{id}/revoke"
       ],
       "ui": [
-        "Outcome",
+        "Execution / Outcome",
         "Quality Review"
       ],
       "events": [
+        "outcome.requirement.*",
         "outcome.*"
       ],
       "behavior_tests": [
-        "tests/p3/project-workflow.test.mjs"
+        "tests/p7/quality-outcome.test.mjs",
+        "tests/p7/http-contract.test.mjs"
       ],
-      "ui_tests": [],
+      "ui_tests": [
+        "apps/web/src/test/execution-p7.test.tsx"
+      ],
       "evidence": [
-        "docs/evidence/v3-clean-p3-project-workflow-20260819/verification.json"
+        "docs/evidence/v3-clean-p7-evidence-quality-outcome-20260824/verification.json"
       ],
       "release_receipts": [],
       "tests": [
         "T4",
-        "tests/p3/project-workflow.test.mjs"
+        "tests/p7/quality-outcome.test.mjs",
+        "tests/p7/http-contract.test.mjs",
+        "apps/web/src/test/execution-p7.test.tsx",
+        "scripts/v3-clean-p7-quality-outcome-probe.mjs",
+        "scripts/e2e.mjs"
       ],
       "runtime_surface": "v3-clean"
     },
@@ -1056,50 +1075,66 @@
       "id": "REC-D8-ATTACHMENTS-011",
       "domain": "assist",
       "name": "Attachments and secure previews",
-      "status": "implemented",
+      "status": "verified",
       "owner_modules": [
-        "files"
+        "files",
+        "parser",
+        "evidence"
       ],
       "source_files": [
         "apps/api/src/clean/files-service.mjs",
-        "apps/api/src/clean/migrations/005-assist-files-terminal-bridge.mjs"
+        "apps/api/src/clean/migrations/005-assist-files-terminal-bridge.mjs",
+        "apps/api/src/clean/migrations/007-evidence-quality-parser-outcome.mjs",
+        "apps/api/src/clean/parser-service.mjs"
       ],
       "target_modules": [
         "apps/api/src/clean/files-service.mjs",
-        "apps/web/src/features/assist"
+        "apps/api/src/clean/parser-service.mjs",
+        "apps/web/src/features/assist",
+        "apps/web/src/features/evidence"
       ],
       "tables": [
-        "attachments"
+        "attachments",
+        "asset_blobs",
+        "parser_runs"
       ],
       "apis": [
         "/api/v2/projects/{id}/attachments",
         "/api/v2/attachments/{id}/content",
-        "/api/v2/attachments/{id}/preview"
+        "/api/v2/attachments/{id}/preview",
+        "/api/v2/assets/{id}/versions/{version_id}/parse"
       ],
       "ui": [
-        "Attachments"
+        "Attachments",
+        "Evidence preview"
       ],
       "events": [
-        "attachment.created",
-        "attachment.quarantined",
-        "attachment.deleted"
+        "attachment.*",
+        "parser_run.*"
       ],
       "behavior_tests": [
         "tests/p5/assist-files.test.mjs",
-        "tests/p5/http-contract.test.mjs"
+        "tests/p5/http-contract.test.mjs",
+        "tests/p7/parser-evidence.test.mjs",
+        "tests/p7/http-contract.test.mjs"
       ],
       "ui_tests": [
-        "apps/web/src/test/files-p5.test.tsx"
+        "apps/web/src/test/files-p5.test.tsx",
+        "apps/web/src/test/evidence-p7.test.tsx"
       ],
       "evidence": [
-        "docs/evidence/v3-clean-p5-assist-terminal-20260820/verification.json"
+        "docs/evidence/v3-clean-p7-evidence-quality-outcome-20260824/verification.json"
       ],
       "release_receipts": [],
       "tests": [
         "T5",
         "tests/p5/assist-files.test.mjs",
         "tests/p5/http-contract.test.mjs",
-        "apps/web/src/test/files-p5.test.tsx"
+        "tests/p7/parser-evidence.test.mjs",
+        "tests/p7/http-contract.test.mjs",
+        "apps/web/src/test/files-p5.test.tsx",
+        "apps/web/src/test/evidence-p7.test.tsx",
+        "scripts/v3-clean-p7-parser-probe.mjs"
       ],
       "runtime_surface": "v3-clean"
     },
@@ -1438,6 +1473,176 @@
         "tests/p4/active-entrypoint.test.mjs",
         "tests/p4/governance-sync.test.mjs",
         "apps/web/src/test/context.test.tsx",
+        "scripts/e2e.mjs"
+      ],
+      "runtime_surface": "v3-clean"
+    },
+    {
+      "id": "REC-D9-EVIDENCE-019",
+      "domain": "evidence",
+      "name": "CAS asset, attestation, relation, trace, digest and code evidence",
+      "status": "verified",
+      "owner_modules": [
+        "evidence"
+      ],
+      "source_files": [
+        "apps/api/src/clean/migrations/007-evidence-quality-parser-outcome.mjs",
+        "apps/api/src/clean/evidence-service.mjs",
+        "apps/api/src/clean/registry.mjs",
+        "packages/contracts/src/clean-v2.mjs"
+      ],
+      "target_modules": [
+        "apps/api/src/clean/evidence-service.mjs",
+        "apps/api/src/clean/http.mjs",
+        "apps/api/src/clean/registry.mjs",
+        "apps/web/src/features/evidence",
+        "apps/web/src/features/execution/ExecutionP7Panels.tsx"
+      ],
+      "tables": [
+        "assets",
+        "asset_versions",
+        "asset_blobs",
+        "asset_relations",
+        "asset_attestations",
+        "traces",
+        "digests",
+        "code_changes",
+        "test_results"
+      ],
+      "apis": [
+        "/api/v2/projects/{project_id}/assets",
+        "/api/v2/assets/{id}",
+        "/api/v2/assets/{id}/versions",
+        "/api/v2/assets/{id}/versions/{version_id}/content",
+        "/api/v2/assets/{id}/relations",
+        "/api/v2/assets/{id}/attestations",
+        "/api/v2/assets/{id}/tombstone",
+        "/api/v2/executions/{id}/evidence",
+        "/api/v2/executions/{id}/traces",
+        "/api/v2/executions/{id}/digests",
+        "/api/v2/executions/{id}/test-results",
+        "/api/v2/executions/{id}/code-changes"
+      ],
+      "ui": [
+        "Evidence assets",
+        "Execution Evidence",
+        "Trace",
+        "Digest",
+        "Attestation"
+      ],
+      "events": [
+        "asset.*",
+        "evidence.*",
+        "trace.*",
+        "digest.*",
+        "code_change.*",
+        "test_result.*"
+      ],
+      "behavior_tests": [
+        "tests/p7/parser-evidence.test.mjs",
+        "tests/p7/http-contract.test.mjs"
+      ],
+      "ui_tests": [
+        "apps/web/src/test/evidence-p7.test.tsx",
+        "apps/web/src/test/execution-p7.test.tsx"
+      ],
+      "evidence": [
+        "docs/evidence/v3-clean-p7-evidence-quality-outcome-20260824/verification.json"
+      ],
+      "release_receipts": [],
+      "tests": [
+        "T6",
+        "tests/p7/parser-evidence.test.mjs",
+        "tests/p7/http-contract.test.mjs",
+        "apps/web/src/test/evidence-p7.test.tsx",
+        "apps/web/src/test/execution-p7.test.tsx",
+        "scripts/v3-clean-p7-cas-tamper-probe.mjs",
+        "scripts/v3-clean-p7-performance.mjs",
+        "scripts/e2e.mjs"
+      ],
+      "runtime_surface": "v3-clean"
+    },
+    {
+      "id": "REC-D9-QUALITY-020",
+      "domain": "quality",
+      "name": "Isolated multi-format quality review and human semantic threshold",
+      "status": "verified",
+      "owner_modules": [
+        "parser",
+        "quality",
+        "evidence"
+      ],
+      "source_files": [
+        "apps/api/src/clean/migrations/007-evidence-quality-parser-outcome.mjs",
+        "apps/api/src/clean/parser-service.mjs",
+        "apps/api/src/clean/parser-protocol.mjs",
+        "apps/api/src/clean/quality-service.mjs",
+        "apps/parser-worker/worker.mjs"
+      ],
+      "target_modules": [
+        "apps/api/src/clean/parser-service.mjs",
+        "apps/api/src/clean/quality-service.mjs",
+        "apps/runner-broker/clean-server.mjs",
+        "apps/parser-worker",
+        "apps/web/src/features/execution/ExecutionP7Panels.tsx"
+      ],
+      "tables": [
+        "parser_formats",
+        "parser_runs",
+        "quality_review_runs",
+        "quality_review_reports",
+        "quality_review_events",
+        "human_reviews",
+        "test_results"
+      ],
+      "apis": [
+        "/api/v2/parser/formats",
+        "/api/v2/assets/{id}/versions/{version_id}/parse",
+        "/api/v2/parser-runs/{id}",
+        "/api/v2/parser-runs/{id}/retry",
+        "/api/v2/parser-runs/{id}/cancel",
+        "/api/v2/executions/{id}/quality-reviews",
+        "/api/v2/quality-reviews/{id}",
+        "/api/v2/quality-reviews/{id}/events",
+        "/api/v2/quality-reviews/{id}/report",
+        "/api/v2/quality-reviews/{id}/decision",
+        "/api/v2/quality-reviews/{id}/cancel",
+        "/api/v2/quality-reviews/{id}/retry"
+      ],
+      "ui": [
+        "Execution / Quality",
+        "Evidence parser status",
+        "Rubric scoring"
+      ],
+      "events": [
+        "parser_format.*",
+        "parser_run.*",
+        "quality_review.*"
+      ],
+      "behavior_tests": [
+        "tests/p7/governance-protocol.test.mjs",
+        "tests/p7/parser-evidence.test.mjs",
+        "tests/p7/quality-outcome.test.mjs",
+        "tests/p7/broker-restart-tamper.test.mjs"
+      ],
+      "ui_tests": [
+        "apps/web/src/test/execution-p7.test.tsx"
+      ],
+      "evidence": [
+        "docs/evidence/v3-clean-p7-evidence-quality-outcome-20260824/verification.json"
+      ],
+      "release_receipts": [],
+      "tests": [
+        "T6",
+        "T8",
+        "tests/p7/governance-protocol.test.mjs",
+        "tests/p7/parser-evidence.test.mjs",
+        "tests/p7/quality-outcome.test.mjs",
+        "tests/p7/broker-restart-tamper.test.mjs",
+        "apps/web/src/test/execution-p7.test.tsx",
+        "scripts/v3-clean-p7-parser-probe.mjs",
+        "scripts/v3-clean-p7-quality-outcome-probe.mjs",
+        "scripts/v3-clean-p7-restart-probe.mjs",
         "scripts/e2e.mjs"
       ],
       "runtime_surface": "v3-clean"

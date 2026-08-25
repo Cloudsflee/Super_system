@@ -5,6 +5,7 @@ import {
 } from 'lucide-react';
 import { ApiError, apiV2, formatTime, mutateV2, shortHash } from '../../api';
 import type { WorkspacePageProps } from '../../workspace';
+import { ExecutionEvidencePanel, ExecutionOutcomePanel, ExecutionQualityPanel } from './ExecutionP7Panels';
 
 const STAGES = ['prepare', 'context', 'run', 'check', 'review', 'finalize', 'deliver'] as const;
 
@@ -30,6 +31,7 @@ export function ExecutionPage({ projectId, selectedProject, notify, navigate }: 
   const [events, setEvents] = useState<ExecutionEvent[]>([]);
   const [busy, setBusy] = useState('');
   const [fault, setFault] = useState('');
+  const [activeView, setActiveView] = useState<'operations' | 'evidence' | 'quality' | 'outcome'>('operations');
 
   const selectedProfile = useMemo(() => profiles.find((profile) => profile.id === profileId) || null, [profileId, profiles]);
 
@@ -118,13 +120,18 @@ export function ExecutionPage({ projectId, selectedProject, notify, navigate }: 
     <div className="execution-stage-rail" aria-label="Execution stages">
       {STAGES.map((stage, index) => <div key={stage} className={detail && (detail.status === 'completed' || index < activeStage) ? 'complete' : index === activeStage && detail?.current_stage ? 'active' : ''}><span>{index + 1}</span><strong>{stage}</strong></div>)}
     </div>
-    <div className="execution-p6-layout">
+    <div className="execution-view-tabs" role="tablist" aria-label="Execution views">{(['operations', 'evidence', 'quality', 'outcome'] as const).map((view) => <button role="tab" aria-selected={activeView === view} className={activeView === view ? 'active' : ''} key={view} onClick={() => setActiveView(view)}>{view[0].toUpperCase() + view.slice(1)}</button>)}</div>
+    {activeView === 'operations' && <div className="execution-p6-layout">
       <section className="panel execution-list-panel"><div className="section-title"><div><h2>Executions</h2><span>{executions.length} revisions</span></div></div><div className="execution-list-p6">{executions.map((item) => <button key={item.id} className={item.id === selectedId ? 'selected' : ''} onClick={() => setSelectedId(item.id)}><span><strong>{item.current_stage || 'draft'} · generation {item.generation}</strong><small className="mono">{shortHash(item.id)} | r{item.revision}</small></span><Status value={item.status} /></button>)}{!executions.length && <div className="list-empty">No executions</div>}</div></section>
       <section className="panel execution-detail-panel"><div className="section-title"><div><h2>{detail ? `${detail.current_stage || 'draft'} stage` : 'Execution detail'}</h2><span>{detail ? `Workflow r${detail.workflow_revision} | ${detail.task_count} tasks | updated ${formatTime(detail.updated_at)}` : 'No active revision'}</span></div>{detail && <Status value={detail.status} />}</div>{detail ? <div className="execution-pin-grid"><span><small>Workflow</small><strong className="mono">{shortHash(detail.workflow_hash)}</strong></span><span><small>Context</small><strong className="mono">{shortHash(detail.context_pack_hash)}</strong></span><span><small>Generation</small><strong>{detail.generation}</strong></span><span><small>Delivery</small><strong>{detail.handoff_manifest?.delivery_ready ? 'ready' : 'pending'}</strong></span></div> : <div className="list-empty">No execution selected</div>}</section>
       <section className="panel execution-attempt-panel"><div className="section-title"><div><h2>Task attempts</h2><span>{attempts.length} immutable attempts</span></div></div><div className="attempt-table-p6"><div className="attempt-head"><span>Task</span><span>Mode</span><span>Attempt</span><span>Status</span><span>Receipt</span></div>{attempts.map((attempt) => <div className="attempt-row" key={attempt.id}><span><strong>{attempt.task_id}</strong><small>{attempt.error_code || formatTime(attempt.updated_at)}</small></span><span>{attempt.execution_mode}</span><span>#{attempt.attempt_no}</span><Status value={attempt.status} /><span className="mono">{shortHash(attempt.output_sha256 || attempt.stdout_sha256)}</span></div>)}{!attempts.length && <div className="list-empty">No task attempts</div>}</div></section>
       <section className="panel execution-checkpoint-panel"><div className="section-title"><div><h2>Checkpoints</h2><span>{checkpoints.length} replay boundaries</span></div></div><div className="checkpoint-list-p6">{checkpoints.map((checkpoint) => <div key={checkpoint.id}><span><strong>{checkpoint.stage} · g{checkpoint.generation}</strong><small className="mono">{shortHash(checkpoint.checkpoint_sha256)} | {formatTime(checkpoint.created_at)}</small></span><button className="icon-button" title={`Replay ${checkpoint.stage}`} aria-label={`Replay ${checkpoint.stage}`} disabled={!detail || !['paused', 'awaiting_approval', 'completed', 'failed', 'cancelled'].includes(detail.status) || Boolean(busy)} onClick={() => void replay(checkpoint)}>{busy === `replay:${checkpoint.id}` ? <LoaderCircle className="spin" size={15} /> : <RotateCcw size={15} />}</button></div>)}{!checkpoints.length && <div className="list-empty">No checkpoints</div>}</div></section>
       <section className="panel execution-event-panel"><div className="section-title"><div><h2>Event stream</h2><span>{events.length} contiguous events</span></div></div><div className="execution-event-list">{events.map((event) => <div key={`${event.id}:${event.sequence}`}><span>{event.sequence}</span><p><strong>{event.type}</strong><small>{event.data?.stage || event.data?.error_code || formatTime(event.occurred_at)}</small></p></div>)}{!events.length && <div className="list-empty">No events</div>}</div></section>
-    </div>
+    </div>}
+    {activeView === 'evidence' && detail && <ExecutionEvidencePanel execution={detail} notify={notify} navigate={navigate} />}
+    {activeView === 'quality' && detail && <ExecutionQualityPanel execution={detail} notify={notify} />}
+    {activeView === 'outcome' && detail && <ExecutionOutcomePanel execution={detail} notify={notify} />}
+    {activeView !== 'operations' && !detail && <div className="list-empty">No execution selected</div>}
   </div>;
 }
 

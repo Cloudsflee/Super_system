@@ -7,8 +7,9 @@ this document does not promote a Catalog item by itself.
 ## Gates
 
 `check`, `audit:p1`, `scan:clean`, `test:p1`, `test:p2`, `test:p3`, `test:p31`,
-`test`, `test:integration`, `test:e2e`, `test:security`, and `test:release` are
-first-class gates. `verify` runs the repository-wide sequence in
+`test:p4`, `test:p5`, `test:p6`, `test:p7`, `test`, `test:integration`,
+`test:e2e`, `test:security`, and `test:release` are first-class gates. `verify`
+runs the repository-wide sequence in
 that order (with the Web build before E2E) and stops at the first failure.
 During P1, only the clean baseline, platform ledger, API v2 operation routes,
 replay, CAS, redaction, and startup gates are implementation claims. The older
@@ -387,6 +388,90 @@ immutable P5 and P6 final receipts in phase order without publishing a rerun. A
 corrective P6 final still requires the explicit
 `pnpm evidence:p6 -- --supersede` option.
 
+## P7 Evidence, Quality, Parser, and Outcome
+
+P7 advances the active Clean runtime to schema v7 with forward-only
+`007-evidence-quality-parser-outcome`. `tests/p7/` covers upgrades from
+`0/1/2/3/4/5/6`, checksum/snapshot drift, DDL/format-seed/ledger/receipt/commit
+fault rollback, 17-table ownership, 32-command parity, immutable asset and
+review records, parser protocol/signature/nonce/CAS/output tamper, quotas,
+cancel/retry/restart, human-review hash binding, and deterministic Outcome
+replay including waiver, revoke, and expiry.
+
+The synchronized P7 inventory is:
+
+```text
+pnpm check
+pnpm audit:p1
+pnpm scan:clean
+pnpm recovery:plan
+pnpm recovery:catalog
+pnpm recovery:coverage
+pnpm recovery:impact -- --audit
+pnpm test:p1
+pnpm test:p2
+pnpm test:p3
+pnpm test:p31
+pnpm test:p4
+pnpm test:p5
+pnpm test:p6
+pnpm test:p7
+node scripts/v3-clean-p5-performance.mjs
+node scripts/v3-clean-p5-assist-probe.mjs
+node scripts/v3-clean-p5-bridge-probe.mjs
+node scripts/v3-clean-p6-performance.mjs
+node scripts/v3-clean-p6-docker-runner-probe.mjs
+node scripts/v3-clean-p6-host-runner-probe.mjs
+node scripts/v3-clean-p6-bridge-runner-probe.mjs
+node scripts/v3-clean-p6-restart-probe.mjs
+node scripts/v3-clean-p7-performance.mjs
+node scripts/v3-clean-p7-cas-tamper-probe.mjs
+node scripts/v3-clean-p7-parser-probe.mjs
+node scripts/v3-clean-p7-quality-outcome-probe.mjs
+node scripts/v3-clean-p7-restart-probe.mjs
+pnpm --filter @aiws/web test
+pnpm test
+pnpm test:integration:clean
+pnpm test:security:clean
+pnpm test:integration
+pnpm test:security
+pnpm build
+pnpm test:e2e
+pnpm verify
+pnpm evidence:p7
+git diff --check
+```
+
+The parser probe builds the fixed Node 24 `parser-worker` image twice with
+provenance disabled, requires identical image IDs, and runs actual containers
+with no network, a read-only root, all capabilities dropped, no new privileges,
+and bounded tmpfs. It covers the 21 registered format families and records real
+parse latency without using it as a promotion threshold. Missing Docker,
+dependency acquisition failure, a digest mismatch, or any provisional probe
+freezes Catalog promotion and leaves an immutable candidate attempt.
+
+P7 performance thresholds are 1000-event Evidence replay p95 <=200 ms,
+100-asset lineage query p95 <=200 ms, 16-asset/500-anchor Quality detail p95
+<=300 ms, and 100-requirement Outcome evaluation p95 <=200 ms. The Clean
+browser journey covers asset capture, parse, attestation, complete human
+scoring, Outcome evaluation, waiver/revoke, cursor reconnect, duplicate/partial
+events, and Evidence/Quality/Outcome layouts at 390x844, 1024x768, and
+1440x900. Console errors, HTTP errors, overlap, horizontal overflow, or any
+`/api/v1` request fail the gate.
+
+Formal P7 Evidence is append-only at
+`docs/evidence/v3-clean-p7-evidence-quality-outcome-20260824/`. Final promotion
+requires `status=verified`, `provisional=false`, all five P7 probes, performance
+and browser receipts, seven migration paths, a redacted hash-complete manifest,
+and a runnable dry-run plus isolated actual rollback. Rollback restores the v6
+SQLite ledger `[1,2,3,4,5,6]`, proves all 17 P7 tables absent, and byte-compares
+SQLite, CAS, Vault, workspace, Broker, Bridge, and parser snapshots. The final
+receipt moves Evidence and Quality into Clean and promotes Evidence, Quality,
+Outcome, and Attachments to `verified`, yielding 23/4/27. Frontend remains
+`scaffolded`. After publication, `pnpm verify` invokes
+`pnpm evidence:p7 -- --verify`; a corrective final requires explicit
+`pnpm evidence:p7 -- --supersede`.
+
 ## AI evaluation
 
 Formal model evaluation fixes Brief, repository SHA, model, prompt, capability set
@@ -409,6 +494,10 @@ is not recorded as a formal pass.
 - P6 100-task DAG planning p95 no greater than 150 ms
 - P6 100-attempt detail p95 no greater than 200 ms
 - P6 checkpoint replay validation p95 no greater than 500 ms
+- P7 1000-event Evidence replay p95 no greater than 200 ms
+- P7 100-asset lineage query p95 no greater than 200 ms
+- P7 16-asset/500-anchor Quality detail p95 no greater than 300 ms
+- P7 100-requirement Outcome evaluation p95 no greater than 200 ms
 
 P8-P9 acceptance receipts will record observed startup and execution status.
 Those phases require fresh Codex/GitHub capability probes, image and source

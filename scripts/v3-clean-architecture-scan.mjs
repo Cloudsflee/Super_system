@@ -3,8 +3,8 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createCleanCommandRegistry, registryParity } from '../apps/api/src/clean/registry.mjs';
 import { validateCleanOwnership } from '../apps/api/src/clean/ownership.mjs';
-import { CLEAN_P6_TABLE_OWNERS } from '../apps/api/src/clean/ownership.mjs';
-import { CLEAN_P6_MIGRATION_REGISTRY } from '../apps/api/src/clean/migration-service.mjs';
+import { CLEAN_P7_TABLE_OWNERS } from '../apps/api/src/clean/ownership.mjs';
+import { CLEAN_P7_MIGRATION_REGISTRY } from '../apps/api/src/clean/migration-service.mjs';
 import { auditWorkspace } from './v3-clean-workspace-audit.mjs';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
@@ -17,7 +17,7 @@ const bridgeServer = path.join(root, 'apps', 'windows-native-bridge', 'server.mj
 const forbidden = [
   { pattern: /legacy_compat|native_v5|native_v6|ASSIST_NATIVE_V6/i, label: 'legacy runtime switch' },
   { pattern: /assist_operations/i, label: 'second operation ledger' },
-  { pattern: /(?:^|[\\/])(?:src[\\/])?migrations[\\/](?:00[7-9]|0[1-9][0-9])/i, label: 'unregistered future migration import' },
+  { pattern: /(?:^|[\\/])(?:src[\\/])?migrations[\\/](?:00[8-9]|0[1-9][0-9])/i, label: 'unregistered future migration import' },
   { pattern: /(?:^|[\\/])apps[\\/](?:worker|mcp-gateway)(?:[\\/]|$)/i, label: 'historical service import' },
   { pattern: /\/api\/v1(?:\/|['"`]|$)/i, label: 'legacy API route registration' },
   { pattern: /server-legacy\.mjs|server-clean\.mjs/i, label: 'historical or alias entry import' }
@@ -36,8 +36,8 @@ if (!workspace.valid) findings.push({ label: 'workspace synchronization mismatch
 if (!fs.existsSync(entrypoint)) findings.push({ label: 'clean entrypoint missing', file: 'apps/api/server.mjs' });
 if (!fs.existsSync(cleanServer)) findings.push({ label: 'clean server module missing', file: 'apps/api/clean-server.mjs' });
 if (!fs.existsSync(gatewayServer)) findings.push({ label: 'P4 gateway entrypoint missing', file: 'apps/gateway/server.mjs' });
-if (!fs.existsSync(brokerServer)) findings.push({ label: 'P6 Clean Broker entrypoint missing', file: 'apps/runner-broker/clean-server.mjs' });
-if (!fs.existsSync(bridgeServer)) findings.push({ label: 'P6 Windows Bridge entrypoint missing', file: 'apps/windows-native-bridge/server.mjs' });
+if (!fs.existsSync(brokerServer)) findings.push({ label: 'P7 Clean Broker entrypoint missing', file: 'apps/runner-broker/clean-server.mjs' });
+if (!fs.existsSync(bridgeServer)) findings.push({ label: 'P7 Windows Bridge entrypoint missing', file: 'apps/windows-native-bridge/server.mjs' });
 if (fs.existsSync(path.join(root, 'apps', 'api', 'server-clean.mjs'))) findings.push({ label: 'duplicate clean entry alias', file: 'apps/api/server-clean.mjs' });
 visit(entrypoint);
 
@@ -53,21 +53,21 @@ const tableText = files.map((file) => fs.readFileSync(file, 'utf8')).join('\n');
 if (/CREATE\s+TABLE[^;]*\b(?:assist|project|workflow|execution|domain)_heads\b/i.test(tableText)) findings.push({ label: 'shadow head model', file: 'clean schema' });
 if (/CREATE\s+TABLE[^;]*\bassist_operations\b/i.test(tableText)) findings.push({ label: 'second operation ledger', file: 'clean schema' });
 
-const migrationIds = CLEAN_P6_MIGRATION_REGISTRY.map((migration) => migration.id);
-if (JSON.stringify(migrationIds) !== JSON.stringify(['001-clean-baseline', '002-identity-acl', '003-project-workflow', '004-context-projection-mcp', '005-assist-files-terminal-bridge', '006-runner-execution-checkpoint-replay'])) {
-  findings.push({ label: 'P6 migration registry is not exactly forward-only 001 -> 002 -> 003 -> 004 -> 005 -> 006', migrations: migrationIds });
+const migrationIds = CLEAN_P7_MIGRATION_REGISTRY.map((migration) => migration.id);
+if (JSON.stringify(migrationIds) !== JSON.stringify(['001-clean-baseline', '002-identity-acl', '003-project-workflow', '004-context-projection-mcp', '005-assist-files-terminal-bridge', '006-runner-execution-checkpoint-replay', '007-evidence-quality-parser-outcome'])) {
+  findings.push({ label: 'P7 migration registry is not exactly forward-only 001 -> 002 -> 003 -> 004 -> 005 -> 006 -> 007', migrations: migrationIds });
 }
 if (!files.some((file) => relative(file) === 'apps/api/src/clean/authorization.mjs') || !/authorize\s*\(/.test(tableText)) {
   findings.push({ label: 'unified authorization predicate missing', expected: 'authorize(principal, action, project, resource, policy_revision)' });
 }
-if (!Object.hasOwn(CLEAN_P6_TABLE_OWNERS, 'project_invitations') || Object.hasOwn(CLEAN_P6_TABLE_OWNERS, 'invitations')) {
+if (!Object.hasOwn(CLEAN_P7_TABLE_OWNERS, 'project_invitations') || Object.hasOwn(CLEAN_P7_TABLE_OWNERS, 'invitations')) {
   findings.push({ label: 'P2 invitation table ownership is not canonical', expected: 'project_invitations' });
 }
 
 let registryReport = { valid: false, mismatches: ['registry_unavailable'] };
 let ownershipReport = { valid: false, missing_tables: ['ownership_unavailable'] };
 try {
-  const registry = createCleanCommandRegistry({ targetVersion: 6 });
+  const registry = createCleanCommandRegistry({ targetVersion: 7 });
   registryReport = registryParity(registry);
   const tables = extractTables(tableText);
   ownershipReport = validateCleanOwnership({ tables, registry });
@@ -87,19 +87,19 @@ if (fs.existsSync(gatewayServer)) {
 }
 
 const result = {
-  schema_version: 'aiws.v3-clean.architecture-scan.v6',
+  schema_version: 'aiws.v3-clean.architecture-scan.v7',
   entrypoints: ['apps/api/server.mjs', 'apps/gateway/server.mjs', 'apps/runner-broker/clean-server.mjs', 'apps/windows-native-bridge/server.mjs'],
   files: files.map(relative),
   registry: registryReport,
   ownership: ownershipReport,
   phase_metadata: {
     baseline_phase: 'P1',
-    active_phase: 'P6',
-    migration_registry: CLEAN_P6_MIGRATION_REGISTRY.map((migration) => ({ id: migration.id, version: migration.version })),
-    p6_table_owners: Object.keys(CLEAN_P6_TABLE_OWNERS).sort(),
+    active_phase: 'P7',
+    migration_registry: CLEAN_P7_MIGRATION_REGISTRY.map((migration) => ({ id: migration.id, version: migration.version })),
+    p7_table_owners: Object.keys(CLEAN_P7_TABLE_OWNERS).sort(),
     authorization_predicate: 'authorize(principal, action, project, resource, policy_revision)',
-    evidence_directory: 'docs/evidence/v3-clean-p6-runner-execution-20260824',
-    evidence_present: fs.existsSync(path.join(root, 'docs', 'evidence', 'v3-clean-p6-runner-execution-20260824'))
+    evidence_directory: 'docs/evidence/v3-clean-p7-evidence-quality-outcome-20260824',
+    evidence_present: fs.existsSync(path.join(root, 'docs', 'evidence', 'v3-clean-p7-evidence-quality-outcome-20260824'))
   },
   workspace,
   forbidden_findings: findings,

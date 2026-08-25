@@ -17,20 +17,20 @@ under docs/architecture/ are the source of truth for V3-Clean.
 
 ## Scope of this phase
 
-Decision `D-035` activates P6 Runner/Execution/Checkpoint/Replay over the
-verified P5 baseline at `54381746da0f01fd60da2e11ed247f2ed2f11c8b`.
-This phase may update the synchronized P6
+Decision `D-036` activates P7 Evidence/Quality/Parser/Outcome over the
+verified P6 baseline at `af8fcaf2f5df7a0667a7f31c5784afbdc9a48ceb`.
+This phase may update the synchronized P7
 surface:
 
-- forward-only `006-runner-execution-checkpoint-replay`, schema ownership,
-  Clean Runner and Execution services, dispatcher, registry, contracts, and
-  focused P6 tests;
-- the Clean Broker entrypoint, Docker/Host/Windows Bridge adapters, signed Job
-  Spec/receipt protocol, restart reconciliation, and independent probes;
-- the component-level Execution and Runner Profiles Web slice plus default
-  Clean E2E, using `/api/v2` only;
+- forward-only `007-evidence-quality-parser-outcome`, schema ownership, Clean
+  Evidence, Parser, Quality, and Outcome services, dispatcher, registry,
+  contracts, and focused P7 tests;
+- the Clean Broker parser entrypoint, fixed-digest isolated worker, signed
+  parser job/receipt protocol, restart reconciliation, and independent probes;
+- the component-level Evidence and Execution Evidence/Quality/Outcome Web
+  slices plus default Clean E2E, using `/api/v2` only;
 - architecture documents, testing policy, layered Catalogs, package gates,
-  immutable P6 Evidence, and rollback receipts required by GS-001 through
+  immutable P7 Evidence, and rollback receipts required by GS-001 through
   GS-007;
 - this file.
 
@@ -40,9 +40,9 @@ is appended to the ignored local `.ai-workspace/gate-receipts/` store. Local
 receipts are diagnostic evidence only; Catalog status promotion continues to
 use the immutable final `verification.json` receipt.
 
-P1/P2/P3/P4/P5 migrations and verified Evidence are read-only. Parser,
-complete Outcome evaluation, real GitHub Delivery, offline/cross-origin
-behavior, production cutover, and release-level Web/E2E remain outside P6.
+P1/P2/P3/P4/P5/P6 migrations and verified Evidence are read-only. Real GitHub
+Delivery, importer/deployment, physical CAS GC, offline/cross-origin behavior,
+production cutover, and release-level Web/E2E remain outside P7.
 
 ## Required preflight
 
@@ -312,6 +312,50 @@ pnpm evidence:p6
 git diff --check
 ~~~
 
+The additive P7 implementation inventory is:
+
+~~~text
+pnpm check
+pnpm audit:p1
+pnpm scan:clean
+pnpm recovery:plan
+pnpm recovery:catalog
+pnpm recovery:coverage
+pnpm recovery:impact -- --audit
+pnpm test:p1
+pnpm test:p2
+pnpm test:p3
+pnpm test:p31
+pnpm test:p4
+pnpm test:p5
+pnpm test:p6
+pnpm test:p7
+node scripts/v3-clean-p5-performance.mjs
+node scripts/v3-clean-p5-assist-probe.mjs
+node scripts/v3-clean-p5-bridge-probe.mjs
+node scripts/v3-clean-p6-performance.mjs
+node scripts/v3-clean-p6-docker-runner-probe.mjs
+node scripts/v3-clean-p6-host-runner-probe.mjs
+node scripts/v3-clean-p6-bridge-runner-probe.mjs
+node scripts/v3-clean-p6-restart-probe.mjs
+node scripts/v3-clean-p7-performance.mjs
+node scripts/v3-clean-p7-cas-tamper-probe.mjs
+node scripts/v3-clean-p7-parser-probe.mjs
+node scripts/v3-clean-p7-quality-outcome-probe.mjs
+node scripts/v3-clean-p7-restart-probe.mjs
+pnpm --filter @aiws/web test
+pnpm test
+pnpm test:integration:clean
+pnpm test:security:clean
+pnpm test:integration
+pnpm test:security
+pnpm build
+pnpm test:e2e
+pnpm verify
+pnpm evidence:p7
+git diff --check
+~~~
+
 P3.1 uses `feature-catalog.index.json` with disjoint Clean and historical
 layers (`feature-catalog.clean.json` and `feature-catalog.historical.json`).
 `scripts/catalog-loader.mjs` is the validation owner; the root
@@ -365,6 +409,22 @@ and Outcome remain `scaffolded`. Formal Evidence is
 `docs/evidence/v3-clean-p6-runner-execution-20260824/`; failed attempts remain
 append-only and never promote status. Rollback restores v5 SQLite, CAS, Vault,
 workspace, Broker, and Bridge snapshots in isolation with byte-exact checks.
+
+P7 advances the active schema to `user_version=7`. Parser owns format
+registrations and immutable run attempts; Evidence owns the asset/version/blob/
+relation/attestation, trace, digest, code-change, and test-result chain; Quality
+owns immutable reports, one-to-one event projections, and human decisions;
+Outcome owns immutable evaluation generations and waiver/revoke records.
+Docker parsing uses signed `parser.job.v1`, `parser.receipt.v1`, and
+`evidence.asset.v2` envelopes with the fixed Node 24 worker digest and bounded
+format quotas. The two P7 ids are Clean-only after a final verified,
+non-provisional receipt. Evidence, Quality, Outcome, and Attachments are then
+`verified`, yielding 23 Clean and 4 Historical rows while the total remains 27;
+Frontend remains `scaffolded`. Formal Evidence is
+`docs/evidence/v3-clean-p7-evidence-quality-outcome-20260824/`; failed attempts
+remain append-only and never promote status. Rollback restores v6 SQLite, CAS,
+Vault, workspace, Broker, Bridge, and parser snapshots in isolation, proves all
+17 P7 tables absent, and performs byte-exact checks.
 
 ## Capability status
 

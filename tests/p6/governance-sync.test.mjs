@@ -35,7 +35,7 @@ test('P6 migration, ownership, registry, paths and package gates are synchronize
   ]);
   assert.deepEqual(CLEAN_P5_MIGRATION_REGISTRY.map((migration) => migration.id), CLEAN_P6_MIGRATION_REGISTRY.slice(0, 5).map((migration) => migration.id));
   assert.deepEqual(Object.keys(CLEAN_P6_TABLE_OWNERS).filter((table) => !Object.hasOwn(CLEAN_P5_TABLE_OWNERS, table)).sort(), p6Tables);
-  assert.equal(CLEAN_PLATFORM_OWNERSHIP.schema_version, 'aiws.v3-clean.owner-manifest.v6');
+  assert.equal(CLEAN_PLATFORM_OWNERSHIP.schema_version, 'aiws.v3-clean.owner-manifest.v7');
   for (const table of p6Tables) assert.equal(ownerOf('table', table, { clean: true }), CLEAN_P6_TABLE_OWNERS[table].toLowerCase(), table);
   for (const service of ['apps/api/src/clean/runner-service.mjs', 'apps/api/src/clean/execution-service.mjs']) assert.ok(CLEAN_SQL_BOUNDARIES.includes(service), service);
 
@@ -44,7 +44,7 @@ test('P6 migration, ownership, registry, paths and package gates are synchronize
   assert.deepEqual(registry.entries.filter((entry) => entry.phase === 'p6').map((entry) => entry.command_id), p6Commands);
 
   const packageJson = JSON.parse(fs.readFileSync(path.join(root, 'package.json'), 'utf8'));
-  assert.equal(Object.keys(packageJson.scripts).length, 47);
+  assert.equal(Object.keys(packageJson.scripts).length, 49);
   assert.deepEqual(packageJson.scripts, Object.fromEntries(Object.entries(P1_PACKAGE_SCRIPT_DEFINITIONS).map(([name, value]) => [name, value.command])));
   assert.equal(packageJson.scripts['dev:broker'], 'node apps/runner-broker/clean-server.mjs');
   assert.equal(packageJson.scripts['test:p6'], 'node --test tests/p6/*.test.mjs');
@@ -55,20 +55,24 @@ test('P6 migration, ownership, registry, paths and package gates are synchronize
   assert.ok(p5EvidenceCheck >= 0);
   assert.ok(p6EvidenceCheck > p5EvidenceCheck);
 
-  for (const file of [
+  const paths = [
     'apps/api/src/clean/migrations/006-runner-execution-checkpoint-replay.mjs',
     'apps/api/src/clean/execution-service.mjs', 'apps/api/src/clean/runner-protocol.mjs',
     'apps/api/src/clean/runner-adapters.mjs', 'apps/api/src/clean/runner-service.mjs',
     'apps/runner-broker/clean-server.mjs', 'apps/web/src/features/execution/ExecutionPage.tsx',
     'scripts/v3-clean-p6-evidence.mjs', 'tests/p6/governance-sync.test.mjs'
-  ]) assert.equal(classifyWorkspacePath(file)?.phase, 'P6', file);
+  ];
+  for (const file of paths) {
+    const expectedPhase = ['apps/runner-broker/clean-server.mjs', 'apps/web/src/features/execution/ExecutionPage.tsx'].includes(file) ? 'P7' : 'P6';
+    assert.equal(classifyWorkspacePath(file)?.phase, expectedPhase, file);
+  }
 });
 
 test('P6 Catalog promotion is disjoint, complete and Evidence-gated', () => {
   const index = loadCatalogIndex(root); const layers = loadCatalogLayers(root, index);
   const validation = validateCatalogLayers({ root, index, layers });
   assert.equal(validation.valid, true, JSON.stringify(validation.failures));
-  assert.deepEqual(validation.counts, { clean: 21, historical: 6, total: 27 });
+  assert.deepEqual(validation.counts, { clean: 23, historical: 4, total: 27 });
   const clean = new Map(layers.clean.features.map((feature) => [feature.id, feature]));
   const historical = new Set(layers.historical.features.map((feature) => feature.id));
   for (const id of P6_CLEAN_CATALOG_IDS) {
@@ -78,11 +82,11 @@ test('P6 Catalog promotion is disjoint, complete and Evidence-gated', () => {
     assert.equal(clean.get(id)?.runtime_surface, 'v3-clean', id);
   }
   assert.equal(clean.get('REC-D10-FRONTEND-024')?.status, 'scaffolded');
-  assert.equal(clean.get('REC-D6-OUTCOME-009')?.status, 'scaffolded');
+  assert.equal(clean.get('REC-D6-OUTCOME-009')?.status, 'verified');
 });
 
 test('P4, P5 and P6 Evidence policies are declarative and final P6 artifacts reopen', () => {
-  assert.deepEqual(EVIDENCE_POLICIES.map((policy) => policy.key), ['p4', 'p5', 'p6']);
+  assert.deepEqual(EVIDENCE_POLICIES.map((policy) => policy.key), ['p4', 'p5', 'p6', 'p7']);
   const resolved = resolveCatalogEvidenceReference(root, evidenceReference);
   if (process.env.AIWS_P6_EVIDENCE_STAGING_ROOT) {
     assert.equal(resolved.staging, true);

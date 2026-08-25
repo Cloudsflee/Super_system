@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState, type ComponentType } from 'react';
 import {
-  Archive, BookOpen, ChevronDown, FolderGit2, LayoutDashboard, ListChecks, LoaderCircle,
+  Archive, BookOpen, ChevronDown, FileCheck2, FolderGit2, LayoutDashboard, ListChecks, LoaderCircle,
   Menu, MessageSquare, Settings, ShieldCheck, Terminal as TerminalIcon, Users,
   Workflow, X
 } from 'lucide-react';
@@ -11,6 +11,7 @@ import { ConnectionsPage } from './features/connections';
 import { ContextPage, McpSettingsPage } from './features/context';
 import { FilesPage } from './features/files';
 import { ExecutionPage } from './features/execution';
+import { EvidencePage } from './features/evidence';
 import { IdentityAccessPage } from './features/identity';
 import { ProjectWorkflowPage } from './features/project';
 import { CleanSetupPage, SetupPage, type SetupState } from './features/setup';
@@ -28,6 +29,7 @@ const NAV: Array<{ key: WorkspaceRoute; label: string; icon: ComponentType<{ siz
   { key: 'context', label: 'Context', icon: BookOpen },
   { key: 'assist', label: 'Assist', icon: MessageSquare },
   { key: 'execution', label: 'Execution', icon: ListChecks },
+  { key: 'evidence', label: 'Evidence', icon: FileCheck2 },
   { key: 'terminals', label: 'Terminal', icon: TerminalIcon },
   { key: 'settings', label: 'Settings', icon: Settings }
 ];
@@ -40,6 +42,7 @@ const PAGE_LABELS: Record<WorkspaceRoute, string> = {
   context: 'Context',
   assist: 'Assist',
   execution: 'Execution',
+  evidence: 'Evidence',
   files: 'Files',
   terminals: 'Terminal',
   approvals: 'Approval Center',
@@ -55,6 +58,7 @@ const PAGES: Record<WorkspaceRoute, ComponentType<WorkspacePageProps>> = {
   context: ContextPage,
   assist: AssistPage,
   execution: ExecutionPage,
+  evidence: EvidencePage,
   files: FilesPage,
   terminals: TerminalPage,
   approvals: ApprovalPage,

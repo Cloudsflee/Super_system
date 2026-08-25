@@ -17,6 +17,11 @@ export const EVIDENCE_POLICIES = Object.freeze([
     key: 'p6', phase: 'P6', reference: 'docs/evidence/v3-clean-p6-runner-execution-20260824/verification.json',
     attempts: 'docs/evidence/v3-clean-p6-runner-execution-20260824/attempts', staging_env: 'AIWS_P6_EVIDENCE_STAGING_ROOT',
     staging_schema: 'aiws.v3-clean.p6-catalog-staging.v1', manifest_schema: 'aiws.v3-clean.p6-manifest.v1', validate: validateP6EvidenceManifest
+  }),
+  Object.freeze({
+    key: 'p7', phase: 'P7', reference: 'docs/evidence/v3-clean-p7-evidence-quality-outcome-20260824/verification.json',
+    attempts: 'docs/evidence/v3-clean-p7-evidence-quality-outcome-20260824/attempts', staging_env: 'AIWS_P7_EVIDENCE_STAGING_ROOT',
+    staging_schema: 'aiws.v3-clean.p7-catalog-staging.v1', manifest_schema: 'aiws.v3-clean.p7-manifest.v1', validate: validateP7EvidenceManifest
   })
 ]);
 
@@ -39,9 +44,29 @@ export const P6_CLEAN_CATALOG_IDS = Object.freeze([
   'REC-D3-RUNNER-003', 'REC-D6-EXECUTION-008'
 ]);
 
+export const P7_CLEAN_CATALOG_IDS = Object.freeze([
+  'REC-D9-EVIDENCE-019', 'REC-D9-QUALITY-020'
+]);
+
+export const P7_VERIFIED_CATALOG_IDS = Object.freeze([
+  ...P7_CLEAN_CATALOG_IDS, 'REC-D6-OUTCOME-009', 'REC-D8-ATTACHMENTS-011'
+]);
+
 const P6_TABLES = Object.freeze([
   'execution_events', 'execution_inputs', 'execution_stage_checkpoints', 'executions',
   'job_specs', 'runner_profiles', 'runner_receipts', 'task_attempts'
+]);
+
+const P7_TABLES = Object.freeze([
+  'asset_attestations', 'asset_blobs', 'asset_relations', 'asset_versions', 'assets',
+  'code_changes', 'digests', 'human_reviews', 'outcome_evaluations', 'outcome_waivers',
+  'parser_formats', 'parser_runs', 'quality_review_events', 'quality_review_reports',
+  'quality_review_runs', 'test_results', 'traces'
+]);
+
+const P7_FORMATS = Object.freeze([
+  '7z', 'audio', 'csv', 'docx', 'gif', 'gzip', 'jpeg', 'json', 'markdown', 'pdf',
+  'png', 'pptx', 'rar', 'svg', 'tar', 'text', 'video', 'webp', 'xlsx', 'xml', 'zip'
 ]);
 
 export function loadCatalogIndex(root = process.cwd()) {
@@ -161,6 +186,7 @@ export function validateCatalogLayers({ root = process.cwd(), index = loadCatalo
   for (const id of CLEAN_CATALOG_IDS) if (!cleanIds.has(id)) failures.push(`clean_required:${id}`);
   for (const id of P5_CLEAN_CATALOG_IDS) if (!cleanIds.has(id)) failures.push(`p5_clean_required:${id}`);
   for (const id of P6_CLEAN_CATALOG_IDS) if (!cleanIds.has(id)) failures.push(`p6_clean_required:${id}`);
+  for (const id of P7_CLEAN_CATALOG_IDS) if (!cleanIds.has(id)) failures.push(`p7_clean_required:${id}`);
   for (const feature of layers.clean?.features || []) {
     if (feature.runtime_surface !== 'v3-clean') failures.push(`clean_runtime_surface:${feature.id}`);
   }
@@ -168,6 +194,97 @@ export function validateCatalogLayers({ root = process.cwd(), index = loadCatalo
     if (feature.runtime_surface !== 'historical-fixture') failures.push(`historical_runtime_surface:${feature.id}`);
   }
   return { valid: failures.length === 0, failures, counts: { clean: layers.clean?.features?.length || 0, historical: layers.historical?.features?.length || 0, total: ids.size } };
+}
+
+export function validateP7EvidenceManifest(evidenceRoot, verification = readJson(path.join(evidenceRoot, 'verification.json'))) {
+  const failures = validateEvidenceManifest(evidenceRoot, verification, 'aiws.v3-clean.p7-manifest.v1');
+  if (verification?.schema_version !== 'aiws.v3-clean.p7-verification.v1') failures.push('verification_schema');
+  if (verification?.status !== 'verified' || verification?.provisional !== false) failures.push('verification_not_final');
+  if (JSON.stringify(verification?.catalog_promotion) !== JSON.stringify(P7_VERIFIED_CATALOG_IDS)) failures.push('catalog_promotion');
+  if (verification?.unchanged_statuses?.['REC-D10-FRONTEND-024'] !== 'scaffolded') failures.push('unchanged_statuses');
+  const commands = Array.isArray(verification?.commands) ? verification.commands : [];
+  if (!commands.length) failures.push('verification_commands_missing');
+  if (commands.some((entry) => Number(entry?.exit_status ?? 1) !== 0 || entry?.ok !== true)) failures.push('verification_command_failed');
+
+  const probeFiles = {
+    cas_tamper: 'cas-tamper-probe.json', parser: 'parser-probe.json',
+    quality_outcome: 'quality-outcome-probe.json', restart: 'restart-probe.json',
+    performance: 'performance-receipt.json', browser: 'browser-receipt.json'
+  };
+  for (const [probe, file] of Object.entries(probeFiles)) {
+    if (verification?.probes?.[probe]?.status !== 'passed') failures.push(`probe_failed:${probe}`);
+    const record = readJson(path.join(evidenceRoot, file));
+    if (record?.status !== 'passed' || record?.receipt?.status !== 'passed' || record?.receipt?.provisional !== false) failures.push(`probe_record_failed:${probe}`);
+  }
+  for (const probe of ['migration', 'rollback', 'secret_scan']) if (verification?.probes?.[probe]?.status !== 'passed') failures.push(`probe_failed:${probe}`);
+
+  const casTamper = readJson(path.join(evidenceRoot, probeFiles.cas_tamper))?.receipt;
+  if (casTamper?.tamper_error_code !== 'cas_tamper' || casTamper?.restored_sha256_matches !== true || casTamper?.public_envelope_contains_content !== false) failures.push('cas_tamper_probe_invariants');
+  const parser = readJson(path.join(evidenceRoot, probeFiles.parser))?.receipt;
+  if (parser?.real_container !== true || parser?.digest_reproducible !== true || parser?.broker_protocol !== 'parser.job.v1' || parser?.receipt_protocol !== 'parser.receipt.v1'
+      || !['network:none', 'read-only-root', 'cap-drop-all', 'no-new-privileges', 'bounded-tmpfs'].every((item) => parser?.isolation?.includes(item))) failures.push('parser_probe_invariants');
+  const quality = readJson(path.join(evidenceRoot, probeFiles.quality_outcome))?.receipt;
+  if (quality?.quality_status !== 'completed' || quality?.quality_event_projection?.one_to_one !== true
+      || JSON.stringify(quality?.terminal_statuses) !== JSON.stringify({ blocked: 'blocked', waived: 'waived', revoked: 'blocked' })) failures.push('quality_outcome_probe_invariants');
+  const restart = readJson(path.join(evidenceRoot, probeFiles.restart))?.receipt;
+  if (restart?.runtime_restart !== true || restart?.operation_status !== 'succeeded' || restart?.parser_status !== 'parsed'
+      || restart?.broker_job_id_preserved !== true || restart?.pinned_hashes_preserved !== true || restart?.output_asset_created !== true) failures.push('restart_probe_invariants');
+
+  const schema = readJson(path.join(evidenceRoot, 'schema-inventory.json'));
+  if (schema?.schema_version !== 'aiws.v3-clean.p7-schema-inventory.v1' || schema?.family !== 'v3-clean' || schema?.user_version !== 7 || schema?.migration_id !== '007-evidence-quality-parser-outcome') failures.push('schema_inventory');
+  if (JSON.stringify(schema?.p7_tables) !== JSON.stringify(P7_TABLES)) failures.push('schema_p7_tables');
+  const tableRows = new Map((Array.isArray(schema?.tables) ? schema.tables : []).map((entry) => [entry?.name, entry]));
+  for (const table of P7_TABLES) if (!tableRows.has(table)) failures.push(`schema_table_missing:${table}`);
+
+  const owners = readJson(path.join(evidenceRoot, 'owner-inventory.json'));
+  if (owners?.schema_version !== 'aiws.v3-clean.p7-owner-inventory.v1' || owners?.status !== 'passed' || owners?.validation?.valid !== true) failures.push('owner_inventory');
+  if (JSON.stringify(Object.keys(owners?.table_owners || {}).sort()) !== JSON.stringify(P7_TABLES)) failures.push('owner_table_inventory');
+  if (Object.keys(owners?.command_owners || {}).length !== 32) failures.push('owner_command_inventory');
+
+  const routes = readJson(path.join(evidenceRoot, 'route-inventory.json'));
+  const routeRows = Array.isArray(routes?.routes) ? routes.routes : [];
+  if (routes?.schema_version !== 'aiws.v3-clean.p7-route-inventory.v1' || routes?.active_api !== '/api/v2' || routes?.retired_api !== '/api/v1'
+      || routeRows.length !== 32 || new Set(routeRows.map((entry) => entry?.command_id)).size !== 32
+      || routeRows.some((entry) => !String(entry?.path || '').startsWith('/api/v2/'))) failures.push('route_inventory');
+  const protocols = readJson(path.join(evidenceRoot, 'protocol-inventory.json'));
+  if (protocols?.schema_version !== 'aiws.v3-clean.p7-protocol-inventory.v1' || protocols?.status !== 'passed'
+      || protocols?.parser_job !== 'parser.job.v1' || protocols?.parser_receipt !== 'parser.receipt.v1'
+      || protocols?.evidence_asset !== 'evidence.asset.v2' || protocols?.format_count !== 21) failures.push('protocol_inventory');
+  const formats = readJson(path.join(evidenceRoot, 'format-inventory.json'));
+  if (formats?.schema_version !== 'aiws.v3-clean.p7-format-inventory.v1' || formats?.status !== 'passed'
+      || JSON.stringify((formats?.formats || []).map((entry) => entry?.format_key).sort()) !== JSON.stringify(P7_FORMATS)) failures.push('format_inventory');
+
+  const migration = readJson(path.join(evidenceRoot, 'migration-receipt.json'));
+  if (migration?.schema_version !== 'aiws.v3-clean.p7-migration-receipt.v1' || migration?.status !== 'passed') failures.push('migration_receipt');
+  if (JSON.stringify((migration?.registry || []).map((entry) => entry?.version)) !== JSON.stringify([1, 2, 3, 4, 5, 6, 7])) failures.push('migration_registry');
+  if (JSON.stringify((migration?.upgrades || []).map((entry) => entry?.start_version)) !== JSON.stringify([0, 1, 2, 3, 4, 5, 6])
+      || (migration?.upgrades || []).some((entry) => entry?.end_version !== 7 || entry?.status !== 'passed' || JSON.stringify(entry?.p7_tables) !== JSON.stringify(P7_TABLES))) failures.push('migration_upgrades');
+
+  const catalog = readJson(path.join(evidenceRoot, 'catalog-inventory.json'));
+  if (catalog?.schema_version !== 'aiws.v3-clean.p7-catalog-inventory.v1' || catalog?.status !== 'passed' || catalog?.validation?.valid !== true
+      || JSON.stringify(catalog?.validation?.counts) !== JSON.stringify({ clean: 23, historical: 4, total: 27 })
+      || JSON.stringify(catalog?.promoted_ids) !== JSON.stringify(P7_VERIFIED_CATALOG_IDS)) failures.push('catalog_inventory');
+
+  const expectedRoles = { modified_artifact: 'modified-artifact.json', patch: 'change.patch', verification: 'verification.json', rollback: 'rollback.ps1' };
+  const reopen = readJson(path.join(evidenceRoot, 'artifact-reopen.json'));
+  if (reopen?.status !== 'passed') failures.push('artifact_reopen_status');
+  const reopenChecks = new Map((Array.isArray(reopen?.checks) ? reopen.checks : []).map((entry) => [entry?.role, entry]));
+  for (const [role, file] of Object.entries(expectedRoles)) {
+    if (verification?.artifacts?.[role] !== file) failures.push(`artifact_role_mismatch:${role}`);
+    const check = reopenChecks.get(role); const target = path.join(evidenceRoot, file);
+    if (!check || check.file !== file || check.exists !== true || !fs.existsSync(target)) failures.push(`artifact_reopen_missing:${role}`);
+    else if (check.sha256 !== sha256File(target)) failures.push(`artifact_reopen_hash_mismatch:${role}`);
+  }
+
+  const rollback = readJson(path.join(evidenceRoot, 'rollback-receipt.json'));
+  if (rollback?.status !== 'passed' || rollback?.dry_run?.exit_status !== 0 || rollback?.isolated_apply?.exit_status !== 0) failures.push('rollback_status');
+  if (rollback?.source_reverse_check !== 'passed' || rollback?.restored_user_version !== 6) failures.push('rollback_source_or_version');
+  if (JSON.stringify(rollback?.migration_ledger) !== JSON.stringify([1, 2, 3, 4, 5, 6])) failures.push('rollback_migration_ledger');
+  if (!Array.isArray(rollback?.foreign_key_check) || rollback.foreign_key_check.length) failures.push('rollback_foreign_key_check');
+  if (JSON.stringify(rollback?.p7_tables_absent) !== JSON.stringify(P7_TABLES)) failures.push('rollback_p7_tables');
+  if (!Array.isArray(rollback?.byte_exact_mismatches) || rollback.byte_exact_mismatches.length) failures.push('rollback_byte_exact_mismatches');
+  for (const component of ['sqlite', 'cas', 'vault', 'workspace', 'broker', 'bridge', 'parser']) if (rollback?.restored_components?.[component] !== true) failures.push(`rollback_component:${component}`);
+  return [...new Set(failures)].sort();
 }
 
 export function resolveCatalogEvidenceReference(root = process.cwd(), value = '') {

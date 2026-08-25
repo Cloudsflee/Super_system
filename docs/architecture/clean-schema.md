@@ -1,15 +1,17 @@
 # V3-Clean Schema Contract
 
-Status: normative through the P6 Runner/Execution/Replay implementation.
+Status: normative through the P7 Evidence/Quality/Parser/Outcome implementation.
 Schema family: v3-clean.
 Baseline: 001 (PRAGMA user_version = 1); P2 forward migration: 002-identity-acl
 (PRAGMA user_version = 2); P3 forward migration: 003-project-workflow
 (PRAGMA user_version = 3); P4 forward migration: 004-context-projection-mcp
 (PRAGMA user_version = 4); P5 forward migration:
 005-assist-files-terminal-bridge (PRAGMA user_version = 5); P6 forward
-migration: 006-runner-execution-checkpoint-replay (PRAGMA user_version = 6).
+migration: 006-runner-execution-checkpoint-replay (PRAGMA user_version = 6);
+P7 forward migration: 007-evidence-quality-parser-outcome
+(PRAGMA user_version = 7).
 
-The active `apps/api/server.mjs` entrypoint defaults the migration target to P6.
+The active `apps/api/server.mjs` entrypoint defaults the migration target to P7.
 Explicit lower targets are retained only for isolated phase fixtures and
 forward-upgrade tests.
 Storage: SQLite WAL with a separate content-addressed store (CAS).
@@ -153,9 +155,9 @@ P3 Workflow owns `workflows`, `workflow_revisions`, `workflow_nodes`,
 `workflow_generation_proposals`. Critic exclusively owns immutable
 `workflow_critic_receipts`. P6 Execution owns `executions`, immutable
 `execution_inputs`, `task_attempts`, immutable stage checkpoints, and the
-one-to-one generic-event projection. Full Outcome tables remain later-phase
-schema; P3 creates only `outcome_requirements` and never infers a score,
-evaluation, or waiver.
+one-to-one generic-event projection. P3 Project retains ownership of
+`outcome_requirements`; P7 Outcome owns immutable evaluations and waiver
+grant/revoke records and never mutates the requirement source rows.
 
 | Table | Purpose |
 | --- | --- |
@@ -270,7 +272,15 @@ Assist commands use operations and operation_links. There is no Assist-specific
 operation ledger, and no operation can mutate both an Assist aggregate and a
 project aggregate without explicit links and authorization.
 
-## 8. Runner, parser, evidence, and quality tables
+## 8. Runner, parser, evidence, quality, and outcome tables
+
+Migration `007-evidence-quality-parser-outcome` adds 17 P7 tables. Parser owns
+`parser_formats` and `parser_runs`. Evidence owns assets, versions, blobs,
+relations, attestations, traces, digests, code changes, and test results.
+Quality owns review runs, immutable reports, the one-to-one generic-event
+projection, and immutable human reviews. Outcome owns immutable evaluations
+and waiver actions. `cas_objects` remains CAS-owned and
+`outcome_requirements` remains Project-owned.
 
 | Table | Purpose |
 | --- | --- |
@@ -286,11 +296,14 @@ project aggregate without explicit links and authorization.
 | asset_attestations | verifier, policy revision, signature/hash, validity state |
 | traces | redacted domain trace linked to actor/operation/asset |
 | digests | canonical summary and input hash |
+| code_changes | execution-relative path and immutable before/after/patch hashes |
 | quality_review_runs | quality state, input snapshot, rubric snapshot, status, revision |
-| quality_review_reports | immutable parser/model report, report hash, evidence anchors |
-| quality_review_events | projection view of generic events for report UI |
+| quality_review_reports | immutable deterministic report, suggestions, report hash, evidence anchors |
+| quality_review_events | one-to-one projection of generic events for report UI |
 | human_reviews | immutable per-criterion score and decision snapshot |
 | test_results | controlled test result, command hash, output asset reference |
+| outcome_evaluations | immutable generation, requirement/evidence/input hashes, score, status and replay payload |
+| outcome_waivers | immutable grant/revoke/expiry action with actor and evidence-bound input hash |
 
 Runner and Execution reuse `operations`, `operation_links`, `events`,
 `event_cursors`, `aggregate_heads`, and CAS. `execution_events` cannot diverge
@@ -310,9 +323,31 @@ or unbounded output in the Job Spec, receipt, event, or audit row.
 
 Supported parser registrations include text, Markdown, JSON, CSV, XML/SVG,
 PDF, DOCX, XLSX, PNG, JPEG, WebP, GIF, audio/video, PPTX, and generic archive
-formats. Each worker can return parsed, unsupported, invalid,
-resource_exceeded, or failed; a parser result creates Evidence and never
-directly sets a human score.
+formats (ZIP, TAR, GZIP, 7Z, and RAR). The signed `parser.job.v1` and
+`parser.receipt.v1` envelopes pin the input, format, limits, image digest,
+checkpoint token, deadline, and nonce. Parser state is `queued -> running ->
+parsed|unsupported|invalid|resource_exceeded|failed|cancelled|
+external_result_unknown`. A terminal run is immutable; retry creates a linked
+attempt and only known transient failures use 1-second then 4-second backoff,
+with at most three attempts.
+
+Parser limits are 25 MiB input, 100 MiB expanded output, 1024 archive entries,
+three recursion levels, compression ratio 1000, 240000 text characters, 20
+images, 500 PDF pages, 500 slides, 100000 cells, 15 media minutes, and a
+120-second deadline. Encrypted archives, links, traversal, external entities,
+signature/media mismatches, quota overflow, and unsigned or hash-mismatched
+receipts fail before CAS publication. A parser result creates Evidence and
+never directly sets a human score.
+
+Quality rubrics contain 1-20 dimensions whose enabled weights total 100; the
+default threshold is 80 and a run accepts at most 16 assets. Reports contain
+deterministic checks and non-authoritative suggestions. A human decision must
+score every enabled dimension and pin the exact report, input, and rubric
+hashes plus an active session proof. Outcome supports only
+`evidence_count`, `test_pass`, `digest_match`, and `human_score`; each
+Evidence, rubric, execution-input, human-decision, waiver, revoke, or expiry
+change creates a new deterministic evaluation generation with
+`passed|completed_with_gaps|waived|blocked` status.
 
 ## 9. Delivery, deployment, and import tables
 
@@ -414,6 +449,13 @@ Each command transaction performs, in order:
 6. append redacted event and audit row;
 7. store the idempotent result envelope and commit.
 
+External parser work uses two transactions: enqueue commits the operation and
+signed job reference before dispatch; receipt acceptance revalidates signature,
+nonce, manifest, hashes, quotas, redaction, CAS bytes, and pinned generation
+before atomically committing terminal state and Evidence. Restart ambiguity is
+recorded as `external_result_unknown` and is never guessed or automatically
+replayed.
+
 Foreign keys, unique constraints, deferred head/hash checks, and a final
 PRAGMA foreign_key_check protect the commit. A failing adapter receipt rolls
 back the transaction and leaves the operation in a retryable failed state.
@@ -423,8 +465,9 @@ back the transaction and leaves the operation in a retryable failed state.
 The clean schema family begins with `001-clean-baseline`; migrations
 `002-identity-acl`, `003-project-workflow`, `004-context-projection-mcp`,
 `005-assist-files-terminal-bridge`, and
-`006-runner-execution-checkpoint-replay` add their phase-owned tables, indexes,
-and immutable triggers in order.
+`006-runner-execution-checkpoint-replay`, and
+`007-evidence-quality-parser-outcome` add their phase-owned tables, indexes,
+seeds, and immutable triggers in order.
 All migrations are forward-only and carry a checksum. Each migration must
 provide a precondition, SQL/application change, postcondition, snapshot
 receipt, and rollback rehearsal for deployment artifacts. Rollback restores a

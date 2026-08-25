@@ -1,14 +1,12 @@
 # V3-Clean 分阶段开发计划
 
-状态：P1-P3.1 Evidence 已验证，P4 Context/MCP/Gateway 已完成最终门禁；
-`REC-D4-MCP-004`、`REC-D4-SCOPE-016`、`REC-D9-CONTEXT-017` 和
-`REC-D9-PROJECTION-018` 为 `verified`；`REC-D5-PROJECT-005`、
-`REC-D5-WORKFLOW-006`、`REC-D6-GENERATION-007` 和 `REC-D7-REPOSITORY-014` 维持 `verified`，
-`REC-D6-OUTCOME-009` 仍为 `scaffolded`（仅 requirement scaffolding）。
-P2 `REC-D2-IDENTITY-001` 为 `verified`，`REC-D2-SETUP-002` 为 `implemented`，
-`REC-D10-FRONTEND-024` 为 `scaffolded`；P3 receipt 为
-`docs/evidence/v3-clean-p3-project-workflow-20260819/verification.json`。
-P4 计划基线：`3f1d9e7`；P4 决策：`D-033`。
+状态：P1-P6 Evidence 已验证；P7 Evidence/Quality/Parser/Outcome 已按
+`D-036` 和 forward-only `007-evidence-quality-parser-outcome` 完成最终门禁。
+Evidence、Quality、Outcome 和 Attachments 为 `verified`，Clean/Historical
+Catalog 为 `23/4/27`；`REC-D10-FRONTEND-024` 仍为 `scaffolded`，不把本阶段
+组件切片声明为完整发布流程。P7 固定基线：
+`af8fcaf2f5df7a0667a7f31c5784afbdc9a48ceb`；最终 receipt 为
+`docs/evidence/v3-clean-p7-evidence-quality-outcome-20260824/verification.json`。
 规范来源：同目录下的 `v3-clean-break.md`、`clean-schema.md`、
 `api-v2-contract.md`、`import-contract.md`、`v23-capability-matrix.md` 和
 `decision-log.md`。
@@ -762,25 +760,77 @@ cursor/duplicate/partial event 处理，以及 390x844、1024x768、1440x900 无
 建立从执行产物到人工质量裁决和 Outcome 的可信证据链，纳入所有 parser 格式，
 包括音视频、PPTX 和通用压缩包。
 
-### 领域与 worker
+### Schema 与所有权
 
-- canonical CAS bytes、asset version、relation、attestation、trace、digest、
-  code change、test result；
-- parser format registry 和 isolated worker protocol，包含 quota、timeout、
-  sandbox、checkpoint、retry、unsupported/invalid/resource_exceeded；
-- Quality Review run/report/event、rubric、逐维人工评分、stale/waiver/revoke；
-- parser 只生成 Evidence/asset，不能直接写人类 verdict；
-- Outcome 根据 Evidence、Quality、policy 和 waiver 计算，任何证据变化触发
-  重新评估。
+- 活动 schema 升到 `user_version=7`，migration 覆盖 `0..6 -> 7`；P1-P6
+  migration 与 Evidence 保持只读；
+- Parser 独占 `parser_formats/parser_runs`；Evidence 独占 `assets/asset_versions/
+  asset_blobs/asset_relations/asset_attestations/traces/digests/code_changes/
+  test_results`；Quality 独占 `quality_review_runs/reports/events/human_reviews`；
+  Outcome 独占 `outcome_evaluations/outcome_waivers`；
+- `outcome_requirements` 继续由 Project 管理，`cas_objects` 继续由 CAS 管理；
+  P7 不建立第二套 operation/event/cursor/head/CAS；
+- asset version/blob/relation/attestation、report、human review、Outcome
+  evaluation/waiver 和 terminal parser run 均不可变；retry 只追加 lineage。
 
-### 验收
+### Evidence 与 Parser
 
-- 每种注册格式都有正例、坏输入、资源超限、重试和 CAS tamper case；
-- DOCX/XLSX、PDF、图片、音视频、PPTX、压缩包均走同一 worker envelope；
-- secret/path/prompt sentinel 扫描覆盖 parser 输出、CAS、event、audit；
-- quality threshold、人工决策、waiver/revoke 和 outcome 联动可重放；
-- 形成 CAS manifest、tamper、quality human-review、parser isolation 和
-  outcome golden receipt。
+- generic `event_cursors` 消费 `execution.completed`，重验 generation、handoff、
+  workspace checkpoint 和 Runner receipt，从受管相对输出、Attachment、File
+  Ref、test/check receipt 生成 asset、trace、digest、code change 和 test result；
+- 外部解析分 enqueue 与 receipt 两个事务；receipt 在 CAS 提交前验证签名、
+  nonce、manifest/hash、quota、secret scan、input/format/limits/image/checkpoint
+  pins；逻辑删除只写 tombstone，物理 GC 留给 P8；
+- Clean Broker 提供 `/internal/v2/parser-jobs` submit/status/cancel，API 只调用
+  adapter。Docker worker 使用固定 digest 的 Node 24 image 和 `parser.job.v1`、
+  `parser.receipt.v1`、`evidence.asset.v2`；
+- 21 个注册格式覆盖 text/Markdown/JSON/CSV/XML/SVG、PDF、DOCX、XLSX、PPTX、
+  PNG/JPEG/WebP/GIF、audio/video、ZIP/TAR/GZIP/7Z/RAR。worker 依赖固定为
+  `officeparser@7.8.0`、`pdfjs-dist@6.1.200`、`csv-parse@7.0.2`、
+  `saxes@6.0.0`、`@napi-rs/canvas@1.0.8`、`libarchive.js@2.0.2`、
+  `ffmpeg-static@5.3.0` 和 `ffprobe-static@3.1.0`；
+- 配额固定为 25 MiB input、100 MiB expanded、1024 entries、递归 3 层、
+  压缩比 1000、240000 字符、20 images、500 PDF pages、500 slides、100000
+  cells、15 分钟 media、120 秒 deadline；拒绝加密包、links、path traversal、
+  external entities 和 media signature mismatch；
+- parser 状态为 `queued -> running -> parsed|unsupported|invalid|
+  resource_exceeded|failed|cancelled|external_result_unknown`，最多三次 attempt；
+  只有已知 transient failure 使用 1 秒、4 秒 backoff，未知外部结果不自动重放。
+
+### Quality、Outcome 与 Web
+
+- rubric 为 1-20 dimensions，enabled weight 合计 100，threshold 默认 80；每个
+  run 最多 16 assets。自动 report 只包含确定性检查和非权威建议；
+- 人工 decision 必须提交全部逐维分数、理由、精确 report/input/rubric hash、
+  active session proof 和 project approval；parser 不生成 human verdict；
+- Outcome evaluator 固定为 `evidence_count/test_pass/digest_match/human_score`，
+  派生 `passed/completed_with_gaps/waived/blocked`；Evidence、rubric、execution
+  input、human decision、waiver/revoke/expiry 变化均追加 evaluation generation；
+- Web 默认导航增加 Evidence；项目 asset view 展示 version、lineage、
+  attestation、parser status 和受限 preview。Execution 增加 Evidence、Quality、
+  Outcome tabs，以及 start/cancel/retry、逐维评分、waiver/revoke 和 stale/tamper/
+  resource-exceeded/reconnect/duplicate/partial-event 状态；所有请求只用 `/api/v2`。
+
+### 验收与 Evidence
+
+- `test:p7` 覆盖 migration fault、immutable/CAS、ACL/revision/idempotency、格式
+  正例与坏输入、quota/timeout/tamper/cancel/retry/restart、Quality/Outcome replay；
+- performance 门槛为 1000-event Evidence replay p95 <=200 ms、100-asset lineage
+  p95 <=200 ms、16-asset/500-anchor Quality detail p95 <=300 ms、100-requirement
+  Outcome evaluation p95 <=200 ms；真实格式解析 latency 仅记录；
+- parser image 必须用 `docker build --provenance=false --target parser-worker`
+  连续构建两次且 image ID 一致；缺少 Docker/dependency 或 provisional probe
+  只保留 candidate，不晋级 Catalog；
+- 最终 Evidence 位于
+  `docs/evidence/v3-clean-p7-evidence-quality-outcome-20260824/`，含 schema/owner/
+  route/protocol/format/Catalog inventory、migration、五类 probe、performance/
+  browser/secret scan、四角色工件和 runnable rollback；
+- isolated apply 恢复 v6 SQLite/CAS/Vault/workspace/Broker/Bridge/parser，确认
+  `user_version=6`、ledger `[1,2,3,4,5,6]`、FK 空集、17 张 P7 表缺席和
+  `byte_exact_mismatches=[]`；
+- 仅 final `verified`、`provisional=false` receipt 把 Evidence/Quality 从
+  Historical 移入 Clean，并把 Evidence、Quality、Outcome、Attachments 晋级
+  `verified`，Catalog 为 `23/4/27`；Frontend 保持 `scaffolded`。
 
 ## 13. P8：Delivery、Deployment、Backup/Restore、Importer、Operations
 
@@ -799,7 +849,7 @@ importer 混入 API runtime。
 
 ### Importer 实施顺序
 
-1. `inspect`：V2.3 schema 23、当前 V3 schema 6、CAS、Context Index、附件和
+1. `inspect`：V2.3 schema 23、当前 V3 schema 7、CAS、Context Index、附件和
    release manifest 的只读完整性；
 2. `dry-run`：实体计数、ID mapping、引用翻译、语义冲突、credential rebind；
 3. `run`：按 dependency order 写临时 clean DB/CAS，并在每个 domain 后 fsync

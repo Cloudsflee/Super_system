@@ -173,8 +173,10 @@ stable public addresses.
 | terminal/bridge | /api/v2/terminals, /terminals/{id}/events, /terminals/{id}/ws, /api/v2/bridge/pairing | terminal.open, terminal.stop, bridge.pair; terminal.*, bridge.* | Terminal/Bridge |
 | runner profiles | /api/v2/runners/profiles, /api/v2/runners/profiles/{id}, /probe, /disable | runner.profile.list/create/get/update/probe/disable; runner_profile.* | Runner |
 | execution | /api/v2/projects/{project_id}/executions, /api/v2/executions/{id}, /events, /attempts, /checkpoints, /start, /pause, /resume, /cancel, /replan, /stages/{stage}/replay | execution.list/create/get/start/pause/resume/cancel/replan/stage.replay; execution.*, execution_stage.*, task_attempt.* | Execution |
-| evidence/assets | /api/v2/projects/{id}/assets, /api/v2/assets/{id}/versions, /api/v2/assets/{id}/content, /api/v2/executions/{id}/evidence | asset.capture, asset.attest; asset.*, evidence.* | Evidence |
-| quality/outcome | /api/v2/projects/{id}/outcome-requirements, /api/v2/executions/{id}/quality-reviews, /api/v2/quality-reviews/{id}, /outcome, /waivers | outcome.requirement.create, quality.start, quality.decision, outcome.evaluate, waiver.revoke; quality.*, outcome.* | Project/Quality/Outcome |
+| parser | /api/v2/parser/formats, /api/v2/assets/{id}/versions/{version_id}/parse, /api/v2/parser-runs/{id}, /retry, /cancel | parser.format.list, parser.run.start/get/retry/cancel; parser_format.*, parser_run.* | Parser |
+| evidence/assets | /api/v2/projects/{project_id}/assets, /api/v2/assets/{id}, /versions, /versions/{version_id}/content, /relations, /attestations, /tombstone, /api/v2/executions/{id}/evidence, /traces, /digests, /test-results, /code-changes | asset.list/capture/get/version.list/content/relation.list/relation.create/attestation.list/attest/tombstone, evidence.execution.get/trace.list/digest.list/test-result.list/code-change.list; asset.*, evidence.*, trace.*, digest.*, test_result.*, code_change.* | Evidence |
+| quality | /api/v2/executions/{id}/quality-reviews, /api/v2/quality-reviews/{id}, /events, /report, /decision, /cancel, /retry | quality.list/start/get/events/report.get/decision/cancel/retry; quality_review.* | Quality |
+| outcome | /api/v2/projects/{project_id}/outcome-requirements, /api/v2/executions/{id}/outcome, /evaluate, /waivers, /api/v2/outcome-waivers/{id}/revoke | outcome.requirement.list/create, outcome.get/evaluate/waiver.create/waiver.revoke; outcome.requirement.*, outcome.* | Project/Outcome |
 | delivery | /api/v2/deliveries, /api/v2/pull-request-intents, /api/v2/deliveries/{id}/* | delivery.submit, pr.ready, pr.merge, delivery.reconcile; delivery.* | Delivery |
 | deployment/ops | /api/v2/system/deployment, /api/v2/backups, /restore, /reset, /imports | deploy.verify, backup.restore, import.cutover; deployment.*, operations.* | Operations |
 
@@ -278,6 +280,40 @@ revision/hash pins, digest, deadline, capabilities, resource profile, and
 relative paths only. Docker/Host/Bridge submit, status, and cancel produce the
 same terminal receipt shape; an unknown restart result pauses the execution
 with `external_result_unknown`.
+
+### 4.5 P7 Evidence/Quality/Parser/Outcome boundary
+
+P7 advances the active schema to `user_version=7` and mounts 32 registry
+commands through the same dispatcher. Queries return 200, resource creation
+returns 201, and accepted parser, Quality, and Outcome operations return 202.
+Every mutation requires `Idempotency-Key`; the registry-selected parent or
+resource revision is supplied through `X-Expected-Revision` or an identical
+body field. Asset content, tombstone, human Quality decisions, and Outcome
+waiver grant/revoke are REST/Web-only. Metadata, parser lifecycle,
+deterministic evaluation, and all other registered reads preserve REST, Web,
+MCP HTTP, MCP stdio, and Gateway parity.
+
+The API calls a Parser adapter and never accesses a Docker socket. The Clean
+Broker accepts signed `parser.job.v1` at `/internal/v2/parser-jobs`, exposes
+signed status at `/internal/v2/parser-jobs/{id}`, and accepts cancellation at
+`/internal/v2/parser-jobs/{id}/cancel`. Transport HMAC covers timestamp, nonce,
+method, route, and canonical body hash. A `parser.receipt.v1` must match the
+pinned image digest, input, format, limits, checkpoint, manifest, output
+hashes, and quota before bytes enter CAS or `evidence.asset.v2` is committed.
+Stable parser terminal states are `parsed`, `unsupported`, `invalid`,
+`resource_exceeded`, `failed`, `cancelled`, and
+`external_result_unknown`; retry always creates lineage rather than changing a
+terminal row.
+
+Quality reports contain deterministic checks and non-authoritative suggestions.
+Submitting a human decision requires every enabled rubric dimension, exact
+report/input/rubric hashes, an active browser session proof, and project
+approval. Waiver grant/revoke has the same human proof and approval boundary.
+These actions are not MCP/Gateway tools. Outcome evaluation supports only
+`evidence_count`, `test_pass`, `digest_match`, and `human_score`; every relevant
+input change creates a new immutable generation so replay derives
+`passed`, `completed_with_gaps`, `waived`, or `blocked` without rewriting prior
+results.
 
 ## 5. Command contract
 
@@ -409,6 +445,10 @@ context:read/write
 assist:read/write
 execution:read/run/control
 evidence:read/write/attest
+parser:read/run
+quality:read/run
+outcome:read/run
+project:approve
 delivery:read/write/merge
 operations:read/control
 ~~~
