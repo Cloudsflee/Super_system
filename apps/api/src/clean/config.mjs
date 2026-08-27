@@ -14,6 +14,7 @@ export function loadCleanConfig(env = process.env) {
   const providerTimeoutMs = Number(env.AIWS_CLEAN_PROVIDER_TIMEOUT_MS || 30_000);
   const runnerPollIntervalMs = Number(env.AIWS_RUNNER_POLL_INTERVAL_MS || 50);
   const parserPollIntervalMs = Number(env.AIWS_PARSER_POLL_INTERVAL_MS || 50);
+  const corsOrigins = parseCorsOrigins(env.AIWS_CLEAN_CORS_ORIGINS, { production });
   if (!Number.isInteger(providerTimeoutMs) || providerTimeoutMs < 1000 || providerTimeoutMs > 300_000) throw new Error('clean_provider_timeout_invalid');
   if (!Number.isInteger(runnerPollIntervalMs) || runnerPollIntervalMs < 1 || runnerPollIntervalMs > 5000) throw new Error('runner_poll_interval_invalid');
   if (!Number.isInteger(parserPollIntervalMs) || parserPollIntervalMs < 1 || parserPollIntervalMs > 5000) throw new Error('parser_poll_interval_invalid');
@@ -22,6 +23,7 @@ export function loadCleanConfig(env = process.env) {
   return Object.freeze({
     runtime: 'v3-clean',
     apiVersion: '2',
+    corsOrigins,
     host: env.AIWS_CLEAN_BIND_HOST || env.AIWS_BIND_HOST || '127.0.0.1',
     port,
     home,
@@ -49,7 +51,26 @@ export function loadCleanConfig(env = process.env) {
     workspaceRoot: path.resolve(String(env.AIWS_CLEAN_WORKSPACES || path.join(home, 'workspaces'))),
     vaultRoot: path.resolve(String(env.AIWS_CLEAN_VAULT || path.join(home, 'vault'))),
     vaultMasterKey: env.AIWS_CLEAN_VAULT_KEY == null ? null : String(env.AIWS_CLEAN_VAULT_KEY),
-    runtimeBuild: String(env.AIWS_CLEAN_BUILD || 'v3-clean-p2'),
+    runtimeBuild: String(env.AIWS_CLEAN_BUILD || 'v3-clean-p9'),
     maxBodyBytes: Math.max(1024, Math.min(16 * 1024 * 1024, requestedMaxBody))
   });
+}
+
+export function parseCorsOrigins(value, { production = false } = {}) {
+  const source = value == null || String(value).trim() === ''
+    ? (production ? [] : ['http://127.0.0.1:5174'])
+    : String(value).split(',').map((item) => item.trim()).filter(Boolean);
+  const origins = [];
+  for (const candidate of source) {
+    if (candidate === '*' || candidate === 'null') throw new Error('clean_cors_origin_invalid');
+    let parsed;
+    try { parsed = new URL(candidate); } catch { throw new Error('clean_cors_origin_invalid'); }
+    if (!['http:', 'https:'].includes(parsed.protocol)
+      || parsed.username || parsed.password || parsed.pathname !== '/'
+      || parsed.search || parsed.hash || parsed.origin !== candidate) {
+      throw new Error('clean_cors_origin_invalid');
+    }
+    if (!origins.includes(candidate)) origins.push(candidate);
+  }
+  return Object.freeze(origins);
 }

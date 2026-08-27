@@ -156,7 +156,7 @@ stable public addresses.
 
 | Family | API v2 paths | Representative commands/events | Owner |
 | --- | --- | --- | --- |
-| probes/operations | /livez, /readyz, /api/v2/operations/{id}, /api/v2/operations/{id}/events, /api/v2/operations/{id}/cancel | operations.get, operations.cancel; operation.* | Operations |
+| probes/operations | /livez, /readyz, /api/v2/events, /api/v2/operations/{id}, /api/v2/operations/{id}/events, /api/v2/operations/{id}/cancel | events.project.replay, operations.get, operations.cancel; operation.* | Operations |
 | identity/team | /api/v2/account, /api/v2/actors, /api/v2/sessions, /api/v2/teams, /api/v2/teams/{id}/memberships | actor.update/switch, session.create/revoke, team.member.grant/status; actor.*, session.*, team.* | Identity |
 | setup/credentials | /api/v2/setup, /api/v2/credentials, /api/v2/credentials/{id}/rebind, /rotate, /revoke, /api/v2/profiles, /api/v2/profiles/{id}/probe | setup.complete, credential.rebind/rotate/revoke, profile.probe; setup.*, credential.*, profile.* | Setup |
 | projects/briefs | /api/v2/projects, /api/v2/projects/{id}, /api/v2/projects/{id}/archive, /restore, /api/v2/projects/{id}/intake, /intake/retry, /intake/cancel, /api/v2/projects/{id}/briefs, /briefs/{revision}/confirm, /preview | project.create/update/archive/restore, intake.submit/retry/cancel, brief.create/confirm; project.*, intake.*, brief.* | Project |
@@ -351,6 +351,7 @@ event with the same operation id.
   "id": "evt_01...",
   "type": "assist.turn.completed",
   "sequence": 18,
+  "previous_project_sequence": 14,
   "aggregate": {"type": "assist_turn", "id": "turn_01...", "revision": 5},
   "operation_id": "op_01...",
   "actor_id": "actor_01...",
@@ -362,9 +363,12 @@ event with the same operation id.
 }
 ~~~
 
-Sequence is monotonic per stream. Event ids are opaque; replay ordering uses
-sequence and the cursor, not wall-clock time. Event payloads are bounded and
-redacted.
+Sequence is the monotonic global event sequence. Event ids are opaque; replay
+ordering uses sequence and the cursor, not wall-clock time. For project events,
+`previous_project_sequence` is the prior global sequence for that project, or
+zero for its first event. Clients detect a project-local gap only when this
+value differs from the last applied project sequence; unrelated projects may
+create holes in the global sequence. Event payloads are bounded and redacted.
 
 ### 6.2 SSE
 
@@ -377,10 +381,13 @@ data: {"id":"evt_01...","sequence":18,...}
 
 ~~~
 
-The server honors Last-Event-ID and query cursor. On reconnect it first emits
-all durable events after the cursor, then follows the live stream. A terminal
-operation emits a terminal snapshot and closes the stream. Heartbeats carry
-no business data.
+The server honors Last-Event-ID and query cursor. On an SSE reconnect,
+`Last-Event-ID` takes precedence and contains the last global numeric sequence.
+On reconnect it first emits all durable events after the cursor, then follows
+the live stream. A terminal operation emits a terminal snapshot and closes the
+stream. Heartbeats carry no business data. Project SSE re-resolves the session
+principal and Project ACL before every event and heartbeat; revocation closes
+the response without emitting further business data.
 
 ### 6.3 JSON replay
 
@@ -397,6 +404,39 @@ The same endpoint with format=json returns:
 
 SSE and JSON replay use the same event rows, authorization, redaction, cursor
 semantics, and retention policy.
+
+### 6.4 P9 project replay
+
+`GET /api/v2/events?project_id=&cursor=&limit=&format=json` is the REST/Web-only
+Operations replay entrypoint. `project_id` is required. `limit` defaults to 200
+and is bounded at 500. JSON is the default; `Accept: text/event-stream` selects
+SSE unless `format=json` forces JSON. The JSON data payload is closed:
+
+~~~json
+{
+  "events": [],
+  "project_id": "project_01...",
+  "next_cursor": "c1....",
+  "cursor_sequence": 18,
+  "has_more": false
+}
+~~~
+
+Clients repeat JSON catch-up until `has_more=false`, then connect SSE from the
+returned signed cursor. Query cursors are signed to actor, project, stream, and
+query scope. SSE ids remain the global numeric sequence so browser reconnect
+can send `Last-Event-ID`.
+
+### 6.5 Exact-origin CORS
+
+`AIWS_CLEAN_CORS_ORIGINS` is a comma-separated exact origin allowlist.
+Wildcard, `null`, userinfo, path, query, fragment, and non-HTTP(S) values stop
+startup. Credentialed responses echo the exact allowed origin, include
+`Access-Control-Allow-Credentials: true`, and append `Vary: Origin`. OPTIONS
+validates only origin, registered method, and the bounded header allowlist;
+the subsequent JSON or SSE request always authenticates the session and checks
+Project ACL. Development uses `http://127.0.0.1:5174`; release verification
+injects its dynamic loopback origin.
 
 ## 7. MCP mapping
 

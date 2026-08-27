@@ -44,7 +44,7 @@ test('P6 migration, ownership, registry, paths and package gates are synchronize
   assert.deepEqual(registry.entries.filter((entry) => entry.phase === 'p6').map((entry) => entry.command_id), p6Commands);
 
   const packageJson = JSON.parse(fs.readFileSync(path.join(root, 'package.json'), 'utf8'));
-  assert.equal(Object.keys(packageJson.scripts).length, 51);
+  assert.equal(Object.keys(packageJson.scripts).length, 53);
   assert.deepEqual(packageJson.scripts, Object.fromEntries(Object.entries(P1_PACKAGE_SCRIPT_DEFINITIONS).map(([name, value]) => [name, value.command])));
   assert.equal(packageJson.scripts['dev:broker'], 'node apps/runner-broker/clean-server.mjs');
   assert.equal(packageJson.scripts['test:p6'], 'node --test tests/p6/*.test.mjs');

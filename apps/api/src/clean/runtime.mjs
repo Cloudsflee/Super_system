@@ -37,6 +37,7 @@ import { CleanP8Service } from './p8-service.mjs';
 export function createCleanRuntime(options = {}) {
   const config = options.config || loadCleanConfig(options.env || process.env);
   const targetVersion = targetVersionFromOptions(options);
+  const runtimePhase = runtimePhaseFromOptions(options, targetVersion);
   const vaultMasterKey = options.vaultMasterKey || config.vaultMasterKey;
   if (typeof vaultMasterKey !== 'string' || vaultMasterKey.length < 16) throw new CleanNotReadyError('credential vault key is required', { reason: 'vault_key_missing', schema_family: 'v3-clean' });
   let initialized;
@@ -66,7 +67,7 @@ export function createCleanRuntime(options = {}) {
   const vault = new VaultAdapter({ root: options.vaultRoot || config.vaultRoot, masterKey: vaultMasterKey });
   const identity = new IdentityService({ db, events, operations, policy, bootstrapActorId: initialized.metadata.bootstrap_actor_id, sessionSecret: options.sessionSecret || config.sessionSecret, authorization, vault, clock: options.now || undefined, projectScopeResolver, providerAdapters: options.providerAdapters || createFakeProviderAdapters() });
   const projectWorkflow = targetVersion >= 3 ? new ProjectWorkflowService({ db, events, operations, policy, authorization, clock: options.now || undefined, repositoryAdapter: options.repositoryAdapter, generator: options.generator, critic: options.critic }) : null;
-  const registry = createCleanCommandRegistry({ targetVersion });
+  const registry = createCleanCommandRegistry({ targetVersion, runtimePhase });
   const context = targetVersion >= 4 ? new CleanContextService({ db, cas, events, operations, authorization, policy, clock: options.now || undefined, bootstrapActorId: initialized.metadata.bootstrap_actor_id }) : null;
   const mcp = targetVersion >= 4 ? new CleanMcpExchangeService({ db, context, operations, authorization, registry, policy, clock: options.now || undefined, pepper: options.mcpPepper || config.mcpPepper, bootstrapActorId: initialized.metadata.bootstrap_actor_id }) : null;
   const gateway = targetVersion >= 4 ? new CleanGatewayService({ db, policy, clock: options.now || undefined, secret: options.gatewaySecret || config.gatewaySecret, gatewayId: options.gatewayId || config.gatewayId || 'gateway-local' }) : null;
@@ -170,6 +171,7 @@ export function createCleanRuntime(options = {}) {
     readinessReason,
     runtime: 'v3-clean',
     apiVersion: '2',
+    runtimePhase,
     p2: true,
     p3: targetVersion >= 3,
     p4: targetVersion >= 4,
@@ -177,8 +179,9 @@ export function createCleanRuntime(options = {}) {
     p6: targetVersion >= 6,
     p7: targetVersion >= 7,
     p8: targetVersion >= 8,
+    p9: runtimePhase >= 9,
     health() {
-      return { runtime: 'v3-clean', ready: this.ready, readiness_reason: this.readinessReason, readiness_receipt: this.readinessReceipt, schema_family: this.metadata.family, user_version: this.metadata.user_version, cas_manifest: this.casManifest || null, p2: this.p2, p3: this.p3, p4: this.p4, p5: this.p5, p6: this.p6, p7: this.p7, p8: this.p8 };
+      return { runtime: 'v3-clean', runtime_phase: this.runtimePhase, ready: this.ready, readiness_reason: this.readinessReason, readiness_receipt: this.readinessReceipt, schema_family: this.metadata.family, user_version: this.metadata.user_version, cas_manifest: this.casManifest || null, p2: this.p2, p3: this.p3, p4: this.p4, p5: this.p5, p6: this.p6, p7: this.p7, p8: this.p8, p9: this.p9 };
     },
     close() {
       this.terminal?.close?.();
@@ -220,7 +223,8 @@ export function createNotReadyRuntime(options = {}, failure = null) {
   const config = options.config || loadCleanConfig(options.env || process.env);
   const policy = options.policy || new RedactionPolicy();
   const targetVersion = targetVersionFromOptions(options);
-  const registry = createCleanCommandRegistry({ targetVersion });
+  const runtimePhase = runtimePhaseFromOptions(options, targetVersion);
+  const registry = createCleanCommandRegistry({ targetVersion, runtimePhase });
   const details = failure?.details && typeof failure.details === 'object' ? failure.details : {};
   const reason = String(details.reason || failure?.code || 'startup_failed');
   const metadata = Object.freeze({
@@ -274,6 +278,7 @@ export function createNotReadyRuntime(options = {}, failure = null) {
     readinessReason: reason,
     runtime: 'v3-clean',
     apiVersion: '2',
+    runtimePhase,
     p2: false,
     p3: false,
     p4: false,
@@ -281,8 +286,9 @@ export function createNotReadyRuntime(options = {}, failure = null) {
     p6: false,
     p7: false,
     p8: false,
+    p9: false,
     health() {
-      return { runtime: 'v3-clean', ready: false, readiness_reason: this.readinessReason, readiness_receipt: this.readinessReceipt, schema_family: this.metadata.family, user_version: this.metadata.user_version, cas_manifest: null, p2: false, p3: false, p4: false, p5: false, p6: false, p7: false, p8: false };
+      return { runtime: 'v3-clean', runtime_phase: this.runtimePhase, ready: false, readiness_reason: this.readinessReason, readiness_receipt: this.readinessReceipt, schema_family: this.metadata.family, user_version: this.metadata.user_version, cas_manifest: null, p2: false, p3: false, p4: false, p5: false, p6: false, p7: false, p8: false, p9: false };
     },
     close() {}
   };
@@ -317,6 +323,15 @@ function createParserAdapter(options, config) {
 
 function targetVersionFromOptions(options = {}) {
   if (options.targetVersion != null || options.schemaVersion != null) return Number(options.targetVersion ?? options.schemaVersion);
+  if (options.p9 || options.phase === 'p9' || options.cleanPhase === 'p9' || Number(options.runtimePhase) >= 9) return 8;
   for (const version of [8, 7, 6, 5, 4, 3]) if (options[`p${version}`] || options.phase === `p${version}` || options.cleanPhase === `p${version}`) return version;
   return 2;
+}
+
+function runtimePhaseFromOptions(options = {}, targetVersion = targetVersionFromOptions(options)) {
+  if (options.runtimePhase != null) return Number(options.runtimePhase);
+  for (const phase of [9, 8, 7, 6, 5, 4, 3, 2]) {
+    if (options[`p${phase}`] || options.phase === `p${phase}` || options.cleanPhase === `p${phase}`) return phase;
+  }
+  return Number(targetVersion);
 }

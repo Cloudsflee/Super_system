@@ -361,6 +361,7 @@ export const CLEAN_V2_SCHEMAS = Object.freeze({
   // P1 query/input contracts.
   'operation.id.v2': closed({ id: id }, ['id']),
   'operation.events.query.v2': closed({ format: { const: 'json' }, cursor: { type: 'string' }, limit: { type: 'integer', minimum: 1, maximum: 500 } }),
+  'project.events.query.v2': closed({ project_id: id, cursor: { type: 'string', minLength: 1, maxLength: 4096 }, limit: { type: 'integer', minimum: 1, maximum: 500 }, format: { const: 'json' } }, ['project_id']),
   'setup.query.v2': closed({}),
   'account.query.v2': closed({}),
   'team.id.v2': closed({ id }, ['id']),
@@ -402,6 +403,7 @@ export const CLEAN_V2_SCHEMAS = Object.freeze({
   // P1/P2 receipts. These are data payloads inside the common API envelope.
   'operation.receipt.v2': operation,
   'event.replay.v2': closed({ events: { type: 'array', items: looseObject }, next_cursor: { anyOf: [{ type: 'string' }, { type: 'integer', minimum: 0 }, { type: 'null' }] }, cursor_sequence: { type: 'integer', minimum: 0 }, cursor: { anyOf: [looseObject, { type: 'null' }] }, terminal: { type: 'boolean' }, resource: closed({ id, type: { type: 'string' }, revision }, ['id', 'type', 'revision']) }, ['events', 'next_cursor', 'terminal', 'resource']),
+  'project.event.replay.v2': closed({ events: { type: 'array', items: looseObject }, project_id: id, next_cursor: { type: 'string', minLength: 1 }, cursor_sequence: { type: 'integer', minimum: 0 }, has_more: { type: 'boolean' } }, ['events', 'project_id', 'next_cursor', 'cursor_sequence', 'has_more']),
   'resource.receipt.v2': receipt(),
   'setup.receipt.v2': receipt({ actor, team, membership, session, operation: operationEnvelope }, ['actor', 'team', 'membership', 'session', 'operation']),
   'actor.receipt.v2': receipt({ account: actor, actor, session, operation: operationEnvelope }, []),

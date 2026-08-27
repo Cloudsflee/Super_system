@@ -51,6 +51,10 @@ export class EventService {
       canonicalJson(redacted.redactions)
     ]);
     const sequence = Number(result.lastInsertRowid);
+    const previousProjectSequence = input.projectId == null ? 0 : Number(tx.get(
+      'SELECT COALESCE(MAX(sequence),0) AS sequence FROM events WHERE project_id=? AND sequence<?',
+      [String(input.projectId), sequence]
+    )?.sequence || 0);
     const current = tx.get('SELECT current_revision,current_hash,last_event_sequence FROM aggregate_heads WHERE aggregate_type=? AND aggregate_id=?', [aggregateType, aggregateId]);
     const aggregateHash = String(input.aggregateHash || dataSha);
     if (!current) {
@@ -83,7 +87,8 @@ export class EventService {
       occurred_at: occurredAt,
       data_json: dataJson,
       data_sha256: dataSha,
-      redactions_json: canonicalJson(redacted.redactions)
+      redactions_json: canonicalJson(redacted.redactions),
+      previous_project_sequence: previousProjectSequence
     });
     tx.afterCommit(() => this.#publish(event));
     return event;
@@ -121,13 +126,18 @@ export class EventService {
       else after = decodeCursor(cursor, { actorId, projectId, stream: streamName(query), query, secret: this.cursorSecret, now }).sequence;
     }
     const bounded = Math.max(1, Math.min(500, Number(limit) || 500));
-    const clauses = ['sequence > ?'];
+    const clauses = ['e.sequence > ?'];
     const params = [after];
-    if (projectId != null) { clauses.push('project_id=?'); params.push(String(projectId)); }
-    if (operationId) { clauses.push('operation_id=?'); params.push(String(operationId)); }
-    if (aggregateType) { clauses.push('aggregate_type=?'); params.push(String(aggregateType)); }
-    if (aggregateId) { clauses.push('aggregate_id=?'); params.push(String(aggregateId)); }
-    const rows = this.db.query(`SELECT * FROM events WHERE ${clauses.join(' AND ')} ORDER BY sequence LIMIT ?`, [...params, bounded]);
+    if (projectId != null) { clauses.push('e.project_id=?'); params.push(String(projectId)); }
+    if (operationId) { clauses.push('e.operation_id=?'); params.push(String(operationId)); }
+    if (aggregateType) { clauses.push('e.aggregate_type=?'); params.push(String(aggregateType)); }
+    if (aggregateId) { clauses.push('e.aggregate_id=?'); params.push(String(aggregateId)); }
+    const rowsWithLookahead = this.db.query(`SELECT e.*,
+      COALESCE((SELECT MAX(previous.sequence) FROM events previous
+        WHERE previous.project_id=e.project_id AND previous.sequence<e.sequence),0) AS previous_project_sequence
+      FROM events e WHERE ${clauses.join(' AND ')} ORDER BY e.sequence LIMIT ?`, [...params, bounded + 1]);
+    const hasMore = rowsWithLookahead.length > bounded;
+    const rows = rowsWithLookahead.slice(0, bounded);
     if (!this.authorize({ actorId, projectId, events: rows })) {
       const error = new Error('permission_denied');
       error.code = 'permission_denied';
@@ -143,7 +153,7 @@ export class EventService {
     if (consumerId) {
       cursorReceipt = this.ackCursor({ actorId, consumerId, stream: streamName(query), projectId, cursor: last, query });
     }
-    return { events, next_cursor: nextCursor, terminal, resource: resourceFromEvents(events), cursor_sequence: last, cursor: cursorReceipt };
+    return { events, next_cursor: nextCursor, terminal, resource: resourceFromEvents(events), cursor_sequence: last, cursor: cursorReceipt, has_more: hasMore };
   }
 
   ackCursor({ actorId = 'actor_system_bootstrap', consumerId = 'default', stream = 'events', projectId = null, cursor, query = {}, expectedRevision = null, expiresAt, now = this.clock() } = {}) {
@@ -170,9 +180,9 @@ export class EventService {
     return { actor_id: actorId, consumer_id: consumerId, stream, cursor_sequence: sequence, revision: expected + 1, expires_at: expiry };
   }
 
-  subscribe({ operationId = null, aggregateType = null, aggregateId = null, afterSequence = 0 } = {}, listener) {
+  subscribe({ projectId = null, operationId = null, aggregateType = null, aggregateId = null, afterSequence = 0 } = {}, listener) {
     if (typeof listener !== 'function') throw new TypeError('event_listener_required');
-    const subscription = { operationId: operationId == null ? null : String(operationId), aggregateType: aggregateType == null ? null : String(aggregateType), aggregateId: aggregateId == null ? null : String(aggregateId), afterSequence: Number(afterSequence) || 0, listener };
+    const subscription = { projectId: projectId == null ? null : String(projectId), operationId: operationId == null ? null : String(operationId), aggregateType: aggregateType == null ? null : String(aggregateType), aggregateId: aggregateId == null ? null : String(aggregateId), afterSequence: Number(afterSequence) || 0, listener };
     this.subscribers.add(subscription);
     return () => this.subscribers.delete(subscription);
   }
@@ -185,6 +195,7 @@ export class EventService {
   #publish(event) {
     for (const subscription of [...this.subscribers]) {
       if (event.sequence <= subscription.afterSequence) continue;
+      if (subscription.projectId && event.project_id !== subscription.projectId) continue;
       if (subscription.operationId && event.operation_id !== subscription.operationId) continue;
       if (subscription.aggregateType && event.aggregate.type !== subscription.aggregateType) continue;
       if (subscription.aggregateId && event.aggregate.id !== subscription.aggregateId) continue;
@@ -198,6 +209,7 @@ export class EventService {
     return {
       id: row.id,
       sequence: Number(row.sequence),
+      previous_project_sequence: Number(row.previous_project_sequence || 0),
       type: row.type,
       aggregate: { type: row.aggregate_type, id: row.aggregate_id, revision: Number(row.aggregate_revision) },
       operation_id: row.operation_id || null,

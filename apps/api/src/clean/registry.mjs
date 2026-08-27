@@ -67,7 +67,8 @@ const entries = [
   ...p5Entries(),
   ...p6Entries(),
   ...p7Entries(),
-  ...p8Entries()
+  ...p8Entries(),
+  ...p9Entries()
 ];
 
 function identityEntries() {
@@ -203,7 +204,7 @@ function p4Entries() {
     common('context.policy.get', 'GET', '/api/v2/projects/{project_id}/context/policy', 'Context', 'context:read', 'context.project.query.v2', 'context.policy.v2', ['context_policy.*'], { state: 'policy' }),
     common('context.policy.update', 'PATCH', '/api/v2/projects/{project_id}/context/policy', 'Context', 'context:write', 'context.policy.update.v2', 'context.policy.v2', ['context_policy.updated'], { state: 'policy-update' }),
     common('context.selection.list', 'GET', '/api/v2/projects/{project_id}/context/selections', 'Context', 'context:read', 'context.project.query.v2', 'context.selections.v2', ['context_selection.*'], { state: 'selections' }),
-    common('context.selection.create', 'POST', '/api/v2/projects/{project_id}/context/selections', 'Context', 'context:read', 'context.selection.create.v2', 'context.selection.receipt.v2', ['context_selection.created'], { state: 'selection-create' }),
+    common('context.selection.create', 'POST', '/api/v2/projects/{project_id}/context/selections', 'Context', 'context:write', 'context.selection.create.v2', 'context.selection.receipt.v2', ['context_selection.created'], { state: 'selection-create' }),
     common('context.pack.list', 'GET', '/api/v2/projects/{project_id}/context/packs', 'Context', 'context:read', 'context.project.query.v2', 'context.packs.v2', ['context_pack.*'], { state: 'packs', mcp_name: 'context_packs_list' }),
     common('context.pack.get', 'GET', '/api/v2/projects/{project_id}/context/packs/{pack_id}', 'Context', 'context:read', 'context.pack.query.v2', 'context.pack.v2', ['context_pack.*'], { state: 'pack', mcp_name: 'context_pack_get' }),
     common('context.pack.create', 'POST', '/api/v2/projects/{project_id}/context/packs', 'Context', 'context:read', 'context.pack.create.v2', 'context.pack.receipt.v2', ['context_pack.created'], { state: 'pack-create' }),
@@ -431,6 +432,31 @@ function p8Entries() {
   ];
 }
 
+function p9Entries() {
+  return [{
+    command_id: 'events.project.replay',
+    version: 2,
+    method: 'GET',
+    path: '/api/v2/events',
+    owner: 'Operations',
+    scope: 'operations:read',
+    phase: 'p9',
+    project_scoped: true,
+    idempotency: 'forbidden',
+    expected_revision: 'none',
+    input_schema: 'project.events.query.v2',
+    output_schema: 'project.event.replay.v2',
+    long_running: false,
+    events: ['operation.*'],
+    mcp: { mapping: 'rest-only', name: 'events_project_replay', exposed: false },
+    transport_allowlist: Object.freeze(['rest', 'web']),
+    redaction_policy: 'v3-clean-default',
+    external_adapter: null,
+    ui_metadata: { surface: 'operations', state: 'project-event-replay' },
+    evidence_metadata: { receipt_kind: 'project.event.replay.v2', verification: 'p9-web-release' }
+  }];
+}
+
 export const CLEAN_COMMAND_REGISTRY = Object.freeze(entries.map((entry) => Object.freeze({
   ...entry,
   phase: entry.phase || 'p2',
@@ -444,13 +470,15 @@ export const CLEAN_COMMAND_REGISTRY = Object.freeze(entries.map((entry) => Objec
 
 export function createCleanCommandRegistry(options = {}) {
   validateRegistry(CLEAN_COMMAND_REGISTRY);
-  const includeP3 = options.phase === 'p3' || options.cleanPhase === 'p3' || Number(options.targetVersion || 0) >= 3;
-  const includeP4 = options.phase === 'p4' || options.cleanPhase === 'p4' || Number(options.targetVersion || 0) >= 4;
-  const includeP5 = options.phase === 'p5' || options.cleanPhase === 'p5' || Number(options.targetVersion || 0) >= 5;
-  const includeP6 = options.phase === 'p6' || options.cleanPhase === 'p6' || Number(options.targetVersion || 0) >= 6;
-  const includeP7 = options.phase === 'p7' || options.cleanPhase === 'p7' || Number(options.targetVersion || 0) >= 7;
-  const includeP8 = options.phase === 'p8' || options.cleanPhase === 'p8' || Number(options.targetVersion || 0) >= 8;
-  const selected = includeP8 ? CLEAN_COMMAND_REGISTRY : includeP7 ? CLEAN_COMMAND_REGISTRY.filter((entry) => entry.phase !== 'p8') : includeP6 ? CLEAN_COMMAND_REGISTRY.filter((entry) => !['p7','p8'].includes(entry.phase)) : includeP5 ? CLEAN_COMMAND_REGISTRY.filter((entry) => !['p6', 'p7','p8'].includes(entry.phase)) : includeP4 ? CLEAN_COMMAND_REGISTRY.filter((entry) => !['p5', 'p6', 'p7','p8'].includes(entry.phase)) : includeP3 ? CLEAN_COMMAND_REGISTRY.filter((entry) => !['p4', 'p5', 'p6', 'p7','p8'].includes(entry.phase)) : CLEAN_COMMAND_REGISTRY.filter((entry) => !['p3', 'p4', 'p5', 'p6', 'p7','p8'].includes(entry.phase));
+  const includeP9 = options.phase === 'p9' || options.cleanPhase === 'p9' || Number(options.runtimePhase || 0) >= 9;
+  const includeP8 = includeP9 || options.phase === 'p8' || options.cleanPhase === 'p8' || Number(options.targetVersion || 0) >= 8;
+  const includeP7 = includeP8 || options.phase === 'p7' || options.cleanPhase === 'p7' || Number(options.targetVersion || 0) >= 7;
+  const includeP6 = includeP7 || options.phase === 'p6' || options.cleanPhase === 'p6' || Number(options.targetVersion || 0) >= 6;
+  const includeP5 = includeP6 || options.phase === 'p5' || options.cleanPhase === 'p5' || Number(options.targetVersion || 0) >= 5;
+  const includeP4 = includeP5 || options.phase === 'p4' || options.cleanPhase === 'p4' || Number(options.targetVersion || 0) >= 4;
+  const includeP3 = includeP4 || options.phase === 'p3' || options.cleanPhase === 'p3' || Number(options.targetVersion || 0) >= 3;
+  const withoutP9 = includeP9 ? CLEAN_COMMAND_REGISTRY : CLEAN_COMMAND_REGISTRY.filter((entry) => entry.phase !== 'p9');
+  const selected = includeP8 ? withoutP9 : includeP7 ? withoutP9.filter((entry) => entry.phase !== 'p8') : includeP6 ? withoutP9.filter((entry) => !['p7','p8'].includes(entry.phase)) : includeP5 ? withoutP9.filter((entry) => !['p6', 'p7','p8'].includes(entry.phase)) : includeP4 ? withoutP9.filter((entry) => !['p5', 'p6', 'p7','p8'].includes(entry.phase)) : includeP3 ? withoutP9.filter((entry) => !['p4', 'p5', 'p6', 'p7','p8'].includes(entry.phase)) : withoutP9.filter((entry) => !['p3', 'p4', 'p5', 'p6', 'p7','p8'].includes(entry.phase));
   return {
     entries: selected,
     get(commandId) { return selected.find((entry) => entry.command_id === commandId) || null; },

@@ -41,6 +41,8 @@ use the immutable final `verification.json` receipt.
 
 P1/P2/P3/P4/P5/P6/P7/P8 migrations and verified Evidence are read-only.
 Production cutover and production-volume mutation remain outside P9.
+P7 remains finalized under `D-036`; P9 does not reopen its parser, Evidence,
+Quality, Outcome, or rollback receipts.
 
 ## Required preflight
 

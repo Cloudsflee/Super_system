@@ -2,13 +2,14 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createApp as createCleanApp, start as startClean } from './clean-server.mjs';
 
-// The process entrypoint is the released V3-Clean surface.  The lower-level
-// clean runtime keeps its P2 default for phase-specific fixture tests, while
-// this wrapper is the active P8 Clean process surface.
-export const ACTIVE_TARGET_VERSION = 8;
+// Phase and schema are intentionally separate in P9: release/Web behavior
+// advances without inventing a ninth migration.
+export const ACTIVE_RUNTIME_PHASE = 9;
+export const ACTIVE_SCHEMA_VERSION = 8;
+export const ACTIVE_TARGET_VERSION = ACTIVE_SCHEMA_VERSION;
 
 function activeOptions(options = {}) {
-  return { targetVersion: ACTIVE_TARGET_VERSION, ...options };
+  return { targetVersion: ACTIVE_SCHEMA_VERSION, runtimePhase: ACTIVE_RUNTIME_PHASE, ...options };
 }
 
 export { createCleanApp, startClean };

@@ -143,6 +143,7 @@ export const CLEAN_COMMAND_OWNERS = Object.freeze({
   'operations.get': 'Operations',
   'operations.events': 'Operations',
   'operations.cancel': 'Operations',
+  'events.project.replay': 'Operations',
   'setup.get': 'Setup',
   'setup.complete': 'Identity',
   'account.get': 'Identity',
@@ -501,6 +502,7 @@ export function validateCleanOwnership({ tables = [], registry = null } = {}) {
     const p7Owners = new Set(['Parser', 'Evidence', 'Quality', 'Outcome']);
     const p8Owners = new Set(['Delivery', 'Deployment', 'Importer']);
     const hasP8Tables = actualTables.includes('delivery_policies');
+    const hasP9Routes = entries.some((entry) => entry.phase === 'p9');
     const hasP7Tables = actualTables.includes('parser_formats');
     const hasP6Tables = actualTables.includes('runner_profiles');
     const hasP5Tables = actualTables.includes('assist_sessions');
@@ -509,6 +511,7 @@ export function validateCleanOwnership({ tables = [], registry = null } = {}) {
     const p8OperationCommands = new Set(['operations.list', 'operations.replay', 'backup.list', 'backup.create', 'restore.prepare', 'system.reset.prepare', 'cas.gc.plan', 'cas.gc.apply']);
     const expectedCommandIds = Object.entries(CLEAN_COMMAND_OWNERS)
       .filter(([commandId, owner]) => {
+        if (commandId === 'events.project.replay' && !hasP9Routes) return false;
         if (!hasP8Tables && p8OperationCommands.has(commandId)) return false;
         if (hasP8Tables) return true;
         if (hasP7Tables) return !p8Owners.has(owner);

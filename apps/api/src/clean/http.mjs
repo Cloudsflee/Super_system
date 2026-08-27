@@ -11,6 +11,7 @@ import { CallToolRequestSchema, ListResourcesRequestSchema, ListToolsRequestSche
 import { assertCleanV2, CLEAN_V2_SCHEMAS } from '@aiws/contracts/clean-v2';
 
 const RETIRED_API_PREFIX = ['/api', 'v1'].join('/');
+const CORS_REQUEST_HEADERS = new Set(['accept', 'content-type', 'idempotency-key', 'x-expected-revision', 'if-match', 'last-event-id', 'x-request-id']);
 
 export function createCleanHttpHandler({ runtime, registry, maxBodyBytes = runtime?.config?.maxBodyBytes || 1024 * 1024 } = {}) {
   if (!runtime || !registry) throw new TypeError('clean_http_runtime_required');
@@ -20,11 +21,12 @@ export function createCleanHttpHandler({ runtime, registry, maxBodyBytes = runti
     const url = new URL(req.url || '/', 'http://v3-clean.local');
     const pathname = url.pathname.replace(/\/$/, '') || '/';
     try {
+      if (applyCors(req, res, runtime.config, registry, pathname)) return;
       if (pathname === '/livez' && req.method === 'GET') return sendSuccess(res, requestId, { status: 'live', runtime: 'v3-clean' }, { resourceType: 'health', policy: runtime.policy });
       if (runtime.recovery && pathname !== '/livez') await runtime.recovery;
       if (pathname === '/readyz' && req.method === 'GET') {
         if (!runtime.ready) throw new HttpError('not_ready', 'clean runtime is not ready', { reason: runtime.readinessReason || 'startup', receipt_reference: runtime.readinessReceipt || null }, 503, true);
-        return sendSuccess(res, requestId, { status: 'ready', runtime: 'v3-clean', schema_family: runtime.metadata.family, user_version: runtime.metadata.user_version }, { resourceType: 'health', policy: runtime.policy });
+        return sendSuccess(res, requestId, { status: 'ready', runtime: 'v3-clean', runtime_phase: runtime.runtimePhase, schema_family: runtime.metadata.family, user_version: runtime.metadata.user_version }, { resourceType: 'health', policy: runtime.policy });
       }
       if (pathname === RETIRED_API_PREFIX || pathname.startsWith(`${RETIRED_API_PREFIX}/`)) throw new HttpError('route_retired', 'the requested API route is retired', { migration_receipt_reference: runtime.retiredRouteReceipt }, 410, false);
       if (!runtime.ready && pathname.startsWith('/api/v2/')) throw new HttpError('not_ready', 'clean runtime is not ready', { reason: runtime.readinessReason || 'startup', receipt_reference: runtime.readinessReceipt || null }, 503, true);
@@ -64,6 +66,9 @@ export function createCleanHttpHandler({ runtime, registry, maxBodyBytes = runti
         : runtime.p2 && runtime.identity
           ? runtime.identity.principalFromRequest(req)
           : runtime.platform.actorContext({ actorId: req.headers['x-actor-id'], projectId: req.headers['x-project-id'], scopes: parseScopes(req.headers['x-scopes']) });
+      if (runtime.p9 && entry.phase === 'p9') {
+        return await handleP9Route({ entry, url, req, res, requestId, runtime, actor });
+      }
       if (runtime.p8 && entry.phase === 'p8') {
         return await handleP5Route({ entry, params, url, req, res, requestId, runtime, actor, bodyReader: () => readJson(req, maxBodyBytes) });
       }
@@ -168,6 +173,89 @@ export function createCleanHttpHandler({ runtime, registry, maxBodyBytes = runti
       return sendError(res, requestId, error, runtime);
     }
   };
+}
+
+async function handleP9Route({ entry, url, req, res, requestId, runtime, actor }) {
+  if (entry.command_id !== 'events.project.replay') throw new HttpError('not_found', 'route not found', {}, 404, false);
+  validateQuery(url, new Set(['project_id', 'cursor', 'limit', 'format']));
+  const projectId = singleQueryValue(url, 'project_id');
+  if (!projectId) throw new HttpError('schema_invalid', 'project_id is required', {}, 400, false);
+  const format = singleQueryValue(url, 'format');
+  if (format != null && format !== 'json') throw new HttpError('schema_invalid', 'event format must be json when provided', {}, 400, false);
+  const queryCursor = singleQueryValue(url, 'cursor');
+  if (queryCursor === '') throw new HttpError('schema_invalid', 'event cursor must not be empty', {}, 400, false);
+  if (queryCursor != null && /^\d+$/.test(queryCursor)) throw new HttpError('cursor_invalid', 'query cursor must be signed', {}, 400, false);
+  const limit = replayLimit(url, 200);
+  const queryInput = { project_id: projectId, ...(queryCursor == null ? {} : { cursor: queryCursor }), ...(singleQueryValue(url, 'limit') == null ? {} : { limit }), ...(format == null ? {} : { format }) };
+  assertCleanV2(entry.input_schema, queryInput);
+  authorizeProjectEvents(runtime, actor, projectId);
+  const headerCursor = req.headers['last-event-id'] == null ? null : String(req.headers['last-event-id']).trim();
+  if (headerCursor != null && !/^\d+$/.test(headerCursor)) throw new HttpError('cursor_invalid', 'Last-Event-ID must be a global event sequence', {}, 400, false);
+  const replayInput = { actorId: actor.actorId, projectId, cursor: headerCursor ?? queryCursor, limit };
+  const wantsSse = format !== 'json' && String(req.headers.accept || '').toLowerCase().includes('text/event-stream');
+  if (!wantsSse) {
+    const replay = runtime.events.replay(replayInput);
+    const data = { events: replay.events, project_id: projectId, next_cursor: replay.next_cursor, cursor_sequence: replay.cursor_sequence, has_more: replay.has_more };
+    return sendSuccess(res, requestId, data, { resourceType: 'project_events', outputSchema: entry.output_schema, policy: runtime.policy });
+  }
+
+  const buffered = [];
+  let initialized = false;
+  let closed = false;
+  let lastSequence = Number(headerCursor || 0);
+  let heartbeat = null;
+  const reauthorize = () => {
+    const principal = runtime.identity.principalFromRequest(req);
+    authorizeProjectEvents(runtime, principal, projectId);
+    return principal;
+  };
+  const closeStream = () => {
+    if (closed) return;
+    closed = true;
+    if (heartbeat) clearInterval(heartbeat);
+    unsubscribe();
+    if (!res.writableEnded) res.end();
+  };
+  const writeEvent = (event) => {
+    if (closed || event.sequence <= lastSequence) return;
+    try { reauthorize(); } catch { closeStream(); return; }
+    lastSequence = event.sequence;
+    res.write(runtime.events.sseFrames({ events: [event], terminal: false }, { heartbeat: false }));
+  };
+  const unsubscribe = runtime.events.subscribe({ projectId }, (event) => {
+    if (!initialized) buffered.push(event);
+    else writeEvent(event);
+  });
+  let replay;
+  try {
+    reauthorize();
+    replay = runtime.events.replay(replayInput);
+  } catch (error) {
+    unsubscribe();
+    throw error;
+  }
+  res.writeHead(200, { 'content-type': 'text/event-stream; charset=utf-8', 'cache-control': 'no-cache, no-store', connection: 'keep-alive', 'x-request-id': requestId });
+  res.flushHeaders?.();
+  res.write(runtime.events.sseFrames(replay, { heartbeat: false }));
+  lastSequence = replay.cursor_sequence;
+  initialized = true;
+  for (const event of buffered.sort((left, right) => left.sequence - right.sequence)) writeEvent(event);
+  if (replay.has_more) closeStream();
+  if (!closed) {
+    const writeHeartbeat = () => {
+      try { reauthorize(); } catch { closeStream(); return; }
+      if (!closed) res.write(': heartbeat\n\n');
+    };
+    writeHeartbeat();
+    heartbeat = setInterval(writeHeartbeat, 15_000);
+    heartbeat.unref?.();
+    res.once('close', closeStream);
+  }
+}
+
+function authorizeProjectEvents(runtime, principal, projectId) {
+  if (!runtime.authorization) throw new HttpError('not_ready', 'authorization is unavailable', {}, 503, true);
+  return runtime.authorization.assert(principal, 'operations:read', projectId, { resource: 'events' });
 }
 
 async function handleP5Route({ entry, params, url, req, res, requestId, runtime, actor, bodyReader }) {
@@ -1090,11 +1178,46 @@ function singleQueryValue(url, name) {
   return values.length ? values[0] : null;
 }
 
-function replayLimit(url) {
+function replayLimit(url, defaultLimit = 500) {
   const value = singleQueryValue(url, 'limit');
-  if (value == null) return 500;
+  if (value == null) return defaultLimit;
   if (!/^[1-9]\d*$/.test(value) || Number(value) > 500) throw new HttpError('schema_invalid', 'event limit must be an integer from 1 to 500', {}, 400, false);
   return Number(value);
+}
+
+function applyCors(req, res, config, registry, pathname) {
+  const originHeader = req.headers.origin;
+  const origin = originHeader == null ? null : String(originHeader);
+  const allowedOrigins = new Set(config?.corsOrigins || []);
+  if (origin != null) {
+    if (origin === 'null' || !allowedOrigins.has(origin)) {
+      throw new HttpError('cors_origin_denied', 'request origin is not allowed', {}, 403, false);
+    }
+    res.setHeader('access-control-allow-origin', origin);
+    res.setHeader('access-control-allow-credentials', 'true');
+    res.setHeader('access-control-expose-headers', 'x-request-id, etag');
+    const existingVary = String(res.getHeader('vary') || '').split(',').map((item) => item.trim()).filter(Boolean);
+    if (!existingVary.some((item) => item.toLowerCase() === 'origin')) existingVary.push('Origin');
+    res.setHeader('vary', existingVary.join(', '));
+  }
+  if (req.method !== 'OPTIONS') return false;
+  if (!origin) throw new HttpError('cors_origin_denied', 'preflight origin is required', {}, 403, false);
+  const requestedMethod = String(req.headers['access-control-request-method'] || '').toUpperCase();
+  if (!requestedMethod) throw new HttpError('invalid_request', 'preflight method is required', {}, 400, false);
+  const healthRoute = ['/livez', '/readyz'].includes(pathname) && requestedMethod === 'GET';
+  if (!healthRoute && !registry.match(requestedMethod, pathname)) {
+    throw new HttpError('cors_method_denied', 'preflight method is not allowed', {}, 403, false);
+  }
+  const requestedHeaders = String(req.headers['access-control-request-headers'] || '')
+    .split(',').map((item) => item.trim().toLowerCase()).filter(Boolean);
+  const deniedHeaders = requestedHeaders.filter((header) => !CORS_REQUEST_HEADERS.has(header));
+  if (deniedHeaders.length) throw new HttpError('cors_headers_denied', 'preflight headers are not allowed', { headers: deniedHeaders }, 403, false);
+  res.setHeader('access-control-allow-methods', requestedMethod);
+  if (requestedHeaders.length) res.setHeader('access-control-allow-headers', requestedHeaders.join(', '));
+  res.setHeader('access-control-max-age', '600');
+  res.writeHead(204);
+  res.end();
+  return true;
 }
 
 async function readJson(req, maxBytes) {

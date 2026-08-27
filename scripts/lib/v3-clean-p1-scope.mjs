@@ -132,6 +132,7 @@ export const P1_PACKAGE_SCRIPT_DEFINITIONS = Object.freeze(Object.fromEntries(Ob
   'test:p6': { command: 'node --test tests/p6/*.test.mjs', role: 'p6_gate', phase: 'P6' },
   'test:p7': { command: 'node --test tests/p7/*.test.mjs', role: 'p7_gate', phase: 'P7' },
   'test:p8': { command: 'node --test tests/p8/*.test.mjs', role: 'p8_gate', phase: 'P8' },
+  'test:p9': { command: 'node --test tests/p9/*.test.mjs', role: 'p9_gate', phase: 'P9' },
   'evidence:p3': { command: 'node scripts/v3-clean-p3-evidence.mjs', role: 'p3_evidence', phase: 'P3' },
   'evidence:p31': { command: 'node scripts/v3-clean-p31-evidence.mjs', role: 'p31_evidence', phase: 'P3.1' },
   'evidence:p4': { command: 'node scripts/v3-clean-p4-evidence.mjs', role: 'p4_evidence', phase: 'P4' },
@@ -139,6 +140,7 @@ export const P1_PACKAGE_SCRIPT_DEFINITIONS = Object.freeze(Object.fromEntries(Ob
   'evidence:p6': { command: 'node scripts/v3-clean-p6-evidence.mjs', role: 'p6_evidence', phase: 'P6' },
   'evidence:p7': { command: 'node scripts/v3-clean-p7-evidence.mjs', role: 'p7_evidence', phase: 'P7' },
   'evidence:p8': { command: 'node scripts/v3-clean-p8-evidence.mjs', role: 'p8_evidence', phase: 'P8' },
+  'evidence:p9': { command: 'node scripts/v3-clean-p9-evidence.mjs', role: 'p9_evidence', phase: 'P9' },
   'test:integration': { command: 'node scripts/layered-gate.mjs integration', role: 'layered_gate', phase: 'P3.1' },
   'test:integration:clean': { command: 'node scripts/layered-gate.mjs integration --clean', role: 'p31_gate', phase: 'P3.1' },
   'fixture:legacy:integration': { command: 'node scripts/layered-gate.mjs integration --historical', role: 'deferred_fixture', phase: 'historical' },
@@ -375,6 +377,9 @@ const P8_FILES = new Set([
 
 const P8_PREFIXES = Object.freeze(['apps/api/src/clean/p8/', 'apps/importer/', 'tests/p8/', 'apps/web/src/features/operations/']);
 
+const P9_FILES = new Set(['scripts/v3-clean-p9-evidence.mjs']);
+const P9_PREFIXES = Object.freeze(['tests/p9/']);
+
 export function classifyWorkspacePath(value) {
   const file = normalize(value);
   if (!file) return null;
@@ -382,6 +387,7 @@ export function classifyWorkspacePath(value) {
     const rows = file === 'scripts/v3-clean-architecture-scan.mjs' ? P1_MATRIX_ROWS : P1_GOVERNANCE_ROWS;
     return { kind: 'p1', phase: 'P1', rows: [...rows] };
   }
+  if (P9_FILES.has(file) || P9_PREFIXES.some((prefix) => file.startsWith(prefix))) return { kind: 'clean', phase: 'P9', rows: [] };
   if (P8_FILES.has(file) || P8_PREFIXES.some((prefix) => file.startsWith(prefix))) return { kind: 'clean', phase: 'P8', rows: [] };
   if (P7_FILES.has(file) || P7_PREFIXES.some((prefix) => file.startsWith(prefix))) return { kind: 'clean', phase: 'P7', rows: [] };
   if (P6_FILES.has(file) || P6_PREFIXES.some((prefix) => file.startsWith(prefix))) return { kind: 'clean', phase: 'P6', rows: [] };
