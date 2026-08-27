@@ -100,5 +100,5 @@ dual-source importer, Deployment/Backup/Restore/Reset, recoverable physical GC,
 Operations Web slice, real isolated GitHub delivery, Docker deployment, and
 actual v7 rollback. It is `status=verified` with `provisional=false`, so the
 three P8 Catalog rows move to Clean and the layered Catalog is `26/1/27`.
-D-038/P9 remains inactive until the verified worktree is committed and pushed
-as the P8 final boundary.
+The verified P8 boundary is committed and pushed; D-038/P9 remains inactive
+pending its explicit activation decision.

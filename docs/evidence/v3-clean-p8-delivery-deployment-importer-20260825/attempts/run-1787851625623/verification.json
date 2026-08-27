@@ -1,0 +1,136 @@
+{
+  "schema_version": "aiws.v3-clean.p8-verification.v2",
+  "phase": "P8",
+  "run_id": "run-1787851625623",
+  "status": "verified",
+  "provisional": false,
+  "generated_at": "2026-08-27T17:29:28.235Z",
+  "baseline_commit": "4ee1a436b2f810354602308d733fbee7423f3cf0",
+  "supersedes_run_id": "run-1787850005887",
+  "migration": "008-delivery-deployment-importer-operations",
+  "target_user_version": 8,
+  "local_gate_status": "verified",
+  "blocking_failure": null,
+  "catalog_promotion": "26/1/27",
+  "catalog": {
+    "clean": 26,
+    "historical": 1,
+    "total": 27
+  },
+  "external_gates": {
+    "github": {
+      "verified": true,
+      "artifact": "github-delivery-probe.json"
+    },
+    "docker": {
+      "verified": true,
+      "artifact": "deployment-probe.json"
+    }
+  },
+  "probes": {
+    "github": {
+      "status": "passed",
+      "provisional": false
+    },
+    "deployment": {
+      "status": "passed",
+      "provisional": false
+    },
+    "importer": {
+      "status": "passed"
+    },
+    "backup_restore_gc": {
+      "status": "passed"
+    },
+    "performance": {
+      "status": "passed"
+    }
+  },
+  "rollback": {
+    "status": "passed",
+    "dry_run_exit_status": 0,
+    "apply_exit_status": 0,
+    "restored_user_version": 7,
+    "ledger": [
+      1,
+      2,
+      3,
+      4,
+      5,
+      6,
+      7
+    ],
+    "p8_tables_present": [],
+    "byte_exact_mismatches": []
+  },
+  "commands": [
+    {
+      "command": "pnpm check",
+      "exit_status": 0,
+      "duration_ms": 15737
+    },
+    {
+      "command": "pnpm test:p8",
+      "exit_status": 0,
+      "duration_ms": 5371
+    },
+    {
+      "command": "node scripts/v3-clean-p8-performance.mjs",
+      "exit_status": 0,
+      "duration_ms": 124
+    },
+    {
+      "command": "node scripts/v3-clean-p8-github-delivery-probe.mjs",
+      "exit_status": 0,
+      "duration_ms": 13772
+    },
+    {
+      "command": "node scripts/v3-clean-p8-importer-probe.mjs",
+      "exit_status": 0,
+      "duration_ms": 1015
+    },
+    {
+      "command": "node scripts/v3-clean-p8-deployment-rollback-probe.mjs",
+      "exit_status": 0,
+      "duration_ms": 81678
+    },
+    {
+      "command": "node scripts/v3-clean-p8-backup-restore-gc-probe.mjs",
+      "exit_status": 0,
+      "duration_ms": 1844
+    },
+    {
+      "command": "pnpm --filter @aiws/web test",
+      "exit_status": 0,
+      "duration_ms": 15589
+    },
+    {
+      "command": "pnpm build",
+      "exit_status": 0,
+      "duration_ms": 5304
+    },
+    {
+      "command": "git diff --check",
+      "exit_status": 0,
+      "duration_ms": 71
+    }
+  ],
+  "artifacts": {
+    "modified_artifact": {
+      "path": "modified-v8.sqlite",
+      "sha256": "129af3686efa7255b61c1d31716ab5270ddc438f3d58bb87bcaf13bbd3d5c163"
+    },
+    "patch": {
+      "path": "change.patch",
+      "sha256": "d5d22e1c536a9497a852cf5d0d858bd54cc00a67a29bff9820cc14a484e5373d"
+    },
+    "verification_record": {
+      "path": "verification-record.json",
+      "sha256": "b329cd2c253fc670c6863805912c94ab56b1dabc8b5a2bbc96f3cf40320b9dc7"
+    },
+    "rollback": {
+      "path": "rollback.ps1",
+      "sha256": "04e7f4206e6d73751ed980a44645a3d8be467b718b9c108899a771b64f05c932"
+    }
+  }
+}

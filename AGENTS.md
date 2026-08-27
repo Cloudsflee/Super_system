@@ -518,6 +518,5 @@ git diff --check
 The current published P8 receipt is `run-1787846480106` with
 `status=verified` and `provisional=false`. It includes the real GitHub App
 fixture delivery and Docker deployment receipts, plus an isolated actual v7
-rollback, so the Catalog is promoted to `26/1/27`. P9 branching and D-038
-remain inactive until this verified worktree is committed and pushed as the
-P8 final boundary.
+rollback, so the Catalog is promoted to `26/1/27`. The P8 boundary is now
+committed and pushed; P9 may branch from this commit once D-038 is recorded.
