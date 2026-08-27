@@ -1,9 +1,10 @@
 # V3-Clean 分阶段开发计划
 
-状态：P1-P6 Evidence 已验证；P7 Evidence/Quality/Parser/Outcome 已按
+状态：P1-P7 Evidence 已验证；P8 Delivery/Deployment/Importer/Operations 已按
+`D-037` 完成最终门禁；P7 Evidence/Quality/Parser/Outcome 已按
 `D-036` 和 forward-only `007-evidence-quality-parser-outcome` 完成最终门禁。
 Evidence、Quality、Outcome 和 Attachments 为 `verified`，Clean/Historical
-Catalog 为 `23/4/27`；`REC-D10-FRONTEND-024` 仍为 `scaffolded`，不把本阶段
+Catalog 为 `26/1/27`；`REC-D10-FRONTEND-024` 仍为 `scaffolded`，不把本阶段
 组件切片声明为完整发布流程。P7 固定基线：
 `af8fcaf2f5df7a0667a7f31c5784afbdc9a48ceb`；最终 receipt 为
 `docs/evidence/v3-clean-p7-evidence-quality-outcome-20260824/verification.json`。
@@ -984,3 +985,26 @@ Superseding receipt directory: `docs/evidence/v3-clean-p1-gate-contract-complete
 P2 was gated on the receipt above. The rollback and architecture checks were
 re-run on an isolated destination volume and passed; the immutable P1 receipt
 remains the parent input for P2.
+
+## P8 fixed baseline and gate
+
+P8 固定基线 is `4ee1a436b2f810354602308d733fbee7423f3cf0`. Migration `008-delivery-deployment-importer-operations` advances the runtime to v8. Acceptance adds `test:p8`, five P8 probes, blocking release tests, and `evidence:p8`. Rollback runs against an isolated copy and must report `restored_user_version=7`, ledger `[1..7]`, no P8 tables, and `byte_exact_mismatches=[]`. GitHub and Docker absence produces a provisional candidate and freezes Catalog promotion.
+
+The published P8 receipt `run-1787846480106` passes the full local gates,
+real isolated GitHub delivery, Docker deployment, and actual seven-component
+rollback with `status=verified` and `provisional=false`. Catalog is
+`26/1/27`. P9 must start only from the pushed P8 final boundary; schema
+remains v8 when that boundary is reached.
+
+The synchronized additive P8 gate is the 51-script inventory in `AGENTS.md`
+and `docs/testing.md`. Its P8-specific additions are:
+
+```text
+pnpm test:p8
+node scripts/v3-clean-p8-performance.mjs
+node scripts/v3-clean-p8-github-delivery-probe.mjs
+node scripts/v3-clean-p8-importer-probe.mjs
+node scripts/v3-clean-p8-deployment-rollback-probe.mjs
+node scripts/v3-clean-p8-backup-restore-gc-probe.mjs
+pnpm evidence:p8
+```

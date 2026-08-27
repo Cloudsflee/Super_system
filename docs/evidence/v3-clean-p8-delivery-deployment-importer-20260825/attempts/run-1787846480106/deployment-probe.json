@@ -1,0 +1,63 @@
+{
+  "schema_version": "aiws.v3-clean.p8-deployment-probe.v2",
+  "status": "passed",
+  "provisional": false,
+  "local": {
+    "candidate_status": "verified",
+    "verification_status": "passed",
+    "receipt_sha256": "e94765f3be7e4a4203287bbfb5ddef07fbb6c9f1b3aa713745ab29299cb15496",
+    "viewports": [
+      [
+        1440,
+        900
+      ],
+      [
+        1024,
+        768
+      ],
+      [
+        390,
+        844
+      ]
+    ]
+  },
+  "external": {
+    "status": "verified",
+    "docker_version": "29.4.1",
+    "images": {
+      "app": {
+        "tag": "aiws-p8-app:8208-1787846600596",
+        "digest": "daf27b7129c9bc07838bb7d3048ceef9640c2be69394c3869343db437ee80f3b",
+        "component": "app",
+        "sbom_sha256": "fc84adc75cac39f1d89dd4268e37fa5ac914b2da87fc0ed48a552ac82d0ab956"
+      },
+      "broker": {
+        "tag": "aiws-p8-broker:8208-1787846600596",
+        "digest": "5e423292df9c605c2897d9cb8c1300336342a4f3e8e39d7e4ec89652cc4090d6",
+        "component": "runner-broker",
+        "sbom_sha256": "9fe0c7000f943881dc0e12b24ea1013019fffccec5a130359a17722620d4276f"
+      },
+      "runner": {
+        "tag": "aiws-p8-runner:8208-1787846600596",
+        "digest": "249487369fefd5d79a0d27d5070f7910c983e7b43f52d51f242c20d86f11bb1b",
+        "component": "codex-runner",
+        "sbom_sha256": "aa101e242f9ebe04c68f1531aa2d647743e715ab2769f41d1b2bfaea244e5347"
+      },
+      "parser": {
+        "tag": "aiws-p8-parser:8208-1787846600596",
+        "digest": "4f0e855a71fce3c89a426e371a068bce2024f622de3c1fec38a45c19b9b1a18e",
+        "component": "parser-worker",
+        "sbom_sha256": "dd3642bd36dbefb965e6a60431012219d725b3271cf5ea06a3d32076475d53b1"
+      }
+    },
+    "dynamic_loopback_port": 45333,
+    "readyz": {
+      "runtime": "v3-clean",
+      "user_version": 8
+    },
+    "temporary_volume": "aiws-p8-probe-8208-1787846600596",
+    "provisional": false
+  },
+  "command": "node scripts/v3-clean-p8-deployment-rollback-probe.mjs",
+  "exit_status": 0
+}

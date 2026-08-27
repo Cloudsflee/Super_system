@@ -499,12 +499,73 @@ is not recorded as a formal pass.
 - P7 16-asset/500-anchor Quality detail p95 no greater than 300 ms
 - P7 100-requirement Outcome evaluation p95 no greater than 200 ms
 
-P8-P9 acceptance receipts will record observed startup and execution status.
-Those phases require fresh Codex/GitHub capability probes, image and source
-identity, SBOM, temporary-volume import, CAS/event/ACL verification, health
-probes, and an actual deployment rollback. The current release scripts and
-receipts characterize the pre-clean runtime and cannot promote a clean Catalog
-row.
+## P8 additive gate
+
+```text
+pnpm check
+pnpm audit:p1
+pnpm scan:clean
+pnpm recovery:plan
+pnpm recovery:catalog
+pnpm recovery:coverage
+pnpm recovery:impact -- --audit
+pnpm test:p1
+pnpm test:p2
+pnpm test:p3
+pnpm test:p31
+pnpm test:p4
+pnpm test:p5
+pnpm test:p6
+pnpm test:p7
+pnpm test:p8
+node scripts/v3-clean-p5-performance.mjs
+node scripts/v3-clean-p5-assist-probe.mjs
+node scripts/v3-clean-p5-bridge-probe.mjs
+node scripts/v3-clean-p6-performance.mjs
+node scripts/v3-clean-p6-docker-runner-probe.mjs
+node scripts/v3-clean-p6-host-runner-probe.mjs
+node scripts/v3-clean-p6-bridge-runner-probe.mjs
+node scripts/v3-clean-p6-restart-probe.mjs
+node scripts/v3-clean-p7-performance.mjs
+node scripts/v3-clean-p7-cas-tamper-probe.mjs
+node scripts/v3-clean-p7-parser-probe.mjs
+node scripts/v3-clean-p7-quality-outcome-probe.mjs
+node scripts/v3-clean-p7-restart-probe.mjs
+node scripts/v3-clean-p8-performance.mjs
+node scripts/v3-clean-p8-github-delivery-probe.mjs
+node scripts/v3-clean-p8-importer-probe.mjs
+node scripts/v3-clean-p8-deployment-rollback-probe.mjs
+node scripts/v3-clean-p8-backup-restore-gc-probe.mjs
+pnpm --filter @aiws/web test
+pnpm test
+pnpm test:integration:clean
+pnpm test:security:clean
+pnpm test:integration
+pnpm test:security
+pnpm build
+pnpm test:e2e
+pnpm test:release
+pnpm verify
+pnpm evidence:p8
+git diff --check
+```
+
+P8 performance keeps the 1000-operation query p95 threshold at 200 ms. The
+GitHub probe must verify discovery, branch, Draft PR, checks, ready, merge,
+webhook deduplication and reconcile against an isolated fixture repository.
+The Deployment probe must build/inspect app, Broker, Runner and Parser images,
+export SBOMs, publish on a dynamic loopback port and a fresh volume, and prove
+schema v8 health. Importer verifies schema-7 row preservation, schema-23
+mapping, secret/path omission, signed 500-row/domain checkpoints and resume.
+
+Formal P8 Evidence is append-only at
+`docs/evidence/v3-clean-p8-delivery-deployment-importer-20260825/`. Candidate
+and failed runs never promote Catalog rows. Rollback requires a no-write dry-run
+and an isolated actual apply restoring v7 ledger `[1..7]`, all seven component
+snapshots, no P8 tables, and `byte_exact_mismatches=[]`. The published receipt
+`run-1787846480106` is `verified` and non-provisional: the isolated GitHub
+fixture completed discovery, Draft PR, ready, merge, webhook deduplication and
+reconcile, Docker deployment passed, and Catalog promotion is `26/1/27`.
 
 ## Phase gate rule
 

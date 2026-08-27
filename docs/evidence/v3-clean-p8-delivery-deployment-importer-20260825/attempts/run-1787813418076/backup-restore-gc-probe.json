@@ -1,0 +1,46 @@
+{
+  "schema_version": "aiws.v3-clean.p8-backup-restore-gc-probe.v2",
+  "status": "passed",
+  "provisional": false,
+  "backup": {
+    "id": "backup_e4ee28756b8a475f9535dadc90eae348",
+    "manifest_sha256": "897a81e494021595b0afddb4f49990c5b43267ede2d305adc46cd685129dcf1b",
+    "source_user_version": 8
+  },
+  "restore": {
+    "status": "prepared",
+    "pointer_switched": false,
+    "source_manifest_sha256": "897a81e494021595b0afddb4f49990c5b43267ede2d305adc46cd685129dcf1b"
+  },
+  "gc": {
+    "plan_sha256": "1c011a6f80671060613bc056e4bc4e5d05e2bc09b0bfcfbd81038b0bafb6498e",
+    "candidates": 1,
+    "apply_status": "applied",
+    "rollback_restored": [
+      "8db39bfb5a402f93ecd7df8cebe16ccd70c77b17f70dd57fffbe869c10eb7e53"
+    ],
+    "object_active": true
+  },
+  "pointer": {
+    "dry_run_status": "verified",
+    "apply_status": "cutover",
+    "rollback_status": "rolled_back",
+    "restored_old_target": true
+  },
+  "schema_rollback": {
+    "restored_user_version": 7,
+    "byte_exact": true,
+    "p8_tables_absent": true,
+    "ledger": [
+      1,
+      2,
+      3,
+      4,
+      5,
+      6,
+      7
+    ]
+  },
+  "command": "node scripts/v3-clean-p8-backup-restore-gc-probe.mjs",
+  "exit_status": 0
+}

@@ -1,0 +1,193 @@
+{
+  "schema_version": "aiws.v3-clean.p8-evidence-manifest.v2",
+  "run_id": "run-1787813418076",
+  "status": "candidate",
+  "provisional": true,
+  "files": [
+    {
+      "path": "backup-restore-gc-probe.json",
+      "sha256": "974d093c78d95141411e775bd7386d26b787b1197fbb64fc16fa759d783fdd12",
+      "byte_length": 1211
+    },
+    {
+      "path": "baseline-v7.sqlite",
+      "sha256": "f259b72cc4bdd9f4b7198a3f86ae08d324a77525b5bc49d48b249aa128ccd441",
+      "byte_length": 1613824
+    },
+    {
+      "path": "change.patch",
+      "sha256": "a4627b06bdf470e8da931940ab58433f926319ddc0ee16256cb73232bd8e6d21",
+      "byte_length": 451804
+    },
+    {
+      "path": "deployment-probe.json",
+      "sha256": "778aac176dd3261ff8ab6964d362da46ed605b35910a2e1396d489efa0fad5ae",
+      "byte_length": 1991
+    },
+    {
+      "path": "gate-results.json",
+      "sha256": "9145fd50f020bd765173855360ddc8d3b5b86a9945141425faa585b977ea6e1c",
+      "byte_length": 175810
+    },
+    {
+      "path": "github-delivery-probe.json",
+      "sha256": "3f6ac8e28367ccaab0a624fb2a5c558f1d56d5e4f696eb5c2d72631f3f4d0984",
+      "byte_length": 558
+    },
+    {
+      "path": "importer-probe.json",
+      "sha256": "5306dfdc081021d6d44a51572788e05ab83d06904c9a9e286f791f8227bbd9f5",
+      "byte_length": 1672
+    },
+    {
+      "path": "modified-artifact.json",
+      "sha256": "3b2f61a0392c96681095ec3db14e3d3f2e4e1df3368bb2bf50e56a7cd5f497af",
+      "byte_length": 528379
+    },
+    {
+      "path": "modified-v8.sqlite",
+      "sha256": "cfa8cd71864346331eb06276ac2922f6573619d75eff21247e58ae62bd0f08ef",
+      "byte_length": 1802240
+    },
+    {
+      "path": "original-hashes.json",
+      "sha256": "e2535e48d87ae1ce66c61c4b4302dafb776585d5a5970afa69e8bb51978a096e",
+      "byte_length": 562166
+    },
+    {
+      "path": "patch.json",
+      "sha256": "64c6933611097ef12ab4b7165c760963f64d2c1f5a337615c077a93632ebdf4a",
+      "byte_length": 490
+    },
+    {
+      "path": "performance-receipt.json",
+      "sha256": "5e6c26a70ec55f37ca8147407d52695a8b6920543dbaea377c32b041256c337c",
+      "byte_length": 215
+    },
+    {
+      "path": "preflight.json",
+      "sha256": "a5ea563c555ba8cd85c14bdbbfc80567c9c18c391c35a9201c9697bad84ddf48",
+      "byte_length": 3355
+    },
+    {
+      "path": "rollback-applied.sqlite",
+      "sha256": "f259b72cc4bdd9f4b7198a3f86ae08d324a77525b5bc49d48b249aa128ccd441",
+      "byte_length": 1613824
+    },
+    {
+      "path": "rollback-baseline/bridge/state.bin",
+      "sha256": "036b31e8acc74aa50cf92e09fc366f6fe19cea515fda284f0b4f8630a9fd1f3a",
+      "byte_length": 19
+    },
+    {
+      "path": "rollback-baseline/broker/state.bin",
+      "sha256": "2852591775761e611a88e854696902c140e33ee942ac6631609c0af39e2ce971",
+      "byte_length": 19
+    },
+    {
+      "path": "rollback-baseline/cas/state.bin",
+      "sha256": "cfe1a00f28629c2c71d01e86359add65d971aa50e005df791b285c7ceab0e662",
+      "byte_length": 16
+    },
+    {
+      "path": "rollback-baseline/parser/state.bin",
+      "sha256": "e8c8ed592ca5bdd1b6b523617b2f14dd3c6a1f08a2ccff807905b7b48b205cf1",
+      "byte_length": 19
+    },
+    {
+      "path": "rollback-baseline/sqlite/state.sqlite",
+      "sha256": "f259b72cc4bdd9f4b7198a3f86ae08d324a77525b5bc49d48b249aa128ccd441",
+      "byte_length": 1613824
+    },
+    {
+      "path": "rollback-baseline/vault/state.bin",
+      "sha256": "1505bf58be75839571e31bd4111b840f5cc3f33c7d3f2483ded1385a88caa68f",
+      "byte_length": 18
+    },
+    {
+      "path": "rollback-baseline/workspace/state.bin",
+      "sha256": "c8da5041bb1b0b9b4ec6d2fdb38ca9e618b13760c0c06e0861a60d6aea8706f0",
+      "byte_length": 22
+    },
+    {
+      "path": "rollback-isolated/bridge/state.bin",
+      "sha256": "036b31e8acc74aa50cf92e09fc366f6fe19cea515fda284f0b4f8630a9fd1f3a",
+      "byte_length": 19
+    },
+    {
+      "path": "rollback-isolated/broker/state.bin",
+      "sha256": "2852591775761e611a88e854696902c140e33ee942ac6631609c0af39e2ce971",
+      "byte_length": 19
+    },
+    {
+      "path": "rollback-isolated/cas/state.bin",
+      "sha256": "cfe1a00f28629c2c71d01e86359add65d971aa50e005df791b285c7ceab0e662",
+      "byte_length": 16
+    },
+    {
+      "path": "rollback-isolated/parser/state.bin",
+      "sha256": "e8c8ed592ca5bdd1b6b523617b2f14dd3c6a1f08a2ccff807905b7b48b205cf1",
+      "byte_length": 19
+    },
+    {
+      "path": "rollback-isolated/sqlite/state.sqlite",
+      "sha256": "f259b72cc4bdd9f4b7198a3f86ae08d324a77525b5bc49d48b249aa128ccd441",
+      "byte_length": 1613824
+    },
+    {
+      "path": "rollback-isolated/sqlite/state.sqlite-shm",
+      "sha256": "fd4c9fda9cd3f9ae7c962b0ddf37232294d55580e1aa165aa06129b8549389eb",
+      "byte_length": 32768
+    },
+    {
+      "path": "rollback-isolated/sqlite/state.sqlite-wal",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "byte_length": 0
+    },
+    {
+      "path": "rollback-isolated/vault/state.bin",
+      "sha256": "1505bf58be75839571e31bd4111b840f5cc3f33c7d3f2483ded1385a88caa68f",
+      "byte_length": 18
+    },
+    {
+      "path": "rollback-isolated/workspace/state.bin",
+      "sha256": "c8da5041bb1b0b9b4ec6d2fdb38ca9e618b13760c0c06e0861a60d6aea8706f0",
+      "byte_length": 22
+    },
+    {
+      "path": "rollback-manifest.json",
+      "sha256": "a9f488fef1b69114d60cc8c901abf70207864e63c3fe68c9eca632229d8fce7c",
+      "byte_length": 993
+    },
+    {
+      "path": "rollback-receipt.json",
+      "sha256": "c9a7b956d62038e7b1d72c0a725f4521ffdb0b7d9ec4937699aef90e99222cef",
+      "byte_length": 1366
+    },
+    {
+      "path": "rollback-verify.mjs",
+      "sha256": "07e5f80b8e7e00276a7c93630ae2a001a825b9c3f442015076e74bd143ef5d34",
+      "byte_length": 1517
+    },
+    {
+      "path": "rollback.ps1",
+      "sha256": "04e7f4206e6d73751ed980a44645a3d8be467b718b9c108899a771b64f05c932",
+      "byte_length": 960
+    },
+    {
+      "path": "secret-scan.json",
+      "sha256": "e74b7a696ac647d146868e2ea9c4af8252141b4a1e9f0028643233a6f2d300ac",
+      "byte_length": 98
+    },
+    {
+      "path": "verification-record.json",
+      "sha256": "b99f37343db11dfea5eeb6db83bdfa36fef7ba97d7be08d7e0eb74917f33cd18",
+      "byte_length": 177258
+    },
+    {
+      "path": "verification.json",
+      "sha256": "93eca00d7cc026db4a555a0d1fe7d05805e250a4a73250a95eaea22179981a45",
+      "byte_length": 7003
+    }
+  ]
+}

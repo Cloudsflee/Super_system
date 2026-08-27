@@ -1,0 +1,39 @@
+{
+  "schema_version": "aiws.v3-clean.p8-superseded-evidence.v1",
+  "run_id": "run-1787672677569",
+  "status": "candidate",
+  "files": [
+    {
+      "path": "baseline-v7.sqlite",
+      "sha256": "2bb5257bad83238751b439df05dbd476292cbd906f3a7b98c6c59c2efc61a2ce"
+    },
+    {
+      "path": "modified-v8.sqlite",
+      "sha256": "fa059b1e7e36e1c9520bb1d3999e02071647085a0199ad6e12ba3970ed8de94c"
+    },
+    {
+      "path": "patch.json",
+      "sha256": "1410353f76482aa5d8f98df3c8418e12c9a79820ddf0ec07d389a4e17546cdab"
+    },
+    {
+      "path": "rollback-applied.sqlite",
+      "sha256": "2bb5257bad83238751b439df05dbd476292cbd906f3a7b98c6c59c2efc61a2ce"
+    },
+    {
+      "path": "rollback-verify.mjs",
+      "sha256": "bd429c9b609b9a4dd085071a8703c7723f07944f2cea227d71879c9446665a9c"
+    },
+    {
+      "path": "rollback.ps1",
+      "sha256": "c1699367127e6b83671be6da4fffe18334b231da14decdb70471a88cea2ff2f5"
+    },
+    {
+      "path": "verification-record.json",
+      "sha256": "2ea120245b4bd86690be7537c49f58f723a1f077393781f12ce6af9525a8ade1"
+    },
+    {
+      "path": "verification.json",
+      "sha256": "02539666e398b9f11b15abf589fa0591bac43cbdd794ae7b2ccc2dde55fd4707"
+    }
+  ]
+}

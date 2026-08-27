@@ -46,6 +46,7 @@ WORKDIR /app
 ENV NODE_ENV=production AIWS_BIND_HOST=0.0.0.0 PORT=4317 AIWS_HOME=/var/lib/aiws AIWS_BROKER_HMAC_SECRET_FILE=/run/secrets/broker_hmac
 COPY package.json ./package.json
 COPY --from=dependencies /app/node_modules ./node_modules
+COPY --from=dependencies /app/packages/contracts/node_modules ./packages/contracts/node_modules
 COPY apps/api ./apps/api
 COPY packages/contracts ./packages/contracts
 COPY sbom.spdx.json ./sbom.spdx.json

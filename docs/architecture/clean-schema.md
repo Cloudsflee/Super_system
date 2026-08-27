@@ -417,11 +417,17 @@ quality run stale; the old report and human review stay immutable.
 ### 10.5 Delivery and import
 
 ~~~text
-delivery: planned -> staging -> checks_pending -> draft_pr -> ready
-          -> merged | rejected | failed | needs_reconcile
-import: inspected -> dry_run -> running -> checkpointed -> verified
-        -> cutover -> completed | failed | rolled_back
+delivery: queued -> preparing -> draft_pr -> preparing -> ready -> merging
+          -> merged | failed | cancelled | needs_reconcile -> reconcile
+deployment: candidate -> verifying -> verified | failed | needs_reconcile
+import: inspected -> planned -> running -> blocked | sealed -> cutover | rolled_back
 ~~~
+
+`needs_reconcile` is recoverable and is deliberately excluded from terminal
+immutability triggers. `pull_request_intents` remain immutable; external
+receipt hashes and their intent links live in `delivery_events`, which retains
+a one-to-one foreign key to the generic event stream. A merge never replays
+automatically after an unknown response.
 
 ## 11. CAS and Evidence rules
 
@@ -483,3 +489,17 @@ open -> verify family/checksum -> foreign_key_check -> verify CAS manifest
 
 An old schema, missing checksum, failed foreign-key check, or CAS mismatch
 blocks readiness and emits an operations receipt with the importer command.
+
+## P8 schema ownership
+
+The active runtime uses `PRAGMA user_version = 8` and migration
+`008-delivery-deployment-importer-operations`. The 11 new tables are
+`delivery_policies`, `deliveries`, `pull_request_intents`, `delivery_events`,
+`deployment_candidates`, `deployment_verifications`, `backup_manifests`,
+`import_batches`, `import_checkpoints`, `import_id_map`, and `import_conflicts`.
+Immutable records reject updates; terminal delivery, deployment candidate, and
+import batch retries create lineage records. `delivery_events` carries optional
+`intent_id` and `external_receipt_sha256`, projects one generic `event_id`, and
+never owns a second event/head model. `cas_objects` remains CAS-owned; GC first
+commits a tombstone after rechecking all protected references, then moves bytes
+to recoverable trash for reconciliation or rollback.

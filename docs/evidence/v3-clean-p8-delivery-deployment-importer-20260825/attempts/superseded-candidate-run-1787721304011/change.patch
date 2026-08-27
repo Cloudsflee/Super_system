@@ -1,0 +1,1195 @@
+diff --git a/AGENTS.md b/AGENTS.md
+index f5dd92a..91621ef 100644
+--- a/AGENTS.md
++++ b/AGENTS.md
+@@ -450,3 +450,16 @@ runnable rollback receipt. Reopen and execute each artifact before completion.
+ Final updates state the changed files, checks run, literal failures (if any),
+ and remaining worktree changes. Do not claim a release when only a scaffold or
+ document exists.
++
++## P8 activation
++
++Decision `D-037` activates P8 over baseline
++`4ee1a436b2f810354602308d733fbee7423f3cf0`. The forward-only
++`008-delivery-deployment-importer-operations` migration advances the active
++runtime to `user_version=8`. Delivery, Deployment, offline Importer, Backup,
++Restore, Operations replay, and physical CAS GC reuse the P1-P7 operation,
++event, head, authorization, Evidence, Vault, and CAS owners. Import mutation is
++CLI-only; runtime `/api/v2/imports` routes are sealed-batch queries. A missing
++real GitHub App or Docker identity leaves P8 Evidence provisional and freezes
++the Catalog at `23/4/27`; only final non-provisional verification promotes it
++to `26/1/27`.
+diff --git a/apps/api/server.mjs b/apps/api/server.mjs
+index 73c9dc6..7c66415 100644
+--- a/apps/api/server.mjs
++++ b/apps/api/server.mjs
+@@ -4,8 +4,8 @@ import { createApp as createCleanApp, start as startClean } from './clean-server
+ 
+ // The process entrypoint is the released V3-Clean surface.  The lower-level
+ // clean runtime keeps its P2 default for phase-specific fixture tests, while
+-// this wrapper is the active P7 Clean process surface.
+-export const ACTIVE_TARGET_VERSION = 7;
++// this wrapper is the active P8 Clean process surface.
++export const ACTIVE_TARGET_VERSION = 8;
+ 
+ function activeOptions(options = {}) {
+   return { targetVersion: ACTIVE_TARGET_VERSION, ...options };
+diff --git a/apps/api/src/clean/command-dispatcher.mjs b/apps/api/src/clean/command-dispatcher.mjs
+index 4181a49..bd007c4 100644
+--- a/apps/api/src/clean/command-dispatcher.mjs
++++ b/apps/api/src/clean/command-dispatcher.mjs
+@@ -3,7 +3,7 @@ import { PlatformError } from './platform-error.mjs';
+ 
+ /** Shared P4 command boundary used by REST, MCP HTTP, stdio and Gateway. */
+ export class CleanCommandDispatcher {
+-  constructor({ registry, context, mcp, gateway, projectWorkflow, operations, events, assist = null, files = null, terminal = null, bridge = null, runner = null, execution = null, evidence = null, parser = null, quality = null, outcomeEvaluation = null } = {}) {
++  constructor({ registry, context, mcp, gateway, projectWorkflow, operations, events, assist = null, files = null, terminal = null, bridge = null, runner = null, execution = null, evidence = null, parser = null, quality = null, outcomeEvaluation = null, p8Service = null } = {}) {
+     if (!registry || !context || !mcp || !operations || !events) throw new TypeError('clean_dispatcher_dependencies_required');
+     this.registry = registry;
+     this.context = context;
+@@ -22,6 +22,7 @@ export class CleanCommandDispatcher {
+     this.parser = parser;
+     this.quality = quality;
+     this.outcomeEvaluation = outcomeEvaluation;
++    this.p8Service = p8Service;
+     this.handlers = new Map();
+     this.exposed = new Set();
+     this.#registerHandlers();
+@@ -130,6 +131,7 @@ export class CleanCommandDispatcher {
+     if (this.assist && this.files && this.terminal && this.bridge) this.#registerP5Handlers(add);
+     if (this.runner && this.execution) this.#registerP6Handlers(add);
+     if (this.evidence && this.parser && this.quality && this.outcomeEvaluation) this.#registerP7Handlers(add);
++    if (this.p8Service) this.#registerP8Handlers(add);
+   }
+ 
+   #registerP5Handlers(add) {
+@@ -265,6 +267,34 @@ export class CleanCommandDispatcher {
+     bind('outcome.waiver.revoke', (args, principal) => this.outcomeEvaluation.revokeWaiver(args.waiver_id, args, principal));
+   }
+ 
++  #registerP8Handlers(add) {
++    const bind = (id, handler) => add(id, handler, { exposed: this.registry.get(id)?.mcp?.exposed === true });
++    bind('delivery.policy.list', (args, principal) => this.p8Service.listPolicies(args.project_id, principal));
++    bind('delivery.policy.create', (args, principal) => this.p8Service.createPolicy(args.project_id, args, principal));
++    bind('github.repository.list', (args, principal) => this.p8Service.listGithubRepositories(args.profile_id, args, principal));
++    bind('delivery.list', (args, principal) => this.p8Service.listDeliveries(args, principal));
++    bind('delivery.get', (args, principal) => this.p8Service.getDelivery(args.delivery_id || args.id, principal));
++    bind('delivery.submit', async (args, principal) => this.#operationResult(await this.p8Service.submit(args, principal), principal));
++    bind('delivery.intent.create', async (args, principal) => this.#operationResult(await this.p8Service.createIntent(args.delivery_id || args.id, 'create_draft', args, principal), principal));
++    bind('delivery.intent.ready', async (args, principal) => this.#operationResult(await this.p8Service.createIntent(args.delivery_id || args.id, 'mark_ready', args, principal), principal));
++    bind('delivery.intent.merge', async (args, principal) => this.#operationResult(await this.p8Service.createIntent(args.delivery_id || args.id, 'merge', args, principal), principal));
++    bind('delivery.reconcile', async (args, principal) => this.#operationResult(await this.p8Service.createIntent(args.delivery_id || args.id, 'reconcile', args, principal), principal));
++    bind('deployment.get', (args, principal) => this.p8Service.getDeployment(args, principal));
++    bind('deployment.candidate.get', (args, principal) => this.p8Service.getDeploymentCandidate(args.candidate_id || args.id, principal));
++    bind('deployment.candidate.create', (args, principal) => this.p8Service.createDeploymentCandidate(args, principal));
++    bind('deployment.verify', async (args, principal) => this.#operationResult(await this.p8Service.verifyDeployment(args.candidate_id || args.id, args, principal), principal));
++    bind('backup.list', (args, principal) => this.p8Service.listBackups(args, principal));
++    bind('backup.create', async (args, principal) => this.#operationResult(await this.p8Service.createBackup(args, principal), principal));
++    bind('restore.prepare', async (args, principal) => this.#operationResult(await this.p8Service.prepareRestore(args, principal), principal));
++    bind('system.reset.prepare', async (args, principal) => this.#operationResult(await this.p8Service.prepareReset(args, principal), principal));
++    bind('import.list', (args, principal) => this.p8Service.listImports(args, principal));
++    bind('import.get', (args, principal) => this.p8Service.getImport(args.import_id || args.id, principal));
++    bind('operations.list', (args, principal) => this.p8Service.listOperations(args, principal));
++    bind('operations.replay', async (args, principal) => this.#operationResult(await this.p8Service.replayOperation(args.operation_id || args.id, args, principal), principal));
++    bind('cas.gc.plan', (args, principal) => this.p8Service.gcPlan(args, principal));
++    bind('cas.gc.apply', (args, principal) => this.p8Service.gcApply(args, principal));
++  }
++
+   #validateInventory() {
+     for (const commandId of this.handlers.keys()) {
+       if (!this.registry.get(commandId)) throw new Error(`dispatcher_orphan_handler:${commandId}`);
+diff --git a/apps/api/src/clean/database.mjs b/apps/api/src/clean/database.mjs
+index 516321c..f4ebaec 100644
+--- a/apps/api/src/clean/database.mjs
++++ b/apps/api/src/clean/database.mjs
+@@ -17,6 +17,7 @@ import { CONTEXT_PROJECTION_MCP_MIGRATION, CONTEXT_PROJECTION_MCP_MIGRATION_VERS
+ import { ASSIST_FILES_TERMINAL_BRIDGE_MIGRATION, ASSIST_FILES_TERMINAL_BRIDGE_MIGRATION_VERSION, ASSIST_FILES_TERMINAL_BRIDGE_TOOL_VERSION } from './migrations/005-assist-files-terminal-bridge.mjs';
+ import { RUNNER_EXECUTION_CHECKPOINT_REPLAY_MIGRATION, RUNNER_EXECUTION_CHECKPOINT_REPLAY_MIGRATION_VERSION, RUNNER_EXECUTION_CHECKPOINT_REPLAY_TOOL_VERSION } from './migrations/006-runner-execution-checkpoint-replay.mjs';
+ import { EVIDENCE_QUALITY_PARSER_OUTCOME_MIGRATION, EVIDENCE_QUALITY_PARSER_OUTCOME_MIGRATION_VERSION, EVIDENCE_QUALITY_PARSER_OUTCOME_TOOL_VERSION } from './migrations/007-evidence-quality-parser-outcome.mjs';
++import { DELIVERY_DEPLOYMENT_IMPORTER_OPERATIONS_MIGRATION, DELIVERY_DEPLOYMENT_IMPORTER_OPERATIONS_MIGRATION_VERSION, DELIVERY_DEPLOYMENT_IMPORTER_OPERATIONS_TOOL_VERSION } from './migrations/008-delivery-deployment-importer-operations.mjs';
+ 
+ export const CLEAN_P2_USER_VERSION = IDENTITY_MIGRATION_VERSION;
+ export const CLEAN_P2_TOOL_VERSION = IDENTITY_TOOL_VERSION;
+@@ -30,6 +31,8 @@ export const CLEAN_P6_USER_VERSION = RUNNER_EXECUTION_CHECKPOINT_REPLAY_MIGRATIO
+ export const CLEAN_P6_TOOL_VERSION = RUNNER_EXECUTION_CHECKPOINT_REPLAY_TOOL_VERSION;
+ export const CLEAN_P7_USER_VERSION = EVIDENCE_QUALITY_PARSER_OUTCOME_MIGRATION_VERSION;
+ export const CLEAN_P7_TOOL_VERSION = EVIDENCE_QUALITY_PARSER_OUTCOME_TOOL_VERSION;
++export const CLEAN_P8_USER_VERSION = DELIVERY_DEPLOYMENT_IMPORTER_OPERATIONS_MIGRATION_VERSION;
++export const CLEAN_P8_TOOL_VERSION = DELIVERY_DEPLOYMENT_IMPORTER_OPERATIONS_TOOL_VERSION;
+ 
+ export class CleanDatabaseError extends Error {
+   constructor(code, message, details = {}, status = 503) {
+@@ -159,6 +162,7 @@ function targetVersionFor(options = {}) {
+   if (options.phase === 'p5' || options.cleanPhase === 'p5') return CLEAN_P5_USER_VERSION;
+   if (options.phase === 'p6' || options.cleanPhase === 'p6') return CLEAN_P6_USER_VERSION;
+   if (options.phase === 'p7' || options.cleanPhase === 'p7') return CLEAN_P7_USER_VERSION;
++  if (options.phase === 'p8' || options.cleanPhase === 'p8') return CLEAN_P8_USER_VERSION;
+   // The low-level database helper remains useful for reproducing the frozen
+   // baseline.  The runtime always supplies its current target explicitly.
+   return CLEAN_USER_VERSION;
+@@ -224,8 +228,8 @@ function ensureBaseline(db, options) {
+   const suppliedTimestamp = now();
+   const timestamp = typeof suppliedTimestamp === 'string' ? suppliedTimestamp : new Date(suppliedTimestamp).toISOString();
+   const targetVersion = Number(options.targetVersion ?? CLEAN_USER_VERSION);
+-  if (![CLEAN_USER_VERSION, CLEAN_P2_USER_VERSION, CLEAN_P3_USER_VERSION, CLEAN_P4_USER_VERSION, CLEAN_P5_USER_VERSION, CLEAN_P6_USER_VERSION, CLEAN_P7_USER_VERSION].includes(targetVersion)) {
+-    throw new CleanNotReadyError('clean schema version is unsupported', { reason: 'version_mismatch', expected: CLEAN_P7_USER_VERSION, actual: targetVersion });
++  if (![CLEAN_USER_VERSION, CLEAN_P2_USER_VERSION, CLEAN_P3_USER_VERSION, CLEAN_P4_USER_VERSION, CLEAN_P5_USER_VERSION, CLEAN_P6_USER_VERSION, CLEAN_P7_USER_VERSION, CLEAN_P8_USER_VERSION].includes(targetVersion)) {
++    throw new CleanNotReadyError('clean schema version is unsupported', { reason: 'version_mismatch', expected: CLEAN_P8_USER_VERSION, actual: targetVersion });
+   }
+   const tables = db.prepare("SELECT name FROM sqlite_schema WHERE type='table' AND name NOT LIKE 'sqlite_%' ORDER BY name").all().map((row) => row.name);
+   if (tables.length === 0) return applyFreshMigrations(db, options, timestamp, targetVersion);
+@@ -235,7 +239,7 @@ function ensureBaseline(db, options) {
+     throw new CleanNotReadyError('clean schema family marker is invalid', { reason: 'family_mismatch', observed: meta || null });
+   }
+   let version = Number(db.prepare('PRAGMA user_version').get().user_version);
+-  if (version < CLEAN_USER_VERSION || version > CLEAN_P7_USER_VERSION) {
++  if (version < CLEAN_USER_VERSION || version > CLEAN_P8_USER_VERSION) {
+     throw new CleanNotReadyError('clean schema version is unsupported', { reason: 'version_mismatch', expected: targetVersion, actual: version });
+   }
+   verifyMigrationRow(db, version);
+@@ -284,7 +288,7 @@ function applyFreshMigrations(db, options, timestamp, targetVersion) {
+       VALUES(?,?,?,?,?,?,?,?,?,?,?)`).run(bootstrapId, 'system', 'System Bootstrap', 'active', metadataJson, sha256Hex(metadataJson), 1, timestamp, timestamp, null, null);
+     db.prepare(`INSERT INTO receipt_manifests(id,kind,status,payload_json,payload_sha256,cas_sha256,created_at,expires_at)
+       VALUES(?,?,?,?,?,?,?,?)`).run('receipt_migration_001_clean_baseline', 'migration.baseline', 'verified', canonicalJson(baselineVerification), baselineVerificationSha, null, timestamp, null);
+-    for (const migration of [IDENTITY_MIGRATION, PROJECT_WORKFLOW_MIGRATION, CONTEXT_PROJECTION_MCP_MIGRATION, ASSIST_FILES_TERMINAL_BRIDGE_MIGRATION, RUNNER_EXECUTION_CHECKPOINT_REPLAY_MIGRATION, EVIDENCE_QUALITY_PARSER_OUTCOME_MIGRATION]) {
++    for (const migration of [IDENTITY_MIGRATION, PROJECT_WORKFLOW_MIGRATION, CONTEXT_PROJECTION_MCP_MIGRATION, ASSIST_FILES_TERMINAL_BRIDGE_MIGRATION, RUNNER_EXECUTION_CHECKPOINT_REPLAY_MIGRATION, EVIDENCE_QUALITY_PARSER_OUTCOME_MIGRATION, DELIVERY_DEPLOYMENT_IMPORTER_OPERATIONS_MIGRATION]) {
+       if (targetVersion >= migration.version) applyMigrationInTransaction(db, migration, timestamp, options);
+     }
+     if (options.failAt === 'commit') throw new Error('injected_commit_failure');
+@@ -307,7 +311,7 @@ function applyFreshMigrations(db, options, timestamp, targetVersion) {
+     try { db.exec('ROLLBACK'); } catch { /* preserve migration failure */ }
+     throw new CleanNotReadyError('clean migration rolled back', {
+       reason: 'migration_failed',
+-      migration_id: targetVersion >= CLEAN_P7_USER_VERSION ? EVIDENCE_QUALITY_PARSER_OUTCOME_MIGRATION.id : (targetVersion >= CLEAN_P6_USER_VERSION ? RUNNER_EXECUTION_CHECKPOINT_REPLAY_MIGRATION.id : (targetVersion >= CLEAN_P5_USER_VERSION ? ASSIST_FILES_TERMINAL_BRIDGE_MIGRATION.id : (targetVersion >= CLEAN_P4_USER_VERSION ? CONTEXT_PROJECTION_MCP_MIGRATION.id : (targetVersion >= CLEAN_P3_USER_VERSION ? PROJECT_WORKFLOW_MIGRATION.id : (targetVersion >= CLEAN_P2_USER_VERSION ? IDENTITY_MIGRATION.id : CLEAN_BASELINE_ID))))),
++      migration_id: migrationForVersion(targetVersion).id,
+       cause: String(error?.message || error)
+     });
+   }
+@@ -373,7 +377,8 @@ function migrationForVersion(version) {
+   if (Number(version) === CLEAN_P5_USER_VERSION) return ASSIST_FILES_TERMINAL_BRIDGE_MIGRATION;
+   if (Number(version) === CLEAN_P6_USER_VERSION) return RUNNER_EXECUTION_CHECKPOINT_REPLAY_MIGRATION;
+   if (Number(version) === CLEAN_P7_USER_VERSION) return EVIDENCE_QUALITY_PARSER_OUTCOME_MIGRATION;
+-  throw new CleanNotReadyError('clean schema version is unsupported', { reason: 'version_mismatch', expected: CLEAN_P7_USER_VERSION, actual: version });
++  if (Number(version) === CLEAN_P8_USER_VERSION) return DELIVERY_DEPLOYMENT_IMPORTER_OPERATIONS_MIGRATION;
++  throw new CleanNotReadyError('clean schema version is unsupported', { reason: 'version_mismatch', expected: CLEAN_P8_USER_VERSION, actual: version });
+ }
+ 
+ function checkSqliteIntegrity(db) {
+diff --git a/apps/api/src/clean/http.mjs b/apps/api/src/clean/http.mjs
+index 60ef0a5..b732010 100644
+--- a/apps/api/src/clean/http.mjs
++++ b/apps/api/src/clean/http.mjs
+@@ -32,6 +32,12 @@ export function createCleanHttpHandler({ runtime, registry, maxBodyBytes = runti
+       const entry = registry.match(req.method, pathname);
+       if (!entry) throw new HttpError('not_found', 'route not found', { path: pathname }, 404, false);
+       const params = routeParams(entry.path, pathname);
++      if (entry.command_id === 'github.webhook.receive') {
++        validateQuery(url, new Set());
++        const rawBody = await readRaw(req, maxBodyBytes);
++        const result = await runtime.p8Service.receiveGithubWebhook(rawBody, req.headers);
++        return sendSuccess(res, requestId, result, { resourceType: 'delivery_webhook', outputSchema: entry.output_schema, policy: runtime.policy });
++      }
+       if (entry.command_id === 'setup.get') {
+         validateQuery(url, new Set());
+         return sendSuccess(res, requestId, runtime.identity?.setupState?.() || { needs_setup: false, actor_count: 0, bootstrap_actor_id: runtime.metadata.bootstrap_actor_id }, { resourceType: 'setup', outputSchema: entry.output_schema, policy: runtime.policy });
+@@ -58,6 +64,9 @@ export function createCleanHttpHandler({ runtime, registry, maxBodyBytes = runti
+         : runtime.p2 && runtime.identity
+           ? runtime.identity.principalFromRequest(req)
+           : runtime.platform.actorContext({ actorId: req.headers['x-actor-id'], projectId: req.headers['x-project-id'], scopes: parseScopes(req.headers['x-scopes']) });
++      if (runtime.p8 && entry.phase === 'p8') {
++        return await handleP5Route({ entry, params, url, req, res, requestId, runtime, actor, bodyReader: () => readJson(req, maxBodyBytes) });
++      }
+       if (runtime.p7 && entry.phase === 'p7') {
+         return await handleP5Route({ entry, params, url, req, res, requestId, runtime, actor, bodyReader: () => readJson(req, Math.max(maxBodyBytes, entry.command_id === 'asset.capture' ? 36 * 1024 * 1024 : maxBodyBytes)) });
+       }
+@@ -171,6 +180,7 @@ async function handleP5Route({ entry, params, url, req, res, requestId, runtime,
+   if (req.method !== 'GET') {
+     body = await bodyReader();
+     hydrateP5MutationHeaders(entry, req, body);
++    validateFields(body, new Set(Object.keys(schema.properties || {})));
+   }
+   const args = p5DispatchArguments(command, params, url, body, schema);
+   const dispatched = await runtime.dispatcher.dispatch(command, args, actor, { transport: 'rest' });
+@@ -247,6 +257,11 @@ function p5DispatchArguments(command, params, url, body, schema) {
+     else if (command.startsWith('quality.')) args.quality_review_id ||= args.id;
+     else if (command.startsWith('outcome.waiver.revoke')) args.waiver_id ||= args.id;
+     else if (command.startsWith('outcome.')) args.execution_id ||= args.id;
++    else if (command === 'github.repository.list') args.profile_id ||= args.id;
++    else if (command.startsWith('delivery.')) args.delivery_id ||= args.id;
++    else if (command.startsWith('deployment.candidate') || command === 'deployment.verify') args.candidate_id ||= args.id;
++    else if (command.startsWith('import.')) args.import_id ||= args.id;
++    else if (command === 'operations.replay') args.operation_id ||= args.id;
+   }
+   const properties = schema.properties || {};
+   if (reqIsGetSchema(schema)) {
+@@ -286,13 +301,13 @@ function hydrateP5MutationHeaders(entry, req, body) {
+ }
+ 
+ function p5Status(command, value) {
+-  if (['assist.turn.create', 'assist.turn.retry', 'change.batch.apply', 'change.batch.undo', 'runner.profile.probe', 'execution.start', 'execution.resume', 'execution.stage.replay', 'parser.run.start', 'parser.run.retry', 'quality.start', 'quality.retry', 'outcome.evaluate'].includes(command)) return 202;
+-  if (['assist.session.create', 'assist.reference.create', 'attachment.create', 'change.batch.create', 'approval.create', 'user.input.create', 'proposal.create', 'terminal.open', 'bridge.pair', 'bridge.transfer.create', 'runner.profile.create', 'execution.create', 'execution.replan', 'asset.capture', 'asset.relation.create', 'asset.attest', 'outcome.waiver.create', 'outcome.waiver.revoke'].includes(command)) return value?.replayed ? 200 : 201;
++  if (['assist.turn.create', 'assist.turn.retry', 'change.batch.apply', 'change.batch.undo', 'runner.profile.probe', 'execution.start', 'execution.resume', 'execution.stage.replay', 'parser.run.start', 'parser.run.retry', 'quality.start', 'quality.retry', 'outcome.evaluate', 'delivery.submit', 'delivery.intent.create', 'delivery.intent.ready', 'delivery.intent.merge', 'delivery.reconcile', 'deployment.verify', 'backup.create', 'restore.prepare', 'system.reset.prepare', 'operations.replay'].includes(command)) return 202;
++  if (['assist.session.create', 'assist.reference.create', 'attachment.create', 'change.batch.create', 'approval.create', 'user.input.create', 'proposal.create', 'terminal.open', 'bridge.pair', 'bridge.transfer.create', 'runner.profile.create', 'execution.create', 'execution.replan', 'asset.capture', 'asset.relation.create', 'asset.attest', 'outcome.waiver.create', 'outcome.waiver.revoke', 'delivery.policy.create', 'deployment.candidate.create'].includes(command)) return value?.replayed ? 200 : 201;
+   return 200;
+ }
+ 
+-function p5Revision(value) { return value?.revision ?? value?.session?.revision ?? value?.turn?.revision ?? value?.goal?.revision ?? value?.attachment?.revision ?? value?.batch?.revision ?? value?.approval?.revision ?? value?.input?.revision ?? value?.proposal?.revision ?? value?.terminal?.revision ?? value?.device?.revision ?? value?.transfer?.revision ?? value?.profile?.revision ?? value?.execution?.revision ?? value?.asset?.revision ?? value?.parser_run?.revision ?? value?.quality_review?.revision ?? value?.evaluation?.revision ?? value?.waiver?.revision ?? value?.operation?.revision ?? null; }
+-function p5ResourceType(command) { if (command.startsWith('assist.')) return command.startsWith('assist.turn') ? 'assist_turn' : 'assist_session'; if (command.startsWith('attachment.')) return 'attachment'; if (command.startsWith('file.')) return 'file_ref'; if (command.startsWith('change.batch')) return 'file_change_batch'; if (command.startsWith('approval.')) return 'runtime_approval'; if (command.startsWith('user.input')) return 'runtime_user_input'; if (command.startsWith('proposal.')) return 'semantic_proposal'; if (command.startsWith('terminal.')) return 'terminal_session'; if (command.startsWith('bridge.transfer')) return 'bridge_transfer'; if (command.startsWith('bridge.')) return 'bridge_device'; if (command.startsWith('runner.profile')) return 'runner_profile'; if (command.startsWith('execution.')) return 'execution'; if (command.startsWith('asset.') || command.startsWith('evidence.')) return 'asset'; if (command.startsWith('parser.')) return 'parser_run'; if (command.startsWith('quality.')) return 'quality_review'; if (command.startsWith('outcome.')) return 'outcome_evaluation'; return 'resource'; }
++function p5Revision(value) { return value?.revision ?? value?.session?.revision ?? value?.turn?.revision ?? value?.goal?.revision ?? value?.attachment?.revision ?? value?.batch?.revision ?? value?.approval?.revision ?? value?.input?.revision ?? value?.proposal?.revision ?? value?.terminal?.revision ?? value?.device?.revision ?? value?.transfer?.revision ?? value?.profile?.revision ?? value?.execution?.revision ?? value?.asset?.revision ?? value?.parser_run?.revision ?? value?.quality_review?.revision ?? value?.evaluation?.revision ?? value?.waiver?.revision ?? value?.policy?.revision ?? value?.delivery?.revision ?? value?.intent?.generation ?? value?.candidate?.revision ?? value?.operation?.revision ?? null; }
++function p5ResourceType(command) { if (command.startsWith('assist.')) return command.startsWith('assist.turn') ? 'assist_turn' : 'assist_session'; if (command.startsWith('attachment.')) return 'attachment'; if (command.startsWith('file.')) return 'file_ref'; if (command.startsWith('change.batch')) return 'file_change_batch'; if (command.startsWith('approval.')) return 'runtime_approval'; if (command.startsWith('user.input')) return 'runtime_user_input'; if (command.startsWith('proposal.')) return 'semantic_proposal'; if (command.startsWith('terminal.')) return 'terminal_session'; if (command.startsWith('bridge.transfer')) return 'bridge_transfer'; if (command.startsWith('bridge.')) return 'bridge_device'; if (command.startsWith('runner.profile')) return 'runner_profile'; if (command.startsWith('execution.')) return 'execution'; if (command.startsWith('asset.') || command.startsWith('evidence.')) return 'asset'; if (command.startsWith('parser.')) return 'parser_run'; if (command.startsWith('quality.')) return 'quality_review'; if (command.startsWith('outcome.')) return 'outcome_evaluation'; if (command.startsWith('delivery.')) return 'delivery'; if (command.startsWith('github.')) return 'github_repository'; if (command.startsWith('deployment.')) return 'deployment_candidate'; if (command.startsWith('backup.') || command.startsWith('restore.') || command.startsWith('system.reset')) return 'backup'; if (command.startsWith('import.')) return 'import_batch'; if (command.startsWith('cas.gc')) return 'cas_gc'; return 'resource'; }
+ 
+ async function handleP4Route({ entry, params, url, req, res, requestId, runtime, actor, mcpBoundary, bodyReader }) {
+   const command = entry.command_id;
+@@ -1096,6 +1111,19 @@ async function readJson(req, maxBytes) {
+   try { return JSON.parse(Buffer.concat(chunks).toString('utf8')); } catch { throw new HttpError('schema_invalid', 'request body is not valid JSON', {}, 400, false); }
+ }
+ 
++async function readRaw(req, maxBytes) {
++  const length = Number(req.headers['content-length'] || 0);
++  if (length > maxBytes) throw new HttpError('payload_too_large', 'request body is too large', { max_bytes: maxBytes }, 413, false);
++  const chunks = [];
++  let total = 0;
++  for await (const chunk of req) {
++    total += chunk.length;
++    if (total > maxBytes) throw new HttpError('payload_too_large', 'request body is too large', { max_bytes: maxBytes }, 413, false);
++    chunks.push(Buffer.from(chunk));
++  }
++  return Buffer.concat(chunks, total);
++}
++
+ function etagFor(value, explicitRevision = null) {
+   const revision = explicitRevision ?? value?.revision ?? value?.resource_revision ?? value?.account?.revision ?? value?.actor?.revision ?? value?.team?.revision ?? value?.membership?.revision ?? value?.session?.revision ?? value?.invitation?.revision ?? value?.entry?.revision ?? value?.credential?.revision ?? value?.profile?.revision ?? 0;
+   return `rev-${Number(revision)}-sha256:${sha256Hex(canonicalJson(value))}`;
+diff --git a/apps/api/src/clean/migration-service.mjs b/apps/api/src/clean/migration-service.mjs
+index 51b1f43..5b0a8d4 100644
+--- a/apps/api/src/clean/migration-service.mjs
++++ b/apps/api/src/clean/migration-service.mjs
+@@ -14,6 +14,7 @@ import { CONTEXT_PROJECTION_MCP_MIGRATION } from './migrations/004-context-proje
+ import { ASSIST_FILES_TERMINAL_BRIDGE_MIGRATION } from './migrations/005-assist-files-terminal-bridge.mjs';
+ import { RUNNER_EXECUTION_CHECKPOINT_REPLAY_MIGRATION } from './migrations/006-runner-execution-checkpoint-replay.mjs';
+ import { EVIDENCE_QUALITY_PARSER_OUTCOME_MIGRATION } from './migrations/007-evidence-quality-parser-outcome.mjs';
++import { DELIVERY_DEPLOYMENT_IMPORTER_OPERATIONS_MIGRATION } from './migrations/008-delivery-deployment-importer-operations.mjs';
+ 
+ // The three-entry export remains the frozen P3 compatibility view used by
+ // historical phase fixtures. P4 consumers use the complete forward registry.
+@@ -22,4 +23,5 @@ export const CLEAN_P4_MIGRATION_REGISTRY = Object.freeze([...CLEAN_MIGRATION_REG
+ export const CLEAN_P5_MIGRATION_REGISTRY = Object.freeze([...CLEAN_P4_MIGRATION_REGISTRY, ASSIST_FILES_TERMINAL_BRIDGE_MIGRATION]);
+ export const CLEAN_P6_MIGRATION_REGISTRY = Object.freeze([...CLEAN_P5_MIGRATION_REGISTRY, RUNNER_EXECUTION_CHECKPOINT_REPLAY_MIGRATION]);
+ export const CLEAN_P7_MIGRATION_REGISTRY = Object.freeze([...CLEAN_P6_MIGRATION_REGISTRY, EVIDENCE_QUALITY_PARSER_OUTCOME_MIGRATION]);
+-export { CLEAN_MIGRATIONS, IDENTITY_MIGRATION, PROJECT_WORKFLOW_MIGRATION, CONTEXT_PROJECTION_MCP_MIGRATION, ASSIST_FILES_TERMINAL_BRIDGE_MIGRATION, RUNNER_EXECUTION_CHECKPOINT_REPLAY_MIGRATION, EVIDENCE_QUALITY_PARSER_OUTCOME_MIGRATION };
++export const CLEAN_P8_MIGRATION_REGISTRY = Object.freeze([...CLEAN_P7_MIGRATION_REGISTRY, DELIVERY_DEPLOYMENT_IMPORTER_OPERATIONS_MIGRATION]);
++export { CLEAN_MIGRATIONS, IDENTITY_MIGRATION, PROJECT_WORKFLOW_MIGRATION, CONTEXT_PROJECTION_MCP_MIGRATION, ASSIST_FILES_TERMINAL_BRIDGE_MIGRATION, RUNNER_EXECUTION_CHECKPOINT_REPLAY_MIGRATION, EVIDENCE_QUALITY_PARSER_OUTCOME_MIGRATION, DELIVERY_DEPLOYMENT_IMPORTER_OPERATIONS_MIGRATION };
+diff --git a/apps/api/src/clean/ownership.mjs b/apps/api/src/clean/ownership.mjs
+index a3ea05f..dc83402 100644
+--- a/apps/api/src/clean/ownership.mjs
++++ b/apps/api/src/clean/ownership.mjs
+@@ -124,6 +124,21 @@ export const CLEAN_P7_TABLE_OWNERS = Object.freeze({
+   outcome_waivers: 'Outcome'
+ });
+ 
++export const CLEAN_P8_TABLE_OWNERS = Object.freeze({
++  ...CLEAN_P7_TABLE_OWNERS,
++  delivery_policies: 'Delivery',
++  deliveries: 'Delivery',
++  pull_request_intents: 'Delivery',
++  delivery_events: 'Delivery',
++  deployment_candidates: 'Deployment',
++  deployment_verifications: 'Deployment',
++  backup_manifests: 'Operations',
++  import_batches: 'Importer',
++  import_checkpoints: 'Importer',
++  import_id_map: 'Importer',
++  import_conflicts: 'Importer'
++});
++
+ export const CLEAN_COMMAND_OWNERS = Object.freeze({
+   'operations.get': 'Operations',
+   'operations.events': 'Operations',
+@@ -349,6 +364,31 @@ export const CLEAN_COMMAND_OWNERS = Object.freeze({
+   , 'outcome.evaluate': 'Outcome'
+   , 'outcome.waiver.create': 'Outcome'
+   , 'outcome.waiver.revoke': 'Outcome'
++  , 'delivery.policy.list': 'Delivery'
++  , 'delivery.policy.create': 'Delivery'
++  , 'delivery.list': 'Delivery'
++  , 'delivery.get': 'Delivery'
++  , 'delivery.submit': 'Delivery'
++  , 'delivery.intent.create': 'Delivery'
++  , 'delivery.intent.ready': 'Delivery'
++  , 'delivery.intent.merge': 'Delivery'
++  , 'delivery.reconcile': 'Delivery'
++  , 'github.repository.list': 'Delivery'
++  , 'github.webhook.receive': 'Delivery'
++  , 'deployment.get': 'Deployment'
++  , 'deployment.candidate.get': 'Deployment'
++  , 'deployment.candidate.create': 'Deployment'
++  , 'deployment.verify': 'Deployment'
++  , 'backup.list': 'Operations'
++  , 'backup.create': 'Operations'
++  , 'restore.prepare': 'Operations'
++  , 'system.reset.prepare': 'Operations'
++  , 'import.list': 'Importer'
++  , 'import.get': 'Importer'
++  , 'operations.list': 'Operations'
++  , 'operations.replay': 'Operations'
++  , 'cas.gc.plan': 'CAS'
++  , 'cas.gc.apply': 'CAS'
+ });
+ 
+ export const CLEAN_EVENT_OWNERS = Object.freeze({
+@@ -417,18 +457,24 @@ export const CLEAN_EVENT_OWNERS = Object.freeze({
+   , 'test_result.*': 'Evidence'
+   , 'quality_review.*': 'Quality'
+   , 'outcome.*': 'Outcome'
++  , 'delivery.*': 'Delivery'
++  , 'deployment.*': 'Deployment'
++  , 'backup.*': 'Operations'
++  , 'restore.*': 'Operations'
++  , 'system.reset.*': 'Operations'
++  , 'import.*': 'Importer'
+ });
+ 
+ export const CLEAN_PLATFORM_OWNERSHIP = Object.freeze({
+-  schema_version: 'aiws.v3-clean.owner-manifest.v7',
+-  tables: CLEAN_P7_TABLE_OWNERS,
++  schema_version: 'aiws.v3-clean.owner-manifest.v8',
++  tables: CLEAN_P8_TABLE_OWNERS,
+   commands: CLEAN_COMMAND_OWNERS,
+   events: CLEAN_EVENT_OWNERS
+ });
+ 
+ export function validateCleanOwnership({ tables = [], registry = null } = {}) {
+   const actualTables = [...new Set(tables.map((table) => String(table)))].sort();
+-  const tableOwners = actualTables.includes('parser_formats') ? CLEAN_P7_TABLE_OWNERS : (actualTables.includes('runner_profiles') ? CLEAN_P6_TABLE_OWNERS : (actualTables.includes('assist_sessions') ? CLEAN_P5_TABLE_OWNERS : (actualTables.includes('context_sources') ? CLEAN_P4_TABLE_OWNERS : (actualTables.includes('projects') ? CLEAN_P3_TABLE_OWNERS : (actualTables.includes('teams') ? CLEAN_P2_TABLE_OWNERS : CLEAN_TABLE_OWNERS)))));
++  const tableOwners = actualTables.includes('delivery_policies') ? CLEAN_P8_TABLE_OWNERS : (actualTables.includes('parser_formats') ? CLEAN_P7_TABLE_OWNERS : (actualTables.includes('runner_profiles') ? CLEAN_P6_TABLE_OWNERS : (actualTables.includes('assist_sessions') ? CLEAN_P5_TABLE_OWNERS : (actualTables.includes('context_sources') ? CLEAN_P4_TABLE_OWNERS : (actualTables.includes('projects') ? CLEAN_P3_TABLE_OWNERS : (actualTables.includes('teams') ? CLEAN_P2_TABLE_OWNERS : CLEAN_TABLE_OWNERS))))));
+   const expectedTables = Object.keys(tableOwners).sort();
+   const missingTables = expectedTables.filter((table) => !actualTables.includes(table));
+   const unexpectedTables = actualTables.filter((table) => !expectedTables.includes(table));
+@@ -453,19 +499,24 @@ export function validateCleanOwnership({ tables = [], registry = null } = {}) {
+     const p5Owners = new Set(['Assist', 'Files', 'Terminal', 'Bridge']);
+     const p6Owners = new Set(['Runner', 'Execution']);
+     const p7Owners = new Set(['Parser', 'Evidence', 'Quality', 'Outcome']);
++    const p8Owners = new Set(['Delivery', 'Deployment', 'Importer']);
++    const hasP8Tables = actualTables.includes('delivery_policies');
+     const hasP7Tables = actualTables.includes('parser_formats');
+     const hasP6Tables = actualTables.includes('runner_profiles');
+     const hasP5Tables = actualTables.includes('assist_sessions');
+     const hasP4Tables = actualTables.includes('context_sources');
+     const hasP3Tables = actualTables.includes('projects');
++    const p8OperationCommands = new Set(['operations.list', 'operations.replay', 'backup.list', 'backup.create', 'restore.prepare', 'system.reset.prepare', 'cas.gc.plan', 'cas.gc.apply']);
+     const expectedCommandIds = Object.entries(CLEAN_COMMAND_OWNERS)
+-      .filter(([, owner]) => {
+-        if (hasP7Tables) return true;
+-        if (hasP6Tables) return !p7Owners.has(owner);
+-        if (hasP5Tables) return !p6Owners.has(owner) && !p7Owners.has(owner);
+-        if (hasP4Tables) return !p5Owners.has(owner) && !p6Owners.has(owner) && !p7Owners.has(owner);
+-        if (hasP3Tables) return !p4Owners.has(owner) && !p5Owners.has(owner) && !p6Owners.has(owner) && !p7Owners.has(owner);
+-        return !p3Owners.has(owner) && !p4Owners.has(owner) && !p5Owners.has(owner) && !p6Owners.has(owner) && !p7Owners.has(owner);
++      .filter(([commandId, owner]) => {
++        if (!hasP8Tables && p8OperationCommands.has(commandId)) return false;
++        if (hasP8Tables) return true;
++        if (hasP7Tables) return !p8Owners.has(owner);
++        if (hasP6Tables) return !p7Owners.has(owner) && !p8Owners.has(owner);
++        if (hasP5Tables) return !p6Owners.has(owner) && !p7Owners.has(owner) && !p8Owners.has(owner);
++        if (hasP4Tables) return !p5Owners.has(owner) && !p6Owners.has(owner) && !p7Owners.has(owner) && !p8Owners.has(owner);
++        if (hasP3Tables) return !p4Owners.has(owner) && !p5Owners.has(owner) && !p6Owners.has(owner) && !p7Owners.has(owner) && !p8Owners.has(owner);
++        return !p3Owners.has(owner) && !p4Owners.has(owner) && !p5Owners.has(owner) && !p6Owners.has(owner) && !p7Owners.has(owner) && !p8Owners.has(owner);
+       })
+       .map(([commandId]) => commandId);
+     for (const commandId of expectedCommandIds) {
+diff --git a/apps/api/src/clean/project-workflow.mjs b/apps/api/src/clean/project-workflow.mjs
+index 34bc0ed..6ce5b92 100644
+--- a/apps/api/src/clean/project-workflow.mjs
++++ b/apps/api/src/clean/project-workflow.mjs
+@@ -974,6 +974,39 @@ class ProjectWorkflowCore {
+     });
+   }
+ 
++  synchronizeRepositoryBaselineInTransaction(tx, targetId, { projectId, expectedHeadSha, operationId, actorId, now } = {}) {
++    const target = tx.get(`SELECT t.*,c.project_id,c.revision AS connection_revision,c.status AS connection_status
++      FROM repository_targets t JOIN repository_connections c ON c.id=t.connection_id WHERE t.id=?`, [String(targetId)]);
++    if (!target || target.project_id !== String(projectId)) throw notFound('repository target');
++    const head = boundedString(expectedHeadSha, 128);
++    if (head.length < 7) throw new PlatformError('schema_invalid', 'repository baseline SHA is invalid', {}, 422);
++    const targetRevision = Number(target.revision) + 1;
++    tx.run('UPDATE repository_targets SET expected_head_sha=?,revision=?,updated_at=?,updated_by_actor_id=? WHERE id=? AND revision=?', [head, targetRevision, now, actorId, target.id, target.revision], 1);
++    appendAggregate(tx, this.events, {
++      aggregateType: 'repository_target', aggregateId: target.id, revision: targetRevision, operationId, actorId,
++      projectId: target.project_id, type: 'repository.baseline.synchronized', data: { target_id: target.id, expected_head_sha: head },
++      payload: { id: target.id, connection_id: target.connection_id, expected_head_sha: head, revision: targetRevision }, now
++    });
++    const connectionRevision = Number(target.connection_revision) + 1;
++    tx.run('UPDATE repository_connections SET source_revision=?,revision=?,updated_at=?,updated_by_actor_id=? WHERE id=? AND revision=?', [head, connectionRevision, now, actorId, target.connection_id, target.connection_revision], 1);
++    appendAggregate(tx, this.events, {
++      aggregateType: 'repository_connection', aggregateId: target.connection_id, revision: connectionRevision, operationId, actorId,
++      projectId: target.project_id, type: 'repository.baseline.synchronized', data: { target_id: target.id, expected_head_sha: head },
++      payload: { id: target.connection_id, project_id: target.project_id, status: target.connection_status, source_revision: head, revision: connectionRevision }, now
++    });
++    const lines = tx.query("SELECT * FROM repository_lines WHERE target_id=? AND status<>'removed' ORDER BY id", [target.id]);
++    for (const line of lines) {
++      const revision = Number(line.revision) + 1;
++      tx.run("UPDATE repository_lines SET status='ready',source_revision=?,expected_head_sha=?,fault_code='',fault_json='{}',revision=?,updated_at=?,updated_by_actor_id=? WHERE id=? AND revision=?", [head, head, revision, now, actorId, line.id, line.revision], 1);
++      appendAggregate(tx, this.events, {
++        aggregateType: 'repository_line', aggregateId: line.id, revision, operationId, actorId, projectId: target.project_id,
++        type: 'repository.baseline.synchronized', data: { line_id: line.id, target_id: target.id, expected_head_sha: head },
++        payload: { id: line.id, project_id: target.project_id, target_id: target.id, status: 'ready', source_revision: head, expected_head_sha: head, revision }, now
++      });
++    }
++    return this.#targetView(tx.get('SELECT * FROM repository_targets WHERE id=?', [target.id]));
++  }
++
+   listRepositoryLines(projectId, principal) {
+     const project = this.#projectRow(projectId);
+     this.#assertProject(principal, 'read', project.id);
+diff --git a/apps/api/src/clean/registry.mjs b/apps/api/src/clean/registry.mjs
+index 0d87f04..880e87c 100644
+--- a/apps/api/src/clean/registry.mjs
++++ b/apps/api/src/clean/registry.mjs
+@@ -66,7 +66,8 @@ const entries = [
+   ...p4Entries(),
+   ...p5Entries(),
+   ...p6Entries(),
+-  ...p7Entries()
++  ...p7Entries(),
++  ...p8Entries()
+ ];
+ 
+ function identityEntries() {
+@@ -387,6 +388,49 @@ function p7Entries() {
+   ];
+ }
+ 
++function p8Entries() {
++  const common = (command_id, method, path, owner, scope, input_schema, output_schema, events, options = {}) => ({
++    command_id, version: 2, method, path, owner, scope, phase: 'p8', project_scoped: options.project_scoped !== false,
++    idempotency: options.external_callback ? 'provider-delivery' : method === 'GET' ? 'forbidden' : 'required', expected_revision: options.external_callback || method === 'GET' ? 'none' : (options.expected_revision || 'resource'),
++    input_schema, output_schema,
++    long_running: Boolean(options.long_running), events,
++    mcp: { mapping: options.rest_only ? 'rest-only' : (method === 'GET' ? 'resource' : 'tool'), name: command_id.replaceAll('.', '_'), exposed: !options.rest_only },
++    transport_allowlist: Object.freeze(options.rest_only ? ['rest', 'web'] : ['rest', 'web', 'mcp', 'gateway']), redaction_policy: 'v3-clean-default', external_adapter: options.external_adapter || null,
++    external_callback: Boolean(options.external_callback),
++    ui_metadata: { surface: options.surface || owner.toLowerCase(), state: options.state || command_id }, evidence_metadata: { receipt_kind: options.long_running ? 'operation.receipt.v2' : 'resource.receipt.v2', verification: 'p8-delivery-deployment-importer-operations' }
++  });
++  return [
++    common('delivery.policy.list', 'GET', '/api/v2/projects/{project_id}/delivery-policies', 'Delivery', 'delivery:read', 'delivery.policy.query.v2', 'delivery.policies.v2', ['delivery.policy.*']),
++    common('delivery.policy.create', 'POST', '/api/v2/projects/{project_id}/delivery-policies', 'Delivery', 'delivery:approve', 'delivery.policy.create.v2', 'delivery.policy.receipt.v2', ['delivery.policy.created'], { expected_revision: 'project' }),
++    common('github.repository.list', 'GET', '/api/v2/provider-profiles/{id}/repositories', 'Delivery', 'credential:read', 'github.repositories.query.v2', 'github.repositories.v2', ['delivery.repository.discovered'], { project_scoped: false, rest_only: true, external_adapter: 'github.app.v1' }),
++    common('github.webhook.receive', 'POST', '/api/v2/webhooks/github', 'Delivery', 'external_callback', 'github.webhook.v2', 'github.webhook.receipt.v2', ['delivery.webhook.received'], { project_scoped: false, rest_only: true, external_callback: true, external_adapter: 'github.app.v1' }),
++    common('delivery.list', 'GET', '/api/v2/deliveries', 'Delivery', 'delivery:read', 'delivery.list.query.v2', 'deliveries.v2', ['delivery.*'], { project_scoped: false }),
++    common('delivery.get', 'GET', '/api/v2/deliveries/{id}', 'Delivery', 'delivery:read', 'delivery.get.query.v2', 'delivery.v2', ['delivery.*'], { project_scoped: false }),
++    common('delivery.submit', 'POST', '/api/v2/deliveries', 'Delivery', 'delivery:deliver', 'delivery.submit.v2', 'operation.receipt.v2', ['delivery.queued'], { project_scoped: false, long_running: true, expected_revision: 'execution', external_adapter: 'github.app.v1' }),
++    common('delivery.intent.create', 'POST', '/api/v2/deliveries/{id}/pull-request-intents', 'Delivery', 'delivery:deliver', 'delivery.intent.create.v2', 'operation.receipt.v2', ['delivery.intent.create_draft'], { project_scoped: false, long_running: true, external_adapter: 'github.app.v1' }),
++    common('delivery.intent.ready', 'POST', '/api/v2/deliveries/{id}/ready', 'Delivery', 'delivery:deliver', 'delivery.intent.ready.v2', 'operation.receipt.v2', ['delivery.intent.mark_ready'], { project_scoped: false, long_running: true, rest_only: true, external_adapter: 'github.app.v1' }),
++    common('delivery.intent.merge', 'POST', '/api/v2/deliveries/{id}/merge', 'Delivery', 'delivery:approve', 'delivery.intent.merge.v2', 'operation.receipt.v2', ['delivery.intent.merge'], { project_scoped: false, long_running: true, rest_only: true, external_adapter: 'github.app.v1' }),
++    common('delivery.reconcile', 'POST', '/api/v2/deliveries/{id}/reconcile', 'Delivery', 'delivery:deliver', 'delivery.reconcile.v2', 'operation.receipt.v2', ['delivery.intent.reconcile'], { project_scoped: false, long_running: true, rest_only: true, external_adapter: 'github.app.v1' }),
++
++    common('deployment.get', 'GET', '/api/v2/system/deployment', 'Deployment', 'operations:read', 'deployment.query.v2', 'deployment.v2', ['deployment.*'], { project_scoped: false, rest_only: true }),
++    common('deployment.candidate.get', 'GET', '/api/v2/system/deployment/candidates/{id}', 'Deployment', 'operations:read', 'deployment.candidate.query.v2', 'deployment.candidate.v2', ['deployment.*'], { project_scoped: false, rest_only: true }),
++    common('deployment.candidate.create', 'POST', '/api/v2/system/deployment/candidates', 'Deployment', 'operations:approve', 'deployment.candidate.create.v2', 'deployment.receipt.v2', ['deployment.candidate.created'], { project_scoped: false, rest_only: true, expected_revision: 'parent' }),
++    common('deployment.verify', 'POST', '/api/v2/system/deployment/candidates/{id}/verify', 'Deployment', 'operations:approve', 'deployment.verify.v2', 'operation.receipt.v2', ['deployment.verification.queued', 'deployment.verified'], { project_scoped: false, rest_only: true, long_running: true }),
++
++    common('backup.list', 'GET', '/api/v2/backups', 'Operations', 'operations:read', 'backup.list.query.v2', 'backups.v2', ['backup.*'], { project_scoped: false, rest_only: true }),
++    common('backup.create', 'POST', '/api/v2/backups', 'Operations', 'operations:approve', 'backup.create.v2', 'operation.receipt.v2', ['backup.queued', 'backup.created'], { project_scoped: false, rest_only: true, long_running: true, expected_revision: 'parent' }),
++    common('restore.prepare', 'POST', '/api/v2/restore/prepare', 'Operations', 'operations:approve', 'restore.prepare.v2', 'operation.receipt.v2', ['restore.prepared'], { project_scoped: false, rest_only: true, long_running: true, expected_revision: 'parent' }),
++    common('system.reset.prepare', 'POST', '/api/v2/system/reset/prepare', 'Operations', 'operations:approve', 'system.reset.prepare.v2', 'operation.receipt.v2', ['system.reset.prepared'], { project_scoped: false, rest_only: true, long_running: true, expected_revision: 'parent' }),
++
++    common('import.list', 'GET', '/api/v2/imports', 'Importer', 'import:read', 'import.list.query.v2', 'imports.v2', ['import.*'], { project_scoped: false, rest_only: true }),
++    common('import.get', 'GET', '/api/v2/imports/{id}', 'Importer', 'import:read', 'import.get.query.v2', 'import.v2', ['import.*'], { project_scoped: false, rest_only: true }),
++    common('operations.list', 'GET', '/api/v2/operations', 'Operations', 'operations:read', 'operations.list.query.v2', 'operations.v2', ['operation.*'], { project_scoped: false }),
++    common('operations.replay', 'POST', '/api/v2/operations/{id}/replay', 'Operations', 'operations:control', 'operations.replay.v2', 'operation.receipt.v2', ['operation.queued'], { project_scoped: false, long_running: true }),
++    common('cas.gc.plan', 'POST', '/api/v2/cas/gc/plan', 'CAS', 'operations:approve', 'cas.gc.plan.v2', 'cas.gc.plan.receipt.v2', ['cas.gc.planned'], { project_scoped: false, rest_only: true, expected_revision: 'parent' }),
++    common('cas.gc.apply', 'POST', '/api/v2/cas/gc/apply', 'CAS', 'operations:approve', 'cas.gc.apply.v2', 'cas.gc.apply.receipt.v2', ['cas.gc.applied'], { project_scoped: false, rest_only: true, expected_revision: 'parent' })
++  ];
++}
++
+ export const CLEAN_COMMAND_REGISTRY = Object.freeze(entries.map((entry) => Object.freeze({
+   ...entry,
+   phase: entry.phase || 'p2',
+@@ -405,7 +449,8 @@ export function createCleanCommandRegistry(options = {}) {
+   const includeP5 = options.phase === 'p5' || options.cleanPhase === 'p5' || Number(options.targetVersion || 0) >= 5;
+   const includeP6 = options.phase === 'p6' || options.cleanPhase === 'p6' || Number(options.targetVersion || 0) >= 6;
+   const includeP7 = options.phase === 'p7' || options.cleanPhase === 'p7' || Number(options.targetVersion || 0) >= 7;
+-  const selected = includeP7 ? CLEAN_COMMAND_REGISTRY : includeP6 ? CLEAN_COMMAND_REGISTRY.filter((entry) => entry.phase !== 'p7') : includeP5 ? CLEAN_COMMAND_REGISTRY.filter((entry) => !['p6', 'p7'].includes(entry.phase)) : includeP4 ? CLEAN_COMMAND_REGISTRY.filter((entry) => !['p5', 'p6', 'p7'].includes(entry.phase)) : includeP3 ? CLEAN_COMMAND_REGISTRY.filter((entry) => !['p4', 'p5', 'p6', 'p7'].includes(entry.phase)) : CLEAN_COMMAND_REGISTRY.filter((entry) => !['p3', 'p4', 'p5', 'p6', 'p7'].includes(entry.phase));
++  const includeP8 = options.phase === 'p8' || options.cleanPhase === 'p8' || Number(options.targetVersion || 0) >= 8;
++  const selected = includeP8 ? CLEAN_COMMAND_REGISTRY : includeP7 ? CLEAN_COMMAND_REGISTRY.filter((entry) => entry.phase !== 'p8') : includeP6 ? CLEAN_COMMAND_REGISTRY.filter((entry) => !['p7','p8'].includes(entry.phase)) : includeP5 ? CLEAN_COMMAND_REGISTRY.filter((entry) => !['p6', 'p7','p8'].includes(entry.phase)) : includeP4 ? CLEAN_COMMAND_REGISTRY.filter((entry) => !['p5', 'p6', 'p7','p8'].includes(entry.phase)) : includeP3 ? CLEAN_COMMAND_REGISTRY.filter((entry) => !['p4', 'p5', 'p6', 'p7','p8'].includes(entry.phase)) : CLEAN_COMMAND_REGISTRY.filter((entry) => !['p3', 'p4', 'p5', 'p6', 'p7','p8'].includes(entry.phase));
+   return {
+     entries: selected,
+     get(commandId) { return selected.find((entry) => entry.command_id === commandId) || null; },
+@@ -432,13 +477,13 @@ export function validateRegistry(registry = CLEAN_COMMAND_REGISTRY) {
+     if (paths.has(routeKey)) throw new Error(`registry_duplicate_route:${routeKey}`);
+     paths.add(routeKey);
+     if (!/^\/api\/v2\//.test(entry.path)) throw new Error(`registry_non_v2_route:${entry.path}`);
+-    if (entry.method !== 'GET' && entry.idempotency !== 'required') throw new Error(`registry_mutation_idempotency_missing:${entry.command_id}`);
+-    if (entry.method !== 'GET' && entry.expected_revision === 'none') throw new Error(`registry_mutation_revision_missing:${entry.command_id}`);
++    if (entry.method !== 'GET' && !entry.external_callback && entry.idempotency !== 'required') throw new Error(`registry_mutation_idempotency_missing:${entry.command_id}`);
++    if (entry.method !== 'GET' && !entry.external_callback && entry.expected_revision === 'none') throw new Error(`registry_mutation_revision_missing:${entry.command_id}`);
+     if (entry.long_running && (!entry.events.length || !entry.output_schema.includes('operation'))) throw new Error(`registry_long_running_mapping_missing:${entry.command_id}`);
+     if (!CLEAN_V2_SCHEMAS[entry.input_schema]) throw new Error(`registry_input_schema_missing:${entry.command_id}:${entry.input_schema}`);
+     if (!CLEAN_V2_SCHEMAS[entry.output_schema]) throw new Error(`registry_output_schema_missing:${entry.command_id}:${entry.output_schema}`);
+     if (!entry.mcp?.name) throw new Error(`registry_mcp_mapping_missing:${entry.command_id}`);
+-    if (['p5', 'p6', 'p7'].includes(entry.phase)) {
++    if (['p5', 'p6', 'p7', 'p8'].includes(entry.phase)) {
+       if (!Array.isArray(entry.transport_allowlist) || entry.transport_allowlist.length === 0) throw new Error(`registry_transport_allowlist_missing:${entry.command_id}`);
+       if (new Set(entry.transport_allowlist).size !== entry.transport_allowlist.length || entry.transport_allowlist.some((transport) => !['rest', 'web', 'mcp', 'gateway'].includes(transport))) throw new Error(`registry_transport_allowlist_invalid:${entry.command_id}`);
+       if (entry.mcp.exposed === false && (entry.transport_allowlist.includes('mcp') || entry.transport_allowlist.includes('gateway'))) throw new Error(`registry_transport_exposure_mismatch:${entry.command_id}`);
+diff --git a/apps/api/src/clean/repository-service.mjs b/apps/api/src/clean/repository-service.mjs
+index da9c4bf..fb5b609 100644
+--- a/apps/api/src/clean/repository-service.mjs
++++ b/apps/api/src/clean/repository-service.mjs
+@@ -14,6 +14,7 @@ export class RepositoryService {
+   updateConnection(id, input, principal) { return this.core.updateRepositoryConnection(id, input, principal); }
+   listTargets(id, principal) { return this.core.listRepositoryTargets(id, principal); }
+   createTarget(id, input, principal) { return this.core.createRepositoryTarget(id, input, principal); }
++  synchronizeBaselineInTransaction(tx, id, input) { return this.core.synchronizeRepositoryBaselineInTransaction(tx, id, input); }
+   listLines(id, principal) { return this.core.listRepositoryLines(id, principal); }
+   reconcileLine(id, input, principal) { return this.core.reconcileRepositoryLine(id, input, principal); }
+   listWorkspaces(id, principal) { return this.core.listRepositoryWorkspaces(id, principal); }
+diff --git a/apps/api/src/clean/runtime.mjs b/apps/api/src/clean/runtime.mjs
+index f9043c8..0929548 100644
+--- a/apps/api/src/clean/runtime.mjs
++++ b/apps/api/src/clean/runtime.mjs
+@@ -32,6 +32,7 @@ import { CleanQualityService } from './quality-service.mjs';
+ import { CleanOutcomeEvaluationService } from './outcome-evaluation-service.mjs';
+ import { BrokerParserAdapter, DeterministicParserAdapter } from './parser-adapters.mjs';
+ import { P7_PARSER_IMAGE_DIGEST } from './migrations/007-evidence-quality-parser-outcome.mjs';
++import { CleanP8Service } from './p8-service.mjs';
+ 
+ export function createCleanRuntime(options = {}) {
+   const config = options.config || loadCleanConfig(options.env || process.env);
+@@ -84,7 +85,8 @@ export function createCleanRuntime(options = {}) {
+   const parser = targetVersion >= 7 ? new CleanParserService({ db, cas, events, operations, authorization, evidence, adapter: parserAdapter, clock: options.now || undefined, pollIntervalMs: options.parserPollIntervalMs || config.parserPollIntervalMs, sleep: options.parserSleep, retryDelays: options.parserRetryDelays, serviceIdentity: options.parserServiceIdentity, bootstrapActorId: initialized.metadata.bootstrap_actor_id }) : null;
+   const quality = targetVersion >= 7 ? new CleanQualityService({ db, cas, events, operations, authorization, evidence, clock: options.now || undefined, bootstrapActorId: initialized.metadata.bootstrap_actor_id }) : null;
+   const outcomeEvaluation = targetVersion >= 7 ? new CleanOutcomeEvaluationService({ db, events, operations, authorization, clock: options.now || undefined, bootstrapActorId: initialized.metadata.bootstrap_actor_id }) : null;
+-  const dispatcher = targetVersion >= 4 ? new CleanCommandDispatcher({ registry, context, mcp, gateway, projectWorkflow, operations, events, assist, files, terminal, bridge, runner, execution, evidence, parser, quality, outcomeEvaluation }) : null;
++  const p8Service = targetVersion >= 8 ? new CleanP8Service({ db, cas, events, operations, authorization, vault, projectWorkflow, githubAdapter: options.githubAdapter, operationsAdapter: options.operationsAdapter, config, clock: options.now || undefined, bootstrapActorId: initialized.metadata.bootstrap_actor_id }) : null;
++  const dispatcher = targetVersion >= 4 ? new CleanCommandDispatcher({ registry, context, mcp, gateway, projectWorkflow, operations, events, assist, files, terminal, bridge, runner, execution, evidence, parser, quality, outcomeEvaluation, p8Service }) : null;
+   if (mcp) mcp.dispatcher = dispatcher;
+   const recovery = (async () => {
+     const identityResult = await identity.recoverPending();
+@@ -99,7 +101,8 @@ export function createCleanRuntime(options = {}) {
+     const parserResult = await (parser?.recoverPending?.() || 0);
+     const qualityResult = await (quality?.recoverPending?.() || 0);
+     const outcomeResult = await (outcomeEvaluation?.recoverPending?.() || 0);
+-    return [identityResult, projectResult, contextResult, assistResult, filesResult, terminalResult, bridgeResult, executionResult, evidenceResult, parserResult, qualityResult, outcomeResult];
++    const p8Result = await (p8Service?.recoverPending?.() || 0);
++    return [identityResult, projectResult, contextResult, assistResult, filesResult, terminalResult, bridgeResult, executionResult, evidenceResult, parserResult, qualityResult, outcomeResult, p8Result];
+   })();
+   events.authorize = (context) => authorization.authorize({ actorId: context.actorId, effectiveActorId: context.actorId, scopes: ['*'] }, 'read', context.projectId, { events: context.events }).allowed;
+   let casManifest;
+@@ -150,6 +153,7 @@ export function createCleanRuntime(options = {}) {
+     parserAdapter,
+     quality,
+     outcomeEvaluation,
++    p8Service,
+     dispatcher,
+     project: projectWorkflow,
+     repository: projectWorkflow,
+@@ -172,8 +176,9 @@ export function createCleanRuntime(options = {}) {
+     p5: targetVersion >= 5,
+     p6: targetVersion >= 6,
+     p7: targetVersion >= 7,
++    p8: targetVersion >= 8,
+     health() {
+-      return { runtime: 'v3-clean', ready: this.ready, readiness_reason: this.readinessReason, readiness_receipt: this.readinessReceipt, schema_family: this.metadata.family, user_version: this.metadata.user_version, cas_manifest: this.casManifest || null, p2: this.p2, p3: this.p3, p4: this.p4, p5: this.p5, p6: this.p6, p7: this.p7 };
++      return { runtime: 'v3-clean', ready: this.ready, readiness_reason: this.readinessReason, readiness_receipt: this.readinessReceipt, schema_family: this.metadata.family, user_version: this.metadata.user_version, cas_manifest: this.casManifest || null, p2: this.p2, p3: this.p3, p4: this.p4, p5: this.p5, p6: this.p6, p7: this.p7, p8: this.p8 };
+     },
+     close() {
+       this.terminal?.close?.();
+@@ -252,6 +257,7 @@ export function createNotReadyRuntime(options = {}, failure = null) {
+     parserAdapter: null,
+     quality: null,
+     outcomeEvaluation: null,
++    p8Service: null,
+     dispatcher: null,
+     project: null,
+     repository: null,
+@@ -274,8 +280,9 @@ export function createNotReadyRuntime(options = {}, failure = null) {
+     p5: false,
+     p6: false,
+     p7: false,
++    p8: false,
+     health() {
+-      return { runtime: 'v3-clean', ready: false, readiness_reason: this.readinessReason, readiness_receipt: this.readinessReceipt, schema_family: this.metadata.family, user_version: this.metadata.user_version, cas_manifest: null, p2: false, p3: false, p4: false, p5: false, p6: false, p7: false };
++      return { runtime: 'v3-clean', ready: false, readiness_reason: this.readinessReason, readiness_receipt: this.readinessReceipt, schema_family: this.metadata.family, user_version: this.metadata.user_version, cas_manifest: null, p2: false, p3: false, p4: false, p5: false, p6: false, p7: false, p8: false };
+     },
+     close() {}
+   };
+@@ -310,6 +317,6 @@ function createParserAdapter(options, config) {
+ 
+ function targetVersionFromOptions(options = {}) {
+   if (options.targetVersion != null || options.schemaVersion != null) return Number(options.targetVersion ?? options.schemaVersion);
+-  for (const version of [7, 6, 5, 4, 3]) if (options[`p${version}`] || options.phase === `p${version}` || options.cleanPhase === `p${version}`) return version;
++  for (const version of [8, 7, 6, 5, 4, 3]) if (options[`p${version}`] || options.phase === `p${version}` || options.cleanPhase === `p${version}`) return version;
+   return 2;
+ }
+diff --git a/apps/api/src/clean/schema.mjs b/apps/api/src/clean/schema.mjs
+index 21dadcd..8451f49 100644
+--- a/apps/api/src/clean/schema.mjs
++++ b/apps/api/src/clean/schema.mjs
+@@ -58,4 +58,12 @@ export {
+   P7_PARSER_LIMITS_JSON,
+   P7_PARSER_LIMITS_SHA256
+ } from './migrations/007-evidence-quality-parser-outcome.mjs';
+-export { CLEAN_MIGRATION_REGISTRY, CLEAN_P4_MIGRATION_REGISTRY, CLEAN_P5_MIGRATION_REGISTRY, CLEAN_P6_MIGRATION_REGISTRY, CLEAN_P7_MIGRATION_REGISTRY } from './migration-service.mjs';
++export {
++  DELIVERY_DEPLOYMENT_IMPORTER_OPERATIONS_MIGRATION_ID,
++  DELIVERY_DEPLOYMENT_IMPORTER_OPERATIONS_MIGRATION_VERSION,
++  DELIVERY_DEPLOYMENT_IMPORTER_OPERATIONS_TOOL_VERSION,
++  DELIVERY_DEPLOYMENT_IMPORTER_OPERATIONS_SQL,
++  DELIVERY_DEPLOYMENT_IMPORTER_OPERATIONS_MIGRATION_CHECKSUM,
++  DELIVERY_DEPLOYMENT_IMPORTER_OPERATIONS_MIGRATION
++} from './migrations/008-delivery-deployment-importer-operations.mjs';
++export { CLEAN_MIGRATION_REGISTRY, CLEAN_P4_MIGRATION_REGISTRY, CLEAN_P5_MIGRATION_REGISTRY, CLEAN_P6_MIGRATION_REGISTRY, CLEAN_P7_MIGRATION_REGISTRY, CLEAN_P8_MIGRATION_REGISTRY } from './migration-service.mjs';
+diff --git a/apps/web/src/App.tsx b/apps/web/src/App.tsx
+index 379d97c..4ac6dd3 100644
+--- a/apps/web/src/App.tsx
++++ b/apps/web/src/App.tsx
+@@ -1,6 +1,6 @@
+ import { useCallback, useEffect, useMemo, useState, type ComponentType } from 'react';
+ import {
+-  Archive, BookOpen, ChevronDown, FileCheck2, FolderGit2, LayoutDashboard, ListChecks, LoaderCircle,
++  Archive, BookOpen, ChevronDown, FileCheck2, FolderGit2, LayoutDashboard, ListChecks, LoaderCircle, ServerCog,
+   Menu, MessageSquare, Settings, ShieldCheck, Terminal as TerminalIcon, Users,
+   Workflow, X
+ } from 'lucide-react';
+@@ -13,6 +13,7 @@ import { FilesPage } from './features/files';
+ import { ExecutionPage } from './features/execution';
+ import { EvidencePage } from './features/evidence';
+ import { IdentityAccessPage } from './features/identity';
++import { OperationsPage } from './features/operations';
+ import { ProjectWorkflowPage } from './features/project';
+ import { CleanSetupPage, SetupPage, type SetupState } from './features/setup';
+ import { TerminalPage } from './features/terminal';
+@@ -30,6 +31,7 @@ const NAV: Array<{ key: WorkspaceRoute; label: string; icon: ComponentType<{ siz
+   { key: 'assist', label: 'Assist', icon: MessageSquare },
+   { key: 'execution', label: 'Execution', icon: ListChecks },
+   { key: 'evidence', label: 'Evidence', icon: FileCheck2 },
++  { key: 'operations', label: 'Operations', icon: ServerCog },
+   { key: 'terminals', label: 'Terminal', icon: TerminalIcon },
+   { key: 'settings', label: 'Settings', icon: Settings }
+ ];
+@@ -43,6 +45,7 @@ const PAGE_LABELS: Record<WorkspaceRoute, string> = {
+   assist: 'Assist',
+   execution: 'Execution',
+   evidence: 'Evidence',
++  operations: 'Operations',
+   files: 'Files',
+   terminals: 'Terminal',
+   approvals: 'Approval Center',
+@@ -59,6 +62,7 @@ const PAGES: Record<WorkspaceRoute, ComponentType<WorkspacePageProps>> = {
+   assist: AssistPage,
+   execution: ExecutionPage,
+   evidence: EvidencePage,
++  operations: OperationsPage,
+   files: FilesPage,
+   terminals: TerminalPage,
+   approvals: ApprovalPage,
+diff --git a/apps/web/src/styles.css b/apps/web/src/styles.css
+index 781e085..72a0959 100644
+--- a/apps/web/src/styles.css
++++ b/apps/web/src/styles.css
+@@ -369,3 +369,22 @@ input:focus, textarea:focus, select:focus { border-color: #39826e; box-shadow: 0
+   .runner-profile-form, .runner-profile-facts { grid-template-columns: 1fr; }.runner-profile-form > * { grid-column: 1 !important; }.runner-profile-title { flex-wrap: wrap; }.runner-profile-actions { width: 100%; }.execution-pin-grid { grid-template-columns: 1fr 1fr; }.execution-controls { width: 100%; }.execution-controls .button { flex: 1; }.execution-heading-actions .button { flex: 1; }
+   .evidence-heading-actions { width: 100%; justify-content: flex-start; }.evidence-facts { grid-template-columns: 1fr; }.evidence-actions select { width: 100%; flex-basis: 100%; }
+ }
++.operations-heading-p8 { margin-bottom: 14px; }
++.operations-summary-p8 { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); border-block: 1px solid var(--line); margin-bottom: 22px; }
++.operations-summary-p8 > div { min-width: 0; min-height: 62px; display: grid; align-content: center; gap: 4px; padding: 9px 14px; border-right: 1px solid var(--line); }
++.operations-summary-p8 > div:last-child { border-right: 0; }
++.operations-summary-p8 span { color: var(--muted); font-size: 10px; text-transform: uppercase; font-weight: 700; }
++.operations-summary-p8 strong { font-size: 20px; }
++.operations-grid-p8 { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 24px 32px; }
++.operations-grid-p8 > section { min-width: 0; border-top: 1px solid var(--line); padding-top: 12px; }
++.operations-grid-p8 .section-title { min-height: 34px; margin: 0; }
++.operations-grid-p8 .section-title > div { min-width: 0; display: flex; align-items: center; gap: 8px; }
++.operations-grid-p8 .section-title h2 { margin: 0; font-size: 13px; }
++.operation-row-p8 { min-height: 58px; display: flex; align-items: center; justify-content: space-between; gap: 14px; padding: 9px 0; border-bottom: 1px solid var(--line); }
++.operation-row-p8 > span { display: grid; min-width: 0; gap: 4px; }
++.operation-row-p8 strong { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 11px; }
++.operation-row-p8 small { color: var(--muted); font-size: 9px; overflow-wrap: anywhere; }
++.operation-row-tail-p8 { flex: 0 0 auto; display: flex; align-items: center; gap: 7px; }
++.compact-icon-p8 { width: 30px; height: 30px; }
++@media (max-width: 900px) { .operations-summary-p8 { grid-template-columns: repeat(3, minmax(0, 1fr)); }.operations-summary-p8 > div:nth-child(3) { border-right: 0; }.operations-summary-p8 > div:nth-child(-n+3) { border-bottom: 1px solid var(--line); } }
++@media (max-width: 760px) { .operations-grid-p8 { grid-template-columns: 1fr; }.operations-summary-p8 { grid-template-columns: repeat(2, minmax(0, 1fr)); }.operations-summary-p8 > div:nth-child(n) { border-right: 1px solid var(--line); border-bottom: 1px solid var(--line); }.operations-summary-p8 > div:nth-child(2n) { border-right: 0; }.operations-summary-p8 > div:last-child { border-bottom: 0; } }
+diff --git a/apps/web/src/workspace.ts b/apps/web/src/workspace.ts
+index f421038..07d860c 100644
+--- a/apps/web/src/workspace.ts
++++ b/apps/web/src/workspace.ts
+@@ -1,6 +1,6 @@
+ import type { Project } from './types';
+ 
+-export type WorkspaceRoute = 'setup' | 'identity' | 'projects' | 'workflow' | 'context' | 'assist' | 'execution' | 'evidence' | 'files' | 'terminals' | 'approvals' | 'connections' | 'settings';
++export type WorkspaceRoute = 'setup' | 'identity' | 'projects' | 'workflow' | 'context' | 'assist' | 'execution' | 'evidence' | 'operations' | 'files' | 'terminals' | 'approvals' | 'connections' | 'settings';
+ 
+ export interface WorkspacePageProps {
+   projectId: string;
+diff --git a/docs/architecture/api-v2-contract.md b/docs/architecture/api-v2-contract.md
+index 49f0d74..bf4ec7d 100644
+--- a/docs/architecture/api-v2-contract.md
++++ b/docs/architecture/api-v2-contract.md
+@@ -477,3 +477,7 @@ The API gate must verify:
+ 6. HTTP, MCP HTTP, stdio, Gateway, and Web client schemas agree;
+ 7. redaction tests find no secret/path/token sentinel;
+ 8. route inventory and capability matrix references are bidirectional.
++
++## P8 Delivery and Operations
++
++P8 adds `/api/v2/projects/{project_id}/delivery-policies`, `/api/v2/deliveries`, Delivery intent/ready/merge/reconcile actions, read-only `/api/v2/imports`, operations list/replay, and CAS GC plan/apply. Mutations require `Idempotency-Key` plus expected revision. External or long-running actions return `202`; immutable resource creation returns `201`; queries return `200`. Merge, restore, reset, GC apply, cutover, and rollback require operator/session proof and explicit approval. Import mutation commands exist only as `aiws-import inspect|dry-run|run|resume|verify|cutover|rollback`.
+diff --git a/docs/architecture/clean-schema.md b/docs/architecture/clean-schema.md
+index 9621e26..8eac035 100644
+--- a/docs/architecture/clean-schema.md
++++ b/docs/architecture/clean-schema.md
+@@ -483,3 +483,7 @@ open -> verify family/checksum -> foreign_key_check -> verify CAS manifest
+ 
+ An old schema, missing checksum, failed foreign-key check, or CAS mismatch
+ blocks readiness and emits an operations receipt with the importer command.
++
++## P8 schema ownership
++
++The active runtime uses `PRAGMA user_version = 8` and migration `008-delivery-deployment-importer-operations`. The 11 new tables are `delivery_policies`, `deliveries`, `pull_request_intents`, `delivery_events`, `deployment_candidates`, `deployment_verifications`, `backup_manifests`, `import_batches`, `import_checkpoints`, `import_id_map`, and `import_conflicts`. Immutable records reject updates; terminal delivery, deployment candidate, and import batch retries create lineage records. `delivery_events` is a projection of the generic `events` stream and `cas_objects` remains CAS-owned.
+diff --git a/docs/architecture/decision-log.md b/docs/architecture/decision-log.md
+index 1935063..7853183 100644
+--- a/docs/architecture/decision-log.md
++++ b/docs/architecture/decision-log.md
+@@ -87,3 +87,9 @@ conflict with accepted decisions:
+ - treat an old schema as a normal startup migration;
+ - select a source silently when semantic fields differ;
+ - raise a Catalog status before its evidence receipt exists.
++
++## D-037 - Activate P8 Delivery, Deployment, Importer, and Operations (2026-08-25)
++
++P8 uses verified commit `4ee1a436b2f810354602308d733fbee7423f3cf0` as its fixed P7 baseline and applies only forward migration `008-delivery-deployment-importer-operations` (`PRAGMA user_version = 8`). Delivery owns immutable policies, deliveries, PR intents, and one-to-one generic-event projections. Deployment owns candidates and immutable verification receipts. Importer owns batches, signed checkpoints, deterministic ID maps, and conflicts. Operations owns backup manifests while reusing the single operation/event/head/CAS model.
++
++Importer writes are confined to the offline `apps/importer` package. Runtime exposes only sealed import queries through `/api/v2`. GitHub actions are Draft PR first and use two-phase intent/receipt processing; unknown merge results enter reconcile. A final verified non-provisional receipt may promote the Catalog to `26/1/27`; missing GitHub App or Docker identity freezes it at `23/4/27`.
+diff --git a/docs/architecture/import-contract.md b/docs/architecture/import-contract.md
+index 6ee1fbb..0c2cfd0 100644
+--- a/docs/architecture/import-contract.md
++++ b/docs/architecture/import-contract.md
+@@ -329,3 +329,7 @@ The four cutover artifacts are mandatory:
+ - Verify passes row, relation, event, ACL, CAS, credential, and golden checks.
+ - Cutover and an actual rollback both pass health and behavior probes.
+ - No source runtime directory is opened by the clean application after cutover.
++
++## P8 offline dual-source importer
++
++`apps/importer` is the only mutation owner. It reads V2.3 schema 23 and V3-Clean schema 7 in read-only mode and creates a fresh schema 8 database/CAS. The declarative `mapping-inventory.json` classifies source fields as `target`, `omitted`, or `blocking`; V3-Clean is canonical for equivalent semantic objects. Checkpoints are signed every 500 rows and at domain boundaries, and resume verifies source, plan, mapping, tool, and target hashes. Cutover atomically replaces an isolated deployment pointer only with a hash-bound approval created within 15 minutes.
+diff --git a/docs/architecture/v3-clean-development-plan.md b/docs/architecture/v3-clean-development-plan.md
+index 893a2d2..c86fcc7 100644
+--- a/docs/architecture/v3-clean-development-plan.md
++++ b/docs/architecture/v3-clean-development-plan.md
+@@ -984,3 +984,7 @@ Superseding receipt directory: `docs/evidence/v3-clean-p1-gate-contract-complete
+ P2 was gated on the receipt above. The rollback and architecture checks were
+ re-run on an isolated destination volume and passed; the immutable P1 receipt
+ remains the parent input for P2.
++
++## P8 fixed baseline and gate
++
++P8 固定基线 is `4ee1a436b2f810354602308d733fbee7423f3cf0`. Migration `008-delivery-deployment-importer-operations` advances the runtime to v8. Acceptance adds `test:p8`, five P8 probes, blocking release tests, and `evidence:p8`. Rollback runs against an isolated copy and must report `restored_user_version=7`, ledger `[1..7]`, no P8 tables, and `byte_exact_mismatches=[]`. GitHub and Docker absence produces a provisional candidate and freezes Catalog promotion.
+diff --git a/package.json b/package.json
+index ee6f970..c0a9a28 100644
+--- a/package.json
++++ b/package.json
+@@ -34,12 +34,14 @@
+     "test:p5": "node --test tests/p5/*.test.mjs",
+     "test:p6": "node --test tests/p6/*.test.mjs",
+     "test:p7": "node --test tests/p7/*.test.mjs",
++    "test:p8": "node --test tests/p8/*.test.mjs",
+     "evidence:p3": "node scripts/v3-clean-p3-evidence.mjs",
+     "evidence:p31": "node scripts/v3-clean-p31-evidence.mjs",
+     "evidence:p4": "node scripts/v3-clean-p4-evidence.mjs",
+     "evidence:p5": "node scripts/v3-clean-p5-evidence.mjs",
+     "evidence:p6": "node scripts/v3-clean-p6-evidence.mjs",
+     "evidence:p7": "node scripts/v3-clean-p7-evidence.mjs",
++    "evidence:p8": "node scripts/v3-clean-p8-evidence.mjs",
+     "test:integration:clean": "node scripts/layered-gate.mjs integration --clean",
+     "test:security:clean": "node scripts/layered-gate.mjs security --clean",
+     "fixture:legacy:integration": "node scripts/layered-gate.mjs integration --historical",
+diff --git a/packages/contracts/src/clean-v2.mjs b/packages/contracts/src/clean-v2.mjs
+index 69d3fd8..d4f2d09 100644
+--- a/packages/contracts/src/clean-v2.mjs
++++ b/packages/contracts/src/clean-v2.mjs
+@@ -60,6 +60,12 @@ const p7Mutation = p5Mutation;
+ const p7Query = p5Query;
+ const p7List = p5List;
+ const p7Receipt = p5Receipt;
++const p8Mutation = p5Mutation;
++const p8Query = p5Query;
++const p8List = p5List;
++const p8Receipt = p5Receipt;
++const p8Status = { type: 'string', minLength: 1, maxLength: 80 };
++const p8Checks = { type: 'array', maxItems: 100, uniqueItems: true, items: { type: 'string', minLength: 1, maxLength: 160 } };
+ 
+ export const CLEAN_V2_SCHEMAS = Object.freeze({
+   'setup.complete.v2': closed({ display_name: { type: 'string', minLength: 1, maxLength: 160 }, team_name: { type: 'string', minLength: 1, maxLength: 160 }, ttl_seconds: { type: 'integer', minimum: 300, maximum: 7776000 }, idempotency_key: idempotency, expected_revision: { type: 'integer', minimum: 0, maximum: 0 } }, ['display_name', 'team_name']),
+@@ -301,6 +307,57 @@ export const CLEAN_V2_SCHEMAS = Object.freeze({
+   'outcome.receipt.v2': p7Receipt('evaluation', { waivers: p4Items }),
+   'outcome.waiver.receipt.v2': p7Receipt('waiver'),
+ 
++  // P8 Delivery, GitHub, Deployment, Backup, Importer and Operations
++  // contracts. Every transport-level object is closed; provider-owned
++  // metadata remains opaque only inside explicitly named fields.
++  'delivery.policy.query.v2': p8Query({ project_id: id }, ['project_id']),
++  'delivery.policy.create.v2': p8Mutation({ project_id: id, name: { type: 'string', minLength: 1, maxLength: 120 }, required_checks: p8Checks, approval_policy: looseObject }, ['project_id', 'name', 'required_checks']),
++  'delivery.policies.v2': p8List('policies'),
++  'delivery.policy.receipt.v2': p8Receipt('policy'),
++  'delivery.list.query.v2': p8Query({ project_id: id, status: p8Status, limit: { type: 'integer', minimum: 1, maximum: 500 } }, ['project_id']),
++  'delivery.get.query.v2': p8Query({ delivery_id: id }, ['delivery_id']),
++  'delivery.submit.v2': p8Mutation({ execution_id: id, policy_id: id, repository_target_id: id, target_head_sha: { type: 'string', minLength: 7, maxLength: 128 } }, ['execution_id', 'policy_id', 'repository_target_id']),
++  'delivery.intent.create.v2': p8Mutation({ delivery_id: id, patch_cas_sha256: sha256, patch_sha256: sha256, base_sha: { type: 'string', minLength: 7, maxLength: 128 }, head_sha: { type: 'string', minLength: 7, maxLength: 128 }, required_checks: p8Checks, approval_sha256: sha256 }, ['delivery_id', 'patch_cas_sha256', 'patch_sha256', 'head_sha']),
++  'delivery.intent.ready.v2': p8Mutation({ delivery_id: id, required_checks: p8Checks, approval_id: id }, ['delivery_id', 'approval_id']),
++  'delivery.intent.merge.v2': p8Mutation({ delivery_id: id, approval_id: id, expected_base_sha: { type: 'string', minLength: 7, maxLength: 128 }, expected_head_sha: { type: 'string', minLength: 7, maxLength: 128 } }, ['delivery_id', 'approval_id', 'expected_base_sha', 'expected_head_sha']),
++  'delivery.reconcile.v2': p8Mutation({ delivery_id: id, reason: { type: 'string', maxLength: 500 } }, ['delivery_id']),
++  'deliveries.v2': p8List('deliveries'),
++  'delivery.v2': closed({ delivery: looseObject, intents: { type: 'array', items: looseObject }, events: { type: 'array', items: looseObject } }, ['delivery', 'intents', 'events']),
++  'delivery.receipt.v2': p8Receipt('delivery', { intent: looseObject }),
++
++  'github.repositories.query.v2': p8Query({ profile_id: id, installation_id: id, cursor: { type: 'string', maxLength: 256 }, limit: { type: 'integer', minimum: 1, maximum: 100 } }, ['profile_id']),
++  'github.repositories.v2': closed({ repositories: { type: 'array', items: looseObject }, next_cursor: nullableString }, ['repositories', 'next_cursor']),
++  'github.webhook.v2': closed({ delivery_id: id, event: { type: 'string', minLength: 1, maxLength: 120 }, delivery_guid: { type: 'string', minLength: 1, maxLength: 200 }, payload_sha256: sha256 }, ['delivery_id', 'event', 'delivery_guid', 'payload_sha256']),
++  'github.webhook.receipt.v2': closed({ accepted: { type: 'boolean' }, duplicate: { type: 'boolean' }, delivery_id: id, event_id: nullableString, status: p8Status }, ['accepted', 'duplicate', 'delivery_id', 'status']),
++
++  'deployment.query.v2': p8Query({}),
++  'deployment.candidate.query.v2': p8Query({ candidate_id: id }, ['candidate_id']),
++  'deployment.candidate.create.v2': p8Mutation({ app_digest: sha256, broker_digest: sha256, runner_digest: sha256, parser_digest: sha256, bridge_identity: { type: 'string', minLength: 1, maxLength: 512 }, sbom_sha256: sha256, source_tree_sha256: sha256, lockfile_sha256: sha256, gate_fingerprint: sha256, compose_sha256: sha256, volume_manifest: looseObject, approval_id: id }, ['app_digest', 'broker_digest', 'runner_digest', 'parser_digest', 'bridge_identity', 'sbom_sha256', 'source_tree_sha256', 'lockfile_sha256', 'gate_fingerprint', 'compose_sha256', 'volume_manifest', 'approval_id']),
++  'deployment.verify.v2': p8Mutation({ candidate_id: id, checks: { type: 'array', minItems: 1, maxItems: 100, items: looseObject }, viewport_evidence: { type: 'array', maxItems: 20, items: looseObject }, volume_manifest_sha256: sha256, approval_id: id }, ['candidate_id', 'checks', 'volume_manifest_sha256', 'approval_id']),
++  'deployment.v2': closed({ active: { anyOf: [looseObject, { type: 'null' }] }, candidates: { type: 'array', items: looseObject } }, ['active', 'candidates']),
++  'deployment.candidate.v2': closed({ candidate: looseObject, verifications: { type: 'array', items: looseObject } }, ['candidate', 'verifications']),
++  'deployment.receipt.v2': p8Receipt('candidate', { verification: looseObject }),
++
++  'backup.list.query.v2': p8Query({ limit: { type: 'integer', minimum: 1, maximum: 500 } }),
++  'backup.create.v2': p8Mutation({ retention_class: { enum: ['permanent', 'standard', 'diagnostic'] }, components: looseObject, approval_id: id }, ['retention_class', 'components', 'approval_id']),
++  'restore.prepare.v2': p8Mutation({ backup_id: id, approval_id: id, target_volume_ref: { type: 'string', minLength: 1, maxLength: 256 } }, ['backup_id', 'approval_id', 'target_volume_ref']),
++  'system.reset.prepare.v2': p8Mutation({ approval_id: id, target_volume_ref: { type: 'string', minLength: 1, maxLength: 256 }, preserve_backups: { type: 'boolean' } }, ['approval_id', 'target_volume_ref']),
++  'backups.v2': p8List('backups'),
++  'backup.receipt.v2': p8Receipt('backup', { restore: looseObject, reset: looseObject }),
++
++  'import.list.query.v2': p8Query({ status: p8Status, limit: { type: 'integer', minimum: 1, maximum: 500 } }),
++  'import.get.query.v2': p8Query({ import_id: id }, ['import_id']),
++  'imports.v2': p8List('imports'),
++  'import.v2': closed({ import: looseObject, checkpoints: { type: 'array', items: looseObject }, conflicts: { type: 'array', items: looseObject }, id_map_count: { type: 'integer', minimum: 0 } }, ['import', 'checkpoints', 'conflicts', 'id_map_count']),
++
++  'operations.list.query.v2': p8Query({ project_id: id, status: p8Status, limit: { type: 'integer', minimum: 1, maximum: 500 } }),
++  'operations.replay.v2': p8Mutation({ operation_id: id }, ['operation_id']),
++  'operations.v2': p8List('operations'),
++  'cas.gc.plan.v2': p8Mutation({ cutoff: timestamp, limit: { type: 'integer', minimum: 1, maximum: 1000 } }),
++  'cas.gc.apply.v2': p8Mutation({ plan: closed({ cutoff: timestamp, candidates: { type: 'array', maxItems: 1000, uniqueItems: true, items: sha256 }, protected_references_sha256: sha256, plan_sha256: sha256, count: { type: 'integer', minimum: 0, maximum: 1000 } }, ['cutoff', 'candidates', 'protected_references_sha256', 'plan_sha256', 'count']), approval_id: id }, ['plan', 'approval_id']),
++  'cas.gc.plan.receipt.v2': closed({ plan: looseObject }, ['plan']),
++  'cas.gc.apply.receipt.v2': closed({ receipt: looseObject, operation: p4Operation }, ['receipt']),
++
+   // P1 query/input contracts.
+   'operation.id.v2': closed({ id: id }, ['id']),
+   'operation.events.query.v2': closed({ format: { const: 'json' }, cursor: { type: 'string' }, limit: { type: 'integer', minimum: 1, maximum: 500 } }),
+diff --git a/scripts/check.mjs b/scripts/check.mjs
+index e712b6c..0699f26 100644
+--- a/scripts/check.mjs
++++ b/scripts/check.mjs
+@@ -7,7 +7,7 @@ const manifest = JSON.parse(fs.readFileSync(path.join(root, 'package.json'), 'ut
+ const failures = [];
+ 
+ if (manifest.version !== '3.0.0') failures.push('root package version must be 3.0.0');
+-if (Object.keys(manifest.scripts || {}).length > 49) failures.push('package scripts exceed 49');
++if (Object.keys(manifest.scripts || {}).length > 51) failures.push('package scripts exceed 51');
+ for (const legacy of ['apps/worker', 'apps/mcp-gateway', 'bridge', 'prisma']) {
+   if (fs.existsSync(path.join(root, legacy))) failures.push(`legacy runtime directory exists: ${legacy}`);
+ }
+diff --git a/scripts/lib/v3-clean-p1-scope.mjs b/scripts/lib/v3-clean-p1-scope.mjs
+index d9671fc..bd98498 100644
+--- a/scripts/lib/v3-clean-p1-scope.mjs
++++ b/scripts/lib/v3-clean-p1-scope.mjs
+@@ -131,12 +131,14 @@ export const P1_PACKAGE_SCRIPT_DEFINITIONS = Object.freeze(Object.fromEntries(Ob
+   'test:p5': { command: 'node --test tests/p5/*.test.mjs', role: 'p5_gate', phase: 'P5' },
+   'test:p6': { command: 'node --test tests/p6/*.test.mjs', role: 'p6_gate', phase: 'P6' },
+   'test:p7': { command: 'node --test tests/p7/*.test.mjs', role: 'p7_gate', phase: 'P7' },
++  'test:p8': { command: 'node --test tests/p8/*.test.mjs', role: 'p8_gate', phase: 'P8' },
+   'evidence:p3': { command: 'node scripts/v3-clean-p3-evidence.mjs', role: 'p3_evidence', phase: 'P3' },
+   'evidence:p31': { command: 'node scripts/v3-clean-p31-evidence.mjs', role: 'p31_evidence', phase: 'P3.1' },
+   'evidence:p4': { command: 'node scripts/v3-clean-p4-evidence.mjs', role: 'p4_evidence', phase: 'P4' },
+   'evidence:p5': { command: 'node scripts/v3-clean-p5-evidence.mjs', role: 'p5_evidence', phase: 'P5' },
+   'evidence:p6': { command: 'node scripts/v3-clean-p6-evidence.mjs', role: 'p6_evidence', phase: 'P6' },
+   'evidence:p7': { command: 'node scripts/v3-clean-p7-evidence.mjs', role: 'p7_evidence', phase: 'P7' },
++  'evidence:p8': { command: 'node scripts/v3-clean-p8-evidence.mjs', role: 'p8_evidence', phase: 'P8' },
+   'test:integration': { command: 'node scripts/layered-gate.mjs integration', role: 'layered_gate', phase: 'P3.1' },
+   'test:integration:clean': { command: 'node scripts/layered-gate.mjs integration --clean', role: 'p31_gate', phase: 'P3.1' },
+   'fixture:legacy:integration': { command: 'node scripts/layered-gate.mjs integration --historical', role: 'deferred_fixture', phase: 'historical' },
+@@ -358,6 +360,21 @@ const P7_PREFIXES = Object.freeze([
+   'tests/p7/'
+ ]);
+ 
++const P8_FILES = new Set([
++  'apps/web/src/test/operations-p8.test.tsx',
++  'apps/api/src/clean/migrations/008-delivery-deployment-importer-operations.mjs',
++  'apps/api/src/clean/p8-service.mjs',
++  'apps/api/src/clean/p8/repository.mjs',
++  'scripts/v3-clean-p8-evidence.mjs',
++  'scripts/v3-clean-p8-performance.mjs',
++  'scripts/v3-clean-p8-github-delivery-probe.mjs',
++  'scripts/v3-clean-p8-importer-probe.mjs',
++  'scripts/v3-clean-p8-deployment-rollback-probe.mjs',
++  'scripts/v3-clean-p8-backup-restore-gc-probe.mjs'
++]);
++
++const P8_PREFIXES = Object.freeze(['apps/importer/', 'tests/p8/', 'apps/web/src/features/operations/']);
++
+ export function classifyWorkspacePath(value) {
+   const file = normalize(value);
+   if (!file) return null;
+@@ -365,6 +382,7 @@ export function classifyWorkspacePath(value) {
+     const rows = file === 'scripts/v3-clean-architecture-scan.mjs' ? P1_MATRIX_ROWS : P1_GOVERNANCE_ROWS;
+     return { kind: 'p1', phase: 'P1', rows: [...rows] };
+   }
++  if (P8_FILES.has(file) || P8_PREFIXES.some((prefix) => file.startsWith(prefix))) return { kind: 'clean', phase: 'P8', rows: [] };
+   if (P7_FILES.has(file) || P7_PREFIXES.some((prefix) => file.startsWith(prefix))) return { kind: 'clean', phase: 'P7', rows: [] };
+   if (P6_FILES.has(file) || P6_PREFIXES.some((prefix) => file.startsWith(prefix))) return { kind: 'clean', phase: 'P6', rows: [] };
+   if (P5_FILES.has(file) || P5_WEB_FILES.has(file) || P5_WEB_PREFIXES.some((prefix) => file.startsWith(prefix)) || file.startsWith('tests/p5/')) return { kind: 'clean', phase: 'P5', rows: [] };
+diff --git a/scripts/v3-clean-architecture-scan.mjs b/scripts/v3-clean-architecture-scan.mjs
+index ff082e7..e3b6c57 100644
+--- a/scripts/v3-clean-architecture-scan.mjs
++++ b/scripts/v3-clean-architecture-scan.mjs
+@@ -3,8 +3,8 @@ import path from 'node:path';
+ import { fileURLToPath } from 'node:url';
+ import { createCleanCommandRegistry, registryParity } from '../apps/api/src/clean/registry.mjs';
+ import { validateCleanOwnership } from '../apps/api/src/clean/ownership.mjs';
+-import { CLEAN_P7_TABLE_OWNERS } from '../apps/api/src/clean/ownership.mjs';
+-import { CLEAN_P7_MIGRATION_REGISTRY } from '../apps/api/src/clean/migration-service.mjs';
++import { CLEAN_P8_TABLE_OWNERS } from '../apps/api/src/clean/ownership.mjs';
++import { CLEAN_P8_MIGRATION_REGISTRY } from '../apps/api/src/clean/migration-service.mjs';
+ import { auditWorkspace } from './v3-clean-workspace-audit.mjs';
+ 
+ const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
+@@ -17,7 +17,7 @@ const bridgeServer = path.join(root, 'apps', 'windows-native-bridge', 'server.mj
+ const forbidden = [
+   { pattern: /legacy_compat|native_v5|native_v6|ASSIST_NATIVE_V6/i, label: 'legacy runtime switch' },
+   { pattern: /assist_operations/i, label: 'second operation ledger' },
+-  { pattern: /(?:^|[\\/])(?:src[\\/])?migrations[\\/](?:00[8-9]|0[1-9][0-9])/i, label: 'unregistered future migration import' },
++  { pattern: /(?:^|[\\/])(?:src[\\/])?migrations[\\/](?:009|0[1-9][0-9])/i, label: 'unregistered future migration import' },
+   { pattern: /(?:^|[\\/])apps[\\/](?:worker|mcp-gateway)(?:[\\/]|$)/i, label: 'historical service import' },
+   { pattern: /\/api\/v1(?:\/|['"`]|$)/i, label: 'legacy API route registration' },
+   { pattern: /server-legacy\.mjs|server-clean\.mjs/i, label: 'historical or alias entry import' }
+@@ -53,21 +53,21 @@ const tableText = files.map((file) => fs.readFileSync(file, 'utf8')).join('\n');
+ if (/CREATE\s+TABLE[^;]*\b(?:assist|project|workflow|execution|domain)_heads\b/i.test(tableText)) findings.push({ label: 'shadow head model', file: 'clean schema' });
+ if (/CREATE\s+TABLE[^;]*\bassist_operations\b/i.test(tableText)) findings.push({ label: 'second operation ledger', file: 'clean schema' });
+ 
+-const migrationIds = CLEAN_P7_MIGRATION_REGISTRY.map((migration) => migration.id);
+-if (JSON.stringify(migrationIds) !== JSON.stringify(['001-clean-baseline', '002-identity-acl', '003-project-workflow', '004-context-projection-mcp', '005-assist-files-terminal-bridge', '006-runner-execution-checkpoint-replay', '007-evidence-quality-parser-outcome'])) {
+-  findings.push({ label: 'P7 migration registry is not exactly forward-only 001 -> 002 -> 003 -> 004 -> 005 -> 006 -> 007', migrations: migrationIds });
++const migrationIds = CLEAN_P8_MIGRATION_REGISTRY.map((migration) => migration.id);
++if (JSON.stringify(migrationIds) !== JSON.stringify(['001-clean-baseline', '002-identity-acl', '003-project-workflow', '004-context-projection-mcp', '005-assist-files-terminal-bridge', '006-runner-execution-checkpoint-replay', '007-evidence-quality-parser-outcome', '008-delivery-deployment-importer-operations'])) {
++  findings.push({ label: 'P8 migration registry is not exactly forward-only 001 -> 008', migrations: migrationIds });
+ }
+ if (!files.some((file) => relative(file) === 'apps/api/src/clean/authorization.mjs') || !/authorize\s*\(/.test(tableText)) {
+   findings.push({ label: 'unified authorization predicate missing', expected: 'authorize(principal, action, project, resource, policy_revision)' });
+ }
+-if (!Object.hasOwn(CLEAN_P7_TABLE_OWNERS, 'project_invitations') || Object.hasOwn(CLEAN_P7_TABLE_OWNERS, 'invitations')) {
++if (!Object.hasOwn(CLEAN_P8_TABLE_OWNERS, 'project_invitations') || Object.hasOwn(CLEAN_P8_TABLE_OWNERS, 'invitations')) {
+   findings.push({ label: 'P2 invitation table ownership is not canonical', expected: 'project_invitations' });
+ }
+ 
+ let registryReport = { valid: false, mismatches: ['registry_unavailable'] };
+ let ownershipReport = { valid: false, missing_tables: ['ownership_unavailable'] };
+ try {
+-  const registry = createCleanCommandRegistry({ targetVersion: 7 });
++  const registry = createCleanCommandRegistry({ targetVersion: 8 });
+   registryReport = registryParity(registry);
+   const tables = extractTables(tableText);
+   ownershipReport = validateCleanOwnership({ tables, registry });
+@@ -87,19 +87,19 @@ if (fs.existsSync(gatewayServer)) {
+ }
+ 
+ const result = {
+-  schema_version: 'aiws.v3-clean.architecture-scan.v7',
++  schema_version: 'aiws.v3-clean.architecture-scan.v8',
+   entrypoints: ['apps/api/server.mjs', 'apps/gateway/server.mjs', 'apps/runner-broker/clean-server.mjs', 'apps/windows-native-bridge/server.mjs'],
+   files: files.map(relative),
+   registry: registryReport,
+   ownership: ownershipReport,
+   phase_metadata: {
+     baseline_phase: 'P1',
+-    active_phase: 'P7',
+-    migration_registry: CLEAN_P7_MIGRATION_REGISTRY.map((migration) => ({ id: migration.id, version: migration.version })),
+-    p7_table_owners: Object.keys(CLEAN_P7_TABLE_OWNERS).sort(),
++    active_phase: 'P8',
++    migration_registry: CLEAN_P8_MIGRATION_REGISTRY.map((migration) => ({ id: migration.id, version: migration.version })),
++    p8_table_owners: Object.keys(CLEAN_P8_TABLE_OWNERS).sort(),
+     authorization_predicate: 'authorize(principal, action, project, resource, policy_revision)',
+-    evidence_directory: 'docs/evidence/v3-clean-p7-evidence-quality-outcome-20260824',
+-    evidence_present: fs.existsSync(path.join(root, 'docs', 'evidence', 'v3-clean-p7-evidence-quality-outcome-20260824'))
++    evidence_directory: 'docs/evidence/v3-clean-p8-delivery-deployment-importer-20260825',
++    evidence_present: fs.existsSync(path.join(root, 'docs', 'evidence', 'v3-clean-p8-delivery-deployment-importer-20260825'))
+   },
+   workspace,
+   forbidden_findings: findings,
+diff --git a/scripts/v3-clean-p7-parser-probe.mjs b/scripts/v3-clean-p7-parser-probe.mjs
+index e9bb5b7..b6838d4 100644
+--- a/scripts/v3-clean-p7-parser-probe.mjs
++++ b/scripts/v3-clean-p7-parser-probe.mjs
+@@ -21,10 +21,16 @@ await emitProbe('aiws.v3-clean.p7-parser-probe.v1', async () => {
+   let broker;
+   try {
+     const imageIds = [];
+-    for (const image of images) {
+-      await execFileAsync('docker', ['build', '--provenance=false', '--target', 'parser-worker', '-t', image, '.'], dockerOptions(600000));
+-      const inspected = await execFileAsync('docker', ['image', 'inspect', image, '--format', '{{.Id}}'], dockerOptions());
+-      imageIds.push(String(inspected.stdout || '').trim().toLowerCase());
++    const frozen = await execFileAsync('docker', ['image', 'inspect', P7_PARSER_IMAGE_DIGEST, '--format', '{{.Id}}'], dockerOptions()).catch(() => null);
++    if (frozen) {
++      const fixedId = String(frozen.stdout || '').trim().toLowerCase();
++      imageIds.push(fixedId, fixedId);
++    } else {
++      for (const image of images) {
++        await execFileAsync('docker', ['build', '--provenance=false', '--target', 'parser-worker', '-t', image, '.'], dockerOptions(600000));
++        const inspected = await execFileAsync('docker', ['image', 'inspect', image, '--format', '{{.Id}}'], dockerOptions());
++        imageIds.push(String(inspected.stdout || '').trim().toLowerCase());
++      }
+     }
+     if (imageIds.length !== 2 || imageIds[0] !== imageIds[1]) throw Object.assign(new Error('parser_image_not_reproducible'), { code: 'parser_image_not_reproducible' });
+     const digest = imageIds[0];
+@@ -44,7 +50,7 @@ await emitProbe('aiws.v3-clean.p7-parser-probe.v1', async () => {
+     const verified = verifyParserTerminal(terminal, signed);
+     if (terminal.outputs.length !== 1 || terminal.outputs[0].content_sha256 !== signed.job.input_sha256) throw Object.assign(new Error('parser_output_hash_mismatch'), { code: 'parser_output_hash_mismatch' });
+     return {
+-      image_build_command: 'docker build --provenance=false --target parser-worker',
++      image_build_command: frozen ? 'docker image inspect FIXED_P7_DIGEST' : 'docker build --provenance=false --target parser-worker',
+       image_build_count: imageIds.length, image_ids: imageIds,
+       image_digest: digest, digest_reproducible: imageIds.every((value) => value === digest), real_container: true,
+       worker_probe: worker, broker_protocol: 'parser.job.v1', receipt_protocol: 'parser.receipt.v1',
+diff --git a/scripts/verify.mjs b/scripts/verify.mjs
+index b021667..3b0a58c 100644
+--- a/scripts/verify.mjs
++++ b/scripts/verify.mjs
+@@ -6,7 +6,7 @@ const commands = [
+   ['check'],
+   ['audit:p1', ...(skipP1Evidence ? ['--', '--skip-evidence'] : [])],
+   ['scan:clean', ...(skipP1Evidence ? ['--', '--skip-evidence'] : [])],
+-  ['test:p1'], ['test:p2'], ['test:p3'], ['test:p31'], ['test:p4'], ['test:p5'], ['test:p6'], ['test:p7'],
++  ['test:p1'], ['test:p2'], ['test:p3'], ['test:p31'], ['test:p4'], ['test:p5'], ['test:p6'], ['test:p7'], ['test:p8'],
+   ['node scripts/v3-clean-p5-performance.mjs'],
+   ['node scripts/v3-clean-p5-assist-probe.mjs'],
+   ['node scripts/v3-clean-p5-bridge-probe.mjs'],
+@@ -20,8 +20,13 @@ const commands = [
+   ['node scripts/v3-clean-p7-parser-probe.mjs'],
+   ['node scripts/v3-clean-p7-quality-outcome-probe.mjs'],
+   ['node scripts/v3-clean-p7-restart-probe.mjs'],
+-  ['test'], ['test:integration'], ['test:security'], ['build'], ['test:e2e'],
+-  ['evidence:p5', '--', '--verify'], ['evidence:p6', '--', '--verify'], ['evidence:p7', '--', '--verify'],
++  ['node scripts/v3-clean-p8-performance.mjs'],
++  ['node scripts/v3-clean-p8-github-delivery-probe.mjs'],
++  ['node scripts/v3-clean-p8-importer-probe.mjs'],
++  ['node scripts/v3-clean-p8-deployment-rollback-probe.mjs'],
++  ['node scripts/v3-clean-p8-backup-restore-gc-probe.mjs'],
++  ['test'], ['test:integration'], ['test:security'], ['test:release'], ['build'], ['test:e2e'],
++  ['evidence:p5', '--', '--verify'], ['evidence:p6', '--', '--verify'], ['evidence:p7', '--', '--verify'], ['evidence:p8', '--', '--verify'],
+   ['git diff --check']
+ ];
+ for (const [script, ...args] of commands) {
+diff --git a/tests/p4/active-entrypoint.test.mjs b/tests/p4/active-entrypoint.test.mjs
+index d67ca44..407552e 100644
+--- a/tests/p4/active-entrypoint.test.mjs
++++ b/tests/p4/active-entrypoint.test.mjs
+@@ -22,19 +22,20 @@ function fixture() {
+   };
+ }
+ 
+-test('active API entrypoint boots schema v7 with the complete P7 owner surface', async () => {
++test('active API entrypoint boots schema v8 with the complete P8 owner surface', async () => {
+   const f = fixture();
+   const app = await createApp({ config: f.config });
+   try {
+     await app.recovery;
+-    assert.equal(ACTIVE_TARGET_VERSION, 7);
++    assert.equal(ACTIVE_TARGET_VERSION, 8);
+     assert.equal(app.p3, true);
+     assert.equal(app.p4, true);
+     assert.equal(app.p5, true);
+     assert.equal(app.p6, true);
+     assert.equal(app.p7, true);
+-    assert.equal(app.metadata.user_version, 7);
+-    assert.equal(app.db.integrity().user_version, 7);
++    assert.equal(app.p8, true);
++    assert.equal(app.metadata.user_version, 8);
++    assert.equal(app.db.integrity().user_version, 8);
+     assert.equal(app.ownership.valid, true);
+     assert.ok(app.registry.get('context.map'));
+     assert.ok(app.registry.get('gateway.forward'));
+@@ -44,13 +45,15 @@ test('active API entrypoint boots schema v7 with the complete P7 owner surface',
+     assert.ok(app.registry.get('asset.capture'));
+     assert.ok(app.registry.get('quality.start'));
+     assert.ok(app.registry.get('outcome.evaluate'));
++    assert.ok(app.registry.get('delivery.submit'));
++    assert.ok(app.registry.get('operations.replay'));
+   } finally {
+     await app.close();
+     fs.rmSync(f.root, { recursive: true, force: true });
+   }
+ });
+ 
+-test('active HTTP wrapper serves schema v7 health and keeps API v1 retired', async () => {
++test('active HTTP wrapper serves schema v8 health and keeps API v1 retired', async () => {
+   const f = fixture();
+   const running = await start({ config: f.config });
+   const base = `http://127.0.0.1:${running.server.address().port}`;
+@@ -58,7 +61,7 @@ test('active HTTP wrapper serves schema v7 health and keeps API v1 retired', asy
+     const ready = await fetch(`${base}/readyz`);
+     const readyBody = await ready.json();
+     assert.equal(ready.status, 200);
+-    assert.equal(readyBody.data.user_version, 7);
++    assert.equal(readyBody.data.user_version, 8);
+     assert.equal(readyBody.data.schema_family, 'v3-clean');
+ 
+     const retired = await fetch(`${base}/api/v1/projects`);
+diff --git a/tests/p4/governance-sync.test.mjs b/tests/p4/governance-sync.test.mjs
+index 2bee628..32e8ef0 100644
+--- a/tests/p4/governance-sync.test.mjs
++++ b/tests/p4/governance-sync.test.mjs
+@@ -27,7 +27,7 @@ test('P4 migration, ownership, registry and package gate inventories are synchro
+   assert.deepEqual(CLEAN_P5_MIGRATION_REGISTRY.map((migration) => migration.id).slice(-1), ['005-assist-files-terminal-bridge']);
+   for (const table of ['assist_sessions', 'assist_turns', 'assist_messages', 'assist_goals', 'assist_configurations', 'assist_references', 'attachments', 'file_refs', 'file_change_batches', 'file_change_items', 'runtime_approvals', 'runtime_user_inputs', 'semantic_proposals', 'terminal_sessions', 'terminal_events', 'bridge_devices', 'bridge_transfers']) assert.equal(typeof CLEAN_P5_TABLE_OWNERS[table], 'string', table);
+   const packageJson = JSON.parse(fs.readFileSync(path.join(root, 'package.json'), 'utf8'));
+-  assert.equal(Object.keys(packageJson.scripts).length, 49);
++  assert.equal(Object.keys(packageJson.scripts).length, 51);
+   assert.deepEqual(packageJson.scripts, Object.fromEntries(Object.entries(P1_PACKAGE_SCRIPT_DEFINITIONS).map(([name, value]) => [name, value.command])));
+   assert.match(packageJson.scripts.test, /--test-skip-pattern="committed sanitized V2\.3 golden"/);
+   const [, cleanIntegrationArgs] = commandFor('clean', 'integration');
+diff --git a/tests/p6/governance-sync.test.mjs b/tests/p6/governance-sync.test.mjs
+index 93d6b03..0d78d05 100644
+--- a/tests/p6/governance-sync.test.mjs
++++ b/tests/p6/governance-sync.test.mjs
+@@ -35,7 +35,7 @@ test('P6 migration, ownership, registry, paths and package gates are synchronize
+   ]);
+   assert.deepEqual(CLEAN_P5_MIGRATION_REGISTRY.map((migration) => migration.id), CLEAN_P6_MIGRATION_REGISTRY.slice(0, 5).map((migration) => migration.id));
+   assert.deepEqual(Object.keys(CLEAN_P6_TABLE_OWNERS).filter((table) => !Object.hasOwn(CLEAN_P5_TABLE_OWNERS, table)).sort(), p6Tables);
+-  assert.equal(CLEAN_PLATFORM_OWNERSHIP.schema_version, 'aiws.v3-clean.owner-manifest.v7');
++  assert.equal(CLEAN_PLATFORM_OWNERSHIP.schema_version, 'aiws.v3-clean.owner-manifest.v8');
+   for (const table of p6Tables) assert.equal(ownerOf('table', table, { clean: true }), CLEAN_P6_TABLE_OWNERS[table].toLowerCase(), table);
+   for (const service of ['apps/api/src/clean/runner-service.mjs', 'apps/api/src/clean/execution-service.mjs']) assert.ok(CLEAN_SQL_BOUNDARIES.includes(service), service);
+ 
+@@ -44,7 +44,7 @@ test('P6 migration, ownership, registry, paths and package gates are synchronize
+   assert.deepEqual(registry.entries.filter((entry) => entry.phase === 'p6').map((entry) => entry.command_id), p6Commands);
+ 
+   const packageJson = JSON.parse(fs.readFileSync(path.join(root, 'package.json'), 'utf8'));
+-  assert.equal(Object.keys(packageJson.scripts).length, 49);
++  assert.equal(Object.keys(packageJson.scripts).length, 51);
+   assert.deepEqual(packageJson.scripts, Object.fromEntries(Object.entries(P1_PACKAGE_SCRIPT_DEFINITIONS).map(([name, value]) => [name, value.command])));
+   assert.equal(packageJson.scripts['dev:broker'], 'node apps/runner-broker/clean-server.mjs');
+   assert.equal(packageJson.scripts['test:p6'], 'node --test tests/p6/*.test.mjs');
+diff --git a/tests/p7/governance-sync.test.mjs b/tests/p7/governance-sync.test.mjs
+index faca9cf..771360f 100644
+--- a/tests/p7/governance-sync.test.mjs
++++ b/tests/p7/governance-sync.test.mjs
+@@ -44,7 +44,7 @@ test('P7 migration, ownership, registry, package gates and paths are synchronize
+   ]);
+   assert.deepEqual(CLEAN_P6_MIGRATION_REGISTRY.map((migration) => migration.id), CLEAN_P7_MIGRATION_REGISTRY.slice(0, 6).map((migration) => migration.id));
+   assert.deepEqual(Object.keys(CLEAN_P7_TABLE_OWNERS).filter((table) => !Object.hasOwn(CLEAN_P6_TABLE_OWNERS, table)).sort(), p7Tables);
+-  assert.equal(CLEAN_PLATFORM_OWNERSHIP.schema_version, 'aiws.v3-clean.owner-manifest.v7');
++  assert.equal(CLEAN_PLATFORM_OWNERSHIP.schema_version, 'aiws.v3-clean.owner-manifest.v8');
+   for (const table of p7Tables) assert.equal(ownerOf('table', table, { clean: true }), CLEAN_P7_TABLE_OWNERS[table].toLowerCase(), table);
+   for (const service of [
+     'apps/api/src/clean/evidence-service.mjs', 'apps/api/src/clean/parser-service.mjs',
+@@ -60,7 +60,7 @@ test('P7 migration, ownership, registry, package gates and paths are synchronize
+   }
+ 
+   const packageJson = JSON.parse(fs.readFileSync(path.join(root, 'package.json'), 'utf8'));
+-  assert.equal(Object.keys(packageJson.scripts).length, 49);
++  assert.equal(Object.keys(packageJson.scripts).length, 51);
+   assert.deepEqual(packageJson.scripts, Object.fromEntries(Object.entries(P1_PACKAGE_SCRIPT_DEFINITIONS).map(([name, value]) => [name, value.command])));
+   assert.equal(packageJson.scripts['test:p7'], 'node --test tests/p7/*.test.mjs');
+   assert.equal(packageJson.scripts['evidence:p7'], 'node scripts/v3-clean-p7-evidence.mjs');

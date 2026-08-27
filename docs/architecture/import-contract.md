@@ -265,19 +265,18 @@ results are new Evidence, not a continuation of an old active status.
 
 ~~~json
 {
-  "schema": "aiws.v3-clean.import-checkpoint.v1",
+  "schema_version": "aiws.v3-clean.import-checkpoint.v2",
   "batch_id": "imp_...",
   "source_hashes": {"v23": "sha256:...", "v3": "sha256:..."},
   "plan_hash": "sha256:...",
   "mapping_hash": "sha256:...",
-  "target_family": "v3-clean",
-  "target_baseline": 1,
   "domain": "context",
-  "last_key": "ctx_...",
-  "rows_committed": 240,
-  "cas_objects_committed": 91,
-  "status": "checkpointed",
-  "updated_at": "2026-01-01T00:00:00.000Z"
+  "last_source_key": "context_sources:ctx_...",
+  "row_count": 240,
+  "target_sha256": "sha256:...",
+  "fsynced_at": "2026-01-01T00:00:00.000Z",
+  "checkpoint_sha256": "sha256:...",
+  "signature": "hmac-sha256:..."
 }
 ~~~
 
@@ -329,3 +328,28 @@ The four cutover artifacts are mandatory:
 - Verify passes row, relation, event, ACL, CAS, credential, and golden checks.
 - Cutover and an actual rollback both pass health and behavior probes.
 - No source runtime directory is opened by the clean application after cutover.
+
+## P8 offline dual-source importer
+
+`apps/importer` is the only mutation owner. `reader.mjs`, `planner.mjs`,
+`mapper.mjs`, `checkpoint.mjs`, `verifier.mjs`, `pointer.mjs`, and `cli.mjs`
+form one offline pipeline. It reads V2.3 schema 23 and V3-Clean schema 7 using
+structured SQLite APIs, takes a consistent schema-7 snapshot as the target,
+applies migration 008, and never mutates either source.
+
+The declarative `mapping-inventory.json` classifies every recognized table and
+field as `target`, `omitted`, or `blocking`; unknown tables/fields block before
+target creation. V3-Clean rows are canonical and are compared row-for-row after
+import. Recognized schema-23 Identity, credential metadata, Project, Brief,
+Repository, Workflow, and Context rows map into live owners; remaining domain
+rows are preserved as hashed Evidence assets. Secret, prompt, token, cookie,
+legacy Vault, and absolute-path values are omitted while credential metadata is
+forced to `rebind_required`.
+
+Signed checkpoints are appended every 500 rows and at all 14 domain
+boundaries. Resume verifies both source manifests, plan, mapping, all importer
+module hashes, signature, and logical target hash. Verify covers row
+preservation/mapping, heads/events, ACL, CAS bytes, credential rebind metadata,
+foreign keys, secret scan, and absolute-path scan. Cutover uses a fresh pointer
+file, a hash-bound approval no older than 15 minutes, a verified dry-run, and an
+atomic replacement; rollback restores the prior isolated target.

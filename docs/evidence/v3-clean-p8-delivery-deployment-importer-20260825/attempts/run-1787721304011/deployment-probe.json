@@ -1,0 +1,31 @@
+{
+  "schema_version": "aiws.v3-clean.p8-deployment-probe.v2",
+  "status": "passed",
+  "provisional": true,
+  "local": {
+    "candidate_status": "verified",
+    "verification_status": "passed",
+    "receipt_sha256": "e94765f3be7e4a4203287bbfb5ddef07fbb6c9f1b3aa713745ab29299cb15496",
+    "viewports": [
+      [
+        1440,
+        900
+      ],
+      [
+        1024,
+        768
+      ],
+      [
+        390,
+        844
+      ]
+    ]
+  },
+  "external": {
+    "status": "missing",
+    "reason": "docker_daemon_unavailable",
+    "provisional": true
+  },
+  "command": "node scripts/v3-clean-p8-deployment-rollback-probe.mjs",
+  "exit_status": 0
+}

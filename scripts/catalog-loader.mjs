@@ -22,6 +22,11 @@ export const EVIDENCE_POLICIES = Object.freeze([
     key: 'p7', phase: 'P7', reference: 'docs/evidence/v3-clean-p7-evidence-quality-outcome-20260824/verification.json',
     attempts: 'docs/evidence/v3-clean-p7-evidence-quality-outcome-20260824/attempts', staging_env: 'AIWS_P7_EVIDENCE_STAGING_ROOT',
     staging_schema: 'aiws.v3-clean.p7-catalog-staging.v1', manifest_schema: 'aiws.v3-clean.p7-manifest.v1', validate: validateP7EvidenceManifest
+  }),
+  Object.freeze({
+    key: 'p8', phase: 'P8', reference: 'docs/evidence/v3-clean-p8-delivery-deployment-importer-20260825/verification.json',
+    attempts: 'docs/evidence/v3-clean-p8-delivery-deployment-importer-20260825/attempts', staging_env: 'AIWS_P8_EVIDENCE_STAGING_ROOT',
+    staging_schema: 'aiws.v3-clean.p8-catalog-staging.v1', manifest_schema: 'aiws.v3-clean.p8-evidence-manifest.v2', validate: validateP8EvidenceManifest
   })
 ]);
 
@@ -50,6 +55,10 @@ export const P7_CLEAN_CATALOG_IDS = Object.freeze([
 
 export const P7_VERIFIED_CATALOG_IDS = Object.freeze([
   ...P7_CLEAN_CATALOG_IDS, 'REC-D6-OUTCOME-009', 'REC-D8-ATTACHMENTS-011'
+]);
+
+export const P8_CLEAN_CATALOG_IDS = Object.freeze([
+  'REC-D7-DELIVERY-015', 'REC-D9-DEPLOYMENT-021', 'REC-D11-OPS-022'
 ]);
 
 const P6_TABLES = Object.freeze([
@@ -446,6 +455,38 @@ export function validateP5AssistProbeReceipt(value) {
   if (turn?.valid !== true || turn?.sequence_contiguous !== true || turn?.terminal_notification !== true
       || turn?.assistant_item !== true || turn?.assistant_response_contract !== true || turn?.tool_calls_terminal !== true) failures.push('turn_invariants');
   if (!Number.isFinite(Number(receipt?.provider_latency_ms)) || Number(receipt?.provider_latency_ms) < 0) failures.push('provider_latency_missing');
+  return [...new Set(failures)].sort();
+}
+
+export function validateP8EvidenceManifest(evidenceRoot, verification = readJson(path.join(evidenceRoot, 'verification.json'))) {
+  const failures = [];
+  const manifest = readJson(path.join(evidenceRoot, 'manifest.json'));
+  if (verification?.schema_version !== 'aiws.v3-clean.p8-verification.v2') failures.push('verification_schema');
+  if (!['candidate', 'verified'].includes(verification?.status)) failures.push('verification_status');
+  if (verification?.status === 'candidate' && (verification?.provisional !== true || verification?.catalog_promotion !== 'frozen-23/4/27')) failures.push('candidate_promotion');
+  if (verification?.status === 'verified' && (verification?.provisional !== false || verification?.catalog_promotion !== '26/1/27')) failures.push('final_promotion');
+  if (verification?.local_gate_status !== 'verified' || verification?.blocking_failure) failures.push('local_gate_status');
+  if (verification?.rollback?.status !== 'passed' || verification?.rollback?.dry_run_exit_status !== 0 || verification?.rollback?.apply_exit_status !== 0
+      || verification?.rollback?.restored_user_version !== 7 || JSON.stringify(verification?.rollback?.ledger) !== JSON.stringify([1, 2, 3, 4, 5, 6, 7])
+      || !Array.isArray(verification?.rollback?.p8_tables_present) || verification.rollback.p8_tables_present.length
+      || !Array.isArray(verification?.rollback?.byte_exact_mismatches) || verification.rollback.byte_exact_mismatches.length) failures.push('rollback');
+  if (verification?.provisional === false && (verification?.external_gates?.github?.verified !== true || verification?.external_gates?.docker?.verified !== true)) failures.push('external_gates');
+  if (manifest?.schema_version !== 'aiws.v3-clean.p8-evidence-manifest.v2' || manifest?.run_id !== verification?.run_id || manifest?.status !== verification?.status || manifest?.provisional !== verification?.provisional) failures.push('manifest_identity');
+  const files = Array.isArray(manifest?.files) ? manifest.files : [];
+  const names = new Set();
+  for (const entry of files) {
+    const name = String(entry?.path || '').replaceAll('\\', '/');
+    if (!name || name.startsWith('/') || name.split('/').includes('..') || names.has(name)) { failures.push(`manifest_path:${name}`); continue; }
+    names.add(name);
+    const file = path.resolve(evidenceRoot, name);
+    if (!file.startsWith(path.resolve(evidenceRoot) + path.sep) || !fs.existsSync(file) || !fs.statSync(file).isFile()) failures.push(`manifest_missing:${name}`);
+    else if (entry?.sha256 !== sha256File(file) || Number(entry?.byte_length) !== fs.statSync(file).size) failures.push(`manifest_hash:${name}`);
+  }
+  for (const role of ['modified_artifact', 'patch', 'verification_record', 'rollback']) {
+    const artifact = verification?.artifacts?.[role];
+    const file = artifact?.path ? path.join(evidenceRoot, artifact.path) : null;
+    if (!file || !fs.existsSync(file) || artifact.sha256 !== sha256File(file)) failures.push(`artifact:${role}`);
+  }
   return [...new Set(failures)].sort();
 }
 

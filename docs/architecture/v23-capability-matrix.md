@@ -39,7 +39,7 @@ requires the evidence-derived progression in AGENTS.md.
 | REC-D1-CONTRACTS-023 | contracts | forward-only migrations and public contracts | verified | C-02 |
 | REC-D10-FRONTEND-024 | frontend | complete operational Web workflows | scaffolded | C-03 |
 | REC-D2-IDENTITY-001 | identity | local owner account and sessions | verified | C-04 |
-| REC-D2-SETUP-002 | setup | Vault, credentials, profiles, fake provider probes | implemented | C-05 |
+| REC-D2-SETUP-002 | setup | Vault, credentials, profiles, provider probes | verified | C-05 |
 | REC-D3-RUNNER-003 | runner | Docker/Host/Windows Bridge runners and signed Job Spec | verified | C-06 |
 | REC-D4-MCP-004 | mcp | MCP clients, tools, operation lifecycle | verified | C-07 |
 | REC-D5-PROJECT-005 | project | draft intake and confirmed brief | verified | C-08 |
@@ -54,14 +54,14 @@ requires the evidence-derived progression in AGENTS.md.
 | REC-D8-TERMINAL-025 | terminal | native terminal and cursor recovery | verified | C-17 |
 | REC-D8-BRIDGE-026 | bridge | Windows Bridge pairing and Git bundle | verified | C-18 |
 | REC-D7-REPOSITORY-014 | repository | connections, targets, lines, worktrees | verified | C-19 |
-| REC-D7-DELIVERY-015 | delivery | GitHub Draft PR and merge recovery | scaffolded | C-20 |
+| REC-D7-DELIVERY-015 | delivery | GitHub Draft PR and merge recovery | verified | C-20 |
 | REC-D4-SCOPE-016 | mcp | scope requests, grants, allowlists, revoke | verified | C-21 |
 | REC-D9-CONTEXT-017 | context | tree, versions, selection, Context Pack v5 | verified | C-22 |
 | REC-D9-PROJECTION-018 | context | recoverable projection and index rebuild | verified | C-23 |
 | REC-D9-EVIDENCE-019 | evidence | CAS assets, trace, digest, attestation | verified | C-24 |
 | REC-D9-QUALITY-020 | quality | isolated parsers and human threshold | verified | C-25 |
-| REC-D9-DEPLOYMENT-021 | evidence | deployment/browser/viewport Evidence | scaffolded | C-26 |
-| REC-D11-OPS-022 | operations | deployment API, backup, restore, reset, import | scaffolded | C-27 |
+| REC-D9-DEPLOYMENT-021 | evidence | deployment/browser/viewport Evidence | verified | C-26 |
+| REC-D11-OPS-022 | operations | deployment API, backup, restore, reset, import | verified | C-27 |
 
 ## 2. Matrix field definitions
 
@@ -129,8 +129,8 @@ route omitted it.
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | C-24 REC-D9 Evidence | /api/v2/projects/{project_id}/assets, /api/v2/assets/{id}, /versions, /versions/{version_id}/content, /relations, /attestations, /tombstone, /api/v2/executions/{id}/evidence, /traces, /digests, /test-results, /code-changes | asset.list/capture/get/version.list/content/relation.list/relation.create/attestation.list/attest/tombstone, evidence.execution.get/trace.list/digest.list/test-result.list/code-change.list | asset.*, evidence.*, trace.*, digest.*, code_change.*, test_result.*; immutable version/lineage/attestation with logical tombstone | assets, asset_versions, asset_blobs, asset_relations, asset_attestations, traces, digests, code_changes, test_results, cas_objects | project Evidence assets, restricted preview, lineage and attestation; Execution Evidence tab | Clean CAS, execution handoff/receipt verifier, secret scanner | `tests/p7/parser-evidence.test.mjs`, `tests/p7/http-contract.test.mjs`, `scripts/v3-clean-p7-cas-tamper-probe.mjs`, `scripts/v3-clean-p7-performance.mjs`, Web P7 tests, `scripts/e2e.mjs`; `docs/evidence/v3-clean-p7-evidence-quality-outcome-20260824/verification.json` | verified; canonical hash, immutable lineage, CAS tamper detection, capture/replay and redaction passed |
 | C-25 REC-D9 Quality | /api/v2/parser/formats, /api/v2/parser-runs/{id}/*, /api/v2/executions/{id}/quality-reviews, /api/v2/quality-reviews/{id}, /events, /report, /decision, /cancel, /retry | parser.format.list, parser.run.start/get/retry/cancel, quality.list/start/get/events/report.get/decision/cancel/retry | parser_run.* and quality_review.*; parser queued -> running -> parsed/unsupported/invalid/resource_exceeded/failed/cancelled/external_result_unknown; quality queued -> preparing -> checking -> reviewing -> awaiting_human -> completed/failed/cancelled/stale | parser_formats, parser_runs, quality_review_runs, quality_review_reports, quality_review_events, human_reviews, test_results | Execution Quality tab, full dimension scoring, parser status/retry | fixed-digest isolated Docker parser, Clean Broker, CAS; human decision is local REST/Web only | `tests/p7/governance-protocol.test.mjs`, `tests/p7/parser-evidence.test.mjs`, `tests/p7/quality-outcome.test.mjs`, `tests/p7/broker-restart-tamper.test.mjs`, `scripts/v3-clean-p7-parser-probe.mjs`, `scripts/v3-clean-p7-quality-outcome-probe.mjs`, Web P7 tests, `scripts/e2e.mjs`; `docs/evidence/v3-clean-p7-evidence-quality-outcome-20260824/verification.json` | verified; 21 formats, quotas/tamper/restart, complete human threshold and stale hashes passed |
-| C-26 REC-D9 Deployment Evidence | /api/v2/executions/{id}/evidence, /api/v2/system/deployment, /api/v2/deployments/{id}/verifications | deployment.verify, browser.capture, viewport.assert | deployment.verified; candidate -> probing -> verified/rejected | deployment_candidates, deployment_verifications, asset_versions, evidence_links (asset_versions, evidence_links) | Evidence, deployment status | browser at desktop/tablet/mobile viewports, Docker/Host runner | scripts/e2e.mjs, release rehearsals; target browser/health/CAS receipt | scaffolded; three viewports, console/layout checks, and attestation required |
-| C-27 REC-D11 Operations | /api/v2/system/deployment, /api/v2/backups, /restore, /reset, /imports, /api/v2/operations/{id} | backup.create, backup.restore, import.inspect, import.dry_run, import.run, import.verify, import.cutover, deployment.rollback | operation.pending/running/completed/failed/cancelled, release.gate; import inspected -> dry_run -> running -> verified -> cutover/completed/failed | operations, operation_links, events, audit_events, backup_manifests, import_batches, import_checkpoints, import_id_map, import_conflicts (operations, operation_events, audit_events, import_jobs) | Setup, Recovery, Operations | SQLite/CAS volume, Docker Compose, deployment orchestrator | identity-operations, api-flow, release-gate, release-rehearsal-compose, boundary security; target cutover and rollback receipts | scaffolded; importer and actual volume rollback required |
+| C-26 REC-D9 Deployment Evidence | /api/v2/system/deployment, /api/v2/system/deployment/candidates/{id}, /verify | deployment.get, deployment.candidate.create/get, deployment.verify | deployment.candidate.created/verification.queued/verified; candidate -> verifying -> verified/failed/needs_reconcile | deployment_candidates, deployment_verifications, operations, events | Operations deployment inventory | three viewport receipts and Docker app/Broker/Runner/Parser identities | `tests/p8/deployment-backup.test.mjs`, `tests/p8/http-contract.test.mjs`, `scripts/v3-clean-p8-deployment-rollback-probe.mjs`; `docs/evidence/v3-clean-p8-delivery-deployment-importer-20260825/verification.json` | verified; Docker image identity, publish/health checks, viewport receipt and rollback passed |
+| C-27 REC-D11 Operations | /api/v2/system/deployment, /api/v2/backups, /api/v2/restore/prepare, /api/v2/system/reset/prepare, /api/v2/imports, /api/v2/operations, /replay, /api/v2/cas/gc/plan, /apply | backup.create, restore.prepare, system.reset.prepare, operations.replay, cas.gc.plan/apply; offline aiws-import inspect/dry-run/run/resume/verify/cutover/rollback | generic operation.*, backup.*, restore.*, system.reset.*, cas.gc.*; sealed import batches and signed checkpoints | operations, operation_links, events, audit_events, backup_manifests, import_batches, import_checkpoints, import_id_map, import_conflicts, cas_objects | Operations, Backup & Restore, Importer, CAS GC | SQLite/CAS/Vault/workspace/Broker/Bridge/parser snapshots and isolated pointer | `tests/p8/importer.test.mjs`, `tests/p8/deployment-backup.test.mjs`, `tests/p8/delivery-operations.test.mjs`, `scripts/v3-clean-p8-importer-probe.mjs`, `scripts/v3-clean-p8-backup-restore-gc-probe.mjs`; `docs/evidence/v3-clean-p8-delivery-deployment-importer-20260825/verification.json` | verified; importer, backup/restore/reset, protected GC, external delivery/deployment, health and rollback receipts passed |
 
 ### 7.1 Current Evidence snapshot
 
@@ -141,9 +141,9 @@ intentional and keeps a scaffolded capability below implemented.
 | --- | --- | --- |
 | REC-D0-GOVERNANCE-000 | docs/evidence/v3-clean-p1-gate-contract-complete-20260819/verification.json | GS-001 through GS-007 gate synchronization, clean architecture scan and byte-exact rollback |
 | REC-D1-CONTRACTS-023 | docs/evidence/v3-r0-r1-governance-20260810/verification.json | clean baseline checksum and importer proof; R5 source-hash replay remains Historical through `pnpm fixture:legacy:integration` |
-| REC-D10-FRONTEND-024 | docs/evidence/v3-clean-p2-identity-acl-20260819/verification.json | complete Web workflow, mobile/offline, SSE receipt |
+| REC-D10-FRONTEND-024 | docs/evidence/v3-clean-p2-identity-acl-20260819/verification.json; docs/evidence/v3-clean-p8-delivery-deployment-importer-20260825/verification.json | Operations slice is implemented; complete Web workflow, mobile/offline, SSE and release receipt remain P9 |
 | REC-D2-IDENTITY-001 | docs/evidence/v3-clean-p2-identity-acl-20260819/verification.json | P2 Team/Actor/session/ACL isolation and API v2 parity |
-| REC-D2-SETUP-002 | docs/evidence/v3-clean-p2-identity-acl-20260819/verification.json | fake-provider rebind/rotation/probe receipt; real provider proof remains deferred |
+| REC-D2-SETUP-002 | docs/evidence/v3-clean-p2-identity-acl-20260819/verification.json; docs/evidence/v3-clean-p8-delivery-deployment-importer-20260825/verification.json | GitHub App Vault lease, discovery, and external fixture identity verified |
 | REC-D3-RUNNER-003 | docs/evidence/v3-clean-p6-runner-execution-20260824/verification.json | verified Docker, Host, Windows Bridge, signed Job Spec/receipt, isolation and restart probes |
 | REC-D4-MCP-004 | docs/evidence/v3-clean-p4-context-mcp-20260820/verification.json | real external provider integration remains deferred |
 | REC-D5-PROJECT-005 | docs/evidence/v3-clean-p3-project-workflow-20260819/verification.json | clean Project/Intake/Brief lifecycle, source drift, CAS and ACL receipt |
@@ -158,14 +158,14 @@ intentional and keeps a scaffolded capability below implemented.
 | REC-D8-TERMINAL-025 | docs/evidence/v3-clean-p5-assist-terminal-20260820/verification.json | Bridge separation and clean event cursor |
 | REC-D8-BRIDGE-026 | docs/evidence/v3-clean-p5-assist-terminal-20260820/verification.json | independent Windows process, pairing, bundle, rollback |
 | REC-D7-REPOSITORY-014 | docs/evidence/v3-clean-p3-project-workflow-20260819/verification.json | clean lease/path policy, source drift/recovery and deterministic provider probe |
-| REC-D7-DELIVERY-015 | none | GitHub App, webhook, merge race, recovery |
+| REC-D7-DELIVERY-015 | docs/evidence/v3-clean-p8-delivery-deployment-importer-20260825/verification.json | Draft/checks/ready/merge/webhook/reconcile passed against the isolated GitHub fixture; external receipt verified |
 | REC-D4-SCOPE-016 | docs/evidence/v3-clean-p4-context-mcp-20260820/verification.json | production Gateway secret provisioning and release remain deferred |
 | REC-D9-CONTEXT-017 | docs/evidence/v3-clean-p4-context-mcp-20260820/verification.json | full Assist/Execution consumption remains deferred |
 | REC-D9-PROJECTION-018 | docs/evidence/v3-clean-p4-context-mcp-20260820/verification.json | release-volume cutover remains deferred |
 | REC-D9-EVIDENCE-019 | docs/evidence/v3-clean-p7-evidence-quality-outcome-20260824/verification.json | canonical CAS, attestation, lineage, capture, tamper and secret scan verified |
 | REC-D9-QUALITY-020 | docs/evidence/v3-clean-p7-evidence-quality-outcome-20260824/verification.json | 21-format parser, human threshold, stale/retry/restart and Outcome linkage verified |
-| REC-D9-DEPLOYMENT-021 | none | browser/viewport, health, and deployment attestation |
-| REC-D11-OPS-022 | none | offline importer, temporary-volume cutover, actual rollback |
+| REC-D9-DEPLOYMENT-021 | docs/evidence/v3-clean-p8-delivery-deployment-importer-20260825/verification.json | fixed-digest Docker build/publish, health, viewport and rollback receipts verified |
+| REC-D11-OPS-022 | docs/evidence/v3-clean-p8-delivery-deployment-importer-20260825/verification.json | offline dual-source importer, backup/restore/reset, protected GC, external gates and isolated rollback verified |
 
 ## 8. V2.3 L0-L7 catalog coverage
 
@@ -484,3 +484,23 @@ becomes a human verdict.
 | Quality and Outcome replay | Quality + Outcome | 1-20 dimension rubric with weight 100, at most 16 assets, deterministic advisory report, complete session-bound human scoring, four fixed evaluators, immutable waiver/revoke/expiry generations | `tests/p7/quality-outcome.test.mjs`, `scripts/v3-clean-p7-quality-outcome-probe.mjs`, Web P7 tests | `REC-D9-QUALITY-020` and `REC-D6-OUTCOME-009` verified |
 | Clean Web and browser | Frontend | Evidence project view; Execution Evidence/Quality/Outcome tabs; parser controls, full scoring, waiver/revoke, reconnect/duplicate/partial-event states at three viewports with `/api/v1=0` | `apps/web/src/test/evidence-p7.test.tsx`, `apps/web/src/test/execution-p7.test.tsx`, `scripts/e2e.mjs`; browser receipt | Frontend remains scaffolded pending P9 offline/release Evidence |
 | immutable Evidence and rollback | Evidence/CAS | declarative P4-P7 policy, literal gates, hash-complete manifest/reopen, redaction scan, reverse-check, isolated actual v6 restore of SQLite/CAS/Vault/workspace/Broker/Bridge/parser, ledger 1-6, FK empty and 17 P7 tables absent | `scripts/v3-clean-p7-evidence.mjs`, `rollback.ps1`, `verification.json` | only final `verified`, `provisional=false` promotes; Clean/Historical is 23/4/27 |
+
+## P8 final synchronization
+
+Decision D-037 advances the active runtime to `user_version=8`. Receipt
+`run-1787846480106` is `verified` and `provisional=false`, with real GitHub and
+Docker gates plus isolated rollback. Delivery, Deployment, and Operations are
+therefore Clean/verified, Setup is verified, Frontend remains scaffolded, and
+the layered Catalog is `26/1/27`.
+The focused entry is `pnpm test:p8`; independent receipts are owned by
+`v3-clean-p8-github-delivery-probe.mjs`,
+`v3-clean-p8-importer-probe.mjs`,
+`v3-clean-p8-deployment-rollback-probe.mjs`, and
+`v3-clean-p8-backup-restore-gc-probe.mjs`.
+
+| P8 surface | Owner | Required inventory/behavior | Test and Evidence | Status effect |
+| --- | --- | --- | --- | --- |
+| schema v8 and closed contracts | Platform + Delivery/Deployment/Importer/Operations/CAS | forward-only 008, 11 tables, recoverable `needs_reconcile`, route-specific closed schemas, raw webhook before session parsing and REST/MCP/Gateway parity | `tests/p8/migration.test.mjs`, `tests/p8/governance.test.mjs`, `tests/p8/http-contract.test.mjs` | verified in the final receipt |
+| GitHub Delivery | Delivery + Repository | zeroed Vault leases, App/Installation adapter, branch and Draft PR, checks, owner approval, merge/reconcile, webhook HMAC/dedup, atomic baseline sync | `tests/p8/delivery-operations.test.mjs`, `scripts/v3-clean-p8-github-delivery-probe.mjs` | `REC-D7-DELIVERY-015` verified by external fixture receipt |
+| importer and operations | Importer + Operations + CAS | schema-7 preservation, schema-23 live mapping/evidence preservation, omitted secrets, signed 500-row/domain checkpoints, resume hashes, backup/restore/reset prepare, protected-set GC and trash rollback | `tests/p8/importer.test.mjs`, `tests/p8/deployment-backup.test.mjs`, `scripts/v3-clean-p8-importer-probe.mjs`, `scripts/v3-clean-p8-backup-restore-gc-probe.mjs` | importer, operations, Deployment and rollback receipts verified |
+| immutable Evidence and rollback | Evidence/Operations | literal focused/full gates, four artifact roles, candidate supersession, dry-run plus isolated actual restore of v7 SQLite/CAS/Vault/workspace/Broker/Bridge/parser, ledger 1-7 and all P8 tables absent | `scripts/v3-clean-p8-evidence.mjs`, P8 `rollback.ps1`, P8 `verification.json` | final `verified`, `provisional=false`, both external receipts; Catalog `26/1/27` |

@@ -121,7 +121,10 @@
         "apps/web/src/features/identity/index.ts",
         "apps/web/src/styles.css",
         "apps/web/src/test/identity-access.test.tsx",
-        "apps/web/package.json"
+        "apps/web/package.json",
+        "apps/web/src/features/operations/OperationsPage.tsx",
+        "apps/web/src/features/operations/index.ts",
+        "apps/web/src/test/operations-p8.test.tsx"
       ],
       "tables": [],
       "apis": [
@@ -130,7 +133,13 @@
         "/api/v2/teams",
         "/api/v2/projects/{id}/permissions",
         "/api/v2/credentials",
-        "/api/v2/profiles"
+        "/api/v2/profiles",
+        "/api/v2/deliveries",
+        "/api/v2/system/deployment",
+        "/api/v2/backups",
+        "/api/v2/imports",
+        "/api/v2/operations",
+        "/api/v2/cas/gc/plan"
       ],
       "ui": [
         "Identity",
@@ -138,7 +147,13 @@
         "Members",
         "Permissions",
         "Credentials",
-        "Profiles"
+        "Profiles",
+        "Operations",
+        "Delivery",
+        "Deployment",
+        "Backup & Restore",
+        "Importer",
+        "CAS GC"
       ],
       "events": [
         "actor.updated",
@@ -150,20 +165,25 @@
       ],
       "behavior_tests": [
         "tests/p2/identity-acl.test.mjs",
-        "tests/p2/identity-acl-security.test.mjs"
+        "tests/p2/identity-acl-security.test.mjs",
+        "tests/p8/http-contract.test.mjs"
       ],
       "ui_tests": [
-        "apps/web/src/test/identity-access.test.tsx"
+        "apps/web/src/test/identity-access.test.tsx",
+        "apps/web/src/test/operations-p8.test.tsx"
       ],
       "evidence": [
-        "docs/evidence/v3-clean-p2-identity-acl-20260819/verification.json"
+        "docs/evidence/v3-clean-p2-identity-acl-20260819/verification.json",
+        "docs/evidence/v3-clean-p8-delivery-deployment-importer-20260825/verification.json"
       ],
       "release_receipts": [],
       "tests": [
         "T8",
         "tests/p2/identity-acl.test.mjs",
         "tests/p2/identity-acl-security.test.mjs",
-        "apps/web/src/test/identity-access.test.tsx"
+        "apps/web/src/test/identity-access.test.tsx",
+        "tests/p8/http-contract.test.mjs",
+        "apps/web/src/test/operations-p8.test.tsx"
       ],
       "runtime_surface": "v3-clean"
     },
@@ -251,7 +271,7 @@
       "id": "REC-D2-SETUP-002",
       "domain": "setup",
       "name": "Setup, Vault, credentials, profiles and provider probes",
-      "status": "implemented",
+      "status": "verified",
       "owner_modules": [
         "identity",
         "setup",
@@ -268,7 +288,9 @@
         "apps/api/src/clean/http.mjs",
         "apps/api/src/clean/registry.mjs",
         "packages/contracts/src/clean-v2.mjs",
-        "apps/web/src/features/identity/IdentityAccessPage.tsx"
+        "apps/web/src/features/identity/IdentityAccessPage.tsx",
+        "apps/api/src/clean/p8/github-adapter.mjs",
+        "apps/api/src/clean/p8/repository.mjs"
       ],
       "tables": [
         "credential_refs",
@@ -285,7 +307,9 @@
         "/api/v2/credentials/{id}/revoke",
         "/api/v2/profiles",
         "/api/v2/profiles/{id}/probe",
-        "/api/v2/operations/{id}"
+        "/api/v2/operations/{id}",
+        "/api/v2/provider-profiles/{id}/repositories",
+        "/api/v2/webhooks/github"
       ],
       "ui": [
         "Setup",
@@ -310,20 +334,26 @@
       ],
       "behavior_tests": [
         "tests/p2/identity-acl.test.mjs",
-        "tests/p2/identity-acl-security.test.mjs"
+        "tests/p2/identity-acl-security.test.mjs",
+        "tests/p8/delivery-operations.test.mjs",
+        "tests/p8/http-contract.test.mjs"
       ],
       "ui_tests": [
         "apps/web/src/test/identity-access.test.tsx"
       ],
       "evidence": [
-        "docs/evidence/v3-clean-p2-identity-acl-20260819/verification.json"
+        "docs/evidence/v3-clean-p2-identity-acl-20260819/verification.json",
+        "docs/evidence/v3-clean-p8-delivery-deployment-importer-20260825/verification.json"
       ],
       "release_receipts": [],
       "tests": [
         "T2",
         "tests/p2/identity-acl.test.mjs",
         "tests/p2/identity-acl-security.test.mjs",
-        "apps/web/src/test/identity-access.test.tsx"
+        "apps/web/src/test/identity-access.test.tsx",
+        "tests/p8/delivery-operations.test.mjs",
+        "tests/p8/http-contract.test.mjs",
+        "scripts/v3-clean-p8-github-delivery-probe.mjs"
       ],
       "runtime_surface": "v3-clean"
     },
@@ -1644,6 +1674,230 @@
         "scripts/v3-clean-p7-quality-outcome-probe.mjs",
         "scripts/v3-clean-p7-restart-probe.mjs",
         "scripts/e2e.mjs"
+      ],
+      "runtime_surface": "v3-clean"
+    },
+    {
+      "id": "REC-D11-OPS-022",
+      "domain": "operations",
+      "name": "Deployment API, backup, restore, reset, import and release rollback",
+      "status": "verified",
+      "owner_modules": [
+        "operations",
+        "deployment",
+        "importer",
+        "cas"
+      ],
+      "source_files": [
+        "V2.3 operations and import commands"
+      ],
+      "target_modules": [
+        "apps/api/src/clean/p8/repository.mjs",
+        "apps/api/src/clean/p8/artifact-operations.mjs",
+        "apps/importer/cli.mjs",
+        "apps/importer/reader.mjs",
+        "apps/importer/planner.mjs",
+        "apps/importer/mapper.mjs",
+        "apps/importer/checkpoint.mjs",
+        "apps/importer/verifier.mjs",
+        "apps/importer/pointer.mjs",
+        "apps/web/src/features/operations/OperationsPage.tsx",
+        "Dockerfile",
+        ".dockerignore"
+      ],
+      "tables": [
+        "operations",
+        "operation_links",
+        "events",
+        "audit_events",
+        "backup_manifests",
+        "import_batches",
+        "import_checkpoints",
+        "import_id_map",
+        "import_conflicts",
+        "cas_objects"
+      ],
+      "apis": [
+        "/livez",
+        "/readyz",
+        "/api/v2/system/deployment",
+        "/api/v2/backups",
+        "/api/v2/restore/prepare",
+        "/api/v2/system/reset/prepare",
+        "/api/v2/imports",
+        "/api/v2/operations",
+        "/api/v2/operations/{id}/replay",
+        "/api/v2/cas/gc/plan",
+        "/api/v2/cas/gc/apply"
+      ],
+      "ui": [
+        "Operations",
+        "Backup & Restore",
+        "Importer",
+        "CAS GC"
+      ],
+      "events": [
+        "operation.*",
+        "backup.*",
+        "restore.*",
+        "system.reset.*",
+        "cas.gc.*"
+      ],
+      "behavior_tests": [
+        "tests/p8/importer.test.mjs",
+        "tests/p8/deployment-backup.test.mjs",
+        "tests/p8/delivery-operations.test.mjs",
+        "tests/p8/http-contract.test.mjs"
+      ],
+      "ui_tests": [
+        "apps/web/src/test/operations-p8.test.tsx"
+      ],
+      "evidence": [
+        "docs/evidence/v3-clean-p8-delivery-deployment-importer-20260825/verification.json"
+      ],
+      "release_receipts": [],
+      "tests": [
+        "T0",
+        "T1",
+        "T8",
+        "tests/p8/importer.test.mjs",
+        "tests/p8/deployment-backup.test.mjs",
+        "tests/p8/delivery-operations.test.mjs",
+        "tests/p8/http-contract.test.mjs",
+        "apps/web/src/test/operations-p8.test.tsx",
+        "scripts/v3-clean-p8-importer-probe.mjs",
+        "scripts/v3-clean-p8-backup-restore-gc-probe.mjs"
+      ],
+      "runtime_surface": "v3-clean"
+    },
+    {
+      "id": "REC-D7-DELIVERY-015",
+      "domain": "delivery",
+      "name": "GitHub App Draft PR delivery and merge recovery",
+      "status": "verified",
+      "owner_modules": [
+        "delivery"
+      ],
+      "source_files": [
+        "delivery-service.mjs",
+        "delivery-state-domain.mjs",
+        "delivery-recovery.mjs",
+        "delivery-pr-intent.mjs"
+      ],
+      "target_modules": [
+        "apps/api/src/clean/p8/github-adapter.mjs",
+        "apps/api/src/clean/p8/repository.mjs",
+        "apps/api/src/clean/command-dispatcher.mjs",
+        "apps/api/src/clean/registry.mjs",
+        "apps/web/src/features/operations/OperationsPage.tsx"
+      ],
+      "tables": [
+        "deliveries",
+        "pull_request_intents",
+        "delivery_policies",
+        "delivery_events"
+      ],
+      "apis": [
+        "/api/v2/projects/{project_id}/delivery-policies",
+        "/api/v2/deliveries",
+        "/api/v2/deliveries/{id}/pull-request-intents",
+        "/api/v2/deliveries/{id}/ready",
+        "/api/v2/deliveries/{id}/merge",
+        "/api/v2/deliveries/{id}/reconcile",
+        "/api/v2/webhooks/github"
+      ],
+      "ui": [
+        "Delivery",
+        "Draft PR",
+        "Merge Review"
+      ],
+      "events": [
+        "delivery.queued",
+        "delivery.intent.create_draft",
+        "delivery.draft_pr",
+        "delivery.ready",
+        "delivery.merged",
+        "delivery.webhook.received"
+      ],
+      "behavior_tests": [
+        "tests/p8/delivery-operations.test.mjs",
+        "tests/p8/http-contract.test.mjs"
+      ],
+      "ui_tests": [
+        "apps/web/src/test/operations-p8.test.tsx"
+      ],
+      "evidence": [
+        "docs/evidence/v3-clean-p8-delivery-deployment-importer-20260825/verification.json"
+      ],
+      "release_receipts": [],
+      "tests": [
+        "T7",
+        "tests/p8/delivery-operations.test.mjs",
+        "tests/p8/http-contract.test.mjs",
+        "apps/web/src/test/operations-p8.test.tsx",
+        "scripts/v3-clean-p8-github-delivery-probe.mjs"
+      ],
+      "runtime_surface": "v3-clean"
+    },
+    {
+      "id": "REC-D9-DEPLOYMENT-021",
+      "domain": "evidence",
+      "name": "Deployment, browser and viewport evidence in CAS",
+      "status": "verified",
+      "owner_modules": [
+        "deployment",
+        "evidence",
+        "operations"
+      ],
+      "source_files": [
+        "deployment-evidence-verifier.mjs"
+      ],
+      "target_modules": [
+        "apps/api/src/clean/p8/repository.mjs",
+        "apps/api/src/clean/p8/artifact-operations.mjs",
+        "apps/web/src/features/operations/OperationsPage.tsx",
+        "scripts/v3-clean-p8-deployment-rollback-probe.mjs",
+        "Dockerfile",
+        ".dockerignore"
+      ],
+      "tables": [
+        "deployment_candidates",
+        "deployment_verifications",
+        "operations",
+        "events"
+      ],
+      "apis": [
+        "/api/v2/system/deployment",
+        "/api/v2/system/deployment/candidates/{id}",
+        "/api/v2/system/deployment/candidates/{id}/verify"
+      ],
+      "ui": [
+        "Operations",
+        "Deployment"
+      ],
+      "events": [
+        "deployment.candidate.created",
+        "deployment.verification.queued",
+        "deployment.verified"
+      ],
+      "behavior_tests": [
+        "tests/p8/deployment-backup.test.mjs",
+        "tests/p8/http-contract.test.mjs"
+      ],
+      "ui_tests": [
+        "apps/web/src/test/operations-p8.test.tsx"
+      ],
+      "evidence": [
+        "docs/evidence/v3-clean-p8-delivery-deployment-importer-20260825/verification.json"
+      ],
+      "release_receipts": [],
+      "tests": [
+        "T6",
+        "T8",
+        "tests/p8/deployment-backup.test.mjs",
+        "tests/p8/http-contract.test.mjs",
+        "apps/web/src/test/operations-p8.test.tsx",
+        "scripts/v3-clean-p8-deployment-rollback-probe.mjs"
       ],
       "runtime_surface": "v3-clean"
     }

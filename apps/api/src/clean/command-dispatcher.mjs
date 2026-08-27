@@ -3,7 +3,7 @@ import { PlatformError } from './platform-error.mjs';
 
 /** Shared P4 command boundary used by REST, MCP HTTP, stdio and Gateway. */
 export class CleanCommandDispatcher {
-  constructor({ registry, context, mcp, gateway, projectWorkflow, operations, events, assist = null, files = null, terminal = null, bridge = null, runner = null, execution = null, evidence = null, parser = null, quality = null, outcomeEvaluation = null } = {}) {
+  constructor({ registry, context, mcp, gateway, projectWorkflow, operations, events, assist = null, files = null, terminal = null, bridge = null, runner = null, execution = null, evidence = null, parser = null, quality = null, outcomeEvaluation = null, p8Service = null } = {}) {
     if (!registry || !context || !mcp || !operations || !events) throw new TypeError('clean_dispatcher_dependencies_required');
     this.registry = registry;
     this.context = context;
@@ -22,6 +22,7 @@ export class CleanCommandDispatcher {
     this.parser = parser;
     this.quality = quality;
     this.outcomeEvaluation = outcomeEvaluation;
+    this.p8Service = p8Service;
     this.handlers = new Map();
     this.exposed = new Set();
     this.#registerHandlers();
@@ -130,6 +131,7 @@ export class CleanCommandDispatcher {
     if (this.assist && this.files && this.terminal && this.bridge) this.#registerP5Handlers(add);
     if (this.runner && this.execution) this.#registerP6Handlers(add);
     if (this.evidence && this.parser && this.quality && this.outcomeEvaluation) this.#registerP7Handlers(add);
+    if (this.p8Service) this.#registerP8Handlers(add);
   }
 
   #registerP5Handlers(add) {
@@ -263,6 +265,34 @@ export class CleanCommandDispatcher {
     bind('outcome.evaluate', async (args, principal) => this.#operationResult(await this.outcomeEvaluation.evaluate(args.execution_id, args, principal), principal));
     bind('outcome.waiver.create', (args, principal) => this.outcomeEvaluation.createWaiver(args.execution_id, args, principal));
     bind('outcome.waiver.revoke', (args, principal) => this.outcomeEvaluation.revokeWaiver(args.waiver_id, args, principal));
+  }
+
+  #registerP8Handlers(add) {
+    const bind = (id, handler) => add(id, handler, { exposed: this.registry.get(id)?.mcp?.exposed === true });
+    bind('delivery.policy.list', (args, principal) => this.p8Service.listPolicies(args.project_id, principal));
+    bind('delivery.policy.create', (args, principal) => this.p8Service.createPolicy(args.project_id, args, principal));
+    bind('github.repository.list', (args, principal) => this.p8Service.listGithubRepositories(args.profile_id, args, principal));
+    bind('delivery.list', (args, principal) => this.p8Service.listDeliveries(args, principal));
+    bind('delivery.get', (args, principal) => this.p8Service.getDelivery(args.delivery_id || args.id, principal));
+    bind('delivery.submit', async (args, principal) => this.#operationResult(await this.p8Service.submit(args, principal), principal));
+    bind('delivery.intent.create', async (args, principal) => this.#operationResult(await this.p8Service.createIntent(args.delivery_id || args.id, 'create_draft', args, principal), principal));
+    bind('delivery.intent.ready', async (args, principal) => this.#operationResult(await this.p8Service.createIntent(args.delivery_id || args.id, 'mark_ready', args, principal), principal));
+    bind('delivery.intent.merge', async (args, principal) => this.#operationResult(await this.p8Service.createIntent(args.delivery_id || args.id, 'merge', args, principal), principal));
+    bind('delivery.reconcile', async (args, principal) => this.#operationResult(await this.p8Service.createIntent(args.delivery_id || args.id, 'reconcile', args, principal), principal));
+    bind('deployment.get', (args, principal) => this.p8Service.getDeployment(args, principal));
+    bind('deployment.candidate.get', (args, principal) => this.p8Service.getDeploymentCandidate(args.candidate_id || args.id, principal));
+    bind('deployment.candidate.create', (args, principal) => this.p8Service.createDeploymentCandidate(args, principal));
+    bind('deployment.verify', async (args, principal) => this.#operationResult(await this.p8Service.verifyDeployment(args.candidate_id || args.id, args, principal), principal));
+    bind('backup.list', (args, principal) => this.p8Service.listBackups(args, principal));
+    bind('backup.create', async (args, principal) => this.#operationResult(await this.p8Service.createBackup(args, principal), principal));
+    bind('restore.prepare', async (args, principal) => this.#operationResult(await this.p8Service.prepareRestore(args, principal), principal));
+    bind('system.reset.prepare', async (args, principal) => this.#operationResult(await this.p8Service.prepareReset(args, principal), principal));
+    bind('import.list', (args, principal) => this.p8Service.listImports(args, principal));
+    bind('import.get', (args, principal) => this.p8Service.getImport(args.import_id || args.id, principal));
+    bind('operations.list', (args, principal) => this.p8Service.listOperations(args, principal));
+    bind('operations.replay', async (args, principal) => this.#operationResult(await this.p8Service.replayOperation(args.operation_id || args.id, args, principal), principal));
+    bind('cas.gc.plan', (args, principal) => this.p8Service.gcPlan(args, principal));
+    bind('cas.gc.apply', (args, principal) => this.p8Service.gcApply(args, principal));
   }
 
   #validateInventory() {

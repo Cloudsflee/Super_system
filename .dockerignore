@@ -28,6 +28,7 @@ docker/secrets/*
 .aiws-compose-*.yml
 .tmp-*
 temp
+docs/evidence
 探索
 探索-1
 愿景与范围文档模板

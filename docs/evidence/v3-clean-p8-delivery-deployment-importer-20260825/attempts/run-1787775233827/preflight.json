@@ -1,0 +1,87 @@
+{
+  "schema_version": "aiws.v3-clean.p8-preflight.v2",
+  "phase": "P8",
+  "generated_at": "2026-08-26T20:13:53.828Z",
+  "Target": "P8 Delivery, Deployment, offline Importer, Backup/Restore, Operations replay and physical CAS GC over fixed P7 baseline",
+  "目标": "完成 P8 本地行为、外部门禁候选证据与隔离回滚",
+  "Non-target": "P9 Offline/Web release and production cutover",
+  "非目标": "P9、生产切换与缺少外部身份时的 Catalog 晋级",
+  "Forbidden": [
+    "P1-P7 migration or verified Evidence edits",
+    "/api/v1 runtime",
+    "second operation/event/CAS/head model",
+    "online importer writes",
+    "secret/token/full prompt/host absolute path in receipts"
+  ],
+  "禁止项": [
+    "修改已验证 P1-P7 工件",
+    "伪造外部门禁或命令输出"
+  ],
+  "Reuse": [
+    "P1-P7 operations/events/heads/CAS/Vault/ACL",
+    "Clean dispatcher and /api/v2",
+    "verified P7 baseline"
+  ],
+  "复用项": [
+    "统一账本、CAS、授权谓词和回滚模型"
+  ],
+  "Delete/retire": [
+    "open p8.query/mutation/list/receipt schemas",
+    "Identity fallback for P8 routes"
+  ],
+  "删除/退役": [
+    "开放式 P8 contract 与错误 HTTP 分派"
+  ],
+  "Acceptance_commands": [
+    "pnpm check",
+    "pnpm audit:p1",
+    "pnpm scan:clean",
+    "pnpm recovery:plan",
+    "pnpm recovery:catalog",
+    "pnpm recovery:coverage",
+    "pnpm recovery:impact -- --audit",
+    "pnpm test:p1",
+    "pnpm test:p2",
+    "pnpm test:p3",
+    "pnpm test:p31",
+    "pnpm test:p4",
+    "pnpm test:p5",
+    "pnpm test:p6",
+    "pnpm test:p7",
+    "pnpm test:p8",
+    "node scripts/v3-clean-p5-performance.mjs",
+    "node scripts/v3-clean-p5-assist-probe.mjs",
+    "node scripts/v3-clean-p5-bridge-probe.mjs",
+    "node scripts/v3-clean-p6-performance.mjs",
+    "node scripts/v3-clean-p6-docker-runner-probe.mjs",
+    "node scripts/v3-clean-p6-host-runner-probe.mjs",
+    "node scripts/v3-clean-p6-bridge-runner-probe.mjs",
+    "node scripts/v3-clean-p6-restart-probe.mjs",
+    "node scripts/v3-clean-p7-performance.mjs",
+    "node scripts/v3-clean-p7-cas-tamper-probe.mjs",
+    "node scripts/v3-clean-p7-parser-probe.mjs",
+    "node scripts/v3-clean-p7-quality-outcome-probe.mjs",
+    "node scripts/v3-clean-p7-restart-probe.mjs",
+    "node scripts/v3-clean-p8-performance.mjs",
+    "node scripts/v3-clean-p8-github-delivery-probe.mjs",
+    "node scripts/v3-clean-p8-importer-probe.mjs",
+    "node scripts/v3-clean-p8-deployment-rollback-probe.mjs",
+    "node scripts/v3-clean-p8-backup-restore-gc-probe.mjs",
+    "pnpm --filter @aiws/web test",
+    "pnpm test",
+    "pnpm test:integration:clean",
+    "pnpm test:security:clean",
+    "pnpm test:integration",
+    "pnpm test:security",
+    "pnpm build",
+    "pnpm test:e2e",
+    "pnpm test:release",
+    "git diff --check"
+  ],
+  "验收命令": "P1-P8 gates, P5-P8 probes, Web, integration/security, build/E2E/release and diff check",
+  "Rollback_artifact": "docs/evidence/v3-clean-p8-delivery-deployment-importer-20260825/rollback.ps1",
+  "回滚工件": "docs/evidence/v3-clean-p8-delivery-deployment-importer-20260825/rollback.ps1",
+  "active_object": "P8 worktree",
+  "last_confirmed_result": "focused P8 backend, importer, UI and local probes passed",
+  "next_action": "run governed gates and publish candidate or final Evidence according to external receipts"
+}

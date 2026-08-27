@@ -1,0 +1,63 @@
+{
+  "schema_version": "aiws.v3-clean.p8-deployment-probe.v2",
+  "status": "passed",
+  "provisional": false,
+  "local": {
+    "candidate_status": "verified",
+    "verification_status": "passed",
+    "receipt_sha256": "e94765f3be7e4a4203287bbfb5ddef07fbb6c9f1b3aa713745ab29299cb15496",
+    "viewports": [
+      [
+        1440,
+        900
+      ],
+      [
+        1024,
+        768
+      ],
+      [
+        390,
+        844
+      ]
+    ]
+  },
+  "external": {
+    "status": "verified",
+    "docker_version": "29.4.1",
+    "images": {
+      "app": {
+        "tag": "aiws-p8-app:28608-1787813038622",
+        "digest": "dcb0ba41a6243bbfb8e3038cf0fdf08655d1eadf9da260a130bfe92a4f3e8dc2",
+        "component": "app",
+        "sbom_sha256": "3a267e292e1d996a519b051fe15e178b2f29675ce2660eb493be66498a580e02"
+      },
+      "broker": {
+        "tag": "aiws-p8-broker:28608-1787813038622",
+        "digest": "f9a3c81c09e8d4bd6158d639b908513ec0ce9a52ad4ef1ad4c1335edb3975f17",
+        "component": "runner-broker",
+        "sbom_sha256": "b6d8887563064de4351dfc5aa154294a28087c40d2e6f5b911d02d4762829743"
+      },
+      "runner": {
+        "tag": "aiws-p8-runner:28608-1787813038622",
+        "digest": "f5a95e6f8a826c52abc01be75355f43af36ff2f55c2900fc11056984ccaaedd9",
+        "component": "codex-runner",
+        "sbom_sha256": "4eadb923036309c9d2620950b64da0439a2f164d4cd8c3af9d8a4bc558cc3116"
+      },
+      "parser": {
+        "tag": "aiws-p8-parser:28608-1787813038622",
+        "digest": "0dd13d8da028007b0bd5cb1dccc288e0564438e5da7b22b5b669324edf7f129b",
+        "component": "parser-worker",
+        "sbom_sha256": "2e4575fe4cb32b89caa3e276a6dbfda3802a3c33f5775086f558ca218a1c33a2"
+      }
+    },
+    "dynamic_loopback_port": 44739,
+    "readyz": {
+      "runtime": "v3-clean",
+      "user_version": 8
+    },
+    "temporary_volume": "aiws-p8-probe-28608-1787813038622",
+    "provisional": false
+  },
+  "command": "node scripts/v3-clean-p8-deployment-rollback-probe.mjs",
+  "exit_status": 0
+}

@@ -1,0 +1,38 @@
+{
+  "schema_version": "aiws.import.mapping-inventory.v2",
+  "phase": "P8",
+  "owner": "Importer",
+  "source_versions": { "v23": 23, "v3-clean": 7 },
+  "precedence": "v3-clean-schema-7",
+  "unknown_table": "blocking",
+  "unknown_field": "blocking",
+  "checkpoint_rows": 500,
+  "domain_order": ["Identity", "ACL", "CredentialMetadata", "Project", "Repository", "Workflow", "Context", "Assist", "Execution", "Evidence", "Quality", "Outcome", "Delivery", "Operations"],
+  "domains": {
+    "Identity": { "live": ["users"], "evidence": ["sessions", "connected_accounts", "setup_states"] },
+    "ACL": { "live": [], "evidence": ["exchange_requests", "exchange_grants", "mcp_clients"] },
+    "CredentialMetadata": { "live": ["credential_refs", "codex_profiles"], "evidence": ["github_app_configs", "github_installations", "github_repositories", "github_webhook_deliveries", "codex_discovery_sources", "config_revisions"] },
+    "Project": { "live": ["projects", "brief_revisions"], "evidence": ["brief_heads", "project_intakes", "outcome_requirements"] },
+    "Repository": { "live": ["repository_bindings"], "evidence": ["repository_worktrees", "repository_connections", "repository_targets", "repository_lines", "repository_line_artifacts", "file_changes"] },
+    "Workflow": { "live": ["workflow_revisions"], "evidence": ["workflow_heads", "workflow_drafts", "workflow_generations", "workflow_generation_events", "workflow_layout_revisions", "workflow_critic_receipts", "workflow_generation_proposals", "node_contracts", "node_contract_revisions"] },
+    "Context": { "live": ["context_sources"], "evidence": ["context_packs", "context_nodes", "context_document_versions", "context_edges", "context_selections", "context_policies", "context_policy_revisions", "context_policy_heads", "context_selection_heads", "context_projection_jobs", "context_projection_events", "context_summaries", "context_index_snapshots", "context_index_heads"] },
+    "Assist": { "live": [], "evidence": ["assist_sessions", "assist_turns", "assist_messages", "assist_events", "assist_operations", "assist_change_batches", "assist_checkpoints", "assist_session_snapshots", "assist_turn_snapshots", "assist_session_heads", "assist_turn_heads", "assist_operation_links", "assist_event_cursors", "runtime_approvals", "runtime_user_inputs", "ui_action_intents"] },
+    "Execution": { "live": [], "evidence": ["executions", "task_attempts", "execution_inputs", "execution_diffs", "execution_stage_checkpoints", "terminal_sessions", "terminal_events", "operations", "operation_events"] },
+    "Evidence": { "live": [], "evidence": ["asset_versions", "asset_blobs", "asset_attestations", "asset_relations", "evidence_links", "attachments", "traces", "digests", "code_changes", "test_results"] },
+    "Quality": { "live": [], "evidence": ["reviews", "review_decisions", "quality_review_runs", "quality_review_reports", "quality_review_events"] },
+    "Outcome": { "live": [], "evidence": ["outcome_evaluations", "outcome_waivers"] },
+    "Delivery": { "live": [], "evidence": ["deliveries", "pull_request_intents", "delivery_policies", "delivery_events"] },
+    "Operations": { "live": [], "evidence": ["events", "audit_events", "idempotency_keys", "schema_migrations", "setup_events"] }
+  },
+  "field_policy": {
+    "default": "target",
+    "omitted_names": ["token", "token_hash", "secret", "secret_ref", "private_key", "private_key_ref", "webhook_secret", "webhook_secret_ref", "cookie", "proof", "prompt", "response", "content", "body", "diff", "local_path", "worktree_path", "cas_path", "index_path"],
+    "target_overrides": {
+      "brief_revisions": ["content_json"],
+      "context_sources": ["content"],
+      "workflow_revisions": ["tasks_json"]
+    }
+  },
+  "credential_policy": { "secret_values": "omitted", "metadata": "target", "target_status": "rebind_required" },
+  "v3_clean_policy": { "all_p1_p7_business_tables": "target", "schema_migrations": "append_008_only", "vault_secret": "omitted", "credential_metadata": "target" }
+}

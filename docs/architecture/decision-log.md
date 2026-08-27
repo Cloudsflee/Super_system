@@ -87,3 +87,18 @@ conflict with accepted decisions:
 - treat an old schema as a normal startup migration;
 - select a source silently when semantic fields differ;
 - raise a Catalog status before its evidence receipt exists.
+
+## D-037 - Activate P8 Delivery, Deployment, Importer, and Operations (2026-08-25)
+
+P8 uses verified commit `4ee1a436b2f810354602308d733fbee7423f3cf0` as its fixed P7 baseline and applies only forward migration `008-delivery-deployment-importer-operations` (`PRAGMA user_version = 8`). Delivery owns immutable policies, deliveries, PR intents, and one-to-one generic-event projections. Deployment owns candidates and immutable verification receipts. Importer owns batches, signed checkpoints, deterministic ID maps, and conflicts. Operations owns backup manifests while reusing the single operation/event/head/CAS model.
+
+Importer writes are confined to the offline `apps/importer` package. Runtime exposes only sealed import queries through `/api/v2`. GitHub actions are Draft PR first and use two-phase intent/receipt processing; unknown merge results enter reconcile. A final verified non-provisional receipt may promote the Catalog to `26/1/27`; missing GitHub App or Docker identity freezes it at `23/4/27`.
+
+The published P8 receipt `run-1787846480106` implements and verifies the
+closed P8 contract/route inventory, Delivery state machine and raw webhook,
+dual-source importer, Deployment/Backup/Restore/Reset, recoverable physical GC,
+Operations Web slice, real isolated GitHub delivery, Docker deployment, and
+actual v7 rollback. It is `status=verified` with `provisional=false`, so the
+three P8 Catalog rows move to Clean and the layered Catalog is `26/1/27`.
+D-038/P9 remains inactive until the verified worktree is committed and pushed
+as the P8 final boundary.

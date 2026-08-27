@@ -1,0 +1,33 @@
+{
+  "schema_version": "aiws.v3-clean.p8-rollback-manifest.v2",
+  "files": [
+    {
+      "path": "sqlite/state.sqlite",
+      "sha256": "f6e144dff62ccc6889cf591465e1725e8a9bb0c7c7960bc711932004f4baba68"
+    },
+    {
+      "path": "cas/state.bin",
+      "sha256": "cfe1a00f28629c2c71d01e86359add65d971aa50e005df791b285c7ceab0e662"
+    },
+    {
+      "path": "vault/state.bin",
+      "sha256": "1505bf58be75839571e31bd4111b840f5cc3f33c7d3f2483ded1385a88caa68f"
+    },
+    {
+      "path": "workspace/state.bin",
+      "sha256": "c8da5041bb1b0b9b4ec6d2fdb38ca9e618b13760c0c06e0861a60d6aea8706f0"
+    },
+    {
+      "path": "broker/state.bin",
+      "sha256": "2852591775761e611a88e854696902c140e33ee942ac6631609c0af39e2ce971"
+    },
+    {
+      "path": "bridge/state.bin",
+      "sha256": "036b31e8acc74aa50cf92e09fc366f6fe19cea515fda284f0b4f8630a9fd1f3a"
+    },
+    {
+      "path": "parser/state.bin",
+      "sha256": "e8c8ed592ca5bdd1b6b523617b2f14dd3c6a1f08a2ccff807905b7b48b205cf1"
+    }
+  ]
+}

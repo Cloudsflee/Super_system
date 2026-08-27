@@ -1,0 +1,8 @@
+{
+  "schema_version": "aiws.v3-clean.p8-performance.v1",
+  "delivery_replay_p95_ms": 0.017,
+  "threshold_ms": 200,
+  "status": "passed",
+  "command": "node scripts/v3-clean-p8-performance.mjs",
+  "exit_status": 0
+}

@@ -124,6 +124,21 @@ export const CLEAN_P7_TABLE_OWNERS = Object.freeze({
   outcome_waivers: 'Outcome'
 });
 
+export const CLEAN_P8_TABLE_OWNERS = Object.freeze({
+  ...CLEAN_P7_TABLE_OWNERS,
+  delivery_policies: 'Delivery',
+  deliveries: 'Delivery',
+  pull_request_intents: 'Delivery',
+  delivery_events: 'Delivery',
+  deployment_candidates: 'Deployment',
+  deployment_verifications: 'Deployment',
+  backup_manifests: 'Operations',
+  import_batches: 'Importer',
+  import_checkpoints: 'Importer',
+  import_id_map: 'Importer',
+  import_conflicts: 'Importer'
+});
+
 export const CLEAN_COMMAND_OWNERS = Object.freeze({
   'operations.get': 'Operations',
   'operations.events': 'Operations',
@@ -349,6 +364,31 @@ export const CLEAN_COMMAND_OWNERS = Object.freeze({
   , 'outcome.evaluate': 'Outcome'
   , 'outcome.waiver.create': 'Outcome'
   , 'outcome.waiver.revoke': 'Outcome'
+  , 'delivery.policy.list': 'Delivery'
+  , 'delivery.policy.create': 'Delivery'
+  , 'delivery.list': 'Delivery'
+  , 'delivery.get': 'Delivery'
+  , 'delivery.submit': 'Delivery'
+  , 'delivery.intent.create': 'Delivery'
+  , 'delivery.intent.ready': 'Delivery'
+  , 'delivery.intent.merge': 'Delivery'
+  , 'delivery.reconcile': 'Delivery'
+  , 'github.repository.list': 'Delivery'
+  , 'github.webhook.receive': 'Delivery'
+  , 'deployment.get': 'Deployment'
+  , 'deployment.candidate.get': 'Deployment'
+  , 'deployment.candidate.create': 'Deployment'
+  , 'deployment.verify': 'Deployment'
+  , 'backup.list': 'Operations'
+  , 'backup.create': 'Operations'
+  , 'restore.prepare': 'Operations'
+  , 'system.reset.prepare': 'Operations'
+  , 'import.list': 'Importer'
+  , 'import.get': 'Importer'
+  , 'operations.list': 'Operations'
+  , 'operations.replay': 'Operations'
+  , 'cas.gc.plan': 'CAS'
+  , 'cas.gc.apply': 'CAS'
 });
 
 export const CLEAN_EVENT_OWNERS = Object.freeze({
@@ -417,18 +457,24 @@ export const CLEAN_EVENT_OWNERS = Object.freeze({
   , 'test_result.*': 'Evidence'
   , 'quality_review.*': 'Quality'
   , 'outcome.*': 'Outcome'
+  , 'delivery.*': 'Delivery'
+  , 'deployment.*': 'Deployment'
+  , 'backup.*': 'Operations'
+  , 'restore.*': 'Operations'
+  , 'system.reset.*': 'Operations'
+  , 'import.*': 'Importer'
 });
 
 export const CLEAN_PLATFORM_OWNERSHIP = Object.freeze({
-  schema_version: 'aiws.v3-clean.owner-manifest.v7',
-  tables: CLEAN_P7_TABLE_OWNERS,
+  schema_version: 'aiws.v3-clean.owner-manifest.v8',
+  tables: CLEAN_P8_TABLE_OWNERS,
   commands: CLEAN_COMMAND_OWNERS,
   events: CLEAN_EVENT_OWNERS
 });
 
 export function validateCleanOwnership({ tables = [], registry = null } = {}) {
   const actualTables = [...new Set(tables.map((table) => String(table)))].sort();
-  const tableOwners = actualTables.includes('parser_formats') ? CLEAN_P7_TABLE_OWNERS : (actualTables.includes('runner_profiles') ? CLEAN_P6_TABLE_OWNERS : (actualTables.includes('assist_sessions') ? CLEAN_P5_TABLE_OWNERS : (actualTables.includes('context_sources') ? CLEAN_P4_TABLE_OWNERS : (actualTables.includes('projects') ? CLEAN_P3_TABLE_OWNERS : (actualTables.includes('teams') ? CLEAN_P2_TABLE_OWNERS : CLEAN_TABLE_OWNERS)))));
+  const tableOwners = actualTables.includes('delivery_policies') ? CLEAN_P8_TABLE_OWNERS : (actualTables.includes('parser_formats') ? CLEAN_P7_TABLE_OWNERS : (actualTables.includes('runner_profiles') ? CLEAN_P6_TABLE_OWNERS : (actualTables.includes('assist_sessions') ? CLEAN_P5_TABLE_OWNERS : (actualTables.includes('context_sources') ? CLEAN_P4_TABLE_OWNERS : (actualTables.includes('projects') ? CLEAN_P3_TABLE_OWNERS : (actualTables.includes('teams') ? CLEAN_P2_TABLE_OWNERS : CLEAN_TABLE_OWNERS))))));
   const expectedTables = Object.keys(tableOwners).sort();
   const missingTables = expectedTables.filter((table) => !actualTables.includes(table));
   const unexpectedTables = actualTables.filter((table) => !expectedTables.includes(table));
@@ -453,19 +499,24 @@ export function validateCleanOwnership({ tables = [], registry = null } = {}) {
     const p5Owners = new Set(['Assist', 'Files', 'Terminal', 'Bridge']);
     const p6Owners = new Set(['Runner', 'Execution']);
     const p7Owners = new Set(['Parser', 'Evidence', 'Quality', 'Outcome']);
+    const p8Owners = new Set(['Delivery', 'Deployment', 'Importer']);
+    const hasP8Tables = actualTables.includes('delivery_policies');
     const hasP7Tables = actualTables.includes('parser_formats');
     const hasP6Tables = actualTables.includes('runner_profiles');
     const hasP5Tables = actualTables.includes('assist_sessions');
     const hasP4Tables = actualTables.includes('context_sources');
     const hasP3Tables = actualTables.includes('projects');
+    const p8OperationCommands = new Set(['operations.list', 'operations.replay', 'backup.list', 'backup.create', 'restore.prepare', 'system.reset.prepare', 'cas.gc.plan', 'cas.gc.apply']);
     const expectedCommandIds = Object.entries(CLEAN_COMMAND_OWNERS)
-      .filter(([, owner]) => {
-        if (hasP7Tables) return true;
-        if (hasP6Tables) return !p7Owners.has(owner);
-        if (hasP5Tables) return !p6Owners.has(owner) && !p7Owners.has(owner);
-        if (hasP4Tables) return !p5Owners.has(owner) && !p6Owners.has(owner) && !p7Owners.has(owner);
-        if (hasP3Tables) return !p4Owners.has(owner) && !p5Owners.has(owner) && !p6Owners.has(owner) && !p7Owners.has(owner);
-        return !p3Owners.has(owner) && !p4Owners.has(owner) && !p5Owners.has(owner) && !p6Owners.has(owner) && !p7Owners.has(owner);
+      .filter(([commandId, owner]) => {
+        if (!hasP8Tables && p8OperationCommands.has(commandId)) return false;
+        if (hasP8Tables) return true;
+        if (hasP7Tables) return !p8Owners.has(owner);
+        if (hasP6Tables) return !p7Owners.has(owner) && !p8Owners.has(owner);
+        if (hasP5Tables) return !p6Owners.has(owner) && !p7Owners.has(owner) && !p8Owners.has(owner);
+        if (hasP4Tables) return !p5Owners.has(owner) && !p6Owners.has(owner) && !p7Owners.has(owner) && !p8Owners.has(owner);
+        if (hasP3Tables) return !p4Owners.has(owner) && !p5Owners.has(owner) && !p6Owners.has(owner) && !p7Owners.has(owner) && !p8Owners.has(owner);
+        return !p3Owners.has(owner) && !p4Owners.has(owner) && !p5Owners.has(owner) && !p6Owners.has(owner) && !p7Owners.has(owner) && !p8Owners.has(owner);
       })
       .map(([commandId]) => commandId);
     for (const commandId of expectedCommandIds) {

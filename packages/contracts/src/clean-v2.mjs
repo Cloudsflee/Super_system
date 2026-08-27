@@ -60,6 +60,12 @@ const p7Mutation = p5Mutation;
 const p7Query = p5Query;
 const p7List = p5List;
 const p7Receipt = p5Receipt;
+const p8Mutation = p5Mutation;
+const p8Query = p5Query;
+const p8List = p5List;
+const p8Receipt = p5Receipt;
+const p8Status = { type: 'string', minLength: 1, maxLength: 80 };
+const p8Checks = { type: 'array', maxItems: 100, uniqueItems: true, items: { type: 'string', minLength: 1, maxLength: 160 } };
 
 export const CLEAN_V2_SCHEMAS = Object.freeze({
   'setup.complete.v2': closed({ display_name: { type: 'string', minLength: 1, maxLength: 160 }, team_name: { type: 'string', minLength: 1, maxLength: 160 }, ttl_seconds: { type: 'integer', minimum: 300, maximum: 7776000 }, idempotency_key: idempotency, expected_revision: { type: 'integer', minimum: 0, maximum: 0 } }, ['display_name', 'team_name']),
@@ -300,6 +306,57 @@ export const CLEAN_V2_SCHEMAS = Object.freeze({
   'outcome.v2': closed({ evaluation: { anyOf: [looseObject, { type: 'null' }] }, waivers: p4Items }, ['evaluation', 'waivers']),
   'outcome.receipt.v2': p7Receipt('evaluation', { waivers: p4Items }),
   'outcome.waiver.receipt.v2': p7Receipt('waiver'),
+
+  // P8 Delivery, GitHub, Deployment, Backup, Importer and Operations
+  // contracts. Every transport-level object is closed; provider-owned
+  // metadata remains opaque only inside explicitly named fields.
+  'delivery.policy.query.v2': p8Query({ project_id: id }, ['project_id']),
+  'delivery.policy.create.v2': p8Mutation({ project_id: id, name: { type: 'string', minLength: 1, maxLength: 120 }, required_checks: p8Checks, approval_policy: looseObject }, ['project_id', 'name', 'required_checks']),
+  'delivery.policies.v2': p8List('policies'),
+  'delivery.policy.receipt.v2': p8Receipt('policy'),
+  'delivery.list.query.v2': p8Query({ project_id: id, status: p8Status, limit: { type: 'integer', minimum: 1, maximum: 500 } }, ['project_id']),
+  'delivery.get.query.v2': p8Query({ delivery_id: id }, ['delivery_id']),
+  'delivery.submit.v2': p8Mutation({ execution_id: id, policy_id: id, repository_target_id: id, target_head_sha: { type: 'string', minLength: 7, maxLength: 128 } }, ['execution_id', 'policy_id', 'repository_target_id']),
+  'delivery.intent.create.v2': p8Mutation({ delivery_id: id, patch_cas_sha256: sha256, patch_sha256: sha256, base_sha: { type: 'string', minLength: 7, maxLength: 128 }, head_sha: { type: 'string', minLength: 7, maxLength: 128 }, required_checks: p8Checks, approval_sha256: sha256 }, ['delivery_id', 'patch_cas_sha256', 'patch_sha256', 'head_sha']),
+  'delivery.intent.ready.v2': p8Mutation({ delivery_id: id, required_checks: p8Checks, approval_id: id }, ['delivery_id', 'approval_id']),
+  'delivery.intent.merge.v2': p8Mutation({ delivery_id: id, approval_id: id, expected_base_sha: { type: 'string', minLength: 7, maxLength: 128 }, expected_head_sha: { type: 'string', minLength: 7, maxLength: 128 } }, ['delivery_id', 'approval_id', 'expected_base_sha', 'expected_head_sha']),
+  'delivery.reconcile.v2': p8Mutation({ delivery_id: id, reason: { type: 'string', maxLength: 500 } }, ['delivery_id']),
+  'deliveries.v2': p8List('deliveries'),
+  'delivery.v2': closed({ delivery: looseObject, intents: { type: 'array', items: looseObject }, events: { type: 'array', items: looseObject } }, ['delivery', 'intents', 'events']),
+  'delivery.receipt.v2': p8Receipt('delivery', { intent: looseObject }),
+
+  'github.repositories.query.v2': p8Query({ profile_id: id, installation_id: id, cursor: { type: 'string', maxLength: 256 }, limit: { type: 'integer', minimum: 1, maximum: 100 } }, ['profile_id']),
+  'github.repositories.v2': closed({ repositories: { type: 'array', items: looseObject }, next_cursor: nullableString }, ['repositories', 'next_cursor']),
+  'github.webhook.v2': closed({ delivery_id: id, event: { type: 'string', minLength: 1, maxLength: 120 }, delivery_guid: { type: 'string', minLength: 1, maxLength: 200 }, payload_sha256: sha256 }, ['delivery_id', 'event', 'delivery_guid', 'payload_sha256']),
+  'github.webhook.receipt.v2': closed({ accepted: { type: 'boolean' }, duplicate: { type: 'boolean' }, delivery_id: id, event_id: nullableString, status: p8Status }, ['accepted', 'duplicate', 'delivery_id', 'status']),
+
+  'deployment.query.v2': p8Query({}),
+  'deployment.candidate.query.v2': p8Query({ candidate_id: id }, ['candidate_id']),
+  'deployment.candidate.create.v2': p8Mutation({ app_digest: sha256, broker_digest: sha256, runner_digest: sha256, parser_digest: sha256, bridge_identity: { type: 'string', minLength: 1, maxLength: 512 }, sbom_sha256: sha256, source_tree_sha256: sha256, lockfile_sha256: sha256, gate_fingerprint: sha256, compose_sha256: sha256, volume_manifest: looseObject, approval_id: id }, ['app_digest', 'broker_digest', 'runner_digest', 'parser_digest', 'bridge_identity', 'sbom_sha256', 'source_tree_sha256', 'lockfile_sha256', 'gate_fingerprint', 'compose_sha256', 'volume_manifest', 'approval_id']),
+  'deployment.verify.v2': p8Mutation({ candidate_id: id, checks: { type: 'array', minItems: 1, maxItems: 100, items: looseObject }, viewport_evidence: { type: 'array', maxItems: 20, items: looseObject }, volume_manifest_sha256: sha256, approval_id: id }, ['candidate_id', 'checks', 'volume_manifest_sha256', 'approval_id']),
+  'deployment.v2': closed({ active: { anyOf: [looseObject, { type: 'null' }] }, candidates: { type: 'array', items: looseObject } }, ['active', 'candidates']),
+  'deployment.candidate.v2': closed({ candidate: looseObject, verifications: { type: 'array', items: looseObject } }, ['candidate', 'verifications']),
+  'deployment.receipt.v2': p8Receipt('candidate', { verification: looseObject }),
+
+  'backup.list.query.v2': p8Query({ limit: { type: 'integer', minimum: 1, maximum: 500 } }),
+  'backup.create.v2': p8Mutation({ retention_class: { enum: ['permanent', 'standard', 'diagnostic'] }, components: looseObject, approval_id: id }, ['retention_class', 'components', 'approval_id']),
+  'restore.prepare.v2': p8Mutation({ backup_id: id, approval_id: id, target_volume_ref: { type: 'string', minLength: 1, maxLength: 256 } }, ['backup_id', 'approval_id', 'target_volume_ref']),
+  'system.reset.prepare.v2': p8Mutation({ approval_id: id, target_volume_ref: { type: 'string', minLength: 1, maxLength: 256 }, preserve_backups: { type: 'boolean' } }, ['approval_id', 'target_volume_ref']),
+  'backups.v2': p8List('backups'),
+  'backup.receipt.v2': p8Receipt('backup', { restore: looseObject, reset: looseObject }),
+
+  'import.list.query.v2': p8Query({ status: p8Status, limit: { type: 'integer', minimum: 1, maximum: 500 } }),
+  'import.get.query.v2': p8Query({ import_id: id }, ['import_id']),
+  'imports.v2': p8List('imports'),
+  'import.v2': closed({ import: looseObject, checkpoints: { type: 'array', items: looseObject }, conflicts: { type: 'array', items: looseObject }, id_map_count: { type: 'integer', minimum: 0 } }, ['import', 'checkpoints', 'conflicts', 'id_map_count']),
+
+  'operations.list.query.v2': p8Query({ project_id: id, status: p8Status, limit: { type: 'integer', minimum: 1, maximum: 500 } }),
+  'operations.replay.v2': p8Mutation({ operation_id: id }, ['operation_id']),
+  'operations.v2': p8List('operations'),
+  'cas.gc.plan.v2': p8Mutation({ cutoff: timestamp, limit: { type: 'integer', minimum: 1, maximum: 1000 } }),
+  'cas.gc.apply.v2': p8Mutation({ plan: closed({ cutoff: timestamp, candidates: { type: 'array', maxItems: 1000, uniqueItems: true, items: sha256 }, protected_references_sha256: sha256, plan_sha256: sha256, count: { type: 'integer', minimum: 0, maximum: 1000 } }, ['cutoff', 'candidates', 'protected_references_sha256', 'plan_sha256', 'count']), approval_id: id }, ['plan', 'approval_id']),
+  'cas.gc.plan.receipt.v2': closed({ plan: looseObject }, ['plan']),
+  'cas.gc.apply.receipt.v2': closed({ receipt: looseObject, operation: p4Operation }, ['receipt']),
 
   // P1 query/input contracts.
   'operation.id.v2': closed({ id: id }, ['id']),

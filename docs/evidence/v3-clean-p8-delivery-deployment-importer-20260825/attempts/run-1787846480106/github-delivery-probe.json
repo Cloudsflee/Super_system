@@ -1,0 +1,25 @@
+{
+  "schema_version": "aiws.v3-clean.p8-github-delivery-probe.v2",
+  "status": "passed",
+  "provisional": false,
+  "local": {
+    "branch_created": true,
+    "draft_status": "draft_pr",
+    "ready_status": "ready",
+    "merge_status": "merged",
+    "webhook_accepted": true,
+    "webhook_deduplicated": true,
+    "baseline_sha": "c35b287161a7ca7608382d3fd3155d11bf8e394290c640ac4b84d8cd475eebd3"
+  },
+  "external": {
+    "status": "verified",
+    "repository": "Cloudsflee/codex-vibe-coding-test",
+    "discovery_count": 14,
+    "pull_number": 10,
+    "merge_sha": "7da65795a303a37a880a6f131e3ce51f94b1564e",
+    "checks": [],
+    "provisional": false
+  },
+  "command": "node scripts/v3-clean-p8-github-delivery-probe.mjs",
+  "exit_status": 0
+}

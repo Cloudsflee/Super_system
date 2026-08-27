@@ -1,0 +1,46 @@
+{
+  "schema_version": "aiws.v3-clean.p8-backup-restore-gc-probe.v2",
+  "status": "passed",
+  "provisional": false,
+  "backup": {
+    "id": "backup_ef2c98cdc91e4167a73b3a12ecef17a2",
+    "manifest_sha256": "8167d6f8fb90949c1fba32fe3fb7513b4b64bbdb7147d873fb14b1fe1c3a4344",
+    "source_user_version": 8
+  },
+  "restore": {
+    "status": "prepared",
+    "pointer_switched": false,
+    "source_manifest_sha256": "8167d6f8fb90949c1fba32fe3fb7513b4b64bbdb7147d873fb14b1fe1c3a4344"
+  },
+  "gc": {
+    "plan_sha256": "dadb5445cdabece9ccbbd66d7711339b3cbafaee3bb3a90edb493cc0c7566256",
+    "candidates": 1,
+    "apply_status": "applied",
+    "rollback_restored": [
+      "8db39bfb5a402f93ecd7df8cebe16ccd70c77b17f70dd57fffbe869c10eb7e53"
+    ],
+    "object_active": true
+  },
+  "pointer": {
+    "dry_run_status": "verified",
+    "apply_status": "cutover",
+    "rollback_status": "rolled_back",
+    "restored_old_target": true
+  },
+  "schema_rollback": {
+    "restored_user_version": 7,
+    "byte_exact": true,
+    "p8_tables_absent": true,
+    "ledger": [
+      1,
+      2,
+      3,
+      4,
+      5,
+      6,
+      7
+    ]
+  },
+  "command": "node scripts/v3-clean-p8-backup-restore-gc-probe.mjs",
+  "exit_status": 0
+}

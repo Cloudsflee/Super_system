@@ -1,0 +1,76 @@
+{
+  "schema_version": "aiws.v3-clean.p8-importer-probe.v2",
+  "status": "passed",
+  "provisional": false,
+  "deterministic": true,
+  "sealed": true,
+  "mapped_rows": 1,
+  "verify": {
+    "schema_version": "aiws.import.verify.v2",
+    "status": "passed",
+    "user_version": 8,
+    "integrity": [
+      "ok"
+    ],
+    "foreign_keys": [],
+    "batch_id": "import_batch_f5ff9d5e334c4e659a2523e7253b4c5b",
+    "source_preservation": {
+      "compared_rows": 36,
+      "missing": [],
+      "changed": []
+    },
+    "mapping": {
+      "expected_rows": 1,
+      "mapped_rows": 1,
+      "blocking_conflicts": 0
+    },
+    "checkpoints": {
+      "count": 14,
+      "domains": [
+        "ACL",
+        "Assist",
+        "Context",
+        "CredentialMetadata",
+        "Delivery",
+        "Evidence",
+        "Execution",
+        "Identity",
+        "Operations",
+        "Outcome",
+        "Project",
+        "Quality",
+        "Repository",
+        "Workflow"
+      ],
+      "invalid": [],
+      "missing_domains": []
+    },
+    "heads": {
+      "mapped_aggregates": 1,
+      "missing": []
+    },
+    "acl": {
+      "projects": 0,
+      "missing_owner_memberships": []
+    },
+    "cas": {
+      "active_objects": 0,
+      "missing": [],
+      "changed": []
+    },
+    "credentials": {
+      "imported": 0,
+      "invalid": 0,
+      "secret_values_persisted": false
+    },
+    "redaction": {
+      "omitted_values_checked": 0,
+      "leaked": [],
+      "absolute_paths": []
+    },
+    "target_file_sha256": "95027d46c7018e1f11178d1931bac7f8eb13526cb9277a5c08366819cb10fa26",
+    "failures": []
+  },
+  "command": "node scripts/v3-clean-p8-importer-probe.mjs",
+  "exit_status": 0
+}

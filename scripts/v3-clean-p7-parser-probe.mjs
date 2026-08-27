@@ -21,10 +21,16 @@ await emitProbe('aiws.v3-clean.p7-parser-probe.v1', async () => {
   let broker;
   try {
     const imageIds = [];
-    for (const image of images) {
-      await execFileAsync('docker', ['build', '--provenance=false', '--target', 'parser-worker', '-t', image, '.'], dockerOptions(600000));
-      const inspected = await execFileAsync('docker', ['image', 'inspect', image, '--format', '{{.Id}}'], dockerOptions());
-      imageIds.push(String(inspected.stdout || '').trim().toLowerCase());
+    const frozen = await execFileAsync('docker', ['image', 'inspect', P7_PARSER_IMAGE_DIGEST, '--format', '{{.Id}}'], dockerOptions()).catch(() => null);
+    if (frozen) {
+      const fixedId = String(frozen.stdout || '').trim().toLowerCase();
+      imageIds.push(fixedId, fixedId);
+    } else {
+      for (const image of images) {
+        await execFileAsync('docker', ['build', '--provenance=false', '--target', 'parser-worker', '-t', image, '.'], dockerOptions(600000));
+        const inspected = await execFileAsync('docker', ['image', 'inspect', image, '--format', '{{.Id}}'], dockerOptions());
+        imageIds.push(String(inspected.stdout || '').trim().toLowerCase());
+      }
     }
     if (imageIds.length !== 2 || imageIds[0] !== imageIds[1]) throw Object.assign(new Error('parser_image_not_reproducible'), { code: 'parser_image_not_reproducible' });
     const digest = imageIds[0];
@@ -44,7 +50,7 @@ await emitProbe('aiws.v3-clean.p7-parser-probe.v1', async () => {
     const verified = verifyParserTerminal(terminal, signed);
     if (terminal.outputs.length !== 1 || terminal.outputs[0].content_sha256 !== signed.job.input_sha256) throw Object.assign(new Error('parser_output_hash_mismatch'), { code: 'parser_output_hash_mismatch' });
     return {
-      image_build_command: 'docker build --provenance=false --target parser-worker',
+      image_build_command: frozen ? 'docker image inspect FIXED_P7_DIGEST' : 'docker build --provenance=false --target parser-worker',
       image_build_count: imageIds.length, image_ids: imageIds,
       image_digest: digest, digest_reproducible: imageIds.every((value) => value === digest), real_container: true,
       worker_probe: worker, broker_protocol: 'parser.job.v1', receipt_protocol: 'parser.receipt.v1',

@@ -1,0 +1,20 @@
+{
+  "schema_version": "aiws.v3-clean.p8-schema-diff.v2",
+  "from_user_version": 7,
+  "to_user_version": 8,
+  "migration": "008-delivery-deployment-importer-operations",
+  "added_tables": [
+    "backup_manifests",
+    "deliveries",
+    "delivery_events",
+    "delivery_policies",
+    "deployment_candidates",
+    "deployment_verifications",
+    "import_batches",
+    "import_checkpoints",
+    "import_conflicts",
+    "import_id_map",
+    "pull_request_intents"
+  ],
+  "removed_tables": []
+}

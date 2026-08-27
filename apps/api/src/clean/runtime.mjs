@@ -32,6 +32,7 @@ import { CleanQualityService } from './quality-service.mjs';
 import { CleanOutcomeEvaluationService } from './outcome-evaluation-service.mjs';
 import { BrokerParserAdapter, DeterministicParserAdapter } from './parser-adapters.mjs';
 import { P7_PARSER_IMAGE_DIGEST } from './migrations/007-evidence-quality-parser-outcome.mjs';
+import { CleanP8Service } from './p8-service.mjs';
 
 export function createCleanRuntime(options = {}) {
   const config = options.config || loadCleanConfig(options.env || process.env);
@@ -84,7 +85,8 @@ export function createCleanRuntime(options = {}) {
   const parser = targetVersion >= 7 ? new CleanParserService({ db, cas, events, operations, authorization, evidence, adapter: parserAdapter, clock: options.now || undefined, pollIntervalMs: options.parserPollIntervalMs || config.parserPollIntervalMs, sleep: options.parserSleep, retryDelays: options.parserRetryDelays, serviceIdentity: options.parserServiceIdentity, bootstrapActorId: initialized.metadata.bootstrap_actor_id }) : null;
   const quality = targetVersion >= 7 ? new CleanQualityService({ db, cas, events, operations, authorization, evidence, clock: options.now || undefined, bootstrapActorId: initialized.metadata.bootstrap_actor_id }) : null;
   const outcomeEvaluation = targetVersion >= 7 ? new CleanOutcomeEvaluationService({ db, events, operations, authorization, clock: options.now || undefined, bootstrapActorId: initialized.metadata.bootstrap_actor_id }) : null;
-  const dispatcher = targetVersion >= 4 ? new CleanCommandDispatcher({ registry, context, mcp, gateway, projectWorkflow, operations, events, assist, files, terminal, bridge, runner, execution, evidence, parser, quality, outcomeEvaluation }) : null;
+  const p8Service = targetVersion >= 8 ? new CleanP8Service({ db, cas, events, operations, authorization, vault, projectWorkflow, githubAdapter: options.githubAdapter, operationsAdapter: options.operationsAdapter, config, clock: options.now || undefined, bootstrapActorId: initialized.metadata.bootstrap_actor_id }) : null;
+  const dispatcher = targetVersion >= 4 ? new CleanCommandDispatcher({ registry, context, mcp, gateway, projectWorkflow, operations, events, assist, files, terminal, bridge, runner, execution, evidence, parser, quality, outcomeEvaluation, p8Service }) : null;
   if (mcp) mcp.dispatcher = dispatcher;
   const recovery = (async () => {
     const identityResult = await identity.recoverPending();
@@ -99,7 +101,8 @@ export function createCleanRuntime(options = {}) {
     const parserResult = await (parser?.recoverPending?.() || 0);
     const qualityResult = await (quality?.recoverPending?.() || 0);
     const outcomeResult = await (outcomeEvaluation?.recoverPending?.() || 0);
-    return [identityResult, projectResult, contextResult, assistResult, filesResult, terminalResult, bridgeResult, executionResult, evidenceResult, parserResult, qualityResult, outcomeResult];
+    const p8Result = await (p8Service?.recoverPending?.() || 0);
+    return [identityResult, projectResult, contextResult, assistResult, filesResult, terminalResult, bridgeResult, executionResult, evidenceResult, parserResult, qualityResult, outcomeResult, p8Result];
   })();
   events.authorize = (context) => authorization.authorize({ actorId: context.actorId, effectiveActorId: context.actorId, scopes: ['*'] }, 'read', context.projectId, { events: context.events }).allowed;
   let casManifest;
@@ -150,6 +153,7 @@ export function createCleanRuntime(options = {}) {
     parserAdapter,
     quality,
     outcomeEvaluation,
+    p8Service,
     dispatcher,
     project: projectWorkflow,
     repository: projectWorkflow,
@@ -172,8 +176,9 @@ export function createCleanRuntime(options = {}) {
     p5: targetVersion >= 5,
     p6: targetVersion >= 6,
     p7: targetVersion >= 7,
+    p8: targetVersion >= 8,
     health() {
-      return { runtime: 'v3-clean', ready: this.ready, readiness_reason: this.readinessReason, readiness_receipt: this.readinessReceipt, schema_family: this.metadata.family, user_version: this.metadata.user_version, cas_manifest: this.casManifest || null, p2: this.p2, p3: this.p3, p4: this.p4, p5: this.p5, p6: this.p6, p7: this.p7 };
+      return { runtime: 'v3-clean', ready: this.ready, readiness_reason: this.readinessReason, readiness_receipt: this.readinessReceipt, schema_family: this.metadata.family, user_version: this.metadata.user_version, cas_manifest: this.casManifest || null, p2: this.p2, p3: this.p3, p4: this.p4, p5: this.p5, p6: this.p6, p7: this.p7, p8: this.p8 };
     },
     close() {
       this.terminal?.close?.();
@@ -252,6 +257,7 @@ export function createNotReadyRuntime(options = {}, failure = null) {
     parserAdapter: null,
     quality: null,
     outcomeEvaluation: null,
+    p8Service: null,
     dispatcher: null,
     project: null,
     repository: null,
@@ -274,8 +280,9 @@ export function createNotReadyRuntime(options = {}, failure = null) {
     p5: false,
     p6: false,
     p7: false,
+    p8: false,
     health() {
-      return { runtime: 'v3-clean', ready: false, readiness_reason: this.readinessReason, readiness_receipt: this.readinessReceipt, schema_family: this.metadata.family, user_version: this.metadata.user_version, cas_manifest: null, p2: false, p3: false, p4: false, p5: false, p6: false, p7: false };
+      return { runtime: 'v3-clean', ready: false, readiness_reason: this.readinessReason, readiness_receipt: this.readinessReceipt, schema_family: this.metadata.family, user_version: this.metadata.user_version, cas_manifest: null, p2: false, p3: false, p4: false, p5: false, p6: false, p7: false, p8: false };
     },
     close() {}
   };
@@ -310,6 +317,6 @@ function createParserAdapter(options, config) {
 
 function targetVersionFromOptions(options = {}) {
   if (options.targetVersion != null || options.schemaVersion != null) return Number(options.targetVersion ?? options.schemaVersion);
-  for (const version of [7, 6, 5, 4, 3]) if (options[`p${version}`] || options.phase === `p${version}` || options.cleanPhase === `p${version}`) return version;
+  for (const version of [8, 7, 6, 5, 4, 3]) if (options[`p${version}`] || options.phase === `p${version}` || options.cleanPhase === `p${version}`) return version;
   return 2;
 }

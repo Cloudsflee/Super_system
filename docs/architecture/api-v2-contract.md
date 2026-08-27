@@ -477,3 +477,26 @@ The API gate must verify:
 6. HTTP, MCP HTTP, stdio, Gateway, and Web client schemas agree;
 7. redaction tests find no secret/path/token sentinel;
 8. route inventory and capability matrix references are bidirectional.
+
+## P8 Delivery and Operations
+
+P8 registers exactly 25 route-specific closed contracts. They cover project
+Delivery policies; GitHub profile repository discovery and raw-body webhook;
+Delivery list/get/submit/intent/ready/merge/reconcile; Deployment candidate
+list/get/create/verify; Backup list/create; restore/reset prepare; sealed Import
+queries; operation list/replay; and CAS GC plan/apply. The generic
+`p8.query/mutation/list/receipt.v2` objects are retired.
+
+Every ordinary P8 route passes through `CleanCommandDispatcher`. GitHub webhook
+is the registered `external_callback` exception: HTTP reads bounded raw bytes,
+verifies `X-Hub-Signature-256`, and only then parses provider data. Its
+`X-GitHub-Delivery` digest is stored through the generic idempotency owner;
+duplicate or out-of-order callbacks cannot regress Delivery state.
+
+Mutations require `Idempotency-Key` plus expected revision. External or
+long-running actions return `202`; immutable resource creation returns `201`;
+queries return `200`. Delivery uses the shared Project ACL. Profile discovery
+requires the profile owner. Merge, Deployment, Backup, restore/reset, and GC
+apply require an unswitched owner session plus an unexpired approved action
+receipt. Import mutation commands exist only as
+`aiws-import inspect|dry-run|run|resume|verify|cutover|rollback`.

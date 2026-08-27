@@ -1,0 +1,41 @@
+{
+  "schema_version": "aiws.v3-clean.p8-rollback-receipt.v2",
+  "status": "passed",
+  "dry_run": {
+    "command": "powershell -File rollback.ps1 -DryRun",
+    "stdout": "{\"status\":\"passed\",\"target\":\"rollback-isolated\",\"source\":\"rollback-baseline\",\"mode\":\"dry-run\",\"writes\":0}\r\n",
+    "stderr": "",
+    "exit_status": 0
+  },
+  "apply": {
+    "command": "powershell -File rollback.ps1 -Apply -IsolatedRoot <TARGET>",
+    "stdout": "{\"status\":\"passed\",\"restored_user_version\":7,\"ledger\":[1,2,3,4,5,6,7],\"foreign_keys\":[],\"p8_tables_present\":[],\"restored_components\":[\"sqlite\",\"cas\",\"vault\",\"workspace\",\"broker\",\"bridge\",\"parser\"],\"byte_exact_mismatches\":[]}\n",
+    "stderr": "(node:20616) ExperimentalWarning: SQLite is an experimental feature and might change at any time\n(Use `node --trace-warnings ...` to show where the warning was created)\n",
+    "exit_status": 0,
+    "output": {
+      "status": "passed",
+      "restored_user_version": 7,
+      "ledger": [
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7
+      ],
+      "foreign_keys": [],
+      "p8_tables_present": [],
+      "restored_components": [
+        "sqlite",
+        "cas",
+        "vault",
+        "workspace",
+        "broker",
+        "bridge",
+        "parser"
+      ],
+      "byte_exact_mismatches": []
+    }
+  }
+}

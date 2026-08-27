@@ -14,6 +14,7 @@ export class RepositoryService {
   updateConnection(id, input, principal) { return this.core.updateRepositoryConnection(id, input, principal); }
   listTargets(id, principal) { return this.core.listRepositoryTargets(id, principal); }
   createTarget(id, input, principal) { return this.core.createRepositoryTarget(id, input, principal); }
+  synchronizeBaselineInTransaction(tx, id, input) { return this.core.synchronizeRepositoryBaselineInTransaction(tx, id, input); }
   listLines(id, principal) { return this.core.listRepositoryLines(id, principal); }
   reconcileLine(id, input, principal) { return this.core.reconcileRepositoryLine(id, input, principal); }
   listWorkspaces(id, principal) { return this.core.listRepositoryWorkspaces(id, principal); }

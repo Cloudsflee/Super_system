@@ -450,3 +450,74 @@ runnable rollback receipt. Reopen and execute each artifact before completion.
 Final updates state the changed files, checks run, literal failures (if any),
 and remaining worktree changes. Do not claim a release when only a scaffold or
 document exists.
+
+## P8 activation
+
+Decision `D-037` activates P8 over baseline
+`4ee1a436b2f810354602308d733fbee7423f3cf0`. The forward-only
+`008-delivery-deployment-importer-operations` migration advances the active
+runtime to `user_version=8`. Delivery, Deployment, offline Importer, Backup,
+Restore, Operations replay, and physical CAS GC reuse the P1-P7 operation,
+event, head, authorization, Evidence, Vault, and CAS owners. Import mutation is
+CLI-only; runtime `/api/v2/imports` routes are sealed-batch queries. A missing
+real GitHub App or Docker identity leaves P8 Evidence provisional and freezes
+the Catalog at `23/4/27`; only final non-provisional verification promotes it
+to `26/1/27`.
+
+The additive P8 implementation inventory is:
+
+~~~text
+pnpm check
+pnpm audit:p1
+pnpm scan:clean
+pnpm recovery:plan
+pnpm recovery:catalog
+pnpm recovery:coverage
+pnpm recovery:impact -- --audit
+pnpm test:p1
+pnpm test:p2
+pnpm test:p3
+pnpm test:p31
+pnpm test:p4
+pnpm test:p5
+pnpm test:p6
+pnpm test:p7
+pnpm test:p8
+node scripts/v3-clean-p5-performance.mjs
+node scripts/v3-clean-p5-assist-probe.mjs
+node scripts/v3-clean-p5-bridge-probe.mjs
+node scripts/v3-clean-p6-performance.mjs
+node scripts/v3-clean-p6-docker-runner-probe.mjs
+node scripts/v3-clean-p6-host-runner-probe.mjs
+node scripts/v3-clean-p6-bridge-runner-probe.mjs
+node scripts/v3-clean-p6-restart-probe.mjs
+node scripts/v3-clean-p7-performance.mjs
+node scripts/v3-clean-p7-cas-tamper-probe.mjs
+node scripts/v3-clean-p7-parser-probe.mjs
+node scripts/v3-clean-p7-quality-outcome-probe.mjs
+node scripts/v3-clean-p7-restart-probe.mjs
+node scripts/v3-clean-p8-performance.mjs
+node scripts/v3-clean-p8-github-delivery-probe.mjs
+node scripts/v3-clean-p8-importer-probe.mjs
+node scripts/v3-clean-p8-deployment-rollback-probe.mjs
+node scripts/v3-clean-p8-backup-restore-gc-probe.mjs
+pnpm --filter @aiws/web test
+pnpm test
+pnpm test:integration:clean
+pnpm test:security:clean
+pnpm test:integration
+pnpm test:security
+pnpm build
+pnpm test:e2e
+pnpm test:release
+pnpm verify
+pnpm evidence:p8
+git diff --check
+~~~
+
+The current published P8 receipt is `run-1787846480106` with
+`status=verified` and `provisional=false`. It includes the real GitHub App
+fixture delivery and Docker deployment receipts, plus an isolated actual v7
+rollback, so the Catalog is promoted to `26/1/27`. P9 branching and D-038
+remain inactive until this verified worktree is committed and pushed as the
+P8 final boundary.

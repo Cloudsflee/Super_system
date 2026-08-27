@@ -32,6 +32,12 @@ export function createCleanHttpHandler({ runtime, registry, maxBodyBytes = runti
       const entry = registry.match(req.method, pathname);
       if (!entry) throw new HttpError('not_found', 'route not found', { path: pathname }, 404, false);
       const params = routeParams(entry.path, pathname);
+      if (entry.command_id === 'github.webhook.receive') {
+        validateQuery(url, new Set());
+        const rawBody = await readRaw(req, maxBodyBytes);
+        const result = await runtime.p8Service.receiveGithubWebhook(rawBody, req.headers);
+        return sendSuccess(res, requestId, result, { resourceType: 'delivery_webhook', outputSchema: entry.output_schema, policy: runtime.policy });
+      }
       if (entry.command_id === 'setup.get') {
         validateQuery(url, new Set());
         return sendSuccess(res, requestId, runtime.identity?.setupState?.() || { needs_setup: false, actor_count: 0, bootstrap_actor_id: runtime.metadata.bootstrap_actor_id }, { resourceType: 'setup', outputSchema: entry.output_schema, policy: runtime.policy });
@@ -58,6 +64,9 @@ export function createCleanHttpHandler({ runtime, registry, maxBodyBytes = runti
         : runtime.p2 && runtime.identity
           ? runtime.identity.principalFromRequest(req)
           : runtime.platform.actorContext({ actorId: req.headers['x-actor-id'], projectId: req.headers['x-project-id'], scopes: parseScopes(req.headers['x-scopes']) });
+      if (runtime.p8 && entry.phase === 'p8') {
+        return await handleP5Route({ entry, params, url, req, res, requestId, runtime, actor, bodyReader: () => readJson(req, maxBodyBytes) });
+      }
       if (runtime.p7 && entry.phase === 'p7') {
         return await handleP5Route({ entry, params, url, req, res, requestId, runtime, actor, bodyReader: () => readJson(req, Math.max(maxBodyBytes, entry.command_id === 'asset.capture' ? 36 * 1024 * 1024 : maxBodyBytes)) });
       }
@@ -171,6 +180,7 @@ async function handleP5Route({ entry, params, url, req, res, requestId, runtime,
   if (req.method !== 'GET') {
     body = await bodyReader();
     hydrateP5MutationHeaders(entry, req, body);
+    validateFields(body, new Set(Object.keys(schema.properties || {})));
   }
   const args = p5DispatchArguments(command, params, url, body, schema);
   const dispatched = await runtime.dispatcher.dispatch(command, args, actor, { transport: 'rest' });
@@ -247,6 +257,11 @@ function p5DispatchArguments(command, params, url, body, schema) {
     else if (command.startsWith('quality.')) args.quality_review_id ||= args.id;
     else if (command.startsWith('outcome.waiver.revoke')) args.waiver_id ||= args.id;
     else if (command.startsWith('outcome.')) args.execution_id ||= args.id;
+    else if (command === 'github.repository.list') args.profile_id ||= args.id;
+    else if (command.startsWith('delivery.')) args.delivery_id ||= args.id;
+    else if (command.startsWith('deployment.candidate') || command === 'deployment.verify') args.candidate_id ||= args.id;
+    else if (command.startsWith('import.')) args.import_id ||= args.id;
+    else if (command === 'operations.replay') args.operation_id ||= args.id;
   }
   const properties = schema.properties || {};
   if (reqIsGetSchema(schema)) {
@@ -286,13 +301,13 @@ function hydrateP5MutationHeaders(entry, req, body) {
 }
 
 function p5Status(command, value) {
-  if (['assist.turn.create', 'assist.turn.retry', 'change.batch.apply', 'change.batch.undo', 'runner.profile.probe', 'execution.start', 'execution.resume', 'execution.stage.replay', 'parser.run.start', 'parser.run.retry', 'quality.start', 'quality.retry', 'outcome.evaluate'].includes(command)) return 202;
-  if (['assist.session.create', 'assist.reference.create', 'attachment.create', 'change.batch.create', 'approval.create', 'user.input.create', 'proposal.create', 'terminal.open', 'bridge.pair', 'bridge.transfer.create', 'runner.profile.create', 'execution.create', 'execution.replan', 'asset.capture', 'asset.relation.create', 'asset.attest', 'outcome.waiver.create', 'outcome.waiver.revoke'].includes(command)) return value?.replayed ? 200 : 201;
+  if (['assist.turn.create', 'assist.turn.retry', 'change.batch.apply', 'change.batch.undo', 'runner.profile.probe', 'execution.start', 'execution.resume', 'execution.stage.replay', 'parser.run.start', 'parser.run.retry', 'quality.start', 'quality.retry', 'outcome.evaluate', 'delivery.submit', 'delivery.intent.create', 'delivery.intent.ready', 'delivery.intent.merge', 'delivery.reconcile', 'deployment.verify', 'backup.create', 'restore.prepare', 'system.reset.prepare', 'operations.replay'].includes(command)) return 202;
+  if (['assist.session.create', 'assist.reference.create', 'attachment.create', 'change.batch.create', 'approval.create', 'user.input.create', 'proposal.create', 'terminal.open', 'bridge.pair', 'bridge.transfer.create', 'runner.profile.create', 'execution.create', 'execution.replan', 'asset.capture', 'asset.relation.create', 'asset.attest', 'outcome.waiver.create', 'outcome.waiver.revoke', 'delivery.policy.create', 'deployment.candidate.create'].includes(command)) return value?.replayed ? 200 : 201;
   return 200;
 }
 
-function p5Revision(value) { return value?.revision ?? value?.session?.revision ?? value?.turn?.revision ?? value?.goal?.revision ?? value?.attachment?.revision ?? value?.batch?.revision ?? value?.approval?.revision ?? value?.input?.revision ?? value?.proposal?.revision ?? value?.terminal?.revision ?? value?.device?.revision ?? value?.transfer?.revision ?? value?.profile?.revision ?? value?.execution?.revision ?? value?.asset?.revision ?? value?.parser_run?.revision ?? value?.quality_review?.revision ?? value?.evaluation?.revision ?? value?.waiver?.revision ?? value?.operation?.revision ?? null; }
-function p5ResourceType(command) { if (command.startsWith('assist.')) return command.startsWith('assist.turn') ? 'assist_turn' : 'assist_session'; if (command.startsWith('attachment.')) return 'attachment'; if (command.startsWith('file.')) return 'file_ref'; if (command.startsWith('change.batch')) return 'file_change_batch'; if (command.startsWith('approval.')) return 'runtime_approval'; if (command.startsWith('user.input')) return 'runtime_user_input'; if (command.startsWith('proposal.')) return 'semantic_proposal'; if (command.startsWith('terminal.')) return 'terminal_session'; if (command.startsWith('bridge.transfer')) return 'bridge_transfer'; if (command.startsWith('bridge.')) return 'bridge_device'; if (command.startsWith('runner.profile')) return 'runner_profile'; if (command.startsWith('execution.')) return 'execution'; if (command.startsWith('asset.') || command.startsWith('evidence.')) return 'asset'; if (command.startsWith('parser.')) return 'parser_run'; if (command.startsWith('quality.')) return 'quality_review'; if (command.startsWith('outcome.')) return 'outcome_evaluation'; return 'resource'; }
+function p5Revision(value) { return value?.revision ?? value?.session?.revision ?? value?.turn?.revision ?? value?.goal?.revision ?? value?.attachment?.revision ?? value?.batch?.revision ?? value?.approval?.revision ?? value?.input?.revision ?? value?.proposal?.revision ?? value?.terminal?.revision ?? value?.device?.revision ?? value?.transfer?.revision ?? value?.profile?.revision ?? value?.execution?.revision ?? value?.asset?.revision ?? value?.parser_run?.revision ?? value?.quality_review?.revision ?? value?.evaluation?.revision ?? value?.waiver?.revision ?? value?.policy?.revision ?? value?.delivery?.revision ?? value?.intent?.generation ?? value?.candidate?.revision ?? value?.operation?.revision ?? null; }
+function p5ResourceType(command) { if (command.startsWith('assist.')) return command.startsWith('assist.turn') ? 'assist_turn' : 'assist_session'; if (command.startsWith('attachment.')) return 'attachment'; if (command.startsWith('file.')) return 'file_ref'; if (command.startsWith('change.batch')) return 'file_change_batch'; if (command.startsWith('approval.')) return 'runtime_approval'; if (command.startsWith('user.input')) return 'runtime_user_input'; if (command.startsWith('proposal.')) return 'semantic_proposal'; if (command.startsWith('terminal.')) return 'terminal_session'; if (command.startsWith('bridge.transfer')) return 'bridge_transfer'; if (command.startsWith('bridge.')) return 'bridge_device'; if (command.startsWith('runner.profile')) return 'runner_profile'; if (command.startsWith('execution.')) return 'execution'; if (command.startsWith('asset.') || command.startsWith('evidence.')) return 'asset'; if (command.startsWith('parser.')) return 'parser_run'; if (command.startsWith('quality.')) return 'quality_review'; if (command.startsWith('outcome.')) return 'outcome_evaluation'; if (command.startsWith('delivery.')) return 'delivery'; if (command.startsWith('github.')) return 'github_repository'; if (command.startsWith('deployment.')) return 'deployment_candidate'; if (command.startsWith('backup.') || command.startsWith('restore.') || command.startsWith('system.reset')) return 'backup'; if (command.startsWith('import.')) return 'import_batch'; if (command.startsWith('cas.gc')) return 'cas_gc'; return 'resource'; }
 
 async function handleP4Route({ entry, params, url, req, res, requestId, runtime, actor, mcpBoundary, bodyReader }) {
   const command = entry.command_id;
@@ -1094,6 +1109,19 @@ async function readJson(req, maxBytes) {
   }
   if (!total) return {};
   try { return JSON.parse(Buffer.concat(chunks).toString('utf8')); } catch { throw new HttpError('schema_invalid', 'request body is not valid JSON', {}, 400, false); }
+}
+
+async function readRaw(req, maxBytes) {
+  const length = Number(req.headers['content-length'] || 0);
+  if (length > maxBytes) throw new HttpError('payload_too_large', 'request body is too large', { max_bytes: maxBytes }, 413, false);
+  const chunks = [];
+  let total = 0;
+  for await (const chunk of req) {
+    total += chunk.length;
+    if (total > maxBytes) throw new HttpError('payload_too_large', 'request body is too large', { max_bytes: maxBytes }, 413, false);
+    chunks.push(Buffer.from(chunk));
+  }
+  return Buffer.concat(chunks, total);
 }
 
 function etagFor(value, explicitRevision = null) {

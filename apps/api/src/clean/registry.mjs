@@ -66,7 +66,8 @@ const entries = [
   ...p4Entries(),
   ...p5Entries(),
   ...p6Entries(),
-  ...p7Entries()
+  ...p7Entries(),
+  ...p8Entries()
 ];
 
 function identityEntries() {
@@ -387,6 +388,49 @@ function p7Entries() {
   ];
 }
 
+function p8Entries() {
+  const common = (command_id, method, path, owner, scope, input_schema, output_schema, events, options = {}) => ({
+    command_id, version: 2, method, path, owner, scope, phase: 'p8', project_scoped: options.project_scoped !== false,
+    idempotency: options.external_callback ? 'provider-delivery' : method === 'GET' ? 'forbidden' : 'required', expected_revision: options.external_callback || method === 'GET' ? 'none' : (options.expected_revision || 'resource'),
+    input_schema, output_schema,
+    long_running: Boolean(options.long_running), events,
+    mcp: { mapping: options.rest_only ? 'rest-only' : (method === 'GET' ? 'resource' : 'tool'), name: command_id.replaceAll('.', '_'), exposed: !options.rest_only },
+    transport_allowlist: Object.freeze(options.rest_only ? ['rest', 'web'] : ['rest', 'web', 'mcp', 'gateway']), redaction_policy: 'v3-clean-default', external_adapter: options.external_adapter || null,
+    external_callback: Boolean(options.external_callback),
+    ui_metadata: { surface: options.surface || owner.toLowerCase(), state: options.state || command_id }, evidence_metadata: { receipt_kind: options.long_running ? 'operation.receipt.v2' : 'resource.receipt.v2', verification: 'p8-delivery-deployment-importer-operations' }
+  });
+  return [
+    common('delivery.policy.list', 'GET', '/api/v2/projects/{project_id}/delivery-policies', 'Delivery', 'delivery:read', 'delivery.policy.query.v2', 'delivery.policies.v2', ['delivery.policy.*']),
+    common('delivery.policy.create', 'POST', '/api/v2/projects/{project_id}/delivery-policies', 'Delivery', 'delivery:approve', 'delivery.policy.create.v2', 'delivery.policy.receipt.v2', ['delivery.policy.created'], { expected_revision: 'project' }),
+    common('github.repository.list', 'GET', '/api/v2/provider-profiles/{id}/repositories', 'Delivery', 'credential:read', 'github.repositories.query.v2', 'github.repositories.v2', ['delivery.repository.discovered'], { project_scoped: false, rest_only: true, external_adapter: 'github.app.v1' }),
+    common('github.webhook.receive', 'POST', '/api/v2/webhooks/github', 'Delivery', 'external_callback', 'github.webhook.v2', 'github.webhook.receipt.v2', ['delivery.webhook.received'], { project_scoped: false, rest_only: true, external_callback: true, external_adapter: 'github.app.v1' }),
+    common('delivery.list', 'GET', '/api/v2/deliveries', 'Delivery', 'delivery:read', 'delivery.list.query.v2', 'deliveries.v2', ['delivery.*'], { project_scoped: false }),
+    common('delivery.get', 'GET', '/api/v2/deliveries/{id}', 'Delivery', 'delivery:read', 'delivery.get.query.v2', 'delivery.v2', ['delivery.*'], { project_scoped: false }),
+    common('delivery.submit', 'POST', '/api/v2/deliveries', 'Delivery', 'delivery:deliver', 'delivery.submit.v2', 'operation.receipt.v2', ['delivery.queued'], { project_scoped: false, long_running: true, expected_revision: 'execution', external_adapter: 'github.app.v1' }),
+    common('delivery.intent.create', 'POST', '/api/v2/deliveries/{id}/pull-request-intents', 'Delivery', 'delivery:deliver', 'delivery.intent.create.v2', 'operation.receipt.v2', ['delivery.intent.create_draft'], { project_scoped: false, long_running: true, external_adapter: 'github.app.v1' }),
+    common('delivery.intent.ready', 'POST', '/api/v2/deliveries/{id}/ready', 'Delivery', 'delivery:deliver', 'delivery.intent.ready.v2', 'operation.receipt.v2', ['delivery.intent.mark_ready'], { project_scoped: false, long_running: true, rest_only: true, external_adapter: 'github.app.v1' }),
+    common('delivery.intent.merge', 'POST', '/api/v2/deliveries/{id}/merge', 'Delivery', 'delivery:approve', 'delivery.intent.merge.v2', 'operation.receipt.v2', ['delivery.intent.merge'], { project_scoped: false, long_running: true, rest_only: true, external_adapter: 'github.app.v1' }),
+    common('delivery.reconcile', 'POST', '/api/v2/deliveries/{id}/reconcile', 'Delivery', 'delivery:deliver', 'delivery.reconcile.v2', 'operation.receipt.v2', ['delivery.intent.reconcile'], { project_scoped: false, long_running: true, rest_only: true, external_adapter: 'github.app.v1' }),
+
+    common('deployment.get', 'GET', '/api/v2/system/deployment', 'Deployment', 'operations:read', 'deployment.query.v2', 'deployment.v2', ['deployment.*'], { project_scoped: false, rest_only: true }),
+    common('deployment.candidate.get', 'GET', '/api/v2/system/deployment/candidates/{id}', 'Deployment', 'operations:read', 'deployment.candidate.query.v2', 'deployment.candidate.v2', ['deployment.*'], { project_scoped: false, rest_only: true }),
+    common('deployment.candidate.create', 'POST', '/api/v2/system/deployment/candidates', 'Deployment', 'operations:approve', 'deployment.candidate.create.v2', 'deployment.receipt.v2', ['deployment.candidate.created'], { project_scoped: false, rest_only: true, expected_revision: 'parent' }),
+    common('deployment.verify', 'POST', '/api/v2/system/deployment/candidates/{id}/verify', 'Deployment', 'operations:approve', 'deployment.verify.v2', 'operation.receipt.v2', ['deployment.verification.queued', 'deployment.verified'], { project_scoped: false, rest_only: true, long_running: true }),
+
+    common('backup.list', 'GET', '/api/v2/backups', 'Operations', 'operations:read', 'backup.list.query.v2', 'backups.v2', ['backup.*'], { project_scoped: false, rest_only: true }),
+    common('backup.create', 'POST', '/api/v2/backups', 'Operations', 'operations:approve', 'backup.create.v2', 'operation.receipt.v2', ['backup.queued', 'backup.created'], { project_scoped: false, rest_only: true, long_running: true, expected_revision: 'parent' }),
+    common('restore.prepare', 'POST', '/api/v2/restore/prepare', 'Operations', 'operations:approve', 'restore.prepare.v2', 'operation.receipt.v2', ['restore.prepared'], { project_scoped: false, rest_only: true, long_running: true, expected_revision: 'parent' }),
+    common('system.reset.prepare', 'POST', '/api/v2/system/reset/prepare', 'Operations', 'operations:approve', 'system.reset.prepare.v2', 'operation.receipt.v2', ['system.reset.prepared'], { project_scoped: false, rest_only: true, long_running: true, expected_revision: 'parent' }),
+
+    common('import.list', 'GET', '/api/v2/imports', 'Importer', 'import:read', 'import.list.query.v2', 'imports.v2', ['import.*'], { project_scoped: false, rest_only: true }),
+    common('import.get', 'GET', '/api/v2/imports/{id}', 'Importer', 'import:read', 'import.get.query.v2', 'import.v2', ['import.*'], { project_scoped: false, rest_only: true }),
+    common('operations.list', 'GET', '/api/v2/operations', 'Operations', 'operations:read', 'operations.list.query.v2', 'operations.v2', ['operation.*'], { project_scoped: false }),
+    common('operations.replay', 'POST', '/api/v2/operations/{id}/replay', 'Operations', 'operations:control', 'operations.replay.v2', 'operation.receipt.v2', ['operation.queued'], { project_scoped: false, long_running: true }),
+    common('cas.gc.plan', 'POST', '/api/v2/cas/gc/plan', 'CAS', 'operations:approve', 'cas.gc.plan.v2', 'cas.gc.plan.receipt.v2', ['cas.gc.planned'], { project_scoped: false, rest_only: true, expected_revision: 'parent' }),
+    common('cas.gc.apply', 'POST', '/api/v2/cas/gc/apply', 'CAS', 'operations:approve', 'cas.gc.apply.v2', 'cas.gc.apply.receipt.v2', ['cas.gc.applied'], { project_scoped: false, rest_only: true, expected_revision: 'parent' })
+  ];
+}
+
 export const CLEAN_COMMAND_REGISTRY = Object.freeze(entries.map((entry) => Object.freeze({
   ...entry,
   phase: entry.phase || 'p2',
@@ -405,7 +449,8 @@ export function createCleanCommandRegistry(options = {}) {
   const includeP5 = options.phase === 'p5' || options.cleanPhase === 'p5' || Number(options.targetVersion || 0) >= 5;
   const includeP6 = options.phase === 'p6' || options.cleanPhase === 'p6' || Number(options.targetVersion || 0) >= 6;
   const includeP7 = options.phase === 'p7' || options.cleanPhase === 'p7' || Number(options.targetVersion || 0) >= 7;
-  const selected = includeP7 ? CLEAN_COMMAND_REGISTRY : includeP6 ? CLEAN_COMMAND_REGISTRY.filter((entry) => entry.phase !== 'p7') : includeP5 ? CLEAN_COMMAND_REGISTRY.filter((entry) => !['p6', 'p7'].includes(entry.phase)) : includeP4 ? CLEAN_COMMAND_REGISTRY.filter((entry) => !['p5', 'p6', 'p7'].includes(entry.phase)) : includeP3 ? CLEAN_COMMAND_REGISTRY.filter((entry) => !['p4', 'p5', 'p6', 'p7'].includes(entry.phase)) : CLEAN_COMMAND_REGISTRY.filter((entry) => !['p3', 'p4', 'p5', 'p6', 'p7'].includes(entry.phase));
+  const includeP8 = options.phase === 'p8' || options.cleanPhase === 'p8' || Number(options.targetVersion || 0) >= 8;
+  const selected = includeP8 ? CLEAN_COMMAND_REGISTRY : includeP7 ? CLEAN_COMMAND_REGISTRY.filter((entry) => entry.phase !== 'p8') : includeP6 ? CLEAN_COMMAND_REGISTRY.filter((entry) => !['p7','p8'].includes(entry.phase)) : includeP5 ? CLEAN_COMMAND_REGISTRY.filter((entry) => !['p6', 'p7','p8'].includes(entry.phase)) : includeP4 ? CLEAN_COMMAND_REGISTRY.filter((entry) => !['p5', 'p6', 'p7','p8'].includes(entry.phase)) : includeP3 ? CLEAN_COMMAND_REGISTRY.filter((entry) => !['p4', 'p5', 'p6', 'p7','p8'].includes(entry.phase)) : CLEAN_COMMAND_REGISTRY.filter((entry) => !['p3', 'p4', 'p5', 'p6', 'p7','p8'].includes(entry.phase));
   return {
     entries: selected,
     get(commandId) { return selected.find((entry) => entry.command_id === commandId) || null; },
@@ -432,13 +477,13 @@ export function validateRegistry(registry = CLEAN_COMMAND_REGISTRY) {
     if (paths.has(routeKey)) throw new Error(`registry_duplicate_route:${routeKey}`);
     paths.add(routeKey);
     if (!/^\/api\/v2\//.test(entry.path)) throw new Error(`registry_non_v2_route:${entry.path}`);
-    if (entry.method !== 'GET' && entry.idempotency !== 'required') throw new Error(`registry_mutation_idempotency_missing:${entry.command_id}`);
-    if (entry.method !== 'GET' && entry.expected_revision === 'none') throw new Error(`registry_mutation_revision_missing:${entry.command_id}`);
+    if (entry.method !== 'GET' && !entry.external_callback && entry.idempotency !== 'required') throw new Error(`registry_mutation_idempotency_missing:${entry.command_id}`);
+    if (entry.method !== 'GET' && !entry.external_callback && entry.expected_revision === 'none') throw new Error(`registry_mutation_revision_missing:${entry.command_id}`);
     if (entry.long_running && (!entry.events.length || !entry.output_schema.includes('operation'))) throw new Error(`registry_long_running_mapping_missing:${entry.command_id}`);
     if (!CLEAN_V2_SCHEMAS[entry.input_schema]) throw new Error(`registry_input_schema_missing:${entry.command_id}:${entry.input_schema}`);
     if (!CLEAN_V2_SCHEMAS[entry.output_schema]) throw new Error(`registry_output_schema_missing:${entry.command_id}:${entry.output_schema}`);
     if (!entry.mcp?.name) throw new Error(`registry_mcp_mapping_missing:${entry.command_id}`);
-    if (['p5', 'p6', 'p7'].includes(entry.phase)) {
+    if (['p5', 'p6', 'p7', 'p8'].includes(entry.phase)) {
       if (!Array.isArray(entry.transport_allowlist) || entry.transport_allowlist.length === 0) throw new Error(`registry_transport_allowlist_missing:${entry.command_id}`);
       if (new Set(entry.transport_allowlist).size !== entry.transport_allowlist.length || entry.transport_allowlist.some((transport) => !['rest', 'web', 'mcp', 'gateway'].includes(transport))) throw new Error(`registry_transport_allowlist_invalid:${entry.command_id}`);
       if (entry.mcp.exposed === false && (entry.transport_allowlist.includes('mcp') || entry.transport_allowlist.includes('gateway'))) throw new Error(`registry_transport_exposure_mismatch:${entry.command_id}`);

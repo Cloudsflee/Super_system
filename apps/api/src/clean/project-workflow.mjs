@@ -974,6 +974,39 @@ class ProjectWorkflowCore {
     });
   }
 
+  synchronizeRepositoryBaselineInTransaction(tx, targetId, { projectId, expectedHeadSha, operationId, actorId, now } = {}) {
+    const target = tx.get(`SELECT t.*,c.project_id,c.revision AS connection_revision,c.status AS connection_status
+      FROM repository_targets t JOIN repository_connections c ON c.id=t.connection_id WHERE t.id=?`, [String(targetId)]);
+    if (!target || target.project_id !== String(projectId)) throw notFound('repository target');
+    const head = boundedString(expectedHeadSha, 128);
+    if (head.length < 7) throw new PlatformError('schema_invalid', 'repository baseline SHA is invalid', {}, 422);
+    const targetRevision = Number(target.revision) + 1;
+    tx.run('UPDATE repository_targets SET expected_head_sha=?,revision=?,updated_at=?,updated_by_actor_id=? WHERE id=? AND revision=?', [head, targetRevision, now, actorId, target.id, target.revision], 1);
+    appendAggregate(tx, this.events, {
+      aggregateType: 'repository_target', aggregateId: target.id, revision: targetRevision, operationId, actorId,
+      projectId: target.project_id, type: 'repository.baseline.synchronized', data: { target_id: target.id, expected_head_sha: head },
+      payload: { id: target.id, connection_id: target.connection_id, expected_head_sha: head, revision: targetRevision }, now
+    });
+    const connectionRevision = Number(target.connection_revision) + 1;
+    tx.run('UPDATE repository_connections SET source_revision=?,revision=?,updated_at=?,updated_by_actor_id=? WHERE id=? AND revision=?', [head, connectionRevision, now, actorId, target.connection_id, target.connection_revision], 1);
+    appendAggregate(tx, this.events, {
+      aggregateType: 'repository_connection', aggregateId: target.connection_id, revision: connectionRevision, operationId, actorId,
+      projectId: target.project_id, type: 'repository.baseline.synchronized', data: { target_id: target.id, expected_head_sha: head },
+      payload: { id: target.connection_id, project_id: target.project_id, status: target.connection_status, source_revision: head, revision: connectionRevision }, now
+    });
+    const lines = tx.query("SELECT * FROM repository_lines WHERE target_id=? AND status<>'removed' ORDER BY id", [target.id]);
+    for (const line of lines) {
+      const revision = Number(line.revision) + 1;
+      tx.run("UPDATE repository_lines SET status='ready',source_revision=?,expected_head_sha=?,fault_code='',fault_json='{}',revision=?,updated_at=?,updated_by_actor_id=? WHERE id=? AND revision=?", [head, head, revision, now, actorId, line.id, line.revision], 1);
+      appendAggregate(tx, this.events, {
+        aggregateType: 'repository_line', aggregateId: line.id, revision, operationId, actorId, projectId: target.project_id,
+        type: 'repository.baseline.synchronized', data: { line_id: line.id, target_id: target.id, expected_head_sha: head },
+        payload: { id: line.id, project_id: target.project_id, target_id: target.id, status: 'ready', source_revision: head, expected_head_sha: head, revision }, now
+      });
+    }
+    return this.#targetView(tx.get('SELECT * FROM repository_targets WHERE id=?', [target.id]));
+  }
+
   listRepositoryLines(projectId, principal) {
     const project = this.#projectRow(projectId);
     this.#assertProject(principal, 'read', project.id);

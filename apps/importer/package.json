@@ -1,0 +1,8 @@
+{
+  "name": "@aiws/importer",
+  "version": "3.0.0",
+  "private": true,
+  "type": "module",
+  "bin": { "aiws-import": "./cli.mjs" },
+  "scripts": { "test": "node --test test/*.test.mjs" }
+}

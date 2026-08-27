@@ -1,0 +1,126 @@
+{
+  "schema_version": "aiws.v3-clean.p8-verification-record.v2",
+  "commands": [
+    {
+      "command": "pnpm check",
+      "stdout": "\n> ai-workspace-system@3.0.0 check <WORKSPACE>\n> node scripts/check.mjs\n\ncheck passed: 418 source files, 51 scripts\n",
+      "stderr": "(node:4952) [DEP0190] DeprecationWarning: Passing args to a child process with shell option true can lead to security vulnerabilities, as the arguments are not escaped, only concatenated.\n(Use `node --trace-deprecation ...` to show where the warning was created)\n",
+      "exit_status": 0,
+      "signal": null,
+      "duration_ms": 18631
+    },
+    {
+      "command": "pnpm test:p8",
+      "stdout": "\n> ai-workspace-system@3.0.0 test:p8 <WORKSPACE>\n> node --test tests/p8/*.test.mjs\n\n(node:24828) ExperimentalWarning: SQLite is an experimental feature and might change at any time\n(Use `node --trace-warnings ...` to show where the warning was created)\n✔ Delivery executes immutable Draft, ready and merge intents and synchronizes Repository baseline (1542.3394ms)\n✔ unknown GitHub result enters needs_reconcile and a later reconcile resolves without replaying merge (1010.8197ms)\n✔ raw GitHub webhook HMAC is deduplicated by provider delivery id (818.927ms)\n✔ physical CAS GC revalidates protection, moves bytes to recoverable trash and rolls back (720.2987ms)\n(node:19176) ExperimentalWarning: SQLite is an experimental feature and might change at any time\n(Use `node --trace-warnings ...` to show where the warning was created)\n✔ Deployment candidate verification requires owner approval and creates an immutable receipt (1392.6916ms)\n✔ Backup, restore.prepare and reset.prepare operate on new isolated artifacts without switching a pointer (1321.1041ms)\n(node:8672) ExperimentalWarning: SQLite is an experimental feature and might change at any time\n(Use `node --trace-warnings ...` to show where the warning was created)\n✔ P8 migration, ownership and route inventories are bidirectional (9.6245ms)\n✔ Importer mutations are absent from runtime registry (0.9671ms)\n(node:16028) ExperimentalWarning: SQLite is an experimental feature and might change at any time\n(Use `node --trace-warnings ...` to show where the warning was created)\n✔ P8 HTTP uses the shared dispatcher with closed route-specific contracts (306.1965ms)\n✔ P8 registry, REST, MCP and Gateway publish the same closed command schemas (188.704ms)\n(node:25516) ExperimentalWarning: SQLite is an experimental feature and might change at any time\n(Use `node --trace-warnings ...` to show where the warning was created)\n✔ offline importer preserves schema v7 and maps schema 23 business rows with omitted secrets (2055.1102ms)\n✔ resume verifies signed checkpoint target hash and continues after a domain boundary interruption (2471.0649ms)\n✔ unknown schema 23 table blocks before target creation (168.0211ms)\n(node:17160) ExperimentalWarning: SQLite is an experimental feature and might change at any time\n(Use `node --trace-warnings ...` to show where the warning was created)\n✔ forward-only migration upgrades every supported version to v8 (1436.6282ms)\n✔ each v8 migration fault preserves v7 bytes and leaves all 11 tables absent (498.6535ms)\nℹ tests 15\nℹ suites 0\nℹ pass 15\nℹ fail 0\nℹ cancelled 0\nℹ skipped 0\nℹ todo 0\nℹ duration_ms 5358.8152\n",
+      "stderr": "",
+      "exit_status": 0,
+      "signal": null,
+      "duration_ms": 5722
+    },
+    {
+      "command": "node scripts/v3-clean-p8-performance.mjs",
+      "stdout": "{\n  \"schema_version\": \"aiws.v3-clean.p8-performance.v1\",\n  \"delivery_replay_p95_ms\": 0.026,\n  \"threshold_ms\": 200,\n  \"status\": \"passed\"\n}\n",
+      "stderr": "(node:24832) ExperimentalWarning: SQLite is an experimental feature and might change at any time\n(Use `node --trace-warnings ...` to show where the warning was created)\n",
+      "exit_status": 0,
+      "signal": null,
+      "duration_ms": 139
+    },
+    {
+      "command": "node scripts/v3-clean-p8-github-delivery-probe.mjs",
+      "stdout": "{\n  \"schema_version\": \"aiws.v3-clean.p8-github-delivery-probe.v2\",\n  \"status\": \"passed\",\n  \"provisional\": true,\n  \"local\": {\n    \"branch_created\": true,\n    \"draft_status\": \"draft_pr\",\n    \"ready_status\": \"ready\",\n    \"merge_status\": \"merged\",\n    \"webhook_accepted\": true,\n    \"webhook_deduplicated\": true,\n    \"baseline_sha\": \"c35b287161a7ca7608382d3fd3155d11bf8e394290c640ac4b84d8cd475eebd3\"\n  },\n  \"external\": {\n    \"status\": \"missing\",\n    \"provisional\": true\n  }\n}\n",
+      "stderr": "(node:23752) ExperimentalWarning: SQLite is an experimental feature and might change at any time\n(Use `node --trace-warnings ...` to show where the warning was created)\n",
+      "exit_status": 0,
+      "signal": null,
+      "duration_ms": 1607
+    },
+    {
+      "command": "node scripts/v3-clean-p8-importer-probe.mjs",
+      "stdout": "{\n  \"schema_version\": \"aiws.v3-clean.p8-importer-probe.v2\",\n  \"deterministic\": true,\n  \"sealed\": true,\n  \"mapped_rows\": 1,\n  \"verify\": {\n    \"schema_version\": \"aiws.import.verify.v2\",\n    \"status\": \"passed\",\n    \"user_version\": 8,\n    \"integrity\": [\n      \"ok\"\n    ],\n    \"foreign_keys\": [],\n    \"batch_id\": \"import_batch_901a6560f1b244c9a3218c4a887fa2ad\",\n    \"source_preservation\": {\n      \"compared_rows\": 36,\n      \"missing\": [],\n      \"changed\": []\n    },\n    \"mapping\": {\n      \"expected_rows\": 1,\n      \"mapped_rows\": 1,\n      \"blocking_conflicts\": 0\n    },\n    \"checkpoints\": {\n      \"count\": 14,\n      \"domains\": [\n        \"ACL\",\n        \"Assist\",\n        \"Context\",\n        \"CredentialMetadata\",\n        \"Delivery\",\n        \"Evidence\",\n        \"Execution\",\n        \"Identity\",\n        \"Operations\",\n        \"Outcome\",\n        \"Project\",\n        \"Quality\",\n        \"Repository\",\n        \"Workflow\"\n      ],\n      \"invalid\": [],\n      \"missing_domains\": []\n    },\n    \"heads\": {\n      \"mapped_aggregates\": 1,\n      \"missing\": []\n    },\n    \"acl\": {\n      \"projects\": 0,\n      \"missing_owner_memberships\": []\n    },\n    \"cas\": {\n      \"active_objects\": 0,\n      \"missing\": [],\n      \"changed\": []\n    },\n    \"credentials\": {\n      \"imported\": 0,\n      \"invalid\": 0,\n      \"secret_values_persisted\": false\n    },\n    \"redaction\": {\n      \"omitted_values_checked\": 0,\n      \"leaked\": [],\n      \"absolute_paths\": []\n    },\n    \"target_file_sha256\": \"2f2e5b73555b6dca3cd5a05a589eda0112a8b2cfc9783acd9f324dcd17901327\",\n    \"failures\": []\n  }\n}\n",
+      "stderr": "(node:18312) ExperimentalWarning: SQLite is an experimental feature and might change at any time\n(Use `node --trace-warnings ...` to show where the warning was created)\n",
+      "exit_status": 0,
+      "signal": null,
+      "duration_ms": 1672
+    },
+    {
+      "command": "node scripts/v3-clean-p8-deployment-rollback-probe.mjs",
+      "stdout": "{\n  \"schema_version\": \"aiws.v3-clean.p8-deployment-probe.v2\",\n  \"status\": \"passed\",\n  \"provisional\": true,\n  \"local\": {\n    \"candidate_status\": \"verified\",\n    \"verification_status\": \"passed\",\n    \"receipt_sha256\": \"e94765f3be7e4a4203287bbfb5ddef07fbb6c9f1b3aa713745ab29299cb15496\",\n    \"viewports\": [\n      [\n        1440,\n        900\n      ],\n      [\n        1024,\n        768\n      ],\n      [\n        390,\n        844\n      ]\n    ]\n  },\n  \"external\": {\n    \"status\": \"missing\",\n    \"reason\": \"docker_daemon_unavailable\",\n    \"provisional\": true\n  }\n}\n",
+      "stderr": "(node:23316) ExperimentalWarning: SQLite is an experimental feature and might change at any time\n(Use `node --trace-warnings ...` to show where the warning was created)\n",
+      "exit_status": 0,
+      "signal": null,
+      "duration_ms": 1716
+    },
+    {
+      "command": "node scripts/v3-clean-p8-backup-restore-gc-probe.mjs",
+      "stdout": "{\n  \"schema_version\": \"aiws.v3-clean.p8-backup-restore-gc-probe.v2\",\n  \"status\": \"passed\",\n  \"provisional\": false,\n  \"backup\": {\n    \"id\": \"backup_28ea8519e3834361a20af732993ce1c5\",\n    \"manifest_sha256\": \"8966abecf23e19af15ee5a99ea498da56065478a3f7e642239c967af674c6e57\",\n    \"source_user_version\": 8\n  },\n  \"restore\": {\n    \"status\": \"prepared\",\n    \"pointer_switched\": false,\n    \"source_manifest_sha256\": \"8966abecf23e19af15ee5a99ea498da56065478a3f7e642239c967af674c6e57\"\n  },\n  \"gc\": {\n    \"plan_sha256\": \"cadb5615d399995a40f7b123550ffe78ea31a952df020ed0c9335a61c891d47f\",\n    \"candidates\": 1,\n    \"apply_status\": \"applied\",\n    \"rollback_restored\": [\n      \"8db39bfb5a402f93ecd7df8cebe16ccd70c77b17f70dd57fffbe869c10eb7e53\"\n    ],\n    \"object_active\": true\n  },\n  \"pointer\": {\n    \"dry_run_status\": \"verified\",\n    \"apply_status\": \"cutover\",\n    \"rollback_status\": \"rolled_back\",\n    \"restored_old_target\": true\n  },\n  \"schema_rollback\": {\n    \"restored_user_version\": 7,\n    \"byte_exact\": true,\n    \"p8_tables_absent\": true,\n    \"ledger\": [\n      1,\n      2,\n      3,\n      4,\n      5,\n      6,\n      7\n    ]\n  }\n}\n",
+      "stderr": "(node:9496) ExperimentalWarning: SQLite is an experimental feature and might change at any time\n(Use `node --trace-warnings ...` to show where the warning was created)\n",
+      "exit_status": 0,
+      "signal": null,
+      "duration_ms": 1974
+    },
+    {
+      "command": "pnpm --filter @aiws/web test",
+      "stdout": "\n> @aiws/web@3.0.0 test <WORKSPACE>\\apps\\web\n> vitest run\n\n\n RUN  v3.2.7 <WORKSPACE>/apps/web\n\n ✓ src/test/setup-flow.test.tsx (3 tests) 739ms\n   ✓ setup workflow > shows blocked checks and exposes device human input, cancel, and failed retry  604ms\n ✓ src/test/identity-access.test.tsx (6 tests) 363ms\n ✓ src/test/project-onboarding.test.tsx (3 tests) 274ms\n ✓ src/test/execution-p7.test.tsx (1 test) 263ms\n ✓ src/test/context.test.tsx (2 tests) 223ms\n ✓ src/test/project-workflow-clean.test.tsx (5 tests) 223ms\n ✓ src/test/execution-p6.test.tsx (1 test) 210ms\n ✓ src/test/connections-p5.test.tsx (1 test) 185ms\n ✓ src/test/evidence-p7.test.tsx (1 test) 176ms\n ✓ src/test/approvals-p5.test.tsx (1 test) 183ms\n ✓ src/test/files-p5.test.tsx (1 test) 153ms\n ✓ src/test/connections-p6.test.tsx (1 test) 176ms\n ✓ src/test/terminal.test.tsx (1 test) 152ms\n ✓ src/test/operations-p8.test.tsx (1 test) 143ms\n ✓ src/test/workflow.test.tsx (1 test) 146ms\n ✓ src/test/assist.test.tsx (2 tests) 148ms\n\n Test Files  16 passed (16)\n      Tests  31 passed (31)\n   Start at  13:15:37\n   Duration  18.15s (transform 510ms, setup 1.07s, collect 4.11s, tests 3.76s, environment 6.08s, prepare 1.11s)\n\n",
+      "stderr": "",
+      "exit_status": 0,
+      "signal": null,
+      "duration_ms": 18957
+    },
+    {
+      "command": "pnpm build",
+      "stdout": "\n> ai-workspace-system@3.0.0 build <WORKSPACE>\n> corepack pnpm --filter @aiws/web build\n\n\n> @aiws/web@3.0.0 build <WORKSPACE>\\apps\\web\n> tsc -b && vite build\n\nvite v7.3.6 building client environment for production...\ntransforming...\n✓ 1677 modules transformed.\nrendering chunks...\ncomputing gzip size...\ndist/.vite/manifest.json                0.56 kB │ gzip:   0.22 kB\ndist/index.html                         0.61 kB │ gzip:   0.34 kB\ndist/assets/index-QagbtUcE.css         87.20 kB │ gzip:  15.03 kB\ndist/assets/vendor-react-DxLBvel3.js    3.66 kB │ gzip:   1.39 kB\ndist/assets/vendor-icons-DS6YcXy2.js   26.69 kB │ gzip:   9.34 kB\ndist/assets/index-B_4L-kbg.js         380.61 kB │ gzip: 101.58 kB\n✓ built in 7.96s\n",
+      "stderr": "",
+      "exit_status": 0,
+      "signal": null,
+      "duration_ms": 13245
+    },
+    {
+      "command": "git diff --check",
+      "stdout": "",
+      "stderr": "warning: in the working copy of 'AGENTS.md', LF will be replaced by CRLF the next time Git touches it\nwarning: in the working copy of 'docs/architecture/api-v2-contract.md', LF will be replaced by CRLF the next time Git touches it\nwarning: in the working copy of 'docs/architecture/clean-schema.md', LF will be replaced by CRLF the next time Git touches it\nwarning: in the working copy of 'docs/architecture/decision-log.md', LF will be replaced by CRLF the next time Git touches it\nwarning: in the working copy of 'docs/architecture/import-contract.md', LF will be replaced by CRLF the next time Git touches it\nwarning: in the working copy of 'docs/architecture/v3-clean-development-plan.md', LF will be replaced by CRLF the next time Git touches it\n",
+      "exit_status": 0,
+      "signal": null,
+      "duration_ms": 75
+    }
+  ],
+  "rollback": {
+    "schema_version": "aiws.v3-clean.p8-rollback-receipt.v2",
+    "status": "passed",
+    "dry_run": {
+      "command": "powershell -File rollback.ps1 -DryRun",
+      "stdout": "{\"status\":\"passed\",\"target\":\"rollback-isolated\",\"source\":\"rollback-baseline\",\"mode\":\"dry-run\",\"writes\":0}\r\n",
+      "stderr": "",
+      "exit_status": 0
+    },
+    "apply": {
+      "command": "powershell -File rollback.ps1 -Apply -IsolatedRoot <TARGET>",
+      "stdout": "{\"status\":\"passed\",\"restored_user_version\":7,\"ledger\":[1,2,3,4,5,6,7],\"foreign_keys\":[],\"p8_tables_present\":[],\"restored_components\":[\"sqlite\",\"cas\",\"vault\",\"workspace\",\"broker\",\"bridge\",\"parser\"],\"byte_exact_mismatches\":[]}\n",
+      "stderr": "(node:21300) ExperimentalWarning: SQLite is an experimental feature and might change at any time\n(Use `node --trace-warnings ...` to show where the warning was created)\n",
+      "exit_status": 0,
+      "output": {
+        "status": "passed",
+        "restored_user_version": 7,
+        "ledger": [
+          1,
+          2,
+          3,
+          4,
+          5,
+          6,
+          7
+        ],
+        "foreign_keys": [],
+        "p8_tables_present": [],
+        "restored_components": [
+          "sqlite",
+          "cas",
+          "vault",
+          "workspace",
+          "broker",
+          "bridge",
+          "parser"
+        ],
+        "byte_exact_mismatches": []
+      }
+    }
+  }
+}
