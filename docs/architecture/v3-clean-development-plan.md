@@ -1,11 +1,13 @@
 # V3-Clean 分阶段开发计划
 
 状态：P1-P7 Evidence 已验证；P8 Delivery/Deployment/Importer/Operations 已按
-`D-037` 完成最终门禁；P7 Evidence/Quality/Parser/Outcome 已按
+`D-037` 完成最终门禁；P9 Web/Offline/Release 已按 `D-038` 激活并固定以
+`423a7b4ca199ff2f11cbef1758802cdad22af8e0` 为唯一基线；P7 Evidence/Quality/Parser/Outcome 已按
 `D-036` 和 forward-only `007-evidence-quality-parser-outcome` 完成最终门禁。
 Evidence、Quality、Outcome 和 Attachments 为 `verified`，Clean/Historical
-Catalog 为 `26/1/27`；`REC-D10-FRONTEND-024` 仍为 `scaffolded`，不把本阶段
-组件切片声明为完整发布流程。P7 固定基线：
+Catalog 为 `26/1/27`；`REC-D10-FRONTEND-024` 在 P9 final Evidence 之前仍为
+`scaffolded`。P9 active phase 与 schema version 解耦，schema 保持 v8、ledger
+保持 `[1..8]`，不新增 migration。P7 固定基线：
 `af8fcaf2f5df7a0667a7f31c5784afbdc9a48ceb`；最终 receipt 为
 `docs/evidence/v3-clean-p7-evidence-quality-outcome-20260824/verification.json`。
 规范来源：同目录下的 `v3-clean-break.md`、`clean-schema.md`、
@@ -875,6 +877,11 @@ importer 混入 API runtime。
 让 Web、MCP 管理和运维视图消费同一 API/Command contract，完成跨阶段用户流程，
 并以三视口和离线重连证据作为发布门槛。
 
+固定基线为 `423a7b4ca199ff2f11cbef1758802cdad22af8e0`。P9 runtime
+phase 为 9，但 schema 必须继续是 `user_version=8` 和 ledger `[1..8]`。
+开发 origin 固定为 `http://127.0.0.1:5174`，release 使用动态 loopback
+origin；不触碰生产卷或生产 pointer。
+
 ### 工作项
 
 - Web router、query cache、mutation/idempotency、operation center、error/empty/
@@ -885,6 +892,14 @@ importer 混入 API runtime。
 - desktop/tablet/mobile（至少 1440x900、1024x768、390x844）布局和无障碍；
 - Offline queue、cursor replay、SSE reconnect、duplicate event 和 stale UI；
 - 浏览器 console/layout overlap、下载 receipt、CAS preview 和 redacted error。
+- Operations owner 增加 project-scoped JSON/SSE replay；事件携带
+  `previous_project_sequence`，SSE 在事件与 heartbeat 时重新授权；
+- IndexedDB v1 只保存 cursor/outbox。离线 allowlist 固定为
+  `project.update`、`brief.create`、`workflow.revise`、
+  `context.selection.create`、`assist.goal.update` 和
+  `outcome.requirement.create`，且同 aggregate FIFO、跨 aggregate 并发上限 3；
+- Service Worker 使用 injectManifest，只 precache app shell；API/SSE/CAS/
+  download/health/ready 一律 NetworkOnly。
 
 ### 发布门禁
 
@@ -894,6 +909,12 @@ importer 混入 API runtime。
 - 临时卷发布、健康探针、备份恢复 hash 和实际 rollback 通过；
 - 三视口截图、SSE reconnect、offline 和人工输入场景无错误/重叠；
 - 外部 Codex、GitHub、Gateway、Runner、Bridge、parser probe 按要求有新 receipt。
+- formal Evidence 固定写入
+  `docs/evidence/v3-clean-p9-web-release-20260826/`，rollback 必须恢复 P8
+  schema v8、ledger `[1..8]`、pointer 和九类组件快照并报告
+  `byte_exact_mismatches=[]`；
+- 只有 final `verified`、`provisional=false` receipt 可把 Catalog 提升到
+  `27/0/27`，否则保持 P8 `26/1/27`。
 
 ## 15. 跨阶段测试矩阵
 

@@ -17,21 +17,20 @@ under docs/architecture/ are the source of truth for V3-Clean.
 
 ## Scope of this phase
 
-Decision `D-036` activates P7 Evidence/Quality/Parser/Outcome over the
-verified P6 baseline at `af8fcaf2f5df7a0667a7f31c5784afbdc9a48ceb`.
-This phase may update the synchronized P7
-surface:
+Decision `D-038` activates P9 Web/Offline/Release over the pushed P8 final
+boundary at `423a7b4ca199ff2f11cbef1758802cdad22af8e0`. The active runtime
+phase is P9 while the schema remains `user_version=8` with ledger `[1..8]`.
+This phase may update the synchronized P9 surface:
 
-- forward-only `007-evidence-quality-parser-outcome`, schema ownership, Clean
-  Evidence, Parser, Quality, and Outcome services, dispatcher, registry,
-  contracts, and focused P7 tests;
-- the Clean Broker parser entrypoint, fixed-digest isolated worker, signed
-  parser job/receipt protocol, restart reconciliation, and independent probes;
-- the component-level Evidence and Execution Evidence/Quality/Outcome Web
-  slices plus default Clean E2E, using `/api/v2` only;
+- the Operations-owned project event replay query, exact-origin CORS, shared
+  session/ACL/redaction/cursor behavior, registry, contracts, and focused P9
+  tests without adding a migration or business table;
+- the complete `/api/v2` Web router/query/event-sync surface, a bounded
+  IndexedDB cursor/outbox, and an app-shell-only Service Worker;
+- isolated temporary-volume publish, pointer switch, actual rollback, external
+  probes, release tests, and immutable P9 Evidence;
 - architecture documents, testing policy, layered Catalogs, package gates,
-  immutable P7 Evidence, and rollback receipts required by GS-001 through
-  GS-007;
+  E2E, and rollback receipts required by GS-001 through GS-007;
 - this file.
 
 Decision `D-032` governs layered-gate receipt hygiene: a fully successful
@@ -40,9 +39,8 @@ is appended to the ignored local `.ai-workspace/gate-receipts/` store. Local
 receipts are diagnostic evidence only; Catalog status promotion continues to
 use the immutable final `verification.json` receipt.
 
-P1/P2/P3/P4/P5/P6 migrations and verified Evidence are read-only. Real GitHub
-Delivery, importer/deployment, physical CAS GC, offline/cross-origin behavior,
-production cutover, and release-level Web/E2E remain outside P7.
+P1/P2/P3/P4/P5/P6/P7/P8 migrations and verified Evidence are read-only.
+Production cutover and production-volume mutation remain outside P9.
 
 ## Required preflight
 
@@ -520,3 +518,71 @@ The current published P8 receipt is `run-1787846480106` with
 fixture delivery and Docker deployment receipts, plus an isolated actual v7
 rollback, so the Catalog is promoted to `26/1/27`. The P8 boundary is now
 committed and pushed; P9 may branch from this commit once D-038 is recorded.
+
+## P9 activation
+
+Decision `D-038` activates P9 over baseline
+`423a7b4ca199ff2f11cbef1758802cdad22af8e0`. P9 does not add a migration:
+the active runtime phase is 9 while the only supported active schema remains
+`user_version=8` and migration ledger `[1..8]`. Development Web origin is
+`http://127.0.0.1:5174`; release verification injects an exact dynamic
+loopback origin. Production volumes and production pointers are never used.
+
+The additive P9 implementation inventory is:
+
+~~~text
+pnpm check
+pnpm audit:p1
+pnpm scan:clean
+pnpm recovery:plan
+pnpm recovery:catalog
+pnpm recovery:coverage
+pnpm recovery:impact -- --audit
+pnpm test:p1
+pnpm test:p2
+pnpm test:p3
+pnpm test:p31
+pnpm test:p4
+pnpm test:p5
+pnpm test:p6
+pnpm test:p7
+pnpm test:p8
+pnpm test:p9
+node scripts/v3-clean-p5-performance.mjs
+node scripts/v3-clean-p5-assist-probe.mjs
+node scripts/v3-clean-p5-bridge-probe.mjs
+node scripts/v3-clean-p6-performance.mjs
+node scripts/v3-clean-p6-docker-runner-probe.mjs
+node scripts/v3-clean-p6-host-runner-probe.mjs
+node scripts/v3-clean-p6-bridge-runner-probe.mjs
+node scripts/v3-clean-p6-restart-probe.mjs
+node scripts/v3-clean-p7-performance.mjs
+node scripts/v3-clean-p7-cas-tamper-probe.mjs
+node scripts/v3-clean-p7-parser-probe.mjs
+node scripts/v3-clean-p7-quality-outcome-probe.mjs
+node scripts/v3-clean-p7-restart-probe.mjs
+node scripts/v3-clean-p8-performance.mjs
+node scripts/v3-clean-p8-github-delivery-probe.mjs
+node scripts/v3-clean-p8-importer-probe.mjs
+node scripts/v3-clean-p8-deployment-rollback-probe.mjs
+node scripts/v3-clean-p8-backup-restore-gc-probe.mjs
+pnpm --filter @aiws/web test
+pnpm test
+pnpm test:integration:clean
+pnpm test:security:clean
+pnpm test:integration
+pnpm test:security
+pnpm build
+pnpm test:e2e
+pnpm test:release
+pnpm verify
+pnpm evidence:p9 -- --verify
+git diff --check
+~~~
+
+P9 formal Evidence is
+`docs/evidence/v3-clean-p9-web-release-20260826/`. Only a final receipt with
+`status=verified` and `provisional=false`, complete release-row mappings, three
+viewport receipts, external probes, and an isolated actual P8 rollback may
+promote the Catalog to `27/0/27`. Any missing input freezes the published P8
+Catalog at `26/1/27`.

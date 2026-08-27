@@ -567,6 +567,43 @@ snapshots, no P8 tables, and `byte_exact_mismatches=[]`. The published receipt
 fixture completed discovery, Draft PR, ready, merge, webhook deduplication and
 reconcile, Docker deployment passed, and Catalog promotion is `26/1/27`.
 
+## P9 additive gate
+
+P9 adds `test:p9` and `evidence:p9` to the P8 inventory. Runtime phase 9 must
+report schema v8 and migration ledger `[1..8]`; P9 tests reject a ninth
+migration or business table. Focused API tests cover JSON/SSE equivalence,
+`Last-Event-ID` precedence, inter-project global sequence holes, true project
+gaps, duplicates, project-scoped cursor expiry, redaction, ACL revocation on
+events and heartbeat, and exact-origin credentialed CORS including OPTIONS.
+
+Web tests cover scoped Query keys and cache disposal, the six-command offline
+allowlist, canonical SHA-256 parity, refresh recovery, per-aggregate FIFO,
+three-aggregate concurrency, 409 blocking, explicit rebase/discard lineage,
+actor/project isolation, and event-to-query invalidation. PWA tests prove that
+the app shell opens offline while `/api/v2`, SSE, CAS, downloads, `/livez`, and
+`/readyz` never enter Cache Storage.
+
+The additive commands are `pnpm test:p9` before external probes and
+`pnpm evidence:p9 -- --verify` after release/E2E verification. `verify` retains
+the full P1-P8 sequence, then runs P9, all required external probes, Web,
+integration/security, build, E2E, release, and Evidence verification in that
+order. The root package inventory is 53 scripts.
+
+Browser release E2E covers the Project-to-Delivery chain, management views,
+manual input, offline/reconnect, duplicate events, stale revision, blocked
+import, unknown external results, keyboard focus, WCAG 2.2 AA, and overlap/
+overflow/console/HTTP checks at 1440x900, 1024x768, and 390x844.
+
+Formal P9 Evidence is append-only at
+`docs/evidence/v3-clean-p9-web-release-20260826/`. It must contain the original
+hashes, modified release bundle, patch, literal baseline/modified command
+outputs and statuses, fixed image digest, SBOM, exact dynamic CORS origin,
+three viewport receipts, and a runnable dry-run plus isolated actual rollback.
+The rollback restores schema v8, ledger `[1..8]`, deployment pointer, SQLite,
+CAS, Vault, workspace, Broker, Bridge, Parser, and Web bundle with
+`byte_exact_mismatches=[]`. Candidate or failed receipts keep `26/1/27`; only
+final `verified`, `provisional=false` Evidence may promote `27/0/27`.
+
 ## Phase gate rule
 
 Every phase records baseline and modified commands, literal outputs, exit statuses,

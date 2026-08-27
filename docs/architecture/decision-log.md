@@ -100,5 +100,35 @@ dual-source importer, Deployment/Backup/Restore/Reset, recoverable physical GC,
 Operations Web slice, real isolated GitHub delivery, Docker deployment, and
 actual v7 rollback. It is `status=verified` with `provisional=false`, so the
 three P8 Catalog rows move to Clean and the layered Catalog is `26/1/27`.
-The verified P8 boundary is committed and pushed; D-038/P9 remains inactive
-pending its explicit activation decision.
+The verified P8 boundary is committed and pushed; D-038 below activates P9
+without reopening the P8 implementation or Evidence boundary.
+
+## D-038 - Activate P9 Web, Offline, and Release (2026-08-28)
+
+P9 uses pushed commit `423a7b4ca199ff2f11cbef1758802cdad22af8e0` as
+its only P8 baseline. Runtime phase and schema version are separate: the active
+phase is P9, but startup still loads exactly migrations `001` through `008`,
+requires `PRAGMA user_version = 8`, and adds no migration or business table.
+P1-P8 migrations and verified Evidence remain immutable.
+
+Operations owns `events.project.replay` and `GET /api/v2/events`. JSON catch-up
+and SSE use the same EventService, signed project-scoped cursor, Project ACL,
+session principal, and redaction policy. Each event carries
+`previous_project_sequence`; SSE reauthorizes on every event and heartbeat.
+Cross-origin access uses an exact `AIWS_CLEAN_CORS_ORIGINS` allowlist and never
+accepts wildcard, null, path-bearing, or userinfo-bearing origins.
+
+The Web uses a hash router, scoped Query cache, explicit event invalidation,
+and an IndexedDB v1 database containing only project cursors and a six-command
+low-risk outbox. Protected business responses, credentials, downloads, and CAS
+content are never persisted or cached. The Service Worker precaches only the
+app shell and treats API, SSE, CAS, downloads, health, and readiness as
+NetworkOnly.
+
+Release verification builds a fixed image digest and SBOM, publishes only to
+a fresh temporary volume on a dynamic loopback origin, exercises health,
+backup/restore hashes, an isolated pointer switch, and an actual rollback to
+the byte-exact P8 state. No production cutover is performed. Only a final
+verified non-provisional P9 receipt can promote Contracts and the complete
+Catalog to `27/0/27`; any incomplete identity, probe, viewport, offline, or
+rollback receipt preserves the published P8 `26/1/27` state.
