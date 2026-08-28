@@ -380,6 +380,7 @@ const P8_PREFIXES = Object.freeze(['apps/api/src/clean/p8/', 'apps/importer/', '
 const P9_FILES = new Set([
   'scripts/v3-clean-p9-evidence.mjs',
   'scripts/v3-clean-p9-release-probe.mjs',
+  'scripts/v3-clean-p9-github-delivery-probe.mjs',
   'scripts/e2e.mjs',
   'apps/web/package.json',
   'apps/web/vite.config.ts',

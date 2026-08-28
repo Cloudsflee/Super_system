@@ -1,0 +1,7 @@
+{
+  "schema_version": "aiws.v3-clean.p9-generation-failure.v1",
+  "status": "failed",
+  "provisional": true,
+  "run_id": "run-1787931590186",
+  "error": "p9_gate_failed:external-probes"
+}

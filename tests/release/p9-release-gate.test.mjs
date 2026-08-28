@@ -39,3 +39,10 @@ test('production Clean process composes API and static app shell without caching
   assert.match(staticHandler, /public, max-age=31536000, immutable/);
   assert.match(staticHandler, /no-cache, no-store/);
 });
+
+test('P9 GitHub fixture probe creates a bounded commit and zeroes leased identities', () => {
+  const source = fs.readFileSync('scripts/v3-clean-p9-github-delivery-probe.mjs', 'utf8');
+  for (const marker of ['createBranch', 'createDraft', 'markReady', 'merge', 'reconcile', 'installationToken.fill(0)', 'privateKey.fill(0)']) assert.ok(source.includes(marker), marker);
+  assert.match(source, /method\s*:\s*'DELETE'/);
+  assert.doesNotMatch(source, /AIWS_P8_GITHUB_APP_BUNDLE/);
+});

@@ -1,0 +1,58 @@
+{
+  "schema_version": "aiws.v3-clean.p9-external-probes.v1",
+  "status": "provisional",
+  "gates": {
+    "gateway": {
+      "status": "provisional",
+      "command": "v3-clean-p4-gateway-probe.mjs",
+      "exit_status": 0,
+      "receipt_schema": "aiws.v3-clean.p4-gateway-probe.v1"
+    },
+    "codex": {
+      "status": "verified",
+      "command": "v3-clean-p5-assist-probe.mjs",
+      "exit_status": 0,
+      "receipt_schema": "aiws.v3-clean.p5-assist-probe.v1"
+    },
+    "bridge": {
+      "status": "verified",
+      "command": "v3-clean-p5-bridge-probe.mjs",
+      "exit_status": 0,
+      "receipt_schema": "aiws.v3-clean.p5-bridge-probe.v1"
+    },
+    "docker_runner": {
+      "status": "verified",
+      "command": "v3-clean-p6-docker-runner-probe.mjs",
+      "exit_status": 0,
+      "receipt_schema": "aiws.v3-clean.p6-docker-runner-probe.v1"
+    },
+    "host_runner": {
+      "status": "verified",
+      "command": "v3-clean-p6-host-runner-probe.mjs",
+      "exit_status": 0,
+      "receipt_schema": "aiws.v3-clean.p6-host-runner-probe.v1"
+    },
+    "bridge_runner": {
+      "status": "verified",
+      "command": "v3-clean-p6-bridge-runner-probe.mjs",
+      "exit_status": 0,
+      "receipt_schema": "aiws.v3-clean.p6-bridge-runner-probe.v1"
+    },
+    "parser": {
+      "status": "verified",
+      "command": "v3-clean-p7-parser-probe.mjs",
+      "exit_status": 0,
+      "receipt_schema": "aiws.v3-clean.p7-parser-probe.v1"
+    },
+    "github": {
+      "status": "provisional",
+      "command": "v3-clean-p8-github-delivery-probe.mjs",
+      "exit_status": 0,
+      "receipt_schema": "aiws.v3-clean.p8-github-delivery-probe.v2"
+    },
+    "release": {
+      "status": "verified",
+      "image_digest": "sha256:11e309a348e2ace8bea23c24d81f8a6208189e4f993c5d21ec7a18661ec1c962"
+    }
+  }
+}

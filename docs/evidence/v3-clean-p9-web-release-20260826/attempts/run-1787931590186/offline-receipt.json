@@ -1,0 +1,15 @@
+{
+  "status": "passed",
+  "screenshot": "offline.png",
+  "screenshot_sha256": "d5060e1ba0ab45cbea6e4ce9ea75a33a9ea45af74748bcec96dd46c336210733",
+  "shell_opened": true,
+  "cache_entries": [
+    "/assets/index-C8hSgTrH.css",
+    "/assets/index-W8_k8y5-.js",
+    "/assets/vendor-icons-D4crbV5g.js",
+    "/assets/vendor-react-BC45_0Ga.js",
+    "/index.html",
+    "/manifest.webmanifest"
+  ],
+  "protected_cache_entries": []
+}

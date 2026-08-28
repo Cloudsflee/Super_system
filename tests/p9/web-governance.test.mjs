@@ -57,6 +57,6 @@ test('P9 governance files declare Clean phase ownership', () => {
     'apps/web/src/offline/canonical.ts', 'apps/web/src/offline/db.ts',
     'apps/web/src/offline/outbox.ts', 'apps/web/src/offline/OutboxStatus.tsx',
     'apps/web/src/features/outcome/OutcomePage.tsx', 'apps/web/src/features/delivery/DeliveryPage.tsx',
-    'tests/p9/web-governance.test.mjs', 'scripts/v3-clean-p9-evidence.mjs', 'scripts/e2e.mjs'
+    'tests/p9/web-governance.test.mjs', 'scripts/v3-clean-p9-evidence.mjs', 'scripts/v3-clean-p9-github-delivery-probe.mjs', 'scripts/e2e.mjs'
   ]) assert.deepEqual(classifyWorkspacePath(file), { kind: 'clean', phase: 'P9', rows: [] }, file);
 });
