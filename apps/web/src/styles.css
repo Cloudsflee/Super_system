@@ -414,9 +414,14 @@ button.network-pill { cursor: pointer; }
 .offline-workspace { min-height: calc(100vh - 58px); display: grid; place-content: center; justify-items: center; gap: 8px; color: var(--muted); }
 .offline-workspace h1 { margin: 0; font-size: 18px; letter-spacing: 0; }
 .project-edit-grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.4fr) auto; gap: 8px; align-items: end; margin-top: 14px; padding-top: 14px; border-top: 1px solid var(--line); }
+.outcome-grid-p9, .delivery-controls-p9 { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 28px; }
+.outcome-grid-p9 > section, .delivery-controls-p9 > section, .delivery-list-p9 { min-width: 0; border-top: 1px solid var(--line); padding-top: 14px; }
+.delivery-controls-p9 > section { display: grid; gap: 12px; align-content: start; }
+.delivery-list-p9 { margin-top: 28px; }
 
 @media (max-width: 760px) {
   .network-pill { max-width: 78px; }
   .outbox-popover { position: fixed; top: 56px; right: 10px; }
   .project-edit-grid { grid-template-columns: 1fr; }
+  .outcome-grid-p9, .delivery-controls-p9 { grid-template-columns: 1fr; }
 }

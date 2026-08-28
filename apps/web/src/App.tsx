@@ -14,8 +14,10 @@ import { ContextPage, McpSettingsPage } from './features/context';
 import { FilesPage } from './features/files';
 import { ExecutionPage } from './features/execution';
 import { EvidencePage } from './features/evidence';
+import { DeliveryPage } from './features/delivery';
 import { IdentityAccessPage } from './features/identity';
 import { OperationsPage } from './features/operations';
+import { OutcomePage } from './features/outcome';
 import { ProjectWorkflowPage } from './features/project';
 import { CleanSetupPage, type SetupState } from './features/setup';
 import { TerminalPage } from './features/terminal';
@@ -91,8 +93,8 @@ const PAGES: Record<WorkspaceRoute, ComponentType<WorkspacePageProps>> = {
   assist: AssistPage,
   execution: ExecutionPage,
   evidence: EvidencePage,
-  outcome: ExecutionPage,
-  delivery: OperationsPage,
+  outcome: OutcomePage,
+  delivery: DeliveryPage,
   operations: OperationsPage,
   files: FilesPage,
   terminals: TerminalPage,
