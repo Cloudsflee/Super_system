@@ -1,12 +1,14 @@
 # V3-Clean 分阶段开发计划
 
-状态：P1-P7 Evidence 已验证；P8 Delivery/Deployment/Importer/Operations 已按
-`D-037` 完成最终门禁；P9 Web/Offline/Release 已按 `D-038` 激活并固定以
+状态：P1-P8 Evidence 已验证；P8 Delivery/Deployment/Importer/Operations 已按
+`D-037` 完成最终门禁；P9 Web/Offline/Release 已按 `D-038` 完成最终门禁并固定以
 `423a7b4ca199ff2f11cbef1758802cdad22af8e0` 为唯一基线；P7 Evidence/Quality/Parser/Outcome 已按
 `D-036` 和 forward-only `007-evidence-quality-parser-outcome` 完成最终门禁。
 Evidence、Quality、Outcome 和 Attachments 为 `verified`，Clean/Historical
-Catalog 为 `26/1/27`；`REC-D10-FRONTEND-024` 在 P9 final Evidence 之前仍为
-`scaffolded`。P9 active phase 与 schema version 解耦，schema 保持 v8、ledger
+Catalog 为 `27/0/27`；27 行均由 P9 final release receipt 推进为 `released`。
+P9 published receipt 为 `run-1787933538303`，`status=verified` 且
+`provisional=false`。
+P9 active phase 与 schema version 解耦，schema 保持 v8、ledger
 保持 `[1..8]`，不新增 migration。P7 固定基线：
 `af8fcaf2f5df7a0667a7f31c5784afbdc9a48ceb`；最终 receipt 为
 `docs/evidence/v3-clean-p7-evidence-quality-outcome-20260824/verification.json`。

@@ -69,6 +69,8 @@ test('P6 migration, ownership, registry, paths and package gates are synchronize
 });
 
 test('P6 Catalog promotion is disjoint, complete and Evidence-gated', () => {
+  const p9 = JSON.parse(fs.readFileSync(path.join(root, 'docs/evidence/v3-clean-p9-web-release-20260826/verification.json'), 'utf8'));
+  const finalStatus = p9.status === 'verified' && p9.provisional === false ? 'released' : 'verified';
   const index = loadCatalogIndex(root); const layers = loadCatalogLayers(root, index);
   const validation = validateCatalogLayers({ root, index, layers });
   assert.equal(validation.valid, true, JSON.stringify(validation.failures));
@@ -79,12 +81,12 @@ test('P6 Catalog promotion is disjoint, complete and Evidence-gated', () => {
   const historical = new Set(layers.historical.features.map((feature) => feature.id));
   for (const id of P6_CLEAN_CATALOG_IDS) {
     assert.equal(historical.has(id), false, id);
-    assert.equal(clean.get(id)?.status, 'verified', id);
+    assert.equal(clean.get(id)?.status, finalStatus, id);
     assert.deepEqual(clean.get(id)?.evidence, [evidenceReference], id);
     assert.equal(clean.get(id)?.runtime_surface, 'v3-clean', id);
   }
-  assert.equal(clean.get('REC-D10-FRONTEND-024')?.status, 'scaffolded');
-  assert.equal(clean.get('REC-D6-OUTCOME-009')?.status, 'verified');
+  assert.equal(clean.get('REC-D10-FRONTEND-024')?.status, finalStatus === 'released' ? 'released' : 'scaffolded');
+  assert.equal(clean.get('REC-D6-OUTCOME-009')?.status, finalStatus);
 });
 
 test('P4, P5 and P6 Evidence policies are declarative and final P6 artifacts reopen', () => {

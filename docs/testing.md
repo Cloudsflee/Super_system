@@ -604,6 +604,15 @@ CAS, Vault, workspace, Broker, Bridge, Parser, and Web bundle with
 `byte_exact_mismatches=[]`. Candidate or failed receipts keep `26/1/27`; only
 final `verified`, `provisional=false` Evidence may promote `27/0/27`.
 
+Published P9 Evidence is `run-1787933538303`, `status=verified`, and
+`provisional=false`. The final browser matrix covers all Project-to-Delivery
+and management routes at 1440x900, 1024x768, and 390x844 with zero overlap,
+zero horizontal overflow, zero console/HTTP errors, and zero `/api/v1`
+requests. The offline receipt contains no API, SSE, CAS, download, health, or
+readiness Cache Storage entry. Actual rollback restores schema v8, ledger
+`[1..8]`, and all eight component snapshots with no byte mismatch. Catalog is
+`27/0/27` and all 27 rows are released.
+
 ## Phase gate rule
 
 Every phase records baseline and modified commands, literal outputs, exit statuses,

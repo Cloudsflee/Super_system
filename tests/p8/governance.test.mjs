@@ -43,19 +43,19 @@ test('P8 Evidence is hash-complete and synchronized with the layered Catalog pro
   const layers = loadCatalogLayers(root, index);
   const validation = validateCatalogLayers({ root, index, layers });
   assert.equal(validation.valid, true, validation.failures.join('\n'));
-  assert.deepEqual(validation.counts, { clean: 26, historical: 1, total: 27 });
-  assert.equal(verification.catalog.clean, validation.counts.clean);
-  assert.equal(verification.catalog.historical, validation.counts.historical);
+  const p9 = JSON.parse(fs.readFileSync(path.join(root, 'docs/evidence/v3-clean-p9-web-release-20260826/verification.json'), 'utf8'));
+  const p9Final = p9.status === 'verified' && p9.provisional === false;
+  assert.deepEqual(validation.counts, p9Final ? { clean: 27, historical: 0, total: 27 } : { clean: 26, historical: 1, total: 27 });
   const historical = new Map(layers.historical.features.map((feature) => [feature.id, feature]));
   const clean = new Map(layers.clean.features.map((feature) => [feature.id, feature]));
   for (const id of p8Ids) {
     assert.equal(historical.has(id), false, id);
-    assert.equal(clean.get(id)?.status, 'verified', id);
+    assert.equal(clean.get(id)?.status, p9Final ? 'released' : 'verified', id);
     assert.equal(clean.get(id)?.runtime_surface, 'v3-clean', id);
     assert.ok(clean.get(id)?.evidence.includes('docs/evidence/v3-clean-p8-delivery-deployment-importer-20260825/verification.json'), id);
   }
-  assert.equal(clean.get('REC-D2-SETUP-002')?.status, 'verified');
-  assert.deepEqual([...historical.keys()], ['REC-D1-CONTRACTS-023']);
+  assert.equal(clean.get('REC-D2-SETUP-002')?.status, p9Final ? 'released' : 'verified');
+  assert.deepEqual([...historical.keys()], p9Final ? [] : ['REC-D1-CONTRACTS-023']);
 });
 
 test('P8 package, testing policy, plan, matrix and Evidence references stay synchronized', () => {

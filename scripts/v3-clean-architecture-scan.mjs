@@ -94,12 +94,12 @@ const result = {
   ownership: ownershipReport,
   phase_metadata: {
     baseline_phase: 'P1',
-    active_phase: 'P8',
+    active_phase: 'P9',
     migration_registry: CLEAN_P8_MIGRATION_REGISTRY.map((migration) => ({ id: migration.id, version: migration.version })),
     p8_table_owners: Object.keys(CLEAN_P8_TABLE_OWNERS).sort(),
     authorization_predicate: 'authorize(principal, action, project, resource, policy_revision)',
-    evidence_directory: 'docs/evidence/v3-clean-p8-delivery-deployment-importer-20260825',
-    evidence_present: fs.existsSync(path.join(root, 'docs', 'evidence', 'v3-clean-p8-delivery-deployment-importer-20260825'))
+    evidence_directory: 'docs/evidence/v3-clean-p9-web-release-20260826',
+    evidence_present: fs.existsSync(path.join(root, 'docs', 'evidence', 'v3-clean-p9-web-release-20260826', 'verification.json'))
   },
   workspace,
   forbidden_findings: findings,

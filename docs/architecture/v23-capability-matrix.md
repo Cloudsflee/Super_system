@@ -17,8 +17,8 @@ external dependency, test, and Evidence obligation.
 
 | Source | Coverage recorded here |
 | --- | --- |
-| Clean Catalog layer | 23 active rows, including P7 Evidence and Quality; `runtime_surface=v3-clean` |
-| Historical Catalog layer | 4 explicit fixture rows; `runtime_surface=historical-fixture` |
+| Clean Catalog layer | 27 released rows; `runtime_surface=v3-clean` |
+| Historical Catalog layer | 0 rows after final P9 release promotion |
 | Compatibility feature-catalog.json | 27 aggregate rows, REC-D0 through REC-D11 |
 | V2.3 tests/v23/catalog.json | 14 cases across every layer L0-L7 |
 | V2.3 optimization packages | OPT21-01, OPT21-02, OPT21-03, OPT21-04, OPT21-05, OPT22-01, OPT23-01 |
@@ -35,33 +35,33 @@ requires the evidence-derived progression in AGENTS.md.
 
 | ID | Domain | Capability | Catalog status | Matrix row |
 | --- | --- | --- | --- | --- |
-| REC-D0-GOVERNANCE-000 | governance | recovery truth, ownership, architecture gates | verified | C-01 |
-| REC-D1-CONTRACTS-023 | contracts | forward-only migrations and public contracts | verified | C-02 |
-| REC-D10-FRONTEND-024 | frontend | complete operational Web workflows | scaffolded | C-03 |
-| REC-D2-IDENTITY-001 | identity | local owner account and sessions | verified | C-04 |
-| REC-D2-SETUP-002 | setup | Vault, credentials, profiles, provider probes | verified | C-05 |
-| REC-D3-RUNNER-003 | runner | Docker/Host/Windows Bridge runners and signed Job Spec | verified | C-06 |
-| REC-D4-MCP-004 | mcp | MCP clients, tools, operation lifecycle | verified | C-07 |
-| REC-D5-PROJECT-005 | project | draft intake and confirmed brief | verified | C-08 |
-| REC-D5-WORKFLOW-006 | workflow | Workstream/Task canvas and contracts | verified | C-09 |
-| REC-D6-GENERATION-007 | workflow | asynchronous generator and critic | verified | C-10 |
-| REC-D6-EXECUTION-008 | execution | persistent DAG and seven replayable stages | verified | C-11 |
-| REC-D6-OUTCOME-009 | outcome | Evidence outcome and revocable waiver | verified | C-12 |
-| REC-D8-ASSIST-010 | assist | four-scope runtime and event replay | verified | C-13 |
-| REC-D8-ATTACHMENTS-011 | assist | attachments and secure previews | verified | C-14 |
-| REC-D8-FILES-012 | assist | files, tests, reversible change batches | verified | C-15 |
-| REC-D8-APPROVAL-013 | assist | approval, user input, semantic proposals | verified | C-16 |
-| REC-D8-TERMINAL-025 | terminal | native terminal and cursor recovery | verified | C-17 |
-| REC-D8-BRIDGE-026 | bridge | Windows Bridge pairing and Git bundle | verified | C-18 |
-| REC-D7-REPOSITORY-014 | repository | connections, targets, lines, worktrees | verified | C-19 |
-| REC-D7-DELIVERY-015 | delivery | GitHub Draft PR and merge recovery | verified | C-20 |
-| REC-D4-SCOPE-016 | mcp | scope requests, grants, allowlists, revoke | verified | C-21 |
-| REC-D9-CONTEXT-017 | context | tree, versions, selection, Context Pack v5 | verified | C-22 |
-| REC-D9-PROJECTION-018 | context | recoverable projection and index rebuild | verified | C-23 |
-| REC-D9-EVIDENCE-019 | evidence | CAS assets, trace, digest, attestation | verified | C-24 |
-| REC-D9-QUALITY-020 | quality | isolated parsers and human threshold | verified | C-25 |
-| REC-D9-DEPLOYMENT-021 | evidence | deployment/browser/viewport Evidence | verified | C-26 |
-| REC-D11-OPS-022 | operations | deployment API, backup, restore, reset, import | verified | C-27 |
+| REC-D0-GOVERNANCE-000 | governance | recovery truth, ownership, architecture gates | released | C-01 |
+| REC-D1-CONTRACTS-023 | contracts | forward-only migrations and public contracts | released | C-02 |
+| REC-D10-FRONTEND-024 | frontend | complete operational Web workflows | released | C-03 |
+| REC-D2-IDENTITY-001 | identity | local owner account and sessions | released | C-04 |
+| REC-D2-SETUP-002 | setup | Vault, credentials, profiles, provider probes | released | C-05 |
+| REC-D3-RUNNER-003 | runner | Docker/Host/Windows Bridge runners and signed Job Spec | released | C-06 |
+| REC-D4-MCP-004 | mcp | MCP clients, tools, operation lifecycle | released | C-07 |
+| REC-D5-PROJECT-005 | project | draft intake and confirmed brief | released | C-08 |
+| REC-D5-WORKFLOW-006 | workflow | Workstream/Task canvas and contracts | released | C-09 |
+| REC-D6-GENERATION-007 | workflow | asynchronous generator and critic | released | C-10 |
+| REC-D6-EXECUTION-008 | execution | persistent DAG and seven replayable stages | released | C-11 |
+| REC-D6-OUTCOME-009 | outcome | Evidence outcome and revocable waiver | released | C-12 |
+| REC-D8-ASSIST-010 | assist | four-scope runtime and event replay | released | C-13 |
+| REC-D8-ATTACHMENTS-011 | assist | attachments and secure previews | released | C-14 |
+| REC-D8-FILES-012 | assist | files, tests, reversible change batches | released | C-15 |
+| REC-D8-APPROVAL-013 | assist | approval, user input, semantic proposals | released | C-16 |
+| REC-D8-TERMINAL-025 | terminal | native terminal and cursor recovery | released | C-17 |
+| REC-D8-BRIDGE-026 | bridge | Windows Bridge pairing and Git bundle | released | C-18 |
+| REC-D7-REPOSITORY-014 | repository | connections, targets, lines, worktrees | released | C-19 |
+| REC-D7-DELIVERY-015 | delivery | GitHub Draft PR and merge recovery | released | C-20 |
+| REC-D4-SCOPE-016 | mcp | scope requests, grants, allowlists, revoke | released | C-21 |
+| REC-D9-CONTEXT-017 | context | tree, versions, selection, Context Pack v5 | released | C-22 |
+| REC-D9-PROJECTION-018 | context | recoverable projection and index rebuild | released | C-23 |
+| REC-D9-EVIDENCE-019 | evidence | CAS assets, trace, digest, attestation | released | C-24 |
+| REC-D9-QUALITY-020 | quality | isolated parsers and human threshold | released | C-25 |
+| REC-D9-DEPLOYMENT-021 | evidence | deployment/browser/viewport Evidence | released | C-26 |
+| REC-D11-OPS-022 | operations | deployment API, backup, restore, reset, import | released | C-27 |
 
 ## 2. Matrix field definitions
 
@@ -137,11 +137,15 @@ route omitted it.
 The paths below are copied from the current root Catalog. A value of none is
 intentional and keeps a scaffolded capability below implemented.
 
-| Current Catalog id | Current Evidence | Promotion gap |
+Every row below additionally carries the released receipt
+`docs/evidence/v3-clean-p9-web-release-20260826/verification.json`; the table
+retains each domain's phase Evidence and verified behavior for traceability.
+
+| Current Catalog id | Phase Evidence | Verified behavior |
 | --- | --- | --- |
 | REC-D0-GOVERNANCE-000 | docs/evidence/v3-clean-p1-gate-contract-complete-20260819/verification.json | GS-001 through GS-007 gate synchronization, clean architecture scan and byte-exact rollback |
-| REC-D1-CONTRACTS-023 | docs/evidence/v3-r0-r1-governance-20260810/verification.json | clean baseline checksum and importer proof; R5 source-hash replay remains Historical through `pnpm fixture:legacy:integration` |
-| REC-D10-FRONTEND-024 | docs/evidence/v3-clean-p2-identity-acl-20260819/verification.json; docs/evidence/v3-clean-p8-delivery-deployment-importer-20260825/verification.json | Operations slice is implemented; complete Web workflow, mobile/offline, SSE and release receipt remain P9 |
+| REC-D1-CONTRACTS-023 | docs/evidence/v3-r0-r1-governance-20260810/verification.json; docs/evidence/v3-clean-p9-web-release-20260826/verification.json | clean schema-v8/phase-9 contracts, event replay, exact CORS and rollback released |
+| REC-D10-FRONTEND-024 | docs/evidence/v3-clean-p2-identity-acl-20260819/verification.json; docs/evidence/v3-clean-p8-delivery-deployment-importer-20260825/verification.json; docs/evidence/v3-clean-p9-web-release-20260826/verification.json | complete Web workflow, mobile/offline, SSE, PWA and release receipts passed |
 | REC-D2-IDENTITY-001 | docs/evidence/v3-clean-p2-identity-acl-20260819/verification.json | P2 Team/Actor/session/ACL isolation and API v2 parity |
 | REC-D2-SETUP-002 | docs/evidence/v3-clean-p2-identity-acl-20260819/verification.json; docs/evidence/v3-clean-p8-delivery-deployment-importer-20260825/verification.json | GitHub App Vault lease, discovery, and external fixture identity verified |
 | REC-D3-RUNNER-003 | docs/evidence/v3-clean-p6-runner-execution-20260824/verification.json | verified Docker, Host, Windows Bridge, signed Job Spec/receipt, isolation and restart probes |
@@ -504,3 +508,17 @@ The focused entry is `pnpm test:p8`; independent receipts are owned by
 | GitHub Delivery | Delivery + Repository | zeroed Vault leases, App/Installation adapter, branch and Draft PR, checks, owner approval, merge/reconcile, webhook HMAC/dedup, atomic baseline sync | `tests/p8/delivery-operations.test.mjs`, `scripts/v3-clean-p8-github-delivery-probe.mjs` | `REC-D7-DELIVERY-015` verified by external fixture receipt |
 | importer and operations | Importer + Operations + CAS | schema-7 preservation, schema-23 live mapping/evidence preservation, omitted secrets, signed 500-row/domain checkpoints, resume hashes, backup/restore/reset prepare, protected-set GC and trash rollback | `tests/p8/importer.test.mjs`, `tests/p8/deployment-backup.test.mjs`, `scripts/v3-clean-p8-importer-probe.mjs`, `scripts/v3-clean-p8-backup-restore-gc-probe.mjs` | importer, operations, Deployment and rollback receipts verified |
 | immutable Evidence and rollback | Evidence/Operations | literal focused/full gates, four artifact roles, candidate supersession, dry-run plus isolated actual restore of v7 SQLite/CAS/Vault/workspace/Broker/Bridge/parser, ledger 1-7 and all P8 tables absent | `scripts/v3-clean-p8-evidence.mjs`, P8 `rollback.ps1`, P8 `verification.json` | final `verified`, `provisional=false`, both external receipts; Catalog `26/1/27` |
+
+## P9 final release synchronization
+
+Decision D-038 keeps the schema at `user_version=8` and activates runtime
+phase 9. Final receipt `run-1787933538303` is `verified` with
+`provisional=false`; Contracts moves into Clean and all 27 rows are released,
+yielding `27/0/27`.
+
+| P9 surface | Owner | Required inventory/behavior | Test and Evidence | Status effect |
+| --- | --- | --- | --- | --- |
+| project event replay and CORS | Operations + Identity | signed project cursor, `previous_project_sequence`, JSON catch-up, fetch SSE, event/heartbeat reauthorization, exact credentialed origins | `tests/p9/events-cors.test.mjs`, `apps/web/src/test/events-p9.test.ts`; P9 HTTP receipt | released |
+| complete Web and offline | Frontend | hash router, scoped Query keys, six-command IndexedDB FIFO outbox, explicit rebase/discard, NetworkOnly protected routes, complete workflow and management chains | Web 37-test suite, `scripts/e2e.mjs`, three viewport and offline receipts | `REC-D10-FRONTEND-024` released |
+| real release | Release + Delivery + Deployment | real GitHub/Codex/Gateway/Runner/Bridge/Parser probes, two identical production image builds, SPDX SBOM, fresh-volume dynamic-port publish, health and app shell | `scripts/v3-clean-p9-github-delivery-probe.mjs`, `scripts/v3-clean-p9-release-probe.mjs`, P9 external probe receipt | all external gates verified |
+| immutable Evidence and rollback | Evidence + Operations | original hashes, release bundle, patch, literal command record, runnable dry-run and actual restore of SQLite/CAS/Vault/workspace/Broker/Bridge/Parser/Web, schema v8 ledger 1-8 | `docs/evidence/v3-clean-p9-web-release-20260826/verification.json`, `rollback.ps1` | `byte_exact_mismatches=[]`; Catalog `27/0/27` |

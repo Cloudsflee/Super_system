@@ -588,3 +588,10 @@ P9 formal Evidence is
 viewport receipts, external probes, and an isolated actual P8 rollback may
 promote the Catalog to `27/0/27`. Any missing input freezes the published P8
 Catalog at `26/1/27`.
+
+The published P9 receipt is `run-1787933538303` with `status=verified` and
+`provisional=false`. It records the real GitHub App, Codex, Gateway, Docker/
+Host/Bridge Runner, Parser, fixed-image/SBOM, dynamic-origin browser, offline,
+and isolated actual rollback gates. Rollback restores schema v8, ledger
+`[1..8]`, all eight component roles, and `byte_exact_mismatches=[]`. Contracts
+and Frontend are Clean/released; the final Catalog is `27/0/27`.

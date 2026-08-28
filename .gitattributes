@@ -12,3 +12,4 @@
 *.ts text eol=lf
 *.tsx text eol=lf
 docs/evidence/**/change.patch text eol=lf -whitespace
+docs/evidence/v3-clean-p9-web-release-20260826/** -text

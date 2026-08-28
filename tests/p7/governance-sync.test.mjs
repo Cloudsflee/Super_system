@@ -79,6 +79,8 @@ test('P7 migration, ownership, registry, package gates and paths are synchronize
 });
 
 test('P7 Catalog promotion is disjoint, complete and bound to a staging or final receipt', () => {
+  const p9 = JSON.parse(fs.readFileSync(path.join(root, 'docs/evidence/v3-clean-p9-web-release-20260826/verification.json'), 'utf8'));
+  const finalStatus = p9.status === 'verified' && p9.provisional === false ? 'released' : 'verified';
   const runId = `governance-${process.pid}-${Date.now()}`;
   const attemptRoot = path.join(root, 'docs', 'evidence', 'v3-clean-p7-evidence-quality-outcome-20260824', 'attempts', runId);
   const previous = process.env.AIWS_P7_EVIDENCE_STAGING_ROOT;
@@ -102,15 +104,15 @@ test('P7 Catalog promotion is disjoint, complete and bound to a staging or final
     const historical = new Set(layers.historical.features.map((feature) => feature.id));
     for (const id of P7_CLEAN_CATALOG_IDS) assert.equal(historical.has(id), false, id);
     for (const id of P7_VERIFIED_CATALOG_IDS) {
-      assert.equal(clean.get(id)?.status, 'verified', id);
+      assert.equal(clean.get(id)?.status, finalStatus, id);
       assert.deepEqual(clean.get(id)?.evidence, [evidenceReference], id);
       assert.equal(clean.get(id)?.runtime_surface, 'v3-clean', id);
     }
-    assert.equal(clean.get('REC-D10-FRONTEND-024')?.status, 'scaffolded');
+    assert.equal(clean.get('REC-D10-FRONTEND-024')?.status, finalStatus === 'released' ? 'released' : 'scaffolded');
     const aggregate = JSON.parse(fs.readFileSync(path.join(root, 'feature-catalog.json'), 'utf8'));
     assert.deepEqual(aggregate.exclusions, []);
     assert.deepEqual(new Set(aggregate.features.map((feature) => feature.id)), new Set([...clean.keys(), ...historical]));
-    for (const id of P7_VERIFIED_CATALOG_IDS) assert.equal(aggregate.features.find((feature) => feature.id === id)?.status, 'verified', id);
+    for (const id of P7_VERIFIED_CATALOG_IDS) assert.equal(aggregate.features.find((feature) => feature.id === id)?.status, finalStatus, id);
   } finally {
     if (previous == null) delete process.env.AIWS_P7_EVIDENCE_STAGING_ROOT;
     else process.env.AIWS_P7_EVIDENCE_STAGING_ROOT = previous;

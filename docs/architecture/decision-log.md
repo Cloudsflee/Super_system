@@ -132,3 +132,11 @@ the byte-exact P8 state. No production cutover is performed. Only a final
 verified non-provisional P9 receipt can promote Contracts and the complete
 Catalog to `27/0/27`; any incomplete identity, probe, viewport, offline, or
 rollback receipt preserves the published P8 `26/1/27` state.
+
+The published P9 receipt `run-1787933538303` is `verified` and
+`provisional=false`. It verifies the complete routed Web, project-local
+JSON/SSE continuity, the six-command FIFO outbox, app-shell-only PWA, real
+external identities, fixed production image and SBOM, dynamic loopback publish,
+three viewports, offline cache exclusion, and an isolated actual P8 rollback.
+No production pointer or volume was touched. Contracts move into Clean and all
+27 rows are `released`, yielding `27/0/27`.

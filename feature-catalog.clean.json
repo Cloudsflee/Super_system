@@ -15,7 +15,7 @@
       "id": "REC-D0-GOVERNANCE-000",
       "domain": "governance",
       "name": "Recovery truth, ownership and synchronized architecture gates",
-      "status": "verified",
+      "status": "released",
       "owner_modules": [
         "platform"
       ],
@@ -89,10 +89,14 @@
         "docs/evidence/v3-clean-p3-1-debt-burn-down-20260820/verification.json",
         "docs/evidence/v3-clean-p3-1-gate-receipt-hygiene-20260820/verification.json"
       ],
-      "release_receipts": [],
+      "release_receipts": [
+        "docs/evidence/v3-clean-p9-web-release-20260826/verification.json"
+      ],
       "tests": [
         "T0",
-        "tests/unit/recovery-governance.test.mjs"
+        "tests/unit/recovery-governance.test.mjs",
+        "tests/p9/web-governance.test.mjs",
+        "scripts/v3-clean-p9-release-probe.mjs"
       ],
       "runtime_surface": "v3-clean"
     },
@@ -100,7 +104,7 @@
       "id": "REC-D10-FRONTEND-024",
       "domain": "frontend",
       "name": "Complete V3 operational web workflows",
-      "status": "scaffolded",
+      "status": "released",
       "owner_modules": [
         "identity",
         "setup",
@@ -174,16 +178,21 @@
       ],
       "evidence": [
         "docs/evidence/v3-clean-p2-identity-acl-20260819/verification.json",
-        "docs/evidence/v3-clean-p8-delivery-deployment-importer-20260825/verification.json"
+        "docs/evidence/v3-clean-p8-delivery-deployment-importer-20260825/verification.json",
+        "docs/evidence/v3-clean-p9-web-release-20260826/verification.json"
       ],
-      "release_receipts": [],
+      "release_receipts": [
+        "docs/evidence/v3-clean-p9-web-release-20260826/verification.json"
+      ],
       "tests": [
         "T8",
         "tests/p2/identity-acl.test.mjs",
         "tests/p2/identity-acl-security.test.mjs",
         "apps/web/src/test/identity-access.test.tsx",
         "tests/p8/http-contract.test.mjs",
-        "apps/web/src/test/operations-p8.test.tsx"
+        "apps/web/src/test/operations-p8.test.tsx",
+        "tests/p9/web-governance.test.mjs",
+        "scripts/v3-clean-p9-release-probe.mjs"
       ],
       "runtime_surface": "v3-clean"
     },
@@ -191,7 +200,7 @@
       "id": "REC-D2-IDENTITY-001",
       "domain": "identity",
       "name": "Local owner account and sessions",
-      "status": "verified",
+      "status": "released",
       "owner_modules": [
         "identity"
       ],
@@ -258,12 +267,16 @@
       "evidence": [
         "docs/evidence/v3-clean-p2-identity-acl-20260819/verification.json"
       ],
-      "release_receipts": [],
+      "release_receipts": [
+        "docs/evidence/v3-clean-p9-web-release-20260826/verification.json"
+      ],
       "tests": [
         "T2",
         "tests/p2/identity-acl.test.mjs",
         "tests/p2/identity-acl-security.test.mjs",
-        "apps/web/src/test/identity-access.test.tsx"
+        "apps/web/src/test/identity-access.test.tsx",
+        "tests/p9/web-governance.test.mjs",
+        "scripts/v3-clean-p9-release-probe.mjs"
       ],
       "runtime_surface": "v3-clean"
     },
@@ -271,7 +284,7 @@
       "id": "REC-D2-SETUP-002",
       "domain": "setup",
       "name": "Setup, Vault, credentials, profiles and provider probes",
-      "status": "verified",
+      "status": "released",
       "owner_modules": [
         "identity",
         "setup",
@@ -345,7 +358,9 @@
         "docs/evidence/v3-clean-p2-identity-acl-20260819/verification.json",
         "docs/evidence/v3-clean-p8-delivery-deployment-importer-20260825/verification.json"
       ],
-      "release_receipts": [],
+      "release_receipts": [
+        "docs/evidence/v3-clean-p9-web-release-20260826/verification.json"
+      ],
       "tests": [
         "T2",
         "tests/p2/identity-acl.test.mjs",
@@ -353,7 +368,9 @@
         "apps/web/src/test/identity-access.test.tsx",
         "tests/p8/delivery-operations.test.mjs",
         "tests/p8/http-contract.test.mjs",
-        "scripts/v3-clean-p8-github-delivery-probe.mjs"
+        "scripts/v3-clean-p8-github-delivery-probe.mjs",
+        "tests/p9/web-governance.test.mjs",
+        "scripts/v3-clean-p9-release-probe.mjs"
       ],
       "runtime_surface": "v3-clean"
     },
@@ -361,7 +378,7 @@
       "id": "REC-D3-RUNNER-003",
       "domain": "runner",
       "name": "Broker-isolated Docker, Host, and Windows Bridge runners with signed Job Spec",
-      "status": "verified",
+      "status": "released",
       "owner_modules": [
         "runner"
       ],
@@ -412,7 +429,9 @@
       "evidence": [
         "docs/evidence/v3-clean-p6-runner-execution-20260824/verification.json"
       ],
-      "release_receipts": [],
+      "release_receipts": [
+        "docs/evidence/v3-clean-p9-web-release-20260826/verification.json"
+      ],
       "tests": [
         "T3",
         "tests/p6/runner-execution.test.mjs",
@@ -422,7 +441,9 @@
         "scripts/v3-clean-p6-docker-runner-probe.mjs",
         "scripts/v3-clean-p6-host-runner-probe.mjs",
         "scripts/v3-clean-p6-bridge-runner-probe.mjs",
-        "scripts/v3-clean-p6-restart-probe.mjs"
+        "scripts/v3-clean-p6-restart-probe.mjs",
+        "tests/p9/web-governance.test.mjs",
+        "scripts/v3-clean-p9-release-probe.mjs"
       ],
       "runtime_surface": "v3-clean"
     },
@@ -430,7 +451,7 @@
       "id": "REC-D4-MCP-004",
       "domain": "mcp",
       "name": "MCP clients, tools and operation lifecycle over HTTP, stdio and Gateway",
-      "status": "verified",
+      "status": "released",
       "owner_modules": [
         "mcp",
         "operations"
@@ -483,7 +504,9 @@
       "evidence": [
         "docs/evidence/v3-clean-p4-context-mcp-20260820/verification.json"
       ],
-      "release_receipts": [],
+      "release_receipts": [
+        "docs/evidence/v3-clean-p9-web-release-20260826/verification.json"
+      ],
       "tests": [
         "T3",
         "tests/p4/mcp-exchange-gateway.test.mjs",
@@ -491,7 +514,9 @@
         "tests/p4/active-entrypoint.test.mjs",
         "tests/p4/governance-sync.test.mjs",
         "apps/web/src/test/context.test.tsx",
-        "scripts/e2e.mjs"
+        "scripts/e2e.mjs",
+        "tests/p9/web-governance.test.mjs",
+        "scripts/v3-clean-p9-release-probe.mjs"
       ],
       "runtime_surface": "v3-clean"
     },
@@ -499,7 +524,7 @@
       "id": "REC-D4-SCOPE-016",
       "domain": "mcp",
       "name": "MCP and Exchange scopes, dual approval, allowlists and revocation",
-      "status": "verified",
+      "status": "released",
       "owner_modules": [
         "exchange",
         "mcp",
@@ -559,7 +584,9 @@
       "evidence": [
         "docs/evidence/v3-clean-p4-context-mcp-20260820/verification.json"
       ],
-      "release_receipts": [],
+      "release_receipts": [
+        "docs/evidence/v3-clean-p9-web-release-20260826/verification.json"
+      ],
       "tests": [
         "T3",
         "tests/p4/mcp-exchange-gateway.test.mjs",
@@ -567,7 +594,9 @@
         "tests/p4/active-entrypoint.test.mjs",
         "tests/p4/governance-sync.test.mjs",
         "apps/web/src/test/context.test.tsx",
-        "scripts/e2e.mjs"
+        "scripts/e2e.mjs",
+        "tests/p9/web-governance.test.mjs",
+        "scripts/v3-clean-p9-release-probe.mjs"
       ],
       "runtime_surface": "v3-clean"
     },
@@ -575,7 +604,7 @@
       "id": "REC-D5-PROJECT-005",
       "domain": "project",
       "name": "Draft project, retryable intake and confirmed brief",
-      "status": "verified",
+      "status": "released",
       "owner_modules": [
         "project",
         "platform"
@@ -631,14 +660,18 @@
       "evidence": [
         "docs/evidence/v3-clean-p3-project-workflow-20260819/verification.json"
       ],
-      "release_receipts": [],
+      "release_receipts": [
+        "docs/evidence/v3-clean-p9-web-release-20260826/verification.json"
+      ],
       "tests": [
         "T4",
         "tests/p3/active-entrypoint.test.mjs",
         "tests/p3/http-contract.test.mjs",
         "tests/p3/migration.test.mjs",
         "tests/p3/project-workflow.test.mjs",
-        "apps/web/src/test/project-workflow-clean.test.tsx"
+        "apps/web/src/test/project-workflow-clean.test.tsx",
+        "tests/p9/web-governance.test.mjs",
+        "scripts/v3-clean-p9-release-probe.mjs"
       ],
       "runtime_surface": "v3-clean"
     },
@@ -646,7 +679,7 @@
       "id": "REC-D5-WORKFLOW-006",
       "domain": "workflow",
       "name": "Workstream and Task workflow canvas with node contracts",
-      "status": "verified",
+      "status": "released",
       "owner_modules": [
         "workflow",
         "platform"
@@ -694,12 +727,16 @@
       "evidence": [
         "docs/evidence/v3-clean-p3-project-workflow-20260819/verification.json"
       ],
-      "release_receipts": [],
+      "release_receipts": [
+        "docs/evidence/v3-clean-p9-web-release-20260826/verification.json"
+      ],
       "tests": [
         "T4",
         "tests/p3/migration.test.mjs",
         "tests/p3/project-workflow.test.mjs",
-        "apps/web/src/test/project-workflow-clean.test.tsx"
+        "apps/web/src/test/project-workflow-clean.test.tsx",
+        "tests/p9/web-governance.test.mjs",
+        "scripts/v3-clean-p9-release-probe.mjs"
       ],
       "runtime_surface": "v3-clean"
     },
@@ -707,7 +744,7 @@
       "id": "REC-D6-EXECUTION-008",
       "domain": "execution",
       "name": "Persistent DAG dispatcher and seven replayable stages",
-      "status": "verified",
+      "status": "released",
       "owner_modules": [
         "execution"
       ],
@@ -768,7 +805,9 @@
       "evidence": [
         "docs/evidence/v3-clean-p6-runner-execution-20260824/verification.json"
       ],
-      "release_receipts": [],
+      "release_receipts": [
+        "docs/evidence/v3-clean-p9-web-release-20260826/verification.json"
+      ],
       "tests": [
         "T4",
         "tests/p6/runner-execution.test.mjs",
@@ -778,7 +817,9 @@
         "tests/p6/migration.test.mjs",
         "apps/web/src/test/execution-p6.test.tsx",
         "scripts/v3-clean-p6-performance.mjs",
-        "scripts/e2e.mjs"
+        "scripts/e2e.mjs",
+        "tests/p9/web-governance.test.mjs",
+        "scripts/v3-clean-p9-release-probe.mjs"
       ],
       "runtime_surface": "v3-clean"
     },
@@ -786,7 +827,7 @@
       "id": "REC-D6-GENERATION-007",
       "domain": "workflow",
       "name": "Asynchronous workflow generator and independent critic",
-      "status": "verified",
+      "status": "released",
       "owner_modules": [
         "workflow",
         "critic",
@@ -835,12 +876,16 @@
       "evidence": [
         "docs/evidence/v3-clean-p3-project-workflow-20260819/verification.json"
       ],
-      "release_receipts": [],
+      "release_receipts": [
+        "docs/evidence/v3-clean-p9-web-release-20260826/verification.json"
+      ],
       "tests": [
         "T4",
         "tests/p3/project-workflow.test.mjs",
         "tests/p3/migration.test.mjs",
-        "apps/web/src/test/project-workflow-clean.test.tsx"
+        "apps/web/src/test/project-workflow-clean.test.tsx",
+        "tests/p9/web-governance.test.mjs",
+        "scripts/v3-clean-p9-release-probe.mjs"
       ],
       "runtime_surface": "v3-clean"
     },
@@ -848,7 +893,7 @@
       "id": "REC-D6-OUTCOME-009",
       "domain": "outcome",
       "name": "Evidence-driven outcome, rubric and revocable waiver",
-      "status": "verified",
+      "status": "released",
       "owner_modules": [
         "outcome",
         "project",
@@ -898,14 +943,18 @@
       "evidence": [
         "docs/evidence/v3-clean-p7-evidence-quality-outcome-20260824/verification.json"
       ],
-      "release_receipts": [],
+      "release_receipts": [
+        "docs/evidence/v3-clean-p9-web-release-20260826/verification.json"
+      ],
       "tests": [
         "T4",
         "tests/p7/quality-outcome.test.mjs",
         "tests/p7/http-contract.test.mjs",
         "apps/web/src/test/execution-p7.test.tsx",
         "scripts/v3-clean-p7-quality-outcome-probe.mjs",
-        "scripts/e2e.mjs"
+        "scripts/e2e.mjs",
+        "tests/p9/web-governance.test.mjs",
+        "scripts/v3-clean-p9-release-probe.mjs"
       ],
       "runtime_surface": "v3-clean"
     },
@@ -913,7 +962,7 @@
       "id": "REC-D7-REPOSITORY-014",
       "domain": "repository",
       "name": "Repository connections, targets, lines and managed worktrees",
-      "status": "verified",
+      "status": "released",
       "owner_modules": [
         "repository"
       ],
@@ -965,12 +1014,16 @@
       "evidence": [
         "docs/evidence/v3-clean-p3-project-workflow-20260819/verification.json"
       ],
-      "release_receipts": [],
+      "release_receipts": [
+        "docs/evidence/v3-clean-p9-web-release-20260826/verification.json"
+      ],
       "tests": [
         "T7",
         "tests/p3/migration.test.mjs",
         "tests/p3/project-workflow.test.mjs",
-        "apps/web/src/test/project-workflow-clean.test.tsx"
+        "apps/web/src/test/project-workflow-clean.test.tsx",
+        "tests/p9/web-governance.test.mjs",
+        "scripts/v3-clean-p9-release-probe.mjs"
       ],
       "runtime_surface": "v3-clean"
     },
@@ -978,7 +1031,7 @@
       "id": "REC-D8-APPROVAL-013",
       "domain": "assist",
       "name": "Runtime approval, user input and semantic proposals",
-      "status": "verified",
+      "status": "released",
       "owner_modules": [
         "assist"
       ],
@@ -1022,12 +1075,16 @@
       "evidence": [
         "docs/evidence/v3-clean-p5-assist-terminal-20260820/verification.json"
       ],
-      "release_receipts": [],
+      "release_receipts": [
+        "docs/evidence/v3-clean-p9-web-release-20260826/verification.json"
+      ],
       "tests": [
         "T5",
         "tests/p5/assist-files.test.mjs",
         "tests/p5/mutation-recovery.test.mjs",
-        "apps/web/src/test/approvals-p5.test.tsx"
+        "apps/web/src/test/approvals-p5.test.tsx",
+        "tests/p9/web-governance.test.mjs",
+        "scripts/v3-clean-p9-release-probe.mjs"
       ],
       "runtime_surface": "v3-clean"
     },
@@ -1035,7 +1092,7 @@
       "id": "REC-D8-ASSIST-010",
       "domain": "assist",
       "name": "Four-scope Assist runtime and native event replay",
-      "status": "verified",
+      "status": "released",
       "owner_modules": [
         "assist"
       ],
@@ -1090,14 +1147,18 @@
       "evidence": [
         "docs/evidence/v3-clean-p5-assist-terminal-20260820/verification.json"
       ],
-      "release_receipts": [],
+      "release_receipts": [
+        "docs/evidence/v3-clean-p9-web-release-20260826/verification.json"
+      ],
       "tests": [
         "T5",
         "tests/p5/assist-files.test.mjs",
         "tests/p5/mutation-recovery.test.mjs",
         "tests/p5/provider-probe.test.mjs",
         "apps/web/src/test/assist.test.tsx",
-        "scripts/v3-clean-p5-assist-probe.mjs"
+        "scripts/v3-clean-p5-assist-probe.mjs",
+        "tests/p9/web-governance.test.mjs",
+        "scripts/v3-clean-p9-release-probe.mjs"
       ],
       "runtime_surface": "v3-clean"
     },
@@ -1105,7 +1166,7 @@
       "id": "REC-D8-ATTACHMENTS-011",
       "domain": "assist",
       "name": "Attachments and secure previews",
-      "status": "verified",
+      "status": "released",
       "owner_modules": [
         "files",
         "parser",
@@ -1155,7 +1216,9 @@
       "evidence": [
         "docs/evidence/v3-clean-p7-evidence-quality-outcome-20260824/verification.json"
       ],
-      "release_receipts": [],
+      "release_receipts": [
+        "docs/evidence/v3-clean-p9-web-release-20260826/verification.json"
+      ],
       "tests": [
         "T5",
         "tests/p5/assist-files.test.mjs",
@@ -1164,7 +1227,9 @@
         "tests/p7/http-contract.test.mjs",
         "apps/web/src/test/files-p5.test.tsx",
         "apps/web/src/test/evidence-p7.test.tsx",
-        "scripts/v3-clean-p7-parser-probe.mjs"
+        "scripts/v3-clean-p7-parser-probe.mjs",
+        "tests/p9/web-governance.test.mjs",
+        "scripts/v3-clean-p9-release-probe.mjs"
       ],
       "runtime_surface": "v3-clean"
     },
@@ -1172,7 +1237,7 @@
       "id": "REC-D8-BRIDGE-026",
       "domain": "bridge",
       "name": "Independent Windows Native Bridge pairing and Git bundle transport",
-      "status": "verified",
+      "status": "released",
       "owner_modules": [
         "bridge"
       ],
@@ -1221,13 +1286,17 @@
       "evidence": [
         "docs/evidence/v3-clean-p5-assist-terminal-20260820/verification.json"
       ],
-      "release_receipts": [],
+      "release_receipts": [
+        "docs/evidence/v3-clean-p9-web-release-20260826/verification.json"
+      ],
       "tests": [
         "T5",
         "tests/p5/terminal-bridge.test.mjs",
         "tests/p5/mutation-recovery.test.mjs",
         "apps/web/src/test/connections-p5.test.tsx",
-        "scripts/v3-clean-p5-bridge-probe.mjs"
+        "scripts/v3-clean-p5-bridge-probe.mjs",
+        "tests/p9/web-governance.test.mjs",
+        "scripts/v3-clean-p9-release-probe.mjs"
       ],
       "runtime_surface": "v3-clean"
     },
@@ -1235,7 +1304,7 @@
       "id": "REC-D8-FILES-012",
       "domain": "assist",
       "name": "Managed files and reversible change batches",
-      "status": "verified",
+      "status": "released",
       "owner_modules": [
         "files"
       ],
@@ -1278,13 +1347,17 @@
       "evidence": [
         "docs/evidence/v3-clean-p5-assist-terminal-20260820/verification.json"
       ],
-      "release_receipts": [],
+      "release_receipts": [
+        "docs/evidence/v3-clean-p9-web-release-20260826/verification.json"
+      ],
       "tests": [
         "T5",
         "tests/p5/assist-files.test.mjs",
         "tests/p5/mutation-recovery.test.mjs",
         "apps/web/src/test/files-p5.test.tsx",
-        "scripts/v3-clean-p5-performance.mjs"
+        "scripts/v3-clean-p5-performance.mjs",
+        "tests/p9/web-governance.test.mjs",
+        "scripts/v3-clean-p9-release-probe.mjs"
       ],
       "runtime_surface": "v3-clean"
     },
@@ -1292,7 +1365,7 @@
       "id": "REC-D8-TERMINAL-025",
       "domain": "terminal",
       "name": "Native Terminal, reconnect and cursor recovery",
-      "status": "verified",
+      "status": "released",
       "owner_modules": [
         "terminal"
       ],
@@ -1336,13 +1409,17 @@
       "evidence": [
         "docs/evidence/v3-clean-p5-assist-terminal-20260820/verification.json"
       ],
-      "release_receipts": [],
+      "release_receipts": [
+        "docs/evidence/v3-clean-p9-web-release-20260826/verification.json"
+      ],
       "tests": [
         "T5",
         "tests/p5/terminal-bridge.test.mjs",
         "tests/p5/http-contract.test.mjs",
         "apps/web/src/test/terminal.test.tsx",
-        "scripts/v3-clean-p5-performance.mjs"
+        "scripts/v3-clean-p5-performance.mjs",
+        "tests/p9/web-governance.test.mjs",
+        "scripts/v3-clean-p9-release-probe.mjs"
       ],
       "runtime_surface": "v3-clean"
     },
@@ -1350,7 +1427,7 @@
       "id": "REC-D9-CONTEXT-017",
       "domain": "context",
       "name": "Context tree, versions, policy, selection and Context Pack v5",
-      "status": "verified",
+      "status": "released",
       "owner_modules": [
         "context",
         "platform",
@@ -1419,7 +1496,9 @@
       "evidence": [
         "docs/evidence/v3-clean-p4-context-mcp-20260820/verification.json"
       ],
-      "release_receipts": [],
+      "release_receipts": [
+        "docs/evidence/v3-clean-p9-web-release-20260826/verification.json"
+      ],
       "tests": [
         "T6",
         "tests/p4/context-projection.test.mjs",
@@ -1427,7 +1506,9 @@
         "tests/p4/active-entrypoint.test.mjs",
         "tests/p4/governance-sync.test.mjs",
         "apps/web/src/test/context.test.tsx",
-        "scripts/e2e.mjs"
+        "scripts/e2e.mjs",
+        "tests/p9/web-governance.test.mjs",
+        "scripts/v3-clean-p9-release-probe.mjs"
       ],
       "runtime_surface": "v3-clean"
     },
@@ -1435,7 +1516,7 @@
       "id": "REC-D9-PROJECTION-018",
       "domain": "context",
       "name": "Recoverable Context projection worker and deterministic index rebuild",
-      "status": "verified",
+      "status": "released",
       "owner_modules": [
         "projection",
         "context",
@@ -1494,7 +1575,9 @@
       "evidence": [
         "docs/evidence/v3-clean-p4-context-mcp-20260820/verification.json"
       ],
-      "release_receipts": [],
+      "release_receipts": [
+        "docs/evidence/v3-clean-p9-web-release-20260826/verification.json"
+      ],
       "tests": [
         "T6",
         "T8",
@@ -1503,7 +1586,9 @@
         "tests/p4/active-entrypoint.test.mjs",
         "tests/p4/governance-sync.test.mjs",
         "apps/web/src/test/context.test.tsx",
-        "scripts/e2e.mjs"
+        "scripts/e2e.mjs",
+        "tests/p9/web-governance.test.mjs",
+        "scripts/v3-clean-p9-release-probe.mjs"
       ],
       "runtime_surface": "v3-clean"
     },
@@ -1511,7 +1596,7 @@
       "id": "REC-D9-EVIDENCE-019",
       "domain": "evidence",
       "name": "CAS asset, attestation, relation, trace, digest and code evidence",
-      "status": "verified",
+      "status": "released",
       "owner_modules": [
         "evidence"
       ],
@@ -1579,7 +1664,9 @@
       "evidence": [
         "docs/evidence/v3-clean-p7-evidence-quality-outcome-20260824/verification.json"
       ],
-      "release_receipts": [],
+      "release_receipts": [
+        "docs/evidence/v3-clean-p9-web-release-20260826/verification.json"
+      ],
       "tests": [
         "T6",
         "tests/p7/parser-evidence.test.mjs",
@@ -1588,7 +1675,9 @@
         "apps/web/src/test/execution-p7.test.tsx",
         "scripts/v3-clean-p7-cas-tamper-probe.mjs",
         "scripts/v3-clean-p7-performance.mjs",
-        "scripts/e2e.mjs"
+        "scripts/e2e.mjs",
+        "tests/p9/web-governance.test.mjs",
+        "scripts/v3-clean-p9-release-probe.mjs"
       ],
       "runtime_surface": "v3-clean"
     },
@@ -1596,7 +1685,7 @@
       "id": "REC-D9-QUALITY-020",
       "domain": "quality",
       "name": "Isolated multi-format quality review and human semantic threshold",
-      "status": "verified",
+      "status": "released",
       "owner_modules": [
         "parser",
         "quality",
@@ -1661,7 +1750,9 @@
       "evidence": [
         "docs/evidence/v3-clean-p7-evidence-quality-outcome-20260824/verification.json"
       ],
-      "release_receipts": [],
+      "release_receipts": [
+        "docs/evidence/v3-clean-p9-web-release-20260826/verification.json"
+      ],
       "tests": [
         "T6",
         "T8",
@@ -1673,7 +1764,9 @@
         "scripts/v3-clean-p7-parser-probe.mjs",
         "scripts/v3-clean-p7-quality-outcome-probe.mjs",
         "scripts/v3-clean-p7-restart-probe.mjs",
-        "scripts/e2e.mjs"
+        "scripts/e2e.mjs",
+        "tests/p9/web-governance.test.mjs",
+        "scripts/v3-clean-p9-release-probe.mjs"
       ],
       "runtime_surface": "v3-clean"
     },
@@ -1681,7 +1774,7 @@
       "id": "REC-D11-OPS-022",
       "domain": "operations",
       "name": "Deployment API, backup, restore, reset, import and release rollback",
-      "status": "verified",
+      "status": "released",
       "owner_modules": [
         "operations",
         "deployment",
@@ -1755,7 +1848,9 @@
       "evidence": [
         "docs/evidence/v3-clean-p8-delivery-deployment-importer-20260825/verification.json"
       ],
-      "release_receipts": [],
+      "release_receipts": [
+        "docs/evidence/v3-clean-p9-web-release-20260826/verification.json"
+      ],
       "tests": [
         "T0",
         "T1",
@@ -1766,7 +1861,9 @@
         "tests/p8/http-contract.test.mjs",
         "apps/web/src/test/operations-p8.test.tsx",
         "scripts/v3-clean-p8-importer-probe.mjs",
-        "scripts/v3-clean-p8-backup-restore-gc-probe.mjs"
+        "scripts/v3-clean-p8-backup-restore-gc-probe.mjs",
+        "tests/p9/web-governance.test.mjs",
+        "scripts/v3-clean-p9-release-probe.mjs"
       ],
       "runtime_surface": "v3-clean"
     },
@@ -1774,7 +1871,7 @@
       "id": "REC-D7-DELIVERY-015",
       "domain": "delivery",
       "name": "GitHub App Draft PR delivery and merge recovery",
-      "status": "verified",
+      "status": "released",
       "owner_modules": [
         "delivery"
       ],
@@ -1829,13 +1926,17 @@
       "evidence": [
         "docs/evidence/v3-clean-p8-delivery-deployment-importer-20260825/verification.json"
       ],
-      "release_receipts": [],
+      "release_receipts": [
+        "docs/evidence/v3-clean-p9-web-release-20260826/verification.json"
+      ],
       "tests": [
         "T7",
         "tests/p8/delivery-operations.test.mjs",
         "tests/p8/http-contract.test.mjs",
         "apps/web/src/test/operations-p8.test.tsx",
-        "scripts/v3-clean-p8-github-delivery-probe.mjs"
+        "scripts/v3-clean-p8-github-delivery-probe.mjs",
+        "tests/p9/web-governance.test.mjs",
+        "scripts/v3-clean-p9-release-probe.mjs"
       ],
       "runtime_surface": "v3-clean"
     },
@@ -1843,7 +1944,7 @@
       "id": "REC-D9-DEPLOYMENT-021",
       "domain": "evidence",
       "name": "Deployment, browser and viewport evidence in CAS",
-      "status": "verified",
+      "status": "released",
       "owner_modules": [
         "deployment",
         "evidence",
@@ -1890,14 +1991,77 @@
       "evidence": [
         "docs/evidence/v3-clean-p8-delivery-deployment-importer-20260825/verification.json"
       ],
-      "release_receipts": [],
+      "release_receipts": [
+        "docs/evidence/v3-clean-p9-web-release-20260826/verification.json"
+      ],
       "tests": [
         "T6",
         "T8",
         "tests/p8/deployment-backup.test.mjs",
         "tests/p8/http-contract.test.mjs",
         "apps/web/src/test/operations-p8.test.tsx",
-        "scripts/v3-clean-p8-deployment-rollback-probe.mjs"
+        "scripts/v3-clean-p8-deployment-rollback-probe.mjs",
+        "tests/p9/web-governance.test.mjs",
+        "scripts/v3-clean-p9-release-probe.mjs"
+      ],
+      "runtime_surface": "v3-clean"
+    },
+    {
+      "id": "REC-D1-CONTRACTS-023",
+      "domain": "contracts",
+      "name": "Forward-only migrations and V3 public contracts",
+      "status": "released",
+      "owner_modules": [
+        "platform"
+      ],
+      "source_files": [
+        "current V3 schema fingerprint"
+      ],
+      "target_modules": [
+        "apps/api/src/clean/migration-service.mjs",
+        "apps/api/src/clean/registry.mjs",
+        "apps/api/src/clean/http.mjs",
+        "packages/contracts/src/clean-v2.mjs",
+        "apps/web/src/api.ts"
+      ],
+      "tables": [
+        "schema_migrations"
+      ],
+      "apis": [
+        "/api/v2",
+        "/api/v2/events"
+      ],
+      "ui": [
+        "Complete V3-Clean Web"
+      ],
+      "events": [
+        "migration.applied"
+      ],
+      "behavior_tests": [
+        "tests/p9/foundation.test.mjs",
+        "tests/p9/events-cors.test.mjs",
+        "tests/p9/web-governance.test.mjs"
+      ],
+      "ui_tests": [
+        "apps/web/src/test/offline-p9.test.ts",
+        "apps/web/src/test/workflows-p9.test.tsx",
+        "scripts/e2e.mjs"
+      ],
+      "evidence": [
+        "docs/evidence/v3-r0-r1-governance-20260810/verification.json",
+        "docs/evidence/v3-clean-p9-web-release-20260826/verification.json"
+      ],
+      "release_receipts": [
+        "docs/evidence/v3-clean-p9-web-release-20260826/verification.json"
+      ],
+      "tests": [
+        "T1",
+        "tests/unit/database.test.mjs",
+        "tests/unit/migrations.test.mjs",
+        "tests/unit/contracts.test.mjs",
+        "tests/unit/recovery-golden.test.mjs",
+        "tests/p9/web-governance.test.mjs",
+        "scripts/v3-clean-p9-release-probe.mjs"
       ],
       "runtime_surface": "v3-clean"
     }
