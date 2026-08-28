@@ -1,0 +1,41 @@
+{
+  "status": "passed",
+  "layouts": [
+    {
+      "name": "desktop",
+      "width": 1440,
+      "height": 900,
+      "screenshot": "viewport-desktop.png",
+      "screenshot_sha256": "2a439fa11c991b6e163da91305845bd0b767a357e24b35accdeadd21a4932ca5",
+      "keyboard_focus": "BUTTON",
+      "horizontal_overflow": false,
+      "scroll_width": 1440,
+      "client_width": 1440,
+      "overlaps": []
+    },
+    {
+      "name": "tablet",
+      "width": 1024,
+      "height": 768,
+      "screenshot": "viewport-tablet.png",
+      "screenshot_sha256": "a3725a2ad525e81e881d1123fb5a4799ee594295b84d876deb7fba68099493f4",
+      "keyboard_focus": "BUTTON",
+      "horizontal_overflow": false,
+      "scroll_width": 1024,
+      "client_width": 1024,
+      "overlaps": []
+    },
+    {
+      "name": "mobile",
+      "width": 390,
+      "height": 844,
+      "screenshot": "viewport-mobile.png",
+      "screenshot_sha256": "ece4848f18df7a4f89734e84c5b32ebecf4692f3806a4f04c1d1a2145a7947e3",
+      "keyboard_focus": "BUTTON",
+      "horizontal_overflow": false,
+      "scroll_width": 390,
+      "client_width": 390,
+      "overlaps": []
+    }
+  ]
+}
