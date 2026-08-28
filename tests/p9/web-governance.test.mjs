@@ -60,3 +60,11 @@ test('P9 governance files declare Clean phase ownership', () => {
     'tests/p9/web-governance.test.mjs', 'scripts/v3-clean-p9-evidence.mjs', 'scripts/v3-clean-p9-github-delivery-probe.mjs', 'scripts/e2e.mjs'
   ]) assert.deepEqual(classifyWorkspacePath(file), { kind: 'clean', phase: 'P9', rows: [] }, file);
 });
+
+test('P9 verify orders real GitHub and release probes before final Evidence verification', () => {
+  const source = read('scripts/verify.mjs');
+  const github = source.indexOf('v3-clean-p9-github-delivery-probe.mjs');
+  const release = source.indexOf('v3-clean-p9-release-probe.mjs');
+  const evidence = source.indexOf("['evidence:p9', '--', '--verify']");
+  assert.ok(github > 0 && release > github && evidence > release);
+});

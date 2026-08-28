@@ -25,6 +25,7 @@ const commands = [
   ['node scripts/v3-clean-p8-importer-probe.mjs'],
   ['node scripts/v3-clean-p8-deployment-rollback-probe.mjs'],
   ['node scripts/v3-clean-p8-backup-restore-gc-probe.mjs'],
+  ['node scripts/v3-clean-p9-github-delivery-probe.mjs'],
   ['node scripts/v3-clean-p9-release-probe.mjs'],
   ['test'], ['test:integration'], ['test:security'], ['test:release'], ['build'], ['test:e2e'],
   ['evidence:p5', '--', '--verify'], ['evidence:p6', '--', '--verify'], ['evidence:p7', '--', '--verify'], ['evidence:p8', '--', '--verify'], ['evidence:p9', '--', '--verify'],

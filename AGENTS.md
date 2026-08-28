@@ -501,6 +501,8 @@ node scripts/v3-clean-p8-github-delivery-probe.mjs
 node scripts/v3-clean-p8-importer-probe.mjs
 node scripts/v3-clean-p8-deployment-rollback-probe.mjs
 node scripts/v3-clean-p8-backup-restore-gc-probe.mjs
+node scripts/v3-clean-p9-github-delivery-probe.mjs
+node scripts/v3-clean-p9-release-probe.mjs
 pnpm --filter @aiws/web test
 pnpm test
 pnpm test:integration:clean

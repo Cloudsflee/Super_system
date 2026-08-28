@@ -588,6 +588,8 @@ The additive commands are `pnpm test:p9` before external probes and
 the full P1-P8 sequence, then runs P9, all required external probes, Web,
 integration/security, build, E2E, release, and Evidence verification in that
 order. The root package inventory is 53 scripts.
+P9 external commands are `node scripts/v3-clean-p9-github-delivery-probe.mjs`
+and `node scripts/v3-clean-p9-release-probe.mjs`; both must be non-provisional.
 
 Browser release E2E covers the Project-to-Delivery chain, management views,
 manual input, offline/reconnect, duplicate events, stale revision, blocked
