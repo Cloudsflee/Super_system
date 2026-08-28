@@ -3,6 +3,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import test from 'node:test';
 import { classifyWorkspacePath } from '../../scripts/lib/v3-clean-p1-scope.mjs';
+import { FROZEN_SURFACES } from '../../apps/api/src/modules/registry.mjs';
 
 const root = process.cwd();
 const read = (file) => fs.readFileSync(path.join(root, file), 'utf8');
@@ -23,6 +24,7 @@ test('P9 Web foundation, dependencies and retired files are synchronized', () =>
     'apps/web/src/features/workflow/WorkflowPage.tsx',
     'apps/web/src/features/repository/RepositoryPanel.tsx'
   ]) assert.equal(fs.existsSync(path.join(root, file)), false, file);
+  assert.equal(FROZEN_SURFACES.some((surface) => surface.path === 'apps/web/src/pages.tsx'), false);
 });
 
 test('P9 active Web has a hash router, scoped Query cache and no v1 request helper', () => {
