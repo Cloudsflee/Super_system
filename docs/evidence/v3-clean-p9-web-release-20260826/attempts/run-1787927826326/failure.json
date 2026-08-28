@@ -1,0 +1,7 @@
+{
+  "schema_version": "aiws.v3-clean.p9-generation-failure.v1",
+  "status": "failed",
+  "provisional": true,
+  "run_id": "run-1787927826326",
+  "error": "p9_gate_failed:pnpm test:p6"
+}

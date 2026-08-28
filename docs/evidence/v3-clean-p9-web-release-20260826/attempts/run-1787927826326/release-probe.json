@@ -1,0 +1,174 @@
+{
+  "schema_version": "aiws.v3-clean.p9-release-probe.v1",
+  "status": "passed",
+  "provisional": false,
+  "baseline_commit": "423a7b4ca199ff2f11cbef1758802cdad22af8e0",
+  "production_cutover": false,
+  "temporary_root": "aiws-p9-release-TRc77V",
+  "bundle": {
+    "path": ".ai-workspace/p9-release-probe/modified-release-bundle.tgz",
+    "sha256": "cac401874de69e736a88c7d83305dedcf7287a546dee16231193abe87400cadc",
+    "byte_length": 176225,
+    "manifest_entries": 3,
+    "service_worker_sha256": "33542620a66be926347c7dc6364f3a616bf8d0e1b5fc56574d7e5695173170ea"
+  },
+  "http": {
+    "status": "passed",
+    "dynamic_loopback_port": 50062,
+    "exact_cors_origin": "http://127.0.0.1:50063",
+    "readyz": {
+      "status": "ready",
+      "runtime": "v3-clean",
+      "runtime_phase": 9,
+      "schema_family": "v3-clean",
+      "user_version": 8
+    },
+    "shell_cache_control": "no-cache, no-store",
+    "preflight_status": 204,
+    "actual_status": 200
+  },
+  "browser": {
+    "status": "passed",
+    "layouts": [
+      {
+        "name": "desktop",
+        "width": 1440,
+        "height": 900,
+        "screenshot": "viewport-desktop.png",
+        "screenshot_sha256": "fe7042d5a8b2618f95075b702b7daab032c0c0e16f74194c43d203f6d8cfc34f",
+        "keyboard_focus": "BUTTON",
+        "horizontal_overflow": false,
+        "scroll_width": 1440,
+        "client_width": 1440,
+        "overlaps": []
+      },
+      {
+        "name": "tablet",
+        "width": 1024,
+        "height": 768,
+        "screenshot": "viewport-tablet.png",
+        "screenshot_sha256": "574134b1ca987af6e081805fbcccf2be2a8f24c0481485342130bee5077bf4bd",
+        "keyboard_focus": "BUTTON",
+        "horizontal_overflow": false,
+        "scroll_width": 1024,
+        "client_width": 1024,
+        "overlaps": []
+      },
+      {
+        "name": "mobile",
+        "width": 390,
+        "height": 844,
+        "screenshot": "viewport-mobile.png",
+        "screenshot_sha256": "27edd45fff7cffc47f90f5e00a590e6ef45d8cb93fec464cbad4e2e4aa828002",
+        "keyboard_focus": "BUTTON",
+        "horizontal_overflow": false,
+        "scroll_width": 390,
+        "client_width": 390,
+        "overlaps": []
+      }
+    ],
+    "offline": {
+      "status": "passed",
+      "screenshot": "offline.png",
+      "screenshot_sha256": "d5060e1ba0ab45cbea6e4ce9ea75a33a9ea45af74748bcec96dd46c336210733",
+      "shell_opened": true
+    },
+    "cache_entries": [
+      "/assets/index-C8hSgTrH.css",
+      "/assets/index-W8_k8y5-.js",
+      "/assets/vendor-icons-D4crbV5g.js",
+      "/assets/vendor-react-BC45_0Ga.js",
+      "/index.html",
+      "/manifest.webmanifest"
+    ],
+    "protected_cache_entries": [],
+    "online_console_errors": [],
+    "online_http_errors": []
+  },
+  "image": {
+    "status": "verified",
+    "provisional": false,
+    "docker_version": "29.4.1",
+    "image_digest": "sha256:533fbebb45652e450268bf88e0fbb0630d432d271936abcd40b11ce8cc2b9904",
+    "reproducible_builds": 2,
+    "sbom": {
+      "path": "image.spdx.json",
+      "sha256": "1b17f47190d6245aba519946d20a6ff2c6baaa95255128e128f89c7520027885",
+      "byte_length": 1861863
+    },
+    "publish": {
+      "dynamic_loopback_port": 45727,
+      "fresh_volume": "aiws-p9-release-33116-1787927910454",
+      "readyz": {
+        "status": "ready",
+        "runtime": "v3-clean",
+        "runtime_phase": 9,
+        "schema_family": "v3-clean",
+        "user_version": 8
+      },
+      "web_shell": true,
+      "exact_cors_origin": "http://127.0.0.1:50063"
+    }
+  },
+  "backup_restore": {
+    "status": "passed",
+    "source_sha256": "e2c47b3f0a7c0fce35507496deea2937a8bbe063e44746023960d3ff7a626e85",
+    "restored_sha256": "e2c47b3f0a7c0fce35507496deea2937a8bbe063e44746023960d3ff7a626e85",
+    "byte_exact_mismatches": []
+  },
+  "pointer_switch": {
+    "isolated": true,
+    "from": {
+      "release": "p8",
+      "bundle_sha256": "1a0fb0bd70b7e8432adaae0af16c3034f927348b1ccb64872d2036a022544f88",
+      "schema_version": 8
+    },
+    "to": {
+      "release": "p9",
+      "bundle_sha256": "cac401874de69e736a88c7d83305dedcf7287a546dee16231193abe87400cadc",
+      "schema_version": 8
+    },
+    "restored": {
+      "release": "p8",
+      "bundle_sha256": "1a0fb0bd70b7e8432adaae0af16c3034f927348b1ccb64872d2036a022544f88",
+      "schema_version": 8
+    }
+  },
+  "rollback": {
+    "status": "passed",
+    "dry_run": {
+      "status": "passed",
+      "writes": 0,
+      "exit_status": 0
+    },
+    "apply_exit_status": 0,
+    "restored_user_version": 8,
+    "ledger": [
+      1,
+      2,
+      3,
+      4,
+      5,
+      6,
+      7,
+      8
+    ],
+    "foreign_key_check": [],
+    "restored_components": {
+      "sqlite": true,
+      "cas": true,
+      "vault": true,
+      "workspace": true,
+      "broker": true,
+      "bridge": true,
+      "parser": true,
+      "web": true
+    },
+    "pointer": {
+      "release": "p8",
+      "bundle_sha256": "1a0fb0bd70b7e8432adaae0af16c3034f927348b1ccb64872d2036a022544f88",
+      "schema_version": 8
+    },
+    "byte_exact_mismatches": []
+  }
+}

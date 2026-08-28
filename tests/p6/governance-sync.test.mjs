@@ -88,7 +88,7 @@ test('P6 Catalog promotion is disjoint, complete and Evidence-gated', () => {
 });
 
 test('P4, P5 and P6 Evidence policies are declarative and final P6 artifacts reopen', () => {
-  assert.deepEqual(EVIDENCE_POLICIES.map((policy) => policy.key), ['p4', 'p5', 'p6', 'p7', 'p8']);
+  assert.deepEqual(EVIDENCE_POLICIES.map((policy) => policy.key), ['p9', 'p4', 'p5', 'p6', 'p7', 'p8']);
   const resolved = resolveCatalogEvidenceReference(root, evidenceReference);
   if (process.env.AIWS_P6_EVIDENCE_STAGING_ROOT) {
     assert.equal(resolved.staging, true);

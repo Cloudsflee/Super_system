@@ -1,0 +1,418 @@
+{
+  "schema_version": "aiws.v3-clean.p9-verification.v1",
+  "phase": "P9",
+  "run_id": "run-1787927826326",
+  "status": "failed",
+  "provisional": true,
+  "generated_at": "2026-08-28T14:48:17.124Z",
+  "baseline_commit": "423a7b4ca199ff2f11cbef1758802cdad22af8e0",
+  "final_commit": "2ed55c1e7b2e8ac1baf50889bb00341a1b75214b",
+  "runtime_phase": 9,
+  "target_user_version": 8,
+  "migration_ledger": [
+    1,
+    2,
+    3,
+    4,
+    5,
+    6,
+    7,
+    8
+  ],
+  "migration_added": false,
+  "local_gate_status": "failed",
+  "blocking_failure": {
+    "command": "pnpm test:p6",
+    "exit_status": 1
+  },
+  "catalog_promotion": "frozen-26/1/27",
+  "catalog": {
+    "clean": 26,
+    "historical": 1,
+    "total": 27
+  },
+  "release": {
+    "status": "passed",
+    "provisional": false,
+    "image_digest": "sha256:533fbebb45652e450268bf88e0fbb0630d432d271936abcd40b11ce8cc2b9904",
+    "sbom_sha256": "1b17f47190d6245aba519946d20a6ff2c6baaa95255128e128f89c7520027885",
+    "dynamic_origin": "http://127.0.0.1:50063",
+    "production_cutover": false
+  },
+  "browser": {
+    "status": "passed",
+    "viewports": [
+      "desktop",
+      "tablet",
+      "mobile"
+    ],
+    "protected_cache_entries": [],
+    "console_errors": [],
+    "http_errors": []
+  },
+  "external_gates": {
+    "gateway": {
+      "status": "provisional",
+      "command": "v3-clean-p4-gateway-probe.mjs",
+      "exit_status": 0,
+      "receipt_schema": "aiws.v3-clean.p4-gateway-probe.v1"
+    },
+    "codex": {
+      "status": "verified",
+      "command": "v3-clean-p5-assist-probe.mjs",
+      "exit_status": 0,
+      "receipt_schema": "aiws.v3-clean.p5-assist-probe.v1"
+    },
+    "bridge": {
+      "status": "verified",
+      "command": "v3-clean-p5-bridge-probe.mjs",
+      "exit_status": 0,
+      "receipt_schema": "aiws.v3-clean.p5-bridge-probe.v1"
+    },
+    "docker_runner": {
+      "status": "verified",
+      "command": "v3-clean-p6-docker-runner-probe.mjs",
+      "exit_status": 0,
+      "receipt_schema": "aiws.v3-clean.p6-docker-runner-probe.v1"
+    },
+    "host_runner": {
+      "status": "verified",
+      "command": "v3-clean-p6-host-runner-probe.mjs",
+      "exit_status": 0,
+      "receipt_schema": "aiws.v3-clean.p6-host-runner-probe.v1"
+    },
+    "bridge_runner": {
+      "status": "verified",
+      "command": "v3-clean-p6-bridge-runner-probe.mjs",
+      "exit_status": 0,
+      "receipt_schema": "aiws.v3-clean.p6-bridge-runner-probe.v1"
+    },
+    "parser": {
+      "status": "verified",
+      "command": "v3-clean-p7-parser-probe.mjs",
+      "exit_status": 0,
+      "receipt_schema": "aiws.v3-clean.p7-parser-probe.v1"
+    },
+    "github": {
+      "status": "provisional",
+      "command": "v3-clean-p8-github-delivery-probe.mjs",
+      "exit_status": 0,
+      "receipt_schema": "aiws.v3-clean.p8-github-delivery-probe.v2"
+    },
+    "release": {
+      "status": "verified",
+      "image_digest": "sha256:533fbebb45652e450268bf88e0fbb0630d432d271936abcd40b11ce8cc2b9904"
+    }
+  },
+  "rollback": {
+    "status": "passed",
+    "dry_run_exit_status": 0,
+    "apply_exit_status": 0,
+    "restored_user_version": 8,
+    "ledger": [
+      1,
+      2,
+      3,
+      4,
+      5,
+      6,
+      7,
+      8
+    ],
+    "restored_components": {
+      "sqlite": true,
+      "cas": true,
+      "vault": true,
+      "workspace": true,
+      "broker": true,
+      "bridge": true,
+      "parser": true,
+      "web": true
+    },
+    "byte_exact_mismatches": []
+  },
+  "release_rows": [
+    "REC-D0-GOVERNANCE-000",
+    "REC-D10-FRONTEND-024",
+    "REC-D2-IDENTITY-001",
+    "REC-D2-SETUP-002",
+    "REC-D3-RUNNER-003",
+    "REC-D4-MCP-004",
+    "REC-D4-SCOPE-016",
+    "REC-D5-PROJECT-005",
+    "REC-D5-WORKFLOW-006",
+    "REC-D6-EXECUTION-008",
+    "REC-D6-GENERATION-007",
+    "REC-D6-OUTCOME-009",
+    "REC-D7-REPOSITORY-014",
+    "REC-D8-APPROVAL-013",
+    "REC-D8-ASSIST-010",
+    "REC-D8-ATTACHMENTS-011",
+    "REC-D8-BRIDGE-026",
+    "REC-D8-FILES-012",
+    "REC-D8-TERMINAL-025",
+    "REC-D9-CONTEXT-017",
+    "REC-D9-PROJECTION-018",
+    "REC-D9-EVIDENCE-019",
+    "REC-D9-QUALITY-020",
+    "REC-D11-OPS-022",
+    "REC-D7-DELIVERY-015",
+    "REC-D9-DEPLOYMENT-021",
+    "REC-D1-CONTRACTS-023"
+  ],
+  "commands": [
+    {
+      "command": "pnpm check",
+      "exit_status": 0,
+      "duration_ms": 16215
+    },
+    {
+      "command": "pnpm audit:p1",
+      "exit_status": 0,
+      "duration_ms": 463
+    },
+    {
+      "command": "pnpm scan:clean",
+      "exit_status": 0,
+      "duration_ms": 978
+    },
+    {
+      "command": "pnpm recovery:plan",
+      "exit_status": 0,
+      "duration_ms": 479
+    },
+    {
+      "command": "pnpm recovery:catalog",
+      "exit_status": 0,
+      "duration_ms": 525
+    },
+    {
+      "command": "pnpm recovery:coverage",
+      "exit_status": 0,
+      "duration_ms": 482
+    },
+    {
+      "command": "pnpm recovery:impact -- --audit",
+      "exit_status": 0,
+      "duration_ms": 615
+    },
+    {
+      "command": "pnpm test:p1",
+      "exit_status": 0,
+      "duration_ms": 2926
+    },
+    {
+      "command": "pnpm test:p2",
+      "exit_status": 0,
+      "duration_ms": 2287
+    },
+    {
+      "command": "pnpm test:p3",
+      "exit_status": 0,
+      "duration_ms": 2585
+    },
+    {
+      "command": "pnpm test:p31",
+      "exit_status": 0,
+      "duration_ms": 2174
+    },
+    {
+      "command": "pnpm test:p4",
+      "exit_status": 0,
+      "duration_ms": 2777
+    },
+    {
+      "command": "pnpm test:p5",
+      "exit_status": 0,
+      "duration_ms": 5800
+    },
+    {
+      "command": "pnpm test:p6",
+      "exit_status": 1,
+      "duration_ms": 5129
+    },
+    {
+      "command": "pnpm test:p7",
+      "exit_status": 0,
+      "duration_ms": 2863
+    },
+    {
+      "command": "pnpm test:p8",
+      "exit_status": 0,
+      "duration_ms": 5038
+    },
+    {
+      "command": "pnpm test:p9",
+      "exit_status": 0,
+      "duration_ms": 5719
+    },
+    {
+      "command": "node scripts/v3-clean-p5-performance.mjs",
+      "exit_status": 0,
+      "duration_ms": 1333
+    },
+    {
+      "command": "node scripts/v3-clean-p4-gateway-probe.mjs",
+      "exit_status": 0,
+      "duration_ms": 1531
+    },
+    {
+      "command": "node scripts/v3-clean-p5-assist-probe.mjs",
+      "exit_status": 0,
+      "duration_ms": 6456
+    },
+    {
+      "command": "node scripts/v3-clean-p5-bridge-probe.mjs",
+      "exit_status": 0,
+      "duration_ms": 4483
+    },
+    {
+      "command": "node scripts/v3-clean-p6-docker-runner-probe.mjs",
+      "exit_status": 0,
+      "duration_ms": 1793
+    },
+    {
+      "command": "node scripts/v3-clean-p6-host-runner-probe.mjs",
+      "exit_status": 0,
+      "duration_ms": 316
+    },
+    {
+      "command": "node scripts/v3-clean-p6-bridge-runner-probe.mjs",
+      "exit_status": 0,
+      "duration_ms": 4627
+    },
+    {
+      "command": "node scripts/v3-clean-p7-parser-probe.mjs",
+      "exit_status": 0,
+      "duration_ms": 1712
+    },
+    {
+      "command": "node scripts/v3-clean-p8-github-delivery-probe.mjs",
+      "exit_status": 0,
+      "duration_ms": 1611
+    },
+    {
+      "command": "node scripts/v3-clean-p9-release-probe.mjs",
+      "exit_status": 0,
+      "duration_ms": 97433
+    },
+    {
+      "command": "node scripts/v3-clean-p6-performance.mjs",
+      "exit_status": 0,
+      "duration_ms": 7606
+    },
+    {
+      "command": "node scripts/v3-clean-p6-restart-probe.mjs",
+      "exit_status": 0,
+      "duration_ms": 2311
+    },
+    {
+      "command": "node scripts/v3-clean-p7-performance.mjs",
+      "exit_status": 0,
+      "duration_ms": 9613
+    },
+    {
+      "command": "node scripts/v3-clean-p7-cas-tamper-probe.mjs",
+      "exit_status": 0,
+      "duration_ms": 872
+    },
+    {
+      "command": "node scripts/v3-clean-p7-quality-outcome-probe.mjs",
+      "exit_status": 0,
+      "duration_ms": 1348
+    },
+    {
+      "command": "node scripts/v3-clean-p7-restart-probe.mjs",
+      "exit_status": 0,
+      "duration_ms": 1206
+    },
+    {
+      "command": "node scripts/v3-clean-p8-performance.mjs",
+      "exit_status": 0,
+      "duration_ms": 165
+    },
+    {
+      "command": "node scripts/v3-clean-p8-importer-probe.mjs",
+      "exit_status": 0,
+      "duration_ms": 1151
+    },
+    {
+      "command": "node scripts/v3-clean-p8-deployment-rollback-probe.mjs",
+      "exit_status": 0,
+      "duration_ms": 283336
+    },
+    {
+      "command": "node scripts/v3-clean-p8-backup-restore-gc-probe.mjs",
+      "exit_status": 0,
+      "duration_ms": 2295
+    },
+    {
+      "command": "pnpm --filter @aiws/web test",
+      "exit_status": 0,
+      "duration_ms": 18437
+    },
+    {
+      "command": "pnpm test",
+      "exit_status": 0,
+      "duration_ms": 23130
+    },
+    {
+      "command": "pnpm test:integration:clean",
+      "exit_status": 0,
+      "duration_ms": 3747
+    },
+    {
+      "command": "pnpm test:security:clean",
+      "exit_status": 0,
+      "duration_ms": 15467
+    },
+    {
+      "command": "pnpm test:integration",
+      "exit_status": 0,
+      "duration_ms": 21123
+    },
+    {
+      "command": "pnpm test:security",
+      "exit_status": 0,
+      "duration_ms": 57096
+    },
+    {
+      "command": "pnpm build",
+      "exit_status": 0,
+      "duration_ms": 7755
+    },
+    {
+      "command": "pnpm test:e2e",
+      "exit_status": 1,
+      "duration_ms": 33889
+    },
+    {
+      "command": "pnpm test:release",
+      "exit_status": 0,
+      "duration_ms": 630
+    },
+    {
+      "command": "git diff --check",
+      "exit_status": 0,
+      "duration_ms": 55
+    }
+  ],
+  "artifacts": {
+    "modified_artifact": {
+      "path": "modified-release-bundle.tgz",
+      "sha256": "cac401874de69e736a88c7d83305dedcf7287a546dee16231193abe87400cadc"
+    },
+    "patch": {
+      "path": "change.patch",
+      "sha256": "99b1ecca1b00ca84bff81d73733f9c03d936de345ed3df00d928a2418f8d9da0"
+    },
+    "verification_record": {
+      "path": "verification-record.json",
+      "sha256": "96af118ea6dde583bde9bd652bd5b30a7927de671cbd97dc79c0c1e1a1c07895"
+    },
+    "rollback": {
+      "path": "rollback.ps1",
+      "sha256": "b374bb81ee9bd0f410b7d3757bd6281ff2b3f967612257969a8884bc6ff0a8ad"
+    }
+  }
+}
