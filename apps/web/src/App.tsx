@@ -149,10 +149,7 @@ function WorkspaceLayout() {
   }, []);
 
   const refreshSetup = useCallback(async () => {
-    const response = await queryClient.fetchQuery({
-      queryKey: workspaceQueryKey({ actorId: 'anonymous', teamId: '', projectId: '' }, 'setup'),
-      queryFn: () => apiV2<{ needs_setup: boolean; actor_count: number; bootstrap_actor_id?: string }>('/api/v2/setup')
-    });
+    const response = await apiV2<{ needs_setup: boolean; actor_count: number; bootstrap_actor_id?: string }>('/api/v2/setup');
     const state = response.data;
     if (state.bootstrap_actor_id) sessionStorage.setItem('aiws:v3:actor-id', state.bootstrap_actor_id);
     const cleanState: Pick<SetupState, 'status' | 'complete' | 'revision'> = {
@@ -263,7 +260,7 @@ function WorkspaceLayout() {
   }, [projectId, setupReady]);
 
   return (
-    <div className="app-shell">
+    <div className="app-shell" data-route={page} data-setup-ready={String(setupReady)} data-setup-status={setup?.status || 'pending'}>
       <aside className={`sidebar ${menuOpen ? 'is-open' : ''}`}>
         <div className="brand-row">
           <div className="brand-mark">A3</div>
@@ -338,6 +335,6 @@ export function App() {
   const [router] = useState(() => createHashRouter([
     { path: '*', element: <WorkspaceLayout />, errorElement: <RouteErrorBoundary /> }
   ]));
-  useEffect(() => () => router.dispose(), [router]);
+  useEffect(() => import.meta.env.MODE === 'development' ? undefined : () => router.dispose(), [router]);
   return <QueryClientProvider client={queryClient}><RouterProvider router={router} /></QueryClientProvider>;
 }

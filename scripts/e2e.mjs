@@ -6,11 +6,11 @@ import { spawn } from 'node:child_process';
 import { chromium } from '@playwright/test';
 
 const root = process.cwd();
-const home = fs.mkdtempSync(path.join(os.tmpdir(), 'aiws-p7-e2e-'));
+const home = fs.mkdtempSync(path.join(os.tmpdir(), 'aiws-p9-e2e-'));
 const apiPort = await freePort();
 const webPort = await freePort();
-const vaultKey = 'p7-clean-e2e-vault-key';
-const reportDir = path.join(root, '.ai-workspace', 'e2e-clean-p7');
+const vaultKey = 'p9-clean-e2e-vault-key';
+const reportDir = path.join(root, '.ai-workspace', 'e2e-clean-p9');
 fs.rmSync(reportDir, { recursive: true, force: true });
 fs.mkdirSync(reportDir, { recursive: true });
 const children = [];
@@ -20,8 +20,9 @@ const httpErrors = [];
 
 const api = start(process.execPath, ['apps/api/server.mjs'], {
   AIWS_CLEAN_PORT: String(apiPort), AIWS_CLEAN_HOME: home,
-  AIWS_CLEAN_VAULT_KEY: vaultKey, AIWS_CLEAN_RUNTIME_BUILD: 'v3-clean-p7-e2e',
-  AIWS_CLEAN_MCP_PEPPER: 'p7-clean-e2e-mcp-pepper', AIWS_GATEWAY_SECRET: 'p7-clean-e2e-gateway-secret',
+  AIWS_CLEAN_CORS_ORIGINS: `http://127.0.0.1:${webPort}`,
+  AIWS_CLEAN_VAULT_KEY: vaultKey, AIWS_CLEAN_BUILD: 'v3-clean-p9-e2e',
+  AIWS_CLEAN_MCP_PEPPER: 'p9-clean-e2e-mcp-pepper', AIWS_GATEWAY_SECRET: 'p9-clean-e2e-gateway-secret',
   AIWS_CLEAN_PROVIDER_MODE: 'deterministic', AIWS_RUNNER_POLL_INTERVAL_MS: '10'
 });
 children.push(api);
@@ -56,7 +57,7 @@ async function pageApi(pathname, options = {}) {
 }
 
 try {
-  await page.goto(`${base}/#/setup`, { waitUntil: 'networkidle' });
+  await page.goto(`${base}/#/setup`, { waitUntil: 'domcontentloaded' });
   try { await page.getByRole('heading', { name: 'Setup', exact: true }).waitFor({ timeout: 8_000 }); }
   catch (error) { process.stderr.write(`Clean Web bootstrap body:\n${await page.locator('body').innerText()}\nURL=${page.url()}\nRequests=${JSON.stringify(requests)}\n`); throw error; }
   await page.getByLabel('Display name').fill('P7 E2E owner');
@@ -64,8 +65,9 @@ try {
   await page.getByRole('button', { name: 'Complete setup', exact: true }).click();
   await page.getByText('Workspace is ready', { exact: true }).waitFor();
 
-  await page.goto(`${base}/#/projects`, { waitUntil: 'networkidle' });
-  await page.getByRole('heading', { name: 'Projects', exact: true }).waitFor();
+  await page.goto(`${base}/#/projects`, { waitUntil: 'domcontentloaded' });
+  try { await page.getByRole('heading', { name: 'Projects', exact: true }).waitFor({ timeout: 8_000 }); }
+  catch (error) { process.stderr.write(`Clean Web projects body:\n${await page.locator('body').innerText()}\nState=${JSON.stringify(await page.locator('.app-shell').evaluate((element) => ({ ...element.dataset })))}\nURL=${page.url()}\nRequests=${JSON.stringify(requests.slice(-30))}\nHTTP=${JSON.stringify(httpErrors)}\n`); throw error; }
   await page.getByLabel('Name').fill('P7 Clean project');
   await page.getByLabel('Description').fill('Clean E2E fixture');
   await page.getByRole('button', { name: 'Create project', exact: true }).click();
@@ -163,7 +165,7 @@ try {
   const profileId = createdProfile.body.data.profile.id;
 
   await page.setViewportSize({ width: 1440, height: 900 });
-  await page.goto(`${base}/#/connections`, { waitUntil: 'networkidle' });
+  await page.goto(`${base}/#/connections`, { waitUntil: 'domcontentloaded' });
   await page.getByRole('heading', { name: 'Connections', exact: true }).waitFor();
   await page.getByRole('button', { name: 'Runner Profiles', exact: true }).click();
   await page.getByText('P7 E2E Host', { exact: true }).first().waitFor();
@@ -186,11 +188,11 @@ try {
   assert(execution.status === 201 && execution.body.data?.execution?.id, `execution-create:${execution.status}`);
   const executionId = execution.body.data.execution.id;
 
-  await page.goto(`${base}/#/execution`, { waitUntil: 'networkidle' });
+  await page.goto(`${base}/#/execution`, { waitUntil: 'domcontentloaded' });
   await page.getByRole('heading', { name: 'Execution', exact: true }).waitFor();
   await page.getByRole('button', { name: 'Start Execution', exact: true }).click();
   await waitForApi(pageApi, `/api/v2/executions/${executionId}`, (result) => result.body.data?.execution?.status === 'awaiting_approval', 20_000);
-  await page.reload({ waitUntil: 'networkidle' });
+  await page.reload({ waitUntil: 'domcontentloaded' });
   await page.getByText('awaiting approval', { exact: true }).first().waitFor();
   await page.getByRole('button', { name: 'Approval', exact: true }).click();
   await page.getByRole('heading', { name: 'Approval Center', exact: true }).waitFor();
@@ -198,10 +200,10 @@ try {
   await executionApproval.getByRole('button', { name: 'Approve', exact: true }).click();
   await executionApproval.getByText('approved', { exact: true }).waitFor();
 
-  await page.goto(`${base}/#/execution`, { waitUntil: 'networkidle' });
+  await page.goto(`${base}/#/execution`, { waitUntil: 'domcontentloaded' });
   await page.getByRole('button', { name: 'Resume Execution', exact: true }).click();
   await waitForApi(pageApi, `/api/v2/executions/${executionId}`, (result) => result.body.data?.execution?.status === 'completed', 20_000);
-  await page.reload({ waitUntil: 'networkidle' });
+  await page.reload({ waitUntil: 'domcontentloaded' });
   await page.getByText('completed', { exact: true }).first().waitFor();
   const replayResponsePromise = page.waitForResponse((response) => response.url().includes(`/api/v2/executions/${executionId}/stages/deliver/replay`));
   await page.getByRole('button', { name: 'Replay deliver', exact: true }).click();
@@ -210,7 +212,7 @@ try {
   assert(replayResponse.status() === 202, `execution-replay:${replayResponse.status()}:${JSON.stringify(replayPayload)}`);
   const replayedExecution = await waitForApi(pageApi, `/api/v2/executions/${executionId}`, (result) => result.body.data?.execution?.status === 'completed' && result.body.data.execution.generation === 2, 20_000);
   assert(replayedExecution.body.data.execution.handoff_manifest?.delivery_ready === true, 'execution delivery handoff');
-  await page.reload({ waitUntil: 'networkidle' });
+  await page.reload({ waitUntil: 'domcontentloaded' });
   await page.getByText('generation 2', { exact: false }).first().waitFor();
   for (const control of ['Start Execution', 'Pause Execution', 'Resume Execution', 'Cancel Execution', 'Replan Execution']) {
     assert(await page.getByRole('button', { name: control, exact: true }).count() === 1, `execution control:${control}`);
@@ -227,7 +229,7 @@ try {
   assert(captured.status === 201 && captured.body.data?.asset?.id, `asset-capture:${captured.status}`);
   const assetId = captured.body.data.asset.id;
 
-  await page.goto(`${base}/#/evidence`, { waitUntil: 'networkidle' });
+  await page.goto(`${base}/#/evidence`, { waitUntil: 'domcontentloaded' });
   await page.getByRole('heading', { name: 'Evidence', exact: true }).waitFor();
   await page.getByText('p7-e2e-result.json', { exact: true }).first().waitFor();
   await page.getByLabel('Parser format').selectOption('json');
@@ -247,7 +249,7 @@ try {
   assert(parserRun.body.data?.parser_run?.status === 'parsed', 'parser terminal receipt');
   assert(attestations.body.data?.attestations?.length === 1, 'asset attestation');
 
-  await page.goto(`${base}/#/execution`, { waitUntil: 'networkidle' });
+  await page.goto(`${base}/#/execution`, { waitUntil: 'domcontentloaded' });
   await page.getByRole('heading', { name: 'Execution', exact: true }).waitFor();
   await page.getByRole('tab', { name: 'Quality', exact: true }).click();
   await page.getByRole('heading', { name: 'Quality reviews', exact: true }).waitFor();
@@ -284,7 +286,7 @@ try {
   await page.getByText('revoked', { exact: false }).first().waitFor();
 
   await page.setViewportSize({ width: 1440, height: 900 });
-  await page.goto(`${base}/#/context`, { waitUntil: 'networkidle' });
+  await page.goto(`${base}/#/context`, { waitUntil: 'domcontentloaded' });
   await page.getByRole('heading', { name: 'Context', exact: true }).waitFor();
   await page.getByText('P7 verification note', { exact: true }).waitFor();
   await page.getByRole('button', { name: 'Pin node' }).click();
@@ -296,7 +298,7 @@ try {
   await page.getByRole('button', { name: 'Retry', exact: true }).click();
   await page.getByText('completed', { exact: true }).first().waitFor();
 
-  await page.goto(`${base}/#/settings`, { waitUntil: 'networkidle' });
+  await page.goto(`${base}/#/settings`, { waitUntil: 'domcontentloaded' });
   await page.getByRole('heading', { name: 'MCP & Exchange', exact: true }).waitFor();
   await page.getByRole('button', { name: 'Create client', exact: true }).click();
   await page.getByText('One-time token', { exact: true }).waitFor();
@@ -311,10 +313,10 @@ try {
   const layoutReceipts = [];
   for (const [name, width, height] of [['mobile', 390, 844], ['laptop', 1024, 768], ['desktop', 1440, 900]]) {
     await page.setViewportSize({ width, height });
-    for (const scenario of ['context', 'settings', 'execution', 'execution-quality', 'execution-outcome', 'evidence', 'connections']) {
+    for (const scenario of ['context', 'settings', 'execution', 'execution-quality', 'execution-outcome', 'evidence', 'connections', 'outcome', 'delivery', 'operations', 'identity', 'exchange', 'runner', 'parser', 'deployment', 'backup', 'importer']) {
       const route = scenario.startsWith('execution-') ? 'execution' : scenario;
-      await page.goto(`${base}/#/${route}`, { waitUntil: 'networkidle' });
-      const heading = { context: 'Context', settings: 'MCP & Exchange', execution: 'Execution', evidence: 'Evidence', connections: 'Connections' }[route];
+      await page.goto(`${base}/#/${route}`, { waitUntil: 'domcontentloaded' });
+      const heading = { context: 'Context', settings: 'MCP & Exchange', execution: 'Execution', evidence: 'Evidence', connections: 'Connections', outcome: 'Outcome', delivery: 'Delivery', operations: 'Operations', identity: 'Identity and teams', exchange: 'MCP & Exchange', runner: 'Connections', parser: 'Evidence', deployment: 'Operations', backup: 'Operations', importer: 'Operations' }[route];
       await page.getByRole('heading', { name: heading, exact: true }).waitFor();
       if (route === 'context') await page.getByText('P7 verification note', { exact: true }).waitFor();
       else if (route === 'settings') await page.getByText('context_map', { exact: true }).waitFor();
@@ -322,13 +324,13 @@ try {
       else if (scenario === 'execution-quality') { await page.getByRole('tab', { name: 'Quality', exact: true }).click(); await page.getByRole('heading', { name: 'Human decision', exact: true }).waitFor(); }
       else if (scenario === 'execution-outcome') { await page.getByRole('tab', { name: 'Outcome', exact: true }).click(); await page.getByRole('heading', { name: 'Requirements', exact: true }).waitFor(); }
       else if (route === 'evidence') await page.getByText('p7-e2e-result.json', { exact: true }).first().waitFor();
-      else {
+      else if (route === 'connections') {
         await page.getByRole('button', { name: 'Runner Profiles', exact: true }).click();
         await page.getByText('P7 E2E Host', { exact: true }).first().waitFor();
       }
       await page.screenshot({ path: path.join(reportDir, `${name}-${scenario}.png`), fullPage: true });
       const layout = await inspectLayout(page);
-      assert(!layout.horizontal_overflow, `${name}/${scenario} horizontal overflow`);
+      assert(!layout.horizontal_overflow, `${name}/${scenario} horizontal overflow:${JSON.stringify(layout)}`);
       assert(layout.overlaps.length === 0, `${name}/${scenario} overlaps:${JSON.stringify(layout.overlaps)}`);
       layoutReceipts.push({ viewport: name, route: scenario, ...layout });
     }
@@ -340,9 +342,9 @@ try {
   const checkpoints = await pageApi(`/api/v2/executions/${executionId}/checkpoints`);
   const attempts = await pageApi(`/api/v2/executions/${executionId}/attempts`);
   fs.writeFileSync(path.join(reportDir, 'receipt.json'), `${JSON.stringify({
-    schema_version: 'aiws.v3-clean.p7-e2e-receipt.v1', status: 'passed', provisional: false,
+    schema_version: 'aiws.v3-clean.p9-e2e-receipt.v1', status: 'passed', provisional: false,
     api_port: apiPort, web_port: webPort, viewports: ['mobile', 'laptop', 'desktop'],
-    routes: ['context', 'settings', 'execution', 'execution-quality', 'execution-outcome', 'evidence', 'connections'], request_count: requests.length,
+    routes: ['context', 'settings', 'execution', 'execution-quality', 'execution-outcome', 'evidence', 'connections', 'outcome', 'delivery', 'operations', 'identity', 'exchange', 'runner', 'parser', 'deployment', 'backup', 'importer'], request_count: requests.length,
     legacy_api_v1_requests: legacyRequests, browser_errors: browserErrors, http_errors: httpErrors,
     layouts: layoutReceipts, context_pack_hash: pack.body.data.pack.pack_hash,
     runner_profile: { id: profileId, type: readyProfile.body.data.profile.runner_type, status: readyProfile.body.data.profile.status },
@@ -351,7 +353,7 @@ try {
     quality: { review_id: qualityReview.id, status: qualityReview.status, weighted_score: qualityReview.human_review.weighted_score, report_sha256: qualityReview.report_sha256 },
     outcome: { requirement_count: revokedOutcome.body.data.evaluation.requirement_count, terminal_statuses: { blocked: blockedOutcome.body.data.evaluation.status, waived: waivedOutcome.body.data.evaluation.status, revoked: revokedOutcome.body.data.evaluation.status }, generations: { blocked: blockedOutcome.body.data.evaluation.generation, waived: waivedOutcome.body.data.evaluation.generation, revoked: revokedOutcome.body.data.evaluation.generation } }
   }, null, 2)}\n`);
-  process.stdout.write(`P7 Clean E2E passed: Evidence/Parser/Quality/Outcome and Runner replay across 3 viewports; overlaps=0; /api/v1 requests=0\n`);
+  process.stdout.write(`P9 Clean E2E passed: complete workflow and management routes across 3 viewports; overlaps=0; /api/v1 requests=0\n`);
 } finally {
   await browser.close();
   for (const child of children.reverse()) await stop(child);
@@ -455,7 +457,8 @@ async function inspectLayout(targetPage) {
         if (width > 1 && height > 1) overlaps.push([a.name, b.name]);
       }
     }
-    return { horizontal_overflow: root.scrollWidth > root.clientWidth + 1, scroll_width: root.scrollWidth, client_width: root.clientWidth, overlaps: overlaps.slice(0, 20) };
+    const overflowing_elements = [...document.querySelectorAll('body *')].map((element) => ({ element, rect: element.getBoundingClientRect() })).filter(({ rect }) => rect.width > 0 && (rect.right > innerWidth + 1 || rect.left < -1)).slice(0, 20).map(({ element, rect }) => ({ tag: element.tagName, class_name: element.className?.baseVal || element.className || '', left: Math.round(rect.left), right: Math.round(rect.right), width: Math.round(rect.width) }));
+    return { horizontal_overflow: root.scrollWidth > root.clientWidth + 1, scroll_width: root.scrollWidth, client_width: root.clientWidth, overlaps: overlaps.slice(0, 20), overflowing_elements };
   });
 }
 

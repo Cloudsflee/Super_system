@@ -21,6 +21,7 @@
 }
 
 * { box-sizing: border-box; }
+html, body, #root { max-width: 100%; overflow-x: clip; }
 body { margin: 0; min-width: 320px; min-height: 100vh; background: #eef1ef; }
 button, input, textarea, select { font: inherit; letter-spacing: 0; }
 button, select { cursor: pointer; }
@@ -415,6 +416,8 @@ button.network-pill { cursor: pointer; }
 .offline-workspace h1 { margin: 0; font-size: 18px; letter-spacing: 0; }
 .project-edit-grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.4fr) auto; gap: 8px; align-items: end; margin-top: 14px; padding-top: 14px; border-top: 1px solid var(--line); }
 .outcome-grid-p9, .delivery-controls-p9 { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 28px; }
+.outcome-page-p9 .workflow-commandbar, .outcome-page-p9 .workflow-commandbar > label, .outcome-page-p9 .workflow-commandbar select { min-width: 0; max-width: 100%; }
+.outcome-page-p9 .workflow-commandbar > label { width: min(100%, 520px); }
 .outcome-grid-p9 > section, .delivery-controls-p9 > section, .delivery-list-p9 { min-width: 0; border-top: 1px solid var(--line); padding-top: 14px; }
 .delivery-controls-p9 > section { display: grid; gap: 12px; align-content: start; }
 .delivery-list-p9 { margin-top: 28px; }
