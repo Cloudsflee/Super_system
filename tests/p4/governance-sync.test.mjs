@@ -44,6 +44,8 @@ test('P4 migration, ownership, registry and package gate inventories are synchro
 });
 
 test('P4 Catalog promotion is disjoint, complete and backed by final Evidence', () => {
+  const p9 = JSON.parse(fs.readFileSync(path.join(root, 'docs/evidence/v3-clean-p9-web-release-20260826/verification.json'), 'utf8'));
+  const p9Final = p9.status === 'verified' && p9.provisional === false;
   const index = loadCatalogIndex(root);
   const layers = loadCatalogLayers(root, index);
   const validation = validateCatalogLayers({ root, index, layers });
@@ -54,11 +56,12 @@ test('P4 Catalog promotion is disjoint, complete and backed by final Evidence', 
   const clean = new Map(layers.clean.features.map((feature) => [feature.id, feature]));
   const historicalRows = new Map(layers.historical.features.map((feature) => [feature.id, feature]));
   const historical = new Set(layers.historical.features.map((feature) => feature.id));
-  assert.ok(historicalRows.get('REC-D1-CONTRACTS-023')?.target_modules.includes('scripts/layered-gate.mjs'));
+  if (p9Final) assert.ok(clean.get('REC-D1-CONTRACTS-023')?.target_modules.includes('packages/contracts/src/clean-v2.mjs'));
+  else assert.ok(historicalRows.get('REC-D1-CONTRACTS-023')?.target_modules.includes('scripts/layered-gate.mjs'));
   for (const id of promotedIds) {
     assert.ok(CLEAN_CATALOG_IDS.includes(id), id);
     assert.equal(historical.has(id), false, id);
-    assert.equal(clean.get(id)?.status, 'verified', id);
+    assert.equal(clean.get(id)?.status, p9Final ? 'released' : 'verified', id);
     assert.ok(clean.get(id)?.evidence.includes('docs/evidence/v3-clean-p4-context-mcp-20260820/verification.json'), id);
   }
 });
