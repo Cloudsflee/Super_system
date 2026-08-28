@@ -1,0 +1,7 @@
+{
+  "schema_version": "aiws.v3-clean.p9-generation-failure.v1",
+  "status": "failed",
+  "provisional": true,
+  "run_id": "run-1787913846295",
+  "error": "command_failed:git rev-parse 423a7b4ca199ff2f11cbef1758802cdad22af8e0^{tree}"
+}
