@@ -122,6 +122,10 @@ test('credentialed CORS echoes only an exact configured origin and preflight ski
     assert.equal(unauthenticated.response.status, 401);
     assert.equal(unauthenticated.response.headers.get('access-control-allow-origin'), ORIGIN);
 
+    const sameOrigin = await json(await fetch(`${network.base}/api/v2/setup`, { headers: { origin: network.base } }));
+    assert.equal(sameOrigin.response.status, 200);
+    assert.equal(sameOrigin.response.headers.get('access-control-allow-origin'), null);
+
     const deniedOrigin = await json(await fetch(`${network.base}/api/v2/events?project_id=missing`, { headers: { origin: 'http://127.0.0.1:5175' } }));
     assert.equal(deniedOrigin.response.status, 403);
     assert.equal(deniedOrigin.body.error.code, 'cors_origin_denied');

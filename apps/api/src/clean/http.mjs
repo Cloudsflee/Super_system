@@ -1189,7 +1189,9 @@ function applyCors(req, res, config, registry, pathname) {
   const originHeader = req.headers.origin;
   const origin = originHeader == null ? null : String(originHeader);
   const allowedOrigins = new Set(config?.corsOrigins || []);
-  if (origin != null) {
+  const requestOrigin = `${req.socket?.encrypted ? 'https' : 'http'}://${String(req.headers.host || '')}`;
+  const sameOrigin = origin != null && origin === requestOrigin;
+  if (origin != null && !sameOrigin) {
     if (origin === 'null' || !allowedOrigins.has(origin)) {
       throw new HttpError('cors_origin_denied', 'request origin is not allowed', {}, 403, false);
     }

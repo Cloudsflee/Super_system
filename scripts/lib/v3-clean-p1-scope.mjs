@@ -379,6 +379,7 @@ const P8_PREFIXES = Object.freeze(['apps/api/src/clean/p8/', 'apps/importer/', '
 
 const P9_FILES = new Set([
   'scripts/v3-clean-p9-evidence.mjs',
+  'scripts/v3-clean-p9-release-probe.mjs',
   'apps/web/package.json',
   'apps/web/vite.config.ts',
   'apps/web/src/App.tsx',
@@ -393,6 +394,7 @@ const P9_FILES = new Set([
   'apps/web/src/test/offline-p9.test.ts',
   'apps/web/src/test/workflows-p9.test.tsx',
   'apps/web/src/test/setup-flow.test.tsx'
+  , 'apps/api/src/clean/web-static.mjs'
 ]);
 const P9_PREFIXES = Object.freeze(['tests/p9/', 'apps/web/src/offline/', 'apps/web/src/features/outcome/', 'apps/web/src/features/delivery/']);
 

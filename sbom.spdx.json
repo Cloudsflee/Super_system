@@ -80,6 +80,76 @@
       "licenseConcluded": "NOASSERTION",
       "licenseDeclared": "Apache-2.0",
       "copyrightText": "NOASSERTION"
+    },
+    {
+      "name": "@tanstack/react-query",
+      "SPDXID": "SPDXRef-Package-TanStackReactQuery",
+      "versionInfo": "5.102.8",
+      "downloadLocation": "https://registry.npmjs.org/@tanstack/react-query/-/react-query-5.102.8.tgz",
+      "filesAnalyzed": false,
+      "licenseConcluded": "NOASSERTION",
+      "licenseDeclared": "MIT",
+      "copyrightText": "NOASSERTION"
+    },
+    {
+      "name": "react-router-dom",
+      "SPDXID": "SPDXRef-Package-ReactRouterDOM",
+      "versionInfo": "7.18.2",
+      "downloadLocation": "https://registry.npmjs.org/react-router-dom/-/react-router-dom-7.18.2.tgz",
+      "filesAnalyzed": false,
+      "licenseConcluded": "NOASSERTION",
+      "licenseDeclared": "MIT",
+      "copyrightText": "NOASSERTION"
+    },
+    {
+      "name": "idb",
+      "SPDXID": "SPDXRef-Package-IDB",
+      "versionInfo": "8.0.3",
+      "downloadLocation": "https://registry.npmjs.org/idb/-/idb-8.0.3.tgz",
+      "filesAnalyzed": false,
+      "licenseConcluded": "NOASSERTION",
+      "licenseDeclared": "ISC",
+      "copyrightText": "NOASSERTION"
+    },
+    {
+      "name": "vite-plugin-pwa",
+      "SPDXID": "SPDXRef-Package-VitePluginPWA",
+      "versionInfo": "1.3.0",
+      "downloadLocation": "https://registry.npmjs.org/vite-plugin-pwa/-/vite-plugin-pwa-1.3.0.tgz",
+      "filesAnalyzed": false,
+      "licenseConcluded": "NOASSERTION",
+      "licenseDeclared": "MIT",
+      "copyrightText": "NOASSERTION"
+    },
+    {
+      "name": "workbox-precaching",
+      "SPDXID": "SPDXRef-Package-WorkboxPrecaching",
+      "versionInfo": "7.4.1",
+      "downloadLocation": "https://registry.npmjs.org/workbox-precaching/-/workbox-precaching-7.4.1.tgz",
+      "filesAnalyzed": false,
+      "licenseConcluded": "NOASSERTION",
+      "licenseDeclared": "MIT",
+      "copyrightText": "NOASSERTION"
+    },
+    {
+      "name": "workbox-routing",
+      "SPDXID": "SPDXRef-Package-WorkboxRouting",
+      "versionInfo": "7.4.1",
+      "downloadLocation": "https://registry.npmjs.org/workbox-routing/-/workbox-routing-7.4.1.tgz",
+      "filesAnalyzed": false,
+      "licenseConcluded": "NOASSERTION",
+      "licenseDeclared": "MIT",
+      "copyrightText": "NOASSERTION"
+    },
+    {
+      "name": "workbox-strategies",
+      "SPDXID": "SPDXRef-Package-WorkboxStrategies",
+      "versionInfo": "7.4.1",
+      "downloadLocation": "https://registry.npmjs.org/workbox-strategies/-/workbox-strategies-7.4.1.tgz",
+      "filesAnalyzed": false,
+      "licenseConcluded": "NOASSERTION",
+      "licenseDeclared": "MIT",
+      "copyrightText": "NOASSERTION"
     }
   ],
   "relationships": [
@@ -117,6 +187,41 @@
       "spdxElementId": "SPDXRef-Package-OpenAICodex",
       "relationshipType": "DEPENDS_ON",
       "relatedSpdxElement": "SPDXRef-Package-OpenAICodexLinuxX64"
+    },
+    {
+      "spdxElementId": "SPDXRef-Package-AIWS",
+      "relationshipType": "DEPENDS_ON",
+      "relatedSpdxElement": "SPDXRef-Package-TanStackReactQuery"
+    },
+    {
+      "spdxElementId": "SPDXRef-Package-AIWS",
+      "relationshipType": "DEPENDS_ON",
+      "relatedSpdxElement": "SPDXRef-Package-ReactRouterDOM"
+    },
+    {
+      "spdxElementId": "SPDXRef-Package-AIWS",
+      "relationshipType": "DEPENDS_ON",
+      "relatedSpdxElement": "SPDXRef-Package-IDB"
+    },
+    {
+      "spdxElementId": "SPDXRef-Package-AIWS",
+      "relationshipType": "DEPENDS_ON",
+      "relatedSpdxElement": "SPDXRef-Package-VitePluginPWA"
+    },
+    {
+      "spdxElementId": "SPDXRef-Package-AIWS",
+      "relationshipType": "DEPENDS_ON",
+      "relatedSpdxElement": "SPDXRef-Package-WorkboxPrecaching"
+    },
+    {
+      "spdxElementId": "SPDXRef-Package-AIWS",
+      "relationshipType": "DEPENDS_ON",
+      "relatedSpdxElement": "SPDXRef-Package-WorkboxRouting"
+    },
+    {
+      "spdxElementId": "SPDXRef-Package-AIWS",
+      "relationshipType": "DEPENDS_ON",
+      "relatedSpdxElement": "SPDXRef-Package-WorkboxStrategies"
     }
   ]
 }

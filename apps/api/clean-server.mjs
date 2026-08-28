@@ -3,6 +3,7 @@ import { WebSocketServer } from 'ws';
 import { createCleanRuntime, createNotReadyRuntime } from './src/clean/runtime.mjs';
 import { createCleanHttpHandler } from './src/clean/http.mjs';
 import { routeParams } from './src/clean/registry.mjs';
+import { createCleanWebHandler } from './src/clean/web-static.mjs';
 
 export function createApp(options = {}) {
   let runtime = options.runtime;
@@ -14,7 +15,12 @@ export function createApp(options = {}) {
       runtime = createNotReadyRuntime(options, error);
     }
   }
-  const handler = createCleanHttpHandler({ runtime, registry: runtime.registry, maxBodyBytes: runtime.config.maxBodyBytes });
+  const apiHandler = createCleanHttpHandler({ runtime, registry: runtime.registry, maxBodyBytes: runtime.config.maxBodyBytes });
+  const webHandler = createCleanWebHandler({ root: options.webRoot });
+  const handler = async (request, response) => {
+    if (webHandler(request, response)) return;
+    return apiHandler(request, response);
+  };
   return {
     ...runtime,
     handler,
