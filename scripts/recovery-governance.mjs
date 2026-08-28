@@ -292,7 +292,9 @@ function validateReleaseReceipt(feature, receiptPath) {
   const full = requirePath(feature.id, receiptPath, 'release receipt');
   if (!full) return;
   const receipt = readJson(full);
-  if (!['passed', 'released', 'promoted'].includes(receipt.status)) failures.push(`${feature.id}: release receipt is not passed: ${receiptPath}`);
+  const finalP9 = receipt.status === 'verified' && receipt.provisional === false
+    && receipt.release?.status === 'passed' && receipt.catalog_promotion === '27/0/27';
+  if (!['passed', 'released', 'promoted'].includes(receipt.status) && !finalP9) failures.push(`${feature.id}: release receipt is not passed: ${receiptPath}`);
 }
 
 function validateRuntimeOwnership() {

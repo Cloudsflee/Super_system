@@ -6,7 +6,7 @@ export const EVIDENCE_POLICIES = Object.freeze([
   Object.freeze({
     key: 'p9', phase: 'P9', reference: 'docs/evidence/v3-clean-p9-web-release-20260826/verification.json',
     attempts: 'docs/evidence/v3-clean-p9-web-release-20260826/attempts', staging_env: 'AIWS_P9_EVIDENCE_STAGING_ROOT',
-    staging_schema: 'aiws.v3-clean.p9-catalog-staging.v1'
+    staging_schema: 'aiws.v3-clean.p9-catalog-staging.v1', manifest_schema: 'aiws.v3-clean.p9-evidence-manifest.v1', validate: validateP9EvidenceManifest
   }),
   Object.freeze({
     key: 'p4', phase: 'P4', reference: 'docs/evidence/v3-clean-p4-context-mcp-20260820/verification.json',
