@@ -4,6 +4,11 @@ import { createHash } from 'node:crypto';
 
 export const EVIDENCE_POLICIES = Object.freeze([
   Object.freeze({
+    key: 'p9', phase: 'P9', reference: 'docs/evidence/v3-clean-p9-web-release-20260826/verification.json',
+    attempts: 'docs/evidence/v3-clean-p9-web-release-20260826/attempts', staging_env: 'AIWS_P9_EVIDENCE_STAGING_ROOT',
+    staging_schema: 'aiws.v3-clean.p9-catalog-staging.v1'
+  }),
+  Object.freeze({
     key: 'p4', phase: 'P4', reference: 'docs/evidence/v3-clean-p4-context-mcp-20260820/verification.json',
     attempts: 'docs/evidence/v3-clean-p4-context-mcp-20260820/attempts', staging_env: 'AIWS_P4_EVIDENCE_STAGING_ROOT',
     staging_schema: 'aiws.v3-clean.p4-catalog-staging.v1', manifest_schema: 'aiws.v3-clean.p4-manifest.v1', validate: validateP4EvidenceManifest
@@ -485,6 +490,23 @@ export function validateP8EvidenceManifest(evidenceRoot, verification = readJson
   for (const role of ['modified_artifact', 'patch', 'verification_record', 'rollback']) {
     const artifact = verification?.artifacts?.[role];
     const file = artifact?.path ? path.join(evidenceRoot, artifact.path) : null;
+    if (!file || !fs.existsSync(file) || artifact.sha256 !== sha256File(file)) failures.push(`artifact:${role}`);
+  }
+  return [...new Set(failures)].sort();
+}
+
+export function validateP9EvidenceManifest(evidenceRoot, verification = readJson(path.join(evidenceRoot, 'verification.json'))) {
+  const failures = [];
+  const manifest = readJson(path.join(evidenceRoot, 'manifest.json'));
+  if (verification?.schema_version !== 'aiws.v3-clean.p9-verification.v1' || verification?.status !== 'verified' || verification?.provisional !== false || verification?.catalog_promotion !== '27/0/27') failures.push('verification');
+  if (verification?.runtime_phase !== 9 || verification?.target_user_version !== 8 || verification?.migration_added !== false || JSON.stringify(verification?.migration_ledger) !== JSON.stringify([1,2,3,4,5,6,7,8])) failures.push('runtime_schema');
+  if (verification?.release?.status !== 'passed' || verification?.release?.provisional !== false || !/^sha256:[a-f0-9]{64}$/.test(String(verification?.release?.image_digest || ''))) failures.push('release');
+  if (verification?.rollback?.status !== 'passed' || verification?.rollback?.restored_user_version !== 8 || JSON.stringify(verification?.rollback?.ledger) !== JSON.stringify([1,2,3,4,5,6,7,8]) || verification?.rollback?.byte_exact_mismatches?.length) failures.push('rollback');
+  if (manifest?.schema_version !== 'aiws.v3-clean.p9-evidence-manifest.v1' || manifest?.run_id !== verification?.run_id) failures.push('manifest');
+  const rows = readJson(path.join(evidenceRoot, 'catalog-release-map.json'))?.rows || [];
+  if (rows.length !== 27 || new Set(rows.map((row) => row.id)).size !== 27 || rows.some((row) => row.release_status !== 'released')) failures.push('release_rows');
+  for (const role of ['modified_artifact','patch','verification_record','rollback']) {
+    const artifact = verification?.artifacts?.[role]; const file = artifact?.path ? path.join(evidenceRoot, artifact.path) : null;
     if (!file || !fs.existsSync(file) || artifact.sha256 !== sha256File(file)) failures.push(`artifact:${role}`);
   }
   return [...new Set(failures)].sort();

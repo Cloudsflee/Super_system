@@ -6,7 +6,7 @@ const commands = [
   ['check'],
   ['audit:p1', ...(skipP1Evidence ? ['--', '--skip-evidence'] : [])],
   ['scan:clean', ...(skipP1Evidence ? ['--', '--skip-evidence'] : [])],
-  ['test:p1'], ['test:p2'], ['test:p3'], ['test:p31'], ['test:p4'], ['test:p5'], ['test:p6'], ['test:p7'], ['test:p8'],
+  ['test:p1'], ['test:p2'], ['test:p3'], ['test:p31'], ['test:p4'], ['test:p5'], ['test:p6'], ['test:p7'], ['test:p8'], ['test:p9'],
   ['node scripts/v3-clean-p5-performance.mjs'],
   ['node scripts/v3-clean-p5-assist-probe.mjs'],
   ['node scripts/v3-clean-p5-bridge-probe.mjs'],
@@ -25,8 +25,9 @@ const commands = [
   ['node scripts/v3-clean-p8-importer-probe.mjs'],
   ['node scripts/v3-clean-p8-deployment-rollback-probe.mjs'],
   ['node scripts/v3-clean-p8-backup-restore-gc-probe.mjs'],
+  ['node scripts/v3-clean-p9-release-probe.mjs'],
   ['test'], ['test:integration'], ['test:security'], ['test:release'], ['build'], ['test:e2e'],
-  ['evidence:p5', '--', '--verify'], ['evidence:p6', '--', '--verify'], ['evidence:p7', '--', '--verify'], ['evidence:p8', '--', '--verify'],
+  ['evidence:p5', '--', '--verify'], ['evidence:p6', '--', '--verify'], ['evidence:p7', '--', '--verify'], ['evidence:p8', '--', '--verify'], ['evidence:p9', '--', '--verify'],
   ['git diff --check']
 ];
 for (const [script, ...args] of commands) {
