@@ -1,8 +1,10 @@
 import { useCallback, useEffect, useMemo, useState, type ComponentType } from 'react';
+import { QueryClientProvider } from '@tanstack/react-query';
+import { createHashRouter, RouterProvider, useLocation, useNavigate, useRouteError } from 'react-router-dom';
 import {
   Archive, BookOpen, ChevronDown, FileCheck2, FolderGit2, LayoutDashboard, ListChecks, LoaderCircle, ServerCog,
   Menu, MessageSquare, Settings, ShieldCheck, Terminal as TerminalIcon, Users,
-  Workflow, X
+  WifiOff, Workflow, X
 } from 'lucide-react';
 import { apiV2 } from './api';
 import { AssistPage } from './features/assist';
@@ -15,23 +17,39 @@ import { EvidencePage } from './features/evidence';
 import { IdentityAccessPage } from './features/identity';
 import { OperationsPage } from './features/operations';
 import { ProjectWorkflowPage } from './features/project';
-import { CleanSetupPage, SetupPage, type SetupState } from './features/setup';
+import { CleanSetupPage, type SetupState } from './features/setup';
 import { TerminalPage } from './features/terminal';
 import type { Project } from './types';
 import type { WorkspacePageProps, WorkspaceRoute } from './workspace';
+import { clearWorkspaceScope, queryClient, workspaceQueryKey } from './query';
+import { ProjectEventSynchronizer, type EventSyncState } from './events';
+import { OutboxStatus } from './offline/OutboxStatus';
 
 export type PageKey = WorkspaceRoute;
 
 const NAV: Array<{ key: WorkspaceRoute; label: string; icon: ComponentType<{ size?: number }> }> = [
   { key: 'setup', label: 'Setup', icon: LayoutDashboard },
-  { key: 'identity', label: 'Identity', icon: Users },
   { key: 'projects', label: 'Projects', icon: FolderGit2 },
+  { key: 'brief', label: 'Brief', icon: BookOpen },
   { key: 'workflow', label: 'Workflow', icon: Workflow },
   { key: 'context', label: 'Context', icon: BookOpen },
   { key: 'assist', label: 'Assist', icon: MessageSquare },
   { key: 'execution', label: 'Execution', icon: ListChecks },
   { key: 'evidence', label: 'Evidence', icon: FileCheck2 },
-  { key: 'operations', label: 'Operations', icon: ServerCog },
+  { key: 'outcome', label: 'Outcome', icon: ShieldCheck },
+  { key: 'delivery', label: 'Delivery', icon: Archive },
+  { key: 'operations', label: 'Operations', icon: ServerCog }
+];
+
+const ADMIN_NAV: Array<{ key: WorkspaceRoute; label: string; icon: ComponentType<{ size?: number }> }> = [
+  { key: 'identity', label: 'Identity / ACL', icon: Users },
+  { key: 'exchange', label: 'Exchange', icon: ShieldCheck },
+  { key: 'gateway', label: 'Gateway', icon: ServerCog },
+  { key: 'runner', label: 'Runner', icon: ListChecks },
+  { key: 'parser', label: 'Parser', icon: FileCheck2 },
+  { key: 'deployment', label: 'Deployment', icon: Archive },
+  { key: 'backup', label: 'Backup / Restore', icon: Archive },
+  { key: 'importer', label: 'Importer', icon: FolderGit2 },
   { key: 'terminals', label: 'Terminal', icon: TerminalIcon },
   { key: 'settings', label: 'Settings', icon: Settings }
 ];
@@ -40,16 +58,26 @@ const PAGE_LABELS: Record<WorkspaceRoute, string> = {
   setup: 'Setup',
   identity: 'Identity',
   projects: 'Projects',
+  brief: 'Brief',
   workflow: 'Workflow',
   context: 'Context',
   assist: 'Assist',
   execution: 'Execution',
   evidence: 'Evidence',
+  outcome: 'Outcome',
+  delivery: 'Delivery',
   operations: 'Operations',
   files: 'Files',
   terminals: 'Terminal',
   approvals: 'Approval Center',
   connections: 'Connections',
+  exchange: 'Exchange',
+  gateway: 'Gateway',
+  runner: 'Runner',
+  parser: 'Parser',
+  deployment: 'Deployment',
+  backup: 'Backup & Restore',
+  importer: 'Importer',
   settings: 'Settings'
 };
 
@@ -57,24 +85,34 @@ const PAGES: Record<WorkspaceRoute, ComponentType<WorkspacePageProps>> = {
   setup: CleanSetupPage,
   identity: IdentityAccessPage,
   projects: (props) => <ProjectWorkflowPage {...props} initialSection="overview" />,
+  brief: (props) => <ProjectWorkflowPage {...props} initialSection="brief" />,
   workflow: (props) => <ProjectWorkflowPage {...props} initialSection="workflow" />,
   context: ContextPage,
   assist: AssistPage,
   execution: ExecutionPage,
   evidence: EvidencePage,
+  outcome: ExecutionPage,
+  delivery: OperationsPage,
   operations: OperationsPage,
   files: FilesPage,
   terminals: TerminalPage,
   approvals: ApprovalPage,
   connections: ConnectionsPage,
+  exchange: McpSettingsPage,
+  gateway: McpSettingsPage,
+  runner: ConnectionsPage,
+  parser: EvidencePage,
+  deployment: OperationsPage,
+  backup: OperationsPage,
+  importer: OperationsPage,
   settings: McpSettingsPage
 };
 
 const ROUTES = new Set<WorkspaceRoute>(Object.keys(PAGES) as WorkspaceRoute[]);
 const SETUP_GATED_PAGES = new Set<WorkspaceRoute>([...ROUTES].filter((route) => route !== 'setup'));
 
-function routeFromHash(): WorkspaceRoute {
-  const route = location.hash.replace(/^#\/?/, '') as WorkspaceRoute;
+function routeFromPath(pathname: string): WorkspaceRoute {
+  const route = pathname.replace(/^\/+|\/+$/g, '') as WorkspaceRoute;
   return ROUTES.has(route) ? route : 'setup';
 }
 
@@ -82,8 +120,10 @@ function navIsActive(nav: WorkspaceRoute, page: WorkspaceRoute) {
   return nav === page || (nav === 'assist' && page === 'files') || (nav === 'settings' && page === 'connections');
 }
 
-export function App() {
-  const [page, setPage] = useState<WorkspaceRoute>(routeFromHash);
+function WorkspaceLayout() {
+  const location = useLocation();
+  const routerNavigate = useNavigate();
+  const page = routeFromPath(location.pathname);
   const [projects, setProjects] = useState<Project[]>([]);
   const [projectId, setProjectId] = useState(() => sessionStorage.getItem('aiws:v3:selected-project') || '');
   const [notice, setNotice] = useState<{ tone: 'ok' | 'error'; text: string } | null>(null);
@@ -92,7 +132,11 @@ export function App() {
   const [pendingInteractions, setPendingInteractions] = useState(0);
 
   const loadProjects = useCallback(async () => {
-    const response = await apiV2<{ projects: Project[] }>('/api/v2/projects');
+    const actorId = sessionStorage.getItem('aiws:v3:actor-id') || 'session-actor';
+    const response = await queryClient.fetchQuery({
+      queryKey: workspaceQueryKey({ actorId, teamId: '', projectId: '' }, 'projects'),
+      queryFn: () => apiV2<{ projects: Project[] }>('/api/v2/projects')
+    });
     const rows = response.data.projects || [];
     setProjects(rows);
     setProjectId((current) => {
@@ -103,8 +147,12 @@ export function App() {
   }, []);
 
   const refreshSetup = useCallback(async () => {
-    const response = await apiV2<{ needs_setup: boolean; actor_count: number }>('/api/v2/setup');
+    const response = await queryClient.fetchQuery({
+      queryKey: workspaceQueryKey({ actorId: 'anonymous', teamId: '', projectId: '' }, 'setup'),
+      queryFn: () => apiV2<{ needs_setup: boolean; actor_count: number; bootstrap_actor_id?: string }>('/api/v2/setup')
+    });
     const state = response.data;
+    if (state.bootstrap_actor_id) sessionStorage.setItem('aiws:v3:actor-id', state.bootstrap_actor_id);
     const cleanState: Pick<SetupState, 'status' | 'complete' | 'revision'> = {
       status: state.needs_setup ? 'blocked' : 'ready',
       complete: !state.needs_setup,
@@ -121,9 +169,8 @@ export function App() {
   useEffect(() => {
     void refreshSetup().catch(() => {
       setSetup(null);
-      if (SETUP_GATED_PAGES.has(routeFromHash())) {
-        location.hash = '/setup';
-        setPage('setup');
+      if (SETUP_GATED_PAGES.has(page)) {
+        routerNavigate('/setup', { replace: true });
       }
     });
   }, [refreshSetup]);
@@ -132,16 +179,9 @@ export function App() {
 
   useEffect(() => {
     if (setup && !setupReady && SETUP_GATED_PAGES.has(page)) {
-      location.hash = '/setup';
-      setPage('setup');
+      routerNavigate('/setup', { replace: true });
     }
   }, [page, setup, setupReady]);
-
-  useEffect(() => {
-    const handler = () => setPage(routeFromHash());
-    addEventListener('hashchange', handler);
-    return () => removeEventListener('hashchange', handler);
-  }, []);
 
   useEffect(() => {
     if (!notice) return;
@@ -177,25 +217,48 @@ export function App() {
 
   const navigate = useCallback((next: WorkspaceRoute) => {
     if (!setupReady && SETUP_GATED_PAGES.has(next)) {
-      location.hash = '/setup';
-      setPage('setup');
+      routerNavigate('/setup');
       setNotice({ tone: 'error', text: 'Complete Setup before using workspace commands.' });
       setMenuOpen(false);
       return;
     }
-    location.hash = `/${next}`;
-    setPage(next);
+    routerNavigate(`/${next}`);
     setMenuOpen(false);
-  }, [setupReady]);
+  }, [routerNavigate, setupReady]);
 
   const selectProject = useCallback((id: string) => {
+    const actorId = sessionStorage.getItem('aiws:v3:actor-id') || 'session-actor';
+    const current = projects.find((item) => item.id === projectId) as Project & { team_id?: string } | undefined;
+    void clearWorkspaceScope({ actorId, teamId: current?.team_id || 'default-team', projectId });
     setProjectId(id);
     sessionStorage.setItem('aiws:v3:selected-project', id);
-  }, []);
+  }, [projectId, projects]);
   const notify = useCallback((text: string, tone: 'ok' | 'error' = 'ok') => setNotice({ text, tone }), []);
   const selectedProject = useMemo(() => projects.find((project) => project.id === projectId), [projectId, projects]);
   const gatedPagePending = SETUP_GATED_PAGES.has(page) && !setupReady;
-  const Page = gatedPagePending && setup ? SetupPage : PAGES[page];
+  const Page = gatedPagePending ? CleanSetupPage : PAGES[page];
+
+  const [eventState, setEventState] = useState<EventSyncState>('idle');
+  const [online, setOnline] = useState(() => navigator.onLine !== false);
+  const [updateAvailable, setUpdateAvailable] = useState(false);
+  useEffect(() => {
+    const connected = () => setOnline(true);
+    const disconnected = () => { setOnline(false); setEventState('offline'); };
+    const update = () => setUpdateAvailable(true);
+    addEventListener('online', connected); addEventListener('offline', disconnected); addEventListener('aiws:pwa-update', update);
+    return () => { removeEventListener('online', connected); removeEventListener('offline', disconnected); removeEventListener('aiws:pwa-update', update); };
+  }, []);
+  useEffect(() => {
+    if (import.meta.env.MODE === 'test') return undefined;
+    if (!setupReady || !projectId) { setEventState('idle'); return undefined; }
+    let active = true;
+    const actorId = sessionStorage.getItem('aiws:v3:actor-id') || 'session-actor';
+    const sync = new ProjectEventSynchronizer({ actorId, projectId, onState: (state) => { if (active) setEventState(state); } });
+    void sync.start().catch((error) => {
+      if (active && String((error as Error)?.message || '').includes('denied')) setEventState('denied');
+    });
+    return () => { active = false; sync.stop(); };
+  }, [projectId, setupReady]);
 
   return (
     <div className="app-shell">
@@ -206,7 +269,14 @@ export function App() {
           <button className="icon-button sidebar-close" aria-label="Close navigation" title="Close navigation" onClick={() => setMenuOpen(false)}><X size={18} /></button>
         </div>
         <nav aria-label="Workspace navigation">
+          <span className="nav-group-label">Project chain</span>
           {NAV.map(({ key, label, icon: Icon }) => (
+            <button key={key} className={navIsActive(key, page) ? 'nav-item active' : 'nav-item'} onClick={() => navigate(key)}>
+              <Icon size={18} /><span>{label}</span>
+            </button>
+          ))}
+          <span className="nav-group-label">Management</span>
+          {ADMIN_NAV.map(({ key, label, icon: Icon }) => (
             <button key={key} className={navIsActive(key, page) ? 'nav-item active' : 'nav-item'} onClick={() => navigate(key)}>
               <Icon size={18} /><span>{label}</span>
             </button>
@@ -218,7 +288,7 @@ export function App() {
       <div className="workspace-shell">
         <header className="topbar">
           <button className="icon-button menu-button" aria-label="Open navigation" title="Open navigation" onClick={() => setMenuOpen(true)}><Menu size={19} /></button>
-          <div className="page-title"><span>{PAGE_LABELS[page]}</span></div>
+          <div className="page-title"><span>{PAGE_LABELS[page]}</span>{eventState !== 'idle' && <small className={`sync-state ${eventState}`} role="status">{eventState.replaceAll('_', ' ')}</small>}</div>
           <label className="project-switcher">
             <span>Project</span>
             <div>
@@ -233,10 +303,13 @@ export function App() {
             <ShieldCheck size={17} />
             {pendingInteractions > 0 && <span>{pendingInteractions > 99 ? '99+' : pendingInteractions}</span>}
           </button>
+          <OutboxStatus actorId={sessionStorage.getItem('aiws:v3:actor-id') || 'session-actor'} teamId={String((selectedProject as Project & { team_id?: string } | undefined)?.team_id || 'default-team')} projectId={projectId} />
+          {!online && <span className="network-pill offline" role="status"><WifiOff size={14} />Offline</span>}
+          {updateAvailable && <button className="network-pill update" onClick={() => window.location.reload()}>Update</button>}
           <span className="local-pill"><span />127.0.0.1</span>
         </header>
         <main>
-          {gatedPagePending && !setup ? <div className="page-loader"><LoaderCircle className="spin" />Loading setup</div> : <Page
+          {!online ? <div className="page offline-workspace" role="status"><WifiOff size={24} /><h1>Offline</h1></div> : gatedPagePending && !setup ? <div className="page-loader"><LoaderCircle className="spin" />Loading setup</div> : <Page
             projectId={projectId}
             selectedProject={selectedProject}
             selectProject={selectProject}
@@ -252,4 +325,17 @@ export function App() {
       {menuOpen && <button className="nav-scrim" aria-label="Close navigation" onClick={() => setMenuOpen(false)} />}
     </div>
   );
+}
+
+function RouteErrorBoundary() {
+  const error = useRouteError();
+  return <div className="page error-page" role="alert"><h1>Workspace route error</h1><p>{error instanceof Error ? error.message : 'The requested workspace view is unavailable.'}</p></div>;
+}
+
+export function App() {
+  const [router] = useState(() => createHashRouter([
+    { path: '*', element: <WorkspaceLayout />, errorElement: <RouteErrorBoundary /> }
+  ]));
+  useEffect(() => () => router.dispose(), [router]);
+  return <QueryClientProvider client={queryClient}><RouterProvider router={router} /></QueryClientProvider>;
 }

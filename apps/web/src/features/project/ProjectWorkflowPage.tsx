@@ -3,7 +3,7 @@ import {
   AlertTriangle, Check, CircleAlert, GitBranch, LoaderCircle, Play, Plus, RefreshCw,
   RotateCcw, Save, ShieldAlert, Square, Workflow as WorkflowIcon
 } from 'lucide-react';
-import { ApiError, apiV2, mutateV2 } from '../../api';
+import { ApiError, apiV2, mutateOfflineV2, mutateV2 } from '../../api';
 import type { WorkspacePageProps } from '../../workspace';
 
 type Section = 'overview' | 'intake' | 'brief' | 'repository' | 'workflow';
@@ -109,6 +109,14 @@ export function ProjectWorkflowPage({ projectId, selectedProject, refreshProject
   const [operationId, setOperationId] = useState('');
   const [newName, setNewName] = useState('');
   const [newDescription, setNewDescription] = useState('');
+  const [projectName, setProjectName] = useState('');
+  const [projectDescription, setProjectDescription] = useState('');
+  const selectedId = projectId || selectedProject?.id || '';
+  const offlineScope = useMemo(() => ({
+    actorId: sessionStorage.getItem('aiws:v3:actor-id') || project?.owner_actor_id || 'session-actor',
+    teamId: project?.team_id || 'default-team',
+    projectId: selectedId
+  }), [project?.owner_actor_id, project?.team_id, selectedId]);
   const [intakeMode, setIntakeMode] = useState<'brainstorm' | 'existing'>('brainstorm');
   const [sourceLocator, setSourceLocator] = useState('fixture/project-source');
   const [objective, setObjective] = useState('');
@@ -117,7 +125,6 @@ export function ProjectWorkflowPage({ projectId, selectedProject, refreshProject
   const [workflowGraph, setWorkflowGraph] = useState('{"nodes":[]}');
   const [requirementKey, setRequirementKey] = useState('');
 
-  const selectedId = projectId || selectedProject?.id || '';
   const loadProjects = useCallback(async () => {
     const result = await apiV2<{ projects: P3Project[] }>('/api/v2/projects');
     setProjects(unwrap(result).projects || []);
@@ -147,6 +154,8 @@ export function ProjectWorkflowPage({ projectId, selectedProject, refreshProject
       const detailData = unwrap(detail);
       const projectData = detailData.project || detailData as unknown as P3Project;
       setProject(projectData);
+      setProjectName(projectData.name || '');
+      setProjectDescription(projectData.description || '');
       setIntake(unwrap(intakeResult).intake || detailData.intake || null);
       const briefs = unwrap(briefResult).briefs || [];
       setBrief((detailData.brief as Brief | undefined) || briefs[0] || null);
@@ -168,10 +177,14 @@ export function ProjectWorkflowPage({ projectId, selectedProject, refreshProject
 
   useEffect(() => { if (setupReady !== false) void loadProject(); }, [loadProject, setupReady]);
 
-  const runMutation = useCallback(async (label: string, action: () => Promise<{ data: Record<string, unknown> }>, refresh = true) => {
+  const runMutation = useCallback(async (label: string, action: () => Promise<{ data: Record<string, unknown> } | { queued: true; record: unknown }>, refresh = true) => {
     setBusy(label); setConflict(''); setMessage('');
     try {
       const response = await action();
+      if ('queued' in response) {
+        notify(`${label} saved offline`);
+        return {};
+      }
       const data = response.data || {};
       const operation = (data.operation || {}) as { operation_id?: string; id?: string };
       if (operation.operation_id || operation.id) setOperationId(operation.operation_id || operation.id || '');
@@ -199,6 +212,10 @@ export function ProjectWorkflowPage({ projectId, selectedProject, refreshProject
     }
   };
 
+  const updateProject = () => runMutation('Project', () => mutateOfflineV2(`/api/v2/projects/${encodeURIComponent(selectedId)}`, {
+    name: projectName.trim(), description: projectDescription, metadata: {}
+  }, 'PATCH', { command: 'project.update', scope: offlineScope, aggregateKey: `project:${selectedId}`, expectedRevision: project?.revision }));
+
   const submitIntake = () => runMutation('Intake', () => mutateV2(`/api/v2/projects/${encodeURIComponent(selectedId)}/intake`, {
     mode: intakeMode,
     source: intakeMode === 'existing' ? { kind: 'fixture', locator: sourceLocator, revision: 'fixture-r1', hash: 'a'.repeat(64) } : {},
@@ -208,10 +225,10 @@ export function ProjectWorkflowPage({ projectId, selectedProject, refreshProject
   const retryIntake = () => runMutation('Retry intake', () => mutateV2(`/api/v2/projects/${encodeURIComponent(selectedId)}/intake/retry`, {}, 'POST', intake?.revision));
   const cancelIntake = () => runMutation('Cancel intake', () => mutateV2(`/api/v2/projects/${encodeURIComponent(selectedId)}/intake/cancel`, {}, 'POST', intake?.revision));
 
-  const saveBrief = () => runMutation('Brief', () => mutateV2(`/api/v2/projects/${encodeURIComponent(selectedId)}/briefs`, {
+  const saveBrief = () => runMutation('Brief', () => mutateOfflineV2(`/api/v2/projects/${encodeURIComponent(selectedId)}/briefs`, {
     content: { objective: objective.trim(), constraints: [], acceptance: acceptance.split('\n').map((line) => line.trim()).filter(Boolean) },
     objective: objective.trim(), constraints: [], acceptance: acceptance.split('\n').map((line) => line.trim()).filter(Boolean), template: 'default'
-  }, 'POST', project?.revision));
+  }, 'POST', { command: 'brief.create', scope: offlineScope, aggregateKey: `project:${selectedId}:brief`, expectedRevision: project?.revision }));
 
   const confirmBrief = () => {
     const revision = brief?.current_revision || brief?.current?.revision || 0;
@@ -225,7 +242,7 @@ export function ProjectWorkflowPage({ projectId, selectedProject, refreshProject
   const reviseWorkflow = () => {
     let graph: Record<string, unknown> = {};
     try { graph = JSON.parse(workflowGraph) as Record<string, unknown>; } catch { setMessage('Workflow graph must be valid JSON.'); return Promise.resolve(null); }
-    return runMutation('Workflow', () => mutateV2(`/api/v2/projects/${encodeURIComponent(selectedId)}/workflow-draft`, { graph, nodes: Array.isArray(graph.nodes) ? graph.nodes : [], layout: {} }, 'POST', workflow?.revision));
+    return runMutation('Workflow', () => mutateOfflineV2(`/api/v2/projects/${encodeURIComponent(selectedId)}/workflow-draft`, { graph, nodes: Array.isArray(graph.nodes) ? graph.nodes : [], layout: {} }, 'POST', { command: 'workflow.revise', scope: offlineScope, aggregateKey: `project:${selectedId}:workflow`, expectedRevision: workflow?.revision }));
   };
 
   const startGeneration = () => runMutation('Generation', () => mutateV2(`/api/v2/projects/${encodeURIComponent(selectedId)}/workflow-generations`, { mode: 'initial', candidate: {}, provider: 'fake-generator' }, 'POST', project?.revision));
@@ -235,7 +252,7 @@ export function ProjectWorkflowPage({ projectId, selectedProject, refreshProject
   const applyProposal = (generation: Generation) => generation.proposal_id
     ? runMutation('Apply proposal', () => mutateV2(`/api/v2/workflow-proposals/${encodeURIComponent(generation.proposal_id || '')}/apply`, {}, 'POST', generation.revision))
     : Promise.resolve(null);
-  const createRequirement = () => runMutation('Requirement', () => mutateV2(`/api/v2/projects/${encodeURIComponent(selectedId)}/outcome-requirements`, { requirement_key: requirementKey.trim(), rubric: {}, workflow_revision: workflow?.current_revision || 0 }, 'POST', project?.revision));
+  const createRequirement = () => runMutation('Requirement', () => mutateOfflineV2(`/api/v2/projects/${encodeURIComponent(selectedId)}/outcome-requirements`, { requirement_key: requirementKey.trim(), rubric: {}, workflow_revision: workflow?.current_revision || 0 }, 'POST', { command: 'outcome.requirement.create', scope: offlineScope, aggregateKey: `project:${selectedId}:outcome`, expectedRevision: project?.revision }));
 
   const currentGeneration = useMemo(() => generations[0] || null, [generations]);
 
@@ -250,7 +267,7 @@ export function ProjectWorkflowPage({ projectId, selectedProject, refreshProject
     <div className="project-workflow-tabs" role="tablist" aria-label="Project workflow views">{sections.map((item) => <button key={item.id} role="tab" aria-selected={section === item.id} className={section === item.id ? 'active' : ''} onClick={() => setSection(item.id)}>{item.label}</button>)}</div>
 
     {section === 'overview' && <div className="project-workflow-grid">
-      <section className="panel"><PanelTitle title="Project state" meta={`Revision ${project?.revision || 0}`} /><dl className="project-facts"><div><dt>Team</dt><dd className="mono">{project?.team_id || 'resolved by ACL'}</dd></div><div><dt>Onboarding</dt><dd><Status value={project?.onboarding_state} /></dd></div><div><dt>Brief</dt><dd>r{project?.current_brief_revision || 0} {project?.confirmed_brief_revision ? `· confirmed r${project.confirmed_brief_revision}` : ''}</dd></div><div><dt>Workflow</dt><dd>r{project?.current_workflow_revision || workflow?.current_revision || 0}</dd></div></dl></section>
+      <section className="panel"><PanelTitle title="Project state" meta={`Revision ${project?.revision || 0}`} /><dl className="project-facts"><div><dt>Team</dt><dd className="mono">{project?.team_id || 'resolved by ACL'}</dd></div><div><dt>Onboarding</dt><dd><Status value={project?.onboarding_state} /></dd></div><div><dt>Brief</dt><dd>r{project?.current_brief_revision || 0} {project?.confirmed_brief_revision ? `· confirmed r${project.confirmed_brief_revision}` : ''}</dd></div><div><dt>Workflow</dt><dd>r{project?.current_workflow_revision || workflow?.current_revision || 0}</dd></div></dl><div className="project-edit-grid"><label><span>Name</span><input value={projectName} onChange={(event) => setProjectName(event.target.value)} /></label><label><span>Description</span><input value={projectDescription} onChange={(event) => setProjectDescription(event.target.value)} /></label><button className="button" disabled={!projectName.trim() || busy === 'Project'} onClick={() => void updateProject()}><Save size={15} />Save</button></div></section>
       <section className="panel"><PanelTitle title="Project collection" meta={`${projects.length} visible`} /><div className="compact-list">{projects.map((item) => <div key={item.id} className={`compact-row ${item.id === selectedId ? 'selected' : ''}`}><span><strong>{item.name}</strong><small className="mono">{item.id} · r{item.revision}</small></span><Status value={item.status} /></div>)}{!projects.length && <div className="list-empty">No visible projects</div>}</div></section>
       <section className="panel"><PanelTitle title="Outcome requirements" meta={`${requirements.length} rules`} /><div className="compact-list">{requirements.map((item) => <div key={item.id} className="compact-row"><span><strong>{item.requirement_key}</strong><small>Workflow r{item.workflow_revision} · r{item.revision}</small></span></div>)}{!requirements.length && <div className="list-empty">No requirements yet</div>}</div><form className="inline-form" onSubmit={(event) => { event.preventDefault(); void createRequirement(); }}><label><span>Requirement key</span><input value={requirementKey} onChange={(event) => setRequirementKey(event.target.value)} placeholder="acceptance.core" required /></label><button className="button" disabled={busy === 'Requirement'}><Plus size={15} />Add</button></form></section>
     </div>}

@@ -1,6 +1,6 @@
 import type { Project } from './types';
 
-export type WorkspaceRoute = 'setup' | 'identity' | 'projects' | 'workflow' | 'context' | 'assist' | 'execution' | 'evidence' | 'operations' | 'files' | 'terminals' | 'approvals' | 'connections' | 'settings';
+export type WorkspaceRoute = 'setup' | 'identity' | 'projects' | 'brief' | 'workflow' | 'context' | 'assist' | 'execution' | 'evidence' | 'outcome' | 'delivery' | 'operations' | 'files' | 'terminals' | 'approvals' | 'connections' | 'exchange' | 'gateway' | 'runner' | 'parser' | 'deployment' | 'backup' | 'importer' | 'settings';
 
 export interface WorkspacePageProps {
   projectId: string;

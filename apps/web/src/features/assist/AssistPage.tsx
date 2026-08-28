@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState, type FormEvent } from 'react';
 import { FileText, LoaderCircle, MessageSquare, Pause, Play, Plus, RefreshCw, RotateCcw, Send, Square, Target } from 'lucide-react';
-import { ApiError, apiV2, mutateV2, shortHash } from '../../api';
+import { ApiError, apiV2, mutateOfflineV2, mutateV2, shortHash } from '../../api';
 import type { WorkspacePageProps } from '../../workspace';
 import { FilesDrawer } from '../files';
 
@@ -39,6 +39,11 @@ export function AssistPage({ projectId, selectedProject, notify, navigate }: Wor
   const [streamState, setStreamState] = useState<'connected' | 'reconnecting' | 'partial'>('connected');
   const [filesOpen, setFilesOpen] = useState(false);
   const [mobileTab, setMobileTab] = useState<'sessions' | 'turns'>('turns');
+  const offlineScope = useMemo(() => ({
+    actorId: sessionStorage.getItem('aiws:v3:actor-id') || 'session-actor',
+    teamId: String((selectedProject as typeof selectedProject & { team_id?: string } | undefined)?.team_id || 'default-team'),
+    projectId
+  }), [projectId, selectedProject]);
 
   const loadSessions = useCallback(async () => {
     if (!projectId) { setSessions([]); setSelectedId(''); return; }
@@ -98,7 +103,7 @@ export function AssistPage({ projectId, selectedProject, notify, navigate }: Wor
   };
   const transition = async (action: 'pause' | 'resume' | 'cancel') => { if (!bundle) return; setBusy(action); try { await mutateV2(`/api/v2/assist/sessions/${encodeURIComponent(bundle.id)}/${action}`, {}, 'POST', bundle.revision); await refresh(); } catch (error) { await handleError(error, 'Assist state change failed'); } finally { setBusy(''); } };
   const mutateTurn = async (turn: Turn, action: 'retry' | 'cancel' | 'interrupt') => { setBusy(`${action}:${turn.id}`); try { const result = await mutateV2<Operation | { turn: Turn; operation: Operation }>(`/api/v2/assist/turns/${encodeURIComponent(turn.id)}/${action}`, {}, 'POST', turn.revision); const receipt = result.data as Operation & { operation?: Operation }; setOperation(receipt.operation || receipt); await loadBundle(); } catch (error) { await handleError(error, `Assist ${action} failed`); } finally { setBusy(''); } };
-  const saveGoal = async () => { if (!bundle) return; setBusy('goal'); try { await mutateV2(`/api/v2/assist/sessions/${encodeURIComponent(bundle.id)}/goal`, { goal: { objective: goalText.trim() } }, 'PATCH', bundle.revision); await loadBundle(); notify('Assist goal updated'); } catch (error) { await handleError(error, 'Goal update failed'); } finally { setBusy(''); } };
+  const saveGoal = async () => { if (!bundle) return; setBusy('goal'); try { const result = await mutateOfflineV2(`/api/v2/assist/sessions/${encodeURIComponent(bundle.id)}/goal`, { goal: { objective: goalText.trim() } }, 'PATCH', { command: 'assist.goal.update', scope: offlineScope, aggregateKey: `assist:${bundle.id}:goal`, expectedRevision: bundle.revision }); if (!('queued' in result)) await loadBundle(); notify('queued' in result ? 'Assist goal saved offline' : 'Assist goal updated'); } catch (error) { await handleError(error, 'Goal update failed'); } finally { setBusy(''); } };
   const addPackReference = async () => { if (!bundle) return; setBusy('reference'); try { await mutateV2(`/api/v2/assist/sessions/${encodeURIComponent(bundle.id)}/references`, { reference_type: 'context_pack', reference_id: bundle.context_pack_id, reference_hash: bundle.context_pack_hash, metadata: { source: 'assist' } }, 'POST', bundle.revision); await loadBundle(); notify('Reference added'); } catch (error) { await handleError(error, 'Reference failed'); } finally { setBusy(''); } };
 
   const availableProfile = profiles.find((profile) => profile.id === profileId);

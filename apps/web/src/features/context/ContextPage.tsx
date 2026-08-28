@@ -3,7 +3,7 @@ import {
   Ban, BookOpen, Box, Check, CircleAlert, Clock3, FileSearch, History, LoaderCircle,
   Pin, RefreshCw, RotateCcw, Search, Square, X
 } from 'lucide-react';
-import { ApiError, apiV2, formatTime, mutateV2, shortHash } from '../../api';
+import { ApiError, apiV2, formatTime, mutateOfflineV2, mutateV2, shortHash } from '../../api';
 import type { PageKey } from '../../App';
 import type { Project } from '../../types';
 import type { ContextDocument, ContextMap, ContextNode, ContextPackView, ContextPolicy, ContextSelection, ProjectionStatus } from './types';
@@ -43,6 +43,11 @@ export function ContextPage({ projectId, selectedProject, navigate, notify }: Co
   const [busy, setBusy] = useState('');
   const [error, setError] = useState('');
   const [tab, setTab] = useState<ViewTab>('tree');
+  const offlineScope = useMemo(() => ({
+    actorId: sessionStorage.getItem('aiws:v3:actor-id') || 'session-actor',
+    teamId: String((selectedProject as Project & { team_id?: string } | undefined)?.team_id || 'default-team'),
+    projectId
+  }), [projectId, selectedProject]);
 
   const cleanApi = useCallback(async <T,>(path: string): Promise<T> => (await apiV2<T>(path)).data, []);
   const cleanMutation = useCallback(async <T,>(path: string, body: Record<string, unknown> = {}, method = 'POST', expectedRevision?: number): Promise<T> => {
@@ -102,9 +107,9 @@ export function ContextPage({ projectId, selectedProject, navigate, notify }: Co
 
   if (!projectId) return <div className="empty-state"><BookOpen size={28} /><h2>No project selected</h2><button className="button primary" onClick={() => navigate('projects')}>Open projects</button></div>;
 
-  const run = async (key: string, action: () => Promise<void>, success: string) => {
+  const run = async (key: string, action: () => Promise<boolean | void>, success: string) => {
     setBusy(key); setError('');
-    try { await action(); await load(); notify(success); }
+    try { const refresh = await action(); if (refresh !== false) await load(); notify(success); }
     catch (caught) {
       const message = caught instanceof ApiError && caught.code === 'revision_conflict' ? 'Context revision changed. State refreshed.' : caught instanceof Error ? caught.message : 'Context command failed';
       setError(message); notify(message, 'error'); await load().catch(() => undefined);
@@ -131,7 +136,8 @@ export function ContextPage({ projectId, selectedProject, navigate, notify }: Co
     }, `Context ${mode} policy updated`);
   };
   const createSelection = () => run('selection', async () => {
-    await cleanMutation(`/api/v2/projects/${projectId}/context/selections`, { query, token_budget: tokenBudget, node_ids: selectedNodeId ? [selectedNodeId] : undefined }, 'POST', 0);
+    const result = await mutateOfflineV2(`/api/v2/projects/${projectId}/context/selections`, { query, token_budget: tokenBudget, node_ids: selectedNodeId ? [selectedNodeId] : undefined }, 'POST', { command: 'context.selection.create', scope: offlineScope, aggregateKey: `project:${projectId}:context-selection`, expectedRevision: 0 });
+    return !('queued' in result);
   }, 'Selection sealed');
   const createPack = () => latestSelection && run('pack', async () => {
     await cleanMutation(`/api/v2/projects/${projectId}/context/packs`, { selection_id: latestSelection.id, schema_version: 'aiws.context_pack.v5', require_authoritative: false }, 'POST', 0);

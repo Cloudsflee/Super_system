@@ -2,7 +2,7 @@ import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/re
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { ContextPage } from '../features/context';
 import { McpSettingsPage } from '../features/context';
-import type { WorkspacePageProps } from '../pages';
+import type { WorkspacePageProps } from '../workspace';
 import type { Project } from '../types';
 
 const projectId = 'prj_context_ui';

@@ -377,8 +377,23 @@ const P8_FILES = new Set([
 
 const P8_PREFIXES = Object.freeze(['apps/api/src/clean/p8/', 'apps/importer/', 'tests/p8/', 'apps/web/src/features/operations/']);
 
-const P9_FILES = new Set(['scripts/v3-clean-p9-evidence.mjs']);
-const P9_PREFIXES = Object.freeze(['tests/p9/']);
+const P9_FILES = new Set([
+  'scripts/v3-clean-p9-evidence.mjs',
+  'apps/web/package.json',
+  'apps/web/vite.config.ts',
+  'apps/web/src/App.tsx',
+  'apps/web/src/api.ts',
+  'apps/web/src/events.ts',
+  'apps/web/src/main.tsx',
+  'apps/web/src/query.ts',
+  'apps/web/src/styles.css',
+  'apps/web/src/sw.ts',
+  'apps/web/src/workspace.ts',
+  'apps/web/src/test/events-p9.test.ts',
+  'apps/web/src/test/offline-p9.test.ts',
+  'apps/web/src/test/setup-flow.test.tsx'
+]);
+const P9_PREFIXES = Object.freeze(['tests/p9/', 'apps/web/src/offline/']);
 
 export function classifyWorkspacePath(value) {
   const file = normalize(value);

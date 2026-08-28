@@ -1,4 +1,5 @@
 import type { ApiErrorBody } from './types';
+import { OfflineOutbox, isOfflineCommandAllowed, shouldQueueOffline, type OfflineCommand } from './offline/outbox';
 
 export class ApiError extends Error {
   code: string;
@@ -16,16 +17,6 @@ export class ApiError extends Error {
   }
 }
 
-export async function api<T>(path: string, options: RequestInit = {}): Promise<T> {
-  const response = await fetch(path.startsWith('/') ? path : `/api/v1/${path}`, {
-    ...options,
-    headers: { accept: 'application/json', ...options.headers }
-  });
-  const body = await response.json().catch(() => ({}));
-  if (!response.ok) throw new ApiError(response.status, body as ApiErrorBody);
-  return body as T;
-}
-
 export type ApiV2Envelope<T> = {
   request_id: string;
   data: T;
@@ -35,20 +26,26 @@ export type ApiV2Envelope<T> = {
 export type ApiV2Options = RequestInit & {
   idempotencyKey?: string;
   expectedRevision?: number;
+  offline?: {
+    command: OfflineCommand;
+    scope: { actorId: string; teamId: string; projectId: string };
+    aggregateKey: string;
+  };
 };
 
-/** Clean-break client. It unwraps the v2 envelope and never falls back to v1. */
+/** Strict clean-break client. Paths outside /api/v2 are rejected. */
 export async function apiV2<T>(path: string, options: ApiV2Options = {}): Promise<ApiV2Envelope<T>> {
-  const normalized = path.startsWith('/api/v2/') ? path : `/api/v2/${path.replace(/^\//, '')}`;
-  const { idempotencyKey, expectedRevision, ...request } = options;
+  const normalized = normalizeV2Path(path);
+  const { idempotencyKey, expectedRevision, offline: _offline, ...request } = options;
   const headers: Record<string, string> = { accept: 'application/json', ...(request.headers as Record<string, string> || {}) };
   if (idempotencyKey) headers['Idempotency-Key'] = idempotencyKey;
   if (expectedRevision != null) headers['X-Expected-Revision'] = String(expectedRevision);
-  const response = await fetch(normalized, {
-    ...request,
-    credentials: request.credentials || 'same-origin',
-    headers
-  });
+  let response: Response;
+  try {
+    response = await fetch(normalized, { ...request, credentials: request.credentials || 'same-origin', headers });
+  } catch (error) {
+    throw new ApiError(0, { error: { code: 'network_error', message: error instanceof Error ? error.message : 'network error', retryable: true, request_id: '', details: {} } });
+  }
   const body = await response.json().catch(() => ({}));
   if (!response.ok) throw new ApiError(response.status, body as ApiErrorBody);
   return body as ApiV2Envelope<T>;
@@ -66,12 +63,36 @@ export function mutateV2<T>(path: string, body: Record<string, unknown> = {}, me
   return apiV2<T>(path, { method, headers, body: JSON.stringify(body), credentials: 'same-origin' });
 }
 
-export function mutate<T>(path: string, body: unknown, method = 'POST'): Promise<T> {
-  return api<T>(path, {
-    method,
-    headers: { 'content-type': 'application/json', 'Idempotency-Key': crypto.randomUUID() },
-    body: JSON.stringify(body)
-  });
+export async function mutateOfflineV2<T>(
+  path: string,
+  body: Record<string, unknown>,
+  method: string,
+  options: { command: OfflineCommand; scope: { actorId: string; teamId: string; projectId: string }; aggregateKey: string; expectedRevision?: number | null; idempotencyKey?: string }
+): Promise<ApiV2Envelope<T> | { queued: true; record: Awaited<ReturnType<OfflineOutbox['enqueue']>> }> {
+  if (!isOfflineCommandAllowed(options.command)) throw new Error('offline_command_forbidden');
+  const key = options.idempotencyKey || randomId();
+  const enqueue = () => new OfflineOutbox(options.scope).enqueue({ command: options.command, method, path: normalizeV2Path(path), body, expectedRevision: options.expectedRevision, aggregateKey: options.aggregateKey, idempotencyKey: key });
+  if (typeof navigator !== 'undefined' && navigator.onLine === false) return { queued: true, record: await enqueue() };
+  try {
+    return await mutateV2<T>(path, body, method, { expectedRevision: options.expectedRevision ?? undefined, idempotencyKey: key });
+  } catch (error) {
+    if (!shouldQueueOffline(error)) throw error;
+    const record = await enqueue();
+    return { queued: true, record };
+  }
+}
+
+export function normalizeV2Path(path: string): string {
+  const value = String(path || '');
+  if (value.includes('/api/v1') || value.includes('/api/v0')) throw new Error('retired_api_route');
+  if (value.startsWith('/api/v2/')) return value;
+  if (value === '/api/v2') return value;
+  if (value.startsWith('/')) return `/api/v2${value}`;
+  return `/api/v2/${value}`;
+}
+
+function randomId(): string {
+  return globalThis.crypto?.randomUUID?.() || `web-${Date.now()}-${Math.random().toString(16).slice(2)}`;
 }
 
 export function formatBytes(bytes: number): string {

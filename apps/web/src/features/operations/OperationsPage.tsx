@@ -4,11 +4,12 @@ import { apiV2, mutateV2, shortHash } from '../../api';
 import type { WorkspacePageProps } from '../../workspace';
 
 type Delivery = { id: string; branch_name: string; status: string; target_head_sha: string; revision: number; updated_at?: string };
-type Operation = { operation_id: string; command_id: string; status: string; revision: number; error_code?: string; parent_operation_id?: string | null };
-type ImportBatch = { id: string; status: string; revision: number; target_sha256?: string };
+type Operation = { operation_id: string; command_id: string; status: string; revision: number; error_code?: string; parent_operation_id?: string | null; reconciliation_state?: string };
+type ImportBatch = { id: string; status: string; revision: number; target_sha256?: string; conflict_count?: number };
 type Candidate = { id: string; status: string; revision: number; app_digest: string; candidate_sha256: string };
 type Backup = { id: string; source_user_version: number; manifest_sha256: string; retention_class: string; created_at: string };
 type GcPlan = { count: number; plan_sha256: string; candidates: string[] };
+type Interaction = { id: string; action?: string; question?: string; status?: string; decision?: string; operation_id?: string; revision: number };
 
 const NON_REPLAYABLE = new Set(['delivery.intent.merge', 'backup.create', 'restore.prepare', 'system.reset.prepare', 'import.cutover', 'cas.gc.apply']);
 
@@ -18,6 +19,9 @@ export function OperationsPage({ projectId, notify }: WorkspacePageProps) {
   const [imports, setImports] = useState<ImportBatch[]>([]);
   const [candidates, setCandidates] = useState<Candidate[]>([]);
   const [backups, setBackups] = useState<Backup[]>([]);
+  const [approvals, setApprovals] = useState<Interaction[]>([]);
+  const [inputs, setInputs] = useState<Interaction[]>([]);
+  const [health, setHealth] = useState('unknown');
   const [gcPlan, setGcPlan] = useState<GcPlan | null>(null);
   const [fault, setFault] = useState('');
   const [loading, setLoading] = useState(true);
@@ -27,18 +31,24 @@ export function OperationsPage({ projectId, notify }: WorkspacePageProps) {
     if (!projectId) return;
     setLoading(true);
     try {
-      const [delivery, operation, batches, deployment, backup] = await Promise.all([
+      const [delivery, operation, batches, deployment, backup, approval, input, ready] = await Promise.all([
         apiV2<{ deliveries: Delivery[] }>(`/api/v2/deliveries?project_id=${encodeURIComponent(projectId)}`),
         apiV2<{ operations: Operation[] }>(`/api/v2/operations?project_id=${encodeURIComponent(projectId)}`),
         apiV2<{ imports: ImportBatch[] }>('/api/v2/imports'),
         apiV2<{ active: Candidate | null; candidates: Candidate[] }>('/api/v2/system/deployment'),
-        apiV2<{ backups: Backup[] }>('/api/v2/backups')
+        apiV2<{ backups: Backup[] }>('/api/v2/backups'),
+        apiV2<{ approvals: Interaction[] }>(`/api/v2/approvals?project_id=${encodeURIComponent(projectId)}`),
+        apiV2<{ inputs: Interaction[] }>(`/api/v2/user-inputs?project_id=${encodeURIComponent(projectId)}`),
+        fetch('/readyz', { credentials: 'same-origin', headers: { accept: 'application/json' } }).then(async (response) => ({ ok: response.ok, body: await response.json().catch(() => ({})) }))
       ]);
       setDeliveries(delivery.data.deliveries || []);
       setOperations(operation.data.operations || []);
       setImports(batches.data.imports || []);
       setCandidates(deployment.data.candidates || []);
       setBackups(backup.data.backups || []);
+      setApprovals(approval.data.approvals || []);
+      setInputs(input.data.inputs || []);
+      setHealth(ready.ok && String((ready.body as { data?: { status?: string } }).data?.status || '') === 'ready' ? 'ready' : 'failed');
       setFault('');
     } catch (error) {
       const message = error instanceof Error ? error.message : 'operations_request_failed';
@@ -88,6 +98,7 @@ export function OperationsPage({ projectId, notify }: WorkspacePageProps) {
       <Metric label="Candidates" value={candidates.length} />
       <Metric label="Backups" value={backups.length} />
       <Metric label="Imports" value={imports.length} />
+      <Metric label="Human queue" value={approvals.filter((item) => (item.decision || item.status) === 'pending').length + inputs.filter((item) => item.status === 'pending').length} />
     </div>
     <div className="operations-grid-p8">
       <section aria-labelledby="delivery-heading"><SectionHeading id="delivery-heading" title="Delivery" icon={<GitPullRequestDraft size={18} />} />
@@ -103,15 +114,23 @@ export function OperationsPage({ projectId, notify }: WorkspacePageProps) {
         {!loading && !backups.length && <p className="list-empty">No backups</p>}
       </section>
       <section aria-labelledby="operation-heading"><SectionHeading id="operation-heading" title="Operation Lineage" icon={<RotateCcw size={18} />} />
-        {operations.map((item) => <Row key={item.operation_id} title={item.command_id} detail={item.error_code || shortHash(item.operation_id)} status={item.status} action={item.status === 'failed' && !NON_REPLAYABLE.has(item.command_id) ? <IconAction label="Replay operation" busy={busy === `operation:${item.operation_id}`} icon={<Play size={15} />} onClick={() => void replay(item)} /> : null} />)}
+        {operations.map((item) => <Row key={item.operation_id} title={item.command_id} detail={item.error_code || (item.parent_operation_id ? `retry of ${shortHash(item.parent_operation_id)}` : item.reconciliation_state === 'unknown' ? 'External result unknown' : shortHash(item.operation_id))} status={item.status} action={item.status === 'failed' && !NON_REPLAYABLE.has(item.command_id) ? <IconAction label="Replay operation" busy={busy === `operation:${item.operation_id}`} icon={<Play size={15} />} onClick={() => void replay(item)} /> : null} />)}
         {!loading && !operations.length && <p className="list-empty">No operations</p>}
       </section>
       <section aria-labelledby="import-heading"><SectionHeading id="import-heading" title="Imports" />
-        {imports.map((item) => <Row key={item.id} title={shortHash(item.target_sha256 || item.id)} detail={`revision ${item.revision}`} status={item.status} />)}
+        {imports.map((item) => <Row key={item.id} title={shortHash(item.target_sha256 || item.id)} detail={item.status === 'blocked' ? `blocked import · ${item.conflict_count || 0} conflicts` : `revision ${item.revision}`} status={item.status} />)}
         {!loading && !imports.length && <p className="list-empty">No imports</p>}
       </section>
       <section aria-labelledby="gc-heading"><SectionHeading id="gc-heading" title="CAS GC" icon={<Trash2 size={18} />} action={<IconAction label="Create GC plan" busy={busy === 'gc'} icon={<Play size={15} />} onClick={() => void planGc()} />} />
         {gcPlan ? <Row title={shortHash(gcPlan.plan_sha256)} detail={`${gcPlan.count} candidates`} status="planned" /> : <p className="list-empty">No active plan</p>}
+      </section>
+      <section aria-labelledby="human-heading"><SectionHeading id="human-heading" title="Human queue" icon={<ShieldAlert size={18} />} />
+        {approvals.map((item) => <Row key={item.id} title={item.action || 'Approval'} detail={item.operation_id ? `operation ${shortHash(item.operation_id)}` : `revision ${item.revision}`} status={item.decision || item.status || 'pending'} />)}
+        {inputs.map((item) => <Row key={item.id} title={item.question || 'Manual input'} detail={item.operation_id ? `operation ${shortHash(item.operation_id)}` : `revision ${item.revision}`} status={item.status || 'pending'} />)}
+        {!loading && !approvals.length && !inputs.length && <p className="list-empty">No pending interactions</p>}
+      </section>
+      <section aria-labelledby="health-heading"><SectionHeading id="health-heading" title="Health" icon={<ServerCog size={18} />} />
+        <Row title="V3-Clean" detail={health === 'ready' ? 'schema and dependencies ready' : 'Health check failed'} status={health} />
       </section>
     </div>
   </div>;
