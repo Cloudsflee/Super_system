@@ -1,0 +1,15 @@
+{
+  "status": "passed",
+  "dynamic_loopback_port": 53281,
+  "exact_cors_origin": "http://127.0.0.1:53282",
+  "readyz": {
+    "status": "ready",
+    "runtime": "v3-clean",
+    "runtime_phase": 9,
+    "schema_family": "v3-clean",
+    "user_version": 8
+  },
+  "shell_cache_control": "no-cache, no-store",
+  "preflight_status": 204,
+  "actual_status": 200
+}
