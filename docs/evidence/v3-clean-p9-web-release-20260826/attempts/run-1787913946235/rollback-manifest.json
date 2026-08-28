@@ -1,0 +1,51 @@
+{
+  "schema_version": "aiws.v3-clean.p9-rollback-manifest.v1",
+  "baseline_commit": "423a7b4ca199ff2f11cbef1758802cdad22af8e0",
+  "files": [
+    {
+      "path": "bridge/state.json",
+      "sha256": "7e826b0b3922b34c03ab9805d98e4fb53a8751d6ede51676f8958b8c3caacf59",
+      "byte_length": 84
+    },
+    {
+      "path": "broker/state.json",
+      "sha256": "d29435e6d4957f530397aa82f5dbf8a86f049e4570591c07d8343dd1b6559f7a",
+      "byte_length": 84
+    },
+    {
+      "path": "cas/state.json",
+      "sha256": "6fbc8b98e5332d13f94e7b11fb16cebe50df53e36fa8ee6c5c4d5fdd6d550cd2",
+      "byte_length": 81
+    },
+    {
+      "path": "parser/state.json",
+      "sha256": "01bb049f314fe4b5e8bca6bec23ffdcf65a93a41f7aa292206a7b571abb863ba",
+      "byte_length": 84
+    },
+    {
+      "path": "pointer.json",
+      "sha256": "861a0857724b39ae324a51d57b5bdfe069ff51767b4f46dfcf60c1117b3da67f",
+      "byte_length": 36
+    },
+    {
+      "path": "sqlite/state.sqlite",
+      "sha256": "de4729e912fb1e9bccd5e9abaa6e4499696735f787c1198dea02f067b4fe4a9f",
+      "byte_length": 1802240
+    },
+    {
+      "path": "vault/state.json",
+      "sha256": "f916ab78f07e4850a3f4e20a3668419fd4959db0c21f8df2de9a07e3dd814232",
+      "byte_length": 83
+    },
+    {
+      "path": "web/bundle.tgz",
+      "sha256": "1a0fb0bd70b7e8432adaae0af16c3034f927348b1ccb64872d2036a022544f88",
+      "byte_length": 124886
+    },
+    {
+      "path": "workspace/state.json",
+      "sha256": "7a17ce9e4883d317120552b06e5f7a85803069d16a9d3d9ef8131d4d9814908e",
+      "byte_length": 87
+    }
+  ]
+}
