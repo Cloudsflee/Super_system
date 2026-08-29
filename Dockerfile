@@ -8,6 +8,7 @@ ARG AIWS_GATE_FINGERPRINT=unknown
 ARG AIWS_SBOM_SHA256=unknown
 
 FROM ${NODE_IMAGE} AS dependencies
+USER root
 ARG ALPINE_MIRROR=https://mirrors.aliyun.com/alpine
 ENV COREPACK_NPM_REGISTRY=https://registry.npmmirror.com
 RUN apk add --no-cache python3 make g++ git ca-certificates || (sed -i "s#https://dl-cdn.alpinelinux.org/alpine#${ALPINE_MIRROR}#g" /etc/apk/repositories && apk add --no-cache python3 make g++ git ca-certificates)
@@ -18,7 +19,7 @@ COPY apps/web/package.json apps/web/package.json
 COPY apps/runner-broker/package.json apps/runner-broker/package.json
 COPY apps/parser-worker/package.json apps/parser-worker/package.json
 COPY packages/contracts/package.json packages/contracts/package.json
-RUN corepack pnpm install --frozen-lockfile \
+RUN CI=true corepack pnpm install --force --frozen-lockfile \
       --registry=https://registry.npmmirror.com \
       --fetch-timeout=300000 --fetch-retries=1
 
@@ -27,6 +28,7 @@ COPY . .
 RUN corepack pnpm --filter @aiws/web build
 
 FROM ${NODE_IMAGE} AS production
+USER root
 ARG ALPINE_MIRROR=https://mirrors.aliyun.com/alpine
 ARG AIWS_VERSION
 ARG AIWS_COMMIT
@@ -55,6 +57,7 @@ COPY --from=build /app/apps/web/dist ./apps/web/dist
 RUN mkdir -p /var/lib/aiws && chmod 700 /var/lib/aiws
 EXPOSE 4317
 HEALTHCHECK --interval=10s --timeout=5s --start-period=20s --retries=6 CMD node -e "fetch('http://127.0.0.1:4317/readyz').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
+ENTRYPOINT []
 CMD ["node", "apps/api/server.mjs"]
 
 FROM ${NODE_IMAGE} AS broker

@@ -256,6 +256,11 @@ async function verifyBrowser() {
 async function dockerRelease() {
   const version = run('docker', ['version', '--format', '{{.Server.Version}}'], 30_000);
   if (version.status !== 0) return { status: 'missing', provisional: true, reason: 'docker_daemon_unavailable' };
+  const localBase = 'aiws-parser:p7-freeze-a';
+  const localBaseInspect = run('docker', ['image', 'inspect', localBase, '--format', '{{.Id}}']);
+  const nodeImage = process.env.AIWS_P10_RELEASE_NODE_IMAGE || (localBaseInspect.status === 0 ? localBase : 'docker.m.daocloud.io/library/node:24.14.0-alpine3.22');
+  const baseImageInspect = run('docker', ['image', 'inspect', nodeImage, '--format', '{{.Id}}']);
+  const baseImageDigest = baseImageInspect.status === 0 ? baseImageInspect.stdout.trim() : null;
   const suffix = `${process.pid}-${Date.now()}`;
   const tags = [`aiws-p10-release-a:${suffix}`, `aiws-p10-release-b:${suffix}`];
   let container = '';
@@ -263,6 +268,7 @@ async function dockerRelease() {
   try {
     const buildArgs = [
       '--target', 'production', '--provenance=false',
+      '--build-arg', `NODE_IMAGE=${nodeImage}`,
       '--build-arg', `AIWS_COMMIT=${git('rev-parse', 'HEAD')}`,
       '--build-arg', `AIWS_TREE=${git('write-tree')}`,
       '--build-arg', `AIWS_LOCKFILE_SHA256=${sha256File(path.join(root, 'pnpm-lock.yaml'))}`,
@@ -311,6 +317,8 @@ async function dockerRelease() {
       image_digest: ids[0],
       reproducible_builds: 2,
       sbom: { path: 'image.spdx.json', sha256: sha256File(sbomFile), byte_length: fs.statSync(sbomFile).size },
+      base_image: nodeImage,
+      base_image_digest: baseImageDigest,
       publish: { dynamic_loopback_port: port, fresh_volume: volume, readyz: ready.data, web_shell: true, exact_cors_origin: dynamicOrigin }
     };
   } finally {

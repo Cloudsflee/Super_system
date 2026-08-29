@@ -80,7 +80,9 @@ try {
   };
   for (const [key, marker] of Object.entries({ parser: 'v3-clean-p10-parser-probe.mjs', github_deletion: 'v3-clean-p10-github-deletion-probe.mjs', release: 'v3-clean-p10-release-probe.mjs' })) {
     const record = records.find((item) => item.command.includes(marker));
-    const parsed = parseOutput(record?.stdout || '');
+    const parsed = key === 'release'
+      ? (readJson(path.join(root, '.ai-workspace', 'p10-release-probe', 'receipt.json')) || parseOutput(record?.stdout || ''))
+      : parseOutput(record?.stdout || '');
     const verified = probeIsVerified(key, record, parsed);
     external.gates[key] = {
       status: verified ? 'verified' : 'provisional',
@@ -102,7 +104,8 @@ try {
   const final = !localFailure && external.status === 'passed' && rollback.status === 'passed';
   const verificationRecord = { schema_version: 'aiws.v3-clean.p10-verification-record.v1', phase: 'P10', baseline_commit: baselineCommit, implementation_commit: implementationCommit, runtime_tree: runtimeTree, v23_source_commit: v23SourceCommit, commands: records, parity, external_probes: external, rollback };
   writer.write('verification-record.json', verificationRecord);
-  const releaseProbe = parseOutput(records.find((item) => item.command.includes('v3-clean-p10-release-probe.mjs'))?.stdout || '');
+  const releaseRecord = records.find((item) => item.command.includes('v3-clean-p10-release-probe.mjs'));
+  const releaseProbe = readJson(path.join(root, '.ai-workspace', 'p10-release-probe', 'receipt.json')) || parseOutput(releaseRecord?.stdout || '');
   writer.write('release-probe.json', releaseProbe);
   const verification = {
     schema_version: 'aiws.v3-clean.p10-verification.v1',
@@ -210,9 +213,10 @@ function workingPatch() { const tracked = spawnSync('git', ['diff', '--binary', 
 function migrationDiff() { return { schema_version: 'aiws.v3-clean.p10-migration-diff.v1', from_user_version: 8, to_user_version: 9, migration: '009-final-business-parity-governance', tables: ['brief_templates','brief_template_revisions','workflow_quality_policies','quality_review_asset_selections','quality_review_advices','assist_review_comments','project_deletion_intents','repository_deletion_intents'], additive_columns: { provider_profiles: ['lifecycle_status','disabled_at'], brief_revisions: ['template_id','template_revision','template_sha256'], assist_sessions: ['title','mode','parent_session_id','fork_source_turn_id','pinned_at','archived_at','deleted_at'], quality_review_runs: ['policy_revision','policy_snapshot_json','policy_sha256','reviewer_profile_id','reviewer_profile_revision','reviewer_snapshot_json','reviewer_snapshot_sha256','supersedes_quality_review_id','superseded_by_quality_review_id','stale_at','stale_reason'] }, checksum: FINAL_BUSINESS_PARITY_GOVERNANCE_MIGRATION_CHECKSUM }; }
 function catalogReleaseMap() { const catalog = readJson(path.join(root, 'feature-catalog.clean.json')); const rows = (catalog?.features || []).map((feature) => ({ id: feature.id, domain: feature.domain, prior_status: feature.status, release_status: 'released', release_behavior: 'P10 business-semantic parity and released Web/API receipt', verification: `${evidenceRelative}/verification.json`, parity_map: 'docs/architecture/p10-parity/business-parity-map.json' })).sort((left, right) => left.id.localeCompare(right.id)); return { schema_version: 'aiws.v3-clean.p10-catalog-release-map.v1', status: rows.length === 27 && new Set(rows.map((row) => row.id)).size === 27 ? 'passed' : 'failed', counts: { clean: rows.length, historical: 0, total: rows.length }, rows }; }
 function createReleaseBundle(writer, records) {
-  const releaseProbe = parseOutput(records.find((item) => item.command.includes('v3-clean-p10-release-probe.mjs'))?.stdout || '');
+  const releaseRecord = records.find((item) => item.command.includes('v3-clean-p10-release-probe.mjs'));
+  const releaseProbe = readJson(path.join(root, '.ai-workspace', 'p10-release-probe', 'receipt.json')) || parseOutput(releaseRecord?.stdout || '');
   const source = path.join(root, '.ai-workspace', 'p10-release-probe', 'modified-release-bundle.tgz');
-  if (releaseProbe?.status !== 'passed' || releaseProbe?.provisional !== false || !fs.existsSync(source)) throw new Error('p10_release_bundle_missing');
+  if (releaseProbe?.status !== 'passed' || releaseProbe?.provisional !== false || !fs.existsSync(source)) { const record = records.find((item) => item.command.includes('v3-clean-p10-release-probe.mjs')); throw new Error(`p10_release_bundle_missing_${record?.exit_status ?? 'none'}_${releaseProbe?.status || 'none'}_${releaseProbe?.provisional === false ? 'stable' : 'provisional'}_${fs.existsSync(source) ? 'present' : 'absent'}`); }
   if (sha256File(source) !== releaseProbe.bundle?.sha256) throw new Error('p10_release_bundle_hash_mismatch');
   writer.write('release-bundle.tgz', fs.readFileSync(source));
   writer.write('release-bundle.json', {
