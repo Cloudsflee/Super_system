@@ -2,8 +2,9 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { execFile } from 'node:child_process';
-import { File } from 'node:buffer';
 import { promisify } from 'node:util';
+import { fileURLToPath } from 'node:url';
+import { Worker } from 'node:worker_threads';
 import { parse as parseCsv } from 'csv-parse/sync';
 import { SaxesParser } from 'saxes';
 import { parseOffice } from 'officeparser';
@@ -168,41 +169,39 @@ async function parseMedia(bytes, format, limits) {
 }
 
 async function parseArchive(bytes, format, limits) {
-  const state = { entries: 0, expanded: 0, inventory: [] };
-  await scanArchive(bytes, `${format}.${format === 'gzip' ? 'gz' : format}`, 0, limits, state);
-  const ratio = bytes.byteLength ? state.expanded / bytes.byteLength : 0;
-  if (ratio > limits.max_compression_ratio) throw parserError('parser_quota_compression_ratio');
-  const metadata = { format, entries: state.entries, expanded_bytes: state.expanded, recursion_depth: state.inventory.reduce((max, item) => Math.max(max, item.depth), 0), inventory: state.inventory };
+  const metadata = await runArchiveWorker(bytes, format, limits);
   return output(Buffer.from(canonicalJson(metadata), 'utf8'), 'application/json', metadata);
 }
 
-async function scanArchive(bytes, filename, depth, limits, state) {
-  if (depth > limits.max_recursion_depth) throw parserError('parser_quota_archive_depth');
-  const { Archive } = await import('libarchive.js/dist/libarchive-node.mjs');
-  let archive;
-  try { archive = await Archive.open(new File([bytes], filename)); }
-  catch { throw parserError('parser_invalid_archive'); }
-  try {
-    const encrypted = await archive.hasEncryptedData();
-    if (encrypted !== false) throw parserError(encrypted ? 'parser_invalid_encrypted_archive' : 'parser_invalid_archive_encryption_unknown');
-    const entries = await archive.getFilesArray();
-    for (const entry of entries) {
-      state.entries += 1;
-      if (state.entries > limits.max_archive_entries) throw parserError('parser_quota_archive_entries');
-      const name = [String(entry.path || ''), String(entry.file?.name || '')].filter(Boolean).join('/').replaceAll('\\', '/');
-      assertArchivePath(name);
-      const size = Number(entry.file?.size || 0);
-      state.expanded += size;
-      if (state.expanded > limits.max_expanded_bytes) throw parserError('parser_quota_expanded_bytes');
-      state.inventory.push({ path: name, byte_length: size, depth });
-      const nested = archiveFormatFromName(name);
-      if (nested && depth < limits.max_recursion_depth && size > 0) {
-        const file = await entry.file.extract();
-        const nestedBytes = Buffer.from(await file.arrayBuffer());
-        await scanArchive(nestedBytes, name, depth + 1, limits, state);
-      }
-    }
-  } finally { await archive.close().catch(() => undefined); }
+function runArchiveWorker(bytes, format, limits) {
+  const workerPath = fileURLToPath(new URL('./archive-worker.mjs', import.meta.url));
+  const input = Uint8Array.from(bytes);
+  return new Promise((resolve, reject) => {
+    const worker = new Worker(workerPath, {
+      workerData: { bytes: input.buffer, format, limits },
+      transferList: [input.buffer],
+      execArgv: process.execArgv.filter((argument) => !String(argument).startsWith('--input-type')),
+      resourceLimits: { maxOldGenerationSizeMb: 256, maxYoungGenerationSizeMb: 32, stackSizeMb: 8 }
+    });
+    let settled = false;
+    const timer = setTimeout(() => {
+      if (settled) return;
+      settled = true;
+      void worker.terminate();
+      reject(parserError('parser_deadline_exceeded'));
+    }, Math.max(1000, Number(limits.deadline_seconds || 60) * 1000));
+    timer.unref?.();
+    worker.once('message', (message) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      void worker.terminate();
+      if (message?.status === 'ok') resolve(message.metadata);
+      else reject(parserError(String(message?.error_code || 'parser_invalid_archive')));
+    });
+    worker.once('error', (error) => { if (!settled) { settled = true; clearTimeout(timer); reject(parserError(String(error?.code || 'parser_archive_worker_failed'))); } });
+    worker.once('exit', (code) => { if (!settled) { settled = true; clearTimeout(timer); reject(parserError(code === 0 ? 'parser_archive_worker_empty' : 'parser_archive_worker_failed')); } });
+  });
 }
 
 function output(bytes, mediaType, metadata = {}) { return { outputs: [{ kind: 'parsed', bytes: Buffer.from(bytes), media_type: mediaType, metadata }] , metadata }; }
@@ -237,7 +236,5 @@ function numericMetadata(value, keys) { for (const key of keys) { const number =
 function lineCount(text) { return text ? text.split(/\r?\n/).length : 0; }
 function sampledWaveform(bytes, count) { if (!bytes.length) return []; const width = Math.max(1, Math.floor(bytes.length / count)); const values = []; for (let offset = 0; offset < bytes.length && values.length < count; offset += width) { const chunk = bytes.subarray(offset, Math.min(bytes.length, offset + width)); let sum = 0; for (const byte of chunk) sum += Math.abs(byte - 128); values.push(Number((sum / Math.max(1, chunk.length) / 128).toFixed(4))); } return values; }
 function sampleTimes(duration, count) { return Array.from({ length: count }, (_, index) => Number((((index + 1) * duration) / (count + 1)).toFixed(3))); }
-function archiveFormatFromName(name) { const lower = name.toLowerCase(); if (lower.endsWith('.tar.gz') || lower.endsWith('.tgz') || lower.endsWith('.gz')) return 'gzip'; for (const value of ['zip', 'tar', '7z', 'rar']) if (lower.endsWith(`.${value}`)) return value; return null; }
-function assertArchivePath(value) { const name = String(value || ''); const parts = name.split('/'); if (!name || name.startsWith('/') || /^[A-Za-z]:/.test(name) || parts.some((part) => !part || part === '.' || part === '..') || name.includes('\0')) throw parserError('parser_invalid_archive_path'); if (name.length > 2048) throw parserError('parser_quota_archive_path'); }
 function withDeadline(promise, milliseconds, externalSignal) { return new Promise((resolve, reject) => { let settled = false; const timer = setTimeout(() => { if (!settled) reject(parserError('parser_deadline_exceeded')); }, milliseconds); timer.unref?.(); const cancel = () => { if (!settled) reject(parserError('parser_cancelled')); }; externalSignal?.addEventListener?.('abort', cancel, { once: true }); Promise.resolve(promise).then((value) => { settled = true; clearTimeout(timer); externalSignal?.removeEventListener?.('abort', cancel); resolve(value); }, (error) => { settled = true; clearTimeout(timer); externalSignal?.removeEventListener?.('abort', cancel); reject(error); }); }); }
 function parserError(code) { const error = new Error(code); error.code = code; return error; }

@@ -47,9 +47,10 @@ export class CleanAssistService {
     requirePrincipal(principal);
     const projectId = input.project_id == null ? null : String(input.project_id);
     if (projectId) assertProject(this.authorization, principal, 'read', projectId, { resource: 'assist' });
+    const visible = Number(this.db.metadata?.user_version || 0) >= 9 && !input.include_deleted ? ' AND deleted_at IS NULL' : '';
     const rows = projectId
-      ? this.db.query('SELECT * FROM assist_sessions WHERE project_id=? ORDER BY updated_at DESC,id', [projectId])
-      : this.db.query('SELECT * FROM assist_sessions WHERE created_by_actor_id=? ORDER BY updated_at DESC,id', [principal.actorId]);
+      ? this.db.query(`SELECT * FROM assist_sessions WHERE project_id=?${visible} ORDER BY updated_at DESC,id`, [projectId])
+      : this.db.query(`SELECT * FROM assist_sessions WHERE created_by_actor_id=?${visible} ORDER BY updated_at DESC,id`, [principal.actorId]);
     return { sessions: rows.filter((row) => !input.status || row.status === String(input.status)).map(sessionView) };
   }
 
@@ -104,6 +105,11 @@ export class CleanAssistService {
       const snapshotPayload = canonicalPayload(snapshot);
       tx.run(`INSERT INTO assist_sessions(id,project_id,scope,scope_id,brief_revision,brief_hash,workflow_revision,workflow_hash,repository_workspace_id,repository_revision,repository_hash,context_pack_id,context_pack_hash,profile_id,profile_revision,profile_hash,credential_ref_id,credential_revision,status,revision,created_at,updated_at,created_by_actor_id,updated_by_actor_id)
         VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,'active',1,?,?,?,?)`, [sessionId, projectId, scope, scopeId, snapshot.brief_revision, snapshot.brief_hash, snapshot.workflow_revision, snapshot.workflow_hash, snapshot.repository_workspace_id, snapshot.repository_revision, snapshot.repository_hash, pack.id, pack.pack_hash, profile.id, profile.revision, snapshot.profile_hash, credential.id, credential.revision, now, now, principal.actorId, principal.actorId]);
+      if (Number(this.db.metadata?.user_version || 0) >= 9) {
+        const mode = String(input.mode || 'guided');
+        if (!['guided','agent','side_thread'].includes(mode)) throw new PlatformError('schema_invalid', 'Assist session mode is invalid', {}, 422);
+        tx.run('UPDATE assist_sessions SET title=?,mode=? WHERE id=?', [boundedString(input.title || '', 160), mode, sessionId], 1);
+      }
       tx.run('INSERT INTO assist_configurations(id,session_id,revision,snapshot_json,snapshot_sha256,provider_schema_sha256,created_at,created_by_actor_id) VALUES(?,?,?,?,?,?,?,?)', [configId, sessionId, 1, snapshotPayload.json, snapshotPayload.sha256, snapshot.provider_schema_sha256 || snapshotPayload.sha256, now, principal.actorId]);
       appendAggregate(this.events, tx, { aggregateType: 'assist_session', aggregateId: sessionId, revision: 1, operationId: op.id, actorId: principal.actorId, projectId, type: 'assist_session.created', data: { session_id: sessionId, project_id: projectId, scope }, payload: { id: sessionId, project_id: projectId, scope, scope_id: scopeId, status: 'active', revision: 1 }, now });
       this.operations.linkInTransaction(tx, op.id, [['assist_session', sessionId]], now);
@@ -705,7 +711,16 @@ export class CleanAssistService {
 
   sessionRow(id) { const row = this.db.get('SELECT * FROM assist_sessions WHERE id=?', [String(id)]); if (!row) throw new PlatformError('not_found', 'Assist session not found', {}, 404); return row; }
   assertSession(principal, row, action) { assertProject(this.authorization, principal, action, row.project_id, { resource: 'assist', operationId: null }); }
-  profileFor(id, principal) { const row = id ? this.db.get('SELECT * FROM provider_profiles WHERE id=? AND owner_actor_id=?', [String(id), principal.actorId]) : this.db.get("SELECT * FROM provider_profiles WHERE owner_actor_id=? AND status='available' ORDER BY updated_at DESC,id LIMIT 1", [principal.actorId]); if (!row) throw new PlatformError('provider_profile_required', 'an available provider profile is required', {}, 422); if (row.status !== 'available') throw new PlatformError('provider_unavailable', 'provider profile is unavailable', {}, 503); return row; }
+  profileFor(id, principal) {
+    const row = id
+      ? this.db.get('SELECT * FROM provider_profiles WHERE id=? AND owner_actor_id=?', [String(id), principal.actorId])
+      : Number(this.db.metadata?.user_version || 0) >= 9
+        ? this.db.get("SELECT * FROM provider_profiles WHERE owner_actor_id=? AND status='available' AND lifecycle_status='enabled' ORDER BY updated_at DESC,id LIMIT 1", [principal.actorId])
+        : this.db.get("SELECT * FROM provider_profiles WHERE owner_actor_id=? AND status='available' ORDER BY updated_at DESC,id LIMIT 1", [principal.actorId]);
+    if (!row) throw new PlatformError('provider_profile_required', 'an available provider profile is required', {}, 422);
+    if (row.status !== 'available' || row.lifecycle_status === 'disabled') throw new PlatformError('provider_unavailable', 'provider profile is unavailable', {}, 503);
+    return row;
+  }
   credentialFor(profile, principal) { const row = this.db.get('SELECT * FROM credential_refs WHERE id=? AND owner_actor_id=?', [profile.credential_ref_id, principal.actorId]); if (!row || row.status !== 'active') throw new PlatformError('credential_rebind_required', 'provider credential proof is required', {}, 422); return row; }
   credentialForSession(session, principal) {
     const owner = String(session.created_by_actor_id || principal.actorId);
@@ -718,7 +733,7 @@ export class CleanAssistService {
   providerConfig(profile) { return parseJson(profile?.config_json || '{}', {}); }
   providerConfigForSession(session) {
     const profile = this.db.get('SELECT * FROM provider_profiles WHERE id=?', [String(session.profile_id)]);
-    if (!profile || Number(profile.revision) !== Number(session.profile_revision) || sha256Hex(profile.config_json || '{}') !== String(session.profile_hash || '')) {
+    if (!profile || profile.lifecycle_status === 'disabled' || Number(profile.revision) !== Number(session.profile_revision) || sha256Hex(profile.config_json || '{}') !== String(session.profile_hash || '')) {
       throw new PlatformError('assist_snapshot_drift', 'Assist provider profile revision changed', { snapshot: 'profile_revision' }, 409);
     }
     return this.providerConfig(profile);
@@ -750,7 +765,9 @@ export class CleanAssistService {
 }
 
 function sessionView(row) {
-  return { id: row.id, project_id: row.project_id, scope: row.scope, scope_id: row.scope_id, context_pack_id: row.context_pack_id, context_pack_hash: row.context_pack_hash, profile_id: row.profile_id, profile_revision: Number(row.profile_revision), credential_revision: Number(row.credential_revision), provider_thread_id: row.provider_thread_id || null, status: row.status, revision: Number(row.revision), created_at: row.created_at, updated_at: row.updated_at };
+  const value = { id: row.id, project_id: row.project_id, scope: row.scope, scope_id: row.scope_id, context_pack_id: row.context_pack_id, context_pack_hash: row.context_pack_hash, profile_id: row.profile_id, profile_revision: Number(row.profile_revision), credential_revision: Number(row.credential_revision), provider_thread_id: row.provider_thread_id || null, status: row.status, revision: Number(row.revision), created_at: row.created_at, updated_at: row.updated_at };
+  if (Object.hasOwn(row, 'title')) Object.assign(value, { title: row.title || '', mode: row.mode || 'guided', parent_session_id: row.parent_session_id || null, fork_source_turn_id: row.fork_source_turn_id || null, pinned_at: row.pinned_at || null, archived_at: row.archived_at || null, deleted_at: row.deleted_at || null });
+  return value;
 }
 function turnView(row, db, cas) {
   if (!row) return null;

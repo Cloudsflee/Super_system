@@ -174,7 +174,9 @@ export class CleanOutcomeEvaluationService {
     const tests = this.db.query('SELECT check_id,status,input_sha256,output_sha256 FROM test_results WHERE execution_id=? ORDER BY check_id,id', [execution.id]);
     const digests = this.db.query("SELECT digest_type,input_sha256,digest_sha256 FROM digests WHERE execution_id=? AND digest_type<>'outcome' ORDER BY digest_type,id", [execution.id]);
     const inputs = this.db.query('SELECT ordinal,input_type,ref_id,ref_revision,ref_hash,metadata_sha256 FROM execution_inputs WHERE execution_id=? ORDER BY ordinal,id', [execution.id]);
-    const quality = this.db.get("SELECT * FROM quality_review_runs WHERE execution_id=? AND status='completed' ORDER BY completed_at DESC,id DESC LIMIT 1", [execution.id]);
+    const quality = Number(this.db.metadata?.user_version || 0) >= 9
+      ? this.db.get("SELECT * FROM quality_review_runs WHERE execution_id=? AND status='completed' AND stale_at IS NULL AND superseded_by_quality_review_id IS NULL ORDER BY completed_at DESC,id DESC LIMIT 1", [execution.id])
+      : this.db.get("SELECT * FROM quality_review_runs WHERE execution_id=? AND status='completed' ORDER BY completed_at DESC,id DESC LIMIT 1", [execution.id]);
     const human = quality?.human_review_id ? this.db.get('SELECT * FROM human_reviews WHERE id=?', [quality.human_review_id]) : null;
     const waiverRows = this.db.query('SELECT * FROM outcome_waivers WHERE execution_id=? ORDER BY created_at,id', [execution.id]);
     const activeWaivers = activeWaiversFor(waiverRows, time(this.clock));

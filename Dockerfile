@@ -1,4 +1,5 @@
 ARG NODE_IMAGE=docker.m.daocloud.io/library/node:24.14.0-alpine3.22
+ARG P10_PARSER_BASE=aiws-parser:p7-freeze-a
 ARG AIWS_VERSION=3.0.0
 ARG AIWS_COMMIT=unknown
 ARG AIWS_TREE=unknown
@@ -153,8 +154,20 @@ COPY package.json /app/package.json
 COPY apps/parser-worker/package.json ./package.json
 COPY apps/parser-worker/worker.mjs ./worker.mjs
 COPY apps/parser-worker/parser-engine.mjs ./parser-engine.mjs
+COPY apps/parser-worker/archive-worker.mjs ./archive-worker.mjs
 COPY apps/api/src/clean/canonical.mjs /app/apps/api/src/clean/canonical.mjs
 COPY apps/api/src/clean/parser-limits.mjs /app/apps/api/src/clean/parser-limits.mjs
 RUN mkdir -p /input /output /tmp/parser-home && chown -R 10001:10001 /input /output /tmp/parser-home /app/apps/parser-worker
+USER 10001:10001
+ENTRYPOINT ["node", "/app/apps/parser-worker/worker.mjs"]
+
+# P10 is an additive parser wrapper over the immutable, digest-checked P7
+# worker. This target can be rebuilt without resolving an unrelated base image.
+FROM ${P10_PARSER_BASE} AS parser-worker-p10
+USER root
+LABEL aiws.parser.worker-version="node24-p10" \
+      aiws.parser.protocol="parser.job.v1"
+COPY --chown=10001:10001 apps/parser-worker/parser-engine.mjs /app/apps/parser-worker/parser-engine.mjs
+COPY --chown=10001:10001 apps/parser-worker/archive-worker.mjs /app/apps/parser-worker/archive-worker.mjs
 USER 10001:10001
 ENTRYPOINT ["node", "/app/apps/parser-worker/worker.mjs"]

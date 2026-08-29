@@ -91,7 +91,7 @@ export class DeterministicAppServerAdapter {
     this.threads = new Map();
   }
 
-  async probe() {
+  async probe({ credential = null } = {}) {
     if (!this.available) throw new PlatformError('provider_unavailable', 'app-server provider is unavailable', {}, 503);
     return {
       available: true,
@@ -190,7 +190,7 @@ export class ProcessAppServerAdapter {
     const home = this.createIsolatedHome('probe');
     let connection;
     try {
-      connection = await this.openConnection({ home });
+      connection = await this.openConnection({ home, credential });
       const result = connection.initializeResult;
       const missing = APP_SERVER_METHODS.filter((method) => method !== 'initialize' && !schema.methods.has(method));
       if (missing.length) throw new PlatformError('provider_protocol_drift', 'app-server method inventory changed', { missing_methods: missing }, 503);
