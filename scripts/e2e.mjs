@@ -6,11 +6,11 @@ import { spawn } from 'node:child_process';
 import { chromium } from '@playwright/test';
 
 const root = process.cwd();
-const home = fs.mkdtempSync(path.join(os.tmpdir(), 'aiws-p9-e2e-'));
+const home = fs.mkdtempSync(path.join(os.tmpdir(), 'aiws-p10-e2e-'));
 const apiPort = await freePort();
 const webPort = await freePort();
-const vaultKey = 'p9-clean-e2e-vault-key';
-const reportDir = path.join(root, '.ai-workspace', 'e2e-clean-p9');
+const vaultKey = 'p10-clean-e2e-vault-key';
+const reportDir = path.join(root, '.ai-workspace', 'e2e-clean-p10');
 fs.rmSync(reportDir, { recursive: true, force: true });
 fs.mkdirSync(reportDir, { recursive: true });
 const children = [];
@@ -21,8 +21,8 @@ const httpErrors = [];
 const api = start(process.execPath, ['apps/api/server.mjs'], {
   AIWS_CLEAN_PORT: String(apiPort), AIWS_CLEAN_HOME: home,
   AIWS_CLEAN_CORS_ORIGINS: `http://127.0.0.1:${webPort}`,
-  AIWS_CLEAN_VAULT_KEY: vaultKey, AIWS_CLEAN_BUILD: 'v3-clean-p9-e2e',
-  AIWS_CLEAN_MCP_PEPPER: 'p9-clean-e2e-mcp-pepper', AIWS_GATEWAY_SECRET: 'p9-clean-e2e-gateway-secret',
+  AIWS_CLEAN_VAULT_KEY: vaultKey, AIWS_CLEAN_BUILD: 'v3-clean-p10-e2e',
+  AIWS_CLEAN_MCP_PEPPER: 'p10-clean-e2e-mcp-pepper', AIWS_GATEWAY_SECRET: 'p10-clean-e2e-gateway-secret',
   AIWS_CLEAN_PROVIDER_MODE: 'deterministic', AIWS_RUNNER_POLL_INTERVAL_MS: '10'
 });
 children.push(api);
@@ -78,6 +78,54 @@ try {
   const projects = await pageApi('/api/v2/projects');
   const project = projects.body.data?.projects?.[0];
   assert(project?.id, 'project create');
+
+  const providerCredential = await pageApi('/api/v2/credentials', {
+    method: 'POST', headers: { 'Idempotency-Key': 'p10-e2e-provider-credential', 'X-Expected-Revision': '0' },
+    body: { provider: 'codex', external_ref: 'p10-e2e-provider', scope: {}, expected_revision: 0 }
+  });
+  assert(providerCredential.status === 201 && providerCredential.body.data?.credential?.id, `provider-credential:${providerCredential.status}`);
+  const reboundCredential = await pageApi(`/api/v2/credentials/${providerCredential.body.data.credential.id}/rebind`, {
+    method: 'POST', headers: { 'Idempotency-Key': 'p10-e2e-provider-rebind', 'X-Expected-Revision': '1' },
+    body: { proof: 'p10-e2e-provider-proof-123456789', expected_revision: 1 }
+  });
+  assert(reboundCredential.status === 202, `provider-rebind:${reboundCredential.status}`);
+  const rebindOperation = await waitOperation(pageApi, reboundCredential.body.data?.operation_id || reboundCredential.body.data?.operation?.operation_id);
+  const activeCredential = (await pageApi('/api/v2/credentials')).body.data.credentials.find((item) => item.id === providerCredential.body.data.credential.id);
+  assert(rebindOperation?.status === 'succeeded' && activeCredential?.status === 'active', 'provider rebind operation');
+  const providerProfile = await pageApi('/api/v2/profiles', {
+    method: 'POST', headers: { 'Idempotency-Key': 'p10-e2e-provider-profile', 'X-Expected-Revision': '0' },
+    body: { provider: 'codex', label: 'P10 E2E Codex', credential_ref_id: providerCredential.body.data.credential.id, config: { model: 'fixture' }, expected_revision: 0 }
+  });
+  assert(providerProfile.status === 201 && providerProfile.body.data?.profile?.id, `provider-profile:${providerProfile.status}`);
+  const providerProbe = await pageApi(`/api/v2/profiles/${providerProfile.body.data.profile.id}/probe`, {
+    method: 'POST', headers: { 'Idempotency-Key': 'p10-e2e-provider-probe', 'X-Expected-Revision': String(providerProfile.body.data.profile.revision) },
+    body: { expected_revision: providerProfile.body.data.profile.revision }
+  });
+  const providerProbeOperation = await waitOperation(pageApi, providerProbe.body.data?.operation_id || providerProbe.body.data?.operation?.operation_id);
+  assert(providerProbeOperation?.status === 'succeeded', 'provider probe');
+  let currentProvider = (await pageApi('/api/v2/profiles')).body.data.profiles.find((item) => item.id === providerProfile.body.data.profile.id);
+  const updatedProvider = await pageApi(`/api/v2/profiles/${currentProvider.id}`, {
+    method: 'PATCH', headers: { 'Idempotency-Key': 'p10-e2e-provider-update', 'X-Expected-Revision': String(currentProvider.revision) },
+    body: { label: 'P10 E2E Reviewer', config: { model: 'fixture-review' }, credential_ref_id: providerCredential.body.data.credential.id, expected_revision: currentProvider.revision }
+  });
+  currentProvider = updatedProvider.body.data.profile;
+  const disabledProvider = await pageApi(`/api/v2/profiles/${currentProvider.id}/disable`, { method: 'POST', headers: { 'Idempotency-Key': 'p10-e2e-provider-disable', 'X-Expected-Revision': String(currentProvider.revision) }, body: { expected_revision: currentProvider.revision } });
+  const enabledProvider = await pageApi(`/api/v2/profiles/${currentProvider.id}/enable`, { method: 'POST', headers: { 'Idempotency-Key': 'p10-e2e-provider-enable', 'X-Expected-Revision': String(disabledProvider.body.data.profile.revision) }, body: { expected_revision: disabledProvider.body.data.profile.revision } });
+  currentProvider = enabledProvider.body.data.profile;
+  const reprobeProvider = await pageApi(`/api/v2/profiles/${currentProvider.id}/probe`, { method: 'POST', headers: { 'Idempotency-Key': 'p10-e2e-provider-reprobe', 'X-Expected-Revision': String(currentProvider.revision) }, body: { expected_revision: currentProvider.revision } });
+  await waitOperation(pageApi, reprobeProvider.body.data?.operation_id || reprobeProvider.body.data?.operation?.operation_id);
+
+  const briefTemplate = await pageApi('/api/v2/brief-templates', {
+    method: 'POST', headers: { 'Idempotency-Key': 'p10-e2e-template-create', 'X-Expected-Revision': '0' },
+    body: { team_id: project.team_id, name: 'P10 E2E Brief', content: { sections: ['objective', 'acceptance'] }, expected_revision: 0 }
+  });
+  assert(briefTemplate.status === 201 && briefTemplate.body.data?.template?.id, `brief-template:${briefTemplate.status}`);
+  const revisedTemplate = await pageApi(`/api/v2/brief-templates/${briefTemplate.body.data.template.id}`, {
+    method: 'PATCH', headers: { 'Idempotency-Key': 'p10-e2e-template-update', 'X-Expected-Revision': String(briefTemplate.body.data.template.revision) },
+    body: { content: { sections: ['objective', 'constraints', 'acceptance'] }, expected_revision: briefTemplate.body.data.template.revision }
+  });
+  const archivedTemplate = await pageApi(`/api/v2/brief-templates/${briefTemplate.body.data.template.id}/archive`, { method: 'POST', headers: { 'Idempotency-Key': 'p10-e2e-template-archive', 'X-Expected-Revision': String(revisedTemplate.body.data.template.revision) }, body: { expected_revision: revisedTemplate.body.data.template.revision } });
+  assert(archivedTemplate.body.data?.template?.status === 'archived', 'brief template archive');
 
   const intake = await pageApi(`/api/v2/projects/${project.id}/intake`, {
     method: 'POST', headers: { 'Idempotency-Key': 'p7-e2e-intake-01', 'X-Expected-Revision': String(project.revision) },
@@ -140,15 +188,18 @@ try {
 
   const connection = await pageApi(`/api/v2/projects/${project.id}/repository-connections`, {
     method: 'POST', headers: { 'Idempotency-Key': 'p7-e2e-repository-01', 'X-Expected-Revision': '0' },
-    body: { provider: 'fixture', source_kind: 'git', source_locator: 'fixture/p7-e2e', source_revision: 'r1', source_hash: 'a'.repeat(64), expected_revision: 0 }
+    body: { provider: 'fixture', source_kind: 'git', source_locator: 'fixture/p7-e2e', source_revision: 'a'.repeat(40), source_hash: 'a'.repeat(64), expected_revision: 0 }
   });
   assert(connection.status === 201 && connection.body.data?.connection?.id, `repository-connection:${connection.status}`);
+  const repositoryTargets = await pageApi(`/api/v2/repository-connections/${connection.body.data.connection.id}/targets`);
+  const repositoryTarget = repositoryTargets.body.data?.targets?.[0];
+  assert(repositoryTargets.status === 200 && repositoryTarget?.id, `repository-targets:${repositoryTargets.status}`);
   const lines = await pageApi(`/api/v2/projects/${project.id}/repository-lines`);
   const line = lines.body.data?.lines?.[0];
   assert(lines.status === 200 && line?.id, `repository-lines:${lines.status}`);
   const reconciled = await pageApi(`/api/v2/repository-lines/${line.id}/reconcile`, {
     method: 'POST', headers: { 'Idempotency-Key': 'p7-e2e-reconcile-01', 'X-Expected-Revision': String(line.revision) },
-    body: { source_revision: 'r1', source_hash: 'a'.repeat(64), expected_revision: line.revision }
+    body: { source_revision: 'a'.repeat(40), source_hash: 'a'.repeat(64), expected_revision: line.revision }
   });
   assert(reconciled.status === 200 && reconciled.body.data?.line?.status === 'ready', `repository-reconcile:${reconciled.status}`);
   const workspace = await pageApi(`/api/v2/projects/${project.id}/repository-workspaces`, {
@@ -156,6 +207,41 @@ try {
     body: { line_id: line.id, relative_path: `projects/${project.id}/p7-e2e`, expected_revision: 0 }
   });
   assert(workspace.status === 201 && workspace.body.data?.workspace?.id, `repository-workspace:${workspace.status}`);
+
+  const assistCreated = await pageApi('/api/v2/assist/sessions', {
+    method: 'POST', headers: { 'Idempotency-Key': 'p10-e2e-assist-session', 'X-Expected-Revision': '0' },
+    body: { project_id: project.id, scope: 'project', scope_id: project.id, context_pack_id: pack.body.data.pack.id, profile_id: providerProfile.body.data.profile.id, repository_workspace_id: workspace.body.data.workspace.id, title: 'P10 E2E review', mode: 'guided', expected_revision: 0 }
+  });
+  assert(assistCreated.status === 201 && assistCreated.body.data?.session?.id, `assist-session:${assistCreated.status}`);
+  let assistSession = assistCreated.body.data.session;
+  const assistMetadata = await pageApi(`/api/v2/assist/sessions/${assistSession.id}`, { method: 'PATCH', headers: { 'Idempotency-Key': 'p10-e2e-assist-metadata', 'X-Expected-Revision': String(assistSession.revision) }, body: { title: 'P10 E2E pinned review', mode: 'agent', pinned: true, expected_revision: assistSession.revision } });
+  assert(assistMetadata.status === 200, `assist-metadata:${assistMetadata.status}:${assistMetadata.body.error?.code || ''}`);
+  assistSession = assistMetadata.body.data.session;
+  const assistConfiguration = await pageApi(`/api/v2/assist/sessions/${assistSession.id}/configurations`, { method: 'POST', headers: { 'Idempotency-Key': 'p10-e2e-assist-config', 'X-Expected-Revision': String(assistSession.revision) }, body: { configuration: { model: 'fixture-review', approval: 'on-request' }, expected_revision: assistSession.revision } });
+  assert(assistConfiguration.status === 201, `assist-configuration:${assistConfiguration.status}:${assistConfiguration.body.error?.code || ''}`);
+  assistSession = assistConfiguration.body.data.session;
+  const assistFork = await pageApi(`/api/v2/assist/sessions/${assistSession.id}/fork`, { method: 'POST', headers: { 'Idempotency-Key': 'p10-e2e-assist-fork', 'X-Expected-Revision': String(assistSession.revision) }, body: { title: 'P10 E2E fork', expected_revision: assistSession.revision } });
+  const assistSide = await pageApi(`/api/v2/assist/sessions/${assistSession.id}/side-threads`, { method: 'POST', headers: { 'Idempotency-Key': 'p10-e2e-assist-side', 'X-Expected-Revision': String(assistSession.revision) }, body: { title: 'P10 E2E side thread', expected_revision: assistSession.revision } });
+  assert(assistFork.status === 201, `assist-fork:${assistFork.status}:${assistFork.body.error?.code || ''}`);
+  assert(assistSide.status === 201, `assist-side:${assistSide.status}:${assistSide.body.error?.code || ''}`);
+  assert(assistFork.body.data?.session?.parent_session_id === assistSession.id && assistSide.body.data?.session?.mode === 'side_thread', 'assist fork and side thread');
+  const assistSourceBeforeArchive = await pageApi(`/api/v2/assist/sessions/${assistSession.id}`);
+  assert(assistSourceBeforeArchive.status === 200, `assist-source-before-archive:${assistSourceBeforeArchive.status}:${assistSourceBeforeArchive.body.error?.message || ''}`);
+  const assistArchived = await pageApi(`/api/v2/assist/sessions/${assistSession.id}/archive`, { method: 'POST', headers: { 'Idempotency-Key': 'p10-e2e-assist-archive', 'X-Expected-Revision': String(assistSession.revision) }, body: { expected_revision: assistSession.revision } });
+  assert(assistArchived.status === 200, `assist-archive:${assistArchived.status}:${assistArchived.body.error?.message || ''}:${JSON.stringify(assistArchived.body.error?.details || {})}`);
+  const assistRestored = await pageApi(`/api/v2/assist/sessions/${assistSession.id}/restore`, { method: 'POST', headers: { 'Idempotency-Key': 'p10-e2e-assist-restore', 'X-Expected-Revision': String(assistArchived.body.data.session.revision) }, body: { expected_revision: assistArchived.body.data.session.revision } });
+  const assistDeleted = await pageApi(`/api/v2/assist/sessions/${assistSession.id}/delete`, { method: 'POST', headers: { 'Idempotency-Key': 'p10-e2e-assist-delete', 'X-Expected-Revision': String(assistRestored.body.data.session.revision) }, body: { expected_revision: assistRestored.body.data.session.revision } });
+  const assistRecovered = await pageApi(`/api/v2/assist/sessions/${assistSession.id}/restore-deleted`, { method: 'POST', headers: { 'Idempotency-Key': 'p10-e2e-assist-recover', 'X-Expected-Revision': String(assistDeleted.body.data.session.revision) }, body: { expected_revision: assistDeleted.body.data.session.revision } });
+  assistSession = assistRecovered.body.data.session;
+  const assistTurnStarted = await pageApi(`/api/v2/assist/sessions/${assistSession.id}/turns`, { method: 'POST', headers: { 'Idempotency-Key': 'p10-e2e-assist-turn', 'X-Expected-Revision': String(assistSession.revision) }, body: { message: 'Review the P10 browser workflow', expected_revision: assistSession.revision } });
+  const assistOperation = await waitOperation(pageApi, assistTurnStarted.body.data?.operation_id || assistTurnStarted.body.data?.operation?.operation_id);
+  assert(assistOperation?.status === 'succeeded', 'assist turn');
+  const assistBundle = await pageApi(`/api/v2/assist/sessions/${assistSession.id}`);
+  const assistTurn = assistBundle.body.data?.turns?.at(-1);
+  assert(assistTurn?.id, 'assist terminal turn');
+  const assistComment = await pageApi(`/api/v2/assist/turns/${assistTurn.id}/review-comments`, { method: 'POST', headers: { 'Idempotency-Key': 'p10-e2e-assist-comment', 'X-Expected-Revision': String(assistTurn.revision) }, body: { content: 'Browser review comment.', expected_revision: assistTurn.revision } });
+  const assistChanges = await pageApi(`/api/v2/assist/turns/${assistTurn.id}/request-changes`, { method: 'POST', headers: { 'Idempotency-Key': 'p10-e2e-assist-changes', 'X-Expected-Revision': String(assistTurn.revision) }, body: { content: 'Address the browser review.', expected_revision: assistTurn.revision } });
+  assert(assistComment.status === 201 && assistChanges.status === 201, 'assist review comments');
 
   const createdProfile = await pageApi('/api/v2/runners/profiles', {
     method: 'POST', headers: { 'Idempotency-Key': 'p7-e2e-runner-profile-01', 'X-Expected-Revision': '0' },
@@ -255,16 +341,23 @@ try {
   await page.getByRole('heading', { name: 'Quality reviews', exact: true }).waitFor();
   await page.getByRole('button', { name: 'Start review', exact: true }).click();
   await page.getByText('awaiting human', { exact: true }).waitFor({ timeout: 20_000 });
-  await page.getByLabel('Correctness score').fill('92');
-  await page.getByLabel('Correctness reasoning').fill('deterministic checks passed');
-  await page.getByLabel('Evidence score').fill('88');
-  await page.getByLabel('Evidence reasoning').fill('CAS and lineage verified');
+  for (const [label, score, reasoning] of [
+    ['Coverage', '92', 'all acceptance assets are represented'],
+    ['Accuracy', '90', 'deterministic checks passed'],
+    ['Depth', '90', 'technical evidence is sufficient'],
+    ['Consistency', '90', 'CAS and lineage agree'],
+    ['Clarity', '90', 'the result is reviewable']
+  ]) {
+    await page.getByLabel(`${label} score`).fill(score);
+    await page.getByLabel(`${label} reasoning`).fill(reasoning);
+  }
   await page.getByLabel('Decision reasoning').fill('reviewed against exact report and input hashes');
   await page.getByRole('button', { name: 'Record decision', exact: true }).click();
   await page.getByText('approved', { exact: true }).waitFor();
   const qualityList = await pageApi(`/api/v2/executions/${executionId}/quality-reviews`);
   const qualityReview = qualityList.body.data?.quality_reviews?.[0];
   assert(qualityReview?.status === 'completed' && qualityReview?.human_review?.weighted_score === 90.4, 'quality human decision');
+  assert(JSON.stringify(qualityReview.rubric.dimensions.map((item) => item.key)) === JSON.stringify(['coverage','accuracy','depth','consistency','clarity']), 'quality five-dimension policy');
 
   const evidenceRequirement = await createOutcomeRequirement(pageApi, project.id, 'p7-e2e-evidence', { evaluator: 'evidence_count', minimum: 1 }, 'p7-e2e-requirement-evidence');
   const missingRequirement = await createOutcomeRequirement(pageApi, project.id, 'p7-e2e-tests', { evaluator: 'test_pass', check_id: 'missing-e2e-check' }, 'p7-e2e-requirement-tests');
@@ -310,18 +403,45 @@ try {
   await page.getByRole('button', { name: 'Target', exact: true }).click();
   await page.getByText('active', { exact: true }).last().waitFor();
 
+  const latestTargets = await pageApi(`/api/v2/repository-connections/${connection.body.data.connection.id}/targets`);
+  const deletionTarget = latestTargets.body.data.targets.find((item) => item.id === repositoryTarget.id);
+  const repositoryPrepared = await pageApi(`/api/v2/repository-targets/${deletionTarget.id}/deletion-intents`, { method: 'POST', headers: { 'Idempotency-Key': 'p10-e2e-repository-delete-prepare', 'X-Expected-Revision': String(deletionTarget.revision) }, body: { target_full_name: 'fixture/p7-e2e', expected_head_sha: deletionTarget.expected_head_sha, expected_revision: deletionTarget.revision } });
+  let repositoryIntent = repositoryPrepared.body.data.intent;
+  const repositoryCreator = await pageApi(`/api/v2/repository-deletion-intents/${repositoryIntent.id}/creator-confirm`, { method: 'POST', headers: { 'Idempotency-Key': 'p10-e2e-repository-delete-creator', 'X-Expected-Revision': String(repositoryIntent.revision) }, body: { target_full_name: 'fixture/p7-e2e', expected_head_sha: deletionTarget.expected_head_sha, expected_revision: repositoryIntent.revision } });
+  repositoryIntent = repositoryCreator.body.data.intent;
+  const account = await pageApi('/api/v2/account');
+  const ownerSession = await pageApi('/api/v2/sessions', { method: 'POST', headers: { 'Idempotency-Key': 'p10-e2e-repository-owner-session', 'X-Expected-Revision': String(account.body.data.account.revision) }, body: { ttl_seconds: 3600, expected_revision: account.body.data.account.revision } });
+  assert(ownerSession.status === 201, `repository owner session:${ownerSession.status}:${ownerSession.body.error?.message || ''}:${JSON.stringify(ownerSession.body.error?.details || {})}`);
+  const repositoryOwner = await pageApi(`/api/v2/repository-deletion-intents/${repositoryIntent.id}/owner-confirm`, { method: 'POST', headers: { 'Idempotency-Key': 'p10-e2e-repository-delete-owner', 'X-Expected-Revision': String(repositoryIntent.revision) }, body: { target_full_name: 'fixture/p7-e2e', expected_head_sha: deletionTarget.expected_head_sha, expected_revision: repositoryIntent.revision } });
+  repositoryIntent = repositoryOwner.body.data.intent;
+  assert(repositoryIntent.status === 'ready', 'repository two-session confirmation');
+  const repositoryCancelled = await pageApi(`/api/v2/repository-deletion-intents/${repositoryIntent.id}/cancel`, { method: 'POST', headers: { 'Idempotency-Key': 'p10-e2e-repository-delete-cancel', 'X-Expected-Revision': String(repositoryIntent.revision) }, body: { expected_revision: repositoryIntent.revision } });
+  assert(repositoryCancelled.body.data.intent.status === 'cancelled', 'repository deletion cancel');
+
+  const disposableProject = await pageApi('/api/v2/projects', { method: 'POST', headers: { 'Idempotency-Key': 'p10-e2e-project-delete-create', 'X-Expected-Revision': '0' }, body: { name: 'P10 E2E disposable', description: 'deletion fixture', metadata: {}, expected_revision: 0 } });
+  const disposable = disposableProject.body.data.project;
+  const projectPrepared = await pageApi(`/api/v2/projects/${disposable.id}/deletion-intents`, { method: 'POST', headers: { 'Idempotency-Key': 'p10-e2e-project-delete-prepare', 'X-Expected-Revision': String(disposable.revision) }, body: { target_name: disposable.name, expected_revision: disposable.revision } });
+  let projectIntent = projectPrepared.body.data.intent;
+  const projectConfirmed = await pageApi(`/api/v2/project-deletion-intents/${projectIntent.id}/confirm`, { method: 'POST', headers: { 'Idempotency-Key': 'p10-e2e-project-delete-confirm', 'X-Expected-Revision': String(projectIntent.revision) }, body: { target_name: disposable.name, expected_revision: projectIntent.revision } });
+  projectIntent = projectConfirmed.body.data.intent;
+  const projectDeleted = await pageApi(`/api/v2/project-deletion-intents/${projectIntent.id}/execute`, { method: 'POST', headers: { 'Idempotency-Key': 'p10-e2e-project-delete-execute', 'X-Expected-Revision': String(projectIntent.revision) }, body: { expected_revision: projectIntent.revision } });
+  assert(projectDeleted.body.data.intent.status === 'completed', 'project tombstone');
+
+  await page.waitForTimeout(4_500);
   const layoutReceipts = [];
   for (const [name, width, height] of [['mobile', 390, 844], ['laptop', 1024, 768], ['desktop', 1440, 900]]) {
     await page.setViewportSize({ width, height });
-    for (const scenario of ['context', 'settings', 'execution', 'execution-quality', 'execution-outcome', 'evidence', 'connections', 'outcome', 'delivery', 'operations', 'identity', 'exchange', 'runner', 'parser', 'deployment', 'backup', 'importer']) {
+    await page.waitForTimeout(250);
+    for (const scenario of ['governance', 'context', 'settings', 'execution', 'execution-quality', 'execution-outcome', 'evidence', 'connections', 'outcome', 'delivery', 'operations', 'identity', 'exchange', 'runner', 'parser', 'deployment', 'backup', 'importer']) {
       const route = scenario.startsWith('execution-') ? 'execution' : scenario;
-      await page.goto(`${base}/#/${route}`, { waitUntil: 'domcontentloaded' });
-      const heading = { context: 'Context', settings: 'MCP & Exchange', execution: 'Execution', evidence: 'Evidence', connections: 'Connections', outcome: 'Outcome', delivery: 'Delivery', operations: 'Operations', identity: 'Identity and teams', exchange: 'MCP & Exchange', runner: 'Connections', parser: 'Evidence', deployment: 'Operations', backup: 'Operations', importer: 'Operations' }[route];
+      await page.goto(route === 'governance' ? `${base}/#/projects/${encodeURIComponent(project.id)}/governance` : `${base}/#/${route}`, { waitUntil: 'domcontentloaded' });
+      const heading = { governance: 'Governance workspace', context: 'Context', settings: 'MCP & Exchange', execution: 'Execution', evidence: 'Evidence', connections: 'Connections', outcome: 'Outcome', delivery: 'Delivery', operations: 'Operations', identity: 'Identity and teams', exchange: 'MCP & Exchange', runner: 'Connections', parser: 'Evidence', deployment: 'Operations', backup: 'Operations', importer: 'Operations' }[route];
       await page.getByRole('heading', { name: heading, exact: true }).waitFor();
-      if (route === 'context') await page.getByText('P7 verification note', { exact: true }).waitFor();
+      if (route === 'governance') await page.getByText('P10 E2E Reviewer', { exact: true }).first().waitFor();
+      else if (route === 'context') await page.getByText('P7 verification note', { exact: true }).waitFor();
       else if (route === 'settings') await page.getByText('context_map', { exact: true }).waitFor();
       else if (scenario === 'execution') await page.getByText('generation 2', { exact: false }).first().waitFor();
-      else if (scenario === 'execution-quality') { await page.getByRole('tab', { name: 'Quality', exact: true }).click(); await page.getByRole('heading', { name: 'Human decision', exact: true }).waitFor(); }
+      else if (scenario === 'execution-quality') { await page.getByRole('tab', { name: 'Quality', exact: true }).click(); await page.getByRole('heading', { name: 'Human decision', exact: true }).waitFor(); await page.getByText('Attempt 1', { exact: true }).waitFor(); const reviewCheck = await pageApi(`/api/v2/executions/${executionId}/quality-reviews`); assert(JSON.stringify(reviewCheck.body.data?.quality_reviews?.[0]?.rubric?.dimensions?.map((item) => item.key)) === JSON.stringify(['coverage','accuracy','depth','consistency','clarity']), 'quality route five dimensions'); }
       else if (scenario === 'execution-outcome') { await page.getByRole('tab', { name: 'Outcome', exact: true }).click(); await page.getByRole('heading', { name: 'Requirements', exact: true }).waitFor(); }
       else if (route === 'evidence') await page.getByText('p7-e2e-result.json', { exact: true }).first().waitFor();
       else if (route === 'connections') {
@@ -342,18 +462,26 @@ try {
   const checkpoints = await pageApi(`/api/v2/executions/${executionId}/checkpoints`);
   const attempts = await pageApi(`/api/v2/executions/${executionId}/attempts`);
   fs.writeFileSync(path.join(reportDir, 'receipt.json'), `${JSON.stringify({
-    schema_version: 'aiws.v3-clean.p9-e2e-receipt.v1', status: 'passed', provisional: false,
+    schema_version: 'aiws.v3-clean.p10-e2e-receipt.v1', status: 'passed', provisional: false,
     api_port: apiPort, web_port: webPort, viewports: ['mobile', 'laptop', 'desktop'],
-    routes: ['context', 'settings', 'execution', 'execution-quality', 'execution-outcome', 'evidence', 'connections', 'outcome', 'delivery', 'operations', 'identity', 'exchange', 'runner', 'parser', 'deployment', 'backup', 'importer'], request_count: requests.length,
+    routes: ['governance', 'context', 'settings', 'execution', 'execution-quality', 'execution-outcome', 'evidence', 'connections', 'outcome', 'delivery', 'operations', 'identity', 'exchange', 'runner', 'parser', 'deployment', 'backup', 'importer'], business_groups: ['identity-acl','provider-settings','project-brief','workflow','repository','context','assist','files-approval','terminal-bridge','runner-execution','evidence','parser','quality','outcome','mcp-exchange-gateway','delivery','operations-recovery','offline-pwa','web-complete-experience'], request_count: requests.length,
     legacy_api_v1_requests: legacyRequests, browser_errors: browserErrors, http_errors: httpErrors,
     layouts: layoutReceipts, context_pack_hash: pack.body.data.pack.pack_hash,
     runner_profile: { id: profileId, type: readyProfile.body.data.profile.runner_type, status: readyProfile.body.data.profile.status },
+    p10: {
+      provider: { id: providerProfile.body.data.profile.id, lifecycle: 'enabled', probe_status: 'succeeded' },
+      brief_template: { id: briefTemplate.body.data.template.id, revision: revisedTemplate.body.data.template.current_revision, archived: archivedTemplate.body.data.template.status === 'archived' },
+      assist: { session_id: assistSession.id, fork_id: assistFork.body.data.session.id, side_thread_id: assistSide.body.data.session.id, comments: 2, restored_deleted: assistRecovered.body.data.session.deleted_at == null },
+      repository_deletion: { intent_id: repositoryIntent.id, two_session_proofs: true, terminal_status: repositoryCancelled.body.data.intent.status },
+      project_deletion: { intent_id: projectIntent.id, terminal_status: projectDeleted.body.data.intent.status },
+      quality_dimensions: qualityReview.rubric.dimensions.map((item) => item.key)
+    },
     execution: { id: executionId, status: replayedExecution.body.data.execution.status, generation: replayedExecution.body.data.execution.generation, checkpoint_count: checkpoints.body.data?.checkpoints?.length || 0, attempt_count: attempts.body.data?.attempts?.length || 0, delivery_ready: true, approval_wait_resumed: true, replayed_stage: 'deliver' },
     evidence: { asset_id: assetId, status: captured.body.data.asset.status, source_version_count: versions.body.data.versions.length, parser_status: parserRun.body.data.parser_run.status, output_asset_version_id: parserRun.body.data.parser_run.output_asset_version_id, attestation_count: attestations.body.data.attestations.length },
     quality: { review_id: qualityReview.id, status: qualityReview.status, weighted_score: qualityReview.human_review.weighted_score, report_sha256: qualityReview.report_sha256 },
     outcome: { requirement_count: revokedOutcome.body.data.evaluation.requirement_count, terminal_statuses: { blocked: blockedOutcome.body.data.evaluation.status, waived: waivedOutcome.body.data.evaluation.status, revoked: revokedOutcome.body.data.evaluation.status }, generations: { blocked: blockedOutcome.body.data.evaluation.generation, waived: waivedOutcome.body.data.evaluation.generation, revoked: revokedOutcome.body.data.evaluation.generation } }
   }, null, 2)}\n`);
-  process.stdout.write(`P9 Clean E2E passed: complete workflow and management routes across 3 viewports; overlaps=0; /api/v1 requests=0\n`);
+  process.stdout.write(`P10 Clean E2E passed: 19 business groups and complete workflow routes across 3 viewports; overlaps=0; /api/v1 requests=0\n`);
 } finally {
   await browser.close();
   for (const child of children.reverse()) await stop(child);

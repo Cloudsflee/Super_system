@@ -26,6 +26,7 @@ import type { WorkspacePageProps, WorkspaceRoute } from './workspace';
 import { clearWorkspaceScope, queryClient, workspaceQueryKey } from './query';
 import { ProjectEventSynchronizer, type EventSyncState } from './events';
 import { OutboxStatus } from './offline/OutboxStatus';
+import { FinalBusinessParityPage } from './features/p10';
 
 export type PageKey = WorkspaceRoute;
 
@@ -41,6 +42,7 @@ const NAV: Array<{ key: WorkspaceRoute; label: string; icon: ComponentType<{ siz
   { key: 'outcome', label: 'Outcome', icon: ShieldCheck },
   { key: 'delivery', label: 'Delivery', icon: Archive },
   { key: 'operations', label: 'Operations', icon: ServerCog }
+  , { key: 'governance', label: 'Final parity', icon: ShieldCheck }
 ];
 
 const ADMIN_NAV: Array<{ key: WorkspaceRoute; label: string; icon: ComponentType<{ size?: number }> }> = [
@@ -81,6 +83,7 @@ const PAGE_LABELS: Record<WorkspaceRoute, string> = {
   backup: 'Backup & Restore',
   importer: 'Importer',
   settings: 'Settings'
+  , governance: 'Final parity'
 };
 
 const PAGES: Record<WorkspaceRoute, ComponentType<WorkspacePageProps>> = {
@@ -108,14 +111,22 @@ const PAGES: Record<WorkspaceRoute, ComponentType<WorkspacePageProps>> = {
   backup: OperationsPage,
   importer: OperationsPage,
   settings: McpSettingsPage
+  , governance: FinalBusinessParityPage
 };
 
 const ROUTES = new Set<WorkspaceRoute>(Object.keys(PAGES) as WorkspaceRoute[]);
 const SETUP_GATED_PAGES = new Set<WorkspaceRoute>([...ROUTES].filter((route) => route !== 'setup'));
 
 function routeFromPath(pathname: string): WorkspaceRoute {
-  const route = pathname.replace(/^\/+|\/+$/g, '') as WorkspaceRoute;
+  const clean = pathname.replace(/^\/+|\/+$/g, '');
+  const projectView = clean.match(/^projects\/[^/]+\/(governance|workflow|context|assist|execution|evidence|outcome|delivery)$/)?.[1];
+  if (projectView === 'governance') return 'governance';
+  const route = (projectView || clean) as WorkspaceRoute;
   return ROUTES.has(route) ? route : 'setup';
+}
+
+export function projectDeepLink(projectId: string, view: WorkspaceRoute = 'governance'): string {
+  return `#/projects/${encodeURIComponent(projectId)}/${view}`;
 }
 
 function navIsActive(nav: WorkspaceRoute, page: WorkspaceRoute) {
@@ -126,6 +137,7 @@ function WorkspaceLayout() {
   const location = useLocation();
   const routerNavigate = useNavigate();
   const page = routeFromPath(location.pathname);
+  const deepLinkProjectId = location.pathname.match(/^\/projects\/([^/]+)/)?.[1] ? decodeURIComponent(location.pathname.match(/^\/projects\/([^/]+)/)![1]) : '';
   const [projects, setProjects] = useState<Project[]>([]);
   const [projectId, setProjectId] = useState(() => sessionStorage.getItem('aiws:v3:selected-project') || '');
   const [notice, setNotice] = useState<{ tone: 'ok' | 'error'; text: string } | null>(null);
@@ -174,6 +186,12 @@ function WorkspaceLayout() {
     });
   }, [refreshSetup]);
 
+  useEffect(() => {
+    if (!deepLinkProjectId || !projects.some((project) => project.id === deepLinkProjectId)) return;
+    setProjectId(deepLinkProjectId);
+    sessionStorage.setItem('aiws:v3:selected-project', deepLinkProjectId);
+  }, [deepLinkProjectId, projects]);
+
   const setupReady = setup?.status === 'ready' && setup.complete;
 
   useEffect(() => {
@@ -221,9 +239,9 @@ function WorkspaceLayout() {
       setMenuOpen(false);
       return;
     }
-    routerNavigate(`/${next}`);
+    routerNavigate(next === 'governance' && projectId ? `/projects/${encodeURIComponent(projectId)}/governance` : `/${next}`);
     setMenuOpen(false);
-  }, [routerNavigate, setupReady]);
+  }, [projectId, routerNavigate, setupReady]);
 
   const selectProject = useCallback((id: string) => {
     const actorId = sessionStorage.getItem('aiws:v3:actor-id') || 'session-actor';
