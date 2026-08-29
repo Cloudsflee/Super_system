@@ -1,0 +1,3960 @@
+{
+  "schema_version": "aiws.v3-clean.p10-v23-input.v1",
+  "owner": "Product Architecture",
+  "phase": "P10",
+  "source_commit": "e18dc0b616fa7ab2b00a6c05db23890ccd940175",
+  "source_tree": "0c0020aa434882a3bb8397a0a15ed31f7a44bccc",
+  "source_blobs": [
+    {
+      "path": "apps/api/src/api-routes.mjs",
+      "git_blob": "0f22135b62de975a98a8dfe408019ae66b474bc2"
+    },
+    {
+      "path": "apps/api/src/config.mjs",
+      "git_blob": "c16107c4ee745ef0af7ac83c909a861ba3eaeffd"
+    },
+    {
+      "path": "apps/api/src/routes/agent-sessions.mjs",
+      "git_blob": "b6185c8ff286fc9f4e2aa44c1a2299c6d6777a4c"
+    },
+    {
+      "path": "apps/api/src/routes/approvals-v13.mjs",
+      "git_blob": "8341f16d1622fd408b9b850cb1dd77c210c92f4c"
+    },
+    {
+      "path": "apps/api/src/routes/assets.mjs",
+      "git_blob": "f9f1404d0586fc62d64ded85547813c34abfcfc2"
+    },
+    {
+      "path": "apps/api/src/routes/assist-v12.mjs",
+      "git_blob": "678a271b67ce32d89cd23ea10c4daebdd5af580e"
+    },
+    {
+      "path": "apps/api/src/routes/assist-v3.mjs",
+      "git_blob": "931c3049a86c9dfb6c658eb57916025e82bfc270"
+    },
+    {
+      "path": "apps/api/src/routes/change-proposals.mjs",
+      "git_blob": "855a30ff14d80d362972e2b3903db610941840d8"
+    },
+    {
+      "path": "apps/api/src/routes/codex-capabilities-v13.mjs",
+      "git_blob": "17b56b25847d2d3c3da06e89c71934c27408ceba"
+    },
+    {
+      "path": "apps/api/src/routes/codex-discovery-v12.mjs",
+      "git_blob": "2858aacd5ab0890302cb0ad52a7a566a3ef7d27b"
+    },
+    {
+      "path": "apps/api/src/routes/codex-runtime-v12.mjs",
+      "git_blob": "15cb0f2c5261ae4f9c17d917399557674c985517"
+    },
+    {
+      "path": "apps/api/src/routes/codex-v12.mjs",
+      "git_blob": "2103f15dd54d7ec7cba967297911201b8bb8066a"
+    },
+    {
+      "path": "apps/api/src/routes/config-governance-v13.mjs",
+      "git_blob": "72e34cb99d4cf1a99cf949cae42110ed7c8a9b2f"
+    },
+    {
+      "path": "apps/api/src/routes/context-v20.mjs",
+      "git_blob": "fda2d5dde12f5586e8a477563eb771231987ee98"
+    },
+    {
+      "path": "apps/api/src/routes/exchange-v19.mjs",
+      "git_blob": "cd7a983292a335230441e7a9d7dcd8ebda7624a8"
+    },
+    {
+      "path": "apps/api/src/routes/files-v12.mjs",
+      "git_blob": "56f58be8c272ae40251115b78d98afc76d782ade"
+    },
+    {
+      "path": "apps/api/src/routes/git.mjs",
+      "git_blob": "7985f7006cdc7768103ac730ca627d8f77a15b79"
+    },
+    {
+      "path": "apps/api/src/routes/github-config-v12.mjs",
+      "git_blob": "c630462669910ca4f35f711506bda8b45d99589b"
+    },
+    {
+      "path": "apps/api/src/routes/github-installations-v12.mjs",
+      "git_blob": "2136d8d33a0420c8a529150e603bb7e0cfb6ca31"
+    },
+    {
+      "path": "apps/api/src/routes/github-repositories-v13.mjs",
+      "git_blob": "b1b553f9fdb8b49d5cd2a10605cec4fac9bdfe39"
+    },
+    {
+      "path": "apps/api/src/routes/github-webhook-v12.mjs",
+      "git_blob": "b1e6b53cc4256524062fa31add9aed854c4b126a"
+    },
+    {
+      "path": "apps/api/src/routes/github.mjs",
+      "git_blob": "6b2225bc30403328a70a3bc9dfa8ee0aa03c8139"
+    },
+    {
+      "path": "apps/api/src/routes/host-bridge-v15.mjs",
+      "git_blob": "4a9baccba14f113643c35f61054045bbbb229e2f"
+    },
+    {
+      "path": "apps/api/src/routes/mcp-clients-v18.mjs",
+      "git_blob": "ad1b5d250355d8d34633e910a7c8891daa2486f7"
+    },
+    {
+      "path": "apps/api/src/routes/mcp-v18.mjs",
+      "git_blob": "d1ca725f3b4cee1602be9c215f2eb765d1f74d5a"
+    },
+    {
+      "path": "apps/api/src/routes/project-governance-v19.mjs",
+      "git_blob": "8fbd1a3b29c828acf35c1bba95e64ccf1cadd079"
+    },
+    {
+      "path": "apps/api/src/routes/project-onboarding-v13.mjs",
+      "git_blob": "28bbefe633f9f5b2dfb6d34dd9809c014e44e87d"
+    },
+    {
+      "path": "apps/api/src/routes/projects.mjs",
+      "git_blob": "27ac51bff7697445712e9dc96c65e83eef4de387"
+    },
+    {
+      "path": "apps/api/src/routes/pull-request-intents-v19.mjs",
+      "git_blob": "dec6963ec5584009f0145291c3f73a770c6a2c5a"
+    },
+    {
+      "path": "apps/api/src/routes/quality-reviews-v23.mjs",
+      "git_blob": "2846a1c23e6aea38579983ec9e86383fcba550c1"
+    },
+    {
+      "path": "apps/api/src/routes/repository-delivery-v19.mjs",
+      "git_blob": "9ece67d43b194550f046b8619a67f75dc47e8e8c"
+    },
+    {
+      "path": "apps/api/src/routes/repository-lifecycle-v19.mjs",
+      "git_blob": "9535543ece9ba997f0c7bd6f69c076bdcd469116"
+    },
+    {
+      "path": "apps/api/src/routes/repository-workspaces-v19.mjs",
+      "git_blob": "c68460ef18095e7bbfec711a6d8cabff431ce537"
+    },
+    {
+      "path": "apps/api/src/routes/runs.mjs",
+      "git_blob": "6018ba85410c5201e971c1c4e453bc5026dc3e92"
+    },
+    {
+      "path": "apps/api/src/routes/setup-v12.mjs",
+      "git_blob": "b9f6f3804d4f70eeb78953bbc0bde105e8e77835"
+    },
+    {
+      "path": "apps/api/src/routes/system.mjs",
+      "git_blob": "d93a3bb93144cd5f17bec8d2fe006c278b2482b3"
+    },
+    {
+      "path": "apps/api/src/routes/terminal-v13.mjs",
+      "git_blob": "c384dbc269f025a065401209462039e52155ce2d"
+    },
+    {
+      "path": "apps/api/src/routes/tools.mjs",
+      "git_blob": "a964113835353185c164ae7a6f728463c5afc0d6"
+    },
+    {
+      "path": "apps/api/src/routes/workflow-executions-v110.mjs",
+      "git_blob": "a31b329ed34f0306f9012c2ac66ad47c0ba3c39a"
+    },
+    {
+      "path": "apps/api/src/routes/workflow-migration-v19.mjs",
+      "git_blob": "ce8586127fc1302b50c5c5cf421d6f2c7d17fdff"
+    },
+    {
+      "path": "apps/api/src/routes/workflow-v12.mjs",
+      "git_blob": "22c7b803af41793e49f02f742d1c54278e33eb3a"
+    },
+    {
+      "path": "apps/api/src/routes/workflow-v19.mjs",
+      "git_blob": "23dec322124207c183adc2b47d3ab2f4a84b32bf"
+    },
+    {
+      "path": "apps/web/src/app/router.tsx",
+      "git_blob": "7ba57d4c5bd2b6293456664b86c2d61ee03c46c5"
+    },
+    {
+      "path": "tests/v23/catalog.json",
+      "git_blob": "92f516913ae99c8586099c08a7aae41bd0dbc576"
+    },
+    {
+      "path": "tests/v23/coverage-map.json",
+      "git_blob": "e9fd763c9f8da0f2b0e437964e6a3dc8d2afd9b8"
+    }
+  ],
+  "cases": [
+    {
+      "id": "V23-L0-PLAN-001",
+      "layer": "L0",
+      "domain": "governance",
+      "priority": "P0",
+      "command": [
+        "node",
+        "scripts/v23-plan.mjs"
+      ],
+      "suites": [
+        "pr",
+        "full",
+        "release"
+      ],
+      "covers": [
+        "OPT23-01"
+      ],
+      "timeout_ms": 60000,
+      "external_effects": "none",
+      "requires_env": []
+    },
+    {
+      "id": "V23-L0-CATALOG-002",
+      "layer": "L0",
+      "domain": "governance",
+      "priority": "P0",
+      "command": [
+        "node",
+        "scripts/v23-catalog.mjs"
+      ],
+      "suites": [
+        "pr",
+        "full",
+        "release"
+      ],
+      "covers": [
+        "OPT23-01"
+      ],
+      "timeout_ms": 60000,
+      "external_effects": "none",
+      "requires_env": []
+    },
+    {
+      "id": "V23-L0-COVERAGE-003",
+      "layer": "L0",
+      "domain": "governance",
+      "priority": "P0",
+      "command": [
+        "node",
+        "scripts/v23-coverage.mjs"
+      ],
+      "suites": [
+        "pr",
+        "full",
+        "release"
+      ],
+      "covers": [
+        "OPT23-01"
+      ],
+      "timeout_ms": 60000,
+      "external_effects": "none",
+      "requires_env": []
+    },
+    {
+      "id": "V23-L0-IMPACT-004",
+      "layer": "L0",
+      "domain": "governance",
+      "priority": "P0",
+      "command": [
+        "node",
+        "scripts/v23-impact.mjs",
+        "--audit"
+      ],
+      "suites": [
+        "pr",
+        "full",
+        "release"
+      ],
+      "covers": [
+        "OPT23-01",
+        "OPT21-05"
+      ],
+      "timeout_ms": 60000,
+      "external_effects": "none",
+      "requires_env": []
+    },
+    {
+      "id": "V23-L1-QUALITY-001",
+      "layer": "L1",
+      "domain": "quality_review",
+      "priority": "P0",
+      "command": [
+        "node",
+        "tests/unit/v23-quality-review.test.mjs"
+      ],
+      "suites": [
+        "pr",
+        "full",
+        "release"
+      ],
+      "covers": [
+        "OPT23-01"
+      ],
+      "timeout_ms": 120000,
+      "external_effects": "none",
+      "requires_env": []
+    },
+    {
+      "id": "V23-L1-STATE-002",
+      "layer": "L1",
+      "domain": "state",
+      "priority": "P0",
+      "command": [
+        "node",
+        "--disable-warning=ExperimentalWarning",
+        "tests/unit/v23-quality-review-state.test.mjs"
+      ],
+      "suites": [
+        "pr",
+        "full",
+        "release"
+      ],
+      "covers": [
+        "OPT23-01",
+        "OPT22-01"
+      ],
+      "timeout_ms": 120000,
+      "external_effects": "none",
+      "requires_env": []
+    },
+    {
+      "id": "V23-L2-MIGRATION-001",
+      "layer": "L2",
+      "domain": "migration",
+      "priority": "P0",
+      "command": [
+        "node",
+        "--disable-warning=ExperimentalWarning",
+        "tests/release/v23-volume-flow.test.mjs"
+      ],
+      "suites": [
+        "full",
+        "release"
+      ],
+      "covers": [
+        "OPT23-01",
+        "OPT22-01"
+      ],
+      "timeout_ms": 180000,
+      "external_effects": "docker",
+      "requires_env": []
+    },
+    {
+      "id": "V23-L3-PARSER-001",
+      "layer": "L3",
+      "domain": "parser",
+      "priority": "P0",
+      "command": [
+        "node",
+        "--disable-warning=ExperimentalWarning",
+        "tests/unit/v23-quality-review-parser.test.mjs"
+      ],
+      "suites": [
+        "pr",
+        "full",
+        "release"
+      ],
+      "covers": [
+        "OPT23-01",
+        "OPT21-04"
+      ],
+      "timeout_ms": 120000,
+      "external_effects": "none",
+      "requires_env": []
+    },
+    {
+      "id": "V23-L3-WEB-002",
+      "layer": "L3",
+      "domain": "quality_review_web",
+      "priority": "P0",
+      "command": [
+        "pnpm",
+        "--filter",
+        "@aiws/web",
+        "exec",
+        "vitest",
+        "run",
+        "src/test/quality-review-v23.test.tsx"
+      ],
+      "suites": [
+        "pr",
+        "full",
+        "release"
+      ],
+      "covers": [
+        "OPT23-01"
+      ],
+      "timeout_ms": 120000,
+      "external_effects": "none",
+      "requires_env": []
+    },
+    {
+      "id": "V23-L3-BROWSER-003",
+      "layer": "L3",
+      "domain": "quality_review_browser",
+      "priority": "P0",
+      "command": [
+        "node",
+        "tests/e2e/v23-quality-review-browser.test.mjs"
+      ],
+      "suites": [
+        "full",
+        "release"
+      ],
+      "covers": [
+        "OPT23-01"
+      ],
+      "timeout_ms": 240000,
+      "external_effects": "browser",
+      "requires_env": []
+    },
+    {
+      "id": "V23-L4-LIFECYCLE-001",
+      "layer": "L4",
+      "domain": "runtime",
+      "priority": "P0",
+      "command": [
+        "node",
+        "--disable-warning=ExperimentalWarning",
+        "tests/integration/v23-quality-review-flow.test.mjs"
+      ],
+      "suites": [
+        "pr",
+        "full",
+        "release"
+      ],
+      "covers": [
+        "OPT23-01",
+        "OPT21-01",
+        "OPT21-02",
+        "OPT21-03"
+      ],
+      "timeout_ms": 240000,
+      "external_effects": "none",
+      "requires_env": []
+    },
+    {
+      "id": "V23-L5-SECURITY-001",
+      "layer": "L5",
+      "domain": "security",
+      "priority": "P0",
+      "command": [
+        "node",
+        "--disable-warning=ExperimentalWarning",
+        "tests/security/v23-quality-review-security.test.mjs"
+      ],
+      "suites": [
+        "pr",
+        "full",
+        "release"
+      ],
+      "covers": [
+        "OPT23-01"
+      ],
+      "timeout_ms": 120000,
+      "external_effects": "none",
+      "requires_env": []
+    },
+    {
+      "id": "V23-L6-PERFORMANCE-001",
+      "layer": "L6",
+      "domain": "performance",
+      "priority": "P1",
+      "command": [
+        "node",
+        "--disable-warning=ExperimentalWarning",
+        "tests/performance/v23-quality-review-performance.test.mjs"
+      ],
+      "suites": [
+        "full",
+        "release"
+      ],
+      "covers": [
+        "OPT23-01"
+      ],
+      "timeout_ms": 180000,
+      "external_effects": "none",
+      "requires_env": []
+    },
+    {
+      "id": "V23-L7-RELEASE-001",
+      "layer": "L7",
+      "domain": "release",
+      "priority": "P0",
+      "command": [
+        "node",
+        "--disable-warning=ExperimentalWarning",
+        "tests/release/v23-release-contract.test.mjs"
+      ],
+      "suites": [
+        "release"
+      ],
+      "covers": [
+        "OPT23-01"
+      ],
+      "timeout_ms": 120000,
+      "external_effects": "none",
+      "requires_env": []
+    }
+  ],
+  "routes": [
+    {
+      "id": "apps/api/src/routes/agent-sessions.mjs#1:GET /agent-sessions",
+      "source_module": "agent-sessions.mjs",
+      "source_path": "apps/api/src/routes/agent-sessions.mjs",
+      "source_blob": "b6185c8ff286fc9f4e2aa44c1a2299c6d6777a4c",
+      "declaration_index": 1,
+      "method": "GET",
+      "path": "/agent-sessions"
+    },
+    {
+      "id": "apps/api/src/routes/agent-sessions.mjs#2:POST /agent-sessions",
+      "source_module": "agent-sessions.mjs",
+      "source_path": "apps/api/src/routes/agent-sessions.mjs",
+      "source_blob": "b6185c8ff286fc9f4e2aa44c1a2299c6d6777a4c",
+      "declaration_index": 2,
+      "method": "POST",
+      "path": "/agent-sessions"
+    },
+    {
+      "id": "apps/api/src/routes/agent-sessions.mjs#3:POST /agent-sessions/:id/submissions",
+      "source_module": "agent-sessions.mjs",
+      "source_path": "apps/api/src/routes/agent-sessions.mjs",
+      "source_blob": "b6185c8ff286fc9f4e2aa44c1a2299c6d6777a4c",
+      "declaration_index": 3,
+      "method": "POST",
+      "path": "/agent-sessions/:id/submissions"
+    },
+    {
+      "id": "apps/api/src/routes/agent-sessions.mjs#4:POST /nodes/:id/submissions",
+      "source_module": "agent-sessions.mjs",
+      "source_path": "apps/api/src/routes/agent-sessions.mjs",
+      "source_blob": "b6185c8ff286fc9f4e2aa44c1a2299c6d6777a4c",
+      "declaration_index": 4,
+      "method": "POST",
+      "path": "/nodes/:id/submissions"
+    },
+    {
+      "id": "apps/api/src/routes/approvals-v13.mjs#1:GET /approvals",
+      "source_module": "approvals-v13.mjs",
+      "source_path": "apps/api/src/routes/approvals-v13.mjs",
+      "source_blob": "8341f16d1622fd408b9b850cb1dd77c210c92f4c",
+      "declaration_index": 1,
+      "method": "GET",
+      "path": "/approvals"
+    },
+    {
+      "id": "apps/api/src/routes/approvals-v13.mjs#2:POST /approvals/:type/:id/decision",
+      "source_module": "approvals-v13.mjs",
+      "source_path": "apps/api/src/routes/approvals-v13.mjs",
+      "source_blob": "8341f16d1622fd408b9b850cb1dd77c210c92f4c",
+      "declaration_index": 2,
+      "method": "POST",
+      "path": "/approvals/:type/:id/decision"
+    },
+    {
+      "id": "apps/api/src/routes/assets.mjs#1:GET /assets",
+      "source_module": "assets.mjs",
+      "source_path": "apps/api/src/routes/assets.mjs",
+      "source_blob": "f9f1404d0586fc62d64ded85547813c34abfcfc2",
+      "declaration_index": 1,
+      "method": "GET",
+      "path": "/assets"
+    },
+    {
+      "id": "apps/api/src/routes/assets.mjs#2:GET /assets/:id",
+      "source_module": "assets.mjs",
+      "source_path": "apps/api/src/routes/assets.mjs",
+      "source_blob": "f9f1404d0586fc62d64ded85547813c34abfcfc2",
+      "declaration_index": 2,
+      "method": "GET",
+      "path": "/assets/:id"
+    },
+    {
+      "id": "apps/api/src/routes/assets.mjs#3:POST /assets/:id/versions",
+      "source_module": "assets.mjs",
+      "source_path": "apps/api/src/routes/assets.mjs",
+      "source_blob": "f9f1404d0586fc62d64ded85547813c34abfcfc2",
+      "declaration_index": 3,
+      "method": "POST",
+      "path": "/assets/:id/versions"
+    },
+    {
+      "id": "apps/api/src/routes/assets.mjs#4:GET /asset-versions/:id",
+      "source_module": "assets.mjs",
+      "source_path": "apps/api/src/routes/assets.mjs",
+      "source_blob": "f9f1404d0586fc62d64ded85547813c34abfcfc2",
+      "declaration_index": 4,
+      "method": "GET",
+      "path": "/asset-versions/:id"
+    },
+    {
+      "id": "apps/api/src/routes/assets.mjs#5:GET /asset-versions/:id/content",
+      "source_module": "assets.mjs",
+      "source_path": "apps/api/src/routes/assets.mjs",
+      "source_blob": "f9f1404d0586fc62d64ded85547813c34abfcfc2",
+      "declaration_index": 5,
+      "method": "GET",
+      "path": "/asset-versions/:id/content"
+    },
+    {
+      "id": "apps/api/src/routes/assets.mjs#6:GET /asset-versions/:id/download",
+      "source_module": "assets.mjs",
+      "source_path": "apps/api/src/routes/assets.mjs",
+      "source_blob": "f9f1404d0586fc62d64ded85547813c34abfcfc2",
+      "declaration_index": 6,
+      "method": "GET",
+      "path": "/asset-versions/:id/download"
+    },
+    {
+      "id": "apps/api/src/routes/assets.mjs#7:GET /asset-versions/:id/attestations",
+      "source_module": "assets.mjs",
+      "source_path": "apps/api/src/routes/assets.mjs",
+      "source_blob": "f9f1404d0586fc62d64ded85547813c34abfcfc2",
+      "declaration_index": 7,
+      "method": "GET",
+      "path": "/asset-versions/:id/attestations"
+    },
+    {
+      "id": "apps/api/src/routes/assets.mjs#8:POST /asset-versions/:id/attestations",
+      "source_module": "assets.mjs",
+      "source_path": "apps/api/src/routes/assets.mjs",
+      "source_blob": "f9f1404d0586fc62d64ded85547813c34abfcfc2",
+      "declaration_index": 8,
+      "method": "POST",
+      "path": "/asset-versions/:id/attestations"
+    },
+    {
+      "id": "apps/api/src/routes/assets.mjs#9:GET /asset-versions/:id/lineage",
+      "source_module": "assets.mjs",
+      "source_path": "apps/api/src/routes/assets.mjs",
+      "source_blob": "f9f1404d0586fc62d64ded85547813c34abfcfc2",
+      "declaration_index": 9,
+      "method": "GET",
+      "path": "/asset-versions/:id/lineage"
+    },
+    {
+      "id": "apps/api/src/routes/assets.mjs#10:GET /asset-versions/:id/consumers",
+      "source_module": "assets.mjs",
+      "source_path": "apps/api/src/routes/assets.mjs",
+      "source_blob": "f9f1404d0586fc62d64ded85547813c34abfcfc2",
+      "declaration_index": 10,
+      "method": "GET",
+      "path": "/asset-versions/:id/consumers"
+    },
+    {
+      "id": "apps/api/src/routes/assets.mjs#11:POST /asset-candidates/:id/confirm",
+      "source_module": "assets.mjs",
+      "source_path": "apps/api/src/routes/assets.mjs",
+      "source_blob": "f9f1404d0586fc62d64ded85547813c34abfcfc2",
+      "declaration_index": 11,
+      "method": "POST",
+      "path": "/asset-candidates/:id/confirm"
+    },
+    {
+      "id": "apps/api/src/routes/assets.mjs#12:POST /asset-candidates/:id/reject",
+      "source_module": "assets.mjs",
+      "source_path": "apps/api/src/routes/assets.mjs",
+      "source_blob": "f9f1404d0586fc62d64ded85547813c34abfcfc2",
+      "declaration_index": 12,
+      "method": "POST",
+      "path": "/asset-candidates/:id/reject"
+    },
+    {
+      "id": "apps/api/src/routes/assets.mjs#13:POST /workspaces/:id/digests",
+      "source_module": "assets.mjs",
+      "source_path": "apps/api/src/routes/assets.mjs",
+      "source_blob": "f9f1404d0586fc62d64ded85547813c34abfcfc2",
+      "declaration_index": 13,
+      "method": "POST",
+      "path": "/workspaces/:id/digests"
+    },
+    {
+      "id": "apps/api/src/routes/assist-v12.mjs#1:GET /assist/v2/sessions",
+      "source_module": "assist-v12.mjs",
+      "source_path": "apps/api/src/routes/assist-v12.mjs",
+      "source_blob": "678a271b67ce32d89cd23ea10c4daebdd5af580e",
+      "declaration_index": 1,
+      "method": "GET",
+      "path": "/assist/v2/sessions"
+    },
+    {
+      "id": "apps/api/src/routes/assist-v12.mjs#2:POST /assist/v2/sessions",
+      "source_module": "assist-v12.mjs",
+      "source_path": "apps/api/src/routes/assist-v12.mjs",
+      "source_blob": "678a271b67ce32d89cd23ea10c4daebdd5af580e",
+      "declaration_index": 2,
+      "method": "POST",
+      "path": "/assist/v2/sessions"
+    },
+    {
+      "id": "apps/api/src/routes/assist-v12.mjs#3:GET /assist/v2/sessions/:id",
+      "source_module": "assist-v12.mjs",
+      "source_path": "apps/api/src/routes/assist-v12.mjs",
+      "source_blob": "678a271b67ce32d89cd23ea10c4daebdd5af580e",
+      "declaration_index": 3,
+      "method": "GET",
+      "path": "/assist/v2/sessions/:id"
+    },
+    {
+      "id": "apps/api/src/routes/assist-v12.mjs#4:POST /assist/v2/sessions/:id/messages",
+      "source_module": "assist-v12.mjs",
+      "source_path": "apps/api/src/routes/assist-v12.mjs",
+      "source_blob": "678a271b67ce32d89cd23ea10c4daebdd5af580e",
+      "declaration_index": 4,
+      "method": "POST",
+      "path": "/assist/v2/sessions/:id/messages"
+    },
+    {
+      "id": "apps/api/src/routes/assist-v12.mjs#5:GET /assist/v2/sessions/:id/events",
+      "source_module": "assist-v12.mjs",
+      "source_path": "apps/api/src/routes/assist-v12.mjs",
+      "source_blob": "678a271b67ce32d89cd23ea10c4daebdd5af580e",
+      "declaration_index": 5,
+      "method": "GET",
+      "path": "/assist/v2/sessions/:id/events"
+    },
+    {
+      "id": "apps/api/src/routes/assist-v12.mjs#6:POST /assist/v2/sessions/:id/cancel",
+      "source_module": "assist-v12.mjs",
+      "source_path": "apps/api/src/routes/assist-v12.mjs",
+      "source_blob": "678a271b67ce32d89cd23ea10c4daebdd5af580e",
+      "declaration_index": 6,
+      "method": "POST",
+      "path": "/assist/v2/sessions/:id/cancel"
+    },
+    {
+      "id": "apps/api/src/routes/assist-v12.mjs#7:POST /assist/v2/sessions/:id/retry",
+      "source_module": "assist-v12.mjs",
+      "source_path": "apps/api/src/routes/assist-v12.mjs",
+      "source_blob": "678a271b67ce32d89cd23ea10c4daebdd5af580e",
+      "declaration_index": 7,
+      "method": "POST",
+      "path": "/assist/v2/sessions/:id/retry"
+    },
+    {
+      "id": "apps/api/src/routes/assist-v12.mjs#8:POST /assist/v2/sessions/:id/actions/:actionId/confirm",
+      "source_module": "assist-v12.mjs",
+      "source_path": "apps/api/src/routes/assist-v12.mjs",
+      "source_blob": "678a271b67ce32d89cd23ea10c4daebdd5af580e",
+      "declaration_index": 8,
+      "method": "POST",
+      "path": "/assist/v2/sessions/:id/actions/:actionId/confirm"
+    },
+    {
+      "id": "apps/api/src/routes/assist-v12.mjs#9:POST /assist/v2/sessions/:id/actions/:actionId/reject",
+      "source_module": "assist-v12.mjs",
+      "source_path": "apps/api/src/routes/assist-v12.mjs",
+      "source_blob": "678a271b67ce32d89cd23ea10c4daebdd5af580e",
+      "declaration_index": 9,
+      "method": "POST",
+      "path": "/assist/v2/sessions/:id/actions/:actionId/reject"
+    },
+    {
+      "id": "apps/api/src/routes/assist-v12.mjs#10:POST /assist/v2/sessions/:id/actions/:actionId/result",
+      "source_module": "assist-v12.mjs",
+      "source_path": "apps/api/src/routes/assist-v12.mjs",
+      "source_blob": "678a271b67ce32d89cd23ea10c4daebdd5af580e",
+      "declaration_index": 10,
+      "method": "POST",
+      "path": "/assist/v2/sessions/:id/actions/:actionId/result"
+    },
+    {
+      "id": "apps/api/src/routes/assist-v3.mjs#1:GET /assist/v3/capabilities",
+      "source_module": "assist-v3.mjs",
+      "source_path": "apps/api/src/routes/assist-v3.mjs",
+      "source_blob": "931c3049a86c9dfb6c658eb57916025e82bfc270",
+      "declaration_index": 1,
+      "method": "GET",
+      "path": "/assist/v3/capabilities"
+    },
+    {
+      "id": "apps/api/src/routes/assist-v3.mjs#2:GET /assist/v3/models",
+      "source_module": "assist-v3.mjs",
+      "source_path": "apps/api/src/routes/assist-v3.mjs",
+      "source_blob": "931c3049a86c9dfb6c658eb57916025e82bfc270",
+      "declaration_index": 2,
+      "method": "GET",
+      "path": "/assist/v3/models"
+    },
+    {
+      "id": "apps/api/src/routes/assist-v3.mjs#3:GET /assist/v3/configurations",
+      "source_module": "assist-v3.mjs",
+      "source_path": "apps/api/src/routes/assist-v3.mjs",
+      "source_blob": "931c3049a86c9dfb6c658eb57916025e82bfc270",
+      "declaration_index": 3,
+      "method": "GET",
+      "path": "/assist/v3/configurations"
+    },
+    {
+      "id": "apps/api/src/routes/assist-v3.mjs#4:POST /assist/v3/configurations",
+      "source_module": "assist-v3.mjs",
+      "source_path": "apps/api/src/routes/assist-v3.mjs",
+      "source_blob": "931c3049a86c9dfb6c658eb57916025e82bfc270",
+      "declaration_index": 4,
+      "method": "POST",
+      "path": "/assist/v3/configurations"
+    },
+    {
+      "id": "apps/api/src/routes/assist-v3.mjs#5:GET /assist/v3/configurations/:id",
+      "source_module": "assist-v3.mjs",
+      "source_path": "apps/api/src/routes/assist-v3.mjs",
+      "source_blob": "931c3049a86c9dfb6c658eb57916025e82bfc270",
+      "declaration_index": 5,
+      "method": "GET",
+      "path": "/assist/v3/configurations/:id"
+    },
+    {
+      "id": "apps/api/src/routes/assist-v3.mjs#6:PATCH /assist/v3/configurations/:id",
+      "source_module": "assist-v3.mjs",
+      "source_path": "apps/api/src/routes/assist-v3.mjs",
+      "source_blob": "931c3049a86c9dfb6c658eb57916025e82bfc270",
+      "declaration_index": 6,
+      "method": "PATCH",
+      "path": "/assist/v3/configurations/:id"
+    },
+    {
+      "id": "apps/api/src/routes/assist-v3.mjs#7:DELETE /assist/v3/configurations/:id",
+      "source_module": "assist-v3.mjs",
+      "source_path": "apps/api/src/routes/assist-v3.mjs",
+      "source_blob": "931c3049a86c9dfb6c658eb57916025e82bfc270",
+      "declaration_index": 7,
+      "method": "DELETE",
+      "path": "/assist/v3/configurations/:id"
+    },
+    {
+      "id": "apps/api/src/routes/assist-v3.mjs#8:GET /assist/v3/sessions",
+      "source_module": "assist-v3.mjs",
+      "source_path": "apps/api/src/routes/assist-v3.mjs",
+      "source_blob": "931c3049a86c9dfb6c658eb57916025e82bfc270",
+      "declaration_index": 8,
+      "method": "GET",
+      "path": "/assist/v3/sessions"
+    },
+    {
+      "id": "apps/api/src/routes/assist-v3.mjs#9:POST /assist/v3/sessions",
+      "source_module": "assist-v3.mjs",
+      "source_path": "apps/api/src/routes/assist-v3.mjs",
+      "source_blob": "931c3049a86c9dfb6c658eb57916025e82bfc270",
+      "declaration_index": 9,
+      "method": "POST",
+      "path": "/assist/v3/sessions"
+    },
+    {
+      "id": "apps/api/src/routes/assist-v3.mjs#10:GET /assist/v3/sessions/:id",
+      "source_module": "assist-v3.mjs",
+      "source_path": "apps/api/src/routes/assist-v3.mjs",
+      "source_blob": "931c3049a86c9dfb6c658eb57916025e82bfc270",
+      "declaration_index": 10,
+      "method": "GET",
+      "path": "/assist/v3/sessions/:id"
+    },
+    {
+      "id": "apps/api/src/routes/assist-v3.mjs#11:PATCH /assist/v3/sessions/:id",
+      "source_module": "assist-v3.mjs",
+      "source_path": "apps/api/src/routes/assist-v3.mjs",
+      "source_blob": "931c3049a86c9dfb6c658eb57916025e82bfc270",
+      "declaration_index": 11,
+      "method": "PATCH",
+      "path": "/assist/v3/sessions/:id"
+    },
+    {
+      "id": "apps/api/src/routes/assist-v3.mjs#12:POST /assist/v3/sessions/:id/rename",
+      "source_module": "assist-v3.mjs",
+      "source_path": "apps/api/src/routes/assist-v3.mjs",
+      "source_blob": "931c3049a86c9dfb6c658eb57916025e82bfc270",
+      "declaration_index": 12,
+      "method": "POST",
+      "path": "/assist/v3/sessions/:id/rename"
+    },
+    {
+      "id": "apps/api/src/routes/assist-v3.mjs#13:POST /assist/v3/sessions/:id/pin",
+      "source_module": "assist-v3.mjs",
+      "source_path": "apps/api/src/routes/assist-v3.mjs",
+      "source_blob": "931c3049a86c9dfb6c658eb57916025e82bfc270",
+      "declaration_index": 13,
+      "method": "POST",
+      "path": "/assist/v3/sessions/:id/pin"
+    },
+    {
+      "id": "apps/api/src/routes/assist-v3.mjs#14:POST /assist/v3/sessions/:id/archive",
+      "source_module": "assist-v3.mjs",
+      "source_path": "apps/api/src/routes/assist-v3.mjs",
+      "source_blob": "931c3049a86c9dfb6c658eb57916025e82bfc270",
+      "declaration_index": 14,
+      "method": "POST",
+      "path": "/assist/v3/sessions/:id/archive"
+    },
+    {
+      "id": "apps/api/src/routes/assist-v3.mjs#15:DELETE /assist/v3/sessions/:id",
+      "source_module": "assist-v3.mjs",
+      "source_path": "apps/api/src/routes/assist-v3.mjs",
+      "source_blob": "931c3049a86c9dfb6c658eb57916025e82bfc270",
+      "declaration_index": 15,
+      "method": "DELETE",
+      "path": "/assist/v3/sessions/:id"
+    },
+    {
+      "id": "apps/api/src/routes/assist-v3.mjs#16:POST /assist/v3/sessions/:id/restore",
+      "source_module": "assist-v3.mjs",
+      "source_path": "apps/api/src/routes/assist-v3.mjs",
+      "source_blob": "931c3049a86c9dfb6c658eb57916025e82bfc270",
+      "declaration_index": 16,
+      "method": "POST",
+      "path": "/assist/v3/sessions/:id/restore"
+    },
+    {
+      "id": "apps/api/src/routes/assist-v3.mjs#17:POST /assist/v3/sessions/:id/restore-deleted",
+      "source_module": "assist-v3.mjs",
+      "source_path": "apps/api/src/routes/assist-v3.mjs",
+      "source_blob": "931c3049a86c9dfb6c658eb57916025e82bfc270",
+      "declaration_index": 17,
+      "method": "POST",
+      "path": "/assist/v3/sessions/:id/restore-deleted"
+    },
+    {
+      "id": "apps/api/src/routes/assist-v3.mjs#18:POST /assist/v3/sessions/:id/fork",
+      "source_module": "assist-v3.mjs",
+      "source_path": "apps/api/src/routes/assist-v3.mjs",
+      "source_blob": "931c3049a86c9dfb6c658eb57916025e82bfc270",
+      "declaration_index": 18,
+      "method": "POST",
+      "path": "/assist/v3/sessions/:id/fork"
+    },
+    {
+      "id": "apps/api/src/routes/assist-v3.mjs#19:POST /assist/v3/sessions/:id/btw",
+      "source_module": "assist-v3.mjs",
+      "source_path": "apps/api/src/routes/assist-v3.mjs",
+      "source_blob": "931c3049a86c9dfb6c658eb57916025e82bfc270",
+      "declaration_index": 19,
+      "method": "POST",
+      "path": "/assist/v3/sessions/:id/btw"
+    },
+    {
+      "id": "apps/api/src/routes/assist-v3.mjs#20:POST /assist/v3/btw",
+      "source_module": "assist-v3.mjs",
+      "source_path": "apps/api/src/routes/assist-v3.mjs",
+      "source_blob": "931c3049a86c9dfb6c658eb57916025e82bfc270",
+      "declaration_index": 20,
+      "method": "POST",
+      "path": "/assist/v3/btw"
+    },
+    {
+      "id": "apps/api/src/routes/assist-v3.mjs#21:POST /assist/v3/btw/:id/turns",
+      "source_module": "assist-v3.mjs",
+      "source_path": "apps/api/src/routes/assist-v3.mjs",
+      "source_blob": "931c3049a86c9dfb6c658eb57916025e82bfc270",
+      "declaration_index": 21,
+      "method": "POST",
+      "path": "/assist/v3/btw/:id/turns"
+    },
+    {
+      "id": "apps/api/src/routes/assist-v3.mjs#22:GET /assist/v3/btw/:id/events",
+      "source_module": "assist-v3.mjs",
+      "source_path": "apps/api/src/routes/assist-v3.mjs",
+      "source_blob": "931c3049a86c9dfb6c658eb57916025e82bfc270",
+      "declaration_index": 22,
+      "method": "GET",
+      "path": "/assist/v3/btw/:id/events"
+    },
+    {
+      "id": "apps/api/src/routes/assist-v3.mjs#23:DELETE /assist/v3/btw/:id",
+      "source_module": "assist-v3.mjs",
+      "source_path": "apps/api/src/routes/assist-v3.mjs",
+      "source_blob": "931c3049a86c9dfb6c658eb57916025e82bfc270",
+      "declaration_index": 23,
+      "method": "DELETE",
+      "path": "/assist/v3/btw/:id"
+    },
+    {
+      "id": "apps/api/src/routes/assist-v3.mjs#24:GET /assist/v3/sessions/:id/goal",
+      "source_module": "assist-v3.mjs",
+      "source_path": "apps/api/src/routes/assist-v3.mjs",
+      "source_blob": "931c3049a86c9dfb6c658eb57916025e82bfc270",
+      "declaration_index": 24,
+      "method": "GET",
+      "path": "/assist/v3/sessions/:id/goal"
+    },
+    {
+      "id": "apps/api/src/routes/assist-v3.mjs#25:PUT /assist/v3/sessions/:id/goal",
+      "source_module": "assist-v3.mjs",
+      "source_path": "apps/api/src/routes/assist-v3.mjs",
+      "source_blob": "931c3049a86c9dfb6c658eb57916025e82bfc270",
+      "declaration_index": 25,
+      "method": "PUT",
+      "path": "/assist/v3/sessions/:id/goal"
+    },
+    {
+      "id": "apps/api/src/routes/assist-v3.mjs#26:DELETE /assist/v3/sessions/:id/goal",
+      "source_module": "assist-v3.mjs",
+      "source_path": "apps/api/src/routes/assist-v3.mjs",
+      "source_blob": "931c3049a86c9dfb6c658eb57916025e82bfc270",
+      "declaration_index": 26,
+      "method": "DELETE",
+      "path": "/assist/v3/sessions/:id/goal"
+    },
+    {
+      "id": "apps/api/src/routes/assist-v3.mjs#27:POST /assist/v3/sessions/:id/turns",
+      "source_module": "assist-v3.mjs",
+      "source_path": "apps/api/src/routes/assist-v3.mjs",
+      "source_blob": "931c3049a86c9dfb6c658eb57916025e82bfc270",
+      "declaration_index": 27,
+      "method": "POST",
+      "path": "/assist/v3/sessions/:id/turns"
+    },
+    {
+      "id": "apps/api/src/routes/assist-v3.mjs#28:GET /assist/v3/turns/:id",
+      "source_module": "assist-v3.mjs",
+      "source_path": "apps/api/src/routes/assist-v3.mjs",
+      "source_blob": "931c3049a86c9dfb6c658eb57916025e82bfc270",
+      "declaration_index": 28,
+      "method": "GET",
+      "path": "/assist/v3/turns/:id"
+    },
+    {
+      "id": "apps/api/src/routes/assist-v3.mjs#29:POST /assist/v3/turns/:id/retry",
+      "source_module": "assist-v3.mjs",
+      "source_path": "apps/api/src/routes/assist-v3.mjs",
+      "source_blob": "931c3049a86c9dfb6c658eb57916025e82bfc270",
+      "declaration_index": 29,
+      "method": "POST",
+      "path": "/assist/v3/turns/:id/retry"
+    },
+    {
+      "id": "apps/api/src/routes/assist-v3.mjs#30:POST /assist/v3/turns/:id/stop",
+      "source_module": "assist-v3.mjs",
+      "source_path": "apps/api/src/routes/assist-v3.mjs",
+      "source_blob": "931c3049a86c9dfb6c658eb57916025e82bfc270",
+      "declaration_index": 30,
+      "method": "POST",
+      "path": "/assist/v3/turns/:id/stop"
+    },
+    {
+      "id": "apps/api/src/routes/assist-v3.mjs#31:POST /assist/v3/turns/:id/actions/:actionId/result",
+      "source_module": "assist-v3.mjs",
+      "source_path": "apps/api/src/routes/assist-v3.mjs",
+      "source_blob": "931c3049a86c9dfb6c658eb57916025e82bfc270",
+      "declaration_index": 31,
+      "method": "POST",
+      "path": "/assist/v3/turns/:id/actions/:actionId/result"
+    },
+    {
+      "id": "apps/api/src/routes/assist-v3.mjs#32:POST /assist/v3/turns/:id/user-input/:itemId/respond",
+      "source_module": "assist-v3.mjs",
+      "source_path": "apps/api/src/routes/assist-v3.mjs",
+      "source_blob": "931c3049a86c9dfb6c658eb57916025e82bfc270",
+      "declaration_index": 32,
+      "method": "POST",
+      "path": "/assist/v3/turns/:id/user-input/:itemId/respond"
+    },
+    {
+      "id": "apps/api/src/routes/assist-v3.mjs#33:POST /assist/v3/sessions/:id/turns/:turnId/retry",
+      "source_module": "assist-v3.mjs",
+      "source_path": "apps/api/src/routes/assist-v3.mjs",
+      "source_blob": "931c3049a86c9dfb6c658eb57916025e82bfc270",
+      "declaration_index": 33,
+      "method": "POST",
+      "path": "/assist/v3/sessions/:id/turns/:turnId/retry"
+    },
+    {
+      "id": "apps/api/src/routes/assist-v3.mjs#34:POST /assist/v3/sessions/:id/turns/:turnId/stop",
+      "source_module": "assist-v3.mjs",
+      "source_path": "apps/api/src/routes/assist-v3.mjs",
+      "source_blob": "931c3049a86c9dfb6c658eb57916025e82bfc270",
+      "declaration_index": 34,
+      "method": "POST",
+      "path": "/assist/v3/sessions/:id/turns/:turnId/stop"
+    },
+    {
+      "id": "apps/api/src/routes/assist-v3.mjs#35:POST /assist/v3/sessions/:id/follow-ups",
+      "source_module": "assist-v3.mjs",
+      "source_path": "apps/api/src/routes/assist-v3.mjs",
+      "source_blob": "931c3049a86c9dfb6c658eb57916025e82bfc270",
+      "declaration_index": 35,
+      "method": "POST",
+      "path": "/assist/v3/sessions/:id/follow-ups"
+    },
+    {
+      "id": "apps/api/src/routes/assist-v3.mjs#36:POST /assist/v3/sessions/:id/follow-up",
+      "source_module": "assist-v3.mjs",
+      "source_path": "apps/api/src/routes/assist-v3.mjs",
+      "source_blob": "931c3049a86c9dfb6c658eb57916025e82bfc270",
+      "declaration_index": 36,
+      "method": "POST",
+      "path": "/assist/v3/sessions/:id/follow-up"
+    },
+    {
+      "id": "apps/api/src/routes/assist-v3.mjs#37:POST /assist/v3/sessions/:id/follow-ups/queue",
+      "source_module": "assist-v3.mjs",
+      "source_path": "apps/api/src/routes/assist-v3.mjs",
+      "source_blob": "931c3049a86c9dfb6c658eb57916025e82bfc270",
+      "declaration_index": 37,
+      "method": "POST",
+      "path": "/assist/v3/sessions/:id/follow-ups/queue"
+    },
+    {
+      "id": "apps/api/src/routes/assist-v3.mjs#38:POST /assist/v3/sessions/:id/steer",
+      "source_module": "assist-v3.mjs",
+      "source_path": "apps/api/src/routes/assist-v3.mjs",
+      "source_blob": "931c3049a86c9dfb6c658eb57916025e82bfc270",
+      "declaration_index": 38,
+      "method": "POST",
+      "path": "/assist/v3/sessions/:id/steer"
+    },
+    {
+      "id": "apps/api/src/routes/assist-v3.mjs#39:POST /assist/v3/sessions/:id/interrupt",
+      "source_module": "assist-v3.mjs",
+      "source_path": "apps/api/src/routes/assist-v3.mjs",
+      "source_blob": "931c3049a86c9dfb6c658eb57916025e82bfc270",
+      "declaration_index": 39,
+      "method": "POST",
+      "path": "/assist/v3/sessions/:id/interrupt"
+    },
+    {
+      "id": "apps/api/src/routes/assist-v3.mjs#40:POST /assist/v3/turns/:id/steer",
+      "source_module": "assist-v3.mjs",
+      "source_path": "apps/api/src/routes/assist-v3.mjs",
+      "source_blob": "931c3049a86c9dfb6c658eb57916025e82bfc270",
+      "declaration_index": 40,
+      "method": "POST",
+      "path": "/assist/v3/turns/:id/steer"
+    },
+    {
+      "id": "apps/api/src/routes/assist-v3.mjs#41:POST /assist/v3/turns/:id/interrupt",
+      "source_module": "assist-v3.mjs",
+      "source_path": "apps/api/src/routes/assist-v3.mjs",
+      "source_blob": "931c3049a86c9dfb6c658eb57916025e82bfc270",
+      "declaration_index": 41,
+      "method": "POST",
+      "path": "/assist/v3/turns/:id/interrupt"
+    },
+    {
+      "id": "apps/api/src/routes/assist-v3.mjs#42:GET /assist/v3/sessions/:id/events",
+      "source_module": "assist-v3.mjs",
+      "source_path": "apps/api/src/routes/assist-v3.mjs",
+      "source_blob": "931c3049a86c9dfb6c658eb57916025e82bfc270",
+      "declaration_index": 42,
+      "method": "GET",
+      "path": "/assist/v3/sessions/:id/events"
+    },
+    {
+      "id": "apps/api/src/routes/assist-v3.mjs#43:GET /assist/v3/turns/:id/events",
+      "source_module": "assist-v3.mjs",
+      "source_path": "apps/api/src/routes/assist-v3.mjs",
+      "source_blob": "931c3049a86c9dfb6c658eb57916025e82bfc270",
+      "declaration_index": 43,
+      "method": "GET",
+      "path": "/assist/v3/turns/:id/events"
+    },
+    {
+      "id": "apps/api/src/routes/assist-v3.mjs#44:GET /assist/v3/sessions/:id/attachments",
+      "source_module": "assist-v3.mjs",
+      "source_path": "apps/api/src/routes/assist-v3.mjs",
+      "source_blob": "931c3049a86c9dfb6c658eb57916025e82bfc270",
+      "declaration_index": 44,
+      "method": "GET",
+      "path": "/assist/v3/sessions/:id/attachments"
+    },
+    {
+      "id": "apps/api/src/routes/assist-v3.mjs#45:POST /assist/v3/sessions/:id/attachments",
+      "source_module": "assist-v3.mjs",
+      "source_path": "apps/api/src/routes/assist-v3.mjs",
+      "source_blob": "931c3049a86c9dfb6c658eb57916025e82bfc270",
+      "declaration_index": 45,
+      "method": "POST",
+      "path": "/assist/v3/sessions/:id/attachments"
+    },
+    {
+      "id": "apps/api/src/routes/assist-v3.mjs#46:POST /assist/v3/sessions/:id/attachments/upload",
+      "source_module": "assist-v3.mjs",
+      "source_path": "apps/api/src/routes/assist-v3.mjs",
+      "source_blob": "931c3049a86c9dfb6c658eb57916025e82bfc270",
+      "declaration_index": 46,
+      "method": "POST",
+      "path": "/assist/v3/sessions/:id/attachments/upload"
+    },
+    {
+      "id": "apps/api/src/routes/assist-v3.mjs#47:GET /assist/v3/sessions/:id/references",
+      "source_module": "assist-v3.mjs",
+      "source_path": "apps/api/src/routes/assist-v3.mjs",
+      "source_blob": "931c3049a86c9dfb6c658eb57916025e82bfc270",
+      "declaration_index": 47,
+      "method": "GET",
+      "path": "/assist/v3/sessions/:id/references"
+    },
+    {
+      "id": "apps/api/src/routes/assist-v3.mjs#48:GET /assist/v3/attachments/:id/content",
+      "source_module": "assist-v3.mjs",
+      "source_path": "apps/api/src/routes/assist-v3.mjs",
+      "source_blob": "931c3049a86c9dfb6c658eb57916025e82bfc270",
+      "declaration_index": 48,
+      "method": "GET",
+      "path": "/assist/v3/attachments/:id/content"
+    },
+    {
+      "id": "apps/api/src/routes/assist-v3.mjs#49:GET /assist/v3/attachments/:id/download",
+      "source_module": "assist-v3.mjs",
+      "source_path": "apps/api/src/routes/assist-v3.mjs",
+      "source_blob": "931c3049a86c9dfb6c658eb57916025e82bfc270",
+      "declaration_index": 49,
+      "method": "GET",
+      "path": "/assist/v3/attachments/:id/download"
+    },
+    {
+      "id": "apps/api/src/routes/assist-v3.mjs#50:DELETE /assist/v3/attachments/:id",
+      "source_module": "assist-v3.mjs",
+      "source_path": "apps/api/src/routes/assist-v3.mjs",
+      "source_blob": "931c3049a86c9dfb6c658eb57916025e82bfc270",
+      "declaration_index": 50,
+      "method": "DELETE",
+      "path": "/assist/v3/attachments/:id"
+    },
+    {
+      "id": "apps/api/src/routes/assist-v3.mjs#51:GET /assist/v3/turns/:id/review",
+      "source_module": "assist-v3.mjs",
+      "source_path": "apps/api/src/routes/assist-v3.mjs",
+      "source_blob": "931c3049a86c9dfb6c658eb57916025e82bfc270",
+      "declaration_index": 51,
+      "method": "GET",
+      "path": "/assist/v3/turns/:id/review"
+    },
+    {
+      "id": "apps/api/src/routes/assist-v3.mjs#52:POST /assist/v3/turns/:id/review/viewed",
+      "source_module": "assist-v3.mjs",
+      "source_path": "apps/api/src/routes/assist-v3.mjs",
+      "source_blob": "931c3049a86c9dfb6c658eb57916025e82bfc270",
+      "declaration_index": 52,
+      "method": "POST",
+      "path": "/assist/v3/turns/:id/review/viewed"
+    },
+    {
+      "id": "apps/api/src/routes/assist-v3.mjs#53:POST /assist/v3/turns/:id/review/comments",
+      "source_module": "assist-v3.mjs",
+      "source_path": "apps/api/src/routes/assist-v3.mjs",
+      "source_blob": "931c3049a86c9dfb6c658eb57916025e82bfc270",
+      "declaration_index": 53,
+      "method": "POST",
+      "path": "/assist/v3/turns/:id/review/comments"
+    },
+    {
+      "id": "apps/api/src/routes/assist-v3.mjs#54:POST /assist/v3/turns/:id/review/request-changes",
+      "source_module": "assist-v3.mjs",
+      "source_path": "apps/api/src/routes/assist-v3.mjs",
+      "source_blob": "931c3049a86c9dfb6c658eb57916025e82bfc270",
+      "declaration_index": 54,
+      "method": "POST",
+      "path": "/assist/v3/turns/:id/review/request-changes"
+    },
+    {
+      "id": "apps/api/src/routes/assist-v3.mjs#55:POST /assist/v3/turns/:id/review/apply",
+      "source_module": "assist-v3.mjs",
+      "source_path": "apps/api/src/routes/assist-v3.mjs",
+      "source_blob": "931c3049a86c9dfb6c658eb57916025e82bfc270",
+      "declaration_index": 55,
+      "method": "POST",
+      "path": "/assist/v3/turns/:id/review/apply"
+    },
+    {
+      "id": "apps/api/src/routes/assist-v3.mjs#56:POST /assist/v3/turns/:id/review/rollback",
+      "source_module": "assist-v3.mjs",
+      "source_path": "apps/api/src/routes/assist-v3.mjs",
+      "source_blob": "931c3049a86c9dfb6c658eb57916025e82bfc270",
+      "declaration_index": 56,
+      "method": "POST",
+      "path": "/assist/v3/turns/:id/review/rollback"
+    },
+    {
+      "id": "apps/api/src/routes/assist-v3.mjs#57:GET /assist/v3/operations",
+      "source_module": "assist-v3.mjs",
+      "source_path": "apps/api/src/routes/assist-v3.mjs",
+      "source_blob": "931c3049a86c9dfb6c658eb57916025e82bfc270",
+      "declaration_index": 57,
+      "method": "GET",
+      "path": "/assist/v3/operations"
+    },
+    {
+      "id": "apps/api/src/routes/assist-v3.mjs#58:POST /assist/v3/operations/:id/confirm",
+      "source_module": "assist-v3.mjs",
+      "source_path": "apps/api/src/routes/assist-v3.mjs",
+      "source_blob": "931c3049a86c9dfb6c658eb57916025e82bfc270",
+      "declaration_index": 58,
+      "method": "POST",
+      "path": "/assist/v3/operations/:id/confirm"
+    },
+    {
+      "id": "apps/api/src/routes/assist-v3.mjs#59:POST /assist/v3/operations/:id/claim",
+      "source_module": "assist-v3.mjs",
+      "source_path": "apps/api/src/routes/assist-v3.mjs",
+      "source_blob": "931c3049a86c9dfb6c658eb57916025e82bfc270",
+      "declaration_index": 59,
+      "method": "POST",
+      "path": "/assist/v3/operations/:id/claim"
+    },
+    {
+      "id": "apps/api/src/routes/assist-v3.mjs#60:POST /assist/v3/operations/:id/result",
+      "source_module": "assist-v3.mjs",
+      "source_path": "apps/api/src/routes/assist-v3.mjs",
+      "source_blob": "931c3049a86c9dfb6c658eb57916025e82bfc270",
+      "declaration_index": 60,
+      "method": "POST",
+      "path": "/assist/v3/operations/:id/result"
+    },
+    {
+      "id": "apps/api/src/routes/assist-v3.mjs#61:POST /assist/v3/operations/:id/undo",
+      "source_module": "assist-v3.mjs",
+      "source_path": "apps/api/src/routes/assist-v3.mjs",
+      "source_blob": "931c3049a86c9dfb6c658eb57916025e82bfc270",
+      "declaration_index": 61,
+      "method": "POST",
+      "path": "/assist/v3/operations/:id/undo"
+    },
+    {
+      "id": "apps/api/src/routes/assist-v3.mjs#62:POST /assist/v3/operations/:id/revisions",
+      "source_module": "assist-v3.mjs",
+      "source_path": "apps/api/src/routes/assist-v3.mjs",
+      "source_blob": "931c3049a86c9dfb6c658eb57916025e82bfc270",
+      "declaration_index": 62,
+      "method": "POST",
+      "path": "/assist/v3/operations/:id/revisions"
+    },
+    {
+      "id": "apps/api/src/routes/assist-v3.mjs#63:GET /assist/v3/change-batches/:id/review",
+      "source_module": "assist-v3.mjs",
+      "source_path": "apps/api/src/routes/assist-v3.mjs",
+      "source_blob": "931c3049a86c9dfb6c658eb57916025e82bfc270",
+      "declaration_index": 63,
+      "method": "GET",
+      "path": "/assist/v3/change-batches/:id/review"
+    },
+    {
+      "id": "apps/api/src/routes/assist-v3.mjs#64:POST /assist/v3/change-batches/:id/review/apply",
+      "source_module": "assist-v3.mjs",
+      "source_path": "apps/api/src/routes/assist-v3.mjs",
+      "source_blob": "931c3049a86c9dfb6c658eb57916025e82bfc270",
+      "declaration_index": 64,
+      "method": "POST",
+      "path": "/assist/v3/change-batches/:id/review/apply"
+    },
+    {
+      "id": "apps/api/src/routes/assist-v3.mjs#65:POST /assist/v3/change-batches/:id/review/rollback",
+      "source_module": "assist-v3.mjs",
+      "source_path": "apps/api/src/routes/assist-v3.mjs",
+      "source_blob": "931c3049a86c9dfb6c658eb57916025e82bfc270",
+      "declaration_index": 65,
+      "method": "POST",
+      "path": "/assist/v3/change-batches/:id/review/rollback"
+    },
+    {
+      "id": "apps/api/src/routes/change-proposals.mjs#1:GET /change-proposals",
+      "source_module": "change-proposals.mjs",
+      "source_path": "apps/api/src/routes/change-proposals.mjs",
+      "source_blob": "855a30ff14d80d362972e2b3903db610941840d8",
+      "declaration_index": 1,
+      "method": "GET",
+      "path": "/change-proposals"
+    },
+    {
+      "id": "apps/api/src/routes/change-proposals.mjs#2:POST /change-proposals",
+      "source_module": "change-proposals.mjs",
+      "source_path": "apps/api/src/routes/change-proposals.mjs",
+      "source_blob": "855a30ff14d80d362972e2b3903db610941840d8",
+      "declaration_index": 2,
+      "method": "POST",
+      "path": "/change-proposals"
+    },
+    {
+      "id": "apps/api/src/routes/change-proposals.mjs#3:POST /change-proposals/:id/approve",
+      "source_module": "change-proposals.mjs",
+      "source_path": "apps/api/src/routes/change-proposals.mjs",
+      "source_blob": "855a30ff14d80d362972e2b3903db610941840d8",
+      "declaration_index": 3,
+      "method": "POST",
+      "path": "/change-proposals/:id/approve"
+    },
+    {
+      "id": "apps/api/src/routes/change-proposals.mjs#4:POST /change-proposals/:id/reject",
+      "source_module": "change-proposals.mjs",
+      "source_path": "apps/api/src/routes/change-proposals.mjs",
+      "source_blob": "855a30ff14d80d362972e2b3903db610941840d8",
+      "declaration_index": 4,
+      "method": "POST",
+      "path": "/change-proposals/:id/reject"
+    },
+    {
+      "id": "apps/api/src/routes/change-proposals.mjs#5:POST /change-proposals/:id/apply",
+      "source_module": "change-proposals.mjs",
+      "source_path": "apps/api/src/routes/change-proposals.mjs",
+      "source_blob": "855a30ff14d80d362972e2b3903db610941840d8",
+      "declaration_index": 5,
+      "method": "POST",
+      "path": "/change-proposals/:id/apply"
+    },
+    {
+      "id": "apps/api/src/routes/codex-capabilities-v13.mjs#1:GET /codex/capabilities",
+      "source_module": "codex-capabilities-v13.mjs",
+      "source_path": "apps/api/src/routes/codex-capabilities-v13.mjs",
+      "source_blob": "17b56b25847d2d3c3da06e89c71934c27408ceba",
+      "declaration_index": 1,
+      "method": "GET",
+      "path": "/codex/capabilities"
+    },
+    {
+      "id": "apps/api/src/routes/codex-capabilities-v13.mjs#2:POST /codex/capabilities/probe",
+      "source_module": "codex-capabilities-v13.mjs",
+      "source_path": "apps/api/src/routes/codex-capabilities-v13.mjs",
+      "source_blob": "17b56b25847d2d3c3da06e89c71934c27408ceba",
+      "declaration_index": 2,
+      "method": "POST",
+      "path": "/codex/capabilities/probe"
+    },
+    {
+      "id": "apps/api/src/routes/codex-discovery-v12.mjs#1:GET /codex/discovery",
+      "source_module": "codex-discovery-v12.mjs",
+      "source_path": "apps/api/src/routes/codex-discovery-v12.mjs",
+      "source_blob": "2858aacd5ab0890302cb0ad52a7a566a3ef7d27b",
+      "declaration_index": 1,
+      "method": "GET",
+      "path": "/codex/discovery"
+    },
+    {
+      "id": "apps/api/src/routes/codex-discovery-v12.mjs#2:POST /codex/discovery/import",
+      "source_module": "codex-discovery-v12.mjs",
+      "source_path": "apps/api/src/routes/codex-discovery-v12.mjs",
+      "source_blob": "2858aacd5ab0890302cb0ad52a7a566a3ef7d27b",
+      "declaration_index": 2,
+      "method": "POST",
+      "path": "/codex/discovery/import"
+    },
+    {
+      "id": "apps/api/src/routes/codex-runtime-v12.mjs#1:GET /codex/status",
+      "source_module": "codex-runtime-v12.mjs",
+      "source_path": "apps/api/src/routes/codex-runtime-v12.mjs",
+      "source_blob": "15cb0f2c5261ae4f9c17d917399557674c985517",
+      "declaration_index": 1,
+      "method": "GET",
+      "path": "/codex/status"
+    },
+    {
+      "id": "apps/api/src/routes/codex-runtime-v12.mjs#2:POST /codex/docker/build",
+      "source_module": "codex-runtime-v12.mjs",
+      "source_path": "apps/api/src/routes/codex-runtime-v12.mjs",
+      "source_blob": "15cb0f2c5261ae4f9c17d917399557674c985517",
+      "declaration_index": 2,
+      "method": "POST",
+      "path": "/codex/docker/build"
+    },
+    {
+      "id": "apps/api/src/routes/codex-runtime-v12.mjs#3:GET /codex/docker/builds/active",
+      "source_module": "codex-runtime-v12.mjs",
+      "source_path": "apps/api/src/routes/codex-runtime-v12.mjs",
+      "source_blob": "15cb0f2c5261ae4f9c17d917399557674c985517",
+      "declaration_index": 3,
+      "method": "GET",
+      "path": "/codex/docker/builds/active"
+    },
+    {
+      "id": "apps/api/src/routes/codex-runtime-v12.mjs#4:GET /codex/docker/builds/:id",
+      "source_module": "codex-runtime-v12.mjs",
+      "source_path": "apps/api/src/routes/codex-runtime-v12.mjs",
+      "source_blob": "15cb0f2c5261ae4f9c17d917399557674c985517",
+      "declaration_index": 4,
+      "method": "GET",
+      "path": "/codex/docker/builds/:id"
+    },
+    {
+      "id": "apps/api/src/routes/codex-runtime-v12.mjs#5:GET /codex/docker/builds/:id/events",
+      "source_module": "codex-runtime-v12.mjs",
+      "source_path": "apps/api/src/routes/codex-runtime-v12.mjs",
+      "source_blob": "15cb0f2c5261ae4f9c17d917399557674c985517",
+      "declaration_index": 5,
+      "method": "GET",
+      "path": "/codex/docker/builds/:id/events"
+    },
+    {
+      "id": "apps/api/src/routes/codex-runtime-v12.mjs#6:POST /codex/docker/builds/:id/cancel",
+      "source_module": "codex-runtime-v12.mjs",
+      "source_path": "apps/api/src/routes/codex-runtime-v12.mjs",
+      "source_blob": "15cb0f2c5261ae4f9c17d917399557674c985517",
+      "declaration_index": 6,
+      "method": "POST",
+      "path": "/codex/docker/builds/:id/cancel"
+    },
+    {
+      "id": "apps/api/src/routes/codex-v12.mjs#1:POST /codex/auth/device/start",
+      "source_module": "codex-v12.mjs",
+      "source_path": "apps/api/src/routes/codex-v12.mjs",
+      "source_blob": "2103f15dd54d7ec7cba967297911201b8bb8066a",
+      "declaration_index": 1,
+      "method": "POST",
+      "path": "/codex/auth/device/start"
+    },
+    {
+      "id": "apps/api/src/routes/codex-v12.mjs#2:GET /codex/auth/device/:id/events",
+      "source_module": "codex-v12.mjs",
+      "source_path": "apps/api/src/routes/codex-v12.mjs",
+      "source_blob": "2103f15dd54d7ec7cba967297911201b8bb8066a",
+      "declaration_index": 2,
+      "method": "GET",
+      "path": "/codex/auth/device/:id/events"
+    },
+    {
+      "id": "apps/api/src/routes/codex-v12.mjs#3:POST /codex/auth/device/:id/cancel",
+      "source_module": "codex-v12.mjs",
+      "source_path": "apps/api/src/routes/codex-v12.mjs",
+      "source_blob": "2103f15dd54d7ec7cba967297911201b8bb8066a",
+      "declaration_index": 3,
+      "method": "POST",
+      "path": "/codex/auth/device/:id/cancel"
+    },
+    {
+      "id": "apps/api/src/routes/codex-v12.mjs#4:POST /codex/auth/api-key",
+      "source_module": "codex-v12.mjs",
+      "source_path": "apps/api/src/routes/codex-v12.mjs",
+      "source_blob": "2103f15dd54d7ec7cba967297911201b8bb8066a",
+      "declaration_index": 4,
+      "method": "POST",
+      "path": "/codex/auth/api-key"
+    },
+    {
+      "id": "apps/api/src/routes/codex-v12.mjs#5:POST /codex/auth/reset",
+      "source_module": "codex-v12.mjs",
+      "source_path": "apps/api/src/routes/codex-v12.mjs",
+      "source_blob": "2103f15dd54d7ec7cba967297911201b8bb8066a",
+      "declaration_index": 5,
+      "method": "POST",
+      "path": "/codex/auth/reset"
+    },
+    {
+      "id": "apps/api/src/routes/codex-v12.mjs#6:GET /codex/profiles",
+      "source_module": "codex-v12.mjs",
+      "source_path": "apps/api/src/routes/codex-v12.mjs",
+      "source_blob": "2103f15dd54d7ec7cba967297911201b8bb8066a",
+      "declaration_index": 6,
+      "method": "GET",
+      "path": "/codex/profiles"
+    },
+    {
+      "id": "apps/api/src/routes/codex-v12.mjs#7:POST /codex/profiles",
+      "source_module": "codex-v12.mjs",
+      "source_path": "apps/api/src/routes/codex-v12.mjs",
+      "source_blob": "2103f15dd54d7ec7cba967297911201b8bb8066a",
+      "declaration_index": 7,
+      "method": "POST",
+      "path": "/codex/profiles"
+    },
+    {
+      "id": "apps/api/src/routes/codex-v12.mjs#8:PUT /codex/profiles/:id",
+      "source_module": "codex-v12.mjs",
+      "source_path": "apps/api/src/routes/codex-v12.mjs",
+      "source_blob": "2103f15dd54d7ec7cba967297911201b8bb8066a",
+      "declaration_index": 8,
+      "method": "PUT",
+      "path": "/codex/profiles/:id"
+    },
+    {
+      "id": "apps/api/src/routes/codex-v12.mjs#9:DELETE /codex/profiles/:id",
+      "source_module": "codex-v12.mjs",
+      "source_path": "apps/api/src/routes/codex-v12.mjs",
+      "source_blob": "2103f15dd54d7ec7cba967297911201b8bb8066a",
+      "declaration_index": 9,
+      "method": "DELETE",
+      "path": "/codex/profiles/:id"
+    },
+    {
+      "id": "apps/api/src/routes/codex-v12.mjs#10:POST /codex/profiles/:id/validate",
+      "source_module": "codex-v12.mjs",
+      "source_path": "apps/api/src/routes/codex-v12.mjs",
+      "source_blob": "2103f15dd54d7ec7cba967297911201b8bb8066a",
+      "declaration_index": 10,
+      "method": "POST",
+      "path": "/codex/profiles/:id/validate"
+    },
+    {
+      "id": "apps/api/src/routes/codex-v12.mjs#11:POST /codex/profiles/:id/propose-apply",
+      "source_module": "codex-v12.mjs",
+      "source_path": "apps/api/src/routes/codex-v12.mjs",
+      "source_blob": "2103f15dd54d7ec7cba967297911201b8bb8066a",
+      "declaration_index": 11,
+      "method": "POST",
+      "path": "/codex/profiles/:id/propose-apply"
+    },
+    {
+      "id": "apps/api/src/routes/codex-v12.mjs#12:GET /codex/cc-switch/status",
+      "source_module": "codex-v12.mjs",
+      "source_path": "apps/api/src/routes/codex-v12.mjs",
+      "source_blob": "2103f15dd54d7ec7cba967297911201b8bb8066a",
+      "declaration_index": 12,
+      "method": "GET",
+      "path": "/codex/cc-switch/status"
+    },
+    {
+      "id": "apps/api/src/routes/codex-v12.mjs#13:POST /codex/cc-switch/sync",
+      "source_module": "codex-v12.mjs",
+      "source_path": "apps/api/src/routes/codex-v12.mjs",
+      "source_blob": "2103f15dd54d7ec7cba967297911201b8bb8066a",
+      "declaration_index": 13,
+      "method": "POST",
+      "path": "/codex/cc-switch/sync"
+    },
+    {
+      "id": "apps/api/src/routes/codex-v12.mjs#14:POST /codex/cc-switch/import",
+      "source_module": "codex-v12.mjs",
+      "source_path": "apps/api/src/routes/codex-v12.mjs",
+      "source_blob": "2103f15dd54d7ec7cba967297911201b8bb8066a",
+      "declaration_index": 14,
+      "method": "POST",
+      "path": "/codex/cc-switch/import"
+    },
+    {
+      "id": "apps/api/src/routes/codex-v12.mjs#15:POST /codex/probe",
+      "source_module": "codex-v12.mjs",
+      "source_path": "apps/api/src/routes/codex-v12.mjs",
+      "source_blob": "2103f15dd54d7ec7cba967297911201b8bb8066a",
+      "declaration_index": 15,
+      "method": "POST",
+      "path": "/codex/probe"
+    },
+    {
+      "id": "apps/api/src/routes/config-governance-v13.mjs#1:GET /codex/cc-switch/managed/status",
+      "source_module": "config-governance-v13.mjs",
+      "source_path": "apps/api/src/routes/config-governance-v13.mjs",
+      "source_blob": "72e34cb99d4cf1a99cf949cae42110ed7c8a9b2f",
+      "declaration_index": 1,
+      "method": "GET",
+      "path": "/codex/cc-switch/managed/status"
+    },
+    {
+      "id": "apps/api/src/routes/config-governance-v13.mjs#2:POST /codex/cc-switch/managed/install",
+      "source_module": "config-governance-v13.mjs",
+      "source_path": "apps/api/src/routes/config-governance-v13.mjs",
+      "source_blob": "72e34cb99d4cf1a99cf949cae42110ed7c8a9b2f",
+      "declaration_index": 2,
+      "method": "POST",
+      "path": "/codex/cc-switch/managed/install"
+    },
+    {
+      "id": "apps/api/src/routes/config-governance-v13.mjs#3:GET /codex/cc-switch/managed/catalog",
+      "source_module": "config-governance-v13.mjs",
+      "source_path": "apps/api/src/routes/config-governance-v13.mjs",
+      "source_blob": "72e34cb99d4cf1a99cf949cae42110ed7c8a9b2f",
+      "declaration_index": 3,
+      "method": "GET",
+      "path": "/codex/cc-switch/managed/catalog"
+    },
+    {
+      "id": "apps/api/src/routes/config-governance-v13.mjs#4:POST /codex/config-revisions",
+      "source_module": "config-governance-v13.mjs",
+      "source_path": "apps/api/src/routes/config-governance-v13.mjs",
+      "source_blob": "72e34cb99d4cf1a99cf949cae42110ed7c8a9b2f",
+      "declaration_index": 4,
+      "method": "POST",
+      "path": "/codex/config-revisions"
+    },
+    {
+      "id": "apps/api/src/routes/config-governance-v13.mjs#5:POST /codex/config-revisions/:id/reconcile",
+      "source_module": "config-governance-v13.mjs",
+      "source_path": "apps/api/src/routes/config-governance-v13.mjs",
+      "source_blob": "72e34cb99d4cf1a99cf949cae42110ed7c8a9b2f",
+      "declaration_index": 5,
+      "method": "POST",
+      "path": "/codex/config-revisions/:id/reconcile"
+    },
+    {
+      "id": "apps/api/src/routes/context-v20.mjs#1:POST /context/v1/browser-state",
+      "source_module": "context-v20.mjs",
+      "source_path": "apps/api/src/routes/context-v20.mjs",
+      "source_blob": "fda2d5dde12f5586e8a477563eb771231987ee98",
+      "declaration_index": 1,
+      "method": "POST",
+      "path": "/context/v1/browser-state"
+    },
+    {
+      "id": "apps/api/src/routes/context-v20.mjs#2:GET /context/v1/map",
+      "source_module": "context-v20.mjs",
+      "source_path": "apps/api/src/routes/context-v20.mjs",
+      "source_blob": "fda2d5dde12f5586e8a477563eb771231987ee98",
+      "declaration_index": 2,
+      "method": "GET",
+      "path": "/context/v1/map"
+    },
+    {
+      "id": "apps/api/src/routes/context-v20.mjs#3:POST /context/v1/search",
+      "source_module": "context-v20.mjs",
+      "source_path": "apps/api/src/routes/context-v20.mjs",
+      "source_blob": "fda2d5dde12f5586e8a477563eb771231987ee98",
+      "declaration_index": 3,
+      "method": "POST",
+      "path": "/context/v1/search"
+    },
+    {
+      "id": "apps/api/src/routes/context-v20.mjs#4:GET /context/v1/nodes/:id",
+      "source_module": "context-v20.mjs",
+      "source_path": "apps/api/src/routes/context-v20.mjs",
+      "source_blob": "fda2d5dde12f5586e8a477563eb771231987ee98",
+      "declaration_index": 4,
+      "method": "GET",
+      "path": "/context/v1/nodes/:id"
+    },
+    {
+      "id": "apps/api/src/routes/context-v20.mjs#5:POST /context/v1/selections",
+      "source_module": "context-v20.mjs",
+      "source_path": "apps/api/src/routes/context-v20.mjs",
+      "source_blob": "fda2d5dde12f5586e8a477563eb771231987ee98",
+      "declaration_index": 5,
+      "method": "POST",
+      "path": "/context/v1/selections"
+    },
+    {
+      "id": "apps/api/src/routes/context-v20.mjs#6:GET /context/v1/selections/:id",
+      "source_module": "context-v20.mjs",
+      "source_path": "apps/api/src/routes/context-v20.mjs",
+      "source_blob": "fda2d5dde12f5586e8a477563eb771231987ee98",
+      "declaration_index": 6,
+      "method": "GET",
+      "path": "/context/v1/selections/:id"
+    },
+    {
+      "id": "apps/api/src/routes/context-v20.mjs#7:GET /context/v1/policy",
+      "source_module": "context-v20.mjs",
+      "source_path": "apps/api/src/routes/context-v20.mjs",
+      "source_blob": "fda2d5dde12f5586e8a477563eb771231987ee98",
+      "declaration_index": 7,
+      "method": "GET",
+      "path": "/context/v1/policy"
+    },
+    {
+      "id": "apps/api/src/routes/context-v20.mjs#8:PUT /context/v1/policy",
+      "source_module": "context-v20.mjs",
+      "source_path": "apps/api/src/routes/context-v20.mjs",
+      "source_blob": "fda2d5dde12f5586e8a477563eb771231987ee98",
+      "declaration_index": 8,
+      "method": "PUT",
+      "path": "/context/v1/policy"
+    },
+    {
+      "id": "apps/api/src/routes/context-v20.mjs#9:GET /context/v1/status",
+      "source_module": "context-v20.mjs",
+      "source_path": "apps/api/src/routes/context-v20.mjs",
+      "source_blob": "fda2d5dde12f5586e8a477563eb771231987ee98",
+      "declaration_index": 9,
+      "method": "GET",
+      "path": "/context/v1/status"
+    },
+    {
+      "id": "apps/api/src/routes/context-v20.mjs#10:POST /context/v1/rebuild",
+      "source_module": "context-v20.mjs",
+      "source_path": "apps/api/src/routes/context-v20.mjs",
+      "source_blob": "fda2d5dde12f5586e8a477563eb771231987ee98",
+      "declaration_index": 10,
+      "method": "POST",
+      "path": "/context/v1/rebuild"
+    },
+    {
+      "id": "apps/api/src/routes/exchange-v19.mjs#1:GET /projects/:id/exchange-requests",
+      "source_module": "exchange-v19.mjs",
+      "source_path": "apps/api/src/routes/exchange-v19.mjs",
+      "source_blob": "cd7a983292a335230441e7a9d7dcd8ebda7624a8",
+      "declaration_index": 1,
+      "method": "GET",
+      "path": "/projects/:id/exchange-requests"
+    },
+    {
+      "id": "apps/api/src/routes/exchange-v19.mjs#2:POST /projects/:id/exchange-requests",
+      "source_module": "exchange-v19.mjs",
+      "source_path": "apps/api/src/routes/exchange-v19.mjs",
+      "source_blob": "cd7a983292a335230441e7a9d7dcd8ebda7624a8",
+      "declaration_index": 2,
+      "method": "POST",
+      "path": "/projects/:id/exchange-requests"
+    },
+    {
+      "id": "apps/api/src/routes/exchange-v19.mjs#3:GET /projects/:id/exchanges",
+      "source_module": "exchange-v19.mjs",
+      "source_path": "apps/api/src/routes/exchange-v19.mjs",
+      "source_blob": "cd7a983292a335230441e7a9d7dcd8ebda7624a8",
+      "declaration_index": 3,
+      "method": "GET",
+      "path": "/projects/:id/exchanges"
+    },
+    {
+      "id": "apps/api/src/routes/exchange-v19.mjs#4:POST /projects/:id/exchanges",
+      "source_module": "exchange-v19.mjs",
+      "source_path": "apps/api/src/routes/exchange-v19.mjs",
+      "source_blob": "cd7a983292a335230441e7a9d7dcd8ebda7624a8",
+      "declaration_index": 4,
+      "method": "POST",
+      "path": "/projects/:id/exchanges"
+    },
+    {
+      "id": "apps/api/src/routes/exchange-v19.mjs#5:GET /exchange-requests/:id",
+      "source_module": "exchange-v19.mjs",
+      "source_path": "apps/api/src/routes/exchange-v19.mjs",
+      "source_blob": "cd7a983292a335230441e7a9d7dcd8ebda7624a8",
+      "declaration_index": 5,
+      "method": "GET",
+      "path": "/exchange-requests/:id"
+    },
+    {
+      "id": "apps/api/src/routes/exchange-v19.mjs#6:POST /exchange-requests/:id/approve",
+      "source_module": "exchange-v19.mjs",
+      "source_path": "apps/api/src/routes/exchange-v19.mjs",
+      "source_blob": "cd7a983292a335230441e7a9d7dcd8ebda7624a8",
+      "declaration_index": 6,
+      "method": "POST",
+      "path": "/exchange-requests/:id/approve"
+    },
+    {
+      "id": "apps/api/src/routes/exchange-v19.mjs#7:POST /exchange-requests/:id/approve-source",
+      "source_module": "exchange-v19.mjs",
+      "source_path": "apps/api/src/routes/exchange-v19.mjs",
+      "source_blob": "cd7a983292a335230441e7a9d7dcd8ebda7624a8",
+      "declaration_index": 7,
+      "method": "POST",
+      "path": "/exchange-requests/:id/approve-source"
+    },
+    {
+      "id": "apps/api/src/routes/exchange-v19.mjs#8:POST /exchange-requests/:id/approve-target",
+      "source_module": "exchange-v19.mjs",
+      "source_path": "apps/api/src/routes/exchange-v19.mjs",
+      "source_blob": "cd7a983292a335230441e7a9d7dcd8ebda7624a8",
+      "declaration_index": 8,
+      "method": "POST",
+      "path": "/exchange-requests/:id/approve-target"
+    },
+    {
+      "id": "apps/api/src/routes/exchange-v19.mjs#9:POST /exchange-requests/:id/revoke",
+      "source_module": "exchange-v19.mjs",
+      "source_path": "apps/api/src/routes/exchange-v19.mjs",
+      "source_blob": "cd7a983292a335230441e7a9d7dcd8ebda7624a8",
+      "declaration_index": 9,
+      "method": "POST",
+      "path": "/exchange-requests/:id/revoke"
+    },
+    {
+      "id": "apps/api/src/routes/exchange-v19.mjs#10:POST /exchange-requests/:id/context-packs",
+      "source_module": "exchange-v19.mjs",
+      "source_path": "apps/api/src/routes/exchange-v19.mjs",
+      "source_blob": "cd7a983292a335230441e7a9d7dcd8ebda7624a8",
+      "declaration_index": 10,
+      "method": "POST",
+      "path": "/exchange-requests/:id/context-packs"
+    },
+    {
+      "id": "apps/api/src/routes/exchange-v19.mjs#11:POST /exchange-grants/:id/context-packs",
+      "source_module": "exchange-v19.mjs",
+      "source_path": "apps/api/src/routes/exchange-v19.mjs",
+      "source_blob": "cd7a983292a335230441e7a9d7dcd8ebda7624a8",
+      "declaration_index": 11,
+      "method": "POST",
+      "path": "/exchange-grants/:id/context-packs"
+    },
+    {
+      "id": "apps/api/src/routes/files-v12.mjs#1:GET /projects/:id/files",
+      "source_module": "files-v12.mjs",
+      "source_path": "apps/api/src/routes/files-v12.mjs",
+      "source_blob": "56f58be8c272ae40251115b78d98afc76d782ade",
+      "declaration_index": 1,
+      "method": "GET",
+      "path": "/projects/:id/files"
+    },
+    {
+      "id": "apps/api/src/routes/files-v12.mjs#2:GET /projects/:id/files/content",
+      "source_module": "files-v12.mjs",
+      "source_path": "apps/api/src/routes/files-v12.mjs",
+      "source_blob": "56f58be8c272ae40251115b78d98afc76d782ade",
+      "declaration_index": 2,
+      "method": "GET",
+      "path": "/projects/:id/files/content"
+    },
+    {
+      "id": "apps/api/src/routes/files-v12.mjs#3:PUT /projects/:id/files/content",
+      "source_module": "files-v12.mjs",
+      "source_path": "apps/api/src/routes/files-v12.mjs",
+      "source_blob": "56f58be8c272ae40251115b78d98afc76d782ade",
+      "declaration_index": 3,
+      "method": "PUT",
+      "path": "/projects/:id/files/content"
+    },
+    {
+      "id": "apps/api/src/routes/files-v12.mjs#4:GET /projects/:id/files/diff",
+      "source_module": "files-v12.mjs",
+      "source_path": "apps/api/src/routes/files-v12.mjs",
+      "source_blob": "56f58be8c272ae40251115b78d98afc76d782ade",
+      "declaration_index": 4,
+      "method": "GET",
+      "path": "/projects/:id/files/diff"
+    },
+    {
+      "id": "apps/api/src/routes/files-v12.mjs#5:POST /projects/:id/test-tasks",
+      "source_module": "files-v12.mjs",
+      "source_path": "apps/api/src/routes/files-v12.mjs",
+      "source_blob": "56f58be8c272ae40251115b78d98afc76d782ade",
+      "declaration_index": 5,
+      "method": "POST",
+      "path": "/projects/:id/test-tasks"
+    },
+    {
+      "id": "apps/api/src/routes/git.mjs#1:POST /projects/:id/git-repositories",
+      "source_module": "git.mjs",
+      "source_path": "apps/api/src/routes/git.mjs",
+      "source_blob": "7985f7006cdc7768103ac730ca627d8f77a15b79",
+      "declaration_index": 1,
+      "method": "POST",
+      "path": "/projects/:id/git-repositories"
+    },
+    {
+      "id": "apps/api/src/routes/git.mjs#2:POST /runs/:id/git/branch",
+      "source_module": "git.mjs",
+      "source_path": "apps/api/src/routes/git.mjs",
+      "source_blob": "7985f7006cdc7768103ac730ca627d8f77a15b79",
+      "declaration_index": 2,
+      "method": "POST",
+      "path": "/runs/:id/git/branch"
+    },
+    {
+      "id": "apps/api/src/routes/git.mjs#3:POST /runs/:id/git/diff",
+      "source_module": "git.mjs",
+      "source_path": "apps/api/src/routes/git.mjs",
+      "source_blob": "7985f7006cdc7768103ac730ca627d8f77a15b79",
+      "declaration_index": 3,
+      "method": "POST",
+      "path": "/runs/:id/git/diff"
+    },
+    {
+      "id": "apps/api/src/routes/git.mjs#4:POST /runs/:id/git/commit",
+      "source_module": "git.mjs",
+      "source_path": "apps/api/src/routes/git.mjs",
+      "source_blob": "7985f7006cdc7768103ac730ca627d8f77a15b79",
+      "declaration_index": 4,
+      "method": "POST",
+      "path": "/runs/:id/git/commit"
+    },
+    {
+      "id": "apps/api/src/routes/github-config-v12.mjs#1:GET /github/status",
+      "source_module": "github-config-v12.mjs",
+      "source_path": "apps/api/src/routes/github-config-v12.mjs",
+      "source_blob": "c630462669910ca4f35f711506bda8b45d99589b",
+      "declaration_index": 1,
+      "method": "GET",
+      "path": "/github/status"
+    },
+    {
+      "id": "apps/api/src/routes/github-config-v12.mjs#2:GET /github/app-config/defaults",
+      "source_module": "github-config-v12.mjs",
+      "source_path": "apps/api/src/routes/github-config-v12.mjs",
+      "source_blob": "c630462669910ca4f35f711506bda8b45d99589b",
+      "declaration_index": 2,
+      "method": "GET",
+      "path": "/github/app-config/defaults"
+    },
+    {
+      "id": "apps/api/src/routes/github-config-v12.mjs#3:POST /github/app-config/validate",
+      "source_module": "github-config-v12.mjs",
+      "source_path": "apps/api/src/routes/github-config-v12.mjs",
+      "source_blob": "c630462669910ca4f35f711506bda8b45d99589b",
+      "declaration_index": 3,
+      "method": "POST",
+      "path": "/github/app-config/validate"
+    },
+    {
+      "id": "apps/api/src/routes/github-config-v12.mjs#4:POST /github/app-config/manual",
+      "source_module": "github-config-v12.mjs",
+      "source_path": "apps/api/src/routes/github-config-v12.mjs",
+      "source_blob": "c630462669910ca4f35f711506bda8b45d99589b",
+      "declaration_index": 4,
+      "method": "POST",
+      "path": "/github/app-config/manual"
+    },
+    {
+      "id": "apps/api/src/routes/github-config-v12.mjs#5:POST /github/manifest/start",
+      "source_module": "github-config-v12.mjs",
+      "source_path": "apps/api/src/routes/github-config-v12.mjs",
+      "source_blob": "c630462669910ca4f35f711506bda8b45d99589b",
+      "declaration_index": 5,
+      "method": "POST",
+      "path": "/github/manifest/start"
+    },
+    {
+      "id": "apps/api/src/routes/github-config-v12.mjs#6:POST /github/manifest/callback",
+      "source_module": "github-config-v12.mjs",
+      "source_path": "apps/api/src/routes/github-config-v12.mjs",
+      "source_blob": "c630462669910ca4f35f711506bda8b45d99589b",
+      "declaration_index": 6,
+      "method": "POST",
+      "path": "/github/manifest/callback"
+    },
+    {
+      "id": "apps/api/src/routes/github-config-v12.mjs#7:POST /github/device/start",
+      "source_module": "github-config-v12.mjs",
+      "source_path": "apps/api/src/routes/github-config-v12.mjs",
+      "source_blob": "c630462669910ca4f35f711506bda8b45d99589b",
+      "declaration_index": 7,
+      "method": "POST",
+      "path": "/github/device/start"
+    },
+    {
+      "id": "apps/api/src/routes/github-config-v12.mjs#8:POST /github/device/poll",
+      "source_module": "github-config-v12.mjs",
+      "source_path": "apps/api/src/routes/github-config-v12.mjs",
+      "source_blob": "c630462669910ca4f35f711506bda8b45d99589b",
+      "declaration_index": 8,
+      "method": "POST",
+      "path": "/github/device/poll"
+    },
+    {
+      "id": "apps/api/src/routes/github-config-v12.mjs#9:POST /github/app-config/reset",
+      "source_module": "github-config-v12.mjs",
+      "source_path": "apps/api/src/routes/github-config-v12.mjs",
+      "source_blob": "c630462669910ca4f35f711506bda8b45d99589b",
+      "declaration_index": 9,
+      "method": "POST",
+      "path": "/github/app-config/reset"
+    },
+    {
+      "id": "apps/api/src/routes/github-config-v12.mjs#10:POST /github/disconnect",
+      "source_module": "github-config-v12.mjs",
+      "source_path": "apps/api/src/routes/github-config-v12.mjs",
+      "source_blob": "c630462669910ca4f35f711506bda8b45d99589b",
+      "declaration_index": 10,
+      "method": "POST",
+      "path": "/github/disconnect"
+    },
+    {
+      "id": "apps/api/src/routes/github-installations-v12.mjs#1:POST /github/installations/start",
+      "source_module": "github-installations-v12.mjs",
+      "source_path": "apps/api/src/routes/github-installations-v12.mjs",
+      "source_blob": "2136d8d33a0420c8a529150e603bb7e0cfb6ca31",
+      "declaration_index": 1,
+      "method": "POST",
+      "path": "/github/installations/start"
+    },
+    {
+      "id": "apps/api/src/routes/github-installations-v12.mjs#2:POST /github/installations/discover",
+      "source_module": "github-installations-v12.mjs",
+      "source_path": "apps/api/src/routes/github-installations-v12.mjs",
+      "source_blob": "2136d8d33a0420c8a529150e603bb7e0cfb6ca31",
+      "declaration_index": 2,
+      "method": "POST",
+      "path": "/github/installations/discover"
+    },
+    {
+      "id": "apps/api/src/routes/github-installations-v12.mjs#3:POST /github/installations/setup",
+      "source_module": "github-installations-v12.mjs",
+      "source_path": "apps/api/src/routes/github-installations-v12.mjs",
+      "source_blob": "2136d8d33a0420c8a529150e603bb7e0cfb6ca31",
+      "declaration_index": 3,
+      "method": "POST",
+      "path": "/github/installations/setup"
+    },
+    {
+      "id": "apps/api/src/routes/github-installations-v12.mjs#4:GET /github/installations",
+      "source_module": "github-installations-v12.mjs",
+      "source_path": "apps/api/src/routes/github-installations-v12.mjs",
+      "source_blob": "2136d8d33a0420c8a529150e603bb7e0cfb6ca31",
+      "declaration_index": 4,
+      "method": "GET",
+      "path": "/github/installations"
+    },
+    {
+      "id": "apps/api/src/routes/github-installations-v12.mjs#5:GET /github/installations/:id/repositories",
+      "source_module": "github-installations-v12.mjs",
+      "source_path": "apps/api/src/routes/github-installations-v12.mjs",
+      "source_blob": "2136d8d33a0420c8a529150e603bb7e0cfb6ca31",
+      "declaration_index": 5,
+      "method": "GET",
+      "path": "/github/installations/:id/repositories"
+    },
+    {
+      "id": "apps/api/src/routes/github-installations-v12.mjs#6:POST /github/installations/:id/repositories/sync",
+      "source_module": "github-installations-v12.mjs",
+      "source_path": "apps/api/src/routes/github-installations-v12.mjs",
+      "source_blob": "2136d8d33a0420c8a529150e603bb7e0cfb6ca31",
+      "declaration_index": 6,
+      "method": "POST",
+      "path": "/github/installations/:id/repositories/sync"
+    },
+    {
+      "id": "apps/api/src/routes/github-installations-v12.mjs#7:PUT /github/installations/:id/repositories",
+      "source_module": "github-installations-v12.mjs",
+      "source_path": "apps/api/src/routes/github-installations-v12.mjs",
+      "source_blob": "2136d8d33a0420c8a529150e603bb7e0cfb6ca31",
+      "declaration_index": 7,
+      "method": "PUT",
+      "path": "/github/installations/:id/repositories"
+    },
+    {
+      "id": "apps/api/src/routes/github-installations-v12.mjs#8:POST /github/repositories/sync",
+      "source_module": "github-installations-v12.mjs",
+      "source_path": "apps/api/src/routes/github-installations-v12.mjs",
+      "source_blob": "2136d8d33a0420c8a529150e603bb7e0cfb6ca31",
+      "declaration_index": 8,
+      "method": "POST",
+      "path": "/github/repositories/sync"
+    },
+    {
+      "id": "apps/api/src/routes/github-installations-v12.mjs#9:PUT /projects/:id/repository-binding",
+      "source_module": "github-installations-v12.mjs",
+      "source_path": "apps/api/src/routes/github-installations-v12.mjs",
+      "source_blob": "2136d8d33a0420c8a529150e603bb7e0cfb6ca31",
+      "declaration_index": 9,
+      "method": "PUT",
+      "path": "/projects/:id/repository-binding"
+    },
+    {
+      "id": "apps/api/src/routes/github-installations-v12.mjs#10:POST /github/permissions/check",
+      "source_module": "github-installations-v12.mjs",
+      "source_path": "apps/api/src/routes/github-installations-v12.mjs",
+      "source_blob": "2136d8d33a0420c8a529150e603bb7e0cfb6ca31",
+      "declaration_index": 10,
+      "method": "POST",
+      "path": "/github/permissions/check"
+    },
+    {
+      "id": "apps/api/src/routes/github-repositories-v13.mjs#1:POST /github/repositories",
+      "source_module": "github-repositories-v13.mjs",
+      "source_path": "apps/api/src/routes/github-repositories-v13.mjs",
+      "source_blob": "b1b553f9fdb8b49d5cd2a10605cec4fac9bdfe39",
+      "declaration_index": 1,
+      "method": "POST",
+      "path": "/github/repositories"
+    },
+    {
+      "id": "apps/api/src/routes/github-repositories-v13.mjs#2:POST /projects/:id/github/repository",
+      "source_module": "github-repositories-v13.mjs",
+      "source_path": "apps/api/src/routes/github-repositories-v13.mjs",
+      "source_blob": "b1b553f9fdb8b49d5cd2a10605cec4fac9bdfe39",
+      "declaration_index": 2,
+      "method": "POST",
+      "path": "/projects/:id/github/repository"
+    },
+    {
+      "id": "apps/api/src/routes/github-webhook-v12.mjs#1:POST /github/webhook",
+      "source_module": "github-webhook-v12.mjs",
+      "source_path": "apps/api/src/routes/github-webhook-v12.mjs",
+      "source_blob": "b1e6b53cc4256524062fa31add9aed854c4b126a",
+      "declaration_index": 1,
+      "method": "POST",
+      "path": "/github/webhook"
+    },
+    {
+      "id": "apps/api/src/routes/github.mjs#1:POST /runs/:id/github/pr",
+      "source_module": "github.mjs",
+      "source_path": "apps/api/src/routes/github.mjs",
+      "source_blob": "6b2225bc30403328a70a3bc9dfa8ee0aa03c8139",
+      "declaration_index": 1,
+      "method": "POST",
+      "path": "/runs/:id/github/pr"
+    },
+    {
+      "id": "apps/api/src/routes/host-bridge-v15.mjs#1:GET /assist/v3/host-bridge/pairing",
+      "source_module": "host-bridge-v15.mjs",
+      "source_path": "apps/api/src/routes/host-bridge-v15.mjs",
+      "source_blob": "4a9baccba14f113643c35f61054045bbbb229e2f",
+      "declaration_index": 1,
+      "method": "GET",
+      "path": "/assist/v3/host-bridge/pairing"
+    },
+    {
+      "id": "apps/api/src/routes/host-bridge-v15.mjs#2:POST /assist/v3/host-bridge/pairing",
+      "source_module": "host-bridge-v15.mjs",
+      "source_path": "apps/api/src/routes/host-bridge-v15.mjs",
+      "source_blob": "4a9baccba14f113643c35f61054045bbbb229e2f",
+      "declaration_index": 2,
+      "method": "POST",
+      "path": "/assist/v3/host-bridge/pairing"
+    },
+    {
+      "id": "apps/api/src/routes/host-bridge-v15.mjs#3:DELETE /assist/v3/host-bridge/devices/:id",
+      "source_module": "host-bridge-v15.mjs",
+      "source_path": "apps/api/src/routes/host-bridge-v15.mjs",
+      "source_blob": "4a9baccba14f113643c35f61054045bbbb229e2f",
+      "declaration_index": 3,
+      "method": "DELETE",
+      "path": "/assist/v3/host-bridge/devices/:id"
+    },
+    {
+      "id": "apps/api/src/routes/mcp-clients-v18.mjs#1:GET /mcp/clients",
+      "source_module": "mcp-clients-v18.mjs",
+      "source_path": "apps/api/src/routes/mcp-clients-v18.mjs",
+      "source_blob": "ad1b5d250355d8d34633e910a7c8891daa2486f7",
+      "declaration_index": 1,
+      "method": "GET",
+      "path": "/mcp/clients"
+    },
+    {
+      "id": "apps/api/src/routes/mcp-clients-v18.mjs#2:POST /mcp/clients",
+      "source_module": "mcp-clients-v18.mjs",
+      "source_path": "apps/api/src/routes/mcp-clients-v18.mjs",
+      "source_blob": "ad1b5d250355d8d34633e910a7c8891daa2486f7",
+      "declaration_index": 2,
+      "method": "POST",
+      "path": "/mcp/clients"
+    },
+    {
+      "id": "apps/api/src/routes/mcp-clients-v18.mjs#3:DELETE /mcp/clients/:id",
+      "source_module": "mcp-clients-v18.mjs",
+      "source_path": "apps/api/src/routes/mcp-clients-v18.mjs",
+      "source_blob": "ad1b5d250355d8d34633e910a7c8891daa2486f7",
+      "declaration_index": 3,
+      "method": "DELETE",
+      "path": "/mcp/clients/:id"
+    },
+    {
+      "id": "apps/api/src/routes/mcp-v18.mjs#1:POST /mcp",
+      "source_module": "mcp-v18.mjs",
+      "source_path": "apps/api/src/routes/mcp-v18.mjs",
+      "source_blob": "d1ca725f3b4cee1602be9c215f2eb765d1f74d5a",
+      "declaration_index": 1,
+      "method": "POST",
+      "path": "/mcp"
+    },
+    {
+      "id": "apps/api/src/routes/mcp-v18.mjs#2:GET /mcp",
+      "source_module": "mcp-v18.mjs",
+      "source_path": "apps/api/src/routes/mcp-v18.mjs",
+      "source_blob": "d1ca725f3b4cee1602be9c215f2eb765d1f74d5a",
+      "declaration_index": 2,
+      "method": "GET",
+      "path": "/mcp"
+    },
+    {
+      "id": "apps/api/src/routes/mcp-v18.mjs#3:DELETE /mcp",
+      "source_module": "mcp-v18.mjs",
+      "source_path": "apps/api/src/routes/mcp-v18.mjs",
+      "source_blob": "d1ca725f3b4cee1602be9c215f2eb765d1f74d5a",
+      "declaration_index": 3,
+      "method": "DELETE",
+      "path": "/mcp"
+    },
+    {
+      "id": "apps/api/src/routes/project-governance-v19.mjs#1:GET /projects/:id/members",
+      "source_module": "project-governance-v19.mjs",
+      "source_path": "apps/api/src/routes/project-governance-v19.mjs",
+      "source_blob": "8fbd1a3b29c828acf35c1bba95e64ccf1cadd079",
+      "declaration_index": 1,
+      "method": "GET",
+      "path": "/projects/:id/members"
+    },
+    {
+      "id": "apps/api/src/routes/project-governance-v19.mjs#2:GET /projects/:id/memberships",
+      "source_module": "project-governance-v19.mjs",
+      "source_path": "apps/api/src/routes/project-governance-v19.mjs",
+      "source_blob": "8fbd1a3b29c828acf35c1bba95e64ccf1cadd079",
+      "declaration_index": 2,
+      "method": "GET",
+      "path": "/projects/:id/memberships"
+    },
+    {
+      "id": "apps/api/src/routes/project-governance-v19.mjs#3:GET /projects/:id/permissions",
+      "source_module": "project-governance-v19.mjs",
+      "source_path": "apps/api/src/routes/project-governance-v19.mjs",
+      "source_blob": "8fbd1a3b29c828acf35c1bba95e64ccf1cadd079",
+      "declaration_index": 3,
+      "method": "GET",
+      "path": "/projects/:id/permissions"
+    },
+    {
+      "id": "apps/api/src/routes/project-governance-v19.mjs#4:GET /projects/:id/invitations",
+      "source_module": "project-governance-v19.mjs",
+      "source_path": "apps/api/src/routes/project-governance-v19.mjs",
+      "source_blob": "8fbd1a3b29c828acf35c1bba95e64ccf1cadd079",
+      "declaration_index": 4,
+      "method": "GET",
+      "path": "/projects/:id/invitations"
+    },
+    {
+      "id": "apps/api/src/routes/project-governance-v19.mjs#5:POST /projects/:id/invitations",
+      "source_module": "project-governance-v19.mjs",
+      "source_path": "apps/api/src/routes/project-governance-v19.mjs",
+      "source_blob": "8fbd1a3b29c828acf35c1bba95e64ccf1cadd079",
+      "declaration_index": 5,
+      "method": "POST",
+      "path": "/projects/:id/invitations"
+    },
+    {
+      "id": "apps/api/src/routes/project-governance-v19.mjs#6:POST /projects/:id/share",
+      "source_module": "project-governance-v19.mjs",
+      "source_path": "apps/api/src/routes/project-governance-v19.mjs",
+      "source_blob": "8fbd1a3b29c828acf35c1bba95e64ccf1cadd079",
+      "declaration_index": 6,
+      "method": "POST",
+      "path": "/projects/:id/share"
+    },
+    {
+      "id": "apps/api/src/routes/project-governance-v19.mjs#7:POST /project-invitations/:id/accept",
+      "source_module": "project-governance-v19.mjs",
+      "source_path": "apps/api/src/routes/project-governance-v19.mjs",
+      "source_blob": "8fbd1a3b29c828acf35c1bba95e64ccf1cadd079",
+      "declaration_index": 7,
+      "method": "POST",
+      "path": "/project-invitations/:id/accept"
+    },
+    {
+      "id": "apps/api/src/routes/project-governance-v19.mjs#8:POST /project-invitations/:id/revoke",
+      "source_module": "project-governance-v19.mjs",
+      "source_path": "apps/api/src/routes/project-governance-v19.mjs",
+      "source_blob": "8fbd1a3b29c828acf35c1bba95e64ccf1cadd079",
+      "declaration_index": 8,
+      "method": "POST",
+      "path": "/project-invitations/:id/revoke"
+    },
+    {
+      "id": "apps/api/src/routes/project-governance-v19.mjs#9:DELETE /projects/:id/members/:userId",
+      "source_module": "project-governance-v19.mjs",
+      "source_path": "apps/api/src/routes/project-governance-v19.mjs",
+      "source_blob": "8fbd1a3b29c828acf35c1bba95e64ccf1cadd079",
+      "declaration_index": 9,
+      "method": "DELETE",
+      "path": "/projects/:id/members/:userId"
+    },
+    {
+      "id": "apps/api/src/routes/project-onboarding-v13.mjs#1:GET /projects/:id/onboarding",
+      "source_module": "project-onboarding-v13.mjs",
+      "source_path": "apps/api/src/routes/project-onboarding-v13.mjs",
+      "source_blob": "28bbefe633f9f5b2dfb6d34dd9809c014e44e87d",
+      "declaration_index": 1,
+      "method": "GET",
+      "path": "/projects/:id/onboarding"
+    },
+    {
+      "id": "apps/api/src/routes/project-onboarding-v13.mjs#2:PUT /projects/:id/intake",
+      "source_module": "project-onboarding-v13.mjs",
+      "source_path": "apps/api/src/routes/project-onboarding-v13.mjs",
+      "source_blob": "28bbefe633f9f5b2dfb6d34dd9809c014e44e87d",
+      "declaration_index": 2,
+      "method": "PUT",
+      "path": "/projects/:id/intake"
+    },
+    {
+      "id": "apps/api/src/routes/project-onboarding-v13.mjs#3:POST /projects/:id/intake",
+      "source_module": "project-onboarding-v13.mjs",
+      "source_path": "apps/api/src/routes/project-onboarding-v13.mjs",
+      "source_blob": "28bbefe633f9f5b2dfb6d34dd9809c014e44e87d",
+      "declaration_index": 3,
+      "method": "POST",
+      "path": "/projects/:id/intake"
+    },
+    {
+      "id": "apps/api/src/routes/project-onboarding-v13.mjs#4:POST /projects/:id/intake/retry",
+      "source_module": "project-onboarding-v13.mjs",
+      "source_path": "apps/api/src/routes/project-onboarding-v13.mjs",
+      "source_blob": "28bbefe633f9f5b2dfb6d34dd9809c014e44e87d",
+      "declaration_index": 4,
+      "method": "POST",
+      "path": "/projects/:id/intake/retry"
+    },
+    {
+      "id": "apps/api/src/routes/project-onboarding-v13.mjs#5:POST /projects/:id/imports",
+      "source_module": "project-onboarding-v13.mjs",
+      "source_path": "apps/api/src/routes/project-onboarding-v13.mjs",
+      "source_blob": "28bbefe633f9f5b2dfb6d34dd9809c014e44e87d",
+      "declaration_index": 5,
+      "method": "POST",
+      "path": "/projects/:id/imports"
+    },
+    {
+      "id": "apps/api/src/routes/project-onboarding-v13.mjs#6:POST /projects/:id/onboarding/confirm",
+      "source_module": "project-onboarding-v13.mjs",
+      "source_path": "apps/api/src/routes/project-onboarding-v13.mjs",
+      "source_blob": "28bbefe633f9f5b2dfb6d34dd9809c014e44e87d",
+      "declaration_index": 6,
+      "method": "POST",
+      "path": "/projects/:id/onboarding/confirm"
+    },
+    {
+      "id": "apps/api/src/routes/project-onboarding-v13.mjs#7:POST /projects/:id/confirm",
+      "source_module": "project-onboarding-v13.mjs",
+      "source_path": "apps/api/src/routes/project-onboarding-v13.mjs",
+      "source_blob": "28bbefe633f9f5b2dfb6d34dd9809c014e44e87d",
+      "declaration_index": 7,
+      "method": "POST",
+      "path": "/projects/:id/confirm"
+    },
+    {
+      "id": "apps/api/src/routes/project-onboarding-v13.mjs#8:PATCH /projects/:projectId/briefs/:briefId",
+      "source_module": "project-onboarding-v13.mjs",
+      "source_path": "apps/api/src/routes/project-onboarding-v13.mjs",
+      "source_blob": "28bbefe633f9f5b2dfb6d34dd9809c014e44e87d",
+      "declaration_index": 8,
+      "method": "PATCH",
+      "path": "/projects/:projectId/briefs/:briefId"
+    },
+    {
+      "id": "apps/api/src/routes/project-onboarding-v13.mjs#9:GET /brief-templates",
+      "source_module": "project-onboarding-v13.mjs",
+      "source_path": "apps/api/src/routes/project-onboarding-v13.mjs",
+      "source_blob": "28bbefe633f9f5b2dfb6d34dd9809c014e44e87d",
+      "declaration_index": 9,
+      "method": "GET",
+      "path": "/brief-templates"
+    },
+    {
+      "id": "apps/api/src/routes/project-onboarding-v13.mjs#10:POST /brief-templates",
+      "source_module": "project-onboarding-v13.mjs",
+      "source_path": "apps/api/src/routes/project-onboarding-v13.mjs",
+      "source_blob": "28bbefe633f9f5b2dfb6d34dd9809c014e44e87d",
+      "declaration_index": 10,
+      "method": "POST",
+      "path": "/brief-templates"
+    },
+    {
+      "id": "apps/api/src/routes/project-onboarding-v13.mjs#11:POST /brief-templates/:templateId/apply",
+      "source_module": "project-onboarding-v13.mjs",
+      "source_path": "apps/api/src/routes/project-onboarding-v13.mjs",
+      "source_blob": "28bbefe633f9f5b2dfb6d34dd9809c014e44e87d",
+      "declaration_index": 11,
+      "method": "POST",
+      "path": "/brief-templates/:templateId/apply"
+    },
+    {
+      "id": "apps/api/src/routes/project-onboarding-v13.mjs#12:POST /projects/:projectId/briefs/:briefId/apply-template",
+      "source_module": "project-onboarding-v13.mjs",
+      "source_path": "apps/api/src/routes/project-onboarding-v13.mjs",
+      "source_blob": "28bbefe633f9f5b2dfb6d34dd9809c014e44e87d",
+      "declaration_index": 12,
+      "method": "POST",
+      "path": "/projects/:projectId/briefs/:briefId/apply-template"
+    },
+    {
+      "id": "apps/api/src/routes/project-onboarding-v13.mjs#13:GET /projects/:id/workflow-draft",
+      "source_module": "project-onboarding-v13.mjs",
+      "source_path": "apps/api/src/routes/project-onboarding-v13.mjs",
+      "source_blob": "28bbefe633f9f5b2dfb6d34dd9809c014e44e87d",
+      "declaration_index": 13,
+      "method": "GET",
+      "path": "/projects/:id/workflow-draft"
+    },
+    {
+      "id": "apps/api/src/routes/project-onboarding-v13.mjs#14:PATCH /projects/:id/workflow-draft",
+      "source_module": "project-onboarding-v13.mjs",
+      "source_path": "apps/api/src/routes/project-onboarding-v13.mjs",
+      "source_blob": "28bbefe633f9f5b2dfb6d34dd9809c014e44e87d",
+      "declaration_index": 14,
+      "method": "PATCH",
+      "path": "/projects/:id/workflow-draft"
+    },
+    {
+      "id": "apps/api/src/routes/project-onboarding-v13.mjs#15:POST /projects/:id/managed-workspace/migrate",
+      "source_module": "project-onboarding-v13.mjs",
+      "source_path": "apps/api/src/routes/project-onboarding-v13.mjs",
+      "source_blob": "28bbefe633f9f5b2dfb6d34dd9809c014e44e87d",
+      "declaration_index": 15,
+      "method": "POST",
+      "path": "/projects/:id/managed-workspace/migrate"
+    },
+    {
+      "id": "apps/api/src/routes/project-onboarding-v13.mjs#16:POST /projects/:id/trash",
+      "source_module": "project-onboarding-v13.mjs",
+      "source_path": "apps/api/src/routes/project-onboarding-v13.mjs",
+      "source_blob": "28bbefe633f9f5b2dfb6d34dd9809c014e44e87d",
+      "declaration_index": 16,
+      "method": "POST",
+      "path": "/projects/:id/trash"
+    },
+    {
+      "id": "apps/api/src/routes/project-onboarding-v13.mjs#17:DELETE /projects/:id",
+      "source_module": "project-onboarding-v13.mjs",
+      "source_path": "apps/api/src/routes/project-onboarding-v13.mjs",
+      "source_blob": "28bbefe633f9f5b2dfb6d34dd9809c014e44e87d",
+      "declaration_index": 17,
+      "method": "DELETE",
+      "path": "/projects/:id"
+    },
+    {
+      "id": "apps/api/src/routes/project-onboarding-v13.mjs#18:POST /projects/:id/restore",
+      "source_module": "project-onboarding-v13.mjs",
+      "source_path": "apps/api/src/routes/project-onboarding-v13.mjs",
+      "source_blob": "28bbefe633f9f5b2dfb6d34dd9809c014e44e87d",
+      "declaration_index": 18,
+      "method": "POST",
+      "path": "/projects/:id/restore"
+    },
+    {
+      "id": "apps/api/src/routes/project-onboarding-v13.mjs#19:POST /projects/:id/purge",
+      "source_module": "project-onboarding-v13.mjs",
+      "source_path": "apps/api/src/routes/project-onboarding-v13.mjs",
+      "source_blob": "28bbefe633f9f5b2dfb6d34dd9809c014e44e87d",
+      "declaration_index": 19,
+      "method": "POST",
+      "path": "/projects/:id/purge"
+    },
+    {
+      "id": "apps/api/src/routes/projects.mjs#1:GET /projects",
+      "source_module": "projects.mjs",
+      "source_path": "apps/api/src/routes/projects.mjs",
+      "source_blob": "27ac51bff7697445712e9dc96c65e83eef4de387",
+      "declaration_index": 1,
+      "method": "GET",
+      "path": "/projects"
+    },
+    {
+      "id": "apps/api/src/routes/projects.mjs#2:POST /projects",
+      "source_module": "projects.mjs",
+      "source_path": "apps/api/src/routes/projects.mjs",
+      "source_blob": "27ac51bff7697445712e9dc96c65e83eef4de387",
+      "declaration_index": 2,
+      "method": "POST",
+      "path": "/projects"
+    },
+    {
+      "id": "apps/api/src/routes/projects.mjs#3:GET /projects/:id",
+      "source_module": "projects.mjs",
+      "source_path": "apps/api/src/routes/projects.mjs",
+      "source_blob": "27ac51bff7697445712e9dc96c65e83eef4de387",
+      "declaration_index": 3,
+      "method": "GET",
+      "path": "/projects/:id"
+    },
+    {
+      "id": "apps/api/src/routes/projects.mjs#4:GET /workflows/:id",
+      "source_module": "projects.mjs",
+      "source_path": "apps/api/src/routes/projects.mjs",
+      "source_blob": "27ac51bff7697445712e9dc96c65e83eef4de387",
+      "declaration_index": 4,
+      "method": "GET",
+      "path": "/workflows/:id"
+    },
+    {
+      "id": "apps/api/src/routes/projects.mjs#5:GET /workspaces/:id",
+      "source_module": "projects.mjs",
+      "source_path": "apps/api/src/routes/projects.mjs",
+      "source_blob": "27ac51bff7697445712e9dc96c65e83eef4de387",
+      "declaration_index": 5,
+      "method": "GET",
+      "path": "/workspaces/:id"
+    },
+    {
+      "id": "apps/api/src/routes/projects.mjs#6:GET /nodes/:id/workspace",
+      "source_module": "projects.mjs",
+      "source_path": "apps/api/src/routes/projects.mjs",
+      "source_blob": "27ac51bff7697445712e9dc96c65e83eef4de387",
+      "declaration_index": 6,
+      "method": "GET",
+      "path": "/nodes/:id/workspace"
+    },
+    {
+      "id": "apps/api/src/routes/projects.mjs#7:PUT /nodes/:id/workspace-data",
+      "source_module": "projects.mjs",
+      "source_path": "apps/api/src/routes/projects.mjs",
+      "source_blob": "27ac51bff7697445712e9dc96c65e83eef4de387",
+      "declaration_index": 7,
+      "method": "PUT",
+      "path": "/nodes/:id/workspace-data"
+    },
+    {
+      "id": "apps/api/src/routes/pull-request-intents-v19.mjs#1:GET /projects/:id/pull-requests",
+      "source_module": "pull-request-intents-v19.mjs",
+      "source_path": "apps/api/src/routes/pull-request-intents-v19.mjs",
+      "source_blob": "dec6963ec5584009f0145291c3f73a770c6a2c5a",
+      "declaration_index": 1,
+      "method": "GET",
+      "path": "/projects/:id/pull-requests"
+    },
+    {
+      "id": "apps/api/src/routes/pull-request-intents-v19.mjs#2:GET /projects/:id/pull-requests/:pullRequestId",
+      "source_module": "pull-request-intents-v19.mjs",
+      "source_path": "apps/api/src/routes/pull-request-intents-v19.mjs",
+      "source_blob": "dec6963ec5584009f0145291c3f73a770c6a2c5a",
+      "declaration_index": 2,
+      "method": "GET",
+      "path": "/projects/:id/pull-requests/:pullRequestId"
+    },
+    {
+      "id": "apps/api/src/routes/pull-request-intents-v19.mjs#3:POST /projects/:id/pull-request-intents",
+      "source_module": "pull-request-intents-v19.mjs",
+      "source_path": "apps/api/src/routes/pull-request-intents-v19.mjs",
+      "source_blob": "dec6963ec5584009f0145291c3f73a770c6a2c5a",
+      "declaration_index": 3,
+      "method": "POST",
+      "path": "/projects/:id/pull-request-intents"
+    },
+    {
+      "id": "apps/api/src/routes/pull-request-intents-v19.mjs#4:GET /pull-request-intents/:id",
+      "source_module": "pull-request-intents-v19.mjs",
+      "source_path": "apps/api/src/routes/pull-request-intents-v19.mjs",
+      "source_blob": "dec6963ec5584009f0145291c3f73a770c6a2c5a",
+      "declaration_index": 4,
+      "method": "GET",
+      "path": "/pull-request-intents/:id"
+    },
+    {
+      "id": "apps/api/src/routes/pull-request-intents-v19.mjs#5:POST /pull-request-intents/:id/approve",
+      "source_module": "pull-request-intents-v19.mjs",
+      "source_path": "apps/api/src/routes/pull-request-intents-v19.mjs",
+      "source_blob": "dec6963ec5584009f0145291c3f73a770c6a2c5a",
+      "declaration_index": 5,
+      "method": "POST",
+      "path": "/pull-request-intents/:id/approve"
+    },
+    {
+      "id": "apps/api/src/routes/pull-request-intents-v19.mjs#6:POST /pull-request-intents/:id/execute",
+      "source_module": "pull-request-intents-v19.mjs",
+      "source_path": "apps/api/src/routes/pull-request-intents-v19.mjs",
+      "source_blob": "dec6963ec5584009f0145291c3f73a770c6a2c5a",
+      "declaration_index": 6,
+      "method": "POST",
+      "path": "/pull-request-intents/:id/execute"
+    },
+    {
+      "id": "apps/api/src/routes/pull-request-intents-v19.mjs#7:POST /pull-request-intents/:id/revoke",
+      "source_module": "pull-request-intents-v19.mjs",
+      "source_path": "apps/api/src/routes/pull-request-intents-v19.mjs",
+      "source_blob": "dec6963ec5584009f0145291c3f73a770c6a2c5a",
+      "declaration_index": 7,
+      "method": "POST",
+      "path": "/pull-request-intents/:id/revoke"
+    },
+    {
+      "id": "apps/api/src/routes/pull-request-intents-v19.mjs#8:POST /pull-request-intents/:id/reconcile",
+      "source_module": "pull-request-intents-v19.mjs",
+      "source_path": "apps/api/src/routes/pull-request-intents-v19.mjs",
+      "source_blob": "dec6963ec5584009f0145291c3f73a770c6a2c5a",
+      "declaration_index": 8,
+      "method": "POST",
+      "path": "/pull-request-intents/:id/reconcile"
+    },
+    {
+      "id": "apps/api/src/routes/quality-reviews-v23.mjs#1:PUT /workflows/:id/quality-review-policy",
+      "source_module": "quality-reviews-v23.mjs",
+      "source_path": "apps/api/src/routes/quality-reviews-v23.mjs",
+      "source_blob": "2846a1c23e6aea38579983ec9e86383fcba550c1",
+      "declaration_index": 1,
+      "method": "PUT",
+      "path": "/workflows/:id/quality-review-policy"
+    },
+    {
+      "id": "apps/api/src/routes/quality-reviews-v23.mjs#2:GET /workflow-executions/:id/quality-reviews/prepare",
+      "source_module": "quality-reviews-v23.mjs",
+      "source_path": "apps/api/src/routes/quality-reviews-v23.mjs",
+      "source_blob": "2846a1c23e6aea38579983ec9e86383fcba550c1",
+      "declaration_index": 2,
+      "method": "GET",
+      "path": "/workflow-executions/:id/quality-reviews/prepare"
+    },
+    {
+      "id": "apps/api/src/routes/quality-reviews-v23.mjs#3:GET /workflow-executions/:id/quality-reviews",
+      "source_module": "quality-reviews-v23.mjs",
+      "source_path": "apps/api/src/routes/quality-reviews-v23.mjs",
+      "source_blob": "2846a1c23e6aea38579983ec9e86383fcba550c1",
+      "declaration_index": 3,
+      "method": "GET",
+      "path": "/workflow-executions/:id/quality-reviews"
+    },
+    {
+      "id": "apps/api/src/routes/quality-reviews-v23.mjs#4:POST /workflow-executions/:id/quality-reviews",
+      "source_module": "quality-reviews-v23.mjs",
+      "source_path": "apps/api/src/routes/quality-reviews-v23.mjs",
+      "source_blob": "2846a1c23e6aea38579983ec9e86383fcba550c1",
+      "declaration_index": 4,
+      "method": "POST",
+      "path": "/workflow-executions/:id/quality-reviews"
+    },
+    {
+      "id": "apps/api/src/routes/quality-reviews-v23.mjs#5:GET /quality-reviews/:id",
+      "source_module": "quality-reviews-v23.mjs",
+      "source_path": "apps/api/src/routes/quality-reviews-v23.mjs",
+      "source_blob": "2846a1c23e6aea38579983ec9e86383fcba550c1",
+      "declaration_index": 5,
+      "method": "GET",
+      "path": "/quality-reviews/:id"
+    },
+    {
+      "id": "apps/api/src/routes/quality-reviews-v23.mjs#6:GET /quality-reviews/:id/events",
+      "source_module": "quality-reviews-v23.mjs",
+      "source_path": "apps/api/src/routes/quality-reviews-v23.mjs",
+      "source_blob": "2846a1c23e6aea38579983ec9e86383fcba550c1",
+      "declaration_index": 6,
+      "method": "GET",
+      "path": "/quality-reviews/:id/events"
+    },
+    {
+      "id": "apps/api/src/routes/quality-reviews-v23.mjs#7:POST /quality-reviews/:id/cancel",
+      "source_module": "quality-reviews-v23.mjs",
+      "source_path": "apps/api/src/routes/quality-reviews-v23.mjs",
+      "source_blob": "2846a1c23e6aea38579983ec9e86383fcba550c1",
+      "declaration_index": 7,
+      "method": "POST",
+      "path": "/quality-reviews/:id/cancel"
+    },
+    {
+      "id": "apps/api/src/routes/quality-reviews-v23.mjs#8:POST /quality-reviews/:id/decision",
+      "source_module": "quality-reviews-v23.mjs",
+      "source_path": "apps/api/src/routes/quality-reviews-v23.mjs",
+      "source_blob": "2846a1c23e6aea38579983ec9e86383fcba550c1",
+      "declaration_index": 8,
+      "method": "POST",
+      "path": "/quality-reviews/:id/decision"
+    },
+    {
+      "id": "apps/api/src/routes/repository-delivery-v19.mjs#1:GET /projects/:id/repository-connections",
+      "source_module": "repository-delivery-v19.mjs",
+      "source_path": "apps/api/src/routes/repository-delivery-v19.mjs",
+      "source_blob": "9ece67d43b194550f046b8619a67f75dc47e8e8c",
+      "declaration_index": 1,
+      "method": "GET",
+      "path": "/projects/:id/repository-connections"
+    },
+    {
+      "id": "apps/api/src/routes/repository-delivery-v19.mjs#2:POST /projects/:id/repository-connections",
+      "source_module": "repository-delivery-v19.mjs",
+      "source_path": "apps/api/src/routes/repository-delivery-v19.mjs",
+      "source_blob": "9ece67d43b194550f046b8619a67f75dc47e8e8c",
+      "declaration_index": 2,
+      "method": "POST",
+      "path": "/projects/:id/repository-connections"
+    },
+    {
+      "id": "apps/api/src/routes/repository-delivery-v19.mjs#3:PATCH /projects/:projectId/repository-connections/:connectionId",
+      "source_module": "repository-delivery-v19.mjs",
+      "source_path": "apps/api/src/routes/repository-delivery-v19.mjs",
+      "source_blob": "9ece67d43b194550f046b8619a67f75dc47e8e8c",
+      "declaration_index": 3,
+      "method": "PATCH",
+      "path": "/projects/:projectId/repository-connections/:connectionId"
+    },
+    {
+      "id": "apps/api/src/routes/repository-delivery-v19.mjs#4:DELETE /projects/:projectId/repository-connections/:connectionId",
+      "source_module": "repository-delivery-v19.mjs",
+      "source_path": "apps/api/src/routes/repository-delivery-v19.mjs",
+      "source_blob": "9ece67d43b194550f046b8619a67f75dc47e8e8c",
+      "declaration_index": 4,
+      "method": "DELETE",
+      "path": "/projects/:projectId/repository-connections/:connectionId"
+    },
+    {
+      "id": "apps/api/src/routes/repository-delivery-v19.mjs#5:GET /workstreams/:id/repository-targets",
+      "source_module": "repository-delivery-v19.mjs",
+      "source_path": "apps/api/src/routes/repository-delivery-v19.mjs",
+      "source_blob": "9ece67d43b194550f046b8619a67f75dc47e8e8c",
+      "declaration_index": 5,
+      "method": "GET",
+      "path": "/workstreams/:id/repository-targets"
+    },
+    {
+      "id": "apps/api/src/routes/repository-delivery-v19.mjs#6:PUT /workstreams/:id/repository-targets",
+      "source_module": "repository-delivery-v19.mjs",
+      "source_path": "apps/api/src/routes/repository-delivery-v19.mjs",
+      "source_blob": "9ece67d43b194550f046b8619a67f75dc47e8e8c",
+      "declaration_index": 6,
+      "method": "PUT",
+      "path": "/workstreams/:id/repository-targets"
+    },
+    {
+      "id": "apps/api/src/routes/repository-delivery-v19.mjs#7:GET /tasks/:id/repository-targets",
+      "source_module": "repository-delivery-v19.mjs",
+      "source_path": "apps/api/src/routes/repository-delivery-v19.mjs",
+      "source_blob": "9ece67d43b194550f046b8619a67f75dc47e8e8c",
+      "declaration_index": 7,
+      "method": "GET",
+      "path": "/tasks/:id/repository-targets"
+    },
+    {
+      "id": "apps/api/src/routes/repository-delivery-v19.mjs#8:PUT /tasks/:id/repository-targets",
+      "source_module": "repository-delivery-v19.mjs",
+      "source_path": "apps/api/src/routes/repository-delivery-v19.mjs",
+      "source_blob": "9ece67d43b194550f046b8619a67f75dc47e8e8c",
+      "declaration_index": 8,
+      "method": "PUT",
+      "path": "/tasks/:id/repository-targets"
+    },
+    {
+      "id": "apps/api/src/routes/repository-delivery-v19.mjs#9:GET /workstreams/:id/delivery-policies",
+      "source_module": "repository-delivery-v19.mjs",
+      "source_path": "apps/api/src/routes/repository-delivery-v19.mjs",
+      "source_blob": "9ece67d43b194550f046b8619a67f75dc47e8e8c",
+      "declaration_index": 9,
+      "method": "GET",
+      "path": "/workstreams/:id/delivery-policies"
+    },
+    {
+      "id": "apps/api/src/routes/repository-delivery-v19.mjs#10:POST /workstreams/:id/delivery-policies",
+      "source_module": "repository-delivery-v19.mjs",
+      "source_path": "apps/api/src/routes/repository-delivery-v19.mjs",
+      "source_blob": "9ece67d43b194550f046b8619a67f75dc47e8e8c",
+      "declaration_index": 10,
+      "method": "POST",
+      "path": "/workstreams/:id/delivery-policies"
+    },
+    {
+      "id": "apps/api/src/routes/repository-delivery-v19.mjs#11:POST /delivery-policies/:id/revoke",
+      "source_module": "repository-delivery-v19.mjs",
+      "source_path": "apps/api/src/routes/repository-delivery-v19.mjs",
+      "source_blob": "9ece67d43b194550f046b8619a67f75dc47e8e8c",
+      "declaration_index": 11,
+      "method": "POST",
+      "path": "/delivery-policies/:id/revoke"
+    },
+    {
+      "id": "apps/api/src/routes/repository-delivery-v19.mjs#12:POST /tasks/:id/deliveries",
+      "source_module": "repository-delivery-v19.mjs",
+      "source_path": "apps/api/src/routes/repository-delivery-v19.mjs",
+      "source_blob": "9ece67d43b194550f046b8619a67f75dc47e8e8c",
+      "declaration_index": 12,
+      "method": "POST",
+      "path": "/tasks/:id/deliveries"
+    },
+    {
+      "id": "apps/api/src/routes/repository-delivery-v19.mjs#13:GET /deliveries",
+      "source_module": "repository-delivery-v19.mjs",
+      "source_path": "apps/api/src/routes/repository-delivery-v19.mjs",
+      "source_blob": "9ece67d43b194550f046b8619a67f75dc47e8e8c",
+      "declaration_index": 13,
+      "method": "GET",
+      "path": "/deliveries"
+    },
+    {
+      "id": "apps/api/src/routes/repository-delivery-v19.mjs#14:GET /deliveries/:id",
+      "source_module": "repository-delivery-v19.mjs",
+      "source_path": "apps/api/src/routes/repository-delivery-v19.mjs",
+      "source_blob": "9ece67d43b194550f046b8619a67f75dc47e8e8c",
+      "declaration_index": 14,
+      "method": "GET",
+      "path": "/deliveries/:id"
+    },
+    {
+      "id": "apps/api/src/routes/repository-delivery-v19.mjs#15:GET /deliveries/:id/events",
+      "source_module": "repository-delivery-v19.mjs",
+      "source_path": "apps/api/src/routes/repository-delivery-v19.mjs",
+      "source_blob": "9ece67d43b194550f046b8619a67f75dc47e8e8c",
+      "declaration_index": 15,
+      "method": "GET",
+      "path": "/deliveries/:id/events"
+    },
+    {
+      "id": "apps/api/src/routes/repository-delivery-v19.mjs#16:GET /deliveries/:id/pull-request",
+      "source_module": "repository-delivery-v19.mjs",
+      "source_path": "apps/api/src/routes/repository-delivery-v19.mjs",
+      "source_blob": "9ece67d43b194550f046b8619a67f75dc47e8e8c",
+      "declaration_index": 16,
+      "method": "GET",
+      "path": "/deliveries/:id/pull-request"
+    },
+    {
+      "id": "apps/api/src/routes/repository-delivery-v19.mjs#17:POST /deliveries/:id/pull-request/ready",
+      "source_module": "repository-delivery-v19.mjs",
+      "source_path": "apps/api/src/routes/repository-delivery-v19.mjs",
+      "source_blob": "9ece67d43b194550f046b8619a67f75dc47e8e8c",
+      "declaration_index": 17,
+      "method": "POST",
+      "path": "/deliveries/:id/pull-request/ready"
+    },
+    {
+      "id": "apps/api/src/routes/repository-delivery-v19.mjs#18:POST /deliveries/:id/pull-request/merge",
+      "source_module": "repository-delivery-v19.mjs",
+      "source_path": "apps/api/src/routes/repository-delivery-v19.mjs",
+      "source_blob": "9ece67d43b194550f046b8619a67f75dc47e8e8c",
+      "declaration_index": 18,
+      "method": "POST",
+      "path": "/deliveries/:id/pull-request/merge"
+    },
+    {
+      "id": "apps/api/src/routes/repository-delivery-v19.mjs#19:POST /deliveries/:id/pull-request/reconcile",
+      "source_module": "repository-delivery-v19.mjs",
+      "source_path": "apps/api/src/routes/repository-delivery-v19.mjs",
+      "source_blob": "9ece67d43b194550f046b8619a67f75dc47e8e8c",
+      "declaration_index": 19,
+      "method": "POST",
+      "path": "/deliveries/:id/pull-request/reconcile"
+    },
+    {
+      "id": "apps/api/src/routes/repository-delivery-v19.mjs#20:POST /deliveries/:id/cancel",
+      "source_module": "repository-delivery-v19.mjs",
+      "source_path": "apps/api/src/routes/repository-delivery-v19.mjs",
+      "source_blob": "9ece67d43b194550f046b8619a67f75dc47e8e8c",
+      "declaration_index": 20,
+      "method": "POST",
+      "path": "/deliveries/:id/cancel"
+    },
+    {
+      "id": "apps/api/src/routes/repository-delivery-v19.mjs#21:POST /deliveries/:id/retry",
+      "source_module": "repository-delivery-v19.mjs",
+      "source_path": "apps/api/src/routes/repository-delivery-v19.mjs",
+      "source_blob": "9ece67d43b194550f046b8619a67f75dc47e8e8c",
+      "declaration_index": 21,
+      "method": "POST",
+      "path": "/deliveries/:id/retry"
+    },
+    {
+      "id": "apps/api/src/routes/repository-lifecycle-v19.mjs#1:GET /projects/:id/github/repositories",
+      "source_module": "repository-lifecycle-v19.mjs",
+      "source_path": "apps/api/src/routes/repository-lifecycle-v19.mjs",
+      "source_blob": "9535543ece9ba997f0c7bd6f69c076bdcd469116",
+      "declaration_index": 1,
+      "method": "GET",
+      "path": "/projects/:id/github/repositories"
+    },
+    {
+      "id": "apps/api/src/routes/repository-lifecycle-v19.mjs#2:GET /canonical-repositories/:id",
+      "source_module": "repository-lifecycle-v19.mjs",
+      "source_path": "apps/api/src/routes/repository-lifecycle-v19.mjs",
+      "source_blob": "9535543ece9ba997f0c7bd6f69c076bdcd469116",
+      "declaration_index": 2,
+      "method": "GET",
+      "path": "/canonical-repositories/:id"
+    },
+    {
+      "id": "apps/api/src/routes/repository-lifecycle-v19.mjs#3:GET /repository-deletion-intents/:id",
+      "source_module": "repository-lifecycle-v19.mjs",
+      "source_path": "apps/api/src/routes/repository-lifecycle-v19.mjs",
+      "source_blob": "9535543ece9ba997f0c7bd6f69c076bdcd469116",
+      "declaration_index": 3,
+      "method": "GET",
+      "path": "/repository-deletion-intents/:id"
+    },
+    {
+      "id": "apps/api/src/routes/repository-lifecycle-v19.mjs#4:POST /canonical-repositories/:id/deletion-intents",
+      "source_module": "repository-lifecycle-v19.mjs",
+      "source_path": "apps/api/src/routes/repository-lifecycle-v19.mjs",
+      "source_blob": "9535543ece9ba997f0c7bd6f69c076bdcd469116",
+      "declaration_index": 4,
+      "method": "POST",
+      "path": "/canonical-repositories/:id/deletion-intents"
+    },
+    {
+      "id": "apps/api/src/routes/repository-lifecycle-v19.mjs#5:POST /github/repositories/:id/deletion-intents",
+      "source_module": "repository-lifecycle-v19.mjs",
+      "source_path": "apps/api/src/routes/repository-lifecycle-v19.mjs",
+      "source_blob": "9535543ece9ba997f0c7bd6f69c076bdcd469116",
+      "declaration_index": 5,
+      "method": "POST",
+      "path": "/github/repositories/:id/deletion-intents"
+    },
+    {
+      "id": "apps/api/src/routes/repository-lifecycle-v19.mjs#6:POST /github/repositories/:id/deletion-intent",
+      "source_module": "repository-lifecycle-v19.mjs",
+      "source_path": "apps/api/src/routes/repository-lifecycle-v19.mjs",
+      "source_blob": "9535543ece9ba997f0c7bd6f69c076bdcd469116",
+      "declaration_index": 6,
+      "method": "POST",
+      "path": "/github/repositories/:id/deletion-intent"
+    },
+    {
+      "id": "apps/api/src/routes/repository-lifecycle-v19.mjs#7:POST /repository-deletion-intents/:id/consent",
+      "source_module": "repository-lifecycle-v19.mjs",
+      "source_path": "apps/api/src/routes/repository-lifecycle-v19.mjs",
+      "source_blob": "9535543ece9ba997f0c7bd6f69c076bdcd469116",
+      "declaration_index": 7,
+      "method": "POST",
+      "path": "/repository-deletion-intents/:id/consent"
+    },
+    {
+      "id": "apps/api/src/routes/repository-lifecycle-v19.mjs#8:POST /repository-deletion-intents/:id/creator-consent",
+      "source_module": "repository-lifecycle-v19.mjs",
+      "source_path": "apps/api/src/routes/repository-lifecycle-v19.mjs",
+      "source_blob": "9535543ece9ba997f0c7bd6f69c076bdcd469116",
+      "declaration_index": 8,
+      "method": "POST",
+      "path": "/repository-deletion-intents/:id/creator-consent"
+    },
+    {
+      "id": "apps/api/src/routes/repository-lifecycle-v19.mjs#9:POST /repository-deletion-intents/:id/confirm",
+      "source_module": "repository-lifecycle-v19.mjs",
+      "source_path": "apps/api/src/routes/repository-lifecycle-v19.mjs",
+      "source_blob": "9535543ece9ba997f0c7bd6f69c076bdcd469116",
+      "declaration_index": 9,
+      "method": "POST",
+      "path": "/repository-deletion-intents/:id/confirm"
+    },
+    {
+      "id": "apps/api/src/routes/repository-lifecycle-v19.mjs#10:POST /repository-deletion-intents/:id/project-confirmation",
+      "source_module": "repository-lifecycle-v19.mjs",
+      "source_path": "apps/api/src/routes/repository-lifecycle-v19.mjs",
+      "source_blob": "9535543ece9ba997f0c7bd6f69c076bdcd469116",
+      "declaration_index": 10,
+      "method": "POST",
+      "path": "/repository-deletion-intents/:id/project-confirmation"
+    },
+    {
+      "id": "apps/api/src/routes/repository-lifecycle-v19.mjs#11:POST /repository-deletion-intents/:id/execute",
+      "source_module": "repository-lifecycle-v19.mjs",
+      "source_path": "apps/api/src/routes/repository-lifecycle-v19.mjs",
+      "source_blob": "9535543ece9ba997f0c7bd6f69c076bdcd469116",
+      "declaration_index": 11,
+      "method": "POST",
+      "path": "/repository-deletion-intents/:id/execute"
+    },
+    {
+      "id": "apps/api/src/routes/repository-lifecycle-v19.mjs#12:DELETE /projects/:id/github/repository",
+      "source_module": "repository-lifecycle-v19.mjs",
+      "source_path": "apps/api/src/routes/repository-lifecycle-v19.mjs",
+      "source_blob": "9535543ece9ba997f0c7bd6f69c076bdcd469116",
+      "declaration_index": 12,
+      "method": "DELETE",
+      "path": "/projects/:id/github/repository"
+    },
+    {
+      "id": "apps/api/src/routes/repository-lifecycle-v19.mjs#13:DELETE /github/repositories/:id",
+      "source_module": "repository-lifecycle-v19.mjs",
+      "source_path": "apps/api/src/routes/repository-lifecycle-v19.mjs",
+      "source_blob": "9535543ece9ba997f0c7bd6f69c076bdcd469116",
+      "declaration_index": 13,
+      "method": "DELETE",
+      "path": "/github/repositories/:id"
+    },
+    {
+      "id": "apps/api/src/routes/repository-lifecycle-v19.mjs#14:DELETE /canonical-repositories/:id",
+      "source_module": "repository-lifecycle-v19.mjs",
+      "source_path": "apps/api/src/routes/repository-lifecycle-v19.mjs",
+      "source_blob": "9535543ece9ba997f0c7bd6f69c076bdcd469116",
+      "declaration_index": 14,
+      "method": "DELETE",
+      "path": "/canonical-repositories/:id"
+    },
+    {
+      "id": "apps/api/src/routes/repository-workspaces-v19.mjs#1:GET /projects/:id/repository-branches",
+      "source_module": "repository-workspaces-v19.mjs",
+      "source_path": "apps/api/src/routes/repository-workspaces-v19.mjs",
+      "source_blob": "c68460ef18095e7bbfec711a6d8cabff431ce537",
+      "declaration_index": 1,
+      "method": "GET",
+      "path": "/projects/:id/repository-branches"
+    },
+    {
+      "id": "apps/api/src/routes/repository-workspaces-v19.mjs#2:GET /projects/:id/repository-workspaces",
+      "source_module": "repository-workspaces-v19.mjs",
+      "source_path": "apps/api/src/routes/repository-workspaces-v19.mjs",
+      "source_blob": "c68460ef18095e7bbfec711a6d8cabff431ce537",
+      "declaration_index": 2,
+      "method": "GET",
+      "path": "/projects/:id/repository-workspaces"
+    },
+    {
+      "id": "apps/api/src/routes/repository-workspaces-v19.mjs#3:POST /projects/:id/repository-workspaces",
+      "source_module": "repository-workspaces-v19.mjs",
+      "source_path": "apps/api/src/routes/repository-workspaces-v19.mjs",
+      "source_blob": "c68460ef18095e7bbfec711a6d8cabff431ce537",
+      "declaration_index": 3,
+      "method": "POST",
+      "path": "/projects/:id/repository-workspaces"
+    },
+    {
+      "id": "apps/api/src/routes/repository-workspaces-v19.mjs#4:GET /repository-workspaces/:id",
+      "source_module": "repository-workspaces-v19.mjs",
+      "source_path": "apps/api/src/routes/repository-workspaces-v19.mjs",
+      "source_blob": "c68460ef18095e7bbfec711a6d8cabff431ce537",
+      "declaration_index": 4,
+      "method": "GET",
+      "path": "/repository-workspaces/:id"
+    },
+    {
+      "id": "apps/api/src/routes/repository-workspaces-v19.mjs#5:POST /repository-workspaces/:id/refresh",
+      "source_module": "repository-workspaces-v19.mjs",
+      "source_path": "apps/api/src/routes/repository-workspaces-v19.mjs",
+      "source_blob": "c68460ef18095e7bbfec711a6d8cabff431ce537",
+      "declaration_index": 5,
+      "method": "POST",
+      "path": "/repository-workspaces/:id/refresh"
+    },
+    {
+      "id": "apps/api/src/routes/repository-workspaces-v19.mjs#6:DELETE /repository-workspaces/:id",
+      "source_module": "repository-workspaces-v19.mjs",
+      "source_path": "apps/api/src/routes/repository-workspaces-v19.mjs",
+      "source_blob": "c68460ef18095e7bbfec711a6d8cabff431ce537",
+      "declaration_index": 6,
+      "method": "DELETE",
+      "path": "/repository-workspaces/:id"
+    },
+    {
+      "id": "apps/api/src/routes/repository-workspaces-v19.mjs#7:GET /repository-workspaces/:id/files",
+      "source_module": "repository-workspaces-v19.mjs",
+      "source_path": "apps/api/src/routes/repository-workspaces-v19.mjs",
+      "source_blob": "c68460ef18095e7bbfec711a6d8cabff431ce537",
+      "declaration_index": 7,
+      "method": "GET",
+      "path": "/repository-workspaces/:id/files"
+    },
+    {
+      "id": "apps/api/src/routes/repository-workspaces-v19.mjs#8:GET /repository-workspaces/:id/files/content",
+      "source_module": "repository-workspaces-v19.mjs",
+      "source_path": "apps/api/src/routes/repository-workspaces-v19.mjs",
+      "source_blob": "c68460ef18095e7bbfec711a6d8cabff431ce537",
+      "declaration_index": 8,
+      "method": "GET",
+      "path": "/repository-workspaces/:id/files/content"
+    },
+    {
+      "id": "apps/api/src/routes/repository-workspaces-v19.mjs#9:PUT /repository-workspaces/:id/files/content",
+      "source_module": "repository-workspaces-v19.mjs",
+      "source_path": "apps/api/src/routes/repository-workspaces-v19.mjs",
+      "source_blob": "c68460ef18095e7bbfec711a6d8cabff431ce537",
+      "declaration_index": 9,
+      "method": "PUT",
+      "path": "/repository-workspaces/:id/files/content"
+    },
+    {
+      "id": "apps/api/src/routes/repository-workspaces-v19.mjs#10:GET /repository-workspaces/:id/diff",
+      "source_module": "repository-workspaces-v19.mjs",
+      "source_path": "apps/api/src/routes/repository-workspaces-v19.mjs",
+      "source_blob": "c68460ef18095e7bbfec711a6d8cabff431ce537",
+      "declaration_index": 10,
+      "method": "GET",
+      "path": "/repository-workspaces/:id/diff"
+    },
+    {
+      "id": "apps/api/src/routes/repository-workspaces-v19.mjs#11:POST /repository-workspaces/:id/test-tasks",
+      "source_module": "repository-workspaces-v19.mjs",
+      "source_path": "apps/api/src/routes/repository-workspaces-v19.mjs",
+      "source_blob": "c68460ef18095e7bbfec711a6d8cabff431ce537",
+      "declaration_index": 11,
+      "method": "POST",
+      "path": "/repository-workspaces/:id/test-tasks"
+    },
+    {
+      "id": "apps/api/src/routes/runs.mjs#1:POST /nodes/:id/context-pack/preview",
+      "source_module": "runs.mjs",
+      "source_path": "apps/api/src/routes/runs.mjs",
+      "source_blob": "6018ba85410c5201e971c1c4e453bc5026dc3e92",
+      "declaration_index": 1,
+      "method": "POST",
+      "path": "/nodes/:id/context-pack/preview"
+    },
+    {
+      "id": "apps/api/src/routes/runs.mjs#2:POST /context-packs/:id/confirm",
+      "source_module": "runs.mjs",
+      "source_path": "apps/api/src/routes/runs.mjs",
+      "source_blob": "6018ba85410c5201e971c1c4e453bc5026dc3e92",
+      "declaration_index": 2,
+      "method": "POST",
+      "path": "/context-packs/:id/confirm"
+    },
+    {
+      "id": "apps/api/src/routes/runs.mjs#3:GET /context-packs/:id",
+      "source_module": "runs.mjs",
+      "source_path": "apps/api/src/routes/runs.mjs",
+      "source_blob": "6018ba85410c5201e971c1c4e453bc5026dc3e92",
+      "declaration_index": 3,
+      "method": "GET",
+      "path": "/context-packs/:id"
+    },
+    {
+      "id": "apps/api/src/routes/runs.mjs#4:POST /nodes/:id/run/start",
+      "source_module": "runs.mjs",
+      "source_path": "apps/api/src/routes/runs.mjs",
+      "source_blob": "6018ba85410c5201e971c1c4e453bc5026dc3e92",
+      "declaration_index": 4,
+      "method": "POST",
+      "path": "/nodes/:id/run/start"
+    },
+    {
+      "id": "apps/api/src/routes/runs.mjs#5:POST /nodes/:id/run",
+      "source_module": "runs.mjs",
+      "source_path": "apps/api/src/routes/runs.mjs",
+      "source_blob": "6018ba85410c5201e971c1c4e453bc5026dc3e92",
+      "declaration_index": 5,
+      "method": "POST",
+      "path": "/nodes/:id/run"
+    },
+    {
+      "id": "apps/api/src/routes/runs.mjs#6:POST /runs/:id/cancel",
+      "source_module": "runs.mjs",
+      "source_path": "apps/api/src/routes/runs.mjs",
+      "source_blob": "6018ba85410c5201e971c1c4e453bc5026dc3e92",
+      "declaration_index": 6,
+      "method": "POST",
+      "path": "/runs/:id/cancel"
+    },
+    {
+      "id": "apps/api/src/routes/runs.mjs#7:GET /runs/:id/trace",
+      "source_module": "runs.mjs",
+      "source_path": "apps/api/src/routes/runs.mjs",
+      "source_blob": "6018ba85410c5201e971c1c4e453bc5026dc3e92",
+      "declaration_index": 7,
+      "method": "GET",
+      "path": "/runs/:id/trace"
+    },
+    {
+      "id": "apps/api/src/routes/runs.mjs#8:GET /runs/:id",
+      "source_module": "runs.mjs",
+      "source_path": "apps/api/src/routes/runs.mjs",
+      "source_blob": "6018ba85410c5201e971c1c4e453bc5026dc3e92",
+      "declaration_index": 8,
+      "method": "GET",
+      "path": "/runs/:id"
+    },
+    {
+      "id": "apps/api/src/routes/setup-v12.mjs#1:GET /setup/status",
+      "source_module": "setup-v12.mjs",
+      "source_path": "apps/api/src/routes/setup-v12.mjs",
+      "source_blob": "b9f6f3804d4f70eeb78953bbc0bde105e8e77835",
+      "declaration_index": 1,
+      "method": "GET",
+      "path": "/setup/status"
+    },
+    {
+      "id": "apps/api/src/routes/setup-v12.mjs#2:PUT /setup/mode",
+      "source_module": "setup-v12.mjs",
+      "source_path": "apps/api/src/routes/setup-v12.mjs",
+      "source_blob": "b9f6f3804d4f70eeb78953bbc0bde105e8e77835",
+      "declaration_index": 2,
+      "method": "PUT",
+      "path": "/setup/mode"
+    },
+    {
+      "id": "apps/api/src/routes/setup-v12.mjs#3:POST /setup/complete",
+      "source_module": "setup-v12.mjs",
+      "source_path": "apps/api/src/routes/setup-v12.mjs",
+      "source_blob": "b9f6f3804d4f70eeb78953bbc0bde105e8e77835",
+      "declaration_index": 3,
+      "method": "POST",
+      "path": "/setup/complete"
+    },
+    {
+      "id": "apps/api/src/routes/system.mjs#1:GET /livez",
+      "source_module": "system.mjs",
+      "source_path": "apps/api/src/routes/system.mjs",
+      "source_blob": "d93a3bb93144cd5f17bec8d2fe006c278b2482b3",
+      "declaration_index": 1,
+      "method": "GET",
+      "path": "/livez"
+    },
+    {
+      "id": "apps/api/src/routes/system.mjs#2:GET /readyz",
+      "source_module": "system.mjs",
+      "source_path": "apps/api/src/routes/system.mjs",
+      "source_blob": "d93a3bb93144cd5f17bec8d2fe006c278b2482b3",
+      "declaration_index": 2,
+      "method": "GET",
+      "path": "/readyz"
+    },
+    {
+      "id": "apps/api/src/routes/system.mjs#3:GET /health",
+      "source_module": "system.mjs",
+      "source_path": "apps/api/src/routes/system.mjs",
+      "source_blob": "d93a3bb93144cd5f17bec8d2fe006c278b2482b3",
+      "declaration_index": 3,
+      "method": "GET",
+      "path": "/health"
+    },
+    {
+      "id": "apps/api/src/routes/system.mjs#4:GET /system/deployment",
+      "source_module": "system.mjs",
+      "source_path": "apps/api/src/routes/system.mjs",
+      "source_blob": "d93a3bb93144cd5f17bec8d2fe006c278b2482b3",
+      "declaration_index": 4,
+      "method": "GET",
+      "path": "/system/deployment"
+    },
+    {
+      "id": "apps/api/src/routes/system.mjs#5:GET /account/me",
+      "source_module": "system.mjs",
+      "source_path": "apps/api/src/routes/system.mjs",
+      "source_blob": "d93a3bb93144cd5f17bec8d2fe006c278b2482b3",
+      "declaration_index": 5,
+      "method": "GET",
+      "path": "/account/me"
+    },
+    {
+      "id": "apps/api/src/routes/system.mjs#6:POST /account/setup-local-owner",
+      "source_module": "system.mjs",
+      "source_path": "apps/api/src/routes/system.mjs",
+      "source_blob": "d93a3bb93144cd5f17bec8d2fe006c278b2482b3",
+      "declaration_index": 6,
+      "method": "POST",
+      "path": "/account/setup-local-owner"
+    },
+    {
+      "id": "apps/api/src/routes/system.mjs#7:GET /review",
+      "source_module": "system.mjs",
+      "source_path": "apps/api/src/routes/system.mjs",
+      "source_blob": "d93a3bb93144cd5f17bec8d2fe006c278b2482b3",
+      "declaration_index": 7,
+      "method": "GET",
+      "path": "/review"
+    },
+    {
+      "id": "apps/api/src/routes/terminal-v13.mjs#1:GET /assist/v3/terminal-capabilities",
+      "source_module": "terminal-v13.mjs",
+      "source_path": "apps/api/src/routes/terminal-v13.mjs",
+      "source_blob": "c384dbc269f025a065401209462039e52155ce2d",
+      "declaration_index": 1,
+      "method": "GET",
+      "path": "/assist/v3/terminal-capabilities"
+    },
+    {
+      "id": "apps/api/src/routes/terminal-v13.mjs#2:GET /assist/v3/terminal-sessions",
+      "source_module": "terminal-v13.mjs",
+      "source_path": "apps/api/src/routes/terminal-v13.mjs",
+      "source_blob": "c384dbc269f025a065401209462039e52155ce2d",
+      "declaration_index": 2,
+      "method": "GET",
+      "path": "/assist/v3/terminal-sessions"
+    },
+    {
+      "id": "apps/api/src/routes/terminal-v13.mjs#3:POST /assist/v3/terminal-sessions",
+      "source_module": "terminal-v13.mjs",
+      "source_path": "apps/api/src/routes/terminal-v13.mjs",
+      "source_blob": "c384dbc269f025a065401209462039e52155ce2d",
+      "declaration_index": 3,
+      "method": "POST",
+      "path": "/assist/v3/terminal-sessions"
+    },
+    {
+      "id": "apps/api/src/routes/terminal-v13.mjs#4:GET /assist/v3/terminal-sessions/:id",
+      "source_module": "terminal-v13.mjs",
+      "source_path": "apps/api/src/routes/terminal-v13.mjs",
+      "source_blob": "c384dbc269f025a065401209462039e52155ce2d",
+      "declaration_index": 4,
+      "method": "GET",
+      "path": "/assist/v3/terminal-sessions/:id"
+    },
+    {
+      "id": "apps/api/src/routes/terminal-v13.mjs#5:POST /assist/v3/terminal-sessions/:id/stop",
+      "source_module": "terminal-v13.mjs",
+      "source_path": "apps/api/src/routes/terminal-v13.mjs",
+      "source_blob": "c384dbc269f025a065401209462039e52155ce2d",
+      "declaration_index": 5,
+      "method": "POST",
+      "path": "/assist/v3/terminal-sessions/:id/stop"
+    },
+    {
+      "id": "apps/api/src/routes/terminal-v13.mjs#6:GET /assist/v3/terminal-sessions/:id/review",
+      "source_module": "terminal-v13.mjs",
+      "source_path": "apps/api/src/routes/terminal-v13.mjs",
+      "source_blob": "c384dbc269f025a065401209462039e52155ce2d",
+      "declaration_index": 6,
+      "method": "GET",
+      "path": "/assist/v3/terminal-sessions/:id/review"
+    },
+    {
+      "id": "apps/api/src/routes/terminal-v13.mjs#7:POST /assist/v3/terminal-sessions/:id/review/viewed",
+      "source_module": "terminal-v13.mjs",
+      "source_path": "apps/api/src/routes/terminal-v13.mjs",
+      "source_blob": "c384dbc269f025a065401209462039e52155ce2d",
+      "declaration_index": 7,
+      "method": "POST",
+      "path": "/assist/v3/terminal-sessions/:id/review/viewed"
+    },
+    {
+      "id": "apps/api/src/routes/terminal-v13.mjs#8:POST /assist/v3/terminal-sessions/:id/review/comments",
+      "source_module": "terminal-v13.mjs",
+      "source_path": "apps/api/src/routes/terminal-v13.mjs",
+      "source_blob": "c384dbc269f025a065401209462039e52155ce2d",
+      "declaration_index": 8,
+      "method": "POST",
+      "path": "/assist/v3/terminal-sessions/:id/review/comments"
+    },
+    {
+      "id": "apps/api/src/routes/terminal-v13.mjs#9:POST /assist/v3/terminal-sessions/:id/review/request-changes",
+      "source_module": "terminal-v13.mjs",
+      "source_path": "apps/api/src/routes/terminal-v13.mjs",
+      "source_blob": "c384dbc269f025a065401209462039e52155ce2d",
+      "declaration_index": 9,
+      "method": "POST",
+      "path": "/assist/v3/terminal-sessions/:id/review/request-changes"
+    },
+    {
+      "id": "apps/api/src/routes/terminal-v13.mjs#10:POST /assist/v3/terminal-sessions/:id/review/apply",
+      "source_module": "terminal-v13.mjs",
+      "source_path": "apps/api/src/routes/terminal-v13.mjs",
+      "source_blob": "c384dbc269f025a065401209462039e52155ce2d",
+      "declaration_index": 10,
+      "method": "POST",
+      "path": "/assist/v3/terminal-sessions/:id/review/apply"
+    },
+    {
+      "id": "apps/api/src/routes/terminal-v13.mjs#11:POST /assist/v3/terminal-sessions/:id/review/rollback",
+      "source_module": "terminal-v13.mjs",
+      "source_path": "apps/api/src/routes/terminal-v13.mjs",
+      "source_blob": "c384dbc269f025a065401209462039e52155ce2d",
+      "declaration_index": 11,
+      "method": "POST",
+      "path": "/assist/v3/terminal-sessions/:id/review/rollback"
+    },
+    {
+      "id": "apps/api/src/routes/tools.mjs#1:GET /tools",
+      "source_module": "tools.mjs",
+      "source_path": "apps/api/src/routes/tools.mjs",
+      "source_blob": "a964113835353185c164ae7a6f728463c5afc0d6",
+      "declaration_index": 1,
+      "method": "GET",
+      "path": "/tools"
+    },
+    {
+      "id": "apps/api/src/routes/tools.mjs#2:POST /tools",
+      "source_module": "tools.mjs",
+      "source_path": "apps/api/src/routes/tools.mjs",
+      "source_blob": "a964113835353185c164ae7a6f728463c5afc0d6",
+      "declaration_index": 2,
+      "method": "POST",
+      "path": "/tools"
+    },
+    {
+      "id": "apps/api/src/routes/tools.mjs#3:PUT /tools/:id",
+      "source_module": "tools.mjs",
+      "source_path": "apps/api/src/routes/tools.mjs",
+      "source_blob": "a964113835353185c164ae7a6f728463c5afc0d6",
+      "declaration_index": 3,
+      "method": "PUT",
+      "path": "/tools/:id"
+    },
+    {
+      "id": "apps/api/src/routes/tools.mjs#4:POST /tools/:id/health",
+      "source_module": "tools.mjs",
+      "source_path": "apps/api/src/routes/tools.mjs",
+      "source_blob": "a964113835353185c164ae7a6f728463c5afc0d6",
+      "declaration_index": 4,
+      "method": "POST",
+      "path": "/tools/:id/health"
+    },
+    {
+      "id": "apps/api/src/routes/workflow-executions-v110.mjs#1:POST /workflows/:id/executions",
+      "source_module": "workflow-executions-v110.mjs",
+      "source_path": "apps/api/src/routes/workflow-executions-v110.mjs",
+      "source_blob": "a31b329ed34f0306f9012c2ac66ad47c0ba3c39a",
+      "declaration_index": 1,
+      "method": "POST",
+      "path": "/workflows/:id/executions"
+    },
+    {
+      "id": "apps/api/src/routes/workflow-executions-v110.mjs#2:GET /workflows/:id/executions",
+      "source_module": "workflow-executions-v110.mjs",
+      "source_path": "apps/api/src/routes/workflow-executions-v110.mjs",
+      "source_blob": "a31b329ed34f0306f9012c2ac66ad47c0ba3c39a",
+      "declaration_index": 2,
+      "method": "GET",
+      "path": "/workflows/:id/executions"
+    },
+    {
+      "id": "apps/api/src/routes/workflow-executions-v110.mjs#3:GET /workflow-executions/:id",
+      "source_module": "workflow-executions-v110.mjs",
+      "source_path": "apps/api/src/routes/workflow-executions-v110.mjs",
+      "source_blob": "a31b329ed34f0306f9012c2ac66ad47c0ba3c39a",
+      "declaration_index": 3,
+      "method": "GET",
+      "path": "/workflow-executions/:id"
+    },
+    {
+      "id": "apps/api/src/routes/workflow-executions-v110.mjs#4:GET /workflow-executions/:id/events",
+      "source_module": "workflow-executions-v110.mjs",
+      "source_path": "apps/api/src/routes/workflow-executions-v110.mjs",
+      "source_blob": "a31b329ed34f0306f9012c2ac66ad47c0ba3c39a",
+      "declaration_index": 4,
+      "method": "GET",
+      "path": "/workflow-executions/:id/events"
+    },
+    {
+      "id": "apps/api/src/routes/workflow-executions-v110.mjs#5:POST /workflow-executions/:id/pause",
+      "source_module": "workflow-executions-v110.mjs",
+      "source_path": "apps/api/src/routes/workflow-executions-v110.mjs",
+      "source_blob": "a31b329ed34f0306f9012c2ac66ad47c0ba3c39a",
+      "declaration_index": 5,
+      "method": "POST",
+      "path": "/workflow-executions/:id/pause"
+    },
+    {
+      "id": "apps/api/src/routes/workflow-executions-v110.mjs#6:POST /workflow-executions/:id/resume",
+      "source_module": "workflow-executions-v110.mjs",
+      "source_path": "apps/api/src/routes/workflow-executions-v110.mjs",
+      "source_blob": "a31b329ed34f0306f9012c2ac66ad47c0ba3c39a",
+      "declaration_index": 6,
+      "method": "POST",
+      "path": "/workflow-executions/:id/resume"
+    },
+    {
+      "id": "apps/api/src/routes/workflow-executions-v110.mjs#7:POST /workflow-executions/:id/cancel",
+      "source_module": "workflow-executions-v110.mjs",
+      "source_path": "apps/api/src/routes/workflow-executions-v110.mjs",
+      "source_blob": "a31b329ed34f0306f9012c2ac66ad47c0ba3c39a",
+      "declaration_index": 7,
+      "method": "POST",
+      "path": "/workflow-executions/:id/cancel"
+    },
+    {
+      "id": "apps/api/src/routes/workflow-executions-v110.mjs#8:GET /workflow-executions/:id/outcomes",
+      "source_module": "workflow-executions-v110.mjs",
+      "source_path": "apps/api/src/routes/workflow-executions-v110.mjs",
+      "source_blob": "a31b329ed34f0306f9012c2ac66ad47c0ba3c39a",
+      "declaration_index": 8,
+      "method": "GET",
+      "path": "/workflow-executions/:id/outcomes"
+    },
+    {
+      "id": "apps/api/src/routes/workflow-executions-v110.mjs#9:POST /workflow-executions/:id/outcome-waivers",
+      "source_module": "workflow-executions-v110.mjs",
+      "source_path": "apps/api/src/routes/workflow-executions-v110.mjs",
+      "source_blob": "a31b329ed34f0306f9012c2ac66ad47c0ba3c39a",
+      "declaration_index": 9,
+      "method": "POST",
+      "path": "/workflow-executions/:id/outcome-waivers"
+    },
+    {
+      "id": "apps/api/src/routes/workflow-executions-v110.mjs#10:POST /workflow-executions/:id/outcome-waivers/:waiverId/revoke",
+      "source_module": "workflow-executions-v110.mjs",
+      "source_path": "apps/api/src/routes/workflow-executions-v110.mjs",
+      "source_blob": "a31b329ed34f0306f9012c2ac66ad47c0ba3c39a",
+      "declaration_index": 10,
+      "method": "POST",
+      "path": "/workflow-executions/:id/outcome-waivers/:waiverId/revoke"
+    },
+    {
+      "id": "apps/api/src/routes/workflow-executions-v110.mjs#11:GET /tasks/:id/readiness",
+      "source_module": "workflow-executions-v110.mjs",
+      "source_path": "apps/api/src/routes/workflow-executions-v110.mjs",
+      "source_blob": "a31b329ed34f0306f9012c2ac66ad47c0ba3c39a",
+      "declaration_index": 11,
+      "method": "GET",
+      "path": "/tasks/:id/readiness"
+    },
+    {
+      "id": "apps/api/src/routes/workflow-executions-v110.mjs#12:GET /task-executions/:id",
+      "source_module": "workflow-executions-v110.mjs",
+      "source_path": "apps/api/src/routes/workflow-executions-v110.mjs",
+      "source_blob": "a31b329ed34f0306f9012c2ac66ad47c0ba3c39a",
+      "declaration_index": 12,
+      "method": "GET",
+      "path": "/task-executions/:id"
+    },
+    {
+      "id": "apps/api/src/routes/workflow-executions-v110.mjs#13:GET /task-executions/:id/readiness",
+      "source_module": "workflow-executions-v110.mjs",
+      "source_path": "apps/api/src/routes/workflow-executions-v110.mjs",
+      "source_blob": "a31b329ed34f0306f9012c2ac66ad47c0ba3c39a",
+      "declaration_index": 13,
+      "method": "GET",
+      "path": "/task-executions/:id/readiness"
+    },
+    {
+      "id": "apps/api/src/routes/workflow-executions-v110.mjs#14:GET /task-executions/:id/stages",
+      "source_module": "workflow-executions-v110.mjs",
+      "source_path": "apps/api/src/routes/workflow-executions-v110.mjs",
+      "source_blob": "a31b329ed34f0306f9012c2ac66ad47c0ba3c39a",
+      "declaration_index": 14,
+      "method": "GET",
+      "path": "/task-executions/:id/stages"
+    },
+    {
+      "id": "apps/api/src/routes/workflow-executions-v110.mjs#15:POST /task-executions/:id/stages/:stage/replay",
+      "source_module": "workflow-executions-v110.mjs",
+      "source_path": "apps/api/src/routes/workflow-executions-v110.mjs",
+      "source_blob": "a31b329ed34f0306f9012c2ac66ad47c0ba3c39a",
+      "declaration_index": 15,
+      "method": "POST",
+      "path": "/task-executions/:id/stages/:stage/replay"
+    },
+    {
+      "id": "apps/api/src/routes/workflow-executions-v110.mjs#16:POST /task-executions/:id/reconcile-repository",
+      "source_module": "workflow-executions-v110.mjs",
+      "source_path": "apps/api/src/routes/workflow-executions-v110.mjs",
+      "source_blob": "a31b329ed34f0306f9012c2ac66ad47c0ba3c39a",
+      "declaration_index": 16,
+      "method": "POST",
+      "path": "/task-executions/:id/reconcile-repository"
+    },
+    {
+      "id": "apps/api/src/routes/workflow-executions-v110.mjs#17:POST /task-executions/:id/retry",
+      "source_module": "workflow-executions-v110.mjs",
+      "source_path": "apps/api/src/routes/workflow-executions-v110.mjs",
+      "source_blob": "a31b329ed34f0306f9012c2ac66ad47c0ba3c39a",
+      "declaration_index": 17,
+      "method": "POST",
+      "path": "/task-executions/:id/retry"
+    },
+    {
+      "id": "apps/api/src/routes/workflow-executions-v110.mjs#18:POST /task-executions/:id/manual-submit",
+      "source_module": "workflow-executions-v110.mjs",
+      "source_path": "apps/api/src/routes/workflow-executions-v110.mjs",
+      "source_blob": "a31b329ed34f0306f9012c2ac66ad47c0ba3c39a",
+      "declaration_index": 18,
+      "method": "POST",
+      "path": "/task-executions/:id/manual-submit"
+    },
+    {
+      "id": "apps/api/src/routes/workflow-executions-v110.mjs#19:POST /task-executions/:id/human-approve",
+      "source_module": "workflow-executions-v110.mjs",
+      "source_path": "apps/api/src/routes/workflow-executions-v110.mjs",
+      "source_blob": "a31b329ed34f0306f9012c2ac66ad47c0ba3c39a",
+      "declaration_index": 19,
+      "method": "POST",
+      "path": "/task-executions/:id/human-approve"
+    },
+    {
+      "id": "apps/api/src/routes/workflow-migration-v19.mjs#1:GET /workflow-migrations",
+      "source_module": "workflow-migration-v19.mjs",
+      "source_path": "apps/api/src/routes/workflow-migration-v19.mjs",
+      "source_blob": "ce8586127fc1302b50c5c5cf421d6f2c7d17fdff",
+      "declaration_index": 1,
+      "method": "GET",
+      "path": "/workflow-migrations"
+    },
+    {
+      "id": "apps/api/src/routes/workflow-migration-v19.mjs#2:POST /workflow-migrations/batches/:id/approve",
+      "source_module": "workflow-migration-v19.mjs",
+      "source_path": "apps/api/src/routes/workflow-migration-v19.mjs",
+      "source_blob": "ce8586127fc1302b50c5c5cf421d6f2c7d17fdff",
+      "declaration_index": 2,
+      "method": "POST",
+      "path": "/workflow-migrations/batches/:id/approve"
+    },
+    {
+      "id": "apps/api/src/routes/workflow-migration-v19.mjs#3:POST /workflow-migrations/batches/:id/cancel",
+      "source_module": "workflow-migration-v19.mjs",
+      "source_path": "apps/api/src/routes/workflow-migration-v19.mjs",
+      "source_blob": "ce8586127fc1302b50c5c5cf421d6f2c7d17fdff",
+      "declaration_index": 3,
+      "method": "POST",
+      "path": "/workflow-migrations/batches/:id/cancel"
+    },
+    {
+      "id": "apps/api/src/routes/workflow-migration-v19.mjs#4:POST /workflow-migrations/jobs/:id/retry",
+      "source_module": "workflow-migration-v19.mjs",
+      "source_path": "apps/api/src/routes/workflow-migration-v19.mjs",
+      "source_blob": "ce8586127fc1302b50c5c5cf421d6f2c7d17fdff",
+      "declaration_index": 4,
+      "method": "POST",
+      "path": "/workflow-migrations/jobs/:id/retry"
+    },
+    {
+      "id": "apps/api/src/routes/workflow-v12.mjs#1:PUT /workflows/:id/layout",
+      "source_module": "workflow-v12.mjs",
+      "source_path": "apps/api/src/routes/workflow-v12.mjs",
+      "source_blob": "22c7b803af41793e49f02f742d1c54278e33eb3a",
+      "declaration_index": 1,
+      "method": "PUT",
+      "path": "/workflows/:id/layout"
+    },
+    {
+      "id": "apps/api/src/routes/workflow-v12.mjs#2:POST /workflows/:id/proposals",
+      "source_module": "workflow-v12.mjs",
+      "source_path": "apps/api/src/routes/workflow-v12.mjs",
+      "source_blob": "22c7b803af41793e49f02f742d1c54278e33eb3a",
+      "declaration_index": 2,
+      "method": "POST",
+      "path": "/workflows/:id/proposals"
+    },
+    {
+      "id": "apps/api/src/routes/workflow-v19.mjs#1:GET /workflows/:id/graph",
+      "source_module": "workflow-v19.mjs",
+      "source_path": "apps/api/src/routes/workflow-v19.mjs",
+      "source_blob": "23dec322124207c183adc2b47d3ab2f4a84b32bf",
+      "declaration_index": 1,
+      "method": "GET",
+      "path": "/workflows/:id/graph"
+    },
+    {
+      "id": "apps/api/src/routes/workflow-v19.mjs#2:POST /workflows/:id/graph-proposals",
+      "source_module": "workflow-v19.mjs",
+      "source_path": "apps/api/src/routes/workflow-v19.mjs",
+      "source_blob": "23dec322124207c183adc2b47d3ab2f4a84b32bf",
+      "declaration_index": 2,
+      "method": "POST",
+      "path": "/workflows/:id/graph-proposals"
+    },
+    {
+      "id": "apps/api/src/routes/workflow-v19.mjs#3:POST /tasks/:id/submissions",
+      "source_module": "workflow-v19.mjs",
+      "source_path": "apps/api/src/routes/workflow-v19.mjs",
+      "source_blob": "23dec322124207c183adc2b47d3ab2f4a84b32bf",
+      "declaration_index": 3,
+      "method": "POST",
+      "path": "/tasks/:id/submissions"
+    },
+    {
+      "id": "apps/api/src/routes/workflow-v19.mjs#4:POST /tasks/:id/review",
+      "source_module": "workflow-v19.mjs",
+      "source_path": "apps/api/src/routes/workflow-v19.mjs",
+      "source_blob": "23dec322124207c183adc2b47d3ab2f4a84b32bf",
+      "declaration_index": 4,
+      "method": "POST",
+      "path": "/tasks/:id/review"
+    },
+    {
+      "id": "apps/api/src/routes/workflow-v19.mjs#5:POST /workstreams/:id/submissions",
+      "source_module": "workflow-v19.mjs",
+      "source_path": "apps/api/src/routes/workflow-v19.mjs",
+      "source_blob": "23dec322124207c183adc2b47d3ab2f4a84b32bf",
+      "declaration_index": 5,
+      "method": "POST",
+      "path": "/workstreams/:id/submissions"
+    },
+    {
+      "id": "apps/api/src/routes/workflow-v19.mjs#6:POST /workstreams/:id/review",
+      "source_module": "workflow-v19.mjs",
+      "source_path": "apps/api/src/routes/workflow-v19.mjs",
+      "source_blob": "23dec322124207c183adc2b47d3ab2f4a84b32bf",
+      "declaration_index": 6,
+      "method": "POST",
+      "path": "/workstreams/:id/review"
+    },
+    {
+      "id": "apps/api/src/routes/workflow-v19.mjs#7:POST /projects/:id/workflow-draft/generations",
+      "source_module": "workflow-v19.mjs",
+      "source_path": "apps/api/src/routes/workflow-v19.mjs",
+      "source_blob": "23dec322124207c183adc2b47d3ab2f4a84b32bf",
+      "declaration_index": 7,
+      "method": "POST",
+      "path": "/projects/:id/workflow-draft/generations"
+    },
+    {
+      "id": "apps/api/src/routes/workflow-v19.mjs#8:GET /projects/:id/workflow-draft/generations",
+      "source_module": "workflow-v19.mjs",
+      "source_path": "apps/api/src/routes/workflow-v19.mjs",
+      "source_blob": "23dec322124207c183adc2b47d3ab2f4a84b32bf",
+      "declaration_index": 8,
+      "method": "GET",
+      "path": "/projects/:id/workflow-draft/generations"
+    },
+    {
+      "id": "apps/api/src/routes/workflow-v19.mjs#9:GET /projects/:id/workflow-draft/generations/:generationId",
+      "source_module": "workflow-v19.mjs",
+      "source_path": "apps/api/src/routes/workflow-v19.mjs",
+      "source_blob": "23dec322124207c183adc2b47d3ab2f4a84b32bf",
+      "declaration_index": 9,
+      "method": "GET",
+      "path": "/projects/:id/workflow-draft/generations/:generationId"
+    },
+    {
+      "id": "apps/api/src/routes/workflow-v19.mjs#10:GET /projects/:id/workflow-draft/generations/:generationId/events",
+      "source_module": "workflow-v19.mjs",
+      "source_path": "apps/api/src/routes/workflow-v19.mjs",
+      "source_blob": "23dec322124207c183adc2b47d3ab2f4a84b32bf",
+      "declaration_index": 10,
+      "method": "GET",
+      "path": "/projects/:id/workflow-draft/generations/:generationId/events"
+    },
+    {
+      "id": "apps/api/src/routes/workflow-v19.mjs#11:POST /projects/:id/workflow-draft/generations/:generationId/cancel",
+      "source_module": "workflow-v19.mjs",
+      "source_path": "apps/api/src/routes/workflow-v19.mjs",
+      "source_blob": "23dec322124207c183adc2b47d3ab2f4a84b32bf",
+      "declaration_index": 11,
+      "method": "POST",
+      "path": "/projects/:id/workflow-draft/generations/:generationId/cancel"
+    },
+    {
+      "id": "apps/api/src/routes/workflow-v19.mjs#12:POST /projects/:id/workflow-draft/generations/:generationId/retry",
+      "source_module": "workflow-v19.mjs",
+      "source_path": "apps/api/src/routes/workflow-v19.mjs",
+      "source_blob": "23dec322124207c183adc2b47d3ab2f4a84b32bf",
+      "declaration_index": 12,
+      "method": "POST",
+      "path": "/projects/:id/workflow-draft/generations/:generationId/retry"
+    },
+    {
+      "id": "apps/api/src/routes/workflow-v19.mjs#13:POST /projects/:id/workflow-draft/generations/:generationId/apply",
+      "source_module": "workflow-v19.mjs",
+      "source_path": "apps/api/src/routes/workflow-v19.mjs",
+      "source_blob": "23dec322124207c183adc2b47d3ab2f4a84b32bf",
+      "declaration_index": 13,
+      "method": "POST",
+      "path": "/projects/:id/workflow-draft/generations/:generationId/apply"
+    }
+  ],
+  "collections": [
+    "users",
+    "sessions",
+    "connected_accounts",
+    "credential_refs",
+    "github_repositories",
+    "projects",
+    "workspaces",
+    "workflows",
+    "workflow_nodes",
+    "node_contracts",
+    "context_packs",
+    "context_sufficiency_checks",
+    "file_refs",
+    "traces",
+    "assets",
+    "asset_versions",
+    "asset_relations",
+    "decisions",
+    "digests",
+    "node_runs",
+    "agent_sessions",
+    "code_changes",
+    "tools",
+    "assist_sessions",
+    "human_reviews",
+    "runner_memory_candidates",
+    "test_results",
+    "change_proposals",
+    "submissions",
+    "codex_profiles",
+    "integration_statuses",
+    "setup_states",
+    "github_app_configs",
+    "github_installations",
+    "repository_bindings",
+    "assist_messages",
+    "assist_events",
+    "ui_action_intents",
+    "file_changes",
+    "webhook_deliveries",
+    "node_workspace_data",
+    "test_tasks",
+    "project_intakes",
+    "project_briefs",
+    "assist_turns",
+    "attachments",
+    "worktrees",
+    "runtime_approvals",
+    "terminal_sessions",
+    "config_revisions",
+    "import_jobs",
+    "assist_configurations",
+    "assist_change_batches",
+    "assist_checkpoints",
+    "assist_operations",
+    "runtime_user_inputs",
+    "host_bridge_devices",
+    "brief_templates",
+    "workflow_drafts",
+    "mcp_clients",
+    "workflow_generations",
+    "workflow_generation_events",
+    "repository_connections",
+    "repository_targets",
+    "delivery_policies",
+    "deliveries",
+    "delivery_events",
+    "workflow_migration_batches",
+    "workflow_migration_jobs",
+    "project_memberships",
+    "project_invitations",
+    "canonical_repositories",
+    "project_repository_bindings",
+    "repository_deletion_intents",
+    "exchange_requests",
+    "exchange_grants",
+    "repository_workspaces",
+    "pull_request_intents",
+    "asset_blobs",
+    "asset_attestations",
+    "workflow_executions",
+    "task_executions",
+    "execution_events",
+    "repository_lines",
+    "outcome_requirements",
+    "outcome_evaluations",
+    "outcome_waivers",
+    "execution_stage_checkpoints",
+    "context_nodes",
+    "context_document_versions",
+    "context_edges",
+    "context_selections",
+    "context_policies",
+    "context_projection_jobs",
+    "context_summaries",
+    "quality_review_runs",
+    "quality_review_reports",
+    "quality_review_events"
+  ],
+  "web_routes": [
+    "/setup",
+    "/projects",
+    "/projects/:projectId/onboarding",
+    "/projects/:projectId/workflow",
+    "/projects/:projectId/workflow/:workstreamId",
+    "/projects/:projectId/nodes/:nodeId",
+    "/assets",
+    "/context",
+    "/projects/:projectId/context",
+    "/audit",
+    "/settings"
+  ],
+  "optimization_packages": [
+    {
+      "id": "OPT21-01",
+      "implementation": [
+        "apps/api/src/context-projection.mjs",
+        "packages/system-context/src/search-index.mjs"
+      ],
+      "tests": [
+        "V23-L4-LIFECYCLE-001"
+      ]
+    },
+    {
+      "id": "OPT21-02",
+      "implementation": [
+        "apps/api/src/runtime-health.mjs",
+        "apps/api/src/routes/system.mjs"
+      ],
+      "tests": [
+        "V23-L4-LIFECYCLE-001"
+      ]
+    },
+    {
+      "id": "OPT21-03",
+      "implementation": [
+        "apps/api/src/shutdown-coordinator.mjs",
+        "apps/api/server.mjs"
+      ],
+      "tests": [
+        "V23-L4-LIFECYCLE-001"
+      ]
+    },
+    {
+      "id": "OPT21-04",
+      "implementation": [
+        "apps/api/src/context-index-runtime.mjs",
+        "packages/system-context/src/search-index.mjs"
+      ],
+      "tests": [
+        "V23-L3-PARSER-001"
+      ]
+    },
+    {
+      "id": "OPT21-05",
+      "implementation": [
+        "scripts/impact-range.mjs",
+        "scripts/compat-pr-runner.mjs"
+      ],
+      "tests": [
+        "V23-L0-IMPACT-004"
+      ]
+    },
+    {
+      "id": "OPT22-01",
+      "implementation": [
+        "apps/api/src/state.mjs",
+        "apps/api/src/state-store-worker.mjs",
+        "apps/api/src/state-migration-v23.mjs"
+      ],
+      "tests": [
+        "V23-L1-STATE-002",
+        "V23-L2-MIGRATION-001"
+      ]
+    },
+    {
+      "id": "OPT23-01",
+      "implementation": [
+        "apps/api/src/quality-review-service.mjs",
+        "apps/api/src/quality-review-parser.mjs",
+        "apps/api/src/quality-review-parser-worker.mjs",
+        "apps/api/src/quality-review-reviewer-readiness.mjs",
+        "apps/api/src/quality-review-policy-service.mjs",
+        "apps/api/src/quality-review-rubric.mjs",
+        "apps/api/src/routes/quality-reviews-v23.mjs",
+        "apps/api/src/state-migration-v23-quality.mjs",
+        "apps/web/src/features/workflow/QualityReviewController.tsx",
+        "apps/web/src/features/workflow/QualityReviewPolicyEditor.tsx",
+        "packages/execution-protocol/src/index.mjs",
+        "scripts/acceptance-runtime-v23.mjs"
+      ],
+      "tests": [
+        "V23-L0-PLAN-001",
+        "V23-L0-CATALOG-002",
+        "V23-L0-COVERAGE-003",
+        "V23-L0-IMPACT-004",
+        "V23-L1-QUALITY-001",
+        "V23-L1-STATE-002",
+        "V23-L2-MIGRATION-001",
+        "V23-L3-PARSER-001",
+        "V23-L3-WEB-002",
+        "V23-L3-BROWSER-003",
+        "V23-L4-LIFECYCLE-001",
+        "V23-L5-SECURITY-001",
+        "V23-L6-PERFORMANCE-001",
+        "V23-L7-RELEASE-001"
+      ]
+    }
+  ],
+  "counts": {
+    "cases": 14,
+    "routes": 360,
+    "collections": 98,
+    "web_routes": 11,
+    "optimization_packages": 7
+  },
+  "inventory_sha256": "40263a20ba845acabac02986f525992445c8cc9580d74dec37ccbdf40b0978a9"
+}

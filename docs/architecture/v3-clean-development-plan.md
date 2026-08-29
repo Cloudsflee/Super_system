@@ -1031,3 +1031,83 @@ node scripts/v3-clean-p8-deployment-rollback-probe.mjs
 node scripts/v3-clean-p8-backup-restore-gc-probe.mjs
 pnpm evidence:p8
 ```
+
+## 20. P10 final business parity and governance closure
+
+Decision D-039 activates P10 over the pushed P9 boundary
+`bb55746b7e08cf7ee764d06a8fa23da91ad48e2f`. P10 is the final governance
+phase: runtime phase 10, schema v9, and migration ledger `[1..9]`. It is the
+last phase allowed to change governance, schema ownership, route inventories,
+status rules, or Evidence shapes. Later work is product feature development and
+performance optimization and must continue `audit:parity` and `pnpm verify`
+without introducing another governance phase.
+
+### P10 work packages
+
+- Freeze the V2.3 source commit `e18dc0b616fa7ab2b00a6c05db23890ccd940175`
+  with Git blob hashes for 14 L0-L7 cases, 360 routes, 98 collections, 11 Web
+  routes, and seven optimization packages.
+- Map every input exactly once to 19 business groups using only `equivalent`,
+  `consolidated`, `retired_interface`, or `fixture_only`; final `gap` and
+  `retired_business` entries fail the gate.
+- Apply `009-final-business-parity-governance` and retain shared Operations,
+  Event, aggregate-head, CAS, cursor, ACL, session-proof, Vault, and redaction
+  owners.
+- Complete Provider lifecycle, Brief template snapshots, Project and
+  Repository deletion intents, Assist lifecycle/review, Quality policy/
+  selection/advice/history, cross-platform archive worker, and parameterized
+  Web workflows.
+- Advance parser registrations to `node24-p10` at fixed digest
+  `sha256:3c2c0f8f550f4c8a14c33661f1e4e85227aa02e3bd0844a8e1044ed368d202a0`;
+  rebuild it twice and run 21 valid container samples plus hostile archives and
+  the Windows-host wrapper.
+- Verify temporary-volume release, dynamic loopback origin, backup/restore,
+  isolated pointer switch, and actual P9 rollback. Production cutover and
+  production volumes remain excluded.
+
+### P10 gate inventory
+
+```text
+pnpm check
+pnpm audit:p1
+pnpm scan:clean
+pnpm audit:parity
+pnpm recovery:plan
+pnpm recovery:catalog
+pnpm recovery:coverage
+pnpm recovery:impact -- --audit
+pnpm test:p1
+pnpm test:p2
+pnpm test:p3
+pnpm test:p31
+pnpm test:p4
+pnpm test:p5
+pnpm test:p6
+pnpm test:p7
+pnpm test:p8
+pnpm test:p9
+pnpm test:p10
+node scripts/v3-clean-p10-parser-probe.mjs
+node scripts/v3-clean-p10-github-deletion-probe.mjs
+pnpm --filter @aiws/web test
+pnpm test
+pnpm test:integration:clean
+pnpm test:security:clean
+pnpm test:integration
+pnpm test:security
+pnpm build
+pnpm test:e2e
+node scripts/v3-clean-p10-release-probe.mjs
+pnpm test:release
+pnpm verify
+pnpm evidence:p10 -- --verify
+git diff --check
+```
+
+Formal Evidence is append-only at
+`docs/evidence/v3-clean-p10-final-governance-20260829/`. A final receipt must
+be verified and non-provisional, include complete parity mappings, external
+probe records, three viewport receipts, all four workspace artifact roles, and
+a runnable dry-run plus isolated actual rollback. Rollback restores P9 schema
+v8, ledger `[1..8]`, all component snapshots, and
+`byte_exact_mismatches=[]`; the Catalog remains `27/0/27`.

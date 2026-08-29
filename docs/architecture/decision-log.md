@@ -2,7 +2,7 @@
 
 Status: accepted for the architecture phase.
 Decision owners: product architecture and platform engineering.
-Last reviewed: 2026-08-24.
+Last reviewed: 2026-08-29.
 
 This log is the change-control source for the clean-break documents. A later
 proposal must name the decision id it changes, show affected capability rows,
@@ -48,6 +48,7 @@ and include migration, test, and rollback impact before implementation starts.
 | D-034 | P5 uses forward-only `005-assist-files-terminal-bridge`, one shared ledger, and an independent loopback Windows Bridge | Assist, Files, Terminal, and Bridge need recoverable human-in-the-loop behavior without reviving historical operation/head/CAS models | The active runtime advances `0/1/2/3/4 -> 5`; Assist owns sessions/turns/messages/goals/references and approval/input/proposal records, Files owns attachments/files/change batches, Terminal owns PTY sessions and its one-to-one generic-event projection, and Bridge owns pairing/transfers; provider threads/items remain opaque and credentials stay in memory/Vault/DPAPI; the final provider receipt requires a zeroable credential lease and a real fixed-response turn with contiguous events, assistant output, terminal tools, and `turn/completed`, while missing credentials or incomplete output remain provisional; all mutations use idempotency and expected revision; active Web uses `/api/v2`; final Evidence lives under `docs/evidence/v3-clean-p5-assist-terminal-20260820/`, promotes five rows to verified and Attachments to implemented, yielding Clean/Historical 19/8 |
 | D-035 | P6 uses forward-only `006-runner-execution-checkpoint-replay`, one generic ledger, and signed Runner boundaries | Docker, Host, and Windows Bridge execution need deterministic scheduling, restart reconciliation, pause/resume, and immutable replay without reviving historical Broker or execution contracts | The active runtime advances `0/1/2/3/4/5 -> 6`; Runner owns profiles, immutable Job Specs, and signed terminal receipts, while Execution owns pinned inputs, executions, task attempts, immutable generation/stage checkpoints, and a one-to-one projection of generic events; `prepare -> context -> run -> check -> review -> finalize -> deliver` uses one operations/events/aggregate-head/CAS model, with `deliver` producing only a delivery-ready handoff manifest; Docker/Host/Bridge share `runner.job-spec.v2` and `runner.receipt.v2`, timestamp/nonce/body-hash HMAC transport, bounded resources, and zeroed credential leases; Runner profile mutations remain REST/Web-only while Execution and read-only inventory preserve REST/Web/MCP/Gateway parity; final Evidence under `docs/evidence/v3-clean-p6-runner-execution-20260824/` requires non-provisional Docker, Host, Bridge, restart, browser, performance, migration, redaction, and isolated byte-exact v5 rollback receipts, promotes Runner and Execution to verified, yields Clean/Historical 21/6, and leaves Frontend/Outcome scaffolded |
 | D-036 | P7 uses forward-only `007-evidence-quality-parser-outcome`, one CAS/event/head model, and an isolated signed Parser boundary | Execution outputs need an immutable, replayable chain from managed bytes through deterministic checks and explicit human judgment without allowing parser output to become a verdict | The active runtime advances `0/1/2/3/4/5/6 -> 7`; Parser owns format registrations and terminal run lineage, Evidence owns assets, immutable versions/blobs/relations/attestations/traces/digests/code changes/test results, Quality owns run/report/generic-event projection/human decisions, Outcome owns immutable evaluations and grant/revoke waiver records, and Project retains `outcome_requirements`; all mutations retain the shared operations/events/event-cursors/aggregate-head/CAS transaction model; Docker workers exchange signed `parser.job.v1` and `parser.receipt.v1` through the Clean Broker with a fixed image digest, quotas, nonce/HMAC transport, restart reconciliation, and no API Docker socket; deterministic reports are advisory while human decisions and waivers require an active session proof and project approval; final Evidence under `docs/evidence/v3-clean-p7-evidence-quality-outcome-20260824/` requires non-provisional parser, CAS-tamper, Quality/Outcome, restart, browser, performance, migration, redaction, and isolated byte-exact v6 rollback receipts, promotes Evidence, Quality, Outcome, and Attachments to verified, yields Clean/Historical 23/4/27, and leaves Frontend scaffolded |
+| D-039 | P10 is the final business-parity and governance phase | V2.3 business semantics and Web journeys need one fixed, auditable mapping without preserving historical interface shapes | P10 advances schema `8 -> 9` with `009-final-business-parity-governance`, maps all fixed V2.3 inputs into 19 Clean business groups, keeps the released Catalog at `27/0/27`, excludes production cutover, and freezes P0-P10 decisions, migrations, and Evidence after a final non-provisional receipt; later work is ordinary feature or performance development and must continue `audit:parity` plus `pnpm verify` without creating another governance phase |
 
 ## Source and evidence references
 
@@ -140,3 +141,45 @@ external identities, fixed production image and SBOM, dynamic loopback publish,
 three viewports, offline cache exclusion, and an isolated actual P8 rollback.
 No production pointer or volume was touched. Contracts move into Clean and all
 27 rows are `released`, yielding `27/0/27`.
+
+## D-039 - Final business parity and governance closure (2026-08-29)
+
+P10 uses pushed commit `bb55746b7e08cf7ee764d06a8fa23da91ad48e2f`
+as its only P9 baseline. It applies forward-only migration
+`009-final-business-parity-governance`, advances the active schema to
+`PRAGMA user_version = 9` with ledger `[1..9]`, and keeps V3-Clean, `/api/v2`,
+the shared authorization predicate, and the single operation/event/CAS/head
+model. P1-P9 migrations and verified Evidence are immutable inputs.
+
+Business parity means equivalent domain semantics and complete Web journeys.
+It does not require historical URLs, route counts, collection names, or
+internal implementation shapes. The immutable V2.3 input is commit
+`e18dc0b616fa7ab2b00a6c05db23890ccd940175`, recorded with Git blob ids for
+14 L0-L7 cases, 360 route declarations, 98 state collections, 11 primary Web
+routes, and seven optimization packages. Every input maps exactly once to one
+of 19 business groups as `equivalent`, `consolidated`, `retired_interface`, or
+`fixture_only`; a final map contains no `gap` and never uses
+`retired_business`.
+
+The migration adds revisioned Brief templates, Workflow Quality policies,
+explicit asset selections and advisory model advice, Assist review comments,
+and Project/Repository deletion intents. Existing Provider, Brief, Assist, and
+Quality rows gain only lifecycle, lineage, and immutable snapshot fields.
+Project, Quality, Assist, Repository, and Setup retain domain ownership while
+generic operations, events, aggregate heads, CAS, session proof, ACL, and
+redaction remain shared platform owners.
+
+Production cutover is not a business-parity requirement and remains excluded.
+Release verification uses a dynamic loopback origin, fresh temporary volumes,
+an isolated pointer switch, and an actual restore of the complete P9 schema v8
+state. Only `status=verified`, `provisional=false`, complete parity mappings,
+three viewport receipts, real external probes, and byte-exact rollback may
+publish P10 Evidence at
+`docs/evidence/v3-clean-p10-final-governance-20260829/`. Catalog membership and
+status remain `27/0/27`; route or table counts never promote a capability.
+
+After the final annotated tag `p10-final-governance-20260829`, decisions,
+migrations, and Evidence for P0-P10 are frozen. Subsequent product work may add
+features and optimize performance, but it continues the parity audit and full
+verification gates without opening a new governance phase or reinterpreting
+the fixed V2.3 input.

@@ -17,20 +17,21 @@ under docs/architecture/ are the source of truth for V3-Clean.
 
 ## Scope of this phase
 
-Decision `D-038` activates P9 Web/Offline/Release over the pushed P8 final
-boundary at `423a7b4ca199ff2f11cbef1758802cdad22af8e0`. The active runtime
-phase is P9 while the schema remains `user_version=8` with ledger `[1..8]`.
-This phase may update the synchronized P9 surface:
+Decision `D-039` activates P10 final business parity over the pushed P9 final
+boundary at `bb55746b7e08cf7ee764d06a8fa23da91ad48e2f`. The active runtime
+phase is P10 and forward-only migration `009-final-business-parity-governance`
+advances the schema to `user_version=9` with ledger `[1..9]`. This phase may
+update the synchronized P10 surface:
 
-- the Operations-owned project event replay query, exact-origin CORS, shared
-  session/ACL/redaction/cursor behavior, registry, contracts, and focused P9
-  tests without adding a migration or business table;
-- the complete `/api/v2` Web router/query/event-sync surface, a bounded
-  IndexedDB cursor/outbox, and an app-shell-only Service Worker;
-- isolated temporary-volume publish, pointer switch, actual rollback, external
-  probes, release tests, and immutable P9 Evidence;
+- business-semantic parity for the fixed V2.3 inventory across 19 groups,
+  without restoring historical routes or runtime shapes;
+- Provider, Brief template, Project/Repository deletion, Assist lifecycle and
+  review, Quality readiness/advice/history, and 21-format Parser behavior;
+- parameterized `/api/v2` Web journeys, bounded offline behavior, live external
+  probes, reproducible temporary-volume release, and isolated actual P9
+  rollback;
 - architecture documents, testing policy, layered Catalogs, package gates,
-  E2E, and rollback receipts required by GS-001 through GS-007;
+  E2E, and immutable P10 Evidence required by GS-001 through GS-007;
 - this file.
 
 Decision `D-032` governs layered-gate receipt hygiene: a fully successful
@@ -39,10 +40,11 @@ is appended to the ignored local `.ai-workspace/gate-receipts/` store. Local
 receipts are diagnostic evidence only; Catalog status promotion continues to
 use the immutable final `verification.json` receipt.
 
-P1/P2/P3/P4/P5/P6/P7/P8 migrations and verified Evidence are read-only.
-Production cutover and production-volume mutation remain outside P9.
-P7 remains finalized under `D-036`; P9 does not reopen its parser, Evidence,
-Quality, Outcome, or rollback receipts.
+P1/P2/P3/P4/P5/P6/P7/P8/P9 migrations and verified Evidence are read-only;
+the P7 freeze remains governed by decision `D-036`.
+Production cutover and production-volume mutation remain outside P10. P10
+extends Parser, Quality, and Outcome only through D-039 behavior and migration
+009; it does not rewrite any P7 or P9 Evidence or rollback receipt.
 
 ## Required preflight
 
@@ -597,3 +599,85 @@ Host/Bridge Runner, Parser, fixed-image/SBOM, dynamic-origin browser, offline,
 and isolated actual rollback gates. Rollback restores schema v8, ledger
 `[1..8]`, all eight component roles, and `byte_exact_mismatches=[]`. Contracts
 and Frontend are Clean/released; the final Catalog is `27/0/27`.
+
+## P10 activation and final closure
+
+Decision `D-039` activates P10 over the pushed P9 boundary
+`bb55746b7e08cf7ee764d06a8fa23da91ad48e2f`. P10 is the final governance
+phase. The active runtime is phase 10 and the active schema is v9 with ledger
+`[1..9]`, supplied by forward-only migration
+`009-final-business-parity-governance`; later work is ordinary feature and
+performance development and does not create another governance phase.
+
+P10 uses business-semantic and Web-journey parity. It does not preserve
+historical URL, route-count, table-name, collection-name, or implementation
+shape. The read-only V2.3 source is commit
+`e18dc0b616fa7ab2b00a6c05db23890ccd940175`, pinned by Git blob hash for 14
+L0-L7 cases, 360 route declarations, 98 collections, 11 Web routes, and seven
+optimization packages. The parity audit maps every source entry exactly once
+to one of 19 fixed business groups with disposition `equivalent`,
+`consolidated`, `retired_interface`, or `fixture_only`; final `gap` and
+`retired_business` entries are rejected.
+
+P10 adds only its owned Brief template, Quality policy/selection/advice,
+Assist review, and Project/Repository deletion-intent records. Existing
+Operation, Event, aggregate head, CAS, cursor, ACL, session-proof, Vault, and
+redaction owners remain singular. Provider lifecycle uses enabled/disabled
+profiles and real adapters by default; fake adapters require explicit test
+configuration. Remote deletion requires exact full name, HEAD and revision
+snapshots plus two independent session proofs; unknown external results enter
+reconcile. Quality retains the five dimensions coverage, accuracy, depth,
+consistency, and clarity, keeps advice separate from human scores, and marks
+changed inputs stale while retaining immutable history.
+Parser registrations use the additive `node24-p10` image at
+`sha256:3c2c0f8f550f4c8a14c33661f1e4e85227aa02e3bd0844a8e1044ed368d202a0`;
+the P10 probe must rebuild it twice and parse all 21 valid formats in the fixed
+container while also passing the Windows archive-wrapper regression.
+
+The additive P10 command inventory is:
+
+~~~text
+pnpm check
+pnpm audit:p1
+pnpm scan:clean
+pnpm audit:parity
+pnpm recovery:plan
+pnpm recovery:catalog
+pnpm recovery:coverage
+pnpm recovery:impact -- --audit
+pnpm test:p1
+pnpm test:p2
+pnpm test:p3
+pnpm test:p31
+pnpm test:p4
+pnpm test:p5
+pnpm test:p6
+pnpm test:p7
+pnpm test:p8
+pnpm test:p9
+pnpm test:p10
+node scripts/v3-clean-p10-parser-probe.mjs
+node scripts/v3-clean-p10-github-deletion-probe.mjs
+pnpm --filter @aiws/web test
+pnpm test
+pnpm test:integration:clean
+pnpm test:security:clean
+pnpm test:integration
+pnpm test:security
+pnpm build
+pnpm test:e2e
+node scripts/v3-clean-p10-release-probe.mjs
+pnpm test:release
+pnpm verify
+pnpm evidence:p10 -- --verify
+git diff --check
+~~~
+
+Formal P10 Evidence is append-only at
+`docs/evidence/v3-clean-p10-final-governance-20260829/`. Only a final
+`verified`, `provisional=false` receipt with complete parity mappings, three
+viewport receipts, non-provisional adapter probes, and an isolated actual P9
+rollback may close the phase. Rollback restores schema v8, ledger `[1..8]`,
+SQLite, CAS, Vault, workspace, Broker, Bridge, Parser, Web, and governance
+Catalog snapshots with `byte_exact_mismatches=[]`. Production pointers and
+production volumes remain outside P10.

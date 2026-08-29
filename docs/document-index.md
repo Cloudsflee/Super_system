@@ -33,6 +33,7 @@
 | [`architecture/v23-capability-matrix.md`](architecture/v23-capability-matrix.md) | 产品架构 | V2.3 L0-L7、Catalog、API/Command/Event/Table/UI/Test/Evidence 对照 | 规范 |
 | [`architecture/decision-log.md`](architecture/decision-log.md) | 架构委员会 | 决策、拒绝模式和变更流程 | 规范 |
 | [`architecture/v3-clean-development-plan.md`](architecture/v3-clean-development-plan.md) | 工程负责人 | 分阶段任务、依赖、门禁、交付物和完成条件 | 实施计划 |
+| [`architecture/p10-final-business-parity.md`](architecture/p10-final-business-parity.md) | 产品架构 | D-039 最终业务对等、退役接口和封账规则 | 规范 |
 | [`testing.md`](testing.md) | 质量工程 | 测试层级、性能、安全和 release gate | 支撑 |
 | [`threat-model.md`](threat-model.md) | 安全负责人 | 资产、信任边界、控制和残余风险 | 支撑 |
 | [`runbook.md`](runbook.md) | 运维负责人 | clean 部署、离线导入、cutover、备份和部署级回滚 | 支撑 |

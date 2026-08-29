@@ -93,7 +93,9 @@
         "scripts/v3-clean-p3-evidence.mjs",
         "feature-catalog.index.json",
         "feature-catalog.clean.json",
-        "feature-catalog.historical.json"
+        "feature-catalog.historical.json",
+        "scripts/v3-clean-p10-parity.mjs",
+        "scripts/v3-clean-p10-evidence.mjs"
       ],
       "tables": [],
       "apis": [],
@@ -107,7 +109,9 @@
         "tests/p31/catalog-split.test.mjs",
         "tests/p31/layered-gates.test.mjs",
         "tests/p31/evidence-immutability.test.mjs",
-        "tests/p4/governance-sync.test.mjs"
+        "tests/p4/governance-sync.test.mjs",
+        "tests/p10/parity-governance.test.mjs",
+        "tests/p10/migration.test.mjs"
       ],
       "ui_tests": [],
       "evidence": [
@@ -118,9 +122,17 @@
       ],
       "tests": [
         "T0",
-        "tests/unit/recovery-governance.test.mjs"
+        "tests/unit/recovery-governance.test.mjs",
+        "tests/p10/parity-governance.test.mjs",
+        "tests/p10/migration.test.mjs",
+        "scripts/v3-clean-p10-release-probe.mjs"
       ],
-      "runtime_surface": "v3-clean"
+      "runtime_surface": "v3-clean",
+      "parity_receipts": [
+        "docs/evidence/v3-clean-p10-final-governance-20260829/verification.json"
+      ],
+      "parity_map": "docs/architecture/p10-parity/business-parity-map.json",
+      "parity_phase": "P10"
     },
     {
       "id": "REC-D10-FRONTEND-024",
@@ -150,7 +162,8 @@
         "apps/web/package.json",
         "apps/web/src/features/operations/OperationsPage.tsx",
         "apps/web/src/features/operations/index.ts",
-        "apps/web/src/test/operations-p8.test.tsx"
+        "apps/web/src/test/operations-p8.test.tsx",
+        "apps/web/src/features/p10/FinalBusinessParityPage.tsx"
       ],
       "tables": [],
       "apis": [
@@ -192,11 +205,13 @@
       "behavior_tests": [
         "tests/p2/identity-acl.test.mjs",
         "tests/p2/identity-acl-security.test.mjs",
-        "tests/p8/http-contract.test.mjs"
+        "tests/p8/http-contract.test.mjs",
+        "tests/p10/http-contract.test.mjs"
       ],
       "ui_tests": [
         "apps/web/src/test/identity-access.test.tsx",
-        "apps/web/src/test/operations-p8.test.tsx"
+        "apps/web/src/test/operations-p8.test.tsx",
+        "apps/web/src/test/p10-business-parity.test.tsx"
       ],
       "evidence": [
         "docs/evidence/v3-clean-p2-identity-acl-20260819/verification.json",
@@ -212,9 +227,17 @@
         "tests/p2/identity-acl-security.test.mjs",
         "apps/web/src/test/identity-access.test.tsx",
         "tests/p8/http-contract.test.mjs",
-        "apps/web/src/test/operations-p8.test.tsx"
+        "apps/web/src/test/operations-p8.test.tsx",
+        "tests/p10/http-contract.test.mjs",
+        "apps/web/src/test/p10-business-parity.test.tsx",
+        "scripts/v3-clean-p10-release-probe.mjs"
       ],
-      "runtime_surface": "v3-clean"
+      "runtime_surface": "v3-clean",
+      "parity_receipts": [
+        "docs/evidence/v3-clean-p10-final-governance-20260829/verification.json"
+      ],
+      "parity_map": "docs/architecture/p10-parity/business-parity-map.json",
+      "parity_phase": "P10"
     },
     {
       "id": "REC-D11-OPS-022",
@@ -309,7 +332,12 @@
         "scripts/v3-clean-p8-importer-probe.mjs",
         "scripts/v3-clean-p8-backup-restore-gc-probe.mjs"
       ],
-      "runtime_surface": "v3-clean"
+      "runtime_surface": "v3-clean",
+      "parity_receipts": [
+        "docs/evidence/v3-clean-p10-final-governance-20260829/verification.json"
+      ],
+      "parity_map": "docs/architecture/p10-parity/business-parity-map.json",
+      "parity_phase": "P10"
     },
     {
       "id": "REC-D2-IDENTITY-001",
@@ -391,7 +419,12 @@
         "tests/p2/identity-acl-security.test.mjs",
         "apps/web/src/test/identity-access.test.tsx"
       ],
-      "runtime_surface": "v3-clean"
+      "runtime_surface": "v3-clean",
+      "parity_receipts": [
+        "docs/evidence/v3-clean-p10-final-governance-20260829/verification.json"
+      ],
+      "parity_map": "docs/architecture/p10-parity/business-parity-map.json",
+      "parity_phase": "P10"
     },
     {
       "id": "REC-D2-SETUP-002",
@@ -462,7 +495,8 @@
         "tests/p2/identity-acl.test.mjs",
         "tests/p2/identity-acl-security.test.mjs",
         "tests/p8/delivery-operations.test.mjs",
-        "tests/p8/http-contract.test.mjs"
+        "tests/p8/http-contract.test.mjs",
+        "tests/p10/business-parity.test.mjs"
       ],
       "ui_tests": [
         "apps/web/src/test/identity-access.test.tsx"
@@ -481,9 +515,16 @@
         "apps/web/src/test/identity-access.test.tsx",
         "tests/p8/delivery-operations.test.mjs",
         "tests/p8/http-contract.test.mjs",
-        "scripts/v3-clean-p8-github-delivery-probe.mjs"
+        "scripts/v3-clean-p8-github-delivery-probe.mjs",
+        "tests/p10/business-parity.test.mjs",
+        "scripts/v3-clean-p10-release-probe.mjs"
       ],
-      "runtime_surface": "v3-clean"
+      "runtime_surface": "v3-clean",
+      "parity_receipts": [
+        "docs/evidence/v3-clean-p10-final-governance-20260829/verification.json"
+      ],
+      "parity_map": "docs/architecture/p10-parity/business-parity-map.json",
+      "parity_phase": "P10"
     },
     {
       "id": "REC-D3-RUNNER-003",
@@ -554,7 +595,12 @@
         "scripts/v3-clean-p6-bridge-runner-probe.mjs",
         "scripts/v3-clean-p6-restart-probe.mjs"
       ],
-      "runtime_surface": "v3-clean"
+      "runtime_surface": "v3-clean",
+      "parity_receipts": [
+        "docs/evidence/v3-clean-p10-final-governance-20260829/verification.json"
+      ],
+      "parity_map": "docs/architecture/p10-parity/business-parity-map.json",
+      "parity_phase": "P10"
     },
     {
       "id": "REC-D4-MCP-004",
@@ -625,7 +671,12 @@
         "apps/web/src/test/context.test.tsx",
         "scripts/e2e.mjs"
       ],
-      "runtime_surface": "v3-clean"
+      "runtime_surface": "v3-clean",
+      "parity_receipts": [
+        "docs/evidence/v3-clean-p10-final-governance-20260829/verification.json"
+      ],
+      "parity_map": "docs/architecture/p10-parity/business-parity-map.json",
+      "parity_phase": "P10"
     },
     {
       "id": "REC-D4-SCOPE-016",
@@ -703,7 +754,12 @@
         "apps/web/src/test/context.test.tsx",
         "scripts/e2e.mjs"
       ],
-      "runtime_surface": "v3-clean"
+      "runtime_surface": "v3-clean",
+      "parity_receipts": [
+        "docs/evidence/v3-clean-p10-final-governance-20260829/verification.json"
+      ],
+      "parity_map": "docs/architecture/p10-parity/business-parity-map.json",
+      "parity_phase": "P10"
     },
     {
       "id": "REC-D5-PROJECT-005",
@@ -724,7 +780,8 @@
         "apps/api/src/clean/project-workflow.mjs",
         "apps/api/src/clean/http.mjs",
         "apps/api/src/clean/registry.mjs",
-        "apps/web/src/features/project/ProjectWorkflowPage.tsx"
+        "apps/web/src/features/project/ProjectWorkflowPage.tsx",
+        "apps/api/src/clean/p10-service.mjs"
       ],
       "tables": [
         "projects",
@@ -757,7 +814,8 @@
         "tests/p3/active-entrypoint.test.mjs",
         "tests/p3/http-contract.test.mjs",
         "tests/p3/migration.test.mjs",
-        "tests/p3/project-workflow.test.mjs"
+        "tests/p3/project-workflow.test.mjs",
+        "tests/p10/business-parity.test.mjs"
       ],
       "ui_tests": [
         "apps/web/src/test/project-workflow-clean.test.tsx"
@@ -774,9 +832,16 @@
         "tests/p3/http-contract.test.mjs",
         "tests/p3/migration.test.mjs",
         "tests/p3/project-workflow.test.mjs",
-        "apps/web/src/test/project-workflow-clean.test.tsx"
+        "apps/web/src/test/project-workflow-clean.test.tsx",
+        "tests/p10/business-parity.test.mjs",
+        "scripts/v3-clean-p10-release-probe.mjs"
       ],
-      "runtime_surface": "v3-clean"
+      "runtime_surface": "v3-clean",
+      "parity_receipts": [
+        "docs/evidence/v3-clean-p10-final-governance-20260829/verification.json"
+      ],
+      "parity_map": "docs/architecture/p10-parity/business-parity-map.json",
+      "parity_phase": "P10"
     },
     {
       "id": "REC-D5-WORKFLOW-006",
@@ -839,7 +904,12 @@
         "tests/p3/project-workflow.test.mjs",
         "apps/web/src/test/project-workflow-clean.test.tsx"
       ],
-      "runtime_surface": "v3-clean"
+      "runtime_surface": "v3-clean",
+      "parity_receipts": [
+        "docs/evidence/v3-clean-p10-final-governance-20260829/verification.json"
+      ],
+      "parity_map": "docs/architecture/p10-parity/business-parity-map.json",
+      "parity_phase": "P10"
     },
     {
       "id": "REC-D6-EXECUTION-008",
@@ -920,7 +990,12 @@
         "scripts/v3-clean-p6-performance.mjs",
         "scripts/e2e.mjs"
       ],
-      "runtime_surface": "v3-clean"
+      "runtime_surface": "v3-clean",
+      "parity_receipts": [
+        "docs/evidence/v3-clean-p10-final-governance-20260829/verification.json"
+      ],
+      "parity_map": "docs/architecture/p10-parity/business-parity-map.json",
+      "parity_phase": "P10"
     },
     {
       "id": "REC-D6-GENERATION-007",
@@ -984,7 +1059,12 @@
         "tests/p3/migration.test.mjs",
         "apps/web/src/test/project-workflow-clean.test.tsx"
       ],
-      "runtime_surface": "v3-clean"
+      "runtime_surface": "v3-clean",
+      "parity_receipts": [
+        "docs/evidence/v3-clean-p10-final-governance-20260829/verification.json"
+      ],
+      "parity_map": "docs/architecture/p10-parity/business-parity-map.json",
+      "parity_phase": "P10"
     },
     {
       "id": "REC-D6-OUTCOME-009",
@@ -1051,7 +1131,12 @@
         "scripts/v3-clean-p7-quality-outcome-probe.mjs",
         "scripts/e2e.mjs"
       ],
-      "runtime_surface": "v3-clean"
+      "runtime_surface": "v3-clean",
+      "parity_receipts": [
+        "docs/evidence/v3-clean-p10-final-governance-20260829/verification.json"
+      ],
+      "parity_map": "docs/architecture/p10-parity/business-parity-map.json",
+      "parity_phase": "P10"
     },
     {
       "id": "REC-D7-DELIVERY-015",
@@ -1122,7 +1207,12 @@
         "apps/web/src/test/operations-p8.test.tsx",
         "scripts/v3-clean-p8-github-delivery-probe.mjs"
       ],
-      "runtime_surface": "v3-clean"
+      "runtime_surface": "v3-clean",
+      "parity_receipts": [
+        "docs/evidence/v3-clean-p10-final-governance-20260829/verification.json"
+      ],
+      "parity_map": "docs/architecture/p10-parity/business-parity-map.json",
+      "parity_phase": "P10"
     },
     {
       "id": "REC-D7-REPOSITORY-014",
@@ -1141,7 +1231,8 @@
         "apps/api/src/clean/project-workflow.mjs",
         "apps/api/src/clean/http.mjs",
         "apps/api/src/clean/registry.mjs",
-        "apps/web/src/features/project/ProjectWorkflowPage.tsx"
+        "apps/web/src/features/project/ProjectWorkflowPage.tsx",
+        "apps/api/src/clean/p10-service.mjs"
       ],
       "tables": [
         "repository_connections",
@@ -1172,7 +1263,8 @@
       ],
       "behavior_tests": [
         "tests/p3/migration.test.mjs",
-        "tests/p3/project-workflow.test.mjs"
+        "tests/p3/project-workflow.test.mjs",
+        "tests/p10/business-parity.test.mjs"
       ],
       "ui_tests": [
         "apps/web/src/test/project-workflow-clean.test.tsx"
@@ -1187,9 +1279,16 @@
         "T7",
         "tests/p3/migration.test.mjs",
         "tests/p3/project-workflow.test.mjs",
-        "apps/web/src/test/project-workflow-clean.test.tsx"
+        "apps/web/src/test/project-workflow-clean.test.tsx",
+        "tests/p10/business-parity.test.mjs",
+        "scripts/v3-clean-p10-release-probe.mjs"
       ],
-      "runtime_surface": "v3-clean"
+      "runtime_surface": "v3-clean",
+      "parity_receipts": [
+        "docs/evidence/v3-clean-p10-final-governance-20260829/verification.json"
+      ],
+      "parity_map": "docs/architecture/p10-parity/business-parity-map.json",
+      "parity_phase": "P10"
     },
     {
       "id": "REC-D8-APPROVAL-013",
@@ -1248,7 +1347,12 @@
         "tests/p5/mutation-recovery.test.mjs",
         "apps/web/src/test/approvals-p5.test.tsx"
       ],
-      "runtime_surface": "v3-clean"
+      "runtime_surface": "v3-clean",
+      "parity_receipts": [
+        "docs/evidence/v3-clean-p10-final-governance-20260829/verification.json"
+      ],
+      "parity_map": "docs/architecture/p10-parity/business-parity-map.json",
+      "parity_phase": "P10"
     },
     {
       "id": "REC-D8-ASSIST-010",
@@ -1267,7 +1371,8 @@
       "target_modules": [
         "apps/api/src/clean/assist-service.mjs",
         "apps/api/src/clean/app-server-adapter.mjs",
-        "apps/web/src/features/assist"
+        "apps/web/src/features/assist",
+        "apps/api/src/clean/p10-service.mjs"
       ],
       "tables": [
         "assist_sessions",
@@ -1301,7 +1406,8 @@
       "behavior_tests": [
         "tests/p5/assist-files.test.mjs",
         "tests/p5/mutation-recovery.test.mjs",
-        "tests/p5/provider-probe.test.mjs"
+        "tests/p5/provider-probe.test.mjs",
+        "tests/p10/business-parity.test.mjs"
       ],
       "ui_tests": [
         "apps/web/src/test/assist.test.tsx"
@@ -1318,9 +1424,16 @@
         "tests/p5/mutation-recovery.test.mjs",
         "tests/p5/provider-probe.test.mjs",
         "apps/web/src/test/assist.test.tsx",
-        "scripts/v3-clean-p5-assist-probe.mjs"
+        "scripts/v3-clean-p5-assist-probe.mjs",
+        "tests/p10/business-parity.test.mjs",
+        "scripts/v3-clean-p10-release-probe.mjs"
       ],
-      "runtime_surface": "v3-clean"
+      "runtime_surface": "v3-clean",
+      "parity_receipts": [
+        "docs/evidence/v3-clean-p10-final-governance-20260829/verification.json"
+      ],
+      "parity_map": "docs/architecture/p10-parity/business-parity-map.json",
+      "parity_phase": "P10"
     },
     {
       "id": "REC-D8-ATTACHMENTS-011",
@@ -1389,7 +1502,12 @@
         "apps/web/src/test/evidence-p7.test.tsx",
         "scripts/v3-clean-p7-parser-probe.mjs"
       ],
-      "runtime_surface": "v3-clean"
+      "runtime_surface": "v3-clean",
+      "parity_receipts": [
+        "docs/evidence/v3-clean-p10-final-governance-20260829/verification.json"
+      ],
+      "parity_map": "docs/architecture/p10-parity/business-parity-map.json",
+      "parity_phase": "P10"
     },
     {
       "id": "REC-D8-BRIDGE-026",
@@ -1454,7 +1572,12 @@
         "apps/web/src/test/connections-p5.test.tsx",
         "scripts/v3-clean-p5-bridge-probe.mjs"
       ],
-      "runtime_surface": "v3-clean"
+      "runtime_surface": "v3-clean",
+      "parity_receipts": [
+        "docs/evidence/v3-clean-p10-final-governance-20260829/verification.json"
+      ],
+      "parity_map": "docs/architecture/p10-parity/business-parity-map.json",
+      "parity_phase": "P10"
     },
     {
       "id": "REC-D8-FILES-012",
@@ -1513,7 +1636,12 @@
         "apps/web/src/test/files-p5.test.tsx",
         "scripts/v3-clean-p5-performance.mjs"
       ],
-      "runtime_surface": "v3-clean"
+      "runtime_surface": "v3-clean",
+      "parity_receipts": [
+        "docs/evidence/v3-clean-p10-final-governance-20260829/verification.json"
+      ],
+      "parity_map": "docs/architecture/p10-parity/business-parity-map.json",
+      "parity_phase": "P10"
     },
     {
       "id": "REC-D8-TERMINAL-025",
@@ -1573,7 +1701,12 @@
         "apps/web/src/test/terminal.test.tsx",
         "scripts/v3-clean-p5-performance.mjs"
       ],
-      "runtime_surface": "v3-clean"
+      "runtime_surface": "v3-clean",
+      "parity_receipts": [
+        "docs/evidence/v3-clean-p10-final-governance-20260829/verification.json"
+      ],
+      "parity_map": "docs/architecture/p10-parity/business-parity-map.json",
+      "parity_phase": "P10"
     },
     {
       "id": "REC-D9-CONTEXT-017",
@@ -1660,7 +1793,12 @@
         "apps/web/src/test/context.test.tsx",
         "scripts/e2e.mjs"
       ],
-      "runtime_surface": "v3-clean"
+      "runtime_surface": "v3-clean",
+      "parity_receipts": [
+        "docs/evidence/v3-clean-p10-final-governance-20260829/verification.json"
+      ],
+      "parity_map": "docs/architecture/p10-parity/business-parity-map.json",
+      "parity_phase": "P10"
     },
     {
       "id": "REC-D9-DEPLOYMENT-021",
@@ -1724,7 +1862,12 @@
         "apps/web/src/test/operations-p8.test.tsx",
         "scripts/v3-clean-p8-deployment-rollback-probe.mjs"
       ],
-      "runtime_surface": "v3-clean"
+      "runtime_surface": "v3-clean",
+      "parity_receipts": [
+        "docs/evidence/v3-clean-p10-final-governance-20260829/verification.json"
+      ],
+      "parity_map": "docs/architecture/p10-parity/business-parity-map.json",
+      "parity_phase": "P10"
     },
     {
       "id": "REC-D9-EVIDENCE-019",
@@ -1811,7 +1954,12 @@
         "scripts/v3-clean-p7-performance.mjs",
         "scripts/e2e.mjs"
       ],
-      "runtime_surface": "v3-clean"
+      "runtime_surface": "v3-clean",
+      "parity_receipts": [
+        "docs/evidence/v3-clean-p10-final-governance-20260829/verification.json"
+      ],
+      "parity_map": "docs/architecture/p10-parity/business-parity-map.json",
+      "parity_phase": "P10"
     },
     {
       "id": "REC-D9-PROJECTION-018",
@@ -1889,7 +2037,12 @@
         "apps/web/src/test/context.test.tsx",
         "scripts/e2e.mjs"
       ],
-      "runtime_surface": "v3-clean"
+      "runtime_surface": "v3-clean",
+      "parity_receipts": [
+        "docs/evidence/v3-clean-p10-final-governance-20260829/verification.json"
+      ],
+      "parity_map": "docs/architecture/p10-parity/business-parity-map.json",
+      "parity_phase": "P10"
     },
     {
       "id": "REC-D9-QUALITY-020",
@@ -1913,7 +2066,8 @@
         "apps/api/src/clean/quality-service.mjs",
         "apps/runner-broker/clean-server.mjs",
         "apps/parser-worker",
-        "apps/web/src/features/execution/ExecutionP7Panels.tsx"
+        "apps/web/src/features/execution/ExecutionP7Panels.tsx",
+        "apps/parser-worker/archive-worker.mjs"
       ],
       "tables": [
         "parser_formats",
@@ -1952,10 +2106,12 @@
         "tests/p7/governance-protocol.test.mjs",
         "tests/p7/parser-evidence.test.mjs",
         "tests/p7/quality-outcome.test.mjs",
-        "tests/p7/broker-restart-tamper.test.mjs"
+        "tests/p7/broker-restart-tamper.test.mjs",
+        "tests/p10/quality-parity.test.mjs"
       ],
       "ui_tests": [
-        "apps/web/src/test/execution-p7.test.tsx"
+        "apps/web/src/test/execution-p7.test.tsx",
+        "apps/web/src/test/p10-business-parity.test.tsx"
       ],
       "evidence": [
         "docs/evidence/v3-clean-p7-evidence-quality-outcome-20260824/verification.json"
@@ -1974,9 +2130,17 @@
         "scripts/v3-clean-p7-parser-probe.mjs",
         "scripts/v3-clean-p7-quality-outcome-probe.mjs",
         "scripts/v3-clean-p7-restart-probe.mjs",
-        "scripts/e2e.mjs"
+        "scripts/e2e.mjs",
+        "tests/p10/quality-parity.test.mjs",
+        "apps/web/src/test/p10-business-parity.test.tsx",
+        "scripts/v3-clean-p10-release-probe.mjs"
       ],
-      "runtime_surface": "v3-clean"
+      "runtime_surface": "v3-clean",
+      "parity_receipts": [
+        "docs/evidence/v3-clean-p10-final-governance-20260829/verification.json"
+      ],
+      "parity_map": "docs/architecture/p10-parity/business-parity-map.json",
+      "parity_phase": "P10"
     },
     {
       "id": "REC-D1-CONTRACTS-023",
@@ -1994,7 +2158,9 @@
         "apps/api/src/clean/registry.mjs",
         "apps/api/src/clean/http.mjs",
         "packages/contracts/src/clean-v2.mjs",
-        "apps/web/src/api.ts"
+        "apps/web/src/api.ts",
+        "apps/api/src/clean/migrations/009-final-business-parity-governance.mjs",
+        "apps/api/src/clean/p10-service.mjs"
       ],
       "tables": [
         "schema_migrations"
@@ -2012,7 +2178,9 @@
       "behavior_tests": [
         "tests/p9/foundation.test.mjs",
         "tests/p9/events-cors.test.mjs",
-        "tests/p9/web-governance.test.mjs"
+        "tests/p9/web-governance.test.mjs",
+        "tests/p10/http-contract.test.mjs",
+        "tests/p10/migration.test.mjs"
       ],
       "ui_tests": [
         "apps/web/src/test/offline-p9.test.ts",
@@ -2033,9 +2201,17 @@
         "tests/unit/contracts.test.mjs",
         "tests/unit/recovery-golden.test.mjs",
         "tests/p9/web-governance.test.mjs",
-        "scripts/v3-clean-p9-release-probe.mjs"
+        "scripts/v3-clean-p9-release-probe.mjs",
+        "tests/p10/http-contract.test.mjs",
+        "tests/p10/migration.test.mjs",
+        "scripts/v3-clean-p10-release-probe.mjs"
       ],
-      "runtime_surface": "v3-clean"
+      "runtime_surface": "v3-clean",
+      "parity_receipts": [
+        "docs/evidence/v3-clean-p10-final-governance-20260829/verification.json"
+      ],
+      "parity_map": "docs/architecture/p10-parity/business-parity-map.json",
+      "parity_phase": "P10"
     }
   ],
   "active_runtime": "v3-clean",
