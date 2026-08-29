@@ -540,3 +540,30 @@ requires the profile owner. Merge, Deployment, Backup, restore/reset, and GC
 apply require an unswitched owner session plus an unexpired approved action
 receipt. Import mutation commands exist only as
 `aiws-import inspect|dry-run|run|resume|verify|cutover|rollback`.
+
+## P10 business-parity routes
+
+P10 extends `/api/v2` without a legacy facade. Setup exposes profile edit and
+enable/disable lifecycle routes. Project exposes Brief template list/create/
+update/archive and deletion-intent prepare/get/confirm/execute/cancel. Repository
+exposes deletion-intent prepare/get/creator-confirm/owner-confirm/execute/
+reconcile/cancel. Assist exposes session metadata/archive/restore/delete/
+restore-deleted/fork/side-thread/configuration and turn review comments or
+request-changes. Quality exposes workflow policy get/update, execution
+readiness, and advisory advice read.
+
+Every mutation carries `Idempotency-Key` and `expected_revision`; every
+project-scoped route uses the shared ACL predicate and session principal.
+Destructive routes are REST/Web only, never queued in the offline outbox, and
+never bypass an intent. Remote Repository execute rechecks exact target name,
+HEAD, target revision, and the two stored session proofs. Unknown adapter
+responses return a reconcile state rather than guessing completion.
+The Web owner-confirm action first obtains a second active `/api/v2/sessions`
+receipt. Its proof is delivered only as the strict HttpOnly session cookie;
+the JSON response remains `{ session, operation }` and contains no proof
+material.
+
+P10 response envelopes remain redacted Clean v2 envelopes. Advice is a closed
+`quality.advice.v1` object and is never copied into human dimension scores.
+JSON and stream/event views continue to use the one generic EventService and
+cursor model.

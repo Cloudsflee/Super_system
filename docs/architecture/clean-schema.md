@@ -503,3 +503,35 @@ import batch retries create lineage records. `delivery_events` carries optional
 never owns a second event/head model. `cas_objects` remains CAS-owned; GC first
 commits a tombstone after rechecking all protected references, then moves bytes
 to recoverable trash for reconciliation or rollback.
+
+## P10 schema ownership
+
+Decision D-039 advances the active Clean schema to `user_version=9` through
+`009-final-business-parity-governance`; the ledger is `[1..9]`. The migration
+adds `brief_templates`, `brief_template_revisions`,
+`workflow_quality_policies`, `quality_review_asset_selections`,
+`quality_review_advices`, `assist_review_comments`,
+`project_deletion_intents`, and `repository_deletion_intents`. It adds
+snapshot/lifecycle/lineage columns to `provider_profiles`, `brief_revisions`,
+`assist_sessions`, and `quality_review_runs`, and advances all existing
+`parser_formats` registrations to worker version `node24-p10` at fixed image
+digest `sha256:3c2c0f8f550f4c8a14c33661f1e4e85227aa02e3bd0844a8e1044ed368d202a0`.
+
+Project owns Brief templates and Project deletion intents. Repository owns
+Repository deletion intents. Quality owns policy revisions, asset selections,
+advice, and review lineage. Assist owns session metadata and review comments.
+All commands continue to update aggregate state, revision, operation link, head,
+and generic event in one transaction. Revision, selection, advice, comment, and
+Brief template revision rows are immutable; terminal deletion intents and
+terminal Quality states reject rewrites. Physical CAS collection remains a
+later Operations action after retention and Evidence references clear.
+Brief template content hashes are immutable per revision but are not globally
+unique: different templates may intentionally snapshot identical content.
+Quality completion writes both `supersedes_quality_review_id` and the guarded
+reverse `superseded_by_quality_review_id`; only the current non-stale completed
+review can satisfy Outcome.
+
+Rollback is deployment-artifact restoration rather than a down migration. A
+P10 release rollback must prove v8, ledger `[1..8]`, absence of all eight P10
+tables and P10 columns, valid foreign keys, and byte-exact SQLite/CAS/Vault/
+workspace/Broker/Bridge/Parser/Web/Catalog snapshots.

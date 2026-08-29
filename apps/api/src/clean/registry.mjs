@@ -68,7 +68,8 @@ const entries = [
   ...p6Entries(),
   ...p7Entries(),
   ...p8Entries(),
-  ...p9Entries()
+  ...p9Entries(),
+  ...p10Entries()
 ];
 
 function identityEntries() {
@@ -457,6 +458,57 @@ function p9Entries() {
   }];
 }
 
+function p10Entries() {
+  const common = (command_id, method, path, owner, scope, input_schema, output_schema, events, options = {}) => ({
+    command_id, version: 2, method, path, owner, scope, phase: 'p10',
+    project_scoped: Boolean(options.project_scoped),
+    idempotency: method === 'GET' ? 'forbidden' : 'required',
+    expected_revision: method === 'GET' ? 'none' : (options.expected_revision || 'resource'),
+    input_schema, output_schema, long_running: Boolean(options.long_running), events,
+    mcp: { mapping: options.mcp === true ? (method === 'GET' ? 'resource' : 'tool') : 'rest-only', name: command_id.replaceAll('.', '_'), exposed: options.mcp === true },
+    transport_allowlist: Object.freeze(options.mcp === true ? ['rest','web','mcp','gateway'] : ['rest','web']),
+    redaction_policy: 'v3-clean-default', external_adapter: options.external_adapter || null,
+    ui_metadata: { surface: options.surface || 'governance', state: options.state || command_id },
+    evidence_metadata: { receipt_kind: options.long_running ? 'operation.receipt.v2' : 'resource.receipt.v2', verification: 'p10-final-business-parity' }
+  });
+  return [
+    common('profile.update', 'PATCH', '/api/v2/profiles/{id}', 'Setup', 'credential:write', 'profile.update.v2', 'profile.receipt.v2', ['profile.updated'], { surface: 'profiles' }),
+    common('profile.disable', 'POST', '/api/v2/profiles/{id}/disable', 'Setup', 'credential:write', 'profile.lifecycle.v2', 'profile.receipt.v2', ['profile.disabled'], { surface: 'profiles' }),
+    common('profile.enable', 'POST', '/api/v2/profiles/{id}/enable', 'Setup', 'credential:write', 'profile.lifecycle.v2', 'profile.receipt.v2', ['profile.enabled'], { surface: 'profiles' }),
+    common('brief.template.list', 'GET', '/api/v2/brief-templates', 'Project', 'project:read', 'brief.template.list.query.v2', 'brief.template.list.v2', ['brief_template.*'], { surface: 'brief-templates' }),
+    common('brief.template.create', 'POST', '/api/v2/brief-templates', 'Project', 'project:write', 'brief.template.create.v2', 'brief.template.receipt.v2', ['brief_template.created'], { expected_revision: 'parent', surface: 'brief-templates' }),
+    common('brief.template.update', 'PATCH', '/api/v2/brief-templates/{id}', 'Project', 'project:write', 'brief.template.update.v2', 'brief.template.receipt.v2', ['brief_template.updated'], { surface: 'brief-templates' }),
+    common('brief.template.archive', 'POST', '/api/v2/brief-templates/{id}/archive', 'Project', 'project:write', 'brief.template.lifecycle.v2', 'brief.template.receipt.v2', ['brief_template.archived'], { surface: 'brief-templates' }),
+    common('project.deletion.prepare', 'POST', '/api/v2/projects/{id}/deletion-intents', 'Project', 'project:write', 'project.deletion.prepare.v2', 'deletion.intent.receipt.v2', ['project.deletion.prepared'], { project_scoped: true, surface: 'projects' }),
+    common('project.deletion.get', 'GET', '/api/v2/project-deletion-intents/{id}', 'Project', 'project:read', 'deletion.intent.query.v2', 'deletion.intent.receipt.v2', ['project.deletion.*'], { project_scoped: true, surface: 'projects' }),
+    common('project.deletion.confirm', 'POST', '/api/v2/project-deletion-intents/{id}/confirm', 'Project', 'project:approve', 'project.deletion.confirm.v2', 'deletion.intent.receipt.v2', ['project.deletion.confirmed','project.deletion.blocked'], { project_scoped: true, surface: 'projects' }),
+    common('project.deletion.execute', 'POST', '/api/v2/project-deletion-intents/{id}/execute', 'Project', 'project:approve', 'deletion.intent.mutation.v2', 'deletion.intent.receipt.v2', ['project.deletion.completed','project.deletion.blocked','project.tombstoned'], { project_scoped: true, surface: 'projects' }),
+    common('project.deletion.cancel', 'POST', '/api/v2/project-deletion-intents/{id}/cancel', 'Project', 'project:write', 'deletion.intent.mutation.v2', 'deletion.intent.receipt.v2', ['project.deletion.cancelled'], { project_scoped: true, surface: 'projects' }),
+    common('repository.deletion.prepare', 'POST', '/api/v2/repository-targets/{id}/deletion-intents', 'Repository', 'repository:write', 'repository.deletion.prepare.v2', 'deletion.intent.receipt.v2', ['repository.deletion.prepared'], { project_scoped: true, surface: 'repository' }),
+    common('repository.deletion.get', 'GET', '/api/v2/repository-deletion-intents/{id}', 'Repository', 'repository:read', 'deletion.intent.query.v2', 'deletion.intent.receipt.v2', ['repository.deletion.*'], { project_scoped: true, surface: 'repository' }),
+    common('repository.deletion.creator_confirm', 'POST', '/api/v2/repository-deletion-intents/{id}/creator-confirm', 'Repository', 'repository:write', 'repository.deletion.confirm.v2', 'deletion.intent.receipt.v2', ['repository.deletion.creator_confirmed'], { project_scoped: true, surface: 'repository' }),
+    common('repository.deletion.owner_confirm', 'POST', '/api/v2/repository-deletion-intents/{id}/owner-confirm', 'Repository', 'repository:approve', 'repository.deletion.confirm.v2', 'deletion.intent.receipt.v2', ['repository.deletion.owner_confirmed'], { project_scoped: true, surface: 'repository' }),
+    common('repository.deletion.execute', 'POST', '/api/v2/repository-deletion-intents/{id}/execute', 'Repository', 'repository:approve', 'deletion.intent.mutation.v2', 'deletion.intent.receipt.v2', ['repository.deletion.executing','repository.deletion.completed','repository.deletion.needs_reconcile','repository.deletion.failed'], { project_scoped: true, long_running: false, external_adapter: 'github-app', surface: 'repository' }),
+    common('repository.deletion.reconcile', 'POST', '/api/v2/repository-deletion-intents/{id}/reconcile', 'Repository', 'repository:approve', 'deletion.intent.mutation.v2', 'deletion.intent.receipt.v2', ['repository.deletion.completed','repository.deletion.ready','repository.deletion.needs_reconcile'], { project_scoped: true, external_adapter: 'github-app', surface: 'repository' }),
+    common('repository.deletion.cancel', 'POST', '/api/v2/repository-deletion-intents/{id}/cancel', 'Repository', 'repository:write', 'deletion.intent.mutation.v2', 'deletion.intent.receipt.v2', ['repository.deletion.cancelled'], { project_scoped: true, surface: 'repository' }),
+    common('assist.session.metadata', 'PATCH', '/api/v2/assist/sessions/{id}', 'Assist', 'assist:write', 'assist.session.metadata.v2', 'assist.session.p10.receipt.v2', ['assist_session.metadata_updated'], { project_scoped: true, surface: 'assist' }),
+    common('assist.session.archive', 'POST', '/api/v2/assist/sessions/{id}/archive', 'Assist', 'assist:write', 'assist.session.mutation.v2', 'assist.session.p10.receipt.v2', ['assist_session.archived'], { project_scoped: true, surface: 'assist' }),
+    common('assist.session.restore', 'POST', '/api/v2/assist/sessions/{id}/restore', 'Assist', 'assist:write', 'assist.session.mutation.v2', 'assist.session.p10.receipt.v2', ['assist_session.restored'], { project_scoped: true, surface: 'assist' }),
+    common('assist.session.delete', 'POST', '/api/v2/assist/sessions/{id}/delete', 'Assist', 'assist:write', 'assist.session.mutation.v2', 'assist.session.p10.receipt.v2', ['assist_session.deleted'], { project_scoped: true, surface: 'assist' }),
+    common('assist.session.restore_deleted', 'POST', '/api/v2/assist/sessions/{id}/restore-deleted', 'Assist', 'assist:write', 'assist.session.mutation.v2', 'assist.session.p10.receipt.v2', ['assist_session.delete_restored'], { project_scoped: true, surface: 'assist' }),
+    common('assist.session.fork', 'POST', '/api/v2/assist/sessions/{id}/fork', 'Assist', 'assist:write', 'assist.session.fork.v2', 'assist.session.p10.receipt.v2', ['assist_session.forked'], { project_scoped: true, surface: 'assist' }),
+    common('assist.session.side_thread', 'POST', '/api/v2/assist/sessions/{id}/side-threads', 'Assist', 'assist:write', 'assist.session.fork.v2', 'assist.session.p10.receipt.v2', ['assist_session.side_thread_created'], { project_scoped: true, surface: 'assist' }),
+    common('assist.configuration.create', 'POST', '/api/v2/assist/sessions/{id}/configurations', 'Assist', 'assist:write', 'assist.configuration.create.v2', 'assist.configuration.receipt.v2', ['assist_configuration.created'], { project_scoped: true, surface: 'assist' }),
+    common('assist.review.comments', 'GET', '/api/v2/assist/turns/{id}/review-comments', 'Assist', 'assist:read', 'assist.review.query.v2', 'assist.review.comments.v2', ['assist_review.*'], { project_scoped: true, surface: 'assist-review' }),
+    common('assist.review.comment', 'POST', '/api/v2/assist/turns/{id}/review-comments', 'Assist', 'assist:write', 'assist.review.comment.v2', 'assist.review.comment.receipt.v2', ['assist_review.comment_created'], { project_scoped: true, surface: 'assist-review' }),
+    common('assist.review.request_changes', 'POST', '/api/v2/assist/turns/{id}/request-changes', 'Assist', 'assist:approve', 'assist.review.comment.v2', 'assist.review.comment.receipt.v2', ['assist_review.request_changes'], { project_scoped: true, surface: 'assist-review' }),
+    common('quality.policy.get', 'GET', '/api/v2/workflows/{id}/quality-policy', 'Quality', 'quality:read', 'quality.policy.query.v2', 'quality.policy.receipt.v2', ['quality_policy.*'], { project_scoped: true, mcp: true, surface: 'quality' }),
+    common('quality.policy.update', 'PUT', '/api/v2/workflows/{id}/quality-policy', 'Quality', 'quality:approve', 'quality.policy.update.v2', 'quality.policy.receipt.v2', ['quality_policy.updated'], { project_scoped: true, mcp: true, expected_revision: 'parent', surface: 'quality' }),
+    common('quality.prepare', 'GET', '/api/v2/executions/{id}/quality-reviews/prepare', 'Quality', 'quality:read', 'quality.prepare.query.v2', 'quality.prepare.v2', ['quality_review.*'], { project_scoped: true, mcp: true, surface: 'quality' }),
+    common('quality.advice.get', 'GET', '/api/v2/quality-reviews/{id}/advice', 'Quality', 'quality:read', 'quality.advice.query.v2', 'quality.advice.v2', ['quality_review.*'], { project_scoped: true, mcp: true, surface: 'quality' })
+  ];
+}
+
 export const CLEAN_COMMAND_REGISTRY = Object.freeze(entries.map((entry) => Object.freeze({
   ...entry,
   phase: entry.phase || 'p2',
@@ -470,6 +522,7 @@ export const CLEAN_COMMAND_REGISTRY = Object.freeze(entries.map((entry) => Objec
 
 export function createCleanCommandRegistry(options = {}) {
   validateRegistry(CLEAN_COMMAND_REGISTRY);
+  const includeP10 = options.phase === 'p10' || options.cleanPhase === 'p10' || Number(options.runtimePhase || 0) >= 10 || Number(options.targetVersion || 0) >= 9;
   const includeP9 = options.phase === 'p9' || options.cleanPhase === 'p9' || Number(options.runtimePhase || 0) >= 9;
   const includeP8 = includeP9 || options.phase === 'p8' || options.cleanPhase === 'p8' || Number(options.targetVersion || 0) >= 8;
   const includeP7 = includeP8 || options.phase === 'p7' || options.cleanPhase === 'p7' || Number(options.targetVersion || 0) >= 7;
@@ -477,7 +530,8 @@ export function createCleanCommandRegistry(options = {}) {
   const includeP5 = includeP6 || options.phase === 'p5' || options.cleanPhase === 'p5' || Number(options.targetVersion || 0) >= 5;
   const includeP4 = includeP5 || options.phase === 'p4' || options.cleanPhase === 'p4' || Number(options.targetVersion || 0) >= 4;
   const includeP3 = includeP4 || options.phase === 'p3' || options.cleanPhase === 'p3' || Number(options.targetVersion || 0) >= 3;
-  const withoutP9 = includeP9 ? CLEAN_COMMAND_REGISTRY : CLEAN_COMMAND_REGISTRY.filter((entry) => entry.phase !== 'p9');
+  const withoutP10 = includeP10 ? CLEAN_COMMAND_REGISTRY : CLEAN_COMMAND_REGISTRY.filter((entry) => entry.phase !== 'p10');
+  const withoutP9 = includeP9 ? withoutP10 : withoutP10.filter((entry) => entry.phase !== 'p9');
   const selected = includeP8 ? withoutP9 : includeP7 ? withoutP9.filter((entry) => entry.phase !== 'p8') : includeP6 ? withoutP9.filter((entry) => !['p7','p8'].includes(entry.phase)) : includeP5 ? withoutP9.filter((entry) => !['p6', 'p7','p8'].includes(entry.phase)) : includeP4 ? withoutP9.filter((entry) => !['p5', 'p6', 'p7','p8'].includes(entry.phase)) : includeP3 ? withoutP9.filter((entry) => !['p4', 'p5', 'p6', 'p7','p8'].includes(entry.phase)) : withoutP9.filter((entry) => !['p3', 'p4', 'p5', 'p6', 'p7','p8'].includes(entry.phase));
   return {
     entries: selected,
@@ -511,7 +565,7 @@ export function validateRegistry(registry = CLEAN_COMMAND_REGISTRY) {
     if (!CLEAN_V2_SCHEMAS[entry.input_schema]) throw new Error(`registry_input_schema_missing:${entry.command_id}:${entry.input_schema}`);
     if (!CLEAN_V2_SCHEMAS[entry.output_schema]) throw new Error(`registry_output_schema_missing:${entry.command_id}:${entry.output_schema}`);
     if (!entry.mcp?.name) throw new Error(`registry_mcp_mapping_missing:${entry.command_id}`);
-    if (['p5', 'p6', 'p7', 'p8'].includes(entry.phase)) {
+    if (['p5', 'p6', 'p7', 'p8', 'p10'].includes(entry.phase)) {
       if (!Array.isArray(entry.transport_allowlist) || entry.transport_allowlist.length === 0) throw new Error(`registry_transport_allowlist_missing:${entry.command_id}`);
       if (new Set(entry.transport_allowlist).size !== entry.transport_allowlist.length || entry.transport_allowlist.some((transport) => !['rest', 'web', 'mcp', 'gateway'].includes(transport))) throw new Error(`registry_transport_allowlist_invalid:${entry.command_id}`);
       if (entry.mcp.exposed === false && (entry.transport_allowlist.includes('mcp') || entry.transport_allowlist.includes('gateway'))) throw new Error(`registry_transport_exposure_mismatch:${entry.command_id}`);
