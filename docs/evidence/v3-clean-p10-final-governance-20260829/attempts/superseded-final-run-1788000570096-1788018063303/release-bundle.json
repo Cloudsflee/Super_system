@@ -1,0 +1,7 @@
+{
+  "schema_version": "aiws.v3-clean.p10-release-bundle-manifest.v1",
+  "source_tree": "a86cebc848133e6e2cff0f8a64fbb23d13e655ba",
+  "web_tree": "f89047a6b4d3b19baf5936b7da420048422a1a5e117030e817f74dc9043be507",
+  "created_at": "2026-08-29T10:49:32.051Z",
+  "production_cutover": false
+}

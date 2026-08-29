@@ -1,0 +1,53 @@
+{
+  "schema_version": "aiws.v3-clean.p10-rollback-manifest.v1",
+  "baseline_commit": "bb55746b7e08cf7ee764d06a8fa23da91ad48e2f",
+  "files": [
+    {
+      "path": "bridge/state.json",
+      "sha256": "3cb8a7618ca48f580a78bc0bd801d691e2cf05a2205da826175079cfb362257a"
+    },
+    {
+      "path": "broker/state.json",
+      "sha256": "ae2587c12662af7ccb64d633a102b7ca7082cfe4fdabee1afd0f53c38c4a26e2"
+    },
+    {
+      "path": "cas/state.json",
+      "sha256": "e486dcc142b4c6ca091c906a34d707adb3275dedf2c30d314ad07bf36d90db6a"
+    },
+    {
+      "path": "catalog/state.json",
+      "sha256": "24ef5e32d6fa05c265b5ee7d67f1ecd8bb90b6ad4a0f798dee5aab484e94dd17"
+    },
+    {
+      "path": "parser/state.json",
+      "sha256": "fdf2fdbd41871e34959105f29341d9cf6e9bfc0c37341a78ef684ab5356d0628"
+    },
+    {
+      "path": "sqlite/state.sqlite",
+      "sha256": "1d96ed0e8f63e0f9af5987090b3417212e0f95fed9d861fd5ee246fa9dc64d25"
+    },
+    {
+      "path": "vault/state.json",
+      "sha256": "d91aa6ef08b6dae9af0ccb46b5cc979e70606a43eff4d9372538f8956662864e"
+    },
+    {
+      "path": "web/state.json",
+      "sha256": "8ab60514d93b0a6c578a0c7f60bb376de2a9c7e39cb1bbb9935470128f7ef76f"
+    },
+    {
+      "path": "workspace/state.json",
+      "sha256": "35b7e605de18b97599a35d8dd86d81bc29c7fabeab082cd186d431890a787943"
+    }
+  ],
+  "expected_user_version": 8,
+  "expected_ledger": [
+    1,
+    2,
+    3,
+    4,
+    5,
+    6,
+    7,
+    8
+  ]
+}

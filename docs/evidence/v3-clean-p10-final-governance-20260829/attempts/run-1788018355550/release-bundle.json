@@ -1,0 +1,13 @@
+{
+  "schema_version": "aiws.v3-clean.p10-release-bundle-manifest.v1",
+  "implementation_commit": "af44ec371277bc46a55eebcea2c4e997e9162ad5",
+  "runtime_tree": "027bf56e3365f3017a18a6360106b18601e3a7c7",
+  "web_tree": "ff60f85e4d9c9735038543bf4c0fb3b5be63dddd9c022bb19ec625b408a3c8fe",
+  "bundle_sha256": "1f10237b71f7bc4dc67e4724c89f3d31316a6320151e944669ee1228bdb53527",
+  "bundle_byte_length": 182754,
+  "image_digest": "sha256:1e50a27911a56d96acb89fc3ec5b13e020d65cb9c3779bcd4257c1c6d1eb0b67",
+  "sbom_sha256": "6f1722d398946de5273673cc206b3aa2b98a48dbeb8940d257c3da0f2ec79691",
+  "reproducible_builds": 2,
+  "dynamic_origin": "http://127.0.0.1:57811",
+  "production_cutover": false
+}

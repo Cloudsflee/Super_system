@@ -1,0 +1,144 @@
+{
+  "schema_version": "aiws.v3-clean.p10-external-probes.v1",
+  "status": "passed",
+  "inherited_from": {
+    "evidence": "docs/evidence/v3-clean-p9-web-release-20260826",
+    "run_id": "run-1787933538303",
+    "verification_sha256": "db289b50e1b93f4ca98c0e91dd91948caf5b52657fe617b9ee7d6ae931022d3f",
+    "manifest_sha256": "d86283ca8abb85b317ef7800de33cabb8a9f73b37e31f5d837fb34a2bf2739ac"
+  },
+  "gates": {
+    "gateway": {
+      "status": "verified",
+      "command": "v3-clean-p4-gateway-probe.mjs",
+      "exit_status": 0,
+      "receipt_schema": "aiws.v3-clean.p4-gateway-probe.v1",
+      "provisional": false,
+      "inherited": true,
+      "source_evidence": "docs/evidence/v3-clean-p9-web-release-20260826/external-probes.json",
+      "source_receipt_sha256": "910a05db545c52beb3362f6c127862f76b1f95ce68551af12241b59db4c7e47c"
+    },
+    "codex": {
+      "status": "verified",
+      "command": "v3-clean-p5-assist-probe.mjs",
+      "exit_status": 0,
+      "receipt_schema": "aiws.v3-clean.p5-assist-probe.v1",
+      "provisional": false,
+      "inherited": true,
+      "source_evidence": "docs/evidence/v3-clean-p9-web-release-20260826/external-probes.json",
+      "source_receipt_sha256": "910a05db545c52beb3362f6c127862f76b1f95ce68551af12241b59db4c7e47c"
+    },
+    "bridge": {
+      "status": "verified",
+      "command": "v3-clean-p5-bridge-probe.mjs",
+      "exit_status": 0,
+      "receipt_schema": "aiws.v3-clean.p5-bridge-probe.v1",
+      "provisional": false,
+      "inherited": true,
+      "source_evidence": "docs/evidence/v3-clean-p9-web-release-20260826/external-probes.json",
+      "source_receipt_sha256": "910a05db545c52beb3362f6c127862f76b1f95ce68551af12241b59db4c7e47c"
+    },
+    "docker_runner": {
+      "status": "verified",
+      "command": "v3-clean-p6-docker-runner-probe.mjs",
+      "exit_status": 0,
+      "receipt_schema": "aiws.v3-clean.p6-docker-runner-probe.v1",
+      "provisional": false,
+      "inherited": true,
+      "source_evidence": "docs/evidence/v3-clean-p9-web-release-20260826/external-probes.json",
+      "source_receipt_sha256": "910a05db545c52beb3362f6c127862f76b1f95ce68551af12241b59db4c7e47c"
+    },
+    "host_runner": {
+      "status": "verified",
+      "command": "v3-clean-p6-host-runner-probe.mjs",
+      "exit_status": 0,
+      "receipt_schema": "aiws.v3-clean.p6-host-runner-probe.v1",
+      "provisional": false,
+      "inherited": true,
+      "source_evidence": "docs/evidence/v3-clean-p9-web-release-20260826/external-probes.json",
+      "source_receipt_sha256": "910a05db545c52beb3362f6c127862f76b1f95ce68551af12241b59db4c7e47c"
+    },
+    "bridge_runner": {
+      "status": "verified",
+      "command": "v3-clean-p6-bridge-runner-probe.mjs",
+      "exit_status": 0,
+      "receipt_schema": "aiws.v3-clean.p6-bridge-runner-probe.v1",
+      "provisional": false,
+      "inherited": true,
+      "source_evidence": "docs/evidence/v3-clean-p9-web-release-20260826/external-probes.json",
+      "source_receipt_sha256": "910a05db545c52beb3362f6c127862f76b1f95ce68551af12241b59db4c7e47c"
+    },
+    "p9_parser_baseline": {
+      "status": "verified",
+      "command": "v3-clean-p7-parser-probe.mjs",
+      "exit_status": 0,
+      "receipt_schema": "aiws.v3-clean.p7-parser-probe.v1",
+      "provisional": false,
+      "inherited": true,
+      "source_evidence": "docs/evidence/v3-clean-p9-web-release-20260826/external-probes.json",
+      "source_receipt_sha256": "910a05db545c52beb3362f6c127862f76b1f95ce68551af12241b59db4c7e47c"
+    },
+    "github_delivery": {
+      "status": "verified",
+      "command": "v3-clean-p9-github-delivery-probe.mjs",
+      "exit_status": 0,
+      "receipt_schema": "aiws.v3-clean.p9-github-delivery-probe.v1",
+      "provisional": false,
+      "inherited": true,
+      "source_evidence": "docs/evidence/v3-clean-p9-web-release-20260826/external-probes.json",
+      "source_receipt_sha256": "910a05db545c52beb3362f6c127862f76b1f95ce68551af12241b59db4c7e47c"
+    },
+    "github_local": {
+      "status": "verified",
+      "command": "v3-clean-p8-github-delivery-probe.mjs",
+      "exit_status": 0,
+      "receipt_schema": "aiws.v3-clean.p8-github-delivery-probe.v2",
+      "provisional": false,
+      "inherited": true,
+      "source_evidence": "docs/evidence/v3-clean-p9-web-release-20260826/external-probes.json",
+      "source_receipt_sha256": "910a05db545c52beb3362f6c127862f76b1f95ce68551af12241b59db4c7e47c"
+    },
+    "p9_release_baseline": {
+      "status": "verified",
+      "image_digest": "sha256:e213440c03a70f74d3b5d95f8b2dc1c8dc7f388d6a709689174cfaa4171167a9",
+      "provisional": false,
+      "inherited": true,
+      "source_evidence": "docs/evidence/v3-clean-p9-web-release-20260826/external-probes.json",
+      "source_receipt_sha256": "910a05db545c52beb3362f6c127862f76b1f95ce68551af12241b59db4c7e47c"
+    },
+    "parser": {
+      "status": "verified",
+      "provisional": false,
+      "command": "node scripts/v3-clean-p10-parser-probe.mjs",
+      "exit_status": 0,
+      "receipt_schema": "aiws.v3-clean.p10-parser-probe.v1",
+      "receipt_sha256": "d3ac071428349006b26b8f6cc95785e0f069674aa69c3076d0ea28405ff4d03e",
+      "image_digest": "sha256:3c2c0f8f550f4c8a14c33661f1e4e85227aa02e3bd0844a8e1044ed368d202a0",
+      "format_count": 21,
+      "valid_samples": 21,
+      "image_build_count": 2,
+      "windows_host_status": "passed"
+    },
+    "github_deletion": {
+      "status": "verified",
+      "provisional": false,
+      "command": "node scripts/v3-clean-p10-github-deletion-probe.mjs",
+      "exit_status": 0,
+      "receipt_schema": "aiws.v3-clean.p10-github-deletion-probe.v1",
+      "receipt_sha256": "cd0b88a6f65bafb1611e57d86b2b1d408094772c79b86869d33e63255ae12a53",
+      "repository_id": "1350708952",
+      "reconciled_absent": true
+    },
+    "release": {
+      "status": "verified",
+      "provisional": false,
+      "command": "node scripts/v3-clean-p10-release-probe.mjs",
+      "exit_status": 0,
+      "receipt_schema": "aiws.v3-clean.p10-release-probe.v1",
+      "receipt_sha256": "da9528e6c9a7468e24c73c18720c8b672c0bf9acd57cbdb1cc62b725ab31f64b",
+      "image_digest": "sha256:1e50a27911a56d96acb89fc3ec5b13e020d65cb9c3779bcd4257c1c6d1eb0b67",
+      "sbom_sha256": "6f1722d398946de5273673cc206b3aa2b98a48dbeb8940d257c3da0f2ec79691",
+      "reproducible_builds": 2
+    }
+  }
+}

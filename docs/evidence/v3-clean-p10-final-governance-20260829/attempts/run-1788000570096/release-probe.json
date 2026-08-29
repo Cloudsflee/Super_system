@@ -1,0 +1,37 @@
+{
+  "schema_version": "aiws.v3-clean.p10-release-probe.v1",
+  "status": "passed",
+  "provisional": false,
+  "release": {
+    "schema_version": "aiws.v3-clean.p10-release-bundle.v1",
+    "source_commit": "bb55746b7e08cf7ee764d06a8fa23da91ad48e2f",
+    "source_tree": "a86cebc848133e6e2cff0f8a64fbb23d13e655ba",
+    "candidate_schema": 9,
+    "candidate_sha256": "015a91777d35e2299d1fa0c4c45292dcd8ecbf18ad9da4641adc953ee2094d8f",
+    "baseline_schema": 8,
+    "baseline_sha256": "bd32dc6182d1b89602dd499ecf6b04f91f52b72319da78d260730148047b6d8b",
+    "dynamic_origin": "http://127.0.0.1:5310",
+    "temporary_root": true,
+    "production_cutover": false,
+    "pointer_switch": {
+      "before": true,
+      "after_rollback": true
+    },
+    "rollback": {
+      "restored_user_version": 8,
+      "ledger": [
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8
+      ],
+      "byte_exact": true
+    }
+  },
+  "bundle_sha256": "ec8d3bde7347dd3f78f013d7b2ae70480b1ed71851a09c768bf19dafa0a1b73d",
+  "image_digest": "sha256:1871df3fe0f60e3f5d7854e048648b56def9f3d6230c53cbe2627148448b03d9"
+}

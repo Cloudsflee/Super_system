@@ -1,0 +1,119 @@
+{
+  "schema_version": "aiws.v3-clean.p10-verification.v1",
+  "phase": "P10",
+  "run_id": "run-1788000570096",
+  "status": "verified",
+  "provisional": false,
+  "generated_at": "2026-08-29T10:50:05.393Z",
+  "baseline_commit": "bb55746b7e08cf7ee764d06a8fa23da91ad48e2f",
+  "source_commit": "e18dc0b616fa7ab2b00a6c05db23890ccd940175",
+  "runtime_phase": 10,
+  "target_user_version": 9,
+  "migration_ledger": [
+    1,
+    2,
+    3,
+    4,
+    5,
+    6,
+    7,
+    8,
+    9
+  ],
+  "migration": "009-final-business-parity-governance",
+  "catalog_promotion": "27/0/27",
+  "catalog": {
+    "clean": 27,
+    "historical": 0,
+    "total": 27
+  },
+  "local_gate_status": "verified",
+  "blocking_failure": null,
+  "parity": {
+    "status": "passed",
+    "counts": {
+      "cases": 14,
+      "routes": 360,
+      "collections": 98,
+      "web_routes": 11,
+      "optimization_packages": 7
+    },
+    "business_groups": 19,
+    "gaps": 0,
+    "map_sha256": "aef30ffc196d4ac9f0b9c5fec2b6680bae5bb075de16f8c552da55ca3354fdbf"
+  },
+  "release": {
+    "status": "passed",
+    "provisional": false,
+    "image_digest": "sha256:1871df3fe0f60e3f5d7854e048648b56def9f3d6230c53cbe2627148448b03d9",
+    "dynamic_origin": "http://127.0.0.1:5310",
+    "production_cutover": false
+  },
+  "external_probes": {
+    "schema_version": "aiws.v3-clean.p10-external-probes.v1",
+    "status": "passed",
+    "gates": {
+      "parser": {
+        "status": "verified",
+        "provisional": false,
+        "command": "node scripts/v3-clean-p10-parser-probe.mjs",
+        "exit_status": 0,
+        "receipt_schema": "aiws.v3-clean.p10-parser-probe.v1"
+      },
+      "github": {
+        "status": "verified",
+        "provisional": false,
+        "command": "node scripts/v3-clean-p10-github-deletion-probe.mjs",
+        "exit_status": 0,
+        "receipt_schema": "aiws.v3-clean.p10-github-deletion-probe.v1"
+      },
+      "release": {
+        "status": "verified",
+        "provisional": false,
+        "command": "node scripts/v3-clean-p10-release-probe.mjs",
+        "exit_status": 0,
+        "receipt_schema": "aiws.v3-clean.p10-release-probe.v1"
+      }
+    }
+  },
+  "rollback": {
+    "status": "passed",
+    "restored_user_version": 8,
+    "ledger": [
+      1,
+      2,
+      3,
+      4,
+      5,
+      6,
+      7,
+      8
+    ],
+    "p10_tables_present": [],
+    "p10_columns_present": [],
+    "byte_exact_mismatches": []
+  },
+  "artifacts": {
+    "modified_artifact": {
+      "path": "modified-artifact.json",
+      "sha256": "26769aed68e7d08660ffe34599b5a7e1ab40d71ea8fd56897be7da9f8a3f7fd4",
+      "byte_length": 27994
+    },
+    "patch": {
+      "path": "change.patch",
+      "sha256": "e9d18eb1a87b8845ab47f065867c3fb4710519fe03e9258b5c7bf904f9e8e272",
+      "byte_length": 244276
+    },
+    "verification_record": {
+      "path": "verification-record.json",
+      "sha256": "8ed177366dbaca3fea79e8f0158613a9ac6719b8ca94b9e5e6243870dcad0bb8",
+      "byte_length": 35904
+    },
+    "rollback": {
+      "path": "rollback-receipt.json",
+      "sha256": "d5ba2a4bd4dddb50c6d6ae624ae1a7fca3f212ba2cfa1c0d0b4fb7b0e273b58b",
+      "byte_length": 1439
+    }
+  },
+  "final_tag": "p10-final-governance-20260829"
+}

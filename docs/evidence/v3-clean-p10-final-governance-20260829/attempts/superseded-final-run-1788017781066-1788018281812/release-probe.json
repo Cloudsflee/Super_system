@@ -1,0 +1,188 @@
+{
+  "schema_version": "aiws.v3-clean.p10-release-probe.v1",
+  "status": "passed",
+  "provisional": false,
+  "baseline_commit": "bb55746b7e08cf7ee764d06a8fa23da91ad48e2f",
+  "production_cutover": false,
+  "temporary_root": "aiws-p10-release-jq4toc",
+  "bundle": {
+    "path": ".ai-workspace/p10-release-probe/modified-release-bundle.tgz",
+    "sha256": "f92f7a860f31b50c6a493da07d98a7a834f165ba083950552d08ee0f6339d891",
+    "byte_length": 182752,
+    "manifest_entries": 3,
+    "service_worker_sha256": "593e45a4aa0c4c1072e8a8ba34a6ce9e6f414719c57558ebb2db95e05f264553",
+    "runtime_tree": "6aed99fb8a7995e85d354b3be440bb2eef21a5df"
+  },
+  "http": {
+    "status": "passed",
+    "dynamic_loopback_port": 53153,
+    "exact_cors_origin": "http://127.0.0.1:53154",
+    "readyz": {
+      "status": "ready",
+      "runtime": "v3-clean",
+      "runtime_phase": 10,
+      "schema_family": "v3-clean",
+      "user_version": 9
+    },
+    "shell_cache_control": "no-cache, no-store",
+    "preflight_status": 204,
+    "actual_status": 200
+  },
+  "browser": {
+    "status": "passed",
+    "layouts": [
+      {
+        "name": "desktop",
+        "width": 1440,
+        "height": 900,
+        "screenshot": "viewport-desktop.png",
+        "screenshot_sha256": "8aeb77372451be81e89bf3f14515f976a1a8eab36e175de45af4658017775f05",
+        "keyboard_focus": "BUTTON",
+        "horizontal_overflow": false,
+        "scroll_width": 1440,
+        "client_width": 1440,
+        "overlaps": []
+      },
+      {
+        "name": "tablet",
+        "width": 1024,
+        "height": 768,
+        "screenshot": "viewport-tablet.png",
+        "screenshot_sha256": "12026b65a032e5bae6cd2b70887890e1c75cb35eab44036075400850889830f6",
+        "keyboard_focus": "BUTTON",
+        "horizontal_overflow": false,
+        "scroll_width": 1024,
+        "client_width": 1024,
+        "overlaps": []
+      },
+      {
+        "name": "mobile",
+        "width": 390,
+        "height": 844,
+        "screenshot": "viewport-mobile.png",
+        "screenshot_sha256": "54acfec2c454a08d14ad0ca34a02a89b4bfa19c518a64536cc21b94bdd97d3ae",
+        "keyboard_focus": "BUTTON",
+        "horizontal_overflow": false,
+        "scroll_width": 390,
+        "client_width": 390,
+        "overlaps": []
+      }
+    ],
+    "offline": {
+      "status": "passed",
+      "screenshot": "offline.png",
+      "screenshot_sha256": "d5060e1ba0ab45cbea6e4ce9ea75a33a9ea45af74748bcec96dd46c336210733",
+      "shell_opened": true
+    },
+    "cache_entries": [
+      "/assets/index-CPGPYRNt.js",
+      "/assets/index-sOo5zDiG.css",
+      "/assets/vendor-icons-CIV_Jyvy.js",
+      "/assets/vendor-react-CzNqpLLb.js",
+      "/index.html",
+      "/manifest.webmanifest"
+    ],
+    "protected_cache_entries": [],
+    "online_console_errors": [],
+    "online_http_errors": []
+  },
+  "image": {
+    "status": "verified",
+    "provisional": false,
+    "docker_version": "29.4.1",
+    "image_digest": "sha256:4a7fcf9b7e11217649e5b95a11a708398c178dfa8eb72230d7e6c938b6397f97",
+    "reproducible_builds": 2,
+    "sbom": {
+      "path": "image.spdx.json",
+      "sha256": "969c3ab3a62d0095f5fd369444aa3c241232d193596a30250167f9c96c0aadb1",
+      "byte_length": 2061861
+    },
+    "base_image": "aiws-parser:p7-freeze-a",
+    "base_image_digest": "sha256:bc69569bc471a27833b7f1174ac1634b5760614c6742237c443641ac5da808e4",
+    "publish": {
+      "dynamic_loopback_port": 46607,
+      "fresh_volume": "aiws-p10-release-30716-1788017850402",
+      "readyz": {
+        "status": "ready",
+        "runtime": "v3-clean",
+        "runtime_phase": 10,
+        "schema_family": "v3-clean",
+        "user_version": 9
+      },
+      "web_shell": true,
+      "exact_cors_origin": "http://127.0.0.1:53154"
+    }
+  },
+  "backup_restore": {
+    "status": "passed",
+    "source_sha256": "8d32dbec4d9436eddb521ed684f429b42bffdcc07673aa521e8bc60f243c35e4",
+    "restored_sha256": "8d32dbec4d9436eddb521ed684f429b42bffdcc07673aa521e8bc60f243c35e4",
+    "byte_exact_mismatches": []
+  },
+  "pointer_switch": {
+    "isolated": true,
+    "from": {
+      "release": "p9",
+      "bundle_sha256": "838f7c45e74359251aaaaec4e5d701cccd03044dd7ac3e650e274a20ad34246b",
+      "schema_version": 8,
+      "catalog": "27/0/27"
+    },
+    "to": {
+      "release": "p10",
+      "bundle_sha256": "f92f7a860f31b50c6a493da07d98a7a834f165ba083950552d08ee0f6339d891",
+      "schema_version": 9,
+      "catalog": "27/0/27"
+    },
+    "active_before_rollback": "C:\\Users\\CLOUDS~1\\AppData\\Local\\Temp\\aiws-p10-release-jq4toc\\p10-modified",
+    "restored": {
+      "release": "p9",
+      "bundle_sha256": "838f7c45e74359251aaaaec4e5d701cccd03044dd7ac3e650e274a20ad34246b",
+      "schema_version": 8,
+      "catalog": "27/0/27"
+    },
+    "production_pointer_touched": false
+  },
+  "rollback": {
+    "status": "passed",
+    "dry_run": {
+      "status": "passed",
+      "writes": 0,
+      "exit_status": 0
+    },
+    "apply_exit_status": 0,
+    "restored_user_version": 8,
+    "ledger": [
+      1,
+      2,
+      3,
+      4,
+      5,
+      6,
+      7,
+      8
+    ],
+    "foreign_key_check": [],
+    "p10_tables_present": [],
+    "p10_columns_present": [],
+    "restored_components": {
+      "sqlite": true,
+      "cas": true,
+      "vault": true,
+      "workspace": true,
+      "broker": true,
+      "bridge": true,
+      "parser": true,
+      "web": true,
+      "catalog": true
+    },
+    "pointer": {
+      "release": "p9",
+      "bundle_sha256": "838f7c45e74359251aaaaec4e5d701cccd03044dd7ac3e650e274a20ad34246b",
+      "schema_version": 8,
+      "catalog": "27/0/27"
+    },
+    "active_pointer": "C:\\Users\\CLOUDS~1\\AppData\\Local\\Temp\\aiws-p10-release-jq4toc\\p9-baseline",
+    "byte_exact": true,
+    "byte_exact_mismatches": []
+  }
+}

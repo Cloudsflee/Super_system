@@ -1,0 +1,280 @@
+{
+  "schema_version": "aiws.v3-clean.p10-modified-artifact.v1",
+  "baseline_commit": "bb55746b7e08cf7ee764d06a8fa23da91ad48e2f",
+  "head": "bb55746b7e08cf7ee764d06a8fa23da91ad48e2f",
+  "working_tree": "modified",
+  "files": [
+    {
+      "path": "AGENTS.md",
+      "sha256": "e2ac457f4f2096009ea72f52b110c482eb9c84c9bd0e40cd5f1b394664aefe46"
+    },
+    {
+      "path": "GENTS.md",
+      "sha256": null
+    },
+    {
+      "path": "apps/api/server.mjs",
+      "sha256": "7e226a097b65207dbeaf9cbf23c836052073c6a0258ffa7df41fa858c841a4af"
+    },
+    {
+      "path": "apps/api/src/clean/assist-service.mjs",
+      "sha256": "1ffe874fbb183abd839b0730952554603b8eaf12548356533c160ce9f74076b9"
+    },
+    {
+      "path": "apps/api/src/clean/command-dispatcher.mjs",
+      "sha256": "d6c22795892e2c864111f3d5fc9df3cc981bcf16dcd733be4a3c90140774982c"
+    },
+    {
+      "path": "apps/api/src/clean/config.mjs",
+      "sha256": "3b0ebaf86dcafa1a847ce225b52f14bd1dcabe48d46f16ebe2ce9f16453134c5"
+    },
+    {
+      "path": "apps/api/src/clean/credential-profile-service.mjs",
+      "sha256": "147950ac132870eb5baf461f06825fee81620c9d15166e382bede5d1fd95bf46"
+    },
+    {
+      "path": "apps/api/src/clean/database.mjs",
+      "sha256": "9e5478f52ac706fbe54fd79bfdeb33db9203ee47b29de23f3b661e056a9da12a"
+    },
+    {
+      "path": "apps/api/src/clean/http.mjs",
+      "sha256": "a917496dcd24bbbe7d1f1f1c127415d5cb6ee2516e180e6cbf796a244d0c4427"
+    },
+    {
+      "path": "apps/api/src/clean/identity.mjs",
+      "sha256": "75d1585513f1471dc5b6b1c83a36f63ed65aeeb20901a6b551859d546c021191"
+    },
+    {
+      "path": "apps/api/src/clean/migration-service.mjs",
+      "sha256": "a92611bda407b7ee0ae277b588b68b4c34304a19abe42a23208f313673e131dc"
+    },
+    {
+      "path": "apps/api/src/clean/migrations/009-final-business-parity-governance.mjs",
+      "sha256": "97d445463c55fd58b2b629e236587de28050135505c432a99a80b3d93ccdefee"
+    },
+    {
+      "path": "apps/api/src/clean/outcome-evaluation-service.mjs",
+      "sha256": "b0f58abd74ddcbb6d782cd3468ddfb042618392046d9192709e6908bace1a4cd"
+    },
+    {
+      "path": "apps/api/src/clean/ownership.mjs",
+      "sha256": "f6627646f1bca762af31b08a6cc85ac25e5c6bc7f770b391a2116b1548c2c4f2"
+    },
+    {
+      "path": "apps/api/src/clean/p10-service.mjs",
+      "sha256": "faac9564092959d45e899dd0589ed041a200f88bbbb715ad5a90179b0b15bae6"
+    },
+    {
+      "path": "apps/api/src/clean/p8/github-adapter.mjs",
+      "sha256": "d231e2966625b3b7ead5bfcc95de99716a460eb524ec603c28ed50091891d572"
+    },
+    {
+      "path": "apps/api/src/clean/project-workflow.mjs",
+      "sha256": "0d757316be00ea4c9a33dd173c98d10599dea6272724c20f502b341156a04425"
+    },
+    {
+      "path": "apps/api/src/clean/provider-adapters.mjs",
+      "sha256": "d4674b0d893d9970e5966272cf371d7975b136ba96993ac0d50b8d9ad53e6867"
+    },
+    {
+      "path": "apps/api/src/clean/quality-service.mjs",
+      "sha256": "476624ac488d4b5675fb6f2ff34329bef14df771217c6a53f6776c65c209ef62"
+    },
+    {
+      "path": "apps/api/src/clean/registry.mjs",
+      "sha256": "3fb2f595eadc59902b8d43e433bbe76202f88395dab7cdf1984fd7ed6ff23420"
+    },
+    {
+      "path": "apps/api/src/clean/runtime.mjs",
+      "sha256": "bfde556f8e7527874f31fa17b79036d54885cc38244586f4ba8a6ff83f05c68d"
+    },
+    {
+      "path": "apps/api/src/clean/schema.mjs",
+      "sha256": "8bf2b3edc8aec77ebbf28291c798454f8295d6c2496e4755992bace3f0981ace"
+    },
+    {
+      "path": "apps/parser-worker/archive-worker.mjs",
+      "sha256": "f0f0b072bee704b5405c074c9a87cea63ea0d2fa76f14b87aceeadb48e666f39"
+    },
+    {
+      "path": "apps/parser-worker/parser-engine.mjs",
+      "sha256": "24716e783eb77d35fa5201efa0f5fc92bb27b695d3b1a0b327010326f603efd3"
+    },
+    {
+      "path": "apps/web/src/App.tsx",
+      "sha256": "f58b90cb65c3bfd7419128260b1e8a35d1620094cd281abfd48b3ff638beee16"
+    },
+    {
+      "path": "apps/web/src/features/p10/FinalBusinessParityPage.tsx",
+      "sha256": "53d903cc10eb80e010403e0f87b533b3359403b7927cc72ed9dbd2c69b2ba45b"
+    },
+    {
+      "path": "apps/web/src/features/p10/index.ts",
+      "sha256": "8a4b50bb292de0ff3ff446d6662f336d0737d27851a89595b03c65645b91316c"
+    },
+    {
+      "path": "apps/web/src/styles.css",
+      "sha256": "27e451550a28a5b1f4b5091a159c4dbe16d652a7115202ff89e53ae9e9464c14"
+    },
+    {
+      "path": "apps/web/src/workspace.ts",
+      "sha256": "8ea1d112eeb4327ed6ed54c9256360ddc597d1a17e7bcb82bce3348697ee3935"
+    },
+    {
+      "path": "docs/architecture/api-v2-contract.md",
+      "sha256": "9914f81832d800fff2e446d0d91a478f5f7304ccfcebebeab56336b7ca16a677"
+    },
+    {
+      "path": "docs/architecture/clean-schema.md",
+      "sha256": "bce864d59fea14d89ca9a3c03d726d80aa3d4c8d349bac089f297f1650f0a743"
+    },
+    {
+      "path": "docs/architecture/decision-log.md",
+      "sha256": "512cc70ecad42e02d166c97e9baf529b6962dcb88b4c589d0f2828e46786f8a0"
+    },
+    {
+      "path": "docs/architecture/p10-final-business-parity.md",
+      "sha256": "87a872e8a0c361a6653036c4890171ee538c39a530b09bc738380d4663a6ff89"
+    },
+    {
+      "path": "docs/architecture/p10-parity/business-parity-map.json",
+      "sha256": "99b3b9545677a07140ff2cb5139c8141711fd5fcd0a45de54c2ecf77b24304e3"
+    },
+    {
+      "path": "docs/architecture/p10-parity/design-retention.json",
+      "sha256": "37cc0c578cd6e3ba7212e215339f05d6eea93f540d613ea2c584a680df78678f"
+    },
+    {
+      "path": "docs/architecture/p10-parity/retired-interface-manifest.json",
+      "sha256": "4979c313a2fabb4ee5fee90e9f0d63fc2cf06295c4b1f7c81b46e4c33d8d260f"
+    },
+    {
+      "path": "docs/architecture/p10-parity/v23-input.json",
+      "sha256": "7fff433fa05651930c4785052c8a345bb06c9e664f480baef3bdf5174d37a3ed"
+    },
+    {
+      "path": "docs/architecture/v23-capability-matrix.md",
+      "sha256": "1d723911ddf521ecbe552ea468ad334ef45752f52c348cbde11f4ed4a1296ab8"
+    },
+    {
+      "path": "docs/architecture/v3-clean-development-plan.md",
+      "sha256": "ba251cfbb1c267a28f823f763f59a86ab6340b682ba6f432413076966751eea8"
+    },
+    {
+      "path": "docs/document-index.md",
+      "sha256": "38a6aea207a1d1c39ed2fd87540e3277baa185802ed15144ab375d9b542e8b10"
+    },
+    {
+      "path": "docs/evidence/v3-clean-p10-final-governance-20260829/attempts/run-1787965330224/original-hashes.json",
+      "sha256": "cd912184bfabfd57f805e796ea3348a284f35964ab07dd2988e215a8850a30ee"
+    },
+    {
+      "path": "docs/evidence/v3-clean-p10-final-governance-20260829/attempts/run-1787965330224/preflight.json",
+      "sha256": "f24c5337f6028345bf5e4a2d62c77368010bec7a979e11c3ba2aa90b08164fd5"
+    },
+    {
+      "path": "docs/testing.md",
+      "sha256": "79a7d71bd60655ff3394b9be069824ae67e2487c162960900473a4bf6b2f7029"
+    },
+    {
+      "path": "package.json",
+      "sha256": "569254249b7799ca9a8f7bd91b203cc5dbb77a719c4694f5108c003a8b6b818f"
+    },
+    {
+      "path": "packages/contracts/src/clean-v2.mjs",
+      "sha256": "d223a5ee3316d86b802486f7657f2432cb2c004dc99af612c6ce775011126c20"
+    },
+    {
+      "path": "scripts/catalog-loader.mjs",
+      "sha256": "56beb9ab5ba11f03292c38ccaa09967ce291be536849b8e0188d5043a6b06420"
+    },
+    {
+      "path": "scripts/check.mjs",
+      "sha256": "3877719cea4aa78ebfceed3bf7964b586dfa944943fd13f5b776965d160d59c7"
+    },
+    {
+      "path": "scripts/lib/v3-clean-p1-scope.mjs",
+      "sha256": "5473eb2fb380e439ebd82952774c869ea0469b0874884f2746895a792ea48e56"
+    },
+    {
+      "path": "scripts/lib/v3-clean-p10-parity.mjs",
+      "sha256": "1b9e3ad38731d774f6d891732d478b511c8031f81608822081db71a102dc884a"
+    },
+    {
+      "path": "scripts/v3-clean-architecture-scan.mjs",
+      "sha256": "915506b7c5d5b0a9ac3ef7edd86c2141d4f49a9f6795266582340851725e362a"
+    },
+    {
+      "path": "scripts/v3-clean-p10-evidence.mjs",
+      "sha256": "73e7cf7168143b768618706b93a621f631fba9b1e78bab455b2e9918e2ffcb5f"
+    },
+    {
+      "path": "scripts/v3-clean-p10-github-deletion-probe.mjs",
+      "sha256": "947b21d61456c96127732eb24cfb83f9ff2cbff8829dc2745eb170a232b358f0"
+    },
+    {
+      "path": "scripts/v3-clean-p10-parity.mjs",
+      "sha256": "5847f59d9c2b893d475a032f14b765769041024477609c808bc0e2a99c825d6f"
+    },
+    {
+      "path": "scripts/v3-clean-p10-parser-probe.mjs",
+      "sha256": "c44bf250638595611ba02c2b00db173aee8ad62d26c708fcb20daf167196f7f0"
+    },
+    {
+      "path": "scripts/v3-clean-p10-release-probe.mjs",
+      "sha256": "0c07254b8b481cf092f5eeeb283173bfec6d5d7a70bc7e80b916d2875c31d90c"
+    },
+    {
+      "path": "scripts/verify.mjs",
+      "sha256": "6fcdd9b01c3d3e36025d3ae118a83ce84b42e5a3c6e715f590cf5404e0242fb7"
+    },
+    {
+      "path": "tests/p10/business-parity.test.mjs",
+      "sha256": "7fe5df3c8168a3624c42a14f70bf1e6a109f10910aaad8d00c48c66a81b68d31"
+    },
+    {
+      "path": "tests/p10/helpers.mjs",
+      "sha256": "2d2eecd572e43e1ff5b9f06606829631f6380851ce5a0cf6a71eee94a11a9a5a"
+    },
+    {
+      "path": "tests/p10/http-contract.test.mjs",
+      "sha256": "5bab0fdfb3ecd36f32cc76a1dff925fc523e9cd433d60a7a667deda6ba6dfd49"
+    },
+    {
+      "path": "tests/p10/migration.test.mjs",
+      "sha256": "4aac243bca76895ffde82f233a6c084a3b989c6346a66a34b091d3bda25a74d8"
+    },
+    {
+      "path": "tests/p10/parity-governance.test.mjs",
+      "sha256": "5155485f8ac7b3447366c6cd18b387974d69767369362dfd49c34e99fecde621"
+    },
+    {
+      "path": "tests/p10/quality-parity.test.mjs",
+      "sha256": "b3d5dd6ed93566efe581779a445de28c8c2f9d5952931f2fdc1bdd28d1ca89f4"
+    },
+    {
+      "path": "tests/p4/active-entrypoint.test.mjs",
+      "sha256": "492395cdce4f769a5eb58dd3eb785f5649c29ebb78fda2308e5412c59f791a55"
+    },
+    {
+      "path": "tests/p4/governance-sync.test.mjs",
+      "sha256": "8a17299cbff6a8c3299cea6617d1d52638504f33213b3248c66abb8195a97d3f"
+    },
+    {
+      "path": "tests/p6/governance-sync.test.mjs",
+      "sha256": "e8864785074fa169f3c43c358ca0d078f00870e2b03788019402a92e2b77dd43"
+    },
+    {
+      "path": "tests/p7/governance-sync.test.mjs",
+      "sha256": "befebf8de10ba8360cb1ebc93923f14a754d50ea30ac0a140289bab460235cae"
+    },
+    {
+      "path": "tests/p8/governance.test.mjs",
+      "sha256": "a6eb2fdb1af2b72d91be90a25fe3bfcddc8b8e27f8176f82db18080e9a6213ea"
+    },
+    {
+      "path": "tests/p9/foundation.test.mjs",
+      "sha256": "68b598eb3cb1bd9e89934d11be459be207e14a2fbacb07da14fa33a0f4ae3b77"
+    }
+  ]
+}

@@ -1,0 +1,121 @@
+{
+  "schema_version": "aiws.v3-clean.p10-design-retention.v1",
+  "owner": "Product Architecture",
+  "phase": "P10",
+  "entries": [
+    {
+      "id": "quality-five-dimension-rubric",
+      "business_group": "quality",
+      "retained_behavior": [
+        "coverage",
+        "accuracy",
+        "depth",
+        "consistency",
+        "clarity"
+      ],
+      "clean_commands": [
+        "quality.policy.update",
+        "quality.prepare"
+      ],
+      "verification": [
+        "tests/p10/business-parity.test.mjs"
+      ]
+    },
+    {
+      "id": "quality-advice-human-separation",
+      "business_group": "quality",
+      "retained_behavior": [
+        "closed-schema advice",
+        "empty human score draft"
+      ],
+      "clean_commands": [
+        "quality.advice.get",
+        "quality.decision"
+      ],
+      "verification": [
+        "tests/p10/business-parity.test.mjs"
+      ]
+    },
+    {
+      "id": "quality-asset-selection-history",
+      "business_group": "quality",
+      "retained_behavior": [
+        "included version",
+        "excluded reason"
+      ],
+      "clean_commands": [
+        "quality.prepare",
+        "quality.start"
+      ],
+      "verification": [
+        "tests/p10/business-parity.test.mjs"
+      ]
+    },
+    {
+      "id": "quality-stale-supersede-history",
+      "business_group": "quality",
+      "retained_behavior": [
+        "one active run",
+        "completed supersession",
+        "stale history"
+      ],
+      "clean_commands": [
+        "quality.list",
+        "quality.decision"
+      ],
+      "verification": [
+        "tests/p10/business-parity.test.mjs"
+      ]
+    },
+    {
+      "id": "assist-fork-side-thread-review",
+      "business_group": "assist",
+      "retained_behavior": [
+        "fork",
+        "side thread",
+        "review comments",
+        "request changes"
+      ],
+      "clean_commands": [
+        "assist.session.fork",
+        "assist.review.comment"
+      ],
+      "verification": [
+        "tests/p10/business-parity.test.mjs"
+      ]
+    },
+    {
+      "id": "brief-template-snapshot",
+      "business_group": "project-brief",
+      "retained_behavior": [
+        "template id",
+        "template revision",
+        "template hash"
+      ],
+      "clean_commands": [
+        "brief.template.list",
+        "brief.create"
+      ],
+      "verification": [
+        "tests/p10/business-parity.test.mjs"
+      ]
+    },
+    {
+      "id": "confirmed-project-repository-deletion",
+      "business_group": "repository",
+      "retained_behavior": [
+        "project blockers",
+        "two repository confirmations",
+        "reconcile"
+      ],
+      "clean_commands": [
+        "project.deletion.prepare",
+        "repository.deletion.prepare"
+      ],
+      "verification": [
+        "tests/p10/business-parity.test.mjs"
+      ]
+    }
+  ],
+  "retention_sha256": "ae509bca18ba437e7033e67af3cc1fde735197422630fa38cd44313153465d2f"
+}

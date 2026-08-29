@@ -1,0 +1,27 @@
+{
+  "schema_version": "aiws.v3-clean.p10-external-probes.v1",
+  "status": "passed",
+  "gates": {
+    "parser": {
+      "status": "verified",
+      "provisional": false,
+      "command": "node scripts/v3-clean-p10-parser-probe.mjs",
+      "exit_status": 0,
+      "receipt_schema": "aiws.v3-clean.p10-parser-probe.v1"
+    },
+    "github": {
+      "status": "verified",
+      "provisional": false,
+      "command": "node scripts/v3-clean-p10-github-deletion-probe.mjs",
+      "exit_status": 0,
+      "receipt_schema": "aiws.v3-clean.p10-github-deletion-probe.v1"
+    },
+    "release": {
+      "status": "verified",
+      "provisional": false,
+      "command": "node scripts/v3-clean-p10-release-probe.mjs",
+      "exit_status": 0,
+      "receipt_schema": "aiws.v3-clean.p10-release-probe.v1"
+    }
+  }
+}

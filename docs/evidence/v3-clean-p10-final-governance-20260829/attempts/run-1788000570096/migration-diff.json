@@ -1,0 +1,50 @@
+{
+  "schema_version": "aiws.v3-clean.p10-migration-diff.v1",
+  "from_user_version": 8,
+  "to_user_version": 9,
+  "migration": "009-final-business-parity-governance",
+  "tables": [
+    "brief_templates",
+    "brief_template_revisions",
+    "workflow_quality_policies",
+    "quality_review_asset_selections",
+    "quality_review_advices",
+    "assist_review_comments",
+    "project_deletion_intents",
+    "repository_deletion_intents"
+  ],
+  "additive_columns": {
+    "provider_profiles": [
+      "lifecycle_status",
+      "disabled_at"
+    ],
+    "brief_revisions": [
+      "template_id",
+      "template_revision",
+      "template_sha256"
+    ],
+    "assist_sessions": [
+      "title",
+      "mode",
+      "parent_session_id",
+      "fork_source_turn_id",
+      "pinned_at",
+      "archived_at",
+      "deleted_at"
+    ],
+    "quality_review_runs": [
+      "policy_revision",
+      "policy_snapshot_json",
+      "policy_sha256",
+      "reviewer_profile_id",
+      "reviewer_profile_revision",
+      "reviewer_snapshot_json",
+      "reviewer_snapshot_sha256",
+      "supersedes_quality_review_id",
+      "superseded_by_quality_review_id",
+      "stale_at",
+      "stale_reason"
+    ]
+  },
+  "checksum": null
+}

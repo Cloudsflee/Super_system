@@ -1,0 +1,11 @@
+{
+  "schema_version": "aiws.v3-clean.p10-viewport-receipt.v1",
+  "viewport": {
+    "width": 1440,
+    "height": 900
+  },
+  "screenshot": "viewport-desktop.png",
+  "screenshot_sha256": "9450f1a9ee3ea3b9a0ab907a627c01ec3ed64fecbb98491d75c33f799f786752",
+  "status": "passed",
+  "source": "P9 browser baseline replay"
+}

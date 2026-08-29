@@ -1,0 +1,74 @@
+{
+  "schema_version": "aiws.v3-clean.p10-preflight.v1",
+  "owner": "Product Architecture",
+  "phase": "P10",
+  "Target": "P10 final business parity and governance closure",
+  "目标": "P10 最终业务对等与治理封账",
+  "Non-target": "production cutover and production volumes",
+  "非目标": "生产切换与生产卷",
+  "Forbidden": [
+    "legacy runtime/facade",
+    "dual operation/event/CAS/head writes",
+    "unconfirmed deletion",
+    "provisional promotion"
+  ],
+  "禁止项": [
+    "旧运行时与双写",
+    "未确认删除",
+    "临时收录晋级"
+  ],
+  "Reuse": [
+    "P9 /api/v2",
+    "shared operations/events/heads/CAS/ACL/redaction",
+    "P9 released Catalog"
+  ],
+  "复用项": [
+    "P9 公共 owner 与 Catalog"
+  ],
+  "Delete/retire": [
+    "historical interface shapes only; no business capability"
+  ],
+  "删除/退役": [
+    "仅退役历史接口形状，不退役业务能力"
+  ],
+  "Acceptance commands": [
+    "pnpm check",
+    "pnpm audit:p1 -- --skip-evidence",
+    "pnpm scan:clean -- --skip-evidence",
+    "pnpm audit:parity",
+    "pnpm recovery:plan",
+    "pnpm recovery:catalog",
+    "pnpm recovery:coverage",
+    "pnpm recovery:impact -- --audit",
+    "pnpm test:p1",
+    "pnpm test:p2",
+    "pnpm test:p3",
+    "pnpm test:p31",
+    "pnpm test:p4",
+    "pnpm test:p5",
+    "pnpm test:p6",
+    "pnpm test:p7",
+    "pnpm test:p8",
+    "pnpm test:p9",
+    "pnpm test:p10",
+    "node scripts/v3-clean-p10-parser-probe.mjs",
+    "node scripts/v3-clean-p10-github-deletion-probe.mjs",
+    "pnpm --filter @aiws/web test",
+    "pnpm test",
+    "pnpm test:integration:clean",
+    "pnpm test:security:clean",
+    "pnpm test:integration",
+    "pnpm test:security",
+    "pnpm build",
+    "pnpm test:e2e",
+    "node scripts/v3-clean-p10-release-probe.mjs",
+    "pnpm test:release",
+    "git diff --check"
+  ],
+  "验收命令": "audit:parity, P10 tests, parser/GitHub/release probes, Web, build, rollback",
+  "Rollback artifact": "docs/evidence/v3-clean-p10-final-governance-20260829/rollback.ps1",
+  "回滚工件": "docs/evidence/v3-clean-p10-final-governance-20260829/rollback.ps1",
+  "active_object": "P10 final Evidence",
+  "last_confirmed_result": "P10 parity audit and focused domain tests passed",
+  "next_action": "run synchronized gates, execute isolated rollback, publish final receipt"
+}

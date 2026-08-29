@@ -1,0 +1,7 @@
+{
+  "schema_version": "aiws.v3-clean.p10-generation-failure.v1",
+  "status": "failed",
+  "provisional": true,
+  "run_id": "run-1788016284632",
+  "error": "Error: p10_release_bundle_missing_2_candidate_provisional_present\n    at createReleaseBundle (file:///E:/00_desktop/%E6%AF%95%E4%B8%9A%E8%AE%BE%E8%AE%A1/scripts/v3-clean-p10-evidence.mjs:219:211)\n    at file:///E:/00_desktop/%E6%AF%95%E4%B8%9A%E8%AE%BE%E8%AE%A1/scripts/v3-clean-p10-evidence.mjs:66:3\n    at process.processTicksAndRejections (node:internal/process/task_queues:104:5)"
+}

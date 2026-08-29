@@ -1,0 +1,12 @@
+{
+  "schema_version": "aiws.v3-clean.p10-viewport-receipt.v1",
+  "viewport": {
+    "width": 390,
+    "height": 844
+  },
+  "screenshot": "viewport-mobile.png",
+  "screenshot_sha256": "ebe1b5fde442e846de870ecf0ddfc271b6d977777260e7e91a489ebc66d55989",
+  "e2e_receipt_sha256": "da6cc1dfc2c7ff8f1492eecdd5a6198185105b93b7a3326efd73c0cf9decfd9e",
+  "status": "passed",
+  "source": "P10 governance browser:mobile-governance.png"
+}

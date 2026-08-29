@@ -1,0 +1,7 @@
+{
+  "schema_version": "aiws.v3-clean.p10-generation-failure.v1",
+  "status": "failed",
+  "provisional": true,
+  "run_id": "run-1787965330224",
+  "error": "Error: p10_reopen_failed:manifest_missing:rollback-baseline/bridge/state.json,manifest_missing:rollback-baseline/broker/state.json,manifest_missing:rollback-baseline/cas/state.json,manifest_missing:rollback-baseline/catalog/state.json,manifest_missing:rollback-baseline/parser/state.json,manifest_missing:rollback-baseline/sqlite/state.sqlite,manifest_missing:rollback-baseline/vault/state.json,manifest_missing:rollback-baseline/web/state.json,manifest_missing:rollback-baseline/workspace/state.json\n    at file:///E:/00_desktop/%E6%AF%95%E4%B8%9A%E8%AE%BE%E8%AE%A1/scripts/v3-clean-p10-evidence.mjs:105:45\n    at process.processTicksAndRejections (node:internal/process/task_queues:104:5)"
+}
