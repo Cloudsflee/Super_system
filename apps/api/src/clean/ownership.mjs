@@ -139,6 +139,18 @@ export const CLEAN_P8_TABLE_OWNERS = Object.freeze({
   import_conflicts: 'Importer'
 });
 
+export const CLEAN_P10_TABLE_OWNERS = Object.freeze({
+  ...CLEAN_P8_TABLE_OWNERS,
+  brief_templates: 'Project',
+  brief_template_revisions: 'Project',
+  workflow_quality_policies: 'Quality',
+  quality_review_asset_selections: 'Quality',
+  quality_review_advices: 'Quality',
+  assist_review_comments: 'Assist',
+  project_deletion_intents: 'Project',
+  repository_deletion_intents: 'Repository'
+});
+
 export const CLEAN_COMMAND_OWNERS = Object.freeze({
   'operations.get': 'Operations',
   'operations.events': 'Operations',
@@ -390,6 +402,40 @@ export const CLEAN_COMMAND_OWNERS = Object.freeze({
   , 'operations.replay': 'Operations'
   , 'cas.gc.plan': 'CAS'
   , 'cas.gc.apply': 'CAS'
+  , 'profile.update': 'Setup'
+  , 'profile.disable': 'Setup'
+  , 'profile.enable': 'Setup'
+  , 'brief.template.list': 'Project'
+  , 'brief.template.create': 'Project'
+  , 'brief.template.update': 'Project'
+  , 'brief.template.archive': 'Project'
+  , 'project.deletion.prepare': 'Project'
+  , 'project.deletion.get': 'Project'
+  , 'project.deletion.confirm': 'Project'
+  , 'project.deletion.execute': 'Project'
+  , 'project.deletion.cancel': 'Project'
+  , 'repository.deletion.prepare': 'Repository'
+  , 'repository.deletion.get': 'Repository'
+  , 'repository.deletion.creator_confirm': 'Repository'
+  , 'repository.deletion.owner_confirm': 'Repository'
+  , 'repository.deletion.execute': 'Repository'
+  , 'repository.deletion.reconcile': 'Repository'
+  , 'repository.deletion.cancel': 'Repository'
+  , 'assist.session.metadata': 'Assist'
+  , 'assist.session.archive': 'Assist'
+  , 'assist.session.restore': 'Assist'
+  , 'assist.session.delete': 'Assist'
+  , 'assist.session.restore_deleted': 'Assist'
+  , 'assist.session.fork': 'Assist'
+  , 'assist.session.side_thread': 'Assist'
+  , 'assist.configuration.create': 'Assist'
+  , 'assist.review.comments': 'Assist'
+  , 'assist.review.comment': 'Assist'
+  , 'assist.review.request_changes': 'Assist'
+  , 'quality.policy.get': 'Quality'
+  , 'quality.policy.update': 'Quality'
+  , 'quality.prepare': 'Quality'
+  , 'quality.advice.get': 'Quality'
 });
 
 export const CLEAN_EVENT_OWNERS = Object.freeze({
@@ -410,6 +456,7 @@ export const CLEAN_EVENT_OWNERS = Object.freeze({
   'project.*': 'Project',
   'intake.*': 'Project',
   'brief.*': 'Project',
+  'brief_template.*': 'Project',
   'repository.*': 'Repository',
   'workspace.*': 'Repository',
   'workflow.*': 'Workflow',
@@ -433,6 +480,8 @@ export const CLEAN_EVENT_OWNERS = Object.freeze({
   , 'assist_message.*': 'Assist'
   , 'assist_goal.*': 'Assist'
   , 'assist_reference.*': 'Assist'
+  , 'assist_configuration.*': 'Assist'
+  , 'assist_review.*': 'Assist'
   , 'runtime_approval.*': 'Assist'
   , 'runtime_user_input.*': 'Assist'
   , 'semantic_proposal.*': 'Assist'
@@ -457,6 +506,7 @@ export const CLEAN_EVENT_OWNERS = Object.freeze({
   , 'code_change.*': 'Evidence'
   , 'test_result.*': 'Evidence'
   , 'quality_review.*': 'Quality'
+  , 'quality_policy.*': 'Quality'
   , 'outcome.*': 'Outcome'
   , 'delivery.*': 'Delivery'
   , 'deployment.*': 'Deployment'
@@ -473,9 +523,16 @@ export const CLEAN_PLATFORM_OWNERSHIP = Object.freeze({
   events: CLEAN_EVENT_OWNERS
 });
 
+export const CLEAN_P10_PLATFORM_OWNERSHIP = Object.freeze({
+  schema_version: 'aiws.v3-clean.owner-manifest.v10',
+  tables: CLEAN_P10_TABLE_OWNERS,
+  commands: CLEAN_COMMAND_OWNERS,
+  events: CLEAN_EVENT_OWNERS
+});
+
 export function validateCleanOwnership({ tables = [], registry = null } = {}) {
   const actualTables = [...new Set(tables.map((table) => String(table)))].sort();
-  const tableOwners = actualTables.includes('delivery_policies') ? CLEAN_P8_TABLE_OWNERS : (actualTables.includes('parser_formats') ? CLEAN_P7_TABLE_OWNERS : (actualTables.includes('runner_profiles') ? CLEAN_P6_TABLE_OWNERS : (actualTables.includes('assist_sessions') ? CLEAN_P5_TABLE_OWNERS : (actualTables.includes('context_sources') ? CLEAN_P4_TABLE_OWNERS : (actualTables.includes('projects') ? CLEAN_P3_TABLE_OWNERS : (actualTables.includes('teams') ? CLEAN_P2_TABLE_OWNERS : CLEAN_TABLE_OWNERS))))));
+  const tableOwners = actualTables.includes('brief_templates') ? CLEAN_P10_TABLE_OWNERS : (actualTables.includes('delivery_policies') ? CLEAN_P8_TABLE_OWNERS : (actualTables.includes('parser_formats') ? CLEAN_P7_TABLE_OWNERS : (actualTables.includes('runner_profiles') ? CLEAN_P6_TABLE_OWNERS : (actualTables.includes('assist_sessions') ? CLEAN_P5_TABLE_OWNERS : (actualTables.includes('context_sources') ? CLEAN_P4_TABLE_OWNERS : (actualTables.includes('projects') ? CLEAN_P3_TABLE_OWNERS : (actualTables.includes('teams') ? CLEAN_P2_TABLE_OWNERS : CLEAN_TABLE_OWNERS)))))));
   const expectedTables = Object.keys(tableOwners).sort();
   const missingTables = expectedTables.filter((table) => !actualTables.includes(table));
   const unexpectedTables = actualTables.filter((table) => !expectedTables.includes(table));
@@ -502,6 +559,7 @@ export function validateCleanOwnership({ tables = [], registry = null } = {}) {
     const p7Owners = new Set(['Parser', 'Evidence', 'Quality', 'Outcome']);
     const p8Owners = new Set(['Delivery', 'Deployment', 'Importer']);
     const hasP8Tables = actualTables.includes('delivery_policies');
+    const hasP10Tables = actualTables.includes('brief_templates');
     const hasP9Routes = entries.some((entry) => entry.phase === 'p9');
     const hasP7Tables = actualTables.includes('parser_formats');
     const hasP6Tables = actualTables.includes('runner_profiles');
@@ -509,9 +567,11 @@ export function validateCleanOwnership({ tables = [], registry = null } = {}) {
     const hasP4Tables = actualTables.includes('context_sources');
     const hasP3Tables = actualTables.includes('projects');
     const p8OperationCommands = new Set(['operations.list', 'operations.replay', 'backup.list', 'backup.create', 'restore.prepare', 'system.reset.prepare', 'cas.gc.plan', 'cas.gc.apply']);
+    const p10Commands = new Set(Object.keys(CLEAN_COMMAND_OWNERS).filter((commandId) => ['profile.update','profile.disable','profile.enable','brief.template.list','brief.template.create','brief.template.update','brief.template.archive','project.deletion.prepare','project.deletion.get','project.deletion.confirm','project.deletion.execute','project.deletion.cancel','repository.deletion.prepare','repository.deletion.get','repository.deletion.creator_confirm','repository.deletion.owner_confirm','repository.deletion.execute','repository.deletion.reconcile','repository.deletion.cancel','assist.session.metadata','assist.session.archive','assist.session.restore','assist.session.delete','assist.session.restore_deleted','assist.session.fork','assist.session.side_thread','assist.configuration.create','assist.review.comments','assist.review.comment','assist.review.request_changes','quality.policy.get','quality.policy.update','quality.prepare','quality.advice.get'].includes(commandId)));
     const expectedCommandIds = Object.entries(CLEAN_COMMAND_OWNERS)
       .filter(([commandId, owner]) => {
         if (commandId === 'events.project.replay' && !hasP9Routes) return false;
+        if (p10Commands.has(commandId) && !hasP10Tables) return false;
         if (!hasP8Tables && p8OperationCommands.has(commandId)) return false;
         if (hasP8Tables) return true;
         if (hasP7Tables) return !p8Owners.has(owner);

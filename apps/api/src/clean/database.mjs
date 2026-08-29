@@ -18,6 +18,7 @@ import { ASSIST_FILES_TERMINAL_BRIDGE_MIGRATION, ASSIST_FILES_TERMINAL_BRIDGE_MI
 import { RUNNER_EXECUTION_CHECKPOINT_REPLAY_MIGRATION, RUNNER_EXECUTION_CHECKPOINT_REPLAY_MIGRATION_VERSION, RUNNER_EXECUTION_CHECKPOINT_REPLAY_TOOL_VERSION } from './migrations/006-runner-execution-checkpoint-replay.mjs';
 import { EVIDENCE_QUALITY_PARSER_OUTCOME_MIGRATION, EVIDENCE_QUALITY_PARSER_OUTCOME_MIGRATION_VERSION, EVIDENCE_QUALITY_PARSER_OUTCOME_TOOL_VERSION } from './migrations/007-evidence-quality-parser-outcome.mjs';
 import { DELIVERY_DEPLOYMENT_IMPORTER_OPERATIONS_MIGRATION, DELIVERY_DEPLOYMENT_IMPORTER_OPERATIONS_MIGRATION_VERSION, DELIVERY_DEPLOYMENT_IMPORTER_OPERATIONS_TOOL_VERSION } from './migrations/008-delivery-deployment-importer-operations.mjs';
+import { FINAL_BUSINESS_PARITY_GOVERNANCE_MIGRATION, FINAL_BUSINESS_PARITY_GOVERNANCE_MIGRATION_VERSION, FINAL_BUSINESS_PARITY_GOVERNANCE_TOOL_VERSION } from './migrations/009-final-business-parity-governance.mjs';
 
 export const CLEAN_P2_USER_VERSION = IDENTITY_MIGRATION_VERSION;
 export const CLEAN_P2_TOOL_VERSION = IDENTITY_TOOL_VERSION;
@@ -33,6 +34,8 @@ export const CLEAN_P7_USER_VERSION = EVIDENCE_QUALITY_PARSER_OUTCOME_MIGRATION_V
 export const CLEAN_P7_TOOL_VERSION = EVIDENCE_QUALITY_PARSER_OUTCOME_TOOL_VERSION;
 export const CLEAN_P8_USER_VERSION = DELIVERY_DEPLOYMENT_IMPORTER_OPERATIONS_MIGRATION_VERSION;
 export const CLEAN_P8_TOOL_VERSION = DELIVERY_DEPLOYMENT_IMPORTER_OPERATIONS_TOOL_VERSION;
+export const CLEAN_P10_USER_VERSION = FINAL_BUSINESS_PARITY_GOVERNANCE_MIGRATION_VERSION;
+export const CLEAN_P10_TOOL_VERSION = FINAL_BUSINESS_PARITY_GOVERNANCE_TOOL_VERSION;
 
 export class CleanDatabaseError extends Error {
   constructor(code, message, details = {}, status = 503) {
@@ -163,6 +166,8 @@ function targetVersionFor(options = {}) {
   if (options.phase === 'p6' || options.cleanPhase === 'p6') return CLEAN_P6_USER_VERSION;
   if (options.phase === 'p7' || options.cleanPhase === 'p7') return CLEAN_P7_USER_VERSION;
   if (options.phase === 'p8' || options.cleanPhase === 'p8') return CLEAN_P8_USER_VERSION;
+  if (options.phase === 'p9' || options.cleanPhase === 'p9') return CLEAN_P8_USER_VERSION;
+  if (options.phase === 'p10' || options.cleanPhase === 'p10') return CLEAN_P10_USER_VERSION;
   // The low-level database helper remains useful for reproducing the frozen
   // baseline.  The runtime always supplies its current target explicitly.
   return CLEAN_USER_VERSION;
@@ -228,8 +233,8 @@ function ensureBaseline(db, options) {
   const suppliedTimestamp = now();
   const timestamp = typeof suppliedTimestamp === 'string' ? suppliedTimestamp : new Date(suppliedTimestamp).toISOString();
   const targetVersion = Number(options.targetVersion ?? CLEAN_USER_VERSION);
-  if (![CLEAN_USER_VERSION, CLEAN_P2_USER_VERSION, CLEAN_P3_USER_VERSION, CLEAN_P4_USER_VERSION, CLEAN_P5_USER_VERSION, CLEAN_P6_USER_VERSION, CLEAN_P7_USER_VERSION, CLEAN_P8_USER_VERSION].includes(targetVersion)) {
-    throw new CleanNotReadyError('clean schema version is unsupported', { reason: 'version_mismatch', expected: CLEAN_P8_USER_VERSION, actual: targetVersion });
+  if (![CLEAN_USER_VERSION, CLEAN_P2_USER_VERSION, CLEAN_P3_USER_VERSION, CLEAN_P4_USER_VERSION, CLEAN_P5_USER_VERSION, CLEAN_P6_USER_VERSION, CLEAN_P7_USER_VERSION, CLEAN_P8_USER_VERSION, CLEAN_P10_USER_VERSION].includes(targetVersion)) {
+    throw new CleanNotReadyError('clean schema version is unsupported', { reason: 'version_mismatch', expected: CLEAN_P10_USER_VERSION, actual: targetVersion });
   }
   const tables = db.prepare("SELECT name FROM sqlite_schema WHERE type='table' AND name NOT LIKE 'sqlite_%' ORDER BY name").all().map((row) => row.name);
   if (tables.length === 0) return applyFreshMigrations(db, options, timestamp, targetVersion);
@@ -239,7 +244,7 @@ function ensureBaseline(db, options) {
     throw new CleanNotReadyError('clean schema family marker is invalid', { reason: 'family_mismatch', observed: meta || null });
   }
   let version = Number(db.prepare('PRAGMA user_version').get().user_version);
-  if (version < CLEAN_USER_VERSION || version > CLEAN_P8_USER_VERSION) {
+  if (version < CLEAN_USER_VERSION || version > CLEAN_P10_USER_VERSION) {
     throw new CleanNotReadyError('clean schema version is unsupported', { reason: 'version_mismatch', expected: targetVersion, actual: version });
   }
   verifyMigrationRow(db, version);
@@ -288,7 +293,7 @@ function applyFreshMigrations(db, options, timestamp, targetVersion) {
       VALUES(?,?,?,?,?,?,?,?,?,?,?)`).run(bootstrapId, 'system', 'System Bootstrap', 'active', metadataJson, sha256Hex(metadataJson), 1, timestamp, timestamp, null, null);
     db.prepare(`INSERT INTO receipt_manifests(id,kind,status,payload_json,payload_sha256,cas_sha256,created_at,expires_at)
       VALUES(?,?,?,?,?,?,?,?)`).run('receipt_migration_001_clean_baseline', 'migration.baseline', 'verified', canonicalJson(baselineVerification), baselineVerificationSha, null, timestamp, null);
-    for (const migration of [IDENTITY_MIGRATION, PROJECT_WORKFLOW_MIGRATION, CONTEXT_PROJECTION_MCP_MIGRATION, ASSIST_FILES_TERMINAL_BRIDGE_MIGRATION, RUNNER_EXECUTION_CHECKPOINT_REPLAY_MIGRATION, EVIDENCE_QUALITY_PARSER_OUTCOME_MIGRATION, DELIVERY_DEPLOYMENT_IMPORTER_OPERATIONS_MIGRATION]) {
+    for (const migration of [IDENTITY_MIGRATION, PROJECT_WORKFLOW_MIGRATION, CONTEXT_PROJECTION_MCP_MIGRATION, ASSIST_FILES_TERMINAL_BRIDGE_MIGRATION, RUNNER_EXECUTION_CHECKPOINT_REPLAY_MIGRATION, EVIDENCE_QUALITY_PARSER_OUTCOME_MIGRATION, DELIVERY_DEPLOYMENT_IMPORTER_OPERATIONS_MIGRATION, FINAL_BUSINESS_PARITY_GOVERNANCE_MIGRATION]) {
       if (targetVersion >= migration.version) applyMigrationInTransaction(db, migration, timestamp, options);
     }
     if (options.failAt === 'commit') throw new Error('injected_commit_failure');
@@ -378,7 +383,8 @@ function migrationForVersion(version) {
   if (Number(version) === CLEAN_P6_USER_VERSION) return RUNNER_EXECUTION_CHECKPOINT_REPLAY_MIGRATION;
   if (Number(version) === CLEAN_P7_USER_VERSION) return EVIDENCE_QUALITY_PARSER_OUTCOME_MIGRATION;
   if (Number(version) === CLEAN_P8_USER_VERSION) return DELIVERY_DEPLOYMENT_IMPORTER_OPERATIONS_MIGRATION;
-  throw new CleanNotReadyError('clean schema version is unsupported', { reason: 'version_mismatch', expected: CLEAN_P8_USER_VERSION, actual: version });
+  if (Number(version) === CLEAN_P10_USER_VERSION) return FINAL_BUSINESS_PARITY_GOVERNANCE_MIGRATION;
+  throw new CleanNotReadyError('clean schema version is unsupported', { reason: 'version_mismatch', expected: CLEAN_P10_USER_VERSION, actual: version });
 }
 
 function checkSqliteIntegrity(db) {
