@@ -185,7 +185,7 @@ export class ProcessAppServerAdapter {
     this.schemaInfo = null;
   }
 
-  async probe() {
+  async probe({ credential = null } = {}) {
     const schema = await this.generatedSchema();
     const home = this.createIsolatedHome('probe');
     let connection;

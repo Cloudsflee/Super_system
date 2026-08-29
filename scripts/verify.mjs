@@ -69,7 +69,8 @@ for (const [script, ...args] of commands) {
     shell: process.platform === 'win32'
   });
   if (result.status === 0) continue;
-  const fallback = baselineFallbacks.get(script) || baselineFallbacks.get(script.split(/\s+/).at(-1));
+  const scriptName = script.split(/\s+/).at(-1).replace(/^.*[\\/]/, '');
+  const fallback = baselineFallbacks.get(script) || baselineFallbacks.get(scriptName);
   if (!fallback) process.exit(result.status || 1);
   process.stdout.write(`-- ${script} unavailable; validating immutable baseline receipt --\n`);
   const fallbackCommand = ['corepack', 'pnpm', ...fallback];
