@@ -750,6 +750,68 @@ class IdentityCoreService {
     });
   }
 
+  updateProfile(profileId, input = {}, principal) {
+    requirePrincipal(principal);
+    this.authorization.assert(principal, 'credential.manage', null);
+    const row = this.db.get('SELECT * FROM provider_profiles WHERE id=? AND owner_actor_id=?', [String(profileId), principal.actorId]);
+    if (!row) throw notFound('profile');
+    const expected = positiveRevision(input.expected_revision ?? input.expectedRevision);
+    const key = requireKey(input.idempotency_key);
+    const label = input.label == null ? row.label : requiredName(input.label);
+    const config = input.config == null ? parseCanonicalJson(row.config_json, {}) : input.config;
+    if (!config || typeof config !== 'object' || Array.isArray(config)) throw new PlatformError('schema_invalid', 'profile config is invalid', {}, 422);
+    const credentialRef = input.credential_ref_id ?? input.credential_id ?? row.credential_ref_id ?? null;
+    const credential = credentialRef ? this.db.get('SELECT id,status FROM credential_refs WHERE id=? AND owner_actor_id=?', [credentialRef, principal.actorId]) : null;
+    if (credentialRef && !credential) throw notFound('credential');
+    this.#assertSafe({ provider: row.provider, label, config });
+    const hash = hashRequest({ profile_id: row.id, expected_revision: expected, label, config, credential_ref_id: credentialRef });
+    const now = this.#time();
+    return this.db.withTransaction((tx) => {
+      const prior = getIdempotency(tx, principal.actorId, 'profile.update', key, hash, now);
+      if (prior) return { ...JSON.parse(prior.response_json), replayed: true };
+      const current = tx.get('SELECT * FROM provider_profiles WHERE id=? AND owner_actor_id=?', [row.id, principal.actorId]);
+      if (Number(current.revision) !== expected) throw revisionConflict(expected, current.revision);
+      const configJson = canonicalJson(config);
+      const status = credentialRef && credential?.status !== 'active' ? 'rebind_required' : 'unprobed';
+      tx.run('UPDATE provider_profiles SET label=?,credential_ref_id=?,config_json=?,config_sha256=?,status=?,last_probe_at=NULL,revision=revision+1,updated_at=?,updated_by_actor_id=? WHERE id=? AND revision=?', [label, credentialRef, configJson, sha256Hex(configJson), status, now, principal.actorId, row.id, expected], 1);
+      const op = createInlineOperation(tx, { events: this.events, actorId: principal.actorId, commandId: 'profile.update', resourceType: 'profile', resourceId: row.id, requestHash: hash, now });
+      const next = tx.get('SELECT * FROM provider_profiles WHERE id=?', [row.id]);
+      appendAggregate(tx, this.events, { aggregateType: 'profile', aggregateId: row.id, revision: Number(next.revision), operationId: op.id, actorId: principal.actorId, type: 'profile.updated', data: { profile_id: row.id, provider: row.provider }, payload: profileView(next), now });
+      linkOperation(tx, op.id, 'profile', row.id, now);
+      const response = { profile: profileView(next), operation: operationView(op) };
+      saveIdempotency(tx, principal.actorId, 'profile.update', key, hash, response, op.id, now);
+      return response;
+    });
+  }
+
+  setProfileLifecycle(profileId, lifecycle, input = {}, principal) {
+    requirePrincipal(principal);
+    this.authorization.assert(principal, 'credential.manage', null);
+    const row = this.db.get('SELECT * FROM provider_profiles WHERE id=? AND owner_actor_id=?', [String(profileId), principal.actorId]);
+    if (!row) throw notFound('profile');
+    if (!['enabled', 'disabled'].includes(lifecycle)) throw new PlatformError('schema_invalid', 'profile lifecycle is invalid', {}, 422);
+    const expected = positiveRevision(input.expected_revision ?? input.expectedRevision);
+    const key = requireKey(input.idempotency_key);
+    const commandId = lifecycle === 'disabled' ? 'profile.disable' : 'profile.enable';
+    const hash = hashRequest({ profile_id: row.id, expected_revision: expected, lifecycle });
+    const now = this.#time();
+    return this.db.withTransaction((tx) => {
+      const prior = getIdempotency(tx, principal.actorId, commandId, key, hash, now);
+      if (prior) return { ...JSON.parse(prior.response_json), replayed: true };
+      const current = tx.get('SELECT * FROM provider_profiles WHERE id=? AND owner_actor_id=?', [row.id, principal.actorId]);
+      if (Number(current.revision) !== expected) throw revisionConflict(expected, current.revision);
+      if (current.lifecycle_status === lifecycle) throw new PlatformError('state_conflict', `profile is already ${lifecycle}`, { lifecycle_status: lifecycle }, 409);
+      tx.run('UPDATE provider_profiles SET lifecycle_status=?,disabled_at=?,revision=revision+1,updated_at=?,updated_by_actor_id=? WHERE id=? AND revision=?', [lifecycle, lifecycle === 'disabled' ? now : null, now, principal.actorId, row.id, expected], 1);
+      const op = createInlineOperation(tx, { events: this.events, actorId: principal.actorId, commandId, resourceType: 'profile', resourceId: row.id, requestHash: hash, now });
+      const next = tx.get('SELECT * FROM provider_profiles WHERE id=?', [row.id]);
+      appendAggregate(tx, this.events, { aggregateType: 'profile', aggregateId: row.id, revision: Number(next.revision), operationId: op.id, actorId: principal.actorId, type: lifecycle === 'disabled' ? 'profile.disabled' : 'profile.enabled', data: { profile_id: row.id, lifecycle_status: lifecycle }, payload: profileView(next), now });
+      linkOperation(tx, op.id, 'profile', row.id, now);
+      const response = { profile: profileView(next), operation: operationView(op) };
+      saveIdempotency(tx, principal.actorId, commandId, key, hash, response, op.id, now);
+      return response;
+    });
+  }
+
   async rebindCredential(credentialId, input = {}, principal) {
     return this.#bindCredential(credentialId, input, principal, 'credential.rebind', 'credential.rebound');
   }
@@ -849,6 +911,7 @@ class IdentityCoreService {
     requirePrincipal(principal);
     const row = this.db.get('SELECT * FROM provider_profiles WHERE id=? AND owner_actor_id=?', [String(profileId), principal.actorId]);
     if (!row) throw notFound('profile');
+    if (row.lifecycle_status === 'disabled') throw new PlatformError('profile_disabled', 'profile is disabled', {}, 409);
     if (row.credential_ref_id) {
       const credential = this.db.get('SELECT status FROM credential_refs WHERE id=? AND owner_actor_id=?', [row.credential_ref_id, principal.actorId]);
       if (!credential || credential.status !== 'active') throw new PlatformError('rebind_required', 'profile credential requires rebind', { credential_ref_id: row.credential_ref_id }, 409);
@@ -875,9 +938,15 @@ class IdentityCoreService {
     await this.operations.queue(op.operation_id, { actorId: principal.actorId, expectedRevision: op.revision });
     await this.operations.start(op.operation_id, { actorId: principal.actorId, expectedRevision: op.revision + 1 });
     let result = { available: true, provider: row.provider, adapter: 'fake-contract' };
+    let credentialLease = null;
     try {
       const adapter = this.providerAdapters[row.provider];
-      if (adapter?.probe) result = await adapter.probe({ profile: profileView(row) });
+      if (row.credential_ref_id && adapter?.requiresCredentialLease) {
+        const credential = this.db.get('SELECT external_ref FROM credential_refs WHERE id=? AND owner_actor_id=?', [row.credential_ref_id, principal.actorId]);
+        if (!credential || !String(credential.external_ref || '').startsWith('vault:') || !this.vault) throw new PlatformError('rebind_required', 'profile credential requires rebind', {}, 409);
+        credentialLease = Buffer.from(this.vault.read(credential.external_ref));
+      }
+      if (adapter?.probe) result = await adapter.probe({ profile: profileView(row), credential: credentialLease });
       return await this.db.withTransaction((tx) => {
         const now = this.#time();
         const current = tx.get('SELECT * FROM provider_profiles WHERE id=?', [row.id]);
@@ -902,6 +971,8 @@ class IdentityCoreService {
         }
         return this.#failOperationInTransaction(tx, tx.get('SELECT * FROM operations WHERE id=?', [op.operation_id]), errorCode, now);
       });
+    } finally {
+      credentialLease?.fill(0);
     }
   }
 
@@ -1098,6 +1169,9 @@ export class IdentityService {
   profiles(...args) { return this.credentialProfileService.listProfiles(...args); }
   recoverPending(...args) { return this.core.recoverPending(...args); }
   createProfile(...args) { return this.credentialProfileService.createProfile(...args); }
+  updateProfile(...args) { return this.credentialProfileService.updateProfile(...args); }
+  disableProfile(...args) { return this.credentialProfileService.disableProfile(...args); }
+  enableProfile(...args) { return this.credentialProfileService.enableProfile(...args); }
   rebindCredential(...args) { return this.credentialProfileService.rebind(...args); }
   rotateCredential(...args) { return this.credentialProfileService.rotate(...args); }
   revokeCredential(...args) { return this.credentialProfileService.revoke(...args); }
@@ -1156,7 +1230,11 @@ function projectMembershipView(row) { return row ? { id: row.id, project_id: row
 function invitationView(row) { return row ? { id: row.id, project_id: row.project_id, invitee_actor_id: row.invitee_actor_id || null, invitee_ref: row.invitee_ref || '', role: row.role, status: row.status, expires_at: row.expires_at || null, accepted_by_actor_id: row.accepted_by_actor_id || null, revision: Number(row.revision), created_at: row.created_at, updated_at: row.updated_at } : null; }
 function aclView(row) { return row ? { id: row.id, project_id: row.project_id, principal_actor_id: row.principal_actor_id, principal_team_id: row.principal_team_id, resource: row.resource, action: row.action, effect: row.effect, policy_revision: Number(row.policy_revision), revision: Number(row.revision), created_at: row.created_at, updated_at: row.updated_at } : null; }
 function credentialView(row) { return { id: row.id, owner_actor_id: row.owner_actor_id, provider: row.provider, scope: parseCanonicalJson(row.scope_json, {}), status: row.status, external_ref: row.external_ref, revision: Number(row.revision), created_at: row.created_at, updated_at: row.updated_at }; }
-function profileView(row) { return { id: row.id, owner_actor_id: row.owner_actor_id, provider: row.provider, label: row.label, credential_ref_id: row.credential_ref_id, config: parseCanonicalJson(row.config_json, {}), status: row.status, last_probe_at: row.last_probe_at || null, revision: Number(row.revision), created_at: row.created_at, updated_at: row.updated_at }; }
+function profileView(row) {
+  const value = { id: row.id, owner_actor_id: row.owner_actor_id, provider: row.provider, label: row.label, credential_ref_id: row.credential_ref_id, config: parseCanonicalJson(row.config_json, {}), status: row.status, last_probe_at: row.last_probe_at || null, revision: Number(row.revision), created_at: row.created_at, updated_at: row.updated_at };
+  if (Object.hasOwn(row, 'lifecycle_status')) { value.lifecycle_status = row.lifecycle_status || 'enabled'; value.disabled_at = row.disabled_at || null; }
+  return value;
+}
 function sessionView(row, now = new Date().toISOString()) { return { id: row.id, subject_actor_id: row.subject_actor_id, effective_actor_id: row.effective_actor_id, status: row.revoked_at ? 'revoked' : (Date.parse(row.expires_at) <= Date.parse(String(now)) ? 'expired' : 'active'), expires_at: row.expires_at, last_seen_at: row.last_seen_at, revoked_at: row.revoked_at || null, revision: Number(row.revision), created_at: row.created_at, updated_at: row.updated_at }; }
 function requiredName(value) { const text = String(value || '').trim(); if (!text || text.length > 160) throw new PlatformError('schema_invalid', 'name is required', {}, 422); return text; }
 function positiveRevision(value) { const number = Number(value); if (!Number.isInteger(number) || number < 1) throw new PlatformError('expected_revision_required', 'expected revision is required', {}, 400); return number; }

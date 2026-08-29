@@ -3,7 +3,7 @@ import { PlatformError } from './platform-error.mjs';
 
 /** Shared P4 command boundary used by REST, MCP HTTP, stdio and Gateway. */
 export class CleanCommandDispatcher {
-  constructor({ registry, context, mcp, gateway, projectWorkflow, operations, events, assist = null, files = null, terminal = null, bridge = null, runner = null, execution = null, evidence = null, parser = null, quality = null, outcomeEvaluation = null, p8Service = null } = {}) {
+  constructor({ registry, context, mcp, gateway, projectWorkflow, operations, events, identity = null, assist = null, files = null, terminal = null, bridge = null, runner = null, execution = null, evidence = null, parser = null, quality = null, outcomeEvaluation = null, p8Service = null, p10Service = null } = {}) {
     if (!registry || !context || !mcp || !operations || !events) throw new TypeError('clean_dispatcher_dependencies_required');
     this.registry = registry;
     this.context = context;
@@ -12,6 +12,7 @@ export class CleanCommandDispatcher {
     this.projectWorkflow = projectWorkflow;
     this.operations = operations;
     this.events = events;
+    this.identity = identity;
     this.assist = assist;
     this.files = files;
     this.terminal = terminal;
@@ -23,6 +24,7 @@ export class CleanCommandDispatcher {
     this.quality = quality;
     this.outcomeEvaluation = outcomeEvaluation;
     this.p8Service = p8Service;
+    this.p10Service = p10Service;
     this.handlers = new Map();
     this.exposed = new Set();
     this.#registerHandlers();
@@ -132,6 +134,45 @@ export class CleanCommandDispatcher {
     if (this.runner && this.execution) this.#registerP6Handlers(add);
     if (this.evidence && this.parser && this.quality && this.outcomeEvaluation) this.#registerP7Handlers(add);
     if (this.p8Service) this.#registerP8Handlers(add);
+    if (this.p10Service && this.identity) this.#registerP10Handlers(add);
+  }
+
+  #registerP10Handlers(add) {
+    const bind = (id, handler) => add(id, handler, { exposed: this.registry.get(id)?.mcp?.exposed === true });
+    bind('profile.update', (args, principal) => this.identity.updateProfile(args.id, args, principal));
+    bind('profile.disable', (args, principal) => this.identity.disableProfile(args.id, args, principal));
+    bind('profile.enable', (args, principal) => this.identity.enableProfile(args.id, args, principal));
+    bind('brief.template.list', (args, principal) => this.p10Service.listBriefTemplates(args, principal));
+    bind('brief.template.create', (args, principal) => this.p10Service.createBriefTemplate(args, principal));
+    bind('brief.template.update', (args, principal) => this.p10Service.updateBriefTemplate(args.id, args, principal));
+    bind('brief.template.archive', (args, principal) => this.p10Service.archiveBriefTemplate(args.id, args, principal));
+    bind('project.deletion.prepare', (args, principal) => this.p10Service.prepareProjectDeletion(args.id, args, principal));
+    bind('project.deletion.get', (args, principal) => this.p10Service.getProjectDeletion(args.id, principal));
+    bind('project.deletion.confirm', (args, principal) => this.p10Service.confirmProjectDeletion(args.id, args, principal));
+    bind('project.deletion.execute', (args, principal) => this.p10Service.executeProjectDeletion(args.id, args, principal));
+    bind('project.deletion.cancel', (args, principal) => this.p10Service.cancelProjectDeletion(args.id, args, principal));
+    bind('repository.deletion.prepare', (args, principal) => this.p10Service.prepareRepositoryDeletion(args.id, args, principal));
+    bind('repository.deletion.get', (args, principal) => this.p10Service.getRepositoryDeletion(args.id, principal));
+    bind('repository.deletion.creator_confirm', (args, principal) => this.p10Service.confirmRepositoryDeletion(args.id, 'creator', args, principal));
+    bind('repository.deletion.owner_confirm', (args, principal) => this.p10Service.confirmRepositoryDeletion(args.id, 'owner', args, principal));
+    bind('repository.deletion.execute', (args, principal) => this.p10Service.executeRepositoryDeletion(args.id, args, principal));
+    bind('repository.deletion.reconcile', (args, principal) => this.p10Service.reconcileRepositoryDeletion(args.id, args, principal));
+    bind('repository.deletion.cancel', (args, principal) => this.p10Service.cancelRepositoryDeletion(args.id, args, principal));
+    bind('assist.session.metadata', (args, principal) => this.p10Service.updateAssistSession(args.id, args, principal));
+    bind('assist.session.archive', (args, principal) => this.p10Service.archiveAssistSession(args.id || args.session_id, args, principal));
+    bind('assist.session.restore', (args, principal) => this.p10Service.restoreAssistSession(args.id || args.session_id, args, principal));
+    bind('assist.session.delete', (args, principal) => this.p10Service.deleteAssistSession(args.id || args.session_id, args, principal));
+    bind('assist.session.restore_deleted', (args, principal) => this.p10Service.restoreDeletedAssistSession(args.id || args.session_id, args, principal));
+    bind('assist.session.fork', (args, principal) => this.p10Service.forkAssistSession(args.id, args, principal));
+    bind('assist.session.side_thread', (args, principal) => this.p10Service.forkAssistSession(args.id, args, principal, 'side_thread'));
+    bind('assist.configuration.create', (args, principal) => this.p10Service.createAssistConfiguration(args.id, args, principal));
+    bind('assist.review.comments', (args, principal) => this.p10Service.listAssistReviewComments(args.id, principal));
+    bind('assist.review.comment', (args, principal) => this.p10Service.createAssistReviewComment(args.id, args, principal));
+    bind('assist.review.request_changes', (args, principal) => this.p10Service.createAssistReviewComment(args.id, args, principal, 'request_changes'));
+    bind('quality.policy.get', (args, principal) => this.quality.policy(args.id, principal));
+    bind('quality.policy.update', (args, principal) => this.quality.updatePolicy(args.id, args, principal));
+    bind('quality.prepare', (args, principal) => this.quality.prepare(args.id, args, principal));
+    bind('quality.advice.get', (args, principal) => this.quality.advice(args.id, principal));
   }
 
   #registerP5Handlers(add) {

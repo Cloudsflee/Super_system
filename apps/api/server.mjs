@@ -2,10 +2,8 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createApp as createCleanApp, start as startClean } from './clean-server.mjs';
 
-// Phase and schema are intentionally separate in P9: release/Web behavior
-// advances without inventing a ninth migration.
-export const ACTIVE_RUNTIME_PHASE = 9;
-export const ACTIVE_SCHEMA_VERSION = 8;
+export const ACTIVE_RUNTIME_PHASE = 10;
+export const ACTIVE_SCHEMA_VERSION = 9;
 export const ACTIVE_TARGET_VERSION = ACTIVE_SCHEMA_VERSION;
 
 function activeOptions(options = {}) {

@@ -51,7 +51,7 @@ export function loadCleanConfig(env = process.env) {
     workspaceRoot: path.resolve(String(env.AIWS_CLEAN_WORKSPACES || path.join(home, 'workspaces'))),
     vaultRoot: path.resolve(String(env.AIWS_CLEAN_VAULT || path.join(home, 'vault'))),
     vaultMasterKey: env.AIWS_CLEAN_VAULT_KEY == null ? null : String(env.AIWS_CLEAN_VAULT_KEY),
-    runtimeBuild: String(env.AIWS_CLEAN_BUILD || 'v3-clean-p9'),
+    runtimeBuild: String(env.AIWS_CLEAN_BUILD || 'v3-clean-p10'),
     maxBodyBytes: Math.max(1024, Math.min(16 * 1024 * 1024, requestedMaxBody))
   });
 }

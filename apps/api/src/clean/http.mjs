@@ -66,6 +66,9 @@ export function createCleanHttpHandler({ runtime, registry, maxBodyBytes = runti
         : runtime.p2 && runtime.identity
           ? runtime.identity.principalFromRequest(req)
           : runtime.platform.actorContext({ actorId: req.headers['x-actor-id'], projectId: req.headers['x-project-id'], scopes: parseScopes(req.headers['x-scopes']) });
+      if (runtime.p10 && entry.phase === 'p10') {
+        return await handleP5Route({ entry, params, url, req, res, requestId, runtime, actor, bodyReader: () => readJson(req, maxBodyBytes) });
+      }
       if (runtime.p9 && entry.phase === 'p9') {
         return await handleP9Route({ entry, url, req, res, requestId, runtime, actor });
       }
@@ -390,12 +393,12 @@ function hydrateP5MutationHeaders(entry, req, body) {
 
 function p5Status(command, value) {
   if (['assist.turn.create', 'assist.turn.retry', 'change.batch.apply', 'change.batch.undo', 'runner.profile.probe', 'execution.start', 'execution.resume', 'execution.stage.replay', 'parser.run.start', 'parser.run.retry', 'quality.start', 'quality.retry', 'outcome.evaluate', 'delivery.submit', 'delivery.intent.create', 'delivery.intent.ready', 'delivery.intent.merge', 'delivery.reconcile', 'deployment.verify', 'backup.create', 'restore.prepare', 'system.reset.prepare', 'operations.replay'].includes(command)) return 202;
-  if (['assist.session.create', 'assist.reference.create', 'attachment.create', 'change.batch.create', 'approval.create', 'user.input.create', 'proposal.create', 'terminal.open', 'bridge.pair', 'bridge.transfer.create', 'runner.profile.create', 'execution.create', 'execution.replan', 'asset.capture', 'asset.relation.create', 'asset.attest', 'outcome.waiver.create', 'outcome.waiver.revoke', 'delivery.policy.create', 'deployment.candidate.create'].includes(command)) return value?.replayed ? 200 : 201;
+  if (['assist.session.create', 'assist.reference.create', 'attachment.create', 'change.batch.create', 'approval.create', 'user.input.create', 'proposal.create', 'terminal.open', 'bridge.pair', 'bridge.transfer.create', 'runner.profile.create', 'execution.create', 'execution.replan', 'asset.capture', 'asset.relation.create', 'asset.attest', 'outcome.waiver.create', 'outcome.waiver.revoke', 'delivery.policy.create', 'deployment.candidate.create', 'brief.template.create', 'project.deletion.prepare', 'repository.deletion.prepare', 'assist.session.fork', 'assist.session.side_thread', 'assist.configuration.create', 'assist.review.comment', 'assist.review.request_changes'].includes(command)) return value?.replayed ? 200 : 201;
   return 200;
 }
 
-function p5Revision(value) { return value?.revision ?? value?.session?.revision ?? value?.turn?.revision ?? value?.goal?.revision ?? value?.attachment?.revision ?? value?.batch?.revision ?? value?.approval?.revision ?? value?.input?.revision ?? value?.proposal?.revision ?? value?.terminal?.revision ?? value?.device?.revision ?? value?.transfer?.revision ?? value?.profile?.revision ?? value?.execution?.revision ?? value?.asset?.revision ?? value?.parser_run?.revision ?? value?.quality_review?.revision ?? value?.evaluation?.revision ?? value?.waiver?.revision ?? value?.policy?.revision ?? value?.delivery?.revision ?? value?.intent?.generation ?? value?.candidate?.revision ?? value?.operation?.revision ?? null; }
-function p5ResourceType(command) { if (command.startsWith('assist.')) return command.startsWith('assist.turn') ? 'assist_turn' : 'assist_session'; if (command.startsWith('attachment.')) return 'attachment'; if (command.startsWith('file.')) return 'file_ref'; if (command.startsWith('change.batch')) return 'file_change_batch'; if (command.startsWith('approval.')) return 'runtime_approval'; if (command.startsWith('user.input')) return 'runtime_user_input'; if (command.startsWith('proposal.')) return 'semantic_proposal'; if (command.startsWith('terminal.')) return 'terminal_session'; if (command.startsWith('bridge.transfer')) return 'bridge_transfer'; if (command.startsWith('bridge.')) return 'bridge_device'; if (command.startsWith('runner.profile')) return 'runner_profile'; if (command.startsWith('execution.')) return 'execution'; if (command.startsWith('asset.') || command.startsWith('evidence.')) return 'asset'; if (command.startsWith('parser.')) return 'parser_run'; if (command.startsWith('quality.')) return 'quality_review'; if (command.startsWith('outcome.')) return 'outcome_evaluation'; if (command.startsWith('delivery.')) return 'delivery'; if (command.startsWith('github.')) return 'github_repository'; if (command.startsWith('deployment.')) return 'deployment_candidate'; if (command.startsWith('backup.') || command.startsWith('restore.') || command.startsWith('system.reset')) return 'backup'; if (command.startsWith('import.')) return 'import_batch'; if (command.startsWith('cas.gc')) return 'cas_gc'; return 'resource'; }
+function p5Revision(value) { return value?.revision ?? value?.session?.revision ?? value?.turn?.revision ?? value?.goal?.revision ?? value?.attachment?.revision ?? value?.batch?.revision ?? value?.approval?.revision ?? value?.input?.revision ?? value?.proposal?.revision ?? value?.terminal?.revision ?? value?.device?.revision ?? value?.transfer?.revision ?? value?.profile?.revision ?? value?.template?.revision ?? value?.comment?.revision ?? value?.execution?.revision ?? value?.asset?.revision ?? value?.parser_run?.revision ?? value?.quality_review?.revision ?? value?.evaluation?.revision ?? value?.waiver?.revision ?? value?.policy?.revision ?? value?.delivery?.revision ?? value?.intent?.revision ?? value?.intent?.generation ?? value?.candidate?.revision ?? value?.operation?.revision ?? null; }
+function p5ResourceType(command) { if (command.startsWith('assist.review')) return 'assist_review_comment'; if (command.startsWith('assist.')) return command.startsWith('assist.turn') ? 'assist_turn' : 'assist_session'; if (command.startsWith('profile.')) return 'profile'; if (command.startsWith('brief.template')) return 'brief_template'; if (command.startsWith('project.deletion')) return 'project_deletion_intent'; if (command.startsWith('repository.deletion')) return 'repository_deletion_intent'; if (command.startsWith('attachment.')) return 'attachment'; if (command.startsWith('file.')) return 'file_ref'; if (command.startsWith('change.batch')) return 'file_change_batch'; if (command.startsWith('approval.')) return 'runtime_approval'; if (command.startsWith('user.input')) return 'runtime_user_input'; if (command.startsWith('proposal.')) return 'semantic_proposal'; if (command.startsWith('terminal.')) return 'terminal_session'; if (command.startsWith('bridge.transfer')) return 'bridge_transfer'; if (command.startsWith('bridge.')) return 'bridge_device'; if (command.startsWith('runner.profile')) return 'runner_profile'; if (command.startsWith('execution.')) return 'execution'; if (command.startsWith('asset.') || command.startsWith('evidence.')) return 'asset'; if (command.startsWith('parser.')) return 'parser_run'; if (command.startsWith('quality.')) return 'quality_review'; if (command.startsWith('outcome.')) return 'outcome_evaluation'; if (command.startsWith('delivery.')) return 'delivery'; if (command.startsWith('github.')) return 'github_repository'; if (command.startsWith('deployment.')) return 'deployment_candidate'; if (command.startsWith('backup.') || command.startsWith('restore.') || command.startsWith('system.reset')) return 'backup'; if (command.startsWith('import.')) return 'import_batch'; if (command.startsWith('cas.gc')) return 'cas_gc'; return 'resource'; }
 
 async function handleP4Route({ entry, params, url, req, res, requestId, runtime, actor, mcpBoundary, bodyReader }) {
   const command = entry.command_id;
@@ -915,11 +918,11 @@ async function handleIdentityRoute({ entry, params, url, req, res, requestId, ru
     case 'session.create': {
       data = await runtime.identity.createSession({ subjectActorId: actor.subjectActorId, effectiveActorId: actor.effectiveActorId, ttlSeconds: body.ttl_seconds, actorId: actor.actorId, idempotencyKey: requireIdempotency(req, body), expectedRevision: body.expected_revision });
       setCookie = data.proof ? sessionCookie(data.proof) : null;
-      data = stripProof(data);
+      data = sessionReceipt(data);
       status = 201;
       break;
     }
-    case 'session.revoke': data = await runtime.identity.revokeSession(params.id, { actorId: actor.actorId, expectedRevision: expectedRevision(req, body), idempotencyKey: requireIdempotency(req, body), reason: body.reason }); break;
+    case 'session.revoke': data = sessionReceipt(await runtime.identity.revokeSession(params.id, { actorId: actor.actorId, expectedRevision: expectedRevision(req, body), idempotencyKey: requireIdempotency(req, body), reason: body.reason })); break;
     case 'team.list': data = { teams: runtime.identity.teams(actor) }; break;
     case 'team.create': data = await runtime.identity.createTeam(body, actor); status = 201; break;
     case 'team.get': data = { team: runtime.identity.team(params.id, actor) }; break;
@@ -1048,6 +1051,12 @@ function assertOperationAuthorized(runtime, actor, operation, action) {
     return;
   }
   runtime.platform.assertAuthorized(actor, action === 'read' ? 'operations:read' : 'operations:control', {});
+}
+
+function sessionReceipt(value = {}) {
+  const safe = stripProof(value);
+  const { operation, replayed, ...session } = safe;
+  return { session, ...(operation ? { operation } : {}), ...(replayed === true ? { replayed: true } : {}) };
 }
 
 function stripProof(value) {

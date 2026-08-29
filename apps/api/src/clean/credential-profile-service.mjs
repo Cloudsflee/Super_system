@@ -14,5 +14,8 @@ export class CredentialProfileService {
   revoke(id, input, principal) { return this.core.revokeCredential(id, input, principal); }
   listProfiles(principal) { return this.core.profiles(principal); }
   createProfile(input, principal) { return this.core.createProfile(input, principal); }
+  updateProfile(id, input, principal) { return this.core.updateProfile(id, input, principal); }
+  disableProfile(id, input, principal) { return this.core.setProfileLifecycle(id, 'disabled', input, principal); }
+  enableProfile(id, input, principal) { return this.core.setProfileLifecycle(id, 'enabled', input, principal); }
   probeProfile(id, input, principal) { return this.core.probeProfile(id, input, principal); }
 }

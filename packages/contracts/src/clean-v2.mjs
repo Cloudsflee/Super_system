@@ -22,10 +22,10 @@ const membership = closed({ id, team_id: id, project_id: id, actor_id: id, role:
 const invitation = closed({ id, project_id: id, invitee_actor_id: nullableString, invitee_ref: { type: 'string' }, role: { type: 'string' }, status: { type: 'string' }, expires_at: nullableString, accepted_by_actor_id: nullableString, revision, created_at: timestamp, updated_at: timestamp }, ['id', 'project_id', 'role', 'status', 'revision']);
 const aclEntry = closed({ id, project_id: id, principal_actor_id: nullableString, principal_team_id: nullableString, resource: { type: 'string' }, action: { type: 'string' }, effect: { enum: ['allow', 'deny'] }, policy_revision: { type: 'integer', minimum: 1 }, revision, created_at: timestamp, updated_at: timestamp }, ['id', 'project_id', 'action', 'effect', 'policy_revision', 'revision']);
 const credential = closed({ id, owner_actor_id: id, provider: { enum: ['codex', 'github', 'mcp'] }, scope: looseObject, status: { enum: ['rebind_required', 'pending', 'active', 'failed', 'revoked'] }, external_ref: { type: 'string' }, revision, created_at: timestamp, updated_at: timestamp }, ['id', 'owner_actor_id', 'provider', 'status', 'revision']);
-const profile = closed({ id, owner_actor_id: id, provider: { enum: ['codex', 'github', 'mcp'] }, label: { type: 'string' }, credential_ref_id: nullableString, config: looseObject, status: { enum: ['unprobed', 'probing', 'available', 'unavailable', 'rebind_required'] }, last_probe_at: nullableString, revision, created_at: timestamp, updated_at: timestamp }, ['id', 'owner_actor_id', 'provider', 'label', 'status', 'revision']);
+const profile = closed({ id, owner_actor_id: id, provider: { enum: ['codex', 'github', 'mcp'] }, label: { type: 'string' }, credential_ref_id: nullableString, config: looseObject, status: { enum: ['unprobed', 'probing', 'available', 'unavailable', 'rebind_required'] }, lifecycle_status: { enum: ['enabled', 'disabled'] }, disabled_at: nullableString, last_probe_at: nullableString, revision, created_at: timestamp, updated_at: timestamp }, ['id', 'owner_actor_id', 'provider', 'label', 'status', 'revision']);
 const project = closed({ id, team_id: id, owner_actor_id: id, name: { type: 'string' }, description: { type: 'string' }, status: { enum: ['draft', 'confirming', 'active', 'archived'] }, onboarding_state: { type: 'string' }, current_brief_revision: { type: 'integer', minimum: 0 }, confirmed_brief_revision: { anyOf: [{ type: 'integer', minimum: 1 }, { type: 'null' }] }, confirmed_brief_hash: { type: 'string' }, current_workflow_revision: { type: 'integer', minimum: 0 }, metadata: looseObject, revision, created_at: timestamp, updated_at: timestamp }, ['id', 'team_id', 'owner_actor_id', 'name', 'status', 'revision']);
 const intake = closed({ id, project_id: id, status: { enum: ['collecting', 'submitted', 'processing', 'ready', 'failed', 'cancelled'] }, mode: { enum: ['brainstorm', 'existing'] }, source_kind: { type: 'string' }, source_revision: { type: 'string' }, source_hash: { type: 'string' }, result: looseObject, error_code: { type: 'string' }, attempt: { type: 'integer', minimum: 0 }, revision, operation_id: nullableString, created_at: timestamp, updated_at: timestamp, completed_at: nullableString }, ['id', 'project_id', 'status', 'mode', 'revision']);
-const briefRevision = closed({ id, brief_id: id, project_id: id, revision, content: looseObject, content_sha256: { type: 'string' }, template: { type: 'string' }, created_at: timestamp }, ['id', 'project_id', 'revision', 'content', 'content_sha256']);
+const briefRevision = closed({ id, brief_id: id, project_id: id, revision, content: looseObject, content_sha256: { type: 'string' }, template: { type: 'string' }, template_id: nullableString, template_revision: { anyOf: [revision, { type: 'null' }] }, template_sha256: { type: 'string' }, created_at: timestamp }, ['id', 'project_id', 'revision', 'content', 'content_sha256']);
 const brief = closed({ id, project_id: id, status: { enum: ['draft', 'confirming', 'confirmed'] }, current_revision: { type: 'integer', minimum: 0 }, confirmed_revision: { anyOf: [{ type: 'integer', minimum: 1 }, { type: 'null' }] }, confirmed_hash: { type: 'string' }, revision, current: { anyOf: [briefRevision, { type: 'null' }] }, created_at: timestamp, updated_at: timestamp }, ['id', 'project_id', 'status', 'current_revision', 'revision']);
 const repositoryConnection = closed({ id, project_id: id, provider: { type: 'string' }, credential_ref_id: nullableString, status: { enum: ['pending', 'ready', 'faulted', 'archived'] }, source_kind: { type: 'string' }, source_revision: { type: 'string' }, source_hash: { type: 'string' }, read_only: { type: 'boolean' }, fault_code: { type: 'string' }, metadata: looseObject, revision, created_at: timestamp, updated_at: timestamp }, ['id', 'project_id', 'status', 'revision']);
 const repositoryTarget = closed({ id, connection_id: id, name: { type: 'string' }, branch: { type: 'string' }, remote_ref: { type: 'string' }, expected_head_sha: { type: 'string' }, revision, created_at: timestamp, updated_at: timestamp }, ['id', 'connection_id', 'name', 'revision']);
@@ -64,6 +64,10 @@ const p8Mutation = p5Mutation;
 const p8Query = p5Query;
 const p8List = p5List;
 const p8Receipt = p5Receipt;
+const p10Mutation = (properties = {}, required = []) => p5Mutation({ id, ...properties }, required);
+const p10Query = (properties = {}, required = []) => p5Query({ id, ...properties }, required);
+const p10List = p5List;
+const p10Receipt = p5Receipt;
 const p8Status = { type: 'string', minLength: 1, maxLength: 80 };
 const p8Checks = { type: 'array', maxItems: 100, uniqueItems: true, items: { type: 'string', minLength: 1, maxLength: 160 } };
 
@@ -98,7 +102,7 @@ export const CLEAN_V2_SCHEMAS = Object.freeze({
   'project.lifecycle.v2': closed({ idempotency_key: idempotency, expected_revision: revision }, ['expected_revision']),
   'intake.submit.v2': closed({ mode: { enum: ['brainstorm', 'existing'] }, source: looseObject, content: looseObject, idempotency_key: idempotency, expected_revision: revision }, ['expected_revision']),
   'intake.lifecycle.v2': closed({ idempotency_key: idempotency, expected_revision: revision }, ['expected_revision']),
-  'brief.create.v2': closed({ content: looseObject, objective: { type: 'string' }, constraints: { type: 'array', items: { type: 'string' } }, acceptance: { type: 'array', items: { type: 'string' } }, template: { type: 'string', maxLength: 80 }, idempotency_key: idempotency, expected_revision: revision }, ['expected_revision']),
+  'brief.create.v2': closed({ content: looseObject, objective: { type: 'string' }, constraints: { type: 'array', items: { type: 'string' } }, acceptance: { type: 'array', items: { type: 'string' } }, template: { type: 'string', maxLength: 80 }, template_id: id, template_revision: revision, idempotency_key: idempotency, expected_revision: revision }, ['expected_revision']),
   'brief.confirm.v2': closed({ brief_revision: revision, idempotency_key: idempotency, expected_revision: revision }, ['brief_revision', 'expected_revision']),
   'brief.preview.v2': closed({ brief_revision: { type: 'integer', minimum: 1 } }),
   'repository.connection.create.v2': closed({ provider: { type: 'string' }, source_kind: { type: 'string' }, source_locator: { type: 'string', maxLength: 512 }, source_revision: { type: 'string', maxLength: 160 }, source_hash: sha256, branch: { type: 'string', maxLength: 256 }, credential_ref_id: { type: 'string' }, read_only: { type: 'boolean' }, idempotency_key: idempotency, expected_revision: { type: 'integer', minimum: 0 } }, ['provider']),
@@ -169,9 +173,9 @@ export const CLEAN_V2_SCHEMAS = Object.freeze({
 
   // P5 Assist, Files, Interaction, Terminal and Windows Bridge contracts.
   // Provider payloads remain opaque only below explicitly named fields.
-  'assist.sessions.query.v2': p5Query({ project_id: id, status: p4String }),
+  'assist.sessions.query.v2': p5Query({ project_id: id, status: p4String, include_deleted: { type: 'boolean' } }),
   'assist.session.query.v2': p5Query({ id, session_id: id }, ['session_id']),
-  'assist.session.create.v2': p5Mutation({ project_id: id, scope: { enum: ['project', 'workflow', 'workstream', 'task'] }, scope_id: id, context_pack_id: id, profile_id: id, repository_workspace_id: id }, ['project_id', 'scope', 'scope_id', 'context_pack_id', 'profile_id']),
+  'assist.session.create.v2': p5Mutation({ project_id: id, scope: { enum: ['project', 'workflow', 'workstream', 'task'] }, scope_id: id, context_pack_id: id, profile_id: id, repository_workspace_id: id, title: { type: 'string', maxLength: 160 }, mode: { enum: ['guided', 'agent', 'side_thread'] } }, ['project_id', 'scope', 'scope_id', 'context_pack_id', 'profile_id']),
   'assist.session.mutation.v2': p5Mutation({ session_id: id, reason: { type: 'string', maxLength: 500 } }, ['session_id']),
   'assist.turn.create.v2': p5Mutation({ session_id: id, message: { type: 'string', minLength: 1, maxLength: 262144 }, goal: looseObject, references: p5StringArray, defer: { type: 'boolean' }, fixture: looseObject }, ['session_id', 'message']),
   'assist.turn.mutation.v2': p5Mutation({ turn_id: id, message: { type: 'string', maxLength: 262144 }, reason: { type: 'string', maxLength: 500 }, fixture: looseObject }, ['turn_id']),
@@ -291,7 +295,7 @@ export const CLEAN_V2_SCHEMAS = Object.freeze({
 
   'quality.list.query.v2': p7Query({ execution_id: id, status: p4String }, ['execution_id']),
   'quality.query.v2': p7Query({ quality_review_id: id, cursor: { anyOf: [{ type: 'integer', minimum: 0 }, p4String] }, limit: { type: 'integer', minimum: 1, maximum: 500 }, format: { enum: ['json'] } }, ['quality_review_id']),
-  'quality.start.v2': p7Mutation({ execution_id: id, asset_ids: { type: 'array', minItems: 1, maxItems: 16, uniqueItems: true, items: id }, rubric: looseObject, threshold: { type: 'number', minimum: 0, maximum: 100 }, fixture: looseObject }, ['execution_id', 'asset_ids', 'rubric']),
+  'quality.start.v2': p7Mutation({ execution_id: id, asset_ids: { type: 'array', minItems: 1, maxItems: 16, uniqueItems: true, items: id }, asset_selections: { type: 'array', minItems: 1, maxItems: 64, items: closed({ asset_id: id, disposition: { enum: ['included', 'excluded'] }, included: { type: 'boolean' }, exclusion_reason: { type: 'string', maxLength: 500 } }, ['asset_id']) }, rubric: looseObject, threshold: { type: 'number', minimum: 0, maximum: 100 }, fixture: looseObject }, ['execution_id']),
   'quality.mutation.v2': p7Mutation({ quality_review_id: id, reason: { type: 'string', maxLength: 500 }, fixture: looseObject }, ['quality_review_id']),
   'quality.decision.v2': p7Mutation({ quality_review_id: id, decision: { enum: ['approved', 'rejected'] }, dimensions: { type: 'array', minItems: 1, maxItems: 20, items: closed({ key: { type: 'string', minLength: 1, maxLength: 120 }, score: { type: 'number', minimum: 0, maximum: 100 }, reasoning: { type: 'string', minLength: 1, maxLength: 2000 } }, ['key', 'score', 'reasoning']) }, reasoning: { type: 'string', minLength: 1, maxLength: 4000 }, report_sha256: sha256, input_sha256: sha256, rubric_sha256: sha256 }, ['quality_review_id', 'decision', 'dimensions', 'reasoning', 'report_sha256', 'input_sha256', 'rubric_sha256']),
   'quality.reviews.v2': p7List('quality_reviews'),
@@ -357,6 +361,39 @@ export const CLEAN_V2_SCHEMAS = Object.freeze({
   'cas.gc.apply.v2': p8Mutation({ plan: closed({ cutoff: timestamp, candidates: { type: 'array', maxItems: 1000, uniqueItems: true, items: sha256 }, protected_references_sha256: sha256, plan_sha256: sha256, count: { type: 'integer', minimum: 0, maximum: 1000 } }, ['cutoff', 'candidates', 'protected_references_sha256', 'plan_sha256', 'count']), approval_id: id }, ['plan', 'approval_id']),
   'cas.gc.plan.receipt.v2': closed({ plan: looseObject }, ['plan']),
   'cas.gc.apply.receipt.v2': closed({ receipt: looseObject, operation: p4Operation }, ['receipt']),
+
+  // P10 final business-parity contracts.
+  'profile.update.v2': p10Mutation({ label: { type: 'string', minLength: 1, maxLength: 160 }, credential_ref_id: id, credential_id: id, config: looseObject }),
+  'profile.lifecycle.v2': p10Mutation({ reason: { type: 'string', maxLength: 500 } }),
+  'brief.template.list.query.v2': p10Query({ team_id: id, include_archived: { type: 'boolean' } }),
+  'brief.template.create.v2': p10Mutation({ team_id: id, name: { type: 'string', minLength: 1, maxLength: 160 }, description: { type: 'string', maxLength: 2000 }, content: looseObject }, ['name', 'content']),
+  'brief.template.update.v2': p10Mutation({ name: { type: 'string', minLength: 1, maxLength: 160 }, description: { type: 'string', maxLength: 2000 }, content: looseObject }),
+  'brief.template.lifecycle.v2': p10Mutation({}),
+  'brief.template.list.v2': p10List('templates'),
+  'brief.template.receipt.v2': p10Receipt('template'),
+  'project.deletion.prepare.v2': p10Mutation({ target_name: { type: 'string', minLength: 1, maxLength: 160 }, confirmation: { type: 'string', minLength: 1, maxLength: 160 } }),
+  'project.deletion.confirm.v2': p10Mutation({ target_name: { type: 'string', minLength: 1, maxLength: 160 } }, ['target_name']),
+  'deletion.intent.mutation.v2': p10Mutation({ reason: { type: 'string', maxLength: 500 } }),
+  'deletion.intent.query.v2': p10Query({ id }, ['id']),
+  'deletion.intent.receipt.v2': p10Receipt('intent'),
+  'repository.deletion.prepare.v2': p10Mutation({ target_full_name: { type: 'string', minLength: 3, maxLength: 260 }, expected_head_sha: { type: 'string', minLength: 7, maxLength: 128 } }, ['target_full_name', 'expected_head_sha']),
+  'repository.deletion.confirm.v2': p10Mutation({ target_full_name: { type: 'string', minLength: 3, maxLength: 260 }, expected_head_sha: { type: 'string', minLength: 7, maxLength: 128 } }, ['target_full_name', 'expected_head_sha']),
+  'assist.session.metadata.v2': p10Mutation({ title: { type: 'string', maxLength: 160 }, mode: { enum: ['guided', 'agent', 'side_thread'] }, pinned: { type: 'boolean' } }),
+  'assist.session.fork.v2': p10Mutation({ title: { type: 'string', maxLength: 160 }, mode: { enum: ['guided', 'agent'] }, fork_source_turn_id: id }),
+  'assist.configuration.create.v2': p10Mutation({ configuration: looseObject, provider_schema_sha256: sha256 }, ['configuration']),
+  'assist.review.query.v2': p10Query({ turn_id: id }, ['turn_id']),
+  'assist.review.comment.v2': p10Mutation({ content: { type: 'string', minLength: 1, maxLength: 8000 }, kind: { enum: ['comment', 'request_changes', 'resolution'] }, parent_comment_id: id, relative_path: { type: 'string', maxLength: 1024 }, line_number: { type: 'integer', minimum: 1 } }, ['content']),
+  'assist.session.p10.receipt.v2': p10Receipt('session'),
+  'assist.configuration.receipt.v2': closed({ session: looseObject, configuration: looseObject, operation: p4Operation, replayed: { type: 'boolean' } }, ['session', 'configuration']),
+  'assist.review.comments.v2': p10List('comments'),
+  'assist.review.comment.receipt.v2': p10Receipt('comment'),
+  'quality.policy.query.v2': p10Query({ workflow_id: id }),
+  'quality.policy.update.v2': p10Mutation({ workflow_id: id, rubric: looseObject, threshold: { type: 'number', minimum: 0, maximum: 100 }, reviewer_profile_id: id }),
+  'quality.prepare.query.v2': p10Query({ execution_id: id }),
+  'quality.advice.query.v2': p10Query({ quality_review_id: id }),
+  'quality.policy.receipt.v2': p10Receipt('policy'),
+  'quality.prepare.v2': closed({ execution_id: id, execution_revision: revision, policy: looseObject, selections: { type: 'array', items: looseObject }, active_review: { anyOf: [looseObject, { type: 'null' }] }, readiness: looseObject }, ['execution_id', 'execution_revision', 'policy', 'selections', 'readiness']),
+  'quality.advice.v2': closed({ advice: { anyOf: [looseObject, { type: 'null' }] } }, ['advice']),
 
   // P1 query/input contracts.
   'operation.id.v2': closed({ id: id }, ['id']),

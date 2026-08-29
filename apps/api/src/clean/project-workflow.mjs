@@ -469,7 +469,18 @@ class ProjectWorkflowCore {
     const key = requireKey(input.idempotency_key);
     const content = normalizeBrief(input);
     const template = boundedString(input.template || 'default', 80);
-    const hash = requestHash({ project_id: project.id, content, template, expected_revision: expected });
+    const templateId = input.template_id == null ? null : String(input.template_id);
+    let templateSnapshot = null;
+    if (templateId) {
+      const templateRow = this.db.get("SELECT * FROM brief_templates WHERE id=? AND team_id=? AND status='active'", [templateId, project.team_id]);
+      if (!templateRow) throw new PlatformError('brief_template_not_found', 'active Brief template not found', {}, 404);
+      const templateRevision = Number(input.template_revision ?? templateRow.current_revision);
+      if (!Number.isInteger(templateRevision) || templateRevision < 1) throw new PlatformError('schema_invalid', 'Brief template revision is invalid', {}, 422);
+      const revisionRow = this.db.get('SELECT * FROM brief_template_revisions WHERE template_id=? AND revision=?', [templateId, templateRevision]);
+      if (!revisionRow) throw new PlatformError('brief_template_revision_not_found', 'Brief template revision not found', {}, 404);
+      templateSnapshot = { id: templateId, revision: templateRevision, sha256: revisionRow.content_sha256 };
+    }
+    const hash = requestHash({ project_id: project.id, content, template, template_snapshot: templateSnapshot, expected_revision: expected });
     const now = this.#time();
     return this.db.withTransaction((tx) => {
       const prior = getIdempotency(tx, principal.actorId, 'brief.create', key, hash, now);
@@ -490,20 +501,17 @@ class ProjectWorkflowCore {
         now
       });
       const revisionId = opaqueId('brief_revision');
-      tx.run(
-        `INSERT INTO brief_revisions(id,brief_id,project_id,revision,content_json,content_sha256,template,created_at,created_by_actor_id) VALUES(?,?,?,?,?,?,?,?,?)`,
-        [
-          revisionId,
-          brief.id,
-          project.id,
-          revision,
-          contentJson,
-          sha256Hex(contentJson),
-          template,
-          now,
-          principal.actorId
-        ]
-      );
+      if (templateSnapshot) {
+        tx.run(
+          `INSERT INTO brief_revisions(id,brief_id,project_id,revision,content_json,content_sha256,template,created_at,created_by_actor_id,template_id,template_revision,template_sha256) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)`,
+          [revisionId, brief.id, project.id, revision, contentJson, sha256Hex(contentJson), template, now, principal.actorId, templateSnapshot.id, templateSnapshot.revision, templateSnapshot.sha256]
+        );
+      } else {
+        tx.run(
+          `INSERT INTO brief_revisions(id,brief_id,project_id,revision,content_json,content_sha256,template,created_at,created_by_actor_id) VALUES(?,?,?,?,?,?,?,?,?)`,
+          [revisionId, brief.id, project.id, revision, contentJson, sha256Hex(contentJson), template, now, principal.actorId]
+        );
+      }
       appendAggregate(tx, this.events, {
         aggregateType: 'brief_revision',
         aggregateId: revisionId,
@@ -2681,18 +2689,23 @@ class ProjectWorkflowCore {
       : null;
   }
   #briefRevisionView(row) {
-    return row
-      ? {
-          id: row.id,
-          brief_id: row.brief_id,
-          project_id: row.project_id,
-          revision: Number(row.revision),
-          content: parseCanonicalJson(row.content_json, {}),
-          content_sha256: row.content_sha256,
-          template: row.template,
-          created_at: row.created_at
-        }
-      : null;
+    if (!row) return null;
+    const value = {
+      id: row.id,
+      brief_id: row.brief_id,
+      project_id: row.project_id,
+      revision: Number(row.revision),
+      content: parseCanonicalJson(row.content_json, {}),
+      content_sha256: row.content_sha256,
+      template: row.template,
+      created_at: row.created_at
+    };
+    if (Object.hasOwn(row, 'template_id')) {
+      value.template_id = row.template_id || null;
+      value.template_revision = row.template_revision == null ? null : Number(row.template_revision);
+      value.template_sha256 = row.template_sha256 || '';
+    }
+    return value;
   }
   #briefView(row, tx = this.db) {
     if (!row) return null;

@@ -116,6 +116,32 @@ export class GitHubAppAdapter {
     });
   }
 
+  async deleteRepository(auth, input) {
+    return this.#withInstallationToken(auth, async (token) => {
+      const repository = repoPath(input.repository);
+      const snapshot = await this.#request(`/repos/${repository}`, { token });
+      if (input.repositoryId != null && String(input.repositoryId) !== String(snapshot.id || '')) throw new PlatformError('github_repository_identity_conflict', 'GitHub repository identity changed', {}, 409);
+      const branch = bounded(input.branch || snapshot.default_branch || 'main', 256);
+      const ref = await this.#request(`/repos/${repository}/git/ref/heads/${encodeURIComponent(branch)}`, { token });
+      const head = bounded(ref.object?.sha || '', 128);
+      if (head !== bounded(input.expectedHeadSha, 128)) throw new PlatformError('repository_head_conflict', 'GitHub repository HEAD changed before deletion', {}, 409);
+      await this.#request(`/repos/${repository}`, { method: 'DELETE', token, ambiguous: true });
+      return { deleted: true, repository_id: String(snapshot.id || ''), full_name: bounded(snapshot.full_name || input.repository, 256), head_sha: head };
+    });
+  }
+
+  async reconcileRepositoryDeletion(auth, input) {
+    return this.#withInstallationToken(auth, async (token) => {
+      try {
+        const snapshot = await this.#request(`/repos/${repoPath(input.repository)}`, { token });
+        return { exists: true, repository_id: String(snapshot.id || ''), full_name: bounded(snapshot.full_name || input.repository, 256) };
+      } catch (error) {
+        if (error?.code === 'github_request_failed' && error?.details?.status === 404) return { exists: false, repository_id: String(input.repositoryId || '') };
+        throw error;
+      }
+    });
+  }
+
   async #withInstallationToken(auth, callback) {
     const jwt = appJwt(auth, this.clock);
     const response = await this.#request(`/app/installations/${positiveInteger(auth.installationId)}/access_tokens`, { method: 'POST', jwt });
@@ -218,6 +244,21 @@ export class DeterministicGitHubAdapter {
     const row = [...this.pullRequests.values()].find((item) => !input.headSha || item.head_sha === input.headSha);
     if (!row) throw new PlatformError('github_pull_request_missing', 'GitHub pull request was not found during reconciliation', {}, 404);
     return { ...row };
+  }
+  async deleteRepository(_auth, input) {
+    const index = this.repositories.findIndex((item) => item.full_name === input.repository);
+    if (index < 0) return { deleted: true, repository_id: String(input.repositoryId || ''), already_absent: true };
+    const row = this.repositories[index];
+    if (input.repositoryId != null && String(row.id) !== String(input.repositoryId)) throw new PlatformError('github_repository_identity_conflict', 'GitHub repository identity changed', {}, 409);
+    if (row.head_sha && row.head_sha !== input.expectedHeadSha) throw new PlatformError('repository_head_conflict', 'GitHub repository HEAD changed before deletion', {}, 409);
+    this.calls.push({ action: 'delete_repository', input: publicInput(input) });
+    this.repositories.splice(index, 1);
+    return { deleted: true, repository_id: String(row.id), full_name: row.full_name, head_sha: input.expectedHeadSha };
+  }
+  async reconcileRepositoryDeletion(_auth, input) {
+    const row = this.repositories.find((item) => item.full_name === input.repository);
+    this.calls.push({ action: 'reconcile_repository_deletion', input: publicInput(input) });
+    return row ? { exists: true, repository_id: String(row.id), full_name: row.full_name } : { exists: false, repository_id: String(input.repositoryId || '') };
   }
 }
 
