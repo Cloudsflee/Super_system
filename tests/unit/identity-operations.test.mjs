@@ -40,8 +40,7 @@ test('operations persist events, redact results, cancel by revision, and recover
       await emit('fixture.progress', { message: 'operation-secret-sentinel' });
       return { summary: 'operation-secret-sentinel done' };
     } });
-    await new Promise((resolve) => setTimeout(resolve, 30));
-    const completed = await operations.get(complete.operation_id);
+    const completed = await waitForStatus(operations, complete.operation_id, 'completed');
     assert.equal(completed.status, 'completed');
     assert.equal(completed.result.summary, '[redacted] done');
     assert.equal(JSON.stringify(await operations.events(complete.operation_id)).includes('operation-secret-sentinel'), false);
@@ -50,8 +49,7 @@ test('operations persist events, redact results, cancel by revision, and recover
       kind: 'fixture.failure',
       executor: async () => { throw new Error('operation-secret-sentinel'); }
     });
-    await new Promise((resolve) => setTimeout(resolve, 20));
-    const failed = await operations.get(failedReceipt.operation_id);
+    const failed = await waitForStatus(operations, failedReceipt.operation_id, 'failed');
     assert.equal(failed.error_code, 'operation_failed');
     assert.equal(JSON.stringify(await operations.events(failed.id)).includes('operation-secret-sentinel'), false);
 
@@ -65,3 +63,13 @@ test('operations persist events, redact results, cancel by revision, and recover
     assert.equal((await operations.get(interrupted.operation_id)).error_code, 'operation_interrupted');
   } finally { await env.close(); }
 });
+
+async function waitForStatus(operations, operationId, expected, timeout = 2000) {
+  const deadline = Date.now() + timeout;
+  while (Date.now() < deadline) {
+    const value = await operations.get(operationId);
+    if (value.status === expected) return value;
+    await new Promise((resolve) => setTimeout(resolve, 10));
+  }
+  return operations.get(operationId);
+}

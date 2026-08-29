@@ -32,6 +32,11 @@ export const EVIDENCE_POLICIES = Object.freeze([
     key: 'p8', phase: 'P8', reference: 'docs/evidence/v3-clean-p8-delivery-deployment-importer-20260825/verification.json',
     attempts: 'docs/evidence/v3-clean-p8-delivery-deployment-importer-20260825/attempts', staging_env: 'AIWS_P8_EVIDENCE_STAGING_ROOT',
     staging_schema: 'aiws.v3-clean.p8-catalog-staging.v1', manifest_schema: 'aiws.v3-clean.p8-evidence-manifest.v2', validate: validateP8EvidenceManifest
+  }),
+  Object.freeze({
+    key: 'p10', phase: 'P10', reference: 'docs/evidence/v3-clean-p10-final-governance-20260829/verification.json',
+    attempts: 'docs/evidence/v3-clean-p10-final-governance-20260829/attempts', staging_env: 'AIWS_P10_EVIDENCE_STAGING_ROOT',
+    staging_schema: 'aiws.v3-clean.p10-catalog-staging.v1', manifest_schema: 'aiws.v3-clean.p10-evidence-manifest.v1', validate: validateP10EvidenceManifest
   })
 ]);
 
@@ -65,6 +70,7 @@ export const P7_VERIFIED_CATALOG_IDS = Object.freeze([
 export const P8_CLEAN_CATALOG_IDS = Object.freeze([
   'REC-D7-DELIVERY-015', 'REC-D9-DEPLOYMENT-021', 'REC-D11-OPS-022'
 ]);
+export const P10_CLEAN_CATALOG_IDS = Object.freeze([]);
 
 const P6_TABLES = Object.freeze([
   'execution_events', 'execution_inputs', 'execution_stage_checkpoints', 'executions',
@@ -203,6 +209,10 @@ export function validateCatalogLayers({ root = process.cwd(), index = loadCatalo
   for (const id of P7_CLEAN_CATALOG_IDS) if (!cleanIds.has(id)) failures.push(`p7_clean_required:${id}`);
   for (const feature of layers.clean?.features || []) {
     if (feature.runtime_surface !== 'v3-clean') failures.push(`clean_runtime_surface:${feature.id}`);
+    const p10Reference = 'docs/evidence/v3-clean-p10-final-governance-20260829/verification.json';
+    if (fs.existsSync(path.join(resolvedRoot, p10Reference))) {
+      if (feature.parity_phase !== 'P10' || feature.parity_map !== 'docs/architecture/p10-parity/business-parity-map.json' || !Array.isArray(feature.parity_receipts) || !feature.parity_receipts.includes(p10Reference)) failures.push(`p10_parity_binding:${feature.id}`);
+    }
   }
   for (const feature of layers.historical?.features || []) {
     if (feature.runtime_surface !== 'historical-fixture') failures.push(`historical_runtime_surface:${feature.id}`);
@@ -509,6 +519,44 @@ export function validateP9EvidenceManifest(evidenceRoot, verification = readJson
     const artifact = verification?.artifacts?.[role]; const file = artifact?.path ? path.join(evidenceRoot, artifact.path) : null;
     if (!file || !fs.existsSync(file) || artifact.sha256 !== sha256File(file)) failures.push(`artifact:${role}`);
   }
+  return [...new Set(failures)].sort();
+}
+
+export function validateP10EvidenceManifest(evidenceRoot, verification = readJson(path.join(evidenceRoot, 'verification.json'))) {
+  const failures = [];
+  const manifest = readJson(path.join(evidenceRoot, 'manifest.json'));
+  if (verification?.schema_version !== 'aiws.v3-clean.p10-verification.v1' || verification?.status !== 'verified' || verification?.provisional !== false || verification?.catalog_promotion !== '27/0/27') failures.push('verification');
+  if (verification?.runtime_phase !== 10 || verification?.target_user_version !== 9 || JSON.stringify(verification?.migration_ledger) !== JSON.stringify([1,2,3,4,5,6,7,8,9])) failures.push('runtime_schema');
+  if (verification?.parity?.status !== 'passed' || verification?.parity?.counts?.routes !== 360 || verification?.parity?.counts?.collections !== 98 || verification?.parity?.counts?.cases !== 14 || verification?.parity?.counts?.web_routes !== 11 || verification?.parity?.counts?.optimization_packages !== 7 || verification?.parity?.business_groups !== 19 || verification?.parity?.gaps !== 0) failures.push('parity');
+  if (verification?.release?.status !== 'passed' || verification?.release?.provisional !== false || verification?.release?.reproducible_builds !== 2 || !/^sha256:[a-f0-9]{64}$/.test(String(verification?.release?.image_digest || '')) || !/^[a-f0-9]{64}$/.test(String(verification?.release?.sbom_sha256 || ''))) failures.push('release');
+  const gates = verification?.external_probes?.gates || {};
+  if (verification?.external_probes?.status !== 'passed' || Object.values(gates).some((gate) => gate.status !== 'verified' || gate.provisional === true)) failures.push('external_probes');
+  const parserGate = gates.parser;
+  if (!parserGate || parserGate.image_digest !== 'sha256:3c2c0f8f550f4c8a14c33661f1e4e85227aa02e3bd0844a8e1044ed368d202a0' || parserGate.format_count !== 21 || parserGate.valid_samples !== 21 || parserGate.image_build_count !== 2 || parserGate.windows_host_status !== 'passed') failures.push('external_parser');
+  const deletionGate = gates.github_deletion;
+  if (!deletionGate || !/^[0-9]+$/.test(String(deletionGate.repository_id || '')) || deletionGate.reconciled_absent !== true) failures.push('external_github_deletion');
+  const releaseGate = gates.release;
+  if (!releaseGate || !/^sha256:[a-f0-9]{64}$/.test(String(releaseGate.image_digest || '')) || !/^[a-f0-9]{64}$/.test(String(releaseGate.sbom_sha256 || '')) || releaseGate.reproducible_builds !== 2) failures.push('external_release');
+  if (verification?.rollback?.status !== 'passed' || verification?.rollback?.restored_user_version !== 8 || JSON.stringify(verification?.rollback?.ledger) !== JSON.stringify([1,2,3,4,5,6,7,8]) || (verification?.rollback?.p10_tables_present || []).length || (verification?.rollback?.p10_columns_present || []).length || (verification?.rollback?.byte_exact_mismatches || []).length) failures.push('rollback');
+  if (manifest?.schema_version !== 'aiws.v3-clean.p10-evidence-manifest.v1' || manifest?.run_id !== verification?.run_id || manifest?.status !== 'verified' || manifest?.provisional !== false) failures.push('manifest');
+  const releaseMap = readJson(path.join(evidenceRoot, 'catalog-release-map.json'));
+  if (releaseMap?.schema_version !== 'aiws.v3-clean.p10-catalog-release-map.v1' || releaseMap?.status !== 'passed' || releaseMap?.counts?.clean !== 27 || releaseMap?.counts?.historical !== 0 || releaseMap?.counts?.total !== 27 || !Array.isArray(releaseMap.rows) || releaseMap.rows.length !== 27 || new Set(releaseMap.rows.map((row) => row.id)).size !== 27 || releaseMap.rows.some((row) => row.release_status !== 'released' || row.verification !== 'docs/evidence/v3-clean-p10-final-business-parity-20260829/verification.json')) failures.push('catalog_release_map');
+  const files = Array.isArray(manifest?.files) ? manifest.files : [];
+  const names = new Set();
+  for (const entry of files) {
+    const name = String(entry?.path || '').replaceAll('\\', '/');
+    if (!name || name.startsWith('/') || name.split('/').includes('..') || names.has(name)) { failures.push(`manifest_path:${name}`); continue; }
+    names.add(name);
+    const file = path.resolve(evidenceRoot, name);
+    if (!file.startsWith(path.resolve(evidenceRoot) + path.sep) || !fs.existsSync(file) || !fs.statSync(file).isFile()) failures.push(`manifest_missing:${name}`);
+    else if (entry.sha256 !== sha256File(file) || Number(entry.byte_length) !== fs.statSync(file).size) failures.push(`manifest_hash:${name}`);
+  }
+  for (const role of ['modified_artifact','patch','verification_record','rollback']) {
+    const artifact = verification?.artifacts?.[role];
+    const file = artifact?.path ? path.join(evidenceRoot, artifact.path) : null;
+    if (!file || !fs.existsSync(file) || artifact.sha256 !== sha256File(file)) failures.push(`artifact:${role}`);
+  }
+  for (const required of ['business-parity-map.json','retired-interface-manifest.json','design-retention.json','catalog-release-map.json','e2e-receipt.json','viewport-desktop.png','viewport-tablet.png','viewport-mobile.png','viewport-desktop-receipt.json','viewport-tablet-receipt.json','viewport-mobile-receipt.json','release-bundle.tgz','image.spdx.json','release-probe.json']) if (!fs.existsSync(path.join(evidenceRoot, required))) failures.push(`required:${required}`);
   return [...new Set(failures)].sort();
 }
 

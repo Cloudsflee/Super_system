@@ -44,7 +44,7 @@ test('P6 migration, ownership, registry, paths and package gates are synchronize
   assert.deepEqual(registry.entries.filter((entry) => entry.phase === 'p6').map((entry) => entry.command_id), p6Commands);
 
   const packageJson = JSON.parse(fs.readFileSync(path.join(root, 'package.json'), 'utf8'));
-  assert.equal(Object.keys(packageJson.scripts).length, 53);
+  assert.equal(Object.keys(packageJson.scripts).length, 56);
   assert.deepEqual(packageJson.scripts, Object.fromEntries(Object.entries(P1_PACKAGE_SCRIPT_DEFINITIONS).map(([name, value]) => [name, value.command])));
   assert.equal(packageJson.scripts['dev:broker'], 'node apps/runner-broker/clean-server.mjs');
   assert.equal(packageJson.scripts['test:p6'], 'node --test tests/p6/*.test.mjs');
@@ -90,7 +90,7 @@ test('P6 Catalog promotion is disjoint, complete and Evidence-gated', () => {
 });
 
 test('P4, P5 and P6 Evidence policies are declarative and final P6 artifacts reopen', () => {
-  assert.deepEqual(EVIDENCE_POLICIES.map((policy) => policy.key), ['p9', 'p4', 'p5', 'p6', 'p7', 'p8']);
+  assert.deepEqual(EVIDENCE_POLICIES.map((policy) => policy.key), ['p9', 'p4', 'p5', 'p6', 'p7', 'p8', 'p10']);
   const resolved = resolveCatalogEvidenceReference(root, evidenceReference);
   if (process.env.AIWS_P6_EVIDENCE_STAGING_ROOT) {
     assert.equal(resolved.staging, true);

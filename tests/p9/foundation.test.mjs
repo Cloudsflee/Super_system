@@ -12,9 +12,9 @@ import { validateCleanOwnership } from '../../apps/api/src/clean/ownership.mjs';
 import { close, open } from './helpers.mjs';
 
 test('P9 runtime phase is separate from the immutable schema v8 ledger', async () => {
-  assert.equal(ACTIVE_RUNTIME_PHASE, 9);
-  assert.equal(ACTIVE_SCHEMA_VERSION, 8);
-  assert.equal(ACTIVE_TARGET_VERSION, 8);
+  assert.equal(ACTIVE_RUNTIME_PHASE, 10);
+  assert.equal(ACTIVE_SCHEMA_VERSION, 9);
+  assert.equal(ACTIVE_TARGET_VERSION, 9);
   const state = await open();
   try {
     assert.equal(state.runtime.runtimePhase, 9);

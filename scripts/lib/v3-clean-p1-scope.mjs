@@ -66,7 +66,9 @@ export const P1_GATE_SYNC_CATALOG_PATHS = Object.freeze({
     'scripts/v3-clean-p3-evidence.mjs',
     'feature-catalog.index.json',
     'feature-catalog.clean.json',
-    'feature-catalog.historical.json'
+    'feature-catalog.historical.json',
+    'scripts/v3-clean-p10-parity.mjs',
+    'scripts/v3-clean-p10-evidence.mjs'
   ]),
   behavior_tests: Object.freeze([
     'tests/unit/recovery-governance.test.mjs',
@@ -74,7 +76,9 @@ export const P1_GATE_SYNC_CATALOG_PATHS = Object.freeze({
     'tests/p31/catalog-split.test.mjs',
     'tests/p31/layered-gates.test.mjs',
     'tests/p31/evidence-immutability.test.mjs',
-    'tests/p4/governance-sync.test.mjs'
+    'tests/p4/governance-sync.test.mjs',
+    'tests/p10/parity-governance.test.mjs',
+    'tests/p10/migration.test.mjs'
   ]),
   ui_tests: Object.freeze([])
 });
@@ -133,6 +137,8 @@ export const P1_PACKAGE_SCRIPT_DEFINITIONS = Object.freeze(Object.fromEntries(Ob
   'test:p7': { command: 'node --test tests/p7/*.test.mjs', role: 'p7_gate', phase: 'P7' },
   'test:p8': { command: 'node --test tests/p8/*.test.mjs', role: 'p8_gate', phase: 'P8' },
   'test:p9': { command: 'node --test tests/p9/*.test.mjs', role: 'p9_gate', phase: 'P9' },
+  'test:p10': { command: 'node --test tests/p10/*.test.mjs', role: 'p10_gate', phase: 'P10' },
+  'audit:parity': { command: 'node scripts/v3-clean-p10-parity.mjs', role: 'p10_gate', phase: 'P10' },
   'evidence:p3': { command: 'node scripts/v3-clean-p3-evidence.mjs', role: 'p3_evidence', phase: 'P3' },
   'evidence:p31': { command: 'node scripts/v3-clean-p31-evidence.mjs', role: 'p31_evidence', phase: 'P3.1' },
   'evidence:p4': { command: 'node scripts/v3-clean-p4-evidence.mjs', role: 'p4_evidence', phase: 'P4' },
@@ -141,6 +147,7 @@ export const P1_PACKAGE_SCRIPT_DEFINITIONS = Object.freeze(Object.fromEntries(Ob
   'evidence:p7': { command: 'node scripts/v3-clean-p7-evidence.mjs', role: 'p7_evidence', phase: 'P7' },
   'evidence:p8': { command: 'node scripts/v3-clean-p8-evidence.mjs', role: 'p8_evidence', phase: 'P8' },
   'evidence:p9': { command: 'node scripts/v3-clean-p9-evidence.mjs', role: 'p9_evidence', phase: 'P9' },
+  'evidence:p10': { command: 'node scripts/v3-clean-p10-evidence.mjs', role: 'p10_evidence', phase: 'P10' },
   'test:integration': { command: 'node scripts/layered-gate.mjs integration', role: 'layered_gate', phase: 'P3.1' },
   'test:integration:clean': { command: 'node scripts/layered-gate.mjs integration --clean', role: 'p31_gate', phase: 'P3.1' },
   'fixture:legacy:integration': { command: 'node scripts/layered-gate.mjs integration --historical', role: 'deferred_fixture', phase: 'historical' },
@@ -400,6 +407,23 @@ const P9_FILES = new Set([
 ]);
 const P9_PREFIXES = Object.freeze(['tests/p9/', 'apps/web/src/offline/', 'apps/web/src/features/outcome/', 'apps/web/src/features/delivery/']);
 
+const P10_FILES = new Set([
+  'apps/api/src/clean/migrations/009-final-business-parity-governance.mjs',
+  'apps/api/src/clean/p10-service.mjs',
+  'apps/parser-worker/archive-worker.mjs',
+  'apps/web/src/features/quality/',
+  'apps/web/src/test/p10-business-parity.test.tsx',
+  'apps/web/src/test/p10-quality.test.tsx',
+  'scripts/lib/v3-clean-p10-parity.mjs',
+  'scripts/v3-clean-p10-parity.mjs',
+  'scripts/v3-clean-p10-evidence.mjs',
+  'scripts/v3-clean-p10-release-probe.mjs',
+  'scripts/v3-clean-p10-github-deletion-probe.mjs',
+  'scripts/v3-clean-p10-parser-probe.mjs',
+  'tests/p10/'
+]);
+const P10_PREFIXES = Object.freeze(['tests/p10/', 'apps/web/src/features/quality/', 'apps/web/src/features/p10/']);
+
 export function classifyWorkspacePath(value) {
   const file = normalize(value);
   if (!file) return null;
@@ -407,6 +431,7 @@ export function classifyWorkspacePath(value) {
     const rows = file === 'scripts/v3-clean-architecture-scan.mjs' ? P1_MATRIX_ROWS : P1_GOVERNANCE_ROWS;
     return { kind: 'p1', phase: 'P1', rows: [...rows] };
   }
+  if (P10_FILES.has(file) || P10_PREFIXES.some((prefix) => file.startsWith(prefix))) return { kind: 'clean', phase: 'P10', rows: [] };
   if (P9_FILES.has(file) || P9_PREFIXES.some((prefix) => file.startsWith(prefix))) return { kind: 'clean', phase: 'P9', rows: [] };
   if (P8_FILES.has(file) || P8_PREFIXES.some((prefix) => file.startsWith(prefix))) return { kind: 'clean', phase: 'P8', rows: [] };
   if (P7_FILES.has(file) || P7_PREFIXES.some((prefix) => file.startsWith(prefix))) return { kind: 'clean', phase: 'P7', rows: [] };
@@ -424,19 +449,19 @@ export function classifyWorkspacePath(value) {
   if (file.startsWith('apps/runner-broker/')) return { kind: 'fixture', phase: 'P6', reason: 'runner adapter characterization' };
   if (file.startsWith('packages/')) return { kind: 'fixture', phase: 'P2-P9', reason: 'pre-clean shared contract' };
   if (file.startsWith('tests/') || file.startsWith('scripts/')) return { kind: 'fixture', phase: 'P2-P9', reason: 'historical behavior or future-phase tool' };
-  if (file.startsWith('docs/evidence/')) return { kind: 'evidence', phase: 'P0-P9' };
+  if (file.startsWith('docs/evidence/')) return { kind: 'evidence', phase: 'P0-P10' };
   if (file.startsWith('docs/archive/')) return { kind: 'archive', phase: 'historical' };
-  if (file.startsWith('docs/architecture/') || P1_ACTIVE_MARKDOWN.includes(file)) return { kind: 'governance', phase: 'P0-P9' };
-  if (file.startsWith('.github/') || file.startsWith('.githooks/')) return { kind: 'governance', phase: 'P0-P9' };
+  if (file.startsWith('docs/architecture/') || P1_ACTIVE_MARKDOWN.includes(file)) return { kind: 'governance', phase: 'P0-P10' };
+  if (file.startsWith('.github/') || file.startsWith('.githooks/')) return { kind: 'governance', phase: 'P0-P10' };
   if (file.startsWith('doc/') || file.startsWith('探索/') || file.startsWith('探索-1/') || file.startsWith('当前项目毕业设计任务书/') || file.startsWith('任务书/') || file.startsWith('愿景与范围文档模板/')) {
     return { kind: 'non_product', phase: 'unscoped research' };
   }
-  if (file.startsWith('docs/')) return { kind: 'supporting_document', phase: 'P0-P9' };
+  if (file.startsWith('docs/')) return { kind: 'supporting_document', phase: 'P0-P10' };
   if (['Dockerfile', 'compose.yml', 'docker/'].some((prefix) => file === prefix || file.startsWith(prefix))) {
     return { kind: 'fixture', phase: 'P8-P9', reason: 'deferred deployment surface' };
   }
   if (/^(?:AGENTS\.md|README\.md|feature-catalog(?:\.(?:clean|historical|index))?\.json|package\.json|pnpm-lock\.yaml|pnpm-workspace\.yaml|sbom\.spdx\.json|eslint\.config\.mjs|\.[^/]+)$/.test(file)) {
-    return { kind: 'governance', phase: 'P0-P9' };
+    return { kind: 'governance', phase: 'P0-P10' };
   }
   return null;
 }

@@ -1,0 +1,42 @@
+import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import path from 'node:path';
+import test from 'node:test';
+import { CLEAN_COMMAND_REGISTRY, createCleanCommandRegistry, registryParity } from '../../apps/api/src/clean/registry.mjs';
+import { auditParity } from '../../scripts/lib/v3-clean-p10-parity.mjs';
+
+test('fixed V2.3 inventories map bidirectionally to 19 business groups with zero gaps', async () => {
+  const result = await auditParity({ root: path.resolve('.'), registry: CLEAN_COMMAND_REGISTRY });
+  assert.deepEqual(result, {
+    schema_version: 'aiws.v3-clean.p10-parity-audit.v1', phase: 'P10', status: 'passed',
+    counts: { cases: 14, routes: 360, collections: 98, web_routes: 11, optimization_packages: 7 },
+    business_groups: 19, gaps: 0, findings: []
+  });
+});
+
+test('P10 registry is API v2-only and preserves synchronized transport contracts', () => {
+  const registry = createCleanCommandRegistry({ targetVersion: 9, runtimePhase: 10 });
+  const entries = registry.entries.filter((entry) => entry.phase === 'p10');
+  assert.equal(entries.length, 34);
+  assert.ok(entries.every((entry) => entry.path.startsWith('/api/v2/')));
+  assert.ok(entries.filter((entry) => entry.command_id.includes('deletion')).every((entry) => !entry.transport_allowlist.includes('mcp')));
+  assert.deepEqual(registryParity(registry), { valid: true, mismatches: [], rest_count: registry.entries.length, mcp_count: registry.entries.length, web_count: registry.entries.length });
+});
+
+test('P10 verify orders parity, external adapters, Web, build, E2E, release, and Evidence', () => {
+  const source = fs.readFileSync('scripts/verify.mjs', 'utf8');
+  const positions = [
+    "['test:p10']",
+    "['audit:parity']",
+    'v3-clean-p10-github-deletion-probe.mjs',
+    "['--filter', '@aiws/web', 'test']",
+    "['test:integration']",
+    "['build']",
+    "['test:e2e']",
+    'v3-clean-p10-release-probe.mjs',
+    "['test:release']",
+    "['evidence:p10', '--', '--verify']"
+  ].map((marker) => source.indexOf(marker));
+  assert.ok(positions.every((position) => position > 0));
+  assert.deepEqual([...positions].sort((left, right) => left - right), positions);
+});
