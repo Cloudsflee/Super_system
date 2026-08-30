@@ -40,3 +40,10 @@ test('P10 verify orders parity, external adapters, Web, build, E2E, release, and
   assert.ok(positions.every((position) => position > 0));
   assert.deepEqual([...positions].sort((left, right) => left - right), positions);
 });
+
+test('P10 Evidence patch excludes its append-only tree and enforces a publishable size bound', () => {
+  const source = fs.readFileSync('scripts/v3-clean-p10-evidence.mjs', 'utf8');
+  assert.match(source, /const maxPatchBytes = 50 \* 1024 \* 1024/);
+  assert.match(source, /`:\(exclude\)\$\{evidencePrefix\}\*\*`/);
+  assert.match(source, /p10_change_patch_too_large/);
+});

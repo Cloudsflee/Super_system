@@ -18,6 +18,7 @@ const p9EvidenceRelative = 'docs/evidence/v3-clean-p9-web-release-20260826';
 const p9EvidenceRoot = path.join(root, p9EvidenceRelative);
 const baselineCommit = 'bb55746b7e08cf7ee764d06a8fa23da91ad48e2f';
 const v23SourceCommit = 'e18dc0b616fa7ab2b00a6c05db23890ccd940175';
+const maxPatchBytes = 50 * 1024 * 1024;
 const verifyOnly = process.argv.includes('--verify');
 const supersede = process.argv.includes('--supersede');
 const focused = process.argv.includes('--focused');
@@ -54,7 +55,9 @@ try {
   writer.write('preflight.json', preflight());
   writer.write('original-hashes.json', originalHashes());
   writer.write('modified-artifact.json', modifiedArtifact());
-  writer.writeText('change.patch', workingPatch());
+  const patch = workingPatch();
+  if (Buffer.byteLength(patch) > maxPatchBytes) throw new Error('p10_change_patch_too_large');
+  writer.writeText('change.patch', patch);
   writer.write('business-parity-map.json', readJson(path.join(root, 'docs/architecture/p10-parity/business-parity-map.json')));
   writer.write('retired-interface-manifest.json', readJson(path.join(root, 'docs/architecture/p10-parity/retired-interface-manifest.json')));
   writer.write('design-retention.json', readJson(path.join(root, 'docs/architecture/p10-parity/design-retention.json')));
@@ -209,7 +212,16 @@ function inheritedExternalGates() {
 function preflight() { return { schema_version: 'aiws.v3-clean.p10-preflight.v1', owner: 'Product Architecture', phase: 'P10', Target: 'P10 final business parity and governance closure', '目标': 'P10 最终业务对等与治理封账', 'Non-target': 'production cutover and production volumes', '非目标': '生产切换与生产卷', Forbidden: ['legacy runtime/facade', 'dual operation/event/CAS/head writes', 'unconfirmed deletion', 'provisional promotion'], '禁止项': ['旧运行时与双写', '未确认删除', '临时收录晋级'], Reuse: ['P9 /api/v2', 'shared operations/events/heads/CAS/ACL/redaction', 'P9 released Catalog'], '复用项': ['P9 公共 owner 与 Catalog'], 'Delete/retire': ['historical interface shapes only; no business capability'], '删除/退役': ['仅退役历史接口形状，不退役业务能力'], 'Acceptance commands': acceptanceCommands().map((parts) => parts.join(' ')), '验收命令': 'audit:parity, P10 tests, parser/GitHub/release probes, Web, build, rollback', 'Rollback artifact': `${evidenceRelative}/rollback.ps1`, '回滚工件': `${evidenceRelative}/rollback.ps1`, active_object: 'P10 final Evidence', last_confirmed_result: 'P10 parity audit and focused domain tests passed', next_action: 'run synchronized gates, execute isolated rollback, publish final receipt' }; }
 function originalHashes() { const lines = git(['ls-tree', '-r', baselineCommit]).split(/\r?\n/).filter(Boolean); return { schema_version: 'aiws.v3-clean.p10-original-hashes.v1', baseline_commit: baselineCommit, tree: git(['show', '-s', '--format=%T', baselineCommit]), files: lines.map((line) => { const match = line.match(/^\d+\s+blob\s+([a-f0-9]+)\t(.+)$/); return match ? { path: match[2], git_blob: match[1] } : null; }).filter(Boolean) }; }
 function modifiedArtifact() { const status = git(['status', '--short', '--untracked-files=all']); const paths = new Set([...git(['diff', '--name-only', baselineCommit]).split(/\r?\n/), ...status.split(/\r?\n/).map((line) => line.slice(3))].filter(Boolean)); return { schema_version: 'aiws.v3-clean.p10-modified-artifact.v1', baseline_commit: baselineCommit, head: git(['rev-parse', 'HEAD']), working_tree: 'modified', files: [...paths].sort().map((file) => ({ path: file, sha256: fs.existsSync(path.join(root, file)) && fs.statSync(path.join(root, file)).isFile() ? sha256File(path.join(root, file)) : null })) }; }
-function workingPatch() { const tracked = spawnSync('git', ['diff', '--binary', baselineCommit], { cwd: root, encoding: 'utf8', windowsHide: true, maxBuffer: 128 * 1024 * 1024 }); const status = git(['status', '--short', '--untracked-files=all']); return `${tracked.stdout || ''}\n# untracked and staged paths\n${status}\n`; }
+function workingPatch() {
+  const evidencePrefix = `${evidenceRelative}/`;
+  const evidencePathspec = `:(exclude)${evidencePrefix}**`;
+  const tracked = spawnSync('git', ['diff', '--binary', baselineCommit, '--', '.', evidencePathspec], { cwd: root, encoding: 'utf8', windowsHide: true, maxBuffer: maxPatchBytes });
+  if (tracked.status !== 0) throw new Error('p10_change_patch_failed');
+  const status = git(['status', '--short', '--untracked-files=all']).split(/\r?\n/)
+    .filter((line) => line && !line.slice(3).replaceAll('\\', '/').startsWith(evidencePrefix))
+    .join('\n');
+  return `${tracked.stdout || ''}\n# untracked and staged non-Evidence paths\n${status}\n`;
+}
 function migrationDiff() { return { schema_version: 'aiws.v3-clean.p10-migration-diff.v1', from_user_version: 8, to_user_version: 9, migration: '009-final-business-parity-governance', tables: ['brief_templates','brief_template_revisions','workflow_quality_policies','quality_review_asset_selections','quality_review_advices','assist_review_comments','project_deletion_intents','repository_deletion_intents'], additive_columns: { provider_profiles: ['lifecycle_status','disabled_at'], brief_revisions: ['template_id','template_revision','template_sha256'], assist_sessions: ['title','mode','parent_session_id','fork_source_turn_id','pinned_at','archived_at','deleted_at'], quality_review_runs: ['policy_revision','policy_snapshot_json','policy_sha256','reviewer_profile_id','reviewer_profile_revision','reviewer_snapshot_json','reviewer_snapshot_sha256','supersedes_quality_review_id','superseded_by_quality_review_id','stale_at','stale_reason'] }, checksum: FINAL_BUSINESS_PARITY_GOVERNANCE_MIGRATION_CHECKSUM }; }
 function catalogReleaseMap() { const catalog = readJson(path.join(root, 'feature-catalog.clean.json')); const rows = (catalog?.features || []).map((feature) => ({ id: feature.id, domain: feature.domain, prior_status: feature.status, release_status: 'released', release_behavior: 'P10 business-semantic parity and released Web/API receipt', verification: `${evidenceRelative}/verification.json`, parity_map: 'docs/architecture/p10-parity/business-parity-map.json' })).sort((left, right) => left.id.localeCompare(right.id)); return { schema_version: 'aiws.v3-clean.p10-catalog-release-map.v1', status: rows.length === 27 && new Set(rows.map((row) => row.id)).size === 27 ? 'passed' : 'failed', counts: { clean: rows.length, historical: 0, total: rows.length }, rows }; }
 function createReleaseBundle(writer, records) {
