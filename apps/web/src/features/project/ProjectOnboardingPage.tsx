@@ -87,8 +87,10 @@ export function ProjectOnboardingPage({ projectId, refreshProjects, navigateProj
   const [workflowGraph, setWorkflowGraph] = useState(DEFAULT_WORKFLOW);
   const loadedBriefRevision = useRef(-1);
   const loadedWorkflowRevision = useRef(-1);
+  const loadSequence = useRef(0);
 
   const load = useCallback(async () => {
+    const sequence = ++loadSequence.current;
     if (!projectId) { setLoadState('error'); setFailure('项目未选择'); return; }
     try {
       const id = encodeURIComponent(projectId);
@@ -107,6 +109,7 @@ export function ProjectOnboardingPage({ projectId, refreshProjects, navigateProj
       const currentRevision = Number(detailBrief?.current_revision || nextProject.current_brief_revision || revisions[0]?.revision || 0);
       const currentContent = detailBrief?.current?.content || revisions.find((item) => item.revision === currentRevision)?.content || {};
       const nextWorkflow = workflowResult.data.workflow || detailResult.data.workflow || null;
+      if (sequence !== loadSequence.current) return;
       setProject(nextProject);
       setIntake(intakeResult.data.intake || null);
       setBrief(detailBrief || { current_revision: currentRevision, confirmed_revision: nextProject.confirmed_brief_revision || null, current: revisions.find((item) => item.revision === currentRevision) || null });
@@ -122,6 +125,7 @@ export function ProjectOnboardingPage({ projectId, refreshProjects, navigateProj
       setFailure('');
       setLoadState('ready');
     } catch (error) {
+      if (sequence !== loadSequence.current) return;
       const apiError = error instanceof ApiError ? error : null;
       setFailure(apiError?.message || (error instanceof Error ? error.message : '项目引导加载失败'));
       setLoadState(apiError && [401, 403].includes(apiError.status) ? 'denied' : 'error');

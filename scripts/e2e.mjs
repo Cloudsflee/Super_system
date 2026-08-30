@@ -111,7 +111,8 @@ try {
   try { await page.getByRole('button', { name: '应用 Proposal', exact: true }).waitFor(); }
   catch (error) { process.stderr.write(`Project onboarding after Critic:\n${await page.locator('body').innerText()}\nHTTP=${JSON.stringify(httpErrors.slice(-20))}\nRequests=${JSON.stringify(requests.slice(-30))}\n`); throw error; }
   await page.getByRole('button', { name: '应用 Proposal', exact: true }).click();
-  await page.getByRole('button', { name: '确认 Brief 并激活', exact: true }).waitFor();
+  try { await page.getByRole('button', { name: '确认 Brief 并激活', exact: true }).waitFor(); }
+  catch (error) { process.stderr.write(`Project onboarding after Proposal apply:\n${await page.locator('body').innerText()}\nHTTP=${JSON.stringify(httpErrors.slice(-20))}\nRequests=${JSON.stringify(requests.slice(-30))}\n`); throw error; }
   await page.getByRole('button', { name: '确认 Brief 并激活', exact: true }).click();
   await page.getByText('Workflow draft', { exact: true }).waitFor();
 
