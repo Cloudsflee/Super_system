@@ -60,6 +60,53 @@ test('real Provider probing passes the bound credential only as a zeroable lease
   } finally { await close(state); }
 });
 
+test('draft onboarding pins Brief before generation and activates only after proposal apply and confirmation', async () => {
+  const state = await open();
+  try {
+    const project = await state.runtime.project.createProject({ name: 'Ordered onboarding', idempotency_key: 'p10-onboarding-project' }, state.principal);
+    const intake = await state.runtime.project.submitIntake(project.id, { mode: 'brainstorm', content: { idea: 'ordered flow' }, expected_revision: 1, idempotency_key: 'p10-onboarding-intake' }, state.principal);
+    await waitOperation(state.runtime, intake.operation.operation_id, state.principal.actorId);
+    const brief = await state.runtime.project.createBrief(project.id, { content: { objective: 'Ship ordered onboarding', users: ['Owner'], scope: { in: ['Web'] }, constraints: ['CAS'], milestones: ['Ready'], acceptance: ['verified'], risks: ['drift'], open_questions: ['none'] }, expected_revision: 1, idempotency_key: 'p10-onboarding-brief' }, state.principal);
+    const workflow = await state.runtime.project.reviseWorkflow(project.id, { graph: { nodes: [{ id: 'review', kind: 'workstream', title: 'Review' }] }, expected_revision: 1, idempotency_key: 'p10-onboarding-workflow' }, state.principal);
+    let current = state.runtime.project.getProject(project.id, state.principal);
+    assert.equal(current.status, 'draft');
+    const started = await state.runtime.project.startGeneration(project.id, { candidate: { nodes: [{ id: 'deliver', kind: 'workstream', title: 'Deliver' }] }, expected_revision: current.revision, idempotency_key: 'p10-onboarding-generation' }, state.principal);
+    await waitOperation(state.runtime, started.operation.operation_id, state.principal.actorId);
+    const pending = state.runtime.project.listGenerations(project.id, state.principal)[0];
+    assert.deepEqual({ revision: pending.source_brief_revision, hash: pending.source_brief_hash }, { revision: brief.revision_record.revision, hash: brief.revision_record.content_sha256 });
+    const evaluated = await state.runtime.project.evaluateCritic(pending.id, { status: 'passed', issues: [], expected_revision: pending.revision, idempotency_key: 'p10-onboarding-critic' }, state.principal);
+    const applied = await state.runtime.project.applyProposal(evaluated.proposal.id, { expected_revision: workflow.workflow.revision, idempotency_key: 'p10-onboarding-apply' }, state.principal);
+    assert.equal(applied.proposal.status, 'applied');
+    const appliedRevision = state.runtime.db.get('SELECT source_brief_revision,source_brief_hash FROM workflow_revisions WHERE proposal_id=?', [evaluated.proposal.id]);
+    assert.deepEqual({ revision: appliedRevision.source_brief_revision, hash: appliedRevision.source_brief_hash }, { revision: brief.revision_record.revision, hash: brief.revision_record.content_sha256 });
+    current = state.runtime.project.getProject(project.id, state.principal);
+    assert.equal(current.status, 'draft');
+    const confirmed = await state.runtime.project.confirmBrief(project.id, { brief_revision: brief.revision_record.revision, expected_revision: current.revision, idempotency_key: 'p10-onboarding-confirm' }, state.principal);
+    assert.equal(confirmed.project.status, 'active');
+    assert.equal(confirmed.project.onboarding_state, 'confirmed');
+  } finally { await close(state); }
+});
+
+test('proposal apply marks a draft-Brief generation stale when the source revision drifts', async () => {
+  const state = await open();
+  try {
+    const project = await state.runtime.project.createProject({ name: 'Brief drift', idempotency_key: 'p10-drift-project' }, state.principal);
+    const intake = await state.runtime.project.submitIntake(project.id, { mode: 'brainstorm', expected_revision: 1, idempotency_key: 'p10-drift-intake' }, state.principal);
+    await waitOperation(state.runtime, intake.operation.operation_id, state.principal.actorId);
+    await state.runtime.project.createBrief(project.id, { objective: 'Original', acceptance: ['one'], expected_revision: 1, idempotency_key: 'p10-drift-brief-one' }, state.principal);
+    const workflow = await state.runtime.project.reviseWorkflow(project.id, { graph: { nodes: [{ id: 'one', kind: 'workstream', title: 'One' }] }, expected_revision: 1, idempotency_key: 'p10-drift-workflow' }, state.principal);
+    let current = state.runtime.project.getProject(project.id, state.principal);
+    const started = await state.runtime.project.startGeneration(project.id, { candidate: { nodes: [{ id: 'two', kind: 'workstream', title: 'Two' }] }, expected_revision: current.revision, idempotency_key: 'p10-drift-generation' }, state.principal);
+    await waitOperation(state.runtime, started.operation.operation_id, state.principal.actorId);
+    const pending = state.runtime.project.listGenerations(project.id, state.principal)[0];
+    const evaluated = await state.runtime.project.evaluateCritic(pending.id, { status: 'passed', issues: [], expected_revision: pending.revision, idempotency_key: 'p10-drift-critic' }, state.principal);
+    current = state.runtime.project.getProject(project.id, state.principal);
+    await state.runtime.project.createBrief(project.id, { objective: 'Changed', acceptance: ['two'], expected_revision: current.revision, idempotency_key: 'p10-drift-brief-two' }, state.principal);
+    await assert.rejects(state.runtime.project.applyProposal(evaluated.proposal.id, { expected_revision: workflow.workflow.revision, idempotency_key: 'p10-drift-apply' }, state.principal), (error) => error.code === 'workflow_proposal_stale' && error.details.source_brief_revision === 1 && error.details.brief_revision === 2);
+    assert.equal(state.runtime.project.getProposal(evaluated.proposal.id, state.principal).status, 'stale');
+  } finally { await close(state); }
+});
+
 test('Project deletion rechecks blockers and tombstones only after confirmation', async () => {
   const state = await open();
   try {

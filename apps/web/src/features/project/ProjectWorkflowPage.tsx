@@ -90,7 +90,7 @@ function ErrorState({ state, message, onRetry }: { state: LoadState; message: st
 
 function unwrap<T>(envelope: { data: T }): T { return envelope.data; }
 
-export function ProjectWorkflowPage({ projectId, selectedProject, refreshProjects, notify, setupReady, initialSection }: WorkspacePageProps & { initialSection?: Section }) {
+export function ProjectWorkflowPage({ projectId, selectedProject, selectProject, refreshProjects, notify, setupReady, navigateProject, initialSection }: WorkspacePageProps & { initialSection?: Section }) {
   const [section, setSection] = useState<Section>(initialSection || 'overview');
   useEffect(() => { if (initialSection) setSection(initialSection); }, [initialSection]);
   const [projects, setProjects] = useState<P3Project[]>([]);
@@ -206,9 +206,12 @@ export function ProjectWorkflowPage({ projectId, selectedProject, refreshProject
     if (!newName.trim()) return;
     const result = await runMutation('Project', () => mutateV2('/api/v2/projects', { name: newName.trim(), description: newDescription, metadata: {} }, 'POST', 0), false);
     if (result?.project) {
+      const created = result.project as P3Project;
       setNewName(''); setNewDescription('');
       await refreshProjects();
       await loadProjects();
+      selectProject(created.id);
+      navigateProject?.(created.id, 'onboarding');
     }
   };
 
@@ -257,7 +260,7 @@ export function ProjectWorkflowPage({ projectId, selectedProject, refreshProject
   const currentGeneration = useMemo(() => generations[0] || null, [generations]);
 
   if (loadState === 'loading') return <div className="page-loader" data-testid="project-workflow-loading"><LoaderCircle className="spin" size={18} />Loading Project workspace</div>;
-  if (loadState === 'empty' || (!project && !selectedId)) return <div className="page project-workflow-page"><div className="page-heading"><div><p className="eyebrow">Clean project surface</p><h1>Projects</h1></div></div><div className="empty-state" data-testid="project-workflow-empty"><GitBranch size={30} /><h2>No project selected</h2><p className="muted-copy">Create a draft project to begin intake.</p><form className="project-create-form" onSubmit={createProject}><label><span>Name</span><input value={newName} onChange={(event) => setNewName(event.target.value)} placeholder="Project name" required /></label><label><span>Description</span><input value={newDescription} onChange={(event) => setNewDescription(event.target.value)} placeholder="Short description" /></label><button className="button primary" disabled={busy === 'Project'}><Plus size={15} />Create project</button></form></div></div>;
+  if (loadState === 'empty' || (!project && !selectedId)) return <div className="page project-workflow-page"><div className="page-heading"><div><p className="eyebrow">Clean project surface</p><h1>项目</h1></div></div><div className="empty-state" data-testid="project-workflow-empty"><GitBranch size={30} /><h2>创建首个项目</h2><form className="project-create-form" onSubmit={createProject}><label><span>项目名称</span><input aria-label="项目名称" value={newName} onChange={(event) => setNewName(event.target.value)} placeholder="项目名称" required /></label><label><span>项目说明</span><input aria-label="项目说明" value={newDescription} onChange={(event) => setNewDescription(event.target.value)} placeholder="简短说明" /></label><button className="button primary" disabled={busy === 'Project'}><Plus size={15} />创建项目</button></form></div></div>;
 
   return <div className="page project-workflow-page">
     <div className="page-heading project-workflow-heading"><div><p className="eyebrow">Clean project surface</p><h1>{project?.name || selectedProject?.name || 'Project'}</h1><span className="mono project-id">{project?.id || selectedId}</span></div><div className="project-workflow-actions"><Status value={project?.status} /><button className="icon-button" title="Reload project" aria-label="Reload project" onClick={() => void loadProject()}><RefreshCw size={17} /></button></div></div>

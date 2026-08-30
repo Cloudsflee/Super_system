@@ -69,7 +69,8 @@
         "feature-catalog.clean.json",
         "feature-catalog.historical.json",
         "scripts/v3-clean-p10-parity.mjs",
-        "scripts/v3-clean-p10-evidence.mjs"
+        "scripts/v3-clean-p10-evidence.mjs",
+        "scripts/lib/p10-post-closure.mjs"
       ],
       "tables": [],
       "apis": [],
@@ -85,7 +86,8 @@
         "tests/p31/evidence-immutability.test.mjs",
         "tests/p4/governance-sync.test.mjs",
         "tests/p10/parity-governance.test.mjs",
-        "tests/p10/migration.test.mjs"
+        "tests/p10/migration.test.mjs",
+        "tests/p10/post-closure.test.mjs"
       ],
       "ui_tests": [],
       "evidence": [
@@ -141,7 +143,11 @@
         "apps/web/src/features/operations/OperationsPage.tsx",
         "apps/web/src/features/operations/index.ts",
         "apps/web/src/test/operations-p8.test.tsx",
-        "apps/web/src/features/p10/FinalBusinessParityPage.tsx"
+        "apps/web/src/features/p10/FinalBusinessParityPage.tsx",
+        "apps/web/src/features/setup/SystemOnboarding.tsx",
+        "apps/web/src/features/settings/SettingsPage.tsx",
+        "apps/web/src/features/project/ProjectOnboardingPage.tsx",
+        "scripts/e2e.mjs"
       ],
       "tables": [],
       "apis": [
@@ -189,7 +195,11 @@
       "ui_tests": [
         "apps/web/src/test/identity-access.test.tsx",
         "apps/web/src/test/operations-p8.test.tsx",
-        "apps/web/src/test/p10-business-parity.test.tsx"
+        "apps/web/src/test/p10-business-parity.test.tsx",
+        "apps/web/src/test/setup-flow.test.tsx",
+        "apps/web/src/test/shell-navigation.test.tsx",
+        "apps/web/src/test/project-onboarding.test.tsx",
+        "scripts/e2e.mjs"
       ],
       "evidence": [
         "docs/evidence/v3-clean-p2-identity-acl-20260819/verification.json",
@@ -331,7 +341,9 @@
         "packages/contracts/src/clean-v2.mjs",
         "apps/web/src/features/identity/IdentityAccessPage.tsx",
         "apps/api/src/clean/p8/github-adapter.mjs",
-        "apps/api/src/clean/p8/repository.mjs"
+        "apps/api/src/clean/p8/repository.mjs",
+        "apps/web/src/features/setup/SystemOnboarding.tsx",
+        "apps/web/src/features/settings/SettingsPage.tsx"
       ],
       "tables": [
         "credential_refs",
@@ -381,7 +393,8 @@
         "tests/p10/business-parity.test.mjs"
       ],
       "ui_tests": [
-        "apps/web/src/test/identity-access.test.tsx"
+        "apps/web/src/test/identity-access.test.tsx",
+        "apps/web/src/test/setup-flow.test.tsx"
       ],
       "evidence": [
         "docs/evidence/v3-clean-p2-identity-acl-20260819/verification.json",
@@ -671,7 +684,8 @@
         "apps/api/src/clean/http.mjs",
         "apps/api/src/clean/registry.mjs",
         "apps/web/src/features/project/ProjectWorkflowPage.tsx",
-        "apps/api/src/clean/p10-service.mjs"
+        "apps/api/src/clean/p10-service.mjs",
+        "apps/web/src/features/project/ProjectOnboardingPage.tsx"
       ],
       "tables": [
         "projects",
@@ -708,7 +722,8 @@
         "tests/p10/business-parity.test.mjs"
       ],
       "ui_tests": [
-        "apps/web/src/test/project-workflow-clean.test.tsx"
+        "apps/web/src/test/project-workflow-clean.test.tsx",
+        "apps/web/src/test/project-onboarding.test.tsx"
       ],
       "evidence": [
         "docs/evidence/v3-clean-p3-project-workflow-20260819/verification.json"
@@ -753,7 +768,8 @@
         "apps/api/src/clean/project-workflow.mjs",
         "apps/api/src/clean/http.mjs",
         "apps/api/src/clean/registry.mjs",
-        "apps/web/src/features/project/ProjectWorkflowPage.tsx"
+        "apps/web/src/features/project/ProjectWorkflowPage.tsx",
+        "apps/web/src/features/project/ProjectOnboardingPage.tsx"
       ],
       "tables": [
         "workflows",
@@ -779,10 +795,12 @@
       ],
       "behavior_tests": [
         "tests/p3/migration.test.mjs",
-        "tests/p3/project-workflow.test.mjs"
+        "tests/p3/project-workflow.test.mjs",
+        "tests/p10/business-parity.test.mjs"
       ],
       "ui_tests": [
-        "apps/web/src/test/project-workflow-clean.test.tsx"
+        "apps/web/src/test/project-workflow-clean.test.tsx",
+        "apps/web/src/test/project-onboarding.test.tsx"
       ],
       "evidence": [
         "docs/evidence/v3-clean-p3-project-workflow-20260819/verification.json"

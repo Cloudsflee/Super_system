@@ -7,8 +7,10 @@ export interface Project {
   description: string;
   status: 'draft' | 'active' | 'archived' | 'trashed' | 'purged';
   onboarding_state?: 'draft' | 'running' | 'ready' | 'failed' | 'cancelled' | 'confirmed';
+  current_brief_revision?: number;
   confirmed_brief_revision?: number | null;
   confirmed_brief_hash?: string;
+  current_workflow_revision?: number;
   revision: number;
   updated_at: string;
   brief?: Brief | null;

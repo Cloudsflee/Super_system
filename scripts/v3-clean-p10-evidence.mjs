@@ -7,6 +7,7 @@ import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { auditParity } from './lib/v3-clean-p10-parity.mjs';
 import { ImmutableEvidenceWriter } from './lib/immutable-evidence-writer.mjs';
+import { postClosureFailures } from './lib/p10-post-closure.mjs';
 import { validateP9EvidenceManifest, validateP10EvidenceManifest } from './catalog-loader.mjs';
 import { openCleanDatabase } from '../apps/api/src/clean/database.mjs';
 import { FINAL_BUSINESS_PARITY_GOVERNANCE_MIGRATION_CHECKSUM, P10_PARSER_IMAGE_DIGEST } from '../apps/api/src/clean/migrations/009-final-business-parity-governance.mjs';
@@ -311,30 +312,8 @@ function verifyPublished({ closure = false } = {}) {
 }
 
 function closureFailures(verification) {
-  const failures = [];
-  const head = tryGit(['rev-parse', 'HEAD']);
-  const tag = String(verification.final_tag || 'p10-final-governance-20260829');
-  if (tryGit(['cat-file', '-t', `refs/tags/${tag}`]) !== 'tag') failures.push('annotated_tag');
-  if (tryGit(['rev-parse', `${tag}^{}`]) !== head) failures.push('tag_head');
-  const upstream = tryGit(['rev-parse', '@{u}']);
-  if (!upstream || upstream !== head) failures.push('upstream_head');
-  const status = spawnSync('git', ['status', '--porcelain'], { cwd: root, encoding: 'utf8', windowsHide: true });
-  if (status.status !== 0 || String(status.stdout || '').trim()) failures.push('worktree_clean');
-  const implementation = String(verification.implementation_commit || verification.source_commit || '');
-  if (!/^[a-f0-9]{40}$/.test(implementation)) failures.push('implementation_commit');
-  else {
-    const tree = tryGit(['show', '-s', '--format=%T', implementation]);
-    if (!tree || tree !== verification.runtime_tree) failures.push('runtime_tree');
-    const ancestry = spawnSync('git', ['merge-base', '--is-ancestor', implementation, head], { cwd: root, windowsHide: true });
-    if (ancestry.status !== 0) failures.push('implementation_ancestry');
-    const changed = tryGit(['diff', '--name-only', `${implementation}..HEAD`]).split(/\r?\n/).filter(Boolean);
-    const allow = /^(?:docs\/evidence\/v3-clean-p10-final-governance-20260829\/|docs\/architecture\/p10-parity\/|docs\/architecture\/p10-final-business-parity\.md$|docs\/testing\.md$|AGENTS\.md$|feature-catalog(?:\.clean)?\.json$)/;
-    for (const file of changed) if (!allow.test(file.replaceAll('\\', '/'))) failures.push(`post_implementation_path:${file}`);
-  }
-  return failures;
+  return postClosureFailures({ root, verification, tag: String(verification.final_tag || 'p10-final-governance-20260829') });
 }
-
-function tryGit(args) { const result = spawnSync('git', args, { cwd: root, encoding: 'utf8', windowsHide: true, maxBuffer: 128 * 1024 * 1024 }); return result.status === 0 ? String(result.stdout || '').trim() : ''; }
 function publishAttempt(attempt) { for (const entry of fs.readdirSync(attempt, { withFileTypes: true })) { if (['rollback-baseline','rollback-isolated','migration-receipts'].includes(entry.name)) continue; const source = path.join(attempt, entry.name); const target = path.join(evidenceRoot, entry.name); if (entry.isDirectory()) copyTree(source, target); else if (!fs.existsSync(target)) fs.copyFileSync(source, target, fs.constants.COPYFILE_EXCL); else if (sha256File(source) !== sha256File(target)) throw new Error(`p10_publish_mismatch:${entry.name}`); } }
 function copyTree(source, target) { fs.mkdirSync(target, { recursive: true }); for (const entry of fs.readdirSync(source, { withFileTypes: true })) { const from = path.join(source, entry.name); const to = path.join(target, entry.name); if (entry.isDirectory()) copyTree(from, to); else if (!fs.existsSync(to)) fs.copyFileSync(from, to, fs.constants.COPYFILE_EXCL); else if (sha256File(from) !== sha256File(to)) throw new Error(`p10_publish_mismatch:${entry.name}`); } }
 function archivePublished(verification) { const archive = path.join(evidenceRoot, 'attempts', `superseded-final-${verification.run_id}-${Date.now()}`); fs.mkdirSync(archive, { recursive: true }); for (const entry of fs.readdirSync(evidenceRoot, { withFileTypes: true })) { if (entry.name === 'attempts') continue; const source = path.join(evidenceRoot, entry.name); const target = path.join(archive, entry.name); if (entry.isDirectory()) copyTree(source, target); else fs.copyFileSync(source, target, fs.constants.COPYFILE_EXCL); } for (const entry of fs.readdirSync(evidenceRoot, { withFileTypes: true })) { if (entry.name === 'attempts') continue; const target = path.join(evidenceRoot, entry.name); if (entry.isDirectory()) fs.rmSync(target, { recursive: true, force: true }); else fs.rmSync(target); } }

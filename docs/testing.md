@@ -718,3 +718,41 @@ backup/restore, and applies an actual P9 rollback. It never touches a production
 pointer or volume. Final Evidence is
 `docs/evidence/v3-clean-p10-final-governance-20260829/`; Catalog remains
 `27/0/27` and status is never inferred from interface counts.
+
+## Post-closure Web product regression
+
+The annotated `p10-final-governance-20260829` tag remains the immutable
+governance boundary. Ordinary product commits after that tag do not create a
+new phase. `evidence:p10 -- --verify` accepts a clean pushed descendant only
+when its upstream equals HEAD and the tagged architecture, P1-P10 migrations,
+and Evidence remain byte-identical. Catalog implementation/test references may
+advance, but the sorted set of all 27 `{id,status}` pairs must remain identical
+to the tag (`27 released`, `0 historical`).
+
+The Web regression restores the six-entry hidden drawer and continuous system
+and project onboarding without adding a schema or public API. Component tests
+cover drawer default/overlay/Escape/focus-trap/focus-restore behavior, account-
+scoped completion and GitHub-skip markers, the verified Codex hard gate,
+GitHub discovery, secret storage hygiene, existing-project bypass, both Intake
+modes, template-backed complete Briefs, refresh recovery, revision conflict,
+source drift/retry, and the exact generation -> critic -> proposal apply ->
+Brief confirm sequence. `scripts/e2e.mjs` runs the same journey at 1440x900,
+1024x768, and 390x844 with WCAG AA, console/HTTP, overflow, overlap, and drawer
+receipts. The existing internal governance deep-link remains in the 19-group
+acceptance journey but is absent from user navigation.
+
+The synchronized acceptance subset is:
+
+```text
+pnpm check
+pnpm --filter @aiws/web test
+pnpm test:p10
+pnpm audit:parity
+pnpm test:e2e
+pnpm verify
+git diff --check
+```
+
+Failures leave every Catalog status unchanged. The final P10 Evidence tree is
+read-only; local product-change verification and rollback receipts live only
+under the ignored `.ai-workspace/change-receipts/` directory.

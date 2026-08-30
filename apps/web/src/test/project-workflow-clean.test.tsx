@@ -11,7 +11,7 @@ function envelope(data: unknown, meta: Record<string, unknown> = {}) {
 const project = { id: 'project_1', team_id: 'team_1', owner_actor_id: 'actor_1', name: 'Clean project', status: 'draft', onboarding_state: 'collecting', current_brief_revision: 0, current_workflow_revision: 0, revision: 1 };
 const props = {
   projectId: 'project_1', selectedProject: undefined, selectProject: vi.fn(), refreshProjects: vi.fn(async () => {}),
-  notify: vi.fn(), navigate: vi.fn(), setupReady: true, refreshSetup: vi.fn(async () => {})
+  notify: vi.fn(), navigate: vi.fn(), navigateProject: vi.fn(), setupReady: true, refreshSetup: vi.fn(async () => {})
 };
 
 function cleanBundle(url: string) {
@@ -45,9 +45,11 @@ describe('ProjectWorkflowPage clean slice', () => {
     }));
     render(<ProjectWorkflowPage {...props} projectId="" />);
     await waitFor(() => expect(screen.getByTestId('project-workflow-empty')).toBeInTheDocument());
-    fireEvent.change(screen.getByLabelText('Name'), { target: { value: 'New project' } });
-    fireEvent.click(screen.getByRole('button', { name: 'Create project' }));
+    fireEvent.change(screen.getByLabelText('项目名称'), { target: { value: 'New project' } });
+    fireEvent.click(screen.getByRole('button', { name: '创建项目' }));
     await waitFor(() => expect(calls.some((call) => call.startsWith('POST /api/v2/projects'))).toBe(true));
+    expect(props.selectProject).toHaveBeenCalledWith('project_new');
+    expect(props.navigateProject).toHaveBeenCalledWith('project_new', 'onboarding');
     expect(calls.every((call) => !call.includes('/api/v1/'))).toBe(true);
   });
 

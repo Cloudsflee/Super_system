@@ -1,9 +1,9 @@
-import { useCallback, useEffect, useMemo, useState, type ComponentType } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type ComponentType, type KeyboardEvent as ReactKeyboardEvent } from 'react';
 import { QueryClientProvider } from '@tanstack/react-query';
 import { createHashRouter, RouterProvider, useLocation, useNavigate, useRouteError } from 'react-router-dom';
 import {
-  Archive, BookOpen, ChevronDown, FileCheck2, FolderGit2, LayoutDashboard, ListChecks, LoaderCircle, ServerCog,
-  Menu, MessageSquare, Settings, ShieldCheck, Terminal as TerminalIcon, Users,
+  BookOpen, ChevronDown, FileCheck2, FolderGit2, ListChecks, LoaderCircle, Menu,
+  MessageSquare, Paperclip, ServerCog, Settings, ShieldCheck, Terminal as TerminalIcon,
   WifiOff, Workflow, X
 } from 'lucide-react';
 import { apiV2 } from './api';
@@ -18,78 +18,44 @@ import { DeliveryPage } from './features/delivery';
 import { IdentityAccessPage } from './features/identity';
 import { OperationsPage } from './features/operations';
 import { OutcomePage } from './features/outcome';
-import { ProjectWorkflowPage } from './features/project';
-import { CleanSetupPage, type SetupState } from './features/setup';
+import { ProjectOnboardingPage, ProjectWorkflowPage } from './features/project';
+import {
+  CleanSetupPage, SystemOnboarding, hasSystemOnboardingCompletion,
+  type OnboardingAccount, type OnboardingCredential, type OnboardingProfile,
+  type SetupState, type SystemOnboardingSnapshot
+} from './features/setup';
+import { SettingsPage } from './features/settings';
 import { TerminalPage } from './features/terminal';
+import { FinalBusinessParityPage } from './features/p10';
 import type { Project } from './types';
 import type { WorkspacePageProps, WorkspaceRoute } from './workspace';
 import { clearWorkspaceScope, queryClient, workspaceQueryKey } from './query';
 import { ProjectEventSynchronizer, type EventSyncState } from './events';
 import { OutboxStatus } from './offline/OutboxStatus';
-import { FinalBusinessParityPage } from './features/p10';
 
 export type PageKey = WorkspaceRoute;
 
-const NAV: Array<{ key: WorkspaceRoute; label: string; icon: ComponentType<{ size?: number }> }> = [
-  { key: 'setup', label: 'Setup', icon: LayoutDashboard },
-  { key: 'projects', label: 'Projects', icon: FolderGit2 },
-  { key: 'brief', label: 'Brief', icon: BookOpen },
-  { key: 'workflow', label: 'Workflow', icon: Workflow },
-  { key: 'context', label: 'Context', icon: BookOpen },
-  { key: 'assist', label: 'Assist', icon: MessageSquare },
-  { key: 'execution', label: 'Execution', icon: ListChecks },
-  { key: 'evidence', label: 'Evidence', icon: FileCheck2 },
-  { key: 'outcome', label: 'Outcome', icon: ShieldCheck },
-  { key: 'delivery', label: 'Delivery', icon: Archive },
-  { key: 'operations', label: 'Operations', icon: ServerCog }
-  , { key: 'governance', label: 'Final parity', icon: ShieldCheck }
-];
-
-const ADMIN_NAV: Array<{ key: WorkspaceRoute; label: string; icon: ComponentType<{ size?: number }> }> = [
-  { key: 'identity', label: 'Identity / ACL', icon: Users },
-  { key: 'exchange', label: 'Exchange', icon: ShieldCheck },
-  { key: 'gateway', label: 'Gateway', icon: ServerCog },
-  { key: 'runner', label: 'Runner', icon: ListChecks },
-  { key: 'parser', label: 'Parser', icon: FileCheck2 },
-  { key: 'deployment', label: 'Deployment', icon: Archive },
-  { key: 'backup', label: 'Backup / Restore', icon: Archive },
-  { key: 'importer', label: 'Importer', icon: FolderGit2 },
-  { key: 'terminals', label: 'Terminal', icon: TerminalIcon },
-  { key: 'settings', label: 'Settings', icon: Settings }
+const PRIMARY_NAV: Array<{ key: WorkspaceRoute; label: string; icon: ComponentType<{ size?: number }> }> = [
+  { key: 'projects', label: '项目', icon: FolderGit2 },
+  { key: 'workflow', label: '工作区', icon: Workflow },
+  { key: 'evidence', label: '资产', icon: FileCheck2 },
+  { key: 'context', label: '上下文', icon: BookOpen },
+  { key: 'operations', label: '审计', icon: ServerCog },
+  { key: 'settings', label: '设置', icon: Settings }
 ];
 
 const PAGE_LABELS: Record<WorkspaceRoute, string> = {
-  setup: 'Setup',
-  identity: 'Identity',
-  projects: 'Projects',
-  brief: 'Brief',
-  workflow: 'Workflow',
-  context: 'Context',
-  assist: 'Assist',
-  execution: 'Execution',
-  evidence: 'Evidence',
-  outcome: 'Outcome',
-  delivery: 'Delivery',
-  operations: 'Operations',
-  files: 'Files',
-  terminals: 'Terminal',
-  approvals: 'Approval Center',
-  connections: 'Connections',
-  exchange: 'Exchange',
-  gateway: 'Gateway',
-  runner: 'Runner',
-  parser: 'Parser',
-  deployment: 'Deployment',
-  backup: 'Backup & Restore',
-  importer: 'Importer',
-  settings: 'Settings'
-  , governance: 'Final parity'
+  setup: '系统配置', identity: '身份', projects: '项目', onboarding: '项目引导', brief: 'Brief', workflow: '工作区', context: '上下文',
+  assist: 'Assist', execution: 'Execution', evidence: '资产', outcome: 'Outcome', delivery: 'Delivery', operations: '审计', files: '文件',
+  terminals: 'Terminal', approvals: '审批', connections: 'Connections', exchange: 'Exchange', gateway: 'Gateway', runner: 'Runner', parser: 'Parser',
+  deployment: 'Deployment', backup: 'Backup & Restore', importer: 'Importer', settings: '设置', governance: 'Final parity'
 };
 
 const PAGES: Record<WorkspaceRoute, ComponentType<WorkspacePageProps>> = {
   setup: CleanSetupPage,
   identity: IdentityAccessPage,
   projects: (props) => <ProjectWorkflowPage {...props} initialSection="overview" />,
+  onboarding: ProjectOnboardingPage,
   brief: (props) => <ProjectWorkflowPage {...props} initialSection="brief" />,
   workflow: (props) => <ProjectWorkflowPage {...props} initialSection="workflow" />,
   context: ContextPage,
@@ -110,40 +76,51 @@ const PAGES: Record<WorkspaceRoute, ComponentType<WorkspacePageProps>> = {
   deployment: OperationsPage,
   backup: OperationsPage,
   importer: OperationsPage,
-  settings: McpSettingsPage
-  , governance: FinalBusinessParityPage
+  settings: SettingsPage,
+  governance: FinalBusinessParityPage
 };
 
 const ROUTES = new Set<WorkspaceRoute>(Object.keys(PAGES) as WorkspaceRoute[]);
-const SETUP_GATED_PAGES = new Set<WorkspaceRoute>([...ROUTES].filter((route) => route !== 'setup'));
+const PROJECT_ROUTES = new Set<WorkspaceRoute>(['onboarding', 'workflow', 'context', 'governance']);
+const SETTINGS_ROUTES = new Set<WorkspaceRoute>(['settings', 'identity', 'exchange', 'gateway', 'runner', 'connections']);
 
 function routeFromPath(pathname: string): WorkspaceRoute {
   const clean = pathname.replace(/^\/+|\/+$/g, '');
-  const projectView = clean.match(/^projects\/[^/]+\/(governance|workflow|context|assist|execution|evidence|outcome|delivery)$/)?.[1];
-  if (projectView === 'governance') return 'governance';
+  const projectView = clean.match(/^projects\/[^/]+\/(onboarding|governance|workflow|context|assist|execution|evidence|outcome|delivery)$/)?.[1];
   const route = (projectView || clean) as WorkspaceRoute;
-  return ROUTES.has(route) ? route : 'setup';
+  return ROUTES.has(route) ? route : 'projects';
 }
 
-export function projectDeepLink(projectId: string, view: WorkspaceRoute = 'governance'): string {
+export function projectDeepLink(projectId: string, view: WorkspaceRoute = 'workflow'): string {
   return `#/projects/${encodeURIComponent(projectId)}/${view}`;
 }
 
 function navIsActive(nav: WorkspaceRoute, page: WorkspaceRoute) {
-  return nav === page || (nav === 'assist' && page === 'files') || (nav === 'settings' && page === 'connections');
+  if (nav === 'projects') return ['projects', 'onboarding', 'brief'].includes(page);
+  if (nav === 'workflow') return ['workflow', 'assist', 'execution', 'outcome', 'delivery'].includes(page);
+  if (nav === 'evidence') return ['evidence', 'files', 'parser'].includes(page);
+  if (nav === 'operations') return ['operations', 'deployment', 'backup', 'importer'].includes(page);
+  if (nav === 'settings') return SETTINGS_ROUTES.has(page);
+  return nav === page;
 }
 
 function WorkspaceLayout() {
   const location = useLocation();
   const routerNavigate = useNavigate();
   const page = routeFromPath(location.pathname);
-  const deepLinkProjectId = location.pathname.match(/^\/projects\/([^/]+)/)?.[1] ? decodeURIComponent(location.pathname.match(/^\/projects\/([^/]+)/)![1]) : '';
+  const deepLinkMatch = location.pathname.match(/^\/projects\/([^/]+)/);
+  const deepLinkProjectId = deepLinkMatch?.[1] ? decodeURIComponent(deepLinkMatch[1]) : '';
   const [projects, setProjects] = useState<Project[]>([]);
   const [projectId, setProjectId] = useState(() => sessionStorage.getItem('aiws:v3:selected-project') || '');
   const [notice, setNotice] = useState<{ tone: 'ok' | 'error'; text: string } | null>(null);
   const [menuOpen, setMenuOpen] = useState(false);
   const [setup, setSetup] = useState<Pick<SetupState, 'status' | 'complete' | 'revision'> | null>(null);
+  const [systemSnapshot, setSystemSnapshot] = useState<SystemOnboardingSnapshot | null>(null);
+  const [bootstrapLoaded, setBootstrapLoaded] = useState(false);
+  const [bootstrapFailure, setBootstrapFailure] = useState('');
   const [pendingInteractions, setPendingInteractions] = useState(0);
+  const menuButtonRef = useRef<HTMLButtonElement>(null);
+  const drawerRef = useRef<HTMLElement>(null);
 
   const loadProjects = useCallback(async () => {
     const actorId = sessionStorage.getItem('aiws:v3:actor-id') || 'session-actor';
@@ -154,37 +131,50 @@ function WorkspaceLayout() {
     const rows = response.data.projects || [];
     setProjects(rows);
     setProjectId((current) => {
-      const selected = rows.some((project) => project.id === current) ? current : rows[0]?.id || '';
+      const linked = deepLinkProjectId && rows.some((project) => project.id === deepLinkProjectId) ? deepLinkProjectId : '';
+      const selected = linked || (rows.some((project) => project.id === current) ? current : rows[0]?.id || '');
       if (selected) sessionStorage.setItem('aiws:v3:selected-project', selected);
+      else sessionStorage.removeItem('aiws:v3:selected-project');
       return selected;
     });
-  }, []);
+    return rows;
+  }, [deepLinkProjectId]);
 
   const refreshSetup = useCallback(async () => {
-    const response = await apiV2<{ needs_setup: boolean; actor_count: number; bootstrap_actor_id?: string }>('/api/v2/setup');
-    const state = response.data;
-    if (state.bootstrap_actor_id) sessionStorage.setItem('aiws:v3:actor-id', state.bootstrap_actor_id);
-    const cleanState: Pick<SetupState, 'status' | 'complete' | 'revision'> = {
-      status: state.needs_setup ? 'blocked' : 'ready',
-      complete: !state.needs_setup,
-      revision: 0
-    };
-    setSetup(cleanState);
-    if (cleanState.status === 'ready' && cleanState.complete) await loadProjects();
-    else {
-      setProjects([]);
-      setProjectId('');
+    try {
+      const response = await apiV2<{ needs_setup: boolean; actor_count: number; bootstrap_actor_id?: string }>('/api/v2/setup');
+      const state = response.data;
+      if (state.bootstrap_actor_id) sessionStorage.setItem('aiws:v3:actor-id', state.bootstrap_actor_id);
+      const cleanState: Pick<SetupState, 'status' | 'complete' | 'revision'> = { status: state.needs_setup ? 'blocked' : 'ready', complete: !state.needs_setup, revision: 0 };
+      setSetup(cleanState);
+      if (state.needs_setup) {
+        setProjects([]);
+        setProjectId('');
+        setSystemSnapshot({ needsSetup: true, account: null, credentials: [], profiles: [], projectCount: 0 });
+      } else {
+        const [rows, accountResult, credentialResult, profileResult] = await Promise.all([
+          loadProjects(),
+          apiV2<{ account?: OnboardingAccount }>('/api/v2/account'),
+          apiV2<{ credentials?: OnboardingCredential[] }>('/api/v2/credentials'),
+          apiV2<{ profiles?: OnboardingProfile[] }>('/api/v2/profiles')
+        ]);
+        setSystemSnapshot({
+          needsSetup: false,
+          account: accountResult.data.account || null,
+          credentials: credentialResult.data.credentials || [],
+          profiles: profileResult.data.profiles || [],
+          projectCount: rows.length
+        });
+      }
+      setBootstrapFailure('');
+    } catch (error) {
+      setBootstrapFailure(error instanceof Error ? error.message : '系统状态加载失败');
+    } finally {
+      setBootstrapLoaded(true);
     }
   }, [loadProjects]);
 
-  useEffect(() => {
-    void refreshSetup().catch(() => {
-      setSetup(null);
-      if (SETUP_GATED_PAGES.has(page)) {
-        routerNavigate('/setup', { replace: true });
-      }
-    });
-  }, [refreshSetup]);
+  useEffect(() => { void refreshSetup(); }, [refreshSetup]);
 
   useEffect(() => {
     if (!deepLinkProjectId || !projects.some((project) => project.id === deepLinkProjectId)) return;
@@ -193,12 +183,12 @@ function WorkspaceLayout() {
   }, [deepLinkProjectId, projects]);
 
   const setupReady = setup?.status === 'ready' && setup.complete;
+  const selectedProject = useMemo(() => projects.find((project) => project.id === projectId), [projectId, projects]);
 
   useEffect(() => {
-    if (setup && !setupReady && SETUP_GATED_PAGES.has(page)) {
-      routerNavigate('/setup', { replace: true });
-    }
-  }, [page, setup, setupReady]);
+    if (page !== 'workflow' || !selectedProject || selectedProject.status !== 'draft') return;
+    routerNavigate(`/projects/${encodeURIComponent(selectedProject.id)}/onboarding`, { replace: true });
+  }, [page, routerNavigate, selectedProject]);
 
   useEffect(() => {
     if (!notice) return;
@@ -207,10 +197,7 @@ function WorkspaceLayout() {
   }, [notice]);
 
   useEffect(() => {
-    if (!setupReady || !projectId) {
-      setPendingInteractions(0);
-      return;
-    }
+    if (!setupReady || !projectId) { setPendingInteractions(0); return; }
     let disposed = false;
     const load = async () => {
       try {
@@ -220,28 +207,57 @@ function WorkspaceLayout() {
           apiV2<{ inputs: unknown[] }>(`/api/v2/user-inputs${query}`)
         ]);
         if (!disposed) setPendingInteractions((approvals.data.approvals || []).length + (inputs.data.inputs || []).length);
-      } catch {
-        if (!disposed) setPendingInteractions(0);
-      }
+      } catch { if (!disposed) setPendingInteractions(0); }
     };
     void load();
     const timer = setInterval(() => void load(), 10_000);
-    return () => {
-      disposed = true;
-      clearInterval(timer);
-    };
+    return () => { disposed = true; clearInterval(timer); };
   }, [page, projectId, setupReady]);
 
+  const closeNavigation = useCallback(() => {
+    const restoreFocus = drawerRef.current?.classList.contains('is-open') === true;
+    setMenuOpen(false);
+    if (restoreFocus) requestAnimationFrame(() => menuButtonRef.current?.focus());
+  }, []);
+
+  useEffect(() => {
+    if (!menuOpen) return undefined;
+    const priorOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    const focus = requestAnimationFrame(() => drawerRef.current?.querySelector<HTMLElement>('.nav-item')?.focus());
+    const onKeyDown = (event: KeyboardEvent) => { if (event.key === 'Escape') { event.preventDefault(); closeNavigation(); } };
+    document.addEventListener('keydown', onKeyDown);
+    return () => { cancelAnimationFrame(focus); document.body.style.overflow = priorOverflow; document.removeEventListener('keydown', onKeyDown); };
+  }, [closeNavigation, menuOpen]);
+
+  const trapDrawerFocus = (event: ReactKeyboardEvent<HTMLElement>) => {
+    if (event.key !== 'Tab' || !drawerRef.current) return;
+    const controls = [...drawerRef.current.querySelectorAll<HTMLElement>('button:not(:disabled),a[href],input:not(:disabled),select:not(:disabled),textarea:not(:disabled)')];
+    if (!controls.length) return;
+    const first = controls[0];
+    const last = controls[controls.length - 1];
+    if (event.shiftKey && (document.activeElement === first || !drawerRef.current.contains(document.activeElement))) { event.preventDefault(); last.focus(); }
+    else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus(); }
+  };
+
+  const navigateProject = useCallback((id: string, next: WorkspaceRoute) => {
+    const project = projects.find((item) => item.id === id);
+    const target = next === 'workflow' && project?.status === 'draft' ? 'onboarding' : next;
+    routerNavigate(`/projects/${encodeURIComponent(id)}/${target}`);
+    setNotice(null);
+    closeNavigation();
+  }, [closeNavigation, projects, routerNavigate]);
+
   const navigate = useCallback((next: WorkspaceRoute) => {
-    if (!setupReady && SETUP_GATED_PAGES.has(next)) {
-      routerNavigate('/setup');
-      setNotice({ tone: 'error', text: 'Complete Setup before using workspace commands.' });
-      setMenuOpen(false);
+    if (!setupReady && next !== 'setup') { setNotice({ tone: 'error', text: '请先完成系统配置' }); closeNavigation(); return; }
+    if (PROJECT_ROUTES.has(next)) {
+      if (!projectId) { routerNavigate('/projects'); setNotice({ tone: 'error', text: '请先创建项目' }); closeNavigation(); return; }
+      navigateProject(projectId, next);
       return;
     }
-    routerNavigate(next === 'governance' && projectId ? `/projects/${encodeURIComponent(projectId)}/governance` : `/${next}`);
-    setMenuOpen(false);
-  }, [projectId, routerNavigate, setupReady]);
+    routerNavigate(`/${next}`);
+    closeNavigation();
+  }, [closeNavigation, navigateProject, projectId, routerNavigate, setupReady]);
 
   const selectProject = useCallback((id: string) => {
     const actorId = sessionStorage.getItem('aiws:v3:actor-id') || 'session-actor';
@@ -249,12 +265,10 @@ function WorkspaceLayout() {
     void clearWorkspaceScope({ actorId, teamId: current?.team_id || 'default-team', projectId });
     setProjectId(id);
     sessionStorage.setItem('aiws:v3:selected-project', id);
-  }, [projectId, projects]);
-  const notify = useCallback((text: string, tone: 'ok' | 'error' = 'ok') => setNotice({ text, tone }), []);
-  const selectedProject = useMemo(() => projects.find((project) => project.id === projectId), [projectId, projects]);
-  const gatedPagePending = SETUP_GATED_PAGES.has(page) && !setupReady;
-  const Page = gatedPagePending ? CleanSetupPage : PAGES[page];
+    if (PROJECT_ROUTES.has(page)) navigateProject(id, page);
+  }, [navigateProject, page, projectId, projects]);
 
+  const notify = useCallback((text: string, tone: 'ok' | 'error' = 'ok') => setNotice({ text, tone }), []);
   const [eventState, setEventState] = useState<EventSyncState>('idle');
   const [online, setOnline] = useState(() => navigator.onLine !== false);
   const [updateAvailable, setUpdateAvailable] = useState(false);
@@ -266,82 +280,55 @@ function WorkspaceLayout() {
     return () => { removeEventListener('online', connected); removeEventListener('offline', disconnected); removeEventListener('aiws:pwa-update', update); };
   }, []);
   useEffect(() => {
-    if (import.meta.env.MODE === 'test') return undefined;
+    if (import.meta.env.MODE === 'test' || import.meta.env.VITE_AIWS_E2E === '1') return undefined;
     if (!setupReady || !projectId) { setEventState('idle'); return undefined; }
     let active = true;
     const actorId = sessionStorage.getItem('aiws:v3:actor-id') || 'session-actor';
     const sync = new ProjectEventSynchronizer({ actorId, projectId, onState: (state) => { if (active) setEventState(state); } });
-    void sync.start().catch((error) => {
-      if (active && String((error as Error)?.message || '').includes('denied')) setEventState('denied');
-    });
+    void sync.start().catch((error) => { if (active && String((error as Error)?.message || '').includes('denied')) setEventState('denied'); });
     return () => { active = false; sync.stop(); };
   }, [projectId, setupReady]);
 
-  return (
-    <div className="app-shell" data-route={page} data-setup-ready={String(setupReady)} data-setup-status={setup?.status || 'pending'}>
-      <aside className={`sidebar ${menuOpen ? 'is-open' : ''}`}>
-        <div className="brand-row">
-          <div className="brand-mark">A3</div>
-          <div><strong>AIWS 3.0</strong><span>Local workspace</span></div>
-          <button className="icon-button sidebar-close" aria-label="Close navigation" title="Close navigation" onClick={() => setMenuOpen(false)}><X size={18} /></button>
-        </div>
-        <nav aria-label="Workspace navigation">
-          <span className="nav-group-label">Project chain</span>
-          {NAV.map(({ key, label, icon: Icon }) => (
-            <button key={key} className={navIsActive(key, page) ? 'nav-item active' : 'nav-item'} onClick={() => navigate(key)}>
-              <Icon size={18} /><span>{label}</span>
-            </button>
-          ))}
-          <span className="nav-group-label">Management</span>
-          {ADMIN_NAV.map(({ key, label, icon: Icon }) => (
-            <button key={key} className={navIsActive(key, page) ? 'nav-item active' : 'nav-item'} onClick={() => navigate(key)}>
-              <Icon size={18} /><span>{label}</span>
-            </button>
-          ))}
-        </nav>
-        <div className="sidebar-foot"><Archive size={15} /><span>V2.3 cold archive</span></div>
-      </aside>
+  if (!bootstrapLoaded) return <div className="onboarding-loader"><LoaderCircle className="spin" size={20} />加载本地工作区</div>;
+  if (bootstrapFailure && !systemSnapshot) return <div className="onboarding-loader error" role="alert">{bootstrapFailure}<button className="button" onClick={() => void refreshSetup()}>重试</button></div>;
 
-      <div className="workspace-shell">
-        <header className="topbar">
-          <button className="icon-button menu-button" aria-label="Open navigation" title="Open navigation" onClick={() => setMenuOpen(true)}><Menu size={19} /></button>
-          <div className="page-title"><span>{PAGE_LABELS[page]}</span>{eventState !== 'idle' && <small className={`sync-state ${eventState}`} role="status">{eventState.replaceAll('_', ' ')}</small>}</div>
-          <label className="project-switcher">
-            <span>Project</span>
-            <div>
-              <select value={projectId} disabled={!setupReady} onChange={(event) => selectProject(event.target.value)} aria-label="Current project">
-                {!projects.length && <option value="">No project</option>}
-                {projects.map((project) => <option key={project.id} value={project.id}>{project.name}</option>)}
-              </select>
-              <ChevronDown size={15} />
-            </div>
-          </label>
-          <button className="topbar-approval" disabled={!setupReady} aria-label={`Approval Center, ${pendingInteractions} pending`} title="Approval Center" onClick={() => navigate('approvals')}>
-            <ShieldCheck size={17} />
-            {pendingInteractions > 0 && <span>{pendingInteractions > 99 ? '99+' : pendingInteractions}</span>}
-          </button>
+  const systemOnboardingRequired = Boolean(systemSnapshot && (!setupReady || (systemSnapshot.account && !hasSystemOnboardingCompletion(systemSnapshot))));
+  if (systemSnapshot && systemOnboardingRequired) {
+    return <SystemOnboarding snapshot={systemSnapshot} refresh={refreshSetup} onComplete={async () => { await refreshSetup(); routerNavigate('/projects', { replace: true }); }} />;
+  }
+
+  const Page = PAGES[page];
+  const pageProps: WorkspacePageProps = { projectId, selectedProject, selectProject, refreshProjects: async () => { await loadProjects(); }, notify, navigate, navigateProject, setupReady: Boolean(setupReady), refreshSetup };
+  const projectToolsDisabled = !setupReady || !projectId;
+
+  return <div className="app-shell" data-route={page} data-setup-ready={String(setupReady)} data-setup-status={setup?.status || 'pending'}>
+    {menuOpen && <button className="nav-scrim" tabIndex={-1} aria-label="关闭导航" onClick={closeNavigation} />}
+    <aside ref={drawerRef} id="workspace-navigation" className={`sidebar ${menuOpen ? 'is-open' : ''}`} role="dialog" aria-modal="true" aria-label="工作区导航" aria-hidden={!menuOpen} onKeyDown={trapDrawerFocus}>
+      <div className="brand-row"><div className="brand-mark">A3</div><div><strong>AIWS 3.0</strong><span>Local workspace</span></div><button tabIndex={menuOpen ? 0 : -1} className="icon-button sidebar-close" aria-label="关闭导航" title="关闭导航" onClick={closeNavigation}><X size={18} /></button></div>
+      <nav aria-label="一级导航">{PRIMARY_NAV.map(({ key, label, icon: Icon }) => <button tabIndex={menuOpen ? 0 : -1} key={key} className={navIsActive(key, page) ? 'nav-item active' : 'nav-item'} onClick={() => navigate(key)}><Icon size={18} /><span>{label}</span></button>)}</nav>
+      <div className="sidebar-foot"><FolderGit2 size={15} /><span>{selectedProject?.name || '未选择项目'}</span></div>
+    </aside>
+
+    <div className="workspace-shell">
+      <header className="topbar">
+        <button ref={menuButtonRef} className="icon-button menu-button" aria-label="打开导航" title="打开导航" aria-expanded={menuOpen} aria-controls="workspace-navigation" onClick={() => setMenuOpen(true)}><Menu size={19} /></button>
+        <div className="page-title"><span>{PAGE_LABELS[page]}</span>{eventState !== 'idle' && <small className={`sync-state ${eventState}`} role="status">{eventState.replaceAll('_', ' ')}</small>}</div>
+        <label className="project-switcher"><span>项目</span><div><select value={projectId} disabled={!setupReady} onChange={(event) => selectProject(event.target.value)} aria-label="当前项目">{!projects.length && <option value="">无项目</option>}{projects.map((project) => <option key={project.id} value={project.id}>{project.name}</option>)}</select><ChevronDown size={15} /></div></label>
+        <div className="topbar-tools" aria-label="项目工具">
+          <button className="icon-button topbar-tool" disabled={projectToolsDisabled} aria-label="Assist" title="Assist" onClick={() => navigate('assist')}><MessageSquare size={17} /></button>
+          <button className="icon-button topbar-tool topbar-approval" disabled={projectToolsDisabled} aria-label={`审批中心，${pendingInteractions} 项待处理`} title="审批中心" onClick={() => navigate('approvals')}><ShieldCheck size={17} />{pendingInteractions > 0 && <span>{pendingInteractions > 99 ? '99+' : pendingInteractions}</span>}</button>
+          <button className="icon-button topbar-tool" disabled={projectToolsDisabled} aria-label="文件" title="文件" onClick={() => navigate('files')}><Paperclip size={17} /></button>
+          <button className="icon-button topbar-tool" disabled={projectToolsDisabled} aria-label="Terminal" title="Terminal" onClick={() => navigate('terminals')}><TerminalIcon size={17} /></button>
           <OutboxStatus actorId={sessionStorage.getItem('aiws:v3:actor-id') || 'session-actor'} teamId={String((selectedProject as Project & { team_id?: string } | undefined)?.team_id || 'default-team')} projectId={projectId} />
-          {!online && <span className="network-pill offline" role="status"><WifiOff size={14} />Offline</span>}
-          {updateAvailable && <button className="network-pill update" onClick={() => window.location.reload()}>Update</button>}
-          <span className="local-pill"><span />127.0.0.1</span>
-        </header>
-        <main>
-          {!online ? <div className="page offline-workspace" role="status"><WifiOff size={24} /><h1>Offline</h1></div> : gatedPagePending && !setup ? <div className="page-loader"><LoaderCircle className="spin" />Loading setup</div> : <Page
-            projectId={projectId}
-            selectedProject={selectedProject}
-            selectProject={selectProject}
-            refreshProjects={loadProjects}
-            notify={notify}
-            navigate={navigate}
-            setupReady={setupReady}
-            refreshSetup={refreshSetup}
-          />}
-        </main>
-      </div>
-      {notice && <div className={`toast ${notice.tone}`} role="status">{notice.text}</div>}
-      {menuOpen && <button className="nav-scrim" aria-label="Close navigation" onClick={() => setMenuOpen(false)} />}
+        </div>
+        {!online && <span className="network-pill offline" role="status"><WifiOff size={14} />Offline</span>}
+        {updateAvailable && <button className="network-pill update" onClick={() => window.location.reload()}>Update</button>}
+        <span className="local-pill"><span />127.0.0.1</span>
+      </header>
+      <main>{!online ? <div className="page offline-workspace" role="status"><WifiOff size={24} /><h1>Offline</h1></div> : <Page {...pageProps} />}</main>
     </div>
-  );
+    {notice && <div className={`toast ${notice.tone}`} role="status">{notice.text}</div>}
+  </div>;
 }
 
 function RouteErrorBoundary() {
@@ -350,9 +337,7 @@ function RouteErrorBoundary() {
 }
 
 export function App() {
-  const [router] = useState(() => createHashRouter([
-    { path: '*', element: <WorkspaceLayout />, errorElement: <RouteErrorBoundary /> }
-  ]));
+  const [router] = useState(() => createHashRouter([{ path: '*', element: <WorkspaceLayout />, errorElement: <RouteErrorBoundary /> }]));
   useEffect(() => import.meta.env.MODE === 'development' ? undefined : () => router.dispose(), [router]);
   return <QueryClientProvider client={queryClient}><RouterProvider router={router} /></QueryClientProvider>;
 }

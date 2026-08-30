@@ -35,8 +35,9 @@ function SectionTitle({ title, meta, action }: { title: string; meta?: string; a
   return <div className="section-title"><div><h2>{title}</h2>{meta && <span>{meta}</span>}</div>{action}</div>;
 }
 
-export function IdentityAccessPage({ setupReady, notify, projectId }: WorkspacePageProps) {
-  const [view, setView] = useState<View>('identity');
+export function IdentityAccessPage({ setupReady, notify, projectId, initialView = 'identity' }: WorkspacePageProps & { initialView?: View }) {
+  const [view, setView] = useState<View>(initialView);
+  useEffect(() => setView(initialView), [initialView]);
   const [loadState, setLoadState] = useState<LoadState>('loading');
   const [account, setAccount] = useState<Account | null>(null);
   const [actors, setActors] = useState<Actor[]>([]);

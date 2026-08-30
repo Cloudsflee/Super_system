@@ -68,7 +68,8 @@ export const P1_GATE_SYNC_CATALOG_PATHS = Object.freeze({
     'feature-catalog.clean.json',
     'feature-catalog.historical.json',
     'scripts/v3-clean-p10-parity.mjs',
-    'scripts/v3-clean-p10-evidence.mjs'
+    'scripts/v3-clean-p10-evidence.mjs',
+    'scripts/lib/p10-post-closure.mjs'
   ]),
   behavior_tests: Object.freeze([
     'tests/unit/recovery-governance.test.mjs',
@@ -78,7 +79,8 @@ export const P1_GATE_SYNC_CATALOG_PATHS = Object.freeze({
     'tests/p31/evidence-immutability.test.mjs',
     'tests/p4/governance-sync.test.mjs',
     'tests/p10/parity-governance.test.mjs',
-    'tests/p10/migration.test.mjs'
+    'tests/p10/migration.test.mjs',
+    'tests/p10/post-closure.test.mjs'
   ]),
   ui_tests: Object.freeze([])
 });

@@ -1419,14 +1419,17 @@ class ProjectWorkflowCore {
     if (!workflow || Number(workflow.current_revision) < 1)
       throw stateConflict('workflow draft is required before generation');
     const brief = this.db.get('SELECT * FROM briefs WHERE project_id=?', [project.id]);
-    if (!brief?.confirmed_revision) throw stateConflict('confirmed brief is required before generation');
+    const sourceBriefRevision = Number(brief?.confirmed_revision || brief?.current_revision || 0);
+    if (sourceBriefRevision < 1) throw stateConflict('brief revision is required before generation');
+    const sourceBrief = this.db.get('SELECT content_sha256 FROM brief_revisions WHERE project_id=? AND revision=?', [project.id, sourceBriefRevision]);
+    if (!sourceBrief) throw stateConflict('brief revision is unavailable for generation');
     const expected = positiveRevision(input.expected_revision);
     const key = requireKey(input.idempotency_key);
     const source = this.#sourceSnapshot(project.id);
     const candidateInput = input.candidate && typeof input.candidate === 'object' ? input.candidate : {};
     const snapshot = {
-      brief_revision: Number(brief.confirmed_revision),
-      brief_hash: brief.confirmed_hash,
+      brief_revision: sourceBriefRevision,
+      brief_hash: brief.confirmed_revision ? brief.confirmed_hash : sourceBrief.content_sha256,
       workflow_revision: Number(workflow.current_revision),
       repository_revision: source.revision,
       repository_hash: source.hash,
@@ -1783,7 +1786,13 @@ class ProjectWorkflowCore {
       if (p.status !== 'pending') throw stateConflict('workflow proposal is not pending', { status: p.status });
       const workflow = tx.get('SELECT * FROM workflows WHERE project_id=?', [p.project_id]);
       assertRevision(workflow, expected);
-      if (Number(workflow.current_revision) !== Number(p.base_workflow_revision)) {
+      const generationBefore = tx.get('SELECT * FROM workflow_generations WHERE id=?', [p.generation_id]);
+      if (!generationBefore) throw notFound('workflow generation');
+      if (generationBefore.phase !== 'proposed') throw stateConflict('workflow generation is not proposed', { phase: generationBefore.phase });
+      const briefHead = tx.get('SELECT current_revision FROM briefs WHERE project_id=?', [p.project_id]);
+      const workflowDrift = Number(workflow.current_revision) !== Number(p.base_workflow_revision);
+      const briefDrift = Number(briefHead?.current_revision || 0) !== Number(generationBefore.source_brief_revision);
+      if (workflowDrift || briefDrift) {
         const staleOperation = this.operations.createInTransaction(
           tx,
           {
@@ -1814,14 +1823,14 @@ class ProjectWorkflowCore {
           actorId: principal.actorId,
           projectId: p.project_id,
           type: 'workflow.proposal.stale',
-          data: { proposal_id: p.id, current_revision: workflow.current_revision, base_revision: p.base_workflow_revision },
+          data: { proposal_id: p.id, current_revision: workflow.current_revision, base_revision: p.base_workflow_revision, brief_revision: briefHead?.current_revision || 0, source_brief_revision: generationBefore.source_brief_revision },
           payload: { id: p.id, project_id: p.project_id, status: 'stale', revision: staleRevision },
           now
         });
         linkOperation(tx, staleOperation.operation_id, [['workflow_generation_proposal', p.id]], now);
         return {
           stale: true,
-          details: { current_revision: workflow.current_revision, base_revision: p.base_workflow_revision }
+          details: { current_revision: workflow.current_revision, base_revision: p.base_workflow_revision, brief_revision: briefHead?.current_revision || 0, source_brief_revision: generationBefore.source_brief_revision }
         };
       }
       const project = tx.get('SELECT * FROM projects WHERE id=?', [p.project_id]);
@@ -1852,8 +1861,8 @@ class ProjectWorkflowCore {
           sha256Hex(graphJson),
           '{}',
           sha256Hex('{}'),
-          Number(project.confirmed_brief_revision || 0),
-          project.confirmed_brief_hash || '',
+          Number(generationBefore.source_brief_revision),
+          generationBefore.source_brief_hash,
           p.id,
           now,
           principal.actorId
@@ -1900,10 +1909,6 @@ class ProjectWorkflowCore {
         [revision, now, principal.actorId, p.id, p.revision],
         1
       );
-      const generationBefore = tx.get('SELECT * FROM workflow_generations WHERE id=?', [p.generation_id]);
-      if (!generationBefore) throw notFound('workflow generation');
-      if (generationBefore.phase !== 'proposed')
-        throw stateConflict('workflow generation is not proposed', { phase: generationBefore.phase });
       tx.run(
         `UPDATE workflow_generations SET phase='applied',revision=revision+1,updated_at=?,updated_by_actor_id=? WHERE id=? AND phase='proposed' AND revision=?`,
         [now, principal.actorId, p.generation_id, generationBefore.revision],

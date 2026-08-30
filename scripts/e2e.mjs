@@ -4,6 +4,7 @@ import path from 'node:path';
 import net from 'node:net';
 import { spawn } from 'node:child_process';
 import { chromium } from '@playwright/test';
+import AxeBuilder from '@axe-core/playwright';
 
 const root = process.cwd();
 const home = fs.mkdtempSync(path.join(os.tmpdir(), 'aiws-p10-e2e-'));
@@ -17,6 +18,9 @@ const children = [];
 const requests = [];
 const browserErrors = [];
 const httpErrors = [];
+const accessibilityReceipts = [];
+const drawerReceipts = [];
+const onboardingLayoutReceipts = [];
 
 const api = start(process.execPath, ['apps/api/server.mjs'], {
   AIWS_CLEAN_PORT: String(apiPort), AIWS_CLEAN_HOME: home,
@@ -30,14 +34,15 @@ await waitFor(`http://127.0.0.1:${apiPort}/readyz`);
 
 const viteEntry = path.join(root, 'apps', 'web', 'node_modules', 'vite', 'bin', 'vite.js');
 const web = start(process.execPath, [viteEntry, '--host', '127.0.0.1', '--port', String(webPort), '--strictPort'], {
-  AIWS_WEB_API_TARGET: `http://127.0.0.1:${apiPort}`
+  AIWS_WEB_API_TARGET: `http://127.0.0.1:${apiPort}`, VITE_AIWS_E2E: '1'
 }, path.join(root, 'apps', 'web'));
 children.push(web);
 const base = `http://127.0.0.1:${webPort}`;
 await waitFor(`${base}/`);
 
 const browser = await chromium.launch({ headless: true });
-const page = await browser.newPage({ viewport: { width: 390, height: 844 } });
+const context = await browser.newContext({ viewport: { width: 390, height: 844 } });
+const page = await context.newPage();
 page.on('request', (request) => requests.push(request.url()));
 page.on('response', (response) => { if (response.status() >= 400) httpErrors.push(`${response.status()}:${response.url()}`); });
 page.on('pageerror', (error) => browserErrors.push(`pageerror:${error.message}`));
@@ -58,25 +63,62 @@ async function pageApi(pathname, options = {}) {
 
 try {
   await page.goto(`${base}/#/setup`, { waitUntil: 'domcontentloaded' });
-  try { await page.getByRole('heading', { name: 'Setup', exact: true }).waitFor({ timeout: 8_000 }); }
+  try { await page.getByRole('heading', { name: '创建本地 Owner', exact: true }).waitFor({ timeout: 8_000 }); }
   catch (error) { process.stderr.write(`Clean Web bootstrap body:\n${await page.locator('body').innerText()}\nURL=${page.url()}\nRequests=${JSON.stringify(requests)}\n`); throw error; }
-  await page.getByLabel('Display name').fill('P7 E2E owner');
-  await page.getByLabel('Team name').fill('P7 E2E team');
-  await page.getByRole('button', { name: 'Complete setup', exact: true }).click();
-  await page.getByText('Workspace is ready', { exact: true }).waitFor();
-
-  await page.goto(`${base}/#/projects`, { waitUntil: 'domcontentloaded' });
-  try { await page.getByRole('heading', { name: 'Projects', exact: true }).waitFor({ timeout: 8_000 }); }
+  await captureOnboardingState(page, 'system-owner');
+  await page.getByLabel('显示名称').fill('P10 E2E owner');
+  await page.getByLabel('Team 名称').fill('P10 E2E team');
+  await page.getByRole('button', { name: '创建并继续', exact: true }).click();
+  await page.getByRole('heading', { name: '连接 Codex', exact: true }).waitFor();
+  await captureOnboardingState(page, 'system-codex');
+  await page.getByLabel('Codex credential').fill('p10-e2e-onboarding-codex-proof');
+  await page.getByLabel('Codex Profile 名称').fill('P10 E2E Reviewer');
+  await page.getByRole('button', { name: '验证并继续', exact: true }).click();
+  await page.getByRole('heading', { name: '连接 GitHub App', exact: true }).waitFor();
+  await captureOnboardingState(page, 'system-github');
+  const persistedOnboardingSecrets = await page.evaluate(() => `${Object.values(localStorage).join('|')}|${Object.values(sessionStorage).join('|')}`);
+  assert(!persistedOnboardingSecrets.includes('p10-e2e-onboarding-codex-proof'), 'onboarding secret storage hygiene');
+  await page.getByRole('button', { name: '稍后配置', exact: true }).click();
+  await page.getByRole('heading', { name: '配置检查', exact: true }).waitFor();
+  await captureOnboardingState(page, 'system-summary');
+  await page.getByRole('button', { name: '进入项目创建', exact: true }).click();
+  try { await page.getByRole('heading', { name: '项目', exact: true }).waitFor({ timeout: 8_000 }); }
   catch (error) { process.stderr.write(`Clean Web projects body:\n${await page.locator('body').innerText()}\nState=${JSON.stringify(await page.locator('.app-shell').evaluate((element) => ({ ...element.dataset })))}\nURL=${page.url()}\nRequests=${JSON.stringify(requests.slice(-30))}\nHTTP=${JSON.stringify(httpErrors)}\n`); throw error; }
-  await page.getByLabel('Name').fill('P7 Clean project');
-  await page.getByLabel('Description').fill('Clean E2E fixture');
-  await page.getByRole('button', { name: 'Create project', exact: true }).click();
-  await page.getByRole('heading', { name: 'P7 Clean project', exact: true }).waitFor();
+
+  const onboardingTemplate = await pageApi('/api/v2/brief-templates', {
+    method: 'POST', headers: { 'Idempotency-Key': 'p10-e2e-onboarding-template', 'X-Expected-Revision': '0' },
+    body: { name: 'P10 Onboarding Brief', content: { objective: 'Verify continuous onboarding', users: ['Maintainer'], scope: { in: ['Web'], out: ['Production'] }, constraints: ['CAS'], milestones: ['Workflow ready'], acceptance: ['browser verified'], risks: ['source drift'], open_questions: ['none'] }, expected_revision: 0 }
+  });
+  assert(onboardingTemplate.status === 201 && onboardingTemplate.body.data?.template?.id, `onboarding-template:${onboardingTemplate.status}`);
+  await page.getByLabel('项目名称').fill('P10 Clean project');
+  await page.getByLabel('项目说明').fill('Clean E2E fixture');
+  await page.getByRole('button', { name: '创建项目', exact: true }).click();
+  await page.getByRole('heading', { name: '选择项目来源', exact: true }).waitFor();
+  await captureOnboardingState(page, 'project-intake');
+  await page.getByLabel('初始构想').fill('Complete the Clean browser journey');
+  await page.getByRole('button', { name: '提交 Intake', exact: true }).click();
+  await page.getByRole('heading', { name: '编辑完整 Brief', exact: true }).waitFor();
+  await captureOnboardingState(page, 'project-brief');
+  await page.getByLabel('Brief template').selectOption(onboardingTemplate.body.data.template.id);
+  await page.getByRole('button', { name: '应用模板', exact: true }).click();
+  await page.getByRole('button', { name: '保存 Brief', exact: true }).click();
+  await page.getByRole('heading', { name: '审查 Brief 与初始 Workflow', exact: true }).waitFor();
+  await captureOnboardingState(page, 'project-review');
+  await page.getByRole('button', { name: '保存初始 Workflow', exact: true }).click();
+  await page.getByRole('button', { name: '生成候选', exact: true }).click();
+  await page.getByRole('button', { name: '执行 Critic', exact: true }).waitFor();
+  await page.getByRole('button', { name: '执行 Critic', exact: true }).click();
+  try { await page.getByRole('button', { name: '应用 Proposal', exact: true }).waitFor(); }
+  catch (error) { process.stderr.write(`Project onboarding after Critic:\n${await page.locator('body').innerText()}\nHTTP=${JSON.stringify(httpErrors.slice(-20))}\nRequests=${JSON.stringify(requests.slice(-30))}\n`); throw error; }
+  await page.getByRole('button', { name: '应用 Proposal', exact: true }).click();
+  await page.getByRole('button', { name: '确认 Brief 并激活', exact: true }).waitFor();
+  await page.getByRole('button', { name: '确认 Brief 并激活', exact: true }).click();
+  await page.getByText('Workflow draft', { exact: true }).waitFor();
 
   const setup = await pageApi('/api/v2/setup');
   assert(setup.status === 200 && setup.body.data?.needs_setup === false, 'setup cookie/session');
   const projects = await pageApi('/api/v2/projects');
-  const project = projects.body.data?.projects?.[0];
+  const project = projects.body.data?.projects?.find((item) => item.name === 'P10 Clean project');
   assert(project?.id, 'project create');
 
   const providerCredential = await pageApi('/api/v2/credentials', {
@@ -126,32 +168,6 @@ try {
   });
   const archivedTemplate = await pageApi(`/api/v2/brief-templates/${briefTemplate.body.data.template.id}/archive`, { method: 'POST', headers: { 'Idempotency-Key': 'p10-e2e-template-archive', 'X-Expected-Revision': String(revisedTemplate.body.data.template.revision) }, body: { expected_revision: revisedTemplate.body.data.template.revision } });
   assert(archivedTemplate.body.data?.template?.status === 'archived', 'brief template archive');
-
-  const intake = await pageApi(`/api/v2/projects/${project.id}/intake`, {
-    method: 'POST', headers: { 'Idempotency-Key': 'p7-e2e-intake-01', 'X-Expected-Revision': String(project.revision) },
-    body: { mode: 'brainstorm', content: {}, expected_revision: project.revision }
-  });
-  assert([201, 202].includes(intake.status), `intake:${intake.status}`);
-  await waitOperation(pageApi, intake.body.data?.operation_id || intake.body.data?.operation?.operation_id);
-  const brief = await pageApi(`/api/v2/projects/${project.id}/briefs`, {
-    method: 'POST', headers: { 'Idempotency-Key': 'p7-e2e-brief-01', 'X-Expected-Revision': String(project.revision) },
-    body: { objective: 'Verify clean workflow', acceptance: ['replay'], constraints: [], expected_revision: project.revision }
-  });
-  assert([200, 201].includes(brief.status), `brief:${brief.status}`);
-
-  const beforeConfirm = await pageApi(`/api/v2/projects/${project.id}`);
-  const briefRevision = brief.body.data?.brief?.current_revision || brief.body.data?.revision_record?.revision || 1;
-  const confirmed = await pageApi(`/api/v2/projects/${project.id}/briefs/${briefRevision}/confirm`, {
-    method: 'POST', headers: { 'Idempotency-Key': 'p7-e2e-confirm-01', 'X-Expected-Revision': String(beforeConfirm.body.data.project.revision) },
-    body: { brief_revision: briefRevision, expected_revision: beforeConfirm.body.data.project.revision }
-  });
-  assert(confirmed.status === 200, `brief-confirm:${confirmed.status}`);
-
-  const workflow = await pageApi(`/api/v2/projects/${project.id}/workflow-draft`, {
-    method: 'POST', headers: { 'Idempotency-Key': 'p7-e2e-workflow-01', 'X-Expected-Revision': '1' },
-    body: { graph: { nodes: [{ id: 'inspect', kind: 'workstream', title: 'Inspect' }] }, nodes: [], layout: {}, expected_revision: 1 }
-  });
-  assert([200, 201].includes(workflow.status), `workflow:${workflow.status}`);
 
   const replay = await pageApi('/api/v2/projects', { method: 'GET' });
   assert(replay.status === 200 && replay.body.data?.projects?.some((item) => item.id === project.id), 'reload/replay');
@@ -392,6 +408,8 @@ try {
   await page.getByText('completed', { exact: true }).first().waitFor();
 
   await page.goto(`${base}/#/settings`, { waitUntil: 'domcontentloaded' });
+  await page.getByRole('heading', { name: '设置', exact: true }).waitFor();
+  await page.getByRole('tab', { name: 'MCP / Exchange', exact: true }).click();
   await page.getByRole('heading', { name: 'MCP & Exchange', exact: true }).waitFor();
   await page.getByRole('button', { name: 'Create client', exact: true }).click();
   await page.getByText('One-time token', { exact: true }).waitFor();
@@ -435,11 +453,30 @@ try {
     for (const scenario of ['governance', 'context', 'settings', 'execution', 'execution-quality', 'execution-outcome', 'evidence', 'connections', 'outcome', 'delivery', 'operations', 'identity', 'exchange', 'runner', 'parser', 'deployment', 'backup', 'importer']) {
       const route = scenario.startsWith('execution-') ? 'execution' : scenario;
       await page.goto(route === 'governance' ? `${base}/#/projects/${encodeURIComponent(project.id)}/governance` : `${base}/#/${route}`, { waitUntil: 'domcontentloaded' });
-      const heading = { governance: 'Governance workspace', context: 'Context', settings: 'MCP & Exchange', execution: 'Execution', evidence: 'Evidence', connections: 'Connections', outcome: 'Outcome', delivery: 'Delivery', operations: 'Operations', identity: 'Identity and teams', exchange: 'MCP & Exchange', runner: 'Connections', parser: 'Evidence', deployment: 'Operations', backup: 'Operations', importer: 'Operations' }[route];
+      const heading = { governance: 'Governance workspace', context: 'Context', settings: '设置', execution: 'Execution', evidence: 'Evidence', connections: 'Connections', outcome: 'Outcome', delivery: 'Delivery', operations: 'Operations', identity: 'Identity and teams', exchange: 'MCP & Exchange', runner: 'Connections', parser: 'Evidence', deployment: 'Operations', backup: 'Operations', importer: 'Operations' }[route];
       await page.getByRole('heading', { name: heading, exact: true }).waitFor();
-      if (route === 'governance') await page.getByText('P10 E2E Reviewer', { exact: true }).first().waitFor();
+      if (route === 'governance') {
+        await page.getByText('P10 E2E Reviewer', { exact: true }).first().waitFor();
+        const drawer = page.locator('#workspace-navigation');
+        assert(await drawer.getAttribute('aria-hidden') === 'true', `${name} drawer default closed`);
+        const opener = page.getByRole('button', { name: '打开导航', exact: true });
+        await opener.click();
+        await drawer.waitFor({ state: 'visible' });
+        const labels = await drawer.locator('nav .nav-item').allTextContents();
+        assert(JSON.stringify(labels.map((item) => item.trim())) === JSON.stringify(['项目','工作区','资产','上下文','审计','设置']), `${name} drawer inventory`);
+        await page.waitForFunction(() => document.activeElement === document.querySelector('#workspace-navigation nav .nav-item'));
+        await drawer.locator('nav .nav-item').last().focus();
+        await page.keyboard.press('Tab');
+        assert(await drawer.getByRole('button', { name: '关闭导航' }).evaluate((element) => element === document.activeElement), `${name} drawer focus trap`);
+        await page.keyboard.press('Escape');
+        await page.waitForFunction(() => document.querySelector('#workspace-navigation')?.getAttribute('aria-hidden') === 'true');
+        await page.waitForFunction(() => document.activeElement?.getAttribute('aria-label') === '打开导航');
+        assert(await opener.evaluate((element) => element === document.activeElement), `${name} drawer focus restore`);
+        drawerReceipts.push({ viewport: name, labels, default_closed: true, focus_trap: true, escape_close: true, focus_restored: true });
+        accessibilityReceipts.push(await auditAccessibility(page, `${name}-shell`));
+      }
       else if (route === 'context') await page.getByText('P7 verification note', { exact: true }).waitFor();
-      else if (route === 'settings') await page.getByText('context_map', { exact: true }).waitFor();
+      else if (route === 'settings') { await page.getByRole('tab', { name: 'MCP / Exchange', exact: true }).click(); await page.getByText('context_map', { exact: true }).waitFor(); }
       else if (scenario === 'execution') await page.getByText('generation 2', { exact: false }).first().waitFor();
       else if (scenario === 'execution-quality') { await page.getByRole('tab', { name: 'Quality', exact: true }).click(); await page.getByRole('heading', { name: 'Human decision', exact: true }).waitFor(); await page.getByText('Attempt 1', { exact: true }).waitFor(); const reviewCheck = await pageApi(`/api/v2/executions/${executionId}/quality-reviews`); assert(JSON.stringify(reviewCheck.body.data?.quality_reviews?.[0]?.rubric?.dimensions?.map((item) => item.key)) === JSON.stringify(['coverage','accuracy','depth','consistency','clarity']), 'quality route five dimensions'); }
       else if (scenario === 'execution-outcome') { await page.getByRole('tab', { name: 'Outcome', exact: true }).click(); await page.getByRole('heading', { name: 'Requirements', exact: true }).waitFor(); }
@@ -466,6 +503,8 @@ try {
     api_port: apiPort, web_port: webPort, viewports: ['mobile', 'laptop', 'desktop'],
     routes: ['governance', 'context', 'settings', 'execution', 'execution-quality', 'execution-outcome', 'evidence', 'connections', 'outcome', 'delivery', 'operations', 'identity', 'exchange', 'runner', 'parser', 'deployment', 'backup', 'importer'], business_groups: ['identity-acl','provider-settings','project-brief','workflow','repository','context','assist','files-approval','terminal-bridge','runner-execution','evidence','parser','quality','outcome','mcp-exchange-gateway','delivery','operations-recovery','offline-pwa','web-complete-experience'], request_count: requests.length,
     legacy_api_v1_requests: legacyRequests, browser_errors: browserErrors, http_errors: httpErrors,
+    onboarding: { system: ['owner-team','codex-probe','github-skip','summary'], project: ['intake','brief-template','workflow-generation','critic','proposal-apply','brief-confirm'], secret_storage: 'passed' },
+    drawer: drawerReceipts, accessibility: accessibilityReceipts, onboarding_layouts: onboardingLayoutReceipts,
     layouts: layoutReceipts, context_pack_hash: pack.body.data.pack.pack_hash,
     runner_profile: { id: profileId, type: readyProfile.body.data.profile.runner_type, status: readyProfile.body.data.profile.status },
     p10: {
@@ -523,6 +562,28 @@ async function freePort() {
 }
 
 function assert(condition, message) { if (!condition) throw new Error(`e2e_assertion_failed:${message}`); }
+
+async function auditAccessibility(targetPage, label) {
+  const result = await new AxeBuilder({ page: targetPage }).withTags(['wcag2a', 'wcag2aa']).analyze();
+  const violations = result.violations.map((item) => ({ id: item.id, impact: item.impact, nodes: item.nodes.map((node) => ({ target: node.target, summary: node.failureSummary })) }));
+  assert(violations.length === 0, `${label} WCAG AA:${JSON.stringify(violations)}`);
+  return { label, status: 'passed', violations };
+}
+
+async function captureOnboardingState(targetPage, label) {
+  await targetPage.locator('.toast').waitFor({ state: 'detached', timeout: 5_000 }).catch(() => undefined);
+  for (const [viewport, width, height] of [['mobile', 390, 844], ['laptop', 1024, 768], ['desktop', 1440, 900]]) {
+    await targetPage.setViewportSize({ width, height });
+    await targetPage.waitForTimeout(100);
+    await targetPage.screenshot({ path: path.join(reportDir, `${viewport}-${label}.png`), fullPage: true });
+    const layout = await inspectLayout(targetPage);
+    assert(!layout.horizontal_overflow, `${viewport}/${label} horizontal overflow:${JSON.stringify(layout)}`);
+    assert(layout.overlaps.length === 0, `${viewport}/${label} overlaps:${JSON.stringify(layout.overlaps)}`);
+    onboardingLayoutReceipts.push({ viewport, state: label, ...layout });
+    accessibilityReceipts.push(await auditAccessibility(targetPage, `${viewport}-${label}`));
+  }
+  await targetPage.setViewportSize({ width: 390, height: 844 });
+}
 
 async function createOutcomeRequirement(api, projectId, key, rubric, idempotencyKey) {
   const current = await api(`/api/v2/projects/${projectId}`);
