@@ -375,6 +375,9 @@ function p5DispatchArguments(command, params, url, body, schema) {
       if (definition.type === 'integer' || definition.anyOf?.some((item) => item.type === 'integer')) {
         if (!/^\d+$/.test(value)) throw new HttpError('schema_invalid', `${key} must be an integer`, {}, 400, false);
         args[key] = Number(value);
+      } else if (definition.type === 'boolean' || definition.anyOf?.some((item) => item.type === 'boolean')) {
+        if (value !== 'true' && value !== 'false') throw new HttpError('schema_invalid', `${key} must be a boolean`, {}, 400, false);
+        args[key] = value === 'true';
       } else args[key] = value;
     }
   }
