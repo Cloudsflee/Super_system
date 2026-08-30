@@ -61,6 +61,13 @@ export function ConnectionsPage({ navigate, notify }: WorkspacePageProps) {
 
   const selected = useMemo(() => devices.find((device) => device.id === selectedId) || null, [devices, selectedId]);
   const selectedProfile = useMemo(() => profiles.find((profile) => profile.id === selectedProfileId) || null, [profiles, selectedProfileId]);
+  const githubCallback = useMemo(() => {
+    const raw = String(window.location.hash || '').split('?', 2)[1] || '';
+    const query = new URLSearchParams(raw);
+    const installationId = query.get('installation_id') || '';
+    const setupAction = query.get('setup_action') || '';
+    return /^[1-9][0-9]{0,19}$/.test(installationId) ? { installationId, setupAction } : null;
+  }, []);
 
   const load = useCallback(async () => {
     const result = await apiV2<{ devices: BridgeDevice[] }>('/api/v2/bridge/devices');
@@ -185,6 +192,7 @@ export function ConnectionsPage({ navigate, notify }: WorkspacePageProps) {
         <div><p className="eyebrow">Local native services</p><h1>Connections</h1></div>
         <button className="icon-button" title="Refresh Connections" aria-label="Refresh Connections" onClick={() => void (tab === 'bridge' ? load() : loadProfiles())}><RefreshCw size={17} /></button>
       </div>
+      {githubCallback && <section className="panel github-callback-panel" role="status"><div><strong>GitHub App installation received</strong><small>Installation {githubCallback.installationId}{githubCallback.setupAction ? ` · ${githubCallback.setupAction}` : ''}</small></div><button className="button" onClick={() => navigate('settings')}>Open Provider settings</button></section>}
       <div className="settings-tabs" role="tablist" aria-label="Settings views">
         <button onClick={() => navigate('settings')}>MCP &amp; Exchange</button>
         <button className={tab === 'bridge' ? 'active' : ''} aria-selected={tab === 'bridge'} onClick={() => setTab('bridge')}>Windows Bridge</button>

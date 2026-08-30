@@ -45,7 +45,7 @@ const PRIMARY_NAV: Array<{ key: WorkspaceRoute; label: string; icon: ComponentTy
 ];
 
 const PAGE_LABELS: Record<WorkspaceRoute, string> = {
-  setup: '系统配置', identity: '身份', projects: '项目', onboarding: '项目引导', brief: 'Brief', workflow: '工作区', context: '上下文',
+  setup: '系统配置', identity: '身份', projects: '项目', onboarding: '项目引导', brief: 'Brief', repository: 'Repository', workflow: '工作区', context: '上下文',
   assist: 'Assist', execution: 'Execution', evidence: '资产', outcome: 'Outcome', delivery: 'Delivery', operations: '审计', files: '文件',
   terminals: 'Terminal', approvals: '审批', connections: 'Connections', exchange: 'Exchange', gateway: 'Gateway', runner: 'Runner', parser: 'Parser',
   deployment: 'Deployment', backup: 'Backup & Restore', importer: 'Importer', settings: '设置', governance: 'Final parity'
@@ -57,6 +57,7 @@ const PAGES: Record<WorkspaceRoute, ComponentType<WorkspacePageProps>> = {
   projects: (props) => <ProjectWorkflowPage {...props} initialSection="overview" />,
   onboarding: ProjectOnboardingPage,
   brief: (props) => <ProjectWorkflowPage {...props} initialSection="brief" />,
+  repository: (props) => <ProjectWorkflowPage {...props} initialSection="repository" />,
   workflow: (props) => <ProjectWorkflowPage {...props} initialSection="workflow" />,
   context: ContextPage,
   assist: AssistPage,
@@ -81,13 +82,19 @@ const PAGES: Record<WorkspaceRoute, ComponentType<WorkspacePageProps>> = {
 };
 
 const ROUTES = new Set<WorkspaceRoute>(Object.keys(PAGES) as WorkspaceRoute[]);
-const PROJECT_ROUTES = new Set<WorkspaceRoute>(['onboarding', 'workflow', 'context', 'governance']);
+const PROJECT_ROUTES = new Set<WorkspaceRoute>(['onboarding', 'brief', 'repository', 'workflow', 'context', 'governance']);
 const SETTINGS_ROUTES = new Set<WorkspaceRoute>(['settings', 'identity', 'exchange', 'gateway', 'runner', 'connections']);
 
-function routeFromPath(pathname: string): WorkspaceRoute {
-  const clean = pathname.replace(/^\/+|\/+$/g, '');
-  const projectView = clean.match(/^projects\/[^/]+\/(onboarding|governance|workflow|context|assist|execution|evidence|outcome|delivery)$/)?.[1];
-  const route = (projectView || clean) as WorkspaceRoute;
+export function routeFromPath(pathname: string): WorkspaceRoute {
+  const clean = String(pathname || '').split(/[?#]/, 1)[0].replace(/^\/+|\/+$/g, '');
+  const projectTail = clean.match(/^projects\/[^/]+\/(.+)$/)?.[1] || '';
+  const projectView = projectTail ? projectTail.split('/', 1)[0] : '';
+  const aliases: Record<string, WorkspaceRoute> = {
+    assets: 'evidence', asset: 'evidence', audit: 'operations', workstream: 'workflow', workstreams: 'workflow',
+    node: 'workflow', nodes: 'workflow', repository: 'repository', terminal: 'terminals', approval: 'approvals',
+    github: 'connections', 'github/install': 'connections', 'github/callback': 'connections', 'integrations/github/install/setup': 'connections', 'integrations/github/install/callback': 'connections'
+  };
+  const route = (aliases[projectView] || aliases[clean] || aliases[clean.split('/', 1)[0]] || projectView || clean) as WorkspaceRoute;
   return ROUTES.has(route) ? route : 'projects';
 }
 
@@ -96,7 +103,7 @@ export function projectDeepLink(projectId: string, view: WorkspaceRoute = 'workf
 }
 
 function navIsActive(nav: WorkspaceRoute, page: WorkspaceRoute) {
-  if (nav === 'projects') return ['projects', 'onboarding', 'brief'].includes(page);
+  if (nav === 'projects') return ['projects', 'onboarding', 'brief', 'repository'].includes(page);
   if (nav === 'workflow') return ['workflow', 'assist', 'execution', 'outcome', 'delivery'].includes(page);
   if (nav === 'evidence') return ['evidence', 'files', 'parser'].includes(page);
   if (nav === 'operations') return ['operations', 'deployment', 'backup', 'importer'].includes(page);
@@ -119,11 +126,14 @@ function WorkspaceLayout() {
   const [bootstrapLoaded, setBootstrapLoaded] = useState(false);
   const [bootstrapFailure, setBootstrapFailure] = useState('');
   const [pendingInteractions, setPendingInteractions] = useState(0);
+  const [quickTool, setQuickTool] = useState<Extract<WorkspaceRoute, 'assist' | 'approvals' | 'files' | 'terminals'> | null>(null);
   const menuButtonRef = useRef<HTMLButtonElement>(null);
   const drawerRef = useRef<HTMLElement>(null);
+  const quickToolButtonRef = useRef<HTMLButtonElement>(null);
+  const quickToolReturnFocusRef = useRef<HTMLElement | null>(null);
 
-  const loadProjects = useCallback(async () => {
-    const actorId = sessionStorage.getItem('aiws:v3:actor-id') || 'session-actor';
+  const loadProjects = useCallback(async (scopeActorId?: string) => {
+    const actorId = scopeActorId || sessionStorage.getItem('aiws:v3:actor-id') || 'session-actor';
     const response = await queryClient.fetchQuery({
       queryKey: workspaceQueryKey({ actorId, teamId: '', projectId: '' }, 'projects'),
       queryFn: () => apiV2<{ projects: Project[] }>('/api/v2/projects')
@@ -144,23 +154,25 @@ function WorkspaceLayout() {
     try {
       const response = await apiV2<{ needs_setup: boolean; actor_count: number; bootstrap_actor_id?: string }>('/api/v2/setup');
       const state = response.data;
-      if (state.bootstrap_actor_id) sessionStorage.setItem('aiws:v3:actor-id', state.bootstrap_actor_id);
       const cleanState: Pick<SetupState, 'status' | 'complete' | 'revision'> = { status: state.needs_setup ? 'blocked' : 'ready', complete: !state.needs_setup, revision: 0 };
       setSetup(cleanState);
       if (state.needs_setup) {
         setProjects([]);
         setProjectId('');
+        sessionStorage.removeItem('aiws:v3:actor-id');
         setSystemSnapshot({ needsSetup: true, account: null, credentials: [], profiles: [], projectCount: 0 });
       } else {
-        const [rows, accountResult, credentialResult, profileResult] = await Promise.all([
-          loadProjects(),
-          apiV2<{ account?: OnboardingAccount }>('/api/v2/account'),
+        const accountResult = await apiV2<{ account?: OnboardingAccount }>('/api/v2/account');
+        const account = accountResult.data.account || null;
+        if (account?.id) sessionStorage.setItem('aiws:v3:actor-id', account.id);
+        const [rows, credentialResult, profileResult] = await Promise.all([
+          loadProjects(account?.id),
           apiV2<{ credentials?: OnboardingCredential[] }>('/api/v2/credentials'),
           apiV2<{ profiles?: OnboardingProfile[] }>('/api/v2/profiles')
         ]);
         setSystemSnapshot({
           needsSetup: false,
-          account: accountResult.data.account || null,
+          account,
           credentials: credentialResult.data.credentials || [],
           profiles: profileResult.data.profiles || [],
           projectCount: rows.length
@@ -186,7 +198,7 @@ function WorkspaceLayout() {
   const selectedProject = useMemo(() => projects.find((project) => project.id === projectId), [projectId, projects]);
 
   useEffect(() => {
-    if (page !== 'workflow' || !selectedProject || selectedProject.status !== 'draft') return;
+    if (!['workflow', 'repository', 'context', 'assist', 'execution', 'outcome', 'delivery'].includes(page) || !selectedProject || selectedProject.status !== 'draft') return;
     routerNavigate(`/projects/${encodeURIComponent(selectedProject.id)}/onboarding`, { replace: true });
   }, [page, routerNavigate, selectedProject]);
 
@@ -220,6 +232,18 @@ function WorkspaceLayout() {
     if (restoreFocus) requestAnimationFrame(() => menuButtonRef.current?.focus());
   }, []);
 
+  const closeQuickTool = useCallback(() => {
+    const returnFocus = quickToolReturnFocusRef.current;
+    quickToolReturnFocusRef.current = null;
+    setQuickTool(null);
+    requestAnimationFrame(() => (returnFocus?.isConnected ? returnFocus : quickToolButtonRef.current)?.focus());
+  }, []);
+
+  const openQuickTool = useCallback((tool: Extract<WorkspaceRoute, 'assist' | 'approvals' | 'files' | 'terminals'>) => {
+    quickToolReturnFocusRef.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    setQuickTool(tool);
+  }, []);
+
   useEffect(() => {
     if (!menuOpen) return undefined;
     const priorOverflow = document.body.style.overflow;
@@ -229,6 +253,14 @@ function WorkspaceLayout() {
     document.addEventListener('keydown', onKeyDown);
     return () => { cancelAnimationFrame(focus); document.body.style.overflow = priorOverflow; document.removeEventListener('keydown', onKeyDown); };
   }, [closeNavigation, menuOpen]);
+  useEffect(() => {
+    if (!quickTool) return undefined;
+    const onKeyDown = (event: KeyboardEvent) => { if (event.key === 'Escape') { event.preventDefault(); closeQuickTool(); } };
+    document.addEventListener('keydown', onKeyDown);
+    const priorOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => { document.removeEventListener('keydown', onKeyDown); document.body.style.overflow = priorOverflow; };
+  }, [closeQuickTool, quickTool]);
 
   const trapDrawerFocus = (event: ReactKeyboardEvent<HTMLElement>) => {
     if (event.key !== 'Tab' || !drawerRef.current) return;
@@ -237,7 +269,7 @@ function WorkspaceLayout() {
     const first = controls[0];
     const last = controls[controls.length - 1];
     if (event.shiftKey && (document.activeElement === first || !drawerRef.current.contains(document.activeElement))) { event.preventDefault(); last.focus(); }
-    else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus(); }
+    else if (!event.shiftKey && (document.activeElement === last || !drawerRef.current.contains(document.activeElement))) { event.preventDefault(); first.focus(); }
   };
 
   const navigateProject = useCallback((id: string, next: WorkspaceRoute) => {
@@ -316,20 +348,40 @@ function WorkspaceLayout() {
         <div className="page-title"><span>{PAGE_LABELS[page]}</span>{eventState !== 'idle' && <small className={`sync-state ${eventState}`} role="status">{eventState.replaceAll('_', ' ')}</small>}</div>
         <label className="project-switcher"><span>项目</span><div><select value={projectId} disabled={!setupReady} onChange={(event) => selectProject(event.target.value)} aria-label="当前项目">{!projects.length && <option value="">无项目</option>}{projects.map((project) => <option key={project.id} value={project.id}>{project.name}</option>)}</select><ChevronDown size={15} /></div></label>
         <div className="topbar-tools" aria-label="项目工具">
-          <button className="icon-button topbar-tool" disabled={projectToolsDisabled} aria-label="Assist" title="Assist" onClick={() => navigate('assist')}><MessageSquare size={17} /></button>
-          <button className="icon-button topbar-tool topbar-approval" disabled={projectToolsDisabled} aria-label={`审批中心，${pendingInteractions} 项待处理`} title="审批中心" onClick={() => navigate('approvals')}><ShieldCheck size={17} />{pendingInteractions > 0 && <span>{pendingInteractions > 99 ? '99+' : pendingInteractions}</span>}</button>
-          <button className="icon-button topbar-tool" disabled={projectToolsDisabled} aria-label="文件" title="文件" onClick={() => navigate('files')}><Paperclip size={17} /></button>
-          <button className="icon-button topbar-tool" disabled={projectToolsDisabled} aria-label="Terminal" title="Terminal" onClick={() => navigate('terminals')}><TerminalIcon size={17} /></button>
+          <button ref={quickToolButtonRef} className="icon-button topbar-tool" disabled={projectToolsDisabled} aria-label="Assist" title="Assist" onClick={() => openQuickTool('assist')}><MessageSquare size={17} /></button>
+          <button className="icon-button topbar-tool topbar-approval" disabled={projectToolsDisabled} aria-label={`审批中心，${pendingInteractions} 项待处理`} title="审批中心" onClick={() => openQuickTool('approvals')}><ShieldCheck size={17} />{pendingInteractions > 0 && <span>{pendingInteractions > 99 ? '99+' : pendingInteractions}</span>}</button>
+          <button className="icon-button topbar-tool" disabled={projectToolsDisabled} aria-label="文件" title="文件" onClick={() => openQuickTool('files')}><Paperclip size={17} /></button>
+          <button className="icon-button topbar-tool" disabled={projectToolsDisabled} aria-label="Terminal" title="Terminal" onClick={() => openQuickTool('terminals')}><TerminalIcon size={17} /></button>
           <OutboxStatus actorId={sessionStorage.getItem('aiws:v3:actor-id') || 'session-actor'} teamId={String((selectedProject as Project & { team_id?: string } | undefined)?.team_id || 'default-team')} projectId={projectId} />
         </div>
         {!online && <span className="network-pill offline" role="status"><WifiOff size={14} />Offline</span>}
         {updateAvailable && <button className="network-pill update" onClick={() => window.location.reload()}>Update</button>}
         <span className="local-pill"><span />127.0.0.1</span>
       </header>
-      <main>{!online ? <div className="page offline-workspace" role="status"><WifiOff size={24} /><h1>Offline</h1></div> : <Page {...pageProps} />}</main>
+      <main className={!online ? 'offline-main' : undefined}><Page {...pageProps} />{!online && <div className="offline-overlay" role="status"><WifiOff size={24} /><div><strong>Offline</strong><small>已加载内容保留；受保护的网络操作将在恢复连接后继续。</small></div></div>}</main>
     </div>
+    {quickTool && <QuickToolDrawer tool={quickTool} pageProps={pageProps} onClose={closeQuickTool} />}
     {notice && <div className={`toast ${notice.tone}`} role="status">{notice.text}</div>}
   </div>;
+}
+
+function QuickToolDrawer({ tool, pageProps, onClose }: { tool: Extract<WorkspaceRoute, 'assist' | 'approvals' | 'files' | 'terminals'>; pageProps: WorkspacePageProps; onClose: () => void }) {
+  const ref = useRef<HTMLElement>(null);
+  useEffect(() => {
+    const focus = requestAnimationFrame(() => ref.current?.querySelector<HTMLElement>('button:not(:disabled),a[href],input:not(:disabled),textarea:not(:disabled)')?.focus());
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== 'Tab' || !ref.current) return;
+      const controls = [...ref.current.querySelectorAll<HTMLElement>('button:not(:disabled),a[href],input:not(:disabled),select:not(:disabled),textarea:not(:disabled)')];
+      if (!controls.length) return;
+      const first = controls[0], last = controls[controls.length - 1];
+      if (event.shiftKey && (document.activeElement === first || !ref.current.contains(document.activeElement))) { event.preventDefault(); last.focus(); }
+      else if (!event.shiftKey && (document.activeElement === last || !ref.current.contains(document.activeElement))) { event.preventDefault(); first.focus(); }
+    };
+    document.addEventListener('keydown', onKeyDown, true);
+    return () => { cancelAnimationFrame(focus); document.removeEventListener('keydown', onKeyDown, true); };
+  }, []);
+  const Page = PAGES[tool];
+  return <div className="quick-tool-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}><aside ref={ref} className="quick-tool-drawer" role="dialog" aria-modal="true" aria-label={`${PAGE_LABELS[tool]} drawer`}><header><strong>{PAGE_LABELS[tool]}</strong><div><button className="button" onClick={() => { window.location.hash = pageProps.projectId ? projectDeepLink(pageProps.projectId, tool) : `#/${tool}`; onClose(); }}>Open full page</button><button className="icon-button" aria-label="Close tool drawer" title="Close" onClick={onClose}><X size={16} /></button></div></header><div className="quick-tool-content"><Page {...pageProps} /></div></aside></div>;
 }
 
 function RouteErrorBoundary() {

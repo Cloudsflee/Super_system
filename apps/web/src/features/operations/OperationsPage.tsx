@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import { ArchiveRestore, GitPullRequestDraft, LoaderCircle, Play, RefreshCw, RotateCcw, ServerCog, ShieldAlert, Trash2 } from 'lucide-react';
+import { ArchiveRestore, Check, GitPullRequestDraft, LoaderCircle, Play, RefreshCw, RotateCcw, ServerCog, ShieldAlert, Trash2 } from 'lucide-react';
 import { apiV2, mutateV2, shortHash } from '../../api';
 import type { WorkspacePageProps } from '../../workspace';
 
@@ -23,6 +23,8 @@ export function OperationsPage({ projectId, notify }: WorkspacePageProps) {
   const [inputs, setInputs] = useState<Interaction[]>([]);
   const [health, setHealth] = useState('unknown');
   const [gcPlan, setGcPlan] = useState<GcPlan | null>(null);
+  const [targetVolumeRef, setTargetVolumeRef] = useState('isolated-runtime');
+  const [preserveBackups, setPreserveBackups] = useState(true);
   const [fault, setFault] = useState('');
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState('');
@@ -77,6 +79,33 @@ export function OperationsPage({ projectId, notify }: WorkspacePageProps) {
     notify('CAS GC plan created.');
   });
 
+  const approved = (action: string, requestMatch?: (value: Interaction) => boolean) => approvals.find((item) => item.action === action && (item.decision || item.status) === 'approved' && (!requestMatch || requestMatch(item)));
+  const createBackup = async () => run('backup-create', async () => {
+    const approval = approved('backup.create');
+    if (!approval) throw new Error('An approved backup.create request is required.');
+    await mutateV2('/api/v2/backups', { approval_id: approval.id, retention_class: 'standard', components: {} }, 'POST', 0);
+    await load();
+  });
+  const prepareRestore = async (backup: Backup) => run(`restore:${backup.id}`, async () => {
+    const approval = approved('restore.prepare', (item) => String((item as Interaction & { request?: { backup_id?: string } }).request?.backup_id || '') === backup.id) || approved('restore.prepare');
+    if (!approval) throw new Error('An approved restore.prepare request is required.');
+    await mutateV2('/api/v2/restore/prepare', { backup_id: backup.id, approval_id: approval.id, target_volume_ref: targetVolumeRef }, 'POST', 0);
+    await load();
+  });
+  const prepareReset = async () => run('reset', async () => {
+    const approval = approved('system.reset.prepare');
+    if (!approval) throw new Error('An approved system.reset.prepare request is required.');
+    await mutateV2('/api/v2/system/reset/prepare', { approval_id: approval.id, target_volume_ref: targetVolumeRef, preserve_backups: preserveBackups }, 'POST', 0);
+    await load();
+  });
+  const applyGc = async () => run('gc-apply', async () => {
+    if (!gcPlan) return;
+    const approval = approved('cas.gc.apply');
+    if (!approval) throw new Error('An approved cas.gc.apply request is required.');
+    await mutateV2('/api/v2/cas/gc/apply', { approval_id: approval.id, plan: gcPlan }, 'POST', 0);
+    await load();
+  });
+
   const run = async (key: string, action: () => Promise<void>) => {
     setBusy(key);
     try { await action(); }
@@ -109,8 +138,9 @@ export function OperationsPage({ projectId, notify }: WorkspacePageProps) {
         {candidates.map((item) => <Row key={item.id} title={shortHash(item.app_digest)} detail={shortHash(item.candidate_sha256)} status={item.status} />)}
         {!loading && !candidates.length && <p className="list-empty">No candidates</p>}
       </section>
-      <section aria-labelledby="backup-heading"><SectionHeading id="backup-heading" title="Backup & Restore" icon={<ArchiveRestore size={18} />} />
-        {backups.map((item) => <Row key={item.id} title={shortHash(item.manifest_sha256)} detail={`schema v${item.source_user_version} · ${item.retention_class}`} status="verified" />)}
+      <section aria-labelledby="backup-heading"><SectionHeading id="backup-heading" title="Backup & Restore" icon={<ArchiveRestore size={18} />} action={<div className="row-actions"><IconAction label="Create backup" busy={busy === 'backup-create'} icon={<ArchiveRestore size={15} />} onClick={() => void createBackup()} /><IconAction label="Prepare reset" busy={busy === 'reset'} icon={<RotateCcw size={15} />} onClick={() => void prepareReset()} /></div>} />
+        <div className="operations-recovery-form"><label><span>Target volume reference</span><input value={targetVolumeRef} onChange={(event) => setTargetVolumeRef(event.target.value)} pattern="[A-Za-z][A-Za-z0-9._~-]{0,255}" maxLength={256} /></label><label className="checkbox-line"><input type="checkbox" checked={preserveBackups} onChange={(event) => setPreserveBackups(event.target.checked)} /><span>Preserve backups</span></label></div>
+        {backups.map((item) => <Row key={item.id} title={shortHash(item.manifest_sha256)} detail={`schema v${item.source_user_version} · ${item.retention_class}`} status="verified" action={<IconAction label={`Prepare restore ${shortHash(item.id)}`} busy={busy === `restore:${item.id}`} icon={<ArchiveRestore size={15} />} onClick={() => void prepareRestore(item)} />} />)}
         {!loading && !backups.length && <p className="list-empty">No backups</p>}
       </section>
       <section aria-labelledby="operation-heading"><SectionHeading id="operation-heading" title="Operation Lineage" icon={<RotateCcw size={18} />} />
@@ -121,7 +151,7 @@ export function OperationsPage({ projectId, notify }: WorkspacePageProps) {
         {imports.map((item) => <Row key={item.id} title={shortHash(item.target_sha256 || item.id)} detail={item.status === 'blocked' ? `blocked import · ${item.conflict_count || 0} conflicts` : `revision ${item.revision}`} status={item.status} />)}
         {!loading && !imports.length && <p className="list-empty">No imports</p>}
       </section>
-      <section aria-labelledby="gc-heading"><SectionHeading id="gc-heading" title="CAS GC" icon={<Trash2 size={18} />} action={<IconAction label="Create GC plan" busy={busy === 'gc'} icon={<Play size={15} />} onClick={() => void planGc()} />} />
+      <section aria-labelledby="gc-heading"><SectionHeading id="gc-heading" title="CAS GC" icon={<Trash2 size={18} />} action={<div className="row-actions"><IconAction label="Create GC plan" busy={busy === 'gc'} icon={<Play size={15} />} onClick={() => void planGc()} />{gcPlan && <IconAction label="Apply GC plan" busy={busy === 'gc-apply'} icon={<Check size={15} />} onClick={() => void applyGc()} />}</div>} />
         {gcPlan ? <Row title={shortHash(gcPlan.plan_sha256)} detail={`${gcPlan.count} candidates`} status="planned" /> : <p className="list-empty">No active plan</p>}
       </section>
       <section aria-labelledby="human-heading"><SectionHeading id="human-heading" title="Human queue" icon={<ShieldAlert size={18} />} />

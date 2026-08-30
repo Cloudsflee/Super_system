@@ -1,15 +1,17 @@
 import { useState } from 'react';
-import { Activity, Network, Settings, ShieldCheck } from 'lucide-react';
+import { Activity, FileText, Network, Settings, ShieldCheck } from 'lucide-react';
 import { ConnectionsPage } from '../connections';
 import { McpSettingsPage } from '../context';
 import { IdentityAccessPage } from '../identity';
+import { BriefTemplatesPanel } from './BriefTemplatesPanel';
 import type { WorkspacePageProps } from '../../workspace';
 
-type SettingsView = 'identity' | 'provider' | 'exchange' | 'runtime';
+type SettingsView = 'identity' | 'provider' | 'templates' | 'exchange' | 'runtime';
 
 const views = [
   { id: 'identity', label: '身份与权限', icon: ShieldCheck },
   { id: 'provider', label: 'Provider', icon: Activity },
+  { id: 'templates', label: 'Brief templates', icon: FileText },
   { id: 'exchange', label: 'MCP / Exchange', icon: Network },
   { id: 'runtime', label: 'Runner / Bridge', icon: Settings }
 ] as const;
@@ -22,6 +24,7 @@ export function SettingsPage(props: WorkspacePageProps) {
     <div className="settings-content">
       {view === 'identity' && <IdentityAccessPage {...props} initialView="identity" />}
       {view === 'provider' && <IdentityAccessPage {...props} initialView="profiles" />}
+      {view === 'templates' && <BriefTemplatesPanel notify={props.notify} />}
       {view === 'exchange' && <McpSettingsPage {...props} />}
       {view === 'runtime' && <ConnectionsPage {...props} />}
     </div>

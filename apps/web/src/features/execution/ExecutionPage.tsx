@@ -6,13 +6,14 @@ import {
 import { ApiError, apiV2, formatTime, mutateV2, shortHash } from '../../api';
 import type { WorkspacePageProps } from '../../workspace';
 import { ExecutionEvidencePanel, ExecutionOutcomePanel, ExecutionQualityPanel } from './ExecutionP7Panels';
+import { DeliveryPage } from '../delivery';
 
 const STAGES = ['prepare', 'context', 'run', 'check', 'review', 'finalize', 'deliver'] as const;
 
 type RunnerProfile = { id: string; label: string; runner_type: string; status: string; revision: number };
 type Execution = {
   id: string; project_id: string; status: string; current_stage: string; generation: number; revision: number;
-  workflow_revision: number; workflow_hash: string; context_pack_hash: string; runner_profile_id: string;
+  workflow_id?: string; workflow_revision: number; workflow_hash: string; context_pack_hash: string; runner_profile_id: string;
   task_count: number; dependency_edge_count: number; error_code: string; created_at: string; updated_at: string;
   handoff_manifest?: { delivery_ready?: boolean; receipts?: unknown[] };
 };
@@ -31,9 +32,10 @@ export function ExecutionPage({ projectId, selectedProject, notify, navigate }: 
   const [events, setEvents] = useState<ExecutionEvent[]>([]);
   const [busy, setBusy] = useState('');
   const [fault, setFault] = useState('');
-  const [activeView, setActiveView] = useState<'operations' | 'evidence' | 'quality' | 'outcome'>('operations');
+  const [activeView, setActiveView] = useState<'operations' | 'evidence' | 'quality' | 'outcome' | 'delivery'>('operations');
 
   const selectedProfile = useMemo(() => profiles.find((profile) => profile.id === profileId) || null, [profileId, profiles]);
+  useEffect(() => { setSelectedId(''); setDetail(null); setAttempts([]); setCheckpoints([]); setEvents([]); }, [projectId]);
 
   const loadList = useCallback(async () => {
     if (!projectId) { setExecutions([]); setSelectedId(''); return; }
@@ -120,7 +122,7 @@ export function ExecutionPage({ projectId, selectedProject, notify, navigate }: 
     <div className="execution-stage-rail" aria-label="Execution stages">
       {STAGES.map((stage, index) => <div key={stage} className={detail && (detail.status === 'completed' || index < activeStage) ? 'complete' : index === activeStage && detail?.current_stage ? 'active' : ''}><span>{index + 1}</span><strong>{stage}</strong></div>)}
     </div>
-    <div className="execution-view-tabs" role="tablist" aria-label="Execution views">{(['operations', 'evidence', 'quality', 'outcome'] as const).map((view) => <button role="tab" aria-selected={activeView === view} className={activeView === view ? 'active' : ''} key={view} onClick={() => setActiveView(view)}>{view[0].toUpperCase() + view.slice(1)}</button>)}</div>
+    <div className="execution-view-tabs" role="tablist" aria-label="Execution views">{(['operations', 'evidence', 'quality', 'outcome', 'delivery'] as const).map((view) => <button role="tab" aria-selected={activeView === view} className={activeView === view ? 'active' : ''} key={view} onClick={() => setActiveView(view)}>{view[0].toUpperCase() + view.slice(1)}</button>)}</div>
     {activeView === 'operations' && <div className="execution-p6-layout">
       <section className="panel execution-list-panel"><div className="section-title"><div><h2>Executions</h2><span>{executions.length} revisions</span></div></div><div className="execution-list-p6">{executions.map((item) => <button key={item.id} className={item.id === selectedId ? 'selected' : ''} onClick={() => setSelectedId(item.id)}><span><strong>{item.current_stage || 'draft'} · generation {item.generation}</strong><small className="mono">{shortHash(item.id)} | r{item.revision}</small></span><Status value={item.status} /></button>)}{!executions.length && <div className="list-empty">No executions</div>}</div></section>
       <section className="panel execution-detail-panel"><div className="section-title"><div><h2>{detail ? `${detail.current_stage || 'draft'} stage` : 'Execution detail'}</h2><span>{detail ? `Workflow r${detail.workflow_revision} | ${detail.task_count} tasks | updated ${formatTime(detail.updated_at)}` : 'No active revision'}</span></div>{detail && <Status value={detail.status} />}</div>{detail ? <div className="execution-pin-grid"><span><small>Workflow</small><strong className="mono">{shortHash(detail.workflow_hash)}</strong></span><span><small>Context</small><strong className="mono">{shortHash(detail.context_pack_hash)}</strong></span><span><small>Generation</small><strong>{detail.generation}</strong></span><span><small>Delivery</small><strong>{detail.handoff_manifest?.delivery_ready ? 'ready' : 'pending'}</strong></span></div> : <div className="list-empty">No execution selected</div>}</section>
@@ -131,6 +133,7 @@ export function ExecutionPage({ projectId, selectedProject, notify, navigate }: 
     {activeView === 'evidence' && detail && <ExecutionEvidencePanel execution={detail} notify={notify} navigate={navigate} />}
     {activeView === 'quality' && detail && <ExecutionQualityPanel execution={detail} notify={notify} />}
     {activeView === 'outcome' && detail && <ExecutionOutcomePanel execution={detail} notify={notify} />}
+    {activeView === 'delivery' && <DeliveryPage projectId={projectId} selectedProject={selectedProject} notify={notify} navigate={navigate} selectProject={() => undefined} refreshProjects={async () => undefined} setupReady refreshSetup={async () => undefined} />}
     {activeView !== 'operations' && !detail && <div className="list-empty">No execution selected</div>}
   </div>;
 }

@@ -208,7 +208,7 @@ export function ProjectOnboardingPage({ projectId, refreshProjects, navigateProj
   });
   const generate = () => void run('generation', () => mutateV2(`/api/v2/projects/${encodeURIComponent(projectId)}/workflow-generations`, { mode: 'initial', candidate: {} }, 'POST', project?.revision));
   const retryGeneration = () => currentGeneration && void run('generation-retry', () => mutateV2(`/api/v2/workflow-generations/${encodeURIComponent(currentGeneration.id)}/retry`, {}, 'POST', currentGeneration.revision));
-  const critic = () => currentGeneration && void run('critic', () => mutateV2(`/api/v2/workflow-generations/${encodeURIComponent(currentGeneration.id)}/critic`, { status: 'passed', issues: [] }, 'POST', currentGeneration.revision));
+  const critic = () => currentGeneration && void run('critic', () => mutateV2(`/api/v2/workflow-generations/${encodeURIComponent(currentGeneration.id)}/critic`, {}, 'POST', currentGeneration.revision));
   const applyProposal = () => currentGeneration?.proposal_id && void run('apply', () => mutateV2(`/api/v2/workflow-proposals/${encodeURIComponent(currentGeneration.proposal_id || '')}/apply`, {}, 'POST', workflow?.revision));
   const confirmBrief = () => void (async () => {
     const revision = Number(brief?.current_revision || project?.current_brief_revision || 0);

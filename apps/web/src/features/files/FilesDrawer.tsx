@@ -1,6 +1,9 @@
-import { useCallback, useEffect, useMemo, useState, type FormEvent } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
 import { Check, Download, Eye, FileDiff, FolderOpen, LoaderCircle, RotateCcw, Trash2, Upload, X } from 'lucide-react';
-import { ApiError, apiV2, formatBytes, mutateV2, shortHash } from '../../api';
+import { ApiError, apiV2, fetchV2Binary, formatBytes, mutateV2, shortHash } from '../../api';
+import { AssistMarkdown } from '../assist/AssistMarkdown';
+import OfficePreview from '../assist/OfficePreview';
+import PdfPreview from '../assist/PdfPreview';
 
 type Attachment = { id: string; filename: string; media_type: string; byte_length: number; disposition: string; parser_status: string; status: string; revision: number; content_sha256: string };
 type FileRef = { id: string; path: string; relative_path?: string; content_sha256: string; byte_length: number; status: string; revision: number };
@@ -16,7 +19,11 @@ export function FilesDrawer({ open, projectId, sessionId, notify, onClose }: { o
   const [workspaces, setWorkspaces] = useState<Workspace[]>([]);
   const [selectedBatchId, setSelectedBatchId] = useState('');
   const [items, setItems] = useState<BatchItem[]>([]);
-  const [preview, setPreview] = useState<{ name: string; content: string } | null>(null);
+  const [preview, setPreview] = useState<{ name: string; content: string; mediaType: string; url: string } | null>(null);
+  const drawerRef = useRef<HTMLElement>(null);
+  const drawerReturnFocus = useRef<HTMLElement | null>(null);
+  const previewRef = useRef<HTMLElement>(null);
+  const previewReturnFocus = useRef<HTMLElement | null>(null);
   const [pathValue, setPathValue] = useState('notes.txt');
   const [content, setContent] = useState('');
   const [action, setAction] = useState<'create' | 'replace' | 'delete'>('create');
@@ -37,12 +44,45 @@ export function FilesDrawer({ open, projectId, sessionId, notify, onClose }: { o
 
   useEffect(() => { if (open) void load().catch((error) => notify(error instanceof Error ? error.message : 'Files request failed', 'error')); }, [load, notify, open]);
   useEffect(() => {
+    if (!open) return undefined;
+    drawerReturnFocus.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    const focus = requestAnimationFrame(() => drawerRef.current?.querySelector<HTMLElement>('button:not(:disabled),input:not(:disabled),textarea:not(:disabled),select:not(:disabled),a[href]')?.focus());
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') { event.preventDefault(); onClose(); return; }
+      if (event.key !== 'Tab' || !drawerRef.current) return;
+      const controls = [...drawerRef.current.querySelectorAll<HTMLElement>('button:not(:disabled),input:not(:disabled),textarea:not(:disabled),select:not(:disabled),a[href]')];
+      if (!controls.length) return;
+      const first = controls[0], last = controls[controls.length - 1];
+      if (event.shiftKey && (document.activeElement === first || !drawerRef.current.contains(document.activeElement))) { event.preventDefault(); last.focus(); }
+      else if (!event.shiftKey && (document.activeElement === last || !drawerRef.current.contains(document.activeElement))) { event.preventDefault(); first.focus(); }
+    };
+    document.addEventListener('keydown', onKeyDown, true);
+    return () => { cancelAnimationFrame(focus); document.removeEventListener('keydown', onKeyDown, true); queueMicrotask(() => drawerReturnFocus.current?.focus()); };
+  }, [onClose, open]);
+  useEffect(() => {
     if (!selectedBatchId || !open) { setItems([]); return; }
     void apiV2<{ batch: Batch; items: BatchItem[] }>(`/api/v2/change-batches/${encodeURIComponent(selectedBatchId)}/review`).then((result) => setItems(result.data.items || [])).catch(() => setItems([]));
   }, [open, selectedBatchId]);
 
+  useEffect(() => {
+    if (!preview) return undefined;
+    const focus = window.requestAnimationFrame(() => previewRef.current?.querySelector<HTMLElement>('button, [tabindex="0"]')?.focus());
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') { event.preventDefault(); setPreview(null); return; }
+      if (event.key !== 'Tab' || !previewRef.current) return;
+      const controls = [...previewRef.current.querySelectorAll<HTMLElement>('button:not(:disabled),a[href],input:not(:disabled),textarea:not(:disabled)')];
+      if (!controls.length) return;
+      const first = controls[0], last = controls[controls.length - 1];
+      if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last.focus(); }
+      else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus(); }
+    };
+    document.addEventListener('keydown', onKeyDown, true);
+    return () => { window.cancelAnimationFrame(focus); document.removeEventListener('keydown', onKeyDown, true); queueMicrotask(() => previewReturnFocus.current?.focus()); };
+  }, [preview]);
+
   const upload = async (file?: File) => {
     if (!file) return;
+    if (file.size > 15 * 1024 * 1024) { notify('Attachment exceeds the 15 MiB upload limit.', 'error'); return; }
     setBusy('upload');
     try {
       const bytes = new Uint8Array(await file.arrayBuffer());
@@ -55,13 +95,14 @@ export function FilesDrawer({ open, projectId, sessionId, notify, onClose }: { o
     setBusy(`preview:${attachment.id}`);
     try {
       const result = await apiV2<{ content_base64: string }>(`/api/v2/attachments/${encodeURIComponent(attachment.id)}/preview`);
-      setPreview({ name: attachment.filename, content: decodeBase64(result.data.content_base64) });
+      previewReturnFocus.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+      setPreview({ name: attachment.filename, content: decodeBase64(result.data.content_base64), mediaType: attachment.media_type, url: `/api/v2/attachments/${encodeURIComponent(attachment.id)}/preview` });
     } catch (error) { notify(error instanceof Error ? error.message : 'Preview unavailable', 'error'); } finally { setBusy(''); }
   };
 
   const download = async (attachment: Attachment) => {
-    const response = await fetch(`/api/v2/attachments/${encodeURIComponent(attachment.id)}/content`, { headers: { accept: 'application/octet-stream' }, credentials: 'same-origin' });
-    if (!response.ok) return notify('Attachment download failed', 'error');
+    const response = await fetchV2Binary(`/api/v2/attachments/${encodeURIComponent(attachment.id)}/content`, { headers: { accept: 'application/octet-stream' } }).catch((error) => { notify(error instanceof Error ? error.message : 'Attachment download failed', 'error'); return null; });
+    if (!response) return;
     const link = document.createElement('a'); link.href = URL.createObjectURL(await response.blob()); link.download = attachment.filename; link.click(); setTimeout(() => URL.revokeObjectURL(link.href), 0);
   };
 
@@ -91,10 +132,10 @@ export function FilesDrawer({ open, projectId, sessionId, notify, onClose }: { o
   };
 
   if (!open) return null;
-  return <><button className="drawer-scrim" aria-label="Close Files" onClick={onClose} /><aside className="files-drawer" aria-label="Files and changes">
+  return <><button className="drawer-scrim" aria-label="Close Files" onClick={onClose} /><aside ref={drawerRef} className="files-drawer" role="dialog" aria-modal="true" aria-label="Files and changes" tabIndex={-1}>
     <header><div><FolderOpen size={18} /><strong>Files</strong></div><button className="icon-button" title="Close Files" aria-label="Close Files" onClick={onClose}><X size={17} /></button></header>
     <div className="drawer-tabs" role="tablist"><button className={tab === 'attachments' ? 'active' : ''} onClick={() => setTab('attachments')}>Attachments</button><button className={tab === 'files' ? 'active' : ''} onClick={() => setTab('files')}>Workspace</button><button className={tab === 'changes' ? 'active' : ''} onClick={() => setTab('changes')}>Changes</button></div>
-    {tab === 'attachments' && <div className="drawer-body"><label className="button file-upload"><Upload size={15} />{busy === 'upload' ? 'Uploading' : 'Upload'}<input type="file" disabled={busy === 'upload'} onChange={(event) => void upload(event.target.files?.[0])} /></label><div className="drawer-list">{attachments.map((attachment) => <div key={attachment.id} className="drawer-row"><span><strong>{attachment.filename}</strong><small>{formatBytes(attachment.byte_length)} · {attachment.disposition} · {attachment.status}</small></span><div><button className="icon-button" title="Preview" aria-label={`Preview ${attachment.filename}`} disabled={attachment.disposition !== 'preview'} onClick={() => void showPreview(attachment)}>{busy === `preview:${attachment.id}` ? <LoaderCircle className="spin" size={14} /> : <Eye size={14} />}</button><button className="icon-button" title="Download" aria-label={`Download ${attachment.filename}`} onClick={() => void download(attachment)}><Download size={14} /></button><button className="icon-button danger" title="Delete" aria-label={`Delete ${attachment.filename}`} onClick={() => void remove(attachment)}><Trash2 size={14} /></button></div></div>)}{!attachments.length && <div className="list-empty">No attachments</div>}</div>{preview && <div className="file-preview"><strong>{preview.name}</strong><pre>{preview.content}</pre></div>}</div>}
+    {tab === 'attachments' && <div className="drawer-body"><label className="button file-upload"><Upload size={15} />{busy === 'upload' ? 'Uploading' : 'Upload'}<input type="file" disabled={busy === 'upload'} onChange={(event) => void upload(event.target.files?.[0])} /></label><div className="drawer-list">{attachments.map((attachment) => <div key={attachment.id} className="drawer-row"><span><strong>{attachment.filename}</strong><small>{formatBytes(attachment.byte_length)} · {attachment.disposition} · {attachment.status}</small></span><div><button className="icon-button" title="Preview" aria-label={`Preview ${attachment.filename}`} disabled={attachment.disposition !== 'preview'} onClick={() => void showPreview(attachment)}>{busy === `preview:${attachment.id}` ? <LoaderCircle className="spin" size={14} /> : <Eye size={14} />}</button><button className="icon-button" title="Download" aria-label={`Download ${attachment.filename}`} onClick={() => void download(attachment)}><Download size={14} /></button><button className="icon-button danger" title="Delete" aria-label={`Delete ${attachment.filename}`} onClick={() => void remove(attachment)}><Trash2 size={14} /></button></div></div>)}{!attachments.length && <div className="list-empty">No attachments</div>}</div></div>}
     {tab === 'files' && <div className="drawer-body"><div className="drawer-list">{files.map((file) => <div key={file.id} className="drawer-row"><FileDiff size={15} /><span><strong>{file.path || file.relative_path}</strong><small>{formatBytes(file.byte_length)} · {shortHash(file.content_sha256)} · r{file.revision}</small></span></div>)}{!files.length && <div className="list-empty">No indexed files</div>}</div></div>}
     {tab === 'changes' && <div className="drawer-body">
       <form className="change-compose" onSubmit={(event) => void createBatch(event)}>
@@ -120,7 +161,7 @@ export function FilesDrawer({ open, projectId, sessionId, notify, onClose }: { o
         </div>
       </div>}
     </div>}
-  </aside></>;
+  </aside>{preview && <PreviewDialog preview={preview} onClose={() => setPreview(null)} />}</>;
 }
 
 async function waitOperation(id: string) {
@@ -131,3 +172,38 @@ async function waitOperation(id: string) {
 }
 function toBase64(bytes: Uint8Array) { let binary = ''; for (let index = 0; index < bytes.length; index += 0x8000) binary += String.fromCharCode(...bytes.subarray(index, index + 0x8000)); return btoa(binary); }
 function decodeBase64(value: string) { try { return decodeURIComponent(Array.from(atob(value), (char) => `%${char.charCodeAt(0).toString(16).padStart(2, '0')}`).join('')); } catch { return '[preview unavailable]'; } }
+
+function PreviewDialog({ preview, onClose }: { preview: { name: string; content: string; mediaType: string; url: string }; onClose: () => void }) {
+  const ref = useRef<HTMLElement>(null);
+  useEffect(() => {
+    const prior = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    const focus = window.requestAnimationFrame(() => ref.current?.querySelector<HTMLElement>('button')?.focus());
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') { event.preventDefault(); onClose(); return; }
+      if (event.key !== 'Tab' || !ref.current) return;
+      const controls = [...ref.current.querySelectorAll<HTMLElement>('button:not(:disabled),a[href]')];
+      if (!controls.length) return;
+      if (event.shiftKey && document.activeElement === controls[0]) { event.preventDefault(); controls.at(-1)?.focus(); }
+      else if (!event.shiftKey && document.activeElement === controls.at(-1)) { event.preventDefault(); controls[0].focus(); }
+    };
+    document.addEventListener('keydown', onKey, true);
+    return () => { window.cancelAnimationFrame(focus); document.removeEventListener('keydown', onKey, true); queueMicrotask(() => prior?.focus()); };
+  }, [onClose]);
+  return <div className="preview-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}><section ref={ref} className="preview-dialog" role="dialog" aria-modal="true" aria-label={`${preview.name} preview`}><header><div><strong>{preview.name}</strong><small>{preview.mediaType}</small></div><button className="icon-button" aria-label="Close preview" title="Close preview" onClick={onClose}><X size={15} /></button></header><PreviewContent mediaType={preview.mediaType} content={preview.content} url={preview.url} /></section></div>;
+}
+
+function PreviewContent({ mediaType, content, url }: { mediaType: string; content: string; url: string }) {
+  const type = String(mediaType || '').toLowerCase();
+  if (type.includes('pdf')) return <PdfPreview url={url} />;
+  if (type.includes('word') || type.includes('docx')) return <OfficePreview url={url} kind="docx" />;
+  if (type.includes('spreadsheet') || type.includes('xlsx')) return <OfficePreview url={url} kind="xlsx" />;
+  if (type.includes('json') || type.endsWith('+json')) {
+    try { return <pre className="preview-content">{JSON.stringify(JSON.parse(content), null, 2)}</pre>; } catch { /* show bounded text below */ }
+  }
+  if (type.includes('csv')) {
+    const rows = content.split(/\r?\n/).slice(0, 500).map((line) => line.split(','));
+    return <div className="preview-table"><table><tbody>{rows.map((row, rowIndex) => <tr key={rowIndex}>{row.map((cell, cellIndex) => rowIndex === 0 ? <th key={cellIndex}>{cell}</th> : <td key={cellIndex}>{cell}</td>)}</tr>)}</tbody></table></div>;
+  }
+  if (type.includes('markdown') || type.endsWith('/md')) return <AssistMarkdown className="preview-content">{content}</AssistMarkdown>;
+  return <pre className="preview-content">{String(content || '').slice(0, 2_000_000)}</pre>;
+}

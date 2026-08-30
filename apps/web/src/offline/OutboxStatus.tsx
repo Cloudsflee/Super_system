@@ -50,7 +50,14 @@ async function sendRecord(record: OutboxRecord): Promise<OfflineResponse> {
   try {
     const headers: Record<string, string> = { accept: 'application/json', 'content-type': 'application/json', 'Idempotency-Key': record.idempotency_key };
     if (record.expected_revision != null) headers['X-Expected-Revision'] = String(record.expected_revision);
-    const response = await fetch(record.path, { method: record.method, credentials: 'same-origin', headers, body: record.canonical_body });
+    let response = await fetch(record.path, { method: record.method, credentials: 'same-origin', headers, body: record.canonical_body });
+    if (response.status === 401) {
+      try {
+        const { recoverBrowserSession } = await import('../api');
+        await recoverBrowserSession();
+        response = await fetch(record.path, { method: record.method, credentials: 'same-origin', headers, body: record.canonical_body });
+      } catch { /* retain the original status so the record remains diagnosable */ }
+    }
     return { status: response.status, body: await response.json().catch(() => undefined) };
   } catch { throw new TypeError('network_error'); }
 }
