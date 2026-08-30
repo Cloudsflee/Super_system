@@ -756,3 +756,8 @@ git diff --check
 Failures leave every Catalog status unchanged. The final P10 Evidence tree is
 read-only; local product-change verification and rollback receipts live only
 under the ignored `.ai-workspace/change-receipts/` directory.
+
+The pre-push hook sets `AIWS_VERIFY_RUNNING=1` for its outer verification.
+`verify.mjs` preserves that marker so Git pushes made by external fixture
+probes do not recursively start another repository-wide gate. A normal user
+push without the marker still executes the complete `pnpm verify` inventory.

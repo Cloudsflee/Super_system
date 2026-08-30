@@ -69,6 +69,14 @@ test('gate synchronization parser rejects duplicate ids and rule text drift', ()
   assert.ok(gateSyncDocumentFindings(drifted, 'drifted.md').some((entry) => entry.code === 'gate_sync_rule_table_mismatch'));
 });
 
+test('pre-push runs the outer verify once and suppresses only nested probe hooks', () => {
+  const hook = fs.readFileSync(path.join(root, '.githooks/pre-push'), 'utf8');
+  const verify = fs.readFileSync(path.join(root, 'scripts/verify.mjs'), 'utf8');
+  assert.match(hook, /AIWS_VERIFY_RUNNING/);
+  assert.match(hook, /exec corepack pnpm verify/);
+  assert.match(verify, /process\.env\.AIWS_VERIFY_RUNNING = '1'/);
+});
+
 test('completion baseline records the remaining pre-fix synchronization gaps', () => {
   const baseline = path.join(root, P1_COMPLETION_BASELINE_DIRECTORY);
   assert.ok(fs.existsSync(path.join(baseline, 'original-hashes.json')));

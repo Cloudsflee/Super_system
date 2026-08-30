@@ -70,7 +70,8 @@
         "feature-catalog.historical.json",
         "scripts/v3-clean-p10-parity.mjs",
         "scripts/v3-clean-p10-evidence.mjs",
-        "scripts/lib/p10-post-closure.mjs"
+        "scripts/lib/p10-post-closure.mjs",
+        ".githooks/pre-push"
       ],
       "tables": [],
       "apis": [],

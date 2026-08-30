@@ -69,7 +69,8 @@ export const P1_GATE_SYNC_CATALOG_PATHS = Object.freeze({
     'feature-catalog.historical.json',
     'scripts/v3-clean-p10-parity.mjs',
     'scripts/v3-clean-p10-evidence.mjs',
-    'scripts/lib/p10-post-closure.mjs'
+    'scripts/lib/p10-post-closure.mjs',
+    '.githooks/pre-push'
   ]),
   behavior_tests: Object.freeze([
     'tests/unit/recovery-governance.test.mjs',

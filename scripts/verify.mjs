@@ -1,5 +1,7 @@
 import { spawnSync } from 'node:child_process';
 
+process.env.AIWS_VERIFY_RUNNING = '1';
+
 const skipP1Evidence = process.argv.includes('--skip-p1-evidence')
   || process.env.AIWS_P1_EVIDENCE_GENERATING === '1';
 const commands = [
