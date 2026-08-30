@@ -290,6 +290,7 @@ function WorkspaceLayout() {
   }, [projectId, setupReady]);
 
   if (!bootstrapLoaded) return <div className="onboarding-loader"><LoaderCircle className="spin" size={20} />加载本地工作区</div>;
+  if (bootstrapFailure && !systemSnapshot && !online) return <div className="onboarding-loader" role="status"><WifiOff size={22} />Offline</div>;
   if (bootstrapFailure && !systemSnapshot) return <div className="onboarding-loader error" role="alert">{bootstrapFailure}<button className="button" onClick={() => void refreshSetup()}>重试</button></div>;
 
   const systemOnboardingRequired = Boolean(systemSnapshot && (!setupReady || (systemSnapshot.account && !hasSystemOnboardingCompletion(systemSnapshot))));

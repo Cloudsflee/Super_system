@@ -87,3 +87,12 @@ it('redirects a draft project workflow deep-link to parameterized onboarding', a
   await screen.findByTestId('project-onboarding');
   expect(location.hash).toBe('#/projects/project_draft/onboarding');
 });
+
+it('renders a bounded Offline shell when bootstrap cannot reach the API', async () => {
+  const online = vi.spyOn(window.navigator, 'onLine', 'get').mockReturnValue(false);
+  vi.stubGlobal('fetch', vi.fn(async () => { throw new TypeError('network unavailable'); }));
+  render(<App />);
+  expect(await screen.findByRole('status')).toHaveTextContent('Offline');
+  expect(screen.queryByTestId('system-onboarding')).toBeNull();
+  online.mockRestore();
+});
