@@ -3,7 +3,7 @@ import { PlatformError } from './platform-error.mjs';
 
 /** Shared P4 command boundary used by REST, MCP HTTP, stdio and Gateway. */
 export class CleanCommandDispatcher {
-  constructor({ registry, context, mcp, gateway, projectWorkflow, operations, events, identity = null, assist = null, files = null, terminal = null, bridge = null, runner = null, execution = null, evidence = null, parser = null, quality = null, outcomeEvaluation = null, p8Service = null, p10Service = null } = {}) {
+  constructor({ registry, context, mcp, gateway, projectWorkflow, operations, events, identity = null, assist = null, files = null, terminal = null, bridge = null, runner = null, execution = null, evidence = null, parser = null, quality = null, outcomeEvaluation = null, p8Service = null, p10Service = null, localSetup = null } = {}) {
     if (!registry || !context || !mcp || !operations || !events) throw new TypeError('clean_dispatcher_dependencies_required');
     this.registry = registry;
     this.context = context;
@@ -25,6 +25,7 @@ export class CleanCommandDispatcher {
     this.outcomeEvaluation = outcomeEvaluation;
     this.p8Service = p8Service;
     this.p10Service = p10Service;
+    this.localSetup = localSetup;
     this.handlers = new Map();
     this.exposed = new Set();
     this.#registerHandlers();
@@ -142,6 +143,13 @@ export class CleanCommandDispatcher {
     bind('profile.update', (args, principal) => this.identity.updateProfile(args.id, args, principal));
     bind('profile.disable', (args, principal) => this.identity.disableProfile(args.id, args, principal));
     bind('profile.enable', (args, principal) => this.identity.enableProfile(args.id, args, principal));
+    if (this.localSetup) {
+      bind('provider.codex.discovery', (args, principal) => this.localSetup.discoverCodex(args, principal));
+      bind('provider.codex.discovery.import', (args, principal) => this.localSetup.importCodex(args, principal));
+      bind('provider.codex.device_login.start', (args, principal) => this.localSetup.startDeviceLogin(args, principal));
+      bind('provider.codex.device_login.get', (args, principal) => this.localSetup.deviceLogin(args.id, principal));
+      bind('provider.codex.device_login.cancel', (args, principal) => this.localSetup.cancelDeviceLogin(args.id, args, principal));
+    }
     bind('brief.template.list', (args, principal) => this.p10Service.listBriefTemplates(args, principal));
     bind('brief.template.create', (args, principal) => this.p10Service.createBriefTemplate(args, principal));
     bind('brief.template.update', (args, principal) => this.p10Service.updateBriefTemplate(args.id, args, principal));

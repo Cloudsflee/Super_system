@@ -73,6 +73,7 @@ const p8Checks = { type: 'array', maxItems: 100, uniqueItems: true, items: { typ
 
 export const CLEAN_V2_SCHEMAS = Object.freeze({
   'setup.complete.v2': closed({ display_name: { type: 'string', minLength: 1, maxLength: 160 }, team_name: { type: 'string', minLength: 1, maxLength: 160 }, ttl_seconds: { type: 'integer', minimum: 300, maximum: 7776000 }, idempotency_key: idempotency, expected_revision: { type: 'integer', minimum: 0, maximum: 0 } }, ['display_name', 'team_name']),
+  'setup.session.create.v2': closed({ ttl_seconds: { type: 'integer', minimum: 300, maximum: 7776000 }, idempotency_key: idempotency }, ['idempotency_key']),
   'actor.create.v2': closed({ kind: { enum: ['service', 'agent'] }, display_name: { type: 'string', minLength: 1, maxLength: 160 }, metadata: { type: 'object', additionalProperties: true }, idempotency_key: idempotency, expected_revision: { type: 'integer', minimum: 0 } }, ['kind', 'display_name']),
   'actor.update.v2': closed({ display_name: { type: 'string', minLength: 1, maxLength: 160 }, idempotency_key: idempotency, expected_revision: revision }, ['expected_revision']),
   'account.update.v2': closed({ display_name: { type: 'string', minLength: 1, maxLength: 160 }, idempotency_key: idempotency, expected_revision: revision }, ['expected_revision']),
@@ -88,8 +89,8 @@ export const CLEAN_V2_SCHEMAS = Object.freeze({
   'invitation.lifecycle.v2': closed({ idempotency_key: idempotency, expected_revision: revision }, ['expected_revision']),
   'acl.set.v2': closed({ id: { type: 'string' }, principal_actor_id: { type: 'string' }, principal_team_id: { type: 'string' }, actor_id: { type: 'string' }, team_id: { type: 'string' }, resource: { type: 'string', minLength: 1, maxLength: 160 }, action: { type: 'string', minLength: 1, maxLength: 120 }, effect: { enum: ['allow', 'deny'] }, idempotency_key: idempotency, expected_revision: { type: 'integer', minimum: 0 } }, ['action', 'effect']),
   'credential.create.v2': closed({ provider: { enum: ['codex', 'github', 'mcp'] }, scope: { type: 'object', additionalProperties: true }, external_ref: { type: 'string', minLength: 1, maxLength: 256 }, origin: { type: 'string', maxLength: 80 }, idempotency_key: idempotency, expected_revision: { type: 'integer', minimum: 0 } }, ['provider']),
-  'credential.rebind.v2': closed({ proof: { type: 'string', minLength: 1, maxLength: 4096 }, idempotency_key: idempotency, expected_revision: revision }, ['proof', 'expected_revision']),
-  'credential.rotate.v2': closed({ proof: { type: 'string', minLength: 1, maxLength: 4096 }, idempotency_key: idempotency, expected_revision: revision }, ['proof', 'expected_revision']),
+  'credential.rebind.v2': closed({ proof: { type: 'string', minLength: 1, maxLength: 524288 }, idempotency_key: idempotency, expected_revision: revision }, ['proof', 'expected_revision']),
+  'credential.rotate.v2': closed({ proof: { type: 'string', minLength: 1, maxLength: 524288 }, idempotency_key: idempotency, expected_revision: revision }, ['proof', 'expected_revision']),
   'credential.lifecycle.v2': closed({ reason: { type: 'string', maxLength: 200 }, idempotency_key: idempotency, expected_revision: revision }, ['expected_revision']),
   'profile.create.v2': closed({ provider: { enum: ['codex', 'github', 'mcp'] }, label: { type: 'string', minLength: 1, maxLength: 160 }, credential_ref_id: { type: 'string' }, credential_id: { type: 'string' }, config: { type: 'object', additionalProperties: true }, idempotency_key: idempotency, expected_revision: { type: 'integer', minimum: 0 } }, ['provider', 'label']),
   'profile.probe.v2': closed({ idempotency_key: idempotency, expected_revision: revision }, ['expected_revision']),
@@ -114,7 +115,7 @@ export const CLEAN_V2_SCHEMAS = Object.freeze({
   'workflow.revise.v2': closed({ graph: looseObject, nodes: { type: 'array', items: looseObject }, layout: looseObject, idempotency_key: idempotency, expected_revision: revision }, ['expected_revision']),
   'generation.start.v2': closed({ mode: { enum: ['initial', 'replan'] }, candidate: looseObject, provider: { type: 'string' }, idempotency_key: idempotency, expected_revision: revision }, ['expected_revision']),
   'generation.lifecycle.v2': closed({ idempotency_key: idempotency, expected_revision: revision }, ['expected_revision']),
-  'critic.evaluate.v2': closed({ candidate: looseObject, status: { enum: ['passed', 'rejected', 'failed'] }, issues: { type: 'array', items: looseObject }, idempotency_key: idempotency, expected_revision: revision }, ['status', 'expected_revision']),
+  'critic.evaluate.v2': closed({ candidate: looseObject, status: { enum: ['passed', 'rejected', 'failed'] }, issues: { type: 'array', items: looseObject }, idempotency_key: idempotency, expected_revision: revision }, ['expected_revision']),
   'proposal.apply.v2': closed({ idempotency_key: idempotency, expected_revision: revision }, ['expected_revision']),
   'outcome.requirement.create.v2': closed({ requirement_key: { type: 'string', minLength: 1, maxLength: 160 }, rubric: looseObject, workflow_revision: { type: 'integer', minimum: 0 }, idempotency_key: idempotency, expected_revision: { type: 'integer', minimum: 0 } }, ['requirement_key']),
 
@@ -363,6 +364,14 @@ export const CLEAN_V2_SCHEMAS = Object.freeze({
   'cas.gc.apply.receipt.v2': closed({ receipt: looseObject, operation: p4Operation }, ['receipt']),
 
   // P10 final business-parity contracts.
+  'codex.discovery.query.v2': p5Query({}),
+  'codex.discovery.import.v2': p10Mutation({ source_id: id, source_revision: { type: 'string', pattern: '^[a-f0-9]{64}$' }, record_id: id, confirmed: { const: true }, api_key: { type: 'string', minLength: 1, maxLength: 524288 }, label: { type: 'string', maxLength: 160 }, profile_label: { type: 'string', maxLength: 160 }, model: { type: 'string', maxLength: 160 } }, ['source_id', 'source_revision', 'record_id', 'confirmed']),
+  'codex.discovery.v2': closed({ sources: { type: 'array', maxItems: 3, items: looseObject } }, ['sources']),
+  'codex.discovery.receipt.v2': closed({ source_id: id, source_revision: { type: 'string' }, credential, profile, probe: operation, auth_type: { enum: ['api_key', 'chatgpt'] } }, ['source_id', 'source_revision', 'credential', 'profile', 'probe', 'auth_type']),
+  'codex.device-login.start.v2': p10Mutation({ label: { type: 'string', maxLength: 120 }, profile_label: { type: 'string', maxLength: 120 }, model: { type: 'string', maxLength: 160 }, timeout_ms: { type: 'integer', minimum: 30000, maximum: 900000 } }),
+  'codex.device-login.query.v2': p10Query({}, ['id']),
+  'codex.device-login.cancel.v2': p10Mutation({ reason: { type: 'string', maxLength: 200 } }),
+  'codex.device-login.operation.receipt.v2': closed({ login: looseObject, operation: p4Operation }, ['login', 'operation']),
   'profile.update.v2': p10Mutation({ label: { type: 'string', minLength: 1, maxLength: 160 }, credential_ref_id: id, credential_id: id, config: looseObject }),
   'profile.lifecycle.v2': p10Mutation({ reason: { type: 'string', maxLength: 500 } }),
   'brief.template.list.query.v2': p10Query({ team_id: id, include_archived: { type: 'boolean' } }),
@@ -401,6 +410,7 @@ export const CLEAN_V2_SCHEMAS = Object.freeze({
   'project.events.query.v2': closed({ project_id: id, cursor: { type: 'string', minLength: 1, maxLength: 4096 }, limit: { type: 'integer', minimum: 1, maximum: 500 }, format: { const: 'json' } }, ['project_id']),
   'setup.query.v2': closed({}),
   'account.query.v2': closed({}),
+  'project.list.query.v2': closed({ include_archived: { type: 'boolean' }, status: { type: 'string', maxLength: 40 } }),
   'team.id.v2': closed({ id }, ['id']),
 
   // P2 query/list outputs.

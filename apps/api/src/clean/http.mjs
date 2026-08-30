@@ -57,7 +57,18 @@ export function createCleanHttpHandler({ runtime, registry, maxBodyBytes = runti
         const result = await runtime.identity.setupComplete(body, { idempotencyKey, expectedRevision: expected });
         const safe = stripProof(result);
         const proof = result?.session?.proof;
-        return sendSuccess(res, requestId, safe, { status: 201, resourceType: 'setup', outputSchema: entry.output_schema, revision: 1, etag: etagFor(safe, 1), policy: runtime.policy, setCookie: proof ? sessionCookie(proof) : null });
+        return sendSuccess(res, requestId, safe, { status: 201, resourceType: 'setup', outputSchema: entry.output_schema, revision: 1, etag: etagFor(safe, 1), policy: runtime.policy, setCookie: proof ? sessionCookie(proof, body.ttl_seconds) : null });
+      }
+      if (entry.command_id === 'setup.session.create') {
+        validateQuery(url, new Set());
+        assertLoopbackSameOrigin(req, runtime.config);
+        const body = await readJson(req, maxBodyBytes);
+        validateFields(body, new Set(['ttl_seconds', 'idempotency_key']));
+        const idempotencyKey = requireIdempotency(req, body);
+        const created = await runtime.identity.createLocalOwnerSession({ ttlSeconds: body.ttl_seconds, idempotencyKey });
+        const proof = created.proof;
+        const safe = sessionReceipt(created);
+        return sendSuccess(res, requestId, safe, { status: 201, resourceType: 'session', outputSchema: entry.output_schema, revision: safe.session?.revision || 1, etag: etagFor(safe, safe.session?.revision || 1), policy: runtime.policy, setCookie: proof ? sessionCookie(proof, body.ttl_seconds) : null });
       }
       // MCP and Gateway have their own proof at the transport boundary.  All
       // other Clean routes continue to use the session principal resolver.
@@ -292,7 +303,7 @@ async function handleP5Route({ entry, params, url, req, res, requestId, runtime,
   }
   if (command === 'asset.content') return sendBinaryAsset(res, requestId, data);
   const revision = p5Revision(data);
-  return sendSuccess(res, requestId, data, { status, resourceType: p5ResourceType(command), outputSchema: entry.output_schema, revision, etag: etagFor(data, revision), policy: runtime.policy });
+  return sendSuccess(res, requestId, data, { status, resourceType: p5ResourceType(command), outputSchema: entry.output_schema, revision, etag: etagFor(data, revision), policy: runtime.policy, preserveKeys: command === 'provider.codex.discovery' ? ['credential_available'] : [] });
 }
 
 function sendBinaryAttachment(res, requestId, value, runtime) {
@@ -392,13 +403,13 @@ function hydrateP5MutationHeaders(entry, req, body) {
 }
 
 function p5Status(command, value) {
-  if (['assist.turn.create', 'assist.turn.retry', 'change.batch.apply', 'change.batch.undo', 'runner.profile.probe', 'execution.start', 'execution.resume', 'execution.stage.replay', 'parser.run.start', 'parser.run.retry', 'quality.start', 'quality.retry', 'outcome.evaluate', 'delivery.submit', 'delivery.intent.create', 'delivery.intent.ready', 'delivery.intent.merge', 'delivery.reconcile', 'deployment.verify', 'backup.create', 'restore.prepare', 'system.reset.prepare', 'operations.replay'].includes(command)) return 202;
-  if (['assist.session.create', 'assist.reference.create', 'attachment.create', 'change.batch.create', 'approval.create', 'user.input.create', 'proposal.create', 'terminal.open', 'bridge.pair', 'bridge.transfer.create', 'runner.profile.create', 'execution.create', 'execution.replan', 'asset.capture', 'asset.relation.create', 'asset.attest', 'outcome.waiver.create', 'outcome.waiver.revoke', 'delivery.policy.create', 'deployment.candidate.create', 'brief.template.create', 'project.deletion.prepare', 'repository.deletion.prepare', 'assist.session.fork', 'assist.session.side_thread', 'assist.configuration.create', 'assist.review.comment', 'assist.review.request_changes'].includes(command)) return value?.replayed ? 200 : 201;
+  if (['assist.turn.create', 'assist.turn.retry', 'change.batch.apply', 'change.batch.undo', 'runner.profile.probe', 'execution.start', 'execution.resume', 'execution.stage.replay', 'parser.run.start', 'parser.run.retry', 'quality.start', 'quality.retry', 'outcome.evaluate', 'delivery.submit', 'delivery.intent.create', 'delivery.intent.ready', 'delivery.intent.merge', 'delivery.reconcile', 'deployment.verify', 'backup.create', 'restore.prepare', 'system.reset.prepare', 'operations.replay', 'provider.codex.device_login.start', 'provider.codex.device_login.cancel'].includes(command)) return 202;
+  if (['assist.session.create', 'assist.reference.create', 'attachment.create', 'change.batch.create', 'approval.create', 'user.input.create', 'proposal.create', 'terminal.open', 'bridge.pair', 'bridge.transfer.create', 'runner.profile.create', 'execution.create', 'execution.replan', 'asset.capture', 'asset.relation.create', 'asset.attest', 'outcome.waiver.create', 'outcome.waiver.revoke', 'delivery.policy.create', 'deployment.candidate.create', 'brief.template.create', 'project.deletion.prepare', 'repository.deletion.prepare', 'assist.session.fork', 'assist.session.side_thread', 'assist.configuration.create', 'assist.review.comment', 'assist.review.request_changes', 'provider.codex.discovery.import'].includes(command)) return value?.replayed ? 200 : 201;
   return 200;
 }
 
 function p5Revision(value) { return value?.revision ?? value?.session?.revision ?? value?.turn?.revision ?? value?.goal?.revision ?? value?.attachment?.revision ?? value?.batch?.revision ?? value?.approval?.revision ?? value?.input?.revision ?? value?.proposal?.revision ?? value?.terminal?.revision ?? value?.device?.revision ?? value?.transfer?.revision ?? value?.profile?.revision ?? value?.template?.revision ?? value?.comment?.revision ?? value?.execution?.revision ?? value?.asset?.revision ?? value?.parser_run?.revision ?? value?.quality_review?.revision ?? value?.evaluation?.revision ?? value?.waiver?.revision ?? value?.policy?.revision ?? value?.delivery?.revision ?? value?.intent?.revision ?? value?.intent?.generation ?? value?.candidate?.revision ?? value?.operation?.revision ?? null; }
-function p5ResourceType(command) { if (command.startsWith('assist.review')) return 'assist_review_comment'; if (command.startsWith('assist.')) return command.startsWith('assist.turn') ? 'assist_turn' : 'assist_session'; if (command.startsWith('profile.')) return 'profile'; if (command.startsWith('brief.template')) return 'brief_template'; if (command.startsWith('project.deletion')) return 'project_deletion_intent'; if (command.startsWith('repository.deletion')) return 'repository_deletion_intent'; if (command.startsWith('attachment.')) return 'attachment'; if (command.startsWith('file.')) return 'file_ref'; if (command.startsWith('change.batch')) return 'file_change_batch'; if (command.startsWith('approval.')) return 'runtime_approval'; if (command.startsWith('user.input')) return 'runtime_user_input'; if (command.startsWith('proposal.')) return 'semantic_proposal'; if (command.startsWith('terminal.')) return 'terminal_session'; if (command.startsWith('bridge.transfer')) return 'bridge_transfer'; if (command.startsWith('bridge.')) return 'bridge_device'; if (command.startsWith('runner.profile')) return 'runner_profile'; if (command.startsWith('execution.')) return 'execution'; if (command.startsWith('asset.') || command.startsWith('evidence.')) return 'asset'; if (command.startsWith('parser.')) return 'parser_run'; if (command.startsWith('quality.')) return 'quality_review'; if (command.startsWith('outcome.')) return 'outcome_evaluation'; if (command.startsWith('delivery.')) return 'delivery'; if (command.startsWith('github.')) return 'github_repository'; if (command.startsWith('deployment.')) return 'deployment_candidate'; if (command.startsWith('backup.') || command.startsWith('restore.') || command.startsWith('system.reset')) return 'backup'; if (command.startsWith('import.')) return 'import_batch'; if (command.startsWith('cas.gc')) return 'cas_gc'; return 'resource'; }
+function p5ResourceType(command) { if (command.startsWith('provider.codex.discovery')) return 'provider_discovery'; if (command.startsWith('provider.codex.device_login')) return 'provider_device_login'; if (command.startsWith('assist.review')) return 'assist_review_comment'; if (command.startsWith('assist.')) return command.startsWith('assist.turn') ? 'assist_turn' : 'assist_session'; if (command.startsWith('profile.')) return 'profile'; if (command.startsWith('brief.template')) return 'brief_template'; if (command.startsWith('project.deletion')) return 'project_deletion_intent'; if (command.startsWith('repository.deletion')) return 'repository_deletion_intent'; if (command.startsWith('attachment.')) return 'attachment'; if (command.startsWith('file.')) return 'file_ref'; if (command.startsWith('change.batch')) return 'file_change_batch'; if (command.startsWith('approval.')) return 'runtime_approval'; if (command.startsWith('user.input')) return 'runtime_user_input'; if (command.startsWith('proposal.')) return 'semantic_proposal'; if (command.startsWith('terminal.')) return 'terminal_session'; if (command.startsWith('bridge.transfer')) return 'bridge_transfer'; if (command.startsWith('bridge.')) return 'bridge_device'; if (command.startsWith('runner.profile')) return 'runner_profile'; if (command.startsWith('execution.')) return 'execution'; if (command.startsWith('asset.') || command.startsWith('evidence.')) return 'asset'; if (command.startsWith('parser.')) return 'parser_run'; if (command.startsWith('quality.')) return 'quality_review'; if (command.startsWith('outcome.')) return 'outcome_evaluation'; if (command.startsWith('delivery.')) return 'delivery'; if (command.startsWith('github.')) return 'github_repository'; if (command.startsWith('deployment.')) return 'deployment_candidate'; if (command.startsWith('backup.') || command.startsWith('restore.') || command.startsWith('system.reset')) return 'backup'; if (command.startsWith('import.')) return 'import_batch'; if (command.startsWith('cas.gc')) return 'cas_gc'; return 'resource'; }
 
 async function handleP4Route({ entry, params, url, req, res, requestId, runtime, actor, mcpBoundary, bodyReader }) {
   const command = entry.command_id;
@@ -735,13 +746,20 @@ function p4ResourceType(command) {
 }
 
 async function handleP3Route({ entry, params, url, req, res, requestId, runtime, actor, bodyReader }) {
-  validateQuery(url, new Set());
   const command = entry.command_id;
+  validateQuery(url, command === 'project.list' ? new Set(['include_archived', 'status']) : new Set());
   let body = {};
   if (req.method !== 'GET') {
     body = await bodyReader();
     if (req.headers['idempotency-key'] && body.idempotency_key == null) body.idempotency_key = String(req.headers['idempotency-key']);
     hydrateMutationHeaders(entry, req, body);
+    if (command === 'critic.evaluate') {
+      // Critic status and issues are produced by the server adapter. Client
+      // payloads may carry context, but cannot force a passing verdict.
+      delete body.status;
+      delete body.issues;
+      delete body.candidate;
+    }
     if (command === 'brief.confirm') body.brief_revision = Number(params.revision);
     assertCleanV2(entry.input_schema, body);
   }
@@ -749,7 +767,7 @@ async function handleP3Route({ entry, params, url, req, res, requestId, runtime,
   let data;
   let status = 200;
   switch (command) {
-    case 'project.list': data = { projects: service.listProjects(actor) }; break;
+    case 'project.list': data = { projects: service.listProjects(actor, { includeArchived: parseBooleanQuery(url, 'include_archived'), status: singleQueryValue(url, 'status') }) }; break;
     case 'project.create': data = p3ProjectEnvelope(await service.createProject(body, actor)); status = 201; break;
     case 'project.get': {
       const project = service.getProject(params.id, actor);
@@ -858,7 +876,7 @@ function redactResponse(value, policy, preserveKeys = []) {
     if (Array.isArray(node)) return node.forEach((item, index) => walk(item, `${path}[${index}]`));
     for (const [key, item] of Object.entries(node)) {
       const current = `${path}.${key}`;
-      if (keys.has(key) && typeof item === 'string') {
+      if (keys.has(key) && (item === null || ['string', 'number', 'boolean'].includes(typeof item))) {
         preserved.push([current, item]);
         delete node[key];
       } else walk(item, current);
@@ -866,6 +884,8 @@ function redactResponse(value, policy, preserveKeys = []) {
   };
   walk(clone);
   const scanned = policy.redact(clone);
+  const restoredPaths = new Set(preserved.map(([path]) => path));
+  scanned.redactions = scanned.redactions.filter((finding) => !restoredPaths.has(finding.path));
   for (const [path, original] of preserved) setPath(scanned.value, path, original);
   return scanned;
 }
@@ -876,7 +896,7 @@ function structuredCloneSafe(value) {
 }
 
 function setPath(root, path, value) {
-  const parts = path.replace(/^\$\./, '').split('.');
+  const parts = path.replace(/^\$\.?/, '').match(/[^.[\]]+|\[(\d+)\]/g)?.map((part) => part.startsWith('[') ? Number(part.slice(1, -1)) : part) || [];
   let current = root;
   for (let index = 0; index < parts.length - 1; index += 1) {
     const part = parts[index];
@@ -917,7 +937,7 @@ async function handleIdentityRoute({ entry, params, url, req, res, requestId, ru
     case 'session.list': data = { sessions: runtime.identity.sessions(actor) }; break;
     case 'session.create': {
       data = await runtime.identity.createSession({ subjectActorId: actor.subjectActorId, effectiveActorId: actor.effectiveActorId, ttlSeconds: body.ttl_seconds, actorId: actor.actorId, idempotencyKey: requireIdempotency(req, body), expectedRevision: body.expected_revision });
-      setCookie = data.proof ? sessionCookie(data.proof) : null;
+      setCookie = data.proof ? sessionCookie(data.proof, body.ttl_seconds) : null;
       data = sessionReceipt(data);
       status = 201;
       break;
@@ -1070,8 +1090,37 @@ function stripProof(value) {
   return output;
 }
 
-function sessionCookie(proof) {
-  return `aiws_session=${encodeURIComponent(String(proof))}; Path=/; HttpOnly; SameSite=Strict`;
+function sessionCookie(proof, ttlSeconds = 30 * 24 * 60 * 60) {
+  const ttl = Number.isInteger(Number(ttlSeconds)) ? Math.max(300, Math.min(90 * 24 * 60 * 60, Number(ttlSeconds))) : 30 * 24 * 60 * 60;
+  return `aiws_session=${encodeURIComponent(String(proof))}; Path=/; Max-Age=${ttl}; HttpOnly; SameSite=Strict`;
+}
+
+function assertLoopbackSameOrigin(req, config = {}) {
+  if (req.headers['x-forwarded-for'] || req.headers['x-forwarded-host'] || req.headers['x-forwarded-proto']) {
+    throw new HttpError('local_session_denied', 'local session recovery does not accept forwarded requests', {}, 403, false);
+  }
+  const remoteAddress = String(req.socket?.remoteAddress || '').replace(/^::ffff:/, '');
+  if (!['127.0.0.1', '::1'].includes(remoteAddress)) {
+    throw new HttpError('local_session_denied', 'local session recovery requires a loopback connection', {}, 403, false);
+  }
+  const host = String(req.headers.host || '');
+  let requestOrigin;
+  let hostname;
+  try {
+    const parsed = new URL(`${req.socket?.encrypted ? 'https' : 'http'}://${host}`);
+    requestOrigin = parsed.origin;
+    hostname = parsed.hostname.replace(/^\[|\]$/g, '').toLowerCase();
+  } catch {
+    throw new HttpError('local_session_denied', 'local session recovery host is invalid', {}, 403, false);
+  }
+  if (!['127.0.0.1', '::1', 'localhost'].includes(hostname)) {
+    throw new HttpError('local_session_denied', 'local session recovery requires a loopback host', {}, 403, false);
+  }
+  const origin = String(req.headers.origin || '');
+  const trustedOrigins = new Set([requestOrigin, ...(config.corsOrigins || [])]);
+  if (!origin || !trustedOrigins.has(origin) || (req.headers['sec-fetch-site'] && req.headers['sec-fetch-site'] !== 'same-origin')) {
+    throw new HttpError('local_session_denied', 'local session recovery requires an exact same-origin request', {}, 403, false);
+  }
 }
 
 function sendError(res, requestId, error, runtime) {
@@ -1185,6 +1234,13 @@ function singleQueryValue(url, name) {
   const values = url.searchParams.getAll(name);
   if (values.length > 1) throw new HttpError('schema_invalid', `${name} must be provided once`, {}, 400, false);
   return values.length ? values[0] : null;
+}
+
+function parseBooleanQuery(url, name) {
+  const value = singleQueryValue(url, name);
+  if (value == null) return false;
+  if (value !== 'true' && value !== 'false') throw new HttpError('schema_invalid', `${name} must be a boolean`, {}, 400, false);
+  return value === 'true';
 }
 
 function replayLimit(url, defaultLimit = 500) {

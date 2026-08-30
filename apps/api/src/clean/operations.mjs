@@ -364,6 +364,31 @@ export class OperationService {
     return this.receiptFromRow(this.db.get('SELECT * FROM operations WHERE id=?', [String(operationId)]));
   }
 
+  listByCommand(commandId, { statuses = [], actorId = null } = {}) {
+    const clauses = ['command_id=?'];
+    const params = [String(commandId || '')];
+    const allowedStatuses = Array.isArray(statuses) ? statuses.map((value) => String(value)).filter(Boolean) : [];
+    if (allowedStatuses.length) {
+      clauses.push(`status IN (${allowedStatuses.map(() => '?').join(',')})`);
+      params.push(...allowedStatuses);
+    }
+    if (actorId && String(actorId) !== this.bootstrapActorId) {
+      clauses.push('actor_id=?');
+      params.push(String(actorId));
+    }
+    return this.db.query(`SELECT * FROM operations WHERE ${clauses.join(' AND ')} ORDER BY created_at,id`, params)
+      .map((row) => this.receiptFromRow(row));
+  }
+
+  findByResource(resourceType, resourceId, { actorId = null } = {}) {
+    const row = this.db.get('SELECT * FROM operations WHERE resource_type=? AND resource_id=? ORDER BY created_at DESC,id DESC LIMIT 1', [String(resourceType || ''), String(resourceId || '')]);
+    if (!row) return null;
+    if (actorId && String(actorId) !== this.bootstrapActorId && row.actor_id !== String(actorId)) {
+      throw new OperationError('permission_denied', 'operation belongs to another actor', {}, 403);
+    }
+    return this.receiptFromRow(row);
+  }
+
   links(operationId) {
     const id = String(operationId);
     this.get(id);

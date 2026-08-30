@@ -12,5 +12,6 @@ export class SessionService {
   get(id, principal) { return this.core.session(id, principal); }
   list(principal) { return this.core.sessions(principal); }
   create(input) { return this.core.createSession(input); }
+  createLocalOwner(input) { return this.core.createLocalOwnerSession(input); }
   revoke(id, input) { return this.core.revokeSession(id, input); }
 }

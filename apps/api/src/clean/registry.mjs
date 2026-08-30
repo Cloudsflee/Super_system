@@ -87,6 +87,7 @@ function identityEntries() {
   return [
     common('setup.get', 'GET', '/api/v2/setup', 'Setup', 'identity:read', 'setup.query.v2', 'setup.state.v2', ['setup.state.read'], { surface: 'setup', state: 'state' }),
     common('setup.complete', 'POST', '/api/v2/setup', 'Identity', 'identity:write', 'setup.complete.v2', 'setup.receipt.v2', ['setup.completed', 'actor.created', 'team.created', 'team.membership.granted', 'session.created'], { surface: 'setup', state: 'complete', expected_revision: 'parent' }),
+    { ...common('setup.session.create', 'POST', '/api/v2/setup/session', 'Identity', 'identity:write', 'setup.session.create.v2', 'session.receipt.v2', ['session.created'], { surface: 'setup', state: 'session-recovery', expected_revision: 'parent' }), transport_allowlist: Object.freeze(['rest', 'web']), mcp: { mapping: 'rest-only', name: 'setup_session_create', exposed: false } },
     common('account.get', 'GET', '/api/v2/account', 'Identity', 'identity:read', 'account.query.v2', 'actor.receipt.v2', ['actor.*'], { surface: 'account', state: 'read' }),
     common('account.update', 'PATCH', '/api/v2/account', 'Identity', 'identity:write', 'account.update.v2', 'actor.receipt.v2', ['actor.updated'], { surface: 'account', state: 'update' }),
     common('actor.list', 'GET', '/api/v2/actors', 'Identity', 'identity:read', 'actor.list.v2', 'actor.list.v2', ['actor.*'], { surface: 'actors', state: 'list' }),
@@ -139,7 +140,7 @@ function p3Entries() {
     evidence_metadata: { receipt_kind: options.long_running ? 'operation.receipt.v2' : 'resource.receipt.v2', verification: 'p3-project-workflow' }
   });
   return [
-    common('project.list', 'GET', '/api/v2/projects', 'Project', 'project:read', 'account.query.v2', 'project.list.v2', ['project.*'], { project_scoped: false, surface: 'projects', state: 'list' }),
+    common('project.list', 'GET', '/api/v2/projects', 'Project', 'project:read', 'project.list.query.v2', 'project.list.v2', ['project.*'], { project_scoped: false, surface: 'projects', state: 'list' }),
     common('project.create', 'POST', '/api/v2/projects', 'Project', 'project:write', 'project.create.v2', 'project.receipt.v2', ['project.created', 'intake.created', 'brief.created', 'project.workflow_initialized'], { project_scoped: false, expected_revision: 'parent', surface: 'projects', state: 'create' }),
     common('project.get', 'GET', '/api/v2/projects/{id}', 'Project', 'project:read', 'project.id.v2', 'project.get.v2', ['project.*'], { surface: 'projects', state: 'detail' }),
     common('project.update', 'PATCH', '/api/v2/projects/{id}', 'Project', 'project:write', 'project.update.v2', 'project.receipt.v2', ['project.updated'], { surface: 'projects', state: 'edit' }),
@@ -472,6 +473,11 @@ function p10Entries() {
     evidence_metadata: { receipt_kind: options.long_running ? 'operation.receipt.v2' : 'resource.receipt.v2', verification: 'p10-final-business-parity' }
   });
   return [
+    common('provider.codex.discovery', 'GET', '/api/v2/provider-discovery/codex', 'Setup', 'credential:read', 'codex.discovery.query.v2', 'codex.discovery.v2', ['profile.*'], { surface: 'profiles', state: 'host-discovery' }),
+    common('provider.codex.discovery.import', 'POST', '/api/v2/provider-discovery/codex/import', 'Setup', 'credential:write', 'codex.discovery.import.v2', 'codex.discovery.receipt.v2', ['credential.*','profile.*'], { surface: 'profiles', state: 'host-import', expected_revision: 'parent', external_adapter: 'codex-app-server' }),
+    common('provider.codex.device_login.start', 'POST', '/api/v2/provider-auth/codex/device-logins', 'Setup', 'credential:write', 'codex.device-login.start.v2', 'codex.device-login.operation.receipt.v2', ['credential.*','profile.*'], { surface: 'profiles', state: 'device-login', expected_revision: 'parent', external_adapter: 'codex-cli' }),
+    common('provider.codex.device_login.get', 'GET', '/api/v2/provider-auth/codex/device-logins/{id}', 'Setup', 'credential:read', 'codex.device-login.query.v2', 'codex.device-login.operation.receipt.v2', ['credential.*'], { surface: 'profiles', state: 'device-login-status' }),
+    common('provider.codex.device_login.cancel', 'POST', '/api/v2/provider-auth/codex/device-logins/{id}/cancel', 'Setup', 'credential:write', 'codex.device-login.cancel.v2', 'codex.device-login.operation.receipt.v2', ['credential.*'], { surface: 'profiles', state: 'device-login-cancel' }),
     common('profile.update', 'PATCH', '/api/v2/profiles/{id}', 'Setup', 'credential:write', 'profile.update.v2', 'profile.receipt.v2', ['profile.updated'], { surface: 'profiles' }),
     common('profile.disable', 'POST', '/api/v2/profiles/{id}/disable', 'Setup', 'credential:write', 'profile.lifecycle.v2', 'profile.receipt.v2', ['profile.disabled'], { surface: 'profiles' }),
     common('profile.enable', 'POST', '/api/v2/profiles/{id}/enable', 'Setup', 'credential:write', 'profile.lifecycle.v2', 'profile.receipt.v2', ['profile.enabled'], { surface: 'profiles' }),

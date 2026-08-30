@@ -42,12 +42,13 @@ class ProjectWorkflowCore {
 
   // ----- Project and intake -------------------------------------------------
 
-  listProjects(principal) {
+  listProjects(principal, { includeArchived = false, status = null } = {}) {
     requirePrincipal(principal);
-    return this.db
-      .query("SELECT * FROM projects WHERE status<>'archived' ORDER BY created_at,id")
+    const rows = this.db
+      .query(`SELECT * FROM projects WHERE (? = 1 OR status<>'archived') AND (? IS NULL OR status=?) ORDER BY created_at,id`, [includeArchived ? 1 : 0, status == null ? null : String(status), status == null ? null : String(status)])
       .filter((row) => this.#allowed(principal, 'read', row.id))
       .map((row) => this.#projectView(row));
+    return rows;
   }
 
   getProject(projectId, principal) {

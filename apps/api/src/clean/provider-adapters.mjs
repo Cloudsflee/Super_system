@@ -54,7 +54,7 @@ export class CodexProfileProbeAdapter {
   async probe({ credential } = {}) {
     if (!Buffer.isBuffer(credential) || !credential.length) throw new PlatformError('rebind_required', 'Codex credential lease is required', {}, 409);
     const result = await this.process.probe({ credential });
-    return { available: result.available === true, provider: 'codex', adapter: 'process-app-server', protocol_version: result.protocol_version, schema_sha256: result.schema_sha256 };
+    return { available: result.available === true, provider: 'codex', adapter: 'process-app-server', protocol_version: result.protocol_version, schema_sha256: result.schema_sha256, ...(Buffer.isBuffer(result.credential_rotation) ? { credential_rotation: result.credential_rotation } : {}) };
   }
 }
 

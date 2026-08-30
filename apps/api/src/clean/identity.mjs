@@ -130,6 +130,31 @@ class IdentityCoreService {
     });
   }
 
+  /** Creates a fresh browser session only when one active local owner exists. */
+  createLocalOwnerSession({ ttlSeconds = 30 * 24 * 60 * 60, idempotencyKey } = {}) {
+    const owners = this.db.query(`SELECT DISTINCT actor.id,actor.revision
+      FROM actors actor
+      JOIN team_memberships membership ON membership.actor_id=actor.id
+      JOIN teams team ON team.id=membership.team_id
+      WHERE actor.kind='user' AND actor.status='active'
+        AND membership.role='owner' AND membership.status='active'
+        AND team.status='active'
+      ORDER BY actor.id`);
+    const activeUsers = Number(this.db.get("SELECT count(*) AS count FROM actors WHERE kind='user' AND status='active'")?.count || 0);
+    if (owners.length !== 1 || activeUsers !== 1) {
+      throw new PlatformError('local_owner_ambiguous', 'exactly one active local owner is required', { active_owner_count: owners.length, active_user_count: activeUsers }, 409);
+    }
+    const owner = owners[0];
+    return this.createSession({
+      subjectActorId: owner.id,
+      effectiveActorId: owner.id,
+      ttlSeconds,
+      actorId: owner.id,
+      expectedRevision: Number(owner.revision),
+      idempotencyKey
+    });
+  }
+
   authenticateProof(proof, { touch = true } = {}) {
     const value = String(proof || '');
     if (!/^[A-Za-z0-9_-]{40,200}$/.test(value)) throw new PlatformError('authentication_required', 'active session proof is required', {}, 401);
@@ -826,8 +851,8 @@ class IdentityCoreService {
     if (!row) throw notFound('credential');
     const key = requireKey(input.idempotency_key);
     const expected = positiveRevision(input.expected_revision ?? input.expectedRevision);
-    const proof = input.proof == null ? '' : String(input.proof);
-    if (!proof || proof.length > 4096) throw new PlatformError('schema_invalid', 'credential proof is invalid', {}, 422);
+    const proof = Buffer.isBuffer(input.proof) ? input.proof : Buffer.from(input.proof == null ? '' : String(input.proof), 'utf8');
+    if (!proof.length || proof.length > 512 * 1024) throw new PlatformError('schema_invalid', 'credential proof is invalid', {}, 422);
     const allowedStates = commandId === 'credential.rotate' ? new Set(['active']) : new Set(['rebind_required', 'failed']);
     const hash = hashRequest({ credential_id: row.id, expected_revision: expected, proof_fingerprint: this.#proofHash(proof) });
     if (!this.operations) throw new PlatformError('internal_error', 'operation service is unavailable', {}, 503);
@@ -939,27 +964,52 @@ class IdentityCoreService {
     await this.operations.start(op.operation_id, { actorId: principal.actorId, expectedRevision: op.revision + 1 });
     let result = { available: true, provider: row.provider, adapter: 'fake-contract' };
     let credentialLease = null;
+    let rotatedLease = null;
+    let rotatedVaultRef = null;
+    let credentialRow = null;
+    let priorVaultRef = null;
     try {
       const adapter = this.providerAdapters[row.provider];
       if (row.credential_ref_id && adapter?.requiresCredentialLease) {
-        const credential = this.db.get('SELECT external_ref FROM credential_refs WHERE id=? AND owner_actor_id=?', [row.credential_ref_id, principal.actorId]);
-        if (!credential || !String(credential.external_ref || '').startsWith('vault:') || !this.vault) throw new PlatformError('rebind_required', 'profile credential requires rebind', {}, 409);
-        credentialLease = Buffer.from(this.vault.read(credential.external_ref));
+        credentialRow = this.db.get('SELECT * FROM credential_refs WHERE id=? AND owner_actor_id=?', [row.credential_ref_id, principal.actorId]);
+        if (!credentialRow || !String(credentialRow.external_ref || '').startsWith('vault:') || !this.vault) throw new PlatformError('rebind_required', 'profile credential requires rebind', {}, 409);
+        credentialLease = Buffer.from(this.vault.read(credentialRow.external_ref));
       }
       if (adapter?.probe) result = await adapter.probe({ profile: profileView(row), credential: credentialLease });
-      return await this.db.withTransaction((tx) => {
+      if (Buffer.isBuffer(result?.credential_rotation)) {
+        rotatedLease = result.credential_rotation;
+        const { credential_rotation: _credentialRotation, ...publicResult } = result;
+        result = publicResult;
+        if (credentialRow && (credentialLease.length !== rotatedLease.length || !timingSafeEqual(credentialLease, rotatedLease))) {
+          priorVaultRef = credentialRow.external_ref;
+          rotatedVaultRef = this.vault.put(`${credentialRow.id}.v${Number(credentialRow.revision) + 1}`, rotatedLease).external_ref;
+        }
+      }
+      const receipt = await this.db.withTransaction((tx) => {
         const now = this.#time();
         const current = tx.get('SELECT * FROM provider_profiles WHERE id=?', [row.id]);
         if (Number(current.revision) !== pending.revision || current.status !== 'probing') throw revisionConflict(pending.revision, current.revision);
+        let credentialRevision = null;
+        if (rotatedVaultRef && credentialRow) {
+          const credential = tx.get('SELECT * FROM credential_refs WHERE id=?', [credentialRow.id]);
+          if (!credential || credential.status !== 'active' || Number(credential.revision) !== Number(credentialRow.revision)) throw revisionConflict(credentialRow.revision, credential?.revision || 0);
+          credentialRevision = Number(credential.revision) + 1;
+          tx.run('UPDATE credential_refs SET external_ref=?,revision=?,updated_at=?,updated_by_actor_id=? WHERE id=? AND revision=?', [rotatedVaultRef, credentialRevision, now, principal.actorId, credential.id, credential.revision], 1);
+          appendAggregate(tx, this.events, { aggregateType: 'credential', aggregateId: credential.id, revision: credentialRevision, operationId: op.operation_id, actorId: principal.actorId, type: 'credential.rotated', data: { credential_id: credential.id, status: 'active', source: 'provider_probe' }, payload: { id: credential.id, provider: credential.provider, status: 'active', external_ref: rotatedVaultRef, revision: credentialRevision }, now });
+          linkOperation(tx, op.operation_id, 'credential', credential.id, now);
+        }
         const status = result?.available === false ? 'unavailable' : 'available';
         const revision = pending.revision + 1;
         tx.run('UPDATE provider_profiles SET status=?,last_probe_at=?,revision=?,updated_at=?,updated_by_actor_id=? WHERE id=? AND revision=?', [status, now, revision, now, principal.actorId, row.id, pending.revision], 1);
         appendAggregate(tx, this.events, { aggregateType: 'profile', aggregateId: row.id, revision, operationId: op.operation_id, actorId: principal.actorId, type: 'profile.probed', data: { profile_id: row.id, status }, payload: { id: row.id, provider: row.provider, status, revision }, now });
         linkOperation(tx, op.operation_id, 'profile', row.id, now);
         const latest = tx.get('SELECT * FROM operations WHERE id=?', [op.operation_id]);
-        return this.operations.transitionInTransaction(tx, op.operation_id, 'succeeded', { actorId: principal.actorId, expectedRevision: latest.revision, result: { profile_id: row.id, status, adapter: String(result?.adapter || 'fake-contract'), resource_revision: revision } }, now);
+        return this.operations.transitionInTransaction(tx, op.operation_id, 'succeeded', { actorId: principal.actorId, expectedRevision: latest.revision, result: { profile_id: row.id, status, adapter: String(result?.adapter || 'fake-contract'), resource_revision: revision, ...(credentialRevision ? { credential_revision: credentialRevision } : {}) } }, now);
       });
+      if (rotatedVaultRef && priorVaultRef && priorVaultRef !== rotatedVaultRef) try { this.vault.remove(priorVaultRef); } catch { /* old encrypted generation is unreferenced */ }
+      return receipt;
     } catch (error) {
+      if (rotatedVaultRef) try { this.vault?.remove(rotatedVaultRef); } catch { /* preserve probe failure */ }
       const errorCode = operationErrorCode(error, 'profile_probe_failed');
       return this.db.withTransaction((tx) => {
         const now = this.#time();
@@ -973,6 +1023,7 @@ class IdentityCoreService {
       });
     } finally {
       credentialLease?.fill(0);
+      rotatedLease?.fill(0);
     }
   }
 
@@ -1092,7 +1143,10 @@ class IdentityCoreService {
   #actorIn(tx, id) { return actorView(tx.get('SELECT * FROM actors WHERE id=?', [id])); }
   #teamIn(tx, id) { return teamView(tx.get('SELECT * FROM teams WHERE id=?', [id])); }
   #membershipIn(tx, id) { return membershipView(tx.get('SELECT tm.*,a.kind,a.display_name,a.status AS actor_status FROM team_memberships tm JOIN actors a ON a.id=tm.actor_id WHERE tm.id=?', [id])); }
-  #proofHash(proof) { return createHmac('sha256', this.sessionSecret).update(String(proof), 'utf8').digest('hex'); }
+  #proofHash(proof) {
+    const digest = createHmac('sha256', this.sessionSecret);
+    return (Buffer.isBuffer(proof) ? digest.update(proof) : digest.update(String(proof), 'utf8')).digest('hex');
+  }
   #assertSafe(value) { return this.policy?.assertSafe ? this.policy.assertSafe(value) : value; }
   #time() { const value = typeof this.clock === 'function' ? this.clock() : this.clock; return typeof value === 'string' ? value : new Date(value).toISOString(); }
 }
@@ -1140,6 +1194,7 @@ export class IdentityService {
   session(...args) { return this.sessionService.get(...args); }
   sessions(...args) { return this.sessionService.list(...args); }
   createSession(...args) { return this.sessionService.create(...args); }
+  createLocalOwnerSession(...args) { return this.sessionService.createLocalOwner(...args); }
   revokeSession(...args) { return this.sessionService.revoke(...args); }
 
   actorSwitch(...args) { return this.actorService.switch(...args); }
@@ -1252,7 +1307,10 @@ function forbidden(message) { return new PlatformError('permission_denied', mess
 function requirePrincipal(principal) { if (!principal?.actorId) throw new PlatformError('authentication_required', 'active session proof is required', {}, 401); }
 function extractProof(request) {
   const cookie = String(request?.headers?.cookie || '').split(';').map((part) => part.trim()).find((part) => part.startsWith('aiws_session='));
-  if (cookie) return decodeURIComponent(cookie.slice('aiws_session='.length));
+  if (cookie) {
+    try { return decodeURIComponent(cookie.slice('aiws_session='.length)); }
+    catch { return null; }
+  }
   return null;
 }
 

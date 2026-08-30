@@ -1,4 +1,5 @@
 import path from 'node:path';
+import os from 'node:os';
 
 export function loadCleanConfig(env = process.env) {
   const home = path.resolve(String(env.AIWS_CLEAN_HOME || env.AIWS_HOME || path.join(process.cwd(), '.ai-workspace', 'v3-clean')));
@@ -39,6 +40,12 @@ export function loadCleanConfig(env = process.env) {
     providerCommand: String(env.AIWS_CLEAN_PROVIDER_COMMAND || 'codex'),
     providerTimeoutMs,
     providerHomeRoot: path.resolve(String(env.AIWS_CLEAN_PROVIDER_HOME || path.join(home, 'provider-homes'))),
+    providerDiscoverySecret: String(env.AIWS_CLEAN_DISCOVERY_SECRET || env.AIWS_CLEAN_SESSION_SECRET || env.AIWS_CLEAN_CURSOR_SECRET || 'v3-clean-local-discovery'),
+    codexDiscoveryRoots: Object.freeze([
+      ...(env.AIWS_HOST_CODEX_HOME ? [{ hint: 'AIWS_HOST_CODEX_HOME', path: path.resolve(String(env.AIWS_HOST_CODEX_HOME)), priority: 1 }] : []),
+      ...(env.CODEX_HOME ? [{ hint: 'CODEX_HOME', path: path.resolve(String(env.CODEX_HOME)), priority: 2 }] : []),
+      { hint: '~/.codex', path: path.resolve(os.homedir(), '.codex'), priority: 3 }
+    ]),
     bridgeUrl: env.AIWS_WINDOWS_BRIDGE_URL ? String(env.AIWS_WINDOWS_BRIDGE_URL).replace(/\/$/, '') : null,
     runnerBrokerUrl: env.AIWS_RUNNER_BROKER_URL ? String(env.AIWS_RUNNER_BROKER_URL).replace(/\/$/, '') : null,
     runnerBrokerSecret: String(env.AIWS_RUNNER_BROKER_SECRET || (production ? '' : 'p6-clean-broker-fixture-secret')),

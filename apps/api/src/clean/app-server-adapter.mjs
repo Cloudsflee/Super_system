@@ -23,6 +23,7 @@ export const APP_SERVER_SCHEMA = Object.freeze({
 export const APP_SERVER_SCHEMA_SHA256 = sha256Hex(canonicalJson(APP_SERVER_SCHEMA));
 
 const INLINE_CREDENTIAL_KEY = /(?:token|secret|password|authorization|api[_-]?key|bearer)/i;
+const MAX_AUTH_BUNDLE_BYTES = 512 * 1024;
 const PROVIDER_DEFINITION_FIELDS = Object.freeze([
   'name', 'base_url', 'wire_api', 'requires_openai_auth', 'request_max_retries',
   'stream_max_retries', 'stream_idle_timeout_ms'
@@ -189,13 +190,15 @@ export class ProcessAppServerAdapter {
     const schema = await this.generatedSchema();
     const home = this.createIsolatedHome('probe');
     let connection;
+    let result;
+    let credentialRotation = null;
     try {
       connection = await this.openConnection({ home, credential });
-      const result = connection.initializeResult;
+      const initialized = connection.initializeResult;
       const missing = APP_SERVER_METHODS.filter((method) => method !== 'initialize' && !schema.methods.has(method));
       if (missing.length) throw new PlatformError('provider_protocol_drift', 'app-server method inventory changed', { missing_methods: missing }, 503);
-      if (!result?.userAgent || !result?.platformFamily) throw new PlatformError('provider_protocol_drift', 'app-server initialize response is incomplete', {}, 503);
-      return {
+      if (!initialized?.userAgent || !initialized?.platformFamily) throw new PlatformError('provider_protocol_drift', 'app-server initialize response is incomplete', {}, 503);
+      result = {
         available: true,
         protocol_version: APP_SERVER_PROTOCOL_VERSION,
         schema_sha256: APP_SERVER_SCHEMA_SHA256,
@@ -205,8 +208,10 @@ export class ProcessAppServerAdapter {
       };
     } finally {
       await connection?.close();
+      credentialRotation = connection?.readCredentialRotation?.() || null;
       await removeIsolatedProviderTree(home);
     }
+    return credentialRotation ? { ...result, credential_rotation: credentialRotation } : result;
   }
 
   createIsolatedHome(label = 'session') {
@@ -380,7 +385,11 @@ export class ProcessAppServerAdapter {
 class JsonRpcConnection {
   constructor({ command, args, env, home, credential, timeoutMs }) {
     const childEnv = { ...env, CODEX_HOME: home };
-    if (credential != null) childEnv.OPENAI_API_KEY = Buffer.isBuffer(credential) ? credential.toString('utf8') : String(credential);
+    this.credentialLease = stageProviderCredential(home, credential);
+    if (this.credentialLease.kind === 'api_key') {
+      childEnv.OPENAI_API_KEY = this.credentialLease.value.toString('utf8');
+      this.credentialLease.value.fill(0);
+    }
     this.timeoutMs = timeoutMs;
     this.pending = new Map();
     this.listeners = new Set();
@@ -434,6 +443,19 @@ class JsonRpcConnection {
       }
     })();
     return this.closePromise;
+  }
+
+  readCredentialRotation() {
+    if (this.credentialLease.kind !== 'auth_bundle') return null;
+    const target = path.join(this.credentialLease.home, 'auth.json');
+    let bytes;
+    try { bytes = readBoundRegularFile(target, MAX_AUTH_BUNDLE_BYTES); }
+    catch { return null; }
+    if (sha256Hex(bytes) === this.credentialLease.originalSha256) {
+      bytes.fill(0);
+      return null;
+    }
+    return bytes;
   }
 
   consume(chunk) {
@@ -551,6 +573,38 @@ function providerProcessEnvironment(env) {
     if (PROVIDER_ENVIRONMENT_KEYS.has(normalized) || normalized.startsWith('LC_') || normalized.endsWith('_HOME')) output[key] = String(value);
   }
   return output;
+}
+
+function stageProviderCredential(home, credential) {
+  if (credential == null) return { kind: 'none', value: Buffer.alloc(0) };
+  const value = Buffer.isBuffer(credential) ? Buffer.from(credential) : Buffer.from(String(credential), 'utf8');
+  if (!value.length || value.length > MAX_AUTH_BUNDLE_BYTES) {
+    value.fill(0);
+    throw providerConfigError('provider credential lease is invalid');
+  }
+  let parsed = null;
+  try { parsed = JSON.parse(value.toString('utf8')); } catch { /* raw API key */ }
+  const authBundle = parsed && typeof parsed === 'object' && !Array.isArray(parsed)
+    && (parsed.auth_mode === 'chatgpt' || parsed.tokens || parsed.access_token || parsed.refresh_token || parsed.last_refresh);
+  if (!authBundle) return { kind: 'api_key', value };
+  const target = path.join(home, 'auth.json');
+  fs.writeFileSync(target, value, { mode: 0o600, flag: 'wx' });
+  const originalSha256 = sha256Hex(value);
+  value.fill(0);
+  return { kind: 'auth_bundle', value: Buffer.alloc(0), originalSha256, home };
+}
+
+function readBoundRegularFile(file, maximum) {
+  const before = fs.lstatSync(file);
+  if (!before.isFile() || before.isSymbolicLink() || before.size < 2 || before.size > maximum) throw providerConfigError('provider auth bundle is invalid');
+  const descriptor = fs.openSync(file, fs.constants.O_RDONLY | (fs.constants.O_NOFOLLOW || 0));
+  try {
+    const current = fs.fstatSync(descriptor);
+    if (!current.isFile() || current.size !== before.size || current.size > maximum) throw providerConfigError('provider auth bundle is invalid');
+    const bytes = fs.readFileSync(descriptor);
+    JSON.parse(bytes.toString('utf8'));
+    return bytes;
+  } finally { fs.closeSync(descriptor); }
 }
 function resolveCodexCommand(command) {
   if (process.platform !== 'win32' || command !== 'codex') return command;

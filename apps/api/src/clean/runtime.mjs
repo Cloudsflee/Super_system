@@ -35,6 +35,7 @@ import { P7_PARSER_IMAGE_DIGEST } from './migrations/007-evidence-quality-parser
 import { P10_PARSER_IMAGE_DIGEST } from './migrations/009-final-business-parity-governance.mjs';
 import { CleanP8Service } from './p8-service.mjs';
 import { CleanP10Service } from './p10-service.mjs';
+import { CleanLocalSetupService } from './local-setup-service.mjs';
 
 export function createCleanRuntime(options = {}) {
   const config = options.config || loadCleanConfig(options.env || process.env);
@@ -96,7 +97,8 @@ export function createCleanRuntime(options = {}) {
   const outcomeEvaluation = targetVersion >= 7 ? new CleanOutcomeEvaluationService({ db, events, operations, authorization, clock: options.now || undefined, bootstrapActorId: initialized.metadata.bootstrap_actor_id }) : null;
   const p8Service = targetVersion >= 8 ? new CleanP8Service({ db, cas, events, operations, authorization, vault, projectWorkflow, githubAdapter: options.githubAdapter, operationsAdapter: options.operationsAdapter, config, clock: options.now || undefined, bootstrapActorId: initialized.metadata.bootstrap_actor_id }) : null;
   const p10Service = targetVersion >= 9 ? new CleanP10Service({ db, cas, events, operations, authorization, vault, assist, githubAdapter: p8Service?.github || options.githubAdapter, repositoryDeletionAdapter: options.repositoryDeletionAdapter, clock: options.now || undefined }) : null;
-  const dispatcher = targetVersion >= 4 ? new CleanCommandDispatcher({ registry, context, mcp, gateway, projectWorkflow, operations, events, identity, assist, files, terminal, bridge, runner, execution, evidence, parser, quality, outcomeEvaluation, p8Service, p10Service }) : null;
+  const localSetup = targetVersion >= 9 ? new CleanLocalSetupService({ config, db, identity, operations, clock: options.now || undefined, deviceLoginRunner: options.deviceLoginRunner, spawnImpl: options.deviceLoginSpawn }) : null;
+  const dispatcher = targetVersion >= 4 ? new CleanCommandDispatcher({ registry, context, mcp, gateway, projectWorkflow, operations, events, identity, assist, files, terminal, bridge, runner, execution, evidence, parser, quality, outcomeEvaluation, p8Service, p10Service, localSetup }) : null;
   if (mcp) mcp.dispatcher = dispatcher;
   const recovery = (async () => {
     const identityResult = await identity.recoverPending();
@@ -113,7 +115,8 @@ export function createCleanRuntime(options = {}) {
     const outcomeResult = await (outcomeEvaluation?.recoverPending?.() || 0);
     const p8Result = await (p8Service?.recoverPending?.() || 0);
     const p10Result = await (p10Service?.recoverPending?.() || 0);
-    return [identityResult, projectResult, contextResult, assistResult, filesResult, terminalResult, bridgeResult, executionResult, evidenceResult, parserResult, qualityResult, outcomeResult, p8Result, p10Result];
+    const localSetupResult = await (localSetup?.recover?.() || 0);
+    return [identityResult, projectResult, contextResult, assistResult, filesResult, terminalResult, bridgeResult, executionResult, evidenceResult, parserResult, qualityResult, outcomeResult, p8Result, p10Result, localSetupResult];
   })();
   events.authorize = (context) => authorization.authorize({ actorId: context.actorId, effectiveActorId: context.actorId, scopes: ['*'] }, 'read', context.projectId, { events: context.events }).allowed;
   let casManifest;
@@ -166,6 +169,7 @@ export function createCleanRuntime(options = {}) {
     outcomeEvaluation,
     p8Service,
     p10Service,
+    localSetup,
     dispatcher,
     project: projectWorkflow,
     repository: projectWorkflow,
@@ -196,12 +200,13 @@ export function createCleanRuntime(options = {}) {
       return { runtime: 'v3-clean', runtime_phase: this.runtimePhase, ready: this.ready, readiness_reason: this.readinessReason, readiness_receipt: this.readinessReceipt, schema_family: this.metadata.family, user_version: this.metadata.user_version, cas_manifest: this.casManifest || null, p2: this.p2, p3: this.p3, p4: this.p4, p5: this.p5, p6: this.p6, p7: this.p7, p8: this.p8, p9: this.p9, p10: this.p10 };
     },
     close() {
+      const localSetupClose = this.localSetup?.close?.();
       this.terminal?.close?.();
       this.evidence?.close?.();
       this.outcomeEvaluation?.close?.();
       const providerClose = this.assist?.close?.();
       this.db.close();
-      return Promise.resolve(providerClose);
+      return Promise.all([Promise.resolve(providerClose), Promise.resolve(localSetupClose)]).then(() => undefined);
     }
   };
   runtime.ready = false;

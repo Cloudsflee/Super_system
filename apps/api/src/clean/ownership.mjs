@@ -158,6 +158,7 @@ export const CLEAN_COMMAND_OWNERS = Object.freeze({
   'events.project.replay': 'Operations',
   'setup.get': 'Setup',
   'setup.complete': 'Identity',
+  'setup.session.create': 'Identity',
   'account.get': 'Identity',
   'account.update': 'Identity',
   'actor.list': 'Identity',
@@ -403,6 +404,11 @@ export const CLEAN_COMMAND_OWNERS = Object.freeze({
   , 'cas.gc.plan': 'CAS'
   , 'cas.gc.apply': 'CAS'
   , 'profile.update': 'Setup'
+  , 'provider.codex.discovery': 'Setup'
+  , 'provider.codex.discovery.import': 'Setup'
+  , 'provider.codex.device_login.start': 'Setup'
+  , 'provider.codex.device_login.get': 'Setup'
+  , 'provider.codex.device_login.cancel': 'Setup'
   , 'profile.disable': 'Setup'
   , 'profile.enable': 'Setup'
   , 'brief.template.list': 'Project'
@@ -567,7 +573,7 @@ export function validateCleanOwnership({ tables = [], registry = null } = {}) {
     const hasP4Tables = actualTables.includes('context_sources');
     const hasP3Tables = actualTables.includes('projects');
     const p8OperationCommands = new Set(['operations.list', 'operations.replay', 'backup.list', 'backup.create', 'restore.prepare', 'system.reset.prepare', 'cas.gc.plan', 'cas.gc.apply']);
-    const p10Commands = new Set(Object.keys(CLEAN_COMMAND_OWNERS).filter((commandId) => ['profile.update','profile.disable','profile.enable','brief.template.list','brief.template.create','brief.template.update','brief.template.archive','project.deletion.prepare','project.deletion.get','project.deletion.confirm','project.deletion.execute','project.deletion.cancel','repository.deletion.prepare','repository.deletion.get','repository.deletion.creator_confirm','repository.deletion.owner_confirm','repository.deletion.execute','repository.deletion.reconcile','repository.deletion.cancel','assist.session.metadata','assist.session.archive','assist.session.restore','assist.session.delete','assist.session.restore_deleted','assist.session.fork','assist.session.side_thread','assist.configuration.create','assist.review.comments','assist.review.comment','assist.review.request_changes','quality.policy.get','quality.policy.update','quality.prepare','quality.advice.get'].includes(commandId)));
+    const p10Commands = new Set(Object.keys(CLEAN_COMMAND_OWNERS).filter((commandId) => ['provider.codex.discovery','provider.codex.discovery.import','provider.codex.device_login.start','provider.codex.device_login.get','provider.codex.device_login.cancel','profile.update','profile.disable','profile.enable','brief.template.list','brief.template.create','brief.template.update','brief.template.archive','project.deletion.prepare','project.deletion.get','project.deletion.confirm','project.deletion.execute','project.deletion.cancel','repository.deletion.prepare','repository.deletion.get','repository.deletion.creator_confirm','repository.deletion.owner_confirm','repository.deletion.execute','repository.deletion.reconcile','repository.deletion.cancel','assist.session.metadata','assist.session.archive','assist.session.restore','assist.session.delete','assist.session.restore_deleted','assist.session.fork','assist.session.side_thread','assist.configuration.create','assist.review.comments','assist.review.comment','assist.review.request_changes','quality.policy.get','quality.policy.update','quality.prepare','quality.advice.get'].includes(commandId)));
     const expectedCommandIds = Object.entries(CLEAN_COMMAND_OWNERS)
       .filter(([commandId, owner]) => {
         if (commandId === 'events.project.replay' && !hasP9Routes) return false;
