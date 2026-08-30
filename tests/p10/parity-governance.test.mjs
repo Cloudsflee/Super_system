@@ -46,4 +46,5 @@ test('P10 Evidence patch excludes its append-only tree and enforces a publishabl
   assert.match(source, /const maxPatchBytes = 50 \* 1024 \* 1024/);
   assert.match(source, /`:\(exclude\)\$\{evidencePrefix\}\*\*`/);
   assert.match(source, /p10_change_patch_too_large/);
+  assert.match(fs.readFileSync('.gitattributes', 'utf8'), /docs\/evidence\/v3-clean-p10-final-governance-20260829\/\*\* -text/);
 });
