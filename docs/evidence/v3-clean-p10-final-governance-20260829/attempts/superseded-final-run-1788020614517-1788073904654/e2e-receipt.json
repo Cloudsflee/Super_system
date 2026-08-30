@@ -1,0 +1,3161 @@
+{
+  "schema_version": "aiws.v3-clean.p10-e2e-receipt.v1",
+  "status": "passed",
+  "provisional": false,
+  "api_port": 65308,
+  "web_port": 65309,
+  "viewports": [
+    "mobile",
+    "laptop",
+    "desktop"
+  ],
+  "routes": [
+    "governance",
+    "context",
+    "settings",
+    "execution",
+    "execution-quality",
+    "execution-outcome",
+    "evidence",
+    "connections",
+    "outcome",
+    "delivery",
+    "operations",
+    "identity",
+    "exchange",
+    "runner",
+    "parser",
+    "deployment",
+    "backup",
+    "importer"
+  ],
+  "business_groups": [
+    "identity-acl",
+    "provider-settings",
+    "project-brief",
+    "workflow",
+    "repository",
+    "context",
+    "assist",
+    "files-approval",
+    "terminal-bridge",
+    "runner-execution",
+    "evidence",
+    "parser",
+    "quality",
+    "outcome",
+    "mcp-exchange-gateway",
+    "delivery",
+    "operations-recovery",
+    "offline-pwa",
+    "web-complete-experience"
+  ],
+  "request_count": 1160,
+  "legacy_api_v1_requests": [],
+  "browser_errors": [],
+  "http_errors": [],
+  "layouts": [
+    {
+      "viewport": "mobile",
+      "route": "governance",
+      "horizontal_overflow": false,
+      "scroll_width": 390,
+      "client_width": 390,
+      "overlaps": [],
+      "overflowing_elements": [
+        {
+          "tag": "ASIDE",
+          "class_name": "sidebar ",
+          "left": -235,
+          "right": -5,
+          "width": 230
+        },
+        {
+          "tag": "DIV",
+          "class_name": "brand-row",
+          "left": -227,
+          "right": -13,
+          "width": 214
+        },
+        {
+          "tag": "DIV",
+          "class_name": "brand-mark",
+          "left": -219,
+          "right": -185,
+          "width": 34
+        },
+        {
+          "tag": "DIV",
+          "class_name": "",
+          "left": -173,
+          "right": -65,
+          "width": 108
+        },
+        {
+          "tag": "STRONG",
+          "class_name": "",
+          "left": -173,
+          "right": -65,
+          "width": 108
+        },
+        {
+          "tag": "SPAN",
+          "class_name": "",
+          "left": -173,
+          "right": -65,
+          "width": 108
+        },
+        {
+          "tag": "BUTTON",
+          "class_name": "icon-button sidebar-close",
+          "left": -55,
+          "right": -21,
+          "width": 34
+        },
+        {
+          "tag": "svg",
+          "class_name": "lucide lucide-x",
+          "left": -47,
+          "right": -29,
+          "width": 18
+        },
+        {
+          "tag": "path",
+          "class_name": {},
+          "left": -42,
+          "right": -33,
+          "width": 9
+        },
+        {
+          "tag": "path",
+          "class_name": {},
+          "left": -42,
+          "right": -33,
+          "width": 9
+        },
+        {
+          "tag": "NAV",
+          "class_name": "",
+          "left": -227,
+          "right": -13,
+          "width": 214
+        },
+        {
+          "tag": "SPAN",
+          "class_name": "nav-group-label",
+          "left": -227,
+          "right": -13,
+          "width": 214
+        },
+        {
+          "tag": "BUTTON",
+          "class_name": "nav-item",
+          "left": -227,
+          "right": -13,
+          "width": 214
+        },
+        {
+          "tag": "svg",
+          "class_name": "lucide lucide-layout-dashboard",
+          "left": -216,
+          "right": -198,
+          "width": 18
+        },
+        {
+          "tag": "rect",
+          "class_name": {},
+          "left": -213,
+          "right": -208,
+          "width": 5
+        },
+        {
+          "tag": "rect",
+          "class_name": {},
+          "left": -205,
+          "right": -200,
+          "width": 5
+        },
+        {
+          "tag": "rect",
+          "class_name": {},
+          "left": -205,
+          "right": -200,
+          "width": 5
+        },
+        {
+          "tag": "rect",
+          "class_name": {},
+          "left": -213,
+          "right": -208,
+          "width": 5
+        },
+        {
+          "tag": "SPAN",
+          "class_name": "",
+          "left": -187,
+          "right": -151,
+          "width": 36
+        },
+        {
+          "tag": "BUTTON",
+          "class_name": "nav-item",
+          "left": -227,
+          "right": -13,
+          "width": 214
+        }
+      ]
+    },
+    {
+      "viewport": "mobile",
+      "route": "context",
+      "horizontal_overflow": false,
+      "scroll_width": 390,
+      "client_width": 390,
+      "overlaps": [],
+      "overflowing_elements": [
+        {
+          "tag": "ASIDE",
+          "class_name": "sidebar ",
+          "left": -235,
+          "right": -5,
+          "width": 230
+        },
+        {
+          "tag": "DIV",
+          "class_name": "brand-row",
+          "left": -227,
+          "right": -13,
+          "width": 214
+        },
+        {
+          "tag": "DIV",
+          "class_name": "brand-mark",
+          "left": -219,
+          "right": -185,
+          "width": 34
+        },
+        {
+          "tag": "DIV",
+          "class_name": "",
+          "left": -173,
+          "right": -65,
+          "width": 108
+        },
+        {
+          "tag": "STRONG",
+          "class_name": "",
+          "left": -173,
+          "right": -65,
+          "width": 108
+        },
+        {
+          "tag": "SPAN",
+          "class_name": "",
+          "left": -173,
+          "right": -65,
+          "width": 108
+        },
+        {
+          "tag": "BUTTON",
+          "class_name": "icon-button sidebar-close",
+          "left": -55,
+          "right": -21,
+          "width": 34
+        },
+        {
+          "tag": "svg",
+          "class_name": "lucide lucide-x",
+          "left": -47,
+          "right": -29,
+          "width": 18
+        },
+        {
+          "tag": "path",
+          "class_name": {},
+          "left": -42,
+          "right": -33,
+          "width": 9
+        },
+        {
+          "tag": "path",
+          "class_name": {},
+          "left": -42,
+          "right": -33,
+          "width": 9
+        },
+        {
+          "tag": "NAV",
+          "class_name": "",
+          "left": -227,
+          "right": -13,
+          "width": 214
+        },
+        {
+          "tag": "SPAN",
+          "class_name": "nav-group-label",
+          "left": -227,
+          "right": -13,
+          "width": 214
+        },
+        {
+          "tag": "BUTTON",
+          "class_name": "nav-item",
+          "left": -227,
+          "right": -13,
+          "width": 214
+        },
+        {
+          "tag": "svg",
+          "class_name": "lucide lucide-layout-dashboard",
+          "left": -216,
+          "right": -198,
+          "width": 18
+        },
+        {
+          "tag": "rect",
+          "class_name": {},
+          "left": -213,
+          "right": -208,
+          "width": 5
+        },
+        {
+          "tag": "rect",
+          "class_name": {},
+          "left": -205,
+          "right": -200,
+          "width": 5
+        },
+        {
+          "tag": "rect",
+          "class_name": {},
+          "left": -205,
+          "right": -200,
+          "width": 5
+        },
+        {
+          "tag": "rect",
+          "class_name": {},
+          "left": -213,
+          "right": -208,
+          "width": 5
+        },
+        {
+          "tag": "SPAN",
+          "class_name": "",
+          "left": -187,
+          "right": -151,
+          "width": 36
+        },
+        {
+          "tag": "BUTTON",
+          "class_name": "nav-item",
+          "left": -227,
+          "right": -13,
+          "width": 214
+        }
+      ]
+    },
+    {
+      "viewport": "mobile",
+      "route": "settings",
+      "horizontal_overflow": false,
+      "scroll_width": 390,
+      "client_width": 390,
+      "overlaps": [],
+      "overflowing_elements": [
+        {
+          "tag": "ASIDE",
+          "class_name": "sidebar ",
+          "left": -235,
+          "right": -5,
+          "width": 230
+        },
+        {
+          "tag": "DIV",
+          "class_name": "brand-row",
+          "left": -227,
+          "right": -13,
+          "width": 214
+        },
+        {
+          "tag": "DIV",
+          "class_name": "brand-mark",
+          "left": -219,
+          "right": -185,
+          "width": 34
+        },
+        {
+          "tag": "DIV",
+          "class_name": "",
+          "left": -173,
+          "right": -65,
+          "width": 108
+        },
+        {
+          "tag": "STRONG",
+          "class_name": "",
+          "left": -173,
+          "right": -65,
+          "width": 108
+        },
+        {
+          "tag": "SPAN",
+          "class_name": "",
+          "left": -173,
+          "right": -65,
+          "width": 108
+        },
+        {
+          "tag": "BUTTON",
+          "class_name": "icon-button sidebar-close",
+          "left": -55,
+          "right": -21,
+          "width": 34
+        },
+        {
+          "tag": "svg",
+          "class_name": "lucide lucide-x",
+          "left": -47,
+          "right": -29,
+          "width": 18
+        },
+        {
+          "tag": "path",
+          "class_name": {},
+          "left": -42,
+          "right": -33,
+          "width": 9
+        },
+        {
+          "tag": "path",
+          "class_name": {},
+          "left": -42,
+          "right": -33,
+          "width": 9
+        },
+        {
+          "tag": "NAV",
+          "class_name": "",
+          "left": -227,
+          "right": -13,
+          "width": 214
+        },
+        {
+          "tag": "SPAN",
+          "class_name": "nav-group-label",
+          "left": -227,
+          "right": -13,
+          "width": 214
+        },
+        {
+          "tag": "BUTTON",
+          "class_name": "nav-item",
+          "left": -227,
+          "right": -13,
+          "width": 214
+        },
+        {
+          "tag": "svg",
+          "class_name": "lucide lucide-layout-dashboard",
+          "left": -216,
+          "right": -198,
+          "width": 18
+        },
+        {
+          "tag": "rect",
+          "class_name": {},
+          "left": -213,
+          "right": -208,
+          "width": 5
+        },
+        {
+          "tag": "rect",
+          "class_name": {},
+          "left": -205,
+          "right": -200,
+          "width": 5
+        },
+        {
+          "tag": "rect",
+          "class_name": {},
+          "left": -205,
+          "right": -200,
+          "width": 5
+        },
+        {
+          "tag": "rect",
+          "class_name": {},
+          "left": -213,
+          "right": -208,
+          "width": 5
+        },
+        {
+          "tag": "SPAN",
+          "class_name": "",
+          "left": -187,
+          "right": -151,
+          "width": 36
+        },
+        {
+          "tag": "BUTTON",
+          "class_name": "nav-item",
+          "left": -227,
+          "right": -13,
+          "width": 214
+        }
+      ]
+    },
+    {
+      "viewport": "mobile",
+      "route": "execution",
+      "horizontal_overflow": false,
+      "scroll_width": 390,
+      "client_width": 390,
+      "overlaps": [],
+      "overflowing_elements": [
+        {
+          "tag": "ASIDE",
+          "class_name": "sidebar ",
+          "left": -235,
+          "right": -5,
+          "width": 230
+        },
+        {
+          "tag": "DIV",
+          "class_name": "brand-row",
+          "left": -227,
+          "right": -13,
+          "width": 214
+        },
+        {
+          "tag": "DIV",
+          "class_name": "brand-mark",
+          "left": -219,
+          "right": -185,
+          "width": 34
+        },
+        {
+          "tag": "DIV",
+          "class_name": "",
+          "left": -173,
+          "right": -65,
+          "width": 108
+        },
+        {
+          "tag": "STRONG",
+          "class_name": "",
+          "left": -173,
+          "right": -65,
+          "width": 108
+        },
+        {
+          "tag": "SPAN",
+          "class_name": "",
+          "left": -173,
+          "right": -65,
+          "width": 108
+        },
+        {
+          "tag": "BUTTON",
+          "class_name": "icon-button sidebar-close",
+          "left": -55,
+          "right": -21,
+          "width": 34
+        },
+        {
+          "tag": "svg",
+          "class_name": "lucide lucide-x",
+          "left": -47,
+          "right": -29,
+          "width": 18
+        },
+        {
+          "tag": "path",
+          "class_name": {},
+          "left": -42,
+          "right": -33,
+          "width": 9
+        },
+        {
+          "tag": "path",
+          "class_name": {},
+          "left": -42,
+          "right": -33,
+          "width": 9
+        },
+        {
+          "tag": "NAV",
+          "class_name": "",
+          "left": -227,
+          "right": -13,
+          "width": 214
+        },
+        {
+          "tag": "SPAN",
+          "class_name": "nav-group-label",
+          "left": -227,
+          "right": -13,
+          "width": 214
+        },
+        {
+          "tag": "BUTTON",
+          "class_name": "nav-item",
+          "left": -227,
+          "right": -13,
+          "width": 214
+        },
+        {
+          "tag": "svg",
+          "class_name": "lucide lucide-layout-dashboard",
+          "left": -216,
+          "right": -198,
+          "width": 18
+        },
+        {
+          "tag": "rect",
+          "class_name": {},
+          "left": -213,
+          "right": -208,
+          "width": 5
+        },
+        {
+          "tag": "rect",
+          "class_name": {},
+          "left": -205,
+          "right": -200,
+          "width": 5
+        },
+        {
+          "tag": "rect",
+          "class_name": {},
+          "left": -205,
+          "right": -200,
+          "width": 5
+        },
+        {
+          "tag": "rect",
+          "class_name": {},
+          "left": -213,
+          "right": -208,
+          "width": 5
+        },
+        {
+          "tag": "SPAN",
+          "class_name": "",
+          "left": -187,
+          "right": -151,
+          "width": 36
+        },
+        {
+          "tag": "BUTTON",
+          "class_name": "nav-item",
+          "left": -227,
+          "right": -13,
+          "width": 214
+        }
+      ]
+    },
+    {
+      "viewport": "mobile",
+      "route": "execution-quality",
+      "horizontal_overflow": false,
+      "scroll_width": 390,
+      "client_width": 390,
+      "overlaps": [],
+      "overflowing_elements": [
+        {
+          "tag": "ASIDE",
+          "class_name": "sidebar ",
+          "left": -235,
+          "right": -5,
+          "width": 230
+        },
+        {
+          "tag": "DIV",
+          "class_name": "brand-row",
+          "left": -227,
+          "right": -13,
+          "width": 214
+        },
+        {
+          "tag": "DIV",
+          "class_name": "brand-mark",
+          "left": -219,
+          "right": -185,
+          "width": 34
+        },
+        {
+          "tag": "DIV",
+          "class_name": "",
+          "left": -173,
+          "right": -65,
+          "width": 108
+        },
+        {
+          "tag": "STRONG",
+          "class_name": "",
+          "left": -173,
+          "right": -65,
+          "width": 108
+        },
+        {
+          "tag": "SPAN",
+          "class_name": "",
+          "left": -173,
+          "right": -65,
+          "width": 108
+        },
+        {
+          "tag": "BUTTON",
+          "class_name": "icon-button sidebar-close",
+          "left": -55,
+          "right": -21,
+          "width": 34
+        },
+        {
+          "tag": "svg",
+          "class_name": "lucide lucide-x",
+          "left": -47,
+          "right": -29,
+          "width": 18
+        },
+        {
+          "tag": "path",
+          "class_name": {},
+          "left": -42,
+          "right": -33,
+          "width": 9
+        },
+        {
+          "tag": "path",
+          "class_name": {},
+          "left": -42,
+          "right": -33,
+          "width": 9
+        },
+        {
+          "tag": "NAV",
+          "class_name": "",
+          "left": -227,
+          "right": -13,
+          "width": 214
+        },
+        {
+          "tag": "SPAN",
+          "class_name": "nav-group-label",
+          "left": -227,
+          "right": -13,
+          "width": 214
+        },
+        {
+          "tag": "BUTTON",
+          "class_name": "nav-item",
+          "left": -227,
+          "right": -13,
+          "width": 214
+        },
+        {
+          "tag": "svg",
+          "class_name": "lucide lucide-layout-dashboard",
+          "left": -216,
+          "right": -198,
+          "width": 18
+        },
+        {
+          "tag": "rect",
+          "class_name": {},
+          "left": -213,
+          "right": -208,
+          "width": 5
+        },
+        {
+          "tag": "rect",
+          "class_name": {},
+          "left": -205,
+          "right": -200,
+          "width": 5
+        },
+        {
+          "tag": "rect",
+          "class_name": {},
+          "left": -205,
+          "right": -200,
+          "width": 5
+        },
+        {
+          "tag": "rect",
+          "class_name": {},
+          "left": -213,
+          "right": -208,
+          "width": 5
+        },
+        {
+          "tag": "SPAN",
+          "class_name": "",
+          "left": -187,
+          "right": -151,
+          "width": 36
+        },
+        {
+          "tag": "BUTTON",
+          "class_name": "nav-item",
+          "left": -227,
+          "right": -13,
+          "width": 214
+        }
+      ]
+    },
+    {
+      "viewport": "mobile",
+      "route": "execution-outcome",
+      "horizontal_overflow": false,
+      "scroll_width": 390,
+      "client_width": 390,
+      "overlaps": [],
+      "overflowing_elements": [
+        {
+          "tag": "ASIDE",
+          "class_name": "sidebar ",
+          "left": -235,
+          "right": -5,
+          "width": 230
+        },
+        {
+          "tag": "DIV",
+          "class_name": "brand-row",
+          "left": -227,
+          "right": -13,
+          "width": 214
+        },
+        {
+          "tag": "DIV",
+          "class_name": "brand-mark",
+          "left": -219,
+          "right": -185,
+          "width": 34
+        },
+        {
+          "tag": "DIV",
+          "class_name": "",
+          "left": -173,
+          "right": -65,
+          "width": 108
+        },
+        {
+          "tag": "STRONG",
+          "class_name": "",
+          "left": -173,
+          "right": -65,
+          "width": 108
+        },
+        {
+          "tag": "SPAN",
+          "class_name": "",
+          "left": -173,
+          "right": -65,
+          "width": 108
+        },
+        {
+          "tag": "BUTTON",
+          "class_name": "icon-button sidebar-close",
+          "left": -55,
+          "right": -21,
+          "width": 34
+        },
+        {
+          "tag": "svg",
+          "class_name": "lucide lucide-x",
+          "left": -47,
+          "right": -29,
+          "width": 18
+        },
+        {
+          "tag": "path",
+          "class_name": {},
+          "left": -42,
+          "right": -33,
+          "width": 9
+        },
+        {
+          "tag": "path",
+          "class_name": {},
+          "left": -42,
+          "right": -33,
+          "width": 9
+        },
+        {
+          "tag": "NAV",
+          "class_name": "",
+          "left": -227,
+          "right": -13,
+          "width": 214
+        },
+        {
+          "tag": "SPAN",
+          "class_name": "nav-group-label",
+          "left": -227,
+          "right": -13,
+          "width": 214
+        },
+        {
+          "tag": "BUTTON",
+          "class_name": "nav-item",
+          "left": -227,
+          "right": -13,
+          "width": 214
+        },
+        {
+          "tag": "svg",
+          "class_name": "lucide lucide-layout-dashboard",
+          "left": -216,
+          "right": -198,
+          "width": 18
+        },
+        {
+          "tag": "rect",
+          "class_name": {},
+          "left": -213,
+          "right": -208,
+          "width": 5
+        },
+        {
+          "tag": "rect",
+          "class_name": {},
+          "left": -205,
+          "right": -200,
+          "width": 5
+        },
+        {
+          "tag": "rect",
+          "class_name": {},
+          "left": -205,
+          "right": -200,
+          "width": 5
+        },
+        {
+          "tag": "rect",
+          "class_name": {},
+          "left": -213,
+          "right": -208,
+          "width": 5
+        },
+        {
+          "tag": "SPAN",
+          "class_name": "",
+          "left": -187,
+          "right": -151,
+          "width": 36
+        },
+        {
+          "tag": "BUTTON",
+          "class_name": "nav-item",
+          "left": -227,
+          "right": -13,
+          "width": 214
+        }
+      ]
+    },
+    {
+      "viewport": "mobile",
+      "route": "evidence",
+      "horizontal_overflow": false,
+      "scroll_width": 390,
+      "client_width": 390,
+      "overlaps": [],
+      "overflowing_elements": [
+        {
+          "tag": "ASIDE",
+          "class_name": "sidebar ",
+          "left": -235,
+          "right": -5,
+          "width": 230
+        },
+        {
+          "tag": "DIV",
+          "class_name": "brand-row",
+          "left": -227,
+          "right": -13,
+          "width": 214
+        },
+        {
+          "tag": "DIV",
+          "class_name": "brand-mark",
+          "left": -219,
+          "right": -185,
+          "width": 34
+        },
+        {
+          "tag": "DIV",
+          "class_name": "",
+          "left": -173,
+          "right": -65,
+          "width": 108
+        },
+        {
+          "tag": "STRONG",
+          "class_name": "",
+          "left": -173,
+          "right": -65,
+          "width": 108
+        },
+        {
+          "tag": "SPAN",
+          "class_name": "",
+          "left": -173,
+          "right": -65,
+          "width": 108
+        },
+        {
+          "tag": "BUTTON",
+          "class_name": "icon-button sidebar-close",
+          "left": -55,
+          "right": -21,
+          "width": 34
+        },
+        {
+          "tag": "svg",
+          "class_name": "lucide lucide-x",
+          "left": -47,
+          "right": -29,
+          "width": 18
+        },
+        {
+          "tag": "path",
+          "class_name": {},
+          "left": -42,
+          "right": -33,
+          "width": 9
+        },
+        {
+          "tag": "path",
+          "class_name": {},
+          "left": -42,
+          "right": -33,
+          "width": 9
+        },
+        {
+          "tag": "NAV",
+          "class_name": "",
+          "left": -227,
+          "right": -13,
+          "width": 214
+        },
+        {
+          "tag": "SPAN",
+          "class_name": "nav-group-label",
+          "left": -227,
+          "right": -13,
+          "width": 214
+        },
+        {
+          "tag": "BUTTON",
+          "class_name": "nav-item",
+          "left": -227,
+          "right": -13,
+          "width": 214
+        },
+        {
+          "tag": "svg",
+          "class_name": "lucide lucide-layout-dashboard",
+          "left": -216,
+          "right": -198,
+          "width": 18
+        },
+        {
+          "tag": "rect",
+          "class_name": {},
+          "left": -213,
+          "right": -208,
+          "width": 5
+        },
+        {
+          "tag": "rect",
+          "class_name": {},
+          "left": -205,
+          "right": -200,
+          "width": 5
+        },
+        {
+          "tag": "rect",
+          "class_name": {},
+          "left": -205,
+          "right": -200,
+          "width": 5
+        },
+        {
+          "tag": "rect",
+          "class_name": {},
+          "left": -213,
+          "right": -208,
+          "width": 5
+        },
+        {
+          "tag": "SPAN",
+          "class_name": "",
+          "left": -187,
+          "right": -151,
+          "width": 36
+        },
+        {
+          "tag": "BUTTON",
+          "class_name": "nav-item",
+          "left": -227,
+          "right": -13,
+          "width": 214
+        }
+      ]
+    },
+    {
+      "viewport": "mobile",
+      "route": "connections",
+      "horizontal_overflow": false,
+      "scroll_width": 390,
+      "client_width": 390,
+      "overlaps": [],
+      "overflowing_elements": [
+        {
+          "tag": "ASIDE",
+          "class_name": "sidebar ",
+          "left": -235,
+          "right": -5,
+          "width": 230
+        },
+        {
+          "tag": "DIV",
+          "class_name": "brand-row",
+          "left": -227,
+          "right": -13,
+          "width": 214
+        },
+        {
+          "tag": "DIV",
+          "class_name": "brand-mark",
+          "left": -219,
+          "right": -185,
+          "width": 34
+        },
+        {
+          "tag": "DIV",
+          "class_name": "",
+          "left": -173,
+          "right": -65,
+          "width": 108
+        },
+        {
+          "tag": "STRONG",
+          "class_name": "",
+          "left": -173,
+          "right": -65,
+          "width": 108
+        },
+        {
+          "tag": "SPAN",
+          "class_name": "",
+          "left": -173,
+          "right": -65,
+          "width": 108
+        },
+        {
+          "tag": "BUTTON",
+          "class_name": "icon-button sidebar-close",
+          "left": -55,
+          "right": -21,
+          "width": 34
+        },
+        {
+          "tag": "svg",
+          "class_name": "lucide lucide-x",
+          "left": -47,
+          "right": -29,
+          "width": 18
+        },
+        {
+          "tag": "path",
+          "class_name": {},
+          "left": -42,
+          "right": -33,
+          "width": 9
+        },
+        {
+          "tag": "path",
+          "class_name": {},
+          "left": -42,
+          "right": -33,
+          "width": 9
+        },
+        {
+          "tag": "NAV",
+          "class_name": "",
+          "left": -227,
+          "right": -13,
+          "width": 214
+        },
+        {
+          "tag": "SPAN",
+          "class_name": "nav-group-label",
+          "left": -227,
+          "right": -13,
+          "width": 214
+        },
+        {
+          "tag": "BUTTON",
+          "class_name": "nav-item",
+          "left": -227,
+          "right": -13,
+          "width": 214
+        },
+        {
+          "tag": "svg",
+          "class_name": "lucide lucide-layout-dashboard",
+          "left": -216,
+          "right": -198,
+          "width": 18
+        },
+        {
+          "tag": "rect",
+          "class_name": {},
+          "left": -213,
+          "right": -208,
+          "width": 5
+        },
+        {
+          "tag": "rect",
+          "class_name": {},
+          "left": -205,
+          "right": -200,
+          "width": 5
+        },
+        {
+          "tag": "rect",
+          "class_name": {},
+          "left": -205,
+          "right": -200,
+          "width": 5
+        },
+        {
+          "tag": "rect",
+          "class_name": {},
+          "left": -213,
+          "right": -208,
+          "width": 5
+        },
+        {
+          "tag": "SPAN",
+          "class_name": "",
+          "left": -187,
+          "right": -151,
+          "width": 36
+        },
+        {
+          "tag": "BUTTON",
+          "class_name": "nav-item",
+          "left": -227,
+          "right": -13,
+          "width": 214
+        }
+      ]
+    },
+    {
+      "viewport": "mobile",
+      "route": "outcome",
+      "horizontal_overflow": false,
+      "scroll_width": 390,
+      "client_width": 390,
+      "overlaps": [],
+      "overflowing_elements": [
+        {
+          "tag": "ASIDE",
+          "class_name": "sidebar ",
+          "left": -235,
+          "right": -5,
+          "width": 230
+        },
+        {
+          "tag": "DIV",
+          "class_name": "brand-row",
+          "left": -227,
+          "right": -13,
+          "width": 214
+        },
+        {
+          "tag": "DIV",
+          "class_name": "brand-mark",
+          "left": -219,
+          "right": -185,
+          "width": 34
+        },
+        {
+          "tag": "DIV",
+          "class_name": "",
+          "left": -173,
+          "right": -65,
+          "width": 108
+        },
+        {
+          "tag": "STRONG",
+          "class_name": "",
+          "left": -173,
+          "right": -65,
+          "width": 108
+        },
+        {
+          "tag": "SPAN",
+          "class_name": "",
+          "left": -173,
+          "right": -65,
+          "width": 108
+        },
+        {
+          "tag": "BUTTON",
+          "class_name": "icon-button sidebar-close",
+          "left": -55,
+          "right": -21,
+          "width": 34
+        },
+        {
+          "tag": "svg",
+          "class_name": "lucide lucide-x",
+          "left": -47,
+          "right": -29,
+          "width": 18
+        },
+        {
+          "tag": "path",
+          "class_name": {},
+          "left": -42,
+          "right": -33,
+          "width": 9
+        },
+        {
+          "tag": "path",
+          "class_name": {},
+          "left": -42,
+          "right": -33,
+          "width": 9
+        },
+        {
+          "tag": "NAV",
+          "class_name": "",
+          "left": -227,
+          "right": -13,
+          "width": 214
+        },
+        {
+          "tag": "SPAN",
+          "class_name": "nav-group-label",
+          "left": -227,
+          "right": -13,
+          "width": 214
+        },
+        {
+          "tag": "BUTTON",
+          "class_name": "nav-item",
+          "left": -227,
+          "right": -13,
+          "width": 214
+        },
+        {
+          "tag": "svg",
+          "class_name": "lucide lucide-layout-dashboard",
+          "left": -216,
+          "right": -198,
+          "width": 18
+        },
+        {
+          "tag": "rect",
+          "class_name": {},
+          "left": -213,
+          "right": -208,
+          "width": 5
+        },
+        {
+          "tag": "rect",
+          "class_name": {},
+          "left": -205,
+          "right": -200,
+          "width": 5
+        },
+        {
+          "tag": "rect",
+          "class_name": {},
+          "left": -205,
+          "right": -200,
+          "width": 5
+        },
+        {
+          "tag": "rect",
+          "class_name": {},
+          "left": -213,
+          "right": -208,
+          "width": 5
+        },
+        {
+          "tag": "SPAN",
+          "class_name": "",
+          "left": -187,
+          "right": -151,
+          "width": 36
+        },
+        {
+          "tag": "BUTTON",
+          "class_name": "nav-item",
+          "left": -227,
+          "right": -13,
+          "width": 214
+        }
+      ]
+    },
+    {
+      "viewport": "mobile",
+      "route": "delivery",
+      "horizontal_overflow": false,
+      "scroll_width": 390,
+      "client_width": 390,
+      "overlaps": [],
+      "overflowing_elements": [
+        {
+          "tag": "ASIDE",
+          "class_name": "sidebar ",
+          "left": -235,
+          "right": -5,
+          "width": 230
+        },
+        {
+          "tag": "DIV",
+          "class_name": "brand-row",
+          "left": -227,
+          "right": -13,
+          "width": 214
+        },
+        {
+          "tag": "DIV",
+          "class_name": "brand-mark",
+          "left": -219,
+          "right": -185,
+          "width": 34
+        },
+        {
+          "tag": "DIV",
+          "class_name": "",
+          "left": -173,
+          "right": -65,
+          "width": 108
+        },
+        {
+          "tag": "STRONG",
+          "class_name": "",
+          "left": -173,
+          "right": -65,
+          "width": 108
+        },
+        {
+          "tag": "SPAN",
+          "class_name": "",
+          "left": -173,
+          "right": -65,
+          "width": 108
+        },
+        {
+          "tag": "BUTTON",
+          "class_name": "icon-button sidebar-close",
+          "left": -55,
+          "right": -21,
+          "width": 34
+        },
+        {
+          "tag": "svg",
+          "class_name": "lucide lucide-x",
+          "left": -47,
+          "right": -29,
+          "width": 18
+        },
+        {
+          "tag": "path",
+          "class_name": {},
+          "left": -42,
+          "right": -33,
+          "width": 9
+        },
+        {
+          "tag": "path",
+          "class_name": {},
+          "left": -42,
+          "right": -33,
+          "width": 9
+        },
+        {
+          "tag": "NAV",
+          "class_name": "",
+          "left": -227,
+          "right": -13,
+          "width": 214
+        },
+        {
+          "tag": "SPAN",
+          "class_name": "nav-group-label",
+          "left": -227,
+          "right": -13,
+          "width": 214
+        },
+        {
+          "tag": "BUTTON",
+          "class_name": "nav-item",
+          "left": -227,
+          "right": -13,
+          "width": 214
+        },
+        {
+          "tag": "svg",
+          "class_name": "lucide lucide-layout-dashboard",
+          "left": -216,
+          "right": -198,
+          "width": 18
+        },
+        {
+          "tag": "rect",
+          "class_name": {},
+          "left": -213,
+          "right": -208,
+          "width": 5
+        },
+        {
+          "tag": "rect",
+          "class_name": {},
+          "left": -205,
+          "right": -200,
+          "width": 5
+        },
+        {
+          "tag": "rect",
+          "class_name": {},
+          "left": -205,
+          "right": -200,
+          "width": 5
+        },
+        {
+          "tag": "rect",
+          "class_name": {},
+          "left": -213,
+          "right": -208,
+          "width": 5
+        },
+        {
+          "tag": "SPAN",
+          "class_name": "",
+          "left": -187,
+          "right": -151,
+          "width": 36
+        },
+        {
+          "tag": "BUTTON",
+          "class_name": "nav-item",
+          "left": -227,
+          "right": -13,
+          "width": 214
+        }
+      ]
+    },
+    {
+      "viewport": "mobile",
+      "route": "operations",
+      "horizontal_overflow": false,
+      "scroll_width": 390,
+      "client_width": 390,
+      "overlaps": [],
+      "overflowing_elements": [
+        {
+          "tag": "ASIDE",
+          "class_name": "sidebar ",
+          "left": -235,
+          "right": -5,
+          "width": 230
+        },
+        {
+          "tag": "DIV",
+          "class_name": "brand-row",
+          "left": -227,
+          "right": -13,
+          "width": 214
+        },
+        {
+          "tag": "DIV",
+          "class_name": "brand-mark",
+          "left": -219,
+          "right": -185,
+          "width": 34
+        },
+        {
+          "tag": "DIV",
+          "class_name": "",
+          "left": -173,
+          "right": -65,
+          "width": 108
+        },
+        {
+          "tag": "STRONG",
+          "class_name": "",
+          "left": -173,
+          "right": -65,
+          "width": 108
+        },
+        {
+          "tag": "SPAN",
+          "class_name": "",
+          "left": -173,
+          "right": -65,
+          "width": 108
+        },
+        {
+          "tag": "BUTTON",
+          "class_name": "icon-button sidebar-close",
+          "left": -55,
+          "right": -21,
+          "width": 34
+        },
+        {
+          "tag": "svg",
+          "class_name": "lucide lucide-x",
+          "left": -47,
+          "right": -29,
+          "width": 18
+        },
+        {
+          "tag": "path",
+          "class_name": {},
+          "left": -42,
+          "right": -33,
+          "width": 9
+        },
+        {
+          "tag": "path",
+          "class_name": {},
+          "left": -42,
+          "right": -33,
+          "width": 9
+        },
+        {
+          "tag": "NAV",
+          "class_name": "",
+          "left": -227,
+          "right": -13,
+          "width": 214
+        },
+        {
+          "tag": "SPAN",
+          "class_name": "nav-group-label",
+          "left": -227,
+          "right": -13,
+          "width": 214
+        },
+        {
+          "tag": "BUTTON",
+          "class_name": "nav-item",
+          "left": -227,
+          "right": -13,
+          "width": 214
+        },
+        {
+          "tag": "svg",
+          "class_name": "lucide lucide-layout-dashboard",
+          "left": -216,
+          "right": -198,
+          "width": 18
+        },
+        {
+          "tag": "rect",
+          "class_name": {},
+          "left": -213,
+          "right": -208,
+          "width": 5
+        },
+        {
+          "tag": "rect",
+          "class_name": {},
+          "left": -205,
+          "right": -200,
+          "width": 5
+        },
+        {
+          "tag": "rect",
+          "class_name": {},
+          "left": -205,
+          "right": -200,
+          "width": 5
+        },
+        {
+          "tag": "rect",
+          "class_name": {},
+          "left": -213,
+          "right": -208,
+          "width": 5
+        },
+        {
+          "tag": "SPAN",
+          "class_name": "",
+          "left": -187,
+          "right": -151,
+          "width": 36
+        },
+        {
+          "tag": "BUTTON",
+          "class_name": "nav-item",
+          "left": -227,
+          "right": -13,
+          "width": 214
+        }
+      ]
+    },
+    {
+      "viewport": "mobile",
+      "route": "identity",
+      "horizontal_overflow": false,
+      "scroll_width": 390,
+      "client_width": 390,
+      "overlaps": [],
+      "overflowing_elements": [
+        {
+          "tag": "ASIDE",
+          "class_name": "sidebar ",
+          "left": -235,
+          "right": -5,
+          "width": 230
+        },
+        {
+          "tag": "DIV",
+          "class_name": "brand-row",
+          "left": -227,
+          "right": -13,
+          "width": 214
+        },
+        {
+          "tag": "DIV",
+          "class_name": "brand-mark",
+          "left": -219,
+          "right": -185,
+          "width": 34
+        },
+        {
+          "tag": "DIV",
+          "class_name": "",
+          "left": -173,
+          "right": -65,
+          "width": 108
+        },
+        {
+          "tag": "STRONG",
+          "class_name": "",
+          "left": -173,
+          "right": -65,
+          "width": 108
+        },
+        {
+          "tag": "SPAN",
+          "class_name": "",
+          "left": -173,
+          "right": -65,
+          "width": 108
+        },
+        {
+          "tag": "BUTTON",
+          "class_name": "icon-button sidebar-close",
+          "left": -55,
+          "right": -21,
+          "width": 34
+        },
+        {
+          "tag": "svg",
+          "class_name": "lucide lucide-x",
+          "left": -47,
+          "right": -29,
+          "width": 18
+        },
+        {
+          "tag": "path",
+          "class_name": {},
+          "left": -42,
+          "right": -33,
+          "width": 9
+        },
+        {
+          "tag": "path",
+          "class_name": {},
+          "left": -42,
+          "right": -33,
+          "width": 9
+        },
+        {
+          "tag": "NAV",
+          "class_name": "",
+          "left": -227,
+          "right": -13,
+          "width": 214
+        },
+        {
+          "tag": "SPAN",
+          "class_name": "nav-group-label",
+          "left": -227,
+          "right": -13,
+          "width": 214
+        },
+        {
+          "tag": "BUTTON",
+          "class_name": "nav-item",
+          "left": -227,
+          "right": -13,
+          "width": 214
+        },
+        {
+          "tag": "svg",
+          "class_name": "lucide lucide-layout-dashboard",
+          "left": -216,
+          "right": -198,
+          "width": 18
+        },
+        {
+          "tag": "rect",
+          "class_name": {},
+          "left": -213,
+          "right": -208,
+          "width": 5
+        },
+        {
+          "tag": "rect",
+          "class_name": {},
+          "left": -205,
+          "right": -200,
+          "width": 5
+        },
+        {
+          "tag": "rect",
+          "class_name": {},
+          "left": -205,
+          "right": -200,
+          "width": 5
+        },
+        {
+          "tag": "rect",
+          "class_name": {},
+          "left": -213,
+          "right": -208,
+          "width": 5
+        },
+        {
+          "tag": "SPAN",
+          "class_name": "",
+          "left": -187,
+          "right": -151,
+          "width": 36
+        },
+        {
+          "tag": "BUTTON",
+          "class_name": "nav-item",
+          "left": -227,
+          "right": -13,
+          "width": 214
+        }
+      ]
+    },
+    {
+      "viewport": "mobile",
+      "route": "exchange",
+      "horizontal_overflow": false,
+      "scroll_width": 390,
+      "client_width": 390,
+      "overlaps": [],
+      "overflowing_elements": [
+        {
+          "tag": "ASIDE",
+          "class_name": "sidebar ",
+          "left": -235,
+          "right": -5,
+          "width": 230
+        },
+        {
+          "tag": "DIV",
+          "class_name": "brand-row",
+          "left": -227,
+          "right": -13,
+          "width": 214
+        },
+        {
+          "tag": "DIV",
+          "class_name": "brand-mark",
+          "left": -219,
+          "right": -185,
+          "width": 34
+        },
+        {
+          "tag": "DIV",
+          "class_name": "",
+          "left": -173,
+          "right": -65,
+          "width": 108
+        },
+        {
+          "tag": "STRONG",
+          "class_name": "",
+          "left": -173,
+          "right": -65,
+          "width": 108
+        },
+        {
+          "tag": "SPAN",
+          "class_name": "",
+          "left": -173,
+          "right": -65,
+          "width": 108
+        },
+        {
+          "tag": "BUTTON",
+          "class_name": "icon-button sidebar-close",
+          "left": -55,
+          "right": -21,
+          "width": 34
+        },
+        {
+          "tag": "svg",
+          "class_name": "lucide lucide-x",
+          "left": -47,
+          "right": -29,
+          "width": 18
+        },
+        {
+          "tag": "path",
+          "class_name": {},
+          "left": -42,
+          "right": -33,
+          "width": 9
+        },
+        {
+          "tag": "path",
+          "class_name": {},
+          "left": -42,
+          "right": -33,
+          "width": 9
+        },
+        {
+          "tag": "NAV",
+          "class_name": "",
+          "left": -227,
+          "right": -13,
+          "width": 214
+        },
+        {
+          "tag": "SPAN",
+          "class_name": "nav-group-label",
+          "left": -227,
+          "right": -13,
+          "width": 214
+        },
+        {
+          "tag": "BUTTON",
+          "class_name": "nav-item",
+          "left": -227,
+          "right": -13,
+          "width": 214
+        },
+        {
+          "tag": "svg",
+          "class_name": "lucide lucide-layout-dashboard",
+          "left": -216,
+          "right": -198,
+          "width": 18
+        },
+        {
+          "tag": "rect",
+          "class_name": {},
+          "left": -213,
+          "right": -208,
+          "width": 5
+        },
+        {
+          "tag": "rect",
+          "class_name": {},
+          "left": -205,
+          "right": -200,
+          "width": 5
+        },
+        {
+          "tag": "rect",
+          "class_name": {},
+          "left": -205,
+          "right": -200,
+          "width": 5
+        },
+        {
+          "tag": "rect",
+          "class_name": {},
+          "left": -213,
+          "right": -208,
+          "width": 5
+        },
+        {
+          "tag": "SPAN",
+          "class_name": "",
+          "left": -187,
+          "right": -151,
+          "width": 36
+        },
+        {
+          "tag": "BUTTON",
+          "class_name": "nav-item",
+          "left": -227,
+          "right": -13,
+          "width": 214
+        }
+      ]
+    },
+    {
+      "viewport": "mobile",
+      "route": "runner",
+      "horizontal_overflow": false,
+      "scroll_width": 390,
+      "client_width": 390,
+      "overlaps": [],
+      "overflowing_elements": [
+        {
+          "tag": "ASIDE",
+          "class_name": "sidebar ",
+          "left": -235,
+          "right": -5,
+          "width": 230
+        },
+        {
+          "tag": "DIV",
+          "class_name": "brand-row",
+          "left": -227,
+          "right": -13,
+          "width": 214
+        },
+        {
+          "tag": "DIV",
+          "class_name": "brand-mark",
+          "left": -219,
+          "right": -185,
+          "width": 34
+        },
+        {
+          "tag": "DIV",
+          "class_name": "",
+          "left": -173,
+          "right": -65,
+          "width": 108
+        },
+        {
+          "tag": "STRONG",
+          "class_name": "",
+          "left": -173,
+          "right": -65,
+          "width": 108
+        },
+        {
+          "tag": "SPAN",
+          "class_name": "",
+          "left": -173,
+          "right": -65,
+          "width": 108
+        },
+        {
+          "tag": "BUTTON",
+          "class_name": "icon-button sidebar-close",
+          "left": -55,
+          "right": -21,
+          "width": 34
+        },
+        {
+          "tag": "svg",
+          "class_name": "lucide lucide-x",
+          "left": -47,
+          "right": -29,
+          "width": 18
+        },
+        {
+          "tag": "path",
+          "class_name": {},
+          "left": -42,
+          "right": -33,
+          "width": 9
+        },
+        {
+          "tag": "path",
+          "class_name": {},
+          "left": -42,
+          "right": -33,
+          "width": 9
+        },
+        {
+          "tag": "NAV",
+          "class_name": "",
+          "left": -227,
+          "right": -13,
+          "width": 214
+        },
+        {
+          "tag": "SPAN",
+          "class_name": "nav-group-label",
+          "left": -227,
+          "right": -13,
+          "width": 214
+        },
+        {
+          "tag": "BUTTON",
+          "class_name": "nav-item",
+          "left": -227,
+          "right": -13,
+          "width": 214
+        },
+        {
+          "tag": "svg",
+          "class_name": "lucide lucide-layout-dashboard",
+          "left": -216,
+          "right": -198,
+          "width": 18
+        },
+        {
+          "tag": "rect",
+          "class_name": {},
+          "left": -213,
+          "right": -208,
+          "width": 5
+        },
+        {
+          "tag": "rect",
+          "class_name": {},
+          "left": -205,
+          "right": -200,
+          "width": 5
+        },
+        {
+          "tag": "rect",
+          "class_name": {},
+          "left": -205,
+          "right": -200,
+          "width": 5
+        },
+        {
+          "tag": "rect",
+          "class_name": {},
+          "left": -213,
+          "right": -208,
+          "width": 5
+        },
+        {
+          "tag": "SPAN",
+          "class_name": "",
+          "left": -187,
+          "right": -151,
+          "width": 36
+        },
+        {
+          "tag": "BUTTON",
+          "class_name": "nav-item",
+          "left": -227,
+          "right": -13,
+          "width": 214
+        }
+      ]
+    },
+    {
+      "viewport": "mobile",
+      "route": "parser",
+      "horizontal_overflow": false,
+      "scroll_width": 390,
+      "client_width": 390,
+      "overlaps": [],
+      "overflowing_elements": [
+        {
+          "tag": "ASIDE",
+          "class_name": "sidebar ",
+          "left": -235,
+          "right": -5,
+          "width": 230
+        },
+        {
+          "tag": "DIV",
+          "class_name": "brand-row",
+          "left": -227,
+          "right": -13,
+          "width": 214
+        },
+        {
+          "tag": "DIV",
+          "class_name": "brand-mark",
+          "left": -219,
+          "right": -185,
+          "width": 34
+        },
+        {
+          "tag": "DIV",
+          "class_name": "",
+          "left": -173,
+          "right": -65,
+          "width": 108
+        },
+        {
+          "tag": "STRONG",
+          "class_name": "",
+          "left": -173,
+          "right": -65,
+          "width": 108
+        },
+        {
+          "tag": "SPAN",
+          "class_name": "",
+          "left": -173,
+          "right": -65,
+          "width": 108
+        },
+        {
+          "tag": "BUTTON",
+          "class_name": "icon-button sidebar-close",
+          "left": -55,
+          "right": -21,
+          "width": 34
+        },
+        {
+          "tag": "svg",
+          "class_name": "lucide lucide-x",
+          "left": -47,
+          "right": -29,
+          "width": 18
+        },
+        {
+          "tag": "path",
+          "class_name": {},
+          "left": -42,
+          "right": -33,
+          "width": 9
+        },
+        {
+          "tag": "path",
+          "class_name": {},
+          "left": -42,
+          "right": -33,
+          "width": 9
+        },
+        {
+          "tag": "NAV",
+          "class_name": "",
+          "left": -227,
+          "right": -13,
+          "width": 214
+        },
+        {
+          "tag": "SPAN",
+          "class_name": "nav-group-label",
+          "left": -227,
+          "right": -13,
+          "width": 214
+        },
+        {
+          "tag": "BUTTON",
+          "class_name": "nav-item",
+          "left": -227,
+          "right": -13,
+          "width": 214
+        },
+        {
+          "tag": "svg",
+          "class_name": "lucide lucide-layout-dashboard",
+          "left": -216,
+          "right": -198,
+          "width": 18
+        },
+        {
+          "tag": "rect",
+          "class_name": {},
+          "left": -213,
+          "right": -208,
+          "width": 5
+        },
+        {
+          "tag": "rect",
+          "class_name": {},
+          "left": -205,
+          "right": -200,
+          "width": 5
+        },
+        {
+          "tag": "rect",
+          "class_name": {},
+          "left": -205,
+          "right": -200,
+          "width": 5
+        },
+        {
+          "tag": "rect",
+          "class_name": {},
+          "left": -213,
+          "right": -208,
+          "width": 5
+        },
+        {
+          "tag": "SPAN",
+          "class_name": "",
+          "left": -187,
+          "right": -151,
+          "width": 36
+        },
+        {
+          "tag": "BUTTON",
+          "class_name": "nav-item",
+          "left": -227,
+          "right": -13,
+          "width": 214
+        }
+      ]
+    },
+    {
+      "viewport": "mobile",
+      "route": "deployment",
+      "horizontal_overflow": false,
+      "scroll_width": 390,
+      "client_width": 390,
+      "overlaps": [],
+      "overflowing_elements": [
+        {
+          "tag": "ASIDE",
+          "class_name": "sidebar ",
+          "left": -235,
+          "right": -5,
+          "width": 230
+        },
+        {
+          "tag": "DIV",
+          "class_name": "brand-row",
+          "left": -227,
+          "right": -13,
+          "width": 214
+        },
+        {
+          "tag": "DIV",
+          "class_name": "brand-mark",
+          "left": -219,
+          "right": -185,
+          "width": 34
+        },
+        {
+          "tag": "DIV",
+          "class_name": "",
+          "left": -173,
+          "right": -65,
+          "width": 108
+        },
+        {
+          "tag": "STRONG",
+          "class_name": "",
+          "left": -173,
+          "right": -65,
+          "width": 108
+        },
+        {
+          "tag": "SPAN",
+          "class_name": "",
+          "left": -173,
+          "right": -65,
+          "width": 108
+        },
+        {
+          "tag": "BUTTON",
+          "class_name": "icon-button sidebar-close",
+          "left": -55,
+          "right": -21,
+          "width": 34
+        },
+        {
+          "tag": "svg",
+          "class_name": "lucide lucide-x",
+          "left": -47,
+          "right": -29,
+          "width": 18
+        },
+        {
+          "tag": "path",
+          "class_name": {},
+          "left": -42,
+          "right": -33,
+          "width": 9
+        },
+        {
+          "tag": "path",
+          "class_name": {},
+          "left": -42,
+          "right": -33,
+          "width": 9
+        },
+        {
+          "tag": "NAV",
+          "class_name": "",
+          "left": -227,
+          "right": -13,
+          "width": 214
+        },
+        {
+          "tag": "SPAN",
+          "class_name": "nav-group-label",
+          "left": -227,
+          "right": -13,
+          "width": 214
+        },
+        {
+          "tag": "BUTTON",
+          "class_name": "nav-item",
+          "left": -227,
+          "right": -13,
+          "width": 214
+        },
+        {
+          "tag": "svg",
+          "class_name": "lucide lucide-layout-dashboard",
+          "left": -216,
+          "right": -198,
+          "width": 18
+        },
+        {
+          "tag": "rect",
+          "class_name": {},
+          "left": -213,
+          "right": -208,
+          "width": 5
+        },
+        {
+          "tag": "rect",
+          "class_name": {},
+          "left": -205,
+          "right": -200,
+          "width": 5
+        },
+        {
+          "tag": "rect",
+          "class_name": {},
+          "left": -205,
+          "right": -200,
+          "width": 5
+        },
+        {
+          "tag": "rect",
+          "class_name": {},
+          "left": -213,
+          "right": -208,
+          "width": 5
+        },
+        {
+          "tag": "SPAN",
+          "class_name": "",
+          "left": -187,
+          "right": -151,
+          "width": 36
+        },
+        {
+          "tag": "BUTTON",
+          "class_name": "nav-item",
+          "left": -227,
+          "right": -13,
+          "width": 214
+        }
+      ]
+    },
+    {
+      "viewport": "mobile",
+      "route": "backup",
+      "horizontal_overflow": false,
+      "scroll_width": 390,
+      "client_width": 390,
+      "overlaps": [],
+      "overflowing_elements": [
+        {
+          "tag": "ASIDE",
+          "class_name": "sidebar ",
+          "left": -235,
+          "right": -5,
+          "width": 230
+        },
+        {
+          "tag": "DIV",
+          "class_name": "brand-row",
+          "left": -227,
+          "right": -13,
+          "width": 214
+        },
+        {
+          "tag": "DIV",
+          "class_name": "brand-mark",
+          "left": -219,
+          "right": -185,
+          "width": 34
+        },
+        {
+          "tag": "DIV",
+          "class_name": "",
+          "left": -173,
+          "right": -65,
+          "width": 108
+        },
+        {
+          "tag": "STRONG",
+          "class_name": "",
+          "left": -173,
+          "right": -65,
+          "width": 108
+        },
+        {
+          "tag": "SPAN",
+          "class_name": "",
+          "left": -173,
+          "right": -65,
+          "width": 108
+        },
+        {
+          "tag": "BUTTON",
+          "class_name": "icon-button sidebar-close",
+          "left": -55,
+          "right": -21,
+          "width": 34
+        },
+        {
+          "tag": "svg",
+          "class_name": "lucide lucide-x",
+          "left": -47,
+          "right": -29,
+          "width": 18
+        },
+        {
+          "tag": "path",
+          "class_name": {},
+          "left": -42,
+          "right": -33,
+          "width": 9
+        },
+        {
+          "tag": "path",
+          "class_name": {},
+          "left": -42,
+          "right": -33,
+          "width": 9
+        },
+        {
+          "tag": "NAV",
+          "class_name": "",
+          "left": -227,
+          "right": -13,
+          "width": 214
+        },
+        {
+          "tag": "SPAN",
+          "class_name": "nav-group-label",
+          "left": -227,
+          "right": -13,
+          "width": 214
+        },
+        {
+          "tag": "BUTTON",
+          "class_name": "nav-item",
+          "left": -227,
+          "right": -13,
+          "width": 214
+        },
+        {
+          "tag": "svg",
+          "class_name": "lucide lucide-layout-dashboard",
+          "left": -216,
+          "right": -198,
+          "width": 18
+        },
+        {
+          "tag": "rect",
+          "class_name": {},
+          "left": -213,
+          "right": -208,
+          "width": 5
+        },
+        {
+          "tag": "rect",
+          "class_name": {},
+          "left": -205,
+          "right": -200,
+          "width": 5
+        },
+        {
+          "tag": "rect",
+          "class_name": {},
+          "left": -205,
+          "right": -200,
+          "width": 5
+        },
+        {
+          "tag": "rect",
+          "class_name": {},
+          "left": -213,
+          "right": -208,
+          "width": 5
+        },
+        {
+          "tag": "SPAN",
+          "class_name": "",
+          "left": -187,
+          "right": -151,
+          "width": 36
+        },
+        {
+          "tag": "BUTTON",
+          "class_name": "nav-item",
+          "left": -227,
+          "right": -13,
+          "width": 214
+        }
+      ]
+    },
+    {
+      "viewport": "mobile",
+      "route": "importer",
+      "horizontal_overflow": false,
+      "scroll_width": 390,
+      "client_width": 390,
+      "overlaps": [],
+      "overflowing_elements": [
+        {
+          "tag": "ASIDE",
+          "class_name": "sidebar ",
+          "left": -235,
+          "right": -5,
+          "width": 230
+        },
+        {
+          "tag": "DIV",
+          "class_name": "brand-row",
+          "left": -227,
+          "right": -13,
+          "width": 214
+        },
+        {
+          "tag": "DIV",
+          "class_name": "brand-mark",
+          "left": -219,
+          "right": -185,
+          "width": 34
+        },
+        {
+          "tag": "DIV",
+          "class_name": "",
+          "left": -173,
+          "right": -65,
+          "width": 108
+        },
+        {
+          "tag": "STRONG",
+          "class_name": "",
+          "left": -173,
+          "right": -65,
+          "width": 108
+        },
+        {
+          "tag": "SPAN",
+          "class_name": "",
+          "left": -173,
+          "right": -65,
+          "width": 108
+        },
+        {
+          "tag": "BUTTON",
+          "class_name": "icon-button sidebar-close",
+          "left": -55,
+          "right": -21,
+          "width": 34
+        },
+        {
+          "tag": "svg",
+          "class_name": "lucide lucide-x",
+          "left": -47,
+          "right": -29,
+          "width": 18
+        },
+        {
+          "tag": "path",
+          "class_name": {},
+          "left": -42,
+          "right": -33,
+          "width": 9
+        },
+        {
+          "tag": "path",
+          "class_name": {},
+          "left": -42,
+          "right": -33,
+          "width": 9
+        },
+        {
+          "tag": "NAV",
+          "class_name": "",
+          "left": -227,
+          "right": -13,
+          "width": 214
+        },
+        {
+          "tag": "SPAN",
+          "class_name": "nav-group-label",
+          "left": -227,
+          "right": -13,
+          "width": 214
+        },
+        {
+          "tag": "BUTTON",
+          "class_name": "nav-item",
+          "left": -227,
+          "right": -13,
+          "width": 214
+        },
+        {
+          "tag": "svg",
+          "class_name": "lucide lucide-layout-dashboard",
+          "left": -216,
+          "right": -198,
+          "width": 18
+        },
+        {
+          "tag": "rect",
+          "class_name": {},
+          "left": -213,
+          "right": -208,
+          "width": 5
+        },
+        {
+          "tag": "rect",
+          "class_name": {},
+          "left": -205,
+          "right": -200,
+          "width": 5
+        },
+        {
+          "tag": "rect",
+          "class_name": {},
+          "left": -205,
+          "right": -200,
+          "width": 5
+        },
+        {
+          "tag": "rect",
+          "class_name": {},
+          "left": -213,
+          "right": -208,
+          "width": 5
+        },
+        {
+          "tag": "SPAN",
+          "class_name": "",
+          "left": -187,
+          "right": -151,
+          "width": 36
+        },
+        {
+          "tag": "BUTTON",
+          "class_name": "nav-item",
+          "left": -227,
+          "right": -13,
+          "width": 214
+        }
+      ]
+    },
+    {
+      "viewport": "laptop",
+      "route": "governance",
+      "horizontal_overflow": false,
+      "scroll_width": 1024,
+      "client_width": 1024,
+      "overlaps": [],
+      "overflowing_elements": []
+    },
+    {
+      "viewport": "laptop",
+      "route": "context",
+      "horizontal_overflow": false,
+      "scroll_width": 1024,
+      "client_width": 1024,
+      "overlaps": [],
+      "overflowing_elements": []
+    },
+    {
+      "viewport": "laptop",
+      "route": "settings",
+      "horizontal_overflow": false,
+      "scroll_width": 1024,
+      "client_width": 1024,
+      "overlaps": [],
+      "overflowing_elements": []
+    },
+    {
+      "viewport": "laptop",
+      "route": "execution",
+      "horizontal_overflow": false,
+      "scroll_width": 1024,
+      "client_width": 1024,
+      "overlaps": [],
+      "overflowing_elements": []
+    },
+    {
+      "viewport": "laptop",
+      "route": "execution-quality",
+      "horizontal_overflow": false,
+      "scroll_width": 1024,
+      "client_width": 1024,
+      "overlaps": [],
+      "overflowing_elements": []
+    },
+    {
+      "viewport": "laptop",
+      "route": "execution-outcome",
+      "horizontal_overflow": false,
+      "scroll_width": 1024,
+      "client_width": 1024,
+      "overlaps": [],
+      "overflowing_elements": []
+    },
+    {
+      "viewport": "laptop",
+      "route": "evidence",
+      "horizontal_overflow": false,
+      "scroll_width": 1024,
+      "client_width": 1024,
+      "overlaps": [],
+      "overflowing_elements": []
+    },
+    {
+      "viewport": "laptop",
+      "route": "connections",
+      "horizontal_overflow": false,
+      "scroll_width": 1024,
+      "client_width": 1024,
+      "overlaps": [],
+      "overflowing_elements": []
+    },
+    {
+      "viewport": "laptop",
+      "route": "outcome",
+      "horizontal_overflow": false,
+      "scroll_width": 1024,
+      "client_width": 1024,
+      "overlaps": [],
+      "overflowing_elements": []
+    },
+    {
+      "viewport": "laptop",
+      "route": "delivery",
+      "horizontal_overflow": false,
+      "scroll_width": 1024,
+      "client_width": 1024,
+      "overlaps": [],
+      "overflowing_elements": []
+    },
+    {
+      "viewport": "laptop",
+      "route": "operations",
+      "horizontal_overflow": false,
+      "scroll_width": 1024,
+      "client_width": 1024,
+      "overlaps": [],
+      "overflowing_elements": []
+    },
+    {
+      "viewport": "laptop",
+      "route": "identity",
+      "horizontal_overflow": false,
+      "scroll_width": 1024,
+      "client_width": 1024,
+      "overlaps": [],
+      "overflowing_elements": []
+    },
+    {
+      "viewport": "laptop",
+      "route": "exchange",
+      "horizontal_overflow": false,
+      "scroll_width": 1024,
+      "client_width": 1024,
+      "overlaps": [],
+      "overflowing_elements": []
+    },
+    {
+      "viewport": "laptop",
+      "route": "runner",
+      "horizontal_overflow": false,
+      "scroll_width": 1024,
+      "client_width": 1024,
+      "overlaps": [],
+      "overflowing_elements": []
+    },
+    {
+      "viewport": "laptop",
+      "route": "parser",
+      "horizontal_overflow": false,
+      "scroll_width": 1024,
+      "client_width": 1024,
+      "overlaps": [],
+      "overflowing_elements": []
+    },
+    {
+      "viewport": "laptop",
+      "route": "deployment",
+      "horizontal_overflow": false,
+      "scroll_width": 1024,
+      "client_width": 1024,
+      "overlaps": [],
+      "overflowing_elements": []
+    },
+    {
+      "viewport": "laptop",
+      "route": "backup",
+      "horizontal_overflow": false,
+      "scroll_width": 1024,
+      "client_width": 1024,
+      "overlaps": [],
+      "overflowing_elements": []
+    },
+    {
+      "viewport": "laptop",
+      "route": "importer",
+      "horizontal_overflow": false,
+      "scroll_width": 1024,
+      "client_width": 1024,
+      "overlaps": [],
+      "overflowing_elements": []
+    },
+    {
+      "viewport": "desktop",
+      "route": "governance",
+      "horizontal_overflow": false,
+      "scroll_width": 1440,
+      "client_width": 1440,
+      "overlaps": [],
+      "overflowing_elements": []
+    },
+    {
+      "viewport": "desktop",
+      "route": "context",
+      "horizontal_overflow": false,
+      "scroll_width": 1440,
+      "client_width": 1440,
+      "overlaps": [],
+      "overflowing_elements": []
+    },
+    {
+      "viewport": "desktop",
+      "route": "settings",
+      "horizontal_overflow": false,
+      "scroll_width": 1440,
+      "client_width": 1440,
+      "overlaps": [],
+      "overflowing_elements": []
+    },
+    {
+      "viewport": "desktop",
+      "route": "execution",
+      "horizontal_overflow": false,
+      "scroll_width": 1440,
+      "client_width": 1440,
+      "overlaps": [],
+      "overflowing_elements": []
+    },
+    {
+      "viewport": "desktop",
+      "route": "execution-quality",
+      "horizontal_overflow": false,
+      "scroll_width": 1440,
+      "client_width": 1440,
+      "overlaps": [],
+      "overflowing_elements": []
+    },
+    {
+      "viewport": "desktop",
+      "route": "execution-outcome",
+      "horizontal_overflow": false,
+      "scroll_width": 1440,
+      "client_width": 1440,
+      "overlaps": [],
+      "overflowing_elements": []
+    },
+    {
+      "viewport": "desktop",
+      "route": "evidence",
+      "horizontal_overflow": false,
+      "scroll_width": 1440,
+      "client_width": 1440,
+      "overlaps": [],
+      "overflowing_elements": []
+    },
+    {
+      "viewport": "desktop",
+      "route": "connections",
+      "horizontal_overflow": false,
+      "scroll_width": 1440,
+      "client_width": 1440,
+      "overlaps": [],
+      "overflowing_elements": []
+    },
+    {
+      "viewport": "desktop",
+      "route": "outcome",
+      "horizontal_overflow": false,
+      "scroll_width": 1440,
+      "client_width": 1440,
+      "overlaps": [],
+      "overflowing_elements": []
+    },
+    {
+      "viewport": "desktop",
+      "route": "delivery",
+      "horizontal_overflow": false,
+      "scroll_width": 1440,
+      "client_width": 1440,
+      "overlaps": [],
+      "overflowing_elements": []
+    },
+    {
+      "viewport": "desktop",
+      "route": "operations",
+      "horizontal_overflow": false,
+      "scroll_width": 1440,
+      "client_width": 1440,
+      "overlaps": [],
+      "overflowing_elements": []
+    },
+    {
+      "viewport": "desktop",
+      "route": "identity",
+      "horizontal_overflow": false,
+      "scroll_width": 1440,
+      "client_width": 1440,
+      "overlaps": [],
+      "overflowing_elements": []
+    },
+    {
+      "viewport": "desktop",
+      "route": "exchange",
+      "horizontal_overflow": false,
+      "scroll_width": 1440,
+      "client_width": 1440,
+      "overlaps": [],
+      "overflowing_elements": []
+    },
+    {
+      "viewport": "desktop",
+      "route": "runner",
+      "horizontal_overflow": false,
+      "scroll_width": 1440,
+      "client_width": 1440,
+      "overlaps": [],
+      "overflowing_elements": []
+    },
+    {
+      "viewport": "desktop",
+      "route": "parser",
+      "horizontal_overflow": false,
+      "scroll_width": 1440,
+      "client_width": 1440,
+      "overlaps": [],
+      "overflowing_elements": []
+    },
+    {
+      "viewport": "desktop",
+      "route": "deployment",
+      "horizontal_overflow": false,
+      "scroll_width": 1440,
+      "client_width": 1440,
+      "overlaps": [],
+      "overflowing_elements": []
+    },
+    {
+      "viewport": "desktop",
+      "route": "backup",
+      "horizontal_overflow": false,
+      "scroll_width": 1440,
+      "client_width": 1440,
+      "overlaps": [],
+      "overflowing_elements": []
+    },
+    {
+      "viewport": "desktop",
+      "route": "importer",
+      "horizontal_overflow": false,
+      "scroll_width": 1440,
+      "client_width": 1440,
+      "overlaps": [],
+      "overflowing_elements": []
+    }
+  ],
+  "context_pack_hash": "0eea5b95c5d4d094a8c8e92dbb20fb3842911f35d1e84ad78c1a65e10abce249",
+  "runner_profile": {
+    "id": "runner_profile_f888eff3cbe34526b6700f4004f05985",
+    "type": "host",
+    "status": "ready"
+  },
+  "p10": {
+    "provider": {
+      "id": "profile_214b3499907e4a44ab957d0fb131d7bd",
+      "lifecycle": "enabled",
+      "probe_status": "succeeded"
+    },
+    "brief_template": {
+      "id": "brief_template_bbbb8ee8d6da4c6e8ab4438bd51649d8",
+      "revision": 2,
+      "archived": true
+    },
+    "assist": {
+      "session_id": "assist_session_bacd989e6a0748fbad383d4c7e1092ff",
+      "fork_id": "assist_session_47c14c052af041cd8b2cf62a76149320",
+      "side_thread_id": "assist_session_43b9f15f9dda44b5b32d678ad88405fa",
+      "comments": 2,
+      "restored_deleted": true
+    },
+    "repository_deletion": {
+      "intent_id": "repository_deletion_77f9c6ef1618491c80e83f76efb3df48",
+      "two_session_proofs": true,
+      "terminal_status": "cancelled"
+    },
+    "project_deletion": {
+      "intent_id": "project_deletion_445d718149f1446c92eb5038d2cb8952",
+      "terminal_status": "completed"
+    },
+    "quality_dimensions": [
+      "coverage",
+      "accuracy",
+      "depth",
+      "consistency",
+      "clarity"
+    ]
+  },
+  "execution": {
+    "id": "execution_0585d06f6f0943e282de56dd50f34dbf",
+    "status": "completed",
+    "generation": 2,
+    "checkpoint_count": 8,
+    "attempt_count": 1,
+    "delivery_ready": true,
+    "approval_wait_resumed": true,
+    "replayed_stage": "deliver"
+  },
+  "evidence": {
+    "asset_id": "asset_858222d2bfb240aa8ab7258e86bb1adf",
+    "status": "active",
+    "source_version_count": 1,
+    "parser_status": "parsed",
+    "output_asset_version_id": "asset_version_1f99210dbbc3404c9d842c000b3b4ff3",
+    "attestation_count": 1
+  },
+  "quality": {
+    "review_id": "quality_review_b0371c23ff6b4afe9e71616a3957ec06",
+    "status": "completed",
+    "weighted_score": 90.4,
+    "report_sha256": "3fc0064dc20e2a0996af0520d684b200adee50c82363ec5c4b646e78a06967a6"
+  },
+  "outcome": {
+    "requirement_count": 2,
+    "terminal_statuses": {
+      "blocked": "blocked",
+      "waived": "waived",
+      "revoked": "blocked"
+    },
+    "generations": {
+      "blocked": 10,
+      "waived": 11,
+      "revoked": 12
+    }
+  }
+}

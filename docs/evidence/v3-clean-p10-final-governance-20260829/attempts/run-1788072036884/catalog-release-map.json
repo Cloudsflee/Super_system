@@ -1,0 +1,254 @@
+{
+  "schema_version": "aiws.v3-clean.p10-catalog-release-map.v1",
+  "status": "passed",
+  "counts": {
+    "clean": 27,
+    "historical": 0,
+    "total": 27
+  },
+  "rows": [
+    {
+      "id": "REC-D0-GOVERNANCE-000",
+      "domain": "governance",
+      "prior_status": "released",
+      "release_status": "released",
+      "release_behavior": "P10 business-semantic parity and released Web/API receipt",
+      "verification": "docs/evidence/v3-clean-p10-final-governance-20260829/verification.json",
+      "parity_map": "docs/architecture/p10-parity/business-parity-map.json"
+    },
+    {
+      "id": "REC-D1-CONTRACTS-023",
+      "domain": "contracts",
+      "prior_status": "released",
+      "release_status": "released",
+      "release_behavior": "P10 business-semantic parity and released Web/API receipt",
+      "verification": "docs/evidence/v3-clean-p10-final-governance-20260829/verification.json",
+      "parity_map": "docs/architecture/p10-parity/business-parity-map.json"
+    },
+    {
+      "id": "REC-D10-FRONTEND-024",
+      "domain": "frontend",
+      "prior_status": "released",
+      "release_status": "released",
+      "release_behavior": "P10 business-semantic parity and released Web/API receipt",
+      "verification": "docs/evidence/v3-clean-p10-final-governance-20260829/verification.json",
+      "parity_map": "docs/architecture/p10-parity/business-parity-map.json"
+    },
+    {
+      "id": "REC-D11-OPS-022",
+      "domain": "operations",
+      "prior_status": "released",
+      "release_status": "released",
+      "release_behavior": "P10 business-semantic parity and released Web/API receipt",
+      "verification": "docs/evidence/v3-clean-p10-final-governance-20260829/verification.json",
+      "parity_map": "docs/architecture/p10-parity/business-parity-map.json"
+    },
+    {
+      "id": "REC-D2-IDENTITY-001",
+      "domain": "identity",
+      "prior_status": "released",
+      "release_status": "released",
+      "release_behavior": "P10 business-semantic parity and released Web/API receipt",
+      "verification": "docs/evidence/v3-clean-p10-final-governance-20260829/verification.json",
+      "parity_map": "docs/architecture/p10-parity/business-parity-map.json"
+    },
+    {
+      "id": "REC-D2-SETUP-002",
+      "domain": "setup",
+      "prior_status": "released",
+      "release_status": "released",
+      "release_behavior": "P10 business-semantic parity and released Web/API receipt",
+      "verification": "docs/evidence/v3-clean-p10-final-governance-20260829/verification.json",
+      "parity_map": "docs/architecture/p10-parity/business-parity-map.json"
+    },
+    {
+      "id": "REC-D3-RUNNER-003",
+      "domain": "runner",
+      "prior_status": "released",
+      "release_status": "released",
+      "release_behavior": "P10 business-semantic parity and released Web/API receipt",
+      "verification": "docs/evidence/v3-clean-p10-final-governance-20260829/verification.json",
+      "parity_map": "docs/architecture/p10-parity/business-parity-map.json"
+    },
+    {
+      "id": "REC-D4-MCP-004",
+      "domain": "mcp",
+      "prior_status": "released",
+      "release_status": "released",
+      "release_behavior": "P10 business-semantic parity and released Web/API receipt",
+      "verification": "docs/evidence/v3-clean-p10-final-governance-20260829/verification.json",
+      "parity_map": "docs/architecture/p10-parity/business-parity-map.json"
+    },
+    {
+      "id": "REC-D4-SCOPE-016",
+      "domain": "mcp",
+      "prior_status": "released",
+      "release_status": "released",
+      "release_behavior": "P10 business-semantic parity and released Web/API receipt",
+      "verification": "docs/evidence/v3-clean-p10-final-governance-20260829/verification.json",
+      "parity_map": "docs/architecture/p10-parity/business-parity-map.json"
+    },
+    {
+      "id": "REC-D5-PROJECT-005",
+      "domain": "project",
+      "prior_status": "released",
+      "release_status": "released",
+      "release_behavior": "P10 business-semantic parity and released Web/API receipt",
+      "verification": "docs/evidence/v3-clean-p10-final-governance-20260829/verification.json",
+      "parity_map": "docs/architecture/p10-parity/business-parity-map.json"
+    },
+    {
+      "id": "REC-D5-WORKFLOW-006",
+      "domain": "workflow",
+      "prior_status": "released",
+      "release_status": "released",
+      "release_behavior": "P10 business-semantic parity and released Web/API receipt",
+      "verification": "docs/evidence/v3-clean-p10-final-governance-20260829/verification.json",
+      "parity_map": "docs/architecture/p10-parity/business-parity-map.json"
+    },
+    {
+      "id": "REC-D6-EXECUTION-008",
+      "domain": "execution",
+      "prior_status": "released",
+      "release_status": "released",
+      "release_behavior": "P10 business-semantic parity and released Web/API receipt",
+      "verification": "docs/evidence/v3-clean-p10-final-governance-20260829/verification.json",
+      "parity_map": "docs/architecture/p10-parity/business-parity-map.json"
+    },
+    {
+      "id": "REC-D6-GENERATION-007",
+      "domain": "workflow",
+      "prior_status": "released",
+      "release_status": "released",
+      "release_behavior": "P10 business-semantic parity and released Web/API receipt",
+      "verification": "docs/evidence/v3-clean-p10-final-governance-20260829/verification.json",
+      "parity_map": "docs/architecture/p10-parity/business-parity-map.json"
+    },
+    {
+      "id": "REC-D6-OUTCOME-009",
+      "domain": "outcome",
+      "prior_status": "released",
+      "release_status": "released",
+      "release_behavior": "P10 business-semantic parity and released Web/API receipt",
+      "verification": "docs/evidence/v3-clean-p10-final-governance-20260829/verification.json",
+      "parity_map": "docs/architecture/p10-parity/business-parity-map.json"
+    },
+    {
+      "id": "REC-D7-DELIVERY-015",
+      "domain": "delivery",
+      "prior_status": "released",
+      "release_status": "released",
+      "release_behavior": "P10 business-semantic parity and released Web/API receipt",
+      "verification": "docs/evidence/v3-clean-p10-final-governance-20260829/verification.json",
+      "parity_map": "docs/architecture/p10-parity/business-parity-map.json"
+    },
+    {
+      "id": "REC-D7-REPOSITORY-014",
+      "domain": "repository",
+      "prior_status": "released",
+      "release_status": "released",
+      "release_behavior": "P10 business-semantic parity and released Web/API receipt",
+      "verification": "docs/evidence/v3-clean-p10-final-governance-20260829/verification.json",
+      "parity_map": "docs/architecture/p10-parity/business-parity-map.json"
+    },
+    {
+      "id": "REC-D8-APPROVAL-013",
+      "domain": "assist",
+      "prior_status": "released",
+      "release_status": "released",
+      "release_behavior": "P10 business-semantic parity and released Web/API receipt",
+      "verification": "docs/evidence/v3-clean-p10-final-governance-20260829/verification.json",
+      "parity_map": "docs/architecture/p10-parity/business-parity-map.json"
+    },
+    {
+      "id": "REC-D8-ASSIST-010",
+      "domain": "assist",
+      "prior_status": "released",
+      "release_status": "released",
+      "release_behavior": "P10 business-semantic parity and released Web/API receipt",
+      "verification": "docs/evidence/v3-clean-p10-final-governance-20260829/verification.json",
+      "parity_map": "docs/architecture/p10-parity/business-parity-map.json"
+    },
+    {
+      "id": "REC-D8-ATTACHMENTS-011",
+      "domain": "assist",
+      "prior_status": "released",
+      "release_status": "released",
+      "release_behavior": "P10 business-semantic parity and released Web/API receipt",
+      "verification": "docs/evidence/v3-clean-p10-final-governance-20260829/verification.json",
+      "parity_map": "docs/architecture/p10-parity/business-parity-map.json"
+    },
+    {
+      "id": "REC-D8-BRIDGE-026",
+      "domain": "bridge",
+      "prior_status": "released",
+      "release_status": "released",
+      "release_behavior": "P10 business-semantic parity and released Web/API receipt",
+      "verification": "docs/evidence/v3-clean-p10-final-governance-20260829/verification.json",
+      "parity_map": "docs/architecture/p10-parity/business-parity-map.json"
+    },
+    {
+      "id": "REC-D8-FILES-012",
+      "domain": "assist",
+      "prior_status": "released",
+      "release_status": "released",
+      "release_behavior": "P10 business-semantic parity and released Web/API receipt",
+      "verification": "docs/evidence/v3-clean-p10-final-governance-20260829/verification.json",
+      "parity_map": "docs/architecture/p10-parity/business-parity-map.json"
+    },
+    {
+      "id": "REC-D8-TERMINAL-025",
+      "domain": "terminal",
+      "prior_status": "released",
+      "release_status": "released",
+      "release_behavior": "P10 business-semantic parity and released Web/API receipt",
+      "verification": "docs/evidence/v3-clean-p10-final-governance-20260829/verification.json",
+      "parity_map": "docs/architecture/p10-parity/business-parity-map.json"
+    },
+    {
+      "id": "REC-D9-CONTEXT-017",
+      "domain": "context",
+      "prior_status": "released",
+      "release_status": "released",
+      "release_behavior": "P10 business-semantic parity and released Web/API receipt",
+      "verification": "docs/evidence/v3-clean-p10-final-governance-20260829/verification.json",
+      "parity_map": "docs/architecture/p10-parity/business-parity-map.json"
+    },
+    {
+      "id": "REC-D9-DEPLOYMENT-021",
+      "domain": "evidence",
+      "prior_status": "released",
+      "release_status": "released",
+      "release_behavior": "P10 business-semantic parity and released Web/API receipt",
+      "verification": "docs/evidence/v3-clean-p10-final-governance-20260829/verification.json",
+      "parity_map": "docs/architecture/p10-parity/business-parity-map.json"
+    },
+    {
+      "id": "REC-D9-EVIDENCE-019",
+      "domain": "evidence",
+      "prior_status": "released",
+      "release_status": "released",
+      "release_behavior": "P10 business-semantic parity and released Web/API receipt",
+      "verification": "docs/evidence/v3-clean-p10-final-governance-20260829/verification.json",
+      "parity_map": "docs/architecture/p10-parity/business-parity-map.json"
+    },
+    {
+      "id": "REC-D9-PROJECTION-018",
+      "domain": "context",
+      "prior_status": "released",
+      "release_status": "released",
+      "release_behavior": "P10 business-semantic parity and released Web/API receipt",
+      "verification": "docs/evidence/v3-clean-p10-final-governance-20260829/verification.json",
+      "parity_map": "docs/architecture/p10-parity/business-parity-map.json"
+    },
+    {
+      "id": "REC-D9-QUALITY-020",
+      "domain": "quality",
+      "prior_status": "released",
+      "release_status": "released",
+      "release_behavior": "P10 business-semantic parity and released Web/API receipt",
+      "verification": "docs/evidence/v3-clean-p10-final-governance-20260829/verification.json",
+      "parity_map": "docs/architecture/p10-parity/business-parity-map.json"
+    }
+  ]
+}

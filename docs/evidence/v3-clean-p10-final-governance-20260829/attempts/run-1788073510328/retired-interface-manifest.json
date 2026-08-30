@@ -1,0 +1,972 @@
+{
+  "schema_version": "aiws.v3-clean.p10-retired-interface-manifest.v1",
+  "owner": "Product Architecture",
+  "phase": "P10",
+  "source_commit": "e18dc0b616fa7ab2b00a6c05db23890ccd940175",
+  "entries": [
+    {
+      "inventory_kind": "collection",
+      "source_id": "assist_operations",
+      "replacement_group": "assist",
+      "clean_commands": [
+        "assist.session.list"
+      ],
+      "rationale": "Historical collection assist_operations is owned by the mapped Clean business group."
+    },
+    {
+      "inventory_kind": "collection",
+      "source_id": "tools",
+      "replacement_group": "mcp-exchange-gateway",
+      "clean_commands": [
+        "mcp.tools.list"
+      ],
+      "rationale": "Historical collection tools is owned by the mapped Clean business group."
+    },
+    {
+      "inventory_kind": "route",
+      "source_id": "apps/api/src/routes/assist-v12.mjs#1:GET /assist/v2/sessions",
+      "replacement_group": "assist",
+      "clean_commands": [
+        "assist.session.list"
+      ],
+      "rationale": "The historical GET /assist/v2/sessions address has no independent business semantics; the mapped Clean group owns the confirmed workflow."
+    },
+    {
+      "inventory_kind": "route",
+      "source_id": "apps/api/src/routes/assist-v12.mjs#10:POST /assist/v2/sessions/:id/actions/:actionId/result",
+      "replacement_group": "assist",
+      "clean_commands": [
+        "assist.session.list"
+      ],
+      "rationale": "The historical POST /assist/v2/sessions/:id/actions/:actionId/result address has no independent business semantics; the mapped Clean group owns the confirmed workflow."
+    },
+    {
+      "inventory_kind": "route",
+      "source_id": "apps/api/src/routes/assist-v12.mjs#2:POST /assist/v2/sessions",
+      "replacement_group": "assist",
+      "clean_commands": [
+        "assist.session.list"
+      ],
+      "rationale": "The historical POST /assist/v2/sessions address has no independent business semantics; the mapped Clean group owns the confirmed workflow."
+    },
+    {
+      "inventory_kind": "route",
+      "source_id": "apps/api/src/routes/assist-v12.mjs#3:GET /assist/v2/sessions/:id",
+      "replacement_group": "assist",
+      "clean_commands": [
+        "assist.session.list"
+      ],
+      "rationale": "The historical GET /assist/v2/sessions/:id address has no independent business semantics; the mapped Clean group owns the confirmed workflow."
+    },
+    {
+      "inventory_kind": "route",
+      "source_id": "apps/api/src/routes/assist-v12.mjs#4:POST /assist/v2/sessions/:id/messages",
+      "replacement_group": "assist",
+      "clean_commands": [
+        "assist.session.list"
+      ],
+      "rationale": "The historical POST /assist/v2/sessions/:id/messages address has no independent business semantics; the mapped Clean group owns the confirmed workflow."
+    },
+    {
+      "inventory_kind": "route",
+      "source_id": "apps/api/src/routes/assist-v12.mjs#5:GET /assist/v2/sessions/:id/events",
+      "replacement_group": "assist",
+      "clean_commands": [
+        "assist.session.list"
+      ],
+      "rationale": "The historical GET /assist/v2/sessions/:id/events address has no independent business semantics; the mapped Clean group owns the confirmed workflow."
+    },
+    {
+      "inventory_kind": "route",
+      "source_id": "apps/api/src/routes/assist-v12.mjs#6:POST /assist/v2/sessions/:id/cancel",
+      "replacement_group": "assist",
+      "clean_commands": [
+        "assist.session.list"
+      ],
+      "rationale": "The historical POST /assist/v2/sessions/:id/cancel address has no independent business semantics; the mapped Clean group owns the confirmed workflow."
+    },
+    {
+      "inventory_kind": "route",
+      "source_id": "apps/api/src/routes/assist-v12.mjs#7:POST /assist/v2/sessions/:id/retry",
+      "replacement_group": "assist",
+      "clean_commands": [
+        "assist.session.list"
+      ],
+      "rationale": "The historical POST /assist/v2/sessions/:id/retry address has no independent business semantics; the mapped Clean group owns the confirmed workflow."
+    },
+    {
+      "inventory_kind": "route",
+      "source_id": "apps/api/src/routes/assist-v12.mjs#8:POST /assist/v2/sessions/:id/actions/:actionId/confirm",
+      "replacement_group": "assist",
+      "clean_commands": [
+        "assist.session.list"
+      ],
+      "rationale": "The historical POST /assist/v2/sessions/:id/actions/:actionId/confirm address has no independent business semantics; the mapped Clean group owns the confirmed workflow."
+    },
+    {
+      "inventory_kind": "route",
+      "source_id": "apps/api/src/routes/assist-v12.mjs#9:POST /assist/v2/sessions/:id/actions/:actionId/reject",
+      "replacement_group": "assist",
+      "clean_commands": [
+        "assist.session.list"
+      ],
+      "rationale": "The historical POST /assist/v2/sessions/:id/actions/:actionId/reject address has no independent business semantics; the mapped Clean group owns the confirmed workflow."
+    },
+    {
+      "inventory_kind": "route",
+      "source_id": "apps/api/src/routes/assist-v3.mjs#1:GET /assist/v3/capabilities",
+      "replacement_group": "assist",
+      "clean_commands": [
+        "assist.session.list"
+      ],
+      "rationale": "The historical GET /assist/v3/capabilities address has no independent business semantics; the mapped Clean group owns the confirmed workflow."
+    },
+    {
+      "inventory_kind": "route",
+      "source_id": "apps/api/src/routes/assist-v3.mjs#10:GET /assist/v3/sessions/:id",
+      "replacement_group": "assist",
+      "clean_commands": [
+        "assist.session.list"
+      ],
+      "rationale": "The historical GET /assist/v3/sessions/:id address has no independent business semantics; the mapped Clean group owns the confirmed workflow."
+    },
+    {
+      "inventory_kind": "route",
+      "source_id": "apps/api/src/routes/assist-v3.mjs#11:PATCH /assist/v3/sessions/:id",
+      "replacement_group": "assist",
+      "clean_commands": [
+        "assist.session.list"
+      ],
+      "rationale": "The historical PATCH /assist/v3/sessions/:id address has no independent business semantics; the mapped Clean group owns the confirmed workflow."
+    },
+    {
+      "inventory_kind": "route",
+      "source_id": "apps/api/src/routes/assist-v3.mjs#12:POST /assist/v3/sessions/:id/rename",
+      "replacement_group": "assist",
+      "clean_commands": [
+        "assist.session.list"
+      ],
+      "rationale": "The historical POST /assist/v3/sessions/:id/rename address has no independent business semantics; the mapped Clean group owns the confirmed workflow."
+    },
+    {
+      "inventory_kind": "route",
+      "source_id": "apps/api/src/routes/assist-v3.mjs#13:POST /assist/v3/sessions/:id/pin",
+      "replacement_group": "assist",
+      "clean_commands": [
+        "assist.session.list"
+      ],
+      "rationale": "The historical POST /assist/v3/sessions/:id/pin address has no independent business semantics; the mapped Clean group owns the confirmed workflow."
+    },
+    {
+      "inventory_kind": "route",
+      "source_id": "apps/api/src/routes/assist-v3.mjs#14:POST /assist/v3/sessions/:id/archive",
+      "replacement_group": "assist",
+      "clean_commands": [
+        "assist.session.list"
+      ],
+      "rationale": "The historical POST /assist/v3/sessions/:id/archive address has no independent business semantics; the mapped Clean group owns the confirmed workflow."
+    },
+    {
+      "inventory_kind": "route",
+      "source_id": "apps/api/src/routes/assist-v3.mjs#15:DELETE /assist/v3/sessions/:id",
+      "replacement_group": "assist",
+      "clean_commands": [
+        "assist.session.list"
+      ],
+      "rationale": "The historical DELETE /assist/v3/sessions/:id address has no independent business semantics; the mapped Clean group owns the confirmed workflow."
+    },
+    {
+      "inventory_kind": "route",
+      "source_id": "apps/api/src/routes/assist-v3.mjs#16:POST /assist/v3/sessions/:id/restore",
+      "replacement_group": "assist",
+      "clean_commands": [
+        "assist.session.list"
+      ],
+      "rationale": "The historical POST /assist/v3/sessions/:id/restore address has no independent business semantics; the mapped Clean group owns the confirmed workflow."
+    },
+    {
+      "inventory_kind": "route",
+      "source_id": "apps/api/src/routes/assist-v3.mjs#17:POST /assist/v3/sessions/:id/restore-deleted",
+      "replacement_group": "assist",
+      "clean_commands": [
+        "assist.session.list"
+      ],
+      "rationale": "The historical POST /assist/v3/sessions/:id/restore-deleted address has no independent business semantics; the mapped Clean group owns the confirmed workflow."
+    },
+    {
+      "inventory_kind": "route",
+      "source_id": "apps/api/src/routes/assist-v3.mjs#18:POST /assist/v3/sessions/:id/fork",
+      "replacement_group": "assist",
+      "clean_commands": [
+        "assist.session.list"
+      ],
+      "rationale": "The historical POST /assist/v3/sessions/:id/fork address has no independent business semantics; the mapped Clean group owns the confirmed workflow."
+    },
+    {
+      "inventory_kind": "route",
+      "source_id": "apps/api/src/routes/assist-v3.mjs#19:POST /assist/v3/sessions/:id/btw",
+      "replacement_group": "assist",
+      "clean_commands": [
+        "assist.session.list"
+      ],
+      "rationale": "The historical POST /assist/v3/sessions/:id/btw address has no independent business semantics; the mapped Clean group owns the confirmed workflow."
+    },
+    {
+      "inventory_kind": "route",
+      "source_id": "apps/api/src/routes/assist-v3.mjs#2:GET /assist/v3/models",
+      "replacement_group": "assist",
+      "clean_commands": [
+        "assist.session.list"
+      ],
+      "rationale": "The historical GET /assist/v3/models address has no independent business semantics; the mapped Clean group owns the confirmed workflow."
+    },
+    {
+      "inventory_kind": "route",
+      "source_id": "apps/api/src/routes/assist-v3.mjs#20:POST /assist/v3/btw",
+      "replacement_group": "assist",
+      "clean_commands": [
+        "assist.session.list"
+      ],
+      "rationale": "The historical POST /assist/v3/btw address has no independent business semantics; the mapped Clean group owns the confirmed workflow."
+    },
+    {
+      "inventory_kind": "route",
+      "source_id": "apps/api/src/routes/assist-v3.mjs#21:POST /assist/v3/btw/:id/turns",
+      "replacement_group": "assist",
+      "clean_commands": [
+        "assist.session.list"
+      ],
+      "rationale": "The historical POST /assist/v3/btw/:id/turns address has no independent business semantics; the mapped Clean group owns the confirmed workflow."
+    },
+    {
+      "inventory_kind": "route",
+      "source_id": "apps/api/src/routes/assist-v3.mjs#22:GET /assist/v3/btw/:id/events",
+      "replacement_group": "assist",
+      "clean_commands": [
+        "assist.session.list"
+      ],
+      "rationale": "The historical GET /assist/v3/btw/:id/events address has no independent business semantics; the mapped Clean group owns the confirmed workflow."
+    },
+    {
+      "inventory_kind": "route",
+      "source_id": "apps/api/src/routes/assist-v3.mjs#23:DELETE /assist/v3/btw/:id",
+      "replacement_group": "assist",
+      "clean_commands": [
+        "assist.session.list"
+      ],
+      "rationale": "The historical DELETE /assist/v3/btw/:id address has no independent business semantics; the mapped Clean group owns the confirmed workflow."
+    },
+    {
+      "inventory_kind": "route",
+      "source_id": "apps/api/src/routes/assist-v3.mjs#24:GET /assist/v3/sessions/:id/goal",
+      "replacement_group": "assist",
+      "clean_commands": [
+        "assist.session.list"
+      ],
+      "rationale": "The historical GET /assist/v3/sessions/:id/goal address has no independent business semantics; the mapped Clean group owns the confirmed workflow."
+    },
+    {
+      "inventory_kind": "route",
+      "source_id": "apps/api/src/routes/assist-v3.mjs#25:PUT /assist/v3/sessions/:id/goal",
+      "replacement_group": "assist",
+      "clean_commands": [
+        "assist.session.list"
+      ],
+      "rationale": "The historical PUT /assist/v3/sessions/:id/goal address has no independent business semantics; the mapped Clean group owns the confirmed workflow."
+    },
+    {
+      "inventory_kind": "route",
+      "source_id": "apps/api/src/routes/assist-v3.mjs#26:DELETE /assist/v3/sessions/:id/goal",
+      "replacement_group": "assist",
+      "clean_commands": [
+        "assist.session.list"
+      ],
+      "rationale": "The historical DELETE /assist/v3/sessions/:id/goal address has no independent business semantics; the mapped Clean group owns the confirmed workflow."
+    },
+    {
+      "inventory_kind": "route",
+      "source_id": "apps/api/src/routes/assist-v3.mjs#27:POST /assist/v3/sessions/:id/turns",
+      "replacement_group": "assist",
+      "clean_commands": [
+        "assist.session.list"
+      ],
+      "rationale": "The historical POST /assist/v3/sessions/:id/turns address has no independent business semantics; the mapped Clean group owns the confirmed workflow."
+    },
+    {
+      "inventory_kind": "route",
+      "source_id": "apps/api/src/routes/assist-v3.mjs#28:GET /assist/v3/turns/:id",
+      "replacement_group": "assist",
+      "clean_commands": [
+        "assist.session.list"
+      ],
+      "rationale": "The historical GET /assist/v3/turns/:id address has no independent business semantics; the mapped Clean group owns the confirmed workflow."
+    },
+    {
+      "inventory_kind": "route",
+      "source_id": "apps/api/src/routes/assist-v3.mjs#29:POST /assist/v3/turns/:id/retry",
+      "replacement_group": "assist",
+      "clean_commands": [
+        "assist.session.list"
+      ],
+      "rationale": "The historical POST /assist/v3/turns/:id/retry address has no independent business semantics; the mapped Clean group owns the confirmed workflow."
+    },
+    {
+      "inventory_kind": "route",
+      "source_id": "apps/api/src/routes/assist-v3.mjs#3:GET /assist/v3/configurations",
+      "replacement_group": "assist",
+      "clean_commands": [
+        "assist.session.list"
+      ],
+      "rationale": "The historical GET /assist/v3/configurations address has no independent business semantics; the mapped Clean group owns the confirmed workflow."
+    },
+    {
+      "inventory_kind": "route",
+      "source_id": "apps/api/src/routes/assist-v3.mjs#30:POST /assist/v3/turns/:id/stop",
+      "replacement_group": "assist",
+      "clean_commands": [
+        "assist.session.list"
+      ],
+      "rationale": "The historical POST /assist/v3/turns/:id/stop address has no independent business semantics; the mapped Clean group owns the confirmed workflow."
+    },
+    {
+      "inventory_kind": "route",
+      "source_id": "apps/api/src/routes/assist-v3.mjs#31:POST /assist/v3/turns/:id/actions/:actionId/result",
+      "replacement_group": "assist",
+      "clean_commands": [
+        "assist.session.list"
+      ],
+      "rationale": "The historical POST /assist/v3/turns/:id/actions/:actionId/result address has no independent business semantics; the mapped Clean group owns the confirmed workflow."
+    },
+    {
+      "inventory_kind": "route",
+      "source_id": "apps/api/src/routes/assist-v3.mjs#32:POST /assist/v3/turns/:id/user-input/:itemId/respond",
+      "replacement_group": "assist",
+      "clean_commands": [
+        "assist.session.list"
+      ],
+      "rationale": "The historical POST /assist/v3/turns/:id/user-input/:itemId/respond address has no independent business semantics; the mapped Clean group owns the confirmed workflow."
+    },
+    {
+      "inventory_kind": "route",
+      "source_id": "apps/api/src/routes/assist-v3.mjs#33:POST /assist/v3/sessions/:id/turns/:turnId/retry",
+      "replacement_group": "assist",
+      "clean_commands": [
+        "assist.session.list"
+      ],
+      "rationale": "The historical POST /assist/v3/sessions/:id/turns/:turnId/retry address has no independent business semantics; the mapped Clean group owns the confirmed workflow."
+    },
+    {
+      "inventory_kind": "route",
+      "source_id": "apps/api/src/routes/assist-v3.mjs#34:POST /assist/v3/sessions/:id/turns/:turnId/stop",
+      "replacement_group": "assist",
+      "clean_commands": [
+        "assist.session.list"
+      ],
+      "rationale": "The historical POST /assist/v3/sessions/:id/turns/:turnId/stop address has no independent business semantics; the mapped Clean group owns the confirmed workflow."
+    },
+    {
+      "inventory_kind": "route",
+      "source_id": "apps/api/src/routes/assist-v3.mjs#35:POST /assist/v3/sessions/:id/follow-ups",
+      "replacement_group": "assist",
+      "clean_commands": [
+        "assist.session.list"
+      ],
+      "rationale": "The historical POST /assist/v3/sessions/:id/follow-ups address has no independent business semantics; the mapped Clean group owns the confirmed workflow."
+    },
+    {
+      "inventory_kind": "route",
+      "source_id": "apps/api/src/routes/assist-v3.mjs#36:POST /assist/v3/sessions/:id/follow-up",
+      "replacement_group": "assist",
+      "clean_commands": [
+        "assist.session.list"
+      ],
+      "rationale": "The historical POST /assist/v3/sessions/:id/follow-up address has no independent business semantics; the mapped Clean group owns the confirmed workflow."
+    },
+    {
+      "inventory_kind": "route",
+      "source_id": "apps/api/src/routes/assist-v3.mjs#37:POST /assist/v3/sessions/:id/follow-ups/queue",
+      "replacement_group": "assist",
+      "clean_commands": [
+        "assist.session.list"
+      ],
+      "rationale": "The historical POST /assist/v3/sessions/:id/follow-ups/queue address has no independent business semantics; the mapped Clean group owns the confirmed workflow."
+    },
+    {
+      "inventory_kind": "route",
+      "source_id": "apps/api/src/routes/assist-v3.mjs#38:POST /assist/v3/sessions/:id/steer",
+      "replacement_group": "assist",
+      "clean_commands": [
+        "assist.session.list"
+      ],
+      "rationale": "The historical POST /assist/v3/sessions/:id/steer address has no independent business semantics; the mapped Clean group owns the confirmed workflow."
+    },
+    {
+      "inventory_kind": "route",
+      "source_id": "apps/api/src/routes/assist-v3.mjs#39:POST /assist/v3/sessions/:id/interrupt",
+      "replacement_group": "assist",
+      "clean_commands": [
+        "assist.session.list"
+      ],
+      "rationale": "The historical POST /assist/v3/sessions/:id/interrupt address has no independent business semantics; the mapped Clean group owns the confirmed workflow."
+    },
+    {
+      "inventory_kind": "route",
+      "source_id": "apps/api/src/routes/assist-v3.mjs#4:POST /assist/v3/configurations",
+      "replacement_group": "assist",
+      "clean_commands": [
+        "assist.session.list"
+      ],
+      "rationale": "The historical POST /assist/v3/configurations address has no independent business semantics; the mapped Clean group owns the confirmed workflow."
+    },
+    {
+      "inventory_kind": "route",
+      "source_id": "apps/api/src/routes/assist-v3.mjs#40:POST /assist/v3/turns/:id/steer",
+      "replacement_group": "assist",
+      "clean_commands": [
+        "assist.session.list"
+      ],
+      "rationale": "The historical POST /assist/v3/turns/:id/steer address has no independent business semantics; the mapped Clean group owns the confirmed workflow."
+    },
+    {
+      "inventory_kind": "route",
+      "source_id": "apps/api/src/routes/assist-v3.mjs#41:POST /assist/v3/turns/:id/interrupt",
+      "replacement_group": "assist",
+      "clean_commands": [
+        "assist.session.list"
+      ],
+      "rationale": "The historical POST /assist/v3/turns/:id/interrupt address has no independent business semantics; the mapped Clean group owns the confirmed workflow."
+    },
+    {
+      "inventory_kind": "route",
+      "source_id": "apps/api/src/routes/assist-v3.mjs#42:GET /assist/v3/sessions/:id/events",
+      "replacement_group": "assist",
+      "clean_commands": [
+        "assist.session.list"
+      ],
+      "rationale": "The historical GET /assist/v3/sessions/:id/events address has no independent business semantics; the mapped Clean group owns the confirmed workflow."
+    },
+    {
+      "inventory_kind": "route",
+      "source_id": "apps/api/src/routes/assist-v3.mjs#43:GET /assist/v3/turns/:id/events",
+      "replacement_group": "assist",
+      "clean_commands": [
+        "assist.session.list"
+      ],
+      "rationale": "The historical GET /assist/v3/turns/:id/events address has no independent business semantics; the mapped Clean group owns the confirmed workflow."
+    },
+    {
+      "inventory_kind": "route",
+      "source_id": "apps/api/src/routes/assist-v3.mjs#44:GET /assist/v3/sessions/:id/attachments",
+      "replacement_group": "assist",
+      "clean_commands": [
+        "assist.session.list"
+      ],
+      "rationale": "The historical GET /assist/v3/sessions/:id/attachments address has no independent business semantics; the mapped Clean group owns the confirmed workflow."
+    },
+    {
+      "inventory_kind": "route",
+      "source_id": "apps/api/src/routes/assist-v3.mjs#45:POST /assist/v3/sessions/:id/attachments",
+      "replacement_group": "assist",
+      "clean_commands": [
+        "assist.session.list"
+      ],
+      "rationale": "The historical POST /assist/v3/sessions/:id/attachments address has no independent business semantics; the mapped Clean group owns the confirmed workflow."
+    },
+    {
+      "inventory_kind": "route",
+      "source_id": "apps/api/src/routes/assist-v3.mjs#46:POST /assist/v3/sessions/:id/attachments/upload",
+      "replacement_group": "assist",
+      "clean_commands": [
+        "assist.session.list"
+      ],
+      "rationale": "The historical POST /assist/v3/sessions/:id/attachments/upload address has no independent business semantics; the mapped Clean group owns the confirmed workflow."
+    },
+    {
+      "inventory_kind": "route",
+      "source_id": "apps/api/src/routes/assist-v3.mjs#47:GET /assist/v3/sessions/:id/references",
+      "replacement_group": "assist",
+      "clean_commands": [
+        "assist.session.list"
+      ],
+      "rationale": "The historical GET /assist/v3/sessions/:id/references address has no independent business semantics; the mapped Clean group owns the confirmed workflow."
+    },
+    {
+      "inventory_kind": "route",
+      "source_id": "apps/api/src/routes/assist-v3.mjs#48:GET /assist/v3/attachments/:id/content",
+      "replacement_group": "assist",
+      "clean_commands": [
+        "assist.session.list"
+      ],
+      "rationale": "The historical GET /assist/v3/attachments/:id/content address has no independent business semantics; the mapped Clean group owns the confirmed workflow."
+    },
+    {
+      "inventory_kind": "route",
+      "source_id": "apps/api/src/routes/assist-v3.mjs#49:GET /assist/v3/attachments/:id/download",
+      "replacement_group": "assist",
+      "clean_commands": [
+        "assist.session.list"
+      ],
+      "rationale": "The historical GET /assist/v3/attachments/:id/download address has no independent business semantics; the mapped Clean group owns the confirmed workflow."
+    },
+    {
+      "inventory_kind": "route",
+      "source_id": "apps/api/src/routes/assist-v3.mjs#5:GET /assist/v3/configurations/:id",
+      "replacement_group": "assist",
+      "clean_commands": [
+        "assist.session.list"
+      ],
+      "rationale": "The historical GET /assist/v3/configurations/:id address has no independent business semantics; the mapped Clean group owns the confirmed workflow."
+    },
+    {
+      "inventory_kind": "route",
+      "source_id": "apps/api/src/routes/assist-v3.mjs#50:DELETE /assist/v3/attachments/:id",
+      "replacement_group": "assist",
+      "clean_commands": [
+        "assist.session.list"
+      ],
+      "rationale": "The historical DELETE /assist/v3/attachments/:id address has no independent business semantics; the mapped Clean group owns the confirmed workflow."
+    },
+    {
+      "inventory_kind": "route",
+      "source_id": "apps/api/src/routes/assist-v3.mjs#51:GET /assist/v3/turns/:id/review",
+      "replacement_group": "assist",
+      "clean_commands": [
+        "assist.session.list"
+      ],
+      "rationale": "The historical GET /assist/v3/turns/:id/review address has no independent business semantics; the mapped Clean group owns the confirmed workflow."
+    },
+    {
+      "inventory_kind": "route",
+      "source_id": "apps/api/src/routes/assist-v3.mjs#52:POST /assist/v3/turns/:id/review/viewed",
+      "replacement_group": "assist",
+      "clean_commands": [
+        "assist.session.list"
+      ],
+      "rationale": "The historical POST /assist/v3/turns/:id/review/viewed address has no independent business semantics; the mapped Clean group owns the confirmed workflow."
+    },
+    {
+      "inventory_kind": "route",
+      "source_id": "apps/api/src/routes/assist-v3.mjs#53:POST /assist/v3/turns/:id/review/comments",
+      "replacement_group": "assist",
+      "clean_commands": [
+        "assist.session.list"
+      ],
+      "rationale": "The historical POST /assist/v3/turns/:id/review/comments address has no independent business semantics; the mapped Clean group owns the confirmed workflow."
+    },
+    {
+      "inventory_kind": "route",
+      "source_id": "apps/api/src/routes/assist-v3.mjs#54:POST /assist/v3/turns/:id/review/request-changes",
+      "replacement_group": "assist",
+      "clean_commands": [
+        "assist.session.list"
+      ],
+      "rationale": "The historical POST /assist/v3/turns/:id/review/request-changes address has no independent business semantics; the mapped Clean group owns the confirmed workflow."
+    },
+    {
+      "inventory_kind": "route",
+      "source_id": "apps/api/src/routes/assist-v3.mjs#55:POST /assist/v3/turns/:id/review/apply",
+      "replacement_group": "assist",
+      "clean_commands": [
+        "assist.session.list"
+      ],
+      "rationale": "The historical POST /assist/v3/turns/:id/review/apply address has no independent business semantics; the mapped Clean group owns the confirmed workflow."
+    },
+    {
+      "inventory_kind": "route",
+      "source_id": "apps/api/src/routes/assist-v3.mjs#56:POST /assist/v3/turns/:id/review/rollback",
+      "replacement_group": "assist",
+      "clean_commands": [
+        "assist.session.list"
+      ],
+      "rationale": "The historical POST /assist/v3/turns/:id/review/rollback address has no independent business semantics; the mapped Clean group owns the confirmed workflow."
+    },
+    {
+      "inventory_kind": "route",
+      "source_id": "apps/api/src/routes/assist-v3.mjs#57:GET /assist/v3/operations",
+      "replacement_group": "assist",
+      "clean_commands": [
+        "assist.session.list"
+      ],
+      "rationale": "The historical GET /assist/v3/operations address has no independent business semantics; the mapped Clean group owns the confirmed workflow."
+    },
+    {
+      "inventory_kind": "route",
+      "source_id": "apps/api/src/routes/assist-v3.mjs#58:POST /assist/v3/operations/:id/confirm",
+      "replacement_group": "assist",
+      "clean_commands": [
+        "assist.session.list"
+      ],
+      "rationale": "The historical POST /assist/v3/operations/:id/confirm address has no independent business semantics; the mapped Clean group owns the confirmed workflow."
+    },
+    {
+      "inventory_kind": "route",
+      "source_id": "apps/api/src/routes/assist-v3.mjs#59:POST /assist/v3/operations/:id/claim",
+      "replacement_group": "assist",
+      "clean_commands": [
+        "assist.session.list"
+      ],
+      "rationale": "The historical POST /assist/v3/operations/:id/claim address has no independent business semantics; the mapped Clean group owns the confirmed workflow."
+    },
+    {
+      "inventory_kind": "route",
+      "source_id": "apps/api/src/routes/assist-v3.mjs#6:PATCH /assist/v3/configurations/:id",
+      "replacement_group": "assist",
+      "clean_commands": [
+        "assist.session.list"
+      ],
+      "rationale": "The historical PATCH /assist/v3/configurations/:id address has no independent business semantics; the mapped Clean group owns the confirmed workflow."
+    },
+    {
+      "inventory_kind": "route",
+      "source_id": "apps/api/src/routes/assist-v3.mjs#60:POST /assist/v3/operations/:id/result",
+      "replacement_group": "assist",
+      "clean_commands": [
+        "assist.session.list"
+      ],
+      "rationale": "The historical POST /assist/v3/operations/:id/result address has no independent business semantics; the mapped Clean group owns the confirmed workflow."
+    },
+    {
+      "inventory_kind": "route",
+      "source_id": "apps/api/src/routes/assist-v3.mjs#61:POST /assist/v3/operations/:id/undo",
+      "replacement_group": "assist",
+      "clean_commands": [
+        "assist.session.list"
+      ],
+      "rationale": "The historical POST /assist/v3/operations/:id/undo address has no independent business semantics; the mapped Clean group owns the confirmed workflow."
+    },
+    {
+      "inventory_kind": "route",
+      "source_id": "apps/api/src/routes/assist-v3.mjs#62:POST /assist/v3/operations/:id/revisions",
+      "replacement_group": "assist",
+      "clean_commands": [
+        "assist.session.list"
+      ],
+      "rationale": "The historical POST /assist/v3/operations/:id/revisions address has no independent business semantics; the mapped Clean group owns the confirmed workflow."
+    },
+    {
+      "inventory_kind": "route",
+      "source_id": "apps/api/src/routes/assist-v3.mjs#63:GET /assist/v3/change-batches/:id/review",
+      "replacement_group": "assist",
+      "clean_commands": [
+        "assist.session.list"
+      ],
+      "rationale": "The historical GET /assist/v3/change-batches/:id/review address has no independent business semantics; the mapped Clean group owns the confirmed workflow."
+    },
+    {
+      "inventory_kind": "route",
+      "source_id": "apps/api/src/routes/assist-v3.mjs#64:POST /assist/v3/change-batches/:id/review/apply",
+      "replacement_group": "assist",
+      "clean_commands": [
+        "assist.session.list"
+      ],
+      "rationale": "The historical POST /assist/v3/change-batches/:id/review/apply address has no independent business semantics; the mapped Clean group owns the confirmed workflow."
+    },
+    {
+      "inventory_kind": "route",
+      "source_id": "apps/api/src/routes/assist-v3.mjs#65:POST /assist/v3/change-batches/:id/review/rollback",
+      "replacement_group": "assist",
+      "clean_commands": [
+        "assist.session.list"
+      ],
+      "rationale": "The historical POST /assist/v3/change-batches/:id/review/rollback address has no independent business semantics; the mapped Clean group owns the confirmed workflow."
+    },
+    {
+      "inventory_kind": "route",
+      "source_id": "apps/api/src/routes/assist-v3.mjs#7:DELETE /assist/v3/configurations/:id",
+      "replacement_group": "assist",
+      "clean_commands": [
+        "assist.session.list"
+      ],
+      "rationale": "The historical DELETE /assist/v3/configurations/:id address has no independent business semantics; the mapped Clean group owns the confirmed workflow."
+    },
+    {
+      "inventory_kind": "route",
+      "source_id": "apps/api/src/routes/assist-v3.mjs#8:GET /assist/v3/sessions",
+      "replacement_group": "assist",
+      "clean_commands": [
+        "assist.session.list"
+      ],
+      "rationale": "The historical GET /assist/v3/sessions address has no independent business semantics; the mapped Clean group owns the confirmed workflow."
+    },
+    {
+      "inventory_kind": "route",
+      "source_id": "apps/api/src/routes/assist-v3.mjs#9:POST /assist/v3/sessions",
+      "replacement_group": "assist",
+      "clean_commands": [
+        "assist.session.list"
+      ],
+      "rationale": "The historical POST /assist/v3/sessions address has no independent business semantics; the mapped Clean group owns the confirmed workflow."
+    },
+    {
+      "inventory_kind": "route",
+      "source_id": "apps/api/src/routes/codex-v12.mjs#12:GET /codex/cc-switch/status",
+      "replacement_group": "provider-settings",
+      "clean_commands": [
+        "profile.list"
+      ],
+      "rationale": "The historical GET /codex/cc-switch/status address has no independent business semantics; the mapped Clean group owns the confirmed workflow."
+    },
+    {
+      "inventory_kind": "route",
+      "source_id": "apps/api/src/routes/codex-v12.mjs#13:POST /codex/cc-switch/sync",
+      "replacement_group": "provider-settings",
+      "clean_commands": [
+        "profile.list"
+      ],
+      "rationale": "The historical POST /codex/cc-switch/sync address has no independent business semantics; the mapped Clean group owns the confirmed workflow."
+    },
+    {
+      "inventory_kind": "route",
+      "source_id": "apps/api/src/routes/codex-v12.mjs#14:POST /codex/cc-switch/import",
+      "replacement_group": "provider-settings",
+      "clean_commands": [
+        "profile.list"
+      ],
+      "rationale": "The historical POST /codex/cc-switch/import address has no independent business semantics; the mapped Clean group owns the confirmed workflow."
+    },
+    {
+      "inventory_kind": "route",
+      "source_id": "apps/api/src/routes/codex-v12.mjs#9:DELETE /codex/profiles/:id",
+      "replacement_group": "files-approval",
+      "clean_commands": [
+        "file.list"
+      ],
+      "rationale": "The historical DELETE /codex/profiles/:id address has no independent business semantics; the mapped Clean group owns the confirmed workflow."
+    },
+    {
+      "inventory_kind": "route",
+      "source_id": "apps/api/src/routes/config-governance-v13.mjs#1:GET /codex/cc-switch/managed/status",
+      "replacement_group": "provider-settings",
+      "clean_commands": [
+        "profile.list"
+      ],
+      "rationale": "The historical GET /codex/cc-switch/managed/status address has no independent business semantics; the mapped Clean group owns the confirmed workflow."
+    },
+    {
+      "inventory_kind": "route",
+      "source_id": "apps/api/src/routes/config-governance-v13.mjs#2:POST /codex/cc-switch/managed/install",
+      "replacement_group": "provider-settings",
+      "clean_commands": [
+        "profile.list"
+      ],
+      "rationale": "The historical POST /codex/cc-switch/managed/install address has no independent business semantics; the mapped Clean group owns the confirmed workflow."
+    },
+    {
+      "inventory_kind": "route",
+      "source_id": "apps/api/src/routes/config-governance-v13.mjs#3:GET /codex/cc-switch/managed/catalog",
+      "replacement_group": "provider-settings",
+      "clean_commands": [
+        "profile.list"
+      ],
+      "rationale": "The historical GET /codex/cc-switch/managed/catalog address has no independent business semantics; the mapped Clean group owns the confirmed workflow."
+    },
+    {
+      "inventory_kind": "route",
+      "source_id": "apps/api/src/routes/git.mjs#1:POST /projects/:id/git-repositories",
+      "replacement_group": "repository",
+      "clean_commands": [
+        "repository.connection.list"
+      ],
+      "rationale": "The historical POST /projects/:id/git-repositories address has no independent business semantics; the mapped Clean group owns the confirmed workflow."
+    },
+    {
+      "inventory_kind": "route",
+      "source_id": "apps/api/src/routes/git.mjs#2:POST /runs/:id/git/branch",
+      "replacement_group": "repository",
+      "clean_commands": [
+        "repository.connection.list"
+      ],
+      "rationale": "The historical POST /runs/:id/git/branch address has no independent business semantics; the mapped Clean group owns the confirmed workflow."
+    },
+    {
+      "inventory_kind": "route",
+      "source_id": "apps/api/src/routes/git.mjs#3:POST /runs/:id/git/diff",
+      "replacement_group": "repository",
+      "clean_commands": [
+        "repository.connection.list"
+      ],
+      "rationale": "The historical POST /runs/:id/git/diff address has no independent business semantics; the mapped Clean group owns the confirmed workflow."
+    },
+    {
+      "inventory_kind": "route",
+      "source_id": "apps/api/src/routes/git.mjs#4:POST /runs/:id/git/commit",
+      "replacement_group": "repository",
+      "clean_commands": [
+        "repository.connection.list"
+      ],
+      "rationale": "The historical POST /runs/:id/git/commit address has no independent business semantics; the mapped Clean group owns the confirmed workflow."
+    },
+    {
+      "inventory_kind": "route",
+      "source_id": "apps/api/src/routes/host-bridge-v15.mjs#3:DELETE /assist/v3/host-bridge/devices/:id",
+      "replacement_group": "assist",
+      "clean_commands": [
+        "assist.session.list"
+      ],
+      "rationale": "The historical DELETE /assist/v3/host-bridge/devices/:id address has no independent business semantics; the mapped Clean group owns the confirmed workflow."
+    },
+    {
+      "inventory_kind": "route",
+      "source_id": "apps/api/src/routes/mcp-clients-v18.mjs#3:DELETE /mcp/clients/:id",
+      "replacement_group": "mcp-exchange-gateway",
+      "clean_commands": [
+        "mcp.tools.list"
+      ],
+      "rationale": "The historical DELETE /mcp/clients/:id address has no independent business semantics; the mapped Clean group owns the confirmed workflow."
+    },
+    {
+      "inventory_kind": "route",
+      "source_id": "apps/api/src/routes/mcp-v18.mjs#3:DELETE /mcp",
+      "replacement_group": "mcp-exchange-gateway",
+      "clean_commands": [
+        "mcp.tools.list"
+      ],
+      "rationale": "The historical DELETE /mcp address has no independent business semantics; the mapped Clean group owns the confirmed workflow."
+    },
+    {
+      "inventory_kind": "route",
+      "source_id": "apps/api/src/routes/project-governance-v19.mjs#9:DELETE /projects/:id/members/:userId",
+      "replacement_group": "project-brief",
+      "clean_commands": [
+        "project.get"
+      ],
+      "rationale": "The historical DELETE /projects/:id/members/:userId address has no independent business semantics; the mapped Clean group owns the confirmed workflow."
+    },
+    {
+      "inventory_kind": "route",
+      "source_id": "apps/api/src/routes/project-onboarding-v13.mjs#17:DELETE /projects/:id",
+      "replacement_group": "project-brief",
+      "clean_commands": [
+        "project.get"
+      ],
+      "rationale": "The historical DELETE /projects/:id address has no independent business semantics; the mapped Clean group owns the confirmed workflow."
+    },
+    {
+      "inventory_kind": "route",
+      "source_id": "apps/api/src/routes/repository-delivery-v19.mjs#4:DELETE /projects/:projectId/repository-connections/:connectionId",
+      "replacement_group": "delivery",
+      "clean_commands": [
+        "delivery.list"
+      ],
+      "rationale": "The historical DELETE /projects/:projectId/repository-connections/:connectionId address has no independent business semantics; the mapped Clean group owns the confirmed workflow."
+    },
+    {
+      "inventory_kind": "route",
+      "source_id": "apps/api/src/routes/repository-lifecycle-v19.mjs#12:DELETE /projects/:id/github/repository",
+      "replacement_group": "repository",
+      "clean_commands": [
+        "repository.connection.list"
+      ],
+      "rationale": "The historical DELETE /projects/:id/github/repository address has no independent business semantics; the mapped Clean group owns the confirmed workflow."
+    },
+    {
+      "inventory_kind": "route",
+      "source_id": "apps/api/src/routes/repository-lifecycle-v19.mjs#13:DELETE /github/repositories/:id",
+      "replacement_group": "repository",
+      "clean_commands": [
+        "repository.connection.list"
+      ],
+      "rationale": "The historical DELETE /github/repositories/:id address has no independent business semantics; the mapped Clean group owns the confirmed workflow."
+    },
+    {
+      "inventory_kind": "route",
+      "source_id": "apps/api/src/routes/repository-lifecycle-v19.mjs#14:DELETE /canonical-repositories/:id",
+      "replacement_group": "repository",
+      "clean_commands": [
+        "repository.connection.list"
+      ],
+      "rationale": "The historical DELETE /canonical-repositories/:id address has no independent business semantics; the mapped Clean group owns the confirmed workflow."
+    },
+    {
+      "inventory_kind": "route",
+      "source_id": "apps/api/src/routes/repository-workspaces-v19.mjs#6:DELETE /repository-workspaces/:id",
+      "replacement_group": "repository",
+      "clean_commands": [
+        "repository.connection.list"
+      ],
+      "rationale": "The historical DELETE /repository-workspaces/:id address has no independent business semantics; the mapped Clean group owns the confirmed workflow."
+    },
+    {
+      "inventory_kind": "route",
+      "source_id": "apps/api/src/routes/system.mjs#3:GET /health",
+      "replacement_group": "operations-recovery",
+      "clean_commands": [
+        "operations.list"
+      ],
+      "rationale": "The historical GET /health address has no independent business semantics; the mapped Clean group owns the confirmed workflow."
+    },
+    {
+      "inventory_kind": "route",
+      "source_id": "apps/api/src/routes/tools.mjs#1:GET /tools",
+      "replacement_group": "mcp-exchange-gateway",
+      "clean_commands": [
+        "mcp.tools.list"
+      ],
+      "rationale": "The historical GET /tools address has no independent business semantics; the mapped Clean group owns the confirmed workflow."
+    },
+    {
+      "inventory_kind": "route",
+      "source_id": "apps/api/src/routes/tools.mjs#2:POST /tools",
+      "replacement_group": "mcp-exchange-gateway",
+      "clean_commands": [
+        "mcp.tools.list"
+      ],
+      "rationale": "The historical POST /tools address has no independent business semantics; the mapped Clean group owns the confirmed workflow."
+    },
+    {
+      "inventory_kind": "route",
+      "source_id": "apps/api/src/routes/tools.mjs#3:PUT /tools/:id",
+      "replacement_group": "mcp-exchange-gateway",
+      "clean_commands": [
+        "mcp.tools.list"
+      ],
+      "rationale": "The historical PUT /tools/:id address has no independent business semantics; the mapped Clean group owns the confirmed workflow."
+    },
+    {
+      "inventory_kind": "route",
+      "source_id": "apps/api/src/routes/tools.mjs#4:POST /tools/:id/health",
+      "replacement_group": "mcp-exchange-gateway",
+      "clean_commands": [
+        "mcp.tools.list"
+      ],
+      "rationale": "The historical POST /tools/:id/health address has no independent business semantics; the mapped Clean group owns the confirmed workflow."
+    },
+    {
+      "inventory_kind": "route",
+      "source_id": "apps/api/src/routes/workflow-migration-v19.mjs#1:GET /workflow-migrations",
+      "replacement_group": "workflow",
+      "clean_commands": [
+        "workflow.get"
+      ],
+      "rationale": "The historical GET /workflow-migrations address has no independent business semantics; the mapped Clean group owns the confirmed workflow."
+    },
+    {
+      "inventory_kind": "route",
+      "source_id": "apps/api/src/routes/workflow-migration-v19.mjs#2:POST /workflow-migrations/batches/:id/approve",
+      "replacement_group": "workflow",
+      "clean_commands": [
+        "workflow.get"
+      ],
+      "rationale": "The historical POST /workflow-migrations/batches/:id/approve address has no independent business semantics; the mapped Clean group owns the confirmed workflow."
+    },
+    {
+      "inventory_kind": "route",
+      "source_id": "apps/api/src/routes/workflow-migration-v19.mjs#3:POST /workflow-migrations/batches/:id/cancel",
+      "replacement_group": "workflow",
+      "clean_commands": [
+        "workflow.get"
+      ],
+      "rationale": "The historical POST /workflow-migrations/batches/:id/cancel address has no independent business semantics; the mapped Clean group owns the confirmed workflow."
+    },
+    {
+      "inventory_kind": "route",
+      "source_id": "apps/api/src/routes/workflow-migration-v19.mjs#4:POST /workflow-migrations/jobs/:id/retry",
+      "replacement_group": "workflow",
+      "clean_commands": [
+        "workflow.get"
+      ],
+      "rationale": "The historical POST /workflow-migrations/jobs/:id/retry address has no independent business semantics; the mapped Clean group owns the confirmed workflow."
+    }
+  ],
+  "manifest_sha256": "a6a56393ac690d6f94c45474dc0dc94285c15655920f6d16cc92ba80b4ca5539"
+}
