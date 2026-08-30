@@ -761,3 +761,47 @@ The pre-push hook sets `AIWS_VERIFY_RUNNING=1` for its outer verification.
 `verify.mjs` preserves that marker so Git pushes made by external fixture
 probes do not recursively start another repository-wide gate. A normal user
 push without the marker still executes the complete `pnpm verify` inventory.
+
+### Post-closure capability restoration details
+
+The post-closure product regression keeps the P10 governance tag, schema v9,
+and the `27 released / 0 historical` Catalog unchanged while restoring the
+reachable V2.3 business workflows. The Clean session boundary exposes
+`POST /api/v2/setup/session` with an exact loopback/same-origin check and a
+persistent `HttpOnly; SameSite=Strict` cookie; the Web client retries a stale
+session once and reloads the real account scope. Provider setup covers ordered
+Codex host discovery (`AIWS_HOST_CODEX_HOME`, `CODEX_HOME`, `~/.codex`), bounded
+TOML/JSON parsing, symlink/race checks, Vault import, ChatGPT Device Login,
+and cleanup of isolated homes without returning secrets or host paths.
+
+The shell restores parameterized asset/audit/workstream/node/repository and
+GitHub-install deep links, a six-entry hidden navigation drawer, focus trapping
+and focus restoration for tool drawers, and an offline overlay that keeps the
+loaded page and permitted Outbox work available. Project/Identity/Assist,
+Workflow, Quality, Outcome, Delivery, and Operations surfaces reuse the existing
+Clean owners and generic ledger. `tests/p10/post-closure-restoration.test.mjs`
+is the API/security regression for session, discovery, Device Login, redaction,
+and restart cleanup; `apps/web/src/test/post-closure-restoration.test.tsx` adds
+the Web route/recovery and sanitization checks alongside the existing suite.
+New implementation and test paths are registered in both layered
+Catalogs without changing any status or P10 Evidence byte.
+
+The restoration acceptance subset is:
+
+```text
+pnpm check
+pnpm audit:parity
+pnpm recovery:catalog
+pnpm --filter @aiws/web typecheck
+pnpm --filter @aiws/web test
+pnpm test:p2
+pnpm test:p3
+pnpm test:p10
+pnpm build
+pnpm test:integration:clean
+pnpm test:security:clean
+pnpm test:e2e
+pnpm test:release
+pnpm verify
+git diff --check
+```

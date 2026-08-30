@@ -413,7 +413,30 @@ const P9_PREFIXES = Object.freeze(['tests/p9/', 'apps/web/src/offline/', 'apps/w
 const P10_FILES = new Set([
   'apps/api/src/clean/migrations/009-final-business-parity-governance.mjs',
   'apps/api/src/clean/p10-service.mjs',
+  'apps/api/src/clean/local-setup-service.mjs',
   'apps/parser-worker/archive-worker.mjs',
+  'apps/web/src/features/assets/AssetsPage.tsx',
+  'apps/web/src/features/audit/AuditPage.tsx',
+  'apps/web/src/features/assist/AssistMarkdown.tsx',
+  'apps/web/src/features/assist/AttachmentPreview.tsx',
+  'apps/web/src/features/assist/OfficePreview.tsx',
+  'apps/web/src/features/assist/PdfPreview.tsx',
+  'apps/web/src/features/assist/TurnTimeline.tsx',
+  'apps/web/src/features/assist/TypedEvent.tsx',
+  'apps/web/src/features/assist/office-preview.worker.ts',
+  'apps/web/src/features/context/ContextMapPage.tsx',
+  'apps/web/src/features/execution/QualityPolicyPanel.tsx',
+  'apps/web/src/features/nodes/NodeWorkspacePage.tsx',
+  'apps/web/src/features/project/WorkflowCanvas.tsx',
+  'apps/web/src/features/projects/ProjectsPage.tsx',
+  'apps/web/src/features/projects/onboarding/ProjectOnboardingPage.tsx',
+  'apps/web/src/features/settings/BriefTemplatesPanel.tsx',
+  'apps/web/src/features/setup/CodexDiscoveryPicker.tsx',
+  'apps/web/src/features/setup/CodexSetup.tsx',
+  'apps/web/src/features/setup/SystemOnboarding.tsx',
+  'apps/web/src/features/setup/codex-device-auth.ts',
+  'apps/web/src/features/setup/index.ts',
+  'apps/web/src/features/workflow/WorkstreamPage.tsx',
   'apps/web/src/features/quality/',
   'apps/web/src/test/p10-business-parity.test.tsx',
   'apps/web/src/test/p10-quality.test.tsx',
@@ -425,7 +448,12 @@ const P10_FILES = new Set([
   'scripts/v3-clean-p10-parser-probe.mjs',
   'tests/p10/'
 ]);
-const P10_PREFIXES = Object.freeze(['tests/p10/', 'apps/web/src/features/quality/', 'apps/web/src/features/p10/']);
+const P10_PREFIXES = Object.freeze([
+  'tests/p10/', 'apps/web/src/features/quality/', 'apps/web/src/features/p10/',
+  'apps/web/src/features/assets/', 'apps/web/src/features/audit/',
+  'apps/web/src/features/nodes/', 'apps/web/src/features/projects/',
+  'apps/web/src/features/workflow/'
+]);
 
 export function classifyWorkspacePath(value) {
   const file = normalize(value);

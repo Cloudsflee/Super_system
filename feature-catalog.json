@@ -170,7 +170,40 @@
         "apps/web/src/features/setup/SystemOnboarding.tsx",
         "apps/web/src/features/settings/SettingsPage.tsx",
         "apps/web/src/features/project/ProjectOnboardingPage.tsx",
-        "scripts/e2e.mjs"
+        "scripts/e2e.mjs",
+        "apps/web/src/features/assets/AssetsPage.tsx",
+        "apps/web/src/features/audit/AuditPage.tsx",
+        "apps/web/src/features/assist/AssistMarkdown.tsx",
+        "apps/web/src/features/assist/AttachmentPreview.tsx",
+        "apps/web/src/features/assist/OfficePreview.tsx",
+        "apps/web/src/features/assist/PdfPreview.tsx",
+        "apps/web/src/features/assist/TurnTimeline.tsx",
+        "apps/web/src/features/assist/TypedEvent.tsx",
+        "apps/web/src/features/assist/office-preview.worker.ts",
+        "apps/web/src/features/context/ContextMapPage.tsx",
+        "apps/web/src/features/execution/QualityPolicyPanel.tsx",
+        "apps/web/src/features/nodes/NodeWorkspacePage.tsx",
+        "apps/web/src/features/project/WorkflowCanvas.tsx",
+        "apps/web/src/features/projects/ProjectsPage.tsx",
+        "apps/web/src/features/projects/onboarding/ProjectOnboardingPage.tsx",
+        "apps/web/src/features/settings/BriefTemplatesPanel.tsx",
+        "apps/web/src/features/setup/CodexDiscoveryPicker.tsx",
+        "apps/web/src/features/setup/CodexSetup.tsx",
+        "apps/web/src/features/setup/codex-device-auth.ts",
+        "apps/web/src/features/workflow/WorkflowPage/index.ts",
+        "apps/web/src/features/workflow/WorkstreamPage.tsx",
+        "apps/web/src/features/assets/index.ts",
+        "apps/web/src/features/audit/index.ts",
+        "apps/web/src/features/nodes/index.ts",
+        "apps/web/src/features/projects/index.ts",
+        "apps/web/src/features/projects/onboarding/index.ts",
+        "apps/web/src/features/workflow/index.ts",
+        "apps/web/src/features/assist/index.ts",
+        "apps/web/src/features/context/index.ts",
+        "apps/web/src/features/execution/index.ts",
+        "apps/web/src/features/project/index.ts",
+        "apps/web/src/features/settings/index.ts",
+        "apps/web/src/features/setup/index.ts"
       ],
       "tables": [],
       "apis": [
@@ -185,7 +218,10 @@
         "/api/v2/backups",
         "/api/v2/imports",
         "/api/v2/operations",
-        "/api/v2/cas/gc/plan"
+        "/api/v2/cas/gc/plan",
+        "/api/v2/setup/session",
+        "/api/v2/provider-discovery/codex",
+        "/api/v2/provider-auth/codex/device-logins"
       ],
       "ui": [
         "Identity",
@@ -199,7 +235,11 @@
         "Deployment",
         "Backup & Restore",
         "Importer",
-        "CAS GC"
+        "CAS GC",
+        "Deep-link shell",
+        "Project Repository workspace",
+        "Codex Device Login",
+        "Offline continuity"
       ],
       "events": [
         "actor.updated",
@@ -213,7 +253,8 @@
         "tests/p2/identity-acl.test.mjs",
         "tests/p2/identity-acl-security.test.mjs",
         "tests/p8/http-contract.test.mjs",
-        "tests/p10/http-contract.test.mjs"
+        "tests/p10/http-contract.test.mjs",
+        "tests/p10/post-closure-restoration.test.mjs"
       ],
       "ui_tests": [
         "apps/web/src/test/identity-access.test.tsx",
@@ -222,7 +263,9 @@
         "apps/web/src/test/setup-flow.test.tsx",
         "apps/web/src/test/shell-navigation.test.tsx",
         "apps/web/src/test/project-onboarding.test.tsx",
-        "scripts/e2e.mjs"
+        "scripts/e2e.mjs",
+        "apps/web/src/test/workflow.test.tsx",
+        "apps/web/src/test/post-closure-restoration.test.tsx"
       ],
       "evidence": [
         "docs/evidence/v3-clean-p2-identity-acl-20260819/verification.json",
@@ -241,7 +284,10 @@
         "apps/web/src/test/operations-p8.test.tsx",
         "tests/p10/http-contract.test.mjs",
         "apps/web/src/test/p10-business-parity.test.tsx",
-        "scripts/v3-clean-p10-release-probe.mjs"
+        "scripts/v3-clean-p10-release-probe.mjs",
+        "tests/p10/post-closure-restoration.test.mjs",
+        "apps/web/src/test/workflow.test.tsx",
+        "apps/web/src/test/post-closure-restoration.test.tsx"
       ],
       "runtime_surface": "v3-clean",
       "parity_receipts": [
@@ -276,7 +322,8 @@
         "apps/importer/pointer.mjs",
         "apps/web/src/features/operations/OperationsPage.tsx",
         "Dockerfile",
-        ".dockerignore"
+        ".dockerignore",
+        "apps/web/src/features/audit/AuditPage.tsx"
       ],
       "tables": [
         "operations",
@@ -320,7 +367,8 @@
         "tests/p8/importer.test.mjs",
         "tests/p8/deployment-backup.test.mjs",
         "tests/p8/delivery-operations.test.mjs",
-        "tests/p8/http-contract.test.mjs"
+        "tests/p8/http-contract.test.mjs",
+        "tests/p10/post-closure-restoration.test.mjs"
       ],
       "ui_tests": [
         "apps/web/src/test/operations-p8.test.tsx"
@@ -341,7 +389,8 @@
         "tests/p8/http-contract.test.mjs",
         "apps/web/src/test/operations-p8.test.tsx",
         "scripts/v3-clean-p8-importer-probe.mjs",
-        "scripts/v3-clean-p8-backup-restore-gc-probe.mjs"
+        "scripts/v3-clean-p8-backup-restore-gc-probe.mjs",
+        "tests/p10/post-closure-restoration.test.mjs"
       ],
       "runtime_surface": "v3-clean",
       "parity_receipts": [
@@ -368,7 +417,9 @@
         "apps/api/src/clean/registry.mjs",
         "apps/api/src/clean/migrations/002-identity-acl.mjs",
         "apps/web/src/features/identity/IdentityAccessPage.tsx",
-        "scripts/v3-clean-p2-evidence.mjs"
+        "scripts/v3-clean-p2-evidence.mjs",
+        "apps/api/src/clean/session-service.mjs",
+        "apps/api/src/clean/operations.mjs"
       ],
       "tables": [
         "actors",
@@ -388,7 +439,8 @@
         "/api/v2/teams/{id}/memberships",
         "/api/v2/projects/{id}/members",
         "/api/v2/projects/{id}/invitations",
-        "/api/v2/projects/{id}/permissions"
+        "/api/v2/projects/{id}/permissions",
+        "POST /api/v2/setup/session"
       ],
       "ui": [
         "Identity",
@@ -413,7 +465,8 @@
       ],
       "behavior_tests": [
         "tests/p2/identity-acl.test.mjs",
-        "tests/p2/identity-acl-security.test.mjs"
+        "tests/p2/identity-acl-security.test.mjs",
+        "tests/p10/post-closure-restoration.test.mjs"
       ],
       "ui_tests": [
         "apps/web/src/test/identity-access.test.tsx"
@@ -428,7 +481,8 @@
         "T2",
         "tests/p2/identity-acl.test.mjs",
         "tests/p2/identity-acl-security.test.mjs",
-        "apps/web/src/test/identity-access.test.tsx"
+        "apps/web/src/test/identity-access.test.tsx",
+        "tests/p10/post-closure-restoration.test.mjs"
       ],
       "runtime_surface": "v3-clean",
       "parity_receipts": [
@@ -462,7 +516,13 @@
         "apps/api/src/clean/p8/github-adapter.mjs",
         "apps/api/src/clean/p8/repository.mjs",
         "apps/web/src/features/setup/SystemOnboarding.tsx",
-        "apps/web/src/features/settings/SettingsPage.tsx"
+        "apps/web/src/features/settings/SettingsPage.tsx",
+        "apps/api/src/clean/local-setup-service.mjs",
+        "apps/api/src/clean/config.mjs",
+        "apps/api/src/clean/app-server-adapter.mjs",
+        "apps/web/src/features/setup/CodexDiscoveryPicker.tsx",
+        "apps/web/src/features/setup/CodexSetup.tsx",
+        "apps/web/src/features/setup/codex-device-auth.ts"
       ],
       "tables": [
         "credential_refs",
@@ -481,7 +541,12 @@
         "/api/v2/profiles/{id}/probe",
         "/api/v2/operations/{id}",
         "/api/v2/provider-profiles/{id}/repositories",
-        "/api/v2/webhooks/github"
+        "/api/v2/webhooks/github",
+        "GET /api/v2/provider-discovery/codex",
+        "POST /api/v2/provider-discovery/codex/import",
+        "POST /api/v2/provider-auth/codex/device-logins",
+        "GET /api/v2/provider-auth/codex/device-logins/{id}",
+        "POST /api/v2/provider-auth/codex/device-logins/{id}/cancel"
       ],
       "ui": [
         "Setup",
@@ -509,11 +574,13 @@
         "tests/p2/identity-acl-security.test.mjs",
         "tests/p8/delivery-operations.test.mjs",
         "tests/p8/http-contract.test.mjs",
-        "tests/p10/business-parity.test.mjs"
+        "tests/p10/business-parity.test.mjs",
+        "tests/p10/post-closure-restoration.test.mjs"
       ],
       "ui_tests": [
         "apps/web/src/test/identity-access.test.tsx",
-        "apps/web/src/test/setup-flow.test.tsx"
+        "apps/web/src/test/setup-flow.test.tsx",
+        "apps/web/src/test/post-closure-restoration.test.tsx"
       ],
       "evidence": [
         "docs/evidence/v3-clean-p2-identity-acl-20260819/verification.json",
@@ -531,7 +598,9 @@
         "tests/p8/http-contract.test.mjs",
         "scripts/v3-clean-p8-github-delivery-probe.mjs",
         "tests/p10/business-parity.test.mjs",
-        "scripts/v3-clean-p10-release-probe.mjs"
+        "scripts/v3-clean-p10-release-probe.mjs",
+        "tests/p10/post-closure-restoration.test.mjs",
+        "apps/web/src/test/post-closure-restoration.test.tsx"
       ],
       "runtime_surface": "v3-clean",
       "parity_receipts": [
@@ -796,7 +865,10 @@
         "apps/api/src/clean/registry.mjs",
         "apps/web/src/features/project/ProjectWorkflowPage.tsx",
         "apps/api/src/clean/p10-service.mjs",
-        "apps/web/src/features/project/ProjectOnboardingPage.tsx"
+        "apps/web/src/features/project/ProjectOnboardingPage.tsx",
+        "apps/web/src/features/projects/ProjectsPage.tsx",
+        "apps/web/src/features/projects/onboarding/ProjectOnboardingPage.tsx",
+        "apps/web/src/features/settings/BriefTemplatesPanel.tsx"
       ],
       "tables": [
         "projects",
@@ -812,7 +884,8 @@
         "/api/v2/projects/{id}/intake/retry",
         "/api/v2/projects/{id}/intake/cancel",
         "/api/v2/projects/{id}/briefs",
-        "/api/v2/projects/{id}/briefs/{revision}/confirm"
+        "/api/v2/projects/{id}/briefs/{revision}/confirm",
+        "/api/v2/project-deletion-intents/{id}"
       ],
       "ui": [
         "Projects",
@@ -830,7 +903,8 @@
         "tests/p3/http-contract.test.mjs",
         "tests/p3/migration.test.mjs",
         "tests/p3/project-workflow.test.mjs",
-        "tests/p10/business-parity.test.mjs"
+        "tests/p10/business-parity.test.mjs",
+        "tests/p10/post-closure-restoration.test.mjs"
       ],
       "ui_tests": [
         "apps/web/src/test/project-workflow-clean.test.tsx",
@@ -850,7 +924,8 @@
         "tests/p3/project-workflow.test.mjs",
         "apps/web/src/test/project-workflow-clean.test.tsx",
         "tests/p10/business-parity.test.mjs",
-        "scripts/v3-clean-p10-release-probe.mjs"
+        "scripts/v3-clean-p10-release-probe.mjs",
+        "tests/p10/post-closure-restoration.test.mjs"
       ],
       "runtime_surface": "v3-clean",
       "parity_receipts": [
@@ -878,7 +953,11 @@
         "apps/api/src/clean/http.mjs",
         "apps/api/src/clean/registry.mjs",
         "apps/web/src/features/project/ProjectWorkflowPage.tsx",
-        "apps/web/src/features/project/ProjectOnboardingPage.tsx"
+        "apps/web/src/features/project/ProjectOnboardingPage.tsx",
+        "apps/web/src/features/project/WorkflowCanvas.tsx",
+        "apps/web/src/features/workflow/WorkflowPage/index.ts",
+        "apps/web/src/features/workflow/WorkstreamPage.tsx",
+        "apps/web/src/features/nodes/NodeWorkspacePage.tsx"
       ],
       "tables": [
         "workflows",
@@ -905,11 +984,14 @@
       "behavior_tests": [
         "tests/p3/migration.test.mjs",
         "tests/p3/project-workflow.test.mjs",
-        "tests/p10/business-parity.test.mjs"
+        "tests/p10/business-parity.test.mjs",
+        "tests/p10/post-closure-restoration.test.mjs"
       ],
       "ui_tests": [
         "apps/web/src/test/project-workflow-clean.test.tsx",
-        "apps/web/src/test/project-onboarding.test.tsx"
+        "apps/web/src/test/project-onboarding.test.tsx",
+        "apps/web/src/test/workflow.test.tsx",
+        "apps/web/src/test/post-closure-restoration.test.tsx"
       ],
       "evidence": [
         "docs/evidence/v3-clean-p3-project-workflow-20260819/verification.json"
@@ -921,7 +1003,10 @@
         "T4",
         "tests/p3/migration.test.mjs",
         "tests/p3/project-workflow.test.mjs",
-        "apps/web/src/test/project-workflow-clean.test.tsx"
+        "apps/web/src/test/project-workflow-clean.test.tsx",
+        "tests/p10/post-closure-restoration.test.mjs",
+        "apps/web/src/test/workflow.test.tsx",
+        "apps/web/src/test/post-closure-restoration.test.tsx"
       ],
       "runtime_surface": "v3-clean",
       "parity_receipts": [
@@ -948,7 +1033,8 @@
         "apps/api/src/clean/execution-service.mjs",
         "apps/api/src/clean/http.mjs",
         "apps/api/src/clean/registry.mjs",
-        "apps/web/src/features/execution"
+        "apps/web/src/features/execution",
+        "apps/web/src/features/execution/QualityPolicyPanel.tsx"
       ],
       "tables": [
         "executions",
@@ -987,7 +1073,8 @@
         "tests/p6/execution-recovery.test.mjs",
         "tests/p6/http-security.test.mjs",
         "tests/p6/transport-parity.test.mjs",
-        "tests/p6/migration.test.mjs"
+        "tests/p6/migration.test.mjs",
+        "tests/p10/post-closure-restoration.test.mjs"
       ],
       "ui_tests": [
         "apps/web/src/test/execution-p6.test.tsx"
@@ -1007,7 +1094,8 @@
         "tests/p6/migration.test.mjs",
         "apps/web/src/test/execution-p6.test.tsx",
         "scripts/v3-clean-p6-performance.mjs",
-        "scripts/e2e.mjs"
+        "scripts/e2e.mjs",
+        "tests/p10/post-closure-restoration.test.mjs"
       ],
       "runtime_surface": "v3-clean",
       "parity_receipts": [
@@ -1035,7 +1123,8 @@
         "apps/api/src/clean/project-workflow.mjs",
         "apps/api/src/clean/http.mjs",
         "apps/api/src/clean/registry.mjs",
-        "apps/web/src/features/project/ProjectWorkflowPage.tsx"
+        "apps/web/src/features/project/ProjectWorkflowPage.tsx",
+        "apps/web/src/features/project/WorkflowCanvas.tsx"
       ],
       "tables": [
         "workflow_generations",
@@ -1061,7 +1150,8 @@
       ],
       "behavior_tests": [
         "tests/p3/project-workflow.test.mjs",
-        "tests/p3/migration.test.mjs"
+        "tests/p3/migration.test.mjs",
+        "tests/p10/post-closure-restoration.test.mjs"
       ],
       "ui_tests": [
         "apps/web/src/test/project-workflow-clean.test.tsx"
@@ -1076,7 +1166,8 @@
         "T4",
         "tests/p3/project-workflow.test.mjs",
         "tests/p3/migration.test.mjs",
-        "apps/web/src/test/project-workflow-clean.test.tsx"
+        "apps/web/src/test/project-workflow-clean.test.tsx",
+        "tests/p10/post-closure-restoration.test.mjs"
       ],
       "runtime_surface": "v3-clean",
       "parity_receipts": [
@@ -1131,7 +1222,8 @@
       ],
       "behavior_tests": [
         "tests/p7/quality-outcome.test.mjs",
-        "tests/p7/http-contract.test.mjs"
+        "tests/p7/http-contract.test.mjs",
+        "tests/p10/post-closure-restoration.test.mjs"
       ],
       "ui_tests": [
         "apps/web/src/test/execution-p7.test.tsx"
@@ -1148,7 +1240,8 @@
         "tests/p7/http-contract.test.mjs",
         "apps/web/src/test/execution-p7.test.tsx",
         "scripts/v3-clean-p7-quality-outcome-probe.mjs",
-        "scripts/e2e.mjs"
+        "scripts/e2e.mjs",
+        "tests/p10/post-closure-restoration.test.mjs"
       ],
       "runtime_surface": "v3-clean",
       "parity_receipts": [
@@ -1176,7 +1269,8 @@
         "apps/api/src/clean/p8/repository.mjs",
         "apps/api/src/clean/command-dispatcher.mjs",
         "apps/api/src/clean/registry.mjs",
-        "apps/web/src/features/operations/OperationsPage.tsx"
+        "apps/web/src/features/operations/OperationsPage.tsx",
+        "apps/web/src/features/delivery/DeliveryPage.tsx"
       ],
       "tables": [
         "deliveries",
@@ -1208,7 +1302,8 @@
       ],
       "behavior_tests": [
         "tests/p8/delivery-operations.test.mjs",
-        "tests/p8/http-contract.test.mjs"
+        "tests/p8/http-contract.test.mjs",
+        "tests/p10/post-closure-restoration.test.mjs"
       ],
       "ui_tests": [
         "apps/web/src/test/operations-p8.test.tsx"
@@ -1224,7 +1319,8 @@
         "tests/p8/delivery-operations.test.mjs",
         "tests/p8/http-contract.test.mjs",
         "apps/web/src/test/operations-p8.test.tsx",
-        "scripts/v3-clean-p8-github-delivery-probe.mjs"
+        "scripts/v3-clean-p8-github-delivery-probe.mjs",
+        "tests/p10/post-closure-restoration.test.mjs"
       ],
       "runtime_surface": "v3-clean",
       "parity_receipts": [
@@ -1269,12 +1365,15 @@
         "/api/v2/projects/{id}/repository-workspaces",
         "/api/v2/repository-workspaces/{id}/refresh",
         "/api/v2/repository-workspaces/{id}/lock",
-        "/api/v2/repository-workspaces/{id}/release"
+        "/api/v2/repository-workspaces/{id}/release",
+        "/api/v2/repository-targets/{id}/deletion-intents",
+        "/api/v2/repository-deletion-intents/{id}"
       ],
       "ui": [
         "Repository",
         "Worktree",
-        "ProjectWorkflowPage"
+        "ProjectWorkflowPage",
+        "Repository deletion confirmation"
       ],
       "events": [
         "repository.*",
@@ -1391,7 +1490,14 @@
         "apps/api/src/clean/assist-service.mjs",
         "apps/api/src/clean/app-server-adapter.mjs",
         "apps/web/src/features/assist",
-        "apps/api/src/clean/p10-service.mjs"
+        "apps/api/src/clean/p10-service.mjs",
+        "apps/web/src/features/assist/AssistMarkdown.tsx",
+        "apps/web/src/features/assist/AttachmentPreview.tsx",
+        "apps/web/src/features/assist/OfficePreview.tsx",
+        "apps/web/src/features/assist/PdfPreview.tsx",
+        "apps/web/src/features/assist/TurnTimeline.tsx",
+        "apps/web/src/features/assist/TypedEvent.tsx",
+        "apps/web/src/features/assist/office-preview.worker.ts"
       ],
       "tables": [
         "assist_sessions",
@@ -1426,10 +1532,12 @@
         "tests/p5/assist-files.test.mjs",
         "tests/p5/mutation-recovery.test.mjs",
         "tests/p5/provider-probe.test.mjs",
-        "tests/p10/business-parity.test.mjs"
+        "tests/p10/business-parity.test.mjs",
+        "tests/p10/post-closure-restoration.test.mjs"
       ],
       "ui_tests": [
-        "apps/web/src/test/assist.test.tsx"
+        "apps/web/src/test/assist.test.tsx",
+        "apps/web/src/test/post-closure-restoration.test.tsx"
       ],
       "evidence": [
         "docs/evidence/v3-clean-p5-assist-terminal-20260820/verification.json"
@@ -1445,7 +1553,9 @@
         "apps/web/src/test/assist.test.tsx",
         "scripts/v3-clean-p5-assist-probe.mjs",
         "tests/p10/business-parity.test.mjs",
-        "scripts/v3-clean-p10-release-probe.mjs"
+        "scripts/v3-clean-p10-release-probe.mjs",
+        "tests/p10/post-closure-restoration.test.mjs",
+        "apps/web/src/test/post-closure-restoration.test.tsx"
       ],
       "runtime_surface": "v3-clean",
       "parity_receipts": [
@@ -1474,7 +1584,10 @@
         "apps/api/src/clean/files-service.mjs",
         "apps/api/src/clean/parser-service.mjs",
         "apps/web/src/features/assist",
-        "apps/web/src/features/evidence"
+        "apps/web/src/features/evidence",
+        "apps/web/src/features/assist/AttachmentPreview.tsx",
+        "apps/web/src/features/assist/OfficePreview.tsx",
+        "apps/web/src/features/assist/PdfPreview.tsx"
       ],
       "tables": [
         "attachments",
@@ -1499,11 +1612,14 @@
         "tests/p5/assist-files.test.mjs",
         "tests/p5/http-contract.test.mjs",
         "tests/p7/parser-evidence.test.mjs",
-        "tests/p7/http-contract.test.mjs"
+        "tests/p7/http-contract.test.mjs",
+        "tests/p10/post-closure-restoration.test.mjs"
       ],
       "ui_tests": [
         "apps/web/src/test/files-p5.test.tsx",
-        "apps/web/src/test/evidence-p7.test.tsx"
+        "apps/web/src/test/evidence-p7.test.tsx",
+        "apps/web/src/test/workflow.test.tsx",
+        "apps/web/src/test/post-closure-restoration.test.tsx"
       ],
       "evidence": [
         "docs/evidence/v3-clean-p7-evidence-quality-outcome-20260824/verification.json"
@@ -1519,7 +1635,9 @@
         "tests/p7/http-contract.test.mjs",
         "apps/web/src/test/files-p5.test.tsx",
         "apps/web/src/test/evidence-p7.test.tsx",
-        "scripts/v3-clean-p7-parser-probe.mjs"
+        "scripts/v3-clean-p7-parser-probe.mjs",
+        "tests/p10/post-closure-restoration.test.mjs",
+        "apps/web/src/test/post-closure-restoration.test.tsx"
       ],
       "runtime_surface": "v3-clean",
       "parity_receipts": [
@@ -1612,7 +1730,9 @@
       ],
       "target_modules": [
         "apps/api/src/clean/files-service.mjs",
-        "apps/web/src/features/files"
+        "apps/web/src/features/files",
+        "apps/web/src/features/files/FilesDrawer.tsx",
+        "apps/web/src/features/assist/AttachmentPreview.tsx"
       ],
       "tables": [
         "file_refs",
@@ -1637,7 +1757,8 @@
       ],
       "behavior_tests": [
         "tests/p5/assist-files.test.mjs",
-        "tests/p5/mutation-recovery.test.mjs"
+        "tests/p5/mutation-recovery.test.mjs",
+        "tests/p10/post-closure-restoration.test.mjs"
       ],
       "ui_tests": [
         "apps/web/src/test/files-p5.test.tsx"
@@ -1653,7 +1774,8 @@
         "tests/p5/assist-files.test.mjs",
         "tests/p5/mutation-recovery.test.mjs",
         "apps/web/src/test/files-p5.test.tsx",
-        "scripts/v3-clean-p5-performance.mjs"
+        "scripts/v3-clean-p5-performance.mjs",
+        "tests/p10/post-closure-restoration.test.mjs"
       ],
       "runtime_surface": "v3-clean",
       "parity_receipts": [
@@ -2086,7 +2208,8 @@
         "apps/runner-broker/clean-server.mjs",
         "apps/parser-worker",
         "apps/web/src/features/execution/ExecutionP7Panels.tsx",
-        "apps/parser-worker/archive-worker.mjs"
+        "apps/parser-worker/archive-worker.mjs",
+        "apps/web/src/features/execution/QualityPolicyPanel.tsx"
       ],
       "tables": [
         "parser_formats",
@@ -2126,7 +2249,8 @@
         "tests/p7/parser-evidence.test.mjs",
         "tests/p7/quality-outcome.test.mjs",
         "tests/p7/broker-restart-tamper.test.mjs",
-        "tests/p10/quality-parity.test.mjs"
+        "tests/p10/quality-parity.test.mjs",
+        "tests/p10/post-closure-restoration.test.mjs"
       ],
       "ui_tests": [
         "apps/web/src/test/execution-p7.test.tsx",
@@ -2152,7 +2276,8 @@
         "scripts/e2e.mjs",
         "tests/p10/quality-parity.test.mjs",
         "apps/web/src/test/p10-business-parity.test.tsx",
-        "scripts/v3-clean-p10-release-probe.mjs"
+        "scripts/v3-clean-p10-release-probe.mjs",
+        "tests/p10/post-closure-restoration.test.mjs"
       ],
       "runtime_surface": "v3-clean",
       "parity_receipts": [
@@ -2179,7 +2304,8 @@
         "packages/contracts/src/clean-v2.mjs",
         "apps/web/src/api.ts",
         "apps/api/src/clean/migrations/009-final-business-parity-governance.mjs",
-        "apps/api/src/clean/p10-service.mjs"
+        "apps/api/src/clean/p10-service.mjs",
+        "packages/contracts/src/codex-device-auth.mjs"
       ],
       "tables": [
         "schema_migrations"
@@ -2199,7 +2325,8 @@
         "tests/p9/events-cors.test.mjs",
         "tests/p9/web-governance.test.mjs",
         "tests/p10/http-contract.test.mjs",
-        "tests/p10/migration.test.mjs"
+        "tests/p10/migration.test.mjs",
+        "tests/p10/post-closure-restoration.test.mjs"
       ],
       "ui_tests": [
         "apps/web/src/test/offline-p9.test.ts",
@@ -2223,7 +2350,8 @@
         "scripts/v3-clean-p9-release-probe.mjs",
         "tests/p10/http-contract.test.mjs",
         "tests/p10/migration.test.mjs",
-        "scripts/v3-clean-p10-release-probe.mjs"
+        "scripts/v3-clean-p10-release-probe.mjs",
+        "tests/p10/post-closure-restoration.test.mjs"
       ],
       "runtime_surface": "v3-clean",
       "parity_receipts": [
